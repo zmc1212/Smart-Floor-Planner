@@ -14,7 +14,7 @@
 
 ## 1. 当前判断与可复用基础
 
-**当前交付：为专业咨询提供可发布、可检索、可定位和可撤回的企业证据；整体Limited。** KB-1～KB-4已有各自限定实现，复用正文/FAQ、DOCX、文字PDF和有界XLSX，不重建入库、索引或运营平台。业务交付范围、结束条件、阻塞分级及后续顺序共用[Agent计划第1节](./xiaok-agent-engineering-plan.zh-CN.md#1-范围与优先级)，本节只列知识侧必须完成的依赖。 本批P3B只在既有事项outbox中接续经当前获权S01明确核对的待办；旧节点问题/记忆/AI答复仍撤回，不改知识解析、分块、索引、检索、发布、原文定位或KnowledgeRetriever/Evidence权限。具体实现及本轮验证见二期合同与tmp/xiaok-need-stage-recheck/，不把事项接续当专业语义通过。
+**当前KDEP-CONSULT-01结论：本批无需知识源码改动。** v119原始I/O及v120固定原题把已证实缺口定位在Agent最终schema/投影/修复协议选择。复用已发布合成PDF/版本与获权户型来源，未新增入库、索引或知识实现。正确0基修复仍无法交付独立建议，不能据此判定KnowledgeRetriever/Evidence错误；整体仍Limited。下一KDEP-OPS-01仅提供实际需要的企业规则，进度/负责人/等待事实沿原获权业务读取。证据、失败首稿及null费用保留在二期合同和`tmp/xiaok-final-protocol-v120/`。
 
 **当前阶段必须完成：**
 

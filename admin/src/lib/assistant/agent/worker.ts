@@ -140,7 +140,7 @@ export const finalTool: ModelTool = { name: 'final_response', description: '最�
       citations: { type: 'array', maxItems: 4, items: { type: 'object', properties: { citationId: { type: 'string', description:'只选本轮来源citationOptions中的完整citationId。服务端装配原文，不提供sourceId、quote或引用模式。' } }, required: ['citationId'], additionalProperties: false } } },
       required: ['basis','text','citations'], additionalProperties: false } } }, required: ['kind'], additionalProperties: false,
 } };
-export const agentSourceFinalProtocol = 'source-final-kind-v3';
+export const agentSourceFinalProtocol = 'source-final-kind-v4';
 export const agentToolFinalProtocol = 'deferred-structured-final-v1';
 export const agentNeedBatchProtocol = 'same-turn-need-batch-v2';
 /** Adapt independent model-selected calls to the existing atomic schema.
@@ -171,7 +171,7 @@ const sourceQueryTools = new Set(['query_business', 'query_materials', 'query_fo
  * assist generation; authorized server lookup remains the acceptance boundary. */
 export function finalToolForMessages(messages:ModelMessage[], question = ''):ModelTool {
   const sourceOnly = originalAnswerOnly(question);
-  let queriedSources = false, knowledgeResult = false, otherDisplayResult = false;
+  let queriedSources = false, synthesisResult = false, otherDisplayResult = false;
   for (const [index, message] of messages.entries()) {
     if (message.role !== 'tool' || isReadToolInputFailure(message.content)) continue;
     let requestIndex = index - 1;
@@ -183,8 +183,14 @@ export function finalToolForMessages(messages:ModelMessage[], question = ''):Mod
     try {
       const packet = JSON.parse(message.content);
       if (!packet || typeof packet !== 'object' || Array.isArray(packet)) continue;
-      if (call.name === 'search_knowledge' && Array.isArray(packet.synthesisSources)) knowledgeResult = true;
-      if (call.name !== 'search_knowledge' && typeof packet.resultKey === 'string' && packet.resultKey) otherDisplayResult = true;
+      // Pure source reads need an answer composed from their actual catalog.
+      // A result key is a receipt, not proof that a snapshot list answers the
+      // customer's question. Keep action cards and clarification displays.
+      const sourceRead = call.name === 'search_knowledge'
+        || call.name === 'query_business' && packet.query?.domain === 'floorplans'
+        || call.name === 'query_materials' && packet.query?.domain === 'materials' && packet.data?.resolution === 'resolved';
+      if (sourceRead && Array.isArray(packet.synthesisSources)) synthesisResult = true;
+      else if (typeof packet.resultKey === 'string' && packet.resultKey) otherDisplayResult = true;
     } catch { /* Unknown result shapes retain the existing source-kind boundary. */ }
   }
   const allIds=[...new Set(messages.flatMap(message=>{
@@ -236,7 +242,7 @@ export function finalToolForMessages(messages:ModelMessage[], question = ''):Mod
   }
   if(!ids.length&&!queriedSources)return finalTool;
   const parameters=structuredClone(finalTool.parameters);
-  const knowledgeOnly = sourceOnly || knowledgeResult && !otherDisplayResult;
+  const knowledgeOnly = sourceOnly || synthesisResult && !otherDisplayResult;
   const properties = parameters.properties as Record<string, Record<string, unknown>>;
   if (queriedSources) properties.kind = { type: 'string', enum: knowledgeOnly ? ['synthesis'] : ['synthesis', 'business', 'knowledge', 'references'] };
   if (knowledgeOnly) {
@@ -266,7 +272,7 @@ export function finalToolForMessages(messages:ModelMessage[], question = ''):Mod
   if (sourceOnly) return { ...finalTool, parameters, description: '只回答指定原文内容，kind=synthesis，每段evidence或uncertainty。仅选支持本段的知识citationId；不追加advice、项目流程或原文没有的业务条件。原文未说明则说明本次范围限制。正文与引用由你选择，仍须完整校验。' };
   return {...finalTool,parameters,...(queriedSources ? { description: knowledgeOnly
     ? (!ids.length ? '本轮没有可用引用。只用kind=synthesis及segments，每段basis只能advice或uncertainty，citations必须是空数组[]。说明本次资料缺口，可给标明身份的一般建议；不能用evidence或编造默认引用编号，不能把未查到当作现实没有记录。'
-      : '本轮知识结果用kind=synthesis，顶层仅kind和segments，每段basis/text/citations。原文查询也在段落中保留对应引用；不要输出kind=knowledge或顶层text/resultKey/selections。引用只选本轮citationId，服务端继续校验全部来源与正文。')
+      : '本轮资料结果用kind=synthesis回答当前问题，顶层仅kind和segments，每段basis/text/citations。查询回执不代替解释；不要输出kind=knowledge或顶层text/resultKey/selections。引用只选本轮citationId，服务端继续校验全部来源与正文。')
     : '本轮已查询来源。专业解释用synthesis及segments/本轮citationId；原结果展示可用business/knowledge/references。不能用general/vision/unavailable绕过来源校验。' } : {})};
 }
 /** Defer the existing structured final until an explicitly requested original

@@ -56,6 +56,12 @@ function draft(raw: string): Draft | null {
   } catch { return null; }
 }
 
+/** Empty citations still belong to the catalog schema. Detect the complete
+ * structure, never the presence of a citationId substring in model prose. */
+export function isCatalogSynthesisDraft(raw: string) {
+  return draft(raw) !== null;
+}
+
 export function withSynthesisRepairProtocol(issue: { code: string; feedback: string } | null, raw: string) {
   if (!issue || !draft(raw)) return issue;
   return { ...issue, feedback: issue.feedback + prefix + JSON.stringify({ protocol: synthesisRepairProtocol, baseHash: fingerprint(raw) }) + suffix };

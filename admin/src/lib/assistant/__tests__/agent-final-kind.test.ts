@@ -3,12 +3,50 @@ import { test } from 'node:test';
 import { finalTool, finalToolForMessages } from '../agent/worker';
 import type { ModelMessage } from '../contracts/model';
 import { readToolInputIssue } from '../agent/read-tool-input';
+import { focusedSynthesisMessages } from '../agent/synthesis';
 
 const completed = (name: string, content = '{}'): ModelMessage[] => [
   { role: 'assistant', content: '', toolCalls: [{ id: 'read', name, arguments: '{}' }] },
   { role: 'tool', callId: 'read', content },
 ];
 const kinds = (messages: ModelMessage[]) => ((finalToolForMessages(messages).parameters.properties as Record<string, { enum: string[] }>).kind).enum;
+
+test('resolved floorplan and material reads require a sourced answer instead of terminating at a snapshot list', () => {
+  for (const [name, query, data] of [
+    ['query_business', { domain: 'floorplans', leadId: '1' }, [{ id: '2', rooms: [{ name: '书房' }] }]],
+    ['query_materials', { domain: 'materials', leadId: '1' }, { resolution: 'resolved', sources: [], missing: [] }],
+  ] as const) {
+    const messages = completed(name, JSON.stringify({ resultKey: 'actual-read', query, data,
+      synthesisSources: [{ sourceId: 'Bactual', kind: 'project', text: '原始资料与查询范围。', citationOptions: [{ citationId: 'Cactual' }] }] }));
+    const before = JSON.stringify(messages), tool = finalToolForMessages(messages);
+    assert.deepEqual(kinds(messages), ['synthesis']);
+    assert.deepEqual(Object.keys(tool.parameters.properties as object).sort(), ['kind', 'segments']);
+    assert.deepEqual(tool.parameters.required, ['kind', 'segments']);
+    assert.equal(JSON.stringify(messages), before);
+  }
+});
+
+test('clarification and actual action displays retain business result keys', () => {
+  for (const [name, query, data] of [
+    ['query_materials', { domain: 'materials' }, { resolution: 'clarification', sources: [] }],
+    ['query_business', { domain: 'construction' }, []],
+    ['query_business', { domain: 'schemes' }, []],
+    ['query_business', { domain: 'appointments' }, []],
+  ] as const) assert.ok(kinds(completed(name, JSON.stringify({ resultKey: 'real', query, data, synthesisSources: [] }))).includes('business'));
+});
+
+test('model projection retains material resolution for the actual final schema without duplicating snapshot data', () => {
+  for (const resolution of ['resolved', 'clarification', 'missing']) {
+    const messages: ModelMessage[] = [{ role: 'user', content: [{ type: 'text', text: JSON.stringify({ sourceMessageId: '1', text: '现有资料能说明什么？' }) }] },
+      ...completed('query_materials', JSON.stringify({ resultKey: 'read', query: { domain: 'materials' },
+        data: { resolution, sources: ['duplicated'], missing: ['duplicated'] }, displayText: 'duplicated', synthesisSources: [] }))];
+    const before = JSON.stringify(messages), focused = focusedSynthesisMessages(messages, '1');
+    const packet = JSON.parse(focused.find(m => m.role === 'tool')!.content as string);
+    assert.deepEqual(packet.data, { resolution }); assert.equal(packet.displayText, undefined);
+    assert.equal(kinds(focused).includes('business'), resolution !== 'resolved');
+    assert.equal(JSON.stringify(messages), before);
+  }
+});
 
 test('source reads advertise only the final kinds already accepted by the server, including empty results', () => {
   const original = structuredClone(finalTool);

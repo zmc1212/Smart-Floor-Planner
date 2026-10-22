@@ -2,19 +2,15 @@
 
 ## 当前交付和顺序接续（2026-10-22）
 
-本批由01a16134-efa3-7ce0-b116-999366798acb统一实施Agent与企业知识两份计划，现已完成限定实现、服务与Stable原生验收、双语文档，准备按两计划的上下文容量条款顺序接续。本批本地提交后旧owner停止产品修改、验收及任务调度；下一唯一owner以tmp/xiaok-site-request-context/owner-handoff.json的ready/successorThreadId及tmp/xiaok-need-stage-recheck/continuation.json为准，不恢复任何历史owner或并行聊天。用户已关闭协调聊天的定时跟进，保持关闭，不重建automation；本次只是已授权的开发上下文顺序接续。
+本批唯一owner为01a16183-b337-7e13-9efc-516fc90b87bd，按用户上下文容量条款顺序交接后停止产品修改、验收和调度。下一唯一owner以`tmp/xiaok-site-request-context/owner-handoff.json`的ready/successorThreadId及`tmp/xiaok-need-stage-recheck/continuation.json`为准。保持协调automation关闭，不恢复历史owner或并行测试聊天。
 
-本批“跨阶段明确核对并接续原咨询事项”限定Implemented，整体仍Limited。节点变化仍撤回原补问、依赖记忆及旧AI答复；当前获权S01明确核对可在原outbox给同一事项追加当前阶段绑定，仅开放待核对/真实负责人，不复活旧值/问题/来源或泄露内部核对原文。历史行须凭原成功需求回执和完整原话hash；配置/房间/授权/原话变更继续拒绝。新有效客户补充可推进同事项，员工另行明确回复才回原咨询，核对不是正式批准或解决。无新schema/路由/角色、Agent/模型/提示词、知识解析/检索/发布或Evidence管线；沿批准S01/B01与C01/C02/C05/U01，Mini产品代码和还原台账状态不变。
+**当前CONSULT-01结论：Limited。** 一个有界最终协议修复已内部完成，原两题各固定执行两次：户型核实1380/1382首稿通过；独立建议1381/1383在正确段落定位下仍唯一修复后失败。保留反证与跨聊天同类失败计数，无新的可验证机制不得继续措辞/正则/模型矩阵迭代。下一项OPS-01只先核对一次P5实际依赖，证明双工地简报/追问链是否独立于失败生成行为；复用已交付P3B/P4A/P5。未收口咨询随CONSULT-02保留，批准设计与部署边界不变。见二期合同及`tmp/xiaok-final-protocol-v120/semantic-review.json`；内部修复不等于正常业务验收完成。
 
-最终源码/测试/配置33f08fb06d15910f76f4df6730825ebe847e0e7259e54b4150da81f93008d81f/2270项（包含原脏依赖）下，3跨阶段服务、8兼容、387Agent单元、99Mini及涉及lint通过；全量类型292/涉及0与原基线逐字节相同。Stable2.02.2608080/SDK0.13.0/base3.17.2的native-attempt-3通过10项检查、九张逐张查看的390×844原生图（PNG348×752）：同事项3732修订2→3、实际核对及丢回执原键恢复、原咨询回传/重进、再次换节点撤回、员工撤权和安全退出。前置记忆/旧答复及run1379均标记合成，实际provider/usage记录0，不冒充模型质量或真实跨日。测试AI关闭、context/员工/参与者撤销，队列/锁/controller0，transport/auth恢复。完整提交与绑定见tmp/xiaok-need-stage-recheck/final-integrity.json、verification.json、semantic-review.json和native-attempt-3/。
+**当前KDEP-CONSULT-01结论：本批无需知识源码改动。** v119原始I/O及v120固定原题把已证实缺口定位在Agent最终schema/投影/修复协议选择。复用已发布合成PDF/版本与获权户型来源，未新增入库、索引或知识实现。正确0基修复仍无法交付独立建议，不能据此判定KnowledgeRetriever/Evidence错误；整体仍Limited。下一KDEP-OPS-01仅提供实际需要的企业规则，进度/负责人/等待事实沿原获权业务读取。证据、失败首稿及null费用保留在二期合同和`tmp/xiaok-final-protocol-v120/`。
 
-原红测、中断服务/错误预期、pre-type-review的新增类型错误、pre-compat-fixture的5通过/3失败、最小化预检以及前两次原生脚本错误分别保留，不混计或重评。兼容只修四处旧leadId模型参数及真实多房屋夹具，read-tool-input/follow-ups产品守卫与HEAD相同；两次原生均未提交S01核对，已清理，第三次独立夹具通过。root/native-attempt-2/中的live.json已消费，不可重放或修改其驱动。
+**v120已执行证据。** 固定源码/测试/配置`80086579363dfe56468a0f3a645600701fee8633a0b66a3cd83edf34b6df74be`（2270项）下，390项Agent单元、1项定向真实服务、8项兼容服务、99项Mini及涉及lint通过；全量tsc仍292项基线错误/涉及0，与v118逐字节相同。两次串行Stable窗口中，原户型题与独立建议题各固定执行两次，均用既定Qwen/Qwen3.5-4B：1380/1382首稿依据获权合成元信息回答户型核实；1381/1383各唯一修复后失败（invalid_model_citation / unsupported_model_commitment）。修复已收到正确0基段落定位，仍未删除无依据照明数值，因此协议修复不是完整共同原因；没有新的机制证据不再做第三轮措辞/正则采样。CONSULT-01仍Limited，阻塞带入CONSULT-02，下一步只核对一次OPS-01实际依赖。10次accepted模型尝试对应10条observed token记录，另有2条query_embedding，费用全为null；无需求写入，记忆保持v6。源码/配置/驱动首尾稳定。七张390×844原生C01图（PNG348×752）已逐张查看，核查依据摘要、持久重进、失败反馈及实际解除主户型关联后的撤回；不冒充知识弹层或完整宿主光学验收。批准C01/C02/C05/U01源仍为`design-references/xiaok-p4b-public-sites-v1/README.md`；无小程序结构/样式/素材/固定文案/导航或还原台账变更。复用已发布合成PDF，未重做上传/索引或修改知识源码。transport/auth还原，测试AI/身份/员工停用撤权，队列/锁/controller为0。真机、真实微信及完整宿主仍未验。原红测、服务/模型失败、unknown和null费用分别保留。见`tmp/xiaok-final-protocol-v120/verification.json`、`semantic-review.json`、`live.json`及`postflight.json`；未生产发布。
 
-已完成fd2cb11c指定PDF原文、79497b26接待负责人及dc9ebf16现场请求原话/翻页接续，不重复建设。专业咨询v119/F-06/F-07仍失败，历史1373–1376首稿/唯一修复、1132/3196与1184/3327等unknown及null费用继续保留，不能放宽守卫、堆同义提示词/正则、换付费兜底或扩大模型/格式矩阵。
-
-下一具体任务：回到未交付的专业咨询，先读v119原始输入、工具消息和1375/1374/1376失败输出，定位“已返回获权资料但没有收口回答/唯一修复未遵循”的共通机制。对照实际readContext、工具回执/resultKey、模型引用目录与Graph恢复/最终响应协议，区分Agent消费错误与知识Evidence输出错误；确认代码缺口后只实施一个有界修复并按原题配置模型各两次及Stable入口完成相关验收，不重放unknown。若另有不依赖此缺陷的已授权P3B/P4A独立环节，须先给出具体I/O和代码依赖证据，不重做上述交付。随后按既定P5/P6顺序推进，知识侧只承担业务所需解析/检索/发布依赖。
-
-唯一工作区G:/workspace/向总/Smart-Floor-Planner，分支codex/xiaok-public-site-lifecycle，原111项脏改动保留，index收尾为空；本批提交不是独立干净检出验收。复用批准5432/smart_floor_planner、55432/xiaok_embedding_eval、Next3006/HTTP Worker/Embedding18089及原项目9420/CDP9431副屏唯一窗口，验收仍沿锁/idle guard/finally。当前免费文字基线Qwen/Qwen3.5-4B及配置hash未改，未push/部署或生产写入。真机/BLE/真实微信/完整宿主光学/完整PPT及专业咨询未验证项继续明确保留，不转为人工必测门槛。
+已完成的5db2a94c跨阶段核对、fd2cb11c原PDF、79497b26接待负责人及dc9ebf16现场处理请求不重复建设。P5已有两个限定Implemented闭环；接任先核对一次OPS-01的真实依赖及批准S06/S05设计源，并证明不依赖本次失败路径的交付范围。CONSULT-02保留未完成咨询与长聊/压缩，不因切换交付删除失败。当前无push/部署；原脏改动与本轮失败日志分别保留。
 
 ## 历史封存记录（下方v95停止通知已被后续明确接续授权取代）
 

@@ -67,6 +67,10 @@ test('retained1365/1368 unsupported general-advice quantities can be removed in 
     const raw = JSON.stringify({ kind: 'synthesis', segments: texts.map(text => ({ basis: 'advice', text, citations: [] })) });
     assert.throws(() => parseSynthesis(raw, sources), /unsupported_model_commitment/);
     const issue = synthesisRepairFeedback(raw, sources); assert.ok(issue); assert.match(issue.feedback, /removeUnsupportedNumbers/);
+    assert.doesNotMatch(issue.feedback, /segmentsWithMissingNumericSupport|numericGaps|沿原segments\/citations格式/,
+      'empty citation arrays are a catalog draft, not the legacy one-based quote protocol');
+    assert.match(issue.feedback, /segments\[0\]\.text/);
+    assert.match(issue.feedback, /segments\[1\]\.text/);
     const repaired = resolveSynthesisRepair(JSON.stringify({ kind: 'synthesis_repair', baseHash: fingerprint(raw), edits: [
       { segment: 0, text: '可用均匀的基础照明搭配可调台灯，选择防眩光灯具，阅读时避开直射。' },
       { segment: 1, remove: true },

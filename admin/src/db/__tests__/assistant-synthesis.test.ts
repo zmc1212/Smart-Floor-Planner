@@ -93,12 +93,26 @@ test('material numeric repair preserves real need receipts, cited originals, one
     await tx.execute(sql`update app.leads set primary_floor_plan_id=${String(plan!.id)} where enterprise_id=${eid} and id=${x.leadId}`);
   });
   const delivered: Array<{ id: string }> = [];
+  const floorplan = await x.send('现有户型资料能说明什么，现场尺寸是否已核实？', async (messages, _tools, turn, dispatch) => {
+    if (!turn) return call('query_business', { domain: 'floorplans' });
+    const final = dispatch?.find(tool => tool.name === 'final_response'); assert.ok(final);
+    assert.deepEqual((final.parameters.properties as Row).kind, { type: 'string', enum: ['synthesis'] });
+    assert.deepEqual(final.parameters.required, ['kind', 'segments']);
+    const source = results(messages).find(s => s.text.includes('非实机量测')); assert.ok(source);
+    return synth([{ basis: 'evidence', text: '现有资料列出书房正式户型，其名称注明非实机量测；这次资料不足以核实现场尺寸。',
+      citations: [{ citationId: source.citationOptions[0].citationId }] }]);
+  });
+  assert.equal(floorplan.run.status, 'succeeded', JSON.stringify(floorplan.run));
+  const floorplanMessage = (await x.chat.messages(x.cid)).items.find(m => m.id === floorplan.run.outputMessageId)!;
+  assert.ok(floorplanMessage.available); delivered.push({ id: floorplanMessage.id });
   for (const mode of ['material', 'advice', 'ignored']) {
     let calls = 0;
-    const answer = await x.send(mode === 'advice' ? '书房柔和照明，请给一个一般选择建议。这是独立问题，不新增或修改我的需求。' : '现有户型资料能说明什么，现场尺寸是否已核实？', async (messages, tools, turn) => {
+    const answer = await x.send(mode === 'advice' ? '书房柔和照明，请给一个一般选择建议。这是独立问题，不新增或修改我的需求。' : '现有户型资料能说明什么，现场尺寸是否已核实？', async (messages, tools, turn, dispatch) => {
       try {
       calls++;
       if (!turn) return call(mode === 'advice' ? 'search_knowledge' : 'query_materials', mode === 'advice' ? { query: '书房柔和照明' } : { room: '' });
+      if (turn === 1) assert.deepEqual((dispatch?.find(tool => tool.name === 'final_response')!.parameters.properties as Row).kind,
+        { type: 'string', enum: ['synthesis'] });
       const all = results(messages), scope = all.find(s => s.title === '本次材料查询范围与缺项') || all[0]; assert.ok(scope);
       const budget = all.find(s => s.text.includes('预算18万元')); assert.ok(budget);
       const plan = all.find(s => s.text.includes('合成主正式v4户型')); assert.ok(plan);
@@ -108,6 +122,7 @@ test('material numeric repair preserves real need receipts, cited originals, one
       assert.equal(turn, 2); assert.equal(tools.length, 0);
       const repair = synthesisRepairBase(messages);
       assert.ok(repair, JSON.stringify(messages.filter(m => m.role === 'system').at(-1)));
+      if (mode === 'advice') assert.doesNotMatch(JSON.stringify(messages.filter(m => m.role === 'system')), /segmentsWithMissingNumericSupport|numericGaps/);
       const baseHash = repair.baseHash;
       if (mode === 'ignored') return call('final_response', { kind: 'synthesis_repair', baseHash, edits: [{ segment: 0, basis: 'uncertainty' }] });
       return call('final_response', { kind: 'synthesis_repair', baseHash, edits: [mode === 'advice'
@@ -134,7 +149,7 @@ test('material numeric repair preserves real need receipts, cited originals, one
     await assert.rejects(foreign.chat.messages(x.cid), /assistant_resource_not_found/);
   }
   await withTenantTransaction(eid, tx => tx.execute(sql`update app.leads set primary_floor_plan_id=null where enterprise_id=${eid} and id=${x.leadId}`));
-  assert.equal((await x.chat.messages(x.cid)).items.find(m => m.id === delivered[0].id)?.available, false);
+  for (const message of delivered) assert.equal((await x.chat.messages(x.cid)).items.find(m => m.id === message.id)?.available, false);
 });
 
 test('original model context repairs retained1369/1370 drafts once with real writes, reentry and revocation', async () => {

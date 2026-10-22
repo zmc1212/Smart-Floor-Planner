@@ -8,7 +8,7 @@ import type { IssueState, NeedIssueSnapshot } from '@/lib/construction/need-issu
 import { reviewSynthesisResponse, synthesisComparisonRepairData, synthesisStatusCitationCandidates, unavailableOccupancyRooms, occupancyDiscussionRequested, occupancyReentryRequested, type SynthesisReviewContext } from './synthesis-review';
 import type { HistorySnapshot, HistoryRef } from './history';
 import { modelCitationCatalog, sourceCitationCatalog, resolveCatalogCitation, engineeringClaimText } from './citation-catalog';
-import { withSynthesisRepairProtocol, synthesisRepairBase, finalAnswerRepairBase } from './synthesis-repair';
+import { withSynthesisRepairProtocol, synthesisRepairBase, finalAnswerRepairBase, isCatalogSynthesisDraft } from './synthesis-repair';
 import { originalAnswerOnly } from './read-tool-input';
 
 export type SynthesisSource = { sourceId: string; kind: 'knowledge' | 'project' | 'history'; title: string; text: string; fullTextCitable?:true; evidence?: Evidence; resultKey?: string; citationQuotes?: string[]; summaryTitle?:string|null; material?: MaterialSource; history?: HistoryRef & { seq: string };
@@ -91,6 +91,13 @@ function synthesisModelProjection(message: ModelMessage, originals: Map<string, 
   if (!Array.isArray(packet?.synthesisSources)) return message;
   const projected = { ...packet };
   delete projected.data; delete projected.displayText;
+  // Keep the original resolution discriminator when removing duplicated
+  // snapshot payloads. Final schema selection still needs to distinguish an
+  // answerable material read from an unresolved home/room clarification.
+  if ((packet.query as { domain?: unknown } | undefined)?.domain === 'materials') {
+    const resolution = (packet.data as { resolution?: unknown } | undefined)?.resolution;
+    if (['resolved', 'clarification', 'missing'].includes(String(resolution))) projected.data = { resolution };
+  }
   if (sourceOnly) {
     // The original packet and consulted business dependencies remain durable.
     // Do not let automatic project cards turn a document question into a status
@@ -540,7 +547,7 @@ function synthesisRepairIssue(raw:string,sources:SynthesisSource[],context:Synth
     });
     if(missing.length&&!hasFile&&numericQuoteCorrections.length!==missing.length&&!materialNumericRepair)fail('unsupported_model_commitment',502);
     if(error.code==='unsupported_model_commitment'&&!missing.length)throw error;
-    const catalogAnswer=value.segments.some(s=>s.citations.some(c=>Object.hasOwn(c,'citationId')))||raw.includes('"citationId"');
+    const catalogAnswer = isCatalogSynthesisDraft(raw);
     if(catalogAnswer)return {code:error.code,feedback:'这是同轮唯一一次引用/依据修复，不调用业务工具、不新增来源或动作。引用仍只选已有citationOptions的citationId，不复制quote、不切换旧格式。核对以下正文路径和numericSourceCandidates，候选仅供定位，不证明任意主张。原文确实支持本段对象/单位时补引用保留正确数值，没有依据再删除；汉字量数不能绕过或换算：'+JSON.stringify(numericTextPaths)+'。所引用文件的可信名称/版号仅作元数据，不作为工程数值或采用依据；条件和一般建议身份保留。'+repairLayoutInstructions+'只返回final_response。'};
     return {code:error.code,feedback:citationRepairPrefix+JSON.stringify({segmentsWithMissingNumericSupport:missing,numericGaps,numericTextPaths,citationCorrections,numericQuoteCorrections})+citationRepairInstructions};
   }
