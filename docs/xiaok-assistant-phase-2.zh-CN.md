@@ -582,6 +582,33 @@ v72共享引用目录接续中，实模run860因同一原话同时出现在摘�
 <a id="当前p3bp4a客户更正与原事项接续"></a>
 ## 当前P3B/P4A：客户更正与原事项接续
 
+### 跨阶段明确接续待核对事项（2026-10-22；限定Implemented）
+
+实际缺口是recordNeedIssueReview在旧节点补问不可用后直接跳过事项：原客户补充与S01核对已持久保存，同一事项却一直失效。本项归Agent/当前项目接续，在既有施工事项适配器实施；知识解析/检索/发布及KnowledgeRetriever/Evidence不变。
+
+S01已有POST `/api/miniprogram/assistant/handoffs/:id`的correct动作只有通过当前客户同意的接续、员工授权、原消息/字段和乐观版本围栏后，才能给原事项追加一次修订。必须确为不同当前节点，配置版本不变，客户可见活动项目/线索/房间/参与授权有效，原存储current事实及完整原话hash未变。历史进展没有sourceMessageHash时，只能凭既有成功agent_need_write回执的savedFacts和source_refs原hash；缺证据就拒绝，不能补造hash。已撤回记录、其他房屋/房间或变化配置不能当旧节点上下文替换。stageReview在原append-only outbox绑定当前范围、核对人、操作及完整原话hash，无新表/schema/路由/角色。
+
+| 触发 | 复用反馈/允许动作 | 恢复、重进与边界 |
+| --- | --- | --- |
+| 实际节点变化 | 原问题/派生答复不可用 | 依赖记忆仍不可用，不改写原记忆 |
+| 获权S01明确修正 | 原内部核对记录；同事项一次修订 | 只开放待核对/有效负责人，旧值/问题/来源ID为空，不对客展示内部核对原文 |
+| 当前员工另行明确发送回复 | 原咨询已有员工消息 | 真实持久重进，不代表正式批准或解决 |
+| 已提交核对丢回执 | 原待确认/错误及“核对结果”控件 | 沿同key/body/expectedVersion恢复，只一条核对/修订，不另开操作或自动升级版本 |
+| 新的有效客户补充 | 原来源化需求路径推进同事项 | 可展示新current事实，不复活旧补问 |
+| 再次节点/进度/配置/房间/授权/原话变化 | 原不可用状态 | 核对快照及旧AI答复继续撤回；已提交旧key只回确认，不改变当前范围 |
+
+设计来源为已有S01/B01核对编辑器和C01/C02/C05/U01聊天组件：[S01](../design-references/xiaok-assistant-chat-first-batch1-v1/single-screen/S01-01.png)、[当前聊天来源](../design-references/xiaok-p4b-public-sites-v1/README.md)及唯一还原台账。无小程序结构/样式/素材/固定文案/导航变化或新还原完成声明。本项为有界持久状态适配，保留既有Graph/Postgres授权、工具回执与恢复。已复查维护中的[LangGraph工具/恢复测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)及[历史工具状态问题](https://github.com/langchain-ai/langgraphjs/issues/1440)；后者不是当前供应商缺陷的证据，也不构成迁移理由。
+
+固定源码/测试/配置33f08fb06d15910f76f4df6730825ebe847e0e7259e54b4150da81f93008d81f/2270项（含保留的原脏依赖）下，3跨阶段服务/8兼容/387Agent单元/99Mini及涉及lint通过；全量tsc292/涉及0与原基线逐字节相同。Stable2.02.2608080/SDK0.13.0/base3.17.2串行10项原生检查通过，九张S01/C01原图已逐张查看（390×844，PNG348×752）。真实核对/回传、丢回执原键恢复、重进、跨客户租户拒绝、再次换节点撤回及安全退出通过。只有1个明确标记合成前置run，实际provider attempt/usage均0，不作模型质量声明。原失败/中断/类型/夹具/原生脚本窗口在tmp/xiaok-need-stage-recheck/分开保留；最终见verification.json、semantic-review.json及native-attempt-3/。transport/auth恢复，测试AI/身份/员工停用撤权，队列/锁/controller归零。无新路由/schema/表/角色、Agent/模型/提示词或KnowledgeRetriever/Evidence管线，小程序结构/样式/素材/固定文案/导航及还原完成状态不变。专业咨询/v119/F-06/F-07仍Limited，真机/真实微信/完整宿主光学及生产仍未验。 同事项3732由修订2只推进到3；awaiting_review/当前负责人有效，旧值/问题/来源ID为空，记忆仍v1；再次实际换节点后核对快照及旧AI答复继续失效。首个真实核对提交丢回执后，两次POST沿同key/body/expectedVersion恢复。正控客户可读各自咨询200、读本咨询404，员工撤权后读写404；picker及退出确认的SDK事件单列，不冒充实体操作/真实微信。pre-compat-fixture保留5通过/3失败：旧模型leadId参数及单独运行只建一套房的多房屋夹具；现四处正向回调不传服务端身份，夹具真实创建第二套房，产品守卫和原内容/撤回断言均保留。根目录原生查找失败及native-attempt-2生成脚本时$$→$错误均发生于S01写入前，保留原截图/hash及完整清理。最小化窗口预检及更早红测/中断/错误预期/pre-type-review分别保留，不重评原结果或历史模型unknown/费用。
+
+确定性服务复跑（批准隔离库、既有验收锁与idle守卫；另建新证据窗口）：
+
+```powershell
+$env:XIAOK_MATERIALS_LIVE='0'
+$env:XIAOK_MATERIALS_TEST_PATTERN='P3B cross-stage'
+node admin/scripts/assistant-materials-acceptance.mjs --issues
+```
+
 **限定实现，整体Limited。** 沿路线图3.1及PPT15/23/37/38，复用原咨询、获权来源、精确正式版本与处理链；当前授权负责人接续缺口限定Implemented。专业咨询/F-06/F-07仍按上方失败证据保留阻塞，更早执行记录仅用于各自历史范围。
 
 - 当前接待必须同时满足精确活动接续请求、有效且获本次客户授权的handoff_staff参与者、同企业有效接待账号及密码状态，并在读写中共用行锁。C01详情、客户接续包、query_followups负责人、员工列表/读取/回复及客户人工态发送现统一沿本请求授权。撤权或旧请求grant触发已有不可用状态，事项当前负责人清空、等待对象回到unassigned，文字/原件拒绝访问；不伪造接续已结束或事项已解决。客户可明确结束、重新请求接待，员工幂等回复仍只回到原咨询；issueId/修订及已存需求保留。复用原路由/服务/客户同意和参与校验，不增角色授权、表/迁移、模型/提示词、权限框架或UI。

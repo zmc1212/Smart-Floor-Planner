@@ -14,7 +14,7 @@ See the [four-screen enterprise knowledge Admin design proposal V1](../design-re
 
 ## 1. Current assessment and reusable foundations
 
-**Current delivery: publishable, retrievable, locatable and revocable enterprise evidence for professional consultation; overall Limited.** KB-1–KB-4 each have bounded implementations. Reuse text/FAQ, DOCX, text PDFs and bounded XLSX without rebuilding ingestion, indexing or operations platforms. Business scope, exit criteria, blocker classification and subsequent order share [Agent plan section 1](./xiaok-agent-engineering-plan.md#1-scope-and-priorities); this section specifies only required knowledge dependencies.
+**Current delivery: publishable, retrievable, locatable and revocable enterprise evidence for professional consultation; overall Limited.** KB-1–KB-4 each have bounded implementations. Reuse text/FAQ, DOCX, text PDFs and bounded XLSX without rebuilding ingestion, indexing or operations platforms. Business scope, exit criteria, blocker classification and subsequent order share [Agent plan section 1](./xiaok-agent-engineering-plan.md#1-scope-and-priorities); this section specifies only required knowledge dependencies. This P3B batch only continues pending tasks explicitly reviewed through currently authorized S01 in the existing issue outbox. Old-stage questions/memory/AI replies stay revoked; parsing, chunking, indexing, retrieval, publication, original locators and KnowledgeRetriever/Evidence permissions do not change. Implementation and current verification are in phase two and `tmp/xiaok-need-stage-recheck/`; task continuity is not professional-semantic acceptance.
 
 **Required in the current stage:**
 

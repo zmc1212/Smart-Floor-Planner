@@ -157,7 +157,8 @@ test('waiting/human conversations are not interrupted, and latest-stage followup
   await x.messages(); await x.messages(); assert.equal((await x.notices()).length, 1);
 });
 test('a generic multi-home chat neither guesses a project nor consumes its later scoped question', async () => {
-  const x = await setup(); await x.chat.archive(x.cid, Number((await x.chat.detail(x.cid)).version), randomUUID());
+  const x = await setup(); await setup(); // Ambiguity must exist even when this test runs alone.
+  await x.chat.archive(x.cid, Number((await x.chat.detail(x.cid)).version), randomUUID());
   const generic = new ConversationService({ ...x.actor, entry: undefined }), cid = String((await generic.create(randomUUID())).id);
   await x.progress(); await generic.messages(cid); assert.equal((await x.notices()).length, 0);
   const scoped = String((await x.chat.create(randomUUID())).id); await x.chat.messages(scoped);

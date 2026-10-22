@@ -106,7 +106,7 @@ test('XK01/03 customer originals and formal v4 sources compose without inventing
   const result = await x.send('找书房对应图纸和需求', async (messages, tools, turn) => {
     assert.ok(tools.some(t => t.name === 'query_materials'));
     const resultKey = messages.filter(m => m.role === 'tool').map(m => JSON.parse(m.content).resultKey).at(-1);
-    return turn === 0 ? output('query_materials', { leadId: '', room: '书房' }) : output('final_response', { kind: 'business', resultKey, text: '伪造的已批准点位图' });
+    return turn === 0 ? output('query_materials', { room: '书房' }) : output('final_response', { kind: 'business', resultKey, text: '伪造的已批准点位图' });
   });
   assert.equal(result.run.status, 'succeeded', JSON.stringify(result.run));
   const history = await new ConversationService(x.actor).messages(x.cid);
@@ -135,7 +135,7 @@ test('XK03 repeated room names across floors require clarification and an absent
 });
 test('XK07/08 a changed plan invalidates saved references, derived history and a late model reply', async () => {
   const x = await fixture(); await x.save('书房', 'desk', '偶尔两人办公');
-  const first = await x.send('找书房资料', async (messages, _tools, turn) => turn === 0 ? output('query_materials', { leadId: '', room: '书房' })
+  const first = await x.send('找书房资料', async (messages, _tools, turn) => turn === 0 ? output('query_materials', { room: '书房' })
     : output('final_response', { kind: 'business', resultKey: messages.filter(m => m.role === 'tool').map(m => JSON.parse(m.content).resultKey).at(-1) }));
   assert.equal(first.run.status, 'succeeded');
   const old = await x.query();
@@ -143,7 +143,7 @@ test('XK07/08 a changed plan invalidates saved references, derived history and a
   assert.equal(await withTenantTransaction(x.eid, tx => materialSnapshotAvailable(tx, x.eid, old)), false);
   assert.equal((await x.chat.messages(x.cid)).items.find(m => m.id === first.run.outputMessageId)!.available, false);
   const second = await x.send('再核对书房资料', async (messages, _tools, turn) => {
-    if (turn === 0) return output('query_materials', { leadId: '', room: '书房' });
+    if (turn === 0) return output('query_materials', { room: '书房' });
     await withTenantTransaction(x.eid, tx => tx.execute(sql`update app.leads set primary_floor_plan_id=${x.planId} where enterprise_id=${x.eid} and id=${x.leadId}`));
     return output('final_response', { kind: 'business', resultKey: messages.filter(m => m.role === 'tool').map(m => JSON.parse(m.content).resultKey).at(-1) });
   });
@@ -152,7 +152,7 @@ test('XK07/08 a changed plan invalidates saved references, derived history and a
 test('XK08 human takeover after a materials query fences the answer while keeping the original request', async () => {
   const x = await fixture();
   const result = await x.send('找书房资料', async (messages, _tools, turn) => {
-    if (turn === 0) return output('query_materials', { leadId: '', room: '书房' });
+    if (turn === 0) return output('query_materials', { room: '书房' });
     await new HandoffService(x.actor).customerWrite(x.cid, randomUUID(), { action: 'request' });
     return output('final_response', { kind: 'business', resultKey: messages.filter(m => m.role === 'tool').map(m => JSON.parse(m.content).resultKey).at(-1) });
   });

@@ -40,6 +40,22 @@ export async function constructionRead(tx: PostgresTransaction, eid: string, uid
   }
   return { data, lines };
 }
+/** Current scope of an existing server-owned follow-up. This does not make its
+ * old question/evidence available: callers must still compare exact revisions. */
+export async function constructionFollowUpScope(tx: PostgresTransaction, eid: string, cid: string, payload: Row, lock = false) {
+  if (lock) await one(tx, sql`select version from app.construction_stage_settings where enterprise_id=${eid} for share`);
+  const p = await one(tx, sql`select p.current_stage_key,p.progress_revision,coalesce(s.version,1) as settings_version
+    from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
+    join app.assistant_conversations c on c.enterprise_id=p.enterprise_id and c.id=${cid} and c.purpose='customer_consultation'
+      and not coalesce((c.entry_snapshot->>'retentionRedacted')::boolean,false)
+    join app.assistant_participants ap on ap.enterprise_id=c.enterprise_id and ap.conversation_id=c.id and ap.user_id=l.customer_user_id and ap.status='active'
+    left join app.construction_stage_settings s on s.enterprise_id=p.enterprise_id
+    where p.enterprise_id=${eid} and p.id=${String(payload.projectId)} and p.customer_access and p.status='active' and l.archived_at is null
+      and l.customer_user_id=${String(payload.customerId)}
+      ${payload.room ? sql`and exists(select 1 from app.construction_rooms r where r.enterprise_id=p.enterprise_id and r.project_id=p.id and r.name=${String(payload.room)})` : sql``}
+    ${lock ? sql`for share of p,l,c,ap` : sql``}`);
+  return p?.current_stage_key ? { stageKey: String(p.current_stage_key), progressRevision: Number(p.progress_revision), settingsVersion: Number(p.settings_version) } : null;
+}
 /** Source access is shared by customer history and staff packets. */
 export async function constructionNoticeAvailable(tx: PostgresTransaction, eid: string, cid: string, mid: string, lock = false, requireNotice = false) {
   const notice = await one(tx, sql`select e.aggregate_id,e.aggregate_version,e.payload,m.purpose from app.assistant_messages m
@@ -59,6 +75,11 @@ export async function constructionNoticeAvailable(tx: PostgresTransaction, eid: 
   if (!['construction.stage','construction.followup'].includes(String(notice.purpose))) return false;
   const payload = notice.payload as Row;
   const followUp = notice.purpose === 'construction.followup';
+  if (followUp) {
+    const scope = await constructionFollowUpScope(tx, eid, cid, payload, lock);
+    return !!scope && scope.progressRevision === Number(payload.progressRevision) && scope.stageKey === payload.stageKey
+      && scope.settingsVersion === Number(payload.settingsVersion);
+  }
   if (lock) await one(tx, sql`select version from app.construction_stage_settings where enterprise_id=${eid} for share`);
   return !!await one(tx, sql`select p.id from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
     join app.assistant_participants ap on ap.enterprise_id=p.enterprise_id and ap.conversation_id=${cid} and ap.user_id=l.customer_user_id and ap.status='active'

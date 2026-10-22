@@ -251,6 +251,74 @@ test('XK07/08 stage changes invalidate pending sources, derived history and memo
   const result = await x.send('我们先聊采光', async messages => { assert.doesNotMatch(JSON.stringify(messages), /需要台灯插座/); return output('final_response', { kind: 'general', text: '可以先讨论自然采光。' }); });
   assert.equal(result.run.status, 'succeeded', JSON.stringify(result.run));
 });
+for (const legacy of [false, true]) test('P3B cross-stage explicit S01 review ' + (legacy ? 'with a durable legacy receipt' : 'with an original hash') + ' continues one pending issue without reviving its old sources', async () => {
+  const x = await fixture(); await x.progress(); const saved = await x.save('需要台灯插座');
+  const prior = await x.query(), answered = await x.ask();
+  if (legacy) await withTenantTransaction(eid, tx => tx.execute(sql`update app.domain_event_outbox set payload=payload-'sourceMessageHash'
+    where enterprise_id=${eid} and type='construction.need.progress.v1' and aggregate_id=${prior.data[0].issueId}`));
+  await x.progress('painting');
+  await x.customer.customerWrite(x.cid, randomUUID(), { action: 'request', recipientId: designerId });
+  await x.staff.staffWrite(x.cid, randomUUID(), { action: 'claim' });
+  const review = { action: 'correct', field: 'devices', text: '合成内部核对：当前阶段仍需团队复核点位，不作批准',
+    sourceMessageId: saved.sent.messageId, expectedVersion: (await x.staff.staffRead(x.cid)).version };
+  const key = randomUUID(); await x.staff.staffWrite(x.cid, key, review); await x.staff.staffWrite(x.cid, key, review);
+  const current = await x.query();
+  assert.equal(current.data.length, 1); assert.equal(current.data[0].issueId, prior.data[0].issueId);
+  assert.equal(current.data[0].revision, prior.data[0].revision + 1);
+  assert.equal(current.data[0].status, 'awaiting_review'); assert.equal(current.data[0].waitingFor, 'designer');
+  assert.equal(current.data[0].lastProgress, 'designer_review');
+  assert.equal(current.data[0].value, ''); assert.equal(current.data[0].question, '');
+  assert.equal(current.data[0].sourceMessageId, null); assert.equal(current.data[0].sourceFactId, null);
+  assert.doesNotMatch(JSON.stringify(current), /需要台灯插座|合成内部核对/);
+  assert.equal(await withTenantTransaction(eid, tx => needIssueSnapshotAvailable(tx, eid, prior)), false);
+  assert.equal((await x.chat.messages(x.cid)).items.find(m => m.id === answered.run.outputMessageId)!.available, false);
+  const entry = await withTenantTransaction(eid, tx => one(tx, sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${eid} and id=${x.cid}`));
+  assert.equal((await withTenantTransaction(eid, tx => availableNeedMemory(tx, eid, x.cid, entry!.entry_snapshot))).facts.length, 0);
+  assert.equal(readMemory(entry!.entry_snapshot).version, 1);
+  const reply = { action: 'reply', text: '按当前阶段接续原事项，仍待团队核对，不代表正式批准。' }, replyKey = randomUUID();
+  await x.staff.staffWrite(x.cid, replyKey, reply); await x.staff.staffWrite(x.cid, replyKey, reply);
+  assert.equal((await x.chat.messages(x.cid)).items.filter(m => m.authorKind === 'admin' && JSON.stringify(m.content).includes(reply.text)).length, 1);
+  await x.customer.customerWrite(x.cid, randomUUID(), { action: 'end' });
+  const reentered = await x.ask(); assert.equal(reentered.run.status, 'succeeded', JSON.stringify(reentered.run));
+  assert.equal((await x.query()).data[0].waitingFor, 'unassigned');
+  await x.save('更正为只需显示器插座');
+  const supplemented = await x.query();
+  assert.equal(supplemented.data[0].issueId, prior.data[0].issueId);
+  assert.equal(supplemented.data[0].revision, current.data[0].revision + 1);
+  assert.match(supplemented.data[0].value, /只需显示器插座/); assert.equal(supplemented.data[0].question, '');
+  await x.progress('utilities');
+  assert.equal((await x.query()).data[0].status, 'invalidated');
+  await x.staff.staffWrite(x.cid, key, review);
+  assert.equal((await x.query()).data[0].status, 'invalidated');
+  assert.equal((await x.query()).data[0].revision, supplemented.data[0].revision);
+  await assert.rejects(x.staff.staffWrite(x.cid, randomUUID(), review), /not_found|context_changed/);
+  assert.equal(await withTenantTransaction(eid, tx => needIssueSnapshotAvailable(tx, eid, current)), false);
+});
+
+test('P3B cross-stage review cannot revive a changed original, superseded fact or revoked project scope', async () => {
+  for (const change of ['source', 'legacy-source', 'legacy-proof', 'superseded', 'settings', 'access', 'room'] as const) {
+    const x = await fixture(); await x.progress(); const saved = await x.save('需要台灯插座');
+    const issue = (await x.query()).data[0];
+    if (change.startsWith('legacy-')) await withTenantTransaction(eid, tx => tx.execute(sql`update app.domain_event_outbox set payload=payload-'sourceMessageHash'
+      where enterprise_id=${eid} and type='construction.need.progress.v1' and aggregate_id=${issue.issueId}`));
+    if (change === 'legacy-proof') await withTenantTransaction(eid, tx => tx.execute(sql`update app.assistant_run_steps s set private_checkpoint=private_checkpoint-'receipt'
+      from app.assistant_runs r where s.enterprise_id=${eid} and s.enterprise_id=r.enterprise_id and s.run_id=r.id
+      and r.conversation_id=${x.cid} and r.trigger_message_id=${saved.sent.messageId} and s.kind='agent_need_write'`));
+    if (change === 'superseded') await x.save('更正为只需显示器插座');
+    await x.progress('painting');
+    await x.customer.customerWrite(x.cid, randomUUID(), { action: 'request', recipientId: designerId });
+    await x.staff.staffWrite(x.cid, randomUUID(), { action: 'claim' });
+    if (change === 'source' || change === 'legacy-source') await withTenantTransaction(eid, tx => tx.execute(sql`update app.assistant_messages set content='{"version":1,"blocks":[{"type":"text","text":"书房需要台灯插座，合成已修改其他条件"}]}'::jsonb where enterprise_id=${eid} and id=${saved.sent.messageId}`));
+    if (change === 'settings') await withTenantTransaction(eid, tx => tx.execute(sql`update app.construction_stage_settings set version=version+1 where enterprise_id=${eid}`));
+    if (change === 'access') await withTenantTransaction(eid, tx => tx.execute(sql`update app.construction_projects set customer_access=false where enterprise_id=${eid} and id=${x.projectId}`));
+    if (change === 'room') await withTenantTransaction(eid, tx => tx.execute(sql`update app.construction_rooms set name='合成其他房间' where enterprise_id=${eid} and project_id=${x.projectId} and name='书房'`));
+    await x.staff.staffWrite(x.cid, randomUUID(), { action: 'correct', field: 'devices', text: '合成内部核对不得恢复失效来源',
+      sourceMessageId: saved.sent.messageId, expectedVersion: (await x.staff.staffRead(x.cid)).version });
+    const current = (await x.query()).data[0]; assert.equal(current.issueId, issue.issueId);
+    assert.equal(current.status, 'invalidated', change); assert.equal(current.value, '', change);
+  }
+});
+
 test('XK04/07 questions, okay and unrelated rooms do not falsely advance an issue; another owner cannot query it', async () => {
   const x = await fixture(); await x.progress(); const before = await x.query();
   await x.send('可以，先聊别的。', async () => output('final_response', { kind: 'general', text: '可以继续聊。' }));
