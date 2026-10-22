@@ -19,6 +19,7 @@ async function handle(request: NextRequest, context: Context) {
       enterpriseId: actor.enterpriseId, adminId: actor.staff._id, miniProgramUserId: actor.user._id, miniProgramContextVersion: token.contextVersion,
     }, p[1], p.slice(3));
     let action = '', ids: Record<string, string> = {};
+    if (p.length === 1 && p[0] === 'brief' && read) action = 'brief';
     if (p[0] === 'projects') {
       if (p.length === 1 && read) action = 'list';
       if (p.length === 2 && read) { action = 'detail'; ids = { projectId: p[1] }; }

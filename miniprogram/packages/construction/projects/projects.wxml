@@ -46,6 +46,11 @@
       </view>
     </view>
   </view>
+  <view wx:if="{{!detail && !loading && !error && canBrief}}" class="content brief-entry-wrap">
+    <view class="brief-entry"><view class="brief-intro"><image src="../assets/xiaok-site-assistant.png" mode="aspectFit" /><view><text class="section-title">小K今日整理</text><text class="helper">已上传的记录与待回复事项，按项目放在一起。</text></view></view>
+      <button disabled="{{pending}}" bindtap="openBrief">查看项目简报</button>
+    </view>
+  </view>
   <view wx:if="{{sheet}}" class="overlay" bindtap="closeSheet" catchtouchmove="stop">
     <view class="sheet" catchtap="stop">
       <view class="section-heading"><text class="section-title">{{sheet === 'progress' ? '更新实际施工节点' : sheet === 'member' ? '添加工地成员' : stageName + ' · 阶段分工'}}</text><view class="text-action" bindtap="closeSheet">关闭</view></view>

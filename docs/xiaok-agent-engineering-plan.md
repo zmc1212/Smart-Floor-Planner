@@ -12,7 +12,20 @@
 
 ## 1. Scope and priorities
 
-**Current CONSULT-01 outcome: Limited.** One bounded final-protocol repair is complete internally; fixed original questions each ran twice. Plan verification 1380/1382 passed on first drafts, independent advice 1381/1383 failed after the sole repair even with correct segment coordinates. Preserve this counterevidence and the cross-chat repeated-failure count; no further wording/regex/model-matrix iteration without a new testable mechanism. Next is OPS-01: inspect actual P5 dependencies once and demonstrate whether its two-site brief/follow-up path is independent of the failed generation behavior. Reuse delivered P3B/P4A/P5 loops. Carry unfinished consultation into CONSULT-02, with the existing design and deployment boundaries. See phase two and `tmp/xiaok-final-protocol-v120/semantic-review.json`; this internal fix is not completed business acceptance.
+### Current delivery record
+
+| Field | Execution contract |
+| --- | --- |
+| Delivery ID / status | **CONSULT-02, Limited; original-case and long-chat/compaction evidence audit pending.** OPS-01 is bounded complete; evidence below. |
+| User action / entry | Customers continue in original C01, retaining authorized original evidence and question-specific answers across long chats and compaction. |
+| Reused foundation / actual gap | Reuse existing Agent memory, KnowledgeRetriever/Evidence and C01; full F06/F07 and independent advice remain incomplete. Error guards do not pass normal answers. |
+| First action | Compare original questions, saved traces and current code; separate covered scope from concrete gaps, then use saved I/O to distinguish mechanisms before a bounded change. |
+| Fixed completion criteria | Fix remaining original cases and long-chat/compaction scope; real writes/readback/reentry, sources/tenant/permissions/receipts/recovery and affected native checks. Predetermine two configured-model trials per new semantic core case, without sampling until passes. |
+| Acceptance boundary | OPS-01 deterministic issue queries make no model calls and do not prove consultation semantics. Reuse valid version-bound evidence; do not rebuild P5 or knowledge ingestion. |
+| Repeated-failure limit | Preserve1381/1383, cross-chat count, unknowns/null costs. No wording/regex/model matrix without a new testable mechanism. |
+| Next | Complete CONSULT-02 first; if required paths share a proven blocker, report the decision and affected scope instead of changing requirements or expanding formats/scale. |
+| Evidence | OPS-01: tmp/xiaok-ops-01/verification.json;2 targeted services,101 reused Mini,37 compatibility at original binding,11 native,5 visual/setup and12 packaging. Final author attribution is failing-before/passing-after. No new CONSULT-02 execution evidence yet. |
+
 
 **Required in the current stage:**
 

@@ -7,6 +7,7 @@ import { choice, memberRoles, object, projectStatuses, text, version, type Const
 import { assignmentInput, defaultConstructionStages, stageKey, stageReminder, stagesInput, type ConstructionStage } from './stages';
 import { currentStage } from './stages-store';
 import { recordStageReminder, syncConstructionReminders } from './reminders';
+import { constructionBrief } from './brief';
 
 export async function constructionAccess(tx: PostgresTransaction, actor: ConstructionActor) {
   id(actor.enterpriseId); id(actor.adminId);
@@ -18,7 +19,7 @@ export async function constructionAccess(tx: PostgresTransaction, actor: Constru
   return access.role === 'owner';
 }
 const fields: Record<string, string[]> = {
-  list: [], options: [], lead: ['leadId'], stages: [], saveStages: ['expectedVersion', 'stages'], detail: ['projectId'],
+  list: [], brief: [], options: [], lead: ['leadId'], stages: [], saveStages: ['expectedVersion', 'stages'], detail: ['projectId'],
   create: ['leadId', 'name', 'managerId', 'rooms'], update: ['projectId', 'expectedVersion', 'name', 'status', 'customerAccess'],
   member: ['projectId', 'expectedVersion', 'adminId', 'role', 'active', 'workLabel'], room: ['projectId', 'expectedVersion', 'roomId', 'name'],
   contact: ['projectId', 'expectedVersion', 'stageKey', 'staffIds', 'primaryStaffId'],
@@ -50,7 +51,7 @@ export class ConstructionService {
     object(input, fields[action]);
     return withTenantTransaction(this.actor.enterpriseId, async tx => {
       const a = this.actor, eid = a.enterpriseId, owner = await constructionAccess(tx, a);
-      const read = ['list', 'options', 'lead', 'detail', 'stages'].includes(action);
+      const read = ['list', 'brief', 'options', 'lead', 'detail', 'stages'].includes(action);
       if (!read) { key(requestKey); await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`construction:${eid}:${a.adminId}:${requestKey}`},0))`); }
       await tx.execute(sql`insert into app.construction_stage_settings(enterprise_id,stages) values(${eid},${JSON.stringify(defaultConstructionStages)}::jsonb) on conflict do nothing`);
       const settings = (await one(tx, sql`select * from app.construction_stage_settings where enterprise_id=${eid} ${action === 'saveStages' ? sql`for update` : sql`for share`}`))!;
@@ -78,6 +79,14 @@ export class ConstructionService {
         staff: owner ? await rows(tx, sql`select id,display_name,role,construction_trades from app.admin_users where enterprise_id=${eid} and status='active' order by id limit 300`) : [],
         leads: owner ? await rows(tx, sql`select id,name,community_name from app.leads where enterprise_id=${eid} and customer_user_id is not null and archived_at is null and status<>'closed' order by id desc limit 200`) : [],
       }) as Row;
+      if (action === 'brief') {
+        const projects = await rows(tx, sql`select p.id,p.name,p.current_stage_key,p.progress_note from app.construction_projects p
+          join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
+          where p.enterprise_id=${eid} and p.status<>'archived' and l.archived_at is null
+          and (${owner} or exists(select 1 from app.construction_members m where m.enterprise_id=p.enterprise_id and m.project_id=p.id
+            and m.admin_id=${a.adminId} and m.active and m.role='manager')) order by p.id desc limit 21 for share of p,l`);
+        return dto(await constructionBrief(tx, eid, projects, stages)) as Row;
+      }
       if (action === 'list') return dto({ owner, stages, items: await rows(tx, sql`select p.id,${owner ? sql`p.lead_id` : sql`null`} as lead_id,p.name,p.status,p.customer_access,p.version,p.current_stage_key,p.progress_note,p.updated_at,
         (select m.role from app.construction_members m where m.enterprise_id=p.enterprise_id and m.project_id=p.id and m.admin_id=${a.adminId} and m.active) as my_role,
         (select m.work_label from app.construction_members m where m.enterprise_id=p.enterprise_id and m.project_id=p.id and m.admin_id=${a.adminId} and m.active) as my_work_label,

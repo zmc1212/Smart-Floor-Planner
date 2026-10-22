@@ -62,12 +62,15 @@ export function siteIssueCommand(raw: string): Command | null {
   return null;
 }
 
-export async function currentRecord(tx: PostgresTransaction, eid: string, pid: string, rid: string) {
+export async function currentRecord(tx: PostgresTransaction, eid: string, pid: string, rid: string, allowUnassignedRoom = false) {
   const r = await one(tx, sql`select r.*,m.content,room.name as current_room_name from app.construction_site_records r
     join app.assistant_messages m on m.enterprise_id=r.enterprise_id and m.conversation_id=r.conversation_id and m.id=r.source_message_id
     left join app.construction_rooms room on room.enterprise_id=r.enterprise_id and room.project_id=r.project_id and room.id=r.room_id
     where r.enterprise_id=${eid} and r.project_id=${pid} and r.id=${rid} for share of r,m`);
-  if (!r || !['draft','published'].includes(String(r.status)) || !r.room_id || r.current_room_name !== r.room_name_snapshot) return null;
+  // Formal matters keep the original room requirement. A management brief may
+  // also read a legitimate project-wide record, but never a broken room link.
+  if (!r || !['draft','published'].includes(String(r.status))
+    || (r.room_id ? r.current_room_name !== r.room_name_snapshot : !allowUnassignedRoom || r.room_name_snapshot !== '')) return null;
   const media = await rows(tx, sql`select m.id::text,m.source_hash,m.deleted_at from app.construction_site_attachments a join app.construction_site_media m
     on m.enterprise_id=a.enterprise_id and m.project_id=a.project_id and m.id=a.media_id
     where a.enterprise_id=${eid} and a.project_id=${pid} and a.record_id=${rid} order by a.position`);
@@ -119,6 +122,7 @@ export async function readSiteIssueBase(tx: PostgresTransaction, eid: string, pi
   else if (status === 'invalidated') text += '原材料或房间已变化，等待有权人员重新核对，旧处理结果不再沿用。';
   else {
     text += `${issue.roomName}，${ownerName ? '当前负责人：' + ownerName : '尚未分配有效负责人'}。`;
+    if (source) text += '\n原现场记录：' + safeText(source.row.content as Parameters<typeof safeText>[0]);
     if (issue.requestText) text += '\n跟进请求原话：' + issue.requestText;
     if (issue.drawingGrantId) text += `\n图纸资料${issue.drawingGrantId}已核对关联，仍需结合现场尺寸核对点位；这不是方案批准。`;
     if (issue.progressMessageId) {

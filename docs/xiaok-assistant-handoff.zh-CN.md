@@ -2,11 +2,11 @@
 
 ## 当前交付和顺序接续（2026-10-22）
 
-本批唯一owner为01a16183-b337-7e13-9efc-516fc90b87bd，按用户上下文容量条款顺序交接后停止产品修改、验收和调度。下一唯一owner以`tmp/xiaok-site-request-context/owner-handoff.json`的ready/successorThreadId及`tmp/xiaok-need-stage-recheck/continuation.json`为准。保持协调automation关闭，不恢复历史owner或并行测试聊天。
+当前唯一owner为01a161ed-1850-76b0-89a6-af053da7637e。接续身份以`tmp/xiaok-site-request-context/owner-handoff.json`的ready/successorThreadId及`tmp/xiaok-need-stage-recheck/continuation.json`为准；协调automation保持关闭，不恢复历史owner或创建并行测试聊天。
 
-**当前CONSULT-01结论：Limited。** 一个有界最终协议修复已内部完成，原两题各固定执行两次：户型核实1380/1382首稿通过；独立建议1381/1383在正确段落定位下仍唯一修复后失败。保留反证与跨聊天同类失败计数，无新的可验证机制不得继续措辞/正则/模型矩阵迭代。下一项OPS-01只先核对一次P5实际依赖，证明双工地简报/追问链是否独立于失败生成行为；复用已交付P3B/P4A/P5。未收口咨询随CONSULT-02保留，批准设计与部署边界不变。见二期合同及`tmp/xiaok-final-protocol-v120/semantic-review.json`；内部修复不等于正常业务验收完成。
+**OPS-01/KDEP-OPS-01已限定完成。** 两工地事实简报、原S04明确追问/回复、处理后刷新重进、丢回执恢复和来源/成员撤权已实测。证据：`tmp/xiaok-ops-01/verification.json`。最终14eff582/2278项下2项定向服务通过，含作者与发布人分离的署名回归；101项Mini复用未变客户端版本，37项兼容仍绑定67deea7c并附影响分析。Stable native-06通过11项（7业务步骤、3前置及1外层检查），含每工地固定问题各2次、实际写入/回读/重进、1次丢回执恢复、来源/成员撤权与重试；工地1使用原生输入，工地2为真实HTTP。native-07补5项视觉/前置检查及元素测量、两张完整宿主图。包体12/12，施工分包源码234,702字节，复用素材均≤300KB。模型调用0。早期失败分别保留；tsc292基线/涉及0复用原证据，不称最终源码重新执行。 所有native-06/07图已查看，完整宿主含胶囊与元素核对已写二期合同和还原台账。最后author_id署名修复为服务先红后绿；此前原生作者与发布人相同，复用证据不冒充最终hash重跑。开发/隔离队列、验收锁/controller、有效合成员工均0，测试会话/transport已还原。无新知识来源/入库/检索/Agent，期限未知，不推断逾期或生成经营建议；未生产推送部署。
 
-**当前KDEP-CONSULT-01结论：本批无需知识源码改动。** v119原始I/O及v120固定原题把已证实缺口定位在Agent最终schema/投影/修复协议选择。复用已发布合成PDF/版本与获权户型来源，未新增入库、索引或知识实现。正确0基修复仍无法交付独立建议，不能据此判定KnowledgeRetriever/Evidence错误；整体仍Limited。下一KDEP-OPS-01仅提供实际需要的企业规则，进度/负责人/等待事实沿原获权业务读取。证据、失败首稿及null费用保留在二期合同和`tmp/xiaok-final-protocol-v120/`。
+**当前接续CONSULT-02/KDEP-CONSULT-02，Limited。** 下一具体动作是核对原F06/F07、长聊/压缩/连续追问的已执行证据与保存轨迹，定位实际剩余机制缺口后再实施，不默认重验OPS/P5或新跑模型矩阵。CONSULT-01独立建议1381/1383及跨聊天同类计数、unknown/null费用继续保留；没有新的可验证机制不得继续措辞/正则重试。KDEP只处理已证实Evidence缺陷，正确Evidence之后的生成失败仍归Agent。OPS相关代码/文档按本地提交收口，保留所有无关脏改动，包体文件只暂存新增brief路由断言。
 
 **v120已执行证据。** 固定源码/测试/配置`80086579363dfe56468a0f3a645600701fee8633a0b66a3cd83edf34b6df74be`（2270项）下，390项Agent单元、1项定向真实服务、8项兼容服务、99项Mini及涉及lint通过；全量tsc仍292项基线错误/涉及0，与v118逐字节相同。两次串行Stable窗口中，原户型题与独立建议题各固定执行两次，均用既定Qwen/Qwen3.5-4B：1380/1382首稿依据获权合成元信息回答户型核实；1381/1383各唯一修复后失败（invalid_model_citation / unsupported_model_commitment）。修复已收到正确0基段落定位，仍未删除无依据照明数值，因此协议修复不是完整共同原因；没有新的机制证据不再做第三轮措辞/正则采样。CONSULT-01仍Limited，阻塞带入CONSULT-02，下一步只核对一次OPS-01实际依赖。10次accepted模型尝试对应10条observed token记录，另有2条query_embedding，费用全为null；无需求写入，记忆保持v6。源码/配置/驱动首尾稳定。七张390×844原生C01图（PNG348×752）已逐张查看，核查依据摘要、持久重进、失败反馈及实际解除主户型关联后的撤回；不冒充知识弹层或完整宿主光学验收。批准C01/C02/C05/U01源仍为`design-references/xiaok-p4b-public-sites-v1/README.md`；无小程序结构/样式/素材/固定文案/导航或还原台账变更。复用已发布合成PDF，未重做上传/索引或修改知识源码。transport/auth还原，测试AI/身份/员工停用撤权，队列/锁/controller为0。真机、真实微信及完整宿主仍未验。原红测、服务/模型失败、unknown和null费用分别保留。见`tmp/xiaok-final-protocol-v120/verification.json`、`semantic-review.json`、`live.json`及`postflight.json`；未生产发布。
 

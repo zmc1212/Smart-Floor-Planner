@@ -15,6 +15,7 @@ Page({
   data: { ...metrics(), keyboardHeight: 0, loading: true, busy: false, fatal: false, items: [], mediaPaths: {}, attachments: [], draft: '', sheet: '', edit: {}, roomOptions: [], selectedRoom: 0 },
   onLoad(options) {
     this.projectId = /^[1-9]\d*$/.test(String(options.projectId)) ? String(options.projectId) : '';
+    this._briefIssueId = /^[1-9]\d*$/.test(String(options.issueId)) ? String(options.issueId) : '';
     this.client = new SiteClient({ identity, emit: patch => {
       if (!this._visible) return;
       if (patch.sheet === '' && this.data.sheet) { const copy = { ...patch }; delete copy.sheet; this.setData(copy); this.closeSheet(true); }
@@ -33,7 +34,11 @@ Page({
     const context = getApp().globalData.bootstrap?.current;
     const portalLabel = ({ designer: '设计端', construction_staff: '施工端', enterprise_admin: '经营端' })[context?.context?.staffRole || context?.role] || '项目协作';
     this.setData({ ...metrics(), sheet: '', keyboardHeight: 0, portalLabel });
-    await this.client.show(this.projectId); this.poll();
+    await this.client.show(this.projectId);
+    if (this._briefIssueId && !this.client.state.pending && this.client.state.write) {
+      this.client.input('事项' + this._briefIssueId + '现在在等谁？为什么？'); this._briefIssueId = '';
+    }
+    this.poll();
   },
   onHide() { this._visible = false; this._record = null; clearTimeout(this._timer); clearTimeout(this._sheetTimer); if (this.client) this.client.hide(); this.setData({ items: [], mediaPaths: {}, sheet: '', sheetOpen: false, project: null, rooms: [], draft: '', edit: {}, versions: [], withdrawalReason: '', conflict: null, attachments: [], write: false }); },
   onUnload() { this.onHide(); },

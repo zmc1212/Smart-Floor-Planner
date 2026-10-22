@@ -50,7 +50,8 @@ Page({
       if (!this.current(g)) return;
       const data = response.data;
       if (pid) this.setData({ detail: decorateDetail(data) });
-      else this.setData({ items: data.items.map(p => decorateProject(p, data.stages || [])), owner: data.owner, detail: null });
+      else this.setData({ items: data.items.map(p => decorateProject(p, data.stages || [])), owner: data.owner, detail: null,
+        canBrief: data.owner || data.items.some(p => p.my_role === 'manager' && p.status !== 'archived') });
     } catch (error) { if (this.current(g)) this.setData({ error: errorText(error), detail: null, items: [] }); }
     finally { if (this.current(g)) this.setData({ loading: false }); }
   },
@@ -60,6 +61,7 @@ Page({
     else wx.switchTab({ url: '/pages/mine/mine' });
   },
   openMine() { wx.switchTab({ url: '/pages/mine/mine' }); },
+  openBrief() { if (this.current() && this.data.canBrief && !this.data.pending) wx.navigateTo({ url: '/packages/construction/brief/brief' }); },
   openChat() { if (this.data.detail && !this.data.busy && !this.data.pending) wx.navigateTo({ url: '/packages/construction/chat/chat?projectId=' + encodeURIComponent(this.data.detail.project.id) }); },
   openIdentities() { wx.navigateTo({ url: '/packages/business/identity-switch/identity-switch' }); },
   closeSheet() { if (!this.data.busy) this.setData({ sheet: '' }); },

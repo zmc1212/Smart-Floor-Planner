@@ -14,7 +14,17 @@ See the [four-screen enterprise knowledge Admin design proposal V1](../design-re
 
 ## 1. Current assessment and reusable foundations
 
-**Current KDEP-CONSULT-01 outcome: no new knowledge source change.** Saved v119 I/O and fixed v120 trials locate the demonstrated defects in Agent final schema/projection/repair selection. Reuse published synthetic PDF/version and authorized plan sources; no new ingestion, indexing or knowledge implementation was required. Correct zero-based repair still fails independent advice, which does not prove a KnowledgeRetriever/Evidence defect. Overall remains Limited. Next KDEP-OPS-01 supplies only actually needed enterprise rules; progress/owner/waiting facts stay in authorized business services. Evidence and all failed drafts/null costs remain in phase two and `tmp/xiaok-final-protocol-v120/`.
+| Field | Current knowledge-side execution |
+| --- | --- |
+| Delivery / status | **KDEP-CONSULT-02** supports current CONSULT-02; knowledge platform remains Limited. |
+| User flow / foundation | C01 long-chat/compaction and continuous follow-up reuse KnowledgeRetriever/Evidence and existing KB-1–KB-4. |
+| Actual gap / first action | Inspect saved original-case/evidence dependencies first; no new knowledge defect is established, so do not rebuild ingestion/retrieval. |
+| Completion criteria | Actual source/version/locator/audience/revocation must support remaining cases. Agent owns answer failures after correct Evidence. |
+| Acceptance boundary | KDEP-OPS-01 completed its no-knowledge-source-change dependency check, without claiming new knowledge-semantic acceptance. |
+| Next | Complete actual CONSULT-02 dependencies; OCR/formats/scale are not default prerequisites. |
+| Required follow-up | CONSULT-01 independent-advice failure remains Agent-owned, preserving counts and unknown/null costs. |
+| Evidence | tmp/xiaok-ops-01/verification.json: brief uses existing authorized project/issue/plan services, with no new knowledge source/model calls. CONSULT-02 dependency audit pending. |
+
 
 **Required in the current stage:**
 

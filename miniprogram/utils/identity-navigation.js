@@ -25,6 +25,7 @@ const ROLE_CAPABILITIES = Object.freeze({
 const ROUTE_CAPABILITIES = Object.freeze({
   '/packages/construction/projects/projects': 'construction.projects',
   '/packages/construction/chat/chat': 'construction.projects',
+  '/packages/construction/brief/brief': 'construction.projects',
   '/packages/assistant/chat/chat': 'customer.service',
   '/packages/assistant/requirements/requirements': 'customer.service',
   '/packages/assistant/handoff/handoff': ['customer.service', 'staff.leads', 'enterprise.operations'],
