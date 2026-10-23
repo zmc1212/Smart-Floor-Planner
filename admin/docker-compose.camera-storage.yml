@@ -1,0 +1,29 @@
+name: sfp-camera-storage
+services:
+  storage:
+    image: sfp-camera-storage:1.0.0
+    build: ./docker/camera-storage
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${CAMERA_STORAGE_PORT:-18082}:18082"
+    environment:
+      STORAGE_TOKEN: ${CAMERA_STORAGE_TOKEN:?Private capacity token required}
+      STORAGE_NODE_ID: ${CAMERA_MEDIA_SERVER_ID:-wvp-zlm-01}
+    volumes:
+      - media:/media:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 32
+    mem_limit: 64m
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18082/health',timeout=2).read()"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    logging:
+      options: {max-size: 1m, max-file: "3"}
+volumes:
+  media:
+    external: true
+    name: ${CAMERA_MEDIA_VOLUME:?Existing ZLM media volume required}

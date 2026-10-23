@@ -8,6 +8,7 @@ import {cameraWvp,type WvpClient} from './wvp';
 import {recordingFilePath,shanghaiDay} from './recording-contract';
 import {openRecordingPeriod,closeRecordingPeriod,reconcileRecordingIndex} from './recording-index';
 import {sampleRecordingClock} from './recording-clock';
+import {refreshStorageHealth,requireStorageReady,type StorageHealth} from './storage';
 
 const nodeDays=()=>{const n=Number(process.env.CAMERA_NODE_RETENTION_DAYS||7);if(!Number.isSafeInteger(n)||n<1||n>30)fail('camera_recording_not_configured',503);return n;};
 const errorCode=(e:unknown)=>e instanceof AssistantError?e.code:'camera_service_unavailable';
@@ -25,6 +26,8 @@ export async function saveRecordingPolicy(actor:ConstructionActor,pid:string,inp
     const old=await one(tx,sql`select * from app.construction_camera_recording_policies where enterprise_id=${actor.enterpriseId} and binding_id=${bid} for update`);
     if(old&&old.enabled===input.enabled&&Number(old.retention_days)===input.retentionDays)return {version:Number(old.version),state:old.state};
     if((old?Number(old.version):0)!==expected)fail('version_conflict',409);
+    // Always allow disabling/reducing retention, even while storage is blocked.
+    if(input.enabled&&(!old?.enabled||Number(input.retentionDays)>Number(old.retention_days)))await requireStorageReady();
     const saved=await one(tx,sql`insert into app.construction_camera_recording_policies(enterprise_id,project_id,binding_id,camera_id,enabled,retention_days,started_at)
       values(${actor.enterpriseId},${pid},${bid},${String(binding.camera_id)},${input.enabled},${Number(input.retentionDays)},${input.enabled?sql`now()`:sql`null`})
       on conflict(binding_id) do update set enabled=excluded.enabled,retention_days=excluded.retention_days,version=construction_camera_recording_policies.version+1,state='pending',last_error=null,
@@ -34,7 +37,7 @@ export async function saveRecordingPolicy(actor:ConstructionActor,pid:string,inp
     return saved;
   });
 }
-async function reconcilePolicy(eid:string,bid:string,upstream:WvpClient) {
+async function reconcilePolicy(eid:string,bid:string,upstream:WvpClient,storage:StorageHealth) {
   await withTenantTransaction(eid,async tx=>{
     if(!(await one(tx,sql`select pg_try_advisory_xact_lock(hashtextextended(${`camera-recording:${bid}`},0)) ok`))?.ok)return;
     const p=await one(tx,sql`select r.*,c.device_id,c.channel_id,c.enabled camera_enabled,b.started_at binding_start,b.ended_at binding_end,p.status project_status,l.archived_at,e.status enterprise_status
@@ -43,7 +46,8 @@ async function reconcilePolicy(eid:string,bid:string,upstream:WvpClient) {
       join app.construction_projects p on p.enterprise_id=r.enterprise_id and p.id=r.project_id join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
       join app.enterprises e on e.id=r.enterprise_id where r.enterprise_id=${eid} and r.binding_id=${bid} for update of r`);
     if(!p)return;
-    const enabled=p.enabled&&p.camera_enabled&&!p.binding_end&&p.project_status==='active'&&!p.archived_at&&p.enterprise_status==='active';
+    const desired=p.enabled&&p.camera_enabled&&!p.binding_end&&p.project_status==='active'&&!p.archived_at&&p.enterprise_status==='active';
+    const storageBlocked=!!desired&&storage.blocked,enabled=desired&&!storageBlocked;
     // A retired binding already confirmed its writer stopped before unbinding.
     // The camera may now record for a different project; do not inspect or
     // unlink that new writer while importing this binding's sealed history.
@@ -55,25 +59,46 @@ async function reconcilePolicy(eid:string,bid:string,upstream:WvpClient) {
     if(channel.planId&&channel.planId!==planId)fail('camera_recording_conflict',409);
     // Time/index diagnostics must never prevent removing our disabled writer.
     if(!enabled&&planId&&channel.planId===planId)await upstream.linkRecording(channel.id,null);
+    // Unlinking WVP does not stop MP4 when the same stream still has readers.
+    // Stop only this binding's known plan, without closing its live stream.
+    if(!enabled&&!retired&&planId&&Number(p.plan_id)===planId){
+      const previous={app:String(p.stream_app||'rtp'),stream:String(p.stream_id||`${p.device_id}_${p.channel_id}`)};
+      if(await upstream.isRecording(previous)){
+        const confirmed=await upstream.recordingChannel(String(p.device_id),String(p.channel_id),planId);
+        if(confirmed.planId&&confirmed.planId!==planId)fail('camera_recording_conflict',409);
+        await upstream.stopRecording(previous);
+      }
+    }
     let clock=await sampleRecordingClock(tx,upstream);
     if(enabled)await openRecordingPeriod(tx,p,clock);
     if(enabled&&channel.planId!==planId)await upstream.linkRecording(channel.id,planId);
     const stream=enabled?await upstream.play(String(p.device_id),String(p.channel_id)):{app:String(p.stream_app||'rtp'),stream:String(p.stream_id||`${p.device_id}_${p.channel_id}`)};
-    const actual=retired?false:await upstream.isRecording(stream);
+    let actual=retired?false:await upstream.isRecording(stream);
+    if(enabled&&!actual){
+      // Reattaching a plan may leave an already-live stream's MP4 writer off.
+      // Confirm ownership again before restoring only that stream's recorder.
+      const confirmed=await upstream.recordingChannel(String(p.device_id),String(p.channel_id),planId);
+      if(confirmed.planId&&confirmed.planId!==planId)fail('camera_recording_conflict',409);
+      if(confirmed.planId===planId){await upstream.startRecording(stream);actual=await upstream.isRecording(stream);}
+    }
     // An acknowledged link is not proof that recording has started/stopped.
-    const state=enabled?(actual?'recording':'pending'):(actual?'pending':'stopped');
-    if(state==='stopped')clock=await closeRecordingPeriod(tx,p,clock,upstream);
+    const actualStopped=!enabled&&!actual;
+    const state=enabled?(actual?'recording':'pending'):(actual?'pending':storageBlocked?'error':'stopped');
+    if(actualStopped)clock=await closeRecordingPeriod(tx,p,clock,upstream);
     await tx.execute(sql`update app.construction_camera_recording_policies set state=${state},stream_app=${stream.app},stream_id=${stream.stream},
       started_at=case when ${!!enabled} and started_at is null then now() else started_at end,
-      stopped_at=case when ${state==='stopped'} then coalesce(stopped_at,now()) when ${!!enabled} then null else stopped_at end,
-      last_error=null,checked_at=now() where enterprise_id=${eid} and binding_id=${bid}`);
+      stopped_at=case when ${actualStopped} then coalesce(stopped_at,now()) when ${!!enabled} then null else stopped_at end,
+      last_error=${storageBlocked?storage.reason:null},storage_level=${storage.level},storage_checked_at=now(),checked_at=now() where enterprise_id=${eid} and binding_id=${bid}`);
+    if(p.storage_level!==storage.level)await tx.execute(sql`insert into app.construction_audits(enterprise_id,project_id,actor_ref,action,snapshot)
+      values(${eid},${String(p.project_id)},'{"kind":"system"}'::jsonb,${'camera.storage.'+storage.level},${JSON.stringify({bindingId:bid,level:storage.level,reason:storage.reason,usedPercent:storage.usedPercent})}::jsonb)`);
     await reconcileRecordingIndex(tx,p,stream,upstream,nodeDays(),clock);
   });
 }
 export async function reconcileRecordings(upstream=cameraWvp()) {
   const due=await withPlatformTransaction(tx=>rows(tx,sql`select enterprise_id,binding_id from app.construction_camera_recording_policies order by checked_at nulls first,binding_id limit 100`));
+  const storage=await refreshStorageHealth();
   for(const p of due){
-    try{await reconcilePolicy(String(p.enterprise_id),String(p.binding_id),upstream);}
+    try{await reconcilePolicy(String(p.enterprise_id),String(p.binding_id),upstream,storage);}
     catch(e){await withTenantTransaction(String(p.enterprise_id),tx=>tx.execute(sql`update app.construction_camera_recording_policies set state='error',last_error=${errorCode(e)},checked_at=now() where binding_id=${String(p.binding_id)}`));}
   }
 }
@@ -87,7 +112,11 @@ export async function listCameraRecordings(token:string,day:unknown,csrf?:string
       join app.construction_cameras c on c.enterprise_id=b.enterprise_id and c.id=b.camera_id
       where r.enterprise_id=${eid} and r.project_id=${s.pid} and r.state='ready' and r.started_at>=${from} and r.started_at<${to}
       and r.started_at+r.clock_offset_min_ms*interval '1 millisecond'>=now()-p.retention_days*interval '1 day' order by r.started_at limit 300`);
-    return {items,source:'cloud',sdAvailable:false,limit:300};
+    const paused=await one(tx,sql`select p.last_error from app.construction_camera_recording_policies p
+      join app.construction_camera_bindings b on b.enterprise_id=p.enterprise_id and b.id=p.binding_id
+      where p.enterprise_id=${eid} and p.project_id=${s.pid} and b.ended_at is null and p.enabled and p.state='error'
+      and p.last_error in ('camera_storage_low','camera_storage_unavailable') order by p.binding_id limit 1`);
+    return {items,source:'cloud',sdAvailable:false,limit:300,recordingNotice:paused?.last_error??null};
   });
 }
 async function authorizedRecording(tx:PostgresTransaction,eid:string,pid:string,rid:string) {

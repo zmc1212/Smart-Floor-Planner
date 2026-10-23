@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {before,after,test} from 'node:test';
 import {randomUUID} from 'node:crypto';
+import {createServer,type Server} from 'node:http';
 import {sql} from 'drizzle-orm';
 import {withPlatformTransaction,withTenantTransaction} from '@/db/transaction';
 import {one,rows} from '@/db/repositories/assistant-repository';
@@ -14,15 +15,17 @@ import type {ConstructionActor} from '@/lib/construction/contracts';
 import {fail} from '@/lib/assistant/contracts';
 
 class Recorder extends WvpClient {
-  linked:number|null=null;foreign=false;deletionFails=false;deleted:number[]=[];failPage=0;clockOffsetMs=0;clockFails=false;beforeIndex?:()=>Promise<void>;
+  linked:number|null=null;foreign=false;deletionFails=false;deleted:number[]=[];failPage=0;clockOffsetMs=0;clockFails=false;writerStalled=false;writerPinned=false;resumeOnPlay=false;startAttempts=0;stopAttempts=0;beforeIndex?:()=>Promise<void>;
   files=new Set<string>();records:Record<string,unknown>[]=[];
   constructor(){super({origin:'http://wvp.test',mediaOrigin:'http://media.test',username:'fixture',password:'fixture',mediaSecret:'fixture'});}
   async channels(){return [{deviceId:'90020000001320000003',channelId:'90020000001320000004',name:'Synthetic recorder',online:true,ptzType:0}];}
   async recordingChannel(){return {id:1,planId:this.foreign?99:this.linked};}
   async recordingPlan(){return 500;}
   async linkRecording(_channel:number,planId:number|null){this.linked=planId;}
-  async isRecording(){return this.linked!==null;}
-  async play(){return {app:'rtp',stream:'fixture'};}
+  async isRecording(){return (this.linked!==null||this.writerPinned)&&!this.writerStalled;}
+  async startRecording(){this.startAttempts++;this.writerStalled=false;}
+  async stopRecording(){this.stopAttempts++;this.writerPinned=false;}
+  async play(){if(this.resumeOnPlay)this.writerPinned=true;return {app:'rtp',stream:'fixture'};}
   async recordingClock(){if(this.clockFails)fail('camera_recording_clock_unavailable',503);return new Date(Math.floor((Date.now()-this.clockOffsetMs)/1000)*1000);}
   async cloudRecordings(_stream:{app:string;stream:string},from:Date,to:Date,page=1){
     await this.beforeIndex?.();
@@ -38,12 +41,22 @@ class Recorder extends WvpClient {
 const source=new Recorder(),prefix='recording-test-'+randomUUID(),eids:string[]=[],uids:string[]=[],aids:string[][]=[],projects:string[][]=[];
 let owner:ConstructionActor,manager:ConstructionActor,platform:ConstructionActor,superAdmin:ConstructionActor,bindingId='',cameraId='',recordId='',expiredId='';
 let viewer:Awaited<ReturnType<typeof exchangeCameraEntry>>;
+let storageServer:Server,storageAvailable=900n,storageOutage=false;
+const storageToken='synthetic-capacity-test-token-at-least-32-characters';
 const fixtureCamera=()=>new CameraService(owner,source);
 async function current(){return (await fixtureCamera().list(projects[0][0])).items[0];}
 async function enter(actor=manager,pid=projects[0][0]){const entry=await new CameraService(actor,source).entry(pid);return exchangeCameraEntry(entry.url.split('#entry=')[1]);}
 before(async()=>{
   const database=new URL(resolvePostgresRuntimeConfig().connectionString);assert.equal(database.port,'55432');assert.equal(database.pathname,'/cloud_camera_unit_eval');
+  storageServer=createServer((req,res)=>{
+    if(req.headers.authorization!=='Bearer '+storageToken){res.writeHead(401).end();return;}
+    if(storageOutage){res.writeHead(503).end();return;}
+    res.setHeader('Content-Type','application/json');res.end(JSON.stringify({version:1,node:'wvp-zlm-01',sampledAt:new Date().toISOString(),totalBytes:String(1000n*1024n**3n),freeBytes:String(storageAvailable*1024n**3n),availableBytes:String(storageAvailable*1024n**3n),files:'100000',availableFiles:'90000'}));
+  });
+  await new Promise<void>(r=>storageServer.listen(0,'127.0.0.1',r));
+  process.env.CAMERA_STORAGE_ORIGIN='http://127.0.0.1:'+(storageServer.address() as {port:number}).port;process.env.CAMERA_STORAGE_TOKEN=storageToken;
   await withPlatformTransaction(async tx=>{
+    await tx.execute(sql`delete from app.construction_camera_storage_health`);
     for(let n=0;n<2;n++){
       eids.push(String((await one(tx,sql`insert into app.enterprises(name,code,status) values(${prefix+n},${prefix+n},'active') returning id`))!.id));aids.push([]);projects.push([]);
       for(let i=0;i<(n===0?2:1);i++){
@@ -66,7 +79,7 @@ after(async()=>{try{await withPlatformTransaction(async tx=>{
   for(const list of aids)for(const aid of list)await tx.execute(sql`delete from app.admin_users where id=${aid}`);
   for(const eid of eids)await tx.execute(sql`delete from app.enterprises where id=${eid}`);
   for(const uid of uids)await tx.execute(sql`delete from app.users where id=${uid}`);
-});}finally{await closePostgresPool();}});
+});}finally{await closePostgresPool();await new Promise<void>(r=>{storageServer.close(()=>r());storageServer.closeAllConnections();});}});
 
 test('date and recording paths reject normalization, traversal and impossible dates',()=>{
   assert.equal(shanghaiDay('2026-10-23').from.toISOString(),'2026-10-22T16:00:00.000Z');
@@ -186,6 +199,41 @@ test('unavailable clock evidence blocks indexing but never prevents disabling th
   source.clockFails=true;await reconcileRecordings(source);assert.equal(source.linked,null);assert.equal((await current()).recording_state,'error');
   source.clockFails=false;await reconcileRecordings(source);assert.equal((await current()).recording_state,'stopped');
   c=await current();await saveRecordingPolicy(owner,projects[0][0],{bindingId,enabled:true,retentionDays:4,expectedVersion:Number(c.recording_version)});await reconcileRecordings(source);
+});
+
+test('capacity warnings persist once, recover on reentry, and raw node metrics remain platform scoped',async()=>{
+  storageAvailable=150n;await reconcileRecordings(source);assert.equal((await current()).recording_state,'recording');
+  let health=await fixtureCamera().list(projects[0][0]);assert.equal(health.storage!.level,'warning');
+  assert.equal((await new CameraService(manager,source).list(projects[0][0])).storage,null);
+  const read=()=>withTenantTransaction(eids[0],tx=>rows(tx,sql`select id from app.construction_audits where project_id=${projects[0][0]} and action='camera.storage.warning'`));
+  const count=(await read()).length;assert.ok(count>0);await reconcileRecordings(source);assert.equal((await read()).length,count);
+  health=await fixtureCamera().list(projects[0][0]);assert.equal(health.storage!.level,'warning');
+  assert.equal((await withTenantTransaction(eids[0],tx=>rows(tx,sql`select * from app.construction_camera_storage_health`))).length,0);
+});
+
+test('critical free space stops the owned writer, preserves history/intent, and resumes with hysteresis',async()=>{
+  storageAvailable=40n;source.writerPinned=true;const stops=source.stopAttempts;await reconcileRecordings(source);let c=await current();assert.equal(source.linked,null);assert.equal(source.stopAttempts,stops+1);assert.equal(c.recording_enabled,true);assert.equal(c.recording_state,'error');assert.equal(c.recording_error,'camera_storage_low');
+  assert.equal((await withTenantTransaction(eids[0],tx=>one(tx,sql`select state from app.construction_recordings where id=${recordId}`)))!.state,'ready');
+  const member=await enter(),day=new Date(Date.now()+28800000).toISOString().slice(0,10),list=await listCameraRecordings(member.session,day,member.csrf);assert.equal(list.recordingNotice,'camera_storage_low');assert.ok(list.items.length>0);
+  const playback=await startRecordingView(member.session,member.csrf,recordId);assert.equal((await authorizeRecordingMedia(member.session,playback.generation,recordId)).id,recordId);
+  source.resumeOnPlay=true;await startCameraView(member.session,member.csrf,bindingId,source);assert.equal(source.linked,null);assert.equal(await source.isRecording(),false);source.resumeOnPlay=false;await sessionHeartbeat(member.session,member.csrf,true);
+  storageAvailable=70n;await reconcileRecordings(source);assert.equal(source.linked,null);
+  storageAvailable=120n;source.writerStalled=true;const starts=source.startAttempts;await reconcileRecordings(source);c=await current();assert.equal(c.recording_state,'recording');assert.equal(source.linked,500);assert.equal(c.recording_enabled,true);assert.equal(source.startAttempts,starts+1,'An existing live stream must regain its owned MP4 writer');
+});
+
+test('missing capacity evidence pauses safely; disabling remains possible and recovery respects saved off intent',async()=>{
+  storageOutage=true;await reconcileRecordings(source);let c=await current();assert.equal(source.linked,null);assert.equal(c.recording_error,'camera_storage_unavailable');
+  await saveRecordingPolicy(owner,projects[0][0],{bindingId,enabled:false,retentionDays:3,expectedVersion:Number(c.recording_version)});await reconcileRecordings(source);c=await current();assert.equal(c.recording_state,'stopped');
+  await assert.rejects(saveRecordingPolicy(owner,projects[0][0],{bindingId,enabled:true,retentionDays:3,expectedVersion:Number(c.recording_version)}),/camera_storage_unavailable/);
+  storageOutage=false;storageAvailable=40n;await reconcileRecordings(source);
+  await assert.rejects(saveRecordingPolicy(owner,projects[0][0],{bindingId,enabled:true,retentionDays:3,expectedVersion:Number(c.recording_version)}),/camera_storage_low/);
+  storageAvailable=900n;await reconcileRecordings(source);assert.equal((await current()).recording_state,'stopped');assert.equal(source.linked,null);
+  c=await current();await saveRecordingPolicy(owner,projects[0][0],{bindingId,enabled:true,retentionDays:3,expectedVersion:Number(c.recording_version)});await reconcileRecordings(source);
+});
+
+test('capacity pressure cannot overwrite or stop a foreign recording plan',async()=>{
+  storageAvailable=40n;source.foreign=true;await reconcileRecordings(source);assert.equal(source.linked,500);assert.equal((await current()).recording_error,'camera_recording_conflict');
+  source.foreign=false;storageAvailable=900n;await reconcileRecordings(source);assert.equal((await current()).recording_state,'recording');
 });
 
 test('unbind/rebind retains old recordings in the original project and rejects a cross-boundary segment',async()=>{

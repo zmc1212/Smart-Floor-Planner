@@ -2,19 +2,19 @@
 
 English mirror: [cloud-construction-video-plan.md](./cloud-construction-video-plan.md)
 
-更新：2026-10-23。**CV-02有线云录像/私有回放及CV-04恢复/历史补查已有有界开发证据，整体Limited。** SD验证按用户要求暂停。24/72小时浸泡、真机/公网、容量告警未完成。不授权生产部署。
+更新：2026-10-23。**云录像/私有回放、恢复及容量保护已有有界开发证据，整体Limited。** 已在用户批准的F盘运行真实74小时验收，24/72小时/自然到期待观察；原G盘不安全批次已停止排除。SD继续暂停，不部署生产。
 
 ## 1. 当前交付记录
 
 | 项目 | 内容 |
 | --- | --- |
-| 当前ID | CV-04运行/容量/浸泡仍为当前交付；恢复/历史补查实现及有界检查完成，CV-02云端路径沿用，SD按用户要求暂缓 |
+| 当前ID | CV-04容量告警/低空间保护限定Implemented，真实74小时浸泡进行中；恢复/历史补查证据复用，SD暂停 |
 | 用户结果 | 负责人在项目“工地视频”保存连续录像/保留天数；员工从云工地进入同一H5，切换直播/回放，按日期选择真实封口片段，重进保留选择并可返回直播 |
 | 技术方向/基础 | Mini web-view + H5；mpegts.js1.8.2/FLV、hls.js1.6.13/MSE/原生HLS，复用WVP/ZLM、施工项目/成员/租户权限，不依赖live-player |
-| 实际状态 | 真实所属流断开后6256ms恢复，网关重启10165ms恢复对账且媒体持续写入；两侧封口私有206/匿名401，旧历史保留，未新增数据库死锁。既有无人观看120秒及加速物理到期证据按未变范围复用。仅隔离开发环境 |
-| 完成检查 | 服务/适配28、Mini19、17类型入口/0错误、lint/H5语法；205个源/测试/驱动绑定无漂移。4项真实恢复/210绑定及Stable原生5项/213绑定无漂移；截图已审看，证据见1.3 |
-| 未核验/未实现 | SD录制/回放、24/72小时连续运行/自然到期、多路容量、容量告警/低空间保护、企业默认、客户授权、实际PTZ、HTTPS/业务域名、微信真机/公网/纯4G；卡识别只阻塞SD |
-| 下一ID | CV-04继续容量/低空间保护及24/72小时浸泡；有可读SD介质后继续CV-02设备回放。测试连续录像已关闭、保留3天，不自动开启4G上传/生产录像 |
+| 实际状态 | 录像/探针同源且核验F:/SmartFloorPlannerCamera/media/record；原20文件hash一致、旧卷保留。真实74小时2026-10-23T07-33-15-912Z，PID564360、策略39/区间33，10月23日15:33:22录制，预计10月26日17:33:22结束；物理余量≈193.7GiB，不是虚拟810GiB。24/72小时尚未通过 |
+| 完成检查 |37服务/适配、19Mini、21入口类型/定向lint/H5语法，inode探针修正前219快速绑定无漂移；修正后3项探针、6真实F盘容量/220绑定、5Stable原生/227绑定。3分钟冒烟/孤儿守卫是驱动检查，不计24/72小时 |
+| 未核验/未实现 | 24/72小时/自然到期待观察；SD、多路、企业默认、客户授权/抓拍保留、实机PTZ/断电断网和WVP/ZLM重启、HTTPS/域名、微信真机/公网4G/生产。容量告警仅应用内，无邮件/短信/推送或剩余时长预测 |
+| 下一ID | 本次真实74小时由本对话automation-4每小时跟进，取得24/72小时、私有回放、自然物理删除和末尾覆盖后收口；只关闭版本仍归本次策略，之后评估CV-04剩余项。换卡后再测SD，不启用生产/4G |
 
 设计/实施源：2026-10-22用户批准单路H5/云工地配色、摄像头切换、抓拍历史及云台，去掉源地址/诊断。当时排除录像；2026-10-23进一步明确批准在播放器下加入直播/回放切换、日期、真实片段、返回直播，空/失败沿用既有反馈。当前实现保留此层级和配色，无截图切片/新增插画；Admin沿双语Ant Design/refactor合同。不能将空查询或接口完成记为SD支持。
 
@@ -28,22 +28,28 @@ English mirror: [cloud-construction-video-plan.md](./cloud-construction-video-pl
 - 0092新增强制RLS录制区间表及持久补查游标。重新开启新建所属录制区间，保留旧区间并排除停录缺口；增量按源开始时间推进，每10分钟完整补查节点保留窗口，持久保存快照/页码，每tick最多2×100条。迟到/乱序封口可补入，重复/已删记录不复活。策略保存与Worker在绑定行锁之前共用同一advisory锁，修复实测锁顺序反转。
 - 0093分离媒体节点私有直连HTTP-Date/源时间与数据库业务时间。开启前及实际停止后采样有界时差，仅有校准证据的区间可新增认领；绑定检查使用保守时差界，最早可能开始时间决定访问到期，最晚可能结束时间决定物理删除。同绑定区间重叠时保留完整可能时差，不放宽跨工地边界。缺少可信时间或时差超过60秒时拒绝认领；旧区间不猜测补写，已索引历史仍可用，旧的开放区间须关闭确认停止后重开取得校准。
 - 关闭时先撤下本模块所属计划，再做时间/索引诊断。校准异常仍保留可见error并拒绝未核实导入/停止确认，校准恢复后Worker确认停止/关闭区间；诊断依赖不能让用户已关闭的写入持续运行，外部计划仍不触碰。
+- CV-04容量实施：0094新增平台专属强制RLS节点健康表及租户策略健康级别/转换审计。私有Python statvfs探针只读挂载实际既有ZLM媒体卷，无Docker socket/文件内容接口。80%预警、90%紧张、95%或可用<5GiB或已报告空闲inode<128时暂停所属写入；恢复须<90%、可用≥8GiB且已报告空闲inode≥512。未知/过期/非法指标按保护处理；保留原启用意图、外部计划、直播/私有历史及有效保留窗口，明确关闭后不自动重启。后台复用批准的Ant Design Alert/状态，仅负责人管理角色获原始指标；H5复用原录像反馈显示本租户已确认暂停原因。保护依赖运行中的对账Worker，不是硬件磁盘看门狗。
+- 兼容固定WVP2.7.4 commit3fcd3ae80c30c95aeb82ef830af439a835257067：[RecordPlanServiceImpl](https://github.com/648540858/wvp-GB28181-pro/blob/3fcd3ae80c30c95aeb82ef830af439a835257067/src/main/java/com/genersoft/iot/vmp/service/impl/RecordPlanServiceImpl.java)有观众时保留流，[PlayServiceImpl](https://github.com/648540858/wvp-GB28181-pro/blob/3fcd3ae80c30c95aeb82ef830af439a835257067/src/main/java/com/genersoft/iot/vmp/gb28181/service/impl/PlayServiceImpl.java)复用就绪流，计划关联不能代表MP4实际启停。重新确认所属计划成员后，私有ZLM startRecord/stopRecord（type1、精确app/stream）须result=true及isRecording确认；开启直播也在同锁内守卫录制意图/保护。外部计划保留，容量保护不关闭整条直播流。
 - 独立5秒对账恢复应录通道；只有ZLM实际状态确认后才显示recording/stopped。解绑须先关闭且确认stopped。每10分钟认领过期封口记录，deleting→真实文件404/410且WVP索引消失→deleted；失败留错误重试，不删除仍有有效观看租约的文件。企业清理在录制/媒体未完成时拒绝，防止丢失物理文件归属；暂停项目如保留enabled意图，删除前需恢复可管理状态并显式关闭。
-- 当前MP4节点分段上限3600秒，非后文提案5分钟。跨保留边界整段不可访问，整段到期后才删除，有一段粒度偏差；扫描最多30个候选/次，失败可形成积压。日期最多300段；只有≤1秒连续区间自动切下一段，缺口需手选，无时间轴/跨日自动跳转。选择按项目在localStorage保留，重进不自动播放。无企业默认/容量保护。
+- 当前MP4节点分段上限3600秒，非后文提案5分钟。跨保留边界整段不可访问，整段到期后才删除，有一段粒度偏差；扫描最多30个候选/次，失败可形成积压。日期最多300段；只有≤1秒连续区间自动切下一段，缺口需手选，无时间轴/跨日自动跳转。选择按项目在localStorage保留，重进不自动播放。企业默认仍未实现。
 - 私有JPEG bytea≤4MiB，pending/ready/failed/幂等持久化并每次鉴权，最新30张；尚无自动抓拍保留，录像三天不适用于抓拍。PTZ默认关闭，仅方向/STOP，300ms脉冲、2秒持久停止义务、独立500ms watchdog重试未知STOP；800ms为HTTP超时，不是设备物理停止保证。实际转动/变倍未证实。
 
 ### 1.2 配置与复测
 
-1. 只在获授权数据库应用0090–0093；Next/独立Node-tsx网关共用DATABASE_URL，`cd admin && npm run camera:gateway`。未自动加入生产Docker。专属cloud_camera_eval/cloud_camera_unit_eval沿既有127.0.0.1:55432→获授权远程验收PostgreSQL15433转发（见remote-development双语记录），属于隔离数据库而非本机PostgreSQL；Next3018/网关3017不切3006/生产。恢复/时差迁移在停录时应用，不能猜测旧区间校准。
+1. 只在获授权数据库应用0090–0094；Next/独立Node-tsx网关共用DATABASE_URL，`cd admin && npm run camera:gateway`。未自动加入生产Docker。专属cloud_camera_eval/cloud_camera_unit_eval沿既有127.0.0.1:55432→获授权远程验收PostgreSQL15433转发（见remote-development双语记录），属于隔离数据库而非本机PostgreSQL；Next3018/网关3017不切3006/生产。恢复/时差迁移在停录时应用，不能猜测旧区间校准。
 2. 服务端配置CAMERA_WVP_ORIGIN、CAMERA_MEDIA_ORIGIN、CAMERA_WVP_USERNAME/PASSWORD、CAMERA_PUBLIC_ORIGIN、CAMERA_APP_ORIGIN；生产PUBLIC_ORIGIN必须HTTPS，网关默认127.0.0.1:3017。反向代理关闭媒体缓冲、原WVP/ZLM端口只对内、小程序登记HTTPS业务域名，尚未生产实施。
 3. 录像额外配置CAMERA_ZLM_SECRET、CAMERA_MEDIA_SERVER_ID、CAMERA_RECORDING_ROOT、CAMERA_NODE_RETENTION_DAYS；本地对应私有secret、wvp-zlm-01、/opt/media/www/record、7。节点启动必须设`api.downloadRoot=/opt/media/www/record`，不能用/放宽；ZLM禁止热改。已修复仓库外`G:/workspace/向总/wvp/docker/zlm/start.sh`并仅重建/重启本地zlm、保留媒体卷，分发节点须同步该修正。
-4. `construction-camera-check.mjs`迁移专属cloud_camera_unit_eval并运行28项，不与真实STOP worker共库；`--runtime-schema`仅迁移真实隔离库。`npm run check:camera`校验17个类型入口/依赖。`construction-camera-local.mjs`从CAMERA_LOCAL_WVP_ENV加载已授权WVP环境，`--gateway`/`--fixture`启动服务/合成数据；凭据仅忽略目录。
+4. `construction-camera-check.mjs`迁移专属cloud_camera_unit_eval并运行37项，不与真实STOP worker共库；`--runtime-schema`仅迁移真实隔离库。`npm run check:camera`校验21个类型入口/依赖。`construction-camera-local.mjs`从CAMERA_LOCAL_WVP_ENV加载已授权WVP环境，`--gateway`/`--fixture`启动服务/合成数据；凭据仅忽略目录。
 5. `--recording-check`实际录制后finally关闭；加`--playback-only`只复验已有回放。`--retention-check`加速到期并删除专属测试库最早封口测试录像、保留较新片段，拒绝其他数据库。`--recovery-check`限定标记的隔离项目且无其他观众，只断开所属媒体流/重启核验过的3017进程，确认实际写入/Worker/片段回放，finally关闭；正常检查不由驱动直接对账、不操作SD。前后绑定源码/媒体镜像并核验未新增数据库死锁。`construction-camera-native.mjs`沿Stable单控制器/锁/精确项目/副屏纪律；真实PTZ脚本只用于授权设备。停服务前排空STOP，业务回退不删除历史媒体。
+6. `node scripts/construction-camera-storage-local.mjs`核验既有卷及精确录像覆盖挂载；Windows拒绝仅凭Docker卷内余量，私有只读探针须与ZLM同源宿主bind，实测总量/可用须匹配原生statfs。storage-deployment.json记录physicalCapacityVerified，无Docker socket/宿主文件内容API；服务端CAMERA_STORAGE_ORIGIN/TOKEN/MEDIA_VOLUME仍共用。
+7. `construction-camera-local.mjs --storage-check`以带鉴权的模拟容量/故障核验真实MP4/直播/私有回放，不填满磁盘；`--ui-hold`供串行渲染QA/程序化完成，不是人工批准门槛。finally恢复真实指标/网关并关闭所属测试策略。
+8. `--soak-check --smoke`真实3分钟；`--soak-check --background`隐藏启动74小时。`--soak-control`核验PID，`--request-stop`写本次标记，`--cleanup-orphan`拒绝存活控制器/其他fixture/已变启用策略，确认MP4实际停止。46源码/配置及3镜像/挂载绑定，每分钟观测（盲区≤120秒）、Worker新鲜/实际在录、封口缺口≤2秒、每小时私有206/匿名401、24/72小时覆盖及自然三天文件/索引真实消失；不加速时钟。本机/Docker/转发/服务须运行，automation-4每小时跟进本对话，无变化安静。
+9. F盘：所属写入关闭/确认停止后先复制/hash校验，沿原wvp-stack项目/环境合并既有WVP compose及admin/docker-compose.camera-media.local.yml，设CAMERA_RECORDING_HOST_PATH=F:/SmartFloorPlannerCamera/media/record，仅up -d --no-deps zlm，不重启摄像头/其他服务。探针自动合并docker-compose.camera-storage.host.yml。旧media-data卷作固定回退副本；回退须停录/完整校验新增媒体复制，不能直接撤覆盖挂载。先前0.913Mbps样本估算74小时≈30.4GB/28.3GiB（另留余量），三天到期从F盘删整段；Docker稀疏VHD内可用不等于Windows物理余量。
 
 ### 1.3 当前证据、原失败与限制
 
-- `tmp/cloud-camera/verification.json`（05:36:39–05:38:27UTC）：205个源/测试/驱动前后无漂移，28服务/适配、19Mini、17类型入口/0错误、lint/H5语法通过。新增覆盖迟到封口、停录缺口、231条/两页失败续查、保存/索引并发锁、媒体慢5秒/重叠时差界及原绑定隔离。`native.json`（05:38:35–05:39:18UTC）：213绑定无漂移，Stable2.02.2608080/SDK0.13/base3.17.2，5项通过（精确窗口/副屏、fresh compile、项目按钮/真实entry、重进新entry、拒绝清空/可见重试）；逻辑390×844/PNG348×752，就绪/拒绝路由截图native-camera.png及native-camera-error.png已审看，只证明入口/状态路由，不证明原生H5解码或微信真机。
-- 非录像首版提交`c1956a90`、云录像`f4830650`、SD证据`0606b960`；原`live-http.json`6项在未变范围复用。本轮再次完整webpack构建编译通过后，仍被既有AiDesignerLegacyPage非法路由导出阻断（`build-2026-10-23T05-11-02-055Z.log`，早于时间校准修正），保留该无关页面；当前定向类型/运行检查通过，不宣称全量构建成功。
+- verification.json（15:12:51–15:15:33）：219绑定无漂移，37服务/适配、19Mini、21类型入口/0错误、定向lint/H5语法及当时2探针测试通过。后续源码仅server.py/宿主compose/测试明确Windows inode证据，3项探针对应复验通过；JS/租户/归属行为未变。native.json（15:22:59–15:23:43）：227绑定无漂移，Stable2.02.2608080/SDK0.13/base3.17.2原生5项通过；新就绪/拒绝截图已审看，逻辑390×844/PNG348×752，只证入口/反馈，不计微信真机H5解码。孤儿清理另验真实MP4停止，保留外部新意图。
+- 既有提交c1956a90（直播）、f4830650（云录像）、0606b960（SD证据）、814e5cf3（恢复），未变证据按范围复用。完整webpack构建50秒编译后被既有AiDesignerLegacyPage非法路由导出阻断（build-2026-10-23T06-54-21-925Z.log）。全量lint首次误扫隔离构建产物后停止，仅排除.next-camera/.next-camera-build重验执行完成：未改动固定hls/mpegts第三方包161错误，全库2366警告（source-lint-20261023-145828.log），本轮自有源码无错误；定向lint/类型通过，不宣称全量lint/build通过。
 - `recovery-live-2026-10-23T05-28-02-460Z.json`/`recovery-live.json`：4项真实检查通过，210个源/配置/镜像绑定无漂移，数据库死锁1→1，清理后关闭/已停止/3天。只断开所属rtp流，4431ms自动恢复；网关替换10060ms恢复且WVP继续写入；新增片段05:28:09及05:28:25UTC开始，私有Range206/MP4头、匿名401，旧历史仍可访问。正常检查依靠独立Worker，直接对账仅用于清理，无SD请求。
 - 保留各次原恢复失败：05:01驱动缺必需schema，05:03真实保存/索引死锁（recovery-deadlock.txt），05:10过早观测网关就绪，05:13数据库/媒体时差导致首段排除。分别修正schema/result0、advisory先于行锁、健康及服务器checked_at新值、媒体区间校准，未放宽绑定边界。首轮时间回归还暴露同绑定时差重叠，现保留保守min/max界；原失败不与最后通过批次合并。
 - 最后停止顺序保障增加第28项服务回归：时间证据缺失仍先撤下已关闭的所属写入，恢复后确认停止。`recovery-live-2026-10-23T05-37-17-277Z.json`为该修正后的最终4项/210绑定检查：断流6256ms、网关10165ms恢复，新增05:37:22/05:37:38UTC片段，私有206/匿名401、死锁1→1、清理关闭/已停止/3天。05:28通过批次保留为先前校准机制及浏览器片段证据，其实际恢复时间为4431ms/10060ms。
@@ -52,7 +58,14 @@ English mirror: [cloud-construction-video-plan.md](./cloud-construction-video-pl
 - 已登录隔离IAB Admin真实保存保留3→2，重进回读2，再恢复3/off并有统一反馈。390×844 H5实际录像1920×1080/125.409秒，currentTime13.399→26.164；日期/片段/模式重进保留且不自动播放，空日期禁用播放，返回直播1920×1080出画。证据h5-playback.png、h5-playback-empty.png、admin-recording.png；沿批准布局无横向溢出。
 - 本轮恢复后13:28:25–13:28:53本地时间片段，在390×844解码1920×1080/28.138秒，currentTime10.386160→22.544381、readyState4/播放中且无横向溢出，h5-recovery-playback.png已审看。Admin1280×720确认已停止/3天，见admin-recovery.png。沿既有批准布局/配色与共用状态，浏览器视口已还原、测试观众已关闭。
 - 原共享库STOP watchdog争用失败保留verification-20261023-shared-db-failure.json/checks-20261023-shared-db-failure.log；单独unit库后修复。旧WXML/最小化窗口误截图作废；合成GC过期数据修复前失败、verification-before-final-recording-fixes.json源漂移批次及所有recording-live时间戳尝试保留，不计入最终通过。
-- CV-04只读快照：本地媒体卷16%使用/约849622348KiB可用，ZLM2.45%CPU/11.91MiB，WVP1.84%/647.2MiB。125.409秒/14313370字节样本约0.913Mbps，三天估算29.6GB（未含余量），不是容量/并发承诺。多路、24/72小时浸泡、自然到期及低空间告警/保护未完成；受控断流/网关重启已验，摄像头断电、WVP/ZLM进程重启及物理断网仍未验，不以短样本替代。
+- 较早容量storage-live-2026-10-23T06-40-55-994Z.json：6/6、217绑定无漂移。85/92%告警，96%实际停写且直播/私有历史可用，93%保护/88%原意图恢复，探针故障及明确关闭均核验。06:18续录和06:31有观众仍写入失败/中间批次保留，修复所属MP4启停/直播守卫机制，未削弱断言。下列F盘真实证据取代当时的虚拟卷容量位置。
+- 渲染QA沿批准Ant/H5源。Admin1280×720真实健康容量/正在录制/3天，admin-storage-recording.png已审看；模拟admin-storage-protection.png表格遇轮询spinner，仅作补充。H5390×844显示确认暂停/14真实片段，实际写入false时私有1920×1080/125.409秒录像时间24.998→50.709；h5-storage-paused.png/h5-storage-playback.png已审看、无溢出，临时观众关闭/视口还原。
+- soak-smoke-2026-10-23T06-49-58-570Z.json：18次真实观测、183.839秒封口覆盖、末尾206/401，42绑定/3镜像无漂移，清理关闭/已停止；driverSmokePassed=true、soakPassed=false。soak-control-verify.json明确是合成孤儿控制器测试：拒绝其他fixture、确认控制器消失及写入实际停止，不计长测。
+- 原soak-2026-10-23T07-00-32-665Z于15:07:48安全中断，关闭/停止确认，不计通过。原生Windows核验VHD实际在G:/AppData/Local/Docker/wsl/disk/docker_data.vhdx，物理≈19GiB而内部810GiB，74小时≈28.3GiB不可继续。用户选F。media-host-verification.json（15:14:44）确认原20文件SHA256全同、旧卷保留、ZLM可写/探针只读同源及实际总量/可用；ZLM镜像不变，最终探针镜像sha256:768ad57e37971c24ca4d145b4392e9c1558dac545cdac826d10fa9a2c515cece。
+- F盘15:18原失败/off保留：Windows bind statvfs合成inode999/1000000按无效拒绝。仅Windows宿主覆盖明确inode不可用（0/0），字节/占用率匹配原生F盘；Linux已报inode检查仍严格。最终storage-live-2026-10-23T07-22-54-594Z.json（至15:24:00）：6/6真实MP4/直播/私有检查，220绑定/最终探针镜像无漂移，恢复真实F指标/关闭/停止。
+- F驱动15:24冒烟封口188.291秒/私有206/401，但Docker重排未变的WVP挂载列表而失败。复用保存的完整挂载/镜像确认身份未变，按目标/名称排序且保留全部字段；21入口类型/驱动lint通过。最终soak-smoke-2026-10-23T07-29-25-548Z.json（至15:32:40）：driverSmokePassed=true、soakPassed=false，183.641秒本次封口/私有206/匿名401，46源码配置/3完整镜像挂载无漂移，清理关闭/停止；原失败仍排除。
+- retention-live.json（15:32:57–15:33:02）/retention-host.json仅加速一条隔离旧fixture，ZLM404/WVP索引消失/不复活，Windows F文件实际消失、较新F文件仍在；原迁移前回执retention-live-before-host-mount.json保留。只证明删除机制，非自然三天通过。
+- 真实soak-2026-10-23T07-33-15-912Z.json/soak.json：PID564360、策略39/区间33，10月23日15:33:22→预计10月26日17:33:22，46绑定/3镜像挂载身份，automation-4 ACTIVE/每小时；启动实际录制/物理F健康正常。24/72小时、自然到期和末尾覆盖待观察；多路/摄像头断电断网/WVP重启/生产仍未验。
 
 ### 1.4 共用状态与恢复
 
@@ -63,7 +76,8 @@ English mirror: [cloud-construction-video-plan.md](./cloud-construction-video-pl
 | 播放/段结束/缺口 | 原播放器状态、真实回放；仅连续≤1秒自动下一段，缺口手选 | 切换/返回直播先停止本代次，普通成员只读媒体 |
 | 撤权/会话或保留到期 | 既有失败反馈、停止媒体、重新从项目申请入口 | 每次及流中重验，不复活旧代次/过期文件 |
 | 删除失败 | deleting/last_error保留并重试 | 仅本模块封口文件，文件与源索引均确认消失后deleted |
-| 录制/恢复 | 启用/pending/error时原录像状态每5秒刷新，结构化错误映射到既有反馈 | 丢弃上一项目迟到响应，确认停止仍显示停止；不改变布局/配色 |
+| 录制/恢复 | 已绑定健康/状态每5秒刷新；容量Alert仅负责人可见，操作共用结构化反馈 | 丢弃上一项目迟到响应、关闭仍关闭、保持批准布局/配色 |
+| 容量/保护/恢复 |80/90%预警，95%/低字节/inode或无指标保护所属MP4；H5确认暂停，直播/历史仍可用 | 持久意图/转换审计、确认实际停止；回差恢复、明确关闭不续录、外部计划不动 |
 | 时间/索引不可核对 | 原失败/重试反馈，保留期望策略及补查快照/页码 | 不认领未核实区间、不跳过失败页、不把历史迁到当前绑定 |
 
 ## 2. 事实基线与既有计划关系

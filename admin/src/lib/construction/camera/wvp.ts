@@ -145,6 +145,20 @@ export class WvpClient {
     // Direct private media origin: this Date must come from ZLM, not a proxy.
     return new Date(stamp);
   }
+  async startRecording(stream:CameraStream) {
+    if(!this.config.mediaSecret)fail('camera_recording_not_configured',503);
+    const url=new URL('/index/api/startRecord',this.mediaOrigin);url.search=new URLSearchParams({secret:this.config.mediaSecret,type:'1',vhost:'__defaultVhost__',app:mediaPart(stream.app),stream:mediaPart(stream.stream),max_second:'3600'}).toString();
+    let response:Response;try{response=await this.transport(url,{cache:'no-store',redirect:'error',signal:AbortSignal.timeout(8000)});}catch{fail('camera_service_unavailable',503);}
+    if(!response.ok)fail('camera_service_unavailable',503);const result=await response.json();
+    if(result.code!==0||result.result!==true)fail('camera_invalid_response',502);
+  }
+  async stopRecording(stream:CameraStream) {
+    if(!this.config.mediaSecret)fail('camera_recording_not_configured',503);
+    const url=new URL('/index/api/stopRecord',this.mediaOrigin);url.search=new URLSearchParams({secret:this.config.mediaSecret,type:'1',vhost:'__defaultVhost__',app:mediaPart(stream.app),stream:mediaPart(stream.stream)}).toString();
+    let response:Response;try{response=await this.transport(url,{cache:'no-store',redirect:'error',signal:AbortSignal.timeout(8000)});}catch{fail('camera_service_unavailable',503);}
+    if(!response.ok)fail('camera_service_unavailable',503);const result=await response.json();
+    if(result.code!==0||result.result!==true)fail('camera_invalid_response',502);
+  }
   async isRecording(stream:CameraStream) {
     if(!this.config.mediaSecret)fail('camera_recording_not_configured',503);
     const url=new URL('/index/api/isRecording',this.mediaOrigin);url.search=new URLSearchParams({secret:this.config.mediaSecret,type:'1',vhost:'__defaultVhost__',app:mediaPart(stream.app),stream:mediaPart(stream.stream)}).toString();

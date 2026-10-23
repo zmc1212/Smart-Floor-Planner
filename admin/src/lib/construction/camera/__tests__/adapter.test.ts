@@ -83,3 +83,15 @@ test('recording clock uses the private media response Date and rejects unverifie
   const rejected=new WvpClient({...config,mediaSecret:'fixture'},(async()=>Response.json({code:-100},{headers:{Date:stamp}})) as typeof fetch);
   await assert.rejects(rejected.recordingClock(),/camera_recording_clock_unavailable/);
 });
+
+test('restoring an owned recorder targets only its MP4 stream and validates actual acknowledgement',async()=>{
+  let result:unknown={code:0,result:true};
+  const wvp=new WvpClient({...config,mediaSecret:'fixture'},(async(input:URL)=>{const u=new URL(input);assert.equal(u.origin,config.mediaOrigin);assert.equal(u.pathname,'/index/api/startRecord');assert.equal(u.searchParams.get('type'),'1');assert.equal(u.searchParams.get('stream'),'owned');assert.equal(u.searchParams.get('max_second'),'3600');return Response.json(result);}) as typeof fetch);
+  await wvp.startRecording({app:'rtp',stream:'owned'});result={code:0,result:false};await assert.rejects(wvp.startRecording({app:'rtp',stream:'owned'}),/invalid_response/);
+});
+
+test('private MP4 stop preserves the live stream and never accepts an unknown stop result',async()=>{
+  let result:unknown={code:0,result:true};
+  const wvp=new WvpClient({...config,mediaSecret:'fixture'},(async(input:URL)=>{const u=new URL(input);assert.equal(u.pathname,'/index/api/stopRecord');assert.equal(u.searchParams.get('type'),'1');assert.equal(u.searchParams.get('stream'),'owned');assert.equal(u.searchParams.has('force'),false);return Response.json(result);}) as typeof fetch);
+  await wvp.stopRecording({app:'rtp',stream:'owned'});result={code:0};await assert.rejects(wvp.stopRecording({app:'rtp',stream:'owned'}),/invalid_response/);
+});

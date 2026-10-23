@@ -33,6 +33,8 @@
       if(!recordings.length){const option=document.createElement('option');option.textContent='当前日期暂无可回放录像';$('recording').append(option);}
       $('recording').disabled=!recordings.length;
       $('recording-status').textContent=recordings.length?'共 '+recordings.length+' 段云端录像；仅在时间连续时自动播放下一段。':'当前日期暂无可回放录像。启用前、未封口或中断期间的画面可能不可回放。';
+      const notice={camera_storage_low:'持续录像因存储空间不足暂停，已有片段仍可回放。',camera_storage_unavailable:'暂时无法核对存储状态，持续录像已暂停，已有片段仍可回放。'}[result.recordingNotice];
+      if(notice)$('recording-status').textContent+=' '+notice;
     }catch(e){if(g===recordingQuery){$('recording').replaceChildren();const option=document.createElement('option');option.textContent='读取失败，请重新查询';$('recording').append(option);$('recording-status').textContent=message(e);}}
     finally{if(g===recordingQuery){queryBusy=false;capabilities();}}
   }

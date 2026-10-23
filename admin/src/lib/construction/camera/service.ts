@@ -7,6 +7,8 @@ import { fail, id, key } from '@/lib/assistant/contracts';
 import { constructionAccess } from '../service';
 import { object, text, version, type ConstructionActor } from '../contracts';
 import { cameraWvp, gbId, type WvpClient } from './wvp';
+import {currentStorageHealth} from './storage';
+import {guardLiveWriter} from './writer-policy';
 
 export const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 const secret = () => randomBytes(32).toString('base64url');
@@ -76,7 +78,7 @@ export class CameraService {
     });
   }
   async list(pid: string) {
-    return withTenantTransaction(this.actor.enterpriseId, async tx => {
+    const result=await withTenantTransaction(this.actor.enterpriseId, async tx => {
       const access = await cameraAccess(tx, this.actor, pid);
       const items = await rows(tx, sql`select b.id as binding_id,c.id,c.name,c.version,c.ptz_enabled,r.enabled recording_enabled,r.retention_days,r.version recording_version,r.state recording_state,r.last_error recording_error,r.last_segment_at from app.construction_camera_bindings b
         join app.construction_cameras c on c.enterprise_id=b.enterprise_id and c.id=b.camera_id
@@ -84,6 +86,7 @@ export class CameraService {
         where b.enterprise_id=${this.actor.enterpriseId} and b.project_id=${pid} and b.ended_at is null and c.enabled order by c.id`);
       return { project: access.project, canManage: access.manage, canConfigure: access.owner, canCapture: access.manage, canControl: access.manage, maxRetentionDays:Number(process.env.CAMERA_NODE_RETENTION_DAYS||7), items };
     });
+    return {...result,storage:result.canConfigure&&result.items.length?await currentStorageHealth():null};
   }
   async bind(pid: string, input: Row) {
     object(input, ['cameraId', 'expectedVersion', 'bind']);
@@ -186,6 +189,7 @@ export async function startCameraView(token: string, csrf: string, bindingId: st
     return { c, generation: Number(n!.play_version) };
   });
   const stream = await upstream.play(String(intent.c.device_id), String(intent.c.channel_id));
+  await guardLiveWriter(eid,bindingId,stream,upstream);
   await withTenantTransaction(eid, async tx => {
     const s = await cameraSession(tx, token, csrf); await binding(tx, eid, s.pid, bindingId);
     if (Number(s.play_version) !== intent.generation) fail('camera_play_superseded', 409);

@@ -1,0 +1,10 @@
+# The probe must observe the same host directory as ZLM's recording overlay.
+services:
+  storage:
+    environment:
+      STORAGE_INODE_MODE: unavailable
+    volumes:
+      - type: bind
+        source: ${CAMERA_RECORDING_HOST_PATH:?ZLM recording directory required}
+        target: /media/record
+        read_only: true

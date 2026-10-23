@@ -1,0 +1,7 @@
+FROM python:3.11-slim-bookworm@sha256:fe556eaffd0d96abd8685b83bb8a69addd0dc730fa193669a7df0d49ddcfac02
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WORKDIR /app
+COPY server.py .
+USER 65532:65532
+EXPOSE 18082
+CMD ["python", "server.py"]
