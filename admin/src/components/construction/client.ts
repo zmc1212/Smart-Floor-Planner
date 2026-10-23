@@ -10,6 +10,7 @@ export type StageSettings = { stages: Stage[]; version: number; owner: boolean }
 export type Detail = { project: Project; owner: boolean; manage: boolean; rooms: Array<{ id: string; name: string }>; stages: Stage[]; settingsVersion: number; staff: Staff[]; assignments: Array<{ stage_key: string; admin_id: string; is_primary: boolean; display_name: string; staff_status: string }>; members: Array<{ admin_id: string; role: string; active: boolean; work_label: string; display_name: string; staff_status: string }>; audits: Array<{ action: string; created_at: string }> };
 export type Pending = { path: string; method: string; body: object; key: string };
 const messages: Record<string, string> = {
+  camera_recording_clock_unavailable:'录像时间暂无法核对，请联系管理员处理。',
   camera_recording_busy:'请先关闭云端录像，并确认状态为“已停止”后再解绑。',
   camera_recording_not_configured:'云端录像服务尚未配置，请联系管理员。',camera_recording_conflict:'摄像头已有其他录像计划，未覆盖原设置，请联系管理员核对。',
   camera_invalid_retention:'请填写当前节点允许范围内的整数保留天数。',construction_camera_recordings_require_cleanup:'请先关闭录像并完成该企业私有录像文件清理，再删除企业数据。',
@@ -43,4 +44,4 @@ export async function constructionRequest<T>(path: string, init: RequestInit = {
   if (!response.ok || !payload.success) throw new ConstructionRequestError(response.status >= 500, messages[payload.error] || '施工计划服务暂不可用，请稍后重试。', response.status, payload.error);
   return payload.data as T;
 }
-export const errorText = (error: unknown) => error instanceof Error ? error.message : '操作失败，请重试。';
+export const errorText = (error: unknown) => error instanceof Error ? error.message : error&&typeof error==='object'&&'code' in error ? messages[String(error.code)]||'操作失败，请重试。' : '操作失败，请重试。';

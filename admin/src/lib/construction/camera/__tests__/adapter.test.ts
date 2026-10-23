@@ -71,3 +71,15 @@ test('real file existence uses bounded GET; WVP epoch milliseconds and legacy se
   assert.equal(cloudRecording(value,{app:'rtp',stream:'one'}).start.toISOString(),'2026-10-23T04:02:27.000Z');
   assert.equal(cloudRecording({...value,startTime:value.startTime/1000,endTime:Math.floor(value.endTime/1000)},{app:'rtp',stream:'one'}).start.getTime(),value.startTime);
 });
+
+test('recording clock uses the private media response Date and rejects unverified time',async()=>{
+  const stamp='Fri, 23 Oct 2026 05:19:00 GMT';let verified=true;
+  const wvp=new WvpClient({...config,mediaSecret:'fixture'},(async(input:URL,init?:RequestInit)=>{
+    const u=new URL(input);assert.equal(u.origin,config.mediaOrigin);assert.equal(u.pathname,'/index/api/getThreadsLoad');assert.equal(u.searchParams.get('secret'),'fixture');assert.equal(init?.redirect,'error');
+    return Response.json({code:0},{headers:verified?{Date:stamp}:{}});
+  }) as typeof fetch);
+  assert.equal((await wvp.recordingClock()).toISOString(),'2026-10-23T05:19:00.000Z');verified=false;
+  await assert.rejects(wvp.recordingClock(),/camera_recording_clock_unavailable/);
+  const rejected=new WvpClient({...config,mediaSecret:'fixture'},(async()=>Response.json({code:-100},{headers:{Date:stamp}})) as typeof fetch);
+  await assert.rejects(rejected.recordingClock(),/camera_recording_clock_unavailable/);
+});

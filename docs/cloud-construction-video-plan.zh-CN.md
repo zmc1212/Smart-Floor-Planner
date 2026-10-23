@@ -2,19 +2,19 @@
 
 English mirror: [cloud-construction-video-plan.md](./cloud-construction-video-plan.md)
 
-更新：2026-10-23。**CV-02有线云录像/私有回放已实现并完成有界开发验收；整体Limited，CV-04运行核对已开始。** SD重新插拔、重启及授权格式化后仍未识别。24/72小时浸泡、真机/公网、容量告警未完成。不授权生产部署。
+更新：2026-10-23。**CV-02有线云录像/私有回放及CV-04恢复/历史补查已有有界开发证据，整体Limited。** SD验证按用户要求暂停。24/72小时浸泡、真机/公网、容量告警未完成。不授权生产部署。
 
 ## 1. 当前交付记录
 
 | 项目 | 内容 |
 | --- | --- |
-| 当前ID | CV-04单路运行核对，Limited；CV-02云端路径限定Implemented，SD路径受卡识别阻塞 |
+| 当前ID | CV-04运行/容量/浸泡仍为当前交付；恢复/历史补查实现及有界检查完成，CV-02云端路径沿用，SD按用户要求暂缓 |
 | 用户结果 | 负责人在项目“工地视频”保存连续录像/保留天数；员工从云工地进入同一H5，切换直播/回放，按日期选择真实封口片段，重进保留选择并可返回直播 |
 | 技术方向/基础 | Mini web-view + H5；mpegts.js1.8.2/FLV、hls.js1.6.13/MSE/原生HLS，复用WVP/ZLM、施工项目/成员/租户权限，不依赖live-player |
-| 实际状态 | 实际启动、无人观看120秒、关闭封口；私有MP4 Range206/匿名401；浏览器1920×1080解码/时间推进、重进/空状态/返回直播通过；真实测试文件及WVP索引过期清理无复活。仅隔离开发环境 |
-| 完成检查 | 服务/适配21、Mini19、涉及类型0错误、lint/H5语法；200个源/测试/驱动绑定无漂移。Stable原生5项/208个绑定无漂移；原生截图已审看；真实媒体证据见1.3 |
+| 实际状态 | 真实所属流断开后6256ms恢复，网关重启10165ms恢复对账且媒体持续写入；两侧封口私有206/匿名401，旧历史保留，未新增数据库死锁。既有无人观看120秒及加速物理到期证据按未变范围复用。仅隔离开发环境 |
+| 完成检查 | 服务/适配28、Mini19、17类型入口/0错误、lint/H5语法；205个源/测试/驱动绑定无漂移。4项真实恢复/210绑定及Stable原生5项/213绑定无漂移；截图已审看，证据见1.3 |
 | 未核验/未实现 | SD录制/回放、24/72小时连续运行/自然到期、多路容量、容量告警/低空间保护、企业默认、客户授权、实际PTZ、HTTPS/业务域名、微信真机/公网/纯4G；卡识别只阻塞SD |
-| 下一ID | CV-04继续长期运行/容量和中断恢复；有可读SD介质后继续CV-02设备回放。测试连续录像已关闭、保留3天，不自动开启4G上传/生产录像 |
+| 下一ID | CV-04继续容量/低空间保护及24/72小时浸泡；有可读SD介质后继续CV-02设备回放。测试连续录像已关闭、保留3天，不自动开启4G上传/生产录像 |
 
 设计/实施源：2026-10-22用户批准单路H5/云工地配色、摄像头切换、抓拍历史及云台，去掉源地址/诊断。当时排除录像；2026-10-23进一步明确批准在播放器下加入直播/回放切换、日期、真实片段、返回直播，空/失败沿用既有反馈。当前实现保留此层级和配色，无截图切片/新增插画；Admin沿双语Ant Design/refactor合同。不能将空查询或接口完成记为SD支持。
 
@@ -25,27 +25,34 @@ English mirror: [cloud-construction-video-plan.md](./cloud-construction-video-pl
 - 员工API：Admin `/api/construction/video`、Mini `/api/miniprogram/construction/video`，`register`、`inventory`、`projects/:id/{inventory,cameras,binding,configure,recording,entry}`。POST recording仅负责人管理角色可写，版本控制/相同设置幂等，默认关闭、3天，整数1..节点上限（当前7天），不超过WVP节点自身保留；经理/成员不能开启持续上传。4G工地保持关闭，SD尚不可用。
 - H5 `/api/construction-camera/{exchange,state,heartbeat,stop,live,snapshots,ptz,recordings/query,playback}`、私有图片 `/snapshots/:id`；直播网关 `/camera-media/:generation/*`、私有MP4 `/camera-recording/:generation/:recordingId.mp4`，支持单Range/HEAD，不暴露源地址/路径/凭据。请求及传输中每5秒重验项目权限/租约/代次/录像保留窗口；撤权/停止/切换使旧媒体失效。
 - 0090为设备/绑定/入口/会话/抓拍/停止义务6张强制RLS表；0091新增策略/封口录像2张强制RLS表及会话recording_id复合FK。录像按原绑定/启用区间导入，迁移设备后归原项目，跨绑定边界片段不认领；历史与新项目录制互不干扰，不覆盖外部录像计划。
+- 0092新增强制RLS录制区间表及持久补查游标。重新开启新建所属录制区间，保留旧区间并排除停录缺口；增量按源开始时间推进，每10分钟完整补查节点保留窗口，持久保存快照/页码，每tick最多2×100条。迟到/乱序封口可补入，重复/已删记录不复活。策略保存与Worker在绑定行锁之前共用同一advisory锁，修复实测锁顺序反转。
+- 0093分离媒体节点私有直连HTTP-Date/源时间与数据库业务时间。开启前及实际停止后采样有界时差，仅有校准证据的区间可新增认领；绑定检查使用保守时差界，最早可能开始时间决定访问到期，最晚可能结束时间决定物理删除。同绑定区间重叠时保留完整可能时差，不放宽跨工地边界。缺少可信时间或时差超过60秒时拒绝认领；旧区间不猜测补写，已索引历史仍可用，旧的开放区间须关闭确认停止后重开取得校准。
+- 关闭时先撤下本模块所属计划，再做时间/索引诊断。校准异常仍保留可见error并拒绝未核实导入/停止确认，校准恢复后Worker确认停止/关闭区间；诊断依赖不能让用户已关闭的写入持续运行，外部计划仍不触碰。
 - 独立5秒对账恢复应录通道；只有ZLM实际状态确认后才显示recording/stopped。解绑须先关闭且确认stopped。每10分钟认领过期封口记录，deleting→真实文件404/410且WVP索引消失→deleted；失败留错误重试，不删除仍有有效观看租约的文件。企业清理在录制/媒体未完成时拒绝，防止丢失物理文件归属；暂停项目如保留enabled意图，删除前需恢复可管理状态并显式关闭。
 - 当前MP4节点分段上限3600秒，非后文提案5分钟。跨保留边界整段不可访问，整段到期后才删除，有一段粒度偏差；扫描最多30个候选/次，失败可形成积压。日期最多300段；只有≤1秒连续区间自动切下一段，缺口需手选，无时间轴/跨日自动跳转。选择按项目在localStorage保留，重进不自动播放。无企业默认/容量保护。
 - 私有JPEG bytea≤4MiB，pending/ready/failed/幂等持久化并每次鉴权，最新30张；尚无自动抓拍保留，录像三天不适用于抓拍。PTZ默认关闭，仅方向/STOP，300ms脉冲、2秒持久停止义务、独立500ms watchdog重试未知STOP；800ms为HTTP超时，不是设备物理停止保证。实际转动/变倍未证实。
 
 ### 1.2 配置与复测
 
-1. 只在获授权数据库应用0090/0091；Next/独立Node-tsx网关共用DATABASE_URL，`cd admin && npm run camera:gateway`。未自动加入生产Docker。实际隔离库为127.0.0.1:55432/cloud_camera_eval、Next3018/网关3017，不切3006/生产。
+1. 只在获授权数据库应用0090–0093；Next/独立Node-tsx网关共用DATABASE_URL，`cd admin && npm run camera:gateway`。未自动加入生产Docker。专属cloud_camera_eval/cloud_camera_unit_eval沿既有127.0.0.1:55432→获授权远程验收PostgreSQL15433转发（见remote-development双语记录），属于隔离数据库而非本机PostgreSQL；Next3018/网关3017不切3006/生产。恢复/时差迁移在停录时应用，不能猜测旧区间校准。
 2. 服务端配置CAMERA_WVP_ORIGIN、CAMERA_MEDIA_ORIGIN、CAMERA_WVP_USERNAME/PASSWORD、CAMERA_PUBLIC_ORIGIN、CAMERA_APP_ORIGIN；生产PUBLIC_ORIGIN必须HTTPS，网关默认127.0.0.1:3017。反向代理关闭媒体缓冲、原WVP/ZLM端口只对内、小程序登记HTTPS业务域名，尚未生产实施。
 3. 录像额外配置CAMERA_ZLM_SECRET、CAMERA_MEDIA_SERVER_ID、CAMERA_RECORDING_ROOT、CAMERA_NODE_RETENTION_DAYS；本地对应私有secret、wvp-zlm-01、/opt/media/www/record、7。节点启动必须设`api.downloadRoot=/opt/media/www/record`，不能用/放宽；ZLM禁止热改。已修复仓库外`G:/workspace/向总/wvp/docker/zlm/start.sh`并仅重建/重启本地zlm、保留媒体卷，分发节点须同步该修正。
-4. `construction-camera-check.mjs`迁移专属cloud_camera_unit_eval并运行21项，不与真实STOP worker共库；`--runtime-schema`仅迁移真实隔离库。`npm run check:camera`校验16个类型入口/依赖。`construction-camera-local.mjs`从CAMERA_LOCAL_WVP_ENV加载已授权WVP环境，`--gateway`/`--fixture`启动服务/合成数据；凭据仅忽略目录。
-5. `--recording-check`实际录制后finally关闭；加`--playback-only`只复验已有回放。`--retention-check`加速到期并删除专属测试库最早封口测试录像、保留较新片段，拒绝其他数据库。`construction-camera-native.mjs`沿Stable单控制器/锁/精确项目/副屏纪律；真实PTZ脚本只用于授权设备。停服务前排空STOP，业务回退不删除历史媒体。
+4. `construction-camera-check.mjs`迁移专属cloud_camera_unit_eval并运行28项，不与真实STOP worker共库；`--runtime-schema`仅迁移真实隔离库。`npm run check:camera`校验17个类型入口/依赖。`construction-camera-local.mjs`从CAMERA_LOCAL_WVP_ENV加载已授权WVP环境，`--gateway`/`--fixture`启动服务/合成数据；凭据仅忽略目录。
+5. `--recording-check`实际录制后finally关闭；加`--playback-only`只复验已有回放。`--retention-check`加速到期并删除专属测试库最早封口测试录像、保留较新片段，拒绝其他数据库。`--recovery-check`限定标记的隔离项目且无其他观众，只断开所属媒体流/重启核验过的3017进程，确认实际写入/Worker/片段回放，finally关闭；正常检查不由驱动直接对账、不操作SD。前后绑定源码/媒体镜像并核验未新增数据库死锁。`construction-camera-native.mjs`沿Stable单控制器/锁/精确项目/副屏纪律；真实PTZ脚本只用于授权设备。停服务前排空STOP，业务回退不删除历史媒体。
 
 ### 1.3 当前证据、原失败与限制
 
-- `tmp/cloud-camera/verification.json`：200个源/测试/驱动前后无漂移，21服务/适配、19Mini、类型/lint/H5语法通过。`native.json`：208个绑定无漂移，Stable2.02.2608080/SDK0.13/base3.17.2，5项通过（精确窗口/副屏、fresh compile、项目按钮/真实entry、重进新entry、拒绝清空/可见重试）；逻辑390×844/PNG348×752，native-camera.png及native-camera-error.png已审看。原生不等于微信真机。
-- 非录像首版提交`c1956a90`；复用其`live-http.json`6项真实FLV/HLS/匿名拒绝/新1920×1080抓拍入库幂等/停止旧代次证据。此前全量build编译103秒后被既有AiDesignerLegacyPage非法路由导出阻断，本轮未改该页或重跑全量build，不能称全量构建通过。
+- `tmp/cloud-camera/verification.json`（05:36:39–05:38:27UTC）：205个源/测试/驱动前后无漂移，28服务/适配、19Mini、17类型入口/0错误、lint/H5语法通过。新增覆盖迟到封口、停录缺口、231条/两页失败续查、保存/索引并发锁、媒体慢5秒/重叠时差界及原绑定隔离。`native.json`（05:38:35–05:39:18UTC）：213绑定无漂移，Stable2.02.2608080/SDK0.13/base3.17.2，5项通过（精确窗口/副屏、fresh compile、项目按钮/真实entry、重进新entry、拒绝清空/可见重试）；逻辑390×844/PNG348×752，就绪/拒绝路由截图native-camera.png及native-camera-error.png已审看，只证明入口/状态路由，不证明原生H5解码或微信真机。
+- 非录像首版提交`c1956a90`、云录像`f4830650`、SD证据`0606b960`；原`live-http.json`6项在未变范围复用。本轮再次完整webpack构建编译通过后，仍被既有AiDesignerLegacyPage非法路由导出阻断（`build-2026-10-23T05-11-02-055Z.log`，早于时间校准修正），保留该无关页面；当前定向类型/运行检查通过，不宣称全量构建成功。
+- `recovery-live-2026-10-23T05-28-02-460Z.json`/`recovery-live.json`：4项真实检查通过，210个源/配置/镜像绑定无漂移，数据库死锁1→1，清理后关闭/已停止/3天。只断开所属rtp流，4431ms自动恢复；网关替换10060ms恢复且WVP继续写入；新增片段05:28:09及05:28:25UTC开始，私有Range206/MP4头、匿名401，旧历史仍可访问。正常检查依靠独立Worker，直接对账仅用于清理，无SD请求。
+- 保留各次原恢复失败：05:01驱动缺必需schema，05:03真实保存/索引死锁（recovery-deadlock.txt），05:10过早观测网关就绪，05:13数据库/媒体时差导致首段排除。分别修正schema/result0、advisory先于行锁、健康及服务器checked_at新值、媒体区间校准，未放宽绑定边界。首轮时间回归还暴露同绑定时差重叠，现保留保守min/max界；原失败不与最后通过批次合并。
+- 最后停止顺序保障增加第28项服务回归：时间证据缺失仍先撤下已关闭的所属写入，恢复后确认停止。`recovery-live-2026-10-23T05-37-17-277Z.json`为该修正后的最终4项/210绑定检查：断流6256ms、网关10165ms恢复，新增05:37:22/05:37:38UTC片段，私有206/匿名401、死锁1→1、清理关闭/已停止/3天。05:28通过批次保留为先前校准机制及浏览器片段证据，其实际恢复时间为4431ms/10060ms。
 - `recording-live-2026-10-23T04-07-26-578Z.json`证明实际开启、无人观看120秒（超原90秒无人观看超时）、关闭/封口；该次回放失败保留。下载根修正后`recording-live.json`单独复验Range206/MP4头/匿名401通过，不合并为一次无失败全流程。毫秒时间、0..1440分钟计划、关联必传planId、停止后特定stream缺失返回均有回归；后续GC修正未改变已验启停方法，复用120秒证据。
 - `retention-live.json`：加速的是一条明确测试记录的时间，真实文件404、WVP索引消失、对账不复活；未声称自然三天运行。测试含三种负责人角色/无入职平台管理、普通成员拒绝、跨租户RLS、版本/幂等、撤权/旧代次、原绑定归属、失败删除重试与迁移隔离。
 - 已登录隔离IAB Admin真实保存保留3→2，重进回读2，再恢复3/off并有统一反馈。390×844 H5实际录像1920×1080/125.409秒，currentTime13.399→26.164；日期/片段/模式重进保留且不自动播放，空日期禁用播放，返回直播1920×1080出画。证据h5-playback.png、h5-playback-empty.png、admin-recording.png；沿批准布局无横向溢出。
+- 本轮恢复后13:28:25–13:28:53本地时间片段，在390×844解码1920×1080/28.138秒，currentTime10.386160→22.544381、readyState4/播放中且无横向溢出，h5-recovery-playback.png已审看。Admin1280×720确认已停止/3天，见admin-recovery.png。沿既有批准布局/配色与共用状态，浏览器视口已还原、测试观众已关闭。
 - 原共享库STOP watchdog争用失败保留verification-20261023-shared-db-failure.json/checks-20261023-shared-db-failure.log；单独unit库后修复。旧WXML/最小化窗口误截图作废；合成GC过期数据修复前失败、verification-before-final-recording-fixes.json源漂移批次及所有recording-live时间戳尝试保留，不计入最终通过。
-- CV-04只读快照：本地媒体卷16%使用/约849622348KiB可用，ZLM2.45%CPU/11.91MiB，WVP1.84%/647.2MiB。125.409秒/14313370字节样本约0.913Mbps，三天估算29.6GB（未含余量），不是容量/并发承诺。多路、24/72小时浸泡、自然到期、低空间告警/保护、断网恢复均未完成，不以短样本替代。
+- CV-04只读快照：本地媒体卷16%使用/约849622348KiB可用，ZLM2.45%CPU/11.91MiB，WVP1.84%/647.2MiB。125.409秒/14313370字节样本约0.913Mbps，三天估算29.6GB（未含余量），不是容量/并发承诺。多路、24/72小时浸泡、自然到期及低空间告警/保护未完成；受控断流/网关重启已验，摄像头断电、WVP/ZLM进程重启及物理断网仍未验，不以短样本替代。
 
 ### 1.4 共用状态与恢复
 
@@ -56,6 +63,8 @@ English mirror: [cloud-construction-video-plan.md](./cloud-construction-video-pl
 | 播放/段结束/缺口 | 原播放器状态、真实回放；仅连续≤1秒自动下一段，缺口手选 | 切换/返回直播先停止本代次，普通成员只读媒体 |
 | 撤权/会话或保留到期 | 既有失败反馈、停止媒体、重新从项目申请入口 | 每次及流中重验，不复活旧代次/过期文件 |
 | 删除失败 | deleting/last_error保留并重试 | 仅本模块封口文件，文件与源索引均确认消失后deleted |
+| 录制/恢复 | 启用/pending/error时原录像状态每5秒刷新，结构化错误映射到既有反馈 | 丢弃上一项目迟到响应，确认停止仍显示停止；不改变布局/配色 |
+| 时间/索引不可核对 | 原失败/重试反馈，保留期望策略及补查快照/页码 | 不认领未核实区间、不跳过失败页、不把历史迁到当前绑定 |
 
 ## 2. 事实基线与既有计划关系
 
@@ -68,6 +77,8 @@ English mirror: [cloud-construction-video-plan.md](./cloud-construction-video-pl
 - 本计划细化既有 XiaoK 路线图 P4C 的视频技术部分。历史的设备租赁、报价、押金、90 天服务期、退款和售后不自动进入本次范围；**三天录像留存与服务期是不同参数**。不增加 Agent 工具，不把摄像头画面自动送入模型，不扩大 P4B 公开工地范围。
 
 ### 2.1 SD 卡方案的当前验证结论
+
+当前用户指示：先推进其他开发，等待其后续换卡再恢复SD验证；期间不再重复读卡、重启或格式化，保留下列原失败证据。云端录制/受控媒体断流测试独立进行，不等同于SD路径恢复。
 
 最新换卡复测（2026-10-23 12:37–12:38）：用户更换另一张卡后，首次读取及一次GB重启后均为SDStatus=-1/SDInfo=0/SDFreeSpace=0。重启后实际SIP远端为192.168.10.84，原序列号一致；按此前授权再请求SD格式化，被设备拒绝，cardFormatted=false，设备录像仍0条，未追加重启/恢复出厂/改变录制计划。证据`tmp/cloud-camera-sd/probe-20261023T043713Z.json`、`probe-20261023T043734Z.json`、`probe-20261023T043842Z.json`。当前设备前端确认-1为“无SD卡”、格式化为frmHDFormat/Type1/FormatList:[1]；适配器通用“配置权限”报错不能直接诊断权限问题。换卡后仍失败也不能判定卡或卡槽损坏；已向用户询问新卡容量/品牌型号以进一步核对。无产品路由/API/权限/UI或已验云录像变化，SD路径仍未验证。
 

@@ -136,6 +136,15 @@ export class WvpClient {
     try{const r=await this.transport(this.recordingUrl(filePath),{headers:{Range:'bytes=0-0'},redirect:'error',signal:AbortSignal.timeout(10000)});await r.body?.cancel();return r.status;}
     catch{fail('camera_service_unavailable',503);}
   }
+  async recordingClock() {
+    if(!this.config.mediaSecret)fail('camera_recording_not_configured',503);
+    const url=new URL('/index/api/getThreadsLoad',this.mediaOrigin);url.searchParams.set('secret',this.config.mediaSecret);
+    let response:Response;try{response=await this.transport(url,{cache:'no-store',redirect:'error',signal:AbortSignal.timeout(8000)});}catch{fail('camera_service_unavailable',503);}
+    const stamp=Date.parse(response.headers.get('date')||'');
+    if(!response.ok||!Number.isFinite(stamp)||stamp<946684800000||stamp>4102444800000||(await response.json()).code!==0)fail('camera_recording_clock_unavailable',503);
+    // Direct private media origin: this Date must come from ZLM, not a proxy.
+    return new Date(stamp);
+  }
   async isRecording(stream:CameraStream) {
     if(!this.config.mediaSecret)fail('camera_recording_not_configured',503);
     const url=new URL('/index/api/isRecording',this.mediaOrigin);url.search=new URLSearchParams({secret:this.config.mediaSecret,type:'1',vhost:'__defaultVhost__',app:mediaPart(stream.app),stream:mediaPart(stream.stream)}).toString();

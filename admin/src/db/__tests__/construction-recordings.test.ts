@@ -11,9 +11,10 @@ import {saveRecordingPolicy,reconcileRecordings,listCameraRecordings,startRecord
 import {shanghaiDay,recordingFilePath} from '@/lib/construction/camera/recording-contract';
 import {WvpClient} from '@/lib/construction/camera/wvp';
 import type {ConstructionActor} from '@/lib/construction/contracts';
+import {fail} from '@/lib/assistant/contracts';
 
 class Recorder extends WvpClient {
-  linked:number|null=null;foreign=false;deletionFails=false;deleted:number[]=[];
+  linked:number|null=null;foreign=false;deletionFails=false;deleted:number[]=[];failPage=0;clockOffsetMs=0;clockFails=false;beforeIndex?:()=>Promise<void>;
   files=new Set<string>();records:Record<string,unknown>[]=[];
   constructor(){super({origin:'http://wvp.test',mediaOrigin:'http://media.test',username:'fixture',password:'fixture',mediaSecret:'fixture'});}
   async channels(){return [{deviceId:'90020000001320000003',channelId:'90020000001320000004',name:'Synthetic recorder',online:true,ptzType:0}];}
@@ -22,11 +23,17 @@ class Recorder extends WvpClient {
   async linkRecording(_channel:number,planId:number|null){this.linked=planId;}
   async isRecording(){return this.linked!==null;}
   async play(){return {app:'rtp',stream:'fixture'};}
-  async cloudRecordings(){return {items:this.records,total:this.records.length};}
+  async recordingClock(){if(this.clockFails)fail('camera_recording_clock_unavailable',503);return new Date(Math.floor((Date.now()-this.clockOffsetMs)/1000)*1000);}
+  async cloudRecordings(_stream:{app:string;stream:string},from:Date,to:Date,page=1){
+    await this.beforeIndex?.();
+    if(page===this.failPage)throw Error('Synthetic page outage');
+    const records=this.records.filter(r=>Number(r.startTime)*1000>=from.getTime()&&Number(r.endTime)*1000<=to.getTime()).sort((a,b)=>Number(a.startTime)-Number(b.startTime));
+    return {items:records.slice((page-1)*100,page*100),total:records.length};
+  }
   async cloudPath(id:number){return this.records.find(r=>r.id===id)?.filePath as string|undefined??null;}
   async recordingFileStatus(file:string){return this.files.has(file)?200:404;}
   async deleteCloudRecording(id:number){if(this.deletionFails)throw Error('Synthetic provider deletion unavailable');this.files.delete((await this.cloudPath(id))!);this.records=this.records.filter(r=>r.id!==id);this.deleted.push(id);}
-  add(id:number,start:number){const file='/opt/media/www/record/rtp/fixture/'+id+'.mp4';this.records.push({id,app:'rtp',stream:'fixture',mediaServerId:'wvp-zlm-01',filePath:file,startTime:start,endTime:start+20,fileSize:4096});this.files.add(file);}
+  add(id:number,start:number,seconds=20){const file='/opt/media/www/record/rtp/fixture/'+id+'.mp4';this.records.push({id,app:'rtp',stream:'fixture',mediaServerId:'wvp-zlm-01',filePath:file,startTime:start,endTime:start+seconds,fileSize:4096});this.files.add(file);}
 }
 const source=new Recorder(),prefix='recording-test-'+randomUUID(),eids:string[]=[],uids:string[]=[],aids:string[][]=[],projects:string[][]=[];
 let owner:ConstructionActor,manager:ConstructionActor,platform:ConstructionActor,superAdmin:ConstructionActor,bindingId='',cameraId='',recordId='',expiredId='';
@@ -55,7 +62,7 @@ before(async()=>{
   await withTenantTransaction(eids[0],tx=>tx.execute(sql`update app.construction_camera_bindings set started_at=now()-interval '7 days' where id=${bindingId}`));
 });
 after(async()=>{try{await withPlatformTransaction(async tx=>{
-  for(const eid of eids){for(const table of ['construction_camera_sessions','construction_recordings','construction_camera_recording_policies','construction_camera_controls','construction_camera_snapshots','construction_camera_entries','construction_camera_bindings','construction_cameras','construction_audits','construction_members','construction_projects','leads'])await tx.execute(sql`delete from ${sql.raw('app.'+table)} where enterprise_id=${eid}`);}
+  for(const eid of eids){for(const table of ['construction_camera_sessions','construction_recordings','construction_camera_recording_periods','construction_camera_recording_policies','construction_camera_controls','construction_camera_snapshots','construction_camera_entries','construction_camera_bindings','construction_cameras','construction_audits','construction_members','construction_projects','leads'])await tx.execute(sql`delete from ${sql.raw('app.'+table)} where enterprise_id=${eid}`);}
   for(const list of aids)for(const aid of list)await tx.execute(sql`delete from app.admin_users where id=${aid}`);
   for(const eid of eids)await tx.execute(sql`delete from app.enterprises where id=${eid}`);
   for(const uid of uids)await tx.execute(sql`delete from app.users where id=${uid}`);
@@ -82,7 +89,10 @@ test('provider acknowledgement is not recording; foreign plans are preserved and
   source.foreign=false;await reconcileRecordings(source);assert.equal((await current()).recording_state,'recording');
 });
 test('sealed records retain project/tenant ownership; early foreign intervals are quarantined',async()=>{
-  await withTenantTransaction(eids[0],tx=>tx.execute(sql`update app.construction_camera_recording_policies set started_at=now()-interval '6 days' where binding_id=${bindingId}`));
+  await withTenantTransaction(eids[0],async tx=>{
+    await tx.execute(sql`update app.construction_camera_recording_policies set started_at=now()-interval '6 days',imported_until=null,index_swept_at=null where binding_id=${bindingId}`);
+    await tx.execute(sql`update app.construction_camera_recording_periods set started_at=now()-interval '6 days',source_started_at=now()-interval '6 days' where binding_id=${bindingId}`);
+  });
   const now=Math.floor(Date.now()/1000);source.add(101,now-5*86400-100);source.add(102,now-90);source.add(103,now-8*86400);
   await reconcileRecordings(source);
   const own=await withTenantTransaction(eids[0],tx=>rows(tx,sql`select * from app.construction_recordings where binding_id=${bindingId}`));assert.equal(own.length,2);
@@ -108,13 +118,87 @@ test('failed physical deletion stays deleting; retry confirms missing bytes befo
   let record=await withTenantTransaction(eids[0],tx=>one(tx,sql`select state,last_error from app.construction_recordings where id=${expiredId}`));assert.equal(record!.state,'deleting');assert.ok(record!.last_error);
   source.deletionFails=false;await purgeCameraRecordings(source);record=await withTenantTransaction(eids[0],tx=>one(tx,sql`select state from app.construction_recordings where id=${expiredId}`));assert.equal(record!.state,'deleted');assert.deepEqual(source.deleted,[101]);
 });
+test('a periodic sweep recovers a late sealed file behind the incremental cursor',async()=>{
+  source.add(110,Math.floor(Date.now()/1000)-300);
+  await reconcileRecordings(source);
+  assert.equal((await withTenantTransaction(eids[0],tx=>rows(tx,sql`select id from app.construction_recordings where source_id=110`))).length,0);
+  await withTenantTransaction(eids[0],tx=>tx.execute(sql`update app.construction_camera_recording_policies set index_swept_at=now()-interval '11 minutes' where binding_id=${bindingId}`));
+  await reconcileRecordings(source);
+  assert.equal((await withTenantTransaction(eids[0],tx=>rows(tx,sql`select id from app.construction_recordings where source_id=110`))).length,1);
+  assert.equal((await withTenantTransaction(eids[1],tx=>rows(tx,sql`select id from app.construction_camera_recording_periods where binding_id=${bindingId}`))).length,0);
+});
+
+test('stop and reenable keep earlier owned intervals while excluding the disabled gap',async()=>{
+  let c=await current();await saveRecordingPolicy(owner,projects[0][0],{bindingId,enabled:false,retentionDays:5,expectedVersion:Number(c.recording_version)});await reconcileRecordings(source);
+  await withTenantTransaction(eids[0],async tx=>{
+    await tx.execute(sql`update app.construction_camera_recording_periods set ended_at=now()-interval '4 minutes',source_ended_at=now()-interval '4 minutes' where binding_id=${bindingId}`);
+    await tx.execute(sql`update app.construction_camera_recording_policies set stopped_at=now()-interval '4 minutes' where binding_id=${bindingId}`);
+  });
+  c=await current();await saveRecordingPolicy(owner,projects[0][0],{bindingId,enabled:true,retentionDays:5,expectedVersion:Number(c.recording_version)});
+  await reconcileRecordings(source);
+  await withTenantTransaction(eids[0],tx=>tx.execute(sql`update app.construction_camera_recording_periods set started_at=now()-interval '2 minutes',source_started_at=now()-interval '2 minutes' where binding_id=${bindingId} and ended_at is null`));
+  await withTenantTransaction(eids[0],tx=>tx.execute(sql`update app.construction_camera_recording_policies set started_at=now()-interval '2 minutes',index_swept_at=null where binding_id=${bindingId}`));
+  const now=Math.floor(Date.now()/1000);source.add(111,now-360);source.add(112,now-200);source.add(113,now-60);
+  await reconcileRecordings(source);
+  const saved=await withTenantTransaction(eids[0],tx=>rows(tx,sql`select source_id from app.construction_recordings where source_id in (111,112,113) order by source_id`));
+  assert.deepEqual(saved.map(r=>Number(r.source_id)),[111,113]);
+  const periods=await withTenantTransaction(eids[0],tx=>rows(tx,sql`select ended_at from app.construction_camera_recording_periods where binding_id=${bindingId}`));assert.equal(periods.length,2);assert.equal(periods.filter(r=>r.ended_at===null).length,1);
+});
+
+test('bounded sweep pages survive a provider failure and a fresh worker client',async()=>{
+  const now=Math.floor(Date.now()/1000);for(let n=0;n<231;n++)source.add(2000+n,now-3600-n*30);
+  await withTenantTransaction(eids[0],tx=>tx.execute(sql`update app.construction_camera_recording_policies set index_swept_at=null where binding_id=${bindingId}`));
+  await reconcileRecordings(source);
+  const read=()=>withTenantTransaction(eids[0],tx=>one(tx,sql`select scan_page,scan_to,state from app.construction_camera_recording_policies where binding_id=${bindingId}`));
+  let cursor=await read();assert.equal(Number(cursor!.scan_page),3);assert.ok(cursor!.scan_to);
+  source.failPage=3;await reconcileRecordings(source);cursor=await read();assert.equal(cursor!.state,'error');assert.equal(Number(cursor!.scan_page),3);
+  source.failPage=0;const restarted=new Recorder();restarted.records=source.records;restarted.linked=source.linked;
+  await reconcileRecordings(restarted);cursor=await read();assert.equal(cursor!.state,'recording');assert.equal(cursor!.scan_to,null);
+  assert.equal((await withTenantTransaction(eids[0],tx=>rows(tx,sql`select id from app.construction_recordings where source_id between 2000 and 2230`))).length,231);
+});
+
+test('saving a policy and worker indexing serialize without a deadlock or lost settings',async()=>{
+  let enter!:()=>void,release!:()=>void;const entered=new Promise<void>(r=>{enter=r;}),gate=new Promise<void>(r=>{release=r;});
+  const c=await current();source.beforeIndex=async()=>{enter();await gate;};
+  const worker=reconcileRecordings(source);await entered;let saved=false;
+  const saving=saveRecordingPolicy(owner,projects[0][0],{bindingId,enabled:true,retentionDays:4,expectedVersion:Number(c.recording_version)}).then(r=>{saved=true;return r;});
+  try{await new Promise(r=>setTimeout(r,100));assert.equal(saved,false,'Save waits before taking binding row locks');}
+  finally{source.beforeIndex=undefined;release();}
+  await Promise.all([worker,saving]);assert.equal(Number((await current()).retention_days),4);
+  await reconcileRecordings(source);assert.equal((await current()).recording_state,'recording');
+});
+
+test('media clock lag keeps the first sealed segment without relaxing binding ownership',async()=>{
+  let c=await current();await saveRecordingPolicy(owner,projects[0][0],{bindingId,enabled:false,retentionDays:4,expectedVersion:Number(c.recording_version)});await reconcileRecordings(source);
+  source.clockOffsetMs=5000;c=await current();await saveRecordingPolicy(owner,projects[0][0],{bindingId,enabled:true,retentionDays:4,expectedVersion:Number(c.recording_version)});await reconcileRecordings(source);
+  const period=await withTenantTransaction(eids[0],tx=>one(tx,sql`select * from app.construction_camera_recording_periods where binding_id=${bindingId} and ended_at is null`));
+  const start=new Date(String(period!.source_started_at)).getTime();assert.ok(start<new Date(String(period!.started_at)).getTime());assert.ok(Number(period!.clock_offset_min_ms)>3000);
+  await new Promise(r=>setTimeout(r,2200));source.add(120,start/1000,1);await reconcileRecordings(source);
+  const saved=await withTenantTransaction(eids[0],tx=>one(tx,sql`select started_at,clock_offset_min_ms,clock_offset_max_ms from app.construction_recordings where binding_id=${bindingId} and source_id=120`));
+  assert.ok(saved);assert.equal(new Date(String(saved.started_at)).getTime(),start);
+  assert.ok(Number(saved.clock_offset_min_ms)<=Number(period!.clock_offset_min_ms));assert.ok(Number(saved.clock_offset_max_ms)>=Number(period!.clock_offset_max_ms));
+  c=await current();await saveRecordingPolicy(owner,projects[0][0],{bindingId,enabled:false,retentionDays:4,expectedVersion:Number(c.recording_version)});await reconcileRecordings(source);
+  source.clockOffsetMs=0;c=await current();await saveRecordingPolicy(owner,projects[0][0],{bindingId,enabled:true,retentionDays:4,expectedVersion:Number(c.recording_version)});await reconcileRecordings(source);
+});
+
+test('unavailable clock evidence blocks indexing but never prevents disabling the owned writer',async()=>{
+  let c=await current();await saveRecordingPolicy(owner,projects[0][0],{bindingId,enabled:false,retentionDays:4,expectedVersion:Number(c.recording_version)});
+  source.clockFails=true;await reconcileRecordings(source);assert.equal(source.linked,null);assert.equal((await current()).recording_state,'error');
+  source.clockFails=false;await reconcileRecordings(source);assert.equal((await current()).recording_state,'stopped');
+  c=await current();await saveRecordingPolicy(owner,projects[0][0],{bindingId,enabled:true,retentionDays:4,expectedVersion:Number(c.recording_version)});await reconcileRecordings(source);
+});
+
 test('unbind/rebind retains old recordings in the original project and rejects a cross-boundary segment',async()=>{
   const c=await current();await saveRecordingPolicy(owner,projects[0][0],{bindingId,enabled:false,retentionDays:3,expectedVersion:Number(c.recording_version)});await reconcileRecordings(source);assert.equal((await current()).recording_state,'stopped');
   await fixtureCamera().bind(projects[0][0],{cameraId,expectedVersion:2,bind:false});
   await fixtureCamera().bind(projects[0][1],{cameraId,expectedVersion:3,bind:true});
   const old=await enter(owner,projects[0][0]),play=await startRecordingView(old.session,old.csrf,recordId);assert.equal((await authorizeRecordingMedia(old.session,play.generation,recordId)).id,recordId);
   const other=await enter(owner,projects[0][1]);await assert.rejects(startRecordingView(other.session,other.csrf,recordId),/unavailable/);
-  source.add(104,Math.floor(Date.now()/1000)-10);source.foreign=true;await reconcileRecordings(source);
+  await withTenantTransaction(eids[0],async tx=>{
+    await tx.execute(sql`update app.construction_camera_bindings set ended_at=now()-interval '30 seconds' where id=${bindingId}`);
+    await tx.execute(sql`update app.construction_camera_recording_policies set index_swept_at=null where binding_id=${bindingId}`);
+  });
+  source.add(104,Math.floor(Date.now()/1000)-40);source.foreign=true;await reconcileRecordings(source);await reconcileRecordings(source);
   assert.equal((await withTenantTransaction(eids[0],tx=>rows(tx,sql`select id from app.construction_recordings where source_id=104`))).length,0);
   assert.equal((await withTenantTransaction(eids[0],tx=>one(tx,sql`select state from app.construction_camera_recording_policies where binding_id=${bindingId}`)))!.state,'stopped');
 });

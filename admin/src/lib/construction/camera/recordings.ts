@@ -5,9 +5,10 @@ import {fail,id,AssistantError} from '@/lib/assistant/contracts';
 import {object,version,type ConstructionActor} from '../contracts';
 import {cameraAccess,cameraSession,parseCameraToken} from './service';
 import {cameraWvp,type WvpClient} from './wvp';
-import {cloudRecording,recordingFilePath,shanghaiDay} from './recording-contract';
+import {recordingFilePath,shanghaiDay} from './recording-contract';
+import {openRecordingPeriod,closeRecordingPeriod,reconcileRecordingIndex} from './recording-index';
+import {sampleRecordingClock} from './recording-clock';
 
-const nodeId=()=>process.env.CAMERA_MEDIA_SERVER_ID||'wvp-zlm-01';
 const nodeDays=()=>{const n=Number(process.env.CAMERA_NODE_RETENTION_DAYS||7);if(!Number.isSafeInteger(n)||n<1||n>30)fail('camera_recording_not_configured',503);return n;};
 const errorCode=(e:unknown)=>e instanceof AssistantError?e.code:'camera_service_unavailable';
 export async function saveRecordingPolicy(actor:ConstructionActor,pid:string,input:Row) {
@@ -16,6 +17,9 @@ export async function saveRecordingPolicy(actor:ConstructionActor,pid:string,inp
   if(typeof input.enabled!=='boolean'||!Number.isSafeInteger(input.retentionDays)||Number(input.retentionDays)<1||Number(input.retentionDays)>nodeDays())fail('camera_invalid_retention',422);
   return withTenantTransaction(actor.enterpriseId,async tx=>{
     const access=await cameraAccess(tx,actor,pid);if(!access.owner)fail('camera_forbidden',403);
+    // Use the worker's lock before binding/camera row locks. Provider indexing
+    // also touches policy FKs; opposite row-lock order can otherwise deadlock.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`camera-recording:${bid}`},0))`);
     const binding=await one(tx,sql`select b.id,b.camera_id from app.construction_camera_bindings b join app.construction_cameras c on c.enterprise_id=b.enterprise_id and c.id=b.camera_id where b.enterprise_id=${actor.enterpriseId} and b.project_id=${pid} and b.id=${bid} and b.ended_at is null and c.enabled for update of b,c`);
     if(!binding)fail('camera_binding_unavailable',404);
     const old=await one(tx,sql`select * from app.construction_camera_recording_policies where enterprise_id=${actor.enterpriseId} and binding_id=${bid} for update`);
@@ -49,38 +53,21 @@ async function reconcilePolicy(eid:string,bid:string,upstream:WvpClient) {
     const channel=retired?{id:0,planId:null}:await upstream.recordingChannel(String(p.device_id),String(p.channel_id),planId);
     if(planId&&!p.plan_id)await tx.execute(sql`update app.construction_camera_recording_policies set plan_id=${planId} where enterprise_id=${eid} and binding_id=${bid}`);
     if(channel.planId&&channel.planId!==planId)fail('camera_recording_conflict',409);
-    if(enabled&&channel.planId!==planId)await upstream.linkRecording(channel.id,planId);
+    // Time/index diagnostics must never prevent removing our disabled writer.
     if(!enabled&&planId&&channel.planId===planId)await upstream.linkRecording(channel.id,null);
+    let clock=await sampleRecordingClock(tx,upstream);
+    if(enabled)await openRecordingPeriod(tx,p,clock);
+    if(enabled&&channel.planId!==planId)await upstream.linkRecording(channel.id,planId);
     const stream=enabled?await upstream.play(String(p.device_id),String(p.channel_id)):{app:String(p.stream_app||'rtp'),stream:String(p.stream_id||`${p.device_id}_${p.channel_id}`)};
     const actual=retired?false:await upstream.isRecording(stream);
     // An acknowledged link is not proof that recording has started/stopped.
     const state=enabled?(actual?'recording':'pending'):(actual?'pending':'stopped');
+    if(state==='stopped')clock=await closeRecordingPeriod(tx,p,clock,upstream);
     await tx.execute(sql`update app.construction_camera_recording_policies set state=${state},stream_app=${stream.app},stream_id=${stream.stream},
       started_at=case when ${!!enabled} and started_at is null then now() else started_at end,
       stopped_at=case when ${state==='stopped'} then coalesce(stopped_at,now()) when ${!!enabled} then null else stopped_at end,
       last_error=null,checked_at=now() where enterprise_id=${eid} and binding_id=${bid}`);
-    if(!p.started_at&&!enabled)return;
-    // Read sealed WVP records only; ownership is bound to the original project
-    // interval, never inferred from the camera's latest binding.
-    const ownedStart=new Date(String(p.started_at||p.updated_at));ownedStart.setMilliseconds(0);
-    const from=new Date(Math.max(new Date(String(p.imported_until||ownedStart)).getTime()-1000,ownedStart.getTime()));
-    let until=from;
-    for(let page=1;page<=5;page++){
-      const batch=await upstream.cloudRecordings(stream,from,new Date(),page);
-      for(const value of batch.items){
-        const record=cloudRecording(value,stream);
-        if(record.mediaServerId!==nodeId()||record.start<ownedStart||record.start.getTime()<new Date(String(p.binding_start)).getTime()||
-          (p.binding_end&&record.end.getTime()>new Date(String(p.binding_end)).getTime())||
-          (!enabled&&p.stopped_at&&record.end.getTime()>new Date(String(p.stopped_at)).getTime()))continue;
-        const collision=await one(tx,sql`select binding_id,file_path from app.construction_recordings where media_server_id=${record.mediaServerId} and source_id=${record.sourceId}`);
-        if(collision&&(String(collision.binding_id)!==bid||collision.file_path!==record.filePath))fail('camera_recording_conflict',409);
-        await tx.execute(sql`insert into app.construction_recordings(enterprise_id,project_id,binding_id,source_id,media_server_id,stream_app,stream_id,file_path,started_at,ended_at,bytes)
-          values(${eid},${String(p.project_id)},${bid},${record.sourceId},${record.mediaServerId},${record.app},${record.stream},${record.filePath},${record.start},${record.end},${record.bytes}) on conflict(media_server_id,source_id) do nothing`);
-        if(record.end>until)until=record.end;
-      }
-      if(batch.items.length<100)break;
-    }
-    if(until>from)await tx.execute(sql`update app.construction_camera_recording_policies set imported_until=${until},last_segment_at=${until} where enterprise_id=${eid} and binding_id=${bid}`);
+    await reconcileRecordingIndex(tx,p,stream,upstream,nodeDays(),clock);
   });
 }
 export async function reconcileRecordings(upstream=cameraWvp()) {
@@ -99,13 +86,13 @@ export async function listCameraRecordings(token:string,day:unknown,csrf?:string
       join app.construction_camera_bindings b on b.enterprise_id=r.enterprise_id and b.id=r.binding_id
       join app.construction_cameras c on c.enterprise_id=b.enterprise_id and c.id=b.camera_id
       where r.enterprise_id=${eid} and r.project_id=${s.pid} and r.state='ready' and r.started_at>=${from} and r.started_at<${to}
-      and r.started_at>=now()-p.retention_days*interval '1 day' order by r.started_at limit 300`);
+      and r.started_at+r.clock_offset_min_ms*interval '1 millisecond'>=now()-p.retention_days*interval '1 day' order by r.started_at limit 300`);
     return {items,source:'cloud',sdAvailable:false,limit:300};
   });
 }
 async function authorizedRecording(tx:PostgresTransaction,eid:string,pid:string,rid:string) {
   const r=await one(tx,sql`select r.* from app.construction_recordings r join app.construction_camera_recording_policies p on p.enterprise_id=r.enterprise_id and p.binding_id=r.binding_id
-    where r.enterprise_id=${eid} and r.project_id=${pid} and r.id=${rid} and r.state='ready' and r.started_at>=now()-p.retention_days*interval '1 day' for share of r,p`);
+    where r.enterprise_id=${eid} and r.project_id=${pid} and r.id=${rid} and r.state='ready' and r.started_at+r.clock_offset_min_ms*interval '1 millisecond'>=now()-p.retention_days*interval '1 day' for share of r,p`);
   if(!r)fail('camera_recording_unavailable',404);return r;
 }
 export async function startRecordingView(token:string,csrf:string,recordingId:string) {
@@ -126,7 +113,7 @@ export async function authorizeRecordingMedia(token:string,generation:number,rec
 }
 export async function purgeCameraRecordings(upstream=cameraWvp()) {
   const candidates=await withPlatformTransaction(tx=>rows(tx,sql`select r.id,r.enterprise_id from app.construction_recordings r join app.construction_camera_recording_policies p on p.enterprise_id=r.enterprise_id and p.binding_id=r.binding_id
-    where r.state in ('ready','deleting') and r.ended_at<now()-p.retention_days*interval '1 day' order by r.ended_at limit 30`));
+    where r.state in ('ready','deleting') and r.ended_at+r.clock_offset_max_ms*interval '1 millisecond'<now()-p.retention_days*interval '1 day' order by r.ended_at limit 30`));
   for(const candidate of candidates){
     const eid=String(candidate.enterprise_id),rid=String(candidate.id);
     const record=await withTenantTransaction(eid,async tx=>{

@@ -11,21 +11,22 @@ export function CameraPanel({ projectId }: { projectId: string }) {
   const [loading, setLoading] = useState(true);
   const [recordingCamera,setRecordingCamera]=useState<Camera>(),[retentionLimit,setRetentionLimit]=useState(7);
   const [recordingForm]=Form.useForm();
-  const [form] = Form.useForm(); const alive = useRef(true);
+  const [form] = Form.useForm(); const alive = useRef(true),requestSequence=useRef(0);
   const root = 'video/projects/' + projectId;
   const load = useCallback(async () => {
+    const sequence=++requestSequence.current;
     setLoading(true);
     try {
       const state = await constructionRequest<{ items: Camera[]; canManage: boolean; canConfigure: boolean;maxRetentionDays:number }>(root + '/cameras');
       const available = state.canManage ? await constructionRequest<{ items: Camera[]; canRegister: boolean }>(root + '/inventory') : { items: [], canRegister: false };
-      if (!alive.current) return;
+      if (!alive.current||sequence!==requestSequence.current) return;
       setItems(state.items); setManage(state.canManage); setConfigure(state.canConfigure); setInventory(available.items); setPlatform(available.canRegister); setError('');
       setRetentionLimit(state.maxRetentionDays);
-    } catch (e) { if (alive.current) { setError(errorText(e)); setItems([]); setInventory([]); } }
-    finally { if (alive.current) setLoading(false); }
+    } catch (e) { if (alive.current&&sequence===requestSequence.current) { setError(errorText(e)); setItems([]); setInventory([]); } }
+    finally { if (alive.current&&sequence===requestSequence.current) setLoading(false); }
   }, [root]);
   useEffect(() => { alive.current = true;setRecordingCamera(undefined); void load(); return () => { alive.current = false; }; }, [load]);
-  useEffect(()=>{if(!items.some(c=>c.recording_state==='pending'))return;const timer=setTimeout(()=>void load(),3000);return()=>clearTimeout(timer);},[items,load]);
+  useEffect(()=>{if(!items.some(c=>c.recording_enabled||c.recording_state==='pending'||c.recording_state==='error'))return;const timer=setTimeout(()=>void load(),5000);return()=>clearTimeout(timer);},[items,load]);
   const write = async (path: string, data: unknown, success: string) => {
     setBusy(true);
     try {
