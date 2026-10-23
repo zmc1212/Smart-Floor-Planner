@@ -27,9 +27,9 @@
 | 实际缺口 / 第一动作 | 无新的KnowledgeRetriever/Evidence缺陷。Agent历史来源覆盖在同一4条/7000字节内补齐最初书房/客厅和当前更正，1565/1566两次实模/原生均通过；新增最初客厅来源撤回仍收起派生答复。普通照抄已在供应商输出中定位，非知识解析/检索问题。知识只保留依赖指针，不重建入库或重测已通过范围；1430/3862 unknown保持。 |
 | 知识侧完成条件 | Evidence的实际来源、版本、定位、受众及撤回满足剩余原题；正确Evidence之后的回答失败由Agent处理。 |
 | 验收边界 | KDEP-OPS-01已完成“无需知识源码改动”的依赖核对，未冒充新知识语义验收。 |
-| 下一项 | 普通段落通道判别已完成4次、语义0/4，仍归Agent；知识无需源码变更。随CONSULT-02离线任务协议/模型能力判别，保留KnowledgeRetriever/Evidence来源/版本/受众/撤回边界，不重做入库、OCR、格式/规模或已通过部分。 |
+| 下一项 | Agent最终句数合同已限定实现：68单元/lint、4确定性服务和固定4次实模/原生技术链通过，但首稿语义0/4、唯一修复后1/4，正常业务整批失败。知识无需源码变更；沿Agent保存轨迹审计模型/工具路由与用户提出的联网能力方案，复用KnowledgeRetriever/Evidence，不另建Agent或引用权威，不重做入库、OCR、格式/规模或已通过部分。 |
 | 后续必交付 | CONSULT-01独立建议失败保留Agent归属、同类计数及unknown/null费用。 |
-| 证据入口 | Agent第1节、tmp/xiaok-consult-02-glm9/coverage-review.json及paragraph-mechanism-audit.json；前序候选/单元/宽批次保留原绑定。知识来源/API/Evidence/UI/角色未改，来源撤回沿既有记忆授权；无需知识源码变更不冒充新知识语义或全局模型通过。1430/3862/reconciling/null费用保持。 |
+| 证据入口 | Agent第1节及tmp/xiaok-paragraph-contract/{review,native,typing,plan,green,service-ready}.json；前序覆盖/通道证据保持原绑定。知识来源/API/Evidence/UI/角色未改，当前没有互联网搜索工具，联网仅为方案讨论。无需知识源码变更不冒充知识语义或全局模型通过；1430/3862/8673未知及null费用保持、不重放清账。 |
 
 **重复失败处理：** 按共用规则保留同一故障计数和原始输入/输出。只有已证实的KnowledgeRetriever/Evidence缺陷进入本域；正确Evidence后的工具/引用/生成失败归Agent。同一负责人完成有界修复及受影响联合回归，不要求两个领域平均改动，不以知识独立通过替代业务交付。
 

@@ -43,14 +43,34 @@ export const currentMessageFinalTool: ModelTool = {
   parameters: { type: 'object', properties: { kind: { type: 'string', enum: ['general'] }, text: { type: 'string', minLength: 1, maxLength: 4000 } }, required: ['kind', 'text'], additionalProperties: false },
 };
 
-/** The server enforces the same envelope even if a provider ignores its schema.
- * Semantic entailment still needs the fixed original-input model acceptance. */
+/** A declared output bound is distinct from permission to read/write or from
+ * semantic correctness. Apply only one explicit current response instruction;
+ * quoted, conflicting and verbatim requests retain their existing behavior. */
+function briefResponseLimit(question: string): number | null {
+  const intent = question.replace(/[“「"][^”」"\n]*[”」"]/g, '');
+  const requests = intent.split(/[。！？?；;\n]/).map(s => s.trim()).filter(s =>
+    /^(?:请)?(?:只|仅)(?:回应|回答|复述|解释|理解|讨论)(?:我)?(?:这(?:一)?段(?:话)?|这条消息|本段|本条消息)(?:的)?(?:意思|内容)?(?:[，,:：]|$)/.test(s));
+  if (requests.length !== 1 || /^(?:请)?(?:只|仅)复述/.test(requests[0])) return null;
+  const bound = /[，,]\s*(?:请)?(?:用|以)(一两|两|二|2|一|1)句(?:话)?(?:即可|就好|就可以)?\s*$/.exec(requests[0]);
+  return bound ? ['一', '1'].includes(bound[1]) ? 1 : 2 : null;
+}
+
+/** Shape and explicit brief-response bounds use the existing one final repair.
+ * Never clip a draft or supply its answer; semantics still need model trials. */
 export function currentMessageReplyFeedback(raw: string, question: string): { code: string; feedback: string } | null {
   if (!currentMessageOnlyRequested(question)) return null;
   try {
     const reply = JSON.parse(raw.replace(/^```(?:json)?\s*|\s*```$/g, ''));
     if (reply && !Array.isArray(reply) && Object.keys(reply).length === 2 && reply.kind === 'general'
-      && typeof reply.text === 'string' && reply.text.trim() && reply.text.length <= 4000) return null;
+      && typeof reply.text === 'string' && reply.text.trim() && reply.text.length <= 4000) {
+      const limit = briefResponseLimit(question);
+      // Chinese terminal punctuation/newlines count complete response units;
+      // commas, semicolons and decimal points never split a condition/value.
+      const sentences = reply.text.split(/[。！？!?\n]+/).filter((part: string) => part.replace(/[”」"')）\]\s]/g, '').length > 0).length;
+      if (limit !== null && sentences > limit) return { code: 'invalid_model_answer',
+        feedback: `客户明确限定本条回应最多${limit}句，当前答复有${sentences}句，违反本轮输出约束。只修复本轮最终答复，保持kind=general和text。请自己概括客户要求区分或理解的含义，最多${limit}句；不要复制整段，或把客户的提问与指令当作答复。保留原话对象、否定、条件及未决定部分，不新增事实、建议、决定或业务动作。不查询、不保存、不转人工，仍限现有唯一一次最终修复及原调用预算。` };
+      return null;
+    }
   } catch { /* Use the existing sole final repair, never an additional query. */ }
   return { code: 'invalid_model_answer', feedback: '本轮只回应当前客户消息，最终格式只能包含kind=general和text，不提交来源、卡片、引用或操作字段。保留原话的对象、否定和未决定部分，按本轮要求简短回应，不新增技术建议或业务动作。仅修复这一次最终答复，不查询、不保存，不扩大原调用预算。' };
 }

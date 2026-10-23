@@ -2,7 +2,19 @@
 
 **接续先读：** [Agent计划第1节](./xiaok-agent-engineering-plan.zh-CN.md#1-范围与优先级)是唯一当前交付及下一项，[知识计划第1节](./xiaok-enterprise-knowledge-plan.zh-CN.md#1-当前判断与可复用基础)只记录知识依赖。按[交付执行规则](../AGENTS.md#xiaok-delivery-execution)携带交付ID、剩余检查、同类修复计数及可复用证据；本文件下方历史“当前/下一步/停止”不重新派发任务。负责人身份仍按最新可信顺序交接记录核对，不由本文旧聊天称谓指定。
 
-## 当前交付和顺序接续（2026-10-22）
+## 当前交付和顺序接续（2026-10-23）
+
+**本段为唯一最新交接，当前单一负责人已完成接手后的固定验收。** 分支`codex/xiaok-public-site-lifecycle`；前序历史覆盖`f62b170993bf95be20430579111df2d08823f8bc`及通道诊断`2eb05b500e701c7b81e346a2023f92090d18ed51`保留。当前CONSULT-02/KDEP-CONSULT-02仍Limited：明确一两句要求的最终合同限定实现，但固定4次实模/原生技术4/4、首稿语义0/4、唯一修复后1/4，正常业务整批失败。`current-message-scope.ts`（sha256 fcf6bc055cb5dfb3b4c5f9963a0d4ca87e2a8d691578bf1017e798ade9310246）和对应测试（068fa8653f85acac951aa1842ee3bc83a00306bad839558fa76b344ad4c205b8）仅对无歧义显式上限拒绝超句数，沿原唯一修复；首轮模型输入/工具/schema/预算不变，无截断、服务端代答、新Agent或知识管线。相关本地提交以实际git HEAD及tmp/xiaok-paragraph-contract/stage.json为准，不把内部提交当作整个阶段通过。
+
+证据均在`tmp/xiaok-paragraph-contract/`：`review.json`逐份保留1571–1574首稿/唯一修复与语义判断。1571/1573只说两者需要区分，1572摘抄准备动作，仅1574直接解释准备不等于永久收存。8次真实GLM9尝试4042–4049/6605 observed tokens/null费用保留，无补采。`native.json`275项绑定稳定、14原生/2清理检查与4张已审看图；`typing.json`181项完整依赖/0诊断。原离线8稿红绿、68单元/lint（242项）及4确定性真实服务8674–8677（244项）复用，不与语义混判。初次驱动错用工具参数造成的隔离8673 indeterminate/provider_outcome_unknown/attempts0仍保留、不重放。1430/3862 unknown/reconciling/null费用及段落2/书桌链路2/预算1不清零；本固定机制4次已用完。
+
+**下一有界动作：** 用户在本轮指出小K离智能装修智能体仍远，要求解释模型推理、联网搜索和知识库之外的信息获取如何实现。只读核对当前无互联网搜索工具；部分一般建议路径优先查企业知识且无依据仅给非量化建议。当前先以保存轨迹和代码审计模型理解、工具/上下文路由及回复约束，给出沿现有LangGraph、KnowledgeRetriever/Evidence接入外部来源并验证完整用户任务的方案。该提问不自动授权模型切换、付费供应商或新视觉设计，不新增同类措辞修补/同题采样；原失败保持。知识当前无需源码修改，只保留依赖指针。计划第1节仍是唯一当前项，不重跑历史/35/60/更正/压缩/P5/OPS/知识入库。
+
+资源现状见`review.json`：开发5432/smart_floor_planner、隔离55432/xiaok_embedding_eval均jobs0/acceptanceLocks0、controller连接0。新合成2747/3865/785、2748/3866/786已停AI/身份递增，旧token401；测试transport/auth已恢复。`native-bootstrap.json`记录授权精确无automator替换后唯一原项目已在副屏，Stable2.02.2608080/CDP9431/automator9420/IDE18586，SDK0.13.0/基础库3.17.2，每轮新编译、逻辑390×844/编码348×752。原启动/UTF-8失败保持在continuity-audit.json，不重放native.log或任何有结果driver。Next3006、Worker及批准隧道保持；PID可能过期，先只读核对，不抢占进程。`.env.local`、免费siliconflow/THUDM/GLM-4-9B-0414、VLM/1454/凭据保持；远程先读双语remote-development，不打印private连接文件、完整CDP查询或凭据。
+
+同工作树原59条无关已暂存摄像头等及其他未暂存变更必须保留。本轮所有权仅上述2个产品文件、两个计划/二期合同/四模块清单的当前前段及本交接；`tmp/xiaok-paragraph-contract/stage.mjs`使用独立索引，仅合并四清单本轮前段，再精确保留原index，不重用前序已结束提交脚本。新证据/驱动在忽略tmp中，旧coverage/channel/unknown原批不改。批准C01源`design-references/xiaok-p4b-public-sites-v1/README.md`、结构/样式/素材/文案/导航/台账保持；仅校验现有气泡与重进，非新还原/完整宿主/真机/真实微信或生产验收，无push或付费兜底。到上下文容量边界再按既有授权顺序接续；本轮用户问题先在聊天给出具体能力方案，不以新增总结文档代替回答。
+
+## 已封存的历史覆盖与输出通道证据（2026-10-23）
 
 **当前接续优先于下方历史段，2026-10-23。** 当前代码提交为f62b170993bf95be20430579111df2d08823f8bc，branch codex/xiaok-public-site-lifecycle；本次相关提交及原已暂存摄像头等内容的保护记录见tmp/xiaok-consult-02-glm9/coverage-stage.json；后续诊断文档提交见paragraph-stage.json。CONSULT-02/KDEP-CONSULT-02仍Limited，最新已限定完成历史原话覆盖：现有recall_history先保留匹配当前来源，再按时间优先保留记忆中已记录的原话，仍4条/7000字节、完整原文/hash/版本及原企业/本人/咨询/截止/撤回边界。4真实服务/42兼容单元/lint及2根类型0通过；coverage-saved.json在回滚隔离合成事务中用原保存输入证明最初书房/客厅/当前更正同在958字节。原776/777已撤回来源不恢复，更正1501/1502及35/60/压缩/67题不重放。
 
