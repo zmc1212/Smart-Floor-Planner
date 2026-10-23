@@ -2,45 +2,60 @@
 
 English mirror: [cloud-construction-video-plan.md](./cloud-construction-video-plan.md)
 
-更新：2026-10-23。状态：**非录像首版开发验收完成，整体 Limited；当前推进 CV-02 录像能力验证**。绑定、直播、抓拍和受保护的云台软件链路已接通；用户已确认插卡，当前设备仍未检测到可用 SD 卡。此计划不授权生产部署。
+更新：2026-10-23。**CV-02有线云录像/私有回放已实现并完成有界开发验收；整体Limited，CV-04运行核对已开始。** SD重新插拔、重启及授权格式化后仍未识别。24/72小时浸泡、真机/公网、容量告警未完成。不授权生产部署。
 
 ## 1. 当前交付记录
 
 | 项目 | 内容 |
 | --- | --- |
-| 当前 ID | CV-02：SD 录像能力验证；卡识别/实际历史媒体尚未满足，Limited |
-| 用户结果 | 员工从“云工地→项目→查看工地视频”进入 H5，查看直播、抓拍历史并操作已确认支持的云台；录像不显示入口 |
-| 已确定技术方向 | **小程序 `web-view` + H5 播放器**；mpegts.js 1.8.2/FLV、hls.js 1.6.13/MSE及原生HLS回退；不依赖 `live-player` 权限 |
-| 复用基础 | WVP/ZLMediaKit、本地批量接入、H5 测试播放器、现有施工项目/成员/客户关系、租户权限与媒体存储规范 |
-| 实际状态 | CV-01/CV-03 非录像首版已完成开发及有界验收：真实 FLV/HLS、私有抓拍、原生入口/重进/失败重试接通；实际 PTZ 转动仍未证实且设备默认关闭控制。摄像头重启后直播/抓拍复验通过；SD 状态仍为 -1、容量 0，WVP 录像仍为 0 条。仅隔离开发环境，未部署生产 |
-| 完成检查 | 数据库/适配 11 项、Mini 客户端 19 项、涉及类型/lint/H5 语法通过；Stable 原生 5 项及真实媒体 HTTP 6 项通过。源/配置绑定及既有全量构建限制见本节，不能代替实机云台或微信真机出画 |
-| 未核验范围 | SD 录制/历史媒体回放、连续云录像/清理、实际 PTZ、生产 HTTPS/业务域名、微信真机、公网/纯 4G、长期浸泡；卡未识别仅阻塞 SD 路径 |
-| 下一 ID | CV-02：独立推进有线云录像和已批准的回放入口；取得可读 SD 录像后实测设备回放。CV-04 长期运行/容量检查保留未验证 |
+| 当前ID | CV-04单路运行核对，Limited；CV-02云端路径限定Implemented，SD路径受卡识别阻塞 |
+| 用户结果 | 负责人在项目“工地视频”保存连续录像/保留天数；员工从云工地进入同一H5，切换直播/回放，按日期选择真实封口片段，重进保留选择并可返回直播 |
+| 技术方向/基础 | Mini web-view + H5；mpegts.js1.8.2/FLV、hls.js1.6.13/MSE/原生HLS，复用WVP/ZLM、施工项目/成员/租户权限，不依赖live-player |
+| 实际状态 | 实际启动、无人观看120秒、关闭封口；私有MP4 Range206/匿名401；浏览器1920×1080解码/时间推进、重进/空状态/返回直播通过；真实测试文件及WVP索引过期清理无复活。仅隔离开发环境 |
+| 完成检查 | 服务/适配21、Mini19、涉及类型0错误、lint/H5语法；200个源/测试/驱动绑定无漂移。Stable原生5项/208个绑定无漂移；原生截图已审看；真实媒体证据见1.3 |
+| 未核验/未实现 | SD录制/回放、24/72小时连续运行/自然到期、多路容量、容量告警/低空间保护、企业默认、客户授权、实际PTZ、HTTPS/业务域名、微信真机/公网/纯4G；卡识别只阻塞SD |
+| 下一ID | CV-04继续长期运行/容量和中断恢复；有可读SD介质后继续CV-02设备回放。测试连续录像已关闭、保留3天，不自动开启4G上传/生产录像 |
 
-2026-10-22 用户明确授权非录像功能及现有 H5 单路布局/云工地配色，去掉源地址/诊断日志，加入摄像头切换、抓拍历史、云台；当时不加入录像入口。2026-10-23 用户授权接续开发并确认已插卡；已完成非录像首版原生验收，恢复 CV-02 能力验证。用户进一步明确批准：保留单路视频/配色，在播放器下增加直播/回放切换；回放区包含日期、真实录像片段选择、返回直播，空/失败沿用既有反馈。该批准是 CV-02 新增交互的设计/实施依据，不改变 SD 支持必须实测的条件；不能将空录像或后端接口完成记为用户交付完成。
+设计/实施源：2026-10-22用户批准单路H5/云工地配色、摄像头切换、抓拍历史及云台，去掉源地址/诊断。当时排除录像；2026-10-23进一步明确批准在播放器下加入直播/回放切换、日期、真实片段、返回直播，空/失败沿用既有反馈。当前实现保留此层级和配色，无截图切片/新增插画；Admin沿双语Ant Design/refactor合同。不能将空查询或接口完成记为SD支持。
 
-### 1.1 当前实现合同（优先于后文尚未实施的完整产品规格）
+### 1.1 当前实现合同（优先于后文尚未实现的完整提案）
 
-- Admin `/construction-projects` 原Drawer新增“工地视频”Tab；平台管理在所选企业分配WVP通道，负责人/经理绑定解绑，负责人（含admin/super_admin继承）开放/关闭云台。平台账号无需企业员工或项目成员记录。
-- 员工入口为 `packages/construction/projects/projects` → `packages/construction/camera/camera`；仅现有施工员工权限，不开放业主客户入口或成员单独抓拍/云台授权。完整客户可见性策略仍待后续实施，不能据后文权限目标推断已实现。
-- 实际员工API前缀：Admin `/api/construction/video`、Mini `/api/miniprogram/construction/video`；包含`register`、`inventory`和`projects/:id/{inventory,cameras,binding,configure,entry}`。H5独立会话API为`/api/construction-camera/{exchange,state,heartbeat,stop,live,snapshots,ptz}`，图片`/snapshots/:id`；播放网关`/camera-media/:generation/*`。
-- `0090_construction_cameras.sql`新增6张强制RLS表：设备、绑定、一次性入口、会话、抓拍、控制停止义务。关联均保留企业/项目边界，企业清理已纳入。抓拍为私有JPEG bytea，每张≤4MiB；pending/ready/failed和幂等键持久保存，图片每次实时鉴权。当前只返回最新30张，未实现自动保留清理；录像三天策略不适用于本版抓拍。
-- 一次性入口30秒；cookie HttpOnly/SameSite=Strict；CSRF+同源写入；会话/观看租约60秒、心跳20秒、绝对4小时。媒体每请求及流中每5秒重验权限；解绑使旧播放代次失效。浏览器隐藏/退出关闭本观众传输，现有WVP/ZLM无人观看生命周期负责上游回收；未承诺纯4G实际断流时间，未更改连续录像设置。
-- 云台默认关闭，仅上下左右/停止；每次300ms脉冲后STOP，持久化2秒停止义务、网关500ms检查并重试未知STOP。800ms是HTTP超时，不是设备物理停止保证；无变倍、预置位或SDK私有控制兜底。实际设备转动尚未证明，默认不得标注能力已验。
-- 当前证据：`tmp/cloud-camera/checks.log`、`verification.json`、`live-http.json`、`ptz-real.json`、`h5-hls.png`及`native.json`。Stable2.02.2608080/SDK0.13.0/base3.17.2 的 5 项原生检查通过：精确项目/窗口/副屏、编译及活跃数据、真实项目按钮→获权 WebView、重进新入口、拒绝/清空/可见重试；PNG348×752 对应逻辑390×844。客户入口、微信真机/业务域名/HTTPS、纯4G、长期运行与生产仍未验证。
+- Admin `/construction-projects` 原Drawer“工地视频”：平台管理员在所选企业分配已验证WVP通道；负责人/经理绑定解绑/抓拍/已开放云台；只有负责人管理角色保存云台和录像策略，含admin/super_admin继承，无需入职/项目成员。有效普通成员只观看；客户授权尚未实现。
+- Mini `packages/construction/projects/projects` → `packages/construction/camera/camera` → H5 `/construction-camera`。一次性入口30秒；独立HttpOnly/SameSite=Strict cookie/CSRF同源会话，观看/会话租约60秒、心跳20秒、绝对4小时。隐藏/退出关闭本观众传输；重进新入口，迟到入口丢弃。
+- 员工API：Admin `/api/construction/video`、Mini `/api/miniprogram/construction/video`，`register`、`inventory`、`projects/:id/{inventory,cameras,binding,configure,recording,entry}`。POST recording仅负责人管理角色可写，版本控制/相同设置幂等，默认关闭、3天，整数1..节点上限（当前7天），不超过WVP节点自身保留；经理/成员不能开启持续上传。4G工地保持关闭，SD尚不可用。
+- H5 `/api/construction-camera/{exchange,state,heartbeat,stop,live,snapshots,ptz,recordings/query,playback}`、私有图片 `/snapshots/:id`；直播网关 `/camera-media/:generation/*`、私有MP4 `/camera-recording/:generation/:recordingId.mp4`，支持单Range/HEAD，不暴露源地址/路径/凭据。请求及传输中每5秒重验项目权限/租约/代次/录像保留窗口；撤权/停止/切换使旧媒体失效。
+- 0090为设备/绑定/入口/会话/抓拍/停止义务6张强制RLS表；0091新增策略/封口录像2张强制RLS表及会话recording_id复合FK。录像按原绑定/启用区间导入，迁移设备后归原项目，跨绑定边界片段不认领；历史与新项目录制互不干扰，不覆盖外部录像计划。
+- 独立5秒对账恢复应录通道；只有ZLM实际状态确认后才显示recording/stopped。解绑须先关闭且确认stopped。每10分钟认领过期封口记录，deleting→真实文件404/410且WVP索引消失→deleted；失败留错误重试，不删除仍有有效观看租约的文件。企业清理在录制/媒体未完成时拒绝，防止丢失物理文件归属；暂停项目如保留enabled意图，删除前需恢复可管理状态并显式关闭。
+- 当前MP4节点分段上限3600秒，非后文提案5分钟。跨保留边界整段不可访问，整段到期后才删除，有一段粒度偏差；扫描最多30个候选/次，失败可形成积压。日期最多300段；只有≤1秒连续区间自动切下一段，缺口需手选，无时间轴/跨日自动跳转。选择按项目在localStorage保留，重进不自动播放。无企业默认/容量保护。
+- 私有JPEG bytea≤4MiB，pending/ready/failed/幂等持久化并每次鉴权，最新30张；尚无自动抓拍保留，录像三天不适用于抓拍。PTZ默认关闭，仅方向/STOP，300ms脉冲、2秒持久停止义务、独立500ms watchdog重试未知STOP；800ms为HTTP超时，不是设备物理停止保证。实际转动/变倍未证实。
 
 ### 1.2 配置与复测
 
-2026-10-23 限定复核 `verification.json` 覆盖 192 个源/测试文件，前后无漂移：服务/协议11、Mini19、涉及类型0错误、lint/H5语法全部通过。`native.json` 单独绑定200个源/驱动/配置，前后无漂移，5项通过。原生截图已实际查看；先前误取启动窗口的截图作废，当前证据为已核对项目标题/路径/坐标、恢复到副屏后通过 SDK 采集的模拟器画面。真实媒体 HTTP 6项复验通过，含重启后的 FLV/HLS分片、匿名拒绝、新1920×1080抓拍落库/幂等及停止后旧代次拒绝。
+1. 只在获授权数据库应用0090/0091；Next/独立Node-tsx网关共用DATABASE_URL，`cd admin && npm run camera:gateway`。未自动加入生产Docker。实际隔离库为127.0.0.1:55432/cloud_camera_eval、Next3018/网关3017，不切3006/生产。
+2. 服务端配置CAMERA_WVP_ORIGIN、CAMERA_MEDIA_ORIGIN、CAMERA_WVP_USERNAME/PASSWORD、CAMERA_PUBLIC_ORIGIN、CAMERA_APP_ORIGIN；生产PUBLIC_ORIGIN必须HTTPS，网关默认127.0.0.1:3017。反向代理关闭媒体缓冲、原WVP/ZLM端口只对内、小程序登记HTTPS业务域名，尚未生产实施。
+3. 录像额外配置CAMERA_ZLM_SECRET、CAMERA_MEDIA_SERVER_ID、CAMERA_RECORDING_ROOT、CAMERA_NODE_RETENTION_DAYS；本地对应私有secret、wvp-zlm-01、/opt/media/www/record、7。节点启动必须设`api.downloadRoot=/opt/media/www/record`，不能用/放宽；ZLM禁止热改。已修复仓库外`G:/workspace/向总/wvp/docker/zlm/start.sh`并仅重建/重启本地zlm、保留媒体卷，分发节点须同步该修正。
+4. `construction-camera-check.mjs`迁移专属cloud_camera_unit_eval并运行21项，不与真实STOP worker共库；`--runtime-schema`仅迁移真实隔离库。`npm run check:camera`校验16个类型入口/依赖。`construction-camera-local.mjs`从CAMERA_LOCAL_WVP_ENV加载已授权WVP环境，`--gateway`/`--fixture`启动服务/合成数据；凭据仅忽略目录。
+5. `--recording-check`实际录制后finally关闭；加`--playback-only`只复验已有回放。`--retention-check`加速到期并删除专属测试库最早封口测试录像、保留较新片段，拒绝其他数据库。`construction-camera-native.mjs`沿Stable单控制器/锁/精确项目/副屏纪律；真实PTZ脚本只用于授权设备。停服务前排空STOP，业务回退不删除历史媒体。
 
-原共享测试库的网关 STOP watchdog 曾与模拟 PTZ 测试争用，导致 STOP恢复/解绑2项失败；原批次保留于 `verification-20261023-shared-db-failure.json` 和 `checks-20261023-shared-db-failure.log`。模拟服务测试现使用专属 `cloud_camera_unit_eval`，真实应用/网关/原生继续使用 `cloud_camera_eval`，修复隔离后11项全部通过。未弱化断言或改写原失败。既有后台企业→项目→视频、关闭云台并重进“未开放”的证据 `admin-video.png` 继续复用；实际转动未证实，测试设备保持默认关闭。
+### 1.3 当前证据、原失败与限制
 
-此前全量生产构建 `NEXT_DIST_DIR=.next-camera-build next build --webpack` 编译成功（103秒），随后被既有 `ai-studio/designer/page.ts` 的 `AiDesignerLegacyPage` 非法路由导出阻断；本轮未改该页或重复全量构建。视频13个类型检查入口及依赖0错误，不代表全量构建通过。原先新 WXML 缓存/窗口最小化导致的原生失败保留；当前重新编译、窗口核对/恢复及 SDK 截图后已通过限定原生验收，不代表微信真机视频验收。
+- `tmp/cloud-camera/verification.json`：200个源/测试/驱动前后无漂移，21服务/适配、19Mini、类型/lint/H5语法通过。`native.json`：208个绑定无漂移，Stable2.02.2608080/SDK0.13/base3.17.2，5项通过（精确窗口/副屏、fresh compile、项目按钮/真实entry、重进新entry、拒绝清空/可见重试）；逻辑390×844/PNG348×752，native-camera.png及native-camera-error.png已审看。原生不等于微信真机。
+- 非录像首版提交`c1956a90`；复用其`live-http.json`6项真实FLV/HLS/匿名拒绝/新1920×1080抓拍入库幂等/停止旧代次证据。此前全量build编译103秒后被既有AiDesignerLegacyPage非法路由导出阻断，本轮未改该页或重跑全量build，不能称全量构建通过。
+- `recording-live-2026-10-23T04-07-26-578Z.json`证明实际开启、无人观看120秒（超原90秒无人观看超时）、关闭/封口；该次回放失败保留。下载根修正后`recording-live.json`单独复验Range206/MP4头/匿名401通过，不合并为一次无失败全流程。毫秒时间、0..1440分钟计划、关联必传planId、停止后特定stream缺失返回均有回归；后续GC修正未改变已验启停方法，复用120秒证据。
+- `retention-live.json`：加速的是一条明确测试记录的时间，真实文件404、WVP索引消失、对账不复活；未声称自然三天运行。测试含三种负责人角色/无入职平台管理、普通成员拒绝、跨租户RLS、版本/幂等、撤权/旧代次、原绑定归属、失败删除重试与迁移隔离。
+- 已登录隔离IAB Admin真实保存保留3→2，重进回读2，再恢复3/off并有统一反馈。390×844 H5实际录像1920×1080/125.409秒，currentTime13.399→26.164；日期/片段/模式重进保留且不自动播放，空日期禁用播放，返回直播1920×1080出画。证据h5-playback.png、h5-playback-empty.png、admin-recording.png；沿批准布局无横向溢出。
+- 原共享库STOP watchdog争用失败保留verification-20261023-shared-db-failure.json/checks-20261023-shared-db-failure.log；单独unit库后修复。旧WXML/最小化窗口误截图作废；合成GC过期数据修复前失败、verification-before-final-recording-fixes.json源漂移批次及所有recording-live时间戳尝试保留，不计入最终通过。
+- CV-04只读快照：本地媒体卷16%使用/约849622348KiB可用，ZLM2.45%CPU/11.91MiB，WVP1.84%/647.2MiB。125.409秒/14313370字节样本约0.913Mbps，三天估算29.6GB（未含余量），不是容量/并发承诺。多路、24/72小时浸泡、自然到期、低空间告警/保护、断网恢复均未完成，不以短样本替代。
 
-1. 经授权目标数据库应用`0090`，Next服务与独立视频网关使用同一`DATABASE_URL`。网关依赖Node/tsx，执行`cd admin && npm run camera:gateway`；不是自动加入现有生产Docker的服务。
-2. 服务端配置`CAMERA_WVP_ORIGIN`、`CAMERA_MEDIA_ORIGIN`、`CAMERA_WVP_USERNAME`、`CAMERA_WVP_PASSWORD`；凭据只进服务端环境。`CAMERA_PUBLIC_ORIGIN`生产必须HTTPS，`CAMERA_APP_ORIGIN`为Next内部地址，`CAMERA_GATEWAY_PORT`默认3017、`CAMERA_BIND_HOST`默认127.0.0.1。反向代理视频域名到网关，关闭媒体缓冲，限制WVP/ZLM原始端口仅内部访问；小程序登记该HTTPS业务域名后才可真机使用。
-3. 真实隔离应用/网关使用 `127.0.0.1:55432/cloud_camera_eval`、3018/3017，未切换3006或生产库。`node scripts/construction-camera-check.mjs` 建立/迁移独立 `cloud_camera_unit_eval` 并运行11项模拟服务/协议检查，不与真实 STOP worker 共库；`npm run check:camera` 校验涉及类型。设置 `CAMERA_LOCAL_WVP_ENV` 为已授权 WVP `.env` 路径，`construction-camera-local.mjs`/`--gateway`/`--fixture` 启动对应服务和合成数据；凭据只在 git 忽略的 `tmp/cloud-camera/fixture.private.json`，不得提交/分享。
-4. `construction-camera-live-check.mjs`检查真实点播/分片鉴权/抓拍；`construction-camera-native.mjs`串行复用Stable窗口；`construction-camera-ptz-check.mjs`会发出真实短脉冲，仅对授权测试设备执行。停止服务前确认停止义务已清空；回退业务入口可保留私有抓拍表，不通过删除业务数据回退。
+### 1.4 共用状态与恢复
+
+| 触发 | 可见反馈/动作 | 重进/边界 |
+| --- | --- | --- |
+| 保存开关/天数 | 统一成功或失败通知，pending/recording/stopped/error真实状态 | 后台回读持久策略，只有负责人角色可写；相同设置幂等 |
+| 查询/空日期/失败 | 正在读取、真实片段数或空/错误文案，空/失败禁用播放、可查询重试 | 记住日期/选择，不伪造片段，不自动播放 |
+| 播放/段结束/缺口 | 原播放器状态、真实回放；仅连续≤1秒自动下一段，缺口手选 | 切换/返回直播先停止本代次，普通成员只读媒体 |
+| 撤权/会话或保留到期 | 既有失败反馈、停止媒体、重新从项目申请入口 | 每次及流中重验，不复活旧代次/过期文件 |
+| 删除失败 | deleting/last_error保留并重试 | 仅本模块封口文件，文件与源索引均确认消失后deleted |
 
 ## 2. 事实基线与既有计划关系
 
@@ -58,7 +73,7 @@ English mirror: [cloud-construction-video-plan.md](./cloud-construction-video-pl
 
 2026-10-22 未插卡的原证据 `tmp/cloud-camera-sd/verification.json` 保留。2026-10-23 用户明确确认同一台已插卡、尚未重启；设备 `frmIotRecordCfg` 读取 `SDStatus=-1/SDInfo=0/SDFreeSpace=0`，时钟正确。执行一次 `frmDeviceReboot` 后，设备11:17重新注册 WVP；其 DHCP 地址由 `192.168.10.80` 变为 `192.168.10.81`。通过 SIP TCP 实际远端地址定位，并核对原设备序列号一致；未重建 WVP 通道或修改绑定。
 
-在新地址重读仍为 `SDStatus=-1`、容量0。WVP设备 `34020000001320000003`、通道 `34020000001320000004` 的当天设备录像查询 code0、0条；GB28181手动录制15秒并在finally发送StopRecord均获code0确认，仍无非空录像。随后用户明确授权格式化；按设备前端专用 `frmHDFormat`、Type1、`FormatList:[1]` 执行，被设备拒绝，未完成格式化，未再次重启。未创建历史回放会话/恢复出厂/修改录制计划，不能把协议确认当作已写卡。最新格式化失败证据 `probe-20261023T032946Z.json`；重启/短录制/新地址状态原尝试分别为同目录 `probe-20261023T031622Z.json`、`probe-20261023T032057Z.json`、`probe-20261023T032739Z.json`。重启后直播/抓拍通过，SD路径仍受卡识别阻塞。
+用户重新插拔后，已经GB重启并从实际SIP TCP远端定位192.168.10.83，核对同一序列号；仍返回SDStatus=-1、容量0。再次按已授权frmHDFormat/Type1/FormatList:[1]请求，被设备拒绝，格式化未完成；拒绝后未追加重启、未恢复出厂。最新证据tmp/cloud-camera-sd/probe-20261023T034117Z.json及probe-20261023T035245Z.json；此前首次重启、15秒手动Record/finally StopRecord、0条GB录像及首次格式化失败的probe全部保留。协议确认和新增云端文件均不证明SD写入/回放，硬件卡识别仍阻塞SD路径。
 
 复测脚本 `admin/scripts/construction-camera-sd-probe.py` 复用本地 WVP onboarding 认证，强制原设备序列号校验后才允许重启/格式化；`--camera-ip` 可指定已从实际 SIP 连接定位的 DHCP 地址。默认只读；`--reboot`、`--record-seconds 5..60`（finally补StopRecord）和用户明确授权后才可使用的 `--format-sd` 是显式测试动作。凭据只在忽略目录。硬件可读后再产生短录像、查询非空区间、启动回放并验证解码/时间推进，最后停止本会话；无需用户手动播放验收。移动/定位/倍速分别记录。
 
@@ -226,7 +241,7 @@ PTZ 每设备仅一个短控制租约，命令带序号和失效时间，拒绝�
 - 补充一张 H5 直播主稿、一张回放关键变体，以及共享抓拍反馈/PTZ面板/异常/撤权状态规则即可；按 390×844 对应源画布和实际 web-view 可用区标定。默认纵向单路，宽屏/横屏全屏作为适配。无需每个错误各画一张整页，不自动添加四/九宫格大屏。
 - 后续实现使用 draw-ui，先读取其校准/实现参考；新业务插画如需要，依仓库规则独立生成透明资产，禁止切复合截图。H5测试页只复用媒体逻辑，产品UI需明确设计源和实施授权。
 - 每个阶段更新 `admin-system-modules.{md,zh-CN.md}`、`miniprogram-system-modules.{md,zh-CN.md}`；可见路由实现后更新双语还原台账唯一当前行，Admin UI受影响时同步双语 refactor 合同。未完成的能力保持 Limited/Placeholder。
-- 本次仅新增本计划双语文件，未改变路由/API/数据/权限/UI，因此不修改运行模块清单或还原完成状态，不混入其他对话的脏改动。
+- 最初规划仅新增双语文件；当前实施、路由/API/数据/权限/UI变化及对应清单/台账以第1节为准。不得混入其他对话脏改动。
 - 远程工作前读取 `remote-development.md` 与中文镜像；H5 正式业务域名/HTTPS 与媒体代理同源配置作为部署检查，不能用关闭域名校验作为上线方案。本计划不启动远程部署、采购、支付、摄像头生产录制或改变现有网络暴露。
 
 ## 10. 参考与本轮核对
@@ -235,4 +250,4 @@ PTZ 每设备仅一个短控制租约，命令带序号和失效时间，拒绝�
 - [mpegts.js 官方项目](https://github.com/xqq/mpegts.js)：播放器能力依据；采用已验证的本地1.8.2基线，升级另行验证。
 - [固定版本 WVP 源码](https://github.com/648540858/wvp-GB28181-pro/tree/3fcd3ae80c30c95aeb82ef830af439a835257067)：本轮核对本地 vendor 中 PlayController、PtzController、DeviceQuery、RecordPlanController、CloudRecordController、MediaConfig。
 - [ZLM RESTful API](https://docs.zlmediakit.com/zh/guide/media_server/restful_api.html)、[ZLM Web Hook](https://docs.zlmediakit.com/zh/guide/media_server/web_hook_api.html)：录制、抓拍、流状态和播放/HTTP访问鉴权；以固定部署实际响应为最终适配依据。
-- 已完成：两条对话历史、WVP/播放器说明与相关源码、本项目施工数据/身份/路由、双语模块相关记录、云工地设计prompt、厂家抓拍/PTZ/认证页面核对。追加了设备在线及一次真实WVP设备录像查询，结果见2.1；未进行实际SD录制/回放或产品业务集成验收。文档校验结果随本次交付说明。
+- 原规划核对包括历史、WVP/播放器/施工源码、双语模块、设计prompt和厂家认证/抓拍/PTZ页面；当前云端集成与真实检查见第1节。SD实录/回放仍未通过，最新卡状态见2.1。

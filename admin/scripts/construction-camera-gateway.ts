@@ -12,6 +12,7 @@ import { authorizeCameraMedia, cameraPublicOrigin, digest } from '../src/lib/con
 import { cameraMediaPath, rewriteCameraPlaylist } from '../src/lib/construction/camera/media';
 import { cameraWatchdog } from '../src/lib/construction/camera/ptz';
 import { cameraWvp } from '../src/lib/construction/camera/wvp';
+import {authorizeRecordingMedia,reconcileRecordings,purgeCameraRecordings} from '../src/lib/construction/camera/recordings';
 
 loadEnvConfig(process.cwd(), process.env.NODE_ENV !== 'production');
 const origin = cameraPublicOrigin();
@@ -34,12 +35,40 @@ const watchdog = setInterval(async () => {
   } catch { console.error('Camera watchdog unavailable; persistent obligations retained'); }
   finally { watchdogBusy = false; }
 }, 500);
+// Provider reconciliation must never delay the short PTZ STOP watchdog.
+let recorderBusy=false,lastPurge=0;
+const recorder=setInterval(async()=>{
+  if(recorderBusy)return;recorderBusy=true;
+  try{await reconcileRecordings();if(Date.now()-lastPurge>600000){await purgeCameraRecordings();lastPurge=Date.now();}}
+  catch{console.error('Camera recorder unavailable; durable policies and deletion claims retained');}
+  finally{recorderBusy=false;}
+},5000);
 const server = http.createServer(async (req, res) => {
   res.setHeader('Cache-Control', 'no-store'); res.setHeader('Referrer-Policy', 'no-referrer'); res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
   try {
     const url = new URL(req.url || '/', origin);
     if (url.origin !== origin || url.search) { res.writeHead(404).end(); return; }
     if (url.pathname === '/camera-gateway-health') { res.writeHead(200, { 'Content-Type': 'application/json' }).end('{"service":"construction-camera-gateway"}'); return; }
+    const recording=/^\/camera-recording\/([1-9]\d*)\/([1-9]\d{0,18})\.mp4$/.exec(url.pathname);
+    if(recording){
+      if(!['GET','HEAD'].includes(req.method||'')){res.writeHead(405).end();return;}
+      if(req.headers.range&&!/^bytes=(?:\d+-\d*|-\d+)$/.test(req.headers.range)){res.writeHead(416).end();return;}
+      const token=cookieToken(req.headers.cookie||null),generation=Number(recording[1]),rid=recording[2];
+      const record=await authorizeRecordingMedia(token,generation,rid),abort=new AbortController();
+      const disconnect=()=>abort.abort();res.once('close',disconnect);let validating=false;
+      const interval=setInterval(async()=>{if(validating)return;validating=true;try{await authorizeRecordingMedia(token,generation,rid);}catch{abort.abort();res.destroy();}finally{validating=false;}},5000);
+      const timer=setTimeout(disconnect,15000);
+      try{
+        const response=await fetch(cameraWvp().recordingUrl(record.filePath),{method:req.method,redirect:'error',signal:abort.signal,headers:req.headers.range?{Range:req.headers.range}:{}});clearTimeout(timer);
+        if(!response.ok&&response.status!==206){res.writeHead([404,410,416].includes(response.status)?response.status:502).end();await response.body?.cancel();return;}
+        if(/json|text\//i.test(response.headers.get('content-type')||'')){res.writeHead(502).end();await response.body?.cancel();return;}
+        res.setHeader('Content-Type','video/mp4');
+        for(const name of ['content-length','content-range','accept-ranges']){const value=response.headers.get(name);if(value)res.setHeader(name,value);}
+        res.writeHead(response.status);
+        if(response.body&&req.method!=='HEAD')await pipeline(Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]),res);else res.end();
+      }finally{clearInterval(interval);clearTimeout(timer);abort.abort();res.off('close',disconnect);}
+      return;
+    }
     const media = /^\/camera-media\/([1-9]\d*)\/(.+)$/.exec(url.pathname);
     if (media) {
       if (!['GET','HEAD'].includes(req.method || '')) { res.writeHead(405).end(); return; }
@@ -88,10 +117,11 @@ const server = http.createServer(async (req, res) => {
     proxy.on('error', () => { if (!res.headersSent) res.writeHead(502); res.end(); });
     res.on('close', () => proxy.destroy()); req.pipe(proxy);
   } catch (error) {
+    if(res.headersSent){res.destroy();return;}
     if (!res.headersSent) res.writeHead(error instanceof AssistantError ? error.status : 503, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: error instanceof AssistantError ? error.code : 'camera_unavailable' }));
   }
 });
 server.listen(Number(process.env.CAMERA_GATEWAY_PORT || 3017), process.env.CAMERA_BIND_HOST || '127.0.0.1', () => console.log('Construction camera gateway listening'));
-async function shutdown() { clearInterval(watchdog); server.closeAllConnections(); server.close(); await closePostgresPool(); }
+async function shutdown() { clearInterval(watchdog);clearInterval(recorder); server.closeAllConnections(); server.close(); await closePostgresPool(); }
 process.on('SIGINT', shutdown); process.on('SIGTERM', shutdown);

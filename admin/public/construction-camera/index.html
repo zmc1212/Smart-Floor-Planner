@@ -5,8 +5,16 @@
   <section class="player-section"><label for="camera">摄像头</label><select id="camera" disabled><option>正在读取摄像头…</option></select>
     <video id="video" controls playsinline webkit-playsinline x5-playsinline muted disableremoteplayback preload="none"></video>
     <p id="status" role="status" aria-live="polite">正在核对访问权限…</p>
-    <div class="actions"><button id="play" disabled>开始播放</button><button id="stop" class="secondary" disabled>停止播放</button><button id="capture" class="secondary" hidden disabled>抓拍</button></div>
-    <details><summary>播放设置</summary><label for="mode">播放方式</label><select id="mode"><option value="auto">自动选择</option><option value="flv">低延迟直播</option><option value="hls">兼容播放</option></select><p class="hint">默认静音，可用画面上的控件开启声音或全屏。</p></details>
+    <div class="mode-tabs" role="group" aria-label="观看内容"><button id="live-tab" aria-pressed="true">直播</button><button id="playback-tab" class="secondary" aria-pressed="false">回放</button></div>
+    <div id="live-actions" class="actions"><button id="play" disabled>开始播放</button><button id="stop" class="secondary" disabled>停止播放</button><button id="capture" class="secondary" hidden disabled>抓拍</button></div>
+    <div id="playback-panel" hidden>
+      <p class="hint">工地云端录像。SD 卡回放尚不可用。</p>
+      <label for="recording-date">录像日期</label><div class="date-row"><input id="recording-date" type="date"><button id="query-recordings" class="secondary">查询</button></div>
+      <label for="recording">录像片段</label><select id="recording" disabled><option>请选择日期查询</option></select>
+      <p id="recording-status" class="hint" role="status" aria-live="polite">仅显示实际保存且未过期的录像；中断期间可能存在缺口。</p>
+      <div class="actions"><button id="play-recording" disabled>播放片段</button><button id="return-live" class="secondary">返回直播</button></div>
+    </div>
+    <details id="live-settings"><summary>播放设置</summary><label for="mode">播放方式</label><select id="mode"><option value="auto">自动选择</option><option value="flv">低延迟直播</option><option value="hls">兼容播放</option></select><p class="hint">默认静音，可用画面上的控件开启声音或全屏。</p></details>
   </section>
   <section id="ptz" hidden><h2>云台控制</h2><p class="hint">轻点调整方向，每次短暂移动后自动停止。</p><div class="ptz-grid"><button data-direction="up" class="up" aria-label="向上">↑</button><button data-direction="left" class="left" aria-label="向左">←</button><button data-direction="stop" class="secondary center">停止</button><button data-direction="right" class="right" aria-label="向右">→</button><button data-direction="down" class="down" aria-label="向下">↓</button></div></section>
   <section><div class="section-heading"><h2>抓拍记录</h2><button id="refresh" class="text-button" disabled>刷新</button></div><p id="history-status" class="hint">正在读取…</p><div id="history" class="history"></div></section>

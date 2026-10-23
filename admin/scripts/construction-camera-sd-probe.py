@@ -14,6 +14,7 @@ import ipaddress
 import json
 from pathlib import Path
 import sys
+import subprocess
 import time
 import urllib.parse
 import urllib.request
@@ -24,6 +25,7 @@ def main():
     parser.add_argument("--wvp-root", required=True, type=Path)
     parser.add_argument("--credentials", required=True, type=Path)
     parser.add_argument("--reboot", action="store_true")
+    parser.add_argument("--reboot-gb", action="store_true", help="Reboot the pinned GB device and resolve its DHCP management address from the live SIP socket")
     parser.add_argument("--format-sd", action="store_true", help="ERASE the authorized camera's SD card using the firmware FormatList:[1] operation, then reboot")
     parser.add_argument("--camera-ip", help="Management IP observed after DHCP re-registration; serial identity is still enforced")
     parser.add_argument("--wvp-only", action="store_true", help="Use GB28181 if the device HTTP service is unavailable")
@@ -136,6 +138,38 @@ def main():
         login = request("/api/user/login", {"username": "admin", "password": hashlib.md5(
             environment["WVP_ADMIN_PASSWORD"].encode()).hexdigest()})
         token = login["accessToken"]
+        if args.reboot_gb:
+            device_path = "/api/device/query/devices/" + args.device_id
+            registered = request(device_path, token=token).get("registerTimeStamp", 0)
+            check("gb_reboot", lambda: {"acknowledged": True, "data": request(
+                "/api/device/control/teleboot/" + args.device_id, token=token)})
+            time.sleep(8)
+            deadline = time.monotonic() + 150
+            while time.monotonic() < deadline:
+                try:
+                    if request(device_path, token=token).get("registerTimeStamp", 0) <= registered:
+                        time.sleep(3)
+                        continue
+                    raw = subprocess.check_output(["powershell", "-NoProfile", "-Command",
+                        "@(Get-NetTCPConnection -LocalPort 15060 -State Established -ErrorAction SilentlyContinue | Select-Object -ExpandProperty RemoteAddress -Unique) | ConvertTo-Json -Compress"],
+                        text=True, timeout=8)
+                    peers = json.loads(raw)
+                    peers = peers if isinstance(peers, list) else [peers]
+                    if len(peers) != 1:
+                        raise ValueError("Ambiguous SIP peer; do not send device credentials")
+                    credentials["ip"] = str(ipaddress.IPv4Address(peers[0]))
+                    cam = Camera(**credentials)
+                    result = storage()  # Enforce the original physical serial again.
+                    report["storageAfterReboot"] = result
+                    report["target"]["resolvedManagementIp"] = credentials["ip"]
+                    report["sdRecognized"] = result["sd"].get("SDStatus", -1) >= 0 and result["sd"].get("SDInfo", 0) > 0
+                    print("storage_after_gb_reboot: " + json.dumps(result, ensure_ascii=False), flush=True)
+                    break
+                except Exception as error:
+                    report["lastRecoveryError"] = str(error)
+                    time.sleep(3)
+            else:
+                report["rebootRecovery"] = "not_readable_within_150s"
         if args.record_seconds:
             record_params = {"deviceId": args.device_id, "channelId": args.channel_id,
                              "recordCmdStr": "Record"}

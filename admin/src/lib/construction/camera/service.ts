@@ -78,10 +78,11 @@ export class CameraService {
   async list(pid: string) {
     return withTenantTransaction(this.actor.enterpriseId, async tx => {
       const access = await cameraAccess(tx, this.actor, pid);
-      const items = await rows(tx, sql`select b.id as binding_id,c.id,c.name,c.version,c.ptz_enabled from app.construction_camera_bindings b
+      const items = await rows(tx, sql`select b.id as binding_id,c.id,c.name,c.version,c.ptz_enabled,r.enabled recording_enabled,r.retention_days,r.version recording_version,r.state recording_state,r.last_error recording_error,r.last_segment_at from app.construction_camera_bindings b
         join app.construction_cameras c on c.enterprise_id=b.enterprise_id and c.id=b.camera_id
+        left join app.construction_camera_recording_policies r on r.enterprise_id=b.enterprise_id and r.binding_id=b.id
         where b.enterprise_id=${this.actor.enterpriseId} and b.project_id=${pid} and b.ended_at is null and c.enabled order by c.id`);
-      return { project: access.project, canManage: access.manage, canConfigure: access.owner, canCapture: access.manage, canControl: access.manage, items };
+      return { project: access.project, canManage: access.manage, canConfigure: access.owner, canCapture: access.manage, canControl: access.manage, maxRetentionDays:Number(process.env.CAMERA_NODE_RETENTION_DAYS||7), items };
     });
   }
   async bind(pid: string, input: Row) {
@@ -99,6 +100,8 @@ export class CameraService {
       if ((input.bind && b) || (!input.bind && !b)) return { id: cameraId, version: Number(c.version), bindingId: b?.id || null };
       if (Number(c.version) !== expected) fail('version_conflict', 409);
       if (b) {
+        const recording=await one(tx,sql`select binding_id from app.construction_camera_recording_policies where enterprise_id=${eid} and binding_id=${String(b.id)} and (enabled or state<>'stopped')`);
+        if(recording)fail('camera_recording_busy',409);
         const control = await one(tx, sql`select camera_id from app.construction_camera_controls where enterprise_id=${eid} and camera_id=${cameraId} and stop_required`);
         if (control) fail('camera_control_busy', 409);
         await tx.execute(sql`update app.construction_camera_bindings set ended_at=now() where enterprise_id=${eid} and id=${String(b.id)}`);
@@ -156,7 +159,7 @@ export async function cameraSession(tx: PostgresTransaction, token: string, csrf
     and closed_at is null and expires_at>now() and absolute_expires_at>now() for update`);
   if (!s || (csrf !== undefined && digest(csrf) !== s.csrf_hash)) fail('camera_session_expired', 401);
   const access = await cameraAccess(tx, s.actor as ConstructionActor, String(s.project_id));
-  return { ...s, binding_id: s.binding_id, stream_id: s.stream_id, stream_app: s.stream_app,
+  return { ...s, recording_id:s.recording_id, binding_id: s.binding_id, stream_id: s.stream_id, stream_app: s.stream_app,
     play_version: s.play_version, view_expires_at: s.view_expires_at,
     access, actor: s.actor as ConstructionActor, eid, hash, pid: String(s.project_id) };
 }
@@ -179,7 +182,7 @@ export async function startCameraView(token: string, csrf: string, bindingId: st
   const { eid, hash } = parseCameraToken(token);
   const intent = await withTenantTransaction(eid, async tx => {
     const s = await cameraSession(tx, token, csrf), c = await binding(tx, eid, s.pid, bindingId);
-    const n = await one(tx, sql`update app.construction_camera_sessions set binding_id=${bindingId},play_version=play_version+1,stream_id=null,view_expires_at=null where token_hash=${hash} returning play_version`);
+    const n = await one(tx, sql`update app.construction_camera_sessions set binding_id=${bindingId},recording_id=null,play_version=play_version+1,stream_id=null,view_expires_at=null where token_hash=${hash} returning play_version`);
     return { c, generation: Number(n!.play_version) };
   });
   const stream = await upstream.play(String(intent.c.device_id), String(intent.c.channel_id));
@@ -194,7 +197,7 @@ export async function authorizeCameraMedia(token: string, generation: number) {
   const { eid } = parseCameraToken(token);
   return withTenantTransaction(eid, async tx => {
     const s = await cameraSession(tx, token);
-    if (!s.binding_id || !s.stream_id || Number(s.play_version) !== generation || new Date(String(s.view_expires_at)).getTime() <= Date.now()) fail('camera_view_expired', 401);
+    if (s.recording_id || !s.binding_id || !s.stream_id || Number(s.play_version) !== generation || new Date(String(s.view_expires_at)).getTime() <= Date.now()) fail('camera_view_expired', 401);
     await binding(tx, eid, s.pid, String(s.binding_id));
     return { app: String(s.stream_app), stream: String(s.stream_id) };
   });

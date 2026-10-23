@@ -3,8 +3,10 @@
   'use strict';
   const $ = id => document.getElementById(id), video = $('video');
   let csrf = '', state = null, player = null, intent = 0, active = false, heartbeat = null, controlBusy = false, captureBusy = false, stopPending = Promise.resolve();
+  let viewMode='live',recordings=[],recordingQuery=0,queryBusy=false,viewChange=0;
   const messages = { camera_entry_expired: '入口已过期，请返回工地重新进入。', camera_session_expired: '访问已失效，请返回工地重新进入。', camera_project_unavailable: '工地已停用或你的访问权限已变化。', camera_binding_unavailable: '摄像头已解绑，请返回工地重新进入。', camera_service_unavailable: '摄像头服务暂不可用，请稍后重试。', camera_operation_failed: '摄像头离线或操作未完成，请稍后重试。', camera_not_configured: '企业尚未配置视频服务。', camera_forbidden: '当前身份没有此操作权限。', camera_capture_busy: '正在抓拍，请稍后再试。', camera_control_busy: '云台正在使用或核对停止状态，请稍后再试。', camera_command_expired: '这次控制已失效，请重新轻点方向。', camera_ptz_unavailable: '这台摄像头暂未开放云台控制。' };
   const message = error => messages[error.code] || '操作暂未完成，请稍后重试。';
+  Object.assign(messages,{camera_recording_unavailable:'录像已过期或暂不可用，请刷新片段列表。',camera_invalid_date:'请选择有效的录像日期。',camera_recording_not_configured:'工地尚未配置云端录像服务。',camera_recording_conflict:'摄像头已有其他录像设置，请联系负责人核对。',camera_invalid_retention:'保留天数超出当前存储节点支持范围。'});
   function status(value, error = false) { $('status').textContent = value; $('status').dataset.error = String(error); }
   async function api(path, data, headers = {}) {
     const response = await fetch('/api/construction-camera/' + path, { method: data === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', headers: { 'Content-Type': 'application/json', 'x-camera-csrf': csrf, ...headers }, ...(data === undefined ? {} : { body: JSON.stringify(data) }) });
@@ -15,7 +17,41 @@
   const selected = () => state?.items.find(c => String(c.binding_id) === $('camera').value);
   function destroy() { active = false; if (player) { player.destroy(); player = null; } video.pause(); video.removeAttribute('src'); video.load(); $('stop').disabled = true; }
   async function stop(quiet = false) { intent++; destroy(); if (csrf) { stopPending = api('stop', {}).catch(() => {}); await stopPending; } if (!quiet) status('播放已停止'); }
-  function capabilities() { const c = selected(); $('play').disabled = !c; $('capture').hidden = !state?.canCapture; $('capture').disabled = !c || captureBusy; $('ptz').hidden = !state?.canControl || !c?.ptz_enabled; }
+  const selectedRecording=()=>recordings.find(r=>String(r.id)===$('recording').value);
+  function capabilities() { const c = selected(); $('play').disabled = !c; $('capture').hidden = viewMode!=='live'||!state?.canCapture; $('capture').disabled = !c || captureBusy; $('ptz').hidden = viewMode!=='live'||!state?.canControl || !c?.ptz_enabled; $('play-recording').disabled=queryBusy||!selectedRecording();$('query-recordings').disabled=queryBusy||!state; }
+  const preference=name=>'camera-'+name+':'+state.project.id;
+  async function loadRecordings(){
+    if(!state)return;const g=++recordingQuery;queryBusy=true;recordings=[];capabilities();$('recording').disabled=true;$('recording-status').textContent='正在读取录像片段…';
+    try{
+      const day=$('recording-date').value;localStorage.setItem(preference('date'),day);
+      const result=await api('recordings/query',{date:day});if(g!==recordingQuery)return;
+      recordings=result.items;$('recording').replaceChildren();
+      for(const record of recordings){const option=document.createElement('option');option.value=record.id;
+        const format=value=>new Date(value).toLocaleTimeString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false});
+        option.textContent=record.name+' · '+format(record.started_at)+' — '+format(record.ended_at);$('recording').append(option);}
+      const previous=localStorage.getItem(preference('recording'));if(recordings.some(r=>String(r.id)===previous))$('recording').value=previous;
+      if(!recordings.length){const option=document.createElement('option');option.textContent='当前日期暂无可回放录像';$('recording').append(option);}
+      $('recording').disabled=!recordings.length;
+      $('recording-status').textContent=recordings.length?'共 '+recordings.length+' 段云端录像；仅在时间连续时自动播放下一段。':'当前日期暂无可回放录像。启用前、未封口或中断期间的画面可能不可回放。';
+    }catch(e){if(g===recordingQuery){$('recording').replaceChildren();const option=document.createElement('option');option.textContent='读取失败，请重新查询';$('recording').append(option);$('recording-status').textContent=message(e);}}
+    finally{if(g===recordingQuery){queryBusy=false;capabilities();}}
+  }
+  async function setView(mode){
+    if(!state)return;const change=++viewChange;await stop(true);if(change!==viewChange||!state)return;viewMode=mode;localStorage.setItem(preference('view'),mode);
+    const playback=mode==='playback';$('live-actions').hidden=playback;$('live-settings').hidden=playback;$('playback-panel').hidden=!playback;
+    for(const name of ['live','playback']){$(name+'-tab').classList.toggle('secondary',name!==mode);$(name+'-tab').setAttribute('aria-pressed',String(name===mode));}
+    document.querySelector('.eyebrow').textContent=playback?'云工地 · 录像回放':'云工地 · 实时画面';
+    capabilities();status(playback?'选择日期和录像片段后开始回放。':'请选择摄像头，点击开始播放。');
+    if(playback)await loadRecordings();
+  }
+  async function playRecording(){
+    const record=selectedRecording();if(!record)return;const generation=++intent;destroy();$('play-recording').disabled=true;status('正在读取录像…');
+    try{await stopPending;if(generation!==intent)return;const result=await api('playback',{recordingId:String(record.id)});if(generation!==intent)return;
+      localStorage.setItem(preference('recording'),String(record.id));video.src=result.url;await video.play();if(generation!==intent)return;
+      active=true;status('正在回放 · '+record.name);
+    }catch(e){if(generation===intent){await stop(true);status(message(e),true);}}
+    finally{capabilities();}
+  }
   async function loadHistory() {
     try {
       const result = await api('snapshots'); $('history').replaceChildren();
@@ -81,13 +117,21 @@
       state = await api('state'); $('project').textContent = state.project.name; $('camera').replaceChildren();
       for (const c of state.items) { const option = document.createElement('option'); option.value = c.binding_id; option.textContent = c.name; $('camera').append(option); }
       $('camera').disabled = !state.items.length; $('refresh').disabled = false; capabilities();
+      $('recording-date').value=localStorage.getItem(preference('date'))||new Date(Date.now()+28800000).toISOString().slice(0,10);
       status(state.items.length ? '请选择摄像头，点击开始播放。' : '当前工地尚未绑定摄像头。'); await loadHistory();
-      heartbeat = setInterval(async () => { if (document.hidden) return; try { await api('heartbeat', {}); } catch (e) { clearInterval(heartbeat); await stop(true); $('play').disabled = true; $('capture').disabled = true; $('ptz').hidden = true; status(message(e), true); } }, 20000);
+      heartbeat = setInterval(async () => { if (document.hidden) return; try { await api('heartbeat', {}); } catch (e) { clearInterval(heartbeat); await stop(true);recordingQuery++;recordings=[];state=null;capabilities();$('play').disabled = true; $('capture').disabled = true; $('ptz').hidden = true; status(message(e), true); } }, 20000);
+      if(localStorage.getItem(preference('view'))==='playback')await setView('playback');
     } catch (e) { status(message(e), true); $('history-status').textContent = '访问不可用'; }
   }
   $('play').onclick = play; $('stop').onclick = () => stop(); $('capture').onclick = capture; $('refresh').onclick = loadHistory;
   $('camera').onchange = async () => { await stop(true); capabilities(); status('已切换摄像头，请点击开始播放。'); };
   $('mode').onchange = () => stop(); $('close-preview').onclick = () => $('preview').close();
+  $('live-tab').onclick=()=>setView('live');$('playback-tab').onclick=()=>setView('playback');$('return-live').onclick=()=>setView('live');
+  $('query-recordings').onclick=async()=>{await stop(true);await loadRecordings();};$('recording-date').onchange=$('query-recordings').onclick;
+  $('recording').onchange=async()=>{await stop(true);capabilities();};$('play-recording').onclick=playRecording;
+  video.addEventListener('ended',()=>{if(viewMode!=='playback')return;const record=selectedRecording(),index=recordings.indexOf(record),next=recordings[index+1];
+    if(record&&next&&Math.abs(new Date(next.started_at).getTime()-new Date(record.ended_at).getTime())<=1000){$('recording').value=String(next.id);void playRecording();}
+    else{void stop(true);status(next?'当前片段已结束，后续片段时间不连续，请手动选择。':'当天录像片段已播放结束。');}});
   document.querySelectorAll('[data-direction]').forEach(b => { b.onclick = () => control(b.dataset.direction); });
   document.addEventListener('visibilitychange', () => { if (document.hidden) void stop(true); });
   window.addEventListener('pagehide', () => { intent++; destroy(); if (csrf) fetch('/api/construction-camera/stop', { method: 'POST', credentials: 'same-origin', keepalive: true, headers: { 'Content-Type': 'application/json', 'x-camera-csrf': csrf }, body: '{}' }).catch(() => {}); });
