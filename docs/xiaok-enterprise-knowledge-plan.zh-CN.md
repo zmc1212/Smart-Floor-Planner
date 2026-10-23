@@ -27,7 +27,7 @@
 | 实际缺口 / 第一动作 | 无新的KnowledgeRetriever/Evidence缺陷。Agent历史来源覆盖在同一4条/7000字节内补齐最初书房/客厅和当前更正，1565/1566两次实模/原生均通过；新增最初客厅来源撤回仍收起派生答复。普通照抄已在供应商输出中定位，非知识解析/检索问题。知识只保留依赖指针，不重建入库或重测已通过范围；1430/3862 unknown保持。 |
 | 知识侧完成条件 | Evidence的实际来源、版本、定位、受众及撤回满足剩余原题；正确Evidence之后的回答失败由Agent处理。 |
 | 验收边界 | KDEP-OPS-01已完成“无需知识源码改动”的依赖核对，未冒充新知识语义验收。 |
-| 下一项 | 随CONSULT-02普通段落输出通道判别，知识侧无需源码变更。已有来源/版本/受众/撤回边界沿原KnowledgeRetriever/Evidence；不得将Agent生成缺陷变成入库、OCR、格式/规模或已通过部分复测。 |
+| 下一项 | 普通段落通道判别已完成4次、语义0/4，仍归Agent；知识无需源码变更。随CONSULT-02离线任务协议/模型能力判别，保留KnowledgeRetriever/Evidence来源/版本/受众/撤回边界，不重做入库、OCR、格式/规模或已通过部分。 |
 | 后续必交付 | CONSULT-01独立建议失败保留Agent归属、同类计数及unknown/null费用。 |
 | 证据入口 | Agent第1节、tmp/xiaok-consult-02-glm9/coverage-review.json及paragraph-mechanism-audit.json；前序候选/单元/宽批次保留原绑定。知识来源/API/Evidence/UI/角色未改，来源撤回沿既有记忆授权；无需知识源码变更不冒充新知识语义或全局模型通过。1430/3862/reconciling/null费用保持。 |
 

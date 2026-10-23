@@ -25,12 +25,12 @@
 | 交付ID / 状态 | **CONSULT-02，Limited。** 原35/60长聊、更正/当前回读/压缩沿原限定证据；初始书房与客厅原话及后来只改书桌的完整叙述现已2/2限定通过。普通段落照抄与旧专业建议失败仍未关闭，不称整体咨询完成。OPS-01保持原限定完成。 |
 | 用户动作 / 入口 | 原C01客户要求用一两句区分段落中的活动/准备与最终决定，不保存或查询；当前先诊断普通段落照抄。 |
 | 已有基础 / 实际缺口 | 复用Agent记忆、KnowledgeRetriever/Evidence、免费GLM9及批准C01。历史选择已在当前来源后优先已记录的较早原话；两份原保存输入均同时包含最初书房/客厅与当前更正，仍4条/7000字节。普通照抄直接存在于供应商final_response参数，非UI回显或历史泄漏。 |
-| 本轮先做 | 历史覆盖机制已完成4服务/42兼容单元/lint、2份保存输入真实SQL、2根类型0及两次固定GLM9原生输入1565/1566，真实保存/幂等/重进/客户租户拒绝/新增最初客厅来源撤回通过。下一仅沿paragraph-mechanism-audit.json做输出通道判别，不重跑35/60、保存更正或已通过原题。 |
+| 本轮先做 | 历史覆盖f62b1709已完成4服务/42兼容单元/lint、2份保存输入真实SQL、2根类型0和两次固定GLM9原生1565/1566。后续输出通道判别也已按固定4次完成：1567–1570均协议合格但仍照抄，语义0/4；否决仅换JSON通道的产品修复，不再补采。 |
 | 固定完成条件 | 固定剩余原题及长聊/压缩范围；实写回读/重进、来源/租户/权限/回执/恢复及受影响原生检查；新语义核心每题预定2次配置模型，不补采凑通过。 |
 | 验收边界 | 各源码/测试/配置绑定独立保留。check-03的7项服务观察、1项检索前提失败及外部源码漂移不算组合通过；按实际依赖固定的67单元/lint及候选正常服务分别稳定。无需重做P5/OPS或知识入库。 |
 | 失败收口 | 本段计数2、旧数值建议/8B失败保持；新上下文机制不重评旧稿。新增Qwen1431/1432失败及1430/3862 accepted unknown/reconciling/null费用保留。停止候选矩阵及继续改措辞采样，无付费兜底。 |
-| 下一项 | CONSULT-02普通段落机制判别：固定1517/1518、1535/1536保存的两种原题/两消息输入，在同一免费GLM9比较原final_response强制函数与无业务工具的结构化JSON答复通道，每种原题预定2次。诊断保持system/user原文，不先改措辞或产品；原段落计数2、书桌链路计数2及预算机制1保持。已通过范围与1430/3862不重测、不重放；知识/P5/OPS不重做。 |
-| 证据入口 | tmp/xiaok-consult-02-glm9/coverage-review.json、coverage-native.json、coverage-saved.json、coverage-green.json、coverage-typing-complete.json及paragraph-mechanism-audit.json。新批251项稳定，1565/1566共8次GLM9尝试/52133 observed tokens/费用null/最终修复0；16项原生及清理检查、6张已查看C01图，AI停用/身份2/队列0/transport与controller已清理。导入前置、初次4项类型绑定遗漏及review启动前置分别保留，旧失败不改判；更正1501/1502与前序20次尝试独立复用。1430/3862仍indeterminate/accepted unknown，不清账；未生产。 |
+| 下一项 | CONSULT-02普通段落仍受阻。先离线核对任务协议中的“允许复述”与客户“用一两句区分”的完整I/O，区分任务语义边界和配置模型能力；没有新的机制证据，不改第三轮措辞、不再派发这些原题。原段落计数2、书桌链路2、预算1保持；历史覆盖已限定完成，知识/P5/OPS及1430/3862不重做、不重放。 |
+| 证据入口 | tmp/xiaok-consult-02-glm9/coverage-review.json、coverage-native.json、coverage-saved.json、coverage-green.json、coverage-typing-complete.json及paragraph-mechanism-audit.json。新批251项稳定，1565/1566共8次GLM9尝试/52133 observed tokens/费用null/最终修复0；16项原生及清理检查、6张已查看C01图，AI停用/身份2/队列0/transport与controller已清理。导入前置、初次4项类型绑定遗漏及review启动前置分别保留，旧失败不改判；更正1501/1502与前序20次尝试独立复用。1430/3862仍indeterminate/accepted unknown，不清账；未生产。 后续paragraph-channel-ready.json及paragraph-channel-review.json独立245项稳定绑定，4诊断调用/1341 observed tokens/费用null，协议4/4但语义0/4，AI停用/身份2/队列0；未改产品或重复原生。 |
 
 ### 已完成业务与后续队列
 
