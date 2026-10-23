@@ -18,18 +18,17 @@
 
 ## 1. 当前判断与可复用基础
 
-**唯一知识依赖记录｜2026-10-22。** 业务当前项与顺序只取[Agent计划第1节](./xiaok-agent-engineering-plan.zh-CN.md#1-范围与优先级)，执行方法只取[交付执行规则](../AGENTS.md#xiaok-delivery-execution)。本计划记录知识服务的交付与缺口，不复制Agent修补/实模流水，不把Agent回答失败等同入库或检索失败。
+**唯一知识依赖记录｜2026-10-23。** 业务当前项与顺序只取[Agent计划第1节](./xiaok-agent-engineering-plan.zh-CN.md#1-范围与优先级)，用户已授权R0–R4顺序实施并自动继续，undefined。本计划只记录知识服务依赖，不复制Agent修补/实模流水，不把Agent回答失败等同入库或检索失败。
 
 | 字段 | 当前知识侧执行内容 |
 | --- | --- |
-| 对应交付 / 状态 | **KDEP-CONSULT-02** 支撑当前CONSULT-02；知识平台整体Limited。 |
-| 用户链路 / 已有基础 | 原C01长聊/压缩与连续追问复用KnowledgeRetriever/Evidence；KB-1～KB-4保持。 |
-| 实际缺口 / 第一动作 | 无新的KnowledgeRetriever/Evidence缺陷。Agent历史来源覆盖在同一4条/7000字节内补齐最初书房/客厅和当前更正，1565/1566两次实模/原生均通过；新增最初客厅来源撤回仍收起派生答复。普通照抄已在供应商输出中定位，非知识解析/检索问题。知识只保留依赖指针，不重建入库或重测已通过范围；1430/3862 unknown保持。 |
-| 知识侧完成条件 | Evidence的实际来源、版本、定位、受众及撤回满足剩余原题；正确Evidence之后的回答失败由Agent处理。 |
-| 验收边界 | KDEP-OPS-01已完成“无需知识源码改动”的依赖核对，未冒充新知识语义验收。 |
-| 下一项 | Agent最终句数合同已限定实现：68单元/lint、4确定性服务和固定4次实模/原生技术链通过，但首稿语义0/4、唯一修复后1/4，正常业务整批失败。知识无需源码变更；沿Agent保存轨迹审计模型/工具路由与用户提出的联网能力方案，复用KnowledgeRetriever/Evidence，不另建Agent或引用权威，不重做入库、OCR、格式/规模或已通过部分。 |
-| 后续必交付 | CONSULT-01独立建议失败保留Agent归属、同类计数及unknown/null费用。 |
-| 证据入口 | Agent第1节及tmp/xiaok-paragraph-contract/{review,native,typing,plan,green,service-ready}.json；前序覆盖/通道证据保持原绑定。知识来源/API/Evidence/UI/角色未改，当前没有互联网搜索工具，联网仅为方案讨论。无需知识源码变更不冒充知识语义或全局模型通过；1430/3862/8673未知及null费用保持、不重放清账。 |
+| 对应交付 / 状态 | **KDEP-CONSULT-02**仍Limited。R0类型/离线合同及联合服务回归已做，知识侧无代码改动需要；当前按Agent计划推进R1祖先Evidence重验与来源接续。 |
+| 保留 / 不迁移 | 保留KnowledgeRetriever/Evidence、KB-1～KB-4解析/索引/发布/epoch/受众/原定位和撤回；原3份合成资料ID/hash保持，不重入库、不替换正式版本，不引入第二Agent/facts/引用权威。 |
+| 本次归因 | 原32内部全文核对和真实图像字节完整性可复用；未找到知识新缺陷。原版来源发现、目录接续、图像消费/一般答复归Agent/托管或测试环境；正确Evidence不等于正确最终答复。 |
+| 接口依赖 | Agent从服务端祖先重验原Evidence后投影当前目录，不能从历史答案重建知识事实。图纸OCR/观察作为获权媒体的Agent消费，不自动进入企业知识；公开HTML/PDF由受控读取器返回Evidence，保留来源性质，不伪造知识条目。 |
+| 必需联合验收 | R1/R3实际混合来源要覆盖知识撤回/换版/epoch、客户受众、项目及媒体撤权，检查当前/历史答复、摘要、缓存、来源打开和重进；知识无命中与引擎不可用分开。仅在原文/定位/版本/授权实际错误时修改知识域。真实资料未获模型使用许可则该范围保持未验。 |
+| 下一项 / 预算 | R1仅按实际原文/定位/版本/授权缺陷修改知识；正确Evidence后的消费/目录问题归Agent。复用KnowledgeRetriever，不重入库/跑新Embedding矩阵。固定模型及unknown预留由二期合同统一管理，新增百炼业务调用0；夹具既有本地Embedding单列。 |
+| 证据 / 账务 | 二期当前节及mature原始live/transport-live/providerWire/review/ui/acquisition；continuity仅208依赖零模型/业务runs0。历史51调用/251487tokens/日账单¥0、逐attempt null及旧unknown保持；本规划新业务调用0。仅文档，无运行清单行为变化。 |
 
 **重复失败处理：** 按共用规则保留同一故障计数和原始输入/输出。只有已证实的KnowledgeRetriever/Evidence缺陷进入本域；正确Evidence后的工具/引用/生成失败归Agent。同一负责人完成有界修复及受影响联合回归，不要求两个领域平均改动，不以知识独立通过替代业务交付。
 

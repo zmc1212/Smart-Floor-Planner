@@ -30,7 +30,7 @@ import { visionContext, withVisionObservations } from './vision';
 import { constructionNoticeAvailable } from '@/lib/construction/customer';
 import { materialTool, parseMaterialQuery, queryMaterials, materialSnapshotAvailable, type MaterialDependency, type MaterialSnapshot } from './materials';
 import { needIssueTool, queryNeedIssues, needIssueSnapshotAvailable, type NeedIssueDependency, type NeedIssueSnapshot } from '@/lib/construction/need-issues';
-import { businessSynthesisSources, knowledgeSynthesisSources, parseSynthesis, synthesisInstructions, synthesisRepairFeedback, focusedSynthesisMessages, unresolvedSynthesisConflict, availabilityScopeHintPrefix, synthesisRepairProjectionVersion, synthesisContextProjectionVersion } from './synthesis';
+import { businessSynthesisSources, knowledgeSynthesisSources, parseSynthesis, synthesisInstructions, synthesisRepairFeedback, unresolvedSynthesisConflict, availabilityScopeHintPrefix, synthesisRepairProjectionVersion, synthesisContextProjectionVersion } from './synthesis';
 import { resolveSynthesisRepair, synthesisRepairBase, synthesisRepairProtocol, synthesisRepairTool, finalAnswerRepairBase, finalAnswerRepairProtocol } from './synthesis-repair';
 import { currentSynthesisContext } from './synthesis-sources';
 import { boundKnowledgeContext } from './bound-context';
@@ -42,8 +42,9 @@ import { agentChatProtocolVersion } from '@/lib/ai/providers/agent-chat';
 import { historyTool, parseHistoryQuery, recallHistory, historyRefsAvailable, historySynthesisSources, type HistoryRef, type HistorySnapshot } from './history';
 import { historySummaryPolicy, historySummaryCapability, historySummaryStep, summaryInput, summaryRequest, selectedSummary, summaryTool, withHistorySummary } from './summary';
 import { isReadToolInputFailure, readToolInputIssue, readToolInputProtocol, bindReadToolInput, readToolContext, readToolsForContext, knowledgeReadPending, originalAnswerOnly, independentAdviceRequested, explicitHumanHandoffRequested, sourceReadProtocol, sourceAnswerProtocol, type ReadToolContext } from './read-tool-input';
-import { currentMessageOnlyRequested, currentMessageView, currentMessageFinalTool, currentMessageReplyFeedback, currentMessageScopeProtocol } from './current-message-scope';
-import { independentAdviceView, independentAdviceContextProtocol } from './independent-advice-context';
+import { currentMessageOnlyRequested, currentMessageFinalTool, currentMessageReplyFeedback, currentMessageScopeProtocol } from './current-message-scope';
+import { independentAdviceContextProtocol } from './independent-advice-context';
+import { compileModelRequest, type ModelRequestPurpose } from './model-request';
 
 const needProperties = { room: { type: 'string', description: '仅填该字段自身分句中的明确房间；仅写预算而无房间时填空字符串，不借用相邻分句的房间。' }, field: { type: 'string', enum: factFields, description: 'use记录用途/人数，desk记录桌型/书桌位置，storage记录收纳/柜体要求，budget记录预算，daylight记录采光，devices记录设备；style只记录装修风格，不存书桌位置或收纳。独立字段分别保存，不用更正人数覆盖设备或位置。' }, value: { type: 'string', description: '逐字摘自quote，不改写。' }, quote: { type: 'string', description: '该字段的最短完整原分句，逐字摘自本次客户消息，标点也不改写；不拼接多句。' } };
 export const needTool: ModelTool = { name: 'record_need', description: '保存当前客户消息中明确说出的需求，只摘原话。不变字段沿用原记录。同一消息有多个独立字段时，主字段加additionalNeeds一次原子保存（合计最多四条），不要逐轮单独保存。明确更正后又提问时先保存，等回执再查询解释；逗号后以另外/此外/顺便另问的独立问题不取消前面的明确更正，quote只摘更正原句，不带后面的假设/问题，也不保存问题中的设备或房间。更正本身附条件、转述或客户说不记录时不保存。返回memoryVersion。', parameters: {
@@ -531,16 +532,11 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       for (const ref of initial.referenceEvidence) if (!await resolveEvidence(tx, lease.actor, context.conversation, ref, true)) fail('context_changed');
       await currentSynthesisContext(tx, lease.actor, context.conversation, lease.runId);
     }); };
-    const callModel = async (turn: number, messages: ModelMessage[], tools: ModelTool[], purpose: 'answer' | 'vision' | 'summary' = 'answer'): Promise<ModelTurnOutput> => {
-          const messageScoped = purpose === 'answer' && currentMessageOnlyRequested(reviewContext.currentQuestion);
-          const adviceScoped = purpose === 'answer' && !messageScoped && independentAdviceRequested(reviewContext.currentQuestion);
-          const focused = messageScoped ? currentMessageView(messages, String(initial.trigger.id), reviewContext.currentQuestion)
-            : adviceScoped ? independentAdviceView(messages, String(initial.trigger.id), reviewContext.currentQuestion)
-            : turn > 0 && purpose === 'answer' ? focusedSynthesisMessages(messages, String(initial.trigger.id)) : messages;
-          const dispatchTools = purpose === 'vision' ? [] : purpose === 'summary' ? tools : agentToolsForTurn(safeText(initial.trigger.content as Parameters<typeof safeText>[0]), focused, tools, String(initial.trigger.id));
-          const policyView=purpose==='answer'?projectSynthesisPolicy(focused):focused;
-          const bounded = fitAgentContext(policyView, dispatchTools);
-          const modelMessages = bounded.messages;
+    const callModel = async (turn: number, messages: ModelMessage[], tools: ModelTool[], purpose: ModelRequestPurpose = 'answer'): Promise<ModelTurnOutput> => {
+          const { messageScoped, adviceScoped, focused, dispatchTools, policyView, bounded, modelMessages } = compileModelRequest({
+            question: reviewContext.currentQuestion, triggerId: String(initial.trigger.id), turn, purpose, messages, tools,
+            toolsForTurn: agentToolsForTurn,
+          });
           const summaryRequestHash = purpose === 'summary' ? fingerprint({ messages: modelMessages, tools: dispatchTools }) : null;
           await heartbeat(lease); outcomeKnown = false;
           const sequence = 1100 + turn * 10;

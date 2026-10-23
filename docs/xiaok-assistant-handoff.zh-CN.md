@@ -1,5 +1,17 @@
 # 小K接力：跨阶段核对与统一接续
 
+**最新交接｜2026-10-23：R0内部步骤完成，自动进入R1。** 用户已授权R0–R4顺序实施和逐阶段自动继续，固定百炼`deepseek-v4.1-flash-1017`/thinking=false；R1/R2/R3上限60000/80000/100000，R4另限1000000，均现金0/无付费回退/无生产。CONSULT-02/KDEP-CONSULT-02仍Limited，不新增业务Implemented。当前唯一负责人继续本聊天，不恢复旧对照。
+
+R0保留worker授权/dispatch/用量/回执/提交/旧checkpoint，提取纯`model-request.ts`，咨询profile仅类型未激活8192。`tmp/xiaok-consultation-r0/final-audit.json`核对192单元、65真实服务断言、193源码类型0、lint和51旧wire/20目录/两原PNG/OCR；原251487tokens是历史，本轮新百炼/业务调用0。原全文件服务批主动中断，60通过/7实模跳过/3失败及原绑定不改判；只用提取前worker控制，3/3失败同样重现。独立建议unsupported_model_commitment带R3；AG05旧kind期待及AG08硬编码v8对当前v9带R1兼容，不能删恢复/撤回用例或据mock unknown冒充新供应商未知费用。
+
+中断/基线合成夹具已删，web夹具停AI/撤身份，队列0、锁释放、Provider attempts0。隔离库无摄像头/录像表，仅测试夹具清理按表存在性/合成前缀/Provider0适配，未改产品物理文件守卫或迁移。原开发服务/SSH/端口/配置/凭据/原生窗口未改；Stable尚未操作，无新真机/原生/真实图语义通过。本地Embedding是夹具既有组件，独立记录，不等于百炼费用；旧真实unknown1430/3862/8673/1948/1949及段落2/书桌2/预算1保留。
+
+当前R1：原C01企业＋本人项目＋厂家原文及追问/点来源/重进；先接run绑定8192 profile和同一账务派发预留（旧每run72000高于整阶段60000），再做受控Crawl4AI/pypdf读取（旧10MB/60页要收紧到4MB/50页）与服务端祖先来源重验/本轮目录，不加第二Agent/facts/权限/引用权威。`tmp/xiaok-consultation-r1/plan.json`已登记原2-turn×2共4答复，预算草稿5项离线通过但未集成。需新鲜额度/用尽即停/实际能力绑定才派发；Chrome较早刷新436.37K/checked不能当以后足额保证。R1包括真实服务、原C01输入/发送/来源打开/刷新重进/撤权/失败恢复及单控制器Stable，完成后自动R2，不逐次确认。
+
+分支仍codex/xiaok-public-site-lifecycle，接手HEAD35e07debf7d56b47eb6aa8c5b2eaa1189cef81f8，工作树原有脏改动保留。`stage-r0.mjs`将只暂存R0代码、批准方案及当前记录，不整批git add；R0局部提交生成后在下一次必要记录写入真实hash。复用R0证据，不重跑旧全矩阵。
+
+## 历史规划交接（其中待批准表述已被上方新授权取代）
+
 **接续先读：** [Agent计划第1节](./xiaok-agent-engineering-plan.zh-CN.md#1-范围与优先级)是唯一当前交付及下一项，[知识计划第1节](./xiaok-enterprise-knowledge-plan.zh-CN.md#1-当前判断与可复用基础)只记录知识依赖。按[交付执行规则](../AGENTS.md#xiaok-delivery-execution)携带交付ID、剩余检查、同类修复计数及可复用证据；本文件下方历史“当前/下一步/停止”不重新派发任务。负责人身份仍按最新可信顺序交接记录核对，不由本文旧聊天称谓指定。
 
 ## 当前交付和顺序接续（2026-10-23）

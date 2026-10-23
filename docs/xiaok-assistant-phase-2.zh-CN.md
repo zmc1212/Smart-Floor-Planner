@@ -1,5 +1,138 @@
 # 小K第二期：需求整理与人工交接
 
+<a id="当前架构复盘与重构计划2026-10-23仅计划待批准实施"></a>
+
+## 当前架构复盘与重构计划（2026-10-23，已批准实施）
+
+**实施决策：保留 LangGraph 和现有业务内核，对咨询链路作有界重构。** 本节是当前方案和接口决策的唯一详细记录；[Agent计划第1节](./xiaok-agent-engineering-plan.zh-CN.md#1-范围与优先级)负责顺序，[知识计划第1节](./xiaok-enterprise-knowledge-plan.zh-CN.md#1-当前判断与可复用基础)只登记知识依赖。用户于2026-10-23明确授权从R0顺序实施、阶段完成自动继续；固定同一百炼DeepSeek Flash、原预算上限、现金0、无付费回退及生产部署。CONSULT-02/KDEP-CONSULT-02仍Limited，未完成范围不因授权升级。
+
+### 当前执行：R1来源获取与跨轮引用（R0内部步骤已完成）
+
+R1用户动作是原C01中的企业＋本人项目＋厂家原文咨询、沿前轮来源追问、点来源和持久重进。已验证缺口是公开候选/导航/正文耦合、当前run来源目录不接续、旧2048输出/72000预留与本次8192/阶段60000上限不匹配。先沿原账务实现run绑定profile/派发预留，再接受控读取和服务端祖先重验；不是另建Agent、facts store、权限解析或引用系统。R1尚未集成或验收通过，下一步完成R1后自动R2。
+
+固定验收为原2-turn链×2＝4答复，原题在`tmp/xiaok-consultation-r1/plan.json`；同一百炼`deepseek-v4.1-flash-1017`、thinking=false、输出上限8192，观察＋未决预留总上限60000tokens、现金0、无付费回退。已有离线证据可定位获取/目录问题，暂不增加oracle调用；若仍需判别，须预登记且同在60000内。客户端仍用已批准C01组件，真实发送/服务写入/来源打开/刷新重进/撤回和错误恢复，Stable单控制器/原锁/空队列；不改视觉方向。派发前重新核额度、用尽即停和真实能力；旧Chrome刷新436.37K不能当未来足额保证。
+
+**R0完成范围。** `agent/model-request.ts`提取纯请求编译，保留上下文/工具/policy/裁剪顺序，worker授权、durable dispatch、计量、回执、提交及旧checkpoint/公开导出保持；`contracts/consultation.ts`仅登记任务/图纸观察/验收profile，未激活8192或改变共享模型/原2048预算。证据`tmp/xiaok-consultation-r0/final-audit.json`：192单元、65真实服务断言、193实际源码类型0、新增0、定向lint、51原wire配对/解析、20目录/保存重进回放通过。8个含图请求的12次图像出现匹配两原PNG；OCR5400/4200坐标已核，类型仍unspecified。已逐张审看V1/V2，V2桌在窗左侧/S5新增/T1东→西，只是离线判据，不是新模型、真实施工图或原生通过。历史251487tokens与新增业务调用0分开。
+
+原全文件服务批主动中断，原`service.log/json`仍失败/未完成；其中60项通过、7实模跳过、3断言失败不改判。只对三失败执行精确提取前worker控制，3/3同样重现，配置/源码稳定；另5项网页服务合同通过。各批保持原绑定，runner仅凭据加载、禁止实模、TAP和web选择的后续变化有独立影响核对，未缩小旧绑定或重跑全矩阵。
+
+| 保留失败 | 实际I/O与归属 | 后续范围 |
+| --- | --- | --- |
+| 独立一般建议修复 | 原worker也以`unsupported_model_commitment`失败，预期正常建议持久投递；Agent表达/守卫路径，非知识入库 | R3，保留原失败，不重置旧段落2/书桌2/预算1 |
+| AG05读入参恢复 | 原worker也出现确定性测试回调后的合成`provider_outcome_unknown`；Provider attempts0，不是新实模未知费用。测试仍期待旧展示kind组合，当前已是source-final-v4 | R1同步合同并保留真实恢复/幂等/撤回断言，不放宽权限 |
+| AG08引用修复元数据 | 实际`current-turn-sources-v9`，测试硬编码v8；此前真实答复/两来源保存已通过 | R1兼容测试，保留原失败，更新过期合同期待 |
+
+隔离库缺摄像头/录像表，原施工夹具收尾不兼容；只在受隔离目标、合成前缀、Provider0和表存在性保护的测试清理中适配，记录表存在仍走原物理文件守卫，未改产品清理/schema。中断与基线夹具已删除，web夹具AI停/身份撤权，队列0、验收锁释放；原开发服务、凭据、UI/API/权限/知识索引和生产未改。本地Embedding按夹具单列，中途快照12索引/411tokens、26已计查询/1280tokens及1未计量，不是百炼账单。R0命令：`cd admin`后`node --import tsx scripts/assistant-consultation-offline.mjs`、`node scripts/assistant-consultation-check.mjs <unit|web|types|lint>`；原全文件`service`仅作历史复现，不是新增推进门槛。
+
+R1还须将读取器旧10MB/60页收紧到计划4MB/50页；所有新主循环、摘要和必要感知共享至多6次/180秒及同一token预留。预算草稿/5项离线检查在`tmp/xiaok-consultation-r1/`，尚未接入产品。CONSULT-02/KDEP-CONSULT-02仍Limited，无新业务Implemented声明。
+
+### 复盘依据与归因
+
+本次只读核对当前工作区、原始`providerWire`/首稿、两张原PNG和已保存的清理记录，没有恢复服务、访问远程开发机、调用业务模型或运行原实验。接手分支`codex/xiaok-public-site-lifecycle`、HEAD `6596fc734fda71a384c0b654786f6efc8f426125`、index `8fdd8cf5b226129dcf09583121d1e4a06d803b20`与交接相符；工作区含未提交产品改动，因此HEAD不是本次所读代码的完整版本。编辑前，排除本次7份计划/合同/交接文档的161个已有修改/未跟踪文件内容摘要为`88598ff051e0941d7db10bd7a938e0b0e7006bb420bac2a7a8cc530e5f5f0d5d`，用于交付时检查保留情况，不代替未来验收的完整依赖绑定。
+
+**收尾漂移核对。** 共享工作区期间另有`35e07debf7d56b47eb6aa8c5b2eaa1189cef81f8`（施工录像覆盖检查）提交，index变为`7fdb1f9939f6bad0b23c23abd68b70f22cc1cc63`。其18个提交路径不含下列Agent审读源码或本轮7份文档；全工作区摘要已变化，不能声称全树无漂移，也未回滚/暂存/提交该工作。最终23个审读文件的排序`[path, sha256(bytes)]`数组摘要为`2cb675e3bfca6878e4aff43ddf5ca256160a51e68cd7c62149bb2d35dc751908`：`admin/package.json`；`assistant/contracts/{index,model,web-source}.ts`；`assistant/agent/{config,runtime,worker,web,web-evidence,synthesis-sources,citation-catalog,synthesis,synthesis-review,model-policy,independent-advice-context,vision,media-context}.ts`；`ai/providers/agent-chat.ts`及`ai/postgres-workflow-chat.ts`（前三组模块路径均在`admin/src/lib/`下，package.json除外）；`admin/src/lib/assistant/__tests__/{agent-vision,agent-runtime,web}.test.ts`及`admin/src/db/__tests__/assistant-web.test.ts`。此为只读规划快照，不是新运行验收。文档`git diff --check`通过，35个当前本地链接/锚点有效，双语15个上游链接及阶段/预算字段一致；未运行产品或上游测试套件。
+
+| 具体输入/输出或代码事实 | 已证实的归属与结论 | 尚缺的判别；不扩大结论 |
+| --- | --- | --- |
+| mature首批16答复中RPC指向Docker内`127.0.0.1`；另有前置向量IP占用错误 | 对照环境/测试驱动错误，不是模型能力失败。修复后4个受影响答复独立保留 | 复用配置与传输记录；不重跑首批或把修复稿并入首稿成功 |
+| 同题“查快步厂家地暖说明”，修正传输后的8962/8964只读代理资讯；独立实际链接导航及原版Tool读到6页原厂PDF | 正文获取机制可用；自主原厂发现0/2。搜索候选、链接排序、停止策略与模型选择共同构成未完成链路 | 离线重放原候选/真实出链，记录原厂路径在哪一层丢失；批准后固定“给正确证据”与“自主获取”两个对照臂，各同题2次。前者过、后者失败定位获取；前者也失败继续查协议/消费，不能说原厂不存在 |
+| 8963/8965原始模型响应沿用`[4][5]`/`[5]`，保存答复仅2个来源；真实UI为`undefined` | Open WebUI此次扩展/目录生命周期的可复现缺陷；不是KnowledgeRetriever丢失内部全文，也不是纯CSS问题 | 原对话祖先→来源全文→当前目录→显示映射的离线回放足以定位丢失边界；真正分支/撤权仍须真实服务验收。小K有严格目录校验，不能直接声称它也显示同一错误 |
+| 8954/8958原始首稿把未定类型的5400×4200mm称净尺寸；8954推算22.7㎡；8956把V2书桌说成仍在窗下 | 正确PNG字节到达托管模型，错误已在原始响应中，未由UI或小K解析器添加；图像消费/语义约束失败。V2原像素确为窗左侧 | 原图输入完整不证明正确理解。原图＋OCR定位＋明确`unspecified`的受控输入，固定2次，区分识读与未经支持的尺寸/空间推断；不能把托管输出错误进一步归因到权重或内部视觉路由 |
+| 51条wire均为`deepseek-v4.1-flash-1017`、`enable_thinking=false`、输出上限8192，原响应无`reasoning_content` | 本批是百炼托管/关闭思考的具体路径；不是小K2048输出上限下的试验 | 思考字段兼容是未来适配风险，**不是这批失败的已证实原因**；不自动开启thinking、更换模型/平台配置或推断完整DeepSeek能力 |
+| 一般选材答复出现家具可随意拖动、美缝不发黑等无条件保证 | 原始生成内容过度概括，来源目录修好也不会自动消失 | 在固定普通问答中验条件和限定，不能以“advice”标签或禁词正则代替语义验收 |
+| 32项内部全文、8份图像输入、20次重进完整性通过 | 对照的输入/存取完整性有证据；无新知识解析/入库/Evidence缺陷证据 | 不证明真实图纸理解、小K多租户/撤回、正常客户端发送或完整咨询通过 |
+
+对应原件集中在`tmp/xiaok-intelligent-consult/`：`openwebui-mature-{review-01,ui-01,acquisition-02}.json`、`openwebui-mature-live-04-ready.json`（16答复/34调用）、`openwebui-mature-transport-live-04.json`（4答复/17调用）。`openwebui-continuity-{mechanism-check-01.log,ocr-02.json,preflight-04-prepare.json,live-04-prepare.json,close-01.json}`只支持零模型协议/OCR/208依赖预检与清理；业务runs0。模拟祖先排除检查不等于真实分支验收。当前`scripts/openwebui-comparison/`不是旧51调用的已测字节，不直接移植或继续运行。
+
+### 小K实际结构与改动取舍
+
+| 当前模块 | 复用的能力 | 计划处理的具体边界 |
+| --- | --- | --- |
+| `agent/runtime.ts`、`agent/worker.ts`、`contracts/model.ts` | LangGraph 1.5.0；4轮主循环、最多4个同轮工具、一次参数/最终修复；逐步授权、checkpoint、去重、最后一轮收回工具 | 保留图与durable dispatcher。worker拆清上下文投影、获权读取、模型适配、提交职责；不是再写一个Agent。摘要/视觉在主循环外，须纳入同一总用量/时限台账 |
+| `agent/web.ts:136–213` | 免费SearXNG、URL/DNS防护、原文快照及明确失败 | 搜索即尝试读取最多3候选/接纳2页；HTML提取移除导航且无出链/PDF合同。拆为候选发现、受控读取、证据接纳；不能只调大`maxModelTurns`或文本上限 |
+| `agent/synthesis-sources.ts:32–74`、`agent/web-evidence.ts`、`agent/citation-catalog.ts` | 当前run的服务端获权来源；网页`run:step:index`身份、`w:run:index`既有引用入口；提交/重进重验 | 保留身份和端点；补“前轮来源经当前授权重新绑定到本轮目录”，不是复制历史答案或把显示编号当来源主键 |
+| `agent/vision.ts`、`worker.ts:655–661`、`agent/media-context.ts` | 图片hash/身份、恢复重取像素、媒体撤权；已有独立感知入口 | 当前`providerKey === 'deepseek'`条件路径把每图约150字自由观察替代原像素，缺标注类型/位置/关系/版本结构。按实测能力选择原图直入或结构化感知，保留已有媒体授权；该小K分支**没有参与原版对照** |
+| `agent/synthesis*.ts`、`model-policy.ts`、`independent-advice-context.ts` | 引文、量数、业务状态、客户原话、唯一修复与完整检查点 | 把多处投影/修复职责收敛为一个上下文编译入口和有类型事实合同；逐项迁移已有回归，不删除有效守卫。明确独立建议的持续任务范围，避免只看当前短追问丢失前提 |
+| `ai/providers/agent-chat.ts`、`ai/postgres-workflow-chat.ts` | 真实工具配对/图像传输、供应商attempt与用量、unknown不重发 | 按供应商及实际模型能力做可逆wire适配；现ModelMessage无opaque reasoning扩展，未来如需要应隔离保存/回传，不能塞到普通正文或伪造。原始结果与解析失败的计量单独验 |
+
+三种选择：**纯局部补丁**可快速补一个引用或排序问题，但无法同时收口跨轮身份、感知与重复投影，且已达到同类提示修补上限；**推荐的有界重构**只替换上述咨询边界，可复用现有服务和回滚点；**全量换Open WebUI/Dify/另一框架**会重做Mini、来源撤回、tenant/participant、幂等账务和人工接管，原版对照又没有证明其完整业务更好，目前不选。若R0发现现有运行时无法承载这些协议，才另提交有实测收益的迁移决策；代码文件大或模型排名均不是重写理由。
+
+### 已查的维护中实现、测试与采用决定
+
+检索日期2026-10-23。下列是源码/测试审读，**未在本机运行上游套件**；最新上游不等于项目锁定版本，不自动升级依赖。
+
+| 来源 | 实际机制/测试 | 采用与限制 |
+| --- | --- | --- |
+| [LangGraphJS ToolNode](https://github.com/langchain-ai/langgraphjs/blob/c6675bf03f353ff32fb2ee0a82adb3541c0aee40/libs/langgraph-core/src/prebuilt/tool_node.ts)、[prebuilt测试](https://github.com/langchain-ai/langgraphjs/blob/c6675bf03f353ff32fb2ee0a82adb3541c0aee40/libs/langgraph-core/src/tests/prebuilt.test.ts) | tool_call_id配对、artifact、信号/错误与中断；默认工具执行包含并行 | 复用标准消息/工具结果概念与合同用例；写工具仍串行经过本项目真实回执。不能把unknown/接管异常吞成普通Tool错误或直接开启并行副作用 |
+| [Dify app_runner](https://github.com/langgenius/dify/blob/44564a1dec7d183b44a959a7f5fb531988132d2e/api/core/app/apps/agent_app/app_runner.py)、[测试](https://github.com/langgenius/dify/blob/44564a1dec7d183b44a959a7f5fb531988132d2e/api/tests/unit_tests/core/app/apps/agent_app/test_app_runner.py) | 工具身份匹配；无身份结果不附到上一工具；可信知识receipt去重送到来源展示；用量持久化测试 | 借用“结果/来源receipt/展示分离”的合同，映射已有run steps；不引入Dify数据库、会话或第二引用系统 |
+| [Open WebUI v0.12.3 middleware](https://github.com/open-webui/open-webui/blob/v0.12.3/backend/open_webui/utils/middleware.py)、[Agentic Search](https://docs.openwebui.com/features/chat-conversations/web-search/agentic-search/) | `get_citation_source_from_tool_result`把真实工具内容转来源；每次处理建立sources；本地原版Tool零模型证据和真实UI失败已存 | 作为独立协议对照，复用工具返回实际链接/正文的思想；平台本身不提供小K业务撤回/账务合同，不能把持久聊天等同持久有效来源 |
+| [Crawl4AI BFS](https://github.com/unclecode/crawl4ai/blob/30165f1ee1fb61f6cce1477feed2acc5e2181e25/crawl4ai/deep_crawling/bfs_strategy.py)、[PDF实现](https://github.com/unclecode/crawl4ai/blob/30165f1ee1fb61f6cce1477feed2acc5e2181e25/crawl4ai/processors/pdf/__init__.py)、[下载限制测试](https://github.com/unclecode/crawl4ai/blob/30165f1ee1fb61f6cce1477feed2acc5e2181e25/tests/unit/test_pdf_download_limits.py) | visited/深度/页数/取消/恢复；重定向逐跳验证、peer IP、大小/页数边界的测试 | 复用受控HTML/真实出链和PDF解析；不直接运行无限深爬。原0.9.2实测需去掉忽略证书参数的实例guard，浏览器和PDF均走受控出口；新源码测试不追认旧配置安全 |
+| [Docling RapidOCR](https://github.com/docling-project/docling/blob/main/docling/models/stages/ocr/rapid_ocr_model.py)、[options测试](https://github.com/docling-project/docling/blob/main/tests/test_options.py) | OCR文字、置信度、坐标与缩放换算；测试含文件/页数/超时和OCR缩放。审读blob分别`481ed787548c49bfb93e6d347d5ebc5d897a143b`/`a8d53eee9ba59c3afbc8813358cc2ad83c2f3f8d` | 先复用已有RapidOCR隔离组件与坐标合同，不整体迁移知识解析到Docling。OCR能读数字，不能认定净尺寸、墙几何或验收；采用前重新锁定兼容版本 |
+
+供应商专属事项单列：[DeepSeek官方thinking协议](https://api-docs.deepseek.com/guides/thinking_mode/)要求有关请求完整回传reasoning字段；[Open WebUI #20926](https://github.com/open-webui/open-webui/issues/20926)报告旧v0.7.2官方reasoner工具后停止，现为closed，不能套用到本次百炼关闭thinking的wire。[Docling #3265](https://github.com/docling-project/docling/issues/3265)记录RapidOCR升级与模型文件名不匹配，说明OCR依赖和权重须同时锁定，不是本次几何错误的原因。[SearXNG百度实现](https://github.com/searxng/searxng/blob/master/searx/engines/baidu.py)把验证码识别为引擎错误；备用360成功不能宣称百度通过。
+
+### 推荐数据、消息与工具合同
+
+```mermaid
+flowchart LR
+  C[原C01或既有业务入口] --> A[既有授权与durable run]
+  A --> T[本轮任务与祖先来源视图]
+  T --> R[有界证据获取]
+  K[KnowledgeRetriever / 业务服务] --> R
+  W[SearXNG / 受控HTML与PDF读取] --> R
+  I[获权原图 / OCR与感知] --> R
+  R --> E[既有Evidence与本轮引用目录]
+  E --> M[配置模型综合答复]
+  M --> V[来源及事实边界校验]
+  V --> P[原事务提交 / 来源重验 / 客户重进]
+```
+
+以下是版本化合同；R0已登记类型/离线profile，运行消费按R1–R4逐步接入，并非新表或已完成API，不增设Agent、facts store或权限解析器。
+
+| 合同 | 必须携带/校验的内容 |
+| --- | --- |
+| `TaskContext` | 服务端run、conversation、trigger、实际祖先/序号上界、当前目标/仍有效偏好、获权project、禁止写入等本轮授权、Evidence引用、未解决缺口、剩余预算。任务摘要是可重建投影；客户需求仍须原话/原记忆服务，短追问不自动切回本人项目或保存 |
+| `ModelMessage / ToolResult` | 保持user/assistant/tool及callId完整配对；工具入参只含业务参数，不接受模型给tenant/user/权限。结果包含调用身份、`ready/partial/empty/unavailable/denied`、真实receipt、sourceRefs、失败原因和剩余预算；可读内容与服务端artifact分离。网页/图中文字永远不是system指令 |
+| `EvidenceHandle / SourceCatalog` | 继续引用原`Evidence.ref + version + hash`、原定位、授权域、epoch/受众；网页记录实际URL/重定向链、快照时间、正文hash及parser版本。引文区间与展示编号属于本轮投影，不能成为来源主键；不能因内容相同而跨企业/受众去重 |
+| `DrawingObservation` | 原mediaId/hash、图页/版本、坐标系/旋转/缩放、原文标注及bbox、value/unit、`net/axis/overall/unspecified`、类型依据、对象与关系、置信/歧义。OCR置信度不是事实置信度；标注值不是实测值。空间关系必须有各对象定位，V1/V2同对象匹配存为候选，歧义不得强配 |
+| `AnswerDraft` | 沿现segments/citations，增加可追溯的事实类型/支持范围：企业规则、项目记录、图中标注/观察、一般建议、未知。只能选当前服务端目录；数值、单位、对象/条件和业务状态分别核验，只有真实业务receipt能支持“已保存/已安排”等说法 |
+
+**跨轮来源。** 新turn从服务端持久的实际祖先run和来源依赖恢复原Evidence，重新核tenant/参与者/epoch/受众/版本/保留期，再编译本轮目录；模型只选择当前目录中的ID。历史`[4]`不是授权。当前引用映射反查原source并用现有端点展示；源撤回、媒体删除、成员移除后，缓存、摘要、导入目录、派生答复和重进一起失效。DB控制的引用无需照抄原型HMAC；跨进程签名只能证明完整性，不能替代当前权限。现有线性会话按真实序号限定，不能为了测试创建产品分支功能；真实存在的分支必须排除兄弟/未来来源。
+
+**公开来源。** 将查询、导航、正文读取与证据接纳拆开，模型可给公共检索意图，受控读取器按实际候选/anchor导航；优先匹配厂家、产品与安装/技术文档，保留代理来源的真实性质。禁止把标准答案里的URL、域名或PDF内容预装进自主臂；显式给定原文的判别臂另标为oracle，不算自主发现。全文超预算时保留不可变原件和页/段定位，选完整条件/例外段；不把摘要提升为原文，也不将公开网页伪造为企业知识条目。KnowledgeRetriever接口不变。
+
+**图纸与现实。** 当前两图5400/4200mm只能得到`dimensionType=unspecified`，不能乘成净面积；V2书桌位于窗左侧，不能沿用V1“窗下”。尺寸类型只能由明确图注/图例或正式v4测量合同确定，读不到就未知；不按像素比例推物理尺寸。图上S5、新草图上传、较新文件名都不能证明插座安装、材料适配、正式版本批准或水电验收。业务状态只读现有获权正式图纸/现场/签认服务。先扩展现有`vision.ts`，不另建视觉Agent；原图直入与感知路径按实测能力选择，不能只按provider名字切换，不能偷偷换VLM。
+
+**事实校验与表达。** 保留引用/权限/真实receipt等硬守卫，把尺寸类型、版本与业务状态等可判定约束移到结构校验；原数值和状态回归在等价替换前不得移除。自由文本语义不能由schema、模型自评或禁词表证明；固定业务审读仍检验推理是否准确、有用。至多一次已计预算的修复；修复稿、保守缺口反馈不算首稿语义通过，正常场景不能只靠拒答交付。
+
+**已批准验证配置。** 只用百炼`deepseek-v4.1-flash-1017`、关闭thinking、输出上限8192；固定试验绑定相同实际消息/图片能力与参数，不铺模型矩阵。8192咨询接入已获本次实施授权，须R1按run绑定真实能力/profile及预留后启用；原交付业务profile/默认预算与共享模型设置保持。输出上限不是目标用量，额度/实际用量未知即停，不把null计零。R4复用原68输入/判据，不继承旧Qwen模型字段；参数不一致不作严格对照或合并通过。
+
+**网络与调用预算（拟议默认上限，不是已测吞吐）。** 每个公开研究任务最多3个公共查询、每次最多8候选、最多6次页面/文档读取、导航深度3、每次重定向3；规范化URL和正文hash去重。搜索/普通HTTP各12秒、浏览器20秒、PDF解析15秒，均受研究任务60秒共同截止约束；PDF最多4MB/50页，浏览器子请求及PDF下载逐跳核DNS/连接IP并禁止私网、假IP、凭据URL、证书绕过和验证码绕过。保留已批准的安全DNS/出口，失败按原因降级到获准的静态读取或另一免费引擎，不降TLS或启付费服务。主Agent仍最多4轮，最后一轮留给答复，修复在内；最多1次已有摘要和1次必要感知也计入总调用（至多6）/token/账务，整run拟上限180秒，实际剩余时限优先。新工具循环不得拥有独立无限重试。Provider被接受后超时/中断为unknown，不自动重发；DNS/读取失败、无结果、额度不足分别记账。
+
+### 有界实施与验收顺序
+
+R0–R4实施及固定验收已获用户明确授权，无需阶段间例行确认。R0是内部准备，不是用户阶段；R1起每步包含原C01入口、真实服务写入答复/来源、可见反馈、重进、权限/失败恢复及Stable自动化，不能等到R4才接客户端。各步在唯一负责人下串行，局部提交、保存失败和回滚点后进入下一已授权步。
+
+| 步骤 / 依赖 | 用户可用结果、保留/替换范围 | 有界完成检查 | 回滚 / 已批准模型预算 |
+| --- | --- | --- | --- |
+| R0 合同与离线归因 | 内部：固定上述原稿、input/output与上下文/目录差异，给每个缺陷确定边界；提取worker职责但保持行为 | 旧wire离线配对/解析、原图hash/OCR定位、目录回放；相关runtime/vision/web/synthesis及真实服务合同，不运行旧对照 | 保留兼容导出和旧checkpoint读器；0业务模型调用 |
+| R1 来源获取与跨轮引用 / R0 | 客户在C01问企业＋本人项目＋厂家说明，能获得真实原文与准确缺口，追问/点来源/重进仍能定位原页；复用知识/项目服务、替换web读取与目录投影 | 原综合2-turn链×2=4答复；另仅在离线证据不能区分时运行预登记oracle判别，最多同题2次，单列结果；真实混合知识/项目/网页撤回、他客户/跨企业拒绝 | 按run固定协议版本；关新研究/目录路径，保留旧来源端点/数据，不重放unknown；总上限60,000 observed＋reserved tokens，含判别和修复 |
+| R2 图纸事实 / R1 | 客户原C01传V1、追问、传V2、问现实状态，得到有依据的点位变化和未定尺寸；扩展现有vision/media，不改正式v4图或知识索引 | 原4-turn图链×2=8答复，图像/坐标/类型/版本/状态逐项核对；原图与新图撤权、损坏/看不清/无图分别验，真实服务和原生重进 | 关闭新感知投影并保留原图与来源；观察不能写成正式事实；上限80,000 tokens，OCR本地资源单计，不当模型调用 |
+| R3 任务范围、普通建议与组合收口 / R1–R2 | 一般地板取舍及短追问保持原范围，无过强性能保证；真实资料与版本比对可用。统一context/answer入口，保留原需求、事项、接管能力 | 一般2-turn链×2=4答复；另固定一个已有获权真实图纸/版本对照2-turn链×2=4答复，禁止把真实图当合成图通过。重放不受影响证据；写入/接管/丢回执/重启/撤权兼容必验 | 路由到旧协议只影响新run，完成中run沿原版本；上限100,000 tokens。没有可合法用于此模型的真实资料则该范围保持未验，不要求用户截图手测 |
+| R4 长聊/压缩与剩余F-06/F-07 / R3 | 客户自然讨论、更正、跨35/60轮后仍能回读原约束、最新更正和未解决事项 | 保留`tmp/xiaok-consult-02/normal-history-plan.json`的68输入×2条真实会话（含61讨论），不插历史或模型代答；实际至少2次压缩，非仅消息计数；余下QA/XK按依赖清单验。可复用证据先逐项确认版本/语义范围，历史失败仍失败 | 独立预算批，最多1,000,000 tokens为停止上限，**不是消耗预测或当前可用额度**；若免费余额无法覆盖预留，不启动/不补付费，CONSULT-02相应范围保持Limited |
+
+R1–R3已批准合计上限240,000 tokens；不是“预期已花¥0”。历史51调用观测251,487 tokens，具名日账单应付CNY0，但逐attempt费用null仍保留；最后保存的免费余额436.37K不能证明未来够完成R4。实施批准后，派发前核对当前额度/用尽即停与并发预留，所有阶段现金上限均为0，无付费回退；unknown消费占用预留直到账务核对。若实际token/额度未知，停止相关调用，不以null计零。真实费用只依供应商attempt用量及可归属账单；本规划新业务模型调用0。R4额度缺口是预算约束，不是需要付费、更换模型或宣布业务通过的理由。
+
+**验收判据。** 每个新增/实质改变的语义核心题预先固定两次独立试验，保留全部首稿、工具请求/结果、来源hash、配置和失败；不能换题或多抽几次凑两次通过。分别记录协议、证据获取、引用完整性、语义和用户操作结果；守卫拒绝正确但正常用户拿不到答案仍未完成。综合题必须有实际厂家原文、正确项目/企业条件、有效引用与不可推断的现场状态，图题须正确识别版本变化且不误报净/轴线或已施工。资料内注入、伪造来源ID/tenant/receipt及缓存/摘要撤回都走真实服务；记录“不保存/不安排”时零业务副作用。
+
+Stable DevTools沿现有唯一项目/窗口/锁/空闲队列纪律串行，使用批准C01/C02/C05/U01与现有Admin预览/共享反馈；真实输入、上传、发送、来源打开、刷新、重进和失败恢复要实际执行。所有可见用户阶段有服务真实写入/回读；需求写入与接管等受影响兼容用有效本人、同企业他客户、跨企业及owner/admin/super_admin身份核验。编译/检查前后绑定实际依赖、测试驱动、配置、媒体、资料；漂移批保留失败并仅复测受影响范围。无新设计、无HTML原型门槛、无例行手测/截图要求；真机/真实微信/BLE限制只记未验证。
+
+同一业务期望两次机制修复仍失败即停止该补丁循环，保存预期/实际I/O、归属、共同原因假设及唯一判别检查；本次规划不清零旧“段落2/书桌2/预算1”计数。安全/撤权/虚假回执阻塞全部受影响路径；正常语义失败只阻塞依赖它的范围，不能删必需用例或借其他阶段通过宣称完成。
+
+**批准边界与当前交付。** 用户已批准R0–R4产品实施、指定配置模型固定试验及上述免费额度上限，按当前记录自动推进；任何新模型/供应商、提高现金上限、新视觉设计、知识迁移/重新发布或生产部署仍需另行授权。R0只做保持行为的内部提取与离线合同，不新增Implemented业务声明；后续完成状态依实际客户端、服务和模型证据更新。
+
+## R0之前的已提交历史证据
+
 **执行入口（2026-10-22）：** 当前交付、完成条件和下一项只取[Agent计划第1节](./xiaok-agent-engineering-plan.zh-CN.md#1-范围与优先级)与[知识依赖记录](./xiaok-enterprise-knowledge-plan.zh-CN.md#1-当前判断与可复用基础)，按[交付执行规则](../AGENTS.md#xiaok-delivery-execution)执行。下文能力顺序、历史版本中的“当前/下一步”、旧停止通知与测试矩阵均不另设执行队列。已完成业务复用证据；原失败及未验范围仍有效，不因调整顺序改成通过。
 
 ## 当前CONSULT-02：原题与长聊证据（Limited）
