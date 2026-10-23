@@ -69,6 +69,8 @@ Design/implementation source: the user approved single-video H5/cloud-site palet
 
 ### 2.1 Current SD-card verification
 
+Latest replacement-card retry(2026-10-23 12:37–12:38 Shanghai):initial read and one GB reboot both report SDStatus=-1/SDInfo=0/SDFreeSpace=0. Re-registered SIP peer192.168.10.84 matches the original serial. The previously authorized SD format was rejected again,cardFormatted=false,device history0;no extra reboot/factory reset/recording-plan change. Evidence:`tmp/cloud-camera-sd/probe-20261023T043713Z.json`,`probe-20261023T043734Z.json`,`probe-20261023T043842Z.json`. Current device frontend confirms-1 means no SD and frmHDFormat/Type1/FormatList:[1] is the format operation;the adapter's generic configuration-permission error does not diagnose permissions. Failure after replacement alone does not prove a bad card/slot;new-card capacity/brand/model was requested. No product route/API/permission/UI or validated cloud-recording change;SD remains unverified.
+
 The user's condition is: **verify actual SD query/playback through WVP, then adopt cloud recording on wired networks and SD recording on4G.** This remains unmet. Empty history or successful control acknowledgements prove neither playback support nor absence of support.
 
 Preserve the2026-10-22 no-card evidence in `tmp/cloud-camera-sd/verification.json`. On2026-10-23 the user confirmed this camera has a card but had not rebooted. `frmIotRecordCfg` reported `SDStatus=-1/SDInfo=0/SDFreeSpace=0`; clock was correct. One `frmDeviceReboot` was accepted and the camera re-registered at11:17. DHCP moved its management address from `192.168.10.80` to `192.168.10.81`. Its actual SIP TCP peer and original serial identity were checked; no channel or binding was recreated.

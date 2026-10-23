@@ -69,6 +69,8 @@ English mirror: [cloud-construction-video-plan.md](./cloud-construction-video-pl
 
 ### 2.1 SD 卡方案的当前验证结论
 
+最新换卡复测（2026-10-23 12:37–12:38）：用户更换另一张卡后，首次读取及一次GB重启后均为SDStatus=-1/SDInfo=0/SDFreeSpace=0。重启后实际SIP远端为192.168.10.84，原序列号一致；按此前授权再请求SD格式化，被设备拒绝，cardFormatted=false，设备录像仍0条，未追加重启/恢复出厂/改变录制计划。证据`tmp/cloud-camera-sd/probe-20261023T043713Z.json`、`probe-20261023T043734Z.json`、`probe-20261023T043842Z.json`。当前设备前端确认-1为“无SD卡”、格式化为frmHDFormat/Type1/FormatList:[1]；适配器通用“配置权限”报错不能直接诊断权限问题。换卡后仍失败也不能判定卡或卡槽损坏；已向用户询问新卡容量/品牌型号以进一步核对。无产品路由/API/权限/UI或已验云录像变化，SD路径仍未验证。
+
 用户条件：**先确认这款设备能通过 WVP 查询并实际回放 SD 录像；支持后，将计划切换为有线云端录像、4G SD录像。** 当前仍未满足，不能将空查询/控制成功记为 SD 回放支持，也不能仅据0条判定设备不支持。
 
 2026-10-22 未插卡的原证据 `tmp/cloud-camera-sd/verification.json` 保留。2026-10-23 用户明确确认同一台已插卡、尚未重启；设备 `frmIotRecordCfg` 读取 `SDStatus=-1/SDInfo=0/SDFreeSpace=0`，时钟正确。执行一次 `frmDeviceReboot` 后，设备11:17重新注册 WVP；其 DHCP 地址由 `192.168.10.80` 变为 `192.168.10.81`。通过 SIP TCP 实际远端地址定位，并核对原设备序列号一致；未重建 WVP 通道或修改绑定。
