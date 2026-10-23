@@ -42,6 +42,7 @@ export async function recallHistory(tx: PostgresTransaction, actor: ActorContext
   const score = sql.join(terms.map(term => sql`case when strpos(lower(m.content::text),${term})>0 then ${term.length} else 0 end`), sql` + `);
   const available = await availableNeedMemory(tx, actor.enterpriseId, String(conversation.id), conversation.entry_snapshot);
   const currentIds = [...new Set(available.facts.map(f => f.sourceMessageId))];
+  const recordedIds = [...new Set(readMemory(conversation.entry_snapshot).facts.map(f => f.sourceMessageId))];
   const scope = sql`m.enterprise_id=${actor.enterpriseId} and m.conversation_id=${String(conversation.id)} and m.user_id=${actor.principal.userId}
       and m.author_kind='user' and m.seq<${beforeSeq} and (${score})>0
       and not exists(select 1 from app.assistant_media a where a.enterprise_id=m.enterprise_id and a.conversation_id=m.conversation_id
@@ -53,13 +54,21 @@ export async function recallHistory(tx: PostgresTransaction, actor: ActorContext
     from app.assistant_messages m where ${scope} and m.id in
       (select value::bigint from jsonb_array_elements_text(${JSON.stringify(currentIds)}::jsonb))
     order by (${score}) desc,m.seq desc limit 2`) : [];
+  // An initial-versus-current question needs independent original assertions,
+  // not more copies of its own wording. Existing memory supplies source IDs
+  // only; historical/superseded values never become current facts. Reuse the
+  // exact scope and source revalidation below, then fill from lexical results.
+  const recorded = recordedIds.length ? await rows(tx, sql`select m.id,m.seq,m.content,m.author_kind,m.answer_kind,m.created_at,m.purpose
+    from app.assistant_messages m where ${scope} and m.id in
+      (select value::bigint from jsonb_array_elements_text(${JSON.stringify(recordedIds)}::jsonb))
+    order by m.seq asc limit 25`) : [];
   const candidates = await rows(tx, sql`select m.id,m.seq,m.content,m.author_kind,m.answer_kind,m.created_at,m.purpose from app.assistant_messages m
     where ${scope}
       order by (${score}) desc,m.seq desc limit 25`);
   const unavailable = await unavailableNeedMessageIds(tx, actor.enterpriseId, String(conversation.id), conversation.entry_snapshot, available);
   const sources: HistorySnapshot['sources'] = [];
-  let bytes = 0, oversized = false, hasMore = candidates.length === 25;
-  for (const row of new Map([...current,...candidates].map(row => [String(row.id),row])).values()) {
+  let bytes = 0, oversized = false, hasMore = candidates.length === 25 || recorded.length === 25;
+  for (const row of new Map([...current,...recorded,...candidates].map(row => [String(row.id),row])).values()) {
     if (unavailable.has(String(row.id)) || !(await projectMessage(tx, actor, conversation, row)).available) continue;
     const text = safeText(row.content as Parameters<typeof safeText>[0]);
     if (!text.trim()) continue;

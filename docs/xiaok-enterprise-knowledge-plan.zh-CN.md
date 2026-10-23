@@ -24,12 +24,12 @@
 | --- | --- |
 | 对应交付 / 状态 | **KDEP-CONSULT-02** 支撑当前CONSULT-02；知识平台整体Limited。 |
 | 用户链路 / 已有基础 | 原C01长聊/压缩与连续追问复用KnowledgeRetriever/Evidence；KB-1～KB-4保持。 |
-| 实际缺口 / 第一动作 | 无新的KnowledgeRetriever/Evidence缺陷。GLM9更正1501/1502、限定当前回读/实际压缩1505/1506/1561–1564及C01原生余项已完成。完整初始客厅叙述缺项归Agent四原文历史选择，history-coverage-audit.json已判别重复问题挤出旧原话；普通照抄也仍未通过。知识只保留依赖指针，不重建入库/检索或重测已通过范围；1430/3862 unknown保持。 |
+| 实际缺口 / 第一动作 | 无新的KnowledgeRetriever/Evidence缺陷。Agent历史来源覆盖在同一4条/7000字节内补齐最初书房/客厅和当前更正，1565/1566两次实模/原生均通过；新增最初客厅来源撤回仍收起派生答复。普通照抄已在供应商输出中定位，非知识解析/检索问题。知识只保留依赖指针，不重建入库或重测已通过范围；1430/3862 unknown保持。 |
 | 知识侧完成条件 | Evidence的实际来源、版本、定位、受众及撤回满足剩余原题；正确Evidence之后的回答失败由Agent处理。 |
 | 验收边界 | KDEP-OPS-01已完成“无需知识源码改动”的依赖核对，未冒充新知识语义验收。 |
-| 下一项 | 随CONSULT-02只核对后续历史来源覆盖机制是否仍保持来源/版本/受众/撤回；当前无需知识源码变更。不得将Agent历史召回缺项变成入库、OCR、格式/规模或已通过部分复测。 |
+| 下一项 | 随CONSULT-02普通段落输出通道判别，知识侧无需源码变更。已有来源/版本/受众/撤回边界沿原KnowledgeRetriever/Evidence；不得将Agent生成缺陷变成入库、OCR、格式/规模或已通过部分复测。 |
 | 后续必交付 | CONSULT-01独立建议失败保留Agent归属、同类计数及unknown/null费用。 |
-| 证据入口 | Agent第1节及tmp/xiaok-consult-02/task-context-final-review.json分别保留单元、主Qwen、免费诊断、隔离GLM绑定及未通过的宽批次。知识来源/API/Evidence/UI/角色未改，原件保持；候选来源撤回复用既有记忆授权。不新增知识语义/原生/全局模型通过；旧1430/3862/reconciling/null费用保持。 |
+| 证据入口 | Agent第1节、tmp/xiaok-consult-02-glm9/coverage-review.json及paragraph-mechanism-audit.json；前序候选/单元/宽批次保留原绑定。知识来源/API/Evidence/UI/角色未改，来源撤回沿既有记忆授权；无需知识源码变更不冒充新知识语义或全局模型通过。1430/3862/reconciling/null费用保持。 |
 
 **重复失败处理：** 按共用规则保留同一故障计数和原始输入/输出。只有已证实的KnowledgeRetriever/Evidence缺陷进入本域；正确Evidence后的工具/引用/生成失败归Agent。同一负责人完成有界修复及受影响联合回归，不要求两个领域平均改动，不以知识独立通过替代业务交付。
 
