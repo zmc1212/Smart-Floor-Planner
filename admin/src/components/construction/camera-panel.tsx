@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Button, Empty, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Switch, Table, Tag } from 'antd';
 import { notify } from '@/components/admin/operation-feedback';
 import { constructionRequest, errorText } from './client';
+import { RecordingCapacityPreview } from './recording-capacity-preview';
 type Camera = { id: string; binding_id?: string; name: string; version: number; project_id?: string; ptz_enabled: boolean;recording_enabled?:boolean;retention_days?:number;recording_version?:number;recording_state?:string;recording_error?:string };
 type Storage={level:string;blocked:boolean;totalBytes:string|null;availableBytes:string|null;usedPercent:number|null;sampledAt:string|null};
 const capacity=(bytes:string|null)=>bytes===null?'未知':(Number(bytes)/1024**3).toFixed(1)+' GiB';
@@ -14,6 +15,7 @@ export function CameraPanel({ projectId }: { projectId: string }) {
   const [storage,setStorage]=useState<Storage|null>(null);
   const [recordingCamera,setRecordingCamera]=useState<Camera>(),[retentionLimit,setRetentionLimit]=useState(7);
   const [recordingForm]=Form.useForm();
+  const previewDays=Form.useWatch('retentionDays',recordingForm);
   const [form] = Form.useForm(); const alive = useRef(true),requestSequence=useRef(0);
   const root = 'video/projects/' + projectId;
   const load = useCallback(async () => {
@@ -62,9 +64,10 @@ export function CameraPanel({ projectId }: { projectId: string }) {
     <Modal title="分配 WVP 摄像头到当前企业" open={registering} confirmLoading={busy} onCancel={() => !busy && setRegistering(false)} onOk={() => void form.validateFields().then(values => write('video/register', values, '摄像头已分配到当前企业')).catch(() => {})}>
       <Form form={form} layout="vertical"><Form.Item name="name" label="名称" rules={[{ required: true, max: 80 }]}><Input maxLength={80} /></Form.Item><Form.Item name="deviceId" label="WVP 设备编号" rules={[{ required: true, pattern: /^\d{20}$/ }]}><Input maxLength={20} /></Form.Item><Form.Item name="channelId" label="视频通道编号" rules={[{ required: true, pattern: /^\d{20}$/ }]}><Input maxLength={20} /></Form.Item></Form>
     </Modal>
-    <Modal title={'云端录像 · '+(recordingCamera?.name||'')} open={!!recordingCamera} confirmLoading={busy} onCancel={()=>!busy&&setRecordingCamera(undefined)} onOk={()=>void recordingForm.validateFields().then(values=>recordingCamera&&write(root+'/recording',{bindingId:recordingCamera.binding_id,expectedVersion:recordingCamera.recording_version||0,...values},'录像策略已保存，正在核对实际录制状态')).catch(()=>{})}>
+    <Modal title={'云端录像 · '+(recordingCamera?.name||'')} open={!!recordingCamera} confirmLoading={busy} styles={{body:{maxHeight:'calc(100dvh - 260px)',overflowY:'auto'}}} onCancel={()=>!busy&&setRecordingCamera(undefined)} onOk={()=>void recordingForm.validateFields().then(values=>recordingCamera&&write(root+'/recording',{bindingId:recordingCamera.binding_id,expectedVersion:recordingCamera.recording_version||0,...values},'录像策略已保存，正在核对实际录制状态')).catch(()=>{})}>
       <Alert type="info" showIcon message="连续上传到服务器" description="适用于有线宽带工地。启用后无人观看也持续上传视频；4G 工地请保持关闭，SD 卡回放尚未可用。" />
       <Form form={recordingForm} layout="vertical" style={{marginTop:16}}><Form.Item name="enabled" label="连续云端录像" valuePropName="checked"><Switch /></Form.Item><Form.Item name="retentionDays" label="保留天数" rules={[{required:true,type:'number',min:1,max:retentionLimit}]} extra={'默认 3 天；当前节点最多 '+retentionLimit+' 天。缩短保留时间后，过期录像将不可播放并进入清理；延长不能恢复已删除录像。'}><InputNumber min={1} max={retentionLimit} precision={0} /></Form.Item></Form>
+      <RecordingCapacityPreview key={projectId+'/'+recordingCamera?.binding_id} projectId={projectId} bindingId={recordingCamera?.binding_id} days={Number(previewDays)} open={!!recordingCamera} />
     </Modal>
   </Space>;
 }
