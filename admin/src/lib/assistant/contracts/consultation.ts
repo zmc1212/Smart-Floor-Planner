@@ -32,3 +32,17 @@ export const consultationAcceptanceProfile = {
   stageTokens: { R0: 0, R1: 60000, R2: 80000, R3: 100000, R4: 1000000 },
   cashLimitYuan: 0, paidFallback: false,
 } as const;
+
+/** Selected before a complete long-conversation trial, never an automatic
+ * fallback. The 2026-10-23 authorization is CNY5 for the entire test campaign. */
+export const consultationLongProfile = {
+  ...consultationAcceptanceProfile,
+  id: 'bailian-qwen37-flash-long-v1', model: 'qwen3.7-flash', cashLimitYuan: 5,
+  campaignTokens: 1000000, maxRequestTokens: 60000,
+} as const;
+export const consultationCashAuthorization = 'xiaok-20261023-qwen-long-cny5';
+export const consultationTariffVersion = 'qwen37-beijing-20261023-upper-v1';
+export function consultationProfile(id: unknown) {
+  return id === consultationAcceptanceProfile.id ? consultationAcceptanceProfile
+    : id === consultationLongProfile.id ? consultationLongProfile : null;
+}

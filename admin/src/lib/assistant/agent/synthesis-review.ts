@@ -338,7 +338,7 @@ export function reviewSynthesisResponse(answer: SynthesisAnswer, sources: Synthe
     // Final validation receives canonical references; bounded repair can read
     // the original model catalog IDs. Resolve both through the same catalog.
     const citations = segment.citations.map(citation => resolveCatalogCitation(citation as unknown as Record<string, unknown>, sources) || citation);
-    if (independentAdvice && citations.some(c => !sources.some(s => s.sourceId === c.sourceId && s.kind === 'knowledge')))
+    if (independentAdvice && citations.some(c => !sources.some(s => s.sourceId === c.sourceId && ['knowledge', 'web'].includes(s.kind))))
       codes.add('independent_advice_scope');
     if (sourceOnly) {
       if (segment.basis === 'advice' || citations.some(c => !sources.some(s => s.sourceId === c.sourceId && s.kind === 'knowledge')))

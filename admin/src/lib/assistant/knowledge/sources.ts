@@ -12,6 +12,7 @@ import { planMessageProjection } from '@/lib/construction/site-plans';
 import { siteResultRecords } from '@/lib/construction/site-results';
 import type { FileLocator } from '../contracts/source-file';
 import { fileQuoteSpans } from './source-file';
+import { parseWebCitationId, webCitationForAnswer } from '../agent/web-evidence';
 export type PreviewPolicy={audience:'customer_public'|'staff_internal'|'all';drafts:Array<{id:string;documentId:string;hash:string;editVersion:number}>};
 export function previewPolicy(c:Row):PreviewPolicy {
   const value=(c.entry_snapshot as {preview?:PreviewPolicy})?.preview;
@@ -89,6 +90,14 @@ export async function citationProjection(tx:PostgresTransaction,actor:ActorConte
     ...(source.professional ? {professional:{kind:(source.professional as Row).kind,origin:(source.professional as Row).origin,conditions:(source.professional as Row).conditions,prerequisites:(source.professional as Row).prerequisites,exceptions:(source.professional as Row).exceptions}} : {}),
     historical:String(source.published_version_id)!==String(citation.document_version_id)};
 }
+export async function webCitationProjection(tx: PostgresTransaction, actor: ActorContext, c: Row, citationId: string) {
+  const ref = parseWebCitationId(citationId);
+  const run = ref ? await one(tx, sql`select output_message_id from app.assistant_runs where enterprise_id=${actor.enterpriseId}
+    and conversation_id=${String(c.id)} and id=${ref.runId}`) : null;
+  if (!run?.output_message_id || !await agentMessageAvailable(tx, actor.enterpriseId, String(c.id), String(run.output_message_id)))
+    return { id: citationId, available: false, reason: 'source_unavailable' };
+  return await webCitationForAnswer(tx, actor, c, citationId) || { id: citationId, available: false, reason: 'source_unavailable' };
+}
 export async function projectMessage(tx:PostgresTransaction,actor:ActorContext,c:Row,message:Row) {
   const media = await one(tx, sql`select a.id,(a.deleted_at is null and (a.source_ref is null or exists(
       select 1 from app.leads l join app.floor_plans f on f.enterprise_id=l.enterprise_id and f.id=l.primary_floor_plan_id
@@ -100,9 +109,12 @@ export async function projectMessage(tx:PostgresTransaction,actor:ActorContext,c
   const citations=await rows(tx,sql`select * from app.assistant_message_citations where enterprise_id=${actor.enterpriseId} and message_id=${String(message.id)} order by id`);
   const projected=[];
   for(const citation of citations)projected.push(await citationProjection(tx,actor,c,citation));
+  const webIds = [...new Set(((message.content as { blocks?: Array<{ type?: string; citationId?: string }> })?.blocks || [])
+    .filter(b => b.type === 'citation' && b.citationId && parseWebCitationId(b.citationId)).map(b => b.citationId!))];
+  for (const citationId of webIds) projected.push(await webCitationProjection(tx, actor, c, citationId));
   const publicProjection = await publicMessageProjection(tx, actor, c, String(message.id));
   const planProjection = await planMessageProjection(tx, actor.enterpriseId, String(c.id), String(message.id));
-  const available=planProjection?.available !== false && publicProjection?.available !== false && !(message.answer_kind==='grounded' && !citations.length) && projected.every(x=>x.available)
+  const available=planProjection?.available !== false && publicProjection?.available !== false && !(message.answer_kind==='grounded' && !projected.length) && projected.every(x=>x.available)
     && await agentMessageAvailable(tx, actor.enterpriseId, String(c.id), String(message.id));
   return {id:String(message.id),seq:String(message.seq),authorKind:message.author_kind,answerKind:message.answer_kind ?? null,available,
     content:available?message.content:{version:1,blocks:[{type:'notice',code:'source_unavailable',fallbackText:'这条回答所依据的资料已不可用，请重新提问。'}]},

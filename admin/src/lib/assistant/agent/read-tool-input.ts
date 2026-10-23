@@ -5,6 +5,8 @@ import { materialTool, parseMaterialQuery } from './materials';
 import type { ModelMessage, ModelTool } from '../contracts/model';
 import { originalMessageId } from './context-budget';
 import { explicitNeedWriteStatement } from './memory';
+import { webSearchTool, parseWebQuery } from './web';
+import { readWebTool, parsePublicRead } from './public-research';
 
 export const sourceReadProtocol = 'original-source-read-v1';
 export const sourceAnswerProtocol = 'question-source-scope-v2';
@@ -68,6 +70,8 @@ export function knowledgeReadPending(question: string, messages: ModelMessage[],
 
 export const readToolInputProtocol = 'read-input-v2';
 const validators = new Map<string, { tool: ModelTool; parse: (input: unknown) => unknown }>([
+  ['search_web', { tool: webSearchTool, parse: parseWebQuery }],
+  ['read_web', { tool: readWebTool, parse: parsePublicRead }],
   ['query_materials', { tool: materialTool, parse: parseMaterialQuery }],
   ['query_business', { tool: businessToolDefinitions.find(tool => tool.name === 'query_business')!, parse: parseBusinessQuery }],
   ['recall_history', { tool: historyTool, parse: parseHistoryQuery }],
@@ -151,7 +155,7 @@ export function readToolInputIssue(name: string, args: string, context?: ReadToo
     validator.parse(bindReadToolInput(name, input, context));
     return null;
   } catch (error) {
-    if (!(error instanceof AssistantError) || error.code !== 'invalid_message' || error.status !== 422) throw error;
+    if (!(error instanceof AssistantError) || !['invalid_message', 'invalid_web_query', 'private_web_query'].includes(error.code) || error.status !== 422) throw error;
     return feedback(inputIssues(tool.parameters, input));
   }
   function feedback(issues: InputIssue[]) {

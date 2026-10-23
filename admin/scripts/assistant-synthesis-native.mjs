@@ -63,7 +63,7 @@ export async function run(ctx) {
           const allowed=p===cid||p.startsWith(cid+'/')||p.startsWith(cid+'?')||p===base+'/conversations'||p===base+'/entry-context'&&String(o.data?.conversationId)===c.cid||p.startsWith(base+'/runs/')&&s.runs.has(p.slice((base+'/runs/').length))||p.startsWith(base+'/citations/')&&s.citations.has(p.slice((base+'/citations/').length));
           if(!allowed){o.fail?.({errMsg:'Synthetic-only transport refused request'});return{abort(){}};}
           const row={path:p,verb:o.method||'GET',status:null};s.requests.push(row);const success=o.success;
-          return s[method].call(wx,{...o,url:'http://localhost:3006'+p,success(r){row.status=r.statusCode;if(p===cid+'/messages'&&o.method==='POST'&&r.data?.data?.runId)s.runs.add(String(r.data.data.runId));for(const m of r.data?.data?.items||[])for(const ref of m.citations||[])s.citations.add(String(ref.id));success?.(r);}});
+          return s[method].call(wx,{...o,url:(c.baseUrl||'http://localhost:3006')+p,success(r){row.status=r.statusCode;if(p===cid+'/messages'&&o.method==='POST'&&r.data?.data?.runId)s.runs.add(String(r.data.data.runId));for(const m of r.data?.data?.items||[])for(const ref of m.citations||[])s.citations.add(String(ref.id));success?.(r);}});
         };return{installed:true,credentialsPersisted:false};
       },customer);installed=true;return value;
     });
@@ -86,6 +86,10 @@ export async function run(ctx) {
       return{outputMessageId:dependent.outputMessageId,capture:await capture('native-withdrawn')};
     });
     report.passed=true;return report;
+  } catch(error) {
+    report.error=error.message;
+    if(mp&&installed)try{await capture('native-failure');report.failureState=await(await mp.currentPage()).data();}catch(captureError){report.failureCaptureError=captureError.message;}
+    throw error;
   } finally {
     if(mp&&installed){report.transport=await mp.evaluate(()=>{const app=getApp(),s=app.__qaSynthesis;if(!s)return{active:false};wx.request=s.request;wx.downloadFile=s.downloadFile;wx.uploadFile=s.uploadFile;wx.getStorageSync=s.getStorageSync;wx.setStorageSync=s.setStorageSync;wx.removeStorageSync=s.removeStorageSync;app.globalData.token=s.token;app.globalData.bootstrap=s.bootstrap;app.hydrateStoredSession=s.hydrate;delete app.__qaSynthesis;return{active:false,requests:s.requests};});try{await mp.reLaunch('/pages/index/index');}catch{}}
     if(mp)await mp.disconnect();report.finished=new Date().toISOString();save();

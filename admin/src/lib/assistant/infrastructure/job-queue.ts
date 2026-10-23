@@ -8,7 +8,7 @@ import { processKnowledgeJob } from '../knowledge/index-worker';
 import { processAnswer } from './answer-worker';
 import { resolveEvidence, validatePreviewSnapshot, previewPolicy } from '../knowledge/sources';
 import { parseAnswer, safeInsufficientContent, type GroundedAnswer } from '../knowledge/answer';
-import { agentConfig } from '../agent/config';
+import { agentConfig, agentCapabilityFingerprint } from '../agent/config';
 
 export const workerTiming = { providerMs: 90000, leaseMs: 150000, requestMs: 180000, heartbeatMs: 30000 };
 export type Lease = { enterpriseId: string; jobId: string; runId: string; token: string; actor: ActorContext };
@@ -24,7 +24,7 @@ async function authorized(repo: AssistantRepository, run: Row) {
   if (c.mode !== 'ai' || c.status !== 'open' || c.context_revision !== run.context_revision || settings!.knowledge_epoch !== run.knowledge_epoch
     || Number(settings!.policy_version) !== Number((run.policy_snapshot as { policyVersion: number }).policyVersion)) fail('context_changed');
   const configuredAgent = agentConfig((run.policy_snapshot as Row).agent);
-  if (configuredAgent && fingerprint(configuredAgent) !== fingerprint(agentConfig(settings!.agent_config))) fail('context_changed');
+  if (configuredAgent && agentCapabilityFingerprint(configuredAgent) !== agentCapabilityFingerprint(agentConfig(settings!.agent_config))) fail('context_changed');
   await validatePreviewSnapshot(repo.tx,repo.actor,c);
   return c;
 }

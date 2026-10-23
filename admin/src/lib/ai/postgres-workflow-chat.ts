@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
-import { executeAgentChat } from './providers/agent-chat';
+import { executeAgentChat, agentChatBody } from './providers/agent-chat';
+import { consultationProfile } from '@/lib/assistant/contracts/consultation';
 import type { ModelTurnInput } from '@/lib/assistant/contracts/model';
 import type { AgentConfig } from '@/lib/assistant/agent/config';
 import type { InvocationOwner } from '@/lib/assistant/contracts';
@@ -63,12 +64,17 @@ export async function executePostgresText(input: {
       || input.agent.config.model !== remoteModel || input.agent.config.providerKey !== (runtime.adapterConfig?.providerPreset || runtime.key))) {
       throw new Error('Agent provider capability probe no longer matches current configuration');
     }
-    const enableThinking=input.owner.kind==='assistant_run' && process.env.ASSISTANT_TEXT_DISABLE_THINKING==='1'?false:undefined;
+    const consultation = input.agent?.config.consultation;
+    const consultationRuntime = consultation && runtime.adapterType === 'openai_compatible'
+      && new URL(runtime.baseUrl).origin === 'https://dashscope.aliyuncs.com' && remoteModel === consultationProfile(consultation.profile)?.model;
+    if (consultation && (!consultationRuntime || input.agent!.input.profile !== consultation.profile)) throw new Error('Consultation profile does not match the configured runtime');
+    const enableThinking=consultation ? false : input.owner.kind==='assistant_run' && process.env.ASSISTANT_TEXT_DISABLE_THINKING==='1'?false:undefined;
     if (enableThinking !== undefined && (runtime.adapterType !== 'openai_compatible'
       || !(runtime.adapterConfig?.providerPreset === 'siliconflow'
-        || (runtime.adapterConfig?.providerPreset === 'deepseek' && new URL(runtime.baseUrl).origin === 'https://api.deepseek.com')))) {
+        || (runtime.adapterConfig?.providerPreset === 'deepseek' && new URL(runtime.baseUrl).origin === 'https://api.deepseek.com') || consultationRuntime))) {
       throw new Error('Assistant thinking override requires an approved SiliconFlow or official DeepSeek runtime');
     }
+    if (consultation) agentChatBody({ ...input.agent!.input, model: remoteModel, enableThinking }, runtime.baseUrl);
     const startedAt = Date.now();
     const attempt = await withTenantTransaction(input.enterpriseId, (transaction) =>
       new AiCreationRepository(transaction).createProviderAttempt({
@@ -93,8 +99,10 @@ export async function executePostgresText(input: {
     let dispatched = false;
     try {
       await input.beforeProviderCall?.();
+      const remainingMs = consultation ? Number(input.agent!.input.deadlineAt) - Date.now() : 90000;
+      if (consultation && (!Number.isFinite(remainingMs) || remainingMs < 1)) throw new Error('agent_deadline_exceeded');
       dispatched = true;
-      const callRuntime = input.owner.kind === 'generation' ? runtime : { ...runtime, timeoutMs: Math.min(runtime.timeoutMs, 90000) };
+      const callRuntime = input.owner.kind === 'generation' ? runtime : { ...runtime, timeoutMs: Math.min(runtime.timeoutMs, 90000, remainingMs) };
       const agentOutput = input.agent ? await executeAgentChat(callRuntime, { ...input.agent.input, model: remoteModel, enableThinking }) : undefined;
       const content = agentOutput?.text ?? await getAiProviderAdapter(runtime.adapterType).chat(callRuntime, {
         model: remoteModel,

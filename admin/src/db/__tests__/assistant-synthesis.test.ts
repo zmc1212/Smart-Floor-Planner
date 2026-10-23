@@ -475,7 +475,7 @@ test('AG05 read-input recovery preserves real knowledge, queries once with a cor
     const source = results(messages).find(s => s.kind === 'knowledge' && s.text.includes('书房参数恢复甲'))!;
     assert.ok(source, 'complete authorized knowledge survives the parameter error');
     assert.deepEqual(((finalToolForMessages(messages).parameters.properties as Row).kind as Row).enum,
-      turn === 1 ? ['synthesis'] : ['synthesis', 'business', 'knowledge', 'references'], 'a rejected read cannot widen earlier knowledge; a real business result preserves its display protocol');
+      ['synthesis'], 'a rejected read cannot widen earlier knowledge; resolved materials require a sourced answer');
     if (turn === 1) return call('query_materials', { leadId: x.leadId, room: '书房' });
     assert.ok(results(messages).some(s => s.kind === 'project'));
     return synth([{ basis: 'evidence', text: '这份资料建议比较侧向布置，避免直对强光窗户。', citations: [{ citationId: source.citationOptions[0].citationId }] }]);
@@ -713,7 +713,7 @@ test('AG08 bounded citation edits preserve knowledge while adding actual-stage s
   const provider = steps.filter(step => step.kind === 'agent_model'); assert.equal(provider.length, 3);
   const repair = provider.find(step => (step.input_summary as Row).repairProtocol === 'synthesis-edit-v1')!; assert.ok(repair);
   assert.equal((repair.input_summary as Row).repairProjection, synthesisRepairProjectionVersion);
-  assert.equal((repair.input_summary as Row).contextPolicy, 'current-turn-sources-v8');
+  assert.equal((repair.input_summary as Row).contextPolicy, 'current-turn-sources-v9');
   assert.equal(JSON.parse((repair.private_checkpoint as Row).text as string).kind, 'synthesis_repair');
   assert.ok(steps.some(step => step.kind === 'agent_checkpoint' && (step.private_checkpoint as Row).validationRepairs === 1
     && JSON.parse(((step.private_checkpoint as Row).output as Row).text as string).kind === 'synthesis_repair'));

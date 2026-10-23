@@ -1,5 +1,6 @@
 import { fail } from '../contracts';
-import { agentModelLimits, type ModelMessage, type ModelTool } from '../contracts/model';
+import { agentModelLimits, type ModelMessage, type ModelTool, type ModelTurnInput } from '../contracts/model';
+import { consultationProfile } from '../contracts/consultation';
 
 /** Application estimate, deliberately independent of a provider's advertised window.
  * Includes JSON/tool overhead, output, images and room for the next tool result.
@@ -9,6 +10,17 @@ export const contextBudgetPolicy = {
   summaryTrigger: 14500, summaryTarget: 13000, bytesPerToken: 3,
   imageTokens: 1536, toolResultReserve: 768, recentTurns: 3,
 } as const;
+
+export type RequestBudgetOptions = { profile?: ModelTurnInput['profile']; purpose?: 'answer' | 'vision' | 'summary' };
+export function agentRequestBudget(options: RequestBudgetOptions = {}) {
+  if (!options.profile) return { inputBudget: contextBudgetPolicy.inputBudget, summaryTrigger: contextBudgetPolicy.summaryTrigger,
+    summaryTarget: contextBudgetPolicy.summaryTarget, maxOutputTokens: agentModelLimits.maxOutputTokens, policy: contextBudgetPolicy.version };
+  const profile = consultationProfile(options.profile);
+  if (!profile || options.purpose && !['answer','vision','summary'].includes(options.purpose)) fail('agent_input_limit', 422);
+  return { inputBudget: 32000, summaryTrigger: 30000, summaryTarget: 28000,
+    maxOutputTokens: !options.purpose || options.purpose === 'answer' ? profile.maxOutputTokens : agentModelLimits.maxOutputTokens,
+    policy: contextBudgetPolicy.version + ':' + profile.id };
+}
 
 export function originalMessageId(message: ModelMessage): string | null {
   if (message.role !== 'user') return null;
@@ -22,7 +34,7 @@ export function originalMessageId(message: ModelMessage): string | null {
   return null;
 }
 
-export function estimateAgentRequest(messages: ModelMessage[], tools: ModelTool[]) {
+export function estimateAgentRequest(messages: ModelMessage[], tools: ModelTool[], options: RequestBudgetOptions = {}) {
   let images = 0;
   const view = messages.map(message => message.role === 'system' || message.role === 'user'
     ? { ...message, content: message.content.map(part => {
@@ -32,18 +44,18 @@ export function estimateAgentRequest(messages: ModelMessage[], tools: ModelTool[
     }) } : message);
   const textBytes = Buffer.byteLength(JSON.stringify({ messages: view, tools }));
   const estimatedTokens = Math.ceil(textBytes / contextBudgetPolicy.bytesPerToken)
-    + images * contextBudgetPolicy.imageTokens + agentModelLimits.maxOutputTokens + contextBudgetPolicy.toolResultReserve;
+    + images * contextBudgetPolicy.imageTokens + agentRequestBudget(options).maxOutputTokens + contextBudgetPolicy.toolResultReserve;
   return { textBytes, images, estimatedTokens };
 }
 
 /** Remove only earlier COMPLETE customer interactions. Current input, recent
  * turns, system rules, images and the entire current tool/repair sequence stay.
  * No tool result is shortened and no original/checkpoint is modified. */
-export function fitAgentContext(messages: ModelMessage[], tools: ModelTool[]) {
-  const before = estimateAgentRequest(messages, tools);
+export function fitAgentContext(messages: ModelMessage[], tools: ModelTool[], options: RequestBudgetOptions = {}) {
+  const limits = agentRequestBudget(options), before = estimateAgentRequest(messages, tools, options);
   let fitted = messages;
   const omittedMessageIds: string[] = [];
-  if (before.estimatedTokens > contextBudgetPolicy.summaryTrigger || before.textBytes > agentModelLimits.maxTextBytes) {
+  if (before.estimatedTokens > limits.summaryTrigger || before.textBytes > agentModelLimits.maxTextBytes) {
     const starts = messages.flatMap((message, i) => originalMessageId(message) ? [i] : []);
     const removable = starts.slice(0, -contextBudgetPolicy.recentTurns);
     const removed = new Set<number>();
@@ -57,14 +69,14 @@ export function fitAgentContext(messages: ModelMessage[], tools: ModelTool[]) {
       }
       omittedMessageIds.push(originalMessageId(messages[start])!);
       fitted = messages.filter((_, i) => !removed.has(i));
-      const estimate = estimateAgentRequest(fitted, tools);
-      if (estimate.estimatedTokens <= contextBudgetPolicy.summaryTarget && estimate.textBytes <= agentModelLimits.maxTextBytes) break;
+      const estimate = estimateAgentRequest(fitted, tools, options);
+      if (estimate.estimatedTokens <= limits.summaryTarget && estimate.textBytes <= agentModelLimits.maxTextBytes) break;
     }
   }
-  const after = estimateAgentRequest(fitted, tools);
-  if (after.estimatedTokens > contextBudgetPolicy.inputBudget || after.textBytes > agentModelLimits.maxTextBytes) fail('agent_input_limit', 422);
+  const after = estimateAgentRequest(fitted, tools, options);
+  if (after.estimatedTokens > limits.inputBudget || after.textBytes > agentModelLimits.maxTextBytes) fail('agent_input_limit', 422);
   assertToolPairs(fitted);
-  return { messages: fitted, diagnostic: { policy: contextBudgetPolicy.version, before, after, omittedMessageIds } };
+  return { messages: fitted, diagnostic: { policy: limits.policy, before, after, omittedMessageIds } };
 }
 
 /** Provider-neutral protocol validation before dispatch, including replay. */

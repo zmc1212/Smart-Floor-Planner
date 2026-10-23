@@ -14,6 +14,8 @@ export type ModelMessage = { role: 'system' | 'user'; content: ModelPart[] }
 export type ModelTurnInput = {
   model: string; messages: ModelMessage[]; tools: ModelTool[];
   maxTokens: number; enableThinking?: boolean; jsonOutput?: boolean; requireTool?: boolean;
+  /** Server-bound opt-in only; never emitted as a provider/model argument. */
+  profile?: 'bailian-deepseek-flash-consultation-v1' | 'bailian-qwen37-flash-long-v1'; deadlineAt?: number;
 };
 export type ModelTurnOutput = {
   text: string; toolCalls: ModelToolCall[]; finishReason: string | null; providerRequestId: string | null;

@@ -38,7 +38,7 @@ export const agentReadProtocol = 'same-run-read-v1';
 export const agentToolReplyProtocol = 'durable-tool-reply-v1';
 // Only these application-owned reads may reuse a completed result. Writes and
 // newly introduced tools always execute through their existing durable ports.
-const readTools = new Set(['search_knowledge', 'recall_history', 'query_materials', 'query_business', 'query_followups', 'recommend_references']);
+const readTools = new Set(['search_knowledge', 'search_web', 'read_web', 'recall_history', 'query_materials', 'query_business', 'query_followups', 'recommend_references']);
 function readArgumentsHash(name: string, args: string): string | null {
   if (!readTools.has(name)) return null;
   try {
@@ -67,7 +67,7 @@ function validateReadReceipts(saved: AgentCheckpoint, names: Set<string>) {
   }
 }
 const exhaustedToolContent = JSON.stringify({ status: 'tool_exhausted', instructions: '本轮该项有界查询已结束，不再换词重复查询。未命中不代表客户没有说过或现实没有发生；只使用仍有效的资料回答有据部分，必要时说明本次范围限制并作最小澄清。' });
-const finalTurnInstructions = '本轮为收尾轮，仅提交最终回答，不再调用查询、保存或业务工具。使用已经取得且仍有效的来源；没有命中不代表客户没说过或现实没有发生。回答有据部分，对无法确认的部分说明本次范围限制，必要时作最小澄清。不得编造来源、恢复失效值或声称操作成功。';
+export const finalTurnInstructions = '本轮为收尾轮，仅提交最终回答，不再调用查询、保存或业务工具。使用已经取得且仍有效的来源；没有命中不代表客户没说过或现实没有发生。回答有据部分，对无法确认的部分说明本次范围限制，必要时作最小澄清。不得编造来源、恢复失效值或声称操作成功。';
 
 /** One bounded runtime. Postgres owns persistence/recovery; no LangGraph checkpointer or tracing exporter. */
 export async function runRenovationAgent(input: {

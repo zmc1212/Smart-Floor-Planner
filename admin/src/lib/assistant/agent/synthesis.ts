@@ -11,11 +11,11 @@ import { modelCitationCatalog, sourceCitationCatalog, resolveCatalogCitation, en
 import { withSynthesisRepairProtocol, synthesisRepairBase, finalAnswerRepairBase, isCatalogSynthesisDraft } from './synthesis-repair';
 import { originalAnswerOnly, independentAdviceRequested } from './read-tool-input';
 
-export type SynthesisSource = { sourceId: string; kind: 'knowledge' | 'project' | 'history'; title: string; text: string; fullTextCitable?:true; evidence?: Evidence; resultKey?: string; citationQuotes?: string[]; summaryTitle?:string|null; material?: MaterialSource; history?: HistoryRef & { seq: string };
+export type SynthesisSource = { sourceId: string; kind: 'knowledge' | 'project' | 'history' | 'web'; title: string; text: string; fullTextCitable?:true; evidence?: Evidence; web?: import('../contracts/web-source').WebSourceLocator; resultKey?: string; citationQuotes?: string[]; summaryTitle?:string|null; material?: MaterialSource; history?: HistoryRef & { seq: string };
   followup?: Omit<IssueState, 'question' | 'value'> };
 export type SynthesisSegment = { basis: 'evidence' | 'advice' | 'uncertainty'; text: string; citations: Array<{ sourceId: string; quote: string }> };
 export type SynthesisAnswer = { kind: 'synthesis'; segments: SynthesisSegment[] };
-export type SynthesisContext = { version: 1; knowledge: Evidence[]; snapshots: BusinessSnapshot[]; sources: SynthesisSource[]; history?: HistorySnapshot[] };
+export type SynthesisContext = { version: 1; knowledge: Evidence[]; snapshots: BusinessSnapshot[]; sources: SynthesisSource[]; history?: HistorySnapshot[]; web?: Evidence[]; ancestors?: import('./ancestor-sources').AncestorSourceRef[] };
 export const availabilityScopeHintPrefix = '本轮回答范围（仅约束表达';
 export const synthesisRepairProjectionVersion = 'bound-repair-tail-v2';
 export const synthesisContextProjectionVersion = 'current-turn-sources-v9';
@@ -113,7 +113,7 @@ function synthesisModelProjection(message: ModelMessage, originals: Map<string, 
   }
   const aliases: Array<{ sourceId: string; canonicalSourceId: string; resultKey?: string }> = [];
   projected.synthesisSources = packet.synthesisSources.flatMap((source: SynthesisSource & Record<string, unknown>) => {
-    if (scope !== 'all' && source.kind !== 'knowledge') return [];
+    if (scope === 'original' && source.kind !== 'knowledge' || scope === 'independent_advice' && !['knowledge', 'web'].includes(source.kind)) return [];
     const copy: Record<string, unknown> = { ...source };
     if (source.material?.text === source.text) {
       const material: Record<string, unknown> = { ...source.material }; delete material.text; copy.material = material;
@@ -129,6 +129,13 @@ function synthesisModelProjection(message: ModelMessage, originals: Map<string, 
       return [];
     }
     originals.set(key, source.sourceId);
+    // The durable source and deduplication identity above retain every Evidence
+    // field. Send its full original text once, rather than copying the same
+    // web/knowledge body into evidence.text a second time in the model view.
+    if ((source.kind === 'web' || source.kind === 'knowledge') && source.evidence?.text === source.text) {
+      const evidence = { ...source.evidence } as Record<string, unknown>;
+      delete evidence.text; copy.evidence = evidence;
+    }
     delete copy.fullTextCitable; delete copy.citationQuotes; delete copy.citationQuote;
     copy.citationOptions = modelCitationCatalog(source);
     if (copy.summaryTitle === copy.title) delete copy.summaryTitle;
@@ -647,7 +654,7 @@ export const synthesisInstructions = `
 专业综合问答（本段替代上文“知识只能选摘录、业务只能展示快照”的限制）：
 仅问指定文件/原文内容时，只解释该原文，不主动追加一般建议或本人项目流程。只用evidence及对应知识引用、必要的uncertainty；不能以advice或真实引用补原文未写的业务前提。否定等同关系不推出完成/关闭/验收的条件，原文未写就说明本次未说明。明确另问一般建议或结合本人实况时才沿相应综合范围。
 绑定房屋的search_knowledge会同时返回本轮当前需求/正式户型/已发布记录、实际施工节点和原咨询事项的synthesisSources。这些已是原业务适配器实时查询，不必重复查询同一状态。先用当前实际阶段解释影响，再结合需求和图纸说明最小缺项；同一问题随阶段变化只能据本轮快照改变，不能继承历史进度或把阶段当完工。没有绑定房屋/唯一项目时如实澄清，不拼接不同项目。
-专业做法加本人实况/事项的问题，先只调用search_knowledge，取得绑定来源后直接综合解释；除工具明确缺失相关范围外，不再并行/重复查同一房屋的材料、节点或事项。仅找资料、查列表/精确状态仍沿原专用工具。
+企业做法结合本人实况/事项时，search_knowledge可同轮取得绑定来源，已有范围不重复查。通用原理/日常取舍可以直接用模型知识给有条件的一般建议，不强制查企业知识；只涉及本人实况先查对应项目工具。最新产品、公开标准/政策及待核实外部事实有search_web时实际读取网页，只传公共术语/型号，不传客户或项目隐私。
 每个citations数组元素只能是平铺的{"sourceId":"某个来源ID","quote":"该来源逐字原文"}。一段组合两份依据就在该段citations数组并列放两个这样的元素；不能在引用元素里嵌套text、citations或整段解释，也不能省略quote。text和basis只属于segments数组中的段落。
 工具中的citationQuotes是可直接复制的原文候选，保持同一来源ID、原字词、引号和标点；不把“直对”改成“正对”，不删客户原话中的句号。可择相关候选逐字引用，完整原文与条件仍以text为准，不把提示候选当新事实。
 sourceAliases仅合并本轮完整原文和权限/版本元数据完全相同的重复来源，正文及身份保留在前面的canonicalSourceId；引用完整synthesisSources提供的sourceId和原文，不把别名当新证据或授权。不同修订/受众/状态的来源不合并。
@@ -658,7 +665,7 @@ sourceAliases仅合并本轮完整原文和权限/版本元数据完全相同的
 每一段text出现的工程数值，都必须逐字存在于这一段的citations.quote中；前一段引用过数值不能授权后一段再写该值。后一段若同时解释数值与脚注条件，需在该段同时引用数值原行和脚注；或者不重复数字。所引PDF的file.page可用“第N页”说明原段定位，仅允许本段实际引用来源的页码；页码、可信文件名/版号是元数据，不能借给尺寸、费用、工期或工程结论。advice/uncertainty没有引用时不写数值，也不用数字编号。
 每段最多四个来源。专业原因段不要顺带写方案编号、V版号或该版决定；正式版本只在独立一段说明一次，并在该段引用formal_plan的完整标题及所解释的差异/决定原文。不要因为同段引用已满而漏掉正式来源，也不要把另一段的正式引用借来支持本段版本号。没有必要提编号时直接说“当前这一版”，仍保留对应正式引用。
 文件工具提供citationQuote时，它是完整且有界的原文引用，不是摘要。每个解释该文件的段落都应逐字复制citationQuote作为quote，不再缩短成半句；同一表行在多个段落解释时每段重复完整引用，从而保留型号、数值单位、条件和例外。避免把同一原行拆成多个重复段落，优先一段回应材料数值与适用条件。
-客户先问的问题先回答。专业做法、设计取舍、施工条件等自然问题应主动search_knowledge，不要求出现“你们公司”；不要把专业题退回通用入口或需求采访。通用建议可给，但明确是一般建议，不冒充本企业规定。
+客户先问的问题先回答。按事实类型选择模型常识、企业知识、本人项目或联网原文，解释理由、取舍和适用条件，不以检索回执/原文摘抄代替建议，不为检索而检索。通用建议不冒充本企业规定。网页引用带实际网址/读取时间，保留型号/地区/条件；不是企业采用、现场实测或批准，不把搜索摘要当原文，读取失败如实说明。
 专业条目附有professional与服务端applicability：applicable只表示已登记的结构条件匹配，前置检查/例外仍须核实；unknown表示missing中的条件未知，不是已经满足；not_applicable表示mismatched中的条件与当前获权事实不符，只能用来说明为何不能套用，不得当作本项目执行依据。stage使用团队登记的实际阶段key，不从提问或模型猜测。房间、材料、城市本批未自动核实，条件未定时先给条件性解释和最小缺项，不重复问已知需求。prerequisites与exceptions必须和做法一起考虑，来源authority只是依据性质，不代表正式批准或自动覆盖另一规则。同一规则主题的不同明确口径且适用范围可能重叠，工具会标unresolvedConflict，不能按上传时间、相似分数或审校时间自行择一。
 需要否定正式状态时，表述为“当前资料不能支持该结论”“依据不足，仍需核对验收资料”等，不在否定句里复述“已验收/已批准/已关闭/已付款”等完成状态；完成状态只能由真实业务回执展示。没有查到记录也不能推成现实中尚未发生或未执行。保留有据解释和最小核实项，不用完成状态措辞作修辞。
 只把本轮currentQuestion作为当前要回答的问题，旧话题只帮助理解指代。第一段直接回答currentQuestion的结论和关键原因，再补依据/缺项；客户已经换题时，不先回顾或回答上一轮问题。涉及资料不足的问题，先回答现有依据能否支持本轮所问的判断，再说明已知内容和最小缺项。

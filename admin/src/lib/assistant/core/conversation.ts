@@ -2,7 +2,8 @@ import { sql } from 'drizzle-orm';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, fingerprint, key, principalKey, requireCapability, userContent, type ActorContext, type MessageContent, type RunTrigger } from '../contracts';
-import { createPreviewPolicy, previewPolicy, projectMessage, citationProjection } from '../knowledge/sources';
+import { createPreviewPolicy, previewPolicy, projectMessage, citationProjection, webCitationProjection } from '../knowledge/sources';
+import { parseWebCitationId } from '../agent/web-evidence';
 import { configuredGuidance, conversationGuidance, guidanceOpening, guidanceView } from '../requirements/guidance';
 import { requirementCheckpoint } from '../requirements/checkpoint';
 import { saveAutomaticRequirements } from '../requirements/automatic';
@@ -72,7 +73,10 @@ export async function terminalEvent(tx: PostgresTransaction, enterpriseId: strin
 export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Row, settings: Row, messageId: string | null, retryOf?: string, trigger: RunTrigger = { kind: 'user_message', messageId: messageId! }, purpose = 'reply') {
   if (c.status !== 'open' || c.mode !== 'ai') fail('context_changed');
   const agent = actor.principal.kind === 'user' || (purpose === 'site.record' && actor.capabilities.includes('assistant.project.shared')) ? agentConfig(settings.agent_config) : null;
-  const tokenReservation = agent ? 72000 : reserveTokens;
+  // Consultation reserves each actual dispatch in the same original row;
+  // delivered legacy Agent runs retain their existing72000 reservation.
+  const tokenReservation = agent?.consultation ? 0 : agent ? 72000 : reserveTokens;
+  const costReservation = agent?.consultation ? 0 : reserveCostMicros;
   const rate = Number(process.env.ASSISTANT_REQUESTS_PER_MINUTE || 30);
   if (!Number.isInteger(rate) || rate < 1 || rate > 1000) fail('assistant_disabled', 403);
   const recent = await one(tx, sql`select count(*) as n from app.assistant_runs where enterprise_id=${actor.enterpriseId} and created_at>now()-interval '1 minute'`);
@@ -84,15 +88,15 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
     from app.assistant_quota_reservations where enterprise_id=${actor.enterpriseId} and status!='released'
     and (budget_date=(now() at time zone 'UTC')::date or status in ('held','reconciling'))`))!;
   if (Number(budget.requests) + 1 > Number(settings.daily_requests) || BigInt(String(budget.tokens)) + BigInt(tokenReservation) > BigInt(String(settings.daily_tokens))
-      || BigInt(String(budget.cost)) + BigInt(reserveCostMicros) > BigInt(String(settings.daily_cost_micros))) fail('assistant_quota_exceeded', 429);
+      || BigInt(String(budget.cost)) + BigInt(costReservation) > BigInt(String(settings.daily_cost_micros))) fail('assistant_quota_exceeded', 429);
   const r = (await one(tx, sql`insert into app.assistant_runs(enterprise_id,conversation_id,trigger_kind,trigger_message_id,trigger_event_id,trigger_schedule_key,purpose,retry_of_run_id,policy_snapshot,context_revision,knowledge_epoch)
     values(${actor.enterpriseId},${String(c.id)},${trigger.kind},${trigger.kind === 'user_message' ? trigger.messageId : null},
     ${trigger.kind === 'domain_event' ? trigger.eventId : null},${trigger.kind === 'scheduled_task' ? trigger.occurrenceKey : null},${purpose},
-    ${retryOf || null},${json({ schemaVersion: 1, actor, maxTokens: 2048, policyVersion: settings.policy_version, agent })}::jsonb,${Number(c.context_revision)},${Number(settings.knowledge_epoch)}) returning *`))!;
+    ${retryOf || null},${json({ schemaVersion: 1, actor, maxTokens: agent?.consultation ? 8192 : 2048, policyVersion: settings.policy_version, agent })}::jsonb,${Number(c.context_revision)},${Number(settings.knowledge_epoch)}) returning *`))!;
   const runId = String(r.id);
   await tx.execute(sql`insert into app.assistant_jobs(enterprise_id,kind,run_id,dedupe_key) values(${actor.enterpriseId},'chat_turn',${runId},${'run:' + runId})`);
   await tx.execute(sql`insert into app.assistant_quota_reservations(enterprise_id,run_id,operation_key,reserved_tokens,reserved_cost_micros)
-    values(${actor.enterpriseId},${runId},${'run:' + runId},${tokenReservation},${reserveCostMicros})`);
+    values(${actor.enterpriseId},${runId},${'run:' + runId},${tokenReservation},${costReservation})`);
   return { conversationId: String(c.id), messageId, runId, status: 'queued', nextPollMs: 1500 };
 }
 /** Internal extension seam; no production P1 actor receives this capability. */
@@ -213,6 +217,12 @@ export class ConversationService {
   }
   citation(citationId:string, includeReference = true) {
     return this.scoped(async repo=>{
+      const web = parseWebCitationId(citationId);
+      if (web) {
+        const run = await one(repo.tx, sql`select conversation_id from app.assistant_runs where enterprise_id=${this.actor.enterpriseId} and id=${web.runId}`);
+        if (!run) fail('assistant_resource_not_found', 404);
+        return webCitationProjection(repo.tx, this.actor, await repo.conversation(String(run.conversation_id)), citationId);
+      }
       const citation=await one(repo.tx,sql`select * from app.assistant_message_citations where enterprise_id=${this.actor.enterpriseId} and id=${citationId}`);
       if(!citation) fail('assistant_resource_not_found',404);
       const c=await repo.conversation(String(citation.conversation_id));

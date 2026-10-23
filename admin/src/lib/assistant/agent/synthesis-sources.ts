@@ -7,6 +7,9 @@ import { businessSnapshotAvailable, type BusinessSnapshot } from './business-too
 import { businessSynthesisSources, knowledgeSynthesisSources, type SynthesisContext } from './synthesis';
 import { historySynthesisSources, historyRefsAvailable, type HistorySnapshot } from './history';
 import { needMemoryPolicy, readMemory } from './memory';
+import { resolveWebEvidence, webEvidence, webSynthesisSources } from './web-evidence';
+import type { WebSearchSnapshot } from './web';
+import { ancestorSourcesAvailable } from './ancestor-sources';
 
 /** A committed receipt cites its actual customer original through the existing
  * original-message protocol, never a proposed call or model source packet. */
@@ -30,10 +33,17 @@ async function savedNeedOriginal(tx: PostgresTransaction, actor: ActorContext, c
 export async function currentSynthesisContext(tx: PostgresTransaction, actor: ActorContext, conversation: Row, runId: string): Promise<SynthesisContext> {
   const steps = await rows(tx, sql`select step_seq,capability_name,private_checkpoint,source_refs from app.assistant_run_steps
     where enterprise_id=${actor.enterpriseId} and run_id=${runId} and status='succeeded'
-      and capability_name in ('record_need','history.summary.v1','recall_history','knowledge.search.v1','query_business','query_materials','query_followups','synthesis.bound_materials.v1','synthesis.bound_construction.v1','synthesis.bound_followups.v1') order by step_seq`);
+      and capability_name in ('source.restore.v1','record_need','history.summary.v1','recall_history','knowledge.search.v1','web.search.v1','web.read.v1','query_business','query_materials','query_followups','synthesis.bound_materials.v1','synthesis.bound_construction.v1','synthesis.bound_followups.v1') order by step_seq`);
   const context: SynthesisContext = { version: 1, knowledge: [], snapshots: [], sources: [] };
   for (const step of steps) {
-    if (step.capability_name === 'record_need') {
+    if (step.capability_name === 'source.restore.v1') {
+      const restored = step.private_checkpoint as SynthesisContext;
+      if (!await synthesisContextAvailable(tx, actor, conversation, restored)) fail('context_changed');
+      context.ancestors = restored.ancestors;
+      for (const key of ['knowledge','snapshots','sources'] as const) (context[key] as unknown[]).push(...restored[key]);
+      (context.web ??= []).push(...(restored.web || []));
+      (context.history ??= []).push(...(restored.history || []));
+    } else if (step.capability_name === 'record_need') {
       const snapshot = await savedNeedOriginal(tx, actor, conversation, runId, step);
       (context.history ??= []).push(snapshot);
       context.sources.push(...historySynthesisSources(snapshot).map(source => ({ ...source, title: '本轮已记录需求的客户原话' })));
@@ -41,6 +51,11 @@ export async function currentSynthesisContext(tx: PostgresTransaction, actor: Ac
       const snapshot=step.private_checkpoint as HistorySnapshot;
       if(!await historyRefsAvailable(tx,actor.enterpriseId,String(conversation.id),snapshot.sources))fail('context_changed');
       (context.history??=[]).push(snapshot);context.sources.push(...historySynthesisSources(snapshot));
+    } else if (step.capability_name === 'web.search.v1' || step.capability_name === 'web.read.v1') {
+      const evidence = webEvidence(step.private_checkpoint as WebSearchSnapshot, runId, Number(step.step_seq));
+      for (const e of evidence) if (!await resolveWebEvidence(tx, actor, conversation, e)) fail('context_changed');
+      (context.web ??= []).push(...evidence);
+      context.sources.push(...webSynthesisSources(evidence));
     } else if (step.capability_name === 'knowledge.search.v1') {
       for (const e of step.private_checkpoint as Evidence[]) {
         const source = await resolveEvidence(tx, actor, conversation, e);
@@ -70,8 +85,10 @@ export async function currentSynthesisContext(tx: PostgresTransaction, actor: Ac
 /** All consulted evidence is retained, including conflicting/uncited candidates. Replacement invalidates synthesis. */
 export async function synthesisContextAvailable(tx: PostgresTransaction, actor: ActorContext, conversation: Row, context: SynthesisContext) {
   if (context.version !== 1) return false;
+  if (context.ancestors && !await ancestorSourcesAvailable(tx, actor, conversation, context.ancestors)) return false;
   for(const snapshot of context.history||[])if(!await historyRefsAvailable(tx,actor.enterpriseId,String(conversation.id),snapshot.sources))return false;
   for (const e of context.knowledge) if (!await resolveEvidence(tx, actor, conversation, e)) return false;
+  for (const e of context.web || []) if (!await resolveWebEvidence(tx, actor, conversation, e)) return false;
   for (const snapshot of context.snapshots) {
     try { if (!await businessSnapshotAvailable(tx, actor.enterpriseId, snapshot)) return false; } catch { return false; }
   }

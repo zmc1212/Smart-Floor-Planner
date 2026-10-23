@@ -1,5 +1,6 @@
 import { AiProviderError, type AiProviderRuntimeConfig } from '../provider-types';
 import { agentModelLimits, type ModelMessage, type ModelTurnInput, type ModelTurnOutput } from '@/lib/assistant/contracts/model';
+import { consultationProfile } from '@/lib/assistant/contracts/consultation';
 import { bearerHeaders, parseJson, providerFetch, providerUrl, asObject } from './http';
 import { thinkingBody } from './thinking';
 
@@ -16,7 +17,14 @@ function leadingSystems(messages: ModelMessage[]): ModelMessage[] {
   ]) }, ...messages.filter(message => message.role !== 'system')];
 }
 export function agentChatBody(input: ModelTurnInput, baseUrl = 'https://api.siliconflow.cn') {
-  if (!Number.isInteger(input.maxTokens) || input.maxTokens < 1 || input.maxTokens > agentModelLimits.maxOutputTokens) throw Error('agent_input_limit');
+  const endpoint = new URL(baseUrl);
+  const consultation = input.profile !== undefined;
+  const profile = consultationProfile(input.profile);
+  if (consultation && (!profile || input.model !== profile.model
+    || endpoint.origin !== 'https://dashscope.aliyuncs.com' || !/^\/compatible-mode(?:\/v1)?\/?$/.test(endpoint.pathname)
+    || input.enableThinking !== false)) throw Error('agent_profile_mismatch');
+  const maxOutputTokens = profile ? profile.maxOutputTokens : agentModelLimits.maxOutputTokens;
+  if (!Number.isInteger(input.maxTokens) || input.maxTokens < 1 || input.maxTokens > maxOutputTokens) throw Error('agent_input_limit');
   let images = 0, textBytes = 0;
   // Verified SiliconFlow Qwen3.5 template rejects any later system message.
   // This wire-only compatibility rule does not rewrite the runtime's trusted

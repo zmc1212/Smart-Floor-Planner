@@ -14,6 +14,7 @@ import { withTenantTransaction } from '@/db/transaction';
 import { AssistantRepository } from '@/db/repositories/assistant-repository';
 import { customerPublicHttp } from '@/lib/construction/public-http';
 import { customerPlanHttp } from '@/lib/construction/plan-http';
+import { parseWebCitationId } from '../agent/web-evidence';
 
 function only(body: Record<string, unknown>, allowed: string[]) {
   if (Object.keys(body).some(k => !allowed.includes(k))) fail('invalid_message', 422);
@@ -91,7 +92,9 @@ export async function assistantHttp(request: Request, path: string[]) {
         data = await service.send(target, String(body.clientMessageId), body.content, siteWatchInterceptor); status = 202;
       } else fail('assistant_resource_not_found', 404);
     } else if (path[0]==='citations' && path.length===2 && method==='GET') {
-      const target=id(path[1]);data=await new ConversationService(await locate(identity,'citation',target)).citation(target);
+      const web = parseWebCitationId(path[1]);
+      const target = web ? key(path[1]) : id(path[1]);
+      data=await new ConversationService(await locate(identity,web ? 'run' : 'citation',web ? id(web.runId) : target)).citation(target);
     } else if (path[0] === 'runs' && path.length <= 3) {
       const target = id(path[1]); const service = new ConversationService(await locate(identity, 'run', target)); only(body, []);
       if (path.length === 2 && method === 'GET') data = await service.run(target);

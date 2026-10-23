@@ -1,14 +1,16 @@
 # 小K接力：跨阶段核对与统一接续
 
-**最新交接｜2026-10-23：R0内部步骤完成，自动进入R1。** 用户已授权R0–R4顺序实施和逐阶段自动继续，固定百炼`deepseek-v4.1-flash-1017`/thinking=false；R1/R2/R3上限60000/80000/100000，R4另限1000000，均现金0/无付费回退/无生产。CONSULT-02/KDEP-CONSULT-02仍Limited，不新增业务Implemented。当前唯一负责人继续本聊天，不恢复旧对照。
+**最新交接｜2026-10-23：R0内部完成；R1已集成、业务验收未通过。** 原R0–R4顺序/阶段完成自动继续仍有效。用户最新明确授权调整测试：零模型逻辑先验；短语义用百炼DeepSeek Flash免费/用尽即停，R1/R2/R3上限60k/80k/100k；完整研究/连续追问/图纸/压缩长链在开跑前固定已配置qwen3.7-flash，跨R1–R4本轮共用100万observed＋unobserved-reserved tokens与¥5，达到任一即停。无自动付费回退、模型矩阵、新视觉或生产。最新授权覆盖旧“全部同DeepSeek/现金0”；不能按旧停止段重新暂停全部实施。
 
-R0保留worker授权/dispatch/用量/回执/提交/旧checkpoint，提取纯`model-request.ts`，咨询profile仅类型未激活8192。`tmp/xiaok-consultation-r0/final-audit.json`核对192单元、65真实服务断言、193源码类型0、lint和51旧wire/20目录/两原PNG/OCR；原251487tokens是历史，本轮新百炼/业务调用0。原全文件服务批主动中断，60通过/7实模跳过/3失败及原绑定不改判；只用提取前worker控制，3/3失败同样重现。独立建议unsupported_model_commitment带R3；AG05旧kind期待及AG08硬编码v8对当前v9带R1兼容，不能删恢复/撤回用例或据mock unknown冒充新供应商未知费用。
+**当前产品与检查。** R0提交36f1c29ba669acd0da98d7047851061aa437fa8c与原失败保留。R1接入run绑定8192 profile/原账务逐dispatch预留、受控发现/read_web/HTML-PDF真实链接及4MB/50页限制、服务器祖先Evidence重验/当前目录，最新容量投影与原文获取修复见下。保留LangGraph/KnowledgeRetriever/Evidence、tenant/源撤回/作业/回执/unknown/接管、原C01/Admin设计与正式v4图；无知识重建。229单元、204源码类型0、7服务/lint及1定向审计通过，AG05/AG08兼容两项可复用；这些结果不证明R1业务通过。
 
-中断/基线合成夹具已删，web夹具停AI/撤身份，队列0、锁释放、Provider attempts0。隔离库无摄像头/录像表，仅测试夹具清理按表存在性/合成前缀/Provider0适配，未改产品物理文件守卫或迁移。原开发服务/SSH/端口/配置/凭据/原生窗口未改；Stable尚未操作，无新真机/原生/真实图语义通过。本地Embedding是夹具既有组件，独立记录，不等于百炼费用；旧真实unknown1430/3862/8673/1948/1949及段落2/书桌2/预算1保留。
+**本轮实模与资金。** DeepSeek live-03/run9110实际2调用14552tokens；第三次预留46785令总额61337＞原60k，本地dispatched=false拦截。attempt2326是未发网络的本地失败，不是第三次调用或真实unknown；额度页436.37K延迟不能说余额耗尽。新Qwen live-04独立固定2问链×2，run9122首答服务成功但原厂PDF/网页引用失败；9123追问agent_input_limit，9124首问unsupported_model_commitment，第二追问未执行。11真实调用输入86368＋输出1262＝87630tokens，最高档未缓存估算上界¥0.1096992，实际账单null。整链预检600k/¥2.88×逐条核对通过，未因额度中断；不能把新模型成功片段拼回DeepSeek原失败。
 
-当前R1：原C01企业＋本人项目＋厂家原文及追问/点来源/重进；先接run绑定8192 profile和同一账务派发预留（旧每run72000高于整阶段60000），再做受控Crawl4AI/pypdf读取（旧10MB/60页要收紧到4MB/50页）与服务端祖先来源重验/本轮目录，不加第二Agent/facts/权限/引用权威。`tmp/xiaok-consultation-r1/plan.json`已登记原2-turn×2共4答复，预算草稿5项离线通过但未集成。需新鲜额度/用尽即停/实际能力绑定才派发；Chrome较早刷新436.37K/checked不能当以后足额保证。R1包括真实服务、原C01输入/发送/来源打开/刷新重进/撤权/失败恢复及单控制器Stable，完成后自动R2，不逐次确认。
+**已证实机制与当前下一步｜2026-10-24。** R1容量已修复：全文/目录/记忆回放与live-06/07未提高48KB/32k估算上下文/60k预留。只读content/artifact投影、实际标题发现、去重用途前沿、PDF子进程UTF-8及CommonMark AST已集成。229单元/204源码类型0/7真实服务/lint与1定向审计通过，不证明业务。live-07原题2问链×2的首问9175/9176仍unsupported_model_commitment，两追问未执行；9175无原厂原件，9176自主读到165829字节四页安装手册，但所选引文未覆盖1.5/0.3/27/5，另两稿均有行内编号误判。live-07-diagnosis-02证明只屏蔽编号仍无法让9176通过，诊断副本未交付。两次修补未完成同一正常链，按AGENTS有界规则停止第三次补丁/重测，下一须明确发现失配、主张/引文覆盖与修复轮次机制，不加提示/regex抽样。R1仍Limited，R2–R4未进入；详细根因/失败/版本/上游采纳维护双语二期。
 
-分支仍codex/xiaok-public-site-lifecycle，接手HEAD35e07debf7d56b47eb6aa8c5b2eaa1189cef81f8，工作树原有脏改动保留。`stage-r0.mjs`将只暂存R0代码、批准方案及当前记录，不整批git add；R0局部提交生成后在下一次必要记录写入真实hash。复用R0证据，不重跑旧全矩阵。
+**共享预算与资源。** 所有Qwen阶段/批仍用企业4536原usage/quota、authorization=xiaok-20261023-qwen-long-cny5，跨阶段/组/日期共用100万tokens/¥5，不清零。strategy-close-04确认33个accepted/succeeded attempts、243290 observed tokens、held0/unknown=false、knownCostMicros305516/heldCost0、核账行0/实际账单null；剩余756710tokens/¥4.694484为后续预检前预算。每请求≤60k，整条2问链最多10请求先预检，未知即停。live-07配置/投影恢复、AI停/身份撤权、队列0、自有3107/18095/18097与锁释放/无漂移。原隧道依批准记录恢复5432/55432控制器310180及Embedding/搜索转发95536；唯一原Stable2.02.2608080项目保留副屏、CDP9431/automator9420。恢复时一次auto发生在自动重开的自有项目上，随后核对仅一窗口，后续复用；未操作他人WeChat/项目。3006/主Worker在本轮恢复前已停且未重启。只在隔离55432临时配置，Key不打印，不部署生产。
+
+**执行与版本。** admin目录零模型检查：ASSISTANT_CONSULTATION_STAGE=R1、唯一ASSISTANT_CONSULTATION_BATCH，node scripts/assistant-consultation-check.mjs unit/types/consultation/lint。保存的完整证据位于tmp/xiaok-consultation-r1；live-07已关闭，本次不再运行live.ts或旧Open WebUI比较。只有明确的新机制及离线判别解除此阻塞后，才按原plan-qwen-long-01.json固定2题×2与原企业账务重新预检；不能补采直到通过。保留所有首稿、原段落2/书桌2/预算1和1430/3862/8673/1948/1949 unknown。分支codex/xiaok-public-site-lifecycle；本轮容量/原件与相关账务集成以本地修复提交保存，R1阶段仍未完成，不提交无关脏改动。源码/配置/驱动/依赖各批首尾绑定，实测全工作树与提交范围分开；fa70386a施工录像文档与其他脏改动不计入本轮。index-type-audit-01以暂存源码/配置独立审计203实际源码、0诊断，排除未暂存平台/供应商改动；文档随后收尾，模型证据不变。定向lint通过；完整full-lint-02排除既有.next-camera生成目录后仍有161错误/2367警告，全部错误来自既有hls/mpegts摄像头vendor，R1仅一个测试unused警告。原full-lint-01因误扫产物终止自有进程，不能称通过；无关代码未动。2789个live-07绑定文件提交前复核全匹配，随后仅文档修改。当前关闭批的剩余检查是有效答复、沿源追问、点来源/重进和混合撤回，不能以错误页通过替代。
 
 ## 历史规划交接（其中待批准表述已被上方新授权取代）
 

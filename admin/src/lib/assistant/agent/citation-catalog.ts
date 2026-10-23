@@ -1,5 +1,6 @@
 import type { SynthesisSource } from './synthesis';
 import { fail, fingerprint } from '../contracts';
+import { proseNumberView } from './prose-number-view';
 
 export const citationProtocolVersion = 'source-catalog-v1';
 export type CatalogCitation = { citationId: string; sourceId: string; quote: string; start: number; end: number };
@@ -93,7 +94,7 @@ export function engineeringClaimText(text: string, citedSources: SynthesisSource
       }
     }
   }
-  let result = text;
+  let result = proseNumberView(text);
   for (const page of pdfPages) {
     // Coordinates describe this segment's cited original, not quantities in
     // its prose. Never trust a display label, another segment or a bare number.
