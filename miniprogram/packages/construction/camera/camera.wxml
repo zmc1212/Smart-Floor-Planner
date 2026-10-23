@@ -1,0 +1,2 @@
+<web-view wx:if="{{src}}" src="{{src}}" binderror="onWebError" />
+<view wx:else class="state"><text>{{loading ? '正在核对工地视频权限…' : error}}</text><button wx:if="{{!loading}}" bindtap="open">重新进入</button></view>

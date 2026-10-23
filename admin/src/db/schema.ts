@@ -3,6 +3,7 @@ export * from './assistant-schema';
 export * from './portfolio-schema';
 export * from './construction-schema';
 export * from './construction-public-schema';
+export * from './construction-camera-schema';
 import {
   bigint,
   boolean,

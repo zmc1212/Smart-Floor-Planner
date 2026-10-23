@@ -4,6 +4,7 @@ import { verifyMiniProgramToken } from '@/lib/miniprogram-jwt';
 import { AssistantError, fail } from '@/lib/assistant/contracts';
 import { ConstructionService } from '@/lib/construction/service';
 import { siteChatHttp } from '@/lib/construction/site-http';
+import { staffCameraHttp } from '@/lib/construction/camera/http';
 
 export const runtime = 'nodejs';
 type Context = { params: Promise<{ path?: string[] }> };
@@ -15,6 +16,9 @@ async function handle(request: NextRequest, context: Context) {
     const token = await verifyMiniProgramToken(request.headers.get('authorization')!.slice(7));
     if (!token || (token.source === 'password' && actor.staff.mustChangePassword)) fail('construction_password_required', 403);
     const p = (await context.params).path || [], read = request.method === 'GET';
+    if (p[0] === 'video') return await staffCameraHttp(request, {
+      enterpriseId: actor.enterpriseId, adminId: actor.staff._id, miniProgramUserId: actor.user._id, miniProgramContextVersion: token.contextVersion,
+    }, p.slice(1));
     if (p[0] === 'projects' && p[2] === 'chat') return await siteChatHttp(request, {
       enterpriseId: actor.enterpriseId, adminId: actor.staff._id, miniProgramUserId: actor.user._id, miniProgramContextVersion: token.contextVersion,
     }, p[1], p.slice(3));

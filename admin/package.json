@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "camera:gateway": "tsx scripts/construction-camera-gateway.ts",
+    "test:camera": "node scripts/construction-camera-check.mjs",
+    "check:camera": "node scripts/construction-camera-typecheck.mjs",
     "test:construction": "node scripts/construction-acceptance.mjs",
     "test:construction:fixtures": "tsx scripts/construction-public-fixture.ts --development",
     "check:construction": "node scripts/construction-migration-check.mjs",

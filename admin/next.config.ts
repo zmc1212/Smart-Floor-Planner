@@ -35,6 +35,8 @@ const envAllowedDevOrigins = (process.env.ALLOWED_DEV_ORIGINS ?? '')
   .filter(Boolean);
 
 const nextConfig: NextConfig = {
+  // An isolated validation server/build must not overwrite the active dev output.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   output: 'standalone',
   // Keep Node-only media deps out of the bundler server graph. Pulling qiniu
   // into the graph also loads urllib → proxy-agent → vm2 and adds avoidable

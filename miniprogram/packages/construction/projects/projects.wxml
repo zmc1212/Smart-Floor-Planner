@@ -19,6 +19,7 @@
         <view class="progress"><text class="label">当前实际节点</text><text class="stage-name">{{detail.project.stageName}}</text><text wx:if="{{detail.project.progress_note}}" class="body-text">{{detail.project.progress_note}}</text></view>
         <button wx:if="{{detail.manage}}" disabled="{{busy || pending || detail.project.status !== 'active'}}" bindtap="openProgress">更新实际节点</button>
         <button class="outline" bindtap="openChat" disabled="{{busy || pending || detail.project.status === 'archived'}}">进入工地小K对话</button>
+        <button class="outline camera-entry" bindtap="openCamera" disabled="{{busy || pending || detail.project.status !== 'active'}}">查看工地视频</button>
       </view>
       <view class="surface">
         <view class="section-title">阶段分工</view><text class="helper">联系管家读取本阶段主要联系人的当前有效电话</text>

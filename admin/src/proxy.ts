@@ -160,6 +160,10 @@ export async function proxy(request: NextRequest) {
   // 1. Allow unauthenticated entry points and routes with their own verification.
   if (
     pathname === '/api/health' ||
+    pathname === '/construction-camera' ||
+    pathname.startsWith('/construction-camera/') ||
+    pathname === '/api/construction-camera' ||
+    pathname.startsWith('/api/construction-camera/') ||
     pathname.startsWith('/api/public/design-reports/') ||
     pathname.startsWith('/api/public/construction/') ||
     pathname === '/api/internal/seed' ||

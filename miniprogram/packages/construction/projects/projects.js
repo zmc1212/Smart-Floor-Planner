@@ -63,6 +63,7 @@ Page({
   openMine() { wx.switchTab({ url: '/pages/mine/mine' }); },
   openBrief() { if (this.current() && this.data.canBrief && !this.data.pending) wx.navigateTo({ url: '/packages/construction/brief/brief' }); },
   openChat() { if (this.data.detail && !this.data.busy && !this.data.pending) wx.navigateTo({ url: '/packages/construction/chat/chat?projectId=' + encodeURIComponent(this.data.detail.project.id) }); },
+  openCamera() { if (this.data.detail && !this.data.busy && !this.data.pending && this.data.detail.project.status === 'active') wx.navigateTo({ url: '/packages/construction/camera/camera?projectId=' + encodeURIComponent(this.data.detail.project.id) }); },
   openIdentities() { wx.navigateTo({ url: '/packages/business/identity-switch/identity-switch' }); },
   closeSheet() { if (!this.data.busy) this.setData({ sheet: '' }); },
   openProgress() {

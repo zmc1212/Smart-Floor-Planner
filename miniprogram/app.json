@@ -9,7 +9,7 @@
   "subPackages": [
     {
       "root": "packages/construction",
-      "pages": ["projects/projects", "brief/brief", "chat/chat", "public-sites/public-sites", "public-site/public-site"]
+      "pages": ["projects/projects", "brief/brief", "chat/chat", "public-sites/public-sites", "public-site/public-site", "camera/camera"]
     },
     {
       "root": "packages/assistant",

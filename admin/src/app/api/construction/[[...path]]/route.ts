@@ -4,6 +4,7 @@ import { AssistantError, fail } from '@/lib/assistant/contracts';
 import { ConstructionService } from '@/lib/construction/service';
 import { siteChatHttp } from '@/lib/construction/site-http';
 import { staffPublicHttp } from '@/lib/construction/public-http';
+import { staffCameraHttp } from '@/lib/construction/camera/http';
 
 export const runtime = 'nodejs';
 type Context = { params: Promise<{ path?: string[] }> };
@@ -11,6 +12,7 @@ async function handle(request: NextRequest, context: Context) {
   return withTenantRoute(request, { requireEnterprise: true }, async actor => {
     try {
       const p = (await context.params).path || [], read = request.method === 'GET';
+      if (p[0] === 'video') return await staffCameraHttp(request, { enterpriseId: actor.enterpriseId!, adminId: actor.userId }, p.slice(1));
       if (p[0] === 'projects' && p[2] === 'public-materials') return await staffPublicHttp(request,
         { enterpriseId: actor.enterpriseId!, adminId: actor.userId }, p[1], p.slice(3));
       if (p[0] === 'projects' && p[2] === 'chat') return await siteChatHttp(request,

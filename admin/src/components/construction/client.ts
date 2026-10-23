@@ -10,6 +10,11 @@ export type StageSettings = { stages: Stage[]; version: number; owner: boolean }
 export type Detail = { project: Project; owner: boolean; manage: boolean; rooms: Array<{ id: string; name: string }>; stages: Stage[]; settingsVersion: number; staff: Staff[]; assignments: Array<{ stage_key: string; admin_id: string; is_primary: boolean; display_name: string; staff_status: string }>; members: Array<{ admin_id: string; role: string; active: boolean; work_label: string; display_name: string; staff_status: string }>; audits: Array<{ action: string; created_at: string }> };
 export type Pending = { path: string; method: string; body: object; key: string };
 const messages: Record<string, string> = {
+  camera_unavailable: '摄像头不存在或已停用，请刷新后重试。', camera_already_assigned: '该通道已分配，不能重复认领。',
+  camera_already_bound: '摄像头已绑定其他工地，请先在原工地解绑。', camera_invalid_channel: '请核对 WVP 设备和视频通道编号。',
+  camera_forbidden: '当前身份没有此摄像头操作权限。', camera_not_configured: '视频服务尚未配置，请联系管理员。',
+  camera_service_unavailable: '摄像头服务暂不可用，请稍后重试。', camera_control_busy: '云台仍在核对停止状态，请稍后重试。',
+  camera_project_unavailable: '工地已停用或访问权限已变化，请重新进入。',
   public_source_unavailable: '原始材料已有变化或访问已撤销，请读取最新材料；当前编辑保留。',
   public_consent_required: '须由业主查看完整预览并明确同意这一版，再由企业审核公开。', public_preview_required: '业主尚未查看这一版完整预览。',
   public_state_conflict: '公开材料状态已变化，请读取最新材料后重新核对。', public_material_sensitive: '节选或名称仍有联系方式或门牌，请完成脱敏。',
