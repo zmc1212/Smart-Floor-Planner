@@ -48,7 +48,8 @@ export class RequirementService {
         text: ((m.content as { blocks?: { text?: string }[] }).blocks || []).map(b => b.text || '').join('\n') })) };
     });
   }
-  write(conversationId: string, requestKey: string, input: Record<string, unknown>, proposal?: { sourceSeq: string; fields: unknown }) {
+  write(conversationId: string, requestKey: string, input: Record<string, unknown>, proposal?: { sourceSeq: string; fields: unknown },
+    guard?: (repo: AssistantRepository, conversation: Row) => Promise<void>) {
     const confirm = input.action === 'confirm';
     if (proposal && (confirm || typeof proposal.sourceSeq !== 'string')) fail('invalid_requirement_evidence', 422);
     if (input.action !== 'draft' && !confirm) fail('invalid_message', 422);
@@ -59,6 +60,9 @@ export class RequirementService {
     const leadId = input.leadId === undefined ? null : id(input.leadId);
     if (confirm && (input.consent !== true || !Number.isInteger(input.expectedVersion) || Number(input.expectedVersion) < 1)) fail('invalid_message', 422);
     return this.scoped(conversationId, true, async (repo, c) => {
+      // Internal integrations can fence an authorized snapshot within the same
+      // settings/participant transaction, including before idempotent replay.
+      if (guard) await guard(repo, c);
       // Store identifiers only in idempotency records; replay always projects current,
       // possibly redacted content instead of caching private requirement text.
       const result = await idempotent(repo.tx, this.actor, 'requirements:' + conversationId, requestKey, proposal ? { ...input, proposal } : input, async () => {

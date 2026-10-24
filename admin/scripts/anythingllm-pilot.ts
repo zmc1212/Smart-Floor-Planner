@@ -16,7 +16,7 @@ import { activeProfile, KnowledgeService } from '@/lib/assistant/knowledge/servi
 import { chineseTerms } from '@/lib/assistant/knowledge/chinese-lexical';
 import { embeddingGateway } from '@/lib/assistant/infrastructure/embedding-gateway';
 import { fingerprint, type ActorContext } from '@/lib/assistant/contracts';
-import { AnythingLlmContextService, anythingLlmMessages, anythingLlmPrompt, anythingLlmToolPolicy, assertAnythingLlmAction, type AnythingLlmContext } from '@/lib/assistant/integrations/anythingllm';
+import { AnythingLlmContextService, anythingLlmMessages, anythingLlmPrompt, anythingLlmToolPolicy, assertAnythingLlmAction, draftQuoteAllowed, type AnythingLlmContext } from '@/lib/assistant/integrations/anythingllm';
 import { HandoffService } from '@/lib/assistant/handoff/service';
 
 type Row = Record<string, any>;
@@ -27,6 +27,7 @@ const hash = (v: string | Buffer) => createHash('sha256').update(v).digest('hex'
 const syntheticKnowledge = '【测试专用企业服务须知，不代表真实公司承诺】首次咨询需要了解城市、小区、建筑面积、预算和预计入住时间。量房安排须由工作人员确认，标准现场勘察预留90分钟，具体以预约回执为准。先核对现状和业主需求，再出设计方案与分项报价。不得把客户自述面积称为正式量房面积；不得承诺免费量房、折扣、开工日期或确定总价。宠物家庭的地面选材需要核对耐磨、防滑、清洁维护和地暖适配；没有产品参数时不能替厂家保证。';
 const qualification = process.argv[2] === 'qualification';
 const handoffOnly = process.argv[2] === 'handoff';
+const receipts = process.argv[2]?.startsWith('receipts');
 const continuation = process.argv[2]?.startsWith('continuation') || handoffOnly;
 const prompts = [
   '我家准备装修，预算12万，养了只猫，现在先做什么？',
@@ -44,7 +45,12 @@ if (continuation) prompts.splice(0, prompts.length,
   '我家预算10万，客厅想铺瓷砖，地暖先不做。你们量房大概要多久？',
   '量房的时间还是之前说的那样吗？我家的预算和地暖你还记得吧？',
   '我想直接跟设计师聊，帮我联系一下。');
-const customerHistory = handoffOnly ? prompts.splice(0, 2) : [];
+const customerHistory = handoffOnly ? prompts.splice(0, 2) : receipts ? [
+  '我家预算10万，客厅想铺瓷砖，地暖先不做。你们量房大概要多久？',
+  '量房的时间还是之前说的那样吗？我家的预算和地暖你还记得吧？',
+] : [];
+if (receipts) prompts.splice(0, prompts.length, '你刚才真的保存了吗？', '我想直接跟设计师聊，帮我联系一下。',
+  '帮我把这些记下来吧，我回头再确认。', '你刚才真的保存了吗？');
 
 function binding() {
   const files = cp.execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z', 'admin/src/lib/assistant', 'admin/src/db', 'admin/src/lib/postgresql.ts', 'admin/scripts/anythingllm-pilot.ts', 'admin/scripts/anythingllm-pilot-run.mjs', 'scripts/anythingllm-pilot'], { cwd: root, encoding: 'utf8', windowsHide: true }).split('\0').filter(Boolean);
@@ -57,7 +63,7 @@ function binding() {
 }
 
 async function live() {
-  const servicesOnly = process.argv[2] === 'services' || process.argv[2] === 'continuation-services';
+  const servicesOnly = process.argv[2] === 'services' || process.argv[2]?.endsWith('-services');
   const batch = new Date().toISOString().replace(/[:.]/g, '-');
   const output = path.join(dir, `trial-${batch}.json`);
   const secret = JSON.parse(fs.readFileSync(path.join(dir, 'instance.private.json'), 'utf8'));
@@ -74,15 +80,15 @@ async function live() {
   const priorPilotTokens = earlierCalls.reduce((n, c) => n + (c.usage?.total_tokens ?? c.reservedTokens), 0);
   const report: Row = { version: 'anythingllm-business-pilot-v6', started: new Date().toISOString(), upstream: { version: '1.18.0', source: '3e4f9411b67f2dd7fa9fc6f2b95dfacbda0633ba' }, scope: 'Isolated service integration; not the default Mini Program runtime. Conversation history belongs to AnythingLLM; system user inputs feed real business services.', prompts, trials: 2, calls: [], tools: [], cases: [], fixtures: [], checks: {}, bindingBefore: binding(), tokenLimit: 200000, callLimit: continuation ? 12 : qualification ? 48 : 24, priorPilotTokens, priorPilotEvidence: earlier.filter(r => r.report.calls?.length).map(r => r.name), previousPlanObservedAndReservedTokens: 518485, previousPlanObservedAndReservedMicros: 869762, actualBilledYuan: null };
   report.mode = servicesOnly ? 'services-only-no-agent-inference' : 'upstream-agent';
-  report.version = 'anythingllm-business-pilot-v7';
+  report.version = 'anythingllm-business-pilot-v8';
   report.customerHistory = customerHistory;
-  report.reusedContextEvidence = handoffOnly ? 'trial-2026-10-24T16-37-31-618Z.json; only required handoff execution changed' : null;
-  report.scenario = continuation ? 'natural-company-revocation-handoff' : qualification ? 'natural-migration-qualification' : 'natural-user-dialogue';
+  report.reusedContextEvidence = handoffOnly || receipts ? 'trial-2026-10-24T16-37-31-618Z.json; unchanged company query/withdrawal comprehension, original failures retained' : null;
+  report.scenario = receipts ? 'natural-service-owned-receipts' : continuation ? 'natural-company-revocation-handoff' : qualification ? 'natural-migration-qualification' : 'natural-user-dialogue';
   report.assessment = 'Natural language only. Judge clarification, grounded company facts, complete drafts, corrections, reentry, withdrawn knowledge, truthful handoff and privacy. Runtime checks alone are not acceptance. Draft extraction uses validated customer excerpts; previous failures remain.';
   const save = () => fs.writeFileSync(output, JSON.stringify(report, (_, v) => typeof v === 'bigint' ? String(v) : v, 2));
   save();
   let apiKey = '', server: http.Server | undefined;
-  let active: { fixture: Row; case: Row; key: string; mayWriteDraft: boolean; context?: AnythingLlmContext; handoffRequest?: string } | undefined;
+  let active: { fixture: Row; case: Row; key: string; mayWriteDraft: boolean; context?: AnythingLlmContext; handoffRequest?: string; receiptDelivered?: boolean } | undefined;
   let unknown = false, inFlight = false;
   const fixtures = new Map<number, Row>();
   async function api(route: string, body?: Row, auth = apiKey) {
@@ -142,6 +148,10 @@ async function live() {
       active.handoffRequest = active.key;
       return receipt;
     }
+    if (action === 'read_business_status') {
+      assert.ok(active?.fixture === f && active.context, 'No current authorized customer context');
+      return new AnythingLlmContextService(f.actor,f.conversationId).readBusinessStatus(active.context,active.key);
+    }
     if (action === 'read_project') return withTenantTransaction(f.actor.enterpriseId, async tx => {
       const p = await new CustomerProjectRepository(tx).findCustomerProject(BigInt(f.userId), BigInt(f.leadId));
       assert.ok(p, 'Project is not accessible');
@@ -159,6 +169,7 @@ async function live() {
     if (action === 'create_requirement_draft') {
       assert.ok(active && active.fixture === f && active.mayWriteDraft, 'Current user turn did not authorize draft creation');
       assert.ok(proposal?.sourceSeq && Array.isArray(proposal.fields), 'draft_context_required');
+      if (active.context) return new AnythingLlmContextService(f.actor,f.conversationId).saveRequirements(active.context,active.key,quote,proposal);
       return new RequirementService(f.actor).write(f.conversationId, active.key, { action: 'draft' }, proposal);
     }
     throw Error('Unsupported business tool');
@@ -177,7 +188,13 @@ async function live() {
         const f = fixtures.get(body.workspaceId); assert.ok(f && f === active.fixture, 'Workspace not authorized for this run');
         const row: Row = { case: active.case.id, workspaceId: body.workspaceId, action: body.action, query: body.query, quote: body.quote, proposal: body.fields ? {sourceSeq:body.sourceSeq,fields:body.fields} : undefined, started: new Date().toISOString() };
         report.tools.push(row); save();
-        try { row.result = await business(f, body.action, body.query, row.proposal, body.quote); row.ok = true; save(); return send(200, { ok: true, data: row.result }); }
+        try {
+          assert.ok(!active.receiptDelivered, 'Receipt already delivered; no further tools');
+          row.result = await business(f, body.action, body.query, row.proposal, body.quote);
+          row.ok = true;
+          if (row.result.receipt) active.receiptDelivered = true;
+          save(); return send(200, { ok: true, workspaceId:body.workspaceId, data:row.result, receipt:row.result.receipt });
+        }
         catch (e) { row.ok = false; row.error = String((e as Error).message); save(); return send(403, { error: ['draft_context_required','invalid_requirement_evidence','requirements_stale','handoff_intent_required','context_changed','handoff_active'].includes(row.error) ? row.error : 'tool_rejected' }); }
       }
       if (req.url !== '/v1/chat/completions' || req.method !== 'POST') return send(404, { error: 'not_found' });
@@ -186,7 +203,7 @@ async function live() {
       await checkActor(active.fixture);
       if (active.context) await new AnythingLlmContextService(active.fixture.actor, active.fixture.conversationId).assertFresh(active.context, active.handoffRequest);
       const outbound = { ...body, ...(active.context ? {messages:anythingLlmMessages(active.context,body.messages),
-        ...anythingLlmToolPolicy(active.context,Boolean(active.handoffRequest))} : {}), stream: false, enable_thinking: false, max_tokens: 2048 };
+        ...anythingLlmToolPolicy(active.context,Boolean(active.receiptDelivered))} : {}), stream: false, enable_thinking: false, max_tokens: 2048 };
       delete outbound.stream_options; delete outbound.max_completion_tokens;
       const upper = Buffer.byteLength(JSON.stringify(outbound), 'utf8') + 2048;
       const used = report.calls.reduce((s: number, c: Row) => s + (c.usage?.total_tokens ?? c.reservedTokens), 0);
@@ -207,7 +224,7 @@ async function live() {
         if (active.context) {
           try {
             await new AnythingLlmContextService(active.fixture.actor, active.fixture.conversationId).assertFresh(active.context, active.handoffRequest);
-            assertAnythingLlmAction(active.context,Boolean(active.handoffRequest),result.choices?.[0]?.message);
+            assertAnythingLlmAction(active.context,Boolean(active.receiptDelivered),result.choices?.[0]?.message);
           } catch (error) { row.deliveryRejected = String((error as Error).message); save(); return send(409, { error: row.deliveryRejected }); }
         }
         send(response.status, result);
@@ -267,6 +284,52 @@ async function live() {
     const [a, b] = report.fixtures;
     await assert.rejects(() => new ConversationService(b.actor).detail(a.conversationId));
     report.checks.crossTenantConversationDenied = true;
+    if (servicesOnly && receipts) {
+      for (const f of report.fixtures) {
+        const adapter = new AnythingLlmContextService(f.actor,f.conversationId);
+        for (const text of customerHistory) await appendCustomer(f,text);
+        const statusKey = await appendCustomer(f,prompts[0]);
+        const before = await adapter.read();
+        const empty = await adapter.readBusinessStatus(before,statusKey);
+        assert.equal(empty.requirements.latest,null);
+        assert.match(empty.receipt.text,/还没有已保存/);
+        const fields = [{field:'budget',text:'预算10万',sourceMessageId:before.customerMessages[0].id},
+          {field:'room',text:'客厅想铺瓷砖',sourceMessageId:before.customerMessages[0].id},
+          {field:'devices',text:'地暖先不做',sourceMessageId:before.customerMessages[0].id}];
+        await assert.rejects(()=>adapter.saveRequirements(before,randomUUID(),prompts[2],{sourceSeq:before.sourceSeq,fields}),/draft_intent_required/);
+        f.withdrawal = await new KnowledgeService({enterpriseId:f.enterpriseId,adminId:f.adminId}).execute('retire',{documentId:f.documentId,expectedVersion:1},randomUUID());
+        await assert.rejects(()=>adapter.readBusinessStatus(before,statusKey),/context_changed/);
+        const contactKey = await appendCustomer(f,prompts[1]);
+        const contact = await adapter.read();
+        const waiting = await adapter.requestDesigner(contact,contactKey,prompts[1]);
+        assert.deepEqual((await adapter.requestDesigner(contact,contactKey,prompts[1])).receipt,waiting.receipt);
+        assert.equal((await new RequirementService(f.actor).read(f.conversationId)).latest,null);
+        assert.ok(!waiting.receipt.text.includes('草稿'));
+        await checkHandoffJourney(f,f === a ? b : a);
+        await assert.rejects(()=>adapter.requestDesigner(contact,contactKey,prompts[1]),/handoff_active/);
+        const draftKey = await appendCustomer(f,prompts[2]);
+        const draftContext = await adapter.read();
+        await assert.rejects(()=>adapter.saveRequirements(draftContext,randomUUID(),prompts[2],{sourceSeq:draftContext.sourceSeq,fields:[{...fields[0],text:'预算8万'}]}),/invalid_requirement_evidence/);
+        assert.equal((await new RequirementService(f.actor).read(f.conversationId)).latest,null);
+        const saved = await adapter.saveRequirements(draftContext,draftKey,prompts[2],{sourceSeq:draftContext.sourceSeq,fields});
+        assert.deepEqual((await adapter.saveRequirements(draftContext,draftKey,prompts[2],{sourceSeq:draftContext.sourceSeq,fields})).receipt,saved.receipt);
+        assert.equal(saved.receipt.entity.id,saved.draft.id); assert.match(saved.receipt.text,/地暖先不做/);
+        await assert.rejects(()=>adapter.saveRequirements(draftContext,draftKey,prompts[2],{sourceSeq:draftContext.sourceSeq,fields:fields.slice(0,1)}),/idempotency_conflict/);
+        const lookupKey = await appendCustomer(f,prompts[3]);
+        const lookupContext = await adapter.read();
+        const lookup = await adapter.readBusinessStatus(lookupContext,lookupKey);
+        assert.equal(lookup.requirements.latest!.id,saved.draft.id); assert.equal(lookup.receipt.outcome,'read');
+        await assert.rejects(()=>adapter.saveRequirements(draftContext,draftKey,prompts[2],{sourceSeq:draftContext.sourceSeq,fields}),/context_changed/);
+        await assert.rejects(()=>new AnythingLlmContextService(f === a ? b.actor : a.actor,f.conversationId).readBusinessStatus(lookupContext,lookupKey));
+        f.receiptEvidence = {empty,waiting,saved,lookup};
+        await withTenantTransaction(f.enterpriseId,tx=>tx.execute(sql`update app.assistant_conversations set entry_snapshot=entry_snapshot || '{"retentionRedacted":true}'::jsonb where enterprise_id=${f.enterpriseId} and id=${f.conversationId}`));
+        await assert.rejects(()=>adapter.readBusinessStatus(lookupContext,lookupKey),/context_changed/);
+      }
+      Object.assign(report.checks,{emptyStatusNoWrite:true,readOnlyIntentDenied:true,withdrawnContextDenied:true,
+        handoffReceiptReadbackNoInventedDraft:true,handoffIdempotencyAndEndRevocation:true,draftReceiptReadbackAndIdempotency:true,
+        invalidEvidenceNoWrite:true,conflictingReplayDenied:true,lookupMatchesPersistedDraft:true,staleAndCrossTenantDenied:true,redactedReceiptDenied:true});
+      return;
+    }
     if (servicesOnly && continuation) {
       for (const f of report.fixtures) {
         const adapter = new AnythingLlmContextService(f.actor, f.conversationId);
@@ -368,7 +431,7 @@ async function live() {
     assert.ok(bridgeProbe.includes('reachable')); report.checks.containerBridgeReachable = true;
     // Both fixed trials are retained. No extra semantic samples are added after a failure.
     for (const f of report.fixtures) {
-      if (handoffOnly) {
+      if (handoffOnly || receipts) {
         f.withdrawal = await new KnowledgeService({enterpriseId:f.enterpriseId,adminId:f.adminId}).execute('retire', {documentId:f.documentId,expectedVersion:1}, randomUUID());
         for (const text of customerHistory) await appendCustomer(f,text);
       }
@@ -393,8 +456,8 @@ async function live() {
         }
         const inputKey = randomUUID();
         await appendCustomer(f, row.prompt, inputKey);
-        active = { fixture: f, case: row, key: inputKey, mayWriteDraft: !continuation && (index === 2 || (qualification && index === 3)) };
-        if (continuation) {
+        active = { fixture: f, case: row, key: inputKey, mayWriteDraft: receipts ? draftQuoteAllowed(row.prompt,row.prompt) : !continuation && (index === 2 || (qualification && index === 3)) };
+        if (continuation || receipts) {
           active.context = await new AnythingLlmContextService(f.actor, f.conversationId).read();
           row.authorizedContext = active.context;
           const updated = await api(`/v1/workspace/${f.workspaceSlug}/update`, {openAiPrompt:anythingLlmPrompt(active.context)});
@@ -413,6 +476,25 @@ async function live() {
           row.persisted = row.history.history?.some((m: Row) => m.role === 'assistant' && m.content === result.textResponse) === true;
           assert.ok(row.persisted, 'Agent API answer must persist across reentry');
           row.requirements = await new RequirementService(f.actor).read(f.conversationId);
+          if (receipts) {
+            const tool = report.tools.filter((t:Row)=>t.case === row.id);
+            const calls = report.calls.filter((c:Row)=>c.case === row.id);
+            assert.equal(tool.length,1,'Exactly one business tool and no post-receipt model call');
+            assert.equal(calls.length,1,'Native direct output must skip the final LLM rewrite');
+            assert.equal(tool[0].ok,true);
+            row.receipt = tool[0].result.receipt;
+            assert.equal(result.textResponse,row.receipt.text,'Final and persisted text must be the actual service receipt');
+            if (index < 2) assert.equal(row.requirements.latest,null,'Read/contact must not fabricate or create a draft');
+            else {
+              const fields = row.requirements.latest?.draftFields || {};
+              assert.equal(row.requirements.latest?.status,'draft'); assert.equal(row.requirements.confirmed,null);
+              assert.match(fields.budget?.text || '',/10万/); assert.match(fields.room?.text || '',/瓷砖/);
+              assert.match(fields.devices?.text || '',/地暖.*不做/);
+              if (index === 2) assert.equal(row.receipt.entity.id,row.requirements.latest.id);
+              else assert.equal(row.requirements.latest.id,report.cases.find((c:Row)=>c.id === `${f.trial+1}.3`).requirements.latest.id,'Status lookup is read-only');
+            }
+            if (index === 1) { await checkHandoffJourney(f,f === a ? b : a); row.handoffJourney = f.handoffEvidence; }
+          }
           if (qualification && (index === 2 || index === 3)) {
             const fields = row.requirements.latest?.draftFields || {};
             const text = (key: string) => String(fields[key]?.text || '');
@@ -462,6 +544,8 @@ async function live() {
         manualSemanticReviewRequired: true,
       };
     }
+    if (receipts) report.acceptance = { serviceOwnedFinalAndHistory:report.cases.length === 8 && report.cases.every((c:Row)=>c.persisted && c.receipt?.text === c.result.textResponse),
+      noModelRewrite:report.calls.length === 8,readOnlyAndHandoffDoNotCreateDraft:true,completeDrafts:true,actualStaffJourney:true,manualSemanticReviewRequired:true };
     // Revocation is checked at the shared source service. Cached upstream prose is
     // deliberately not represented as revocation-safe product history.
     await withTenantTransaction(a.enterpriseId, tx => tx.execute(sql`update app.assistant_knowledge_documents set status='retired' where enterprise_id=${a.enterpriseId} and id=${a.documentId}`));

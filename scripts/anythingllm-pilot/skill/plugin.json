@@ -3,7 +3,7 @@
   "hubId": "sfp-renovation",
   "name": "Smart Floor Planner renovation tools",
   "schema": "skill-1.0.0",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "查询当前业主的真实装修项目和获权企业资料，读取或生成待业主审核的需求草稿。企业、客户与会话由服务端绑定，不接受模型指定身份。涉及企业服务、项目状态或已保存草稿时必须查询工具；不能把建议说成已完成操作。",
   "setup_args": {},
   "entrypoint": {
@@ -11,8 +11,8 @@
     "params": {
       "action": {
         "type": "string",
-        "enum": ["read_project", "search_knowledge", "read_requirement_draft", "create_requirement_draft", "request_designer"],
-        "description": "read_project只读项目。search_knowledge检索当前企业资料。read_requirement_draft读取草稿和带编号的客户原话。明确要求保存/修改需求时，以sourceSeq和fields提交create_requirement_draft；只提交变动字段，未改字段由服务端保留，仍需客户审核。request_designer用于客户本轮明确请求联系设计师，quote传当前请求原话；真实waiting回执仅代表已提交等待接待，不是已接通/打电话/预约。失败不得声称成功。"
+        "enum": ["read_project", "search_knowledge", "read_requirement_draft", "create_requirement_draft", "request_designer", "read_business_status"],
+        "description": "read_project只读项目。search_knowledge检索当前企业资料。read_requirement_draft读取草稿和带编号的客户原话供准备参数。明确要求保存需求时，以sourceSeq和fields提交create_requirement_draft，quote为当前请求原话；仍需客户审核。request_designer用于客户本轮明确请求联系设计师，quote为当前请求原话。read_business_status只查询当前保存/接待状态。后三项直接返回真实服务回执，不再交给模型改写。"
       },
       "query": { "type": "string", "description": "检索资料时填写用户问题；其他动作填空字符串。" },
       "quote": { "type": "string", "description": "request_designer时填写当前客户明确请求联系设计师的原话；否定、假设、引用及历史请求不能授权。其他动作省略。" },

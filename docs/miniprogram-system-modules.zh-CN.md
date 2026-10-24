@@ -1,6 +1,6 @@
 # 小程序当前功能清单
 
-**当前开源Agent资格验证（2026-10-25）：Limited；旧两计划暂停。** 默认运行时及批准UI未改。AnythingLLM内部接缝预取获权Evidence，在epoch变化后按user角色保留客户原话，复用HandoffService真实提交、领取、回复、重进、结束。明确联系请求要求标准工具协议和真实回执；租户、参与者、来源、幂等及联系方式同意边界保留。最终自然答复仍将未保存需求说成草稿，正式迁移验收失败。草稿proposal/公开REST边界不变；无新页面、API、schema、菜单或知识入库。持久任务/计量、归档来源撤回及原生迁移验收仍未实现或未验证。见[当前第二期契约](./xiaok-assistant-phase-2.zh-CN.md)。
+**当前开源Agent资格验证（2026-10-25）：OS-MIGRATION-03回执路径在隔离试接内Implemented，整体迁移Limited，旧两计划暂停。** AnythingLLM内部接缝按真实服务读回投影草稿保存/状态/等待接待回执，技能0.4.0使用原生直出，不再由模型改写最终结果。运行时workspace/action/实体核对、事务内来源/意图守卫、租户/参与者身份、幂等及联系方式同意边界保留。固定两组自然对话8/8回复/历史/数据库一致；13真实服务、20单测通过。回执缺失或丢失保持结果未知。RequirementService仅新增可选内部guard，公开REST和默认调用方不变；没有新页面、端点、schema、菜单、知识入库、默认运行时或已批准UI改动。更广/混合表达、持久任务/计量/会话映射、归档/投递中撤回和原生小程序迁移验收仍未验证或未实现。见[当前第二期契约](./xiaok-assistant-phase-2.zh-CN.md)。
 
 **CONSULT-02当前执行（2026-10-24）：R1-A限定Implemented、R1-B已验证，R1-C原固定综合验收仍Limited，R2–R4未开始。** 复用恢复及未受影响证据；2369隔离保留59497tokens/285586micros，不重放，新未知立即停调。原100万tokens/¥5累计、每请求60k和scenarioTokenLimit保持；live-10后累计518485tokens/含预留¥0.869762、实付null。Agent把补丁引用容量/删除互斥编入可信baseHash的严格schema，原本地语义守卫不变。另修复同页远距引文合并超过600字符而丢失答复：原GET /api/miniprogram/assistant/citations/:id支持w:run:index:part，把过宽组合拆为实际已选原文段，仍≤600/段，旧有界w:run:index保持。保存/打开/追问共享投影，须已存消息包含该ID并重验原Evidence/页码/hash/会话/tenant/来源；伪造part或撤回不能访问。14单元、4真实服务、219依赖类型0/lint及原Stable/C01的9项实写/两片来源/追问/重进/他客拒绝/撤回通过，1442绑定无漂移、attempt0；两片重进与撤回PNG已审看。沿批准C01/C02/U01，WXML/样式/素材/文案/导航未改，无新表/端点/菜单/授权或知识入库变更。live-09/10失败保留；9294保存缺陷已修，9293的path/segment失配缺当次完整出站证据，停止盲采，替身不算模型语义。详见[二期当前记录](./xiaok-assistant-phase-2.zh-CN.md)。
 

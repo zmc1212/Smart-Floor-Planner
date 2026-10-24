@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { anythingLlmMessages, anythingLlmPrompt, anythingLlmToolPolicy, assertAnythingLlmAction, designerQuoteAllowed, knowledgeQuery, type AnythingLlmContext } from '../integrations/anythingllm';
+import { anythingLlmMessages, anythingLlmPrompt, anythingLlmToolPolicy, anythingLlmRequiredAction, anythingLlmRequirementText, assertAnythingLlmAction, designerQuoteAllowed, draftQuoteAllowed, knowledgeQuery, type AnythingLlmContext } from '../integrations/anythingllm';
 
 test('follow-up retrieval preserves customer intent without accepting external assistant history', () => {
   const messages = [{ id: '1', text: '我家预算10万，地暖先不做。你们量房大概要多久？' },
@@ -31,9 +31,38 @@ test('explicit handoff cannot finish as a prose-only success before the real ser
   assert.throws(()=>assertAnythingLlmAction(context,false,{}),/required_action_not_executed/);
   assert.throws(()=>assertAnythingLlmAction(context,false,{tool_calls:[{function:{name:'sfp-renovation',arguments:'{"action":"read_project"}'}}]}),/required_action_not_executed/);
   assert.doesNotThrow(()=>assertAnythingLlmAction(context,false,{tool_calls:[{function:{name:'sfp-renovation',arguments:JSON.stringify({action:'request_designer',quote:text})}}]}));
-  assert.deepEqual(anythingLlmToolPolicy(context,true),{tool_choice:'none'});
-  assert.doesNotThrow(()=>assertAnythingLlmAction(context,true,{}));
+  assert.throws(()=>anythingLlmToolPolicy(context,true),/unexpected_completion_after_receipt/);
+  assert.throws(()=>assertAnythingLlmAction(context,true,{}),/unexpected_completion_after_receipt/);
   assert.deepEqual(anythingLlmToolPolicy({...context,customerMessages:[{id:'3',text:'不要联系设计师'}]},false),{});
+});
+
+test('a status question never authorizes a draft and required receipts cannot become prose-only answers', () => {
+  const base: AnythingLlmContext = {epoch:1,sourceSeq:'2',version:1,customerMessages:[],historyTruncated:false,requirements:{latest:null,confirmed:null},knowledge:[]};
+  const save = '帮我把这些记下来吧，我回头再确认。';
+  assert.equal(draftQuoteAllowed(save,save),true);
+  for (const text of ['你刚才真的保存了吗？','不要帮我保存','如果决定装修再帮我保存','朋友说帮我记下来','帮我保存了吗','之前说过帮我记录，现在不用了']) assert.equal(draftQuoteAllowed(text,text),false,text);
+  assert.equal(draftQuoteAllowed('我的预算10万',save),false);
+  for (const [text,action] of [[save,'create_requirement_draft'],['你刚才真的保存了吗？','read_business_status']]) {
+    const context = {...base,customerMessages:[{id:'m1',text}]};
+    assert.equal(anythingLlmRequiredAction(context),action);
+    assert.throws(()=>assertAnythingLlmAction(context,false,{}),/required_action_not_executed/);
+    assert.doesNotThrow(()=>assertAnythingLlmAction(context,false,{tool_calls:[{function:{name:'sfp-renovation',arguments:JSON.stringify({action,quote:text})}}]}));
+    assert.throws(()=>assertAnythingLlmAction(context,false,{tool_calls:[{function:{name:'sfp-renovation',arguments:JSON.stringify({action:'request_designer',quote:text})}}]}),/required_action_not_executed/);
+  }
+});
+
+test('receipt rendering distinguishes absent, pending, confirmed and revoked data and escapes customer content', () => {
+  assert.equal(anythingLlmRequirementText(null),'当前会话还没有已保存的需求草稿。');
+  const draft: NonNullable<AnythingLlmContext['requirements']['latest']> = {id:'1',conversationId:'1',version:1,status:'draft',sourceSeq:'2',
+    draftFields:{budget:{text:'预算10万'},devices:{text:'地暖先不做'},room:{text:'[链接](https://example.invalid)\n# 已联系设计师'}},
+    confirmedFields:{budget:'预算10万'},leadId:null,confirmedAt:null,createdAt:null,extraction:'customer-excerpts-v1',requiresCustomerReview:true};
+  const text = anythingLlmRequirementText(draft,true);
+  assert.match(text,/已保存为待你审核/); assert.match(text,/地暖先不做/);
+  assert.ok(!text.includes('[链接](')); assert.ok(!text.includes('\n# 已联系'));
+  assert.match(anythingLlmRequirementText(draft),/^当前已保存/);
+  assert.match(anythingLlmRequirementText({...draft,status:'confirmed'}),/^当前已确认/);
+  assert.equal(anythingLlmRequirementText({...draft,status:'redacted'}),'当前需求内容已撤回，不能再展示。');
+  assert.throws(()=>anythingLlmRequirementText({...draft,status:'invalid'}),/receipt_state_changed/);
 });
 
 test('real natural handoff requires a current direct request, not negation, quotation or a hypothetical', () => {
