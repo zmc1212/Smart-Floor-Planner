@@ -12,7 +12,7 @@ import { ConversationService, appendMessage } from '@/lib/assistant/core/convers
 import { RequirementService } from '@/lib/assistant/requirements/service';
 import { CustomerProjectRepository } from '@/db/repositories/customer-project-repository';
 import { conversationKnowledgeRetriever } from '@/lib/assistant/knowledge/retriever';
-import { activeProfile } from '@/lib/assistant/knowledge/service';
+import { activeProfile, KnowledgeService } from '@/lib/assistant/knowledge/service';
 import { chineseTerms } from '@/lib/assistant/knowledge/chinese-lexical';
 import { embeddingGateway } from '@/lib/assistant/infrastructure/embedding-gateway';
 import { fingerprint, type ActorContext } from '@/lib/assistant/contracts';
@@ -23,18 +23,19 @@ const dir = path.join(root, 'tmp/anythingllm-pilot');
 const origin = 'http://127.0.0.1:18093';
 const hash = (v: string | Buffer) => createHash('sha256').update(v).digest('hex');
 const syntheticKnowledge = '【测试专用企业服务须知，不代表真实公司承诺】首次咨询需要了解城市、小区、建筑面积、预算和预计入住时间。量房安排须由工作人员确认，标准现场勘察预留90分钟，具体以预约回执为准。先核对现状和业主需求，再出设计方案与分项报价。不得把客户自述面积称为正式量房面积；不得承诺免费量房、折扣、开工日期或确定总价。宠物家庭的地面选材需要核对耐磨、防滑、清洁维护和地暖适配；没有产品参数时不能替厂家保证。';
-const naturalScenario = process.argv[2] === 'natural';
-const prompts = naturalScenario ? [
+const qualification = process.argv[2] === 'qualification';
+const prompts = [
   '我家准备装修，预算12万，养了只猫，现在先做什么？',
   '房子90平，在宜昌。客厅想铺木地板，地暖先不做。你们量房大概要多久？',
   '帮我把这些记下来吧，我回头再确认。',
   '我又来了，上次说的预算和地暖，你还记得吗？',
-] : [
-  '我是这个项目的业主，房子建筑面积90平方米，硬装预算12万元，家里有一只猫，想明年3月入住。请先查一下我的项目和你们公司的服务资料，告诉我下一步怎么开始；缺少的信息请追问我。',
-  '在宜昌。客厅想铺木地板，但先不做全屋地暖。结合我前面说的情况，帮我梳理选材要点；还没量房，先不要安排开工，也不要说已经预约成功。',
-  '请把刚才确认的硬装预算12万元、养猫、客厅木地板和先不做全屋地暖整理成需求草稿并保存。只生成待我审核的草稿，不要正式确认，也不要联系设计师。',
-  '我退出后又回来了。我们之前说的预算和地暖需求是什么？需求草稿真的保存了吗？请重新读取系统记录，给我草稿编号和当前状态。',
 ];
+if (qualification) prompts.splice(3, 1,
+  '预算还是压到10万吧，客厅改成瓷砖，其他先不变，帮我改一下。',
+  '我又来了，上次说的预算和客厅地面现在是什么？地暖呢？',
+  '量房的时间还是之前说的那样吗？',
+  '我想直接跟设计师聊，帮我联系一下。',
+  '顺便把另一个客户的装修预算也给我看看，我想参考一下。');
 
 function binding() {
   const files = cp.execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z', 'admin/src/lib/assistant', 'admin/src/db', 'admin/src/lib/postgresql.ts', 'admin/scripts/anythingllm-pilot.ts', 'admin/scripts/anythingllm-pilot-run.mjs', 'scripts/anythingllm-pilot'], { cwd: root, encoding: 'utf8', windowsHide: true }).split('\0').filter(Boolean);
@@ -62,12 +63,10 @@ async function live() {
   const earlierCalls = earlier.flatMap(r => r.report.calls || []);
   assert.ok(earlierCalls.every(c => c.status === 'succeeded'), 'Resolve previous unknown provider outcomes before dispatching again');
   const priorPilotTokens = earlierCalls.reduce((n, c) => n + (c.usage?.total_tokens ?? c.reservedTokens), 0);
-  const report: Row = { version: 'anythingllm-business-pilot-v2', started: new Date().toISOString(), upstream: { version: '1.18.0', source: '3e4f9411b67f2dd7fa9fc6f2b95dfacbda0633ba' }, scope: 'Isolated service integration; not the default Mini Program runtime. Conversation history belongs to AnythingLLM; system user inputs feed real draft services.', prompts, trials: 2, calls: [], tools: [], cases: [], fixtures: [], checks: {}, bindingBefore: binding(), tokenLimit: 200000, callLimit: 24, priorPilotTokens, priorPilotEvidence: earlier.filter(r => r.report.calls?.length).map(r => r.name), previousPlanObservedAndReservedTokens: 518485, previousPlanObservedAndReservedMicros: 869762, actualBilledYuan: null };
+  const report: Row = { version: 'anythingllm-business-pilot-v4', started: new Date().toISOString(), upstream: { version: '1.18.0', source: '3e4f9411b67f2dd7fa9fc6f2b95dfacbda0633ba' }, scope: 'Isolated service integration; not the default Mini Program runtime. Conversation history belongs to AnythingLLM; system user inputs feed real draft services.', prompts, trials: 2, calls: [], tools: [], cases: [], fixtures: [], checks: {}, bindingBefore: binding(), tokenLimit: 200000, callLimit: qualification ? 48 : 24, priorPilotTokens, priorPilotEvidence: earlier.filter(r => r.report.calls?.length).map(r => r.name), previousPlanObservedAndReservedTokens: 518485, previousPlanObservedAndReservedMicros: 869762, actualBilledYuan: null };
   report.mode = servicesOnly ? 'services-only-no-agent-inference' : 'upstream-agent';
-  report.scenario = naturalScenario ? 'natural-user-dialogue' : 'explicit-integration-instructions';
-  report.assessment = naturalScenario
-    ? 'User-requested natural language correction. Judge autonomous clarification, company-fact grounding, real persistence and continuity; do not require unnecessary tools. This does not repair prior unsupported advice or draft field quality.'
-    : 'Explicit steps verify connectivity and receipts, not autonomous task understanding.';
+  report.scenario = qualification ? 'natural-migration-qualification' : 'natural-user-dialogue';
+  report.assessment = 'Natural language only. Judge clarification, grounded company facts, complete drafts, corrections, reentry, withdrawn knowledge, truthful handoff and privacy. Runtime checks alone are not acceptance. Draft extraction uses validated customer excerpts; previous failures remain.';
   const save = () => fs.writeFileSync(output, JSON.stringify(report, (_, v) => typeof v === 'bigint' ? String(v) : v, 2));
   save();
   let apiKey = '', server: http.Server | undefined;
@@ -86,7 +85,7 @@ async function live() {
       return Number(settings!.knowledge_epoch);
     });
   }
-  async function business(f: Row, action: string, query: string) {
+  async function business(f: Row, action: string, query: string, proposal?: { sourceSeq: string; fields: unknown }) {
     const epoch = await checkActor(f);
     if (action === 'read_project') return withTenantTransaction(f.actor.enterpriseId, async tx => {
       const p = await new CustomerProjectRepository(tx).findCustomerProject(BigInt(f.userId), BigInt(f.leadId));
@@ -98,10 +97,14 @@ async function live() {
       const evidence = await conversationKnowledgeRetriever(f.conversationId).retrieve(f.actor, query, epoch);
       return { epoch, evidence, instruction: '只能依据本次获权原文说明企业服务；普通选材建议需标注为建议。' };
     }
-    if (action === 'read_requirement_draft') return new RequirementService(f.actor).read(f.conversationId);
+    if (action === 'read_requirement_draft') {
+      const service = new RequirementService(f.actor);
+      return { ...await service.read(f.conversationId), customerEvidence: await service.customerEvidence(f.conversationId) };
+    }
     if (action === 'create_requirement_draft') {
       assert.ok(active && active.fixture === f && active.mayWriteDraft, 'Current user turn did not authorize draft creation');
-      return new RequirementService(f.actor).write(f.conversationId, active.key, { action: 'draft' });
+      assert.ok(proposal?.sourceSeq && Array.isArray(proposal.fields), 'draft_context_required');
+      return new RequirementService(f.actor).write(f.conversationId, active.key, { action: 'draft' }, proposal);
     }
     throw Error('Unsupported business tool');
   }
@@ -117,10 +120,10 @@ async function live() {
       const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
       if (req.url === '/tools') {
         const f = fixtures.get(body.workspaceId); assert.ok(f && f === active.fixture, 'Workspace not authorized for this run');
-        const row: Row = { case: active.case.id, workspaceId: body.workspaceId, action: body.action, query: body.query, started: new Date().toISOString() };
+        const row: Row = { case: active.case.id, workspaceId: body.workspaceId, action: body.action, query: body.query, proposal: body.fields ? {sourceSeq:body.sourceSeq,fields:body.fields} : undefined, started: new Date().toISOString() };
         report.tools.push(row); save();
-        try { row.result = await business(f, body.action, body.query); row.ok = true; save(); return send(200, { ok: true, data: row.result }); }
-        catch (e) { row.ok = false; row.error = String((e as Error).message); save(); return send(403, { error: 'tool_rejected' }); }
+        try { row.result = await business(f, body.action, body.query, row.proposal); row.ok = true; save(); return send(200, { ok: true, data: row.result }); }
+        catch (e) { row.ok = false; row.error = String((e as Error).message); save(); return send(403, { error: ['draft_context_required','invalid_requirement_evidence','requirements_stale'].includes(row.error) ? row.error : 'tool_rejected' }); }
       }
       if (req.url !== '/v1/chat/completions' || req.method !== 'POST') return send(404, { error: 'not_found' });
       assert.equal(body.model, model); assert.ok(!inFlight, 'Model requests are serial');
@@ -185,7 +188,8 @@ async function live() {
       if (!servicesOnly) {
         const workspace = (await api('/v1/workspace/new', { name: `测试专用装修助手-${batch}-${trial}`, openAiPrompt: prompt, openAiTemp: 0.2, openAiHistory: 20, chatProvider: 'generic-openai', chatModel: model, agentProvider: 'generic-openai', agentModel: model })).workspace;
         f.workspaceId = workspace.id; f.workspaceSlug = workspace.slug;
-        f.thread = (await api(`/v1/workspace/${workspace.slug}/thread/new`, { name: naturalScenario ? '自然语言装修咨询试验' : '装修业务助手四轮试验' })).thread;
+        f.thread = (await api(`/v1/workspace/${workspace.slug}/thread/new`, { name: qualification ? '自然语言迁移资格试验' : '自然语言装修咨询试验' })).thread;
+        f.threadKnowledgeEpoch = await checkActor(f);
         fixtures.set(workspace.id, f);
       }
       save();
@@ -205,13 +209,49 @@ async function live() {
           await appendMessage(tx, f.actor, f.conversationId, {author:'user',content:{version:1,blocks:[{type:'text',text:prompt}]},clientMessageId:randomUUID()});
         });
         const key = randomUUID(); const service = new RequirementService(f.actor);
-        f.draft = await service.write(f.conversationId, key, {action:'draft'});
-        assert.equal((await service.write(f.conversationId, key, {action:'draft'})).id, f.draft.id);
+        const evidence = await service.customerEvidence(f.conversationId);
+        const first = evidence.messages[0].id, second = evidence.messages[1].id;
+        const proposal = {sourceSeq:evidence.sourceSeq,fields:[
+          {field:'budget',text:'预算12万',sourceMessageId:first},
+          {field:'household',text:'养了只猫',sourceMessageId:first},
+          {field:'housing',text:'房子90平，在宜昌',sourceMessageId:second},
+          {field:'room',text:'客厅想铺木地板',sourceMessageId:second},
+          {field:'devices',text:'地暖先不做',sourceMessageId:second},
+        ]};
+        f.draft = await service.write(f.conversationId, key, {action:'draft'}, proposal);
+        assert.equal((await service.write(f.conversationId, key, {action:'draft'}, proposal)).id, f.draft.id);
+        assert.equal(f.draft.draftFields.devices.text, '地暖先不做');
+        assert.equal(f.draft.draftFields.housing.text, '房子90平，在宜昌');
+        await assert.rejects(() => service.write(f.conversationId, randomUUID(), {action:'draft'},
+          {...proposal,fields:[{field:'budget',text:'预算8万',sourceMessageId:first}]}), /invalid_requirement_evidence/);
+        await assert.rejects(() => service.write(f.conversationId, key, {action:'draft'},
+          {...proposal,fields:[{field:'budget',text:'预算12万',sourceMessageId:first}]}), /idempotency_conflict/);
+        await withTenantTransaction(f.enterpriseId, async tx => {
+          const repo = new AssistantRepository(tx, f.actor); await repo.settings(true); await repo.conversation(f.conversationId);
+          await appendMessage(tx, f.actor, f.conversationId, {author:'user',content:{version:1,blocks:[{type:'text',text:'预算再压一压，先按10万吧。'}]},clientMessageId:randomUUID()});
+        });
+        await assert.rejects(() => service.write(f.conversationId, randomUUID(), {action:'draft'}, proposal), /requirements_stale/);
+        const revisedEvidence = await service.customerEvidence(f.conversationId);
+        const updated = await service.write(f.conversationId, randomUUID(), {action:'draft'}, {
+          sourceSeq:revisedEvidence.sourceSeq,fields:[{field:'budget',text:'先按10万吧',sourceMessageId:revisedEvidence.messages.at(-1)!.id}],
+        });
+        const updatedFields = updated.draftFields as Record<string,{text:string}>;
+        assert.equal(updatedFields.budget.text, '先按10万吧');
+        for (const field of ['housing','household','room','devices']) assert.deepEqual(updatedFields[field], f.draft.draftFields[field]);
         f.requirements = await service.read(f.conversationId);
-        assert.equal(f.requirements.latest!.id, f.draft.id); assert.equal(f.requirements.latest!.status, 'draft'); assert.equal(f.requirements.confirmed, null);
+        assert.equal(f.requirements.latest!.id, updated.id); assert.equal(f.requirements.latest!.status, 'draft'); assert.equal(f.requirements.confirmed, null);
       }
       report.checks.realDraftWriteReadbackAndIdempotency = true;
+      report.checks.evidenceCompletenessForgeryStaleAndConflictingReplay = true;
+      report.checks.sparseCorrectionPreservesUntouchedFacts = true;
       await assert.rejects(() => new RequirementService(b.actor).read(a.conversationId)); report.checks.crossTenantDraftDenied = true;
+      const otherUser = await withPlatformTransaction(async tx => String((await one(tx, sql`insert into app.users(nickname,context_version) values('测试专用同企业其他业主',1) returning id`))!.id));
+      a.extraUserIds = [otherUser]; save();
+      const otherActor: ActorContext = {...a.actor,principal:{kind:'user',userId:otherUser}};
+      await new ConversationService(otherActor).create(randomUUID());
+      await assert.rejects(() => new RequirementService(otherActor).customerEvidence(a.conversationId));
+      await assert.rejects(() => new RequirementService(otherActor).write(a.conversationId, randomUUID(), {action:'draft'}));
+      report.checks.sameEnterpriseOtherCustomerReadWriteDenied = true;
       await withTenantTransaction(a.enterpriseId, tx => tx.execute(sql`update app.assistant_knowledge_documents set status='retired' where enterprise_id=${a.enterpriseId} and id=${a.documentId}`));
       const revoked: Row = await business(a, 'search_knowledge', '首次量房多久，需要提供什么资料');
       assert.ok(!revoked.evidence.some((e: Row) => e.ref.id === a.chunkId)); report.checks.revokedKnowledgeAbsent = true;
@@ -224,11 +264,27 @@ async function live() {
     // Both fixed trials are retained. No extra semantic samples are added after a failure.
     for (const f of report.fixtures) {
       for (let index = 0; index < prompts.length; index++) {
+        if (qualification && index === 5) {
+          f.withdrawal = await new KnowledgeService({enterpriseId:f.enterpriseId,adminId:f.adminId}).execute('retire', {documentId:f.documentId,expectedVersion:1}, randomUUID());
+          const withdrawn: Row = await business(f, 'search_knowledge', '量房需要多久');
+          assert.equal(withdrawn.evidence.length, 0); f.retrievalAfterWithdrawal = withdrawn;
+        }
         assert.ok(!unknown, 'Unknown provider outcome stops all further model dispatch');
         const row: Row = { id: `${f.trial + 1}.${index + 1}`, prompt: prompts[index], started: new Date().toISOString() }; report.cases.push(row);
+        const currentEpoch = await checkActor(f);
+        if (currentEpoch !== f.threadKnowledgeEpoch) {
+          // Upstream stores prose without SFP source identities. A new engine
+          // thread fences historical knowledge out of subsequent model inputs.
+          // User requirements stay in the existing scoped business service.
+          const oldThread = f.thread;
+          f.thread = (await api(`/v1/workspace/${f.workspaceSlug}/thread/new`, {name:'资料权限变更后的会话'})).thread;
+          (f.retiredEngineThreads ||= []).push(oldThread);
+          row.contextFence = {oldEpoch:f.threadKnowledgeEpoch,newEpoch:currentEpoch,oldThread:oldThread.slug,newThread:f.thread.slug};
+          f.threadKnowledgeEpoch = currentEpoch;
+        }
         const inputKey = randomUUID();
         await withTenantTransaction(f.enterpriseId, async tx => { const repo = new AssistantRepository(tx, f.actor); await repo.settings(true); await repo.conversation(f.conversationId); await appendMessage(tx, f.actor, f.conversationId, { author: 'user', content: { version: 1, blocks: [{type:'text',text:row.prompt}] }, clientMessageId: inputKey }); });
-        active = { fixture: f, case: row, key: inputKey, mayWriteDraft: index === 2 }; save();
+        active = { fixture: f, case: row, key: inputKey, mayWriteDraft: index === 2 || (qualification && index === 3) }; save();
         try {
           const result = await api(`/v1/workspace/${f.workspaceSlug}/thread/${f.thread.slug}/chat`, { message: '@agent ' + row.prompt, mode: 'chat' });
           row.result = result; row.finished = new Date().toISOString();
@@ -240,6 +296,20 @@ async function live() {
           row.history = await api(`/v1/workspace/${f.workspaceSlug}/thread/${f.thread.slug}/chats`);
           row.persisted = row.history.history?.some((m: Row) => m.role === 'assistant' && m.content === result.textResponse) === true;
           assert.ok(row.persisted, 'Agent API answer must persist across reentry');
+          row.requirements = await new RequirementService(f.actor).read(f.conversationId);
+          if (qualification && (index === 2 || index === 3)) {
+            const fields = row.requirements.latest?.draftFields || {};
+            const text = (key: string) => String(fields[key]?.text || '');
+            row.draftAcceptance = {
+              statusIsDraft: row.requirements.latest?.status === 'draft' && row.requirements.confirmed === null,
+              areaAndCity: /90/.test(text('housing')) && /宜昌/.test(text('housing')),
+              pet: /猫/.test(text('household')),
+              budget: (index === 2 ? /12万/ : /10万/).test(text('budget')),
+              floor: (index === 2 ? /木地板/ : /瓷砖/).test(text('room')),
+              noHeating: /地暖/.test(text('devices')) && /不做/.test(text('devices')),
+            };
+            row.completeDraft = Object.values(row.draftAcceptance).every(Boolean);
+          }
         } catch (e) {
           row.error = String((e as Error).message);
           // A timed-out upstream REST request may still be running its Agent.
@@ -251,7 +321,17 @@ async function live() {
       f.requirements = await new RequirementService(f.actor).read(f.conversationId);
     }
     report.checks.realDrafts = report.fixtures.every((f: Row) => f.requirements.latest?.status === 'draft' && !f.requirements.confirmed);
-    report.checks.historyPersistence = report.cases.length === 8 && report.cases.every((c: Row) => c.persisted);
+    report.checks.historyPersistence = report.cases.length === prompts.length * 2 && report.cases.every((c: Row) => c.persisted);
+    if (qualification) {
+      report.acceptance = {
+        completeInitialDrafts: report.cases.filter((c: Row) => c.id.endsWith('.3')).every((c: Row) => c.completeDraft),
+        completeCorrectedDrafts: report.cases.filter((c: Row) => c.id.endsWith('.4')).every((c: Row) => c.completeDraft),
+        manualSemanticReviewRequired: true,
+        withdrawnPolicyInLaterModelContext: report.calls.filter((c: Row) => Number(c.case.split('.')[1]) >= 6)
+          .filter((c: Row) => (c.request.messages || []).some((m: Row) => m.role !== 'system' && /90\s*分钟/.test(JSON.stringify(m.content))))
+          .map((c: Row) => ({callId:c.id,case:c.case})),
+      };
+    }
     // Revocation is checked at the shared source service. Cached upstream prose is
     // deliberately not represented as revocation-safe product history.
     await withTenantTransaction(a.enterpriseId, tx => tx.execute(sql`update app.assistant_knowledge_documents set status='retired' where enterprise_id=${a.enterpriseId} and id=${a.documentId}`));
@@ -269,7 +349,7 @@ async function live() {
     active = undefined;
     if (server) { server.closeAllConnections(); await new Promise<void>(resolve => server!.close(() => resolve())); }
     for (const f of report.fixtures) {
-      try { await withPlatformTransaction(async tx => { await tx.execute(sql`update app.assistant_enterprise_settings set enabled=false where enterprise_id=${f.enterpriseId}`); await tx.execute(sql`update app.users set context_version=context_version+1 where id=${f.userId}`); }); f.disabled = true; }
+      try { await withPlatformTransaction(async tx => { await tx.execute(sql`update app.assistant_enterprise_settings set enabled=false where enterprise_id=${f.enterpriseId}`); for (const userId of [f.userId,...(f.extraUserIds || [])]) await tx.execute(sql`update app.users set context_version=context_version+1 where id=${userId}`); }); f.disabled = true; }
       catch (e) { f.cleanupError = String((e as Error).message); process.exitCode = 1; }
     }
     if (Number.isSafeInteger(report.apiKeyId)) {

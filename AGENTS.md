@@ -169,6 +169,15 @@ or a roadmap do not replace the current module inventory.
 
 ## Mandatory Engineering Rules
 
+- All future user-facing Agent tests must use natural language and realistic
+  conversation conditions. Users state their needs; they do not name tools,
+  prescribe internal steps, supply expected answers, or repeat safety rules to
+  make the Agent pass. Include incomplete information, gradual clarification,
+  corrections, reentry and actual service failures. Keep expected actions and
+  assertions outside user messages. Preserve low-level permission, protocol and
+  accounting checks as engineering evidence, not proof of a successful real-user
+  journey. Historical explicit-instruction trials remain historical evidence.
+
 ### Git
 
 Use a Conventional Commit English subject: `feat:`, `fix:`, `refactor:`,

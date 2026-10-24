@@ -2,26 +2,34 @@
 
 ## 当前用户方向：开源装修业务助手试接（2026-10-24）
 
-用户暂停Agent与企业知识两份旧计划及R0–R4自动推进，要求改用现成开源项目，三类能力最终都需要，先验证“读企业资料、延续项目上下文、追问需求、调用业务功能”。下方原“当前/下一项/自动继续”为历史，不重新派发。本节记录独立试接，不把准备工作或旧测试当作智能装修业务验收。
+**当前交付 OS-MIGRATION-01：限定资格测试已执行，正式迁移仍为Limited。** 用户暂停Agent/企业知识旧计划及R0–R4，转向现成开源装修业务助手，并明确后续统一自然语言、模拟真实环境。用户只表达需求，工具名、步骤及预期答案放在测试断言中。保留现有小程序/后台；本次不是已完成的原生用户阶段。下方旧“当前/下一项”不重新派发。本节替换上一版试接当前记录。
 
 **选择与边界。** 首选[AnythingLLM](https://github.com/Mintplex-Labs/anything-llm)，使用[MIT许可](https://github.com/Mintplex-Labs/anything-llm/blob/v1.18.0/LICENSE)的完整应用，固定[v1.18.0](https://github.com/Mintplex-Labs/anything-llm/releases/tag/v1.18.0)、源码`3e4f9411b67f2dd7fa9fc6f2b95dfacbda0633ba`与linux/amd64镜像manifest `sha256:a41f36526df988b69672cab15436facdc6f69c4ef782373af0a428e24668b1a5`。它负责原版提示、工具循环及线程历史；项目只增加业务技能与有界模型传输，不再写一套Agent编排。已核实的装修专用候选[interior-ai-agent](https://github.com/zeqikong-ctrl/interior-ai-agent)、[RenoPit](https://github.com/fthux/RenoPit)、[ArchAgent](https://github.com/xy200303/ArchAgent)分别偏报价、审查、空间设计，尚无覆盖本次完整业务助手的已验证证据；不把它们的README演示当作本系统实测。
 
-**接入实现。** `scripts/anythingllm-pilot/compose.yml`在本机`127.0.0.1:18093`运行独立应用；`admin/scripts/anythingllm-pilot-run.mjs`只允许已批准的`127.0.0.1:55432/xiaok_embedding_eval`，复用验收锁及空队列检查。`admin/scripts/anythingllm-pilot.ts`通过原`ConversationService`、`CustomerProjectRepository`、`KnowledgeRetriever/Evidence`和`RequirementService`读项目/获权资料、读写待审核需求草稿；客户端发送的企业/客户身份不成为授权依据。技能从上游运行时取得workspace身份，再由服务端绑定测试客户/会话。草稿写入只开放给明确要求保存的固定测试轮次，保留幂等与原权限检查。模型代理`127.0.0.1:3109`只在固定试验激活时转发既有Qwen3.7 Flash配置，记录原始请求/响应/usage，最多24次、200000 tokens，未知结果即停，不自动重试或换模型。密钥与上游存储仅在被忽略的`tmp/anythingllm-pilot/`，不输出凭据。
+**已实现的接缝。** 本机localhost:18093的原应用负责编排/历史，复用ConversationService、CustomerProjectRepository、KnowledgeRetriever/Evidence和RequirementService。内部customerEvidence与write(..., proposal)核对获权客户消息、逐字原文、sourceSeq和幂等后保存；局部修改保留未改字段并重验原话，读取所有客户文本块。公开REST不能提交proposal；审核/正式确认及schema不变。技能0.2.1沿用四个业务动作，并只透出允许恢复的错误。无另一套facts库或Agent循环。knowledge_epoch变化时在下一轮前新建上游线程，阻止本次测试的旧来源文本再进模型；但普通对话上下文也丢失，尚未实现归档界面脱敏、在途输出撤权或持久化生产会话映射。
 
-**当前结论：隔离接入链路可运行，自然对话未达标（Limited）。** 用户指出原试题过度指挥Agent调用工具，因此原两组四轮仅算接口联通/回执检查，不能证明自主理解。追加固定两组自然对话，不重写系统提示、不补采凑通过：①“我家准备装修，预算12万，养了只猫，现在先做什么？”②“房子90平，在宜昌。客厅想铺木地板，地暖先不做。你们量房大概要多久？”③“帮我把这些记下来吧，我回头再确认。”④“我又来了，上次说的预算和地暖，你还记得吗？”验收看追问、应查企业事实时主动检索、保存内容完整且回执真实、上下文接续；不要求无意义的每轮工具调用。
+**固定自然验收。** 两组八轮从“我家准备装修，预算12万，养了只猫，现在先做什么？”开始，逐步补宜昌/90平/木地板/不做地暖并询问企业量房时长，再保存、改10万/瓷砖、重进、撤回资料后追问时长、联系设计师、询问他人预算。机制修复前后保持相同问题、模型与系统提示。最新证据`tmp/anythingllm-pilot/trial-2026-10-24T15-52-43-944Z.json`：16答复、40调用、63698tokens、无新增unknown、295项绑定drift[]；原始首稿、出处及数据库真实字段保留。
 
-| 验证范围 | 实际结果与证据 |
+| 能力 | 实际结果 |
 | --- | --- |
-| 零模型服务与工程检查 | 3项技能身份/失败回执测试、1084文件依赖类型检查通过。`tmp/anythingllm-pilot/trial-2026-10-24T14-54-38-227Z.json`通过两企业检索/项目、草稿写入/读回/幂等、跨企业会话及草稿拒绝、知识撤回，模型0。 |
-| 原显式指令两组四轮 | `tmp/anythingllm-pilot/trial-2026-10-24T15-08-29-054Z.json`：8答复持久保存，11次业务工具成功，真实草稿4900/4901；19次供应商调用、29290 tokens、unknown0、288项源码绑定drift[]。资料/项目/读草稿能执行，但选材判断缺依据，需求字段仍是混杂原话，不能称专业能力达标。 |
-| 自然对话两组四轮 | `tmp/anythingllm-pilot/trial-2026-10-24T15-14-09-596Z.json`：8答复持久保存、6次业务工具成功；14次供应商调用、16834 tokens、unknown0、294项源码/实际配置/技能绑定drift[]。两组完整业务目标均未通过，不能将运行检查true作为语义通过。 |
-| 自然对话的原始失败 | 1.2只读项目却声称“已为您更新项目信息”，未查企业资料即回答量房1–2小时（资料为预留90分钟且须确认）。1.3如实识别草稿4902漏项，1.4却称上次未保存草稿，与真实写入矛盾。2.2主动查资料并正确答90分钟；2.3/2.4却声称面积、城市、木地板、地暖都已保存，实际草稿4903没有这些内容。 |
-| 已定位的两层问题 | 旧`RequirementService`的`customer-excerpts-v1`在两组都只存预算整句和“你们量房大概要多久”，遗漏90平/宜昌/木地板/不做地暖；属业务服务抽取缺陷。Agent在工具回执不完整时仍补说已保存、未检索即报企业服务，以及否认已存在草稿，属编排/回答可靠性问题。不能归咎于用户不会写提示，也不能只改提问措辞掩盖。 |
-| 原版界面与清理 | 已登录原版界面并重进显式指令与自然对话线程，截图`tmp/anythingllm-pilot/native-history.png`显示真实草稿4900回执，`tmp/anythingllm-pilot/natural-history-failure.png`保留1.4否认已存草稿的错误。所有试验身份失效/企业AI停用，模型桥关闭，试验API keys已撤销；本机应用保留用于查看历史，当前不是开放续聊入口。 |
+| 渐进追问、首次保存、修改与重进 | 两组均追问城市/面积；房屋、宠物、预算、地面及否定地暖完整保存，局部修改和读回均正确，4次草稿真实写入，未正式确认。 |
+| 企业事实及动作选择 | 仅1/2主动检索并答真实90分钟政策。第一组泛答1–2小时，还尝试两次未授权保存（均拒绝），最后含含糊的“已记录”。该项不通过，不补采凑成功；通用材料/安全建议未经过专业质量验收。 |
+| 资料撤回 | 两次epoch变化，后续模型输入旧90分钟文本为0。两组却把时长理解为预约时间或要求旧记录；输入隔离的窄检查通过，上下文接续及历史来源撤回不算迁移验收通过。 |
+| 联系设计师 | 0/2真实交接。当前技能无交接动作，只给泛化建议，包含未验证的产品入口；没有发送通知。 |
+| 他人预算 | 两组均拒绝；另有真实服务分别拒绝跨企业、同企业其他客户读写，拒绝话术不替代权限证明。 |
+| 持久化、重启与认证 | 16答复均保存。`lifecycle-2026-10-24T15-55-29-931Z.json`零模型重启自有容器，4线程历史投影完全一致；未认证及撤销API key后访问均拒绝。此项不证明在途任务恢复。 |
 
-**保留失败与范围。** 首次实模`trial-2026-10-24T15-00-06-174Z.json`的3次调用/2798 tokens全部已知，生成回答后因试接代码试图写无run的助手消息触发`invalid_message`。未削弱守卫或伪造run；改为由AnythingLLM保存原生对话，业务库只保留业主输入及真实草稿。已零模型读取原答复验证上游持久化；换行文本的检查改为逐条内容相等。此前三个零模型夹具准备失败也保留。所有新试接累计36次调用、48922 observed tokens、无新增unknown，按5 micros/token保守上界为¥0.24461，非账单实付；仍累加旧518485 tokens/869762 micros预留记账，执行旧100万tokens/¥5双上限及本试接累计20万tokens/每批24次上限。最后自然批验证了API key自动撤销及实际挂载配置前后绑定；不追溯扩大前一批的288项绑定范围。
+**重启后的实际故障与修复。** 首次历史重启检查后，浏览器旧登录态触发容器退出1（非OOM），并出现动态模块加载失败。根因是本试接prepare覆写上游自动生成的SIG_KEY/SIG_SALT，而上游validatedRequest将解密失败的null传给bcrypt，未正确拒绝。prepare现在持久保存/迁入现有密钥，缺失数据库密钥则停止；仅首次迁移使旧JWT失效，密码/业务桥密钥/历史不变。3项配置回归通过；`session-recovery-2026-10-24T16-06-38-870Z.json`零模型实测重复prepare稳定、旧token返回401不崩溃、新登录及10个工作区重启保留，绑定drift[]。首次驱动缺jsonwebtoken依赖的零调用失败单独保留。模型/业务/技能配置未改，此变更仅影响本机准备与登录，复用此前稳定语义证据；上游通用非法密文处理仍是迁移需关注的缺陷，不把本次会话恢复当作长期稳定性证明。 修复后`lifecycle-2026-10-24T16-10-45-971Z.json`再次验证4线程历史/认证；原版浏览器重新登录及重进成功，截图`tmp/anythingllm-pilot/natural-qualification-reentry.png`显示真实4917草稿的10万/瓷砖/不做地暖；这是原版AnythingLLM界面证据，不是本项目小程序验收。
 
-**复现及未覆盖。** 先执行`node scripts/anythingllm-pilot/prepare.mjs`和`docker compose -f scripts/anythingllm-pilot/compose.yml up -d`，再执行`node admin/scripts/anythingllm-pilot-run.mjs services`（零模型）、`live`（显式接口指令）或`natural`（自然对话）；实模会产生原授权内用量，不重复调用来凑通过。原[API Agent历史丢失问题](https://github.com/Mintplex-Labs/anything-llm/issues/5060)在本固定版本已实际验证API保存及浏览器重进。上游历史文本的来源撤回清理、正式durable run/usage接入尚未实现，因此仅准合成资料试接；不得导入真实客户资料或推广为正式多租户服务。未切换小程序默认Agent、未改变产品UI/路由/API/schema/生产部署，现有运行模块清单无行为变化；这不是完成的小程序用户阶段。旧计划继续暂停，下一步只应针对已保存原始失败确定服务抽取与Agent回执校验的机制改动，不恢复旧队列或再做提示词补采。原失败、unknown及费用不清零。
+**原需求兼容性。** `compatibility-2026-10-24T16-02-08-144Z.json`在同一批准隔离库、验收锁下通过6项既有真实服务/HTTP/客户端控制器检查：草稿确认幂等、本人/租户/开关边界、旧版本/授权/schema、保留期清理与重放、bearer HTTP、编辑确认及重进。零模型、296项绑定drift[]，不冒充Stable原生验收或AnythingLLM人工交接通过。
+
+**工程证据。** `trial-2026-10-24T15-38-15-140Z.json`通过完整原话保存、伪造/过期输入拒绝、幂等冲突及参与者隔离；`trial-2026-10-24T15-46-41-475Z.json`新增真实局部修改并读回未改字段，8项服务检查通过、模型0、drift[]。需求测试5项、技能测试4项通过，最终1536文件TypeScript检查0诊断；保留最初测试驱动2个unknown字段类型错误，在实模前仅类型收窄修复。3个改动的生产/单测文件scoped ESLint通过；试接驱动仍有2个原有no-explicit-any错误，不声称全仓通过。类型收窄不改变服务行为，复用服务证据；实模绑定最终源码及配置。
+
+**失败与费用不清零。** 首次`trial-2026-10-24T15-00-06-174Z.json`为3调用/2798tokens，随后因无真实run写助手消息被invalid_message拒绝，守卫保留，改由上游持久保存答复，业务库只写客户输入/草稿。显式指令`15-08-29-054Z`19调用/29290tokens仅算联通；首次自然`15-14-09-596Z`14调用/16834tokens，两组均漏字段/虚假回执。首轮资格`15-40-37-153Z`31调用/55702tokens：首次完整保存2/2，但两组修改丢字段、撤回后均答90分钟，7个后续输入含撤回文本。字段合并/epoch机制各仅按同一固定两组复验一次，没有反复补采；之前零模型准备失败也保留。试接累计107调用/168322 observed tokens/新增unknown0，5 micros/token保守上界¥0.841610、非实付。叠加旧518485tokens/869762micros及未决预留为686807tokens/¥1.711372上界。保留试接累计20万tokens、资格批48调用（natural批24）、旧100万tokens/¥5上限，unknown即停、无自动重试/换模型。
+
+**迁移缺口与下一交付。** 下一范围命名OS-MIGRATION-02：企业事实可靠检索、资料变化后保留获权客户上下文、真实人工交接及诚实回执。先分析保存trace，不开启另一轮措辞/regex采样。正式迁移还必须具备服务端真实用户授权/动作权限（试接仅按固定获准测试轮开放写入）、SFP持久run/job/provider-attempt/usage接入、归档/在途来源及参与者撤权、超时/取消/断网/幂等恢复，以及原批准小程序的真实写入、反馈、重进和Stable自动验收。这些在AnythingLLM接入中未实现或未验证，不能借旧小程序通过记录替代。知识入库未改；未切默认Agent、新UI/路由/schema或生产。模块清单双语已登记内部草稿接缝。只使用合成资料，不导入真实客户。
+
+**复现与清理。** 先`node scripts/anythingllm-pilot/prepare.mjs`及`docker compose -f scripts/anythingllm-pilot/compose.yml up -d`；修改挂载技能后仅重启自有空闲容器；本次会话配置迁移须用`docker compose -f scripts/anythingllm-pilot/compose.yml up -d --force-recreate`加载新环境，保留storage。`node admin/scripts/anythingllm-pilot-run.mjs services`零模型，`natural`/`qualification`占用原授权用量，旧显式`live`已停用。仅准127.0.0.1:55432/xiaok_embedding_eval，沿用验收锁/空队列守卫。`node tmp/anythingllm-pilot/lifecycle.mjs`对已完成资格批执行历史/认证零模型检查。已完成批均停用合成身份、撤销试验key并关闭桥；应用保留供看历史，不是开放续聊入口。原始请求/响应/usage/夹具ID在被忽略的tmp/anythingllm-pilot；原界面截图native-history.png、natural-history-failure.png保留。[上游API历史问题](https://github.com/Mintplex-Labs/anything-llm/issues/5060)仅在本固定版本的API/重进/重启范围内验证。
 
 <a id="当前架构复盘与重构计划2026-10-23仅计划待批准实施"></a>
 

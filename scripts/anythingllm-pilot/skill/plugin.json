@@ -3,7 +3,7 @@
   "hubId": "sfp-renovation",
   "name": "Smart Floor Planner renovation tools",
   "schema": "skill-1.0.0",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "description": "查询当前业主的真实装修项目和获权企业资料，读取或生成待业主审核的需求草稿。企业、客户与会话由服务端绑定，不接受模型指定身份。涉及企业服务、项目状态或已保存草稿时必须查询工具；不能把建议说成已完成操作。",
   "setup_args": {},
   "entrypoint": {
@@ -12,9 +12,23 @@
       "action": {
         "type": "string",
         "enum": ["read_project", "search_knowledge", "read_requirement_draft", "create_requirement_draft"],
-        "description": "read_project读取当前项目；search_knowledge检索企业服务资料；read_requirement_draft读取真实草稿；用户明确要求整理/保存需求草稿后才可create_requirement_draft，不会确认需求或通知人员。"
+        "description": "read_project只读项目，不会更新项目。search_knowledge检索当前企业资料。read_requirement_draft读取实际草稿和带编号的客户原话。用户要求记下/修改需求时，先读客户原话，再以sourceSeq和fields提交create_requirement_draft；首次覆盖全部需求，修改只提交变化字段，服务端保留未修改字段。改口取最新意思，不会确认需求或通知人员。保存回执只证明返回的字段，不得补说未返回的信息已经保存。"
       },
-      "query": { "type": "string", "description": "检索资料时填写用户问题；其他动作填空字符串。" }
+      "query": { "type": "string", "description": "检索资料时填写用户问题；其他动作填空字符串。" },
+      "sourceSeq": { "type": "string", "description": "生成草稿时使用read_requirement_draft返回的customerEvidence.sourceSeq；读取时省略。" },
+      "fields": {
+        "type": "array",
+        "description": "本次新增或修改的客户原文片段，未提交的字段保持不变。housing房屋面积/城市；household家庭/宠物；style风格；budget预算；timeline时间；room房间选材；devices地暖等设备。每项text必须是对应客户消息中的连续原文，不得把问题当房屋事实、改写数额或丢失否定。取消/暂不确定需求时提交对应客户原话，不得以遗漏字段代替删除。",
+        "items": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "field": { "type": "string", "enum": ["housing", "household", "style", "budget", "timeline", "room", "space", "usage", "frequency", "devices"] },
+            "text": { "type": "string" },
+            "sourceMessageId": { "type": "string" }
+          },
+          "required": ["field", "text", "sourceMessageId"]
+        }
+      }
     }
   }
 }

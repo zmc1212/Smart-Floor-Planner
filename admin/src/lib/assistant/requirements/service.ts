@@ -3,7 +3,7 @@ import { withTenantTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, id, requireCapability, type ActorContext } from '../contracts';
 import { idempotent, cancelRuns } from '../core/conversation';
-import { confirmedRequirements, excerptRequirements } from './contract';
+import { confirmedRequirements, evidencedRequirements, excerptRequirements } from './contract';
 import { conversationGuidance, guidanceProgress } from './guidance';
 import { requirementCheckpoint } from './checkpoint';
 
@@ -38,8 +38,19 @@ export class RequirementService {
       return { latest: latest ? dto(latest) : null, confirmed: confirmed ? dto(confirmed) : null };
     });
   }
-  write(conversationId: string, requestKey: string, input: Record<string, unknown>) {
+  /** Internal Agent seam; public REST payloads cannot supply a proposal. */
+  customerEvidence(conversationId: string) {
+    return this.scoped(conversationId, false, async repo => {
+      const messages = await rows(repo.tx, sql`select id,seq,content from app.assistant_messages
+        where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and author_kind='user' order by seq limit 201`);
+      if (messages.length > 200) fail('requirements_history_too_long', 422);
+      return { sourceSeq: String(messages.at(-1)?.seq || '0'), messages: messages.map(m => ({ id: String(m.id),
+        text: ((m.content as { blocks?: { text?: string }[] }).blocks || []).map(b => b.text || '').join('\n') })) };
+    });
+  }
+  write(conversationId: string, requestKey: string, input: Record<string, unknown>, proposal?: { sourceSeq: string; fields: unknown }) {
     const confirm = input.action === 'confirm';
+    if (proposal && (confirm || typeof proposal.sourceSeq !== 'string')) fail('invalid_requirement_evidence', 422);
     if (input.action !== 'draft' && !confirm) fail('invalid_message', 422);
     const allowed = confirm ? ['action','draftId','expectedVersion','fields','consent','leadId'] : ['action'];
     if (Object.keys(input).some(k => !allowed.includes(k))) fail('invalid_message', 422);
@@ -50,21 +61,36 @@ export class RequirementService {
     return this.scoped(conversationId, true, async (repo, c) => {
       // Store identifiers only in idempotency records; replay always projects current,
       // possibly redacted content instead of caching private requirement text.
-      const result = await idempotent(repo.tx, this.actor, 'requirements:' + conversationId, requestKey, input, async () => {
+      const result = await idempotent(repo.tx, this.actor, 'requirements:' + conversationId, requestKey, proposal ? { ...input, proposal } : input, async () => {
         if (c.status !== 'open' || c.mode !== 'ai' || (c.entry_snapshot as Row)?.retentionRedacted) fail('context_changed');
         const source = await one(repo.tx, sql`select coalesce(max(seq),0)::text as seq from app.assistant_messages
           where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and author_kind='user'`);
+        if (proposal && proposal.sourceSeq !== String(source!.seq)) fail('requirements_stale');
         let summary: Row;
         if (!confirm) {
           const messages = await rows(repo.tx, sql`select id,content from app.assistant_messages
             where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and author_kind='user' order by seq limit 201`);
           if (!messages.length) fail('requirements_empty', 422);
           if (messages.length > 200) fail('requirements_history_too_long', 422);
-          const inputs = messages.map(m => ({ id: String(m.id), text: String((m.content as { blocks?: { text?: string }[] }).blocks?.[0]?.text || '') }));
+          const inputs = messages.map(m => ({ id: String(m.id), text:
+            ((m.content as { blocks?: { text?: string }[] }).blocks || []).map(b => b.text || '').join('\n') }));
           const guidance = conversationGuidance(c.entry_snapshot);
-          const drafts = guidance ? guidanceProgress(guidance, inputs).fields : excerptRequirements(inputs);
+          let proposed;
+          if (proposal) {
+            // Sparse edits preserve every untouched customer fact. All retained
+            // excerpts are revalidated against this authorized message set too.
+            evidencedRequirements(inputs, proposal.fields);
+            const edits = proposal.fields as Array<{field:string;text:string;sourceMessageId:string}>;
+            const previous = await one(repo.tx, sql`select draft_fields from app.assistant_requirement_summaries
+              where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and status!='redacted' order by id desc limit 1`);
+            const retained = Object.entries((previous?.draft_fields || {}) as Record<string,{text?:string;sourceMessageId?:string}>)
+              .filter(([field, value]) => value?.text && !edits.some(edit => edit.field === field))
+              .map(([field, value]) => ({field,text:value.text,sourceMessageId:value.sourceMessageId}));
+            proposed = evidencedRequirements(inputs, [...retained, ...edits]);
+          }
+          const drafts = proposed || (guidance ? guidanceProgress(guidance, inputs).fields : excerptRequirements(inputs));
           const checkpoint = await requirementCheckpoint(repo.tx, this.actor.enterpriseId, conversationId);
-          const effective = guidance ? guidanceProgress(guidance, inputs, checkpoint).fields : drafts;
+          const effective = !proposal && guidance ? guidanceProgress(guidance, inputs, checkpoint).fields : drafts;
           const editable = Object.fromEntries(Object.entries(effective).map(([k, v]) => [k, v.text]));
           summary = (await one(repo.tx, sql`insert into app.assistant_requirement_summaries(enterprise_id,conversation_id,customer_user_id,source_seq,draft_fields,confirmed_fields)
             values(${this.actor.enterpriseId},${conversationId},${this.actor.principal.kind === 'user' ? this.actor.principal.userId : null},${String(source!.seq)},${JSON.stringify(drafts)}::jsonb,${JSON.stringify(editable)}::jsonb) returning *`))!;
