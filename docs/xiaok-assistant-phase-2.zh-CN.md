@@ -8,6 +8,8 @@
 
 ### 当前执行：R1来源获取与跨轮引用（机制已集成；未知派发阻断后续实模）
 
+**2369只读核查｜2026-10-24，仍未核清。** 在源码提交d8798d159f826235cbc506f0409bf19a4c2b7941上只读核对本地attempt/usage/reservation与百炼北京控制台。默认开启的审计日志（全部API Key、无状态筛选）有9条200记录，按时序及逐次tokens对应2360–2368，共71154tokens；模型用量为未缓存输入57511、缓存12032、输出1611。2026-10-24账单两页共34项，其中10:47–10:51的10项与这9次已知调用一致，页面暂列¥0.01327228；此为已知调用的参考账项，不计作2369或整轮实付。2369在10:51:03.580发起，暂无对应审计记录、响应、usage或费用结论；账单最新区间只到10:51:00，且页面提示账单详情可能延迟24小时、当月结果尚非最终对账依据。缺记录不能证明未受理或零费用，故不核销、不改写原失败、不释放59497tokens/285586micros预留、不重放或启动新场景。证据tmp/xiaok-consultation-r1/provider-reconciliation-readonly-01.json；unknown-readonly-2369-01.json的16项核对通过：数据库read-only事务前后、绑定源码、原预留/unknown均不变，AI停/队列0/三自有端口关闭，2369后0派发，整链预检仍provider_outcome_unknown。此检查不代表R1业务通过；新strict schema及R2–R4待请求级受理/用量与费用证据核清后继续。原1337文件测试绑定复核drift[]，复用此前240单元/8服务等有效证据；本轮新增模型/数据库业务写入0。详见[审计说明](https://help.aliyun.com/zh/model-studio/model-telemetry/)和[账单说明](https://help.aliyun.com/zh/model-studio/bill-query-and-cost-management)。
+
 R1仍是原C01企业＋本人项目＋厂家原文咨询、沿前轮来源追问、点来源和持久重进。已接入run绑定8192 profile、原quota/usage派发预留、候选发现与read_web分离、真实出链/4MB/50页HTML/PDF读取、服务端祖先Evidence重验及当前目录。没有新增Agent、facts store、权限解析或引用权威；原C01视觉/路由、正式v4图与知识入库保持；既有来源端点扩展run绑定的网页/PDF定位及Evidence.web，仍沿原会话/租户/来源重验，无数据库schema迁移。静态Crawl4AI/pypdf读取已接，动态浏览器/CAPTCHA读取未实现，不声称通过。
 
 **最新测试策略与授权（2026-10-23）。** 用户明确改为按测试类型固定选模型，并批准Qwen长链本轮合计¥5，随后批准分账：免费短测R1/R2/R3保留60k/80k/100k；Qwen长链跨R1–R4共用1,000,000 observed＋unobserved-reserved tokens及¥5，达到任一即停。零模型单元/离线/真实服务先验证权限、幂等、撤回、回执、重进与错误恢复；需要模型的短语义用百炼`deepseek-v4.1-flash-1017`免费额度/用尽即停；多工具研究、连续追问、图纸版本链及压缩长聊在场景开始前固定`qwen3.7-flash`，thinking=false/max_output8192。不是免费失败后自动付费回退；不扩矩阵、不部署生产，不合并不同模型/配置的首稿成绩。
