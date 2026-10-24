@@ -8,7 +8,7 @@ import { type ModelTool, type ModelTurnOutput, type ModelMessage } from '../cont
 import { appendMessage, terminalEvent } from '../core/conversation';
 import { projectMessage, resolveEvidence, previewPolicy } from '../knowledge/sources';
 import { runContext, failRun, heartbeat, completeAnswer, type Lease } from '../infrastructure/job-queue';
-import { runRenovationAgent, agentReadProtocol, agentToolReplyProtocol, type AgentCheckpoint } from './runtime';
+import { runRenovationAgent, agentReadProtocol, agentToolReplyProtocol, agentTurnScheduleProtocol, type AgentCheckpoint } from './runtime';
 import { agentConfig, agentCapabilityFingerprint } from './config';
 import { factFields, needWriteFeedback, needOriginalQuotes, hasExplicitNeedCorrection, assertRecordedReply, needReplyFeedback, onlyChatHistoryRequested, currentBudgetRecallRequested, currentBudgetRecallFeedback, needReconfirmationFeedback, needDeskPositionFeedback, currentNeedView, unavailableDeskReply, explicitNeedRecordOnly, explicitNeedWriteStatement, recordedNeedReceipt, parseNeedWrites } from './memory';
 import { availableNeedMemory, needMemoryNoticeRefs, unavailableNeedMessageIds, needContextStep, needSourceRefs, needRunSourcesAvailable } from './memory-sources';
@@ -52,6 +52,8 @@ import { consultationRequestReservation, reserveConsultationDispatch, settleCons
 import { configuredWebProvider, parseWebQuery, searchWeb, webSearchTool, type WebSearchSnapshot } from './web';
 import { webEvidence, webSynthesisSources } from './web-evidence';
 import { proseNumberProtocol } from './prose-number-view';
+import { consultationRuntimeBudget } from './consultation-profile';
+import { citationSelectionProtocol } from './citation-coverage';
 
 const needProperties = { room: { type: 'string', description: '仅填该字段自身分句中的明确房间；仅写预算而无房间时填空字符串，不借用相邻分句的房间。' }, field: { type: 'string', enum: factFields, description: 'use记录用途/人数，desk记录桌型/书桌位置，storage记录收纳/柜体要求，budget记录预算，daylight记录采光，devices记录设备；style只记录装修风格，不存书桌位置或收纳。独立字段分别保存，不用更正人数覆盖设备或位置。' }, value: { type: 'string', description: '逐字摘自quote，不改写。' }, quote: { type: 'string', description: '该字段的最短完整原分句，逐字摘自本次客户消息，标点也不改写；不拼接多句。' } };
 export const needTool: ModelTool = { name: 'record_need', description: '保存当前客户消息中明确说出的需求，只摘原话。不变字段沿用原记录。同一消息有多个独立字段时，主字段加additionalNeeds一次原子保存（合计最多四条），不要逐轮单独保存。明确更正后又提问时先保存，等回执再查询解释；逗号后以另外/此外/顺便另问的独立问题不取消前面的明确更正，quote只摘更正原句，不带后面的假设/问题，也不保存问题中的设备或房间。更正本身附条件、转述或客户说不记录时不保存。返回memoryVersion。', parameters: {
@@ -549,6 +551,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       for (const ref of initial.referenceEvidence) if (!await resolveEvidence(tx, lease.actor, context.conversation, ref, true)) fail('context_changed');
       await currentSynthesisContext(tx, lease.actor, context.conversation, lease.runId);
     }); };
+    let turnAllocation: ReturnType<typeof consultationRuntimeBudget> | undefined;
     const callModel = async (turn: number, messages: ModelMessage[], tools: ModelTool[], purpose: ModelRequestPurpose = 'answer'): Promise<ModelTurnOutput> => {
           const consultation = initial.config.consultation, profile = consultation?.profile;
           const limits = agentRequestBudget({ profile, purpose });
@@ -584,6 +587,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                   policyProjection:policyView===focused?null:modelPolicyProjectionVersion,
                   contentProjection,
                   numericProseProtocol: purpose === 'answer' ? proseNumberProtocol : null,
+                  citationSelectionProtocol: consultation && purpose === 'answer' ? citationSelectionProtocol : null,
+                  turnSchedule: consultation ? { protocol: agentTurnScheduleProtocol, ...turnAllocation } : null,
                   citationProtocol:purpose==='answer'?citationProtocolVersion:null,
                   repairProtocol: purpose === 'answer' ? synthesisRepairBase(focused) ? synthesisRepairProtocol : finalAnswerRepairBase(focused) ? finalAnswerRepairProtocol : null : null,
                   repairProjection: purpose === 'answer' && focused !== messages && (synthesisRepairBase(focused) || finalAnswerRepairBase(focused)) ? synthesisRepairProjectionVersion : null,
@@ -699,13 +704,20 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     }
     const businessFollowup = (initial.conversation.entry_snapshot as Row).kind === 'lead'
       || initial.messages.some(m => m.role === 'assistant' && (m.content.includes('此前查询过业务记录') || m.content.includes('此前围绕这个客户问题作过综合解释')));
+    if (initial.config.consultation) turnAllocation = await scoped(async tx => {
+      const auxiliary = await one(tx,sql`select count(*) filter(where input_summary->>'purpose'='summary')::int summaries,
+        count(*) filter(where input_summary->>'purpose'='vision')::int perceptions from app.assistant_run_steps
+        where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and kind='agent_model'`);
+      return consultationRuntimeBudget({summaries:Number(auxiliary?.summaries||0),perceptions:Number(auxiliary?.perceptions||0)});
+    });
     const result = await runRenovationAgent({ messages: initial.messages, tools: publicResearchTools(readToolsForContext(agentToolsForMessage(safeText(initial.trigger.content as Parameters<typeof safeText>[0]), initial.config.tools, businessFollowup, !!dependencies.webSearch || configuredWebProvider() !== null), readContext), !!initial.config.consultation), resume: initial.resume,
+      reservedValidationRepairs: turnAllocation?.reservedValidationRepairs, primaryModelTurns: turnAllocation?.primaryModelTurns,
       ports: {
         authorize,
         checkpoint: state => scoped(async tx => {
           for (const ref of initial.mediaRefs) if (!await resolveAgentMedia(tx, lease.enterpriseId, String(initial.conversation.id), ref)) fail('context_changed');
           await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary,private_checkpoint,source_refs)
-            values(${lease.enterpriseId},${lease.runId},${checkpointSeq},'agent_checkpoint','succeeded',${JSON.stringify({ promptVersion: agentPromptVersion, readContext })}::jsonb,
+            values(${lease.enterpriseId},${lease.runId},${checkpointSeq},'agent_checkpoint','succeeded',${JSON.stringify({ promptVersion: agentPromptVersion, readContext, ...(initial.config.consultation ? { turnSchedule: agentTurnScheduleProtocol } : {}) })}::jsonb,
               ${JSON.stringify({ ...state, messages: withoutImageBytes(state.messages) })}::jsonb,${JSON.stringify(initial.mediaRefs)}::jsonb)
             on conflict(enterprise_id,run_id,step_seq) do update set private_checkpoint=excluded.private_checkpoint,source_refs=excluded.source_refs,updated_at=now(),version=app.assistant_run_steps.version+1`);
           if (initial.referenceEvidence.length) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs)

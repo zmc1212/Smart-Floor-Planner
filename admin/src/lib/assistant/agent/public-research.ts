@@ -11,6 +11,7 @@ export type PublicReadDocument = { version: 1; url: string; title: string; parse
 export type PublicResearchState = { version: 1; startedAt: string; queries: WebQuery[];
   visited: string[]; reads: number; navigation: Array<{ url: string; parent: string | null; depth: number; outcome: string }>;
   refinements?: Array<{ query: WebQuery; from: { url: string; title: string; alias: string } }>;
+  queryPlans?: Array<{ protocol: 'bounded-query-decomposition-v1'; kind: 'title-alias' | 'public-prefix-directory'; query: WebQuery; original: WebQuery }>;
   discoveries?: Array<{ query: WebQuery; candidates: Array<{ url: string; title: string }> }>;
   selection?: { protocol: 'document-purpose-frontier-v1'; documentHash: string; complete: boolean; technicalHint: boolean } };
 export type PublicReader = (url: string, remainingMs: number) => Promise<PublicReadDocument>;
@@ -110,9 +111,18 @@ export function publicDocumentPages(document: PublicReadDocument, retrievedAt: s
   });
 }
 
+/** An actual language-directory anchor can connect a global directory to its
+ * regional content. This only orders fetched links; it neither invents a URL
+ * nor assigns geographic applicability or authority to the destination. */
+function languageDirectory(candidate: { url: string; title: string; parent?: string | null }, query: string) {
+  if (!candidate.parent || !/\p{Script=Han}/u.test(query)) return false;
+  let pathname: string; try { pathname = new URL(candidate.url).pathname; } catch { return false; }
+  return /(?:^|\/)zh(?:-(?:cn|hans))?(?:\/|$)/i.test(pathname) || /中文|简体|簡體/.test(candidate.title);
+}
+
 /** Ranking guides reads, never proves authorship/authority or facts. No test
  * manufacturer URL/domain, expected answer or search snippet enters Evidence. */
-export function rankPublicCandidate(candidate: { url: string; title: string }, query: string) {
+export function rankPublicCandidate(candidate: { url: string; title: string; parent?: string | null }, query: string) {
   let path = candidate.url;
   try { path = decodeURI(path); } catch { /* Unsafe/malformed candidates are rejected before reads. */ }
   let pathname = ''; try { pathname = new URL(candidate.url).pathname; } catch { return 0; }
@@ -120,6 +130,7 @@ export function rankPublicCandidate(candidate: { url: string; title: string }, q
   const tokens = text.replace(/[^a-z0-9\p{Script=Han}]/gu, '');
   const terms = query.toLowerCase().match(/[a-z]{3,}|[\p{Script=Han}]{2,}/gu) || [];
   return terms.filter(term => text.includes(term)).length * 3
+    + (originalQuery(query) && languageDirectory(candidate,query) ? 5 : 0)
     + (/地暖|地热|地熱|underfloor|floor.heating/i.test(query) && /underfloorheating|floorheating|地暖|地熱|地热/i.test(tokens) ? 12 : 0)
     + (/地板|floor|laminate/i.test(query) ? (text.match(/floor|laminate|vinyl|wood|timber/g) || []).length : 0)
     // CMS download endpoints need not end in .pdf. This is only a navigation
@@ -142,7 +153,8 @@ export function publicNavigationClass(candidate: { url: string; title: string; p
   return technical ? document ? 4 : 3 : candidate.parent === null ? 2 : document ? 1 : 0;
 }
 const compareFrontier = (a: { url: string; title: string; parent?: string | null }, b: { url: string; title: string; parent?: string | null }, query: string) =>
-  (originalQuery(query) ? publicNavigationClass(b) - publicNavigationClass(a) : 0) || rankPublicCandidate(b,query) - rankPublicCandidate(a,query);
+  (originalQuery(query) ? Math.max(publicNavigationClass(b),languageDirectory(b,query)?2.5:0)
+    - Math.max(publicNavigationClass(a),languageDirectory(a,query)?2.5:0) : 0) || rankPublicCandidate(b,query) - rankPublicCandidate(a,query);
 
 /** Discovery-only query decomposition. An actual public result may expose a
  * foreign brand spelling absent from the original language. Re-search that
@@ -157,6 +169,19 @@ export function publicOriginalRefinement(query: WebQuery, candidates: Array<{ ur
     return { query: { query: alias + ' 官网', domains: [...query.domains] }, from: { url: candidate.url, title: candidate.title, alias } };
   }
   return null;
+}
+
+/** Query broadening from the already checked public input, not brand/domain
+ * guessing. Separate the submitted entity prefix from topical constraints.
+ * This is one discovery candidate query and has no authority/evidence status. */
+export function publicDirectoryQuery(query: WebQuery): WebQuery | null {
+  if (!originalQuery(query.query)) return null;
+  const terms = query.query.trim().split(/\s+/u);
+  if (terms.length < 2 || terms.some(term => term.toLowerCase().startsWith('site:'))) return null;
+  const count = /\p{Script=Han}/u.test(terms[0]) ? 1 : Math.min(2, terms.length - 1);
+  const prefix = terms.slice(0,count).join(' ');
+  if (prefix.length < 2 || prefix.length > 48 || !/^[\p{L}\p{N} -]+$/u.test(prefix)) return null;
+  return { query: prefix + ' 官网', domains: [...query.domains] };
 }
 
 export async function searchPublicResearch(query: WebQuery, provider: WebSearchProvider | null = configuredWebProvider(),
@@ -183,16 +208,25 @@ export async function searchPublicResearch(query: WebQuery, provider: WebSearchP
       return candidates;
     };
     let candidates = mode?.selected ? [mode.selected, ...(mode.alternatives || []).filter(c => c.id !== mode.selected!.id)] : await search(query);
-    if (mode?.discoverOnly && state.queries.length < 3 && Date.now() < deadline) {
+    let prefixUsed = false;
+    while (mode?.discoverOnly && state.queries.length < 3 && Date.now() < deadline) {
       const refinement = publicOriginalRefinement(query, candidates);
-      if (refinement && !state.queries.some(old => fingerprint(old) === fingerprint(refinement.query))) {
-        state.queries.push(refinement.query); (state.refinements ||= []).push(refinement);
+      const aliasQuery = refinement && !state.queries.some(old => fingerprint(old) === fingerprint(refinement.query)) ? refinement.query : null;
+      const relaxed = !prefixUsed && !aliasQuery ? publicDirectoryQuery(query) : null;
+      const next = aliasQuery || relaxed;
+      if (!next || state.queries.some(old => fingerprint(old) === fingerprint(next))) break;
+      state.queries.push(next);
+      if (aliasQuery) (state.refinements ||= []).push(refinement!);
+      else prefixUsed = true;
+      (state.queryPlans ||= []).push({ protocol: 'bounded-query-decomposition-v1', kind: aliasQuery ? 'title-alias' : 'public-prefix-directory', query: next, original: query });
         // The refined frontier owns this directory search. Do not let a highly
         // ranked old aggregator branch consume its entire read budget. Both
         // original result sets remain in the durable discoveries artifact.
-        try { const refined = await search(refinement.query); if (refined.length) candidates = refined; }
-        catch (error) { result.failures.push({ code: error instanceof AssistantError ? error.code : 'web_search_unavailable' }); }
-      }
+      try { const refined = await search(next); if (refined.length) candidates = refined; }
+      catch (error) { result.failures.push({ code: error instanceof AssistantError ? error.code : 'web_search_unavailable' }); }
+      // A title-derived alias already supplies the directory frontier. Only a
+      // public-prefix broadening may need one subsequent actual-title alias.
+      if (aliasQuery) break;
     }
     const seen = new Set<string>();
     for (const candidate of candidates.slice(0,8)) {

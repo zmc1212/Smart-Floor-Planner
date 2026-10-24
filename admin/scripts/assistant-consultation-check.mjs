@@ -44,7 +44,7 @@ try {
       'src/db/__tests__/assistant-web.test.ts'].map(file => path.join(admin, file));
     const norm = file => path.resolve(file).replaceAll('\\', '/');
     const worker = norm(path.join(admin, 'src/lib/assistant/agent/worker.ts'));
-    if (stage === 'R1') files.push(...['consultation-profile','consultation-projection','public-research','synthesis-prose-numbers'].map(file => path.join(admin, 'src/lib/assistant/__tests__/' + file + '.test.ts')),
+    if (stage === 'R1') files.push(...['consultation-profile','consultation-projection','public-research','synthesis-prose-numbers','consultation-recovery'].map(file => path.join(admin, 'src/lib/assistant/__tests__/' + file + '.test.ts')),
       path.join(admin, 'src/db/__tests__/assistant-consultation.test.ts'));
     const baseline = fs.readFileSync(path.join(stageRoot, 'baseline/worker.ts'), 'utf8');
     function program(previous) {
@@ -82,8 +82,8 @@ try {
     } else if (mode === 'lint') files = ['src/lib/assistant/agent/worker.ts', 'src/lib/assistant/agent/model-request.ts',
       'src/lib/assistant/contracts/consultation.ts', 'scripts/assistant-consultation-offline.mjs', 'scripts/assistant-consultation-check.mjs'];
     else throw Error('Expected unit, web, service, types or lint');
-    if (stage === 'R1' && mode === 'unit') files.push(...['consultation-profile','consultation-projection','public-research','agent-final-kind'].map(file => 'src/lib/assistant/__tests__/' + file + '.test.ts'), 'src/lib/ai/__tests__/assistant-thinking.test.ts');
-    if (stage === 'R1' && mode === 'lint') files.push(...['consultation-profile','consultation-usage','consultation-model-view','context','ancestor-sources','public-research','web-evidence','config','context-budget','synthesis-sources','citation-catalog','prose-number-view'].map(file => 'src/lib/assistant/agent/' + file + '.ts'));
+    if (stage === 'R1' && mode === 'unit') files.push(...['consultation-profile','consultation-projection','public-research','agent-final-kind','consultation-recovery'].map(file => 'src/lib/assistant/__tests__/' + file + '.test.ts'), 'src/lib/ai/__tests__/assistant-thinking.test.ts');
+    if (stage === 'R1' && mode === 'lint') files.push(...['consultation-profile','consultation-usage','consultation-model-view','context','ancestor-sources','public-research','web-evidence','config','context-budget','synthesis-sources','citation-catalog','citation-coverage','source-document','prose-number-view','runtime','synthesis'].map(file => 'src/lib/assistant/agent/' + file + '.ts'), 'src/lib/ai/providers/consultation-final-schema.ts', 'src/lib/ai/providers/agent-chat.ts');
     const args = mode === 'lint' ? ['node_modules/eslint/bin/eslint.js', ...files]
       : ['--import', 'tsx', '--test', '--test-concurrency=1', '--test-reporter=tap', ...files];
     const pattern = process.env.ASSISTANT_CONSULTATION_PATTERN || null;

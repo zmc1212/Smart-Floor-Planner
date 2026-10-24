@@ -6,7 +6,7 @@
 
 **实施决策：保留 LangGraph 和现有业务内核，对咨询链路作有界重构。** 本节是方案/协议/预算的详细权威；[Agent计划第1节](./xiaok-agent-engineering-plan.zh-CN.md#1-范围与优先级)负责顺序，[知识计划第1节](./xiaok-enterprise-knowledge-plan.zh-CN.md#1-当前判断与可复用基础)只登记知识依赖。用户已授权R0–R4自动顺序实施；最新授权将免费短测与Qwen长链分账，具体双上限见下文，覆盖旧“全部DeepSeek/现金0”表述。无自动付费回退、模型矩阵或生产部署；CONSULT-02/KDEP-CONSULT-02仍Limited。
 
-### 当前执行：R1来源获取与跨轮引用（容量已修复；正常业务失败并有界收口）
+### 当前执行：R1来源获取与跨轮引用（机制已集成；未知派发阻断后续实模）
 
 R1仍是原C01企业＋本人项目＋厂家原文咨询、沿前轮来源追问、点来源和持久重进。已接入run绑定8192 profile、原quota/usage派发预留、候选发现与read_web分离、真实出链/4MB/50页HTML/PDF读取、服务端祖先Evidence重验及当前目录。没有新增Agent、facts store、权限解析或引用权威；原C01视觉/路由、正式v4图与知识入库保持；既有来源端点扩展run绑定的网页/PDF定位及Evidence.web，仍沿原会话/租户/来源重验，无数据库schema迁移。静态Crawl4AI/pypdf读取已接，动态浏览器/CAPTCHA读取未实现，不声称通过。
 
@@ -46,7 +46,23 @@ captured-navigation-replay-01因新增技术路径尚无录制传输而未完成
 
 **期望、实际与判别。** 期望是企业规则＋本人项目/偏好＋厂家原文的分层解释和沿源追问。9175实际query“快步地板 地暖 适用性 安装说明”没有可细化的英文品牌标签，6次读取停在泛资讯，原件0页。9176从实际标题发现厂家目录，4次真实链接读取完整四页165829字节PDF/hash50f341fde6ce22e29d970f2ed0059f7ba7171a2ab8ede047a596f7eed28f75cd，但1.5/0.3/27/5未选对应原文引文，正确触发数值拦截。两稿行内1./2./3./4.不是CommonMark有序列表，现AST只解决多行列表。live-07-diagnosis-01/02以保存首稿/来源和稳定代码逐段重放，0网络/0模型：只在诊断副本屏蔽编号后9175可过校验但仍缺原件；9176仍因技术数值引文不足失败。各段一般完成承诺校验均通过。副本不交付、不替换首稿或改判原失败。
 
-共享原因归Agent：发现结果失配时缺有效自主后备查询、逐主张引用未覆盖已有证据的相应数值，知识/搜索/读取耗尽4次主循环，最终校验没有留下有界修复容量。KnowledgeRetriever/Evidence无新解析/入库缺陷，不重建索引。live-06/07两次机制修补仍未完成同一正常三源期望，依AGENTS两次失败规则停止第三次补丁/实模循环；旧段落2/书桌2/预算1与所有unknown保留。下一须先形成针对发现失配、主张/引文覆盖和修复轮次编排的可离线判别机制决定；不能仅加提示/regex、放宽数值/权限守卫、补采首稿或称R1完成。R2–R4按原顺序依赖R1验收，均未开始；自动推进授权保持，此收口循环不再派发模型或部署生产。
+前轮live-06/07两次机制修补未完成正常三源期望，已按有界规则收口；原失败和计数保留。用户2026-10-24明确恢复下述机制修复，覆盖前轮停止调用的执行状态，不覆盖历史失败或放宽守卫。
+
+**当前剩余机制修复｜2026-10-24，用户明确恢复，仍属R1。** `recovery-baseline-01`对9175/9176保存首稿/目录零网络零模型定位：行内编号并非CommonMark列表；公开PDF没有进入原有文件修复判据；四次主循环用尽而无最终修复槽。9176的1.5/0.3/27/5都在原目录，所选四个引文却集中第一页。归Agent消费/编排，无知识入库缺陷；旧失败、次数和unknown不重置。
+
+`structured-list-marker-v2`复用CommonMark AST，只在纯文本段落中用完整、保守的行内列表语法识别冒号后分号分隔的连续1..N编号；单位歧义、代码/引用块、正文量数/日期及完成承诺保持原守卫。原正文、引文和ID不改。采纳[mdast节点/位置协议](https://github.com/syntax-tree/mdast/blob/main/readme.md)及[上游位置/嵌套列表/CommonMark测试](https://github.com/syntax-tree/mdast-util-from-markdown/blob/main/test/index.js)；行内语法是本地保守扩展，不宣称上游把它解析成列表。沿[LangGraph显式状态/条件转移](https://docs.langchain.com/oss/javascript/langgraph/thinking-in-langgraph)保留当前框架，不迁移或复制调度器；未把上游测试当成本仓执行结果。
+
+`numeric-span-coverage-v1`只从获权原文的真实catalog span建立数值索引；按尚缺数值作最多四片的覆盖选择，避免候选全落在同一数值。模型仍须显式选择ID，不能自动加引用或改首稿。`tool-content-artifact-v2`在完整核心正文后，以最多1600字节且受实际48KB剩余容量约束的可选标注提供索引，按双层JSON编码计费；原文/条件/locator/目录ID及范围/记忆/未知字段完整保留。typed公开PDF仅让原有一次修复可达，不放宽数值、权限、SSRF/TLS或实际适用性校验。`shared-auxiliary-final-repair-v2`每答复共用五次派发：最多四次主循环加一次仅final_response修复，每个durable摘要/感知占用一次主循环额度；恢复时核对原分配及修复baseHash，不重放工具或未知请求。原48KB/32k估算上下文/60k请求、递归上限、免费/付费双账务保持。
+
+公开发现补上原查询实体前缀的目录分解；只用已检查的公开输入/实际候选，不猜域名。`acquisition-recovery-01`发现全球目录的真实中文站出链因相关度0被排除，保留失败；现在查询语言匹配的实际目录出链可在泛搜索根候选之前读取，技术链接仍优先，不提升authority/适用性。02从原9175 query自主2查询/4读取/深度3取得完整六页厂家中文PDF，原件1,098,211字节/hash553258c147a1934d9822f4ab3e4fedd42dec9a867d639e9a3297deb46a568edd；导航中超模型正文预算的HTML仍留私有原件，不截断。新原件`pdf-context-replay-07`追问43911bytes/55687预留通过，六页全文保持；旧六页06为47625bytes/59401。`recovery-replay-03`保留五个原失败，9176正确拒缺引数值且可受限修复，0新模型/网络，不改判旧业务。
+
+当前零模型`recovery-navigation-02`为237单元、207源码类型0/lint及8真实服务通过，1336文件首尾绑定稳定。02/03原夹具误把合法祖先来源算成仅两条导致受控假unknown，按当前run选新PDF并用实际第四参数final schema后04/导航02通过，不过滤产品祖先来源。可空类型/PDF magic失败保留，修正夹具不放宽守卫；原plan-qwen-long-02只在派发前明确共五调用分配，原题2链×2/10×60k预检不变。
+
+**最新固定验收｜live-08，未通过，已停止真实模型调用。** 同企业4536/原authorization按原2题×2串行Stable执行，整链预检分别843290/884345tokens、¥3.185516/¥3.238498上界。两首问9215/9216自主取得完整四页英文/六页中文厂家技术PDF，最大逻辑输入43180/47977bytes，均无容量错误；两首稿仍因数值所选引文不足被正确拒绝。9215第五次仅最终修复实际执行，但Qwen把edits返回字符串，invalid_model_answer；9216第四次后进入预留修复，attempt2369约1055ms报PROVIDER_CONNECTION_FAILED，无返回wire/usage，run为provider_outcome_unknown/indeterminate。accepted=false不当作未发网络或零费用证明，不重放、不清预留。两个追问、有效答复点来源/重进/混合撤回均未执行；原生截图仅证明真实输入和生成中反馈，未等到失败状态，不冒充失败UI验收。两试验与原稿/错误修复分别保留，R1仍Limited，R2–R4未开始。
+
+strategy-close-05保留未知导致原“unknown=false”收尾断言失败的记录；其真实账务为累计314444 observed Qwen tokens＋59497未知预留＝373941，42次已确认模型调用＋1次未知派发。knownCostMicros396702＋heldCostMicros285586＝¥0.682288保守上界，实际账单/settled_cost_micros仍null，核账行0；并未触及100万/¥5，而是未知结果阻断后续调用。本批新增9次已确认模型调用71154tokens，另1未知；本地Embedding另计，不混入Qwen额度。live-08配置/投影精确恢复，AI停/身份撤权、队列0、自有3107/18095/18097及锁释放，完整绑定drift[]。旧失败、次数、1430/3862/8673/1948/1949与新2369未知保持；不换企业/日期/批次清账。
+
+**停止后的离线协议修复，未作新实模验收。** 已按[百炼严格结构化输出及支持关键词](https://help.aliyun.com/en/model-studio/qwen-structured-output)为服务器绑定Qwen3.7 Flash、非思考、仅final_response时使用`qwen37-final-json-schema-v1`，直接复用原动态schema/baseHash/真实ID枚举，省去同次function通道；业务工具/其他模型沿原函数协议。provider只移除其不支持的uniqueItems关键词，本地仍拒重复ID；不把字符串edits转成数组，不修正文义、不自动加引用、不加调用/输出预算、重试或回退。官方“不设max_tokens”建议不覆盖既有8192费用上限，截断仍失败。final-schema-replay-02从完整服务器checkpoint而非去重模型视图重放9215/9216，0网络/0模型，仍拒原错稿且未知不重放；新wire要求edits=array，不宣称已解决语义或实际托管可用性。01重放未带私有文档hash的记录保留，02只修正诊断输入来源，不改判业务。recovery-final-schema-02的240单元、208源码类型0和定向lint通过，8真实服务全部通过，1337文件绑定稳定；01的两个response_format联合类型属性诊断及一个重复ID错误码期待失败已保留。index-type-audit-02仅从暂存源码/配置独立编译207实际源码/0诊断，排除未暂存平台/供应商改动；Bailian作用域的temperature仍为0，未捎带无关温度适配。后续仅文档收尾，源码与模型证据不变。新schema未运行真实模型；未知解除前不得派发下一场景或进入R2–R4，不部署生产。
 
 ### 复盘依据与归因
 

@@ -1,6 +1,7 @@
 import type { SynthesisSource } from './synthesis';
 import { fail, fingerprint } from '../contracts';
 import { proseNumberView } from './prose-number-view';
+import { citedPdfPage } from './source-document';
 
 export const citationProtocolVersion = 'source-catalog-v1';
 export type CatalogCitation = { citationId: string; sourceId: string; quote: string; start: number; end: number };
@@ -66,14 +67,15 @@ export function resolveCatalogCitation(citation: Record<string, unknown>, source
   return { sourceId: matches[0].sourceId, quote: matches[0].quote };
 }
 
-/** Only an exact quoted filename, named edition or actual PDF page supported by a cited knowledge
- * source's trusted metadata is exempt from engineering-number matching.
+/** Only an exact quoted filename, named edition or actual PDF page supported by a cited
+ * source's typed trusted metadata is exempt from engineering-number matching.
  * Original prose still reaches commitment/scope guards. A bare number or a
  * quantity (including one glued to a document label) is never exempted. */
 export function engineeringClaimText(text: string, citedSources: SynthesisSource[]) {
   const aliases = new Map<string, { name: string; version: string }>();
   const filenames = new Set<string>();
   const pdfPages = new Set<number>();
+  for (const source of citedSources) { const page = citedPdfPage(source); if (page !== null) pdfPages.add(page); }
   for (const source of citedSources.filter(s => s.kind === 'knowledge')) {
     const file = source.evidence?.file;
     if (file?.format === 'pdf' && typeof file.page === 'number' && Number.isSafeInteger(file.page) && file.page > 0)

@@ -41,7 +41,8 @@ test('the consultation discovery result is separate from reading and uses only r
   assert.equal(reads,0);assert.deepEqual(discovered.pages,[]);assert.equal(discovered.candidates![0].id,'P99:1200:0');
   const selected=discovered.candidates![0];
   const read=await searchPublicResearch(query,{name:'synthetic',search:async()=>{throw Error('No repeated discovery');}},async url=>{reads++;return document(url);},discovered.research,Infinity,{runId:'99',sequence:1210,selected});
-  assert.equal(reads,1);assert.equal(read.research!.queries.length,1);assert.equal(read.research!.reads,1);assert.equal(read.pages[0].url,selected.url);
+  assert.equal(reads,1);assert.equal(read.research!.queries.length,2);assert.equal(read.research!.reads,1);assert.equal(read.pages[0].url,selected.url);
+  assert.deepEqual(read.research!.queries.map(query=>query.query),['synthetic floor installation','synthetic floor 官网']);
 });
 
 test('six reads, depth three, three queries and the shared task deadline are hard bounds', async () => {

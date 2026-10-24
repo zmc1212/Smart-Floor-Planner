@@ -10,6 +10,8 @@ import type { HistorySnapshot, HistoryRef } from './history';
 import { modelCitationCatalog, sourceCitationCatalog, resolveCatalogCitation, engineeringClaimText } from './citation-catalog';
 import { withSynthesisRepairProtocol, synthesisRepairBase, finalAnswerRepairBase, isCatalogSynthesisDraft } from './synthesis-repair';
 import { originalAnswerOnly, independentAdviceRequested } from './read-tool-input';
+import { numericCitationCandidates } from './citation-coverage';
+import { publicPdfSource } from './source-document';
 
 export type SynthesisSource = { sourceId: string; kind: 'knowledge' | 'project' | 'history' | 'web'; title: string; text: string; fullTextCitable?:true; evidence?: Evidence; web?: import('../contracts/web-source').WebSourceLocator; resultKey?: string; citationQuotes?: string[]; summaryTitle?:string|null; material?: MaterialSource; history?: HistoryRef & { seq: string };
   followup?: Omit<IssueState, 'question' | 'value'> };
@@ -346,16 +348,7 @@ function unsupportedWordQuantities(text: string, quoted: string) {
   return wordQuantities(text).filter(quantity => !original.includes(quantity));
 }
 function numericSourceCandidates(numbers: string[], sources: SynthesisSource[]) {
-  const wanted = [...new Set(numbers)];
-  if (!wanted.length) return [];
-  const priority = (source: SynthesisSource) => source.material?.ref.type === 'site_record' ? 4
-    : source.kind === 'project' && !source.material?.need && source.material?.ref.type !== 'formal_plan' ? 3 : source.kind === 'knowledge' ? 2 : 1;
-  return [...sources].sort((a, b) => priority(b) - priority(a)).flatMap(source => sourceCitationCatalog(source).flatMap(citation => {
-    const originalNumbers = new Set([...(citation.quote.match(/\d+(?:\.\d+)?/g) || []), ...wordQuantities(citation.quote)]);
-    const supports = wanted.filter(number => originalNumbers.has(number));
-    return supports.length ? [{ citationId: citation.citationId,
-      valuesInOriginal: supports, sourceRole: source.material?.ref.type || source.kind, candidateOnly: true }] : [];
-  })).slice(0, 4);
+  return numericCitationCandidates(numbers, sources, quote => [...(quote.match(/\d+(?:\.\d+)?/g) || []), ...wordQuantities(quote)]);
 }
 /** Describe the model's existing selections, never union/apply candidates to an
  * answer. IDs must resolve to the exact authorized original catalog span. */
@@ -434,7 +427,7 @@ function synthesisRepairIssue(raw:string,sources:SynthesisSource[],context:Synth
     }
     if(!(error instanceof AssistantError) || !sources.length
       || !['unsupported_model_commitment','invalid_model_citation'].includes(error.code))throw error;
-    const hasFile = sources.some(s=>s.evidence?.file);
+    const hasFile = sources.some(s=>s.evidence?.file || publicPdfSource(s));
     let value:SynthesisAnswer;try{value=JSON.parse(raw);}catch{throw error;}
     if(!Array.isArray(value.segments))throw error;
     const citationCorrections:Array<{sourceId:string;providedQuote:unknown;copyExactQuote?:string}>=[];

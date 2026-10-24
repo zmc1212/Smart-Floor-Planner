@@ -3,9 +3,10 @@ import { agentModelLimits, type ModelMessage, type ModelTurnInput, type ModelTur
 import { consultationProfile } from '@/lib/assistant/contracts/consultation';
 import { bearerHeaders, parseJson, providerFetch, providerUrl, asObject } from './http';
 import { thinkingBody } from './thinking';
+import { consultationFinalSchema } from './consultation-final-schema';
 
 const invalid = () => { throw new AiProviderError('Invalid Agent model response', 'INVALID_PROVIDER_RESPONSE', 'unknown', 502); };
-export const agentChatProtocolVersion = 'final-tool-choice-v1';
+export const agentChatProtocolVersion = 'profile-final-schema-v2';
 export const qwenSystemProtocolVersion = 'qwen35-leading-system-v1';
 function leadingSystems(messages: ModelMessage[]): ModelMessage[] {
   const systems = messages.flatMap(message => message.role === 'system' ? [message] : []);
@@ -53,10 +54,11 @@ export function agentChatBody(input: ModelTurnInput, baseUrl = 'https://api.sili
     }) };
   });
   if (images > agentModelLimits.maxImages || textBytes > agentModelLimits.maxTextBytes) throw Error('agent_input_limit');
+  const finalSchema = consultationFinalSchema(input);
   return { model: input.model, messages, temperature: 0, max_tokens: input.maxTokens,
-    ...(input.jsonOutput ? { response_format: { type: 'json_object' } } : {}),
+    ...(finalSchema ? { response_format: finalSchema } : input.jsonOutput ? { response_format: { type: 'json_object' } } : {}),
     ...thinkingBody(baseUrl, input.enableThinking),
-    ...(input.tools.length ? { tools: input.tools.map(tool => ({ type: 'function', function: tool })),
+    ...(input.tools.length && !finalSchema ? { tools: input.tools.map(tool => ({ type: 'function', function: tool })),
       // A final-only dispatch must select that function explicitly. Some
       // providers still emit a previous, removed tool when given "required".
       // The runtime independently rejects anything outside its active list.

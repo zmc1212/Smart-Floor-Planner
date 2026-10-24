@@ -176,8 +176,8 @@ test('discovery/read have separate durable receipts; a foreign-run candidate can
     assert.ok(snapshot.pages[0].hash,'model metadata projection never replaces the authorized original');
     const model=await one(tx,sql`select input_summary from app.assistant_run_steps where enterprise_id=${fixtures[0].enterpriseId} and run_id=${runId} and kind='agent_model' order by step_seq desc limit 1`);
     const metadata=model!.input_summary as {contentProjection:string;numericProseProtocol:string};
-    assert.equal(metadata.contentProjection,'tool-content-artifact-v1');
-    assert.equal(metadata.numericProseProtocol,'markdown-list-marker-v1');
+    assert.equal(metadata.contentProjection,'tool-content-artifact-v2');
+    assert.equal(metadata.numericProseProtocol,'structured-list-marker-v2');
   });
   const next=await chat().send(fixtures[0].conversationId,randomUUID(),content('再核对公开安装条件，不保存。'));
   const nextLease=await claimJob();assert.ok(nextLease);
@@ -185,6 +185,44 @@ test('discovery/read have separate durable receipts; a foreign-run candidate can
   assert.equal((await chat().run(String(next.runId))).status,'failed');assert.equal(reads,1);
   const error=await withTenantTransaction(fixtures[0].enterpriseId,tx=>one(tx,sql`select error_code from app.assistant_runs where enterprise_id=${fixtures[0].enterpriseId} and id=${String(next.runId)}`));
   assert.equal(error!.error_code,'assistant_capability_forbidden');
+});
+
+test('four primary calls leave one accounted final-only PDF citation repair, with the rejected original retained',async()=>{
+  const sent=await chat().send(fixtures[0].conversationId,randomUUID(),content('考虑地暖时，木地板和瓷砖怎么选？请查厂家公开说明，结合实际条件解释，不保存、不安排。'));
+  const runId=String(sent.runId),lease=await claimJob();assert.ok(lease);let calls=0,searches=0,numericId='';
+  const original=Buffer.from('%PDF clearly labelled synthetic two-page original');
+  let previous: Parameters<typeof searchPublicResearch>[3];
+  await processAgentAnswer(lease,{model:async(messages,_available,_turn,tools)=>{
+    const index=calls++;
+    if(index===0)return turn('search_web',{query:'厂家说明',domains:[]});
+    if(index===1)return turn('search_web',{query:'厂家安装条件',domains:[]});
+    if(index===2){const packet=messages.filter(message=>message.role==='tool').map(message=>JSON.parse(message.content)).filter(packet=>packet.candidates?.length).at(-1);return turn('read_web',{candidateId:packet.candidates[0].id});}
+    if(index===3){const web=sources(messages).filter(source=>source.kind==='web'&&source.sourceId.startsWith('W'+runId+':'));assert.equal(web.length,2);numericId=web[1].citationOptions[0].citationId;
+      return turn('final_response',{kind:'synthesis',segments:[{basis:'evidence',text:'原文对含水率分别规定1.5%和0.3%，接触温度最高27°C，每天逐步改变5°C。',citations:[{citationId:web[0].citationOptions[0].citationId}]},
+        {basis:'uncertainty',text:'仍需核实：1. 地板型号；2. 设备类型；3. 基层资料。',citations:[]}]});}
+    assert.equal(index,4);assert.ok(tools);assert.deepEqual(tools.map(tool=>tool.name),['final_response']);assert.ok(JSON.stringify(tools).includes(numericId));
+    const properties=tools[0].parameters.properties as {kind:{enum:string[]};baseHash:{enum:string[]}};
+    assert.deepEqual(properties.kind.enum,['synthesis_repair']);
+    return turn('final_response',{kind:'synthesis_repair',baseHash:properties.baseHash.enum[0],edits:[{segment:0,addCitationIds:[numericId]}]});
+  },webSearch:async query=>{
+    const result=await searchPublicResearch(query,{name:'labelled-synthetic',search:async()=>[{url:'https://maker.example/install.pdf',title:'合成厂家安装原件'}]},undefined,previous,Infinity,{runId,sequence:1200+searches++*10,discoverOnly:true});
+    previous=result.research;return result;
+  },webRead:async(query,selected,state,sequence)=>searchPublicResearch(query,null,async url=>({version:1,url,title:'合成厂家安装原件',parser:publicReaderParser,mediaType:'application/pdf',
+    pages:[{page:1,text:'本页仅说明需要核对具体型号、适用条件和实际基层；厂家资料不证明客户家已满足安装条件。'},
+      {page:2,text:'Moisture limits are 1.5% and 0.3%. Contact temperature maximum 27°C; gradual temperature change 5°C per day.'}],
+    links:[],redirects:[],original:{sha256:createHash('sha256').update(original).digest('hex'),bytes:original.length,base64:original.toString('base64')},egress:'upstream-v0.9.2-resolve-and-pin-proxy',tlsVerification:true}),state,Infinity,{runId,sequence,selected})});
+  const result=await chat().run(runId);assert.equal(result.status,'succeeded',JSON.stringify({runId,calls,status:result.status}));assert.equal(calls,5);
+  const reentry=JSON.stringify(await chat().messages(fixtures[0].conversationId));assert.match(reentry,/1\.5%/);assert.match(reentry,/仍需核实/);
+  await withTenantTransaction(fixtures[0].enterpriseId,async tx=>{
+    const checkpoint=await one(tx,sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${fixtures[0].enterpriseId} and run_id=${runId} and kind='agent_checkpoint'`);
+    const state=checkpoint!.private_checkpoint as {turn:number;validationRepairs:number;turnSchedule:string};
+    assert.equal(state.turn,4);assert.equal(state.validationRepairs,1);assert.equal(state.turnSchedule,'shared-auxiliary-final-repair-v2');
+    const validation=await one(tx,sql`select count(*) as n from app.assistant_run_steps where enterprise_id=${fixtures[0].enterpriseId} and run_id=${runId} and kind='agent_validation'`);assert.equal(Number(validation!.n),1);
+    const rejected=await one(tx,sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${fixtures[0].enterpriseId} and run_id=${runId} and step_seq=1130`);
+    assert.match(JSON.stringify(rejected!.private_checkpoint),/1\.5%/);
+    const quota=await one(tx,sql`select reserved_tokens,settled_tokens,settled_cost_micros,status from app.assistant_quota_reservations where enterprise_id=${fixtures[0].enterpriseId} and run_id=${runId}`);
+    assert.equal(quota!.status,'reconciling');assert.equal(Number(quota!.reserved_tokens),1250);assert.equal(Number(quota!.settled_tokens),1250);assert.equal(quota!.settled_cost_micros,null);
+  });
 });
 
 test('missing observed usage preserves the reservation and stops the next call in the same stage',async()=>{

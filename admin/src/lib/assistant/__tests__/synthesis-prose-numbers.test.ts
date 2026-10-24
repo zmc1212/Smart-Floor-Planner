@@ -22,3 +22,18 @@ test('item quantities, ambiguous unit prefixes, dates, decimals, code and comple
   assert.equal(proseNumberView('这是第3项工艺要求。'),'这是第3项工艺要求。');
   assert.match(proseNumberView('1. 核对27℃要求。'),/27℃/);
 });
+
+test('plain inline-list grammar annotates only consecutive decorations and retains all body claims',()=>{
+  for(const text of ['待核实：1. 地板型号；2. 设备类型；3. 基层状态；4. 匹配条件。',
+    '😀仍有条件： 1) 核对原件; 2) 现场待核实。']){
+    assert.equal(proseNumberView(text).length,text.length);
+    assert.doesNotMatch(proseNumberView(text),/\d/);
+    assert.equal(parseSynthesis(reply(text),[]).segments[0].text,text);
+  }
+  for(const text of ['条件：1. 现场27℃；2. 干燥。','条件：1. 米足够；2. 可以施工。',
+    '条件：1. 型号；3. 状态。','条件：01. 型号；02. 状态。','条件：1.5米；2.5米。',
+    '条件：1. 型号；2) 状态。','条件：1. 等三天；2. 已验收。',
+    '`条件：1. 型号；2. 状态。`','> 条件：1. 型号；2. 状态。'])
+    assert.throws(()=>parseSynthesis(reply(text),[]),/unsupported_model_commitment/,text);
+  assert.match(proseNumberView('条件：1. 温度27℃；2. 含水率1.5%。'),/27℃/);
+});

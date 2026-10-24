@@ -74,7 +74,7 @@ test('legacy, active navigation, other purposes and unrecognized policy/data ret
     messages,tools:[final],profile,toolsForTurn:(_q,_m,tools)=>tools});
   assert.equal(compile().contentProjection,null);assert.equal(compile(consultationLongProfile.id,'summary').contentProjection,null);
   assert.equal(compile(consultationLongProfile.id,'vision').contentProjection,null);
-  assert.equal(compile(consultationLongProfile.id).contentProjection,'tool-content-artifact-v1');
+  assert.equal(compile(consultationLongProfile.id).contentProjection,'tool-content-artifact-v2');
   const unknown=structuredClone(messages),tool=unknown.at(-1) as Extract<ModelMessage,{role:'tool'}>,packet=JSON.parse(tool.content);
   packet.synthesisSources[0].citationOptions[0].hint='自定义提示必须保留';packet.navigation={custom:true};
   tool.content=JSON.stringify(packet);const projected=projectConsultationModelView(unknown,[final]);

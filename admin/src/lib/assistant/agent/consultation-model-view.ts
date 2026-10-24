@@ -1,9 +1,12 @@
-import type { ModelMessage, ModelTool } from '../contracts/model';
+import { agentModelLimits, type ModelMessage, type ModelTool } from '../contracts/model';
 import { agentBasePolicy, agentOpeningMemoryPrefix } from './context';
 import { synthesisModelInstructions, synthesisQuestionPrefix } from './model-policy';
 import { rankPublicCandidate } from './public-research';
+import { numericCatalogIndex } from './citation-coverage';
+import type { SynthesisSource } from './synthesis';
+import { estimateAgentRequest } from './context-budget';
 
-export const consultationModelViewVersion = 'tool-content-artifact-v1';
+export const consultationModelViewVersion = 'tool-content-artifact-v2';
 type Data = Record<string, unknown>;
 const object = (value: unknown): value is Data => !!value && typeof value === 'object' && !Array.isArray(value);
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -38,7 +41,7 @@ export function projectConsultationModelView(messages: ModelMessage[], tools: Mo
   const finalOnly = tools.length === 1 && tools[0].name === 'final_response';
   if (!tools.length || tools.some(tool => !readOnlyTools.has(tool.name)) || !hasSynthesisContract(messages)) return messages;
   const calls = new Map<string, string>();
-  return messages.map(message => {
+  const projectedMessages = messages.map(message => {
     if (message.role === 'assistant') {
       calls.clear(); for (const call of message.toolCalls || []) calls.set(call.id, call.name);
       return message;
@@ -79,14 +82,16 @@ export function projectConsultationModelView(messages: ModelMessage[], tools: Mo
         copy.web = web;
       }
       if (Array.isArray(source.citationOptions)) copy.citationOptions = source.citationOptions.map(option => {
+        if (!object(option)) return option;
+        const view: Data = { ...option };
         if (!object(option) || !Array.isArray(option.range) || option.range.length !== 2
-          || !option.range.every(Number.isSafeInteger)) return option;
+          || !option.range.every(Number.isSafeInteger)) return view;
         const [start, end] = option.range as number[];
-        if (start < 0 || end <= start || end > (source.text as string).length) return option;
+        if (start < 0 || end <= start || end > (source.text as string).length) return view;
         const characters = Array.from((source.text as string).slice(start, end));
         const hint = characters.slice(0, 24).join('') + (characters.length > 24 ? '…' : '');
-        if (option.hint !== hint) return option;
-        const view = { ...option }; delete view.hint; return view;
+        if (option.hint === hint) delete view.hint;
+        return view;
       });
       return copy;
     }) } as Data;
@@ -102,5 +107,38 @@ export function projectConsultationModelView(messages: ModelMessage[], tools: Mo
       }
     }
     return { ...message, content: JSON.stringify(projected) };
+  });
+  // Derived annotations may consume spare capacity, never displace an original
+  // or make an otherwise valid request overflow. The original 48KB limit and
+  // complete catalog remain; omitted annotations can still be located in text.
+  let remaining = Math.max(0, Math.min(1600, agentModelLimits.maxTextBytes - estimateAgentRequest(projectedMessages, tools).textBytes));
+  const packets: Array<{ index: number; packet: Data }> = [];
+  const annotations: Array<{ option: Data; index: unknown; priority: number; cost: number }> = [];
+  for (const [index, message] of projectedMessages.entries()) {
+    if (message.role !== 'tool') continue;
+    let packet: Data; try { packet = JSON.parse(message.content); } catch { continue; }
+    if (!object(packet) || !Array.isArray(packet.synthesisSources)) continue;
+    packets.push({ index, packet });
+    for (const source of packet.synthesisSources) {
+      if (!object(source) || !['web','knowledge'].includes(String(source.kind)) || typeof source.sourceId !== 'string'
+        || typeof source.text !== 'string' || !Array.isArray(source.citationOptions)) continue;
+      const indices = numericCatalogIndex(source as SynthesisSource);
+      for (const option of source.citationOptions) {
+        if (!object(option) || Object.hasOwn(option,'numericIndex') || typeof option.citationId !== 'string') continue;
+        const value = indices.get(option.citationId); if (!value) continue;
+        annotations.push({ option, index: value, priority: source.kind === 'web' ? 0 : 1,
+          // Tool content is itself JSON inside the message wire. Include its
+          // escaped quotes as well, matching estimateAgentRequest's byte view.
+          cost: Buffer.byteLength(JSON.stringify(JSON.stringify({ ...option, numericIndex: value }))) - Buffer.byteLength(JSON.stringify(JSON.stringify(option))) });
+      }
+    }
+  }
+  annotations.sort((a,b) => a.priority - b.priority || a.cost - b.cost);
+  for (const annotation of annotations) if (annotation.cost <= remaining) {
+    annotation.option.numericIndex = annotation.index; remaining -= annotation.cost;
+  }
+  return projectedMessages.map((message,index) => {
+    const packet = packets.find(packet => packet.index === index);
+    return packet && message.role === 'tool' ? { ...message, content: JSON.stringify(packet.packet) } : message;
   });
 }

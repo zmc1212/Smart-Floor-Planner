@@ -92,6 +92,16 @@ export function consultationDispatchBudget(input: {
     remainingMs: profile.runTimeoutMs - (now - createdAt), stageLimitTokens: limit };
 }
 
+/** One five-dispatch allocation across primary work, auxiliary calls and the
+ * existing single final repair. Auxiliary usage is read from durable steps;
+ * it consumes primary allowance, never an extra slot beyond preflight. */
+export function consultationRuntimeBudget(input: { summaries: number; perceptions: number }) {
+  if (![input.summaries,input.perceptions].every(integer) || input.summaries > profile.maxSummaryCalls
+    || input.perceptions > profile.maxPerceptionCalls) fail('assistant_quota_exceeded',429);
+  return { primaryModelTurns: profile.maxModelTurns - input.summaries - input.perceptions,
+    reservedValidationRepairs: 1 as const, auxiliaryCalls: input.summaries + input.perceptions, maxScheduledCalls: 5 };
+}
+
 /** Preflight the entire fixed scenario before its first call. Reservations must
  * include every main/summary/perception/repair request, not merely output. */
 export function consultationScenarioPreflight(input: {
