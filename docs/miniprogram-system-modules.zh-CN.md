@@ -1,6 +1,6 @@
 # 小程序当前功能清单
 
-**当前开源Agent迁移资格验证（2026-10-24）：Limited；旧计划暂停。** 默认运行时及批准UI保持。隔离AnythingLLM试验调用现有业务服务；需求内部proposal核对客户消息出处、sourceSeq和幂等后保存，并合并局部修改、保留未改字段。公开小程序REST不能提交proposal，租户/参与者/确认边界保持。服务检查不证明历史来源撤回、正式任务/计费恢复或原生迁移验收通过。详见[二期当前合同](./xiaok-assistant-phase-2.zh-CN.md)。
+**当前开源Agent资格验证（2026-10-25）：Limited；旧两计划暂停。** 默认运行时及批准UI未改。AnythingLLM内部接缝预取获权Evidence，在epoch变化后按user角色保留客户原话，复用HandoffService真实提交、领取、回复、重进、结束。明确联系请求要求标准工具协议和真实回执；租户、参与者、来源、幂等及联系方式同意边界保留。最终自然答复仍将未保存需求说成草稿，正式迁移验收失败。草稿proposal/公开REST边界不变；无新页面、API、schema、菜单或知识入库。持久任务/计量、归档来源撤回及原生迁移验收仍未实现或未验证。见[当前第二期契约](./xiaok-assistant-phase-2.zh-CN.md)。
 
 **CONSULT-02当前执行（2026-10-24）：R1-A限定Implemented、R1-B已验证，R1-C原固定综合验收仍Limited，R2–R4未开始。** 复用恢复及未受影响证据；2369隔离保留59497tokens/285586micros，不重放，新未知立即停调。原100万tokens/¥5累计、每请求60k和scenarioTokenLimit保持；live-10后累计518485tokens/含预留¥0.869762、实付null。Agent把补丁引用容量/删除互斥编入可信baseHash的严格schema，原本地语义守卫不变。另修复同页远距引文合并超过600字符而丢失答复：原GET /api/miniprogram/assistant/citations/:id支持w:run:index:part，把过宽组合拆为实际已选原文段，仍≤600/段，旧有界w:run:index保持。保存/打开/追问共享投影，须已存消息包含该ID并重验原Evidence/页码/hash/会话/tenant/来源；伪造part或撤回不能访问。14单元、4真实服务、219依赖类型0/lint及原Stable/C01的9项实写/两片来源/追问/重进/他客拒绝/撤回通过，1442绑定无漂移、attempt0；两片重进与撤回PNG已审看。沿批准C01/C02/U01，WXML/样式/素材/文案/导航未改，无新表/端点/菜单/授权或知识入库变更。live-09/10失败保留；9294保存缺陷已修，9293的path/segment失配缺当次完整出站证据，停止盲采，替身不算模型语义。详见[二期当前记录](./xiaok-assistant-phase-2.zh-CN.md)。
 

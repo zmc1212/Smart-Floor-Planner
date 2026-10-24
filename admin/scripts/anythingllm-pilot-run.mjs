@@ -15,7 +15,7 @@ const isolated = connection.DATABASE_URL;
 const url = new URL(isolated);
 assert.ok(['127.0.0.1', 'localhost'].includes(url.hostname) && url.port === '55432' && url.pathname === '/xiaok_embedding_eval', 'Only the approved isolated database is allowed');
 const mode = process.argv[2] || 'probe';
-assert.ok(['probe', 'services', 'natural', 'qualification'].includes(mode), 'Use natural-language scenarios; the old explicit-instruction live mode is retired');
+assert.ok(['probe', 'services', 'natural', 'qualification', 'continuation', 'continuation-services', 'handoff'].includes(mode), 'Use natural-language scenarios; the old explicit-instruction live mode is retired');
 let release;
 try {
   if (mode !== 'probe') release = await lockAssistantAcceptance(isolated, { waitForLock: true });

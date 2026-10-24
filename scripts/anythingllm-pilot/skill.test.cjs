@@ -47,3 +47,16 @@ test('only recognized evidence errors may reach the model for recovery', async (
     }
   } finally { global.fetch = previous; }
 });
+
+test('handoff carries only current request evidence, never model-supplied identity or consent overrides', async () => {
+  const previous = global.fetch;
+  let body;
+  global.fetch = async (url, init) => { body = JSON.parse(init.body); return {ok:true,text:async()=>'{"ok":true,"data":{"state":"waiting"}}'}; };
+  try {
+    const quote = '我想直接跟设计师聊，帮我联系一下。';
+    const result = JSON.parse(await runtime.handler.call({super:{handlerProps:{invocation:{workspace_id:42}}}},
+      {action:'request_designer',quote,workspaceId:999,enterpriseId:999,recipientId:999,contactConsent:true}));
+    assert.deepEqual(body, {workspaceId:42,action:'request_designer',query:'',quote});
+    assert.equal(result.data.state, 'waiting');
+  } finally { global.fetch = previous; }
+});

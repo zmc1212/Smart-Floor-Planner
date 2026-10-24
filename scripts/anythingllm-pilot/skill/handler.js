@@ -1,5 +1,5 @@
 module.exports.runtime = {
-  handler: async function ({ action, query = '', sourceSeq, fields }) {
+  handler: async function ({ action, query = '', sourceSeq, fields, quote }) {
     const workspaceId = this.super?.handlerProps?.invocation?.workspace_id;
     if (!Number.isSafeInteger(workspaceId) || workspaceId < 1) {
       return JSON.stringify({ ok: false, error: 'unbound_workspace' });
@@ -8,16 +8,16 @@ module.exports.runtime = {
       const response = await fetch(`${process.env.SFP_PILOT_BRIDGE}/tools`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${process.env.SFP_PILOT_SECRET}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workspaceId, action, query, sourceSeq, fields }),
+        body: JSON.stringify({ workspaceId, action, query, sourceSeq, fields, quote }),
         signal: AbortSignal.timeout(20000),
         redirect: 'error',
       });
       if (!response.ok) {
         const failure = await response.json().catch(() => ({}));
-        const safe = ['draft_context_required', 'invalid_requirement_evidence', 'requirements_stale'];
+        const safe = ['draft_context_required', 'invalid_requirement_evidence', 'requirements_stale', 'handoff_intent_required', 'context_changed', 'handoff_active'];
         return JSON.stringify({ ok: false, status: response.status,
           error: safe.includes(failure.error) ? failure.error : 'tool_rejected_or_unavailable',
-          instruction: '失败不等于保存成功；如是草稿上下文或出处问题，重新读取客户原话后再提交。' });
+          instruction: '本次动作失败，不声称保存或联系成功；草稿出处错误可重新读取客户原话，人工接续意图不明应澄清。' });
       }
       return await response.text();
     } catch {
