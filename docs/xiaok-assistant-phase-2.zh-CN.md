@@ -6,7 +6,19 @@
 
 **实施决策：保留 LangGraph 和现有业务内核，对咨询链路作有界重构。** 本节是方案/协议/预算的详细权威；[Agent计划第1节](./xiaok-agent-engineering-plan.zh-CN.md#1-范围与优先级)负责顺序，[知识计划第1节](./xiaok-enterprise-knowledge-plan.zh-CN.md#1-当前判断与可复用基础)只登记知识依赖。用户已授权R0–R4自动顺序实施；最新授权将免费短测与Qwen长链分账，具体双上限见下文，覆盖旧“全部DeepSeek/现金0”表述。无自动付费回退、模型矩阵或生产部署；CONSULT-02/KDEP-CONSULT-02仍Limited。
 
-### 当前执行：R1来源获取与跨轮引用（机制已集成；未知派发阻断后续实模）
+### 当前执行：R1小交付（恢复闭环已实现，网页接续已独立验证；原固定验收未通过）
+
+**本轮交付｜2026-10-24，零供应商模型调用。** R1保留原C01和原2问链×2的完整标准，在同一阶段内分为下表三个用户动作。A已完成相关服务、客户端和Stable原生闭环；B复用既有网页来源能力并完成独立原生验证；当前下一项为C。它们不把原实模失败改判为通过，也不取消厂家PDF、企业/本人项目条件或混合撤回检查。
+
+| R1交付 | 用户动作与完成范围 | 当前状态 / 依赖 |
+| --- | --- | --- |
+| R1-A 核账后恢复提问 | 授权核账确认总tokens和费用后，客户刷新/重进原C01，主动发新问题；旧未知run仍indeterminate、不可重试，原键只返回原结果 | 限定Implemented；真实核账服务＋Mini控制器＋Stable串行闭环通过。真实2369未核清，未用合成依据结清它 |
+| R1-B 保存来源打开与接续 | 在既有回答点网页来源，查看原URL/读取时间/原文，退出重进，再沿同一获权来源追问 | 既有网页路径复用并通过零模型真实服务/原生验证；测试替身仅提供受控答复。厂家PDF自主发现、PDF页定位与实际混合来源撤回仍保留在C |
+| R1-C 原固定综合验收 | 原2问链×2＝4答复，企业规则＋本人项目/偏好＋厂家技术原文，数值引文、严格schema、追问、来源/重进、混合撤回 | Limited；2369核清前不调用任何供应商模型。核清后按原题/严格schema/累计预算验收，通过才自动R2–R4 |
+
+**恢复机制与边界。** 原consultation预算忽略settled核账结果；混合run把已知小计误当总数；客户端单看indeterminate永久锁输入。现在只从原reservation及匹配的不可变cost-review审计投影确认状态：全已知用量仍须精确相等；存在未知结果/缺usage（包括连接失败无usage行）时确认总数不得低于已知小计。保留原observed行，新增只读accountedTokens计入已确认总数，已核账部分释放原hold、计实际确认费用；未核清部分继续保留hold并阻断。跨日期/阶段/group仍沿原authorization累计100万tokens/¥5，超预留的确认用量也计入上限。裸settled或审计不匹配不能解锁。原GET /api/miniprogram/assistant/conversations/:id及/runs/:id只增加usageReconciled布尔投影；C01仅在严格true时允许新问题，不自动提交/重放，旧run状态/错误/attempt/usage不改。核账仍沿原显式权限、180秒在途保护、版本/幂等/设置行锁，无新表/菜单/默认授权或生产部署。保留LangGraph检查点与业务内核；[上游故障恢复](https://docs.langchain.com/oss/javascript/langgraph/fault-tolerance)的重试能力不能证明未知外部请求未执行，因此这里不启用retry/resume来补未知，不另建调度器。
+
+**本轮证据与可复验命令。** reconciliation-recovery-before-01保留6项新服务失败和客户端失败；其中一项客户端计数误含entry-context，修正测试范围后保留原日志。after-01的14真实服务（含原usage 8项）、29 Mini客户端及216实际依赖类型0；final-01的241相关单元、原8项consultation兼容及定向lint通过。首批native-01保持其原范围通过，不与后批相加；补齐已安装SDK运行源码和Node可执行文件绑定后，以相同行为/测试替身在native-02重验，1439项含11个SDK运行文件无漂移，作为最终原生证据。recovery-native-02在原Stable2.02.2608080/基础库3.17.2/390×844执行10项，合成企业4578、咨询8372、旧run9267核账后新run9268/9269实写/反馈/来源打开/保存重进/他客拒绝通过；模型替身3轮、供应商attempt0，不是Qwen语义验收。6张PNG中4张已审看：核账前/后、网页来源、追问重进；沿唯一批准设计design-references/xiaok-p4b-public-sites-v1/README.md的C01/C02/U01状态，WXML/样式/素材/文案/导航未改，不升级整个还原状态。首尾绑定drift[]，原2369/预算快照逐值未变；原生传输/会话恢复、测试AI关闭/身份撤权、服务/锁释放。原生启动缺NODE_PATH仅是0调用导入失败，已保存后使用原admin依赖，无安装/模型配置变更。admin下运行ASSISTANT_CONSULTATION_STAGE=R1、独立ASSISTANT_CONSULTATION_BATCH，再node scripts/assistant-consultation-check.mjs recovery/client/unit/types/consultation/lint；原生驱动为tmp/xiaok-consultation-r1/recovery-native.ts，NODE_PATH指原admin/node_modules。全仓既有161个vendor lint错误仍保留，不称全仓通过。
 
 **2369只读核查｜2026-10-24 12:44（UTC+8），更新后仍未核清。** 在源码/前次核查提交d7a96740b1eb3ae989f872cc2029bf85a7fdb0da上复核百炼北京审计记录和当日完整账单。无状态筛选、全部API Key的审计日志仍为原9条200，Request ID、逐次tokens/输出及时序均未变，仅对应2360–2368，共71154tokens（未缓存输入57511、缓存12032、输出1611）。刷新后2026-10-24账单仍共34项/2页；这批10:47–10:51的10个账项及参考金额¥0.01327228逐项未变，没有服务区间起点在10:51及之后的新账项。最新可见账项服务区间结束于10:51:00；这不是账务完整性的水位证明。2369在10:51:03.580发起，仍无可归属的受理/结果、usage或费用结论，不能据缺记录、accepted=false或经过时间认定零费用。provider-reconciliation-readonly-02.json保留新观察及与01的对比；unknown-readonly-2369-02.json复用原基准作16项只读核对，通过且数据库/绑定源码/原预留均不变，AI停/队列0/三自有端口闭、2369后0派发，整链预检仍provider_outcome_unknown。保留59497tokens/285586micros预留，本轮仍314444 observed＋59497＝373941tokens、含预留费用保守上界¥0.682288，实付未核清。未重放、新模型/业务写入0，1337文件绑定drift[]；复用原工程证据，不重跑产品/实模。R1严格schema固定场景及R2–R4须待2369适用的受理/用量/费用依据核清后继续。账单直链/目录首次空加载不当空结果；本轮经费用概览→账单费用明细→模型调用查看明细成功读取。无UI/API/schema/权限/配置或模块清单行为影响。详见[审计说明](https://help.aliyun.com/zh/model-studio/model-telemetry/)和[账单说明](https://help.aliyun.com/zh/model-studio/bill-query-and-cost-management)。
 

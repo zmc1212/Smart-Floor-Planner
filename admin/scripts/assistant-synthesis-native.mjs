@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 const load = createRequire(import.meta.url);
 
-/** Stable existing project/window only. Real element input, actual model/HTTP and in-memory transport journal. */
+/** Stable existing project/window only. Real element input/HTTP and an in-memory
+ * transport journal. The caller records whether the worker is live or injected. */
 export async function run(ctx) {
   const { root, output, customer } = ctx, route = 'packages/assistant/chat/chat';
   const sdk = load(path.join(root,'tmp/wechat-automator-smoke-20261017/sdk-latest/node_modules/miniprogram-automator'));
@@ -68,6 +69,7 @@ export async function run(ctx) {
       },customer);installed=true;return value;
     });
     await step('enter original C01 route and identify the persisted customer consultation',async()=>{const p=await open();return{route:p.path,conversationId:(await p.data('conversation')).id};});
+    if(ctx.beforeQuestion)await step('verify recovery before the first explicit new question',()=>ctx.beforeQuestion({mp,open,capture,wait}));
     const first=await step(ctx.firstLabel||'PPT6/15/23 native input returns real knowledge and site-material synthesis',()=>say(ctx.question,'office'));
     await step('approved citation chip opens the real current knowledge source sheet',async()=>{
       const p=await mp.currentPage(),chips=await p.$$('.citation-chip');assert.ok(chips.length);
@@ -80,7 +82,8 @@ export async function run(ctx) {
     await step('source-linked explanation survives navigation and persisted native reentry',async()=>{const p=await open();assert.ok((await p.data('messages')).find(m=>m.id===first.outputMessageId&&m.available));return{outputMessageId:first.outputMessageId};});
     if(ctx.beforeFollowup)await step('real project update before the next native question',ctx.beforeFollowup);
     const followup=await step(ctx.followupLabel||'PPT6/15 native follow-up uses the existing subject and fresh real knowledge',()=>say(ctx.followup,'followup'));
-    await step(ctx.withdrawLabel||'withdrawn site evidence invalidates the dependent explanation on actual native reentry',async()=>{
+    if(ctx.afterFollowup)await step('verify the bounded delivery after persisted follow-up',()=>ctx.afterFollowup({mp,open,capture,wait,first,followup}));
+    else await step(ctx.withdrawLabel||'withdrawn site evidence invalidates the dependent explanation on actual native reentry',async()=>{
       const dependent=ctx.withdrawTarget==='followup'?followup:first;
       await ctx.withdraw();const p=await open();await wait(async()=>(await p.data('messages')).find(m=>m.id===dependent.outputMessageId&&m.available===false),'source unavailable feedback');
       return{outputMessageId:dependent.outputMessageId,capture:await capture('native-withdrawn')};

@@ -14,6 +14,7 @@ import { referenceCase } from '../knowledge/reference-case';
 import { contentEntrySource, contentGreeting, type ContentEntry } from '../knowledge/content-entry';
 import { syncConstructionReminders } from '@/lib/construction/reminders';
 import { currentConstructionContact } from '@/lib/construction/customer';
+import { runUsageReconciled } from './usage-review';
 
 export const reserveTokens = 12000;
 export const reserveCostMicros = 1000000;
@@ -32,7 +33,8 @@ export function conversationDto(c: Row) {
 }
 export function runDto(r: Row) {
   return { id: String(r.id), conversationId: String(r.conversation_id), status: r.status, outputMessageId: r.output_message_id ? String(r.output_message_id) : null,
-    answerKind:r.answer_kind ?? null,errorCode: r.error_code, retryable: !r.awaiting_reconciliation && ['failed', 'cancelled'].includes(String(r.status)), nextPollMs: ['queued', 'running'].includes(String(r.status)) ? 1500 : null };
+    answerKind:r.answer_kind ?? null,errorCode: r.error_code, usageReconciled: r.usage_reconciled === true,
+    retryable: !r.awaiting_reconciliation && ['failed', 'cancelled'].includes(String(r.status)), nextPollMs: ['queued', 'running'].includes(String(r.status)) ? 1500 : null };
 }
 /** Retain operation results with their resources; expiry is not permission to duplicate effects. */
 export async function idempotent(tx: PostgresTransaction, actor: ActorContext, operation: string, requestKey: string, body: unknown, action: () => Promise<Row>): Promise<Row> {
@@ -176,7 +178,7 @@ export class ConversationService {
       const checkpoint = config ? await requirementCheckpoint(repo.tx, this.actor.enterpriseId, conversationId) : undefined;
       const guidance = guidanceView(config, turns.map(m => ({ id: String(m.id), text: ((m.content as { blocks?: Array<{text?: string}> })?.blocks || []).map(b => b.text || '').join('\n') })), checkpoint);
       if (guidance && (!configuredGuidance(settings?.guidance_config).enabled || c.status !== 'open' || c.mode !== 'ai')) { guidance.options = []; guidance.questionKey = null; }
-      const latest = await one(repo.tx, sql`select r.*,exists(select 1 from app.assistant_quota_reservations q
+      const latest = await one(repo.tx, sql`select r.*,${runUsageReconciled()} as usage_reconciled,exists(select 1 from app.assistant_quota_reservations q
         where q.enterprise_id=r.enterprise_id and q.run_id=r.id and q.status='reconciling') as awaiting_reconciliation
         from app.assistant_runs r where r.enterprise_id=${this.actor.enterpriseId} and r.conversation_id=${conversationId}
         order by r.id desc limit 1`);
@@ -306,7 +308,7 @@ export class ConversationService {
   }
   run(runId: string, action?: 'cancel' | 'retry', requestKey?: string) {
     return this.scoped(async (repo, settings) => {
-      const r = await one(repo.tx, sql`select r.*,exists(select 1 from app.assistant_quota_reservations q where q.enterprise_id=r.enterprise_id and q.run_id=r.id and q.status='reconciling') as awaiting_reconciliation
+      const r = await one(repo.tx, sql`select r.*,${runUsageReconciled()} as usage_reconciled,exists(select 1 from app.assistant_quota_reservations q where q.enterprise_id=r.enterprise_id and q.run_id=r.id and q.status='reconciling') as awaiting_reconciliation
         from app.assistant_runs r where r.enterprise_id=${this.actor.enterpriseId} and r.id=${runId}`);
       if (!r) fail('assistant_resource_not_found', 404);
       const c = await repo.conversation(String(r.conversation_id));
@@ -314,7 +316,7 @@ export class ConversationService {
       return idempotent(repo.tx, this.actor, action + ':' + runId, requestKey!, {}, async () => {
         if (action === 'cancel') {
           await cancelRuns(repo.tx, this.actor, String(c.id), runId);
-          return runDto((await one(repo.tx, sql`select r.*,exists(select 1 from app.assistant_quota_reservations q where q.enterprise_id=r.enterprise_id and q.run_id=r.id and q.status='reconciling') as awaiting_reconciliation
+          return runDto((await one(repo.tx, sql`select r.*,${runUsageReconciled()} as usage_reconciled,exists(select 1 from app.assistant_quota_reservations q where q.enterprise_id=r.enterprise_id and q.run_id=r.id and q.status='reconciling') as awaiting_reconciliation
             from app.assistant_runs r where r.enterprise_id=${this.actor.enterpriseId} and r.id=${runId}`))!);
         }
         if (!['failed', 'cancelled'].includes(String(r.status))) fail('context_changed');

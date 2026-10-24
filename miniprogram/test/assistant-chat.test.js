@@ -225,6 +225,31 @@ test('unknown-cost runs never expose retry or auto-resubmit', async () => {
   assert.equal(f.calls.filter(call => call.url.includes('/retry') || (call.url.endsWith('/messages') && call.method === 'POST')).length, 0);
 });
 
+test('verified reconciliation permits only an explicit new question after refresh and reentry', async () => {
+  const f = fixture(); f.db.conversation.latestRun = { id: '41', status: 'indeterminate', retryable: false, usageReconciled: false };
+  await f.controller.show({ conversationId: '11' }); assert.equal(f.controller.state.uncertainRun, true);
+  f.db.conversation.latestRun.usageReconciled = true;
+  await f.controller.refresh(); assert.equal(f.controller.state.uncertainRun, false);
+  assert.equal(f.controller.state.run.status, 'indeterminate'); assert.equal(f.controller.state.retryable, false);
+  assert.equal(f.timers.size, 0); assert.equal(f.calls.filter(call => call.url.endsWith('/messages') && call.method === 'POST').length, 0);
+  f.controller.hide(); await f.controller.show({ conversationId: '11' });
+  assert.equal(f.controller.state.uncertainRun, false);
+  await f.controller.action('retry');
+  assert.equal(f.calls.filter(call => call.url.includes('/retry')).length, 0);
+  f.controller.input('核账后的新问题'); await f.controller.send();
+  assert.equal(f.calls.filter(call => call.url.endsWith('/messages') && call.method === 'POST').length, 1);
+  f.controller.dispose();
+});
+
+test('missing or non-boolean reconciliation state never unlocks an unknown run', async () => {
+  for (const usageReconciled of [undefined, null, false, 'true', 1]) {
+    const f = fixture(); f.db.conversation.latestRun = { id: '41', status: 'indeterminate', retryable: false, usageReconciled };
+    await f.controller.show({ conversationId: '11' }); f.controller.input('不可发送'); await f.controller.send();
+    assert.equal(f.controller.state.uncertainRun, true); assert.equal(f.calls.filter(call => call.url.endsWith('/messages') && call.method === 'POST').length, 0);
+    f.controller.dispose();
+  }
+});
+
 test('unknown retry result replays the old run operation even after refreshed latestRun changes', async () => {
   const f = fixture(); f.db.conversation.latestRun = { id: '41', status: 'failed', retryable: true };
   await f.controller.show({ conversationId: '11' }); let once = true;

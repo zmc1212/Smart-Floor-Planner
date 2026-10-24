@@ -60,18 +60,19 @@ export function consultationCostUpperMicros(inputTokens: number, outputTokens: n
  * uses the authorized free-stage or Qwen-campaign cap. Qwen cash is campaign-wide. */
 export function consultationDispatchBudget(input: {
   binding: ConsultationBinding; createdAt: string; now: number; estimatedRequestTokens: number;
-  observedTokens: number; heldTokens: number; unknownUsage: boolean;
+  observedTokens: number; accountedTokens?: number; heldTokens: number; unknownUsage: boolean;
   knownCostMicros?: number; heldCostMicros?: number;
   calls: number; summaries: number; perceptions: number; purpose: 'answer' | 'summary' | 'vision';
 }) {
-  const { binding, now } = input, createdAt = Date.parse(input.createdAt);
-  if (![input.estimatedRequestTokens, input.observedTokens, input.heldTokens, input.calls, input.summaries, input.perceptions].every(integer)
+  const { binding, now } = input, createdAt = Date.parse(input.createdAt), accountedTokens = input.accountedTokens ?? input.observedTokens;
+  if (![input.estimatedRequestTokens, input.observedTokens, accountedTokens, input.heldTokens, input.calls, input.summaries, input.perceptions].every(integer)
+    || accountedTokens < input.observedTokens
     || !Number.isFinite(now) || !Number.isFinite(createdAt) || now < createdAt) fail('assistant_quota_exceeded', 429);
   if (input.unknownUsage) fail('provider_outcome_unknown');
   if (now - createdAt >= profile.runTimeoutMs) fail('agent_deadline_exceeded', 422);
   if (input.calls >= profile.maxCalls || input.purpose === 'summary' && input.summaries >= profile.maxSummaryCalls
     || input.purpose === 'vision' && input.perceptions >= profile.maxPerceptionCalls) fail('assistant_quota_exceeded', 429);
-  const total = input.observedTokens + input.heldTokens + input.estimatedRequestTokens;
+  const total = accountedTokens + input.heldTokens + input.estimatedRequestTokens;
   const limit = 'quota' in binding ? profile.stageTokens[binding.stage] : consultationLongProfile.campaignTokens;
   if (!Number.isSafeInteger(total) || total > limit) fail('assistant_quota_exceeded', 429);
   let remainingTokens = limit - total, reservedCostMicros = 0, costUpperMicros = 0;
@@ -105,7 +106,7 @@ export function consultationRuntimeBudget(input: { summaries: number; perception
 /** Preflight the entire fixed scenario before its first call. Reservations must
  * include every main/summary/perception/repair request, not merely output. */
 export function consultationScenarioPreflight(input: {
-  binding: ConsultationBinding; now: number; observedTokens: number; heldTokens: number; unknownUsage: boolean;
+  binding: ConsultationBinding; now: number; observedTokens: number; accountedTokens?: number; heldTokens: number; unknownUsage: boolean;
   knownCostMicros?: number; heldCostMicros?: number; requestReservations: number[];
 }) {
   if (!input.requestReservations.length || !input.requestReservations.every(integer)) fail('assistant_quota_exceeded', 429);

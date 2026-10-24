@@ -155,7 +155,7 @@ class ChatController {
 
   applyRun(run) {
     const status = run && run.status;
-    this.set({ run, generating: ACTIVE.includes(status), uncertainRun: status === 'indeterminate',
+    this.set({ run, generating: ACTIVE.includes(status), uncertainRun: status === 'indeterminate' && run.usageReconciled !== true,
       retryable: !!(run && run.retryable),
       runLabel: ({ queued: '小K正在查找企业装修资料…', running: '小K正在整理回答…',
         cancelled: '已停止回答', failed: '这次回答没有完成',

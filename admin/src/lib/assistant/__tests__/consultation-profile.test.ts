@@ -22,6 +22,12 @@ test('the same original ledger cannot exceed the exact60000 observed-plus-held c
 test('unknown usage retains its hold and stops further dispatch even when free quota remains', () => {
   assert.throws(() => consultationDispatchBudget({ ...request, unknownUsage: true }), code('provider_outcome_unknown'));
 });
+test('reviewed totals supplement observed usage and cannot reset the original token cap', () => {
+  assert.equal(consultationDispatchBudget({ ...request, accountedTokens: 45000 }).totalTokens,60000);
+  assert.throws(() => consultationDispatchBudget({ ...request, accountedTokens: 45001 }),code('assistant_quota_exceeded'));
+  for (const accountedTokens of [44999,-1,NaN,Number.MAX_SAFE_INTEGER+1])
+    assert.throws(() => consultationDispatchBudget({ ...request, accountedTokens }),code('assistant_quota_exceeded'));
+});
 test('a refreshed quota subtracts only usage since verification and never restores the stage budget', () => {
   const refreshed: FreeConsultationBinding = { ...binding, quota: { ...binding.quota, remainingTokens: 1000, observedTokensAtVerification: 10000 } };
   const input = { ...request, binding: refreshed, heldTokens: 0, observedTokens: 10000, estimatedRequestTokens: 1000 };

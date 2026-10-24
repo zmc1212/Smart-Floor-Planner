@@ -22,7 +22,9 @@ fs.mkdirSync(output, { recursive: true });
 function binding() {
   const files = cp.execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z',
     'admin/src', 'admin/scripts', 'admin/package.json', 'admin/package-lock.json', 'admin/tsconfig.json',
-    'scripts/assistant-public-reader.py', 'scripts/openwebui-comparison'],
+    'scripts/assistant-public-reader.py', 'scripts/openwebui-comparison',
+    'miniprogram/packages/assistant', 'miniprogram/test/assistant-chat.test.js', 'miniprogram/utils',
+    'miniprogram/project.config.json', 'miniprogram/project.private.config.json'],
   { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean);
   files.push('admin/.env.local', 'admin/.env', 'tmp/xiaok-vector/connection.private.json');
   const entries = [...new Set(files)].sort().filter(file => fs.existsSync(path.join(root, file)))
@@ -45,7 +47,7 @@ try {
     const norm = file => path.resolve(file).replaceAll('\\', '/');
     const worker = norm(path.join(admin, 'src/lib/assistant/agent/worker.ts'));
     if (stage === 'R1') files.push(...['consultation-profile','consultation-projection','public-research','synthesis-prose-numbers','consultation-recovery'].map(file => path.join(admin, 'src/lib/assistant/__tests__/' + file + '.test.ts')),
-      path.join(admin, 'src/db/__tests__/assistant-consultation.test.ts'));
+      ...['assistant-consultation','assistant-consultation-recovery','assistant-usage'].map(file => path.join(admin, 'src/db/__tests__/' + file + '.test.ts')));
     const baseline = fs.readFileSync(path.join(stageRoot, 'baseline/worker.ts'), 'utf8');
     function program(previous) {
       const host = ts.createCompilerHost(parsed.options), read = host.readFile.bind(host);
@@ -69,7 +71,8 @@ try {
     if (mode === 'unit') files = fs.readdirSync(path.join(admin, 'src/lib/assistant/__tests__'))
       .filter(file => /^(agent-runtime|agent-vision|agent-memory|context-budget|web|synthesis.*|current-message.*|independent.*)\.test\.ts$/.test(file))
       .map(file => 'src/lib/assistant/__tests__/' + file);
-    else if (mode === 'service' || mode === 'web' || mode === 'consultation') {
+    else if (mode === 'client') files = ['../miniprogram/test/assistant-chat.test.js'];
+    else if (['service','web','consultation','recovery'].includes(mode)) {
       nextEnv.loadEnvConfig(admin, true);
       // Evaluation uses its own application credential; never repoint the
       // development credential or modify either persisted configuration.
@@ -77,13 +80,15 @@ try {
       process.env.DATABASE_URL = connection.DATABASE_URL;
       for (const name of ['ASSISTANT_LIVE_TEXT', 'ASSISTANT_P2M_LIVE', 'ASSISTANT_P2M_EXTENDED', 'ASSISTANT_P2M_DEEPSEEK_PROBE']) delete process.env[name];
       release = await lockAssistantAcceptance(process.env.DATABASE_URL);
-      files = (mode === 'consultation' ? ['assistant-consultation'] : mode === 'web' ? ['assistant-web'] : ['assistant-agent', 'assistant-synthesis', 'assistant-web'])
+      files = (mode === 'recovery' ? ['assistant-consultation-recovery','assistant-usage'] : mode === 'consultation' ? ['assistant-consultation'] : mode === 'web' ? ['assistant-web'] : ['assistant-agent', 'assistant-synthesis', 'assistant-web'])
         .map(file => 'src/db/__tests__/' + file + '.test.ts');
     } else if (mode === 'lint') files = ['src/lib/assistant/agent/worker.ts', 'src/lib/assistant/agent/model-request.ts',
       'src/lib/assistant/contracts/consultation.ts', 'scripts/assistant-consultation-offline.mjs', 'scripts/assistant-consultation-check.mjs'];
-    else throw Error('Expected unit, web, service, types or lint');
+    else throw Error('Expected unit, client, recovery, web, consultation, service, types or lint');
     if (stage === 'R1' && mode === 'unit') files.push(...['consultation-profile','consultation-projection','public-research','agent-final-kind','consultation-recovery'].map(file => 'src/lib/assistant/__tests__/' + file + '.test.ts'), 'src/lib/ai/__tests__/assistant-thinking.test.ts');
     if (stage === 'R1' && mode === 'lint') files.push(...['consultation-profile','consultation-usage','consultation-model-view','context','ancestor-sources','public-research','web-evidence','config','context-budget','synthesis-sources','citation-catalog','citation-coverage','source-document','prose-number-view','runtime','synthesis'].map(file => 'src/lib/assistant/agent/' + file + '.ts'), 'src/lib/ai/providers/consultation-final-schema.ts', 'src/lib/ai/providers/agent-chat.ts');
+    if (stage === 'R1' && mode === 'lint') files.push(...['usage-review','usage','conversation'].map(file => 'src/lib/assistant/core/' + file + '.ts'),
+      'src/db/__tests__/assistant-consultation-recovery.test.ts','src/lib/assistant/__tests__/consultation-profile.test.ts');
     const args = mode === 'lint' ? ['node_modules/eslint/bin/eslint.js', ...files]
       : ['--import', 'tsx', '--test', '--test-concurrency=1', '--test-reporter=tap', ...files];
     const pattern = process.env.ASSISTANT_CONSULTATION_PATTERN || null;
@@ -94,7 +99,7 @@ try {
     fs.writeFileSync(path.join(output, mode + '.log'), log);
     const summary = { mode, files, pattern, exitCode: child.status, durationMs: Date.now() - started,
       result: log.split(/\r?\n/).filter(line => /^(# (tests|pass|fail|skipped)|ℹ (tests|pass|fail|skipped)|not ok|✖|Error:)/.test(line)),
-      newModelCalls: 0, database: ['service','web','consultation'].includes(mode) ? 'loopback:55432/xiaok_embedding_eval' : null };
+      newModelCalls: 0, database: ['service','web','consultation','recovery'].includes(mode) ? 'loopback:55432/xiaok_embedding_eval' : null };
     save(mode + '.json', summary); console.log(JSON.stringify(summary));
     assert.equal(child.status, 0, 'See ' + mode + '.log');
   }

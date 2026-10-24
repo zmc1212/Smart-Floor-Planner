@@ -3,6 +3,7 @@ import { withTenantTransaction, type PostgresTransaction } from '@/db/transactio
 import { one, rows } from '@/db/repositories/assistant-repository';
 import { fail, id, type ActorContext } from '../contracts';
 import { idempotent } from './conversation';
+import { unresolvedProviderOutcome } from './usage-review';
 
 export function usageWindow(from?:string|null,to?:string|null) {
   const end=to || new Date(Date.now()+86400000).toISOString().slice(0,10);
@@ -105,7 +106,7 @@ export class UsageService {
     return withTenantTransaction(eid,async tx=>{
       await authorize(tx,actor,true);
       return idempotent(tx,actor,'usage-review:'+reservationId,requestKey,body,async()=>{
-        const q=await one(tx,sql`select q.*,r.status run_status from app.assistant_quota_reservations q join app.assistant_runs r on r.enterprise_id=q.enterprise_id and r.id=q.run_id
+        const q=await one(tx,sql`select q.*,r.status run_status,${unresolvedProviderOutcome()} as has_unknown_usage from app.assistant_quota_reservations q join app.assistant_runs r on r.enterprise_id=q.enterprise_id and r.id=q.run_id
           where q.enterprise_id=${eid} and q.id=${reservationId} for update of q,r`);
         if(!q)fail('assistant_resource_not_found',404);
         if(q.status!=='reconciling' || Number(q.version)!==body.expectedVersion)fail('usage_review_conflict');
@@ -113,7 +114,13 @@ export class UsageService {
           and (lease_expires_at>now() or provider_started_at>now()-interval '180 seconds')`))fail('usage_call_in_flight');
         // Legacy adapters cannot report usage. A review requires external evidence for BOTH tokens and money.
         const observed=await one(tx,sql`select sum(quantity)::text tokens from app.assistant_usage_records where enterprise_id=${eid} and run_id=${String(q.run_id)} and category='tokens' and measurement_kind='observed'`);
-        if(observed?.tokens!==null && observed?.tokens!==undefined && BigInt(String(observed.tokens))!==BigInt(tokens))fail('usage_observed_tokens_conflict');
+        // A mixed run's observed subtotal is a floor, not its total. External
+        // evidence may confirm additional unknown usage, never subtract known
+        // consumption. Fully observed runs still require an exact match.
+        if(observed?.tokens!==null && observed?.tokens!==undefined) {
+          const known=BigInt(String(observed.tokens)), reviewed=BigInt(tokens);
+          if(reviewed<known || !q.has_unknown_usage && reviewed!==known)fail('usage_observed_tokens_conflict');
+        }
         const review=await one(tx,sql`insert into app.assistant_cost_reviews(enterprise_id,reservation_id,reviewer_id,tokens,cost_micros,currency,evidence_reference,reason)
           values(${eid},${reservationId},${actor.principal.kind==='admin'?actor.principal.adminId:null},${tokens},${cost},'CNY',${String(body.evidenceReference)},${String(body.reason)}) returning id::text,created_at`);
         await tx.execute(sql`update app.assistant_quota_reservations set status='settled',settled_tokens=${tokens},settled_cost_micros=${cost},version=version+1,updated_at=now() where enterprise_id=${eid} and id=${reservationId}`);
