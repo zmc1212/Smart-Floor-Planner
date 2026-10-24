@@ -6,6 +6,8 @@ import { focusedSynthesisMessages } from './synthesis';
 import { projectSynthesisPolicy } from './model-policy';
 import { fitAgentContext } from './context-budget';
 import { consultationModelViewVersion, projectConsultationModelView } from './consultation-model-view';
+import { consultationLongProfile } from '../contracts/consultation';
+import { constrainSynthesisRepairTool } from './synthesis-repair';
 
 export type ModelRequestPurpose = 'answer' | 'vision' | 'summary';
 
@@ -23,8 +25,10 @@ export function compileModelRequest(input: {
   const focused = messageScoped ? currentMessageView(messages, triggerId, question)
     : adviceScoped ? independentAdviceView(messages, triggerId, question)
     : (turn > 0 || input.profile) && purpose === 'answer' ? focusedSynthesisMessages(messages, triggerId) : messages;
-  const dispatchTools = purpose === 'vision' ? [] : purpose === 'summary' ? tools
+  let dispatchTools = purpose === 'vision' ? [] : purpose === 'summary' ? tools
     : input.toolsForTurn(question, focused, tools, triggerId);
+  if (input.profile === consultationLongProfile.id && purpose === 'answer' && dispatchTools.length === 1)
+    dispatchTools = [constrainSynthesisRepairTool(dispatchTools[0], focused)];
   const policyView = purpose === 'answer' ? projectSynthesisPolicy(focused) : focused;
   const contentView = input.profile && purpose === 'answer' ? projectConsultationModelView(policyView, dispatchTools) : policyView;
   const bounded = fitAgentContext(contentView, dispatchTools, { profile: input.profile, purpose });

@@ -50,7 +50,7 @@ import { compileModelRequest, type ModelRequestPurpose } from './model-request';
 import { consultationAcceptanceProfile } from '../contracts/consultation';
 import { consultationRequestReservation, reserveConsultationDispatch, settleConsultationDispatch } from './consultation-usage';
 import { configuredWebProvider, parseWebQuery, searchWeb, webSearchTool, type WebSearchSnapshot } from './web';
-import { webEvidence, webSynthesisSources } from './web-evidence';
+import { webEvidence, webSynthesisSources, webAnswerQuoteSpans } from './web-evidence';
 import { proseNumberProtocol } from './prose-number-view';
 import { consultationRuntimeBudget } from './consultation-profile';
 import { citationSelectionProtocol } from './citation-coverage';
@@ -1116,10 +1116,10 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             const source = evidence.sources.find(s => s.sourceId === citation.sourceId)!;
             if (source.kind === 'web') {
               const position = evidence.sources.filter(s => s.kind === 'web').findIndex(s => s.sourceId === source.sourceId);
-              const quotes = answer.segments.flatMap(s => s.citations.filter(c => c.sourceId === source.sourceId).map(c => c.quote));
-              const start = Math.min(...quotes.map(q => source.text.indexOf(q))), end = Math.max(...quotes.map(q => source.text.indexOf(q) + q.length));
-              if (position < 0 || end - start > 600) fail('invalid_model_citation', 502);
-              const citationId = `w:${lease.runId}:${position}`; saved.set(source.sourceId, citationId);
+              const span = webAnswerQuoteSpans(answer, source).find(span => span.selectedQuotes.includes(citation.quote));
+              if (position < 0 || !span) fail('invalid_model_citation', 502);
+              const citationId = `w:${lease.runId}:${position}` + (span.part === undefined ? '' : `:${span.part}`);
+              saved.set(citationId, citationId);
               blocks.push({ type: 'citation', citationId, fallbackText: '网页来源' }); continue;
             }
             if (!source.evidence) { if(source.summaryTitle!==null)projectTitles.add(source.summaryTitle??source.title); continue; }

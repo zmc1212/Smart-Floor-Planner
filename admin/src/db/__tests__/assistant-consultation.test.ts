@@ -225,6 +225,45 @@ test('four primary calls leave one accounted final-only PDF citation repair, wit
   });
 });
 
+test('non-adjacent PDF quotes persist separately, reopen after follow-up and revoke together without widening quote limits',async()=>{
+  const cid=String((await chat().create(randomUUID())).id);
+  const original=Buffer.from('%PDF labelled synthetic single-page source; no real manufacturer document');
+  const text='测试专用：铺装前核对具体型号与适用条件。\n'+'中间资料保持完整，仅供原文定位。\n'.repeat(70)+'测试专用：本人现场基层仍须独立核验，厂家说明不等于施工安排或验收。';
+  let originRun='',calls=0;
+  const execute=async(question:string)=>{
+    const sent=await chat().send(cid,randomUUID(),content(question)),runId=String(sent.runId),lease=await claimJob();assert.ok(lease);assert.equal(lease.runId,runId);
+    await processAgentAnswer(lease,{model:async messages=>{
+      calls++;const source=sources(messages).find(source=>source.kind==='web');
+      return source?turn('final_response',{kind:'synthesis',segments:[{basis:'evidence',text:'资料要求核对具体型号与本人现场基层，不能把厂家说明当作施工安排或验收。',
+        citations:[source.citationOptions[0],source.citationOptions.at(-1)!].map(citation=>({citationId:citation.citationId}))}]}):turn('search_web',{query:'合成安装资料',domains:[]});
+    },webSearch:async(query:WebQuery)=>searchPublicResearch(query,{name:'labelled-synthetic',search:async()=>[{url:'https://maker.example/spans.pdf',title:'合成安装原件'}]},async url=>({
+      version:1,url,title:'合成安装原件',parser:publicReaderParser,mediaType:'application/pdf',pages:[{page:1,text}],links:[],redirects:[],
+      original:{sha256:createHash('sha256').update(original).digest('hex'),bytes:original.length,base64:original.toString('base64')},egress:'upstream-v0.9.2-resolve-and-pin-proxy',tlsVerification:true}))});
+    const run=await chat().run(runId);assert.equal(run.status,'succeeded');
+    const answer=(await new ConversationService(actor()).messages(cid)).items.find(item=>item.id===run.outputMessageId)!;assert.ok(answer.available);assert.equal(answer.citations.length,2);
+    for(const [index,citation]of answer.citations.entries()){
+      assert.match(citation.id,new RegExp('^w:'+runId+':0:'+index+'$'));
+      const opened=await chat().citation(citation.id);assert.ok(opened.available);assert.ok('quote' in opened && 'sourceLocation' in opened);assert.ok(String(opened.quote).length<=600);assert.ok(text.includes(String(opened.quote)));
+      assert.match(String(opened.sourceLocation),/PDF 第1页/);
+      await assert.rejects(chat(fixtures[1]).citation(citation.id),expectCode('assistant_resource_not_found'));
+      await assert.rejects(chat(fixtures[2]).citation(citation.id),expectCode('assistant_resource_not_found'));
+    }
+    const forged=await chat().citation('w:'+runId+':0:23');assert.equal(forged.available,false);
+    if(!originRun)originRun=runId;
+    return answer;
+  };
+  const first=await execute('查一下公开安装资料，说明型号与现场条件，不保存不安排。');
+  const followup=await execute('沿刚才保存的来源继续解释，为什么还不能证明本人现场符合条件？不保存不安排。');
+  assert.equal(calls,3,'Follow-up restores the original without another search');
+  await withTenantTransaction(fixtures[0].enterpriseId,tx=>tx.execute(sql`update app.assistant_run_steps set status='failed'
+    where enterprise_id=${fixtures[0].enterpriseId} and run_id=${originRun} and capability_name='web.search.v1'`));
+  const reentry=await chat().messages(cid);
+  for(const previous of [first,followup]){
+    assert.equal(reentry.items.find(item=>item.id===previous.id)!.available,false);
+    for(const citation of previous.citations)assert.equal((await chat().citation(citation.id)).available,false);
+  }
+});
+
 test('missing observed usage preserves the reservation and stops the next call in the same stage',async()=>{
   const sent=await chat().send(fixtures[0].conversationId,randomUUID(),content('这是独立问题，请给一般选材建议，不保存、不安排。'));
   const lease=await claimJob();assert.ok(lease);assert.equal(lease.runId,sent.runId);let calls=0;

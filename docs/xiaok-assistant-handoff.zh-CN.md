@@ -1,18 +1,18 @@
 # 小K接力：跨阶段核对与统一接续
 
-**最新交接｜2026-10-24：预算隔离例外已实施并执行原固定R1-C；两首问仍失败，整体Limited，R2–R4未启动。** 本聊天为双计划唯一顺序负责人。复用已完成A/B证据，用户明确批准2369保留全部预留、不重放的新场景例外；出现新的未知立即停调。live-09没有新增未知，已用保存trace定位动态schema缺少补丁状态组合约束；下一先作机制修复，不靠措辞/regex继续抽样。
+**最新交接｜2026-10-24：固定验收预算已安排，补丁状态约束和PDF分段保存已修复；原R1-C仍Limited，R2–R4未启动。** 本聊天继续为双计划唯一顺序负责人。live-09/10共19确认调用无新增未知、全部失败保留；从保存trace定位并零模型修复同页远距引文保存缺陷。2369保留原预留、不重放。当前停止模型采样：9293的path/segment失配缺当次完整出站关联证据，不靠再改措辞或放宽守卫继续。
 
 **本轮用户可用结果｜核账后恢复＋保存网页接续。** 混合已知/未知run的已知小计不再被误当总数；只有匹配原reservation的不可变cost-review才释放已核账hold、以accountedTokens/确认费用计累计，原observed/attempt/run不改，全已知精确相等、混合不低于小计。原会话/run GET增加usageReconciled，只让C01刷新/重进后主动发新问题；旧indeterminate不可retry、原键只回原结果，不自动重放。原核账显式权限/版本/幂等/180秒/租约/锁、tenant/来源撤回/业务与接管保持。裸settled/错审计不能解锁，无新表/菜单/默认授权/视觉设计或生产。原2369最近供应商观察仍为12:44批：9条200/71154tokens、34账项/2页仅确认2360–2368；没有2369可归属回执，缺记录/accepted=false/经过时间都不能认定零费用。详细历史仍在二期，不再次把查账作为唯一开发任务。
 
-**当前产品与检查。** A/B继续复用recovery-final-audit-01、recovery-native-02的14真实服务/29 Mini/241单元及10项Stable限定闭环；注入答复不算实模。新增预算14单元、2真实服务、原8consultation兼容、218依赖类型0、定向lint与驱动类型0通过。日志工具截断的检查保留未完成，精确4580/4581夹具0attempt后取消残留/AI停并用持续命令完成同范围。live-09原Stable/C01实写9289/9290，各5次Qwen，均invalid_model_answer；两追问和有效答复来源/重进/混合撤回未执行。全部原稿及2798依赖绑定drift[]保留，无知识重建或可视UI变化。
+**当前产品与检查。** A恢复复用recovery-final-audit-01/recovery-native-02。补丁schema的31单元、2真实服务/219类型0/lint通过；分段来源14单元、4真实服务/219类型0/lint通过。web-span-native-01在原Stable/C01通过9项真实输入/写入、两片PDF来源、追问/重进、他客拒绝及撤回，1442依赖drift[]、attempt0；两片重进与撤回PNG已审看，批准UI未改。web-span-discriminator-02用9294原首稿验证399/366/296字符三段全保留且≤600，未替换正文/引用或改判旧失败。无知识重建，零模型证据不算固定语义通过。
 
 **本轮实模与资金。** DeepSeek live-03/run9110实际2调用14552tokens；第三次预留46785令总额61337＞原60k，本地dispatched=false拦截。attempt2326是未发网络的本地失败，不是第三次调用或真实unknown；额度页436.37K延迟不能说余额耗尽。新Qwen live-04独立固定2问链×2，run9122首答服务成功但原厂PDF/网页引用失败；9123追问agent_input_limit，9124首问unsupported_model_commitment，第二追问未执行。11真实调用输入86368＋输出1262＝87630tokens，最高档未缓存估算上界¥0.1096992，实际账单null。整链预检600k/¥2.88×逐条核对通过，未因额度中断；不能把新模型成功片段拼回DeepSeek原失败。
 
-**当前下一项｜CONSULT-02/R1-C。** repair-state-replay-01对两原trace做0网络/模型判别：旧严格schema均接受、原本地校验均拒绝。9289原段4引用加2后成6；9290删除整段同时带removeCitationIds。归Agent的动态schema与原状态校验失配；把现有四引用上限/删除互斥编译入schema，保持原语义/来源守卫再离线验证。旧首稿数值引文不足仍保留；这不证明语义修复成功。原2问×2、厂家技术PDF、企业/本人项目、严格schema、来源追问/混合撤回要求不变，C通过才自动R2–R4。
+**当前下一项｜CONSULT-02/R1-C，停止重复采样。** live-09段落引用容量/删除互斥已编入可信原稿动态schema。live-10的9294首稿及引用校验通过，却在保存中把366/296字符两段扩成1005字符；现分段保存/打开，旧ID兼容、600上限及权限/撤回保持。9293修复输出path而非segment；schema-wire-diagnosis-02重建schema拒绝它，但原完整出站body缺失，不能证明供应商收到的内容。所缺是attempt2384原始出站response_format与返回的可归属证据，保存trace不能补回。保留原2问×2、厂家PDF/企业/本人项目/混合撤回及失败计数，不启动第三轮提示/regex重采，不越过C进入R2。
 
-**共享预算与资源。** 原企业4536/authorization=xiaok-20261023-qwen-long-cny5跨阶段/批次/日期累计；固定两链各300000tokens硬额度，20槽全部保留、逐请求完整预留≤60000，不借另一链。开跑前两链合计973941tokens/¥3.562288上界。live-09新增10确认调用77920tokens；累计392364已用＋59497原未知预留＝451861tokens，known497584＋held285586＝¥0.783170上界，52确认＋1原未知、实付null。2369原run/attempt/预留逐值不变，新未知0。配置/投影恢复，AI停/身份撤权、队列0、自有资源/锁释放；原Stable和开发服务保留。原100万/¥5及免费DeepSeek60k/80k/100k分账不变，无回退/生产。
+**共享预算与资源。** 原企业4536/authorization=xiaok-20261023-qwen-long-cny5跨阶段/批次/日期累计。预算机制提交8ad2c7c10baf0843b1587809c9ff157fc9319259；live-09各300000、live-10各250000tokens硬额度，20槽保留、逐请求完整预留≤60000/不借另一链。live-10联合预检951861tokens/¥3.183170；新增9确认调用66624tokens，累计458988已用＋59497原未知预留＝518485tokens，known584176＋held285586＝¥0.869762上界，61确认＋1旧未知、实付null。2369未变/新未知0，未重复查供应商账单。配置/投影恢复、AI停/身份撤权、队列0、自有资源/锁释放；原Stable/开发服务保留。原100万/¥5及免费DeepSeek60k/80k/100k分账保持，无回退/生产。
 
-**执行与版本。** 当前分支codex/xiaok-public-site-lifecycle、实施起点4d1f91462ac2bb36ac6e5d6086c0c9529bb27ab0，109项既存改动保留，仅提交相关增量。admin下设ASSISTANT_CONSULTATION_STAGE=R1与独立ASSISTANT_CONSULTATION_BATCH，node scripts/assistant-consultation-check.mjs allocation-unit/allocation/types/consultation/lint。原生为tmp/xiaok-consultation-r1/live.ts，NODE_PATH指admin/node_modules，CONSULTATION_LIVE_BATCH=09；导入缺NODE_PATH的0调用失败单存。验收绑定源码/配置/驱动/SDK及Node，源漂移不算通过。全仓旧vendor lint问题不计本次通过；隔离合成服务证据不结清真实未知、不冒充模型语义。
+**执行与版本。** 分支codex/xiaok-public-site-lifecycle，起点4d1f91462ac2bb36ac6e5d6086c0c9529bb27ab0，109项既存改动保留，仅提交相关增量。admin下ASSISTANT_CONSULTATION_STAGE=R1、独立ASSISTANT_CONSULTATION_BATCH，再node scripts/assistant-consultation-check.mjs repair-unit/span-unit/types/lint；本次consultation只选actual request uses、follow-up revalidates、another customer、non-adjacent。原生tmp/xiaok-consultation-r1/web-span-native.ts（NODE_PATH=admin/node_modules），沿Stable SDK/CDP串行及finally清理。live-09驱动另存live-driver-09.ts，live-10沿live.ts/plan-qwen-long-04.json、2799依赖稳定。旧vendor全仓lint错误及初次类型收窄错误保留，不冒充全仓/实模通过。
 
 ## 历史规划交接（其中待批准表述已被上方新授权取代）
 

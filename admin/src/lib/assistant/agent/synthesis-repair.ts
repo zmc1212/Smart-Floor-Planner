@@ -113,6 +113,39 @@ export function synthesisRepairTool(messages: ModelMessage[], citationIds: strin
   } };
 }
 
+/** Compile existing local edit invariants against the immutable rejected draft.
+ * This selects no citations and edits no response. Keep the ordinary function
+ * tool unchanged; the configured strict-schema path opts in before budgeting. */
+export function constrainSynthesisRepairTool(tool: ModelTool, messages: ModelMessage[]): ModelTool {
+  const base = synthesisRepairBase(messages), properties = tool.parameters.properties;
+  if (tool.name !== 'final_response' || !base || !object(properties)
+    || !object(properties.kind) || JSON.stringify(properties.kind.enum) !== JSON.stringify(['synthesis_repair'])
+    || !object(properties.baseHash) || JSON.stringify(properties.baseHash.enum) !== JSON.stringify([base.baseHash])
+    || !object(properties.edits) || !object(properties.edits.items)) return tool;
+  const result = structuredClone(tool), edits = (result.parameters.properties as Record<string, Record<string, unknown>>).edits;
+  const item = edits.items as Record<string, unknown>;
+  item.allOf = [
+    { if: { required: ['remove'] }, then: { maxProperties: 2 } },
+    ...base.original.segments.map((segment, index) => {
+      const currentIds = segment.citations.map(citation => citation.citationId), count = currentIds.length;
+      return { if: { properties: { segment: { const: index } }, required: ['segment'] }, then: {
+        properties: {
+          removeCitationIds: count ? { items: { enum: currentIds } } : { maxItems: 0 },
+          ...(count ? { addCitationIds: { items: { not: { enum: currentIds } } } } : {}),
+        },
+        // Missing removals count as zero. Each removal opens exactly one slot;
+        // existing local/catalog validation still enforces distinct real IDs.
+        anyOf: Array.from({ length: count + 1 }, (_, removed) => ({
+          ...(removed ? { required: ['removeCitationIds'] } : {}),
+          properties: { removeCitationIds: { minItems: removed, maxItems: removed },
+            addCitationIds: { maxItems: 4 - count + removed } },
+        })),
+      } };
+    }),
+  ];
+  return result;
+}
+
 /** Materialize explicit edits only. Never union suggestions or select evidence
  * for the model. The caller revalidates the COMPLETE answer before persisting
  * delivery; provider steps retain the original edit response for audit/replay. */

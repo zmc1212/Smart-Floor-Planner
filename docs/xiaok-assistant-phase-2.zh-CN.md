@@ -13,10 +13,10 @@
 | R1交付 | 用户动作与完成范围 | 当前状态 / 依赖 |
 | --- | --- | --- |
 | R1-A 核账后恢复提问 | 授权核账确认总tokens和费用后，客户刷新/重进原C01，主动发新问题；旧未知run仍indeterminate、不可重试，原键只返回原结果 | 限定Implemented；真实核账服务＋Mini控制器＋Stable串行闭环通过。真实2369未核清，未用合成依据结清它 |
-| R1-B 保存来源打开与接续 | 在既有回答点网页来源，查看原URL/读取时间/原文，退出重进，再沿同一获权来源追问 | 既有网页路径复用并通过零模型真实服务/原生验证；测试替身仅提供受控答复。厂家PDF自主发现、PDF页定位与实际混合来源撤回仍保留在C |
-| R1-C 原固定综合验收 | 原2问链×2＝4答复，企业规则＋本人项目/偏好＋厂家技术原文，数值引文、严格schema、追问、来源/重进、混合撤回 | Limited；依明确2369隔离例外按原题/严格schema/累计预算验收，新增未知即停，通过才自动R2–R4 |
+| R1-B 保存来源打开与接续 | 原C01点网页/PDF来源、查看原URL/读取时间/页码/引文，重进并沿获权来源追问 | 既有证据复用；新增同页远距引文分段保存/打开已通过定向真实服务及原Stable零模型闭环、撤回/权限保持。自主技术原件与原固定混合来源语义验收仍属C |
+| R1-C 原固定综合验收 | 原2问链×2＝4答复，企业规则＋本人项目/偏好＋厂家技术原文，数值引文、严格schema、追问、来源/重进、混合撤回 | Limited；live-09/10首问均失败、追问未执行。9294保存缺陷已修；9293修复协议失配缺原始出站证据，停止重复采样，不跨到R2–R4 |
 
-**固定验收预算安排。** 两条链各用独立budgetGroup及300000tokens硬总额，原每链两问/10个调用槽、每请求≤60000tokens、4次主循环＋1次最终修复均保留。链内accounted＋held＋下一请求完整预留不能越界或借用另一链额度；300000不是保证所有槽都能用满60000，耗尽时明确停止且验收不完整。开跑前同一设置行锁下为两链一并预检：原企业4536/authorization累计314444＋59497＝373941tokens、396702＋285586＝682288micros，再分配600000tokens/2880000micros，合计973941tokens/¥3.562288上界。scenarioTokenLimit和isolatedUnknownAuthorization仅为服务器绑定；配置旗标单独不能放行。只读原账必须精确匹配run9216/attempt2369指纹、状态、预留version11/89596tokens/323790micros、已知30099tokens/38204micros、5attempt/4usage/0核账，并且未知run仅9216；任一变化或第二个未知立即拒绝。原59497tokens/285586micros不释放，unknownUsage仍true、实际费用仍null，旧会话不因此解锁。无新表、核账替代、默认授权、UI/API/权限或知识入库变更。
+**固定验收预算机制（以下为live-09开跑快照）。** 最新live-10改为每链250000tokens、联合预检951861tokens/¥3.183170；批次已结束且失败，当前累计518485tokens/含预留¥0.869762，后续不得沿旧快照开跑。 两条链各用独立budgetGroup及300000tokens硬总额，原每链两问/10个调用槽、每请求≤60000tokens、4次主循环＋1次最终修复均保留。链内accounted＋held＋下一请求完整预留不能越界或借用另一链额度；300000不是保证所有槽都能用满60000，耗尽时明确停止且验收不完整。开跑前同一设置行锁下为两链一并预检：原企业4536/authorization累计314444＋59497＝373941tokens、396702＋285586＝682288micros，再分配600000tokens/2880000micros，合计973941tokens/¥3.562288上界。scenarioTokenLimit和isolatedUnknownAuthorization仅为服务器绑定；配置旗标单独不能放行。只读原账必须精确匹配run9216/attempt2369指纹、状态、预留version11/89596tokens/323790micros、已知30099tokens/38204micros、5attempt/4usage/0核账，并且未知run仅9216；任一变化或第二个未知立即拒绝。原59497tokens/285586micros不释放，unknownUsage仍true、实际费用仍null，旧会话不因此解锁。无新表、核账替代、默认授权、UI/API/权限或知识入库变更。
 
 **预算机制验证。** isolation-allocation-01的14项定向单元通过；首次类型1项诊断保留，修正只读行undefined类型后，02的2项真实服务及218实际依赖类型0通过，03的原8项consultation兼容与定向lint通过，均0供应商调用、绑定无漂移。真实服务验证同group共享硬额度、另group仍共用原campaign及新增未知拒绝派发；测试企业不冒充4536核账。日志工具中断的兼容检查保持未完成，精确合成夹具4580/4581确认0attempt后取消遗留作业/关闭AI，再以持续命令完成同范围检查；不混为额外通过数。驱动类型0；plan-qwen-long-03保留02原问题/期望/确定性检查/client/oracle，仅更改已批准预算安排。后续实模证据见本节收尾记录，所有首稿和未知结果独立保留。
 
@@ -85,6 +85,16 @@ strategy-close-05保留未知导致原“unknown=false”收尾断言失败的�
 **隔离例外固定验收收尾｜live-09，2026-10-24，仍未通过。** 原Stable/C01和原2问×2、严格schema不变；原题/期望/确定性检查逐值复用。9289/9290两首问各5次Qwen调用，均invalid_model_answer，两追问未执行；没有有效答复的来源/持久重进/混合撤回通过项。严格输出已将两份edits约束为数组；repair-state-replay-01以原checkpoint/原Evidence离线证明两份原修复都满足当时schema但仍被原本地校验拒绝：9289原段4引用加2成6，9290同时删除整段和修改其引用。共享原因是动态schema未表达已有段落状态的组合约束，归Agent，不是KnowledgeRetriever原文错误；原首稿数值引用不足保留。停止同版本重采；下一只把每段四引用总量/删除互斥等既有规则编译入schema，并在保存trace上判别容量与协议一致性，原本地语义/引用守卫不放宽。百炼[严格schema关键词](https://help.aliyun.com/en/model-studio/qwen-structured-output)支持组合/条件约束，但仍需真实配置验证，不能用离线替身称语义通过。
 
 live-09新增10确认调用77920tokens，累计392364已用＋59497原预留＝451861tokens；known497584＋held285586＝¥0.783170保守上界，52确认＋1旧未知、实际费用null。2369/run9216/预留逐值不变，新未知0；不重复查询无新证据的账单。2798绑定含驱动/SDK/Node/读取器依赖首尾drift[]；配置/投影恢复、AI停/身份撤权、队列0、自有资源/锁释放。前置启动缺NODE_PATH为0模型导入失败，单独日志保留后沿原依赖运行；无安装/模型切换/生产。原A/B证据继续复用，R2–R4仍须C通过。
+
+**补丁状态机制修复｜2026-10-24，仍属R1-C。** compileModelRequest只对原Qwen长链profile、answer且仅final_response的可信synthesis_repair，根据不可变baseHash对应原稿编译allOf/if/then/anyOf约束：整段删除只能有segment/remove；只能移除该段已有引用、不能重复添加已有引用；新增容量＝4−原引用数＋显式移除数。不替模型选引用、不改正文、不把非法修复转为合法修复，本地resolveSynthesisRepair及完整语义/数值/来源/权限守卫逐字保持。额外schema在原上下文编译和预留估算前加入；普通/业务工具/免费profile不改变。沿[LangChain原生结构化输出](https://docs.langchain.com/oss/javascript/langchain/structured-output)使用共享JSON Schema及现有LangGraph，不新增框架、重试/模型回退或放宽守卫；供应商支持的条件关键词仅用于固定Qwen协议。
+
+repair-state-replay-01保留旧schema接受而本地拒绝的两原失败；02在同原trace/Evidence上改为schema先拒绝，原本地失败及首稿不改判，0网络/模型。完整逻辑输入分别46436/46628bytes，仍低于48000；无裁剪条件/原文或抬预算。repair-state-01的31项协议/范围单元及定向lint通过；测试中response_format联合类型未先收窄的一项类型错误保留，增加已存在属性断言后02的219实际依赖类型0通过。02仅重验受影响的真实profile派发及四主调用＋唯一PDF最终修复两服务，通过/0模型；原8兼容和A/B不受影响的证据复用，不冒充新增覆盖。后续plan-qwen-long-04保持原问题/期望/确定性检查/client/oracle与10槽/链，按新累计451861tokens为两链各分250000，开跑前合计951861tokens/¥3.183170上界；原2369预留不动，预算耗尽或新未知即停。
+
+**当前固定验收收口｜live-10，2026-10-24，仍未通过。** 原2问链×2/严格schema/问题/期望/确定性检查保持，plan-qwen-long-04两链各250000tokens。9293首问5调用38906tokens，最终修复输出path而非必填segment，invalid_model_answer；9294首问4调用27718tokens，invalid_model_citation。两追问未执行，没有固定实模有效答复/来源重进/混合撤回通过项。新增9确认调用66624tokens；原4536累计458988＋59497＝518485tokens，known584176＋held285586＝¥0.869762保守上界，61确认＋1旧未知、实付null。2369/run9216/原预留逐值不变，新未知0；2799源码/配置/驱动/SDK/Node/读取器依赖drift[]，配置/投影恢复、AI停/身份撤权、队列0、自有资源/锁释放。预算机制提交8ad2c7c10baf0843b1587809c9ff157fc9319259；不重查无新证据的供应商账单。
+
+**保存trace判别与分段来源修复。** schema-wire-diagnosis-02重建9293严格schema拒绝path/缺segment，逻辑输入47124bytes与记录一致；原完整HTTP出站body未保存，不能证明供应商收到的response_format或据此归责。9294原首稿schema及完整parseSynthesis均通过、六引用ID均唯一有效。web-span-discriminator-01证明保存/重开把同页701–1067与1410–1706两段366/296字符扩为1005，超过原600上限而丢失答复。归Agent组装，KnowledgeRetriever/Evidence无缺陷。webAnswerQuoteSpans只派生已存answer/原Evidence：有界组合保留w:run:index，过宽组合按已选原文拆为w:run:index:part（最多24段、每段≤600），保存和原来源端点共用。要求已存消息包含该ID，并继续会话/tenant/hash/页码/撤回校验；不接收客户端offset、不改正文或自动补引、不抬限。02以9294未改原稿得到399/366/296三段、所有选引文保留，原run仍失败。诊断启动错误及01/02原失败保留。
+
+**完成检查及剩余阻塞。** web-span-01的14单元通过；初次测试类型缺少属性收窄的3条诊断保留，增加quote/sourceLocation存在断言后02的219源码类型0、定向lint、4真实服务通过（旧ID兼容、追问/重进、他客/他租户/伪造part拒绝、撤回）。web-span-native-01原Stable2.02.2608080/基础库3.17.2/390×844的9项通过：合成企业4588真实C01输入/写入、两段PDF来源点开、追问/持久重进、他客拒绝、撤回后两答复/全部引用不可用。3轮注入答复、供应商attempt0，只证明协议，不算PDF解析/模型语义。1442依赖drift[]；两片重进和撤回PNG已审看，对应design-references/xiaok-p4b-public-sites-v1/README.md的C01/C02/U01，WXML/样式/素材/文案/导航未改。finally恢复原生传输/会话、自有服务关闭、AI停/身份撤权、队列0/锁释放；A和未受影响B复用，不重跑全仓。当前缺9293/attempt2384（providerRequestId=e3708099-a596-9b48-ae1e-caf0bcf1b22e）的原始出站response_format与返回关联证据，保存trace不能区分最终派发和供应商执行；停止第三轮提示/regex/同版采样，不把替身计入原固定成绩，C未过不进R2–R4。
 
 ### 复盘依据与归因
 

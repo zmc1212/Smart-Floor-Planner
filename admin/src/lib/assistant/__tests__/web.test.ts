@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { extractWebPage, parseWebQuery, publicWebAddress, publicWebUrl, publicDnsAnswers, searchWeb, searxngResults, type WebSearchProvider } from '../agent/web';
-import { webEvidence, webSynthesisSources, parseWebCitationId } from '../agent/web-evidence';
+import { webEvidence, webSynthesisSources, parseWebCitationId, webAnswerQuoteSpans } from '../agent/web-evidence';
 import { sourceCitationCatalog } from '../agent/citation-catalog';
 import { parseSynthesis, focusedSynthesisMessages } from '../agent/synthesis';
 import { readToolInputIssue } from '../agent/read-tool-input';
@@ -79,6 +79,24 @@ test('web originals use the same citation catalog without enterprise or project 
   assert.equal(answer.segments[0].citations[0].sourceId, sources[0].sourceId);
   assert.deepEqual(parseWebCitationId('w:99:0'), { runId: '99', index: 0 }); assert.equal(parseWebCitationId('w:99:99'), null);
   assert.throws(() => parseSynthesis(JSON.stringify({ kind: 'synthesis', segments: [{ basis: 'evidence', text: '资料原文。', citations: [{ citationId: 'Cforged' }] }] }), sources));
+});
+
+test('distant selected quotes retain separate original spans without expanding the600-character citation bound', () => {
+  const source = { sourceId: 'Wspan', kind: 'web' as const, title: '合成原文',
+    text: '铺装前核对具体型号。\n' + '中间资料保持原样，仅用于定位。\n'.repeat(80) + '现场基层仍需独立核验，资料不等于验收。' };
+  const catalog = sourceCitationCatalog(source), selected = [catalog[0], catalog.at(-1)!];
+  const answer = parseSynthesis(JSON.stringify({ kind: 'synthesis', segments: [{ basis: 'evidence', text: '铺装前核对型号及现场基层，资料不等于验收。',
+    citations: selected.map(citation => ({ citationId: citation.citationId })) }] }), [source], { currentQuestion: standalone });
+  const before = JSON.stringify(answer), spans = webAnswerQuoteSpans(answer, source);
+  assert.equal(spans.length, 2);assert.deepEqual(spans.map(span => span.quote), selected.map(citation => citation.quote));
+  assert.ok(spans.every(span => span.quote.length <= 600));assert.deepEqual(spans.map(span => span.part), [0, 1]);
+  assert.equal(JSON.stringify(answer), before);
+  assert.deepEqual(parseWebCitationId('w:99:0:1'), { runId: '99', index: 0, part: 1 });
+  for (const id of ['w:99:0:24', 'w:99:32:0', 'w:99:0:-1', 'w:99:0:1:0']) assert.equal(parseWebCitationId(id), null);
+  const single = { ...answer, segments: [{ ...answer.segments[0], citations: [answer.segments[0].citations[0]] }] };
+  assert.equal(webAnswerQuoteSpans(single, source)[0].part, undefined, 'Legacy bounded source IDs remain unchanged');
+  const oversized = { ...answer, segments: [{ ...answer.segments[0], citations: [{ sourceId: source.sourceId, quote: source.text }] }] };
+  assert.deepEqual(webAnswerQuoteSpans(oversized, source), []);
 });
 
 test('general advice can answer without retrieval, while actual external reads remain available and scoped', async () => {
