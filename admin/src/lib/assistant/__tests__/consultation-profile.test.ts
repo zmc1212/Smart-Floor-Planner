@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import { consultationBinding, consultationDispatchBudget, consultationCostUpperMicros, consultationScenarioPreflight,
   type FreeConsultationBinding, type MeteredConsultationBinding } from '../agent/consultation-profile';
 import { consultationAcceptanceProfile as profile, consultationLongProfile, consultationCashAuthorization,
-  consultationTariffVersion } from '@/lib/assistant/contracts/consultation';
+  consultationTariffVersion, consultationUnknownIsolation as isolation } from '@/lib/assistant/contracts/consultation';
+import { matchesConsultationIsolation } from '../agent/consultation-isolation';
 import { agentConfig, agentCapabilityFingerprint } from '../agent/config';
 import { agentChatBody } from '@/lib/ai/providers/agent-chat';
 import { agentRequestBudget } from '../agent/context-budget';
@@ -117,4 +118,51 @@ test('whole-scenario preflight retains each funding ledger and refuses before st
   assert.equal(consultationScenarioPreflight({...input,observedTokens:0,requestReservations:[46785]}).remainingTokens,953215);
   assert.throws(()=>consultationScenarioPreflight({...input,observedTokens:950001,requestReservations:[10000,10000,10000,10000,10000]}),code('assistant_quota_exceeded'));
   assert.throws(()=>consultationScenarioPreflight({...input,requestReservations:[]}),code('assistant_quota_exceeded'));
+});
+
+const isolated: MeteredConsultationBinding = { ...metered, metered: { ...metered.metered,
+  isolatedUnknownAuthorization: isolation.authorization, scenarioTokenLimit: 300000 } };
+const retained = { ...request, binding: isolated, observedTokens: 314444, accountedTokens: 314444,
+  heldTokens: 59497, unknownUsage: true, knownCostMicros: 396702, heldCostMicros: 285586,
+  isolatedUnknownAuthorization: isolation.authorization, scenarioAccountedTokens: 0, scenarioHeldTokens: 0 };
+
+test('only the named server opt-in plus exact retained ledger proof may isolate the old unknown',()=>{
+  assert.deepEqual(consultationBinding(isolated),isolated);
+  for(const patch of [{isolatedUnknownAuthorization:'another'}, {scenarioTokenLimit:59999},
+    {scenarioTokenLimit:1000001}, {scenarioTokenLimit:NaN}, {allowUnknown:true}])
+    assert.equal(consultationBinding({...isolated,metered:{...isolated.metered,...patch}}),null);
+  assert.equal(consultationDispatchBudget(retained).totalTokens,383941);
+  for(const patch of [{isolatedUnknownAuthorization:undefined}, {binding:metered}, {binding},
+    {heldTokens:59496}, {heldCostMicros:285585}])
+    assert.throws(()=>consultationDispatchBudget({...retained,...patch}),code('provider_outcome_unknown'));
+});
+
+test('a second unknown or any changed original identity/reservation cannot obtain isolation proof',()=>{
+  const original: Record<string,unknown> = {run_id:'9216',attempt_id:'2369',run_status:'indeterminate',run_error:'provider_outcome_unknown',
+    attempt_status:'failed',attempt_error:'PROVIDER_CONNECTION_FAILED',request_fingerprint:isolation.requestFingerprint,
+    remote_task_id:null,remote_status:null,reservation_status:'reconciling',version:11,reserved_tokens:'89596',reserved_cost_micros:'323790',
+    observed_tokens:'30099',known_cost_micros:'38204',settled_tokens:'30099',settled_cost_micros:null,attempt_count:5,usage_count:4,review_count:0};
+  assert.equal(matchesConsultationIsolation('4536',['9216'],original),true);
+  assert.equal(matchesConsultationIsolation('4537',['9216'],original),false);
+  for(const ids of [null,[],['9999'],['9216','9999']])assert.equal(matchesConsultationIsolation('4536',ids,original),false);
+  for(const patch of [{run_id:'9999'}, {attempt_id:'2370'}, {request_fingerprint:'changed'}, {version:12}, {reserved_tokens:'89595'},
+    {reserved_cost_micros:'323789'}, {observed_tokens:'30100'}, {known_cost_micros:'38205'}, {remote_task_id:'receipt'},
+    {attempt_count:6}, {usage_count:5}, {review_count:1}, {settled_cost_micros:'0'}, {reservation_status:'settled'}])
+    assert.equal(matchesConsultationIsolation('4536',['9216'],{...original,...patch}),false,JSON.stringify(patch));
+});
+
+test('two fresh scenario envelopes fund all registered slots without giving either chain the other allocation',()=>{
+  const first=consultationScenarioPreflight({...retained,requestReservations:Array(10).fill(60000)});
+  assert.equal(first.plannedCalls,10);assert.equal(first.requestCeilingTokens,600000);
+  assert.equal(first.fundedTokenEnvelope,300000);assert.equal(first.allocationMode,'hard-scenario-envelope');
+  const second=consultationScenarioPreflight({...retained,heldTokens:retained.heldTokens+first.fundedTokenEnvelope,
+    heldCostMicros:retained.heldCostMicros+first.reservedCostMicros,requestReservations:Array(10).fill(60000)});
+  assert.equal(second.totalTokens,973941);assert.equal(second.costUpperMicros,3562288);
+  assert.equal(consultationDispatchBudget({...retained,scenarioAccountedTokens:240000,estimatedRequestTokens:60000}).totalTokens,433941);
+  for(const patch of [{scenarioAccountedTokens:240001,estimatedRequestTokens:60000}, {scenarioHeldTokens:290001},
+    {scenarioAccountedTokens:undefined}, {scenarioHeldTokens:undefined}])
+    assert.throws(()=>consultationDispatchBudget({...retained,...patch}),code('assistant_quota_exceeded'));
+  assert.throws(()=>consultationScenarioPreflight({...retained,scenarioAccountedTokens:1,requestReservations:Array(10).fill(60000)}),code('assistant_quota_exceeded'));
+  assert.throws(()=>consultationScenarioPreflight({...retained,heldTokens:685557,requestReservations:Array(10).fill(60000)}),code('assistant_quota_exceeded'));
+  assert.throws(()=>consultationDispatchBudget({...retained,knownCostMicros:5000000}),code('assistant_quota_exceeded'));
 });

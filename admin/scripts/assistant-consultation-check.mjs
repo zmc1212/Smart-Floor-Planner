@@ -47,7 +47,7 @@ try {
     const norm = file => path.resolve(file).replaceAll('\\', '/');
     const worker = norm(path.join(admin, 'src/lib/assistant/agent/worker.ts'));
     if (stage === 'R1') files.push(...['consultation-profile','consultation-projection','public-research','synthesis-prose-numbers','consultation-recovery'].map(file => path.join(admin, 'src/lib/assistant/__tests__/' + file + '.test.ts')),
-      ...['assistant-consultation','assistant-consultation-recovery','assistant-usage'].map(file => path.join(admin, 'src/db/__tests__/' + file + '.test.ts')));
+      ...['assistant-consultation','assistant-consultation-recovery','assistant-consultation-allocation','assistant-usage'].map(file => path.join(admin, 'src/db/__tests__/' + file + '.test.ts')));
     const baseline = fs.readFileSync(path.join(stageRoot, 'baseline/worker.ts'), 'utf8');
     function program(previous) {
       const host = ts.createCompilerHost(parsed.options), read = host.readFile.bind(host);
@@ -71,8 +71,9 @@ try {
     if (mode === 'unit') files = fs.readdirSync(path.join(admin, 'src/lib/assistant/__tests__'))
       .filter(file => /^(agent-runtime|agent-vision|agent-memory|context-budget|web|synthesis.*|current-message.*|independent.*)\.test\.ts$/.test(file))
       .map(file => 'src/lib/assistant/__tests__/' + file);
+    else if (mode === 'allocation-unit') files = ['src/lib/assistant/__tests__/consultation-profile.test.ts'];
     else if (mode === 'client') files = ['../miniprogram/test/assistant-chat.test.js'];
-    else if (['service','web','consultation','recovery'].includes(mode)) {
+    else if (['service','web','consultation','recovery','allocation'].includes(mode)) {
       nextEnv.loadEnvConfig(admin, true);
       // Evaluation uses its own application credential; never repoint the
       // development credential or modify either persisted configuration.
@@ -80,15 +81,16 @@ try {
       process.env.DATABASE_URL = connection.DATABASE_URL;
       for (const name of ['ASSISTANT_LIVE_TEXT', 'ASSISTANT_P2M_LIVE', 'ASSISTANT_P2M_EXTENDED', 'ASSISTANT_P2M_DEEPSEEK_PROBE']) delete process.env[name];
       release = await lockAssistantAcceptance(process.env.DATABASE_URL);
-      files = (mode === 'recovery' ? ['assistant-consultation-recovery','assistant-usage'] : mode === 'consultation' ? ['assistant-consultation'] : mode === 'web' ? ['assistant-web'] : ['assistant-agent', 'assistant-synthesis', 'assistant-web'])
+      files = (mode === 'allocation' ? ['assistant-consultation-allocation'] : mode === 'recovery' ? ['assistant-consultation-recovery','assistant-usage'] : mode === 'consultation' ? ['assistant-consultation'] : mode === 'web' ? ['assistant-web'] : ['assistant-agent', 'assistant-synthesis', 'assistant-web'])
         .map(file => 'src/db/__tests__/' + file + '.test.ts');
     } else if (mode === 'lint') files = ['src/lib/assistant/agent/worker.ts', 'src/lib/assistant/agent/model-request.ts',
       'src/lib/assistant/contracts/consultation.ts', 'scripts/assistant-consultation-offline.mjs', 'scripts/assistant-consultation-check.mjs'];
-    else throw Error('Expected unit, client, recovery, web, consultation, service, types or lint');
+    else throw Error('Expected unit, allocation-unit, client, recovery, allocation, web, consultation, service, types or lint');
     if (stage === 'R1' && mode === 'unit') files.push(...['consultation-profile','consultation-projection','public-research','agent-final-kind','consultation-recovery'].map(file => 'src/lib/assistant/__tests__/' + file + '.test.ts'), 'src/lib/ai/__tests__/assistant-thinking.test.ts');
     if (stage === 'R1' && mode === 'lint') files.push(...['consultation-profile','consultation-usage','consultation-model-view','context','ancestor-sources','public-research','web-evidence','config','context-budget','synthesis-sources','citation-catalog','citation-coverage','source-document','prose-number-view','runtime','synthesis'].map(file => 'src/lib/assistant/agent/' + file + '.ts'), 'src/lib/ai/providers/consultation-final-schema.ts', 'src/lib/ai/providers/agent-chat.ts');
     if (stage === 'R1' && mode === 'lint') files.push(...['usage-review','usage','conversation'].map(file => 'src/lib/assistant/core/' + file + '.ts'),
-      'src/db/__tests__/assistant-consultation-recovery.test.ts','src/lib/assistant/__tests__/consultation-profile.test.ts');
+      'src/db/__tests__/assistant-consultation-recovery.test.ts','src/lib/assistant/__tests__/consultation-profile.test.ts',
+      'src/lib/assistant/agent/consultation-isolation.ts','src/db/__tests__/assistant-consultation-allocation.test.ts');
     const args = mode === 'lint' ? ['node_modules/eslint/bin/eslint.js', ...files]
       : ['--import', 'tsx', '--test', '--test-concurrency=1', '--test-reporter=tap', ...files];
     const pattern = process.env.ASSISTANT_CONSULTATION_PATTERN || null;

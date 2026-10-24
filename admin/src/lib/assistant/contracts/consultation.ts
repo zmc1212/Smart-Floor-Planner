@@ -42,6 +42,14 @@ export const consultationLongProfile = {
 } as const;
 export const consultationCashAuthorization = 'xiaok-20261023-qwen-long-cny5';
 export const consultationTariffVersion = 'qwen37-beijing-20261023-upper-v1';
+/** Explicit development-campaign exception approved on 2026-10-24. This is
+ * isolation, not reconciliation: the original attempt and full hold remain. */
+export const consultationUnknownIsolation = {
+  authorization: 'xiaok-20261024-isolate-2369-v1', enterpriseId: '4536', runId: '9216', attemptId: '2369',
+  requestFingerprint: '84b3c12d95d3726f41e5302569dd2cbefb5a25d40a0dc78ac1dedae10fadd0c9',
+  reservationVersion: 11, reservedTokens: 89596, reservedCostMicros: 323790,
+  observedTokens: 30099, knownCostMicros: 38204, heldTokens: 59497, heldCostMicros: 285586,
+} as const;
 export function consultationProfile(id: unknown) {
   return id === consultationAcceptanceProfile.id ? consultationAcceptanceProfile
     : id === consultationLongProfile.id ? consultationLongProfile : null;

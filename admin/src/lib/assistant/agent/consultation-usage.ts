@@ -5,8 +5,9 @@ import { fail } from '../contracts';
 import type { ModelMessage, ModelTool } from '../contracts/model';
 import { estimateAgentRequest } from './context-budget';
 import { consultationDispatchBudget, type ConsultationBinding } from './consultation-profile';
-import { consultationCashAuthorization, consultationLongProfile } from '../contracts/consultation';
+import { consultationCashAuthorization, consultationLongProfile, consultationUnknownIsolation } from '../contracts/consultation';
 import { confirmedUsageReview, unresolvedProviderOutcome } from '../core/usage-review';
+import { matchesConsultationIsolation } from './consultation-isolation';
 
 /** UTF-8 byte ceiling plus explicit template/output reserve, not a tokenizer
  * accuracy claim. Unknown image token budgets cannot enter the text profile. */
@@ -80,7 +81,11 @@ export async function consultationBudgetSnapshot(tx: PostgresTransaction, input:
   const totals = await one(tx, sql`select coalesce(sum(u.observed),0)::text observed,
     coalesce(sum(case when ${confirmedUsageReview(sql`u.observed`)} then q.settled_tokens else u.observed end),0)::text accounted,
     coalesce(sum(case when ${confirmedUsageReview(sql`u.observed`)} then 0 else greatest(q.reserved_tokens-u.observed,0) end),0)::text held,
-    coalesce(bool_or(not ${confirmedUsageReview(sql`u.observed`)} and ${unresolvedProviderOutcome()}),false) unknown
+    coalesce(bool_or(not ${confirmedUsageReview(sql`u.observed`)} and ${unresolvedProviderOutcome()}),false) unknown,
+    coalesce(sum(case when r.policy_snapshot#>>'{agent,consultation,budgetGroup}'=${input.binding.budgetGroup}
+      then case when ${confirmedUsageReview(sql`u.observed`)} then q.settled_tokens else u.observed end else 0 end),0)::text scenario_accounted,
+    coalesce(sum(case when r.policy_snapshot#>>'{agent,consultation,budgetGroup}'=${input.binding.budgetGroup}
+      and not ${confirmedUsageReview(sql`u.observed`)} then greatest(q.reserved_tokens-u.observed,0) else 0 end),0)::text scenario_held
     from app.assistant_runs r join app.assistant_quota_reservations q on q.enterprise_id=r.enterprise_id and q.run_id=r.id
     cross join lateral(select coalesce(sum(quantity) filter(where measurement_kind='observed'),0) observed,
       count(*) filter(where quantity is null) unknown from app.assistant_usage_records
@@ -97,7 +102,8 @@ export async function consultationBudgetSnapshot(tx: PostgresTransaction, input:
   // neither a new stage nor a new run can reset the campaign's cash ceiling.
   const cash = 'metered' in input.binding ? await one(tx, sql`select coalesce(sum(case when ${confirmedUsageReview()} then q.settled_cost_micros else u.cost end),0)::text known,
     coalesce(sum(case when ${confirmedUsageReview()} then 0 else greatest(q.reserved_cost_micros-u.cost,0) end),0)::text held,
-    coalesce(bool_or(not ${confirmedUsageReview()} and (u.missing>0 or ${unresolvedProviderOutcome()})),false) unknown
+    coalesce(bool_or(not ${confirmedUsageReview()} and (u.missing>0 or ${unresolvedProviderOutcome()})),false) unknown,
+    array_agg(r.id::text) filter(where not ${confirmedUsageReview()} and (u.missing>0 or ${unresolvedProviderOutcome()})) unknown_runs
     from app.assistant_runs r join app.assistant_quota_reservations q on q.enterprise_id=r.enterprise_id and q.run_id=r.id
     cross join lateral(select coalesce(ceil(sum(input_tokens)*1.2+sum(output_tokens)*4.8),0) cost,
       count(*) filter(where quantity is null or input_tokens is null or output_tokens is null) missing
@@ -105,7 +111,27 @@ export async function consultationBudgetSnapshot(tx: PostgresTransaction, input:
     where r.enterprise_id=${input.enterpriseId}
       and r.policy_snapshot#>>'{agent,consultation,metered,authorization}'=${consultationCashAuthorization}
       and (q.status!='released' or u.cost>0)`): null;
+  let isolatedUnknownAuthorization: typeof consultationUnknownIsolation.authorization | undefined;
+  if ('metered' in input.binding && input.binding.metered.isolatedUnknownAuthorization === consultationUnknownIsolation.authorization
+    && input.enterpriseId === consultationUnknownIsolation.enterpriseId && cash?.unknown) {
+    const original = await one(tx,sql`select r.id::text run_id,r.status run_status,r.error_code run_error,
+      a.id::text attempt_id,a.status attempt_status,a.error_code attempt_error,a.request_fingerprint,a.remote_task_id,a.remote_status,
+      q.status reservation_status,q.version,q.reserved_tokens,q.reserved_cost_micros,q.settled_tokens,q.settled_cost_micros,
+      (select count(*) from app.ai_provider_attempts where enterprise_id=r.enterprise_id and assistant_run_id=r.id) attempt_count,
+      (select count(*) from app.assistant_cost_reviews where enterprise_id=q.enterprise_id and reservation_id=q.id) review_count,
+      u.observed_tokens,u.known_cost_micros,u.usage_count
+      from app.assistant_runs r join app.assistant_quota_reservations q on q.enterprise_id=r.enterprise_id and q.run_id=r.id
+      join app.ai_provider_attempts a on a.enterprise_id=r.enterprise_id and a.assistant_run_id=r.id and a.id=${consultationUnknownIsolation.attemptId}
+      cross join lateral(select coalesce(sum(quantity),0) observed_tokens,
+        coalesce(ceil(sum(input_tokens)*1.2+sum(output_tokens)*4.8),0) known_cost_micros,count(*) usage_count
+        from app.assistant_usage_records where enterprise_id=r.enterprise_id and run_id=r.id and category='tokens') u
+      where r.enterprise_id=${input.enterpriseId} and r.id=${consultationUnknownIsolation.runId}`);
+    if (matchesConsultationIsolation(input.enterpriseId,cash.unknown_runs,original)) isolatedUnknownAuthorization=consultationUnknownIsolation.authorization;
+  }
   return { observedTokens: Number(totals?.observed || 0), accountedTokens: Number(totals?.accounted || 0), heldTokens: Number(totals?.held || 0),
     unknownUsage: Boolean(totals?.unknown) || Boolean(cash?.unknown),
-    ...('metered' in input.binding ? { knownCostMicros: Number(cash!.known), heldCostMicros: Number(cash!.held) } : {}) };
+    ...(isolatedUnknownAuthorization ? { isolatedUnknownAuthorization } : {}),
+    ...('metered' in input.binding ? { knownCostMicros: Number(cash!.known), heldCostMicros: Number(cash!.held),
+      ...(input.binding.metered.scenarioTokenLimit !== undefined ? { scenarioAccountedTokens: Number(totals?.scenario_accounted || 0),
+        scenarioHeldTokens: Number(totals?.scenario_held || 0) } : {}) } : {}) };
 }

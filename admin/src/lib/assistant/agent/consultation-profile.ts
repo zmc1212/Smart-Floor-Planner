@@ -1,6 +1,6 @@
 import { fail } from '@/lib/assistant/contracts';
 import { consultationAcceptanceProfile as profile, consultationLongProfile, consultationCashAuthorization,
-  consultationTariffVersion, consultationProfile } from '@/lib/assistant/contracts/consultation';
+  consultationTariffVersion, consultationProfile, consultationUnknownIsolation } from '@/lib/assistant/contracts/consultation';
 
 export type ConsultationStage = Exclude<keyof typeof profile.stageTokens, 'R0'>;
 type BindingBase = { stage: ConsultationStage; budgetGroup: string };
@@ -12,7 +12,8 @@ export type FreeConsultationBinding = BindingBase & {
 export type MeteredConsultationBinding = BindingBase & {
   profile: typeof consultationLongProfile.id;
   metered: { authorization: typeof consultationCashAuthorization; cashLimitMicros: 5000000;
-    tariff: typeof consultationTariffVersion };
+    tariff: typeof consultationTariffVersion; scenarioTokenLimit?: number;
+    isolatedUnknownAuthorization?: typeof consultationUnknownIsolation.authorization };
 };
 export type ConsultationBinding = FreeConsultationBinding | MeteredConsultationBinding;
 const stages = new Set(['R1', 'R2', 'R3', 'R4']);
@@ -30,11 +31,16 @@ export function consultationBinding(value: unknown): ConsultationBinding | null 
   if (input.profile === consultationLongProfile.id) {
     const metered = input.metered;
     if (Object.keys(input).some(key => !['profile','stage','budgetGroup','metered'].includes(key))
-      || !object(metered) || Object.keys(metered).some(key => !['authorization','cashLimitMicros','tariff'].includes(key))
+      || !object(metered) || Object.keys(metered).some(key => !['authorization','cashLimitMicros','tariff','scenarioTokenLimit','isolatedUnknownAuthorization'].includes(key))
       || metered.authorization !== consultationCashAuthorization || metered.cashLimitMicros !== 5000000
-      || metered.tariff !== consultationTariffVersion) return null;
+      || metered.tariff !== consultationTariffVersion
+      || metered.scenarioTokenLimit !== undefined && (!integer(metered.scenarioTokenLimit)
+        || metered.scenarioTokenLimit < consultationLongProfile.maxRequestTokens || metered.scenarioTokenLimit > consultationLongProfile.campaignTokens)
+      || metered.isolatedUnknownAuthorization !== undefined && metered.isolatedUnknownAuthorization !== consultationUnknownIsolation.authorization) return null;
     return { ...base, profile: consultationLongProfile.id, metered: { authorization: consultationCashAuthorization,
-      cashLimitMicros: 5000000, tariff: consultationTariffVersion } };
+      cashLimitMicros: 5000000, tariff: consultationTariffVersion,
+      ...(metered.scenarioTokenLimit !== undefined ? { scenarioTokenLimit: metered.scenarioTokenLimit as number } : {}),
+      ...(metered.isolatedUnknownAuthorization !== undefined ? { isolatedUnknownAuthorization: consultationUnknownIsolation.authorization } : {}) } };
   }
   const quota = input.quota;
   if (Object.keys(input).some(key => !['profile','stage','budgetGroup','quota'].includes(key))
@@ -56,25 +62,42 @@ export function consultationCostUpperMicros(inputTokens: number, outputTokens: n
   return Number(micros);
 }
 
-/** Uses original reservation/usage rows. Observed plus unobserved held usage
- * uses the authorized free-stage or Qwen-campaign cap. Qwen cash is campaign-wide. */
-export function consultationDispatchBudget(input: {
-  binding: ConsultationBinding; createdAt: string; now: number; estimatedRequestTokens: number;
+export type ConsultationLedger = {
   observedTokens: number; accountedTokens?: number; heldTokens: number; unknownUsage: boolean;
   knownCostMicros?: number; heldCostMicros?: number;
+  // Produced only by the tenant ledger after matching the exact unresolved
+  // attempt/reservation. A config flag alone never authorizes dispatch.
+  isolatedUnknownAuthorization?: typeof consultationUnknownIsolation.authorization;
+  scenarioAccountedTokens?: number; scenarioHeldTokens?: number;
+};
+
+/** Uses original reservation/usage rows. Observed plus unobserved held usage
+ * uses the authorized free-stage or Qwen-campaign cap. Qwen cash is campaign-wide. */
+export function consultationDispatchBudget(input: ConsultationLedger & {
+  binding: ConsultationBinding; createdAt: string; now: number; estimatedRequestTokens: number;
   calls: number; summaries: number; perceptions: number; purpose: 'answer' | 'summary' | 'vision';
 }) {
   const { binding, now } = input, createdAt = Date.parse(input.createdAt), accountedTokens = input.accountedTokens ?? input.observedTokens;
   if (![input.estimatedRequestTokens, input.observedTokens, accountedTokens, input.heldTokens, input.calls, input.summaries, input.perceptions].every(integer)
     || accountedTokens < input.observedTokens
     || !Number.isFinite(now) || !Number.isFinite(createdAt) || now < createdAt) fail('assistant_quota_exceeded', 429);
-  if (input.unknownUsage) fail('provider_outcome_unknown');
+  if (input.unknownUsage && !('metered' in binding
+    && binding.metered.isolatedUnknownAuthorization === consultationUnknownIsolation.authorization
+    && input.isolatedUnknownAuthorization === consultationUnknownIsolation.authorization
+    && input.heldTokens >= consultationUnknownIsolation.heldTokens
+    && Number(input.heldCostMicros) >= consultationUnknownIsolation.heldCostMicros)) fail('provider_outcome_unknown');
   if (now - createdAt >= profile.runTimeoutMs) fail('agent_deadline_exceeded', 422);
   if (input.calls >= profile.maxCalls || input.purpose === 'summary' && input.summaries >= profile.maxSummaryCalls
     || input.purpose === 'vision' && input.perceptions >= profile.maxPerceptionCalls) fail('assistant_quota_exceeded', 429);
   const total = accountedTokens + input.heldTokens + input.estimatedRequestTokens;
   const limit = 'quota' in binding ? profile.stageTokens[binding.stage] : consultationLongProfile.campaignTokens;
   if (!Number.isSafeInteger(total) || total > limit) fail('assistant_quota_exceeded', 429);
+  if ('metered' in binding && binding.metered.scenarioTokenLimit !== undefined) {
+    if (!integer(input.scenarioAccountedTokens) || !integer(input.scenarioHeldTokens)
+      || !Number.isSafeInteger(input.scenarioAccountedTokens + input.scenarioHeldTokens + input.estimatedRequestTokens)
+      || input.scenarioAccountedTokens + input.scenarioHeldTokens + input.estimatedRequestTokens > binding.metered.scenarioTokenLimit)
+      fail('assistant_quota_exceeded', 429);
+  }
   let remainingTokens = limit - total, reservedCostMicros = 0, costUpperMicros = 0;
   if ('quota' in binding) {
     const verifiedAt = Date.parse(binding.quota.verifiedAt), sinceVerification = total - binding.quota.observedTokensAtVerification;
@@ -103,16 +126,20 @@ export function consultationRuntimeBudget(input: { summaries: number; perception
     reservedValidationRepairs: 1 as const, auxiliaryCalls: input.summaries + input.perceptions, maxScheduledCalls: 5 };
 }
 
-/** Preflight the entire fixed scenario before its first call. Reservations must
- * include every main/summary/perception/repair request, not merely output. */
-export function consultationScenarioPreflight(input: {
-  binding: ConsultationBinding; now: number; observedTokens: number; accountedTokens?: number; heldTokens: number; unknownUsage: boolean;
-  knownCostMicros?: number; heldCostMicros?: number; requestReservations: number[];
+/** Register every main/summary/perception/repair slot. A named scenario envelope
+ * is a hard cumulative limit, not a promise that every slot can spend its peak.
+ * The original per-request hold and campaign cap still apply on each dispatch. */
+export function consultationScenarioPreflight(input: ConsultationLedger & {
+  binding: ConsultationBinding; now: number; requestReservations: number[];
 }) {
   if (!input.requestReservations.length || !input.requestReservations.every(integer)) fail('assistant_quota_exceeded', 429);
   if ('metered' in input.binding && input.requestReservations.some(value=>value>consultationLongProfile.maxRequestTokens)) fail('assistant_quota_exceeded',429);
-  const estimatedRequestTokens = input.requestReservations.reduce((sum, value) => sum + value, 0);
+  const requestCeilingTokens = input.requestReservations.reduce((sum, value) => sum + value, 0);
+  const envelope = 'metered' in input.binding ? input.binding.metered.scenarioTokenLimit : undefined;
+  if (envelope !== undefined && (input.scenarioAccountedTokens !== 0 || input.scenarioHeldTokens !== 0)) fail('assistant_quota_exceeded',429);
+  const estimatedRequestTokens = envelope === undefined ? requestCeilingTokens : Math.min(envelope,requestCeilingTokens);
   return { ...consultationDispatchBudget({ ...input, estimatedRequestTokens, createdAt: new Date(input.now).toISOString(),
     calls: 0, summaries: 0, perceptions: 0, purpose: 'answer' }), model: consultationProfile(input.binding.profile)!.model,
-    plannedCalls: input.requestReservations.length, actualBilledMicros: null };
+    plannedCalls: input.requestReservations.length, requestCeilingTokens, fundedTokenEnvelope: estimatedRequestTokens,
+    allocationMode: envelope === undefined ? 'all-request-ceilings' : 'hard-scenario-envelope', actualBilledMicros: null };
 }
