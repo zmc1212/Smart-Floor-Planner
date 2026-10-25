@@ -79,14 +79,16 @@ async function main() {
     .flatMap(f => JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')).calls || []);
   const pilotCalls = previous(path.join(root, 'tmp/anythingllm-pilot'));
   const comparisonCalls = previous(path.join(root, 'tmp/agent-comparison')), diagnosisCalls = previous(directory);
-  assert.ok([...pilotCalls, ...comparisonCalls, ...diagnosisCalls].every(c => c.status === 'succeeded'), 'Unresolved provider outcome blocks new dispatch');
+  const contractDirectory = path.join(root, 'tmp/agent-contract');
+  const contractCalls = fs.existsSync(contractDirectory) ? previous(contractDirectory) : [];
+  assert.ok([...pilotCalls, ...comparisonCalls, ...diagnosisCalls, ...contractCalls].every(c => c.status === 'succeeded'), 'Unresolved provider outcome blocks new dispatch');
   const batch = new Date().toISOString().replace(/[:.]/g, '-'), output = path.join(directory, `trial-${batch}.json`);
   const report: Row = { version: scope.version, mode, started: new Date().toISOString(), scope,
     upstream: { pydanticai: '2.61.0', source: 'https://github.com/pydantic/pydantic-ai',
       installed: cp.execFileSync(python, ['-m', 'pip', 'freeze', '--all'], { windowsHide: true, encoding: 'utf8' }).trim().split(/\r?\n/) },
     originalProtocolHash: hash(JSON.stringify(protocol)), knowledgeHash: hash(syntheticKnowledge),
     authorization: { previousPlanTokens: 518485, previousPlanMicros: 869762, previousPilotTokens: tokens(pilotCalls),
-      previousComparisonTokens: tokens(comparisonCalls), previousDiagnosisTokens: tokens(diagnosisCalls),
+      previousComparisonTokens: tokens(comparisonCalls), previousDiagnosisTokens: tokens(diagnosisCalls), previousContractTokens: tokens(contractCalls),
       newTokenLimit: scope.newTokenLimit, cumulativeTokenLimit: 1000000, cumulativeMicrosLimit: 5000000 },
     fixtures: [], calls: [], tools: [], cases: [], checks: {}, transportRequests: [], actualBilledYuan: null };
   const save = () => fs.writeFileSync(output, JSON.stringify(report, (_, v) => typeof v === 'bigint' ? String(v) : v, 2));
@@ -147,8 +149,8 @@ async function main() {
       assert.ok(report.calls.length < scope.providerCallLimit && report.calls.filter((c: Row) => c.case === active!.row.id).length < scope.perTurnCallLimit);
       const reserve = Buffer.byteLength(JSON.stringify(request), 'utf8') + 2048, used = tokens(report.calls), prior = report.authorization;
       assert.ok(prior.previousComparisonTokens + prior.previousDiagnosisTokens + used + reserve <= scope.inheritedComparisonTokenCap, 'Inherited comparison cap');
-      assert.ok(prior.previousPlanTokens + prior.previousPilotTokens + prior.previousComparisonTokens + prior.previousDiagnosisTokens + used + reserve <= prior.cumulativeTokenLimit, 'Cumulative token cap');
-      assert.ok(prior.previousPlanMicros + (prior.previousPilotTokens + prior.previousComparisonTokens + prior.previousDiagnosisTokens + used + reserve) * 5 <= prior.cumulativeMicrosLimit, 'Cumulative cost cap');
+      assert.ok(prior.previousPlanTokens + prior.previousPilotTokens + prior.previousComparisonTokens + prior.previousDiagnosisTokens + prior.previousContractTokens + used + reserve <= prior.cumulativeTokenLimit, 'Cumulative token cap');
+      assert.ok(prior.previousPlanMicros + (prior.previousPilotTokens + prior.previousComparisonTokens + prior.previousDiagnosisTokens + prior.previousContractTokens + used + reserve) * 5 <= prior.cumulativeMicrosLimit, 'Cumulative cost cap');
       const attempt: Row = { id: randomUUID(), case: active.row.id, variant: active.f.variant, request, nativeRequest: body,
         reservedTokens: reserve, status: 'dispatching', started: new Date().toISOString() };
       report.calls.push(attempt); inFlight = true; save();

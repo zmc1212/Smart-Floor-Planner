@@ -85,7 +85,9 @@ async function main() {
   const pilotCalls = previous(pilot), comparisonCalls = previous(directory);
   const diagnosisDirectory = path.join(root, 'tmp/agent-diagnosis');
   const diagnosisCalls = fs.existsSync(diagnosisDirectory) ? previous(diagnosisDirectory) : [];
-  assert.ok([...pilotCalls, ...comparisonCalls, ...diagnosisCalls].every(c => c.status === 'succeeded'), 'Unknown attempts must be resolved before additional paid calls');
+  const contractDirectory = path.join(root, 'tmp/agent-contract');
+  const contractCalls = fs.existsSync(contractDirectory) ? previous(contractDirectory) : [];
+  assert.ok([...pilotCalls, ...comparisonCalls, ...diagnosisCalls, ...contractCalls].every(c => c.status === 'succeeded'), 'Unknown attempts must be resolved before additional paid calls');
   const tokens = (calls: Row[]) => calls.reduce((n, c) => n + (c.usage?.total_tokens ?? c.reservedTokens), 0);
   const report: Row = { version: 'official-createAgent-comparison-2', mode, started: new Date().toISOString(),
     contextProjection: 'one-current-user-message; authorized customer history remains numbered data in system context',
@@ -93,7 +95,7 @@ async function main() {
     scope: scenarios, protocolHash: hash(JSON.stringify(protocol)), knowledgeHash: hash(syntheticKnowledge),
     authorization: { additionalTokens: 140000, cumulativeTokens: 1000000, cumulativeMicros: 5000000,
       userApproval: '同意本次上限，完成固定对照', previousPlanTokens: 518485, previousPlanMicros: 869762,
-      previousPilotTokens: tokens(pilotCalls), previousComparisonTokens: tokens(comparisonCalls), previousDiagnosisTokens: tokens(diagnosisCalls) },
+      previousPilotTokens: tokens(pilotCalls), previousComparisonTokens: tokens(comparisonCalls), previousDiagnosisTokens: tokens(diagnosisCalls), previousContractTokens: tokens(contractCalls) },
     upstream: { anythingllm: '1.18.0 / 3e4f9411b67f2dd7fa9fc6f2b95dfacbda0633ba', langchain: '1.5.19', openaiAdapter: '1.7.0' },
     fixtures: [], calls: [], tools: [], cases: [], checks: {}, transportRequests: [], actualBilledYuan: null };
   const save = () => fs.writeFileSync(output, JSON.stringify(report, (_, v) => typeof v === 'bigint' ? String(v) : v, 2));
@@ -159,8 +161,8 @@ async function main() {
       assert.ok(report.calls.length < scenarios.callLimit && report.calls.filter((c: Row) => c.case === active!.row.id).length < scenarios.perTurnCallLimit, 'Fixed call limit reached');
       const reserve = Buffer.byteLength(JSON.stringify(request), 'utf8') + 2048, used = tokens(report.calls), prior = report.authorization;
       assert.ok(prior.previousComparisonTokens + prior.previousDiagnosisTokens + used + reserve <= 140000, 'Additional comparison token cap');
-      assert.ok(prior.previousPlanTokens + prior.previousPilotTokens + prior.previousComparisonTokens + prior.previousDiagnosisTokens + used + reserve <= 1000000, 'Cumulative token cap');
-      assert.ok(prior.previousPlanMicros + (prior.previousPilotTokens + prior.previousComparisonTokens + prior.previousDiagnosisTokens + used + reserve) * 5 <= 5000000, 'Cumulative cost cap');
+      assert.ok(prior.previousPlanTokens + prior.previousPilotTokens + prior.previousComparisonTokens + prior.previousDiagnosisTokens + prior.previousContractTokens + used + reserve <= 1000000, 'Cumulative token cap');
+      assert.ok(prior.previousPlanMicros + (prior.previousPilotTokens + prior.previousComparisonTokens + prior.previousDiagnosisTokens + prior.previousContractTokens + used + reserve) * 5 <= 5000000, 'Cumulative cost cap');
       const attempt: Row = { id: randomUUID(), case: active.row.id, engine: active.f.engine, request, originalRequest: body,
         reservedTokens: reserve, status: 'dispatching', started: new Date().toISOString() };
       report.calls.push(attempt); inFlight = true; save();

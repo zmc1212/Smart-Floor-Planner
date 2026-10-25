@@ -37,6 +37,25 @@ function fixture() {
   return { db, calls, create, intercept: fn => { intercept = fn; }, identity: value => { token = value; } };
 }
 
+test('item-level metadata keeps the aggregate room values visible after page reentry and confirmation', async () => {
+  const f = fixture();
+  f.db.latest = { id: '7', version: 1, status: 'draft', draftFields: {
+    housing: { text: '我家90平' }, budget: { text: '预算改成10万' },
+    room: { text: '客厅换瓷砖；地暖不做', items: [
+      { id: 'item-floor', text: '客厅换瓷砖', sourceMessageId: '4' },
+      { id: 'item-heating', text: '地暖不做', sourceMessageId: '1' },
+    ] },
+  } };
+  const first = f.create(); await first.show('11');
+  assert.equal(first.fields().room, '客厅换瓷砖；地暖不做'); first.dispose();
+  const reopened = f.create(); await reopened.show('11');
+  assert.equal(reopened.fields().room, '客厅换瓷砖；地暖不做');
+  await reopened.act('confirm');
+  const call = f.calls.find(c => c.body.action === 'confirm');
+  assert.equal(call.body.fields.room, '客厅换瓷砖；地暖不做');
+  assert.ok(!JSON.stringify(call.body.fields).includes('item-heating'));
+});
+
 test('summary: draft, edit, confirm and fresh-page read preserve customer values', async () => {
   const f = fixture(), c = f.create(); await c.show('11');
   assert.equal(c.fields().housing, '90平米旧房');

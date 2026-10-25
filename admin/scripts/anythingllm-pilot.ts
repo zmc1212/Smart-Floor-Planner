@@ -76,10 +76,17 @@ async function live() {
   const model = 'qwen3.7-flash';
   const earlier = fs.readdirSync(dir).filter(name => /^trial-.*\.json$/.test(name)).map(name => ({ name, report: JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8')) }));
   const earlierCalls = earlier.flatMap(r => r.report.calls || []);
-  assert.ok(earlierCalls.every(c => c.status === 'succeeded'), 'Resolve previous unknown provider outcomes before dispatching again');
+  const laterCalls = ['agent-comparison', 'agent-diagnosis', 'agent-contract'].flatMap(name => {
+    const directory = path.join(root, 'tmp', name);
+    return fs.existsSync(directory) ? fs.readdirSync(directory).filter(file => /^trial-.*\.json$/.test(file))
+      .flatMap(file => JSON.parse(fs.readFileSync(path.join(directory, file), 'utf8')).calls || []) : [];
+  });
+  assert.ok([...earlierCalls, ...laterCalls].every(c => c.status === 'succeeded'), 'Resolve previous unknown provider outcomes before dispatching again');
   const priorPilotTokens = earlierCalls.reduce((n, c) => n + (c.usage?.total_tokens ?? c.reservedTokens), 0);
+  const laterExperimentTokens = laterCalls.reduce((n, c) => n + (c.usage?.total_tokens ?? c.reservedTokens), 0);
   const report: Row = { version: 'anythingllm-business-pilot-v6', started: new Date().toISOString(), upstream: { version: '1.18.0', source: '3e4f9411b67f2dd7fa9fc6f2b95dfacbda0633ba' }, scope: 'Isolated service integration; not the default Mini Program runtime. Conversation history belongs to AnythingLLM; system user inputs feed real business services.', prompts, trials: 2, calls: [], tools: [], cases: [], fixtures: [], checks: {}, bindingBefore: binding(), tokenLimit: 200000, callLimit: continuation ? 12 : qualification ? 48 : 24, priorPilotTokens, priorPilotEvidence: earlier.filter(r => r.report.calls?.length).map(r => r.name), previousPlanObservedAndReservedTokens: 518485, previousPlanObservedAndReservedMicros: 869762, actualBilledYuan: null };
   report.mode = servicesOnly ? 'services-only-no-agent-inference' : 'upstream-agent';
+  report.laterExperimentTokens = laterExperimentTokens;
   report.version = 'anythingllm-business-pilot-v8';
   report.customerHistory = customerHistory;
   report.reusedContextEvidence = handoffOnly || receipts ? 'trial-2026-10-24T16-37-31-618Z.json; unchanged company query/withdrawal comprehension, original failures retained' : null;
@@ -208,10 +215,10 @@ async function live() {
       const upper = Buffer.byteLength(JSON.stringify(outbound), 'utf8') + 2048;
       const used = report.calls.reduce((s: number, c: Row) => s + (c.usage?.total_tokens ?? c.reservedTokens), 0);
       assert.ok(priorPilotTokens + used + upper <= report.tokenLimit, 'Cumulative pilot token budget reached');
-      assert.ok(report.previousPlanObservedAndReservedTokens + priorPilotTokens + used + upper <= 1000000, 'Existing cumulative token authorization reached');
+      assert.ok(report.previousPlanObservedAndReservedTokens + priorPilotTokens + laterExperimentTokens + used + upper <= 1000000, 'Existing cumulative token authorization reached');
       // Conservative bound: 5 micros per token exceeds the recorded highest
       // Qwen3.7 Flash tariff (4.8 CNY/million output tokens), without cache credit.
-      assert.ok(report.previousPlanObservedAndReservedMicros + (priorPilotTokens + used + upper) * 5 <= 5000000, 'Existing cumulative cost authorization reached');
+      assert.ok(report.previousPlanObservedAndReservedMicros + (priorPilotTokens + laterExperimentTokens + used + upper) * 5 <= 5000000, 'Existing cumulative cost authorization reached');
       const row: Row = { id: randomUUID(), case: active.case.id, started: new Date().toISOString(), reservedTokens: upper,
         originalMessages: body.messages, historyProjection: active.context ? 'customer-messages-v1' : null, request: outbound, status: 'dispatching' };
       report.calls.push(row); save(); inFlight = true;

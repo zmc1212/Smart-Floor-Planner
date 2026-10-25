@@ -5,7 +5,8 @@ export const roomRequirementKeys = ['room', 'space', 'usage', 'frequency', 'devi
 export const allRequirementKeys = [...requirementKeys, ...roomRequirementKeys] as const;
 export type RequirementKey = typeof allRequirementKeys[number];
 export type ConfirmedRequirements = Record<typeof requirementKeys[number], string> & Partial<Record<typeof roomRequirementKeys[number], string>>;
-export type DraftRequirements = Record<RequirementKey, { text: string; sourceMessageId: string | null; truncated: boolean }>;
+export type DraftRequirements = Record<RequirementKey, { text: string; sourceMessageId: string | null; truncated: boolean;
+  items?: Array<{ id: string; field: RequirementKey; text: string; sourceMessageId: string }> }>;
 const terms: Record<typeof requirementKeys[number], RegExp> = {
   housing: /房|户型|平米|平方米|㎡|面积|厨房|卫生间|阳台/,
   household: /居住|住[着了几人]|口人|个人住|人住|孩子|老人|父母|宠物|办公|夫妻|一家|独居/,

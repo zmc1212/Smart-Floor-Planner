@@ -1,6 +1,33 @@
 # 小K第二期：需求整理与人工交接
 
-## 当前用户方向：第三候选与共因诊断（2026-10-25）
+## 当前交付：共用原生业务契约与三候选重测（2026-10-25）
+
+**OS-CONTRACT-03：隔离对照完成／产品迁移Limited。** 用户要求参考成熟开源Agent改功能设计，再重测AnythingLLM、官方createAgent和PydanticAI。复用KnowledgeRetriever/Evidence、RequirementService、HandoffService及隔离合成库。用户范围仍为自然咨询、明确整理草稿、局部更正、撤回/重进、接待与取消；旧计划/R0–R4继续暂停，正式默认运行时未切换。下一项OS-CONTRACT-04提案/同意设计决策未开始，不自动推进生产迁移。
+
+**采纳的设计。** 区分客户对话和已存业务状态；在现有draft_fields JSON内存带出处的独立条目，add/replace/remove只针对一个条目。保留汇总text兼容现有小程序摘要与确认。宿主提供完整限定资料句子，沿真实服务绑定来源/版本/参与者/租户检查，并给原答复附真实读回回执。安全近期话语与持久客户需求分别处理撤回；不增加新表、公开REST提案入口、事实库、权限权威、前端设计或正式对话/任务迁移。
+
+| 维护中的参考来源 | 复用方式 |
+| --- | --- |
+| [LangChain middleware](https://docs.langchain.com/oss/javascript/langchain/middleware/built-in) | 官方createAgent的afterModel、匹配ToolMessage及jumpTo:model恢复已知拒绝，beforeModel结束已核验终态。 |
+| [PydanticAI output function](https://github.com/pydantic/pydantic-ai/blob/v2.61.0/docs/output.md) | 原生有类型终态和ModelRetry；未知结果终止，不自动重放。 |
+| [AnythingLLM固定源码](https://github.com/Mintplex-Labs/anything-llm/blob/3e4f9411b67f2dd7fa9fc6f2b95dfacbda0633ba/server/utils/agents/aibitat/index.js) | 现有custom skill对已知拒绝保留skipHandleExecution=false，核实成功/未知终态才结束，不改核心。 |
+| [Agno session state](https://docs.agno.com/state/agent/overview)／[memory](https://docs.agno.com/memory/overview) | 借鉴对话、记忆、应用状态分离；不安装第四候选或第二存储。 |
+
+**撤下的机制与持续修复计数。** 新增在线LLM裁判被否决，不是从框架采纳的基础能力。首批trial-2026-10-25T01-58-42-956Z.json消耗32533tokens，384输出截断，缺操作/状态/历史上下文导致误拒；补齐目录与上下文后trial-2026-10-25T02-03-43-940Z.json仍返回空函数参数，2936tokens。trial-2026-10-25T02-05-38-942Z.json四次保存输入对照中，指定工具与严格JSON均两次格式有效，不能证明指定工具存在确定性缺陷。结构化输出批trial-2026-10-25T02-06-39-756Z.json消耗101761tokens，仅八轮AnythingLLM和createAgent一条未完成输入，最终裁判2048输出仍截断。裁判还对同意与否自相矛盾、重复要求回答历史问题，并要求将“预算改成10万”等带出处原文改写后才能保存。这是共用试验评估器的失败，不是框架排名。两个机制修复已耗尽，不进行第三次语义提示词/正则修补；原调用、失败与费用全保留。
+
+**新机制与固定验收。** three-agent-native-contract-4把执行与评估分开：原八轮自然问题、原断言、每引擎两组均保留，不删除或改判历史失败。原生框架负责执行/恢复，宿主确定性检查与真实读回保留；语义授权/答复质量在测试侧评估，不伪造通过标志，verdict为null。此有界比较接缝限SFP_COMPARISON_ISOLATED隔离环境，不是生产同意策略；误保存/误联系仍按原断言失败，绝不等于获权，生产意图/租户/来源守卫不变。第二组真实制造版本冲突；仅有保存回执且恰好新增一个摘要，才记实际保存恢复。重进加载试验话语和真实业务状态，不宣称小程序迁移/原生验收。当前以标点形成来源条目，无标点多事实仍有限制；默认旧字段提案未悄悄迁移。
+
+**已完成范围与判断。** OS-CONTRACT-03完成隔离原型与固定原生对照，产品迁移仍Limited。每候选两组原八轮，共48条、63次配置模型调用、119829tokens，43条输出与真实服务核验结果绑定、5条输出失败。六次混合更正均恰好新增一份真实摘要，保留10万/瓷砖/90平/不做地暖；六次撤回均无旧时长输入/输出，需求保留。六次waiting、六次取消有真实状态，contactConsent=false且无手机号；30条回执均匹配实际实体。完整链三者仍各0/2：六次咨询擅自建草稿，随后六次明确整理均未新增写入（一次如实返回已有草稿、四次SDK重试失败、一次本地上限），createAgent第一组还恢复旧木地板却声称保留瓷砖。保存失败部分是误保存的连锁影响，不能说六次都证明“从未保存”。另有把量房追问答成施工、waiting措辞过度承诺、等价瓷砖条目重复；真实回执不验证相邻全部措辞。
+
+**证据与覆盖。** 原生trial-2026-10-25T02-15-21-855Z.json共4923绑定、drift[]、无新增未知供应商结果。review-v2比较接待业务状态/mode；初版派生评分误比随用户消息递增的会话version，原文件保留。semantic-review.json逐条审看48原文；参数/服务核验不冒充语义通过。实模“版本冲突保存恢复”未通过：两次仅在第三次action=none才触发冲突并耗尽容量，另一个SDK始终未过参数校验。trial-2026-10-25T02-31-55-523Z.json的10项条目服务另验真实SAVE过期写入前拒绝、重试仅一写、幂等重放；tmp/agent-comparison/trial-2026-10-25T02-30-08-569Z.json的10项旧兼容通过。这些是工程证据，不替代失败实模链。
+
+**检查、费用与清理。** 服务端9/9单元、小程序8/8控制器、20真实服务、6原生SDK恢复、1093源码类型0错误及10文件限定lint通过。末次服务首次启动有重复局部变量、未开始执行，保留console并修复后通过。本任务含被否方案共136调用/262470tokens，保守费用上界¥1.312350；含旧hold累计1110278tokens/¥3.828727，未超新30万/累计120万/¥5。实际账单未知、旧hold未动。旧pilot/对照/诊断守卫已补计全部新实验，不提高旧额度；只改账务不改导入助手；反向还原services回归块能精确重建原生冻结driver哈希，见impact-final.json。合成身份停用/递增、临时key撤销、本人技能停用、桥与验收锁释放。按批准记录恢复原18089→8089并验health/profile后，仅停本人SSH PID580912，无远端服务/端点/凭据变更。02-14-12零调用Embedding预检在绑定前失败，不算模型成绩。
+
+**下一功能设计OS-CONTRACT-04：提案，未实施。** 采用提案/确认流程：对话笔记沿现有消息保存，创建业务需求为独立可审核提案；已有相同草稿应返回真实状态；修改显示当前值/拟改值及出处，恢复历史值前需确认。接待请求、实际接通、预约、手机号共享维持独立状态/同意，服务仍为权威。参考[LangChain原生批准/恢复](https://github.com/langchain-ai/docs/blob/main/src/oss/langchain/human-in-the-loop.mdx)，不另建Agent/权限库。本段不新增画面，不批准未经复核的UI/生产迁移；不再跑宽付费矩阵或第三次裁判提示词修补。上述消费/编排缺陷无需改知识解析/检索。
+
+供应商参考：[Qwen官方Function Calling](https://help.aliyun.com/zh/model-studio/qwen-function-calling)不保证required一定调用工具，末批用auto；[结构化输出](https://docs.modelstudio.console.alibabacloud.com/en/model-studio/qwen-structured-output)不等于语义正确。四次对照不能证明指定函数有确定性缺陷，改JSON格式也未修复被否裁判的业务理解。
+
+## 历史诊断：第三候选与共因（2026-10-25）
 
 **当前交付 OS-DIAGNOSE-02：有界诊断已交付，原固定矩阵部分未验，产品迁移仍Limited。** 用户要求第三候选实测并判断功能/共因问题，取代历史“不新增第三个平台”的建议。选用[PydanticAI](https://github.com/pydantic/pydantic-ai/tree/v2.61.0)2.61.0官方Agent及output function；未切换正式运行时。旧Agent/企业知识计划、R0–R4和OS-MIGRATION-04继续暂停。
 

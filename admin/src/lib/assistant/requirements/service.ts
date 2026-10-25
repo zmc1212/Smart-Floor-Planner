@@ -6,6 +6,7 @@ import { idempotent, cancelRuns } from '../core/conversation';
 import { confirmedRequirements, evidencedRequirements, excerptRequirements } from './contract';
 import { conversationGuidance, guidanceProgress } from './guidance';
 import { requirementCheckpoint } from './checkpoint';
+import { applyRequirementChanges, type RequirementProposal } from './items';
 
 function dto(row: Row) {
   return { id: String(row.id), conversationId: String(row.conversation_id), version: Number(row.version),
@@ -48,7 +49,7 @@ export class RequirementService {
         text: ((m.content as { blocks?: { text?: string }[] }).blocks || []).map(b => b.text || '').join('\n') })) };
     });
   }
-  write(conversationId: string, requestKey: string, input: Record<string, unknown>, proposal?: { sourceSeq: string; fields: unknown },
+  write(conversationId: string, requestKey: string, input: Record<string, unknown>, proposal?: RequirementProposal,
     guard?: (repo: AssistantRepository, conversation: Row) => Promise<void>) {
     const confirm = input.action === 'confirm';
     if (proposal && (confirm || typeof proposal.sourceSeq !== 'string')) fail('invalid_requirement_evidence', 422);
@@ -80,7 +81,12 @@ export class RequirementService {
             ((m.content as { blocks?: { text?: string }[] }).blocks || []).map(b => b.text || '').join('\n') }));
           const guidance = conversationGuidance(c.entry_snapshot);
           let proposed;
-          if (proposal) {
+          if (proposal && 'changes' in proposal) {
+            const previous = await one(repo.tx, sql`select id,draft_fields from app.assistant_requirement_summaries
+              where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and status!='redacted' order by id desc limit 1`);
+            if ((previous ? String(previous.id) : null) !== proposal.baseSummaryId) fail('requirement_target_changed', 409);
+            proposed = applyRequirementChanges(inputs, previous?.draft_fields, proposal.changes);
+          } else if (proposal) {
             // Sparse edits preserve every untouched customer fact. All retained
             // excerpts are revalidated against this authorized message set too.
             evidencedRequirements(inputs, proposal.fields);

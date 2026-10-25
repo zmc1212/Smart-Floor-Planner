@@ -50,7 +50,7 @@ export class ComparisonServices {
     await this.fresh(state);
     return { ...state, customerMessages: customer.messages, requirements, handoff, knowledge };
   }
-  private async guard(context: ComparisonContext, repo: AssistantRepository, c: Row) {
+  async guard(context: ComparisonContext, repo: AssistantRepository, c: Row) {
     const settings = await repo.settings(true);
     const latest = await one(repo.tx, sql`select coalesce(max(seq),0)::text seq from app.assistant_messages where enterprise_id=${this.actor.enterpriseId} and conversation_id=${this.conversationId} and author_kind='user'`);
     if (Number(settings!.knowledge_epoch) !== context.epoch || Number(c.version) !== context.version
