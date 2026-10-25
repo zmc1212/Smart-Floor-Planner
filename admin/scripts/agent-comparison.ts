@@ -27,7 +27,7 @@ const pilot = path.join(root, 'tmp/anythingllm-pilot'), source = path.join(root,
 const protocol = JSON.parse(fs.readFileSync(path.join(source, 'protocol.json'), 'utf8'));
 const scenarios = JSON.parse(fs.readFileSync(path.join(source, 'scenarios.json'), 'utf8'));
 const mode = process.argv[2], origin = 'http://127.0.0.1:18093';
-const syntheticKnowledge = '【测试专用企业服务须知，不代表真实公司承诺】首次咨询需要了解城市、小区、建筑面积、预算和预计入住时间。量房安排须由工作人员确认，标准现场勘察预留90分钟，具体以预约回执为准。先核对现状和业主需求，再出设计方案与分项报价。不得把客户自述面积称为正式量房面积；不得承诺免费量房、折扣、开工日期或确定总价。宠物家庭的地面选材需要核对耐磨、防滑、清洁维护和地暖适配；没有产品参数时不能替厂家保证。';
+export const syntheticKnowledge = '【测试专用企业服务须知，不代表真实公司承诺】首次咨询需要了解城市、小区、建筑面积、预算和预计入住时间。量房安排须由工作人员确认，标准现场勘察预留90分钟，具体以预约回执为准。先核对现状和业主需求，再出设计方案与分项报价。不得把客户自述面积称为正式量房面积；不得承诺免费量房、折扣、开工日期或确定总价。宠物家庭的地面选材需要核对耐磨、防滑、清洁维护和地暖适配；没有产品参数时不能替厂家保证。';
 const hash = (v: string | Buffer) => createHash('sha256').update(v).digest('hex');
 const canonicalTools = protocol.tools.map((d: Row) => ({ type: 'function', function: { name: d.name, description: d.description, parameters: d.parameters } }));
 function binding() {
@@ -39,7 +39,7 @@ function binding() {
   for (const d of protocol.tools) for (const f of ['plugin.json', 'handler.js']) files.push(`tmp/anythingllm-pilot/storage/plugins/agent-skills/${d.name}/${f}`);
   return Object.fromEntries([...new Set(files)].sort().filter(f => fs.existsSync(path.join(root, f))).map(f => [f, hash(fs.readFileSync(path.join(root, f)))]));
 }
-async function append(f: Row, text: string) {
+export async function append(f: Row, text: string) {
   const key = randomUUID();
   await withTenantTransaction(f.enterpriseId, async tx => {
     const repo = new AssistantRepository(tx, f.actor); await repo.settings(true); await repo.conversation(f.conversationId);
@@ -47,10 +47,10 @@ async function append(f: Row, text: string) {
   });
   return key;
 }
-async function readback(f: Row) {
+export async function readback(f: Row) {
   return { requirements: await new RequirementService(f.actor).read(f.conversationId), handoff: await new HandoffService(f.actor).customerRead(f.conversationId) };
 }
-async function fixture(batch: string, index: number, vector: number[]) {
+export async function fixture(batch: string, index: number, vector: number[]) {
   const code = 'synthetic-agent-comparison-' + randomUUID();
   const f: Row = await withPlatformTransaction(async tx => {
     const enterpriseId = String((await one(tx, sql`insert into app.enterprises(name,code,status) values('测试专用 · Agent对照企业',${code},'active') returning id`))!.id);
@@ -72,7 +72,7 @@ async function fixture(batch: string, index: number, vector: number[]) {
   });
   return f;
 }
-async function retire(f: Row) {
+export async function retire(f: Row) {
   return new KnowledgeService({ enterpriseId: f.enterpriseId, adminId: f.adminId }).execute('retire', { documentId: f.documentId, expectedVersion: 1 }, randomUUID());
 }
 
@@ -83,7 +83,9 @@ async function main() {
   const batch = new Date().toISOString().replace(/[:.]/g, '-'), output = path.join(directory, `trial-${batch}.json`);
   const previous = (dir: string) => fs.readdirSync(dir).filter(f => /^trial-.*\.json$/.test(f)).flatMap(f => JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')).calls || []);
   const pilotCalls = previous(pilot), comparisonCalls = previous(directory);
-  assert.ok([...pilotCalls, ...comparisonCalls].every(c => c.status === 'succeeded'), 'Unknown attempts must be resolved before additional paid calls');
+  const diagnosisDirectory = path.join(root, 'tmp/agent-diagnosis');
+  const diagnosisCalls = fs.existsSync(diagnosisDirectory) ? previous(diagnosisDirectory) : [];
+  assert.ok([...pilotCalls, ...comparisonCalls, ...diagnosisCalls].every(c => c.status === 'succeeded'), 'Unknown attempts must be resolved before additional paid calls');
   const tokens = (calls: Row[]) => calls.reduce((n, c) => n + (c.usage?.total_tokens ?? c.reservedTokens), 0);
   const report: Row = { version: 'official-createAgent-comparison-2', mode, started: new Date().toISOString(),
     contextProjection: 'one-current-user-message; authorized customer history remains numbered data in system context',
@@ -91,7 +93,7 @@ async function main() {
     scope: scenarios, protocolHash: hash(JSON.stringify(protocol)), knowledgeHash: hash(syntheticKnowledge),
     authorization: { additionalTokens: 140000, cumulativeTokens: 1000000, cumulativeMicros: 5000000,
       userApproval: '同意本次上限，完成固定对照', previousPlanTokens: 518485, previousPlanMicros: 869762,
-      previousPilotTokens: tokens(pilotCalls), previousComparisonTokens: tokens(comparisonCalls) },
+      previousPilotTokens: tokens(pilotCalls), previousComparisonTokens: tokens(comparisonCalls), previousDiagnosisTokens: tokens(diagnosisCalls) },
     upstream: { anythingllm: '1.18.0 / 3e4f9411b67f2dd7fa9fc6f2b95dfacbda0633ba', langchain: '1.5.19', openaiAdapter: '1.7.0' },
     fixtures: [], calls: [], tools: [], cases: [], checks: {}, transportRequests: [], actualBilledYuan: null };
   const save = () => fs.writeFileSync(output, JSON.stringify(report, (_, v) => typeof v === 'bigint' ? String(v) : v, 2));
@@ -156,9 +158,9 @@ async function main() {
       assert.equal(mode, 'live');
       assert.ok(report.calls.length < scenarios.callLimit && report.calls.filter((c: Row) => c.case === active!.row.id).length < scenarios.perTurnCallLimit, 'Fixed call limit reached');
       const reserve = Buffer.byteLength(JSON.stringify(request), 'utf8') + 2048, used = tokens(report.calls), prior = report.authorization;
-      assert.ok(prior.previousComparisonTokens + used + reserve <= 140000, 'Additional comparison token cap');
-      assert.ok(prior.previousPlanTokens + prior.previousPilotTokens + prior.previousComparisonTokens + used + reserve <= 1000000, 'Cumulative token cap');
-      assert.ok(prior.previousPlanMicros + (prior.previousPilotTokens + prior.previousComparisonTokens + used + reserve) * 5 <= 5000000, 'Cumulative cost cap');
+      assert.ok(prior.previousComparisonTokens + prior.previousDiagnosisTokens + used + reserve <= 140000, 'Additional comparison token cap');
+      assert.ok(prior.previousPlanTokens + prior.previousPilotTokens + prior.previousComparisonTokens + prior.previousDiagnosisTokens + used + reserve <= 1000000, 'Cumulative token cap');
+      assert.ok(prior.previousPlanMicros + (prior.previousPilotTokens + prior.previousComparisonTokens + prior.previousDiagnosisTokens + used + reserve) * 5 <= 5000000, 'Cumulative cost cap');
       const attempt: Row = { id: randomUUID(), case: active.row.id, engine: active.f.engine, request, originalRequest: body,
         reservedTokens: reserve, status: 'dispatching', started: new Date().toISOString() };
       report.calls.push(attempt); inFlight = true; save();
@@ -297,4 +299,6 @@ async function main() {
       error: report.error?.split('\n').slice(0, 2).join(' '), cleaned: report.fixtures.every((f: Row) => f.disabled) }));
   }
 }
-void main().catch(e => { console.error(String(e.message)); process.exitCode = 1; }).finally(() => closePostgresPool());
+if (process.argv[1] && path.resolve(process.argv[1]) === path.join(root, 'admin/scripts/agent-comparison.ts')) {
+  void main().catch(e => { console.error(String(e.message)); process.exitCode = 1; }).finally(() => closePostgresPool());
+}

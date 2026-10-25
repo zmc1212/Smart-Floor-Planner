@@ -1,0 +1,22 @@
+{
+  "version": "third-candidate-diagnosis-1",
+  "candidate": "PydanticAI 2.61.0",
+  "model": "qwen3.7-flash",
+  "inheritedComparisonTokenCap": 140000,
+  "previousComparisonTokens": 93363,
+  "newTokenLimit": 46637,
+  "providerCallLimit": 60,
+  "perTurnCallLimit": 4,
+  "baseline": { "trials": 2, "turns": ["inquiry", "followup", "save", "mixed", "withdrawal", "reversal", "contact", "cancel"] },
+  "splitToolsControl": {
+    "trials": 2,
+    "turns": ["inquiry", "followup", "save", "mixed"],
+    "factor": "Replace the single action-enum business tool with four named terminal tools; retain every other argument, original system instructions, provider configuration, input and real services."
+  },
+  "deterministicControls": [
+    "Replay a valid composite room excerpt then replace room: heating negation disappears.",
+    "Store the same heating negation independently under devices then replace room: heating negation survives.",
+    "Show the exact negative customer quote authenticates provenance but does not establish affirmative intent in the isolated seam."
+  ],
+  "stopping": "No prompt-specific routing, semantic repair or resampling in this batch. Preserve every first answer and error. Stop on unknown provider outcome, drift or budget limit; unexecuted scope stays unverified."
+}

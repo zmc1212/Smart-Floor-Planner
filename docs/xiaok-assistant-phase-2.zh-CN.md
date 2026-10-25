@@ -1,6 +1,49 @@
 # 小K第二期：需求整理与人工交接
 
-## 当前用户方向：AnythingLLM 与官方 createAgent 对照（2026-10-25）
+## 当前用户方向：第三候选与共因诊断（2026-10-25）
+
+**当前交付 OS-DIAGNOSE-02：有界诊断已交付，原固定矩阵部分未验，产品迁移仍Limited。** 用户要求第三候选实测并判断功能/共因问题，取代历史“不新增第三个平台”的建议。选用[PydanticAI](https://github.com/pydantic/pydantic-ai/tree/v2.61.0)2.61.0官方Agent及output function；未切换正式运行时。旧Agent/企业知识计划、R0–R4和OS-MIGRATION-04继续暂停。
+
+**选型与归因结论。** 现有证据不支持为提升业务智能迁到PydanticAI，也不能把三套试接失败概括为开源项目本身无能力。自然咨询、局部更正、否定接待和真实回执是合理的用户目标；已证实的问题在共用需求存储、授权/回执边界及试验接缝，模型仍有错误选择和虚报。全部试接使用同一Qwen3.7-Flash，未做跨模型对照，因此不能分离模型本身的责任；小样本也不是原生产品排名。
+
+| 已验证共因 | 证据与归属 |
+| --- | --- |
+| 复合字段替换会删掉其他事实 | 零模型真实服务对比：room存“木地板，地暖不做”再替换为瓷砖，地暖必丢；同一地暖原话独立存devices则保留。PydanticAI原协议两次真实更正均复现，拆工具的一次真实更正也复现。归需求更新契约，不应靠换SDK或重建知识入库解决。 |
+| quote不是语义授权 | 合成试验接缝允许逐字否定原话通过出处检查并真实写入waiting；这证明来源检查不等于同意。此接缝故意测模型选择，生产意图守卫没有放宽，不代表生产已允许否定请求。 |
+| 回执直出只覆盖成功调用路径 | 11条交付回执均与最终回复及真实实体一致，但四条纯文本仍虚称存在草稿、已取消或已更新。原始供应商message无tool_calls，排除框架漏执行已有工具调用；正式完成答复还需要覆盖纯文本路径。 |
+| 已知参数错误被当作最终回复 | 三次咨询误选保存，片段删掉前置量房限定，被invalid_answer_evidence正确拒绝；适配器却统一输出“无法核实”并终止，未提供参数修复机会。本轮沿旧契约关闭验证重试，不能算PydanticAI原生纠错能力的失败。保留原文守卫，后续需区分已知拒绝与真正结果未知。 |
+| 撤回过滤正确不等于接续完整 | 两次撤回后的供应商输入都无失效90分钟原文，但答复未完整回答当前政策与地暖问题；context只投影客户原话/已存需求/当前资料，未保留可安全接续的助手话语/来源状态。归Agent消费/投影，知识原文与检索正确。 |
+
+**固定范围与结果。** scripts/agent-comparison/diagnosis.json在付费前固定原协议2×8轮及拆工具2×4轮；用户问题与旧scenarios.json相同，预期不进入模型。只将action统一工具拆成四个命名工具，保留其余参数、系统指令、真实服务与模型设置；Qwen3.7-Flash、temperature0.2、关闭思考、2048输出、auto工具选择、无传输重试/付费回退。复用KnowledgeRetriever/Evidence、RequirementService、HandoffService及原合成企业工厂；Python官方Agent拥有循环，业务output function直接返回服务回执。SDK/依赖完整锁定，使用隔离Python3.12.14，不影响Admin依赖。
+
+| 本轮首稿范围 | 原协议 | 拆工具对照 |
+| --- | --- | --- |
+| 已完成自然答复 / 调用 / tokens | 13 / 13 / 18694 | 8 / 8 / 21549 |
+| 完整流程 | 第一组8轮失败；第二组仅5轮，后三轮未验，不能记0/2完整流程 | 两组4轮均失败，0/2 |
+| 更正时保留地暖否定 | 0/2；预算/瓷砖实际更新但地暖丢失 | 一组真实更新后丢失；另一组没更新却声称更新，不能算保留成功 |
+| 真实回执一致 | 8/8 | 3/3 |
+| 纯文本错误完成回执 | 1条：无草稿却列为待审核草稿 | 3条：两次虚称取消、一次虚称已更新 |
+
+原协议第一组真实联系/取消与不分享手机号通过，只是该子项1/1；不能填补第二组未执行项。拆工具没有显示改善，反而加大schema与token成本；本次不再改提示、路由句式或追加采样。
+
+**证据与检查。** tmp/agent-diagnosis保留所有原始请求、供应商message、SDK轨迹、逐次工具/读回、fixture及绑定，review只派生结果，不改写trial。审看[官方output/ModelRetry机制](https://github.com/pydantic/pydantic-ai/blob/v2.61.0/docs/output.md)、[工具测试](https://github.com/pydantic/pydantic-ai/blob/v2.61.0/tests/test_tools.py)、[Agent重试隔离测试](https://github.com/pydantic/pydantic-ai/blob/v2.61.0/tests/test_agent.py)及[多output执行问题](https://github.com/pydantic/pydantic-ai/issues/3485)；本轮parallel关闭、每答复单调用，没有该上游缺陷的触发证据，不能用它解释本次失败。
+
+| 证据 | 结果 |
+| --- | --- |
+| trial-2026-10-25T01-23-55-856Z.json | 初次零模型驱动被55秒外层超时终止，未完成、不算通过；0供应商调用。后续在验收锁内回收这份报告所列合成身份，原报告保留。 |
+| trial-2026-10-25T01-25-49-973Z.json | 跨租户拒绝及三项共因真实服务复现通过，3606绑定无漂移；全部合成身份停用。 |
+| trial-2026-10-25T01-27-40-492Z.json | 两种工具schema的官方SDK本地模拟传输/回执直出均通过，0付费调用，3606绑定无漂移。 |
+| trial-2026-10-25T01-28-29-319Z.json | 唯一固定付费批：21首稿/21调用、40243tokens、provider unknown0、3606绑定drift[]。第二组reversal请求在本地预留守卫409被拒，未调供应商；该轮及其contact/cancel保持未验。 |
+| review-2026-10-25T01-28-29-319Z.json | 独立核对11/11回执、四条原始纯文本虚报及真实读回、撤回输入、预算；node scripts/agent-comparison/review-diagnosis.mjs可重算。 |
+| tmp/agent-comparison/trial-2026-10-25T01-34-41-644Z.json | 当前组合的原10项真实服务兼容回归通过，0聊天模型调用、drift[]，合成身份停用；旧入口已把40243tokens诊断用量计入共享额度。 |
+
+最终限定TypeScript覆盖1539源文件、诊断0；新增/调整TS限定ESLint通过，10项当前服务兼容回归通过。付费批后仅修改旧comparison入口的跨脚本预算聚合及新增离线review，不改变任何模型输入、协议、服务或客户状态逻辑；原批证据沿其固定版本保留。旧303项对照中另有既存的业务repository/技能启停差异，旧批只作历史、不拼接通过率；本轮冻结的是当前组合版本。文档只更新本当前记录与四份模块清单，不纳入同文件已有的其他领域脏改动。
+
+**核账、清理与复现。** 新增21调用/40243tokens，保守费用上界¥0.201215，实付null。两次旧对照93363＋本轮40243＝133606/140000，余6394不足下一次完整预留，按原规则停止而未提额。含旧预留累计847808tokens/¥2.516377上界，旧unknown/hold保持。全部本轮及中断批合成身份已停用，桥已关闭，未创建供应商/AnythingLLM新密钥，无生产写入。安装Python3.11+隔离venv及scripts/agent-comparison/pydanticai-requirements.txt；默认tmp/agent-diagnosis-venv/Scripts/python.exe，可由SFP_PYDANTIC_PYTHON指定。node admin/scripts/agent-diagnosis-run.mjs services/transport为零聊天模型检查，live消耗剩余额度，不能无变化重跑；沿原共享验收锁、空闲队列和唯一localhost:55432/xiaok_embedding_eval限制。
+
+**下一项 OS-CONTRACT-03（仅建议，未实施）。** 优先复用现有需求模型实现独立需求条目/局部更新、主机绑定已知身份与版本参数、区分已知拒绝/未知结果及可修复反馈、所有完成声明以真实回执为准，并保留撤回后的安全对话指代。稳定后再对照模型能力，暂不继续换第四个框架。知识侧无须重建解析/索引/检索；没有新增产品路由/API/model/权限/UI，无小程序迁移或原生验收声明，不恢复旧队列/生产部署。
+
+## 历史对照：AnythingLLM 与官方 createAgent（2026-10-25）
 
 **当前交付 OS-COMPARE-01：有界对照已Implemented，产品迁移仍Limited，未通过正式接入。** 用户明确保留AnythingLLM，只增加LangChain官方createAgent，使用同一模型、企业资料和业务工具，以自然语言测试追问、更正、反悔和混合请求。旧Agent/企业知识计划及R0–R4继续暂停，OS-MIGRATION-04宿主集成尚未开始；下方历史“当前/下一项”不派发任务。
 
