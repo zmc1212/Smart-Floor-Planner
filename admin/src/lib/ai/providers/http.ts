@@ -1,3 +1,4 @@
+import { providerHttpDiagnostic } from './http-diagnostics';
 import { AiProviderError } from '@/lib/ai/provider-types';
 
 export function providerUrl(baseUrl: string, path: string) {
@@ -8,22 +9,28 @@ export async function providerFetch(
   url: string,
   init: RequestInit,
   timeoutMs: number,
-  label: string
+  label: string,
+  options: { redactErrorBody?: boolean } = {}
 ) {
   try {
     const response = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs), cache: 'no-store' });
     if (!response.ok) {
-      const message = (await response.text()).slice(0, 2000);
+      const body = await response.text();
+      const message = body.slice(0, 2000);
+      const diagnostic = providerHttpDiagnostic(response, body);
       const disposition = (
         response.status >= 400 && response.status < 500 && response.status !== 408
       ) || response.status === 503
         ? 'safe_fallback'
         : 'unknown';
       throw new AiProviderError(
-        `${label} request failed (${response.status}): ${message}`,
+        options.redactErrorBody
+          ? `${label} request failed (${response.status}): upstream=${diagnostic.providerCode ?? 'unspecified'}; reason=${diagnostic.reason}; parameter=${diagnostic.parameter ?? 'unspecified'}`
+          : `${label} request failed (${response.status}): ${message}`,
         `HTTP_${response.status}`,
         disposition,
-        response.status
+        response.status,
+        diagnostic
       );
     }
     return response;

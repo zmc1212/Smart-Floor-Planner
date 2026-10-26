@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { AiProviderError, type AiProviderRuntimeConfig } from '../provider-types';
 import { agentModelLimits, type ModelMessage, type ModelTurnInput, type ModelTurnOutput } from '@/lib/assistant/contracts/model';
 import { consultationProfile } from '@/lib/assistant/contracts/consultation';
@@ -68,6 +69,24 @@ export function agentChatBody(input: ModelTurnInput, baseUrl = 'https://api.sili
         : 'auto', parallel_tool_calls: false } : {}) };
 }
 
+/** Bind the outgoing contract without retaining user text, images, arguments
+ * or headers. A request description is never proof of provider acceptance. */
+export function agentChatRequestDiagnostic(body: ReturnType<typeof agentChatBody>) {
+  const encoded = JSON.stringify(body);
+  return {
+    protocol: 'agent-request-diagnostic-v1', payloadHash: createHash('sha256').update(encoded).digest('hex'),
+    payloadBytes: Buffer.byteLength(encoded), fields: Object.keys(body).sort(),
+    maxTokens: body.max_tokens, thinking: 'enable_thinking' in body ? body.enable_thinking : 'thinking' in body ? body.thinking : null,
+    messages: body.messages.map(message => ({ role: message.role,
+      contentType: message.content === null ? 'null' : Array.isArray(message.content) ? 'array' : 'string',
+      parts: Array.isArray(message.content) ? message.content.map(part => part.type) : [],
+      toolCallCount: 'tool_calls' in message ? message.tool_calls?.length || 0 : 0 })),
+    tools: body.tools?.map(tool => tool.function.name) || [],
+    toolSchemaHash: createHash('sha256').update(JSON.stringify(body.tools || [])).digest('hex'),
+    toolChoice: body.tool_choice === undefined ? null : typeof body.tool_choice === 'string' ? body.tool_choice : 'named_function',
+  };
+}
+
 export function parseAgentChat(payload: Record<string, unknown>, requestId: string | null = null): ModelTurnOutput {
   const choices = Array.isArray(payload.choices) ? payload.choices : [];
   if (choices.length !== 1) return invalid();
@@ -99,6 +118,6 @@ export async function executeAgentChat(runtime: AiProviderRuntimeConfig, input: 
   const body = agentChatBody(input, runtime.baseUrl);
   const response = await providerFetch(providerUrl(runtime.baseUrl, '/v1/chat/completions'), {
     method: 'POST', headers: bearerHeaders(runtime.apiKey), body: JSON.stringify(body),
-  }, Math.min(runtime.timeoutMs, 90000), 'Assistant model');
+  }, Math.min(runtime.timeoutMs, 90000), 'Assistant model', { redactErrorBody: true });
   return parseAgentChat(await parseJson(response, 'Assistant model'), response.headers.get('x-siliconcloud-trace-id') || response.headers.get('x-request-id'));
 }

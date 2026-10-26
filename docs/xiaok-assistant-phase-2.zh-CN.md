@@ -8,7 +8,9 @@
 
 实模阻塞：最初受限执行器不能打开历史`.env.qwen37`夹具，已停止该读取，未换执行器重试。驱动改用产品既有配置服务，不读凭据文件、不改平台配置。当前配置为`siliconflow/deepseek-ai/DeepSeek-R1-0528-Qwen3-8B`。原批`tmp/agent-contract/trial-composable-d1-2026-10-26T17-01-30-833Z.json`记录run1174/1175、provider attempt1382/1383，两次均HTTP400、`failed`、`accepted=false`，无答复或观测用量。Worker与原批继续保留indeterminate/unknown账务，480000保守预留token使原累计保守上界为¥8.771297，实付未知。驱动在停止前又派发了一个不同回合，现已补上未决回合立即停批的守卫；不能重放原run或静默清零预留。下批模型前须解决供应商协议/配置及账务状态，不宣称语义成功或零费用。
 
-原生阻塞：`tmp/agent-contract/composable-native-d1-20261026-01/report.json`绑定了准备好的确定性SDK驱动，但既有编译助手取`http://127.0.0.1:9431/json/list`失败，在任何输入/截图前停止。只读窗口检查确认一个Stable窗口位于副屏，未关闭、重启或抢焦点。`admin/scripts/composable-review-native.ts`保留原已验证的精确项目编译/SDK/真实HTTP/逐项选择/恢复流程供接续。新编译、原生混合回合及原生实模全链仍未验；C01 P4B与C02 slide06、WXML/Less/素材和还原台账状态均保持。
+供应商诊断合同（内部Implemented，D1仍Limited）：既有attempt metadata新增`agent-request-diagnostic-v1`，仅保存载荷字节数/hash、字段名、消息角色/内容类型、工具名/schema hash、输出上限和思考模式；`provider-http-diagnostic-v1`仅保存白名单HTTP状态/供应商代码/类型/参数位置、公开trace、有限分类及响应字节数/hash。不保存原始响应正文、提示词、图片、凭据或工具参数值；Agent异常文字同样省略上游原文，未知分类保留unspecified。客户端通用失败文字、provider disposition、accepted状态、不重试/不fallback及账务/审批守卫保持。隔离本地假响应脚本`admin/scripts/provider-http-diagnostics-acceptance.ts`写入明确标记为synthetic的attempt1384（不是真实供应商响应），核验单次审计/无fallback、禁用夹具，并逐字节保留历史行。证据`tmp/d1-contract-recovery-20261026/service-2026-10-26T17-46-05-301Z.json`（真实调用0、drift[]）；相关单元12项与限定lint通过。`accounting.json`核实run1174/1175无usage/review、reservation1170/1171为reconciling，保守¥8.771297及两笔未知保持，派发守卫继续阻止新请求。原响应在补丁前已被丢弃，不能重建，更不能用假响应推断原根因。参考[SiliconFlow响应/trace/错误合同](https://docs.siliconflow.cn/docs/api/chat-completions-post)。无架构或知识域变更。
+
+原生阻塞：原确定性SDK报告仍在输入/截图前失败。本轮只读诊断区分CDP9431 ECONNREFUSED和automator9420 HTTP426；后者只能证明WebSocket监听，不能证明项目路径或页面存活。现有受限窗口检查找到0个匹配的可验证项目窗口，当前副屏位置及项目上下文无法确认。CLI --help初始化尝试unlink用户目录被拒后已停止，不能换路径重试。未关闭/重启/抢焦点、桌面输入、改安全设置或截图。原精确项目驱动保留，新编译、原生混合/实模旅程仍未验证；本补丁不改C01/C02结构、样式、素材、导航或还原状态。
 
 复用依据：[LangGraph官方工具结果回合](https://docs.langchain.com/oss/javascript/langgraph/quickstart)、[LangChain.js工具上限路由问题10090](https://github.com/langchain-ai/langchainjs/issues/10090)。保持当前显式持久路由、授权、账务及只读/审批边界；该问题只提示终结路由风险，不证明本安装受到同一库缺陷影响。唯一实施所有权和剩余检查只放在开发计划第2节。
 

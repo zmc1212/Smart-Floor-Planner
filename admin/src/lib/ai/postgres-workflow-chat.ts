@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { executeAgentChat, agentChatBody } from './providers/agent-chat';
+import { executeAgentChat, agentChatBody, agentChatRequestDiagnostic } from './providers/agent-chat';
 import { consultationProfile } from '@/lib/assistant/contracts/consultation';
 import type { ModelTurnInput } from '@/lib/assistant/contracts/model';
 import type { AgentConfig } from '@/lib/assistant/agent/config';
@@ -74,7 +74,11 @@ export async function executePostgresText(input: {
         || (runtime.adapterConfig?.providerPreset === 'deepseek' && new URL(runtime.baseUrl).origin === 'https://api.deepseek.com') || consultationRuntime))) {
       throw new Error('Assistant thinking override requires an approved SiliconFlow or official DeepSeek runtime');
     }
-    if (consultation) agentChatBody({ ...input.agent!.input, model: remoteModel, enableThinking }, runtime.baseUrl);
+    const agentBody = input.agent ? agentChatBody({ ...input.agent.input, model: remoteModel, enableThinking }, runtime.baseUrl) : null;
+    const attemptMetadata = input.owner.kind === 'assistant_run' ? { ...input.metadata,
+      assistantText: { enableThinking: enableThinking ?? null, maxTokens: input.maxTokens },
+      ...(agentBody ? { assistantRequest: agentChatRequestDiagnostic(agentBody) } : {}),
+    } : input.metadata;
     const startedAt = Date.now();
     const attempt = await withTenantTransaction(input.enterpriseId, (transaction) =>
       new AiCreationRepository(transaction).createProviderAttempt({
@@ -92,7 +96,7 @@ export async function executePostgresText(input: {
         accepted: false,
         estimatedCost: resolveProviderCostEstimate(runtime, input.logicalModelKey, remoteModel),
         requestFingerprint: requestFingerprint(input.agent?.input || input.messages),
-        metadata: input.owner.kind==='assistant_run'?{...input.metadata,assistantText:{enableThinking:enableThinking ?? null,maxTokens:input.maxTokens}}:input.metadata,
+        metadata: attemptMetadata,
       })
     );
 
@@ -133,6 +137,8 @@ export async function executePostgresText(input: {
           errorMessage: input.owner.kind === 'generation'
             ? (error instanceof Error ? error.message : String(error))
             : 'Assistant provider invocation failed',
+          ...(input.owner.kind === 'assistant_run' && error instanceof AiProviderError && error.diagnostic
+            ? { metadata: { ...attemptMetadata, providerFailure: error.diagnostic } } : {}),
           durationMs: Date.now() - startedAt,
         })
       );

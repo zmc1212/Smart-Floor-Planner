@@ -109,12 +109,26 @@ export interface AiProviderAdapter {
   getBalance?(runtime: AiProviderRuntimeConfig): Promise<AiProviderBalanceResult>;
 }
 
+/** Safe audit fields only; never provider prose or private request content. */
+export type ProviderHttpDiagnostic = {
+  protocol: 'provider-http-diagnostic-v1';
+  httpStatus: number;
+  providerCode: string | number | null;
+  errorType: string | null;
+  parameter: string | null;
+  reason: 'unsupported_tools' | 'invalid_schema' | 'invalid_messages' | 'context_limit' | 'unspecified';
+  requestId: string | null;
+  responseBytes: number;
+  responseHash: string;
+};
+
 export class AiProviderError extends Error {
   constructor(
     message: string,
     public readonly code: string,
     public readonly disposition: 'safe_fallback' | 'definitive_failure' | 'unknown',
-    public readonly status?: number
+    public readonly status?: number,
+    public readonly diagnostic?: ProviderHttpDiagnostic
   ) {
     super(message);
   }
