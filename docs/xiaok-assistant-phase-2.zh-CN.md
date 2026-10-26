@@ -1,5 +1,19 @@
 # 小K第二期：需求整理与人工交接
 
+## D1可组合咨询：有界实现，整体Limited
+
+新增仅开发可启用的`composable-business-review-v2`，复用原Agent图、类型审批工具和C02逐项采用服务。保留的v1候选路径不变；v2不再把整句话划为预算追问/照旧，也不以提案回执终止答题。工具结果回到模型，最终持久正文同时附上依据持久效果及当前授权独立重建的服务回执；原保存/正式确认守卫仍校验模型正文。普通C01创建仅由`ASSISTANT_REVIEW_DEVELOPMENT_ENTERPRISE_IDS`启用；清空后新run回滚，生产始终禁止启用，在途策略继续绑定。无框架迁移、第二事实库、客户端布局或引用管线变更。
+
+原OS11“已记录/已确认”首稿失败保留两轮修复计数。吞题的具体共同原因是整句分流加终结式提案回复；本次机制允许同轮行动和问题共存，不再增加一句措辞例外。`admin/scripts/composable-review-acceptance.ts`中的确定性实际Worker旅程核验答题与预算提案共存、瓷砖/地暖原值、旧提案拒绝、单独草稿同意、写后丢响应/原键恢复及持久重进。聚焦图/需求单元、原客户端和选择边界各自作为工程证据；注入答复不计为配置模型验收。
+
+实模阻塞：最初受限执行器不能打开历史`.env.qwen37`夹具，已停止该读取，未换执行器重试。驱动改用产品既有配置服务，不读凭据文件、不改平台配置。当前配置为`siliconflow/deepseek-ai/DeepSeek-R1-0528-Qwen3-8B`。原批`tmp/agent-contract/trial-composable-d1-2026-10-26T17-01-30-833Z.json`记录run1174/1175、provider attempt1382/1383，两次均HTTP400、`failed`、`accepted=false`，无答复或观测用量。Worker与原批继续保留indeterminate/unknown账务，480000保守预留token使原累计保守上界为¥8.771297，实付未知。驱动在停止前又派发了一个不同回合，现已补上未决回合立即停批的守卫；不能重放原run或静默清零预留。下批模型前须解决供应商协议/配置及账务状态，不宣称语义成功或零费用。
+
+原生阻塞：`tmp/agent-contract/composable-native-d1-20261026-01/report.json`绑定了准备好的确定性SDK驱动，但既有编译助手取`http://127.0.0.1:9431/json/list`失败，在任何输入/截图前停止。只读窗口检查确认一个Stable窗口位于副屏，未关闭、重启或抢焦点。`admin/scripts/composable-review-native.ts`保留原已验证的精确项目编译/SDK/真实HTTP/逐项选择/恢复流程供接续。新编译、原生混合回合及原生实模全链仍未验；C01 P4B与C02 slide06、WXML/Less/素材和还原台账状态均保持。
+
+复用依据：[LangGraph官方工具结果回合](https://docs.langchain.com/oss/javascript/langgraph/quickstart)、[LangChain.js工具上限路由问题10090](https://github.com/langchain-ai/langchainjs/issues/10090)。保持当前显式持久路由、授权、账务及只读/审批边界；该问题只提示终结路由风险，不证明本安装受到同一库缺陷影响。唯一实施所有权和剩余检查只放在开发计划第2节。
+
+维护中实现核对：[Dify FunctionCallAgentRunner](https://github.com/langgenius/dify/blob/main/api/core/agent/fc_agent_runner.py)以原call ID追加ToolPromptMessage后继续模型回合；[OpenHands SDK Agent](https://github.com/OpenHands/software-agent-sdk/blob/main/openhands-sdk/openhands/sdk/agent/agent.py)在重新采样前先消费尚未匹配结果的原pending action。采用这些契约，不引入其整套编排。原不透明proposal ID/digest、同键批准参数及持久工具marker已冻结批准动作，恢复时不重新生成参数。[LangGraph interrupt/resume](https://docs.langchain.com/oss/javascript/langgraph/interrupts)要求同thread且会从节点开头重跑，检查点本身不能提供业务exactly-once；保留独立C02审批图和原服务幂等，不为追随框架而中断整轮混合咨询、再次延迟答题。以上是main浮动代码核对，不编造固定版本保证或实模通过。只读/假设预算不得产生写入；未决语义覆盖仍属于D1，不另开大型模型矩阵。
+
 ## 当前交付：OS-CONTRACT-12实际接待提案与客户取消（2026-10-27）
 
 **候选路径有界Implemented；完整咨询和默认迁移仍Limited。** 客户在C01自然提出找设计师继续沟通且不分享手机号。实际Worker把明确、单一的接待请求限制为`propose_designer_reception`和最终回复；混合需求更改、拒绝和假设句不进入此窄范围。模型只能暂存待确认提案，客户用既有C01控件批准，仍由原`POST /api/miniprogram/assistant/conversations/:id/handoff`实写。进入等待接待后，C01明确提示小K暂停自动回复；取消通过既有客户按钮确认并回到AI，不虚称等待状态仍有Worker取消回合。原需求草稿不变，手机号为空且联系授权为false。无Mini布局/样式/素材、路由、表、角色或知识存储变更。C01批准设计源为`design-references/xiaok-p4b-public-sites-v1/README.md`。

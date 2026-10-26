@@ -3,6 +3,7 @@ import type { ModelTool } from '../contracts/model';
 import type { businessReviewTools } from './review-tools';
 
 export const reviewRuntimeProtocol = 'candidate-business-review-v1';
+export const composableReviewProtocol = 'composable-business-review-v2';
 type ReviewTools = Awaited<ReturnType<typeof businessReviewTools>>;
 export type ReviewToolName = 'propose_requirement_changes' | 'propose_designer_reception' | 'propose_reception_cancellation';
 export type ReviewTurnMode = 'propose' | 'clarify_budget' | 'retain_existing';
@@ -46,7 +47,27 @@ export function reviewReplyOnlyReceipt(mode: Exclude<ReviewTurnMode, 'propose'>)
 export function reviewCandidate(entry: unknown, policy: unknown): boolean {
   const e = entry as Record<string, unknown> | null, p = policy as Record<string, unknown> | null;
   return e?.agentReviewCandidate === true && e.requirementReviewMode === true
-    && e.requirementWorkflow === 'langgraph' && p?.reviewRuntime === reviewRuntimeProtocol;
+    && e.requirementWorkflow === 'langgraph'
+    && [reviewRuntimeProtocol, composableReviewProtocol].includes(String(p?.reviewRuntime));
+}
+
+/** Explicit development allowlist; normal C01 creation needs no client flag.
+ * Production and already-running conversations are never silently migrated. */
+export function developmentReviewEnabled(enterpriseId: string, env: Record<string, string | undefined> = process.env) {
+  const ids = (env.ASSISTANT_REVIEW_DEVELOPMENT_ENTERPRISE_IDS || '').split(',').map(id => id.trim());
+  return env.NODE_ENV !== 'production' && ids.includes(enterpriseId);
+}
+
+export function developmentReviewEntry(enterpriseId: string, entry: Record<string, unknown>, env: Record<string, string | undefined> = process.env) {
+  return developmentReviewEnabled(enterpriseId, env)
+    ? { ...entry, agentReviewCandidate: true, requirementReviewMode: true, requirementWorkflow: 'langgraph',
+      agentReviewProtocol: composableReviewProtocol }
+    : entry;
+}
+
+export function boundReviewProtocol(entry: Record<string, unknown>, enterpriseId: string, env: Record<string, string | undefined> = process.env) {
+  return entry.agentReviewProtocol === composableReviewProtocol && developmentReviewEnabled(enterpriseId, env)
+    ? composableReviewProtocol : reviewRuntimeProtocol;
 }
 
 export function reviewModelTools(review: ReviewTools): ModelTool[] {
@@ -63,6 +84,13 @@ export const reviewProposalContext = (review: ReviewTools) =>
   + '。客户明确要修改需求时，用propose_requirement_changes提交完整保留/改动分区；未要求改动的条目必须列入retainedIds。'
   + '提案不是保存或正式确认，模型不得提交同意、手机号或执行参数。接待/取消只能提出待客户确认的提案。'
   + '本模式不使用record_need或直接request_designer写入。工具回执由服务端生成，不得自行声称已保存或已接待。';
+
+export const composableReviewContext =
+  '本轮可以同时包含装修问题、明确更改、维持原值和暂未决定的内容，逐项理解，不用其中一句接管整轮。'
+  + '先回应客户这次的问题；金额未定不妨碍量房等一般答疑，不强求先补预算。'
+  + '只对明确新增/更正的原分句提出需求更改；照旧、未知和问句不作为新增值，未改条目保留。'
+  + '审批工具的结果只是待客户选择的提案；收到结果后继续回答本轮问题，再提交final_response。'
+  + '自然正文只解释问题与选择，不代写保存、正式确认或接待成功回执。实际状态由服务端另附；客户只能在原需求页选择采用并保存。';
 
 export function reviewProposalReply(name: ReviewToolName, effect: string): string {
   if (name === 'propose_requirement_changes') return effect === 'proposal'

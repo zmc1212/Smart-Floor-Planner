@@ -12,7 +12,7 @@ import { requestsDesigner } from '../handoff/intent';
 import { stageHandoffProposal } from '../handoff/proposal';
 import { currentHandoffOwner } from '../handoff/owner';
 import { agentConfig } from '../agent/config';
-import { reviewRuntimeProtocol } from '../agent/review-runtime';
+import { boundReviewProtocol, developmentReviewEntry } from '../agent/review-runtime';
 import { referenceCase } from '../knowledge/reference-case';
 import { contentEntrySource, contentGreeting, type ContentEntry } from '../knowledge/content-entry';
 import { syncConstructionReminders } from '@/lib/construction/reminders';
@@ -84,7 +84,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   const entry = c.entry_snapshot as Row;
   const reviewRuntime = agent && actor.principal.kind === 'user' && c.purpose === 'customer_consultation'
     && entry.agentReviewCandidate === true && entry.requirementReviewMode === true
-    && entry.requirementWorkflow === 'langgraph' ? reviewRuntimeProtocol : null;
+    && entry.requirementWorkflow === 'langgraph' ? boundReviewProtocol(entry, actor.enterpriseId) : null;
   // Consultation reserves each actual dispatch in the same original row;
   // delivered legacy Agent runs retain their existing72000 reservation.
   const tokenReservation = agent?.consultation ? 0 : agent ? 72000 : reserveTokens;
@@ -146,7 +146,9 @@ export class ConversationService {
       const result = await idempotent(repo.tx, this.actor, 'create', requestKey, { entry: this.actor.entry || {},previewInput }, async () => {
       const preview=this.actor.principal.kind==='admin';
       if(!preview && Object.keys(previewInput).length) fail('invalid_message',422);
-      const entry: Row=preview?{preview:await createPreviewPolicy(repo.tx,this.actor.enterpriseId,previewInput)}:{ ...this.actor.entry };
+      const baseEntry: Row = { ...this.actor.entry };
+      const entry: Row=preview?{preview:await createPreviewPolicy(repo.tx,this.actor.enterpriseId,previewInput)}
+        : agentConfig(settings!.agent_config) ? developmentReviewEntry(this.actor.enterpriseId, baseEntry) : baseEntry;
       if (!preview && entry.guidanceVersion !== undefined) {
         if (entry.guidanceVersion !== Number(settings!.version)) fail('entry_context_invalid', 409);
         entry.guidance = configuredGuidance(settings!.guidance_config);

@@ -58,7 +58,7 @@ import { proseNumberProtocol } from './prose-number-view';
 import { consultationRuntimeBudget } from './consultation-profile';
 import { citationSelectionProtocol } from './citation-coverage';
 import { businessReviewTools } from './review-tools';
-import { reviewCandidate, reviewModelTools, reviewProposalContext, reviewProposalReply, reviewTurnMode, reviewDesignerOnly, reviewReplyOnlyContext, reviewReplyOnlyReceipt, type ReviewToolName } from './review-runtime';
+import { reviewCandidate, reviewModelTools, reviewProposalContext, reviewProposalReply, reviewTurnMode, reviewDesignerOnly, reviewReplyOnlyContext, reviewReplyOnlyReceipt, composableReviewProtocol, composableReviewContext, type ReviewToolName } from './review-runtime';
 import { RequirementWorkflow } from '../requirements/workflow';
 
 type ReviewMarker = { protocol: 'candidate-business-review-v1'; name: ReviewToolName;
@@ -613,10 +613,13 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       },
     }) : null;
     const reviewDefinitions = review ? reviewModelTools(review) : [];
-    const designerOnly = !!review && reviewDesignerOnly(reviewContext.currentQuestion);
-    const reviewMode = review && !designerOnly ? reviewTurnMode(reviewContext.currentQuestion) : 'propose';
+    const composableReview = !!review && (initial.run.policy_snapshot as Row).reviewRuntime === composableReviewProtocol;
+    const designerOnly = !!review && !composableReview && reviewDesignerOnly(reviewContext.currentQuestion);
+    const reviewMode = review && !composableReview && !designerOnly ? reviewTurnMode(reviewContext.currentQuestion) : 'propose';
     if (review && initial.messages[0]?.role === 'system' && !initial.resume)
       initial.messages[0].content.push({ type: 'text', text: reviewProposalContext(review) });
+    if (composableReview && initial.messages[0]?.role === 'system' && !initial.resume)
+      initial.messages[0].content.push({ type: 'text', text: composableReviewContext });
     if (review && reviewMode !== 'propose' && initial.messages[0]?.role === 'system' && !initial.resume)
       initial.messages[0].content.push({ type: 'text', text: reviewReplyOnlyContext(reviewMode) });
     const toolsForMessage = (businessFollowup: boolean) => {
@@ -633,17 +636,17 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       if (marker.name === 'propose_requirement_changes' && marker.effect === 'proposal') {
         const current = await new RequirementWorkflow(lease.actor).requirements.read(String(initial.conversation.id));
         if (current.proposal?.id === marker.proposalId && current.proposal.digest === marker.digest)
-          return reviewProposalReply(marker.name, marker.effect);
+          return { status: 'pending' as const, text: reviewProposalReply(marker.name, marker.effect) };
         const applied = await scoped(async (_tx, context) => (context.conversation.entry_snapshot as Row).requirementProposal as Row | undefined);
         if (applied?.id === marker.proposalId && applied.digest === marker.digest && applied.status === 'applied'
-          && current.latest?.id === String(applied.summaryId)) return '需求草稿已保存，尚未正式确认。';
+          && current.latest?.id === String(applied.summaryId)) return { status: 'applied' as const, text: '需求草稿已保存，尚未正式确认。' };
         fail('context_changed');
       }
       if (marker.name !== 'propose_requirement_changes' && marker.effect === 'proposal') {
         const pending = await scoped(async (_tx, context) => (context.conversation.entry_snapshot as Row).handoffProposal as Row | undefined);
         if (pending?.id !== marker.proposalId || pending.digest !== marker.digest || pending.status !== 'pending') fail('context_changed');
       }
-      return reviewProposalReply(marker.name, marker.effect);
+      return { status: marker.effect === 'proposal' ? 'pending' as const : 'unchanged' as const, text: reviewProposalReply(marker.name, marker.effect) };
     };
     let turnAllocation: ReturnType<typeof consultationRuntimeBudget> | undefined;
     const callModel = async (turn: number, messages: ModelMessage[], tools: ModelTool[], purpose: ModelRequestPurpose = 'answer'): Promise<ModelTurnOutput> => {
@@ -836,7 +839,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             on conflict(enterprise_id,run_id,step_seq) do update set source_refs=excluded.source_refs`);
         }),
         resolveToolReply: async state => {
-          if (review) {
+          if (review && !composableReview) {
             const last = state.messages.at(-1);
             if (last?.role === 'tool') {
               let requestIndex = state.messages.length - 2;
@@ -850,7 +853,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                     and step_seq=${1200 + (state.turn - 1) * 10 + index} and capability_name=${call.name} and status='succeeded'`));
                 const marker = step?.private_checkpoint as ReviewMarker | undefined;
                 if (!marker || marker.protocol !== 'candidate-business-review-v1' || marker.name !== call.name) fail('context_changed');
-                return JSON.stringify({ kind: 'general', text: await reviewReceipt(marker) });
+                return JSON.stringify({ kind: 'general', text: (await reviewReceipt(marker)).text });
               }
             }
           }
@@ -995,7 +998,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                 values(${lease.enterpriseId},${lease.runId},${sequence},'agent_tool',${name},1,'succeeded',${JSON.stringify(marker)}::jsonb,
                   ${JSON.stringify({ protocol: 'candidate-business-review-v1', argsHash, resultKey })}::jsonb)`));
             }
-            return { exhausted: true, content: JSON.stringify({ effect: marker.effect, text: await reviewReceipt(marker),
+            return { exhausted: true, content: JSON.stringify({ effect: marker.effect, ...await reviewReceipt(marker),
+              proposalId: marker.proposalId, digest: marker.digest,
               formalApproval: false, writesBusinessState: false }) };
           }
           if (name === 'search_web' || name === 'read_web') {
@@ -1259,6 +1263,13 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     });
     if (result.stop) return;
     if (review) await new RequirementWorkflow(lease.actor).read(String(initial.conversation.id));
+    // The final answer and real business receipt are independent. Reconstruct
+    // receipts from durable authorized tool effects, never provider prose.
+    const reviewSteps = composableReview ? await scoped(async tx => rows(tx, sql`select private_checkpoint from app.assistant_run_steps
+        where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and status='succeeded'
+          and capability_name in ('propose_requirement_changes','propose_designer_reception','propose_reception_cancellation') order by step_seq`)) : [];
+    const reviewReceipts = [...new Set(await Promise.all(reviewSteps.map(async step => (await reviewReceipt(step.private_checkpoint as ReviewMarker)).text)))];
+    const receiptBlocks = reviewReceipts.map(text => ({ type: 'text' as const, text }));
     let reply: { kind?: string; text?: string; resultKey?: string; selections?: string[] };
     try { reply = JSON.parse((result.output?.text || '').replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch { fail('invalid_model_answer', 502); }
     const usedSourceTool = await scoped(async tx => one(tx, sql`select id from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}
@@ -1315,6 +1326,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           }
         }
         if (projectTitles.size) blocks.push({ type: 'text', text: '本轮依据：' + [...projectTitles].join('；') + '。' });
+        blocks.push(...receiptBlocks);
         const construction = evidence.snapshots.find(s => s.query.domain === 'construction');
         if (construction) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,private_checkpoint)
           values(${lease.enterpriseId},${lease.runId},2000,'agent_business_result','succeeded',${JSON.stringify(construction)}::jsonb)`);
@@ -1352,7 +1364,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         for (const ref of initial.mediaRefs) if (!await resolveAgentMedia(tx, lease.enterpriseId, String(context.conversation.id), ref)) fail('context_changed');
         for (const ref of initial.referenceEvidence) if (!await resolveEvidence(tx, lease.actor, context.conversation, ref, true)) fail('context_changed');
         const message = await appendMessage(tx, lease.actor, String(context.conversation.id), { author: 'assistant', runId: lease.runId,
-          purpose: 'agent.reply', content: { version: 1, blocks: [{ type: 'text', text: text + (text.includes(designerNotice) ? '' : '\n' + designerNotice) }] } });
+          purpose: 'agent.reply', content: { version: 1, blocks: [{ type: 'text', text: text + (text.includes(designerNotice) ? '' : '\n' + designerNotice) }, ...receiptBlocks] } });
         if (!snapshot.needContext && items.length) {
           const saved: DesignerSnapshot = { ...(snapshot.cityCode ? { cityCode: snapshot.cityCode } : {}),
             ...(snapshot.style ? { style: snapshot.style } : {}), ...(snapshot.layout ? { layout: snapshot.layout } : {}),
@@ -1381,7 +1393,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       if (references.length) {
         const answer = parseAnswer(JSON.stringify({ answerKind: 'grounded', segments: references.map(e => ({ text: e.text,
           citations: [{ sourceId: e.ref.id, quote: e.text }] })) }), references);
-        await completeAnswer(lease, answer, references, null, REFERENCE_NOTICE, async tx => {
+        await completeAnswer(lease, answer, references, null, [REFERENCE_NOTICE, ...reviewReceipts].join('\n'), async tx => {
           await validateConstructionSources(tx, String(initial.conversation.id));
           for (const ref of initial.mediaRefs) if (!await resolveAgentMedia(tx, lease.enterpriseId, String(initial.conversation.id), ref)) fail('context_changed');
         });
@@ -1394,7 +1406,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       if (!evidence) fail('invalid_model_citation', 502);
       const sources = evidence.private_checkpoint as Evidence[];
       await authorize();
-      await completeAnswer(lease, parseSelection(JSON.stringify({ selections: reply.selections }), sources), sources, null, undefined, async tx => {
+      await completeAnswer(lease, parseSelection(JSON.stringify({ selections: reply.selections }), sources), sources, null, reviewReceipts.join('\n') || undefined, async tx => {
         await validateConstructionSources(tx, String(initial.conversation.id));
         for (const ref of initial.mediaRefs) if (!await resolveAgentMedia(tx, lease.enterpriseId, String(initial.conversation.id), ref)) fail('context_changed');
       });
@@ -1426,7 +1438,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           values(${lease.enterpriseId},${lease.runId},2000,'agent_business_result','succeeded',${JSON.stringify(business)}::jsonb)`);
       }
       const message = await appendMessage(tx, lease.actor, String(context.conversation.id), { author: 'assistant', runId: lease.runId,
-        purpose: 'agent.reply', content: { version: 1, blocks: [{ type: 'text', text }] } });
+          purpose: 'agent.reply', content: { version: 1, blocks: [{ type: 'text', text }, ...receiptBlocks] } });
       await tx.execute(sql`update app.assistant_jobs set status='succeeded',lease_token=null,lease_expires_at=null,updated_at=now(),version=version+1 where enterprise_id=${lease.enterpriseId} and id=${lease.jobId}`);
       await tx.execute(sql`update app.assistant_runs set status='succeeded',output_message_id=${String(message.id)},completed_at=now(),updated_at=now(),version=version+1 where enterprise_id=${lease.enterpriseId} and id=${lease.runId}`);
       await tx.execute(sql`update app.assistant_quota_reservations set status='reconciling',updated_at=now(),version=version+1 where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}`);
