@@ -1,25 +1,38 @@
 {
-  "version": "three-agent-native-contract-4",
+  "version": "three-agent-review-contract-1",
   "semanticEvaluation": "offline",
   "productionMigrationAllowed": false,
-  "retiredOnlineJudge": "Online model-judge experiments repeatedly misreject valid proposals and exhaust output. Stop that repair loop. This new native-only mechanism retains every original case/assertion and measures false actions as failures instead of inserting another LLM into the candidate's execution path. Production guards/default runtime are unchanged; this isolated seam is not a production authorization policy.",
-  "engines": ["anythingllm", "createAgent", "pydanticai"],
+  "retiredOnlineJudge": "Historical online-judge experiments and their costs remain preserved; this delivery has no online semantic judge. Native outputs only propose. First-party UI decisions alone write business state.",
+  "engines": [
+    "anythingllm",
+    "createAgent",
+    "pydanticai"
+  ],
   "trials": 2,
-  "turnsSource": "scenarios.json unchanged eight natural user turns",
+  "turnsSource": "scenarios.json eight unchanged natural messages plus one identical save reentry per fixture; original results retained. First-party confirmation steps and new flow expectations are fixed outside user/model messages.",
   "nativeModelCallsPerTurn": 3,
-  "verifierCallsPerSubmission": 1,
-  "verifierMaxTokens": 2048,
-  "verifierProtocol": "Official Qwen strict json_schema response_format; no tools. Saved-input two-per-protocol control passes both formats, so empty function args are not established as a deterministic forced-tool bug. Both originals remain failures.",
   "candidateToolChoice": "auto",
-  "priorProbe": "trial-2026-10-25T01-58-42-956Z.json stopped: checker output truncated; missing operation semantics and safe prior answers caused false rejection. Preserve all32533tokens and first drafts. This is the single mechanism repair; do not tune semantic wording within the new fixed batch.",
-  "newTokenLimit": 300000,
-  "cumulativeTokens": 1200000,
+  "newTokenLimit": 200000,
+  "cumulativeTokens": 1400000,
   "cumulativeMicros": 5000000,
-  "providerCallLimit": 220,
-  "userApproval": "2026-10-25: 按本批30万、累计120万 tokens 执行，仍不超过¥5",
-  "knownFailureInjection": {"trial": 2, "turn": "save", "kind": "real conversation version increment before first write; refresh and native recovery"},
+  "providerCallLimit": 162,
+  "userApproval": "2026-10-25: 按本批20万、累计140万执行，仍不超过¥5",
+  "knownFailureInjection": {
+    "trial": 2,
+    "turn": "save",
+    "kind": "real conversation version increment before proposal staging; native known-rejection recovery; first-party apply checked separately"
+  },
   "reentry": "After mixed, reread persisted business state and the saved experiment dialogue before withdrawal; this is not production chat/job migration.",
-  "validation": "Deterministic host references/state/real receipts plus offline semantic review. An absent model verdict is null, never all-true. Wrong saves/handoffs and false answers fail original assertions. Prior failed online-judge calls remain charged separately.",
+  "validation": "Before client confirmation no business mutation is allowed. Reviewable proposal and existing draft acknowledgement are distinct. Test-side customer accepts only the expected diff, never a wrong proposal; original model replies/first drafts remain separate. Judge stays offline/null.",
   "scoring": "Preserve every first submission, native rejection/recovery, final original answer and real state. Report first-draft and eventual completion separately; no pooled pre-change scores.",
-  "stop": "New provider unknown, source drift or next full reservation exceeding either cap stops dispatch. No semantic prompt patch/resampling within the frozen batch."
+  "stop": "New provider unknown, source drift or next full reservation exceeding either cap stops dispatch. No semantic prompt patch/resampling within the frozen batch.",
+  "batchStartsAfterContractTokens": 262470,
+  "confirmationSteps": {
+    "save": "Accept correct area90/budget12/wood/no-heating as editable draft; no formal confirmation",
+    "repeat": "Repeat save after reentry; same summary ID and no extra summary",
+    "mixed": "Accept budget10/tile while retaining area90/no-heating; original answer must cover preparation",
+    "reversal": "Accept budget12 only, retain tile/area/no-heating; old-source restore requires additional consent",
+    "contact": "Confirm reception request on existing first-party page; no phone consent",
+    "cancel": "Confirm cancellation on existing first-party page; preserve requirements"
+  }
 }

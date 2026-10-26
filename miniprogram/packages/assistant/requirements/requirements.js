@@ -45,9 +45,18 @@ Page({
   async confirm() {
     wx.hideKeyboard();
     if (this.data.confirmed) return this.leave();
-    if (await this.controller.act('confirm')) {
+    const proposal = this.data.proposal;
+    let restoreConsent = false;
+    if (proposal && proposal.requiresRestoreConsent && !this.data.pending) {
+      const changes = proposal.diff.map(d => `${d.before || '尚未保存'} → ${d.after || '删除此项'}`).join('\n');
+      const result = await new Promise(resolve => wx.showModal({ title: '确认恢复历史值？',
+        content: changes, confirmText: '确认恢复', success: resolve, fail: () => resolve({ confirm: false }) }));
+      if (!result.confirm || !this.alive) return;
+      restoreConsent = true;
+    }
+    if (await this.controller.act('confirm', restoreConsent)) {
       if (!this.alive) return;
-      wx.showToast({ title: '需求已确认保存', icon: 'success' }); this.leave();
+      wx.showToast({ title: proposal ? '需求草稿已保存' : '需求已确认保存', icon: 'success' }); this.leave();
     }
   },
   regenerate() {

@@ -229,7 +229,10 @@ async function main() {
       const unchanged = (await readback(a)).requirements;
       await append(a, '测试专用：取消刚才的接待。'); const cancel = await service.context();
       await service.execute(cancel, randomUUID(), 'sfp-comparison-business', { action: 'cancel_designer', quote: cancel.customerMessages.at(-1)!.text });
-      const after = await readback(a); assert.equal(after.handoff.handoff?.state, 'cancelled'); assert.equal(after.handoff.mode, 'ai'); assert.deepEqual(after.requirements, unchanged);
+      const after = await readback(a); assert.equal(after.handoff.handoff?.state, 'cancelled'); assert.equal(after.handoff.mode, 'ai');
+      assert.deepEqual(after.requirements.latest, unchanged.latest); assert.deepEqual(after.requirements.confirmed, unchanged.confirmed);
+      assert.deepEqual(after.requirements.proposal, unchanged.proposal); assert.equal(after.requirements.reviewMode, unchanged.reviewMode);
+      assert.ok(Number(after.requirements.sourceSeq) > Number(unchanged.sourceSeq), 'New customer messages advance the read watermark without changing saved requirements');
       report.checks.realCancelPreservesRequirements = true; report.checks.waitingAllowsOnlyControl = true;
       await withTenantTransaction(a.enterpriseId, tx => tx.execute(sql`update app.assistant_conversations set entry_snapshot=entry_snapshot || '{"retentionRedacted":true}'::jsonb where enterprise_id=${a.enterpriseId} and id=${a.conversationId}`));
       await assert.rejects(() => service.context(), /context_changed/); report.checks.redactedDenied = true;

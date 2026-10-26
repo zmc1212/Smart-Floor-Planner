@@ -17,11 +17,11 @@
     <view wx:if="{{error}}" class="notice" role="alert">
       <text>{{error}}</text>
       <button wx:if="{{needsLogin}}" class="text-action" bindtap="login">去登录</button>
-      <button wx:elif="{{!fatal && !stale}}" class="text-action" bindtap="retry" disabled="{{busy || loading}}">{{pending ? '确认上次操作结果' : '重新连接'}}</button>
+      <button wx:elif="{{!fatal && (!stale || reviewMode)}}" class="text-action" bindtap="retry" disabled="{{busy || loading}}">{{pending ? '确认上次操作结果' : stale ? '刷新摘要' : '重新连接'}}</button>
     </view>
     <block wx:if="{{!loading && !fatal}}">
-      <text wx:if="{{confirmed}}" class="save-state">已确认保存 · 随时可以修改</text>
-      <text wx:elif="{{summary && !redacted}}" class="save-state">待确认 · 请核对后保存</text>
+      <text wx:if="{{confirmed}}" class="save-state">{{reviewMode ? '已确认保存' : '已确认保存 · 随时可以修改'}}</text>
+      <text wx:elif="{{summary && !redacted}}" class="save-state">{{proposal ? '需求提案 · 尚未写入草稿' : '待确认 · 请核对后保存'}}</text>
       <view wx:if="{{rows.length}}" class="summary-card">
         <view wx:for="{{rows}}" wx:key="key" class="summary-row">
           <view class="field-icon"><image src="../assets/{{item.icon}}.png" /></view>
@@ -30,10 +30,10 @@
             <textarea wx:if="{{editingKey === item.key}}" class="field-input" value="{{item.text}}" data-key="{{item.key}}" bindinput="input" auto-height maxlength="-1" focus cursor-spacing="100" placeholder="没确定的可以先留空" disabled="{{busy || !!pending}}" />
             <text wx:else class="field-value {{!item.text ? 'muted' : ''}}">{{item.text || '还没确定，以后再补'}}</text>
           </view>
-          <button wx:if="{{writable && !pending}}" class="edit-button" data-key="{{item.key}}" bindtap="edit" disabled="{{busy}}" aria-label="修改{{item.label}}"><image src="../assets/requirement-edit.png" /></button>
+          <button wx:if="{{writable && !pending && !proposal && !(reviewMode && confirmed)}}" class="edit-button" data-key="{{item.key}}" bindtap="edit" disabled="{{busy}}" aria-label="修改{{item.label}}"><image src="../assets/requirement-edit.png" /></button>
         </view>
         <view class="quote-card">
-          <text class="quote-title">你的原话 · 参考记录</text>
+          <text class="quote-title">{{proposal ? '本次变更 · 核对后保存' : '你的原话 · 参考记录'}}</text>
           <view wx:for="{{rows}}" wx:key="key" wx:if="{{item.sourceText || editingKey === item.key}}" class="quote-row">
             <text class="quote-label">{{item.label}}</text><text class="quote-text">{{item.sourceText || '这项还没有原话，可以补充你的想法。'}}</text>
             <text wx:if="{{item.truncated}}" class="helper">原话较长，此处只展示部分内容，请核对后补充。</text>
@@ -44,11 +44,11 @@
       <text wx:if="{{redacted}}" class="notice">这份需求摘要已按保留规则清理。</text>
       <text wx:elif="{{!summary && !error}}" class="notice">这段对话还没有需求摘要。</text>
       <view wx:if="{{summary && !redacted}}" class="actions">
-        <button wx:if="{{writable}}" class="primary-action" bindtap="confirm" loading="{{busy}}" disabled="{{busy || !!pending || stale}}">{{confirmed ? '继续聊' : '确认摘要，继续聊'}}</button>
+        <button wx:if="{{writable}}" class="primary-action" bindtap="confirm" loading="{{busy}}" disabled="{{busy || !!pending || stale}}">{{confirmed ? '继续聊' : proposal ? '保存这份草稿，继续聊' : '确认摘要，继续聊'}}</button>
         <text wx:else class="helper">当前对话仅可查看，已保存的摘要仍保留。</text>
         <button class="secondary-action" bindtap="openHandoff" disabled="{{busy || !!pending}}">我想找设计师</button>
-        <button wx:if="{{writable && !pending}}" class="text-action" bindtap="regenerate" disabled="{{busy}}">根据最新对话重新整理</button>
-        <text class="helper">这份摘要可以随时修改。确认后保存到本次对话。</text>
+        <button wx:if="{{writable && !pending && !reviewMode}}" class="text-action" bindtap="regenerate" disabled="{{busy}}">根据最新对话重新整理</button>
+        <text class="helper">{{proposal ? '核对本次变更后保存草稿；需要调整时返回对话说明。保存草稿不代表正式确认。' : reviewMode && confirmed ? '如需调整，请返回对话说明要修改的内容。' : '这份摘要可以随时修改。确认后保存到本次对话。'}}</text>
       </view>
     </block>
   </view>

@@ -125,3 +125,72 @@ test('page registers native summary route and confirmation navigates only on suc
   instance.controller.act = async () => true; await instance.confirm(); assert.equal(backs, 1);
   delete global.Page; delete global.wx;
 });
+
+test('review mode never generates a draft merely by opening the summary', async () => {
+  const f = fixture(); f.db.reviewMode = true;
+  const c = f.create(); await c.show('11'); await c.act('draft');
+  assert.equal(f.calls.filter(call => call.method !== 'GET' && call.url.endsWith('/requirements')).length, 0);
+  assert.equal(c.state.summary, null);
+});
+
+test('pending proposal survives reentry, displays the diff, and confirmation sends only the bound decision', async () => {
+  const f = fixture(); f.db.reviewMode = true;
+  f.db.proposal = { id: 'proposal-1', digest: 'digest-1', requiresRestoreConsent: true,
+    diff: [{ field: 'budget', before: '10万', after: '12万' }],
+    summary: { status: 'proposal', draftFields: { budget: { text: '12万' }, room: { text: '瓷砖；地暖不做' } } } };
+  const first = f.create(); await first.show('11'); first.dispose();
+  const c = f.create(); await c.show('11');
+  assert.match(c.state.rows.find(row => row.key === 'budget').sourceText, /当前：10万\n拟改为：12万/);
+  c.input('budget', '99万'); assert.equal(c.fields().budget, '12万');
+  f.intercept(call => call.body.action === 'apply_proposal' ? { success: true, data: { id: '8', version: 1, status: 'draft', draftFields: f.db.proposal.summary.draftFields } } : undefined);
+  assert.equal(await c.act('confirm', true), true);
+  const call = f.calls.find(call => call.body.action === 'apply_proposal');
+  assert.deepEqual(call.body, { action: 'apply_proposal', proposalId: 'proposal-1', digest: 'digest-1', consent: true, restoreConsent: true });
+  assert.equal(c.state.confirmed, false); assert.equal(c.state.proposal, null);
+});
+
+test('historical restore modal cancellation does not invoke a write', async () => {
+  let page, writes = 0;
+  global.Page = config => { page = config; };
+  global.wx = { hideKeyboard() {}, showModal({ success }) { success({ confirm: false }); } };
+  const file = require.resolve('../packages/assistant/requirements/requirements'); delete require.cache[file]; require(file);
+  await page.confirm.call({ alive: true, data: { proposal: { requiresRestoreConsent: true, diff: [{ before: '瓷砖', after: '木地板' }] } }, controller: { act() { writes++; } } });
+  assert.equal(writes, 0);
+  delete global.Page; delete global.wx;
+});
+
+test('formal confirmation after a repeated save binds the displayed conversation source without another draft', async () => {
+  const f = fixture(); f.db.reviewMode = true; f.db.sourceSeq = '9';
+  f.db.latest = { id: '8', version: 1, status: 'draft', sourceSeq: '4', draftFields: { budget: { text: '12万' } } };
+  const c = f.create(); await c.show('11');
+  await c.act('confirm');
+  const call = f.calls.find(call => call.body.action === 'confirm');
+  assert.equal(call.body.reviewedSourceSeq, '9');
+  assert.equal(f.calls.some(call => call.body.action === 'draft'), false);
+});
+
+test('unknown committed proposal restores original operation after page recreation', async () => {
+  const storage = new Map([['token', 'customer']]);
+  global.wx = { getStorageSync: key => storage.get(key), setStorageSync: (key, value) => storage.set(key, value) };
+  try {
+    const f = fixture(); f.db.reviewMode = true;
+    f.db.proposal = { id: 'p1', digest: 'd1', diff: [], requiresRestoreConsent: true,
+      summary: { status: 'proposal', draftFields: { budget: { text: '12万' } } } };
+    let lost = true;
+    f.intercept(call => {
+      if (call.body.action !== 'apply_proposal') return;
+      f.db.latest = { id: '9', version: 1, status: 'draft', draftFields: { budget: { text: '12万' } }, confirmedFields: null };
+      f.db.proposal = null;
+      if (lost) { lost = false; throw { statusCode: 503 }; }
+      return { success: true, data: f.db.latest };
+    });
+    const first = f.create(); await first.show('11'); await first.act('confirm', true); first.dispose();
+    const reopened = f.create(); await reopened.show('11');
+    assert.equal(reopened.state.pending, 'confirm'); assert.match(reopened.state.error, /确认上次操作结果/);
+    assert.equal(await reopened.act('confirm'), true); assert.equal(reopened.state.confirmed, false);
+    const requests = f.calls.filter(c => c.body.action === 'apply_proposal');
+    assert.equal(requests.length, 2); assert.deepEqual(requests[0].body, requests[1].body);
+    assert.deepEqual(requests[0].options.headers, requests[1].options.headers);
+    assert.equal(storage.get('assistant-pending-v1').entries.length, 0);
+  } finally { delete global.wx; }
+});

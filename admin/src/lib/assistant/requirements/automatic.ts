@@ -16,6 +16,7 @@ export async function saveAutomaticRequirements(repo: AssistantRepository, conve
   const fields = chatFirstProgress(defaultGuidance, inputs).fields;
   const conversation = await one(repo.tx, sql`select entry_snapshot from app.assistant_conversations
     where enterprise_id=${repo.actor.enterpriseId} and id=${conversationId}`);
+  if ((conversation?.entry_snapshot as { requirementReviewMode?: boolean })?.requirementReviewMode === true) return;
   const currentFacts = readMemory(conversation?.entry_snapshot).facts.filter(f => f.status === 'current');
   for (const fact of currentFacts.filter(f => !f.room && ['housing','household','style','budget','timeline'].includes(f.field))) {
     const key = fact.field as 'housing' | 'household' | 'style' | 'budget' | 'timeline';

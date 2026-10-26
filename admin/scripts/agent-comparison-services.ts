@@ -40,13 +40,13 @@ export class ComparisonServices {
     const now = await this.state();
     if (now.epoch !== context.epoch || now.sourceSeq !== context.sourceSeq || now.version !== context.version) fail('context_changed');
   }
-  async context() {
+  async context(retrieveKnowledge = true) {
     const state = await this.state();
     const customer = await this.requirements.customerEvidence(this.conversationId);
     if (!customer.messages.length || customer.sourceSeq !== state.sourceSeq) fail('context_changed');
     const requirements = await this.requirements.read(this.conversationId);
     const handoff = await this.handoff.customerRead(this.conversationId);
-    const knowledge = state.mode === 'ai' ? await conversationKnowledgeRetriever(this.conversationId).retrieve(this.actor, knowledgeQuery(customer.messages), state.epoch) : [];
+    const knowledge = retrieveKnowledge && state.mode === 'ai' ? await conversationKnowledgeRetriever(this.conversationId).retrieve(this.actor, knowledgeQuery(customer.messages), state.epoch) : [];
     await this.fresh(state);
     return { ...state, customerMessages: customer.messages, requirements, handoff, knowledge };
   }

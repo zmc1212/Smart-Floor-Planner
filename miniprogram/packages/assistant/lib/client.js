@@ -94,6 +94,10 @@ const COPY = {
   assistant_unavailable: '服务暂时不可用，请稍后重新连接。',
   requirements_empty: '先在对话中说说你的装修想法，再来整理需求摘要。',
   requirements_stale: '对话里有新的补充，请根据最新对话重新整理后再确认。',
+  requirement_target_changed: '这份提案已更新，请刷新后重新核对。',
+  requirements_restore_confirmation_required: '本次涉及恢复历史值，请核对变更并确认恢复。',
+  requirements_proposal_required: '请返回对话说明要整理或修改的需求，核对提案后再保存。',
+  requirements_customer_edit_conflict: '这份需求含有你正式确认时修改的内容，请先核对已确认摘要。',
   requirements_history_too_long: '这段对话较长，请开启新对话并集中补充装修需求后再整理。',
 };
 

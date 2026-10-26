@@ -39,7 +39,8 @@ function binding() {
   { cwd: root, windowsHide: true, encoding: 'utf8' }).split('\0').filter(Boolean);
   files.push('tmp/xiaok-intelligent-consult/.env.qwen37', 'tmp/xiaok-vector/connection.private.json',
     'tmp/anythingllm-pilot/instance.env', 'tmp/anythingllm-pilot/instance.private.json', process.execPath, python,
-    'miniprogram/packages/assistant/lib/requirements.js', 'miniprogram/packages/assistant/lib/client.js', 'miniprogram/test/assistant-requirements.test.js');
+    'miniprogram/packages/assistant/lib/requirements.js', 'miniprogram/packages/assistant/lib/client.js', 'miniprogram/test/assistant-requirements.test.js',
+    'miniprogram/packages/assistant/requirements/requirements.js', 'miniprogram/packages/assistant/requirements/requirements.wxml');
   const visit = (dir: string) => { for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const file = path.join(dir, e.name); if (e.isDirectory() && e.name !== '__pycache__') visit(file);
     else if (e.isFile() && /\.(?:py|pyd|dll|json|js|mjs|cjs)$|METADATA$|RECORD$/.test(file)) files.push(file);
@@ -55,7 +56,8 @@ function binding() {
 }
 
 async function main() {
-  assert.ok(['services', 'transport', 'live', 'protocol'].includes(mode)); fs.mkdirSync(directory, { recursive: true });
+  assert.ok(['services', 'transport', 'live'].includes(mode), 'Retired online-judge protocol probes are not authorized in this batch');
+  assert.equal(scope.semanticEvaluation, 'offline'); fs.mkdirSync(directory, { recursive: true });
   const idle = await withPlatformTransaction(tx => rows(tx, sql`select count(*)::int n from app.assistant_jobs where status in ('queued','running')`));
   assert.equal(Number(idle[0].n), 0);
   const previous = (dir: string) => fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => /^trial-.*\.json$/.test(f))
@@ -86,7 +88,8 @@ async function main() {
   async function providerCall(kind: string, request: Row, attribution = active ? { id: active.row.id, engine: active.f.engine } : undefined) {
     assert.ok(attribution && !unknown && !inFlight && !haltReason); assert.ok(report.calls.length < scope.providerCallLimit);
     const reserve = Buffer.byteLength(JSON.stringify(request), 'utf8') + request.max_tokens, used = tokens(report.calls);
-    assert.ok(report.priorContractTokens + used + reserve <= scope.newTokenLimit, 'New fixed-batch token cap');
+    assert.equal(scope.userApproval.startsWith('PENDING'), false, 'Budget extension not approved');
+    assert.ok(Math.max(0, report.priorContractTokens - scope.batchStartsAfterContractTokens) + used + reserve <= scope.newTokenLimit, 'New fixed-batch token cap');
     assert.ok(report.previousPlanTokens + report.earlierTokens + report.priorContractTokens + used + reserve <= scope.cumulativeTokens, 'Cumulative token cap');
     assert.ok(report.previousPlanMicros + (report.earlierTokens + report.priorContractTokens + used + reserve) * 5 <= scope.cumulativeMicros, 'Cumulative cost cap');
     const attempt: Row = { id: randomUUID(), case: attribution.id, engine: attribution.engine, kind, request, reservedTokens: reserve, status: 'dispatching', started: new Date().toISOString() };
@@ -233,7 +236,9 @@ async function main() {
     report.bindingBefore = binding(); save();
     const engines = mode === 'services' ? ['services', 'services'] : mode === 'transport' ? scope.engines : [...scope.engines, ...scope.engines.slice().reverse()];
     for (let i = 0; i < engines.length; i++) {
-      const f = await fixture(batch, i, embedding.vectors[0]); f.engine = engines[i]; f.trial = mode === 'live' ? Math.floor(i / 3) + 1 : 1; f.dialogue = [];
+      const f = await fixture(batch, i, embedding.vectors[0]);
+      await withPlatformTransaction(tx => tx.execute(sql`update app.assistant_conversations set entry_snapshot=entry_snapshot || '{"requirementReviewMode":true}'::jsonb where enterprise_id=${f.enterpriseId} and id=${f.conversationId}`));
+      f.engine = engines[i]; f.trial = mode === 'live' ? Math.floor(i / 3) + 1 : 1; f.dialogue = [];
       report.fixtures.push(f); save();
       if (f.engine === 'anythingllm') {
         const workspace = (await api('/v1/workspace/new', { name: `契约-${batch}-${i}`, openAiPrompt: protocol.system, openAiTemp: 0.2,
@@ -245,59 +250,113 @@ async function main() {
     const [a, b] = report.fixtures;
     if (b) { await assert.rejects(() => new ContractServices(b.actor, a.conversationId).context()); report.checks.crossTenantDenied = true; }
     if (mode === 'services') {
-      const service = new ContractServices(a.actor, a.conversationId);
-      await append(a, scenarios.turns[0].text); let context = await service.context();
-      const data = contractContext(context), clauses = data.customerClauses;
-      const args = { action: 'save_requirements', changes: clauses.slice(0, 4).map((c: Row, i: number) => ({ operation: 'add', field: i === 0 ? 'housing' : i === 1 ? 'budget' : 'room', sourceId: c.id })), answer: '', evidenceIds: [] };
-      let prepared = await service.prepare(context, args, async () => ({ ...accepted, authorized: false, problems: ['Current inquiry does not request saving.'] }));
-      assert.equal(prepared.ok, false); assert.equal((await readback(a)).requirements.latest, null); report.checks.deniedBeforeWrite = true;
-      await assert.rejects(() => service.prepare(context, args, async () => { throw Error('boundary_validator_unavailable: synthetic outage'); }), /boundary_validator_unavailable/);
-      assert.equal((await readback(a)).requirements.latest, null); report.checks.validatorOutageIsNotArgumentRejection = true;
-      await append(a, scenarios.turns[2].text); context = await service.context(); prepared = await service.prepare(context, args, async () => accepted); assert.ok(prepared.ok);
-      const result = await service.execute(prepared.prepared, randomUUID(), args); assert.ok(result.ok);
-      const saved = await readback(a); assert.match(JSON.stringify(saved), /地暖不做/); report.checks.realItemSave = true;
-      context = await service.context();
-      const sentence = contractContext(context).knowledgeSentences.find(s => s.text.includes('90分钟'))!;
-      const cited = { action: 'none', changes: [], answer: '请以实际预约确认为准。', evidenceIds: [sentence.id] };
-      const citedPrepared = await service.prepare(context, cited, async () => accepted); assert.ok(citedPrepared.ok);
-      const citedResult = await service.execute(citedPrepared.prepared, randomUUID(), cited);
-      assert.ok(citedResult.text.includes(sentence.text)); assert.match(sentence.text, /工作人员确认.*90分钟.*预约回执/);
-      assert.equal((await readback(a)).requirements.latest!.id, saved.requirements.latest!.id); report.checks.fullQualifiedSentenceAndNoWrite = true;
-      await append(a, scenarios.turns[3].text); context = await service.context(); const current = contractContext(context);
-      const revised = { action: 'save_requirements', changes: [
-        { operation: 'replace', targetId: current.savedItems.find(i => i.field === 'budget')!.id, sourceId: current.customerClauses.find(c => c.text === '预算改成10万')!.id },
-        { operation: 'replace', targetId: current.savedItems.find(i => i.text.includes('木地板'))!.id, sourceId: current.customerClauses.find(c => c.text === '客厅换瓷砖')!.id },
-      ], answer: '', evidenceIds: [] };
-      const p = await service.prepare(context, revised, async () => accepted); assert.ok(p.ok);
-      await service.execute(p.prepared, randomUUID(), revised);
-      const reopened = await new ContractServices(a.actor, a.conversationId).context();
-      assert.ok(contractContext(reopened).savedItems.some(i => i.text === '地暖不做')); report.checks.sameFieldReentryRetainsHeating = true;
-      const existing = contractContext(reopened);
-      const retryArgs = { action: 'save_requirements', changes: [{ operation: 'replace',
-        targetId: existing.savedItems.find(i => i.field === 'budget')!.id,
-        sourceId: existing.customerClauses.find(c => c.text === '预算改成10万')!.id }], answer: '', evidenceIds: [] };
-      const retryKey = randomUUID(), countBefore = await summaryCount(a);
-      const stale = await service.prepare(reopened, retryArgs, async () => accepted); assert.ok(stale.ok);
+      const service = new ContractServices(a.actor, a.conversationId), req = service.base.requirements;
+      const check = (name: string) => { report.checks[name] = true; save(); };
+      await append(a, scenarios.turns[0].text);
+      let context = await service.context(); const oldRef = context.knowledge.flatMap(e => e.text.match(/[^。！？\n]+[。！？]?/gu) || []);
+      assert.ok(oldRef.length); const evidenceId = contractContext(context).knowledgeSentences[0].id;
+      const adds = [{ operation: 'add', field: 'housing', sourceId: `c${context.customerMessages[0].id}.0` },
+        { operation: 'add', field: 'budget', sourceId: `c${context.customerMessages[0].id}.1` },
+        { operation: 'add', field: 'room', sourceId: `c${context.customerMessages[0].id}.2` },
+        { operation: 'add', field: 'room', sourceId: `c${context.customerMessages[0].id}.3` }];
+      const propose = async (changes: Row[], key = randomUUID()) => {
+        const current = await service.base.context(false);
+        return req.propose(a.conversationId, key, { sourceSeq: current.sourceSeq, baseSummaryId: current.requirements.latest?.id || null, changes },
+          (repo, c) => service.base.guard(current, repo, c));
+      };
+      let staged = await propose(adds); assert.equal(staged.kind, 'proposal');
+      if (staged.kind !== 'proposal') throw Error('proposal_expected');
+      assert.equal(await summaryCount(a), 0); check('proposalDoesNotWriteRequirement');
+      let pending: Row = (await new ContractServices(a.actor, a.conversationId).base.requirements.read(a.conversationId)).proposal!;
+      assert.equal(pending.id, staged.proposal.id); check('proposalPersistedReentry');
+      const decision = (p: Row, restoreConsent = false) => ({ action: 'apply_proposal', proposalId: p.id, digest: p.digest, consent: true, restoreConsent });
+      const replayKey = randomUUID(), originalProposal = { sourceSeq: context.sourceSeq, baseSummaryId: null, changes: adds };
+      await req.propose(a.conversationId, replayKey, originalProposal);
+      const newer = await propose(adds.slice(0, 2)); assert.equal(newer.kind, 'proposal');
+      assert.equal((await req.propose(a.conversationId, replayKey, originalProposal)).kind, 'superseded');
+      assert.equal((await req.read(a.conversationId)).proposal!.id, newer.kind === 'proposal' ? newer.proposal.id : null); check('proposalKeyReplayCannotResurrectSupersededDiff');
+      await assert.rejects(() => req.propose(a.conversationId, replayKey, { ...originalProposal, changes: [] }), /idempotency_conflict/); check('proposalKeyPayloadChangeDenied');
+      await propose(adds); pending = (await req.read(a.conversationId)).proposal!;
+      const sourceMessage = context.customerMessages[0];
+      const originalContent = (await withPlatformTransaction(tx => rows(tx, sql`select content from app.assistant_messages where enterprise_id=${a.enterpriseId} and id=${sourceMessage.id}`)))[0].content;
+      await withPlatformTransaction(tx => tx.execute(sql`update app.assistant_messages set content='{"blocks":[{"type":"text","text":"已撤回"}]}'::jsonb where enterprise_id=${a.enterpriseId} and id=${sourceMessage.id}`));
+      assert.equal((await req.read(a.conversationId)).proposal, null);
+      await assert.rejects(() => req.write(a.conversationId, randomUUID(), decision(pending)), /requirements_stale/); check('sameSequenceRevokedSourceCannotApply');
+      await withPlatformTransaction(tx => tx.execute(sql`update app.assistant_messages set content=${JSON.stringify(originalContent)}::jsonb where enterprise_id=${a.enterpriseId} and id=${sourceMessage.id}`));
+      assert.throws(() => req.write(a.conversationId, randomUUID(), { ...decision(pending), consent: false }), /invalid_message/); check('noConsentDenied');
+      await assert.rejects(() => req.write(a.conversationId, randomUUID(), { ...decision(pending), digest: 'forged' }), /requirement_target_changed/); check('forgedDecisionDenied');
+      await assert.rejects(() => new ContractServices(b.actor, a.conversationId).base.requirements.write(a.conversationId, randomUUID(), decision(pending))); check('crossTenantDecisionDenied');
+      await append(a, scenarios.turns[1].text);
+      await assert.rejects(() => req.write(a.conversationId, randomUUID(), decision(pending)), /requirements_stale/);
+      assert.equal((await req.read(a.conversationId)).proposal, null); check('newCustomerMessageInvalidatesProposal');
+      await append(a, scenarios.turns[2].text); staged = await propose(adds); assert.equal(staged.kind, 'proposal');
+      pending = (await req.read(a.conversationId)).proposal!; const firstKey = randomUUID();
+      const [first, concurrent] = await Promise.all([req.write(a.conversationId, firstKey, decision(pending)), req.write(a.conversationId, randomUUID(), decision(pending))]);
+      assert.equal(concurrent.id, first.id); assert.equal(first.confirmedFields, null); check('concurrentDifferentKeysCreateOneUnconfirmedDraft');
+      assert.equal(first.status, 'draft'); assert.equal(await summaryCount(a), 1); check('confirmedApplyCreatesOneDraftNotFormalConfirmation');
+      assert.equal((await req.write(a.conversationId, firstKey, decision(pending))).id, first.id); check('sameKeyReplaySameEntity');
+      assert.equal((await req.write(a.conversationId, randomUUID(), decision(pending))).id, first.id);
+      assert.equal(await summaryCount(a), 1); check('differentKeySameProposalNoDuplicate');
+      await assert.rejects(() => req.write(a.conversationId, firstKey, { ...decision(pending), restoreConsent: true }), /idempotency_conflict/); check('replayPayloadChangeDenied');
+      let same = await propose([]); assert.equal(same.kind, 'existing');
+      same = await propose(adds); assert.equal(same.kind, 'existing'); assert.equal(await summaryCount(a), 1); check('emptyAndDuplicateAddsReadExistingDraft');
+      await append(a, scenarios.turns[3].text); context = await service.base.context(false);
+      const items = contractContext(context).savedItems, mixedMessage = context.customerMessages.at(-1)!.id;
+      staged = await propose([{ operation: 'replace', targetId: items.find(i => i.field === 'budget')!.id, sourceId: `c${mixedMessage}.0` },
+        { operation: 'replace', targetId: items.find(i => i.text.includes('木地板'))!.id, sourceId: `c${mixedMessage}.1` }]);
+      assert.equal(await summaryCount(a), 1); pending = (await req.read(a.conversationId)).proposal!;
+      assert.equal((await propose([])).kind, 'existing'); assert.equal((await req.read(a.conversationId)).proposal, null); check('existingAcknowledgementClearsEarlierPendingDiff');
+      staged = await propose([{ operation: 'replace', targetId: items.find(i => i.field === 'budget')!.id, sourceId: `c${mixedMessage}.0` },
+        { operation: 'replace', targetId: items.find(i => i.text.includes('木地板'))!.id, sourceId: `c${mixedMessage}.1` }]);
+      pending = (await req.read(a.conversationId)).proposal!;
+      const mixed: Row = await req.write(a.conversationId, randomUUID(), decision(pending));
+      assert.match(JSON.stringify(mixed.draftFields), /瓷砖/); assert.match(JSON.stringify(mixed.draftFields), /地暖不做/); check('partialChangePreservesSameFieldAndReentry');
+      await append(a, scenarios.turns[5].text); context = await service.base.context(false);
+      const currentItems = contractContext(context).savedItems, originalMessage = context.customerMessages[0].id;
+      staged = await propose([{ operation: 'replace', targetId: currentItems.find(i => i.field === 'budget')!.id, sourceId: `c${originalMessage}.1` },
+        { operation: 'replace', targetId: currentItems.find(i => i.text.includes('瓷砖'))!.id, sourceId: `c${originalMessage}.2` }]);
+      const wrong: Row = (await req.read(a.conversationId)).proposal!;
+      assert.equal(wrong.requiresRestoreConsent, true); assert.equal(wrong.diff.length, 2);
+      await assert.rejects(() => req.write(a.conversationId, randomUUID(), decision(wrong)), /requirements_restore_confirmation_required/);
+      assert.equal(await summaryCount(a), 2); assert.equal((await req.read(a.conversationId)).latest!.id, mixed.id); check('oldFlooringRestoreCannotWriteWithoutExtraConsent');
+      staged = await propose([{ operation: 'replace', targetId: currentItems.find(i => i.field === 'budget')!.id, sourceId: `c${originalMessage}.1` }]);
+      pending = (await req.read(a.conversationId)).proposal!; assert.equal(pending.diff.length, 1);
+      await assert.rejects(() => req.write(a.conversationId, randomUUID(), decision(wrong, true)), /requirement_target_changed/); check('supersededProposalCannotApply');
+      const restored: Row = await req.write(a.conversationId, randomUUID(), decision(pending, true));
+      assert.equal(restored.draftFields.room.text, mixed.draftFields.room.text); assert.match(restored.draftFields.budget.text, /12万/); check('acceptedBudgetRestoreKeepsTileAndNegativeHeating');
+      await assert.rejects(() => req.write(a.conversationId, randomUUID(), { action: 'draft' }), /requirements_proposal_required/); check('reviewModeRejectsLegacyDirectDraft');
+      context = await service.base.context(false);
+      const candidate = { action: 'propose_requirements', changes: [], answer: '', evidenceIds: [] };
+      const prepared = await service.prepare(context, candidate, 'measure_native_proposals'); assert.ok(prepared.ok);
       await withPlatformTransaction(tx => tx.execute(sql`update app.assistant_conversations set version=version+1 where enterprise_id=${a.enterpriseId} and id=${a.conversationId}`));
-      await assert.rejects(() => service.execute(stale.prepared, retryKey, retryArgs), /context_changed/);
-      assert.equal(await summaryCount(a), countBefore); report.checks.realStaleSaveRejectedBeforeWrite = true;
-      const refreshed = await service.context(), retry = await service.prepare(refreshed, retryArgs, async () => accepted); assert.ok(retry.ok);
-      const recovered = await service.execute(retry.prepared, retryKey, retryArgs);
-      assert.equal(await summaryCount(a), countBefore + 1); report.checks.realStaleSaveRecoveredOnce = true;
-      const replayContext = await service.context();
-      const replay = await service.base.requirements.write(a.conversationId, retryKey, { action: 'draft' }, {
-        sourceSeq: refreshed.sourceSeq, baseSummaryId: refreshed.requirements.latest!.id, changes: retryArgs.changes,
-      }, (repo, c) => service.base.guard(replayContext, repo, c));
-      assert.equal(replay.id, recovered.receipt!.entity.id); assert.equal(await summaryCount(a), countBefore + 1); report.checks.itemSaveIdempotentReadback = true;
-      context = await service.context(); const beforeEpoch = context.epoch; await retire(a); const afterEpoch = await service.context(); assert.ok(afterEpoch.epoch > beforeEpoch);
-      const oldRef = contractContext(context).knowledgeSentences[0].id;
-      const rejected = await service.prepare(afterEpoch, { action: 'none', changes: [], answer: '', evidenceIds: [oldRef] }, async () => accepted);
-      assert.equal(rejected.ok, false); report.checks.retiredReferenceDenied = true;
+      await assert.rejects(() => service.execute(prepared.prepared, randomUUID(), candidate), /context_changed/); check('staleNativeProposalRejectedBeforeExecution');
+      context = await service.base.context(false); const retry = await service.prepare(context, candidate, 'measure_native_proposals'); assert.ok(retry.ok);
+      const ack = await service.execute(retry.prepared, randomUUID(), candidate); assert.equal(ack.receipt?.effect, 'existing'); assert.equal(await summaryCount(a), 3); check('nativeRecoveryReturnsExistingWithoutWrite');
+      const handoffContext = await service.base.context(false), handoffArgs = { action: 'request_designer', changes: [], answer: '', evidenceIds: [] };
+      const hp = await service.prepare(handoffContext, handoffArgs, 'measure_native_proposals'); assert.ok(hp.ok);
+      const hr = await service.execute(hp.prepared, randomUUID(), handoffArgs); assert.equal(hr.receipt?.entity.status, 'pending');
+      assert.equal((await service.base.handoff.customerRead(a.conversationId)).handoff, null); check('modelHandoffProposalDoesNotSubmitReception');
+      await retire(a); const revoked = await service.context();
+      const reject = await service.prepare(revoked, { action: 'none', changes: [], answer: '', evidenceIds: [evidenceId] }, 'measure_native_proposals');
+      assert.equal(reject.ok, false); check('retiredCompanyEvidenceDenied');
+      await append(a, '我再看看，晚些时候再确认。');
+      const displayed = await req.read(a.conversationId);
+      const formal = { action: 'confirm', draftId: restored.id, expectedVersion: restored.version,
+        fields: { ...Object.fromEntries(Object.entries(restored.draftFields as Record<string, { text: string }>).map(([k, v]) => [k, v.text])), budget: '客户正式核对为13万' }, consent: true, reviewedSourceSeq: displayed.sourceSeq };
+      await assert.rejects(() => req.write(a.conversationId, randomUUID(), { ...formal, reviewedSourceSeq: '0' }), /requirements_stale/); check('staleFormalReviewDenied');
+      const formalSaved = await req.write(a.conversationId, randomUUID(), formal);
+      assert.equal(formalSaved.id, restored.id); assert.equal(formalSaved.status, 'confirmed'); assert.equal(await summaryCount(a), 3); check('formalReviewAfterRepeatNeedsNoDuplicateDraft');
+      const formalContext = contractContext(await service.base.context(false));
+      assert.equal(formalContext.savedFields.budget, '客户正式核对为13万');
+      assert.equal(formalContext.savedItems.some(i => i.field === 'budget'), false); check('formalCustomerValuesDoNotRevertToExtractedQuotes');
+      assert.equal((await propose([])).kind, 'existing');
+      await assert.rejects(() => propose(adds), /requirements_customer_edit_conflict/); check('unsupportedFormalEditIsPreservedAndReported');
       return;
     }
     const { runContractCreateAgent } = await import(pathToFileURL(path.join(source, 'contract-langchain.mjs')).href);
     for (const f of report.fixtures) {
-      const turns = mode === 'transport' ? ['validation', 'stale'].map(id => ({ id, text: '我想了解一下现在的情况。' })) : scenarios.turns;
+      const turns = mode === 'transport' ? ['validation', 'stale'].map(id => ({ id, text: '我想了解一下现在的情况。' }))
+        : [...scenarios.turns.slice(0, 3), { ...scenarios.turns[2], id: 'repeat', expect: 'Reentry: return the same existing saved draft, no duplicate, no new business proposal or formal confirmation.' }, ...scenarios.turns.slice(3)];
       for (const turn of turns) {
         assert.ok(!unknown && !haltReason, haltReason);
         if (turn.retireBefore) {
@@ -316,6 +375,29 @@ async function main() {
           } else if (f.engine === 'createAgent') row.result = await runContractCreateAgent({ protocol, model: scenarios.model, baseURL: 'http://127.0.0.1:3109/v1', apiKey: secret.bridgeKey,
             system: active.system, text: turn.text, prepare, execute });
           else row.result = await pythonRun({ protocol, model: scenarios.model, baseURL: 'http://127.0.0.1:3109/v1', bridgeURL: 'http://127.0.0.1:3109', apiKey: secret.bridgeKey, system: active.system, text: turn.text });
+          row.beforeConfirmation = await readback(f); row.summaryCountBeforeConfirmation = await summaryCount(f);
+          // This is a simulated first-party customer decision, never text or an
+          // approval token supplied to the model. Wrong diffs are not accepted.
+          const receipt = active.result?.receipt;
+          if (receipt?.proposal && ['save','mixed','reversal'].includes(turn.id)) {
+            const proposal = (await service.base.requirements.read(f.conversationId)).proposal;
+            const value = Object.values(proposal?.summary.draftFields || {}).map((v: Row) => v.text).join('；');
+            const expected = /90平/.test(value) && /地暖不做/.test(value)
+              && (turn.id === 'save' ? /12万/.test(value) && /木地板/.test(value) && !/10万|瓷砖/.test(value)
+                : turn.id === 'mixed' ? /10万/.test(value) && /瓷砖/.test(value) && !/12万|木地板/.test(value)
+                  : /12万/.test(value) && /瓷砖/.test(value) && !/10万|木地板/.test(value));
+            if (proposal && expected) {
+              row.clientConfirmation = { proposalId: proposal.id, digest: proposal.digest, restoreConsent: proposal.requiresRestoreConsent, expectedDiffAccepted: true };
+              row.confirmedDraft = await service.base.requirements.write(f.conversationId, randomUUID(), { action: 'apply_proposal',
+                proposalId: proposal.id, digest: proposal.digest, consent: true, restoreConsent: proposal.requiresRestoreConsent });
+            } else row.clientConfirmation = { expectedDiffAccepted: false, reason: 'Proposed values do not match this customer decision. No write.' };
+          }
+          if (receipt?.effect === 'proposal' && ((turn.id === 'contact' && receipt.action === 'request_designer')
+            || (turn.id === 'cancel' && receipt.action === 'cancel_designer'))) {
+            row.clientConfirmation = { action: turn.id, contactConsent: false };
+            row.confirmedHandoff = await service.base.handoff.customerWrite(f.conversationId, randomUUID(),
+              turn.id === 'contact' ? { action: 'request', consent: true, contactConsent: false } : { action: 'cancel' });
+          }
           row.after = await readback(f); row.summaryCountAfter = await summaryCount(f); row.finished = new Date().toISOString();
           row.deliveredValidated = !!active.result?.ok && row.result.textResponse === active.result.text;
           if (row.deliveredValidated) f.dialogue.push({ epoch: active.context.epoch, user: turn.text, action: active.lastSubmission?.action,

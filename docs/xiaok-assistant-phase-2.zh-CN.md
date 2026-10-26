@@ -1,6 +1,28 @@
 # 小K第二期：需求整理与人工交接
 
-## 当前交付：共用原生业务契约与三候选重测（2026-10-25）
+## 当前交付：聊天记忆、业务提案与确认写入分离（2026-10-25）
+
+**OS-CONTRACT-04：候选机制Implemented；配置模型整链Limited。** 用户已授权三层分离、已有草稿幂等、历史值恢复确认及重测AnythingLLM、官方createAgent、PydanticAI。本次按批准预算闭合有界测试：计划54轮、实际发出52轮，没有候选完整达标，不据此迁移默认运行时。下一项OS-CONTRACT-05是基于保存trace的共享协议/回答组成决策，未启动；旧R0–R4、企业知识入库及生产仍暂停。
+
+**实现与权威。** 聊天记忆仍保存在原messages；候选会话`entry_snapshot.requirementReviewMode=true`停止自动建摘要。内部`RequirementService.propose`只在既有entry snapshot存一份待核对diff，绑定已存摘要/version、客户sourceSeq、有序来源消息整体hash和knowledge epoch。需求GET新增`reviewMode/proposal/sourceSeq`，读取隐藏hash或绑定已失效的提案；POST `apply_proposal`仅接收提案ID/digest/consent/restoreConsent，在原租户/参与者事务内重验来源并重算diff。模型没有apply/confirm工具。客户接受后只创建`confirmed_fields=null`的draft；另一次正式确认必须绑定GET展示的`reviewedSourceSeq`。未新增表、权限权威、Agent、facts库或KnowledgeRetriever/Evidence管线。
+
+**幂等与限制。** 提案request key仅保存标识，不缓存私密正文；重放只返回当前授权内容或superseded标记，不能复活已被替换/处理的提案。已有同值草稿的确认回执清理旧pending；精确重复add、同键回放、不同键确认同一提案及并发确认均不重复建摘要。Mini journal跨页恢复原key/body以核对丢响应的同一次操作。客户正式确认时自己修改的值受到保护：目前Agent非空变更若无法保留其来源则明确拒绝，不改回旧摘录。精确引文重复已处理，语义等价归一化和无标点多事实拆分仍Limited。
+
+**历史恢复与客户端。** 用较早原话替换较新条目，包括remove+add等价写法，必须额外确认恢复。C02沿`design-references/xiaok-assistant-phase1-ppt-v1/sources/slide06-needs.png`既有卡片/原话区/按钮/原生弹窗展示当前值、拟改值和来源，样式素材未改。提案、已存草稿、正式确认分开；接待/取消也仅是提案，执行仍走原客户接待动作，waiting、接通、预约、手机号同意彼此独立。默认运行时未迁移。
+
+**开源借鉴。** 参考[LangChain approval/resume](https://github.com/langchain-ai/docs/blob/main/src/oss/langchain/human-in-the-loop.mdx)和[PydanticAI deferred tools](https://pydantic.dev/docs/ai/tools-toolsets/deferred-tools/)的外部决定模式，保留原生类型输出/已知拒绝纠错，AnythingLLM仍用custom skill且不补丁核心。持久确认由既有业务服务承担，不宣称已完整集成框架checkpoint。模型原文与真实回执并存并独立审计，冲突状态措辞判失败，不用在线裁判悄悄改写。
+
+**工程证据。** Server13/13、Mini13/13、限定1551源类型0及限定lint通过；Admin全仓lint退出0，25个既存warning。真实服务`trial-2026-10-25T05-19-55-994Z.json`30项、旧兼容`tmp/agent-comparison/trial-2026-10-25T05-55-29-577Z.json`10项、原生SDK协议`trial-2026-10-25T05-25-14-324Z.json`6项均通过，模型调用0/drift[]。Stable原生`review-native-os-contract-04-native-05/report.json`15项真实HTTP/页面/写入/重进/故障检查通过，逻辑390×844/PNG348×752、drift[]；已审看pending、草稿、历史取消/接受及正式确认截图。弹窗决定用SDK回调，真机/BLE/真实登录/完整光学还原未验证，不变成手测推进门槛。两本还原台账保留唯一C02源。早先断言错误、21项但源码漂移的服务批、窗口位置/运行时预检和原生驱动断言错误均保留失败。旧兼容断言改为严格比较已存业务实体，同时单独断言新增聊天水位增长，未修改导入的运行时辅助函数。
+
+**固定实模结果。** `trial-2026-10-25T06-01-28-936Z.json`：54条case记录、52轮实际dispatch、91调用/191636tokens、34个已交付且结构校验通过的输出、4928前后绑定/drift[]/unknown0。AnythingLLM实际16/18轮、状态通过9；createAgent18/18、状态通过10；PydanticAI18/18、状态通过10。六次重复整理均维持同一草稿；六套首次保存+混合修改共12份草稿，均在独立测试侧客户确认后创建。所需预算恢复/联系/取消路径均未完整交付；AnythingLLM第二组最后联系/取消两轮因剩余本批额度不足以覆盖保守预留而未dispatch，应记未执行而非模型能力失败。每候选计划范围整链仍0/2；测试没有修好错误提案再代为接受。
+
+**审计与共同原因。** `confirmation-review-2026-10-25T06-01-28-936Z.json`v2把缺少安全检查点和断言失败分开，原v1保留。41行有确认边界直接读回；13行SDK异常没有当轮原始读回，不能宣称其逐轮安全观察通过；独立只读`review-final-effects.json`通过16项：数据库恰好12个摘要ID逐一匹配客户接受草稿的12份回执，全部仍为draft/confirmed=null，最终保留90平/10万/瓷砖/不做地暖，六会话均无接待；清理、空闲jobs和3109关闭已核对。累计审计不能补造13行缺失的逐轮快照。三份`semantic-*-review-01.json`保留原回答/被拒提交。43次已知拒绝是`source_not_authorized`，多为把客户`c...`编号填入企业Evidence字段。预期：客户原话用于需求修改，企业结论只用当前资料目录；实际：反复混用引用命名空间、确认前说已保存/更新/安排、撤回后自行编出1–2小时或30–60分钟时长，PydanticAI一份首稿还把仅恢复预算扩大成恢复木地板。真实数据库回执不能证明相邻正文真实。归Agent契约/回答消费，不是已证实的知识入库缺陷。下一判别工作先离线复放类型化引用目录、拆开咨询正文和服务权威状态文案，不进行第三轮措辞/regex修补、放松守卫或另一轮广泛付费采样。
+
+**预算与清理。** 用户批准本批≤200000、累计≤1400000tokens、累计≤¥5。本批191636tokens/上界¥0.958180，累计1301914tokens/上界¥4.786907，包含未变的旧unknown预留，实付仍未知。本批剩8364tokens不足以覆盖最后请求的保守预留，不自动加预算或付费回退。合成企业AI停/身份撤权、临时API key撤销、skill停用、桥和验收锁释放；仅停止自有18089隧道PID201004。付费运行中源码/配置冻结；付费后代码复查另发现提案键重放跳过调用方guard及epoch/base检查，已单独作确定性修补：重放也核对guard、会话模式/状态、epoch、来源hash/水位及草稿ID/version。`review-replay-final.json`隔离服务8项通过，drift[]/模型0/清理完成；从admin运行`node --import tsx scripts/agent-contract-replay.ts`。最终1551源类型0及限定lint通过，早先驱动写错mode的失败另保留。付费/原生证据继续绑定原源码；经影响核对复用未变的客户端/apply路径，新增重放分支用本次服务证据覆盖，不宣称最终guard补丁再跑过付费或原生；运行后评分修正只影响报告，不改判原回答或补造缺失快照。
+
+**合并影响核对（2026-10-26）。** 暂停期间基线进入独立作品集/推荐提交69d103b0；其client新增仅格式化推荐消息，AssistantClient写入/journal方法及C02需求页未变。候选对照仍调用RequirementService/HandoffService，不走被改动的正式Agent worker。保留该提交及其他既存脏改动。合并源码上Server13/Mini13单元、8项确定性重放服务（新合成fixture、清理完成、模型0/drift[]）、限定1551源类型0及限定lint通过，日志见`review-*-integrated.log`。付费/原生证据保留原绑定，仅复用未变范围，不混合不同版本的结果。
+
+## 历史对照：OS-CONTRACT-03（2026-10-25）
 
 **OS-CONTRACT-03：隔离对照完成／产品迁移Limited。** 用户要求参考成熟开源Agent改功能设计，再重测AnythingLLM、官方createAgent和PydanticAI。复用KnowledgeRetriever/Evidence、RequirementService、HandoffService及隔离合成库。用户范围仍为自然咨询、明确整理草稿、局部更正、撤回/重进、接待与取消；旧计划/R0–R4继续暂停，正式默认运行时未切换。下一项OS-CONTRACT-04提案/同意设计决策未开始，不自动推进生产迁移。
 
