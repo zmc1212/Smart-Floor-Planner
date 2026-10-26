@@ -5,6 +5,41 @@ import type { businessReviewTools } from './review-tools';
 export const reviewRuntimeProtocol = 'candidate-business-review-v1';
 type ReviewTools = Awaited<ReturnType<typeof businessReviewTools>>;
 export type ReviewToolName = 'propose_requirement_changes' | 'propose_designer_reception' | 'propose_reception_cancellation';
+export type ReviewTurnMode = 'propose' | 'clarify_budget' | 'retain_existing';
+
+/** A direct reception request with no specific requirement change is a
+ * one-capability turn. Keeping the large requirement schema available here
+ * lets a model mistake "leave my needs as they are" for a new field. */
+export function reviewDesignerOnly(question: string): boolean {
+  const request = /(?:想|要|请|帮我|麻烦|找|联系|让).{0,5}设计师.{0,8}(?:聊|沟通|接待|联系)|设计师.{0,6}(?:继续沟通|接着聊)/u.test(question);
+  const refused = /(?:不想|不要|别|不用|暂时不|先不).{0,6}(?:找|请|让|联系)?设计师/u.test(question);
+  const hypothetical = /(?:如果|假如|能不能|是不是|是否).{0,12}设计师/u.test(question);
+  const needChange = /(?:预算|地暖|瓷砖|房间|材料|风格|户型|面积|工期).{0,12}(?:改成|换成|加上|删除|调整到|定为)/u.test(question);
+  return request && !refused && !hypothetical && !needChange;
+}
+
+/** An explicit unfinished amount or withdrawal is a reply-only turn. The
+ * model cannot turn either into a replacement proposal for the old value. */
+export function reviewTurnMode(question: string): ReviewTurnMode {
+  const budget = /预算|总预算|装修款|装修钱/u.test(question);
+  if (budget && /(?:还没想好|没想好|尚未确定|还不确定|暂时不确定|晚点告诉|以后再说|金额待定|数额待定)/u.test(question)
+    && !/\d+(?:\.\d+)?\s*(?:万|元)/u.test(question)) return 'clarify_budget';
+  if (budget && /(?:算了|先不改|不用改|不改了|保持原来|维持原来|还是原来|先照旧)/u.test(question)
+    && !/(?:改成|调到|定为|最后按|最终按)\s*\d+(?:\.\d+)?\s*(?:万|元)/u.test(question)) return 'retain_existing';
+  return 'propose';
+}
+
+export function reviewReplyOnlyContext(mode: Exclude<ReviewTurnMode, 'propose'>): string {
+  return mode === 'clarify_budget'
+    ? '本轮客户明确尚未确定预算金额。只能询问待定金额；不要说已保存、已改动或已有待审批更改。'
+    : '本轮客户明确维持原有预算，先前未采用的提案已因新的客户原话失效。只确认原草稿不变；不要提出新的更改或声称已正式确认。';
+}
+
+export function reviewReplyOnlyReceipt(mode: Exclude<ReviewTurnMode, 'propose'>): string {
+  return mode === 'clarify_budget'
+    ? '请告诉我您想定的预算金额；现有需求草稿保持不变。'
+    : '当前需求草稿保持不变；没有新的需求更改待采用。';
+}
 
 /** A development candidate is bound when its run is created. A later entry
  * edit cannot turn an ordinary in-flight conversation into a review run. */

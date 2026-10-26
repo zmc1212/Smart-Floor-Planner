@@ -58,7 +58,7 @@ import { proseNumberProtocol } from './prose-number-view';
 import { consultationRuntimeBudget } from './consultation-profile';
 import { citationSelectionProtocol } from './citation-coverage';
 import { businessReviewTools } from './review-tools';
-import { reviewCandidate, reviewModelTools, reviewProposalContext, reviewProposalReply, type ReviewToolName } from './review-runtime';
+import { reviewCandidate, reviewModelTools, reviewProposalContext, reviewProposalReply, reviewTurnMode, reviewDesignerOnly, reviewReplyOnlyContext, reviewReplyOnlyReceipt, type ReviewToolName } from './review-runtime';
 import { RequirementWorkflow } from '../requirements/workflow';
 
 type ReviewMarker = { protocol: 'candidate-business-review-v1'; name: ReviewToolName;
@@ -613,13 +613,21 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       },
     }) : null;
     const reviewDefinitions = review ? reviewModelTools(review) : [];
+    const designerOnly = !!review && reviewDesignerOnly(reviewContext.currentQuestion);
+    const reviewMode = review && !designerOnly ? reviewTurnMode(reviewContext.currentQuestion) : 'propose';
     if (review && initial.messages[0]?.role === 'system' && !initial.resume)
       initial.messages[0].content.push({ type: 'text', text: reviewProposalContext(review) });
+    if (review && reviewMode !== 'propose' && initial.messages[0]?.role === 'system' && !initial.resume)
+      initial.messages[0].content.push({ type: 'text', text: reviewReplyOnlyContext(reviewMode) });
     const toolsForMessage = (businessFollowup: boolean) => {
       const base = publicResearchTools(readToolsForContext(agentToolsForMessage(reviewContext.currentQuestion,
         initial.config.tools, businessFollowup, !!dependencies.webSearch || configuredWebProvider() !== null,
         initial.designerFollowup), readContext), !!initial.config.consultation);
-      return review ? [...base.filter(tool => !['record_need', 'request_designer'].includes(tool.name)), ...reviewDefinitions] : base;
+      // fitAgentContext appends the final tool. An empty candidate list gives the
+      // provider exactly one final_response and a named tool_choice.
+      return review ? reviewMode !== 'propose' ? []
+        : designerOnly ? reviewDefinitions.filter(tool => tool.name === 'propose_designer_reception')
+        : [...base.filter(tool => !['record_need', 'request_designer'].includes(tool.name)), ...reviewDefinitions] : base;
     };
     const reviewReceipt = async (marker: ReviewMarker) => {
       if (marker.name === 'propose_requirement_changes' && marker.effect === 'proposal') {
@@ -1400,7 +1408,10 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       if (!step) fail('invalid_model_answer', 502);
       return step.private_checkpoint as BusinessSnapshot;
     }) : null;
-    const text = references ? NO_REFERENCE : business ? business.displayText : parseAgentReply(result.output?.text || '');
+    const modelText = references ? NO_REFERENCE : business ? business.displayText : parseAgentReply(result.output?.text || '');
+    // Reply-only turns have no business effect. Keep the raw first draft in the
+    // model step, but show only a service-authored statement of actual state.
+    const text = review && reviewMode !== 'propose' ? reviewReplyOnlyReceipt(reviewMode) : modelText;
     await scoped(async (tx, context) => {
       if (!business) {
         const preferences = ((context.conversation.entry_snapshot as Row)?.referencePreferences || []) as ReferencePreference[];

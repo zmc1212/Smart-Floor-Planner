@@ -1,6 +1,14 @@
 # 小K第二期：需求整理与人工交接
 
-## 当前交付：实际聊天运行时组合（2026-10-26）
+## 当前交付：OS-CONTRACT-12实际接待提案与客户取消（2026-10-27）
+
+**候选路径有界Implemented；完整咨询和默认迁移仍Limited。** 客户在C01自然提出找设计师继续沟通且不分享手机号。实际Worker把明确、单一的接待请求限制为`propose_designer_reception`和最终回复；混合需求更改、拒绝和假设句不进入此窄范围。模型只能暂存待确认提案，客户用既有C01控件批准，仍由原`POST /api/miniprogram/assistant/conversations/:id/handoff`实写。进入等待接待后，C01明确提示小K暂停自动回复；取消通过既有客户按钮确认并回到AI，不虚称等待状态仍有Worker取消回合。原需求草稿不变，手机号为空且联系授权为false。无Mini布局/样式/素材、路由、表、角色或知识存储变更。C01批准设计源为`design-references/xiaok-p4b-public-sites-v1/README.md`。
+
+**证据与原失败。** 首批固定配置模型`tmp/agent-contract/trial-handoff-runtime-os12-2026-10-26T15-54-10-578Z.json`两次已知调用/14896tokens：首条接待提案通过；第二条原始首稿误选`propose_requirement_changes`并暂存未批准`usage`提案，整批仍失败。纯接待工具收窄是机制级修复。次批`tmp/agent-contract/trial-handoff-runtime-os12-2026-10-26T15-55-41-708Z.json`两次已知调用/11503tokens，2/2实际Worker提案、客户批准、等待回执、取消、重进、租户拒绝、原键重放、草稿不变及无电话授权通过，drift[]且合成夹具/checkpoint清理。确定性Worker `tmp/agent-runtime/services-handoff-runtime-os12-2026-10-26T16-04-02-513Z.json` 2/2通过；初始失败驱动预检和首批原失败均单独保留。当前源码的Stable SDK C01重跑`tmp/agent-contract/review-native-os12-sdk-current-20261027/report.json`通过12/12客户端/真实HTTP、4张截图、请求/取消丢回复恢复、拒绝弹窗、身份撤权与草稿保留，drift[]/清理。只连接既有`9420` SDK（Stable2.02.2608080/base3.17.2、逻辑390×844），不声称新编译、Computer Use或真机。原生首条接待是既有精确文本快捷路径；实际Worker模型/审批由独立源码绑定实服批证明，不虚称一次原生实模贯通。OS12新增4次已知调用/26399tokens；累计1618792tokens/保守¥6.371297，实付未知，低于¥100。
+
+**OS-CONTRACT-11保留Limited语义边界。** 金额未定和明确维持原值回合只提供单个`final_response`；服务端显示回执如实说明草稿不变，C01仅在提案仍匹配来源/epoch/基础摘要时投影待处理入口。`tmp/agent-runtime/services-review-multiturn-os11-2026-10-26T16-03-48-617Z.json`确定性Worker10/10，`tmp/agent-selection/services-2026-10-26T16-04-11-064Z.json`需求选择22/22、`tmp/agent-review-next/services-2026-10-26T15-49-28-260Z.json`接待26/26隔离实服通过。纯SDK `tmp/agent-contract/review-native-os11-sdk-current-20261027/report.json`通过C01/C02待处理、失效、预算选择实写及重进6/6、5张截图、drift[]/清理，无新编译。配置模型原始首稿仍未达到仅回复语义：`trial-review-multiturn-os11-2026-10-26T15-40-21-789Z.json`供应商尝试不可用写工具，并说未批准更改已确认；修复为唯一最终工具后，`trial-review-multiturn-os11-2026-10-26T15-42-40-805Z.json`仍在无写入时说“已记录/已确认”。期望输入输出是追问缺失金额，或告知原草稿未变；实际原文虚称记录/确认。两轮修复都未通过相同首稿期望，停在第三次模型采样前。缺陷属Agent消费/表述域，KnowledgeRetriever/Evidence正确；保存的请求证明已指定唯一`final_response`，仍有虚称，因此区分了工具协议与语言行为。只有新机制级变更才能重开该期望。末尾分类优先级修复只有确定性证据，不追认先前实模通过。OS11三批合计30次已知调用/213779tokens，原首稿失败保留；安全显示回执不授权默认Agent或生产上线。
+
+## 历史交付：OS-CONTRACT-10实际聊天运行时组合（2026-10-26）
 
 **OS-CONTRACT-10：候选实际聊天闭环Implemented，默认迁移及完整咨询仍Limited。** 客户在C01自然说出已有需求的更正；真实`agent/worker.ts`经`runRenovationAgent`调用官方LangChain类型`businessReviewTools`，形成未批准提案及服务端真实回执。C01只在获权候选会话存在待处理提案时，沿台账批准的`design-references/xiaok-p4b-public-sites-v1/README.md`既有底栏文字按钮进入C02；C02沿唯一slide06-needs.png行/铅笔、批准的原生保留/采用菜单，默认保留，客户选字段后才用原`POST /api/miniprogram/assistant/conversations/:id/requirements`写草稿。所选预算更正不改变瓷砖、地暖、面积原值/ID/来源，不代表正式确认。新行为仅对本人`customer_consultation`且`agentReviewCandidate=true`、`requirementReviewMode=true`、`requirementWorkflow=langgraph`并在run policy绑定`candidate-business-review-v1`的会话开放；普通会话与默认Agent不迁移，无新表、路由、角色、知识存储或设计方向。
 

@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { applyRequirementChanges, requirementItems } from '../requirements/items';
 import { requirementReview } from '../requirements/review';
+import { requirementProposalIsCurrent } from '../requirements/current';
 
 const messages = [{ id: '1', text: '我家90平，预算12万，客厅想铺木地板，地暖不做。' },
   { id: '2', text: '预算改成10万，客厅换瓷砖，其余照旧。' }];
@@ -14,6 +15,18 @@ const second = applyRequirementChanges(messages, first, [
   { operation: 'replace', targetId: items.find(i => i.text.includes('木地板'))!.id, sourceId: 'c2.1' }]);
 
 describe('requirement proposal review', () => {
+  it('hides a pending proposal after a new message, epoch change, or draft replacement', () => {
+    const pending = { status: 'pending', sourceSeq: '5', sourceHash: 'original', epoch: 2,
+      baseSummaryId: '11', baseVersion: 1 };
+    const current = { sourceSeq: '5', sourceHash: 'original', epoch: 2,
+      latestId: '11', latestVersion: 1, mode: 'ai', status: 'open' };
+    assert.equal(requirementProposalIsCurrent(pending, current), true);
+    assert.equal(requirementProposalIsCurrent(pending, { ...current, sourceSeq: '6' }), false);
+    assert.equal(requirementProposalIsCurrent(pending, { ...current, sourceHash: 'withdrawn' }), false);
+    assert.equal(requirementProposalIsCurrent(pending, { ...current, epoch: 3 }), false);
+    assert.equal(requirementProposalIsCurrent(pending, { ...current, latestId: '12' }), false);
+    assert.equal(requirementProposalIsCurrent(pending, { ...current, mode: 'human' }), false);
+  });
   it('existing drafts accept empty and repeated exact additions without a different state', () => {
     assert.equal(requirementReview(messages, first, []).unchanged, true);
     assert.equal(requirementReview(messages, first, [{ operation: 'add', field: 'budget', sourceId: 'c1.1' }]).unchanged, true);

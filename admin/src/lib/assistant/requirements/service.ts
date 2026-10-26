@@ -10,6 +10,7 @@ import { requirementCheckpoint } from './checkpoint';
 import { applyRequirementChanges, type RequirementProposal } from './items';
 import { requirementReview } from './review';
 import { selectedRequirementFields, selectedRequirementReview } from './selection';
+import { requirementProposalIsCurrent } from './current';
 
 function dto(row: Row) {
   return { id: String(row.id), conversationId: String(row.conversation_id), version: Number(row.version),
@@ -59,14 +60,15 @@ export class RequirementService {
         where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and author_kind='user'`);
       const settings = await repo.settings();
       const sources = pending?.status === 'pending' ? await customerSources(repo, this.actor.enterpriseId, conversationId) : null;
-      const current = pending?.status === 'pending' && c.mode === 'ai' && c.status === 'open'
-        && pending.sourceHash === sources?.hash
-        && pending.sourceSeq === String(source!.seq) && pending.epoch === Number(settings!.knowledge_epoch)
-        && pending.baseSummaryId === (latest ? String(latest.id) : null) && pending.baseVersion === (latest ? Number(latest.version) : null);
+      const current = requirementProposalIsCurrent(pending, {
+        sourceHash: sources?.hash || null, sourceSeq: String(source!.seq), epoch: Number(settings!.knowledge_epoch),
+        latestId: latest ? String(latest.id) : null, latestVersion: latest ? Number(latest.version) : null,
+        mode: String(c.mode), status: String(c.status),
+      });
       return { latest: latest ? dto(latest) : null, confirmed: confirmed ? dto(confirmed) : null,
         sourceSeq: String(source!.seq),
         reviewMode: (c.entry_snapshot as Row)?.requirementReviewMode === true,
-        proposal: current ? { id: pending.id, digest: pending.digest, status: 'pending', sourceSeq: pending.sourceSeq,
+        proposal: current && pending ? { id: pending.id, digest: pending.digest, status: 'pending', sourceSeq: pending.sourceSeq,
           diff: pending.diff, requiresRestoreConsent: pending.requiresRestoreConsent,
           summary: { status: 'proposal', draftFields: pending.fields, confirmedFields: null } } : null };
     });

@@ -358,6 +358,9 @@ test('free-form replies cannot turn a customer budget into a guaranteed enterpri
   assert.throws(() => parseAgentReply(JSON.stringify({ kind: 'general', text: '我保证最终只要一万元。' })), /unsupported_model_commitment/);
   assert.throws(() => parseAgentReply(JSON.stringify({ kind: 'general', text: '可以承诺包干价为一万元。' })), /unsupported_model_commitment/);
   assert.equal(parseAgentReply(JSON.stringify({ kind: 'unavailable', text: '没有正式报价依据，无法保证最终只要一万元。' })), '没有正式报价依据，无法保证最终只要一万元。');
+  const clarification = '您还没确定具体预算，想好金额后告诉我。';
+  assert.equal(parseAgentReply(JSON.stringify({ kind: 'general', text: clarification })), clarification);
+  assert.throws(() => parseAgentReply(JSON.stringify({ kind: 'general', text: '我确定最终费用为10万元。' })), /unsupported_model_commitment/);
 });
 test('memory rejects model inventions, ambiguous rooms, stale versions and unexpected authority fields', () => {
   const d = { room: '书房', field: 'desk', value: '双人桌', quote: '书房要双人桌', sourceMessageId: '1', expectedVersion: 0 };

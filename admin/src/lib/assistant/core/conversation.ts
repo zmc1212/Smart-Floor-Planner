@@ -7,6 +7,7 @@ import { parseWebCitationId } from '../agent/web-evidence';
 import { configuredGuidance, conversationGuidance, guidanceOpening, guidanceView } from '../requirements/guidance';
 import { requirementCheckpoint } from '../requirements/checkpoint';
 import { saveAutomaticRequirements } from '../requirements/automatic';
+import { currentRequirementProposalPending } from '../requirements/current';
 import { requestsDesigner } from '../handoff/intent';
 import { stageHandoffProposal } from '../handoff/proposal';
 import { currentHandoffOwner } from '../handoff/owner';
@@ -27,12 +28,12 @@ export function conversationSource(c:Row) {
     : {kind:e.kind||'conversation',id:e.id||String(c.id)};
 }
 const json = (value: unknown) => JSON.stringify(value);
-export function conversationDto(c: Row) {
+export function conversationDto(c: Row, requirementProposalPending = false) {
   const guidance = conversationGuidance(c.entry_snapshot);
   const entry = c.entry_snapshot as Row;
   return { id: String(c.id), purpose: c.purpose, status: c.status, mode: c.mode, title: c.title, version: c.version, contextRevision: c.context_revision, createdAt: c.created_at,
     ...(entry?.requirementReviewMode===true && entry?.requirementWorkflow==='langgraph' ? {reviewWorkflow:'langgraph'} : {}),
-    requirementProposalPending: entry?.agentReviewCandidate === true && (entry?.requirementProposal as Row | undefined)?.status === 'pending',
+    requirementProposalPending,
     guidanceEnabled: !!guidance, guidanceOpening: guidance ? guidanceOpening(guidance) : null,
     humanName: ((c.entry_snapshot as Row)?.handoff as Row)?.ownerName || null };
 }
@@ -163,7 +164,7 @@ export class ConversationService {
     }, true);
   }
   list(cursor = '9223372036854775807', limit = 20) {
-    return this.scoped(async repo => {
+    return this.scoped(async (repo, settings) => {
       const result = await rows(repo.tx, sql`select c.*, case when coalesce(c.entry_snapshot->>'retentionRedacted','false') != 'true' then
         (select m.content->'blocks'->0->>'text' from app.assistant_messages m
           where m.enterprise_id=c.enterprise_id and m.conversation_id=c.id and m.author_kind=${this.actor.principal.kind}
@@ -172,11 +173,14 @@ export class ConversationService {
         where c.enterprise_id=${this.actor.enterpriseId} and ${this.actor.principal.kind==='user'?sql`p.user_id=${this.actor.principal.userId}`:sql`p.admin_id=${this.actor.principal.adminId}`}
         and p.status='active' and c.purpose=${this.actor.principal.kind==='user'?'customer_consultation':'knowledge_preview'} and c.id<${cursor}
         order by c.id desc limit ${limit}`);
-      return { items: result.map(c => {
+      const items = [];
+      for (const c of result) {
         const question = typeof c.first_question === 'string' ? c.first_question.replace(/\s+/gu, ' ').trim() : '';
         const characters = Array.from(question);
-        return conversationDto({ ...c, title: question ? characters.slice(0, 80).join('') + (characters.length > 80 ? '…' : '') : c.title });
-      }), nextCursor: result.length === limit ? String(result.at(-1)!.id) : null };
+        items.push(conversationDto({ ...c, title: question ? characters.slice(0, 80).join('') + (characters.length > 80 ? '…' : '') : c.title },
+          await currentRequirementProposalPending(repo, c, settings)));
+      }
+      return { items, nextCursor: result.length === limit ? String(result.at(-1)!.id) : null };
     });
   }
   detail(conversationId: string) {
@@ -198,7 +202,7 @@ export class ConversationService {
       const entry=c.entry_snapshot as Row;
       const contentEntry=['reference_content','reference_unavailable'].includes(String(entry.kind));
       const source=entry.kind==='reference_content'?await contentEntrySource(repo.tx,entry as ContentEntry):null;
-      return { ...conversationDto(c), ownerAvailable, guidance:contentEntry?null:guidance, latestRun: latest ? runDto(latest) : null,
+      return { ...conversationDto(c, await currentRequirementProposalPending(repo, c, settings)), ownerAvailable, guidance:contentEntry?null:guidance, latestRun: latest ? runDto(latest) : null,
         ...(contentEntry?{guidanceOpening:contentGreeting(source),guidanceEnabled:false}:{}),
         ...(preview ? { previewScope: { audience: preview.audience, draftVersionIds: preview.drafts.map(draft => draft.id) } } : {}) };
     });

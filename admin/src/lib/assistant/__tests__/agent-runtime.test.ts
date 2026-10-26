@@ -4,8 +4,25 @@ import { runRenovationAgent, type AgentCheckpoint, type AgentRuntimePorts } from
 import { agentChatBody, parseAgentChat } from '@/lib/ai/providers/agent-chat';
 import type { ModelMessage, ModelTurnOutput } from '../contracts/model';
 import { agentToolsForMessage, projectFinalToolOutput, projectNeedBatchOutput } from '../agent/worker';
+import { reviewTurnMode, reviewDesignerOnly } from '../agent/review-runtime';
 
 const answer: ModelTurnOutput = { text: '建议', toolCalls: [], usage: null, finishReason: 'stop', providerRequestId: null };
+
+test('candidate review keeps unfinished budgets and explicit retention reply-only while accepting a later correction', () => {
+  assert.equal(reviewTurnMode('我想把预算再往下调一点，具体数额我还没想好。'), 'clarify_budget');
+  assert.equal(reviewTurnMode('预算还没想好，瓷砖和地暖先照旧。'), 'clarify_budget');
+  assert.equal(reviewTurnMode('算了，预算先保持原来12万。'), 'retain_existing');
+  assert.equal(reviewTurnMode('等一下，别用10万，最后按15万。'), 'propose');
+  assert.equal(reviewTurnMode('预算改10万吧。'), 'propose');
+});
+
+test('candidate review scopes a direct reception request without changing needs', () => {
+  assert.equal(reviewDesignerOnly('我想找设计师接着聊，但现在别分享我的手机号，装修需求先保持原样。'), true);
+  assert.equal(reviewDesignerOnly('装修想法就按之前说的留着。我想请设计师继续沟通，电话暂时不用给。'), true);
+  assert.equal(reviewDesignerOnly('我不想找设计师了。'), false);
+  assert.equal(reviewDesignerOnly('如果请设计师聊，会怎样？'), false);
+  assert.equal(reviewDesignerOnly('我想找设计师聊，预算改成10万。'), false);
+});
 
 test('same-turn independent needs preserve raw calls and atomic bounds without granting another action', () => {
   const selected = [{ room: '书房', field: 'desk', value: '靠窗', quote: '书房书桌靠窗' },
