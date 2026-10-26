@@ -37,6 +37,54 @@ function fixture() {
   return { db, calls, create, intercept: fn => { intercept = fn; }, identity: value => { token = value; } };
 }
 
+function proposalFixture() {
+  const f = fixture(); f.db.reviewMode = true;
+  f.db.latest = { id: '8', version: 1, status: 'draft', draftFields: { budget: { text: '预算10万' }, room: { text: '客厅换瓷砖' }, devices: { text: '地暖不做' } } };
+  f.db.proposal = { id: 'p1', digest: 'd1', requiresRestoreConsent: true,
+    diff: [{ field: 'budget', before: '预算10万', after: '预算12万', restoresHistory: false },
+      { field: 'room', before: '客厅换瓷砖', after: '', restoresHistory: true }],
+    summary: { status: 'proposal', draftFields: { budget: { text: '预算12万' }, room: { text: '' }, devices: { text: '地暖不做' } } } };
+  return f;
+}
+
+test('default retention, adoption and keeping original affect only chosen rows including deleted optional fields', async () => {
+  const f = proposalFixture(), c = f.create(); await c.show('11');
+  assert.equal(c.fields().room, '客厅换瓷砖'); assert.equal(c.fields().budget, '预算10万');
+  assert.equal(await c.act('confirm'), false); assert.equal(f.calls.some(call => call.body?.action === 'apply_proposal'), false);
+  c.chooseProposal('budget', true, c.proposalContext()); assert.equal(c.fields().budget, '预算12万');
+  assert.equal(c.fields().room, '客厅换瓷砖'); assert.deepEqual(c.selectedRestorations(), []);
+  c.chooseProposal('room', true, c.proposalContext()); assert.equal(c.fields().room, ''); assert.equal(c.selectedRestorations().length, 1);
+  c.chooseProposal('room', false, c.proposalContext()); assert.equal(c.fields().room, '客厅换瓷砖'); assert.deepEqual(c.state.selectedFields, ['budget']);
+  assert.equal(c.fields().devices, '地暖不做');
+});
+
+test('same-proposal foreground retains selection but new proposal resets to keeping original', async () => {
+  const f = proposalFixture(), c = f.create(); await c.show('11'); c.chooseProposal('budget', true, c.proposalContext());
+  await c.show('11'); assert.deepEqual(c.state.selectedFields, ['budget']);
+  f.db.proposal = { ...f.db.proposal, id: 'p2', digest: 'd2' }; await c.show('11');
+  assert.deepEqual(c.state.selectedFields, []); assert.equal(c.fields().budget, '预算10万');
+});
+
+test('delayed menu choice cannot apply after identity, proposal or selection changes', async () => {
+  const f = proposalFixture(), c = f.create(); await c.show('11'); const old = c.proposalContext();
+  c.chooseProposal('budget', true, old); c.chooseProposal('room', true, old); assert.deepEqual(c.state.selectedFields, ['budget']);
+  const current = c.proposalContext(); f.identity('other'); c.chooseProposal('room', true, current);
+  assert.deepEqual(c.state.selectedFields, ['budget']);
+  await c.show('11'); assert.deepEqual(c.state.selectedFields, []);
+});
+
+test('native pencil menu cancellation makes no selection and its late result cannot grant approval', async () => {
+  let page, resolve; global.Page = config => { page = config; };
+  global.wx = { showActionSheet(options) { resolve = options.success; assert.deepEqual(options.itemList, ['保留原需求', '采用本次提案']); } };
+  try {
+    const file = require.resolve('../packages/assistant/requirements/requirements'); delete require.cache[file]; require(file);
+    const f = proposalFixture(), c = f.create(); await c.show('11');
+    const host = { alive: true, shown: true, data: c.state, controller: c };
+    const pending = page.edit.call(host, { currentTarget: { dataset: { key: 'budget' } } });
+    f.identity('other'); resolve({ tapIndex: 1 }); await pending; assert.deepEqual(c.state.selectedFields, []);
+  } finally { delete require.cache[require.resolve('../packages/assistant/requirements/requirements')]; delete global.Page; delete global.wx; }
+});
+
 test('item-level metadata keeps the aggregate room values visible after page reentry and confirmation', async () => {
   const f = fixture();
   f.db.latest = { id: '7', version: 1, status: 'draft', draftFields: {
@@ -141,11 +189,15 @@ test('pending proposal survives reentry, displays the diff, and confirmation sen
   const first = f.create(); await first.show('11'); first.dispose();
   const c = f.create(); await c.show('11');
   assert.match(c.state.rows.find(row => row.key === 'budget').sourceText, /当前：10万\n拟改为：12万/);
-  c.input('budget', '99万'); assert.equal(c.fields().budget, '12万');
+  assert.deepEqual(c.state.selectedFields, []);
+  c.input('budget', '99万'); assert.equal(c.fields().budget, '');
+  assert.equal(await c.act('confirm', true), false);
+  c.chooseProposal('budget', true, c.proposalContext());
+  assert.equal(c.fields().budget, '12万');
   f.intercept(call => call.body.action === 'apply_proposal' ? { success: true, data: { id: '8', version: 1, status: 'draft', draftFields: f.db.proposal.summary.draftFields } } : undefined);
   assert.equal(await c.act('confirm', true), true);
   const call = f.calls.find(call => call.body.action === 'apply_proposal');
-  assert.deepEqual(call.body, { action: 'apply_proposal', proposalId: 'proposal-1', digest: 'digest-1', consent: true, restoreConsent: true });
+  assert.deepEqual(call.body, { action: 'apply_proposal', proposalId: 'proposal-1', digest: 'digest-1', consent: true, restoreConsent: true, selectedFields: ['budget'] });
   assert.equal(c.state.confirmed, false); assert.equal(c.state.proposal, null);
 });
 
@@ -154,7 +206,7 @@ test('historical restore modal cancellation does not invoke a write', async () =
   global.Page = config => { page = config; };
   global.wx = { hideKeyboard() {}, showModal({ success }) { success({ confirm: false }); } };
   const file = require.resolve('../packages/assistant/requirements/requirements'); delete require.cache[file]; require(file);
-  await page.confirm.call({ alive: true, data: { proposal: { requiresRestoreConsent: true, diff: [{ before: '瓷砖', after: '木地板' }] } }, controller: { act() { writes++; } } });
+  await page.confirm.call({ alive: true, shown: true, data: { proposal: {} }, controller: { proposalContext() { return 'context'; }, selectedRestorations() { return [{ before: '瓷砖', after: '木地板' }]; }, act() { writes++; } } });
   assert.equal(writes, 0);
   delete global.Page; delete global.wx;
 });
@@ -174,7 +226,7 @@ test('unknown committed proposal restores original operation after page recreati
   global.wx = { getStorageSync: key => storage.get(key), setStorageSync: (key, value) => storage.set(key, value) };
   try {
     const f = fixture(); f.db.reviewMode = true;
-    f.db.proposal = { id: 'p1', digest: 'd1', diff: [], requiresRestoreConsent: true,
+    f.db.proposal = { id: 'p1', digest: 'd1', diff: [{ field: 'budget', before: '', after: '12万', restoresHistory: true }], requiresRestoreConsent: true,
       summary: { status: 'proposal', draftFields: { budget: { text: '12万' } } } };
     let lost = true;
     f.intercept(call => {
@@ -184,7 +236,7 @@ test('unknown committed proposal restores original operation after page recreati
       if (lost) { lost = false; throw { statusCode: 503 }; }
       return { success: true, data: f.db.latest };
     });
-    const first = f.create(); await first.show('11'); await first.act('confirm', true); first.dispose();
+    const first = f.create(); await first.show('11'); first.chooseProposal('budget', true, first.proposalContext()); await first.act('confirm', true); first.dispose();
     const reopened = f.create(); await reopened.show('11');
     assert.equal(reopened.state.pending, 'confirm'); assert.match(reopened.state.error, /确认上次操作结果/);
     assert.equal(await reopened.act('confirm'), true); assert.equal(reopened.state.confirmed, false);

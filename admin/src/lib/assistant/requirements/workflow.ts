@@ -1,9 +1,11 @@
 import { Command } from '@langchain/langgraph';
 import type { AssistantRepository, Row } from '@/db/repositories/assistant-repository';
-import { fail, key, type ActorContext } from '../contracts';
+import { fail, fingerprint, key, type ActorContext } from '../contracts';
 import { reviewCheckpointer, reviewGraph, setupReviewWorkflow, withReviewLock } from '../core/review-graph';
 import type { RequirementProposal } from './items';
 import { RequirementService } from './service';
+import { selectedRequirementFields } from './selection';
+import type { RequirementKey } from './contract';
 
 // Official checkpoint storage contains only opaque IDs/decisions, never chat,
 // requirement values, model prose, knowledge excerpts, tokens or phone numbers.
@@ -34,19 +36,20 @@ export class RequirementWorkflow {
     // original tenant transaction/idempotency; checkpoints are not exactly-once.
     return withReviewLock(this.actor, conversationId, work);
   }
-  private graph(conversationId: string) {
+  private graph(conversationId: string, input?: Record<string, unknown>) {
     const req = this.requirements;
     return reviewGraph({ kind: 'requirement_proposal', authorize: () => this.authorized(conversationId),
       apply: async (proposalId, digest, d) => {
-        const saved = await req.write(conversationId, d.requestKey, { action: 'apply_proposal', proposalId,
-          digest, consent: true, restoreConsent: d.restoreConsent });
+        if (!input || (d.inputHash ? d.inputHash !== fingerprint(input)
+          : input.selectedFields !== undefined || d.restoreConsent !== input.restoreConsent)) fail('idempotency_conflict');
+        const saved = await req.write(conversationId, d.requestKey, { ...input, proposalId, digest });
         return saved.id;
       }, afterWrite: this.hooks.afterWrite });
   }
-  private async prepare(conversationId: string, proposalId: string, digest: string) {
+  private async prepare(conversationId: string, proposalId: string, digest: string, input?: Record<string, unknown>) {
     await this.authorized(conversationId);
     const config = { configurable: { thread_id: this.thread(conversationId, proposalId) } };
-    const graph = this.graph(conversationId);
+    const graph = this.graph(conversationId, input);
     let snapshot = await graph.getState(config);
     if (!snapshot.values?.proposalId) {
       const current = await this.requirements.read(conversationId);
@@ -73,22 +76,31 @@ export class RequirementWorkflow {
     if (input.action !== 'apply_proposal' || !await this.requirements.workflowEnabled(conversationId)) {
       return this.requirements.write(conversationId, requestKey, input);
     }
-    if (Object.keys(input).some(k => !['action','proposalId','digest','consent','restoreConsent'].includes(k))
+    if (Object.keys(input).some(k => !['action','proposalId','digest','consent','restoreConsent','selectedFields'].includes(k))
       || input.consent !== true || typeof input.proposalId !== 'string' || typeof input.digest !== 'string'
       || (input.restoreConsent !== undefined && typeof input.restoreConsent !== 'boolean')) fail('invalid_message', 422);
     key(requestKey);
+    const selectedFields = selectedRequirementFields(input.selectedFields);
+    input = { ...input, restoreConsent: input.restoreConsent === true, ...(selectedFields ? { selectedFields } : {}) };
+    const inputHash = fingerprint(input);
     return this.locked(conversationId, async () => {
-      const { graph, config, snapshot } = await this.prepare(conversationId, String(input.proposalId), String(input.digest));
+      const { graph, config, snapshot } = await this.prepare(conversationId, String(input.proposalId), String(input.digest), input);
       if (snapshot.values.status === 'rejected') fail('requirement_target_changed');
+      const decision = snapshot.values.decision;
+      if (decision && (decision.inputHash ? decision.inputHash !== inputHash
+        : selectedFields !== undefined || decision.restoreConsent !== input.restoreConsent)) fail('idempotency_conflict');
       if (snapshot.next.length) {
         if (!snapshot.values.decision) {
           const current = await this.requirements.read(conversationId);
           const pending = current.proposal;
           if (!pending || pending.id !== input.proposalId || pending.digest !== input.digest) fail('requirement_target_changed');
-          if (pending.requiresRestoreConsent && input.restoreConsent !== true) fail('requirements_restore_confirmation_required', 409);
+          const diff = pending.diff as { field: RequirementKey; restoresHistory: boolean }[];
+          if (selectedFields?.some(k => !diff.some(d => d.field === k))) fail('invalid_requirement_selection', 422);
+          if (diff.some(d => d.restoresHistory && (!selectedFields || selectedFields.includes(d.field)))
+            && input.restoreConsent !== true) fail('requirements_restore_confirmation_required', 409);
         }
         await graph.invoke(snapshot.values.decision ? null : new Command({ resume: {
-          approve: true, requestKey, restoreConsent: input.restoreConsent === true,
+          approve: true, requestKey, restoreConsent: input.restoreConsent === true, inputHash,
         } }), config);
       }
       const completed = await graph.getState(config);

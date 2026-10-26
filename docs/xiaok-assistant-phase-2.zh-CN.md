@@ -1,6 +1,24 @@
 # 小K第二期：需求整理与人工交接
 
-## 当前交付：需求更正与历史恢复提案（2026-10-26）
+## 当前交付：实际聊天运行时组合（2026-10-26）
+
+**OS-CONTRACT-10：缺口审计完成，组合实现/配置模型验收未完成。** 用户入口是C01自然聊天产生需求提案，再到C02选择字段并保存。复用OS-CONTRACT-09已验收的客户选择、LangGraph审批/恢复、LangChain类型提案和原Worker用量/持久任务/权限。当前agent/worker.ts仍调用runRenovationAgent及agentToolsForMessage，没有引用businessReviewTools；已有模型组件测试和客户审批闭环不能证明实际Worker已经组合。知识无需修改，依赖指向知识计划；不恢复OS08已关闭模型循环、三Agent矩阵或生产迁移。
+
+**剩余检查与后继。** 先把候选会话的真实Worker接入既有类型提案协议，保留来源/epoch/租户/取消/用量及失败恢复，再按固定自然对话验证实际提案、客户选择、实写和真实回执；新语义调用需先固定案例/次数并计入累计¥100。普通会话不自动迁移。OS09原模型保留瓷砖的两组失败次数仍保留，客户选择机制仅重新开放审批范围；不能用新文案继续采样。完成本交付后才定义下一交付；当前无生产发布、人工验收或Computer Use任务。
+
+## 历史交付：OS-CONTRACT-09（2026-10-26）
+
+**客户掌握的字段审批Implemented，默认Agent组合Limited。** 用户明确批准复用C02行/铅笔，微信原生菜单“保留原需求／采用本次提案”，默认保留；保存按钮只提交选中的字段。设计源仍唯一slide06-needs.png，加本次批准的状态规则；未改Less、布局层级、素材或导航。新增/删除的可选字段也保留核对行，同一提案前后台保留选择，新提案清空选择；身份切换及迟到菜单/历史弹窗不能授权新上下文。
+
+**API及恢复。** 原POST requirements的apply_proposal新增可选selectedFields：非空、枚举、去重且限本提案实际变更字段，按固定字段序规范化。新客户端总是显式提交，全部保留不POST；省略仅兼容原整份审批客户端/旧checkpoint。服务先重验完整提案、来源hash/seq/epoch/base版本，再按客户所选字段编译原命令，未选字段保留原存储对象及ID/文本/来源；只选历史字段才要求restoreConsent。原LangGraph interrupt/Command/PostgresSaver继续执行，decision及已应用标记绑定规范body哈希；checkpoint仍只有ID/哈希/决定，无字段值/聊天/选择数组。跨进程/写后丢checkpoint沿原body/键恢复，不同键也不能用不同选择重放。保存仍为draft/confirmedFields=null，正式确认另一步，回执投影真实当前状态。未新增表、路由、授权、模型审批循环或知识存储。
+
+**限定服务与代码证据。** `tmp/agent-selection/services-2026-10-26T11-18-29-342Z.json` 22项、`tmp/agent-workflow/services-2026-10-26T11-00-39-703Z.json`原需求兼容21项通过，均drift[]/清理完成/模型0；复用两份OS08真实首稿的错误room替换/删除，仅重绑定ID，不改原args含义、diff或失败评分。覆盖只选预算、原瓷砖/地暖否定/面积/来源不变、无效/未改字段拒绝、跨进程写后恢复、改选择幂等拒绝、租户/客户/身份、来源/版本/epoch撤回、所选历史确认及真实正式回执。19服务端/17客户端单元、1417依赖限定类型0、限定lint、完整隔离webpack构建通过；cssstyle可选依赖告警属既有打包范围。最终另修旧direct请求省略restoreConsent的哈希兼容，由22项实服/类型/lint覆盖。原生与webpack在此兼容修复前通过；新客户端本来显式传false/true、选择/UI/依赖不变，按影响核对复用，不宣称补丁后重跑原生/构建。源码/夹具只读复核tmp/agent-selection/audit.json通过：16个合成企业均禁用、身份递增、活动job/provider attempt/拥有的checkpoint各0，最终服务依赖drift[]。
+
+**原生证据分开保留。** `tmp/agent-contract/review-native-os-contract-09-sdk-01/report.json`完成第一份错误提案的6项真实SDK/HTTP检查后，驱动误用redirectTo跳首页，整批仍failed；已完成的预算选择/瓷砖保留/200丢响应/跨页原body原键恢复可按限定范围复用。只改驱动为reLaunch并选择second-only，`tmp/agent-contract/review-native-os-contract-09-sdk-02/report.json`补齐第二份错误记录及所选历史确认7项通过；两批业务源码相同，仅驱动hash不同，均drift[]、transport/会话/锁/checkpoint/夹具清理完成。新请求真实selectedFields=[budget]，丢响应重放同body/键，历史拒绝无写入、弹窗排除未选瓷砖。Stable2.02.2608080/base3.17.2，逻辑390×844/PNG348×752，已审看第一份选择/恢复与第二份持久草稿截图，沿原设计行/按钮/引用区。仅SDK、未抢焦点/移窗/桌面输入；实际新字段证明加载新控制器，freshCompileVerified=false。原生菜单/弹窗像素、完整宿主光学校准及真机未验证。早期测试缓存/类型/lint和只读审计CJS/NODE_PATH预检失败保留，不作业务通过或新增模型调用。
+
+**复用、预算及后继。** 复用[LangGraph原生审批/恢复](https://docs.langchain.com/oss/javascript/langgraph/interrupts)；客户编辑在原服务形成所选字段/body，框架只绑定哈希并恢复审批，不声称安装了新的HITL中间件。本批新增模型调用/tokens/费用0，累计1320052tokens/保守上界¥4.877597/实付未知，原未知现金预留不清零；费用硬上限¥100、旧token硬上限取消。完整问答、八轮记忆、原首稿语义和默认Worker迁移仍Limited；已继续OS-CONTRACT-10的实际运行时缺口审计，未启用默认路径。
+
+## 历史交付：OS-CONTRACT-08（2026-10-26）
 
 **OS-CONTRACT-08：结构守卫Implemented，完整需求提案旅程Limited。** 用户动作是改已有草稿并保留未修改事实；LangChain类型工具/原生LangGraph审批仍调用原租户/来源/epoch/幂等RequirementService，C02结构/API和默认Worker不变。模型自报的保留/修改分区不等于真实客户授权；不能将本交付标完成或启用受影响的默认编辑路径。
 

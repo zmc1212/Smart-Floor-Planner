@@ -30,7 +30,7 @@
             <textarea wx:if="{{editingKey === item.key}}" class="field-input" value="{{item.text}}" data-key="{{item.key}}" bindinput="input" auto-height maxlength="-1" focus cursor-spacing="100" placeholder="没确定的可以先留空" disabled="{{busy || !!pending}}" />
             <text wx:else class="field-value {{!item.text ? 'muted' : ''}}">{{item.text || '还没确定，以后再补'}}</text>
           </view>
-          <button wx:if="{{writable && !pending && !proposal && !(reviewMode && confirmed)}}" class="edit-button" data-key="{{item.key}}" bindtap="edit" disabled="{{busy}}" aria-label="修改{{item.label}}"><image src="../assets/requirement-edit.png" /></button>
+          <button wx:if="{{writable && !pending && (proposal ? item.proposalChange : !(reviewMode && confirmed))}}" class="edit-button" data-key="{{item.key}}" bindtap="edit" disabled="{{busy || stale}}" aria-label="修改{{item.label}}"><image src="../assets/requirement-edit.png" /></button>
         </view>
         <view class="quote-card">
           <text class="quote-title">{{proposal ? '本次变更 · 核对后保存' : '你的原话 · 参考记录'}}</text>
@@ -44,11 +44,11 @@
       <text wx:if="{{redacted}}" class="notice">这份需求摘要已按保留规则清理。</text>
       <text wx:elif="{{!summary && !error}}" class="notice">这段对话还没有需求摘要。</text>
       <view wx:if="{{summary && !redacted}}" class="actions">
-        <button wx:if="{{writable}}" class="primary-action" bindtap="confirm" loading="{{busy}}" disabled="{{busy || !!pending || stale}}">{{confirmed ? '继续聊' : proposal ? '保存这份草稿，继续聊' : '确认摘要，继续聊'}}</button>
+        <button wx:if="{{writable}}" class="primary-action" bindtap="confirm" loading="{{busy}}" disabled="{{busy || !!pending || stale || (proposal && !selectedFields.length)}}">{{confirmed ? '继续聊' : proposal ? '保存选中的更改，继续聊' : '确认摘要，继续聊'}}</button>
         <text wx:else class="helper">当前对话仅可查看，已保存的摘要仍保留。</text>
         <button class="secondary-action" bindtap="openHandoff" disabled="{{busy || !!pending}}">我想找设计师</button>
         <button wx:if="{{writable && !pending && !reviewMode}}" class="text-action" bindtap="regenerate" disabled="{{busy}}">根据最新对话重新整理</button>
-        <text class="helper">{{proposal ? '核对本次变更后保存草稿；需要调整时返回对话说明。保存草稿不代表正式确认。' : reviewMode && confirmed ? '如需调整，请返回对话说明要修改的内容。' : '这份摘要可以随时修改。确认后保存到本次对话。'}}</text>
+        <text class="helper">{{proposal ? '默认保留原需求。点铅笔选择采用哪些更改，再保存草稿；保存不代表正式确认。' : reviewMode && confirmed ? '如需调整，请返回对话说明要修改的内容。' : '这份摘要可以随时修改。确认后保存到本次对话。'}}</text>
       </view>
     </block>
   </view>

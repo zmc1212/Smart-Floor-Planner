@@ -9,6 +9,7 @@ import { conversationGuidance, guidanceProgress } from './guidance';
 import { requirementCheckpoint } from './checkpoint';
 import { applyRequirementChanges, type RequirementProposal } from './items';
 import { requirementReview } from './review';
+import { selectedRequirementFields, selectedRequirementReview } from './selection';
 
 function dto(row: Row) {
   return { id: String(row.id), conversationId: String(row.conversation_id), version: Number(row.version),
@@ -148,7 +149,7 @@ export class RequirementService {
     const confirm = input.action === 'confirm', apply = input.action === 'apply_proposal';
     if (proposal && (confirm || typeof proposal.sourceSeq !== 'string')) fail('invalid_requirement_evidence', 422);
     if (input.action !== 'draft' && !confirm && !apply) fail('invalid_message', 422);
-    const allowed = apply ? ['action','proposalId','digest','consent','restoreConsent']
+    const allowed = apply ? ['action','proposalId','digest','consent','restoreConsent','selectedFields']
       : confirm ? ['action','draftId','expectedVersion','fields','consent','leadId','reviewedSourceSeq'] : ['action'];
     if (Object.keys(input).some(k => !allowed.includes(k))) fail('invalid_message', 422);
     const fields = confirm ? confirmedRequirements(input.fields) : null;
@@ -157,6 +158,12 @@ export class RequirementService {
     if (confirm && (input.consent !== true || !Number.isInteger(input.expectedVersion) || Number(input.expectedVersion) < 1)) fail('invalid_message', 422);
     if (apply && (proposal || input.consent !== true || typeof input.proposalId !== 'string' || typeof input.digest !== 'string'
       || (input.restoreConsent !== undefined && typeof input.restoreConsent !== 'boolean'))) fail('invalid_message', 422);
+    if (apply) {
+      const selectedFields = selectedRequirementFields(input.selectedFields);
+      // Legacy direct-service keys were hashed with restoreConsent omitted.
+      // Workflow requests already normalize it; preserve old bodies here.
+      input = { ...input, ...(selectedFields ? { selectedFields } : {}) };
+    }
     return this.scoped(conversationId, true, async (repo, c) => {
       // Internal integrations can fence an authorized snapshot within the same
       // settings/participant transaction, including before idempotent replay.
@@ -173,6 +180,7 @@ export class RequirementService {
           const pending = (c.entry_snapshot as Row)?.requirementProposal as Row | undefined;
           if ((c.entry_snapshot as Row)?.requirementReviewMode !== true) fail('requirements_proposal_required', 409);
           if (pending?.status === 'applied' && pending.id === input.proposalId && pending.digest === input.digest) {
+            if (pending.inputHash ? pending.inputHash !== fingerprint(input) : input.selectedFields !== undefined) fail('idempotency_conflict');
             return { conversationId, summaryId: String(pending.summaryId) };
           }
           const latest = await one(repo.tx, sql`select * from app.assistant_requirement_summaries
@@ -185,12 +193,13 @@ export class RequirementService {
           if (pending.sourceHash !== sources.hash) fail('requirements_stale');
           const checked = requirementReview(sources.inputs, latest?.draft_fields, pending.changes);
           if (fingerprint(checked.fields) !== fingerprint(pending.fields)) fail('requirements_stale');
-          if (pending.requiresRestoreConsent && input.restoreConsent !== true) fail('requirements_restore_confirmation_required', 409);
+          const selected = selectedRequirementReview(sources.inputs, latest?.draft_fields, pending.changes, input.selectedFields);
+          if (selected.requiresRestoreConsent && input.restoreConsent !== true) fail('requirements_restore_confirmation_required', 409);
           summary = (await one(repo.tx, sql`insert into app.assistant_requirement_summaries(enterprise_id,conversation_id,customer_user_id,source_seq,draft_fields,confirmed_fields)
-            values(${this.actor.enterpriseId},${conversationId},${this.actor.principal.kind === 'user' ? this.actor.principal.userId : null},${String(source!.seq)},${JSON.stringify(pending.fields)}::jsonb,null) returning *`))!;
+            values(${this.actor.enterpriseId},${conversationId},${this.actor.principal.kind === 'user' ? this.actor.principal.userId : null},${String(source!.seq)},${JSON.stringify(selected.fields)}::jsonb,null) returning *`))!;
           // Keep identifiers only after acceptance. Retention clears entry_snapshot.
           await repo.tx.execute(sql`update app.assistant_conversations set entry_snapshot=jsonb_set(entry_snapshot,'{requirementProposal}',
-            ${JSON.stringify({ id: pending.id, digest: pending.digest, status: 'applied', summaryId: String(summary.id) })}::jsonb)
+            ${JSON.stringify({ id: pending.id, digest: pending.digest, status: 'applied', summaryId: String(summary.id), inputHash: fingerprint(input) })}::jsonb)
             where enterprise_id=${this.actor.enterpriseId} and id=${conversationId}`);
         } else if (!confirm) {
           if ((c.entry_snapshot as Row)?.requirementReviewMode === true) fail('requirements_proposal_required', 409);

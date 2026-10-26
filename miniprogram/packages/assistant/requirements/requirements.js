@@ -36,7 +36,17 @@ Page({
       navigationRight: Math.max(96, info.windowWidth - (capsule && capsule.left || info.windowWidth - 96) + 10),
     });
   },
-  edit(event) { return this.controller.edit(event.currentTarget.dataset.key); },
+  async edit(event) {
+    const controller = this.controller, key = event.currentTarget.dataset.key;
+    if (!this.data.proposal) return controller.edit(key);
+    const context = controller.proposalContext();
+    if (!context || !this.data.rows.some(row => row.key === key && row.proposalChange)) return;
+    const result = await new Promise(resolve => wx.showActionSheet({ itemList: ['保留原需求', '采用本次提案'],
+      success: resolve, fail: () => resolve(null) }));
+    if (this.alive && this.shown && this.controller === controller && result && [0, 1].includes(result.tapIndex)) {
+      controller.chooseProposal(key, result.tapIndex === 1, context);
+    }
+  },
   input(event) { this.controller.input(event.currentTarget.dataset.key, event.detail.value); },
   finishEdit() { this.controller.set({ editingKey: '' }); wx.hideKeyboard(); },
   login() { goToLogin(); },
@@ -46,12 +56,14 @@ Page({
     wx.hideKeyboard();
     if (this.data.confirmed) return this.leave();
     const proposal = this.data.proposal;
+    const controller = this.controller, context = proposal ? controller.proposalContext() : '';
     let restoreConsent = false;
-    if (proposal && proposal.requiresRestoreConsent && !this.data.pending) {
-      const changes = proposal.diff.map(d => `${d.before || '尚未保存'} → ${d.after || '删除此项'}`).join('\n');
+    const restorations = proposal ? controller.selectedRestorations() : [];
+    if (proposal && restorations.length && !this.data.pending) {
+      const changes = restorations.map(d => `${d.before || '尚未保存'} → ${d.after || '删除此项'}`).join('\n');
       const result = await new Promise(resolve => wx.showModal({ title: '确认恢复历史值？',
         content: changes, confirmText: '确认恢复', success: resolve, fail: () => resolve({ confirm: false }) }));
-      if (!result.confirm || !this.alive) return;
+      if (!result.confirm || !this.alive || !this.shown || controller !== this.controller || context !== controller.proposalContext()) return;
       restoreConsent = true;
     }
     if (await this.controller.act('confirm', restoreConsent)) {
