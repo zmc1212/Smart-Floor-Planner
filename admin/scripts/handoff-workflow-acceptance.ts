@@ -80,7 +80,7 @@ async function main() {
   assert.equal((await otherConversation.send(other.conversationId,naturalKey,naturalContent)).runId,null);check('naturalProposalMessageReplayDoesNotInventAnAiRun');
   const tools=await businessReviewTools(f.actor,cid);
   await assert.rejects(()=>tools.requestDesigner.invoke(JSON.parse('{"consent":true,"phone":"13800000000"}')));check('LangChainToolRejectsModelSuppliedConsentAndPhone');
-  await assert.rejects(()=>tools.proposeRequirements.invoke({changes:[{operation:'add',field:'budget',sourceId:'k-company-reference'}]}));check('typedCustomerSourceEnumRejectsCompanyReference');
+  await assert.rejects(()=>tools.proposeRequirements.invoke({retainedIds:tools.context.savedItems.map(i=>i.id),changes:[{operation:'add',field:'budget',sourceId:'k-company-reference'}]}));check('typedCustomerSourceEnumRejectsCompanyReference');
   const proposed=await tools.requestDesigner.invoke({});assert.equal(proposed.effect,'proposal');assert.equal((await handoff.customerRead(cid)).handoff,null);
   await assert.rejects(()=>new HandoffService(f.actor).customerWrite(cid,randomUUID(),{action:'request'}),/handoff_review_required/);
   check('legacyModelToolCannotBypassNativeCustomerApproval');
@@ -123,7 +123,7 @@ async function main() {
   const originalContent=await withPlatformTransaction(tx=>one(tx,sql`select content from app.assistant_messages where enterprise_id=${f.enterpriseId} and id=${originalMessage.id}`));
   const guardedTools=await businessReviewTools(f.actor,cid);
   await withPlatformTransaction(tx=>tx.execute(sql`update app.assistant_messages set content='{"blocks":[{"type":"text","text":"来源已撤回"}]}'::jsonb where enterprise_id=${f.enterpriseId} and id=${originalMessage.id}`));
-  await assert.rejects(()=>guardedTools.proposeRequirements.invoke({changes:[]}),/context_changed/);
+  await assert.rejects(()=>guardedTools.proposeRequirements.invoke({retainedIds:guardedTools.context.savedItems.map(i=>i.id),changes:[]}),/context_changed/);
   await withPlatformTransaction(tx=>tx.execute(sql`update app.assistant_messages set content=${JSON.stringify(originalContent!.content)}::jsonb where enterprise_id=${f.enterpriseId} and id=${originalMessage.id}`));check('typedToolCatalogCannotSilentlyReuseSameSequenceRevokedText');
   const final=await handoff.customerWrite(cid,randomUUID(),{action:'cancel',expectedVersion:await version()});assert.equal(final.handoff!.state,'cancelled');await expectUnchanged();
   const audit=await withPlatformTransaction(async tx=>({
@@ -144,6 +144,10 @@ async function main() {
     await withPlatformTransaction(tx=>tx.execute(sql`update app.assistant_conversations set mode='ai',version=version+1,entry_snapshot=${JSON.stringify(entry)}::jsonb where enterprise_id=${f.enterpriseId} and id=${cid}`));
   }
   await expectUnchanged();check('replayedActiveReceiptRechecksActualStaffAvailability');
+  const staleSummary=await businessReviewTools(f.actor,cid);
+  await withPlatformTransaction(tx=>tx.execute(sql`update app.assistant_requirement_summaries set version=version+1 where enterprise_id=${f.enterpriseId} and id=${savedBefore.latest!.id}`));
+  await assert.rejects(()=>staleSummary.proposeRequirements.invoke({retainedIds:staleSummary.context.savedItems.map(i=>i.id),changes:[]}),/requirement_target_changed/);
+  check('sameSummaryIdVersionChangeInvalidatesCapturedToolPlan');
   report.passed=true;
 }
 async function run() {

@@ -1,14 +1,16 @@
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
+import { sql } from 'drizzle-orm';
 import { withTenantTransaction } from '@/db/transaction';
-import { AssistantRepository } from '@/db/repositories/assistant-repository';
+import { AssistantRepository, one } from '@/db/repositories/assistant-repository';
 import { fail, fingerprint, type ActorContext } from '../contracts';
 import { allRequirementKeys } from '../requirements/contract';
 import { requirementItems, requirementSources } from '../requirements/items';
 import { RequirementWorkflow } from '../requirements/workflow';
 import { HandoffWorkflow } from '../handoff/workflow';
 import { customerSources } from '../requirements/service';
+import { requirementPlan } from '../requirements/plan';
 
 /** LangChain validates typed tool inputs. Consent is never a model parameter. */
 export async function businessReviewTools(actor: ActorContext, conversationId: string) {
@@ -24,16 +26,23 @@ export async function businessReviewTools(actor: ActorContext, conversationId: s
   const change=z.discriminatedUnion('operation',[
     z.object({operation:z.literal('add'),field:z.enum(allRequirementKeys),sourceId:sourceIds}).strict(),
     z.object({operation:z.literal('replace'),targetId:targetIds,sourceId:sourceIds}).strict(),
-    z.object({operation:z.literal('remove'),targetId:targetIds}).strict(),
+    z.object({operation:z.literal('remove'),targetId:targetIds,sourceId:sourceIds}).strict(),
   ]);
   return {
-    context:{customerClauses:sources,savedItems:items,savedSummaryId:current.latest?.id || null},
-    proposeRequirements:tool(async({changes})=>requirements.propose(conversationId,randomUUID(),{
-      sourceSeq:evidence.sourceSeq,baseSummaryId:current.latest?.id || null,changes,
+    context:{planVersion:'retention-partition-1',customerClauses:sources,savedItems:items,savedSummaryId:current.latest?.id || null},
+    proposeRequirements:tool(async(plan)=>requirements.propose(conversationId,randomUUID(),{
+      sourceSeq:evidence.sourceSeq,baseSummaryId:current.latest?.id || null,
+      changes:requirementPlan(items,sources,evidence.messages.at(-1)?.id || '',plan),
     },async(repo)=>{
       const actual=await customerSources(repo,actor.enterpriseId,conversationId),settings=await repo.settings();
       if(fingerprint(actual.inputs)!==fingerprint(evidence.messages) || Number(settings!.knowledge_epoch)!==epoch)fail('context_changed');
-    }),{name:'propose_requirement_changes',description:'Propose only the requested requirement changes. Customer approval is separate.',schema:z.object({changes:z.array(change).max(20)}).strict()}),
+      const latest=await one(repo.tx,sql`select id,version from app.assistant_requirement_summaries where enterprise_id=${actor.enterpriseId} and conversation_id=${conversationId} order by id desc limit 1`);
+      if((latest?String(latest.id):null)!==(current.latest?.id || null)
+        || (latest?Number(latest.version):null)!==(current.latest?.version ?? null))fail('requirement_target_changed');
+    }),{name:'propose_requirement_changes',description:'Propose a complete keep/write partition of the saved items. Customer approval is separate.',schema:z.object({
+      retainedIds:z.array(targetIds).max(40).describe('Existing item IDs kept unchanged, including every unrequested item. Each existing ID must be retained or changed once, never both.'),
+      changes:z.array(change).max(20),
+    }).strict()}),
     requestDesigner:tool(async()=>handoff.propose(conversationId,'request'),{
       name:'propose_designer_reception',description:'Propose designer reception. Customer approval is required.',schema:z.object({}).strict(),
     }),
