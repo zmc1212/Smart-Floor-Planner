@@ -8,6 +8,7 @@ import { configuredGuidance, conversationGuidance, guidanceOpening, guidanceView
 import { requirementCheckpoint } from '../requirements/checkpoint';
 import { saveAutomaticRequirements } from '../requirements/automatic';
 import { requestsDesigner } from '../handoff/intent';
+import { stageHandoffProposal } from '../handoff/proposal';
 import { currentHandoffOwner } from '../handoff/owner';
 import { agentConfig } from '../agent/config';
 import { referenceCase } from '../knowledge/reference-case';
@@ -28,6 +29,7 @@ const json = (value: unknown) => JSON.stringify(value);
 export function conversationDto(c: Row) {
   const guidance = conversationGuidance(c.entry_snapshot);
   return { id: String(c.id), purpose: c.purpose, status: c.status, mode: c.mode, title: c.title, version: c.version, contextRevision: c.context_revision, createdAt: c.created_at,
+    ...((c.entry_snapshot as Row)?.requirementReviewMode===true && (c.entry_snapshot as Row)?.requirementWorkflow==='langgraph' ? {reviewWorkflow:'langgraph'} : {}),
     guidanceEnabled: !!guidance, guidanceOpening: guidance ? guidanceOpening(guidance) : null,
     humanName: ((c.entry_snapshot as Row)?.handoff as Row)?.ownerName || null };
 }
@@ -268,12 +270,20 @@ export class ConversationService {
           and ${this.actor.principal.kind==='user'?sql`user_id=${this.actor.principal.userId}`:sql`admin_id=${this.actor.principal.adminId}`} and client_message_id=${clientMessageId}`);
         if (old) {
           if (fingerprint(old.content) !== fingerprint(safe)) fail('idempotency_conflict');
-          const r = (await one(repo.tx, sql`select id from app.assistant_runs where enterprise_id=${this.actor.enterpriseId} and trigger_message_id=${String(old.id)} and retry_of_run_id is null`))!;
-          return { conversationId, messageId: String(old.id), runId: String(r.id), status: 'queued', nextPollMs: 1500 };
+          const r = await one(repo.tx, sql`select id from app.assistant_runs where enterprise_id=${this.actor.enterpriseId} and trigger_message_id=${String(old.id)} and retry_of_run_id is null`);
+          return { conversationId, messageId: String(old.id), runId: r ? String(r.id) : null, status: r ? 'queued' : 'succeeded', nextPollMs: r ? 1500 : null };
         }
         const message = intercepted || await appendMessage(repo.tx, this.actor, conversationId, { author: this.actor.principal.kind, content: safe, clientMessageId });
         await saveAutomaticRequirements(repo, conversationId);
         if (this.actor.principal.kind === 'user' && requestsDesigner(safe.blocks.filter(b => b.type === 'text').map(b => b.text).join('\n'))) {
+          if((c.entry_snapshot as Row)?.requirementReviewMode===true && (c.entry_snapshot as Row)?.requirementWorkflow==='langgraph') {
+            const proposal=await stageHandoffProposal(repo,c,settings!,'request');
+            const event=await one(repo.tx,sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
+              values(${this.actor.enterpriseId},'assistant.handoff.proposed.v1','assistant_conversation',${conversationId},${Number(c.version)+1},${json(this.actor.principal)}::jsonb,${clientMessageId},${json({proposalId:proposal.id,action:'request'})}::jsonb) returning id`);
+            await appendMessage(repo.tx,this.actor,conversationId,{author:'system',eventId:String(event!.id),purpose:'handoff.proposal',
+              content:{version:1,blocks:[{type:'text',text:'接待提案已备好，尚未提交接待、接通或预约，也没有分享手机号。'}]}});
+            return {conversationId,messageId:String(message.id),runId:null,status:'succeeded',nextPollMs:null};
+          }
           const summary = await one(repo.tx, sql`select id,status,draft_fields,confirmed_fields from app.assistant_requirement_summaries
             where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and status!='redacted' order by id desc limit 1`);
           const h = { state: 'waiting', requestId: clientMessageId, recipientId: null, recipientName: '企业接待团队', mediaConsent: true,

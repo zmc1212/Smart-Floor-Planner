@@ -1,6 +1,18 @@
 # 小K第二期：需求整理与人工交接
 
-## 当前交付：LangGraph原生审批、恢复与真实回执（2026-10-26）
+## 当前交付：接待提案、客户确认与恢复（2026-10-26）
+
+**OS-CONTRACT-06：候选业务机制Implemented，配置模型语义/默认迁移Limited。** 沿用C01客户“找设计师”和取消按钮，接入需求已有的LangGraph interrupt/Command/PostgresSaver；接待专页仍仅员工使用。RequirementWorkflow与HandoffWorkflow共用`core/review-graph.ts`，原RequirementService/HandoffService继续负责真实事务；仅entry_snapshot.requirementReviewMode=true且entry_snapshot.requirementWorkflow=langgraph选择候选机制，无生产迁移或默认运行时切换。
+
+**提案与确认合同。** 直接用官方LangChain tool和严格Zod schema，提供有客户原话依据的需求改动、零参数接待/取消提案。客户source/target枚举及来源hash/epoch复核与企业引用分开；模型没有同意、手机号或执行参数。原明确联系快捷分支改为待确认提案，不直接授予接待；原运行时工具也不能绕过服务内部的原生审批能力。客户POST `/api/miniprogram/assistant/conversations/:id/handoff`绑定expectedVersion、完整原body哈希、来源hash、epoch、上下文revision及原请求/状态。C01点击明确提交接待同意，contactConsent=false、phone为空；只有可信客户点击能恢复graph并调用原服务。checkpoint只留ID/digest/决定，成功回执读当前获权状态及真实接待人可用性；旧接待/取消重放不会重新打开或取消更新的接待。需求草稿、正式确认仍分开；同时统一需求apply/readback省略restoreConsent时的false规范值，避免同一操作哈希冲突。
+
+**限定证据。** `admin/scripts/handoff-workflow-acceptance.ts`复用`tmp/agent-contract/trial-2026-10-25T06-01-28-936Z.json`的createAgent联系/取消动作。原正文、错误企业引用及旧预算恢复失败保留，不改判；这里只回放业务动作。`tmp/agent-review-next/services-2026-10-26T08-54-17-192Z.json`通过24项真实隔离服务，含独立进程批准/写后恢复、改body拒绝、不分享手机号、重复/过期原键、租户/身份/来源边界、需求不变和接待人失效回执。原“找设计师但别给手机号”复合原话仍需模型解释，未算语义通过。早期驱动失败均保留；另查前四次服务的8个夹具：provider attempts/活动jobs均0、已禁用。需求未变路径的21项兼容通过：`tmp/agent-workflow/services-2026-10-26T08-20-00-627Z.json`。本轮Server9/Mini53通过、1456源限定类型0、限定lint和全仓lint0errors/26个范围外warning；隔离webpack构建通过，之后的接待人失效回执/擦除型返回声明有服务/类型/lint证据，复用未变打包/UI范围。
+
+**客户端与用户限制。** 沿唯一批准C01源`design-references/xiaok-p4b-public-sites-v1/README.md`、原按钮/未知提示/取消弹窗/气泡，无结构、样式、素材或视觉层级新设计。用户明确禁用Computer Use后，停用窗口/焦点/桌面按键回退。`tmp/agent-contract/review-native-os-contract-06-sdk-04/report.json`在原Stable2.02.2608080/base3.17.2通过12项真实SDK/HTTP：自然语言只提案、客户点击、接待和取消回包丢失、新页面原body/原键恢复、弹窗拒绝、持久重进、草稿不变、身份拒绝及真实1接待/1取消/0模型run。实际version/consent字段证明执行了新控制器；源码drift[]，transport/会话/锁及夹具清理完成。逻辑390×844/PNG348×752的等待/取消截图已审看。桌面重新编译、完整宿主/光学/弹窗像素、真机及配置模型理解仍未验证。早期最小化/焦点/截图和驱动源码canary、消息字段、HTTP状态断言失败独立保留，不算业务通过。
+
+**复用与下一交付。** [LangChain官方tools](https://docs.langchain.com/oss/javascript/langchain/tools)负责类型工具，[LangGraph interrupts](https://docs.langchain.com/oss/javascript/langgraph/interrupts)负责暂停/恢复；显式固定已安装core1.2.18/Zod4.3.6和既有LangGraph1.5.0/PostgresSaver1.1.2，不另建Agent、事实库、审批循环或重做知识入库。本交付新增模型调用/tokens/花费均0，旧批191636、累计1301914、保守费用上界¥4.786907不变。下一OS-CONTRACT-07固定联系/取消各2次配置模型提案测试，受已批准批次/累计/费用余额约束；不恢复三框架矩阵，也不采样到通过。
+
+## 历史交付：OS-CONTRACT-05（2026-10-26）
 
 **OS-CONTRACT-05：隔离审批链Implemented，新模型语义及默认迁移Limited。** 用户授权固定LangChain/LangGraph，直接复用原生审批/恢复，先重放已有失败记录，不再反复换框架跑整套矩阵。入口仍为批准的C02需求页和原GET/POST `/api/miniprogram/assistant/conversations/:id/requirements`；既有候选review会话另设`entry_snapshot.requirementWorkflow="langgraph"`，普通会话保持原行为。下一OS-CONTRACT-06为有界的类型化提案工具/咨询回答接入，未启动；不恢复三框架矩阵、付费采样、旧R0–R4/知识入库或生产部署。
 

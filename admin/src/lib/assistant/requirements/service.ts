@@ -16,7 +16,7 @@ function dto(row: Row) {
     confirmedFields: row.confirmed_fields, leadId: row.lead_id ? String(row.lead_id) : null,
     confirmedAt: row.confirmed_at, createdAt: row.created_at, extraction: 'customer-excerpts-v1', requiresCustomerReview: row.status === 'draft' };
 }
-async function customerSources(repo: AssistantRepository, enterpriseId: string, conversationId: string) {
+export async function customerSources(repo: AssistantRepository, enterpriseId: string, conversationId: string) {
   const messages = await rows(repo.tx, sql`select id,seq,content from app.assistant_messages
     where enterprise_id=${enterpriseId} and conversation_id=${conversationId} and author_kind='user' order by seq limit 201`);
   if (messages.length > 200) fail('requirements_history_too_long', 422);

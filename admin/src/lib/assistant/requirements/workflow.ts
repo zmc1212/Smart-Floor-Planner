@@ -1,38 +1,20 @@
-import { Annotation, Command, END, START, StateGraph, interrupt } from '@langchain/langgraph';
-import { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
-import { sql } from 'drizzle-orm';
-import type { Pool } from 'pg';
-import { withTenantTransaction } from '@/db/transaction';
-import { getPostgresPool } from '@/lib/postgresql';
-import { AssistantError, fail, key, type ActorContext } from '../contracts';
+import { Command } from '@langchain/langgraph';
+import type { AssistantRepository, Row } from '@/db/repositories/assistant-repository';
+import { fail, key, type ActorContext } from '../contracts';
+import { reviewCheckpointer, reviewGraph, setupReviewWorkflow, withReviewLock } from '../core/review-graph';
 import type { RequirementProposal } from './items';
 import { RequirementService } from './service';
 
 // Official checkpoint storage contains only opaque IDs/decisions, never chat,
 // requirement values, model prose, knowledge excerpts, tokens or phone numbers.
-const schema = 'assistant_requirement_workflow';
 export const requirementWorkflowVersion = 'langgraph-review-1';
-export const requirementCheckpointer = () => new PostgresSaver(getPostgresPool(), undefined, { schema });
+export const requirementCheckpointer = reviewCheckpointer;
 // Explicit infrastructure setup, invoked by the approved development/test driver;
 // ordinary customer requests never execute DDL or migrate production storage.
-export const setupRequirementWorkflow = (pool: Pool) => new PostgresSaver(pool, undefined, { schema }).setup();
+export const setupRequirementWorkflow = setupReviewWorkflow;
 
-type Decision = { approve: boolean; requestKey: string; restoreConsent: boolean };
 type SavedRequirement = Awaited<ReturnType<RequirementService['write']>>;
 type WriteResult = SavedRequirement & { receipt?: { effect: string; summaryId: string; text: string } };
-const State = Annotation.Root({
-  proposalId: Annotation<string>(), digest: Annotation<string>(),
-  decision: Annotation<Decision | null>(), summaryId: Annotation<string | null>(),
-  status: Annotation<'pending' | 'approved' | 'applied' | 'rejected'>(),
-});
-function decision(value: unknown): Decision {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) fail('invalid_message', 422);
-  const d = value as Record<string, unknown>;
-  if (Object.keys(d).some(k => !['approve','requestKey','restoreConsent'].includes(k))
-    || typeof d.approve !== 'boolean' || typeof d.restoreConsent !== 'boolean') fail('invalid_message', 422);
-  key(d.requestKey);
-  return d as Decision;
-}
 
 /** The model can propose; only this customer-authorized workflow can resume. */
 export class RequirementWorkflow {
@@ -50,38 +32,16 @@ export class RequirementWorkflow {
   private locked<T>(conversationId: string, work: () => Promise<T>) {
     // Serialize framework resume across processes. Business effects retain their
     // original tenant transaction/idempotency; checkpoints are not exactly-once.
-    return withTenantTransaction(this.actor.enterpriseId, async tx => {
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`requirement-workflow:${this.actor.enterpriseId}:${conversationId}`},0))`);
-      return work();
-    });
+    return withReviewLock(this.actor, conversationId, work);
   }
   private graph(conversationId: string) {
     const req = this.requirements;
-    return new StateGraph(State)
-      .addNode('approval', async state => {
-        await this.authorized(conversationId);
-        const approved = decision(interrupt({ kind: 'requirement_proposal', proposalId: state.proposalId, digest: state.digest }));
-        return { decision: approved, status: approved.approve ? 'approved' as const : 'rejected' as const };
-      })
-      .addNode('apply', async state => {
-        await this.authorized(conversationId);
-        const d = state.decision!;
-        let saved;
-        try {
-          saved = await req.write(conversationId, d.requestKey, { action: 'apply_proposal', proposalId: state.proposalId,
-            digest: state.digest, consent: true, restoreConsent: d.restoreConsent });
-        } catch (error) {
-          // Native checkpoints may persist errors: never retain a SQL error's
-          // parameter values or a customer excerpt in that error channel.
-          if (error instanceof AssistantError) throw new AssistantError(error.code, error.status);
-          throw new AssistantError('requirements_write_indeterminate', 503);
-        }
-        if (this.hooks.afterWrite) await this.hooks.afterWrite();
-        return { summaryId: saved.id, status: 'applied' as const };
-      })
-      .addEdge(START, 'approval')
-      .addConditionalEdges('approval', s => s.status === 'approved' ? 'apply' : END)
-      .addEdge('apply', END).compile({ checkpointer: requirementCheckpointer() });
+    return reviewGraph({ kind: 'requirement_proposal', authorize: () => this.authorized(conversationId),
+      apply: async (proposalId, digest, d) => {
+        const saved = await req.write(conversationId, d.requestKey, { action: 'apply_proposal', proposalId,
+          digest, consent: true, restoreConsent: d.restoreConsent });
+        return saved.id;
+      }, afterWrite: this.hooks.afterWrite });
   }
   private async prepare(conversationId: string, proposalId: string, digest: string) {
     await this.authorized(conversationId);
@@ -104,8 +64,8 @@ export class RequirementWorkflow {
     }
     return current;
   }
-  async propose(conversationId: string, requestKey: string, input: Extract<RequirementProposal, { changes: unknown }>) {
-    const result = await this.requirements.propose(conversationId, requestKey, input);
+  async propose(conversationId: string, requestKey: string, input: Extract<RequirementProposal, { changes: unknown }>, guard?: (repo: AssistantRepository,c:Row)=>Promise<void>) {
+    const result = await this.requirements.propose(conversationId, requestKey, input, guard);
     if (result.kind === 'proposal') await this.read(conversationId);
     return result;
   }
@@ -135,7 +95,9 @@ export class RequirementWorkflow {
       if (completed.next.length || completed.values.status !== 'applied') fail('context_changed');
       // Project the real currently authorized business row. Repeated keys and
       // different-key retries retain the original business idempotency contract.
-      const saved = await this.requirements.write(conversationId, requestKey, input);
+      const saved = await this.requirements.write(conversationId, requestKey, {
+        ...input, restoreConsent: input.restoreConsent === true,
+      });
       if (saved.id !== completed.values.summaryId) fail('context_changed');
       const current = saved.status === 'confirmed'
         ? { effect: 'requirements_confirmed', text: '这份需求已正式确认。' }

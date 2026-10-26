@@ -209,7 +209,12 @@ class ChatController {
     this.unschedule(this.timer);
     this.set({ busy: true, error: '' });
     try {
-      await this.client.mutate('handoff:' + id, `/conversations/${id}/handoff`, { action });
+      const body = { action };
+      if (this.state.conversation && this.state.conversation.reviewWorkflow === 'langgraph') {
+        body.expectedVersion = this.state.conversation.version;
+        if (action === 'request') Object.assign(body, { consent: true, mediaConsent: true, contactConsent: false, phone: '' });
+      }
+      await this.client.mutate('handoff:' + id, `/conversations/${id}/handoff`, body);
       this.setIf(epoch, { pendingAction: '' });
       await this.snapshot(id, epoch);
     } catch (error) {

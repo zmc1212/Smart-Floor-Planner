@@ -13,6 +13,9 @@ type Handoff = { state: 'waiting' | 'active' | 'cancelled' | 'ended'; requestId:
   recipientName: string; ownerId?: string; ownerName?: string; mediaConsent?: boolean; contactConsent: boolean; phone: string;
   requestedAt: string; packet: Row; source: Row; leadId: string | null };
 const stateOf = (c: Row) => (c.entry_snapshot as Row)?.handoff as Handoff | undefined;
+// Internal capability passed only after the native graph's customer decision.
+// Neither a REST payload nor an existing model tool can construct this symbol.
+export const handoffReviewApproval = Symbol('handoff-review-approval');
 /** Dispatch metadata is not a grant to read consultation contents. */
 export function dispatchHandoff(h: Handoff | undefined) {
   return h ? { state: h.state, requestId: h.requestId, recipientId: h.recipientId,
@@ -82,12 +85,15 @@ export class HandoffService {
     });
   }
   customerWrite(conversationId: string, requestKey: string, input: Row, guard?: (repo: AssistantRepository, conversation: Row) => Promise<void>,
-    portfolio?: { workId: string; versionId: string; authorId: string }) {
+    portfolio?: { workId: string; versionId: string; authorId: string }, approval?: typeof handoffReviewApproval) {
     if (!['request','cancel','end'].includes(String(input.action)) || Object.keys(input).some(k => !['action','consent','contactConsent','phone','recipientId','leadId','archiveConsent','mediaConsent'].includes(k))) fail('invalid_message',422);
     return this.scoped(true, async repo => {
       if (this.actor.principal.kind !== 'user') fail('assistant_capability_forbidden',403);
       const customerUserId = this.actor.principal.userId;
       const c = await repo.conversation(id(conversationId));
+      const entry = c.entry_snapshot as Row;
+      if (entry.requirementReviewMode === true && entry.requirementWorkflow === 'langgraph'
+        && approval !== handoffReviewApproval) fail('handoff_review_required',409);
       await idempotent(repo.tx,this.actor,'handoff:'+conversationId,requestKey,portfolio ? { ...input, portfolio } : input,async()=>{
         await guard?.(repo, c);
         if (c.status !== 'open' || (c.entry_snapshot as Row)?.retentionRedacted) fail('context_changed');
@@ -120,7 +126,7 @@ export class HandoffService {
         }
         await cancelRuns(repo.tx,this.actor,conversationId);
         const mode = h.state==='waiting'?'handoff_requested':'ai';
-        await repo.tx.execute(sql`update app.assistant_conversations set mode=${mode},entry_snapshot=jsonb_set(entry_snapshot,'{handoff}',${JSON.stringify(h)}::jsonb),
+        await repo.tx.execute(sql`update app.assistant_conversations set mode=${mode},entry_snapshot=jsonb_set(entry_snapshot-'handoffProposal','{handoff}',${JSON.stringify(h)}::jsonb),
           context_revision=context_revision+1,version=version+1,updated_at=now() where enterprise_id=${this.actor.enterpriseId} and id=${conversationId}`);
         const event = await one(repo.tx, sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
           values(${this.actor.enterpriseId},'assistant.handoff.customer.v1','assistant_conversation',${conversationId},${Number(c.version)+1},${JSON.stringify(this.actor.principal)}::jsonb,

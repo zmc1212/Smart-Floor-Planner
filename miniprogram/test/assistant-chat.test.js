@@ -10,6 +10,33 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
+test('LangGraph handoff click binds displayed version and keeps phone consent separate', async () => {
+  const f=fixture();f.db.conversation.reviewWorkflow='langgraph';f.db.conversation.version=7;
+  f.intercept(call=>{
+    if(call.url.endsWith('/handoff')) {
+      assert.deepEqual(call.body,{action:'request',expectedVersion:7,consent:true,mediaConsent:true,contactConsent:false,phone:''});
+      f.db.conversation.mode='handoff_requested';f.db.conversation.version=8;
+      return {success:true,data:{conversationId:'11',mode:'handoff_requested'}};
+    }
+  });
+  await f.controller.show({});await f.controller.handoff();
+  assert.equal(f.controller.state.conversation.mode,'handoff_requested');
+});
+
+test('unknown LangGraph handoff reuses its original version and approval body after refresh', async () => {
+  const f=fixture();f.db.conversation.reviewWorkflow='langgraph';f.db.conversation.version=7;
+  let first=true,original,key;
+  f.intercept(call=>{
+    if(call.url.endsWith('/handoff')) {
+      if(first){first=false;original=call.body;key=call.options.headers['Idempotency-Key'];f.db.conversation.version=8;throw {statusCode:503};}
+      assert.deepEqual(call.body,original);assert.equal(call.options.headers['Idempotency-Key'],key);
+      f.db.conversation.mode='handoff_requested';return {success:true,data:{conversationId:'11',mode:'handoff_requested'}};
+    }
+  });
+  await f.controller.show({});await f.controller.handoff();assert.equal(f.controller.state.pendingAction,'handoff:request');
+  await f.controller.show({conversationId:'11'});await f.controller.handoff();assert.equal(f.controller.state.pendingAction,'');
+});
+
 test('unknown handoff survives page recreation with the same key and body, isolated by identity', async () => {
   const previous = global.wx, values = new Map([['token', 'session-a']]);
   global.wx = { getStorageSync: key => values.get(key), setStorageSync: (key, value) => values.set(key, JSON.parse(JSON.stringify(value))) };
