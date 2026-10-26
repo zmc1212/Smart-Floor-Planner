@@ -9,6 +9,7 @@ import { EMPTY_WORK, cityCode, designerProfile, object, shortText, workContent, 
 import { candidateToken, readCandidate, type CommunityPoi, type CommunityProviderConfig } from './community-provider';
 import { getCommunityRuntimeConfig } from '@/lib/map-services/config';
 import { createCommunityProvider, type CommunityProvider } from '@/lib/map-services/providers';
+import { publicProfessionalForRow } from './public-query';
 
 export type PortfolioActor = { enterpriseId: string; adminId: string };
 export async function portfolioAccess(tx: PostgresTransaction, actor: PortfolioActor) {
@@ -27,6 +28,7 @@ async function author(tx: PostgresTransaction, eid: string, aid: unknown) {
   return found;
 }
 async function validateContent(tx: PostgresTransaction, eid: string, wid: string, content: WorkContent) {
+  if (Buffer.byteLength(JSON.stringify(content), 'utf8') > 24000) fail('invalid_portfolio', 422);
   if (content.communityId) {
     const c = await one(tx, sql`select id from app.portfolio_communities where enterprise_id=${eid} and id=${content.communityId} and city_code=${content.cityCode}`);
     if (!c) fail('community_candidate_invalid', 422);
@@ -47,6 +49,21 @@ async function prepareImage(raw: unknown) {
       if (bytes.length <= 300 * 1024) return bytes.toString('base64');
     }
   } catch { return fail('invalid_portfolio_image', 422); }
+  return fail('invalid_portfolio_image', 422);
+}
+async function preparePortrait(raw: unknown) {
+  if (typeof raw !== 'string' || raw.length > 5600000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(raw)) fail('invalid_portfolio_image', 422);
+  try {
+    const input = Buffer.from(raw, 'base64');
+    if (input.toString('base64') !== raw) fail('invalid_portfolio_image', 422);
+    const image = sharp(input, { limitInputPixels: 24000000, animated: false });
+    const meta = await image.metadata();
+    if (!['png', 'jpeg'].includes(meta.format || '') || (meta.pages || 1) > 1) fail('invalid_portfolio_image', 422);
+    for (const quality of [82, 72, 62, 52, 42]) {
+      const bytes = await image.clone().rotate().resize(512, 512, { fit: 'cover' }).flatten({ background: '#fff' }).jpeg({ quality, mozjpeg: true }).toBuffer();
+      if (bytes.length <= 300 * 1024) { const imageBase64 = bytes.toString('base64'); return { imageBase64, hash: fingerprint(imageBase64) }; }
+    }
+  } catch (error) { if (error instanceof AssistantError) throw error; }
   return fail('invalid_portfolio_image', 422);
 }
 export class PortfolioService {
@@ -75,10 +92,42 @@ export class PortfolioService {
     }
     return withTenantTransaction(eid, async tx => {
       const manager = await portfolioAccess(tx, a);
-      const read = ['list', 'detail', 'asset', 'authors', 'profile', 'communities', 'communityRequests'].includes(action);
+      const read = ['list', 'detail', 'asset', 'authors', 'profile', 'portrait', 'communities', 'communityRequests'].includes(action);
       const run = async (): Promise<Row> => {
-        if (action === 'authors') return { items: await rows(tx, sql`select id,display_name,professional_title,professional_profile_locked from app.admin_users
-          where enterprise_id=${eid} and role='designer' and status='active' ${manager ? sql`` : sql`and id=${a.adminId}`} order by id`) };
+        if (action === 'authors') {
+          const items = await rows(tx, sql`select a.id,a.display_name,a.professional_title,a.professional_career_start_year,a.professional_title_visible,
+            a.professional_title_admin_override,a.professional_profile_locked,a.professional_show_actual_service_count,
+            e.professional_designer_title,e.professional_measurer_title,e.professional_default_experience_years,
+            e.professional_service_threshold,e.professional_force_enterprise_profile,e.professional_title_visibility_policy,
+            (pt.id is not null) as portrait_available
+            from app.admin_users a join app.enterprises e on e.id=a.enterprise_id
+            left join app.portfolio_portraits pt on pt.enterprise_id=a.enterprise_id and pt.author_id=a.id
+            where a.enterprise_id=${eid} and a.role='designer' and a.status='active' ${manager ? sql`` : sql`and a.id=${a.adminId}`} order by a.id`);
+          return { items: items.map(item => { const professional = publicProfessionalForRow(item); return { ...item,
+            portrait_available: Boolean(item.portrait_available), professionalTitle: professional?.title ?? null, experienceLabel: professional?.experienceLabel ?? '' }; }) };
+        }
+        if (action === 'portrait' || action === 'savePortrait' || action === 'removePortrait') {
+          const aid = input.authorId == null ? a.adminId : id(input.authorId);
+          if (!manager && aid !== a.adminId) fail('portfolio_forbidden', 403);
+          await author(tx, eid, aid);
+          if (action === 'portrait') {
+            const portrait = await one(tx, sql`select image_base64 from app.portfolio_portraits where enterprise_id=${eid} and author_id=${aid}`);
+            if (!portrait) fail('portfolio_not_found', 404);
+            return portrait;
+          }
+          if (action === 'savePortrait' && aid !== a.adminId) fail('portfolio_forbidden', 403);
+          if (action === 'savePortrait' && input.consent !== true) fail('invalid_portfolio', 422);
+          if (action === 'removePortrait') {
+            await tx.execute(sql`delete from app.portfolio_portraits where enterprise_id=${eid} and author_id=${aid}`);
+            return { removed: true };
+          }
+          const portrait = await preparePortrait(input.imageBase64);
+          await tx.execute(sql`insert into app.portfolio_portraits(enterprise_id,author_id,image_base64,content_hash,consent_at,consent_by)
+            values(${eid},${aid},${portrait.imageBase64},${portrait.hash},now(),${a.adminId})
+            on conflict(enterprise_id,author_id) do update set image_base64=excluded.image_base64,content_hash=excluded.content_hash,
+              consent_at=excluded.consent_at,consent_by=excluded.consent_by,updated_at=now()`);
+          return { updated: true };
+        }
         if (action === 'profile' || action === 'saveProfile') {
           if (!manager && input.authorId !== undefined && input.authorId !== a.adminId) fail('portfolio_forbidden', 403);
           const aid = manager ? id(input.authorId) : a.adminId; await author(tx, eid, aid);
@@ -157,6 +206,7 @@ export class PortfolioService {
           const aid = kind === 'designer_work' ? manager ? id(input.authorId) : a.adminId : null;
           if (aid) await author(tx, eid, aid);
           const content = workContent(input.content ?? EMPTY_WORK);
+          if (Buffer.byteLength(JSON.stringify(content), 'utf8') > 24000) fail('invalid_portfolio', 422);
           if (content.images.length) fail('invalid_portfolio', 422);
           const w = (await one(tx, sql`insert into app.portfolio_works(enterprise_id,kind,author_id,created_by,updated_by) values(${eid},${String(kind)},${aid},${a.adminId},${a.adminId}) returning *`))!;
           const v = (await one(tx, sql`insert into app.portfolio_versions(enterprise_id,work_id,number,content) values(${eid},${String(w.id)},1,${JSON.stringify(content)}::jsonb) returning id`))!;

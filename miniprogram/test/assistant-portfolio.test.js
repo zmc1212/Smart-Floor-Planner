@@ -1,7 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { PortfolioController, PortfolioImages, RecommendationController, workForView } = require('../packages/assistant/lib/portfolio');
-const { AssistantClient, entryInput } = require('../packages/assistant/lib/client');
+const { PortfolioController, PortfolioImages, RecommendationController, workForView, designerForView, filterOptionsFor, filterWorks, applySpace } = require('../packages/assistant/lib/portfolio');
+const { AssistantClient, entryInput, messagesForView, latestDesignerCard } = require('../packages/assistant/lib/client');
 const { page } = require('../packages/assistant/lib/portfolio-page');
 const work = () => ({ id: '12', versionId: '13', authorId: '14', authorName: '真实设计师', title: '公开原木作品', description: '作品说明', primaryStyle: '原木风', area: 90, rooms: '两室', coverAssetId: '15', images: [{ assetId: '15', kind: 'render', aiGenerated: true }, { assetId: '16', kind: 'photo', showroom: true }], preference: null, preferenceVersion: 0 });
 function fixture() {
@@ -104,6 +104,98 @@ test('hiding during recovery of an uncertain write cannot restart a background p
   finish({ sentiment: 'like', preferenceVersion: 1 }); await write; await show;
   assert.equal(f.controller.visible, false); assert.deepEqual(f.controller.state.images, {});
 });
+test('work enrichment keeps bounded taxonomy, stable space groups, filtered tours and authorized hex palettes', () => {
+  const enriched = workForView({ ...work(), layoutTypes: ['三居', '三居', '大平层', '叠墅'], secondaryStyles: ['奶油风', '现代简约', '极简', '侘寂'],
+    highlights: ['A', 'B', 'C', 'D', 'E', 'F', 'G'], materials: ['橡木', '微水泥'],
+    palette: [{ name: '奶油白', hex: '#F5F0E6' }, { name: 'bad', hex: 'red' }, { name: '炭黑', hex: '#1F1F1F' }, { name: '', hex: '#FFFFFF' }],
+    tours: [{ url: 'http://bad.example.com' }, { url: 'https://kuula.co/a', provider: 'Kuula' }, { url: 'https://my.matterport.com/b', provider: 'Matterport' }],
+    images: [{ assetId: '15', kind: 'render', space: '客厅', aiGenerated: true }, { assetId: '16', kind: 'photo', space: '主卧', showroom: true }, { assetId: '17', kind: 'render', space: '客厅' }, { assetId: '18', kind: 'photo' }] });
+  assert.deepEqual(enriched.styleTags, ['原木风', '奶油风', '现代简约']);
+  assert.deepEqual(enriched.layoutTypes, ['三居', '大平层', '叠墅']);
+  assert.deepEqual(enriched.tags, ['原木风', '三居', '大平层']);
+  assert.equal(enriched.highlights.length, 6); assert.deepEqual(enriched.materials, ['橡木', '微水泥']);
+  assert.deepEqual(enriched.palette.map(color => color.hex), ['#F5F0E6', '#1F1F1F', '#FFFFFF']);
+  assert.equal(enriched.tourCount, 2); assert.equal(enriched.tourProviderLabel, 'Kuula / Matterport');
+  assert.deepEqual(enriched.spaceGroups, [{ key: '客厅', label: '客厅', count: 2 }, { key: '主卧', label: '主卧', count: 1 }, { key: '', label: '未标注', count: 1 }]);
+  assert.equal(enriched.hasSpaceTags, true);
+  const living = applySpace(enriched, '客厅'); assert.equal(living.renders.length, 2); assert.equal(living.photos.length, 0);
+  const unlabeled = applySpace(enriched, ''); assert.equal(unlabeled.renders.length, 0); assert.equal(unlabeled.photos.length, 1);
+  assert.equal(enriched.cardMeta, '90㎡ · 两室');
+});
+
+test('designer view exposes real title, specialties and filterable published works without inventing values', () => {
+  const second = { ...work(), id: '22', versionId: '23', coverAssetId: '25', primaryStyle: '奶油风', secondaryStyles: [], layoutTypes: ['两居'], tours: [{ url: 'http://unsafe' }], images: [{ assetId: '25', kind: 'render' }] };
+  const view = designerForView({ id: '14', name: '林知夏', bio: '本人资料', cities: [{ name: '杭州市' }, { name: '绍兴市' }], styles: ['原木风', '奶油风'], layoutSpecialties: ['三居', '旧房改造'], professionalTitle: '资深家装设计师', experienceLabel: '9年设计经验', portraitAvailable: true,
+    works: [{ ...work(), tours: [{ url: 'https://my.matterport.com/a', provider: 'Matterport' }], layoutTypes: ['三居'] }, second] });
+  assert.equal(view.initial, '林'); assert.equal(view.professionalLine, '资深家装设计师 · 9年设计经验');
+  assert.equal(view.cityLabel, '杭州市 / 绍兴市'); assert.equal(view.portraitAvailable, true);
+  const options = filterOptionsFor(view.works);
+  assert.deepEqual(options.map(option => option.key), ['all', 'style:原木风', 'style:奶油风', 'layout:三居', 'layout:两居', 'tour']);
+  assert.deepEqual(filterWorks(view.works, 'tour').map(item => item.id), ['12']);
+  assert.deepEqual(filterWorks(view.works, 'style:奶油风').map(item => item.id), ['22']);
+  assert.deepEqual(filterWorks(view.works, 'layout:三居').map(item => item.id), ['12']);
+  assert.deepEqual(filterWorks(view.works, 'unknown').map(item => item.id), ['12', '22']);
+});
+
+test('designer page loads only the authorized portrait and resets portrait, filters and covers when hidden', async () => {
+  let portraitCalls = 0;
+  const designer = { id: '14', name: '林知夏', bio: '本人资料', cities: [{ name: '杭州市' }], styles: ['原木风'], layoutSpecialties: ['三居'], professionalTitle: '资深家装设计师', experienceLabel: '9年设计经验', portraitAvailable: true,
+    works: [{ ...work(), layoutTypes: ['三居'], tours: [{ url: 'https://my.matterport.com/a', provider: 'Matterport' }] }] };
+  const client = { pending: new Map(), async read(path) {
+    if (path === '/conversations/11') return { id: '11', status: 'open' };
+    if (path.endsWith('/designers/14')) return designer;
+    if (path.endsWith('/share')) return { path: '/packages/assistant/designer/designer?portfolioEntry=signed' };
+    throw Error(path);
+  } };
+  const images = { clear() {}, async load() { return '/private/cover.jpg'; }, async loadPortrait(cid, authorId) { portraitCalls += 1; assert.equal(cid, '11'); assert.equal(authorId, '14'); return '/private/portrait.jpg'; } };
+  const c = new PortfolioController({ emit() {}, identity: () => 'session', client, images });
+  await c.show({ conversationId: '11', authorId: '14' });
+  assert.equal(c.state.portraitPath, '/private/portrait.jpg'); assert.equal(portraitCalls, 1);
+  assert.equal(c.state.filterOptions.length, 4); assert.equal(c.state.totalWorks, 1);
+  c.setFilter('tour'); assert.equal(c.state.works.length, 1); assert.equal(c.state.designerFilter, 'tour');
+  c.setFilter('bogus'); assert.equal(c.state.designerFilter, 'all'); assert.equal(c.state.works.length, 1);
+  c.hide(); assert.equal(c.state.portraitPath, ''); assert.deepEqual(c.state.images, {});
+});
+
+test('portrait bytes bind the exact designer and are deleted with the portfolio context', async () => {
+  const previous = global.wx, removed = [], calls = [];
+  global.wx = { env: { USER_DATA_PATH: '/private' }, getFileSystemManager: () => ({ writeFile(args) { args.success(); }, unlink(args) { removed.push(args.filePath); } }) };
+  try {
+    const images = new PortfolioImages({ read: async (path, input) => { calls.push({ path, input }); return { mimeType: 'image/jpeg', imageBase64: '/9j/AA==' }; } });
+    const filePath = await images.loadPortrait('11', '14');
+    assert.match(filePath, /assistant-portrait-14-/); assert.deepEqual(calls[0].input, { format: 'base64' });
+    images.clear(); assert.equal(removed.length, 1);
+    await assert.rejects(images.loadPortrait('11', '0'), error => error.code === 'invalid_response');
+    const wrong = new PortfolioImages({ read: async () => ({ mimeType: 'image/png', imageBase64: '/9j/AA==' }) });
+    await assert.rejects(wrong.loadPortrait('11', '14'), error => error.code === 'invalid_response');
+  } finally { global.wx = previous; }
+});
+
+test('chat shows only bounded, sanitized designer cards from the latest assistant message', () => {
+  const card = (overrides = {}) => ({ authorId: '14', authorName: '林知夏', professionalTitle: '资深家装设计师', experienceLabel: '9年设计经验', layoutSpecialties: ['三居'], portraitAvailable: true,
+    work: { id: '12', versionId: '13', title: '原木三居', coverAssetId: '15', primaryStyle: '原木风', secondaryStyles: ['奶油风'], layoutTypes: ['三居'], cityName: '杭州', district: '西湖区', communityName: '云栖里', tourCount: 9 },
+    reason: '同城风格', match: '三居 · 原木风', ...overrides });
+  const message = (id, rec) => ({ id, seq: id, authorKind: 'assistant', content: { blocks: [{ type: 'text', text: '推荐' }] }, designerRecommendation: rec });
+  const items = messagesForView([
+    message('1', { items: [card(), card({ authorId: '0' }), card({ authorName: '\u0001' })], notice: 'n'.repeat(300) }),
+    message('2', { items: [card({ authorId: '22', professionalTitle: '\u0001主创', portraitAvailable: 'yes' })] }),
+    { id: '3', seq: '3', authorKind: 'user', content: { blocks: [{ type: 'text', text: '好' }] } },
+    message('4', { items: [card({ authorId: '44', work: { ...card().work, id: '32', versionId: '33', coverAssetId: '35', tourCount: 99 } })], notice: '已按杭州三居筛选' }),
+    { id: '5', seq: '5', authorKind: 'assistant', content: { blocks: [{ type: 'text', text: '补充' }] }, designerRecommendation: { items: [] } },
+  ]);
+  const first = items.find(item => item.id === '1').designerRecommendation;
+  assert.equal(first.items.length, 2); assert.equal(first.notice.length, 200);
+  assert.equal(first.items[1].authorName, '设计师'); assert.equal(first.items[1].initial, '设');
+  assert.equal(first.items[0].work.tourCount, 3); assert.equal(first.items[0].work.communityName, '云栖里');
+  const stripped = items.find(item => item.id === '2').designerRecommendation.items[0];
+  assert.equal(stripped.professionalTitle, '主创'); assert.equal(stripped.portraitAvailable, false);
+  assert.equal(items.find(item => item.id === '5').designerRecommendation, null);
+  assert.equal(latestDesignerCard(items), null);
+  assert.equal(latestDesignerCard([message('6', { items: [card()] }), message('7', { items: [card({ authorId: '44' })] })]).id, '7');
+  const unavailable = messagesForView([{ ...message('8', { items: [card()] }), available: false }]);
+  assert.equal(unavailable[0].designerRecommendation, null);
+});
+
 test('malformed preference/create receipts retain their original operation instead of falsely reporting success', async () => {
   let complete = false; const receipts = [];
   const client = new AssistantClient(async (path, method, body, options) => {

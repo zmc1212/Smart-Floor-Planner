@@ -11,6 +11,10 @@ export const portfolioCommunities = app.table('portfolio_communities', {
 export const portfolioProfiles = app.table('portfolio_profiles', {
   id: ref('id').primaryKey().generatedAlwaysAsIdentity(), enterpriseId: ref('enterprise_id').notNull(), authorId: ref('author_id').notNull(), content: jsonb('content').notNull(), version: integer('version').notNull(), updatedAt: time('updated_at').notNull(),
 });
+export const portfolioPortraits = app.table('portfolio_portraits', {
+  ...identity(), authorId: ref('author_id').notNull(), imageBase64: text('image_base64').notNull(), contentHash: text('content_hash').notNull(),
+  consentAt: time('consent_at').notNull(), consentBy: ref('consent_by').notNull(), updatedAt: time('updated_at').notNull().defaultNow(),
+});
 export const portfolioWorks = app.table('portfolio_works', {
   ...identity(), kind: text('kind').notNull(), authorId: ref('author_id'), headVersionId: ref('head_version_id'), publishedVersionId: ref('published_version_id'), withdrawn: boolean('withdrawn').notNull(),
   version: integer('version').notNull(), createdBy: ref('created_by').notNull(), updatedBy: ref('updated_by').notNull(), updatedAt: time('updated_at').notNull(),

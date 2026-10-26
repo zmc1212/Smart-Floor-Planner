@@ -1,14 +1,47 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { EMPTY_WORK, cityCode, designerProfile, inCity, workContent } from '../contracts';
+import { EMPTY_WORK, cityCode, designerProfile, inCity, tourUrl, workContent } from '../contracts';
 import { AmapCommunityProvider, candidateToken, communityPoi, providerConfig, readCandidate } from '../community-provider';
 
 const valid = { ...EMPTY_WORK, title: '原木生活', description: '客餐厅和收纳方向', primaryStyle: '原木风', cityCode: '330100', cityName: '杭州市', authorRole: '主创', source: '本人原创', authorization: '已授权本组图片的作品展示和推荐',
   images: [{ assetId: '1', kind: 'render', aiGenerated: true, showroom: false, caption: '' }], coverAssetId: '1' };
 test('publication requires rights/cover; AI/photo roles and source metadata are validated without guessing', () => {
-  assert.deepEqual(workContent(valid, true).images[0], valid.images[0]);
+  assert.deepEqual(workContent(valid, true).images[0], { ...valid.images[0], space: '' });
   for (const content of [{ ...valid, authorization: '' }, { ...valid, images: [] }, { ...valid, coverAssetId: '2' }, { ...valid, secondaryStyles: ['原木风'] }, { ...valid, rightsUntil: '2020-01-01T00:00:00Z' }, { ...valid, images: [{ ...valid.images[0], kind: 'photo' }] }, { ...valid, images: [{ ...valid.images[0], showroom: true }] }, { ...valid, source: 'x\0' }, { ...valid, unexpected: true }]) assert.throws(() => workContent(content, true));
   assert.equal(workContent({ title: '还没传图' }).images.length, 0);
+});
+test('legacy work JSON keeps enrichment defaults, while new fields are bounded and tours are server-derived', () => {
+  const legacy = workContent(valid, true);
+  assert.deepEqual(legacy.layoutTypes, []); assert.deepEqual(legacy.highlights, []); assert.deepEqual(legacy.materials, []); assert.deepEqual(legacy.palette, []); assert.deepEqual(legacy.tours, []);
+  const enriched = { ...valid, layoutTypes: ['三居', '旧房改造'], highlights: ['打通客餐厅'], materials: ['橡木饰面'], palette: [{ name: '奶油白', hex: '#F2E8D5' }],
+    tours: [{ url: 'https://my.matterport.com/show/?m=abc', provider: '伪造', title: '全屋漫游' }], images: [{ ...valid.images[0], space: '客厅' }] };
+  const parsed = workContent(enriched, true);
+  assert.deepEqual(parsed.tours, [{ url: 'https://my.matterport.com/show/?m=abc', provider: 'Matterport', title: '全屋漫游' }]);
+  assert.equal(parsed.images[0].space, '客厅'); assert.deepEqual(parsed.layoutTypes, ['三居', '旧房改造']);
+  for (const content of [
+    { ...enriched, layoutTypes: ['三居', '两居', '大平层', '别墅'] }, { ...enriched, layoutTypes: ['不存在'] }, { ...enriched, layoutTypes: ['三居', '三居'] },
+    { ...enriched, highlights: Array(7).fill('亮点') }, { ...enriched, highlights: ['x'.repeat(61)] },
+    { ...enriched, materials: Array(7).fill('材料') }, { ...enriched, materials: ['x'.repeat(41)] },
+    { ...enriched, palette: [{ name: '奶油白', hex: 'F2E8D5' }] }, { ...enriched, palette: [{ name: 'x'.repeat(21), hex: '#F2E8D5' }] },
+    { ...enriched, palette: Array(7).fill({ name: '白', hex: '#FFFFFF' }) },
+    { ...enriched, tours: [{ url: 'http://kuula.co/share/x', title: '客厅' }] },
+    { ...enriched, tours: [{ url: 'https://user:pass@kuula.co/share/x', title: '客厅' }] },
+    { ...enriched, tours: [{ url: 'https://evil.example/share/x', title: '客厅' }] },
+    { ...enriched, tours: [{ url: 'https://127.0.0.1/share/x', title: '客厅' }] },
+    { ...enriched, tours: [{ url: 'https://kuula.co:8443/share/x', title: '客厅' }] },
+    { ...enriched, tours: [{ url: 'javascript:alert(1)', title: '客厅' }] },
+    { ...enriched, tours: [{ url: 'data:text/html,x', title: '客厅' }] },
+    { ...enriched, tours: [{ url: 'https://kuula.co/' + 'a'.repeat(500), title: '客厅' }] },
+    { ...enriched, tours: Array(4).fill({ url: 'https://kuula.co/share/x', title: '客厅' }) },
+    { ...enriched, images: [{ ...valid.images[0], space: '花园' }] },
+  ]) assert.throws(() => workContent(content, true));
+  assert.equal(tourUrl('https://tour.kuula.co/share/x').provider, 'Kuula');
+});
+test('designer profile adds bounded layout specialties and still rejects unknown keys', () => {
+  const profile = { bio: '', cities: [], styles: ['原木风'], featuredWorkIds: [] };
+  assert.deepEqual(designerProfile(profile).layoutSpecialties, []);
+  assert.deepEqual(designerProfile({ ...profile, layoutSpecialties: ['三居', '大平层'] }).layoutSpecialties, ['三居', '大平层']);
+  for (const value of [{ ...profile, layoutSpecialties: ['不存在'] }, { ...profile, layoutSpecialties: ['三居', '三居'] }, { ...profile, layoutSpecialties: Array(7).fill('三居') }, { ...profile, displayName: 'fake' }]) assert.throws(() => designerProfile(value));
 });
 test('city boundaries distinguish same-name cities, districts and municipalities', () => {
   assert.equal(cityCode('330100'), '330100'); assert.equal(cityCode('110000'), '110000');

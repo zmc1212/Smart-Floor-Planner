@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
 import { rows } from './assistant-repository';
-export const portfolioCleanupTables = ['portfolio_audits', 'portfolio_assets', 'portfolio_versions', 'portfolio_works', 'portfolio_profiles', 'portfolio_community_requests', 'portfolio_communities', 'portfolio_provider_usage'] as const;
+export const portfolioCleanupTables = ['portfolio_audits', 'portfolio_assets', 'portfolio_versions', 'portfolio_works', 'portfolio_profiles', 'portfolio_community_requests', 'portfolio_communities', 'portfolio_provider_usage', 'portfolio_portraits'] as const;
 export async function portfolioCounts(tx: PostgresTransaction, enterpriseId: bigint) {
   const result = [];
   for (const table of portfolioCleanupTables) result.push({ table, label: table, count: Number((await rows(tx, sql`select count(*) n from ${sql.identifier('app')}.${sql.identifier(table)} where enterprise_id=${enterpriseId}`))[0].n) });

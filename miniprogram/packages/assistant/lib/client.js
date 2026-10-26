@@ -157,6 +157,42 @@ function entryInput(options = {}) {
   return keys.length ? { [keys[0]]: String(options[keys[0]]) } : {};
 }
 
+const PORTFOLIO_ID = /^[1-9]\d{0,18}$/;
+function portfolioText(value, max) {
+  return typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, max) : '';
+}
+function portfolioList(value, max, length) {
+  return (Array.isArray(value) ? value : []).filter(item => typeof item === 'string').map(item => portfolioText(item, length))
+    .filter(Boolean).slice(0, max);
+}
+function designerRecommendationForView(value) {
+  if (!value || !Array.isArray(value.items)) return null;
+  const items = value.items.slice(0, 3).map(card => {
+    const work = card && card.work;
+    if (!card || !work || ![card.authorId, work.id, work.versionId, work.coverAssetId].every(id => PORTFOLIO_ID.test(String(id)))) return null;
+    const authorName = portfolioText(card.authorName, 40) || '设计师';
+    return {
+      authorId: String(card.authorId), authorName, initial: authorName.slice(0, 1),
+      professionalTitle: portfolioText(card.professionalTitle, 40), experienceLabel: portfolioText(card.experienceLabel, 20),
+      layoutSpecialties: portfolioList(card.layoutSpecialties, 6, 20), portraitAvailable: card.portraitAvailable === true,
+      work: {
+        id: String(work.id), versionId: String(work.versionId), title: portfolioText(work.title, 60), coverAssetId: String(work.coverAssetId),
+        primaryStyle: portfolioText(work.primaryStyle, 20), secondaryStyles: portfolioList(work.secondaryStyles, 3, 20),
+        layoutTypes: portfolioList(work.layoutTypes, 3, 20), cityName: portfolioText(work.cityName, 20), district: portfolioText(work.district, 20),
+        communityName: portfolioText(work.communityName, 60),
+        tourCount: Number.isInteger(work.tourCount) ? Math.max(0, Math.min(3, work.tourCount)) : 0,
+      },
+      reason: portfolioText(card.reason, 120), match: portfolioText(card.match, 60),
+    };
+  }).filter(Boolean);
+  return items.length ? { items, notice: portfolioText(value.notice, 200) } : null;
+}
+function latestDesignerCard(items) {
+  let latest = null;
+  for (const message of items || []) if (message.authorKind === 'assistant' && !message.isUser) latest = message;
+  return latest && latest.designerRecommendation && latest.designerRecommendation.items.length ? latest : null;
+}
+
 function messagesForView(items) {
   const latestPlan = new Map();
   for (const m of items || []) if (m.planDecision && m.available !== false) {
@@ -178,6 +214,7 @@ function messagesForView(items) {
     publicConsent: item.available !== false && item.publicConsent && latestPublic.get(item.publicConsent.id + '_' + item.publicConsent.versionId) === item && /^[1-9]\d*$/.test(String(item.publicConsent.id)) && /^[1-9]\d*$/.test(String(item.publicConsent.versionId)) && Array.isArray(item.publicConsent.photos) && Array.isArray(item.publicConsent.excerpts) ? item.publicConsent : null,
     publicContext: item.available !== false && item.publicContext && /^[1-9]\d*$/.test(String(item.publicContext.id)) && /^[1-9]\d*$/.test(String(item.publicContext.versionId)) ? item.publicContext : null,
     publicReferences: item.available !== false ? (item.publicReferences || []).filter(r => /^[1-9]\d*$/.test(String(r.id)) && /^[1-9]\d*$/.test(String(r.versionId))).slice(0, 8) : [],
+    designerRecommendation: item.available !== false ? designerRecommendationForView(item.designerRecommendation) : null,
     siteRecord: item.available !== false && item.siteRecord?.available && /^[1-9]\d*$/.test(String(item.siteRecord.id)) && Number.isSafeInteger(item.siteRecord.version)
       ? { ...item.siteRecord, assets: (item.siteRecord.assets || []).filter(id => /^[1-9]\d*$/.test(String(id))).slice(0, 4).map(String) } : null,
     siteRecordList: item.available !== false ? [item.siteRecord, ...(item.siteRecords || [])].map(record).filter(Boolean).filter((r, index, all) => all.findIndex(a => a.id === r.id && a.version === r.version) === index) : [],
@@ -202,4 +239,4 @@ function messagesForView(items) {
   })).sort((a, b) => String(a.seq).length - String(b.seq).length || String(a.seq).localeCompare(String(b.seq)));
 }
 
-module.exports = { AssistantClient, entryInput, errorCopy, uncertain, messagesForView };
+module.exports = { AssistantClient, entryInput, errorCopy, uncertain, messagesForView, latestDesignerCard };

@@ -1,5 +1,5 @@
 import { AssistantError, fail, id } from '../contracts';
-import { businessToolDefinitions, parseBusinessQuery } from './business-tools';
+import { businessToolDefinitions, parseBusinessQuery, parseDesignerQuery } from './business-tools';
 import { historyTool, parseHistoryQuery } from './history';
 import { materialTool, parseMaterialQuery } from './materials';
 import type { ModelMessage, ModelTool } from '../contracts/model';
@@ -74,6 +74,7 @@ const validators = new Map<string, { tool: ModelTool; parse: (input: unknown) =>
   ['read_web', { tool: readWebTool, parse: parsePublicRead }],
   ['query_materials', { tool: materialTool, parse: parseMaterialQuery }],
   ['query_business', { tool: businessToolDefinitions.find(tool => tool.name === 'query_business')!, parse: parseBusinessQuery }],
+  ['recommend_designers', { tool: businessToolDefinitions.find(tool => tool.name === 'recommend_designers')!, parse: parseDesignerQuery }],
   ['recall_history', { tool: historyTool, parse: parseHistoryQuery }],
 ]);
 
@@ -163,6 +164,7 @@ export function readToolInputIssue(name: string, args: string, context?: ReadToo
       issues, parameters: tool.parameters,
       instructions: '本次查询尚未执行，不是成功回执或无匹配结果。issues逐项指出实际错误：path为字段，expected为要求，received为实际类型；先修正这些字段，再在剩余轮次内查询。'
         + (context?.leadId && homeReadTools.has(name) ? '房屋身份由服务器绑定，不传leadId或其他身份字段，只提交parameters列出的字段。'
+          : name === 'recommend_designers' ? '只提交query，复述客户本轮或已记录中明确的城市/风格/户型；没有明确方向传空字符串。'
           : 'leadId的string必须用JSON双引号包围已知获权ID，不能再次输出number；未知时用合同允许的空字符串，不猜ID。')
         + '房间须为明确房间名，历史查询词限2到80字符。服务器没有自动转换或执行原参数，不声称已查到或已办理。无法确定时作最小澄清。再次参数错误将结束本轮，不增加四轮预算。' }) };
   }

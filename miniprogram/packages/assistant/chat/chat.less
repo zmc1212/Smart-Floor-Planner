@@ -30,6 +30,31 @@ page { background: #f6fcf8; }
 .portfolio-designer-name { display: block; font-size: 28rpx; font-weight: 600; }
 .portfolio-work-title { display: block; margin-top: 6rpx; font-size: 24rpx; line-height: 1.5; }
 .portfolio-reason, .portfolio-notice { display: block; margin-top: 10rpx; font-size: 22rpx; line-height: 1.6; color: #7b9087; }
+/* D-04 (780x1688 -> 390x844): designer cards inside the latest assistant message. */
+.designer-cards { margin-top: 14rpx; }
+.designer-card { padding: 20rpx; border: 1rpx solid #dcece3; border-radius: 22rpx; background: #fff; }
+.designer-card + .designer-card { margin-top: 14rpx; }
+.designer-card-head { display: flex; align-items: flex-start; gap: 14rpx; }
+.designer-card-avatar { width: 68rpx; height: 68rpx; flex: none; display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 50%; background: #e4f3ea; color: #146448; font-size: 32rpx; font-weight: 600; }
+.designer-card-avatar image { width: 100%; height: 100%; }
+.designer-card-identity { flex: 1; min-width: 0; }
+.designer-card-name { display: block; font-size: 32rpx; font-weight: 700; line-height: 1.4; }
+.designer-card-title { display: block; margin-top: 2rpx; font-size: 22rpx; line-height: 1.5; color: #7b9087; }
+.chat-page .designer-card-link { display: flex; align-items: center; gap: 6rpx; flex: none; min-height: 64rpx; padding-left: 8rpx; font-size: 24rpx; color: #0b8a5f; white-space: nowrap; }
+.designer-card-reason { display: block; margin-top: 10rpx; font-size: 24rpx; line-height: 1.6; color: #47655c; }
+.designer-card-work { display: flex; align-items: center; gap: 16rpx; margin-top: 14rpx; padding-top: 14rpx; border-top: 1rpx solid #eef4f0; }
+.designer-card-cover { position: relative; width: 140rpx; height: 140rpx; flex: none; overflow: hidden; border-radius: 14rpx; background: #edf5ef; }
+.designer-card-cover image { width: 100%; height: 100%; }
+.designer-card-3d { position: absolute; top: 8rpx; left: 8rpx; padding: 2rpx 10rpx; border-radius: 8rpx; background: rgba(14,107,80,.9); color: #fff; font-size: 20rpx; font-weight: 600; line-height: 1.5; }
+.designer-card-copy { flex: 1; min-width: 0; }
+.designer-card-work-title { display: block; font-size: 28rpx; font-weight: 600; line-height: 1.45; overflow-wrap: break-word; }
+.designer-card-tags { display: flex; flex-wrap: wrap; gap: 8rpx; margin-top: 8rpx; }
+.designer-card-tag { display: inline-flex; align-items: center; min-height: 40rpx; padding: 2rpx 14rpx; border: 1rpx solid #e1ebe5; border-radius: 8rpx; color: #5a7972; font-size: 22rpx; line-height: 1.5; }
+.designer-card-tag.style-tag { border-color: transparent; background: #e9f7ef; color: #0e6b50; }
+.designer-card-meta { display: block; margin-top: 8rpx; font-size: 22rpx; line-height: 1.5; color: #7b9087; }
+.designer-card-arrow { flex: none; margin-right: 0; }
+.designer-card-notice { display: block; margin-top: 10rpx; font-size: 22rpx; line-height: 1.6; color: #7b9087; }
+.chat-page .designer-card-retry { display: block; margin: 0 0 18rpx 88rpx; min-height: 64rpx; font-size: 24rpx; color: #0b8a5f; text-align: left; }
 /* PPT5: options below the current question, then the mint progress strip.
    Source 853px wide: options x137/h68, strip x40/w773; scale to 750rpx. */
 .guidance-options { display: flex; flex-wrap: wrap; gap: 10rpx; margin: 4rpx 0 16rpx 88rpx; }

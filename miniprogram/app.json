@@ -13,7 +13,7 @@
     },
     {
       "root": "packages/assistant",
-      "pages": ["chat/chat", "requirements/requirements", "handoff/handoff", "designer/designer", "work/work"]
+      "pages": ["chat/chat", "requirements/requirements", "handoff/handoff", "designer/designer", "work/work", "tour-view/tour-view"]
     },
     {
       "root": "packages/surveying",

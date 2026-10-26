@@ -17,12 +17,21 @@ page { background: #f7fcf9; color: #082b2a; }
 .brand-subtitle { font-size: 22rpx; color: #7c8ca2; line-height: 1.5; }
 .nav-title { font-size: 32rpx; font-weight: 600; }
 .portfolio-content { padding: 20rpx 40rpx 0; }
-.identity-row { display: flex; align-items: flex-start; gap: 18rpx; margin: 20rpx 0 28rpx; }
-.designer-initial { width: 114rpx; height: 114rpx; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex: none; background: #e4f3ea; color: #146448; font-size: 46rpx; font-weight: 600; }
+.identity-row { display: flex; align-items: flex-start; gap: 18rpx; margin: 20rpx 0 24rpx; }
+.designer-avatar { width: 114rpx; height: 114rpx; flex: none; }
+.designer-initial, .designer-portrait { width: 114rpx; height: 114rpx; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex: none; background: #e4f3ea; color: #146448; font-size: 46rpx; font-weight: 600; }
+.designer-portrait { display: block; object-fit: cover; }
 .identity-copy { flex: 1; min-width: 0; }
-.designer-name { display: block; font-size: 32rpx; font-weight: 700; line-height: 1.35; }
-.designer-bio { display: block; color: #7c8ca2; font-size: 24rpx; line-height: 1.6; margin-top: 6rpx; overflow-wrap: break-word; }
+.designer-name { display: block; font-size: 36rpx; font-weight: 700; line-height: 1.35; }
+.professional-line { display: block; color: #3f6459; font-size: 26rpx; line-height: 1.5; margin-top: 4rpx; }
+.designer-bio { display: block; color: #7c8ca2; font-size: 26rpx; line-height: 1.6; margin-top: 6rpx; overflow-wrap: break-word; }
 .city-label { display: block; color: #7c8ca2; font-size: 22rpx; line-height: 1.6; margin-top: 4rpx; }
+.specialty-card { margin: 0 0 28rpx; }
+.specialty-row { display: flex; align-items: flex-start; gap: 14rpx; }
+.specialty-row + .specialty-row { margin-top: 14rpx; }
+.specialty-label { flex: none; width: 64rpx; font-size: 24rpx; line-height: 48rpx; color: #7c8ca2; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 12rpx; flex: 1; min-width: 0; }
+.meta-chip { display: inline-flex; align-items: center; min-height: 48rpx; padding: 6rpx 20rpx; border-radius: 999rpx; background: #edf8f1; color: #146448; font-size: 24rpx; line-height: 1.5; }
 .portfolio-page .share-button { display: flex; align-items: center; gap: 8rpx; flex: none; border-radius: 40rpx; padding: 14rpx 18rpx; min-height: 84rpx; background: #eff7f1; font-size: 24rpx; }
 .share-button image { width: 30rpx; height: 30rpx; flex: none; }
 .studio-heading { display: block; font-size: 52rpx; line-height: 1.3; font-weight: 700; letter-spacing: -1rpx; }
@@ -32,21 +41,33 @@ page { background: #f7fcf9; color: #082b2a; }
 .portfolio-page .primary-action { background: #00b981; color: #fff; }
 .portfolio-page .secondary-action { margin-top: 14rpx; border: 2rpx solid #00b981; background: #fff; color: #105240; }
 .action-helper { display: block; margin: 12rpx 0 20rpx; font-size: 22rpx; line-height: 1.6; color: #82918e; }
-.works-section, .gallery-section, .preference-section { margin-top: 24rpx; padding: 24rpx; border-radius: 24rpx; background: #fff; }
-.section-heading { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; margin-bottom: 18rpx; font-size: 30rpx; font-weight: 600; }
+.works-section, .preference-section, .highlights-section { margin-top: 24rpx; padding: 24rpx; border-radius: 24rpx; background: #fff; }
+.section-heading { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; margin-bottom: 18rpx; font-size: 32rpx; font-weight: 600; }
 .section-heading button { display: flex; align-items: center; gap: 12rpx; min-height: 64rpx; font-size: 24rpx; font-weight: 400; color: #8390a2; }
-.section-title { display: block; font-size: 28rpx; font-weight: 600; line-height: 1.5; margin-bottom: 16rpx; }
+.section-title { display: block; font-size: 30rpx; font-weight: 600; line-height: 1.5; margin-bottom: 16rpx; }
 .chevron { display: inline-block; width: 10rpx; height: 10rpx; border-top: 2rpx solid currentColor; border-right: 2rpx solid currentColor; transform: rotate(45deg); flex: none; }
+.filter-row { display: flex; flex-wrap: wrap; gap: 12rpx; margin-bottom: 20rpx; }
+.portfolio-page .filter-chip { display: inline-flex; align-items: center; justify-content: center; flex: none; min-height: 64rpx; padding: 10rpx 26rpx; border: 2rpx solid #dcebe3; border-radius: 999rpx; background: #fff; color: #47655c; font-size: 24rpx; white-space: nowrap; }
+.portfolio-page .filter-chip.is-active { border-color: #0e6b50; background: #0e6b50; color: #fff; }
+.portfolio-page .inline-link { display: inline; min-height: 0; padding: 0 6rpx; color: #087955; font-size: 24rpx; text-decoration: underline; }
 .portfolio-page .work-card { display: flex; gap: 20rpx; width: 100%; text-align: left; padding: 0; }
 .work-card + .work-card { margin-top: 24rpx; }
-.work-cover { position: relative; width: 47%; height: 204rpx; border-radius: 16rpx; overflow: hidden; flex: none; background: #edf3ee; }
+.work-cover { position: relative; width: 47%; height: 220rpx; border-radius: 16rpx; overflow: hidden; flex: none; background: #edf3ee; }
 .work-cover image { width: 100%; height: 100%; }
 .image-loading { display: block; padding: 24rpx; font-size: 22rpx; color: #7a8884; }
 .image-badge { position: absolute; bottom: 10rpx; left: 10rpx; max-width: calc(100% - 20rpx); padding: 4rpx 10rpx; border-radius: 10rpx; color: #fff; background: rgba(19,45,37,.66); font-size: 20rpx; line-height: 1.5; }
+.space-badge { top: 10rpx; bottom: auto; background: rgba(233,247,239,.94); color: #0e6b50; font-weight: 500; }
+.tour-badge { position: absolute; top: 10rpx; left: 10rpx; display: inline-flex; align-items: center; gap: 6rpx; max-width: calc(100% - 20rpx); padding: 4rpx 12rpx; border-radius: 999rpx; background: rgba(233,247,239,.94); color: #0e6b50; font-size: 20rpx; font-weight: 600; line-height: 1.5; }
+.tour-badge image { width: 22rpx; height: 22rpx; flex: none; }
 .work-summary { flex: 1; min-width: 0; }
-.work-title { display: block; font-size: 28rpx; font-weight: 600; line-height: 1.5; overflow-wrap: break-word; }
-.work-description { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 24rpx; color: #8694a6; line-height: 1.6; margin-top: 10rpx; }
-.work-metadata { display: block; font-size: 24rpx; line-height: 1.6; color: #5a7972; margin-top: 14rpx; }
+.work-title { display: block; font-size: 30rpx; font-weight: 600; line-height: 1.5; overflow-wrap: break-word; }
+.work-description { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 24rpx; color: #8694a6; line-height: 1.6; margin-top: 8rpx; }
+.work-metadata { display: block; font-size: 24rpx; line-height: 1.6; color: #5a7972; margin-top: 10rpx; }
+.tag-row { display: flex; flex-wrap: wrap; gap: 10rpx; margin-top: 12rpx; }
+.work-tag { display: inline-flex; align-items: center; min-height: 44rpx; padding: 4rpx 16rpx; border: 2rpx solid #e1ebe5; border-radius: 10rpx; background: #fff; color: #5a7972; font-size: 22rpx; line-height: 1.5; }
+.work-tag.style-tag { border-color: transparent; background: #e9f7ef; color: #0e6b50; }
+.work-tag.tour-tag { border-color: transparent; background: #0e6b50; color: #fff; }
+.works-notice { display: block; margin-top: 24rpx; font-size: 22rpx; line-height: 1.6; color: #82918e; }
 .topic-section { margin-top: 32rpx; }
 .topic-row { display: flex; flex-wrap: wrap; gap: 12rpx; }
 .portfolio-page .topic-row button { display: flex; align-items: center; justify-content: space-between; flex: 1 1 160rpx; min-height: 90rpx; padding: 16rpx; border-radius: 18rpx; background: #eaf7f0; font-size: 24rpx; gap: 12rpx; }
@@ -57,12 +78,46 @@ page { background: #f7fcf9; color: #082b2a; }
 .notice button { display: inline-block; padding: 12rpx; color: #087955; min-height: 72rpx; }
 .state-copy { display: block; padding: 24rpx 0; font-size: 24rpx; color: #7e8d88; line-height: 1.6; }
 .work-intro { padding: 10rpx 0 6rpx; }
-.detail-title { display: block; font-size: 40rpx; font-weight: 600; line-height: 1.4; }
-.detail-description { display: block; margin-top: 24rpx; font-size: 26rpx; line-height: 1.7; white-space: pre-wrap; overflow-wrap: break-word; }
-.gallery-image { position: relative; overflow: hidden; border-radius: 14rpx; background: #f0f5f1; }
-.gallery-image image { display: block; width: 100%; }
-.gallery-item + .gallery-item { margin-top: 24rpx; }
-.image-caption { display: block; margin-top: 12rpx; font-size: 24rpx; line-height: 1.6; color: #6d827c; }
+.detail-title { display: block; font-size: 42rpx; font-weight: 600; line-height: 1.4; margin-top: 4rpx; }
+.detail-description { display: block; margin-top: 20rpx; font-size: 26rpx; line-height: 1.7; white-space: pre-wrap; overflow-wrap: break-word; }
+.intro-tags { margin-top: 18rpx; }
+.portfolio-page .tour-card { display: flex; align-items: center; gap: 18rpx; width: 100%; margin-top: 24rpx; padding: 22rpx 20rpx; border-radius: 24rpx; background: #0e6b50; color: #fff; text-align: left; }
+.tour-icon { width: 68rpx; height: 68rpx; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 18rpx; background: rgba(255,255,255,.16); }
+.tour-icon image { width: 40rpx; height: 40rpx; }
+.tour-copy { flex: 1; min-width: 0; }
+.tour-title { display: block; font-size: 30rpx; font-weight: 600; line-height: 1.5; }
+.tour-meta { display: block; margin-top: 4rpx; font-size: 22rpx; line-height: 1.5; color: rgba(255,255,255,.82); }
+.tour-thumb { position: relative; width: 116rpx; height: 82rpx; flex: none; border-radius: 14rpx; overflow: hidden; background: rgba(255,255,255,.14); }
+.tour-thumb-image { width: 100%; height: 100%; }
+.tour-play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(8,43,42,.28); }
+.tour-play image { width: 36rpx; height: 36rpx; }
+.tour-arrow { flex: none; color: #fff; padding-left: 4rpx; }
+.space-filter { display: flex; align-items: center; gap: 12rpx; margin-top: 24rpx; }
+.space-filter-label { flex: none; width: 64rpx; font-size: 24rpx; color: #7c8ca2; }
+.space-scroll { flex: 1; min-width: 0; white-space: nowrap; }
+.space-chip-row { display: inline-flex; gap: 12rpx; padding-right: 8rpx; }
+.gallery-section { margin-top: 28rpx; }
+.gallery-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16rpx; margin-bottom: 14rpx; }
+.gallery-heading .section-title { margin-bottom: 0; font-size: 32rpx; }
+.gallery-count { flex: none; font-size: 22rpx; color: #82918e; }
+.gallery-grid { display: flex; flex-wrap: wrap; gap: 16rpx; }
+.gallery-item { width: calc(50% - 8rpx); }
+.gallery-image { position: relative; overflow: hidden; border-radius: 16rpx; background: #f0f5f1; }
+.gallery-image image { display: block; width: 100%; height: 210rpx; }
+.image-caption { display: block; margin-top: 8rpx; font-size: 22rpx; line-height: 1.6; color: #6d827c; }
+.highlights-section .section-title { margin-bottom: 18rpx; font-size: 32rpx; }
+.highlight-list { display: block; }
+.highlight-item { display: flex; align-items: flex-start; gap: 12rpx; font-size: 24rpx; line-height: 1.65; color: #33564c; }
+.highlight-item + .highlight-item { margin-top: 10rpx; }
+.highlight-dot { width: 10rpx; height: 10rpx; margin-top: 15rpx; border-radius: 50%; background: #22c55e; flex: none; }
+.highlight-copy { flex: 1; min-width: 0; overflow-wrap: break-word; }
+.material-row { display: flex; align-items: flex-start; gap: 14rpx; margin-top: 20rpx; padding-top: 18rpx; border-top: 1rpx solid #eef4f0; }
+.highlight-label { flex: none; width: 60rpx; font-size: 24rpx; line-height: 48rpx; color: #7c8ca2; }
+.material-chip { background: #eff8f2; color: #345d50; }
+.palette-list { display: flex; flex-wrap: wrap; gap: 18rpx; flex: 1; min-width: 0; }
+.palette-item { display: flex; flex-direction: column; align-items: center; width: 88rpx; }
+.palette-swatch { width: 46rpx; height: 46rpx; border-radius: 50%; border: 2rpx solid rgba(8,43,42,.08); }
+.palette-name { margin-top: 6rpx; font-size: 22rpx; line-height: 1.5; color: #6d827c; text-align: center; }
 .preference-row { display: flex; flex-wrap: wrap; gap: 16rpx; }
 .portfolio-page .preference-button { flex: 1 1 180rpx; border: 2rpx solid #d2e8dc; border-radius: 44rpx; min-height: 84rpx; padding: 16rpx; font-size: 24rpx; }
 .portfolio-page .is-selected { background: #e8f7ef; color: #047b51; border-color: #00b981; }

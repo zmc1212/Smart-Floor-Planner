@@ -90,6 +90,14 @@ test('knowledge-only result schemas require one synthesis envelope without incom
   assert.equal(JSON.stringify(finalTool), original);
 });
 
+test('designer recommendations advertise their display kind only after a real result receipt', () => {
+  assert.deepEqual(kinds(completed('recommend_designers', JSON.stringify({ resultKey: 'designer-result', count: 2, needContext: false }))),
+    ['synthesis', 'business', 'knowledge', 'references', 'designers']);
+  assert.deepEqual(kinds(completed('recommend_designers', JSON.stringify({ count: 0, needContext: true }))),
+    ['synthesis', 'business', 'knowledge', 'references'], 'a packet without a server receipt cannot open the designer protocol');
+  assert.deepEqual(kinds(completed('recommend_designers', readToolInputIssue('recommend_designers', '{}')!.feedback)), kinds([]));
+});
+
 test('real business and reference result keys retain their display protocols alongside knowledge', () => {
   const knowledge = completed('search_knowledge', JSON.stringify({ synthesisSources: [] }));
   for (const name of ['query_business', 'query_materials', 'query_followups', 'recommend_references']) {

@@ -1,4 +1,4 @@
-<!-- PPT2/3 (853x1844): identity, consultation, featured works; only published service data. -->
+<!-- D-01 (780x1688 -> 390x844): studio identity, consultation, filterable published works. -->
 <view class="portfolio-page">
   <view class="portfolio-nav" style="padding-top: {{navigationTop}}px; padding-right: {{navigationRight}}px;">
     <view class="portfolio-nav-lane" style="min-height: {{navigationHeight}}px;">
@@ -12,21 +12,53 @@
     <view wx:if="{{error}}" class="notice" role="alert"><text>{{error}}</text><button wx:if="{{needsLogin}}" bindtap="login">去登录</button><button wx:elif="{{pendingAction}}" bindtap="retryWrite" disabled="{{busy}}">核对操作结果</button><button wx:else bindtap="retry">重新读取</button></view>
     <block wx:if="{{designer && !unavailable}}">
       <view class="identity-row">
-        <view class="designer-initial" aria-label="设计师身份">{{designer.initial}}</view>
-        <view class="identity-copy"><text class="designer-name">{{designer.name}}</text><text class="designer-bio">{{designer.bio}}</text><text class="city-label">{{designer.cityLabel || '服务范围以咨询确认为准'}}</text></view>
-        <button wx:if="{{sharePath}}" class="share-button" open-type="share"><image src="../assets/studio-share.png" />分享设计室</button><button wx:else class="share-button" bindtap="retry" disabled="{{loading}}">准备分享</button>
+        <view class="designer-avatar">
+          <image wx:if="{{portraitPath}}" class="designer-portrait" src="{{portraitPath}}" mode="aspectFill" aria-label="{{designer.name}}的头像" />
+          <view wx:else class="designer-initial" aria-label="设计师身份">{{designer.initial}}</view>
+        </view>
+        <view class="identity-copy">
+          <text class="designer-name">{{designer.name}}</text>
+          <text wx:if="{{designer.professionalLine}}" class="professional-line">{{designer.professionalLine}}</text>
+          <text wx:if="{{designer.bio}}" class="designer-bio">{{designer.bio}}</text>
+          <text class="city-label">{{designer.cityLabel || '服务范围以咨询确认为准'}}</text>
+        </view>
+        <button wx:if="{{sharePath}}" class="share-button" open-type="share"><image src="../assets/studio-share.png" />分享设计室</button>
+        <button wx:else class="share-button" bindtap="retry" disabled="{{loading}}">准备分享</button>
+      </view>
+      <view wx:if="{{designer.layoutSpecialties.length || designer.styles.length}}" class="specialty-card">
+        <view wx:if="{{designer.layoutSpecialties.length}}" class="specialty-row"><text class="specialty-label">户型</text><view class="chip-row"><text wx:for="{{designer.layoutSpecialties}}" wx:key="*this" class="meta-chip">{{item}}</text></view></view>
+        <view wx:if="{{designer.styles.length}}" class="specialty-row"><text class="specialty-label">风格</text><view class="chip-row"><text wx:for="{{designer.styles}}" wx:key="*this" class="meta-chip">{{item}}</text></view></view>
       </view>
       <view class="studio-hero"><text class="studio-heading">把你想要的家，先聊清楚</text><text class="studio-subtitle">小K先听你的想法，{{designer.name}}接着为你细化</text><image class="studio-art" src="../assets/designer-studio-book.png" mode="aspectFit" aria-hidden="true" /></view>
       <button class="primary-action" bindtap="continueChat">和小K聊聊我家 <text aria-hidden="true">→</text></button>
       <button class="secondary-action" bindtap="contact" disabled="{{busy || readOnly || !works.length || pendingAction}}">预约设计师</button>
       <text class="action-helper">申请站内沟通；参观或到场日期需与设计师确认。</text>
       <view class="works-section">
-        <view class="section-heading"><text>精选案例</text><button wx:if="{{works.length > visibleCount}}" bindtap="moreWorks">查看更多 <view class="chevron" /></button></view>
-        <view wx:if="{{!works.length}}" class="state-copy">暂无公开作品，可以先聊聊你的想法。</view>
+        <view class="section-heading"><text>精选作品</text><button wx:if="{{works.length > visibleCount}}" bindtap="moreWorks">查看更多 <view class="chevron" /></button></view>
+        <view wx:if="{{totalWorks && filterOptions.length > 1}}" class="filter-row">
+          <button wx:for="{{filterOptions}}" wx:key="key" class="filter-chip {{designerFilter === item.key ? 'is-active' : ''}}" data-key="{{item.key}}" bindtap="setFilter">{{item.label}}</button>
+        </view>
+        <view wx:if="{{!totalWorks}}" class="state-copy">暂无公开作品，可以先聊聊你的想法。</view>
+        <view wx:elif="{{!works.length}}" class="state-copy">这个筛选下暂无作品。<button class="inline-link" bindtap="clearFilter">查看全部作品</button></view>
         <button wx:for="{{works}}" wx:key="id" wx:if="{{index < visibleCount}}" class="work-card" data-id="{{item.id}}" bindtap="openWork">
-          <view class="work-cover"><image wx:if="{{images['i' + item.coverAssetId]}}" src="{{images['i' + item.coverAssetId]}}" mode="aspectFill" /><text wx:else class="image-loading">图片加载中</text><text class="image-badge">{{item.coverLabel}}</text></view>
-          <view class="work-summary"><text class="work-title">{{item.title}}</text><text class="work-description">{{item.description}}</text><text class="work-metadata">{{item.metadata}}</text></view>
+          <view class="work-cover">
+            <image wx:if="{{images['i' + item.coverAssetId]}}" src="{{images['i' + item.coverAssetId]}}" mode="aspectFill" />
+            <text wx:else class="image-loading">图片加载中</text>
+            <view wx:if="{{item.tourCount}}" class="tour-badge"><image src="../assets/tour-3d-ink.png" /><text>3D 空间</text></view>
+            <text class="image-badge">{{item.coverLabel}}</text>
+          </view>
+          <view class="work-summary">
+            <text class="work-title">{{item.title}}</text>
+            <text wx:if="{{item.description}}" class="work-description">{{item.description}}</text>
+            <text class="work-metadata">{{item.cardMeta}}</text>
+            <view wx:if="{{item.styleTags.length || item.layoutTypes.length || item.tourCount}}" class="tag-row">
+              <text wx:for="{{item.styleTags}}" wx:for-item="tag" wx:key="*this" class="work-tag style-tag">{{tag}}</text>
+              <text wx:for="{{item.layoutTypes}}" wx:for-item="tag" wx:key="*this" class="work-tag">{{tag}}</text>
+              <text wx:if="{{item.tourCount}}" class="work-tag tour-tag">3D 空间</text>
+            </view>
+          </view>
         </button>
+        <text wx:if="{{totalWorks}}" class="works-notice">仅展示已审核、授权有效的作品</text>
         <button wx:if="{{imageError}}" class="state-copy" bindtap="retryImages">{{imageError}}</button>
       </view>
       <view class="topic-section"><text class="section-title">可以先聊这些</text><view class="topic-row"><button data-text="旧房改造有哪些需要先考虑？" bindtap="pickTopic"><image src="../assets/requirement-home.png" />旧房怎么改 <view class="chevron" /></button><button data-text="想聊聊适合我家的装修风格" bindtap="pickTopic"><image src="../assets/requirement-style.png" />喜欢什么风格 <view class="chevron" /></button><button data-text="想聊聊装修预算怎么安排" bindtap="pickTopic"><image src="../assets/requirement-budget.png" />预算怎么安排 <view class="chevron" /></button></view></view>

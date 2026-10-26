@@ -20,13 +20,23 @@ export const businessToolDefinitions: ModelTool[] = [
   { name: 'query_business', description: '只查当前客户本人本企业的量房预约、已发布方案、正式户型或实际施工节点/到场注意事项/本阶段电话联系人及向本人明确发布的现场记录。现场记录不等于正式验收或变更批准。客户想去现场时查询construction，电话沟通，不记录施工预约。没有记录就返回没有；不编造进度。多个项目分开。', parameters: {
     type: 'object', properties: { domain: { type: 'string', enum: ['appointments','schemes','floorplans','construction'] }, leadId: { type: 'string', description: '明确获权房屋ID；为空列本人档案，不猜ID。' } }, required: ['domain','leadId'], additionalProperties: false,
   } },
-  { name: 'request_designer', description: '仅当前客户明确要求找设计师时提交真实人工接续。不是模型之间的handoff。quote须为当前消息的直接请求原话，不得用于否定/假设/引用。', parameters: {
+  { name: 'request_designer', description: '仅当当前客户明确要求人工联系、转人工或请设计师接手时提交真实人工接续。客户只是说想看设计师、找设计师看看公开作品时不要用，改用recommend_designers。quote只摘录当前消息中独立的找设计师请求原句，不包含风格、城市等其他说明；不得用于否定/假设/引用。', parameters: {
     type: 'object', properties: { quote: { type: 'string' }, expectedVersion: { type: 'integer' } }, required: ['quote','expectedVersion'], additionalProperties: false,
   } },
   { name: 'search_knowledge', description: '专业问题优先查询本企业有效设计/施工做法及条件，不要求说“你们公司”。绑定房屋的咨询会同轮返回当前获权需求、图纸/正式版本、实际节点和原事项状态，无需并行重复query_materials/query_followups/query_business；只查列表或状态才单独用那些工具。返回可追溯原文供综合解释；知识条件不证明项目已满足，不是报价/工期承诺。', parameters: {
     type: 'object', properties: { query: { type: 'string' } }, required: ['query'], additionalProperties: false,
   } },
+  { name: 'recommend_designers', description: '客户想找设计师、想看设计师作品或问谁擅长某户型/风格时优先使用本工具，同时说了风格/城市偏好也一样；按会话中已明确的城市和风格/户型查询本企业已发布的设计师公开作品。query只复述客户本轮明确说过的关键词，泛问传空字符串；不新增城市、风格或户型。只返回真实公开作品，不承诺预约、价格、档期或匹配保证；缺城市或方向时返回needContext，先向客户澄清。', parameters: {
+    type: 'object', properties: { query: { type: 'string', maxLength: 100 } }, required: ['query'], additionalProperties: false,
+  } },
 ];
+export type DesignerQuery = { query: string };
+export function parseDesignerQuery(raw: unknown): DesignerQuery {
+  const value = raw as DesignerQuery;
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => key !== 'query')
+    || typeof value.query !== 'string' || value.query.length > 100 || /[\u0000-\u001f\u007f]/.test(value.query)) fail('invalid_message', 422);
+  return { query: value.query.trim() };
+}
 export type BusinessQuery = { domain: 'appointments' | 'schemes' | 'floorplans' | 'construction'; leadId: string };
 export type BusinessSnapshot = { query: BusinessQuery; customerId: string; leadIds: string[]; version: string; displayText: string; data: unknown[]; queriedAt: string } | MaterialSnapshot | NeedIssueSnapshot;
 export function parseBusinessQuery(raw: unknown): BusinessQuery {

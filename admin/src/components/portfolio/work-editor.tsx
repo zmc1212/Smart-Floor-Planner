@@ -3,17 +3,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { PageContainer } from '@ant-design/pro-components';
-import { Alert, Button, Card, Checkbox, Col, Divider, Empty, Form, Image, Input, InputNumber, Modal, Result, Row, Select, Skeleton, Space, Tabs, Tag, Typography, Upload } from 'antd';
+import { Alert, Button, Card, Checkbox, Col, ColorPicker, Divider, Empty, Form, Image, Input, InputNumber, Modal, Result, Row, Select, Skeleton, Space, Tabs, Tag, Typography, Upload } from 'antd';
 import { ArrowLeftOutlined, ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { notify } from '@/components/admin/operation-feedback';
 import type { WorkContent, WorkImage } from '@/lib/portfolio/contracts';
-import { STYLE_OPTIONS } from '@/lib/portfolio/options';
+import { LAYOUT_OPTIONS, SPACE_OPTIONS, STYLE_OPTIONS } from '@/lib/portfolio/options';
 import { CITY_OPTIONS, cityNameFor, districtOptions } from '@/lib/portfolio/regions';
 import { CommunityPicker } from './community-picker';
 import { PortfolioMutations, assetUrl, errorText, portfolioRequest, statusLabels, type WorkDetail, type Author } from './client';
 
 function inputDate(value: string | null) { if (!value) return ''; const d = new Date(value); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); }
 function imageFile(file: File) { return new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); }); }
+function PaletteColor({ value, onChange }: { value?: string; onChange?: (value: string) => void }) {
+  return <ColorPicker format="hex" value={value || '#22C55E'} onChange={(_, hex) => onChange?.(String(hex).toUpperCase())} />;
+}
+const itemLength = (max: number) => ({ validator: (_: unknown, value?: string[]) => Promise.resolve(value?.every(item => item.length <= max) ? undefined : Promise.reject(Error(`每条最多${max}字`))) });
 export function WorkEditor({ workId }: { workId: string }) {
   const router = useRouter(), [form] = Form.useForm<WorkContent>();
   const [detail, setDetail] = useState<WorkDetail | null>(null), [authors, setAuthors] = useState<Author[]>([]), [error, setError] = useState('');
@@ -70,6 +74,7 @@ export function WorkEditor({ workId }: { workId: string }) {
           <Form.Item name="title" label="作品名称"><Input maxLength={50} showCount /></Form.Item>
           <Row gutter={16}><Col xs={24} md={12}><Form.Item name="primaryStyle" label="主风格（1个）"><Select options={STYLE_OPTIONS.map(value => ({ value, label: value }))} /></Form.Item></Col>
             <Col xs={24} md={12}><Form.Item name="secondaryStyles" label="辅助风格（最多2个）"><Select mode="tags" maxCount={2} options={STYLE_OPTIONS.filter(v => v !== values?.primaryStyle).map(value => ({ value, label: value }))} /></Form.Item></Col></Row>
+          <Form.Item name="layoutTypes" label="户型（最多3个）" extra="用于客户按户型筛选；不确定可不选。"><Select mode="multiple" maxCount={3} options={LAYOUT_OPTIONS.map(value => ({ value, label: value }))} placeholder="选择户型" /></Form.Item>
           <Row gutter={16}><Col xs={24} md={12}><Form.Item name="cityCode" label="所在城市"><Select showSearch optionFilterProp="label" allowClear options={CITY_OPTIONS} placeholder="搜索并选择城市" /></Form.Item></Col>
             <Col xs={24} md={12}><Form.Item name="district" label="区县"><Select showSearch optionFilterProp="label" allowClear options={districtOptions(city)} placeholder="选择区县（可选）" /></Form.Item></Col></Row>
           <Form.Item name="communityId" label="所在小区（可选）"><CommunityPicker cityCode={city} cityName={cityName} disabled={!editable || !!busy} onBusy={setBinding} /></Form.Item>
@@ -85,6 +90,7 @@ export function WorkEditor({ workId }: { workId: string }) {
               <Space direction="vertical" size={6} style={{ width: '100%' }}>
                 <Checkbox checked={values?.coverAssetId === item.assetId} onChange={() => form.setFieldValue('coverAssetId', item.assetId)}>设为封面</Checkbox>
                 <Checkbox checked={item.kind === 'render' ? item.aiGenerated : item.showroom} onChange={e => updateImages(images.map(i => i.assetId === item.assetId ? { ...i, [item.kind === 'render' ? 'aiGenerated' : 'showroom']: e.target.checked } : i))}>{item.kind === 'render' ? 'AI生成效果图' : '样板间实拍'}</Checkbox>
+                <Select aria-label="图片空间" value={item.space || ''} options={[{ value: '', label: '未标注空间' }, ...SPACE_OPTIONS.map(value => ({ value, label: value }))]} onChange={space => updateImages(images.map(i => i.assetId === item.assetId ? { ...i, space } : i))} />
                 <Input value={item.caption} maxLength={100} placeholder="图片说明（可选）" onChange={e => updateImages(images.map(i => i.assetId === item.assetId ? { ...i, caption: e.target.value } : i))} />
                 <Space><Button size="small" aria-label="上移图片" icon={<ArrowUpOutlined />} onClick={() => move(item.assetId, -1)} /><Button size="small" aria-label="下移图片" icon={<ArrowDownOutlined />} onClick={() => move(item.assetId, 1)} /><Button size="small" danger icon={<DeleteOutlined />} onClick={() => updateImages(images.filter(i => i.assetId !== item.assetId))}>移除</Button></Space>
               </Space>
@@ -96,7 +102,7 @@ export function WorkEditor({ workId }: { workId: string }) {
               try {
                 const result = await mutations.current.write<{ assetId: string }>('works/' + workId + '/assets', { expectedVersion: detail.work.version, imageBase64: await imageFile(file) });
                 const current = (form.getFieldValue('images') || []) as WorkImage[];
-                if (!current.some(i => i.assetId === result.assetId)) updateImages([...current, { assetId: result.assetId, kind: group as WorkImage['kind'], aiGenerated: false, showroom: false, caption: '' }]);
+                if (!current.some(i => i.assetId === result.assetId)) updateImages([...current, { assetId: result.assetId, kind: group as WorkImage['kind'], aiGenerated: false, showroom: false, caption: '', space: '' }]);
                 notify.success('图片已处理', { description: '请保存草稿以保留图片分组和封面。' });
               } catch (e) { notify.error('图片处理失败', { description: errorText(e) }); } finally { setBusy(''); }
               return false;
@@ -104,6 +110,30 @@ export function WorkEditor({ workId }: { workId: string }) {
           </Row>
           {!images.length && !editable && <Empty description="暂无图片" />}
           <Typography.Paragraph type="secondary" style={{ marginTop: 16 }}>最多20张，按当前顺序展示。效果图与实拍必须分开；AI生成图不得标为实拍。</Typography.Paragraph>
+        </Card>
+        <Card title="设计亮点与材料" style={{ marginTop: 20 }}>
+          <Form.Item name="highlights" label="设计亮点（最多6条）" rules={[itemLength(60)]}><Select mode="tags" maxCount={6} tokenSeparators={[',', '，']} placeholder="输入亮点后回车，例如：无主灯照明" /></Form.Item>
+          <Form.Item name="materials" label="主要材料（最多6条）" rules={[itemLength(40)]}><Select mode="tags" maxCount={6} tokenSeparators={[',', '，']} placeholder="输入材料后回车，例如：橡木饰面" /></Form.Item>
+          <Typography.Title level={5}>配色（最多6个）</Typography.Title>
+          <Form.List name="palette">{(fields, { add, remove }) => <Space direction="vertical" style={{ width: '100%' }}>
+            {fields.map(field => <Row gutter={8} key={field.key} align="top" style={{ width: '100%' }}>
+              <Col span={11}><Form.Item name={[field.name, 'name']} rules={[{ max: 20, message: '名称最多20字' }]}><Input maxLength={20} placeholder="颜色名称" /></Form.Item></Col>
+              <Col span={7}><Form.Item name={[field.name, 'hex']} rules={[{ pattern: /^#[0-9a-fA-F]{6}$/, message: '格式无效' }]}><PaletteColor /></Form.Item></Col>
+              <Col span={6}><Button danger icon={<DeleteOutlined />} onClick={() => remove(field.name)}>移除</Button></Col>
+            </Row>)}
+            {fields.length < 6 && <Button icon={<PlusOutlined />} onClick={() => add({ name: '', hex: '#22C55E' })}>添加配色</Button>}
+          </Space>}</Form.List>
+        </Card>
+        <Card title="3D 空间链接" style={{ marginTop: 20 }}>
+          <Alert type="info" showIcon message="仅支持已配置的第三方看房域名；微信需登记业务域名后才能在小程序内打开。无法打开时提供复制链接回退。" style={{ marginBottom: 16 }} />
+          <Form.List name="tours">{(fields, { add, remove }) => <Space direction="vertical" style={{ width: '100%' }}>
+            {fields.map(field => <Card key={field.key} size="small" style={{ width: '100%' }}>
+              <Form.Item name={[field.name, 'title']} label="入口标题" rules={[{ max: 60, message: '标题最多60字' }]}><Input maxLength={60} placeholder="如：客餐厅 3D 全景" /></Form.Item>
+              <Form.Item name={[field.name, 'url']} label="HTTPS 链接" rules={[{ pattern: /^https:\/\/\S+$/, message: '请输入 HTTPS 链接' }]}><Input maxLength={500} placeholder="https://..." /></Form.Item>
+              <Button danger size="small" icon={<DeleteOutlined />} onClick={() => remove(field.name)}>移除入口</Button>
+            </Card>)}
+            {fields.length < 3 && <Button icon={<PlusOutlined />} onClick={() => add({ title: '', url: '', provider: '' })}>添加 3D 入口</Button>}
+          </Space>}</Form.List>
         </Card>
         <Card title="图片使用许可" style={{ marginTop: 20 }}>
           <Form.Item name="source" label="原始作者与出处"><Input.TextArea rows={2} maxLength={500} placeholder="原创/合作作者、原始文件或出处链接" /></Form.Item>
@@ -117,8 +147,13 @@ export function WorkEditor({ workId }: { workId: string }) {
         {values?.coverAssetId ? <Image src={assetUrl(workId, values.coverAssetId)} alt="作品封面" width="100%" style={{ aspectRatio: '4 / 3', objectFit: 'cover', borderRadius: 8 }} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="请上传并选择封面" />}
         <Typography.Title level={4}>{values?.title || '作品名称'}</Typography.Title><Typography.Paragraph>{values?.description || '作品亮点将在这里展示'}</Typography.Paragraph>
         <Space wrap><Tag>{values?.primaryStyle || '待选风格'}</Tag>{values?.area && <Tag>{values.area}m²</Tag>}{values?.rooms && <Tag>{values.rooms}</Tag>}</Space>
+        {!!values?.layoutTypes?.length && <Space wrap size={4} style={{ marginTop: 8 }}>{values.layoutTypes.map(value => <Tag key={value} color="green">{value}</Tag>)}</Space>}
+        {!!values?.highlights?.length && <Typography.Paragraph style={{ marginTop: 12 }}><Typography.Text strong>设计亮点</Typography.Text><br />{values.highlights.join(' · ')}</Typography.Paragraph>}
+        {!!values?.materials?.length && <Typography.Paragraph><Typography.Text strong>主要材料</Typography.Text><br />{values.materials.join(' · ')}</Typography.Paragraph>}
+        {!!values?.palette?.length && <Space wrap size={8}>{values.palette.map((color, index) => <Space key={index} size={4}><span aria-hidden style={{ display: 'inline-block', width: 16, height: 16, borderRadius: 4, background: color.hex, border: '1px solid #d9d9d9' }} />{color.name || color.hex}</Space>)}</Space>}
+        {!!values?.tours?.length && <Typography.Paragraph style={{ marginTop: 12 }}>3D 空间：{values.tours.length} 个入口</Typography.Paragraph>}
         <Divider /><Typography.Paragraph type="secondary">公开内容不包含业主姓名、门牌和授权凭据。请在上传前核对图片及说明中的私人信息。</Typography.Paragraph>
-        <Typography.Text type="secondary">本页为后台审核预览，客户主页与小K作品推荐入口仍待接入。</Typography.Text>
+        <Typography.Text type="secondary">客户主页与小K推荐读取同一份已发布内容，仍会再次核对作者、版本与许可期限。</Typography.Text>
       </Card>
       {detail.manager && <Card title="发布检查" style={{ marginTop: 20 }}>
         <Space direction="vertical" style={{ width: '100%' }}><Typography.Text>图片：效果图 {images.filter(i => i.kind === 'render').length} · 实拍图 {images.filter(i => i.kind === 'photo').length}</Typography.Text>

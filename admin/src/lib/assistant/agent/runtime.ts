@@ -39,7 +39,7 @@ export const agentToolReplyProtocol = 'durable-tool-reply-v1';
 export const agentTurnScheduleProtocol = 'shared-auxiliary-final-repair-v2';
 // Only these application-owned reads may reuse a completed result. Writes and
 // newly introduced tools always execute through their existing durable ports.
-const readTools = new Set(['search_knowledge', 'search_web', 'read_web', 'recall_history', 'query_materials', 'query_business', 'query_followups', 'recommend_references']);
+const readTools = new Set(['search_knowledge', 'search_web', 'read_web', 'recall_history', 'query_materials', 'query_business', 'query_followups', 'recommend_references', 'recommend_designers']);
 function readArgumentsHash(name: string, args: string): string | null {
   if (!readTools.has(name)) return null;
   try {

@@ -138,6 +138,9 @@ test('read preflight reuses strict parsers for malformed JSON, types, IDs, rooms
     ['query_materials', JSON.stringify({ leadId: '', room: '厨房', enterpriseId: '2' })],
     ['query_business', JSON.stringify({ leadId: '', domain: 'private' })],
     ['query_business', JSON.stringify({ leadId: 1072, domain: 'construction' })],
+    ['recommend_designers', JSON.stringify({ query: 1 })],
+    ['recommend_designers', JSON.stringify({ query: '杭'.repeat(101) })],
+    ['recommend_designers', JSON.stringify({ query: '杭州', leadId: '' })],
     ['recall_history', JSON.stringify({ query: '厨' })],
     ['recall_history', JSON.stringify({ query: '厨'.repeat(81) })],
   ]) {
@@ -156,7 +159,8 @@ test('read preflight reuses strict parsers for malformed JSON, types, IDs, rooms
   }
   for (const [name, args] of [
     ['query_materials', { leadId: '', room: '厨房' }], ['query_materials', { leadId: '1072', room: '' }],
-    ['query_business', { leadId: '', domain: 'construction' }], ['recall_history', { query: '厨房洗碗机' }],
+    ['query_business', { leadId: '', domain: 'construction' }], ['recommend_designers', { query: '' }],
+    ['recommend_designers', { query: '杭州原木风三居' }], ['recall_history', { query: '厨房洗碗机' }],
   ]) assert.equal(readToolInputIssue(name as string, JSON.stringify(args)), null);
   assert.equal(readToolInputIssue('record_need', '{'), null, 'writes retain their own strict validation and recovery');
   assert.equal(readToolInputIssue('search_knowledge', '{'), null, 'external knowledge dispatch is outside this pure parser guard');

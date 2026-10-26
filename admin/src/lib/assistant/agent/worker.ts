@@ -16,7 +16,10 @@ import { persistNeedWrites } from './memory-store';
 import { isNeedInquiry, needWriteProhibition } from './need-write-intent';
 import { buildAgentContext, parseAgentReply, agentPromptVersion } from './context';
 import { hydrateImages, resolveAgentMedia, withoutImageBytes, type MediaDependency } from './media-context';
-import { businessToolDefinitions, queryBusiness, parseBusinessQuery, businessSnapshotAvailable, type BusinessSnapshot } from './business-tools';
+import { businessToolDefinitions, queryBusiness, parseBusinessQuery, parseDesignerQuery, businessSnapshotAvailable, type BusinessSnapshot } from './business-tools';
+import { recommendDesigners, revalidateDesignerSnapshot, designerNotice, type DesignerCard, type DesignerSnapshot } from '@/lib/portfolio/designer-recommendation';
+import { LAYOUT_OPTIONS, STYLE_OPTIONS } from '@/lib/portfolio/options';
+import { CITY_OPTIONS } from '@/lib/portfolio/regions';
 import { retrieveKnowledge, type RetrievalDiagnostic } from '../knowledge/retrieval';
 import { answerExcerpts, parseSelection, parseAnswer } from '../knowledge/answer';
 import { recommendReferences, saveReferencePreference, type ReferencePreference } from '../knowledge/reference-service';
@@ -122,8 +125,22 @@ export function needToolsForRetry(messages: ModelMessage[], tools: ModelTool[]):
   return tools;
 }
 const checkpointSeq = 1000;
+const designerIntent = /设计师|设计室|谁设计|推荐.{0,4}设计师|擅长.{0,6}(?:户型|风格)|找.{0,6}设计师/;
+/** After XiaoK asked for a city/style/layout, the next customer turn often
+ * contains only those values. Keep the bounded designer intent from history
+ * without treating earlier saved statements as this turn's source. */
+export function designerClarificationFollowup(historyText: string, text: string): boolean {
+  if (!designerIntent.test(historyText)) return false;
+  const preferences = [
+    ...CITY_OPTIONS.map(option => option.label.replace(/市$/, '')),
+    ...STYLE_OPTIONS.filter(option => option !== '其他'),
+    ...LAYOUT_OPTIONS.filter(option => option !== '其他'),
+  ];
+  return preferences.some(value => text.includes(value))
+    || /也可以|都行|都可以|换成|改成|再看看|按这个|就按|没有特别|不限/.test(text);
+}
 /** Questions/meta-conversation stay conversational; only explicit statements are eligible for memory writes. */
-export function agentToolsForMessage(text: string, enabled: boolean, businessFollowup = false, webEnabled = false): ModelTool[] {
+export function agentToolsForMessage(text: string, enabled: boolean, businessFollowup = false, webEnabled = false, designerFollowup = false): ModelTool[] {
   if (!enabled) return [];
   if (currentMessageOnlyRequested(text)) return [];
   if (independentAdviceRequested(text)) return [...businessToolDefinitions.filter(tool => tool.name === 'search_knowledge'), ...(webEnabled ? [webSearchTool] : [])];
@@ -146,6 +163,7 @@ export function agentToolsForMessage(text: string, enabled: boolean, businessFol
     (!historyOnly || tool.name === 'request_designer') &&
     (tool.name !== 'request_designer' || humanIntent) && (tool.name !== 'query_business' || businessIntent)
     && (tool.name !== 'recommend_references' || /参考|案例|风格图|效果图|看看.{0,6}(?:图|设计)/.test(text))
+    && (tool.name !== 'recommend_designers' || designerIntent.test(text) || designerFollowup)
     && (tool.name !== 'record_reference_preference' || /喜欢|中意|满意|不合适/.test(text)))];
 }
 export const finalTool: ModelTool = { name: 'final_response', description: '最后向客户回复。需要保存需求或查询业务时，必须先调用相应工具并收到结果，之后才能调用本工具。不能把“已记录”代替record_need。', parameters: {
@@ -154,9 +172,25 @@ export const finalTool: ModelTool = { name: 'final_response', description: '最�
       citations: { type: 'array', maxItems: 4, items: { type: 'object', properties: { citationId: { type: 'string', description:'只选本轮来源citationOptions中的完整citationId。服务端装配原文，不提供sourceId、quote或引用模式。' } }, required: ['citationId'], additionalProperties: false } } },
       required: ['basis','text','citations'], additionalProperties: false } } }, required: ['kind'], additionalProperties: false,
 } };
-export const agentSourceFinalProtocol = 'source-final-kind-v4';
+export const agentSourceFinalProtocol = 'source-final-kind-v5';
 export const agentToolFinalProtocol = 'deferred-structured-final-v1';
 export const agentNeedBatchProtocol = 'same-turn-need-batch-v2';
+export const agentDesignerProtocol = 'designer-recommendation-v1';
+export type DesignerToolSnapshot = DesignerSnapshot & { count?: number; needContext?: boolean; notice?: string };
+/** A designer lead-in may only describe published works. Completion, price,
+ * availability and visit promises have no service receipt here; an explicit
+ * "可以申请联系" remains allowed. */
+export function assertDesignerReply(text: string, items: DesignerCard[]): void {
+  if (!text.trim() || text.length > 4000) fail('invalid_model_answer', 502);
+  const claims = text
+    .replace(/(?:不能|不会|无法|不作|不做|不)(?:保证|承诺|确定)/g, '待核实')
+    .replace(/(?:没有|不存在)(?:任何|真实|有效)?已(?:经)?(?:成功)?(?:预约|安排|联系|约好|确定档期)的(?:记录|结果|凭据)/g, '缺少操作记录')
+    .replace(/(?:不|并不|不能)(?:代表|意味着|等于)[^。；\n]{0,20}(?:可预约|有档期|已安排|已联系)/g, '待核实');
+  if (/(?:已(?:经)?(?:成功)?(?:为你|为您|帮你|帮您|替你|替您|给你|给您)?(?:预约|安排|联系|约好|确定档期)|(?:保证|承诺)[^。；\n]{0,16}(?:价格|费用|报价|档期|可预约|可参观)|(?:价格|费用|报价)[^。；\n]{0,12}(?:保证|承诺)|(?:可|可以)随时(?:参观|到店)|随时可以(?:参观|到店))/.test(claims))
+    fail('unsupported_model_commitment', 502);
+  const counts = [...text.matchAll(/([1-9]\d?)位(?:设计师|设计老师|设计室)/g)].map(match => Number(match[1]));
+  if (counts.some(count => count !== items.length)) fail('invalid_model_citation', 502);
+}
 /** Adapt independent model-selected calls to the existing atomic schema.
  * Raw provider output remains intact. No cross-turn accumulation, field
  * inference, mixed actions or expansion beyond the four-write contract. */
@@ -180,7 +214,7 @@ export function projectFinalToolOutput(output: ModelTurnOutput): ModelTurnOutput
   return { ...output, text: '', toolCalls: output.toolCalls.filter(call => call.name !== 'final_response'),
     toolProtocolFeedback: { code: 'mixed_final_response', text: '本轮final_response与其他调用或多个收尾同时出现，提前回答未交付。已执行工具仅以真实结果为准；先读取本轮结果，之后单独提交一次final_response，不重放保存或业务动作，不根据提前回答补造事实。仍限原四轮预算。' } };
 }
-const sourceQueryTools = new Set(['restore_sources', 'query_business', 'query_materials', 'query_followups', 'search_knowledge', 'search_web', 'read_web', 'recommend_references']);
+const sourceQueryTools = new Set(['restore_sources', 'query_business', 'query_materials', 'query_followups', 'search_knowledge', 'search_web', 'read_web', 'recommend_references', 'recommend_designers']);
 /** The provider sees the same current catalog as the validator. Schema enums
  * assist generation; authorized server lookup remains the acceptance boundary. */
 export function finalToolForMessages(messages:ModelMessage[], question = ''):ModelTool {
@@ -188,7 +222,7 @@ export function finalToolForMessages(messages:ModelMessage[], question = ''):Mod
   const sourceOnly = originalAnswerOnly(question);
   const independentAdvice = independentAdviceRequested(question);
   const knowledgeScoped = sourceOnly || independentAdvice;
-  let queriedSources = false, synthesisResult = false, otherDisplayResult = false;
+  let queriedSources = false, synthesisResult = false, otherDisplayResult = false, designerResult = false;
   for (const [index, message] of messages.entries()) {
     if (message.role !== 'tool' || isReadToolInputFailure(message.content)) continue;
     let requestIndex = index - 1;
@@ -207,7 +241,10 @@ export function finalToolForMessages(messages:ModelMessage[], question = ''):Mod
         || call.name === 'query_business' && packet.query?.domain === 'floorplans'
         || call.name === 'query_materials' && packet.query?.domain === 'materials' && packet.data?.resolution === 'resolved';
       if (sourceRead && Array.isArray(packet.synthesisSources)) synthesisResult = true;
-      else if (typeof packet.resultKey === 'string' && packet.resultKey) otherDisplayResult = true;
+      else if (typeof packet.resultKey === 'string' && packet.resultKey) {
+        otherDisplayResult = true;
+        if (call.name === 'recommend_designers') designerResult = true;
+      }
     } catch { /* Unknown result shapes retain the existing source-kind boundary. */ }
   }
   const allIds=[...new Set(messages.flatMap(message=>{
@@ -266,7 +303,9 @@ export function finalToolForMessages(messages:ModelMessage[], question = ''):Mod
   const parameters=structuredClone(finalTool.parameters);
   const knowledgeOnly = knowledgeScoped || synthesisResult && !otherDisplayResult;
   const properties = parameters.properties as Record<string, Record<string, unknown>>;
-  if (queriedSources || independentAdvice) properties.kind = { type: 'string', enum: knowledgeOnly ? ['synthesis'] : ['synthesis', 'business', 'knowledge', 'references'] };
+  // `designers` is advertised only after an actual recommendation receipt;
+  // a result key remains the server acceptance boundary.
+  if (queriedSources || independentAdvice) properties.kind = { type: 'string', enum: knowledgeOnly ? ['synthesis'] : ['synthesis', 'business', 'knowledge', 'references', ...(designerResult ? ['designers'] : [])] };
   if (knowledgeOnly) {
     // One current output envelope, using the provider's existing object schema.
     // Legacy display formats remain accepted by server validation; advertise
@@ -296,7 +335,7 @@ export function finalToolForMessages(messages:ModelMessage[], question = ''):Mod
   return {...finalTool,parameters,...(queriedSources ? { description: knowledgeOnly
     ? (!ids.length ? '本轮没有可用引用。只用kind=synthesis及segments，每段basis只能advice或uncertainty，citations必须是空数组[]。说明本次资料缺口，可给标明身份的一般建议；不能用evidence或编造默认引用编号，不能把未查到当作现实没有记录。'
       : '本轮资料结果用kind=synthesis回答当前问题，顶层仅kind和segments，每段basis/text/citations。查询回执不代替解释；不要输出kind=knowledge或顶层text/resultKey/selections。引用只选本轮citationId，服务端继续校验全部来源与正文。')
-    : '本轮已查询来源。专业解释用synthesis及segments/本轮citationId；原结果展示可用business/knowledge/references。不能用general/vision/unavailable绕过来源校验。' } : {})};
+    : '本轮已查询来源。专业解释用synthesis及segments/本轮citationId；原结果展示可用business/knowledge/references；只有实际查到设计师结果时才可用designers及对应resultKey。不能用general/vision/unavailable绕过来源校验。' } : {})};
 }
 /** Defer the existing structured final until an explicitly requested original
  * has actually been read. Separate authorized writes/handoff retain their own
@@ -539,7 +578,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       const clock = config.consultation ? await one(tx, sql`select extract(epoch from (clock_timestamp()-created_at))*1000 elapsed_ms
         from app.assistant_runs where enterprise_id=${lease.enterpriseId} and id=${lease.runId}`) : null;
       const consultationDeadlineAt = config.consultation ? Date.now() + consultationAcceptanceProfile.runTimeoutMs - Math.max(0, Number(clock!.elapsed_ms)) : undefined;
-      return { ...context, config, trigger, messages, mediaRefs: [...dependencies.values()], referenceEvidence, resume, savedSummary, consultationDeadlineAt };
+      const priorUserText = turns.filter(turn => turn.role === 'user' && String(turn.id) !== String(trigger.id)).slice(-6).map(turn => turn.text).join(' ');
+      const designerFollowup = designerClarificationFollowup(priorUserText, safeText(trigger.content as Parameters<typeof safeText>[0]));
+      return { ...context, config, trigger, messages, mediaRefs: [...dependencies.values()], referenceEvidence, resume, savedSummary, consultationDeadlineAt, designerFollowup };
     });
     const reviewContext = { currentQuestion: safeText(initial.trigger.content as Parameters<typeof safeText>[0]),
       currentOriginal: { messageId: String(initial.trigger.id), hash: fingerprint(initial.trigger.content) } };
@@ -654,7 +695,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     // This first extractive digest is read-only. A current write/handoff must not
     // inherit a prior memory revision or reinterpret history as authorization.
     const summaryWrites = ['record_need','request_designer','record_reference_preference'];
-    const initialTools = publicResearchTools(readToolsForContext(agentToolsForMessage(safeText(initial.trigger.content as Parameters<typeof safeText>[0]), initial.config.tools, false, !!dependencies.webSearch || configuredWebProvider() !== null), readContext), !!initial.config.consultation);
+    const initialTools = publicResearchTools(readToolsForContext(agentToolsForMessage(safeText(initial.trigger.content as Parameters<typeof safeText>[0]), initial.config.tools, false, !!dependencies.webSearch || configuredWebProvider() !== null, initial.designerFollowup), readContext), !!initial.config.consultation);
     if (!initial.resume && initial.savedSummary?.status === 'succeeded') {
       initial.messages = withHistorySummary(initial.messages, initial.savedSummary.private_checkpoint as HistorySnapshot);
     } else if (!initial.resume && !initial.savedSummary && initial.config.tools && !currentMessageOnlyRequested(reviewContext.currentQuestion) && !independentAdviceRequested(reviewContext.currentQuestion) && (!dependencies.model || dependencies.summary)
@@ -710,7 +751,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and kind='agent_model'`);
       return consultationRuntimeBudget({summaries:Number(auxiliary?.summaries||0),perceptions:Number(auxiliary?.perceptions||0)});
     });
-    const result = await runRenovationAgent({ messages: initial.messages, tools: publicResearchTools(readToolsForContext(agentToolsForMessage(safeText(initial.trigger.content as Parameters<typeof safeText>[0]), initial.config.tools, businessFollowup, !!dependencies.webSearch || configuredWebProvider() !== null), readContext), !!initial.config.consultation), resume: initial.resume,
+    const result = await runRenovationAgent({ messages: initial.messages, tools: publicResearchTools(readToolsForContext(agentToolsForMessage(safeText(initial.trigger.content as Parameters<typeof safeText>[0]), initial.config.tools, businessFollowup, !!dependencies.webSearch || configuredWebProvider() !== null, initial.designerFollowup), readContext), !!initial.config.consultation), resume: initial.resume,
       reservedValidationRepairs: turnAllocation?.reservedValidationRepairs, primaryModelTurns: turnAllocation?.primaryModelTurns,
       ports: {
         authorize,
@@ -799,7 +840,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             return found;
           });
           if (budgetIssue) return budgetIssue;
-          if (candidate && !['business','knowledge','references'].includes(candidate.kind || '')
+          if (candidate && !['business','knowledge','references','designers'].includes(candidate.kind || '')
             && (candidate.kind === 'synthesis' || Boolean(explicitNeedWriteStatement(question)) && !explicitNeedRecordOnly(question))) {
             const text = [candidate.text, ...(Array.isArray(candidate.segments) ? candidate.segments.map(s => s?.text) : [])]
               .filter((s): s is string => typeof s === 'string').join('\n');
@@ -826,10 +867,10 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             if (issue) return issue;
           }
           if(candidate?.kind!=='synthesis'){
-            if(['business','knowledge','references'].includes(candidate?.kind||''))return null;
+            if(['business','knowledge','references','designers'].includes(candidate?.kind||''))return null;
             const used=await scoped(async tx=>one(tx,sql`select id from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}
-              and capability_name in ('query_business','query_materials','query_followups','knowledge.search.v1','web.search.v1','references.search.v1') limit 1`));
-            return used?{code:'invalid_model_citation',feedback:'上一回复的提交格式不符合本轮已查询来源的协议。只修复最终回复，不再调用业务或保存工具，不新增事实。专业解释用final_response kind=synthesis，segments中的每个引用仅提交本轮synthesisSources.citationOptions里的citationId，由服务端装配完整原文；不提交sourceId/quote/quoteFromSource。没有可引用来源时仅用advice或uncertainty段及空citations，保留一般建议/本次未知的身份，不编造企业或项目事实。普通查询可用本轮已返回的business/references resultKey，原文选择可用knowledge selections。保留已取得的客户历史原话及当前有效更正，不把历史变成正式批准。'}:null;
+              and capability_name in ('query_business','query_materials','query_followups','knowledge.search.v1','web.search.v1','references.search.v1','designers.search.v1') limit 1`));
+            return used?{code:'invalid_model_citation',feedback:'上一回复的提交格式不符合本轮已查询来源的协议。只修复最终回复，不再调用业务或保存工具，不新增事实。专业解释用final_response kind=synthesis，segments中的每个引用仅提交本轮synthesisSources.citationOptions里的citationId，由服务端装配完整原文；不提交sourceId/quote/quoteFromSource。没有可引用来源时仅用advice或uncertainty段及空citations，保留一般建议/本次未知的身份，不编造企业或项目事实。普通查询可用本轮已返回的business/references/designers resultKey，原文选择可用knowledge selections。保留已取得的客户历史原话及当前有效更正，不把历史变成正式批准。'}:null;
           }
           return scoped(async(tx,context)=>{
             const evidence=await currentSynthesisContext(tx,lease.actor,context.conversation,lease.runId);
@@ -939,6 +980,31 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               if (!cached) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint,source_refs)
                 values(${lease.enterpriseId},${lease.runId},${sequence},'retrieval','references.search.v1',1,'succeeded',${JSON.stringify(evidence)}::jsonb,${JSON.stringify(evidence.map(e => ({ref:e.ref,hash:e.hash})))}::jsonb)`);
               return { content: JSON.stringify({ resultKey, count: evidence.length, instructions: '立即用final_response kind=references 和本resultKey，服务端展示案例原文及授权图片入口。没有匹配如实说明，不能编造或用知识代替。' }) };
+            });
+          }
+          if (name === 'recommend_designers') {
+            const query = parseDesignerQuery(input);
+            return scoped(async (tx, context) => {
+              const cached = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`);
+              const snapshot = cached ? cached.private_checkpoint as DesignerToolSnapshot : await (async () => {
+                const result = await recommendDesigners(tx, lease.actor, context.conversation, { ...query, triggerText: reviewContext.currentQuestion });
+                return {
+                  ...(result.cityCode ? { cityCode: result.cityCode } : {}), ...(result.style ? { style: result.style } : {}),
+                  ...(result.layout ? { layout: result.layout } : {}), communityId: null, count: result.items.length,
+                  needContext: result.needContext === true, notice: result.notice,
+                  items: result.items.map(item => ({ workId: item.work.id, versionId: item.work.versionId })),
+                } satisfies DesignerToolSnapshot;
+              })();
+              if (!cached) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint,input_summary)
+                values(${lease.enterpriseId},${lease.runId},${sequence},'retrieval','designers.search.v1',1,'succeeded',${JSON.stringify(snapshot)}::jsonb,
+                  ${JSON.stringify({ protocol: agentDesignerProtocol, count: snapshot.count ?? 0, needContext: snapshot.needContext === true,
+                    scope: { cityCode: snapshot.cityCode ?? null, style: snapshot.style ?? null, layout: snapshot.layout ?? null } })}::jsonb)`);
+              return { content: JSON.stringify({ resultKey, count: snapshot.count ?? 0, needContext: snapshot.needContext === true, notice: snapshot.notice,
+                instructions: snapshot.needContext
+                  ? '缺少唯一的城市或风格/户型方向。用final_response kind=designers与本resultKey提交简短澄清，不猜城市、不编造设计师或作品。'
+                  : !snapshot.count
+                  ? '本次没有匹配的公开设计师作品。用final_response kind=designers与本resultKey如实说明本次范围，不编造设计师、作品或可预约时间。'
+                  : '立即用final_response kind=designers与本resultKey提交简短说明（可说明找到几位），服务端展示真实公开作品。不承诺价格、工期、档期或预约；同小区不代表同户型。' }) };
             });
           }
           if (name === 'record_reference_preference') {
@@ -1086,12 +1152,12 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       },
     });
     if (result.stop) return;
-    let reply: { kind?: string; resultKey?: string; selections?: string[] };
+    let reply: { kind?: string; text?: string; resultKey?: string; selections?: string[] };
     try { reply = JSON.parse((result.output?.text || '').replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch { fail('invalid_model_answer', 502); }
     const usedSourceTool = await scoped(async tx => one(tx, sql`select id from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}
-       and (capability_name in ('query_business','query_materials','query_followups','knowledge.search.v1','web.search.v1','web.read.v1','references.search.v1')
+       and (capability_name in ('query_business','query_materials','query_followups','knowledge.search.v1','web.search.v1','web.read.v1','references.search.v1','designers.search.v1')
          or capability_name='source.restore.v1' and jsonb_array_length(private_checkpoint->'sources')>0) limit 1`));
-    if (usedSourceTool && !['business', 'knowledge','references','synthesis'].includes(reply?.kind || '')) fail('invalid_model_citation', 502);
+    if (usedSourceTool && !['business', 'knowledge','references','designers','synthesis'].includes(reply?.kind || '')) fail('invalid_model_citation', 502);
     if (reply.kind === 'synthesis') {
       await authorize();
       await scoped(async (tx, context) => {
@@ -1149,6 +1215,47 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           where enterprise_id=${lease.enterpriseId} and id=${String(message.id)}`);
         await tx.execute(sql`update app.assistant_jobs set status='succeeded',lease_token=null,lease_expires_at=null,updated_at=now(),version=version+1 where enterprise_id=${lease.enterpriseId} and id=${lease.jobId}`);
         await tx.execute(sql`update app.assistant_runs set status='succeeded',answer_kind=${saved.size ? 'grounded' : null},output_message_id=${String(message.id)},completed_at=now(),updated_at=now(),version=version+1 where enterprise_id=${lease.enterpriseId} and id=${lease.runId}`);
+        await tx.execute(sql`update app.assistant_quota_reservations set status='reconciling',updated_at=now(),version=version+1 where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}`);
+        await terminalEvent(tx, lease.enterpriseId, lease.runId, 'succeeded');
+      });
+      return;
+    }
+    if (reply.kind === 'designers') {
+      await authorize();
+      await scoped(async (tx, context) => {
+        const match = new RegExp(`^${lease.runId}:(\\d+):(\\d+)$`).exec(reply.resultKey || '');
+        if (!match || Number(match[1]) > 3 || Number(match[2]) > 3) fail('invalid_model_answer', 502);
+        const step = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}
+          and step_seq=${1200 + Number(match[1])*10 + Number(match[2])} and capability_name='designers.search.v1'`);
+        if (!step) fail('invalid_model_citation', 502);
+        const snapshot = step.private_checkpoint as DesignerToolSnapshot;
+        const items = snapshot.needContext ? [] : await revalidateDesignerSnapshot(tx, lease.actor, snapshot);
+        const scope = [snapshot.style, snapshot.layout].filter(Boolean).join('、') || '当前方向';
+        const text = snapshot.needContext
+          ? '请告诉我房屋所在城市，以及偏好的风格或户型（例如原木风、三居），我再按本企业公开作品推荐设计师。'
+          : !items.length
+          ? `目前没有查到符合${scope}条件的公开设计师作品。你可以换一个风格或户型，或者告诉我更多信息。`
+          : (reply.text || '').trim() || `我按${scope}找到了${items.length}位设计师的公开作品，供你参考。`;
+        if (items.length) assertDesignerReply(text, items);
+        if (!snapshot.needContext && items.length) {
+          const preferences = ((context.conversation.entry_snapshot as Row)?.referencePreferences || []) as ReferencePreference[];
+          const memory = await availableNeedMemory(tx, lease.enterpriseId, String(context.conversation.id), context.conversation.entry_snapshot);
+          assertRecordedReply(text, memory, lease.runId, preferences.map(p => p.operationId), safeText(initial.trigger.content as Parameters<typeof safeText>[0]));
+        }
+        for (const ref of initial.mediaRefs) if (!await resolveAgentMedia(tx, lease.enterpriseId, String(context.conversation.id), ref)) fail('context_changed');
+        for (const ref of initial.referenceEvidence) if (!await resolveEvidence(tx, lease.actor, context.conversation, ref, true)) fail('context_changed');
+        const message = await appendMessage(tx, lease.actor, String(context.conversation.id), { author: 'assistant', runId: lease.runId,
+          purpose: 'agent.reply', content: { version: 1, blocks: [{ type: 'text', text: text + (text.includes(designerNotice) ? '' : '\n' + designerNotice) }] } });
+        if (!snapshot.needContext && items.length) {
+          const saved: DesignerSnapshot = { ...(snapshot.cityCode ? { cityCode: snapshot.cityCode } : {}),
+            ...(snapshot.style ? { style: snapshot.style } : {}), ...(snapshot.layout ? { layout: snapshot.layout } : {}),
+            communityId: snapshot.communityId ?? null, items: items.map(item => ({ workId: item.work.id, versionId: item.work.versionId })) };
+          await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,private_checkpoint,input_summary)
+            values(${lease.enterpriseId},${lease.runId},2000,'agent_designer_result','succeeded',${JSON.stringify(saved)}::jsonb,
+              ${JSON.stringify({ protocol: agentDesignerProtocol, triggerMessageId: String(initial.trigger.id), count: items.length })}::jsonb)`);
+        }
+        await tx.execute(sql`update app.assistant_jobs set status='succeeded',lease_token=null,lease_expires_at=null,updated_at=now(),version=version+1 where enterprise_id=${lease.enterpriseId} and id=${lease.jobId}`);
+        await tx.execute(sql`update app.assistant_runs set status='succeeded',output_message_id=${String(message.id)},completed_at=now(),updated_at=now(),version=version+1 where enterprise_id=${lease.enterpriseId} and id=${lease.runId}`);
         await tx.execute(sql`update app.assistant_quota_reservations set status='reconciling',updated_at=now(),version=version+1 where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}`);
         await terminalEvent(tx, lease.enterpriseId, lease.runId, 'succeeded');
       });

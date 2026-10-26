@@ -2,7 +2,8 @@ const { ChatController, initial } = require('../lib/chat');
 const { goToLogin } = require('../../../utils/session');
 const { MediaController } = require('../lib/media');
 const { ReferenceImage } = require('../lib/reference-image');
-const { RecommendationController } = require('../lib/portfolio');
+const { RecommendationController, PortfolioImages } = require('../lib/portfolio');
+const { latestDesignerCard } = require('../lib/client');
 const { SiteRecordMedia } = require('../lib/site-records');
 const { PublicChatController, initialPublic } = require('../lib/public-sites');
 const { PlanChatController, initialPlans } = require('../lib/plans');
@@ -22,6 +23,8 @@ Page({
     mediaItems: [], mediaPaths: {}, mediaLoading: false, mediaBusy: false, mediaPending: false, mediaError: '', mediaKind: 0, mediaRoom: '',
     formalPlans: [], formalRooms: [], formalIndex: 0, formalRoomIndex: 0, mediaPendingFormal: false,
     portfolioItems: [], portfolioImages: {}, portfolioError: '', portfolioNotice: '', portfolioLoading: false,
+    latestDesignerMessageId: '', hasDesignerRecommendation: false,
+    designerCardImages: {}, designerCardPortraits: {}, designerCardError: '',
   },
 
   onLoad(options) {
@@ -31,6 +34,7 @@ Page({
     this.referenceImages = new ReferenceImage();
     this.siteRecords = new SiteRecordMedia({ identity: sessionToken, emit: patch => { if (this._alive && this._shown) this.setData(patch); } });
     this.recommendations = new RecommendationController({ identity: sessionToken, emit: patch => { if (this._alive) this.setData(patch); } });
+    this._designerCardConversation = ''; this._designerCardKey = '';
     this.controller = new ChatController({
       identity: sessionToken,
       referenceImage: value => this.referenceImages.materialize(value),
@@ -41,6 +45,7 @@ Page({
           if (patch.fatal || patch.needsLogin) {
             this.siteRecords.clear();
             this.recommendations.clear();
+            this.resetDesignerCards();
             if (this.publicSites) this.publicSites.clear();
             if (this.plans) this.plans.clear();
             this.referenceImages.clear();
@@ -50,6 +55,7 @@ Page({
             if (this._shown) this.siteRecords.load(this.controller.conversationId, patch.messages);
             if (this._shown && this.publicSites) this.publicSites.load(this.controller.conversationId, this.data.enterpriseId, patch.messages);
             if (this._shown && this.plans) this.plans.load(this.controller.conversationId, patch.messages);
+            if (this._shown) this.loadDesignerCards(patch.messages);
             this.loadMessageImages(patch.messages);
             const key = (this.data.conversation?.id || '') + ':' + (patch.messages[patch.messages.length - 1]?.id || '');
             if (this._shown && key !== this._portfolioKey) {
@@ -57,7 +63,7 @@ Page({
               this.recommendations.load(patch.messages.length ? this.data.conversation?.id : null);
             }
           }
-          if (patch.conversation === null) { this._portfolioKey = ''; this.recommendations.clear(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); }
+          if (patch.conversation === null) { this._portfolioKey = ''; this.recommendations.clear(); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); }
           const next = patch.messages;
           if (next && next.length && (!previous.length || next[next.length - 1].id !== previous[previous.length - 1].id)) {
             this.scrollBottom();
@@ -93,13 +99,14 @@ Page({
       }
     }
   },
-  onHide() { this._shown = false; this.controller.hide(); this.siteRecords.clear(); this.recommendations.clear(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); this.closeSheet(); this.setData({ keyboardHeight: 0, siteRecordPaths: {}, siteRecordError: '', ...initialPublic(), ...initialPlans() }); },
+  onHide() { this._shown = false; this.controller.hide(); this.siteRecords.clear(); this.recommendations.clear(); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); this.closeSheet(); this.setData({ keyboardHeight: 0, siteRecordPaths: {}, siteRecordError: '', ...initialPublic(), ...initialPlans() }); },
   onUnload() {
     this._alive = false; clearTimeout(this._sheetTimer);
     this.controller.dispose();
     this.siteRecords.clear();
     this.referenceImages.clear();
     this.recommendations.clear();
+    this.resetDesignerCards();
     if (this.publicSites) this.publicSites.clear();
     if (this.plans) this.plans.clear();
     if (this.media) this.media.dispose();
@@ -289,6 +296,65 @@ Page({
   },
   retryCitation() { return this.controller.openCitation(this._citationId); },
   loadDesigners() { return this.recommendations.load(this.data.conversation?.id, true); },
+  resetDesignerCards() {
+    if (this.designerCardMedia) this.designerCardMedia.clear();
+    this.designerCardMedia = null; this._designerCardConversation = ''; this._designerCardKey = '';
+    if (this._alive) this.setData({ latestDesignerMessageId: '', hasDesignerRecommendation: false, designerCardImages: {}, designerCardPortraits: {}, designerCardError: '' });
+  },
+  async loadDesignerCards(messages) {
+    if (!this._alive) return;
+    const latest = latestDesignerCard(messages);
+    const conversationId = this.controller.conversationId;
+    if (this._designerCardConversation !== conversationId) {
+      if (this.designerCardMedia) this.designerCardMedia.clear();
+      this.designerCardMedia = conversationId ? new PortfolioImages(this.controller.client) : null;
+      this._designerCardConversation = conversationId; this._designerCardKey = '';
+      this.setData({ designerCardImages: {}, designerCardPortraits: {}, designerCardError: '' });
+    }
+    const key = latest ? String(latest.id) : '';
+    this.setData({ latestDesignerMessageId: key, hasDesignerRecommendation: !!latest });
+    if (key === this._designerCardKey) return;
+    this._designerCardKey = key;
+    if (!latest || !conversationId || !this.designerCardMedia) return;
+    const owner = this.designerCardMedia, session = sessionToken();
+    const valid = () => this._alive && owner === this.designerCardMedia && session === sessionToken()
+      && this._designerCardKey === key && this.controller.conversationId === conversationId;
+    for (const card of latest.designerRecommendation.items) {
+      if (!this.data.designerCardImages['i' + card.work.coverAssetId]) {
+        try {
+          const filePath = await owner.load(conversationId, card.work, card.work.coverAssetId);
+          if (!valid()) return;
+          this.setData({ ['designerCardImages.i' + card.work.coverAssetId]: filePath });
+        } catch (error) {
+          if (!valid()) return;
+          if ([401, 403, 404].includes(error.statusCode)) { this.setData({ designerCardImages: {}, designerCardPortraits: {} }); this._designerCardKey = ''; return; }
+          this.setData({ designerCardError: '部分作品图片暂未加载，点此重试。' });
+        }
+      }
+      if (card.portraitAvailable && !this.data.designerCardPortraits[card.authorId]) {
+        try {
+          const filePath = await owner.loadPortrait(conversationId, card.authorId);
+          if (!valid()) return;
+          this.setData({ ['designerCardPortraits.' + card.authorId]: filePath });
+        } catch (_) { if (!valid()) return; }
+      }
+    }
+  },
+  retryDesignerCards() {
+    this.setData({ designerCardError: '' });
+    this._designerCardKey = '';
+    return this.loadDesignerCards(this.data.messages);
+  },
+  openCardDesigner(event) {
+    const data = event.currentTarget.dataset, id = this.controller.conversationId;
+    if (!id || !/^[1-9]\d{0,18}$/.test(String(data.id))) return;
+    wx.navigateTo({ url: `/packages/assistant/designer/designer?conversationId=${encodeURIComponent(id)}&authorId=${encodeURIComponent(data.id)}&sourceWorkId=${encodeURIComponent(data.work || '')}` });
+  },
+  openCardWork(event) {
+    const data = event.currentTarget.dataset, id = this.controller.conversationId;
+    if (!id || !/^[1-9]\d{0,18}$/.test(String(data.work)) || !/^[1-9]\d{0,18}$/.test(String(data.version))) return;
+    wx.navigateTo({ url: `/packages/assistant/work/work?conversationId=${encodeURIComponent(id)}&workId=${encodeURIComponent(data.work)}&versionId=${encodeURIComponent(data.version)}` });
+  },
   browseSites() {
     if (!this.data.enterpriseId) return;
     const cid = this.controller.conversationId;

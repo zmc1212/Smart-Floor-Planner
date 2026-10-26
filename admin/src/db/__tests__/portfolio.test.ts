@@ -12,7 +12,7 @@ import { deleteAssistantData } from '@/db/repositories/assistant-cleanup';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 import { PortfolioService } from '@/lib/portfolio/service';
 import { AmapCommunityProvider } from '@/lib/portfolio/community-provider';
-import { GET, POST } from '@/app/api/portfolio/[[...path]]/route';
+import { DELETE, GET, POST } from '@/app/api/portfolio/[[...path]]/route';
 import type { WorkContent } from '@/lib/portfolio/contracts';
 import type { ActorContext } from '@/lib/assistant/contracts';
 import { ConversationService } from '@/lib/assistant/core/conversation';
@@ -22,6 +22,7 @@ import { signMiniProgramToken } from '@/lib/miniprogram-jwt';
 import { readPortfolioEntry } from '@/lib/portfolio/entry';
 import { decodeJwt } from 'jose';
 import { HandoffService } from '@/lib/assistant/handoff/service';
+import { projectMessage } from '@/lib/assistant/knowledge/sources';
 
 const prefix = 'portfolio-' + randomUUID(), tenants: string[] = [], staff: string[][] = [], services: PortfolioService[][] = [];
 const users: string[] = [], customers: ActorContext[] = [], conversations: string[] = [];
@@ -94,7 +95,7 @@ test('references retain their source and cannot become original portfolio work; 
   const count = await withTenantTransaction(tenants[0], tx => one(tx, sql`select count(*) n from app.assistant_knowledge_documents where enterprise_id=${tenants[0]}`)); assert.equal(Number(count!.n), 0);
 });
 test('profile scope and staff deactivation are rechecked without changing professional identity', async () => {
-  const data = { bio: '本人设计自述', cities: [{ code: '330100', name: '杭州市', districts: ['西湖区'] }], styles: ['原木风'], featuredWorkIds: [workId] };
+  const data = { bio: '本人设计自述', cities: [{ code: '330100', name: '杭州市', districts: ['西湖区'] }], styles: ['原木风'], layoutSpecialties: ['三居'], featuredWorkIds: [workId] };
   const competing = await Promise.allSettled([exec('saveProfile', { authorId: staff[0][1], expectedVersion: 0, content: data }), exec('saveProfile', { authorId: staff[0][1], expectedVersion: 0, content: data })]);
   assert.equal(competing.filter(r => r.status === 'fulfilled').length, 1); assert.equal(competing.filter(r => r.status === 'rejected').length, 1);
   assert.deepEqual((await exec('profile', { authorId: staff[0][1] })).content, data);
@@ -157,11 +158,18 @@ test('P2C.2 public read model exposes approved images only; matching deduplicate
   assert.equal((await catalog.designer(staff[0][1])).works.length, 1);
   assert.ok((await catalog.image(workId, work.versionId, assetId)).length > 0);
   await assert.rejects(catalog.image(workId, '1', assetId), /not_found/);
-  assert.equal((await catalog.recommend({ cityCode: '330100', style: '不存在风格' })).items.length, 0);
+  await assert.rejects(catalog.recommend({ cityCode: '330100', style: '不存在风格' }), /invalid_portfolio/);
   await assert.rejects(new PortfolioCatalog(customers[1], conversations[0]).work(workId), /resource_not_found/);
   await assert.rejects(new PortfolioCatalog({ ...customers[0], contextVersion: 99 }, conversations[0]).work(workId), /identity_context_invalid/);
   const now = Date.now; Date.now = () => now() + 7200000;
-  try { await assert.rejects(catalog.work(workId, work.versionId), /not_found/); } finally { Date.now = now; }
+  try {
+    await assert.rejects(catalog.work(workId, work.versionId), /not_found/);
+    assert.equal((await catalog.recommend({ cityCode: '330100', style: '原木风' })).items.length, 0);
+    await assert.rejects(catalog.designer(staff[0][1]), /portfolio_not_found/);
+    await assert.rejects(catalog.image(workId, work.versionId, assetId), /not_found/);
+    await assert.rejects(catalog.share(workId, work.versionId), /not_found/);
+    await assert.rejects(catalog.contact(workId, { versionId: work.versionId }, randomUUID()), /not_found/);
+  } finally { Date.now = now; }
 });
 test('P2C.2 same-community style wins over city fallback and multiple works never duplicate the designer', async () => {
   const communityId = String((await exec('communities', { cityCode: '330100', query: '同名' })).items[0].id);
@@ -268,6 +276,33 @@ test('P2C.2 contact retains the current service owner and requires authorized co
   finally { await withTenantTransaction(tenants[0], tx => tx.execute(sql`update app.assistant_conversations set entry_snapshot=${JSON.stringify(prior!.entry_snapshot)}::jsonb where enterprise_id=${tenants[0]} and id=${conversations[0]}`)); }
 });
 
+test('portrait requires author consent; managers remove but never upload; public reads return JPEG bytes without consent metadata', async () => {
+  const png = (await sharp({ create: { width: 640, height: 480, channels: 3, background: '#cfe8d8' } }).png().toBuffer()).toString('base64');
+  await assert.rejects(exec('savePortrait', { authorId: staff[0][1], imageBase64: png }), /invalid_portfolio/);
+  await exec('savePortrait', { authorId: staff[0][1], imageBase64: png, consent: true }, 1);
+  await assert.rejects(exec('savePortrait', { authorId: staff[0][1], imageBase64: png, consent: true }, 0), /forbidden/);
+  const stored = await withTenantTransaction(tenants[0], tx => one(tx, sql`select length(image_base64) n,consent_by,content_hash from app.portfolio_portraits where enterprise_id=${tenants[0]} and author_id=${staff[0][1]}`));
+  assert.ok(Number(stored!.n) <= 409600); assert.equal(String(stored!.consent_by), staff[0][1]); assert.ok(String(stored!.content_hash).length >= 32);
+  await assert.rejects(exec('portrait', { authorId: staff[0][1] }, 0, 1), /portfolio_author_unavailable/);
+  const authors = await exec('authors', {}, 0);
+  const me = authors.items.find((item: Row) => String(item.id) === staff[0][1])!;
+  assert.equal(me.portrait_available, true); assert.ok(!JSON.stringify(me).includes('consent')); assert.ok(!('image_base64' in me));
+  const bytes = await new PortfolioCatalog(customers[0], conversations[0]).portrait(staff[0][1]);
+  const meta = await sharp(bytes).metadata(); assert.equal(meta.width, 512); assert.equal(meta.height, 512); assert.equal(meta.format, 'jpeg');
+  const token = await new SignJWT({ id: staff[0][1], username: prefix, role: 'designer', enterpriseId: tenants[0], permissions: ['case-publishing'], mustChangePassword: false }).setProtectedHeader({ alg: 'HS256' }).setSubject(staff[0][1]).setIssuedAt().setExpirationTime('10m').sign(new TextEncoder().encode(process.env.JWT_SECRET));
+  const path = ['profiles', staff[0][1], 'portrait'];
+  const raw = await GET(new NextRequest('http://localhost:3006/api/portfolio/' + path.join('/'), { headers: { cookie: 'auth_token=' + token } }), { params: Promise.resolve({ path }) });
+  assert.equal(raw.status, 200); assert.equal(raw.headers.get('content-type'), 'image/jpeg'); assert.equal(raw.headers.get('x-content-type-options'), 'nosniff'); assert.match(raw.headers.get('cache-control')!, /no-store/);
+  const mini = await signMiniProgramToken({ sub: users[0], id: users[0], contextVersion: 1, mode: 'customer', role: 'user', source: 'wechat' });
+  const miniPath = ['conversations', conversations[0], 'portfolio', 'designers', staff[0][1], 'portrait'];
+  const publicRead = await assistantHttp(new Request('http://localhost:3006/api/miniprogram/assistant/' + miniPath.join('/') + '?format=base64', { headers: { authorization: 'Bearer ' + mini } }), miniPath);
+  assert.equal(publicRead.status, 200); assert.match((await publicRead.json()).data.imageBase64, /^\/9j\//);
+  const removed = await DELETE(new NextRequest('http://localhost:3006/api/portfolio/' + path.join('/'), { method: 'DELETE', headers: { cookie: 'auth_token=' + token, 'Idempotency-Key': randomUUID() } }), { params: Promise.resolve({ path }) });
+  assert.equal(removed.status, 200);
+  await assert.rejects(exec('portrait', { authorId: staff[0][1] }), /portfolio_not_found/);
+  await assert.rejects(new PortfolioCatalog(customers[0], conversations[0]).portrait(staff[0][1]), /portfolio_not_found/);
+});
+
 test('P2C.2 conversation-bound HTTP survives reentry and invalidates old image reads on withdrawal or staff deactivation', async () => {
   const catalog = new PortfolioCatalog(customers[0], conversations[0]), work = await catalog.work(workId);
   const mini = await signMiniProgramToken({ sub: users[0], id: users[0], contextVersion: 1, mode: 'customer', role: 'user', source: 'wechat' });
@@ -277,4 +312,63 @@ test('P2C.2 conversation-bound HTTP survives reentry and invalidates old image r
   await withPlatformTransaction(tx => tx.execute(sql`update app.admin_users set status='disabled' where id=${staff[0][1]}`));
   try { assert.equal((await assistantHttp(request(), path)).status, 404); } finally { await withPlatformTransaction(tx => tx.execute(sql`update app.admin_users set status='active' where id=${staff[0][1]}`)); }
   await exec('withdraw', { workId, expectedVersion: 16 }, 0); assert.equal((await assistantHttp(request(), path)).status, 404);
+});
+
+test('agent designer projection drops withdrawn, replaced, disabled and expired items while the answer stays available', async () => {
+  const created = await exec('create', {}, 1), wid = String(created.id);
+  const upload = await exec('upload', { workId: wid, expectedVersion: 1, imageBase64 }, 1);
+  const content = () => ({ ...contents(), title: '投影校验作品', layoutTypes: ['三居'],
+    images: [{ assetId: String(upload.assetId), kind: 'render', aiGenerated: true, showroom: false, caption: '' }], coverAssetId: String(upload.assetId) });
+  const detail = async () => await exec('detail', { workId: wid }) as Row & { work: Row; head: Row };
+  const currentVersion = async () => Number((await detail()).work.version);
+  const save = async (value: Row) => await exec('save', { workId: wid, expectedVersion: await currentVersion(), content: value }, 1);
+  const submit = async () => await exec('submit', { workId: wid, expectedVersion: await currentVersion() }, 1);
+  const publish = async () => await exec('publish', { workId: wid, expectedVersion: await currentVersion() }, 0);
+  await save(content()); await submit(); await publish();
+  const firstVersion = String((await detail()).work.published_version_id);
+  const snapshot = (versionId: string) => ({ cityCode: '330100', style: '原木风', layout: '三居', communityId: null, items: [{ workId: wid, versionId }] });
+  const { runId, messageId } = await withTenantTransaction(tenants[0], async tx => {
+    const seq = await one(tx, sql`select coalesce(max(seq),0) as n from app.assistant_messages where enterprise_id=${tenants[0]} and conversation_id=${conversations[0]}`);
+    const trigger = await one(tx, sql`insert into app.assistant_messages(enterprise_id,conversation_id,seq,author_kind,user_id,content)
+      values(${tenants[0]},${conversations[0]},${Number(seq!.n) + 1},'user',${users[0]},${JSON.stringify({ version: 1, blocks: [{ type: 'text', text: '帮我找擅长三居原木风的设计师' }] })}::jsonb) returning id`);
+    const run = await one(tx, sql`insert into app.assistant_runs(enterprise_id,conversation_id,trigger_kind,trigger_message_id,policy_snapshot,context_revision,knowledge_epoch,status,started_at)
+      values(${tenants[0]},${conversations[0]},'user_message',${String(trigger!.id)},'{}'::jsonb,1,1,'running',now()) returning id`);
+    const output = await one(tx, sql`insert into app.assistant_messages(enterprise_id,conversation_id,seq,author_kind,content,run_id)
+      values(${tenants[0]},${conversations[0]},${Number(seq!.n) + 2},'assistant',${JSON.stringify({ version: 1, blocks: [{ type: 'text', text: '按三居原木风为你找到公开作品。' }] })}::jsonb,${String(run!.id)}) returning id`);
+    await tx.execute(sql`update app.assistant_runs set output_message_id=${String(output!.id)},status='succeeded',completed_at=now() where enterprise_id=${tenants[0]} and id=${String(run!.id)}`);
+    await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint)
+      values(${tenants[0]},${String(run!.id)},2000,'agent_designer_result','designers.search.v1',1,'succeeded',${JSON.stringify(snapshot(firstVersion))}::jsonb)`);
+    return { runId: String(run!.id), messageId: String(output!.id) };
+  });
+  const setSnapshot = (versionId: string) => withTenantTransaction(tenants[0], tx => tx.execute(sql`update app.assistant_run_steps
+    set private_checkpoint=${JSON.stringify(snapshot(versionId))}::jsonb where enterprise_id=${tenants[0]} and run_id=${runId} and step_seq=2000`));
+  const projection = async () => await withTenantTransaction(tenants[0], async tx => {
+    const conversation = (await one(tx, sql`select * from app.assistant_conversations where enterprise_id=${tenants[0]} and id=${conversations[0]}`))!;
+    const message = (await one(tx, sql`select * from app.assistant_messages where enterprise_id=${tenants[0]} and id=${messageId}`))!;
+    return await projectMessage(tx, customers[0], conversation, message) as Row & {
+      available: boolean; designerRecommendation: { items: Array<{ work: { id: string; versionId: string } }> } | null };
+  });
+  let projected = await projection();
+  assert.equal(projected.available, true); assert.equal(projected.designerRecommendation?.items.length, 1);
+  assert.equal(projected.designerRecommendation?.items[0].work.id, wid);
+  await exec('withdraw', { workId: wid, expectedVersion: await currentVersion() }, 0);
+  projected = await projection(); assert.equal(projected.available, true); assert.equal(projected.designerRecommendation, null);
+  await exec('newDraft', { workId: wid, expectedVersion: await currentVersion() }, 1);
+  await save({ ...content(), title: '投影校验作品二版' }); await submit(); await publish();
+  const secondVersion = String((await detail()).work.published_version_id);
+  assert.notEqual(secondVersion, firstVersion);
+  projected = await projection(); assert.equal(projected.available, true); assert.equal(projected.designerRecommendation, null);
+  await setSnapshot(secondVersion); projected = await projection();
+  assert.equal(projected.designerRecommendation?.items[0].work.versionId, secondVersion);
+  await withPlatformTransaction(tx => tx.execute(sql`update app.admin_users set status='disabled' where id=${staff[0][1]}`));
+  try { projected = await projection(); assert.equal(projected.available, true); assert.equal(projected.designerRecommendation, null); }
+  finally { await withPlatformTransaction(tx => tx.execute(sql`update app.admin_users set status='active' where id=${staff[0][1]}`)); }
+  await exec('newDraft', { workId: wid, expectedVersion: await currentVersion() }, 1);
+  await save({ ...content(), rightsUntil: new Date(Date.now() + 3600000).toISOString() }); await submit(); await publish();
+  const rightsVersion = String((await detail()).work.published_version_id);
+  await setSnapshot(rightsVersion); projected = await projection();
+  assert.equal(projected.designerRecommendation?.items[0].work.versionId, rightsVersion);
+  const now = Date.now; Date.now = () => now() + 7200000;
+  try { projected = await projection(); assert.equal(projected.available, true); assert.equal(projected.designerRecommendation, null); }
+  finally { Date.now = now; }
 });

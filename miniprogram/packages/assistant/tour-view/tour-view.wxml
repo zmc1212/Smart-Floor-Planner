@@ -1,0 +1,37 @@
+<!-- D-03b: third-party 3D opens only after a verified HTTPS source-url read. -->
+<view class="tour-page">
+  <block wx:if="{{url}}"><web-view src="{{url}}" binderror="onError" /></block>
+  <block wx:else>
+    <view wx:if="{{coverPath}}" class="tour-hero">
+      <image class="tour-hero-image" src="{{coverPath}}" mode="aspectFill" aria-hidden="true" />
+      <view class="tour-hero-shade"></view>
+      <view class="tour-hero-badge"><image src="../assets/tour-3d-ink.png" /><text>3D 空间</text></view>
+      <text class="tour-hero-title">{{workTitle}}</text>
+    </view>
+    <view class="tour-sheet {{coverPath ? 'with-hero' : ''}}">
+      <view wx:if="{{loading}}" class="tour-state"><view class="loading-dot"></view><text>正在读取 3D 空间…</text></view>
+      <block wx:elif="{{error}}">
+        <text class="tour-title">{{needsLogin ? '登录后查看 3D 空间' : '暂时无法读取 3D 空间'}}</text>
+        <text class="tour-copy">{{error}}</text>
+        <button wx:if="{{needsLogin}}" class="tour-primary" bindtap="login">去登录</button>
+        <button wx:else class="tour-primary" bindtap="retryRead" disabled="{{loading}}">重新读取</button>
+        <button class="tour-secondary" bindtap="back">返回作品</button>
+      </block>
+      <block wx:elif="{{noTour}}">
+        <text class="tour-title">当前无法打开 3D 空间</text>
+        <text class="tour-copy">这个作品暂未提供可用的第三方 3D 空间，你可以返回查看效果图与实拍图。</text>
+        <button class="tour-secondary" bindtap="back">返回作品</button>
+      </block>
+      <block wx:else>
+        <text class="tour-title">当前无法在小程序内打开 3D 空间</text>
+        <text class="tour-copy">可能未登记业务域名，或当前网络无法加载第三方内容。你可以复制链接，在手机浏览器中打开。</text>
+        <view class="tour-provider"><image src="../assets/tour-3d-ink.png" /><text>{{provider}} · {{tourTitle}}</text></view>
+        <button class="tour-primary" bindtap="copy"><image src="../assets/copy-link.png" /><text>{{copied ? '链接已复制' : '复制链接'}}</text></button>
+        <button class="tour-secondary" bindtap="retryWeb">重新在小程序内打开</button>
+        <button class="tour-secondary" bindtap="back">返回作品</button>
+        <text class="tour-notice">链接由设计师提供，内容由第三方平台展示。</text>
+      </block>
+      <text wx:if="{{!loading}}" class="tour-helper">你仍可以返回作品详情查看效果图、实拍图、设计亮点与材料配色；或在手机浏览器中粘贴链接继续查看。</text>
+    </view>
+  </block>
+</view>

@@ -74,7 +74,14 @@ export function validateProfessionalTitleVisibilityPolicy(
   return value;
 }
 
-function roleDefaultTitle(enterprise: EnterpriseRecord, role: ProfessionalProfileRole) {
+type EnterpriseProfessionalPolicy = Pick<EnterpriseRecord,
+  'professionalDesignerTitle' | 'professionalMeasurerTitle' | 'professionalDefaultExperienceYears'
+  | 'professionalServiceThreshold' | 'professionalForceEnterpriseProfile' | 'professionalTitleVisibilityPolicy'>;
+type StaffProfessionalIdentity = Pick<AdminUserRecord,
+  'role' | 'professionalTitle' | 'professionalCareerStartYear' | 'professionalTitleVisible'
+  | 'professionalTitleAdminOverride' | 'professionalProfileLocked' | 'professionalShowActualServiceCount'>;
+
+function roleDefaultTitle(enterprise: EnterpriseProfessionalPolicy, role: ProfessionalProfileRole) {
   return String(
     role === 'designer'
       ? enterprise.professionalDesignerTitle
@@ -87,8 +94,8 @@ function experienceLabel(role: ProfessionalProfileRole, years: number) {
 }
 
 export function buildProfessionalProfile(input: {
-  enterprise: EnterpriseRecord;
-  staff: AdminUserRecord;
+  enterprise: EnterpriseProfessionalPolicy;
+  staff: StaffProfessionalIdentity;
   actualServiceCount: number;
   displayRole?: ProfessionalProfileRole;
 }): ProfessionalProfileDetails | null {

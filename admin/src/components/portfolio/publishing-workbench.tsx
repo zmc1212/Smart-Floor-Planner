@@ -4,26 +4,45 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PageContainer, ProTable, type ProColumns } from '@ant-design/pro-components';
-import { Alert, Button, Card, Col, Drawer, Empty, Form, Image, Input, Modal, Result, Row, Select, Skeleton, Space, Tabs, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Checkbox, Col, Drawer, Empty, Form, Image, Input, Modal, Result, Row, Select, Skeleton, Space, Tabs, Tag, Typography, Upload } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { notify } from '@/components/admin/operation-feedback';
-import { STYLE_OPTIONS } from '@/lib/portfolio/options';
+import { LAYOUT_OPTIONS, STYLE_OPTIONS } from '@/lib/portfolio/options';
 import { CITY_OPTIONS, cityNameFor, districtOptions } from '@/lib/portfolio/regions';
 import { PortfolioMutations, assetUrl, errorText, portfolioRequest, statusLabels, type WorkRow, type Author, type Profile } from './client';
 
 type CommunityRequest = { id: string; name: string; city_name: string; city_code: string; district: string; address: string; status: string; review_note: string; community_id: string | null };
-function Profiles({ authors }: { authors: Author[] }) {
+function imageFile(file: File) { return new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); }); }
+function Profiles({ authors, currentUserId }: { authors: Author[]; currentUserId: string }) {
   const [selected, setSelected] = useState<string>(), [open, setOpen] = useState(false), [loading, setLoading] = useState(false), [version, setVersion] = useState(0), [works, setWorks] = useState<WorkRow[]>([]);
+  const [portraitAvailable, setPortraitAvailable] = useState(false), [portraitToken, setPortraitToken] = useState(0), [consent, setConsent] = useState(false), [portraitBusy, setPortraitBusy] = useState(false);
   const [form] = Form.useForm(); const mutations = useRef(new PortfolioMutations());
+  const author = authors.find(a => String(a.id) === selected), isSelf = Boolean(selected) && String(author?.id) === currentUserId;
   const edit = async (id: string) => {
     setSelected(id); setOpen(true); setLoading(true);
+    setPortraitAvailable(Boolean(authors.find(a => String(a.id) === id)?.portrait_available)); setPortraitToken(0); setConsent(false);
     try {
       const [profile, list] = await Promise.all([portfolioRequest<Profile>('profiles/' + id), portfolioRequest<{ items: WorkRow[] }>('works?authorId=' + id + '&limit=100')]);
       form.setFieldsValue(profile.content); setVersion(profile.version); setWorks(list.items);
     } catch (error) { notify.error('读取失败', { description: errorText(error) }); setOpen(false); } finally { setLoading(false); }
   };
-  return <Card title="设计师本人作品集资料"><Alert type="info" showIcon message="真实姓名与职业背书沿用员工资料；本处只维护自述、服务范围、擅长风格和精选作品。" style={{ marginBottom: 16 }} />
+  const savePortrait = async (file: File) => {
+    if (!consent) { notify.error('无法上传头像', { description: '请先勾选本人同意在小程序公开展示此头像。' }); return false; }
+    if (file.size > 4 * 1024 * 1024 || !['image/png', 'image/jpeg'].includes(file.type)) { notify.error('无法上传头像', { description: '请选择4MB以内的PNG/JPEG图片。' }); return false; }
+    setPortraitBusy(true);
+    try {
+      await mutations.current.write('profiles/' + selected + '/portrait', { imageBase64: await imageFile(file), consent: true }, 'PUT');
+      setPortraitAvailable(true); setPortraitToken(Date.now()); notify.success('头像已保存', { description: '公开读取时仅返回 JPEG 图片。' });
+    } catch (error) { notify.error('头像保存失败', { description: errorText(error) }); } finally { setPortraitBusy(false); }
+    return false;
+  };
+  const removePortrait = async () => {
+    setPortraitBusy(true);
+    try { await mutations.current.write('profiles/' + selected + '/portrait', {}, 'DELETE'); setPortraitAvailable(false); setConsent(false); notify.success('头像已移除', { description: '公开页面将回退显示姓名首字。' }); }
+    catch (error) { notify.error('移除失败', { description: errorText(error) }); } finally { setPortraitBusy(false); }
+  };
+  return <Card title="设计师本人作品集资料"><Alert type="info" showIcon message="真实姓名与职业背书沿用员工资料；本处只维护自述、服务范围、擅长风格/户型、精选作品和本人同意的头像。" style={{ marginBottom: 16 }} />
     <ProTable<Author> rowKey="id" search={false} options={false} pagination={false} dataSource={authors} columns={[
       { title: '设计师', dataIndex: 'display_name', render: (_, a) => a.display_name || '未填写姓名' },
       { title: '职业背书', dataIndex: 'professional_title', render: (_, a) => a.professional_title || '未设置' },
@@ -34,8 +53,28 @@ function Profiles({ authors }: { authors: Author[] }) {
       catch (error) { if (error instanceof Error) notify.error('保存失败', { description: errorText(error) }); } finally { setLoading(false); }
     }}>保存</Button>}>
       <Form form={form} layout="vertical" disabled={loading}>
+        <Typography.Paragraph type="secondary">职业资料：{author?.professionalTitle || author?.professional_title || '未设置'} · {author?.experienceLabel || '从业年限未设置'}（由员工职业资料维护，本处只读）</Typography.Paragraph>
+        <Card size="small" title="公开头像" style={{ marginBottom: 20 }}>
+          <Space align="start" size={16}>
+            {portraitAvailable
+              ? <Image key={portraitToken} src={'/api/portfolio/profiles/' + selected + '/portrait'} width={96} height={96} alt="设计师头像" style={{ objectFit: 'cover', borderRadius: '50%' }} />
+              : <div aria-label="暂无头像，显示姓名首字" style={{ width: 96, height: 96, borderRadius: '50%', background: '#e8f7ef', color: '#082b2a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32 }}>{(author?.display_name || '设计师').trim().slice(0, 1)}</div>}
+            <Space direction="vertical" size={8}>
+              {isSelf ? <>
+                <Upload accept="image/jpeg,image/png" showUploadList={false} disabled={portraitBusy} beforeUpload={savePortrait}><Button icon={<PlusOutlined />} loading={portraitBusy} disabled={!consent}>上传头像</Button></Upload>
+                <Checkbox checked={consent} onChange={e => setConsent(e.target.checked)}>本人同意在小程序公开展示此头像</Checkbox>
+                {portraitAvailable && <Button danger onClick={() => void removePortrait()} loading={portraitBusy}>移除头像</Button>}
+                <Typography.Text type="secondary">PNG/JPEG，4MB以内，将裁切为512×512 JPEG；未上传时显示姓名首字。</Typography.Text>
+              </> : <>
+                {portraitAvailable && <Button danger onClick={() => void removePortrait()} loading={portraitBusy}>移除头像</Button>}
+                <Typography.Text type="secondary">仅设计师本人可上传并勾选同意；管理员只能移除，不能代为上传。移除后公开页面回退显示姓名首字。</Typography.Text>
+              </>}
+            </Space>
+          </Space>
+        </Card>
         <Form.Item name="bio" label="设计师自述"><Input.TextArea maxLength={500} rows={4} showCount /></Form.Item>
         <Form.Item name="styles" label="擅长风格（最多8个）"><Select mode="tags" maxCount={8} options={STYLE_OPTIONS.map(value => ({ value, label: value }))} /></Form.Item>
+        <Form.Item name="layoutSpecialties" label="擅长户型（最多6个）"><Select mode="multiple" maxCount={6} options={LAYOUT_OPTIONS.map(value => ({ value, label: value }))} /></Form.Item>
         <Typography.Title level={5}>服务城市与区县</Typography.Title>
         <Form.List name="cities">{(fields, { add, remove }) => <Space direction="vertical" style={{ width: '100%' }}>{fields.map(field => <Card key={field.key} size="small" extra={<Button type="link" danger onClick={() => remove(field.name)}>移除</Button>}>
           <Form.Item name={[field.name, 'code']} label="服务城市" rules={[{ required: true }]}><Select showSearch optionFilterProp="label" options={CITY_OPTIONS} placeholder="搜索并选择城市" onChange={code => { form.setFieldValue(['cities', field.name, 'name'], cityNameFor(code)); form.setFieldValue(['cities', field.name, 'districts'], []); }} /></Form.Item>
@@ -117,7 +156,7 @@ export function PublishingWorkbench() {
       <Button type="primary" block onClick={() => router.push('/case-publishing/' + selected.id)}>{manager && selected.status === 'submitted' ? '核对并发布' : '查看作品'}</Button>
       <Typography.Text type="secondary">审核凭据与私人信息不进入公开内容。首版仅后台维护作品。</Typography.Text>
     </Space> : <Empty description="暂无作品" />}</Card></Col></Row>}
-    {tab === 'profiles' && <Profiles authors={authors} />}{tab === 'communities' && <CommunityRequests manager={manager} />}
+    {tab === 'profiles' && <Profiles authors={authors} currentUserId={user?._id || ''} />}{tab === 'communities' && <CommunityRequests manager={manager} />}
     <Modal open={createOpen} title="新建案例" confirmLoading={creating} onCancel={() => setCreateOpen(false)} onOk={async () => {
       try { const values = await createForm.validateFields(); setCreating(true); const kind = values.kind || 'designer_work'; const result = await mutations.current.write<{ id: string }>('works', { kind, ...(kind === 'designer_work' ? { authorId: values.authorId || String(authors[0]?.id) } : {}), content: { title: values.title || '', ...(kind === 'enterprise_reference' ? { showOnProfile: false } : {}) } }); notify.success('草稿已创建'); router.push('/case-publishing/' + result.id); }
       catch (e) { if (e instanceof Error) notify.error('创建失败', { description: errorText(e) }); } finally { setCreating(false); }

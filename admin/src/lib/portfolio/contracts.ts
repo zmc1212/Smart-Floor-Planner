@@ -1,13 +1,14 @@
 import { fail, id } from '@/lib/assistant/contracts';
-import { EMPTY_WORK } from './options';
+import { EMPTY_WORK, LAYOUT_OPTIONS, SPACE_OPTIONS, TOUR_HOSTS } from './options';
 
 export const PORTFOLIO_ROLES = ['super_admin', 'admin', 'enterprise_admin', 'designer'] as const;
-export type WorkImage = { assetId: string; kind: 'render' | 'photo'; aiGenerated: boolean; showroom: boolean; caption: string };
+export type WorkImage = { assetId: string; kind: 'render' | 'photo'; aiGenerated: boolean; showroom: boolean; caption: string; space: string };
 export type WorkContent = {
   title: string; description: string; primaryStyle: string; secondaryStyles: string[];
   cityCode: string; cityName: string; district: string; communityId: string | null;
-  area: number | null; rooms: string; authorRole: string; source: string; authorization: string;
-  rightsUntil: string | null; images: WorkImage[]; coverAssetId: string | null;
+  area: number | null; rooms: string; layoutTypes: string[]; authorRole: string; source: string; authorization: string;
+  rightsUntil: string | null; highlights: string[]; materials: string[]; palette: Array<{ name: string; hex: string }>;
+  tours: Array<{ url: string; provider: string; title: string }>; images: WorkImage[]; coverAssetId: string | null;
   showOnProfile: boolean; recommendable: boolean;
 };
 export { EMPTY_WORK } from './options';
@@ -29,7 +30,28 @@ export function inCity(adcode: unknown, city: string) {
   if (typeof adcode !== 'string' || !/^\d{6}$/.test(adcode)) return false;
   return ['11', '12', '31', '50'].includes(city.slice(0, 2)) ? adcode.startsWith(city.slice(0, 2)) : adcode.startsWith(city.slice(0, 4));
 }
+export function tourUrl(value: unknown, hosts: Readonly<Record<string, string>> = TOUR_HOSTS) {
+  const raw = shortText(value, 500, true);
+  let url: URL;
+  try { url = new URL(raw); } catch { fail('invalid_portfolio_tour', 422); }
+  if (url.protocol !== 'https:' || url.username || url.password || url.port || url.hostname.startsWith('[') || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(url.hostname)) fail('invalid_portfolio_tour', 422);
+  const hostname = url.hostname.toLowerCase();
+  const host = Object.keys(hosts).find(candidate => hostname === candidate || hostname.endsWith('.' + candidate));
+  if (!host) fail('invalid_portfolio_tour', 422);
+  return { url: url.href, provider: hosts[host] };
+}
 function flag(value: unknown) { if (typeof value !== 'boolean') fail('invalid_portfolio', 422); return value; }
+function optionList(value: unknown, options: readonly string[]) {
+  if (!Array.isArray(value)) fail('invalid_portfolio', 422);
+  const list = value.map(item => shortText(item, 30, true));
+  if (list.some(item => !options.includes(item))) fail('invalid_portfolio', 422);
+  if (new Set(list).size !== list.length) fail('invalid_portfolio', 422);
+  return list;
+}
+function shortList(value: unknown, maxItems: number, maxLength: number) {
+  if (!Array.isArray(value) || value.length > maxItems) fail('invalid_portfolio', 422);
+  return value.map(item => shortText(item, maxLength, true));
+}
 export function workContent(value: unknown, complete = false): WorkContent {
   const v = object(value, Object.keys(EMPTY_WORK));
   const data = { ...EMPTY_WORK, ...v };
@@ -39,11 +61,29 @@ export function workContent(value: unknown, complete = false): WorkContent {
   if (new Set([primaryStyle, ...secondaryStyles]).size !== secondaryStyles.length + 1) fail('invalid_portfolio', 422);
   if (!Array.isArray(data.images) || data.images.length > 20) fail('invalid_portfolio', 422);
   const images = data.images.map(item => {
-    const i = object(item, ['assetId', 'kind', 'aiGenerated', 'showroom', 'caption']);
+    const i = object(item, ['assetId', 'kind', 'aiGenerated', 'showroom', 'caption', 'space']);
     if (!['render', 'photo'].includes(String(i.kind))) fail('invalid_portfolio', 422);
     const aiGenerated = flag(i.aiGenerated), showroom = flag(i.showroom);
     if ((i.kind === 'photo' && aiGenerated) || (i.kind === 'render' && showroom)) fail('invalid_image_group', 422);
-    return { assetId: id(i.assetId), kind: i.kind as WorkImage['kind'], aiGenerated, showroom, caption: shortText(i.caption ?? '', 100) };
+    const space = i.space == null ? '' : shortText(i.space, 20);
+    if (space && !SPACE_OPTIONS.includes(space)) fail('invalid_portfolio', 422);
+    return { assetId: id(i.assetId), kind: i.kind as WorkImage['kind'], aiGenerated, showroom, caption: shortText(i.caption ?? '', 100), space };
+  });
+  const layoutTypes = optionList(data.layoutTypes, LAYOUT_OPTIONS);
+  if (layoutTypes.length > 3) fail('invalid_portfolio', 422);
+  const highlights = shortList(data.highlights, 6, 60);
+  const materials = shortList(data.materials, 6, 40);
+  if (!Array.isArray(data.palette) || data.palette.length > 6) fail('invalid_portfolio', 422);
+  const palette = data.palette.map(item => {
+    const p = object(item, ['name', 'hex']);
+    const hex = shortText(p.hex, 7, true);
+    if (!/^#[0-9a-fA-F]{6}$/.test(hex)) fail('invalid_portfolio', 422);
+    return { name: shortText(p.name, 20, true), hex };
+  });
+  if (!Array.isArray(data.tours) || data.tours.length > 3) fail('invalid_portfolio', 422);
+  const tours = data.tours.map(item => {
+    const t = object(item, ['url', 'provider', 'title']);
+    return { ...tourUrl(t.url), title: shortText(t.title, 60, true) };
   });
   if (new Set(images.map(i => i.assetId)).size !== images.length) fail('invalid_portfolio', 422);
   const coverAssetId = data.coverAssetId == null ? null : id(data.coverAssetId);
@@ -62,18 +102,20 @@ export function workContent(value: unknown, complete = false): WorkContent {
   return {
     title: shortText(data.title, 50, complete), description: shortText(data.description, 400, complete), primaryStyle, secondaryStyles,
     cityCode: code, cityName: shortText(data.cityName, 50, complete), district: shortText(data.district, 100),
-    communityId: data.communityId == null ? null : id(data.communityId), area, rooms: shortText(data.rooms, 30),
+    communityId: data.communityId == null ? null : id(data.communityId), area, rooms: shortText(data.rooms, 30), layoutTypes,
     authorRole: shortText(data.authorRole, 100, complete), source: shortText(data.source, 500, complete), authorization: shortText(data.authorization, 500, complete),
-    rightsUntil, images, coverAssetId, showOnProfile: flag(data.showOnProfile), recommendable: flag(data.recommendable),
+    rightsUntil, highlights, materials, palette, tours, images, coverAssetId, showOnProfile: flag(data.showOnProfile), recommendable: flag(data.recommendable),
   };
 }
-export type DesignerProfile = { bio: string; cities: Array<{ code: string; name: string; districts: string[] }>; styles: string[]; featuredWorkIds: string[] };
+export type DesignerProfile = { bio: string; cities: Array<{ code: string; name: string; districts: string[] }>; styles: string[]; layoutSpecialties: string[]; featuredWorkIds: string[] };
 export function designerProfile(value: unknown): DesignerProfile {
-  const v = object(value, ['bio', 'cities', 'styles', 'featuredWorkIds']);
+  const v = object(value, ['bio', 'cities', 'styles', 'layoutSpecialties', 'featuredWorkIds']);
   if (!Array.isArray(v.cities) || v.cities.length > 10 || !Array.isArray(v.styles) || v.styles.length > 8 || !Array.isArray(v.featuredWorkIds) || v.featuredWorkIds.length > 12) fail('invalid_portfolio', 422);
+  const layoutSpecialties = optionList(v.layoutSpecialties ?? [], LAYOUT_OPTIONS);
+  if (layoutSpecialties.length > 6) fail('invalid_portfolio', 422);
   return { bio: shortText(v.bio, 500), cities: v.cities.map(item => {
     const c = object(item, ['code', 'name', 'districts']);
     if (!Array.isArray(c.districts) || c.districts.length > 30) fail('invalid_portfolio', 422);
     return { code: cityCode(c.code), name: shortText(c.name, 50, true), districts: c.districts.map(d => shortText(d, 50, true)) };
-  }), styles: [...new Set(v.styles.map(t => shortText(t, 30, true)))], featuredWorkIds: [...new Set(v.featuredWorkIds.map(id))] };
+  }), styles: [...new Set(v.styles.map(t => shortText(t, 30, true)))], layoutSpecialties, featuredWorkIds: [...new Set(v.featuredWorkIds.map(id))] };
 }

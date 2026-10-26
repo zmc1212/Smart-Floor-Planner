@@ -2,7 +2,7 @@ import type { WorkContent, DesignerProfile } from '@/lib/portfolio/contracts';
 export type WorkRow = { id: string; kind: string; author_id: string | null; author_name: string; head_version_id: string; published_version_id: string | null; withdrawn: boolean; version: number; status: string; content: WorkContent; review_note: string; number: number; updated_at: string };
 export type WorkVersion = { id: string; number: number; status: string; content: WorkContent; review_note: string; published_at: string | null };
 export type WorkDetail = { work: WorkRow; head: WorkVersion; versions: WorkVersion[]; manager: boolean; assets: Array<{ id: string; content_hash: string }>; audits: Array<{ id: string; action: string; note: string; created_at: string }> };
-export type Author = { id: string; display_name: string; professional_title: string | null; professional_profile_locked: boolean };
+export type Author = { id: string; display_name: string; professional_title: string | null; professional_profile_locked: boolean; professionalTitle?: string | null; experienceLabel?: string; portrait_available?: boolean };
 export type Profile = { content: DesignerProfile; version: number };
 export type Community = { id: string; name: string; city_code: string; city_name: string; district: string; address: string; provider: string };
 export const statusLabels: Record<string, string> = { draft: '草稿', submitted: '待审核', returned: '已退回', published: '已发布', withdrawn: '已下架' };

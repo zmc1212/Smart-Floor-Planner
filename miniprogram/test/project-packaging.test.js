@@ -219,7 +219,7 @@ test('main package contains only primary tabs and low-frequency flows are split 
   ]);
   assert.deepEqual(appConfig.subPackages, [
     { root: 'packages/construction', pages: ['projects/projects', 'brief/brief', 'chat/chat', 'public-sites/public-sites', 'public-site/public-site'] },
-    { root: 'packages/assistant', pages: ['chat/chat', 'requirements/requirements', 'handoff/handoff', 'designer/designer', 'work/work'] },
+    { root: 'packages/assistant', pages: ['chat/chat', 'requirements/requirements', 'handoff/handoff', 'designer/designer', 'work/work', 'tour-view/tour-view'] },
     { root: 'packages/surveying', pages: ['editor/surveying-editor'] },
     {
       root: 'packages/ai-workflow',

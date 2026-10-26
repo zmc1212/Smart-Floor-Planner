@@ -94,16 +94,49 @@
             <template wx:if="{{item.planDecision}}" is="plan-decision-card" data="{{card: planCards[item.planDecision.id], expanded: planExpanded, paths: planPaths, busy: planBusy, pending: planPending, disabled: readOnly || fatal}}"/>
             <button wx:if="{{item.publicContext}}" class="citation-chip" data-id="{{item.publicContext.id}}" data-version="{{item.publicContext.versionId}}" bindtap="openPublicSite">正在围观：{{item.publicContext.name}} · 查看公开节选</button>
             <button wx:for="{{item.publicReferences}}" wx:for-item="reference" wx:key="id" class="citation-chip" data-id="{{reference.id}}" data-version="{{reference.versionId}}" bindtap="openPublicSite">公开工地 · {{reference.name}}</button>
+            <view wx:if="{{item.designerRecommendation && item.id == latestDesignerMessageId}}" class="designer-cards">
+              <view wx:for="{{item.designerRecommendation.items}}" wx:for-item="card" wx:key="authorId" class="designer-card">
+                <view class="designer-card-head">
+                  <view class="designer-card-avatar">
+                    <image wx:if="{{designerCardPortraits[card.authorId]}}" src="{{designerCardPortraits[card.authorId]}}" mode="aspectFill" />
+                    <text wx:else>{{card.initial}}</text>
+                  </view>
+                  <view class="designer-card-identity">
+                    <text class="designer-card-name">{{card.authorName}}</text>
+                    <text wx:if="{{card.professionalTitle || card.experienceLabel}}" class="designer-card-title">{{card.professionalTitle}}{{card.professionalTitle && card.experienceLabel ? ' · ' : ''}}{{card.experienceLabel}}</text>
+                  </view>
+                  <button class="designer-card-link" data-id="{{card.authorId}}" data-work="{{card.work.id}}" bindtap="openCardDesigner" disabled="{{busy || pendingSend || pendingAction}}">查看设计室 <view class="chevron"></view></button>
+                </view>
+                <text wx:if="{{card.reason}}" class="designer-card-reason">{{card.reason}}</text>
+                <view class="designer-card-work" data-work="{{card.work.id}}" data-version="{{card.work.versionId}}" bindtap="openCardWork">
+                  <view class="designer-card-cover">
+                    <image wx:if="{{designerCardImages['i' + card.work.coverAssetId]}}" src="{{designerCardImages['i' + card.work.coverAssetId]}}" mode="aspectFill" />
+                    <text wx:if="{{card.work.tourCount}}" class="designer-card-3d">3D</text>
+                  </view>
+                  <view class="designer-card-copy">
+                    <text class="designer-card-work-title">{{card.work.title}}</text>
+                    <view wx:if="{{card.work.primaryStyle || card.work.layoutTypes.length}}" class="designer-card-tags">
+                      <text wx:if="{{card.work.primaryStyle}}" class="designer-card-tag style-tag">{{card.work.primaryStyle}}</text>
+                      <text wx:for="{{card.work.layoutTypes}}" wx:for-item="layout" wx:key="*this" class="designer-card-tag">{{layout}}</text>
+                    </view>
+                    <text wx:if="{{card.work.tourCount || card.work.cityName}}" class="designer-card-meta">{{card.work.tourCount ? card.work.tourCount + ' 个 3D 空间' : ''}}{{card.work.tourCount && card.work.cityName ? ' · ' : ''}}{{card.work.cityName}}</text>
+                  </view>
+                  <view class="chevron designer-card-arrow"></view>
+                </view>
+              </view>
+              <text wx:if="{{item.designerRecommendation.notice}}" class="designer-card-notice">{{item.designerRecommendation.notice}}</text>
+            </view>
           </view>
         </view>
 
+        <button wx:if="{{designerCardError}}" class="designer-card-retry" bindtap="retryDesignerCards">{{designerCardError}}</button>
         <view wx:if="{{planError || planPending}}" class="notice"><text>{{planError || '有一项方案决定等待核对。'}}</text><button class="notice-action" bindtap="retryPlan" disabled="{{planBusy}}">核对同次决定</button><button wx:if="{{!planPending}}" class="notice-action" bindtap="refresh">重新读取</button></view>
         <view wx:if="{{enterpriseId && !fatal}}" class="public-recommendations">
           <view wx:for="{{publicItems}}" wx:key="id" class="public-recommendation"><image wx:if="{{item.photos.length && publicPaths[item.photos[0].key]}}" src="{{publicPaths[item.photos[0].key]}}" mode="aspectFill"/><view><text class="public-recommendation-name">{{item.name}} · {{item.stageName}}</text><text class="owner-public-meta">{{item.district}} · 业主授权公开</text><button class="notice-action" data-id="{{item.id}}" data-version="{{item.versionId}}" bindtap="openPublicSite">去围观 ›</button></view></view>
           <button class="notice-action" bindtap="browseSites">看看附近的公开工地 ›</button>
           <view wx:if="{{publicError || publicPending}}" class="notice"><text>{{publicError || '有一项公开材料操作等待确认结果。'}}</text><button class="notice-action" bindtap="retryPublic" disabled="{{publicBusy}}">{{publicPending ? '核对同次操作结果' : '重新读取'}}</button></view>
         </view>
-        <view wx:if="{{conversation && messages.length && !generating && !readOnly}}" class="portfolio-recommendations">
+        <view wx:if="{{conversation && messages.length && !generating && !readOnly && !hasDesignerRecommendation}}" class="portfolio-recommendations">
           <button wx:if="{{!portfolioItems.length}}" class="notice-action" bindtap="loadDesigners" disabled="{{portfolioLoading || busy}}">{{portfolioLoading ? '正在查找公开作品…' : '看看适合我的设计师'}}</button>
           <view wx:for="{{portfolioItems}}" wx:key="authorId" class="portfolio-recommendation">
             <view class="portfolio-card-cover"><image wx:if="{{portfolioImages['i' + item.work.coverAssetId]}}" src="{{portfolioImages['i' + item.work.coverAssetId]}}" mode="aspectFill" /><text class="portfolio-image-label">{{item.work.coverLabel}}</text></view>
@@ -161,7 +194,7 @@
         <block wx:else>
           <text wx:if="{{citationLoading}}" class="sheet-state">正在核对资料访问权限…</text>
           <view wx:elif="{{citationError}}" class="notice"><text>{{citationError}}</text><button class="notice-action" bindtap="retryCitation">重试</button></view>
-          <view wx:elif="{{citation && citation.available}}" class="source-content"><text class="source-title">{{citation.title}}</text><text class="sheet-helper">版本 {{citation.versionNumber}}{{citation.historical ? ' · 回答时引用的历史版本' : ''}}</text><text wx:if="{{citation.sourceLocation}}" class="sheet-helper" user-select>{{citation.sourceLocation}}</text><image wx:if="{{citation.imagePath}}" class="message-photo" src="{{citation.imagePath}}" mode="widthFix" /><text class="source-quote" user-select>{{citation.quote}}</text><block wx:if="{{citation.reference}}"><text class="sheet-helper" user-select>出处：{{citation.reference.source}}</text><text class="sheet-helper" user-select>授权：{{citation.reference.authorization}}</text><text class="sheet-helper">仅供装修方向参考，不是你家的正式施工方案；可直接说喜欢或不合适。</text></block></view>
+          <view wx:elif="{{citation && citation.available}}" class="source-content"><text class="source-title">{{citation.title}}</text><text wx:if="{{citation.versionLabel}}" class="sheet-helper">{{citation.versionLabel}}</text><text wx:else class="sheet-helper">版本 {{citation.versionNumber}}{{citation.historical ? ' · 回答时引用的历史版本' : ''}}</text><text wx:if="{{citation.sourceLocation}}" class="sheet-helper" user-select>{{citation.sourceLocation}}</text><image wx:if="{{citation.imagePath}}" class="message-photo" src="{{citation.imagePath}}" mode="widthFix" /><text class="source-quote" user-select>{{citation.quote}}</text><block wx:if="{{citation.reference}}"><text class="sheet-helper" user-select>出处：{{citation.reference.source}}</text><text class="sheet-helper" user-select>授权：{{citation.reference.authorization}}</text><text class="sheet-helper">仅供装修方向参考，不是你家的正式施工方案；可直接说喜欢或不合适。</text></block></view>
           <text wx:else class="sheet-state">这份资料已撤回、过期或不再对当前身份开放。请重新提问。</text>
         </block>
       </scroll-view>

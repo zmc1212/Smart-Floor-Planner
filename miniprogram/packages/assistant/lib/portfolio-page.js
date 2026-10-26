@@ -31,6 +31,20 @@ function page(kind) {
     retry() { return this.controller.load(); },
     retryImages() { this.controller.set({ imageError: '' }); return this.controller.loadImages(); },
     moreWorks() { return this.controller.more(); },
+    setFilter(event) { return this.controller.setFilter(event.currentTarget.dataset.key); },
+    clearFilter() { return this.controller.setFilter('all'); },
+    setSpace(event) { this.controller.setSpace(event.currentTarget.dataset.space); },
+    openTour() {
+      const work = this.data.work;
+      if (!work || !work.tours.length) return;
+      if (work.tours.length === 1) { this.navigateTour(0); return; }
+      wx.showActionSheet({ itemList: work.tours.map(tour => tour.title || tour.provider), success: result => this.navigateTour(result.tapIndex) });
+    },
+    navigateTour(index) {
+      const work = this.data.work;
+      if (!work || !Number.isInteger(index) || index < 0 || index >= work.tours.length) return;
+      wx.navigateTo({ url: `/packages/assistant/tour-view/tour-view?conversationId=${encodeURIComponent(this.data.conversationId)}&workId=${work.id}&versionId=${work.versionId}&index=${index}` });
+    },
     login() { goToLogin(); },
     back() {
       if (getCurrentPages().length > 1) wx.navigateBack();
@@ -59,7 +73,8 @@ function page(kind) {
         await this.controller.client.read(`/conversations/${this.data.conversationId}/portfolio/works/${this.data.work.id}`, { versionId: this.data.work.versionId });
         if (!this._alive || !this._shown || this.controller.session !== identity()) return;
         const current = this.data.images['i' + event.currentTarget.dataset.id];
-        if (current) wx.previewImage({ current, urls: this.data.work.images.map(i => this.data.images['i' + i.assetId]).filter(Boolean) });
+        const shown = [...this.data.work.renders, ...this.data.work.photos];
+        if (current) wx.previewImage({ current, urls: shown.map(i => this.data.images['i' + i.assetId]).filter(Boolean) });
       } catch (error) { this.controller.fail(error, this.controller.epoch); }
     },
     pickTopic(event) {

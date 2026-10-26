@@ -1,0 +1,27 @@
+/* D-03b fallback at 390x844; native navigation stays untouched. */
+page { background: #f7fcf9; color: #082b2a; }
+.tour-page { min-height: 100vh; background: linear-gradient(160deg, #fff 0%, #f3faf6 58%, #fff 100%); }
+.tour-page button { width: auto; min-width: 0; margin: 0; padding: 0; border: 0; border-radius: 0; font: inherit; color: inherit; background: transparent; line-height: 1.5; box-sizing: border-box; }
+.tour-page button::after { border: 0; }
+.tour-page button:active { opacity: .75; }
+.tour-hero { position: relative; height: 320rpx; overflow: hidden; background: #dceee3; }
+.tour-hero-image { display: block; width: 100%; height: 100%; }
+.tour-hero-shade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(12,43,35,.08) 0%, rgba(12,43,35,.16) 46%, rgba(9,33,27,.72) 100%); }
+.tour-hero-badge { position: absolute; top: 24rpx; left: 28rpx; display: flex; align-items: center; gap: 8rpx; padding: 6rpx 14rpx; border-radius: 18rpx; color: #0c5b40; background: rgba(255,255,255,.9); font-size: 22rpx; font-weight: 600; }
+.tour-hero-badge image { width: 26rpx; height: 26rpx; }
+.tour-hero-title { position: absolute; left: 32rpx; right: 32rpx; bottom: 88rpx; color: #fff; font-size: 34rpx; font-weight: 700; line-height: 1.4; text-shadow: 0 2rpx 12rpx rgba(2,23,17,.35); }
+.tour-sheet { margin: 32rpx 28rpx 0; padding: 32rpx; border-radius: 28rpx; background: #fff; box-shadow: 0 16rpx 48rpx rgba(27,74,55,.06); }
+.tour-sheet.with-hero { position: relative; margin-top: -60rpx; }
+.tour-state { display: flex; align-items: center; gap: 14rpx; padding: 24rpx 0; font-size: 26rpx; color: #5e756c; }
+.loading-dot { width: 12rpx; height: 12rpx; flex: none; border-radius: 50%; background: #22c55e; animation: breathe 1.4s ease-in-out infinite; }
+@keyframes breathe { 50% { opacity: .35; } }
+.tour-title { display: block; font-size: 36rpx; font-weight: 700; line-height: 1.4; }
+.tour-copy { display: block; margin-top: 16rpx; font-size: 26rpx; line-height: 1.7; color: #5d736b; }
+.tour-provider { display: flex; align-items: center; gap: 12rpx; margin-top: 24rpx; padding-top: 24rpx; border-top: 1rpx solid #e6f0eb; font-size: 24rpx; color: #6f837b; }
+.tour-provider image { width: 34rpx; height: 34rpx; flex: none; }
+.tour-page .tour-primary, .tour-page .tour-secondary { display: flex; align-items: center; justify-content: center; gap: 12rpx; width: 100%; min-height: 88rpx; margin-top: 24rpx; padding: 16rpx 24rpx; border-radius: 48rpx; font-size: 28rpx; font-weight: 600; text-align: center; }
+.tour-page .tour-primary { color: #fff; background: #00b981; }
+.tour-primary image { width: 34rpx; height: 34rpx; flex: none; }
+.tour-page .tour-secondary { border: 2rpx solid #00b981; color: #105240; background: #fff; }
+.tour-notice { display: block; margin-top: 20rpx; font-size: 22rpx; line-height: 1.6; color: #8a9a94; text-align: center; }
+.tour-helper { display: block; margin-top: 24rpx; font-size: 22rpx; line-height: 1.7; color: #7d9088; }
