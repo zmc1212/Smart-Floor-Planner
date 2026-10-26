@@ -39,6 +39,14 @@ export class RequirementService {
       return work(repo, c);
     });
   }
+  workflowEnabled(conversationId: string) {
+    return this.scoped(conversationId, false, async (repo, c) => {
+      const settings = await repo.settings();
+      const entry = c.entry_snapshot as Row;
+      return entry.requirementReviewMode === true && entry.requirementWorkflow === 'langgraph'
+        && settings?.enabled === true && !entry.retentionRedacted && c.mode === 'ai' && c.status === 'open';
+    });
+  }
   read(conversationId: string) {
     return this.scoped(conversationId, false, async (repo, c) => {
       const latest = await one(repo.tx, sql`select * from app.assistant_requirement_summaries

@@ -56,6 +56,7 @@ function binding() {
 }
 
 async function main() {
+  assert.notEqual(mode, 'live', 'OS-CONTRACT-05 retires the three-Agent live matrix; use requirement-workflow-acceptance.ts for saved-input LangGraph approval checks');
   assert.ok(['services', 'transport', 'live'].includes(mode), 'Retired online-judge protocol probes are not authorized in this batch');
   assert.equal(scope.semanticEvaluation, 'offline'); fs.mkdirSync(directory, { recursive: true });
   const idle = await withPlatformTransaction(tx => rows(tx, sql`select count(*)::int n from app.assistant_jobs where status in ('queued','running')`));

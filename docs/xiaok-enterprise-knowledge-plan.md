@@ -1,5 +1,7 @@
 # XiaoK Enterprise Knowledge Plan
 
+> **Current dependency (2026-10-26): OS-CONTRACT-05 requires no knowledge-domain change.** The user fixed the Agent direction to LangChain/LangGraph approval/resume with saved failure replay. KnowledgeRetriever/Evidence and epoch/source revocation stay authoritative; no ingestion/retrieval rebuild or old R0–R4 restart. Agent evidence is recorded in [phase two](./xiaok-assistant-phase-2.md).
+
 > **Execution paused by the user — 2026-10-24.** This plan and the Agent plan no longer advance under the previous R0–R4 authorization. First evaluate an existing open-source renovation business assistant; AnythingLLM is the first pilot candidate. Preserve the current knowledge data and evidence, and do not restart ingestion, indexing or the previous model matrix merely to follow this historical plan. Any pilot integration must retain authorized-source, tenant and revocation boundaries. The older “current” and “next” records below are historical, not an active queue; no new integration or acceptance is claimed by this notice.
 
 The unified development chat uses the Chinese [automation execution guide](./manuals/xiaok-stage-tests/automation.zh-CN.md) for both plans. One owner implements, fixes and performs automated acceptance, reporting client units, real services, Stable native automation and the configured real model separately. Routine work does not require an independent testing chat or user-approved freeze/handoff. The guide provides test methods, not proof of execution or success.

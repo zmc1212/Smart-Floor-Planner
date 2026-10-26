@@ -1,6 +1,22 @@
 # 小K第二期：需求整理与人工交接
 
-## 当前交付：聊天记忆、业务提案与确认写入分离（2026-10-25）
+## 当前交付：LangGraph原生审批、恢复与真实回执（2026-10-26）
+
+**OS-CONTRACT-05：隔离审批链Implemented，新模型语义及默认迁移Limited。** 用户授权固定LangChain/LangGraph，直接复用原生审批/恢复，先重放已有失败记录，不再反复换框架跑整套矩阵。入口仍为批准的C02需求页和原GET/POST `/api/miniprogram/assistant/conversations/:id/requirements`；既有候选review会话另设`entry_snapshot.requirementWorkflow="langgraph"`，普通会话保持原行为。下一OS-CONTRACT-06为有界的类型化提案工具/咨询回答接入，未启动；不恢复三框架矩阵、付费采样、旧R0–R4/知识入库或生产部署。
+
+**复用与状态合同。** 直接使用已装`@langchain/langgraph@1.5.0`的StateGraph、`interrupt`、`Command`及官方`@langchain/langgraph-checkpoint-postgres@1.1.2`。提案仍由RequirementService生成；图在接受前暂停，仅由获权客户请求恢复，apply节点调用原租户/参与者/来源hash与水位/epoch/摘要version/幂等事务。另一次正式确认才写confirmed字段。新工作流HTTP成功增加可选`receipt.effect/summaryId/text`，从真实获权数据库记录组成；模型原话不再充当执行回执。同键、不同键和并发重试均保留同一业务实体。每次操作重建进程内图，由官方Postgres checkpoint恢复，不自写推理/恢复循环或另一套业务库。
+
+**持久化与边界。** 显式官方setup在`assistant_requirement_workflow`建四张checkpoint表，客户请求不执行DDL；本轮仅用既有owner连接初始化批准隔离库，给予app角色schema USAGE及表CRUD，不授schema CREATE或public访问。checkpoint仅保存提案/digest/摘要ID、决定和原request key，不复制聊天、需求值、企业资料或模型答复。每次访问沿原身份/参与者/租户守卫；共享tenant advisory事务串行跨进程恢复，业务写入早于checkpoint时仍由原服务幂等保证。已知错误仅留code，SQL参数错误先净化再进入checkpoint。来源epoch失效、他客/他租户及身份撤销均不能恢复接受。清理用官方deleteThread；不宣称生产建库/迁移或全量保留策略运营接入已完成。
+
+**固定保存输入验证。** `admin/scripts/requirement-workflow-acceptance.ts`重放`tmp/agent-contract/trial-2026-10-25T06-01-28-936Z.json`中createAgent第一组save/mixed/reversal原始首稿；只按相同原话及条目field/value重绑定资源ID，不修补动作、字段、值或原答复。企业问答引用是独立且仍未验证的通道，不再连带阻断本来合法的预算提案；原记录/hash及逐项映射均保留。`tmp/agent-workflow/services-2026-10-26T07-16-25-908Z.json`21项真实隔离服务通过，drift[]/清理完成，实际provider attempts和active jobs均0。这证明确定性业务/恢复链，不把原模型答复修复或改判为新语义通过；早先建库权限、驱动/命令预检失败保留。
+
+**客户端、验证与限制。** 继续复用唯一批准`design-references/xiaok-assistant-phase1-ppt-v1/sources/slide06-needs.png`的C02布局/素材/动作，不改Mini markup/样式/文案或新设视觉。Server13/Mini13单元通过，限定1888源类型0及限定lint通过；Admin全仓lint退出0、26个warning位于本次变更范围外。隔离webpack生产构建通过；Turbopack的Windows junction失败保留，未替换现有开发输出。原生`tmp/agent-contract/review-native-os-contract-05-native-03/report.json`15项真实HTTP/页面/写入/重进/故障检查通过，drift[]/清理完成/实际模型0，使用既有Stable2.02.2608080/SDK3.17.2副屏窗口；旧9431查询端口不可用时由用户核实确切目录，沿既有native助手编译同一窗口，未替换窗口。逻辑390×844/PNG348×752，已对照批准源审看pending及恢复后草稿截图。历史弹窗决定使用SDK回调；弹窗像素、完整光学校准和真机登录未验证。本轮无新增模型调用；原191636tokens批次及累计1301914tokens/费用上界¥4.786907记账不变。
+
+**维护中来源与采纳。** [LangGraph审批/恢复](https://docs.langchain.com/oss/javascript/langgraph/interrupts)提供实际interrupt/Command，[官方Postgres checkpoint例](https://docs.langchain.com/oss/javascript/langgraph/add-memory)提供持久化。按上游重放警告，将副作用放在批准后且保留业务幂等。固定依赖、逐批绑定源码/配置/驱动、保留旧失败，不把旧模型评分混入本轮零模型验收。KnowledgeRetriever/Evidence及资料发布/入库未变。
+
+**最终影响与闭合。** 21项服务另证明两个独立Node进程恢复，以及旧操作回执随之后的正式确认/清理而投影当前状态、不缓存私密正文。末次运行时修正仅选择这些后续状态的receipt effect/text，由最终服务/类型/lint覆盖；未变C02/UI/普通草稿路径及依赖/打包形状复用先前有效原生/构建证据，不宣称最终小分支重跑原生/构建。历史三Agent驱动的live模式已在数据库/供应商调用前拒绝，拦截检查通过，原trace/预算不改。本轮保存输入的提案→确认→写入→真实回执切片闭合，新配置模型的语言理解仍未验证。
+
+## 历史交付：OS-CONTRACT-04（2026-10-25）
 
 **OS-CONTRACT-04：候选机制Implemented；配置模型整链Limited。** 用户已授权三层分离、已有草稿幂等、历史值恢复确认及重测AnythingLLM、官方createAgent、PydanticAI。本次按批准预算闭合有界测试：计划54轮、实际发出52轮，没有候选完整达标，不据此迁移默认运行时。下一项OS-CONTRACT-05是基于保存trace的共享协议/回答组成决策，未启动；旧R0–R4、企业知识入库及生产仍暂停。
 

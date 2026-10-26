@@ -71,6 +71,7 @@
     "@ant-design/v5-patch-for-react-19": "^1.0.3",
     "@google/generative-ai": "^0.24.1",
     "@langchain/langgraph": "1.5.0",
+    "@langchain/langgraph-checkpoint-postgres": "1.1.2",
     "@napi-rs/canvas": "^1.0.7",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",

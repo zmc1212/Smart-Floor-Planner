@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { AssistantError, fail, id, key } from '../contracts';
 import { ConversationService } from '../core/conversation';
-import { RequirementService } from '../requirements/service';
+import { RequirementWorkflow } from '../requirements/workflow';
 import { customerIdentity, entryContext, fromEntry, locate } from './auth';
 import { HandoffService } from '../handoff/service';
 import { staffHandoffHttp } from '../handoff/http';
@@ -77,10 +77,10 @@ export async function assistantHttp(request: Request, path: string[]) {
         only(body, ['action', 'expectedVersion']);
         if (body.action !== 'archive' || !Number.isInteger(body.expectedVersion) || Number(body.expectedVersion) < 1) fail('invalid_message', 422);
         data = await service.archive(target, Number(body.expectedVersion), requestKey());
-      } else if (path[2] === 'requirements' && method === 'GET') data = await new RequirementService(actor).read(target);
+      } else if (path[2] === 'requirements' && method === 'GET') data = await new RequirementWorkflow(actor).read(target);
       else if (path[2] === 'handoff' && method === 'GET') data = await new HandoffService(actor).customerRead(target);
       else if (path[2] === 'handoff' && method === 'POST') data = await new HandoffService(actor).customerWrite(target,requestKey(),body);
-      else if (path[2] === 'requirements' && method === 'POST') data = await new RequirementService(actor).write(target, requestKey(), body);
+      else if (path[2] === 'requirements' && method === 'POST') data = await new RequirementWorkflow(actor).write(target, requestKey(), body);
       else if (path[2] === 'messages' && method === 'GET') data = await service.messages(target, cursor('beforeSeq'), limit);
       else if (path[2] === 'construction-contact' && method === 'GET') {
         if ([...params.keys()].some(k => !['projectId', 'messageId'].includes(k))) fail('invalid_message', 422);
