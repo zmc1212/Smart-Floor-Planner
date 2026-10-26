@@ -54,7 +54,8 @@ export class HandoffWorkflow {
     return { ...data, ...(enabled ? { reviewWorkflow: 'langgraph' as const } : {}) };
   }
   /** Model-facing proposal only: no consent, phone or execution inputs. */
-  async propose(conversationId: string, action: 'request' | 'cancel') {
+  async propose(conversationId: string, action: 'request' | 'cancel',
+    guard?: (repo: AssistantRepository, conversation: Row) => Promise<void>) {
     await this.authorized(conversationId);
     const current = await this.service.customerRead(conversationId);
     if(action==='request' && current.handoff && ['waiting','active'].includes(current.handoff.state))return {
@@ -63,7 +64,10 @@ export class HandoffWorkflow {
     if(action==='cancel' && (!current.handoff || ['cancelled','ended'].includes(current.handoff.state)))return {
       action,effect:'existing' as const,writesBusinessState:false,currentState:current.handoff?.state || 'none',text:'当前没有待取消的接待请求。',
     };
-    const proposal=await this.scoped(conversationId,true,(repo,c,settings)=>stageHandoffProposal(repo,c,settings,action));
+    const proposal=await this.scoped(conversationId,true,async(repo,c,settings)=>{
+      if (guard) await guard(repo,c);
+      return stageHandoffProposal(repo,c,settings,action);
+    });
     return { action, effect: 'proposal' as const, writesBusinessState: false,
       proposal,
       currentState: current.handoff?.state || 'none',

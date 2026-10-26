@@ -11,6 +11,7 @@ import { requestsDesigner } from '../handoff/intent';
 import { stageHandoffProposal } from '../handoff/proposal';
 import { currentHandoffOwner } from '../handoff/owner';
 import { agentConfig } from '../agent/config';
+import { reviewRuntimeProtocol } from '../agent/review-runtime';
 import { referenceCase } from '../knowledge/reference-case';
 import { contentEntrySource, contentGreeting, type ContentEntry } from '../knowledge/content-entry';
 import { syncConstructionReminders } from '@/lib/construction/reminders';
@@ -28,8 +29,10 @@ export function conversationSource(c:Row) {
 const json = (value: unknown) => JSON.stringify(value);
 export function conversationDto(c: Row) {
   const guidance = conversationGuidance(c.entry_snapshot);
+  const entry = c.entry_snapshot as Row;
   return { id: String(c.id), purpose: c.purpose, status: c.status, mode: c.mode, title: c.title, version: c.version, contextRevision: c.context_revision, createdAt: c.created_at,
-    ...((c.entry_snapshot as Row)?.requirementReviewMode===true && (c.entry_snapshot as Row)?.requirementWorkflow==='langgraph' ? {reviewWorkflow:'langgraph'} : {}),
+    ...(entry?.requirementReviewMode===true && entry?.requirementWorkflow==='langgraph' ? {reviewWorkflow:'langgraph'} : {}),
+    requirementProposalPending: entry?.agentReviewCandidate === true && (entry?.requirementProposal as Row | undefined)?.status === 'pending',
     guidanceEnabled: !!guidance, guidanceOpening: guidance ? guidanceOpening(guidance) : null,
     humanName: ((c.entry_snapshot as Row)?.handoff as Row)?.ownerName || null };
 }
@@ -77,6 +80,10 @@ export async function terminalEvent(tx: PostgresTransaction, enterpriseId: strin
 export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Row, settings: Row, messageId: string | null, retryOf?: string, trigger: RunTrigger = { kind: 'user_message', messageId: messageId! }, purpose = 'reply') {
   if (c.status !== 'open' || c.mode !== 'ai') fail('context_changed');
   const agent = actor.principal.kind === 'user' || (purpose === 'site.record' && actor.capabilities.includes('assistant.project.shared')) ? agentConfig(settings.agent_config) : null;
+  const entry = c.entry_snapshot as Row;
+  const reviewRuntime = agent && actor.principal.kind === 'user' && c.purpose === 'customer_consultation'
+    && entry.agentReviewCandidate === true && entry.requirementReviewMode === true
+    && entry.requirementWorkflow === 'langgraph' ? reviewRuntimeProtocol : null;
   // Consultation reserves each actual dispatch in the same original row;
   // delivered legacy Agent runs retain their existing72000 reservation.
   const tokenReservation = agent?.consultation ? 0 : agent ? 72000 : reserveTokens;
@@ -96,7 +103,8 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   const r = (await one(tx, sql`insert into app.assistant_runs(enterprise_id,conversation_id,trigger_kind,trigger_message_id,trigger_event_id,trigger_schedule_key,purpose,retry_of_run_id,policy_snapshot,context_revision,knowledge_epoch)
     values(${actor.enterpriseId},${String(c.id)},${trigger.kind},${trigger.kind === 'user_message' ? trigger.messageId : null},
     ${trigger.kind === 'domain_event' ? trigger.eventId : null},${trigger.kind === 'scheduled_task' ? trigger.occurrenceKey : null},${purpose},
-    ${retryOf || null},${json({ schemaVersion: 1, actor, maxTokens: agent?.consultation ? 8192 : 2048, policyVersion: settings.policy_version, agent })}::jsonb,${Number(c.context_revision)},${Number(settings.knowledge_epoch)}) returning *`))!;
+    ${retryOf || null},${json({ schemaVersion: 1, actor, maxTokens: agent?.consultation ? 8192 : 2048, policyVersion: settings.policy_version, agent,
+      ...(reviewRuntime ? { reviewRuntime } : {}) })}::jsonb,${Number(c.context_revision)},${Number(settings.knowledge_epoch)}) returning *`))!;
   const runId = String(r.id);
   await tx.execute(sql`insert into app.assistant_jobs(enterprise_id,kind,run_id,dedupe_key) values(${actor.enterpriseId},'chat_turn',${runId},${'run:' + runId})`);
   await tx.execute(sql`insert into app.assistant_quota_reservations(enterprise_id,run_id,operation_key,reserved_tokens,reserved_cost_micros)

@@ -81,6 +81,9 @@ async function main() {
   const tools=await businessReviewTools(f.actor,cid);
   await assert.rejects(()=>tools.requestDesigner.invoke(JSON.parse('{"consent":true,"phone":"13800000000"}')));check('LangChainToolRejectsModelSuppliedConsentAndPhone');
   await assert.rejects(()=>tools.proposeRequirements.invoke({retainedIds:tools.context.savedItems.map(i=>i.id),changes:[{operation:'add',field:'budget',sourceId:'k-company-reference'}]}));check('typedCustomerSourceEnumRejectsCompanyReference');
+  await assert.rejects(()=>handoff.propose(cid,'request',async()=>{throw Error('synthetic_lease_revoked');}),/synthetic_lease_revoked/);
+  const beforeProposal=await withPlatformTransaction(tx=>one(tx,sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${f.enterpriseId} and id=${cid}`));
+  assert.equal((beforeProposal!.entry_snapshot as Record<string,unknown>).handoffProposal,undefined);check('revokedWorkerLeaseCannotStageHandoffProposal');
   const proposed=await tools.requestDesigner.invoke({});assert.equal(proposed.effect,'proposal');assert.equal((await handoff.customerRead(cid)).handoff,null);
   await assert.rejects(()=>new HandoffService(f.actor).customerWrite(cid,randomUUID(),{action:'request'}),/handoff_review_required/);
   check('legacyModelToolCannotBypassNativeCustomerApproval');

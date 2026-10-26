@@ -57,6 +57,12 @@ import { webEvidence, webSynthesisSources, webAnswerQuoteSpans } from './web-evi
 import { proseNumberProtocol } from './prose-number-view';
 import { consultationRuntimeBudget } from './consultation-profile';
 import { citationSelectionProtocol } from './citation-coverage';
+import { businessReviewTools } from './review-tools';
+import { reviewCandidate, reviewModelTools, reviewProposalContext, reviewProposalReply, type ReviewToolName } from './review-runtime';
+import { RequirementWorkflow } from '../requirements/workflow';
+
+type ReviewMarker = { protocol: 'candidate-business-review-v1'; name: ReviewToolName;
+  effect: 'proposal' | 'existing'; proposalId: string | null; digest: string | null };
 
 const needProperties = { room: { type: 'string', description: '仅填该字段自身分句中的明确房间；仅写预算而无房间时填空字符串，不借用相邻分句的房间。' }, field: { type: 'string', enum: factFields, description: 'use记录用途/人数，desk记录桌型/书桌位置，storage记录收纳/柜体要求，budget记录预算，daylight记录采光，devices记录设备；style只记录装修风格，不存书桌位置或收纳。独立字段分别保存，不用更正人数覆盖设备或位置。' }, value: { type: 'string', description: '逐字摘自quote，不改写。' }, quote: { type: 'string', description: '该字段的最短完整原分句，逐字摘自本次客户消息，标点也不改写；不拼接多句。' } };
 export const needTool: ModelTool = { name: 'record_need', description: '保存当前客户消息中明确说出的需求，只摘原话。不变字段沿用原记录。同一消息有多个独立字段时，主字段加additionalNeeds一次原子保存（合计最多四条），不要逐轮单独保存。明确更正后又提问时先保存，等回执再查询解释；逗号后以另外/此外/顺便另问的独立问题不取消前面的明确更正，quote只摘更正原句，不带后面的假设/问题，也不保存问题中的设备或房间。更正本身附条件、转述或客户说不记录时不保存。返回memoryVersion。', parameters: {
@@ -360,6 +366,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
   summary?: (messages: ModelMessage[], tools: ModelTool[], turn: number, requestTools?: ModelTool[]) => Promise<ModelTurnOutput>;
 } = {}) {
   let outcomeKnown = false;
+  let reviewEnabled = false;
   const constructionSources = new Set<string>();
   const publicSources = new Map<string, PublicContextRef & { contentHash?: string }>();
   const materialSources = new Map<string, MaterialDependency>();
@@ -378,6 +385,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
   const scoped = <T>(fn: (tx: Parameters<typeof runContext>[0], context: Awaited<ReturnType<typeof runContext>>) => Promise<T>) =>
     withTenantTransaction(lease.enterpriseId, async tx => {
       const context = await runContext(tx, lease);
+      if (reviewEnabled && !reviewCandidate(context.conversation.entry_snapshot, context.run.policy_snapshot)) fail('context_changed');
       if (readContext) readToolContext(context.conversation.entry_snapshot as Row, { readContext });
       await validateConstructionSources(tx, String(context.conversation.id));
       if (!await needRunSourcesAvailable(tx, lease.enterpriseId, String(context.conversation.id), lease.runId)) fail('context_changed');
@@ -584,6 +592,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     });
     const reviewContext = { currentQuestion: safeText(initial.trigger.content as Parameters<typeof safeText>[0]),
       currentOriginal: { messageId: String(initial.trigger.id), hash: fingerprint(initial.trigger.content) } };
+    reviewEnabled = reviewCandidate(initial.conversation.entry_snapshot, initial.run.policy_snapshot);
     const authorize = async () => { await scoped(async (tx, context) => {
       if (initial.consultationDeadlineAt ? Date.now() >= initial.consultationDeadlineAt : Date.now() - new Date(String(initial.run.created_at)).getTime() > 300_000) fail('agent_deadline_exceeded', 422);
       const setting = await one(tx, sql`select agent_config from app.assistant_enterprise_settings where enterprise_id=${lease.enterpriseId}`);
@@ -592,6 +601,42 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       for (const ref of initial.referenceEvidence) if (!await resolveEvidence(tx, lease.actor, context.conversation, ref, true)) fail('context_changed');
       await currentSynthesisContext(tx, lease.actor, context.conversation, lease.runId);
     }); };
+    const review = reviewEnabled ? await businessReviewTools(lease.actor, String(initial.conversation.id), {
+      proposalKey: `agent:${lease.runId}`,
+      // A nested LangGraph interrupt would suspend the running Agent graph.
+      // Prepare the approval graph only after this graph returns.
+      deferGraphPrepare: true,
+      guard: async (repo, conversation) => {
+        const current = await runContext(repo.tx, lease);
+        if (String(current.conversation.id) !== String(conversation.id)
+          || !reviewCandidate(current.conversation.entry_snapshot, current.run.policy_snapshot)) fail('context_changed');
+      },
+    }) : null;
+    const reviewDefinitions = review ? reviewModelTools(review) : [];
+    if (review && initial.messages[0]?.role === 'system' && !initial.resume)
+      initial.messages[0].content.push({ type: 'text', text: reviewProposalContext(review) });
+    const toolsForMessage = (businessFollowup: boolean) => {
+      const base = publicResearchTools(readToolsForContext(agentToolsForMessage(reviewContext.currentQuestion,
+        initial.config.tools, businessFollowup, !!dependencies.webSearch || configuredWebProvider() !== null,
+        initial.designerFollowup), readContext), !!initial.config.consultation);
+      return review ? [...base.filter(tool => !['record_need', 'request_designer'].includes(tool.name)), ...reviewDefinitions] : base;
+    };
+    const reviewReceipt = async (marker: ReviewMarker) => {
+      if (marker.name === 'propose_requirement_changes' && marker.effect === 'proposal') {
+        const current = await new RequirementWorkflow(lease.actor).requirements.read(String(initial.conversation.id));
+        if (current.proposal?.id === marker.proposalId && current.proposal.digest === marker.digest)
+          return reviewProposalReply(marker.name, marker.effect);
+        const applied = await scoped(async (_tx, context) => (context.conversation.entry_snapshot as Row).requirementProposal as Row | undefined);
+        if (applied?.id === marker.proposalId && applied.digest === marker.digest && applied.status === 'applied'
+          && current.latest?.id === String(applied.summaryId)) return '需求草稿已保存，尚未正式确认。';
+        fail('context_changed');
+      }
+      if (marker.name !== 'propose_requirement_changes' && marker.effect === 'proposal') {
+        const pending = await scoped(async (_tx, context) => (context.conversation.entry_snapshot as Row).handoffProposal as Row | undefined);
+        if (pending?.id !== marker.proposalId || pending.digest !== marker.digest || pending.status !== 'pending') fail('context_changed');
+      }
+      return reviewProposalReply(marker.name, marker.effect);
+    };
     let turnAllocation: ReturnType<typeof consultationRuntimeBudget> | undefined;
     const callModel = async (turn: number, messages: ModelMessage[], tools: ModelTool[], purpose: ModelRequestPurpose = 'answer'): Promise<ModelTurnOutput> => {
           const consultation = initial.config.consultation, profile = consultation?.profile;
@@ -690,12 +735,14 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           if (consultation && !usageKnown) fail('provider_usage_unknown', 502);
           if (purpose === 'answer' && providerOutput.toolCalls.some(call => !dispatchTools.some(tool => tool.name === call.name)))
             fail(knowledgeReadPending(reviewContext.currentQuestion, focused, String(initial.trigger.id)) ? 'source_read_required' : 'assistant_capability_forbidden', 502);
+          if (purpose === 'answer' && providerOutput.toolCalls.some(call => reviewDefinitions.some(tool => tool.name === call.name))
+            && providerOutput.toolCalls.length !== 1) fail('assistant_capability_forbidden', 502);
           return output.agentOutput;
     };
     // This first extractive digest is read-only. A current write/handoff must not
     // inherit a prior memory revision or reinterpret history as authorization.
-    const summaryWrites = ['record_need','request_designer','record_reference_preference'];
-    const initialTools = publicResearchTools(readToolsForContext(agentToolsForMessage(safeText(initial.trigger.content as Parameters<typeof safeText>[0]), initial.config.tools, false, !!dependencies.webSearch || configuredWebProvider() !== null, initial.designerFollowup), readContext), !!initial.config.consultation);
+    const summaryWrites = ['record_need','request_designer','record_reference_preference', ...reviewDefinitions.map(tool => tool.name)];
+    const initialTools = toolsForMessage(false);
     if (!initial.resume && initial.savedSummary?.status === 'succeeded') {
       initial.messages = withHistorySummary(initial.messages, initial.savedSummary.private_checkpoint as HistorySnapshot);
     } else if (!initial.resume && !initial.savedSummary && initial.config.tools && !currentMessageOnlyRequested(reviewContext.currentQuestion) && !independentAdviceRequested(reviewContext.currentQuestion) && (!dependencies.model || dependencies.summary)
@@ -751,7 +798,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and kind='agent_model'`);
       return consultationRuntimeBudget({summaries:Number(auxiliary?.summaries||0),perceptions:Number(auxiliary?.perceptions||0)});
     });
-    const result = await runRenovationAgent({ messages: initial.messages, tools: publicResearchTools(readToolsForContext(agentToolsForMessage(safeText(initial.trigger.content as Parameters<typeof safeText>[0]), initial.config.tools, businessFollowup, !!dependencies.webSearch || configuredWebProvider() !== null, initial.designerFollowup), readContext), !!initial.config.consultation), resume: initial.resume,
+    const result = await runRenovationAgent({ messages: initial.messages, tools: toolsForMessage(businessFollowup), resume: initial.resume,
       reservedValidationRepairs: turnAllocation?.reservedValidationRepairs, primaryModelTurns: turnAllocation?.primaryModelTurns,
       ports: {
         authorize,
@@ -780,7 +827,26 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             values(${lease.enterpriseId},${lease.runId},1007,'agent_history_context','succeeded',${JSON.stringify([...historySources.values()])}::jsonb)
             on conflict(enterprise_id,run_id,step_seq) do update set source_refs=excluded.source_refs`);
         }),
-        resolveToolReply: state => scoped(async (tx, context) => {
+        resolveToolReply: async state => {
+          if (review) {
+            const last = state.messages.at(-1);
+            if (last?.role === 'tool') {
+              let requestIndex = state.messages.length - 2;
+              while (requestIndex >= 0 && state.messages[requestIndex].role === 'tool') requestIndex--;
+              const request = state.messages[requestIndex];
+              const index = request?.role === 'assistant' ? request.toolCalls?.findIndex(call => call.id === last.callId) ?? -1 : -1;
+              const call = index >= 0 && request?.role === 'assistant' ? request.toolCalls![index] : null;
+              if (call && reviewDefinitions.some(tool => tool.name === call.name)) {
+                const step = await scoped(tx => one(tx, sql`select private_checkpoint from app.assistant_run_steps
+                  where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}
+                    and step_seq=${1200 + (state.turn - 1) * 10 + index} and capability_name=${call.name} and status='succeeded'`));
+                const marker = step?.private_checkpoint as ReviewMarker | undefined;
+                if (!marker || marker.protocol !== 'candidate-business-review-v1' || marker.name !== call.name) fail('context_changed');
+                return JSON.stringify({ kind: 'general', text: await reviewReceipt(marker) });
+              }
+            }
+          }
+          return scoped(async (tx, context) => {
           const question = safeText(initial.trigger.content as Parameters<typeof safeText>[0]);
           if (!explicitNeedRecordOnly(question) || state.messages.at(-1)?.role !== 'tool') return null;
           let index = state.messages.length - 1;
@@ -797,7 +863,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               ${JSON.stringify({ protocol: agentToolReplyProtocol, triggerMessageId: String(initial.trigger.id), providerDispatch: false, formalApproval: false })}::jsonb)
             on conflict(enterprise_id,run_id,step_seq) do update set source_refs=excluded.source_refs,private_checkpoint=excluded.private_checkpoint`);
           return JSON.stringify({ kind: 'general', text: receipt.text });
-        }),
+          });
+        },
         resolveFinal: (raw, state) => scoped(async (tx, context) => {
           if (knowledgeReadPending(safeText(initial.trigger.content as Parameters<typeof safeText>[0]), state.messages, String(initial.trigger.id))) {
             let kind: unknown;
@@ -892,6 +959,37 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         tool: async (turn, index, name, args) => {
           const input = bindReadToolInput(name, JSON.parse(args), readContext) as Row;
           const sequence = 1200 + turn * 10 + index, resultKey = `${lease.runId}:${turn}:${index}`;
+          if (review && reviewDefinitions.some(tool => tool.name === name)) {
+            const typed = name === 'propose_requirement_changes' ? review.proposeRequirements
+              : name === 'propose_designer_reception' ? review.requestDesigner : review.cancelDesigner;
+            const invoke = typed.invoke.bind(typed) as (value: Row) => Promise<unknown>;
+            const argsHash = fingerprint(input);
+            const cached = await scoped(tx => one(tx, sql`select status,private_checkpoint,input_summary
+              from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`));
+            if (cached && (cached.status !== 'succeeded' || (cached.input_summary as Row)?.argsHash !== argsHash)) fail('context_changed');
+            let marker = cached?.private_checkpoint as ReviewMarker | undefined;
+            if (!marker) {
+              await authorize();
+              let output: Record<string, unknown>;
+              try { output = await invoke(input) as Record<string, unknown>; }
+              catch (error) {
+                if (error && typeof error === 'object' && 'name' in error && error.name === 'ZodError') fail('invalid_requirement_plan', 422);
+                throw error;
+              }
+              await authorize();
+              const effect = output.kind === 'proposal' || output.effect === 'proposal' ? 'proposal' : 'existing';
+              const proposal = output.proposal as Record<string, unknown> | undefined;
+              marker = { protocol: 'candidate-business-review-v1', name: name as ReviewToolName, effect,
+                proposalId: typeof proposal?.id === 'string' ? proposal.id : null,
+                digest: typeof proposal?.digest === 'string' ? proposal.digest : null };
+              if (effect === 'proposal' && (!marker.proposalId || !marker.digest)) fail('context_changed');
+              await scoped(tx => tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint,input_summary)
+                values(${lease.enterpriseId},${lease.runId},${sequence},'agent_tool',${name},1,'succeeded',${JSON.stringify(marker)}::jsonb,
+                  ${JSON.stringify({ protocol: 'candidate-business-review-v1', argsHash, resultKey })}::jsonb)`));
+            }
+            return { exhausted: true, content: JSON.stringify({ effect: marker.effect, text: await reviewReceipt(marker),
+              formalApproval: false, writesBusinessState: false }) };
+          }
           if (name === 'search_web' || name === 'read_web') {
             const reading = name === 'read_web';
             if (reading && !initial.config.consultation) fail('assistant_capability_forbidden',403);
@@ -1152,6 +1250,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       },
     });
     if (result.stop) return;
+    if (review) await new RequirementWorkflow(lease.actor).read(String(initial.conversation.id));
     let reply: { kind?: string; text?: string; resultKey?: string; selections?: string[] };
     try { reply = JSON.parse((result.output?.text || '').replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch { fail('invalid_model_answer', 502); }
     const usedSourceTool = await scoped(async tx => one(tx, sql`select id from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}

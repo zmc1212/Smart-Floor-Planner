@@ -166,6 +166,7 @@
     <view wx:if="{{!keyboardHeight}}" class="conversation-tools">
       <button wx:if="{{conversation.mode === 'human' || conversation.mode === 'handoff_requested'}}" class="text-action" bindtap="endHandoff" disabled="{{busy || pendingSend || pendingAction}}">{{conversation.mode === 'human' ? '结束接续，回到小K' : '取消等待，回到小K'}}</button>
       <button wx:else class="text-action" bindtap="openHistory" disabled="{{loading || needsLogin || fatal || busy || pendingSend || pendingAction}}"><image src="../assets/history.png" />查看历史</button>
+      <button wx:if="{{conversation.requirementProposalPending && conversation.mode === 'ai'}}" class="text-action" bindtap="openRequirements" disabled="{{loading || needsLogin || fatal || busy || pendingSend || pendingAction}}">查看需求提案</button>
     </view>
     <view wx:if="{{mediaBusy || mediaPending || mediaError}}" class="notice"><text>{{mediaBusy ? '图片发送中…' : mediaError}}</text><button wx:if="{{!mediaBusy}}" class="notice-action" bindtap="retryMedia">{{mediaPending ? '核对发送结果' : '重试'}}</button></view>
     <view class="composer">

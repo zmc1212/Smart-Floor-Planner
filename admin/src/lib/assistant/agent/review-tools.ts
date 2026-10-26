@@ -13,7 +13,11 @@ import { customerSources } from '../requirements/service';
 import { requirementPlan } from '../requirements/plan';
 
 /** LangChain validates typed tool inputs. Consent is never a model parameter. */
-export async function businessReviewTools(actor: ActorContext, conversationId: string) {
+export async function businessReviewTools(actor: ActorContext, conversationId: string, options: {
+  proposalKey?: string;
+  deferGraphPrepare?: boolean;
+  guard?: (repo: AssistantRepository, conversation: Record<string, unknown>) => Promise<void>;
+} = {}) {
   const requirements=new RequirementWorkflow(actor), handoff=new HandoffWorkflow(actor);
   const evidence=await requirements.requirements.customerEvidence(conversationId), current=await requirements.read(conversationId);
   const epoch=await withTenantTransaction(actor.enterpriseId,async tx=>{
@@ -30,10 +34,12 @@ export async function businessReviewTools(actor: ActorContext, conversationId: s
   ]);
   return {
     context:{planVersion:'retention-partition-1',customerClauses:sources,savedItems:items,savedSummaryId:current.latest?.id || null},
-    proposeRequirements:tool(async(plan)=>requirements.propose(conversationId,randomUUID(),{
+    proposeRequirements:tool(async(plan)=>(options.deferGraphPrepare ? requirements.requirements : requirements)
+      .propose(conversationId,options.proposalKey || randomUUID(),{
       sourceSeq:evidence.sourceSeq,baseSummaryId:current.latest?.id || null,
       changes:requirementPlan(items,sources,evidence.messages.at(-1)?.id || '',plan),
-    },async(repo)=>{
+    },async(repo,conversation)=>{
+      if (options.guard) await options.guard(repo,conversation);
       const actual=await customerSources(repo,actor.enterpriseId,conversationId),settings=await repo.settings();
       if(fingerprint(actual.inputs)!==fingerprint(evidence.messages) || Number(settings!.knowledge_epoch)!==epoch)fail('context_changed');
       const latest=await one(repo.tx,sql`select id,version from app.assistant_requirement_summaries where enterprise_id=${actor.enterpriseId} and conversation_id=${conversationId} order by id desc limit 1`);
@@ -43,10 +49,10 @@ export async function businessReviewTools(actor: ActorContext, conversationId: s
       retainedIds:z.array(targetIds).max(40).describe('Existing item IDs kept unchanged, including every unrequested item. Each existing ID must be retained or changed once, never both.'),
       changes:z.array(change).max(20),
     }).strict()}),
-    requestDesigner:tool(async()=>handoff.propose(conversationId,'request'),{
+    requestDesigner:tool(async()=>handoff.propose(conversationId,'request',options.guard),{
       name:'propose_designer_reception',description:'Propose designer reception. Customer approval is required.',schema:z.object({}).strict(),
     }),
-    cancelDesigner:tool(async()=>handoff.propose(conversationId,'cancel'),{
+    cancelDesigner:tool(async()=>handoff.propose(conversationId,'cancel',options.guard),{
       name:'propose_reception_cancellation',description:'Propose cancelling reception. Customer approval is required.',schema:z.object({}).strict(),
     }),
   };
