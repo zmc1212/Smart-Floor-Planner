@@ -1,6 +1,18 @@
 # 小K第二期：需求整理与人工交接
 
-## 当前交付：接待提案、客户确认与恢复（2026-10-26）
+## 当前交付：需求更正与历史恢复提案（2026-10-26）
+
+**OS-CONTRACT-08：准备中。** 复用已完成OS-CONTRACT-06/07类型工具、原生审批与原服务/客户端证据。下一固定范围是保存createAgent预算/瓷砖混合更正及明确预算恢复，各2次首稿提案；保留面积/不做地暖/未修改瓷砖，若选旧来源必须再确认恢复。混合轮中的量房准备问答是另一个未评分分支，不算原整轮场景修复通过。离线`tmp/agent-review-model/requirements-readiness.json`确认15/22条客户原话、4项已有需求，完整context在工具schema之前就有1554/2084字节；本交付尚无新增模型调用。用户现已批准累计¥100并明确取消旧批次/累计tokens硬上限，历史消耗与未知预留继续记账，每批固定案例/调用次数、遇未知即停。仍禁止Computer Use/窗口/焦点/桌面按键。下一交付为有界提案验证后的真实运行时组合，不恢复三框架矩阵或生产发布。
+
+## 历史交付：OS-CONTRACT-07（2026-10-26）
+
+**OS-CONTRACT-07：配置模型的限定接待/取消提案Implemented，完整对话/默认迁移Limited。** `1f542032`提供未变业务基础。`admin/scripts/business-review-model-acceptance.ts --live`将原“找设计师但别给手机号”“取消但保留需求”各试2次，每次独立合成会话、一次Qwen3.7-Flash首稿请求。复用既有ChatOpenAI1.7.0/core1.3.0测试适配器，业务工具仍core1.2.18/Zod4.3.6，审批用LangGraph1.5.0/PostgresSaver1.1.2；默认生产运行时未切换。默认预检供应商调用0，按实际body字节/输出预留，禁止重试和语义评审调用。
+
+**原始结果与真实效果。** `tmp/agent-contract/trial-proposal-os07-2026-10-26T09-08-38-432Z.json`固定四份首稿全部通过：都只选正确的原生零参数提案工具，正文为空、无无效调用；工具只暂存提案，确认前接待状态及已有需求不变；另由测试客户确认，才写真实waiting/cancelled并回数据库回执，手机号为空、contactConsent=false、原草稿完整。请求/响应/usage/首稿均保留，无纠错、评审、强制工具或继续采样。源码drift[]、checkpoint/夹具/锁清理完成。四次200且用量已知，共1778tokens（443/446/443/446），累计1303692，原批准批次累计193414；含原未知预留的保守费用上界¥4.795797，实付仍未知。两次零调用预检均保留；首次失败仅因SDK包装了故意抛出的本地拦截异常。
+
+**验证、范围及预算变更。**1431源限定类型0、脚本lint通过。本交付只加测试驱动/证据，无路由/API/权限、默认Agent Worker、C01 UI或知识入库变化，复用有效24服务/21需求兼容/12纯SDK，不改还原台账。只证明这两类动作选择及确认链，未证明八轮记忆、问答、隐含历史指代或原全部场景。本次执行完成后用户提高累计费用至¥100并明确取消原200000/1400000tokens限制；`contract-scope.json`保留新费用/固定案例政策及历史批准，原OS-CONTRACT-07证据仍绑定当时预算/源码。该已闭合原预算驱动仅为历史，后续需求试验使用新政策，旧矩阵仍禁用。
+
+## 历史交付：OS-CONTRACT-06（2026-10-26）
 
 **OS-CONTRACT-06：候选业务机制Implemented，配置模型语义/默认迁移Limited。** 沿用C01客户“找设计师”和取消按钮，接入需求已有的LangGraph interrupt/Command/PostgresSaver；接待专页仍仅员工使用。RequirementWorkflow与HandoffWorkflow共用`core/review-graph.ts`，原RequirementService/HandoffService继续负责真实事务；仅entry_snapshot.requirementReviewMode=true且entry_snapshot.requirementWorkflow=langgraph选择候选机制，无生产迁移或默认运行时切换。
 
