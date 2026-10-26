@@ -10,7 +10,7 @@
 
 供应商诊断合同（内部Implemented，D1仍Limited）：既有attempt metadata新增`agent-request-diagnostic-v1`，仅保存载荷字节数/hash、字段名、消息角色/内容类型、工具名/schema hash、输出上限和思考模式；`provider-http-diagnostic-v1`仅保存白名单HTTP状态/供应商代码/类型/参数位置、公开trace、有限分类及响应字节数/hash。不保存原始响应正文、提示词、图片、凭据或工具参数值；Agent异常文字同样省略上游原文，未知分类保留unspecified。客户端通用失败文字、provider disposition、accepted状态、不重试/不fallback及账务/审批守卫保持。隔离本地假响应脚本`admin/scripts/provider-http-diagnostics-acceptance.ts`写入明确标记为synthetic的attempt1384（不是真实供应商响应），核验单次审计/无fallback、禁用夹具，并逐字节保留历史行。证据`tmp/d1-contract-recovery-20261026/service-2026-10-26T17-46-05-301Z.json`（真实调用0、drift[]）；相关单元12项与限定lint通过。`accounting.json`核实run1174/1175无usage/review、reservation1170/1171为reconciling，保守¥8.771297及两笔未知保持，派发守卫继续阻止新请求。原响应在补丁前已被丢弃，不能重建，更不能用假响应推断原根因。参考[SiliconFlow响应/trace/错误合同](https://docs.siliconflow.cn/docs/api/chat-completions-post)。无架构或知识域变更。
 
-原生阻塞：原确定性SDK报告仍在输入/截图前失败。本轮只读诊断区分CDP9431 ECONNREFUSED和automator9420 HTTP426；后者只能证明WebSocket监听，不能证明项目路径或页面存活。现有受限窗口检查找到0个匹配的可验证项目窗口，当前副屏位置及项目上下文无法确认。CLI --help初始化尝试unlink用户目录被拒后已停止，不能换路径重试。未关闭/重启/抢焦点、桌面输入、改安全设置或截图。原精确项目驱动保留，新编译、原生混合/实模旅程仍未验证；本补丁不改C01/C02结构、样式、素材、导航或还原状态。
+原生阻塞：旧SDK/CDP端点失败保留，CLI初始化触发用户目录unlink被拒后不重试。本轮通过正常CUA清单发现真实miniprogram窗口94905624及项目列表，故旧端点失败不代表本机所有UI不可用；但读取目标窗口的应用审批超时，未批准。精确项目路径与副屏位置未核实，未点击、输入、新编译、截图、关闭/重启或绕过审批；C01/C02确定性及实模原生链仍未验。仓库官方`npm run dev`（3006）、Stable及SDK流程已检查，未启动新服务/Worker；旧准备脚本不构成当前UI证据。
 
 复用依据：[LangGraph官方工具结果回合](https://docs.langchain.com/oss/javascript/langgraph/quickstart)、[LangChain.js工具上限路由问题10090](https://github.com/langchain-ai/langchainjs/issues/10090)。保持当前显式持久路由、授权、账务及只读/审批边界；该问题只提示终结路由风险，不证明本安装受到同一库缺陷影响。唯一实施所有权和剩余检查只放在开发计划第2节。
 
@@ -1403,6 +1403,12 @@ GET版本快照为当前最多50项现场事项补足原记录的当前版本元
 复跑：admin下`node scripts/assistant-context-acceptance.mjs`（隔离数据库/真实Embedding/确定性模型），可选`--unit/--regression/--synthesis/--mini/--lint`；`node --import tsx scripts/assistant-synthesis-development-acceptance.ts --development --context`为现配置模型/真实HTTP/Worker，另加`--native`复用已授权Stable原生流程。固定必要来源、禁止推断、逐轮证据及执行结果见[交接](./xiaok-assistant-handoff.zh-CN.md)和`tmp/xiaok-kb3/`；实模与模拟、合成与真实资料分别记录。范围外复杂PDF/OCR、任意语义归因、真机/真实微信/BLE、认证后台视觉和生产仍未验证/非本批开发门槛，整体专业客服仍Limited。
 
 ## 当前 KB-2：企业文件入库与结构引用（限定格式，整体 Limited）
+
+**独立D2注释条件修复（2026-10-26，内部Implemented；D1/D2仍Limited）。** 保存的合成DOCX证实旧解析的三项缺口：显式`w:type="normal"`脚注丢失、尾注不读取、标题注释不能进入所属章节片段；悬空引用也被静默接受。现有界本地解析器保留脚注/尾注独立ID、完整多段正文、可见引用、实际标题级别（含跳级）的祖先与表头条件；未引用注释不入正文，已删除引用不恢复内容。缺失/重复ID、嵌套引用、复杂布局及超大注释明确拒绝。仅支持既有常规`word/footnotes.xml` / `word/endnotes.xml`部件；自定义部件路径和复杂注释布局仍不支持，不抓网络或OCR。新解析身份带`notes-v2`，原文件字节、旧解析版本及已发布hash不回写，原文件/块/正文/token/子进程上限不变。参考[OOXML注释引用合同](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.wordprocessing.footnoteendnotereferencetype.id?view=openxml-3.0.1)和[Mammoth独立脚注/尾注读取](https://github.com/mwilliamson/mammoth.js/blob/master/lib/docx/docx-reader.js)（2026-10-26核对），不替换解析依赖、框架或Agent架构。
+
+`cd admin; node scripts/assistant-source-file-acceptance.mjs --docx-notes --unit --evidence=xiaok-d2-docx-notes-close`为23/23；同命令去掉`--unit`真实隔离服务3/3，覆盖原键上传、本地解析、必须审核、确定性索引、发布/重进/原件hash、表行及注释逐字引用持久化、有效/未登录/他客户/跨租户200/401/404/404、替换失败保留旧发布，以及撤回后引用/派生正文/检索失效。运行时/数据库/鉴权真实；分词、向量和旧摘录选择明确注入确定性实现，不冒充配置模型、Agent语义或原生验收。fetch禁止守卫及`ai_provider_attempts`为0，证明无新增供应商/模型/Embedding请求。两批绑定324项依赖、无漂移；测试AI禁用、用户上下文撤销，所持锁/连接池释放。定向lint0错误0警告；类型诊断与原54项逐项相同、本增量0项。无路由/表/公开DTO/UI变更，不重建完整bundle。原C01 P4B与C02 slide06及来源片状态仍是设计源，无新渲染/原生证据或台账升级。
+
+原证据分开保留：`tmp/d1-native-d2-20261026/docx-notes-before.log`为修复前1/4；`tmp/xiaok-d2-docx-notes/`为1/3，新确定性选择器误把逐句候选当完整块，造成一条合成indeterminate run和后续引用失败，网络/供应商attempt均0，原行/预留保留且夹具已禁用。驱动现只选同一实际来源的两个已提供句子ID，由原服务解析器拼回中间完整原文；`tmp/xiaok-d2-docx-notes-final/`与`tmp/xiaok-d2-docx-notes-verified/`保留此前独立22/3版本；只有`tmp/xiaok-d2-docx-notes-close/`绑定最终解析器/类型化驱动及23/3。另在`tmp/d1-native-d2-20261026/skipped-heading-before.log`保留跳级标题把同级误当祖先的原失败，改为按真实级别维护栈后通过，不改写原结果。首次类型超时/33项新驱动类型诊断及修复留在`tmp/d1-native-d2-20261026/`。历史run1174/1175、attempt1382/1383、¥8.771297预留及OS11两次失败计数均不动，无模型批、账务结算、cap更改、绕界面审批或部署。
 
 原 `/assistant-knowledge` 增加企业文件类型，C01仍为同一个咨询与来源片。范围为DOCX、可提取文字PDF及下述有界文字/普通数值XLSX；原合成文件回归与下述用户指定原件验证并存，不批量导入混合开发目录，不向新外部解析/OCR服务发送资料。KB-1专业条目/诊断继续复用；文件知识与当前获权工地事实在原LangGraph同轮汇合，不建立新的项目事实库或把私聊/项目附件复制成企业规则。
 

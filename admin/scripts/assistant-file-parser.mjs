@@ -61,7 +61,7 @@ async function unzip(bytes, format = 'docx') {
         const selected = format === 'xlsx'
           ? ['[Content_Types].xml','_rels/.rels','xl/workbook.xml','xl/_rels/workbook.xml.rels','xl/sharedStrings.xml','xl/styles.xml'].includes(name)
             || /^xl\/worksheets\/[\w.-]+\.xml$/.test(name) || /^xl\/worksheets\/_rels\/[\w.-]+\.xml\.rels$/.test(name)
-          : ['[Content_Types].xml','word/document.xml','word/styles.xml','word/footnotes.xml','word/_rels/document.xml.rels'].includes(name);
+          : ['[Content_Types].xml','word/document.xml','word/styles.xml','word/footnotes.xml','word/endnotes.xml','word/_rels/document.xml.rels'].includes(name);
         if (!selected) return zip.readEntry();
         zip.openReadStream(entry, (e, stream) => {
           if (e) return stop('knowledge_file_parse_failed');
@@ -80,29 +80,77 @@ async function docx(bytes) {
   if (!files.has('word/document.xml') || !files.has('[Content_Types].xml') || !files.get('[Content_Types].xml').toString().includes('wordprocessingml.document.main+xml')) bad('knowledge_file_invalid');
   const root = xml(files.get('word/document.xml')), body = all(root, 'body')[0];
   if (!body) bad('knowledge_file_parse_failed');
-  const warnings = ['docx_no_fixed_pages'], levels = new Map(), footnotes = new Map();
+  const warnings = ['docx_no_fixed_pages'], levels = new Map(), noteParts = [];
   if (files.has('word/styles.xml')) for (const s of all(xml(files.get('word/styles.xml')), 'style')) {
     const outline = Number(value(all(s, 'outlineLvl')[0]));
     if (Number.isInteger(outline) && outline >= 0 && outline <= 8) levels.set(s.attrs.styleId, outline + 1);
   }
-  if (files.has('word/footnotes.xml')) for (const f of all(xml(files.get('word/footnotes.xml')), 'footnote')) {
-    if (!f.attrs.type) footnotes.set(f.attrs.id, all(f, 'p').map(paragraph).filter(Boolean).join('\n'));
-  }
+  const noteId = value => {
+    if (typeof value !== 'string' || !/^[+-]?\d+$/.test(value)) bad('knowledge_file_parse_failed');
+    return String(BigInt(value));
+  };
+  // Keep the two OOXML identity spaces separate. Never turn a dangling reference
+  // into a condition-free passage, or flatten a note's unsupported layout.
+  const readNotes = kind => {
+    const part = files.get(`word/${kind}s.xml`), result = new Map();
+    if (!part) return result;
+    const root = xml(part), container = children(root, `${kind}s`);
+    if (container.length !== 1) bad('knowledge_file_parse_failed');
+    noteParts.push(root);
+    for (const note of children(container[0], kind)) {
+      if (['separator','continuationSeparator','continuationNotice'].includes(note.attrs.type)) continue;
+      if (note.attrs.type && note.attrs.type !== 'normal') bad('knowledge_file_parse_failed');
+      const id = noteId(note.attrs.id);
+      if (result.has(id)) bad('knowledge_file_parse_failed');
+      if (note.children.some(c => typeof c !== 'string' && !(c.uri === WORD && ['p','bookmarkStart','bookmarkEnd'].includes(c.name)))
+        || all(note, 'footnoteReference').length || all(note, 'endnoteReference').length) bad('knowledge_file_complex_layout');
+      const text = children(note, 'p').map(paragraph).filter(Boolean).join('\n');
+      if (!text) bad('knowledge_file_complex_layout');
+      if (text.length > 6000 || result.size >= 128) bad('knowledge_file_block_limit');
+      result.set(id, text);
+    }
+    return result;
+  };
+  const footnotes = readNotes('footnote'), endnotes = readNotes('endnote');
   if (names.has('word/header1.xml') || names.has('word/footer1.xml')) warnings.push('headers_footers_not_indexed');
-  if (all(root, 'drawing').length || all(root, 'pict').length) warnings.push('images_not_parsed');
-  if (all(root, 'ins').length || all(root, 'del').length) warnings.push('tracked_changes_visible_text_only');
+  if ([root,...noteParts].some(r => all(r, 'drawing').length || all(r, 'pict').length)) warnings.push('images_not_parsed');
+  if ([root,...noteParts].some(r => all(r, 'ins').length || all(r, 'del').length)) warnings.push('tracked_changes_visible_text_only');
   if (files.get('word/_rels/document.xml.rels')?.toString().includes('TargetMode="External"')) warnings.push('external_links_not_fetched');
-  let section = [], para = 0, table = 0; const blocks = [];
-  const notes = n => all(n, 'footnoteReference').map(f => footnotes.get(f.attrs.id)).filter(Boolean);
-  const push = b => { if (blocks.length >= 128 || b.text.length > 6000) bad('knowledge_file_block_limit'); blocks.push({ id: `b${blocks.length + 1}`, section: [...section], ...b }); };
+  let section = [], sectionNotes = [], para = 0, table = 0; const blocks = [], headings = [];
+  const notes = n => {
+    const result = [];
+    const visit = node => {
+      if (node.uri === WORD && ['del','moveFrom'].includes(node.name)) return;
+      if (node.uri === WORD && ['footnoteReference','endnoteReference'].includes(node.name)) {
+        const note = (node.name === 'footnoteReference' ? footnotes : endnotes).get(noteId(node.attrs.id));
+        if (note === undefined) bad('knowledge_file_parse_failed');
+        result.push(note);
+      }
+      for (const child of node.children) if (typeof child !== 'string') visit(child);
+    };
+    visit(n); return [...new Set(result)];
+  };
+  const push = b => {
+    if (blocks.length >= 128 || b.text.length > 6000) bad('knowledge_file_block_limit');
+    const attached = [...new Set([...sectionNotes.flat(),...(b.notes || [])])];
+    blocks.push({ id: `b${blocks.length + 1}`, section: [...section], ...b, ...(attached.length ? { notes: attached } : {}) });
+  };
   const nodes = body.children.filter(c => typeof c !== 'string');
   for (let i = 0; i < nodes.length; i++) {
     const n = nodes[i]; if (n.uri !== WORD) continue;
     if (n.name === 'p') {
-      const text = paragraph(n); ++para; if (!text) continue;
+      const text = paragraph(n), attached = notes(n); ++para; if (!text && !attached.length) continue;
       const style = value(all(n, 'pStyle')[0]) || '', level = levels.get(style) || Number(/^Heading([1-9])$/i.exec(style)?.[1]);
-      if (level) { section = [...section.slice(0, level - 1), text]; push({ kind: 'heading', text, paragraph: para }); }
-      else push({ kind: 'paragraph', text, paragraph: para, ...(notes(n).length ? { notes: notes(n) } : {}) });
+      if (level && text) {
+        // A document may skip a heading level. Array positions alone would
+        // incorrectly retain a previous sibling as an ancestor in that case.
+        while (headings.length && headings.at(-1).level >= level) headings.pop();
+        headings.push({ level, text, notes: attached });
+        section = headings.map(heading => heading.text);
+        sectionNotes = headings.map(heading => heading.notes);
+        push({ kind: 'heading', text, paragraph: para });
+      }
+      else push({ kind: 'paragraph', text, paragraph: para, ...(attached.length ? { notes: attached } : {}) });
     } else if (n.name === 'tbl') {
       ++table; const rows = children(n, 'tr'); if (!rows.length || rows.length > 64 || all(n, 'tbl').length) bad('knowledge_file_complex_table');
       const parsedRows = rows.map((row, index) => {
@@ -114,17 +162,19 @@ async function docx(bytes) {
         });
         return { kind: 'table_row', table, row: index + 1, cells, text: cells.map(c => c.text).join(' | '), notes: notes(row) };
       });
-      const headers = parsedRows.filter((_, j) => j === 0 || all(rows[j], 'tblHeader').length).map(r => r.text);
+      const headerRows = parsedRows.map((r, j) => ({ ...r, isHeader: j === 0 || all(rows[j], 'tblHeader').length })).filter(r => r.isHeader);
+      const headers = headerRows.map(r => r.text), headerNotes = headerRows.flatMap(r => r.notes);
       if (!all(rows[0], 'tblHeader').length) warnings.push('table_first_row_header_requires_review');
       const following = nodes[i + 1]?.name === 'p' ? paragraph(nodes[i + 1]) : '';
-      for (const row of parsedRows) if (row.text.trim()) push({ ...row, headers, notes: [...row.notes, ...(/^(?:注[：:]|说明[：:]|例外|前提)/u.test(following) ? [following] : [])] });
+      for (const row of parsedRows) if (row.text.trim()) push({ ...row, headers, notes: [...headerNotes,...row.notes,
+        ...(/^(?:注[：:]|说明[：:]|例外|前提)/u.test(following) ? [following,...notes(nodes[i + 1])] : [])] });
     } else if (!['sectPr','bookmarkStart','bookmarkEnd'].includes(n.name)) {
       // Do not silently flatten content controls/alternate layouts and claim completeness.
       bad('knowledge_file_complex_layout');
     }
   }
   if (!blocks.length) bad('knowledge_file_no_text');
-  return { parser: VERSION + ':docx:yauzl3.4.0:saxes6.0.0', blocks, warnings: [...new Set(warnings)] };
+  return { parser: VERSION + ':docx:yauzl3.4.0:saxes6.0.0:notes-v2', blocks, warnings: [...new Set(warnings)] };
 }
 /** PDF EOLs are layout lines, not paragraph boundaries. Join only adjacent
  * horizontal flow, retaining complete numbered clauses, headings and pages.
