@@ -381,6 +381,7 @@ test('history and earlier-message cursors preserve conversation scope and chrono
   const f = fixture(); f.db.history = [f.db.conversation]; f.db.historyCursor = '11';
   f.db.items = [{ id: '22', seq: '2', content: { blocks: [{ type: 'text', text: '后来的消息' }] } }]; f.db.messageCursor = '2';
   await f.controller.show({ conversationId: '11' });
+  await f.controller.loadHistory();
   f.intercept(call => {
     if (call.url === '/conversations' && call.body.cursor) return { success: true, data: { items: [{ id: '10', status: 'archived' }], nextCursor: null } };
     if (call.url.endsWith('/messages') && call.body.beforeSeq) return { success: true, data: { items: [{ id: '21', seq: '1', content: { blocks: [{ type: 'text', text: '较早的消息' }] } }], nextCursor: null } };
@@ -389,6 +390,139 @@ test('history and earlier-message cursors preserve conversation scope and chrono
   assert.deepEqual(f.controller.state.history.map(item => item.id), ['11', '10']);
   assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21', '22']);
   assert.equal(f.calls.find(call => call.body.cursor).options.headers['X-Assistant-Entry'], 'entry-A');
+});
+
+test('chat opens without waiting for history and a warm empty chat makes no foreground requests', async () => {
+  const f = fixture();
+  f.intercept(call => { if (call.url === '/conversations') throw { statusCode: 503 }; });
+  await f.controller.show({});
+  assert.equal(f.controller.state.loading, false);
+  assert.equal(f.controller.state.fatal, false);
+  assert.deepEqual(f.calls.map(call => call.url), ['/entry-context']);
+  f.controller.input('还没发出的想法');
+  f.controller.hide();
+  await f.controller.show();
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.controller.state.draft, '还没发出的想法');
+  await f.controller.loadHistory();
+  assert.equal(f.controller.state.historyError.length > 0, true);
+  assert.equal(f.controller.state.fatal, false);
+});
+
+test('foreground sync preserves rendered chat and draft, reuses entry, and reads current messages in parallel', async () => {
+  const f = fixture();
+  f.db.items = [{ id: '21', seq: '1', available: true, content: { blocks: [{ type: 'text', text: '之前的回复' }] } }];
+  await f.controller.show({ conversationId: '11' });
+  f.controller.input('正在写的补充');
+  f.controller.hide();
+  const start = f.calls.length, gate = deferred();
+  f.intercept(call => call.url === '/conversations/11' ? gate.promise : undefined);
+  f.db.items.push({ id: '22', seq: '2', available: true, content: { blocks: [{ type: 'text', text: '最新回复' }] } });
+  const shown = f.controller.show();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.controller.state.loading, false);
+  assert.equal(f.controller.state.messages.length, 1);
+  assert.equal(f.controller.state.draft, '正在写的补充');
+  assert.deepEqual(f.calls.slice(start).map(call => call.url).sort(), ['/conversations/11', '/conversations/11/messages']);
+  gate.resolve({ success: true, data: f.db.conversation });
+  await shown;
+  assert.equal(f.controller.state.messages.length, 2);
+  assert.equal(f.timers.size, 1);
+  f.controller.dispose();
+});
+
+test('overlapping foreground events share an unfinished initial load instead of invalidating it', async () => {
+  const f = fixture(), gate = deferred();
+  f.intercept(call => call.url === '/entry-context' ? gate.promise : undefined);
+  const first = f.controller.show({ conversationId: '11' });
+  f.controller.hide();
+  const second = f.controller.show();
+  gate.resolve({ success: true, data: f.db.entry });
+  await Promise.all([first, second]);
+  assert.equal(f.calls.filter(call => call.url === '/entry-context').length, 1);
+  assert.equal(f.calls.filter(call => call.url === '/conversations/11/messages').length, 1);
+  assert.equal(f.controller.state.loading, false);
+  assert.equal(f.controller.state.conversation.id, '11');
+  f.controller.dispose();
+});
+
+test('opening history during first load shares the same entry-context request', async () => {
+  const f = fixture(), gate = deferred();
+  f.intercept(call => call.url === '/entry-context' ? gate.promise : undefined);
+  const shown = f.controller.show({});
+  const history = f.controller.loadHistory();
+  gate.resolve({ success: true, data: f.db.entry });
+  await Promise.all([shown, history]);
+  assert.equal(f.calls.filter(call => call.url === '/entry-context').length, 1);
+  assert.equal(f.calls.filter(call => call.url === '/conversations').length, 1);
+});
+
+test('a foreground sync cannot overwrite a send started while the chat stays interactive', async () => {
+  const f = fixture(); await f.controller.show({ conversationId: '11' });
+  const read = deferred(), write = deferred();
+  f.intercept(call => {
+    if (call.url === '/conversations/11') return read.promise;
+    if (call.url === '/conversations/11/messages' && call.method === 'POST') return write.promise;
+  });
+  f.controller.hide(); const shown = f.controller.show();
+  await new Promise(resolve => setImmediate(resolve));
+  f.controller.input('同步时继续发送'); const sent = f.controller.send();
+  read.resolve({ success: true, data: { ...f.db.conversation, mode: 'human' } });
+  await shown;
+  assert.equal(f.controller.state.conversation.mode, 'ai');
+  assert.equal(f.controller.state.busy, true);
+  assert.equal(f.controller.state.pendingText, '同步时继续发送');
+  f.intercept(undefined);
+  f.db.items = [{ id: '23', seq: '3', available: true, content: { blocks: [{ type: 'text', text: '同步时继续发送' }] } }];
+  write.resolve({ success: true, data: { conversationId: '11', messageId: '23', runId: '41', status: 'queued' } });
+  await sent;
+  assert.equal(f.controller.state.messages[0].id, '23');
+  assert.equal(f.controller.state.busy, false);
+  assert.equal(f.calls.filter(call => call.url.endsWith('/messages') && call.method === 'POST').length, 1);
+  f.controller.dispose();
+});
+
+test('expired entry and manual reconnect revalidate the enterprise without loading hidden history', async () => {
+  const f = fixture(); await f.controller.show({});
+  f.controller.entryExpiry = 0;
+  f.db.entry.canSend = false;
+  f.controller.hide(); await f.controller.show();
+  assert.equal(f.controller.state.canSend, false);
+  assert.equal(f.calls.filter(call => call.url === '/entry-context').length, 2);
+  await f.controller.refresh();
+  assert.equal(f.calls.filter(call => call.url === '/entry-context').length, 3);
+  assert.equal(f.calls.some(call => call.url === '/conversations'), false);
+});
+
+test('background network failure retains usable chat but foreground permission denial clears it', async () => {
+  const f = fixture();
+  f.db.items = [{ id: '21', seq: '1', available: true, content: { blocks: [{ type: 'text', text: '已有对话' }] } }];
+  await f.controller.show({ conversationId: '11' });
+  f.intercept(() => { throw { statusCode: 503 }; });
+  f.controller.hide(); await f.controller.show();
+  assert.equal(f.controller.state.fatal, false);
+  assert.equal(f.controller.state.messages.length, 1);
+  assert.equal(f.controller.state.loading, false);
+  f.intercept(() => { throw { statusCode: 403, code: 'assistant_resource_not_found' }; });
+  f.controller.hide(); await f.controller.show();
+  assert.equal(f.controller.state.fatal, true);
+  assert.equal(f.controller.state.messages.length, 0);
+  assert.equal(f.controller.state.conversation, null);
+});
+
+test('warm foreground reprojects withdrawn content and identity changes never reuse entry or drafts', async () => {
+  const f = fixture();
+  f.db.items = [{ id: '21', seq: '1', available: true, content: { blocks: [{ type: 'text', text: '旧资料' }] } }];
+  await f.controller.show({ conversationId: '11' });
+  f.controller.input('私人草稿');
+  f.db.items[0] = { ...f.db.items[0], available: false, content: { blocks: [{ type: 'notice', fallbackText: '资料已不可用' }] } };
+  f.controller.hide(); await f.controller.show();
+  assert.equal(f.controller.state.messages[0].blocks[0].text, '资料已不可用');
+  f.identity('customer-B');
+  f.controller.hide(); await f.controller.show({});
+  assert.equal(f.controller.state.messages.length, 0);
+  assert.equal(f.controller.state.draft, '');
+  assert.equal(f.calls.filter(call => call.url === '/entry-context').length, 2);
 });
 
 test('stop and archive use explicit writes, keep messages and block further sends in the archived chat', async () => {

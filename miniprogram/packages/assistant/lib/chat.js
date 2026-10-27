@@ -27,7 +27,7 @@ class ChatController {
     this.emit = emit; this.client = client; this.identity = identity;
     this.schedule = schedule; this.unschedule = unschedule;
     this.referenceImage = referenceImage;
-    this.state = initial(); this.epoch = 0; this.visible = false;
+    this.state = initial(); this.epoch = 0; this.visible = false; this.ready = false;
   }
 
   set(patch) { Object.assign(this.state, patch); this.emit(patch); }
@@ -37,6 +37,7 @@ class ChatController {
   clear() {
     this.operationalDraft = null;
     this.dispose(); this.client.pending.clear(); this.entry = null; this.entryExpiry = 0;
+    this.ready = false;
     this.conversationId = ''; this.startedNew = false; this.set(initial());
   }
 
@@ -56,12 +57,26 @@ class ChatController {
       this.set({ ...initial(), loading: false, fatal: true, needsLogin: true, error: '登录后，小K就能为你保存装修咨询记录。' });
       return;
     }
-    return this.refresh();
+    const target = this.conversationId || (!this.startedNew && (this.options.conversationId || this.entry?.resumeConversationId));
+    // A visible chat stays usable while only its current server projection is
+    // synced. An empty welcome screen needs no request until its entry expires.
+    if (this.ready && !this.state.fatal && !this.state.error && !target && this.entry && Date.now() < this.entryExpiry) return;
+    return this.refresh({ forceEntry: !this.ready || this.state.fatal, background: this.ready && !this.state.fatal });
   }
 
   async ensureEntry(force = false) {
     if (!force && this.entry && Date.now() < this.entryExpiry) return this.entry;
     const epoch = this.epoch;
+    if (this.entryFlight && this.entryEpoch === epoch && this.valid(epoch)) return this.entryFlight;
+    this.entryEpoch = epoch;
+    const flight = this.readEntry(epoch).finally(() => {
+      if (this.entryFlight === flight) this.entryFlight = null;
+    });
+    this.entryFlight = flight;
+    return flight;
+  }
+
+  async readEntry(epoch) {
     const entry = await this.client.read('/entry-context', entryInput(this.options), {}, 'POST');
     if (!this.valid(epoch)) return null;
     this.entry = entry;
@@ -85,23 +100,34 @@ class ChatController {
     }
   }
 
-  async refresh() {
-    if (!this.visible || this.state.busy) return;
+  refresh({ forceEntry = true, background = false } = {}) {
+    if (!this.visible || this.state.busy) return Promise.resolve();
+    if (this.refreshFlight && this.valid(this.refreshEpoch)) return this.refreshFlight;
     const epoch = ++this.epoch;
+    this.refreshEpoch = epoch;
     this.unschedule(this.timer);
-    this.set({ loading: true, error: '', fatal: false, contactLoading: false });
+    this.set({ loading: !background, error: '', fatal: false, contactLoading: false });
+    const flight = this.refreshState(epoch, forceEntry, background).finally(() => {
+      if (this.refreshFlight === flight) this.refreshFlight = null;
+    });
+    this.refreshFlight = flight;
+    return flight;
+  }
+
+  async refreshState(epoch, forceEntry, background) {
     try {
-      await this.ensureEntry(true);
-      if (!this.valid(epoch)) return;
-      const history = await this.historyPage();
-      if (!this.valid(epoch) || !history) return;
-      this.set({ history: historyForView(history.items), historyCursor: history.nextCursor, historyError: '' });
+      const entry = await this.ensureEntry(forceEntry);
+      if (!this.valid(epoch) || !entry) return;
+      // History is read by loadHistory when its sheet is opened, independently
+      // of the conversation's critical path and availability.
       const target = this.conversationId || (!this.startedNew && (this.options.conversationId || this.entry.resumeConversationId));
-      if (target) await this.snapshot(target, epoch);
+      if (target) await this.snapshot(target, epoch, background);
+      if (!this.valid(epoch)) return;
+      this.ready = true;
       this.setIf(epoch, { loading: false, error: this.state.pendingSend
         ? '发送结果尚未确认，请确认同一条消息的发送结果。'
         : this.state.pendingAction ? '操作结果尚未确认，请核对同一次操作。' : '' });
-    } catch (error) { this.fail(error, epoch, true); }
+    } catch (error) { this.fail(error, epoch, !background); }
   }
 
   setIf(epoch, patch) { if (this.valid(epoch)) this.set(patch); }
@@ -113,6 +139,7 @@ class ChatController {
       this.epoch += 1;
       this.unschedule(this.timer); this.client.pending.clear();
       this.entry = null; this.entryExpiry = 0; this.conversationId = '';
+      this.ready = false;
       this.set({ ...initial(), loading: false });
     }
     this.set({ loading: false, error: errorCopy(error), fatal: fatal || denied, needsLogin: error.statusCode === 401,
