@@ -34,7 +34,9 @@ export async function currentReviewClaims(tx: PostgresTransaction, actor: ActorC
   // rather than a lexical recall which can miss the withdrawn amount.
   // Keep the recent originals even if this run's unchanged-partition tool
   // removed the expired proposal pointer. They remain speech, never state.
-  originalIds.push(...sources.inputs.slice(-4).map(source => source.id));
+  // Upload notices have no customer text. They keep their independent media
+  // provenance and cannot enter the text-original/requirement claim catalog.
+  originalIds.push(...sources.inputs.filter(source => source.text.trim()).slice(-4).map(source => source.id));
   const originals = await reviewHistorySnapshot(tx, actor, conversation, originalIds, sourceSeq);
   return reviewClaims({ binding, originals, saved, proposed,
     proposalState: pending?.status === 'pending' ? current ? 'pending_proposal' : 'expired_proposal' : null });

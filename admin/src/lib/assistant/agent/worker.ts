@@ -11,7 +11,8 @@ import { projectMessage, resolveEvidence, previewPolicy } from '../knowledge/sou
 import { runContext, failRun, heartbeat, completeAnswer, type Lease } from '../infrastructure/job-queue';
 import { runRenovationAgent, agentReadProtocol, agentToolReplyProtocol, agentTurnScheduleProtocol, type AgentCheckpoint } from './runtime';
 import { agentConfig, agentCapabilityFingerprint } from './config';
-import {nativeFinalProtocol,nativeFinalProjection,finishContextTool,nativeFinalDefinition,nativePlanningMessages,nativeFinalMessages,assertNativeFinalOutput} from './native-final';
+import {nativeFinalProtocol,nativeFinalProjection,finishContextTool,nativeFinalDefinition,nativePlanningMessages,nativeFinalMessages,nativeImageFinalMessages,assertNativeFinalOutput} from './native-final';
+import { conversationImageProtocol, conversationImageInstructions, conversationImageMessage, nativeImageFinalProjection } from './image-context';
 import { factFields, needWriteFeedback, needOriginalQuotes, hasExplicitNeedCorrection, assertRecordedReply, needReplyFeedback, onlyChatHistoryRequested, currentBudgetRecallRequested, currentBudgetRecallFeedback, needReconfirmationFeedback, needDeskPositionFeedback, currentNeedView, unavailableDeskReply, explicitNeedRecordOnly, explicitNeedWriteStatement, recordedNeedReceipt, parseNeedWrites } from './memory';
 import { availableNeedMemory, needMemoryNoticeRefs, unavailableNeedMessageIds, needContextStep, needSourceRefs, needRunSourcesAvailable } from './memory-sources';
 import { persistNeedWrites } from './memory-store';
@@ -505,6 +506,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       // The oldest row of a bounded DB window can be the tail of a prior turn.
       while (turns.length > 1 && turns[0].role !== 'user') turns.shift();
       const messages = buildAgentContext(turns, memory);
+      let currentImageUpload = false;
       const system = messages[0];
       if (system.role === 'system') system.content.push({ type: 'text', text: synthesisInstructions + synthesisQuestionPrefix
         + JSON.stringify({ currentQuestion: safeText(trigger.content as Parameters<typeof safeText>[0]) }) });
@@ -543,6 +545,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       if (system.role === 'system') system.content.push({ type: 'text', text: `当前conversationVersion=${Number(context.conversation.version)}。` });
       if (!config.imageInput && system.role === 'system') system.content.push({ type: 'text', text: '当前会话未启用图片理解，你没有收到图片像素；不得描述看见的图片内容。图片目前仅保存为咨询资料，供授权设计师接续。' });
       if (config.imageInput) {
+        if (config.imageContext === conversationImageProtocol && system.role === 'system') system.content.push({ type: 'text', text: conversationImageInstructions });
         const media = await rows(tx, sql`select a.id,a.source_hash,m.id as message_id from app.assistant_media a join app.assistant_messages m
           on m.enterprise_id=a.enterprise_id and m.conversation_id=a.conversation_id and m.client_message_id='media:' || a.request_key
           where a.enterprise_id=${lease.enterpriseId} and a.conversation_id=${String(context.conversation.id)} and a.deleted_at is null
@@ -551,9 +554,14 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           const ref: MediaDependency = { type: 'assistant_media', id: String(image.id), hash: String(image.source_hash) };
           const item = await resolveAgentMedia(tx, lease.enterpriseId, String(context.conversation.id), ref);
           if (!item) continue;
+          if (config.imageContext === conversationImageProtocol && String(image.message_id) === String(trigger.id)) currentImageUpload = true;
           dependencies.set(ref.id, ref);
           // Explicit source binding; separate uploads are never merged by arrival timing.
-          messages.splice(messages.length - 1, 0, { role: 'user', content: [
+          messages.splice(messages.length - 1, 0, config.imageContext === conversationImageProtocol ? conversationImageMessage({
+            messageId: String(image.message_id), triggerId: String(trigger.id), mediaId: ref.id, hash: ref.hash,
+            kind: String(item.kind), roomName: String(item.room_name || ''), sourceRef: item.source_ref,
+            mimeType: String(item.mime_type) as 'image/jpeg', data: (item.data as Buffer).toString('base64'),
+          }) : { role: 'user', content: [
             { type: 'text', text: `图片来源消息${String(image.message_id)}；${String(image.message_id) === String(trigger.id) ? '本次上传' : '此前上传，仅供关联追问'}。` },
             { type: 'image', mediaId: ref.id, hash: ref.hash, mimeType: String(item.mime_type) as 'image/jpeg', data: (item.data as Buffer).toString('base64') },
           ] });
@@ -593,7 +601,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       const consultationDeadlineAt = config.consultation ? Date.now() + consultationAcceptanceProfile.runTimeoutMs - Math.max(0, Number(clock!.elapsed_ms)) : undefined;
       const priorUserText = turns.filter(turn => turn.role === 'user' && String(turn.id) !== String(trigger.id)).slice(-6).map(turn => turn.text).join(' ');
       const designerFollowup = designerClarificationFollowup(priorUserText, safeText(trigger.content as Parameters<typeof safeText>[0]));
-      return { ...context, config, trigger, messages, mediaRefs: [...dependencies.values()], referenceEvidence, resume, savedSummary, consultationDeadlineAt, designerFollowup };
+      return { ...context, config, trigger, messages, mediaRefs: [...dependencies.values()], currentImageUpload, referenceEvidence, resume, savedSummary, consultationDeadlineAt, designerFollowup };
     });
     const reviewContext = { currentQuestion: safeText(initial.trigger.content as Parameters<typeof safeText>[0]),
       currentOriginal: { messageId: String(initial.trigger.id), hash: fingerprint(initial.trigger.content) } };
@@ -624,10 +632,19 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     const reviewDefinitions = review ? reviewModelTools(review) : [];
     const composableReview = !!review && (initial.run.policy_snapshot as Row).reviewRuntime === composableReviewProtocol;
     const nativeFinalization=composableReview&&initial.config.structuredFinal===nativeFinalProtocol;
-    const claimFinalization = nativeFinalization && initial.config.requirementClaims === reviewClaimProtocol && !currentMessageOnlyRequested(reviewContext.currentQuestion)
-      && !originalAnswerOnly(reviewContext.currentQuestion) && !independentAdviceRequested(reviewContext.currentQuestion);
-    const completion = claimFinalization && initial.config.reviewCompletion === reviewCompletionProtocol;
+    const imageFinalization = initial.config.imageContext === conversationImageProtocol;
+    const finalProjection = imageFinalization ? nativeImageFinalProjection : nativeFinalProjection;
     const completionSourceIds = review?.context.customerClauses.filter(source => source.sourceMessageId === String(initial.trigger.id)).map(source => source.id) || [];
+    // A first image-only upload has no text originals. With prior customer
+    // text, retain its state-bound claims even while answering the new image.
+    // Every actual text turn keeps the original missing-source guard.
+    const hasClaimOriginals = !initial.currentImageUpload || (review?.context.customerClauses.length || 0) > 0;
+    const claimFinalization = nativeFinalization && hasClaimOriginals && initial.config.requirementClaims === reviewClaimProtocol && !currentMessageOnlyRequested(reviewContext.currentQuestion)
+      && !originalAnswerOnly(reviewContext.currentQuestion) && !independentAdviceRequested(reviewContext.currentQuestion);
+    // Upload notices have no current customer clauses to classify and can
+    // never select receipt_only, even when historical claims remain active.
+    const completion = claimFinalization && initial.config.reviewCompletion === reviewCompletionProtocol
+      && !(initial.currentImageUpload && !completionSourceIds.length);
     const finish = completion ? reviewCompletionTool(completionSourceIds) : finishContextTool;
     const designerOnly = !!review && !composableReview && reviewDesignerOnly(reviewContext.currentQuestion);
     const reviewMode = review && !composableReview && !designerOnly ? reviewTurnMode(reviewContext.currentQuestion) : 'propose';
@@ -681,7 +698,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               return !nativeFinalization||purpose!=='answer'?definitions:available.length
                 ? [...definitions.filter(tool=>tool.name!==finishContextTool.name&&tool.name!=='final_response'),finish]
                 :definitions.map(definition => claims ? reviewClaimDefinition(nativeFinalDefinition(definition), claims) : nativeFinalDefinition(definition));
-            }, profile,...(nativeFinalization&&purpose==='answer'&&!tools.length?{wireProjection:nativeFinalMessages}:{}),
+            }, profile,...(nativeFinalization&&purpose==='answer'&&!tools.length?{wireProjection:imageFinalization ? nativeImageFinalMessages : nativeFinalMessages}:{}),
           });
           const summaryRequestHash = purpose === 'summary' ? fingerprint({ messages: modelMessages, tools: dispatchTools }) : null;
           await heartbeat(lease);
@@ -709,7 +726,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                   currentMessageScope: messageScoped ? currentMessageScopeProtocol : null,
                   independentAdviceContext: adviceScoped ? independentAdviceContextProtocol : null,
                   policyProjection:policyView===focused?null:modelPolicyProjectionVersion,
-                  contentProjection,...(nativeFinalization&&purpose==='answer'&&!tools.length?{nativeFinalProjection}:{}),
+                  contentProjection,...(nativeFinalization&&purpose==='answer'&&!tools.length?{nativeFinalProjection:finalProjection}:{}),
+                  imageContext: initial.config.imageContext ?? null,
                   numericProseProtocol: purpose === 'answer' ? proseNumberProtocol : null,
                   citationSelectionProtocol: consultation && purpose === 'answer' ? citationSelectionProtocol : null,
                   turnSchedule: consultation ? { protocol: agentTurnScheduleProtocol, ...turnAllocation } : null,
@@ -743,7 +761,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               ...(nativeFinalization&&purpose==='answer'&&!tools.length?{outputMode:'json_schema' as const}:{}),
               ...(profile ? { profile, deadlineAt } : {}) } },
             metadata: { promptVersion: agentPromptVersion, runtime: initial.config.runtime, turn, purpose, probeVersion: initial.config.probeVersion,
-              ...(nativeFinalization&&purpose==='answer'&&!tools.length?{nativeFinalProjection}:{}) },
+              ...(nativeFinalization&&purpose==='answer'&&!tools.length?{nativeFinalProjection:finalProjection}:{}),
+              ...(initial.config.imageContext ? {imageContext:initial.config.imageContext} : {}) },
             beforeProviderCall,
           });
           outcomeKnown = true;

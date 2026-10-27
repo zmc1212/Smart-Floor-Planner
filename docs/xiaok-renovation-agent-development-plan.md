@@ -25,24 +25,24 @@
 
 ## 2. 唯一当前任务
 
-2026-10-27按用户本次指令完成D1：从机制上解决旧预算引用与未采用提案状态，继续使用百炼qwen3.8-flash，累计预算不超过¥100。P0已验基线继续复用；本节是唯一当前交付记录。
+2026-10-28接续D2。D1在7a969c7c已完成限定验收，复用其原两旅程及真实费用/失败证据，不重开D1语义采样；本节替换上一次当前记录，不新建补丁队列。
 
 | 项目 | 当前记录 |
 | --- | --- |
-| 当前交付 / 状态 | **D1限定Implemented：正常装修咨询、需求更正与逐项采用的用户旅程已收口。** 只覆盖下述已验开发范围，不宣称全部PPT或生产默认上线；后继D2尚未开始 |
-| 用户动作 / 入口 | C01 packages/assistant/chat/chat可在预算未定时继续量房咨询，明确更正/照旧/撤回后继续同轮问题；C02 packages/assistant/requirements/requirements仅采用预算并保存草稿，保留瓷砖/地暖，丢响应按原键恢复、重进不重复写入，保存不等于正式确认 |
-| 机制 / 复用 | 在原LangGraph/原生最终策略上显式绑定requirement-claims-v1和review-completion-v1：服务端主张ID绑定原话、草稿/提案采用状态；同一Agent规划“仍有问题／只需真实回执”，纯回执由已执行服务重建、无自由最终模型正文。既有负向守卫仅约束可写原分句，混合问题继续由模型解释。原需求、审批、KnowledgeRetriever/Evidence、租户/来源撤回、幂等与费用审计沿用；无新事实表、Agent或知识重建 |
-| 开发开关 / 设计 | 普通C01仍只在显式开发企业白名单采用绑定配置：准确dashscope/qwen3.8-flash，tools=true、imageInput=false、structuredFinal=native-sourced-final-v1、requirementClaims=requirement-claims-v1、reviewCompletion=review-completion-v1。旧在途run保持原策略，生产禁用。C01 P4B README/C02 slide06及共享状态组件为设计源；WXML/Less/素材/导航/公开API/角色未改，完整光学还原状态不提升 |
-| 工程检查 | **75/75聚焦单元、5/5当前真实确定性服务通过**（tmp/agent-runtime/services-composable-d1-2026-10-27T14-41-03-480Z.json），原读取器未变的6/6持久恢复/他客/撤回/hash/草稿脱敏边界复用。定向lint通过；最新webpack生产构建退出0、源码无漂移、临时types include精确恢复。TSC仍与基线完全相同的54项诊断，本次文件0项。未重跑全产品矩阵 |
-| 固定实模 | **原两旅程各两次，10/10回合通过**；34实际请求/269672tokens，用量全已知、无漂移、隔离配置/投影精确恢复。2个纯预算更正由真实回执重建，无最终正文调用；其余答疑由真实配置模型生成，不用预塞答复或提案替代。选择保存、原键重试、重进、他客拒绝及原草稿字段保持均有实际写入/回读 |
-| Stable原生整链 | **7/7通过，7实际请求/54279tokens。** Stable2.02.2608080/注册CLI0.3.11、基础库3.17.2、原项目副屏、新编译、systemInfo、非空data、正元素、真实输入/点击/导航均验证。C01→真实百炼Worker→C02预算单项实写/丢响应原键恢复/重进/他客404贯通；4张核路由截图逻辑390×844/PNG348×752，均已目视复核。此次是实模整链，不借用旧确定性原生通过 |
-| 费用 / 停止 | **累计保守¥23.867267/¥100，实际账单未知；本次不再追加模型调用。** 全部历史失败/未知预留保留，标准账本核对5笔历史非成功预留未清零。当前请求共78次实际模型请求：失败机制37、收口34、原生7，均保留原始结果；不使用剩余次数采样，不切模型/地域/付费fallback，不重发旧run、未知提交或同Batch |
-| 原失败 / 计数 | 原1/10、4/10、8/10及本次主张单机制7/10首稿均保留，不重评。原2/2和OS11旧计数不清零；保存trace区分出纯变更自由正文及错误保留分句替换后，机制级接续仅固定复验一次并完成。首次确定性驱动的两条内部indeterminate无外部调用，初始60秒执行器中断和两次边界驱动前置错误均保留独立清理/修复证据，不改写为业务首稿通过 |
-| 证据 | 实模tmp/agent-contract/trial-composable-d1-2026-10-27T14-46-20-203Z.json；原生tmp/agent-contract/composable-native-d1-claims-completion-live-20261027-01/report.json；汇总tmp/xiaok-d1-claims-20261027/delivery-evidence.json、budget-final.json、d1-build.json、completion-final-unit.log、completion-tsc.log、completion-saved-traces.json。原失败、协议诊断及P0证据沿双语phase-two合同原指针保留；证据绑定实际源码/测试/配置，不以HEAD替代工作区快照 |
-| 清理 / 所有权 | 本聊天单owner串行，acceptance锁/idle queue沿原流程使用并在finally释放。合成企业AI禁用、身份context撤权、原平台配置/投影及临时会话/传输精确恢复，3108桥接/控制器关闭、原项目窗口留副屏并返回主页。保留3006、既有Worker/SSH/隧道及无关脏改，不推送或部署 |
-| 限制 / 后继 | 本阶段限定已批准PPT旅程及开发白名单；来源保持41原话/24KB边界。完整光学、真机、真实微信授权/BLE等未验且不成为例行用户手测门槛。**下一交付D2：小K能看懂客户给的图与资料，再结合可靠依据解释。** D2–D7状态未提升，本次D1收口未开始后继实现 |
+| 当前交付 / 状态 | **D2 Limited：图文上下文实现及确定性服务/原生链已通过，真实模型专业解释与图文旅程尚未验收。** 未自动推广原开发企业，不宣称完整D2或生产可用 |
+| 用户动作 / 入口 | 原C01 packages/assistant/chat/chat图片按钮实际上传、丢响应核对、追问与持久重进；来源面板/既有知识管理沿用。获权正式v4快照继续只读，不把照片观察写入需求或正式墙图 |
+| 机制 / 复用 | 原LangGraph、私有媒体/正式来源、需求主张/真实回执及KnowledgeRetriever/Evidence。新增显式conversation-images-v1及quoted-native-images-v1，规划和最终答复都传原生图片块；目录/持久checkpoint仅保留来源标识、hash及空像素。当前/历史上传、房间标签、原正式sourceRef分别绑定，不按上传先后推断房屋；每次派发/恢复/提交重验 |
+| 已定位缺口 / 修复 | D1配置和最终投影拒图；纯图片又被文字完成/claim来源拒绝；文字追问把无文本上传通知加入历史原话。已按真实输入类型接通纯图答疑、排除空文本通知；已有原话后发图仍保留需求主张校验及所有文字/回执守卫，无新事实或引用管线。Knowledge本批无变更，不重建已正确Evidence；原知识/外部网页缺陷保持原影响范围 |
+| 开发开关 / 设计 | 新能力仅显式准确dashscope/qwen3.8-flash、imageInput=true、tools=true、structuredFinal=native-sourced-final-v1、imageContext=conversation-images-v1；原D1 requirementClaims/reviewCompletion继续用于文字。能力指纹继续阻止在途混配。批准C01 P4B README及既有图片/notice/气泡/来源组件沿用；WXML/Less/素材/文案/导航/API/schema/角色不变，无新视觉还原或生产配置发布 |
+| 工程检查 | 48/48聚焦单元、4/4真实确定性服务通过，覆盖幂等/重进/checkpoint恢复/他客401-404/错hash/删除与派生消息失效/后续零图片；定向lint通过。D1原完整基线命令5/5（tmp/agent-runtime/services-composable-d1-2026-10-27T16-37-24-917Z.json）及未变正式媒体3/3按evidence-reuse-impact.json核对复用（tmp/xiaok-d2-formal-media-context-20261028/service-status.json），均无漂移。TSC完成退出2，仍与基线逐项相同54项原诊断、本次0；一次并发限时类型检查超时保留未完成。路由/schema未改，本批未重跑生产构建。 |
+| Stable原生 | 3/3通过：副屏、原项目新编译、3.17.2、非空data/正元素，真实点击上传、丢响应原键恢复、实际输入/发送追问、持久重进。两张核C01路由截图已目视复核，逻辑390×844/PNG348×752。**答复为明确合成输出，供应商attempt/外部fetch0；不是实模业务验收** |
+| 实模剩余 / 阻塞范围 | 固定D2原两条旅程各两次：企业做法/条件解释—追问/更正—出处打开/撤回；真实测试照片/获权户型—换位置追问—房屋歧义/已知与未知。至少一条C01输入→实际配置Qwen Worker→结果与重进整链。当前“本次不再追加模型调用”边界尚未被新指令解除，故本批不调用，完整D2仍Limited；无模型费用的独立实现/检查已先推进 |
+| 原失败 / 计数 | 9453/9454纯图误入文字协议的两次修复及9457上传通知误入文字原话失败均保留，定点机制已通过；驱动422及原生编码/序列化/控件定位/瞬时锁争用错误另存原批，不重评业务首稿、不将其算模型尝试。原D1/OS两轮失败与首稿计数不清零，不采样至通过 |
+| 证据 | tmp/xiaok-d2-context-20261027/services-existing-text-claims/report.json、native-existing-text-claims/report.json、native-existing-text-claims/native/report.json及unit-final-status.json。双语二期D2合同记录实际输入/输出、原失败和兼容结果。所有运行依赖前后绑定；原生/服务均drift[] |
+| 费用 / 清理 / 所有权 | 本聊天单owner串行原生/数据库验收，复用原锁/空队列守卫，finally撤销合成身份、禁用合成AI、取消自有残余任务、释放锁/3108桥接和控制器、恢复原会话/传输，原窗口留副屏主页。保留3006、原Worker/SSH/数据库隧道与无关脏改。新增供应商调用0；累计保守¥23.867267/¥100、实际账单未知，原失败/未知预留保留；未推送/部署 |
+| 限制 / 下一步 | 当前继续D2固定实模验收须先解除上述调用停止边界；完成后下一交付D3。完整光学/真机/真实微信/BLE未验证且非例行手测门槛。D3–D7不提升状态，不以内部协议通过关闭D2 |
 
-P0的6ce1c632/dd9195bf以及D1既有18ed416f/cc26ee56等真实提交和原始费用继续保留。本次相关本地提交在完成文档差异核对后生成；其实际hash在下一次必要文档更新记录，不新增commit-only循环。
+P0的6ce1c632/dd9195bf与D1的18ed416f/cc26ee56/7a969c7c、原实模/原生证据及原始费用继续保留。本次相关实现提交在文档差异核对后生成；其实际hash在下一次必要文档更新记录，不新增commit-only循环。
 
 ## 3. 现有成果怎样使用
 

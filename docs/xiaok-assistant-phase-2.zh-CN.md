@@ -1,5 +1,22 @@
 # 小K第二期：需求整理与人工交接
 
+## D2图文上下文（代码/确定性整链Implemented，阶段Limited）
+
+2026-10-28接续唯一开发计划第2节，复用D1提交7a969c7c的需求主张/真实回执和既有私有图片、正式v4来源、KnowledgeRetriever/Evidence。用户仍从C01图片按钮直接发送，原重试/重进及来源面板保持。当前只在明确标记的隔离合成企业验证新图文配置；原开发企业和生产配置未推广，不能据此称完整D2可用。
+
+- **实际机制：** agent_config.imageContext=conversation-images-v1须同时为准确dashscope/qwen3.8-flash、imageInput=true、tools=true和native-sourced-final-v1；不带该协议的原文字配置仍拒绝混入图片。imageContext/imageInput变更继续参与能力指纹，在途run不静默跨能力执行。规划沿已有原生图片消息，最终投影quoted-native-images-v1将完整角色/成对工具结果作为不可信JSON，图片ID/hash留在目录，像素经独立原生image块传递；同mediaId出现冲突hash/mime/字节即拒绝。checkpoint只留来源和空字节，恢复时重新鉴权取图。
+- **来源与需求边界：** 当前/历史上传分别绑定uploadMessageId、mediaId/hash、kind、roomName、原正式sourceRef；不借当前项目或上传先后认定房屋。服务端已验证的首次纯图片上传没有文字需求原话，走正常图片答疑；已有客户原话时保留其绑定主张校验，发图不建立新需求或进入receipt_only。后续文字完整沿用D1合同。原customerSources中无文本的上传通知不再被选入文字主张的历史原话，未删除/改写原通知、图片或需求。正式来源仍复用严格v4解析与原本人/主户型/归属/归档检查，不写正式墙图。
+- **职责与采用：** Knowledge解析/检索/发布/Evidence本批无变化；现有资料与来源缺陷、外部读页限制仍保留。对照[LangChain多模态消息](https://docs.langchain.com/oss/javascript/langchain/messages)及[百炼视觉理解/工具/结构输出](https://www.alibabacloud.com/help/zh/model-studio/vision-model)（2026-10-28核对），沿P0已核对的框架工具实现/测试、现有LangGraph循环和agentChatBody原生image_url传输；保留原P0供应商工具历史/最终schema兼容投影。只补本项目来源重验和最终wire投影，不新增感知Agent、事实库、引用管线或框架迁移；官方支持表不是实模兼容证据。
+- **设计映射：** C01 design-references/xiaok-p4b-public-sites-v1/README.md、已还原图片按钮/气泡/notice/来源sheet与共享状态规则。WXML/Less/图片/文案/导航未改，无新视觉设计或还原工作，故还原台账状态不提升。Stable两张核路由截图已目视检查图片、合成答复及追问可见，不宣称完整光学、真机/真实微信/BLE验收。
+
+**已执行及证据：** 聚焦48/48，tmp/xiaok-d2-context-20261027/unit-final.log与unit-final-status.json前后无漂移；定向lint通过。真实服务4/4（tmp/xiaok-d2-context-20261027/services-existing-text-claims/report.json）：真实JWT/handler/上传写入与同键幂等、普通Worker自动任务、原生schema图片像素、文字追问、checkpoint重新取图、重进、他客404/未登录401/错hash拒绝、删除使旧回答及checkpoint失效、删除后新回合图片0。Stable原生3/3（tmp/xiaok-d2-context-20261027/native-existing-text-claims/report.json及native/report.json）：原项目/副屏、新编译、3.17.2、非空data/正元素、实际图片按钮/HTTP写入、丢响应原键恢复、真实文本input/tap、持久重进；两图均为C01，逻辑390×844/PNG348×752。原生答复为明确标记的合成输出，六次内部模型回调不是供应商调用；provider attempts/外部fetch0。
+
+**原失败与修复计数：** 服务9453为纯图误入文本完成校验，9454为纯图误入文字claim原话；保存trace后按已验证输入类型处理两处同源接缝，纯图已通过，保留这两次修复结果。9457的文字追问失败定位到上传通知被当作历史文字原话；过滤空文本后同一旅程通过。中间一次422为驱动缺Idempotency-Key/未接受202，保留为驱动前置错误。原生前置PowerShell编码、序列化__name、按钮定位和SKIP LOCKED瞬时争用均独立保留原批；定向图片恢复按钮及有界等待后通过，没有模型采样，不重评旧D1首稿/OS失败计数。所有报告均保留原名与原源码绑定。
+
+**兼容/类型/清理：** 复用D1原固定确定性服务5/5（tmp/agent-runtime/services-composable-d1-2026-10-27T16-37-24-917Z.json），新增currentImage分支不改变旧文字路径，逐项影响核对见tmp/xiaok-d2-context-20261027/evidence-reuse-impact.json，真实采用、原键恢复/重进、他客拒绝与原字段保持。首次兼容命令漏了原基线的--verify-review-originals，导致撤回步骤未产生确定性keep动作，原4/5及后续采用未满足已保留；按原基线完整命令复验，不改产品或重评旧批。复用未变正式媒体范围3/3（影响核对同上），tmp/xiaok-d2-formal-media-context-20261028/service-status.json绑定无漂移，合法原图/快照不变、非法v4/归属/租户/hash/删除继续拒绝。TSC退出2，仍为逐项相同的54项原诊断，本次0；types-final-check.log为完成结果，并发限时types-final一次超时未产出诊断，单独保留且不算通过。本批未重跑生产构建，路由/schema未改。原生/服务/兼容来源均无漂移，相关合成企业禁用、用户context撤权、残余queued/running取消、原传输/会话与3108桥接恢复，锁及控制器释放，原Stable窗口留副屏主页；3006、原Worker/SSH/数据库隧道及无关脏改保留。新供应商调用0，无推送/部署。
+
+**剩余固定验收与调用边界：** 本批无新增模型/embedding/搜索/Batch调用，累计保守¥23.867267/¥100、实际账单未知，历史失败和未知预留不清零。当前开发计划保留“本次不再追加模型调用”；未获新授权前不执行新调用，也不将上述合成答复作为D2业务验收。后续固定两条原旅程各两次：厨房设备/企业做法的条件解释、追问和更正，并验证原出处可打开及撤回；同一客户的真实测试照片/获权户型、换位置追问与房屋歧义，不从单图认定安全/精确尺寸、不写正式墙图。至少一条由真实C01输入经实际配置Qwen Worker到结果/重进贯通。保留每次首稿，租户/撤回/回执仍阻塞受影响路径，完成后再接D3；不恢复旧宽矩阵。
+
 ## D1需求来源、采用状态与原生验收（限定Implemented）
 
 D1限定Implemented（2026-10-27）：C01正常咨询、需求更正与量房答疑共存，C02仅采用预算、保留瓷砖/地暖，实写草稿、丢响应按原键恢复、重进及他客拒绝已贯通。显式开发白名单/run配置复用native-sourced-final-v1、requirementClaims=requirement-claims-v1、reviewCompletion=review-completion-v1，准确百炼qwen3.8-flash、工具开/图片关；旧在途策略保留。主张ID绑定实际原话及草稿/待采用/失效状态；同一Agent显式声明剩余问题或纯真实回执，纯回执没有自由最终模型入口。既有负向守卫仅限制单个可写分句，不替代整轮理解；来源、回执、租户、版本与客户同意守卫保持。75单元、5/5当前确定性服务、未变读取器6/6边界、固定实模10/10回合（34请求/269672tokens）及Stable原生7/7（7请求/54279tokens）通过，绑定均无漂移；2个纯更正回合按真实回执重建。4张C01/C02核路由截图已目视复核，逻辑390×844/PNG348×752。最新webpack构建退出0、配置精确恢复；TSC仍54项原诊断、本次0。批准C01 P4B/C02 slide06及共享状态组件沿用，WXML/Less/素材/API路由/角色无变更；无新表、Agent、知识管线、设计或生产部署。全部原失败/未知预留保留，累计保守¥23.867267/¥100，实际账单未知。原配置/投影、临时会话/传输恢复，合成企业停用、身份撤权及资源释放完成。证据tmp/agent-contract/trial-composable-d1-2026-10-27T14-46-20-203Z.json、tmp/agent-contract/composable-native-d1-claims-completion-live-20261027-01/report.json及tmp/xiaok-d1-claims-20261027/delivery-evidence.json；唯一后继见开发计划第2节，D2尚未开始。
