@@ -5,7 +5,7 @@ import { AssistantRepository, one, type Row } from '@/db/repositories/assistant-
 import { fail, id, key, requireCapability, type ActorContext } from '@/lib/assistant/contracts';
 import { appendMessage, idempotent } from '@/lib/assistant/core/conversation';
 import { readMemory } from '@/lib/assistant/agent/memory';
-import { HandoffService } from '@/lib/assistant/handoff/service';
+import { HandoffWorkflow } from '@/lib/assistant/handoff/workflow';
 import { createPortfolioEntry } from './entry';
 import { CITY_OPTIONS } from './regions';
 import { LAYOUT_OPTIONS, STYLE_OPTIONS } from './options';
@@ -24,7 +24,8 @@ const recommendationNotice = '作品仅供风格/户型与服务方向参考；�
  * The caller must already own this consultation; views never create leads or change attribution.
  */
 export class PortfolioCatalog {
-  constructor(readonly actor: ActorContext, readonly conversationId: string) {}
+  constructor(readonly actor: ActorContext, readonly conversationId: string,
+    private readonly handoffHooks?: ConstructorParameters<typeof HandoffWorkflow>[1]) {}
   private async authorized<T>(run: (tx: PostgresTransaction, conversation: Row) => Promise<T>, write = false) {
     requireCapability(this.actor, 'assistant.chat.self');
     if (this.actor.principal.kind !== 'user') fail('portfolio_forbidden', 403);
@@ -142,15 +143,18 @@ export class PortfolioCatalog {
   async contact(workId: string, input: Row, requestKey: string) {
     if (Object.keys(input).some(k => k !== 'versionId')) fail('invalid_portfolio', 422);
     const work = await this.work(id(workId), id(input.versionId));
-    return new HandoffService(this.actor).customerWrite(this.conversationId, key(requestKey), { action: 'request', recipientId: work.authorId }, async (repo, c) => {
-      const candidate = (await portfolioCandidates(repo.tx, this.actor.enterpriseId, { workId }))[0];
-      if (!candidate || candidate.work.versionId !== input.versionId) fail('portfolio_not_found', 404);
-      const owner = await one(repo.tx, sql`select assigned_to from app.leads where enterprise_id=${this.actor.enterpriseId}
-        and customer_user_id=${this.actor.principal.kind === 'user' ? this.actor.principal.userId : ''} and assigned_to is not null
-        and archived_at is null and status not in ('closed','converted') and assigned_to<>${work.authorId} limit 1 for share`);
-      const h = (c.entry_snapshot as Row).handoff as Row | undefined;
-      if (owner || (h?.ownerId && h.ownerId !== work.authorId)) fail('portfolio_owner_conflict', 409);
-    }, { workId, versionId: work.versionId, authorId: work.authorId });
+    return new HandoffWorkflow(this.actor, this.handoffHooks).customerWrite(this.conversationId, key(requestKey), { action: 'request', recipientId: work.authorId }, {
+      portfolio: { workId, versionId: work.versionId, authorId: work.authorId }, guard: async (repo, c) => {
+        const candidate = (await portfolioCandidates(repo.tx, this.actor.enterpriseId, { workId }))[0];
+        if (!candidate || candidate.work.versionId !== input.versionId) fail('portfolio_not_found', 404);
+        const owner = await one(repo.tx, sql`select assigned_to from app.leads where enterprise_id=${this.actor.enterpriseId}
+          and customer_user_id=${this.actor.principal.kind === 'user' ? this.actor.principal.userId : ''} and assigned_to is not null
+          and archived_at is null and status not in ('closed','converted') and assigned_to<>${work.authorId} limit 1 for share`);
+        const h = (c.entry_snapshot as Row).handoff as Row | undefined;
+        if (owner || (h?.ownerId && h.ownerId !== work.authorId)
+          || (h?.state === 'waiting' && h.recipientId && h.recipientId !== work.authorId)) fail('portfolio_owner_conflict', 409);
+      },
+    });
   }
   image(workId: string, versionId: string, assetId: string) {
     id(workId); id(versionId); id(assetId);

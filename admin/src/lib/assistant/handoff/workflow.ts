@@ -10,6 +10,13 @@ import { HandoffService, handoffReviewApproval } from './service';
 import { stageHandoffProposal } from './proposal';
 
 type Action = 'request' | 'cancel' | 'end';
+/** Server-only context for an explicit published-work contact action. No REST
+ * payload can supply the live guard or grant itself a review approval. */
+export type PortfolioContactContext = {
+  portfolio: { workId: string; versionId: string; authorId: string };
+  guard: (repo: AssistantRepository, conversation: Row) => Promise<void>;
+};
+const boundInput = (input: Row, context?: PortfolioContactContext) => context ? { ...input, portfolio: context.portfolio } : input;
 type WriteResult = Awaited<ReturnType<HandoffService['customerWrite']>> & {
   reviewWorkflow?: 'langgraph';
   receipt?: { effect: string; operation: Action; originRequestId: string | null;
@@ -75,16 +82,17 @@ export class HandoffWorkflow {
       text: action === 'request' ? '接待提案已备好，尚未提交接待、接通或预约，也没有分享手机号。'
         : '取消接待的提议已备好；接待状态尚未改变，需求保持原样。' };
   }
-  private begin(conversationId: string, requestKey: string, input: Row) {
+  private begin(conversationId: string, requestKey: string, input: Row, context?: PortfolioContactContext) {
     return this.scoped(conversationId,true,async (repo,c,settings) => {
       if (!workflow(c) || c.status !== 'open' || (c.entry_snapshot as Row).retentionRedacted) fail('context_changed');
-      return await idempotent(repo.tx,this.actor,'handoff-review:'+conversationId,requestKey,input,async () => {
+      return await idempotent(repo.tx,this.actor,'handoff-review:'+conversationId,requestKey,boundInput(input,context),async () => {
+        if (context) await context.guard(repo,c);
         const h = state(c), action = String(input.action) as Action;
         const fulfilled = action === 'request' ? h && ['waiting','active'].includes(h.state)
           : !h || ['cancelled','ended'].includes(h.state);
-        if (!fulfilled && Number(c.version) !== input.expectedVersion) fail('version_conflict');
+        if (!fulfilled && input.expectedVersion !== undefined && Number(c.version) !== input.expectedVersion) fail('version_conflict');
         const source = await customerSources(repo,this.actor.enterpriseId,conversationId);
-        const binding = { action, inputHash:fingerprint(input), sourceHash:source.hash,
+        const binding = { action, inputHash:fingerprint(boundInput(input,context)), sourceHash:source.hash,
           epoch:Number(settings.knowledge_epoch), version:Number(c.version), revision:Number(c.context_revision),
           requestId:h?.requestId || null, state:h?.state || null };
         return { ...binding, kind:fulfilled?'existing':'review', proposalId:randomUUID(), digest:fingerprint(binding) };
@@ -105,15 +113,19 @@ export class HandoffWorkflow {
         operation:binding.action, originRequestId:binding.requestId,
         currentRequestId:h?.requestId || null, text } };
   }
-  async customerWrite(conversationId: string, requestKey: string, input: Row): Promise<WriteResult> {
+  async customerWrite(conversationId: string, requestKey: string, input: Row, context?: PortfolioContactContext): Promise<WriteResult> {
+    if (context && (input.action!=='request' || input.consent===false || input.recipientId!==context.portfolio.authorId)) fail('invalid_message',422);
     const enabled = await this.scoped(conversationId,false,async (_repo,c) => workflow(c));
-    if (!enabled) return this.service.customerWrite(conversationId,requestKey,input);
+    if (!enabled) return this.service.customerWrite(conversationId,requestKey,input,context?.guard,context?.portfolio);
     key(requestKey);
     if (!['request','cancel','end'].includes(String(input.action))
       || Object.keys(input).some(k=>!['action','consent','contactConsent','phone','recipientId','leadId','archiveConsent','mediaConsent','expectedVersion'].includes(k))
-      || !Number.isInteger(input.expectedVersion) || Number(input.expectedVersion)<1
-      || (input.action==='request' && input.consent!==true)) fail('invalid_message',422);
-    const binding = await this.begin(conversationId,requestKey,input);
+      || ((!context || input.expectedVersion!==undefined) && (!Number.isInteger(input.expectedVersion) || Number(input.expectedVersion)<1))
+      || (input.action==='request' && !context && input.consent!==true)) fail('invalid_message',422);
+    // Work-detail contact already fixes the exact published work/version and is
+    // the customer's direct action. Freeze the live conversation here; adding a
+    // freshly read expectedVersion to each retry would break original-key replay.
+    const binding = await this.begin(conversationId,requestKey,input,context);
     if (binding.kind==='existing') return this.currentReceipt(conversationId,binding);
     const body = { ...input }; delete body.expectedVersion;
     return withReviewLock(this.actor,conversationId,async () => {
@@ -121,13 +133,14 @@ export class HandoffWorkflow {
       const graph = reviewGraph({ kind:'handoff_'+binding.action,
         authorize:()=>this.authorized(conversationId), errorCode:'handoff_write_indeterminate', afterWrite:this.hooks.afterWrite,
         apply:async (_proposalId,digest,d) => {
-          if (digest!==binding.digest || d.inputHash!==fingerprint(input) || d.inputHash!==binding.inputHash) fail('idempotency_conflict');
+          if (digest!==binding.digest || d.inputHash!==fingerprint(boundInput(input,context)) || d.inputHash!==binding.inputHash) fail('idempotency_conflict');
           await this.service.customerWrite(conversationId,d.requestKey,body,async (repo,c) => {
             const source = await customerSources(repo,this.actor.enterpriseId,conversationId), settings=await repo.settings(true), h=state(c);
             if (!workflow(c) || source.hash!==binding.sourceHash || Number(settings!.knowledge_epoch)!==binding.epoch
               || Number(c.version)!==binding.version || Number(c.context_revision)!==binding.revision
               || (h?.requestId || null)!==binding.requestId || (h?.state || null)!==binding.state) fail('context_changed');
-          },undefined,handoffReviewApproval);
+            if (context) await context.guard(repo,c);
+          },context?.portfolio,handoffReviewApproval);
           return binding.action==='request' ? d.requestKey : binding.requestId!;
         } });
       const config={configurable:{thread_id:this.thread(conversationId,binding.proposalId)}};
