@@ -6,7 +6,7 @@ import { getPlatformLlmOverrideRuntime } from '@/lib/platform-llm-config';
 import { authorizeKnowledgeManager } from '../knowledge/manager';
 import { AiProviderError, type AiProviderRuntimeConfig } from '@/lib/ai/provider-types';
 import { bailianBinding, bailianSearchBinding, normalizeBailianTaskBinding, type BailianBinding, type BailianSearchBinding, type BailianTaskBinding } from '@/lib/ai/providers/bailian-capabilities';
-import { bailianOfflineTransport, bailianPublicSearch, nativeSearchUsage, definitiveCapabilityRejection, type BailianOfflineTransport, type BatchRemote } from '@/lib/ai/providers/bailian-offline';
+import { bailianOfflineTransport, bailianPublicSearch, nativeSearchCandidates, nativeSearchUsage, definitiveCapabilityRejection, type BailianOfflineTransport, type BatchRemote } from '@/lib/ai/providers/bailian-offline';
 import { parseAgentChat } from '@/lib/ai/providers/agent-chat';
 import { cacheObservation } from '@/lib/ai/providers/model-observation';
 import { fail, fingerprint, id, key } from '../contracts';
@@ -93,7 +93,9 @@ export class ModelTaskService {
   prepareSearch(operationKey: string, query: WebQuery, binding: BailianSearchBinding) {
     if(binding.api!=='dashscope-generation')fail('bailian_search_api_mismatch',422);
     return this.prepare('public_search',operationKey,{query:parseWebQuery(query)},binding,
-      [{customId:'search',request:{query:parseWebQuery(query)},tokens:4096}]);
+      // Native search can add context up to the configured model's 1M window.
+      // Reserve the documented upper bound before any provider request.
+      [{customId:'search',request:{query:parseWebQuery(query)},tokens:1_050_000}]);
   }
   prepareDraft(operationKey: string, draft: ApprovedDraft, binding: BailianBinding) {
     validateDraft(draft,{enterpriseId:this.actor.enterpriseId,ownerId:this.actor.adminId,version:draft.version,
@@ -267,8 +269,35 @@ export class ModelTaskService {
       const response=await transport.search(query),usage=nativeSearchUsage(response.payload);
       await this.recordSingleUsage(next,usage);
       const result=await searchWeb(query,bailianPublicSearch(async()=>response.payload),read);
-      await this.finishSingle(next,{...result},usage);return result;
+      await this.finishSingle(next,{...result},usage,{nativeCandidates:nativeSearchCandidates(response.payload)});return result;
     }catch(error){await this.failedDispatch(taskId,Number(next.version),error);throw error;}
+  }
+  /** A successful native search is never replayed just because its original
+   * pages were temporarily unreadable. Reuse only saved provider candidates;
+   * readWeb still enforces public DNS, domains, redirects and content limits. */
+  async retrySearchRead(taskId:string,read?:Parameters<typeof searchWeb>[2]):Promise<WebSearchSnapshot> {
+    const task=await this.read(taskId);
+    if(task.kind!=='public_search'||task.state!=='completed'||!task.result)fail('model_task_read_not_recoverable',409);
+    const previous=task.result as WebSearchSnapshot & {readHistory?:unknown[]};if(previous.status==='ready')return previous;
+    const item=task.items[0],saved=item?.result as {nativeCandidates?:Array<{url:string;title:string}>}|null;
+    if((previous.readHistory?.length||0)>=2)fail('model_task_read_retry_limit',409);
+    // Older tasks already retain the exact attempted candidate URLs in their
+    // failed snapshot. They can recover without inventing or rediscovering URLs.
+    const candidates=saved?.nativeCandidates||previous.failures.flatMap(f=>f.url?[{url:f.url,title:new URL(f.url).hostname}]:[]);
+    if(!candidates.length)fail('native_search_sources_unavailable',409);
+    const query=parseWebQuery((task.request as {query:WebQuery}).query);
+    const recovered=await searchWeb(query,{name:'bailian-native',search:async()=>candidates},read);
+    const {readHistory,...originalRead}=previous;
+    const result={...recovered,readHistory:[...(readHistory||[]),{previous:originalRead,resultHash:fingerprint(recovered),recoveredAt:new Date().toISOString()}]};
+    await this.scoped(async tx=>{
+      const current=await this.owned(tx,taskId,true);
+      if(current.revoked_at||Number(current.version)!==Number(task.version)||current.state!=='completed')fail('model_task_state_conflict',409);
+      // Original item/provider results stay immutable. Public-page recovery
+      // history belongs to the task projection, never its inference result.
+      await tx.execute(sql`update app.assistant_model_tasks set result=${JSON.stringify(result)}::jsonb,version=version+1,updated_at=now()
+        where enterprise_id=${this.actor.enterpriseId} and id=${taskId}`);
+    });
+    return result;
   }
   async continueDraft(taskId:string,expectedVersion:number,consentVersion:number) {
     const task=await this.read(taskId);if(task.kind!=='draft_continuation'||task.revoked_at)fail('invalid_model_task',422);
@@ -304,14 +333,14 @@ export class ModelTaskService {
         metadata:{modelTask:{taskId:String(task.id),customId:item.custom_id,synthetic:true},usage,cache:cacheObservation(usage),reservedTokens:String(item.reserved_tokens)}});
     });
   }
-  private async finishSingle(task:Row,result:Record<string,unknown>,usage:ReturnType<typeof parseAgentChat>['usage']) {
+  private async finishSingle(task:Row,result:Record<string,unknown>,usage:ReturnType<typeof parseAgentChat>['usage'],details:Record<string,unknown>={}) {
     await this.scoped(async tx=>{
       const current=await this.owned(tx,String(task.id),true);if(current.revoked_at)fail('model_task_revoked',409);
       const item=(await one(tx,sql`select * from app.assistant_model_task_items where enterprise_id=${this.actor.enterpriseId} and task_id=${String(task.id)}`))!;
       const hash=fingerprint({result,usage});
       await new AiCreationRepository(tx).updateProviderAttempt(BigInt(String(item.attempt_id)),{status:'succeeded',accepted:true,
         actualCost:{measurementKind:'unavailable'},metadata:{modelTask:{taskId:String(task.id),customId:item.custom_id,synthetic:true},usage,cache:cacheObservation(usage),responseHash:hash,reservedTokens:String(item.reserved_tokens)}});
-      await tx.execute(sql`update app.assistant_model_task_items set state='succeeded',result=${JSON.stringify({usage,cache:cacheObservation(usage)})}::jsonb,response_hash=${hash}
+      await tx.execute(sql`update app.assistant_model_task_items set state='succeeded',result=${JSON.stringify({...details,usage,cache:cacheObservation(usage)})}::jsonb,response_hash=${hash}
         where enterprise_id=${this.actor.enterpriseId} and id=${String(item.id)}`);
       await tx.execute(sql`update app.assistant_model_tasks set state='completed',result=${JSON.stringify(result)}::jsonb,version=version+1,updated_at=now()
         where enterprise_id=${this.actor.enterpriseId} and id=${String(task.id)}`);

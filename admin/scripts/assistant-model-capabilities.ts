@@ -12,6 +12,7 @@ import { closePostgresPool } from '@/lib/postgresql';
 import { fingerprint } from '@/lib/assistant/contracts';
 import { reviewBudget, type RetainedReviewHold } from './assistant-review-budget';
 import { lockAssistantAcceptance } from './assistant-acceptance-safety.mjs';
+import { verifyPartialEvidence } from './assistant-partial-evidence';
 
 const root=path.resolve(process.cwd(),'..');
 function isolatedConnection() {
@@ -43,7 +44,7 @@ export async function migrateP0Isolated() {
 /** Additional live inference is opt-in only with a new explicit authorization
  * record. Current development does not create one. The same original ledger,
  * historical unknown holds, call count and CNY100 cap remain authoritative. */
-function livePorts(authorizationFile?:string):ModelTaskPorts {
+function livePorts(authorizationFile?:string,partialEvidenceFile?:string):ModelTaskPorts {
   return {
     async runtime(){const runtime=await getPlatformLlmOverrideRuntime('chat');if(!runtime)throw Error('No configured runtime');return runtime;},
     transport:bailianOfflineTransport,
@@ -73,9 +74,9 @@ function livePorts(authorizationFile?:string):ModelTaskPorts {
         binding:task.binding,calls:items.map(item=>({id:`p0-${task.id}-${item.custom_id}`,runId:`model-task:${task.id}`,status:'reserved',reservedTokens:Number(item.reserved_tokens)}))},null,2),{flag:'wx'});
       return {id:approval.id};
     },
-    // Qwen3.8 model/API documentation still conflict. No environment flag can
-    // label that protocol verified; the default service preserves the fence.
-    partialVerified:async()=>false,
+    // The original bound successful wire response is required. An environment
+    // flag, model-page claim or deterministic fixture cannot assert support.
+    partialVerified:async binding=>!!partialEvidenceFile&&verifyPartialEvidence(root,partialEvidenceFile,binding),
   };
 }
 async function exportTaskLedger(service:ModelTaskService,taskId:string) {
@@ -98,7 +99,8 @@ async function main() {
     const enterpriseId=process.env.ASSISTANT_P0_ENTERPRISE_ID,adminId=process.env.ASSISTANT_P0_ADMIN_ID;
     if(!enterpriseId||!adminId)throw Error('Explicit synthetic enterprise/admin IDs are required');
     const flag=process.argv.indexOf('--authorization'),authorizationFile=flag<0?undefined:process.argv[flag+1];
-    const service=new ModelTaskService({enterpriseId,adminId},livePorts(authorizationFile));
+    const evidenceFlag=process.argv.indexOf('--partial-evidence'),partialEvidenceFile=evidenceFlag<0?undefined:process.argv[evidenceFlag+1];
+    const service=new ModelTaskService({enterpriseId,adminId},livePorts(authorizationFile,partialEvidenceFile));
     let taskId=process.argv[3];
     try {
       let result:unknown;
@@ -113,12 +115,13 @@ async function main() {
       else if(command==='cancel')result=await service.cancel(taskId);
       else if(command==='recover-upload')result=await service.recoverUpload(taskId,process.argv[4]);
       else if(command==='search')result=await service.search(taskId);
+      else if(command==='retry-search-read')result=await service.retrySearchRead(taskId);
       else if(command==='continue-draft')result=await service.continueDraft(taskId,Number(process.argv[4]),Number(process.argv[5]));
       else if(command==='revoke')await service.revoke(taskId);
       else throw Error('Unknown P0 capability command');
       const task=await service.read(taskId);console.log(JSON.stringify({taskId,state:task.state,remoteStatus:task.remote_status,
         itemStates:task.items.map(i=>({customId:i.custom_id,state:i.state})),reservedTokens:task.reserved_tokens,actualCost:null,
-        ...(command==='search'?{searchStatus:(result as {status:string}).status}:{})}));
+        ...(['search','retry-search-read'].includes(command)?{searchStatus:(result as {status:string}).status}:{})}));
     }finally{if(/^[1-9]\d*$/.test(taskId||''))await exportTaskLedger(service,taskId);}
   }finally{await closePostgresPool();await unlock();}
 }

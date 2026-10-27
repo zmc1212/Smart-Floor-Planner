@@ -88,7 +88,7 @@ test('one native HTTP dispatch records cache/latency and does not retry an ambig
 });
 test('native search sends only public query; supplied history and search prose never become read evidence',async()=>{
   const query={query:'瓷砖执行标准',domains:['example.com']},body=publicSearchBody(bailianSearchBinding(binding),query);
-  assert.deepEqual(body.input.messages,[{role:'user',content:query.query}]);assert.equal(body.parameters.enable_search,true);assert.equal(body.parameters.search_options.search_strategy,'turbo');
+  assert.deepEqual(body.input.messages,[{role:'user',content:[{text:query.query}]}]);assert.equal(body.parameters.enable_search,true);assert.equal(body.parameters.search_options.search_strategy,'turbo');
   assert.throws(()=>publicSearchBody(bailianSearchBinding(binding),{query:'客户姓名: 张三 手机号: 13800138000',domains:[]}),/private_web_query/);
   const response={...payload(),search_info:{search_results:[{title:'标准原文',url:'https://example.com/standard',snippet:'fake claims'}]}};
   assert.equal(nativeSearchCandidates(response).length,1);
@@ -126,10 +126,11 @@ test('real Batch wire uses upload, asynchronous batch, query, content and cancel
 test('source-bearing native search binds DashScope Generation and parses its usage without trusting prose',async()=>{
   const original=globalThis.fetch;let calls=0;
   try {
-    globalThis.fetch=async(url,init)=>{calls++;assert.equal(String(url),'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation');
+    globalThis.fetch=async(url,init)=>{calls++;assert.equal(String(url),'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation');
+      assert.equal((init?.headers as Record<string,string>)['X-DashScope-SSE'],'enable');
       const body=JSON.parse(String(init?.body));assert.equal(body.parameters.search_options.enable_source,true);assert.equal(body.parameters.result_format,'message');assert.equal(body.messages,undefined);
-      return new Response(JSON.stringify({output:{choices:[{finish_reason:'length',message:{content:'这段模型正文不作为证据'}}],search_info:{search_results:[{url:'https://example.com/original',title:'原文'}]}},
-        usage:{input_tokens:140,output_tokens:20,prompt_tokens_details:{cached_tokens:80}},request_id:'native-test'}),{status:200});};
+      return new Response('data: '+JSON.stringify({output:{choices:[{finish_reason:'length',message:{content:'这段模型正文不作为证据'}}],search_info:{search_results:[{url:'https://example.com/original',title:'原文'}]}},
+        usage:{input_tokens:140,output_tokens:20,prompt_tokens_details:{cached_tokens:80}},request_id:'native-test'})+'\n\n',{status:200,headers:{'Content-Type':'text/event-stream'}});};
     const transport=bailianOfflineTransport(runtime,bailianSearchBinding(binding));
     const response=await transport.search({query:'瓷砖执行标准',domains:[]});assert.equal(calls,1);
     assert.deepEqual(nativeSearchUsage(response.payload),{inputTokens:140,outputTokens:20,cachedInputTokens:80});assert.equal(nativeSearchCandidates(response.payload).length,1);

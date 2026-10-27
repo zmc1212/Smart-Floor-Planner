@@ -8,6 +8,7 @@ import { parseAgentChat, parseAgentUsage } from './agent-chat';
 import { fingerprint } from '@/lib/assistant/contracts';
 import type { partialBody } from '@/lib/assistant/agent/draft-continuation';
 import type { ModelTurnOutput } from '@/lib/assistant/contracts/model';
+import { getLines, getMessages } from '@langchain/core/utils/event_source_parse';
 
 export type BatchRemote = { id: string; status: string; input_file_id: string; output_file_id: string | null;
   error_file_id: string | null; metadata: Record<string, string> };
@@ -46,7 +47,8 @@ export function bailianOfflineTransport(runtime: AiProviderRuntimeConfig, bindin
     if(nativeSearch !== (binding.api==='dashscope-generation'))throw Error('bailian_api_mismatch');
     return providerFetch(binding.baseUrl + path,
     { method, body, redirect: 'error', headers: { Authorization: 'Bearer ' + runtime.apiKey,
-      Accept: 'application/json', ...(!multipart ? { 'Content-Type': 'application/json' } : {}) } },
+      Accept: nativeSearch?'text/event-stream':'application/json', ...(nativeSearch?{'X-DashScope-SSE':'enable'}:{}),
+      ...(!multipart ? { 'Content-Type': 'application/json' } : {}) } },
     Math.min(runtime.timeoutMs, 90000), 'Bailian capability', { redactErrorBody: true });
   };
   return {
@@ -72,8 +74,11 @@ export function bailianOfflineTransport(runtime: AiProviderRuntimeConfig, bindin
     async search(query) {
       const safe = parseWebQuery(query);
       if(binding.api!=='dashscope-generation')throw Error('bailian_search_api_mismatch');
-      const response = await call('/services/aigc/text-generation/generation','POST',JSON.stringify(publicSearchBody(binding, safe)),false,true);
-      return { payload: await parseJson(response,'Native public search'), requestId: response.headers.get('x-request-id') };
+      // Qwen3.8 is multimodal even for a text-only query. Native search requires
+      // the multimodal endpoint and SSE; text-generation returns HTTP400.
+      const response = await call('/services/aigc/multimodal-generation/generation','POST',JSON.stringify(publicSearchBody(binding, safe)),false,true);
+      const payload=await parseBailianSearchStream(response);
+      return { payload, requestId: response.headers.get('x-request-id')||String(payload.request_id||'')||null };
     },
     async continueDraft(body) {
       if (body.model !== binding.model || body.enable_thinking !== false) throw Error('bailian_binding_mismatch');
@@ -87,9 +92,40 @@ export function publicSearchBody(binding: BailianSearchBinding, query: WebQuery)
   const safe = parseWebQuery(query);
   // The provider receives exactly the validated public query. No transcript,
   // project facts, customer originals, cookies or business tools are included.
-  return { model: binding.model, input:{messages: [{ role: 'user', content: safe.query }]}, parameters:{enable_thinking: false,
+  return { model: binding.model, input:{messages: [{ role: 'user', content: [{text:safe.query}] }]}, parameters:{enable_thinking: false,
     enable_search: true, search_options: { enable_source: true, forced_search: true, search_strategy: 'turbo',
       ...(safe.domains.length ? { assigned_site_list: safe.domains } : {}) }, max_tokens: 512,result_format:'message'} };
+}
+/** Installed LangChain handles byte/line/message framing. This adapter only
+ * collects native metadata: early search results survive later prose frames,
+ * and cumulative usage is read once rather than summed across SSE chunks. */
+export async function parseBailianSearchStream(response:Response):Promise<Record<string,unknown>> {
+  if(!/^text\/event-stream(?:;|$)/i.test(response.headers.get('content-type')||''))throw Error('native_search_content_type');
+  if(!response.body)throw Error('native_search_stream_incomplete');
+  let latest:Record<string,unknown>={},usage:unknown,requestId:unknown,terminal=false,bytes=0;
+  const results=new Map<string,unknown>();
+  const parse=getLines(getMessages(message=>{
+    if(!message.data||message.data==='[DONE]')return;
+    let value:Record<string,unknown>;try{value=JSON.parse(message.data);}catch{throw Error('native_search_stream_invalid');}
+    if(!value||Array.isArray(value)||typeof value!=='object')throw Error('native_search_stream_invalid');
+    if(value.code)throw Error('native_search_stream_error');
+    const output=value.output as Record<string,unknown>|undefined;
+    const info=(value.search_info||output?.search_info) as {search_results?:unknown}|undefined;
+    if(Array.isArray(info?.search_results))for(const item of info.search_results){
+      if(item&&typeof item==='object'&&typeof item.url==='string')results.set(item.url,item);
+      if(results.size>100)throw Error('native_search_stream_too_large');
+    }
+    if(value.usage)usage=value.usage;if(value.request_id)requestId=value.request_id;
+    const choices=output?.choices as Array<{finish_reason?:unknown}>|undefined;
+    if(['stop','length'].includes(String(output?.finish_reason))||choices?.some(c=>['stop','length'].includes(String(c.finish_reason))))terminal=true;
+    latest=value;
+  }));
+  const reader=response.body.getReader();
+  try{for(;;){const part=await reader.read();if(part.done){parse(new Uint8Array(),true);break;}
+    bytes+=part.value.byteLength;if(bytes>2_000_000)throw Error('native_search_stream_too_large');parse(part.value);
+  }}finally{await reader.cancel().catch(()=>{});}
+  if(!terminal)throw Error('native_search_stream_incomplete');
+  return {...latest,request_id:requestId,...(usage?{usage}:{}),search_info:{search_results:[...results.values()]}};
 }
 /** Search evidence does not depend on generated prose or its finish reason.
  * Map the documented native usage into the same audited token contract. */

@@ -160,3 +160,20 @@ test('P0 approved draft checks stale version, epoch and revoke; protocol conflic
   await verified.service().revoke(taskId);await assert.rejects(verified.service().continueDraft(taskId,2,1),/revoked/);
   checks.push({name:'partial-binding-stale-revoke-conflict-reentry',status:'passed'});
 });
+
+test('P0 unreadable original pages recover from saved candidates without another model attempt',async()=>{
+  const f=fixture(),task=await f.service().prepareSearch(randomUUID(),{query:'合成公开标准',domains:[]},bailianSearchBinding(binding)),taskId=String(task.id);tasks.push(taskId);
+  const failed=await f.service().search(taskId,async()=>{throw Error('synthetic DNS outage');});
+  assert.equal(failed.status,'unavailable');const before=await f.service().read(taskId);
+  assert.deepEqual(await f.service().search(taskId),failed);
+  const recovered=await f.service().retrySearchRead(taskId,async url=>({url,type:'text/plain',body:'合成原文正文：这段文字实际来自只读页回调，保留原搜索URL、读取时间与hash。搜索模型没有重新执行，也没有新增业务写入。'}));
+  assert.equal(recovered.status,'ready');assert.equal(recovered.pages.length,1);
+  assert.deepEqual(await f.service().search(taskId),recovered);assert.deepEqual(await f.service().retrySearchRead(taskId),recovered);
+  const after=await f.service().read(taskId);assert.equal(after.items[0].attempt_id,before.items[0].attempt_id);
+  assert.equal(after.items[0].response_hash,before.items[0].response_hash);
+  assert.deepEqual(after.items[0].result,before.items[0].result);
+  assert.equal((after.result as {readHistory:unknown[]}).readHistory.length,1);
+  assert.equal(f.calls.filter(c=>c==='search').length,1);assert.equal(f.calls.filter(c=>c==='approve').length,1);
+  await f.service().revoke(taskId);await assert.rejects(f.service().retrySearchRead(taskId),/revoked/);
+  checks.push({name:'saved-public-page-read-recovery-no-provider-replay',status:'passed'});
+});
