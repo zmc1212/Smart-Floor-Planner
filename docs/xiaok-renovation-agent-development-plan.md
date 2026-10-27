@@ -25,27 +25,24 @@
 
 ## 2. 唯一当前任务
 
-本节只保留当前记录。用户于2026-10-27恢复开发并指定百炼 `qwen3.8-flash`，随后要求先补齐模型基础能力；P0是D1内部最高优先级前置任务。此前31次请求后的停止记录不删除；**最新明确授权允许追加必要P0调用，累计预算不超过¥100，完成后继续D1**。尚未执行的D1实模与原生整链保持Limited，不提升D2–D7状态。
+2026-10-27按用户本次指令完成D1：从机制上解决旧预算引用与未采用提案状态，继续使用百炼qwen3.8-flash，累计预算不超过¥100。P0已验基线继续复用；本节是唯一当前交付记录。
 
 | 项目 | 当前记录 |
 | --- | --- |
-| 当前交付 | **D1：让正常装修咨询和需求更正共存；P0六项基础能力实模已收口** |
-| 状态 | **P0限定Implemented（6ce1c632/dd9195bf），D1仍Limited，第2机制失败后停止该修复循环。** 原1/10、机制1 4/10、机制2 8/10首稿分别保留，不重评。最新quoted-native-schema-v2批37请求/274198tokens，10份最终JSON/schema有效，但旧预算出处和未采用提案状态两项业务语义被原守卫拒绝；未把格式通过当作旅程完成。知识入库无需改变；本次失败计数2/2、OS11旧计数保持 |
-| P0复用基线 | 实际复用锁定的`@langchain/core@1.2.18`原生`tool` JSON Schema校验、`@langchain/langgraph@1.5.0`图/有界回合、原业务审批与来源校验、`providerFetch`及`AiCreationRepository`审计。对照上游工具实现/测试、provider/tool结构化策略和供应商原生API；未安装完整`langchain`/`@langchain/openai`或迁移`createAgent`，未重开AnythingLLM/createAgent/PydanticAI付费矩阵 |
-| 用户动作 / 入口 | 已有C01 `packages/assistant/chat/chat`正常咨询及混合更正→C02 `packages/assistant/requirements/requirements`只采用预算→保存草稿/重进；保留瓷砖、地暖等未选字段，撤回未采用提案，丢响应按原键恢复 |
-| 本轮改动 / 复用 | 工具调用/结果配对、执行前原生schema校验及共享一次参数纠错；Qwen3.8 final-only原生JSON Object/strict Schema与独立格式观测；缓存命中/未命中/缺失、token、延迟、前缀/schema hash入原attempt审计。内部CLI提供原生公共查询→实际读页、获权草稿续写、真正异步Batch的准备/提交/查询/结果与错误文件/取消/原键重进/未知ID恢复；0096新增两张强制RLS持久任务表，逐item关联原provider attempts，不新增Agent、业务事实缓存、KnowledgeRetriever或Evidence管线 |
-| 开发开关与设计 | 普通新run仍只在显式开发企业白名单绑定composable-business-review-v2，生产禁止启用，移除白名单回滚新run；在途保持绑定。C01 P4B README/C02 slide06及既有H出处状态规则保持，WXML/Less/素材/布局未变；双语台账保留一条路由/唯一最新源，不提升完整还原状态 |
-| 已执行检查 | P0原98单元/65客户端、稳定webpack及9项隔离服务在原绑定范围复用；新增流/Partial证据15单元、读页恢复10服务及最终原Batch/原文恢复2/2均通过。D1机制2聚焦63/63单元、测试image类型补齐后5/5，真实隔离服务10/10（模型0、drift[]、清理完成）及预算守卫6/6通过；定向lint0。TSC仍54项原诊断，本次文件0项；首次新增测试类型错误单独保留已修复。最新固定实模10份Schema有效、首稿8/10、配置精确恢复；并非全部业务验收。新webpack生产构建退出0，230项源码/配置绑定无漂移，临时生成types include已精确恢复；最终TSC仍同54项原路径/行/代码、本次文件0项。不重跑未变全产品矩阵 |
-| 原生证据与范围 | 用户已批准Codex CLI访问。准确项目、副屏、Stable2.02.2608080/CLI0.3.11/基础库3.17.2，新编译、systemInfo、非空data、正元素、实际输入/点击/导航通过。原生7/7含C01答疑/提案、C02预算选择实写、丢响应原键恢复、重进及他人404；4张核路由截图，逻辑390×844/编码348×752，代表性C01/C02已目视检查。此批为确定性模型且先于H连接修复，实模整链、完整光学、真机/真实微信未验，不要求用户手测 |
-| 实模路由核对 | 恢复后开发主库5432当前选siliconflow/GLM9，隔离55432原选DeepSeek官方deepseek-flash。用户批准的首批仅请求1次，run9321/attempt2399为HTTP402/failed/accepted=false即停，**不是百炼额度错误**。用户随后指定百炼qwen3.8-flash；复用原测试通道loader，认证目录200包含准确ID，按明确指令仅临时绑定隔离设置及LLM/VLM投影，完成后hash精确恢复，未修改主库或生产 |
-| 实模原始结果 / 缺口 | 历史30请求/226237tokens首稿4/10及H连接修复后的32请求首稿1/10保留。机制1 37请求首稿4/10含native_schema_unverified；冻结3项协议诊断各一次通过，仅工程区分。机制2 37请求首稿8/10；run9397提到10万却只引用当前撤回句/12万，保存输出逐段引用校验复现失败；run9400的15/90引用正确，但“预算意向调整为15万”触发真实保存回执边界，空记忆对照拒绝，实际服务同code失败。建议编号不是9397失败原因。Agent最终生成仍缺逐主张/采用状态绑定，不能重建知识或放宽守卫；新增Stable实模整链0 |
-| 证据 | P0 tmp/xiaok-p0-20261027/及tmp/xiaok-p0-live-20261027/recovery-2026-10-27T12-05-07-161Z.json，原Byte/Batch/搜索失败保留。D1原批trial-composable-d1-2026-10-27T12-09-46-413Z.json、机制1的12-40-42-517Z.json、诊断trial-native-schema-2026-10-27T12-57-40-793Z.json及机制2的trial-composable-d1-2026-10-27T13-11-12-988Z.json均在tmp/agent-contract/；新服务tmp/agent-runtime/services-composable-d1-2026-10-27T13-02-17-204Z.json。绑定/原始attempt及输出在各报告内，离线判因tmp/xiaok-p0-live-20261027/saved-output-discrimination-final.log，工程日志同目录。历史原生composable-native-resume-20261027-cli-02/report.json仍为确定性证据 |
-| 历史与未知 | 原run1174/1175、attempt1382/1383及其HTTP400/indeterminate/unknown原记录保留；原数据实例已分离，恢复库同号attempt属于其他run，禁止按裸ID误核账。原D3服务8/8、客户端39与D2 DOCX/正式来源证据按未变范围复用，不重复入库或假称完整阶段通过 |
-| 费用与停止边界 | P0及全部历史保守¥16.771962、失败搜索1050000token、取消60000token及三笔历史未知预留保留。P0后固定业务批32+37+37=106请求，工程诊断3请求，均已知；累计保守**¥20.837707**，实际账单未知，低于用户¥100。原生新增0，不消费预留的8次；本轮停止新增模型。执行器上限112（含3诊断）/含原生120保留为原固定范围记录，不用剩余次数采样至通过；不切模型/地域/fallback，不重发旧run/未知提交/同Batch |
-| 清理 / 所有权 | 本聊天单owner串行，既有隔离acceptance锁/idle queue均按finally释放。实际三组配置模型批和真实服务已禁用合成企业AI、撤权用户context，隔离平台配置/投影按原hash精确恢复；主库/生产不变。本轮未启动新的Stable控制器或3108桥接，历史原生清理证据保留。原生驱动新增的失败原文落盘、逐预留身份核对及独立清理/恢复/断开/释放锁保护仅作代码工程检查，不宣称已执行Native故障验收。保留用户窗口、3006和既有Worker/隧道及无关脏改/暂存，不结束未知进程，不发跨聊天消息、不推送或部署 |
-| 下一步 / 返回条件 | 当前ID仍D1。第2机制失败，按AGENTS两轮规则停止补丁/实模循环；双语phase-two合同已记录原问题、原响应、期望/实际、归属Agent、共同假设和保存输出区分结果。重开此路径须先明确新的机制级来源/采用状态合同，并用原trace验证能区分原因；不能第三次改词或regex，不因还有预算自动追加。本轮未完成的Stable C01→真实配置Worker→C02实写/原键恢复/重进仍明确未验证；不转交用户手测、不提升D1或后续D2–D7、不借用P0/确定性原生通过替代业务验收。无新增设计或生产部署授权 |
+| 当前交付 / 状态 | **D1限定Implemented：正常装修咨询、需求更正与逐项采用的用户旅程已收口。** 只覆盖下述已验开发范围，不宣称全部PPT或生产默认上线；后继D2尚未开始 |
+| 用户动作 / 入口 | C01 packages/assistant/chat/chat可在预算未定时继续量房咨询，明确更正/照旧/撤回后继续同轮问题；C02 packages/assistant/requirements/requirements仅采用预算并保存草稿，保留瓷砖/地暖，丢响应按原键恢复、重进不重复写入，保存不等于正式确认 |
+| 机制 / 复用 | 在原LangGraph/原生最终策略上显式绑定requirement-claims-v1和review-completion-v1：服务端主张ID绑定原话、草稿/提案采用状态；同一Agent规划“仍有问题／只需真实回执”，纯回执由已执行服务重建、无自由最终模型正文。既有负向守卫仅约束可写原分句，混合问题继续由模型解释。原需求、审批、KnowledgeRetriever/Evidence、租户/来源撤回、幂等与费用审计沿用；无新事实表、Agent或知识重建 |
+| 开发开关 / 设计 | 普通C01仍只在显式开发企业白名单采用绑定配置：准确dashscope/qwen3.8-flash，tools=true、imageInput=false、structuredFinal=native-sourced-final-v1、requirementClaims=requirement-claims-v1、reviewCompletion=review-completion-v1。旧在途run保持原策略，生产禁用。C01 P4B README/C02 slide06及共享状态组件为设计源；WXML/Less/素材/导航/公开API/角色未改，完整光学还原状态不提升 |
+| 工程检查 | **75/75聚焦单元、5/5当前真实确定性服务通过**（tmp/agent-runtime/services-composable-d1-2026-10-27T14-41-03-480Z.json），原读取器未变的6/6持久恢复/他客/撤回/hash/草稿脱敏边界复用。定向lint通过；最新webpack生产构建退出0、源码无漂移、临时types include精确恢复。TSC仍与基线完全相同的54项诊断，本次文件0项。未重跑全产品矩阵 |
+| 固定实模 | **原两旅程各两次，10/10回合通过**；34实际请求/269672tokens，用量全已知、无漂移、隔离配置/投影精确恢复。2个纯预算更正由真实回执重建，无最终正文调用；其余答疑由真实配置模型生成，不用预塞答复或提案替代。选择保存、原键重试、重进、他客拒绝及原草稿字段保持均有实际写入/回读 |
+| Stable原生整链 | **7/7通过，7实际请求/54279tokens。** Stable2.02.2608080/注册CLI0.3.11、基础库3.17.2、原项目副屏、新编译、systemInfo、非空data、正元素、真实输入/点击/导航均验证。C01→真实百炼Worker→C02预算单项实写/丢响应原键恢复/重进/他客404贯通；4张核路由截图逻辑390×844/PNG348×752，均已目视复核。此次是实模整链，不借用旧确定性原生通过 |
+| 费用 / 停止 | **累计保守¥23.867267/¥100，实际账单未知；本次不再追加模型调用。** 全部历史失败/未知预留保留，标准账本核对5笔历史非成功预留未清零。当前请求共78次实际模型请求：失败机制37、收口34、原生7，均保留原始结果；不使用剩余次数采样，不切模型/地域/付费fallback，不重发旧run、未知提交或同Batch |
+| 原失败 / 计数 | 原1/10、4/10、8/10及本次主张单机制7/10首稿均保留，不重评。原2/2和OS11旧计数不清零；保存trace区分出纯变更自由正文及错误保留分句替换后，机制级接续仅固定复验一次并完成。首次确定性驱动的两条内部indeterminate无外部调用，初始60秒执行器中断和两次边界驱动前置错误均保留独立清理/修复证据，不改写为业务首稿通过 |
+| 证据 | 实模tmp/agent-contract/trial-composable-d1-2026-10-27T14-46-20-203Z.json；原生tmp/agent-contract/composable-native-d1-claims-completion-live-20261027-01/report.json；汇总tmp/xiaok-d1-claims-20261027/delivery-evidence.json、budget-final.json、d1-build.json、completion-final-unit.log、completion-tsc.log、completion-saved-traces.json。原失败、协议诊断及P0证据沿双语phase-two合同原指针保留；证据绑定实际源码/测试/配置，不以HEAD替代工作区快照 |
+| 清理 / 所有权 | 本聊天单owner串行，acceptance锁/idle queue沿原流程使用并在finally释放。合成企业AI禁用、身份context撤权、原平台配置/投影及临时会话/传输精确恢复，3108桥接/控制器关闭、原项目窗口留副屏并返回主页。保留3006、既有Worker/SSH/隧道及无关脏改，不推送或部署 |
+| 限制 / 后继 | 本阶段限定已批准PPT旅程及开发白名单；来源保持41原话/24KB边界。完整光学、真机、真实微信授权/BLE等未验且不成为例行用户手测门槛。**下一交付D2：小K能看懂客户给的图与资料，再结合可靠依据解释。** D2–D7状态未提升，本次D1收口未开始后继实现 |
 
-D1从 `935929e4` 接续；P0复用 `18ed416f` 已有回执/历史恢复及 `cc26ee56` 页面加载基础；代码、合同和清单以本次相关本地提交及上述绑定证据为准，不把HEAD当作全部工作区快照。旧 `c483f02a`、`d1226362`、`935929e4` 等各自原始证据保留；本轮未改未授权设计、未部署生产。
+P0的6ce1c632/dd9195bf以及D1既有18ed416f/cc26ee56等真实提交和原始费用继续保留。本次相关本地提交在完成文档差异核对后生成；其实际hash在下一次必要文档更新记录，不新增commit-only循环。
 
 ## 3. 现有成果怎样使用
 

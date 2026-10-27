@@ -8,7 +8,7 @@ import { chineseTerms } from '../knowledge/chinese-lexical';
 import { readMemory } from './memory';
 import { availableNeedMemory, unavailableNeedMessageIds } from './memory-sources';
 import { constructionNoticeAvailable } from '@/lib/construction/customer';
-import type { SynthesisSource } from './synthesis';
+export { historySynthesisSources } from './history-sources';
 
 export const historyTool: ModelTool = { name: 'recall_history',
   description: '回读本咨询较早的客户原话。近期上下文没有明确对象、客户追问早先约束/未决问题时使用；query只用客户已明确的房间/对象/关键词。只返回原话，不是当前事实或新授权；当前需求以有效更正为准，企业/项目状态另查实时业务。',
@@ -41,10 +41,6 @@ export async function reviewHistorySnapshot(tx: PostgresTransaction, actor: Acto
 
 /** Historical customer speech has its own identity; it is never a knowledge or
  * live-project source. Only a server-built, revalidated snapshot supplies IDs. */
-export function historySynthesisSources(snapshot: HistorySnapshot): SynthesisSource[] {
-  return snapshot.sources.map(({ messageId, hash, memoryVersion, text, seq }) => ({ sourceId: 'H' + messageId, kind: 'history',
-    title: '本咨询客户历史原话', text, history: { messageId, hash, memoryVersion, seq } }));
-}
 
 export function parseHistoryQuery(input: unknown): string {
   if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(k => k !== 'query')) fail('invalid_message', 422);

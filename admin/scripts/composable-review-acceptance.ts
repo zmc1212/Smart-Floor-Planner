@@ -22,6 +22,9 @@ import type { ActorContext } from '@/lib/assistant/contracts';
 import type { ModelTurnOutput } from '@/lib/assistant/contracts/model';
 import { currentSynthesisContext } from '@/lib/assistant/agent/synthesis-sources';
 import {nativeFinalProtocol,finishContextTool} from '@/lib/assistant/agent/native-final';
+import { reviewClaimProtocol } from '@/lib/assistant/agent/review-claims';
+import { boundReviewClaims } from '@/lib/assistant/agent/review-claim-sources';
+import { reviewCompletionProtocol } from '@/lib/assistant/agent/review-completion';
 
 type Row = Record<string, unknown>;
 type Fixture = { actor: ActorContext; conversationId: string; userId: string; enterpriseId: string; checkpoints: string[]; activeRunId?: string };
@@ -34,15 +37,20 @@ process.env.DATABASE_URL = db;
 process.env.LANGCHAIN_TRACING_V2 = 'false';
 process.env.LANGSMITH_TRACING = 'false';
 const live = process.argv.includes('--live');
+const repeats = !live && process.argv.includes('--services-once') ? 1 : 2;
 const verifyOriginals = process.argv.includes('--verify-review-originals');
 const nativeFinal = process.argv.includes('--native-sourced-final');
+const claims = process.argv.includes('--requirement-claims');
+const completion = process.argv.includes('--review-completion');
+assert.ok(!completion || claims, 'Completion contract requires state-bound claims');
+assert.ok(!claims || nativeFinal, 'Claim contract requires the native final strategy');
 assert.ok(!(live && verifyOriginals), 'Deterministic source injection cannot be used for live acceptance');
 const budget = reviewBudget(root);
 // Two fixed natural conversations, two repetitions each: 2 + 3 turns.
 const callCap = 60000, plannedCalls = live ? 40 : 0;
 const authorizationIndex = process.argv.indexOf('--retained-holds-authorization');
 const authorizationFile = authorizationIndex < 0 ? null : process.argv[authorizationIndex + 1];
-let fixtureAgent = { runtime: 'langgraph-v1', providerKey: 'dashscope', model: nativeFinal?'qwen3.8-flash':'qwen3.7-flash', tools: true, imageInput: false, probeVersion: 'd1-composable-review',...(nativeFinal?{structuredFinal:nativeFinalProtocol}:{}) };
+let fixtureAgent = { runtime: 'langgraph-v1', providerKey: 'dashscope', model: nativeFinal?'qwen3.8-flash':'qwen3.7-flash', tools: true, imageInput: false, probeVersion: 'd1-composable-review',...(nativeFinal?{structuredFinal:nativeFinalProtocol}:{}), ...(claims ? {requirementClaims:reviewClaimProtocol} : {}), ...(completion ? {reviewCompletion:reviewCompletionProtocol} : {}) };
 const output = path.join(root, 'tmp', live ? 'agent-contract' : 'agent-runtime',
   `${live ? 'trial-' : 'services-'}composable-d1-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
 const sourceFiles = ['admin/src/lib/assistant/agent/worker.ts', 'admin/src/lib/assistant/agent/review-tools.ts',
@@ -56,6 +64,7 @@ const sourceFiles = ['admin/src/lib/assistant/agent/worker.ts', 'admin/src/lib/a
   'miniprogram/packages/assistant/chat/chat.wxml', 'miniprogram/packages/assistant/lib/requirements.js',
   'miniprogram/packages/assistant/requirements/requirements.js',
   'miniprogram/packages/assistant/requirements/requirements.wxml'];
+if (authorizationFile) sourceFiles.push(authorizationFile);
 for (const directory of ['admin/src/lib/assistant', 'admin/src/lib/ai/providers', 'miniprogram/packages/assistant/lib']) {
   const walk = (folder: string) => {
     for (const item of fs.readdirSync(path.join(root, folder), { withFileTypes: true })) {
@@ -76,7 +85,9 @@ const hash = (name: string) => createHash('sha256').update(fs.readFileSync(path.
 const binding = () => Object.fromEntries(sourceFiles.map(file => [file, hash(file)]));
 const report: Row = { delivery: 'D1', mode: live ? 'live' : 'deterministic',
   structuredFinal:nativeFinal?nativeFinalProtocol:'legacy',
-  scope: 'D1 fixed before dispatch: two journeys, each twice; unfinished budget plus surveying question, selective budget change; unapproved correction, withdrawal plus question, new correction with response-loss recovery. Each entire real Worker trajectory is retained, never sampled to pass.',
+  requirementClaims: claims ? reviewClaimProtocol : null,
+  reviewCompletion: completion ? reviewCompletionProtocol : null,
+  scope: `D1 fixed before dispatch: two journeys, each ${repeats === 2 ? 'twice' : 'once (deterministic only)'}; unfinished budget plus surveying question, selective budget change; unapproved correction, withdrawal plus question, new correction with response-loss recovery. Each entire real Worker trajectory is retained, never sampled to pass.`,
   model: live ? 'existing-platform-runtime-pending-preflight' : 'injected-deterministic', plannedCalls, callCap,
   beforeTokens: budget.usedTokens, beforeMicros: budget.usedMicros, actualBilledYuan: null,
   calls: [] as Row[], cases: [] as Row[], fixtures: [] as Row[], before: binding(), cleaned: false, passed: false };
@@ -150,6 +161,21 @@ async function deterministicModel(f: Fixture, kind: TurnKind, turn: number): Pro
       changes: [{ operation: 'replace', targetId: item.id, sourceId: source.id }],
     }) }], finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 0, outputTokens: 0 } };
   }
+  if (claims) {
+    const catalog = await withTenantTransaction(f.enterpriseId, async tx => {
+      const conversation = await one(tx, sql`select * from app.assistant_conversations where enterprise_id=${f.enterpriseId} and id=${f.conversationId}`);
+      assert.ok(conversation && f.activeRunId);
+      return boundReviewClaims(tx, f.actor, conversation, f.activeRunId);
+    });
+    const selected = kind === 'incomplete' ? [] : kind === 'reject'
+      ? catalog.claims.filter(claim => claim.state === 'saved_draft' && claim.field === 'budget')
+      : catalog.claims.filter(claim => claim.state === 'pending_proposal' && claim.field === 'budget');
+    if (kind !== 'incomplete') assert.equal(selected.length, 1);
+    return { text: JSON.stringify({ kind: 'synthesis', segments: [
+      { basis: 'advice', text: '量房前准备现有户型图及物业装修规定，现场核对漏水痕迹、墙体与设备位置；预算未定也可以先量房。', citations: [] },
+      ...selected.map(claim => ({ claimId: claim.claimId })),
+    ] }), toolCalls: [], finishReason: 'stop', providerRequestId: null, usage: { inputTokens: 0, outputTokens: 0 } };
+  }
   if (verifyOriginals && kind !== 'incomplete') {
     const context = await withTenantTransaction(f.enterpriseId, async tx => {
       const conversation = await one(tx, sql`select * from app.assistant_conversations where enterprise_id=${f.enterpriseId} and id=${f.conversationId}`);
@@ -177,6 +203,8 @@ async function runTurn(f: Fixture, scenario: string, kind: TurnKind, text: strin
   const sent = await chat.send(f.conversationId, randomUUID(), { version: 1, blocks: [{ type: 'text', text }] });
   assert.ok(sent.runId);
   const before = await req.read(f.conversationId);
+  const currentClauseIds = completion && !live ? requirementSources((await req.requirements.customerEvidence(f.conversationId)).messages)
+    .filter(source => source.sourceMessageId === String(sent.messageId)).map(source => source.id) : [];
   const lease = await claimJob(); assert.ok(lease && lease.runId === sent.runId);
   f.activeRunId = String(sent.runId);
   const row: Row = { scenario, kind, text, enterpriseId: f.enterpriseId, conversationId: f.conversationId,
@@ -188,7 +216,7 @@ async function runTurn(f: Fixture, scenario: string, kind: TurnKind, text: strin
     assert.ok(active?.some(tool => tool.name === 'final_response'||nativeFinal&&tool.name===finishContextTool.name));
     assert.ok(!active?.some(tool => ['record_need', 'request_designer'].includes(tool.name)));
     if(nativeFinal&&active?.some(tool=>tool.name===finishContextTool.name)&&!(turn===0&&['ten','fifteen','reject'].includes(kind)))
-      return {text:'',toolCalls:[{id:'context-ready-'+turn,name:finishContextTool.name,arguments:'{}'}],finishReason:'tool_calls',providerRequestId:null,usage:{inputTokens:0,outputTokens:0}};
+      return {text:'',toolCalls:[{id:'context-ready-'+turn,name:finishContextTool.name,arguments: completion ? JSON.stringify({mode:kind==='ten'?'receipt_only':'answer',questionSourceIds:kind==='ten'?[]:[currentClauseIds.at(-1)!]}) : '{}'}],finishReason:'tool_calls',providerRequestId:null,usage:{inputTokens:0,outputTokens:0}};
     return deterministicModel(f, kind, turn);
   } });
   const run = await chat.run(String(sent.runId)), current = await req.read(f.conversationId);
@@ -339,11 +367,11 @@ async function main() {
       };
       report.model = c.model; report.providerKey = c.providerKey; report.providerConnection = 'existing product service; no credential file access'; save();
     }
-    for (let repeat = 1; repeat <= 2; repeat++) for (const scenario of ['incomplete', 'correction'] as const) {
+    for (let repeat = 1; repeat <= repeats; repeat++) for (const scenario of ['incomplete', 'correction'] as const) {
       if (unknown) break;
       await runCase((repeat - 1) * 2 + (scenario === 'incomplete' ? 1 : 2), scenario);
     }
-    report.passed = !unknown && (report.cases as Row[]).length === 10
+    report.passed = !unknown && (report.cases as Row[]).length === repeats * 5
       && (report.cases as Row[]).every(c => c.firstDraftPass === true)
       && (report.cases as Row[]).filter(c => c.kind === 'fifteen' && c.scenario === 'incomplete').every(c => c.approvalPass === true)
       && (report.cases as Row[]).filter(c => c.kind === 'fifteen' && c.scenario === 'correction').every(c => c.rejectionPass === true);

@@ -1,6 +1,18 @@
 # 小K第二期：需求整理与人工交接
 
-## D1原生最终答复合同（2026-10-27；仅候选）
+## D1需求来源、采用状态与原生验收（限定Implemented）
+
+D1限定Implemented（2026-10-27）：C01正常咨询、需求更正与量房答疑共存，C02仅采用预算、保留瓷砖/地暖，实写草稿、丢响应按原键恢复、重进及他客拒绝已贯通。显式开发白名单/run配置复用native-sourced-final-v1、requirementClaims=requirement-claims-v1、reviewCompletion=review-completion-v1，准确百炼qwen3.8-flash、工具开/图片关；旧在途策略保留。主张ID绑定实际原话及草稿/待采用/失效状态；同一Agent显式声明剩余问题或纯真实回执，纯回执没有自由最终模型入口。既有负向守卫仅限制单个可写分句，不替代整轮理解；来源、回执、租户、版本与客户同意守卫保持。75单元、5/5当前确定性服务、未变读取器6/6边界、固定实模10/10回合（34请求/269672tokens）及Stable原生7/7（7请求/54279tokens）通过，绑定均无漂移；2个纯更正回合按真实回执重建。4张C01/C02核路由截图已目视复核，逻辑390×844/PNG348×752。最新webpack构建退出0、配置精确恢复；TSC仍54项原诊断、本次0。批准C01 P4B/C02 slide06及共享状态组件沿用，WXML/Less/素材/API路由/角色无变更；无新表、Agent、知识管线、设计或生产部署。全部原失败/未知预留保留，累计保守¥23.867267/¥100，实际账单未知。原配置/投影、临时会话/传输恢复，合成企业停用、身份撤权及资源释放完成。证据tmp/agent-contract/trial-composable-d1-2026-10-27T14-46-20-203Z.json、tmp/agent-contract/composable-native-d1-claims-completion-live-20261027-01/report.json及tmp/xiaok-d1-claims-20261027/delivery-evidence.json；唯一后继见开发计划第2节，D2尚未开始。
+
+### 历史机制、失败与实现检查点（不是当前队列）
+
+已完成的主张目录固定批`trial-composable-d1-2026-10-27T14-17-44-653Z.json`保留37请求/281961tokens、首稿7/10、drift[]及配置精确恢复，供应商结果全已知，累计保守¥22.247512。run9423/9428绕过可选主张ID，在自由建议中写出被去掉数字的预算完成变更；原回执守卫拒绝原稿及原唯一修复。run9429则把“预算先保持原来”直接提案为替换预算。`completion-saved-traces.json`离线区分两因：真实待采用主张可直接装配回执、不需要自由最终调用；既有分句负向写入守卫能拒绝保存的错误替换，同时保留独立量房问题。原结果不重评，归Agent规划/合成，不重新入库知识。
+
+显式`agent_config.reviewCompletion=review-completion-v1`现将同一Agent的finish工具绑定到`receipt_only`或`answer`及本轮准确问题分句ID。仅在实际需求工具回执且无其他业务/读取结果后允许纯回执：服务端重建待采用主张/真实回执，该轮不再有自由最终模型正文入口；原图/checkpoint在恢复时重验重建，不重放提案。混合问题继续既有最终生成。既有保留/未定/询问负向守卫仅限制单个可写来源及工具原话枚举，不接管整轮或代写答疑；旧主张目录/legacy在途run保持原策略。75项相关单元及定向lint通过，TSC为同54项历史诊断；未变来源读取器复用6/6边界。首个新确定性驱动错误地在注入模型回调中构造审批workflow，两条内部indeterminate保持失败、外部调用0；修正驱动在派发前绑定当前分句ID。随后只做一次受影响固定实模复验（原两旅程各两次、最多40请求）及Stable最多8请求的整链，仍为累计¥100；相同期望再失败即停止补丁/采样，原2/2和OS11历史计数保留。无新设计、数据表、知识管线或生产发布。
+
+复用决定：已核对安装中的LangGraph1.5.0 `dist/prebuilt/react_agent_executor.js`及其独立`generateStructuredResponse`、当前[结构化输出合同](https://docs.langchain.com/oss/javascript/langchain/structured-output)与[上游结构化结果/checkpoint测试](https://github.com/langchain-ai/langgraph/blob/main/libs/prebuilt/tests/test_react_agent.py)。保留分离方式、原有界图与业务服务的同意/提交职责，schema不等于采用决定。[issue41304](https://github.com/langchain-ai/langchain/issues/41304)是Python动态ProviderStrategy的旧结构化状态问题，不是本次Qwen失败的证据；用它提醒逐run核对状态，不迁移框架或另加答复缓存，不新增Agent/编排器。
+
+当前机制：`agent_config.requirementClaims=requirement-claims-v1`与原生最终策略一起显式绑定，旧在途run保持原配置。复用需求服务的条目出处、原消息和`requirementProposalIsCurrent`构造只读主张目录；每条绑定准确原话、hash、草稿/版本及实际草稿、待采用、已失效或历史原话状态。模型只选`claimId`，不能提供数值、quote、状态或完成回执；解释部分仍由模型生成，复用既有非客户来源协议。展开后继续经过原引用、数值、回执、租户和来源撤回守卫，无放宽。既有run-step1012保存目录，派发/恢复/提交均向当前业务重验；不新增事实表、解析器、KnowledgeRetriever、API或客户端布局。来源保持既有41原话/24KB边界。原9397/9400错误正文仍被拒绝；离线按真实原话验证状态绑定的机制见证，模型0调用、不重评历史8/10。来源/协议/schema聚焦回归69/69、定向lint通过，TSC仍为完全相同的54项历史诊断、新增0。真实隔离服务10/10、无模型调用且清理完成；新增持久恢复、他客拒绝、撤回、原话hash失效和草稿脱敏边界6/6通过。单次修复与崩溃恢复在原始provider输出之外使用确定性展开视图，客户主张仍须与原目录逐字匹配；不增加调用轮次。最终构建和固定Qwen/原生批正在完成；用户本次明确指令重开机制级工作，累计¥100上限及原两轮失败历史计数保留。
 
 P0后固定批trial-composable-d1-2026-10-27T12-09-46-413Z.json保留32请求/248080tokens、首稿1/10；机制1 trial-composable-d1-2026-10-27T12-40-42-517Z.json保留37请求/269696tokens、首稿4/10。两批均drift[]、配置精确恢复。实际纯文字、非思考strict json_schema仍返回无引用数值、顶层数组等结构错误，native_schema_unverified已拦截，另有原来源语义失败。归Agent最终生成，知识入库无缺陷、不新增KnowledgeRetriever/Evidence管线。原OS11两轮计数保持停止，原稿不重评。
 

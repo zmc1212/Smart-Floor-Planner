@@ -28,6 +28,8 @@ import { getPlatformLlmConfig } from '@/lib/platform-llm-config';
 import { reviewBudget, type RetainedReviewHold } from './assistant-review-budget';
 import { parseAgentUsage } from '@/lib/ai/providers/agent-chat';
 import {nativeFinalProtocol} from '@/lib/assistant/agent/native-final';
+import { reviewClaimProtocol } from '@/lib/assistant/agent/review-claims';
+import { reviewCompletionProtocol } from '@/lib/assistant/agent/review-completion';
 
 type Row = Record<string, any>;
 // These names exist only inside SDK evaluate callbacks in the Mini Program.
@@ -45,6 +47,10 @@ const route = 'packages/assistant/requirements/requirements';
 const chatRoute = 'packages/assistant/chat/chat';
 const outputName = process.argv[2] || `run-${new Date().toISOString().replace(/[:.]/g, '-')}`;
 const live = process.argv.includes('--live');
+const claims = process.argv.includes('--requirement-claims');
+const completion = process.argv.includes('--review-completion');
+const approvalIndex = process.argv.indexOf('--retained-holds-authorization');
+const approvalPath = approvalIndex < 0 ? 'tmp/xiaok-p0-live-20261027/d1-native-wire-authorization.json' : process.argv[approvalIndex + 1];
 const output = path.join(root, 'tmp/agent-contract', `composable-native-${outputName}`);
 assert.ok(!fs.existsSync(output), `Output already exists: ${output}`);
 fs.mkdirSync(output, { recursive: true });
@@ -98,7 +104,7 @@ function binding() {
     'miniprogram/project.private.config.json',
     'tmp/xiaok-vector/connection.private.json',
   ];
-  if(live)relative.push('tmp/xiaok-p0-live-20261027/d1-native-wire-authorization.json',
+  if(live)relative.push(approvalPath,
     'tmp/xiaok-intelligent-consult/.env.qwen37','tmp/xiaok-intelligent-consult/openwebui-qwen37-cost.mjs');
   relative.push(...cp.execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z',
     'admin/src/lib/assistant', 'admin/src/lib/ai/providers', 'admin/src/db', 'admin/src/lib/postgresql.ts', 'admin/src/lib/miniprogram-*',
@@ -141,7 +147,7 @@ const previousEnv = { model:process.env.ASSISTANT_TEXT_MODEL, thinking:process.e
 function retainedHolds(): RetainedReviewHold[] {
   // Retain only the exact previously authorized holds. A newly unknown or
   // failed trial must fail reviewBudget's identity check, never authorize itself.
-  const approval=JSON.parse(fs.readFileSync(path.join(root,'tmp/xiaok-p0-live-20261027/d1-native-wire-authorization.json'),'utf8'));
+  const approval=JSON.parse(fs.readFileSync(path.join(root,approvalPath),'utf8'));
   assert.equal(approval.authorizedBy,'direct-human-user');assert.equal(approval.cumulativeCapMicros,100000000);
   assert.equal(approval.providerKey,'dashscope');assert.equal(approval.model,'qwen3.8-flash');
   const retained:RetainedReviewHold[]=approval.retainedReports.flatMap((prior:{path:string;hash:string})=>{
@@ -215,7 +221,7 @@ async function createFixture() {
     await tx.execute(sql`insert into app.wechat_identities(user_id,openid) values(${uid},${code}),(${oid},${code + '-other'})`);
     await tx.execute(sql`insert into app.assistant_enterprise_settings
       (enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days,agent_config)
-      values(${eid},true,100,500000,10000000,30,${JSON.stringify({ runtime: 'langgraph-v1', providerKey: 'dashscope', model: liveModel, tools: true, imageInput: false, probeVersion: live?'d1-native-live':'d1-native-deterministic',...(live?{structuredFinal:nativeFinalProtocol}:{}) })}::jsonb)`);
+      values(${eid},true,100,500000,10000000,30,${JSON.stringify({ runtime: 'langgraph-v1', providerKey: 'dashscope', model: liveModel, tools: true, imageInput: false, probeVersion: live?'d1-native-live':'d1-native-deterministic',...(live?{structuredFinal:nativeFinalProtocol}:{}),...(claims?{requirementClaims:reviewClaimProtocol}:{}),...(completion?{reviewCompletion:reviewCompletionProtocol}:{}) })}::jsonb)`);
     return { enterpriseId: eid, userId: uid, otherUserId: oid, code };
   });
   fixture = created;

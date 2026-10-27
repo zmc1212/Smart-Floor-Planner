@@ -11,11 +11,13 @@ import { RequirementWorkflow } from '../requirements/workflow';
 import { HandoffWorkflow } from '../handoff/workflow';
 import { customerSources } from '../requirements/service';
 import { requirementPlan } from '../requirements/plan';
+import { requirementClauseWritable } from './review-completion';
 
 /** LangChain validates typed tool inputs. Consent is never a model parameter. */
 export async function businessReviewTools(actor: ActorContext, conversationId: string, options: {
   proposalKey?: string;
   deferGraphPrepare?: boolean;
+  clauseWriteGuards?: boolean;
   guard?: (repo: AssistantRepository, conversation: Record<string, unknown>) => Promise<void>;
 } = {}) {
   const requirements=new RequirementWorkflow(actor), handoff=new HandoffWorkflow(actor);
@@ -25,7 +27,8 @@ export async function businessReviewTools(actor: ActorContext, conversationId: s
     return Number(settings!.knowledge_epoch);
   });
   const sources=requirementSources(evidence.messages), items=requirementItems(evidence.messages,current.latest?.draftFields);
-  const sourceIds=sources.length ? z.enum(sources.map(s=>s.id) as [string,...string[]]) : z.never();
+  const writable = options.clauseWriteGuards ? sources.filter(source => requirementClauseWritable(source.text)) : sources;
+  const sourceIds=writable.length ? z.enum(writable.map(s=>s.id) as [string,...string[]]) : z.never();
   const targetIds=items.length ? z.enum(items.map(i=>i.id) as [string,...string[]]) : z.never();
   const change=z.discriminatedUnion('operation',[
     z.object({operation:z.literal('add'),field:z.enum(allRequirementKeys),sourceId:sourceIds}).strict(),
@@ -33,11 +36,11 @@ export async function businessReviewTools(actor: ActorContext, conversationId: s
     z.object({operation:z.literal('remove'),targetId:targetIds,sourceId:sourceIds}).strict(),
   ]);
   return {
-    context:{planVersion:'retention-partition-1',customerClauses:sources,savedItems:items,savedSummaryId:current.latest?.id || null},
+    context:{planVersion:'retention-partition-1',customerClauses:sources.map(source => ({...source,...(options.clauseWriteGuards ? {writeEligible:writable.includes(source)} : {})})),savedItems:items,savedSummaryId:current.latest?.id || null},
     proposeRequirements:tool(async(plan)=>(options.deferGraphPrepare ? requirements.requirements : requirements)
       .propose(conversationId,options.proposalKey || randomUUID(),{
       sourceSeq:evidence.sourceSeq,baseSummaryId:current.latest?.id || null,
-      changes:requirementPlan(items,sources,evidence.messages.at(-1)?.id || '',plan),
+      changes:requirementPlan(items,writable,evidence.messages.at(-1)?.id || '',plan),
     },async(repo,conversation)=>{
       if (options.guard) await options.guard(repo,conversation);
       const actual=await customerSources(repo,actor.enterpriseId,conversationId),settings=await repo.settings();

@@ -11,8 +11,8 @@ export function assertNativeFinalOutput(output:{observation?:{format?:{mode:stri
   const format=output.observation?.format;
   if(format?.mode!=='json_schema'||!format.jsonValid||format.schemaValid!==true)fail('native_schema_unverified',502);
 }
-export function nativePlanningMessages(messages:ModelMessage[]):ModelMessage[]{
-  return messages.map((m,i)=>i===0&&m.role==='system'?{...m,content:[...m.content,{type:'text',text:'本回合只选择并调用业务/只读工具；资料已足够时调用finish_context({})结束查询。此阶段不生成答复正文或final_response。随后独立的原生结构化回合才生成客户答复，业务操作仍以真实结果和原审批为准。'}]}:m);
+export function nativePlanningMessages(messages:ModelMessage[], instruction?: string):ModelMessage[]{
+  return messages.map((m,i)=>i===0&&m.role==='system'?{...m,content:[...m.content,{type:'text',text:instruction || '本回合只选择并调用业务/只读工具；资料已足够时调用finish_context({})结束查询。此阶段不生成答复正文或final_response。随后独立的原生结构化回合才生成客户答复，业务操作仍以真实结果和原审批为准。'}]}:m);
 }
 /** Final-only provider view. Preserve every original role, call/result and
  * citation as quoted data; only existing trusted system blocks stay system.
