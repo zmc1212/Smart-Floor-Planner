@@ -1,5 +1,7 @@
 # Formal Surveying Data Contract
 
+D2 now shares strict `parseFormalSurveyLayout` source eligibility between private snapshot reads and Agent pixel/checkpoint restoration. Invalid/mixed legacy layouts fail both paths; valid later edits still retain immutable original pixels and layoutHash. Isolated source/auth/rendering checks3/3 pass with no model/native acceptance or graph/schema change; evidence and limitations remain in the existing phase-two contract.
+
 This file records the current version-4 surveying contract. Historical geometry
 experiments and rollback narratives belong in Git history, not the live contract.
 

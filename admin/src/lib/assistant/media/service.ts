@@ -9,22 +9,14 @@ import { renderMiniAiFloorPlanControlPng, resolveMiniAiFloorPlanTarget } from '@
 import { appendMessage, cancelRuns, newRun } from '../core/conversation';
 import { agentConfig } from '../agent/config';
 import { authorizeHandoffStaff } from '../handoff/service';
+import { formalMediaSourceAvailable, ownedFormalPlan, type FormalSource } from './formal-source';
 
 export const MAX_MEDIA_BYTES = 4 * 1024 * 1024;
-type FormalSource = { leadId: string; floorPlanId: string; layoutHash: string; roomId: string; name: string };
 async function formalPlan(repo: AssistantRepository, userId: string, leadId: string) {
-  const p = await one(repo.tx, sql`select f.id,f.name,f.layout_data from app.leads l join app.floor_plans f
-    on f.enterprise_id=l.enterprise_id and f.id=l.primary_floor_plan_id
-    where l.enterprise_id=${repo.actor.enterpriseId} and l.id=${id(leadId)} and l.customer_user_id=${userId}
-      and l.archived_at is null and f.status='completed' for share of l,f`);
-  if (!p || !parseFormalSurveyLayout(p.layout_data)) return null;
-  return p;
+  return ownedFormalPlan(repo.tx, repo.actor.enterpriseId, userId, leadId);
 }
 async function sourceAvailable(repo: AssistantRepository, m: Row) {
-  const ref = m.source_ref as FormalSource | null;
-  if (!ref) return true;
-  const p = await formalPlan(repo, String(m.customer_user_id), ref.leadId);
-  return !!p && String(p.id) === ref.floorPlanId;
+  return formalMediaSourceAvailable(repo.tx, repo.actor.enterpriseId, m);
 }
 export async function normalizeImage(bytes: Buffer) {
   if (!bytes.length || bytes.length > MAX_MEDIA_BYTES) fail('media_invalid', 422);

@@ -13,15 +13,13 @@ import { synthesisContextAvailable } from './synthesis-sources';
 import type { SynthesisContext } from './synthesis';
 import { historyRefsAvailable, type HistoryRef } from './history';
 import { needSourcesAvailable, type NeedSourceRef } from './memory-sources';
+import { formalMediaSourceAvailable } from '../media/formal-source';
 export type MediaDependency = { type: 'assistant_media'; id: string; hash: string };
 /** Call only after conversation authorization; this does not grant conversation access. */
 export async function resolveAgentMedia(tx: PostgresTransaction, enterpriseId: string, conversationId: string, ref: MediaDependency) {
   const media = await one(tx, sql`select a.* from app.assistant_media a where a.enterprise_id=${enterpriseId}
-    and a.conversation_id=${conversationId} and a.id=${ref.id} and a.source_hash=${ref.hash} and a.deleted_at is null
-    and (a.source_ref is null or exists(select 1 from app.leads l join app.floor_plans f on f.enterprise_id=l.enterprise_id and f.id=l.primary_floor_plan_id
-      where l.enterprise_id=a.enterprise_id and l.id::text=a.source_ref->>'leadId' and l.customer_user_id=a.customer_user_id and l.archived_at is null
-      and f.id::text=a.source_ref->>'floorPlanId' and f.status='completed' and f.layout_data->>'version'='4' and f.layout_data->>'measurementMode'='surveying'))`);
-  return media;
+    and a.conversation_id=${conversationId} and a.id=${ref.id} and a.source_hash=${ref.hash} and a.deleted_at is null`);
+  return media && await formalMediaSourceAvailable(tx, enterpriseId, media) ? media : undefined;
 }
 export async function agentMessageAvailable(tx: PostgresTransaction, enterpriseId: string, conversationId: string, messageId: string) {
   const needs = await rows(tx, sql`select s.source_refs from app.assistant_run_steps s join app.assistant_messages m on m.enterprise_id=s.enterprise_id and m.run_id=s.run_id

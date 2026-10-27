@@ -2038,6 +2038,12 @@ P2M.0–P2M.3保持 **Limited**：开发企业1454已从现有小程序入口启
 
 “选择已有正式户型”只列本人、同企业、未归档线索的已完成主正式v4户型，可选整屋或已闭合房间。服务端核验归属、房间和 layoutHash，生成私有不可变快照并记录来源标识/版本；后续量房修改不悄悄替换快照。读取时重验来源线索及主户型仍归原客户。不会写 FloorPlan 图、线索负责人或佣金。
 
+独立D2来源有效性修复：私有读取与`resolveAgentMedia`（新上下文重查、checkpoint像素恢复及后续派生消息重查）复用`ownedFormalPlan`/`formalMediaSourceAvailable`，沿用`parseFormalSurveyLayout`作为严格数据权威；混入旧布局字段、错误graph kind、缺graph、非数组floors及字符串version均拒绝。原客户归属、未归档线索、已完成主户型、租户、图片hash与删除仍重验；合法后续编辑按原契约保留原像素/来源hash/layoutHash，不静默替换或撤销历史快照。未改客户端结构/文案、API形状、schema、墙图或Agent编排；C01/PPT5/14及既有还原界面仍为设计依据，无视觉还原或渲染/原生通过声明。
+
+本次有界验证：`cd admin; node scripts/assistant-formal-media-acceptance.mjs --evidence=xiaok-d2-formal-media-final`隔离真实服务/鉴权/渲染3/3。正向覆盖正式关联幂等、不写墙图、合法后续编辑、原像素/hash不变、服务重进与checkpoint读回。5类无效v4及归档/主户型撤回/归属更改/未完成状态，在list/read、鉴权HTTP404、checkpoint `context_changed`一致拒绝；独立私有照片仍可读。错hash、跨租户、其他客户、无bearer401和删除继续拒绝。驱动保留独占验收锁/空队列守卫，744项源码/配置前后绑定无漂移，`finally`释放自有锁。夹具企业2886/2887已禁用、用户3673/3674已撤权、任务取消；`formal-media-service.json`记录供应商attempt0/网络0。未使用模型、embedding、摘录选择或视觉注入。定向lint0；原54项类型诊断逐项相同、新增/移除0。修复前原失败`tmp/xiaok-d2-formal-media-before-node/`为2/3：私有读取拒绝混合旧布局，Agent仍返回像素；`tmp/xiaok-d2-formal-media-before/`另存首次Bun运行器启动错误，不算业务结果。D1/完整D2和原失败/费用保持Limited/未验；未启Next服务、Worker、原生窗口、推送或部署。
+
+实现参考：[LangGraph持久化](https://docs.langchain.com/oss/javascript/langgraph/persistence)及[checkpointer](https://docs.langchain.com/oss/javascript/langgraph/add-memory)说明线程状态保留；本项目据此推断已保存checkpoint并不代表当前业务来源仍获权。沿用现有逐次source resolver和正式v4解析器，不新增Agent、checkpoint仓库、权限解析器或框架迁移。这是应用来源校验一致性修复，不是供应商特例或模型质量证据。
+
 - 客户 GET/POST `/api/miniprogram/assistant/conversations/:id/media`；GET/DELETE `…/media/:mediaId`；GET/POST `…/media/floorplans`。写入要求 Idempotency-Key；删除按资源幂等。
 - 员工 GET `/api/miniprogram/assistant/handoffs/:id/media[/…mediaId]`；后台 GET `/api/assistant/handoffs/:id/media[/…mediaId]`。每次读取重验既有租户、角色、身份和当前请求/成员授权；后台仍要求 enterprise_admin 加菜单权。
 - 新接续同意明确包含本次及后续上传的图片资料，记为 `mediaConsent: true`；没有此标记的旧请求不授予图片。员工小程序和后台授权资料卡按需读取私有预览；取消/结束/撤权后失去服务端访问。
