@@ -23,6 +23,8 @@ import type { ActorContext } from '@/lib/assistant/contracts';
 import type { ModelMessage, ModelTurnOutput } from '@/lib/assistant/contracts/model';
 import { lockAssistantAcceptance } from './assistant-acceptance-safety.mjs';
 import { nativeImageAcceptance } from './assistant-image-native';
+import { queryMaterials, materialSnapshotAvailable, type MaterialSnapshot } from '@/lib/assistant/agent/materials';
+import { fingerprint } from '@/lib/assistant/contracts';
 
 type Row = Record<string, unknown>;
 const root = path.resolve(process.cwd(), '..');
@@ -48,7 +50,8 @@ function binding() {
   files.push('admin/scripts/assistant-image-context-acceptance.ts', 'admin/scripts/assistant-acceptance-safety.mjs',
     'admin/scripts/assistant-image-native.ts', 'admin/scripts/wechatide-native-client.ts', 'admin/scripts/wechatide-window-state.ps1',
     'admin/src/lib/miniprogram-jwt.ts', 'admin/src/lib/auth.ts', 'admin/src/lib/platform-llm-config.ts',
-    'admin/package.json', 'admin/package-lock.json', 'admin/tsconfig.json', 'admin/.env',
+    'admin/package.json', 'admin/package-lock.json', 'admin/tsconfig.json', 'admin/.env', 'admin/.env.local',
+    'tmp/xiaok-vector/connection.private.json',
     'miniprogram/utils/api.js', 'tmp/xiaok-vector/renovation-photos/window.jpg', 'tmp/xiaok-vector/renovation-photos/manifest.json');
   return Object.fromEntries([...new Set(files)].sort().filter(file => fs.existsSync(path.join(root, file)))
     .map(file => [file, hash(fs.readFileSync(path.join(root, file)))]));
@@ -103,7 +106,7 @@ async function createFixture() {
   otherToken = await signMiniProgramToken({ sub: created.otherUserId, id: created.otherUserId, mode: 'customer', role: 'user', enterpriseId: created.enterpriseId, contextVersion: 1, source: 'wechat' });
   report.fixture = fixture;
 }
-async function runWorker(expectedImages: number, expectedClaims?: boolean) {
+async function runWorker(expectedImages: number, expectedClaims?: boolean, readFormal?: { leadId: string }) {
   // Native polling can briefly hold the settings row; claimJob deliberately
   // uses SKIP LOCKED. Wait for our queued job rather than treating contention
   // as a missing client write or taking ownership of another controller.
@@ -113,6 +116,12 @@ async function runWorker(expectedImages: number, expectedClaims?: boolean) {
     await new Promise(resolve => setTimeout(resolve, 250));
   }
   assert.ok(lease); assert.equal(lease.enterpriseId, fixture!.enterpriseId);
+  const held = await withTenantTransaction(fixture!.enterpriseId, tx => one(tx, sql`select r.policy_snapshot,q.reserved_tokens,q.reserved_cost_micros
+    from app.assistant_runs r join app.assistant_quota_reservations q on q.enterprise_id=r.enterprise_id and q.run_id=r.id
+    where r.enterprise_id=${fixture!.enterpriseId} and r.id=${lease!.runId}`));
+  assert.equal((held!.policy_snapshot as Row).imageContextBudget, 'conversation-images-budget-v1');
+  assert.equal((held!.policy_snapshot as Row).imageSchema, 'explicit-image-object-schema-v1');
+  assert.equal(Number(held!.reserved_tokens), 128000); assert.equal(Number(held!.reserved_cost_micros), 1777778);
   let calls = 0;
   await processAgentAnswer(lease, { model: async (messages, _tools, turn, requestTools) => {
     calls++;
@@ -125,6 +134,13 @@ async function runWorker(expectedImages: number, expectedClaims?: boolean) {
     (report.dispatches as Row[]).push({ runId: lease.runId, turn, final, images: pixels.map(part => part.type === 'image'
       ? { mediaId: part.mediaId, hash: part.hash, bytes: Buffer.from(part.data, 'base64').length } : null),
       requestHash: hash(JSON.stringify(body)), format: body.response_format?.type ?? null });
+    if (turn === 0 && readFormal) {
+      assert.ok(requestTools!.some(tool => tool.name === 'query_materials'));
+      return { text: '', toolCalls: [{ id: 'formal-read', name: 'query_materials', arguments: JSON.stringify({ leadId: readFormal.leadId, room: '厨房' }) }],
+        finishReason: 'tool_calls', providerRequestId: 'synthetic', usage: { inputTokens: 0, outputTokens: 0 } };
+    }
+    if (readFormal) assert.match(JSON.stringify(messages), /图内墙边记录：4000毫米、3000毫米/);
+    if (final && expectedImages > 0) assert.deepEqual(requestTools![0].parameters.required, ['kind']);
     if (!final) {
       const finish = requestTools!.find(tool => tool.name === 'finish_context')!;
       assert.ok(finish, 'native context planning remains active');
@@ -142,7 +158,7 @@ async function runWorker(expectedImages: number, expectedClaims?: boolean) {
   } });
   const run = await new ConversationService(actor).run(lease.runId);
   assert.equal(run.status, 'succeeded', JSON.stringify(run));
-  assert.equal(calls, 2, 'one planning and one native final, no repair sampling');
+  assert.equal(calls, readFormal ? 3 : 2, 'bounded read/planning/native final, no repair sampling');
   const steps = await withTenantTransaction(fixture!.enterpriseId, tx => rows(tx, sql`select kind,input_summary,private_checkpoint,source_refs
     from app.assistant_run_steps where enterprise_id=${fixture!.enterpriseId} and run_id=${lease.runId} order by step_seq`));
   const modelSteps = steps.filter(step => step.kind === 'agent_model');
@@ -167,6 +183,26 @@ async function main() {
     const uploadBody = { data: bytes.toString('base64'), kind: 'image', roomName: '' }, requestKey = randomUUID();
     if (!nativeOnly) {
     let mediaId = '', initial: Awaited<ReturnType<typeof runWorker>>;
+    await step('image quota token and cost limits reject atomically before creating a run or job', async () => {
+      const counts = async () => withTenantTransaction(fixture!.enterpriseId, tx => one(tx, sql`select
+        (select count(*) from app.assistant_runs where enterprise_id=${fixture!.enterpriseId}) runs,
+        (select count(*) from app.assistant_jobs where enterprise_id=${fixture!.enterpriseId}) jobs,
+        (select count(*) from app.assistant_messages where enterprise_id=${fixture!.enterpriseId}) messages,
+        (select count(*) from app.assistant_quota_reservations where enterprise_id=${fixture!.enterpriseId}) reservations`));
+      const before = await counts();
+      for (const limited of ['tokens', 'cost']) {
+        await withTenantTransaction(fixture!.enterpriseId, async tx => tx.execute(sql`update app.assistant_enterprise_settings
+          set daily_tokens=${limited === 'tokens' ? 127999 : 1000000},daily_cost_micros=${limited === 'cost' ? 1777777 : 10000000}
+          where enterprise_id=${fixture!.enterpriseId}`));
+        const key = randomUUID(), response = await api(base + '/messages', 'POST', { clientMessageId: key, content: { version: 1,
+          blocks: [{ type: 'text', text: '想先了解厨房收纳。' }] } }, key);
+        assert.equal(response.status, 429); assert.match(JSON.stringify(await response.json()), /assistant_quota_exceeded/);
+        assert.deepEqual(await counts(), before, 'failed reservation leaves no customer write or queued work');
+      }
+      await withTenantTransaction(fixture!.enterpriseId, async tx => tx.execute(sql`update app.assistant_enterprise_settings
+        set daily_tokens=1000000,daily_cost_micros=10000000 where enterprise_id=${fixture!.enterpriseId}`));
+      return { tokenLimit: 429, costLimit: 429, noPartialWrites: true, tokens: 128000, costMicros: 1777778 };
+    });
     await step('real upload is idempotent and automatically schedules the ordinary C01 Worker', async () => {
       const priorKey = randomUUID();
       await data(await api(base + '/messages', 'POST', { clientMessageId: priorKey, content: { version: 1,
@@ -196,6 +232,44 @@ async function main() {
         fixture!.conversationId, { type: 'assistant_media', id: mediaId, hash: 'incorrect' }));
       assert.equal(wrongHash, undefined);
       return { otherCustomer: 404, unauthenticated: 401, wrongHash: 'unavailable' };
+    });
+    await step('the actual Worker reads stored formal dimensions; another customer and changed geometry lose access', async () => {
+      const layout = { version: 4, measurementMode: 'surveying', surveyGraph: { kind: 'survey-wall-graph', activeFloorId: 'f', floors: [{
+        id: 'f', name: '一层', ceilingHeightMm: 2800,
+        nodes: [{ id: 'a', xMm: 0, yMm: 0 }, { id: 'b', xMm: 4000, yMm: 0 }, { id: 'c', xMm: 4000, yMm: 3000 }, { id: 'd', xMm: 0, yMm: 3000 }],
+        walls: [{ id: 'ab', startNodeId: 'a', endNodeId: 'b', lengthMm: 4000 }, { id: 'bc', startNodeId: 'b', endNodeId: 'c', lengthMm: 3000 },
+          { id: 'cd', startNodeId: 'c', endNodeId: 'd', lengthMm: 4000 }, { id: 'da', startNodeId: 'd', endNodeId: 'a', lengthMm: 3000 }],
+        spaces: [{ id: 'k', name: '厨房', closed: true, wallIds: ['ab', 'bc', 'cd', 'da'] }], openings: [],
+      }] } };
+      const owned = await withTenantTransaction(fixture!.enterpriseId, async tx => {
+        const planId = String((await one(tx, sql`insert into app.floor_plans(enterprise_id,creator_id,name,source,status,layout_data)
+          values(${fixture!.enterpriseId},${fixture!.userId},'测试专用 · 正式厨房图内记录','manual','completed',${JSON.stringify(layout)}::jsonb) returning id`))!.id);
+        const leadId = String((await one(tx, sql`insert into app.leads(enterprise_id,customer_user_id,name,phone,source,primary_floor_plan_id)
+          values(${fixture!.enterpriseId},${fixture!.userId},'测试专用 · 图文只读','13000000000','manual',${planId}) returning id`))!.id);
+        return { planId, leadId };
+      });
+      const key = randomUUID(); await data(await api(base + '/messages', 'POST', { clientMessageId: key, content: { version: 1,
+        blocks: [{ type: 'text', text: '想把水槽挪到旁边那面墙，怎么结合厨房图纸考虑？' }] } }, key));
+      const executed = await runWorker(1, true, owned);
+      const plan = await withTenantTransaction(fixture!.enterpriseId, tx => one(tx, sql`select layout_data from app.floor_plans where id=${owned.planId}`));
+      assert.equal(fingerprint(plan!.layout_data), fingerprint(layout), 'Worker never edits the formal graph');
+      const messages = (executed.checkpoint.private_checkpoint as { messages: ModelMessage[] }).messages;
+      const result = messages.flatMap(message => message.role === 'tool' ? [JSON.parse(message.content)] : []).find(packet => packet.query?.domain === 'materials') as MaterialSnapshot;
+      assert.ok(result && result.data.sources.some(source => source.ref.type === 'formal_floorplan' && source.text.includes('4000毫米')));
+      const oldSources = result.data.sources.map(source => {
+        const old = { ...source }; delete old.need;
+        if (old.ref.type === 'formal_floorplan') { old.text = '测试专用 · 正式厨房图内记录'; delete old.floorplan; }
+        return old;
+      });
+      assert.equal(result.version, fingerprint({ data: { ...result.data, sources: oldSources }, leadIds: result.leadIds }),
+        'the unchanged legacy dependency retains its exact version; the layout hash owns new dimensions');
+      assert.equal(await withTenantTransaction(fixture!.enterpriseId, tx => materialSnapshotAvailable(tx, fixture!.enterpriseId, result)), true);
+      await assert.rejects(withTenantTransaction(fixture!.enterpriseId, tx => queryMaterials(tx,
+        { ...actor, principal: { kind: 'user', userId: fixture!.otherUserId } }, fixture!.conversationId, { leadId: owned.leadId, room: '厨房' })), /assistant_resource_not_found/);
+      layout.surveyGraph.floors[0].walls[0].lengthMm = 4100;
+      await withTenantTransaction(fixture!.enterpriseId, async tx => tx.execute(sql`update app.floor_plans set layout_data=${JSON.stringify(layout)}::jsonb where id=${owned.planId}`));
+      assert.equal(await withTenantTransaction(fixture!.enterpriseId, tx => materialSnapshotAvailable(tx, fixture!.enterpriseId, result)), false);
+      return { runId: executed.runId, storedDimensions: [4000, 3000], graphUnchangedByWorker: true, otherCustomer: 'denied', changedSnapshot: 'unavailable' };
     });
     await step('withdrawal invalidates derived answers and saved pixels; a later turn cannot resurrect the photo', async () => {
       const checkpoint = initial!.checkpoint;

@@ -1,5 +1,7 @@
 # 正式量房算法与拓扑可靠性优化计划
 
+D2当前Agent资料/业务读取还通过`agent/formal-floorplan-context.ts`提供有效闭合房间内原图已保存的墙边`lengthMm`、层高`ceilingHeightMm`和门窗尺寸；不把坐标/渲染包围框或默认高度当作测量，缺项保持未知，墙边长度不代表房间净尺寸或照片与墙面的对应。不写正式墙图或旧版布局副本；原layoutHash绑定新增文字，图形/名称未变时保留旧资料依赖version，真实图变化仍失效。实际Worker/来源/租户/版本检查见`tmp/xiaok-d2-context-20261027/services-schema-formal/report.json`；配置模型验收只由开发计划第2节记录。
+
 D2现由私有快照读取与Agent像素/checkpoint恢复共用严格`parseFormalSurveyLayout`来源有效性校验；无效/混入旧布局的数据在两路均拒绝，合法后续编辑仍保留不可变原像素及layoutHash。隔离来源/鉴权/渲染3/3，无实模/原生验收或墙图/schema变更；证据与限制归既有二期合同。
 
 本文记录当前正式量房墙图、闭合、相交、房间同步、测量平差和保存恢复链路的审查结论与后续优化计划。本文是执行计划，不代表其中尚未实施的能力已经存在。

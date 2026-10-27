@@ -11,7 +11,10 @@ import { currentRequirementProposalPending } from '../requirements/current';
 import { requestsDesigner } from '../handoff/intent';
 import { stageHandoffProposal } from '../handoff/proposal';
 import { currentHandoffOwner } from '../handoff/owner';
-import { agentConfig } from '../agent/config';
+import { agentConfig, type AgentConfig } from '../agent/config';
+import { imageContextBudgetPolicy } from '../agent/context-budget';
+import { conversationImageProtocol } from '../agent/image-context';
+import { nativeImageSchemaProtocol } from '../agent/native-final';
 import { boundReviewProtocol, developmentReviewEntry } from '../agent/review-runtime';
 import { referenceCase } from '../knowledge/reference-case';
 import { contentEntrySource, contentGreeting, type ContentEntry } from '../knowledge/content-entry';
@@ -21,6 +24,17 @@ import { runUsageReconciled, unresolvedProviderOutcome } from './usage-review';
 
 export const reserveTokens = 12000;
 export const reserveCostMicros = 1000000;
+export function runQuotaReservation(agent: AgentConfig | null) {
+  if (agent?.consultation) return { tokens: 0, costMicros: 0 };
+  if (agent?.imageContext === conversationImageProtocol) {
+    const tokens = imageContextBudgetPolicy.inputBudget * imageContextBudgetPolicy.maxDispatches;
+    // Preserve the existing conservative Agent cost-per-token hold. Actual
+    // settlement and unknown-outcome holds continue through the same row.
+    return { tokens, costMicros: Math.ceil(reserveCostMicros * tokens / 72000), imageContextBudget: imageContextBudgetPolicy.version,
+      imageSchema: nativeImageSchemaProtocol };
+  }
+  return { tokens: agent ? 72000 : reserveTokens, costMicros: reserveCostMicros };
+}
 export function conversationSource(c:Row) {
   const e=c.entry_snapshot as Row;
   return e.kind==='reference_content'?{kind:e.kind,documentId:e.documentId,versionId:e.versionId,channel:e.channel}
@@ -85,10 +99,10 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   const reviewRuntime = agent && actor.principal.kind === 'user' && c.purpose === 'customer_consultation'
     && entry.agentReviewCandidate === true && entry.requirementReviewMode === true
     && entry.requirementWorkflow === 'langgraph' ? boundReviewProtocol(entry, actor.enterpriseId) : null;
-  // Consultation reserves each actual dispatch in the same original row;
-  // delivered legacy Agent runs retain their existing72000 reservation.
-  const tokenReservation = agent?.consultation ? 0 : agent ? 72000 : reserveTokens;
-  const costReservation = agent?.consultation ? 0 : reserveCostMicros;
+  // The snapshot and quota are bound together; old image runs never gain an
+  // enlarged request envelope without its corresponding reservation.
+  const reservation = runQuotaReservation(agent);
+  const tokenReservation = reservation.tokens, costReservation = reservation.costMicros;
   const rate = Number(process.env.ASSISTANT_REQUESTS_PER_MINUTE || 30);
   if (!Number.isInteger(rate) || rate < 1 || rate > 1000) fail('assistant_disabled', 403);
   const recent = await one(tx, sql`select count(*) as n from app.assistant_runs where enterprise_id=${actor.enterpriseId} and created_at>now()-interval '1 minute'`);
@@ -112,6 +126,8 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
     values(${actor.enterpriseId},${String(c.id)},${trigger.kind},${trigger.kind === 'user_message' ? trigger.messageId : null},
     ${trigger.kind === 'domain_event' ? trigger.eventId : null},${trigger.kind === 'scheduled_task' ? trigger.occurrenceKey : null},${purpose},
     ${retryOf || null},${json({ schemaVersion: 1, actor, maxTokens: agent?.consultation ? 8192 : 2048, policyVersion: settings.policy_version, agent,
+      ...(reservation.imageContextBudget ? { imageContextBudget: reservation.imageContextBudget } : {}),
+      ...(reservation.imageSchema ? { imageSchema: reservation.imageSchema } : {}),
       ...(reviewRuntime ? { reviewRuntime } : {}) })}::jsonb,${Number(c.context_revision)},${Number(settings.knowledge_epoch)}) returning *`))!;
   const runId = String(r.id);
   await tx.execute(sql`insert into app.assistant_jobs(enterprise_id,kind,run_id,dedupe_key) values(${actor.enterpriseId},'chat_turn',${runId},${'run:' + runId})`);

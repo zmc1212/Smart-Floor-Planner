@@ -24,16 +24,18 @@ async function waitFor<T>(read: () => Promise<T>, label: string) {
 
 /** Runs under the caller's existing acceptance lock and synthetic fixture.
  * Only file-picker/response-loss edges are mocked; writes use actual HTTP.
- * Worker output is deterministic and is never model-semantic evidence. */
+ * The caller supplies either deterministic or configured-model execution;
+ * its outer ledger and actual provider attempts identify that distinction. */
 export async function nativeImageAcceptance(input: {
   root: string; output: string; enterpriseId: string; conversationId: string; token: string; bytes: Buffer;
+  assertReply?(data: Row): void;
   runWorker(images: number, claims?: boolean): Promise<unknown>;
   record(name: string, work: () => Promise<unknown>): Promise<void>;
 }) {
   const nativeOutput = path.join(input.output, 'native'); fs.mkdirSync(nativeOutput, { recursive: true });
   const project = path.join(input.root, 'miniprogram');
   const mp = wechatideNativeClient(project, nativeOutput);
-  const report: Row = { project, controller: 'Stable registered CLI; deterministic Worker', checks: [], captures: [], requests: [] };
+  const report: Row = { project, controller: 'Stable registered CLI; caller-owned Worker', checks: [], captures: [], requests: [] };
   const save = () => fs.writeFileSync(path.join(nativeOutput, 'report.json'), JSON.stringify(report, null, 2));
   let installed = false, server: http.Server | undefined, picker = false;
   const imageName = 'qa-d2-' + randomUUID() + '.jpg';
@@ -159,7 +161,9 @@ export async function nativeImageAcceptance(input: {
       assert.equal(uploads.length, 2); assert.equal(uploads[0].dropped, true); assert.equal(uploads[0].idempotencyKey, uploads[1].idempotencyKey);
       await input.runWorker(1, true); const reopened = await open();
       const data = await reopened.data(); assert.ok(data.messages.some((message: Row) => message.mediaId && message.mediaAvailable));
-      assert.match(JSON.stringify(data.messages), /合成测试答复/); await capture('c01-upload-recovery');
+      if (input.assertReply) input.assertReply(data);
+      else assert.match(JSON.stringify(data.messages), /合成测试答复/);
+      await capture('c01-upload-recovery');
       return { uploads: 2, sameKey: true, actualPixels: true, persisted: true, priorTextClaimsPreserved: true };
     });
     await input.record('C01 actual follow-up input and persisted reentry reuse the authorized image', async () => {

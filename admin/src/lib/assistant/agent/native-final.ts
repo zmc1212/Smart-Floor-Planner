@@ -4,6 +4,7 @@ import {assertToolPairs} from './tool-protocol';
 
 export const nativeFinalProtocol='native-sourced-final-v1';
 export const nativeFinalProjection='quoted-native-schema-v2';
+export const nativeImageSchemaProtocol = 'explicit-image-object-schema-v1';
 export const finishContextTool:ModelTool={name:'finish_context',description:'所需上下文已获取，结束查询并进入最终答复生成。本工具没有答复正文、不保存或批准业务；参数为空对象。',
   parameters:{type:'object',properties:{},additionalProperties:false}};
 export const contextReady=JSON.stringify({status:'context_ready',protocol:nativeFinalProtocol});
@@ -73,4 +74,18 @@ export function nativeFinalDefinition(tool:ModelTool):ModelTool{
   });
   const rest={...parameters};delete rest.properties;delete rest.required;delete rest.additionalProperties;
   return {...tool,parameters:{...rest,anyOf:branches}};
+}
+
+/** Equivalent object root for providers that have emitted an array for a
+ * root union. The original branches and every local validator remain intact. */
+export function explicitNativeObjectRoot(tool: ModelTool): ModelTool {
+  const branches = tool.parameters.anyOf as Array<Record<string, unknown>> | undefined;
+  if (!branches) return tool;
+  const kinds = branches.map(branch => {
+    const kind = (branch.properties as Record<string, { const?: unknown }> | undefined)?.kind?.const;
+    if (branch.type !== 'object' || typeof kind !== 'string') fail('invalid_agent_tools', 500);
+    return kind;
+  });
+  if (!kinds.length || tool.parameters.type !== 'object') fail('invalid_agent_tools', 500);
+  return { ...tool, parameters: { ...tool.parameters, properties: { kind: { type: 'string', enum: [...new Set(kinds)] } }, required: ['kind'] } };
 }

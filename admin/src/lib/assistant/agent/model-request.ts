@@ -4,7 +4,7 @@ import { independentAdviceRequested } from './read-tool-input';
 import { independentAdviceView } from './independent-advice-context';
 import { focusedSynthesisMessages } from './synthesis';
 import { projectSynthesisPolicy } from './model-policy';
-import { fitAgentContext } from './context-budget';
+import { fitAgentContext, type RequestBudgetOptions } from './context-budget';
 import { consultationModelViewVersion, projectConsultationModelView } from './consultation-model-view';
 import { consultationLongProfile } from '../contracts/consultation';
 import { constrainSynthesisRepairTool } from './synthesis-repair';
@@ -17,6 +17,7 @@ export function compileModelRequest(input: {
   question: string; triggerId: string; turn: number; purpose: ModelRequestPurpose;
   messages: ModelMessage[]; tools: ModelTool[];
   profile?: ModelTurnInput['profile'];
+  imageContextBudget?: RequestBudgetOptions['imageContextBudget'];
   wireProjection?(messages:ModelMessage[]):ModelMessage[];
   toolsForTurn(question: string, messages: ModelMessage[], tools: ModelTool[], triggerId: string): ModelTool[];
 }) {
@@ -33,7 +34,7 @@ export function compileModelRequest(input: {
   const policyView = purpose === 'answer' ? projectSynthesisPolicy(focused) : focused;
   const contentView = input.profile && purpose === 'answer' ? projectConsultationModelView(policyView, dispatchTools) : policyView;
   const wireView=input.wireProjection?input.wireProjection(contentView):contentView;
-  const bounded = fitAgentContext(wireView, dispatchTools, { profile: input.profile, purpose });
+  const bounded = fitAgentContext(wireView, dispatchTools, { profile: input.profile, purpose, imageContextBudget: input.imageContextBudget });
   return { messageScoped, adviceScoped, focused, dispatchTools, policyView, bounded, modelMessages: bounded.messages,
     contentProjection: contentView === policyView ? null : consultationModelViewVersion };
 }

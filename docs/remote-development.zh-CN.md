@@ -1,5 +1,7 @@
 # 远端开发连接记录
 
+**Embedding转发恢复（2026-10-28）：** 已批准远端127.0.0.1:8089服务原已运行（PID14792），本机18089没有监听。仅按原SSH主机/身份记录，以StrictHostKeyChecking=yes、BatchMode及隐藏SSH进程456440恢复127.0.0.1:18089到该原服务。带认证/health返回200，原Qwen/Qwen3-Embedding-0.6B revision97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3、profile及1024维一致。证据tmp/xiaok-d2-context-20261027/embedding-tunnel.json与embedding-restored-health.json。未改远端进程、ComfyUI、凭据、数据库转发、生产或模型选择；这是开发依赖恢复，不是D2语义验收。
+
 当前开发文字模型（2026-10-22）：用户明确指定免费GLM9继续剩余长聊、更正回读和压缩，不重复已通过范围。复用实时认证免费目录、GLM91437/1438及隔离8666/8668证据，经原平台服务保存并回读siliconflow / THUDM/GLM-4-9B-0414。凭据、独立VLM配置、enterprise1454历史配置/探针/授权/配额、空ASSISTANT_TEXT_MODEL与原关闭思考标记保持。正常投影upsert会刷新updated_at；驱动在保留检查通过后因严格时间戳断言失败，confirm.json另行只读确认已保存状态，没有再次调用模型或写配置。仅对明确标记的CONSULT-02合成咨询对齐所选文字模型，不宣称图片能力或所有企业配置已迁移。复用既有Next3006/HTTP Worker及5432/55432/18089隧道。历史Qwen/GLM业务失败与1430/3862未知结果及账务保持；连接可用不等于业务验收。当前证据tmp/xiaok-consult-02-glm9/configure.json、confirm.json和align.json，旧模型切换证据保持原绑定。无付费/pro备用、SSH/端点/凭据变更、生产部署或发布批准。
 
 KB-4有界批量开发扩展：`0089_assistant_knowledge_batches`已应用开发主库`smart_floor_planner`及55432隔离`xiaok_embedding_eval`，SQL SHA256 `5448116bb90626a4322e5ff961d526ad064b0f6c13ce724f8a7fd21ac237c9d8`、两张批次/关联表的强制RLS及应用角色non-BYPASS已核验。仅以本人私有批次分组既有evaluation/run，原Worker/租约/用量/取消与管理角色边界沿用；非第二套模型任务队列。迁移前2026-10-19T06-06-59-739Z的主库16,427,580字节、隔离8,318,824字节custom备份在`tmp/xiaok-kb4-batches/`，PGDMP/归档目录及受限ACL通过；首次归档目录流提前结束的SSH EOF在DDL之前，失败保留为`migration-attempt-1.json`，已改为完整接收后核对。完整0089恢复演练及生产镜像兼容仍未验证。SSH、端口/隧道、身份文件、供应商及生产部署均未改变；实施/实测以二期KB-4合同和`migration.json`为准。

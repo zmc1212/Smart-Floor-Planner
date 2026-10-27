@@ -70,12 +70,32 @@ export function boundReviewProtocol(entry: Record<string, unknown>, enterpriseId
     ? composableReviewProtocol : reviewRuntimeProtocol;
 }
 
-export function reviewModelTools(review: ReviewTools): ModelTool[] {
+export function reviewModelTools(review: ReviewTools, currentMessageId?: string): ModelTool[] {
   return [review.proposeRequirements, review.requestDesigner, review.cancelDesigner].map(typed => {
     const { $schema: _schema, ...parameters } = z.toJSONSchema(typed.schema);
     void _schema;
-    return { name: typed.name, description: typed.description, parameters };
+    const definition = { name: typed.name, description: typed.description, parameters };
+    return currentMessageId === undefined ? definition : availableReviewDefinition(definition, review.context, currentMessageId);
   });
+}
+
+/** Schema projection of actual service preconditions, without manufacturing
+ * saved items from customer clauses or changing the original typed executor. */
+export function availableReviewDefinition(definition: ModelTool, context: ReviewTools['context'], currentMessageId: string): ModelTool {
+  if (definition.name !== 'propose_requirement_changes') return definition;
+  const parameters = structuredClone(definition.parameters);
+  const properties = parameters.properties as Record<string, Record<string, unknown>>;
+  const writable = context.customerClauses.filter(source => source.writeEligible !== false);
+  const currentRemovalSources = writable.filter(source => source.sourceMessageId === currentMessageId).map(source => source.id);
+  type Branch = Record<string, unknown> & { properties: Record<string, Record<string, unknown>> };
+  const branches = (properties.changes.items as { oneOf: Branch[] }).oneOf;
+  const available = branches.filter(branch => writable.length && (branch.properties.operation.const === 'add'
+    || context.savedItems.length > 0 && (branch.properties.operation.const !== 'remove' || currentRemovalSources.length)));
+  for (const branch of available) if (branch.properties.operation.const === 'remove') branch.properties.sourceId = { type: 'string', enum: currentRemovalSources };
+  properties.changes.items = available.length === 1 ? available[0] : available.length ? { oneOf: available } : { not: {} };
+  if (!available.length) properties.changes.maxItems = 0;
+  if (!context.savedItems.length) properties.retainedIds.maxItems = 0;
+  return { ...definition, parameters };
 }
 
 export const reviewProposalContext = (review: ReviewTools) =>

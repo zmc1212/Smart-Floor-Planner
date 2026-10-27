@@ -11,7 +11,7 @@ import { projectMessage, resolveEvidence, previewPolicy } from '../knowledge/sou
 import { runContext, failRun, heartbeat, completeAnswer, type Lease } from '../infrastructure/job-queue';
 import { runRenovationAgent, agentReadProtocol, agentToolReplyProtocol, agentTurnScheduleProtocol, type AgentCheckpoint } from './runtime';
 import { agentConfig, agentCapabilityFingerprint } from './config';
-import {nativeFinalProtocol,nativeFinalProjection,finishContextTool,nativeFinalDefinition,nativePlanningMessages,nativeFinalMessages,nativeImageFinalMessages,assertNativeFinalOutput} from './native-final';
+import {nativeFinalProtocol,nativeFinalProjection,finishContextTool,nativeFinalDefinition,nativePlanningMessages,nativeFinalMessages,nativeImageFinalMessages,assertNativeFinalOutput,nativeImageSchemaProtocol,explicitNativeObjectRoot} from './native-final';
 import { conversationImageProtocol, conversationImageInstructions, conversationImageMessage, nativeImageFinalProjection } from './image-context';
 import { factFields, needWriteFeedback, needOriginalQuotes, hasExplicitNeedCorrection, assertRecordedReply, needReplyFeedback, onlyChatHistoryRequested, currentBudgetRecallRequested, currentBudgetRecallFeedback, needReconfirmationFeedback, needDeskPositionFeedback, currentNeedView, unavailableDeskReply, explicitNeedRecordOnly, explicitNeedWriteStatement, recordedNeedReceipt, parseNeedWrites } from './memory';
 import { availableNeedMemory, needMemoryNoticeRefs, unavailableNeedMessageIds, needContextStep, needSourceRefs, needRunSourcesAvailable } from './memory-sources';
@@ -41,7 +41,7 @@ import { resolveSynthesisRepair, synthesisRepairBase, synthesisRepairProtocol, s
 import { currentSynthesisContext } from './synthesis-sources';
 import { boundKnowledgeContext } from './bound-context';
 import { anchorKnowledgeQuery } from '../knowledge/query-context';
-import { fitAgentContext, originalMessageId, agentRequestBudget } from './context-budget';
+import { fitAgentContext, originalMessageId, agentRequestBudget, imageContextBudgetPolicy } from './context-budget';
 import { restoreAncestorSources, ancestorSourceMessages } from './ancestor-sources';
 import { searchPublicResearch, parsePublicRead, publicResearchTools, publicDiscoveryQuery, type PublicCandidate, type PublicResearchState } from './public-research';
 import { projectSynthesisPolicy, modelPolicyProjectionVersion, synthesisQuestionPrefix } from './model-policy';
@@ -629,10 +629,15 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           || !reviewCandidate(current.conversation.entry_snapshot, current.run.policy_snapshot)) fail('context_changed');
       },
     }) : null;
-    const reviewDefinitions = review ? reviewModelTools(review) : [];
+    const imageSchema = initial.config.imageContext === conversationImageProtocol
+      && (initial.run.policy_snapshot as Row).imageSchema === nativeImageSchemaProtocol
+      && initial.messages.some(message => message.role === 'user' && message.content.some(part => part.type === 'image'));
+    const reviewDefinitions = review ? reviewModelTools(review, imageSchema ? String(initial.trigger.id) : undefined) : [];
     const composableReview = !!review && (initial.run.policy_snapshot as Row).reviewRuntime === composableReviewProtocol;
     const nativeFinalization=composableReview&&initial.config.structuredFinal===nativeFinalProtocol;
     const imageFinalization = initial.config.imageContext === conversationImageProtocol;
+    const imageContextBudget = imageFinalization && (initial.run.policy_snapshot as Row).imageContextBudget === imageContextBudgetPolicy.version
+      ? imageContextBudgetPolicy.version : undefined;
     const finalProjection = imageFinalization ? nativeImageFinalProjection : nativeFinalProjection;
     const completionSourceIds = review?.context.customerClauses.filter(source => source.sourceMessageId === String(initial.trigger.id)).map(source => source.id) || [];
     // A first image-only upload has no text originals. With prior customer
@@ -697,8 +702,12 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               const definitions=agentToolsForTurn(question,current,available,triggerId);
               return !nativeFinalization||purpose!=='answer'?definitions:available.length
                 ? [...definitions.filter(tool=>tool.name!==finishContextTool.name&&tool.name!=='final_response'),finish]
-                :definitions.map(definition => claims ? reviewClaimDefinition(nativeFinalDefinition(definition), claims) : nativeFinalDefinition(definition));
-            }, profile,...(nativeFinalization&&purpose==='answer'&&!tools.length?{wireProjection:imageFinalization ? nativeImageFinalMessages : nativeFinalMessages}:{}),
+                :definitions.map(definition => {
+                  const final = claims ? reviewClaimDefinition(nativeFinalDefinition(definition), claims) : nativeFinalDefinition(definition);
+                  return imageSchema ? explicitNativeObjectRoot(final) : final;
+                });
+            }, profile, ...(purpose === 'answer' ? { imageContextBudget } : {}),
+            ...(nativeFinalization&&purpose==='answer'&&!tools.length?{wireProjection:imageFinalization ? nativeImageFinalMessages : nativeFinalMessages}:{}),
           });
           const summaryRequestHash = purpose === 'summary' ? fingerprint({ messages: modelMessages, tools: dispatchTools }) : null;
           await heartbeat(lease);
@@ -728,6 +737,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                   policyProjection:policyView===focused?null:modelPolicyProjectionVersion,
                   contentProjection,...(nativeFinalization&&purpose==='answer'&&!tools.length?{nativeFinalProjection:finalProjection}:{}),
                   imageContext: initial.config.imageContext ?? null,
+                  imageSchema: imageSchema ? nativeImageSchemaProtocol : null,
                   numericProseProtocol: purpose === 'answer' ? proseNumberProtocol : null,
                   citationSelectionProtocol: consultation && purpose === 'answer' ? citationSelectionProtocol : null,
                   turnSchedule: consultation ? { protocol: agentTurnScheduleProtocol, ...turnAllocation } : null,
@@ -811,7 +821,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       initial.messages = withHistorySummary(initial.messages, initial.savedSummary.private_checkpoint as HistorySnapshot);
     } else if (!initial.resume && !initial.savedSummary && initial.config.tools && !currentMessageOnlyRequested(reviewContext.currentQuestion) && !independentAdviceRequested(reviewContext.currentQuestion) && (!dependencies.model || dependencies.summary)
       && !initialTools.some(t => summaryWrites.includes(t.name))) {
-      const bounded = fitAgentContext(projectSynthesisPolicy(initial.messages), [...initialTools, finalTool], { profile: initial.config.consultation?.profile });
+      const bounded = fitAgentContext(projectSynthesisPolicy(initial.messages), [...initialTools, finalTool], { profile: initial.config.consultation?.profile, imageContextBudget });
       const first = bounded.messages.map(originalMessageId).find(Boolean);
       const input = first && await scoped((tx, context) => summaryInput(tx, lease.actor, context.conversation, first, String(initial.trigger.seq), safeText(initial.trigger.content as Parameters<typeof safeText>[0])));
       if (input) {
@@ -821,7 +831,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           const output = await callModel(-2, summaryRequest(input, safeText(initial.trigger.content as Parameters<typeof safeText>[0])), [summaryTool], 'summary');
           const snapshot = selectedSummary(input, output);
           const messages = withHistorySummary(initial.messages, snapshot);
-          fitAgentContext(projectSynthesisPolicy(messages), [...initialTools, finalTool], { profile: initial.config.consultation?.profile });
+          fitAgentContext(projectSynthesisPolicy(messages), [...initialTools, finalTool], { profile: initial.config.consultation?.profile, imageContextBudget });
           await scoped(async tx => {
             await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,source_refs,private_checkpoint,input_summary)
               values(${lease.enterpriseId},${lease.runId},${historySummaryStep},'agent_summary_context',${historySummaryCapability},1,'succeeded',

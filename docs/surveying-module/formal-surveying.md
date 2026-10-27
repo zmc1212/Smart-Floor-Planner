@@ -1,5 +1,7 @@
 # Formal Surveying Data Contract
 
+D2's current Agent material/business read view also includes only recorded wall `lengthMm`, floor `ceilingHeightMm` and opening dimensions for eligible closed rooms, through `agent/formal-floorplan-context.ts`. Coordinate/render bounds and default heights do not become measurements, missing records remain unknown, and a wall length does not establish room net size or a photo-to-wall mapping. No graph or legacy layout copy is written. The original layoutHash binds this added text; unchanged geometry/name retain the old material dependency version, while real graph changes revoke it. The deterministic Worker/source/tenant/version checks are in `tmp/xiaok-d2-context-20261027/services-schema-formal/report.json`; configured-model acceptance is tracked only in the development plan section2.
+
 D2 now shares strict `parseFormalSurveyLayout` source eligibility between private snapshot reads and Agent pixel/checkpoint restoration. Invalid/mixed legacy layouts fail both paths; valid later edits still retain immutable original pixels and layoutHash. Isolated source/auth/rendering checks3/3 pass with no model/native acceptance or graph/schema change; evidence and limitations remain in the existing phase-two contract.
 
 This file records the current version-4 surveying contract. Historical geometry

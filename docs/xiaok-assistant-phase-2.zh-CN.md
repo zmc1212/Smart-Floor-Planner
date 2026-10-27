@@ -1,21 +1,24 @@
 # 小K第二期：需求整理与人工交接
 
-## D2图文上下文（代码/确定性整链Implemented，阶段Limited）
+## D2图文上下文（Limited）
 
-2026-10-28接续唯一开发计划第2节，复用D1提交7a969c7c的需求主张/真实回执和既有私有图片、正式v4来源、KnowledgeRetriever/Evidence。用户仍从C01图片按钮直接发送，原重试/重进及来源面板保持。当前只在明确标记的隔离合成企业验证新图文配置；原开发企业和生产配置未推广，不能据此称完整D2可用。
+唯一执行记录为开发计划第2节。初始实现提交c60fa76d通过conversation-images-v1/quoted-native-images-v1，在准确DashScope/qwen3.8-flash、tools/native-sourced-final配置下接通当前/历史获权图。规划及最终答复使用真实原生图片块，引用目录/checkpoint只存ID/hash和空像素；恢复/派发/提交重验私有归属与正式来源。空上传通知不作文字原话，纯图不造需求回执，已有文字主张仍绑定真实状态。C01沿批准P4B README与既有图片、气泡、来源、未知/重试/重进组件；未改结构/样式/素材、公开API/schema/角色，不增Agent或知识管线，不自动切换原开发企业/生产。
 
-- **实际机制：** agent_config.imageContext=conversation-images-v1须同时为准确dashscope/qwen3.8-flash、imageInput=true、tools=true和native-sourced-final-v1；不带该协议的原文字配置仍拒绝混入图片。imageContext/imageInput变更继续参与能力指纹，在途run不静默跨能力执行。规划沿已有原生图片消息，最终投影quoted-native-images-v1将完整角色/成对工具结果作为不可信JSON，图片ID/hash留在目录，像素经独立原生image块传递；同mediaId出现冲突hash/mime/字节即拒绝。checkpoint只留来源和空字节，恢复时重新鉴权取图。
-- **来源与需求边界：** 当前/历史上传分别绑定uploadMessageId、mediaId/hash、kind、roomName、原正式sourceRef；不借当前项目或上传先后认定房屋。服务端已验证的首次纯图片上传没有文字需求原话，走正常图片答疑；已有客户原话时保留其绑定主张校验，发图不建立新需求或进入receipt_only。后续文字完整沿用D1合同。原customerSources中无文本的上传通知不再被选入文字主张的历史原话，未删除/改写原通知、图片或需求。正式来源仍复用严格v4解析与原本人/主户型/归属/归档检查，不写正式墙图。
-- **职责与采用：** Knowledge解析/检索/发布/Evidence本批无变化；现有资料与来源缺陷、外部读页限制仍保留。对照[LangChain多模态消息](https://docs.langchain.com/oss/javascript/langchain/messages)及[百炼视觉理解/工具/结构输出](https://www.alibabacloud.com/help/zh/model-studio/vision-model)（2026-10-28核对），沿P0已核对的框架工具实现/测试、现有LangGraph循环和agentChatBody原生image_url传输；保留原P0供应商工具历史/最终schema兼容投影。只补本项目来源重验和最终wire投影，不新增感知Agent、事实库、引用管线或框架迁移；官方支持表不是实模兼容证据。
-- **设计映射：** C01 design-references/xiaok-p4b-public-sites-v1/README.md、已还原图片按钮/气泡/notice/来源sheet与共享状态规则。WXML/Less/图片/文案/导航未改，无新视觉设计或还原工作，故还原台账状态不提升。Stable两张核路由截图已目视检查图片、合成答复及追问可见，不宣称完整光学、真机/真实微信/BLE验收。
+新图文run绑定conversation-images-budget-v1，同一原配额行预留128000tokens/1777778微元，覆盖四次主/最终/修复调用和一次可选摘要。仅实际有图请求使用25600，按原48KB/四图/输出/工具结果包络确定；无图/旧snapshot仍16000。图片字节/数量、2048输出、完整工具对、当前来源和未知结果账务保持守卫。explicit-image-object-schema-v1仍是有界候选：仅新run实际有图时显式对象kind根，按真实已存目标裁掉不可能的编辑分支；合法历史新增/替换来源仍保留，删除须有真实已存目标和当前可写原话。该机制没有解决本次模型不遵循合同的问题，不宣称修复成功。
 
-**已执行及证据：** 聚焦48/48，tmp/xiaok-d2-context-20261027/unit-final.log与unit-final-status.json前后无漂移；定向lint通过。真实服务4/4（tmp/xiaok-d2-context-20261027/services-existing-text-claims/report.json）：真实JWT/handler/上传写入与同键幂等、普通Worker自动任务、原生schema图片像素、文字追问、checkpoint重新取图、重进、他客404/未登录401/错hash拒绝、删除使旧回答及checkpoint失效、删除后新回合图片0。Stable原生3/3（tmp/xiaok-d2-context-20261027/native-existing-text-claims/report.json及native/report.json）：原项目/副屏、新编译、3.17.2、非空data/正元素、实际图片按钮/HTTP写入、丢响应原键恢复、真实文本input/tap、持久重进；两图均为C01，逻辑390×844/PNG348×752。原生答复为明确标记的合成输出，六次内部模型回调不是供应商调用；provider attempts/外部fetch0。
+既有正式资料/业务读取现提供有效闭合房间的原图lengthMm、层高和门窗尺寸，缺项保持未知；不从照片/坐标/渲染包围框补净尺寸，不将照片匹配到墙，不写几何。原layoutHash绑定新增文字；图形/名称未变时保留旧资料依赖version，实际变化仍失效。下一批合成图明确保存4000/3000毫米墙边记录，03/04旧夹具/结果保持原样。Knowledge解析/索引/检索/Evidence不变。
 
-**原失败与修复计数：** 服务9453为纯图误入文本完成校验，9454为纯图误入文字claim原话；保存trace后按已验证输入类型处理两处同源接缝，纯图已通过，保留这两次修复结果。9457的文字追问失败定位到上传通知被当作历史文字原话；过滤空文本后同一旅程通过。中间一次422为驱动缺Idempotency-Key/未接受202，保留为驱动前置错误。原生前置PowerShell编码、序列化__name、按钮定位和SKIP LOCKED瞬时争用均独立保留原批；定向图片恢复按钮及有界等待后通过，没有模型采样，不重评旧D1首稿/OS失败计数。所有报告均保留原名与原源码绑定。
+| 固定批 | 实际结果与原证据 |
+| --- | --- |
+|03原两旅程各两次及原生 |17回合、48请求/351031实测tokens，11/17完成；知识6/6、纯图2/2、原生3/3通过，图文/户型追问9496–9498/9500–9502因agent_input_limit失败。原checkpoint/completion/claim目录离线复现六例16226–17343估计拒绝；单独预留的图文预算解决此上限。 |
+|04首次机制修复 |8图文回合、26请求/195829tokens，6/8完成。9515在对象Schema下输出数组；9520两次把原话分句作为不存在的已存删除目标，均被原守卫拒绝。累计保守¥26.601567。 |
+|05第二次机制修复 |11图文/原生回合、33请求/240144tokens，6/11完成。9533/9536/9538为native_schema_unverified；9534/9541选择该次请求中不存在的工具，assistant_capability_forbidden。要求的追问已取得正式尺寸。原生新编译/上传2/3通过；实际追问写入9541后失败，最终重进/截图未执行，仅上传图存在且已审看。 |
 
-**兼容/类型/清理：** 复用D1原固定确定性服务5/5（tmp/agent-runtime/services-composable-d1-2026-10-27T16-37-24-917Z.json），新增currentImage分支不改变旧文字路径，逐项影响核对见tmp/xiaok-d2-context-20261027/evidence-reuse-impact.json，真实采用、原键恢复/重进、他客拒绝与原字段保持。首次兼容命令漏了原基线的--verify-review-originals，导致撤回步骤未产生确定性keep动作，原4/5及后续采用未满足已保留；按原基线完整命令复验，不改产品或重评旧批。复用未变正式媒体范围3/3（影响核对同上），tmp/xiaok-d2-formal-media-context-20261028/service-status.json绑定无漂移，合法原图/快照不变、非法v4/归属/租户/hash/删除继续拒绝。TSC退出2，仍为逐项相同的54项原诊断，本次0；types-final-check.log为完成结果，并发限时types-final一次超时未产出诊断，单独保留且不算通过。本批未重跑生产构建，路由/schema未改。原生/服务/兼容来源均无漂移，相关合成企业禁用、用户context撤权、残余queued/running取消、原传输/会话与3108桥接恢复，锁及控制器释放，原Stable窗口留副屏主页；3006、原Worker/SSH/数据库隧道及无关脏改保留。新供应商调用0，无推送/部署。
+三批保留所有首稿、已知供应商结果、实测用量、源码/配置前后绑定、清理与精确恢复，drift[]。没有无效最终答复落库；真实待采用提案仍未写入需求草稿并独立审计。最新严格对象/kind声明下仍有空数组；离线存在合法uncertainty对象可满足原schema，不将它替换成业务答复。来源/权限/回执守卫不放宽。当前工程证据：90/90绑定单元、6/6真实HTTP/DB/Worker服务（配额原子429、图片幂等/恢复/删除、正式只读/租户/旧version/图变更失效）、D1确定性兼容5/5及lint0；TSC退出2，仍逐项相同54原诊断，本次0。新增两次当前JWT/HTTP重进验证原知识撤回后6条派生答复均隐藏；原确定性/原生/正式媒体证据保留各自版本。见tmp/xiaok-d2-context-20261027/下schema-final-bound-status.json、services-schema-formal/report.json、schema-trace-replay.json、knowledge-retirement-readback.json、d2-loop-stop.json；D1为tmp/agent-runtime/services-composable-d1-2026-10-27T18-04-23-084Z.json。
 
-**剩余固定验收与调用边界：** 本批无新增模型/embedding/搜索/Batch调用，累计保守¥23.867267/¥100、实际账单未知，历史失败和未知预留不清零。当前开发计划保留“本次不再追加模型调用”；未获新授权前不执行新调用，也不将上述合成答复作为D2业务验收。后续固定两条原旅程各两次：厨房设备/企业做法的条件解释、追问和更正，并验证原出处可打开及撤回；同一客户的真实测试照片/获权户型、换位置追问与房屋歧义，不从单图认定安全/精确尺寸、不写正式墙图。至少一条由真实C01输入经实际配置Qwen Worker到结果/重进贯通。保留每次首稿，租户/撤回/回执仍阻塞受影响路径，完成后再接D3；不恢复旧宽矩阵。
+**停止与归属：** 同一完整图文旅程两次机制修复仍失败，不执行第三次换措辞/正则/提示词补丁或通过性采样。剩余归Agent/供应商协议集成，不归Knowledge入库。共同原因假设为真实图片与工具/历史/目录组合下，供应商解码/绑定或模型对当前合同的遵循存在限制；具体上游原因未证实。未来机制决策的判别检查已固定为保存请求的同载荷有图/无图及最小对象schema对照，禁止业务写入，本批未执行。串行推进独立D3内容入口/明确无电话接待路径，无须生成图文答复；保留本阻塞和修复次数。用户授权“继续必要实模调用，累计不超¥100”；累计保守¥27.802287/100，实际账单未知、历史失败/未知预留不清零。本批不再追加D2调用，不切后备模型、不推送/生产发布。真机/真实微信/BLE/完整光学未验证，不转为人工过关门槛。
+
+复用决定：沿安装LangGraph有界路由与LangChain类型工具校验，对照[短期记忆说明](https://docs.langchain.com/oss/javascript/langchain/short-term-memory)、[transformer实现](https://github.com/langchain-ai/langchainjs/blob/main/libs/langchain-core/src/messages/transformers.ts)、[消息形状测试](https://github.com/langchain-ai/langchainjs/blob/main/libs/langchain-core/src/messages/tests/messages.test.ts)、[千问结构化输出合同](https://help.aliyun.com/zh/model-studio/qwen-structured-output)及[Qwen Code对象校验](https://github.com/QwenLM/qwen-code/blob/main/docs/design/structured-output/structured-output.md)。保留对象/工具校验并拒绝数组，不据文档推定本批供应商遵循。既有工具上限issue10090仅为提醒，非本失败已证实原因；不重写框架、不加事实存储、不把修复稿算首稿通过。
 
 ## D1需求来源、采用状态与原生验收（限定Implemented）
 

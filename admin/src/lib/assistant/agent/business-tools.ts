@@ -9,6 +9,7 @@ import type { ModelTool } from '../contracts/model';
 import { constructionRead } from '@/lib/construction/customer';
 import { materialSnapshotAvailable, type MaterialSnapshot } from './materials';
 import { needIssueSnapshotAvailable, type NeedIssueSnapshot } from '@/lib/construction/need-issues';
+import { formalFloorplanText } from './formal-floorplan-context';
 
 export const businessToolDefinitions: ModelTool[] = [
   { name: 'recommend_references', description: '按客户明确方向查询本企业已授权发布的少量参考案例；query仅用风格/房型/用途关键词，泛看参考时传空字符串。不联网、不生成图片，不是正式施工方案。', parameters: {
@@ -80,6 +81,7 @@ export async function queryBusiness(tx: PostgresTransaction, actor: ActorContext
         const rooms = adaptSurveyGraphToRooms(plan.layout_data).map(r => ({ id: r.id, name: r.name }));
         data.push({ id: String(plan.id), leadId: String(lead.id), name: plan.name, layoutHash: fingerprint(plan.layout_data), rooms });
         lines.push(`${label}：已完成正式户型「${String(plan.name)}」，房间：${rooms.map(r => r.name).join('、') || '暂无房间名称'}。这里仅查询，不修改测量数据。`);
+        lines.push(formalFloorplanText(String(plan.name), plan.layout_data)!);
       }
     }
   }

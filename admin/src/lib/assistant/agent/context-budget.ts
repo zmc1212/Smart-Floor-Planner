@@ -11,8 +11,24 @@ export const contextBudgetPolicy = {
   imageTokens: 1536, toolResultReserve: 768, recentTurns: 3,
 } as const;
 
-export type RequestBudgetOptions = { profile?: ModelTurnInput['profile']; purpose?: 'answer' | 'vision' | 'summary' };
+/** Fits the existing 48KB text + four image + output/result envelope. This is
+ * a separately reserved application policy, not the model's advertised window. */
+export const imageContextBudgetPolicy = {
+  version: 'conversation-images-budget-v1', inputBudget: 25600,
+  summaryTrigger: 24000, summaryTarget: 22000,
+  // Four runtime calls (including final/repair), plus at most one history summary.
+  maxDispatches: agentModelLimits.maxModelTurns + 1,
+} as const;
+
+export type RequestBudgetOptions = { profile?: ModelTurnInput['profile']; purpose?: 'answer' | 'vision' | 'summary';
+  /** Only new server-owned runs with the matching quota reservation can bind this. */
+  imageContextBudget?: typeof imageContextBudgetPolicy.version };
 export function agentRequestBudget(options: RequestBudgetOptions = {}) {
+  if (options.imageContextBudget !== undefined) {
+    if (options.imageContextBudget !== imageContextBudgetPolicy.version || options.profile
+      || options.purpose && options.purpose !== 'answer') fail('agent_input_limit', 422);
+    return { ...imageContextBudgetPolicy, maxOutputTokens: agentModelLimits.maxOutputTokens, policy: imageContextBudgetPolicy.version };
+  }
   if (!options.profile) return { inputBudget: contextBudgetPolicy.inputBudget, summaryTrigger: contextBudgetPolicy.summaryTrigger,
     summaryTarget: contextBudgetPolicy.summaryTarget, maxOutputTokens: agentModelLimits.maxOutputTokens, policy: contextBudgetPolicy.version };
   const profile = consultationProfile(options.profile);
@@ -52,7 +68,12 @@ export function estimateAgentRequest(messages: ModelMessage[], tools: ModelTool[
  * turns, system rules, images and the entire current tool/repair sequence stay.
  * No tool result is shortened and no original/checkpoint is modified. */
 export function fitAgentContext(messages: ModelMessage[], tools: ModelTool[], options: RequestBudgetOptions = {}) {
-  const limits = agentRequestBudget(options), before = estimateAgentRequest(messages, tools, options);
+  // Validate the binding even if a current-text projection removed every image.
+  agentRequestBudget(options);
+  const hasImage = messages.some(message => (message.role === 'user' || message.role === 'system')
+    && message.content.some(part => part.type === 'image'));
+  const limits = agentRequestBudget({ ...options, imageContextBudget: hasImage ? options.imageContextBudget : undefined });
+  const before = estimateAgentRequest(messages, tools, options);
   let fitted = messages;
   const omittedMessageIds: string[] = [];
   if (before.estimatedTokens > limits.summaryTrigger || before.textBytes > agentModelLimits.maxTextBytes) {

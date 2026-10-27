@@ -12,6 +12,7 @@ import { fail, fingerprint, id, safeText, type ActorContext } from '../contracts
 import type { ModelTool } from '../contracts/model';
 import { availableNeedMemory } from './memory-sources';
 import { needQualifications, type NeedFact, type NeedQualification, type NeedInterpretation } from './memory';
+import { formalFloorplanText, formalFloorplanContextProtocol } from './formal-floorplan-context';
 
 export const materialTool: ModelTool = {
   name: 'query_materials',
@@ -24,6 +25,7 @@ export type MaterialSource = {
   hash: string; leadId: string; projectId: string | null; roomId: string | null; roomName: string;
   sourceMessageId: string | null; mediaIds: string[]; audience: 'customer_self';
   basis: 'owned_conversation' | 'customer_shared_grant' | 'returned_drawing_review' | 'delivered_formal_plan' | 'primary_plan' | 'published_project_record'; status: 'current'; text: string;
+  floorplan?: { protocol: typeof formalFloorplanContextProtocol; name: string };
   original?: { grantId: string; conversationId: string; sourceHash: string; mediaHash: string | null; authority: 'customer_reference'; imagePixels: false };
   review?: { issueId: string; issueRevision: number; needGrantId: string; drawingGrantId: string; materialVersion: string; authority: 'team_returned_association' };
   formal?: { issueId: string; issueRevision: number; number: number; revision: number; decision: string; previousVersionId: string | null;
@@ -67,9 +69,13 @@ export async function queryMaterials(tx: PostgresTransaction, actor: ActorContex
   const finish = (): MaterialSnapshot => {
     const data = { resolution, sources, missing };
     return { query: { ...query, domain: 'materials', conversationId }, customerId: uid, leadIds: leads.map(l => String(l.id)),
-      // The added need metadata is already bound by ref.version=fingerprint(fact).
-      // Do not invalidate unchanged historical sources solely on a code upgrade.
-      version: fingerprint({ data: { ...data, sources: sources.map(source => { const copy = { ...source }; delete copy.need; return copy; }) }, leadIds: leads.map(l => String(l.id)) }), data,
+      // Added read views are bound by the original fact/layout hash. Retain the
+      // old dependency identity when only the read projection was enriched.
+      version: fingerprint({ data: { ...data, sources: sources.map(source => {
+        const copy = { ...source }; delete copy.need;
+        if (copy.floorplan) { copy.text = copy.floorplan.name; delete copy.floorplan; }
+        return copy;
+      }) }, leadIds: leads.map(l => String(l.id)) }), data,
       displayText: lines.join('\n'), queriedAt: new Date().toISOString() };
   };
   if (leads.length !== 1) {
@@ -175,7 +181,9 @@ export async function queryMaterials(tx: PostgresTransaction, actor: ActorContex
   if (plan && layout && (!query.room || matchingPlanRooms.length === 1)) {
     sources.push({ ref: { type: 'formal_floorplan', id: String(plan.id), version: fingerprint(layout) }, hash: fingerprint(layout), leadId,
       projectId: null, roomId: query.room ? matchingPlanRooms[0].id : null, roomName: query.room, sourceMessageId: null, mediaIds: [],
-      audience: 'customer_self', basis: 'primary_plan', status: 'current', text: String(plan.name) });
+      floorplan: { protocol: formalFloorplanContextProtocol, name: String(plan.name) },
+      audience: 'customer_self', basis: 'primary_plan', status: 'current', text: formalFloorplanText(String(plan.name), layout,
+        query.room ? { roomId: matchingPlanRooms[0].id, floorId: matchingPlanRooms[0].floorId } : {}) || String(plan.name) });
     lines.push(`正式户型：「${String(plan.name)}」${query.room ? '包含「' + query.room + '」' : '，房间：' + planRooms.map(r => r.name).join('、')}。`);
   } else missing.push(query.room ? '含该房间的已完成正式主户型' : '已完成正式主户型');
   if (project && (!query.room || matchingRooms.length === 1)) {

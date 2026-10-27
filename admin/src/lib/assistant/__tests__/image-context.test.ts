@@ -5,7 +5,8 @@ import { agentConfig, agentCapabilityFingerprint } from '../agent/config';
 import { conversationImageMessage, conversationImageProtocol } from '../agent/image-context';
 import { nativeFinalMessages, nativeImageFinalMessages, nativeFinalProtocol } from '../agent/native-final';
 import { compileModelRequest } from '../agent/model-request';
-import { originalMessageId } from '../agent/context-budget';
+import { originalMessageId, agentRequestBudget, fitAgentContext, imageContextBudgetPolicy } from '../agent/context-budget';
+import { runQuotaReservation } from '../core/conversation';
 import { withoutImageBytes } from '../agent/media-context';
 import type { ModelMessage, ModelTool } from '../contracts/model';
 
@@ -104,7 +105,46 @@ test('an exclusive current-text request still strips earlier images before final
   const question = '只回应这条消息：厨房是公共空间。';
   const compiled = compileModelRequest({ question, triggerId: 'question', turn: 0, purpose: 'answer',
     messages: [image(), { role: 'user', content: [{ type: 'text', text: JSON.stringify({ sourceMessageId: 'question', text: question }) }] }],
-    tools: [], toolsForTurn: (_q, _m, t) => t, wireProjection: nativeImageFinalMessages });
+    tools: [], toolsForTurn: (_q, _m, t) => t, wireProjection: nativeImageFinalMessages,
+    imageContextBudget: imageContextBudgetPolicy.version });
   assert.equal(compiled.messageScoped, true);
   assert.equal(compiled.bounded.diagnostic.after.images, 0);
+  assert.equal(compiled.bounded.diagnostic.policy, agentRequestBudget().policy);
+});
+
+test('a reserved image request fits complete current tool results without enlarging text-only or old-run budgets', () => {
+  const messages: ModelMessage[] = [
+    { role: 'system', content: [{ type: 'text', text: 'x'.repeat(35000) }] }, image(),
+    { role: 'user', content: [{ type: 'text', text: JSON.stringify({ sourceMessageId: 'question', text: '水槽挪到旁边那面墙，和图纸尺寸要怎么一起考虑？' }) }] },
+    { role: 'assistant', content: '', toolCalls: [{ id: 'plan', name: 'query_business', arguments: '{}' }] },
+    { role: 'tool', callId: 'plan', content: JSON.stringify({ formalSource: 'immutable-v4', text: 'x'.repeat(4500) }) },
+  ];
+  const before = structuredClone(messages), options = { imageContextBudget: imageContextBudgetPolicy.version };
+  assert.throws(() => fitAgentContext(messages, []), /agent_input_limit/, 'old snapshots keep the original request limit');
+  for (const wireProjection of [undefined, nativeImageFinalMessages]) {
+    const compiled = compileModelRequest({ question: '水槽挪到旁边那面墙，和图纸尺寸要怎么一起考虑？', triggerId: 'question',
+      turn: 1, purpose: 'answer', messages, tools: [], toolsForTurn: (_q, _m, t) => t, wireProjection, ...options });
+    assert.equal(compiled.bounded.diagnostic.policy, imageContextBudgetPolicy.version);
+    assert.equal(compiled.bounded.diagnostic.after.images, 1);
+    assert.deepEqual(compiled.bounded.diagnostic.omittedMessageIds, []);
+    assert.match(JSON.stringify(compiled.modelMessages), /immutable-v4/);
+  }
+  assert.deepEqual(messages, before, 'current source, tool pairs and checkpoint are immutable');
+  assert.throws(() => fitAgentContext(messages.filter(m => m !== messages[1]), [], options), /agent_input_limit/,
+    'the capability alone does not enlarge a request without pixels');
+  const oversized = structuredClone(messages);
+  oversized.push({ role: 'user', content: [{ type: 'text', text: 'x'.repeat(15000) }] });
+  assert.throws(() => fitAgentContext(oversized, [], options), /agent_input_limit/, 'the existing 48KB text guard remains');
+  assert.throws(() => agentRequestBudget({ ...options, purpose: 'summary' }), /agent_input_limit/);
+  assert.throws(() => agentRequestBudget({ ...options, profile: 'bailian-qwen37-flash-long-v1' }), /agent_input_limit/);
+});
+
+test('new image snapshots reserve every bounded dispatch and proportional cost in the original quota row', () => {
+  const imageConfig = agentConfig({ ...base, imageInput: true, imageContext: conversationImageProtocol })!;
+  const hold = runQuotaReservation(imageConfig);
+  assert.equal(hold.tokens, 128000);
+  assert.equal(hold.costMicros, 1777778);
+  assert.equal(hold.imageContextBudget, imageContextBudgetPolicy.version);
+  assert.deepEqual(runQuotaReservation(agentConfig(base)), { tokens: 72000, costMicros: 1000000 });
+  assert.deepEqual(runQuotaReservation(null), { tokens: 12000, costMicros: 1000000 });
 });
