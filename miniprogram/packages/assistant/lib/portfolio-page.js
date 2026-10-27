@@ -65,7 +65,10 @@ function page(kind) {
     },
     async contact() { if (await this.controller.write('contact')) this.continueChat(); },
     preference(event) { return this.controller.write(event.currentTarget.dataset.sentiment); },
-    retryWrite() { return this.data.pendingAction && this.controller.write(this.data.pendingAction); },
+    retryWrite() {
+      if (this.data.pendingAction === 'contact') return this.contact();
+      return this.data.pendingAction && this.controller.write(this.data.pendingAction);
+    },
     async preview(event) {
       if (this.data.unavailable || !this.data.work) return;
       // Recheck rights/version immediately before exposing the full-size viewer.

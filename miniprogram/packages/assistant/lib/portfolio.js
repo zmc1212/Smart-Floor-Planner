@@ -265,7 +265,12 @@ class PortfolioController {
       const data = await this.client.mutate(slot, `${pathFor(this.conversationId)}/works/${work.id}/${action === 'contact' ? 'contact' : 'preference'}`,
         action === 'contact' ? { versionId: work.versionId } : { versionId: work.versionId, sentiment: action, expectedVersion: work.preferenceVersion });
       if (!this.valid(epoch)) return;
-      this.set({ pendingAction: '', feedback: action === 'contact' ? '已提交联系意向，请回原咨询继续沟通。' : '已记下这个方向，随时可以更正。',
+      const contactFeedback = action === 'contact' ? {
+        waiting: '接待请求已提交，等待企业接待；尚未接通或预约。',
+        active: data.handoff.ownerAvailable === false ? '当前接待人暂不可用，你可以结束接续回到小K' : '接待人员已接入本次咨询。',
+        cancelled: '本次接待请求已取消，需求保留。', ended: '本次接待已结束。',
+      }[data.handoff.state] : '';
+      this.set({ pendingAction: '', feedback: action === 'contact' ? contactFeedback : '已记下这个方向，随时可以更正。',
         ...(action !== 'contact' ? { work: { ...work, preference: data.sentiment, preferenceVersion: data.preferenceVersion } } : {}) });
       return action === 'contact' ? this.conversationId : null;
     } catch (error) {

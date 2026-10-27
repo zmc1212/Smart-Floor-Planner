@@ -60,6 +60,14 @@ function validPlanReceipt(slot, pending, data) {
   return data.status === { approve: 'approved', decline: 'declined', 'request-changes': 'changes_requested', defer: 'deferred' }[m[3]];
 }
 
+function validPortfolioContactReceipt(slot, pending, data) {
+  const match = /^\/conversations\/([1-9]\d*)\/portfolio\/works\/([1-9]\d*)\/contact$/.exec(pending.path);
+  const handoff = data.handoff;
+  const mode = { waiting: 'handoff_requested', active: 'human', cancelled: 'ai', ended: 'ai' }[handoff?.state];
+  return !!match && slot === `portfolio-write:${match[1]}:${match[2]}` && data.conversationId === match[1]
+    && !!mode && data.mode === mode && typeof handoff.requestId === 'string' && !!handoff.requestId.trim();
+}
+
 const COPY = {
   portfolio_not_found: '作品或设计师当前不可用，可以返回原咨询看看其他方向。',
   portfolio_forbidden: '当前身份无法查看这份作品，请切换到业主身份。',
@@ -142,7 +150,7 @@ class AssistantClient {
       else if (slot.startsWith('portfolio-write:') && pending.path.endsWith('/preference')
         && (data.sentiment !== pending.body.sentiment || !Number.isInteger(data.preferenceVersion) || data.preferenceVersion < 1)) throw { code: 'invalid_response' };
       else if (slot.startsWith('portfolio-write:') && pending.path.endsWith('/contact')
-        && (!data.conversationId || !data.handoff)) throw { code: 'invalid_response' };
+        && !validPortfolioContactReceipt(slot, pending, data)) throw { code: 'invalid_response' };
       else if (slot.startsWith('public-owner:') && !validOwnerReceipt(slot, pending, data)) throw { code: 'invalid_response' };
       else if (slot.startsWith('plan-decision:') && !validPlanReceipt(slot, pending, data)) throw { code: 'invalid_response' };
       else if (slot.startsWith('public-context:') && !data.conversationId) throw { code: 'invalid_response' };
