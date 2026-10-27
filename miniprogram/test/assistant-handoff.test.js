@@ -111,3 +111,28 @@ test('pre-consent preview reads the owned saved summary without mutating; ended 
   latest = null; await controller.refresh();
   assert.deepEqual(controller.state.fields, []);
 });
+
+test('staff media polls reuse one controller and unchanged photo; hiding cancels and deletes the private cache', async () => {
+  const fs = require('node:fs'), vm = require('node:vm'); let page, loads = 0, refreshes = 0, downloads = 0, disposed = 0, release;
+  class Media {
+    constructor({ emit, identity }) { this.emit = emit; this.session = identity(); }
+    async load(id) { this.id = id; loads++; this.emit({ mediaItems: [{ id: '8' }] }); }
+    async refresh() { refreshes++; await new Promise(resolve => { release = resolve; }); }
+    async thumbnail() { downloads++; return 'private.jpg'; }
+    dispose() { disposed++; }
+  }
+  vm.runInNewContext(fs.readFileSync(require.resolve('../packages/assistant/handoff/handoff'), 'utf8'), {
+    Page: value => { page = value; }, getApp: () => ({ globalData: { token: 'staff' } }),
+    require: name => name.endsWith('/media') ? { MediaController: Media } : { HandoffController, initial: () => ({}) },
+  });
+  const view = { ...page, data: { mediaItems: [], mediaPaths: {}, staff: true, tab: 'media' }, alive: true,
+    controller: { id: '3', hide() {} }, setData(patch) { for (const [key, value] of Object.entries(patch)) {
+      if (key.startsWith('mediaPaths.')) this.data.mediaPaths[key.slice(11)] = value; else this.data[key] = value;
+    } } };
+  await view.openMedia(); assert.equal(view.data.mediaPaths['8'], 'private.jpg');
+  const poll = view.openMedia(), duplicate = view.openMedia();
+  assert.equal(loads, 1); assert.equal(refreshes, 1); assert.equal(downloads, 1); assert.equal(disposed, 0);
+  release(); await Promise.all([poll, duplicate]);
+  assert.equal(view.data.mediaPaths['8'], 'private.jpg'); assert.equal(downloads, 1);
+  view.onHide(); assert.equal(disposed, 1); assert.equal(Object.keys(view.data.mediaPaths).length, 0);
+});

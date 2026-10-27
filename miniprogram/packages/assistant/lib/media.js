@@ -19,6 +19,27 @@ class MediaController {
     } catch (e) { if (this.valid(epoch)) this.emit({ mediaItems: [], mediaError: errorCopy(e) }); }
     finally { if (this.valid(epoch)) this.emit({ mediaLoading: false }); }
   }
+  async refresh() {
+    const epoch = this.epoch;
+    if (!this.id || !this.valid(epoch)) return false;
+    try {
+      const data = await this.client.read(this.base + '/media');
+      if (!this.valid(epoch)) return false;
+      // Recheck source/participant rights on every poll without blanking an unchanged photo.
+      if (this.items.some(item => !data.items.some(current => current.id === item.id))) {
+        this.epoch++; this.cleanPaths();
+      }
+      this.items = data.items;
+      this.emit({ mediaItems: data.items, mediaPaths: { ...this.thumbnailPaths }, mediaError: '' });
+      return true;
+    } catch (error) {
+      if (this.valid(epoch)) {
+        this.epoch++; this.items = []; this.cleanPaths();
+        this.emit({ mediaItems: [], mediaPaths: {}, mediaError: errorCopy(error) });
+      }
+      return false;
+    }
+  }
   async upload(filePath, kind, roomName) {
     if (this.busy || this.staff) return false;
     const epoch = this.epoch; this.busy = true; this.emit({ mediaBusy: true, mediaError: '' });

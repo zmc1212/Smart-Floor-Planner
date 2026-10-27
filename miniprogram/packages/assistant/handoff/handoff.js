@@ -39,7 +39,7 @@ Page({
     if (this.media && this.media.session !== (app.globalData.token || wx.getStorageSync('token') || '')) this.clearMedia();
     if (this.alive && this.shown) await this.controller.show(this.options);
   },
-  onHide() { this.shown = false; if (this.controller) this.controller.hide(); },
+  onHide() { this.shown = false; if (this.controller) this.controller.hide(); this.clearMedia(); },
   onUnload() { this.alive = false; if (this.controller) this.controller.dispose(); if (this.media) this.media.dispose(); },
   onResize() { this.measureWindow(); },
   measureWindow() {
@@ -54,20 +54,30 @@ Page({
   },
   openRequirements() { wx.navigateTo({ url: '/packages/assistant/requirements/requirements?conversationId=' + encodeURIComponent(this.controller.id) }); },
   async openMedia() {
-    this.clearMedia();
-    this.media = new MediaController({ identity: () => getApp().globalData.token || wx.getStorageSync('token') || '', emit: patch => { if (this.alive) this.setData(patch); } });
-    const owner = this.media;
-    await owner.load(this.controller.id, this.data.staff);
-    if (!this.alive || owner !== this.media) return;
-    for (const item of this.data.mediaItems) {
-      const path = await owner.thumbnail(item.id);
-      if (!this.alive || owner !== this.media) return;
-      this.setData({ ['mediaPaths.' + item.id]: path });
+    if (this._mediaFlight) return this._mediaFlight;
+    const identity = () => getApp().globalData.token || wx.getStorageSync('token') || '';
+    const reuse = this.media && this.media.id === this.controller.id && this.media.session === identity();
+    if (!reuse) {
+      this.clearMedia();
+      this.media = new MediaController({ identity, emit: patch => { if (this.alive) this.setData(patch); } });
     }
+    const owner = this.media;
+    const flight = (async () => {
+      if (reuse) await owner.refresh(); else await owner.load(this.controller.id, this.data.staff);
+      if (!this.alive || owner !== this.media) return;
+      for (const item of this.data.mediaItems) {
+        if (this.data.mediaPaths[item.id]) continue;
+        const path = await owner.thumbnail(item.id);
+        if (!this.alive || owner !== this.media) return;
+        if (path) this.setData({ ['mediaPaths.' + item.id]: path });
+      }
+    })();
+    this._mediaFlight = flight;
+    try { return await flight; } finally { if (this._mediaFlight === flight) this._mediaFlight = null; }
   },
   previewMedia(event) { return this.media && this.media.preview(event.currentTarget.dataset.id); },
   select(event) { this.clearMedia(); return this.controller.select(event.currentTarget.dataset.id); },
-  clearMedia() { if (this.media) this.media.dispose(); this.media = null; this.setData({ mediaItems: [], mediaPaths: {}, mediaError: '', mediaLoading: false }); },
+  clearMedia() { if (this.media) this.media.dispose(); this.media = null; this._mediaFlight = null; this.setData({ mediaItems: [], mediaPaths: {}, mediaError: '', mediaLoading: false }); },
   queueTab(event) {
     if (this.data.busy || this.data.pending) return;
     this.setData({ queueTab: event.currentTarget.dataset.tab });

@@ -1896,6 +1896,18 @@ P2C.1基线验证（保留原证据）：20/20作品/供应商/公开权限/企�
 
 ### P2C.2 客户推荐、设计室与作品详情（限定范围Implemented）
 
+#### D3原生接续与图片稳定性（2026-10-28）
+
+内容到真人的限定路径Implemented；AI案例文案/分享材料辅助未交付，完整D3仍Limited。复用既有联系流程（客户端daeeb2d2/服务935929e4）、租户/认证/来源服务及批准D01 long-page README、D02 v2、C01 P4B、S01-01与S01-03/B01/共享状态。新代码仅修复还原S01的媒体生命周期：轮询重验来源但不销毁未变缩略图，并发读取合并；隐藏、错误、删除和撤权清理私有文件并阻止迟到回填。WXML/Less/素材、路由/body/schema、同意、角色、线索、归属、分佣、Agent或知识管线均不变；既有批准设计室无关脏改按实际绑定快照复用并保留。
+
+固定自然旅程：设计师签名分享→真实设计室/作品→联系按钮→成功响应丢失一次→原键重试→同一客户C01无电话等待→厨房普通问句/照片→真实S01队列/接手/原话/看图/回复→客户重进。另一公司渠道客户独立等待、发普通文字，经真实按钮取消并重进AI模式。公开版撤回隐藏作品/图；设计师停用与他客拒绝私有访问。接手前队列不含客户原话；包含归属/分佣字段的原线索整行指纹不变。Bearer、handler、HTTP、DB写入/回读均真实；仅选图/确认框返回与临时合成token回环传输为DevTools边缘替身，未注入Agent生成答复或调用模型。
+
+当前8/8真实隔离兼容见tmp/xiaok-d3-native-prereq-20261028/。原生01为客户侧实际点击、员工服务调用5/5；02使用真实S01控件功能5/5，但截图发现反复读取时照片未显示，分别保留功能结果与失败视觉观察。定向修前回归2/15失败；机制修复后一次VM原型断言错误作为测试错误保留，最终受影响小程序33/33通过。驱动ESLint0、4项Mini JS语法通过；Mini文件在后台lint基目录外，不能宣称已lint。TSC仍逐项相同54项原诊断，新增/移除0；未重跑无关模型或入库。
+
+最终tmp/d3-content-human-native-20261028-03/report.json为5/5、12张核路由截图，通过真实S01照片元素与跨两次实际轮询文件路径不变断言；已按批准组件/状态源目视核对，逻辑390×844、PNG348×752，不升级完整光学/宿主/高屏/键盘/真机登录/BLE验收。副屏唯一原Stable项目新编译（基础库3.17.2），单控制器持验收锁/空队列守卫；源码/配置绑定drift[]，合成数据停用撤权、原会话/bootstrap/wx接口恢复，所属监听/锁在finally释放。失败保留、账务与依赖见d3-delivery-evidence.json。剩余D3为AI案例文案/分享材料辅助，完整D3后才D4。D2提交fc470e70、修复2次停止边界、原失败/未知预留及累计保守¥27.802287/100保持；无外部/模型/embedding调用或生产部署。
+
+#### 保留的P2C.2实现与早期证据
+
 当前工程验证：作品/供应商/真实数据库/HTTP/权限及企业清理25/25，小程序聊天/作品/图片/接续/需求/分包/字号72/72，助手纯测试66/66通过。离线检查230个JS、84个WXML模板、88个Less；wcc/wcsc均成功，不控制DevTools。Admin全量lint通过（0错误、28项既有警告），本次文件定向lint通过；本次文件无TypeScript诊断，全仓仍有既有诊断。`npm run build -- --webpack`编译成功，但全量构建仍被既有`ai-studio/designer/page.tsx`的`AiDesignerLegacyPage`导出类型错误阻断，见`tmp/xiaok-vector/p2c2-build.log`。作品回归日志为`tmp/xiaok-vector/portfolio-acceptance.log`。没有新迁移或数据库架构改动；原生人工/视觉验收未执行。
 
 - 运行路由：C01 `packages/assistant/chat/chat` → `packages/assistant/designer/designer?conversationId&authorId&sourceWorkId?` → `packages/assistant/work/work?conversationId&workId&versionId`。返回优先回退同一原聊天栈；深链重进按本人conversationId恢复。顶部“找设计师”继续使用原接续，不新增一级找设计师页或小程序发布页。

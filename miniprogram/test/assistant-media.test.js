@@ -48,3 +48,37 @@ test('failed list clears prior media and staff cannot upload or remove', async (
   assert.equal(await controller.upload('file', 'image', ''), false);
   assert.equal(await controller.remove('9'), undefined); controller.dispose();
 });
+
+test('staff polling revalidates access without discarding unchanged thumbnails; removal and errors clear private files', async () => {
+  const state = {}, removed = []; let items = [{ id: '8' }], failure;
+  global.wx = { getFileSystemManager: () => ({ unlink: o => removed.push(o.filePath) }) };
+  const controller = new MediaController({ identity: () => 'staff', emit: patch => Object.assign(state, patch),
+    client: { pending: new Map(), read: async () => { if (failure) throw failure; return { items }; } },
+    download: async () => ({ tempFilePath: 'private.jpg' }) });
+  try {
+    await controller.load('3', true); await controller.thumbnail('8');
+    await controller.refresh();
+    assert.deepEqual(state.mediaPaths, { 8: 'private.jpg' }); assert.deepEqual(removed, []);
+    assert.equal(state.mediaLoading, false);
+    items = []; await controller.refresh();
+    assert.deepEqual(state.mediaPaths, {}); assert.deepEqual(removed, ['private.jpg']);
+    items = [{ id: '9' }]; await controller.refresh(); await controller.thumbnail('9');
+    failure = { statusCode: 403 }; await controller.refresh();
+    assert.deepEqual(state.mediaPaths, {}); assert.deepEqual(state.mediaItems, []);
+    assert.deepEqual(removed, ['private.jpg', 'private.jpg']);
+  } finally { controller.dispose(); delete global.wx; }
+});
+
+test('a removed source invalidates an in-flight thumbnail before it can return a private path', async () => {
+  let items = [{ id: '8' }], finish; const removed = [], state = {};
+  global.wx = { getFileSystemManager: () => ({ unlink: o => removed.push(o.filePath) }) };
+  const controller = new MediaController({ identity: () => 'staff', emit: patch => Object.assign(state, patch),
+    client: { pending: new Map(), read: async () => ({ items }) },
+    download: () => new Promise(resolve => { finish = resolve; }) });
+  try {
+    await controller.load('3', true); const pending = controller.thumbnail('8');
+    items = []; await controller.refresh(); finish({ tempFilePath: 'late-private.jpg' });
+    assert.equal(await pending, ''); assert.deepEqual(state.mediaPaths, {});
+    assert.deepEqual(removed, ['late-private.jpg']);
+  } finally { controller.dispose(); delete global.wx; }
+});
