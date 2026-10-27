@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 
-type Call={status:string;usage?:{total_tokens:number};reservedTokens?:number};
+type Call={id?:string;runId?:string;status:string;usage?:{total_tokens:number};reservedTokens?:number};
+export type RetainedReviewHold={id:string;runId:string;reservedTokens:number};
 export function reviewTokens(calls:Call[]) {
   return calls.reduce((n,c)=>{
     if(c.usage)assert.ok(Number.isSafeInteger(c.usage.total_tokens)&&c.usage.total_tokens>=0,'Invalid observed token accounting');
@@ -25,8 +26,13 @@ export function reviewBudget(root:string) {
   const unknownCount=calls.filter(c=>c.status!=='succeeded').length;
   return {scope,usedTokens,usedMicros,unknownCount,
     legacyBatchTokens:Math.max(0,reviewTokens(later)-scope.batchStartsAfterContractTokens),
-    assertReservation(consumedTokens:number,reservedTokens:number) {
-      assert.equal(unknownCount,0,'Unresolved provider outcome blocks dispatch');
+    assertReservation(consumedTokens:number,reservedTokens:number,explicitlyRetained:RetainedReviewHold[]=[]) {
+      // Default remains blocked. A separately human-authorized batch can retain
+      // exact detached holds; neither their outcomes nor their costs are reset.
+      const identity=(c:{id?:string;runId?:string;reservedTokens?:number})=>JSON.stringify([c.id,c.runId,c.reservedTokens]);
+      assert.equal(new Set(explicitlyRetained.map(identity)).size,explicitlyRetained.length,'Duplicate retained hold');
+      assert.deepEqual(calls.filter(c=>c.status!=='succeeded').map(identity).sort(),explicitlyRetained.map(identity).sort(),
+        'Unresolved provider outcome blocks dispatch unless the exact holds have explicit authorization');
       assert.ok(Number.isSafeInteger(consumedTokens)&&consumedTokens>=0&&Number.isSafeInteger(reservedTokens)&&reservedTokens>0,'Invalid token reservation');
       assert.ok(usedMicros+(consumedTokens+reservedTokens)*5<=scope.cumulativeMicros,'Cumulative fee reservation exceeds the approved cap');
     },

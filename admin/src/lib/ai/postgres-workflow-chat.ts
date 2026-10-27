@@ -18,9 +18,20 @@ import {
   isSafeProviderFallback,
   type AiChatMessage,
   type AiLogicalModelKey,
+  type AiProviderRuntimeConfig,
 } from '@/lib/ai/provider-types';
 
 type WorkflowChatModelKey = Extract<AiLogicalModelKey, 'chat.general' | 'vision.reference_analysis'>;
+
+export function assistantThinkingOverrideAllowed(runtime: Pick<AiProviderRuntimeConfig, 'adapterType' | 'adapterConfig' | 'baseUrl'>,
+  model: string, consultationRuntime: boolean) {
+  const endpoint = new URL(runtime.baseUrl);
+  const preset = runtime.adapterConfig?.providerPreset;
+  return runtime.adapterType === 'openai_compatible' && (preset === 'siliconflow'
+    || preset === 'deepseek' && endpoint.origin === 'https://api.deepseek.com' || consultationRuntime
+    || preset === 'dashscope' && model === 'qwen3.8-flash' && endpoint.origin === 'https://dashscope.aliyuncs.com'
+      && /^\/compatible-mode(?:\/v1)?\/?$/.test(endpoint.pathname));
+}
 
 function requestFingerprint(value: unknown) {
   return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -69,9 +80,7 @@ export async function executePostgresText(input: {
       && new URL(runtime.baseUrl).origin === 'https://dashscope.aliyuncs.com' && remoteModel === consultationProfile(consultation.profile)?.model;
     if (consultation && (!consultationRuntime || input.agent!.input.profile !== consultation.profile)) throw new Error('Consultation profile does not match the configured runtime');
     const enableThinking=consultation ? false : input.owner.kind==='assistant_run' && process.env.ASSISTANT_TEXT_DISABLE_THINKING==='1'?false:undefined;
-    if (enableThinking !== undefined && (runtime.adapterType !== 'openai_compatible'
-      || !(runtime.adapterConfig?.providerPreset === 'siliconflow'
-        || (runtime.adapterConfig?.providerPreset === 'deepseek' && new URL(runtime.baseUrl).origin === 'https://api.deepseek.com') || consultationRuntime))) {
+    if (enableThinking !== undefined && !assistantThinkingOverrideAllowed(runtime, remoteModel, !!consultationRuntime)) {
       throw new Error('Assistant thinking override requires an approved SiliconFlow or official DeepSeek runtime');
     }
     const agentBody = input.agent ? agentChatBody({ ...input.agent.input, model: remoteModel, enableThinking }, runtime.baseUrl) : null;

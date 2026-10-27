@@ -3,6 +3,7 @@ import { withTenantTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { executePostgresText } from '@/lib/ai/postgres-workflow-chat';
 import { AiProviderError } from '@/lib/ai/provider-types';
+import { agentRejectionAudited, isDefiniteAgentRejection } from './provider-rejection';
 import { AssistantError, fail, fingerprint, safeText, type Evidence } from '../contracts';
 import { type ModelTool, type ModelTurnOutput, type ModelMessage } from '../contracts/model';
 import { appendMessage, terminalEvent } from '../core/conversation';
@@ -44,7 +45,7 @@ import { searchPublicResearch, parsePublicRead, publicResearchTools, publicDisco
 import { projectSynthesisPolicy, modelPolicyProjectionVersion, synthesisQuestionPrefix } from './model-policy';
 import { citationProtocolVersion } from './citation-catalog';
 import { agentChatProtocolVersion } from '@/lib/ai/providers/agent-chat';
-import { historyTool, parseHistoryQuery, recallHistory, historyRefsAvailable, historySynthesisSources, type HistoryRef, type HistorySnapshot } from './history';
+import { historyTool, parseHistoryQuery, recallHistory, historyRefsAvailable, historySynthesisSources, reviewHistorySnapshot, type HistoryRef, type HistorySnapshot } from './history';
 import { historySummaryPolicy, historySummaryCapability, historySummaryStep, summaryInput, summaryRequest, selectedSummary, summaryTool, withHistorySummary } from './summary';
 import { isReadToolInputFailure, readToolInputIssue, readToolInputProtocol, bindReadToolInput, readToolContext, readToolsForContext, knowledgeReadPending, originalAnswerOnly, independentAdviceRequested, explicitHumanHandoffRequested, sourceReadProtocol, sourceAnswerProtocol, type ReadToolContext } from './read-tool-input';
 import { currentMessageOnlyRequested, currentMessageFinalTool, currentMessageReplyFeedback, currentMessageScopeProtocol } from './current-message-scope';
@@ -62,7 +63,7 @@ import { reviewCandidate, reviewModelTools, reviewProposalContext, reviewProposa
 import { RequirementWorkflow } from '../requirements/workflow';
 
 type ReviewMarker = { protocol: 'candidate-business-review-v1'; name: ReviewToolName;
-  effect: 'proposal' | 'existing'; proposalId: string | null; digest: string | null };
+  effect: 'proposal' | 'existing'; proposalId: string | null; digest: string | null; originals?: HistorySnapshot };
 
 const needProperties = { room: { type: 'string', description: '仅填该字段自身分句中的明确房间；仅写预算而无房间时填空字符串，不借用相邻分句的房间。' }, field: { type: 'string', enum: factFields, description: 'use记录用途/人数，desk记录桌型/书桌位置，storage记录收纳/柜体要求，budget记录预算，daylight记录采光，devices记录设备；style只记录装修风格，不存书桌位置或收纳。独立字段分别保存，不用更正人数覆盖设备或位置。' }, value: { type: 'string', description: '逐字摘自quote，不改写。' }, quote: { type: 'string', description: '该字段的最短完整原分句，逐字摘自本次客户消息，标点也不改写；不拼接多句。' } };
 export const needTool: ModelTool = { name: 'record_need', description: '保存当前客户消息中明确说出的需求，只摘原话。不变字段沿用原记录。同一消息有多个独立字段时，主字段加additionalNeeds一次原子保存（合计最多四条），不要逐轮单独保存。明确更正后又提问时先保存，等回执再查询解释；逗号后以另外/此外/顺便另问的独立问题不取消前面的明确更正，quote只摘更正原句，不带后面的假设/问题，也不保存问题中的设备或房间。更正本身附条件、转述或客户说不记录时不保存。返回memoryVersion。', parameters: {
@@ -993,6 +994,10 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               marker = { protocol: 'candidate-business-review-v1', name: name as ReviewToolName, effect,
                 proposalId: typeof proposal?.id === 'string' ? proposal.id : null,
                 digest: typeof proposal?.digest === 'string' ? proposal.digest : null };
+              if (composableReview && name === 'propose_requirement_changes') {
+                marker.originals = await scoped(async (tx, context) => reviewHistorySnapshot(tx, lease.actor, context.conversation,
+                  [...review.context.savedItems.map(item => item.sourceMessageId), String(initial.trigger.id)], String(initial.trigger.seq)));
+              }
               if (effect === 'proposal' && (!marker.proposalId || !marker.digest)) fail('context_changed');
               await scoped(tx => tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint,input_summary)
                 values(${lease.enterpriseId},${lease.runId},${sequence},'agent_tool',${name},1,'succeeded',${JSON.stringify(marker)}::jsonb,
@@ -1000,6 +1005,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             }
             return { exhausted: true, content: JSON.stringify({ effect: marker.effect, ...await reviewReceipt(marker),
               proposalId: marker.proposalId, digest: marker.digest,
+              ...(marker.originals ? { synthesisSources: historySynthesisSources(marker.originals) } : {}),
               formalApproval: false, writesBusinessState: false }) };
           }
           if (name === 'search_web' || name === 'read_web') {
@@ -1446,7 +1452,23 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     });
   } catch (error) {
     const code = error instanceof AssistantError ? error.code : error instanceof AiProviderError && error.code === 'HTTP_402' ? 'provider_payment_required' : 'model_unavailable';
-    try { await failRun(lease, code, outcomeKnown || code === 'provider_payment_required'); }
+    let rejected = false;
+    if (isDefiniteAgentRejection(error)) {
+      try {
+        rejected = await withTenantTransaction(lease.enterpriseId, async tx => {
+          await runContext(tx, lease);
+          const dispatch = await one(tx, sql`select status,input_summary from app.assistant_run_steps
+            where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and kind='agent_model' and status='running'
+            order by step_seq desc limit 1`);
+          const attempts = await rows(tx, sql`select status,accepted,error_code,metadata from app.ai_provider_attempts
+            where enterprise_id=${lease.enterpriseId} and assistant_run_id=${lease.runId} order by id`);
+          return agentRejectionAudited(error, dispatch ?? undefined, attempts);
+        });
+      } catch { /* Missing audit or revoked context cannot establish a known rejection. */ }
+    }
+    // Execution failure and billing are separate: failRun retains dispatched
+    // reservations for reconciliation, including definitive HTTP rejections.
+    try { await failRun(lease, code, outcomeKnown || rejected || code === 'provider_payment_required'); }
     catch (e) { if (!(e instanceof AssistantError && e.code === 'context_changed')) throw e; }
   }
 }

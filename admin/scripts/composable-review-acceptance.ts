@@ -15,13 +15,15 @@ import { businessReviewTools } from '@/lib/assistant/agent/review-tools';
 import { getPlatformLlmConfig } from '@/lib/platform-llm-config';
 import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
 import { processAgentAnswer } from '@/lib/assistant/agent/worker';
-import { reviewBudget, reviewTokens } from './assistant-review-budget';
+import { reviewBudget, reviewTokens, type RetainedReviewHold } from './assistant-review-budget';
 import { lockAssistantAcceptance } from './assistant-acceptance-safety.mjs';
+import { bindBailianReviewTestRuntime } from './bailian-review-test-runtime';
 import type { ActorContext } from '@/lib/assistant/contracts';
 import type { ModelTurnOutput } from '@/lib/assistant/contracts/model';
+import { currentSynthesisContext } from '@/lib/assistant/agent/synthesis-sources';
 
 type Row = Record<string, unknown>;
-type Fixture = { actor: ActorContext; conversationId: string; userId: string; enterpriseId: string; checkpoints: string[] };
+type Fixture = { actor: ActorContext; conversationId: string; userId: string; enterpriseId: string; checkpoints: string[]; activeRunId?: string };
 const root = path.resolve(process.cwd(), '..');
 createRequire(path.join(root, 'admin/package.json'))('@next/env').loadEnvConfig(process.cwd(), true);
 const db = JSON.parse(fs.readFileSync(path.join(root, 'tmp/xiaok-vector/connection.private.json'), 'utf8').replace(/^\uFEFF/, '')).DATABASE_URL;
@@ -31,10 +33,13 @@ process.env.DATABASE_URL = db;
 process.env.LANGCHAIN_TRACING_V2 = 'false';
 process.env.LANGSMITH_TRACING = 'false';
 const live = process.argv.includes('--live');
+const verifyOriginals = process.argv.includes('--verify-review-originals');
+assert.ok(!(live && verifyOriginals), 'Deterministic source injection cannot be used for live acceptance');
 const budget = reviewBudget(root);
 // Two fixed natural conversations, two repetitions each: 2 + 3 turns.
 const callCap = 60000, plannedCalls = live ? 40 : 0;
-if (live) budget.assertReservation(0, plannedCalls * callCap);
+const authorizationIndex = process.argv.indexOf('--retained-holds-authorization');
+const authorizationFile = authorizationIndex < 0 ? null : process.argv[authorizationIndex + 1];
 let fixtureAgent = { runtime: 'langgraph-v1', providerKey: 'dashscope', model: 'qwen3.7-flash', tools: true, imageInput: false, probeVersion: 'd1-composable-review' };
 const output = path.join(root, 'tmp', live ? 'agent-contract' : 'agent-runtime',
   `${live ? 'trial-' : 'services-'}composable-d1-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
@@ -62,6 +67,9 @@ for (const directory of ['admin/src/lib/assistant', 'admin/src/lib/ai/providers'
 sourceFiles.push('admin/package-lock.json', 'admin/tsconfig.json', 'admin/src/db/transaction.ts',
   'admin/src/db/repositories/assistant-repository.ts', 'admin/scripts/assistant-review-budget.ts',
   'admin/scripts/assistant-acceptance-safety.mjs', 'admin/src/lib/ai/postgres-workflow-chat.ts', 'admin/src/lib/platform-llm-config.ts');
+sourceFiles.push('admin/scripts/bailian-review-test-runtime.ts');
+if (process.argv.includes('--bailian-existing-test-channel')) sourceFiles.push(
+  'tmp/xiaok-intelligent-consult/openwebui-qwen37-cost.mjs', 'tmp/xiaok-intelligent-consult/.env.qwen37');
 const hash = (name: string) => createHash('sha256').update(fs.readFileSync(path.join(root, name))).digest('hex');
 const binding = () => Object.fromEntries(sourceFiles.map(file => [file, hash(file)]));
 const report: Row = { delivery: 'D1', mode: live ? 'live' : 'deterministic',
@@ -72,6 +80,12 @@ const report: Row = { delivery: 'D1', mode: live ? 'live' : 'deterministic',
 const save = () => { fs.mkdirSync(path.dirname(output), { recursive: true }); fs.writeFileSync(output, JSON.stringify(report, null, 2)); };
 const fixtures: Fixture[] = [];
 let release: (() => Promise<void>) | undefined, unknown = false;
+const originalFetch = globalThis.fetch;
+let externalModelCalls = 0;
+let approvedCallLimit = plannedCalls;
+let restoreTestRuntime: (() => Promise<unknown>) | undefined;
+const platformBinding = () => withPlatformTransaction(tx => rows(tx, sql`select key,md5(coalesce(llm_config,'{}'::jsonb)::text) hash
+  from app.platform_configs order by key`));
 
 async function fixture(): Promise<Fixture> {
   const code = 'synthetic-review-runtime-' + randomUUID();
@@ -116,6 +130,12 @@ async function fixture(): Promise<Fixture> {
 
 type TurnKind = 'incomplete' | 'ten' | 'reject' | 'fifteen';
 async function deterministicModel(f: Fixture, kind: TurnKind, turn: number): Promise<ModelTurnOutput> {
+  if (verifyOriginals && kind === 'reject' && turn === 0) {
+    const review = await businessReviewTools(f.actor, f.conversationId);
+    return { text: '', toolCalls: [{ id: 'keep', name: 'propose_requirement_changes', arguments: JSON.stringify({
+      retainedIds: review.context.savedItems.map(item => item.id), changes: [],
+    }) }], finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 0, outputTokens: 0 } };
+  }
   if (turn === 0 && (kind === 'ten' || kind === 'fifteen')) {
     const review = await businessReviewTools(f.actor, f.conversationId);
     const item = review.context.savedItems.find(i => i.field === 'budget')!;
@@ -126,6 +146,22 @@ async function deterministicModel(f: Fixture, kind: TurnKind, turn: number): Pro
       retainedIds: review.context.savedItems.filter(i => i.id !== item.id).map(i => i.id),
       changes: [{ operation: 'replace', targetId: item.id, sourceId: source.id }],
     }) }], finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 0, outputTokens: 0 } };
+  }
+  if (verifyOriginals && kind !== 'incomplete') {
+    const context = await withTenantTransaction(f.enterpriseId, async tx => {
+      const conversation = await one(tx, sql`select * from app.assistant_conversations where enterprise_id=${f.enterpriseId} and id=${f.conversationId}`);
+      assert.ok(conversation && f.activeRunId);
+      return currentSynthesisContext(tx, f.actor, conversation, f.activeRunId);
+    });
+    const original = context.sources.find(source => source.text === '预算12万'); assert.ok(original);
+    const changed = context.sources.find(source => source.text.includes(kind === 'ten' ? '10万' : '15万'));
+    if (kind !== 'reject') assert.ok(changed);
+    const selected = kind === 'reject' ? [original] : [original, changed!];
+    return { text: '', toolCalls: [{ id: 'answer', name: 'final_response', arguments: JSON.stringify({ kind: 'synthesis', segments: [{ basis: 'advice',
+      text: kind === 'reject' ? '原需求预算12万保持不变，量房前可以准备户型图和物业装修规定。'
+        : `此前原话预算12万，本轮原话提出${kind === 'ten' ? '10万' : '15万'}；需求提案需要逐项采用。量房前可以准备户型图和物业装修规定。`,
+      citations: selected.map(source => ({ sourceId: source.sourceId, quote: source.text })),
+    }] }) }], finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 0, outputTokens: 0 } };
   }
   return { text: '', toolCalls: [{ id: 'answer', name: 'final_response', arguments: JSON.stringify({ kind: 'general',
     text: kind === 'ten' ? '这次预算更改可在需求页选择采用，瓷砖沿用原需求。'
@@ -139,6 +175,7 @@ async function runTurn(f: Fixture, scenario: string, kind: TurnKind, text: strin
   assert.ok(sent.runId);
   const before = await req.read(f.conversationId);
   const lease = await claimJob(); assert.ok(lease && lease.runId === sent.runId);
+  f.activeRunId = String(sent.runId);
   const row: Row = { scenario, kind, text, enterpriseId: f.enterpriseId, conversationId: f.conversationId,
     runId: sent.runId, proposalExpiredBeforeRun: before.proposal === null, firstDraftPass: false };
   (report.cases as Row[]).push(row); save();
@@ -243,10 +280,58 @@ async function main() {
   try {
     release = await lockAssistantAcceptance(db);
     if (live) {
+      if (process.argv.includes('--bailian-existing-test-channel')) {
+        assert.ok(authorizationFile, 'Explicit fixed-batch authorization required');
+        const approval = JSON.parse(fs.readFileSync(path.resolve(root, authorizationFile), 'utf8'));
+        assert.equal(approval.providerKey, 'dashscope'); assert.equal(approval.model, 'qwen3.8-flash');
+        const bound = await bindBailianReviewTestRuntime(root, output);
+        restoreTestRuntime = bound.restore; report.testRuntime = bound.receipt;
+      }
       const c = await getPlatformLlmConfig();
       assert.ok(c.enabled && c.available, 'Existing platform runtime unavailable; no new credentials or fallback');
+      const retained: RetainedReviewHold[] = [];
+      if (authorizationFile) {
+        const approval = JSON.parse(fs.readFileSync(path.resolve(root, authorizationFile), 'utf8'));
+        assert.equal(approval.scope, 'one-new-d1-batch-retaining-detached-holds');
+        assert.equal(approval.authorizedBy, 'direct-human-user');
+        assert.match(String(approval.batchId), /^d1-[a-z0-9-]{10,100}$/);
+        assert.equal(approval.cumulativeCapMicros, budget.scope.cumulativeMicros);
+        assert.equal(approval.providerKey, c.providerKey); assert.equal(approval.model, c.model);
+        assert.ok(Number.isInteger(approval.maxCalls) && approval.maxCalls > 0 && approval.maxCalls <= plannedCalls);
+        approvedCallLimit = approval.maxCalls; report.plannedCalls = approvedCallLimit;
+        assert.equal(approval.callTokenCap, callCap);
+        const originals = approval.retainedReports || [{ path: 'tmp/agent-contract/trial-composable-d1-2026-10-26T17-01-30-833Z.json', hash: approval.originalTrialHash }];
+        for (const prior of originals) {
+          assert.match(prior.path, /^tmp\/agent-contract\/trial-[\w.-]+\.json$/);
+          const data = fs.readFileSync(path.join(root, prior.path));
+          assert.equal(createHash('sha256').update(data).digest('hex'), prior.hash);
+          const original = JSON.parse(data.toString('utf8'));
+          retained.push(...original.calls.filter((call: { status: string }) => call.status !== 'succeeded')
+            .map((call: RetainedReviewHold) => ({ id: call.id, runId: call.runId, reservedTokens: call.reservedTokens })));
+        }
+        assert.deepEqual(retained, approval.retainedHolds);
+        for (const name of fs.readdirSync(path.dirname(output)).filter(name => /^trial-.*\.json$/.test(name))) {
+          const existing = JSON.parse(fs.readFileSync(path.join(path.dirname(output), name), 'utf8'));
+          assert.notEqual(existing.authorizationBatchId, approval.batchId, 'One batch authorization cannot be replayed');
+        }
+        report.authorizationBatchId = approval.batchId;
+        report.retainedHistoricalHolds = retained;
+        report.originalTrialHash = approval.originalTrialHash;
+      }
+      budget.assertReservation(0, approvedCallLimit * callCap, retained);
       fixtureAgent = { ...fixtureAgent, model: c.model, providerKey: c.providerKey };
-      process.env.ASSISTANT_TEXT_MODEL = c.model; delete process.env.ASSISTANT_TEXT_DISABLE_THINKING;
+      process.env.ASSISTANT_TEXT_MODEL = c.model;
+      report.thinkingOverride = process.env.ASSISTANT_TEXT_DISABLE_THINKING === '1' ? 'disabled' : 'provider-default';
+      report.platformBefore = await platformBinding();
+      const providerOrigin = new URL(c.baseUrl).origin;
+      globalThis.fetch = async (resource, init) => {
+        const url = new URL(typeof resource === 'string' || resource instanceof URL ? String(resource) : resource.url);
+        if (url.origin === providerOrigin && url.pathname.endsWith('/chat/completions')) {
+          assert.ok(externalModelCalls < approvedCallLimit, 'Fixed D1 batch provider-call cap reached');
+          report.externalModelCalls = ++externalModelCalls; save();
+        }
+        return originalFetch(resource, init);
+      };
       report.model = c.model; report.providerKey = c.providerKey; report.providerConnection = 'existing product service; no credential file access'; save();
     }
     for (let repeat = 1; repeat <= 2; repeat++) for (const scenario of ['incomplete', 'correction'] as const) {
@@ -261,6 +346,7 @@ async function main() {
   } catch (error) {
     report.error = error instanceof Error ? error.stack : String(error); report.passed = false; process.exitCode = 1;
   } finally {
+    globalThis.fetch = originalFetch;
     try {
       for (const f of fixtures) {
         for (const id of f.checkpoints) await new RequirementWorkflow(f.actor).forget(f.conversationId, id);
@@ -272,6 +358,16 @@ async function main() {
       report.cleaned = true;
     } catch (error) { report.cleanupError = String(error); report.passed = false; process.exitCode = 1; }
     delete process.env.ASSISTANT_REVIEW_DEVELOPMENT_ENTERPRISE_IDS;
+    if (live && report.platformBefore) {
+      try {
+        report.platformAfter = await platformBinding();
+        assert.deepEqual(report.platformAfter, report.platformBefore, 'Model configuration changed within the batch');
+      } catch (error) { report.configurationError = String(error); report.passed = false; process.exitCode = 1; }
+    }
+    if (restoreTestRuntime) {
+      try { report.testRuntimeRestore = await restoreTestRuntime(); }
+      catch (error) { report.configurationRestoreError = String(error); report.passed = false; process.exitCode = 1; }
+    }
     if (release) await release();
     report.after = binding(); report.drift = sourceFiles.filter(file => (report.before as Row)[file] !== (report.after as Row)[file]);
     if ((report.drift as string[]).length) { report.passed = false; process.exitCode = 1; }

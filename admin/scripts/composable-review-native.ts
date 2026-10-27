@@ -22,6 +22,7 @@ import { lockAssistantAcceptance } from './assistant-acceptance-safety.mjs';
 import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
 import { processAgentAnswer } from '@/lib/assistant/agent/worker';
 import { businessReviewTools } from '@/lib/assistant/agent/review-tools';
+import { wechatideNativeClient } from './wechatide-native-client';
 
 type Row = Record<string, any>;
 // These names exist only inside SDK evaluate callbacks in the Mini Program.
@@ -54,6 +55,7 @@ const load = createRequire(import.meta.url);
 function binding() {
   const relative = [
     'admin/scripts/composable-review-native.ts',
+    'admin/scripts/wechatide-native-client.ts',
     'admin/src/lib/assistant/requirements/service.ts',
     'admin/src/lib/assistant/requirements/review.ts',
     'admin/src/lib/assistant/requirements/items.ts',
@@ -97,6 +99,11 @@ function binding() {
   addRuntime('tmp/wechat-automator-smoke-20261017/sdk-latest/node_modules/miniprogram-automator');
   const files = [...new Set(relative)].filter(file => fs.existsSync(path.join(root, file))).sort();
   return { ...Object.fromEntries(files.map(file => [file, hash(fs.readFileSync(path.join(root, file)))])),
+    ...(process.argv.includes('--wechatide') ? Object.fromEntries([
+      'D:/微信开发工具/微信web开发者工具/微信开发者工具.exe',
+      'D:/微信开发工具/微信web开发者工具/resources/app.asar',
+      'D:/微信开发工具/微信web开发者工具/resources/app.asar.unpacked/js/common/cli/skill-index.js',
+    ].map(file => ['@StableCLI:' + file, hash(fs.readFileSync(file))])) : {}),
     '@node-runtime': hash(fs.readFileSync(process.execPath)) };
 }
 
@@ -219,6 +226,27 @@ async function directApi(currentToken: string, pathName: string, method = 'GET',
 }
 
 async function compileAndConnect() {
+  if (process.argv.includes('--wechatide')) {
+    const projectPath = path.join(root, 'miniprogram');
+    mp = wechatideNativeClient(projectPath, output);
+    let firstError = '';
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await mp.call('simulator_refresh', { project: projectPath });
+      await new Promise(resolve => setTimeout(resolve, 6000));
+      try {
+        const system = await mp.systemInfo();
+        assert.equal(system.windowWidth, 390); assert.equal(system.windowHeight, 844); assert.equal(system.SDKVersion, '3.17.2');
+        const page = await mp.currentPage(); assert.ok(page && Object.keys(await page.data()).length > 0);
+        return { projectPath, controller: 'Stable registered CLI 0.3.11; current Codex authorization',
+          freshCompileTriggered: true, logical: [system.windowWidth, system.windowHeight], SDKVersion: system.SDKVersion,
+          recovery: { attempted: attempt > 0, firstError } };
+      } catch (error) {
+        if (attempt === 1) throw error;
+        firstError = String((error as Error).message || error);
+      }
+    }
+    throw Error('Stable CLI runtime did not recover after explicit fresh compilation');
+  }
   const sdk = load(path.join(root, 'tmp/wechat-automator-smoke-20261017/sdk-latest/node_modules/miniprogram-automator'));
   const { connect } = load(path.join(root, 'tmp/wechat-devtools-version-test/cdp.cjs'));
   const projectPath = path.win32.normalize(path.join(root, 'miniprogram'));
@@ -411,7 +439,7 @@ async function main() {
     assert.equal(baseline.kind, 'proposal'); if (baseline.kind !== 'proposal') throw Error('baseline_missing');
     await workflow.write(fixture!.conversationId, randomUUID(), { action: 'apply_proposal', proposalId: baseline.proposal.id,
       digest: baseline.proposal.digest, consent: true, restoreConsent: false, selectedFields: originals.map(([, field]) => field) });
-    await step('verified Stable exact-project fresh compilation and 390x844 SDK', compileAndConnect);
+    await step('verified Stable exact-project fresh compilation and 390x844 runtime', compileAndConnect);
     await step('synthetic-only real HTTP transport and temporary session restoration', installTransport);
     await step('C01 real text input answers surveying despite an unfinished budget', () => sendAndRun('预算还没想好，先告诉我量房前要准备什么？', false));
     await capture('c01-question-answer', chatRoute);

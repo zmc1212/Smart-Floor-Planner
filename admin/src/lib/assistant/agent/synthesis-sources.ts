@@ -33,9 +33,17 @@ async function savedNeedOriginal(tx: PostgresTransaction, actor: ActorContext, c
 export async function currentSynthesisContext(tx: PostgresTransaction, actor: ActorContext, conversation: Row, runId: string): Promise<SynthesisContext> {
   const steps = await rows(tx, sql`select step_seq,capability_name,private_checkpoint,source_refs from app.assistant_run_steps
     where enterprise_id=${actor.enterpriseId} and run_id=${runId} and status='succeeded'
-      and capability_name in ('source.restore.v1','record_need','history.summary.v1','recall_history','knowledge.search.v1','web.search.v1','web.read.v1','query_business','query_materials','query_followups','synthesis.bound_materials.v1','synthesis.bound_construction.v1','synthesis.bound_followups.v1') order by step_seq`);
+      and capability_name in ('source.restore.v1','record_need','propose_requirement_changes','history.summary.v1','recall_history','knowledge.search.v1','web.search.v1','web.read.v1','query_business','query_materials','query_followups','synthesis.bound_materials.v1','synthesis.bound_construction.v1','synthesis.bound_followups.v1') order by step_seq`);
   const context: SynthesisContext = { version: 1, knowledge: [], snapshots: [], sources: [] };
   for (const step of steps) {
+    if (step.capability_name === 'propose_requirement_changes') {
+      const snapshot = (step.private_checkpoint as { originals?: HistorySnapshot }).originals;
+      if (snapshot) {
+        if (!await historyRefsAvailable(tx, actor.enterpriseId, String(conversation.id), snapshot.sources)) fail('context_changed');
+        (context.history ??= []).push(snapshot); context.sources.push(...historySynthesisSources(snapshot));
+      }
+      continue;
+    }
     if (step.capability_name === 'source.restore.v1') {
       const restored = step.private_checkpoint as SynthesisContext;
       if (!await synthesisContextAvailable(tx, actor, conversation, restored)) fail('context_changed');

@@ -30,3 +30,29 @@ test('invalid usage and invalid reservations never become zero cost',()=>{
   assert.equal(reviewTokens([{status:'unknown',usage:{total_tokens:1400},reservedTokens:1200}]),1400);
   const f=fixture();try{const b=reviewBudget(f.root);for(const v of [-1,0,0.1,NaN])assert.throws(()=>b.assertReservation(0,v),/Invalid/);}finally{f.close();}
 });
+
+test('a separately authorized new batch retains exact unknown holds and the cumulative cap', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'xiaok-review-budget-'));
+  try {
+    for (const dir of ['scripts/agent-comparison', 'tmp/anythingllm-pilot', 'tmp/agent-comparison', 'tmp/agent-diagnosis', 'tmp/agent-contract']) fs.mkdirSync(path.join(root, dir), { recursive: true });
+    const holds = [{ id: 'original-a', runId: '1', reservedTokens: 240000 }, { id: 'original-b', runId: '2', reservedTokens: 240000 }];
+    fs.writeFileSync(path.join(root, 'scripts/agent-comparison/contract-scope.json'), JSON.stringify({ budgetPolicy: 'cumulative_cost_and_fixed_cases',
+      newTokenLimit: null, cumulativeTokens: null, cumulativeMicros: 100000000, batchStartsAfterContractTokens: 0 }));
+    const original = JSON.stringify({ calls: holds.map(h => ({ ...h, status: 'unknown' })) });
+    const file = path.join(root, 'tmp/agent-contract/trial-original.json'); fs.writeFileSync(file, original);
+    const budget = reviewBudget(root);
+    assert.equal(budget.unknownCount, 2); assert.equal(budget.usedTokens, 518485 + 480000);
+    assert.throws(() => budget.assertReservation(0, 2400000), /Unresolved/);
+    budget.assertReservation(0, 2400000, holds);
+    for (const wrong of [holds.slice(1), [...holds, holds[0]], holds.map(h => ({ ...h, reservedTokens: 0 })),
+      holds.map(h => ({ ...h, id: 'different-' + h.id })), holds.map(h => ({ ...h, runId: 'different-' + h.runId }))]) {
+      assert.throws(() => budget.assertReservation(0, 2400000, wrong));
+    }
+    assert.throws(() => budget.assertReservation(0, 20000000, holds), /exceeds/);
+    assert.equal(fs.readFileSync(file, 'utf8'), original);
+    assert.equal(reviewBudget(root).usedMicros, budget.usedMicros, 'No outcome or reserved cost is changed');
+  } finally {
+    assert.ok(path.resolve(root).startsWith(path.resolve(os.tmpdir()) + path.sep + 'xiaok-review-budget-'));
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

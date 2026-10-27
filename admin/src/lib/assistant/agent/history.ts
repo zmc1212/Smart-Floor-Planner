@@ -17,6 +17,28 @@ export type HistoryRef = { messageId: string; hash: string; memoryVersion: numbe
 export type HistorySnapshot = { query: string; beforeSeq: string; sources: Array<HistoryRef & { text: string; seq: string }>;
   hasMore: boolean; oversized: boolean };
 
+/** The requirement service already read these exact originals. Carry them into
+ * the same history/citation contract, without a model-selected read or new fact. */
+export async function reviewHistorySnapshot(tx: PostgresTransaction, actor: ActorContext, conversation: Row,
+  messageIds: string[], beforeSeq: string): Promise<HistorySnapshot> {
+  const ids = [...new Set(messageIds)];
+  if (actor.principal.kind !== 'user' || conversation.purpose !== 'customer_consultation') fail('assistant_capability_forbidden', 403);
+  if (!ids.length || ids.length > 41 || ids.some(id => !/^[1-9]\d{0,18}$/.test(id))) fail('invalid_requirement_evidence', 422);
+  const originals = await rows(tx, sql`select m.* from app.assistant_messages m where m.enterprise_id=${actor.enterpriseId}
+    and m.conversation_id=${String(conversation.id)} and m.author_kind='user' and m.user_id=${actor.principal.userId}
+    and m.seq<=${beforeSeq} and m.id in (select value::bigint from jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb)) order by m.seq`);
+  if (originals.length !== ids.length) fail('context_changed');
+  const sources: HistorySnapshot['sources'] = [];
+  for (const original of originals) {
+    if (!(await projectMessage(tx, actor, conversation, original)).available) fail('context_changed');
+    sources.push({ messageId: String(original.id), hash: fingerprint(original.content), memoryVersion: readMemory(conversation.entry_snapshot).version,
+      text: safeText(original.content as Parameters<typeof safeText>[0]), seq: String(original.seq) });
+  }
+  if (!await historyRefsAvailable(tx, actor.enterpriseId, String(conversation.id), sources)) fail('context_changed');
+  if (Buffer.byteLength(JSON.stringify(sources)) > 24000) fail('agent_input_limit', 422);
+  return { query: '需求审批已读取的客户原话', beforeSeq, sources, hasMore: false, oversized: false };
+}
+
 /** Historical customer speech has its own identity; it is never a knowledge or
  * live-project source. Only a server-built, revalidated snapshot supplies IDs. */
 export function historySynthesisSources(snapshot: HistorySnapshot): SynthesisSource[] {

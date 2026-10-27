@@ -17,7 +17,7 @@ import { referenceCase } from '../knowledge/reference-case';
 import { contentEntrySource, contentGreeting, type ContentEntry } from '../knowledge/content-entry';
 import { syncConstructionReminders } from '@/lib/construction/reminders';
 import { currentConstructionContact } from '@/lib/construction/customer';
-import { runUsageReconciled } from './usage-review';
+import { runUsageReconciled, unresolvedProviderOutcome } from './usage-review';
 
 export const reserveTokens = 12000;
 export const reserveCostMicros = 1000000;
@@ -94,6 +94,13 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   const recent = await one(tx, sql`select count(*) as n from app.assistant_runs where enterprise_id=${actor.enterpriseId} and created_at>now()-interval '1 minute'`);
   if (Number(recent!.n) >= rate) fail('assistant_quota_exceeded', 429);
   if (purpose !== 'site.record' && await one(tx, sql`select id from app.assistant_runs where enterprise_id=${actor.enterpriseId} and conversation_id=${String(c.id)} and status in ('queued','running')`)) fail('conversation_busy');
+  // Match C01's existing unknown-result state at the service boundary too.
+  // A distinct question is not permission to bypass an unresolved dispatch;
+  // confirmed usage review is the same recovery proof projected to the client.
+  if (c.purpose === 'customer_consultation' && actor.principal.kind === 'user' && await one(tx, sql`select r.id from
+    (select id,enterprise_id,status,error_code from app.assistant_runs where enterprise_id=${actor.enterpriseId}
+      and conversation_id=${String(c.id)} order by created_at desc,id desc limit 1) r
+    where ${unresolvedProviderOutcome()} and not ${runUsageReconciled()}`)) fail('provider_outcome_unknown');
   const budget = (await one(tx, sql`select coalesce(sum(reserved_requests),0) requests,
     coalesce(sum(case when status='settled' then coalesce(settled_tokens,reserved_tokens) else reserved_tokens end),0) tokens,
     coalesce(sum(case when status='settled' then coalesce(settled_cost_micros,reserved_cost_micros) else reserved_cost_micros end),0) cost
