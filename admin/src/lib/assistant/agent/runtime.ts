@@ -2,6 +2,7 @@ import { Annotation, END, START, StateGraph } from '@langchain/langgraph';
 import { fail, fingerprint } from '../contracts';
 import { agentModelLimits, type ModelMessage, type ModelTool, type ModelTurnOutput } from '../contracts/model';
 import { finalAnswerRepairControl, finalAnswerRepairBase, type FinalAnswerRepairScope } from './synthesis-repair';
+import { assertToolPairs, toolSchemaIssue } from './tool-protocol';
 
 type ReadReceipt = { name: string; argumentsHash: string; messageIndex: number };
 export type AgentCheckpoint = { version: 1; turn: number; messages: ModelMessage[]; output: ModelTurnOutput | null; validationRepairs?:number; argumentFailures?: number; exhaustedTools?: string[]; readReceipts?: ReadReceipt[]; finalFromTools?: boolean; turnSchedule?: typeof agentTurnScheduleProtocol; primaryModelTurns?: number };
@@ -101,6 +102,7 @@ export async function runRenovationAgent(input: {
       await ports.authorize();
       const availableNames = new Set(availableTools.map(tool => tool.name));
       if (output.toolCalls.length > agentModelLimits.maxToolCalls || output.toolCalls.some(c => !availableNames.has(c.name))) fail('assistant_capability_forbidden', 403);
+      if (new Set(output.toolCalls.map(call => call.id)).size !== output.toolCalls.length) fail('invalid_tool_pair', 502);
       if(state.validationRepairs&&output.toolCalls.length)fail('assistant_capability_forbidden',403);
       if (output.toolProtocolFeedback && (output.toolProtocolFeedback.code !== 'mixed_final_response'
         || typeof output.toolProtocolFeedback.text !== 'string' || !output.toolProtocolFeedback.text.trim()
@@ -118,7 +120,9 @@ export async function runRenovationAgent(input: {
       let stop = false;
       for (const [index, call] of output.toolCalls.entries()) {
         await ports.authorize();
-        const issue = !exhaustedTools.has(call.name) && readTools.has(call.name) ? ports.validateTool?.(call.name, call.arguments) : null;
+        const definition = tools.find(tool => tool.name === call.name)!;
+        const schemaIssue = await toolSchemaIssue(definition, call.arguments);
+        const issue = schemaIssue || (!exhaustedTools.has(call.name) && readTools.has(call.name) ? ports.validateTool?.(call.name, call.arguments) : null);
         if (issue) {
           if (argumentFailures >= 1) fail(issue.code, 422);
           argumentFailures++;
@@ -187,6 +191,7 @@ export async function runRenovationAgent(input: {
     .addConditionalEdges('tools', state => state.stop ? END : state.output ? 'validate' : 'model')
     .compile();
   const saved = input.resume;
+  assertToolPairs(saved?.messages || input.messages);
   if (saved && (saved.version !== 1 || !Number.isInteger(saved.turn) || saved.turn < 0 || saved.turn >= maxTurns)) fail('invalid_agent_checkpoint', 409);
   if (saved?.turnSchedule !== undefined && (!reservedRepair || saved.turnSchedule !== agentTurnScheduleProtocol)) fail('invalid_agent_checkpoint', 409);
   if (saved?.primaryModelTurns !== undefined && (!reservedRepair || saved.primaryModelTurns !== primaryTurns)) fail('invalid_agent_checkpoint',409);

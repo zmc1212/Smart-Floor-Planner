@@ -132,6 +132,10 @@ export async function executePostgresText(input: {
             ? resolveProviderCostEstimate(runtime, input.logicalModelKey, remoteModel)
             : { measurementKind: 'unavailable' },
           durationMs: Date.now() - startedAt,
+          ...(agentOutput ? { metadata: { ...attemptMetadata, assistantResponse: {
+            usage: agentOutput.usage, providerRequestId: agentOutput.providerRequestId,
+            finishReason: agentOutput.finishReason, observation: agentOutput.observation ?? null,
+          } } } : {}),
         })
       );
       return { content, agentOutput, provider: runtime.key, model: remoteModel, attemptId: attempt.id };

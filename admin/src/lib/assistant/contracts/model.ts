@@ -14,12 +14,18 @@ export type ModelMessage = { role: 'system' | 'user'; content: ModelPart[] }
 export type ModelTurnInput = {
   model: string; messages: ModelMessage[]; tools: ModelTool[];
   maxTokens: number; enableThinking?: boolean; jsonOutput?: boolean; requireTool?: boolean;
+  /** Server-selected native final channel; business/tool turns stay function calling. */
+  outputMode?: 'json_object' | 'json_schema';
+  cacheControl?: 'implicit' | 'ephemeral_system';
   /** Server-bound opt-in only; never emitted as a provider/model argument. */
   profile?: 'bailian-deepseek-flash-consultation-v1' | 'bailian-qwen37-flash-long-v1'; deadlineAt?: number;
 };
 export type ModelTurnOutput = {
   text: string; toolCalls: ModelToolCall[]; finishReason: string | null; providerRequestId: string | null;
-  usage: { inputTokens: number; outputTokens: number } | null;
+  usage: { inputTokens: number; outputTokens: number; cachedInputTokens?: number; cacheWriteInputTokens?: number } | null;
+  observation?: { latencyMs: number; cache: ReturnType<typeof import('@/lib/ai/providers/model-observation').cacheObservation>;
+    prefix: ReturnType<typeof import('@/lib/ai/providers/model-observation').modelPrefixObservation>;
+    format?: { mode:string;jsonValid:boolean;schemaValid:boolean|null } };
   /** Application bridge metadata; never parsed from provider-controlled fields. */
   toolProtocolFeedback?: { code: 'mixed_final_response'; text: string };
 };

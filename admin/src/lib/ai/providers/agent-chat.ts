@@ -5,9 +5,12 @@ import { consultationProfile } from '@/lib/assistant/contracts/consultation';
 import { bearerHeaders, parseJson, providerFetch, providerUrl, asObject } from './http';
 import { thinkingBody } from './thinking';
 import { consultationFinalSchema } from './consultation-final-schema';
+import { assertToolPairs, toolSchemaIssue } from '@/lib/assistant/agent/tool-protocol';
+import { bailianBinding, bailianFinalFormat } from './bailian-capabilities';
+import { cacheObservation, modelPrefixObservation } from './model-observation';
 
 const invalid = () => { throw new AiProviderError('Invalid Agent model response', 'INVALID_PROVIDER_RESPONSE', 'unknown', 502); };
-export const agentChatProtocolVersion = 'profile-final-schema-v2';
+export const agentChatProtocolVersion = 'native-final-cache-tools-v3';
 export const qwenSystemProtocolVersion = 'qwen35-leading-system-v1';
 function leadingSystems(messages: ModelMessage[]): ModelMessage[] {
   const systems = messages.flatMap(message => message.role === 'system' ? [message] : []);
@@ -19,6 +22,7 @@ function leadingSystems(messages: ModelMessage[]): ModelMessage[] {
   ]) }, ...messages.filter(message => message.role !== 'system')];
 }
 export function agentChatBody(input: ModelTurnInput, baseUrl = 'https://api.siliconflow.cn') {
+  assertToolPairs(input.messages);
   const endpoint = new URL(baseUrl);
   const consultation = input.profile !== undefined;
   const profile = consultationProfile(input.profile);
@@ -55,9 +59,19 @@ export function agentChatBody(input: ModelTurnInput, baseUrl = 'https://api.sili
     }) };
   });
   if (images > agentModelLimits.maxImages || textBytes > agentModelLimits.maxTextBytes) throw Error('agent_input_limit');
-  const finalSchema = consultationFinalSchema(input);
+  const finalSchema = consultationFinalSchema(input) || bailianFinalFormat(input, baseUrl);
+  if (input.cacheControl === 'ephemeral_system') {
+    if (!bailianBinding(baseUrl, input.model, input.enableThinking) || !messages.length || messages[0].role !== 'system') throw Error('cache_control_not_applicable');
+    // Mark only the trusted leading system block; never a customer/tool fact.
+    const content = messages[0].content;
+    if (!Array.isArray(content) || !content.length || content.some(part => part.type !== 'text')) throw Error('cache_control_not_applicable');
+    Object.assign(content[content.length - 1], { cache_control: { type: 'ephemeral' } });
+  }
+  if (finalSchema?.type === 'json_object' && !JSON.stringify(messages).toLowerCase().includes('json')) throw Error('json_keyword_required');
+  const formatBody: {response_format?: {type:string;json_schema?:unknown}} = finalSchema ? {response_format:finalSchema}
+    : input.jsonOutput ? {response_format:{type:'json_object'}} : {};
   return { model: input.model, messages, temperature: 0, max_tokens: input.maxTokens,
-    ...(finalSchema ? { response_format: finalSchema } : input.jsonOutput ? { response_format: { type: 'json_object' } } : {}),
+    ...formatBody,
     ...thinkingBody(baseUrl, input.enableThinking),
     ...(input.tools.length && !finalSchema ? { tools: input.tools.map(tool => ({ type: 'function', function: tool })),
       // A final-only dispatch must select that function explicitly. Some
@@ -83,10 +97,29 @@ export function agentChatRequestDiagnostic(body: ReturnType<typeof agentChatBody
       toolCallCount: 'tool_calls' in message ? message.tool_calls?.length || 0 : 0 })),
     tools: body.tools?.map(tool => tool.function.name) || [],
     toolSchemaHash: createHash('sha256').update(JSON.stringify(body.tools || [])).digest('hex'),
+    responseFormat: body.response_format?.type ?? null,
+    nativeOutputSchemaHash: body.response_format ? createHash('sha256').update(JSON.stringify(body.response_format)).digest('hex') : null,
     toolChoice: body.tool_choice === undefined ? null : typeof body.tool_choice === 'string' ? body.tool_choice : 'named_function',
   };
 }
 
+export function parseAgentUsage(value: unknown):ModelTurnOutput['usage'] {
+  const rawUsage = asObject(value);
+  const input = rawUsage.prompt_tokens, output = rawUsage.completion_tokens;
+  const usage = input === undefined && output === undefined ? null :
+    Number.isSafeInteger(input) && Number.isSafeInteger(output) && Number(input) >= 0 && Number(output) >= 0
+      ? { inputTokens: Number(input), outputTokens: Number(output) } : invalid();
+  if (usage) {
+    const cached = asObject(rawUsage.prompt_tokens_details).cached_tokens;
+    const written = asObject(rawUsage.prompt_tokens_details).cache_creation_input_tokens ?? rawUsage.cache_creation_input_tokens;
+    for (const [key, item] of [['cachedInputTokens', cached], ['cacheWriteInputTokens', written]] as const) {
+      if (item === undefined || item === null) continue;
+      if (!Number.isSafeInteger(item) || Number(item) < 0 || Number(item) > usage.inputTokens) return invalid();
+      Object.assign(usage, { [key]: Number(item) });
+    }
+  }
+  return usage;
+}
 export function parseAgentChat(payload: Record<string, unknown>, requestId: string | null = null): ModelTurnOutput {
   const choices = Array.isArray(payload.choices) ? payload.choices : [];
   if (choices.length !== 1) return invalid();
@@ -104,11 +137,7 @@ export function parseAgentChat(payload: Record<string, unknown>, requestId: stri
   });
   const text = typeof message.content === 'string' ? message.content : '';
   if ((!text.trim() && !toolCalls.length) || text.length > 16000 || !['stop', 'tool_calls'].includes(String(choice.finish_reason))) return invalid();
-  const rawUsage = asObject(payload.usage);
-  const input = rawUsage.prompt_tokens, output = rawUsage.completion_tokens;
-  const usage = input === undefined && output === undefined ? null :
-    Number.isSafeInteger(input) && Number.isSafeInteger(output) && Number(input) >= 0 && Number(output) >= 0
-      ? { inputTokens: Number(input), outputTokens: Number(output) } : invalid();
+  const usage = parseAgentUsage(payload.usage);
   return { text, toolCalls, finishReason: String(choice.finish_reason), usage,
     providerRequestId: requestId?.slice(0, 200) || (typeof payload.id === 'string' ? payload.id.slice(0, 200) : null) };
 }
@@ -116,8 +145,19 @@ export function parseAgentChat(payload: Record<string, unknown>, requestId: stri
 /** No transport retries or provider fallback: an unknown accepted request may already be billable. */
 export async function executeAgentChat(runtime: AiProviderRuntimeConfig, input: ModelTurnInput): Promise<ModelTurnOutput> {
   const body = agentChatBody(input, runtime.baseUrl);
+  const started = Date.now();
   const response = await providerFetch(providerUrl(runtime.baseUrl, '/v1/chat/completions'), {
     method: 'POST', headers: bearerHeaders(runtime.apiKey), body: JSON.stringify(body),
   }, Math.min(runtime.timeoutMs, 90000), 'Assistant model', { redactErrorBody: true });
-  return parseAgentChat(await parseJson(response, 'Assistant model'), response.headers.get('x-siliconcloud-trace-id') || response.headers.get('x-request-id'));
+  const output = parseAgentChat(await parseJson(response, 'Assistant model'), response.headers.get('x-siliconcloud-trace-id') || response.headers.get('x-request-id'));
+  let format: NonNullable<ModelTurnOutput['observation']>['format'];
+  if(body.response_format) {
+    let jsonValid=false,objectValid=false;
+    try {const value=JSON.parse(output.text);jsonValid=true;objectValid=!!value&&typeof value==='object'&&!Array.isArray(value);} catch { /* Raw text and usage remain auditable. */ }
+    const definition=input.tools.length===1&&input.tools[0].name==='final_response'?input.tools[0]:null;
+    format={mode:body.response_format.type,jsonValid,schemaValid:!objectValid||output.toolCalls.length?false
+      :definition?!await toolSchemaIssue(definition,output.text):null};
+  }
+  return { ...output, observation: { latencyMs: Date.now() - started, cache: cacheObservation(output.usage),
+    prefix: modelPrefixObservation(input.messages, input.tools),...(format?{format}:{}) } };
 }

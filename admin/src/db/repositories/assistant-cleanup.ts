@@ -10,12 +10,15 @@ export const assistantCleanupTables = [
   'assistant_knowledge_attempts','assistant_knowledge_chunks','assistant_knowledge_assets','assistant_knowledge_versions','assistant_knowledge_documents','assistant_knowledge_index_profiles',
   'assistant_message_citations', 'assistant_cost_reviews', 'assistant_requirement_summaries', 'assistant_media',
   'assistant_knowledge_batch_items','assistant_knowledge_batches','assistant_knowledge_evaluations','assistant_knowledge_cases',
+  'assistant_model_task_items','assistant_model_tasks',
 ] as const;
 export async function assistantCounts(tx: PostgresTransaction, enterpriseId: bigint) {
   const result = [];
   const batches=(await rows(tx,sql`select to_regclass('app.assistant_knowledge_batches') is not null as ready`))[0].ready;
+  const modelTasks=(await rows(tx,sql`select to_regclass('app.assistant_model_tasks') is not null as ready`))[0].ready;
   for (const table of assistantCleanupTables) {
     if(!batches&&['assistant_knowledge_batch_items','assistant_knowledge_batches'].includes(table))continue;
+    if(!modelTasks&&['assistant_model_task_items','assistant_model_tasks'].includes(table))continue;
     result.push({
     table, label: table, count: Number((await rows(tx, sql`select count(*) as n from ${sql.identifier('app')}.${sql.identifier(table)} where enterprise_id=${enterpriseId}`))[0].n),
   });
@@ -24,6 +27,13 @@ export async function assistantCounts(tx: PostgresTransaction, enterpriseId: big
 }
 export async function deleteAssistantData(tx: PostgresTransaction, enterpriseId: bigint) {
   const counts = await assistantCounts(tx, enterpriseId);
+  if(counts.some(c=>c.table==='assistant_model_tasks')) {
+    // Capture only this enterprise's task-owned attempts before removing links.
+    await tx.execute(sql`with deleted_items as (
+      delete from app.assistant_model_task_items where enterprise_id=${enterpriseId} returning attempt_id
+    ) delete from app.ai_provider_attempts where enterprise_id=${enterpriseId} and id in (select attempt_id from deleted_items)`);
+    await tx.execute(sql`delete from app.assistant_model_tasks where enterprise_id=${enterpriseId}`);
+  }
   if(counts.some(c=>c.table==='assistant_knowledge_batches')) {
     await tx.execute(sql`delete from app.assistant_knowledge_batch_items where enterprise_id=${enterpriseId}`);
     await tx.execute(sql`delete from app.assistant_knowledge_batches where enterprise_id=${enterpriseId}`);

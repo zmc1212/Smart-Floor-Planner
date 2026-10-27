@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 export * from './assistant-schema';
+export * from './assistant-model-task-schema';
 export * from './portfolio-schema';
 export * from './construction-schema';
 export * from './construction-public-schema';

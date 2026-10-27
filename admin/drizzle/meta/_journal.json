@@ -673,6 +673,13 @@
       "when": 1792945359083,
       "tag": "0095_portfolio_enrichment",
       "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1793088000000,
+      "tag": "0096_assistant_model_tasks",
+      "breakpoints": true
     }
   ]
 }

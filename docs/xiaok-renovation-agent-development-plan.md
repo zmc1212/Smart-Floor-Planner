@@ -2,7 +2,7 @@
 
 > 2026-10-27 建立。本文是今后小K开发的**唯一计划和任务入口**，按用户“抛弃之前的计划文档，参考 PPT 完成一个装修界的 Agent”的要求编写。旧整体路线图、Agent工程计划、企业知识计划及旧交接中的任务顺序停止使用；原实现、批准设计、业务合同、失败证据和费用记录继续保留。
 >
-> 本次交付是计划，不启动产品开发、模型测试或上线。之后用户要求“按新计划开始开发／继续小K”时，从第2节唯一当前任务接着做；完成后连续推进下一项已授权交付，不再逐阶段请求例行确认。
+> 本文建立时交付计划；用户现已明确要求完成P0开发。当前实现、检查与未验范围以第2节为准；模型调用和生产发布仍各自遵守原授权边界，不能把开发指令当作追加调用授权。
 >
 > **2026-10-27最新优先指令：先完成第4节P0模型与框架基础能力包，再恢复D1–D7的后续整轮验收。** 六项能力均列为最高优先级，优先复用成熟框架和供应商原生接口；实现期间保留必要的定点检查，不以反复运行未补齐机制的业务旅程代替开发。本次修订只调整计划，不代表能力已实现、测试已通过或预算增加，用户“不追加模型调用”的边界继续有效。
 
@@ -30,22 +30,22 @@
 | 项目 | 当前记录 |
 | --- | --- |
 | 当前交付 | **D1：让正常装修咨询和需求更正共存；当前先行P0模型与框架基础能力包** |
-| 状态 | **P0最高优先级，待实现与定点验证；P0收口前不新开下游整轮验收。已有内部修复与确定性服务通过，完整D1仍Limited。修复前百炼首稿4/10过、6/10未过；修复后无新实模。原生确定性7/7不计为实模整链** |
-| P0复用基线 | 沿用LangChain/LangGraph及既有业务服务，先核实原生工具、结构化输出、恢复与模型适配入口，再补必要扩展。三套原生实测是AnythingLLM、官方createAgent、PydanticAI；不把源码参考等同完整复用，不重开三框架付费矩阵，不新增Agent/事实库/引用管线 |
+| 状态 | **P0六项适配及隔离持久服务已实现，零模型定点验证通过；供应商实模协议验收仍Limited，Partial Mode存在官方清单冲突，不能宣布P0全部验收或关闭D1。** 不新开下游整轮验收；修复前百炼首稿4/10过、6/10未过及原生确定性7/7均保留原范围，不能改判 |
+| P0复用基线 | 实际复用锁定的`@langchain/core@1.2.18`原生`tool` JSON Schema校验、`@langchain/langgraph@1.5.0`图/有界回合、原业务审批与来源校验、`providerFetch`及`AiCreationRepository`审计。对照上游工具实现/测试、provider/tool结构化策略和供应商原生API；未安装完整`langchain`/`@langchain/openai`或迁移`createAgent`，未重开AnythingLLM/createAgent/PydanticAI付费矩阵 |
 | 用户动作 / 入口 | 已有C01 `packages/assistant/chat/chat`正常咨询及混合更正→C02 `packages/assistant/requirements/requirements`只采用预算→保存草稿/重进；保留瓷砖、地暖等未选字段，撤回未采用提案，丢响应按原键恢复 |
-| 本轮改动 / 复用 | 复用LangGraph/Worker/v2审批、真实回执与H历史出处。明确HTTP拒绝仅在匹配本次dispatch和持久attempt时记failed，费用预留仍reconciling；超时/网关/审计缺失仍indeterminate。服务端同步C01未知结果与真实核账后新提问边界。需求提案的已读客户原话接入同一H引用目录，按租户/本人、hash、memory-version与撤回重验；最多41份原话/24000字节，不新增Agent、事实库、知识解析或引用管线，不放宽数字/承诺/审批守卫 |
+| 本轮改动 / 复用 | 工具调用/结果配对、执行前原生schema校验及共享一次参数纠错；Qwen3.8 final-only原生JSON Object/strict Schema与独立格式观测；缓存命中/未命中/缺失、token、延迟、前缀/schema hash入原attempt审计。内部CLI提供原生公共查询→实际读页、获权草稿续写、真正异步Batch的准备/提交/查询/结果与错误文件/取消/原键重进/未知ID恢复；0096新增两张强制RLS持久任务表，逐item关联原provider attempts，不新增Agent、业务事实缓存、KnowledgeRetriever或Evidence管线 |
 | 开发开关与设计 | 普通新run仍只在显式开发企业白名单绑定composable-business-review-v2，生产禁止启用，移除白名单回滚新run；在途保持绑定。C01 P4B README/C02 slide06及既有H出处状态规则保持，WXML/Less/素材/布局未变；双语台账保留一条路由/唯一最新源，不提升完整还原状态 |
-| 已执行检查 | 45/45聚焦单元；56/56 C01/C02客户端；4/4真实隔离HTTP拒绝/恢复场景（400、timeout、408、503）；引用连接修复后10/10真实隔离回合，模型/引用选择为确定性注入、实际供应商调用0。配置绑定/精确恢复零模型预检通过；定向lint0，TypeScript原54项诊断逐项一致、本次文件0项。源码绑定无漂移 |
+| 已执行检查 | P0真实隔离数据库9/9（24项源码/测试/配置绑定，无漂移，外网/实模0）：原键/重进、schema不可变、三管理角色/RLS、Batch乱序/部分失败/缺失/重复取回、丢提交/丢上传恢复、取消未知/预留、并发CAS、禁止追加调用、公共原文Evidence、草稿版本/撤回与Partial冲突；首轮7/8的Drizzle外层错误断言失败单独保留。最终绑定单元98/98、C01/C02/接待客户端65/65通过。原HTTP拒绝4/4及原生7/7按未变范围复用；定向lint0；全仓lint0错误/26警告；稳定webpack构建退出0、451绑定无漂移，临时tsconfig include精确恢复。TSC保留54个原路径/行/代码诊断，7条仅推断对象属性展示顺序变化，本次文件0项。D1确定性兼容10/10、模型0，原报告保留；原生搜索协议修正仅影响内部任务及纯用量提取，不改变其C01/审批/Worker执行依赖。最终工程检查及D1受影响服务结果见`tmp/xiaok-p0-20261027/`，不计实模验收 |
 | 原生证据与范围 | 用户已批准Codex CLI访问。准确项目、副屏、Stable2.02.2608080/CLI0.3.11/基础库3.17.2，新编译、systemInfo、非空data、正元素、实际输入/点击/导航通过。原生7/7含C01答疑/提案、C02预算选择实写、丢响应原键恢复、重进及他人404；4张核路由截图，逻辑390×844/编码348×752，代表性C01/C02已目视检查。此批为确定性模型且先于H连接修复，实模整链、完整光学、真机/真实微信未验，不要求用户手测 |
 | 实模路由核对 | 恢复后开发主库5432当前选siliconflow/GLM9，隔离55432原选DeepSeek官方deepseek-flash。用户批准的首批仅请求1次，run9321/attempt2399为HTTP402/failed/accepted=false即停，**不是百炼额度错误**。用户随后指定百炼qwen3.8-flash；复用原测试通道loader，认证目录200包含准确ID，按明确指令仅临时绑定隔离设置及LLM/VLM投影，完成后hash精确恢复，未修改主库或生产 |
 | 实模原始结果 / 缺口 | 百炼固定两旅程各两次，共30次实际请求/226237观测tokens、10份首稿：预算未定答疑和10万单项提案共4过；混合15万答疑/撤回共6次unsupported_model_commitment，保留失败。已定位为提案已读原话未进合成来源目录，数字答复缺出处；随后H连接机制修复只获零模型/服务证据，不能把旧首稿改判通过。原OS11虚称记录/确认两轮失败计数不清零，不继续措辞/regex采样 |
-| 证据 | 总入口 `tmp/xiaok-d1-resume-20261027/`；实模 `tmp/agent-contract/trial-composable-d1-2026-10-27T08-37-38-593Z.json`；修复后服务 `tmp/agent-runtime/services-composable-d1-2026-10-27T08-55-08-145Z.json`；原生 `tmp/agent-contract/composable-native-resume-20261027-cli-02/report.json`。早期timeout、驱动断言、首次编译不稳定及identity恢复428C9保留，不改判；修复/恢复证据同入口 |
+| 证据 | P0入口`tmp/xiaok-p0-20261027/`，`service-evidence-native-api.json`、`verification-native-api.json`、`build-webpack-stable-evidence.json`、`migration.log`及各原始日志；0096只在原隔离库执行并记入原Drizzle迁移日志，主库/生产/平台模型设置未改。原D1入口`tmp/xiaok-d1-resume-20261027/`、实模`trial-composable-d1-2026-10-27T08-37-38-593Z.json`、修复后服务`services-composable-d1-2026-10-27T08-55-08-145Z.json`及原生`composable-native-resume-20261027-cli-02/report.json`继续保留，均不重评分 |
 | 历史与未知 | 原run1174/1175、attempt1382/1383及其HTTP400/indeterminate/unknown原记录保留；原数据实例已分离，恢复库同号attempt属于其他run，禁止按裸ID误核账。原D3服务8/8、客户端39与D2 DOCX/正式来源证据按未变范围复用，不重复入库或假称完整阶段通过 |
-| 费用与停止边界 | 原¥8.771297与全部历史未知保留；DeepSeek402新增240000token保守预留；百炼226237tokens全部计入原账册，当前按原费率累计保守预留/估算**¥11.102482**，实际扣费/账单未知，不算零费。累计¥100不变。本轮模型实际31次；用户拒绝把调用总上限40扩到47，**修复后最多16次的建议复测没有执行**，不得自动重发旧run或另开模型批 |
+| 费用与停止边界 | 原¥8.771297与全部历史未知保留；DeepSeek402新增240000token保守预留；百炼226237tokens全部计入原账册，当前按原费率累计保守预留/估算**¥11.102482**，实际扣费/账单未知，不算零费。累计¥100不变。本轮模型实际31次；用户拒绝把调用总上限40扩到47，**修复后最多16次的建议复测没有执行**，不得自动重发旧run或另开模型批；本次P0新增实际供应商调用0，未创建追加调用授权或提交真实Batch |
 | 清理 / 所有权 | 本聊天单owner串行，沿既有隔离acceptance锁/idle queue保护。合成企业AI禁用、用户context撤权，原生transport/session/pending storage恢复，3108桥接和自有锁释放；保留用户Stable窗口、3006及既有Worker/隧道，不结束未知进程。保留无关脏改和历史手动接管证据，不创建替代聊天、不发跨聊天消息、不推送或部署 |
-| 下一步 / 返回条件 | 先按第4节补齐P0六项能力及不调用模型的必要检查；未经新的明确授权不发起模型协议探测、在线采样或Batch提交。P0实现收口且用户以后明确允许追加调用后，才固定复测H连接影响的更正/撤回各两次，并补至少一条C01实际输入→配置模型Worker→C02真实结果/重进的整链。保留原始失败/费用，D1通过后继D2，不因内部机制完成提前关闭D1 |
+| 下一步 / 返回条件 | P0代码/零模型检查收口后，保留原生六项协议未验及Partial清单冲突，不自行探测或提交Batch；CLI默认拒绝追加调用，未来仅新明确授权记录、原账册/保留未知与¥100上限共同通过才可派发。获授权后先对固定model/endpoint/region/API/thinking补最小协议证据，再恢复D1更正/撤回各两次及一条Stable C01→配置Worker→C02实写/重进整链；原OS11两轮失败计数不清零。继任ID为D1，D1通过后才继D2 |
 
-本轮从 `935929e4` 接续；代码、合同和清单以本次相关本地提交及上述绑定证据为准，不把HEAD当作全部工作区快照。旧 `c483f02a`、`d1226362`、`935929e4` 等各自原始证据保留；本轮未改未授权设计、未部署生产。
+D1从 `935929e4` 接续；P0复用 `18ed416f` 已有回执/历史恢复及 `cc26ee56` 页面加载基础；代码、合同和清单以本次相关本地提交及上述绑定证据为准，不把HEAD当作全部工作区快照。旧 `c483f02a`、`d1226362`、`935929e4` 等各自原始证据保留；本轮未改未授权设计、未部署生产。
 
 ## 3. 现有成果怎样使用
 
@@ -76,14 +76,16 @@ Agent负责理解、上下文、工具编排和回答；Knowledge负责解析、
 
 每项先在本节明确原生实现入口、实际采用部分、保留的业务扩展及必须自研的理由；优先检查现有LangChain/LangGraph的模型适配、工具结果反馈、结构化输出策略、中间件与中断恢复，复用已保存失败trace作判别，不重跑三框架宽矩阵。框架能直接提供的通用机制优先调用现成实现；租户/来源撤回、业务事务、真实回执、审批、幂等和未知用量继续由现有服务守住。整体迁移或重写仍需具体收益与边界兼容证据，不因本次优先级调整自动启动。
 
+**实际采用与定制边界（2026-10-27）：** 已核对已安装框架源码及上游[工具实现](https://github.com/langchain-ai/langchainjs/blob/main/libs/langchain-core/src/tools/index.ts)/[工具测试](https://github.com/langchain-ai/langchainjs/blob/main/libs/langchain-core/src/tools/tests/tools.test.ts)。通用参数校验直接调用原生`tool`，使用无副作用回调且只捕获`ToolInputParsingException`；已有LangGraph负责有界循环。原生`response_format`通过现有审计传输接入，未宣称使用完整`createAgent`或自动provider策略。供应商Batch/Partial/Web参数不属于现有core工具的通用机制，保留薄HTTP适配；持久任务只补原schema无法表达的远程batch/file/custom_id、不可变快照及预留，复用原tenant transaction、manager guard、provider attempt及清理机制，不复制租户解析、业务审批、事实或引用管线。
+
 | 能力（全部P0） | 现有基础与需要补齐的行为 | 完成检查 |
 | --- | --- | --- |
-| **Function Calling** | 已有工具闭环，完善当前模型的工具选择、类型参数、调用ID/结果配对、结果回模型和有界纠错；优先复用框架原生工具/中间件。原话、知识、项目事实和回执沿同一来源合同传递 | schema、原始tool_calls与实际结果可关联；只读/假设不误写，已知参数拒绝可修复，未知结果不重放；无保存回执不能声称已保存 |
-| **供应商原生结构化输出** | 在实际支持的最终答复路径接入原生`response_format`，优先复用框架provider/tool策略；分别核实JSON Object与严格JSON Schema，明确工具回合与最终输出的兼容性，不只靠提示词或事后修JSON | 请求确实携带选定模式；JSON、schema与业务语义分别验证。格式约束不替代引用、数值、权限和真实回执校验，不借SDK默认重试增加未知调用 |
-| **联网搜索与实际读页** | 保留已有`search_web`/`read_web`、SearXNG及Evidence链；补齐百炼原生联网的显式适配/策略。只传脱敏公共查询，搜索候选与已读原文分开，结果进入同一引用/恢复合同 | 能实际读取相关正文并保留网址/定位/时间/失败；摘要不冒充原文。空/部分/全部失败可区分，不静默换渠道、启用收费档或增加商业服务 |
-| **模型上下文缓存与观测** | 优先利用供应商隐式缓存，解析并记录缓存命中token、输入/输出token、延迟与费用；稳定系统提示和工具schema前缀。有实际支持和收益时接显式`cache_control`，不另造业务事实缓存 | 以真实响应区分命中、未命中与字段缺失；缺失不记0，不预先认定免费或命中。稳定/变化前缀有可解释记录，租户/撤回/版本/权限仍实时校验 |
-| **受控前缀续写** | 补齐当前模型/API的Partial Mode适配，限定为已有获权草稿续写并绑定原前缀/版本；普通聊天、结构化结果和业务完成声明不强行使用。未决调用不能包装成续写重发 | 前缀/新增内容拼接完整；改口、过期和撤权拒绝旧前缀，不重复业务动作或继承虚假确认。有开关及适用入口；模型页与API清单不一致时先记录并作有界协议判别，不能猜参数 |
-| **离线Batch批量推理** | 接入真正的异步Batch API，限隔离合成数据的离线评估/无副作用生成，复用持久任务和用量审计；补提交、batch/custom_id关联、查询、结果/错误取回、取消和重进，客户咨询仍走实时链路 | 乱序、部分失败、重复取回、取消和提交未知有真实状态；实时接口循环不冒充Batch，不自动重提未决项、不批量业务写入。每个item及失败/未知均计入原授权次数、预算与预留 |
+| **Function Calling** | 已实现：`agent/tool-protocol.ts`复用LangChain原生schema校验；`runtime.ts`校验调用/结果配对，执行前拒错并共享已有一次参数纠错预算。原Worker持久工具结果、审批、原话/知识/项目/回执及最终语义校验不变 | 零模型参数类型纠错、重复/孤立/缺失call ID、未知服务错误不重放通过；真实业务兼容单独核验。配置模型实际工具选择/回传协议仍未验，不把schema成功当保存回执 |
+| **供应商原生结构化输出** | 已实现：`providers/bailian-capabilities.ts`按准确Qwen3.8/API/地域绑定；`agent-chat.ts`final-only默认strict JSON Schema，`outputMode`可选JSON Object，业务工具回合不混发。仅wire移除供应商不支持的`uniqueItems`，完整本地schema与语义守卫保留 | mock HTTP确认实际请求携带所选`response_format`；独立记录JSON语法、完整schema与原业务语义结果，不修JSON/增加SDK重试。供应商实模兼容与语义仍未验 |
+| **联网搜索与实际读页** | 已实现内部入口：`bailian-offline.ts`独立绑定DashScope Generation（`api=dashscope-generation`），原生`enable_search`/`enable_source`，仅经原`parseWebQuery`校验的公共查询；`ModelTaskService.search`持久审计并用原`bailianPublicSearch`→`searchWeb`实际读页，模型答案/摘要不进入Evidence。普通C01仍用原SearXNG/search_web/read_web，不自动切换 | 隔离服务验证网址/hash/正文/时间、空/缺来源/全部读页失败及原键重进；无新收费搜索档或静默fallback。真实原生搜索/公网读页组合未验；当前内部入口不宣称普通C01已采用供应商搜索 |
+| **模型上下文缓存与观测** | 已实现：`model-observation.ts`与原attempt metadata记录input/output/cached/write tokens、hit/miss/unavailable、延迟、稳定系统前缀和工具schema hash；默认隐式，`cacheControl=ephemeral_system`仅在获支持绑定的首个system最后一个text content块放原生标记，不默认启用 | 命中/0命中/缺字段/异常计数及稳定/变化前缀的零模型检查通过；缺失为null/unavailable，费用不猜0或折扣。真实命中率、收益及显式缓存服务协议未验，不产生业务事实缓存 |
+| **受控前缀续写** | 适配/持久入口已实现但在线受阻：`draft-continuation.ts`、CLI `prepare-draft`/`continue-draft`，绑定owner/prefixHash/version/expiry/epoch/consent，禁止业务完成声明，完整前缀+新增内容返回；普通聊天不调用。当前默认`partialVerified=false`，无可随意翻转的环境开关 | 隔离合成transport验证拼接、版本/撤回/重进及不重放；官方模型页列3.8支持，专门Partial清单仅列到3.7，故返回`partial_protocol_unverified`。未获追加调用授权，不探测、不换模型；这项阻塞未解除，不能标为已验收 |
+| **离线Batch批量推理** | 已实现真实异步API适配及持久服务：`/files`上传、`/batches`提交/查询/cancel、结果和错误文件；0096两表逐item关联原`ai_provider_attempts`。内部CLI仅原隔离库、原manager权限、合成评估/无副作用文字，最多20项；北京绑定，Singapore拒绝，不进入实时客户业务 | 真实数据库+模拟供应商验证乱序/部分失败/未知缺项、重复取回/结果篡改、取消、并发CAS、提交/上传未知重启与原ID恢复。真实Batch尚未提交；每item派发前进入原`trial-p0-model-task-*`账册，保留全部失败/未知与¥100上限，不自动重提 |
 
 **适用性：** 工具调用、结构化输出及可靠来源链直接影响执行正确性；缓存用于成本/延迟，前缀续写用于适合的续写场景，Batch用于离线任务。六项全部在P0处理，不要求每个聊天回合同时启用。模型体验是平台试用入口；当前模型页标明不支持模型调优，不列为需要自研或付费训练的前置项。能力按实际模型、API、地域及思考模式绑定，截图不能替代协议证据。
 
