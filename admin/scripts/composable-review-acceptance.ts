@@ -21,6 +21,7 @@ import { bindBailianReviewTestRuntime } from './bailian-review-test-runtime';
 import type { ActorContext } from '@/lib/assistant/contracts';
 import type { ModelTurnOutput } from '@/lib/assistant/contracts/model';
 import { currentSynthesisContext } from '@/lib/assistant/agent/synthesis-sources';
+import {nativeFinalProtocol,finishContextTool} from '@/lib/assistant/agent/native-final';
 
 type Row = Record<string, unknown>;
 type Fixture = { actor: ActorContext; conversationId: string; userId: string; enterpriseId: string; checkpoints: string[]; activeRunId?: string };
@@ -34,13 +35,14 @@ process.env.LANGCHAIN_TRACING_V2 = 'false';
 process.env.LANGSMITH_TRACING = 'false';
 const live = process.argv.includes('--live');
 const verifyOriginals = process.argv.includes('--verify-review-originals');
+const nativeFinal = process.argv.includes('--native-sourced-final');
 assert.ok(!(live && verifyOriginals), 'Deterministic source injection cannot be used for live acceptance');
 const budget = reviewBudget(root);
 // Two fixed natural conversations, two repetitions each: 2 + 3 turns.
 const callCap = 60000, plannedCalls = live ? 40 : 0;
 const authorizationIndex = process.argv.indexOf('--retained-holds-authorization');
 const authorizationFile = authorizationIndex < 0 ? null : process.argv[authorizationIndex + 1];
-let fixtureAgent = { runtime: 'langgraph-v1', providerKey: 'dashscope', model: 'qwen3.7-flash', tools: true, imageInput: false, probeVersion: 'd1-composable-review' };
+let fixtureAgent = { runtime: 'langgraph-v1', providerKey: 'dashscope', model: nativeFinal?'qwen3.8-flash':'qwen3.7-flash', tools: true, imageInput: false, probeVersion: 'd1-composable-review',...(nativeFinal?{structuredFinal:nativeFinalProtocol}:{}) };
 const output = path.join(root, 'tmp', live ? 'agent-contract' : 'agent-runtime',
   `${live ? 'trial-' : 'services-'}composable-d1-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
 const sourceFiles = ['admin/src/lib/assistant/agent/worker.ts', 'admin/src/lib/assistant/agent/review-tools.ts',
@@ -73,6 +75,7 @@ if (process.argv.includes('--bailian-existing-test-channel')) sourceFiles.push(
 const hash = (name: string) => createHash('sha256').update(fs.readFileSync(path.join(root, name))).digest('hex');
 const binding = () => Object.fromEntries(sourceFiles.map(file => [file, hash(file)]));
 const report: Row = { delivery: 'D1', mode: live ? 'live' : 'deterministic',
+  structuredFinal:nativeFinal?nativeFinalProtocol:'legacy',
   scope: 'D1 fixed before dispatch: two journeys, each twice; unfinished budget plus surveying question, selective budget change; unapproved correction, withdrawal plus question, new correction with response-loss recovery. Each entire real Worker trajectory is retained, never sampled to pass.',
   model: live ? 'existing-platform-runtime-pending-preflight' : 'injected-deterministic', plannedCalls, callCap,
   beforeTokens: budget.usedTokens, beforeMicros: budget.usedMicros, actualBilledYuan: null,
@@ -182,8 +185,10 @@ async function runTurn(f: Fixture, scenario: string, kind: TurnKind, text: strin
   const dispatch: Row | null = live ? { id: randomUUID(), runId: sent.runId, status: 'dispatching', reservedTokens: callCap * 4, startedAt: new Date().toISOString() } : null;
   if (dispatch) { (report.calls as Row[]).push(dispatch); save(); }
   await processAgentAnswer(lease!, live ? {} : { model: async (messages, tools, turn, active) => {
-    assert.ok(active?.some(tool => tool.name === 'final_response'));
+    assert.ok(active?.some(tool => tool.name === 'final_response'||nativeFinal&&tool.name===finishContextTool.name));
     assert.ok(!active?.some(tool => ['record_need', 'request_designer'].includes(tool.name)));
+    if(nativeFinal&&active?.some(tool=>tool.name===finishContextTool.name)&&!(turn===0&&['ten','fifteen','reject'].includes(kind)))
+      return {text:'',toolCalls:[{id:'context-ready-'+turn,name:finishContextTool.name,arguments:'{}'}],finishReason:'tool_calls',providerRequestId:null,usage:{inputTokens:0,outputTokens:0}};
     return deterministicModel(f, kind, turn);
   } });
   const run = await chat.run(String(sent.runId)), current = await req.read(f.conversationId);

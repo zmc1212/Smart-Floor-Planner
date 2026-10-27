@@ -1,7 +1,8 @@
 import { fail, fingerprint } from '../contracts';
 import { consultationProfile } from '../contracts/consultation';
 import { consultationBinding, type ConsultationBinding } from './consultation-profile';
-export type AgentConfig = { runtime: 'langgraph-v1'; model: string; providerKey: string; imageInput: boolean; tools: boolean; probeVersion: string; consultation?: ConsultationBinding };
+import {nativeFinalProtocol} from './native-final';
+export type AgentConfig = { runtime: 'langgraph-v1'; model: string; providerKey: string; imageInput: boolean; tools: boolean; probeVersion: string; consultation?: ConsultationBinding; structuredFinal?:typeof nativeFinalProtocol };
 /** Deliberately opt-in per enterprise; missing/incomplete capability evidence stays on the legacy executor. */
 export function agentConfig(value: unknown): AgentConfig | null {
   if (!value || typeof value !== 'object') return null;
@@ -9,11 +10,12 @@ export function agentConfig(value: unknown): AgentConfig | null {
   const consultation = c.consultation === undefined ? undefined : consultationBinding(c.consultation);
   // An invalid opt-in must never silently dispatch through the legacy model.
   if (c.consultation !== undefined && (!consultation || c.model !== consultationProfile(consultation.profile)?.model || c.tools !== true)) fail('assistant_capability_forbidden', 403);
+  if(c.structuredFinal!==undefined&&(c.structuredFinal!==nativeFinalProtocol||c.model!=='qwen3.8-flash'||c.providerKey!=='dashscope'||c.tools!==true||c.imageInput!==false||consultation))fail('assistant_capability_forbidden',403);
   if (c.runtime !== 'langgraph-v1' || typeof c.model !== 'string' || !c.model.trim() || c.model.length > 240
     || typeof c.providerKey !== 'string' || !c.providerKey || typeof c.probeVersion !== 'string' || !c.probeVersion
     || typeof c.imageInput !== 'boolean' || typeof c.tools !== 'boolean') return null;
   return { runtime: c.runtime, model: c.model, providerKey: c.providerKey, imageInput: c.imageInput, tools: c.tools, probeVersion: c.probeVersion,
-    ...(consultation ? { consultation } : {}) };
+    ...(consultation ? { consultation } : {}),...(c.structuredFinal===nativeFinalProtocol?{structuredFinal:nativeFinalProtocol}:{}) };
 }
 
 /** Protocol/quota rollout affects new runs. Existing runs retain their bound
@@ -21,5 +23,6 @@ export function agentConfig(value: unknown): AgentConfig | null {
 export function agentCapabilityFingerprint(config: AgentConfig | null) {
   if (!config) return fingerprint(null);
   const capability = { ...config }; delete capability.consultation;
+  delete capability.structuredFinal; // The run retains its policy-snapshot strategy across rollout changes.
   return fingerprint(capability);
 }

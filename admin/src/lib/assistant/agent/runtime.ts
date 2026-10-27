@@ -3,9 +3,10 @@ import { fail, fingerprint } from '../contracts';
 import { agentModelLimits, type ModelMessage, type ModelTool, type ModelTurnOutput } from '../contracts/model';
 import { finalAnswerRepairControl, finalAnswerRepairBase, type FinalAnswerRepairScope } from './synthesis-repair';
 import { assertToolPairs, toolSchemaIssue } from './tool-protocol';
+import {finishContextTool,contextReady,nativeFinalProtocol} from './native-final';
 
 type ReadReceipt = { name: string; argumentsHash: string; messageIndex: number };
-export type AgentCheckpoint = { version: 1; turn: number; messages: ModelMessage[]; output: ModelTurnOutput | null; validationRepairs?:number; argumentFailures?: number; exhaustedTools?: string[]; readReceipts?: ReadReceipt[]; finalFromTools?: boolean; turnSchedule?: typeof agentTurnScheduleProtocol; primaryModelTurns?: number };
+export type AgentCheckpoint = { version: 1; turn: number; messages: ModelMessage[]; output: ModelTurnOutput | null; validationRepairs?:number; argumentFailures?: number; exhaustedTools?: string[]; readReceipts?: ReadReceipt[]; finalFromTools?: boolean; turnSchedule?: typeof agentTurnScheduleProtocol; primaryModelTurns?: number; nativeFinalization?:typeof nativeFinalProtocol; finalizing?:boolean };
 export type AgentToolResult = { content: string; stop?: boolean; exhausted?: boolean };
 export type AgentRuntimePorts = {
   /** Must check lease, actor, mode, revision and source availability on every call. */
@@ -34,6 +35,7 @@ const State = Annotation.Root({
   exhaustedTools: Annotation<string[]>(),
   readReceipts: Annotation<ReadReceipt[]>(),
   finalFromTools: Annotation<boolean>(),
+  finalizing:Annotation<boolean>(),
 });
 export const agentReadProtocol = 'same-run-read-v1';
 export const agentToolReplyProtocol = 'durable-tool-reply-v1';
@@ -77,6 +79,7 @@ export async function runRenovationAgent(input: {
   /** Server-bound campaign reservation, not another primary/tool iteration. */
   reservedValidationRepairs?: 1;
   primaryModelTurns?: number;
+  nativeFinalization?:boolean;
 }) {
   const { ports, tools } = input;
   if (input.reservedValidationRepairs !== undefined && input.reservedValidationRepairs !== 1) fail('invalid_agent_tools', 500);
@@ -85,9 +88,14 @@ export async function runRenovationAgent(input: {
   if (!Number.isInteger(primaryTurns) || primaryTurns < 1 || primaryTurns > agentModelLimits.maxModelTurns
     || input.primaryModelTurns !== undefined && !reservedRepair) fail('invalid_agent_tools',500);
   const maxTurns = primaryTurns + (reservedRepair ? 1 : 0);
-  const checkpoint = (state: AgentCheckpoint) => ports.checkpoint(reservedRepair ? { ...state, turnSchedule: agentTurnScheduleProtocol, primaryModelTurns: primaryTurns } : state);
+  const nativeFinal=!!input.nativeFinalization;
+  const checkpoint = (state: AgentCheckpoint) => {
+    const saved:AgentCheckpoint=nativeFinal?{...state,nativeFinalization:nativeFinalProtocol,finalizing:state.finalizing??false}:state;
+    return ports.checkpoint(reservedRepair ? { ...saved, turnSchedule: agentTurnScheduleProtocol, primaryModelTurns: primaryTurns } : saved);
+  };
   const names = new Set(tools.map(t => t.name));
   if (names.size !== tools.length) fail('invalid_agent_tools', 500);
+  if(nativeFinal){if(names.has(finishContextTool.name))fail('invalid_agent_tools',500);names.add(finishContextTool.name);}
   const graph = new StateGraph(State)
     .addNode('model', async state => {
       await ports.authorize();
@@ -95,7 +103,8 @@ export async function runRenovationAgent(input: {
       // Reserve the last existing call for a response, without extending the
       // provider budget or replaying a write. Exhaustion belongs to this run.
       const finalTurn = state.turn === primaryTurns - 1;
-      const availableTools = state.validationRepairs || finalTurn ? [] : tools.filter(tool => !state.exhaustedTools.includes(tool.name));
+      const businessTools=tools.filter(tool=>!state.exhaustedTools.includes(tool.name));
+      const availableTools = state.validationRepairs || finalTurn || state.finalizing ? [] : nativeFinal&&businessTools.length?[...businessTools,finishContextTool]:businessTools;
       const messages: ModelMessage[] = !availableTools.length && !state.validationRepairs
         ? [...state.messages, { role: 'system', content: [{ type: 'text', text: finalTurnInstructions }] }] : state.messages;
       const output = await ports.model(state.turn, messages, availableTools);
@@ -103,11 +112,12 @@ export async function runRenovationAgent(input: {
       const availableNames = new Set(availableTools.map(tool => tool.name));
       if (output.toolCalls.length > agentModelLimits.maxToolCalls || output.toolCalls.some(c => !availableNames.has(c.name))) fail('assistant_capability_forbidden', 403);
       if (new Set(output.toolCalls.map(call => call.id)).size !== output.toolCalls.length) fail('invalid_tool_pair', 502);
+      if(nativeFinal&&availableTools.length&&(!output.toolCalls.length||output.toolCalls.some(c=>c.name===finishContextTool.name)&&output.toolCalls.length!==1))fail('invalid_model_answer',502);
       if(state.validationRepairs&&output.toolCalls.length)fail('assistant_capability_forbidden',403);
       if (output.toolProtocolFeedback && (output.toolProtocolFeedback.code !== 'mixed_final_response'
         || typeof output.toolProtocolFeedback.text !== 'string' || !output.toolProtocolFeedback.text.trim()
         || output.toolProtocolFeedback.text.length > 1000 || state.turn + 1 >= primaryTurns)) fail('invalid_model_answer', 502);
-      await checkpoint({ version: 1, turn: state.turn, messages: state.messages, output,validationRepairs:state.validationRepairs, argumentFailures: state.argumentFailures, exhaustedTools: state.exhaustedTools, readReceipts: state.readReceipts });
+      await checkpoint({ version: 1, turn: state.turn, messages: state.messages, output,validationRepairs:state.validationRepairs, argumentFailures: state.argumentFailures, exhaustedTools: state.exhaustedTools, readReceipts: state.readReceipts,...(nativeFinal?{finalizing:state.finalizing}:{}) });
       return { output, finalFromTools: false };
     })
     .addNode('tools', async state => {
@@ -117,10 +127,11 @@ export async function runRenovationAgent(input: {
       const exhaustedTools = new Set(state.exhaustedTools);
       let readReceipts = [...state.readReceipts];
       let argumentFailures = state.argumentFailures;
+      let finalizing=state.finalizing;
       let stop = false;
       for (const [index, call] of output.toolCalls.entries()) {
         await ports.authorize();
-        const definition = tools.find(tool => tool.name === call.name)!;
+        const definition = nativeFinal&&call.name===finishContextTool.name?finishContextTool:tools.find(tool => tool.name === call.name)!;
         const schemaIssue = await toolSchemaIssue(definition, call.arguments);
         const issue = schemaIssue || (!exhaustedTools.has(call.name) && readTools.has(call.name) ? ports.validateTool?.(call.name, call.arguments) : null);
         if (issue) {
@@ -130,6 +141,7 @@ export async function runRenovationAgent(input: {
           messages.push({ role: 'tool', callId: call.id, content: issue.feedback });
           continue;
         }
+        if(nativeFinal&&call.name===finishContextTool.name){messages.push({role:'tool',callId:call.id,content:contextReady});finalizing=true;continue;}
         const argumentsHash = readArgumentsHash(call.name, call.arguments);
         const previous = argumentsHash && readReceipts.find(receipt => receipt.name === call.name && receipt.argumentsHash === argumentsHash);
         const original = previous ? messages[previous.messageIndex] : undefined;
@@ -146,9 +158,9 @@ export async function runRenovationAgent(input: {
         if (result.exhausted) exhaustedTools.add(call.name);
         messages.push({ role: 'tool', callId: call.id, content: result.content });
       }
-      const next: AgentCheckpoint = { version: 1, turn: state.turn + 1, messages, output: null,validationRepairs:state.validationRepairs, argumentFailures, exhaustedTools: [...exhaustedTools], readReceipts, finalFromTools: false };
+      const next: AgentCheckpoint = { version: 1, turn: state.turn + 1, messages, output: null,validationRepairs:state.validationRepairs, argumentFailures, exhaustedTools: [...exhaustedTools], readReceipts, finalFromTools: false,...(nativeFinal?{finalizing}:{}) };
       if (!stop) {
-        const text = await ports.resolveToolReply?.(next);
+        const text = finalizing?null:await ports.resolveToolReply?.(next);
         await ports.authorize();
         if (text != null) {
           if (typeof text !== 'string' || !text.trim()) fail('invalid_model_answer', 502);
@@ -191,6 +203,9 @@ export async function runRenovationAgent(input: {
     .addConditionalEdges('tools', state => state.stop ? END : state.output ? 'validate' : 'model')
     .compile();
   const saved = input.resume;
+  if(saved&&(nativeFinal?saved.nativeFinalization!==nativeFinalProtocol:saved.nativeFinalization!==undefined))fail('invalid_agent_checkpoint',409);
+  if(saved?.finalizing){const last=saved.messages.at(-1),prior=saved.messages.at(-2);
+    if(last?.role!=='tool'||last.content!==contextReady||prior?.role!=='assistant'||prior.toolCalls?.length!==1||prior.toolCalls[0].id!==last.callId||prior.toolCalls[0].name!==finishContextTool.name)fail('invalid_agent_checkpoint',409);}
   assertToolPairs(saved?.messages || input.messages);
   if (saved && (saved.version !== 1 || !Number.isInteger(saved.turn) || saved.turn < 0 || saved.turn >= maxTurns)) fail('invalid_agent_checkpoint', 409);
   if (saved?.turnSchedule !== undefined && (!reservedRepair || saved.turnSchedule !== agentTurnScheduleProtocol)) fail('invalid_agent_checkpoint', 409);
@@ -209,6 +224,6 @@ export async function runRenovationAgent(input: {
   if (saved?.output?.toolCalls.some(call => saved.exhaustedTools?.includes(call.name)
     || saved.turn === primaryTurns - 1)) fail('assistant_capability_forbidden', 403);
   if (saved) validateReadReceipts(saved, names);
-  return graph.invoke({ turn: saved?.turn ?? 0, messages: saved?.messages ?? input.messages, output: saved?.output ?? null, stop: false,validationRepairs:saved?.validationRepairs??0, argumentFailures: saved?.argumentFailures ?? 0, exhaustedTools: saved?.exhaustedTools ?? [], readReceipts: saved?.readReceipts ?? [], finalFromTools: saved?.finalFromTools ?? false },
+  return graph.invoke({ turn: saved?.turn ?? 0, messages: saved?.messages ?? input.messages, output: saved?.output ?? null, stop: false,validationRepairs:saved?.validationRepairs??0, argumentFailures: saved?.argumentFailures ?? 0, exhaustedTools: saved?.exhaustedTools ?? [], readReceipts: saved?.readReceipts ?? [], finalFromTools: saved?.finalFromTools ?? false,...(nativeFinal?{finalizing:saved?.finalizing??false}:{}) },
     { recursionLimit: 12 });
 }

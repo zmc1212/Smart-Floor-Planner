@@ -11,6 +11,7 @@ import { projectMessage, resolveEvidence, previewPolicy } from '../knowledge/sou
 import { runContext, failRun, heartbeat, completeAnswer, type Lease } from '../infrastructure/job-queue';
 import { runRenovationAgent, agentReadProtocol, agentToolReplyProtocol, agentTurnScheduleProtocol, type AgentCheckpoint } from './runtime';
 import { agentConfig, agentCapabilityFingerprint } from './config';
+import {nativeFinalProtocol,nativeFinalProjection,finishContextTool,nativeFinalDefinition,nativePlanningMessages,nativeFinalMessages,assertNativeFinalOutput} from './native-final';
 import { factFields, needWriteFeedback, needOriginalQuotes, hasExplicitNeedCorrection, assertRecordedReply, needReplyFeedback, onlyChatHistoryRequested, currentBudgetRecallRequested, currentBudgetRecallFeedback, needReconfirmationFeedback, needDeskPositionFeedback, currentNeedView, unavailableDeskReply, explicitNeedRecordOnly, explicitNeedWriteStatement, recordedNeedReceipt, parseNeedWrites } from './memory';
 import { availableNeedMemory, needMemoryNoticeRefs, unavailableNeedMessageIds, needContextStep, needSourceRefs, needRunSourcesAvailable } from './memory-sources';
 import { persistNeedWrites } from './memory-store';
@@ -615,6 +616,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     }) : null;
     const reviewDefinitions = review ? reviewModelTools(review) : [];
     const composableReview = !!review && (initial.run.policy_snapshot as Row).reviewRuntime === composableReviewProtocol;
+    const nativeFinalization=composableReview&&initial.config.structuredFinal===nativeFinalProtocol;
     const designerOnly = !!review && !composableReview && reviewDesignerOnly(reviewContext.currentQuestion);
     const reviewMode = review && !composableReview && !designerOnly ? reviewTurnMode(reviewContext.currentQuestion) : 'propose';
     if (review && initial.messages[0]?.role === 'system' && !initial.resume)
@@ -655,8 +657,14 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           const limits = agentRequestBudget({ profile, purpose });
           const deadlineAt = initial.consultationDeadlineAt;
           const { messageScoped, adviceScoped, focused, dispatchTools, policyView, bounded, modelMessages, contentProjection } = compileModelRequest({
-            question: reviewContext.currentQuestion, triggerId: String(initial.trigger.id), turn, purpose, messages, tools,
-            toolsForTurn: agentToolsForTurn, profile,
+            question: reviewContext.currentQuestion, triggerId: String(initial.trigger.id), turn, purpose,
+            messages:nativeFinalization&&purpose==='answer'&&tools.length?nativePlanningMessages(messages):messages, tools,
+            toolsForTurn:(question,current,available,triggerId)=>{
+              const definitions=agentToolsForTurn(question,current,available,triggerId);
+              return !nativeFinalization||purpose!=='answer'?definitions:available.length
+                ? [...definitions.filter(tool=>tool.name!==finishContextTool.name&&tool.name!=='final_response'),finishContextTool]
+                :definitions.map(nativeFinalDefinition);
+            }, profile,...(nativeFinalization&&purpose==='answer'&&!tools.length?{wireProjection:nativeFinalMessages}:{}),
           });
           const summaryRequestHash = purpose === 'summary' ? fingerprint({ messages: modelMessages, tools: dispatchTools }) : null;
           await heartbeat(lease);
@@ -671,6 +679,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             outcomeKnown = true;
             const saved = cached.private_checkpoint as ModelTurnOutput;
             if (consultation && !saved.usage) fail('provider_usage_unknown', 502);
+            if(nativeFinalization&&purpose==='answer'&&!tools.length&&!dependencies.model)assertNativeFinalOutput(saved);
             return saved;
           }
           const requestedTokens = consultation ? consultationRequestReservation(modelMessages, dispatchTools, limits.maxOutputTokens) : null;
@@ -683,7 +692,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                   currentMessageScope: messageScoped ? currentMessageScopeProtocol : null,
                   independentAdviceContext: adviceScoped ? independentAdviceContextProtocol : null,
                   policyProjection:policyView===focused?null:modelPolicyProjectionVersion,
-                  contentProjection,
+                  contentProjection,...(nativeFinalization&&purpose==='answer'&&!tools.length?{nativeFinalProjection}:{}),
                   numericProseProtocol: purpose === 'answer' ? proseNumberProtocol : null,
                   citationSelectionProtocol: consultation && purpose === 'answer' ? citationSelectionProtocol : null,
                   turnSchedule: consultation ? { protocol: agentTurnScheduleProtocol, ...turnAllocation } : null,
@@ -714,8 +723,10 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           })() : await executePostgresText({ enterpriseId: BigInt(lease.enterpriseId), owner: { kind: 'assistant_run', runId: BigInt(lease.runId) },
             logicalModelKey: 'chat.general', messages: [], maxTokens: limits.maxOutputTokens,
             agent: { config: initial.config, input: { messages: modelMessages, tools: dispatchTools, maxTokens: limits.maxOutputTokens, requireTool: purpose !== 'vision',
+              ...(nativeFinalization&&purpose==='answer'&&!tools.length?{outputMode:'json_schema' as const}:{}),
               ...(profile ? { profile, deadlineAt } : {}) } },
-            metadata: { promptVersion: agentPromptVersion, runtime: initial.config.runtime, turn, purpose, probeVersion: initial.config.probeVersion },
+            metadata: { promptVersion: agentPromptVersion, runtime: initial.config.runtime, turn, purpose, probeVersion: initial.config.probeVersion,
+              ...(nativeFinalization&&purpose==='answer'&&!tools.length?{nativeFinalProjection}:{}) },
             beforeProviderCall,
           });
           outcomeKnown = true;
@@ -749,6 +760,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             fail(knowledgeReadPending(reviewContext.currentQuestion, focused, String(initial.trigger.id)) ? 'source_read_required' : 'assistant_capability_forbidden', 502);
           if (purpose === 'answer' && providerOutput.toolCalls.some(call => reviewDefinitions.some(tool => tool.name === call.name))
             && providerOutput.toolCalls.length !== 1) fail('assistant_capability_forbidden', 502);
+          if(nativeFinalization&&purpose==='answer'&&!tools.length&&!injected)assertNativeFinalOutput(output.agentOutput);
           return output.agentOutput;
     };
     // This first extractive digest is read-only. A current write/handoff must not
@@ -811,6 +823,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       return consultationRuntimeBudget({summaries:Number(auxiliary?.summaries||0),perceptions:Number(auxiliary?.perceptions||0)});
     });
     const result = await runRenovationAgent({ messages: initial.messages, tools: toolsForMessage(businessFollowup), resume: initial.resume,
+      nativeFinalization,
       reservedValidationRepairs: turnAllocation?.reservedValidationRepairs, primaryModelTurns: turnAllocation?.primaryModelTurns,
       ports: {
         authorize,

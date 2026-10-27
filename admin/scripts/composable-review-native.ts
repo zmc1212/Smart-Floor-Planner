@@ -9,7 +9,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { loadEnvConfig } from '@next/env';
 import { sql } from 'drizzle-orm';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
-import { one } from '@/db/repositories/assistant-repository';
+import { one, rows } from '@/db/repositories/assistant-repository';
 import { closePostgresPool } from '@/lib/postgresql';
 import { ConversationService, appendMessage } from '@/lib/assistant/core/conversation';
 import { RequirementService } from '@/lib/assistant/requirements/service';
@@ -23,6 +23,11 @@ import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
 import { processAgentAnswer } from '@/lib/assistant/agent/worker';
 import { businessReviewTools } from '@/lib/assistant/agent/review-tools';
 import { wechatideNativeClient } from './wechatide-native-client';
+import { bindBailianReviewTestRuntime } from './bailian-review-test-runtime';
+import { getPlatformLlmConfig } from '@/lib/platform-llm-config';
+import { reviewBudget, type RetainedReviewHold } from './assistant-review-budget';
+import { parseAgentUsage } from '@/lib/ai/providers/agent-chat';
+import {nativeFinalProtocol} from '@/lib/assistant/agent/native-final';
 
 type Row = Record<string, any>;
 // These names exist only inside SDK evaluate callbacks in the Mini Program.
@@ -39,16 +44,23 @@ process.env.DATABASE_URL = dbConfig.DATABASE_URL;
 const route = 'packages/assistant/requirements/requirements';
 const chatRoute = 'packages/assistant/chat/chat';
 const outputName = process.argv[2] || `run-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+const live = process.argv.includes('--live');
 const output = path.join(root, 'tmp/agent-contract', `composable-native-${outputName}`);
 assert.ok(!fs.existsSync(output), `Output already exists: ${output}`);
 fs.mkdirSync(output, { recursive: true });
 const apiOrigin = 'http://127.0.0.1:3108';
 const report: Row = {
-  scope: 'D1 deterministic actual C01 input to Worker, proposal, C02 selective write, response-loss recovery and reentry; no provider model acceptance',
+  scope: live ? 'D1 Stable C01 natural input to configured Bailian Worker, C02 real selective write, response-loss recovery and reentry'
+    : 'D1 deterministic actual C01 input to Worker, proposal, C02 selective write, response-loss recovery and reentry; no provider model acceptance',
   started: new Date().toISOString(), checks: [], captures: [], requests: [], passed: false,
   provider: { modelCalls: 0, semanticJudgement: 'none; deterministic internal proposal only' },
+  calls: [],
 };
-const save = () => fs.writeFileSync(path.join(output, 'report.json'), JSON.stringify(report, null, 2));
+const liveLedger = path.join(root, 'tmp/agent-contract', `trial-composable-native-live-${outputName}.json`);
+const save = () => {
+  const data = JSON.stringify(report, null, 2);fs.writeFileSync(path.join(output, 'report.json'), data);
+  if (live) fs.writeFileSync(liveLedger, data);
+};
 const hash = (value: Buffer | string) => createHash('sha256').update(value).digest('hex');
 const load = createRequire(import.meta.url);
 
@@ -73,6 +85,9 @@ function binding() {
     'admin/src/lib/assistant/application/auth.ts',
     'admin/src/lib/miniprogram-jwt.ts',
     'admin/scripts/assistant-acceptance-safety.mjs',
+    'admin/scripts/bailian-review-test-runtime.ts',
+    'admin/scripts/assistant-review-budget.ts',
+    'admin/src/lib/ai/postgres-workflow-chat.ts',
     'admin/.env',
     'admin/.env.local',
     'admin/package.json',
@@ -83,8 +98,10 @@ function binding() {
     'miniprogram/project.private.config.json',
     'tmp/xiaok-vector/connection.private.json',
   ];
+  if(live)relative.push('tmp/xiaok-p0-live-20261027/d1-native-wire-authorization.json',
+    'tmp/xiaok-intelligent-consult/.env.qwen37','tmp/xiaok-intelligent-consult/openwebui-qwen37-cost.mjs');
   relative.push(...cp.execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z',
-    'admin/src/lib/assistant', 'admin/src/db', 'admin/src/lib/postgresql.ts', 'admin/src/lib/miniprogram-*',
+    'admin/src/lib/assistant', 'admin/src/lib/ai/providers', 'admin/src/db', 'admin/src/lib/postgresql.ts', 'admin/src/lib/miniprogram-*',
     'admin/package.json', 'admin/package-lock.json', 'admin/tsconfig.json', 'miniprogram/packages/assistant/lib',
     'miniprogram/packages/assistant/requirements', 'miniprogram/utils'], { cwd: root, windowsHide: true, encoding: 'utf8' }).split('\0').filter(Boolean));
   const addRuntime = (relativeRoot: string) => {
@@ -115,6 +132,56 @@ let fixture: Row | undefined;
 let actor: ActorContext;
 let token = '';
 let otherToken = '';
+let restoreRuntime: (() => Promise<unknown>) | undefined;
+const originalFetch = globalThis.fetch;
+let currentRunId = '';
+let liveModel = 'qwen3.7-flash';
+const previousEnv = { model:process.env.ASSISTANT_TEXT_MODEL, thinking:process.env.ASSISTANT_TEXT_DISABLE_THINKING };
+
+function retainedHolds(): RetainedReviewHold[] {
+  // Retain only the exact previously authorized holds. A newly unknown or
+  // failed trial must fail reviewBudget's identity check, never authorize itself.
+  const approval=JSON.parse(fs.readFileSync(path.join(root,'tmp/xiaok-p0-live-20261027/d1-native-wire-authorization.json'),'utf8'));
+  assert.equal(approval.authorizedBy,'direct-human-user');assert.equal(approval.cumulativeCapMicros,100000000);
+  assert.equal(approval.providerKey,'dashscope');assert.equal(approval.model,'qwen3.8-flash');
+  const retained:RetainedReviewHold[]=approval.retainedReports.flatMap((prior:{path:string;hash:string})=>{
+    assert.match(prior.path,/^tmp\/agent-contract\/trial-[\w.-]+\.json$/);
+    const data=fs.readFileSync(path.join(root,prior.path));assert.equal(hash(data),prior.hash);
+    return (JSON.parse(data.toString()).calls||[]).filter((c:Row)=>c.status!=='succeeded')
+      .map((c:Row)=>({id:c.id,runId:c.runId,reservedTokens:c.reservedTokens}));
+  });
+  assert.deepEqual(retained,approval.retainedHolds);return retained;
+}
+async function bindLiveRuntime() {
+  report.authorization = { authorizedBy:'direct-human-user', cumulativeCapMicros:100000000,
+    instruction:'P0实模验收完成后继续D1；百炼qwen3.8-flash，累计预算不超过100元', maxCalls:8, callTokenCap:60000 };
+  report.retainedHistoricalHolds = retainedHolds();
+  reviewBudget(root).assertReservation(0,8*60000,report.retainedHistoricalHolds);
+  const bound = await bindBailianReviewTestRuntime(root,liveLedger);restoreRuntime=bound.restore;report.testRuntime=bound.receipt;
+  const config=await getPlatformLlmConfig();assert.equal(config.providerKey,'dashscope');assert.equal(config.model,'qwen3.8-flash');
+  liveModel=config.model;process.env.ASSISTANT_TEXT_MODEL=config.model;process.env.ASSISTANT_TEXT_DISABLE_THINKING='1';
+  const origin=new URL(config.baseUrl).origin;
+  report.provider={modelCalls:0,model:liveModel,provider:'dashscope',thinking:false,semanticJudgement:'original configured-model first drafts'};save();
+  globalThis.fetch=async(resource,init)=>{
+    const url=new URL(typeof resource==='string'||resource instanceof URL?String(resource):resource.url);
+    if(url.origin!==origin||!url.pathname.endsWith('/chat/completions'))return originalFetch(resource,init);
+    assert.ok(currentRunId,'A real native Worker run must own this request');assert.ok(report.calls.length<8,'Native fixed call cap');
+    assert.ok(!report.calls.some((c:Row)=>c.status==='unknown'),'New unknown native request blocks further inference');
+    reviewBudget(root).assertReservation(0,60000,retainedHolds());
+    const body=JSON.parse(String(init?.body));assert.equal(body.model,liveModel);assert.equal(body.enable_thinking,false);
+    const call:Row={id:randomUUID(),runId:currentRunId,status:'unknown',reservedTokens:60000,requestHash:hash(JSON.stringify(body))};
+    report.calls.push(call);report.provider.modelCalls=report.calls.length;save();
+    const response=await originalFetch(resource,init);const raw=await response.clone().text();
+    const file=path.join(output,`model-${report.calls.length}.json`);
+    fs.writeFileSync(file,JSON.stringify({request:body,httpStatus:response.status,rawResponse:raw},null,2));
+    call.responseHash=hash(raw);call.httpStatus=response.status;call.rawFile=file;save();
+    if(response.ok){
+      const payload=JSON.parse(raw);fs.writeFileSync(file,JSON.stringify({request:body,httpStatus:response.status,rawResponse:raw,response:payload},null,2));
+      const usage=parseAgentUsage(payload.usage);if(usage){call.usage={total_tokens:usage.inputTokens+usage.outputTokens};call.status='succeeded';}
+    } else {call.status=response.status>=400&&response.status<500&&response.status!==408?'failed':'unknown';}
+    save();return response;
+  };
+}
 
 async function step(name: string, work: () => Promise<unknown>) {
   try {
@@ -148,7 +215,7 @@ async function createFixture() {
     await tx.execute(sql`insert into app.wechat_identities(user_id,openid) values(${uid},${code}),(${oid},${code + '-other'})`);
     await tx.execute(sql`insert into app.assistant_enterprise_settings
       (enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days,agent_config)
-      values(${eid},true,100,200000,5000000,30,${JSON.stringify({ runtime: 'langgraph-v1', providerKey: 'dashscope', model: 'qwen3.7-flash', tools: true, imageInput: false, probeVersion: 'd1-native-deterministic' })}::jsonb)`);
+      values(${eid},true,100,500000,10000000,30,${JSON.stringify({ runtime: 'langgraph-v1', providerKey: 'dashscope', model: liveModel, tools: true, imageInput: false, probeVersion: live?'d1-native-live':'d1-native-deterministic',...(live?{structuredFinal:nativeFinalProtocol}:{}) })}::jsonb)`);
     return { enterpriseId: eid, userId: uid, otherUserId: oid, code };
   });
   fixture = created;
@@ -404,7 +471,9 @@ async function sendAndRun(text: string, change: boolean) {
   await (await page.$('.send-button')).tap();
   const lease = await waitFor(async () => await claimJob(), 'actual C01 service creates a Worker job', 30);
   assert.equal(lease.enterpriseId, fixture!.enterpriseId);
-  await processAgentAnswer(lease, { model: async (_messages, _tools, turn) => {
+  currentRunId=lease.runId;
+  if(live)await processAgentAnswer(lease);
+  else await processAgentAnswer(lease, { model: async (_messages, _tools, turn) => {
     if (change && turn === 0) {
       const review = await businessReviewTools(actor, fixture!.conversationId);
       const budget = review.context.savedItems.find(item => item.field === 'budget')!;
@@ -418,18 +487,27 @@ async function sendAndRun(text: string, change: boolean) {
       text: '量房前准备户型图和物业装修规定，整理设备、家具及家人的使用需求；现场说明已有漏水等问题。预算未定也可以先量房。',
     }) }], finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 0, outputTokens: 0 } };
   } });
+  currentRunId='';
   const run = await new ConversationService(actor).run(lease.runId);
+  if(live) {
+    const attempts=await withTenantTransaction(fixture!.enterpriseId,tx=>rows(tx,sql`select id,status,accepted,metadata from app.ai_provider_attempts where enterprise_id=${fixture!.enterpriseId} and assistant_run_id=${lease.runId} order by id`));
+    const calls=report.calls.filter((c:Row)=>c.runId===lease.runId);assert.equal(attempts.length,calls.length);
+    assert.ok(attempts.every(a=>a.status==='succeeded'));calls.forEach((c:Row,i:number)=>{c.attemptId=String(attempts[i].id);});
+    const steps=await withTenantTransaction(fixture!.enterpriseId,tx=>rows(tx,sql`select kind,status,capability_name from app.assistant_run_steps where enterprise_id=${fixture!.enterpriseId} and run_id=${lease.runId} order by step_seq`));
+    assert.ok(!steps.some(s=>s.kind==='agent_validation'&&s.status==='failed'));report.nativeRuns??=[];report.nativeRuns.push({runId:lease.runId,status:run.status,attempts,steps});save();
+  }
   assert.equal(run.status, 'succeeded');
   const reopened = await open(chatRoute), data = await reopened.data();
   assert.equal(data.conversation.requirementProposalPending, change);
-  assert.match(JSON.stringify(data.messages), /量房前准备/);
-  return { runId: lease.runId, normalEntry: true, configuredModel: false };
+  assert.match(JSON.stringify(data.messages), live?/量房|户型|物业|尺寸|资料/:/量房前准备/);
+  return { runId: lease.runId, normalEntry: true, configuredModel: live };
 }
 
 async function main() {
   report.bindingBefore = binding(); save();
   try {
     release = await lockAssistantAcceptance(process.env.DATABASE_URL!);
+    if(live)await bindLiveRuntime();
     await createFixture(); await startHttp();
     const originals = [['90平旧房', 'housing'], ['客厅铺瓷砖', 'room'], ['不做地暖', 'devices'], ['预算12万', 'budget']] as const;
     for (const [text] of originals) await appendText(text);
@@ -480,19 +558,29 @@ async function main() {
     report.passed = true;
   } catch (error) { report.error = String((error as Error).stack || error); process.exitCode = 1; }
   finally {
+    const cleanupFailed=(error:unknown)=>{report.cleanupErrors??=[];report.cleanupErrors.push(String(error));report.cleanupError??=String(error);report.passed=false;};
     try { await restoreTransport(); } catch (error) { report.cleanupError = String(error); report.passed = false; }
-    try { if (mp) { await mp.reLaunch('/pages/index/index'); await mp.disconnect(); } } catch (error) { report.cleanupError ||= String(error); report.passed = false; }
-    if (server) { server.closeAllConnections(); await new Promise<void>(resolve => server!.close(() => resolve())); }
-    if (fixture) await withPlatformTransaction(async tx => {
+    try { if (mp) await mp.reLaunch('/pages/index/index'); } catch (error) { cleanupFailed(error); }
+    try { if (mp) await mp.disconnect(); } catch (error) { cleanupFailed(error); }
+    try{if (server) { server.closeAllConnections(); await new Promise<void>(resolve => server!.close(() => resolve())); }}catch(error){cleanupFailed(error);}
+    try{if (fixture) await withPlatformTransaction(async tx => {
       await tx.execute(sql`update app.assistant_enterprise_settings set enabled=false where enterprise_id=${fixture!.enterpriseId}`);
       await tx.execute(sql`update app.users set context_version=context_version+1 where id in (${fixture!.userId},${fixture!.otherUserId})`);
       await tx.execute(sql`update app.assistant_jobs set status='cancelled',lease_token=null,lease_expires_at=null where enterprise_id=${fixture!.enterpriseId} and status in ('queued','running')`);
-    });
+    });report.fixtureCleaned=true;}catch(error){cleanupFailed(error);}
     delete process.env.ASSISTANT_REVIEW_DEVELOPMENT_ENTERPRISE_IDS;
-    if (release) await release(); report.fixtureCleaned = true;
-    report.bindingAfter = binding(); report.drift = Object.keys({ ...report.bindingBefore, ...report.bindingAfter }).filter(f => report.bindingBefore[f] !== report.bindingAfter[f]);
+    globalThis.fetch=originalFetch;
+    try { if(restoreRuntime){await restoreRuntime();report.configurationRestored=true;} } catch(error) {report.cleanupError=String(error);report.passed=false;}
+    for(const [key,value] of Object.entries({ASSISTANT_TEXT_MODEL:previousEnv.model,ASSISTANT_TEXT_DISABLE_THINKING:previousEnv.thinking})) {
+      if(value===undefined)delete process.env[key];else process.env[key]=value;
+    }
+    try{if(live)report.cumulativeBudgetMicros=reviewBudget(root).usedMicros;}catch(error){cleanupFailed(error);}
+    try{if (release) await release();}catch(error){cleanupFailed(error);}
+    try{report.bindingAfter = binding();}catch(error){cleanupFailed(error);report.bindingAfter={};}
+    report.drift = Object.keys({ ...report.bindingBefore, ...report.bindingAfter }).filter(f => report.bindingBefore[f] !== report.bindingAfter[f]);
+    try{await closePostgresPool();}catch(error){cleanupFailed(error);}
     if (report.drift.length) report.passed = false; if (!report.passed) process.exitCode = 1;
-    save(); await closePostgresPool(); console.log(JSON.stringify({ output, passed: report.passed, checks: report.checks.length, drift: report.drift, error: report.error || null }));
+    save(); console.log(JSON.stringify({ output, passed: report.passed, checks: report.checks.length, drift: report.drift, error: report.error || null }));
   }
 }
 void main();

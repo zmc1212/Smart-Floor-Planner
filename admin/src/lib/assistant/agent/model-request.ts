@@ -17,6 +17,7 @@ export function compileModelRequest(input: {
   question: string; triggerId: string; turn: number; purpose: ModelRequestPurpose;
   messages: ModelMessage[]; tools: ModelTool[];
   profile?: ModelTurnInput['profile'];
+  wireProjection?(messages:ModelMessage[]):ModelMessage[];
   toolsForTurn(question: string, messages: ModelMessage[], tools: ModelTool[], triggerId: string): ModelTool[];
 }) {
   const { question, triggerId, turn, purpose, messages, tools } = input;
@@ -31,7 +32,8 @@ export function compileModelRequest(input: {
     dispatchTools = [constrainSynthesisRepairTool(dispatchTools[0], focused)];
   const policyView = purpose === 'answer' ? projectSynthesisPolicy(focused) : focused;
   const contentView = input.profile && purpose === 'answer' ? projectConsultationModelView(policyView, dispatchTools) : policyView;
-  const bounded = fitAgentContext(contentView, dispatchTools, { profile: input.profile, purpose });
+  const wireView=input.wireProjection?input.wireProjection(contentView):contentView;
+  const bounded = fitAgentContext(wireView, dispatchTools, { profile: input.profile, purpose });
   return { messageScoped, adviceScoped, focused, dispatchTools, policyView, bounded, modelMessages: bounded.messages,
     contentProjection: contentView === policyView ? null : consultationModelViewVersion };
 }
