@@ -29,8 +29,8 @@
 
 | 项目 | 当前记录 |
 | --- | --- |
-| 当前交付 | **D1：让正常装修咨询和需求更正共存；当前先行P0模型与框架基础能力包** |
-| 状态 | **P0仅待供应商异步Batch完成型结果，D1仍Limited。** 最新明确授权：百炼qwen3.8-flash追加必要调用，累计不超过¥100，P0后继续D1。两组工具往返、原生JSON Object/strict Schema、缓存及Partial真实续写/持久重进已有证据；真实Batch提交/原键重进/取消通过，原batch_546dc461-b37a-44dc-b84a-e409262e5344两项仍in_progress。搜索端点400已修为多模态SSE；系统DNS特殊地址被安全拒绝，新增retry-search-read以原来源+AliDNS实际读页并持久重进，保持原attempt、usage、不可变item和首次失败。原首稿4/10过、6/10未过及确定性原生7/7保留原范围 |
+| 当前交付 | **D1：让正常装修咨询和需求更正共存；P0六项基础能力实模已收口** |
+| 状态 | **P0限定Implemented，D1实模/原生整链接续中、仍Limited。** 北京百炼qwen3.8-flash非思考已完成两组工具往返、JSON Object/strict Schema、隐式/显式缓存、Partial协议/持久续写，以及原生搜索→真实原文→纯读页恢复。原Batch两项输出均成功，重复取回一致；实际取消及全额未知预留保留。代码本地提交6ce1c632，原首稿4/10过、6/10未过及确定性原生7/7保持原范围，不重评原失败 |
 | P0复用基线 | 实际复用锁定的`@langchain/core@1.2.18`原生`tool` JSON Schema校验、`@langchain/langgraph@1.5.0`图/有界回合、原业务审批与来源校验、`providerFetch`及`AiCreationRepository`审计。对照上游工具实现/测试、provider/tool结构化策略和供应商原生API；未安装完整`langchain`/`@langchain/openai`或迁移`createAgent`，未重开AnythingLLM/createAgent/PydanticAI付费矩阵 |
 | 用户动作 / 入口 | 已有C01 `packages/assistant/chat/chat`正常咨询及混合更正→C02 `packages/assistant/requirements/requirements`只采用预算→保存草稿/重进；保留瓷砖、地暖等未选字段，撤回未采用提案，丢响应按原键恢复 |
 | 本轮改动 / 复用 | 工具调用/结果配对、执行前原生schema校验及共享一次参数纠错；Qwen3.8 final-only原生JSON Object/strict Schema与独立格式观测；缓存命中/未命中/缺失、token、延迟、前缀/schema hash入原attempt审计。内部CLI提供原生公共查询→实际读页、获权草稿续写、真正异步Batch的准备/提交/查询/结果与错误文件/取消/原键重进/未知ID恢复；0096新增两张强制RLS持久任务表，逐item关联原provider attempts，不新增Agent、业务事实缓存、KnowledgeRetriever或Evidence管线 |
@@ -41,9 +41,9 @@
 | 实模原始结果 / 缺口 | 百炼固定两旅程各两次，共30次实际请求/226237观测tokens、10份首稿：预算未定答疑和10万单项提案共4过；混合15万答疑/撤回共6次unsupported_model_commitment，保留失败。已定位为提案已读原话未进合成来源目录，数字答复缺出处；随后H连接机制修复只获零模型/服务证据，不能把旧首稿改判通过。原OS11虚称记录/确认两轮失败计数不清零，不继续措辞/regex采样 |
 | 证据 | P0入口`tmp/xiaok-p0-20261027/`，`service-evidence-native-api.json`、`verification-native-api.json`、`build-webpack-stable-evidence.json`、`migration.log`及各原始日志；0096只在原隔离库执行并记入原Drizzle迁移日志，主库/生产/平台模型设置未改。原D1入口`tmp/xiaok-d1-resume-20261027/`、实模`trial-composable-d1-2026-10-27T08-37-38-593Z.json`、修复后服务`services-composable-d1-2026-10-27T08-55-08-145Z.json`及原生`composable-native-resume-20261027-cli-02/report.json`继续保留，均不重评分 |
 | 历史与未知 | 原run1174/1175、attempt1382/1383及其HTTP400/indeterminate/unknown原记录保留；原数据实例已分离，恢复库同号attempt属于其他run，禁止按裸ID误核账。原D3服务8/8、客户端39与D2 DOCX/正式来源证据按未变范围复用，不重复入库或假称完整阶段通过 |
-| 费用与停止边界 | 原¥8.771297、DeepSeek402的240000token及全部历史未知保留；旧百炼226237tokens计入原账册。最新授权前累计保守¥11.102482；当前累计保守预留/估算**¥17.371082**，其中P0新增23720个已观测token、失败搜索1050000token全额预留及三个Batch item各60000token预留；实际扣费/账单未知。P0已派发12次同步模型请求（含原端点400及一次修复）和3个异步Batch item，取消不当零费。原31次及此前40→47被拒/修复后16次未执行的历史不删除；本次最新授权明确允许必要P0/D1调用，累计¥100仍约束每次新预留。不重发旧run、未知提交或同一Batch，不切模型/地域或付费fallback |
+| 费用与停止边界 | 原¥8.771297、DeepSeek402的240000token及全部历史未知保留，旧百炼226237tokens已计入。授权前累计保守¥11.102482；P0累计保守预留/估算现为**¥16.771962**：新增23896个已观测token、失败搜索1050000token和取消item60000token全额预留。实际账单未知。P0派发12次同步请求（含原端点400/一次修复）和3个Batch item；纯读页恢复/结果回收新增推理0，两项成功Batch按实际176token核账，不把取消当零费。原31次及此前40→47被拒/修复后16次未执行的历史保留；最新明确授权允许必要P0/D1调用，每次预留受累计¥100约束。不重发旧run/未知提交/同一Batch，不切模型/地域或付费fallback |
 | 清理 / 所有权 | 本聊天单owner串行，沿既有隔离acceptance锁/idle queue保护。合成企业AI禁用、用户context撤权，原生transport/session/pending storage恢复，3108桥接和自有锁释放；保留用户Stable窗口、3006及既有Worker/隧道，不结束未知进程。保留无关脏改和历史手动接管证据，不创建替代聊天、不发跨聊天消息、不推送或部署 |
-| 下一步 / 返回条件 | 只凭原Batch ID继续GET查询/输出文件取回，无新增推理或重提；供应商completion_window为24h，等待不算通过。当前P0实模固定15项，搜索恢复实服providerInferenceCalls=0，SOURCE绑定无漂移；不重复同步能力样本。原始搜索400、DNS失败、Batch轮询超时及读页历史误写immutable item的9/10失败均保留，改存task projection后10/10通过，未放松数据库约束。P0完成后按已授权范围恢复D1两旅程各两次（最多40请求）及Stable C01→真实配置Worker→C02实写/重进（最多8）。累计¥100、全部未知预留、原OS11两轮计数保持；次数是执行器上限，不声称人类指定精确次数。D1通过后才进入后续交付 |
+| 下一步 / 返回条件 | 立即按已授权范围执行D1原两旅程各两次（最多40个实时请求，固定10份首稿），再做Stable C01→真实配置Worker→C02实写/重进（最多8请求）；预算、未定信息、混合更正/撤回、未选字段保留、丢响应同键恢复与他人拒绝均保留。先前H来源连接机制与P0原生格式为本批实际变化，不继续旧措辞/regex采样。原OS11两轮计数、累计¥100及全部未知预留保持；次数是执行器上限，不声称人类指定精确次数。P0不再重跑；真实闭环证据recovery-2026-10-27T12-05-07-161Z.json通过2/2、源码/配置无漂移。原400、DNS、等待超时及9/10不可变item失败不重评分；改存projection后10/10服务通过 |
 
 D1从 `935929e4` 接续；P0复用 `18ed416f` 已有回执/历史恢复及 `cc26ee56` 页面加载基础；代码、合同和清单以本次相关本地提交及上述绑定证据为准，不把HEAD当作全部工作区快照。旧 `c483f02a`、`d1226362`、`935929e4` 等各自原始证据保留；本轮未改未授权设计、未部署生产。
 
