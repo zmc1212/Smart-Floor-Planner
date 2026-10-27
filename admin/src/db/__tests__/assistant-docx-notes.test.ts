@@ -20,16 +20,18 @@ import { signMiniProgramToken } from '@/lib/miniprogram-jwt';
 import type { ActorContext, EmbeddingGateway, TextModelGateway } from '@/lib/assistant/contracts';
 import type { SourceFile } from '@/lib/assistant/contracts/source-file';
 import { syntheticDocxNotes, syntheticDocxNotesEntries } from '../../../scripts/assistant-docx-notes-fixture';
+import { syntheticDocxOutline, syntheticDocxOutlineEntries } from '../../../scripts/assistant-docx-outline-fixture';
 import { syntheticZip } from '../../../scripts/assistant-file-fixtures';
 
-const prefix = 'synthetic-d2-docx-notes-' + randomUUID();
+const directOutlines = process.env.ASSISTANT_DOCX_OUTLINE_FIXTURE === '1';
+const prefix = (directOutlines ? 'synthetic-d2-docx-outline-' : 'synthetic-d2-docx-notes-') + randomUUID();
 type DocumentTarget = { documentId: string; versionId: string; expectedVersion: number; expectedEditVersion: number };
 type Fixture = { enterprises: string[]; users: string[]; admins: string[]; conversationId?: string; document?: DocumentTarget; runId?: string };
 type Report = { scope: string; started: string; checks: Row[]; fixture: Fixture; providerCalls: number; fetchRequests: string[];
   deterministic: { chunk: number; embedding: number; reply: number }; selected?: { sourceId: string; selections: string[] };
   run?: unknown; cleaned?: boolean; finished?: string };
 const fixture: Fixture = { enterprises: [], users: [], admins: [] };
-const evidence: Report = { scope: 'D2 DOCX conditions only; real parser/isolated database/auth; deterministic vectors and extractive reply, no native or configured-model acceptance',
+const evidence: Report = { scope: `D2 DOCX ${directOutlines ? 'direct outlines and conditions' : 'conditions'} only; real parser/isolated database/auth; deterministic vectors and extractive reply, no native or configured-model acceptance`,
   started: new Date().toISOString(), checks: [], fixture, providerCalls: 0, fetchRequests: [], deterministic: { chunk: 0, embedding: 0, reply: 0 } };
 let service: KnowledgeService, customer: ConversationService, actor: ActorContext, conversationId: string;
 let document: DocumentTarget, citationId: string, messageId: string;
@@ -103,7 +105,7 @@ after(async () => {
 });
 
 test('real upload/parse/review/index/publication persist complete note conditions and immutable original', async () => {
-  const bytes = syntheticDocxNotes(), input = { title: '合成 D2 注释设备资料', fileName: '合成注释设备.docx', fileBase64: bytes.toString('base64'),
+  const bytes = directOutlines ? syntheticDocxOutline() : syntheticDocxNotes(), input = { title: '合成 D2 注释设备资料', fileName: '合成注释设备.docx', fileBase64: bytes.toString('base64'),
     authorization: 'SYNTHETIC TEST ONLY', audience: 'customer_public' }, key = randomUUID();
   const created = await service.execute('createFile', input, key), duplicate = await service.execute('createFile', input, key);
   assert.equal((duplicate.document as Row).id, (created.document as Row).id);
@@ -157,7 +159,7 @@ test('real retrieval/extractive persistence and authenticated source reopening r
 
 test('a broken replacement fails while the prior publication stays valid; withdrawal revokes citation and derived text', async () => {
   const next = await op('newVersion', { documentId: document.documentId, fromVersionId: document.versionId, expectedVersion: 2 });
-  const entries = syntheticDocxNotesEntries(); delete (entries as Record<string, string>)['word/endnotes.xml'];
+  const entries = directOutlines ? syntheticDocxOutlineEntries() : syntheticDocxNotesEntries(); delete (entries as Record<string, string>)['word/endnotes.xml'];
   const replacement = await op('replaceFile', { documentId: document.documentId, versionId: String(next.id), expectedVersion: 3, expectedEditVersion: 1,
     fileName: '合成损坏注释.docx', fileBase64: syntheticZip(entries).toString('base64'), authorization: 'SYNTHETIC TEST ONLY' });
   const job = await run(replacement.jobId); assert.equal(job.status, 'failed'); assert.equal(job.last_error, 'knowledge_file_parse_failed');

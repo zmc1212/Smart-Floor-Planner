@@ -33,6 +33,15 @@ function xml(bytes) {
 const children = (n, name) => n.children.filter(c => typeof c !== 'string' && c.name === name && c.uri === WORD);
 function all(n, name) { return n.children.flatMap(c => typeof c === 'string' ? [] : [...(c.name === name && c.uri === WORD ? [c] : []), ...all(c, name)]); }
 const value = n => n?.attrs.val;
+function outlineLevel(properties) {
+  const outline = properties && children(properties, 'outlineLvl')[0];
+  if (!outline) return undefined;
+  const raw = value(outline), level = Number(raw);
+  if (typeof raw !== 'string' || !/^\s*\+?\d+\s*$/.test(raw) || !Number.isInteger(level) || level < 0 || level > 9) bad('knowledge_file_parse_failed');
+  // OOXML0..8 map to heading1..9;9 explicitly means body text. Keep zero
+  // distinct from absence so a direct body override does not fall back to style.
+  return level === 9 ? 0 : level + 1;
+}
 function plain(n) { return n.children.map(c => typeof c === 'string' ? c : plain(c)).join(''); }
 function paragraph(n) {
   function read(node) {
@@ -82,8 +91,8 @@ async function docx(bytes) {
   if (!body) bad('knowledge_file_parse_failed');
   const warnings = ['docx_no_fixed_pages'], levels = new Map(), noteParts = [];
   if (files.has('word/styles.xml')) for (const s of all(xml(files.get('word/styles.xml')), 'style')) {
-    const outline = Number(value(all(s, 'outlineLvl')[0]));
-    if (Number.isInteger(outline) && outline >= 0 && outline <= 8) levels.set(s.attrs.styleId, outline + 1);
+    const outline = outlineLevel(children(s, 'pPr')[0]);
+    if (outline !== undefined) levels.set(s.attrs.styleId, outline);
   }
   const noteId = value => {
     if (typeof value !== 'string' || !/^[+-]?\d+$/.test(value)) bad('knowledge_file_parse_failed');
@@ -140,7 +149,9 @@ async function docx(bytes) {
     const n = nodes[i]; if (n.uri !== WORD) continue;
     if (n.name === 'p') {
       const text = paragraph(n), attached = notes(n); ++para; if (!text && !attached.length) continue;
-      const style = value(all(n, 'pStyle')[0]) || '', level = levels.get(style) || Number(/^Heading([1-9])$/i.exec(style)?.[1]);
+      // Only current direct properties apply; pPrChange contains an older view.
+      const properties = children(n, 'pPr')[0], style = value(properties && children(properties, 'pStyle')[0]) || '';
+      const level = outlineLevel(properties) ?? levels.get(style) ?? Number(/^Heading([1-9])$/i.exec(style)?.[1]);
       if (level && text) {
         // A document may skip a heading level. Array positions alone would
         // incorrectly retain a previous sibling as an ancestor in that case.
@@ -174,7 +185,7 @@ async function docx(bytes) {
     }
   }
   if (!blocks.length) bad('knowledge_file_no_text');
-  return { parser: VERSION + ':docx:yauzl3.4.0:saxes6.0.0:notes-v2', blocks, warnings: [...new Set(warnings)] };
+  return { parser: VERSION + ':docx:yauzl3.4.0:saxes6.0.0:notes-v2:outline-v1', blocks, warnings: [...new Set(warnings)] };
 }
 /** PDF EOLs are layout lines, not paragraph boundaries. Join only adjacent
  * horizontal flow, retaining complete numbered clauses, headings and pages.

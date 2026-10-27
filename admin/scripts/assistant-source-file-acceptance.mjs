@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import nextEnv from '@next/env';
 import { lockAssistantAcceptance } from './assistant-acceptance-safety.mjs';
 const root=path.resolve(import.meta.dirname,'..');process.chdir(root);nextEnv.loadEnvConfig(root,true);
-const timeFormats=process.argv.includes('--time-formats'),dateFormats=process.argv.includes('--date-formats'),numberFormats=process.argv.includes('--number-formats'),spreadsheet=process.argv.includes('--xlsx')||numberFormats||dateFormats||timeFormats,projection=process.argv.includes('--projection'),docxNotes=process.argv.includes('--docx-notes');
+const timeFormats=process.argv.includes('--time-formats'),dateFormats=process.argv.includes('--date-formats'),numberFormats=process.argv.includes('--number-formats'),spreadsheet=process.argv.includes('--xlsx')||numberFormats||dateFormats||timeFormats,projection=process.argv.includes('--projection'),docxOutline=process.argv.includes('--docx-outline'),docxNotes=process.argv.includes('--docx-notes')||docxOutline;
 const evidence=process.argv.find(a=>a.startsWith('--evidence='))?.slice('--evidence='.length);
 if(evidence&&!/^xiaok-[a-z0-9-]{1,80}$/.test(evidence))throw Error('Invalid XiaoK evidence directory name');
 const output=path.resolve('../tmp',evidence||(timeFormats?'xiaok-kb2-time-formats':dateFormats?'xiaok-kb2-date-formats':numberFormats?'xiaok-kb2-number-formats':spreadsheet?'xiaok-kb2-xlsx':'xiaok-kb2'));fs.mkdirSync(output,{recursive:true});
@@ -17,7 +17,8 @@ if(db){const config=JSON.parse(fs.readFileSync('../tmp/xiaok-vector/connection.p
 try{
  if(docxNotes&&!['service','unit'].includes(mode))throw Error('DOCX notes acceptance supports only service or unit mode');
  if(docxNotes)process.env.ASSISTANT_DOCX_NOTES_EVIDENCE=output;
- const files=docxNotes?(mode==='unit'?['src/lib/assistant/__tests__/docx-notes.test.ts','src/lib/assistant/__tests__/source-file.test.ts']:['src/db/__tests__/assistant-docx-notes.test.ts']):mode==='synthesis'?(projection?['src/db/__tests__/assistant-synthesis.test.ts']:['src/lib/assistant/__tests__/synthesis.test.ts','src/db/__tests__/assistant-synthesis.test.ts']):mode==='regression'?['src/db/__tests__/assistant-knowledge.test.ts','src/db/__tests__/assistant-answers.test.ts','src/db/__tests__/assistant-professional-knowledge.test.ts','src/db/__tests__/assistant-platform-access.test.ts']:
+ if(docxOutline)process.env.ASSISTANT_DOCX_OUTLINE_FIXTURE='1';
+ const files=docxNotes?(mode==='unit'?['src/lib/assistant/__tests__/docx-notes.test.ts','src/lib/assistant/__tests__/source-file.test.ts',...(docxOutline?['src/lib/assistant/__tests__/docx-outline.test.ts']:[])]:['src/db/__tests__/assistant-docx-notes.test.ts']):mode==='synthesis'?(projection?['src/db/__tests__/assistant-synthesis.test.ts']:['src/lib/assistant/__tests__/synthesis.test.ts','src/db/__tests__/assistant-synthesis.test.ts']):mode==='regression'?['src/db/__tests__/assistant-knowledge.test.ts','src/db/__tests__/assistant-answers.test.ts','src/db/__tests__/assistant-professional-knowledge.test.ts','src/db/__tests__/assistant-platform-access.test.ts']:
   mode==='unit'?['src/lib/assistant/__tests__/source-file.test.ts','src/lib/assistant/__tests__/spreadsheet-source.test.ts',...(projection?['src/lib/assistant/__tests__/synthesis.test.ts','src/lib/assistant/__tests__/context-budget.test.ts','src/lib/assistant/__tests__/model-policy.test.ts','src/lib/assistant/__tests__/synthesis-source-selection.test.ts','src/lib/assistant/__tests__/citation-catalog.test.ts']:[])]:
    spreadsheet?['src/db/__tests__/assistant-source-file.test.ts','src/db/__tests__/assistant-spreadsheet-source.test.ts']:['src/db/__tests__/assistant-source-file.test.ts'];
  const miniFiles=fs.readdirSync('../miniprogram/test').filter(f=>f.startsWith('assistant-')&&f.endsWith('.test.js')).map(f=>'../miniprogram/test/'+f);
@@ -25,7 +26,7 @@ try{
  if(docxNotes){
   const walk=folder=>{for(const entry of fs.readdirSync(folder,{withFileTypes:true})){const file=folder+'/'+entry.name;if(entry.isDirectory())walk(file);else if(/\.(?:ts|mjs|js)$/.test(file))docxDependencies.push(file);}};
   for(const folder of ['src/lib/assistant','src/db','src/lib/ai/providers'])walk(folder);
-  docxDependencies.push('scripts/assistant-docx-notes-fixture.ts','scripts/assistant-file-fixtures.ts','scripts/assistant-file-parser.mjs','scripts/assistant-xlsx-parser.mjs','scripts/assistant-acceptance-safety.mjs','src/lib/postgresql.ts','src/lib/miniprogram-jwt.ts','package.json','package-lock.json','tsconfig.json');
+  docxDependencies.push('scripts/assistant-docx-notes-fixture.ts','scripts/assistant-docx-outline-fixture.ts','scripts/assistant-file-fixtures.ts','scripts/assistant-file-parser.mjs','scripts/assistant-xlsx-parser.mjs','scripts/assistant-acceptance-safety.mjs','src/lib/postgresql.ts','src/lib/miniprogram-jwt.ts','package.json','package-lock.json','tsconfig.json');
  }
  const watched=[...new Set([...docxDependencies,...fs.readdirSync('src/lib/assistant/agent').filter(f=>f.endsWith('.ts')).map(f=>'src/lib/assistant/agent/'+f),
   ...new Set(mode==='mini'?miniFiles:files),'scripts/assistant-source-file-acceptance.mjs'])].sort();
@@ -41,7 +42,7 @@ try{
  const sourcesAfter=hashes(),changedDuringRun=watched.filter(file=>sources[file]!==sourcesAfter[file]);
  const acceptedExitCode=exitCode||Number(changedDuringRun.length>0);
  fs.writeFileSync(path.join(output,logMode+'-status.json'),JSON.stringify({exitCode:acceptedExitCode,testExitCode:exitCode,started,finished:new Date().toISOString(),sources,sourcesAfter,changedDuringRun,
-  model:docxNotes?'zero provider calls; real isolated database/parser/auth; injected deterministic chunk/vector/extractive reply; not configured-model or native acceptance':db?'deterministic injected model; real isolated database and embedding':'not a real-model evaluation'}));
+  model:docxNotes?`${docxOutline?'direct paragraph outline fixture; ':''}zero provider calls; real isolated database/parser/auth; injected deterministic chunk/vector/extractive reply; not configured-model or native acceptance`:db?'deterministic injected model; real isolated database and embedding':'not a real-model evaluation'}));
  console.log(log.split('\n').filter(s=>/^(# (tests|pass|fail|skip)|not ok|ok \d|  error:|  message:)|source-file|file-service|assistant-file|knowledge-editor/.test(s)).slice(-80).join('\n')||`${logMode}: exit ${acceptedExitCode}`);
  if(changedDuringRun.length)console.error('Acceptance invalidated by source drift: '+changedDuringRun.join(', '));process.exitCode=acceptedExitCode;
 }finally{await release();}
