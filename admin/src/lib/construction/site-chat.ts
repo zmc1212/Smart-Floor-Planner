@@ -164,7 +164,7 @@ export class SiteChatService {
       await invalidateSiteAction(tx, this.actor, String(c.id), raw);
       // This only selects a model interpretation path. It never chooses or
       // authorizes an action; the model may retain the existing report path.
-      const actionCandidate = ['request', 'clarify'].includes(intent) || intent === 'report' && /请|帮|麻烦|回复|我来|负责|跟进|接手|记下/.test(raw);
+      const actionCandidate = ['request', 'clarify'].includes(intent) || intent === 'report' && /请|帮|麻烦|回复|我来|负责|跟进|接手|记下|关联|回传/.test(raw);
       if (actionCandidate && !siteActionAcknowledgement(raw) && !siteIssueCommand(raw) && !planCommand(raw) && !resolutionCommand(raw)) {
         const settings = (await one(tx, sql`select * from app.assistant_enterprise_settings where enterprise_id=${eid}`))!;
         const actionRun = await requestSiteAction(tx, this.actor, c, settings, message);

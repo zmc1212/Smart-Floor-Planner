@@ -16,22 +16,22 @@ type Model = (messages: ModelMessage[]) => Promise<ModelTurnOutput>;
  * action. The original staff member confirms through the existing chat. */
 export async function processSiteAction(lease: Lease, model?: Model) {
   let returned = false;
-  const scoped = <T>(work: (tx: Parameters<typeof runContext>[0], c: Row, request: Awaited<ReturnType<typeof siteActionRequest>>) => Promise<T>) =>
+  const scoped = <T>(work: (tx: Parameters<typeof runContext>[0], c: Row, request: Awaited<ReturnType<typeof siteActionRequest>>, permission: { manage: boolean; write: boolean }) => Promise<T>) =>
     withTenantTransaction(lease.enterpriseId, async tx => {
       const context = await runContext(tx, lease);
       if (context.run.purpose !== 'site.action' || context.conversation.purpose !== 'project_collaboration' || lease.actor.principal.kind !== 'admin') fail('context_changed');
       const request = await siteActionRequest(tx, lease.actor, String(context.conversation.id), lease.runId);
       const service = new SiteChatService({ enterpriseId: lease.enterpriseId, adminId: lease.actor.principal.adminId,
         miniProgramUserId: lease.actor.entry?.miniProgramUserId as string | undefined, miniProgramContextVersion: lease.actor.entry?.miniProgramContextVersion as number | undefined }, tx);
-      return service.withWriteScope(request.projectId, (tx, c) => work(tx, c, request));
+      return service.withWriteScope(request.projectId, (tx, c, _p, permission) => work(tx, c, request, permission));
     });
   try {
-    const initial = await scoped(async (tx, c, request) => {
+    const initial = await scoped(async (tx, c, request, permission) => {
       const context = await runContext(tx, lease), input = await siteActionContext(tx, lease.enterpriseId, request.projectId, request.versions);
       const candidates = { records: input.records.map(r => r.id), issues: input.issues.map(i => i.id) };
       const messages: ModelMessage[] = [{ role: 'system', content: [{ type: 'text', text: siteActionPrompt }] },
         { role: 'user', content: [{ type: 'text', text: JSON.stringify({ actorId: lease.actor.principal.kind === 'admin' ? lease.actor.principal.adminId : '',
-          originalText: (request.row.content as { blocks: { text?: string }[] }).blocks.map(b => b.text || '').join('\n'), ...input }) }] }];
+          originalText: (request.row.content as { blocks: { text?: string }[] }).blocks.map(b => b.text || '').join('\n'), permissions: { manage: permission.manage }, ...input }) }] }];
       if (Buffer.byteLength(JSON.stringify(messages), 'utf8') > 48000) fail('model_input_limit', 422);
       const cached = await one(tx, sql`select status,private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=1110`);
       if (cached && (cached.status !== 'succeeded' || (cached.input_summary as Row)?.promptVersion !== siteActionPromptVersion)) fail('provider_outcome_unknown');
@@ -69,8 +69,8 @@ export async function processSiteAction(lease: Lease, model?: Model) {
       if (lease.actor.principal.kind !== 'admin') fail('context_changed');
       const service = new SiteChatService({ enterpriseId: lease.enterpriseId, adminId: lease.actor.principal.adminId,
         miniProgramUserId: lease.actor.entry?.miniProgramUserId as string | undefined, miniProgramContextVersion: lease.actor.entry?.miniProgramContextVersion as number | undefined }, tx);
-      await service.withWriteScope(initial.projectId, async (tx, c) => {
-        const text = await proposeSiteAction(tx, lease.actor, c, initial.projectId, lease.runId, selection);
+      await service.withWriteScope(initial.projectId, async (tx, c, _p, permission) => {
+        const text = await proposeSiteAction(tx, lease.actor, c, initial.projectId, lease.runId, selection, permission.manage);
         await tx.execute(sql`update app.assistant_messages set content=${JSON.stringify({ version: 1, blocks: [{ type: 'text', text }] })}::jsonb
           where enterprise_id=${lease.enterpriseId} and conversation_id=${String(run.conversation_id)} and id=${messageId}`);
       });

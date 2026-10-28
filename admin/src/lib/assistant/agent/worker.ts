@@ -11,6 +11,8 @@ import { projectMessage, resolveEvidence, previewPolicy } from '../knowledge/sou
 import { runContext, failRun, heartbeat, completeAnswer, type Lease } from '../infrastructure/job-queue';
 import { runRenovationAgent, agentReadProtocol, agentToolReplyProtocol, agentTurnScheduleProtocol, type AgentCheckpoint } from './runtime';
 import { agentConfig, agentCapabilityFingerprint } from './config';
+import { finalResponseShapeIssue, finalResponseShapeProtocol } from './final-response-shape';
+import { homeSourceRuntimeBudget } from './home-source-budget';
 import {nativeFinalProtocol,nativeFinalProjection,finishContextTool,nativeFinalDefinition,nativePlanningMessages,nativeFinalMessages,nativeImageFinalMessages,assertNativeFinalOutput,nativeImageSchemaProtocol,explicitNativeObjectRoot} from './native-final';
 import { conversationImageProtocol, conversationImageInstructions, conversationImageMessage, nativeImageFinalProjection } from './image-context';
 import { factFields, needWriteFeedback, needOriginalQuotes, hasExplicitNeedCorrection, assertRecordedReply, needReplyFeedback, onlyChatHistoryRequested, currentBudgetRecallRequested, currentBudgetRecallFeedback, needReconfirmationFeedback, needDeskPositionFeedback, currentNeedView, unavailableDeskReply, explicitNeedRecordOnly, explicitNeedWriteStatement, recordedNeedReceipt, parseNeedWrites } from './memory';
@@ -705,7 +707,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       }
       return { status: marker.effect === 'proposal' ? 'pending' as const : 'unchanged' as const, text: reviewProposalReply(marker.name, marker.effect) };
     };
-    let turnAllocation: ReturnType<typeof consultationRuntimeBudget> | undefined;
+    let turnAllocation: ReturnType<typeof consultationRuntimeBudget> | ReturnType<typeof homeSourceRuntimeBudget>;
     const callModel = async (turn: number, messages: ModelMessage[], tools: ModelTool[], purpose: ModelRequestPurpose = 'answer'): Promise<ModelTurnOutput> => {
           const claims = claimFinalization && purpose === 'answer' && !tools.length
             ? await scoped((tx, context) => boundReviewClaims(tx, lease.actor, context.conversation, lease.runId)) : null;
@@ -760,7 +762,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                   imageSchema: imageSchema ? nativeImageSchemaProtocol : null,
                   numericProseProtocol: purpose === 'answer' ? proseNumberProtocol : null,
                   citationSelectionProtocol: consultation && purpose === 'answer' ? citationSelectionProtocol : null,
-                  turnSchedule: consultation ? { protocol: agentTurnScheduleProtocol, ...turnAllocation } : null,
+                  turnSchedule: turnAllocation ? { protocol: agentTurnScheduleProtocol, ...turnAllocation } : null,
                   citationProtocol:purpose==='answer'?citationProtocolVersion:null,
                   repairProtocol: purpose === 'answer' ? synthesisRepairBase(focused) ? synthesisRepairProtocol : finalAnswerRepairBase(focused) ? finalAnswerRepairProtocol : null : null,
                   repairProjection: purpose === 'answer' && focused !== messages && (synthesisRepairBase(focused) || finalAnswerRepairBase(focused)) ? synthesisRepairProjectionVersion : null,
@@ -892,7 +894,17 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and kind='agent_model'`);
       return consultationRuntimeBudget({summaries:Number(auxiliary?.summaries||0),perceptions:Number(auxiliary?.perceptions||0)});
     });
-    const result = await runRenovationAgent({ messages: initial.messages, tools: toolsForMessage(businessFollowup), resume: initial.resume,
+    const turnTools = toolsForMessage(businessFollowup);
+    if (!initial.config.consultation) turnAllocation = await scoped(async tx => {
+      const auxiliary = await one(tx, sql`select count(*) filter(where input_summary->>'purpose'='summary')::int summaries,
+        count(*) filter(where input_summary->>'purpose'='vision')::int perceptions from app.assistant_run_steps
+        where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and kind='agent_model'`);
+      return homeSourceRuntimeBudget({ policy: (initial.run.policy_snapshot as Row).homeSourceBudget, boundHome: !!readContext?.leadId,
+        images: initial.mediaRefs.length, nativeFinalization, tools: agentToolsForTurn(reviewContext.currentQuestion, initial.messages, turnTools, String(initial.trigger.id)),
+        summaries: Number(auxiliary?.summaries || 0), perceptions: Number(auxiliary?.perceptions || 0), resume: initial.resume,
+        scheduleProtocol: agentTurnScheduleProtocol });
+    });
+    const result = await runRenovationAgent({ messages: initial.messages, tools: turnTools, resume: initial.resume,
       nativeFinalization,
       nativeFinishTool: completion ? finish : undefined,
       reservedValidationRepairs: turnAllocation?.reservedValidationRepairs, primaryModelTurns: turnAllocation?.primaryModelTurns,
@@ -901,7 +913,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         checkpoint: state => scoped(async tx => {
           for (const ref of initial.mediaRefs) if (!await resolveAgentMedia(tx, lease.enterpriseId, String(initial.conversation.id), ref)) fail('context_changed');
           await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary,private_checkpoint,source_refs)
-            values(${lease.enterpriseId},${lease.runId},${checkpointSeq},'agent_checkpoint','succeeded',${JSON.stringify({ promptVersion: agentPromptVersion, readContext, ...(initial.config.consultation ? { turnSchedule: agentTurnScheduleProtocol } : {}) })}::jsonb,
+            values(${lease.enterpriseId},${lease.runId},${checkpointSeq},'agent_checkpoint','succeeded',${JSON.stringify({ promptVersion: agentPromptVersion, readContext, ...(turnAllocation ? { turnSchedule: agentTurnScheduleProtocol, ...turnAllocation } : {}) })}::jsonb,
               ${JSON.stringify({ ...state, messages: withoutImageBytes(state.messages) })}::jsonb,${JSON.stringify(initial.mediaRefs)}::jsonb)
             on conflict(enterprise_id,run_id,step_seq) do update set private_checkpoint=excluded.private_checkpoint,source_refs=excluded.source_refs,updated_at=now(),version=app.assistant_run_steps.version+1`);
           if (initial.referenceEvidence.length) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs)
@@ -1019,6 +1031,13 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           return resolved;
         }),
         validateFinal:async(raw,turn)=>{
+          const shapeIssue = await finalResponseShapeIssue(raw);
+          if (shapeIssue) {
+            await scoped(tx => tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
+              values(${lease.enterpriseId},${lease.runId},${1300+turn},'agent_validation','failed',
+                ${JSON.stringify({ code: shapeIssue.code, scope: finalResponseShapeProtocol, noBusinessTools: true })}::jsonb) on conflict do nothing`));
+            return shapeIssue;
+          }
           const messageIssue = currentMessageReplyFeedback(raw, reviewContext.currentQuestion);
           if (messageIssue) {
             await scoped(tx => tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)

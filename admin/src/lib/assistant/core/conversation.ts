@@ -12,6 +12,7 @@ import { requestsDesigner } from '../handoff/intent';
 import { stageHandoffProposal } from '../handoff/proposal';
 import { currentHandoffOwner } from '../handoff/owner';
 import { agentConfig, type AgentConfig } from '../agent/config';
+import { homeSourceBudgetProtocol } from '../agent/home-source-budget';
 import { imageContextBudgetPolicy } from '../agent/context-budget';
 import { conversationImageProtocol } from '../agent/image-context';
 import { nativeImageSchemaProtocol } from '../agent/native-final';
@@ -130,6 +131,8 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
     ${retryOf || null},${json({ schemaVersion: 1, actor, maxTokens: agent?.consultation ? 8192 : 2048, policyVersion: settings.policy_version, agent,
       ...(reservation.imageContextBudget ? { imageContextBudget: reservation.imageContextBudget } : {}),
       ...(reservation.imageSchema ? { imageSchema: reservation.imageSchema } : {}),
+      ...(agent && actor.principal.kind === 'user' && c.purpose === 'customer_consultation' && purpose === 'reply'
+        ? { homeSourceBudget: homeSourceBudgetProtocol } : {}),
       ...(reviewRuntime ? { reviewRuntime } : {}) })}::jsonb,${Number(c.context_revision)},${Number(settings.knowledge_epoch)}) returning *`))!;
   const runId = String(r.id);
   await tx.execute(sql`insert into app.assistant_jobs(enterprise_id,kind,run_id,dedupe_key) values(${actor.enterpriseId},'chat_turn',${runId},${'run:' + runId})`);

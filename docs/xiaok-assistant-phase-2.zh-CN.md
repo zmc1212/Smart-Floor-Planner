@@ -1935,6 +1935,29 @@ PPT16/35/37的“已知设备后补其他设备”仅在企业明确配置剩余
 
 ## 当前P4A限定接续：项目共享对话、核对发布与原咨询关注
 
+### 人工图纸核对、管理者节选及客户有据重进（2026-10-29）
+
+员工说自己已人工核对书房共享图纸，并要求关联到底盒事项；管理者提供本人回传给原业主的节选。原自然解释器只有report/open/claim/reply。site.action v2增加check/return，沿原run/job、来源消息、quota、供应商审计、预览及executeSiteIssue。只选唯一有效获权图纸，check记录人工声明及精确grant，不是AI看图或正式批准。return要求共用实时manage权限及有效原咨询需求来源，预览目标和完整管理者原话，再独立确认；不复制内部讨论／回复。无新schema、路由、API、权限解析、facts或KnowledgeRetriever/Evidence管线；Knowledge无需变化。
+
+| 触发 | 沿用的可见状态 | 持久恢复及权限边界 |
+| --- | --- | --- |
+| 员工明确声明已人工核对图纸 | S04回复显示唯一有效图纸／事项及完整原话，尚未执行 | 原作者另发“确认核对图纸”才写；图纸歧义／缺失、版本变化、取消或成员撤权不写 |
+| 管理者提供给业主的本条节选 | 原预览显示原咨询／需求grant及完整新原话，明确确认后会公开该节选 | 原作者“确认回传”才委托领域写服务；选定企业enterprise_admin/admin/super_admin继承管理，普通成员不可回传 |
+| 客户问底盒现在能否固定 | 原C01气泡／来源动作显示获权具体结果版本、待核对及条件 | 重进重验grant及回传；来源撤回使衍生回答失效，其他房屋及内部原话仍不可见 |
+| 模型将resultKey混入synthesis或补无依据流程 | 原校验／恢复或回答失败状态 | synthesis原严格根字段沿LangChain校验，来源／回执守卫及最多一次最终恢复不变，恢复不带业务工具 |
+
+原完整原生0/2在正确业务Evidence下暴露两个Agent缺陷：封闭批准主语列表的明确否定被误当批准，以及带resultKey的synthesis进入严格解码器时已在恢复回合之外。否定投影只在守卫分析里处理完整分句、已知主语列表及单个末尾批准谓词，不改展示文字；后续肯定、双重否定及未知主语仍受拦截。最终字段检查复用无副作用toolSchemaIssue；synthesis沿原严格根，旧服务投影包的闲置字段仍由原解码器处理。特别是business的text/selections不能替换获权快照；两份原阶段包零调用回放通过，实际服务注入批准话术也不会展示。
+
+第一轮机制修复后固定客户旅程1/2：run1586在query_materials/query_followups/search_knowledge三次读取后，以无依据联系电话状态／联系安排建议耗尽第四次调用，authorized_response_scope正确拒绝，validationRepairs=0。归Agent编排／最终答复，不重做入库。第二轮机制home-read-four-call-reserve-v1仅写入新客户reply run；绑定本人房屋、无图片／原生final模式且仅白名单房屋／知识／历史只读工具时，原图得到三个主调用位＋一个最终修正位，持久summary/perception仍从相同四次扣除。原72000tokens预留不增；旧run、写入、网页、图片及原生审阅保持原分配。恢复／重进核对已记schedule，无新循环或调用上限增加。注入服务强制走第四次synthesis_repair，保留被拒首稿，验证不重放写入、不绕过来源撤回。最终两组配置C01无需修正，不据此宣称供应商模型本身实走恢复。
+
+复用依据为维护中的[LangChain工具／测试](https://github.com/langchain-ai/langchainjs/blob/main/libs/langchain-core/src/tools/tests/tools.test.ts)及[结构化输出／错误反馈](https://docs.langchain.com/oss/javascript/langchain/structured-output)，由当前图原有最终校验预算承担恢复。[历史issue6374](https://github.com/langchain-ai/langchainjs/issues/6374)针对旧executor，不作为当前版本有同一故障的证明。无createAgent迁移、供应商结果删字段改写、付费fallback或新引用管线；普通C01沿原function-calling包，不新称provider-native最终解码。prompt v123、供应商适配器及原生schema不变。
+
+证据分开保留：原native20261028-04仍0/2，真实Qwen3.8-flash24次／76483观测tokens；两组在最终C01失败前均完成原生实际节点、客户准备、原照片草稿／核对发布、自然跟进／本人接手／人工核对／完整回复及管理者节选回传。native05照片辅助选择器失败保留；产品不变、相同保存原件的native06零模型14/14补完精确结果／图纸版本、原图显示、来源及成员撤权。第一轮Agent修复native20261029-01仍1/2，8次／54511tokens；第二轮机制后native20261029-02为2/2、5次／32659tokens，包括客户真实输入、持久重进、衍生回答来源撤回及成员移除。后者以新标记夹具通过原服务写来源，记录整理为零供应商夹具，不重跑／改判S04理解；construction及Mini产品hash跨复用不变，原两份准备包已对当前校验回放。原失败、已知／未知结果及用量不合并成首稿全过。仅关闭唯一计划分配给D4的PPT旅程，不完成D2专业图文或D5正式决定／落实。
+
+最终unit108/108、答复服务5/5、前序集成兼容69/69、自然结果服务6/6及Mini62/62通过，各有独立源码绑定。全量源代码lint在最后旧包兼容修正前通过；最终涉及文件lint及完整类型另验，完整类型仍与基线逐项相同54项／涉及0。原测试准备／断言、修复协议夹具、最小化窗口／import／照片选择器及资源审计查询失败分别保留。无package/config/route/migration变化，未重跑完整生产构建／发布。可在admin执行node scripts/assistant-d4-sharing-acceptance.mjs site-actions-results|site-actions-results-compat|site-answer-unit|site-answer-service|site-answer-integration <label>；原生node scripts/construction-site-actions-native.mjs <label> --journeys或--answer-check，--resume <原批> --continue-journeys为零供应商保存来源续跑。
+
+设计沿S04 PPT22/38及23资料语境、C01 design-references/xiaok-p4b-public-sites-v1/README.md、管理者design-references/construction-workflow/cloud-site/manager.png；853×1844→390×844，37张PNG348×752均审看，含聚焦原图／结果、来源失效及撤权清空；原未聚焦C01图及失败气泡不改判。Mini WXML/Less/素材／导航不改。官方CLI新编译＋Stable2.02.2608080/SDK0.13.0/base3.17.2、原唯一项目／副屏／验收锁／单controller，无Computer Use。仅55432标记隔离库及3118签名传输，3006／真实客户／生产未改。controller／监听／本人活动任务0，身份／传输／原配置及原最小化窗口恢复；37条provider attempt／163653观测tokens保留审计，合成员工／设置停用、成员失效。累计保守¥29.324547/100，unknown账单／预留保持。完整宿主光学、真机、真实微信授权、BLE及纯色图专业理解未验／开发非阻塞。源码影响／图片／资源证据tmp/d4-customer-return-20261028/final-checks.json；前序本地332b022b，后继唯一计划D5，D2失败次数2保持，不推送／部署。
+
 ### 自然记录、跟进、接手及回复（2026-10-28）
 
 用户动作是“帮我继续跟进书房底盒的位置，先别固定”，再由设计师本人接手并提交完整回复。原缺口为普通请求只返回编号命令提示，未走自然处理流程。原查询／资料读取保持；新增site.action目的沿原持久run/job、provider attempt及quota，仅形成一次模型选择的预览，不给模型业务写工具。report选择沿同一原话／照片进入原site.record整理器，不复制原消息。自然记录／跟进／接手／回复限定Implemented，唯一计划D4两条完整固定旅程仍Limited。

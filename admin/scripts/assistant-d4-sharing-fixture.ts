@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import sharp from 'sharp';
 import { sql } from 'drizzle-orm';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
@@ -12,6 +13,9 @@ import { sharedMaterials } from '@/lib/construction/site-materials';
 import { appendMessage, ConversationService } from '@/lib/assistant/core/conversation';
 import { siteWatchInterceptor } from '@/lib/construction/site-watches';
 import type { ActorContext } from '@/lib/assistant/contracts';
+import { processSiteRecord } from '@/lib/construction/site-worker';
+import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
+import { deliverSiteNotifications } from '@/lib/construction/site-publications';
 
 /** Labelled synthetic data, only in the existing isolated development database. */
 export class D4SharingFixture {
@@ -67,6 +71,26 @@ export class D4SharingFixture {
   }
   send(text: string, key = randomUUID()) { return this.chat.send(this.conversationId, key, { version: 1, blocks: [{ type: 'text', text }] }, siteWatchInterceptor); }
   sources() { return withTenantTransaction(this.eid, tx => sharedMaterials(tx, this.eid, this.projectId, this.roomId)); }
+  /** Engineering setup for read/final-answer regressions, not a model journey.
+   * Uses the original domain writers; the injected record extractor makes no
+   * provider request and reports zero external tokens. */
+  async prepareReturnedIssue(drawingGrantId: string, input: { open: string; reply: string; return: string }) {
+    const worker = this.site(this.memberIds[1]), designer = this.site(this.memberIds[0]);
+    const picture = await sharp({ create: { width: 96, height: 72, channels: 3, background: '#c9dfd0' } }).png().toBuffer();
+    const media = await worker.upload(this.projectId, randomUUID(), picture);
+    const sent = await worker.send(this.projectId, { text: '书房底盒今天还没固定，等待核对位置。', mediaIds: [String(media.id)] }, randomUUID());
+    const lease = await claimJob(); assert.equal(lease?.runId, sent.runId);
+    await processSiteRecord(lease!, async () => ({ text: JSON.stringify({ title: '测试专用 · 底盒待核对', roomId: this.roomId, completed: '线管铺好', pending: '底盒还没固定', coordination: '现场核准桌子摆位', note: '' }),
+      toolCalls: [], finishReason: 'stop', providerRequestId: null, usage: { inputTokens: 0, outputTokens: 0 } }));
+    const draft = ((await this.site().read(this.projectId)).items as Row[]).find(i => (i.record as Row)?.id === String(sent.recordId))!.record as Row;
+    const published = await this.site().mutate(this.projectId, String(sent.recordId), 'publish', { expectedVersion: Number(draft.version), audience: 'customer' }, randomUUID());
+    const say = async (service: SiteChatService, text: string) => service.send(this.projectId, { text, mediaIds: [], versions: (await service.read(this.projectId)).versions }, randomUUID());
+    const opened = await say(worker, '跟进记录' + sent.recordId + '：PRIVATE_INTERNAL_REQUEST ' + input.open), issueId = String(opened.issueId);
+    await say(designer, '接手事项' + issueId); await say(designer, '核对事项' + issueId + '图纸' + drawingGrantId);
+    await say(designer, '回复事项' + issueId + '：PRIVATE_INTERNAL_REPLY ' + input.reply);
+    await say(this.site(), '回传事项' + issueId + '：' + input.return); await deliverSiteNotifications();
+    return { recordId: String(sent.recordId), issueId, recordRunId: String(sent.runId), publishedVersion: published.version, externalModelCalls: 0 };
+  }
   snapshot() { return withTenantTransaction(this.eid, async tx => ({
     fixture: { enterpriseIds: this.enterpriseIds, userIds: this.userIds, ownerIds: this.ownerIds, memberIds: this.memberIds, platformIds: this.platformIds,
       projectId: this.projectId, otherProjectId: this.otherProjectId, conversationId: this.conversationId, leadId: this.leadId, roomId: this.roomId },

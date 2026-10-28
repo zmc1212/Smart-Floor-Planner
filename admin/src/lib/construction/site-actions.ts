@@ -73,7 +73,15 @@ export async function siteActionContext(tx: PostgresTransaction, eid: string, pi
       original: safeText(record.row.content as MessageContent).slice(0, 1000), data: record.row.data });
   }
   const issues = (await projectSiteIssues(tx, eid, pid)).filter(i => versions.issues[i.issueId] === i.revision && i.sourceAvailable && !['cancelled', 'implemented', 'resolved', 'closed'].includes(i.status)).slice(0, 12);
-  return { rooms, records, issues: issues.map(i => ({ id: i.issueId, room: i.roomName, status: i.status, ownerId: i.ownerId, text: i.text.slice(0, 1500) })) };
+  const candidates = [];
+  for (const i of issues) {
+    const materials = i.roomId ? await sharedMaterials(tx, eid, pid, i.roomId) : null;
+    const sources = materials && materials.version === versions.materials?.[i.roomId!] ? materials.sources : [];
+    candidates.push({ id: i.issueId, room: i.roomName, status: i.status, ownerId: i.ownerId, text: i.text.slice(0, 1500),
+      drawings: sources.filter(s => s.kind === 'drawing').map(s => ({ id: s.id, description: s.text.slice(0, 500) })),
+      originalConsultation: sources.find(s => s.kind === 'need')?.conversationId || '' });
+  }
+  return { rooms, records, issues: candidates };
 }
 async function target(tx: PostgresTransaction, proposal: Pick<SiteActionProposal, 'projectId' | 'projectVersion' | 'actor' | 'selection' | 'versions'>) {
   const { projectId: pid, actor, selection, versions } = proposal, eid = actor.enterpriseId;
@@ -88,10 +96,23 @@ async function target(tx: PostgresTransaction, proposal: Pick<SiteActionProposal
   const issue = await readSiteIssue(tx, eid, pid, selection.target);
   if (!issue || !issue.sourceAvailable || issue.revision !== versions.issues[selection.target]
     || ['cancelled', 'implemented', 'resolved', 'closed'].includes(issue.status)) fail('context_changed');
-  if (issue.roomId && selection.action === 'reply' && (await sharedMaterials(tx, eid, pid, issue.roomId)).version !== versions.materials?.[issue.roomId]) fail('context_changed');
+  const materials = issue.roomId ? await sharedMaterials(tx, eid, pid, issue.roomId) : null;
+  if (issue.roomId && ['reply', 'check', 'return'].includes(selection.action) && materials?.version !== versions.materials?.[issue.roomId]) fail('context_changed');
+  if (selection.action === 'check') {
+    const drawings = materials?.sources.filter(s => s.kind === 'drawing') || [];
+    if (drawings.length !== 1) fail('site_review_required', 422);
+    const drawing = drawings[0];
+    return { hash: fingerprint({ issue, drawing }), roomName: issue.roomName, drawingGrantId: drawing.id,
+      text: issue.text + `\n本次人工核对关联：图纸资料${drawing.id}，${drawing.text}；原资料版本${materials!.version}。` };
+  }
+  if (selection.action === 'return') {
+    const need = materials?.sources.find(s => s.kind === 'need'); if (!need) fail('site_review_required', 422);
+    return { hash: fingerprint({ issue, need }), roomName: issue.roomName,
+      text: issue.text + `\n回传目标：原咨询${need.conversationId}，需求资料${need.id}；仅回传下面你的本条原话，内部对话不会自动复制。` };
+  }
   return { hash: fingerprint(issue), roomName: issue.roomName, text: issue.text };
 }
-export async function proposeSiteAction(tx: PostgresTransaction, actor: ActorContext, c: Row, pid: string, runId: string, selection: SiteAction) {
+export async function proposeSiteAction(tx: PostgresTransaction, actor: ActorContext, c: Row, pid: string, runId: string, selection: SiteAction, manage = false) {
   const request = await siteActionRequest(tx, actor, String(c.id), runId);
   if (request.projectId !== pid) fail('context_changed');
   if (selection.action === 'none') { await marker(tx, actor, String(c.id), { runId, sourceMessageId: String(request.row.id), sourceHash: request.sourceHash, status: 'none' }); return siteActionWaiting; }
@@ -110,11 +131,13 @@ export async function proposeSiteAction(tx: PostgresTransaction, actor: ActorCon
     return siteActionWaiting;
   }
   const current = await target(tx, { actor, projectId: pid, projectVersion: request.projectVersion, selection, versions: request.versions });
+  if (selection.action === 'return' && !manage) fail('construction_forbidden', 403);
   const proposal: SiteActionProposal = { runId, projectId: pid, projectVersion: request.projectVersion, conversationId: String(c.id), sourceMessageId: String(request.row.id), sourceHash: request.sourceHash,
     actor, selection, versions: request.versions, targetHash: current!.hash, originalText: safeText(request.row.content as MessageContent), roomName: current!.roomName,
     expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString() };
-  const verb = selection.action === 'open' ? '跟进' : selection.action === 'claim' ? '接手' : '回复';
-  const text = `待你核对：${verb}${selection.action === 'open' ? '记录' : '事项'}${selection.target}（${proposal.roomName}）。\n${current!.text}\n你的原话：${proposal.originalText}\n尚未执行。确认请回复“确认${verb}”；取消这次操作可回复“取消这次操作”。这不会发布给业主或批准施工。`;
+  const verb = { open: '跟进', claim: '接手', reply: '回复', check: '核对图纸', return: '回传' }[selection.action];
+  const consequence = selection.action === 'return' ? '确认后会向上述原咨询回传你的本条节选，不代表方案、费用、工期、施工或验收批准。' : '这不会发布给业主或批准施工。';
+  const text = `待你核对：${verb}${selection.action === 'open' ? '记录' : '事项'}${selection.target}（${proposal.roomName}）。\n${current!.text}\n你的原话：${proposal.originalText}\n尚未执行。确认请回复“确认${verb}”；取消这次操作可回复“取消这次操作”。${consequence}`;
   await tx.execute(sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
     values(${actor.enterpriseId},${proposalType},'assistant_run',${runId},1,${JSON.stringify(actor.principal)}::jsonb,${proposal.sourceMessageId},${JSON.stringify(proposal)}::jsonb)`);
   await marker(tx, actor, String(c.id), { runId, sourceMessageId: proposal.sourceMessageId, sourceHash: proposal.sourceHash, status: 'pending' });
@@ -135,7 +158,7 @@ export async function confirmSiteAction(tx: PostgresTransaction, actor: ActorCon
   // Reuse the domain writer, original full staff statement and original seen
   // versions. The confirmation is a separate audit, never a synthetic command.
   const issue = await executeSiteIssue(tx, actor, pid, proposal.sourceMessageId,
-    { action: confirmation, target: proposal.selection.target, value: proposal.originalText }, proposal.versions, manage);
+    { action: confirmation, target: proposal.selection.target, value: confirmation === 'check' ? now.drawingGrantId! : proposal.originalText }, proposal.versions, manage);
   await tx.execute(sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
     values(${actor.enterpriseId},${confirmedType},'assistant_run',${current.runId},1,${JSON.stringify(actor.principal)}::jsonb,${String(message.id)},
       ${JSON.stringify({ projectId: pid, conversationId: String(c.id), sourceMessageId: proposal.sourceMessageId, confirmationMessageId: String(message.id), issueId: issue.issueId, revision: issue.revision })}::jsonb)`);

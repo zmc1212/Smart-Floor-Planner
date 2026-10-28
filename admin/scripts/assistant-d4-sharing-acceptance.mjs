@@ -25,9 +25,14 @@ const files = mode === 'unit' ? ['src/lib/assistant/__tests__/material-sharing.t
   : mode === 'site-actions' ? ['src/db/__tests__/construction-site-actions.test.ts']
   : mode === 'site-actions-compat' ? ['src/db/__tests__/construction-chat-queries.test.ts', 'src/db/__tests__/construction-materials.test.ts', 'src/db/__tests__/construction-site-context.test.ts']
   : mode === 'site-actions-queue' ? ['src/db/__tests__/assistant.test.ts', 'src/db/__tests__/assistant-usage.test.ts']
+  : mode === 'site-actions-results' ? ['src/db/__tests__/construction-site-action-results.test.ts']
+  : mode === 'site-actions-results-compat' ? ['src/db/__tests__/construction-site-actions.test.ts', 'src/db/__tests__/construction-materials.test.ts', 'src/db/__tests__/construction-issue-continuation.test.ts']
+  : mode === 'site-answer-unit' ? ['src/lib/assistant/__tests__/formal-claim-scope.test.ts', 'src/lib/assistant/__tests__/final-response-shape.test.ts', 'src/lib/assistant/__tests__/home-source-budget.test.ts', 'src/lib/assistant/__tests__/synthesis.test.ts', 'src/lib/assistant/__tests__/agent-memory.test.ts', 'src/lib/assistant/__tests__/synthesis-grounding.test.ts', 'src/lib/assistant/__tests__/synthesis-review.test.ts', 'src/lib/assistant/__tests__/consultation-recovery.test.ts', 'src/lib/assistant/__tests__/source-file.test.ts']
+  : mode === 'site-answer-service' ? ['src/db/__tests__/construction-site-result-answer.test.ts']
+  : mode === 'site-answer-integration' ? ['src/db/__tests__/construction-site-result-answer.test.ts', 'src/db/__tests__/construction-site-actions.test.ts', 'src/db/__tests__/construction-materials.test.ts', 'src/db/__tests__/construction-issue-continuation.test.ts', 'src/db/__tests__/assistant.test.ts', 'src/db/__tests__/assistant-usage.test.ts']
   : [];
 if (!files.length) throw Error('Expected a named bounded D4 acceptance mode');
-const unitMode = mode === 'unit' || mode === 'site-actions-unit';
+const unitMode = mode === 'unit' || mode === 'site-actions-unit' || mode === 'site-answer-unit';
 const binding = () => {
   const paths = [...files.map(f => 'admin/' + f), 'admin/scripts/assistant-d4-sharing-fixture.ts', 'admin/scripts/assistant-d4-sharing-acceptance.mjs', 'admin/scripts/assistant-d4-runtime-config.mjs', 'admin/scripts/assistant-acceptance-safety.mjs', 'admin/package-lock.json', path.relative(root, runtimeConfig)];
   for (const dir of ['admin/src/lib/assistant', 'admin/src/lib/construction', 'admin/src/db']) {
