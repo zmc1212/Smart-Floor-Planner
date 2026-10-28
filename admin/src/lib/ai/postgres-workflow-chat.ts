@@ -23,6 +23,18 @@ import {
 
 type WorkflowChatModelKey = Extract<AiLogicalModelKey, 'chat.general' | 'vision.reference_analysis'>;
 
+export function boundAssistantModel(runtime: Pick<AiProviderRuntimeConfig, 'key' | 'adapterType' | 'adapterConfig'>,
+  config: Pick<AgentConfig, 'model' | 'providerKey'>, deploymentOverride?: string) {
+  if (runtime.adapterType !== 'openai_compatible' || config.providerKey !== (runtime.adapterConfig?.providerPreset || runtime.key)
+    || (deploymentOverride?.trim() && deploymentOverride.trim() !== config.model)) {
+    throw new Error('Agent provider capability probe no longer matches current configuration');
+  }
+  // A persisted enterprise capability probe binds the Agent model. The global
+  // chatbot's model choice must not replace it when reusing that provider's credentials.
+  return config.model;
+}
+
+
 export function assistantThinkingOverrideAllowed(runtime: Pick<AiProviderRuntimeConfig, 'adapterType' | 'adapterConfig' | 'baseUrl'>,
   model: string, consultationRuntime: boolean) {
   const endpoint = new URL(runtime.baseUrl);
@@ -68,8 +80,10 @@ export async function executePostgresText(input: {
   for (const runtime of runtimes) {
     // Deployment-only assistant override. Never change the shared generation model
     // or silently fall back to a reasoning model after an ambiguous invocation.
-    const remoteModel = input.owner.kind === 'assistant_run' && process.env.ASSISTANT_TEXT_MODEL?.trim()
-      ? process.env.ASSISTANT_TEXT_MODEL.trim() : runtime.modelMappings[input.logicalModelKey];
+    const remoteModel = input.owner.kind === 'assistant_run' && input.agent
+      ? boundAssistantModel(runtime, input.agent.config, process.env.ASSISTANT_TEXT_MODEL)
+      : input.owner.kind === 'assistant_run' && process.env.ASSISTANT_TEXT_MODEL?.trim()
+        ? process.env.ASSISTANT_TEXT_MODEL.trim() : runtime.modelMappings[input.logicalModelKey];
     if (!remoteModel) continue;
     if (input.agent && (input.owner.kind !== 'assistant_run' || runtime.adapterType !== 'openai_compatible'
       || input.agent.config.model !== remoteModel || input.agent.config.providerKey !== (runtime.adapterConfig?.providerPreset || runtime.key))) {

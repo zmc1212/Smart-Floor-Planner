@@ -1,5 +1,17 @@
 # 小K第二期：需求整理与人工交接
 
+## 当前聊天队列停滞恢复
+
+2026-10-28，限定修复 **Implemented**。用户动作：C01仅发送“新房”；截图所示为排队提示，不能据此认定正在检索。开发 run1576/咨询789于01:42:46Z建立后始终未领取，本机消费者缺失且心跳过期。恢复原隐藏 Worker 后，两条旧任务被既有总时限守卫正确判为失败。重试1577随后在供应商尝试前失败：企业1454绑定 `siliconflow / Qwen/Qwen3.5-4B`，而平台普通聊天选择 `THUDM/GLM-4-9B-0414`。用户明确选择保留企业 Qwen 及图片/工具能力；本次未改配置行或模型选择。
+
+`executePostgresText` 现从获权且已持久化的企业能力绑定选择助手 Agent 的实际模型，只复用同一供应商/适配器的既有凭据；冲突的部署模型覆盖继续拒绝。供应商、租户/参与人/来源、咨询 profile、租约、配额、未知接收及单次尝试守卫保留，未增加其他供应商或付费 fallback。普通聊天/生成路径的模型选择保持。已查阅 [LangChain OpenAI 实现](https://github.com/langchain-ai/langchainjs/blob/main/libs/providers/langchain-openai/src/chat_models/completions.ts) 对明确模型调用与客户端配置的区分，沿用原 [SiliconFlow 工具协议](https://docs.siliconflow.cn/docs/userguide/guides/function-calling) 和[图片消息协议](https://docs.siliconflow.cn/docs/userguide/capabilities/vision)。仅修供应商选择接缝，未新建编排或修改 Knowledge/Evidence。带认证 `/v1/models` 确认该 Qwen ID；最初目录路径错误404保留为诊断过程，不涉及模型调用。
+
+`scripts/dev.mjs` 现为 `dev`、`dev:webpack`、`dev:turbo` 联动启动 Next.js 与原 `scripts/assistant-worker.mjs`，保留缓存 pre-hook，启动前检查凭据、跟随实际端口、消费者异常退出重启并清理自有子进程。现场3006保持，已恢复的专用消费者继续运行。原1576/1577均无供应商尝试，原失败不改写；原幂等重试针对同一原话11324生成1578，仅一次真实 Qwen attempt4050于01:55:41.528Z至01:55:56.195Z成功，回答已持久保存。attempt4050观测输入6563/输出104 tokens，账单费用不可得、usageReconciled仍false，保留原预留，不声称零费用。无重复客户消息、schema、路由、角色、结构/样式/素材/导航或生产变更。
+
+证据 `tmp/xiaok-chat-queue-20261028/`：启动器4/4、模型绑定2/2、原思考开关1/1及小程序聊天39/39通过；修改文件lint零错误/警告。默认lint扫描生成QA产物超时后，`npm run lint -- --ignore-pattern '.next-qa/**'` 为0错误/27警告；完整TSC仍54项，均不在本次修改文件。额外既有 Qwen3.8 tool-choice 断言与未改动的 Agent 适配器不一致，失败保留、不代修。原真实调用绑定记录到tsconfig漂移，不冒充稳定语义批。原生01保留领取时机过早的单次断言；02已跑实发/轮询/重进及失败/重试，但误用租户事务撤销全局用户（实际未更新该行），并记录到无关案例文案源码漂移。两次原失败独立保留，最终原生结果见下文。C01沿既有P4B批准状态规则；完整图片/D2语义、手机/真实微信/BLE及生产不由本批认证，D3剩余范围与D2旧失败次数保持。
+
+最终 `native-03/report.json`：限定检查3/3、4张准确C01路由截图；实际发送/排队→回答/回读/重进，真实持久失败→按钮重试→回答/重进，他客拒绝及核实实际写入的全局用户 context-version 撤销后401均通过。Stable新编译、systemInfo/data、真实输入/点击、390×844及副屏窗口检查通过。原生使用确定性服务处理器、供应商调用0，不与另行真实Qwen恢复结果混算；源配置drift为空。原传输/session已恢复，合成企业关闭、身份撤权、所属队列清理，3120/控制器/验收锁释放，原项目回主页。代表成功/失败截图已对照未改动的批准C01状态组件审看。01/02及驱动错误/漂移独立保留。本次排障限定范围完成，D3仍Limited、既定后继不变。
+
 ## D2图文上下文（Limited）
 
 唯一执行记录为开发计划第2节。初始实现提交c60fa76d通过conversation-images-v1/quoted-native-images-v1，在准确DashScope/qwen3.8-flash、tools/native-sourced-final配置下接通当前/历史获权图。规划及最终答复使用真实原生图片块，引用目录/checkpoint只存ID/hash和空像素；恢复/派发/提交重验私有归属与正式来源。空上传通知不作文字原话，纯图不造需求回执，已有文字主张仍绑定真实状态。C01沿批准P4B README与既有图片、气泡、来源、未知/重试/重进组件；未改结构/样式/素材、公开API/schema/角色，不增Agent或知识管线，不自动切换原开发企业/生产。
