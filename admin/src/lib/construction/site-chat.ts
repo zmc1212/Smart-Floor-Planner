@@ -7,7 +7,7 @@ import { normalizeImage } from '@/lib/assistant/media/service';
 import { constructionAccess } from './service';
 import { object, text, version, type ConstructionActor } from './contracts';
 import { siteDraft } from './site-contract';
-import { appendSiteResponse, querySiteMaterials, resolveSiteQuery, sharedMediaUsed, siteMessageIntent, siteResponse } from './site-queries';
+import { appendSiteResponse, querySiteIssues, querySiteMaterials, resolveSiteIssueQuery, resolveSiteQuery, sharedMediaUsed, siteMessageIntent, siteResponse } from './site-queries';
 import { handleSiteIssue, parseSiteVersions, projectSiteIssues, siteIssueCommand } from './site-issues';
 import { sharedMaterialMedia, sharedMaterials } from './site-materials';
 import { handlePlan, planCommand, projectPlans } from './site-plans';
@@ -152,14 +152,18 @@ export class SiteChatService {
         const issue = intent === 'request' ? await handleSiteIssue(tx, this.actor, projectId, String(message.id), raw, versions, permission.manage) : null;
         const resolution = intent === 'request' ? await handleSiteResolution(tx, this.actor, projectId, String(message.id), raw, versions, permission.manage) : null;
         const issueQuery = intent === 'query' && /事项|这件事|在等谁|谁.*(?:处理|回复)|有没有下文/.test(raw);
-        const issueQueryId = /事项\s*[#＃]?([1-9]\d{0,18})/.exec(raw)?.[1] || '';
-        const issueText = issueQuery ? (await projectSiteIssues(tx, eid, projectId)).filter(i => !issueQueryId || i.issueId === issueQueryId).map(i => i.text).join('\n\n') || '本项目当前没有对应的持续事项。' : '';
-        const snapshot = intent === 'query' && !issueQuery ? await querySiteMaterials(tx, eid, projectId, await resolveSiteQuery(tx, eid, projectId, raw)) : null;
+        const issueQueryScope = issueQuery ? await resolveSiteIssueQuery(tx, eid, projectId, raw) : null;
+        const issueText = issueQueryScope ? await querySiteIssues(tx, eid, projectId, issueQueryScope, await projectSiteIssues(tx, eid, projectId)) : '';
+        const snapshot = intent === 'query' && (!issueQuery || /图纸|需求|资料|原话|照片|记录/.test(raw))
+          ? await querySiteMaterials(tx, eid, projectId, issueQueryScope || await resolveSiteQuery(tx, eid, projectId, raw)) : null;
+        const queryText = [...new Set([issueText, snapshot?.text].filter(Boolean))].join('\n\n');
         await appendSiteResponse(tx, this.actor, String(c.id), projectId, String(message.id), mediaIds, intent,
-          plan?.text || resolution?.text || issue?.text || issueText || snapshot?.text || (intent === 'request' ? '请先查对应现场记录，再说“跟进记录编号”。已有事项可以说“接手事项编号”“转交事项编号给姓名”或“回复事项编号：处理结果”；取消或恢复请说明原因。有权管理人员可明确回传本次状态，回复不等于已解决。' : '原话已保留在本项目。需要查资料时请说明房间；现场进展可直接发文字或照片。'),
-          plan ? { planId: plan.id } : resolution ? { issueId: resolution.issueId, revision: resolution.revision, lifecycleId: resolution.lifecycleId } : issue ? { issueId: issue.issueId, revision: issue.revision } : issueQuery ? { issueQuery: true, issueQueryId } : snapshot ? { query: snapshot.query, version: snapshot.version, queriedAt: snapshot.queriedAt,
+          plan?.text || resolution?.text || issue?.text || queryText || (intent === 'request' ? '请先查对应现场记录，再说“跟进记录编号”。已有事项可以说“接手事项编号”“转交事项编号给姓名”或“回复事项编号：处理结果”；取消或恢复请说明原因。有权管理人员可明确回传本次状态，回复不等于已解决。' : '原话已保留在本项目。需要查资料时请说明房间；现场进展可直接发文字或照片。'),
+          plan ? { planId: plan.id } : resolution ? { issueId: resolution.issueId, revision: resolution.revision, lifecycleId: resolution.lifecycleId } : issue ? { issueId: issue.issueId, revision: issue.revision } : {
+            ...(issueQueryScope ? { issueQuery: true, issueQueryId: issueQueryScope.issueId, issueQueryScope } : {}),
+            ...(snapshot ? { query: snapshot.query, version: snapshot.version, queriedAt: snapshot.queriedAt,
             sources: snapshot.sources.map(source => ({ ref: source.ref, hash: source.hash, sourceMessageId: source.sourceMessageId,
-              roomId: source.roomId, mediaIds: source.mediaIds, audience: source.audience, basis: source.basis })) } : {});
+              roomId: source.roomId, mediaIds: source.mediaIds, audience: source.audience, basis: source.basis })) } : {}) });
         return { conversationId: String(c.id), messageId: String(message.id), recordId: null, runId: null, status: 'succeeded', intent,
           ...(plan ? { planId: plan.id } : {}), ...(issue ? { issueId: issue.issueId, revision: issue.revision } : {}),
           ...(resolution ? { issueId: resolution.issueId, lifecycleId: resolution.lifecycleId, lifecycleRevision: resolution.lifecycleRevision, evidenceId: resolution.evidenceId } : {}) };

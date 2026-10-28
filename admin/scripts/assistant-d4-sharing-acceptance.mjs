@@ -18,6 +18,9 @@ const files = mode === 'unit' ? ['src/lib/assistant/__tests__/material-sharing.t
   : mode === 'revocation' ? ['src/db/__tests__/construction-material-sharing-boundaries.test.ts']
   : mode === 'compat-repair' ? ['src/db/__tests__/assistant-materials.test.ts', 'src/db/__tests__/construction-material-sharing-boundaries.test.ts']
   : mode === 'compat' ? ['src/db/__tests__/construction-material-sharing-boundaries.test.ts', 'src/db/__tests__/construction-materials.test.ts', 'src/db/__tests__/construction-chat-queries.test.ts', 'src/db/__tests__/assistant-materials.test.ts']
+  : mode === 'site-context' ? ['src/db/__tests__/construction-site-context.test.ts']
+  : mode === 'site-context-compat' ? ['src/db/__tests__/construction-chat-queries.test.ts', 'src/db/__tests__/construction-materials.test.ts', 'src/db/__tests__/construction-issue-continuation.test.ts', 'src/db/__tests__/construction-resolution.test.ts', 'src/db/__tests__/assistant-materials.test.ts']
+  : mode === 'site-context-resolution-roles' || mode === 'site-context-resolution-recovery' ? ['src/db/__tests__/construction-resolution.test.ts']
   : [];
 if (!files.length) throw Error('Expected unit, service, compat or compat-repair');
 const binding = () => {
@@ -41,7 +44,17 @@ try {
   report.runtimeConfiguration = freezeD4RuntimeConfig(admin, runtimeConfig);
   report.before = binding(); // Bind the pinned effective config after any resource wait, before child imports/fixtures.
   save();
-  const pattern = mode === 'revocation' ? ['--test-name-pattern', '^scoped revocation selects the actual requested kind and rejects a model-selected different grant$'] : [];
+  const resolutionSelected = mode === 'site-context-resolution-roles' ? [
+    'owner, admin and super_admin inherit formal resolve and close in the selected enterprise without employee membership',
+    'concurrent replacement and execution, plus close/evidence correction, cannot leave an effective stale closed state',
+    'actual member removal and re-addition never resurrect an old approved plan or formal evidence',
+  ] : mode === 'site-context-resolution-recovery' ? [
+    'actual reviewer and manager downgrades cannot revive old approval or closure after role restoration',
+    'changed source can be re-reviewed on the same issue without reviving old closure or deadlocking its recovery',
+    'actual query_followups checkpoints formal closed evidence into the existing revocable Agent source chain',
+  ] : [];
+  const pattern = resolutionSelected.length ? ['--test-name-pattern', '^(?:' + resolutionSelected.map(name => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')$']
+    : mode === 'revocation' ? ['--test-name-pattern', '^scoped revocation selects the actual requested kind and rejects a model-selected different grant$'] : [];
   const child = spawn(process.execPath, ['--import', 'tsx', '--test', '--test-reporter=tap', '--test-concurrency=1', ...pattern, ...files],
     { cwd: admin, env: { ...process.env, TSX_TSCONFIG_PATH: runtimeConfig, XIAOK_MATERIALS_LIVE: '0', CONSTRUCTION_LIVE_MODEL: '0', D4_EVIDENCE_DIRECTORY: out }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   let log = '';
@@ -51,7 +64,9 @@ try {
   report.counts = Object.fromEntries([...log.matchAll(/^# (tests|pass|fail|skipped) (\d+)/gm)].map(m => [m[1], Number(m[2])]));
   report.skippedTests = log.split('\n').filter(l => /^ok .* # SKIP/.test(l));
   const expectedSkip = 'PPT15/23 configured model repeats the sourced need-to-materials path twice';
-  report.expectedSkippedTests = mode.startsWith('compat') ? [expectedSkip] : mode === 'revocation' ? [
+  report.selectedTestNames = resolutionSelected;
+  report.expectedSkippedTests = resolutionSelected.length ? [...fs.readFileSync(path.join(admin, files[0]), 'utf8').matchAll(/^test\('([^']+)'/gm)]
+    .map(match => match[1]).filter(name => !resolutionSelected.includes(name)) : mode.includes('compat') ? [expectedSkip] : mode === 'revocation' ? [
     'an expired displayed preview cannot grant access',
     'legacy commands with personal-recipient wording stay private until the actual preview and team confirmation',
     'a newer same-room grant from another owned consultation fences the previous preview',
@@ -63,7 +78,8 @@ try {
   ] : [];
   const unexpectedSkips = report.skippedTests.filter(l => !report.expectedSkippedTests.some(name => l.includes(' - ' + name + ' # SKIP')));
   report.after = binding(); report.drift = [...new Set([...Object.keys(report.before), ...Object.keys(report.after)])].filter(f => report.before[f] !== report.after[f]);
-  report.passed = report.exitCode === 0 && report.counts.tests > 0 && !unexpectedSkips.length && !report.drift.length;
+  report.passed = report.exitCode === 0 && report.counts.tests > 0 && !unexpectedSkips.length && !report.drift.length
+    && (!resolutionSelected.length || report.counts.pass === resolutionSelected.length);
   process.exitCode = report.passed ? 0 : 1;
   console.log(JSON.stringify({ mode, passed: report.passed, counts: report.counts, drift: report.drift, evidence: out }));
   console.log(log.split('\n').filter(l => /not ok|error:|actual:|expected:|Error:/.test(l)).join('\n'));

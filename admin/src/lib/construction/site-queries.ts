@@ -1,9 +1,9 @@
 import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
-import { fingerprint, safeText, type ActorContext } from '@/lib/assistant/contracts';
+import { fingerprint, id, safeText, type ActorContext } from '@/lib/assistant/contracts';
 import { appendMessage } from '@/lib/assistant/core/conversation';
-import type { IssueView } from './site-issues';
+import { readSiteIssue, type IssueView } from './site-issues';
 import { sharedMaterials } from './site-materials';
 import { projectPlans, readPlan, planText } from './site-plans';
 
@@ -17,7 +17,9 @@ export function siteMessageIntent(raw: string, photoCount: number): 'report' | '
 }
 
 export type SiteQuery = { roomId: string | null; roomName: string; resolution: 'resolved' | 'clarification' };
+export type SiteIssueQuery = SiteQuery & { issueId: string };
 export type SiteMaterialSnapshot = { query: SiteQuery; projectId: string; version: string; queriedAt: string; sources: Row[]; text: string };
+const scopeClarification = '请说明本项目要查的具体房间，或说明查询全屋资料；暂不合并归属不明的材料。';
 
 export async function resolveSiteQuery(tx: PostgresTransaction, eid: string, pid: string, raw: string): Promise<SiteQuery> {
   const rooms = await rows(tx, sql`select id,name from app.construction_rooms where enterprise_id=${eid} and project_id=${pid} order by id for share`);
@@ -27,13 +29,40 @@ export async function resolveSiteQuery(tx: PostgresTransaction, eid: string, pid
   return { roomId: null, roomName: '', resolution: 'clarification' };
 }
 
+/** An explicit item can supply its own room, but cannot override a conflicting
+ * named room. No implicit latest-item or cross-project selection. */
+export async function resolveSiteIssueQuery(tx: PostgresTransaction, eid: string, pid: string, raw: string): Promise<SiteIssueQuery> {
+  const query = await resolveSiteQuery(tx, eid, pid, raw);
+  const issueId = /事项\s*[#＃]?(\d+)/.exec(raw)?.[1] || '';
+  if (!issueId) return { ...query, issueId };
+  // A malformed identifier in a question is a clarification, including on
+  // historical reentry; it must not reach a bigint query and break the chat.
+  try { id(issueId); } catch { return { roomId: null, roomName: '', resolution: 'clarification', issueId: '' }; }
+  const issue = await readSiteIssue(tx, eid, pid, issueId);
+  const namedRooms = await rows(tx, sql`select id,name from app.construction_rooms where enterprise_id=${eid} and project_id=${pid} order by id for share`);
+  const named = namedRooms.filter(room => raw.includes(String(room.name)));
+  if (!issue || named.length > 1 || named.length === 1 && (String(named[0].id) !== issue.roomId || named[0].name !== issue.roomName))
+    return { roomId: null, roomName: '', resolution: 'clarification', issueId };
+  return { roomId: issue.roomId, roomName: issue.roomName, resolution: 'resolved', issueId };
+}
+
+export async function querySiteIssues(tx: PostgresTransaction, eid: string, pid: string, query: SiteIssueQuery, issues: IssueView[]) {
+  const room = query.roomId ? await one(tx, sql`select name from app.construction_rooms where enterprise_id=${eid} and project_id=${pid} and id=${query.roomId} for share`) : null;
+  if (query.resolution !== 'resolved' || query.roomId && room?.name !== query.roomName) return scopeClarification;
+  // Explicit IDs remain readable after leaving the latest fifty-item overview.
+  const exact = query.issueId ? await readSiteIssue(tx, eid, pid, query.issueId) : null;
+  return (query.issueId ? exact ? [exact] : [] : issues)
+    .filter(issue => !query.roomId || issue.roomId === query.roomId && issue.roomName === query.roomName)
+    .map(issue => issue.text).join('\n\n') || '本项目当前没有对应的持续事项。';
+}
+
 /** Caller must already hold SiteChatService's tenant, live-project and actor authorization. Never searches customer consultations. */
 export async function querySiteMaterials(tx: PostgresTransaction, eid: string, pid: string, query: SiteQuery): Promise<SiteMaterialSnapshot> {
   const sources: Row[] = [], lines: string[] = [];
   const room = query.roomId ? await one(tx, sql`select id,name from app.construction_rooms where enterprise_id=${eid} and project_id=${pid} and id=${query.roomId} for share`) : null;
   const validRoom = !query.roomId || room?.name === query.roomName;
   if (query.resolution === 'clarification' || !validRoom) {
-    lines.push('请说明本项目要查的具体房间，或说明查询全屋资料；暂不合并归属不明的材料。');
+    lines.push(scopeClarification);
   } else {
     const records = await rows(tx, sql`select r.id,r.version,r.status,r.data,r.room_id,r.room_name_snapshot,r.source_message_id,m.content
       from app.construction_site_records r join app.assistant_messages m on m.enterprise_id=r.enterprise_id and m.id=r.source_message_id and m.conversation_id=r.conversation_id
@@ -102,7 +131,15 @@ export async function siteResponse(tx: PostgresTransaction, eid: string, pid: st
     const plan = await readPlan(tx, eid, String(payload.planId));
     text = plan ? planText(plan) : '此方案已撤回、替换或依据已变化，旧版不能继续使用。';
   }
-  if (payload.issueQuery) text = issues.filter(i => !payload.issueQueryId || i.issueId === payload.issueQueryId).map(i => i.text).join('\n\n') || '本项目当前没有对应的持续事项。';
+  if (payload.issueQuery) {
+    // Legacy replies retain their original question as the scope authority.
+    const original = !payload.issueQueryScope ? await one(tx, sql`select content from app.assistant_messages
+      where enterprise_id=${eid} and conversation_id=${cid} and id=${sourceId} and author_kind='admin'`) : null;
+    const query = payload.issueQueryScope as SiteIssueQuery || await resolveSiteIssueQuery(tx, eid, pid, original ? safeText(original.content as Parameters<typeof safeText>[0]) : '');
+    const issueText = await querySiteIssues(tx, eid, pid, query, issues);
+    const materialText = snapshot ? snapshot.version === payload.version ? snapshot.text : '关联资料已变化，原查询结果不再沿用。请重新查询当前资料。' : '';
+    text = [...new Set([issueText, materialText].filter(Boolean))].join('\n\n');
+  }
   const media = (payload.mediaIds as string[] || []).length ? await rows(tx, sql`select id,width,height,byte_size from app.construction_site_media where enterprise_id=${eid} and project_id=${pid}
     and id=any(ARRAY(SELECT jsonb_array_elements_text(${JSON.stringify(payload.mediaIds)}::jsonb))::bigint[]) and deleted_at is null order by id`) : [];
   if (snapshot && snapshot.version === payload.version) for (const source of snapshot.sources.filter(s => (s.ref as Row).type === 'shared_drawing')) {
