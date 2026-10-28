@@ -28,7 +28,7 @@ export async function processSiteAction(lease: Lease, model?: Model) {
   try {
     const initial = await scoped(async (tx, c, request, permission) => {
       const context = await runContext(tx, lease), input = await siteActionContext(tx, lease.enterpriseId, request.projectId, request.versions);
-      const candidates = { records: input.records.map(r => r.id), issues: input.issues.map(i => i.id) };
+      const candidates = { records: input.records.map(r => r.id), issues: input.issues.map(i => i.id), plans: input.plans.map(p => p.id) };
       const messages: ModelMessage[] = [{ role: 'system', content: [{ type: 'text', text: siteActionPrompt }] },
         { role: 'user', content: [{ type: 'text', text: JSON.stringify({ actorId: lease.actor.principal.kind === 'admin' ? lease.actor.principal.adminId : '',
           originalText: (request.row.content as { blocks: { text?: string }[] }).blocks.map(b => b.text || '').join('\n'), attachmentCount: request.mediaIds.length,

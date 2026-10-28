@@ -248,7 +248,17 @@ test('XK07/08 stage changes invalidate pending sources, derived history and memo
   assert.equal((await x.chat.messages(x.cid)).items.find(m => m.id === answered.run.outputMessageId)!.available, false);
   const c = await withTenantTransaction(eid, tx => one(tx, sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${eid} and id=${x.cid}`));
   const memory = await withTenantTransaction(eid, tx => availableNeedMemory(tx, eid, x.cid, c!.entry_snapshot)); assert.equal(memory.facts.length, 0);
-  const result = await x.send('我们先聊采光', async messages => { assert.doesNotMatch(JSON.stringify(messages), /需要台灯插座/); return output('final_response', { kind: 'general', text: '可以先讨论自然采光。' }); });
+  const result = await x.send('我们先聊采光', async messages => {
+    // Revoked stage facts/derived replies leave active context. The customer's
+    // own retained original remains a labelled past utterance, never a current fact.
+    assert.doesNotMatch(JSON.stringify(messages.filter(m => m.role !== 'user')), /需要台灯插座/);
+    const originals = messages.flatMap(m => m.role === 'user' ? m.content.flatMap(p => {
+      if (p.type !== 'text') return []; try { return [JSON.parse(p.text)]; } catch { return []; }
+    }) : []);
+    assert.ok(originals.filter(p => String(p.text).includes('需要台灯插座')).every(p => p.sourceRole === 'history_original'));
+    assert.ok(originals.some(p => p.sourceRole === 'current_request' && p.text === '我们先聊采光'));
+    return output('final_response', { kind: 'general', text: '可以先讨论自然采光。' });
+  });
   assert.equal(result.run.status, 'succeeded', JSON.stringify(result.run));
 });
 for (const legacy of [false, true]) test('P3B cross-stage explicit S01 review ' + (legacy ? 'with a durable legacy receipt' : 'with an original hash') + ' continues one pending issue without reviving its old sources', async () => {

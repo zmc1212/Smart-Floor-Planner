@@ -28,6 +28,10 @@ import { siteWatchInterceptor } from '@/lib/construction/site-watches';
 import { readPlan, deliverPlans } from '@/lib/construction/site-plans';
 import { naturalPlanCases, runNaturalPlanScenario, runNaturalPlanAnswerScenario } from './construction-natural-plans-scenario.mjs';
 import { prepareApprovedNaturalPlans } from './construction-natural-plans-fixture';
+import { prepareOtherManagementProject, prepareClosedLifecycle } from './construction-natural-lifecycle-fixture';
+import { lifecycleCases, runNaturalLifecycleScenario } from './construction-natural-lifecycle-scenario.mjs';
+import { readSiteResolution } from '@/lib/construction/site-resolution';
+import { deliverSiteResults } from '@/lib/construction/site-results';
 import { lockAssistantAcceptance } from './assistant-acceptance-safety.mjs';
 import { D4SharingFixture } from './assistant-d4-sharing-fixture';
 import { wechatideNativeClient } from './wechatide-native-client';
@@ -41,13 +45,15 @@ declare function getApp(): Row;
 declare function getCurrentPages(): Row[];
 const admin = process.cwd(), root = path.dirname(admin); loadEnvConfig(admin, true);
 process.env.DATABASE_URL = JSON.parse(fs.readFileSync(path.join(root, 'tmp/xiaok-vector/connection.private.json'), 'utf8').replace(/^\uFEFF/, '')).DATABASE_URL;
-const name = process.argv[2]; assert.match(name, /^(?:d4-natural-actions|d5-natural-plans)-native-[a-z0-9-]+$/); assert.ok(process.argv.includes('--live'));
+const name = process.argv[2]; assert.match(name, /^(?:d4-natural-actions|d5-natural-plans|d5-natural-lifecycle)-native-[a-z0-9-]+$/); assert.ok(process.argv.includes('--live'));
 const journeys = process.argv.includes('--journeys');
 const continuation = process.argv.includes('--continue-journeys');
 const answerCheck = process.argv.includes('--answer-check');
 const planCheck = process.argv.includes('--plan-check');
 const planAnswers = process.argv.includes('--plan-answers');
 const formalAnswerCheck = process.argv.includes('--formal-answer-check');
+const lifecycleCheck = process.argv.includes('--lifecycle-check');
+const lifecycleAnswers = process.argv.includes('--lifecycle-answer-check');
 const resumeName = process.argv.includes('--resume') ? process.argv[process.argv.indexOf('--resume') + 1] : '';
 if (resumeName) assert.match(resumeName, /^(?:d4-natural-actions|d5-natural-plans)-native-[a-z0-9-]+$/);
 const previous = resumeName ? JSON.parse(fs.readFileSync(path.join(root, 'tmp', resumeName, 'report.json'), 'utf8')) : null;
@@ -57,6 +63,8 @@ assert.ok(!answerCheck || !previous && !journeys && !continuation, 'Final-answer
 assert.ok(!planCheck || !previous && !journeys && !continuation && !answerCheck, 'Natural formal plans use exactly two fresh fixed trials');
 assert.ok(!planAnswers || previous?.delivery === 'D5' && !planCheck && !journeys && !continuation && !answerCheck, 'Formal answer repair reuses the saved completed publications only');
 assert.ok(!formalAnswerCheck || !previous && !planCheck && !journeys && !continuation && !answerCheck && !planAnswers, 'Fresh formal answer fixtures never revive revoked originals');
+assert.ok(!lifecycleCheck || !previous && !planCheck && !journeys && !continuation && !answerCheck && !planAnswers && !formalAnswerCheck, 'Lifecycle uses two fixed fresh scoped native journeys');
+assert.ok(!lifecycleAnswers || !previous && !planCheck && !journeys && !continuation && !answerCheck && !planAnswers && !formalAnswerCheck && !lifecycleCheck, 'Lifecycle answer trials use fresh actual closed sources without regrading staff steps');
 if (previous) { assert.ok(previous.finished); assert.deepEqual(previous.drift, []); assert.equal(previous.calls.length, planAnswers ? 8 : continuation ? 24 : 10); assert.ok(previous.calls.every((c: Row) => c.status === 'succeeded'));
   if (planAnswers) assert.ok(previous.trials.every((t: Row) => ['natural formal V1', 'natural V2', 'customer V2'].every(prefix => t.native.checks.some((c: Row) => c.name.startsWith(prefix) && c.passed))));
   if (continuation) assert.ok(previous.trials.every((t: Row) => t.native.checks.some((c: Row) => c.name === 'manager explicitly returns only its own confirmed excerpt to the source consultation' && c.passed))); }
@@ -92,16 +100,22 @@ if (planAnswers) { report.delivery = 'D5'; report.cases = naturalPlanCases; repo
 if (formalAnswerCheck) { report.delivery = 'D5'; report.cases = naturalPlanCases; report.authorization.maxDispatches = 8;
   report.scope = 'Second and final fixed C01 formal-state repair batch. Fresh labelled domain-written V1/V2/decision context because the prior passing case truly revoked its source; no revoked source resurrection, staff inference or native-decision regrading. Reuses original successful natural-publication/C05 evidence; tests actual question/protected original/reentry/source/member revocation.';
   report.bindingPolicy = 'Fixed before dispatch: full Agent/construction/database/provider dependencies; C01 chat/lib/assets and construction/utils/components/app. Independent designer-page WXML/Less excluded up front; no retrospective reduction.'; }
+if (lifecycleCheck) { report.delivery = 'D5'; report.cases = lifecycleCases; report.scope = 'Two fixed natural transfer/new-assignee reply/completion-record/implementation/separate resolution/closure journeys from a real two-project brief, with actual Qwen, original author confirmations, exact evidence, explicit customer excerpt/original policy, lost receipts/reentry/source/member revocation. Existing exact-plan publication/decision native evidence reused; fresh plan context written through original domain services after assignment changes, not regraded as native publication.';
+  report.authorization.maxDispatches = 20; report.bindingPolicy = 'Fixed before dispatch: full Agent/construction/database/provider dependencies; C01 chat/lib/assets and construction/utils/components/app plus brief entry, all test drivers/configuration. Independent designer-page WXML/Less excluded up front; no retrospective reduction.'; }
+if (lifecycleAnswers) { report.delivery = 'D5'; report.cases = lifecycleCases; report.authorization.maxDispatches = 8;
+  report.scope = 'Two fixed C01-only trials after hash-bound formal business projection recovery. Fresh labelled service-written closed V2/evidence context because the prior passing source was genuinely revoked. Reuse both successful natural staff/brief/write/lost-receipt chains without more staff inference or regrading; actual customer question/reentry, conditional originals, source/member revocation.';
+  report.bindingPolicy = 'Fixed before dispatch: full Agent/construction/database/provider dependencies; C01 chat/lib/assets and construction/utils/components/app plus all test drivers/configuration. No retrospective binding reduction.'; }
 const save = () => { fs.writeFileSync(path.join(output, 'report.json'), JSON.stringify(report, null, 2)); fs.writeFileSync(ledger, JSON.stringify(report, null, 2)); };
 const hash = (v: string | Buffer) => createHash('sha256').update(v).digest('hex');
 const binding = () => {
   const files: string[] = [];
-  const assistantDirs = planCheck || planAnswers || formalAnswerCheck ? ['miniprogram/packages/assistant/chat', 'miniprogram/packages/assistant/lib', 'miniprogram/packages/assistant/assets'] : ['miniprogram/packages/assistant'];
+  const assistantDirs = planCheck || planAnswers || formalAnswerCheck || lifecycleCheck || lifecycleAnswers ? ['miniprogram/packages/assistant/chat', 'miniprogram/packages/assistant/lib', 'miniprogram/packages/assistant/assets'] : ['miniprogram/packages/assistant'];
   for (const dir of ['admin/src/lib/assistant', 'admin/src/lib/construction', 'admin/src/db', 'admin/src/lib/ai/providers', ...assistantDirs, 'miniprogram/packages/construction', 'miniprogram/utils', 'miniprogram/components']) {
     const walk = (folder: string) => { for (const e of fs.readdirSync(path.join(root, folder), { withFileTypes: true })) { const p = folder + '/' + e.name;
       if (e.isDirectory()) walk(p); else if (/\.(ts|js|json|wxml|less|png)$/.test(p)) files.push(p); } }; walk(dir);
   }
   files.push('admin/scripts/construction-site-actions-native.ts', 'admin/scripts/construction-site-actions-native.mjs', 'admin/scripts/construction-chat-native.mjs', 'admin/scripts/construction-natural-plans-scenario.mjs', 'admin/scripts/construction-natural-plans-fixture.ts',
+    'admin/scripts/construction-natural-lifecycle-scenario.mjs', 'admin/scripts/construction-natural-lifecycle-fixture.ts',
     'admin/scripts/assistant-d4-sharing-fixture.ts', 'admin/scripts/assistant-acceptance-safety.mjs', 'admin/scripts/assistant-d4-runtime-config.mjs',
     'admin/scripts/wechatide-native-client.ts', 'admin/scripts/wechatide-window-state.ps1', 'tmp/wechat-devtools-version-test/window.ps1',
     'admin/scripts/bailian-review-test-runtime.ts', 'admin/scripts/assistant-review-budget.ts', 'admin/src/lib/ai/postgres-workflow-chat.ts',
@@ -231,7 +245,7 @@ async function main() {
           await f.create({ runtime: 'langgraph-v1', providerKey: 'dashscope', model: 'qwen3.8-flash', tools: true, imageInput: false, structuredFinal: nativeFinalProtocol, probeVersion: 'd4-site-actions-live' });
           assert.equal((await f.send('共享测试工地甲·书房需求：靠窗放书桌，电脑和台灯需要插座。')).runId, null);
           assert.equal((await f.send('测试工地甲书房有新照片告诉我')).runId, null);
-          if (journeys || answerCheck || planCheck || formalAnswerCheck) {
+          if (journeys || answerCheck || planCheck || formalAnswerCheck || lifecycleCheck || lifecycleAnswers) {
             const drawingBytes = await sharp({ create: { width: 96, height: 72, channels: 3, background: '#e4ded1' } }).png().toBuffer();
             trial.drawingMediaId = String((await new AssistantMediaService(f.actor).upload(f.conversationId, randomUUID(), drawingBytes, 'image', '')).id);
             assert.equal((await f.send('共享测试工地甲·书房点位图：V2书桌底盒参考图，仍需结合现场实测，未批准施工。')).runId, null);
@@ -240,7 +254,7 @@ async function main() {
             await f.owner.execute('saveStages', { expectedVersion: settings.version, stages: (settings.stages as Row[]).map(s => s.key === 'utilities'
               ? { ...s, watchPoints: '去现场请带书桌尺寸和电脑、显示器、台灯的电器清单；先与项目团队核对书房底盒位置。', visitReason: '水电点位仍需现场复核，具体进场时间尚未约定。' } : s) }, randomUUID());
           }
-          if (answerCheck || planCheck || formalAnswerCheck) {
+          if (answerCheck || planCheck || formalAnswerCheck || lifecycleCheck || lifecycleAnswers) {
             const detail = await f.owner.execute('detail', { projectId: f.projectId });
             await f.owner.execute('progress', { projectId: f.projectId, expectedVersion: (detail.project as Row).version, stageKey: 'utilities',
               note: '书房底盒位置仍需现场复核，具体进场时间尚未安排。', sendReminder: false }, randomUUID());
@@ -249,6 +263,9 @@ async function main() {
             trial.fixturePreparation = { ...prepared, source: 'existing domain services', recordModel: 'labelled zero-provider fixture' }; save();
             if (formalAnswerCheck) { const versions = await prepareApprovedNaturalPlans(f, prepared.issueId, naturalPlanCases[index]);
               trial.savedPlans = versions.plans; trial.fixturePlanPreparation = versions; save(); }
+            if (lifecycleCheck) { trial.otherManagementProject = await prepareOtherManagementProject(f); save(); }
+            if (lifecycleAnswers) { const closed = await prepareClosedLifecycle(f, prepared.issueId, naturalPlanCases[index], lifecycleCases[index].originals);
+              trial.savedPlans = closed.plans; trial.completionRecordId = closed.recordId; trial.closedContextPreparation = closed; await deliverSiteResults(); save(); }
           }
         }
         const version = async (uid: string) => Number((await withPlatformTransaction(tx => one(tx, sql`select context_version from app.users where id=${uid}`)))!.context_version);
@@ -266,7 +283,7 @@ async function main() {
         trial.exactProject = await probe.call('automation_runtime_info', { project: path.join(root, 'miniprogram'), action: 'systemInfo' });
         fs.writeFileSync(path.join(trialOutput, 'window-launch.json'), JSON.stringify({ projectPath: path.join(root, 'miniprogram'), autoPort: 9420 }));
         trial.before = binding(); save();
-        trial.native = await runSharedChat({ root, output: trialOutput, projectId: f.projectId, identities, apiOrigin, refreshWithCli: true, recordPreview: true, projectManagement: journeys,
+        trial.native = await runSharedChat({ root, output: trialOutput, projectId: f.projectId, identities, apiOrigin, refreshWithCli: true, recordPreview: true, projectManagement: journeys || lifecycleCheck, managementBrief: lifecycleCheck,
           customer: { conversationId: f.conversationId }, exercise: async ({ mp, step, identity, open, send, current, waitFor, capture }: Row) => {
             const check = async (read: () => Promise<unknown>, label: string) => waitFor(async () => { if (trial!.processorError) throw Error(trial!.processorError); return read(); }, label);
             const take = async (name: string) => { const value = await capture(name); report.captures.push(value); save(); return value; };
@@ -308,6 +325,19 @@ async function main() {
               trial!.publishedRecordVersion = Number(record!.published_version); save(); return { recordId: rid, version: record!.published_version, customerReentry: true };
             };
             try {
+              if (lifecycleCheck || lifecycleAnswers) {
+                await runNaturalLifecycleScenario({ mp, step, identity, open, send, current, check, latest, take, takeRoute, customerOpen, customerSay, trial, save,
+                  input: lifecycleCases[index], answerOnly: lifecycleAnswers, projectId: f.projectId, otherProjectId: f.otherProjectId, workerId: f.memberIds[1],
+                  picture: async () => (await sharp({ create: { width: 96, height: 72, channels: 3, background: '#c9dfd0' } }).png().toBuffer()).toString('base64'),
+                  readIssue: () => withTenantTransaction(f.eid, tx => readSiteIssue(tx, f.eid, f.projectId, trial!.issueId)),
+                  readResolution: () => withTenantTransaction(f.eid, tx => readSiteResolution(tx, f.eid, f.projectId, trial!.issueId)),
+                  preparePlans: () => prepareApprovedNaturalPlans(f, trial!.issueId, naturalPlanCases[index], f.ownerIds[0]),
+                  deliver: deliverSiteResults,
+                  withdrawSource: () => new ConversationService({ ...f.actor, contextVersion: 1 }).send(f.conversationId, randomUUID(),
+                    { version: 1, blocks: [{ type: 'text', text: '撤回共享资料' + trial!.drawingGrantId }] }, siteWatchInterceptor),
+                  removeWorker: () => f.member(f.memberIds[1], 'worker', false) });
+                return;
+              }
               if (planCheck || planAnswers || formalAnswerCheck) {
                 const scenario = planAnswers || formalAnswerCheck ? runNaturalPlanAnswerScenario : runNaturalPlanScenario;
                 await scenario({ mp, step, identity, open, send, current, check, latest, customerOpen, customerSay, take, takeRoute, trial, save,

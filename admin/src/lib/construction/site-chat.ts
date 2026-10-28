@@ -154,13 +154,13 @@ export class SiteChatService {
       const intent = siteIssueCommand(raw) || planCommand(raw) || resolutionCommand(raw) ? 'request' : siteMessageIntent(raw, mediaIds.length);
       const message = await appendMessage(tx, this.actor, String(c.id), { author: 'admin', clientMessageId: requestKey, purpose: 'site.source',
         content: { version: 1, blocks: raw ? [{ type: 'text', text: raw }] : [{ type: 'notice', code: 'site_photos', fallbackText: `现场照片 · ${mediaIds.length}张` }] } });
-      if (siteActionConfirmation(raw) === 'plan' && mediaIds.length) fail('invalid_plan', 422);
+      if (['plan', 'transfer', 'implement', 'resolve', 'close'].includes(siteActionConfirmation(raw) || '') && mediaIds.length) fail('invalid_plan', 422);
       const confirmation = await confirmSiteAction(tx, this.actor, c, projectId, message, raw, permission.manage);
       if (confirmation) {
         await appendSiteResponse(tx, this.actor, String(c.id), projectId, String(message.id), mediaIds, 'request', confirmation.text,
-          confirmation.planId ? { planId: confirmation.planId } : confirmation.issue ? { issueId: confirmation.issue.issueId, revision: confirmation.issue.revision } : {});
+          confirmation.resolution ? confirmation.resolution : confirmation.planId ? { planId: confirmation.planId } : confirmation.issue ? { issueId: confirmation.issue.issueId, revision: confirmation.issue.revision } : {});
         return { conversationId: String(c.id), messageId: String(message.id), recordId: null, runId: null, status: 'succeeded', intent: 'request',
-          ...(confirmation.planId ? { planId: confirmation.planId } : {}), ...(confirmation.issue ? { issueId: confirmation.issue.issueId, revision: confirmation.issue.revision } : {}) };
+          ...(confirmation.resolution ? confirmation.resolution : {}), ...(confirmation.planId ? { planId: confirmation.planId } : {}), ...(confirmation.issue ? { issueId: confirmation.issue.issueId, revision: confirmation.issue.revision } : {}) };
       }
       await invalidateSiteAction(tx, this.actor, String(c.id), raw);
       // This only selects a model interpretation path. It never chooses or

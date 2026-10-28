@@ -1790,6 +1790,33 @@ Chrome原超级管理员在合成企业2546、原720px Drawer核对已发布资�
 
 ## 当前P5/PPT38：现场落实与正式解决关闭
 
+### 自然正式处理与服务快照恢复（2026-10-29）
+
+D5指定PPT旅程现限定Implemented；全产品／全PPT与D2仍Limited。已证实缺口是原S04正式领域落实关闭及OPS-01已存在，普通员工请求仍只有编号命令。site.action v4现选择一个明确转交／落实／解决／关闭，保存原未执行预览。转交须原话明确且唯一有效同事；落实须精确当前已同意方案、同房间核对发布的完成记录／有效原图，不能含pending／coordination。prepareSiteResolution与executeSiteResolution共享来源／角色／版本／advisory锁，预览不写业务事件。只有原作者另发“确认转交／确认落实／确认正式解决／确认正式关闭”才实时重验并委托原写服务；普通收到、他人确认、确认另附新图、来源／负责人／处理修订变化或降权均不可执行。沿原键丢回执恢复，依据／lifecycle审计保留。
+
+解决及关闭是管理者两个独立动作，各须完整处理原话、一段明确给业主说的带引号节选及引号外明确原图策略；缺项／冲突保持未提交。只回文字不开放落实原件，获准原件仍经实时来源／参与者／媒体检查。管理者包括有效项目经理及所选企业enterprise_admin/admin/super_admin，无须就业／项目成员；当前负责人或管理者可记落实。客户同意不能代替完成依据，关闭不代表验收／支付／结算。复用chat/messages/upload/operations/versions与brief API、RLS／outbox及批准S04/C01/C05/U01/简报，不增表／路由／迁移／Agent／KnowledgeRetriever或Evidence管线，不改入库。
+
+固定自然员工旅程从真实双工地简报开始：甲已关闭事项与乙未分配待处理保持差异。精确事项下钻、自然转交、新负责人回复、真实完成记录／照片上传及内部核对发布、落实、分步解决关闭、转交／关闭丢回执及重进在原native01两组均通过。84ba966a既有自然V1/V2发布及C05精确决定复用；转交后新方案由原领域服务写入同意，不算新增原生发布验收。离线关注／取消／原咨询投递复用较新归属修复的有效证据，11个核心／客户端／测试／驱动hash相同；更早关注批保留原绑定，变化文件已由后续归属修复覆盖。当前节点连续性2/2验证过时补问及派生记忆失效；有效项目／房间照片关注可跨节点保留，过时节点问题不可继续。
+
+原C01 run2439的closed V2 Evidence正确，否定验收付款段及实际唯一一次原样修正仍unsupported_model_commitment。继承D5否定守卫修复次数2，不开第三轮词句／regex。保存trace判别为首稿schema可选business，恢复却仅可编辑synthesis；零调用回放保留原失败，并证明已有服务的类型选择可表达。新机制formal-business-projection-v1允许同一hash绑定恢复选择已读query_followups formal_plan，原business解码器实时重验展示；native02仍1/2，失败组仍选自由编辑被拒。机制第二且最后一轮formal-business-projection-v2 source_only，仅在引用／数值有效且无advice／范围缺陷的正式状态失败中，接收kind/business_repair、准确baseHash及已列当前resultKey；不接收text/edits/append，不查询／保存，不增重试／工具／quota，不绕过引用或原final解码器。伪控制／过期／外来／撤回键、多带正文或二次恢复仍拒绝；v1旧控制保留原编辑权，普通／建议路径不改。归属Agent消费／final恢复；Knowledge无须改动。
+
+| 触发 | 原批准组件可见反馈 | 恢复／重进与权限 |
+| --- | --- | --- |
+| 员工明确同事项有效同事 | S04持久转交预览，仍未执行 | 原作者独立确认；实时负责人／管理权限及精确目标／来源修订 |
+| 负责人在同意方案及核对完成照片后记落实 | S04完整原话／精确方案／记录／修订预览 | 独立确认；草稿／待处理记录或推断完成均不可 |
+| 管理者先解决再另行关闭 | 原预览／回执、精确客户节选及原图策略 | 各自作者确认；有效落实后解决、resolved后关闭；丢响应沿原键 |
+| 管理者打开／刷新双工地简报 | 原项目行显示甲已关闭、乙待处理并精确下钻 | 实时项目／管理范围，不编到场／逾期或重复协调 |
+| 客户问同意版本、实际处理及验收付款 | C01展示权威V2／决定／落实／关闭快照及财务未知边界 | 最终两组均实际经过原唯一一次source_only恢复，不采用或改判首稿 |
+| 来源撤回／移出成员 | 原答复／原件失效态、S04清空权限错误 | 派生答复／卡／媒体／动作失效，审计保留，重授权不复活来源 |
+
+检查分列而非合并成首稿通过：输入schema10/10、答复83/83、核心服务5/5、真实投影／撤回2/2、精确方案兼容8/8、当前节点连续性2/2及Mini64/64通过。原兼容29/35的六项为同密集夹具assistant_quota_exceeded，另以新夹具角色3/3与恢复／provenance3/3通过，未放宽生产速率或把原批改成35/35。原import／setup、投影DTO断言、诊断片段及Windows预加载错误保留。旧节点输入整段禁词误拒客户本人已标记history_original；同一用例现独立核对活动记忆清除、派生答复失效、旧词只能在本人历史原话，实际问题为current_request。不改生产历史／撤回合同。涉及lint通过；tsc与原54诊断逐字一致／涉及0，不当干净构建。无package／config／schema／route变化，不重跑生产bundle。
+
+原native01为1/2、18次／56835观测tokens、19图，两组员工／简报／实写均过，仅第二C01失败；v1 native02仍1/2、6次／41935tokens、3图。最终固定C01 native03为2/2、6次／41988tokens、6图，run2528/2531；两条首稿均被拒，均在原唯一恢复中实际选business_repair。原成功组已真实撤回，末批另建标记合成已关闭V2上下文、经原领域写入，不重采样员工、不复活来源。首末249个施工／Mini产品hash相同，仅声明Agent恢复及测试／驱动／setup变更。28张核route／stack的390×844逻辑／348×752 PNG均审看，含只回文字／允许原图差异、撤回失效和成员清空。S04长原话滚动，完整DOM断言不代表每行光学可见；Mini结构／样式／素材／导航及设计源／还原状态不升级。批准源仍S04 PPT22/38与23语境、C01 P4B README／C05／U01、简报proactive-service/boss.png（853×1844→390×844）。
+
+官方CLI刷新＋Stable2.02.2608080/SDK0.13.0/base3.17.2，原唯一副屏窗口／单controller／验收锁。原窗口可见而非最小化；准确位置、身份／传输／配置／3118／controller／锁已恢复。资源审计保留12合成企业／30条attempt／140758观测tokens；活动设置／员工／成员／任务及本任务端口／controller连接均0。累计保守¥30.505972/100含原unknown账单／预留，不当实际结账。全宿主光学、真机／真实微信／BLE、纯色原图专业理解未验／开发非阻塞。证据tmp/d5-lifecycle-20261029/{final-checks.json,source-impact.json,reuse-watch.json,native-visual-review.json,resources.json,recovery-state.json}及原tmp/d5-natural-plans-20261029/final-checks.json。D2次数2不变；后继原语音入口D6，不隐含付费ASR／供应商选择或生产部署。
+
+沿此前复核的维护中[LangChain结构化输出](https://docs.langchain.com/oss/javascript/langchain/structured-output)、[LangGraph持久化](https://docs.langchain.com/oss/javascript/langgraph/persistence)、[工具协议测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)及[已关闭ToolMessage状态问题1440](https://github.com/langchain-ai/langgraphjs/issues/1440)。保留原生schema与持久恢复，只补已有获权服务结果选择，不重写框架或声称供应商缺陷。admin复跑node scripts/assistant-d4-sharing-acceptance.mjs d5-lifecycle-unit|d5-lifecycle|d5-lifecycle-compat|d5-business-repair-service|d5-answer-unit <label>；原生node scripts/construction-site-actions-native.mjs <label> --live --lifecycle-check或--lifecycle-answer-check。固定付费范围和累计授权仍有效。
+
 本节约束本轮限定实现，优先于下方旧批次“现场落实/正式关闭未交付”的限制。当前限定闭环Implemented；P5整体仍Limited，最终执行证据见本节。PPT38要求“先整理，再由人核对”“由负责人决定，再告知客户”，沿用PPT22/38的S04、C01/C05与U01共享组件，不新增S05页面或视觉方向。
 
 原事项来源修订与独立处理修订分别管理。原来源失效并重新核对后，新事项修订可继续原有负责人处理路径；旧关闭仅留审计，不能永久覆盖新的待办状态。新outbox类型`construction.site.issue.evidence.v1`保存精确方案ID/hash及客户决定、事项/负责人、现场记录ID/版本/hash、作者/核对人、原件ID/hash和本次落实结论；`construction.site.issue.lifecycle.v1`保存implemented/resolved/closed/reopened及逐次操作者/结论。沿既有RLS与企业清理，不建表或迁移。正式方案仍按原来源修订验证，不因正式解决/关闭自动失效，也不因同意自动落实。
@@ -1797,9 +1824,9 @@ Chrome原超级管理员在合成企业2546、原720px Drawer核对已发布资�
 | 原S04输入/状态 | 可见反馈与持久恢复 | 权限、来源及下一步 |
 | --- | --- | --- |
 | 附图上报完成进展，原核对弹层发布内部记录 | 保留真实原话、原件和记录版本；模型整理不等于事实已正式确认 | 原作者/经理按既有记录权限核对；不自动开放私聊或内部资料 |
-| “落实事项123方案456记录789：落实结论” | 同一事项显示implemented及处理修订、方案/现场记录/原件依据，仍待管理核对 | 当前负责人或管理者；方案须当前有效且approved。现场记录须同房间、已发布、有完成内容、无pending/coordination缺项、有未删除原件，不能使用原待处理记录或草稿 |
-| 逐行“解决事项123 / 结论：… / 回传：… / 回传原件：是或否” | 独立resolved，显示已正式解决、尚未关闭；明确节选进入原咨询outbox | 仅项目经理或所选企业owner/admin/super_admin；管理者无须成为员工/成员。必须已有当前有效落实证据，不能代客户批准 |
-| 同格式“关闭事项123” | 独立closed，关闭请求丢包保留原body/key；先核对真实回执，不重写版本 | 仅管理者，必须先resolved；结论/负责人与原件仍需有效。关闭不等于验收通过、付款、结算或整项目完工 |
+| 自然说明本次按同意版本完成，选择当前方案／核对完成记录；旧“落实事项123方案456记录789：结论”兼容 | 先持久预览、原作者另发“确认落实”；同一事项显示implemented及处理修订、方案/现场记录/原件依据，仍待管理核对 | 当前负责人或管理者；方案须当前有效且approved。现场记录须同房间、已发布、有完成内容、无pending/coordination缺项、有未删除原件，不能使用原待处理记录或草稿 |
+| 管理者自然请求解决，明确客户带引号节选及原图策略；旧逐行命令兼容 | 预览后原作者另发“确认正式解决”；独立resolved，显示已正式解决、尚未关闭；明确节选进入原咨询outbox | 仅项目经理或所选企业owner/admin/super_admin；管理者无须成为员工/成员。必须已有当前有效落实证据，不能代客户批准 |
+| 管理者另行自然请求关闭并明确节选／原件策略；旧“关闭事项123”兼容 | 预览后原作者另发“确认正式关闭”；独立closed，关闭请求丢包保留原body/key；先核对真实回执，不重写版本 | 仅管理者，必须先resolved；结论/负责人与原件仍需有效。关闭不等于验收通过、付款、结算或整项目完工 |
 | “重新处理事项123：原因” | 同issueId新处理修订，旧结果、原件回传与派生回答不再沿用；重新提交落实、解决、关闭 | 仅管理者。原来源已变化时先沿原“重新核对事项”更新；普通回复/转交/取消/重新核对均不能绕过有效implemented/resolved/closed，先由管理者明确重新处理 |
 | 换版/拒绝/撤回、记录更正/撤回、原件删除、成员/客户撤权 | 旧正式结论变为invalidated，旧原件与来源化回答不可读；原审计保留 | 不回退旧批准。正式方案及证据检查成员移出/observer及所需角色降级审计，恢复角色也需新版本/批准或新证据。member审计增加服务读取的previousRole/previousActive，不能由请求伪造；设计者降为worker、项目经理降为非manager后恢复均不复活旧授权；普通照片/回复不能修复正式状态 |
 
@@ -1848,7 +1875,7 @@ S04继续使用原Mini/Admin chat/messages/upload/operations接口；GET version
 
 ### 自然出图入口与精确版本答复（2026-10-29）
 
-已证实缺口是普通员工方案发布入口：正式领域服务及C05决定已存在，S04仅接受带编号的逐行发布命令，也没有普通方案编辑器。现沿site.action v3从当前原话选择唯一事项及逐字名称／费用／工期短句；完整原话含待现场条件原样保存为不可变差异。影响必须是完整原句，截掉“预计／左右”不能变成确定金额；明确增减或明确不变才可写入，不能估算／默认补零。缺原图／名称／影响或原话超长，沿既有未提交回复要求补齐完整重交；当前不合并不完整多轮，也不自动算价／排程。“费用不增加／工期不延长”只有上限，不等于精确零变化；最后确定性边界检查拒绝这类输入，并确认已通过的四条自然原话解析逐项不变。
+已证实缺口是普通员工方案发布入口：正式领域服务及C05决定已存在，S04仅接受带编号的逐行发布命令，也没有普通方案编辑器。现沿site.action v4（原自然出图验收为v3）从当前原话选择唯一事项及逐字名称／费用／工期短句；完整原话含待现场条件原样保存为不可变差异。影响必须是完整原句，截掉“预计／左右”不能变成确定金额；明确增减或明确不变才可写入，不能估算／默认补零。缺原图／名称／影响或原话超长，沿既有未提交回复要求补齐完整重交；当前不合并不完整多轮，也不自动算价／排程。“费用不增加／工期不延长”只有上限，不等于精确零变化；最后确定性边界检查拒绝这类输入，并确认已通过的四条自然原话解析逐项不变。
 
 preparePlanPublication让预览及executePlanCommand共享原发布锁／权限／来源检查。持久预览绑定原消息／hash、本人本次原图、项目／事项／资料／方案修订、targetHash、作者及30分钟有效期；普通收到／其他人确认不发布。仅原作者另发“确认发布方案”重新取得实时write scope；确认时新附图、并发换版、来源撤回或降权不能替换已审原图。所选企业enterprise_admin/admin/super_admin继承管理权限，无须就业或项目成员；当前负责设计师可出图，工人／observer不可。旧显式命令复用同一写服务。不增API／路由／表／迁移／权限解析器／Agent／知识管线；Evidence正确，Knowledge无需改动。
 

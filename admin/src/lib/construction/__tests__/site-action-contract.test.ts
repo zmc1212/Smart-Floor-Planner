@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { parseSiteAction, siteActionConfirmation, siteActionInterpretationRequested } from '../site-action-contract';
-const candidates = { records: ['11'], issues: ['22'] };
+const candidates = { records: ['11'], issues: ['22'], plans: ['33'] };
 const output = (value: unknown) => ({ text: JSON.stringify(value), toolCalls: [], finishReason: 'stop', providerRequestId: null, usage: null });
 test('native schema validation keeps actions and target namespaces bounded with no parameter coercion', async () => {
   assert.deepEqual(await parseSiteAction(output({ action: 'open', target: '11' }), candidates), { action: 'open', target: '11' });
@@ -28,5 +28,15 @@ test('a deliberate action confirmation is separate from acknowledgements, questi
   assert.equal(siteActionConfirmation('确认回复'), 'reply'); assert.equal(siteActionConfirmation('取消这次操作'), 'cancel');
   assert.equal(siteActionConfirmation('确认核对图纸'), 'check'); assert.equal(siteActionConfirmation('确认回传'), 'return');
   assert.equal(siteActionConfirmation('确认发布方案'), 'plan'); assert.equal(siteActionConfirmation('确认发布方案，但费用先别写'), null);
+  assert.equal(siteActionConfirmation('确认转交'), 'transfer'); assert.equal(siteActionConfirmation('确认落实'), 'implement');
+  assert.equal(siteActionConfirmation('确认正式解决'), 'resolve'); assert.equal(siteActionConfirmation('确认正式关闭'), 'close');
   for (const text of ['可以', '收到', '能确认跟进吗？', '不要确认跟进', '“确认跟进”', '确认回复，但不要发这段', '如果确认跟进', '确认回传，但只给设计师', '核对图纸了吗']) assert.equal(siteActionConfirmation(text), null);
+});
+test('natural transfer and lifecycle selections remain typed, candidate-bound and separate from other actions', async () => {
+  const resolution = { planId: '33', recordId: '11', excerpt: '' };
+  for (const value of [{ action: 'transfer', target: '22', assigneeName: '测试师傅' }, { action: 'implement', target: '22', resolution },
+    { action: 'resolve', target: '22', resolution: { planId: '', recordId: '', excerpt: '原文' } }]) assert.deepEqual(await parseSiteAction(output(value), candidates), value);
+  for (const value of [{ action: 'transfer', target: '22' }, { action: 'reply', target: '22', assigneeName: '测试师傅' },
+    { action: 'implement', target: '22', resolution: { ...resolution, planId: '999' } }, { action: 'implement', target: '22', resolution: { ...resolution, recordId: '999' } },
+    { action: 'close', target: '22' }, { action: 'reply', target: '22', resolution }]) await assert.rejects(parseSiteAction(output(value), candidates), /invalid_model_answer/);
 });

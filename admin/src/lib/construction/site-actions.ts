@@ -5,12 +5,14 @@ import { fail, fingerprint, safeText, type ActorContext, type MessageContent } f
 import { cancelRuns, newRun } from '@/lib/assistant/core/conversation';
 import { runUsageReconciled, unresolvedProviderOutcome } from '@/lib/assistant/core/usage-review';
 import { agentConfig } from '@/lib/assistant/agent/config';
-import { currentRecord, executeSiteIssue, projectSiteIssues, readSiteIssue, parseSiteVersions, type SiteVersions } from './site-issues';
+import { currentRecord, executeSiteIssue, projectSiteIssues, readSiteIssue, parseSiteVersions, siteTransferAssignee, type SiteVersions } from './site-issues';
 import { sharedMaterials } from './site-materials';
 import { siteActionAcknowledgement, siteActionConfirmation, type SiteAction } from './site-action-contract';
-import { executePlanCommand, preparePlanPublication, readPlan, planText } from './site-plans';
+import { executePlanCommand, preparePlanPublication, readPlan, planText, projectPlans } from './site-plans';
 import { naturalPlanInput } from './site-plan-input';
 import { SiteChatService } from './site-chat';
+import { executeSiteResolution, prepareSiteResolution, readSiteResolution } from './site-resolution';
+import { naturalResolutionInput, type NaturalResolutionAction } from './site-resolution-input';
 
 export const siteActionWaiting = '原话已保留在本项目。需要查资料时请说明房间；现场进展可直接发文字或照片。';
 const unavailable = '原材料或权限已变化，请重新读取并核对。';
@@ -74,9 +76,9 @@ export async function siteActionContext(tx: PostgresTransaction, eid: string, pi
   for (const recordId of Object.keys(versions.records).sort((a, b) => BigInt(a) > BigInt(b) ? -1 : 1).slice(0, 12)) {
     const record = await currentRecord(tx, eid, pid, recordId);
     if (record && Number(record.row.version) === versions.records[recordId]) records.push({ id: recordId, room: record.row.room_name_snapshot,
-      original: safeText(record.row.content as MessageContent).slice(0, 1000), data: record.row.data });
+      status: record.row.status, original: safeText(record.row.content as MessageContent).slice(0, 1000), data: record.row.data });
   }
-  const issues = (await projectSiteIssues(tx, eid, pid)).filter(i => versions.issues[i.issueId] === i.revision && i.sourceAvailable && !['cancelled', 'implemented', 'resolved', 'closed'].includes(i.status)).slice(0, 12);
+  const issues = (await projectSiteIssues(tx, eid, pid)).filter(i => versions.issues[i.issueId] === i.revision && i.sourceAvailable && !['cancelled', 'closed'].includes(i.status)).slice(0, 12);
   const candidates = [];
   for (const i of issues) {
     const materials = i.roomId ? await sharedMaterials(tx, eid, pid, i.roomId) : null;
@@ -85,13 +87,28 @@ export async function siteActionContext(tx: PostgresTransaction, eid: string, pi
       drawings: sources.filter(s => s.kind === 'drawing').map(s => ({ id: s.id, description: s.text.slice(0, 500) })),
       originalConsultation: sources.find(s => s.kind === 'need')?.conversationId || '' });
   }
-  return { rooms, records, issues: candidates };
+  const plans = (await projectPlans(tx, eid, pid)).flatMap(p => p.available && 'issueId' in p && versions.plans?.[p.id] === p.revision
+    ? [{ id: p.id, issueId: p.issueId, room: p.roomName, number: p.number, title: p.title, status: p.status }] : []).slice(0, 12);
+  return { rooms, records, issues: candidates, plans };
 }
 async function target(tx: PostgresTransaction, proposal: Pick<SiteActionProposal, 'projectId' | 'projectVersion' | 'actor' | 'selection' | 'versions'>
   & Partial<Pick<SiteActionProposal, 'originalText' | 'sourceMessageId' | 'mediaIds'>>) {
   const { projectId: pid, actor, selection, versions } = proposal, eid = actor.enterpriseId;
   const project = await one(tx, sql`select version from app.construction_projects where enterprise_id=${eid} and id=${pid} for share`);
   if (!project || Number(project.version) !== proposal.projectVersion) fail('context_changed');
+  if (['implement', 'resolve', 'close'].includes(selection.action)) {
+    const input = naturalResolutionInput(proposal.originalText || '', selection.action as NaturalResolutionAction, selection.target, selection.resolution!, proposal.mediaIds || []);
+    if (!input.command || actor.principal.kind !== 'admin') fail('invalid_site_resolution', 422);
+    const service = new SiteChatService({ enterpriseId: eid, adminId: actor.principal.adminId,
+      miniProgramUserId: actor.entry?.miniProgramUserId as string | undefined, miniProgramContextVersion: actor.entry?.miniProgramContextVersion as number | undefined }, tx);
+    const prepared = await service.withWriteScope(pid, (inner, _c, _p, permission) => prepareSiteResolution(inner, actor, pid, input.command!, versions, permission.manage));
+    const { data, proof, issue } = prepared;
+    const disclosure = input.command.action === 'resolve' || input.command.action === 'close'
+      ? `\n仅给业主的节选：${input.command.excerpt}\n本次落实照片原件：${input.command.originals ? '一并回传' : '不回传，只传文字'}。`
+      : '\n本次仅提交落实依据，仍需管理者另行正式解决／关闭，不向客户自动开放这些照片。';
+    return { hash: fingerprint({ prepared, command: input.command }), roomName: issue.roomName, resolution: input.command,
+      text: `待核对处理修订${data.revision}；方案${data.planId}；现场记录${proof?.recordId || (await readSiteResolution(tx, eid, pid, issue.issueId, issue))?.evidence?.recordId || ''}。${disclosure}\n客户同意、落实、解决和关闭分别留痕，关闭不代表工程验收／付款。` };
+  }
   if (selection.action === 'plan') {
     const input = naturalPlanInput(proposal.originalText || '', selection.target, selection.plan!, proposal.mediaIds || []);
     if (!input.command || !proposal.sourceMessageId || actor.principal.kind !== 'admin') fail('invalid_plan', 422);
@@ -113,6 +130,18 @@ async function target(tx: PostgresTransaction, proposal: Pick<SiteActionProposal
     || ['cancelled', 'implemented', 'resolved', 'closed'].includes(issue.status)) fail('context_changed');
   const materials = issue.roomId ? await sharedMaterials(tx, eid, pid, issue.roomId) : null;
   if (issue.roomId && ['reply', 'check', 'return'].includes(selection.action) && materials?.version !== versions.materials?.[issue.roomId]) fail('context_changed');
+  if (selection.action === 'transfer') {
+    const name = selection.assigneeName?.trim() || '';
+    if (!name || !proposal.originalText?.includes(name) || proposal.mediaIds?.length) fail('construction_staff_unavailable', 422);
+    const service = new SiteChatService({ enterpriseId: eid, adminId: aid(actor),
+      miniProgramUserId: actor.entry?.miniProgramUserId as string | undefined, miniProgramContextVersion: actor.entry?.miniProgramContextVersion as number | undefined }, tx);
+    const assignee = await service.withWriteScope(pid, async (inner, _c, _p, permission) => {
+      if (!permission.manage && issue.ownerId !== aid(actor)) fail('construction_forbidden', 403);
+      return siteTransferAssignee(inner, eid, pid, name);
+    });
+    return { hash: fingerprint({ issue, assignee }), roomName: issue.roomName, assigneeName: assignee.name,
+      text: issue.text + `\n转交给：${assignee.name}；转交后重新等待该负责人处理，旧回复／图纸核对和正式方案决定不能冒充新处理结果。` };
+  }
   if (selection.action === 'check') {
     const drawings = materials?.sources.filter(s => s.kind === 'drawing') || [];
     if (drawings.length !== 1) fail('site_review_required', 422);
@@ -153,15 +182,23 @@ export async function proposeSiteAction(tx: PostgresTransaction, actor: ActorCon
       return `正式方案还缺：${input.missing.join('、')}。请补齐本次方案的原图和说明后重新提交，我会先给你核对预览；费用和工期不会按默认值填写。本次尚未发布。`;
     }
   }
+  if (['implement', 'resolve', 'close'].includes(selection.action)) {
+    const input = naturalResolutionInput(originalText, selection.action as NaturalResolutionAction, selection.target, selection.resolution!, request.mediaIds);
+    if (input.missing.length) {
+      await marker(tx, actor, String(c.id), { runId, sourceMessageId: String(request.row.id), sourceHash: request.sourceHash, status: 'none' });
+      return `本次正式处理还缺：${input.missing.join('、')}。请核对后完整重新提交；本次尚未落实／解决／关闭。`;
+    }
+  }
   const current = await target(tx, { actor, projectId: pid, projectVersion: request.projectVersion, selection, versions: request.versions,
     originalText, sourceMessageId: String(request.row.id), mediaIds: request.mediaIds });
   if (selection.action === 'return' && !manage) fail('construction_forbidden', 403);
   const proposal: SiteActionProposal = { runId, projectId: pid, projectVersion: request.projectVersion, conversationId: String(c.id), sourceMessageId: String(request.row.id), sourceHash: request.sourceHash,
     actor, selection, versions: request.versions, targetHash: current!.hash, originalText, roomName: current!.roomName,
-    ...(selection.action === 'plan' ? { mediaIds: request.mediaIds } : {}),
+    ...(['plan', 'transfer', 'implement', 'resolve', 'close'].includes(selection.action) ? { mediaIds: request.mediaIds } : {}),
     expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString() };
-  const verb = { open: '跟进', claim: '接手', reply: '回复', check: '核对图纸', return: '回传', plan: '发布方案' }[selection.action];
+  const verb = { open: '跟进', claim: '接手', reply: '回复', check: '核对图纸', return: '回传', plan: '发布方案', transfer: '转交', implement: '落实', resolve: '正式解决', close: '正式关闭' }[selection.action];
   const consequence = selection.action === 'plan' ? '确认后会向上述原咨询发布这张原图、完整变更原话及费用／工期影响，由客户对本版本决定；不会批准施工或自动落实／关闭事项。'
+    : ['resolve', 'close'].includes(selection.action) ? '确认后将按上述节选和原件政策回传原授权咨询，不会公开其余内部原话；不代表验收或付款。'
     : selection.action === 'return' ? '确认后会向上述原咨询回传你的本条节选，不代表方案、费用、工期、施工或验收批准。' : '这不会发布给业主或批准施工。';
   const text = `待你核对：${verb}${selection.action === 'open' ? '记录' : '事项'}${selection.target}（${proposal.roomName}）。\n${current!.text}\n你的原话：${proposal.originalText}\n尚未执行。确认请回复“确认${verb}”；取消这次操作可回复“取消这次操作”。${consequence}`;
   await tx.execute(sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
@@ -181,6 +218,15 @@ export async function confirmSiteAction(tx: PostgresTransaction, actor: ActorCon
   if (proposal.projectId !== pid || proposal.conversationId !== String(c.id) || proposal.selection.action !== confirmation || Date.parse(proposal.expiresAt) <= Date.now()) fail('context_changed');
   await siteActionRequest(tx, actor, String(c.id), current.runId);
   const now = await target(tx, proposal); if (!now || now.hash !== proposal.targetHash) fail('context_changed');
+  if (['implement', 'resolve', 'close'].includes(confirmation)) {
+    const resolution = await executeSiteResolution(tx, actor, pid, proposal.sourceMessageId, now.resolution!, proposal.versions, manage);
+    await tx.execute(sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
+      values(${actor.enterpriseId},${confirmedType},'assistant_run',${current.runId},1,${JSON.stringify(actor.principal)}::jsonb,${String(message.id)},
+        ${JSON.stringify({ projectId: pid, conversationId: String(c.id), sourceMessageId: proposal.sourceMessageId, confirmationMessageId: String(message.id),
+          issueId: resolution.issueId, lifecycleId: resolution.lifecycleId, lifecycleRevision: resolution.lifecycleRevision })}::jsonb)`);
+    await marker(tx, actor, String(c.id), { ...current, status: 'confirmed' });
+    return { text: resolution.text, resolution };
+  }
   if (confirmation === 'plan') {
     const p = now.plan!;
     const published = await executePlanCommand(tx, actor, pid, proposal.sourceMessageId, { action: 'publish', issueId: proposal.selection.target,
@@ -194,7 +240,8 @@ export async function confirmSiteAction(tx: PostgresTransaction, actor: ActorCon
   // Reuse the domain writer, original full staff statement and original seen
   // versions. The confirmation is a separate audit, never a synthetic command.
   const issue = await executeSiteIssue(tx, actor, pid, proposal.sourceMessageId,
-    { action: confirmation, target: proposal.selection.target, value: confirmation === 'check' ? now.drawingGrantId! : proposal.originalText }, proposal.versions, manage);
+    { action: confirmation as 'open' | 'claim' | 'reply' | 'check' | 'return' | 'transfer', target: proposal.selection.target,
+      value: confirmation === 'check' ? now.drawingGrantId! : confirmation === 'transfer' ? now.assigneeName! : proposal.originalText }, proposal.versions, manage);
   await tx.execute(sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
     values(${actor.enterpriseId},${confirmedType},'assistant_run',${current.runId},1,${JSON.stringify(actor.principal)}::jsonb,${String(message.id)},
       ${JSON.stringify({ projectId: pid, conversationId: String(c.id), sourceMessageId: proposal.sourceMessageId, confirmationMessageId: String(message.id), issueId: issue.issueId, revision: issue.revision })}::jsonb)`);
@@ -212,6 +259,7 @@ export async function readSiteActionResponse(tx: PostgresTransaction, eid: strin
   if (confirmed) {
     const result = confirmed.payload as Row;
     if (result.planId) { const plan = await readPlan(tx, eid, String(result.planId)); return plan?.projectId === pid ? planText(plan) : unavailable; }
+    if (result.lifecycleId) { const resolution = await readSiteResolution(tx, eid, pid, String(result.issueId)); return resolution?.available && resolution.id === result.lifecycleId ? resolution.text : unavailable; }
     return (await readSiteIssue(tx, eid, pid, String(result.issueId)))?.text || unavailable;
   }
   const current = await siteActionMarker(tx, actor, cid);

@@ -19,13 +19,13 @@ type Evidence = {
   planId: string; planHash: string; recordId: string; recordVersion: number; recordHash: string;
   recordAuthorId: string; reviewerId: string; media: Array<{ id: string; hash: string }>; conclusion: string;
 };
-type Command = { action: 'implement'; issueId: string; planId: string; recordId: string; conclusion: string }
+export type ResolutionCommand = { action: 'implement'; issueId: string; planId: string; recordId: string; conclusion: string }
   | { action: 'resolve' | 'close'; issueId: string; conclusion: string; excerpt: string; originals: boolean }
   | { action: 'reopen'; issueId: string; conclusion: string };
 export type ResolutionView = Lifecycle & { id: string; available: boolean; text: string; hash: string; evidence?: Evidence };
 
 /** Formal changes require an explicit command, exact objects and separately selected customer disclosure. */
-export function resolutionCommand(raw: string): Command | null {
+export function resolutionCommand(raw: string): ResolutionCommand | null {
   let m = /^落实事项\s*([1-9]\d{0,18})方案\s*([1-9]\d{0,18})记录\s*([1-9]\d{0,18})[：:]\s*([^\n]+)\s*$/.exec(raw);
   if (m) return { action: 'implement', issueId: id(m[1]), planId: id(m[2]), recordId: id(m[3]), conclusion: text(m[4], 1200) };
   m = /^(解决|关闭)事项\s*([1-9]\d{0,18})\s*\n结论[：:]([^\n]+)\n回传[：:]([^\n]+)\n回传原件[：:](是|否)\s*$/.exec(raw);
@@ -88,8 +88,15 @@ export async function validateResolutionReceipt(tx: PostgresTransaction, eid: st
 }
 export async function handleSiteResolution(tx: PostgresTransaction, actor: ActorContext, pid: string, messageId: string, raw: string, versions: SiteVersions, manage: boolean) {
   const cmd = resolutionCommand(raw); if (!cmd) return null;
+  return executeSiteResolution(tx, actor, pid, messageId, cmd, versions, manage);
+}
+/** Preview and execution authorize exactly the same immutable inputs. No writes. */
+export async function prepareSiteResolution(tx: PostgresTransaction, actor: ActorContext, pid: string, cmd: ResolutionCommand, versions: SiteVersions, manage: boolean) {
   if (actor.principal.kind !== 'admin') fail('construction_forbidden', 403);
   const eid = actor.enterpriseId, aid = actor.principal.adminId;
+  id(cmd.issueId); text(cmd.conclusion, cmd.action === 'reopen' ? 500 : 1200);
+  if (cmd.action === 'implement') { id(cmd.planId); id(cmd.recordId); }
+  if (cmd.action === 'resolve' || cmd.action === 'close') { text(cmd.excerpt, 1200); if (typeof cmd.originals !== 'boolean') fail('invalid_site_resolution', 422); }
   // Source consultation -> material advisory lock, matching formal customer decisions.
   const issue = await readSiteIssueBase(tx, eid, pid, cmd.issueId);
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`site-material:${eid}:${pid}`},0))`);
@@ -102,6 +109,7 @@ export async function handleSiteResolution(tx: PostgresTransaction, actor: Actor
   if (cmd.action !== 'implement' && !manage || cmd.action === 'implement' && !manage && issue.ownerId !== aid) fail('construction_forbidden', 403);
   let data: Lifecycle = { projectId: pid, issueId: issue.issueId, issueRevision: issue.revision, ownerId: issue.ownerId,
     revision: revision + 1, state: 'reopened', actorId: aid, conclusion: cmd.conclusion };
+  let proof: Evidence | undefined;
   if (cmd.action === 'implement') {
     if (current?.available && ['resolved','closed'].includes(current.state)) fail('site_reopen_required', 422);
     const plan = await readPlan(tx, eid, cmd.planId);
@@ -111,14 +119,12 @@ export async function handleSiteResolution(tx: PostgresTransaction, actor: Actor
     if (!record || record.row.status !== 'published' || String(record.row.room_id) !== issue.roomId || cmd.recordId === issue.recordId
       || !String(draft?.completed || '').trim() || String(draft?.pending || '').trim() || String(draft?.coordination || '').trim() || !record.media.length) fail('site_execution_evidence_required', 422);
     if (versions.records[cmd.recordId] !== Number(record.row.version)) fail('version_conflict');
-    const proof: Evidence = { projectId: pid, issueId: issue.issueId, issueRevision: issue.revision, ownerId: issue.ownerId, actorId: aid,
+    proof = { projectId: pid, issueId: issue.issueId, issueRevision: issue.revision, ownerId: issue.ownerId, actorId: aid,
       planId: plan.id, planHash: plan.hash, recordId: cmd.recordId, recordVersion: Number(record.row.version), recordHash: record.hash,
       recordAuthorId: String(record.row.author_id), reviewerId: String(record.row.approved_by),
       media: record.media.map(m => ({ id: String(m.id), hash: String(m.source_hash) })), conclusion: cmd.conclusion };
     for (const person of [proof.recordAuthorId, proof.reviewerId, aid]) if (!await activeActor(tx, eid, pid, person)) fail('construction_forbidden', 403);
-    const event = (await one(tx, sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
-      values(${eid},${evidenceType},'construction_site_issue',${issue.issueId},${data.revision},${JSON.stringify(actor.principal)}::jsonb,${messageId},${JSON.stringify(proof)}::jsonb) returning id`))!;
-    data = { ...data, state: 'implemented', planId: plan.id, planHash: plan.hash, evidenceId: String(event.id) };
+    data = { ...data, state: 'implemented', planId: plan.id, planHash: plan.hash };
   } else if (cmd.action === 'reopen') {
     if (!previous) fail('site_resolution_state_conflict');
   } else {
@@ -129,6 +135,17 @@ export async function handleSiteResolution(tx: PostgresTransaction, actor: Actor
     data = { projectId: data.projectId, issueId: data.issueId, issueRevision: data.issueRevision, ownerId: data.ownerId,
       revision: data.revision, state: data.state, actorId: data.actorId, conclusion: data.conclusion,
       planId: data.planId, planHash: data.planHash, evidenceId: data.evidenceId, resolvedBy: data.resolvedBy, closedBy: data.closedBy };
+  }
+  return { issue, data, proof };
+}
+/** The original explicit writer is shared by legacy commands and author-confirmed natural previews. */
+export async function executeSiteResolution(tx: PostgresTransaction, actor: ActorContext, pid: string, messageId: string, cmd: ResolutionCommand, versions: SiteVersions, manage: boolean) {
+  const prepared = await prepareSiteResolution(tx, actor, pid, cmd, versions, manage), { issue, proof } = prepared, eid = actor.enterpriseId;
+  let { data } = prepared;
+  if (proof) {
+    const evidence = (await one(tx, sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
+      values(${eid},${evidenceType},'construction_site_issue',${issue.issueId},${data.revision},${JSON.stringify(actor.principal)}::jsonb,${messageId},${JSON.stringify(proof)}::jsonb) returning id`))!;
+    data = { ...data, evidenceId: String(evidence.id) };
   }
   const event = (await one(tx, sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
     values(${eid},${lifecycleType},'construction_site_issue',${issue.issueId},${data.revision},${JSON.stringify(actor.principal)}::jsonb,${messageId},${JSON.stringify(data)}::jsonb) returning id`))!;

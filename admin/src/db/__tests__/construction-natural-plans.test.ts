@@ -120,12 +120,13 @@ for (const corrected of [true, false]) test(`ordinary formal-state validation us
     await customer.decide(id, 'approve', { expectedRevision: (await plan(f, id))!.revision }, randomUUID());
   }
   const sent = await f.send('我刚才同意的是哪一版书房方案？现在是不是已经落实并关闭了？'), lease = await claimJob(); assert.equal(lease?.runId, sent.runId);
-  let calls = 0, rejected = '';
+  let calls = 0, rejected = '', resultKey = '';
   await processAgentAnswer(lease!, { model: async (messages, available, turn) => {
     calls++;
     if (!turn) return { text: '', toolCalls: [{ id: 'formal-read', name: 'query_followups', arguments: '{}' }], finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 0, outputTokens: 0 } };
     if (turn === 1) {
       const result = messages.filter(m => m.role === 'tool').map(m => JSON.parse(String(m.content))).findLast(m => m.query?.domain === 'followups');
+      resultKey = result.resultKey;
       const source = (result.synthesisSources as SynthesisSource[]).find(s => s.followup?.kind === 'formal_plan' || s.material?.ref.type === 'formal_plan')!;
       assert.ok(source); const citationId = sourceCitationCatalog(source)[0].citationId;
       rejected = JSON.stringify({ kind: 'synthesis', segments: [{ basis: 'evidence', text: `你同意的是书房正式方案V${corrected ? 2 : 1}，现场仍待核对。`, citations: [{ citationId }] },
@@ -134,11 +135,13 @@ for (const corrected of [true, false]) test(`ordinary formal-state validation us
     }
     assert.equal(turn, 2); assert.ok(available.every(t => t.name === 'final_response')); assert.match(JSON.stringify(messages), /rejectedTextPaths/);
     const base = synthesisRepairBase(messages); assert.ok(base);
+    if (base.businessSourceOnly) return { text: '', toolCalls: [{ id: 'formal-service-repair', name: 'final_response', arguments: JSON.stringify({ kind: 'business_repair', baseHash: base.baseHash,
+      resultKey, ...(corrected ? {} : { text: '已正式关闭事项。' }) }) }], finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 0, outputTokens: 0 } };
     return { text: '', toolCalls: [{ id: 'formal-repair', name: 'final_response', arguments: JSON.stringify({ kind: 'synthesis_repair', baseHash: base.baseHash,
       edits: [{ segment: 1, text: corrected ? '同意方案和现场处理分别记录，当前仍待现场核对。' : '已正式关闭事项。' }] }) }], finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 0, outputTokens: 0 } };
   } });
   const run = await f.chat.run(String(sent.runId)); assert.equal(calls, 3); assert.equal(run.status, corrected ? 'succeeded' : 'failed', JSON.stringify(run));
-  if (!corrected) assert.equal(run.errorCode, 'unsupported_model_commitment');
+  if (!corrected) assert.equal(run.errorCode, 'invalid_model_answer');
   assert.equal(await count(f), corrected ? 2 : 1); assert.equal((await plan(f, id))!.status, 'approved');
   const first = await withTenantTransaction(f.eid, tx => one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${f.eid} and run_id=${String(sent.runId)} and step_seq=1110`));
   assert.ok(JSON.stringify(first!.private_checkpoint).includes('已正式关闭事项'));

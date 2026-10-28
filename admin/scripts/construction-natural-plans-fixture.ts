@@ -10,8 +10,8 @@ import type { D4SharingFixture } from './assistant-d4-sharing-fixture';
  * trials already exercised staff interpretation/uploads/confirmation/C05.
  * These real domain writes make no provider calls and are not regraded as
  * natural staff or native customer-decision acceptance. */
-export async function prepareApprovedNaturalPlans(f: D4SharingFixture, issueId: string, input: { first: string; second: string; cost: number; days: number }) {
-  const service = f.site(f.memberIds[0]), customer = new PlanCustomerService(f.actor, f.conversationId), plans: PlanView[] = [];
+export async function prepareApprovedNaturalPlans(f: D4SharingFixture, issueId: string, input: { first: string; second: string; cost: number; days: number }, publisherId = f.memberIds[0]) {
+  const service = f.site(publisherId), customer = new PlanCustomerService(f.actor, f.conversationId), plans: PlanView[] = [];
   for (const [index, original] of [input.first, input.second].entries()) {
     const media = await service.upload(f.projectId, randomUUID(), await sharp({ create: { width: 96, height: 72, channels: 3,
       background: index ? '#93acbf' : '#c9dfd0' } }).png().toBuffer());

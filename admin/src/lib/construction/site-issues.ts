@@ -100,6 +100,13 @@ async function effectiveOwner(tx: PostgresTransaction, eid: string, pid: string,
   if (access?.role === 'owner') return subject || { id: aid, display_name: '平台管理员' };
   return subject && (subject.mini_role === 'owner' || (subject.member && (access?.role === 'member' || subject.mini_role === 'member'))) ? subject : null;
 }
+/** One live project-member name, shared by preview and the original transfer writer. */
+export async function siteTransferAssignee(tx: PostgresTransaction, eid: string, pid: string, name: string) {
+  const candidates = await rows(tx, sql`select a.id::text,a.display_name from app.admin_users a join app.construction_members m on m.enterprise_id=a.enterprise_id and m.admin_id=a.id
+    where m.enterprise_id=${eid} and m.project_id=${pid} and m.active and m.role<>'observer' and a.status='active' and a.display_name=${name} for share of a,m`);
+  if (candidates.length !== 1 || !await effectiveOwner(tx, eid, pid, String(candidates[0].id))) fail('construction_staff_unavailable', 422);
+  return { id: String(candidates[0].id), name: String(candidates[0].display_name) };
+}
 
 /** Source/assignment revision stays independent of formal execution/closure revisions. */
 export async function readSiteIssueBase(tx: PostgresTransaction, eid: string, pid: string, issueId: string): Promise<IssueView | null> {
@@ -243,11 +250,9 @@ export async function executeSiteIssue(tx: PostgresTransaction, actor: ActorCont
   } else {
     if (!canHandle) fail('construction_forbidden', 403);
     if (cmd.action === 'transfer') {
-      const candidates = await rows(tx, sql`select a.id::text from app.admin_users a join app.construction_members m on m.enterprise_id=a.enterprise_id and m.admin_id=a.id
-        where m.enterprise_id=${eid} and m.project_id=${pid} and m.active and m.role<>'observer' and a.status='active' and a.display_name=${cmd.value} for share of a,m`);
-      if (candidates.length !== 1 || !await effectiveOwner(tx, eid, pid, String(candidates[0].id))) fail('construction_staff_unavailable', 422);
-      if (view.ownerId === String(candidates[0].id)) return view;
-      issue.ownerId = String(candidates[0].id); issue.state = 'awaiting_owner';
+      const assignee = await siteTransferAssignee(tx, eid, pid, cmd.value);
+      if (view.ownerId === assignee.id) return view;
+      issue.ownerId = assignee.id; issue.state = 'awaiting_owner';
     } else if (cmd.action === 'refresh') {
       const source = await currentRecord(tx, eid, pid, previous.recordId); if (!source) fail('context_changed');
       if (versions.records[previous.recordId] !== Number(source.row.version)) fail('version_conflict');

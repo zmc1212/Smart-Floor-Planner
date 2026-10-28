@@ -9,6 +9,7 @@ import { reviewSynthesisResponse, synthesisComparisonRepairData, synthesisStatus
 import type { HistorySnapshot, HistoryRef } from './history';
 import { modelCitationCatalog, sourceCitationCatalog, resolveCatalogCitation, engineeringClaimText } from './citation-catalog';
 import { withSynthesisRepairProtocol, synthesisRepairBase, finalAnswerRepairBase, isCatalogSynthesisDraft } from './synthesis-repair';
+import { formalBusinessResultKeys } from './formal-business-repair';
 import { originalAnswerOnly, independentAdviceRequested } from './read-tool-input';
 import { numericCitationCandidates } from './citation-coverage';
 import { publicPdfSource } from './source-document';
@@ -40,7 +41,10 @@ export function unresolvedSynthesisConflict(sources: SynthesisSource[]) {
  * remains before the sources, never rewritten or persisted as a new turn.
  * Model context only: no new user message/run or second agent loop. */
 export function focusedSynthesisMessages(messages: ModelMessage[], triggerId: string): ModelMessage[] {
-  const repairTask = synthesisRepairBase(messages) ? synthesisRepairTask : finalAnswerRepairBase(messages) ? finalAnswerRepairTask : null;
+  const repairBase = synthesisRepairBase(messages);
+  const repairTask = repairBase?.businessSourceOnly ? '当前是同轮唯一一次正式状态恢复，仅提交business_repair、绑定原稿的baseHash及已列出的resultKey，由原服务展示权威状态及边界。不写text／edits／append，不生成完成声明，不调用业务工具；实时来源或权限失效仍拒绝。'
+    : repairBase?.businessResultKeys?.length ? '当前是同轮唯一一次最终修正。可用synthesis_repair按原稿hash独立编辑；若已读取的权威正式业务快照足以回答当前问题，可用business_repair及baseHash、已有resultKey交给原服务展示，不写text／edits／append或新完成声明。不调用业务工具，全部实时来源与权限仍重验。'
+    : repairBase ? synthesisRepairTask : finalAnswerRepairBase(messages) ? finalAnswerRepairTask : null;
   const hasEvidence = messages.some(m => {
     if (m.role !== 'tool') return false;
     try { return Array.isArray(JSON.parse(m.content).synthesisSources); } catch { return false; }
@@ -373,7 +377,8 @@ const groundingRepairInstructions = {
   misattributed_rule_comparison: '本段比较现场与手册，却没有引用实际要求原文。补选本轮已有且对应同一对象的知识条款，不能拿标题/版号或项目观察当作手册要求；已有现场原文及正确量数保留。',
 };
 export function synthesisRepairFeedback(raw:string,sources:SynthesisSource[],context:SynthesisReviewContext = {}) {
-  return withSynthesisRepairProtocol(synthesisRepairIssue(raw, sources, context), raw);
+  const issue = synthesisRepairIssue(raw, sources, context);
+  return withSynthesisRepairProtocol(issue, raw, issue && 'businessResultKeys' in issue ? issue.businessResultKeys : []);
 }
 function formalStatusEvidence(citations: Array<{ sourceId: string }>, sources: SynthesisSource[], context: SynthesisReviewContext) {
   if (!context.currentQuestion || originalAnswerOnly(context.currentQuestion) || independentAdviceRequested(context.currentQuestion)) return false;
@@ -499,7 +504,8 @@ function synthesisRepairIssue(raw:string,sources:SynthesisSource[],context:Synth
       const rejected: Array<{ path: string; code: string }> = [];
       checkedSynthesis(raw, sources, context, rejected);
       if (!rejected.length) throw error;
-      return { code: error.code, feedback: '这是同轮唯一一次最终答复修复，不调用查询、保存或其他业务工具。原稿仍未通过正式完成状态校验：'
+      return { code: error.code, businessResultKeys: scopeIssues.length || value.segments.some(s => s.basis === 'advice') ? [] : formalBusinessResultKeys(sources),
+        feedback: '这是同轮唯一一次最终答复修复，不调用查询、保存或其他业务工具。原稿仍未通过正式完成状态校验：'
         + JSON.stringify({ rejectedTextPaths: rejected, responseScopePaths: scopeIssues.map(issue => ({ path: `segments[${issue.segment - 1}].text`, code: issue.code })) })
         + '。按本轮原始状态和精确版本说明客户决定、现场落实、正式解决及关闭的区别；保留实际有据的版本、影响和当前待核对条件。'
         + '不要复述被拒的完成状态表述，也不要为了避词反转原意、删去否定或编造成功；若不能确认，只能限定为本次查询的未知。'
