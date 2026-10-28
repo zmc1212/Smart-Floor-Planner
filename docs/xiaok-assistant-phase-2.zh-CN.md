@@ -20,7 +20,7 @@ C01 P4B README与S04 PPT22/38设计源保持853×1844→390×844；12张核路�
 
 ## 当前D4施工记录打回补拍
 
-原生复审控件排查（2026-10-28）：native-13与native-14两次未满足同一审核弹层预期，现停止重复修补/重测循环。预期：管理者打开发布弹层后点击可见确认按钮；实际：sheet数据已为publish，`.sheet > .primary`先返回null，增加渲染等待后仍超时。两批均不记完整通过；native-13第二条真实草稿与native-14零派发回放保留原状态、原稿和用量。当前归客户端测试/控件选择缺陷，须有运行证据才能认定产品缺陷。共享原因假设：直接子代选择与运行树不符、条件按钮未出现，或同路由切换身份后Page对象过期。下一步仅做零模型判别：确认当前Page ID、sheet数据、直接子代/后代数量、实际按钮文本/边界及route核对截图，再决定是否点击确认。不追加提示词/模型试验，不仅换个等待时长重复超时；本排查不改Agent/Knowledge/供应商行为。
+原生复审控件排查已闭合：native-25记录同一Page 67/67、publish状态、直接子代数量0/后代数量1及实际按钮边界，只点击原批准弹层内唯一可见启用的“核对并发布”，并核对持久发布、三代照片和撤权。保留13/14原失败。续接21/22的只读503另由原生网络记录确认源于共享测试驱动硬编码3006，现显式传入并记录隔离3112、先验签名工人读取；原失败不改判，产品鉴权/租户/模型/设计不变。此机制修复后重新开放限定原生检查；未使用Computer Use或桌面键鼠输入。
 
 用户2026-10-28明确授权本次功能。新增可用动作：管理者填写补拍要求，作者按要求补交新照片并关联原记录，再由管理者复审。复用现有S04共享项目、Worker、照片权限、配额、用量及幂等，无Agent/KnowledgeRetriever/Evidence或模型提示词架构变更。
 
@@ -38,9 +38,12 @@ C01 P4B README与S04 PPT22/38设计源保持853×1844→390×844；12张核路�
 
 原生输出一致性：schema可选roomId缺省在原生JSON-schema文本与final_response入口统一映射null；领域解析继续拒绝数字/房间名/越权ID及未知业务字段，仅明确关联补交才沿用原记录已知房间。参考[JSON Schema可选/必填属性](https://json-schema.org/understanding-json-schema/reference/object#required)与[LangChain结构化输出策略](https://docs.langchain.com/oss/javascript/langchain/structured-output)，复用已有原生/schema能力，只修输出边界；不迁移框架、不改提示词、不增Agent，Knowledge无须改动。供应商实际行为以保留原稿与试验为证，不从参考示例推定。
 
-验证：service-06为2/2、drift[]，覆盖三管理角色/三轮打回补交复审、原件/hash/作者/observer/租户、版本/并发/幂等和失败人工恢复；原稿/schema回放5/5、小程序24/24；定向类型0、lint0错误/1项既有合同测试警告。生产Webpack build-final完整exit0、drift[]、配置恢复；其后仅测试驱动判别代码变动，定向类型通过。输出解析修复后的两项固定Qwen实际成功：native-12 run9687/751tokens及native-13 run9688/731tokens，共1482tokens。native-12首轮真实打回/补交/草稿/重进已过，次轮写入被合成夹具保守日预算拦截、未派发；native-13按相同生产源码，把首轮已保存原稿明确映射为合成前置记录，只执行剩余第二项真实试验/重进。两批仍属部分通过：13的最终发布弹层直接子代选择器为null，14增加渲染等待仍超时；两次失败后停止修补循环，改做零模型判别，记录Page ID、sheet/直接子代/后代数量、真实按钮文本/边界及截图，只点击弹层内唯一可见启用的确认按钮。15被空闲队列守卫拦住；16遇普通按钮property不公开（已改为SDK文档的attribute）；17在编译前台校验处停止、未发送输入，各批均新增模型0次，不记业务验收通过。重新绑定Computer Use后无可访问性状态，两次截图分别FrameArrived/window capture超时，已停止窗口输入。最终原生管理者发布、三代原件/照片回看及移除工人后的原生清理仍UNVERIFIED；不要求手工截图/验收，只待桌面采集可用或等价编译入口完成验证后，按当前绑定与两份保存原稿继续这一个零模型探针。原native-11 run9678/attempt2916的732tokens原稿符合schema，却因可选roomId缺省在本地失败，原稿/失败/实际用量保留，输出入口已修复并回放验证。更早0调用的队列/供应商/鉴权/CLI/渲染前置失败、首轮service15通过/2失败/1跳过、修复后service-02的16通过/1旧可选跳过、compat-02的30项通过及主动停止的无关尾部(exit1)、Bun运行器和中间类型导入错误各自保留；不缩小原绑定、不重判首稿结果。复跑：admin下node scripts/construction-rework-acceptance.mjs --rework-only --wait及node --import tsx --test src/lib/__tests__/construction-site-contract.test.ts；miniprogram下node --test test/construction-site-chat.test.js test/construction-chat-queries.test.js test/construction-site-ordering.test.js。驱动/原稿映射/原失败/清理与已审看截图见tmp/construction-retake-20261028/；17时统一¥100账册保守累计¥28.480732，实际账单及原unknown保留。未合并/推送/部署。
+验证：限定补拍交付Implemented。恢复后的隔离库应用0098后service-08为2/2，原service-06证据继续有效。两项固定Qwen成功原稿仍为native12/run9687（751tokens）、native13/run9688（731tokens），原批保持部分通过。native-25原生7/7通过，新增模型0次：显式隔离3112签名工人读取、管理者复审发布、持久重进、三代原话及受权照片控件点击、真实下载和previewImage调用记录、移除工人后的历史/媒体清理。沿既有Stable2.02.2608080/SDK3.17.2唯一副屏窗口，通过官方simulator_refresh重新编译；逻辑390×844、PNG348×752。源码/驱动/配置绑定drift[]，合成夹具/配置/传输/服务/锁清理恢复已核对；定向TypeScript和lint通过。schema5/5、Mini24/24和build-final exit0保留为既有补拍范围证据，continuation-impact.json保留源码对照。原失败分别保留：native11的732tokens可选房间解析失败；13/14直接子代选择失败；15–17的SDK/队列/前台守卫；18旧隔离schema、19跨盘绑定、20异步窗口就绪和21/22转发错误端口的只读503；23缺少预览监测、24源码变化守卫。扩展回环探针退出连接滞留及核实归属后的自持进程清理另存，不把失败批次改判通过。修复后两项原实模共1482tokens；保守累计账册¥28.480732/100，实际账单和历史unknown保留。来源/命令/原迹/清理见tmp/construction-retake-20261028/；未推送/部署，不追加模型采样。 复用边界：continuation-replay-impact.json保留通知源码前后精确hash与service-08证据；变化仅涉及客户关注通知的咨询选择，草稿生成/解码不变。保存原稿明确作为合成前置夹具，当前发布/权限走真实服务验证。真实私有下载后记录预览API调用，原生系统图库界面、实体相机及真实微信授权仍未验证，对开发非阻塞。
 
 边界：补拍待办在本项目对话内收到，不宣称微信外部推送或实体相机/真机授权已验；照片不代替质量判定、正式节点、验收或客户批准。D4其余缺口、D2失败计数/原费用未知保留，未推送/合并/部署。
+
+复跑与步骤：admin下`node scripts/construction-rework-acceptance.mjs --rework-only --wait`；原生执行同目录`node scripts/construction-rework-native.mjs --development`，显式配置见`tmp/construction-retake-20261028/native-25/replay-config.json`（重现配方，不是新增试验）。先核对隔离库/源码绑定、唯一副屏窗口和串行锁，再核对负责人发布与重进、三代原话/图片控件及私有下载/预览API、工人移除后的拒绝/清理；finally恢复本人数据/会话/配置并释放资源。已保存两份原稿的回放不产生新模型调用；无人工验收门禁。
+
 
 ## C01定位辅助推荐
 

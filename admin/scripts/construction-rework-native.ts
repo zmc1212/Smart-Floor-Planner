@@ -24,16 +24,18 @@ import { bindBailianReviewTestRuntime } from './bailian-review-test-runtime';
 import { reviewBudget, type RetainedReviewHold } from './assistant-review-budget';
 
 type NativeItem = { message: { id: string }; record: { id: string; status: string; room_id?: string; resubmission_of_id?: string; original_record_id?: string; review_requirements?: string; canResubmit?: boolean; canPublish?: boolean; label?: string; run_status?: string; error_code?: string; data?: { completed?: string; pending?: string } } };
-type NativeVersion = { record_id: string };
+type NativeVersion = { record_id: string; media_ids: string[]; originalText: string };
 type NativeState = { items: NativeItem[]; sheet: string; versions: NativeVersion[]; versionsLoading: boolean; resubmit: { id: string } | null; attachments: string[]; busy: boolean; pending?: unknown; conflict?: unknown; error: string; fatal: boolean; mediaPaths: Record<string,string>; pendingRetakeCount: number; scrollTarget: string };
 type NativeElement = { tap: () => Promise<void>; input: (value: string) => Promise<void>; text: () => Promise<string>;
-  size: () => Promise<{ width: string; height: string }>; offset: () => Promise<Row>; attribute: (name: string) => Promise<string>; outerWxml: () => Promise<string> };
+  size: () => Promise<{ width: string; height: string }>; offset: () => Promise<Row>; attribute: (name: string) => Promise<string>; outerWxml: () => Promise<string>;
+  scrollTo: (x: number, y: number) => Promise<void> };
 type NativePage = { id: number; $: (selector: string) => Promise<NativeElement>; $$: (selector: string) => Promise<NativeElement[]>;
   data: { (): Promise<NativeState>; <K extends keyof NativeState>(key: K): Promise<NativeState[K]> } };
 type NativeHarness = { mp: { evaluate: <A,R>(fn: (value: A) => R, value?: A) => Promise<Awaited<R>>; redirectTo: (url: string) => Promise<unknown> };
   step: <T>(name: string, fn: () => Promise<T>) => Promise<T>; identity: (index: number) => Promise<NativePage>; open: () => Promise<NativePage>; current: () => Promise<NativePage>;
   capture: (name: string) => Promise<Row>; waitFor: <T>(fn: () => Promise<T | null | undefined | false>, label: string) => Promise<T> };
 declare const wx: { env: { USER_DATA_PATH: string }; getFileSystemManager: () => { writeFileSync: (path: string, data: string, encoding: string) => void; unlinkSync: (path: string) => void }; chooseMedia: (options: { success: (result: { tempFiles: {tempFilePath: string; size: number}[] }) => void }) => void };
+declare const getApp: () => { __qaShared: { previewed: string[]; requests: { path: string; status: number }[] } };
 
 const root = path.resolve('..'), output = path.resolve(process.env.CONSTRUCTION_REWORK_OUTPUT || path.join(root, 'tmp/construction-retake-20261028/native'));
 fs.mkdirSync(output, { recursive: true }); loadEnvConfig(process.cwd(), true);
@@ -49,7 +51,16 @@ const boundFiles = ['admin/src/lib/construction/site-chat.ts','admin/src/lib/con
   'miniprogram/packages/construction/chat/chat.js','miniprogram/packages/construction/chat/chat.wxml','miniprogram/packages/construction/chat/chat.less',
   'miniprogram/packages/construction/chat/site-client.js','admin/scripts/construction-rework-native.ts','admin/scripts/construction-rework-native.mjs','admin/scripts/construction-chat-native.mjs',
   'admin/.env.local','admin/package.json','admin/package-lock.json','miniprogram/project.config.json','miniprogram/project.private.config.json'];
+boundFiles.push('admin/tsconfig.json','admin/src/lib/auth.ts','admin/src/lib/miniprogram-jwt.ts',
+  'admin/src/lib/construction/service.ts','admin/src/lib/construction/contracts.ts','admin/src/db/transaction.ts',
+  'admin/src/db/repositories/assistant-repository.ts','miniprogram/utils/api.js',
+  path.relative(root,'D:/微信开发工具/微信web开发者工具/wechatide.cmd'),
+  path.relative(root,'D:/微信开发工具/微信web开发者工具/resources/app.asar.unpacked/js/common/cli/skill-index.js'));
 const helperPath = process.env.CONSTRUCTION_REWORK_NATIVE_HELPER;
+const replayImpactPath = process.env.CONSTRUCTION_REWORK_REPLAY_IMPACT;
+if (replayImpactPath) {
+  boundFiles.push(path.relative(root, replayImpactPath), 'tmp/construction-retake-20261028/service-08/report.json');
+}
 const replayPath = process.env.CONSTRUCTION_REWORK_REPLAY_FIRST;
 if (replayPath) boundFiles.push(path.relative(root, replayPath), path.relative(root, path.join(path.dirname(replayPath), 'native.json')));
 const replaySecondPath = process.env.CONSTRUCTION_REWORK_REPLAY_SECOND;
@@ -62,7 +73,7 @@ if (process.env.CONSTRUCTION_REWORK_WINDOW_PREPARE) boundFiles.push(path.relativ
 boundFiles.push('tmp/wechat-devtools-version-test/window.ps1','tmp/wechat-automator-smoke-20261017/sdk-latest/node_modules/miniprogram-automator/package.json',
   'admin/scripts/bailian-review-test-runtime.ts','admin/scripts/assistant-review-budget.ts');
 if (process.env.CONSTRUCTION_REWORK_SERVER) boundFiles.push(path.relative(root, process.env.CONSTRUCTION_REWORK_SERVER));
-const binding = () => Object.fromEntries(boundFiles.map(f => [f, createHash('sha256').update(fs.readFileSync(path.join(root, f))).digest('hex')]));
+const binding = () => Object.fromEntries(boundFiles.map(f => [f, createHash('sha256').update(fs.readFileSync(path.resolve(root, f))).digest('hex')]));
 type Call = { id: string; runId: string; status: string; reservedTokens: number; usage?: {total_tokens: number} };
 const calls: Call[] = [];
 const report: Row = { started: new Date().toISOString(), prefix, before: binding(), calls, scope: replaySecondPath
@@ -73,6 +84,24 @@ const requirementsList = ['请补拍书房底盒全景和连接处近照，要�
 const firstReportText = '底盒的位置补拍清楚了，还没有固定，请设计师核对。';
 const secondReportText = '底盒今天固定好了，按要求补拍了，面板还没装。';
 const save = () => { fs.writeFileSync(path.join(output, 'driver.json'), JSON.stringify(report, null, 2)); fs.writeFileSync(ledgerFile, JSON.stringify(report, null, 2)); };
+function verifyReplayBinding(prior: Row) {
+  const previous = prior.after as Row, now = binding();
+  // Check every original production dependency, even when the continuation adds
+  // bindings. Saved provider checkpoints do not certify later publication code.
+  const production = Object.keys(previous).filter(f => f.startsWith('admin/src/') || f.startsWith('miniprogram/'));
+  const changed = production.filter(f => previous[f] !== now[f]);
+  if (!changed.length) return changed;
+  assert.deepEqual(changed, ['admin/src/lib/construction/site-publications.ts'], 'Only the separately audited notification change may reuse saved draft fixtures');
+  assert.ok(replayImpactPath, 'Changed publication code requires a recorded impact check and current service evidence');
+  const impact = JSON.parse(fs.readFileSync(replayImpactPath, 'utf8')) as Row;
+  assert.equal(impact.file, changed[0]); assert.equal(impact.priorHash, previous[changed[0]]); assert.equal(impact.currentHash, now[changed[0]]);
+  assert.equal(impact.reuse, 'saved-provider-output-as-labelled-fixture-only');
+  assert.equal(impact.serviceEvidence, 'tmp/construction-retake-20261028/service-08/report.json');
+  const evidence = JSON.parse(fs.readFileSync(path.join(root, String(impact.serviceEvidence)), 'utf8')) as Row;
+  assert.equal(evidence.exitCode, 0); assert.deepEqual(evidence.drift, []);
+  assert.equal((evidence.after as Row)['src/lib/construction/site-publications.ts'], now[changed[0]]);
+  return changed;
+}
 let eid = '', pid = '', originalId = '', release: (() => Promise<void>) | undefined;
 let restoreRuntime: (() => Promise<unknown>) | undefined, stopServer: (() => Promise<void>) | undefined;
 let retained: RetainedReviewHold[] = [];
@@ -131,9 +160,7 @@ async function main() {
     const prior = JSON.parse(fs.readFileSync(replayPath, 'utf8')) as Row;
     const native = JSON.parse(fs.readFileSync(path.join(path.dirname(replayPath), 'native.json'), 'utf8')) as Row;
     assert.ok((native.checks as Row[]).some(c => c.name === 'round1 worker reentry sees requirements and submits new protected photos' && c.passed));
-    const production = boundFiles.filter(f => f.startsWith('admin/src/') || f.startsWith('miniprogram/'));
-    const priorBinding = prior.after as Row, now = binding();
-    assert.deepEqual(production.filter(f => priorBinding[f] !== now[f]), [], 'Reuse requires unchanged production dependencies');
+    const replayDrift = verifyReplayBinding(prior);
     const run = (prior.runs as Row[])[0]; assert.equal(run.status, 'succeeded');
     const saved = run.private_checkpoint as ModelTurnOutput;
     const priorItems = (prior.workerReentry as Row).items as { record: Row }[];
@@ -160,14 +187,13 @@ async function main() {
     });
     report.reusedFirstTrial = { source: path.relative(root, replayPath), runId: String(run.id),
       outputHash: createHash('sha256').update(JSON.stringify(saved)).digest('hex'), fixtureOnly: true, providerDispatched: false,
-      productionDrift: [], mappedOriginalId: originalId, mappedSubmissionId: initialRecordId };
+      productionDrift: replayDrift, impact: replayImpactPath ? path.relative(root, replayImpactPath) : null, mappedOriginalId: originalId, mappedSubmissionId: initialRecordId };
   }
   if (replaySecondPath) {
     const prior = JSON.parse(fs.readFileSync(replaySecondPath, 'utf8')) as Row;
     const native = JSON.parse(fs.readFileSync(path.join(path.dirname(replaySecondPath), 'native.json'), 'utf8')) as Row;
     assert.ok((native.checks as Row[]).some(c => c.name === 'round2 worker reentry sees requirements and submits new protected photos' && c.passed));
-    const production = boundFiles.filter(f => f.startsWith('admin/src/') || f.startsWith('miniprogram/'));
-    const now = binding(); assert.deepEqual(production.filter(f => (prior.after as Row)[f] !== now[f]), [], 'Second replay requires unchanged production dependencies');
+    const replayDrift = verifyReplayBinding(prior);
     const run = (prior.runs as Row[])[0]; assert.equal(run.status, 'succeeded');
     const saved = run.private_checkpoint as ModelTurnOutput;
     const priorItems = (prior.workerReentry as Row).items as { record: Row }[];
@@ -195,7 +221,7 @@ async function main() {
     });
     report.reusedSecondTrial = { source: path.relative(root, replaySecondPath), runId: String(run.id),
       outputHash: createHash('sha256').update(JSON.stringify(saved)).digest('hex'), fixtureOnly: true, providerDispatched: false,
-      productionDrift: [], mappedOriginalId: originalId, mappedSubmissionId: initialRecordId };
+      productionDrift: replayDrift, impact: replayImpactPath ? path.relative(root, replayImpactPath) : null, mappedOriginalId: originalId, mappedSubmissionId: initialRecordId };
   }
   report.fixture = { ...(report.fixture as Row), projectId: pid, originalId }; save();
   if (process.env.CONSTRUCTION_REWORK_SERVER) {
@@ -208,7 +234,8 @@ async function main() {
     report.window = await prepare.prepare(root, output);
   }
   const helper = helperPath ? await import(pathToFileURL(helperPath).href) : await import('./construction-chat-native.mjs');
-  report.native = await helper.run({ root, output, projectId: pid, identities, exercise: async ({ mp, step, identity, open, capture, waitFor, current }: NativeHarness) => {
+  assert.equal((report.server as Row)?.port, 3112, 'Retake native checks require the owned isolated service');
+  report.native = await helper.run({ root, output, projectId: pid, identities, apiOrigin: 'http://localhost:3112', refreshWithCli: true, verifyWorkerHttp: true, recordPreview: true, exercise: async ({ mp, step, identity, open, capture, waitFor, current }: NativeHarness) => {
     const element = async (selector: string) => waitFor(async () => {
       try { return await (await current()).$(selector); }
       catch (error) { if (/Cannot read properties of undefined \(reading 'id'\)/.test((error as Error).message)) return null; throw error; }
@@ -298,10 +325,41 @@ async function main() {
       assert.notEqual(matches[0].disabled, 'true');
       await matches[0].button.tap();
       await waitFor(async () => (await (await current()).data('items')).some(i => i.record.id === recordId && i.record.status === 'published'), 'reviewed publication');
+      await open();
+      assert.equal((await (await current()).data('items')).find(i => i.record.id === recordId)?.record.status, 'published', 'Reviewed publication persists on reentry');
+      report.reviewPublication = { recordId, status: 'published', persistedReentry: true }; save();
       await (await locate('.record-links .text-button', item.message.id)).tap();
       const versions = await waitFor(async () => { const d = await (await current()).data(); return d.sheet === 'versions' && !d.versionsLoading && d.versions; }, 'chain versions');
       assert.ok(versions.some(v => v.record_id === originalId)); assert.equal(new Set(versions.map(v => v.record_id)).size, 3);
-      return capture('chain-review');
+      assert.ok(versions.some(v => v.originalText === firstReportText));
+      assert.ok(versions.some(v => v.originalText === secondReportText));
+      const originals = [...new Map(versions.filter(v => v.media_ids?.length).map(v => [v.record_id, v])).values()];
+      assert.equal(originals.length, 3, 'All three generations retain their own photos');
+      const previews = [];
+      for (const original of originals) {
+        const mediaId = original.media_ids[0];
+        const body = await element('.sheet-body'); await body.scrollTo(0, 0);
+        await waitFor(async () => (await (await current()).data('mediaPaths'))[mediaId], 'history photo bytes for ' + mediaId);
+        const photos = await (await current()).$$('.sheet .photo-slot');
+        let photo: NativeElement | undefined;
+        for (const candidate of photos) if (String(await candidate.attribute('data-id')) === mediaId) { photo = candidate; break; }
+        assert.ok(photo, 'History contains the photo control for ' + mediaId);
+        const bodyOffset = await body.offset(), photoOffset = await photo.offset();
+        await body.scrollTo(0, Math.max(0, Number(photoOffset.top) - Number(bodyOffset.top) - 12));
+        await waitFor(async () => { const offset = await photo.offset(), size = await photo.size(), bodySize = await body.size();
+          return Number(offset.top) >= Number(bodyOffset.top) - 2 && Number(offset.top) + Number(size.height) <= Number(bodyOffset.top) + Number(bodySize.height) + 2;
+        }, 'visible history photo control');
+        await mp.evaluate(() => { getApp().__qaShared.previewed = []; });
+        await photo.tap();
+        const preview = await waitFor(async () => mp.evaluate(id => {
+          const state = getApp().__qaShared;
+          return state.previewed.length === 1 && state.requests.some(r => r.path.endsWith('/media/' + id) && r.status === 200)
+            ? { mediaId: id, displayed: true, privateRead: true } : null;
+        }, mediaId), 'actual protected history photo preview');
+        previews.push({ recordId: original.record_id, ...preview, capture: await capture('history-' + original.record_id) });
+      }
+      report.historyPreviews = previews; save();
+      return { previews, capture: await capture('chain-review') };
     });
     await identity(2);
     await step('removed worker loses the shared conversation and photos on reentry', async () => {

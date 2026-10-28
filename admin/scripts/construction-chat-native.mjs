@@ -1,4 +1,4 @@
-// Uses the existing, verified local Stable DevTools/CDP/window helpers. No credentials are written to disk.
+// Uses verified Stable DevTools helpers; isolated retake checks use the official refresh CLI.
 import fs from 'node:fs';
 import path from 'node:path';
 import cp from 'node:child_process';
@@ -6,30 +6,49 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 const load = createRequire(import.meta.url);
 export async function run(ctx){
- const {root,output,projectId,identities}=ctx,route='packages/construction/chat/chat';
+ const {root,output,projectId,identities}=ctx,route='packages/construction/chat/chat',apiOrigin=ctx.apiOrigin||'http://localhost:3006';
+ const origin=new URL(apiOrigin);assert.equal(origin.protocol,'http:');assert.ok(['localhost','127.0.0.1'].includes(origin.hostname));
  const sdk=load(path.join(root,'tmp/wechat-automator-smoke-20261017/sdk-latest/node_modules/miniprogram-automator'));
- const {connect}=load(path.join(root,'tmp/wechat-devtools-version-test/cdp.cjs'));
  const pwsh='C:/Users/Administrator/.cache/codex-runtimes/codex-primary-runtime/dependencies/native/powershell/pwsh.exe';
  const windowScript=path.join(root,'tmp/wechat-devtools-version-test/window.ps1');
- const report={started:new Date().toISOString(),projectId,checks:[]};let mp,installed=false;
+ const report={started:new Date().toISOString(),projectId,apiOrigin,checks:[]};let mp,installed=false;
  const save=()=>fs.writeFileSync(path.join(output,'native.json'),JSON.stringify(report,null,2));
  const delay=ms=>new Promise(r=>setTimeout(r,ms));
  async function step(name,work){try{const result=await work();report.checks.push({name,passed:true,result});console.log(name+': PASS');return result;}catch(e){report.checks.push({name,passed:false,error:e.message});throw e;}finally{save();}}
  async function waitFor(read,label){for(let i=0;i<180;i++){const value=await read();if(value)return value;await delay(500);}throw Error('Timed out: '+label);}
+ let compileCount=0;
  async function compile(){
-  const projectPath=path.win32.normalize(path.join(root,'miniprogram'));
-  const targets=(await(await fetch('http://127.0.0.1:9431/json/list')).json()).filter(t=>{
-   try{const u=new URL(t.url);return u.protocol==='file:'&&u.pathname.endsWith('/electron-project.html')
-    &&path.win32.normalize(u.searchParams.get('projectpath')||'')===projectPath;}catch{return false;}
-  });assert.equal(targets.length,1,'Exactly one CDP target must match this Mini Program project');
-  const target=new URL(targets[0].url);assert.equal(path.win32.normalize(target.searchParams.get('projectpath')),path.win32.normalize(path.join(root,'miniprogram')));assert.equal(target.searchParams.get('appVersion'),'2.02.2608080');
-  assert.equal(target.searchParams.get('autoPort'),'9420');
-  const c=await connect(targets[0].url);try{assert.equal(c.target.id,targets[0].id);const point=await c.evaluate(`(()=>{const b=[...document.querySelectorAll('[title="编译"]')].filter(e=>e.getBoundingClientRect().width>0);if(b.length!==1)throw Error('Compile action not unique');const r=b[0].getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};})()`);
-   for(const type of ['mousePressed','mouseReleased'])await c.call('Input.dispatchMouseEvent',{type,button:'left',clickCount:1,...point});await delay(6000);return 'ws://127.0.0.1:'+target.searchParams.get('autoPort');
-  }finally{c.close();}
+  const projectPath=path.join(root,'miniprogram');
+  if(!ctx.refreshWithCli){
+   const {connect}=load(path.join(root,'tmp/wechat-devtools-version-test/cdp.cjs'));
+   const targets=(await(await fetch('http://127.0.0.1:9431/json/list')).json()).filter(t=>{
+    try{const u=new URL(t.url);return u.protocol==='file:'&&u.pathname.endsWith('/electron-project.html')
+     &&path.win32.normalize(u.searchParams.get('projectpath')||'')===path.win32.normalize(projectPath);}catch{return false;}
+   });assert.equal(targets.length,1,'Exactly one CDP target must match this Mini Program project');
+   const target=new URL(targets[0].url);assert.equal(target.searchParams.get('appVersion'),'2.02.2608080');assert.equal(target.searchParams.get('autoPort'),'9420');
+   const c=await connect(targets[0].url);try{assert.equal(c.target.id,targets[0].id);const point=await c.evaluate(`(()=>{const b=[...document.querySelectorAll('[title="编译"]')].filter(e=>e.getBoundingClientRect().width>0);if(b.length!==1)throw Error('Compile action not unique');const r=b[0].getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};})()`);
+    for(const type of ['mousePressed','mouseReleased'])await c.call('Input.dispatchMouseEvent',{type,button:'left',clickCount:1,...point});await delay(6000);return 'ws://127.0.0.1:'+target.searchParams.get('autoPort');
+   }finally{c.close();}
+  }
+  const launch=JSON.parse(fs.readFileSync(path.join(output,'window-launch.json'),'utf8'));
+  assert.equal(path.win32.normalize(launch.projectPath),path.win32.normalize(projectPath));
+  assert.equal(launch.autoPort,9420);
+  const quote=value=>"'"+value.replace(/'/g,"''")+"'";
+  const command=`& ${quote('D:\\微信开发工具\\微信web开发者工具\\wechatide.cmd')} -c Codex simulator_refresh --project ${quote(projectPath)}; exit $LASTEXITCODE`;
+  const result=cp.spawnSync(pwsh,['-NoProfile','-Command',command],{encoding:'utf8',windowsHide:true,timeout:30000});
+  const receipt=(result.stdout||'')+(result.stderr||'');
+  fs.writeFileSync(path.join(output,'compile-'+(++compileCount)+'.log'),receipt);
+  assert.equal(result.status,0,receipt);
+  const parsed=JSON.parse((result.stdout||'').slice((result.stdout||'').indexOf('{')));
+  assert.equal(parsed.ok,true,'Official simulator_refresh must acknowledge the request');
+  assert.equal(parsed.tool,'simulator_refresh');
+  assert.notEqual(parsed.result?.success,false,receipt);
+  // The CLI only acknowledges refresh; systemInfo, page data and elements below
+  // independently establish that the fresh runtime actually became usable.
+  await delay(6000);return 'ws://127.0.0.1:9420';
  }
  async function current(){const p=await mp.currentPage();assert.equal(p.path,route);return p;}
- async function open(){await mp.redirectTo('/'+route+'?projectId='+projectId);return waitFor(async()=>{const p=await mp.currentPage();if(p.path!==route)return null;const d=await p.data();return !d.loading&&d.project?.id===projectId&&d.write&&!d.fatal?p:null;},'shared project reentry');}
+ async function open(){await mp.redirectTo('/'+route+'?projectId='+projectId);return waitFor(async()=>{const p=await mp.currentPage();if(p.path!==route)return null;const d=await p.data();report.lastOpen={route:p.path,loading:d.loading,fatal:d.fatal,error:d.error,write:d.write,projectId:d.project?.id};save();if(!d.loading&&d.fatal)throw Error('Shared project reentry rejected: '+d.error);return !d.loading&&d.project?.id===projectId&&d.write&&!d.fatal?p:null;},'shared project reentry');}
  async function identity(i){await mp.evaluate(s=>{const app=getApp();app.globalData.token=s.token;app.globalData.bootstrap={current:{mode:'staff',role:s.role,capabilities:['construction.projects'],context:{enterpriseId:s.enterpriseId,staffId:s.adminId,staffRole:s.role}}};app.__qaShared.memory.set('token',s.token);},identities[i]);return open();}
  async function send(text,drop=false){
   const p=await current();
@@ -47,10 +66,16 @@ export async function run(ctx){
  try{
   await step('unique project on secondary monitor and no controller contention',async()=>{const info=JSON.parse(cp.execFileSync(pwsh,['-NoProfile','-File',windowScript,'-Action','Inspect','-IncludeHidden'],{encoding:'utf8',windowsHide:true}));assert.equal(info.ProjectWindows,1);assert.equal(info.OnSecondary,true);const count=cp.execFileSync(pwsh,['-NoProfile','-Command','@(Get-NetTCPConnection -LocalPort 9420 -State Established -ErrorAction SilentlyContinue).Count'],{encoding:'utf8',windowsHide:true}).trim();assert.equal(Number(count),0);return info;});
   await step('fresh compile and live Stable SDK data/elements baseline',async()=>{let endpoint=await compile();mp=await sdk.connect({wsEndpoint:endpoint});let info;try{info=await mp.systemInfo();await(await mp.currentPage()).data();}catch{await mp.disconnect();endpoint=await compile();mp=await sdk.connect({wsEndpoint:endpoint});info=await mp.systemInfo();}assert.equal(info.windowWidth,390);assert.equal(info.windowHeight,844);assert.equal(info.SDKVersion,'3.17.2');assert.ok((await(await mp.currentPage()).$$('view')).length);return {endpoint,SDKVersion:info.SDKVersion,logical:[390,844]};});
-  await step('synthetic-only real HTTP transport and in-memory session journal',async()=>{const result=await mp.evaluate((pid,cid)=>{const app=getApp();if(app.__qaShared||app.__qaMaterials||app.__qaC05)throw Error('Another test is active');const s={request:wx.request,downloadFile:wx.downloadFile,uploadFile:wx.uploadFile,chooseMedia:wx.chooseMedia,previewImage:wx.previewImage,getStorageSync:wx.getStorageSync,setStorageSync:wx.setStorageSync,removeStorageSync:wx.removeStorageSync,token:app.globalData.token,bootstrap:app.globalData.bootstrap,hydrate:app.hydrateStoredSession,memory:new Map(),requests:[],runIds:new Set(),dropNext:false};app.__qaShared=s;app.hydrateStoredSession=async()=>{};
+  await step('synthetic-only real HTTP transport and in-memory session journal',async()=>{const result=await mp.evaluate((pid,cid,origin,recordPreview)=>{const app=getApp();if(app.__qaShared||app.__qaMaterials||app.__qaC05)throw Error('Another test is active');const s={request:wx.request,downloadFile:wx.downloadFile,uploadFile:wx.uploadFile,chooseMedia:wx.chooseMedia,previewImage:wx.previewImage,getStorageSync:wx.getStorageSync,setStorageSync:wx.setStorageSync,removeStorageSync:wx.removeStorageSync,token:app.globalData.token,bootstrap:app.globalData.bootstrap,hydrate:app.hydrateStoredSession,memory:new Map(),requests:[],runIds:new Set(),dropNext:false};app.__qaShared=s;app.hydrateStoredSession=async()=>{};
    wx.getStorageSync=k=>s.memory.has(k)?s.memory.get(k):String(k).startsWith('site:')||k==='assistant-pending-v1'?undefined:s.getStorageSync.call(wx,k);wx.setStorageSync=(k,v)=>s.memory.set(k,v);wx.removeStorageSync=k=>s.memory.delete(k);
-   if(cid){wx.chooseMedia=o=>{if(!s.photoPath)throw Error('No synthetic photo was selected');o.success?.({tempFiles:[{tempFilePath:s.photoPath,size:s.photoSize}]});};wx.previewImage=o=>{s.previewed=o.urls;o.success?.({});};}
-   for(const method of ['request','downloadFile','uploadFile'])wx[method]=function(o){const raw=String(o.url),i=raw.indexOf('/api/'),p=i<0?'':raw.slice(i),base='/api/miniprogram/construction/projects/'+pid+'/chat',assistant='/api/miniprogram/assistant',allowedCustomer=cid&&(p.startsWith(assistant+'/conversations/'+cid+'/')||p===assistant+'/conversations/'+cid||p===assistant+'/conversations'||p===assistant+'/entry-context'&&String(o.data?.conversationId)===cid||p.startsWith(assistant+'/runs/')&&s.runIds.has(p.slice((assistant+'/runs/').length)));if(!(p===base||p.startsWith(base+'?')||p.startsWith(base+'/')||allowedCustomer)){o.fail?.({errMsg:'Synthetic-only transport refused request'});return{abort(){}};}const row={path:p,verb:o.method||(method==='uploadFile'?'POST':'GET'),status:null};s.requests.push(row);const success=o.success;return s[method].call(wx,{...o,url:'http://localhost:3006'+p,success(r){row.status=r.statusCode;if(cid&&p===assistant+'/conversations/'+cid+'/messages'&&o.method==='POST'&&r.data?.data?.runId)s.runIds.add(String(r.data.data.runId));if(s.dropNext&&o.method==='POST'&&p.endsWith('/messages')&&r.statusCode===200){s.dropNext=false;row.simulatedLostReceipt=true;o.fail?.({errMsg:'Synthetic response-loss injection'});return;}success?.(r);}});};return {installed:true,credentialsPersisted:false};},projectId,ctx.customer?.conversationId||'');installed=true;return result;});
+   if(cid)wx.chooseMedia=o=>{if(!s.photoPath)throw Error('No synthetic photo was selected');o.success?.({tempFiles:[{tempFilePath:s.photoPath,size:s.photoSize}]});};
+   if(cid||recordPreview)wx.previewImage=o=>{s.previewed=o.urls;o.success?.({});};
+   for(const method of ['request','downloadFile','uploadFile'])wx[method]=function(o){const raw=String(o.url),i=raw.indexOf('/api/'),p=i<0?'':raw.slice(i),base='/api/miniprogram/construction/projects/'+pid+'/chat',assistant='/api/miniprogram/assistant',allowedCustomer=cid&&(p.startsWith(assistant+'/conversations/'+cid+'/')||p===assistant+'/conversations/'+cid||p===assistant+'/conversations'||p===assistant+'/entry-context'&&String(o.data?.conversationId)===cid||p.startsWith(assistant+'/runs/')&&s.runIds.has(p.slice((assistant+'/runs/').length)));if(!(p===base||p.startsWith(base+'?')||p.startsWith(base+'/')||allowedCustomer)){o.fail?.({errMsg:'Synthetic-only transport refused request'});return{abort(){}};}const row={path:p,target:origin+p,verb:o.method||(method==='uploadFile'?'POST':'GET'),status:null};s.requests.push(row);const success=o.success;return s[method].call(wx,{...o,url:origin+p,success(r){row.status=r.statusCode;if(cid&&p===assistant+'/conversations/'+cid+'/messages'&&o.method==='POST'&&r.data?.data?.runId)s.runIds.add(String(r.data.data.runId));if(s.dropNext&&o.method==='POST'&&p.endsWith('/messages')&&r.statusCode===200){s.dropNext=false;row.simulatedLostReceipt=true;o.fail?.({errMsg:'Synthetic response-loss injection'});return;}success?.(r);}});};return {installed:true,apiOrigin:origin,previewApiCaptured:!!recordPreview,credentialsPersisted:false};},projectId,ctx.customer?.conversationId||'',apiOrigin,!!ctx.recordPreview);installed=true;return result;});
+  if(ctx.verifyWorkerHttp)await step('signed worker HTTP read through simulator before page reentry',async()=>{
+   const result=await mp.evaluate((pid,token,origin)=>new Promise(resolve=>wx.request({url:origin+'/api/miniprogram/construction/projects/'+pid+'/chat?limit=30',method:'GET',header:{Authorization:'Bearer '+token},timeout:10000,
+    success:r=>resolve({status:r.statusCode,projectId:r.data?.data?.project?.id,error:r.statusCode>=400?JSON.stringify(r.data).slice(0,2000):null}),fail:e=>resolve({error:e.errMsg})})),projectId,identities[2].token,apiOrigin);
+   report.workerHttp=result;save();assert.equal(result.status,200,JSON.stringify(result));assert.equal(result.projectId,projectId);return result;
+  });
   await identity(2);
   if(ctx.exercise){
    await step('scoped native S04 scenario through the existing controls',()=>ctx.exercise({mp,step,send,identity,open,capture,current,waitFor}));
