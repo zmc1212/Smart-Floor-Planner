@@ -1932,6 +1932,17 @@ PPT16/35/37的“已知设备后补其他设备”仅在企业明确配置剩余
 
 ## 当前P4A限定接续：项目共享对话、核对发布与原咨询关注
 
+当前确定性关注接续（2026-10-28）：C01沿`design-references/xiaok-p4b-public-sites-v1/README.md`批准P4B消息／提示／取消组件（853×1844映射390×844），无产品UI文件变化。`site-watch-contract.ts`仅在实际获权项目／房间名外识别限定口语前后缀，`site-watches.ts`持久并重验追问，明确换房间不再混入旧提示。“不用提醒了”及人工模式下待取消对象的澄清仍走原服务，真人接待不因此允许新订阅。无新Agent／工具／知识架构、模型派发、接口、表或迁移；原企业、客户、线索、当前项目／房间、已发布受众、来源撤回、outbox、幂等及三管理角色边界保留。
+
+| 触发 | 可见反馈／动作 | 恢复／重进及权限边界 |
+| --- | --- | --- |
+| 项目／房间歧义后说“就书房吧”或具体项目 | 原项目／房间追问，成功写入后原关注回执和取消入口 | entry_snapshot持久追问；只按当前获权登记名选择，待确认项目撤权不默认转到另一项目 |
+| C01不在前台时团队明确发布匹配照片 | 原记录文字／照片及来源版本 | 持久outbox只投一次，照片限定及实时来源／受众重验保持，重进下载认证原件 |
+| “不用提醒了”或指定项目／房间取消 | 原停止提醒回执，失效取消按钮隐藏 | 无对象沿当前咨询范围，指定对象保留其他关注；人工接待仍可取消 |
+| 事务失败或HTTP回执丢失 | 原失败／待核对消息及重试动作 | 写入与回执同事务回滚或同键恢复；跨企业／他客拒绝不新建关注 |
+
+已执行：unit02 3/3、service03 7/7、compat01 25通过／0失败／1项明确可选旧实模跳过、绑定Mini62/62，前后绑定均drift[]。真实服务覆盖订阅／回执写入、房间更正／项目澄清、离线发布回读、全范围／指定／人工取消、事务回滚重试、幂等及项目撤权／跨企业／他客边界；现场整理输出为确定性注入，不作实模语义通过。最终原项目Stable2.02.2608080／CLI0.3.11 native02新编译，live390×844 system／data／element RPC、实际输入点击、丢包同键恢复、导航重进、原照片下载／渲染、取消和清理通过，4张核路由348×752截图已审看。native01元数据断言虽通过，图审发现桥漏接wx.downloadFile，保留原批及其照片旅程未通过；修复传输并补原件／元素断言后，native02单列通过。service01夹具初始化查询失败；前置核对确认0098原hash已存在、applied=false，已有前置服务2项通过，初始查询根因未证实，不宣称已证明缺列。同源service02 6/6与末版service03 7/7分别保留。一轮lint忽略glob转义错误，仅核实后停止本人进程树中的该lint；修正后的源码lint和完整类型诊断单列。最终lint／类型、完整绑定、原失败及复用见`tmp/d4-watch-20261028/final-checks.json`。无供应商调用／新增费用，D2次数2、D4原用量／unknown预留及部署边界不变，知识域no change required。完整D4两条固定旅程及单独施工补拍原生检查仍按唯一计划第2节维护，不宣称完整阶段或生产通过。
+
 实施/API/数据/权限/状态/设计映射及手测以[总计划3.5](./xiaok-assistant-roadmap.zh-CN.md#35-p4a-工地共享小k对话记录发布与关注限定闭环)为准；限定闭环Implemented、整体Limited。共享project_collaboration经数据库适配复用消息/运行/Worker/配额/用量，由应用装配层选择单步现场整理处理器；客户/员工接管及知识预览检查保持。客户Agent提示词xiaok-renovation-v14，现场整理xiaok-site-record-v1；来源撤回覆盖通知、业务查询和派生回答。
 
 选型依据核对[LangGraph原始状态/人工核对建议](https://docs.langchain.com/oss/javascript/langgraph/thinking-in-langgraph)、[维护中的消息/工具测试](https://raw.githubusercontent.com/langchain-ai/langgraphjs/main/libs/langgraph-core/src/tests/prebuilt.test.ts)及[历史已关闭ToolMessage状态问题1440](https://github.com/langchain-ai/langgraphjs/issues/1440)。本批无需工具循环，不新增框架/checkpointer或Agent，不以ToolMessage.status推断业务成功；Postgres的权限、原材料/版本、租约、幂等及账务为权威。没有新增供应商专属协议补丁，真实配置模型回归与注入模型测试分开记录。下文P3B/P3A/v13及更早记录是各阶段历史基线。

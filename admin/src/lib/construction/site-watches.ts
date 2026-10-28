@@ -5,15 +5,9 @@ import { appendMessage } from '@/lib/assistant/core/conversation';
 import { safeText, type ActorContext, type MessageContent } from '@/lib/assistant/contracts';
 import { applyMaterialCommand, materialCommand } from './site-materials';
 import { applyMaterialShareReply, hasMaterialShareReply } from './material-sharing';
+import { siteWatchIntent, siteWatchReply, unscopedSiteWatchCancel } from './site-watch-contract';
 
-export function siteWatchIntent(text: string) {
-  if (/[？?]|如果|假如|怎么|如何|是否|能否|意思|吗/.test(text)) return null;
-  if (/不要取消|别取消|不想取消|不需要取消|不用取消/.test(text)) return null;
-  if (/不用再提醒|不要再提醒|取消关注|停止提醒|不再提醒/.test(text)) return { cancel: true, photosOnly: false };
-  if (/不想|不要|不用|不需要|暂不|以后再|别/.test(text)) return null;
-  if (/(?:有|一旦有).{0,30}(?:新照片|照片|进展|更新).{0,8}(?:告诉我|通知我|提醒我)/.test(text)) return { cancel: false, photosOnly: /照片/.test(text) };
-  return null;
-}
+export { siteWatchIntent } from './site-watch-contract';
 async function receipt(tx: PostgresTransaction, actor: ActorContext, cid: string, sourceId: string, text: string, watchId?: string) {
   const event = (await one(tx, sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
     values(${actor.enterpriseId},'construction.watch.changed.v1','assistant_message',${sourceId},1,${JSON.stringify(actor.principal)}::jsonb,${sourceId},${JSON.stringify({ watchId: watchId || null })}::jsonb) returning id`))!;
@@ -26,9 +20,9 @@ export async function applySiteWatch(tx: PostgresTransaction, actor: ActorContex
   const entry = conversation.entry_snapshot as Row, pending = entry.siteWatchQuestion as Row | undefined;
   let intent = siteWatchIntent(raw);
   const direct = !!intent;
-  if (conversation.mode !== 'ai' && !intent?.cancel) return false;
+  if (conversation.mode !== 'ai' && (intent ? !intent.cancel : pending?.cancel !== true)) return false;
   if (!intent && !pending) return false;
-  if (intent?.cancel && /^(?:不用再提醒了?|不要再提醒了?|不再提醒了?|停止提醒|取消关注)[。！!]?$/u.test(raw)) {
+  if (intent?.cancel && unscopedSiteWatchCancel(raw)) {
     await tx.execute(sql`update app.construction_watches w set active=false,source_message_id=${String(message.id)},updated_at=now()
       where w.enterprise_id=${eid} and w.customer_id=${uid} ${entry.kind === 'lead' ? sql`and exists(select 1 from app.construction_projects p where p.enterprise_id=w.enterprise_id and p.id=w.project_id and p.lead_id=${String(entry.id)})` : sql``}`);
     await receipt(tx, actor, String(conversation.id), String(message.id), '已停止当前咨询范围的工地进展提醒。');
@@ -40,15 +34,21 @@ export async function applySiteWatch(tx: PostgresTransaction, actor: ActorContex
     ${entry.kind === 'lead' ? sql`and l.id=${String(entry.id)}` : sql``} order by p.id for share of p,l`);
   const rooms = await rows(tx, sql`select r.id::text,r.project_id::text,r.name from app.construction_rooms r join app.construction_projects p on p.enterprise_id=r.enterprise_id and p.id=r.project_id
     join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id where r.enterprise_id=${eid} and ${intent?.cancel || pending?.cancel ? sql`p.status in ('active','paused')` : sql`p.status='active'`} and p.customer_access and l.customer_user_id=${uid} and l.archived_at is null`);
-  if (!intent && pending && (projects.some(p => p.name === raw) || rooms.some(r => r.name === raw) || /^(整个工地|全部房间)$/.test(raw))) intent = { cancel: pending.cancel === true, photosOnly: pending.photosOnly === true };
+  const reply = !intent && pending ? siteWatchReply(raw, projects.map(p => String(p.name)), rooms.flatMap(r => {
+    const project = projects.find(p => p.id === r.project_id);
+    return project ? [{ project: String(project.name), name: String(r.name) }] : [];
+  })) : null;
+  if (reply) intent = { cancel: pending!.cancel === true, photosOnly: pending!.photosOnly === true };
   if (!intent) {
     if (pending) await tx.execute(sql`update app.assistant_conversations set entry_snapshot=entry_snapshot-'siteWatchQuestion' where enterprise_id=${eid} and id=${String(conversation.id)}`);
     return false;
   }
   if (!projects.length) { await receipt(tx, actor, String(conversation.id), String(message.id), '当前没有对你开放的施工项目，可以先和项目团队确认。'); return true; }
-  const hint = !direct && pending?.roomNameHint && !/^(整个工地|全部房间)$/.test(raw) ? raw + ' ' + String(pending.roomNameHint) : raw;
+  const selection = reply || raw;
+  const hasRoomChoice = rooms.some(r => selection.includes(String(r.name)));
+  const hint = !direct && pending?.roomNameHint && !hasRoomChoice && !/^(整个工地|全部房间)$/.test(selection) ? selection + ' ' + String(pending.roomNameHint) : selection;
   const named = projects.filter(p => raw.includes(String(p.name))), hintedRooms = rooms.filter(r => hint.includes(String(r.name)) && projects.some(p => p.id === r.project_id));
-  const chosen = named.length === 1 ? named[0] : projects.length === 1 ? projects[0]
+  const chosen = named.length === 1 ? named[0] : !direct && pending?.projectId ? projects.find(p => p.id === pending.projectId) : projects.length === 1 ? projects[0]
     : hintedRooms.length === 1 ? projects.find(p => p.id === hintedRooms[0].project_id) : pending?.projectId ? projects.find(p => p.id === pending.projectId) : undefined;
   const selectedRooms = chosen ? hintedRooms.filter(r => r.project_id === chosen.id) : hintedRooms;
   const unknownRoom = !selectedRooms.length && /(?:卧室|书房|厨房|卫生间|客厅|阳台|餐厅)/.test(hint);
