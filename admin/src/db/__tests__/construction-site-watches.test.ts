@@ -132,3 +132,35 @@ test('access revocation between clarification turns cannot silently select the r
   await assert.rejects(stranger.send(f.conversationId, randomUUID(), { version: 1, blocks: [{ type: 'text', text: '不用提醒了' }] }, siteWatchInterceptor));
   assert.equal((await watches(f)).length, 0);
 }));
+
+test('a newer consultation cannot consume the original watch publication through foreground reads or offline delivery', () => fixture('original-consultation', async f => {
+  await f.send('测试工地甲书房有新照片告诉我');
+  const newer = String((await f.chat.create(randomUUID())).id);
+  const recordId = await publish(f);
+  assert.ok(!(await f.chat.messages(newer)).items.some(m => (m.siteRecord as Row)?.id === recordId));
+  assert.ok(await deliverSiteNotifications() >= 1);
+  const histories = await Promise.all([f.chat.messages(newer), f.chat.messages(f.conversationId), f.chat.messages(f.conversationId)]);
+  assert.ok(!histories[0].items.some(m => (m.siteRecord as Row)?.id === recordId));
+  for (const history of histories.slice(1)) assert.equal(history.items.filter(m => (m.siteRecord as Row)?.id === recordId).length, 1);
+}));
+
+test('an original consultation in human mode defers publication instead of rerouting to a newer AI consultation', () => fixture('deferred-original', async f => {
+  await f.send('测试工地甲书房有新照片告诉我'); const newer = String((await f.chat.create(randomUUID())).id);
+  await withTenantTransaction(f.eid, tx => tx.execute(sql`update app.assistant_conversations set mode='human' where enterprise_id=${f.eid} and id=${f.conversationId}`));
+  const recordId = await publish(f); await deliverSiteNotifications();
+  assert.ok(!(await f.chat.messages(newer)).items.some(m => (m.siteRecord as Row)?.id === recordId));
+  assert.ok(!(await f.chat.messages(f.conversationId)).items.some(m => (m.siteRecord as Row)?.id === recordId));
+  await withTenantTransaction(f.eid, tx => tx.execute(sql`update app.assistant_conversations set mode='ai' where enterprise_id=${f.eid} and id=${f.conversationId}`));
+  await deliverSiteNotifications(); assert.ok((await f.chat.messages(f.conversationId)).items.some(m => (m.siteRecord as Row)?.id === recordId));
+}));
+
+test('only an explicit new subscription moves a watch to another consultation', () => fixture('explicit-retarget', async f => {
+  const text = '测试工地甲书房有新照片告诉我'; await f.send(text);
+  const newer = String((await f.chat.create(randomUUID())).id);
+  assert.equal((await f.chat.send(newer, randomUUID(), { version: 1, blocks: [{ type: 'text', text }] }, siteWatchInterceptor)).runId, null);
+  assert.equal((await watches(f)).length, 1);
+  const recordId = await publish(f);
+  assert.ok(!(await f.chat.messages(f.conversationId)).items.some(m => (m.siteRecord as Row)?.id === recordId));
+  await deliverSiteNotifications();
+  assert.equal((await f.chat.messages(newer)).items.filter(m => (m.siteRecord as Row)?.id === recordId).length, 1);
+}));

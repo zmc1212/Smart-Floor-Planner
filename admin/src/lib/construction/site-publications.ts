@@ -71,14 +71,18 @@ export async function syncSitePublications(tx: PostgresTransaction, actor: Actor
     and (r.room_id is null or exists(select 1 from app.construction_rooms room where room.enterprise_id=r.enterprise_id and room.project_id=r.project_id and room.id=r.room_id and room.name=r.room_name_snapshot))
     and not exists(select 1 from app.domain_event_deliveries d where d.enterprise_id=e.enterprise_id and d.event_id=e.id and d.consumer_key=${'construction:record:user:' + uid})
     ${entry?.kind === 'lead' ? sql`and p.lead_id=${String(entry.id)}` : sql``}
-    and exists(select 1 from app.construction_watches w where w.enterprise_id=r.enterprise_id and w.project_id=r.project_id and w.customer_id=${uid}
+    and exists(select 1 from app.construction_watches w join app.assistant_messages watch_source on watch_source.enterprise_id=w.enterprise_id and watch_source.id=w.source_message_id
+      where w.enterprise_id=r.enterprise_id and w.project_id=r.project_id and w.customer_id=${uid}
+      and watch_source.conversation_id=${String(conversation.id)} and watch_source.user_id=w.customer_id
       and w.active and w.started_at<=r.published_at and (w.room_id is null or (w.room_id=r.room_id and w.room_name_snapshot=r.room_name_snapshot))
       and (not w.photos_only or exists(select 1 from app.construction_site_attachments a join app.construction_site_media m on m.enterprise_id=a.enterprise_id and m.project_id=a.project_id and m.id=a.media_id
         where a.enterprise_id=r.enterprise_id and a.project_id=r.project_id and a.record_id=r.id and m.deleted_at is null))) order by e.id limit 50`);
   for (const e of events) {
     const r = await publishedSiteRecord(tx, eid, uid, String(e.aggregate_id), Number(e.aggregate_version), true);
     if (!r) continue;
-    const watch = await one(tx, sql`select w.id from app.construction_watches w where w.enterprise_id=${eid} and w.project_id=${String(r.project_id)} and w.customer_id=${uid} and w.active
+    const watch = await one(tx, sql`select w.id from app.construction_watches w join app.assistant_messages watch_source on watch_source.enterprise_id=w.enterprise_id and watch_source.id=w.source_message_id
+      where w.enterprise_id=${eid} and w.project_id=${String(r.project_id)} and w.customer_id=${uid} and w.active
+      and watch_source.conversation_id=${String(conversation.id)} and watch_source.user_id=w.customer_id
       and w.started_at<=${r.published_at as Date} and (w.room_id is null or (w.room_id=${r.room_id as string | null} and w.room_name_snapshot=${String(r.room_name_snapshot)}))
       and (not w.photos_only or exists(select 1 from app.construction_site_attachments a join app.construction_site_media m on m.enterprise_id=a.enterprise_id and m.project_id=a.project_id and m.id=a.media_id
         where a.enterprise_id=w.enterprise_id and a.project_id=w.project_id and a.record_id=${String(r.id)} and m.deleted_at is null)) limit 1 for share`);
@@ -102,6 +106,14 @@ export async function deliverSiteNotifications() {
     join lateral(select c.id from app.assistant_conversations c join app.assistant_participants ap on ap.enterprise_id=c.enterprise_id and ap.conversation_id=c.id and ap.user_id=r.published_customer_id and ap.status='active'
       where c.enterprise_id=r.enterprise_id and c.purpose='customer_consultation' and c.status='open' and c.mode='ai'
         and (coalesce(c.entry_snapshot->>'kind','')<>'lead' or c.entry_snapshot->>'id'=p.lead_id::text)
+        and exists(select 1 from app.construction_watches target_watch
+          join app.assistant_messages watch_source on watch_source.enterprise_id=target_watch.enterprise_id and watch_source.id=target_watch.source_message_id
+          where target_watch.enterprise_id=r.enterprise_id and target_watch.project_id=r.project_id and target_watch.customer_id=r.published_customer_id
+          and target_watch.active and target_watch.started_at<=r.published_at and watch_source.conversation_id=c.id and watch_source.user_id=target_watch.customer_id
+          and (target_watch.room_id is null or (target_watch.room_id=r.room_id and target_watch.room_name_snapshot=r.room_name_snapshot))
+          and (not target_watch.photos_only or exists(select 1 from app.construction_site_attachments a join app.construction_site_media m
+            on m.enterprise_id=a.enterprise_id and m.project_id=a.project_id and m.id=a.media_id
+            where a.enterprise_id=r.enterprise_id and a.project_id=r.project_id and a.record_id=r.id and m.deleted_at is null)))
       order by (c.entry_snapshot->>'kind'='lead') desc nulls last,c.id desc limit 1) c on true
     where e.type='construction.record.publish.v1' and r.status='published' and r.audience='customer' and p.status='active' and p.customer_access
     and r.source_message_id is not null

@@ -86,7 +86,8 @@ async function capture(label: string) {
   assert.equal((await mp.currentPage())?.path, 'packages/assistant/chat/chat');
   const stack = await mp.evaluate(() => getCurrentPages().map(p => p.route)); assert.equal(stack.at(-1), 'packages/assistant/chat/chat');
   const file = path.join(output, label + '.png'); await mp.screenshot({ path: file }); const bytes = fs.readFileSync(file);
-  report.captures.push({ file, route: stack.at(-1), stack, logical: [390, 844], encoded: [bytes.readUInt32BE(16), bytes.readUInt32BE(20)] }); save();
+  const data = await (await mp.currentPage())!.data();
+  report.captures.push({ file, route: stack.at(-1), conversationId: data.conversation?.id || null, stack, logical: [390, 844], encoded: [bytes.readUInt32BE(16), bytes.readUInt32BE(20)] }); save();
 }
 let release: (() => Promise<void>) | undefined, server: http.Server | undefined, installed = false;
 async function main() {
@@ -149,13 +150,19 @@ async function main() {
       };
     }, { token, eid: f.eid });
     installed = true;
-    const enter = async () => { await mp.redirectTo('/packages/assistant/chat/chat?conversationId=' + f.conversationId); return pageAt(); };
+    const enter = async (conversationId = f.conversationId) => { await mp.redirectTo('/packages/assistant/chat/chat?conversationId=' + conversationId); return pageAt(); };
     await enter(); await send('测试工地甲书房和客厅有新照片告诉我');
     assert.equal((await watches()).length, 0); await capture('clarification');
     await enter(); assert.ok(JSON.stringify((await (await pageAt()).data()).messages).includes('想关注哪个房间'));
     await send('就书房吧', true); const list = await watches(); assert.equal(list.length, 1); assert.equal(list[0].room_id, f.roomId); assert.ok(list[0].active);
     report.checks.push('Clarification, persisted reentry, real colloquial input, lost HTTP receipt and same-key recovery create one photo watch'); await capture('subscribed');
-    await mp.reLaunch('/pages/index/index'); const recordId = await publish(); await enter();
+    const newer = String((await f.chat.create(randomUUID())).id); report.newerConversationId = newer;
+    await enter(newer); await mp.reLaunch('/pages/index/index'); const recordId = await publish(); await enter(newer);
+    const newerData = await (await pageAt()).data(); assert.equal(String(newerData.conversation.id), newer);
+    assert.ok(!newerData.messages.some((m: Row) => (m.siteRecordList || []).some((r: Row) => String(r.id) === recordId)));
+    assert.ok(!(await f.chat.messages(newer)).items.some(m => (m.siteRecord as Row)?.id === recordId));
+    report.checks.push('A newer same-customer consultation neither steals the original offline notice nor consumes it on reentry');
+    await capture('newer-consultation-no-notice'); await enter();
     assert.equal((await f.chat.messages(f.conversationId)).items.filter(m => (m.siteRecord as Row)?.id === recordId).length, 1);
     await until(async () => { const page = await pageAt(), data = await page.data();
       return !data.siteRecordError && Object.keys(data.siteRecordPaths || {}).some(key => key.startsWith(recordId + '_')) && await page.$('.site-record-photos .message-photo');
