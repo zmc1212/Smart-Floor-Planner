@@ -5,7 +5,7 @@ import { fail, fingerprint, id, safeText, type ActorContext } from '@/lib/assist
 import { sharedMaterials } from './site-materials';
 import { readSiteResolution } from './site-resolution';
 
-type Command = { action: 'open' | 'claim' | 'transfer' | 'reply' | 'cancel' | 'resume' | 'refresh' | 'check' | 'return'; target: string; value: string };
+export type SiteIssueCommand = { action: 'open' | 'claim' | 'transfer' | 'reply' | 'cancel' | 'resume' | 'refresh' | 'check' | 'return'; target: string; value: string };
 type Issue = { issueId: string; revision: number; projectId: string; recordId: string; recordVersion: number;
   sourceHash: string; sourceMessageId: string; roomId: string | null; roomName: string; openedBy: string;
   ownerId: string | null; state: 'awaiting_owner' | 'awaiting_review' | 'cancelled'; progressMessageId: string | null; action: string;
@@ -47,7 +47,7 @@ export function parseSiteVersions(value: unknown): SiteVersions {
 }
 
 /** Explicit chat commands only. Questions, quotations, acknowledgements and model text cannot authorize an action. */
-export function siteIssueCommand(raw: string): Command | null {
+export function siteIssueCommand(raw: string): SiteIssueCommand | null {
   const prefix = '(?:(?:请|帮我|麻烦)\\s*)?';
   let m = new RegExp('^' + prefix + '跟进(?:现场)?记录\\s*[#＃]?([1-9]\\d{0,18})(?:[：:，,\\s]+(.+))?[。！!\\s]*$').exec(raw);
   if (m) return { action: 'open', target: id(m[1]), value: m[2] || '' };
@@ -157,6 +157,12 @@ export async function projectSiteIssues(tx: PostgresTransaction, eid: string, pi
 
 export async function handleSiteIssue(tx: PostgresTransaction, actor: ActorContext, pid: string, sourceMessageId: string, raw: string, versions: SiteVersions, manage: boolean) {
   const cmd = siteIssueCommand(raw); if (!cmd) return null;
+  return executeSiteIssue(tx, actor, pid, sourceMessageId, cmd, versions, manage);
+}
+
+/** Trusted service input only. Natural actions reach here after the original
+ * staff member confirms the exact persisted preview; model output alone cannot. */
+export async function executeSiteIssue(tx: PostgresTransaction, actor: ActorContext, pid: string, sourceMessageId: string, cmd: SiteIssueCommand, versions: SiteVersions, manage: boolean) {
   if (actor.principal.kind !== 'admin') fail('construction_forbidden', 403);
   const eid = actor.enterpriseId, aid = actor.principal.adminId;
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`site-material:${eid}:${pid}`},0))`);

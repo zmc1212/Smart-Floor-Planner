@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { AssistantRepository, assistantWritesEnabled, one, rows, type Row } from '@/db/repositories/assistant-repository';
-import { fail, id, key, type ActorContext } from '@/lib/assistant/contracts';
+import { fail, fingerprint, id, key, type ActorContext } from '@/lib/assistant/contracts';
 import { appendMessage, cancelRuns, idempotent, newRun } from '@/lib/assistant/core/conversation';
 import { normalizeImage } from '@/lib/assistant/media/service';
 import { constructionAccess } from './service';
@@ -12,6 +12,8 @@ import { handleSiteIssue, parseSiteVersions, projectSiteIssues, siteIssueCommand
 import { sharedMaterialMedia, sharedMaterials } from './site-materials';
 import { handlePlan, planCommand, projectPlans } from './site-plans';
 import { handleSiteResolution, projectResolutionVersions, resolutionCommand, validateResolutionReceipt } from './site-resolution';
+import { confirmSiteAction, invalidateSiteAction, requestSiteAction, siteActionWaiting } from './site-actions';
+import { siteActionAcknowledgement } from './site-action-contract';
 
 export function siteActor(a: ConstructionActor): ActorContext {
   return { enterpriseId: a.enterpriseId, principal: { kind: 'admin', adminId: a.adminId }, contextVersion: 1,
@@ -31,11 +33,15 @@ export async function recordVersion(tx: PostgresTransaction, eid: string, record
 }
 export class SiteChatService {
   readonly actor: ActorContext;
-  constructor(readonly staff: ConstructionActor) { this.actor = siteActor(staff); }
+  constructor(readonly staff: ConstructionActor, private transaction?: PostgresTransaction) { this.actor = siteActor(staff); }
   authorize(projectId: string, write = false) { return this.scope(projectId, write, async () => undefined); }
+  /** Worker commits reuse the same transaction and live project/role policy as HTTP writes. */
+  withWriteScope<T>(projectId: string, fn: (tx: PostgresTransaction, c: Row, p: Row, permission: { manage: boolean; write: boolean }) => Promise<T>) {
+    return this.scope(projectId, true, fn);
+  }
   private scope<T>(projectId: string, write: boolean, fn: (tx: PostgresTransaction, c: Row, p: Row, permission: { manage: boolean; write: boolean }) => Promise<T>) {
     id(projectId);
-    return withTenantTransaction(this.staff.enterpriseId, async tx => {
+    const execute = async (tx: PostgresTransaction) => {
       const a = this.staff, eid = a.enterpriseId;
       const owner = await constructionAccess(tx, a);
       const repo = new AssistantRepository(tx, this.actor);
@@ -60,7 +66,8 @@ export class SiteChatService {
       const permission = { manage: owner || member?.role === 'manager', write: (owner || (!!member && member.role !== 'observer')) && p.status === 'active' && assistantWritesEnabled(settings) };
       if (write && (!permission.write || p.status !== 'active')) fail('construction_forbidden', 403);
       return fn(tx, c, p, permission);
-    });
+    };
+    return this.transaction ? execute(this.transaction) : withTenantTransaction(this.staff.enterpriseId, execute);
   }
   read(projectId: string, beforeSeq = '9223372036854775807', limit = 30) {
     id(beforeSeq);
@@ -147,6 +154,26 @@ export class SiteChatService {
       const intent = siteIssueCommand(raw) || planCommand(raw) || resolutionCommand(raw) ? 'request' : siteMessageIntent(raw, mediaIds.length);
       const message = await appendMessage(tx, this.actor, String(c.id), { author: 'admin', clientMessageId: requestKey, purpose: 'site.source',
         content: { version: 1, blocks: raw ? [{ type: 'text', text: raw }] : [{ type: 'notice', code: 'site_photos', fallbackText: `现场照片 · ${mediaIds.length}张` }] } });
+      const confirmation = await confirmSiteAction(tx, this.actor, c, projectId, message, raw, permission.manage);
+      if (confirmation) {
+        await appendSiteResponse(tx, this.actor, String(c.id), projectId, String(message.id), mediaIds, 'request', confirmation.text,
+          confirmation.issue ? { issueId: confirmation.issue.issueId, revision: confirmation.issue.revision } : {});
+        return { conversationId: String(c.id), messageId: String(message.id), recordId: null, runId: null, status: 'succeeded', intent: 'request',
+          ...(confirmation.issue ? { issueId: confirmation.issue.issueId, revision: confirmation.issue.revision } : {}) };
+      }
+      await invalidateSiteAction(tx, this.actor, String(c.id), raw);
+      // This only selects a model interpretation path. It never chooses or
+      // authorizes an action; the model may retain the existing report path.
+      const actionCandidate = ['request', 'clarify'].includes(intent) || intent === 'report' && /请|帮|麻烦|回复|我来|负责|跟进|接手|记下/.test(raw);
+      if (actionCandidate && !siteActionAcknowledgement(raw) && !siteIssueCommand(raw) && !planCommand(raw) && !resolutionCommand(raw)) {
+        const settings = (await one(tx, sql`select * from app.assistant_enterprise_settings where enterprise_id=${eid}`))!;
+        const actionRun = await requestSiteAction(tx, this.actor, c, settings, message);
+        if (actionRun) {
+          await appendSiteResponse(tx, this.actor, String(c.id), projectId, String(message.id), mediaIds, 'request', siteActionWaiting,
+            { actionRunId: actionRun.runId, actionVersions: versions, actionProjectVersion: Number(_p.version), sourceHash: fingerprint(message.content) });
+          return { ...actionRun, recordId: null, intent: 'request' };
+        }
+      }
       if (intent !== 'report') {
         const plan = intent === 'request' ? await handlePlan(tx, this.actor, projectId, String(message.id), raw, mediaIds, versions, permission.manage) : null;
         const issue = intent === 'request' ? await handleSiteIssue(tx, this.actor, projectId, String(message.id), raw, versions, permission.manage) : null;

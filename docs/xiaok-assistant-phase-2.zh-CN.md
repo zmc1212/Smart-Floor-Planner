@@ -1935,6 +1935,29 @@ PPT16/35/37的“已知设备后补其他设备”仅在企业明确配置剩余
 
 ## 当前P4A限定接续：项目共享对话、核对发布与原咨询关注
 
+### 自然记录、跟进、接手及回复（2026-10-28）
+
+用户动作是“帮我继续跟进书房底盒的位置，先别固定”，再由设计师本人接手并提交完整回复。原缺口为普通请求只返回编号命令提示，未走自然处理流程。原查询／资料读取保持；新增site.action目的沿原持久run/job、provider attempt及quota，仅形成一次模型选择的预览，不给模型业务写工具。report选择沿同一原话／照片进入原site.record整理器，不复制原消息。自然记录／跟进／接手／回复限定Implemented，唯一计划D4两条完整固定旅程仍Limited。
+
+final_response原生schema及原toolSchemaIssue复用LangChain无副作用工具校验，候选记录／事项ID枚举，错类型／动作／目标、多余字段／多个调用及截断输出在预览前失败。已对照维护中的[LangChain工具测试](https://github.com/langchain-ai/langchainjs/blob/main/libs/langchain-core/src/tools/tests/tools.test.ts)，包括参数无效时回调次数0，以及[历史issue6374](https://github.com/langchain-ai/langchainjs/issues/6374)的输入错误被吞报告。该issue针对旧executor；本次不引入它的重试／异常处理，也不将旧报告视为当前安装版本事实。沿原Qwen final-only原生schema传输、LangGraph/runtime、Postgres事务及provider审计，无框架迁移、自主Agent、KnowledgeRetriever/Evidence、facts、权限解析或引用管线；Knowledge无需变化。
+
+模型最多读取12条精确获权记录及12条活动事项和项目房间，输入UTF-8上限48KB，输出512tokens；候选摘要有界，真正确认使用完整原话。原conversation.entry_snapshot的siteActionProposals[adminId]保存本人最新run/source/hash/status；原construction.chat.response.v1 JSONB绑定actionRunId、原versions、projectVersion及sourceHash。原outbox增加construction.site.action.proposed.v1／.confirmed.v1，保留完整原话及独立确认消息，无新表／schema／API。预览30分钟过期，绑定原房间、来源、记录／事项／资料修订及hash、项目版本和有效原作者；成员移除再加回不能复活。Worker在同一事务调用SiteChatService.withWriteScope，共用HTTP写入的实时租户／项目／角色策略，确认再委托executeSiteIssue，旧编号命令兼容。
+
+| 触发 | 沿用的可见反馈／动作 | 恢复及权限边界 |
+| --- | --- | --- |
+| 进展／照片记录请求 | 原S04草稿卡及私有原图 | 同一原话／附件、原整理器，人工核对后才发布 |
+| 明确的自然跟进／本人接手／本人回复 | 原S04回复显示目标、完整原话及“尚未执行” | 仅原作者另行确认匹配动作，收到／好的及他人不能执行 |
+| 匹配的明确确认 | 原事项当前回执及完整回复 | 重验原版本／hash／有效期，原话＋独立确认审计，不发布／批准／关闭 |
+| 改口、取消或来源／成员变化 | 原保留／不可用反馈 | 只取消本人待确认动作，失效来源不自动采用新版本 |
+| 已知输出后的Worker恢复 | 原已保存预览 | 沿step1110精确checkpoint，不重复请求供应商 |
+| 推理中取消／撤权 | 不提交过期业务动作 | 返回的观测用量仍记账，未知结果及预留禁止自动重试 |
+
+设计沿S04原PPT22/38及PPT23资料语境、C01 design-references/xiaok-p4b-public-sites-v1/README.md，853×1844→390×844。WXML/Less/素材/导航及视觉方向不变，使用原回复／草稿／确认／发布／失效状态。Stable沿官方CLI新编译、SDK0.13.0、Stable2.02.2608080/base3.17.2、原项目窗口／副屏、单controller和原验收锁。55432隔离合成库及3118签名路由执行实际写入／回读，3006／客户数据／生产不变。
+
+派发前固定两组：每组自然进展理解及原记录整理、跟进、本人接手、完整回复各一次。两组首稿的语义／客户端步骤均通过，真实qwen3.8-flash10次、观测5110tokens，无修稿重采样。原native01仍失败：两组在经理点击发布前，驱动.sheet > .primary找不到节点。产品源码未改；native02 --resume只恢复同一已退役合成夹具／原件，禁止外部推理，补完原发布控件、客户精确版本认证照片／重进及成员撤权，两组12项、模型0次。付费批驱动逐字节保留，前后源码／配置及续跑产品对照drift[]；原批6图和续跑6图（逻辑390×844／PNG348×752）均逐张审看。完整宿主光学、真机、真实微信授权、BLE及纯色合成图的专业理解未验，不作为开发闸门。SDK身份／传输、controller／服务／锁及原模型配置已恢复；付费数据／attempt保留审计，设置／员工停用、成员无效、用户context推进，本人活动任务0。
+
+最终unit2/2、service04 11/11、查询／资料兼容31/31及原任务／计费28/28通过。service01原8项失败（JSONB key类型、report分流及依赖失败）独立保留，02/03为中间通过，04绑定最终仅类型测试cast。Mini62/62及全量源代码lint通过，drift[]；首次lint扫入已有.next-qa生成物后停止，另批全量仅排除.next*/**生成物。完整类型仍54项，与前次诊断逐项相同／涉及0。无package/config/schema/route变更，未重跑完整生产构建／发布；预检语法／lint原错保留。复跑在admin下node scripts/assistant-d4-sharing-acceptance.mjs site-actions-unit|site-actions|site-actions-compat|site-actions-queue <label>；原生node scripts/construction-site-actions-native.mjs <label> [--resume <original-label>]。证据tmp/d4-natural-actions-20261028/final-checks.json；累计保守¥28.506282/100，真实账单及历史unknown预留不猜0。D2失败次数仍2，无新增D2调用。后继沿唯一计划第2节：实际阶段／准备及设计师到客户可见具体版本的完整旅程，本限定链及待核对回复不关闭完整D4。
+
 ### 同房间事项与资料组合查询（2026-10-28）
 
 用户动作是“书房底盒现在在等谁处理，帮我找对应图纸和需求。”原事项／资料互斥分支会漏掉获权图纸和需求，并返回其他房间事项。SiteChatService现以一个明确房间范围组合既有实时事项读取与资料快照；这是确定性业务查询改动，LangGraph、工具协议、供应商prompt、KnowledgeRetriever/Evidence及权限／来源写入服务不变，Knowledge无须修改。

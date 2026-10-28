@@ -95,7 +95,7 @@ export async function terminalEvent(tx: PostgresTransaction, enterpriseId: strin
 }
 export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Row, settings: Row, messageId: string | null, retryOf?: string, trigger: RunTrigger = { kind: 'user_message', messageId: messageId! }, purpose = 'reply') {
   if (c.status !== 'open' || c.mode !== 'ai') fail('context_changed');
-  const agent = actor.principal.kind === 'user' || (purpose === 'site.record' && actor.capabilities.includes('assistant.project.shared')) ? agentConfig(settings.agent_config) : null;
+  const agent = actor.principal.kind === 'user' || (['site.record', 'site.action'].includes(purpose) && actor.capabilities.includes('assistant.project.shared')) ? agentConfig(settings.agent_config) : null;
   const entry = c.entry_snapshot as Row;
   const reviewRuntime = agent && actor.principal.kind === 'user' && c.purpose === 'customer_consultation'
     && entry.agentReviewCandidate === true && entry.requirementReviewMode === true

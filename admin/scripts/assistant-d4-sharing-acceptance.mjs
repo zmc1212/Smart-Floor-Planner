@@ -21,8 +21,13 @@ const files = mode === 'unit' ? ['src/lib/assistant/__tests__/material-sharing.t
   : mode === 'site-context' ? ['src/db/__tests__/construction-site-context.test.ts']
   : mode === 'site-context-compat' ? ['src/db/__tests__/construction-chat-queries.test.ts', 'src/db/__tests__/construction-materials.test.ts', 'src/db/__tests__/construction-issue-continuation.test.ts', 'src/db/__tests__/construction-resolution.test.ts', 'src/db/__tests__/assistant-materials.test.ts']
   : mode === 'site-context-resolution-roles' || mode === 'site-context-resolution-recovery' ? ['src/db/__tests__/construction-resolution.test.ts']
+  : mode === 'site-actions-unit' ? ['src/lib/construction/__tests__/site-action-contract.test.ts']
+  : mode === 'site-actions' ? ['src/db/__tests__/construction-site-actions.test.ts']
+  : mode === 'site-actions-compat' ? ['src/db/__tests__/construction-chat-queries.test.ts', 'src/db/__tests__/construction-materials.test.ts', 'src/db/__tests__/construction-site-context.test.ts']
+  : mode === 'site-actions-queue' ? ['src/db/__tests__/assistant.test.ts', 'src/db/__tests__/assistant-usage.test.ts']
   : [];
-if (!files.length) throw Error('Expected unit, service, compat or compat-repair');
+if (!files.length) throw Error('Expected a named bounded D4 acceptance mode');
+const unitMode = mode === 'unit' || mode === 'site-actions-unit';
 const binding = () => {
   const paths = [...files.map(f => 'admin/' + f), 'admin/scripts/assistant-d4-sharing-fixture.ts', 'admin/scripts/assistant-d4-sharing-acceptance.mjs', 'admin/scripts/assistant-d4-runtime-config.mjs', 'admin/scripts/assistant-acceptance-safety.mjs', 'admin/package-lock.json', path.relative(root, runtimeConfig)];
   for (const dir of ['admin/src/lib/assistant', 'admin/src/lib/construction', 'admin/src/db']) {
@@ -30,14 +35,14 @@ const binding = () => {
       const file = `${folder}/${item.name}`; if (item.isDirectory()) walk(file); else if (/\.(ts|json)$/.test(file) && !file.includes('/__tests__/')) paths.push(file);
     } }; walk(dir);
   }
-  if (mode !== 'unit') paths.push('tmp/xiaok-vector/connection.private.json', 'admin/.env.local');
+  if (!unitMode) paths.push('tmp/xiaok-vector/connection.private.json', 'admin/.env.local');
   return Object.fromEntries([...new Set(paths)].filter(f => fs.existsSync(path.join(root, f))).map(f => [f, createHash('sha256').update(fs.readFileSync(path.join(root, f))).digest('hex')]));
 };
 const report = { delivery: 'D4', mode, files, started: new Date().toISOString(), before: binding(), passed: false, providerCalls: 0 };
 let release;
 const save = () => fs.writeFileSync(path.join(out, 'report.json'), JSON.stringify(report, null, 2));
 try {
-  if (mode !== 'unit') {
+  if (!unitMode) {
     process.env.DATABASE_URL = JSON.parse(fs.readFileSync(path.join(root, 'tmp/xiaok-vector/connection.private.json'), 'utf8').replace(/^\uFEFF/, '')).DATABASE_URL;
     release = await lockAssistantAcceptance(process.env.DATABASE_URL, { waitForLock: true });
   }

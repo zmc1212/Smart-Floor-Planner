@@ -6,6 +6,7 @@ import { appendMessage } from '@/lib/assistant/core/conversation';
 import { readSiteIssue, type IssueView } from './site-issues';
 import { sharedMaterials } from './site-materials';
 import { projectPlans, readPlan, planText } from './site-plans';
+import { readSiteActionResponse } from './site-actions';
 
 /** Conservative, bounded routing before any record/job is created. Ambiguity has no business side effect. */
 export function siteMessageIntent(raw: string, photoCount: number): 'report' | 'query' | 'request' | 'clarify' {
@@ -121,7 +122,7 @@ export async function siteResponse(tx: PostgresTransaction, eid: string, pid: st
     where e.enterprise_id=${eid} and e.type='construction.chat.response.v1' and e.aggregate_id=${sourceId} and e.payload->>'projectId'=${pid}`);
   if (!response) return null;
   const payload = response.payload as Row;
-  let text = safeText(response.content as Parameters<typeof safeText>[0]);
+  let text = payload.actionRunId ? await readSiteActionResponse(tx, eid, pid, cid, payload) : safeText(response.content as Parameters<typeof safeText>[0]);
   const snapshot = payload.query ? await querySiteMaterials(tx, eid, pid, payload.query as SiteQuery) : null;
   if (snapshot && snapshot.version !== payload.version)
     text = '关联资料已变化，原查询结果不再沿用。请重新查询当前资料。';
