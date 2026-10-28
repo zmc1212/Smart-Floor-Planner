@@ -13,7 +13,7 @@ import { sharedMaterialMedia, sharedMaterials } from './site-materials';
 import { handlePlan, planCommand, projectPlans } from './site-plans';
 import { handleSiteResolution, projectResolutionVersions, resolutionCommand, validateResolutionReceipt } from './site-resolution';
 import { confirmSiteAction, invalidateSiteAction, requestSiteAction, siteActionWaiting } from './site-actions';
-import { siteActionAcknowledgement } from './site-action-contract';
+import { siteActionAcknowledgement, siteActionConfirmation, siteActionInterpretationRequested } from './site-action-contract';
 
 export function siteActor(a: ConstructionActor): ActorContext {
   return { enterpriseId: a.enterpriseId, principal: { kind: 'admin', adminId: a.adminId }, contextVersion: 1,
@@ -154,17 +154,18 @@ export class SiteChatService {
       const intent = siteIssueCommand(raw) || planCommand(raw) || resolutionCommand(raw) ? 'request' : siteMessageIntent(raw, mediaIds.length);
       const message = await appendMessage(tx, this.actor, String(c.id), { author: 'admin', clientMessageId: requestKey, purpose: 'site.source',
         content: { version: 1, blocks: raw ? [{ type: 'text', text: raw }] : [{ type: 'notice', code: 'site_photos', fallbackText: `现场照片 · ${mediaIds.length}张` }] } });
+      if (siteActionConfirmation(raw) === 'plan' && mediaIds.length) fail('invalid_plan', 422);
       const confirmation = await confirmSiteAction(tx, this.actor, c, projectId, message, raw, permission.manage);
       if (confirmation) {
         await appendSiteResponse(tx, this.actor, String(c.id), projectId, String(message.id), mediaIds, 'request', confirmation.text,
-          confirmation.issue ? { issueId: confirmation.issue.issueId, revision: confirmation.issue.revision } : {});
+          confirmation.planId ? { planId: confirmation.planId } : confirmation.issue ? { issueId: confirmation.issue.issueId, revision: confirmation.issue.revision } : {});
         return { conversationId: String(c.id), messageId: String(message.id), recordId: null, runId: null, status: 'succeeded', intent: 'request',
-          ...(confirmation.issue ? { issueId: confirmation.issue.issueId, revision: confirmation.issue.revision } : {}) };
+          ...(confirmation.planId ? { planId: confirmation.planId } : {}), ...(confirmation.issue ? { issueId: confirmation.issue.issueId, revision: confirmation.issue.revision } : {}) };
       }
       await invalidateSiteAction(tx, this.actor, String(c.id), raw);
       // This only selects a model interpretation path. It never chooses or
       // authorizes an action; the model may retain the existing report path.
-      const actionCandidate = ['request', 'clarify'].includes(intent) || intent === 'report' && /请|帮|麻烦|回复|我来|负责|跟进|接手|记下|关联|回传/.test(raw);
+      const actionCandidate = siteActionInterpretationRequested(raw, intent);
       if (actionCandidate && !siteActionAcknowledgement(raw) && !siteIssueCommand(raw) && !planCommand(raw) && !resolutionCommand(raw)) {
         const settings = (await one(tx, sql`select * from app.assistant_enterprise_settings where enterprise_id=${eid}`))!;
         const actionRun = await requestSiteAction(tx, this.actor, c, settings, message);

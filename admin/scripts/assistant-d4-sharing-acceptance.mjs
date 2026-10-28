@@ -30,11 +30,16 @@ const files = mode === 'unit' ? ['src/lib/assistant/__tests__/material-sharing.t
   : mode === 'site-answer-unit' ? ['src/lib/assistant/__tests__/formal-claim-scope.test.ts', 'src/lib/assistant/__tests__/final-response-shape.test.ts', 'src/lib/assistant/__tests__/home-source-budget.test.ts', 'src/lib/assistant/__tests__/synthesis.test.ts', 'src/lib/assistant/__tests__/agent-memory.test.ts', 'src/lib/assistant/__tests__/synthesis-grounding.test.ts', 'src/lib/assistant/__tests__/synthesis-review.test.ts', 'src/lib/assistant/__tests__/consultation-recovery.test.ts', 'src/lib/assistant/__tests__/source-file.test.ts']
   : mode === 'site-answer-service' ? ['src/db/__tests__/construction-site-result-answer.test.ts']
   : mode === 'site-answer-integration' ? ['src/db/__tests__/construction-site-result-answer.test.ts', 'src/db/__tests__/construction-site-actions.test.ts', 'src/db/__tests__/construction-materials.test.ts', 'src/db/__tests__/construction-issue-continuation.test.ts', 'src/db/__tests__/assistant.test.ts', 'src/db/__tests__/assistant-usage.test.ts']
+  : mode === 'd5-plan-unit' ? ['src/lib/construction/__tests__/site-action-contract.test.ts', 'src/lib/construction/__tests__/site-plan-input.test.ts']
+  : mode === 'd5-answer-unit' ? ['src/lib/assistant/__tests__/formal-status-polarity.test.ts', 'src/lib/assistant/__tests__/synthesis.test.ts', 'src/lib/assistant/__tests__/synthesis-grounding.test.ts', 'src/lib/assistant/__tests__/synthesis-review.test.ts', 'src/lib/assistant/__tests__/synthesis-repair.test.ts', 'src/lib/assistant/__tests__/synthesis-repair-budget.test.ts', 'src/lib/assistant/__tests__/synthesis-repair-schema.test.ts', 'src/lib/assistant/__tests__/synthesis-source-selection.test.ts']
+  : mode === 'd5-plans' ? ['src/db/__tests__/construction-natural-plans.test.ts']
+  : mode === 'd5-plans-compat' ? ['src/db/__tests__/construction-plans.test.ts', 'src/db/__tests__/construction-site-actions.test.ts', 'src/db/__tests__/construction-site-action-results.test.ts']
+  : mode === 'd5-plans-integration' ? ['src/db/__tests__/construction-natural-plans.test.ts', 'src/db/__tests__/construction-plans.test.ts', 'src/db/__tests__/construction-site-actions.test.ts', 'src/db/__tests__/construction-site-action-results.test.ts']
   : [];
 if (!files.length) throw Error('Expected a named bounded D4 acceptance mode');
-const unitMode = mode === 'unit' || mode === 'site-actions-unit' || mode === 'site-answer-unit';
+const unitMode = mode === 'unit' || mode === 'site-actions-unit' || mode === 'site-answer-unit' || mode === 'd5-plan-unit' || mode === 'd5-answer-unit';
 const binding = () => {
-  const paths = [...files.map(f => 'admin/' + f), 'admin/scripts/assistant-d4-sharing-fixture.ts', 'admin/scripts/assistant-d4-sharing-acceptance.mjs', 'admin/scripts/assistant-d4-runtime-config.mjs', 'admin/scripts/assistant-acceptance-safety.mjs', 'admin/package-lock.json', path.relative(root, runtimeConfig)];
+  const paths = [...files.map(f => 'admin/' + f), 'admin/scripts/assistant-d4-sharing-fixture.ts', 'admin/scripts/construction-natural-plans-fixture.ts', 'admin/scripts/assistant-d4-sharing-acceptance.mjs', 'admin/scripts/assistant-d4-runtime-config.mjs', 'admin/scripts/assistant-acceptance-safety.mjs', 'admin/package-lock.json', path.relative(root, runtimeConfig)];
   for (const dir of ['admin/src/lib/assistant', 'admin/src/lib/construction', 'admin/src/db']) {
     const walk = folder => { for (const item of fs.readdirSync(path.join(root, folder), { withFileTypes: true })) {
       const file = `${folder}/${item.name}`; if (item.isDirectory()) walk(file); else if (/\.(ts|json)$/.test(file) && !file.includes('/__tests__/')) paths.push(file);
@@ -43,7 +48,7 @@ const binding = () => {
   if (!unitMode) paths.push('tmp/xiaok-vector/connection.private.json', 'admin/.env.local');
   return Object.fromEntries([...new Set(paths)].filter(f => fs.existsSync(path.join(root, f))).map(f => [f, createHash('sha256').update(fs.readFileSync(path.join(root, f))).digest('hex')]));
 };
-const report = { delivery: 'D4', mode, files, started: new Date().toISOString(), before: binding(), passed: false, providerCalls: 0 };
+const report = { delivery: mode.startsWith('d5-') ? 'D5' : 'D4', mode, files, started: new Date().toISOString(), before: binding(), passed: false, providerCalls: 0 };
 let release;
 const save = () => fs.writeFileSync(path.join(out, 'report.json'), JSON.stringify(report, null, 2));
 try {

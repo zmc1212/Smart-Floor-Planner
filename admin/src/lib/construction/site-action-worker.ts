@@ -31,7 +31,8 @@ export async function processSiteAction(lease: Lease, model?: Model) {
       const candidates = { records: input.records.map(r => r.id), issues: input.issues.map(i => i.id) };
       const messages: ModelMessage[] = [{ role: 'system', content: [{ type: 'text', text: siteActionPrompt }] },
         { role: 'user', content: [{ type: 'text', text: JSON.stringify({ actorId: lease.actor.principal.kind === 'admin' ? lease.actor.principal.adminId : '',
-          originalText: (request.row.content as { blocks: { text?: string }[] }).blocks.map(b => b.text || '').join('\n'), permissions: { manage: permission.manage }, ...input }) }] }];
+          originalText: (request.row.content as { blocks: { text?: string }[] }).blocks.map(b => b.text || '').join('\n'), attachmentCount: request.mediaIds.length,
+          permissions: { manage: permission.manage }, ...input }) }] }];
       if (Buffer.byteLength(JSON.stringify(messages), 'utf8') > 48000) fail('model_input_limit', 422);
       const cached = await one(tx, sql`select status,private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=1110`);
       if (cached && (cached.status !== 'succeeded' || (cached.input_summary as Row)?.promptVersion !== siteActionPromptVersion)) fail('provider_outcome_unknown');

@@ -197,6 +197,15 @@ test('exact formal version headers receive one existing format repair without li
     citations: [{ sourceId: 'P', quote: formal.text }] }] }), [formal]).segments.length, 1);
   for (const text of ['费用变化500.00元。', '现场通道宽900毫米。', '已正式关闭事项。'])
     assert.throws(() => synthesisRepairFeedback(raw(text), [formal]), /unsupported_model_commitment/);
+  const context = { currentQuestion: '我刚才同意的是哪一版书房方案？现在是不是已经落实并关闭了？' };
+  const ordinary = JSON.stringify({ kind: 'synthesis', segments: [{ basis: 'uncertainty', text: '因此现在既没有可确认的“已落实”证据，也没有正式解决或关闭的记录。',
+    citations: [{ sourceId: 'P', quote: formal.text }] }] });
+  assert.equal(parseSynthesis(ordinary, [formal], context).segments[0].text, JSON.parse(ordinary).segments[0].text);
+  assert.equal(synthesisRepairFeedback(ordinary, [formal], context), null);
+  const ordinaryFeedback = synthesisRepairFeedback(raw('已正式关闭事项。'), [formal], context);
+  assert.equal(ordinaryFeedback?.code, 'unsupported_model_commitment'); assert.match(ordinaryFeedback!.feedback, /rejectedTextPaths/);
+  assert.throws(() => parseSynthesis(raw('已正式关闭事项。'), [formal], context), /unsupported_model_commitment/);
+  assert.throws(() => synthesisRepairFeedback(raw('现场通道宽900毫米。'), [formal], context), /unsupported_model_commitment/);
   const coincident = { ...formal, text: formal.text.replaceAll('1364', '500'), material: { ...formal.material!, ref: { ...formal.material!.ref, id: '500' } } };
   for (const text of ['方案500的V1，费用500元。', '方案500的V1，现场通道宽1米。'])
     assert.throws(() => synthesisRepairFeedback(raw(text), [coincident]), /unsupported_model_commitment/);

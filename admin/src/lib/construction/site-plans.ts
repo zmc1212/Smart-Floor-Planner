@@ -16,7 +16,7 @@ export type PlanData = {
   number: number; previousVersionId: string | null; title: string; difference: string; costDeltaCents: number; scheduleDeltaDays: number;
 };
 export type PlanView = PlanData & { id: string; revision: number; status: string; previewed: boolean; reason: string; hash: string };
-type PlanCommand = { action: 'publish'; issueId: string; title: string; difference: string; costDeltaCents: number; scheduleDeltaDays: number }
+export type PlanCommand = { action: 'publish'; issueId: string; title: string; difference: string; costDeltaCents: number; scheduleDeltaDays: number }
   | { action: 'withdraw'; versionId: string; reason: string };
 
 /** An explicit enterprise publication, never inferred from a customer image, AI render or an acknowledgement. */
@@ -90,6 +90,10 @@ export async function projectPlans(tx: PostgresTransaction, eid: string, pid: st
 }
 export async function handlePlan(tx: PostgresTransaction, actor: ActorContext, pid: string, messageId: string, raw: string, mediaIds: string[], versions: SiteVersions, manage: boolean) {
   const cmd = planCommand(raw); if (!cmd) return null;
+  return executePlanCommand(tx, actor, pid, messageId, cmd, mediaIds, versions, manage);
+}
+/** The same explicit domain writer serves legacy commands and reviewed natural proposals. */
+export async function executePlanCommand(tx: PostgresTransaction, actor: ActorContext, pid: string, messageId: string, cmd: PlanCommand, mediaIds: string[], versions: SiteVersions, manage: boolean) {
   if (actor.principal.kind !== 'admin') fail('construction_forbidden', 403);
   const eid = actor.enterpriseId, aid = actor.principal.adminId;
   if (cmd.action === 'withdraw') {
@@ -102,6 +106,20 @@ export async function handlePlan(tx: PostgresTransaction, actor: ActorContext, p
     await writeState(tx, actor, cmd.versionId, s.revision + 1, { status: 'withdrawn', previewed: false, reason: cmd.reason, action: 'withdraw' }, messageId);
     return { id: cmd.versionId, text: `方案${cmd.versionId}已撤回：${cmd.reason}。不回退或恢复旧版同意，现场事项仍独立核对。` };
   }
+  const p = await preparePlanPublication(tx, actor, pid, messageId, cmd, mediaIds, versions, manage);
+  const event = (await one(tx, sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
+    values(${eid},${publishedType},'construction_site_issue',${p.issueId},${p.number},${JSON.stringify(actor.principal)}::jsonb,${messageId},${JSON.stringify(p)}::jsonb) returning id`))!;
+  const view = await readPlan(tx, eid, String(event.id)); if (!view) fail('context_changed');
+  return { id: String(event.id), text: planText(view) + '\n已发往原授权咨询；接待期间延后，未经客户明确决定不视为同意。' };
+}
+/** Read and lock the exact same publication prerequisites for preview and write. */
+export async function preparePlanPublication(tx: PostgresTransaction, actor: ActorContext, pid: string, messageId: string,
+  cmd: Extract<PlanCommand, { action: 'publish' }>, mediaIds: string[], versions: SiteVersions, manage: boolean): Promise<PlanData> {
+  if (actor.principal.kind !== 'admin') fail('construction_forbidden', 403);
+  const eid = actor.enterpriseId, aid = actor.principal.adminId;
+  id(cmd.issueId); text(cmd.title, 80); text(cmd.difference, 1200);
+  if (!Number.isSafeInteger(cmd.costDeltaCents) || Math.abs(cmd.costDeltaCents) > 100000000
+    || !Number.isSafeInteger(cmd.scheduleDeltaDays) || Math.abs(cmd.scheduleDeltaDays) > 365) fail('invalid_plan', 422);
   const issue = await readSiteIssueBase(tx, eid, pid, cmd.issueId);
   // Source conversations are locked by readSiteIssue before the material lock,
   // matching customer consent/decision order and avoiding a cross-chat cycle.
@@ -125,10 +143,7 @@ export async function handlePlan(tx: PostgresTransaction, actor: ActorContext, p
     number: Number(previous?.aggregate_version || 0) + 1, previousVersionId: previous ? String(previous.id) : null,
     title: cmd.title, difference: cmd.difference, costDeltaCents: cmd.costDeltaCents, scheduleDeltaDays: cmd.scheduleDeltaDays };
   if (!await publisherAvailable(tx, eid, p)) fail('construction_forbidden', 403);
-  const event = (await one(tx, sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
-    values(${eid},${publishedType},'construction_site_issue',${issue.issueId},${p.number},${JSON.stringify(actor.principal)}::jsonb,${messageId},${JSON.stringify(p)}::jsonb) returning id`))!;
-  const view = await readPlan(tx, eid, String(event.id)); if (!view) fail('context_changed');
-  return { id: String(event.id), text: planText(view) + '\n已发往原授权咨询；接待期间延后，未经客户明确决定不视为同意。' };
+  return p;
 }
 async function writeState(tx: PostgresTransaction, actor: ActorContext, versionId: string, revision: number, payload: Row, correlation: string) {
   return (await one(tx, sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)

@@ -25,6 +25,9 @@ import { readSiteIssue } from '@/lib/construction/site-issues';
 import { deliverSiteNotifications } from '@/lib/construction/site-publications';
 import { customerMaterialReviews, customerSiteResults } from '@/lib/construction/site-results';
 import { siteWatchInterceptor } from '@/lib/construction/site-watches';
+import { readPlan, deliverPlans } from '@/lib/construction/site-plans';
+import { naturalPlanCases, runNaturalPlanScenario, runNaturalPlanAnswerScenario } from './construction-natural-plans-scenario.mjs';
+import { prepareApprovedNaturalPlans } from './construction-natural-plans-fixture';
 import { lockAssistantAcceptance } from './assistant-acceptance-safety.mjs';
 import { D4SharingFixture } from './assistant-d4-sharing-fixture';
 import { wechatideNativeClient } from './wechatide-native-client';
@@ -38,17 +41,24 @@ declare function getApp(): Row;
 declare function getCurrentPages(): Row[];
 const admin = process.cwd(), root = path.dirname(admin); loadEnvConfig(admin, true);
 process.env.DATABASE_URL = JSON.parse(fs.readFileSync(path.join(root, 'tmp/xiaok-vector/connection.private.json'), 'utf8').replace(/^\uFEFF/, '')).DATABASE_URL;
-const name = process.argv[2]; assert.match(name, /^d4-natural-actions-native-[a-z0-9-]+$/); assert.ok(process.argv.includes('--live'));
+const name = process.argv[2]; assert.match(name, /^(?:d4-natural-actions|d5-natural-plans)-native-[a-z0-9-]+$/); assert.ok(process.argv.includes('--live'));
 const journeys = process.argv.includes('--journeys');
 const continuation = process.argv.includes('--continue-journeys');
 const answerCheck = process.argv.includes('--answer-check');
+const planCheck = process.argv.includes('--plan-check');
+const planAnswers = process.argv.includes('--plan-answers');
+const formalAnswerCheck = process.argv.includes('--formal-answer-check');
 const resumeName = process.argv.includes('--resume') ? process.argv[process.argv.indexOf('--resume') + 1] : '';
-if (resumeName) assert.match(resumeName, /^d4-natural-actions-native-[a-z0-9-]+$/);
+if (resumeName) assert.match(resumeName, /^(?:d4-natural-actions|d5-natural-plans)-native-[a-z0-9-]+$/);
 const previous = resumeName ? JSON.parse(fs.readFileSync(path.join(root, 'tmp', resumeName, 'report.json'), 'utf8')) : null;
 assert.ok(!journeys || !previous, 'Fixed full journeys do not reuse a prior failed model draft');
 assert.ok(!continuation || previous && !journeys, 'Continuation requires a saved full-journey batch and zero new trials');
 assert.ok(!answerCheck || !previous && !journeys && !continuation, 'Final-answer trials use fresh, separately labelled fixture sources');
-if (previous) { assert.ok(previous.finished); assert.deepEqual(previous.drift, []); assert.equal(previous.calls.length, continuation ? 24 : 10); assert.ok(previous.calls.every((c: Row) => c.status === 'succeeded'));
+assert.ok(!planCheck || !previous && !journeys && !continuation && !answerCheck, 'Natural formal plans use exactly two fresh fixed trials');
+assert.ok(!planAnswers || previous?.delivery === 'D5' && !planCheck && !journeys && !continuation && !answerCheck, 'Formal answer repair reuses the saved completed publications only');
+assert.ok(!formalAnswerCheck || !previous && !planCheck && !journeys && !continuation && !answerCheck && !planAnswers, 'Fresh formal answer fixtures never revive revoked originals');
+if (previous) { assert.ok(previous.finished); assert.deepEqual(previous.drift, []); assert.equal(previous.calls.length, planAnswers ? 8 : continuation ? 24 : 10); assert.ok(previous.calls.every((c: Row) => c.status === 'succeeded'));
+  if (planAnswers) assert.ok(previous.trials.every((t: Row) => ['natural formal V1', 'natural V2', 'customer V2'].every(prefix => t.native.checks.some((c: Row) => c.name.startsWith(prefix) && c.passed))));
   if (continuation) assert.ok(previous.trials.every((t: Row) => t.native.checks.some((c: Row) => c.name === 'manager explicitly returns only its own confirmed excerpt to the source consultation' && c.passed))); }
 const output = path.join(root, 'tmp', name); fs.mkdirSync(output);
 const ledger = path.join(root, 'tmp/agent-contract/trial-' + name + '.json'), apiOrigin = 'http://127.0.0.1:3118';
@@ -74,15 +84,24 @@ if (previous) { report.scope = 'Zero-model continuation of the two original succ
 if (continuation) report.scope = 'Zero-model continuation of the two original successful human drawing checks/designer replies/manager returns. Inspect the same exact customer publication/result versions and finish source/member revocation. Original C01 answer failures remain failed; no answer retry or new inference.';
 if (journeys) { report.scope = 'Two fixed original D4 journeys: actual native manager stage update/customer preparation, natural photo draft/reviewed publication/reentry, natural issue/drawing check/designer reply/manager excerpt return/customer current-version answer and revocation. No D2 professional image interpretation.'; report.authorization.maxDispatches = 40; }
 if (answerCheck) { report.scope = 'Two fixed configured-model C01 final-answer trials after deterministic denial-scope and tagged-field recovery fixes. Fresh labelled fixtures use existing services and a zero-provider record fixture; reuse the unchanged earlier native S04/stage/publication evidence, without regrading its failed customer answers. Includes actual C01 input/reentry and source/member revocation.'; report.authorization.maxDispatches = 12; }
+if (planCheck) { report.delivery = 'D5'; report.cases = naturalPlanCases; report.scope = 'Two fixed natural formal-publication trials with real S04 original upload/author confirmation/V1-V2, exact C05 preview/decision/lost-receipt recovery, configured current-version question and reentry. Source/member revocations are engineering injections. Zero-provider pre-existing issue setup reuses unchanged D4 evidence; no professional image interpretation or complete D5 claim.'; report.authorization.maxDispatches = 12;
+  report.bindingPolicy = 'Fixed before first D5 dispatch: full Agent/construction/database/provider dependencies and C01 chat/lib/assets plus construction/utils/components/app. Designer studio page WXML/Less are not imported/included by these tested routes (usingComponents empty) and are excluded up front. No retrospective binding reduction.'; }
+if (planAnswers) { report.delivery = 'D5'; report.cases = naturalPlanCases; report.authorization.fixedTrials = 2; report.authorization.maxDispatches = 8;
+  report.scope = 'Two fixed configured C01 formal-version answer trials after the bounded textual-validation recovery change. Reuses only the original two actually published/approved V2 originals, with no new staff model calls or publication/decision writes. Original first-draft failures remain failed. Includes protected original/reentry/source/member revocation.';
+  report.bindingPolicy = previous.bindingPolicy; }
+if (formalAnswerCheck) { report.delivery = 'D5'; report.cases = naturalPlanCases; report.authorization.maxDispatches = 8;
+  report.scope = 'Second and final fixed C01 formal-state repair batch. Fresh labelled domain-written V1/V2/decision context because the prior passing case truly revoked its source; no revoked source resurrection, staff inference or native-decision regrading. Reuses original successful natural-publication/C05 evidence; tests actual question/protected original/reentry/source/member revocation.';
+  report.bindingPolicy = 'Fixed before dispatch: full Agent/construction/database/provider dependencies; C01 chat/lib/assets and construction/utils/components/app. Independent designer-page WXML/Less excluded up front; no retrospective reduction.'; }
 const save = () => { fs.writeFileSync(path.join(output, 'report.json'), JSON.stringify(report, null, 2)); fs.writeFileSync(ledger, JSON.stringify(report, null, 2)); };
 const hash = (v: string | Buffer) => createHash('sha256').update(v).digest('hex');
 const binding = () => {
   const files: string[] = [];
-  for (const dir of ['admin/src/lib/assistant', 'admin/src/lib/construction', 'admin/src/db', 'admin/src/lib/ai/providers', 'miniprogram/packages/assistant', 'miniprogram/packages/construction', 'miniprogram/utils', 'miniprogram/components']) {
+  const assistantDirs = planCheck || planAnswers || formalAnswerCheck ? ['miniprogram/packages/assistant/chat', 'miniprogram/packages/assistant/lib', 'miniprogram/packages/assistant/assets'] : ['miniprogram/packages/assistant'];
+  for (const dir of ['admin/src/lib/assistant', 'admin/src/lib/construction', 'admin/src/db', 'admin/src/lib/ai/providers', ...assistantDirs, 'miniprogram/packages/construction', 'miniprogram/utils', 'miniprogram/components']) {
     const walk = (folder: string) => { for (const e of fs.readdirSync(path.join(root, folder), { withFileTypes: true })) { const p = folder + '/' + e.name;
       if (e.isDirectory()) walk(p); else if (/\.(ts|js|json|wxml|less|png)$/.test(p)) files.push(p); } }; walk(dir);
   }
-  files.push('admin/scripts/construction-site-actions-native.ts', 'admin/scripts/construction-site-actions-native.mjs', 'admin/scripts/construction-chat-native.mjs',
+  files.push('admin/scripts/construction-site-actions-native.ts', 'admin/scripts/construction-site-actions-native.mjs', 'admin/scripts/construction-chat-native.mjs', 'admin/scripts/construction-natural-plans-scenario.mjs', 'admin/scripts/construction-natural-plans-fixture.ts',
     'admin/scripts/assistant-d4-sharing-fixture.ts', 'admin/scripts/assistant-acceptance-safety.mjs', 'admin/scripts/assistant-d4-runtime-config.mjs',
     'admin/scripts/wechatide-native-client.ts', 'admin/scripts/wechatide-window-state.ps1', 'tmp/wechat-devtools-version-test/window.ps1',
     'admin/scripts/bailian-review-test-runtime.ts', 'admin/scripts/assistant-review-budget.ts', 'admin/src/lib/ai/postgres-workflow-chat.ts',
@@ -146,11 +165,11 @@ async function main() {
   try {
     release = await lockAssistantAcceptance(process.env.DATABASE_URL!, { waitForLock: true });
     assert.deepEqual(binding(), report.imported, 'Source changed while waiting for acceptance lock');
-    if (!previous) { const runtime = await bindBailianReviewTestRuntime(root, path.join(output, 'runtime.json')); restore = runtime.restore; report.runtime = runtime.receipt; }
+    if (!previous || planAnswers) { const runtime = await bindBailianReviewTestRuntime(root, path.join(output, 'runtime.json')); restore = runtime.restore; report.runtime = runtime.receipt; }
     globalThis.fetch = async (input, init) => {
       const url = new URL(typeof input === 'string' || input instanceof URL ? input.toString() : input.url);
       if (['127.0.0.1', 'localhost'].includes(url.hostname)) return originalFetch(input, init);
-      assert.ok(!previous, 'Saved-result continuation cannot dispatch external inference');
+      assert.ok(!previous || planAnswers, 'Saved-result continuation cannot dispatch external inference');
       assert.equal(url.hostname, 'dashscope.aliyuncs.com'); assert.ok(trial && activeRunId); assert.ok(report.calls.length < report.authorization.maxDispatches, 'Fixed dispatch cap');
       assert.deepEqual(binding(), report.imported, 'Source/configuration drift fences further paid dispatch');
       reviewBudget(root).assertReservation(0, 64000, retained);
@@ -195,9 +214,13 @@ async function main() {
           for (const field of ['enterpriseIds', 'userIds', 'ownerIds', 'memberIds', 'platformIds'] as const) f[field].push(...original[field]);
           for (const field of ['projectId', 'otherProjectId', 'conversationId', 'leadId', 'roomId'] as const) f[field] = original[field];
           trial.originalRecordId = previous.trials[index].recordId; trial.originalIssueId = previous.trials[index].issueId;
-          if (continuation) { trial.drawingGrantId = previous.trials[index].drawingGrantId; trial.drawingMediaId = previous.trials[index].drawingMediaId; trial.returnedReview = previous.trials[index].returnedReview; }
+          if (continuation || planAnswers) { trial.drawingGrantId = previous.trials[index].drawingGrantId; trial.drawingMediaId = previous.trials[index].drawingMediaId; trial.returnedReview = previous.trials[index].returnedReview; }
+          if (planAnswers) trial.savedPlans = ['natural formal V1', 'natural V2'].map(prefix => previous.trials[index].native.checks.find((c: Row) => c.name.startsWith(prefix) && c.passed).result);
           const currentBinding = binding();
-          for (const [p, originalHash] of Object.entries(previous.after)) if ((p.startsWith('admin/src/') || p.startsWith('miniprogram/')) && currentBinding[p]) assert.equal(currentBinding[p], originalHash, 'Saved model/business source changed: ' + p);
+          for (const [p, originalHash] of Object.entries(previous.after)) if ((p.startsWith('admin/src/') || p.startsWith('miniprogram/')) && currentBinding[p]) {
+            if (planAnswers && ['admin/src/lib/assistant/agent/synthesis.ts', 'admin/src/lib/assistant/__tests__/synthesis.test.ts', 'admin/src/db/__tests__/construction-natural-plans.test.ts'].includes(p)) continue;
+            assert.equal(currentBinding[p], originalHash, 'Saved model/business source changed: ' + p);
+          }
           await withPlatformTransaction(async tx => {
             const enterprise = await one(tx, sql`select code from app.enterprises where id=${f.eid}`); assert.ok(String(enterprise?.code).startsWith('synthetic-d4-sharing-'));
             await tx.execute(sql`update app.assistant_enterprise_settings set enabled=true where enterprise_id=any(ARRAY(select jsonb_array_elements_text(${JSON.stringify(f.enterpriseIds)}::jsonb))::bigint[])`);
@@ -208,7 +231,7 @@ async function main() {
           await f.create({ runtime: 'langgraph-v1', providerKey: 'dashscope', model: 'qwen3.8-flash', tools: true, imageInput: false, structuredFinal: nativeFinalProtocol, probeVersion: 'd4-site-actions-live' });
           assert.equal((await f.send('共享测试工地甲·书房需求：靠窗放书桌，电脑和台灯需要插座。')).runId, null);
           assert.equal((await f.send('测试工地甲书房有新照片告诉我')).runId, null);
-          if (journeys || answerCheck) {
+          if (journeys || answerCheck || planCheck || formalAnswerCheck) {
             const drawingBytes = await sharp({ create: { width: 96, height: 72, channels: 3, background: '#e4ded1' } }).png().toBuffer();
             trial.drawingMediaId = String((await new AssistantMediaService(f.actor).upload(f.conversationId, randomUUID(), drawingBytes, 'image', '')).id);
             assert.equal((await f.send('共享测试工地甲·书房点位图：V2书桌底盒参考图，仍需结合现场实测，未批准施工。')).runId, null);
@@ -217,13 +240,15 @@ async function main() {
             await f.owner.execute('saveStages', { expectedVersion: settings.version, stages: (settings.stages as Row[]).map(s => s.key === 'utilities'
               ? { ...s, watchPoints: '去现场请带书桌尺寸和电脑、显示器、台灯的电器清单；先与项目团队核对书房底盒位置。', visitReason: '水电点位仍需现场复核，具体进场时间尚未约定。' } : s) }, randomUUID());
           }
-          if (answerCheck) {
+          if (answerCheck || planCheck || formalAnswerCheck) {
             const detail = await f.owner.execute('detail', { projectId: f.projectId });
             await f.owner.execute('progress', { projectId: f.projectId, expectedVersion: (detail.project as Row).version, stageKey: 'utilities',
               note: '书房底盒位置仍需现场复核，具体进场时间尚未安排。', sendReminder: false }, randomUUID());
             const prepared = await f.prepareReturnedIssue(trial.drawingGrantId, c);
             trial.recordId = prepared.recordId; trial.issueId = prepared.issueId; trial.fixtureRecordRunId = prepared.recordRunId;
             trial.fixturePreparation = { ...prepared, source: 'existing domain services', recordModel: 'labelled zero-provider fixture' }; save();
+            if (formalAnswerCheck) { const versions = await prepareApprovedNaturalPlans(f, prepared.issueId, naturalPlanCases[index]);
+              trial.savedPlans = versions.plans; trial.fixturePlanPreparation = versions; save(); }
           }
         }
         const version = async (uid: string) => Number((await withPlatformTransaction(tx => one(tx, sql`select context_version from app.users where id=${uid}`)))!.context_version);
@@ -283,6 +308,20 @@ async function main() {
               trial!.publishedRecordVersion = Number(record!.published_version); save(); return { recordId: rid, version: record!.published_version, customerReentry: true };
             };
             try {
+              if (planCheck || planAnswers || formalAnswerCheck) {
+                const scenario = planAnswers || formalAnswerCheck ? runNaturalPlanAnswerScenario : runNaturalPlanScenario;
+                await scenario({ mp, step, identity, open, send, current, check, latest, customerOpen, customerSay, take, takeRoute, trial, save,
+                  input: naturalPlanCases[index], projectId: f.projectId, savedPlans: trial!.savedPlans,
+                  picture: async (number: number) => (await sharp({ create: { width: 96, height: 72, channels: 3, background: number === 1 ? '#c9dfd0' : '#93acbf' } }).png().toBuffer()).toString('base64'),
+                  countPlans: () => withTenantTransaction(f.eid, async tx => Number((await one(tx, sql`select count(*)::int n from app.domain_event_outbox where enterprise_id=${f.eid} and type='construction.plan.published.v1'`))!.n)),
+                  readPlan: (id: string) => withTenantTransaction(f.eid, tx => readPlan(tx, f.eid, id)), deliver: deliverPlans,
+                  repairCount: () => withTenantTransaction(f.eid, async tx => ((await one(tx, sql`select private_checkpoint from app.assistant_run_steps
+                    where enterprise_id=${f.eid} and run_id=${trial!.runs.at(-1)} and kind='agent_checkpoint'`))!.private_checkpoint as Row).validationRepairs),
+                  withdrawSource: async () => new ConversationService({ ...f.actor, contextVersion: await version(f.userIds[0]) }).send(f.conversationId, randomUUID(),
+                    { version: 1, blocks: [{ type: 'text', text: '撤回共享资料' + trial!.drawingGrantId }] }, siteWatchInterceptor),
+                  removeMember: () => f.member(f.memberIds[0], 'designer', false) });
+                return;
+              }
               if (answerCheck) {
                 await step('configured customer answer reads the exact current team result and preserves its pending status', async () => {
                   trial!.phase = 'customer-result'; save(); const answer = await customerSay(c.customerReply); trial!.customerResultAnswer = answer;

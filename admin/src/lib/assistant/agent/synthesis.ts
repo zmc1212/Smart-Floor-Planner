@@ -375,6 +375,13 @@ const groundingRepairInstructions = {
 export function synthesisRepairFeedback(raw:string,sources:SynthesisSource[],context:SynthesisReviewContext = {}) {
   return withSynthesisRepairProtocol(synthesisRepairIssue(raw, sources, context), raw);
 }
+function formalStatusEvidence(citations: Array<{ sourceId: string }>, sources: SynthesisSource[], context: SynthesisReviewContext) {
+  if (!context.currentQuestion || originalAnswerOnly(context.currentQuestion) || independentAdviceRequested(context.currentQuestion)) return false;
+  const formal = sources.filter(source => source.material?.ref.type === 'formal_plan' || source.followup?.kind === 'formal_plan');
+  const issues = new Set(formal.flatMap(source => source.material?.formal?.issueId || source.followup?.issueId || []));
+  return formal.length > 0 && citations.some(c => sources.some(source => source.sourceId === c.sourceId
+    && (formal.includes(source) || source.followup?.kind === 'team_result' && issues.has(source.followup.issueId))));
+}
 function synthesisRepairIssue(raw:string,sources:SynthesisSource[],context:SynthesisReviewContext = {}) {
   try { parseSynthesis(raw,sources,context); return null; }
   catch(error) {
@@ -432,6 +439,10 @@ function synthesisRepairIssue(raw:string,sources:SynthesisSource[],context:Synth
     if(!Array.isArray(value.segments))throw error;
     const citationCorrections:Array<{sourceId:string;providedQuote:unknown;copyExactQuote?:string}>=[];
     const invalidSelections=new WeakSet<object>();
+    const formalTextRepair = error.code === 'unsupported_model_commitment' && !!context.currentQuestion
+      && !originalAnswerOnly(context.currentQuestion) && !independentAdviceRequested(context.currentQuestion)
+      && sources.some(source => source.material?.ref.type === 'formal_plan' || source.followup?.kind === 'formal_plan');
+    let rejectedFormalText = false;
     // Distinguish a missing numerical quote from actual formal-state/price claims.
     for(const s of value.segments){
       if(s.basis!=='evidence'&&!Object.hasOwn(s,'citations'))s.citations=[];
@@ -447,7 +458,11 @@ function synthesisRepairIssue(raw:string,sources:SynthesisSource[],context:Synth
           const correction={sourceId:c.sourceId,quote:typeof c.quote==='string'?c.quote:''};invalidSelections.add(correction);return correction;
         }
       });
-      parseAgentReply(JSON.stringify({kind:'general',text:canonicalConclusion(s.text)}));
+      try { parseAgentReply(JSON.stringify({kind:'general',text:canonicalConclusion(s.text)}), { formalStatusEvidence: formalStatusEvidence(s.citations, sources, context) }); }
+      catch (textError) {
+        if (!formalTextRepair || !(textError instanceof AssistantError) || textError.code !== 'unsupported_model_commitment') throw textError;
+        rejectedFormalText = true;
+      }
       // Unknown IDs are never searched or repaired into authorized evidence.
       if(s.citations.some(c=>!sources.some(source=>source.sourceId===c?.sourceId)))throw error;
       for(const citation of s.citations){
@@ -475,6 +490,22 @@ function synthesisRepairIssue(raw:string,sources:SynthesisSource[],context:Synth
     const quotesVerified = !citationCorrections.length && value.segments.every(segment => segment.citations.every(citation =>
       typeof citation.quote === 'string' && sources.some(source => source.sourceId === citation.sourceId && source.text.includes(citation.quote))));
     const scopeIssues = quotesVerified ? reviewSynthesisResponse(value, sources, context) : [];
+    if (rejectedFormalText) {
+      if (!quotesVerified || numericGaps.length) throw error;
+      // A rejected textual completion claim in a real formal-version query
+      // belongs to the existing final-validation recovery. Diagnostics never
+      // accept the draft: exact citations, numbers, sources and the unchanged
+      // commitment guard are all checked again after its one hash-bound edit.
+      const rejected: Array<{ path: string; code: string }> = [];
+      checkedSynthesis(raw, sources, context, rejected);
+      if (!rejected.length) throw error;
+      return { code: error.code, feedback: '这是同轮唯一一次最终答复修复，不调用查询、保存或其他业务工具。原稿仍未通过正式完成状态校验：'
+        + JSON.stringify({ rejectedTextPaths: rejected, responseScopePaths: scopeIssues.map(issue => ({ path: `segments[${issue.segment - 1}].text`, code: issue.code })) })
+        + '。按本轮原始状态和精确版本说明客户决定、现场落实、正式解决及关闭的区别；保留实际有据的版本、影响和当前待核对条件。'
+        + '不要复述被拒的完成状态表述，也不要为了避词反转原意、删去否定或编造成功；若不能确认，只能限定为本次查询的未知。'
+        + '引用仅选已有且支持本段的citationId；正式方案和客户同意不授权施工、验收、付款或新业务动作。'
+        + repairLayoutInstructions + '修复后仍须通过全部原校验；只返回final_response。' };
+    }
     if (error.code === 'unsupported_model_commitment' && numericGaps.length && scopeIssues.length) {
       // Report both defects in the SAME repair. Removing a number must not
       // consume the only repair while leaving an unsupported site comparison.
@@ -628,7 +659,7 @@ function checkedSynthesis(raw: string, sources: SynthesisSource[], context: Synt
     try {
       if ((numericText.match(/\d+(?:\.\d+)?/g) || []).some(n => !numbers.has(n))) fail('unsupported_model_commitment', 502);
       if (unsupportedWordQuantities(numericText, cited.join('\n')).length) fail('unsupported_model_commitment', 502);
-      parseAgentReply(JSON.stringify({ kind: 'general', text: s.text }));
+      parseAgentReply(JSON.stringify({ kind: 'general', text: s.text }), { formalStatusEvidence: formalStatusEvidence(s.citations, sources, context) });
     } catch (error) {
       if (!rejected || !(error instanceof AssistantError) || error.code !== 'unsupported_model_commitment') throw error;
       rejected.push({ path: `segments[${value.segments.indexOf(s)}].text`, code: error.code });

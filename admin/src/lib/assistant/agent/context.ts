@@ -4,6 +4,7 @@ import { fail } from '../contracts';
 import { isNeedInquiry, needWriteProhibition } from './need-write-intent';
 import { originalAnswerOnly } from './read-tool-input';
 import { projectDeniedApprovalList } from './formal-claim-scope';
+import { projectNegativeWorkStatus } from './formal-status-polarity';
 
 export const agentPromptVersion = 'xiaok-renovation-v123';
   const instruction = `你是装修公司的小K，使用简体中文自然交流。回答当前问题，可换话题；不强制采访或填写摘要。可讨论通用装修思路，建议应简洁实用，最多追问一个必要问题。
@@ -54,13 +55,13 @@ export function buildAgentContext(turns: Array<{ id: string; role: 'user' | 'ass
   }
   return [system, ...messages];
 }
-export function parseAgentReply(text: string) {
+export function parseAgentReply(text: string, options: { formalStatusEvidence?: boolean } = {}) {
   let result: { kind?: unknown; text?: unknown };
   try { result = JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch { fail('invalid_model_answer', 502); }
   if (!result || !['general', 'unavailable', 'vision'].includes(String(result.kind)) || typeof result.text !== 'string' || !result.text.trim() || result.text.length > 4000) fail('invalid_model_answer', 502);
   // Formal commitments always come from a business service, never free-form generation.
   // Project explicit absence/denial/question predicates, retaining other claims.
-  const completionClaims = projectDeniedApprovalList(result.text)
+  const completionClaims = projectDeniedApprovalList(options.formalStatusEvidence ? projectNegativeWorkStatus(result.text) : result.text)
     // Deny only the immediately scoped completion predicate. A policy saying
     // "不证明点位已落实" is not a completion receipt; later actions, double
     // negation and a rhetorical "吗" remain visible to the original guard.
