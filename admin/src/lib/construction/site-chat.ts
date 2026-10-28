@@ -14,6 +14,7 @@ import { handlePlan, planCommand, projectPlans } from './site-plans';
 import { handleSiteResolution, projectResolutionVersions, resolutionCommand, validateResolutionReceipt } from './site-resolution';
 import { confirmSiteAction, invalidateSiteAction, requestSiteAction, siteActionWaiting } from './site-actions';
 import { siteActionAcknowledgement, siteActionConfirmation, siteActionInterpretationRequested } from './site-action-contract';
+import { bindSpeechToMessage } from '@/lib/assistant/speech/link';
 
 export function siteActor(a: ConstructionActor): ActorContext {
   return { enterpriseId: a.enterpriseId, principal: { kind: 'admin', adminId: a.adminId }, contextVersion: 1,
@@ -38,6 +39,9 @@ export class SiteChatService {
   /** Worker commits reuse the same transaction and live project/role policy as HTTP writes. */
   withWriteScope<T>(projectId: string, fn: (tx: PostgresTransaction, c: Row, p: Row, permission: { manage: boolean; write: boolean }) => Promise<T>) {
     return this.scope(projectId, true, fn);
+  }
+  withReadScope<T>(projectId: string, fn: (tx: PostgresTransaction, c: Row, p: Row, permission: { manage: boolean; write: boolean }) => Promise<T>) {
+    return this.scope(projectId, false, fn);
   }
   private scope<T>(projectId: string, write: boolean, fn: (tx: PostgresTransaction, c: Row, p: Row, permission: { manage: boolean; write: boolean }) => Promise<T>) {
     id(projectId);
@@ -140,7 +144,7 @@ export class SiteChatService {
     return this.scope(projectId, false, tx => sharedMaterialMedia(tx, this.staff.enterpriseId, projectId, grantId, mediaId));
   }
   send(projectId: string, body: Row, requestKey: string) {
-    object(body, ['text', 'mediaIds', 'versions']); key(requestKey);
+    object(body, ['text', 'mediaIds', 'versions', 'speech']); key(requestKey);
     const versions = parseSiteVersions(body.versions);
     const raw = text(body.text, 4000, false), mediaIds = body.mediaIds;
     if (!Array.isArray(mediaIds) || mediaIds.length > 4 || new Set(mediaIds).size !== mediaIds.length || (!raw && !mediaIds.length)) fail('invalid_construction', 422);
@@ -154,6 +158,7 @@ export class SiteChatService {
       const intent = siteIssueCommand(raw) || planCommand(raw) || resolutionCommand(raw) ? 'request' : siteMessageIntent(raw, mediaIds.length);
       const message = await appendMessage(tx, this.actor, String(c.id), { author: 'admin', clientMessageId: requestKey, purpose: 'site.source',
         content: { version: 1, blocks: raw ? [{ type: 'text', text: raw }] : [{ type: 'notice', code: 'site_photos', fallbackText: `现场照片 · ${mediaIds.length}张` }] } });
+      await bindSpeechToMessage(tx, this.actor, String(c.id), String(message.id), raw, body.speech);
       if (['plan', 'transfer', 'implement', 'resolve', 'close'].includes(siteActionConfirmation(raw) || '') && mediaIds.length) fail('invalid_plan', 422);
       const confirmation = await confirmSiteAction(tx, this.actor, c, projectId, message, raw, permission.manage);
       if (confirmation) {

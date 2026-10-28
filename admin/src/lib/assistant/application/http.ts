@@ -7,6 +7,7 @@ import { customerIdentity, entryContext, fromEntry, locate } from './auth';
 import { HandoffWorkflow } from '../handoff/workflow';
 import { staffHandoffHttp } from '../handoff/http';
 import { mediaHttp } from '../media/http';
+import { speechHttp } from '../speech/http';
 import { portfolioCatalogHttp } from '@/lib/portfolio/catalog';
 import { siteWatchInterceptor } from '@/lib/construction/site-watches';
 import { customerSiteMedia } from '@/lib/construction/site-publications';
@@ -25,6 +26,10 @@ export async function assistantHttp(request: Request, path: string[]) {
   const requestId = randomUUID();
   try {
     const identity = await customerIdentity(request);
+    if (path[0] === 'conversations' && path[2] === 'speech') {
+      const cid = id(path[1]);
+      return await speechHttp(request, await locate(identity, 'conversation', cid), { kind: 'consultation', id: cid }, path.slice(3));
+    }
     if (path[0] === 'conversations' && path[2] === 'location' && path.length === 3) {
       if (new URL(request.url).searchParams.size) fail('invalid_location', 422);
       const cid = id(path[1]), service = new LocationService(await locate(identity, 'conversation', cid), cid);
@@ -101,9 +106,9 @@ export async function assistantHttp(request: Request, path: string[]) {
         data = await service.constructionContact(target, id(params.get('projectId')), id(params.get('messageId')));
       }
       else if (path[2] === 'messages' && method === 'POST') {
-        only(body, ['clientMessageId', 'content']);
+        only(body, ['clientMessageId', 'content', 'speech']);
         if (requestKey() !== key(body.clientMessageId)) fail('invalid_message', 422);
-        data = await service.send(target, String(body.clientMessageId), body.content, siteWatchInterceptor); status = 202;
+        data = await service.send(target, String(body.clientMessageId), body.content, siteWatchInterceptor, body.speech); status = 202;
       } else fail('assistant_resource_not_found', 404);
     } else if (path[0]==='citations' && path.length===2 && method==='GET') {
       const web = parseWebCitationId(path[1]);

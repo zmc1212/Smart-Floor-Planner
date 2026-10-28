@@ -149,7 +149,7 @@ class SiteClient {
     this.storage.remove(this.storageKey);
     if (op.kind === 'upload') { this.set({ attachments: [...new Set([...this.state.attachments, String(result.id)])] }); this.saveDraft(); }
     if (op.kind === 'photo-remove') { this.set({ attachments: this.state.attachments.filter(id => id !== String(result.id)) }); this.saveDraft(); }
-    if (op.kind === 'send' || op.kind === 'resubmit') { this.set({ draft: '', attachments: [], resubmit: null }); this.storage.remove(this.draftKey); }
+    if (op.kind === 'send' || op.kind === 'resubmit') { this.speechInput = null; this.set({ draft: '', attachments: [], resubmit: null }); this.storage.remove(this.draftKey); }
     this.set({ pending: null, conflict: null, sheet: '', success: op.kind === 'resubmit' ? '补拍已关联原记录保存，小K整理后等待管理人员复审。' : op.kind === 'request_changes' ? '补拍要求已保存，师傅可在本项目对话中查看并补交。' : op.kind === 'send' ? (result.runId ? '原材料已保存，小K正在整理。' : '原话和回复已保存。') : op.kind === 'upload' ? '照片已上传，发送后随原文保存。' : '操作已保存。' });
     await this.load(false, epoch);
   }
@@ -178,6 +178,7 @@ class SiteClient {
         body: { expectedVersion: this.state.resubmit.version, text: this.state.draft.trim(), mediaIds: this.state.attachments.slice() } });
     }
     return this.perform({ kind: 'send', path: '/messages', key: key(), body: { text: this.state.draft.trim(), mediaIds: this.state.attachments.slice(),
+      ...(this.speechInput ? { speech: this.speechInput } : {}),
       versions: this.sourceVersions || { records: {}, issues: {} } } });
   }
   addPhoto(file) { if (!this.state.write || this.state.pending || this.state.busy || this.state.attachments.length >= 4) return; return this.perform({ kind: 'upload', key: key(), filePath: file }); }

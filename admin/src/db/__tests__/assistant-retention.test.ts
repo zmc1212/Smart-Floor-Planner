@@ -14,6 +14,7 @@ import {
   RETENTION_MARKER,
 } from '@/lib/assistant/retention/contract';
 import { runAssistantRetention } from '@/lib/assistant/retention/service';
+import { speechWav } from '../../../scripts/assistant-speech-fixture';
 
 /**
  * This suite intentionally refuses the shared evaluation database. The parent
@@ -154,6 +155,11 @@ test('retention uses tenant admin auth, dry-run, bounded redaction, replay-safe 
 
   const service = new ConversationService(actor);
   const retryRunId = first.retryRunId!;
+  // Labelled old private audio/transcripts exercise actual erasure, not an empty table.
+  const speech = (await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`insert into app.assistant_speech_assets(
+    enterprise_id,conversation_id,principal_key,request_key,source_hash,duration_ms,byte_size,data,configuration_hash,message_id,transcript,corrected_text,created_at,updated_at)
+    values(${actor.enterpriseId},${first.conversationId},${'user:' + (actor.principal.kind === 'user' ? actor.principal.userId : users[0])},${prefix + '-speech'},${'a'.repeat(64)},1000,
+      ${speechWav().length},${speechWav()},${'b'.repeat(64)},${first.messageId},'PRIVATE_SPEECH_RAW','PRIVATE_SPEECH_REVIEW',${oldUpdatedAt},${oldUpdatedAt}) returning id`)))!;
 
   // A knowledge source is deliberately private and old, but retention must not
   // remove or mutate it. Citation projection uses the locator tombstone instead.
@@ -243,6 +249,9 @@ test('retention uses tenant admin auth, dry-run, bounded redaction, replay-safe 
   assert.equal(applied.applied.auditEvents, 2);
   assert.equal(applied.preserved.knowledgeSources, true);
   assert.equal(applied.preserved.idempotencyRecords, true);
+  const erasedSpeech = await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`select data,transcript,corrected_text,deleted_at from app.assistant_speech_assets
+    where enterprise_id=${actor.enterpriseId} and id=${String(speech.id)}`));
+  assert.equal(erasedSpeech!.data, null); assert.equal(erasedSpeech!.transcript, ''); assert.equal(erasedSpeech!.corrected_text, ''); assert.ok(erasedSpeech!.deleted_at);
 
   const redacted = await withTenantTransaction(actor.enterpriseId, async (tx) => ({
     conversation: await one(tx, sql`select title,entry_snapshot from app.assistant_conversations

@@ -292,9 +292,11 @@ class ChatController {
       }
       const result = await this.client.mutate(`send:${this.conversationId}`, `/conversations/${this.conversationId}/messages`, {
         content: { version: 1, blocks: [{ type: 'text', text }] },
+        ...(this.speechInput ? { speech: this.speechInput } : {}),
       });
       if (!this.valid(epoch)) return;
       committed = true;
+      this.speechInput = null;
       this.set({ draft: this.operationalDraft == null ? '' : this.operationalDraft, pendingText: '', pendingSend: false });
       this.operationalDraft = null;
       this.applyRun({ ...result, id: result.runId });

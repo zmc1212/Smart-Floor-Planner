@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import { sql } from 'drizzle-orm';
-import { withTenantTransaction } from '@/db/transaction';
+import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, fingerprint, id, key, type ActorContext } from '../contracts';
 import { adaptSurveyGraphToRooms, parseFormalSurveyLayout } from '@/lib/survey-graph';
@@ -37,10 +37,10 @@ export function mediaDto(m: Row) {
 }
 
 export class AssistantMediaService {
-  constructor(readonly actor: ActorContext) {}
-  private scoped<T>(conversationId: string, write: boolean, work: (repo: AssistantRepository, c: Row) => Promise<T>) {
+  constructor(readonly actor: ActorContext, private transaction?: PostgresTransaction) {}
+  withScope<T>(conversationId: string, write: boolean, work: (repo: AssistantRepository, c: Row) => Promise<T>) {
     id(conversationId);
-    return withTenantTransaction(this.actor.enterpriseId, async tx => {
+    const execute = async (tx: PostgresTransaction) => {
       const repo = new AssistantRepository(tx, this.actor);
       await repo.settings(write);
       let c: Row | undefined;
@@ -58,10 +58,11 @@ export class AssistantMediaService {
       }
       if (!c || (c.entry_snapshot as Row)?.retentionRedacted) fail('assistant_resource_not_found', 404);
       return work(repo, c);
-    });
+    };
+    return this.transaction ? execute(this.transaction) : withTenantTransaction(this.actor.enterpriseId, execute);
   }
   list(conversationId: string) {
-    return this.scoped(conversationId, false, async repo => {
+    return this.withScope(conversationId, false, async repo => {
       const found = await rows(repo.tx, sql`select id,kind,room_name,width,height,byte_size,created_at,source_ref,customer_user_id
         from app.assistant_media where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and deleted_at is null order by id`);
       const items = [];
@@ -71,7 +72,7 @@ export class AssistantMediaService {
   }
   read(conversationId: string, mediaId: string) {
     id(mediaId);
-    return this.scoped(conversationId, false, async repo => {
+    return this.withScope(conversationId, false, async repo => {
       const m = await one(repo.tx, sql`select data,mime_type,source_ref,customer_user_id from app.assistant_media where enterprise_id=${this.actor.enterpriseId}
         and conversation_id=${conversationId} and id=${mediaId} and deleted_at is null`);
       if (!m || !await sourceAvailable(repo, m)) fail('assistant_resource_not_found', 404);
@@ -82,9 +83,9 @@ export class AssistantMediaService {
     key(requestKey);
     if (!['image', 'floorplan'].includes(String(kind)) || typeof roomName !== 'string' || roomName.trim().length > 80) fail('media_invalid', 422);
     // Authenticate before expensive decode; revalidate again at the write boundary.
-    await this.scoped(conversationId, true, async () => undefined);
+    await this.withScope(conversationId, true, async () => undefined);
     const image = await normalizeImage(bytes), room = roomName.trim();
-    return this.scoped(conversationId, true, async (repo, c) => {
+    return this.withScope(conversationId, true, async (repo, c) => {
       if (this.actor.principal.kind !== 'user') fail('assistant_capability_forbidden', 403);
       if (source) {
         const current = await formalPlan(repo, this.actor.principal.userId, source.leadId);
@@ -126,7 +127,7 @@ export class AssistantMediaService {
     });
   }
   floorPlans(conversationId: string) {
-    return this.scoped(conversationId, false, async repo => {
+    return this.withScope(conversationId, false, async repo => {
       if (this.actor.principal.kind !== 'user') fail('assistant_capability_forbidden', 403);
       const plans = await rows(repo.tx, sql`select l.id lead_id,f.id,f.name,f.layout_data from app.leads l join app.floor_plans f
         on f.enterprise_id=l.enterprise_id and f.id=l.primary_floor_plan_id where l.enterprise_id=${this.actor.enterpriseId}
@@ -139,7 +140,7 @@ export class AssistantMediaService {
   }
   async attachFormal(conversationId: string, requestKey: string, input: Row) {
     if (Object.keys(input).some(k => !['leadId','floorPlanId','layoutHash','roomId'].includes(k)) || typeof input.roomId !== 'string' || input.roomId.length > 128) fail('invalid_message', 422);
-    const p = await this.scoped(conversationId, true, async repo => {
+    const p = await this.withScope(conversationId, true, async repo => {
       if (this.actor.principal.kind !== 'user') fail('assistant_capability_forbidden', 403);
       return formalPlan(repo, this.actor.principal.userId, id(input.leadId));
     });
@@ -155,7 +156,7 @@ export class AssistantMediaService {
   remove(conversationId: string, mediaId: string) {
     id(mediaId);
     // Deletion remains possible when enterprise writing is disabled or the conversation is archived.
-    return this.scoped(conversationId, false, async repo => {
+    return this.withScope(conversationId, false, async repo => {
       if (this.actor.principal.kind !== 'user') fail('assistant_capability_forbidden', 403);
       await cancelRuns(repo.tx, this.actor, conversationId);
       await repo.tx.execute(sql`update app.assistant_conversations set context_revision=context_revision+1,version=version+1,updated_at=now()

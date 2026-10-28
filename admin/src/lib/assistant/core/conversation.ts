@@ -1,7 +1,9 @@
 import { sql } from 'drizzle-orm';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
-import { fail, fingerprint, key, principalKey, requireCapability, userContent, type ActorContext, type MessageContent, type RunTrigger } from '../contracts';
+import { fail, fingerprint, key, principalKey, requireCapability, safeText, userContent, type ActorContext, type MessageContent, type RunTrigger } from '../contracts';
+import { bindSpeechToMessage } from '../speech/link';
+import { speechConfigurationHash } from '../speech/local';
 import { createPreviewPolicy, previewPolicy, projectMessage, citationProjection, webCitationProjection } from '../knowledge/sources';
 import { parseWebCitationId } from '../agent/web-evidence';
 import { configuredGuidance, conversationGuidance, guidanceOpening, guidanceView } from '../requirements/guidance';
@@ -95,8 +97,10 @@ export async function terminalEvent(tx: PostgresTransaction, enterpriseId: strin
     values(${enterpriseId},${String(event!.id)},'assistant.run.metrics.v1') on conflict do nothing`);
 }
 export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Row, settings: Row, messageId: string | null, retryOf?: string, trigger: RunTrigger = { kind: 'user_message', messageId: messageId! }, purpose = 'reply') {
-  if (c.status !== 'open' || c.mode !== 'ai') fail('context_changed');
-  const agent = actor.principal.kind === 'user' || (['site.record', 'site.action'].includes(purpose) && actor.capabilities.includes('assistant.project.shared')) ? agentConfig(settings.agent_config) : null;
+  const speech = purpose === 'speech.transcribe', speechBinding = speech ? speechConfigurationHash() : null;
+  if (speech && !speechBinding) fail('speech_unavailable', 503);
+  if (c.status !== 'open' || !(speech ? ['ai', 'human', 'handoff_requested'].includes(String(c.mode)) : c.mode === 'ai')) fail('context_changed');
+  const agent = !speech && (actor.principal.kind === 'user' || (['site.record', 'site.action'].includes(purpose) && actor.capabilities.includes('assistant.project.shared'))) ? agentConfig(settings.agent_config) : null;
   const entry = c.entry_snapshot as Row;
   const reviewRuntime = agent && actor.principal.kind === 'user' && c.purpose === 'customer_consultation'
     && entry.agentReviewCandidate === true && entry.requirementReviewMode === true
@@ -104,6 +108,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   // The snapshot and quota are bound together; old image runs never gain an
   // enlarged request envelope without its corresponding reservation.
   const reservation = runQuotaReservation(agent);
+  if (speech) { reservation.tokens = 0; reservation.costMicros = 0; }
   const tokenReservation = reservation.tokens, costReservation = reservation.costMicros;
   const rate = Number(process.env.ASSISTANT_REQUESTS_PER_MINUTE || 30);
   if (!Number.isInteger(rate) || rate < 1 || rate > 1000) fail('assistant_disabled', 403);
@@ -113,9 +118,9 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   // Match C01's existing unknown-result state at the service boundary too.
   // A distinct question is not permission to bypass an unresolved dispatch;
   // confirmed usage review is the same recovery proof projected to the client.
-  if (c.purpose === 'customer_consultation' && actor.principal.kind === 'user' && await one(tx, sql`select r.id from
+  if (!speech && c.purpose === 'customer_consultation' && actor.principal.kind === 'user' && await one(tx, sql`select r.id from
     (select id,enterprise_id,status,error_code from app.assistant_runs where enterprise_id=${actor.enterpriseId}
-      and conversation_id=${String(c.id)} order by created_at desc,id desc limit 1) r
+      and conversation_id=${String(c.id)} and purpose<>'speech.transcribe' order by created_at desc,id desc limit 1) r
     where ${unresolvedProviderOutcome()} and not ${runUsageReconciled()}`)) fail('provider_outcome_unknown');
   const budget = (await one(tx, sql`select coalesce(sum(reserved_requests),0) requests,
     coalesce(sum(case when status='settled' then coalesce(settled_tokens,reserved_tokens) else reserved_tokens end),0) tokens,
@@ -129,6 +134,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
     values(${actor.enterpriseId},${String(c.id)},${trigger.kind},${trigger.kind === 'user_message' ? trigger.messageId : null},
     ${trigger.kind === 'domain_event' ? trigger.eventId : null},${trigger.kind === 'scheduled_task' ? trigger.occurrenceKey : null},${purpose},
     ${retryOf || null},${json({ schemaVersion: 1, actor, maxTokens: agent?.consultation ? 8192 : 2048, policyVersion: settings.policy_version, agent,
+      ...(speech ? { localSpeech: { protocol: 'local-speech-v1', configurationHash: speechBinding } } : {}),
       ...(reservation.imageContextBudget ? { imageContextBudget: reservation.imageContextBudget } : {}),
       ...(reservation.imageSchema ? { imageSchema: reservation.imageSchema } : {}),
       ...(agent && actor.principal.kind === 'user' && c.purpose === 'customer_consultation' && purpose === 'reply'
@@ -152,12 +158,14 @@ export function startInternalRun(actor: ActorContext, conversationId: string, tr
 export async function cancelRuns(tx: PostgresTransaction, actor: ActorContext, conversationId: string, runId?: string) {
   const cancelled = await rows(tx, sql`update app.assistant_runs set status='cancelled',completed_at=now(),updated_at=now(),version=version+1
     where enterprise_id=${actor.enterpriseId} and conversation_id=${conversationId} and status in ('queued','running')
-    ${runId ? sql`and id=${runId}` : sql``} returning id`);
+    ${runId ? sql`and id=${runId}` : sql``} returning id,purpose,policy_snapshot`);
   for (const r of cancelled) {
     const job = await one(tx, sql`update app.assistant_jobs set status='cancelled',lease_token=null,updated_at=now(),version=version+1
       where enterprise_id=${actor.enterpriseId} and run_id=${String(r.id)} returning provider_started_at`);
     await tx.execute(sql`update app.assistant_quota_reservations set status=${job?.provider_started_at ? 'reconciling' : 'released'},updated_at=now(),version=version+1
       where enterprise_id=${actor.enterpriseId} and run_id=${String(r.id)}`);
+    if (r.purpose === 'speech.transcribe' && (r.policy_snapshot as Row).localSpeech)
+      await tx.execute(sql`update app.assistant_quota_reservations set status='settled',settled_tokens=0,settled_cost_micros=0,version=version+1,updated_at=now() where enterprise_id=${actor.enterpriseId} and run_id=${String(r.id)}`);
     await terminalEvent(tx, actor.enterpriseId, String(r.id), 'cancelled');
   }
 }
@@ -224,7 +232,7 @@ export class ConversationService {
       if (guidance && (!configuredGuidance(settings?.guidance_config).enabled || c.status !== 'open' || c.mode !== 'ai')) { guidance.options = []; guidance.questionKey = null; }
       const latest = await one(repo.tx, sql`select r.*,${runUsageReconciled()} as usage_reconciled,exists(select 1 from app.assistant_quota_reservations q
         where q.enterprise_id=r.enterprise_id and q.run_id=r.id and q.status='reconciling') as awaiting_reconciliation
-        from app.assistant_runs r where r.enterprise_id=${this.actor.enterpriseId} and r.conversation_id=${conversationId}
+        from app.assistant_runs r where r.enterprise_id=${this.actor.enterpriseId} and r.conversation_id=${conversationId} and r.purpose<>'speech.transcribe'
         order by r.id desc limit 1`);
       const preview = this.actor.principal.kind === 'admin' ? previewPolicy(c) : null;
       const handoff = (c.entry_snapshot as Row)?.handoff as Row | undefined;
@@ -282,26 +290,31 @@ export class ConversationService {
   send(conversationId: string, clientMessageId: string, content: unknown, interceptor?: {
     matches(content: MessageContent, conversation: Row): boolean;
     apply(tx: PostgresTransaction, actor: ActorContext, conversation: Row, message: Row): Promise<boolean>;
-  }) {
+  }, speech?: unknown) {
     key(clientMessageId);
     return this.scoped(async (repo, settings) => {
       const c = await repo.conversation(conversationId); const safe = userContent(content, Number(settings!.max_message_chars));
-      return idempotent(repo.tx, this.actor, 'send:' + conversationId, clientMessageId, safe, async () => {
+      return idempotent(repo.tx, this.actor, 'send:' + conversationId, clientMessageId, speech === undefined ? safe : { ...safe, speech }, async () => {
         if (c.status !== 'open') fail('context_changed');
+        const append = async (purpose?: string) => {
+          const message = await appendMessage(repo.tx, this.actor, conversationId, { author: this.actor.principal.kind, content: safe, clientMessageId, purpose });
+          await bindSpeechToMessage(repo.tx, this.actor, conversationId, String(message.id), safeText(safe), speech);
+          return message;
+        };
         let intercepted: Row | undefined;
         if (interceptor?.matches(safe, c)) {
-          intercepted = await appendMessage(repo.tx, this.actor, conversationId, { author: this.actor.principal.kind, content: safe, clientMessageId });
+          intercepted = await append();
           if (await interceptor.apply(repo.tx, this.actor, c, intercepted)) return { conversationId, messageId: String(intercepted.id), runId: null, status: 'succeeded', nextPollMs: null };
         }
         if (c.mode === 'handoff_requested' && this.actor.principal.kind === 'user') {
-          const message = intercepted || await appendMessage(repo.tx, this.actor, conversationId, { author: 'user', content: safe, clientMessageId, purpose: 'handoff.supplement' });
+          const message = intercepted || await append('handoff.supplement');
           await saveAutomaticRequirements(repo, conversationId);
           return { conversationId, messageId: String(message.id), runId: null, status: 'succeeded', nextPollMs: null };
         }
         if (c.mode === 'human' && this.actor.principal.kind === 'user') {
           const h = (c.entry_snapshot as Row)?.handoff as Row;
           if (!await currentHandoffOwner(repo.tx,this.actor.enterpriseId,conversationId,h)) fail('context_changed');
-          const message=intercepted || await appendMessage(repo.tx,this.actor,conversationId,{author:'user',content:safe,clientMessageId,purpose:'human.reply'});
+          const message=intercepted || await append('human.reply');
           await saveAutomaticRequirements(repo, conversationId);
           return {conversationId,messageId:String(message.id),runId:null,status:'succeeded',nextPollMs:null};
         }
@@ -315,7 +328,7 @@ export class ConversationService {
           const r = await one(repo.tx, sql`select id from app.assistant_runs where enterprise_id=${this.actor.enterpriseId} and trigger_message_id=${String(old.id)} and retry_of_run_id is null`);
           return { conversationId, messageId: String(old.id), runId: r ? String(r.id) : null, status: r ? 'queued' : 'succeeded', nextPollMs: r ? 1500 : null };
         }
-        const message = intercepted || await appendMessage(repo.tx, this.actor, conversationId, { author: this.actor.principal.kind, content: safe, clientMessageId });
+        const message = intercepted || await append();
         await saveAutomaticRequirements(repo, conversationId);
         if (this.actor.principal.kind === 'user' && requestsDesigner(safe.blocks.filter(b => b.type === 'text').map(b => b.text).join('\n'))) {
           if((c.entry_snapshot as Row)?.requirementReviewMode===true && (c.entry_snapshot as Row)?.requirementWorkflow==='langgraph') {

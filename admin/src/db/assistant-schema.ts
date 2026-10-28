@@ -24,6 +24,14 @@ const base = () => ({
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
 });
 
+export const assistantSpeechAssets = app.table('assistant_speech_assets', {
+  ...base(), conversationId: bigint('conversation_id', { mode: 'bigint' }).notNull(), projectId: bigint('project_id', { mode: 'bigint' }),
+  principalKey: text('principal_key').notNull(), requestKey: text('request_key').notNull(), sourceHash: text('source_hash').notNull(),
+  durationMs: integer('duration_ms').notNull(), byteSize: integer('byte_size').notNull(), data: bytea('data'),
+  configurationHash: text('configuration_hash').notNull(), runId: bigint('run_id', { mode: 'bigint' }), messageId: bigint('message_id', { mode: 'bigint' }),
+  transcript: text('transcript').notNull(), correctedText: text('corrected_text').notNull(), deletedAt: timestamp('deleted_at', { withTimezone: true }),
+});
+
 export const assistantEnterpriseSettings = app.table('assistant_enterprise_settings', {
   ...base(),
   enabled: boolean('enabled').notNull(),

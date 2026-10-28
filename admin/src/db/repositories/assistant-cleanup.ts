@@ -8,7 +8,7 @@ export const assistantCleanupTables = [
   'domain_event_deliveries', 'assistant_messages', 'assistant_runs', 'domain_event_outbox',
   'assistant_conversations', 'assistant_enterprise_settings',
   'assistant_knowledge_attempts','assistant_knowledge_chunks','assistant_knowledge_assets','assistant_knowledge_versions','assistant_knowledge_documents','assistant_knowledge_index_profiles',
-  'assistant_message_citations', 'assistant_cost_reviews', 'assistant_requirement_summaries', 'assistant_media',
+  'assistant_message_citations', 'assistant_cost_reviews', 'assistant_requirement_summaries', 'assistant_media', 'assistant_speech_assets',
   'assistant_knowledge_batch_items','assistant_knowledge_batches','assistant_knowledge_evaluations','assistant_knowledge_cases',
   'assistant_model_task_items','assistant_model_tasks',
 ] as const;
@@ -41,6 +41,7 @@ export async function deleteAssistantData(tx: PostgresTransaction, enterpriseId:
   await tx.execute(sql`delete from app.assistant_knowledge_evaluations where enterprise_id=${enterpriseId}`);
   await tx.execute(sql`delete from app.assistant_knowledge_cases where enterprise_id=${enterpriseId}`);
   await tx.execute(sql`delete from app.assistant_media where enterprise_id=${enterpriseId}`);
+  await tx.execute(sql`delete from app.assistant_speech_assets where enterprise_id=${enterpriseId}`);
   await tx.execute(sql`delete from app.assistant_requirement_summaries where enterprise_id=${enterpriseId}`);
   await tx.execute(sql`delete from app.assistant_cost_reviews where enterprise_id=${enterpriseId}`);
   await tx.execute(sql`delete from app.assistant_message_citations where enterprise_id=${enterpriseId}`);

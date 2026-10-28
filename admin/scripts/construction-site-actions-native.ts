@@ -31,6 +31,10 @@ import { prepareApprovedNaturalPlans } from './construction-natural-plans-fixtur
 import { prepareOtherManagementProject, prepareClosedLifecycle } from './construction-natural-lifecycle-fixture';
 import { lifecycleCases, runNaturalLifecycleScenario } from './construction-natural-lifecycle-scenario.mjs';
 import { readSiteResolution } from '@/lib/construction/site-resolution';
+import { runSpeechScenario, speechHttpDenial } from './assistant-speech-native-scenario.mjs';
+import { speechWav } from './assistant-speech-fixture';
+import { SpeechService } from '@/lib/assistant/speech/service';
+import { speechConfig } from '@/lib/assistant/speech/local';
 import { deliverSiteResults } from '@/lib/construction/site-results';
 import { lockAssistantAcceptance } from './assistant-acceptance-safety.mjs';
 import { D4SharingFixture } from './assistant-d4-sharing-fixture';
@@ -45,7 +49,7 @@ declare function getApp(): Row;
 declare function getCurrentPages(): Row[];
 const admin = process.cwd(), root = path.dirname(admin); loadEnvConfig(admin, true);
 process.env.DATABASE_URL = JSON.parse(fs.readFileSync(path.join(root, 'tmp/xiaok-vector/connection.private.json'), 'utf8').replace(/^\uFEFF/, '')).DATABASE_URL;
-const name = process.argv[2]; assert.match(name, /^(?:d4-natural-actions|d5-natural-plans|d5-natural-lifecycle)-native-[a-z0-9-]+$/); assert.ok(process.argv.includes('--live'));
+const name = process.argv[2]; assert.match(name, /^(?:d4-natural-actions|d5-natural-plans|d5-natural-lifecycle|d6-speech)-native-[a-z0-9-]+$/); assert.ok(process.argv.includes('--live'));
 const journeys = process.argv.includes('--journeys');
 const continuation = process.argv.includes('--continue-journeys');
 const answerCheck = process.argv.includes('--answer-check');
@@ -54,9 +58,19 @@ const planAnswers = process.argv.includes('--plan-answers');
 const formalAnswerCheck = process.argv.includes('--formal-answer-check');
 const lifecycleCheck = process.argv.includes('--lifecycle-check');
 const lifecycleAnswers = process.argv.includes('--lifecycle-answer-check');
+const speechCheck = process.argv.includes('--speech-check');
+const speechResume = process.argv.includes('--speech-resume');
+const speechStaffOnly = process.argv.includes('--speech-staff-only');
+const speechDeletedReadback = process.argv.includes('--speech-deleted-readback');
+const speechReadback = process.argv.includes('--speech-readback') || speechDeletedReadback;
+const speechStaffRevocation = process.argv.includes('--speech-staff-revocation');
+const speechDirectory = path.join(root, 'tmp/d6-speech-20261029');
+const speechInputs = speechCheck ? JSON.parse(fs.readFileSync(path.join(speechDirectory, 'fixtures.json'), 'utf8').replace(/^\uFEFF/, '')) : [];
+if (speechCheck) assert.ok(speechConfig(), 'Explicit cached local ASR configuration required');
 const resumeName = process.argv.includes('--resume') ? process.argv[process.argv.indexOf('--resume') + 1] : '';
-if (resumeName) assert.match(resumeName, /^(?:d4-natural-actions|d5-natural-plans)-native-[a-z0-9-]+$/);
+if (resumeName) assert.match(resumeName, /^(?:d4-natural-actions|d5-natural-plans|d6-speech)-native-[a-z0-9-]+$/);
 const previous = resumeName ? JSON.parse(fs.readFileSync(path.join(root, 'tmp', resumeName, 'report.json'), 'utf8')) : null;
+const priorTrial = (index: number) => previous?.trials.find((t: Row) => t.index === index);
 assert.ok(!journeys || !previous, 'Fixed full journeys do not reuse a prior failed model draft');
 assert.ok(!continuation || previous && !journeys, 'Continuation requires a saved full-journey batch and zero new trials');
 assert.ok(!answerCheck || !previous && !journeys && !continuation, 'Final-answer trials use fresh, separately labelled fixture sources');
@@ -65,9 +79,15 @@ assert.ok(!planAnswers || previous?.delivery === 'D5' && !planCheck && !journeys
 assert.ok(!formalAnswerCheck || !previous && !planCheck && !journeys && !continuation && !answerCheck && !planAnswers, 'Fresh formal answer fixtures never revive revoked originals');
 assert.ok(!lifecycleCheck || !previous && !planCheck && !journeys && !continuation && !answerCheck && !planAnswers && !formalAnswerCheck, 'Lifecycle uses two fixed fresh scoped native journeys');
 assert.ok(!lifecycleAnswers || !previous && !planCheck && !journeys && !continuation && !answerCheck && !planAnswers && !formalAnswerCheck && !lifecycleCheck, 'Lifecycle answer trials use fresh actual closed sources without regrading staff steps');
-if (previous) { assert.ok(previous.finished); assert.deepEqual(previous.drift, []); assert.equal(previous.calls.length, planAnswers ? 8 : continuation ? 24 : 10); assert.ok(previous.calls.every((c: Row) => c.status === 'succeeded'));
+if (previous) { assert.ok(previous.finished); assert.deepEqual(previous.drift, []); assert.equal(previous.calls.length, speechStaffRevocation ? 2 : speechDeletedReadback ? 0 : speechReadback ? 4 : speechResume ? 0 : planAnswers ? 8 : continuation ? 24 : 10); assert.ok(previous.calls.every((c: Row) => c.status === 'succeeded'));
   if (planAnswers) assert.ok(previous.trials.every((t: Row) => ['natural formal V1', 'natural V2', 'customer V2'].every(prefix => t.native.checks.some((c: Row) => c.name.startsWith(prefix) && c.passed))));
   if (continuation) assert.ok(previous.trials.every((t: Row) => t.native.checks.some((c: Row) => c.name === 'manager explicitly returns only its own confirmed excerpt to the source consultation' && c.passed))); }
+if (speechResume) { assert.ok(speechCheck && previous?.delivery === 'D6'); assert.equal(previous.trials.length,2);
+  assert.ok(previous.trials.every((t: Row) => t.runResults.some((r: Row) => r.purpose === 'speech.transcribe' && r.status === 'succeeded'))); }
+assert.ok(!speechStaffOnly || speechCheck && !previous);
+assert.ok(!speechReadback || speechCheck && previous?.delivery === 'D6' && previous.trials[0].speechTranscription);
+assert.ok(!speechStaffRevocation || speechCheck && previous?.delivery === 'D6' && priorTrial(1)?.recordId);
+assert.ok(!speechDeletedReadback || priorTrial(0)?.audioPlayback?.started > 0);
 const output = path.join(root, 'tmp', name); fs.mkdirSync(output);
 const ledger = path.join(root, 'tmp/agent-contract/trial-' + name + '.json'), apiOrigin = 'http://127.0.0.1:3118';
 const cases = [
@@ -105,11 +125,18 @@ if (lifecycleCheck) { report.delivery = 'D5'; report.cases = lifecycleCases; rep
 if (lifecycleAnswers) { report.delivery = 'D5'; report.cases = lifecycleCases; report.authorization.maxDispatches = 8;
   report.scope = 'Two fixed C01-only trials after hash-bound formal business projection recovery. Fresh labelled service-written closed V2/evidence context because the prior passing source was genuinely revoked. Reuse both successful natural staff/brief/write/lost-receipt chains without more staff inference or regrading; actual customer question/reentry, conditional originals, source/member revocation.';
   report.bindingPolicy = 'Fixed before dispatch: full Agent/construction/database/provider dependencies; C01 chat/lib/assets and construction/utils/components/app plus all test drivers/configuration. No retrospective binding reduction.'; }
+if (speechCheck) { report.delivery = 'D6'; report.cases = speechInputs; report.speechRuns = []; report.authorization.maxDispatches = 8; report.authorization.maxLocalSpeechAttempts = 4;
+  report.scope = 'Two fixed real local-ASR journeys: customer correction/explicit Agent continuation, staff voice plus photo/review/publication; actual silent-input failure and explicit same-original retry, lost upload reconciliation, protected replay/reentry, deletion and member revocation. Recorder input/authorization are synthetic, native/HTTP/ASR/Worker/database real.';
+  report.bindingPolicy = 'Fixed before dispatch: full Agent/construction/database/provider and relevant C01/S04 client dependencies, all drivers/Python/config, exact generated PCM fixtures and cached model SHA256. No retrospective reduction.'; }
 const save = () => { fs.writeFileSync(path.join(output, 'report.json'), JSON.stringify(report, null, 2)); fs.writeFileSync(ledger, JSON.stringify(report, null, 2)); };
 const hash = (v: string | Buffer) => createHash('sha256').update(v).digest('hex');
+if (speechResume) { report.scope='Continuation of the two unchanged real ASR originals from native02; zero new ASR execution, no original failure regrading. Real queued UI probe is cancelled before execution; complete original reviewed customer/staff business sends, playback and source/member revocation.'; report.authorization.fixedTrials=2; report.authorization.maxDispatches=8; report.authorization.maxLocalSpeechAttempts=0; }
+if (speechStaffOnly) { report.scope='One fixed fresh S04 voice/photo/review/publication/replay/revocation journey after deterministic empty-inactive-slot decoding. No customer answer resampling or D2 change.'; report.authorization.fixedTrials=1; report.authorization.maxDispatches=4; report.authorization.maxLocalSpeechAttempts=1; }
+if (speechReadback) { report.scope='Zero-inference readback of the exact saved customer original/correction and truthful failed-answer feedback, protected replay/reentry/deletion. Original unsupported unsourced dimensions stay failed, not normal customer-answer acceptance.'; report.authorization.fixedTrials=0; report.authorization.maxDispatches=0; report.authorization.maxLocalSpeechAttempts=0; }
+if (speechStaffRevocation) { report.scope='Zero-inference verification of the exact published voice/photo source after actual member removal; keep membership revoked, restore only synthetic identity to distinguish membership from login denial. No original business trial regrading.'; report.authorization.fixedTrials=0; report.authorization.maxDispatches=0; report.authorization.maxLocalSpeechAttempts=0; }
 const binding = () => {
   const files: string[] = [];
-  const assistantDirs = planCheck || planAnswers || formalAnswerCheck || lifecycleCheck || lifecycleAnswers ? ['miniprogram/packages/assistant/chat', 'miniprogram/packages/assistant/lib', 'miniprogram/packages/assistant/assets'] : ['miniprogram/packages/assistant'];
+  const assistantDirs = planCheck || planAnswers || formalAnswerCheck || lifecycleCheck || lifecycleAnswers || speechCheck ? ['miniprogram/packages/assistant/chat', 'miniprogram/packages/assistant/lib', 'miniprogram/packages/assistant/assets'] : ['miniprogram/packages/assistant'];
   for (const dir of ['admin/src/lib/assistant', 'admin/src/lib/construction', 'admin/src/db', 'admin/src/lib/ai/providers', ...assistantDirs, 'miniprogram/packages/construction', 'miniprogram/utils', 'miniprogram/components']) {
     const walk = (folder: string) => { for (const e of fs.readdirSync(path.join(root, folder), { withFileTypes: true })) { const p = folder + '/' + e.name;
       if (e.isDirectory()) walk(p); else if (/\.(ts|js|json|wxml|less|png)$/.test(p)) files.push(p); } }; walk(dir);
@@ -124,6 +151,7 @@ const binding = () => {
     'miniprogram/app.js', 'miniprogram/app.json', 'miniprogram/app.less', 'miniprogram/package.json',
     'tmp/wechat-automator-smoke-20261017/sdk-latest/node_modules/miniprogram-automator/package.json',
     'tmp/xiaok-vector/connection.private.json', 'tmp/xiaok-intelligent-consult/.env.qwen37', path.relative(root, process.env.TSX_TSCONFIG_PATH!));
+  if (speechCheck) files.push('admin/scripts/assistant-speech-native-scenario.mjs', 'admin/scripts/assistant-speech-fixture.ts', 'admin/scripts/assistant-speech-local.py', 'admin/drizzle/0099_assistant_speech.sql', 'admin/drizzle/meta/_journal.json', 'tmp/d6-speech-20261029/local-asr.json', 'tmp/d6-speech-20261029/fixtures.json', 'tmp/d6-speech-20261029/customer.wav', 'tmp/d6-speech-20261029/worker.wav');
   return Object.fromEntries([...new Set(files)].map(p => [p, hash(fs.readFileSync(path.join(root, p)))]));
 };
 const retained: RetainedReviewHold[] = ['tmp/anythingllm-pilot', 'tmp/agent-comparison', 'tmp/agent-diagnosis', 'tmp/agent-contract'].flatMap(dir =>
@@ -152,7 +180,8 @@ async function schedule(runId: string) {
       await processAssistantRun(lease);
       const state = await withTenantTransaction(f.eid, tx => one(tx, sql`select id::text,purpose,status,error_code from app.assistant_runs where enterprise_id=${f.eid} and id=${lease!.runId}`));
       currentTrial.runResults.push(state); save();
-      if (state?.status !== 'succeeded') throw Error('Configured Worker did not complete: ' + JSON.stringify(state));
+      if (speechCheck && state?.purpose === 'speech.transcribe') { report.speechRuns.push(state); assert.ok(report.speechRuns.length <= report.authorization.maxLocalSpeechAttempts, 'Fixed local-ASR attempt budget'); save(); }
+      if (state?.status !== 'succeeded' && !(speechCheck && state?.purpose === 'speech.transcribe' && currentTrial.expectedSpeechFailure && state.status === 'failed')) throw Error('Configured Worker did not complete: ' + JSON.stringify(state));
     }
   })().catch(error => { currentTrial.processorError = String(error.stack || error); save(); }).finally(() => { processing = undefined; activeRunId = ''; });
   await processing;
@@ -179,11 +208,11 @@ async function main() {
   try {
     release = await lockAssistantAcceptance(process.env.DATABASE_URL!, { waitForLock: true });
     assert.deepEqual(binding(), report.imported, 'Source changed while waiting for acceptance lock');
-    if (!previous || planAnswers) { const runtime = await bindBailianReviewTestRuntime(root, path.join(output, 'runtime.json')); restore = runtime.restore; report.runtime = runtime.receipt; }
+    if (!previous || planAnswers || speechResume) { const runtime = await bindBailianReviewTestRuntime(root, path.join(output, 'runtime.json')); restore = runtime.restore; report.runtime = runtime.receipt; }
     globalThis.fetch = async (input, init) => {
       const url = new URL(typeof input === 'string' || input instanceof URL ? input.toString() : input.url);
       if (['127.0.0.1', 'localhost'].includes(url.hostname)) return originalFetch(input, init);
-      assert.ok(!previous || planAnswers, 'Saved-result continuation cannot dispatch external inference');
+      assert.ok(!previous || planAnswers || speechResume, 'Saved-result continuation cannot dispatch external inference');
       assert.equal(url.hostname, 'dashscope.aliyuncs.com'); assert.ok(trial && activeRunId); assert.ok(report.calls.length < report.authorization.maxDispatches, 'Fixed dispatch cap');
       assert.deepEqual(binding(), report.imported, 'Source/configuration drift fences further paid dispatch');
       reviewBudget(root).assertReservation(0, 64000, retained);
@@ -206,11 +235,16 @@ async function main() {
         const request = new NextRequest(apiOrigin + incoming.url, { method: incoming.method, headers: incoming.headers as HeadersInit,
           ...(['POST', 'PATCH'].includes(incoming.method || '') ? { body: new Uint8Array(Buffer.concat(parts)) } : {}) });
         const p = new URL(request.url).pathname, assistant = '/api/miniprogram/assistant/', construction = '/api/miniprogram/construction/';
+        if (speechCheck && incoming.method === 'POST' && /\/speech(?:\/[1-9]\d*\/retry)?$/.test(p)) {
+          const payload = Buffer.concat(parts), value = JSON.parse(payload.toString());
+          (report.speechRequests ||= []).push({ path: p, requestKey: incoming.headers['idempotency-key'], bodyHash: hash(payload),
+            audioHash: typeof value.data === 'string' ? hash(Buffer.from(value.data, 'base64')) : null }); save();
+        }
         assert.ok(p.startsWith(assistant) || p.startsWith(construction));
         const result = p.startsWith(assistant) ? await assistantHttp(request, p.slice(assistant.length).split('/'))
           : await constructionHttp(request, { params: Promise.resolve({ path: p.slice(construction.length).split('/') }) });
         const bytes = Buffer.from(await result.arrayBuffer()); outgoing.writeHead(result.status, Object.fromEntries(result.headers.entries())); outgoing.end(bytes);
-        if (result.ok && incoming.method === 'POST' && /\/messages$/.test(p)) {
+        if (result.ok && incoming.method === 'POST' && /(?:\/messages|\/speech|\/speech\/[1-9]\d*\/retry)$/.test(p)) {
           const sent = JSON.parse(bytes.toString()).data;
           if (sent.runId && !scheduledRuns.has(String(sent.runId))) { scheduledRuns.add(String(sent.runId)); void schedule(String(sent.runId)).catch(error => { if (trial) trial.processorError = String(error); save(); }); }
         }
@@ -218,20 +252,22 @@ async function main() {
     });
     await new Promise<void>((resolve, reject) => { server!.once('error', reject); server!.listen(3118, '127.0.0.1', resolve); });
     for (const [index, c] of cases.entries()) {
+      if ((speechStaffOnly || speechStaffRevocation) && index !== 1 || speechReadback && index !== 0) continue;
       const f = new D4SharingFixture(); fixture = f;
-      trial = { index, input: c, runs: [], runResults: [], passed: false }; report.trials.push(trial); save();
+      trial = { index, input: speechCheck ? speechInputs[index] : c, runs: [], runResults: [], passed: false }; report.trials.push(trial); save();
       const trialOutput = path.join(output, 'trial-' + index); fs.mkdirSync(trialOutput);
       try {
         if (previous) {
           const original = JSON.parse(fs.readFileSync(path.join(root, 'tmp', resumeName, `fixture-${index}.json`), 'utf8')).fixture;
-          assert.deepEqual(original.enterpriseIds, previous.trials[index].retirement.enterpriseIds);
+          assert.deepEqual(original.enterpriseIds, priorTrial(index).retirement.enterpriseIds);
           for (const field of ['enterpriseIds', 'userIds', 'ownerIds', 'memberIds', 'platformIds'] as const) f[field].push(...original[field]);
           for (const field of ['projectId', 'otherProjectId', 'conversationId', 'leadId', 'roomId'] as const) f[field] = original[field];
-          trial.originalRecordId = previous.trials[index].recordId; trial.originalIssueId = previous.trials[index].issueId;
+          trial.originalRecordId = priorTrial(index).recordId; trial.originalIssueId = priorTrial(index).issueId;
           if (continuation || planAnswers) { trial.drawingGrantId = previous.trials[index].drawingGrantId; trial.drawingMediaId = previous.trials[index].drawingMediaId; trial.returnedReview = previous.trials[index].returnedReview; }
           if (planAnswers) trial.savedPlans = ['natural formal V1', 'natural V2'].map(prefix => previous.trials[index].native.checks.find((c: Row) => c.name.startsWith(prefix) && c.passed).result);
           const currentBinding = binding();
           for (const [p, originalHash] of Object.entries(previous.after)) if ((p.startsWith('admin/src/') || p.startsWith('miniprogram/')) && currentBinding[p]) {
+            if (speechReadback && ['admin/src/lib/construction/site-action-contract.ts', 'admin/src/lib/construction/__tests__/site-action-contract.test.ts'].includes(p)) continue;
             if (planAnswers && ['admin/src/lib/assistant/agent/synthesis.ts', 'admin/src/lib/assistant/__tests__/synthesis.test.ts', 'admin/src/db/__tests__/construction-natural-plans.test.ts'].includes(p)) continue;
             assert.equal(currentBinding[p], originalHash, 'Saved model/business source changed: ' + p);
           }
@@ -239,7 +275,7 @@ async function main() {
             const enterprise = await one(tx, sql`select code from app.enterprises where id=${f.eid}`); assert.ok(String(enterprise?.code).startsWith('synthetic-d4-sharing-'));
             await tx.execute(sql`update app.assistant_enterprise_settings set enabled=true where enterprise_id=any(ARRAY(select jsonb_array_elements_text(${JSON.stringify(f.enterpriseIds)}::jsonb))::bigint[])`);
             await tx.execute(sql`update app.admin_users set status='active' where id=any(ARRAY(select jsonb_array_elements_text(${JSON.stringify([...f.ownerIds, ...f.memberIds, ...f.platformIds])}::jsonb))::bigint[])`);
-            await tx.execute(sql`update app.construction_members set active=true where enterprise_id=${f.eid}`);
+            if (!speechStaffRevocation) await tx.execute(sql`update app.construction_members set active=true where enterprise_id=${f.eid}`);
           });
         } else {
           await f.create({ runtime: 'langgraph-v1', providerKey: 'dashscope', model: 'qwen3.8-flash', tools: true, imageInput: false, structuredFinal: nativeFinalProtocol, probeVersion: 'd4-site-actions-live' });
@@ -284,7 +320,7 @@ async function main() {
         fs.writeFileSync(path.join(trialOutput, 'window-launch.json'), JSON.stringify({ projectPath: path.join(root, 'miniprogram'), autoPort: 9420 }));
         trial.before = binding(); save();
         trial.native = await runSharedChat({ root, output: trialOutput, projectId: f.projectId, identities, apiOrigin, refreshWithCli: true, recordPreview: true, projectManagement: journeys || lifecycleCheck, managementBrief: lifecycleCheck,
-          customer: { conversationId: f.conversationId }, exercise: async ({ mp, step, identity, open, send, current, waitFor, capture }: Row) => {
+          expectedInitialRevocation: speechStaffRevocation, customer: { conversationId: f.conversationId }, exercise: async ({ mp, step, identity, open, send, current, waitFor, capture }: Row) => {
             const check = async (read: () => Promise<unknown>, label: string) => waitFor(async () => { if (trial!.processorError) throw Error(trial!.processorError); return read(); }, label);
             const take = async (name: string) => { const value = await capture(name); report.captures.push(value); save(); return value; };
             const latest = async (id: string) => (await (await current()).data()).items.find((i: Row) => String(i.message.id) === id);
@@ -325,6 +361,30 @@ async function main() {
               trial!.publishedRecordVersion = Number(record!.published_version); save(); return { recordId: rid, version: record!.published_version, customerReentry: true };
             };
             try {
+              if (speechCheck) {
+                const speaker = async () => index === 0 ? { ...f.actor, contextVersion: await version(f.userIds[0]) } : f.site(f.memberIds[1]).actor;
+                const service = async () => new SpeechService(await speaker(), { kind: index === 0 ? 'consultation' : 'site', id: index === 0 ? f.conversationId : f.projectId });
+                await runSpeechScenario({ mp, step, identity, current, check, takeRoute, customerOpen, trial, save, index, fixtures: speechInputs,
+                  readback: speechReadback, revokedReadback: speechStaffRevocation,
+                  deletedReadback: speechDeletedReadback, reusedPlayback: speechDeletedReadback ? priorTrial(index).audioPlayback : null,
+                  savedSpeech: speechReadback || speechStaffRevocation ? priorTrial(index).speechTranscription : null,
+                  resume: speechResume, resumeRunId: speechResume ? previous.trials[index].runResults.find((r: Row) => r.purpose === 'speech.transcribe' && r.status === 'succeeded').id : null,
+                  createProcessingProbe: async () => { const a = await (await service()).upload(randomUUID(), speechWav()); trial!.queuedSpeechProbe = a; save(); return a; },
+                  removeProcessingProbe: (id: string) => service().then(s => s.remove(id, randomUUID())),
+                  audio: (i: number) => fs.readFileSync(speechInputs[i].file), silence: () => speechWav(), roomId: f.roomId, open,
+                  idle: async () => { if (processing) await processing; if (trial!.processorError) throw Error(trial!.processorError); },
+                  readAsset: (id: string) => withTenantTransaction(f.eid, tx => one(tx, sql`select * from app.assistant_speech_assets where enterprise_id=${f.eid} and id=${id}`)),
+                  readOriginal: async (id: string) => ({ hash: hash((await (await service()).read(id)).data) }),
+                  denyOriginal: async (id: string) => {
+                    await assert.rejects(async () => (await service()).read(id));
+                    const target = apiOrigin + '/api/miniprogram/' + (index === 0 ? 'assistant/conversations/' + f.conversationId : 'construction/projects/' + f.projectId + '/chat') + '/speech/' + id;
+                    const denied = await speechHttpDenial(mp, target);
+                    assert.ok([401,403,404].includes(Number(denied)), 'Protected original HTTP denial'); (trial!.audioDenials ||= []).push({ id, status: denied }); save();
+                  },
+                  picture: async () => (await sharp({ create: { width: 96, height: 72, channels: 3, background: '#c9dfd0' } }).png().toBuffer()).toString('base64'),
+                  removeWorker: () => f.member(f.memberIds[1], 'worker', false) });
+                return;
+              }
               if (lifecycleCheck || lifecycleAnswers) {
                 await runNaturalLifecycleScenario({ mp, step, identity, open, send, current, check, latest, take, takeRoute, customerOpen, customerSay, trial, save,
                   input: lifecycleCases[index], answerOnly: lifecycleAnswers, projectId: f.projectId, otherProjectId: f.otherProjectId, workerId: f.memberIds[1],

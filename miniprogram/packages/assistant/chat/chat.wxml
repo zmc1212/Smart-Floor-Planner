@@ -73,7 +73,7 @@
         <view wx:for="{{messages}}" wx:key="id" class="message {{item.authorKind === 'system' && !item.constructionReminder && !item.constructionFollowUp && !item.planDecision ? 'system-message' : item.isUser ? 'user-message' : 'assistant-message'}} {{item.publicConsent || item.planDecision ? 'consent-message' : ''}}" id="message-{{item.id}}">
           <view wx:if="{{!item.isUser && (item.authorKind !== 'system' || item.constructionReminder || item.constructionFollowUp || item.publicConsent || item.planDecision)}}" class="avatar"><image src="../assets/{{item.authorKind === 'admin' ? 'person' : 'xiaok-chat-avatar'}}.png" mode="aspectFit" /></view>
           <view class="message-main">
-            <view class="bubble {{item.available === false ? 'unavailable-bubble' : ''}}">
+            <view class="bubble {{item.available === false ? 'unavailable-bubble' : ''}}" data-message="{{item.id}}" bindlongpress="voiceMessage">
               <block wx:if="{{item.mediaId}}">
                 <image wx:if="{{item.mediaAvailable && mediaPaths[item.mediaId]}}" class="message-photo" src="{{mediaPaths[item.mediaId]}}" mode="widthFix" data-id="{{item.mediaId}}" bindtap="previewMedia" bindlongpress="removeMedia" />
                 <button wx:elif="{{item.mediaAvailable}}" data-id="{{item.mediaId}}" bindtap="previewMedia">图片 · 点击查看</button>
@@ -169,11 +169,12 @@
       <button wx:if="{{conversation.requirementProposalPending && conversation.mode === 'ai'}}" class="text-action" bindtap="openRequirements" disabled="{{loading || needsLogin || fatal || busy || pendingSend || pendingAction}}">查看需求提案</button>
     </view>
     <view wx:if="{{mediaBusy || mediaPending || mediaError}}" class="notice"><text>{{mediaBusy ? '图片发送中…' : mediaError}}</text><button wx:if="{{!mediaBusy}}" class="notice-action" bindtap="retryMedia">{{mediaPending ? '核对发送结果' : '重试'}}</button></view>
+    <view wx:if="{{speechBusy || speechError}}" class="notice" role="status"><text>{{speechBusy ? '录音处理中，转成文字后可修改再发送。' : speechError}}</text><button wx:if="{{!speechBusy}}" class="notice-action" bindtap="voiceInput">处理录音</button></view>
     <view class="composer">
-      <button size="mini" class="media-button" bindtap="voiceUnavailable" aria-label="语音暂不可用，可以打字或发图"><image src="../assets/microphone.png" /></button>
+      <button size="mini" class="media-button" bindtap="voiceInput" aria-label="{{speechAvailable ? '语音输入；长按语音转写消息可回听原音' : '语音暂不可用，可以打字或发图'}}"><image src="../assets/microphone.png" /></button>
       <textarea class="composer-input" value="{{draft}}" maxlength="{{maxChars}}" auto-height adjust-position="{{false}}" show-confirm-bar="{{false}}" placeholder="说说你家的想法…" placeholder-class="input-placeholder" bindinput="input" bindkeyboardheightchange="keyboardChange" disabled="{{loading || busy || fatal || !canSend || pendingSend || generating || uncertainRun || pendingAction || readOnly}}" aria-label="装修咨询内容" />
       <button size="mini" class="media-button" bindtap="openMedia" disabled="{{loading || busy || fatal || pendingSend || pendingAction || mediaBusy}}" aria-label="本次图片资料"><image src="../assets/image.png" /></button>
-      <button size="mini" class="send-button" bindtap="send" disabled="{{!draft || loading || busy || fatal || !canSend || pendingSend || generating || uncertainRun || pendingAction || readOnly}}" aria-label="发送"><image src="../assets/arrow-up.png" /></button>
+      <button size="mini" class="send-button" bindtap="send" disabled="{{!draft || loading || busy || fatal || !canSend || pendingSend || generating || uncertainRun || pendingAction || readOnly || speechBusy}}" aria-label="发送"><image src="../assets/arrow-up.png" /></button>
     </view>
     <view wx:if="{{draft.length > maxChars - 200}}" class="composer-footer"><text>{{draft.length}}/{{maxChars}}</text></view>
   </view>

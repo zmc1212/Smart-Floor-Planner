@@ -43,6 +43,13 @@ export async function parseSiteAction(output: ModelTurnOutput, candidates: SiteA
   const raw = output.toolCalls[0]?.arguments || output.text;
   if (await toolSchemaIssue(siteActionTool(candidates), raw)) fail('invalid_model_answer', 502);
   const value = JSON.parse(raw) as SiteAction;
+  // Some structured-output providers emit every optional schema slot. Only
+  // exact empty inactive slots carry no business value; populated or malformed
+  // slots still fail below, and active actions retain their original fields.
+  if (value.action !== 'plan' && value.plan && Object.values(value.plan).every(v => v === '')) delete value.plan;
+  if (value.action !== 'transfer' && value.assigneeName === '') delete value.assigneeName;
+  if (!['implement', 'resolve', 'close'].includes(value.action) && value.resolution
+    && Object.values(value.resolution).every(v => v === '')) delete value.resolution;
   if (['none', 'report'].includes(value.action) ? value.target !== '' : !(value.action === 'open' ? candidates.records : candidates.issues).includes(value.target)) fail('invalid_model_answer', 502);
   if (value.action === 'plan' ? !value.plan : value.plan !== undefined) fail('invalid_model_answer', 502);
   if (value.action === 'transfer' ? !value.assigneeName?.trim() : value.assigneeName !== undefined) fail('invalid_model_answer', 502);

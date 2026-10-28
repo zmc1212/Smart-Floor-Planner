@@ -21,7 +21,7 @@ async function finish(tx: PostgresTransaction, lease: Lease, status: string, err
 async function authorized(repo: AssistantRepository, run: Row) {
   const settings = await repo.settings(true);
   const c = await repo.conversation(String(run.conversation_id));
-  if (c.mode !== 'ai' || c.status !== 'open' || c.context_revision !== run.context_revision || settings!.knowledge_epoch !== run.knowledge_epoch
+  if (!(run.purpose === 'speech.transcribe' ? ['ai', 'human', 'handoff_requested'].includes(String(c.mode)) : c.mode === 'ai') || c.status !== 'open' || c.context_revision !== run.context_revision || settings!.knowledge_epoch !== run.knowledge_epoch
     || Number(settings!.policy_version) !== Number((run.policy_snapshot as { policyVersion: number }).policyVersion)) fail('context_changed');
   const configuredAgent = agentConfig((run.policy_snapshot as Row).agent);
   if (configuredAgent && agentCapabilityFingerprint(configuredAgent) !== agentCapabilityFingerprint(agentConfig(settings!.agent_config))) fail('context_changed');
@@ -44,6 +44,13 @@ export async function claimJob(): Promise<Lease | null> {
       const actor = (run.policy_snapshot as { actor: ActorContext }).actor;
       const current: Lease = { enterpriseId: String(job.enterprise_id), jobId: String(job.id), runId: String(run.id), token: randomUUID(), actor };
       if (job.status === 'running' && job.provider_started_at) {
+        if (run.purpose === 'speech.transcribe' && (run.policy_snapshot as Row).localSpeech) {
+          // Local execution has no unknown external bill. Its lost result still
+          // remains failed/explicitly retryable, never silently replayed.
+          await finish(tx, current, 'failed', 'speech_result_unknown');
+          await tx.execute(sql`update app.assistant_quota_reservations set status='settled',settled_tokens=0,settled_cost_micros=0,version=version+1,updated_at=now() where enterprise_id=${current.enterpriseId} and run_id=${current.runId}`);
+          return null;
+        }
         const completedAgentSteps = agentConfig((run.policy_snapshot as Row).agent) ? await one(tx, sql`select count(*) as n,
           count(*) filter(where status!='succeeded') as incomplete from app.assistant_run_steps
           where enterprise_id=${current.enterpriseId} and run_id=${current.runId} and kind='agent_model'`) : null;
@@ -119,9 +126,21 @@ export async function completeRun(lease: Lease, result: RunResult, commit?: (tx:
     return String(message.id);
   });
 }
+/** A transcription is an editable private draft, not an assistant reply or a user send. */
+export async function completeLocalSpeech(lease: Lease, durationMs: number, commit: (tx: PostgresTransaction) => Promise<void>) {
+  return withTenantTransaction(lease.enterpriseId, async tx => {
+    const { run } = await live(tx, lease); await authorized(new AssistantRepository(tx, lease.actor), run);
+    if (run.purpose !== 'speech.transcribe' || !(run.policy_snapshot as Row).localSpeech || !Number.isSafeInteger(durationMs) || durationMs < 300 || durationMs > 60000) fail('context_changed');
+    await commit(tx);
+    await tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,operation_key,category,quantity,cost_micros,currency,measurement_kind)
+      values(${lease.enterpriseId},${lease.runId},${'speech:' + lease.runId},'audio_input_ms',${durationMs},0,'CNY','observed') on conflict do nothing`);
+    await tx.execute(sql`update app.assistant_quota_reservations set status='settled',settled_tokens=0,settled_cost_micros=0,version=version+1,updated_at=now() where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}`);
+    await finish(tx, lease, 'succeeded', null);
+  });
+}
 export async function failRun(lease: Lease, code: string, outcomeKnown=false) {
   return withTenantTransaction(lease.enterpriseId, async tx => {
-    const { job } = await live(tx, lease);
+    const { job, run } = await live(tx, lease);
     const unknown=job.provider_started_at && !outcomeKnown;
     const status = unknown ? 'indeterminate' : 'failed';
     await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
@@ -129,6 +148,8 @@ export async function failRun(lease: Lease, code: string, outcomeKnown=false) {
       ${JSON.stringify({ code: unknown ? 'provider_outcome_unknown' : code })}::jsonb) on conflict do nothing`);
     await tx.execute(sql`update app.assistant_quota_reservations set status=${job.provider_started_at ? 'reconciling' : 'released'},version=version+1,updated_at=now()
       where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}`);
+    if (run.purpose === 'speech.transcribe' && (run.policy_snapshot as Row).localSpeech)
+      await tx.execute(sql`update app.assistant_quota_reservations set status='settled',settled_tokens=0,settled_cost_micros=0,version=version+1,updated_at=now() where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}`);
     await finish(tx, lease, status, unknown ? 'provider_outcome_unknown' : code);
   });
 }

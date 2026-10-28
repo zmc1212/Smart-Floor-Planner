@@ -266,6 +266,8 @@ async function redactConversation(
     returning id::text,version`);
   if (!conversation) return counts;
   counts.conversations = 1;
+  await tx.execute(sql`update app.assistant_speech_assets set data=null,transcript='',corrected_text='',deleted_at=coalesce(deleted_at,now()),version=version+1,updated_at=now()
+    where enterprise_id=${enterpriseId} and conversation_id=${conversationId} and deleted_at is null`);
   await tx.execute(sql`update app.assistant_media set data=null,room_name='',source_ref=null,deleted_at=coalesce(deleted_at,now())
     where enterprise_id=${enterpriseId} and conversation_id=${conversationId} and deleted_at is null`);
 

@@ -99,6 +99,14 @@ export async function webCitationProjection(tx: PostgresTransaction, actor: Acto
   return await webCitationForAnswer(tx, actor, c, citationId) || { id: citationId, available: false, reason: 'source_unavailable' };
 }
 export async function projectMessage(tx:PostgresTransaction,actor:ActorContext,c:Row,message:Row) {
+  // Revoking an original also hides pre-revocation AI prose after it. This
+  // conservative fence covers unstructured replies without inventing citations;
+  // future turns can answer again from the remaining live sources.
+  const speech = await one(tx, sql`select exists(select 1 from app.assistant_speech_assets a
+    join app.assistant_messages original on original.enterprise_id=a.enterprise_id and original.id=a.message_id
+    join app.assistant_messages target on target.enterprise_id=a.enterprise_id and target.conversation_id=a.conversation_id
+    where a.enterprise_id=${actor.enterpriseId} and a.conversation_id=${String(c.id)} and a.deleted_at is not null and target.id=${String(message.id)}
+      and (target.id=a.message_id or target.author_kind='assistant' and target.seq>=original.seq and target.created_at<=a.deleted_at)) as revoked`);
   const media = await one(tx, sql`select a.id,(a.deleted_at is null and (a.source_ref is null or exists(
       select 1 from app.leads l join app.floor_plans f on f.enterprise_id=l.enterprise_id and f.id=l.primary_floor_plan_id
       where l.enterprise_id=a.enterprise_id and l.id::text=a.source_ref->>'leadId' and l.customer_user_id=a.customer_user_id
@@ -114,7 +122,7 @@ export async function projectMessage(tx:PostgresTransaction,actor:ActorContext,c
   for (const citationId of webIds) projected.push(await webCitationProjection(tx, actor, c, citationId));
   const publicProjection = await publicMessageProjection(tx, actor, c, String(message.id));
   const planProjection = await planMessageProjection(tx, actor.enterpriseId, String(c.id), String(message.id));
-  const available=planProjection?.available !== false && publicProjection?.available !== false && !(message.answer_kind==='grounded' && !projected.length) && projected.every(x=>x.available)
+  const available=speech?.revoked !== true && planProjection?.available !== false && publicProjection?.available !== false && !(message.answer_kind==='grounded' && !projected.length) && projected.every(x=>x.available)
     && await agentMessageAvailable(tx, actor.enterpriseId, String(c.id), String(message.id));
   return {id:String(message.id),seq:String(message.seq),authorKind:message.author_kind,answerKind:message.answer_kind ?? null,available,
     content:available?message.content:{version:1,blocks:[{type:'notice',code:'source_unavailable',fallbackText:'这条回答所依据的资料已不可用，请重新提问。'}]},

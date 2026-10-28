@@ -1,0 +1,7 @@
+# Tested in an isolated CPython 3.12 CPU runtime; models must already be local.
+faster-whisper==1.2.1
+ctranslate2==4.8.3
+numpy==2.2.6
+av==19.0.2
+tokenizers==0.23.3
+huggingface-hub==2.3.0

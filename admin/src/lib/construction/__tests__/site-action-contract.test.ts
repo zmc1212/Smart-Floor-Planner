@@ -3,6 +3,20 @@ import { test } from 'node:test';
 import { parseSiteAction, siteActionConfirmation, siteActionInterpretationRequested } from '../site-action-contract';
 const candidates = { records: ['11'], issues: ['22'], plans: ['33'] };
 const output = (value: unknown) => ({ text: JSON.stringify(value), toolCalls: [], finishReason: 'stop', providerRequestId: null, usage: null });
+
+test('empty inactive provider slots carry no authority; any populated or malformed slot remains rejected', async () => {
+  const empty = { plan: { title: '', costQuote: '', scheduleQuote: '' }, assigneeName: '', resolution: { planId: '', recordId: '', excerpt: '' } };
+  for (const selection of [{ action: 'report', target: '' }, { action: 'none', target: '' }, { action: 'reply', target: '22' }]) {
+    assert.deepEqual(await parseSiteAction(output({ ...selection, ...empty }), candidates), selection);
+    for (const extra of [{ ...empty, plan: { ...empty.plan, title: '实际方案' } }, { ...empty, assigneeName: '测试师傅' },
+      { ...empty, resolution: { ...empty.resolution, excerpt: '处理原话' } }, { ...empty, plan: null },
+      { ...empty, resolution: { ...empty.resolution, unknown: '' } }]) {
+      await assert.rejects(parseSiteAction(output({ ...selection, ...extra }), candidates), /invalid_model_answer/);
+    }
+  }
+  const active = { action: 'plan', target: '22', ...empty };
+  assert.deepEqual(await parseSiteAction(output(active), candidates), { action: 'plan', target: '22', plan: empty.plan });
+});
 test('native schema validation keeps actions and target namespaces bounded with no parameter coercion', async () => {
   assert.deepEqual(await parseSiteAction(output({ action: 'open', target: '11' }), candidates), { action: 'open', target: '11' });
   assert.deepEqual(await parseSiteAction(output({ action: 'reply', target: '22' }), candidates), { action: 'reply', target: '22' });

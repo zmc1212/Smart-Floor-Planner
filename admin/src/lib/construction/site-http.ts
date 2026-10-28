@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { fail, id, key } from '@/lib/assistant/contracts';
 import { SiteChatService } from './site-chat';
 import type { ConstructionActor } from './contracts';
+import { speechHttp } from '@/lib/assistant/speech/http';
+import { siteActor } from './site-chat';
 
 async function limitedBytes(request: Request, max: number) {
   let size = 0; const chunks: Uint8Array[] = [];
@@ -13,6 +15,7 @@ async function limitedBytes(request: Request, max: number) {
 export async function siteChatHttp(request: Request, actor: ConstructionActor, projectId: string, path: string[]) {
   id(projectId);
   const service = new SiteChatService(actor), params = new URL(request.url).searchParams;
+  if (path[0] === 'speech') return speechHttp(request, siteActor(actor), { kind: 'site', id: projectId }, path.slice(1));
   if ([...params.keys()].some(k => !(!path.length && request.method === 'GET' && ['beforeSeq', 'limit'].includes(k)))) fail('invalid_construction', 422);
   const json = (data: unknown) => NextResponse.json({ success: true, data }, { headers: { 'Cache-Control': 'no-store' } });
   if (!path.length && request.method === 'GET') return json(await service.read(projectId, params.has('beforeSeq') ? id(params.get('beforeSeq')) : undefined, params.has('limit') ? Number(params.get('limit')) : 30));

@@ -8,6 +8,7 @@ const { latestDesignerCard } = require('../lib/client');
 const { SiteRecordMedia } = require('../lib/site-records');
 const { PublicChatController, initialPublic } = require('../lib/public-sites');
 const { PlanChatController, initialPlans } = require('../lib/plans');
+const { SpeechController } = require('../lib/speech');
 
 function sessionToken() {
   const app = getApp();
@@ -31,6 +32,8 @@ Page({
   onLoad(options) {
     this._options = options || {};
     this._alive = true;
+    this.speechController = new SpeechController({ identity: sessionToken, emit: patch => { if (this._alive && this._shown) this.setData(patch); },
+      getDraft: () => this.data.draft || '', setDraft: text => this.controller.input(text), reload: () => this.controller.refresh() });
     this.measureWindow();
     this.referenceImages = new ReferenceImage();
     this.siteRecords = new SiteRecordMedia({ identity: sessionToken, emit: patch => { if (this._alive && this._shown) this.setData(patch); } });
@@ -41,6 +44,7 @@ Page({
       referenceImage: value => this.referenceImages.materialize(value),
       emit: patch => {
         if (!this._alive) return;
+        if (patch.fatal || patch.needsLogin) this.speechController.hide();
         const previous = this.data.messages;
         this.setData(patch, () => {
           if (patch.fatal || patch.needsLogin) {
@@ -88,6 +92,8 @@ Page({
     }
     if (this._alive && this._shown) {
       await this.controller.show(this._options);
+      if (this._alive && this._shown && !this.data.fatal && this.controller.conversationId)
+        await this.speechController.show('/miniprogram/assistant/conversations/' + this.controller.conversationId + '/speech');
       if (this._alive && this._shown && !this.data.fatal && !this.data.generating && !this.data.readOnly) await this.syncLocation();
       if (this._alive && this._shown && !this.data.fatal && this._options.publicSiteId) {
         const cid = this.controller.conversationId || await this.controller.handoffConversation();
@@ -102,9 +108,10 @@ Page({
       }
     }
   },
-  onHide() { this._shown = false; if (this.location) this.location.clear(); this.controller.hide(); this.siteRecords.clear(); this.recommendations.clear(); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); this.closeSheet(); this.setData({ keyboardHeight: 0, siteRecordPaths: {}, siteRecordError: '', ...initialPublic(), ...initialPlans() }); },
+  onHide() { this._shown = false; if (this.speechController) this.speechController.hide(); if (this.location) this.location.clear(); this.controller.hide(); this.siteRecords.clear(); this.recommendations.clear(); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); this.closeSheet(); this.setData({ speechBusy: false, keyboardHeight: 0, siteRecordPaths: {}, siteRecordError: '', ...initialPublic(), ...initialPlans() }); },
   onUnload() {
     this._alive = false; clearTimeout(this._sheetTimer);
+    if (this.speechController) this.speechController.hide();
     if (this.location) this.location.clear();
     this.controller.dispose();
     this.siteRecords.clear();
@@ -136,12 +143,14 @@ Page({
   chooseOption(event) { return this.controller.chooseOption(event.currentTarget.dataset.key, event.currentTarget.dataset.text); },
   confirmOptions() { return this.controller.confirmOptions(); },
   async send() {
+    if (this.data.speechBusy) return;
+    this.controller.speechInput = this.speechController?.binding();
     if (!this.data.conversation?.id && this.data.draft && this.data.canSend && !this.data.busy && !this.data.pendingSend && !this.data.pendingAction && !this.data.generating && !this.data.readOnly) {
       if (!await this.controller.handoffConversation()) return;
     }
     const location = await this.syncLocation();
     if (location.blocked) { this.setData({ portfolioNotice: location.notice }); return; }
-    if (this._alive && this._shown) return this.controller.send();
+    if (this._alive && this._shown) { const result = await this.controller.send(); if (!this.data.pendingSend && this.speechController?.visible) await this.speechController.afterSend(); return result; }
   },
   async planDecision(e) {
     const { id, action } = e.currentTarget.dataset;
@@ -278,7 +287,14 @@ Page({
     wx.showModal({ title: waiting ? '取消等待？' : '结束接续？', content: '结束后设计师将无法继续查看本次咨询，小K恢复回复。',
       success: result => { if (result.confirm && this._alive) this.controller.handoff(waiting ? 'cancel' : 'end'); } });
   },
-  voiceUnavailable() { wx.showToast({ title: '语音暂不可用，可以打字或发图', icon: 'none' }); },
+  async voiceInput() {
+    if (this.data.fatal || this.data.readOnly || this.data.busy || this.data.pendingSend || this.data.pendingAction || this.data.generating) return;
+    const cid = this.controller.conversationId || await this.controller.handoffConversation(); if (!cid || !this._alive || !this._shown) return;
+    const base = '/miniprogram/assistant/conversations/' + cid + '/speech';
+    if (!this.speechController.visible || this.speechController.base !== base) await this.speechController.show(base);
+    return this.speechController.microphone();
+  },
+  voiceMessage(event) { return this.speechController?.messageMenu(event.currentTarget.dataset.message); },
   moreHistory() { return this.controller.loadHistory(true); },
   selectHistory(event) {
     if (this.data.mediaBusy || this.data.mediaPending) return;

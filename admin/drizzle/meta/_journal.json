@@ -694,6 +694,13 @@
       "when": 1793260800000,
       "tag": "0098_construction_record_rework",
       "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1793347200000,
+      "tag": "0099_assistant_speech",
+      "breakpoints": true
     }
   ]
 }

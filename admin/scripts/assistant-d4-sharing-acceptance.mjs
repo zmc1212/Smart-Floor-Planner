@@ -12,7 +12,10 @@ const mode = process.argv[2] || 'unit', name = process.argv[3] || `d4-sharing-${
 if (!/^[a-z0-9-]+$/.test(name)) throw Error('Invalid evidence folder');
 const out = path.join(root, 'tmp', name); fs.mkdirSync(out, { recursive: false });
 const runtimeConfig = path.join(out, 'tsconfig.runtime.json');
-const files = mode === 'unit' ? ['src/lib/assistant/__tests__/material-sharing.test.ts', 'src/lib/assistant/__tests__/agent-tool-scope.test.ts', 'src/lib/assistant/__tests__/agent-tool-input.test.ts']
+const files = mode === 'd6-speech-unit' ? ['src/lib/assistant/__tests__/speech-audio.test.ts', 'src/lib/construction/__tests__/site-action-contract.test.ts']
+  : mode === 'd6-speech-service' ? ['src/db/__tests__/assistant-speech.test.ts']
+  : mode === 'd6-speech-compat' ? ['src/db/__tests__/assistant.test.ts','src/db/__tests__/assistant-retention.test.ts','src/db/__tests__/construction-site-chat.test.ts']
+  : mode === 'unit' ? ['src/lib/assistant/__tests__/material-sharing.test.ts', 'src/lib/assistant/__tests__/agent-tool-scope.test.ts', 'src/lib/assistant/__tests__/agent-tool-input.test.ts']
   : mode === 'service' ? ['src/db/__tests__/construction-material-sharing.test.ts']
   : mode === 'boundary' ? ['src/db/__tests__/construction-material-sharing-boundaries.test.ts']
   : mode === 'revocation' ? ['src/db/__tests__/construction-material-sharing-boundaries.test.ts']
@@ -41,9 +44,9 @@ const files = mode === 'unit' ? ['src/lib/assistant/__tests__/material-sharing.t
   : mode === 'd5-lifecycle-compat' ? ['src/db/__tests__/construction-resolution.test.ts', 'src/db/__tests__/construction-brief.test.ts', 'src/db/__tests__/construction-natural-plans.test.ts', 'src/db/__tests__/construction-site-actions.test.ts']
   : [];
 if (!files.length) throw Error('Expected a named bounded D4 acceptance mode');
-const unitMode = mode === 'unit' || mode === 'site-actions-unit' || mode === 'site-answer-unit' || mode === 'd5-plan-unit' || mode === 'd5-answer-unit' || mode === 'd5-lifecycle-unit';
+const unitMode = mode === 'd6-speech-unit' || mode === 'unit' || mode === 'site-actions-unit' || mode === 'site-answer-unit' || mode === 'd5-plan-unit' || mode === 'd5-answer-unit' || mode === 'd5-lifecycle-unit';
 const binding = () => {
-  const paths = [...files.map(f => 'admin/' + f), 'admin/scripts/assistant-d4-sharing-fixture.ts', 'admin/scripts/construction-natural-plans-fixture.ts', 'admin/scripts/construction-natural-lifecycle-fixture.ts', 'admin/scripts/assistant-d4-sharing-acceptance.mjs', 'admin/scripts/assistant-d4-runtime-config.mjs', 'admin/scripts/assistant-acceptance-safety.mjs', 'admin/package-lock.json', path.relative(root, runtimeConfig)];
+  const paths = [...files.map(f => 'admin/' + f), 'admin/scripts/assistant-speech-fixture.ts', 'admin/scripts/assistant-speech-local.py', 'admin/drizzle/0099_assistant_speech.sql', 'admin/drizzle/meta/_journal.json', 'admin/scripts/assistant-d4-sharing-fixture.ts', 'admin/scripts/construction-natural-plans-fixture.ts', 'admin/scripts/construction-natural-lifecycle-fixture.ts', 'admin/scripts/assistant-d4-sharing-acceptance.mjs', 'admin/scripts/assistant-d4-runtime-config.mjs', 'admin/scripts/assistant-acceptance-safety.mjs', 'admin/package-lock.json', path.relative(root, runtimeConfig)];
   for (const dir of ['admin/src/lib/assistant', 'admin/src/lib/construction', 'admin/src/db']) {
     const walk = folder => { for (const item of fs.readdirSync(path.join(root, folder), { withFileTypes: true })) {
       const file = `${folder}/${item.name}`; if (item.isDirectory()) walk(file); else if (/\.(ts|json)$/.test(file) && !file.includes('/__tests__/')) paths.push(file);
@@ -52,7 +55,7 @@ const binding = () => {
   if (!unitMode) paths.push('tmp/xiaok-vector/connection.private.json', 'admin/.env.local');
   return Object.fromEntries([...new Set(paths)].filter(f => fs.existsSync(path.join(root, f))).map(f => [f, createHash('sha256').update(fs.readFileSync(path.join(root, f))).digest('hex')]));
 };
-const report = { delivery: mode.startsWith('d5-') ? 'D5' : 'D4', mode, files, started: new Date().toISOString(), before: binding(), passed: false, providerCalls: 0 };
+const report = { delivery: mode.startsWith('d6-') ? 'D6' : mode.startsWith('d5-') ? 'D5' : 'D4', mode, files, started: new Date().toISOString(), before: binding(), passed: false, providerCalls: 0 };
 let release;
 const save = () => fs.writeFileSync(path.join(out, 'report.json'), JSON.stringify(report, null, 2));
 try {
@@ -78,14 +81,16 @@ try {
   const pattern = resolutionSelected.length ? ['--test-name-pattern', '^(?:' + resolutionSelected.map(name => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')$']
     : mode === 'revocation' ? ['--test-name-pattern', '^scoped revocation selects the actual requested kind and rejects a model-selected different grant$'] : [];
   const child = spawn(process.execPath, ['--import', 'tsx', '--test', '--test-reporter=tap', '--test-concurrency=1', ...pattern, ...files],
-    { cwd: admin, env: { ...process.env, TSX_TSCONFIG_PATH: runtimeConfig, XIAOK_MATERIALS_LIVE: '0', CONSTRUCTION_LIVE_MODEL: '0', D4_EVIDENCE_DIRECTORY: out }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    { cwd: admin, env: { ...process.env, ...(mode === 'd6-speech-compat' ? { ASSISTANT_RETENTION_DATABASE_URL: process.env.DATABASE_URL, ASSISTANT_OPERATIONS_ACCEPTANCE: '1' } : {}),
+      TSX_TSCONFIG_PATH: runtimeConfig, XIAOK_MATERIALS_LIVE: '0', CONSTRUCTION_LIVE_MODEL: '0', D4_EVIDENCE_DIRECTORY: out }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   let log = '';
   const collect = chunk => { log += chunk; fs.appendFileSync(path.join(out, 'test.log'), chunk); };
   child.stdout.on('data', collect); child.stderr.on('data', collect);
   report.exitCode = await new Promise((resolve, reject) => { child.once('error', reject); child.once('close', code => resolve(code ?? 1)); });
   report.counts = Object.fromEntries([...log.matchAll(/^# (tests|pass|fail|skipped) (\d+)/gm)].map(m => [m[1], Number(m[2])]));
   report.skippedTests = log.split('\n').filter(l => /^ok .* # SKIP/.test(l));
-  const expectedSkip = 'PPT15/23 configured model repeats the sourced need-to-materials path twice';
+  const expectedSkip = mode === 'd6-speech-compat' ? 'configured real provider, private photo and durable Worker produce a reviewable draft without formal approvals'
+    : 'PPT15/23 configured model repeats the sourced need-to-materials path twice';
   report.selectedTestNames = resolutionSelected;
   report.expectedSkippedTests = resolutionSelected.length ? [...fs.readFileSync(path.join(admin, files[0]), 'utf8').matchAll(/^test\('([^']+)'/gm)]
     .map(match => match[1]).filter(name => !resolutionSelected.includes(name)) : mode.includes('compat') ? [expectedSkip] : mode === 'revocation' ? [

@@ -1,4 +1,5 @@
 const { SiteClient, errorText } = require('./site-client');
+const { SpeechController } = require('../../../utils/speech');
 const { canAccessRoute } = require('../../../utils/identity-navigation');
 const route = '/packages/construction/chat/chat';
 function identity() {
@@ -14,10 +15,13 @@ function metrics() {
 Page({
   data: { ...metrics(), keyboardHeight: 0, loading: true, busy: false, fatal: false, items: [], mediaPaths: {}, attachments: [], draft: '', resubmit: null, sheet: '', edit: {}, roomOptions: [], selectedRoom: 0 },
   onLoad(options) {
+    this.speechController = new SpeechController({ identity: () => identity().token || '', emit: patch => { if (this._visible) this.setData(patch); },
+      getDraft: () => this.data.draft || '', setDraft: value => this.client.input(value), reload: () => this.client.load() });
     this.projectId = /^[1-9]\d*$/.test(String(options.projectId)) ? String(options.projectId) : '';
     this._briefIssueId = /^[1-9]\d*$/.test(String(options.issueId)) ? String(options.issueId) : '';
     this.client = new SiteClient({ identity, emit: patch => {
       if (!this._visible) return;
+      if (patch.fatal && this.speechController) this.speechController.hide();
       if (patch.sheet === '' && this.data.sheet) { const copy = { ...patch }; delete copy.sheet; this.setData(copy); this.closeSheet(true); }
       else this.setData(patch);
       if (patch.items) {
@@ -38,18 +42,21 @@ Page({
     const portalLabel = ({ designer: '设计端', construction_staff: '施工端', enterprise_admin: '经营端' })[context?.context?.staffRole || context?.role] || '项目协作';
     this.setData({ ...metrics(), sheet: '', keyboardHeight: 0, portalLabel });
     await this.client.show(this.projectId);
+    if (this._visible && !this.data.fatal) await this.speechController.show('/miniprogram/construction/projects/' + this.projectId + '/chat/speech');
     if (this._briefIssueId && !this.client.state.pending && this.client.state.write) {
       this.client.input('事项' + this._briefIssueId + '现在在等谁？为什么？'); this._briefIssueId = '';
     }
     this.poll();
   },
-  onHide() { this._visible = false; this._retakeMessageId = null; this._record = null; clearTimeout(this._timer); clearTimeout(this._sheetTimer); if (this.client) this.client.hide(); this.setData({ items: [], mediaPaths: {}, sheet: '', sheetOpen: false, project: null, rooms: [], draft: '', edit: {}, versions: [], withdrawalReason: '', conflict: null, attachments: [], write: false, pendingRetakeCount: 0, pendingRetakeTarget: '' }); },
+  onHide() { this._visible = false; if (this.speechController) this.speechController.hide(); this._retakeMessageId = null; this._record = null; clearTimeout(this._timer); clearTimeout(this._sheetTimer); if (this.client) this.client.hide(); this.setData({ speechBusy: false, items: [], mediaPaths: {}, sheet: '', sheetOpen: false, project: null, rooms: [], draft: '', edit: {}, versions: [], withdrawalReason: '', conflict: null, attachments: [], write: false, pendingRetakeCount: 0, pendingRetakeTarget: '' }); },
   onUnload() { this.onHide(); },
   onResize() { if (!this.data.keyboardHeight) this.setData(metrics()); },
   poll() { clearTimeout(this._timer); if (!this._visible) return; this._timer = setTimeout(async () => { if (!this.client.state.busy && !this.data.sheet) await this.client.load(); this.poll(); }, 4000); },
   refresh() { return this.client.load(); }, older() { return this.client.load(true); },
   back() { wx.navigateBack({ fail: () => wx.redirectTo({ url: '/packages/construction/projects/projects' }) }); },
-  input(e) { this.client.input(e.detail.value); }, send() { return this.client.send(); }, reconcile() { return this.client.reconcile(); },
+  input(e) { this.client.input(e.detail.value); },
+  async send() { if (this.data.speechBusy) return; this.client.speechInput = this.speechController?.binding(); const result = await this.client.send(); if (!this.data.pending && this.speechController?.visible) await this.speechController.afterSend(); return result; },
+  reconcile() { return this.client.reconcile(); },
   keyboard(e) { this.setData({ keyboardHeight: Math.max(0, e.detail.height || 0) }); },
   photo() {
     if (this.data.busy || this.data.pending || !this.data.write || this.data.attachments.length >= 4) return;
@@ -67,7 +74,8 @@ Page({
       if (!this.client.current(epoch)) { this.client.unlink(r.tempFilePath); return; } this.client.paths.add(r.tempFilePath); wx.previewImage({ urls: [r.tempFilePath] });
     } catch (error) { if (this.client.current(epoch)) this.setData({ error: errorText(error) }); }
   },
-  voice() { wx.showToast({ title: '语音暂未接通，请发文字或照片', icon: 'none' }); },
+  voice() { if (!this.data.write || this.data.busy || this.data.pending || this.data.fatal || this.data.resubmit) return; return this.speechController.microphone(); },
+  voiceMessage(event) { return this.speechController?.messageMenu(event.currentTarget.dataset.message); },
   record(e) { return this.data.items.find(i => i.record.id === String(e.currentTarget.dataset.id))?.record; },
   openEdit(e) {
     const r = this.record(e); if (!r || !r.canEdit || this.data.busy || this.data.pending) return;

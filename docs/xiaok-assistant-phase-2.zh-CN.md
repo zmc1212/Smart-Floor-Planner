@@ -1,5 +1,31 @@
 # 小K第二期：需求整理与人工交接
 
+## 当前D6：核对后本地语音（Limited）
+
+**D6核对后语音：Limited（2026-10-29）。** C01／S04已接显式配置的本地录音／真实转写、原输入框纠错、作者另行发送、认证原音回听、删除和持久重进；师傅语音＋本人照片已完成原核对／发布链。完整D6不关闭：客户需求实际保存，Agent随后自添无来源桌面尺寸，回答被正确拒绝；D2仍为两次失败修补，不重采客户回答、不弱化守卫。0099强制RLS语音资产表复用原权限、任务、用量及消息／记录写服务。已验隔离CPython3.12／faster-whisper1.2.1／CTranslate2 4.8.3 CPU及已有medium模型hash；默认关闭，无模型下载／付费ASR／fallback。现场动作解码仅剔除schema合法且逐项恰为空串的非当前动作字段，非空／畸形字段及原角色／来源守卫不放行。当前单元7、真实服务7、兼容37＋1项事先声明的实模跳过、Mini157通过；lint通过，tsc原54项逐字相同／受影响零新增。原生原失败单列；native06员工真实链与回听通过，native07验证客户纠错／错误状态及真实回听／删除，native09／10／11零新增推理补齐原音HTTP404、撤权清空和可滚动查看的原失败反馈。保留3次成功／5次失败本地ASR、5个未执行即取消的队列探针；Qwen6次／25583tokens，保守累计¥30.633887/100。本地文字／费用预留均0且已结算，原付费unknown保留。13张核route的390×844逻辑／348×752截图审看；沿C01／S04批准主设计、U01及宿主弹层，无Less／素材／还原等级升级。见[二期D6合同](./xiaok-assistant-phase-2.zh-CN.md#当前d6核对后本地语音limited)与tmp/d6-speech-20261029/final-checks.json。后继D7先确认订单／报价／安装验收设计源；硬件、支付、商业条件及生产未验。 完整隔离构建已编译，但standalone复制媒体耗尽磁盘且自动tsconfig漂移使原批无效；本轮副本可逆移至E盘，原配置按hash恢复，仅验收进程禁用standalone的compile03已exit0／drift[]，产品output配置未改；不称干净生产构建。
+
+### 合同与职责
+
+- 入口／设计：原C01麦克风、消息长按，S04麦克风、原话长按。C01当前P4B README继承chat-first-batch1 README“已接入后才使用标准录音／取消／回放”；S04原PPT22／38及U01提示、宿主弹层。853×1844按宽映射390×844。无新页面、CSS、插画或设计方向。utils/assistant-client.js／utils/speech.js下沉主包供两分包共用，原assistant/lib路径兼容转导出，沿用原pending-operation协议。录音／处理中／失败／可编辑／已发／删除／撤权复用批准组件；长C01历史需正常滚动查看既有失败页脚，不能把初始截图未纳入页脚误称没有错误状态。
+- GET／POST /api/miniprogram/assistant/conversations/:cid/speech及/api/miniprogram/construction/projects/:pid/chat/speech列出／上传；GET／DELETE :speechId保护原WAV／删除来源；POST :speechId/retry只在明确操作及同一配置下重转原音。JSON base64在解码前限量；严格RIFF／PCM单声道16kHz／16bit，0.3–60秒、≤2MiB、每会话终身20段，不信后缀／客户端时长，不返回公开原音地址。
+- 0099 assistant_speech_assets保存企业／会话／项目／作者、请求键、原音及hash／实际时长、配置／run、原始转写、分开的作者更正文、原消息、版本／deleted_at。复用复合外键／强制租户RLS、原咨询／接待参与者或项目权限；未发草稿仅本人，已发原音仍按实时原参与范围。enterprise_admin／admin／super_admin在所选企业继承管理，无需入职／成员。删除清字节及双份文字、脱敏原消息、按原审计撤下关联现场记录，并保守屏蔽同咨询中该原话之后、删除之前的衍生助手正文；原记忆／来源校验排除撤回原话。保留期清理同时清语音。S01原音UI不在本次入口范围。
+- 原speech.transcribe runs／jobs沿用租约／心跳、来源／配置校验和私有草稿完成，不在用户另行发送前创建业务消息或派发Agent。人工／待接管可转私有草稿，不插入AI答复。上传未知保留原键／原音体，重试不换录音；本地结果丢失如实失败、显式恢复。audio_input_ms计实际输入，外部ASR费用0、不伪造文字tokens；ASR成功不能覆盖原未核清付费回答。真机麦克风、微信真实授权／扬声器、广泛识别率、分包发布尺寸和生产仍未验非阻塞。
+
+### 显式本地环境与原失败
+
+启用前按授权迁移流程执行0099，本轮仅迁移隔离55432/xiaok_embedding_eval。在自有隔离CPython3.12环境安装scripts/assistant-speech-requirements.txt；显式配置ASSISTANT_ASR_PROVIDER=local-faster-whisper、绝对ASSISTANT_ASR_PYTHON／ASSISTANT_ASR_MODEL_PATH及ASSISTANT_ASR_MODEL_SHA256。admin运行目录须保留scripts/assistant-speech-local.py；缺配置／文件不进入录音。本轮仅验收子进程配置，未启用普通.env.local／远程／生产。CPU int8／4线程、local_files_only／offline、90秒进程界限，模型SHA、config／tokenizer／适配器指纹及前后绑定；不自动下载模型、不接外部ASR备用。实际模型SHA256：9b45e1009dcc4ab601eff815b61d80e60ce3fd8c74c1a14f4a282258286b51ae。
+
+native01保留Anaconda3.10／CTranslate2 4.8.2在模型构造处的原生访问冲突；旧环境4.8.3仍失败。已保存判别检查排除原音／解码、单一模型、工作目录及简单MKL／ISA假设；隔离CPython3.12／4.8.3用同适配器／模型／原音成功。这是环境隔离后恢复的事实，不能断言某DLL为根因或所有Python3.10均失败。复用维护中的[faster-whisper](https://github.com/SYSTRAN/faster-whisper)及[CTranslate2硬件配置](https://opennmt.net/CTranslate2/hardware_support.html)；已读[上游模型读取修复](https://github.com/OpenNMT/CTranslate2/pull/2110)，但它不能解释本次路径读取复现。不迁移Agent框架／知识管线。
+
+native02两条有效真实转写、静音失败／重进／原音显式重试和上传丢回执已保留；该批role选择器失败。03／04保留旧夹具身份及单元素误作列表的驱动错误。native05两项业务原失败：C01 record_need实际保存房屋／人数／次卧办公位，离线原稿复核回执校验通过，拒绝来自额外无来源60–70cm／55cm桌面尺寸；该Agent／D2失败继续保留，次数2不清零、不做第三个文案变体／重采样客户。知识侧真实返回资料缺项／项目歧义，无需重建入库。S04实际选对report，却附带空的非当前plan／assignee／resolution；schema先验后仅规范化恰空字段，非空仍拒绝，不增加业务授权。native06新语音／照片草稿、真实内部发布、重进及native onPlay通过；预期撤权被旧open助手抛错，原批仍失败。native07客户回听onPlay1／errors[]、实际删除及失败run状态有证据；07／08保留序列化__name驱动错误，改用官方SDK callWxMethod。09／10／11零新增推理补齐原音HTTP404、删除／撤权重进、空历史及正常滚动后的既有失败页脚；不复活删除来源／成员。
+
+### 检查、边界与后继
+
+固定命令node scripts/assistant-d4-sharing-acceptance.mjs d6-speech-unit <唯一label>（7）、d6-speech-service（7）、d6-speech-compat（37过／1项事先声明的实模跳过）。原compat01缺retention环境、service01／02失败单列。Mini157、lint、逐字相同54旧类型／受影响零项见preflight-06；随后仅驱动变化另有影响核验、当前lint及原生证据，不事后缩绑定。构建及资源审计见final-checks.json。13张原生图审看，不升级宿主／真机／高屏／完整视觉还原。保留10合成企业、所有原失败／attempt；启用设置／员工／成员／jobs及自有3118／controller连接均0。ASR实际8次＝3成功／5失败，加5个未执行取消探针；13条本地额度均settled且文字／费用0，音频实际39900ms、供应商费用0。Qwen6次／25583tokens、保守累计¥30.633887/100，原账单／unknown保持。
+
+D6在正常客户答复处仍Limited；显式开发配置下核对语音／现场服务能力可用。复用D5基线72fd0b4f及此前限定旅程。独立后继D7先需订单／报价确认／安装验收的批准界面源：仓库及PPT27–34核查只有服务介绍及现有视频查看，无该订单运行设计或模型／写服务。设计源决策待答时不自创UI、不重跑D2、不模拟设备／付款／退款成功，不生产部署。
+
+
 ## 当前D4自然语言资料共享
 
 **D4自然语言资料共享：限定闭环Implemented，完整D4仍Limited。** C01先持久展示精确项目／房间、原文需求节选或紧邻本人点位图的私有预览；只有客户明确同意已展示的项目团队范围才写入原grant。指定个人、普通确认词、疑问、更正和收件限制不静默扩大授权。团队含有效设计师／经理／师傅／observer及获权enterprise_admin/admin/super_admin，当前不支持仅某个人可见。独立原文／确认hash、30分钟待确认期限、实时范围／版本重验、原键恢复及撤回后的派生读取／原件限制保留。定向撤回按本人原咨询实际项目／房间／资料类型或明确资料号解析，不能套用最近预览或模型选错的ID；带收件表达的旧命令进入同一私有预览，普通缺图校验保持。无新路由／表／迁移、Agent或知识管线；沿用C01／S04结构、样式、素材与导航。实际检查、原失败及证据复用见[二期合同](./xiaok-assistant-phase-2.zh-CN.md#当前d4自然语言资料共享)、`tmp/d4-natural-sharing-20261028/final-checks.json`。
