@@ -687,6 +687,13 @@
       "when": 1793174400000,
       "tag": "0097_portfolio_copy_tasks",
       "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1793260800000,
+      "tag": "0098_construction_record_rework",
+      "breakpoints": true
     }
   ]
 }

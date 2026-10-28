@@ -25,6 +25,54 @@ test('unknown sends retain their original key/body and reentry reconciles the ac
   const pending = s.client.state.pending; assert.ok(pending); assert.equal(pending.body.text, '书房线管完成，底盒未固定。');
   s.client.hide(); await s.client.show('22'); assert.equal(s.client.state.pending, null); assert.equal(requests, 1); assert.equal(s.client.state.draft, '');
 });
+
+test('rework requires photos and freezes original record/version through response loss and reentry', async () => {
+  let accepted = false;
+  const result = { recordId: '32', originalRecordId: '30', resubmissionOfId: '31', runId: '88' };
+  const s = setup(async (url, method) => {
+    if (method === 'POST') { accepted = true; throw {}; }
+    if (url.includes('/operations/')) return { data: { found: accepted, result } };
+    return fixture();
+  });
+  await s.client.show('22');
+  s.client.beginResubmit({ id: '31', original_record_id: '30', version: 4, canResubmit: true, review_requirements: '补拍底盒固定位置近照。' });
+  s.client.input('底盒已固定，按要求拍了近照。');
+  await s.client.send(); assert.equal(s.writes.length, 0); assert.match(s.client.state.error, /新拍/);
+  s.client.set({ attachments: ['7'] }); s.client.saveDraft();
+  s.client.hide(); await s.client.show('22'); assert.equal(s.client.state.resubmit.id, '31');
+  await s.client.send();
+  const pending = s.client.state.pending;
+  assert.equal(pending.kind, 'resubmit'); assert.equal(pending.body.expectedVersion, 4); assert.deepEqual(pending.body.mediaIds, ['7']);
+  assert.match(s.writes[0].url, /records\/31\/resubmit$/);
+  s.client.hide(); await s.client.show('22');
+  assert.equal(s.writes.length, 1); assert.equal(s.client.state.pending, null); assert.equal(s.client.state.resubmit, null);
+  assert.equal(s.client.state.draft, ''); assert.match(s.client.state.success, /等待管理人员复审/);
+});
+
+test('stale rework target keeps its original requirements and version until explicitly reselected', async () => {
+  const s = setup(async (_, method) => { if (method === 'POST') throw { statusCode: 409, error: 'version_conflict' }; return fixture(); });
+  await s.client.show('22'); s.client.beginResubmit({ id: '31', version: 4, canResubmit: true, review_requirements: '补拍近照' });
+  s.client.set({ attachments: ['7'] }); s.client.input('已补拍'); await s.client.send();
+  assert.equal(s.client.state.resubmit.version, 4); assert.equal(s.client.state.draft, '已补拍'); assert.deepEqual(s.client.state.attachments, ['7']);
+  s.client.cancelResubmit(); assert.equal(s.client.state.resubmit, null); assert.deepEqual(s.client.state.attachments, ['7']);
+  const row = status => decorate({ message: { created_at: new Date().toISOString(), content: { blocks: [] } }, record: { status, data: {}, media: [], resubmission_of_id: '31', canPublish: false } }).record;
+  assert.equal(row('draft').label, '待复审'); assert.equal(row('changes_requested').label, '待补拍'); assert.equal(row('draft').canPublish, false);
+});
+
+test('a current author retake remains discoverable behind newer chat and clears after submission or revocation', async () => {
+  let canResubmit = true, forbidden = false;
+  const s = setup(async () => {
+    if (forbidden) throw { statusCode: 403, error: 'construction_forbidden' };
+    const value = fixture(); value.data.items = [
+      { message: { id: '10', created_at: new Date().toISOString(), content: { blocks: [{ text: '原现场记录' }] } }, record: { id: '31', data: {}, status: 'changes_requested', returned_at: new Date().toISOString(), canResubmit, media: [] } },
+      { message: { id: '70', created_at: new Date().toISOString(), content: { blocks: [{ text: '收到' }] } }, record: null, response: { text: '原话已保留。', media: [] } },
+    ]; return value;
+  });
+  await s.client.show('22'); assert.equal(s.client.state.pendingRetakeCount, 1); assert.equal(s.client.state.pendingRetakeTarget, '10');
+  s.client.hide(); assert.equal(s.client.state.pendingRetakeCount, 0); await s.client.show('22'); assert.equal(s.client.state.pendingRetakeCount, 1);
+  canResubmit = false; await s.client.load(); assert.equal(s.client.state.pendingRetakeCount, 0); assert.equal(s.client.state.pendingRetakeTarget, '');
+  canResubmit = true; await s.client.load(); forbidden = true; await s.client.load(); assert.equal(s.client.state.pendingRetakeCount, 0); assert.equal(s.client.state.pendingRetakeTarget, '');
+});
 test('a version conflict preserves edits, refreshes current records and never substitutes a newer expectedVersion', async () => {
   const s = setup(async (url, method, body) => { if (method === 'POST') { assert.equal(body.expectedVersion, 3); throw { statusCode: 409, error: 'version_conflict' }; }
     const value = fixture(); value.data.items = [{ message: { id: '1', created_at: new Date().toISOString(), content: { blocks: [] } }, record: { id: '6', version: 4, data: { title: '其他成员的最新内容' }, status: 'draft', media: [] } }]; return value; });

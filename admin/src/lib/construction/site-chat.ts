@@ -25,7 +25,9 @@ export async function recordVersion(tx: PostgresTransaction, eid: string, record
   await tx.execute(sql`insert into app.construction_site_record_versions(enterprise_id,project_id,record_id,version,actor_id,action,snapshot)
     values(${eid},${String(record.project_id)},${String(record.id)},${Number(record.version)},${actorId},${action},
     ${JSON.stringify(siteDto({ data: record.data, roomId: record.room_id, status: record.status, audience: record.audience,
-      roomName: record.room_name_snapshot, publishedCustomerId: record.published_customer_id, reason: record.withdrawal_reason, sourceMessageId: record.source_message_id }))}::jsonb)`);
+      roomName: record.room_name_snapshot, publishedCustomerId: record.published_customer_id, reason: record.withdrawal_reason, sourceMessageId: record.source_message_id,
+      recordId: record.id, originalRecordId: record.original_record_id || record.id, resubmissionOfId: record.resubmission_of_id,
+      reviewRequirements: record.review_requirements, returnedBy: record.returned_by, returnedAt: record.returned_at }))}::jsonb)`);
 }
 export class SiteChatService {
   readonly actor: ActorContext;
@@ -67,12 +69,23 @@ export class SiteChatService {
       const eid = this.staff.enterpriseId;
       const issues = await projectSiteIssues(tx, eid, projectId);
       const plans = await projectPlans(tx, eid, projectId);
-      const messages = await rows(tx, sql`select m.id,m.seq,m.author_kind,m.admin_id,m.content,m.created_at,a.display_name
+      const pageMessages = await rows(tx, sql`select m.id,m.seq,m.author_kind,m.admin_id,m.content,m.created_at,a.display_name
         from app.assistant_messages m left join app.admin_users a on a.id=m.admin_id
         where m.enterprise_id=${eid} and m.conversation_id=${String(c.id)} and m.seq<${beforeSeq} and m.author_kind='admin' order by m.seq desc limit ${limit}`);
+      // Pending work remains discoverable even after the original leaves recent history.
+      const pendingMessages = await rows(tx, sql`select m.id,m.seq,m.author_kind,m.admin_id,m.content,m.created_at,a.display_name
+        from app.construction_site_records r join app.assistant_messages m on m.enterprise_id=r.enterprise_id and m.id=r.source_message_id
+        left join app.admin_users a on a.id=m.admin_id where r.enterprise_id=${eid} and r.project_id=${projectId}
+        and ((r.status='changes_requested' and not exists(select 1 from app.construction_site_records child
+          where child.enterprise_id=r.enterprise_id and child.project_id=r.project_id and child.resubmission_of_id=r.id))
+          or (r.resubmission_of_id is not null and r.status in ('organizing','draft')))
+        and (${permission.manage} or r.author_id=${this.staff.adminId}) order by r.updated_at desc limit 100`);
+      const messages = [...new Map([...pageMessages, ...pendingMessages].map(m => [String(m.id), m])).values()]
+        .sort((a, b) => BigInt(String(a.seq)) < BigInt(String(b.seq)) ? -1 : 1);
       const items: { message: Row; record: Row | null; response?: Row; issue?: unknown }[] = [];
-      for (const message of messages.reverse()) {
+      for (const message of messages) {
         const record = await one(tx, sql`select r.*,coalesce(a.display_name,'项目管理人员') as approved_name,q.status as run_status,q.error_code,
+          (select child.id from app.construction_site_records child where child.enterprise_id=r.enterprise_id and child.project_id=r.project_id and child.resubmission_of_id=r.id) as resubmitted_record_id,
           coalesce(q.policy_snapshot->'agent'->>'imageInput','false')='true' as image_input,
           exists(select 1 from app.assistant_quota_reservations qr where qr.enterprise_id=r.enterprise_id and qr.run_id=r.run_id and qr.status in ('held','reconciling')) as pending_cost
           from app.construction_site_records r left join app.admin_users a on a.id=r.approved_by
@@ -86,9 +99,13 @@ export class SiteChatService {
         const media = await rows(tx, sql`select a.id,a.width,a.height,a.byte_size from app.construction_site_attachments x join app.construction_site_media a
           on a.enterprise_id=x.enterprise_id and a.project_id=x.project_id and a.id=x.media_id
           where x.enterprise_id=${eid} and x.project_id=${projectId} and x.record_id=${String(record.id)} and a.deleted_at is null order by x.position`);
-        const canEdit = permission.write && (permission.manage || String(record.author_id) === this.staff.adminId);
+        const canAct = permission.write && (permission.manage || String(record.author_id) === this.staff.adminId);
+        const canEdit = canAct && record.status !== 'changes_requested';
         items.push({ message, issue: issues.find(i => i.recordId === String(record.id)) || null,
-          record: { ...record, canEdit, canPublishCustomer: permission.manage, media } });
+          record: { ...record, canEdit, canPublish: canEdit && (!record.resubmission_of_id || permission.manage),
+            canRequestChanges: permission.write && permission.manage && ['draft','published'].includes(String(record.status)),
+            canResubmit: permission.write && String(record.author_id) === this.staff.adminId && record.status === 'changes_requested' && !record.resubmitted_record_id,
+            resubmittedRecordId: record.resubmitted_record_id || null, canPublishCustomer: permission.manage, media } });
       }
       const settings = await one(tx, sql`select stages from app.construction_stage_settings where enterprise_id=${eid}`);
       const stage = ((settings?.stages || []) as Row[]).find(s => s.key === p.current_stage_key);
@@ -108,7 +125,7 @@ export class SiteChatService {
         items, versions: { records,
           issues: Object.fromEntries(issues.map(i => [i.issueId, i.revision])), materials,
           plans: Object.fromEntries(plans.map(p => [p.id, p.revision])), resolutions: await projectResolutionVersions(tx, eid, projectId) },
-        nextCursor: messages.length === limit ? String(messages[0].seq) : null }) as Row;
+        nextCursor: pageMessages.length === limit ? String(pageMessages[pageMessages.length - 1].seq) : null }) as Row;
     });
   }
   materialMedia(projectId: string, grantId: string, mediaId: string) {
@@ -195,7 +212,8 @@ export class SiteChatService {
   }
   mutate(projectId: string, recordId: string, action: string, body: Row, requestKey: string) {
     id(recordId); key(requestKey);
-    const allowed: Record<string, string[]> = { edit: ['expectedVersion', 'data'], publish: ['expectedVersion', 'audience'], withdraw: ['expectedVersion', 'reason'], retry: ['expectedVersion'] };
+    const allowed: Record<string, string[]> = { edit: ['expectedVersion', 'data'], publish: ['expectedVersion', 'audience'], withdraw: ['expectedVersion', 'reason'], retry: ['expectedVersion'],
+      request_changes: ['expectedVersion', 'requirements'], resubmit: ['expectedVersion', 'text', 'mediaIds'] };
     if (!allowed[action]) fail('construction_not_found', 404);
     object(body, allowed[action]); version(body.expectedVersion);
     return this.scope(projectId, true, (tx, c, p, permission) => idempotent(tx, this.actor, `site:${projectId}:${recordId}:${action}`, requestKey, body, async () => {
@@ -203,6 +221,39 @@ export class SiteChatService {
       const r = await one(tx, sql`select * from app.construction_site_records where enterprise_id=${eid} and project_id=${projectId} and id=${recordId} for update`);
       if (!r || (!permission.manage && String(r.author_id) !== this.staff.adminId)) fail('construction_forbidden', 403);
       if (Number(r.version) !== body.expectedVersion) fail('version_conflict');
+      if (action === 'resubmit') {
+        if (String(r.author_id) !== this.staff.adminId) fail('construction_forbidden', 403);
+        if (r.status !== 'changes_requested' || await one(tx, sql`select id from app.construction_site_records where enterprise_id=${eid} and project_id=${projectId} and resubmission_of_id=${recordId}`)) fail('site_rework_state_conflict');
+        const raw = text(body.text, 4000, false), mediaIds = body.mediaIds;
+        if (!Array.isArray(mediaIds) || !mediaIds.length || mediaIds.length > 4 || new Set(mediaIds).size !== mediaIds.length) fail('site_rework_photos_required', 422);
+        const originalId = String(r.original_record_id || r.id);
+        for (const mid of mediaIds) {
+          id(mid);
+          const photo = await one(tx, sql`select m.id from app.construction_site_media m where m.enterprise_id=${eid} and m.project_id=${projectId} and m.id=${mid}
+            and m.uploader_id=${this.staff.adminId} and m.deleted_at is null
+            and not exists(select 1 from app.construction_site_attachments x where x.enterprise_id=m.enterprise_id and x.project_id=m.project_id and x.media_id=m.id)
+            and not ${sharedMediaUsed(eid, projectId, mid)}
+            and not exists(select 1 from app.construction_site_attachments x join app.construction_site_records old on old.enterprise_id=x.enterprise_id and old.project_id=x.project_id and old.id=x.record_id
+              join app.construction_site_media old_media on old_media.enterprise_id=x.enterprise_id and old_media.project_id=x.project_id and old_media.id=x.media_id
+              where x.enterprise_id=${eid} and x.project_id=${projectId} and (old.id=${originalId} or old.original_record_id=${originalId}) and old_media.source_hash=m.source_hash) for share`);
+          if (!photo) fail('site_rework_photos_required', 422);
+        }
+        const message = await appendMessage(tx, this.actor, String(c.id), { author: 'admin', clientMessageId: requestKey, purpose: 'site.source',
+          content: { version: 1, blocks: [{ type: 'text', text: raw || '按要求补拍现场照片。' }] } });
+        const run = await newRun(tx, this.actor, c, (await one(tx, sql`select * from app.assistant_enterprise_settings where enterprise_id=${eid}`))!, String(message.id), undefined,
+          { kind: 'user_message', messageId: String(message.id) }, 'site.record');
+        const child = (await one(tx, sql`insert into app.construction_site_records(enterprise_id,project_id,conversation_id,source_message_id,author_id,run_id,resubmission_of_id,original_record_id,review_requirements,returned_by,returned_at,room_id,room_name_snapshot)
+          values(${eid},${projectId},${String(c.id)},${String(message.id)},${this.staff.adminId},${String(run.runId)},${recordId},${originalId},${String(r.review_requirements)},${String(r.returned_by)},${r.returned_at},${r.room_id ?? null},${String(r.room_name_snapshot || '')}) returning *`))!;
+        for (const [i, mid] of mediaIds.entries()) await tx.execute(sql`insert into app.construction_site_attachments(enterprise_id,project_id,record_id,media_id,position) values(${eid},${projectId},${String(child.id)},${mid},${i})`);
+        const parent = (await one(tx, sql`update app.construction_site_records set version=version+1,updated_at=now() where enterprise_id=${eid} and id=${recordId} returning *`))!;
+        await recordVersion(tx, eid, parent, this.staff.adminId, 'resubmit');
+        await recordVersion(tx, eid, child, this.staff.adminId, 'submitted');
+        await tx.execute(sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
+          values(${eid},'construction.record.resubmit.v1','construction_site_record',${recordId},${Number(parent.version)},${JSON.stringify(this.actor.principal)}::jsonb,${requestKey},
+            ${JSON.stringify({ projectId, recordId: String(child.id), resubmissionOfId: recordId, originalRecordId: originalId })}::jsonb)`);
+        return { ...run, recordId: String(child.id), resubmissionOfId: recordId, originalRecordId: originalId };
+      }
+      if (r.status === 'changes_requested') fail('site_rework_state_conflict');
       if (action === 'retry') {
         if (r.status !== 'organizing' || !r.source_message_id) fail('context_changed');
         const old = await one(tx, sql`select status from app.assistant_runs where enterprise_id=${eid} and id=${String(r.run_id)}`);
@@ -213,13 +264,20 @@ export class SiteChatService {
         return { id: recordId, version: Number(r.version) + 1, ...result };
       }
       if (r.run_id) await cancelRuns(tx, this.actor, String(c.id), String(r.run_id));
-      if (action === 'edit') {
+      if (action === 'request_changes') {
+        if (!permission.manage) fail('construction_forbidden', 403);
+        if (!['draft','published'].includes(String(r.status))) fail('site_rework_state_conflict');
+        const requirements = text(body.requirements, 1000);
+        await tx.execute(sql`update app.construction_site_records set status='changes_requested',review_requirements=${requirements},returned_by=${this.staff.adminId},returned_at=now(),
+          audience='internal',published_version=null,published_customer_id=null,approved_by=null,published_at=null where enterprise_id=${eid} and id=${recordId}`);
+      } else if (action === 'edit') {
         const data = siteDraft(body.data);
         const room = data.roomId ? await one(tx, sql`select id,name from app.construction_rooms where enterprise_id=${eid} and project_id=${projectId} and id=${data.roomId}`) : null;
         if (data.roomId && !room) fail('invalid_construction', 422);
         // A correction immediately revokes the previous publication; it requires a new explicit review.
         await tx.execute(sql`update app.construction_site_records set data=${JSON.stringify(data)}::jsonb,room_id=${data.roomId},room_name_snapshot=${String(room?.name || '')},status='draft',audience='internal',published_version=null,published_customer_id=null,approved_by=null,published_at=null,withdrawal_reason='' where enterprise_id=${eid} and id=${recordId}`);
       } else if (action === 'publish') {
+        if (r.resubmission_of_id && !permission.manage) fail('construction_forbidden', 403);
         if (r.status !== 'draft' || !r.source_message_id || !['internal', 'customer'].includes(String(body.audience))) fail('context_changed');
         if (body.audience === 'customer' && (!permission.manage || !p.customer_access || !p.customer_user_id || p.archived_at)) fail('construction_forbidden', 403);
         const data = siteDraft(r.data);
@@ -243,8 +301,16 @@ export class SiteChatService {
   }
   versions(projectId: string, recordId: string) {
     id(recordId);
-    return this.scope(projectId, false, async tx => siteDto({ items: await rows(tx, sql`select v.version,v.action,v.snapshot,v.created_at,a.display_name from app.construction_site_record_versions v left join app.admin_users a on a.id=v.actor_id
-      where v.enterprise_id=${this.staff.enterpriseId} and v.project_id=${projectId} and v.record_id=${recordId} order by v.version desc limit 50`) }) as Row);
+    return this.scope(projectId, false, async tx => {
+      const eid = this.staff.enterpriseId;
+      const record = await one(tx, sql`select coalesce(original_record_id,id) as root from app.construction_site_records where enterprise_id=${eid} and project_id=${projectId} and id=${recordId}`);
+      if (!record) fail('construction_not_found', 404);
+      return siteDto({ items: await rows(tx, sql`select v.record_id,v.version,v.action,v.snapshot,v.created_at,a.display_name,m.content as original_content,
+        (select coalesce(jsonb_agg(x.media_id::text order by x.position),'[]'::jsonb) from app.construction_site_attachments x where x.enterprise_id=r.enterprise_id and x.project_id=r.project_id and x.record_id=r.id) as media_ids
+        from app.construction_site_record_versions v join app.construction_site_records r on r.enterprise_id=v.enterprise_id and r.project_id=v.project_id and r.id=v.record_id
+        left join app.admin_users a on a.id=v.actor_id left join app.assistant_messages m on m.enterprise_id=r.enterprise_id and m.id=r.source_message_id
+        where v.enterprise_id=${eid} and v.project_id=${projectId} and (r.id=${String(record.root)} or r.original_record_id=${String(record.root)}) order by v.created_at desc,v.record_id desc,v.version desc limit 100`) }) as Row;
+    });
   }
   operation(projectId: string, requestKey: string) {
     key(requestKey);

@@ -206,6 +206,81 @@ test('correction requires a new publication and room/source changes revoke the p
   assert.equal(await withTenantTransaction(eids[0], tx => publishedSiteRecord(tx, eids[0], customer.principal.kind === 'user' ? customer.principal.userId : '', rid)), undefined);
   await edit();
 });
+test('manager returns require instructions; new-photo resubmissions retain the original chain and require manager review', async () => {
+  const photo = async (color: string) => String((await site().upload(pid, randomUUID(), await sharp({ create: { width: 48, height: 40, channels: 3, background: color } }).png().toBuffer())).id);
+  const firstPhoto = await photo('#124571');
+  const sent = await site().send(pid, { text: '书房线管已铺好，底盒还未固定。', mediaIds: [firstPhoto] }, randomUUID());
+  const originalId = String(sent.recordId);
+  const get = (id: string) => withTenantTransaction(eids[0], tx => one(tx, sql`select * from app.construction_site_records where enterprise_id=${eids[0]} and id=${id}`));
+  const firstData = { title: '书房进展', roomId: String(((await boss().read(pid)).rooms as Row[])[0].id), completed: '线管已铺好', pending: '底盒未固定', coordination: '', note: '' };
+  await site().mutate(pid, originalId, 'edit', { expectedVersion: 1, data: firstData }, randomUUID());
+  await boss().mutate(pid, originalId, 'publish', { expectedVersion: 2, audience: 'customer' }, randomUUID());
+  let currentId = originalId;
+  for (const [round, aid] of [owners[0], ...platformIds].entries()) {
+    const manager = new SiteChatService({ enterpriseId: eids[0], adminId: aid });
+    const expectedVersion = Number((await get(currentId))!.version);
+    const requirements = `第${round + 1}次：请补拍书房底盒全景和固定位置近照，照片要能看清线管连接。`;
+    const request = { expectedVersion, requirements };
+    await assert.rejects(site().mutate(pid, currentId, 'request_changes', request, randomUUID()), { code: 'construction_forbidden' });
+    await assert.rejects(manager.mutate(pid, currentId, 'request_changes', { expectedVersion, requirements: '   ' }, randomUUID()));
+    await assert.rejects(site(0, 1).mutate(pid, currentId, 'request_changes', request, randomUUID()), { code: 'construction_forbidden' });
+    const returnKey = randomUUID(), returned = await manager.mutate(pid, currentId, 'request_changes', request, returnKey);
+    assert.deepEqual(await manager.mutate(pid, currentId, 'request_changes', request, returnKey), returned);
+    assert.equal(returned.status, 'changes_requested');
+    assert.equal((await get(currentId))!.published_version, null);
+    assert.equal(await withTenantTransaction(eids[0], tx => publishedSiteRecord(tx, eids[0], customer.principal.kind === 'user' ? customer.principal.userId : '', currentId)), undefined);
+    await assert.rejects(site().mutate(pid, currentId, 'edit', { expectedVersion: returned.version, data: firstData }, randomUUID()), { code: 'site_rework_state_conflict' });
+    await assert.rejects(manager.mutate(pid, currentId, 'publish', { expectedVersion: returned.version, audience: 'customer' }, randomUUID()), { code: 'site_rework_state_conflict' });
+    await site(0, 1).send(pid, { text: '书房底盒待核对，帮我找对应图纸和需求', mediaIds: [] }, randomUUID());
+    const reentry = await site().read(pid, undefined, 1);
+    assert.ok((reentry.items as Row[]).some(i => (i.record as Row)?.id === currentId && (i.record as Row).canResubmit));
+    assert.equal((await get(currentId))!.review_requirements, requirements);
+    const empty = { expectedVersion: returned.version, text: '已按要求补拍。', mediaIds: [] };
+    await assert.rejects(site().mutate(pid, currentId, 'resubmit', empty, randomUUID()), { code: 'site_rework_photos_required' });
+    const duplicate = await photo('#124571');
+    await assert.rejects(site().mutate(pid, currentId, 'resubmit', { ...empty, mediaIds: [duplicate] }, randomUUID()), { code: 'site_rework_photos_required' });
+    await assert.rejects(site().mutate(otherPid, currentId, 'resubmit', empty, randomUUID()));
+    await assert.rejects(site(1).mutate(pid, currentId, 'resubmit', empty, randomUUID()));
+    const newPhoto = await photo(['#427511', '#327842', '#a47132'][round]);
+    const body = { ...empty, mediaIds: [newPhoto] }, submitKey = randomUUID();
+    await assert.rejects(site(0, 1).mutate(pid, currentId, 'resubmit', body, randomUUID()), { code: 'construction_forbidden' });
+    await assert.rejects(site(0, 2).mutate(pid, currentId, 'resubmit', body, randomUUID()));
+    await assert.rejects(site().mutate(pid, currentId, 'resubmit', { ...body, expectedVersion }, randomUUID()), { code: 'version_conflict' });
+    const results = await Promise.allSettled([site().mutate(pid, currentId, 'resubmit', body, submitKey), site().mutate(pid, currentId, 'resubmit', body, randomUUID())]);
+    assert.equal(results.filter(x => x.status === 'fulfilled').length, 1);
+    const result = results.find(x => x.status === 'fulfilled') as PromiseFulfilledResult<Row>;
+    const submitted = result.value;
+    // Recover with the actual winning key, including a response lost by the client.
+    if (results[0].status === 'fulfilled') assert.deepEqual(await site().mutate(pid, currentId, 'resubmit', body, submitKey), submitted);
+    assert.equal(submitted.originalRecordId, originalId); assert.equal(submitted.resubmissionOfId, currentId);
+    const childId = String(submitted.recordId), lease = await claimJob(); assert.equal(lease?.runId, submitted.runId);
+    assert.equal(String((await get(childId))!.room_id), firstData.roomId);
+    if (round === 0) {
+      await processSiteRecord(lease!, async () => { throw new AiProviderError('Synthetic service unavailable', 'HTTP_503', 'safe_fallback', 503); });
+      const failed = await get(childId); assert.equal(failed!.status, 'organizing');
+      // Dispatched usage remains conservatively fenced until reconciled. Recovery
+      // can use explicit manual review without issuing another provider request.
+      await assert.rejects(site().mutate(pid, childId, 'retry', { expectedVersion: failed!.version }, randomUUID()), { code: 'site_retry_unavailable' });
+      await site().mutate(pid, childId, 'edit', { expectedVersion: failed!.version, data: { ...firstData, note: '师傅核对补拍原件后人工整理，非模型成功。' } }, randomUUID());
+    } else await processSiteRecord(lease!, async () => { const value = output(firstData.roomId), data = JSON.parse(value.text);
+      if (round === 1) delete data.roomId; else data.roomId = null;
+      return { ...value, text: JSON.stringify(data) }; });
+    const child = (await get(childId))!;
+    assert.equal(child.status, 'draft'); assert.equal(String(child.author_id), staffIds[0][0]);
+    assert.equal(String(child.room_id), firstData.roomId);
+    const visible = ((await site().read(pid)).items as Row[]).find(i => (i.record as Row)?.id === childId)!.record as Row;
+    assert.equal(visible.canPublish, false); assert.equal(visible.review_requirements, requirements);
+    assert.deepEqual((visible.media as Row[]).map(m => m.id), [newPhoto]);
+    await assert.rejects(site().mutate(pid, childId, 'publish', { expectedVersion: child.version, audience: 'internal' }, randomUUID()), { code: 'construction_forbidden' });
+    await manager.mutate(pid, childId, 'publish', { expectedVersion: child.version, audience: 'customer' }, randomUUID());
+    const versions = (await manager.versions(pid, childId)).items as Row[];
+    assert.ok(versions.some(v => (v.snapshot as Row).recordId === originalId));
+    assert.ok(versions.some(v => v.action === 'request_changes' && (v.snapshot as Row).reviewRequirements === requirements));
+    assert.ok(versions.some(v => (v.media_ids as string[]).includes(firstPhoto)));
+    currentId = childId;
+  }
+});
+
 test('membership removal during a provider call prevents late draft writes and preserves measured usage', async () => {
   const sent = await site().send(pid, { text: '客厅等待设计师核对，暂未施工。', mediaIds: [] }, randomUUID()); const lease = await claimJob(); assert.equal(lease?.runId, sent.runId);
   await processSiteRecord(lease!, async () => {

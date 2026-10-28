@@ -12,7 +12,7 @@ function metrics() {
     navRight: Math.max(96, w.windowWidth - (capsule && capsule.left || w.windowWidth - 94) + 10), viewportHeight: w.windowHeight || 844 };
 }
 Page({
-  data: { ...metrics(), keyboardHeight: 0, loading: true, busy: false, fatal: false, items: [], mediaPaths: {}, attachments: [], draft: '', sheet: '', edit: {}, roomOptions: [], selectedRoom: 0 },
+  data: { ...metrics(), keyboardHeight: 0, loading: true, busy: false, fatal: false, items: [], mediaPaths: {}, attachments: [], draft: '', resubmit: null, sheet: '', edit: {}, roomOptions: [], selectedRoom: 0 },
   onLoad(options) {
     this.projectId = /^[1-9]\d*$/.test(String(options.projectId)) ? String(options.projectId) : '';
     this._briefIssueId = /^[1-9]\d*$/.test(String(options.issueId)) ? String(options.issueId) : '';
@@ -20,7 +20,10 @@ Page({
       if (!this._visible) return;
       if (patch.sheet === '' && this.data.sheet) { const copy = { ...patch }; delete copy.sheet; this.setData(copy); this.closeSheet(true); }
       else this.setData(patch);
-      if (patch.items) this.setData({ scrollTarget: patch.items.length ? 'source-' + patch.items[patch.items.length - 1].message.id : '' });
+      if (patch.items) {
+        const retake = this._retakeMessageId && patch.items.find(i => i.message.id === this._retakeMessageId && i.record.canResubmit);
+        this.setData({ scrollTarget: retake ? 'source-' + retake.message.id : patch.items.length ? 'source-' + patch.items[patch.items.length - 1].message.id : '' });
+      }
     } });
   },
   async onShow() {
@@ -40,7 +43,7 @@ Page({
     }
     this.poll();
   },
-  onHide() { this._visible = false; this._record = null; clearTimeout(this._timer); clearTimeout(this._sheetTimer); if (this.client) this.client.hide(); this.setData({ items: [], mediaPaths: {}, sheet: '', sheetOpen: false, project: null, rooms: [], draft: '', edit: {}, versions: [], withdrawalReason: '', conflict: null, attachments: [], write: false }); },
+  onHide() { this._visible = false; this._retakeMessageId = null; this._record = null; clearTimeout(this._timer); clearTimeout(this._sheetTimer); if (this.client) this.client.hide(); this.setData({ items: [], mediaPaths: {}, sheet: '', sheetOpen: false, project: null, rooms: [], draft: '', edit: {}, versions: [], withdrawalReason: '', conflict: null, attachments: [], write: false, pendingRetakeCount: 0, pendingRetakeTarget: '' }); },
   onUnload() { this.onHide(); },
   onResize() { if (!this.data.keyboardHeight) this.setData(metrics()); },
   poll() { clearTimeout(this._timer); if (!this._visible) return; this._timer = setTimeout(async () => { if (!this.client.state.busy && !this.data.sheet) await this.client.load(); this.poll(); }, 4000); },
@@ -79,12 +82,13 @@ Page({
   adoptLatest() {
     const latest = this.data.conflict;
     if (!latest || latest.id !== this._record?.id || !latest.canEdit || this.data.pending || this.data.busy) return;
-    if ((this.data.sheet === 'publish' && latest.status !== 'draft') || (this.data.sheet === 'withdraw' && latest.status !== 'published')) { this.closeSheet(true); this.client.set({ conflict: null, error: '记录状态已变化，请从最新版重新选择操作。' }); return; }
+    if ((this.data.sheet === 'publish' && (latest.status !== 'draft' || !latest.canPublish)) || (this.data.sheet === 'withdraw' && latest.status !== 'published')
+      || this.data.sheet === 'request_changes' && !latest.canRequestChanges) { this.closeSheet(true); this.client.set({ conflict: null, error: '记录状态已变化，请从最新版重新选择操作。' }); return; }
     this._record = latest;
     if (this.data.sheet === 'publish') this.setData({ publishCustomer: false, publishCanCustomer: latest.canPublishCustomer && this.data.project.customerAccess });
     this.client.set({ conflict: null, error: '' });
   },
-  openPublish(e) { const r = this.record(e); if (!r || !r.canEdit || r.status !== 'draft' || this.data.pending || this.data.busy) return;
+  openPublish(e) { const r = this.record(e); if (!r || !r.canPublish || r.status !== 'draft' || this.data.pending || this.data.busy) return;
     this._record = r; this.openSheet('publish', { publishCustomer: false, publishCanCustomer: r.canPublishCustomer && this.data.project.customerAccess }); },
   publishScope(e) { this.setData({ publishCustomer: e.detail.value }); },
   publish() { return this.client.mutate(this._record, 'publish', { audience: this.data.publishCustomer ? 'customer' : 'internal' }); },
@@ -92,11 +96,21 @@ Page({
   reason(e) { this.setData({ withdrawalReason: e.detail.value }); },
   withdraw() { if (this.data.withdrawalReason.trim()) return this.client.mutate(this._record, 'withdraw', { reason: this.data.withdrawalReason.trim() }); },
   retry(e) { const r = this.record(e); if (r && r.canRetry) return this.client.mutate(r, 'retry'); },
+  openRequestChanges(e) { const r = this.record(e); if (!r?.canRequestChanges || this.data.pending || this.data.busy) return;
+    this._record = r; this.openSheet('request_changes', { reworkRequirements: '' }); },
+  requirementsInput(e) { this.setData({ reworkRequirements: e.detail.value }); },
+  requestChanges() { if (this.data.reworkRequirements.trim()) return this.client.mutate(this._record, 'request_changes', { requirements: this.data.reworkRequirements.trim() }); },
+  beginResubmit(e) { this.client.beginResubmit(this.record(e)); },
+  cancelResubmit() { this.client.cancelResubmit(); },
+  showRetake() { const id = this.data.pendingRetakeTarget; if (!id) return; this._retakeMessageId = id;
+    this.setData({ scrollTarget: '' }, () => { if (this._visible) this.setData({ scrollTarget: 'source-' + id }); }); },
   async versions(e) {
     const r = this.record(e), epoch = this.client.epoch; if (!r || this.data.pending || this.data.busy) return;
     this.openSheet('versions', { versions: [], versionsLoading: true });
     try { const response = await this.client.request(this.client.base + '/records/' + r.id + '/versions', 'GET', {}, { suppressUnauthorized: true });
-      if (this.client.current(epoch)) this.setData({ versions: response.data.items });
+      if (this.client.current(epoch)) { const versions = response.data.items.map(v => ({ ...v, key: (v.record_id || r.id) + '-' + v.version,
+        originalText: (v.original_content?.blocks || []).map(b => b.text || b.fallbackText || '').join('\n') }));
+        this.client.set({ versions }); await this.client.versionPhotos(versions, epoch); }
     } catch (error) { if (this.client.current(epoch)) this.setData({ error: errorText(error) }); }
     finally { if (this.client.current(epoch)) this.setData({ versionsLoading: false }); }
   },

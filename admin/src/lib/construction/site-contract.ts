@@ -31,11 +31,10 @@ export function siteDraftTool(roomIds: string[]): ModelTool {
 }
 export function siteDraftOutput(output: ModelTurnOutput): string {
   if (output.finishReason === 'length') fail('invalid_model_answer', 502);
-  // Existing JSON checkpoints/model injections remain readable. Numeric or
-  // foreign IDs still fail parseSiteDraft; never coerce or repair their values.
-  if (!output.toolCalls.length) return output.text;
-  if (output.toolCalls.length !== 1 || output.toolCalls[0].name !== 'final_response') fail('invalid_model_answer', 502);
-  const raw = output.toolCalls[0].arguments;
+  // Native JSON-schema providers return the same output contract as text.
+  // Both wire formats may omit the optional room; domain parsing stays strict.
+  if (output.toolCalls.length && (output.toolCalls.length !== 1 || output.toolCalls[0].name !== 'final_response')) fail('invalid_model_answer', 502);
+  const raw = output.toolCalls.length ? output.toolCalls[0].arguments : output.text;
   try {
     const value = JSON.parse(raw);
     // Optional string avoids provider-side nullable scalar conversion. Missing

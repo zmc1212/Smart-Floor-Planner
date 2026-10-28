@@ -77,6 +77,9 @@ export async function processSiteRecord(lease: Lease, model?: Model) {
         where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=1100`); });
     } else returned = true;
     const draft = parseSiteDraft(siteDraftOutput(output), initial.rooms.map(r => String(r.id)));
+    // Selecting a returned original explicitly selects its known location. A
+    // photo-only retake keeps that business fact; it is not inferred from pixels.
+    if (!draft.roomId && initial.r.resubmission_of_id && initial.r.room_id) draft.roomId = String(initial.r.room_id);
     await scoped(async tx => {
       if (draft.roomId && !await one(tx, sql`select id from app.construction_rooms where enterprise_id=${lease.enterpriseId} and project_id=${String(initial.r.project_id)} and id=${draft.roomId} and name=${String(initial.rooms.find(r => r.id === draft.roomId)?.name)}`)) fail('context_changed');
     });

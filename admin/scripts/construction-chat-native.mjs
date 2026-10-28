@@ -17,14 +17,19 @@ export async function run(ctx){
  async function step(name,work){try{const result=await work();report.checks.push({name,passed:true,result});console.log(name+': PASS');return result;}catch(e){report.checks.push({name,passed:false,error:e.message});throw e;}finally{save();}}
  async function waitFor(read,label){for(let i=0;i<180;i++){const value=await read();if(value)return value;await delay(500);}throw Error('Timed out: '+label);}
  async function compile(){
-  const targets=(await(await fetch('http://127.0.0.1:9431/json/list')).json()).filter(t=>t.url.includes('electron-project.html'));assert.equal(targets.length,1);
+  const projectPath=path.win32.normalize(path.join(root,'miniprogram'));
+  const targets=(await(await fetch('http://127.0.0.1:9431/json/list')).json()).filter(t=>{
+   try{const u=new URL(t.url);return u.protocol==='file:'&&u.pathname.endsWith('/electron-project.html')
+    &&path.win32.normalize(u.searchParams.get('projectpath')||'')===projectPath;}catch{return false;}
+  });assert.equal(targets.length,1,'Exactly one CDP target must match this Mini Program project');
   const target=new URL(targets[0].url);assert.equal(path.win32.normalize(target.searchParams.get('projectpath')),path.win32.normalize(path.join(root,'miniprogram')));assert.equal(target.searchParams.get('appVersion'),'2.02.2608080');
-  const c=await connect('electron-project.html');try{const point=await c.evaluate(`(()=>{const b=[...document.querySelectorAll('[title="编译"]')].filter(e=>e.getBoundingClientRect().width>0);if(b.length!==1)throw Error('Compile action not unique');const r=b[0].getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};})()`);
+  assert.equal(target.searchParams.get('autoPort'),'9420');
+  const c=await connect(targets[0].url);try{assert.equal(c.target.id,targets[0].id);const point=await c.evaluate(`(()=>{const b=[...document.querySelectorAll('[title="编译"]')].filter(e=>e.getBoundingClientRect().width>0);if(b.length!==1)throw Error('Compile action not unique');const r=b[0].getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};})()`);
    for(const type of ['mousePressed','mouseReleased'])await c.call('Input.dispatchMouseEvent',{type,button:'left',clickCount:1,...point});await delay(6000);return 'ws://127.0.0.1:'+target.searchParams.get('autoPort');
   }finally{c.close();}
  }
  async function current(){const p=await mp.currentPage();assert.equal(p.path,route);return p;}
- async function open(){await mp.redirectTo('/'+route+'?projectId='+projectId);return waitFor(async()=>{const p=await current(),d=await p.data();return !d.loading&&d.project?.id===projectId&&d.write&&!d.fatal?p:null;},'shared project reentry');}
+ async function open(){await mp.redirectTo('/'+route+'?projectId='+projectId);return waitFor(async()=>{const p=await mp.currentPage();if(p.path!==route)return null;const d=await p.data();return !d.loading&&d.project?.id===projectId&&d.write&&!d.fatal?p:null;},'shared project reentry');}
  async function identity(i){await mp.evaluate(s=>{const app=getApp();app.globalData.token=s.token;app.globalData.bootstrap={current:{mode:'staff',role:s.role,capabilities:['construction.projects'],context:{enterpriseId:s.enterpriseId,staffId:s.adminId,staffRole:s.role}}};app.__qaShared.memory.set('token',s.token);},identities[i]);return open();}
  async function send(text,drop=false){
   const p=await current();

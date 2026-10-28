@@ -8,6 +8,8 @@ function errorText(e) {
     construction_forbidden: '当前身份没有这项工地权限。', construction_not_found: '工地已不可访问，请返回列表。', assistant_resource_not_found: '工地或原材料已不可访问。',
     assistant_disabled: '企业暂未开放小K整理，请联系负责人。', assistant_quota_exceeded: '本次整理额度暂不可用，内容已保留。',
     site_retry_unavailable: '本次整理仍在核对结果，可先人工修改草稿。', site_review_required: '请先核对并补充本条现场内容。',
+    site_rework_state_conflict: '本条补拍状态已变化，请重新读取原记录后选择操作。',
+    site_rework_photos_required: '请添加1至4张本次新拍的照片，不能重复提交原记录中的旧照片。',
     invalid_plan: '请按标题、差异、费用变化（元）、工期变化（天）逐行说明，再附上一张本次方案图纸。',
     plan_original_required: '正式方案需附上一张你本次上传的图纸原件。',
     invalid_site_resolution: '落实请指定事项、方案和现场记录；解决或关闭请逐行写结论、回传节选、回传原件（是或否）。',
@@ -38,10 +40,10 @@ function decorate(item) {
   const updated = new Date(r.updated_at);
   const generating = r.status === 'organizing' && ACTIVE.includes(r.run_status);
   const failed = r.status === 'organizing' && !generating;
-  const labels = { organizing: generating ? '正在整理' : '整理未完成', draft: '待核对', published: '已发布', withdrawn: '已撤回' };
+  const labels = { organizing: generating ? '正在整理' : '整理未完成', draft: r.resubmission_of_id ? '待复审' : '待核对', published: '已发布', withdrawn: '已撤回', changes_requested: r.resubmittedRecordId ? '已补交' : '待补拍' };
   return { ...item, text: (item.message.content.blocks || []).map(b => b.text || b.fallbackText || '').join('\n'),
     time: new Date(item.message.created_at).toLocaleString('zh-CN', { hour12: false }),
-    record: { ...r, data, generating, failed, label: labels[r.status], updatedLabel: r.updated_at && !Number.isNaN(updated.getTime()) ? updated.toLocaleString('zh-CN', { hour12: false }) : '',
+    record: { ...r, data, generating, failed, label: labels[r.status], canPublish: r.canPublish === undefined ? r.canEdit : r.canPublish, updatedLabel: r.updated_at && !Number.isNaN(updated.getTime()) ? updated.toLocaleString('zh-CN', { hour12: false }) : '',
       canRetry: failed && ['failed', 'cancelled'].includes(r.run_status) && !r.pending_cost,
       scopeLabel: r.audience === 'customer' ? '项目成员和本项目业主可查看' : '仅本项目成员可查看',
       rows: [{ label: '施工部位', value: r.room_name_snapshot || '待核对' }, { label: '本次完成', value: data.completed || '待核对' },
@@ -52,22 +54,27 @@ class SiteClient {
   constructor({ emit, identity, storage = { get: k => wx.getStorageSync(k), set: (k, v) => wx.setStorageSync(k, v), remove: k => wx.removeStorageSync(k) },
     request = api.request, uploadFile = upload, download = api.downloadFile }) {
     Object.assign(this, { emit, identity, storage, request, uploadFile, download }); this.epoch = 0; this.paths = new Set();
-    this.state = { loading: true, busy: false, error: '', fatal: false, items: [], mediaPaths: {}, draft: '', attachments: [], pending: null };
+    this.state = { loading: true, busy: false, error: '', fatal: false, items: [], mediaPaths: {}, draft: '', attachments: [], pending: null, pendingRetakeCount: 0, pendingRetakeTarget: '' };
   }
   set(p) { Object.assign(this.state, p); this.emit(p); }
   current(epoch) { const s = this.identity(); return this.visible && s.token === this.session.token && s.key === this.session.key && epoch === this.epoch; }
   clean() { this.sourceVersions = null; for (const path of this.paths) { try { wx.getFileSystemManager().unlink({ filePath: path, fail() {} }); } catch { /* Page teardown. */ } } this.paths.clear(); }
-  hide() { this.visible = false; ++this.epoch; this.clean(); this.set({ items: [], mediaPaths: {}, project: null, rooms: [], sheet: '', versions: [], edit: {}, conflict: null, write: false, draft: '', attachments: [] }); }
+  hide() { this.visible = false; ++this.epoch; this.clean(); this.set({ items: [], mediaPaths: {}, project: null, rooms: [], sheet: '', versions: [], edit: {}, conflict: null, write: false, draft: '', attachments: [], resubmit: null, pendingRetakeCount: 0, pendingRetakeTarget: '' }); }
   async show(projectId) {
     this.clean(); this.session = this.identity(); this.projectId = projectId; this.visible = true; const epoch = ++this.epoch;
     this.base = '/miniprogram/construction/projects/' + projectId + '/chat';
     this.storageKey = 'site:pending:' + this.session.key + ':' + projectId; this.draftKey = 'site:draft:' + this.session.key + ':' + projectId;
     const saved = this.storage.get(this.draftKey) || {};
-    this.set({ loading: true, busy: false, write: false, fatal: false, error: '', conflict: null, items: [], mediaPaths: {}, sheet: '', draft: saved.text || '', attachments: saved.attachments || [], pending: this.storage.get(this.storageKey) || null });
+    this.set({ loading: true, busy: false, write: false, fatal: false, error: '', conflict: null, items: [], mediaPaths: {}, sheet: '', pendingRetakeCount: 0, pendingRetakeTarget: '', draft: saved.text || '', attachments: saved.attachments || [], resubmit: saved.resubmit || null, pending: this.storage.get(this.storageKey) || null });
     await this.load(false, epoch);
     if (this.current(epoch) && !this.state.fatal && this.state.pending) await this.reconcile();
   }
-  saveDraft() { this.storage.set(this.draftKey, { text: this.state.draft, attachments: this.state.attachments }); }
+  saveDraft() { this.storage.set(this.draftKey, { text: this.state.draft, attachments: this.state.attachments, resubmit: this.state.resubmit || null }); }
+  beginResubmit(record) {
+    if (!record?.canResubmit || this.state.pending || this.state.busy || !this.state.write) return;
+    this.set({ resubmit: { id: record.id, version: record.version, requirements: record.review_requirements, originalId: record.original_record_id || record.id }, error: '' }); this.saveDraft();
+  }
+  cancelResubmit() { if (!this.state.pending && !this.state.busy) { this.set({ resubmit: null }); this.saveDraft(); } }
   input(text) { if (!this.state.pending && !this.state.busy) { this.set({ draft: text }); this.saveDraft(); } }
   mediaUrl(id) {
     const shared = /^shared-([1-9]\d*)-([1-9]\d*)$/.exec(String(id));
@@ -88,8 +95,9 @@ class SiteClient {
       // Server revisions also cover an issue's source record outside this page.
       // Only future commands use this refresh; an existing pending body stays frozen.
       this.sourceVersions = { records: { ...Object.fromEntries(items.filter(i => i.record.id).map(i => [i.record.id, i.record.version])), ...(versions && versions.records || {}) }, issues: versions && versions.issues || {}, materials: versions && versions.materials || {}, plans: versions && versions.plans || {}, resolutions: versions && versions.resolutions || {} };
-      this.set({ ...data, items, nextCursor: data.nextCursor, loading: false, error: '', fatal: false });
-      const mids = new Set([...items.flatMap(i => i.record.media.map(m => String(m.id))), ...this.state.attachments.map(String)]);
+      const retakes = fresh.filter(i => i.record.canResubmit).sort((a, b) => (Date.parse(b.record.returned_at) || 0) - (Date.parse(a.record.returned_at) || 0));
+      this.set({ ...data, items, pendingRetakeCount: retakes.length, pendingRetakeTarget: retakes[0]?.message.id || '', nextCursor: data.nextCursor, loading: false, error: '', fatal: false });
+      const mids = new Set([...items.flatMap(i => i.record.media.map(m => String(m.id))), ...this.state.attachments.map(String), ...(this.state.versions || []).flatMap(v => v.media_ids || [])]);
       const mediaPaths = { ...this.state.mediaPaths };
       for (const mid of Object.keys(mediaPaths)) if (!mids.has(mid)) { this.unlink(mediaPaths[mid]); delete mediaPaths[mid]; }
       this.set({ mediaPaths });
@@ -103,7 +111,7 @@ class SiteClient {
     } catch (e) {
       if (!valid()) return;
       const fatal = [401, 403, 404].includes(e.statusCode);
-      if (fatal) { this.clean(); this.set({ items: [], mediaPaths: {}, project: null, rooms: [], attachments: [], draft: '', sheet: '' }); }
+      if (fatal) { this.clean(); this.storage.remove(this.draftKey); this.set({ items: [], mediaPaths: {}, project: null, rooms: [], attachments: [], draft: '', sheet: '', resubmit: null, versions: [], pendingRetakeCount: 0, pendingRetakeTarget: '' }); }
       this.set({ loading: false, fatal, error: errorText(e) });
     }
   }
@@ -120,7 +128,7 @@ class SiteClient {
         const known = e.statusCode >= 400 && e.statusCode < 500;
         if (known) { this.storage.remove(this.storageKey); this.set({ pending: null }); }
         this.set({ error: known ? errorText(e) : '提交结果待核对。请核对同一次操作，内容已保留。' });
-        if ([401, 403, 404].includes(e.statusCode)) { this.clean(); this.set({ fatal: true, items: [], mediaPaths: {}, project: null, rooms: [], draft: '', attachments: [], sheet: '' }); }
+        if ([401, 403, 404].includes(e.statusCode)) { this.clean(); this.storage.remove(this.draftKey); this.set({ fatal: true, items: [], mediaPaths: {}, project: null, rooms: [], draft: '', attachments: [], sheet: '', resubmit: null, versions: [], pendingRetakeCount: 0, pendingRetakeTarget: '' }); }
         if (e.error === 'version_conflict' || e.code === 'version_conflict') {
           await this.load(false, epoch);
           if (this.current(epoch)) { const id = op.path.split('/')[2], latest = this.state.items.find(i => i.record.id === id)?.record;
@@ -131,6 +139,8 @@ class SiteClient {
   }
   async receipt(op, result, epoch) {
     if (!this.current(epoch)) return;
+    if (op.kind === 'resubmit' && (!result || result.resubmissionOfId !== op.path.split('/')[2] || !/^[1-9]\d*$/.test(String(result.recordId))
+      || !/^[1-9]\d*$/.test(String(result.runId)) || !/^[1-9]\d*$/.test(String(result.originalRecordId)))) throw { code: 'invalid_operation_receipt' };
     const formal = op.kind === 'send' && /^(落实|解决|关闭|重新处理)事项\s*([1-9]\d*)(?=方案|\s*\n结论[：:]|[：:])/.exec(op.body.text);
     if (formal && (!result || result.issueId !== formal[2] || !/^[1-9]\d*$/.test(String(result.lifecycleId))
       || !/^[1-9]\d*$/.test(String(result.messageId)) || !/^[1-9]\d*$/.test(String(result.conversationId))
@@ -139,8 +149,8 @@ class SiteClient {
     this.storage.remove(this.storageKey);
     if (op.kind === 'upload') { this.set({ attachments: [...new Set([...this.state.attachments, String(result.id)])] }); this.saveDraft(); }
     if (op.kind === 'photo-remove') { this.set({ attachments: this.state.attachments.filter(id => id !== String(result.id)) }); this.saveDraft(); }
-    if (op.kind === 'send') { this.set({ draft: '', attachments: [] }); this.storage.remove(this.draftKey); }
-    this.set({ pending: null, conflict: null, sheet: '', success: op.kind === 'send' ? (result.runId ? '原材料已保存，小K正在整理。' : '原话和回复已保存。') : op.kind === 'upload' ? '照片已上传，发送后随原文保存。' : '操作已保存。' });
+    if (op.kind === 'send' || op.kind === 'resubmit') { this.set({ draft: '', attachments: [], resubmit: null }); this.storage.remove(this.draftKey); }
+    this.set({ pending: null, conflict: null, sheet: '', success: op.kind === 'resubmit' ? '补拍已关联原记录保存，小K整理后等待管理人员复审。' : op.kind === 'request_changes' ? '补拍要求已保存，师傅可在本项目对话中查看并补交。' : op.kind === 'send' ? (result.runId ? '原材料已保存，小K正在整理。' : '原话和回复已保存。') : op.kind === 'upload' ? '照片已上传，发送后随原文保存。' : '操作已保存。' });
     await this.load(false, epoch);
   }
   async reconcile() {
@@ -156,12 +166,17 @@ class SiteClient {
       if (e.statusCode === 409 && ['context_changed','version_conflict'].includes(e.error || e.code)) {
         this.storage.remove(this.storageKey); this.set({ pending: null }); await this.load(false, epoch);
       }
-      this.set({ error: errorText(e) }); if ([401,403,404].includes(e.statusCode)) { this.clean(); this.set({ fatal: true, items: [], mediaPaths: {}, project: null, rooms: [], draft: '', attachments: [], sheet: '' }); }
+      this.set({ error: errorText(e) }); if ([401,403,404].includes(e.statusCode)) { this.clean(); this.storage.remove(this.draftKey); this.set({ fatal: true, items: [], mediaPaths: {}, project: null, rooms: [], draft: '', attachments: [], sheet: '', resubmit: null, versions: [], pendingRetakeCount: 0, pendingRetakeTarget: '' }); }
     } }
     finally { if (this.current(epoch)) this.set({ busy: false }); }
   }
   send() {
     if (!this.state.write || this.state.pending || this.state.busy || (!this.state.draft.trim() && !this.state.attachments.length)) return;
+    if (this.state.resubmit) {
+      if (!this.state.attachments.length) { this.set({ error: errorText({ code: 'site_rework_photos_required' }) }); return; }
+      return this.perform({ kind: 'resubmit', path: '/records/' + this.state.resubmit.id + '/resubmit', key: key(),
+        body: { expectedVersion: this.state.resubmit.version, text: this.state.draft.trim(), mediaIds: this.state.attachments.slice() } });
+    }
     return this.perform({ kind: 'send', path: '/messages', key: key(), body: { text: this.state.draft.trim(), mediaIds: this.state.attachments.slice(),
       versions: this.sourceVersions || { records: {}, issues: {} } } });
   }
@@ -170,6 +185,14 @@ class SiteClient {
   mutate(record, action, body = {}) {
     if (!record || this.state.pending || this.state.busy || !record.canEdit) return;
     return this.perform({ kind: action, path: '/records/' + record.id + '/' + action, key: key(), body: { ...body, expectedVersion: record.version } });
+  }
+  async versionPhotos(versions, epoch = this.epoch) {
+    for (const id of new Set(versions.flatMap(v => v.media_ids || []))) if (!this.state.mediaPaths[id]) {
+      try { const d = await this.download(this.mediaUrl(id), { suppressUnauthorized: true });
+        if (!this.current(epoch)) { this.unlink(d.tempFilePath); return; }
+        this.paths.add(d.tempFilePath); this.set({ mediaPaths: { ...this.state.mediaPaths, [id]: d.tempFilePath } });
+      } catch (e) { if (this.current(epoch)) this.set({ error: errorText(e) }); }
+    }
   }
 }
 module.exports = { SiteClient, decorate, errorText, key };

@@ -1,5 +1,29 @@
 # 小K第二期：需求整理与人工交接
 
+## 当前D4施工记录打回补拍
+
+原生复审控件排查（2026-10-28）：native-13与native-14两次未满足同一审核弹层预期，现停止重复修补/重测循环。预期：管理者打开发布弹层后点击可见确认按钮；实际：sheet数据已为publish，`.sheet > .primary`先返回null，增加渲染等待后仍超时。两批均不记完整通过；native-13第二条真实草稿与native-14零派发回放保留原状态、原稿和用量。当前归客户端测试/控件选择缺陷，须有运行证据才能认定产品缺陷。共享原因假设：直接子代选择与运行树不符、条件按钮未出现，或同路由切换身份后Page对象过期。下一步仅做零模型判别：确认当前Page ID、sheet数据、直接子代/后代数量、实际按钮文本/边界及route核对截图，再决定是否点击确认。不追加提示词/模型试验，不仅换个等待时长重复超时；本排查不改Agent/Knowledge/供应商行为。
+
+用户2026-10-28明确授权本次功能。新增可用动作：管理者填写补拍要求，作者按要求补交新照片并关联原记录，再由管理者复审。复用现有S04共享项目、Worker、照片权限、配额、用量及幂等，无Agent/KnowledgeRetriever/Evidence或模型提示词架构变更。
+
+| 触发 | 可见反馈与操作 | 恢复/重进及权限 |
+| --- | --- | --- |
+| 管理者在草稿或发布记录点“打回补拍” | 沿原撤回原因sheet填写必填要求，确认后显示待补拍；旧业主发布立即失效 | expectedVersion/原键回执，项目经理与三管理角色；空白不写入 |
+| 作者进入本项目 | 原卡片及输入区提醒/定位入口显示要求与“按要求补拍”，沿原输入区添加1–4张新照片及说明 | 原记录不在近期消息页也回读；选定原记录/版本、输入/照片按员工企业项目持久，丢回执按原键核对 |
+| 作者补交 | 新记录指向上次及最初记录，小K沿原site.record整理；生成后显示待复审 | 原话/旧图不覆盖；同链旧图hash、他人/他项目/已使用照片拒绝；每次退回至多一个子提交 |
+| 管理者复审 | 核对后明确发布或再填要求打回，原记录与版本可看每轮原话/照片 | 作者不能自行发布补交记录，observer只读；成员/客户/项目权限动态校验，撤权清除页面媒体 |
+| 整理服务失败或结果不明 | 原件仍在；可核对状态，或明确人工核对内容后交管理者复审 | 既有费用held/reconciling禁止重复派发不放宽，失败不伪称模型成功 |
+
+数据/API：0098在construction_site_records增加review_requirements、returned_by/at、resubmission_of_id、original_record_id及changes_requested状态；同企业/项目组合外键与单子提交唯一索引，原强制RLS和企业清理不变。原record_versions动作增加request_changes/resubmit/submitted，历史片按同根记录读取原件。POST原…/records/:id/request_changes接收expectedVersion/requirements；POST…/resubmit接收expectedVersion/text/mediaIds。其余消息/媒体/编辑/发布/撤回/重试/回执API复用。无新增后台页面、菜单或角色。
+
+设计映射：唯一主图仍是家客来小K方案PPT22/38的853×1844画布；使用现行record-card、record-note/helper、record-links/actions、sheet/.field、composer、photo-grid与feedback。新增状态只改变文案、数据和获权操作，无新布局、颜色、图标、素材或截图切片。长要求在可滚动记录卡阅读，输入区仅显示关联记录提示。此共享组件状态规则是本次设计源；不为普通状态另造整屏设计。
+
+原生输出一致性：schema可选roomId缺省在原生JSON-schema文本与final_response入口统一映射null；领域解析继续拒绝数字/房间名/越权ID及未知业务字段，仅明确关联补交才沿用原记录已知房间。参考[JSON Schema可选/必填属性](https://json-schema.org/understanding-json-schema/reference/object#required)与[LangChain结构化输出策略](https://docs.langchain.com/oss/javascript/langchain/structured-output)，复用已有原生/schema能力，只修输出边界；不迁移框架、不改提示词、不增Agent，Knowledge无须改动。供应商实际行为以保留原稿与试验为证，不从参考示例推定。
+
+验证：service-06为2/2、drift[]，覆盖三管理角色/三轮打回补交复审、原件/hash/作者/observer/租户、版本/并发/幂等和失败人工恢复；原稿/schema回放5/5、小程序24/24；定向类型0、lint0错误/1项既有合同测试警告。生产Webpack build-final完整exit0、drift[]、配置恢复；其后仅测试驱动判别代码变动，定向类型通过。输出解析修复后的两项固定Qwen实际成功：native-12 run9687/751tokens及native-13 run9688/731tokens，共1482tokens。native-12首轮真实打回/补交/草稿/重进已过，次轮写入被合成夹具保守日预算拦截、未派发；native-13按相同生产源码，把首轮已保存原稿明确映射为合成前置记录，只执行剩余第二项真实试验/重进。两批仍属部分通过：13的最终发布弹层直接子代选择器为null，14增加渲染等待仍超时；两次失败后停止修补循环，改做零模型判别，记录Page ID、sheet/直接子代/后代数量、真实按钮文本/边界及截图，只点击弹层内唯一可见启用的确认按钮。15被空闲队列守卫拦住；16遇普通按钮property不公开（已改为SDK文档的attribute）；17在编译前台校验处停止、未发送输入，各批均新增模型0次，不记业务验收通过。重新绑定Computer Use后无可访问性状态，两次截图分别FrameArrived/window capture超时，已停止窗口输入。最终原生管理者发布、三代原件/照片回看及移除工人后的原生清理仍UNVERIFIED；不要求手工截图/验收，只待桌面采集可用或等价编译入口完成验证后，按当前绑定与两份保存原稿继续这一个零模型探针。原native-11 run9678/attempt2916的732tokens原稿符合schema，却因可选roomId缺省在本地失败，原稿/失败/实际用量保留，输出入口已修复并回放验证。更早0调用的队列/供应商/鉴权/CLI/渲染前置失败、首轮service15通过/2失败/1跳过、修复后service-02的16通过/1旧可选跳过、compat-02的30项通过及主动停止的无关尾部(exit1)、Bun运行器和中间类型导入错误各自保留；不缩小原绑定、不重判首稿结果。复跑：admin下node scripts/construction-rework-acceptance.mjs --rework-only --wait及node --import tsx --test src/lib/__tests__/construction-site-contract.test.ts；miniprogram下node --test test/construction-site-chat.test.js test/construction-chat-queries.test.js test/construction-site-ordering.test.js。驱动/原稿映射/原失败/清理与已审看截图见tmp/construction-retake-20261028/；17时统一¥100账册保守累计¥28.480732，实际账单及原unknown保留。未合并/推送/部署。
+
+边界：补拍待办在本项目对话内收到，不宣称微信外部推送或实体相机/真机授权已验；照片不代替质量判定、正式节点、验收或客户批准。D4其余缺口、D2失败计数/原费用未知保留，未推送/合并/部署。
+
 ## C01定位辅助推荐
 
 重复检查：在`admin/`运行`node scripts/assistant-location-acceptance.mjs location-<唯一名称> --location-only --wait-for-lock`检查隔离数据库竞态；`node --import tsx scripts/assistant-location-live.ts`沿已批准评估连接、原项目/窗口、串行锁及原累计预算守卫运行固定四条Qwen/Stable旅程。在仓库根运行`node --test miniprogram/test/assistant-location.test.js`检查定位客户端。最终快速检查的精确参数保存在`tmp/xiaok-location-20261028/final-checks.json`；这些命令不扩大生产或追加模型预算授权。
