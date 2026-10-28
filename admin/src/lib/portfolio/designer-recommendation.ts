@@ -7,6 +7,7 @@ import { CITY_OPTIONS } from './regions';
 import { LAYOUT_OPTIONS, STYLE_OPTIONS } from './options';
 import { matchDesigners } from './designer-match';
 import { portfolioCandidates, type Candidate } from './public-query';
+import { recommendationRegion, type NearbyRegion } from '@/lib/assistant/location/region';
 
 export const designerNotice = '作品仅供风格/户型与服务方向参考；同小区不代表同户型，不承诺可预约日期。';
 const uncertain = /[？?]|不确定|没想好|不喜欢|不要|不考虑|不是|不在|不做|不想/;
@@ -24,25 +25,29 @@ export type DesignerCard = {
 };
 export type DesignerRecommendation = { items: DesignerCard[]; notice: string };
 
-/** Matches only taxonomy values that already appear in the conversation.
- * A model-supplied query may restate them but can never introduce a city,
- * style or layout the customer did not say. */
-export function resolveDesignerQuery(input: { memoryHousing?: string; memoryStyle?: string; triggerText?: string; input?: Row }): DesignerQuery | null {
+/** Resolve the city from explicit housing context or verified device location.
+ * Model arguments may only restate those grounded taxonomy values; unknown
+ * style/layout does not prevent browsing designers in the resolved city. */
+export function resolveDesignerQuery(input: { memoryHousing?: string; memoryStyle?: string; triggerText?: string; input?: Row; location?: NearbyRegion | null }): DesignerQuery | null {
   let housing = input.memoryHousing || '', style = input.memoryStyle || '';
+  if (negation.test(style) && STYLE_OPTIONS.some(s => s !== '其他' && style.includes(s))) return null;
   if (uncertain.test(housing)) housing = '';
   if (uncertain.test(style)) style = '';
   const trigger = input.triggerText || '';
-  if (negation.test(trigger)) return null;
-  const corpus = [housing, style, trigger].filter(Boolean).join(' ');
+  // An unknown style or declining to repeat a city is not declining discovery.
+  // Explicitly rejected taxonomy directions still require clarification.
+  const directions = [...STYLE_OPTIONS, ...LAYOUT_OPTIONS].filter(value => value !== '其他');
+  if ((negation.test(trigger) && directions.some(value => trigger.includes(value)))
+    || /(?:不想|不要|不用)(?:再)?(?:找|看|推荐)设计师/.test(trigger)) return null;
+  const region = recommendationRegion({ nearbyRegion: input.location }, input.memoryHousing, trigger);
+  const corpus = [housing, style, trigger, region?.cityName].filter(Boolean).join(' ');
   const modelQuery = typeof input.input?.query === 'string' ? input.input.query : '';
   const known = [...CITY_OPTIONS.map(option => option.label.replace(/市$/, '')), ...STYLE_OPTIONS.filter(option => option !== '其他'), ...LAYOUT_OPTIONS.filter(option => option !== '其他')];
   if (modelQuery && known.some(value => modelQuery.includes(value) && !corpus.includes(value))) return null;
-  const cityMatches = CITY_OPTIONS.filter(option => corpus.includes(option.label.replace(/市$/, '')));
   const styleMatches = STYLE_OPTIONS.filter(option => option !== '其他' && corpus.includes(option));
   const layoutMatches = LAYOUT_OPTIONS.filter(option => option !== '其他' && corpus.includes(option));
-  if (cityMatches.length !== 1 || styleMatches.length > 1 || layoutMatches.length > 1) return null;
-  if (!styleMatches.length && !layoutMatches.length) return null;
-  return { cityCode: cityMatches[0].value, style: styleMatches[0] || '', layout: layoutMatches[0] || '' };
+  if (!region || styleMatches.length > 1 || layoutMatches.length > 1) return null;
+  return { cityCode: region.cityCode, style: styleMatches[0] || '', layout: layoutMatches[0] || '' };
 }
 
 function servesCity(candidate: Candidate, cityCode: string) {
@@ -71,6 +76,8 @@ export async function recommendDesigners(tx: PostgresTransaction, actor: ActorCo
     memoryStyle: facts.filter(fact => fact.field === 'style').map(fact => fact.value).join(' '),
     triggerText: typeof input.triggerText === 'string' ? input.triggerText : '',
     input,
+    location: recommendationRegion(conversation.entry_snapshot)?.source === 'wechat_location'
+      ? recommendationRegion(conversation.entry_snapshot) as NearbyRegion : null,
   });
   if (!query) return { items: [], notice: designerNotice, needContext: true };
   const candidates = (await portfolioCandidates(tx, actor.enterpriseId, { city: query.cityCode, style: query.style || undefined, layout: query.layout || undefined, recommend: true }))

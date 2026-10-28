@@ -5,13 +5,14 @@ import { lockAssistantAcceptance } from '../assistant-acceptance-safety.mjs';
 
 const target='postgresql://synthetic@localhost:55432/xiaok_embedding_eval';
 async function fakeClient(respond, work) {
-  const Original=pg.Client,calls=[];let ended=0;
+  const Original=pg.Client,calls=[];let ended=0,onError;
   pg.Client=class {
+    on(event,listener) { if(event==='error')onError=listener;return this; }
     async connect() { calls.push('connect'); }
-    async query(sql) { calls.push(sql);return {rows:await respond(sql)}; }
+    async query(statement) { const sql=typeof statement==='string'?statement:statement.text;calls.push(sql);return {rows:await respond(sql)}; }
     async end() { ended++; }
   };
-  try { await work(calls,()=>ended); } finally { pg.Client=Original; }
+  try { await work(calls,()=>ended,error=>onError?.(error)); } finally { pg.Client=Original; }
 }
 
 test('waiting never connects to an unapproved database, port or host',async()=>{
@@ -21,6 +22,17 @@ test('waiting never connects to an unapproved database, port or host',async()=>{
       await assert.rejects(lockAssistantAcceptance(url,{waitForLock}),/Acceptance requires isolated loopback/);
     }
     assert.deepEqual(calls,[]);
+  });
+});
+
+test('opt-in long acceptance keeps the same session and fences dispatch after connection loss',async()=>{
+  await fakeClient(sql=>sql.includes('pg_roles')?[{rolsuper:false,rolbypassrls:false}]:sql.includes('to_regclass')?[{present:true}]
+    :sql.includes('assistant_jobs')?[{active:0}]:[],async(calls,ended,disconnect)=>{
+    const errors=[];const release=await lockAssistantAcceptance(target,{waitForLock:true,onLockError:error=>errors.push(error)});
+    await release.assertHeld();assert.ok(calls.includes('select 1'));
+    const before=calls.length,error=Error('synthetic lock connection lost');disconnect(error);
+    await assert.rejects(release.assertHeld(),/connection lost/);assert.equal(calls.length,before);assert.deepEqual(errors,[error]);
+    await release();assert.equal(ended(),1);
   });
 });
 

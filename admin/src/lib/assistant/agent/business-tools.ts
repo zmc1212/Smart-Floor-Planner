@@ -27,7 +27,7 @@ export const businessToolDefinitions: ModelTool[] = [
   { name: 'search_knowledge', description: '专业问题优先查询本企业有效设计/施工做法及条件，不要求说“你们公司”。绑定房屋的咨询会同轮返回当前获权需求、图纸/正式版本、实际节点和原事项状态，无需并行重复query_materials/query_followups/query_business；只查列表或状态才单独用那些工具。返回可追溯原文供综合解释；知识条件不证明项目已满足，不是报价/工期承诺。', parameters: {
     type: 'object', properties: { query: { type: 'string' } }, required: ['query'], additionalProperties: false,
   } },
-  { name: 'recommend_designers', description: '客户想找设计师、想看设计师作品或问谁擅长某户型/风格时优先使用本工具，同时说了风格/城市偏好也一样；按会话中已明确的城市和风格/户型查询本企业已发布的设计师公开作品。query只复述客户本轮明确说过的关键词，泛问传空字符串；不新增城市、风格或户型。只返回真实公开作品，不承诺预约、价格、档期或匹配保证；缺城市或方向时返回needContext，先向客户澄清。', parameters: {
+  { name: 'recommend_designers', description: '客户想找设计师、想看设计师作品或问谁擅长某户型/风格时优先使用本工具，同时说了风格/城市偏好也一样；服务端优先采用客户明确的房屋城市，否则采用已授权定位，查询本企业已发布的设计师公开作品。query只复述客户本轮明确说过的关键词，泛问传空字符串；不新增城市、风格或户型。风格和户型可空，不能因未说城市而跳过工具。只返回真实公开作品，不承诺预约、价格、档期或匹配保证；没有可用地区才返回needContext。', parameters: {
     type: 'object', properties: { query: { type: 'string', maxLength: 100 } }, required: ['query'], additionalProperties: false,
   } },
 ];

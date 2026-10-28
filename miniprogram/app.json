@@ -150,13 +150,14 @@
   "sitemapLocation": "sitemap.json",
   "permission": {
     "scope.userLocation": {
-      "desc": "\u60a8\u7684\u4f4d\u7f6e\u4fe1\u606f\u5c06\u7528\u4e8e\u62a5\u5907\u4f01\u4e1a\u7684\u5730\u7406\u4f4d\u7f6e"
+      "desc": "用于查找附近公开工地、推荐当地设计师及选择业务地址"
     },
     "scope.bluetooth": {
       "desc": "\u7528\u4e8e\u641c\u7d22\u5e76\u8fde\u63a5\u6fc0\u5149\u6d4b\u8ddd\u4eea"
     }
   },
   "requiredPrivateInfos": [
+    "getLocation",
     "chooseLocation"
   ]
 }

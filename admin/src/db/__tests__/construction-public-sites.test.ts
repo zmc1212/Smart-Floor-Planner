@@ -25,6 +25,7 @@ import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
 import { processAgentAnswer } from '@/lib/assistant/agent/worker';
 import { entryContext } from '@/lib/assistant/application/auth';
 import { getPlatformLlmRuntimeConfig, savePlatformLlmConfig } from '@/lib/platform-llm-config';
+import { LocationService } from '@/lib/assistant/location/service';
 
 const prefix = 'public-site-' + randomUUID(), eids: string[] = [], aids: string[] = [], uids: string[] = [], platformIds: string[] = [];
 const live = process.env.CONSTRUCTION_LIVE_MODEL === '1';
@@ -128,6 +129,19 @@ test('public company entry resumes only the visitor own unambiguous consultation
   const entry=await entryContext({userId:uids[1],contextVersion:1,enterpriseId:undefined},{publicEnterpriseId:eids[0]});assert.equal(entry.resumeConversationId,visitorCid);assert.equal(entry.enterprise.id,eids[0]);
   await assert.rejects(entryContext({userId:uids[1],contextVersion:1,enterpriseId:undefined},{publicEnterpriseId:eids[0],leadId:lid}),/entry_context_invalid/);
   await assert.rejects(entryContext({userId:uids[1],contextVersion:0,enterpriseId:undefined},{publicEnterpriseId:eids[0]}));
+});
+
+test('authorized device region finds real published nearby sites without any spoken city and never widens districts', async () => {
+  const created = await new ConversationService(visitor).create(randomUUID()), cid = String(created.id);
+  const location = new LocationService(visitor, cid, { config: async () => ({ key: 'synthetic', signingKey: '', license: '', validUntil: '', dailyLimit: 100 }),
+    resolve: async () => ({ cityCode: '420500', cityName: '宜昌市', district: '伍家岗区', source: 'wechat_location', resolvedAt: new Date().toISOString() }) });
+  await location.locate({ latitude: 30.65, longitude: 111.32, coordinateSystem: 'gcj02' });
+  const service = new PublicCustomerService(visitor, cid), result = await service.recommendations();
+  assert.equal(result.needRegion, false); assert.equal(result.items.length, 1); assert.equal(result.items[0].id, String(state.id));
+  assert.ok(result.items.every(s => s.cityCode === '420500' && s.district === '伍家岗区'));
+  await withTenantTransaction(eids[0], tx => tx.execute(sql`update app.assistant_conversations set entry_snapshot=jsonb_set(entry_snapshot,'{nearbyRegion,district}','"西陵区"'::jsonb) where enterprise_id=${eids[0]} and id=${cid}`));
+  assert.equal((await service.recommendations()).items.length, 0);
+  await location.clear(); assert.equal((await service.recommendations()).needRegion, true);
 });
 
 test('durable Agent uses only the current public copy, persists source chips and never acquires publication tools',async()=>{

@@ -30,7 +30,7 @@ test('设计师查询只接受会话里出现过的城市、风格和户型', ()
   assert.equal(resolveDesignerQuery({ memoryHousing: '杭州或宁波', memoryStyle: '原木风' }), null);
   assert.equal(resolveDesignerQuery({ memoryHousing: '杭州', memoryStyle: '原木风', triggerText: '不喜欢原木风' }), null);
   assert.equal(resolveDesignerQuery({ memoryHousing: '杭州？', memoryStyle: '原木风' }), null);
-  assert.equal(resolveDesignerQuery({ memoryHousing: '杭州', triggerText: '随便看看' }), null);
+  assert.deepEqual(resolveDesignerQuery({ memoryHousing: '杭州', triggerText: '随便看看' }), { cityCode: '330100', style: '', layout: '' });
 });
 
 test('设计师排序先核验小区，再户型，再风格，同一设计师只出现一次且最多三位', () => {

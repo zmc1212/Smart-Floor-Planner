@@ -3,6 +3,7 @@ const { goToLogin } = require('../../../utils/session');
 const { MediaController } = require('../lib/media');
 const { ReferenceImage } = require('../lib/reference-image');
 const { RecommendationController, PortfolioImages } = require('../lib/portfolio');
+const { NearbyLocationController } = require('../lib/location');
 const { latestDesignerCard } = require('../lib/client');
 const { SiteRecordMedia } = require('../lib/site-records');
 const { PublicChatController, initialPublic } = require('../lib/public-sites');
@@ -74,6 +75,7 @@ Page({
   },
 
   async onShow() {
+    if (!this.location) this.location = new NearbyLocationController({ identity: sessionToken, client: this.controller.client });
     if (!this.plans) this.plans = new PlanChatController({ identity: sessionToken, client: this.controller.client, emit: p => { if (this._alive && this._shown) this.setData(p); } });
     if (!this.publicSites) this.publicSites = new PublicChatController({ identity: sessionToken, client: this.controller.client, emit: p => { if (this._alive && this._shown) this.setData(p); } });
     this._portfolioKey = '';
@@ -86,6 +88,7 @@ Page({
     }
     if (this._alive && this._shown) {
       await this.controller.show(this._options);
+      if (this._alive && this._shown && !this.data.fatal && !this.data.generating && !this.data.readOnly) await this.syncLocation();
       if (this._alive && this._shown && !this.data.fatal && this._options.publicSiteId) {
         const cid = this.controller.conversationId || await this.controller.handoffConversation();
         if (cid && await this.publicSites.attach(cid, this.data.enterpriseId, this._options.publicSiteId, this._options.publicVersionId)) {
@@ -99,9 +102,10 @@ Page({
       }
     }
   },
-  onHide() { this._shown = false; this.controller.hide(); this.siteRecords.clear(); this.recommendations.clear(); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); this.closeSheet(); this.setData({ keyboardHeight: 0, siteRecordPaths: {}, siteRecordError: '', ...initialPublic(), ...initialPlans() }); },
+  onHide() { this._shown = false; if (this.location) this.location.clear(); this.controller.hide(); this.siteRecords.clear(); this.recommendations.clear(); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); this.closeSheet(); this.setData({ keyboardHeight: 0, siteRecordPaths: {}, siteRecordError: '', ...initialPublic(), ...initialPlans() }); },
   onUnload() {
     this._alive = false; clearTimeout(this._sheetTimer);
+    if (this.location) this.location.clear();
     this.controller.dispose();
     this.siteRecords.clear();
     this.referenceImages.clear();
@@ -131,7 +135,14 @@ Page({
   pickPrompt(event) { this.controller.input(event.currentTarget.dataset.text); },
   chooseOption(event) { return this.controller.chooseOption(event.currentTarget.dataset.key, event.currentTarget.dataset.text); },
   confirmOptions() { return this.controller.confirmOptions(); },
-  send() { return this.controller.send(); },
+  async send() {
+    if (!this.data.conversation?.id && this.data.draft && this.data.canSend && !this.data.busy && !this.data.pendingSend && !this.data.pendingAction && !this.data.generating && !this.data.readOnly) {
+      if (!await this.controller.handoffConversation()) return;
+    }
+    const location = await this.syncLocation();
+    if (location.blocked) { this.setData({ portfolioNotice: location.notice }); return; }
+    if (this._alive && this._shown) return this.controller.send();
+  },
   async planDecision(e) {
     const { id, action } = e.currentTarget.dataset;
     let reason = '';
@@ -295,7 +306,24 @@ Page({
     this.openSheet('citation'); return this.controller.openCitation(this._citationId);
   },
   retryCitation() { return this.controller.openCitation(this._citationId); },
-  loadDesigners() { return this.recommendations.load(this.data.conversation?.id, true); },
+  async syncLocation(requestPermission = false) {
+    const cid = this.data.conversation?.id, session = sessionToken();
+    if (!cid || !this.location || this.data.generating || this.data.readOnly || this.data.busy || this.data.pendingSend || this.data.pendingAction || this.data.uncertainRun) return {};
+    const result = await this.location.ensure(cid, requestPermission);
+    if (!this._alive || !this._shown || cid !== this.data.conversation?.id || session !== sessionToken()) return {};
+    if (result.changed) await this.controller.refresh();
+    return result;
+  },
+  async loadDesigners() {
+    if (this._locatingDesigners || this.data.busy || this.data.generating) return;
+    this._locatingDesigners = true; this.setData({ portfolioLoading: true });
+    try {
+      const location = await this.syncLocation(true);
+      if (!this._alive || !this._shown) return;
+      if (!location.blocked) await this.recommendations.load(this.data.conversation?.id, true);
+      if (location.notice && !this.data.portfolioItems.length) this.setData({ portfolioNotice: location.notice });
+    } finally { this._locatingDesigners = false; if (this._alive && this._shown) this.setData({ portfolioLoading: false }); }
+  },
   resetDesignerCards() {
     if (this.designerCardMedia) this.designerCardMedia.clear();
     this.designerCardMedia = null; this._designerCardConversation = ''; this._designerCardKey = '';
@@ -355,10 +383,14 @@ Page({
     if (!id || !/^[1-9]\d{0,18}$/.test(String(data.work)) || !/^[1-9]\d{0,18}$/.test(String(data.version))) return;
     wx.navigateTo({ url: `/packages/assistant/work/work?conversationId=${encodeURIComponent(id)}&workId=${encodeURIComponent(data.work)}&versionId=${encodeURIComponent(data.version)}` });
   },
-  browseSites() {
+  async browseSites() {
+    const location = await this.syncLocation(true);
+    if (!this._alive || !this._shown || location.blocked) return;
     if (!this.data.enterpriseId) return;
     const cid = this.controller.conversationId;
-    wx.navigateTo({ url: '/packages/construction/public-sites/public-sites?enterpriseId='+this.data.enterpriseId+(cid ? '&conversationId='+cid : '') });
+    const region = location.region;
+    wx.navigateTo({ url: '/packages/construction/public-sites/public-sites?enterpriseId='+this.data.enterpriseId+(cid ? '&conversationId='+cid : '')
+      +(region ? '&cityCode='+encodeURIComponent(region.cityCode)+'&district='+encodeURIComponent(region.district || '') : '') });
   },
   openPublicSite(e) {
     const d = e.currentTarget.dataset;

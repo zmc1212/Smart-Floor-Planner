@@ -20,6 +20,7 @@ import { PortfolioCatalog } from '@/lib/portfolio/catalog';
 import { assistantHttp } from '@/lib/assistant/application/http';
 import { signMiniProgramToken } from '@/lib/miniprogram-jwt';
 import { readPortfolioEntry } from '@/lib/portfolio/entry';
+import { LocationService } from '@/lib/assistant/location/service';
 import { decodeJwt } from 'jose';
 import { HandoffService } from '@/lib/assistant/handoff/service';
 import { projectMessage } from '@/lib/assistant/knowledge/sources';
@@ -211,6 +212,26 @@ test('P2C.2 automatic recommendations require unambiguous current city/style and
   await setFacts('房子不在杭州', '原木风'); assert.equal((await catalog.recommend()).needContext, true);
   await setFacts('杭州或宁波，还没确定', '原木风'); assert.equal((await catalog.recommend()).needContext, true);
   await setFacts('房子在杭州', '不喜欢原木风'); assert.equal((await catalog.recommend()).needContext, true);
+});
+
+test('location-backed recommendations persist without spoken city, keep coordinates ephemeral and enforce owner/tenant/revocation', async () => {
+  const created = await new ConversationService(customers[0]).create(randomUUID()), cid = String(created.id);
+  let lookups = 0;
+  const dependencies = { config: async () => ({ key: 'synthetic', signingKey: '', license: '', validUntil: '', dailyLimit: 100 }),
+    resolve: async () => { lookups++; return { cityCode: '330100', cityName: '杭州市', district: '西湖区', source: 'wechat_location' as const, resolvedAt: new Date().toISOString() }; } };
+  const location = new LocationService(customers[0], cid, dependencies), point = { latitude: 30.25, longitude: 120.13, coordinateSystem: 'gcj02' };
+  assert.equal((await new PortfolioCatalog(customers[0], cid).recommend()).needContext, true);
+  await location.locate(point);
+  assert.equal((await new LocationService(customers[0], cid).read()).region?.cityCode, '330100');
+  const result = await new PortfolioCatalog(customers[0], cid).recommend(); assert.ok(result.items.length > 0); assert.ok(result.items.every(i => i.work.cityCode === '330100'));
+  const stored = await withTenantTransaction(tenants[0], tx => one(tx, sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${tenants[0]} and id=${cid}`));
+  assert.doesNotMatch(JSON.stringify(stored), /latitude|longitude|30\.25|120\.13|gcj02/);
+  await assert.rejects(new LocationService(customers[1], cid, dependencies).locate(point));
+  const other = { ...customers[0], principal: { kind: 'user' as const, userId: users[1] } };
+  await assert.rejects(new LocationService(other, cid, dependencies).locate(point)); assert.equal(lookups, 1);
+  await location.locate(point); await location.locate(point); await assert.rejects(location.locate(point), /location_rate_limited/); assert.equal(lookups, 3);
+  await location.clear(); await location.clear(); assert.equal((await location.read()).region, null);
+  assert.equal((await new PortfolioCatalog(customers[0], cid).recommend()).needContext, true);
 });
 
 test('P2C.2 explicit preferences persist once, retain correction lineage and reject stale versions/other customers', async () => {

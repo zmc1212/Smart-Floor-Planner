@@ -41,7 +41,7 @@ const nextConfig: NextConfig = {
   // Keep Node-only media deps out of the bundler server graph. Pulling qiniu
   // into the graph also loads urllib → proxy-agent → vm2 and adds avoidable
   // compile/RSS cost in long `next dev` sessions.
-  serverExternalPackages: ['@napi-rs/canvas', 'qiniu', 'proxy-agent'],
+  serverExternalPackages: ['@napi-rs/canvas', 'qiniu', 'proxy-agent', 'linkedom'],
   outputFileTracingExcludes: {
     '*': [
       './release/**/*',

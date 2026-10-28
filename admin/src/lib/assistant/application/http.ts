@@ -15,6 +15,7 @@ import { AssistantRepository } from '@/db/repositories/assistant-repository';
 import { customerPublicHttp } from '@/lib/construction/public-http';
 import { customerPlanHttp } from '@/lib/construction/plan-http';
 import { parseWebCitationId } from '../agent/web-evidence';
+import { LocationService } from '../location/service';
 
 function only(body: Record<string, unknown>, allowed: string[]) {
   if (Object.keys(body).some(k => !allowed.includes(k))) fail('invalid_message', 422);
@@ -24,6 +25,19 @@ export async function assistantHttp(request: Request, path: string[]) {
   const requestId = randomUUID();
   try {
     const identity = await customerIdentity(request);
+    if (path[0] === 'conversations' && path[2] === 'location' && path.length === 3) {
+      if (new URL(request.url).searchParams.size) fail('invalid_location', 422);
+      const cid = id(path[1]), service = new LocationService(await locate(identity, 'conversation', cid), cid);
+      let data: unknown;
+      if (request.method === 'GET') data = await service.read();
+      else if (request.method === 'DELETE') data = await service.clear();
+      else if (request.method === 'POST') {
+        const text = await request.text(); if (text.length > 512) fail('invalid_location', 422);
+        let input: unknown; try { input = JSON.parse(text); } catch { return fail('invalid_location', 422); }
+        data = await service.locate(input);
+      } else fail('assistant_resource_not_found', 404);
+      return NextResponse.json({ success: true, data, requestId }, { headers: { 'Cache-Control': 'no-store' } });
+    }
     if (path[0] === 'conversations' && path[2] === 'plans') {
       const cid = id(path[1]);
       return await customerPlanHttp(request, await locate(identity, 'conversation', cid), cid, path.slice(3));

@@ -11,7 +11,11 @@ public class WechatIdeWindowState {
  [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint p);
  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+ [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
+ [DllImport("user32.dll")] public static extern bool GetWindowPlacement(IntPtr h, ref WINDOWPLACEMENT p);
  public struct RECT { public int Left,Top,Right,Bottom; }
+ public struct POINT { public int X,Y; }
+ public struct WINDOWPLACEMENT { public int Length,Flags,ShowCmd; public POINT MinPosition,MaxPosition; public RECT NormalPosition; }
 }
 '@
 $taskIdeProcesses = @(Get-Process -Name '微信开发者工具' | Where-Object { $_.Path -eq 'D:\微信开发工具\微信web开发者工具\微信开发者工具.exe' } | Select-Object -ExpandProperty Id)
@@ -24,7 +28,10 @@ $taskCallback = [WechatIdeWindowState+EnumProc]{ param($windowHandle, $enumParam
     [void][WechatIdeWindowState]::GetWindowText($windowHandle, $title, 512)
     $bounds = [WechatIdeWindowState+RECT]::new()
     [void][WechatIdeWindowState]::GetWindowRect($windowHandle, [ref]$bounds)
-    $taskWindows.Add([pscustomobject]@{Handle=$windowHandle.ToInt64();ProcessId=$ownerProcess;Title=$title.ToString();Bounds=$bounds})
+    $placement = [WechatIdeWindowState+WINDOWPLACEMENT]::new()
+    $placement.Length = [System.Runtime.InteropServices.Marshal]::SizeOf($placement)
+    [void][WechatIdeWindowState]::GetWindowPlacement($windowHandle, [ref]$placement)
+    $taskWindows.Add([pscustomobject]@{Handle=$windowHandle.ToInt64();ProcessId=$ownerProcess;Title=$title.ToString();Bounds=$bounds;Minimized=[WechatIdeWindowState]::IsIconic($windowHandle);NormalBounds=$placement.NormalPosition})
   }
   return $true
 }

@@ -8,6 +8,7 @@ import { publicRevision, type PublicContent } from './public-contract';
 import { publicAudit, publicEvent } from './public-service';
 import { publicCandidates, publicMaterial, publicMaterialDto, publishedPublicMaterial } from './public-read';
 import { readMemory } from '@/lib/assistant/agent/memory';
+import { recommendationRegion } from '@/lib/assistant/location/region';
 
 export class PublicCustomerService {
   constructor(readonly actor: ActorContext, readonly conversationId: string) {
@@ -84,6 +85,10 @@ export class PublicCustomerService {
       const messages = await rows(tx, sql`select content from app.assistant_messages where enterprise_id=${this.actor.enterpriseId} and conversation_id=${this.conversationId} and author_kind='user' order by seq desc limit 10`);
       const areas = await publicCandidates(tx, this.actor.enterpriseId);
       const memory = readMemory(c.entry_snapshot);
+      const housing = memory.facts.filter(f => f.field === 'housing' && f.status === 'current').map(f => f.value).join(' ');
+      const region = recommendationRegion(c.entry_snapshot, housing);
+      if (region) return { items: areas.filter(a => a.cityCode === region.cityCode && (!region.district || a.district === region.district)).slice(0, 3),
+        enterpriseId: this.actor.enterpriseId, needRegion: false, region };
       const texts = [...messages.map(m => ((m.content as { blocks: Array<{ text?: string }> }).blocks || []).map(b => b.text || '').join('\n')),
         ...(memory.facts || []).filter(f => f.field === 'housing' && f.status === 'current').map(f => f.value)];
       let matching: typeof areas = [];

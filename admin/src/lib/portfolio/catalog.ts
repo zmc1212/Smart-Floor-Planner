@@ -7,7 +7,8 @@ import { appendMessage, idempotent } from '@/lib/assistant/core/conversation';
 import { readMemory } from '@/lib/assistant/agent/memory';
 import { HandoffWorkflow } from '@/lib/assistant/handoff/workflow';
 import { createPortfolioEntry } from './entry';
-import { CITY_OPTIONS } from './regions';
+import { resolveDesignerQuery } from './designer-recommendation';
+import { nearbyRegion } from '@/lib/assistant/location/region';
 import { LAYOUT_OPTIONS, STYLE_OPTIONS } from './options';
 import { cityCode, shortText } from './contracts';
 import { matchDesigners } from './designer-match';
@@ -43,21 +44,15 @@ export class PortfolioCatalog {
         const facts = readMemory(c.entry_snapshot).facts.filter(f => f.status === 'current');
         const housing = facts.filter(f => f.field === 'housing').map(f => f.value).join(' ');
         const styles = facts.filter(f => f.field === 'style').map(f => f.value).join(' ');
-        // Questions, negation and multiple directions must not silently become a match.
-        const uncertain = /[？?]|不确定|没想好|不喜欢|不要|不考虑|不是|不在|不做|不想/;
-        const cities = uncertain.test(housing) ? [] : CITY_OPTIONS.filter(c => housing.includes(c.label.replace(/市$/, '')));
-        const matched = uncertain.test(styles) ? [] : STYLE_OPTIONS.filter(s => s !== '其他' && styles.includes(s));
-        const layouts = uncertain.test(housing) ? [] : LAYOUT_OPTIONS.filter(l => l !== '其他' && housing.includes(l));
-        return cities.length === 1 && (matched.length === 1 || layouts.length === 1)
-          ? { cityCode: cities[0].value, style: matched[0] || '', layout: layouts[0] || '' } : null;
+        return resolveDesignerQuery({ memoryHousing: housing, memoryStyle: styles, location: nearbyRegion(c.entry_snapshot) });
       });
-      if (!context) return { items: [], needContext: true, notice: '可以先在对话里说说房子所在城市，以及喜欢的风格或户型，再看看合适的设计师。' };
+      if (!context) return { items: [], needContext: true, notice: '暂未获取到可用位置。可以允许定位后重试，或在对话里告诉我房屋所在城市；风格和户型可以慢慢聊。' };
       return this.recommend(context);
     }
     const city = cityCode(input.cityCode);
     const style = input.style == null || input.style === '' ? '' : shortText(input.style, 30, true);
     const layout = input.layout == null || input.layout === '' ? '' : shortText(input.layout, 30, true);
-    if ((!style && !layout) || (style && !STYLE_OPTIONS.includes(style)) || (layout && !LAYOUT_OPTIONS.includes(layout))) fail('invalid_portfolio', 422);
+    if ((style && !STYLE_OPTIONS.includes(style)) || (layout && !LAYOUT_OPTIONS.includes(layout))) fail('invalid_portfolio', 422);
     const community = input.communityId == null ? null : id(input.communityId);
     return this.authorized(async tx => {
       if (community && !await one(tx, sql`select id from app.portfolio_communities where enterprise_id=${this.actor.enterpriseId} and id=${community} and city_code=${city}`)) fail('community_candidate_invalid', 422);
