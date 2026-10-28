@@ -1,5 +1,23 @@
 # 小K第二期：需求整理与人工交接
 
+## 当前D4自然语言资料共享
+
+**D4自然语言资料共享：限定闭环Implemented，完整D4仍Limited。** C01先持久展示精确项目／房间、原文需求节选或紧邻本人点位图的私有预览；只有客户明确同意已展示的项目团队范围才写入原grant。指定个人、普通确认词、疑问、更正和收件限制不静默扩大授权。团队含有效设计师／经理／师傅／observer及获权enterprise_admin/admin/super_admin，当前不支持仅某个人可见。独立原文／确认hash、30分钟待确认期限、实时范围／版本重验、原键恢复及撤回后的派生读取／原件限制保留。定向撤回按本人原咨询实际项目／房间／资料类型或明确资料号解析，不能套用最近预览或模型选错的ID；带收件表达的旧命令进入同一私有预览，普通缺图校验保持。无新路由／表／迁移、Agent或知识管线；沿用C01／S04结构、样式、素材与导航。实际检查、原失败及证据复用见[二期合同](./xiaok-assistant-phase-2.zh-CN.md#当前d4自然语言资料共享)、`tmp/d4-natural-sharing-20261028/final-checks.json`。
+
+模型只选择私有预览资料，不提供授权标记。原咨询唯一当前指针引用不可变construction.material.proposed.v1快照；确认重验真实成功run输出、原文／确认hash、实时项目房间权限、同类资料前版本和期限。后续更正／新图片使旧预览不能确认，普通“好”不授权。只有完整的本次指代取消可定位最近预览；命名范围走实际grant目录，模型ID与请求不一致时不撤回。
+
+原生收口后的全消息授权收紧单独验证：typed撤回按完整持久客户原话授权和解析，不按模型截取句子；疑问、否定、额外条件不能省略。`tmp/d4-sharing-revocation-20261028-01/report.json`定向1/1、drift[]，其余8项明确未重跑、不重计分；同时复核正常定向撤回及选错ID拒绝。native08／10当时执行的字节一致源码保存为`tmp/d4-natural-sharing-20261028/material-sharing-before-whole-input.ts`；其后产品仅此typed守卫变化，prepare／grant／confirm／reader及原生通用本次撤回不变。此前稳定40项按未变范围复用，不把不同版本计数混成一批。 检查绑定合并工作区源码hash；任务开始前已有的synthesis／当前问题指令顺序调整仍保留未暂存，相关本地提交不夹带该旧改动，也不宣称独立干净检出／发布验收。
+
+复用原LangGraph、LangChain原生schema／工具配对守卫及有审计的非流式Qwen；核对[官方工具](https://docs.langchain.com/oss/javascript/langchain/tools)、[原生测试](https://github.com/langchain-ai/langchainjs/blob/main/libs/langchain-core/src/tools/tests/tools.test.ts)、[9450参数问题](https://github.com/langchain-ai/langchainjs/issues/9450)、[9237流分片问题](https://github.com/langchain-ai/langchainjs/issues/9237)。供应商报告不证明本项目有同一故障；不强转参数、不monkey-patch、不迁移框架、不新增事实库；KnowledgeRetriever／Evidence无需改动。
+
+最终检查：单元20/20；原角色／媒体／真实服务6/6按未变范围复用并记录影响；当前兼容40项中39通过、0失败、1项明确可选旧实模跳过，含定向撤回、限制收件不写grant、旧缺图错误、期限／替换／hash竞态及租户／成员／三管理角色。Mini68/68；定向lint零错误，源码lint零错误／26条旧警告；TSC仍54条旧诊断、本次文件零新增，不宣称全仓类型或生产构建通过。
+
+固定四条自然输入保留原Qwen：两条需求在原04中选中正确私有预览，但04原生整批仍失败；两条图片在冻结配置native08中2/2通过。共6次真实派发／46,710tokens，参数和最终答复修复均0。native10以新C01消息、完全相同的已存需求prepare参数及真实Worker／grant／S04／撤回／重进写入，零供应商调用回放2/2；这是原稿采用验证，不算新首稿采样。复用范围的prompt／工具定义及两组成功原生批次产品源码一致。native08收口保守账册¥28.480732/¥100，实际账单未知，历史预留不清零。
+
+保留首次循环导入、确认／旧命令探针、旧注入需求夹具错误、compat01／03漂移（03另有原始缺图回归）、compat04空闲守卫拒绝、native01–06前置／驱动失败、native07虽执行流程但配置漂移，以及native09中止和显式原生／合成身份恢复。09零供应商调用，未完成报告不改判。后续显式冻结实际tsx配置且不改共享tsconfig，等待close收齐stdout，按run去重并要求新消息落盘；最终通过组均drift[]且自持资源清理有回执。
+
+C01 P4B README与S04 PPT22/38设计源保持853×1844→390×844；12张核路由／stack截图为348×752并已审看，见native-visual-review.json。C01最新撤回回执已回读，但选定重进帧停在较早历史，不据此宣称屏外回执完整光学可见。完整宿主／高屏／键盘／真机／真实微信／BLE未验证且不阻塞开发，不升级还原状态。证据：`tmp/d4-sharing-unit-20261028-07/report.json`、`tmp/d4-sharing-service-20261028-03/report.json`、`tmp/d4-sharing-compat-20261028-05/report.json`、`tmp/d4-natural-sharing-20261028/mini-final.json`、`tmp/d4-sharing-native-20261028-04/report.json`、`tmp/d4-sharing-native-20261028-08/report.json`、`tmp/d4-sharing-native-20261028-10/report.json`及tmp/d4-natural-sharing-20261028/final-checks.json。完整D4施工／现场事项两条旅程、D2次数2与后继仍归唯一计划，不追加D2第三次提示词修补，不生产造数／推送／部署。
+
 ## 当前D4施工记录打回补拍
 
 原生复审控件排查（2026-10-28）：native-13与native-14两次未满足同一审核弹层预期，现停止重复修补/重测循环。预期：管理者打开发布弹层后点击可见确认按钮；实际：sheet数据已为publish，`.sheet > .primary`先返回null，增加渲染等待后仍超时。两批均不记完整通过；native-13第二条真实草稿与native-14零派发回放保留原状态、原稿和用量。当前归客户端测试/控件选择缺陷，须有运行证据才能认定产品缺陷。共享原因假设：直接子代选择与运行树不符、条件按钮未出现，或同路由切换身份后Page对象过期。下一步仅做零模型判别：确认当前Page ID、sheet数据、直接子代/后代数量、实际按钮文本/边界及route核对截图，再决定是否点击确认。不追加提示词/模型试验，不仅换个等待时长重复超时；本排查不改Agent/Knowledge/供应商行为。

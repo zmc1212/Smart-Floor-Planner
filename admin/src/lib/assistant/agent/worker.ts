@@ -22,6 +22,8 @@ import { recommendationRegion } from '../location/region';
 import { publicCandidates } from '@/lib/construction/public-read';
 import { hydrateImages, resolveAgentMedia, withoutImageBytes, type MediaDependency } from './media-context';
 import { businessToolDefinitions, queryBusiness, parseBusinessQuery, parseDesignerQuery, businessSnapshotAvailable, type BusinessSnapshot } from './business-tools';
+import { prepareMaterialShare, revokeMaterialShare, materialSharingRequested } from '@/lib/construction/material-sharing';
+import { materialShareCompletionClaim } from '@/lib/construction/material-sharing-contract';
 import { recommendDesigners, revalidateDesignerSnapshot, designerNotice, type DesignerCard, type DesignerSnapshot } from '@/lib/portfolio/designer-recommendation';
 import { LAYOUT_OPTIONS, STYLE_OPTIONS } from '@/lib/portfolio/options';
 import { CITY_OPTIONS } from '@/lib/portfolio/regions';
@@ -154,7 +156,7 @@ export function designerClarificationFollowup(historyText: string, text: string)
     || /也可以|都行|都可以|换成|改成|再看看|按这个|就按|没有特别|不限/.test(text);
 }
 /** Questions/meta-conversation stay conversational; only explicit statements are eligible for memory writes. */
-export function agentToolsForMessage(text: string, enabled: boolean, businessFollowup = false, webEnabled = false, designerFollowup = false): ModelTool[] {
+export function agentToolsForMessage(text: string, enabled: boolean, businessFollowup = false, webEnabled = false, designerFollowup = false, materialShareFollowup = false): ModelTool[] {
   if (!enabled) return [];
   if (currentMessageOnlyRequested(text)) return [];
   if (independentAdviceRequested(text)) return [...businessToolDefinitions.filter(tool => tool.name === 'search_knowledge'), ...(webEnabled ? [webSearchTool] : [])];
@@ -176,6 +178,7 @@ export function agentToolsForMessage(text: string, enabled: boolean, businessFol
   return [...(webEnabled && !historyOnly && !authorityRequest && !browsingOnly ? [webSearchTool] : []), ...(historyOnly ? [historyTool] : [materialTool, needIssueTool, historyTool]), ...(!authorityRequest && !browsingOnly && (explicit || !discussion && !historyOnly) ? [needToolForMessage(text)] : []), ...businessToolDefinitions.filter(tool =>
     (!historyOnly || tool.name === 'request_designer') &&
     (tool.name !== 'request_designer' || humanIntent) && (tool.name !== 'query_business' || businessIntent)
+    && (!['prepare_material_share','revoke_material_share'].includes(tool.name) || materialSharingRequested(text) || materialShareFollowup)
     && (tool.name !== 'recommend_references' || /参考|案例|风格图|效果图|看看.{0,6}(?:图|设计)/.test(text))
     && (tool.name !== 'recommend_designers' || designerIntent.test(text) || designerFollowup)
     && (tool.name !== 'record_reference_preference' || /喜欢|中意|满意|不合适/.test(text)))];
@@ -679,7 +682,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     const toolsForMessage = (businessFollowup: boolean) => {
       const base = publicResearchTools(readToolsForContext(agentToolsForMessage(reviewContext.currentQuestion,
         initial.config.tools, businessFollowup, !!dependencies.webSearch || configuredWebProvider() !== null,
-        initial.designerFollowup), readContext), !!initial.config.consultation);
+        initial.designerFollowup, ((initial.conversation.entry_snapshot as Row).materialShareProposal as Row | undefined)?.status === 'pending'), readContext), !!initial.config.consultation);
       // fitAgentContext appends the final tool. An empty candidate list gives the
       // provider exactly one final_response and a named tool_choice.
       return review ? reviewMode !== 'propose' ? []
@@ -832,7 +835,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     };
     // This first extractive digest is read-only. A current write/handoff must not
     // inherit a prior memory revision or reinterpret history as authorization.
-    const summaryWrites = ['record_need','request_designer','record_reference_preference', ...reviewDefinitions.map(tool => tool.name)];
+    const summaryWrites = ['record_need','request_designer','record_reference_preference','prepare_material_share','revoke_material_share', ...reviewDefinitions.map(tool => tool.name)];
     const initialTools = toolsForMessage(false);
     if (!initial.resume && initial.savedSummary?.status === 'succeeded') {
       initial.messages = withHistorySummary(initial.messages, initial.savedSummary.private_checkpoint as HistorySnapshot);
@@ -921,6 +924,20 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             on conflict(enterprise_id,run_id,step_seq) do update set source_refs=excluded.source_refs`);
         }),
         resolveToolReply: async state => {
+          const last = state.messages.at(-1);
+          if (last?.role === 'tool') {
+            let i = state.messages.length - 2;
+            while (i >= 0 && state.messages[i].role === 'tool') i--;
+            const request = state.messages[i];
+            const call = request?.role === 'assistant' && request.toolCalls?.length === 1 ? request.toolCalls[0] : null;
+            if (call && call.id === last.callId && ['prepare_material_share', 'revoke_material_share'].includes(call.name)) {
+              const receipt = await scoped(tx => one(tx, sql`select private_checkpoint from app.assistant_run_steps
+                where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${1200 + (state.turn - 1) * 10}
+                  and kind='agent_material_share' and capability_name=${call.name} and status='succeeded'`));
+              if (!receipt) fail('context_changed');
+              return JSON.stringify({ kind: 'general', text: (receipt.private_checkpoint as Row).text });
+            }
+          }
           if (completion && reviewCompletionPlan(state.messages, completionSourceIds)?.mode === 'receipt_only') {
             const steps = await scoped(tx => rows(tx, sql`select capability_name,private_checkpoint from app.assistant_run_steps
               where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and status='succeeded' and kind='agent_tool' order by step_seq`));
@@ -1011,6 +1028,14 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           }
           let candidate:{kind?:string;text?:unknown;segments?:Array<{text?:unknown}>};try{candidate=JSON.parse(raw);}catch{return null;}
           const question = safeText(initial.trigger.content as Parameters<typeof safeText>[0]);
+          const materialText = [candidate.text, ...(Array.isArray(candidate.segments) ? candidate.segments.map(s => s?.text) : [])]
+            .filter((s): s is string => typeof s === 'string').join('\n');
+          if (materialSharingRequested(question) && materialShareCompletionClaim(materialText)) {
+            const receipt = await scoped(tx => one(tx, sql`select private_checkpoint from app.assistant_run_steps
+              where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and kind='agent_material_share' and status='succeeded' order by step_seq desc limit 1`));
+            if (!receipt || (receipt.private_checkpoint as Row).text !== materialText) return { code: 'unsupported_model_commitment',
+              feedback: '本轮没有可用的共享完成回执。仅能如实说明当前资料仍私有或尚待明确项目团队受众确认；不要声称已共享、已发送给个人/团队或已撤回。实际业务回执只能使用服务端工具返回的准确状态。' };
+          }
           const budgetIssue = currentBudgetRecallRequested(question) && await scoped(async (tx, context) => {
             const memory = await availableNeedMemory(tx, lease.enterpriseId, String(context.conversation.id), context.conversation.entry_snapshot);
             const found = currentBudgetRecallFeedback(raw, memory, question);
@@ -1233,6 +1258,20 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               return { content: JSON.stringify({ status: 'not_saved', error: error.code, instructions: '不要声称已记录。指代不明先询问具体第几个案例；撤回或过期如实说明。' }) };
             }
           }
+          if (name === 'prepare_material_share' || name === 'revoke_material_share') {
+            return scoped(async (tx, context) => {
+              const cached = await one(tx, sql`select private_checkpoint,input_summary from app.assistant_run_steps
+                where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`);
+              if (cached && (cached.input_summary as Row).inputHash !== fingerprint(input)) fail('idempotency_conflict');
+              const receipt = cached ? cached.private_checkpoint as Row : name === 'prepare_material_share'
+                ? await prepareMaterialShare(tx, lease.actor, context.conversation, initial.trigger, lease.runId, input)
+                : await revokeMaterialShare(tx, lease.actor, context.conversation, initial.trigger, input);
+              if (!cached) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint,input_summary)
+                values(${lease.enterpriseId},${lease.runId},${sequence},'agent_material_share',${name},1,'succeeded',${JSON.stringify(receipt)}::jsonb,
+                  ${JSON.stringify({ inputHash: fingerprint(input), triggerMessageId: String(initial.trigger.id), grantsAccess: false })}::jsonb)`);
+              return { content: JSON.stringify(receipt) };
+            });
+          }
           if (name === 'request_designer') {
             const text = safeText(initial.trigger.content as Parameters<typeof safeText>[0]);
             if (!input || Object.keys(input).some(k => !['quote','expectedVersion'].includes(k)) || typeof input.quote !== 'string'
@@ -1382,7 +1421,10 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     const usedSourceTool = await scoped(async tx => one(tx, sql`select id from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}
        and (capability_name in ('query_business','query_materials','query_followups','knowledge.search.v1','web.search.v1','web.read.v1','references.search.v1','designers.search.v1')
          or capability_name='source.restore.v1' and jsonb_array_length(private_checkpoint->'sources')>0) limit 1`));
-    if (usedSourceTool && !['business', 'knowledge','references','designers','synthesis'].includes(reply?.kind || '')) fail('invalid_model_citation', 502);
+    const materialReceipt = reply.kind === 'general' && result.finalFromTools ? await scoped(tx => one(tx, sql`select private_checkpoint from app.assistant_run_steps
+      where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and kind='agent_material_share' and status='succeeded' order by step_seq desc limit 1`)) : null;
+    const exactMaterialReceipt = materialReceipt && (materialReceipt.private_checkpoint as Row).text === reply.text;
+    if (usedSourceTool && !exactMaterialReceipt && !['business', 'knowledge','references','designers','synthesis'].includes(reply?.kind || '')) fail('invalid_model_citation', 502);
     if (reply.kind === 'synthesis') {
       await authorize();
       await scoped(async (tx, context) => {

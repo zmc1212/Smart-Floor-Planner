@@ -3,17 +3,65 @@ import type { PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, fingerprint, safeText, type ActorContext, type MessageContent } from '@/lib/assistant/contracts';
 import { appendMessage } from '@/lib/assistant/core/conversation';
+import { restrictedMaterialAudience } from './material-sharing-contract';
 
 export type SharedMaterial = { id: string; projectId: string; roomId: string; roomName: string; kind: 'need' | 'drawing';
   conversationId: string; customerId: string; sourceMessageId: string; sourceHash: string; text: string;
-  mediaId: string | null; mediaHash: string | null };
+  mediaId: string | null; mediaHash: string | null;
+  audience?: 'project_members'; consentMessageId?: string; consentHash?: string };
 const grantType = 'construction.material.shared.v1';
 const revokeType = 'construction.material.revoked.v1';
+
+export async function revokeMaterial(tx: PostgresTransaction, actor: ActorContext, c: Row, message: Row, grantId: string) {
+  if (actor.principal.kind !== 'user') fail('assistant_capability_forbidden', 403);
+  const eid = actor.enterpriseId, uid = actor.principal.userId, cid = String(c.id);
+  const grant = await one(tx, sql`select payload from app.domain_event_outbox where enterprise_id=${eid} and id=${grantId}
+    and type=${grantType} and payload->>'customerId'=${uid} and payload->>'conversationId'=${cid}`);
+  if (!grant) fail('assistant_resource_not_found', 404);
+  const payload = grant.payload as SharedMaterial;
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`site-material:${eid}:${payload.projectId}`},0))`);
+  const event = (await one(tx, sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
+    values(${eid},${revokeType},'construction_shared_material',${grantId},1,${JSON.stringify(actor.principal)}::jsonb,${String(message.id)},
+    ${JSON.stringify({ projectId: payload.projectId, grantId, customerId: uid, conversationId: cid })}::jsonb)
+    on conflict(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version) do update set aggregate_id=excluded.aggregate_id returning id`))!;
+  const text = `共享资料${grantId}已撤回，项目成员不能继续读取，相关旧处理结果不再沿用。`;
+  await appendMessage(tx, actor, cid, { author: 'system', eventId: String(event.id), purpose: 'construction.material',
+    content: { version: 1, blocks: [{ type: 'text', text }] } });
+  return { id: grantId, text };
+}
+
+/** Both the legacy command and natural-language confirmation use this one grant writer. */
+export async function grantMaterial(tx: PostgresTransaction, actor: ActorContext, c: Row, source: Row,
+  room: { project_id: unknown; room_id: unknown; room_name: unknown; project_name: unknown },
+  kind: SharedMaterial['kind'], text: string, mediaId: string | null, consent: Row = source) {
+  if (actor.principal.kind !== 'user') fail('assistant_capability_forbidden', 403);
+  const eid = actor.enterpriseId, uid = actor.principal.userId, cid = String(c.id), pid = String(room.project_id);
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`site-material:${eid}:${pid}`},0))`);
+  const media = mediaId ? await one(tx, sql`select id,source_hash from app.assistant_media where enterprise_id=${eid}
+    and conversation_id=${cid} and customer_user_id=${uid} and id=${mediaId} and deleted_at is null and source_ref is null for share`) : null;
+  if (mediaId && !media) fail('assistant_resource_not_found', 404);
+  const payload: Omit<SharedMaterial, 'id'> = { projectId: pid, roomId: String(room.room_id), roomName: String(room.room_name), kind,
+    customerId: uid, conversationId: cid, sourceMessageId: String(source.id), sourceHash: fingerprint(source.content), text,
+    mediaId, mediaHash: media ? String(media.source_hash) : null, audience: 'project_members',
+    consentMessageId: String(consent.id), consentHash: fingerprint(consent.content) };
+  const event = (await one(tx, sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
+    values(${eid},${grantType},'assistant_message',${String(consent.id)},1,${JSON.stringify(actor.principal)}::jsonb,${String(consent.id)},${JSON.stringify(payload)}::jsonb)
+    on conflict(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version) do update set aggregate_id=excluded.aggregate_id returning id,payload`))!;
+  if (fingerprint(event.payload) !== fingerprint(payload)) fail('idempotency_conflict');
+  const feedback = `已将「${room.project_name} · ${room.room_name}」本次${kind === 'need' ? '需求节选' : '点位图原件及说明'}共享给当前项目成员，资料${event.id}。本次内容替换该房间同类共享资料；其他私聊没有共享。${kind === 'drawing' ? '图纸仍待有权人员核对关联，不代表批准。' : ''}处理回复可由有权管理者明确回传本咨询。需要停止共享可说“撤回共享资料${event.id}”。`;
+  await appendMessage(tx, actor, cid, { author: 'system', eventId: String(event.id), purpose: 'construction.material',
+    content: { version: 1, blocks: [{ type: 'text', text: feedback }] } });
+  return { id: String(event.id), text: feedback };
+}
 
 export function materialCommand(raw: string) {
   const revoke = /^撤回共享资料\s*([1-9]\d{0,18})[。！!\s]*$/.exec(raw);
   if (revoke) return { action: 'revoke' as const, id: revoke[1] };
+  if (restrictedMaterialAudience(raw)) return null;
   const share = new RegExp('^共享(.{1,100}?)(需求|点位图)[：:]\\s*(.{1,2000})$', 's').exec(raw);
+  // A payload that also names recipients/visibility needs the natural preview
+  // path. The old abbreviated syntax cannot resolve selective audiences.
+  if (share && /设计师|师傅|经理|观察员|管理者|收件|受众|可见|开放|公开|访问|权限|阅读|阅览|独享|单独|专享|专属|专用|仅(?:向|对|供|限)|只(?:向|对|供|包括|包含)|限定|排除|给|(?:发|转|传|送)(?:给|到)|(?:发|转|传|送).{0,20}(?:一份|参阅)|供.{0,20}(?:看|阅|读)/.test(share[3])) return null;
   return share ? { action: 'share' as const, scope: share[1].trim(), kind: share[2] === '需求' ? 'need' as const : 'drawing' as const, text: share[3].trim() } : null;
 }
 
@@ -22,18 +70,9 @@ export async function applyMaterialCommand(tx: PostgresTransaction, actor: Actor
   const cmd = materialCommand(safeText(message.content as MessageContent).trim());
   if (!cmd || actor.principal.kind !== 'user' || c.purpose !== 'customer_consultation') return false;
   const eid = actor.enterpriseId, uid = actor.principal.userId, cid = String(c.id);
-  let event: Row, feedback: string;
   if (cmd.action === 'revoke') {
-    const grant = await one(tx, sql`select payload from app.domain_event_outbox where enterprise_id=${eid} and id=${cmd.id}
-      and type=${grantType} and payload->>'customerId'=${uid} and payload->>'conversationId'=${cid}`);
-    if (!grant) fail('assistant_resource_not_found', 404);
-    const payload = grant.payload as SharedMaterial;
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`site-material:${eid}:${payload.projectId}`},0))`);
-    event = (await one(tx, sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
-      values(${eid},${revokeType},'construction_shared_material',${cmd.id},1,${JSON.stringify(actor.principal)}::jsonb,${String(message.id)},
-      ${JSON.stringify({ projectId: payload.projectId, grantId: cmd.id, customerId: uid, conversationId: cid })}::jsonb)
-      on conflict(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version) do update set aggregate_id=excluded.aggregate_id returning id`))!;
-    feedback = `共享资料${cmd.id}已撤回，项目成员不能继续读取，相关旧处理结果不再沿用。`;
+    await revokeMaterial(tx, actor, c, message, cmd.id);
+    return true;
   } else {
     const scope = await rows(tx, sql`select p.id::text as project_id,r.id::text as room_id,r.name as room_name,p.name as project_name
       from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
@@ -42,7 +81,7 @@ export async function applyMaterialCommand(tx: PostgresTransaction, actor: Actor
       and (coalesce(${JSON.stringify(c.entry_snapshot)}::jsonb->>'kind','')<>'lead' or l.id::text=${JSON.stringify(c.entry_snapshot)}::jsonb->>'id')
       and (r.name=${cmd.scope} or p.name || '·' || r.name=${cmd.scope}) for share of p,l,r`);
     if (scope.length !== 1 || !cmd.text) fail('construction_material_scope_required', 422);
-    const room = scope[0], pid = String(room.project_id), roomId = String(room.room_id);
+    const room = scope[0], pid = String(room.project_id);
     // Grants and issue writes serialize on the same project key. Re-read sources inside this transaction.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`site-material:${eid}:${pid}`},0))`);
     let mediaId: string | null = null;
@@ -58,19 +97,9 @@ export async function applyMaterialCommand(tx: PostgresTransaction, actor: Actor
       mediaId = previous ? String(previous.id) : null;
       if (!mediaId) fail('construction_material_image_required', 422);
     }
-    const media = mediaId ? await one(tx, sql`select id,source_hash from app.assistant_media where enterprise_id=${eid}
-      and conversation_id=${cid} and customer_user_id=${uid} and id=${mediaId} and deleted_at is null and source_ref is null for share`) : null;
-    if (mediaId && !media) fail('assistant_resource_not_found', 404);
-    const payload: Omit<SharedMaterial, 'id'> = { projectId: pid, roomId, roomName: String(room.room_name), kind: cmd.kind,
-      customerId: uid, conversationId: cid, sourceMessageId: String(message.id), sourceHash: fingerprint(message.content), text: cmd.text,
-      mediaId, mediaHash: media ? String(media.source_hash) : null };
-    event = (await one(tx, sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
-      values(${eid},${grantType},'assistant_message',${String(message.id)},1,${JSON.stringify(actor.principal)}::jsonb,${String(message.id)},${JSON.stringify(payload)}::jsonb) returning id`))!;
-    feedback = `已将「${room.project_name} · ${room.room_name}」本次${cmd.kind === 'need' ? '需求节选' : '点位图原件及说明'}共享给当前项目成员，资料${event.id}。本次内容替换该房间同类共享资料；其他私聊没有共享。${cmd.kind === 'drawing' ? '图纸仍待有权人员核对关联，不代表批准。' : ''}处理回复可由有权管理者明确回传本咨询。需要停止共享可说“撤回共享资料${event.id}”。`;
+    await grantMaterial(tx, actor, c, message, room as Parameters<typeof grantMaterial>[4], cmd.kind, cmd.text, mediaId);
+    return true;
   }
-  await appendMessage(tx, actor, cid, { author: 'system', eventId: String(event.id), purpose: 'construction.material',
-    content: { version: 1, blocks: [{ type: 'text', text: feedback }] } });
-  return true;
 }
 
 /** Internal source validation does not grant access to the source consultation or its other media. */
@@ -92,6 +121,12 @@ export async function sharedMaterial(tx: PostgresTransaction, eid: string, pid: 
   if (!event) return null;
   const source = { ...(event.payload as Omit<SharedMaterial, 'id'>), id: String(event.id) };
   if (source.roomName !== event.room_name || source.sourceHash !== fingerprint(event.content)) return null;
+  if (source.audience && source.audience !== 'project_members') return null;
+  if (source.consentMessageId) {
+    const consent = await one(tx, sql`select content from app.assistant_messages where enterprise_id=${eid}
+      and conversation_id=${source.conversationId} and user_id=${source.customerId} and author_kind='user' and id=${source.consentMessageId} for share`);
+    if (!consent || fingerprint(consent.content) !== source.consentHash) return null;
+  }
   if (source.mediaId && !await one(tx, sql`select id from app.assistant_media where enterprise_id=${eid} and conversation_id=${source.conversationId}
     and customer_user_id=${source.customerId} and id=${source.mediaId} and source_hash=${source.mediaHash} and source_ref is null and deleted_at is null for share`)) return null;
   return source;

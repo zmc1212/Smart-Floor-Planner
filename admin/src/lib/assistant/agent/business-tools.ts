@@ -10,8 +10,10 @@ import { constructionRead } from '@/lib/construction/customer';
 import { materialSnapshotAvailable, type MaterialSnapshot } from './materials';
 import { needIssueSnapshotAvailable, type NeedIssueSnapshot } from '@/lib/construction/need-issues';
 import { formalFloorplanText } from './formal-floorplan-context';
+import { materialSharingTools } from '@/lib/construction/material-sharing-contract';
 
 export const businessToolDefinitions: ModelTool[] = [
+  ...materialSharingTools,
   { name: 'recommend_references', description: '按客户明确方向查询本企业已授权发布的少量参考案例；query仅用风格/房型/用途关键词，泛看参考时传空字符串。不联网、不生成图片，不是正式施工方案。', parameters: {
     type: 'object', properties: { query: { type: 'string' } }, required: ['query'], additionalProperties: false,
   } },

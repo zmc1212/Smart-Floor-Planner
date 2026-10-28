@@ -4,6 +4,7 @@ import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { appendMessage } from '@/lib/assistant/core/conversation';
 import { safeText, type ActorContext, type MessageContent } from '@/lib/assistant/contracts';
 import { applyMaterialCommand, materialCommand } from './site-materials';
+import { applyMaterialShareReply, hasMaterialShareReply } from './material-sharing';
 
 export function siteWatchIntent(text: string) {
   if (/[？?]|如果|假如|怎么|如何|是否|能否|意思|吗/.test(text)) return null;
@@ -73,9 +74,9 @@ export async function applySiteWatch(tx: PostgresTransaction, actor: ActorContex
   return true;
 }
 export const siteWatchInterceptor = {
-  matches(content: MessageContent, c: Row) { return !!materialCommand(safeText(content).trim()) || !!siteWatchIntent(safeText(content)) || !!(c.entry_snapshot as Row)?.siteWatchQuestion; },
+  matches(content: MessageContent, c: Row) { return !!materialCommand(safeText(content).trim()) || hasMaterialShareReply(safeText(content), c) || !!siteWatchIntent(safeText(content)) || !!(c.entry_snapshot as Row)?.siteWatchQuestion; },
   async apply(tx: PostgresTransaction, actor: ActorContext, c: Row, message: Row) {
-    return await applyMaterialCommand(tx, actor, c, message) || await applySiteWatch(tx, actor, c, message);
+    return await applyMaterialCommand(tx, actor, c, message) || await applyMaterialShareReply(tx, actor, c, message) || await applySiteWatch(tx, actor, c, message);
   },
 };
 export async function siteWatchProjection(tx: PostgresTransaction, eid: string, cid: string, mid: string) {

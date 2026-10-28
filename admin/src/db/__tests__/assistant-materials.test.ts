@@ -26,7 +26,8 @@ const layout = { version: 4, measurementMode: 'surveying', surveyGraph: { kind: 
   walls: [{ id: 'ab', startNodeId: 'a', endNodeId: 'b' }, { id: 'bc', startNodeId: 'b', endNodeId: 'c' }, { id: 'cd', startNodeId: 'c', endNodeId: 'd' }, { id: 'da', startNodeId: 'd', endNodeId: 'a' }],
   openings: [], spaces: [{ id: 'study', name: '书房', closed: true, wallIds: ['ab', 'bc', 'cd', 'da'] }],
 }] } };
-const output = (name: string, args: unknown): ModelTurnOutput => ({ text: '', toolCalls: [{ id: 'call-' + name, name, arguments: JSON.stringify(args) }],
+const output = (name: string, args: unknown): ModelTurnOutput => ({ text: '', toolCalls: [{ id: 'call-' + name, name, arguments: JSON.stringify(
+  name === 'record_need' ? { ...(args as Record<string, unknown>), additionalNeeds: [] } : args) }],
   usage: { inputTokens: 20, outputTokens: 20 }, finishReason: 'tool_calls', providerRequestId: null });
 before(async () => {
   const url = new URL(resolvePostgresRuntimeConfig().connectionString); assert.equal(url.port, '55432'); assert.equal(url.pathname, '/xiaok_embedding_eval');
