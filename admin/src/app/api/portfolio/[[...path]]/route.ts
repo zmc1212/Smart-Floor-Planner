@@ -3,6 +3,7 @@ import { withTenantRoute } from '@/lib/tenant-route';
 import { AssistantError, fail } from '@/lib/assistant/contracts';
 import { PortfolioService } from '@/lib/portfolio/service';
 import { PORTFOLIO_ROLES } from '@/lib/portfolio/contracts';
+import { PortfolioCopyService } from '@/lib/portfolio/copy-service';
 
 export const runtime = 'nodejs';
 type Context = { params: Promise<{ path?: string[] }> };
@@ -11,6 +12,7 @@ const fields: Record<string, string[]> = {
   newDraft: ['expectedVersion'], submit: ['expectedVersion'], publish: ['expectedVersion'], return: ['expectedVersion', 'note'], withdraw: ['expectedVersion'],
   saveProfile: ['expectedVersion', 'content'], bindCommunity: ['token', 'pageKey'], requestCommunity: ['content'],
   reviewCommunity: ['approve', 'note', 'existingCommunityId'], savePortrait: ['imageBase64', 'consent'],
+  createCopy: ['expectedVersion', 'instruction'], adoptCopy: ['expectedVersion', 'taskId'],
 };
 async function handle(request: NextRequest, context: Context) {
   return withTenantRoute(request, { roles: [...PORTFOLIO_ROLES], requireEnterprise: true }, async actor => {
@@ -23,6 +25,8 @@ async function handle(request: NextRequest, context: Context) {
         if (p.length === 2) action = method === 'GET' ? 'detail' : method === 'PATCH' ? 'save' : '';
         if (p.length === 3 && method === 'POST') action = ({ assets: 'upload', draft: 'newDraft', submit: 'submit', publish: 'publish', return: 'return', withdraw: 'withdraw' } as Record<string, string>)[p[2]] || '';
         if (p.length === 4 && p[2] === 'assets' && method === 'GET') { action = 'asset'; ids.assetId = p[3]; }
+        if (p.length === 3 && p[2] === 'copy-drafts') action = method === 'GET' ? 'latestCopy' : method === 'POST' ? 'createCopy' : '';
+        if (p.length === 3 && p[2] === 'adopt-copy' && method === 'POST') action = 'adoptCopy';
       } else if (p.length === 1 && p[0] === 'authors' && method === 'GET') action = 'authors';
       else if (p.length === 2 && p[0] === 'profiles') { action = method === 'GET' ? 'profile' : method === 'PUT' ? 'saveProfile' : ''; ids.authorId = p[1]; }
       else if (p.length === 3 && p[0] === 'profiles' && p[2] === 'portrait') {
@@ -49,8 +53,11 @@ async function handle(request: NextRequest, context: Context) {
         for (const [name, value] of request.nextUrl.searchParams) { if (!allowed.includes(name)) fail('invalid_portfolio', 422); body[name] = name === 'limit' ? Number(value) : value; }
       }
       const service = new PortfolioService({ enterpriseId: actor.enterpriseId!, adminId: actor.userId });
-      const result = action === 'providerSearch' ? await service.searchProvider(body) : await service.execute(action, { ...body, ...ids }, request.headers.get('idempotency-key') || undefined);
-      if (action === 'asset' || action === 'portrait') return new NextResponse(Buffer.from(String(result.image_base64), 'base64'), { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' } });
+      const copy = new PortfolioCopyService(service.actor);
+      const result = action === 'latestCopy' ? await copy.latest(String(ids.workId))
+        : action === 'createCopy' ? await copy.create(String(ids.workId), body, request.headers.get('idempotency-key') || '')
+        : action === 'providerSearch' ? await service.searchProvider(body) : await service.execute(action, { ...body, ...ids }, request.headers.get('idempotency-key') || undefined);
+      if (action === 'asset' || action === 'portrait') return new NextResponse(Buffer.from(String((result as Record<string, unknown>).image_base64), 'base64'), { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' } });
       return NextResponse.json({ success: true, data: result }, { headers: { 'Cache-Control': 'no-store' } });
     } catch (error) {
       return NextResponse.json({ success: false, error: error instanceof AssistantError ? error.code : 'portfolio_unavailable' }, { status: error instanceof AssistantError ? error.status : 503, headers: { 'Cache-Control': 'no-store' } });

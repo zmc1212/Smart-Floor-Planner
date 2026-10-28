@@ -10,6 +10,7 @@ import type { WorkContent, WorkImage } from '@/lib/portfolio/contracts';
 import { LAYOUT_OPTIONS, SPACE_OPTIONS, STYLE_OPTIONS } from '@/lib/portfolio/options';
 import { CITY_OPTIONS, cityNameFor, districtOptions } from '@/lib/portfolio/regions';
 import { CommunityPicker } from './community-picker';
+import { CopyAssistant } from './copy-assistant';
 import { PortfolioMutations, assetUrl, errorText, portfolioRequest, statusLabels, type WorkDetail, type Author } from './client';
 
 function inputDate(value: string | null) { if (!value) return ''; const d = new Date(value); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); }
@@ -23,6 +24,7 @@ export function WorkEditor({ workId }: { workId: string }) {
   const [detail, setDetail] = useState<WorkDetail | null>(null), [authors, setAuthors] = useState<Author[]>([]), [error, setError] = useState('');
   const [loading, setLoading] = useState(true), [busy, setBusy] = useState(''), [binding, setBinding] = useState(false), [group, setGroup] = useState('render');
   const [returnOpen, setReturnOpen] = useState(false), [note, setNote] = useState('');
+  const [unsaved, setUnsaved] = useState(false);
   const mutations = useRef(new PortfolioMutations());
   const values = Form.useWatch([], { form, preserve: true }) as WorkContent | undefined, images = values?.images || [];
   const city = Form.useWatch('cityCode', form) || '', cityName = Form.useWatch('cityName', form) || '';
@@ -31,7 +33,7 @@ export function WorkEditor({ workId }: { workId: string }) {
     setLoading(true); setError('');
     try {
       const [next, staff] = await Promise.all([portfolioRequest<WorkDetail>('works/' + workId), portfolioRequest<{ items: Author[] }>('authors')]);
-      setDetail(next); setAuthors(staff.items); form.setFieldsValue({ ...next.head.content, rightsUntil: inputDate(next.head.content.rightsUntil) });
+      setDetail(next); setAuthors(staff.items); form.setFieldsValue({ ...next.head.content, rightsUntil: inputDate(next.head.content.rightsUntil) }); setUnsaved(false);
     } catch (e) { setError(errorText(e)); } finally { setLoading(false); }
   }, [form, workId]);
   useEffect(() => { void load(); }, [load]);
@@ -50,6 +52,7 @@ export function WorkEditor({ workId }: { workId: string }) {
     } catch (e) { notify.error('操作失败', { description: errorText(e) }); } finally { setBusy(''); }
   };
   const updateImages = (next: WorkImage[]) => {
+    setUnsaved(true);
     form.setFieldValue('images', next);
     if (!next.some(i => i.assetId === form.getFieldValue('coverAssetId'))) form.setFieldValue('coverAssetId', next[0]?.assetId || null);
   };
@@ -68,7 +71,7 @@ export function WorkEditor({ workId }: { workId: string }) {
     {detail.head.review_note && <Alert type="warning" showIcon message="审核退回" description={detail.head.review_note} style={{ marginBottom: 16 }} />}
     {detail.work.published_version_id && detail.head.status !== 'published' && !detail.work.withdrawn && <Alert type="info" showIcon message="正在编辑新版本，原公开版本继续有效；新版本审核通过后替换。" style={{ marginBottom: 16 }} />}
     <Row gutter={[20, 20]} align="top"><Col xs={24} xl={17}>
-      <Form form={form} layout="vertical" disabled={!editable || !!busy || binding} onValuesChange={changed => { if ('cityCode' in changed) form.setFieldsValue({ cityName: cityNameFor(changed.cityCode || ''), district: '', communityId: null }); }}>
+      <Form form={form} layout="vertical" disabled={!editable || !!busy || binding} onValuesChange={changed => { setUnsaved(true); if ('cityCode' in changed) form.setFieldsValue({ cityName: cityNameFor(changed.cityCode || ''), district: '', communityId: null }); }}>
         <Card title="基本信息" extra={<Tag color={label === 'submitted' ? 'gold' : label === 'published' ? 'green' : 'default'}>{statusLabels[label]}</Tag>}>
           <Typography.Paragraph type="secondary">{detail.work.kind === 'enterprise_reference' ? '企业授权参考 · 保留原始作者及出处，不计入设计师原创作品集' : `作者：${author?.display_name || '当前作者不可用'} · ${author?.professional_title || '设计师'}（${values?.authorRole || '请注明主创或合作角色'}）`}</Typography.Paragraph>
           <Form.Item name="title" label="作品名称"><Input maxLength={50} showCount /></Form.Item>
@@ -88,7 +91,7 @@ export function WorkEditor({ workId }: { workId: string }) {
             {images.filter(i => i.kind === group).map(item => <Col key={item.assetId} xs={24} sm={12} lg={8}>
               <Image src={assetUrl(workId, item.assetId)} alt={item.caption || (item.kind === 'render' ? '效果图' : '实拍图')} width="100%" style={{ aspectRatio: '4 / 3', objectFit: 'cover', borderRadius: 8 }} />
               <Space direction="vertical" size={6} style={{ width: '100%' }}>
-                <Checkbox checked={values?.coverAssetId === item.assetId} onChange={() => form.setFieldValue('coverAssetId', item.assetId)}>设为封面</Checkbox>
+                <Checkbox checked={values?.coverAssetId === item.assetId} onChange={() => { setUnsaved(true); form.setFieldValue('coverAssetId', item.assetId); }}>设为封面</Checkbox>
                 <Checkbox checked={item.kind === 'render' ? item.aiGenerated : item.showroom} onChange={e => updateImages(images.map(i => i.assetId === item.assetId ? { ...i, [item.kind === 'render' ? 'aiGenerated' : 'showroom']: e.target.checked } : i))}>{item.kind === 'render' ? 'AI生成效果图' : '样板间实拍'}</Checkbox>
                 <Select aria-label="图片空间" value={item.space || ''} options={[{ value: '', label: '未标注空间' }, ...SPACE_OPTIONS.map(value => ({ value, label: value }))]} onChange={space => updateImages(images.map(i => i.assetId === item.assetId ? { ...i, space } : i))} />
                 <Input value={item.caption} maxLength={100} placeholder="图片说明（可选）" onChange={e => updateImages(images.map(i => i.assetId === item.assetId ? { ...i, caption: e.target.value } : i))} />
@@ -155,6 +158,7 @@ export function WorkEditor({ workId }: { workId: string }) {
         <Divider /><Typography.Paragraph type="secondary">公开内容不包含业主姓名、门牌和授权凭据。请在上传前核对图片及说明中的私人信息。</Typography.Paragraph>
         <Typography.Text type="secondary">客户主页与小K推荐读取同一份已发布内容，仍会再次核对作者、版本与许可期限。</Typography.Text>
       </Card>
+      <CopyAssistant workId={workId} version={detail.work.version} editable={editable} disabled={!!busy || binding || unsaved} onAdopt={load} />
       {detail.manager && <Card title="发布检查" style={{ marginTop: 20 }}>
         <Space direction="vertical" style={{ width: '100%' }}><Typography.Text>图片：效果图 {images.filter(i => i.kind === 'render').length} · 实拍图 {images.filter(i => i.kind === 'photo').length}</Typography.Text>
           <Typography.Text>许可凭据：{values?.authorization ? '已填写，需人工核对' : '待补充'}</Typography.Text><Typography.Text>小区：{values?.communityId ? '已选择标准记录' : '暂未绑定（不阻塞发布）'}</Typography.Text>

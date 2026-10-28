@@ -7,6 +7,7 @@ import { deliverSiteNotifications } from '@/lib/construction/site-publications';
 import { deliverPublicConsents } from '@/lib/construction/public-projections';
 import { workerRuntimeSnapshot } from '@/lib/assistant/operations';
 import { advanceKnowledgeBatches } from '@/lib/assistant/knowledge/batch-worker';
+import { processPortfolioCopy } from '@/lib/portfolio/copy-service';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 180;
 export async function GET(request: Request) {
@@ -23,7 +24,8 @@ export async function POST(request: Request) {
     }
     const knowledgeBatchChecks=await advanceKnowledgeBatches();
     const data = await processAssistantJob(processAssistantRun), inAppDeliveries = await deliverSiteNotifications() + await deliverPublicConsents();
-    return NextResponse.json({ success: true, data: { ...data, claimed: data.claimed || inAppDeliveries > 0, inAppDeliveries, knowledgeBatchChecks }, requestId });
+    const portfolioCopyClaimed = data.claimed ? false : await processPortfolioCopy();
+    return NextResponse.json({ success: true, data: { ...data, claimed: data.claimed || portfolioCopyClaimed || inAppDeliveries > 0, portfolioCopyClaimed, inAppDeliveries, knowledgeBatchChecks }, requestId });
   } catch {
     return NextResponse.json({ success: false, code: 'assistant_unavailable', requestId }, { status: 503 });
   }

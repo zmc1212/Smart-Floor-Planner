@@ -10,6 +10,8 @@ import { candidateToken, readCandidate, type CommunityPoi, type CommunityProvide
 import { getCommunityRuntimeConfig } from '@/lib/map-services/config';
 import { createCommunityProvider, type CommunityProvider } from '@/lib/map-services/providers';
 import { publicProfessionalForRow } from './public-query';
+import { assertCopyCurrent, copyWork } from './copy-service';
+import { copySource, type PortfolioCopy } from './copy-contract';
 
 export type PortfolioActor = { enterpriseId: string; adminId: string };
 export async function portfolioAccess(tx: PostgresTransaction, actor: PortfolioActor) {
@@ -245,7 +247,19 @@ export class PortfolioService {
           return { id: wid, version: Number(w.version) + 1 };
         }
         let content = workContent(v.content);
-        if (action === 'save') {
+        if (action === 'adoptCopy') {
+          if (!['draft', 'returned'].includes(String(v.status))) fail('portfolio_draft_required');
+          const task = await one(tx, sql`select * from app.assistant_model_tasks where enterprise_id=${eid} and created_by=${a.adminId}
+            and id=${id(input.taskId)} and kind='portfolio_copy' for update`);
+          if (!task || task.state !== 'completed' || (task.request as Row).workId !== wid || !(task.result as Row)?.output) fail('portfolio_copy_stale', 409);
+          assertCopyCurrent(task, await copyWork(tx, a, wid), true);
+          const output = (task.result as { output: PortfolioCopy }).output;
+          content = workContent({ ...content, title: output.title, description: output.description });
+          await validateContent(tx, eid, wid, content);
+          await tx.execute(sql`update app.portfolio_versions set content=${JSON.stringify(content)}::jsonb,status='draft',review_note='' where enterprise_id=${eid} and id=${String(v.id)}`);
+          await tx.execute(sql`update app.assistant_model_tasks set result=${JSON.stringify({ output, adoptedHash: copySource(content, w) })}::jsonb,version=version+1,updated_at=now()
+            where enterprise_id=${eid} and id=${String(task.id)}`);
+        } else if (action === 'save') {
           if (!['draft', 'returned'].includes(String(v.status))) fail('portfolio_draft_required');
           content = workContent(input.content); await validateContent(tx, eid, wid, content);
           await tx.execute(sql`update app.portfolio_versions set content=${JSON.stringify(content)}::jsonb,status='draft',review_note='' where enterprise_id=${eid} and id=${String(v.id)}`);
@@ -268,7 +282,7 @@ export class PortfolioService {
           await tx.execute(sql`update app.portfolio_works set withdrawn=true where enterprise_id=${eid} and id=${wid}`);
         } else return fail('portfolio_not_found', 404);
         await tx.execute(sql`update app.portfolio_works set version=version+1,updated_at=now(),updated_by=${a.adminId} where enterprise_id=${eid} and id=${wid}`);
-        await tx.execute(sql`insert into app.portfolio_audits(enterprise_id,work_id,version_id,actor_id,action,note) values(${eid},${wid},${String(action === 'withdraw' ? w.published_version_id : v.id)},${a.adminId},${action},${shortText(input.note ?? '', 500)})`);
+        await tx.execute(sql`insert into app.portfolio_audits(enterprise_id,work_id,version_id,actor_id,action,note) values(${eid},${wid},${String(action === 'withdraw' ? w.published_version_id : v.id)},${a.adminId},${action},${action === 'adoptCopy' ? 'copy-task:' + id(input.taskId) : shortText(input.note ?? '', 500)})`);
         return { id: wid, version: Number(w.version) + 1 };
       };
       if (read) return run();
@@ -278,6 +292,12 @@ export class PortfolioService {
       // Permission is rechecked above; resource access is checked again even for a retried operation.
       if (input.workId) {
         if (!await one(tx, sql`select id from app.portfolio_works where enterprise_id=${eid} and id=${id(input.workId)} ${manager ? sql`` : sql`and author_id=${a.adminId} and kind='designer_work'`}`)) fail('portfolio_not_found', 404);
+        if (action === 'adoptCopy') {
+          const current = await copyWork(tx, a, String(input.workId));
+          const task = await one(tx, sql`select * from app.assistant_model_tasks where enterprise_id=${eid} and created_by=${a.adminId} and id=${id(input.taskId)} and kind='portfolio_copy'`);
+          if (!task || (task.request as Row).workId !== String(input.workId)) fail('portfolio_copy_stale', 409);
+          assertCopyCurrent(task, current);
+        }
       }
       return idempotent(tx, actor, 'portfolio:' + action, requestKey!, input, run);
     });

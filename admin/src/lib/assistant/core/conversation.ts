@@ -21,6 +21,7 @@ import { contentEntrySource, contentGreeting, type ContentEntry } from '../knowl
 import { syncConstructionReminders } from '@/lib/construction/reminders';
 import { currentConstructionContact } from '@/lib/construction/customer';
 import { runUsageReconciled, unresolvedProviderOutcome } from './usage-review';
+import { portfolioCopyBudget } from './model-task-budget';
 
 export const reserveTokens = 12000;
 export const reserveCostMicros = 1000000;
@@ -120,8 +121,9 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
     coalesce(sum(case when status='settled' then coalesce(settled_cost_micros,reserved_cost_micros) else reserved_cost_micros end),0) cost
     from app.assistant_quota_reservations where enterprise_id=${actor.enterpriseId} and status!='released'
     and (budget_date=(now() at time zone 'UTC')::date or status in ('held','reconciling'))`))!;
-  if (Number(budget.requests) + 1 > Number(settings.daily_requests) || BigInt(String(budget.tokens)) + BigInt(tokenReservation) > BigInt(String(settings.daily_tokens))
-      || BigInt(String(budget.cost)) + BigInt(costReservation) > BigInt(String(settings.daily_cost_micros))) fail('assistant_quota_exceeded', 429);
+  const copyBudget = await portfolioCopyBudget(tx, actor.enterpriseId);
+  if (Number(budget.requests) + Number(copyBudget.requests) + 1 > Number(settings.daily_requests) || BigInt(String(budget.tokens)) + BigInt(String(copyBudget.tokens)) + BigInt(tokenReservation) > BigInt(String(settings.daily_tokens))
+      || BigInt(String(budget.cost)) + BigInt(String(copyBudget.cost)) + BigInt(costReservation) > BigInt(String(settings.daily_cost_micros))) fail('assistant_quota_exceeded', 429);
   const r = (await one(tx, sql`insert into app.assistant_runs(enterprise_id,conversation_id,trigger_kind,trigger_message_id,trigger_event_id,trigger_schedule_key,purpose,retry_of_run_id,policy_snapshot,context_revision,knowledge_epoch)
     values(${actor.enterpriseId},${String(c.id)},${trigger.kind},${trigger.kind === 'user_message' ? trigger.messageId : null},
     ${trigger.kind === 'domain_event' ? trigger.eventId : null},${trigger.kind === 'scheduled_task' ? trigger.occurrenceKey : null},${purpose},
