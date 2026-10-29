@@ -63,7 +63,9 @@ test('customer Service workspace mounts stage companion instead of staff workben
     indexJson.usingComponents['customer-service-home'],
     '/components/customer-service-home/customer-service-home'
   );
-  assert.match(indexWxml, /<customer-service-home wx:if="\{\{roleWorkbenchRole === 'customer'\}\}"\s*\/>/);
+  assert.match(indexWxml, /<customer-service-home wx:if="\{\{customerTab === 'service'\}\}"\s*\/>/);
+  assert.equal(indexJson.componentPlaceholder['xiaok-chat'], 'view');
+  assert.match(indexWxml, /<xiaok-chat[^>]*active="\{\{customerTab === 'xiaok'\}\}"/);
   assert.match(indexWxml, /<role-workbench wx:elif="\{\{roleWorkbenchRole\}\}"[^>]*focus="overview"/);
   assert.doesNotMatch(indexJs, /customer-projects\/customer-projects/);
   assert.match(companion, /['"`]\/miniprogram\/customer-projects['"`]/);

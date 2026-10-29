@@ -20,6 +20,7 @@ export type DesignerCard = {
   work: {
     id: string; versionId: string; title: string; coverAssetId: string; primaryStyle: string; secondaryStyles: string[];
     layoutTypes: string[]; cityName: string; district: string; communityName: string; tourCount: number;
+    area?: number | null; rooms?: string;
   };
   reason: string; match: string;
 };
@@ -64,6 +65,7 @@ function card(candidate: Candidate, reason: string, match: string): DesignerCard
       primaryStyle: candidate.work.primaryStyle, secondaryStyles: candidate.work.secondaryStyles, layoutTypes: candidate.work.layoutTypes,
       cityName: candidate.work.cityName, district: candidate.work.district, communityName: candidate.work.community?.name || '',
       tourCount: candidate.content.tours.length,
+      area: candidate.content.area, rooms: candidate.content.rooms,
     },
     reason, match,
   };

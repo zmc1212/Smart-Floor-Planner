@@ -17,6 +17,7 @@ import { customerPublicHttp } from '@/lib/construction/public-http';
 import { customerPlanHttp } from '@/lib/construction/plan-http';
 import { parseWebCitationId } from '../agent/web-evidence';
 import { LocationService } from '../location/service';
+import { FloorplanContextService } from '../media/floorplan-context';
 
 function only(body: Record<string, unknown>, allowed: string[]) {
   if (Object.keys(body).some(k => !allowed.includes(k))) fail('invalid_message', 422);
@@ -26,6 +27,23 @@ export async function assistantHttp(request: Request, path: string[]) {
   const requestId = randomUUID();
   try {
     const identity = await customerIdentity(request);
+    if (path[0] === 'conversations' && path[2] === 'floorplan-context' && path.length === 3) {
+      const cid = id(path[1]), params = new URL(request.url).searchParams;
+      const service = new FloorplanContextService(await locate(identity, 'conversation', cid), cid);
+      let data: unknown;
+      if (request.method === 'GET') {
+        if (!params.size) data = await service.read();
+        else {
+          if ([...params.keys()].some(k => !['leadId','floorPlanId','layoutHash'].includes(k)) || params.size !== 3) fail('invalid_message', 422);
+          data = await service.detail(id(params.get('leadId')), id(params.get('floorPlanId')), String(params.get('layoutHash')));
+        }
+      } else if (request.method === 'POST' && !params.size) {
+        const raw = await request.text(); if (raw.length > 1024) fail('invalid_message', 422);
+        let body: unknown; try { body = JSON.parse(raw); } catch { return fail('invalid_message', 422); }
+        data = await service.select(key(request.headers.get('Idempotency-Key')), body);
+      } else fail('assistant_resource_not_found', 404);
+      return NextResponse.json({ success: true, data, requestId }, { headers: { 'Cache-Control': 'no-store' } });
+    }
     if (path[0] === 'conversations' && path[2] === 'speech') {
       const cid = id(path[1]);
       return await speechHttp(request, await locate(identity, 'conversation', cid), { kind: 'consultation', id: cid }, path.slice(3));

@@ -6,8 +6,9 @@ const { roleForIdentity } = require('../utils/identity-navigation.js');
 // Only expose destinations with an executable route and a matching server capability.
 const ROLE_ITEMS = {
   customer: [
-    { key: 'service', capability: 'customer.service', pagePath: '/pages/index/index', text: '服务', tab: true, iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
-    { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true, iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
+    { key: 'xiaok', capability: 'customer.service', pagePath: '/pages/index/index', customerView: 'xiaok', text: '小K', tab: true },
+    { key: 'service', capability: 'customer.service', pagePath: '/pages/index/index', customerView: 'service', text: '服务', tab: true },
+    { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true }
   ],
   referrer: [
     { key: 'promotion', capability: 'referrer.promotion', pagePath: '/packages/business/referrer-workbench/referrer-workbench', text: '推广', iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
@@ -70,8 +71,7 @@ function visibleItems(globalData) {
       .filter((item) => !capabilities.length || capabilities.includes(item.capability))
       .map((item) => ({ ...item, visible: true }));
   }
-  // Visitors browse the customer Service tab first. Login stays on Mine.
-  // Do not fall back to legacy staff tabs while a session is absent or invalid.
+  // Guests use customer navigation; professional tabs stay role scoped.
   return ROLE_ITEMS.customer.map((item) => ({ ...item, visible: true }));
 }
 
@@ -95,6 +95,7 @@ Component({
   data: {
     selected: 0,
     suppressed: false,
+    customerNavigation: false, keyboardHidden: false,
     compactMeasureTab: true,
     badgeUnavailable: false,
     badgeUnavailableText: '',
@@ -176,10 +177,13 @@ Component({
       const list = decorated.list;
       const pages = getCurrentPages();
       const current = pages && pages.length ? `/${pages[pages.length - 1].route}` : '';
-      const index = list.findIndex((item) => item.pagePath === current && !item.center);
+      const customerNavigation = ['customer', null].includes(currentRole(globalData));
+      const customerView = globalData.customerTab || 'xiaok';
+      const index = list.findIndex((item) => item.pagePath === current && !item.center && (!item.customerView || item.customerView === customerView));
       this.setData({
         list,
-        suppressed: list.length === 0,
+        customerNavigation,
+        suppressed: list.length === 0 || customerNavigation,
         compactMeasureTab: list.some((item) => item.center) && list.filter((item) => item.visible).length === 4,
         selected: index >= 0 && list[index].visible ? index : this.data.selected,
         badgeUnavailable: decorated.badgeUnavailable,

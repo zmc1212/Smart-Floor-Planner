@@ -203,6 +203,8 @@ function designerRecommendationForView(value) {
         primaryStyle: portfolioText(work.primaryStyle, 20), secondaryStyles: portfolioList(work.secondaryStyles, 3, 20),
         layoutTypes: portfolioList(work.layoutTypes, 3, 20), cityName: portfolioText(work.cityName, 20), district: portfolioText(work.district, 20),
         communityName: portfolioText(work.communityName, 60),
+        areaLabel: typeof work.area === 'number' && Number.isFinite(work.area) && work.area > 0 ? work.area + '㎡' : '',
+        rooms: portfolioText(work.rooms, 30),
         tourCount: Number.isInteger(work.tourCount) ? Math.max(0, Math.min(3, work.tourCount)) : 0,
       },
       reason: portfolioText(card.reason, 120), match: portfolioText(card.match, 60),
@@ -212,7 +214,7 @@ function designerRecommendationForView(value) {
 }
 function latestDesignerCard(items) {
   let latest = null;
-  for (const message of items || []) if (message.authorKind === 'assistant' && !message.isUser) latest = message;
+  for (const message of items || []) if (message.authorKind === 'assistant' && !message.isUser && message.available !== false && message.designerRecommendation?.items?.length) latest = message;
   return latest && latest.designerRecommendation && latest.designerRecommendation.items.length ? latest : null;
 }
 

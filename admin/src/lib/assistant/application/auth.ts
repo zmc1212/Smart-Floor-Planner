@@ -81,6 +81,19 @@ export async function entryContext(identity: Identity, body: Record<string, unkn
     if (!resolved) fail('entry_context_invalid', 422);
     enterpriseId = resolved.enterpriseId; basis = { kind: resolved.kind, id: resolved.id };
   }
+  // The default XiaoK Tab has no lead query. Recover only an unambiguous live
+  // enterprise already belonging to this customer; never choose the latest
+  // tenant or turn a public entry into a customer/project grant.
+  if (!enterpriseId && !Object.keys(body).length) {
+    const existing = await withPlatformTransaction(tx => rows<{ enterprise_id: string }>(tx, sql`
+      select distinct scope.enterprise_id::text from (
+        select l.enterprise_id from app.leads l where l.customer_user_id=${identity.userId} and l.archived_at is null
+        union select c.enterprise_id from app.assistant_conversations c join app.assistant_participants p
+          on p.enterprise_id=c.enterprise_id and p.conversation_id=c.id where p.user_id=${identity.userId} and p.status='active'
+          and c.purpose='customer_consultation' and c.status='open' and not coalesce((c.entry_snapshot->>'retentionRedacted')::boolean,false)
+      ) scope join app.enterprises e on e.id=scope.enterprise_id and e.status='active' limit 2`));
+    if (existing.length === 1) enterpriseId = existing[0].enterprise_id;
+  }
   if (!enterpriseId) fail('entry_context_invalid', 422);
   const actor = actorFor(identity, enterpriseId, basis);
   const { enterprise, settings, reference, resumeConversationId } = await withTenantTransaction(enterpriseId, async tx => {
@@ -94,10 +107,10 @@ export async function entryContext(identity: Identity, body: Record<string, unkn
     }
     // A public company entry conveys no project/customer grant. Resume only the
     // visitor's own unambiguous open consultation; otherwise leave history choice explicit.
-    const ids = body.publicEnterpriseId ? await rows<{id:string}>(tx, sql`select c.id::text from app.assistant_conversations c
+    const ids = body.publicEnterpriseId || !Object.keys(body).length ? await rows<{id:string}>(tx, sql`select c.id::text from app.assistant_conversations c
       join app.assistant_participants p on p.enterprise_id=c.enterprise_id and p.conversation_id=c.id
       where c.enterprise_id=${enterpriseId!} and c.purpose='customer_consultation' and c.status='open'
-        and p.user_id=${identity.userId} and p.status='active' order by c.id desc limit 2`) : [];
+        and p.user_id=${identity.userId} and p.status='active' and not coalesce((c.entry_snapshot->>'retentionRedacted')::boolean,false) order by c.id desc limit 2`) : [];
     return { enterprise, settings, reference, resumeConversationId: ids.length === 1 ? ids[0].id : null };
   });
   const guidance = configuredGuidance(settings?.guidance_config);

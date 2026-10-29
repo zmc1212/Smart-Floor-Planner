@@ -14,6 +14,7 @@ import { queryMaterials, materialSnapshotAvailable, parseMaterialQuery, type Mat
 import { fingerprint, type ActorContext } from '@/lib/assistant/contracts';
 import type { ModelTurnOutput } from '@/lib/assistant/contracts/model';
 import { HandoffService } from '@/lib/assistant/handoff/service';
+import { FloorplanContextService } from '@/lib/assistant/media/floorplan-context';
 import { agentPromptVersion } from '@/lib/assistant/agent/context';
 import { getPlatformLlmRuntimeConfig, savePlatformLlmConfig } from '@/lib/platform-llm-config';
 
@@ -59,7 +60,7 @@ after(async () => {
     for (const uid of users) await tx.execute(sql`delete from app.users where id=${uid}`);
   }); } finally { try { if (priorProvider) await savePlatformLlmConfig(priorProvider); } finally { await closePostgresPool(); } }
 });
-async function fixture() {
+async function fixture(selectPlan = true) {
   const eid = tenants[0];
   const uid = await withPlatformTransaction(async tx => {
     const id = String((await one(tx, sql`insert into app.users(nickname,context_version) values(${prefix},1) returning id`))!.id); users.push(id);
@@ -75,6 +76,9 @@ async function fixture() {
   });
   const actor: ActorContext = { enterpriseId: eid, principal: { kind: 'user', userId: uid }, contextVersion: 1, capabilities: ['assistant.chat.self'], entry: { kind: 'lead', id: leadId } };
   const chat = new ConversationService(actor), cid = String((await chat.create(randomUUID())).id);
+  if (selectPlan) await new FloorplanContextService(actor, cid).select(randomUUID(), {
+    expectedVersion: 0, selection: { leadId, floorPlanId: planId, layoutHash: fingerprint(layout) },
+  });
   const query = (room = '书房', target = '') => withTenantTransaction(eid, tx => queryMaterials(tx, actor, cid, { leadId: target, room }));
   const send = async (text: string, model?: NonNullable<Parameters<typeof processAgentAnswer>[1]>['model']) => {
     const sent = await chat.send(cid, randomUUID(), { version: 1, blocks: [{ type: 'text', text }] });
@@ -87,6 +91,17 @@ async function fixture() {
   };
   return { eid, uid, actor, chat, cid, leadId, planId, lead, query, send, save };
 }
+
+test('an owned formal archive stays out of materials until explicitly selected', async () => {
+  const f = await fixture(false);
+  assert.equal((await new FloorplanContextService(f.actor, f.cid).read()).selected, null);
+  const unselected = await f.query();
+  assert.equal(unselected.data.sources.filter(s => s.ref.type === 'formal_floorplan').length, 0);
+  await new FloorplanContextService(f.actor, f.cid).select(randomUUID(), {
+    expectedVersion: 0, selection: { leadId: f.leadId, floorPlanId: f.planId, layoutHash: fingerprint(layout) },
+  });
+  assert.equal((await f.query()).data.sources.filter(s => s.ref.type === 'formal_floorplan').length, 1);
+});
 
 test('PPT15/23 tools allow paraphrased read requests and reject guessed or injected identity arguments', () => {
   assert.ok(agentToolsForMessage('把这些依据对在一起', true).some(t => t.name === 'query_materials'));
@@ -132,6 +147,11 @@ test('XK03 repeated room names across floors require clarification and an absent
   const missing = await x.query('儿童房'); assert.equal(missing.data.sources.length, 0); assert.match(missing.displayText, /含该房间/);
   const duplicate = { ...layout, surveyGraph: { ...layout.surveyGraph, floors: [...layout.surveyGraph.floors, { ...layout.surveyGraph.floors[0], id: 'f2', name: '二层' }] } };
   await withTenantTransaction(x.eid, tx => tx.execute(sql`update app.floor_plans set layout_data=${JSON.stringify(duplicate)}::jsonb where enterprise_id=${x.eid} and id=${x.planId}`));
+  const invalidated = await new FloorplanContextService(x.actor, x.cid).read();
+  assert.equal(invalidated.invalidated, true); assert.equal(invalidated.selected, null);
+  await new FloorplanContextService(x.actor, x.cid).select(randomUUID(), {
+    expectedVersion: invalidated.version, selection: { leadId: x.leadId, floorPlanId: x.planId, layoutHash: fingerprint(duplicate) },
+  });
   const result = await x.query(); assert.equal(result.data.resolution, 'clarification'); assert.equal(result.data.sources.length, 0); assert.match(result.displayText, /重名/);
 });
 test('XK07/08 a changed plan invalidates saved references, derived history and a late model reply', async () => {

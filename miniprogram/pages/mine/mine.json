@@ -3,5 +3,10 @@
   "navigationBarTextStyle": "black",
   "navigationBarBackgroundColor": "#f7f8fa",
   "navigationStyle": "custom",
-  "usingComponents": {}
+  "usingComponents": {
+    "customer-nav": "/packages/assistant/navigation/customer-navigation"
+  },
+  "componentPlaceholder": {
+    "customer-nav": "view"
+  }
 }

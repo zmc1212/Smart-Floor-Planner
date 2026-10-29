@@ -40,7 +40,7 @@ function loadTabBarComponent(globalData) {
   };
 }
 
-test('unsigned visitors reuse the customer Service/Mine TabBar', () => {
+test('unsigned visitors reuse the customer XiaoK/Service/Mine navigation', () => {
   const globalData = {
     userInfo: null,
     bootstrap: null
@@ -56,10 +56,11 @@ test('unsigned visitors reuse the customer Service/Mine TabBar', () => {
     };
 
     definition.methods.syncSelected.call(component);
-    assert.deepEqual(component.data.list.map((item) => item.key), ['service', 'mine']);
+    assert.deepEqual(component.data.list.map((item) => item.key), ['xiaok', 'service', 'mine']);
     assert.equal(component.data.list[0].pagePath, '/pages/index/index');
-    assert.equal(component.data.list[1].pagePath, '/pages/mine/mine');
-    assert.equal(component.data.suppressed, false);
+    assert.equal(component.data.list[2].pagePath, '/pages/mine/mine');
+    assert.equal(component.data.suppressed, true);
+    assert.equal(component.data.customerNavigation, true);
     assert.equal(component.data.badgeUnavailable, false);
   } finally {
     restore();
@@ -80,7 +81,7 @@ test('custom TabBar uses the signed bootstrap role instead of the legacy staff s
     };
 
     definition.methods.syncSelected.call(component);
-    assert.deepEqual(component.data.list.map((item) => item.key), ['service', 'mine']);
+    assert.deepEqual(component.data.list.map((item) => item.key), ['xiaok', 'service', 'mine']);
     assert.equal(component.data.list.some((item) => item.key === 'measure'), false);
     assert.equal(component.data.list.some((item) => item.key === 'leads'), false);
 

@@ -36,7 +36,7 @@ test('shared case is a single explicit chat entry and native forwarding never ex
   try{
     global.Page=value=>{page=value;};delete require.cache[require.resolve('../packages/assistant/chat/chat.js')];require('../packages/assistant/chat/chat.js');
     const shared=page.onShareAppMessage.call({data:{shareReferenceEntry:'signed-reference',conversation:{id:'private-id'},mediaPaths:{'1':'private.jpg'}}});
-    assert.equal(shared.path,'/packages/assistant/chat/chat?referenceEntry=signed-reference');assert.equal(shared.imageUrl,'/packages/assistant/assets/xiaok-consultation.png');
+    assert.equal(shared.path,'/packages/assistant/chat/chat?referenceEntry=signed-reference');assert.equal(shared.imageUrl,'/packages/assistant/assets/chat-notebook-mascot.png');
     assert.equal(page.onShareAppMessage.call({data:{conversation:{id:'private-id'}}}).path,'/pages/index/index');
   }finally{global.Page=previous;}
 });

@@ -1,5 +1,19 @@
 # 小K第二期：需求整理与人工交接
 
+<!-- xiaok-notebook-ui-current:start -->
+## 当前手账聊天与显式户型范围（2026-10-30）
+
+**获批UI范围内为Implemented；Agent整体仍Limited。** 客户根入口 `pages/index/index` 默认小K，另保留服务／我的两个逻辑Tab；原五个注册Tab及专业角色导航沿既有权限。异步 `chat-panel` 与旧 `packages/assistant/chat/chat` 共用聊天定义和控制器，切Tab保留会话、草稿和户型选择。`pages/mine/mine`仅变更客户导航，其账号主体及专业工作台仍沿既有设计源。
+
+当前设计权威为[手账设计与逐元素台账](../design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/README.md)；活动目录 `design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/` 包含01–04主变体及05–11生成／停止／失败／人工等待、探索入口、公开工地与设计师结果补稿。纸页、装订、字排、照片装裱与控件用原生结构／Less实现；欢迎角色和叶片为两张独立生成的透明PNG，没有设计图切片。工地照片、阶段／区域、作者和作品参数沿原获权投影；查看工地、作品、设计师主页分别走原路由。加载、无结果、定位拒绝、失败和撤回沿共用状态规则；未完成回答及人工接待不露探索入口，不虚构距离、认证、预约或完成状态。
+
+`GET/POST /api/miniprogram/assistant/conversations/:id/floorplan-context` 实现默认**不结合档案**。GET只列本人当前正式v4主户型，或按精确版本只读详情；浏览不选择。POST必须带 `expectedVersion` 及显式 `selection`（leadId/floorPlanId/layoutHash）或null，复用原幂等账本，将 `floorplanContext` 存于 `entry_snapshot`，不新增表或迁移。选择按客户／企业／会话／版本隔离，不授予权限；忙碌／人工／关闭及费用未核对任务拒绝写入，回执丢失沿同键核对。重进及materials/business两条读路径重验实时所有权、主图关系和layout hash；失效选择清除并停止正式户型注入。用户原话和自行发送图片仍沿原来源规则。根入口仅从该客户已有线索／本人开放咨询中解析唯一企业；多企业时不自动选最新。
+
+证据 `tmp/xiaok-chat-restoration-20261029/final-checks.json`：原生 `attempt-14-less-invalidation` 12项／16张应用截图＋宿主截图，最终定向 `attempt-16-bound-final` 5项／5张截图（重复范围保留）。Stable2.02.2608080／基础库3.17.2、390×844逻辑／348×752编码、单副屏窗口／控制器，真实隔离HTTP／数据库写入及认证媒体，清理和源码绑定均保留。早期Less缓存／卡片错排截图为失败视觉证据；最终校验真实卡片display／照片尺寸并审看宿主胶囊。Mini定向161/161、后端单元8/8、资料兼容7通过／1项实模跳过；Mini全量2053/2054，保留既有surveying Phase0审计不一致。源码lint为0错误／27项既有警告，受影响lint通过；类型仍56项既有诊断／受影响0。隔离webpack编译通过且配置恢复、drift[]；仅该验证进程关闭standalone复制，不声称干净产品构建。验收业务Agent／供应商调用均0；设计使用内置ImageGen，另计。物理设备、真实微信授权、实际软键盘几何和生产未验；D2原两次失败与唯一D7执行记录不变。
+
+档案选择是确定性的应用状态，不是另一套Agent／Knowledge管线。保留原runtime／context／读工具分层，参照[LangChain上下文工程合同](https://docs.langchain.com/oss/javascript/langchain/context-engineering)。每次读入／回放重新授权，checkpoint持久化不代表持久权限。[上游runtime context序列化讨论](https://github.com/langchain-ai/langgraph/issues/8417)只作为Python侧新调用权限的参考，不声称本项目JavaScript存在同一缺陷。没有框架迁移、新引用解析器、供应商专用补丁或付费fallback；零模型的UI／范围检查不重评既有实模语义质量。
+<!-- xiaok-notebook-ui-current:end -->
+
 ## 当前D6：核对后本地语音（Limited）
 
 **D6核对后语音：Limited（2026-10-29）。** C01／S04已接显式配置的本地录音／真实转写、原输入框纠错、作者另行发送、认证原音回听、删除和持久重进；师傅语音＋本人照片已完成原核对／发布链。完整D6不关闭：客户需求实际保存，Agent随后自添无来源桌面尺寸，回答被正确拒绝；D2仍为两次失败修补，不重采客户回答、不弱化守卫。0099强制RLS语音资产表复用原权限、任务、用量及消息／记录写服务。已验隔离CPython3.12／faster-whisper1.2.1／CTranslate2 4.8.3 CPU及已有medium模型hash；默认关闭，无模型下载／付费ASR／fallback。现场动作解码仅剔除schema合法且逐项恰为空串的非当前动作字段，非空／畸形字段及原角色／来源守卫不放行。当前单元7、真实服务7、兼容37＋1项事先声明的实模跳过、Mini157通过；lint通过，tsc原54项逐字相同／受影响零新增。原生原失败单列；native06员工真实链与回听通过，native07验证客户纠错／错误状态及真实回听／删除，native09／10／11零新增推理补齐原音HTTP404、撤权清空和可滚动查看的原失败反馈。保留3次成功／5次失败本地ASR、5个未执行即取消的队列探针；Qwen6次／25583tokens，保守累计¥30.633887/100。本地文字／费用预留均0且已结算，原付费unknown保留。13张核route的390×844逻辑／348×752截图审看；沿C01／S04批准主设计、U01及宿主弹层，无Less／素材／还原等级升级。见[二期D6合同](./xiaok-assistant-phase-2.zh-CN.md#当前d6核对后本地语音limited)与tmp/d6-speech-20261029/final-checks.json。后继D7先确认订单／报价／安装验收设计源；硬件、支付、商业条件及生产未验。 完整隔离构建已编译，但standalone复制媒体耗尽磁盘且自动tsconfig漂移使原批无效；本轮副本可逆移至E盘，原配置按hash恢复，仅验收进程禁用standalone的compile03已exit0／drift[]，产品output配置未改；不称干净生产构建。

@@ -1,7 +1,11 @@
 <wxs src="../../utils/stat-format.wxs" module="stat" />
 
-<view class="home-page sfp-tab-page">
-  <customer-service-home wx:if="{{roleWorkbenchRole === 'customer'}}" />
+<view class="home-page {{roleWorkbenchRole === 'customer' && customerTab === 'xiaok' ? 'xiaok-home' : 'sfp-tab-page'}}">
+  <block wx:if="{{roleWorkbenchRole === 'customer'}}">
+    <view hidden="{{customerTab !== 'xiaok'}}"><xiaok-chat id="xiaok-chat" active="{{customerTab === 'xiaok'}}" /></view>
+    <customer-service-home wx:if="{{customerTab === 'service'}}" />
+    <customer-nav id="customer-nav" />
+  </block>
   <role-workbench wx:elif="{{roleWorkbenchRole}}" role="{{roleWorkbenchRole}}" focus="overview" />
   <block wx:else>
   <scroll-view class="home-scroll" scroll-y show-scrollbar="{{false}}" enhanced>

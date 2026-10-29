@@ -84,6 +84,7 @@ function workForView(work) {
     highlights, materials, palette, tags: [...styleTags.slice(0, 1), ...layoutTypes.slice(0, 2)],
     coverLabel: imageLabel((work.images || []).find(image => image.assetId === work.coverAssetId) || {}),
     metadata: [work.primaryStyle, work.area ? work.area + '㎡' : '', work.rooms].filter(Boolean).join(' · '),
+    chatMeta: [work.area ? work.area + '㎡' : '', work.rooms].filter(Boolean).join(' · '),
     cardMeta: [work.cityName, work.area ? work.area + '㎡' : '', work.rooms].filter(Boolean).join(' · '),
     allRenders, allPhotos, renders: allRenders, photos: allPhotos,
     spaceGroups: spaceGroupsFor(images), hasSpaceTags: images.some(image => image.space) };

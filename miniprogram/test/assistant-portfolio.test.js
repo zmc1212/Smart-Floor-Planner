@@ -190,7 +190,7 @@ test('chat shows only bounded, sanitized designer cards from the latest assistan
   const stripped = items.find(item => item.id === '2').designerRecommendation.items[0];
   assert.equal(stripped.professionalTitle, '主创'); assert.equal(stripped.portraitAvailable, false);
   assert.equal(items.find(item => item.id === '5').designerRecommendation, null);
-  assert.equal(latestDesignerCard(items), null);
+  assert.equal(latestDesignerCard(items).id, '4');
   assert.equal(latestDesignerCard([message('6', { items: [card()] }), message('7', { items: [card({ authorId: '44' })] })]).id, '7');
   const unavailable = messagesForView([{ ...message('8', { items: [card()] }), available: false }]);
   assert.equal(unavailable[0].designerRecommendation, null);

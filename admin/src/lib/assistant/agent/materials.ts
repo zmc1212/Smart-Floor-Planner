@@ -13,6 +13,7 @@ import type { ModelTool } from '../contracts/model';
 import { availableNeedMemory } from './memory-sources';
 import { needQualifications, type NeedFact, type NeedQualification, type NeedInterpretation } from './memory';
 import { formalFloorplanText, formalFloorplanContextProtocol } from './formal-floorplan-context';
+import { selectedFormalPlan } from '../media/floorplan-selection';
 
 export const materialTool: ModelTool = {
   name: 'query_materials',
@@ -58,9 +59,10 @@ export async function queryMaterials(tx: PostgresTransaction, actor: ActorContex
       and not coalesce((c.entry_snapshot->>'retentionRedacted')::boolean,false) for share of c,p`);
   if (!conversation) fail('assistant_resource_not_found', 404);
   const entry = conversation.entry_snapshot as Row;
+  const chosenPlan = await selectedFormalPlan(tx, actor, entry);
   const boundLead = entry.kind === 'lead' ? String(entry.id) : '';
   if (boundLead && query.leadId && boundLead !== query.leadId) fail('assistant_resource_not_found', 404);
-  const selected = boundLead || query.leadId;
+  const selected = boundLead || query.leadId || chosenPlan?.selection.leadId || '';
   const leads = await rows(tx, sql`select id,community_name,primary_floor_plan_id from app.leads where enterprise_id=${eid}
     and customer_user_id=${uid} and archived_at is null ${selected ? sql`and id=${id(selected)}` : sql``} order by id limit 11 for share`);
   if (selected && !leads.length) fail('assistant_resource_not_found', 404);
@@ -92,8 +94,7 @@ export async function queryMaterials(tx: PostgresTransaction, actor: ActorContex
   const project = activeProjects[0], projectId = project ? String(project.id) : null;
   const rooms = project ? await rows(tx, sql`select id,name from app.construction_rooms where enterprise_id=${eid} and project_id=${projectId} order by id for share`) : [];
   const matchingRooms = query.room ? rooms.filter(r => String(r.name) === query.room) : rooms;
-  const plan = lead.primary_floor_plan_id ? await one(tx, sql`select id,name,layout_data from app.floor_plans
-    where enterprise_id=${eid} and id=${String(lead.primary_floor_plan_id)} and status='completed' for share`) : null;
+  const plan = chosenPlan?.selection.leadId === leadId ? chosenPlan : null;
   const layout = plan && parseFormalSurveyLayout(plan.layout_data);
   const planRooms = layout ? layout.surveyGraph.floors.flatMap(floor => adaptSurveyGraphToRooms({ ...layout, surveyGraph: { ...layout.surveyGraph, activeFloorId: floor.id } })
     .map(r => ({ id: r.id, name: r.name, floorId: floor.id }))) : [];

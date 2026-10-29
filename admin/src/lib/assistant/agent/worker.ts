@@ -24,6 +24,7 @@ import { recommendationRegion } from '../location/region';
 import { publicCandidates } from '@/lib/construction/public-read';
 import { hydrateImages, resolveAgentMedia, withoutImageBytes, type MediaDependency } from './media-context';
 import { businessToolDefinitions, queryBusiness, parseBusinessQuery, parseDesignerQuery, businessSnapshotAvailable, type BusinessSnapshot } from './business-tools';
+import { floorplanContext } from '../media/floorplan-selection';
 import { prepareMaterialShare, revokeMaterialShare, materialSharingRequested } from '@/lib/construction/material-sharing';
 import { materialShareCompletionClaim } from '@/lib/construction/material-sharing-contract';
 import { recommendDesigners, revalidateDesignerSnapshot, designerNotice, type DesignerCard, type DesignerSnapshot } from '@/lib/portfolio/designer-recommendation';
@@ -515,6 +516,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       const messages = buildAgentContext(turns, memory);
       let currentImageUpload = false;
       const system = messages[0];
+      if (system.role === 'system') system.content.push({ type: 'text', text: '当前用户明确的户型档案范围（数据）：'
+        + JSON.stringify(floorplanContext(context.conversation.entry_snapshot))
+        + '。selection为空表示不结合户型档案，不从正式户型补尺寸或布局；旧消息中的尺寸不能冒充当前核验。用户自行发出的原话和图片仍按原来源规则使用。所选ID只是范围，实际内容必须经原工具重新校验所有权、版本及撤回；不要把选择操作说成已发送咨询或正式保存需求。' });
       if (system.role === 'system') system.content.push({ type: 'text', text: synthesisInstructions + synthesisQuestionPrefix
         + JSON.stringify({ currentQuestion: safeText(trigger.content as Parameters<typeof safeText>[0]) }) });
       const selectedPublicSite = (context.conversation.entry_snapshot as Row).activePublicSite as PublicContextRef | undefined;
@@ -1340,7 +1344,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                 if (fingerprint(snapshot.query) !== fingerprint(query) || !await businessSnapshotAvailable(tx, lease.enterpriseId, snapshot)) fail('context_changed');
                 return { content: JSON.stringify({ resultKey, ...snapshot, synthesisSources: businessSynthesisSources(resultKey, snapshot) }) };
               }
-              const snapshot = await queryBusiness(tx, lease.actor, query);
+              const snapshot = await queryBusiness(tx, lease.actor, query, String(context.conversation.id));
               if (query.domain === 'construction') {
                 for (const project of snapshot.data as Row[]) await tx.execute(sql`insert into app.construction_links(enterprise_id,project_id,conversation_id)
                   values(${lease.enterpriseId},${String(project.projectId)},${String(initial.conversation.id)}) on conflict do nothing`);

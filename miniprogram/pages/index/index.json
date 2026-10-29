@@ -7,7 +7,13 @@
     "ble-connector": "../../components/ble-connector/ble-connector",
     "lead-list": "../../components/lead-list/lead-list",
     "role-workbench": "/components/role-workbench/role-workbench",
-    "customer-service-home": "/components/customer-service-home/customer-service-home"
+    "customer-service-home": "/components/customer-service-home/customer-service-home",
+    "xiaok-chat": "/packages/assistant/chat/chat-panel",
+    "customer-nav": "/packages/assistant/navigation/customer-navigation"
+  },
+  "componentPlaceholder": {
+    "xiaok-chat": "view",
+    "customer-nav": "view"
   },
   "navigationStyle": "custom",
   "disableScroll": false

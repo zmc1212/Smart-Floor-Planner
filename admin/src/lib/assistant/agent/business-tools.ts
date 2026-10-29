@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
-import { one, rows } from '@/db/repositories/assistant-repository';
+import { AssistantRepository, one, rows } from '@/db/repositories/assistant-repository';
 import { AppointmentRepository, CustomerProjectRepository } from '@/db/repositories';
 import { appointmentToDto } from '@/lib/appointment-api';
 import { adaptSurveyGraphToRooms, parseFormalSurveyLayout } from '@/lib/survey-graph';
@@ -11,6 +11,7 @@ import { materialSnapshotAvailable, type MaterialSnapshot } from './materials';
 import { needIssueSnapshotAvailable, type NeedIssueSnapshot } from '@/lib/construction/need-issues';
 import { formalFloorplanText } from './formal-floorplan-context';
 import { materialSharingTools } from '@/lib/construction/material-sharing-contract';
+import { selectedFormalPlan } from '../media/floorplan-selection';
 
 export const businessToolDefinitions: ModelTool[] = [
   ...materialSharingTools,
@@ -41,7 +42,7 @@ export function parseDesignerQuery(raw: unknown): DesignerQuery {
   return { query: value.query.trim() };
 }
 export type BusinessQuery = { domain: 'appointments' | 'schemes' | 'floorplans' | 'construction'; leadId: string };
-export type BusinessSnapshot = { query: BusinessQuery; customerId: string; leadIds: string[]; version: string; displayText: string; data: unknown[]; queriedAt: string } | MaterialSnapshot | NeedIssueSnapshot;
+export type BusinessSnapshot = { query: BusinessQuery; customerId: string; leadIds: string[]; version: string; displayText: string; data: unknown[]; queriedAt: string; contextConversationId?: string } | MaterialSnapshot | NeedIssueSnapshot;
 export function parseBusinessQuery(raw: unknown): BusinessQuery {
   const value = raw as BusinessQuery;
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(k => !['domain','leadId'].includes(k))
@@ -50,9 +51,20 @@ export function parseBusinessQuery(raw: unknown): BusinessQuery {
   return value;
 }
 /** Reuses existing service repositories/read adapters inside the caller's authorized tenant transaction. */
-export async function queryBusiness(tx: PostgresTransaction, actor: ActorContext, query: BusinessQuery): Promise<BusinessSnapshot> {
+export async function queryBusiness(tx: PostgresTransaction, actor: ActorContext, query: BusinessQuery, conversationId?: string): Promise<BusinessSnapshot> {
   if (actor.principal.kind !== 'user') fail('assistant_capability_forbidden', 403);
   const customerId = actor.principal.userId;
+  if (conversationId && query.domain === 'floorplans') {
+    const conversation = await new AssistantRepository(tx, actor).conversation(id(conversationId));
+    const plan = await selectedFormalPlan(tx, actor, conversation.entry_snapshot);
+    const included = plan && (!query.leadId || query.leadId === plan.selection.leadId) ? plan : null;
+    const data = included ? [{ id: String(included.id), leadId: included.selection.leadId, name: included.name,
+      layoutHash: included.selection.layoutHash, rooms: adaptSurveyGraphToRooms(included.layout_data).map(r => ({ id: r.id, name: r.name })) }] : [];
+    return { query, contextConversationId: conversationId, customerId, leadIds: included ? [included.selection.leadId] : [],
+      version: fingerprint(data), data, queriedAt: new Date().toISOString(), displayText: included
+        ? formalFloorplanText(String(included.name), included.layout_data)!
+        : '本次未选用有效户型档案，不读取或推断档案中的户型尺寸；可以继续依据用户本轮说明与自行发送的图片交流。' };
+  }
   const leads = await rows(tx, sql`select id,community_name,primary_floor_plan_id from app.leads where enterprise_id=${actor.enterpriseId}
     and customer_user_id=${customerId} and archived_at is null ${query.leadId ? sql`and id=${query.leadId}` : sql``} order by id desc limit 10`);
   if (query.leadId && !leads.length) fail('assistant_resource_not_found', 404);
@@ -94,6 +106,6 @@ export async function queryBusiness(tx: PostgresTransaction, actor: ActorContext
 export async function businessSnapshotAvailable(tx: PostgresTransaction, enterpriseId: string, snapshot: BusinessSnapshot) {
   if (snapshot.query.domain === 'materials') return materialSnapshotAvailable(tx, enterpriseId, snapshot as MaterialSnapshot);
   if (snapshot.query.domain === 'followups') return needIssueSnapshotAvailable(tx, enterpriseId, snapshot as NeedIssueSnapshot);
-  const current = await queryBusiness(tx, { enterpriseId, principal: { kind: 'user', userId: snapshot.customerId }, contextVersion: 0, capabilities: [] }, snapshot.query);
+  const current = await queryBusiness(tx, { enterpriseId, principal: { kind: 'user', userId: snapshot.customerId }, contextVersion: 0, capabilities: [] }, snapshot.query, 'contextConversationId' in snapshot ? snapshot.contextConversationId : undefined);
   return current.version === snapshot.version && fingerprint(current.leadIds) === fingerprint(snapshot.leadIds);
 }

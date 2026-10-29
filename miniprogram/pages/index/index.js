@@ -134,6 +134,7 @@ Page({
     activeProjectTitle: '当前量房项目',
     bleAutoConnecting: false,
     roleWorkbenchRole: '',
+    customerTab: 'xiaok',
     redirectingSalesperson: false,
   },
 
@@ -145,7 +146,7 @@ Page({
   },
 
   showGuestServiceHome() {
-    this.setData({ roleWorkbenchRole: 'customer' });
+    this.setData({ roleWorkbenchRole: 'customer', customerTab: getApp().globalData.customerTab || 'xiaok' });
     this.syncTabBar();
   },
 
@@ -180,7 +181,9 @@ Page({
     return true;
   },
 
-  onLoad: function () {
+  onLoad: function (options) {
+    if (options && options.customerTab === 'service') getApp().globalData.customerTab = 'service';
+    this.setData({ customerTab: getApp().globalData.customerTab || 'xiaok' });
     if (!this.isLoggedIn()) {
       this.showGuestServiceHome();
       return;
@@ -232,7 +235,7 @@ Page({
 
     const roleWorkbenchRole = this.getRoleWorkbenchRole();
     if (roleWorkbenchRole) {
-      this.setData({ roleWorkbenchRole, userInfo, isStaff: roleWorkbenchRole !== 'customer' });
+      this.setData({ roleWorkbenchRole, userInfo, isStaff: roleWorkbenchRole !== 'customer', customerTab: app.globalData.customerTab || 'xiaok' }, () => this.syncTabBar());
       return;
     }
 

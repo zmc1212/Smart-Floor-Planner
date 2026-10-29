@@ -375,3 +375,5 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
     </view>
   </scroll-view>
 </view>
+
+<customer-nav wx:if="{{!isLoggedIn || activeRole === 'customer'}}" id="customer-nav" />
