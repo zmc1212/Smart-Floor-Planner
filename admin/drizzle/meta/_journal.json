@@ -708,6 +708,13 @@
       "when": 1793433600000,
       "tag": "0100_construction_service_orders",
       "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1793520000000,
+      "tag": "0101_construction_service_lifecycle",
+      "breakpoints": true
     }
   ]
 }

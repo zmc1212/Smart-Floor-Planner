@@ -6,8 +6,9 @@ import { idempotent } from '@/lib/assistant/core/conversation';
 import { choice, object, text, version, type ConstructionActor } from './contracts';
 import { constructionAccess } from './service';
 import {
-  cameraCount, canActOnPoint, canCancel, canConfirm, canQuote, canSchedule, cents, money, orderDate,
-  quoteLines, retentionDays, scheduledFor, serviceDays, servicePoints,
+  cameraCount, canActOnPoint, canCancel, canConfirm, canExit, canExtend, canQuote, canRepair, canSchedule, cents,
+  depositDisposition, extensionDays as extensionDaysInput, money, orderDate, quoteLines, repairIssue, repairResolution,
+  retentionDays, scheduledFor, serviceDays, servicePoints,
 } from './service-order-contract';
 
 const actorContext = (actor: ConstructionActor): ActorContext => ({ enterpriseId: actor.enterpriseId, principal: { kind: 'admin', adminId: actor.adminId }, contextVersion: 1, capabilities: [] });
@@ -43,7 +44,22 @@ async function latestQuote(tx: PostgresTransaction, eid: string, orderId: unknow
   return await one(tx, sql`select * from app.construction_service_order_quotes
     where enterprise_id=${eid} and order_id=${id(String(orderId))} order by version desc limit 1`) ?? null;
 }
-function view(order: Row, points: Row[], quote: Row | null, canActOn: boolean) {
+async function orderRepairs(tx: PostgresTransaction, eid: string, orderId: unknown) {
+  return rows(tx, sql`select r.*,p.name as point_name from app.construction_service_order_repairs r
+    left join app.construction_service_order_points p on p.enterprise_id=r.enterprise_id and p.order_id=r.order_id and p.id=r.point_id
+    where r.enterprise_id=${eid} and r.order_id=${id(String(orderId))} order by r.id desc limit 30`);
+}
+async function orderExtensionDays(tx: PostgresTransaction, eid: string, orderId: unknown) {
+  const found = await one(tx, sql`select coalesce(sum(days),0)::int as days from app.construction_service_order_extensions
+    where enterprise_id=${eid} and order_id=${id(String(orderId))}`);
+  return Number(found?.days || 0);
+}
+function serviceEndsAt(order: Row, extensionDays: number) {
+  const acceptedAt = orderDate(order.accepted_at);
+  if (!acceptedAt) return null;
+  return new Date(new Date(acceptedAt).getTime() + (Number(order.service_days) + extensionDays) * 86400000).toISOString();
+}
+function view(order: Row, points: Row[], quote: Row | null, canActOn: boolean, repairs: Row[], extensionDays: number) {
   return {
     id: String(order.id), status: String(order.status), cameraCount: Number(order.camera_count),
     retentionDays: Number(order.retention_days), serviceDays: Number(order.service_days),
@@ -51,6 +67,9 @@ function view(order: Row, points: Row[], quote: Row | null, canActOn: boolean) {
     quoteVersion: Number(order.quote_version), confirmedQuoteVersion: order.confirmed_quote_version === null ? null : Number(order.confirmed_quote_version),
     scheduledFor: orderDate(order.scheduled_for), installerId: order.installer_id === null ? null : String(order.installer_id),
     acceptedAt: orderDate(order.accepted_at), cancelledAt: orderDate(order.cancelled_at), cancelReason: String(order.cancel_reason || ''),
+    exitedAt: orderDate(order.exited_at), exitReason: String(order.exit_reason || ''),
+    depositReturnedCents: cents(order.deposit_returned_cents), depositDeductedCents: cents(order.deposit_deducted_cents),
+    depositNote: String(order.deposit_note || ''), extensionDays, serviceEndsAt: serviceEndsAt(order, extensionDays),
     createdAt: orderDate(order.created_at), canAct: canActOn,
     quote: quote ? {
       version: Number(quote.version), totalCents: cents(quote.total_cents), depositCents: cents(quote.deposit_cents),
@@ -61,6 +80,12 @@ function view(order: Row, points: Row[], quote: Row | null, canActOn: boolean) {
       roomId: point.room_id === null ? null : String(point.room_id), roomName: point.room_name ? String(point.room_name) : null,
       positionNote: String(point.position_note || ''), status: String(point.status),
       installedAt: orderDate(point.installed_at), acceptedAt: orderDate(point.accepted_at),
+    })),
+    repairs: repairs.map(repair => ({
+      id: String(repair.id), status: String(repair.status), issue: String(repair.issue),
+      resolution: String(repair.resolution || ''), pointId: repair.point_id === null ? null : String(repair.point_id),
+      pointName: repair.point_name ? String(repair.point_name) : null,
+      openedAt: orderDate(repair.opened_at), closedAt: orderDate(repair.closed_at), version: Number(repair.version),
     })),
   };
 }
@@ -76,7 +101,8 @@ export class ServiceOrderService {
       const items = [];
       for (const order of orders) {
         const canActOn = access.owner || (order.installer_id !== null && String(order.installer_id) === this.actor.adminId);
-        items.push({ ...view(order, await orderPoints(tx, eid, order.id), await latestQuote(tx, eid, order.id), canActOn),
+        items.push({ ...view(order, await orderPoints(tx, eid, order.id), await latestQuote(tx, eid, order.id), canActOn,
+          await orderRepairs(tx, eid, order.id), await orderExtensionDays(tx, eid, order.id)),
           installerName: order.installer_name ? String(order.installer_name) : null });
       }
       return { project: { id: String(access.project.id), name: String(access.project.name), status: String(access.project.status) }, owner: access.owner, items };
@@ -92,7 +118,7 @@ export class ServiceOrderService {
       if (access.project.status !== 'active') fail('service_order_project_inactive', 409);
       return idempotent(tx, actorContext(this.actor), 'construction:service-order:create', key(requestKey), input, async () => {
         if (await one(tx, sql`select id from app.construction_service_orders where enterprise_id=${eid} and project_id=${pid}
-          and status not in ('accepted','cancelled')`)) fail('service_order_open_exists', 409);
+          and status not in ('accepted','cancelled','exited')`)) fail('service_order_open_exists', 409);
         const created = (await one(tx, sql`insert into app.construction_service_orders(enterprise_id,project_id,camera_count,retention_days,service_days,request_note,created_by)
           values(${eid},${pid},${cameras},${retention},${span},${note},${this.actor.adminId}) returning id,version`))!;
         await audit(tx, this.actor, pid, 'create', { orderId: String(created.id), cameraCount: cameras, retentionDays: retention, serviceDays: span });
@@ -226,6 +252,116 @@ export class ServiceOrderService {
           version=version+1,updated_at=now() where enterprise_id=${eid} and id=${String(order.id)}`);
         await audit(tx, this.actor, pid, 'cancel', { orderId: String(order.id), reason });
         return { id: String(order.id), version: Number(order.version) + 1 };
+      });
+    });
+  }
+  async repair(projectId: string, orderId: string, input: Row, requestKey?: string) {
+    object(input, ['issue', 'pointId']);
+    const issue = repairIssue(input.issue);
+    const pointId = input.pointId === undefined || input.pointId === null || input.pointId === '' ? null : id(input.pointId);
+    return withTenantTransaction(this.actor.enterpriseId, async tx => {
+      const eid = this.actor.enterpriseId, pid = id(projectId), access = await projectAccess(tx, this.actor, projectId);
+      return idempotent(tx, actorContext(this.actor), 'construction:service-order:repair:' + id(orderId), key(requestKey), input, async () => {
+        // Lifecycle lock first: repair, extension and exit must share one order-row lock order.
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`service-order-lifecycle:${eid}:${pid}`},0))`);
+        const order = await loadOrder(tx, eid, pid, orderId, true);
+        const canAct = access.owner || (order.installer_id !== null && String(order.installer_id) === this.actor.adminId);
+        if (!canAct) fail('service_order_forbidden', 403);
+        if (!canRepair(String(order.status))) fail('service_order_conflict', 409);
+        if (pointId !== null && !await one(tx, sql`select id from app.construction_service_order_points
+          where enterprise_id=${eid} and order_id=${String(order.id)} and id=${pointId} for share`)) fail('service_order_point_not_found', 404);
+        const created = (await one(tx, sql`insert into app.construction_service_order_repairs(enterprise_id,project_id,order_id,point_id,issue,opened_by)
+          values(${eid},${pid},${String(order.id)},${pointId},${issue},${this.actor.adminId}) returning id,version,status`))!;
+        await audit(tx, this.actor, pid, 'repair.open', { orderId: String(order.id), repairId: String(created.id), pointId });
+        return { id: String(created.id), version: Number(created.version), status: String(created.status) };
+      });
+    });
+  }
+  async repairAction(projectId: string, orderId: string, repairId: string, input: Row, requestKey?: string) {
+    object(input, ['expectedVersion', 'action', 'resolution']);
+    const action = choice(input.action, ['resolve', 'cancel'] as const), expected = version(input.expectedVersion);
+    const resolution = action === 'resolve' ? repairResolution(input.resolution) : '';
+    return withTenantTransaction(this.actor.enterpriseId, async tx => {
+      const eid = this.actor.enterpriseId, pid = id(projectId), access = await projectAccess(tx, this.actor, projectId), rid = id(repairId);
+      return idempotent(tx, actorContext(this.actor), `construction:service-order:repair:${action}:${id(orderId)}:${rid}`, key(requestKey), input, async () => {
+        const order = await loadOrder(tx, eid, pid, orderId, true);
+        const repair = await one(tx, sql`select * from app.construction_service_order_repairs
+          where enterprise_id=${eid} and order_id=${String(order.id)} and id=${rid} for update`);
+        if (!repair) fail('service_order_repair_not_found', 404);
+        const canAct = access.owner || (order.installer_id !== null && String(order.installer_id) === this.actor.adminId);
+        if (action === 'cancel' ? !access.owner : !canAct) fail('service_order_forbidden', 403);
+        const target = action === 'resolve' ? 'resolved' : 'cancelled';
+        if (repair.status === target && String(repair.resolution || '') === resolution) {
+          return { id: String(repair.id), version: Number(repair.version), status: target };
+        }
+        if (repair.status !== 'open') fail('service_order_repair_conflict', 409);
+        if (Number(repair.version) !== expected) fail('version_conflict', 409);
+        if (!canRepair(String(order.status))) fail('service_order_conflict', 409);
+        await tx.execute(sql`update app.construction_service_order_repairs set status=${target},resolution=${resolution},
+          closed_by=${this.actor.adminId},closed_at=now(),updated_at=now(),version=version+1
+          where enterprise_id=${eid} and id=${String(repair.id)}`);
+        await audit(tx, this.actor, pid, action === 'resolve' ? 'repair.resolve' : 'repair.cancel',
+          { orderId: String(order.id), repairId: String(repair.id), pointId: repair.point_id === null ? null : String(repair.point_id) });
+        return { id: String(repair.id), version: Number(repair.version) + 1, status: target };
+      });
+    });
+  }
+  async extend(projectId: string, orderId: string, input: Row, requestKey?: string) {
+    object(input, ['expectedVersion', 'days', 'note']);
+    const days = extensionDaysInput(input.days), note = text(input.note ?? '', 200, false), expected = version(input.expectedVersion);
+    return withTenantTransaction(this.actor.enterpriseId, async tx => {
+      const eid = this.actor.enterpriseId, pid = id(projectId), access = await projectAccess(tx, this.actor, projectId);
+      if (!access.owner) fail('service_order_forbidden', 403);
+      return idempotent(tx, actorContext(this.actor), 'construction:service-order:extend:' + id(orderId), key(requestKey), input, async () => {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`service-order-lifecycle:${eid}:${pid}`},0))`);
+        const order = await loadOrder(tx, eid, pid, orderId, true);
+        if (!canExtend(String(order.status))) fail('service_order_conflict', 409);
+        if (Number(order.version) !== expected) fail('version_conflict', 409);
+        const total = await orderExtensionDays(tx, eid, order.id);
+        if (Number(order.service_days) + total + days > 3650) fail('service_order_extension_limit', 422);
+        await tx.execute(sql`insert into app.construction_service_order_extensions(enterprise_id,project_id,order_id,days,note,created_by)
+          values(${eid},${pid},${String(order.id)},${days},${note},${this.actor.adminId})`);
+        await tx.execute(sql`update app.construction_service_orders set version=version+1,updated_at=now() where enterprise_id=${eid} and id=${String(order.id)}`);
+        await audit(tx, this.actor, pid, 'extend', { orderId: String(order.id), days, totalDays: total + days });
+        return { id: String(order.id), version: Number(order.version) + 1, extensionDays: total + days, serviceEndsAt: serviceEndsAt(order, total + days) };
+      });
+    });
+  }
+  async exit(projectId: string, orderId: string, input: Row, requestKey?: string) {
+    object(input, ['expectedVersion', 'reason', 'depositReturnedCents', 'depositDeductedCents', 'depositNote']);
+    const reason = text(input.reason, 200), disposition = depositDisposition(input), expected = version(input.expectedVersion);
+    return withTenantTransaction(this.actor.enterpriseId, async tx => {
+      const eid = this.actor.enterpriseId, pid = id(projectId), access = await projectAccess(tx, this.actor, projectId);
+      if (!access.owner) fail('service_order_forbidden', 403);
+      return idempotent(tx, actorContext(this.actor), 'construction:service-order:exit:' + id(orderId), key(requestKey), input, async () => {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`service-order-lifecycle:${eid}:${pid}`},0))`);
+        const order = await loadOrder(tx, eid, pid, orderId, true);
+        const receipt = { id: String(order.id), version: Number(order.version) + 1, status: 'exited' };
+        if (order.status === 'exited' && order.exit_reason === reason
+          && Number(order.deposit_returned_cents) === disposition.returnedCents
+          && Number(order.deposit_deducted_cents) === disposition.deductedCents && String(order.deposit_note || '') === disposition.note) {
+          return { ...receipt, version: Number(order.version) };
+        }
+        if (!canExit(String(order.status))) fail('service_order_conflict', 409);
+        if (Number(order.version) !== expected) fail('version_conflict', 409);
+        const open = await one(tx, sql`select count(*)::int as open from app.construction_service_order_repairs
+          where enterprise_id=${eid} and order_id=${String(order.id)} and status='open'`);
+        if (Number(open!.open) > 0) fail('service_order_repairs_open', 409);
+        // Serialize with camera binding so an exit cannot slip past its device check.
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`service-order-camera:${eid}:${pid}`},0))`);
+        const devices = await one(tx, sql`select count(*)::int as active from app.construction_camera_bindings
+          where enterprise_id=${eid} and project_id=${pid} and ended_at is null`);
+        if (Number(devices!.active) > 0) fail('service_order_devices_active', 409);
+        const quote = await one(tx, sql`select deposit_cents from app.construction_service_order_quotes
+          where enterprise_id=${eid} and order_id=${String(order.id)} and version=${Number(order.confirmed_quote_version)}`);
+        const depositCents = cents(quote?.deposit_cents) ?? 0;
+        if (disposition.returnedCents + disposition.deductedCents > depositCents) fail('service_order_deposit_exceeds', 422);
+        await tx.execute(sql`update app.construction_service_orders set status='exited',exited_at=now(),exit_reason=${reason},
+          deposit_returned_cents=${disposition.returnedCents},deposit_deducted_cents=${disposition.deductedCents},deposit_note=${disposition.note},
+          version=version+1,updated_at=now() where enterprise_id=${eid} and id=${String(order.id)}`);
+        await audit(tx, this.actor, pid, 'exit', { orderId: String(order.id), reason, depositReturnedCents: disposition.returnedCents,
+          depositDeductedCents: disposition.deductedCents, depositCents });
+        return { ...receipt, depositCents };
       });
     });
   }

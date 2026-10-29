@@ -35,6 +35,10 @@ export async function serviceOrderHttp(request: Request, actor: ConstructionActo
   if (path.length === 2 && path[1] === 'confirm') return json(await service.confirm(projectId, orderId, input, requestKey));
   if (path.length === 2 && path[1] === 'schedule') return json(await service.schedule(projectId, orderId, input, requestKey));
   if (path.length === 2 && path[1] === 'cancel') return json(await service.cancel(projectId, orderId, input, requestKey));
+  if (path.length === 2 && path[1] === 'extend') return json(await service.extend(projectId, orderId, input, requestKey));
+  if (path.length === 2 && path[1] === 'exit') return json(await service.exit(projectId, orderId, input, requestKey));
+  if (path.length === 2 && path[1] === 'repairs') return json(await service.repair(projectId, orderId, input, requestKey));
+  if (path.length === 3 && path[1] === 'repairs') return json(await service.repairAction(projectId, orderId, pathId(path[2]), input, requestKey));
   if (path.length === 3 && path[1] === 'points') return json(await service.point(projectId, orderId, pathId(path[2]), input, requestKey));
   fail('service_order_not_found', 404);
 }

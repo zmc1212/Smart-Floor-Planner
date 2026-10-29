@@ -214,10 +214,76 @@ test('binding follows the confirmed managed order, and live viewing ends with pr
   assert.equal((await ownerCameras.list(project)).serviceOrder?.boundCount, 5);
 });
 
+test('an accepted service records repairs and extensions, and exit needs devices cleared and deposits within the confirmed quote', async () => {
+  const ownerCameras = new CameraService({ enterpriseId: eids[0], adminId: ownerAid }, wvp);
+  let order = await latest();
+  assert.equal(order.status, 'confirmed');
+  await owner().schedule(project, order.id, { expectedVersion: order.version, scheduledFor: new Date(Date.now() + 86400000).toISOString(), installerId: managerAid,
+    points: [{ name: '客厅东墙', roomId: roomA, positionNote: '' }, { name: '主卧门侧', roomId: roomB, positionNote: '' }] }, randomUUID());
+  order = await latest();
+  for (const point of order.points) {
+    await manager().point(project, order.id, point.id, { expectedVersion: order.version, action: 'install' }, randomUUID());
+    order = await latest();
+    await manager().point(project, order.id, point.id, { expectedVersion: order.version, action: 'accept' }, randomUUID());
+    order = await latest();
+  }
+  assert.equal(order.status, 'accepted');
+
+  const exitBody = { reason: '业主结束服务', depositReturnedCents: 0, depositDeductedCents: 0, depositNote: '' };
+  await assert.rejects(owner().exit(project, order.id, { expectedVersion: order.version, ...exitBody }, randomUUID()), /service_order_devices_active/);
+  for (const camera of (await ownerCameras.list(project)).items) await ownerCameras.bind(project, { cameraId: camera.id, expectedVersion: camera.version, bind: false });
+  assert.equal((await ownerCameras.list(project)).items.length, 0);
+
+  const opened = await manager().repair(project, order.id, { pointId: order.points[0].id, issue: '客厅画面偏暗' }, randomUUID());
+  assert.equal(opened.status, 'open');
+  await assert.rejects(worker().repair(project, order.id, { issue: '工人无权登记' }, randomUUID()), /service_order_project_unavailable/);
+  assert.equal((await manager().repairAction(project, order.id, String(opened.id), { expectedVersion: opened.version, action: 'resolve', resolution: '已调整曝光并回访' }, randomUUID())).status, 'resolved');
+  const second = await owner().repair(project, order.id, { issue: '主卧摄像头离线' }, randomUUID());
+  await assert.rejects(manager().repairAction(project, order.id, String(second.id), { expectedVersion: second.version, action: 'cancel', resolution: '' }, randomUUID()), /service_order_forbidden/);
+  await assert.rejects(owner().exit(project, order.id, { expectedVersion: (await latest()).version, ...exitBody }, randomUUID()), /service_order_repairs_open/);
+  await owner().repairAction(project, order.id, String(second.id), { expectedVersion: second.version, action: 'cancel', resolution: '' }, randomUUID());
+
+  order = await latest();
+  await assert.rejects(manager().extend(project, order.id, { expectedVersion: order.version, days: 30, note: '' }, randomUUID()), /service_order_forbidden/);
+  await assert.rejects(owner().extend(project, order.id, { expectedVersion: order.version, days: 3650, note: '' }, randomUUID()), /service_order_extension_limit/);
+  assert.equal((await owner().extend(project, order.id, { expectedVersion: order.version, days: 30, note: '业主续期一个月' }, randomUUID())).extensionDays, 30);
+  order = await latest();
+  assert.equal(order.serviceEndsAt, new Date(new Date(order.acceptedAt!).getTime() + (90 + 30) * 86400000).toISOString());
+  assert.equal(order.repairs.length, 2);
+
+  assert.equal((await owner().exit(project, order.id, { expectedVersion: order.version, ...exitBody }, randomUUID())).status, 'exited');
+  order = await latest();
+  assert.equal(order.status, 'exited'); assert.ok(order.exitedAt); assert.equal(order.exitReason, '业主结束服务');
+  await assert.rejects(owner().repair(project, order.id, { issue: '退场后新报修' }, randomUUID()), /service_order_conflict/);
+  await assert.rejects(owner().extend(project, order.id, { expectedVersion: order.version, days: 1, note: '' }, randomUUID()), /service_order_conflict/);
+  const free = (await ownerCameras.inventory(project)).items.find(camera => !camera.project_id)!;
+  await assert.rejects(ownerCameras.bind(project, { cameraId: free.id, expectedVersion: free.version, bind: true }), /service_order_ended/);
+
+  await owner().create(project, { cameraCount: 2, retentionDays: 3, serviceDays: 30, note: '二次开通' }, randomUUID());
+  let next = await latest();
+  const quote = await owner().quote(project, next.id, { expectedVersion: next.version, lines: [{ label: '云工地视频托管服务', amountCents: 300000 }], depositCents: 50000, note: '' }, randomUUID());
+  await owner().confirm(project, next.id, { expectedVersion: quote.version, quoteVersion: quote.quoteVersion }, randomUUID());
+  next = await latest();
+  await owner().schedule(project, next.id, { expectedVersion: next.version, scheduledFor: new Date(Date.now() + 86400000).toISOString(), installerId: managerAid,
+    points: [{ name: '客厅', roomId: roomA, positionNote: '' }] }, randomUUID());
+  next = await latest();
+  await owner().point(project, next.id, next.points[0].id, { expectedVersion: next.version, action: 'install' }, randomUUID());
+  next = await latest();
+  await owner().point(project, next.id, next.points[0].id, { expectedVersion: next.version, action: 'accept' }, randomUUID());
+  next = await latest();
+  assert.equal(next.status, 'accepted');
+  await assert.rejects(owner().exit(project, next.id, { expectedVersion: next.version, reason: '业主更换方案', depositReturnedCents: 40000, depositDeductedCents: 20000, depositNote: '' }, randomUUID()), /service_order_deposit_exceeds/);
+  await owner().exit(project, next.id, { expectedVersion: next.version, reason: '业主更换方案', depositReturnedCents: 40000, depositDeductedCents: 10000, depositNote: '线下已结算' }, randomUUID());
+  next = await latest();
+  assert.equal(next.status, 'exited'); assert.equal(next.depositReturnedCents, 40000); assert.equal(next.depositDeductedCents, 10000); assert.equal(next.depositNote, '线下已结算');
+  const replay = await owner().exit(project, next.id, { expectedVersion: next.version, reason: '业主更换方案', depositReturnedCents: 40000, depositDeductedCents: 10000, depositNote: '线下已结算' }, randomUUID());
+  assert.equal(replay.version, next.version);
+});
+
 test('the cookie API exposes the same records and rejects a write without an idempotency key', async () => {
   const headers = { cookie: await cookie(ownerAid), 'Idempotency-Key': randomUUID() }, path = ['projects', project, 'service-orders'];
   const listed = await http('GET', path, headers);
-  assert.equal(listed.status, 200, JSON.stringify(listed.body)); assert.equal(listed.body.data.items.length, 3);
+  assert.equal(listed.status, 200, JSON.stringify(listed.body)); assert.equal(listed.body.data.items.length, 4);
   const missingKey = await http('POST', path, { cookie: await cookie(ownerAid) }, orderBody);
   assert.equal(missingKey.status, 422); assert.equal(missingKey.body.error, 'invalid_service_order');
   const queried = await http('GET', [...path, 'extra'], headers);
@@ -228,7 +294,7 @@ test('the cookie API exposes the same records and rejects a write without an ide
 
 test('the record stores no payment, collection or refund state because settlement stays offline', async () => {
   const columns = await withPlatformTransaction(tx => rows(tx, sql`select table_name,column_name from information_schema.columns
-    where table_schema='app' and table_name in ('construction_service_orders','construction_service_order_quotes','construction_service_order_points')`));
+    where table_schema='app' and table_name in ('construction_service_orders','construction_service_order_quotes','construction_service_order_points','construction_service_order_repairs','construction_service_order_extensions')`));
   assert.equal(columns.length > 0, true);
   assert.deepEqual(columns.filter(column => /pay|paid|refund|collect|settle|transaction|channel/i.test(String(column.column_name))), []);
 });

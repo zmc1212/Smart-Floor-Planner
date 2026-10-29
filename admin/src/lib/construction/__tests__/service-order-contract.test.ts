@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AssistantError } from '@/lib/assistant/contracts';
-import { allPointsAccepted, canActOnPoint, canCancel, canConfirm, canQuote, canSchedule, cents, quoteLines, scheduledFor, servicePoints, shanghaiDayStart } from '../service-order-contract';
+import { allPointsAccepted, canActOnPoint, canCancel, canConfirm, canExit, canExtend, canQuote, canRepair, canSchedule, cents, depositDisposition, extensionDays, quoteLines, repairIssue, repairResolution, scheduledFor, servicePoints, shanghaiDayStart } from '../service-order-contract';
 
 const fails = (fn: () => unknown, code = 'invalid_service_order') => {
   try { fn(); } catch (error) { assert.ok(error instanceof AssistantError); assert.equal(error.code, code); return; }
@@ -41,6 +41,27 @@ test('order transitions stay one-way and every point must be accepted before com
   assert.ok(canActOnPoint('scheduled') && !canActOnPoint('confirmed') && !canActOnPoint('accepted'));
   assert.ok(allPointsAccepted([{ status: 'accepted' }, { status: 'accepted' }]));
   assert.ok(!allPointsAccepted([]) && !allPointsAccepted([{ status: 'accepted' }, { status: 'installed' }]));
+});
+test('repairs and extensions stay within recorded bounds and only accepted service can be extended or exited', () => {
+  assert.equal(extensionDays(30), 30); assert.equal(extensionDays(3650), 3650);
+  for (const value of [0, 3651, 1.5, '30', null]) fails(() => extensionDays(value));
+  assert.equal(repairIssue('  客厅画面偏暗 '), '客厅画面偏暗');
+  for (const value of ['', '   ', 'x'.repeat(501), 5]) fails(() => repairIssue(value));
+  assert.equal(repairResolution(' 已调整曝光 '), '已调整曝光');
+  for (const value of ['', 'x'.repeat(201)]) fails(() => repairResolution(value));
+  assert.ok(canRepair('scheduled') && canRepair('accepted'));
+  assert.ok(!canRepair('confirmed') && !canRepair('exited') && !canRepair('cancelled'));
+  assert.ok(canExtend('accepted') && !canExtend('scheduled') && !canExtend('exited'));
+  assert.ok(canExit('accepted') && !canExit('scheduled') && !canExit('cancelled'));
+  assert.ok(!canCancel('exited') && canCancel('scheduled'));
+});
+test('deposit disposition records whole non-negative amounts with an optional bounded note', () => {
+  assert.deepEqual(depositDisposition({ depositReturnedCents: 40000, depositDeductedCents: 10000, depositNote: ' 线下已结算 ' }),
+    { returnedCents: 40000, deductedCents: 10000, note: '线下已结算' });
+  assert.deepEqual(depositDisposition({ depositReturnedCents: 0, depositDeductedCents: 0 }), { returnedCents: 0, deductedCents: 0, note: '' });
+  for (const value of [{ depositReturnedCents: -1, depositDeductedCents: 0 }, { depositReturnedCents: 1.5, depositDeductedCents: 0 },
+    { depositReturnedCents: '100', depositDeductedCents: 0 }, { depositReturnedCents: 0, depositDeductedCents: 100000000001 },
+    { depositReturnedCents: 0, depositDeductedCents: 0, depositNote: 'x'.repeat(201) }]) fails(() => depositDisposition(value));
 });
 test('stored money never introduces fractions or negatives into a displayed receipt', () => {
   assert.equal(cents(150050n), 150050);

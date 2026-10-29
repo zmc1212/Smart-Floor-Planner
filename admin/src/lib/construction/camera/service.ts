@@ -115,6 +115,7 @@ export class CameraService {
         // Serialize capacity checks and inserts so concurrent binds cannot both take the last ordered slot.
         await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`service-order-camera:${eid}:${pid}`},0))`);
         const order = await activeOrder(tx, eid, pid);
+        if (order && String(order.status) === 'exited') fail('service_order_ended', 409);
         if (order && !['confirmed', 'scheduled', 'accepted'].includes(String(order.status))) fail('service_order_not_confirmed', 409);
         if (order && Number(order.bound) >= Number(order.camera_count)) fail('service_order_camera_limit', 409);
       }

@@ -5,20 +5,27 @@ import { notify } from '@/components/admin/operation-feedback';
 import { constructionRequest, errorText } from './client';
 
 type QuoteLine = { label: string; amountCents: number };
+type Repair = { id: string; status: string; issue: string; resolution: string; pointId: string | null; pointName: string | null; openedAt: string | null; closedAt: string | null; version: number };
 type Order = {
   id: string; status: string; cameraCount: number; retentionDays: number; serviceDays: number; requestNote: string; version: number;
   quoteVersion: number; confirmedQuoteVersion: number | null; scheduledFor: string | null; installerId: string | null; installerName: string | null;
   acceptedAt: string | null; cancelledAt: string | null; cancelReason: string; createdAt: string | null; canAct: boolean;
+  exitedAt: string | null; exitReason: string; depositReturnedCents: number | null; depositDeductedCents: number | null;
+  depositNote: string; extensionDays: number; serviceEndsAt: string | null; repairs: Repair[];
   quote: { version: number; totalCents: number | null; depositCents: number | null; note: string; lines: QuoteLine[]; createdAt: string | null } | null;
   points: Array<{ id: string; seq: number; name: string; roomId: string | null; roomName: string | null; positionNote: string; status: string; installedAt: string | null; acceptedAt: string | null }>;
 };
-type Editor = { kind: 'create' } | { kind: 'quote' | 'schedule' | 'points' | 'cancel'; order: Order };
-const statusLabels: Record<string, string> = { pending_quote: '待报价', quoted: '待确认报价', confirmed: '待安排安装', scheduled: '安装验收中', accepted: '已验收', cancelled: '已取消' };
-const statusColors: Record<string, string> = { pending_quote: 'default', quoted: 'processing', confirmed: 'processing', scheduled: 'warning', accepted: 'success', cancelled: 'default' };
+type Editor = { kind: 'create' } | { kind: 'quote' | 'schedule' | 'points' | 'cancel' | 'extend' | 'exit' | 'repair' | 'repairs'; order: Order }
+  | { kind: 'resolve'; order: Order; repair: Repair };
+const statusLabels: Record<string, string> = { pending_quote: '待报价', quoted: '待确认报价', confirmed: '待安排安装', scheduled: '安装验收中', accepted: '服务中', exited: '已退场', cancelled: '已取消' };
+const statusColors: Record<string, string> = { pending_quote: 'default', quoted: 'processing', confirmed: 'processing', scheduled: 'warning', accepted: 'success', exited: 'red', cancelled: 'default' };
 const pointLabels: Record<string, string> = { pending: '待安装', installed: '已安装', accepted: '已验收' };
+const repairLabels: Record<string, string> = { open: '待处理', resolved: '已解决', cancelled: '已取消' };
+const repairColors: Record<string, string> = { open: 'warning', resolved: 'success', cancelled: 'default' };
 const yuan = (cents: number | null | undefined) => cents === null || cents === undefined ? '—' : '¥' + (cents / 100).toFixed(2);
 const when = (value: string | null) => value ? new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }) : '—';
-const open = (order: Order) => !['accepted', 'cancelled'].includes(order.status);
+const open = (order: Order) => !['accepted', 'exited', 'cancelled'].includes(order.status);
+const repairable = (order: Order) => ['scheduled', 'accepted'].includes(order.status);
 const replaceable = (order: Order) => ['confirmed', 'scheduled'].includes(order.status) && order.points.every(point => point.status === 'pending');
 
 export function ServiceOrderPanel({ projectId, owner, rooms, members }: {
@@ -62,6 +69,10 @@ export function ServiceOrderPanel({ projectId, owner, rooms, members }: {
     if (next.kind === 'quote') form.setFieldsValue({ lines: [{ label: '云工地视频托管服务', amount: 0 }], deposit: 0, note: '' });
     if (next.kind === 'schedule') form.setFieldsValue({ installerId: undefined, scheduledFor: null, points: [{ name: '点位 1', roomId: undefined, positionNote: '' }] });
     if (next.kind === 'cancel') form.setFieldsValue({ reason: '' });
+    if (next.kind === 'extend') form.setFieldsValue({ days: 30, note: '' });
+    if (next.kind === 'exit') form.setFieldsValue({ reason: '', returned: 0, deducted: 0, note: '' });
+    if (next.kind === 'repair') form.setFieldsValue({ pointId: undefined, issue: '' });
+    if (next.kind === 'resolve') form.setFieldsValue({ resolution: '' });
     setEditor(next);
   };
   const submit = async () => {
@@ -79,6 +90,15 @@ export function ServiceOrderPanel({ projectId, owner, rooms, members }: {
         return void await write(base + '/schedule', { expectedVersion: order.version, scheduledFor: values.scheduledFor.toISOString(), installerId: values.installerId, points }, '安装安排与点位已记录');
       }
       if (editor.kind === 'cancel') return void await write(base + '/cancel', { expectedVersion: order.version, reason: values.reason }, '托管订单已取消');
+      if (editor.kind === 'extend') return void await write(base + '/extend', { expectedVersion: order.version, days: Number(values.days), note: values.note || '' }, '服务期已延期');
+      if (editor.kind === 'exit') return void await write(base + '/exit', {
+        expectedVersion: order.version, reason: values.reason,
+        depositReturnedCents: Math.round(Number(values.returned || 0) * 100), depositDeductedCents: Math.round(Number(values.deducted || 0) * 100),
+        depositNote: values.note || '',
+      }, '退场与押金处置已记录');
+      if (editor.kind === 'repair') return void await write(base + '/repairs', { pointId: values.pointId || null, issue: values.issue }, '报修已登记');
+      if (editor.kind === 'resolve') return void await write(base + '/repairs/' + editor.repair.id,
+        { expectedVersion: editor.repair.version, action: 'resolve', resolution: values.resolution }, '报修已登记解决');
     } catch (e) { if (e instanceof Error && 'errorFields' in e) return; notify.error('请核对提交内容', { description: errorText(e) }); }
   };
   const act = async (order: Order, pointId: string, action: 'install' | 'accept') => {
@@ -98,6 +118,7 @@ export function ServiceOrderPanel({ projectId, owner, rooms, members }: {
       { title: '状态', render: (_, order) => <Tag color={statusColors[order.status]}>{statusLabels[order.status] || order.status}</Tag> },
       { title: '服务内容', render: (_, order) => <Space direction="vertical" size={0}>
         <Typography.Text>{order.cameraCount} 路摄像头 · 录像保留 {order.retentionDays} 天 · 服务期 {order.serviceDays} 天</Typography.Text>
+        {order.serviceEndsAt ? <Typography.Text type="secondary">服务期至 {when(order.serviceEndsAt)}{order.extensionDays > 0 ? '（已延期 ' + order.extensionDays + ' 天）' : ''}</Typography.Text> : null}
         {order.requestNote ? <Typography.Text type="secondary">{order.requestNote}</Typography.Text> : null}
       </Space> },
       { title: '报价', render: (_, order) => order.quote ? <Space direction="vertical" size={0}>
@@ -105,23 +126,37 @@ export function ServiceOrderPanel({ projectId, owner, rooms, members }: {
         <Typography.Text type="secondary">{order.confirmedQuoteVersion === order.quote.version ? '负责人已确认这一版' : '尚未确认这一版'}</Typography.Text>
       </Space> : <Typography.Text type="secondary">尚未录入报价</Typography.Text> },
       { title: '安装与验收', render: (_, order) => order.status === 'cancelled' ? <Typography.Text type="secondary">已取消：{order.cancelReason}</Typography.Text>
+        : order.exitedAt ? <Space direction="vertical" size={0}>
+          <Typography.Text>退场于 {when(order.exitedAt)}</Typography.Text>
+          <Typography.Text type="secondary">原因：{order.exitReason}</Typography.Text>
+          <Typography.Text type="secondary">押金记录：退回 {yuan(order.depositReturnedCents)} · 扣减 {yuan(order.depositDeductedCents)}{order.depositNote ? ' · ' + order.depositNote : ''}</Typography.Text>
+        </Space>
         : order.scheduledFor ? <Space direction="vertical" size={0}>
           <Typography.Text>{when(order.scheduledFor)}{order.installerName ? ' · ' + order.installerName : ''}</Typography.Text>
           <Typography.Text type="secondary">已验收 {order.points.filter(point => point.status === 'accepted').length}/{order.points.length} 个点位</Typography.Text>
         </Space> : <Typography.Text type="secondary">尚未安排安装</Typography.Text> },
+      { title: '售后', render: (_, order) => order.repairs.length === 0 ? <Typography.Text type="secondary">无报修</Typography.Text>
+        : <Button type="link" size="small" disabled={busy} onClick={() => start({ kind: 'repairs', order })}>
+          报修 {order.repairs.filter(repair => repair.status === 'open').length} 待处理 / 共 {order.repairs.length} 条
+        </Button> },
       { title: '操作', render: (_, order) => <Space wrap size={4}>
         {owner && ['pending_quote', 'quoted', 'confirmed'].includes(order.status) && <Button type="link" size="small" disabled={busy} onClick={() => start({ kind: 'quote', order })}>{order.quote ? '录入新报价' : '录入报价'}</Button>}
         {owner && order.status === 'quoted' && <Popconfirm title={'确认第 ' + order.quoteVersion + ' 版报价？'} description={'合计 ' + yuan(order.quote?.totalCents) + '，押金 ' + yuan(order.quote?.depositCents) + '。确认后只能通过新报价版本修改。'} okText="确认" cancelText="再看看" onConfirm={() => void write(root + '/' + order.id + '/confirm', { expectedVersion: order.version, quoteVersion: order.quoteVersion }, '已确认第 ' + order.quoteVersion + ' 版报价')}>
           <Button type="link" size="small" disabled={busy}>确认报价</Button></Popconfirm>}
         {owner && replaceable(order) && <Button type="link" size="small" disabled={busy} onClick={() => start({ kind: 'schedule', order })}>{order.status === 'scheduled' ? '调整安装安排' : '安排安装'}</Button>}
         {order.canAct && order.status === 'scheduled' && <Button type="link" size="small" disabled={busy} onClick={() => start({ kind: 'points', order })}>点位验收</Button>}
+        {(owner || order.canAct) && repairable(order) && <Button type="link" size="small" disabled={busy} onClick={() => start({ kind: 'repair', order })}>登记报修</Button>}
+        {owner && order.status === 'accepted' && <Button type="link" size="small" disabled={busy} onClick={() => start({ kind: 'extend', order })}>延期</Button>}
+        {owner && order.status === 'accepted' && <Button type="link" size="small" danger disabled={busy} onClick={() => start({ kind: 'exit', order })}>办理退场</Button>}
         {owner && open(order) && <Button type="link" size="small" danger disabled={busy} onClick={() => start({ kind: 'cancel', order })}>取消订单</Button>}
       </Space> },
     ]} />
-    <Modal title={{ create: '发起托管订单', quote: '录入报价', schedule: '安排安装与点位', points: '点位安装与验收', cancel: '取消托管订单' }[editor?.kind || 'create']} open={!!editor}
-      width={editor?.kind === 'schedule' || editor?.kind === 'points' ? 720 : 520} styles={{ body: { maxHeight: '65vh', overflowY: 'auto' } }}
-      onCancel={() => { if (!busy) setEditor(null); }} onOk={() => void submit()} confirmLoading={busy}
-      okText={editor?.kind === 'cancel' ? '确认取消订单' : '保存'} okButtonProps={{ disabled: busy, danger: editor?.kind === 'cancel' }} destroyOnHidden>
+    <Modal title={{ create: '发起托管订单', quote: '录入报价', schedule: '安排安装与点位', points: '点位安装与验收', cancel: '取消托管订单',
+      extend: '延期托管服务', exit: '办理退场与押金处置', repair: '登记报修', repairs: '售后记录', resolve: '登记报修解决' }[editor?.kind || 'create']} open={!!editor}
+      width={editor?.kind === 'schedule' || editor?.kind === 'points' || editor?.kind === 'repairs' ? 720 : 520} styles={{ body: { maxHeight: '65vh', overflowY: 'auto' } }}
+      onCancel={() => { if (!busy) setEditor(null); }} onOk={() => void submit()} confirmLoading={busy} footer={editor?.kind === 'repairs' ? null : undefined}
+      okText={editor?.kind === 'cancel' ? '确认取消订单' : editor?.kind === 'exit' ? '确认退场' : editor?.kind === 'resolve' ? '登记解决' : '保存'}
+      okButtonProps={{ disabled: busy, danger: editor?.kind === 'cancel' || editor?.kind === 'exit' }} destroyOnHidden>
       <Form form={form} layout="vertical" disabled={busy} preserve={false}>
         {editor?.kind === 'create' && <>
           <Form.Item name="cameraCount" label="摄像头路数" rules={[{ required: true }]}><InputNumber min={1} max={8} precision={0} style={{ width: '100%' }} /></Form.Item>
@@ -171,6 +206,39 @@ export function ServiceOrderPanel({ projectId, owner, rooms, members }: {
           <Alert type="warning" showIcon message="取消后订单保留为历史记录，已登记的点位证据不删除；之后可重新发起新订单。" style={{ marginBottom: 16 }} />
           <Form.Item name="reason" label="取消原因" rules={[{ required: true, whitespace: true }]}><Input.TextArea rows={2} maxLength={200} /></Form.Item>
         </>}
+        {editor?.kind === 'extend' && <>
+          <Alert type="info" showIcon message="服务期从全部点位验收通过起算；延期只记录新的服务天数，费用与结算在线下另行确认。" style={{ marginBottom: 16 }} />
+          <Form.Item name="days" label="延长天数" rules={[{ required: true }]}><InputNumber min={1} max={3650} precision={0} style={{ width: '100%' }} /></Form.Item>
+          <Form.Item name="note" label="延期说明（可选）"><Input.TextArea rows={2} maxLength={200} /></Form.Item>
+        </>}
+        {editor?.kind === 'exit' && <>
+          <Alert type="warning" showIcon message="退场前须先在“工地视频”Tab解除全部摄像头绑定并停止录像，并关闭所有未解决的报修。押金只在系统记录退回与扣减，线下结算，系统不收款、不退款。" style={{ marginBottom: 16 }} />
+          {editor.order.quote?.depositCents ? <Alert type="info" showIcon message={'已确认报价押金：' + yuan(editor.order.quote.depositCents) + '。'} style={{ marginBottom: 16 }} /> : null}
+          <Form.Item name="reason" label="退场原因" rules={[{ required: true, whitespace: true }]}><Input.TextArea rows={2} maxLength={200} /></Form.Item>
+          <Form.Item name="returned" label="押金退回（元，线下完成）" rules={[{ required: true }]}><InputNumber min={0} max={1000000000} precision={2} addonBefore="¥" style={{ width: '100%' }} /></Form.Item>
+          <Form.Item name="deducted" label="押金扣减（元，线下完成）" rules={[{ required: true }]}><InputNumber min={0} max={1000000000} precision={2} addonBefore="¥" style={{ width: '100%' }} /></Form.Item>
+          <Form.Item name="note" label="押金处置说明（可选）"><Input.TextArea rows={2} maxLength={200} /></Form.Item>
+        </>}
+        {editor?.kind === 'repair' && <>
+          <Alert type="info" showIcon message="报修只记录在本订单的售后历史；处理进展与结果由负责人或安装负责人登记。" style={{ marginBottom: 16 }} />
+          <Form.Item name="pointId" label="关联点位（可选）"><Select allowClear options={editor.order.points.map(point => ({ value: point.id, label: point.seq + '. ' + point.name }))} /></Form.Item>
+          <Form.Item name="issue" label="故障或问题描述" rules={[{ required: true, whitespace: true }]}><Input.TextArea rows={3} maxLength={500} /></Form.Item>
+        </>}
+        {editor?.kind === 'resolve' && <>
+          <Typography.Paragraph type="secondary">{editor.repair.issue}</Typography.Paragraph>
+          <Form.Item name="resolution" label="处理结果" rules={[{ required: true, whitespace: true }]}><Input.TextArea rows={3} maxLength={200} /></Form.Item>
+        </>}
+        {editor?.kind === 'repairs' && <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          {editor.order.repairs.length === 0 && <Alert type="info" showIcon message="暂无报修记录" />}
+          {editor.order.repairs.map(repair => <Space key={repair.id} wrap>
+            <Tag color={repairColors[repair.status]}>{repairLabels[repair.status] || repair.status}</Tag>
+            <Typography.Text>{repair.issue}</Typography.Text>
+            <Typography.Text type="secondary">{repair.pointName ? '点位：' + repair.pointName + ' · ' : ''}{when(repair.openedAt)}{repair.closedAt ? ' · 关闭于 ' + when(repair.closedAt) : ''}</Typography.Text>
+            {repair.resolution ? <Typography.Text type="secondary">处理结果：{repair.resolution}</Typography.Text> : null}
+            {repair.status === 'open' && (owner || editor.order.canAct) && <Button size="small" type="primary" disabled={busy} onClick={() => start({ kind: 'resolve', order: editor.order, repair })}>登记解决</Button>}
+            {repair.status === 'open' && owner && <Popconfirm title="取消这条报修？" okText="取消报修" cancelText="返回" onConfirm={() => void write(root + '/' + editor.order.id + '/repairs/' + repair.id, { expectedVersion: repair.version, action: 'cancel', resolution: '' }, '报修已取消')}><Button size="small" disabled={busy}>取消</Button></Popconfirm>}
+          </Space>)}
+        </Space>}
       </Form>
     </Modal>
   </Space>;

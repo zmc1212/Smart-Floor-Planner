@@ -3,9 +3,10 @@ import { text } from './contracts';
 
 // Managed cloud-site service orders. Fees and deposits are recorded for an
 // offline settlement; this module never initiates or verifies a payment.
-export const serviceOrderStatuses = ['pending_quote', 'quoted', 'confirmed', 'scheduled', 'accepted', 'cancelled'] as const;
+export const serviceOrderStatuses = ['pending_quote', 'quoted', 'confirmed', 'scheduled', 'accepted', 'exited', 'cancelled'] as const;
 export type ServiceOrderStatus = typeof serviceOrderStatuses[number];
 export const servicePointStatuses = ['pending', 'installed', 'accepted'] as const;
+export const repairStatuses = ['open', 'resolved', 'cancelled'] as const;
 export const MAX_SERVICE_CAMERAS = 8;
 export const MAX_SERVICE_CENTS = 100000000000;
 export type QuoteLine = { label: string; amountCents: number };
@@ -50,6 +51,14 @@ export function servicePoints(value: unknown): ServicePointInput[] {
   if (new Set(points.map(point => point.name)).size !== points.length) fail('invalid_service_order', 422);
   return points;
 }
+export const extensionDays = (value: unknown) => integer(value, 1, 3650);
+export const repairIssue = (value: unknown) => words(value, 500);
+export const repairResolution = (value: unknown) => words(value, 200);
+export function depositDisposition(value: Record<string, unknown>) {
+  const returnedCents = money(value.depositReturnedCents), deductedCents = money(value.depositDeductedCents);
+  const note = words(value.depositNote ?? '', 200, false);
+  return { returnedCents, deductedCents, note };
+}
 export function shanghaiDayStart(now = new Date()) {
   const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
   const [year, month, date] = day.split('-').map(Number);
@@ -66,8 +75,11 @@ export function scheduledFor(value: unknown, now = new Date()) {
 export const canQuote = (status: string) => status === 'pending_quote' || status === 'quoted' || status === 'confirmed';
 export const canConfirm = (status: string) => status === 'quoted';
 export const canSchedule = (status: string) => status === 'confirmed' || status === 'scheduled';
-export const canCancel = (status: string) => status !== 'accepted' && status !== 'cancelled';
+export const canCancel = (status: string) => status !== 'accepted' && status !== 'exited' && status !== 'cancelled';
 export const canActOnPoint = (status: string) => status === 'scheduled';
+export const canRepair = (status: string) => status === 'scheduled' || status === 'accepted';
+export const canExtend = (status: string) => status === 'accepted';
+export const canExit = (status: string) => status === 'accepted';
 export const allPointsAccepted = (points: Array<{ status: string }>) => points.length > 0 && points.every(point => point.status === 'accepted');
 export const cents = (value: unknown) => {
   // pg returns int8 columns as decimal strings, so a stored receipt may arrive as text.
