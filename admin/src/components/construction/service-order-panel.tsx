@@ -34,8 +34,16 @@ export function ServiceOrderPanel({ projectId, owner, rooms, members }: {
 }) {
   const [items, setItems] = useState<Order[]>([]), [loading, setLoading] = useState(true), [busy, setBusy] = useState(false);
   const [error, setError] = useState(''), [editor, setEditor] = useState<Editor | null>(null);
+  const [formKey, setFormKey] = useState(0), [initial, setInitial] = useState<Record<string, unknown>>({});
   const [form] = Form.useForm(); const alive = useRef(true), requestSequence = useRef(0);
   const root = 'projects/' + projectId + '/service-orders';
+  // Form.List rows mount from initialValues and can re-register before their item
+  // values stick; re-apply the defaults once the modal has settled.
+  useEffect(() => {
+    if (!editor || !Object.keys(initial).length) return;
+    const timer = setTimeout(() => { if (!form.isFieldsTouched()) form.setFieldsValue(initial); }, 400);
+    return () => clearTimeout(timer);
+  }, [editor, form, initial]);
   const load = useCallback(async () => {
     const sequence = ++requestSequence.current; setLoading(true);
     try {
@@ -64,15 +72,18 @@ export function ServiceOrderPanel({ projectId, owner, rooms, members }: {
     finally { if (alive.current) setBusy(false); }
   };
   const start = (next: Editor) => {
-    form.resetFields();
-    if (next.kind === 'create') form.setFieldsValue({ cameraCount: 5, retentionDays: 3, serviceDays: 90, note: '' });
-    if (next.kind === 'quote') form.setFieldsValue({ lines: [{ label: '云工地视频托管服务', amount: 0 }], deposit: 0, note: '' });
-    if (next.kind === 'schedule') form.setFieldsValue({ installerId: undefined, scheduledFor: null, points: [{ name: '点位 1', roomId: undefined, positionNote: '' }] });
-    if (next.kind === 'cancel') form.setFieldsValue({ reason: '' });
-    if (next.kind === 'extend') form.setFieldsValue({ days: 30, note: '' });
-    if (next.kind === 'exit') form.setFieldsValue({ reason: '', returned: 0, deducted: 0, note: '' });
-    if (next.kind === 'repair') form.setFieldsValue({ pointId: undefined, issue: '' });
-    if (next.kind === 'resolve') form.setFieldsValue({ resolution: '' });
+    setInitial(
+      next.kind === 'create' ? { cameraCount: 5, retentionDays: 3, serviceDays: 90, note: '' }
+      : next.kind === 'quote' ? { lines: [{ label: '云工地视频托管服务', amount: 0 }], deposit: 0, note: '' }
+      : next.kind === 'schedule' ? { points: [{ name: '点位 1', positionNote: '' }] }
+      : next.kind === 'cancel' ? { reason: '' }
+      : next.kind === 'extend' ? { days: 30, note: '' }
+      : next.kind === 'exit' ? { reason: '', returned: 0, deducted: 0, note: '' }
+      : next.kind === 'repair' ? { issue: '' }
+      : next.kind === 'resolve' ? { resolution: '' }
+      : {},
+    );
+    setFormKey(key => key + 1);
     setEditor(next);
   };
   const submit = async () => {
@@ -156,8 +167,8 @@ export function ServiceOrderPanel({ projectId, owner, rooms, members }: {
       width={editor?.kind === 'schedule' || editor?.kind === 'points' || editor?.kind === 'repairs' ? 720 : 520} styles={{ body: { maxHeight: '65vh', overflowY: 'auto' } }}
       onCancel={() => { if (!busy) setEditor(null); }} onOk={() => void submit()} confirmLoading={busy} footer={editor?.kind === 'repairs' ? null : undefined}
       okText={editor?.kind === 'cancel' ? '确认取消订单' : editor?.kind === 'exit' ? '确认退场' : editor?.kind === 'resolve' ? '登记解决' : '保存'}
-      okButtonProps={{ disabled: busy, danger: editor?.kind === 'cancel' || editor?.kind === 'exit' }} destroyOnHidden>
-      <Form form={form} layout="vertical" disabled={busy} preserve={false}>
+      okButtonProps={{ disabled: busy, danger: editor?.kind === 'cancel' || editor?.kind === 'exit' }} forceRender>
+      <Form key={formKey} form={form} layout="vertical" disabled={busy} preserve={false} initialValues={initial}>
         {editor?.kind === 'create' && <>
           <Form.Item name="cameraCount" label="摄像头路数" rules={[{ required: true }]}><InputNumber min={1} max={8} precision={0} style={{ width: '100%' }} /></Form.Item>
           <Form.Item name="retentionDays" label="录像保留天数" rules={[{ required: true }]}><InputNumber min={1} max={30} precision={0} style={{ width: '100%' }} /></Form.Item>

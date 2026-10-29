@@ -25,8 +25,16 @@ function Workbench({ identity }: { identity: string }) {
   const [sourceLead, setSourceLead] = useState<ConstructionLead | null>(null);
   const [settings, setSettings] = useState<StageSettings>({ stages: [], version: 1, owner: false });
   const [busy, setBusy] = useState(false), [loading, setLoading] = useState(false), [error, setError] = useState(''), [editor, setEditor] = useState<Editor | null>(null), [pending, setPending] = useState<Pending | null>(null);
+  const [formKey, setFormKey] = useState(0), [initial, setInitial] = useState<Record<string, unknown>>({});
   const [form] = Form.useForm(); const storageKey = 'construction:pending:' + identity;
   const alive = useRef(true), generation = useRef(0), creationEntry = useRef('');
+  // Form.List rows mount from initialValues and can re-register before their item
+  // values stick; re-apply the defaults once the modal has settled.
+  useEffect(() => {
+    if (!editor || !Object.keys(initial).length) return;
+    const timer = setTimeout(() => { if (!form.isFieldsTouched()) form.setFieldsValue(initial); }, 400);
+    return () => clearTimeout(timer);
+  }, [editor, form, initial]);
   const load = useCallback(async (pid = '') => {
     const g = ++generation.current; setLoading(true); setError('');
     try {
@@ -40,8 +48,7 @@ function Workbench({ identity }: { identity: string }) {
         setItems(list.items); setCatalog(lead ? { ...opts, leads: [lead, ...opts.leads.filter(l => l.id !== lead.id)] } : opts); setSettings(stageSettings); setDetail(view);
         if (lead) {
           if (lead.id !== entryLeadId || !opts.owner) throw new ConstructionRequestError(false, '客户信息已变化，请返回客户线索重新发起。');
-          setSourceLead(lead); form.resetFields();
-          form.setFieldsValue({ leadId: lead.id, name: `${lead.community_name || lead.name || '客户'}施工项目`.slice(0, 80) });
+          setSourceLead(lead); setInitial({ leadId: lead.id, name: `${lead.community_name || lead.name || '客户'}施工项目`.slice(0, 80) }); setFormKey(key => key + 1);
           setEditor({ kind: 'create' }); creationEntry.current = '';
           const url = new URL(window.location.href); url.searchParams.delete('leadId');
           window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
@@ -49,7 +56,7 @@ function Workbench({ identity }: { identity: string }) {
       }
     } catch (e) { if (alive.current && g === generation.current) { setError(errorText(e)); setDetail(null); setItems([]); } }
     finally { if (alive.current && g === generation.current) setLoading(false); }
-  }, [form]);
+  }, []);
   useEffect(() => {
     alive.current = true;
     let hasPending = false;
@@ -76,13 +83,16 @@ function Workbench({ identity }: { identity: string }) {
     } finally { if (alive.current) setBusy(false); }
   };
   const open = (kind: Editor['kind'], stage?: Stage) => {
-    form.resetFields();
     if (kind === 'create') setSourceLead(null);
-    if (kind === 'stages') form.setFieldsValue({ stages: settings.stages });
-    if (kind === 'project' && detail) form.setFieldsValue({ name: detail.project.name, status: detail.project.status, customerAccess: detail.project.customer_access });
-    if (kind === 'progress' && detail) form.setFieldsValue({ stageKey: detail.project.current_stage_key || detail.stages[0]?.key, note: detail.project.progress_note, sendReminder: false });
-    if (kind === 'contact' && stage && detail) { const members = detail.assignments.filter(s => s.stage_key === stage.key); form.setFieldsValue({ staffIds: members.map(m => m.admin_id), primaryStaffId: members.find(m => m.is_primary)?.admin_id || null }); }
-    if (kind === 'member') form.setFieldsValue({ role: 'worker', active: true, workLabel: '' });
+    setInitial(
+      kind === 'stages' ? { stages: settings.stages }
+      : kind === 'project' && detail ? { name: detail.project.name, status: detail.project.status, customerAccess: detail.project.customer_access }
+      : kind === 'progress' && detail ? { stageKey: detail.project.current_stage_key || detail.stages[0]?.key, note: detail.project.progress_note, sendReminder: false }
+      : kind === 'contact' && stage && detail ? (() => { const members = detail.assignments.filter(s => s.stage_key === stage.key); return { staffIds: members.map(m => m.admin_id), primaryStaffId: members.find(m => m.is_primary)?.admin_id || null }; })()
+      : kind === 'member' ? { role: 'worker', active: true, workLabel: '' }
+      : {},
+    );
+    setFormKey(key => key + 1);
     setEditor({ kind, stage });
   };
   const submit = async () => {
@@ -136,17 +146,17 @@ function Workbench({ identity }: { identity: string }) {
           <Alert type="info" showIcon message="项目成员仅获得本项目施工资料权限；不授予客户私聊、客户电话、线索归属或分佣权限。房间名称不写正式量房墙图。" />
           <ProTable<Detail['members'][number]> rowKey="admin_id" dataSource={detail.members} search={false} options={false} pagination={false} headerTitle="项目成员" toolBarRender={() => detail.manage ? [<Button key="member" disabled={disabled} onClick={() => open('member')}>设置成员</Button>] : []} columns={[
             { title: '员工', dataIndex: 'display_name' }, { title: '项目角色', render: (_, m) => labels[m.role] }, { title: '工地分工', dataIndex: 'work_label' }, { title: '状态', render: (_, m) => m.active && m.staff_status === 'active' ? '有效' : '已停用 / 移出' },
-            { title: '操作', valueType: 'option', render: (_, m) => detail.manage && m.active && (detail.owner || m.role !== 'manager') && <Button type="link" disabled={disabled} onClick={() => { form.resetFields(); form.setFieldsValue({ adminId: m.admin_id, role: m.role, active: false, workLabel: m.work_label }); setEditor({ kind: 'member' }); }}>移出项目</Button> },
+            { title: '操作', valueType: 'option', render: (_, m) => detail.manage && m.active && (detail.owner || m.role !== 'manager') && <Button type="link" disabled={disabled} onClick={() => { setInitial({ adminId: m.admin_id, role: m.role, active: false, workLabel: m.work_label }); setFormKey(key => key + 1); setEditor({ kind: 'member' }); }}>移出项目</Button> },
           ]} />
-          <ProTable<Detail['rooms'][number]> rowKey="id" dataSource={detail.rooms} search={false} options={false} pagination={false} headerTitle="项目房间" toolBarRender={() => detail.manage ? [<Button key="room" disabled={disabled} onClick={() => open('room')}>添加房间</Button>] : []} columns={[{ title: '房间', dataIndex: 'name' }, { title: '操作', valueType: 'option', render: (_, r) => detail.manage && <Button type="link" disabled={disabled} onClick={() => { form.resetFields(); form.setFieldsValue({ name: r.name }); setEditor({ kind: 'room', roomId: r.id }); }}>修改名称</Button> }]} />
+          <ProTable<Detail['rooms'][number]> rowKey="id" dataSource={detail.rooms} search={false} options={false} pagination={false} headerTitle="项目房间" toolBarRender={() => detail.manage ? [<Button key="room" disabled={disabled} onClick={() => open('room')}>添加房间</Button>] : []} columns={[{ title: '房间', dataIndex: 'name' }, { title: '操作', valueType: 'option', render: (_, r) => detail.manage && <Button type="link" disabled={disabled} onClick={() => { setInitial({ name: r.name }); setFormKey(key => key + 1); setEditor({ kind: 'room', roomId: r.id }); }}>修改名称</Button> }]} />
         </Space> },
         { key: 'public', label: '公开材料', children: <PublicationWorkbench key={identity+':'+selected} identity={identity} projectId={selected}/> },
         { key: 'service', label: '托管服务', children: <ServiceOrderPanel key={identity+':'+selected} projectId={selected} owner={detail.owner} rooms={detail.rooms} members={detail.members} /> },
         { key: 'video', label: '工地视频', children: <CameraPanel key={identity+':'+selected} projectId={selected} /> },
       ]} />}
     </Drawer>
-    <Modal title={editor ? ({ create: '建立施工项目', project: '项目设置', member: '设置项目成员', room: '项目房间', stages: '配置施工节点', contact: `${editor.stage?.name} · 联系管家电话`, progress: '更新实际施工节点' }[editor.kind]) : ''} width={editor?.kind === 'stages' ? 760 : 520} styles={{ body: { maxHeight: '65vh', overflowY: 'auto' } }} open={!!editor} onCancel={() => { if (!busy) setEditor(null); }} onOk={() => void submit()} confirmLoading={busy} okButtonProps={{ disabled: !!pending }} okText="保存" destroyOnHidden>
-      <Form form={form} layout="vertical" disabled={disabled} preserve={false}>
+    <Modal title={editor ? ({ create: '建立施工项目', project: '项目设置', member: '设置项目成员', room: '项目房间', stages: '配置施工节点', contact: `${editor.stage?.name} · 联系管家电话`, progress: '更新实际施工节点' }[editor.kind]) : ''} width={editor?.kind === 'stages' ? 760 : 520} styles={{ body: { maxHeight: '65vh', overflowY: 'auto' } }} open={!!editor} onCancel={() => { if (!busy) setEditor(null); }} onOk={() => void submit()} confirmLoading={busy} okButtonProps={{ disabled: !!pending }} okText="保存" forceRender>
+      <Form key={formKey} form={form} layout="vertical" disabled={disabled} preserve={false} initialValues={initial}>
         {editor?.kind === 'stages' && <>
           <Alert type="info" showIcon message="默认10个节点，可增删、调整名称和顺序。开启到场提醒须填写原因与现场重点。需求补问独立配置，实际进入节点时最多问一个缺项，已有或问过的需求不重复问；客户可稍后再聊。" style={{ marginBottom: 20 }} />
           <Form.List name="stages">{(fields, { add, remove, move }) => <Space direction="vertical" size={20} style={{ width: '100%' }}>
