@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { executeAgentChat, agentChatBody, agentChatRequestDiagnostic } from './providers/agent-chat';
+import { bailianBinding } from './providers/bailian-capabilities';
 import { consultationProfile } from '@/lib/assistant/contracts/consultation';
 import type { ModelTurnInput } from '@/lib/assistant/contracts/model';
 import type { AgentConfig } from '@/lib/assistant/agent/config';
@@ -47,6 +48,18 @@ export function assistantThinkingOverrideAllowed(runtime: Pick<AiProviderRuntime
 
 function requestFingerprint(value: unknown) {
   return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
+}
+
+/** Explicit caching stays opt-in. The marker is only valid for the exact
+ * DashScope Qwen3.8 binding and a text-only leading system block; every other
+ * runtime keeps the provider's implicit cache behaviour. */
+export function explicitCacheControl(runtime: Pick<AiProviderRuntimeConfig, 'baseUrl'>, remoteModel: string,
+  enableThinking: boolean | undefined, agentInput: Pick<ModelTurnInput, 'messages'> | undefined, consultation: boolean) {
+  if (!agentInput || consultation || process.env.ASSISTANT_TEXT_EXPLICIT_CACHE !== '1'
+    || !bailianBinding(runtime.baseUrl, remoteModel, enableThinking)) return undefined;
+  const leading = agentInput.messages[0];
+  return leading?.role === 'system' && leading.content.length > 0 && leading.content.every(part => part.type === 'text')
+    ? 'ephemeral_system' as const : undefined;
 }
 
 /**
@@ -97,9 +110,12 @@ export async function executePostgresText(input: {
     if (enableThinking !== undefined && !assistantThinkingOverrideAllowed(runtime, remoteModel, !!consultationRuntime)) {
       throw new Error('Assistant thinking override requires an approved SiliconFlow or official DeepSeek runtime');
     }
-    const agentBody = input.agent ? agentChatBody({ ...input.agent.input, model: remoteModel, enableThinking }, runtime.baseUrl) : null;
+    const cacheControl = input.owner.kind === 'assistant_run' && input.agent
+      ? input.agent.input.cacheControl ?? explicitCacheControl(runtime, remoteModel, enableThinking, input.agent.input, !!consultation)
+      : undefined;
+    const agentBody = input.agent ? agentChatBody({ ...input.agent.input, model: remoteModel, enableThinking, cacheControl }, runtime.baseUrl) : null;
     const attemptMetadata = input.owner.kind === 'assistant_run' ? { ...input.metadata,
-      assistantText: { enableThinking: enableThinking ?? null, maxTokens: input.maxTokens },
+      assistantText: { enableThinking: enableThinking ?? null, maxTokens: input.maxTokens, cacheControl: cacheControl ?? null },
       ...(agentBody ? { assistantRequest: agentChatRequestDiagnostic(agentBody) } : {}),
     } : input.metadata;
     const startedAt = Date.now();

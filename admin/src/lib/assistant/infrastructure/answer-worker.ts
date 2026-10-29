@@ -14,6 +14,7 @@ import { chatFirstProgress, defaultGuidance } from '../requirements/guidance';
 import { needsDesignerSuggestion, designerSuggestion } from '../handoff/intent';
 import { agentConfig } from '../agent/config';
 import { processAgentAnswer } from '../agent/worker';
+import { nativeSearchDependency, selectedNativeSearch } from '../agent/native-search';
 
 type Dependencies={retriever?:KnowledgeRetriever;model?:TextModelGateway};
 export async function processAnswer(lease:Lease,deps:Dependencies={}) {
@@ -21,8 +22,11 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
   let stage:'retrieval'|'model'='retrieval';
   try {
     const context=await withTenantTransaction(lease.enterpriseId,tx=>runContext(tx,lease));
-    if (lease.actor.principal.kind === 'user' && agentConfig((context.run.policy_snapshot as Row).agent)) {
-      await processAgentAnswer(lease); return;
+    const agent=agentConfig((context.run.policy_snapshot as Row).agent);
+    if (lease.actor.principal.kind === 'user' && agent) {
+      const native=agent.tools?await selectedNativeSearch(agent):null;
+      await processAgentAnswer(lease,native?{webSearch:nativeSearchDependency({
+        enterpriseId:lease.enterpriseId,runId:lease.runId,search:native})}:{}); return;
     }
     if(context.run.trigger_kind!=='user_message')fail('assistant_capability_forbidden',403);
     const messages=await withTenantTransaction(lease.enterpriseId,async tx=>{

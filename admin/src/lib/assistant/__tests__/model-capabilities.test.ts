@@ -4,6 +4,9 @@ import { agentChatBody, parseAgentChat, executeAgentChat } from '@/lib/ai/provid
 import { bailianBinding, bailianCapabilities, bailianSearchBinding } from '@/lib/ai/providers/bailian-capabilities';
 import { bailianOfflineTransport, bailianPublicSearch, nativeSearchCandidates, nativeSearchUsage, publicSearchBody } from '@/lib/ai/providers/bailian-offline';
 import { cacheObservation, modelPrefixObservation } from '@/lib/ai/providers/model-observation';
+import { AiProviderError } from '@/lib/ai/provider-types';
+import { explicitCacheControl } from '@/lib/ai/postgres-workflow-chat';
+import { nativeSearchAttemptValues, nativeSearchBindingFor, nativeSearchFailure, nativeSearchSucceeded, resolveNativeSearch, selectedNativeSearch } from '../agent/native-search';
 import { assertToolPairs, toolSchemaIssue } from '../agent/tool-protocol';
 import { runRenovationAgent, type AgentCheckpoint } from '../agent/runtime';
 import { partialBody, joinDraft, validateDraft, type ApprovedDraft } from '../agent/draft-continuation';
@@ -122,6 +125,73 @@ test('real Batch wire uses upload, asynchronous batch, query, content and cancel
     const submission=JSON.parse(String(requests[1].init?.body));assert.equal(submission.endpoint,'/v1/chat/completions');assert.equal(submission.completion_window,'24h');
     assert.ok(requests.every(r=>r.url.startsWith(binding.baseUrl+'/')));assert.match(requests[4].url,/batches\/batch-test\/cancel$/);
   }finally{globalThis.fetch=original;}
+});
+test('main-path native search binds only the exact Agent runtime and an explicit provider choice never falls back',async()=>{
+  const config={model:binding.model,providerKey:'dashscope'};
+  assert.deepEqual(nativeSearchBindingFor(runtime,config),{...binding,api:'dashscope-generation',baseUrl:'https://dashscope.aliyuncs.com/api/v1'});
+  assert.ok(nativeSearchBindingFor({...runtime,baseUrl:'https://dashscope-intl.aliyuncs.com/compatible-mode'},config));
+  assert.equal(nativeSearchBindingFor(runtime,{...config,model:'qwen3-max'}),null);
+  assert.equal(nativeSearchBindingFor({...runtime,modelMappings:{'chat.general':'qwen3-max'}},config),null);
+  assert.equal(nativeSearchBindingFor({...runtime,key:'other',adapterConfig:undefined},config),null);
+  assert.equal(nativeSearchBindingFor({...runtime,key:'other',adapterConfig:undefined},{...config,providerKey:'other'}),null);
+  assert.equal(nativeSearchBindingFor({...runtime,adapterType:'grs'},config),null);
+  assert.equal(nativeSearchBindingFor({...runtime,adapterConfig:{providerPreset:'siliconflow'}},config),null);
+  assert.equal(nativeSearchBindingFor({...runtime,baseUrl:'https://proxy.example/compatible-mode'},config),null);
+  assert.equal(nativeSearchBindingFor(runtime,config,'Qwen/Qwen3.5-4B'),null);
+  assert.ok(nativeSearchBindingFor(runtime,config,binding.model));
+  // Consultation read_web needs the private discovery candidates, not this provider.
+  assert.equal(await resolveNativeSearch({...config,consultation:{} as never}),null);
+  const previous=process.env.ASSISTANT_WEB_SEARCH_PROVIDER;
+  try {
+    process.env.ASSISTANT_WEB_SEARCH_PROVIDER='searxng';
+    assert.equal(await selectedNativeSearch({...config,consultation:undefined}),null);
+    process.env.ASSISTANT_WEB_SEARCH_PROVIDER='bailian-native';
+    assert.equal(await selectedNativeSearch({...config,consultation:{} as never}),null);
+  } finally {
+    if(previous===undefined)delete process.env.ASSISTANT_WEB_SEARCH_PROVIDER;else process.env.ASSISTANT_WEB_SEARCH_PROVIDER=previous;
+  }
+});
+test('every main-path native search is an audited run attempt; unknown outcomes stay billable and are not retried',()=>{
+  const query={query:'瓷砖执行标准',domains:['example.com']},searchBinding=bailianSearchBinding(binding);
+  const values=nativeSearchAttemptValues({enterpriseId:1n,runId:2n,runtime,binding:searchBinding,query});
+  assert.equal(values.assistantRunId,2n);assert.equal(values.generationId,null);assert.equal(values.status,'created');assert.equal(values.accepted,false);
+  assert.equal(values.capability,'chat');assert.equal(values.logicalModelKey,'chat.general');assert.equal(values.remoteModel,binding.model);
+  assert.match(String(values.requestFingerprint),/^[0-9a-f]{64}$/);
+  // The audit keeps a hash and public domains, never the query transcript.
+  assert.doesNotMatch(JSON.stringify(values.metadata),/瓷砖执行标准/);
+  const payload={usage:{input_tokens:140,output_tokens:20,prompt_tokens_details:{cached_tokens:80}},request_id:'native'};
+  const success=nativeSearchSucceeded({query,binding:searchBinding,payload,requestId:'native',durationMs:12});
+  assert.equal(success.status,'succeeded');assert.equal(success.accepted,true);assert.deepEqual(success.actualCost,{measurementKind:'unavailable'});
+  assert.equal((success.metadata.cache as {status:string}).status,'hit');assert.equal((success.metadata.usage as {inputTokens:number}).inputTokens,140);
+  // A malformed counter is recorded as unavailable usage, not a fabricated zero or a lost acceptance.
+  const malformed=nativeSearchSucceeded({query,binding:searchBinding,payload:{usage:{input_tokens:-1,output_tokens:1}},requestId:null,durationMs:1});
+  assert.equal(malformed.status,'succeeded');assert.equal(malformed.metadata.usage,null);assert.equal((malformed.metadata.cache as {status:string}).status,'unavailable');
+  const rejected=nativeSearchFailure({query,binding:searchBinding,error:new AiProviderError('bad request','HTTP_400','safe_fallback',400),durationMs:3});
+  assert.equal(rejected.status,'failed');assert.equal(rejected.accepted,false);assert.equal(rejected.errorCode,'HTTP_400');
+  for(const error of [new AiProviderError('deadline','PROVIDER_TIMEOUT','unknown',504),new AiProviderError('timeout','HTTP_408','safe_fallback',408),Error('stream truncated')]) {
+    const unknown=nativeSearchFailure({query,binding:searchBinding,error,durationMs:3});
+    assert.equal(unknown.status,'unknown');assert.equal(unknown.accepted,true);
+  }
+});
+test('explicit cache is an opt-in exact-binding marker on the leading text system block only',()=>{
+  const previous=process.env.ASSISTANT_TEXT_EXPLICIT_CACHE;
+  try {
+    delete process.env.ASSISTANT_TEXT_EXPLICIT_CACHE;
+    assert.equal(explicitCacheControl(runtime,binding.model,false,{messages:input.messages},false),undefined);
+    process.env.ASSISTANT_TEXT_EXPLICIT_CACHE='1';
+    assert.equal(explicitCacheControl(runtime,binding.model,false,{messages:input.messages},false),'ephemeral_system');
+    assert.equal(explicitCacheControl({baseUrl:'https://api.siliconflow.cn'},binding.model,false,{messages:input.messages},false),undefined);
+    assert.equal(explicitCacheControl(runtime,binding.model,false,{messages:input.messages},true),undefined);
+    assert.equal(explicitCacheControl(runtime,binding.model,false,{messages:[{role:'user',content:[{type:'text',text:'卫生间准备铺砖前需要注意什么？'}]}]},false),undefined);
+    assert.equal(explicitCacheControl(runtime,binding.model,false,{messages:[]},false),undefined);
+    const marked=agentChatBody({...input,cacheControl:'ephemeral_system'},base);
+    const system=marked.messages[0].content as Array<Record<string,unknown>>;
+    assert.deepEqual(system.at(-1)?.cache_control,{type:'ephemeral'});
+    assert.equal((marked.messages[1].content as Array<Record<string,unknown>>)[0].cache_control,undefined);
+    assert.throws(()=>agentChatBody({...input,cacheControl:'ephemeral_system'},'https://api.siliconflow.cn'),/cache_control_not_applicable/);
+  } finally {
+    if(previous===undefined)delete process.env.ASSISTANT_TEXT_EXPLICIT_CACHE;else process.env.ASSISTANT_TEXT_EXPLICIT_CACHE=previous;
+  }
 });
 test('source-bearing native search binds DashScope Generation and parses its usage without trusting prose',async()=>{
   const original=globalThis.fetch;let calls=0;
