@@ -135,7 +135,7 @@ English mirror: [cloud-construction-video-plan.md](./cloud-construction-video-pl
 - WVP 工作目录：`G:/workspace/向总/wvp`。固定源码提交 `3fcd3ae80c30c95aeb82ef830af439a835257067`，镜像 `wvp-stack/wvp:2.7.4-3fcd3ae`；ZLM 固定镜像摘要见该目录 `scripts/versions.psd1`。已有服务端 JPEG 抓拍历史证据；持续录像、清理和 PTZ 尚无本计划验收证据。
 - 现配置 `config/application.yml` 的 `record-sip`、`record-push-live` 为 false；`record-day: ${RECORD_DAYS:7}` 是媒体节点级配置。**设置保留天数不等于开启持续录像，也不等于逐摄像头策略已经实现。**
 - 产品已有 `/construction-projects`、`packages/construction/projects/projects`、施工聊天和公开照片工地。施工业务实际使用 `admin/src/db/construction-schema.ts` 的 PostgreSQL/Drizzle 表与租户事务/RLS；不因旧总说明提到 Mongoose 而另建一套 MongoDB 摄像头业务。WVP 自身 MySQL/Redis 继续由 WVP 管理。
-- 本计划细化既有 XiaoK 路线图 P4C 的视频技术部分。历史的设备租赁、报价、押金、90 天服务期、退款和售后不自动进入本次范围；**三天录像留存与服务期是不同参数**。不增加 Agent 工具，不把摄像头画面自动送入模型，不扩大 P4B 公开工地范围。
+- 本计划细化既有 XiaoK 路线图 P4C 的视频技术部分。历史的设备租赁、报价、押金、90 天服务期、退款和售后不自动进入本次范围；**三天录像留存与服务期是不同参数**。D7 里程碑①现已在后台工地抽屉记录托管服务订单、报价版本和安装点位验收，费用仍在线下结算；该仅记录服务由开发总计划和后台模块清单记载，不改变本计划的摄像头录像、留存或计费行为。不增加 Agent 工具，不把摄像头画面自动送入模型，不扩大 P4B 公开工地范围。
 
 ### 2.1 SD 卡方案的当前验证结论
 

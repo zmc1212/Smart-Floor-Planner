@@ -5,6 +5,7 @@ import { ConstructionService } from '@/lib/construction/service';
 import { siteChatHttp } from '@/lib/construction/site-http';
 import { staffPublicHttp } from '@/lib/construction/public-http';
 import { staffCameraHttp } from '@/lib/construction/camera/http';
+import { serviceOrderHttp } from '@/lib/construction/service-order-http';
 
 export const runtime = 'nodejs';
 type Context = { params: Promise<{ path?: string[] }> };
@@ -16,6 +17,8 @@ async function handle(request: NextRequest, context: Context) {
       if (p[0] === 'projects' && p[2] === 'public-materials') return await staffPublicHttp(request,
         { enterpriseId: actor.enterpriseId!, adminId: actor.userId }, p[1], p.slice(3));
       if (p[0] === 'projects' && p[2] === 'chat') return await siteChatHttp(request,
+        { enterpriseId: actor.enterpriseId!, adminId: actor.userId }, p[1], p.slice(3));
+      if (p[0] === 'projects' && p[2] === 'service-orders') return await serviceOrderHttp(request,
         { enterpriseId: actor.enterpriseId!, adminId: actor.userId }, p[1], p.slice(3));
       let action = '', ids: Record<string, string> = {};
       if (p.length === 1 && p[0] === 'options' && read) action = 'options';

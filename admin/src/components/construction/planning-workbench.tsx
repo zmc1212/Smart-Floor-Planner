@@ -6,6 +6,7 @@ import { Alert, Button, Drawer, Form, Input, Modal, Select, Space, Switch, Tabs,
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { PublicationWorkbench } from './publication-workbench';
 import { CameraPanel } from './camera-panel';
+import { ServiceOrderPanel } from './service-order-panel';
 import { notify } from '@/components/admin/operation-feedback';
 import { constructionRequest, ConstructionRequestError, errorText, labels, followUpFieldLabels, type ConstructionLead, type Detail, type Pending, type Project, type Staff, type Stage, type StageSettings } from './client';
 
@@ -140,6 +141,7 @@ function Workbench({ identity }: { identity: string }) {
           <ProTable<Detail['rooms'][number]> rowKey="id" dataSource={detail.rooms} search={false} options={false} pagination={false} headerTitle="项目房间" toolBarRender={() => detail.manage ? [<Button key="room" disabled={disabled} onClick={() => open('room')}>添加房间</Button>] : []} columns={[{ title: '房间', dataIndex: 'name' }, { title: '操作', valueType: 'option', render: (_, r) => detail.manage && <Button type="link" disabled={disabled} onClick={() => { form.resetFields(); form.setFieldsValue({ name: r.name }); setEditor({ kind: 'room', roomId: r.id }); }}>修改名称</Button> }]} />
         </Space> },
         { key: 'public', label: '公开材料', children: <PublicationWorkbench key={identity+':'+selected} identity={identity} projectId={selected}/> },
+        { key: 'service', label: '托管服务', children: <ServiceOrderPanel key={identity+':'+selected} projectId={selected} owner={detail.owner} rooms={detail.rooms} members={detail.members} /> },
         { key: 'video', label: '工地视频', children: <CameraPanel key={identity+':'+selected} projectId={selected} /> },
       ]} />}
     </Drawer>
