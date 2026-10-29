@@ -1,5 +1,5 @@
 import { fingerprint, fail } from '../contracts';
-import type { BailianBinding } from '@/lib/ai/providers/bailian-capabilities';
+import { bailianPartialCapable, type BailianBinding } from '@/lib/ai/providers/bailian-capabilities';
 
 export type ApprovedDraft = { prefix: string; version: number; prefixHash: string; expiresAt: string;
   enterpriseId: string; ownerId: string; knowledgeEpoch: number; consentVersion: number; status: 'approved' | 'revoked' };
@@ -14,10 +14,12 @@ export function validateDraft(draft: ApprovedDraft, current: {
     || completionClaim.test(draft.prefix)) fail('draft_continuation_stale', 409);
 }
 /** Dedicated Partial Mode wire shape. Never used for normal chat, JSON output,
- * business actions or replay of a previous indeterminate model request. The
- * current Qwen3.8 protocol conflict is fenced by the durable service. */
+ * business actions or replay of a previous indeterminate model request. A model
+ * whose table does not record Partial support is rejected here; the current
+ * Qwen3.8 protocol conflict additionally stays fenced by the durable service. */
 export function partialBody(binding: BailianBinding, prefix: string) {
-  if (binding.thinking || !prefix.trim() || Buffer.byteLength(prefix) > 12000 || completionClaim.test(prefix)) fail('invalid_draft_prefix',422);
+  if (binding.thinking || !bailianPartialCapable(binding.model) || !prefix.trim()
+    || Buffer.byteLength(prefix) > 12000 || completionClaim.test(prefix)) fail('invalid_draft_prefix',422);
   return { model: binding.model, enable_thinking: false, max_tokens: 512,
     messages: [{ role: 'user', content: '继续这份已获权的装修说明草稿，只续写文字，不执行或宣称完成任何业务操作。' },
       { role: 'assistant', content: prefix, partial: true }] };

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { agentChatBody, parseAgentChat, executeAgentChat } from '@/lib/ai/providers/agent-chat';
-import { bailianBinding, bailianCapabilities, bailianSearchBinding } from '@/lib/ai/providers/bailian-capabilities';
+import { bailianBinding, bailianCapabilities, bailianModelProfile, bailianNativeSearchCapable, bailianPartialCapable, bailianSearchBinding, bailianStructuredOutput } from '@/lib/ai/providers/bailian-capabilities';
 import { bailianOfflineTransport, bailianPublicSearch, nativeSearchCandidates, nativeSearchUsage, publicSearchBody } from '@/lib/ai/providers/bailian-offline';
 import { cacheObservation, modelPrefixObservation } from '@/lib/ai/providers/model-observation';
 import { AiProviderError } from '@/lib/ai/provider-types';
@@ -9,6 +9,8 @@ import { explicitCacheControl } from '@/lib/ai/postgres-workflow-chat';
 import { nativeSearchAttemptValues, nativeSearchBindingFor, nativeSearchFailure, nativeSearchSucceeded, resolveNativeSearch, selectedNativeSearch } from '../agent/native-search';
 import { assertToolPairs, toolSchemaIssue } from '../agent/tool-protocol';
 import { runRenovationAgent, type AgentCheckpoint } from '../agent/runtime';
+import { agentConfig } from '../agent/config';
+import { nativeFinalProtocol } from '../agent/native-final';
 import { partialBody, joinDraft, validateDraft, type ApprovedDraft } from '../agent/draft-continuation';
 import { searchWeb } from '../agent/web';
 import { fingerprint } from '../contracts';
@@ -23,10 +25,40 @@ const payload=(usage:unknown={prompt_tokens:100,completion_tokens:20})=>({id:'ch
 const answer:ModelTurnOutput={text:'可以先核对基层和平整度。',toolCalls:[],finishReason:'stop',providerRequestId:'test',usage:null};
 const runtime:AiProviderRuntimeConfig={id:'1',key:'test-p0',name:'Synthetic P0',capabilities:['chat'],adapterType:'openai_compatible',baseUrl:base,apiKey:'synthetic-not-a-key',timeoutMs:1000,adapterConfig:{providerPreset:'dashscope'},modelMappings:{'chat.general':binding.model}};
 
-test('capabilities bind exact model/API/region/thinking; partial conflict and Singapore Batch remain explicit',()=>{
+test('platform transport binds any safe model; the capability table keeps unregistered models off',()=>{
   assert.equal(bailianCapabilities(binding).batch,'documented');assert.equal(bailianCapabilities(binding).partial,'documentation_conflict');
   assert.equal(bailianCapabilities(bailianBinding('https://dashscope-intl.aliyuncs.com/compatible-mode/v1',binding.model,false)!).batch,'unsupported_region');
   for(const endpoint of ['https://proxy.example/compatible-mode','https://dashscope.aliyuncs.com/other','http://dashscope.aliyuncs.com/compatible-mode','https://dashscope.aliyuncs.com/compatible-mode?key=secret'])assert.equal(bailianBinding(endpoint,binding.model,false),null);
+  // The official platform transport accepts any platform model ID...
+  const other=bailianBinding(base,'qwen3-max',false)!;assert.equal(other.model,'qwen3-max');assert.equal(other.region,'cn-beijing');
+  // ...while an unregistered model claims none of Qwen3.8's capabilities.
+  assert.equal(bailianCapabilities(other).nativeSearchBinding,null);assert.equal(bailianCapabilities(other).jsonSchema,'unknown');
+  assert.equal(bailianModelProfile('qwen3-max').explicitCache,'unknown');assert.equal(bailianNativeSearchCapable('qwen3-max'),false);
+  assert.equal(bailianStructuredOutput('qwen3-max','json_schema'),false);assert.equal(bailianPartialCapable('qwen3-max'),false);
+  for(const model of ['','Qwen/Qwen3.5-4B','qwen3.8 flash','qwen3.8-flash\n','a'.repeat(129)])assert.equal(bailianBinding(base,model,false),null);
+});
+test('an unregistered Bailian model connects with advanced capabilities off and structured opt-ins rejected',()=>{
+  const other='qwen3-max',search={model:other,providerKey:'dashscope'};
+  // Same transport; a final-only round degrades to plain function tools instead
+  // of offering a schema or cache marker the model is not known to support.
+  const body=agentChatBody({...input,model:other},base);
+  assert.equal(body.response_format,undefined);assert.equal(body.tools?.[0].function.name,'final_response');
+  assert.throws(()=>agentChatBody({...input,model:other,outputMode:'json_schema'},base),/not_applicable/);
+  assert.throws(()=>agentChatBody({...input,model:other,cacheControl:'ephemeral_system'},base),/cache_control_not_applicable/);
+  const previous=process.env.ASSISTANT_TEXT_EXPLICIT_CACHE;
+  try {
+    process.env.ASSISTANT_TEXT_EXPLICIT_CACHE='1';
+    assert.equal(explicitCacheControl(runtime,other,false,{messages:input.messages},false),undefined);
+  } finally {
+    if(previous===undefined)delete process.env.ASSISTANT_TEXT_EXPLICIT_CACHE;else process.env.ASSISTANT_TEXT_EXPLICIT_CACHE=previous;
+  }
+  assert.equal(nativeSearchBindingFor({...runtime,modelMappings:{'chat.general':other}},search),null);
+  // Agent structured final, Partial continuation and Batch all require the
+  // model's own recorded evidence, not the platform transport alone.
+  const agentBase={runtime:'langgraph-v1' as const,providerKey:'dashscope',model:other,tools:true,imageInput:false,probeVersion:'test',structuredFinal:nativeFinalProtocol};
+  assert.throws(()=>agentConfig(agentBase),/assistant_capability_forbidden/);
+  assert.equal(agentConfig({...agentBase,structuredFinal:undefined})?.model,other);
+  assert.throws(()=>partialBody({...binding,model:other},'厨房收纳草稿：'),/invalid_draft_prefix/);
 });
 test('native final Schema and Object are distinct wire channels; business rounds retain function tools',()=>{
   const strict=agentChatBody(input,base);assert.equal(strict.response_format?.type,'json_schema');assert.equal(strict.tools,undefined);

@@ -1,4 +1,5 @@
 import { fail, fingerprint } from '../contracts';
+import { bailianStructuredOutput } from '@/lib/ai/providers/bailian-capabilities';
 import { consultationProfile } from '../contracts/consultation';
 import { consultationBinding, type ConsultationBinding } from './consultation-profile';
 import {nativeFinalProtocol} from './native-final';
@@ -14,7 +15,7 @@ export function agentConfig(value: unknown): AgentConfig | null {
   // An invalid opt-in must never silently dispatch through the legacy model.
   if (c.consultation !== undefined && (!consultation || c.model !== consultationProfile(consultation.profile)?.model || c.tools !== true)) fail('assistant_capability_forbidden', 403);
   if (c.imageContext !== undefined && (c.imageContext !== conversationImageProtocol || c.imageInput !== true || c.structuredFinal !== nativeFinalProtocol)) fail('assistant_capability_forbidden', 403);
-  if(c.structuredFinal!==undefined&&(c.structuredFinal!==nativeFinalProtocol||c.model!=='qwen3.8-flash'||c.providerKey!=='dashscope'||c.tools!==true||(c.imageInput!==false&&c.imageContext!==conversationImageProtocol)||consultation))fail('assistant_capability_forbidden',403);
+  if(c.structuredFinal!==undefined&&(c.structuredFinal!==nativeFinalProtocol||c.providerKey!=='dashscope'||!bailianStructuredOutput(c.model,'json_schema')||c.tools!==true||(c.imageInput!==false&&c.imageContext!==conversationImageProtocol)||consultation))fail('assistant_capability_forbidden',403);
   if (c.requirementClaims !== undefined && (c.requirementClaims !== reviewClaimProtocol || c.structuredFinal !== nativeFinalProtocol)) fail('assistant_capability_forbidden', 403);
   if (c.reviewCompletion !== undefined && (c.reviewCompletion !== reviewCompletionProtocol || c.requirementClaims !== reviewClaimProtocol)) fail('assistant_capability_forbidden', 403);
   if (c.runtime !== 'langgraph-v1' || typeof c.model !== 'string' || !c.model.trim() || c.model.length > 240

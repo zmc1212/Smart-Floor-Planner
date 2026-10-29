@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { executeAgentChat, agentChatBody, agentChatRequestDiagnostic } from './providers/agent-chat';
-import { bailianBinding } from './providers/bailian-capabilities';
+import { bailianBinding, bailianExplicitCacheCapable, bailianThinkingCapable } from './providers/bailian-capabilities';
 import { consultationProfile } from '@/lib/assistant/contracts/consultation';
 import type { ModelTurnInput } from '@/lib/assistant/contracts/model';
 import type { AgentConfig } from '@/lib/assistant/agent/config';
@@ -35,28 +35,29 @@ export function boundAssistantModel(runtime: Pick<AiProviderRuntimeConfig, 'key'
   return config.model;
 }
 
-
 export function assistantThinkingOverrideAllowed(runtime: Pick<AiProviderRuntimeConfig, 'adapterType' | 'adapterConfig' | 'baseUrl'>,
   model: string, consultationRuntime: boolean) {
-  const endpoint = new URL(runtime.baseUrl);
   const preset = runtime.adapterConfig?.providerPreset;
+  // DashScope evidence is limited to the Beijing compatible-mode binding, so
+  // only that binding and a model whose table documents thinking control pass.
   return runtime.adapterType === 'openai_compatible' && (preset === 'siliconflow'
-    || preset === 'deepseek' && endpoint.origin === 'https://api.deepseek.com' || consultationRuntime
-    || preset === 'dashscope' && model === 'qwen3.8-flash' && endpoint.origin === 'https://dashscope.aliyuncs.com'
-      && /^\/compatible-mode(?:\/v1)?\/?$/.test(endpoint.pathname));
+    || preset === 'deepseek' && new URL(runtime.baseUrl).origin === 'https://api.deepseek.com' || consultationRuntime
+    || preset === 'dashscope' && bailianBinding(runtime.baseUrl, model, false)?.region === 'cn-beijing'
+      && bailianThinkingCapable(model));
 }
 
 function requestFingerprint(value: unknown) {
   return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 
-/** Explicit caching stays opt-in. The marker is only valid for the exact
- * DashScope Qwen3.8 binding and a text-only leading system block; every other
- * runtime keeps the provider's implicit cache behaviour. */
+/** Explicit caching stays opt-in. The marker is only valid for a DashScope
+ * binding whose model table documents explicit cache and a text-only leading
+ * system block; every other runtime keeps the provider's implicit behaviour. */
 export function explicitCacheControl(runtime: Pick<AiProviderRuntimeConfig, 'baseUrl'>, remoteModel: string,
   enableThinking: boolean | undefined, agentInput: Pick<ModelTurnInput, 'messages'> | undefined, consultation: boolean) {
-  if (!agentInput || consultation || process.env.ASSISTANT_TEXT_EXPLICIT_CACHE !== '1'
-    || !bailianBinding(runtime.baseUrl, remoteModel, enableThinking)) return undefined;
+  if (!agentInput || consultation || process.env.ASSISTANT_TEXT_EXPLICIT_CACHE !== '1') return undefined;
+  const binding = bailianBinding(runtime.baseUrl, remoteModel, enableThinking);
+  if (!binding || !bailianExplicitCacheCapable(binding.model)) return undefined;
   const leading = agentInput.messages[0];
   return leading?.role === 'system' && leading.content.length > 0 && leading.content.every(part => part.type === 'text')
     ? 'ephemeral_system' as const : undefined;

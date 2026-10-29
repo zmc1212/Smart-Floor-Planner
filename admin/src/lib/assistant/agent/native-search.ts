@@ -3,7 +3,7 @@ import { AiCreationRepository } from '@/db/repositories/ai-creation-repository';
 import { getPlatformLlmOverrideRuntime } from '@/lib/platform-llm-config';
 import { listProviderRuntimes } from '@/lib/ai/provider-registry';
 import { resolveProviderCostEstimate } from '@/lib/ai/provider-cost';
-import { bailianBinding, bailianSearchBinding, type BailianSearchBinding } from '@/lib/ai/providers/bailian-capabilities';
+import { bailianBinding, bailianNativeSearchCapable, bailianSearchBinding, type BailianSearchBinding } from '@/lib/ai/providers/bailian-capabilities';
 import { bailianOfflineTransport, bailianPublicSearch, nativeSearchUsage, definitiveCapabilityRejection } from '@/lib/ai/providers/bailian-offline';
 import { cacheObservation } from '@/lib/ai/providers/model-observation';
 import { AiProviderError, type AiProviderRuntimeConfig } from '@/lib/ai/provider-types';
@@ -16,8 +16,9 @@ export type NativeSearchRuntime = { runtime: AiProviderRuntimeConfig; binding: B
 type SearchAgentConfig = Pick<AgentConfig, 'model' | 'providerKey' | 'consultation'>;
 
 /** Source-bearing search is a separate documented DashScope API. The main path
- * may dispatch it only for the exact runtime the Agent text calls are bound to;
- * no model-name inference, alternate region or cross-provider fallback. */
+ * may dispatch it only for the exact runtime the Agent text calls are bound to
+ * and only when that model's capability table documents native search; no
+ * alternate region or cross-provider fallback. */
 export function nativeSearchBindingFor(runtime: AiProviderRuntimeConfig, config: Pick<SearchAgentConfig, 'model' | 'providerKey'>,
   deploymentOverride?: string): BailianSearchBinding | null {
   if (runtime.adapterType !== 'openai_compatible'
@@ -27,7 +28,7 @@ export function nativeSearchBindingFor(runtime: AiProviderRuntimeConfig, config:
   const model = runtime.modelMappings['chat.general'];
   if (!model || model !== config.model) return null;
   const chat = bailianBinding(runtime.baseUrl, model, false);
-  return chat ? bailianSearchBinding(chat) : null;
+  return chat && bailianNativeSearchCapable(chat.model) ? bailianSearchBinding(chat) : null;
 }
 
 /** Resolve through the same platform override and provider order as the text

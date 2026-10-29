@@ -9,6 +9,9 @@ const official = { adapterType: 'openai_compatible' as const, adapterConfig: { p
 test('user-selected Qwen3.8 Flash supports the existing non-thinking override only on its official bound runtime', () => {
   assert.equal(assistantThinkingOverrideAllowed(official, 'qwen3.8-flash', false), true);
   assert.equal(assistantThinkingOverrideAllowed(official, 'qwen3.7-flash', false), false);
+  // Another registered platform model connects through the same endpoint, but
+  // its thinking-control capability is unrecorded and the override stays off.
+  assert.equal(assistantThinkingOverrideAllowed(official, 'qwen3-max', false), false);
   for (const changed of [{ ...official, baseUrl: 'https://fixture.invalid/compatible-mode/v1' },
     { ...official, baseUrl: 'https://dashscope.aliyuncs.com/other/v1' },
     { ...official, adapterConfig: { providerPreset: 'custom' } }, { ...official, adapterType: 'grs' as const }]) {
@@ -17,5 +20,7 @@ test('user-selected Qwen3.8 Flash supports the existing non-thinking override on
   const body = agentChatBody({ model: 'qwen3.8-flash', maxTokens: 2048, messages: [{ role: 'user', content: [{ type: 'text', text: '量房前需要准备什么？' }] }],
     tools: [{ name: 'final_response', description: 'answer', parameters: { type: 'object' } }], enableThinking: false, requireTool: true }, official.baseUrl);
   assert.equal(body.enable_thinking, false); assert.equal(body.max_tokens, 2048);
-  assert.deepEqual(body.tool_choice, { type: 'function', function: { name: 'final_response' } });
+  // The final-only round uses the documented native schema channel instead of
+  // sending the final tool again; thinking control is the subject of this test.
+  assert.equal(body.tools, undefined); assert.deepEqual(body.response_format, { type: 'json_schema', json_schema: { name: 'final_response', strict: true, schema: { type: 'object' } } });
 });

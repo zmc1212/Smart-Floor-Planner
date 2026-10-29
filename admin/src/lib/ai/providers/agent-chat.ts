@@ -6,7 +6,7 @@ import { bearerHeaders, parseJson, providerFetch, providerUrl, asObject } from '
 import { thinkingBody } from './thinking';
 import { consultationFinalSchema } from './consultation-final-schema';
 import { assertToolPairs, toolSchemaIssue } from '@/lib/assistant/agent/tool-protocol';
-import { bailianBinding, bailianFinalFormat } from './bailian-capabilities';
+import { bailianBinding, bailianExplicitCacheCapable, bailianFinalFormat } from './bailian-capabilities';
 import { cacheObservation, modelPrefixObservation } from './model-observation';
 
 const invalid = () => { throw new AiProviderError('Invalid Agent model response', 'INVALID_PROVIDER_RESPONSE', 'unknown', 502); };
@@ -61,7 +61,8 @@ export function agentChatBody(input: ModelTurnInput, baseUrl = 'https://api.sili
   if (images > agentModelLimits.maxImages || textBytes > agentModelLimits.maxTextBytes) throw Error('agent_input_limit');
   const finalSchema = consultationFinalSchema(input) || bailianFinalFormat(input, baseUrl);
   if (input.cacheControl === 'ephemeral_system') {
-    if (!bailianBinding(baseUrl, input.model, input.enableThinking) || !messages.length || messages[0].role !== 'system') throw Error('cache_control_not_applicable');
+    const cacheBinding = bailianBinding(baseUrl, input.model, input.enableThinking);
+    if (!cacheBinding || !bailianExplicitCacheCapable(cacheBinding.model) || !messages.length || messages[0].role !== 'system') throw Error('cache_control_not_applicable');
     // Mark only the trusted leading system block; never a customer/tool fact.
     const content = messages[0].content;
     if (!Array.isArray(content) || !content.length || content.some(part => part.type !== 'text')) throw Error('cache_control_not_applicable');

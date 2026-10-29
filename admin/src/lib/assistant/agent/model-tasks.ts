@@ -5,7 +5,7 @@ import { AiCreationRepository } from '@/db/repositories/ai-creation-repository';
 import { getPlatformLlmOverrideRuntime } from '@/lib/platform-llm-config';
 import { authorizeKnowledgeManager } from '../knowledge/manager';
 import { AiProviderError, type AiProviderRuntimeConfig } from '@/lib/ai/provider-types';
-import { bailianBinding, bailianSearchBinding, normalizeBailianTaskBinding, type BailianBinding, type BailianSearchBinding, type BailianTaskBinding } from '@/lib/ai/providers/bailian-capabilities';
+import { bailianBatchCapable, bailianBinding, bailianNativeSearchCapable, bailianSearchBinding, normalizeBailianTaskBinding, type BailianBinding, type BailianSearchBinding, type BailianTaskBinding } from '@/lib/ai/providers/bailian-capabilities';
 import { bailianOfflineTransport, bailianPublicSearch, nativeSearchCandidates, nativeSearchUsage, definitiveCapabilityRejection, type BailianOfflineTransport, type BatchRemote } from '@/lib/ai/providers/bailian-offline';
 import { parseAgentChat } from '@/lib/ai/providers/agent-chat';
 import { cacheObservation } from '@/lib/ai/providers/model-observation';
@@ -80,7 +80,8 @@ export class ModelTaskService {
   }
   prepareBatch(operationKey: string, input: { synthetic: true; items: OfflineItem[] }, binding: BailianBinding) {
     if (input.synthetic !== true || !Array.isArray(input.items) || !input.items.length || input.items.length>20
-      || new Set(input.items.map(i=>i.customId)).size !== input.items.length || binding.region !== 'cn-beijing') fail('invalid_offline_batch',422);
+      || new Set(input.items.map(i=>i.customId)).size !== input.items.length || binding.region !== 'cn-beijing'
+      || !bailianBatchCapable(binding.model)) fail('invalid_offline_batch',422);
     const items = input.items.map(item=>{
       if (!/^[a-zA-Z0-9_-]{1,64}$/.test(item.customId) || typeof item.text !== 'string' || !item.text.trim()
         || Buffer.byteLength(item.text)>12000 || !Number.isSafeInteger(item.maxTokens) || item.maxTokens<1 || item.maxTokens>2048) fail('invalid_offline_batch',422);
@@ -91,7 +92,7 @@ export class ModelTaskService {
     return this.prepare('offline_batch',operationKey,{synthetic:true},binding,items);
   }
   prepareSearch(operationKey: string, query: WebQuery, binding: BailianSearchBinding) {
-    if(binding.api!=='dashscope-generation')fail('bailian_search_api_mismatch',422);
+    if(binding.api!=='dashscope-generation'||!bailianNativeSearchCapable(binding.model))fail('bailian_search_api_mismatch',422);
     return this.prepare('public_search',operationKey,{query:parseWebQuery(query)},binding,
       // Native search can add context up to the configured model's 1M window.
       // Reserve the documented upper bound before any provider request.
@@ -145,7 +146,8 @@ export class ModelTaskService {
       for(const item of items) {
         if(item.attempt_id)fail('model_task_already_dispatched',409);
         const attempt=await new AiCreationRepository(tx).createProviderAttempt({enterpriseId:BigInt(this.actor.enterpriseId),providerConfigId:BigInt(runtime.id),
-          providerKey:runtime.key,adapterType:runtime.adapterType,capability:'chat',logicalModelKey:'chat.general',remoteModel:'qwen3.8-flash',
+          providerKey:runtime.key,adapterType:runtime.adapterType,capability:'chat',logicalModelKey:'chat.general',
+          remoteModel:(task.binding as BailianTaskBinding).model,
           status:'unknown',accepted:true,requestFingerprint:fingerprint(item.request),estimatedCost:{measurementKind:'reserved',micros:String(item.reserved_cost_micros)},
           metadata:{modelTask:{taskId:String(task.id),customId:item.custom_id,requestHash:task.request_hash,synthetic:true},reservedTokens:String(item.reserved_tokens)}});
         await tx.execute(sql`update app.assistant_model_task_items set attempt_id=${String(attempt.id)},state='submitted' where enterprise_id=${this.actor.enterpriseId} and id=${String(item.id)}`);

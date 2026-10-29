@@ -5,7 +5,7 @@ import { AiCreationRepository } from '@/db/repositories/ai-creation-repository';
 import { AssistantError, fail, fingerprint, id, key } from '@/lib/assistant/contracts';
 import { getPlatformLlmOverrideRuntime } from '@/lib/platform-llm-config';
 import { executeAgentChat } from '@/lib/ai/providers/agent-chat';
-import { bailianBinding } from '@/lib/ai/providers/bailian-capabilities';
+import { bailianBinding, bailianStructuredOutput } from '@/lib/ai/providers/bailian-capabilities';
 import type { AiProviderRuntimeConfig } from '@/lib/ai/provider-types';
 import type { ModelTurnInput, ModelTurnOutput } from '@/lib/assistant/contracts/model';
 import { portfolioCopyBudget } from '@/lib/assistant/core/model-task-budget';
@@ -22,7 +22,9 @@ const defaultPorts: CopyPorts = { runtime: () => getPlatformLlmOverrideRuntime('
 function binding(runtime: AiProviderRuntimeConfig | null) {
   if (!runtime || runtime.adapterType !== 'openai_compatible') fail('portfolio_copy_unconfigured', 409);
   const value = bailianBinding(runtime.baseUrl, runtime.modelMappings['chat.general'] || '', false);
-  if (!value) fail('portfolio_copy_unconfigured', 409);
+  // Copy drafting relies on the native JSON Schema final channel; a model whose
+  // table does not document it must fail closed instead of degrading to tools.
+  if (!value || !bailianStructuredOutput(value.model, 'json_schema')) fail('portfolio_copy_unconfigured', 409);
   return { ...value, providerId: String(runtime.id), protocol: portfolioCopyProtocol };
 }
 /** The usual portfolio authorization is rechecked before every read/adoption
@@ -107,10 +109,12 @@ export class PortfolioCopyService {
         and id=${id(taskId)} and kind='portfolio_copy'`);
       if (!task || task.state !== 'prepared') return null;
       const runtime = await this.ports.runtime();
+      let bound: ReturnType<typeof binding> | undefined;
       try {
         const settings = await one(tx, sql`select * from app.assistant_enterprise_settings where enterprise_id=${this.actor.enterpriseId} for update`);
         if (!settings?.enabled || settings.policy_version !== (task.request as Row).policyVersion) fail('context_changed');
-        if (fingerprint(binding(runtime)) !== fingerprint(task.binding)) fail('context_changed');
+        bound = binding(runtime);
+        if (fingerprint(bound) !== fingerprint(task.binding)) fail('context_changed');
         assertCopyCurrent(task, await copyWork(tx, this.actor, String((task.request as Row).workId)), true);
         task = (await one(tx, sql`select * from app.assistant_model_tasks where enterprise_id=${this.actor.enterpriseId} and id=${taskId} for update`))!;
         if (task.state !== 'prepared') return null;
@@ -118,20 +122,21 @@ export class PortfolioCopyService {
         await tx.execute(sql`update app.assistant_model_tasks set state='cancelled',last_error=${error instanceof AssistantError ? error.code : 'context_changed'},updated_at=now(),version=version+1 where enterprise_id=${this.actor.enterpriseId} and id=${taskId}`);
         return null;
       }
+      if (!bound) return null;
       const attempt = await new AiCreationRepository(tx).createProviderAttempt({ enterpriseId: BigInt(this.actor.enterpriseId), providerConfigId: BigInt(runtime!.id),
-        providerKey: runtime!.key, adapterType: runtime!.adapterType, capability: 'chat', logicalModelKey: 'chat.general', remoteModel: 'qwen3.8-flash', status: 'unknown', accepted: true,
+        providerKey: runtime!.key, adapterType: runtime!.adapterType, capability: 'chat', logicalModelKey: 'chat.general', remoteModel: bound.model, status: 'unknown', accepted: true,
         requestFingerprint: fingerprint(task.request), estimatedCost: { measurementKind: 'reserved', micros: String(task.reserved_cost_micros) },
         metadata: { portfolioCopy: { taskId, sourceHash: (task.request as Row).sourceHash, protocol: portfolioCopyProtocol } } });
       await tx.execute(sql`update app.assistant_model_task_items set state='submitted',attempt_id=${String(attempt.id)} where enterprise_id=${this.actor.enterpriseId} and task_id=${taskId}`);
       await tx.execute(sql`update app.assistant_model_tasks set state='running',authorization_id=${'portfolio:' + taskId},updated_at=now(),version=version+1 where enterprise_id=${this.actor.enterpriseId} and id=${taskId}`);
-      return { task, runtime: runtime!, attemptId: String(attempt.id) };
+      return { task, runtime: runtime!, model: bound.model, attemptId: String(attempt.id) };
     });
     if (!started) return false;
-    const { task, runtime, attemptId } = started, request = task.request as Row;
+    const { task, runtime, model, attemptId } = started, request = task.request as Row;
     let output: ModelTurnOutput | undefined;
     try {
       await this.ports.beforeDispatch?.(task);
-      output = await this.ports.generate(runtime, copyInput(request.facts as ReturnType<typeof copyFacts>, String(request.instruction), 'qwen3.8-flash'));
+      output = await this.ports.generate(runtime, copyInput(request.facts as ReturnType<typeof copyFacts>, String(request.instruction), model));
       // Persist the exact original response/usage even if parsing or permission
       // revalidation subsequently fails. Never regenerate to repair a result.
       await withTenantTransaction(this.actor.enterpriseId, async tx => {
