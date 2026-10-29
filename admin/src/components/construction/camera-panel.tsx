@@ -9,10 +9,13 @@ import { CameraCoverage } from './camera-coverage';
 import { CameraCleanup } from './camera-cleanup';
 type Camera = { id: string; binding_id?: string; name: string; version: number; project_id?: string; ptz_enabled: boolean;recording_enabled?:boolean;retention_days?:number;recording_version?:number;recording_state?:string;recording_error?:string };
 type Storage={level:string;blocked:boolean;totalBytes:string|null;availableBytes:string|null;usedPercent:number|null;sampledAt:string|null};
+type ServiceOrder={id:string;status:string;cameraCount:number;boundCount:number};
 const capacity=(bytes:string|null)=>bytes===null?'未知':(Number(bytes)/1024**3).toFixed(1)+' GiB';
+const orderStates:Record<string,string>={pending_quote:'待报价',quoted:'待确认',confirmed:'已确认',scheduled:'已排期',accepted:'服务中'};
 export function CameraPanel({ projectId }: { projectId: string }) {
   const [items, setItems] = useState<Camera[]>([]), [inventory, setInventory] = useState<Camera[]>([]);
   const [manage, setManage] = useState(false), [configure, setConfigure] = useState(false), [platform, setPlatform] = useState(false), [chosen, setChosen] = useState<string>();
+  const [serviceOrder,setServiceOrder]=useState<ServiceOrder|null>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [registering, setRegistering] = useState(false);
   const [loading, setLoading] = useState(true);
   const [storage,setStorage]=useState<Storage|null>(null);
@@ -21,17 +24,20 @@ export function CameraPanel({ projectId }: { projectId: string }) {
   const previewDays=Form.useWatch('retentionDays',recordingForm);
   const [form] = Form.useForm(); const alive = useRef(true),requestSequence=useRef(0);
   const root = 'video/projects/' + projectId;
+  const orderLimit=!!serviceOrder&&serviceOrder.boundCount>=serviceOrder.cameraCount;
+  const orderPending=!!serviceOrder&&!['confirmed','scheduled','accepted'].includes(serviceOrder.status);
+  const orderBlocked=orderLimit||orderPending;
   const load = useCallback(async () => {
     const sequence=++requestSequence.current;
     setLoading(true);
     try {
-      const state = await constructionRequest<{ items: Camera[]; canManage: boolean; canConfigure: boolean;maxRetentionDays:number;storage:Storage|null }>(root + '/cameras');
+      const state = await constructionRequest<{ items: Camera[]; canManage: boolean; canConfigure: boolean;maxRetentionDays:number;storage:Storage|null;serviceOrder:ServiceOrder|null }>(root + '/cameras');
       const available = state.canManage ? await constructionRequest<{ items: Camera[]; canRegister: boolean }>(root + '/inventory') : { items: [], canRegister: false };
       if (!alive.current||sequence!==requestSequence.current) return;
       setItems(state.items); setManage(state.canManage); setConfigure(state.canConfigure); setInventory(available.items); setPlatform(available.canRegister); setError('');
-      setRetentionLimit(state.maxRetentionDays);
+      setRetentionLimit(state.maxRetentionDays); setServiceOrder(state.serviceOrder||null);
       setStorage(state.storage);
-    } catch (e) { if (alive.current&&sequence===requestSequence.current) { setError(errorText(e)); setItems([]); setInventory([]);setStorage(null); } }
+    } catch (e) { if (alive.current&&sequence===requestSequence.current) { setError(errorText(e)); setItems([]); setInventory([]);setStorage(null);setServiceOrder(null); } }
     finally { if (alive.current&&sequence===requestSequence.current) setLoading(false); }
   }, [root]);
   useEffect(() => { alive.current = true;setRecordingCamera(undefined); void load(); return () => { alive.current = false; }; }, [load]);
@@ -55,10 +61,11 @@ export function CameraPanel({ projectId }: { projectId: string }) {
   };
   return <Space direction="vertical" size="middle" style={{ width: '100%' }}>
     <Alert type="info" showIcon message="私有工地视频" description="当前工地的有效成员可查看直播。负责人和项目经理可抓拍及操作已验证支持云台的设备。" />
+    {serviceOrder&&<Alert type={orderBlocked?'warning':'info'} showIcon message={'托管订单 · '+(orderStates[serviceOrder.status]||serviceOrder.status)+' · 摄像头 '+serviceOrder.boundCount+'/'+serviceOrder.cameraCount+' 路'+(orderLimit?'（已满）':'')} description={orderPending?'托管订单确认后才能绑定摄像头，请先在“托管服务”Tab完成报价确认；安装与验收也在该Tab登记，费用线下结算。':orderLimit?'订单路数已全部绑定，解绑后才能绑定其他摄像头；安装与验收在“托管服务”Tab登记。':'绑定数量以订单路数为上限；安装与验收在“托管服务”Tab登记，费用线下结算。'} />}
     {configure&&storage&&<Alert showIcon type={storage.blocked?'error':storage.level==='ok'?'success':'warning'} message={'云录像存储 · '+(({ok:'正常',warning:'容量预警',critical:'容量紧张',blocked:'空间不足，录制保护中',unavailable:'状态暂不可用'} as Record<string,string>)[storage.level]||'状态暂不可用')} description={storage.level==='unavailable'?'无法核对存储空间，持续录像状态待核对；直播与已有录像仍可查看。':<>已用 {storage.usedPercent?.toFixed(1)}%，剩余 {capacity(storage.availableBytes)} / 总计 {capacity(storage.totalBytes)}。{storage.blocked?'按保护策略暂停录制，恢复安全空间后自动核对原设置；不提前删除有效录像。':storage.level==='ok'?'持续监测容量，空间不足时自动暂停录制。':'请及时扩容或清理已过期媒体；有效期内录像不会自动提前删除。'}</>} />}
     {error && <Alert type="error" showIcon message={error} action={<Button onClick={() => void load()}>重新读取</Button>} />}
     <Space wrap><Button type="primary" disabled={busy || !items.length} onClick={() => void preview()}>打开工地视频</Button><Button disabled={busy} onClick={() => void load()}>刷新</Button>{platform && <Button disabled={busy} onClick={() => { form.resetFields(); setRegistering(true); }}>分配 WVP 摄像头</Button>}</Space>
-    {manage && <Space wrap><Select aria-label="待绑定摄像头" placeholder="选择本企业尚未绑定的摄像头" value={chosen} style={{ minWidth: 260 }} disabled={busy} onChange={setChosen} options={inventory.filter(c => !c.project_id).map(c => ({ value: c.id, label: c.name }))} /><Button disabled={busy || !chosen} onClick={() => { const c = inventory.find(c => c.id === chosen); if (c) void write(root + '/binding', { cameraId: c.id, expectedVersion: c.version, bind: true }, '摄像头已绑定'); }}>绑定到当前工地</Button></Space>}
+    {manage && <Space wrap><Select aria-label="待绑定摄像头" placeholder={orderPending?'托管订单确认后才能绑定摄像头':orderLimit?'订单摄像头路数已全部绑定':'选择本企业尚未绑定的摄像头'} value={chosen} style={{ minWidth: 260 }} disabled={busy||orderBlocked} onChange={setChosen} options={inventory.filter(c => !c.project_id).map(c => ({ value: c.id, label: c.name }))} /><Button disabled={busy || !chosen || orderBlocked} onClick={() => { const c = inventory.find(c => c.id === chosen); if (c) void write(root + '/binding', { cameraId: c.id, expectedVersion: c.version, bind: true }, '摄像头已绑定'); }}>绑定到当前工地</Button></Space>}
     <Table<Camera> rowKey="id" pagination={false} loading={loading} dataSource={items} locale={{ emptyText: <Empty description="当前工地尚未绑定摄像头" /> }} columns={[
       { title: '摄像头', dataIndex: 'name',width:160 }, { title: '云台',width:140, render: (_, c) => <Space><Tag>{c.ptz_enabled ? '已开放' : '未开放'}</Tag>{configure && <Popconfirm title={c.ptz_enabled ? '关闭云台控制？' : '为已验证支持方向控制的设备开放云台？'} onConfirm={() => write(root+'/configure',{cameraId:c.id,expectedVersion:c.version,ptzEnabled:!c.ptz_enabled},'云台控制设置已保存')}><Button size="small" disabled={busy}>{c.ptz_enabled ? '关闭' : '开放'}</Button></Popconfirm>}</Space> },
       {title:'云端录像',render:(_,c)=><Space direction="vertical" size="small"><Tag color={c.recording_state==='recording'?'green':c.recording_state==='error'?'error':undefined}>{({recording:'正在录制',pending:'正在应用设置',stopped:'已停止',error:'录制异常'} as Record<string,string>)[c.recording_state||'']||'未开启'}</Tag><span>保留 {c.retention_days||3} 天</span>{c.recording_error&&<span>{errorText({code:c.recording_error})}</span>}{configure&&<CameraActivity key={projectId+'/'+c.binding_id} projectId={projectId} bindingId={c.binding_id!} name={c.name} />}{configure&&<CameraCoverage key={'coverage/'+projectId+'/'+c.binding_id} projectId={projectId} bindingId={c.binding_id!} name={c.name} />}{configure&&<CameraCleanup key={'cleanup/'+projectId+'/'+c.binding_id} projectId={projectId} bindingId={c.binding_id!} name={c.name} />}{configure&&<Button size="small" disabled={busy} onClick={()=>{recordingForm.setFieldsValue({enabled:!!c.recording_enabled,retentionDays:c.retention_days||3});setRecordingCamera(c);}}>录制设置</Button>}</Space>},

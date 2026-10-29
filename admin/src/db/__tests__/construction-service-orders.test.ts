@@ -10,15 +10,26 @@ import { withPlatformTransaction } from '@/db/transaction';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 import { ConstructionService } from '@/lib/construction/service';
 import { ServiceOrderService } from '@/lib/construction/service-order';
+import { CameraService, authorizeCameraMedia, exchangeCameraEntry, sessionState, startCameraView } from '@/lib/construction/camera/service';
+import { WvpClient } from '@/lib/construction/camera/wvp';
 import { GET, POST } from '@/app/api/construction/[[...path]]/route';
 
 const prefix = 'service-order-' + randomUUID(), eids: string[] = [], uids: string[] = [];
-let ownerAid: string, managerAid: string, workerAid: string, outsiderAid: string, otherOwnerAid: string, project: string, roomA: string, roomB: string;
+let ownerAid: string, managerAid: string, workerAid: string, outsiderAid: string, platformAid: string, otherOwnerAid: string, project: string, roomA: string, roomB: string;
 const owner = () => new ServiceOrderService({ enterpriseId: eids[0], adminId: ownerAid });
 const manager = () => new ServiceOrderService({ enterpriseId: eids[0], adminId: managerAid });
 const worker = () => new ServiceOrderService({ enterpriseId: eids[0], adminId: workerAid });
 const outsider = () => new ServiceOrderService({ enterpriseId: eids[0], adminId: outsiderAid });
 const foreign = () => new ServiceOrderService({ enterpriseId: eids[1], adminId: otherOwnerAid });
+const deviceId = '90020000001320000003', channelIds = Array.from({ length: 6 }, (_, n) => '9002000000132000000' + (4 + n));
+const cameraOrigin = process.env.CAMERA_PUBLIC_ORIGIN;
+const wvp = new WvpClient({ origin: 'http://wvp.test', mediaOrigin: 'http://media.test', username: 'fixture', password: 'fixture' }, (async (input: URL) => {
+  const u = new URL(String(input));
+  if (u.pathname === '/api/user/login') return Response.json({ code: 0, data: { accessToken: 'fixture' } });
+  if (u.pathname.endsWith('/channels')) return Response.json({ code: 0, data: { list: channelIds.map(channelId => ({ deviceId: channelId, status: 'ON' })) } });
+  if (u.pathname.startsWith('/api/play/start/')) return Response.json({ code: 0, data: { app: 'rtp', stream: 'fixture' } });
+  throw Error('unexpected upstream route');
+}) as typeof fetch);
 async function cookie(aid: string, role = 'enterprise_admin') {
   return 'auth_token=' + await new SignJWT({ id: aid, role, enterpriseId: eids[0], permissions: ['construction-projects'] })
     .setProtectedHeader({ alg: 'HS256' }).setIssuedAt().setExpirationTime('10m').sign(new TextEncoder().encode(process.env.JWT_SECRET));
@@ -44,6 +55,7 @@ before(async () => {
     managerAid = await staff(eids[0], '项目经理', 'construction_staff');
     workerAid = await staff(eids[0], '安装师傅', 'construction_staff');
     outsiderAid = await staff(eids[0], '未入项目员工', 'construction_staff');
+    platformAid = await staff(eids[0], '平台管理员', 'admin');
     otherOwnerAid = await staff(eids[1], '另一企业负责人', 'enterprise_admin');
   });
   const lead = String((await withPlatformTransaction(tx => one(tx, sql`insert into app.leads(enterprise_id,customer_user_id,name,phone,source)
@@ -53,9 +65,11 @@ before(async () => {
   const rooms = (await construction.execute('detail', { projectId: project })).rooms as Array<{ id: string; name: string }>;
   roomA = rooms.find(room => room.name === '客厅')!.id; roomB = rooms.find(room => room.name === '主卧')!.id;
   await construction.execute('member', { projectId: project, expectedVersion: 1, adminId: workerAid, role: 'worker', active: true, workLabel: '安装' }, randomUUID());
+  process.env.CAMERA_PUBLIC_ORIGIN = 'https://camera.test';
 });
 after(async () => {
   try {
+    if (cameraOrigin === undefined) delete process.env.CAMERA_PUBLIC_ORIGIN; else process.env.CAMERA_PUBLIC_ORIGIN = cameraOrigin;
     await withPlatformTransaction(async tx => {
       for (const eid of eids) await new TenantEnterpriseResetRepository(tx).purge(BigInt(eid));
       for (const user of uids) await tx.execute(sql`delete from app.users where id=${user}`);
@@ -151,6 +165,53 @@ test('a closed order keeps history while a new order can be opened and cancelled
   const view = (await owner().list(project)).items.find(order => order.id === second.id)!;
   assert.equal(view.status, 'cancelled'); assert.equal(view.cancelReason, '业主暂缓安装'); assert.ok(view.cancelledAt);
   await owner().create(project, orderBody, randomUUID());
+});
+
+test('binding follows the confirmed managed order, and live viewing ends with project membership', async () => {
+  const order = await latest();
+  assert.equal(order.status, 'pending_quote');
+  const ownerCameras = new CameraService({ enterpriseId: eids[0], adminId: ownerAid }, wvp);
+  const platformCameras = new CameraService({ enterpriseId: eids[0], adminId: platformAid }, wvp);
+  const cameras: Array<{ id: string; version: number }> = [];
+  for (const [index, channelId] of channelIds.entries()) {
+    const camera = await platformCameras.register({ deviceId, channelId, name: '托管验收摄像头' + (index + 1) });
+    cameras.push({ id: String(camera.id), version: Number(camera.version) });
+  }
+  await assert.rejects(ownerCameras.bind(project, { cameraId: cameras[0].id, expectedVersion: cameras[0].version, bind: true }), /service_order_not_confirmed/);
+  const quoted = await owner().quote(project, order.id, { expectedVersion: order.version, lines: [{ label: '云工地视频托管服务', amountCents: 200000 }], depositCents: 0, note: '按订单路数开通' }, randomUUID());
+  await owner().confirm(project, order.id, { expectedVersion: quoted.version, quoteVersion: quoted.quoteVersion }, randomUUID());
+  assert.equal((await latest()).status, 'confirmed');
+  const bound = [];
+  for (const camera of cameras.slice(0, 5)) bound.push(await ownerCameras.bind(project, { cameraId: camera.id, expectedVersion: camera.version, bind: true }));
+  assert.deepEqual(bound.map(receipt => receipt.version), [2, 2, 2, 2, 2]);
+  const retry = await ownerCameras.bind(project, { cameraId: cameras[0].id, expectedVersion: cameras[0].version, bind: true });
+  assert.equal(String(retry.bindingId), String(bound[0].bindingId));
+  await assert.rejects(ownerCameras.bind(project, { cameraId: cameras[5].id, expectedVersion: cameras[5].version, bind: true }), /service_order_camera_limit/);
+
+  const workerCameras = new CameraService({ enterpriseId: eids[0], adminId: workerAid }, wvp);
+  const inventory = await workerCameras.list(project);
+  assert.equal(inventory.items.length, 5);
+  assert.equal(inventory.serviceOrder, null);
+  assert.deepEqual((await ownerCameras.list(project)).serviceOrder, { id: order.id, status: 'confirmed', cameraCount: 5, boundCount: 5 });
+  const viewing = await exchangeCameraEntry((await workerCameras.entry(project)).url.split('#entry=')[1]);
+  const live = await startCameraView(viewing.session, viewing.csrf, String(bound[0].bindingId), wvp);
+  assert.deepEqual(await authorizeCameraMedia(viewing.session, live.generation), { app: 'rtp', stream: 'fixture' });
+
+  await withPlatformTransaction(tx => tx.execute(sql`update app.construction_members set active=false where enterprise_id=${eids[0]} and project_id=${project} and admin_id=${workerAid}`));
+  await assert.rejects(workerCameras.list(project), /camera_project_unavailable/);
+  await assert.rejects(workerCameras.entry(project), /camera_project_unavailable/);
+  await assert.rejects(sessionState(viewing.session), /camera_project_unavailable/);
+  await assert.rejects(authorizeCameraMedia(viewing.session, live.generation), /camera_project_unavailable/);
+
+  await withPlatformTransaction(tx => tx.execute(sql`update app.construction_members set active=true where enterprise_id=${eids[0]} and project_id=${project} and admin_id=${workerAid}`));
+  const revived = await exchangeCameraEntry((await workerCameras.entry(project)).url.split('#entry=')[1]);
+  const again = await startCameraView(revived.session, revived.csrf, String(bound[0].bindingId), wvp);
+  assert.equal((await authorizeCameraMedia(revived.session, again.generation)).stream, 'fixture');
+
+  await ownerCameras.bind(project, { cameraId: cameras[0].id, expectedVersion: bound[0].version, bind: false });
+  const replaced = await ownerCameras.bind(project, { cameraId: cameras[5].id, expectedVersion: cameras[5].version, bind: true });
+  assert.ok(replaced.bindingId);
+  assert.equal((await ownerCameras.list(project)).serviceOrder?.boundCount, 5);
 });
 
 test('the cookie API exposes the same records and rejects a write without an idempotency key', async () => {

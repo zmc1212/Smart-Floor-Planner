@@ -21,6 +21,8 @@ const messages: Record<string, string> = {
   camera_forbidden: '当前身份没有此摄像头操作权限。', camera_not_configured: '视频服务尚未配置，请联系管理员。',
   camera_service_unavailable: '摄像头服务暂不可用，请稍后重试。', camera_control_busy: '云台仍在核对停止状态，请稍后重试。',
   camera_project_unavailable: '工地已停用或访问权限已变化，请重新进入。',
+  service_order_camera_limit: '本工地托管订单的摄像头路数已全部绑定，请先解绑或调整订单后再试。',
+  service_order_not_confirmed: '托管订单确认后才能绑定摄像头，请先完成报价确认。',
   public_source_unavailable: '原始材料已有变化或访问已撤销，请读取最新材料；当前编辑保留。',
   public_consent_required: '须由业主查看完整预览并明确同意这一版，再由企业审核公开。', public_preview_required: '业主尚未查看这一版完整预览。',
   public_state_conflict: '公开材料状态已变化，请读取最新材料后重新核对。', public_material_sensitive: '节选或名称仍有联系方式或门牌，请完成脱敏。',

@@ -35,6 +35,13 @@ export async function cameraAccess(tx: PostgresTransaction, actor: ConstructionA
   if (!owner && !m) fail('camera_project_unavailable', 404);
   return { project: p, manage: owner || m?.role === 'manager', owner };
 }
+async function activeOrder(tx: PostgresTransaction, eid: string, pid: string) {
+  return await one(tx, sql`select o.id,o.status,o.camera_count,
+    (select count(*) from app.construction_camera_bindings b
+      where b.enterprise_id=o.enterprise_id and b.project_id=o.project_id and b.ended_at is null) bound
+    from app.construction_service_orders o
+    where o.enterprise_id=${eid} and o.project_id=${pid} and o.status<>'cancelled' order by o.id desc limit 1`);
+}
 async function binding(tx: PostgresTransaction, eid: string, pid: string, bindingId: string) {
   const r = await one(tx, sql`select b.id as binding_id,c.* from app.construction_camera_bindings b
     join app.construction_cameras c on c.enterprise_id=b.enterprise_id and c.id=b.camera_id
@@ -84,7 +91,9 @@ export class CameraService {
         join app.construction_cameras c on c.enterprise_id=b.enterprise_id and c.id=b.camera_id
         left join app.construction_camera_recording_policies r on r.enterprise_id=b.enterprise_id and r.binding_id=b.id
         where b.enterprise_id=${this.actor.enterpriseId} and b.project_id=${pid} and b.ended_at is null and c.enabled order by c.id`);
-      return { project: access.project, canManage: access.manage, canConfigure: access.owner, canCapture: access.manage, canControl: access.manage, maxRetentionDays:Number(process.env.CAMERA_NODE_RETENTION_DAYS||7), items };
+      const order = access.manage ? await activeOrder(tx, this.actor.enterpriseId, pid) : null;
+      return { project: access.project, canManage: access.manage, canConfigure: access.owner, canCapture: access.manage, canControl: access.manage, maxRetentionDays:Number(process.env.CAMERA_NODE_RETENTION_DAYS||7), items,
+        serviceOrder: order ? { id: String(order.id), status: String(order.status), cameraCount: Number(order.camera_count), boundCount: Number(order.bound) } : null };
     });
     return {...result,storage:result.canConfigure&&result.items.length?await currentStorageHealth():null};
   }
@@ -102,6 +111,13 @@ export class CameraService {
       // Matching state is a truthful retry receipt, even if the first reply was lost.
       if ((input.bind && b) || (!input.bind && !b)) return { id: cameraId, version: Number(c.version), bindingId: b?.id || null };
       if (Number(c.version) !== expected) fail('version_conflict', 409);
+      if (input.bind) {
+        // Serialize capacity checks and inserts so concurrent binds cannot both take the last ordered slot.
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`service-order-camera:${eid}:${pid}`},0))`);
+        const order = await activeOrder(tx, eid, pid);
+        if (order && !['confirmed', 'scheduled', 'accepted'].includes(String(order.status))) fail('service_order_not_confirmed', 409);
+        if (order && Number(order.bound) >= Number(order.camera_count)) fail('service_order_camera_limit', 409);
+      }
       if (b) {
         const recording=await one(tx,sql`select binding_id from app.construction_camera_recording_policies where enterprise_id=${eid} and binding_id=${String(b.id)} and (enabled or state<>'stopped')`);
         if(recording)fail('camera_recording_busy',409);
