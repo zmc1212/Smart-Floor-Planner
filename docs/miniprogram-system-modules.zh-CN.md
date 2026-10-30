@@ -1,5 +1,10 @@
 # 小程序当前功能清单
 
+<!-- portfolio-development-recovery-20261030 -->
+**开发环境设计师推荐恢复（2026-10-30）：本次报错范围Implemented。** 原企业1454／客户咨询802的推荐请求因开发主库缺少`app.portfolio_portraits`返回`503 assistant_unavailable`。先完成受ACL保护的59,164,410字节custom备份并核验`PGDMP`签名及archive目录，再仅向已批准的本机5432／远端15432开发主库补齐原有、源码未改的`0095_portfolio_enrichment`（SHA256 `a1183439b97cee7f697f49359ba32b15f053e437449185b9d1ead24ed2c42928`）。主库该迁移精确hash、六个作品集迁移、九张强制RLS表及头像同意列均已核验。原认证推荐请求现为200，当前地区实际可推荐公开作品0项；Stable新编译390×844，通过真实历史入口重进原咨询802，原错误消失（原生3/3，一张核route／咨询ID的348×752截图审看，源码／配置drift[]）。未修改客户资料、作品、模型答复、UI、API或权限策略；模型调用0，未生产发布。只读请求观察器及原最小化副屏窗口已恢复。
+
+Mini40/40与隔离作品集服务回归56/56分别保留为工程证据。评测库已有头像表，但迁移账本缺少0095精确hash，因此双库迁移检查仍在评测目标失败；它与本次开发接口恢复独立，未重写该账本，原失败保留。备份／诊断／迁移／账本／原生证据：`tmp/xiaok-portfolio-error-20261030/`；完整备份恢复演练、真机／真实微信登录、配置模型语义及生产仍未验。
+
 <!-- xiaok-notebook-ui-current:start -->
 **聊天内查看附近公开工地：Implemented（2026-10-30）。** `packages/assistant/chat/chat`与首页`pages/index/index`小K面板的附近／更多工地动作，在当前聊天卡片加载本企业公开工地；工地卡片与公开引用点击后，在当前聊天既有底部面板查看精确公开版本、照片和服务节选。“问小K”把该版本接到原咨询，保留咨询ID和未发送草稿，沿原公开上下文事件实写，重进仍可接续。浏览与详情不再跳到`packages/construction/public-sites/public-sites`或`packages/construction/public-site/public-site`；这两个路由继续作为独立匿名／分享入口。
 

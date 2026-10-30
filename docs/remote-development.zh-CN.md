@@ -1,5 +1,10 @@
 # 远端开发连接记录
 
+<!-- portfolio-development-recovery-20261030 -->
+**开发环境设计师推荐恢复（2026-10-30）：本次报错范围Implemented。** 原企业1454／客户咨询802的推荐请求因开发主库缺少`app.portfolio_portraits`返回`503 assistant_unavailable`。先完成受ACL保护的59,164,410字节custom备份并核验`PGDMP`签名及archive目录，再仅向已批准的本机5432／远端15432开发主库补齐原有、源码未改的`0095_portfolio_enrichment`（SHA256 `a1183439b97cee7f697f49359ba32b15f053e437449185b9d1ead24ed2c42928`）。主库该迁移精确hash、六个作品集迁移、九张强制RLS表及头像同意列均已核验。原认证推荐请求现为200，当前地区实际可推荐公开作品0项；Stable新编译390×844，通过真实历史入口重进原咨询802，原错误消失（原生3/3，一张核route／咨询ID的348×752截图审看，源码／配置drift[]）。未修改客户资料、作品、模型答复、UI、API或权限策略；模型调用0，未生产发布。只读请求观察器及原最小化副屏窗口已恢复。
+
+Mini40/40与隔离作品集服务回归56/56分别保留为工程证据。评测库已有头像表，但迁移账本缺少0095精确hash，因此双库迁移检查仍在评测目标失败；它与本次开发接口恢复独立，未重写该账本，原失败保留。备份／诊断／迁移／账本／原生证据：`tmp/xiaok-portfolio-error-20261030/`；完整备份恢复演练、真机／真实微信登录、配置模型语义及生产仍未验。
+
 **开发助手消费恢复（2026-10-28）：** 真机所报“新房”run1576于01:42:46Z入队、从未启动，现场有2条等待任务；本机助手消费者未运行，默认心跳已过期。将原 `scripts/assistant-worker.mjs` 恢复为隐藏专用 Node 进程（初始 PID558932），沿用本机3006内部端点及 `.env.local` secret。旧排队任务被既有总时限守卫判失败、无供应商 I/O；随后通过获权幂等重试恢复原咨询789，run1578/attempt4050已实际调用 Qwen 成功。三个开发命令现由 `scripts/dev.mjs` 联动并监管 Next.js 与该消费者；`worker:assistant` 保留为独立/容器入口。企业 Qwen 绑定与平台 GLM 模型独立，仅复用匹配供应商的既有凭据。未改凭据、数据库端点/转发、SSH、远端容器、Embedding 服务、模型选择或生产部署。证据及限制见 `tmp/xiaok-chat-queue-20261028/` 与[排障合同](./xiaok-assistant-phase-2.zh-CN.md#当前聊天队列停滞恢复)；未将当前手机重进记为已验证。
 
 **Embedding转发恢复（2026-10-30）：** 真实客户run1588因本机127.0.0.1:18089无监听报retrieval_unavailable，企业1454 profile1有效。复用admin/scripts/xiaok-embedding/tunnel.ps1及获批密钥属主（监管602288、初始SSH监听113068），保持BatchMode/StrictHostKeyChecking和原远端127.0.0.1:8089。鉴权health200，既有Qwen/Qwen3-Embedding-0.6B revision/profile/1024维一致；原咨询802检索5条获权资料，观测26 query tokens。原用户登录启动快捷方式已指向本监管脚本，保持不变；未改远端进程、ComfyUI、凭据、数据库隧道、端点或生产部署。原1588/1584失败及2026-10-28旧隧道证据保留；当前证据tmp/xiaok-chat-queue-20261030/retrieval-diagnosis.json、embedding-supervisor.json、user-802-retrieval-probe.json、real-knowledge-recovery.json；仅证明本次开发依赖/恢复范围，不升级完整D2。
