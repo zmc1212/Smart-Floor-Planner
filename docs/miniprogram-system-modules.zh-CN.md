@@ -1,13 +1,17 @@
 # 小程序当前功能清单
 
 <!-- xiaok-notebook-ui-current:start -->
+**聊天内查看附近公开工地：Implemented（2026-10-30）。** `packages/assistant/chat/chat`与首页`pages/index/index`小K面板的附近／更多工地动作，在当前聊天卡片加载本企业公开工地；工地卡片与公开引用点击后，在当前聊天既有底部面板查看精确公开版本、照片和服务节选。“问小K”把该版本接到原咨询，保留咨询ID和未发送草稿，沿原公开上下文事件实写，重进仍可接续。浏览与详情不再跳到`packages/construction/public-sites/public-sites`或`packages/construction/public-site/public-site`；这两个路由继续作为独立匿名／分享入口。
+
+片区沿本人会话`GET .../public-sites/recommendations`解析，显式浏览再调`GET /api/public/construction/:enterpriseId/sites`并按已有地区筛选。定位拒绝／不可用时展示获权服务片区并提示，不虚构距离或房屋所在地。精确版本详情／媒体沿原公开API；`POST .../public-sites/:siteId/context`保留原bearer本人、租户、实时来源和幂等守卫。加载／无结果／失败／重试沿批准手账提示；重复点击与过期身份／会话响应不生效，撤回清详情／卡片／缓存路径。无API／schema／权限、Less、字体或素材变更。设计映射为手账09／10及既有来源底部面板，按本次用户“同聊天完成”指令修正承载位置。Mini65/65；Stable native03为10/10，另有真实服务2组，505文件绑定drift[]，九张核路由390×844逻辑／348×752 PNG均审看；独立native04-sheet为6/6，另四张图核对详情可滚动、问小K动作在屏可见并实际点击成功。两批不合并计数，产品／配置hash相同。native01／02原位置检查／截屏失败保留；隔离夹具、内存身份／传输及原最小化副屏窗口均已清理恢复。证据`tmp/xiaok-public-chat-20261030/`；模型调用0，不代表真机／真实登录或生产验收。
+
 ## 当前手账聊天与显式户型范围（2026-10-30）
 
 **获批UI范围内为Implemented；Agent整体仍Limited。** 客户根入口 `pages/index/index` 默认小K，另保留服务／我的两个逻辑Tab；原五个注册Tab及专业角色导航沿既有权限。异步 `chat-panel` 与旧 `packages/assistant/chat/chat` 共用聊天定义和控制器，切Tab保留会话、草稿和户型选择。`pages/mine/mine`仅变更客户导航，其账号主体及专业工作台仍沿既有设计源。
 
 按用户2026-10-30指令，欢迎页旧房改造／装修风格／预算安排快捷选项现在点击即沿既有 `send()` 和 `POST /api/miniprogram/assistant/conversations/:id/messages` 发送问题；首页面板与旧聊天页共用同一处理。锁覆盖整个异步发送准备过程；加载、只读／未开放、执行中／结果未知及消息／操作／档案／语音待处理状态不覆盖草稿或另发消息。登录、档案校验、发送失败反馈与未知回执同键核对复用原控件；发送成功清空输入框并显示持久化消息，失败保留原恢复状态。手账设计源的结构、样式、素材、路由、API及权限保持不变。证据 `tmp/xiaok-quick-prompts-20261030/final-checks.json`：Mini 57/57；Stable native02确认首页真实点击、单条持久化写入、任务失败反馈与重进，定向native03为5/5，覆盖连接准备、旧聊天页快捷发送／同键恢复、旧房发送与其他客户拒绝。六张路由确认的390×844逻辑／348×752 PNG已审看。旧CDP连接失败和仅拦截HTTP200的测试注入失败分别保留；产品／配置绑定drift[]，自有测试数据／会话／传输已清理恢复。确定性发送检查新增模型调用0，不代表模型答复、真机或生产验收。
 
-当前设计权威为[手账设计与逐元素台账](../design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/README.md)；活动目录 `design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/` 包含01–04主变体及05–11生成／停止／失败／人工等待、探索入口、公开工地与设计师结果补稿。纸页、装订、字排、照片装裱与控件用原生结构／Less实现；欢迎角色和叶片为两张独立生成的透明PNG，没有设计图切片。工地照片、阶段／区域、作者和作品参数沿原获权投影；查看工地、作品、设计师主页分别走原路由。加载、无结果、定位拒绝、失败和撤回沿共用状态规则；未完成回答及人工接待不露探索入口，不虚构距离、认证、预约或完成状态。
+当前设计权威为[手账设计与逐元素台账](../design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/README.md)；活动目录 `design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/` 包含01–04主变体及05–11生成／停止／失败／人工等待、探索入口、公开工地与设计师结果补稿。纸页、装订、字排、照片装裱与控件用原生结构／Less实现；欢迎角色和叶片为两张独立生成的透明PNG，没有设计图切片。工地照片、阶段／区域、作者和作品参数沿原获权投影；查看工地留在当前聊天底部面板，作品及设计师主页仍走原路由。加载、无结果、定位拒绝、失败和撤回沿共用状态规则；未完成回答及人工接待不露探索入口，不虚构距离、认证、预约或完成状态。
 
 `GET/POST /api/miniprogram/assistant/conversations/:id/floorplan-context` 实现默认**不结合档案**。GET只列本人当前正式v4主户型，或按精确版本只读详情；浏览不选择。POST必须带 `expectedVersion` 及显式 `selection`（leadId/floorPlanId/layoutHash）或null，复用原幂等账本，将 `floorplanContext` 存于 `entry_snapshot`，不新增表或迁移。选择按客户／企业／会话／版本隔离，不授予权限；忙碌／人工／关闭及费用未核对任务拒绝写入，回执丢失沿同键核对。重进及materials/business两条读路径重验实时所有权、主图关系和layout hash；失效选择清除并停止正式户型注入。用户原话和自行发送图片仍沿原来源规则。根入口仅从该客户已有线索／本人开放咨询中解析唯一企业；多企业时不自动选最新。
 

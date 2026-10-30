@@ -142,8 +142,9 @@
             <text class="public-recommendation-name">{{item.name}}</text><text wx:if="{{item.stageName}}" class="public-stage-label">{{item.stageName}}</text><text wx:if="{{item.district}}" class="public-district">{{item.district}}</text>
             <view class="discovery-card-actions"><button class="discovery-text-action" data-id="{{item.id}}" data-version="{{item.versionId}}" bindtap="openPublicSite"><text>查看工地</text><image src="../assets/chat-arrow-up-right.png" mode="aspectFit"/></button></view>
           </view>
-          <button wx:if="{{publicItems.length}}" class="discovery-more discovery-text-action" bindtap="browseSites"><text>更多公开工地</text><image src="../assets/chat-arrow-up-right.png" mode="aspectFit"/></button>
-          <view wx:else class="discovery-entries"><text class="discovery-section-title">继续了解</text><button class="discovery-entry" bindtap="browseSites"><image class="discovery-entry-icon" src="../assets/requirement-home.png" mode="aspectFit"/><view class="discovery-entry-copy"><text class="discovery-entry-title">附近公开工地</text><text class="discovery-entry-description">看看施工现场与当前阶段</text></view><image class="discovery-entry-arrow" src="../assets/chat-arrow-up-right.png" mode="aspectFit"/></button></view>
+          <button wx:if="{{publicItems.length}}" class="discovery-more discovery-text-action" bindtap="browseSites" disabled="{{publicLoading || publicBusy}}"><text>{{publicBrowsing ? '重新读取' : '更多公开工地'}}</text><image src="../assets/chat-arrow-up-right.png" mode="aspectFit"/></button>
+          <view wx:else class="discovery-entries"><text class="discovery-section-title">继续了解</text><button class="discovery-entry" bindtap="browseSites" disabled="{{publicLoading || publicBusy}}"><image class="discovery-entry-icon" src="../assets/requirement-home.png" mode="aspectFit"/><view class="discovery-entry-copy"><text class="discovery-entry-title">附近公开工地</text><text class="discovery-entry-description">看看施工现场与当前阶段</text></view><image class="discovery-entry-arrow" src="../assets/chat-arrow-up-right.png" mode="aspectFit"/></button></view>
+          <text wx:if="{{publicLoading || publicNotice}}" class="portfolio-notice">{{publicLoading ? '正在读取公开工地…' : publicNotice}}</text>
           <view wx:if="{{publicError || publicPending}}" class="notice"><text>{{publicError || '有一项公开材料操作等待确认结果。'}}</text><button class="notice-action" bindtap="retryPublic" disabled="{{publicBusy}}">{{publicPending ? '核对同次操作结果' : '重新读取'}}</button></view>
         </view>
         <view wx:if="{{conversation && messages.length && run.status === 'succeeded' && conversation.mode === 'ai' && !readOnly && !hasDesignerRecommendation}}" class="portfolio-recommendations">
@@ -197,7 +198,7 @@
   <view wx:if="{{sheet}}" class="sheet-layer {{sheetOpen ? 'is-open' : ''}}" catchtouchmove="swallow">
     <view class="sheet-mask" bindtap="closeSheet"></view>
     <view class="sheet-panel">
-      <view class="sheet-head"><text>{{sheet === 'history' ? '历史对话' : sheet === 'floorplan' ? contextDetail ? '查看户型档案' : '户型参考' : '回答依据'}}</text><button class="icon-button" bindtap="closeSheet" aria-label="关闭"><image src="../assets/x.png" /></button></view>
+      <view class="sheet-head"><text>{{sheet === 'history' ? '历史对话' : sheet === 'floorplan' ? contextDetail ? '查看户型档案' : '户型参考' : sheet === 'publicSite' ? '公开工地' : '回答依据'}}</text><button class="icon-button" bindtap="closeSheet" aria-label="关闭"><image src="../assets/x.png" /></button></view>
       <scroll-view class="sheet-scroll" scroll-y show-scrollbar="{{false}}">
         <block wx:if="{{sheet === 'history'}}">
           <button class="notice-action" bindtap="newConversation" disabled="{{busy || pendingSend || pendingAction}}">开启新对话</button>
@@ -227,6 +228,17 @@
               <button class="floorplan-preview" data-index="{{index}}" bindtap="viewFloorplan">查看</button>
             </view>
           </block>
+        </block>
+        <block wx:elif="{{sheet === 'publicSite'}}">
+          <text wx:if="{{publicDetailLoading}}" class="sheet-state">正在核对资料访问权限…</text>
+          <view wx:if="{{publicDetailError || publicError || publicPending}}" class="notice"><text>{{publicDetailError || publicError || '有一项公开材料操作等待确认结果。'}}</text><button class="notice-action" bindtap="retryPublic" disabled="{{publicBusy || publicDetailLoading}}">{{publicPending ? '核对同次操作结果' : '重新读取'}}</button></view>
+          <view wx:if="{{publicDetail}}" class="public-recommendation discovery-paper">
+            <view class="discovery-card-head"><text class="fabric-label">公开工地</text><text class="discovery-disclosure">业主授权公开</text></view>
+            <text class="public-recommendation-name">{{publicDetail.name}}</text><text wx:if="{{publicDetail.stageName}}" class="public-stage-label">{{publicDetail.stageName}}</text><text class="public-district">{{publicDetail.district}} · {{publicDetail.dateLabel}}</text>
+            <view wx:for="{{publicDetail.photos}}" wx:key="key" class="public-photo-mat"><image wx:if="{{publicDetailPaths[item.key]}}" src="{{publicDetailPaths[item.key]}}" mode="aspectFill" data-key="{{item.key}}" bindtap="previewPublicDetail"/><text wx:else class="discovery-photo-empty">照片暂不可用</text><view class="photo-tape" aria-hidden="true"></view></view>
+            <view wx:for="{{publicDetail.excerpts}}" wx:key="key"><text class="sheet-helper">{{item.role}} · {{item.dateLabel}}</text><text class="source-quote" user-select>{{item.text}}</text></view>
+            <view class="discovery-card-actions"><button class="discovery-text-action" bindtap="askPublicSite" disabled="{{!canSend || publicBusy || publicPending || publicDetailLoading || loading || fatal || readOnly || busy || generating || pendingSend || pendingAction || uncertainRun || contextBusy || contextPending || speechBusy}}"><text>{{publicBusy ? '正在确认…' : '问小K'}}</text><image src="../assets/chat-arrow-up-right.png" mode="aspectFit"/></button></view>
+          </view>
         </block>
         <block wx:else>
           <text wx:if="{{citationLoading}}" class="sheet-state">正在核对资料访问权限…</text>

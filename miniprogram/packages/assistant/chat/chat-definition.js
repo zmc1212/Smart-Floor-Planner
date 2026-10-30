@@ -313,6 +313,7 @@ module.exports = () => ({
   },
   closeSheet() {
     clearTimeout(this._sheetTimer);
+    if (this.data.sheet === 'publicSite' && this.publicSites) this.publicSites.closeDetail();
     this.controller.citationRequest = (this.controller.citationRequest || 0) + 1;
     this.referenceImages.clear();
     this.controller.set({ citation: null });
@@ -473,17 +474,33 @@ module.exports = () => ({
     wx.navigateTo({ url: `/packages/assistant/work/work?conversationId=${encodeURIComponent(id)}&workId=${encodeURIComponent(data.work)}&versionId=${encodeURIComponent(data.version)}` });
   },
   async browseSites() {
-    const location = await this.syncLocation(true);
-    if (!this._alive || !this._shown || location.blocked) return;
-    if (!this.data.enterpriseId) return;
-    const cid = this.controller.conversationId;
-    const region = location.region;
-    wx.navigateTo({ url: '/packages/construction/public-sites/public-sites?enterpriseId='+this.data.enterpriseId+(cid ? '&conversationId='+cid : '')
-      +(region ? '&cityCode='+encodeURIComponent(region.cityCode)+'&district='+encodeURIComponent(region.district || '') : '') });
+    if (this._browsingSites || this.data.publicLoading || this.data.publicBusy || this.data.loading || this.data.fatal || this.data.busy || this.data.generating || this.data.pendingSend || this.data.pendingAction || this.data.uncertainRun) return;
+    const cid = this.controller.conversationId, eid = this.data.enterpriseId, session = sessionToken();
+    if (!cid || !eid) return;
+    this._browsingSites = true;
+    try {
+      const location = await this.syncLocation(true);
+      if (!this._alive || !this._shown || location.blocked || cid !== this.controller.conversationId || session !== sessionToken()) return;
+      await this.publicSites.browse(cid, eid, this.data.messages, location.notice);
+      if (this._alive && this._shown && cid === this.controller.conversationId && session === sessionToken()) this.scrollBottom();
+    } finally { this._browsingSites = false; }
   },
   openPublicSite(e) {
     const d = e.currentTarget.dataset;
-    wx.navigateTo({ url: '/packages/construction/public-site/public-site?enterpriseId='+this.data.enterpriseId+'&siteId='+d.id+'&versionId='+d.version+(this.controller.conversationId ? '&conversationId='+this.controller.conversationId : '') });
+    if (!this.controller.conversationId || this.data.fatal || !/^[1-9]\d{0,18}$/.test(String(d.id)) || !/^[1-9]\d{0,18}$/.test(String(d.version))) return;
+    this.openSheet('publicSite');
+    return this.publicSites.openDetail(this.controller.conversationId, this.data.enterpriseId, String(d.id), String(d.version));
+  },
+  async askPublicSite() {
+    const item = this.data.publicDetail, cid = this.controller.conversationId;
+    if (!item || this._askingPublicSite || !this.data.canSend || this.data.publicDetailLoading || this.data.publicBusy || this.data.publicPending || this.data.loading || this.data.fatal || this.data.readOnly || this.data.busy || this.data.generating || this.data.pendingSend || this.data.pendingAction || this.data.uncertainRun || this.data.contextBusy || this.data.contextPending || this.data.speechBusy) return;
+    this._askingPublicSite = true;
+    try {
+      if (await this.publicSites.attach(cid, this.data.enterpriseId, item.id, item.versionId)) {
+        if (!this._alive || !this._shown || cid !== this.controller.conversationId) return;
+        this.closeSheet(); await this.controller.refresh(); this.scrollBottom();
+      }
+    } finally { this._askingPublicSite = false; }
   },
   async publicDecision(e) {
     const d = e.currentTarget.dataset;
@@ -491,8 +508,14 @@ module.exports = () => ({
     if (ok && d.action !== 'preview') await this.controller.refresh();
   },
   laterPublic() { this.publicSites.later(); },
-  async retryPublic() { if (this.data.publicPending) { if (await this.publicSites.retry()) await this.controller.refresh(); } else await this.controller.refresh(); },
+  async retryPublic() {
+    if (this.data.publicPending) { if (await this.publicSites.retry()) { if (this.data.sheet === 'publicSite') this.closeSheet(); await this.controller.refresh(); } }
+    else if (this.data.sheet === 'publicSite') await this.publicSites.readDetail();
+    else if (this.data.publicBrowsing) await this.browseSites();
+    else await this.controller.refresh();
+  },
   previewPublic(e) { return this.publicSites.media.preview(e.currentTarget.dataset.key); },
+  previewPublicDetail(e) { return this.publicSites.detailMedia.preview(e.currentTarget.dataset.key); },
   openDesigner(event) {
     const item = this.data.portfolioItems.find(i => i.authorId === String(event.currentTarget.dataset.id));
     if (!item || !this.data.conversation) return;
