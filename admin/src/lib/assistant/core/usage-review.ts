@@ -24,3 +24,22 @@ export function runUsageReconciled() {
   return sql`exists(select 1 from app.assistant_quota_reservations q where q.enterprise_id=r.enterprise_id and q.run_id=r.id
     and ${confirmedUsageReview()})`;
 }
+
+/** A known model response followed by retrieval failure may be explicitly
+ * retried with a new reservation. Keep the old cost hold and billing status;
+ * cancellation, unknown responses and missing token observations still block. */
+export function runRetryAwaitingReconciliation() {
+  const knownRetrievalFailure = sql`(r.status='failed' and r.error_code='retrieval_unavailable'
+    and not ${unresolvedProviderOutcome()}
+    and exists(select 1 from app.ai_provider_attempts a where a.enterprise_id=r.enterprise_id and a.assistant_run_id=r.id)
+    and not exists(select 1 from app.ai_provider_attempts a where a.enterprise_id=r.enterprise_id and a.assistant_run_id=r.id
+      and (a.status is distinct from 'succeeded' or a.accepted is distinct from true
+        or jsonb_typeof(a.metadata#>'{assistantResponse,usage,inputTokens}') is distinct from 'number'
+        or jsonb_typeof(a.metadata#>'{assistantResponse,usage,outputTokens}') is distinct from 'number'
+        or not coalesce(a.metadata#>>'{assistantResponse,usage,inputTokens}' ~ '^[0-9]+$',false)
+        or not coalesce(a.metadata#>>'{assistantResponse,usage,outputTokens}' ~ '^[0-9]+$',false)))
+    and exists(select 1 from app.assistant_usage_records u where u.enterprise_id=r.enterprise_id and u.run_id=r.id
+      and u.category='tokens' and u.measurement_kind='observed' and u.quantity is not null))`;
+  return sql`exists(select 1 from app.assistant_quota_reservations q where q.enterprise_id=r.enterprise_id and q.run_id=r.id
+    and q.status='reconciling' and not ${knownRetrievalFailure})`;
+}

@@ -47,6 +47,55 @@ async function pending(age=true) {
   });
 }
 const body=(q:Row)=>({expectedVersion:Number(q.version),tokens:'100',costMicros:'23000',currency:'CNY',evidenceReference:'provider-bill:verified-123',reason:'Provider bill and token usage verified manually'});
+
+async function knownRetrievalFailure() {
+  const q = await pending();
+  await withPlatformTransaction(async tx => {
+    const provider = await one(tx, sql`select id,key,adapter_type from app.ai_provider_configs order by id limit 1`); assert.ok(provider);
+    await tx.execute(sql`update app.assistant_runs set status='failed',error_code='retrieval_unavailable' where enterprise_id=${tenants[0]} and id=${String(q.run_id)}`);
+    await tx.execute(sql`insert into app.ai_provider_attempts(enterprise_id,assistant_run_id,provider_config_id,provider_key,adapter_type,capability,logical_model_key,remote_model,status,accepted,metadata)
+      values(${tenants[0]},${String(q.run_id)},${String(provider.id)},${String(provider.key)},${String(provider.adapter_type)},'chat','chat.general','synthetic-known-response','succeeded',true,
+        '{"assistantResponse":{"usage":{"inputTokens":100,"outputTokens":20}}}'::jsonb)`);
+    await tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,operation_key,category,quantity,measurement_kind,input_tokens,output_tokens)
+      values(${tenants[0]},${String(q.run_id)},${'synthetic-observed:'+q.run_id},'tokens',120,'observed',100,20)`);
+  });
+  return q;
+}
+
+test('known-response retrieval retry preserves the old cost hold, reserves anew and stays idempotent',async()=>{
+  const q=await knownRetrievalFailure(), chat=new ConversationService(actor), key=randomUUID();
+  const prior=await chat.run(String(q.run_id)); assert.equal(prior.retryable,true);assert.equal(prior.usageReconciled,false);
+  const receipt=await chat.run(String(q.run_id),'retry',key) as Row, duplicate=await chat.run(String(q.run_id),'retry',key) as Row;
+  assert.ok('runId' in receipt);
+  assert.deepEqual(receipt,duplicate);assert.notEqual(receipt.runId,q.run_id);
+  const proof=await withTenantTransaction(tenants[0],async tx=>({
+    original:await one(tx,sql`select r.status,q.status hold,q.settled_cost_micros,q.settled_tokens from app.assistant_runs r join app.assistant_quota_reservations q on q.enterprise_id=r.enterprise_id and q.run_id=r.id where r.id=${String(q.run_id)}`),
+    next:await one(tx,sql`select status,reserved_cost_micros from app.assistant_quota_reservations where enterprise_id=${tenants[0]} and run_id=${String(receipt.runId)}`),
+    count:await one(tx,sql`select count(*)::int n from app.assistant_messages where enterprise_id=${tenants[0]} and conversation_id=${String(receipt.conversationId)} and author_kind='user'`),
+  }));
+  assert.deepEqual(proof.original,{status:'failed',hold:'reconciling',settled_cost_micros:null,settled_tokens:null});
+  assert.equal(proof.next?.status,'held');assert.equal(proof.next?.reserved_cost_micros,'1000000');assert.equal(proof.count?.n,1);
+  await chat.run(String(receipt.runId),'cancel',randomUUID());
+});
+
+test('retrieval retries still block unknown attempts, missing usage, cancellation and insufficient budget',async()=>{
+  const chat=new ConversationService(actor);
+  for(const scenario of ['unknown','missing_usage','cancelled','missing_response']) {
+    const q=await knownRetrievalFailure();
+    await withPlatformTransaction(async tx=>{
+      if(scenario==='unknown')await tx.execute(sql`update app.ai_provider_attempts set status='unknown' where enterprise_id=${tenants[0]} and assistant_run_id=${String(q.run_id)}`);
+      if(scenario==='missing_usage')await tx.execute(sql`update app.assistant_usage_records set quantity=null,measurement_kind='unavailable' where enterprise_id=${tenants[0]} and run_id=${String(q.run_id)}`);
+      if(scenario==='cancelled')await tx.execute(sql`update app.assistant_runs set status='cancelled' where enterprise_id=${tenants[0]} and id=${String(q.run_id)}`);
+      if(scenario==='missing_response')await tx.execute(sql`update app.ai_provider_attempts set metadata='{}'::jsonb where enterprise_id=${tenants[0]} and assistant_run_id=${String(q.run_id)}`);
+    });
+    assert.equal((await chat.run(String(q.run_id))).retryable,false,scenario);
+    await assert.rejects(chat.run(String(q.run_id),'retry',randomUUID()),/context_changed/,scenario);
+  }
+  const q=await knownRetrievalFailure();
+  await withTenantTransaction(tenants[0],tx=>tx.execute(sql`update app.assistant_enterprise_settings set daily_cost_micros=1 where enterprise_id=${tenants[0]}`));
+  await assert.rejects(chat.run(String(q.run_id),'retry',randomUUID()),/quota_exceeded/);
+  await withTenantTransaction(tenants[0],tx=>tx.execute(sql`update app.assistant_enterprise_settings set daily_cost_micros=1000000000 where enterprise_id=${tenants[0]}`));
+});
 test('date windows and integer money reject malformed, fractional, overflow and excessive input',()=>{
   assert.deepEqual(usageWindow('2026-10-01','2026-10-15'),{from:'2026-10-01',to:'2026-10-15'});
   for(const end of ['bad','2026-02-30','2027-10-01'])assert.throws(()=>usageWindow('2026-10-01',end));

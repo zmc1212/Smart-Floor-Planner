@@ -23,7 +23,7 @@ import { referenceCase } from '../knowledge/reference-case';
 import { contentEntrySource, contentGreeting, type ContentEntry } from '../knowledge/content-entry';
 import { syncConstructionReminders } from '@/lib/construction/reminders';
 import { currentConstructionContact } from '@/lib/construction/customer';
-import { runUsageReconciled, unresolvedProviderOutcome } from './usage-review';
+import { runRetryAwaitingReconciliation, runUsageReconciled, unresolvedProviderOutcome } from './usage-review';
 import { portfolioCopyBudget } from './model-task-budget';
 
 export const reserveTokens = 12000;
@@ -230,8 +230,7 @@ export class ConversationService {
       const checkpoint = config ? await requirementCheckpoint(repo.tx, this.actor.enterpriseId, conversationId) : undefined;
       const guidance = guidanceView(config, turns.map(m => ({ id: String(m.id), text: ((m.content as { blocks?: Array<{text?: string}> })?.blocks || []).map(b => b.text || '').join('\n') })), checkpoint);
       if (guidance && (!configuredGuidance(settings?.guidance_config).enabled || c.status !== 'open' || c.mode !== 'ai')) { guidance.options = []; guidance.questionKey = null; }
-      const latest = await one(repo.tx, sql`select r.*,${runUsageReconciled()} as usage_reconciled,exists(select 1 from app.assistant_quota_reservations q
-        where q.enterprise_id=r.enterprise_id and q.run_id=r.id and q.status='reconciling') as awaiting_reconciliation
+      const latest = await one(repo.tx, sql`select r.*,${runUsageReconciled()} as usage_reconciled,${runRetryAwaitingReconciliation()} as awaiting_reconciliation
         from app.assistant_runs r where r.enterprise_id=${this.actor.enterpriseId} and r.conversation_id=${conversationId} and r.purpose<>'speech.transcribe'
         order by r.id desc limit 1`);
       const preview = this.actor.principal.kind === 'admin' ? previewPolicy(c) : null;
@@ -373,7 +372,7 @@ export class ConversationService {
   }
   run(runId: string, action?: 'cancel' | 'retry', requestKey?: string) {
     return this.scoped(async (repo, settings) => {
-      const r = await one(repo.tx, sql`select r.*,${runUsageReconciled()} as usage_reconciled,exists(select 1 from app.assistant_quota_reservations q where q.enterprise_id=r.enterprise_id and q.run_id=r.id and q.status='reconciling') as awaiting_reconciliation
+      const r = await one(repo.tx, sql`select r.*,${runUsageReconciled()} as usage_reconciled,${runRetryAwaitingReconciliation()} as awaiting_reconciliation
         from app.assistant_runs r where r.enterprise_id=${this.actor.enterpriseId} and r.id=${runId}`);
       if (!r) fail('assistant_resource_not_found', 404);
       const c = await repo.conversation(String(r.conversation_id));
@@ -381,13 +380,15 @@ export class ConversationService {
       return idempotent(repo.tx, this.actor, action + ':' + runId, requestKey!, {}, async () => {
         if (action === 'cancel') {
           await cancelRuns(repo.tx, this.actor, String(c.id), runId);
-          return runDto((await one(repo.tx, sql`select r.*,${runUsageReconciled()} as usage_reconciled,exists(select 1 from app.assistant_quota_reservations q where q.enterprise_id=r.enterprise_id and q.run_id=r.id and q.status='reconciling') as awaiting_reconciliation
+          return runDto((await one(repo.tx, sql`select r.*,${runUsageReconciled()} as usage_reconciled,${runRetryAwaitingReconciliation()} as awaiting_reconciliation
             from app.assistant_runs r where r.enterprise_id=${this.actor.enterpriseId} and r.id=${runId}`))!);
         }
         if (!['failed', 'cancelled'].includes(String(r.status))) fail('context_changed');
         if (r.trigger_kind !== 'user_message') fail('assistant_capability_forbidden', 403);
-        // Cancellation after submission may still be billed: require reconciliation before retry.
-        if (await one(repo.tx, sql`select id from app.assistant_quota_reservations where enterprise_id=${this.actor.enterpriseId} and run_id=${runId} and status='reconciling'`)) fail('context_changed');
+        // Unknown/cancelled submissions still need reconciliation. A proved
+        // model response followed by retrieval failure keeps its original cost
+        // hold while the explicit retry receives a separate budget reservation.
+        if (r.awaiting_reconciliation) fail('context_changed');
         return newRun(repo.tx, this.actor, c, settings!, String(r.trigger_message_id), runId);
       });
     }, action === 'retry');

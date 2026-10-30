@@ -103,6 +103,12 @@ Agent复用：使用现有LangGraph开轮上下文及只读公开来源依赖，
 
 ## 当前聊天队列停滞恢复
 
+2026-10-30真实企业追报收口：**本次恢复限定Implemented**。客户645于12:14发出的真实消息run1588在qwen3.7-flash明确响应后，因本机127.0.0.1:18089拒绝Embedding连接而失败；企业1454的profile1一致。先前合成无profile旅程跳过了真实知识依赖，不能作为此路径充分证据。已恢复原严格主机校验的tunnel.ps1监管进程到获批远端8089；鉴权health200，1024维模型/profile/revision均不变。原咨询802检索返回5条获权资料，观测26 query tokens。
+
+显式重试现区分“已知响应后检索失败”与未知派发：全部模型尝试须成功/已接受且有数字整数用量，存在已观测tokens记录，且没有未知结果；原reconciling预留及空结算保持，新任务重新占预算，原配额仍阻断超支。取消、未知attempt、缺用量/响应及其他未决失败继续阻断；未伪造账单或释放费用。沿批准手账失败/重试组件，不改小程序结构/样式/素材/文案、API形状、schema或角色。
+
+最终真实企业旅程：原1588仅重试一次为1589，仍在咨询802、原用户消息只有一条，回答已持久保存并回读；1588保持失败且原费用仍reconciling。第二条采用同一企业1454的明确合成用户，实际使用active profile和已发布知识，结束后身份撤权。runs1589/1590，7次已审计qwen3.7-flash尝试，输入54806/输出564 tokens；两次真实检索与重进回读通过，源码/配置drift[]。隔离库用量/重试回归10/10、小程序聊天44/44、修改文件lint0通过。全量lint为0错误/27警告；当前全量TypeScript仍有其他文件57项诊断，本次三份代码/测试文件无诊断。当前IDE的SDK虽存在，但CLI未映射项目且未取得可核验的CDP项目路径，未操作窗口，不宣称新增原生截图通过。证据：tmp/xiaok-chat-queue-20261030/real-knowledge-recovery.json、user-802-retrieval-probe.json、retrieval-retry-tests.log、retrieval-fix-mini.log、retrieval-fix-lint.log。下文同日早先队列/模型限定证据保持历史身份，不能替代本次真实企业检查。
+
 2026-10-30，限定修复 **Implemented**。使用原统一开发启动器后，C01文字咨询不再因缺失Worker长期排队。所报1580/1581已保存，但旧Next-only进程未带Worker；恢复消费者后暴露原总时限/参数失败，原迹保留。现场3006现由scripts/dev.mjs联动监管原Worker；退出清理、消费者重启、租户/参与人/来源、租约、配额和未知结果守卫保持。
 
 读取工具现先返回字段级纠错信息，再做通用JSON Schema校验，避免原字段反馈被泛化错误遮住；修正后的调用仍须通过完整注册schema才可派发，授权与单次纠错限制不变。纯读取批次若调用了当前未开放的已知读取能力，unavailable-read-tool-v1只给一次成对的“整批未执行”反馈，合法同批项也不执行，共用原参数/轮数预算；未知/混合写入、耗尽读取、收尾、原文读取与授权守卫仍硬拒绝。参考[LangGraph可恢复工具错误模式](https://docs.langchain.com/oss/javascript/langgraph/thinking-in-langgraph)，保留PostgreSQL租约、原请求和有界恢复。原1581 invalid_tool_arguments、重试1582 unsupported_model_commitment（旧模型回复带内部档案标识）及新模型基线1585（空读取后调用未开放recommend_references）全部保留；1585真实接受三次供应商响应，输入21129/输出76 tokens，不能记为回答通过。其观测脚本也误用了不存在的顶层token列，现从assistantResponse元数据读取真实用量。机制改变后才执行最终两次固定旅程，不靠重采样替换原失败，Knowledge/Evidence无须修改。
