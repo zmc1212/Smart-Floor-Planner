@@ -11,7 +11,7 @@ function source(relativePath) {
 }
 
 function loadDetailPage() {
-  const pagePath = require.resolve('../packages/business/appointment-detail/appointment-detail.js');
+  const pagePath = require.resolve('../packages/enterprise/appointment-detail/appointment-detail.js');
   const originalPage = global.Page;
   let definition;
   global.Page = (next) => { definition = next; };
@@ -69,9 +69,9 @@ test('detail inline reschedule honours the server appointment horizon and retain
 test('phase-5 custom-navigation pages reserve the native capsule lane; reschedule is a redirect shell', () => {
   const pages = [
     'packages/business/customer-project/customer-project',
-    'packages/business/appointment-detail/appointment-detail',
-    'packages/business/measurer-calendar/measurer-calendar',
-    'packages/business/measurer-unavailability/measurer-unavailability',
+    'packages/enterprise/appointment-detail/appointment-detail',
+    'packages/enterprise/measurer-calendar/measurer-calendar',
+    'packages/enterprise/measurer-unavailability/measurer-unavailability',
   ];
   for (const page of pages) {
     assert.match(source(`${page}.js`), /getMenuButtonBoundingClientRect/);
@@ -79,7 +79,7 @@ test('phase-5 custom-navigation pages reserve the native capsule lane; reschedul
     assert.match(source(`${page}.wxml`), /bindtap="onBack"/);
   }
 
-  const shell = source('packages/business/appointment-reschedule/appointment-reschedule.js');
+  const shell = source('packages/enterprise/appointment-reschedule/appointment-reschedule.js');
   assert.match(shell, /redirectTo/);
   assert.match(shell, /appointment-detail\/appointment-detail/);
   assert.match(shell, /mode !== 'internal'|mode === 'internal'/);
@@ -87,5 +87,5 @@ test('phase-5 custom-navigation pages reserve the native capsule lane; reschedul
   assert.match(shell, /预约信息不完整|缺少预约/);
   assert.doesNotMatch(shell, /loadSlots/);
   assert.doesNotMatch(shell, /previousDates/);
-  assert.doesNotMatch(source('packages/business/appointment-reschedule/appointment-reschedule.wxml'), /confirm-bar/);
+  assert.doesNotMatch(source('packages/enterprise/appointment-reschedule/appointment-reschedule.wxml'), /confirm-bar/);
 });

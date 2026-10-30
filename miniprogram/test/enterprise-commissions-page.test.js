@@ -6,7 +6,7 @@ const path = require('node:path');
 const actionsPath = path.resolve(__dirname, '..', 'components', 'commission-payout-actions', 'index.js');
 const actionsTemplatePath = path.resolve(__dirname, '..', 'components', 'commission-payout-actions', 'index.wxml');
 const actionsStylePath = path.resolve(__dirname, '..', 'components', 'commission-payout-actions', 'index.less');
-const pageTemplatePath = path.resolve(__dirname, '..', 'packages', 'business', 'enterprise-commissions', 'enterprise-commissions.wxml');
+const pageTemplatePath = path.resolve(__dirname, '..', 'packages', 'enterprise', 'enterprise-commissions', 'enterprise-commissions.wxml');
 
 function createActions(item, overrides = {}) {
   let definition = null;

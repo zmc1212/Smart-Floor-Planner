@@ -4,8 +4,8 @@ const path = require('node:path');
 const test = require('node:test');
 
 const miniProgramRoot = path.resolve(__dirname, '..');
-const pageRoot = path.join(miniProgramRoot, 'packages', 'business', 'enterprise-referrers');
-const branchRoot = path.join(miniProgramRoot, 'packages', 'business', 'enterprise-referrer-branch');
+const pageRoot = path.join(miniProgramRoot, 'packages', 'enterprise', 'enterprise-referrers');
+const branchRoot = path.join(miniProgramRoot, 'packages', 'enterprise', 'enterprise-referrer-branch');
 
 function read(name) {
   return fs.readFileSync(path.join(pageRoot, name), 'utf8');
@@ -19,17 +19,17 @@ test('enterprise referrer roster supports owner network and employee-owned lists
   const page = read('enterprise-referrers.js');
   const styles = read('enterprise-referrers.less');
   const staffStyles = fs.readFileSync(
-    path.join(miniProgramRoot, 'packages', 'business', 'enterprise-staff', 'enterprise-staff.less'),
+    path.join(miniProgramRoot, 'packages', 'enterprise', 'enterprise-staff', 'enterprise-staff.less'),
     'utf8'
   );
-  const business = appConfig.subPackages.find((entry) => entry.root === 'packages/business');
+  const enterprise = appConfig.subPackages.find((entry) => entry.root === 'packages/enterprise');
 
-  assert.ok(business.pages.includes('enterprise-referrers/enterprise-referrers'));
-  assert.ok(business.pages.includes('enterprise-referrer-branch/enterprise-referrer-branch'));
+  assert.ok(enterprise.pages.includes('enterprise-referrers/enterprise-referrers'));
+  assert.ok(enterprise.pages.includes('enterprise-referrer-branch/enterprise-referrer-branch'));
   assert.equal(config.navigationStyle, 'custom');
   assert.equal(config.usingComponents, undefined);
   assert.doesNotMatch(template, /<custom-tab-bar\s*\/>/);
-  assert.match(navigation, /'\/packages\/business\/enterprise-referrers\/enterprise-referrers': 'referrer\.network'/);
+  assert.match(navigation, /'\/packages\/enterprise\/enterprise-referrers\/enterprise-referrers': 'referrer\.network'/);
 
   assert.match(template, /padding-right: \{\{navigationRight\}\}px/);
   assert.match(template, /bindtap="onBack"/);
@@ -122,7 +122,7 @@ test('enterprise referrer roster supports owner network and employee-owned lists
 });
 
 test('referrer roster model keeps zero branches, deleted snapshots, and employee read-only actions', () => {
-  const model = require('../packages/business/enterprise-referrers/enterprise-referrers-model.js');
+  const model = require('../packages/enterprise/enterprise-referrers/enterprise-referrers-model.js');
   const source = [
     {
       staff: { id: '11', displayName: '负责人', role: 'enterprise_admin', status: 'active' },

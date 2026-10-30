@@ -4,19 +4,24 @@ const path = require('node:path');
 const test = require('node:test');
 
 const root = path.resolve(__dirname, '..', 'packages', 'business');
+const enterpriseRoot = path.resolve(__dirname, '..', 'packages', 'enterprise');
 const miniProgramRoot = path.resolve(__dirname, '..');
 
 function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), 'utf8');
 }
 
+function readEnterprise(relativePath) {
+  return fs.readFileSync(path.join(enterpriseRoot, relativePath), 'utf8');
+}
+
 test('referrer and measurer landings keep the role navigation visible above the bottom safe area', () => {
   const referrerConfig = JSON.parse(read('referrer-workbench/referrer-workbench.json'));
-  const measurerConfig = JSON.parse(read('measurer-calendar/measurer-calendar.json'));
+  const measurerConfig = JSON.parse(readEnterprise('measurer-calendar/measurer-calendar.json'));
   const referrerWxml = read('referrer-workbench/referrer-workbench.wxml');
-  const measurerWxml = read('measurer-calendar/measurer-calendar.wxml');
+  const measurerWxml = readEnterprise('measurer-calendar/measurer-calendar.wxml');
   const referrerStyle = read('referrer-workbench/referrer-workbench.less');
-  const measurerStyle = read('measurer-calendar/measurer-calendar.less');
+  const measurerStyle = readEnterprise('measurer-calendar/measurer-calendar.less');
 
   assert.equal(referrerConfig.usingComponents['custom-tab-bar'], '/custom-tab-bar/index');
   assert.equal(measurerConfig.usingComponents['custom-tab-bar'], '/custom-tab-bar/index');
@@ -205,13 +210,13 @@ test('referrer progress and earnings are direct role-tab destinations', () => {
 test('designer and measurer earnings are direct role-tab destinations', () => {
   const tabBar = fs.readFileSync(path.join(miniProgramRoot, 'custom-tab-bar', 'index.js'), 'utf8');
   const navigation = fs.readFileSync(path.join(miniProgramRoot, 'utils', 'identity-navigation.js'), 'utf8');
-  const config = JSON.parse(fs.readFileSync(path.join(miniProgramRoot, 'packages', 'business', 'staff-earnings', 'staff-earnings.json'), 'utf8'));
-  const template = fs.readFileSync(path.join(miniProgramRoot, 'packages', 'business', 'staff-earnings', 'staff-earnings.wxml'), 'utf8');
-  const page = fs.readFileSync(path.join(miniProgramRoot, 'packages', 'business', 'staff-earnings', 'staff-earnings.js'), 'utf8');
+  const config = JSON.parse(fs.readFileSync(path.join(miniProgramRoot, 'packages', 'enterprise', 'staff-earnings', 'staff-earnings.json'), 'utf8'));
+  const template = fs.readFileSync(path.join(miniProgramRoot, 'packages', 'enterprise', 'staff-earnings', 'staff-earnings.wxml'), 'utf8');
+  const page = fs.readFileSync(path.join(miniProgramRoot, 'packages', 'enterprise', 'staff-earnings', 'staff-earnings.js'), 'utf8');
   const appConfig = JSON.parse(fs.readFileSync(path.join(miniProgramRoot, 'app.json'), 'utf8'));
-  const business = appConfig.subPackages.find((entry) => entry.root === 'packages/business');
+  const enterprise = appConfig.subPackages.find((entry) => entry.root === 'packages/enterprise');
 
-  assert.ok(business.pages.includes('staff-earnings/staff-earnings'));
+  assert.ok(enterprise.pages.includes('staff-earnings/staff-earnings'));
   assert.equal(config.usingComponents['custom-tab-bar'], '/custom-tab-bar/index');
   assert.match(template, /<custom-tab-bar\s*\/>/);
   assert.match(template, /我的收益/);
@@ -223,7 +228,7 @@ test('designer and measurer earnings are direct role-tab destinations', () => {
   assert.match(page, /paidCount/);
   assert.doesNotMatch(page, /amountLabel|payableTotal/);
   assert.match(navigation, /staff-earnings\/staff-earnings': 'staff\.earnings'/);
-  assert.match(tabBar, /capability: 'staff\.earnings'[\s\S]*pagePath: '\/packages\/business\/staff-earnings\/staff-earnings'/);
+  assert.match(tabBar, /capability: 'staff\.earnings'[\s\S]*pagePath: '\/packages\/enterprise\/staff-earnings\/staff-earnings'/);
   assert.match(tabBar, /designer: \[[\s\S]*key: 'earnings', capability: 'staff\.earnings'/);
   assert.match(tabBar, /measurer: \[[\s\S]*key: 'earnings', capability: 'staff\.earnings'/);
 });
@@ -231,15 +236,15 @@ test('designer and measurer earnings are direct role-tab destinations', () => {
 test('enterprise owner commissions are a payout ledger tab with one-step payment confirmation', () => {
   const tabBar = fs.readFileSync(path.join(miniProgramRoot, 'custom-tab-bar', 'index.js'), 'utf8');
   const navigation = fs.readFileSync(path.join(miniProgramRoot, 'utils', 'identity-navigation.js'), 'utf8');
-  const config = JSON.parse(fs.readFileSync(path.join(miniProgramRoot, 'packages', 'business', 'enterprise-commissions', 'enterprise-commissions.json'), 'utf8'));
-  const template = fs.readFileSync(path.join(miniProgramRoot, 'packages', 'business', 'enterprise-commissions', 'enterprise-commissions.wxml'), 'utf8');
-  const page = fs.readFileSync(path.join(miniProgramRoot, 'packages', 'business', 'enterprise-commissions', 'enterprise-commissions.js'), 'utf8');
+  const config = JSON.parse(fs.readFileSync(path.join(miniProgramRoot, 'packages', 'enterprise', 'enterprise-commissions', 'enterprise-commissions.json'), 'utf8'));
+  const template = fs.readFileSync(path.join(miniProgramRoot, 'packages', 'enterprise', 'enterprise-commissions', 'enterprise-commissions.wxml'), 'utf8');
+  const page = fs.readFileSync(path.join(miniProgramRoot, 'packages', 'enterprise', 'enterprise-commissions', 'enterprise-commissions.js'), 'utf8');
   const payoutActionsTemplate = fs.readFileSync(path.join(miniProgramRoot, 'components', 'commission-payout-actions', 'index.wxml'), 'utf8');
   const payoutActions = fs.readFileSync(path.join(miniProgramRoot, 'components', 'commission-payout-actions', 'index.js'), 'utf8');
   const appConfig = JSON.parse(fs.readFileSync(path.join(miniProgramRoot, 'app.json'), 'utf8'));
-  const business = appConfig.subPackages.find((entry) => entry.root === 'packages/business');
+  const enterprise = appConfig.subPackages.find((entry) => entry.root === 'packages/enterprise');
 
-  assert.ok(business.pages.includes('enterprise-commissions/enterprise-commissions'));
+  assert.ok(enterprise.pages.includes('enterprise-commissions/enterprise-commissions'));
   assert.equal(config.usingComponents['custom-tab-bar'], '/custom-tab-bar/index');
   assert.match(template, /<custom-tab-bar\s*\/>/);
   assert.match(template, /提成发放/);
@@ -339,7 +344,7 @@ test('platform admin uses review and devices subpackage tabs instead of index', 
 
 test('role-specific workbenches keep survey creation behind lead-detail permissions and route guards', () => {
   const mine = fs.readFileSync(path.join(miniProgramRoot, 'pages', 'mine', 'mine.wxml'), 'utf8');
-  const leadDetail = fs.readFileSync(path.join(miniProgramRoot, 'packages', 'business', 'lead-detail', 'lead-detail.wxml'), 'utf8');
+  const leadDetail = fs.readFileSync(path.join(miniProgramRoot, 'packages', 'enterprise', 'lead-detail', 'lead-detail.wxml'), 'utf8');
   const leadList = fs.readFileSync(path.join(miniProgramRoot, 'components', 'lead-list', 'lead-list.wxml'), 'utf8');
   const navigation = fs.readFileSync(path.join(miniProgramRoot, 'utils', 'surveyNavigation.js'), 'utf8');
 

@@ -422,7 +422,7 @@ Page({
     const { appointment, leadId, canReschedule } = this.data;
     if (!appointment || !canReschedule) return;
     wx.navigateTo({
-      url: `/packages/business/appointment-detail/appointment-detail?mode=customer&leadId=${encodeURIComponent(leadId)}&appointmentId=${encodeURIComponent(appointment.id)}`,
+      url: `/packages/enterprise/appointment-detail/appointment-detail?mode=customer&leadId=${encodeURIComponent(leadId)}&appointmentId=${encodeURIComponent(appointment.id)}`,
     });
   },
 
@@ -431,7 +431,7 @@ Page({
     const { appointment, leadId } = this.data;
     if (!appointment || !leadId) return;
     wx.navigateTo({
-      url: `/packages/business/appointment-detail/appointment-detail?mode=customer&leadId=${encodeURIComponent(leadId)}&appointmentId=${encodeURIComponent(appointment.id)}`,
+      url: `/packages/enterprise/appointment-detail/appointment-detail?mode=customer&leadId=${encodeURIComponent(leadId)}&appointmentId=${encodeURIComponent(appointment.id)}`,
     });
   },
 
@@ -439,7 +439,7 @@ Page({
     if (this.data.isTerminated) return;
     if (!this.data.leadId) return;
     if (this.data.appointment && !this.data.canRebook) return;
-    wx.navigateTo({ url: `/packages/business/appointment-booking/appointment-booking?leadId=${encodeURIComponent(this.data.leadId)}&mode=customer` });
+    wx.navigateTo({ url: `/packages/enterprise/appointment-booking/appointment-booking?leadId=${encodeURIComponent(this.data.leadId)}&mode=customer` });
   },
 
   async loadSitePhotos() {

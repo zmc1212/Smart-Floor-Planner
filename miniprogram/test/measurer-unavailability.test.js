@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const api = require('../utils/api.js');
 
 function loadPage() {
-  const pagePath = require.resolve('../packages/business/measurer-unavailability/measurer-unavailability.js');
+  const pagePath = require.resolve('../packages/enterprise/measurer-unavailability/measurer-unavailability.js');
   const originalPage = global.Page;
   let definition;
   global.Page = (next) => { definition = next; };

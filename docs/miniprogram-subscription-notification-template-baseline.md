@@ -45,16 +45,16 @@ Subscription `page` targets after WeChat tap:
 
 | Template / notify path | Recipient | Deep link |
 | --- | --- | --- |
-| `lead_assignment` | Designer / measurer | `/packages/business/lead-detail/lead-detail?id={leadId}` |
-| `lead_claim_available` | Designer | `/packages/business/lead-claim-pool/lead-claim-pool` |
+| `lead_assignment` | Designer / measurer | `/packages/enterprise/lead-detail/lead-detail?id={leadId}` |
+| `lead_claim_available` | Designer | `/packages/enterprise/lead-claim-pool/lead-claim-pool` |
 | `new_lead` | Enterprise admin | same lead detail |
 | `workflow_todo` (assignment pending / survey completed) | Enterprise admin / designer | same lead detail |
-| `workflow_todo` (staff signing commission) | Designer / measurer | `/packages/business/staff-earnings/staff-earnings` |
+| `workflow_todo` (staff signing commission) | Designer / measurer | `/packages/enterprise/staff-earnings/staff-earnings` |
 | `measurement_appointment` (staff) | Designer / measurer | same lead detail |
 | `measurement_appointment` (customer) | Customer | `/packages/business/customer-project/customer-project?leadId={leadId}` |
 | `design_published` | Customer | same customer project archive |
 | `signing_commission` | Referrer | `/packages/business/referrer-earnings/referrer-earnings` |
-| `lead_converted` | Enterprise admin | `/packages/business/enterprise-commissions/enterprise-commissions` |
+| `lead_converted` | Enterprise admin | `/packages/enterprise/enterprise-commissions/enterprise-commissions` |
 | `enterprise_join_result` | Applicant contact | `/pages/mine/mine` |
 
 Staff lead notifications must not open the bare `leads-management` list without a lead id.

@@ -163,7 +163,7 @@ test('Mine replays held work-identity guides even while signed as customer', () 
     assert.match(navigations.at(-1), /designer-guide\/designer-guide\?source=mine/);
     assert.match(
       source('pages/mine/mine.wxml'),
-      /template is="mineAccountPanel" data="\{\{showRoleGuideEntry, showRegistrationCodeEntry, showReferrerNetworkEntry, referrerNetworkEntryLabel, referrerNetworkEntryHelper, roleGuideHelper\}\}"/
+      /template is="mineAccountPanel" data="\{\{activeRole, showRoleGuideEntry, showRegistrationCodeEntry, showReferrerNetworkEntry, referrerNetworkEntryLabel, referrerNetworkEntryHelper, roleGuideHelper, updateStatusLabel\}\}"/
     );
   } finally {
     delete require.cache[modulePath];
@@ -331,7 +331,7 @@ test('designer guide advances through three workflow steps and ends at staff ear
     page.onDotTap({ currentTarget: { dataset: { index: 2 } } });
     assert.match(page.data.activeSlide.title, /方案交付/);
     page.onPrimary();
-    assert.deepEqual(navigations.at(-1), ['redirectTo', '/packages/business/staff-earnings/staff-earnings']);
+    assert.deepEqual(navigations.at(-1), ['redirectTo', '/packages/enterprise/staff-earnings/staff-earnings']);
     page.onSkip();
     assert.deepEqual(navigations.at(-1), ['navigateBack', 1]);
 

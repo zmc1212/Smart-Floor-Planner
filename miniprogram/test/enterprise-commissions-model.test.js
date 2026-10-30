@@ -5,7 +5,7 @@ const {
   buildPageData,
   money,
   statusMeta
-} = require('../packages/business/enterprise-commissions/enterprise-commissions-model.js');
+} = require('../packages/enterprise/enterprise-commissions/enterprise-commissions-model.js');
 
 test('enterprise payout ledger groups by lead and keeps tenant totals unfiltered', () => {
   const payload = {

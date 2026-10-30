@@ -31,8 +31,8 @@ test('V3 page-role assets remain native artwork instead of flattened page screen
 
   const references = [
     ['pages/mine/mine.wxml', 'images/page-ip-v3/mine.png', '89504e470d0a1a0a'],
-    ['packages/business/lead-form/lead-form.wxml', 'packages/business/assets/leads/lead-form.png', '89504e470d0a1a0a'],
-    ['packages/business/lead-detail/lead-detail.wxml', 'packages/business/assets/leads/lead-detail.png', '89504e470d0a1a0a'],
+    ['packages/enterprise/lead-form/lead-form.wxml', 'packages/enterprise/assets/leads/lead-form.png', '89504e470d0a1a0a'],
+    ['packages/enterprise/lead-detail/lead-detail.wxml', 'packages/enterprise/assets/leads/lead-detail.png', '89504e470d0a1a0a'],
     ['packages/business/inspiration/inspiration.wxml', 'packages/business/assets/inspiration/inspiration.png', '89504e470d0a1a0a'],
     ['packages/ai-workflow/create/ai-design-create.wxml', 'packages/ai-workflow/assets/page-ip-v3/ai-create.jpg', 'ffd8ff'],
     ['packages/ai-workflow/result/ai-design-result.wxml', 'packages/ai-workflow/assets/page-ip-v3/ai-result.jpg', 'ffd8ff'],
@@ -186,8 +186,8 @@ test('recommendations expose only the native share path after a real local selec
 });
 
 test('lead detail keeps every measurement action on the formal surveying entry', () => {
-  const source = read('packages/business/lead-detail/lead-detail.js');
-  const wxml = read('packages/business/lead-detail/lead-detail.wxml');
+  const source = read('packages/enterprise/lead-detail/lead-detail.js');
+  const wxml = read('packages/enterprise/lead-detail/lead-detail.wxml');
 
   assert.match(source, /openSurveyingEditor\(\{/);
   assert.match(source, /floorPlanId: plan && plan\._id/);

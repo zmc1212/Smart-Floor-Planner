@@ -475,7 +475,7 @@ Component({
       const id = leadId || this.data.leadId;
       if (!id) return;
       wx.navigateTo({
-        url: `/packages/business/appointment-booking/appointment-booking?leadId=${encodeURIComponent(id)}&mode=customer`,
+        url: `/packages/enterprise/appointment-booking/appointment-booking?leadId=${encodeURIComponent(id)}&mode=customer`,
       });
     },
 
@@ -486,7 +486,7 @@ Component({
         return;
       }
       wx.navigateTo({
-        url: `/packages/business/appointment-detail/appointment-detail?mode=customer&leadId=${encodeURIComponent(leadId)}&appointmentId=${encodeURIComponent(appointmentId)}`,
+        url: `/packages/enterprise/appointment-detail/appointment-detail?mode=customer&leadId=${encodeURIComponent(leadId)}&appointmentId=${encodeURIComponent(appointmentId)}`,
       });
     },
 

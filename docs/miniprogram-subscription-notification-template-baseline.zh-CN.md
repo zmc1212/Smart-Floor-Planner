@@ -45,16 +45,16 @@
 
 | 模板 / 投递路径 | 收件人 | 深链 |
 | --- | --- | --- |
-| `lead_assignment` | 家装设计顾问 / 家装现场顾问 | `/packages/business/lead-detail/lead-detail?id={leadId}` |
-| `lead_claim_available` | 家装设计顾问 | `/packages/business/lead-claim-pool/lead-claim-pool` |
+| `lead_assignment` | 家装设计顾问 / 家装现场顾问 | `/packages/enterprise/lead-detail/lead-detail?id={leadId}` |
+| `lead_claim_available` | 家装设计顾问 | `/packages/enterprise/lead-claim-pool/lead-claim-pool` |
 | `new_lead` | 企业负责人 | 同上客户详情 |
 | `workflow_todo`（待派单 / 量房完成） | 企业负责人 / 家装设计顾问 | 同上客户详情 |
-| `workflow_todo`（员工签单提成） | 家装设计顾问 / 家装现场顾问 | `/packages/business/staff-earnings/staff-earnings` |
+| `workflow_todo`（员工签单提成） | 家装设计顾问 / 家装现场顾问 | `/packages/enterprise/staff-earnings/staff-earnings` |
 | `measurement_appointment`（员工） | 家装设计顾问 / 家装现场顾问 | 同上客户详情 |
 | `measurement_appointment`（客户） | 客户 | `/packages/business/customer-project/customer-project?leadId={leadId}` |
 | `design_published` | 客户 | 同上客户项目册 |
 | `signing_commission` | 推荐人 | `/packages/business/referrer-earnings/referrer-earnings` |
-| `lead_converted` | 企业负责人 | `/packages/business/enterprise-commissions/enterprise-commissions` |
+| `lead_converted` | 企业负责人 | `/packages/enterprise/enterprise-commissions/enterprise-commissions` |
 | `enterprise_join_result` | 入驻联系人 | `/pages/mine/mine` |
 
 员工侧线索类通知不得只打开无 `leadId` 的 `leads-management` 列表。

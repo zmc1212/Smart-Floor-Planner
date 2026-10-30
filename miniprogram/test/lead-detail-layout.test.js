@@ -5,11 +5,11 @@ const test = require('node:test');
 const zlib = require('node:zlib');
 
 const styles = fs.readFileSync(
-  path.join(__dirname, '..', 'packages', 'business', 'lead-detail', 'lead-detail.less'),
+  path.join(__dirname, '..', 'packages', 'enterprise', 'lead-detail', 'lead-detail.less'),
   'utf8'
 );
 const template = fs.readFileSync(
-  path.join(__dirname, '..', 'packages', 'business', 'lead-detail', 'lead-detail.wxml'),
+  path.join(__dirname, '..', 'packages', 'enterprise', 'lead-detail', 'lead-detail.wxml'),
   'utf8'
 );
 
@@ -132,7 +132,7 @@ test('each historical measurement record opens its own plan while delete remains
 
 test('history records favor the shared project display name over legacy date titles', () => {
   const script = fs.readFileSync(
-    path.join(__dirname, '..', 'packages', 'business', 'lead-detail', 'lead-detail.js'),
+    path.join(__dirname, '..', 'packages', 'enterprise', 'lead-detail', 'lead-detail.js'),
     'utf8'
   );
   assert.match(script, /projectTitle \|\| plan\.name \|\| '历史正式量房'/);
@@ -141,7 +141,7 @@ test('history records favor the shared project display name over legacy date tit
 
 test('lead detail removes the legacy acquisition collaboration surface', () => {
   const script = fs.readFileSync(
-    path.join(__dirname, '..', 'packages', 'business', 'lead-detail', 'lead-detail.js'),
+    path.join(__dirname, '..', 'packages', 'enterprise', 'lead-detail', 'lead-detail.js'),
     'utf8'
   );
   assert.doesNotMatch(template, /acquisition-info|联系家装设计顾问|查看协作记录|designer-contact-sheet|确认已获客/);
@@ -203,7 +203,7 @@ test('formal-survey keeps next-action right of the tab, address on its own row, 
 
 test('designer and enterprise owner AI design CTA appears on open leads without requiring survey or published schemes', () => {
   const script = fs.readFileSync(
-    path.join(__dirname, '..', 'packages', 'business', 'lead-detail', 'lead-detail.js'),
+    path.join(__dirname, '..', 'packages', 'enterprise', 'lead-detail', 'lead-detail.js'),
     'utf8'
   );
   assert.match(script, /function canOpenAIDesignWorkbench\(/);
@@ -224,7 +224,7 @@ test('designer and enterprise owner AI design CTA appears on open leads without 
 
 test('enterprise owner and assigned designer have the lead-detail surveying action set', () => {
   const script = fs.readFileSync(
-    path.join(__dirname, '..', 'packages', 'business', 'lead-detail', 'lead-detail.js'),
+    path.join(__dirname, '..', 'packages', 'enterprise', 'lead-detail', 'lead-detail.js'),
     'utf8'
   );
   assert.match(script, /function canEditLeadMeasurements\(/);
@@ -269,7 +269,7 @@ test('formal-survey address row stays full-width below the next-action head', ()
 
 test('lead detail shows assigned designer and measurer name and phone between the hero and stage rail', () => {
   const script = fs.readFileSync(
-    path.join(__dirname, '..', 'packages', 'business', 'lead-detail', 'lead-detail.js'),
+    path.join(__dirname, '..', 'packages', 'enterprise', 'lead-detail', 'lead-detail.js'),
     'utf8'
   );
   const heroIndex = template.indexOf('class="detail-hero"');
@@ -355,7 +355,7 @@ test('lead-detail hero pins profile edit and dials customer phone with packaged 
 
 test('lead detail embeds the site photo gallery below the formal survey card', () => {
   const script = fs.readFileSync(
-    path.join(__dirname, '..', 'packages', 'business', 'lead-detail', 'lead-detail.js'),
+    path.join(__dirname, '..', 'packages', 'enterprise', 'lead-detail', 'lead-detail.js'),
     'utf8'
   );
   assert.match(template, /房屋现场图/);

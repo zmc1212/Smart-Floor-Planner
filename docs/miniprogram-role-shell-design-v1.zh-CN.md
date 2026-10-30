@@ -126,7 +126,7 @@ TabBar 由服务端 bootstrap 的 `current.capabilities` 生成；客户端隐�
 | `packages/business/referrer-workbench/referrer-workbench` | `design-references/referrer-network-appointment-v1/phase-5-referrer-workbench-v1.png` |
 | `packages/business/promotion-service-code/promotion-service-code` | `design-references/referrer-network-appointment-v1/selected-option-a.png` |
 | `packages/business/customer-project/customer-project` | `design-references/referrer-network-appointment-v1/phase-6-customer-project-v1.png` |
-| `packages/business/appointment-booking/appointment-booking`、`appointment-detail`、`appointment-reschedule` | `design-references/referrer-network-appointment-v1/phase-5-designer-appointment-booking-v1.png`、`phase-5-appointment-calendar-v1.png` |
+| `packages/enterprise/appointment-booking/appointment-booking`、`packages/enterprise/appointment-detail/appointment-detail`、`packages/enterprise/appointment-reschedule/appointment-reschedule` | `design-references/referrer-network-appointment-v1/phase-5-designer-appointment-booking-v1.png`、`phase-5-appointment-calendar-v1.png` |
 | `packages/surveying/editor/surveying-editor` | `design-references/surveying/cursor-guide-state-reference-20260812.jpg` |
 
 角色外壳的静态设计源目录为 `design-references/role-shell-v1/`；本阶段以本文件和同名英文

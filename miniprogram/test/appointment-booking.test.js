@@ -8,7 +8,7 @@ const root = path.join(__dirname, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
 function loadBookingPage() {
-  const pagePath = require.resolve('../packages/business/appointment-booking/appointment-booking.js');
+  const pagePath = require.resolve('../packages/enterprise/appointment-booking/appointment-booking.js');
   const originalPage = global.Page;
   let definition;
   global.Page = (next) => { definition = next; };
@@ -20,9 +20,9 @@ function loadBookingPage() {
 
 test('designer appointment booking uses server availability and submits the selected real slot', () => {
   const appJson = read('app.json');
-  const pageJs = read('packages/business/appointment-booking/appointment-booking.js');
-  const pageWxml = read('packages/business/appointment-booking/appointment-booking.wxml');
-  const pageWxss = read('packages/business/appointment-booking/appointment-booking.less');
+  const pageJs = read('packages/enterprise/appointment-booking/appointment-booking.js');
+  const pageWxml = read('packages/enterprise/appointment-booking/appointment-booking.wxml');
+  const pageWxss = read('packages/enterprise/appointment-booking/appointment-booking.less');
 
   assert.match(appJson, /appointment-booking\/appointment-booking/);
   assert.match(pageJs, /appointments\/availability\?leadId=/);
@@ -40,7 +40,7 @@ test('designer appointment booking uses server availability and submits the sele
   assert.match(pageJs, /coordinateSystem: 'gcj02'/);
   assert.match(pageJs, /location,/);
   assert.match(pageJs, /getMenuButtonBoundingClientRect/);
-  assert.match(pageWxml, /packages\/business\/assets\/appointment-booking-v1\/schedule-guide\.png/);
+  assert.match(pageWxml, /packages\/enterprise\/assets\/appointment-booking-v1\/schedule-guide\.png/);
   assert.match(pageWxml, /class="back-chevron"/);
   assert.doesNotMatch(pageWxml, /‹/);
   assert.match(pageJs, /actionWidth: Math\.max\(0, Number\(windowInfo\.windowWidth \|\| 390\) - 28\)/);
@@ -104,9 +104,9 @@ test('designer booking keeps every date the server makes available in the existi
 });
 
 test('lead detail exposes first booking to scheduling roles only without a confirmed appointment', () => {
-  const detailJs = read('packages/business/lead-detail/lead-detail.js');
-  const detailWxml = read('packages/business/lead-detail/lead-detail.wxml');
-  const detailWxss = read('packages/business/lead-detail/lead-detail.less');
+  const detailJs = read('packages/enterprise/lead-detail/lead-detail.js');
+  const detailWxml = read('packages/enterprise/lead-detail/lead-detail.wxml');
+  const detailWxss = read('packages/enterprise/lead-detail/lead-detail.less');
 
   assert.match(detailJs, /staffRole === 'enterprise_admin'/);
   assert.match(detailJs, /staffRole === 'designer'/);

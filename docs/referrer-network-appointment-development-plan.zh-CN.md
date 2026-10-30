@@ -321,11 +321,11 @@ closed 为终止状态
 
 - `packages/business/referrer-workbench/referrer-workbench`：推荐人企业关系、内部企业选择和推广码入口。
 - `packages/business/customer-project/customer-project`：已批准的第 6 阶段客户项目服务册展示真实预约、设计师/测量员、完成正式户型摘要和按方案名分组的主动发布图集；受保护方案图片读取为小程序本地文件后再供客户预览。该页面刻意不提供客户量房编辑入口或可编辑户型查看器。
-- `packages/business/appointment-detail/appointment-detail`：真实服务调度记录及按岗位限制的内部改期、取消、完成和服务地址补录动作；已分配设计师与测量员都可在预约详情中补充或修正地址。
-- `packages/business/appointment-reschedule/appointment-reschedule`：服务端计算可用时段，支持客户改期或调整原因选填的内部改期。
-- `packages/business/appointment-booking/appointment-booking`：客户在测量员已匹配后从「服务」首屏或项目册进入，负责设计师也可从无线索详情进入；双方填写上门地址、选择服务端实时计算的可用时段并创建首次预约，先提交成功的一方占用有效预约。若首次预约时地址未完整确认，后续由预约详情补录。
-- `packages/business/measurer-calendar/measurer-calendar`：已确认的测量员日程，提供不可用时间编辑入口。
-- `packages/business/measurer-unavailability/measurer-unavailability`：测量员仅维护本人不可用时段；使用原生日期/时段 picker、原因、保存和删除，API 仍在服务端强制角色和本人边界。
+- `packages/enterprise/appointment-detail/appointment-detail`：真实服务调度记录及按岗位限制的内部改期、取消、完成和服务地址补录动作；已分配设计师与测量员都可在预约详情中补充或修正地址。
+- `packages/enterprise/appointment-reschedule/appointment-reschedule`：服务端计算可用时段，支持客户改期或调整原因选填的内部改期。
+- `packages/enterprise/appointment-booking/appointment-booking`：客户在测量员已匹配后从「服务」首屏或项目册进入，负责设计师也可从无线索详情进入；双方填写上门地址、选择服务端实时计算的可用时段并创建首次预约，先提交成功的一方占用有效预约。若首次预约时地址未完整确认，后续由预约详情补录。
+- `packages/enterprise/measurer-calendar/measurer-calendar`：已确认的测量员日程，提供不可用时间编辑入口。
+- `packages/enterprise/measurer-unavailability/measurer-unavailability`：测量员仅维护本人不可用时段；使用原生日期/时段 picker、原因、保存和删除，API 仍在服务端强制角色和本人边界。
 - `packages/business/onboarding/onboarding`：员工/推荐人入驻码落地页；它在手机号授权前解析码类型，收集授权，员工只选择 `designer` 或 `measurer`，推荐人在手机号授权后必须填写真实姓名，再调用既有入驻接口并切换到返回身份上下文。
 - `packages/business/identity-switch/identity-switch`：列出服务端活动身份上下文，交换签名上下文令牌，刷新完整会话，并重新进入所选客户/员工/推荐人界面。
 

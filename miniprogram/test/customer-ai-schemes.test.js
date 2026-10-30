@@ -78,8 +78,8 @@ test('scheme round chips stay ordered by first publication after later updates',
 });
 
 test('lead detail, customer project, and Service home deep-link into the schemes folio', () => {
-  const leadDetail = fs.readFileSync(path.join(root, 'packages', 'business', 'lead-detail', 'lead-detail.js'), 'utf8');
-  const leadWxml = fs.readFileSync(path.join(root, 'packages', 'business', 'lead-detail', 'lead-detail.wxml'), 'utf8');
+  const leadDetail = fs.readFileSync(path.join(root, 'packages', 'enterprise', 'lead-detail', 'lead-detail.js'), 'utf8');
+  const leadWxml = fs.readFileSync(path.join(root, 'packages', 'enterprise', 'lead-detail', 'lead-detail.wxml'), 'utf8');
   const customerProject = fs.readFileSync(path.join(root, 'packages', 'business', 'customer-project', 'customer-project.js'), 'utf8');
   const customerWxml = fs.readFileSync(path.join(root, 'packages', 'business', 'customer-project', 'customer-project.wxml'), 'utf8');
   const serviceHome = fs.readFileSync(path.join(root, 'components', 'customer-service-home', 'customer-service-home.js'), 'utf8');

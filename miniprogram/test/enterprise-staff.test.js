@@ -4,7 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const miniProgramRoot = path.resolve(__dirname, '..');
-const pageRoot = path.join(miniProgramRoot, 'packages', 'business', 'enterprise-staff');
+const pageRoot = path.join(miniProgramRoot, 'packages', 'enterprise', 'enterprise-staff');
 
 function read(name) {
   return fs.readFileSync(path.join(pageRoot, name), 'utf8');
@@ -17,13 +17,13 @@ test('enterprise staff roster is an owner-only deep page with pause and join-cod
   const template = read('enterprise-staff.wxml');
   const page = read('enterprise-staff.js');
   const styles = read('enterprise-staff.less');
-  const business = appConfig.subPackages.find((entry) => entry.root === 'packages/business');
+  const enterprise = appConfig.subPackages.find((entry) => entry.root === 'packages/enterprise');
 
-  assert.ok(business.pages.includes('enterprise-staff/enterprise-staff'));
+  assert.ok(enterprise.pages.includes('enterprise-staff/enterprise-staff'));
   assert.equal(config.navigationStyle, 'custom');
   assert.equal(config.usingComponents, undefined);
   assert.doesNotMatch(template, /<custom-tab-bar\s*\/>/);
-  assert.match(navigation, /'\/packages\/business\/enterprise-staff\/enterprise-staff': 'enterprise\.operations'/);
+  assert.match(navigation, /'\/packages\/enterprise\/enterprise-staff\/enterprise-staff': 'enterprise\.operations'/);
 
   assert.match(template, /padding-right: \{\{navigationRight\}\}px/);
   assert.match(template, /bindtap="onBack"/);

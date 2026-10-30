@@ -31,9 +31,9 @@ test('statistical surfaces use the shared formatter while ledger details remain 
   [
     'components/role-workbench/role-workbench.wxml',
     'packages/business/commission-records/commission-records.wxml',
-    'packages/business/enterprise-commissions/enterprise-commissions.wxml',
+    'packages/enterprise/enterprise-commissions/enterprise-commissions.wxml',
     'packages/business/referrer-workbench/referrer-workbench.wxml',
-    'packages/business/measurer-calendar/measurer-calendar.wxml',
+    'packages/enterprise/measurer-calendar/measurer-calendar.wxml',
     'pages/mine/mine.wxml',
     'pages/ai-design/ai-design.wxml',
     'packages/ai-workflow/scheme-studio/scheme-studio.wxml',
@@ -44,7 +44,7 @@ test('statistical surfaces use the shared formatter while ledger details remain 
   });
 
   const commissions = source('packages/business/commission-records/commission-records.wxml');
-  const enterpriseCommissions = source('packages/business/enterprise-commissions/enterprise-commissions.wxml');
+  const enterpriseCommissions = source('packages/enterprise/enterprise-commissions/enterprise-commissions.wxml');
   assert.match(commissions, /stat\.moneyValue\(summary\.pendingAmount\)/);
   assert.match(commissions, /¥ \{\{item\.amountText\}\}/);
   assert.match(enterpriseCommissions, /stat\.money\(totals\.payable\)/);

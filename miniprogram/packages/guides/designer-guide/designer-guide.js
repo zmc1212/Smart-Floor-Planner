@@ -86,7 +86,7 @@ Page({
       return;
     }
     wx.redirectTo({
-      url: '/packages/business/staff-earnings/staff-earnings',
+      url: '/packages/enterprise/staff-earnings/staff-earnings',
       fail: () => wx.reLaunch({ url: '/pages/index/index' })
     });
   },

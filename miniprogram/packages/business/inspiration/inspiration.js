@@ -128,7 +128,7 @@ Page({
 
   onOpenLeadModal: function () {
     wx.navigateTo({
-      url: '/packages/business/lead-form/lead-form',
+      url: '/packages/enterprise/lead-form/lead-form',
     });
   },
 

@@ -47,7 +47,7 @@ const ACTION_TARGETS = {
   inspiration: () => wx.navigateTo({ url: '/packages/business/inspiration/inspiration' }),
   measure: () => wx.switchTab({ url: '/pages/index/index' }),
   aiDesign: () => openAIDesignTab(),
-  referrers: () => wx.navigateTo({ url: '/packages/business/enterprise-referrers/enterprise-referrers' })
+  referrers: () => wx.navigateTo({ url: '/packages/enterprise/enterprise-referrers/enterprise-referrers' })
 };
 
 function formatFloorPlanDate(value) {
@@ -553,7 +553,7 @@ Page({
 
   onOpenReferrerNetwork() {
     if (!this.data.showReferrerNetworkEntry) return;
-    wx.navigateTo({ url: '/packages/business/enterprise-referrers/enterprise-referrers' });
+    wx.navigateTo({ url: '/packages/enterprise/enterprise-referrers/enterprise-referrers' });
   },
 
   async refreshRoleGuideEntry() {

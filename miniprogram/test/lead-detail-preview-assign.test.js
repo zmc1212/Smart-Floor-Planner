@@ -4,7 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const root = path.join(__dirname, '..');
-const pageRoot = path.join(root, 'packages', 'business', 'lead-detail');
+const pageRoot = path.join(root, 'packages', 'enterprise', 'lead-detail');
 const script = fs.readFileSync(path.join(pageRoot, 'lead-detail.js'), 'utf8');
 const template = fs.readFileSync(path.join(pageRoot, 'lead-detail.wxml'), 'utf8');
 const styles = fs.readFileSync(path.join(pageRoot, 'lead-detail.less'), 'utf8');

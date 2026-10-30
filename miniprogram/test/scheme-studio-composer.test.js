@@ -28,7 +28,7 @@ const {
   setTemplateFullEditMode,
   SCOPE_APPLY_NOTE,
   withFloorPlanPreviewRoom,
-} = require('../components/ai-scheme-composer/ai-scheme-composer-model.js');
+} = require('../packages/ai-workflow/components/ai-scheme-composer/ai-scheme-composer-model.js');
 const { buildScopes } = require('../packages/ai-workflow/recipe-project/recipe-project-model.js');
 
 const bootstrap = {
@@ -389,7 +389,7 @@ test('composer picker options carry icon, title, and subtitle', () => {
   assert.equal(buildScopePickerOptions(scopes, draft)[1].active, false);
 });
 
-const composerPath = path.resolve(__dirname, '..', 'components/ai-scheme-composer/ai-scheme-composer.js');
+const composerPath = path.resolve(__dirname, '..', 'packages/ai-workflow/components/ai-scheme-composer/ai-scheme-composer.js');
 
 function loadComposerComponent() {
   const originals = { Component: global.Component, wx: global.wx };
@@ -438,9 +438,9 @@ function waitForSheetClose() {
 
 test('composer wxml restores the approved collapsed, expanded, and configuration states', () => {
   const miniRoot = path.resolve(__dirname, '..');
-  const wxml = fs.readFileSync(path.join(miniRoot, 'components/ai-scheme-composer/ai-scheme-composer.wxml'), 'utf8');
-  const less = fs.readFileSync(path.join(miniRoot, 'components/ai-scheme-composer/ai-scheme-composer.less'), 'utf8');
-  const script = fs.readFileSync(path.join(miniRoot, 'components/ai-scheme-composer/ai-scheme-composer.js'), 'utf8');
+  const wxml = fs.readFileSync(path.join(miniRoot, 'packages/ai-workflow/components/ai-scheme-composer/ai-scheme-composer.wxml'), 'utf8');
+  const less = fs.readFileSync(path.join(miniRoot, 'packages/ai-workflow/components/ai-scheme-composer/ai-scheme-composer.less'), 'utf8');
+  const script = fs.readFileSync(path.join(miniRoot, 'packages/ai-workflow/components/ai-scheme-composer/ai-scheme-composer.js'), 'utf8');
   const studioWxml = fs.readFileSync(path.join(miniRoot, 'packages/ai-workflow/scheme-studio/scheme-studio.wxml'), 'utf8');
   const studioScript = fs.readFileSync(path.join(miniRoot, 'packages/ai-workflow/scheme-studio/scheme-studio.js'), 'utf8');
 
@@ -503,7 +503,7 @@ test('composer wxml restores the approved collapsed, expanded, and configuration
   assert.match(wxml, /round-setup-v3\/whole-floor-plan\.png/);
   assert.match(wxml, /round-setup-v3\/single-room-reference\.png/);
   ['whole-floor-plan.png', 'single-room-reference.png'].forEach((filename) => {
-    const assetPath = path.join(miniRoot, 'images/ai-design/round-setup-v3', filename);
+    const assetPath = path.join(miniRoot, 'packages/ai-workflow/assets/round-setup-v3', filename);
     assert.ok(fs.existsSync(assetPath));
     assert.deepEqual(fs.readFileSync(assetPath).subarray(0, 8), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
     assert.ok(fs.statSync(assetPath).size <= 300 * 1024);

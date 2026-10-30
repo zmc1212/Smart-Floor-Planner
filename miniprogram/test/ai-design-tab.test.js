@@ -138,7 +138,7 @@ test('contextual AI entries preserve plan and room scope across switchTab', () =
 
   const indexSource = fs.readFileSync(path.join(miniRoot, 'pages', 'index', 'index.js'), 'utf8');
   const leadDetailSource = fs.readFileSync(
-    path.join(miniRoot, 'packages', 'business', 'lead-detail', 'lead-detail.js'),
+    path.join(miniRoot, 'packages', 'enterprise', 'lead-detail', 'lead-detail.js'),
     'utf8'
   );
   assert.match(indexSource, /openAIDesignEntry/);

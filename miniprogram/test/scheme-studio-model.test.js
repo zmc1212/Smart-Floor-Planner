@@ -24,7 +24,7 @@ const {
   buildComposerViewState,
   createDefaultDraft,
   estimateCredits,
-} = require('../components/ai-scheme-composer/ai-scheme-composer-model.js');
+} = require('../packages/ai-workflow/components/ai-scheme-composer/ai-scheme-composer-model.js');
 
 test('buildConversationBatches merges task batches with legacy generations and published flags', () => {
   const detail = {
@@ -340,8 +340,8 @@ test('scheme-studio route wires composer, send modal, and studio APIs', () => {
   const less = fs.readFileSync(path.join(miniRoot, 'packages/ai-workflow/scheme-studio/scheme-studio.less'), 'utf8');
   const script = fs.readFileSync(path.join(miniRoot, 'packages/ai-workflow/scheme-studio/scheme-studio.js'), 'utf8');
   const pageJson = fs.readFileSync(path.join(miniRoot, 'packages/ai-workflow/scheme-studio/scheme-studio.json'), 'utf8');
-  const composerWxml = fs.readFileSync(path.join(miniRoot, 'components/ai-scheme-composer/ai-scheme-composer.wxml'), 'utf8');
-  const composerLess = fs.readFileSync(path.join(miniRoot, 'components/ai-scheme-composer/ai-scheme-composer.less'), 'utf8');
+  const composerWxml = fs.readFileSync(path.join(miniRoot, 'packages/ai-workflow/components/ai-scheme-composer/ai-scheme-composer.wxml'), 'utf8');
+  const composerLess = fs.readFileSync(path.join(miniRoot, 'packages/ai-workflow/components/ai-scheme-composer/ai-scheme-composer.less'), 'utf8');
   const service = fs.readFileSync(path.join(miniRoot, 'utils/aiDesignService.js'), 'utf8');
   const navigation = fs.readFileSync(path.join(miniRoot, 'utils/aiDesignNavigation.js'), 'utf8');
   const previewRoute = fs.readFileSync(path.join(
@@ -458,7 +458,7 @@ test('scheme-studio route wires composer, send modal, and studio APIs', () => {
   assert.match(script, /bound\.floorPlanId \? buildScopes/);
   assert.match(
     script,
-    /const \{[\s\S]*WHOLE_HOUSE_RENDER_MODE,[\s\S]*\} = require\('\.\.\/\.\.\/\.\.\/components\/ai-scheme-composer\/ai-scheme-composer-model\.js'\)/,
+    /const \{[\s\S]*WHOLE_HOUSE_RENDER_MODE,[\s\S]*\} = require\('\.\.\/components\/ai-scheme-composer\/ai-scheme-composer-model\.js'\)/,
   );
   assert.match(script, /this\.data\.floorPlanId[\s\S]*WHOLE_HOUSE_RENDER_MODE[\s\S]*buildScopeSubmitPayload/);
   assert.match(script, /this\.data\.leadId && !siblingCacheFresh && !this\.siblingWorkflowsPromise/);

@@ -732,7 +732,7 @@ Component({
     },
 
     openClaimPool() {
-      wx.navigateTo({ url: '/packages/business/lead-claim-pool/lead-claim-pool' });
+      wx.navigateTo({ url: '/packages/enterprise/lead-claim-pool/lead-claim-pool' });
     },
 
     selectPeriodChip(event) {
@@ -885,7 +885,7 @@ Component({
       }
       if ((item.action === 'rebook' || item.action === 'book') && item.leadId) {
         wx.navigateTo({
-          url: `/packages/business/appointment-booking/appointment-booking?leadId=${encodeURIComponent(item.leadId)}${this.properties.role === 'customer' ? '&mode=customer' : ''}`,
+          url: `/packages/enterprise/appointment-booking/appointment-booking?leadId=${encodeURIComponent(item.leadId)}${this.properties.role === 'customer' ? '&mode=customer' : ''}`,
         });
         return;
       }
@@ -894,7 +894,7 @@ Component({
         return;
       }
       if (item.leadId) {
-        wx.navigateTo({ url: `/packages/business/lead-detail/lead-detail?id=${encodeURIComponent(item.leadId)}` });
+        wx.navigateTo({ url: `/packages/enterprise/lead-detail/lead-detail?id=${encodeURIComponent(item.leadId)}` });
       }
     },
 
@@ -917,7 +917,7 @@ Component({
           : '';
       const query = focus ? `?focus=${encodeURIComponent(focus)}` : '';
       wx.navigateTo({
-        url: `/packages/business/enterprise-staff/enterprise-staff${query}`,
+        url: `/packages/enterprise/enterprise-staff/enterprise-staff${query}`,
       });
     },
 
@@ -933,7 +933,7 @@ Component({
         return;
       }
       if (item.leadId) {
-        wx.navigateTo({ url: `/packages/business/lead-detail/lead-detail?id=${encodeURIComponent(item.leadId)}` });
+        wx.navigateTo({ url: `/packages/enterprise/lead-detail/lead-detail?id=${encodeURIComponent(item.leadId)}` });
         return;
       }
       wx.showToast({ title: '暂无对应处理入口', icon: 'none' });
@@ -954,11 +954,11 @@ Component({
           wx.switchTab({ url: '/pages/index/index' });
         }
       } else if (target === 'appointments') {
-        wx.navigateTo({ url: '/packages/business/enterprise-appointments/enterprise-appointments' });
+        wx.navigateTo({ url: '/packages/enterprise/enterprise-appointments/enterprise-appointments' });
       } else if (target === 'unavailability') {
-        wx.navigateTo({ url: '/packages/business/measurer-unavailability/measurer-unavailability' });
+        wx.navigateTo({ url: '/packages/enterprise/measurer-unavailability/measurer-unavailability' });
       } else if (target === 'calendar') {
-        wx.navigateTo({ url: '/packages/business/measurer-calendar/measurer-calendar' });
+        wx.navigateTo({ url: '/packages/enterprise/measurer-calendar/measurer-calendar' });
       } else if (target === 'activity-code') {
         wx.navigateTo({ url: '/packages/business/staff-activity-code/staff-activity-code' });
       } else if (target === 'join-codes') {
@@ -984,14 +984,14 @@ Component({
     },
 
     openReferrerRoster() {
-      wx.navigateTo({ url: '/packages/business/enterprise-referrers/enterprise-referrers' });
+      wx.navigateTo({ url: '/packages/enterprise/enterprise-referrers/enterprise-referrers' });
     },
 
     openReschedule(event) {
       const item = event.currentTarget.dataset.item;
       if (!item || !item.leadId || !item.appointmentId) return;
       wx.navigateTo({
-        url: `/packages/business/appointment-detail/appointment-detail?leadId=${encodeURIComponent(item.leadId)}&appointmentId=${encodeURIComponent(item.appointmentId)}`,
+        url: `/packages/enterprise/appointment-detail/appointment-detail?leadId=${encodeURIComponent(item.leadId)}&appointmentId=${encodeURIComponent(item.appointmentId)}`,
       });
     },
 
@@ -999,7 +999,7 @@ Component({
       const item = event.currentTarget.dataset.item;
       if (!item || !item.leadId) return;
       wx.navigateTo({
-        url: `/packages/business/appointment-booking/appointment-booking?leadId=${encodeURIComponent(item.leadId)}${this.properties.role === 'customer' ? '&mode=customer' : ''}`,
+        url: `/packages/enterprise/appointment-booking/appointment-booking?leadId=${encodeURIComponent(item.leadId)}${this.properties.role === 'customer' ? '&mode=customer' : ''}`,
       });
     },
 
@@ -1007,7 +1007,7 @@ Component({
       const item = event.currentTarget.dataset.item;
       if (!item || !item.leadId || !item.appointmentId) return;
       wx.navigateTo({
-        url: `/packages/business/appointment-detail/appointment-detail?leadId=${encodeURIComponent(item.leadId)}&appointmentId=${encodeURIComponent(item.appointmentId)}`,
+        url: `/packages/enterprise/appointment-detail/appointment-detail?leadId=${encodeURIComponent(item.leadId)}&appointmentId=${encodeURIComponent(item.appointmentId)}`,
       });
     },
 
@@ -1040,11 +1040,11 @@ Component({
     },
 
     openCalendar() {
-      wx.navigateTo({ url: '/packages/business/measurer-calendar/measurer-calendar' });
+      wx.navigateTo({ url: '/packages/enterprise/measurer-calendar/measurer-calendar' });
     },
 
     openUnavailability() {
-      wx.navigateTo({ url: '/packages/business/measurer-unavailability/measurer-unavailability' });
+      wx.navigateTo({ url: '/packages/enterprise/measurer-unavailability/measurer-unavailability' });
     },
 
     callCustomer(event) {

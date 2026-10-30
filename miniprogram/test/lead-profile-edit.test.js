@@ -7,11 +7,11 @@ const root = path.join(__dirname, '..');
 
 test('lead detail exposes profile edit entry for authorized staff', () => {
   const template = fs.readFileSync(
-    path.join(root, 'packages', 'business', 'lead-detail', 'lead-detail.wxml'),
+    path.join(root, 'packages', 'enterprise', 'lead-detail', 'lead-detail.wxml'),
     'utf8'
   );
   const script = fs.readFileSync(
-    path.join(root, 'packages', 'business', 'lead-detail', 'lead-detail.js'),
+    path.join(root, 'packages', 'enterprise', 'lead-detail', 'lead-detail.js'),
     'utf8'
   );
   assert.match(template, /canEditProfile[\s\S]*\/images\/mine-icons\/edit\.png[\s\S]*补充资料/);
@@ -21,19 +21,19 @@ test('lead detail exposes profile edit entry for authorized staff', () => {
 
 test('lead form uses default WeChat navigation and map-plus-input community', () => {
   const template = fs.readFileSync(
-    path.join(root, 'packages', 'business', 'lead-form', 'lead-form.wxml'),
+    path.join(root, 'packages', 'enterprise', 'lead-form', 'lead-form.wxml'),
     'utf8'
   );
   const script = fs.readFileSync(
-    path.join(root, 'packages', 'business', 'lead-form', 'lead-form.js'),
+    path.join(root, 'packages', 'enterprise', 'lead-form', 'lead-form.js'),
     'utf8'
   );
   const config = JSON.parse(fs.readFileSync(
-    path.join(root, 'packages', 'business', 'lead-form', 'lead-form.json'),
+    path.join(root, 'packages', 'enterprise', 'lead-form', 'lead-form.json'),
     'utf8'
   ));
   const styles = fs.readFileSync(
-    path.join(root, 'packages', 'business', 'lead-form', 'lead-form.less'),
+    path.join(root, 'packages', 'enterprise', 'lead-form', 'lead-form.less'),
     'utf8'
   );
 
@@ -52,7 +52,7 @@ test('lead form uses default WeChat navigation and map-plus-input community', ()
 });
 
 test('lead form map pick writes the POI name into the editable community field', () => {
-  const pagePath = require.resolve('../packages/business/lead-form/lead-form.js');
+  const pagePath = require.resolve('../packages/enterprise/lead-form/lead-form.js');
   const originalPage = global.Page;
   let definition;
   global.Page = (next) => { definition = next; };
@@ -87,11 +87,11 @@ test('lead form map pick writes the POI name into the editable community field',
 
 test('lead form supports edit mode and saves through PUT', () => {
   const template = fs.readFileSync(
-    path.join(root, 'packages', 'business', 'lead-form', 'lead-form.wxml'),
+    path.join(root, 'packages', 'enterprise', 'lead-form', 'lead-form.wxml'),
     'utf8'
   );
   const script = fs.readFileSync(
-    path.join(root, 'packages', 'business', 'lead-form', 'lead-form.js'),
+    path.join(root, 'packages', 'enterprise', 'lead-form', 'lead-form.js'),
     'utf8'
   );
   assert.match(template, /isEditMode/);
@@ -103,22 +103,22 @@ test('lead form supports edit mode and saves through PUT', () => {
 test('lead form edit route is available to designers, measurers, and enterprise admins', () => {
   const navigation = require('../utils/identity-navigation.js');
   assert.equal(
-    navigation.canAccessRoute('/packages/business/lead-form/lead-form', { mode: 'staff', staffRole: 'designer' }),
+    navigation.canAccessRoute('/packages/enterprise/lead-form/lead-form', { mode: 'staff', staffRole: 'designer' }),
     true
   );
   assert.equal(
-    navigation.canAccessRoute('/packages/business/lead-form/lead-form', { mode: 'staff', staffRole: 'measurer' }),
+    navigation.canAccessRoute('/packages/enterprise/lead-form/lead-form', { mode: 'staff', staffRole: 'measurer' }),
     true
   );
   assert.equal(
-    navigation.canAccessRoute('/packages/business/lead-form/lead-form', { mode: 'staff', staffRole: 'enterprise_admin' }),
+    navigation.canAccessRoute('/packages/enterprise/lead-form/lead-form', { mode: 'staff', staffRole: 'enterprise_admin' }),
     true
   );
 });
 
 test('lead detail profile edit allows assigned measurer', () => {
   const script = fs.readFileSync(
-    path.join(root, 'packages', 'business', 'lead-detail', 'lead-detail.js'),
+    path.join(root, 'packages', 'enterprise', 'lead-detail', 'lead-detail.js'),
     'utf8'
   );
   assert.match(script, /staffRole === 'measurer'/);

@@ -42,7 +42,7 @@ test('unpublished overview still opens rebooking', () => {
   const h = harness();
   h.click({ leadId: 'lead-1', serviceStage: 'awaiting_rebooking', action: 'rebook' });
   assert.deepEqual(h.destinations, [
-    '/packages/business/appointment-booking/appointment-booking?leadId=lead-1',
+    '/packages/enterprise/appointment-booking/appointment-booking?leadId=lead-1',
   ]);
 });
 

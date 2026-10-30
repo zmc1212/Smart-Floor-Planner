@@ -151,7 +151,7 @@ Page({
     return { title, path: token ? `/packages/business/onboarding/onboarding?token=${encodeURIComponent(token)}` : '/pages/index/index', imageUrl: this.data.qrImagePath || '' };
   },
 
-  openReferrerRoster() { wx.navigateTo({ url: '/packages/business/enterprise-referrers/enterprise-referrers' }); },
+  openReferrerRoster() { wx.navigateTo({ url: '/packages/enterprise/enterprise-referrers/enterprise-referrers' }); },
   onBack() { const pages = getCurrentPages(); if (pages && pages.length > 1) { wx.navigateBack({ fail: () => this.leaveToRoleHome() }); return; } this.leaveToRoleHome(); },
   leaveToRoleHome() { const app = getApp(); const identity = app && app.globalData && app.globalData.userInfo; navigateToRoleLanding(identity) || wx.switchTab({ url: '/pages/index/index' }); }
 });

@@ -6,7 +6,7 @@ const test = require('node:test');
 const api = require('../utils/api.js');
 
 function loadPage() {
-  const pagePath = require.resolve('../packages/business/measurer-calendar/measurer-calendar.js');
+  const pagePath = require.resolve('../packages/enterprise/measurer-calendar/measurer-calendar.js');
   const originalPage = global.Page;
   let definition;
   global.Page = (next) => { definition = next; };
@@ -16,7 +16,8 @@ function loadPage() {
   return definition;
 }
 
-test('measurer calendar buckets a postgres tstzrange onto the selected Shanghai visit day', async () => {
+test('measurer calendar buckets a postgres tstzrange onto the selected Shanghai visit day', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-08-22T04:00:00Z') });
   const definition = loadPage();
   const originalRequest = api.request;
   const originalWx = global.wx;
@@ -92,7 +93,7 @@ test('measurer calendar retains the assigned customer name and phone from the ap
     const appointment = context.data.allAppointments[0];
     assert.equal(appointment.customerName, '微信客户');
     assert.equal(appointment.customerPhone, '15997671595');
-    const template = fs.readFileSync(path.join(__dirname, '..', 'packages', 'business', 'measurer-calendar', 'measurer-calendar.wxml'), 'utf8');
+    const template = fs.readFileSync(path.join(__dirname, '..', 'packages', 'enterprise', 'measurer-calendar', 'measurer-calendar.wxml'), 'utf8');
     assert.match(template, /客户: \{\{item\.customerName\}\}[\s\S]*item\.customerPhone/);
     assert.match(template, /action-phone sfp-icon-action[\s\S]*\/images\/leads-v4\/phone\.png[\s\S]*电话联系/);
     assert.match(template, /action-nav sfp-icon-action[\s\S]*\/images\/leads-v4\/map-pin\.png[\s\S]*导航/);

@@ -121,7 +121,7 @@ test('recipe picker continues an existing scheme and names a new one like Admin'
   });
   assert.equal(scheme.id, '88');
   assert.equal(scheme.meta, '已确认 2 张');
-  assert.equal(scheme.coverUrl, '/images/ai-design-project-folio-cover-v1.png');
+  assert.equal(scheme.coverUrl, '/packages/ai-workflow/assets/ai-design-project-folio-cover-v1.png');
   assert.equal(nextSchemeTitle({ workflowCount: 0 }), '方案 1');
   assert.equal(nextSchemeTitle({ workflowCount: 6 }), '方案 7');
 
@@ -237,5 +237,5 @@ test('recipe picker uses a signed generated cover instead of the folio placehold
       output: { imageUrl: '/api/ai/assets/91/image' },
     },
   });
-  assert.equal(adminPath.coverUrl, '/images/ai-design-project-folio-cover-v1.png');
+  assert.equal(adminPath.coverUrl, '/packages/ai-workflow/assets/ai-design-project-folio-cover-v1.png');
 });

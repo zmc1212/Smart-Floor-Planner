@@ -46,9 +46,9 @@ test('appointment surfaces use the shared iOS-safe time-range helper', () => {
   const root = path.resolve(__dirname, '..');
   const files = [
     'packages/business/customer-project/customer-project.js',
-    'packages/business/measurer-calendar/measurer-calendar.js',
-    'packages/business/appointment-detail/appointment-detail.js',
-    'packages/business/enterprise-appointments/enterprise-appointments.js',
+    'packages/enterprise/measurer-calendar/measurer-calendar.js',
+    'packages/enterprise/appointment-detail/appointment-detail.js',
+    'packages/enterprise/enterprise-appointments/enterprise-appointments.js',
     'components/role-workbench/role-workbench.js',
   ];
   for (const file of files) {

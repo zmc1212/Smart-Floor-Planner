@@ -200,7 +200,7 @@ test('designer and measurer guide deep links require the signed workbench capabi
     },
     roles: [{ role: 'customer', capabilities: ['customer.service', 'account'] }]
   }), false);
-  assert.equal(navigation.canAccessRoute('/packages/business/staff-earnings/staff-earnings', {
+  assert.equal(navigation.canAccessRoute('/packages/enterprise/staff-earnings/staff-earnings', {
     current: {
       role: 'customer',
       capabilities: ['customer.service', 'customer.projects', 'account']

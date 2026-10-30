@@ -7,11 +7,11 @@ const miniRoot = path.resolve(__dirname, '..');
 const surveyNavigation = fs.readFileSync(path.join(miniRoot, 'utils', 'surveyNavigation.js'), 'utf8');
 const aiDesignNavigation = fs.readFileSync(path.join(miniRoot, 'utils', 'aiDesignNavigation.js'), 'utf8');
 const leadDetailJs = fs.readFileSync(
-  path.join(miniRoot, 'packages', 'business', 'lead-detail', 'lead-detail.js'),
+  path.join(miniRoot, 'packages', 'enterprise', 'lead-detail', 'lead-detail.js'),
   'utf8'
 );
 const leadDetailWxml = fs.readFileSync(
-  path.join(miniRoot, 'packages', 'business', 'lead-detail', 'lead-detail.wxml'),
+  path.join(miniRoot, 'packages', 'enterprise', 'lead-detail', 'lead-detail.wxml'),
   'utf8'
 );
 

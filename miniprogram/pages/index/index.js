@@ -242,7 +242,7 @@ Page({
     if (app.globalData.requireLeadFirst) {
       app.globalData.requireLeadFirst = false;
       wx.navigateTo({
-        url: '/packages/business/lead-form/lead-form',
+        url: '/packages/enterprise/lead-form/lead-form',
       });
     } else if (!this.data.currentProject_id) {
       await this.fetchCloudPlans();
@@ -404,7 +404,7 @@ Page({
     const leadId = e.detail ? e.detail._id : null;
     if (leadId) {
       wx.navigateTo({
-        url: `/packages/business/lead-detail/lead-detail?id=${leadId}`,
+        url: `/packages/enterprise/lead-detail/lead-detail?id=${leadId}`,
       });
     } else {
       wx.showToast({ title: '线索创建成功', icon: 'success' });
@@ -426,7 +426,7 @@ Page({
 
     // 没有项目 → 先收集客户线索，量房数据自动绑定线索
     wx.navigateTo({
-      url: '/packages/business/lead-form/lead-form',
+      url: '/packages/enterprise/lead-form/lead-form',
     });
   },
 
@@ -446,7 +446,7 @@ Page({
 
   onOpenAppointmentBooking: function () {
     wx.navigateTo({
-      url: '/packages/business/appointment-booking/appointment-booking?mode=customer',
+      url: '/packages/enterprise/appointment-booking/appointment-booking?mode=customer',
     });
   },
 
@@ -796,7 +796,7 @@ Page({
       return;
     }
     wx.navigateTo({
-      url: '/packages/business/lead-form/lead-form',
+      url: '/packages/enterprise/lead-form/lead-form',
     });
   },
 

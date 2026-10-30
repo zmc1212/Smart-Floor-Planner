@@ -1,4 +1,4 @@
-const FOLIO_COVER = '/images/ai-design-project-folio-cover-v1.png';
+const FOLIO_COVER = '/packages/ai-workflow/assets/ai-design-project-folio-cover-v1.png';
 
 const LEAD_GROUP_DEFINITIONS = [
   { key: 'designable', label: '可设计' },

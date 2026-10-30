@@ -39,7 +39,7 @@ test('phase 13 portal pages use the scoped aggregate endpoints and preserve priv
   assert.doesNotMatch(source('packages/business/referrer-progress/referrer-progress.wxml'), /精确地址|户型 graph|设计文件|\{\{[^}]*customerPhone/);
   assert.doesNotMatch(source('packages/business/referrer-progress/referrer-progress.wxml'), /撤销测试线索/);
   assert.match(source('packages/business/referrer-progress/referrer-progress.wxml'), />撤回</);
-  assert.match(source('packages/business/referrer-progress/referrer-progress.less'), /\.withdraw-btn\s*\{[\s\S]*background:\s*#18a94b/);
+  assert.match(source('styles/referrer-pages/referrer-progress.less'), /\.withdraw-btn\s*\{[\s\S]*background:\s*#18a94b/);
 });
 
 test('phase 13 pages use custom navigation so their capsule-safe headers are the only navigation bar', () => {

@@ -73,13 +73,13 @@ Page({
     if (this.data.pendingLeadId) {
       const leadId = this.data.pendingLeadId;
       this.setData({ pendingLeadId: '' });
-      wx.navigateTo({ url: `/packages/business/lead-detail/lead-detail?id=${leadId}` });
+      wx.navigateTo({ url: `/packages/enterprise/lead-detail/lead-detail?id=${leadId}` });
     }
   },
 
   onOpenLeadModal() {
     wx.navigateTo({
-      url: '/packages/business/lead-form/lead-form',
+      url: '/packages/enterprise/lead-form/lead-form',
     });
   },
 

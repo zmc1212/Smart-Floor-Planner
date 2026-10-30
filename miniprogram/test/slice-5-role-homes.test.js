@@ -38,25 +38,25 @@ test('enterprise appointments remain a contextual route outside the AI design sh
   const design = source('pages/ai-design/ai-design.js');
   assert.doesNotMatch(source('pages/ai-design/ai-design.wxml'), /enterprise_admin/);
   const appConfig = JSON.parse(source('app.json'));
-  const business = appConfig.subPackages.find((item) => item.root === 'packages/business');
-  const pageConfig = JSON.parse(source('packages/business/enterprise-appointments/enterprise-appointments.json'));
-  const pageTemplate = source('packages/business/enterprise-appointments/enterprise-appointments.wxml');
-  const pageScript = source('packages/business/enterprise-appointments/enterprise-appointments.js');
+  const enterprise = appConfig.subPackages.find((item) => item.root === 'packages/enterprise');
+  const pageConfig = JSON.parse(source('packages/enterprise/enterprise-appointments/enterprise-appointments.json'));
+  const pageTemplate = source('packages/enterprise/enterprise-appointments/enterprise-appointments.wxml');
+  const pageScript = source('packages/enterprise/enterprise-appointments/enterprise-appointments.js');
   const navigation = source('utils/identity-navigation.js');
 
-  assert.doesNotMatch(tabBar, /key: 'appointments'[\s\S]*pagePath: '\/packages\/business\/enterprise-appointments\/enterprise-appointments'/);
+  assert.doesNotMatch(tabBar, /key: 'appointments'[\s\S]*pagePath: '\/packages\/enterprise\/enterprise-appointments\/enterprise-appointments'/);
   assert.match(source('components/role-workbench/role-workbench.js'), /target === 'appointments'/);
   assert.match(
     source('components/role-workbench/role-workbench.js'),
-    /target === 'appointments'[\s\S]*wx\.navigateTo\(\{ url: '\/packages\/business\/enterprise-appointments\/enterprise-appointments' \}\)/
+    /target === 'appointments'[\s\S]*wx\.navigateTo\(\{ url: '\/packages\/enterprise\/enterprise-appointments\/enterprise-appointments' \}\)/
   );
   assert.doesNotMatch(
     source('components/role-workbench/role-workbench.js'),
-    /wx\.reLaunch\(\{ url: '\/packages\/business\/enterprise-appointments\/enterprise-appointments' \}\)/
+    /wx\.reLaunch\(\{ url: '\/packages\/enterprise\/enterprise-appointments\/enterprise-appointments' \}\)/
   );
   assert.match(design, /role === 'measurer'/);
   assert.doesNotMatch(design, /enterprise_admin/);
-  assert.ok(business.pages.includes('enterprise-appointments/enterprise-appointments'));
+  assert.ok(enterprise.pages.includes('enterprise-appointments/enterprise-appointments'));
   assert.equal(pageConfig.navigationStyle, 'custom');
   assert.equal(pageConfig.usingComponents, undefined);
   assert.match(pageTemplate, /预约调度中心/);
@@ -101,7 +101,7 @@ test('enterprise appointments remain a contextual route outside the AI design sh
   assert.match(pageScript, /confirmCustomPeriod/);
   assert.match(navigation, /enterprise-appointments\/enterprise-appointments': 'enterprise\.appointments'/);
   assert.match(navigation, /'\/pages\/ai-design\/ai-design': \['staff\.design', 'staff\.surveying'\]/);
-  const pageStyles = source('packages/business/enterprise-appointments/enterprise-appointments.less');
+  const pageStyles = source('packages/enterprise/enterprise-appointments/enterprise-appointments.less');
   assert.match(pageStyles, /\.nav-back/);
   assert.doesNotMatch(pageStyles, /156rpx \+ env\(safe-area-inset-bottom\)/);
   assert.match(pageStyles, /\.period-chip text\s*\{[\s\S]*font-size:\s*26rpx/);
@@ -116,8 +116,8 @@ test('enterprise appointments remain a contextual route outside the AI design sh
 
 test('measurer workbench keeps the calendar itinerary separate from confirmed appointments', () => {
   const tabBar = source('custom-tab-bar/index.js');
-  const calendar = source('packages/business/measurer-calendar/measurer-calendar.js');
-  const calendarTemplate = source('packages/business/measurer-calendar/measurer-calendar.wxml');
+  const calendar = source('packages/enterprise/measurer-calendar/measurer-calendar.js');
+  const calendarTemplate = source('packages/enterprise/measurer-calendar/measurer-calendar.wxml');
   assert.match(tabBar, /key: 'workbench'[\s\S]*pagePath: '\/pages\/index\/index'/);
   assert.match(calendar, /confirmed: items\.filter\(\(item\) => item\.status === 'confirmed'\)/);
   assert.match(calendar, /history: items\.filter\(\(item\) => item\.status !== 'confirmed'\)/);

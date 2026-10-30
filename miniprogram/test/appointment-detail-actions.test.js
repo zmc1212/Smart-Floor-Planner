@@ -8,12 +8,12 @@ const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'u
 
 test('appointment detail is registered and exposes only server-backed lifecycle actions', () => {
   const config = JSON.parse(read('app.json'));
-  const business = config.subPackages.find((item) => item.root === 'packages/business');
-  const script = read('packages/business/appointment-detail/appointment-detail.js');
-  const wxml = read('packages/business/appointment-detail/appointment-detail.wxml');
-  const styles = read('packages/business/appointment-detail/appointment-detail.less');
+  const enterprise = config.subPackages.find((item) => item.root === 'packages/enterprise');
+  const script = read('packages/enterprise/appointment-detail/appointment-detail.js');
+  const wxml = read('packages/enterprise/appointment-detail/appointment-detail.wxml');
+  const styles = read('packages/enterprise/appointment-detail/appointment-detail.less');
 
-  assert.ok(business.pages.includes('appointment-detail/appointment-detail'));
+  assert.ok(enterprise.pages.includes('appointment-detail/appointment-detail'));
   assert.match(script, /\['designer', 'enterprise_admin'\]\.includes\(role\)/);
   assert.match(script, /\['measurer', 'enterprise_admin'\]\.includes\(role\)/);
   assert.doesNotMatch(script, /appointment-reschedule\/appointment-reschedule/);
@@ -91,8 +91,8 @@ test('appointment detail is registered and exposes only server-backed lifecycle 
 });
 
 test('internal reschedule reuses real availability and keeps the audit reason optional', () => {
-  const script = read('packages/business/appointment-detail/appointment-detail.js');
-  const wxml = read('packages/business/appointment-detail/appointment-detail.wxml');
+  const script = read('packages/enterprise/appointment-detail/appointment-detail.js');
+  const wxml = read('packages/enterprise/appointment-detail/appointment-detail.wxml');
   assert.match(script, /internal-reschedule/);
   assert.match(script, /customer-reschedule/);
   assert.doesNotMatch(script, /请填写调整原因/);
@@ -137,8 +137,8 @@ test('appointment detail derives lifecycle actions from the signed staff role', 
   try {
     for (const staffRole of ['designer', 'measurer']) {
       global.getApp = () => ({ globalData: { userInfo: { role: 'staff', staffRole } } });
-      delete require.cache[require.resolve('../packages/business/appointment-detail/appointment-detail.js')];
-      require('../packages/business/appointment-detail/appointment-detail.js');
+      delete require.cache[require.resolve('../packages/enterprise/appointment-detail/appointment-detail.js')];
+      require('../packages/enterprise/appointment-detail/appointment-detail.js');
       const context = {
         data: { ...definition.data },
         setData(next) { Object.assign(this.data, next); }
@@ -153,8 +153,8 @@ test('appointment detail derives lifecycle actions from the signed staff role', 
     }
 
     global.getApp = () => ({ globalData: { userInfo: { role: 'user', mode: 'customer' } } });
-    delete require.cache[require.resolve('../packages/business/appointment-detail/appointment-detail.js')];
-    require('../packages/business/appointment-detail/appointment-detail.js');
+    delete require.cache[require.resolve('../packages/enterprise/appointment-detail/appointment-detail.js')];
+    require('../packages/enterprise/appointment-detail/appointment-detail.js');
     const customerContext = {
       data: { ...definition.data },
       setData(next) { Object.assign(this.data, next); }
@@ -205,8 +205,8 @@ test('appointment detail hides mutate actions when the linked lead is already co
 
   try {
     global.getApp = () => ({ globalData: { userInfo: { role: 'staff', staffRole: 'enterprise_admin' } } });
-    delete require.cache[require.resolve('../packages/business/appointment-detail/appointment-detail.js')];
-    require('../packages/business/appointment-detail/appointment-detail.js');
+    delete require.cache[require.resolve('../packages/enterprise/appointment-detail/appointment-detail.js')];
+    require('../packages/enterprise/appointment-detail/appointment-detail.js');
     const context = {
       data: { ...definition.data },
       setData(next) { Object.assign(this.data, next); }
@@ -258,8 +258,8 @@ test('appointment detail hides mutate actions when the linked lead is archived',
 
   try {
     global.getApp = () => ({ globalData: { userInfo: { role: 'staff', staffRole: 'enterprise_admin' } } });
-    delete require.cache[require.resolve('../packages/business/appointment-detail/appointment-detail.js')];
-    require('../packages/business/appointment-detail/appointment-detail.js');
+    delete require.cache[require.resolve('../packages/enterprise/appointment-detail/appointment-detail.js')];
+    require('../packages/enterprise/appointment-detail/appointment-detail.js');
     const context = {
       data: { ...definition.data },
       setData(next) { Object.assign(this.data, next); }
@@ -334,8 +334,8 @@ test('appointment detail parks reschedule and uses confirm-complete as the stick
 
   try {
     global.getApp = () => ({ globalData: { userInfo: { role: 'staff', staffRole: 'enterprise_admin' } } });
-    delete require.cache[require.resolve('../packages/business/appointment-detail/appointment-detail.js')];
-    require('../packages/business/appointment-detail/appointment-detail.js');
+    delete require.cache[require.resolve('../packages/enterprise/appointment-detail/appointment-detail.js')];
+    require('../packages/enterprise/appointment-detail/appointment-detail.js');
     const context = {
       data: { ...definition.data },
       setData(next) { Object.assign(this.data, next); }
@@ -389,8 +389,8 @@ test('measurer appointment detail uses survey_ready even when lead DTO omits lay
 
   try {
     global.getApp = () => ({ globalData: { userInfo: { role: 'staff', staffRole: 'measurer' } } });
-    delete require.cache[require.resolve('../packages/business/appointment-detail/appointment-detail.js')];
-    require('../packages/business/appointment-detail/appointment-detail.js');
+    delete require.cache[require.resolve('../packages/enterprise/appointment-detail/appointment-detail.js')];
+    require('../packages/enterprise/appointment-detail/appointment-detail.js');
     const context = {
       data: { ...definition.data },
       setData(next) { Object.assign(this.data, next); }

@@ -384,7 +384,7 @@ Page({
     const { leadId, audience } = this.data;
     if (!leadId) return;
     const url = audience === 'staff'
-      ? `/packages/business/lead-detail/lead-detail?id=${encodeURIComponent(leadId)}`
+      ? `/packages/enterprise/lead-detail/lead-detail?id=${encodeURIComponent(leadId)}`
       : `/packages/business/customer-project/customer-project?leadId=${encodeURIComponent(leadId)}`;
     wx.redirectTo({ url });
   },

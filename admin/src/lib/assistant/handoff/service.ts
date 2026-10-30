@@ -68,7 +68,7 @@ export class HandoffService {
       packet.messages = projected;
     }
     return { conversationId: String(c.id), mode: c.mode, status: c.status, version: Number(c.version), handoff: h ? { ...h, packet: packet!, ownerAvailable } : null,
-      appointmentUrl: leadId ? `/packages/business/appointment-booking/appointment-booking?mode=customer&leadId=${leadId}` : '/packages/business/lead-form/lead-form',
+      appointmentUrl: leadId ? `/packages/enterprise/appointment-booking/appointment-booking?mode=customer&leadId=${leadId}` : '/packages/enterprise/lead-form/lead-form',
       appointmentNeedsArchive: !leadId };
   }
   customerRead(conversationId: string) {

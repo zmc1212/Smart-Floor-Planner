@@ -5,7 +5,7 @@ Status: `Implemented`
 ## Entries and sources
 
 - Admin `/lead-pool` lets designers claim leads and lets enterprise owners monitor or assign manually; `/assignment-settings` maintains rules, capacity, and performance views.
-- Mini Program `packages/business/lead-claim-pool/lead-claim-pool` returns masked leads only to active designers in the signed enterprise. Full lead detail becomes available only after a successful claim. The designer workbench shows the current claim count and entry.
+- Mini Program `packages/enterprise/lead-claim-pool/lead-claim-pool` returns masked leads only to active designers in the signed enterprise. Full lead detail becomes available only after a successful claim. The designer workbench shows the current claim count and entry.
 - Referrer leads, Admin manual-entry leads, measurer activity-code leads, and enterprise-owner activity-code leads use the claim/racing path. A designer's own activity code still binds that designer directly. Measurer pre-assignment remains in the intake transaction; an owner presenter is stored as promoter only and is not bound as designer or measurer.
 
 ## Versioned settings, capacity, and racing

@@ -78,12 +78,12 @@ Logo：预留位置，导出时合成 brand-logo.png
 | --- | --- | --- | --- | --- |
 | A01 | 客户服务首页 / 工作台 | `pages/index/index`（客户） | `01-customer-workbench.jpg` | 客户主场景；早期阶段以 `docs/superpowers/specs/2026-08-21-customer-service-home-stage-companion-design.md` 为准（小 K 阶段陪伴），不强制空双缩略图 01 |
 | A02 | 客户项目服务档案 | `packages/business/customer-project/customer-project` | `02-customer-project-archive.jpg` | 项目详情，不是项目索引 |
-| A03 | 预约详情 | `packages/business/appointment-detail/appointment-detail` | `03-appointment-reschedule.jpg` + `docs/superpowers/specs/2026-08-21-appointment-detail-inline-reschedule-design.md` | 详情内嵌改期日历；员工次要动作分区 |
-| A04 | 预约改期（兼容壳） | `packages/business/appointment-reschedule/appointment-reschedule` | 同上 | 深链 `redirectTo` 详情；无独立 UI |
+| A03 | 预约详情 | `packages/enterprise/appointment-detail/appointment-detail` | `03-appointment-reschedule.jpg` + `docs/superpowers/specs/2026-08-21-appointment-detail-inline-reschedule-design.md` | 详情内嵌改期日历；员工次要动作分区 |
+| A04 | 预约改期（兼容壳） | `packages/enterprise/appointment-reschedule/appointment-reschedule` | 同上 | 深链 `redirectTo` 详情；无独立 UI |
 | A05 | 设计师工作台 | `pages/index/index`（设计师） | `04b-designer-workbench-dashboard.jpg` | 含「我的」经营大盘五卡；旧基线 `04-designer-workbench.jpg` 仍可对照 |
 | A06 | 测量员工作台 | `pages/index/index`（测量员） | `05b-measurer-workbench-dashboard.jpg` | 含「我的」经营大盘五卡；旧基线 `05-measurer-workbench.jpg` 仍可对照 |
 | A07 | 推荐人工作台 | `packages/business/referrer-workbench/referrer-workbench` | `06b-promoter-workbench-signed-count.jpg` | Hero 增加已签约数量位；不上完整经营大盘 |
-| A08 | 测量员量房日程 | `packages/business/measurer-calendar/measurer-calendar` | `07-measurer-calendar.jpg` | 含不可用时间入口，但不含编辑器 |
+| A08 | 测量员量房日程 | `packages/enterprise/measurer-calendar/measurer-calendar` | `07-measurer-calendar.jpg` | 含不可用时间入口，但不含编辑器 |
 
 ## 3. 待生成：推荐网络与获客链路（最高优先级）
 
@@ -119,8 +119,8 @@ Logo：预留位置，导出时合成 brand-logo.png
 | :---: | --- | --- | --- | --- |
 | [x] | R01 | 企业负责人经营工作台 | `pages/index/index`（企业负责人） | `18b-enterprise-ops-dashboard-period.jpg`（自定义 sheet `18c`；旧基线 `18` 可对照） |
 | [x] | R02 | 企业负责人客户列表 | `pages/leads-management/leads-management`（企业负责人） | `19-enterprise-customer-list.jpg` |
-| [x] | R03 | 企业负责人预约列表 | `packages/business/enterprise-appointments/enterprise-appointments` | `20-enterprise-appointments.jpg` |
-| [x] | — | 企业负责人提成发放 | `packages/business/enterprise-commissions/enterprise-commissions` | 无独立设计稿；复用 `referrer-earnings` 第 13 阶段语言，数据对齐后台 `/lead-commissions` 三张金额卡 |
+| [x] | R03 | 企业负责人预约列表 | `packages/enterprise/enterprise-appointments/enterprise-appointments` | `20-enterprise-appointments.jpg` |
+| [x] | — | 企业负责人提成发放 | `packages/enterprise/enterprise-commissions/enterprise-commissions` | 无独立设计稿；复用 `referrer-earnings` 第 13 阶段语言，数据对齐后台 `/lead-commissions` 三张金额卡 |
 | [x] | R04 | 客户项目索引（已退役为深链重定向壳） | `packages/business/customer-projects/customer-projects` | `21-customer-project-index.jpg`（产品列表 UI 已退役；首屏阶段陪伴承接排序/切换） |
 | [x] | R05 | 推荐人服务进度 | `packages/business/referrer-progress/referrer-progress` | `22-referrer-progress.jpg` |
 | [x] | R06 | 推荐人收益 | `packages/business/referrer-earnings/referrer-earnings` | `23-referrer-earnings.jpg` |
@@ -141,11 +141,11 @@ Logo：预留位置，导出时合成 brand-logo.png
 
 | 勾选 | 编号 | 页面 | 运行路由 | 建议文件名 |
 | :---: | --- | --- | --- | --- |
-| [x] | S01 | 线索详情与首次预约入口 | `packages/business/lead-detail/lead-detail` | `31-lead-detail.jpg` |
-| [x] | S02 | 首次预约：地址与可用时段 | `packages/business/appointment-booking/appointment-booking` | `32-appointment-booking.jpg` |
-| [x] | S03 | 测量员不可用时间编辑 | `packages/business/measurer-unavailability/measurer-unavailability` | `33-measurer-unavailability.jpg` |
+| [x] | S01 | 线索详情与首次预约入口 | `packages/enterprise/lead-detail/lead-detail` | `31-lead-detail.jpg` |
+| [x] | S02 | 首次预约：地址与可用时段 | `packages/enterprise/appointment-booking/appointment-booking` | `32-appointment-booking.jpg` |
+| [x] | S03 | 测量员不可用时间编辑 | `packages/enterprise/measurer-unavailability/measurer-unavailability` | `33-measurer-unavailability.jpg` |
 | [x] | S04 | 预约冲突/版本过期/无可用时段 | `appointment-detail` / `appointment-booking` | `34-appointment-conflict.jpg` |
-| [x] | S05 | 预约取消、完成、地址补录 | `packages/business/appointment-detail/appointment-detail` | `35-appointment-action-states.jpg` |
+| [x] | S05 | 预约取消、完成、地址补录 | `packages/enterprise/appointment-detail/appointment-detail` | `35-appointment-action-states.jpg` |
 | [x] | S06 | 正式量房编辑器 | `packages/surveying/editor/surveying-editor` | `36-surveying-editor.jpg` |
 
 ## 6. 待生成：AI 方案生产与交付

@@ -12,6 +12,10 @@
       },
       {
         "type": "folder",
+        "value": "tmp"
+      },
+      {
+        "type": "folder",
         "value": ".impeccable"
       },
       {

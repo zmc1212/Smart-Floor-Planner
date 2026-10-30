@@ -15,7 +15,7 @@ test('source package excludes development-only directories', () => {
 
   assert.deepEqual(
     ignoredDirectories,
-    new Set(['test', 'dev-log', '.impeccable', 'scripts', 'node_modules'])
+    new Set(['test', 'dev-log', 'tmp', '.impeccable', 'scripts', 'node_modules'])
   );
 });
 
@@ -66,6 +66,20 @@ test('business subpackage source stays under the WeChat 2MB subpackage limit', (
   assert.ok(
     total <= 2048 * 1024,
     `packages/business source size ${Math.ceil(total / 1024)}KB exceeds the 2048KB subpackage limit`
+  );
+});
+
+test('enterprise subpackage source stays under the WeChat 2MB subpackage limit', () => {
+  const miniRoot = path.join(__dirname, '..');
+  const enterpriseRoot = path.join(miniRoot, 'packages', 'enterprise');
+  let total = 0;
+  for (const file of fs.readdirSync(enterpriseRoot, { recursive: true })) {
+    const absolute = path.join(enterpriseRoot, file);
+    if (fs.statSync(absolute).isFile()) total += fs.statSync(absolute).size;
+  }
+  assert.ok(
+    total <= 2048 * 1024,
+    `packages/enterprise source size ${Math.ceil(total / 1024)}KB exceeds the 2048KB subpackage limit`
   );
 });
 
@@ -184,6 +198,17 @@ test('main package source stays under the WeChat 2MB main-package limit', () => 
     'survey wall-graph facade must not return to the main package'
   );
   assert.ok(fs.existsSync(path.join(miniRoot, 'packages', 'surveying', 'utils', 'surveyWallGraph.js')));
+  assert.equal(
+    fs.existsSync(path.join(miniRoot, 'components', 'ai-scheme-composer', 'ai-scheme-composer.js')),
+    false,
+    'scheme-studio-only composer must stay in the AI workflow subpackage'
+  );
+  const studio = JSON.parse(fs.readFileSync(path.join(miniRoot, 'packages/ai-workflow/scheme-studio/scheme-studio.json'), 'utf8'));
+  const composerPath = path.resolve(miniRoot, 'packages/ai-workflow/scheme-studio', studio.usingComponents['ai-scheme-composer']);
+  assert.equal(composerPath, path.join(miniRoot, 'packages/ai-workflow/components/ai-scheme-composer/ai-scheme-composer'));
+  for (const extension of ['.js', '.json', '.less', '.wxml']) {
+    assert.ok(fs.existsSync(composerPath + extension), `composer must include ${extension}`);
+  }
   assert.doesNotMatch(
     fs.readFileSync(path.join(miniRoot, 'utils', 'surveyLayout.js'), 'utf8'),
     /surveyWallGraph/,
@@ -202,7 +227,7 @@ test('runtime artwork excludes WebP and keeps the AI project folio as PNG', () =
   const webpFiles = runtimeFiles.filter((file) => /\.webp$/i.test(file));
   assert.deepEqual(webpFiles, []);
 
-  const folio = fs.readFileSync(path.join(root, 'images', 'ai-design-project-folio-cover-v1.png'));
+  const folio = fs.readFileSync(path.join(root, 'packages/ai-workflow/assets/ai-design-project-folio-cover-v1.png'));
   assert.equal(folio.subarray(1, 4).toString(), 'PNG');
   assert.ok(folio.length <= 300 * 1024, 'AI project folio exceeds the generated-artwork budget');
 });
@@ -218,7 +243,7 @@ test('main package contains only primary tabs and low-frequency flows are split 
     'pages/leads-management/leads-management',
   ]);
   assert.deepEqual(appConfig.subPackages, [
-    { root: 'packages/construction', pages: ['projects/projects', 'brief/brief', 'chat/chat', 'public-sites/public-sites', 'public-site/public-site'] },
+    { root: 'packages/construction', pages: ['projects/projects', 'brief/brief', 'chat/chat', 'public-sites/public-sites', 'public-site/public-site', 'camera/camera'] },
     { root: 'packages/assistant', pages: ['chat/chat', 'requirements/requirements', 'handoff/handoff', 'designer/designer', 'work/work', 'tour-view/tour-view'] },
     { root: 'packages/surveying', pages: ['editor/surveying-editor'] },
     {
@@ -252,17 +277,12 @@ test('main package contains only primary tabs and low-frequency flows are split 
       pages: [
         'login/login',
         'legal-webview/legal-webview',
-        'lead-form/lead-form',
-        'lead-detail/lead-detail',
-        'lead-claim-pool/lead-claim-pool',
         'promotion-records/promotion-records',
         'promotion-record-detail/promotion-record-detail',
         'commission-records/commission-records',
         'promotion-service-code/promotion-service-code',
         'staff-activity-code/staff-activity-code',
         'enterprise-join-codes/enterprise-join-codes',
-        'enterprise-staff/enterprise-staff',
-        'enterprise-referrers/enterprise-referrers',
         'free-design-service/free-design-service',
         'service-needs/service-needs',
         'onboarding/onboarding',
@@ -271,17 +291,9 @@ test('main package contains only primary tabs and low-frequency flows are split 
         'referrer-workbench/referrer-workbench',
         'referrer-progress/referrer-progress',
         'referrer-earnings/referrer-earnings',
-        'staff-earnings/staff-earnings',
         'customer-projects/customer-projects',
         'customer-project/customer-project',
         'customer-ai-schemes/customer-ai-schemes',
-        'appointment-detail/appointment-detail',
-        'appointment-reschedule/appointment-reschedule',
-        'appointment-booking/appointment-booking',
-        'measurer-calendar/measurer-calendar',
-        'enterprise-appointments/enterprise-appointments',
-        'enterprise-commissions/enterprise-commissions',
-        'measurer-unavailability/measurer-unavailability',
         'inspiration/inspiration',
         'recommendations/index',
         'profile-edit/profile-edit',
@@ -291,21 +303,79 @@ test('main package contains only primary tabs and low-frequency flows are split 
         'account-security/account-security',
       ],
     },
+    {
+      root: 'packages/enterprise',
+      pages: [
+        'lead-form/lead-form',
+        'lead-detail/lead-detail',
+        'lead-claim-pool/lead-claim-pool',
+        'enterprise-staff/enterprise-staff',
+        'enterprise-referrers/enterprise-referrers',
+        'enterprise-referrer-branch/enterprise-referrer-branch',
+        'staff-earnings/staff-earnings',
+        'appointment-detail/appointment-detail',
+        'appointment-reschedule/appointment-reschedule',
+        'appointment-booking/appointment-booking',
+        'measurer-calendar/measurer-calendar',
+        'enterprise-appointments/enterprise-appointments',
+        'enterprise-commissions/enterprise-commissions',
+        'measurer-unavailability/measurer-unavailability',
+      ],
+    },
   ]);
   assert.equal(appConfig.preloadRule, undefined);
   assert.equal(fs.existsSync(path.join(__dirname, '..', 'miniprogram_npm')), false);
   assert.ok(fs.existsSync(path.join(__dirname, '..', 'packages/surveying/vendor/threejs-miniprogram.js')));
 
-  for (const packageName of ['surveying', 'ai-workflow', 'business', 'platform']) {
+  // Cross-subpackage navigation is allowed; static resources, components and
+  // JS modules are not, because the other package may not be downloaded.
+  const packageNames = ['surveying', 'ai-workflow', 'business', 'enterprise', 'platform'];
+  for (const packageName of packageNames) {
     const packageRoot = path.join(__dirname, '..', 'packages', packageName);
     const sourceFiles = fs.readdirSync(packageRoot, { recursive: true })
       .filter((file) => /\.(js|json|wxml|less)$/.test(file));
 
     for (const sourceFile of sourceFiles) {
       const source = fs.readFileSync(path.join(packageRoot, sourceFile), 'utf8');
-      for (const otherPackage of ['surveying', 'ai-workflow', 'business', 'platform']) {
-        if (otherPackage !== packageName) {
-          assert.doesNotMatch(source, new RegExp(`packages/${otherPackage}`));
+      for (const otherPackage of packageNames) {
+        if (otherPackage === packageName) continue;
+        assert.doesNotMatch(
+          source,
+          new RegExp(`require\\([^)]*packages/${otherPackage}/`),
+          `${packageName}/${sourceFile} must not require ${otherPackage} modules`
+        );
+        assert.doesNotMatch(
+          source,
+          new RegExp(`/packages/${otherPackage}/assets/`),
+          `${packageName}/${sourceFile} must not reference ${otherPackage} assets`
+        );
+      }
+      if (sourceFile.endsWith('.less')) {
+        const sourceRel = `packages/${packageName}/${sourceFile.split(path.sep).join('/')}`;
+        for (const match of source.matchAll(/@import\s+(?:\([^)]*\)\s*)?["']([^"']+)["']/g)) {
+          const spec = match[1];
+          const resolved = spec.startsWith('/')
+            ? path.posix.normalize(spec.slice(1))
+            : path.posix.normalize(path.posix.join(path.posix.dirname(sourceRel), spec));
+          for (const otherPackage of packageNames) {
+            if (otherPackage === packageName) continue;
+            assert.ok(
+              !resolved.startsWith(`packages/${otherPackage}/`),
+              `${packageName}/${sourceFile} must not import ${otherPackage} styles`
+            );
+          }
+        }
+      }
+      if (sourceFile.endsWith('.json')) {
+        const config = JSON.parse(source);
+        for (const target of Object.values(config.usingComponents || {})) {
+          if (typeof target !== 'string') continue;
+          for (const otherPackage of packageNames) {
+            assert.ok(
+              !target.startsWith(`/packages/${otherPackage}/`) || otherPackage === packageName,
+              `${packageName}/${sourceFile} must not use ${otherPackage} components`
+            );
+          }
         }
       }
     }

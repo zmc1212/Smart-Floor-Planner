@@ -1,0 +1,57 @@
+<wxs src="../../../utils/stat-format.wxs" module="stat" />
+<view class="portal-page sfp-page">
+  <view class="portal-nav" style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;">
+    <text class="nav-title">提成发放</text>
+  </view>
+  <view class="payout-hero sfp-hero-card">
+    <view class="payout-hero-copy">
+      <text class="intro-kicker">企业负责人付款台账</text>
+      <text class="intro-title">本企业待发放提成</text>
+      <text class="intro-copy">点击确认打款，核对实际金额后即可完成记账。</text>
+      <text wx:if="{{enterpriseName}}" class="enterprise-name">{{enterpriseName}}</text>
+      <view class="primary-total">
+        <text class="primary-total-label">待支付金额</text>
+        <text class="primary-total-value">{{stat.money(totals.payable)}}</text>
+      </view>
+    </view>
+    <image class="payout-mascot" src="/packages/enterprise/assets/enterprise-commissions/xiao-k-payout-checker-v1.png" mode="aspectFit"></image>
+    <view class="summary-row summary-row-two">
+      <view><text class="summary-label">已支付</text><text class="summary-value">{{stat.money(totals.paid)}}</text></view>
+      <view><text class="summary-label">已作废</text><text class="summary-value">{{stat.money(totals.voided)}}</text></view>
+    </view>
+  </view>
+  <view class="filter-row">
+    <view
+      wx:for="{{filters}}"
+      wx:key="value"
+      class="filter-chip {{filter === item.value ? 'filter-chip-active' : ''}}"
+      data-filter="{{item.value}}"
+      bindtap="selectFilter"
+    >{{item.label}}</view>
+  </view>
+  <view wx:if="{{loading}}" class="state-card sfp-card">正在读取提成台账…</view>
+  <view wx:elif="{{error}}" class="state-card sfp-card">
+    <text>{{error}}</text>
+    <button class="retry" bindtap="load">重新加载</button>
+  </view>
+  <view wx:elif="{{!groups.length}}" class="state-card sfp-card">
+    <text class="empty-title">暂时还没有提成记录</text>
+    <text class="empty-copy">客户签约后，应付给推荐人、家装设计顾问和家装现场顾问的提成会显示在这里。</text>
+    <button class="return-action sfp-primary-action" bindtap="backToOperations">返回经营</button>
+  </view>
+  <view wx:else class="fact-list">
+    <view class="payout-section-head"><text class="payout-section-title">{{sectionTitle}}</text><text class="payout-section-meta">{{visibleItemCount}} 笔</text></view>
+    <view wx:for="{{groups}}" wx:for-item="group" wx:key="leadId" class="payout-batch sfp-card">
+      <view class="payout-batch-head">
+        <view class="batch-customer"><view class="customer-marker"></view><view class="customer-copy"><text class="customer-label">{{group.customerLabel}}</text><text class="source-label">{{group.sourceLabel}}</text></view></view>
+        <view class="batch-total"><text class="batch-total-label">本单待支付</text><text class="batch-total-value">{{group.payableAmountLabel}}</text></view>
+      </view>
+      <view wx:for="{{group.items}}" wx:for-item="item" wx:key="id" class="payout-row">
+        <view class="payout-row-main"><view class="role-copy"><text class="role-label">{{item.roleLabel}}</text><text class="beneficiary-label">{{item.beneficiaryLabel}}</text></view><text class="amount">{{item.amountLabel}}</text></view>
+        <view class="payout-row-footer"><view class="earning-status {{item.statusMeta.tone}}">{{item.statusMeta.label}}</view><commission-payout-actions wx:if="{{item.canConfirmPayment}}" item="{{item}}" bind:paid="handlePaymentCompleted" /><text wx:elif="{{item.status === 'paid'}}" class="payment-complete">已完成线下付款</text><text wx:else class="payment-voided">已作废，不发放</text></view>
+      </view>
+    </view>
+    <view wx:if="{{footerText}}" class="sfp-list-footer">{{footerText}}</view>
+  </view>
+</view>
+<custom-tab-bar />

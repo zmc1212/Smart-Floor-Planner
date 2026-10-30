@@ -117,7 +117,7 @@ function deliveryError(error: unknown) {
 
 /** Staff deep link into the lead detail page (designer / measurer / enterprise admin). */
 function staffLeadDetailPage(leadId: bigint | string) {
-  return `/packages/business/lead-detail/lead-detail?id=${encodeURIComponent(String(leadId))}`;
+  return `/packages/enterprise/lead-detail/lead-detail?id=${encodeURIComponent(String(leadId))}`;
 }
 
 /** Customer deep link into the owned project archive. */
@@ -462,7 +462,7 @@ export async function notifyEligibleDesignersOfClaimWindow(input: {
         notificationType: 'lead_claim_available',
         message: `${leadRecord.city || ''}${leadRecord.communityName || '新线索'}已进入抢单池`,
         dedupeKey: `lead_claim_available:${input.leadId.toString()}:${item.staff.id.toString()}`,
-        page: '/packages/business/lead-claim-pool/lead-claim-pool',
+        page: '/packages/enterprise/lead-claim-pool/lead-claim-pool',
         metadata: { expiresAt: input.expiresAt ? new Date(input.expiresAt).toISOString() : null },
         buildData: (template) => buildWorkflowTodoPayload(template, {
           projectName: leadRecord.communityName || leadRecord.city || '新客户线索',
@@ -807,7 +807,7 @@ export async function notifyEnterpriseAdminOfLeadConverted(input: {
           notificationType: 'lead_converted',
           message: `客户${lead.name}已签约`,
           dedupeKey: `lead_converted:${input.leadId.toString()}:${admin.id.toString()}`,
-          page: '/packages/business/enterprise-commissions/enterprise-commissions',
+          page: '/packages/enterprise/enterprise-commissions/enterprise-commissions',
           buildData: (template) =>
             buildLeadConvertedPayload(template, {
               notifiedAt,
@@ -896,7 +896,7 @@ export async function notifyStaffOfSigningCommission(input: {
           notificationType: 'staff_signing_commission',
           message: `客户${lead.name}已签约，${roleLabel}待发放`,
           dedupeKey: `staff_signing_commission:${input.leadId.toString()}:${staff.id.toString()}`,
-          page: '/packages/business/staff-earnings/staff-earnings',
+          page: '/packages/enterprise/staff-earnings/staff-earnings',
           metadata: {
             roles: entry.roles,
           },

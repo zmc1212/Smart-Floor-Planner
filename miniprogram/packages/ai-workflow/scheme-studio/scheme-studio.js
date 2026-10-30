@@ -13,7 +13,7 @@ const {
   resolvePreferredTemplateCategoryId,
   TEMPLATE_PAGE_SIZE,
   WHOLE_HOUSE_RENDER_MODE,
-} = require('../../../components/ai-scheme-composer/ai-scheme-composer-model.js');
+} = require('../components/ai-scheme-composer/ai-scheme-composer-model.js');
 const {
   applySelectionToView,
   buildStudioView,

@@ -124,7 +124,7 @@ The shell owns context and entry only. These deep pages retain their approved so
 | `packages/business/referrer-workbench/referrer-workbench` | `design-references/referrer-network-appointment-v1/phase-5-referrer-workbench-v1.png` |
 | `packages/business/promotion-service-code/promotion-service-code` | `design-references/referrer-network-appointment-v1/selected-option-a.png` |
 | `packages/business/customer-project/customer-project` | `design-references/referrer-network-appointment-v1/phase-6-customer-project-v1.png` |
-| `packages/business/appointment-booking/appointment-detail/appointment-reschedule` | `design-references/referrer-network-appointment-v1/phase-5-designer-appointment-booking-v1.png`, `phase-5-appointment-calendar-v1.png` |
+| `packages/enterprise/appointment-booking/appointment-booking`, `packages/enterprise/appointment-detail/appointment-detail`, `packages/enterprise/appointment-reschedule/appointment-reschedule` | `design-references/referrer-network-appointment-v1/phase-5-designer-appointment-booking-v1.png`, `phase-5-appointment-calendar-v1.png` |
 | `packages/surveying/editor/surveying-editor` | `design-references/surveying/cursor-guide-state-reference-20260812.jpg` |
 
 The shell source pack is `design-references/role-shell-v1/`. This document and its Chinese mirror are

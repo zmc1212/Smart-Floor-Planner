@@ -2,9 +2,9 @@
 
 **Date:** 2026-08-21  
 **Status:** Implemented / ready for QA  
-**Surface:** Mini Program · `packages/business/appointment-detail/appointment-detail`  
+**Surface:** Mini Program · `packages/enterprise/appointment-detail/appointment-detail`  
 **Visual source:** `design-references/miniprogram-airy-minimalist-v1/03-appointment-reschedule.jpg`  
-**Related route:** `packages/business/appointment-reschedule/appointment-reschedule` (compat redirect shell)
+**Related route:** `packages/enterprise/appointment-reschedule/appointment-reschedule` (compat redirect shell)
 
 ## Problem
 
