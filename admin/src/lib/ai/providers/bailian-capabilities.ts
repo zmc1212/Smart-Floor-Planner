@@ -44,6 +44,9 @@ const bailianUnknownProfile: BailianModelProfile = { functionCalling: 'unknown',
  * documentation change backed by that model's own wire evidence; capabilities
  * are never copied from another model or inferred from the platform. */
 const bailianProfiles: Readonly<Record<string, BailianModelProfile>> = {
+  // Exact-model image/tool/non-thinking wire evidence: 2026-10-30 queue incident.
+  // Advanced channels still require their own qwen3.7-flash acceptance.
+  'qwen3.7-flash': { ...bailianUnknownProfile, functionCalling: 'documented', thinkingControl: 'documented' },
   'qwen3.8-flash': { functionCalling: 'documented', jsonObject: 'documented', jsonSchema: 'documented',
     nativeSearch: 'documented_dashscope_generation', implicitCache: 'documented', explicitCache: 'opt_in_unmeasured',
     partial: 'documentation_conflict', batch: 'documented', thinkingControl: 'documented' },

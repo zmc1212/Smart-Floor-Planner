@@ -43,6 +43,13 @@ export const agentTurnScheduleProtocol = 'shared-auxiliary-final-repair-v2';
 // Only these application-owned reads may reuse a completed result. Writes and
 // newly introduced tools always execute through their existing durable ports.
 const readTools = new Set(['search_knowledge', 'search_web', 'read_web', 'recall_history', 'query_materials', 'query_business', 'query_followups', 'recommend_references', 'recommend_designers']);
+/** Only a pure read batch may receive one unavailable-tool diagnostic. It
+ * grants no capability and never reaches an application tool dispatcher. */
+export function recoverableUnavailableRead(output: Pick<ModelTurnOutput, 'toolCalls'>, available: ModelTool[]) {
+  const names = new Set(available.map(tool => tool.name));
+  return available.some(tool => readTools.has(tool.name)) && output.toolCalls.length > 0
+    && output.toolCalls.every(call => readTools.has(call.name)) && output.toolCalls.some(call => !names.has(call.name));
+}
 function readArgumentsHash(name: string, args: string): string | null {
   if (!readTools.has(name)) return null;
   try {
@@ -113,7 +120,10 @@ export async function runRenovationAgent(input: {
       const output = await ports.model(state.turn, messages, availableTools);
       await ports.authorize();
       const availableNames = new Set(availableTools.map(tool => tool.name));
-      if (output.toolCalls.length > agentModelLimits.maxToolCalls || output.toolCalls.some(c => !availableNames.has(c.name))) fail('assistant_capability_forbidden', 403);
+      const unavailable = output.toolCalls.some(c => !availableNames.has(c.name));
+      if (output.toolCalls.length > agentModelLimits.maxToolCalls || unavailable && (state.argumentFailures >= 1
+        || state.validationRepairs || state.finalizing || output.toolCalls.some(c => names.has(c.name) && !availableNames.has(c.name))
+        || !recoverableUnavailableRead(output, availableTools))) fail('assistant_capability_forbidden', 403);
       if (new Set(output.toolCalls.map(call => call.id)).size !== output.toolCalls.length) fail('invalid_tool_pair', 502);
       if(nativeFinal&&availableTools.length&&(!output.toolCalls.length||output.toolCalls.some(c=>c.name===finishContextTool.name)&&output.toolCalls.length!==1))fail('invalid_model_answer',502);
       if(state.validationRepairs&&output.toolCalls.length)fail('assistant_capability_forbidden',403);
@@ -132,11 +142,25 @@ export async function runRenovationAgent(input: {
       let argumentFailures = state.argumentFailures;
       let finalizing=state.finalizing;
       let stop = false;
-      for (const [index, call] of output.toolCalls.entries()) {
+      if (recoverableUnavailableRead(output, tools)) {
+        await ports.authorize();
+        if (argumentFailures >= 1) fail('assistant_capability_forbidden', 403);
+        argumentFailures++;
+        // Reject the whole read batch; pair every call without executing even
+        // its valid siblings. Share the existing one-correction/turn budget.
+        for (const call of output.toolCalls) messages.push({ role: 'tool', callId: call.id, content: JSON.stringify({
+          protocol: 'unavailable-read-tool-v1', status: 'not_dispatched', dispatched: false,
+          availableTools: tools.filter(tool => !exhaustedTools.has(tool.name)).map(tool => tool.name),
+          instruction: '本批读取未执行。仅使用当前工具列表；未开放的读取不可调用，也不可声称已取得结果。已有结果可用于最终答复或最小澄清，纠错机会仅一次。',
+        }) });
+      } else for (const [index, call] of output.toolCalls.entries()) {
         await ports.authorize();
         const definition = nativeFinal&&call.name===finishContextTool.name?finish:tools.find(tool => tool.name === call.name)!;
-        const schemaIssue = await toolSchemaIssue(definition, call.arguments);
-        const issue = schemaIssue || (!exhaustedTools.has(call.name) && readTools.has(call.name) ? ports.validateTool?.(call.name, call.arguments) : null);
+        // Keep the registered read parser's field diagnostics. A generic schema
+        // error must not mask its existing, bounded correction protocol. Valid
+        // reads still pass the same JSON schema before any dispatch.
+        const readIssue = !exhaustedTools.has(call.name) && readTools.has(call.name) ? ports.validateTool?.(call.name, call.arguments) : null;
+        const issue = readIssue || await toolSchemaIssue(definition, call.arguments);
         if (issue) {
           if (argumentFailures >= 1) fail(issue.code, 422);
           argumentFailures++;
@@ -215,7 +239,9 @@ export async function runRenovationAgent(input: {
   if (saved?.primaryModelTurns !== undefined && (!reservedRepair || saved.primaryModelTurns !== primaryTurns)) fail('invalid_agent_checkpoint',409);
   if (saved && saved.turn >= primaryTurns && (!reservedRepair || saved.validationRepairs !== 1
     || saved.turnSchedule !== agentTurnScheduleProtocol || !finalAnswerRepairBase(saved.messages))) fail('invalid_agent_checkpoint', 409);
-  if (saved?.output && (saved.output.toolCalls.length > agentModelLimits.maxToolCalls || saved.output.toolCalls.some(call => !names.has(call.name)))) fail('assistant_capability_forbidden', 403);
+  if (saved?.output && (saved.output.toolCalls.length > agentModelLimits.maxToolCalls || saved.output.toolCalls.some(call => !names.has(call.name))
+    && ((saved.argumentFailures ?? 0) >= 1 || saved.validationRepairs || saved.finalizing || saved.turn === primaryTurns - 1
+      || !recoverableUnavailableRead(saved.output, tools.filter(tool => !saved.exhaustedTools?.includes(tool.name)))))) fail('assistant_capability_forbidden', 403);
   if(saved?.validationRepairs!==undefined&&![0,1].includes(saved.validationRepairs))fail('invalid_agent_checkpoint',409);
   if (saved?.finalFromTools !== undefined && typeof saved.finalFromTools !== 'boolean') fail('invalid_agent_checkpoint', 409);
   if (saved?.finalFromTools && (!ports.resolveToolReply || !saved.output || saved.output.toolCalls.length

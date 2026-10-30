@@ -5,7 +5,7 @@ import { bailianBinding, bailianCapabilities, bailianModelProfile, bailianNative
 import { bailianOfflineTransport, bailianPublicSearch, nativeSearchCandidates, nativeSearchUsage, publicSearchBody } from '@/lib/ai/providers/bailian-offline';
 import { cacheObservation, modelPrefixObservation } from '@/lib/ai/providers/model-observation';
 import { AiProviderError } from '@/lib/ai/provider-types';
-import { explicitCacheControl } from '@/lib/ai/postgres-workflow-chat';
+import { assistantThinkingOverrideAllowed, explicitCacheControl } from '@/lib/ai/postgres-workflow-chat';
 import { nativeSearchAttemptValues, nativeSearchBindingFor, nativeSearchFailure, nativeSearchSucceeded, resolveNativeSearch, selectedNativeSearch } from '../agent/native-search';
 import { assertToolPairs, toolSchemaIssue } from '../agent/tool-protocol';
 import { runRenovationAgent, type AgentCheckpoint } from '../agent/runtime';
@@ -60,6 +60,21 @@ test('an unregistered Bailian model connects with advanced capabilities off and 
   assert.equal(agentConfig({...agentBase,structuredFinal:undefined})?.model,other);
   assert.throws(()=>partialBody({...binding,model:other},'厨房收纳草稿：'),/invalid_draft_prefix/);
 });
+test('Qwen3.7 accepts its verified non-thinking tool path without enabling unverified advanced channels',()=>{
+  const model='qwen3.7-flash';
+  assert.equal(assistantThinkingOverrideAllowed(runtime,model,false),true);
+  assert.equal(assistantThinkingOverrideAllowed({...runtime,baseUrl:'https://dashscope-intl.aliyuncs.com/compatible-mode'},model,false),false);
+  const body=agentChatBody({...input,model},base);
+  assert.equal(body.enable_thinking,false);
+  assert.equal(body.tools?.[0].function.name,'final_response');
+  assert.equal(body.response_format,undefined);
+  assert.throws(()=>agentChatBody({...input,model,outputMode:'json_schema'},base),/not_applicable/);
+  assert.equal(nativeSearchBindingFor(runtime,{providerKey:'dashscope',model}),null);
+  assert.equal(explicitCacheControl(runtime,model,false,{messages:input.messages},false),undefined);
+  assert.equal(bailianCapabilities(bailianBinding(base,model,false)!).batch,'unknown');
+  assert.equal(bailianPartialCapable(model),false);
+});
+
 test('native final Schema and Object are distinct wire channels; business rounds retain function tools',()=>{
   const strict=agentChatBody(input,base);assert.equal(strict.response_format?.type,'json_schema');assert.equal(strict.tools,undefined);
   assert.equal((strict.response_format as {json_schema:{strict:boolean}}).json_schema.strict,true);

@@ -9,7 +9,7 @@ import { type ModelTool, type ModelTurnOutput, type ModelMessage } from '../cont
 import { appendMessage, terminalEvent } from '../core/conversation';
 import { projectMessage, resolveEvidence, previewPolicy } from '../knowledge/sources';
 import { runContext, failRun, heartbeat, completeAnswer, type Lease } from '../infrastructure/job-queue';
-import { runRenovationAgent, agentReadProtocol, agentToolReplyProtocol, agentTurnScheduleProtocol, type AgentCheckpoint } from './runtime';
+import { runRenovationAgent, recoverableUnavailableRead, agentReadProtocol, agentToolReplyProtocol, agentTurnScheduleProtocol, type AgentCheckpoint } from './runtime';
 import { agentConfig, agentCapabilityFingerprint } from './config';
 import { finalResponseShapeIssue, finalResponseShapeProtocol } from './final-response-shape';
 import { homeSourceRuntimeBudget } from './home-source-budget';
@@ -828,7 +828,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           // Persist raw output and usage first, then enforce the exact active
           // schema even when a provider ignores required tool selection.
           if (consultation && !usageKnown) fail('provider_usage_unknown', 502);
-          if (purpose === 'answer' && providerOutput.toolCalls.some(call => !dispatchTools.some(tool => tool.name === call.name)))
+          if (purpose === 'answer' && providerOutput.toolCalls.some(call => !dispatchTools.some(tool => tool.name === call.name))
+            && (knowledgeReadPending(reviewContext.currentQuestion, focused, String(initial.trigger.id))
+              || !recoverableUnavailableRead(providerOutput, dispatchTools)))
             fail(knowledgeReadPending(reviewContext.currentQuestion, focused, String(initial.trigger.id)) ? 'source_read_required' : 'assistant_capability_forbidden', 502);
           if (purpose === 'answer' && providerOutput.toolCalls.some(call => reviewDefinitions.some(tool => tool.name === call.name))
             && providerOutput.toolCalls.length !== 1) fail('assistant_capability_forbidden', 502);

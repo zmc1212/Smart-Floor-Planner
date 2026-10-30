@@ -14,6 +14,114 @@ const output = (name?: string, args: unknown = {}): ModelTurnOutput => ({ text: 
 const invalid = { code: 'invalid_message', feedback: JSON.stringify({ status: 'invalid_arguments', instructions: 'leadId must be a string' }) };
 const validateTool = (_name: string, args: string) => typeof JSON.parse(args).leadId === 'number' ? invalid : null;
 
+test('an unavailable optional read returns one paired diagnostic without dispatching its read batch', async () => {
+  let reads = 0;
+  const result = await runRenovationAgent({ messages, tools: [materialTool], ports: {
+    authorize: async () => {}, checkpoint: async () => {},
+    model: async turn => turn === 0 ? { ...output(), toolCalls: [
+      { id: 'known-read', name: 'query_materials', arguments: '{}' },
+      { id: 'unavailable-read', name: 'recommend_references', arguments: '{}' },
+    ] } : output(),
+    tool: async () => { reads++; return { content: 'must not dispatch' }; },
+  } });
+  assert.equal(result.output?.text, 'final'); assert.equal(reads, 0);
+  assert.equal(result.argumentFailures, 1);
+  const feedback = result.messages.filter(m => m.role === 'tool');
+  assert.equal(feedback.length, 2);
+  for (const m of feedback) if (m.role === 'tool') {
+    const value = JSON.parse(m.content); assert.equal(value.dispatched, false);
+    assert.deepEqual(value.availableTools, ['query_materials']);
+  }
+});
+
+test('unavailable reads share the correction limit and can resume without repeating a dispatched read', async () => {
+  let saved: AgentCheckpoint | undefined, reads = 0;
+  const ports: AgentRuntimePorts = {
+    authorize: async () => {}, checkpoint: async state => { saved = state; },
+    model: async () => output('recommend_references'),
+    tool: async () => { reads++; return { content: 'must not dispatch' }; },
+  };
+  await assert.rejects(runRenovationAgent({ messages, tools: [materialTool], ports }), /assistant_capability_forbidden/);
+  assert.equal(saved?.argumentFailures, 1); assert.equal(reads, 0);
+  const correction = saved;
+  ports.model = async () => output();
+  const result = await runRenovationAgent({ messages, tools: [materialTool], ports, resume: correction });
+  assert.equal(result.output?.text, 'final'); assert.equal(reads, 0);
+  ports.model = async () => output('query_materials', { leadId: 1818 });
+  ports.validateTool = readToolInputIssue;
+  await assert.rejects(runRenovationAgent({ messages, tools: [materialTool], ports, resume: correction }), /invalid_message/);
+});
+
+test('unavailable writes and mixed read/write batches remain hard capability failures', async () => {
+  for (const calls of [
+    [{ id: 'write', name: 'shell', arguments: '{}' }],
+    [{ id: 'read', name: 'recommend_references', arguments: '{}' }, { id: 'write', name: 'record_need', arguments: '{}' }],
+  ]) {
+    let dispatches = 0;
+    await assert.rejects(runRenovationAgent({ messages, tools: [materialTool], ports: {
+      authorize: async () => {}, checkpoint: async () => {}, model: async () => ({ ...output(), toolCalls: calls }),
+      tool: async () => { dispatches++; return { content: '' }; },
+    } }), /assistant_capability_forbidden/);
+    assert.equal(dispatches, 0);
+  }
+  await assert.rejects(runRenovationAgent({ messages, tools: [materialTool],
+    resume: { version: 1, turn: 0, messages, output: output('recommend_references'), exhaustedTools: ['query_materials'] },
+    ports: { authorize: async () => {}, checkpoint: async () => {},
+      model: async () => { throw Error('must not dispatch after all reads exhausted'); },
+      tool: async () => { throw Error('must not execute unavailable read'); },
+    },
+  }), /assistant_capability_forbidden/);
+});
+
+test('production read schemas preserve field diagnostics before generic schema rejection', async () => {
+  let reads = 0;
+  const result = await runRenovationAgent({ messages, tools: [materialTool], ports: {
+    authorize: async () => {}, checkpoint: async () => {}, validateTool: readToolInputIssue,
+    model: async (turn, current) => {
+      if (!turn) return output('query_materials', { leadId: 1818, room: '' });
+      if (turn === 1) {
+        const feedback = JSON.parse(current.filter(m => m.role === 'tool').at(-1)!.content);
+        assert.equal(feedback.protocol, readToolInputProtocol);
+        assert.deepEqual(feedback.issues, [{ path: 'leadId', code: 'type', expected: 'string', received: 'number' }]);
+        assert.equal(feedback.parameters.properties.leadId.type, 'string');
+        assert.equal(reads, 0);
+        return output('query_materials', { leadId: '1818', room: '' });
+      }
+      return output();
+    },
+    tool: async (_turn, _index, _name, args) => {
+      assert.deepEqual(parseMaterialQuery(JSON.parse(args)), { leadId: '1818', room: '' });
+      reads++; return { content: 'authorized original' };
+    },
+  } });
+  assert.equal(result.output?.text, 'final');
+  assert.equal(reads, 1);
+});
+
+test('production-schema repeated read errors retain the single correction limit', async () => {
+  let calls = 0, reads = 0;
+  await assert.rejects(runRenovationAgent({ messages, tools: [materialTool], ports: {
+    authorize: async () => {}, checkpoint: async () => {}, validateTool: readToolInputIssue,
+    model: async () => { calls++; return output('query_materials', { leadId: 1818, room: '' }); },
+    tool: async () => { reads++; return { content: 'must not execute' }; },
+  } }), /invalid_message/);
+  assert.equal(calls, 2); assert.equal(reads, 0);
+});
+
+test('a read preflight returning no issue cannot bypass the registered JSON schema', async () => {
+  let reads = 0;
+  await runRenovationAgent({ messages, tools: [materialTool], ports: {
+    authorize: async () => {}, checkpoint: async () => {}, validateTool: () => null,
+    model: async (turn, current) => {
+      if (!turn) return output('query_materials', { leadId: 1818, room: '' });
+      assert.equal(JSON.parse(current.filter(m => m.role === 'tool').at(-1)!.content).dispatched, false);
+      return output();
+    },
+    tool: async () => { reads++; return { content: 'must not execute' }; },
+  } });
+  assert.equal(reads, 0);
+});
+
 test('a rejected numeric ID is not executed or coerced; one model correction can query and finish', async () => {
   const queries: string[] = [], checkpoints: AgentCheckpoint[] = [];
   const ports: AgentRuntimePorts & { validateTool: typeof validateTool } = {

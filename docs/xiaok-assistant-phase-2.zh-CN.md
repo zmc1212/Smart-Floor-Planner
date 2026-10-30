@@ -103,15 +103,17 @@ Agent复用：使用现有LangGraph开轮上下文及只读公开来源依赖，
 
 ## 当前聊天队列停滞恢复
 
-2026-10-28，限定修复 **Implemented**。用户动作：C01仅发送“新房”；截图所示为排队提示，不能据此认定正在检索。开发 run1576/咨询789于01:42:46Z建立后始终未领取，本机消费者缺失且心跳过期。恢复原隐藏 Worker 后，两条旧任务被既有总时限守卫正确判为失败。重试1577随后在供应商尝试前失败：企业1454绑定 `siliconflow / Qwen/Qwen3.5-4B`，而平台普通聊天选择 `THUDM/GLM-4-9B-0414`。用户明确选择保留企业 Qwen 及图片/工具能力；本次未改配置行或模型选择。
+2026-10-30，限定修复 **Implemented**。使用原统一开发启动器后，C01文字咨询不再因缺失Worker长期排队。所报1580/1581已保存，但旧Next-only进程未带Worker；恢复消费者后暴露原总时限/参数失败，原迹保留。现场3006现由scripts/dev.mjs联动监管原Worker；退出清理、消费者重启、租户/参与人/来源、租约、配额和未知结果守卫保持。
 
-`executePostgresText` 现从获权且已持久化的企业能力绑定选择助手 Agent 的实际模型，只复用同一供应商/适配器的既有凭据；冲突的部署模型覆盖继续拒绝。供应商、租户/参与人/来源、咨询 profile、租约、配额、未知接收及单次尝试守卫保留，未增加其他供应商或付费 fallback。普通聊天/生成路径的模型选择保持。已查阅 [LangChain OpenAI 实现](https://github.com/langchain-ai/langchainjs/blob/main/libs/providers/langchain-openai/src/chat_models/completions.ts) 对明确模型调用与客户端配置的区分，沿用原 [SiliconFlow 工具协议](https://docs.siliconflow.cn/docs/userguide/guides/function-calling) 和[图片消息协议](https://docs.siliconflow.cn/docs/userguide/capabilities/vision)。仅修供应商选择接缝，未新建编排或修改 Knowledge/Evidence。带认证 `/v1/models` 确认该 Qwen ID；最初目录路径错误404保留为诊断过程，不涉及模型调用。
+读取工具现先返回字段级纠错信息，再做通用JSON Schema校验，避免原字段反馈被泛化错误遮住；修正后的调用仍须通过完整注册schema才可派发，授权与单次纠错限制不变。纯读取批次若调用了当前未开放的已知读取能力，unavailable-read-tool-v1只给一次成对的“整批未执行”反馈，合法同批项也不执行，共用原参数/轮数预算；未知/混合写入、耗尽读取、收尾、原文读取与授权守卫仍硬拒绝。参考[LangGraph可恢复工具错误模式](https://docs.langchain.com/oss/javascript/langgraph/thinking-in-langgraph)，保留PostgreSQL租约、原请求和有界恢复。原1581 invalid_tool_arguments、重试1582 unsupported_model_commitment（旧模型回复带内部档案标识）及新模型基线1585（空读取后调用未开放recommend_references）全部保留；1585真实接受三次供应商响应，输入21129/输出76 tokens，不能记为回答通过。其观测脚本也误用了不存在的顶层token列，现从assistantResponse元数据读取真实用量。机制改变后才执行最终两次固定旅程，不靠重采样替换原失败，Knowledge/Evidence无须修改。
 
-`scripts/dev.mjs` 现为 `dev`、`dev:webpack`、`dev:turbo` 联动启动 Next.js 与原 `scripts/assistant-worker.mjs`，保留缓存 pre-hook，启动前检查凭据、跟随实际端口、消费者异常退出重启并清理自有子进程。现场3006保持，已恢复的专用消费者继续运行。原1576/1577均无供应商尝试，原失败不改写；原幂等重试针对同一原话11324生成1578，仅一次真实 Qwen attempt4050于01:55:41.528Z至01:55:56.195Z成功，回答已持久保存。attempt4050观测输入6563/输出104 tokens，账单费用不可得、usageReconciled仍false，保留原预留，不声称零费用。无重复客户消息、schema、路由、角色、结构/样式/素材/导航或生产变更。
+用户明确将此前保留Qwen的选择替换为 **百炼qwen3.7-flash**。开发企业1454与平台聊天连接现使用官方北京DashScope及该精确模型，图片/工具输入保留；独立VLM端点、模型和凭据已核对未变。带认证模型目录及一次合成图片/工具/关闭思考wire探针通过（输入350/输出23 tokens）；精确模型表仅启用验证过的工具与思考控制路径，原生final JSON、原生搜索、显式缓存、Batch和前缀续写对该模型继续关闭，不借用Qwen3.8证据。官方说明：https://help.aliyun.com/zh/model-studio/qwen3-7-flash 。未改产品UI、公开API、schema、角色或批准C01设计，未部署生产。
 
-证据 `tmp/xiaok-chat-queue-20261028/`：启动器4/4、模型绑定2/2、原思考开关1/1及小程序聊天39/39通过；修改文件lint零错误/警告。默认lint扫描生成QA产物超时后，`npm run lint -- --ignore-pattern '.next-qa/**'` 为0错误/27警告；完整TSC仍54项，均不在本次修改文件。额外既有 Qwen3.8 tool-choice 断言与未改动的 Agent 适配器不一致，失败保留、不代修。原真实调用绑定记录到tsconfig漂移，不冒充稳定语义批。原生01保留领取时机过早的单次断言；02已跑实发/轮询/重进及失败/重试，但误用租户事务撤销全局用户（实际未更新该行），并记录到无关案例文案源码漂移。两次原失败独立保留，最终原生结果见下文。C01沿既有P4B批准状态规则；完整图片/D2语义、手机/真实微信/BLE及生产不由本批认证，D3剩余范围与D2旧失败次数保持。
+限定验证：后端75/75，修改文件ESLint零错误/警告；完整TSC仍56项既有诊断，涉及文件零诊断；复用未改范围的小程序44/44、启动器4/4。native-03另行完成确定性实发/排队/轮询/重进、失败/按钮重试/重进及真实身份撤权，不作为模型语义通过。最终 **qwen37-http-live-03** 使用真实鉴权HTTP3006→受监管Worker→qwen3.7-flash，固定两次自然风格咨询：无房源线索、两条本人房源线索均未选择。runs1586/1587，共8次已审计供应商尝试，观测输入54354/输出621 tokens；两次回答均持久保存，并以新令牌重进回读。同键发送无重复任务/原话；他客404，同一真实HTTP令牌在实际context-version撤权前200、撤权后401，源码/配置绑定drift为空；合成企业关闭、身份撤权。native06前原项目窗口已消失，未重开窗口，新配置模型的新增原生验收仍未验。真机/真实微信、广泛图片/D2语义和实际账单未验。
 
-最终 `native-03/report.json`：限定检查3/3、4张准确C01路由截图；实际发送/排队→回答/回读/重进，真实持久失败→按钮重试→回答/重进，他客拒绝及核实实际写入的全局用户 context-version 撤销后401均通过。Stable新编译、systemInfo/data、真实输入/点击、390×844及副屏窗口检查通过。原生使用确定性服务处理器、供应商调用0，不与另行真实Qwen恢复结果混算；源配置drift为空。原传输/session已恢复，合成企业关闭、身份撤权、所属队列清理，3120/控制器/验收锁释放，原项目回主页。代表成功/失败截图已对照未改动的批准C01状态组件审看。01/02及驱动错误/漂移独立保留。本次排障限定范围完成，D3仍Limited、既定后继不变。
+模型实测后的影响核验：只收紧恢复checkpoint时的耗尽读取守卫，最终回归75/75、定向lint0；两条真实HTTP旅程没有恢复checkpoint。并发七牛供应商/价格标签修改另行审查，百炼/模型绑定定向19/19及源码稳定检查通过，当前企业/平台仍为qwen3.7-flash、活动任务0。保留原实模证据，不重新采样；见tmp/xiaok-chat-queue-20261030/evidence-reuse.json。
+
+证据：tmp/xiaok-chat-queue-20261030/（qwen37-probe.json、model-switch.json、qwen37-recovery.json、qwen37-http-live-03.json、read-protocol-tests.log、final-lint.log、native-03..06/report.json）。两条原失败存在reconciling费用预留，重试在新增供应商派发前被正确拒绝；未清除费用、改写失败或绕过守卫。native04在页面栈瞬态中断，native05因驱动在加载env前签JWT被拒，均未调用模型；native06因项目窗口不存在而在建fixture/派发前停止。首批HTTP在3006停服时于entry-context失败，也未调用模型；通过原统一启动器恢复服务后再执行HTTP02，原失败全部保留。2026-10-28的1578/attempt4050恢复（6563/104 tokens）、1576/1577失败、native01/02驱动问题、旧54项TSC诊断和旧漂移继续保存在tmp/xiaok-chat-queue-20261028/，不与本次稳定批混算。D2失败计数2、唯一计划D7范围和后继均不变。
 
 ## D2图文上下文（Limited）
 
