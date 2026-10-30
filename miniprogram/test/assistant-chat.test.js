@@ -104,6 +104,106 @@ function fixture() {
   return { controller, client, db, calls, timers, intercept: next => { intercept = next; }, identity: next => { token = next; } };
 }
 
+function promptPage(f) {
+  const page = require('../packages/assistant/chat/chat-definition')();
+  Object.assign(page.data, f.controller.state);
+  f.controller.emit = patch => Object.assign(page.data, patch);
+  Object.assign(page, {
+    controller: f.controller, _alive: true, _shown: true,
+    floorplans: { show: async () => true },
+    syncLocation: async () => ({}),
+  });
+  return page;
+}
+const promptEvent = text => ({ currentTarget: { dataset: { text } } });
+
+test('each welcome topic sends its text immediately through the existing chat flow', async () => {
+  for (let index = 0; index < 3; index++) {
+    const f = fixture(); await f.controller.show({});
+    const page = promptPage(f), text = page.data.topics[index].text;
+    await page.pickPrompt(promptEvent(text));
+    const sends = f.calls.filter(call => call.method === 'POST' && call.url.endsWith('/messages'));
+    assert.equal(sends.length, 1);
+    assert.equal(sends[0].body.content.blocks[0].text, text);
+    assert.equal(page.data.messages[0].blocks[0].text, text);
+    assert.equal(page.data.draft, '');
+    assert.equal(page.data.generating, true);
+    assert.equal(page._promptSending, false);
+  }
+});
+
+test('a second topic tap during asynchronous send preparation cannot replace or duplicate the first', async () => {
+  const f = fixture(); await f.controller.show({});
+  const page = promptPage(f), location = deferred(), preparing = deferred();
+  page.syncLocation = () => { preparing.resolve(); return location.promise; };
+  const text = page.data.topics[1].text;
+  const first = page.pickPrompt(promptEvent(text));
+  await preparing.promise;
+  assert.equal(page.data.busy, false);
+  await page.pickPrompt(promptEvent(page.data.topics[2].text));
+  assert.equal(page.data.draft, text);
+  location.resolve({}); await first;
+  assert.equal(f.calls.filter(call => call.method === 'POST' && call.url.endsWith('/messages')).length, 1);
+  assert.equal(page.data.messages[0].blocks[0].text, text);
+});
+
+test('welcome shortcuts preserve blocked drafts and use the existing login action', async () => {
+  for (const [field, value] of Object.entries({ canSend: false, loading: true, busy: true, pendingSend: true,
+    pendingAction: 'cancel', generating: true, uncertainRun: true, readOnly: true, fatal: true,
+    contextBusy: true, contextPending: true, speechBusy: true })) {
+    const f = fixture(); await f.controller.show({});
+    const page = promptPage(f); page.data.draft = '还没写完'; page.data[field] = value;
+    const before = f.calls.length;
+    await page.pickPrompt(promptEvent(page.data.topics[1].text));
+    assert.equal(page.data.draft, '还没写完', field);
+    assert.equal(f.calls.length, before, field);
+  }
+  const f = fixture(), page = promptPage(f); let logins = 0;
+  page.data.needsLogin = true; page.login = () => { logins++; };
+  await page.pickPrompt(promptEvent(page.data.topics[1].text));
+  assert.equal(logins, 1);
+  assert.equal(f.calls.length, 0);
+  assert.equal(page.data.draft, '');
+});
+
+test('a shortcut with an unknown receipt keeps the original message and recovery key', async () => {
+  const f = fixture(); await f.controller.show({});
+  const page = promptPage(f), text = page.data.topics[1].text;
+  let key, attempts = 0;
+  f.intercept(call => {
+    if (call.method !== 'POST' || !call.url.endsWith('/messages')) return;
+    attempts++;
+    if (!key) { key = call.options.headers['Idempotency-Key']; throw { statusCode: 503 }; }
+    assert.equal(call.options.headers['Idempotency-Key'], key);
+    assert.equal(call.body.content.blocks[0].text, text);
+  });
+  await page.pickPrompt(promptEvent(text));
+  assert.equal(page.data.pendingSend, true);
+  assert.equal(page._promptSending, false);
+  await page.pickPrompt(promptEvent(page.data.topics[2].text));
+  assert.equal(attempts, 1);
+  assert.equal(page.data.draft, text);
+  await page.send();
+  assert.equal(attempts, 2);
+  assert.equal(page.data.pendingSend, false);
+  assert.equal(page.data.messages.length, 1);
+  assert.equal(page.data.draft, '');
+});
+
+test('failed archive validation keeps the shortcut draft and allows another attempt', async () => {
+  const f = fixture(); await f.controller.show({});
+  const page = promptPage(f), text = page.data.topics[1].text;
+  page.floorplans.show = async () => false;
+  await page.pickPrompt(promptEvent(text));
+  assert.equal(page.data.draft, text);
+  assert.equal(page._promptSending, false);
+  assert.equal(f.calls.filter(call => call.method === 'POST' && call.url.endsWith('/messages')).length, 0);
+  page.floorplans.show = async () => true;
+  await page.pickPrompt(promptEvent(text));
+  assert.equal(page.data.messages[0].blocks[0].text, text);
+  assert.equal(page.data.draft, '');
+});
+
 test('direct handoff and waiting supplements stay in the same chat without an AI run', async () => {
   const f = fixture();
   f.intercept(call => {

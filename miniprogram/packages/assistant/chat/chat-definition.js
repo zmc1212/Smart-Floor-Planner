@@ -165,7 +165,18 @@ module.exports = () => ({
   focusInput() { this.setData({ inputFocused: true }); },
   blurInput() { if (!this.data.keyboardHeight) this.setData({ inputFocused: false }); },
   input(event) { this.controller.input(event.detail.value); },
-  pickPrompt(event) { this.controller.input(event.currentTarget.dataset.text); },
+  async pickPrompt(event) {
+    if (this._promptSending) return;
+    if (this.data.needsLogin) return this.send();
+    if (!this.data.canSend || this.data.loading || this.data.busy || this.data.pendingSend || this.data.pendingAction
+      || this.data.generating || this.data.uncertainRun || this.data.readOnly || this.data.fatal
+      || this.data.contextBusy || this.data.contextPending || this.data.speechBusy) return;
+    this._promptSending = true;
+    try {
+      this.controller.input(event.currentTarget.dataset.text);
+      return await this.send();
+    } finally { this._promptSending = false; }
+  },
   chooseOption(event) { return this.controller.chooseOption(event.currentTarget.dataset.key, event.currentTarget.dataset.text); },
   confirmOptions() { return this.controller.confirmOptions(); },
   async send() {
