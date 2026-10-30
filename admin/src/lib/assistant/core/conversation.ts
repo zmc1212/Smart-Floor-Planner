@@ -5,6 +5,7 @@ import { fail, fingerprint, key, principalKey, requireCapability, safeText, user
 import { bindSpeechToMessage } from '../speech/link';
 import { speechConfigurationHash } from '../speech/local';
 import { createPreviewPolicy, previewPolicy, projectMessage, citationProjection, webCitationProjection } from '../knowledge/sources';
+import { sourceExcerptProtocol } from '../agent/source-excerpts';
 import { parseWebCitationId } from '../agent/web-evidence';
 import { configuredGuidance, conversationGuidance, guidanceOpening, guidanceView } from '../requirements/guidance';
 import { requirementCheckpoint } from '../requirements/checkpoint';
@@ -100,7 +101,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   const speech = purpose === 'speech.transcribe', speechBinding = speech ? speechConfigurationHash() : null;
   if (speech && !speechBinding) fail('speech_unavailable', 503);
   if (c.status !== 'open' || !(speech ? ['ai', 'human', 'handoff_requested'].includes(String(c.mode)) : c.mode === 'ai')) fail('context_changed');
-  const agent = !speech && (actor.principal.kind === 'user' || (['site.record', 'site.action'].includes(purpose) && actor.capabilities.includes('assistant.project.shared'))) ? agentConfig(settings.agent_config) : null;
+  const agent = !speech && (actor.principal.kind === 'user' || (['site.record', 'site.action', 'site.question'].includes(purpose) && actor.capabilities.includes('assistant.project.shared'))) ? agentConfig(settings.agent_config) : null;
   const entry = c.entry_snapshot as Row;
   const reviewRuntime = agent && actor.principal.kind === 'user' && c.purpose === 'customer_consultation'
     && entry.agentReviewCandidate === true && entry.requirementReviewMode === true
@@ -118,7 +119,8 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   // Match C01's existing unknown-result state at the service boundary too.
   // A distinct question is not permission to bypass an unresolved dispatch;
   // confirmed usage review is the same recovery proof projected to the client.
-  if (!speech && c.purpose === 'customer_consultation' && actor.principal.kind === 'user' && await one(tx, sql`select r.id from
+  if (!speech && (c.purpose === 'customer_consultation' && actor.principal.kind === 'user'
+    || c.purpose==='project_collaboration' && purpose==='site.question' && actor.capabilities.includes('assistant.project.shared')) && await one(tx, sql`select r.id from
     (select id,enterprise_id,status,error_code from app.assistant_runs where enterprise_id=${actor.enterpriseId}
       and conversation_id=${String(c.id)} and purpose<>'speech.transcribe' order by created_at desc,id desc limit 1) r
     where ${unresolvedProviderOutcome()} and not ${runUsageReconciled()}`)) fail('provider_outcome_unknown');
@@ -134,6 +136,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
     values(${actor.enterpriseId},${String(c.id)},${trigger.kind},${trigger.kind === 'user_message' ? trigger.messageId : null},
     ${trigger.kind === 'domain_event' ? trigger.eventId : null},${trigger.kind === 'scheduled_task' ? trigger.occurrenceKey : null},${purpose},
     ${retryOf || null},${json({ schemaVersion: 1, actor, maxTokens: agent?.consultation ? 8192 : 2048, policyVersion: settings.policy_version, agent,
+      ...(agent && !agent.structuredFinal && ['reply','site.question'].includes(purpose) ? { sourceAnswerMode: sourceExcerptProtocol } : {}),
       ...(speech ? { localSpeech: { protocol: 'local-speech-v1', configurationHash: speechBinding } } : {}),
       ...(reservation.imageContextBudget ? { imageContextBudget: reservation.imageContextBudget } : {}),
       ...(reservation.imageSchema ? { imageSchema: reservation.imageSchema } : {}),

@@ -1,6 +1,7 @@
 import type { ModelMessage, ModelTool, ModelTurnInput } from '../contracts/model';
 import { currentMessageOnlyRequested, currentMessageView } from './current-message-scope';
-import { independentAdviceRequested } from './read-tool-input';
+import { independentAdviceRequested, originalAnswerOnly } from './read-tool-input';
+import { sourceExcerptModelView } from './source-excerpts';
 import { independentAdviceView } from './independent-advice-context';
 import { focusedSynthesisMessages } from './synthesis';
 import { projectSynthesisPolicy } from './model-policy';
@@ -18,6 +19,8 @@ export function compileModelRequest(input: {
   messages: ModelMessage[]; tools: ModelTool[];
   profile?: ModelTurnInput['profile'];
   imageContextBudget?: RequestBudgetOptions['imageContextBudget'];
+  sourceExcerpts?:boolean;
+  requiredKnowledge?:boolean;
   wireProjection?(messages:ModelMessage[]):ModelMessage[];
   toolsForTurn(question: string, messages: ModelMessage[], tools: ModelTool[], triggerId: string): ModelTool[];
 }) {
@@ -31,9 +34,11 @@ export function compileModelRequest(input: {
     : input.toolsForTurn(question, focused, tools, triggerId);
   if (input.profile === consultationLongProfile.id && purpose === 'answer' && dispatchTools.length === 1)
     dispatchTools = [constrainSynthesisRepairTool(dispatchTools[0], focused)];
-  const policyView = purpose === 'answer' ? projectSynthesisPolicy(focused) : focused;
+  const excerptMode=purpose==='answer'&&input.sourceExcerpts&&(input.requiredKnowledge||originalAnswerOnly(question));
+  const policyView = purpose === 'answer' ? projectSynthesisPolicy(focused,Boolean(excerptMode)) : focused;
   const contentView = input.profile && purpose === 'answer' ? projectConsultationModelView(policyView, dispatchTools) : policyView;
-  const wireView=input.wireProjection?input.wireProjection(contentView):contentView;
+  const excerptView=excerptMode?sourceExcerptModelView(contentView):contentView;
+  const wireView=input.wireProjection?input.wireProjection(excerptView):excerptView;
   const bounded = fitAgentContext(wireView, dispatchTools, { profile: input.profile, purpose, imageContextBudget: input.imageContextBudget });
   return { messageScoped, adviceScoped, focused, dispatchTools, policyView, bounded, modelMessages: bounded.messages,
     contentProjection: contentView === policyView ? null : consultationModelViewVersion };

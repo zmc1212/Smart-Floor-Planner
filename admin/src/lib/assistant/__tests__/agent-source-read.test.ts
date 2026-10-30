@@ -11,6 +11,19 @@ const read = (content = '{"knowledgeStatus":"ready","evidence":[],"synthesisSour
 ];
 const names = (text = question, messages: ModelMessage[] = [original(text)]) => agentToolsForTurn(text, messages, agentToolsForMessage(text, true), 'current').map(t => t.name);
 
+test('a project knowledge question must obtain this turn\'s paired read even without naming a source',()=>{
+  for(const text of ['卫生间防水前要准备哪些？','只回答当前这句话：管根呢？','不查资料，只给一般建议。']) {
+    const tools=agentToolsForTurn(text,[original(text)],agentToolsForMessage(text,true),'current',{requiredKnowledge:true});
+    assert.deepEqual(tools.map(t=>t.name),['search_knowledge']);
+    const complete=agentToolsForTurn(text,[original(text),...read()],tools,'current',{requiredKnowledge:true});
+    assert.ok(complete.some(t=>t.name==='final_response'));
+    const failed=agentToolsForTurn(text,[original(text),...read('{"status":"tool_exhausted"}')],tools,'current',{requiredKnowledge:true});
+    assert.deepEqual(failed.map(t=>t.name),['search_knowledge']);
+  }
+  const disabled=agentToolsForTurn('只回答当前这句话：管根呢？',[original('只回答当前这句话：管根呢？')],[],'current',{requiredKnowledge:true});
+  assert.deepEqual((disabled[0].parameters.properties as Record<string,{enum:string[]}>).kind.enum,['unavailable']);
+});
+
 test('a named original section must read before the model receives a final envelope', () => {
   for (const text of [question, '请解释《点位说明》第二节原文。', '合成手测点位说明.pdf如何区分同意和关闭？', '请按原文解释方案同意。'])
     assert.deepEqual(names(text), ['search_knowledge']);

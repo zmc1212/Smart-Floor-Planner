@@ -1,5 +1,22 @@
 # Smart Floor Planner Project Instructions
 
+## Default Local Test Enterprise And Knowledge
+
+- User instruction, 2026-10-31: subsequent local development and test journeys
+  default to **微云 (enterprise ID `1454`)** and
+  `docs/装修施工标准手册制度规范/精艺.pdf`, SHA-256
+  `efcdc6f1e01ec848d0908e99ddd08929a7f0f07b3942f5b539864361f4aa049b`.
+- Reuse its retained labelled test accounts/projects; create missing synthetic
+  records inside this enterprise through existing services and preserve real
+  customer data. Cross-tenant denial checks may use an explicit control tenant.
+- Thirty page-preserving local OCR copies are documents `376`–`405`. Only
+  visually checked construction pages29/30 (documents `404`/`405`, versions
+  `410`/`411`) are published for customer-scope tests; the other28 are internal
+  drafts pending OCR/table review. Recheck current status; do not auto-publish
+  drafts, replace existing sources or turn sample prices into current terms.
+- This is development testing, not production seeding or rollout permission;
+  original permission/revocation requirements remain in force.
+
 This repository contains the Smart Floor Planner product: a Next.js/Mongoose
 administration system and a native WeChat Mini Program for renovation leads,
 formal surveying, and AI-assisted design.

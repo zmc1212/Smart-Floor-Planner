@@ -27,7 +27,8 @@ async function authorize(tx: PostgresTransaction, actor: ActorContext, conversat
 }
 /** The Agent, legacy wrapper and Admin diagnostic use this exact authorized retrieval. */
 export async function retrieveKnowledge(conversationId:string,actor:ActorContext,query:string,epoch:number,gateway?:EmbeddingGateway) {
-  text(query,1000); requireCapability(actor,actor.principal.kind==='user'?'assistant.chat.self':'assistant.preview.self');
+  text(query,1000); requireCapability(actor,actor.principal.kind==='user'?'assistant.chat.self'
+    :actor.capabilities.includes('assistant.project.shared')?'assistant.project.shared':'assistant.preview.self');
   if (!Number.isSafeInteger(epoch) || epoch<0) fail('invalid_message',422);
   const started=Date.now();
   await withTenantTransaction(actor.enterpriseId,tx=>authorize(tx,actor,conversationId,epoch));

@@ -5,6 +5,7 @@ function errorText(e) {
   if (e && e.statusCode === 401) return '登录已过期，请返回后重新登录。';
   const code = e && (e.error || e.code || e.message);
   return ({ version_conflict: '记录已被更新，已读取最新版，请核对后再提交。', context_changed: '原材料或权限已变化，请重新读取并核对。',
+    run_result_unconfirmed: '上次答疑结果仍待核对，请稍后重新读取。', conversation_busy: '小K正在处理当前项目的问题，请稍后重新读取。',
     construction_forbidden: '当前身份没有这项工地权限。', construction_not_found: '工地已不可访问，请返回列表。', assistant_resource_not_found: '工地或原材料已不可访问。',
     assistant_disabled: '企业暂未开放小K整理，请联系负责人。', assistant_quota_exceeded: '本次整理额度暂不可用，内容已保留。',
     site_retry_unavailable: '本次整理仍在核对结果，可先人工修改草稿。', site_review_required: '请先核对并补充本条现场内容。',
@@ -56,10 +57,10 @@ class SiteClient {
     Object.assign(this, { emit, identity, storage, request, uploadFile, download }); this.epoch = 0; this.paths = new Set();
     this.state = { loading: true, busy: false, error: '', fatal: false, items: [], mediaPaths: {}, draft: '', attachments: [], pending: null, pendingRetakeCount: 0, pendingRetakeTarget: '' };
   }
-  set(p) { Object.assign(this.state, p); this.emit(p); }
+  set(p) { if (p.fatal) Object.assign(p, { citation: null, citationLoading: false, citationError: '' }); Object.assign(this.state, p); this.emit(p); }
   current(epoch) { const s = this.identity(); return this.visible && s.token === this.session.token && s.key === this.session.key && epoch === this.epoch; }
   clean() { this.sourceVersions = null; for (const path of this.paths) { try { wx.getFileSystemManager().unlink({ filePath: path, fail() {} }); } catch { /* Page teardown. */ } } this.paths.clear(); }
-  hide() { this.visible = false; ++this.epoch; this.clean(); this.set({ items: [], mediaPaths: {}, project: null, rooms: [], sheet: '', versions: [], edit: {}, conflict: null, write: false, draft: '', attachments: [], resubmit: null, pendingRetakeCount: 0, pendingRetakeTarget: '' }); }
+  hide() { this.visible = false; ++this.epoch; this.clean(); this.set({ items: [], mediaPaths: {}, project: null, rooms: [], sheet: '', citation: null, citationLoading: false, citationError: '', versions: [], edit: {}, conflict: null, write: false, draft: '', attachments: [], resubmit: null, pendingRetakeCount: 0, pendingRetakeTarget: '' }); }
   async show(projectId) {
     this.clean(); this.session = this.identity(); this.projectId = projectId; this.visible = true; const epoch = ++this.epoch;
     this.base = '/miniprogram/construction/projects/' + projectId + '/chat';
@@ -97,6 +98,16 @@ class SiteClient {
       this.sourceVersions = { records: { ...Object.fromEntries(items.filter(i => i.record.id).map(i => [i.record.id, i.record.version])), ...(versions && versions.records || {}) }, issues: versions && versions.issues || {}, materials: versions && versions.materials || {}, plans: versions && versions.plans || {}, resolutions: versions && versions.resolutions || {} };
       const retakes = fresh.filter(i => i.record.canResubmit).sort((a, b) => (Date.parse(b.record.returned_at) || 0) - (Date.parse(a.record.returned_at) || 0));
       this.set({ ...data, items, pendingRetakeCount: retakes.length, pendingRetakeTarget: retakes[0]?.message.id || '', nextCursor: data.nextCursor, loading: false, error: '', fatal: false });
+      const citationId = this.state.citation && this.state.citation.id;
+      if (citationId) {
+        try {
+          const source = await this.request(this.base + '/citations/' + citationId, 'GET', {}, { suppressUnauthorized: true });
+          if (valid() && this.state.citation?.id === citationId) this.set({ citation: source.data, citationError: '' });
+        } catch (error) {
+          if (valid() && this.state.citation?.id === citationId) this.set({ citation: null, citationLoading: false, citationError: errorText(error) });
+        }
+        if (!valid()) return;
+      }
       const mids = new Set([...items.flatMap(i => i.record.media.map(m => String(m.id))), ...this.state.attachments.map(String), ...(this.state.versions || []).flatMap(v => v.media_ids || [])]);
       const mediaPaths = { ...this.state.mediaPaths };
       for (const mid of Object.keys(mediaPaths)) if (!mids.has(mid)) { this.unlink(mediaPaths[mid]); delete mediaPaths[mid]; }

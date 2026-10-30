@@ -51,8 +51,8 @@ export function explicitHumanHandoffRequested(text: string): boolean {
   return /找.{0,3}设计师|转人工|让设计师|设计师接着聊/.test(text) && !/不要|不想|不用|别|如果|假如|能否|是不是|“|「|"/.test(text);
 }
 
-export function knowledgeReadPending(question: string, messages: ModelMessage[], triggerId: string): boolean {
-  if (!knowledgeOriginalRequested(question)) return false;
+export function knowledgeReadPending(question: string, messages: ModelMessage[], triggerId: string, required = false): boolean {
+  if (!required && !knowledgeOriginalRequested(question)) return false;
   const start = messages.findIndex(message => originalMessageId(message) === triggerId);
   if (start < 0) return true;
   return !messages.some((message, index) => {

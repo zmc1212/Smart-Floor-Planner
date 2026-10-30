@@ -38,6 +38,10 @@ export async function createPreviewPolicy(tx:PostgresTransaction,enterpriseId:st
 export function sourceScope(actor:ActorContext,c:Row,historical=false) {
   const published=historical?sql`v.published_at is not null`:sql`v.published_at is not null and d.published_version_id=v.id`;
   if(actor.principal.kind==='user') return sql`d.status='active' and d.audience='customer_public' and ${published}`;
+  // A project conversation is not an owner-private draft preview. Its live
+  // membership is checked by AssistantRepository before retrieval or replay.
+  if(c.purpose==='project_collaboration' && actor.capabilities.includes('assistant.project.shared'))
+    return sql`d.status='active' and d.audience in ('customer_public','staff_internal') and ${published}`;
   const policy=previewPolicy(c);
   const selected=policy.drafts.length?sql`(${sql.join(policy.drafts.map(p=>sql`(v.id=${p.id} and v.content_hash=${p.hash} and v.edit_version=${p.editVersion})`),sql` or `)})`:sql`false`;
   const excluded=policy.drafts.length?sql`and d.id not in (${sql.join(policy.drafts.map(p=>sql`${p.documentId}`),sql`,`)})`:sql``;
@@ -94,7 +98,7 @@ export async function webCitationProjection(tx: PostgresTransaction, actor: Acto
   const ref = parseWebCitationId(citationId);
   const run = ref ? await one(tx, sql`select output_message_id from app.assistant_runs where enterprise_id=${actor.enterpriseId}
     and conversation_id=${String(c.id)} and id=${ref.runId}`) : null;
-  if (!run?.output_message_id || !await agentMessageAvailable(tx, actor.enterpriseId, String(c.id), String(run.output_message_id)))
+  if (!run?.output_message_id || !await agentMessageAvailable(tx, actor.enterpriseId, String(c.id), String(run.output_message_id),actor))
     return { id: citationId, available: false, reason: 'source_unavailable' };
   return await webCitationForAnswer(tx, actor, c, citationId) || { id: citationId, available: false, reason: 'source_unavailable' };
 }
@@ -123,7 +127,7 @@ export async function projectMessage(tx:PostgresTransaction,actor:ActorContext,c
   const publicProjection = await publicMessageProjection(tx, actor, c, String(message.id));
   const planProjection = await planMessageProjection(tx, actor.enterpriseId, String(c.id), String(message.id));
   const available=speech?.revoked !== true && planProjection?.available !== false && publicProjection?.available !== false && !(message.answer_kind==='grounded' && !projected.length) && projected.every(x=>x.available)
-    && await agentMessageAvailable(tx, actor.enterpriseId, String(c.id), String(message.id));
+    && await agentMessageAvailable(tx, actor.enterpriseId, String(c.id), String(message.id),actor);
   return {id:String(message.id),seq:String(message.seq),authorKind:message.author_kind,answerKind:message.answer_kind ?? null,available,
     content:available?message.content:{version:1,blocks:[{type:'notice',code:'source_unavailable',fallbackText:'这条回答所依据的资料已不可用，请重新提问。'}]},
     citations:projected,createdAt:message.created_at,constructionReminder: available && message.purpose === 'construction.stage',

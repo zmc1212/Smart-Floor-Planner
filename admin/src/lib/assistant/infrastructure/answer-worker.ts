@@ -23,8 +23,8 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
   try {
     const context=await withTenantTransaction(lease.enterpriseId,tx=>runContext(tx,lease));
     const agent=agentConfig((context.run.policy_snapshot as Row).agent);
-    if (lease.actor.principal.kind === 'user' && agent) {
-      const native=agent.tools?await selectedNativeSearch(agent):null;
+    if (agent && (lease.actor.principal.kind === 'user' || context.conversation.purpose==='project_collaboration' && context.run.purpose==='site.question' && lease.actor.capabilities.includes('assistant.project.shared'))) {
+      const native=lease.actor.principal.kind==='user' && agent.tools?await selectedNativeSearch(agent):null;
       await processAgentAnswer(lease,native?{webSearch:nativeSearchDependency({
         enterpriseId:lease.enterpriseId,runId:lease.runId,search:native})}:{}); return;
     }

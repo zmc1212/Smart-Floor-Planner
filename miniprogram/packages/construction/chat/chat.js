@@ -53,6 +53,23 @@ Page({
   onResize() { if (!this.data.keyboardHeight) this.setData(metrics()); },
   poll() { clearTimeout(this._timer); if (!this._visible) return; this._timer = setTimeout(async () => { if (!this.client.state.busy && !this.data.sheet) await this.client.load(); this.poll(); }, 4000); },
   refresh() { return this.client.load(); }, older() { return this.client.load(true); },
+  async openCitation(e) {
+    const id = String(e.currentTarget.dataset.id), epoch = this.client.epoch;
+    if (!/^[1-9]\d*$/.test(id) || this.data.busy || this.data.pending || this.data.fatal) return;
+    this._citationId = id;
+    this.client.set({ citation: null, citationLoading: true, citationError: '' });
+    this.openSheet('source', { citation: null, citationLoading: true, citationError: '' });
+    try {
+      const response = await this.client.request(this.client.base + '/citations/' + id, 'GET', {}, { suppressUnauthorized: true });
+      if (this.client.current(epoch) && !this.data.fatal && this._citationId === id && this.data.sheet === 'source') this.client.set({ citation: response.data });
+    } catch (error) {
+      if (this.client.current(epoch) && this._citationId === id) {
+        this.client.set({ citation: null, citationError: errorText(error) });
+        if ([401, 403, 404].includes(error.statusCode)) await this.client.load();
+      }
+    } finally { if (this.client.current(epoch) && this._citationId === id) this.client.set({ citationLoading: false }); }
+  },
+  retryCitation() { if (this._citationId) return this.openCitation({ currentTarget: { dataset: { id: this._citationId } } }); },
   back() { wx.navigateBack({ fail: () => wx.redirectTo({ url: '/packages/construction/projects/projects' }) }); },
   input(e) { this.client.input(e.detail.value); },
   async send() { if (this.data.speechBusy) return; this.client.speechInput = this.speechController?.binding(); const result = await this.client.send(); if (!this.data.pending && this.speechController?.visible) await this.speechController.afterSend(); return result; },
@@ -123,5 +140,5 @@ Page({
     finally { if (this.client.current(epoch)) this.setData({ versionsLoading: false }); }
   },
   openSheet(sheet, patch = {}) { clearTimeout(this._sheetTimer); this.client.set({ conflict: null, error: '' }); this.setData({ ...patch, sheet, sheetOpen: false }); this._sheetTimer = setTimeout(() => { if (this._visible && this.data.sheet === sheet) this.setData({ sheetOpen: true }); }, 20); },
-  closeSheet(force = false) { if (force !== true && (this.data.busy || this.data.pending)) return; clearTimeout(this._sheetTimer); this.setData({ sheetOpen: false }); this._sheetTimer = setTimeout(() => { if (this._visible) this.setData({ sheet: '' }); }, 260); }, stop() {},
+  closeSheet(force = false) { if (force !== true && (this.data.busy || this.data.pending)) return; if (this.data.sheet === 'source') { this._citationId = ''; this.client.set({ citation: null, citationLoading: false, citationError: '' }); } clearTimeout(this._sheetTimer); this.setData({ sheetOpen: false }); this._sheetTimer = setTimeout(() => { if (this._visible) this.setData({ sheet: '' }); }, 260); }, stop() {},
 });

@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
-import { one, rows } from '@/db/repositories/assistant-repository';
+import { AssistantRepository, one, rows } from '@/db/repositories/assistant-repository';
 import { fail, type ActorContext, type Evidence } from '../contracts';
 import { resolveEvidence } from '../knowledge/sources';
 import type { ModelMessage, ModelPart } from '../contracts/model';
@@ -21,7 +21,7 @@ export async function resolveAgentMedia(tx: PostgresTransaction, enterpriseId: s
     and a.conversation_id=${conversationId} and a.id=${ref.id} and a.source_hash=${ref.hash} and a.deleted_at is null`);
   return media && await formalMediaSourceAvailable(tx, enterpriseId, media) ? media : undefined;
 }
-export async function agentMessageAvailable(tx: PostgresTransaction, enterpriseId: string, conversationId: string, messageId: string) {
+export async function agentMessageAvailable(tx: PostgresTransaction, enterpriseId: string, conversationId: string, messageId: string, reader?:ActorContext) {
   const needs = await rows(tx, sql`select s.source_refs from app.assistant_run_steps s join app.assistant_messages m on m.enterprise_id=s.enterprise_id and m.run_id=s.run_id
     where m.enterprise_id=${enterpriseId} and m.conversation_id=${conversationId} and m.id=${messageId}
       and s.kind in ('agent_need_context','agent_need_write') and s.status='succeeded'`);
@@ -34,12 +34,20 @@ export async function agentMessageAvailable(tx: PostgresTransaction, enterpriseI
     where m.enterprise_id=${enterpriseId} and m.conversation_id=${conversationId} and m.id=${messageId} and s.kind='agent_synthesis_context'`);
   if (synthesis) {
     const conversation = await one(tx, sql`select * from app.assistant_conversations where enterprise_id=${enterpriseId} and id=${conversationId}`);
+    if(conversation?.purpose==='project_collaboration') {
+      // A shared project has live membership, not a private-chat owner. Never
+      // manufacture an actor from its first participant or widen preview scope.
+      if(!reader||reader.enterpriseId!==enterpriseId||reader.principal.kind!=='admin'||!reader.capabilities.includes('assistant.project.shared'))return false;
+      await new AssistantRepository(tx,reader).conversation(conversationId);
+      if(!await synthesisContextAvailable(tx,reader,conversation,synthesis.source_refs as SynthesisContext))return false;
+    } else {
     const owner = await one(tx, sql`select user_id,admin_id from app.assistant_participants where enterprise_id=${enterpriseId} and conversation_id=${conversationId} and status='active'
       ${conversation?.purpose === 'customer_consultation' ? sql`and user_id is not null` : sql``} order by id limit 1`);
     if (owner && !owner.user_id && !(conversation?.entry_snapshot as { preview?: unknown })?.preview) return false;
     if (!conversation || !owner || !await synthesisContextAvailable(tx, { enterpriseId, principal: owner.user_id
       ? { kind: 'user', userId: String(owner.user_id) } : { kind: 'admin', adminId: String(owner.admin_id) }, contextVersion: 0, capabilities: [] },
       conversation, synthesis.source_refs as SynthesisContext)) return false;
+    }
   }
   if (!await publicMessageAvailable(tx, enterpriseId, conversationId, messageId)) return false;
   if (!await constructionNoticeAvailable(tx, enterpriseId, conversationId, messageId)) return false;

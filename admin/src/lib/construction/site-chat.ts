@@ -15,6 +15,8 @@ import { handleSiteResolution, projectResolutionVersions, resolutionCommand, val
 import { confirmSiteAction, invalidateSiteAction, requestSiteAction, siteActionWaiting } from './site-actions';
 import { siteActionAcknowledgement, siteActionConfirmation, siteActionInterpretationRequested } from './site-action-contract';
 import { bindSpeechToMessage } from '@/lib/assistant/speech/link';
+import { siteKnowledgeQuestion, siteKnowledgeResponse } from './site-knowledge';
+import { citationProjection } from '@/lib/assistant/knowledge/sources';
 
 export function siteActor(a: ConstructionActor): ActorContext {
   return { enterpriseId: a.enterpriseId, principal: { kind: 'admin', adminId: a.adminId }, contextVersion: 1,
@@ -103,7 +105,8 @@ export class SiteChatService {
           left join app.assistant_runs q on q.enterprise_id=r.enterprise_id and q.id=r.run_id
           where r.enterprise_id=${eid} and r.project_id=${projectId} and r.source_message_id=${String(message.id)}`);
         if (!record) {
-          const response = await siteResponse(tx, eid, projectId, String(c.id), String(message.id), issues);
+          const response = await siteKnowledgeResponse(tx,this.actor,c,String(message.id))
+            || await siteResponse(tx, eid, projectId, String(c.id), String(message.id), issues);
           if (response) items.push({ message, response, record: null });
           continue;
         }
@@ -143,6 +146,15 @@ export class SiteChatService {
     id(grantId); id(mediaId);
     return this.scope(projectId, false, tx => sharedMaterialMedia(tx, this.staff.enterpriseId, projectId, grantId, mediaId));
   }
+  citation(projectId:string,citationId:string) {
+    id(citationId);
+    return this.scope(projectId,false,async(tx,c)=>{
+      const citation=await one(tx,sql`select * from app.assistant_message_citations where enterprise_id=${this.staff.enterpriseId}
+        and conversation_id=${String(c.id)} and id=${citationId}`);
+      if(!citation)fail('assistant_resource_not_found',404);
+      return citationProjection(tx,this.actor,c,citation);
+    });
+  }
   send(projectId: string, body: Row, requestKey: string) {
     object(body, ['text', 'mediaIds', 'versions', 'speech']); key(requestKey);
     const versions = parseSiteVersions(body.versions);
@@ -156,7 +168,8 @@ export class SiteChatService {
         and a.uploader_id=${this.staff.adminId} and a.deleted_at is null and not exists(select 1 from app.construction_site_attachments x where x.enterprise_id=a.enterprise_id and x.project_id=a.project_id and x.media_id=a.id)
         and not ${sharedMediaUsed(eid, projectId, mid)} for share`)) fail('construction_media_unavailable', 422);
       const intent = siteIssueCommand(raw) || planCommand(raw) || resolutionCommand(raw) ? 'request' : siteMessageIntent(raw, mediaIds.length);
-      const message = await appendMessage(tx, this.actor, String(c.id), { author: 'admin', clientMessageId: requestKey, purpose: 'site.source',
+      const knowledgeQuestion=siteKnowledgeQuestion(raw,intent,mediaIds.length);
+      const message = await appendMessage(tx, this.actor, String(c.id), { author: 'admin', clientMessageId: requestKey, purpose: knowledgeQuestion?'site.question':'site.source',
         content: { version: 1, blocks: raw ? [{ type: 'text', text: raw }] : [{ type: 'notice', code: 'site_photos', fallbackText: `现场照片 · ${mediaIds.length}张` }] } });
       await bindSpeechToMessage(tx, this.actor, String(c.id), String(message.id), raw, body.speech);
       if (['plan', 'transfer', 'implement', 'resolve', 'close'].includes(siteActionConfirmation(raw) || '') && mediaIds.length) fail('invalid_plan', 422);
@@ -171,7 +184,7 @@ export class SiteChatService {
       // This only selects a model interpretation path. It never chooses or
       // authorizes an action; the model may retain the existing report path.
       const actionCandidate = siteActionInterpretationRequested(raw, intent);
-      if (actionCandidate && !siteActionAcknowledgement(raw) && !siteIssueCommand(raw) && !planCommand(raw) && !resolutionCommand(raw)) {
+      if (actionCandidate && !knowledgeQuestion && !siteActionAcknowledgement(raw) && !siteIssueCommand(raw) && !planCommand(raw) && !resolutionCommand(raw)) {
         const settings = (await one(tx, sql`select * from app.assistant_enterprise_settings where enterprise_id=${eid}`))!;
         const actionRun = await requestSiteAction(tx, this.actor, c, settings, message);
         if (actionRun) {
@@ -181,6 +194,11 @@ export class SiteChatService {
         }
       }
       if (intent !== 'report') {
+        if(knowledgeQuestion) {
+          const settings=(await one(tx,sql`select * from app.assistant_enterprise_settings where enterprise_id=${eid}`))!;
+          const run=await newRun(tx,this.actor,c,settings,String(message.id),undefined,{kind:'user_message',messageId:String(message.id)},'site.question');
+          return {...run,recordId:null,intent:'query'};
+        }
         const plan = intent === 'request' ? await handlePlan(tx, this.actor, projectId, String(message.id), raw, mediaIds, versions, permission.manage) : null;
         const issue = intent === 'request' ? await handleSiteIssue(tx, this.actor, projectId, String(message.id), raw, versions, permission.manage) : null;
         const resolution = intent === 'request' ? await handleSiteResolution(tx, this.actor, projectId, String(message.id), raw, versions, permission.manage) : null;

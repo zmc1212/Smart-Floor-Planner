@@ -204,7 +204,7 @@ export async function completeAnswer(lease:Lease,answer:GroundedAnswer,evidence:
         if(!source || !String(source.text).includes(citation.quote))fail('invalid_model_citation',502);
         let citationId=saved.get(citation.sourceId);
         if(!citationId) {
-          const isDraft=lease.actor.principal.kind==='admin' && previewPolicy(c).drafts.some(d=>d.id===String(source.document_version_id));
+          const isDraft=lease.actor.principal.kind==='admin' && c.purpose==='knowledge_preview' && previewPolicy(c).drafts.some(d=>d.id===String(source.document_version_id));
           const row=(await one(tx,sql`insert into app.assistant_message_citations(enterprise_id,conversation_id,message_id,run_id,source_kind,resource_type,resource_id,resource_version,
             document_id,document_version_id,chunk_id,source_hash,quote_snapshot,locator,is_draft)
             values(${lease.enterpriseId},${String(c.id)},${String(message.id)},${lease.runId},'knowledge','knowledge_chunk',${citation.sourceId},${String(source.document_version_id)},

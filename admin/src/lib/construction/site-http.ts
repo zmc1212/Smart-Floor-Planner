@@ -20,6 +20,7 @@ export async function siteChatHttp(request: Request, actor: ConstructionActor, p
   const json = (data: unknown) => NextResponse.json({ success: true, data }, { headers: { 'Cache-Control': 'no-store' } });
   if (!path.length && request.method === 'GET') return json(await service.read(projectId, params.has('beforeSeq') ? id(params.get('beforeSeq')) : undefined, params.has('limit') ? Number(params.get('limit')) : 30));
   if (path[0] === 'operations' && path.length === 2 && request.method === 'GET') return json(await service.operation(projectId, path[1]));
+  if (path[0] === 'citations' && path.length === 2 && request.method === 'GET') return json(await service.citation(projectId, path[1]));
   if (path[0] === 'media' && path.length === 2 && request.method === 'GET') {
     const media = await service.media(projectId, id(path[1]));
     return new Response(new Uint8Array(media.data), { headers: { 'Content-Type': media.mime, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
