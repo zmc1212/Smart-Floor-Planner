@@ -7,6 +7,7 @@ const tables = ['construction_camera_controls', 'construction_camera_snapshots',
 export async function constructionCounts(tx: PostgresTransaction, enterpriseId: bigint) {
   const result = [];
   for(const table of ['construction_recordings','construction_camera_recording_periods','construction_camera_recording_policies'])result.push({table,label:'施工服务：'+table,count:Number((await one(tx,sql`select count(*) n from ${sql.raw('app.'+table)} where enterprise_id=${enterpriseId}`))!.n)});
+  for (const table of reportTables) result.push({ table, label: '施工服务：' + table, count: Number((await one(tx, sql`select count(*) n from ${sql.raw('app.' + table)} where enterprise_id=${enterpriseId}`))!.n) });
   for (const table of tables) result.push({ table, label: '施工服务：' + table, count: Number((await one(tx, sql`select count(*) n from ${sql.raw('app.' + table)} where enterprise_id=${enterpriseId}`))!.n) });
   return result;
 }
@@ -19,6 +20,9 @@ export async function deleteConstructionData(tx: PostgresTransaction, enterprise
   await tx.execute(sql`delete from app.construction_camera_sessions where enterprise_id=${enterpriseId}`);
   for(const table of ['construction_recordings','construction_camera_recording_periods','construction_camera_recording_policies'])await tx.execute(sql`delete from ${sql.raw('app.'+table)} where enterprise_id=${enterpriseId}`);
   // The general assistant cleanup owns jobs/usage/messages/conversations. Drop domain FKs first.
+  for (const table of reportTables) await tx.execute(sql`delete from ${sql.raw('app.' + table)} where enterprise_id=${enterpriseId}`);
   for (const table of tables) await tx.execute(sql`delete from ${sql.raw('app.' + table)} where enterprise_id=${enterpriseId}`);
   return counts;
 }
+
+const reportTables = ['construction_report_deliveries', 'construction_report_versions', 'construction_reports', 'construction_followup_bindings', 'construction_report_settings'] as const;

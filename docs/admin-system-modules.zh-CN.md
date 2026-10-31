@@ -1,5 +1,8 @@
 # 后台系统当前功能清单
 
+<!-- xiaok-v1-02-proactive -->
+**V1-02四端自动服务：Limited；当前仅确定性后台基础。** `ConstructionReportService`、`FollowupService`和原鉴权`POST /api/internal/assistant/jobs/run`现支持明确启用后的上海时区日/周调度、真实阶段outbox消费、固定私人跟进目的地、不可变事实版本、幂等站内引用及租约恢复。0103新增5张强制RLS领域表与`construction_followup`；普通咨询、知识预览和S04共享会话继续隔离。负责人/admin/super_admin只在所选企业管理，员工沿当前施工菜单/成员权限，业主沿本人项目关系及明确发布；平台管理员须显式选企启用自己的绑定。每次读取/投递重验原记录与关系，消息缓存仅含报告引用。停止/删除不被次日自动重建，归档遇真实新投递才重新显示，人工接待保留结果并暂停插入，不自动恢复AI。此为服务合同，没有新增设置页、小程序HTTP/客户端入口。事实状态仍为`facts_ready`/`knowledge_status=not_generated`；事项历史/已确认安排聚合、工艺解释、原生卡片/历史/追问及完整业务验收尚未完成。本路径不需要模型或摄取调用；V1-01停止批、解释关闭、未知费用和D2计数2不变。当前证据及限制见[二期合同](./xiaok-assistant-phase-2.zh-CN.md#当前v1-02确定性私人报告基础limited)。 保留处理已脱敏的跟进会话不能回灌报告/未读信息或继续建报告任务；原施工业务记录沿既有生命周期保留。
+
 <!-- xiaok-v1-local-knowledge -->
 **V1-01企业知识对话：Limited。** 本地旅程默认使用微云/1454及用户指定的`装修施工标准手册制度规范/精艺.pdf`（30页扫描件；SHA-256 `efcdc6f1e01ec848d0908e99ddd08929a7f0f07b3942f5b539864361f4aa049b`）。原KnowledgeService文件/解析/复核/索引/发布链保留30份逐页OCR副本，文档376–405；对照原图校对的第29/30页工艺正文为customer_public文档404/405、版本410/411，索引55段，其余28页为OCR/表格待复核的staff_internal草稿。原图/完整PDF、印刷冲突及既有知识保留，示例报价不代表当前条款或现场达标。导入/鉴权原件字节回读见`tmp/v1-01-weiyun-jingyi/import.json`。这是本地预处理，不是在线OCR或放大上传限制。
 

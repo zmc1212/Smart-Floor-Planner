@@ -21,11 +21,14 @@ async function finish(tx: PostgresTransaction, lease: Lease, status: string, err
 async function authorized(repo: AssistantRepository, run: Row) {
   const settings = await repo.settings(true);
   const c = await repo.conversation(String(run.conversation_id));
-  if (!(run.purpose === 'speech.transcribe' ? ['ai', 'human', 'handoff_requested'].includes(String(c.mode)) : c.mode === 'ai') || c.status !== 'open' || c.context_revision !== run.context_revision || settings!.knowledge_epoch !== run.knowledge_epoch
+  const localReport = run.purpose === 'construction.report.facts' && c.purpose === 'construction_followup'
+    && (run.policy_snapshot as Row).localWorkflow === 'construction-report-facts-v1';
+  if (!((run.purpose === 'speech.transcribe' || localReport) ? ['ai', 'human', 'handoff_requested'].includes(String(c.mode)) : c.mode === 'ai')
+    || (localReport ? c.status === 'closed' : c.status !== 'open') || c.context_revision !== run.context_revision || (!localReport && settings!.knowledge_epoch !== run.knowledge_epoch)
     || Number(settings!.policy_version) !== Number((run.policy_snapshot as { policyVersion: number }).policyVersion)) fail('context_changed');
   const configuredAgent = agentConfig((run.policy_snapshot as Row).agent);
   if (configuredAgent && agentCapabilityFingerprint(configuredAgent) !== agentCapabilityFingerprint(agentConfig(settings!.agent_config))) fail('context_changed');
-  await validatePreviewSnapshot(repo.tx,repo.actor,c);
+  if (!localReport) await validatePreviewSnapshot(repo.tx,repo.actor,c);
   return c;
 }
 /** Global scan exposes routing IDs only; every claim and recovery uses the tenant scope. */
@@ -135,6 +138,19 @@ export async function completeLocalSpeech(lease: Lease, durationMs: number, comm
     await tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,operation_key,category,quantity,cost_micros,currency,measurement_kind)
       values(${lease.enterpriseId},${lease.runId},${'speech:' + lease.runId},'audio_input_ms',${durationMs},0,'CNY','observed') on conflict do nothing`);
     await tx.execute(sql`update app.assistant_quota_reservations set status='settled',settled_tokens=0,settled_cost_micros=0,version=version+1,updated_at=now() where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}`);
+    await finish(tx, lease, 'succeeded', null);
+  });
+}
+/** A local fact snapshot is not model generation. Its commit and terminal receipt
+ * share the existing lease transaction, including lost-receipt recovery. */
+export async function completeLocalReport(lease: Lease, commit: (tx: PostgresTransaction, run: Row) => Promise<void>) {
+  return withTenantTransaction(lease.enterpriseId, async tx => {
+    const { run, job } = await runContext(tx, lease);
+    if (run.purpose !== 'construction.report.facts' || (run.policy_snapshot as Row).localWorkflow !== 'construction-report-facts-v1'
+      || job.provider_started_at) fail('context_changed');
+    await commit(tx, run);
+    await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
+      values(${lease.enterpriseId},${lease.runId},1,'construction_report_facts','succeeded','{"providerInvoked":false}') on conflict do nothing`);
     await finish(tx, lease, 'succeeded', null);
   });
 }

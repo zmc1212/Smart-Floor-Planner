@@ -137,7 +137,7 @@ export class ConstructionService {
       if (!manage) fail('construction_forbidden', 403);
       return idempotent(tx, actorContext(a), 'construction:' + action + ':' + pid, requestKey!, input, async () => {
         if (version(input.expectedVersion) !== Number(p.version)) fail('version_conflict');
-        let remind = false, followUp = false;
+        let remind = false, followUp = false, stageChanged = false;
         let auditInput = input;
         if (action === 'update') {
           if (!owner && input.customerAccess !== p.customer_access) fail('construction_forbidden', 403);
@@ -179,15 +179,18 @@ export class ConstructionService {
           if (!stage || typeof input.sendReminder !== 'boolean') fail('construction_stage_unavailable', 422);
           if (input.sendReminder && !stage.visitReminder) fail('construction_reminder_disabled', 422);
           const changed = key !== p.current_stage_key;
+          stageChanged = changed;
           remind = stage.visitReminder && (changed || input.sendReminder);
           followUp = changed && !!stage.followUps?.length;
           await tx.execute(sql`update app.construction_projects set current_stage_key=${key},progress_note=${note},progress_revision=progress_revision+${changed || remind || note !== p.progress_note ? 1 : 0} where enterprise_id=${eid} and id=${pid}`);
         }
         const updated = (await one(tx, sql`update app.construction_projects set version=version+1,updated_at=now() where enterprise_id=${eid} and id=${pid} returning *`))!;
         await audit(tx, a, pid, action, auditInput);
-        if ((remind || followUp) && updated.customer_access) {
+        // The actual stage event also belongs to internal staff follow-up; it
+        // must not depend on homeowner publication or a foreground chat.
+        if (stageChanged || ((remind || followUp) && updated.customer_access)) {
           await recordStageReminder(tx, actorContext(a), updated, Number(settings.version), stageReminder(String(updated.name), currentStage(updated, stages)!, String(updated.progress_note)));
-          for (const c of conversations) {
+          for (const c of updated.customer_access ? conversations : []) {
             const customer = await one(tx, sql`select customer_user_id from app.leads where enterprise_id=${eid} and id=${String(updated.lead_id)} and archived_at is null`);
             if (customer?.customer_user_id) await syncConstructionReminders(tx, { ...actorContext(a), principal: { kind: 'user', userId: String(customer.customer_user_id) } }, c);
           }

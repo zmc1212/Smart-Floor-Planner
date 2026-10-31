@@ -23,6 +23,18 @@ export class AssistantRepository {
     const enterprise = await one(this.tx, sql`select id from app.enterprises where id=${a.enterpriseId} and status='active' for share`);
     if (!enterprise) fail('assistant_resource_not_found', 404);
     if (a.principal.kind === 'admin') {
+      if (a.capabilities.includes('assistant.followup.delivery')) {
+        if (!(await one(this.tx, sql`select app.construction_followup_staff_access(${a.principal.adminId}::bigint,${a.enterpriseId}::bigint) as role`))?.role)
+          fail('assistant_capability_forbidden', 403);
+        return;
+      }
+      if (a.capabilities.includes('assistant.followup.self')) {
+        const scope = a.entry || {};
+        if (!(await one(this.tx, sql`select app.assistant_shared_actor_access(${a.principal.adminId}::bigint,${a.enterpriseId}::bigint,
+          ${scope.miniProgramUserId || null}::bigint,${scope.miniProgramContextVersion ?? 0}::integer) as allowed`))?.allowed)
+          fail('assistant_capability_forbidden', 403);
+        return;
+      }
       if (a.capabilities.includes('assistant.project.shared')) {
         const scope = a.entry || {};
         const current = await one(this.tx, sql`select app.assistant_shared_actor_access(${a.principal.adminId}::bigint,${a.enterpriseId}::bigint,
@@ -39,6 +51,9 @@ export class AssistantRepository {
       if (!a.capabilities.includes('assistant.preview.self')) fail('assistant_capability_forbidden',403);
       await authorizeKnowledgeManager(this.tx,a.enterpriseId,a.principal.adminId);return;
     }
+    // Only trusted background assembly supplies delivery; it has no Mini login
+    // session. conversation() still checks live ownership on every operation.
+    if (a.capabilities.includes('assistant.followup.delivery')) return;
     const user = await one(this.tx, sql`select app.assistant_identity_is_current(${a.principal.userId}::bigint,${a.contextVersion}::integer) as valid`);
     if (!user?.valid) fail('identity_context_invalid', 401);
   }
@@ -50,6 +65,18 @@ export class AssistantRepository {
   }
   async conversation(conversationId: string) {
     const a = this.actor;
+    if (a.capabilities.some(c => c === 'assistant.followup.self' || c === 'assistant.followup.delivery')) {
+      const subject = a.principal.kind === 'user' ? a.principal.userId : a.principal.adminId;
+      const conversation = await one(this.tx, sql`select c.* from app.assistant_conversations c
+        join app.assistant_participants p on p.enterprise_id=c.enterprise_id and p.conversation_id=c.id
+        where c.enterprise_id=${a.enterpriseId} and c.id=${conversationId} and c.purpose='construction_followup'
+        and coalesce(c.entry_snapshot->>'retentionRedacted','false')<>'true'
+        and p.principal_kind=${a.principal.kind} and p.status='active'
+        and ${a.principal.kind === 'user' ? sql`p.user_id=${subject}` : sql`p.admin_id=${subject}`}
+        and app.assistant_followup_conversation_access(${a.principal.kind},${subject}::bigint,${a.enterpriseId}::bigint,c.id) for update of c,p`);
+      if (!conversation) fail('assistant_resource_not_found', 404);
+      return conversation;
+    }
     if (a.principal.kind === 'admin' && a.capabilities.includes('assistant.project.shared')) {
       const conversation = await one(this.tx, sql`select * from app.assistant_conversations where enterprise_id=${a.enterpriseId}
         and id=${conversationId} and purpose='project_collaboration' for update`);
