@@ -51,7 +51,10 @@ Page({
   onHide() { this._visible = false; if (this.speechController) this.speechController.hide(); this._retakeMessageId = null; this._record = null; clearTimeout(this._timer); clearTimeout(this._sheetTimer); if (this.client) this.client.hide(); this.setData({ speechBusy: false, items: [], mediaPaths: {}, sheet: '', sheetOpen: false, project: null, rooms: [], draft: '', edit: {}, versions: [], withdrawalReason: '', conflict: null, attachments: [], write: false, pendingRetakeCount: 0, pendingRetakeTarget: '' }); },
   onUnload() { this.onHide(); },
   onResize() { if (!this.data.keyboardHeight) this.setData(metrics()); },
-  poll() { clearTimeout(this._timer); if (!this._visible) return; this._timer = setTimeout(async () => { if (!this.client.state.busy && !this.data.sheet) await this.client.load(); this.poll(); }, 4000); },
+  poll() { clearTimeout(this._timer); if (!this._visible) return; this._timer = setTimeout(async () => {
+    const canRefresh = !this.data.sheet || (this.data.sheet === 'source' && !this.data.citationLoading);
+    if (!this.client.state.busy && canRefresh) await this.client.load(); this.poll();
+  }, 4000); },
   refresh() { return this.client.load(); }, older() { return this.client.load(true); },
   async openCitation(e) {
     const id = String(e.currentTarget.dataset.id), epoch = this.client.epoch;

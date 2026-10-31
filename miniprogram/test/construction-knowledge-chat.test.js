@@ -2,6 +2,19 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { SiteClient, decorate } = require('../packages/construction/chat/site-client');
 
+test('an open read-only source refreshes permission while editing and in-flight source reads stay frozen',async()=>{
+  global.wx={getWindowInfo:()=>({windowWidth:390,windowHeight:844,statusBarHeight:44}),getMenuButtonBoundingClientRect:()=>({top:48,height:32,left:290})};
+  let definition;global.Page=p=>{definition=p;};
+  delete require.cache[require.resolve('../packages/construction/chat/chat')];require('../packages/construction/chat/chat');delete global.Page;
+  const originalSet=global.setTimeout,originalClear=global.clearTimeout;
+  try{for(const [sheet,busy,loading,expected] of [['',false,false,1],['source',false,false,1],['source',false,true,0],['edit',false,false,0],['publish',false,false,0],['source',true,false,0]]){
+    let scheduled,reads=0,rescheduled=0;
+    global.setTimeout=fn=>{scheduled=fn;return 1;};global.clearTimeout=()=>{};
+    const page={_visible:true,data:{sheet,citationLoading:loading},client:{state:{busy},load:async()=>{reads++;}},poll:()=>{rescheduled++;}};
+    definition.poll.call(page);assert.ok(scheduled);await scheduled();assert.equal(reads,expected,JSON.stringify({sheet,busy,loading}));assert.equal(rescheduled,1);
+  }}finally{global.setTimeout=originalSet;global.clearTimeout=originalClear;delete require.cache[require.resolve('../packages/construction/chat/chat')];}
+});
+
 test('knowledge reentry keeps original text and source actions separate from editable construction records',()=>{
   const item=decorate({message:{id:'10',content:{blocks:[{text:'管根要怎么处理？'}]},created_at:'2026-10-31'},record:null,
     response:{text:'先核对管根，再按原资料处理。',citations:[{id:'11',title:'精艺 · 原PDF第30页',available:true}],media:[],status:'succeeded'}});
