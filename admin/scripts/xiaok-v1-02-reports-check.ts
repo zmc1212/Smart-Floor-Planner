@@ -29,8 +29,10 @@ assert.ok(!fs.existsSync(path.join(output, 'report.json')), 'Retain original fai
 fs.mkdirSync(output, { recursive: true });
 const prefix = 'synthetic-v1-02-' + randomUUID();
 const boundariesOnly = process.argv.includes('--delivery-boundaries-only');
+const firstEnableOnly = process.argv.includes('--first-enable-only');
+assert.ok(!firstEnableOnly || !boundariesOnly, 'Keep fixed acceptance scopes separate');
 const report: { checks: Row[]; fixture: Row; [key: string]: unknown } = { startedAt: new Date().toISOString(), prefix, enterpriseId: eid,
-  scope: boundariesOnly ? 'stage timestamp and stop/resume delivery boundaries only; reuse service-02 for unchanged scope' : 'fixed deterministic backend matrix', checks: [], fixture: {} };
+  scope: firstEnableOnly ? 'first valid enablement binding discovery only; no report/model/native run' : boundariesOnly ? 'stage timestamp and stop/resume delivery boundaries only; reuse service-02 for unchanged scope' : 'fixed deterministic backend matrix', checks: [], fixture: {} };
 const save = () => fs.writeFileSync(path.join(output, 'report.json'), JSON.stringify(report, null, 2));
 const step = async (name: string, work: () => Promise<unknown>) => {
   try { const result = await work(); report.checks.push({ name, passed: true, result }); console.log(name + ': PASS'); return result; }
@@ -48,6 +50,7 @@ const bindCheck = () => {
   fs.writeFileSync(path.join(output, 'binding.json'), JSON.stringify({ before: beforeBinding, after, drift }, null, 2)); assert.deepEqual(drift, []);
 };
 let release: (() => Promise<void>) | undefined, settingsBefore: Row | undefined;
+let assistantEnabledBefore: boolean | undefined, enabledInput!: Row, enabledKey = '';
 const users: string[] = [], admins: string[] = [], projects: string[] = [], muted: Row[] = [], fixtureBindings: string[] = [];
 const read = <T>(work: Parameters<typeof withTenantTransaction<T>>[1]) => withTenantTransaction(eid, work);
 const staffActor = (adminId: string): ActorContext => ({ enterpriseId: eid, principal: { kind: 'admin', adminId }, contextVersion: 0, capabilities: ['assistant.followup.self'] });
@@ -123,9 +126,64 @@ async function main() {
       }
     });
     report.fixture = { users, admins, projects, mutedBindingIds: muted.map(b => String(b.id)) };
-    const policy = await config.configure({ expectedVersion: Number(settingsBefore?.version || 0), enabled: true, dailyTime: '20:00', weeklyTime: '08:00', projectIds: projects, stageKeys: ['utilities'] }, randomUUID());
+    enabledInput = { expectedVersion: Number(settingsBefore?.version || 0), enabled: true, dailyTime: '20:00', weeklyTime: '08:00', projectIds: projects, stageKeys: firstEnableOnly ? [] : ['utilities'] }; enabledKey = randomUUID();
+    if (firstEnableOnly) {
+      assistantEnabledBefore = Boolean((await read(tx => one(tx, sql`select enabled from app.assistant_enterprise_settings where enterprise_id=${eid}`)))?.enabled);
+      assert.equal(assistantEnabledBefore, true);
+      await read(tx => tx.execute(sql`update app.assistant_enterprise_settings set enabled=false where enterprise_id=${eid}`));
+      const deferred = await config.configure(enabledInput, randomUUID());
+      const premature = await read(tx => rows(tx, sql`select id from app.construction_followup_bindings where enterprise_id=${eid}
+        and (user_id in (${users[0]},${users[1]}) or admin_id in (${admins[0]},${admins[1]},${admins[2]}))`));
+      assert.equal(premature.length, 0, 'Disabled assistant cannot create follow-up destinations');
+      await read(tx => tx.execute(sql`update app.assistant_enterprise_settings set enabled=${assistantEnabledBefore} where enterprise_id=${eid}`));
+      enabledInput = { ...enabledInput, expectedVersion: Number(deferred.version) };
+      report.assistantDisabledGate = { noPrematureBindings: true, policyRetained: deferred.enabled };
+    }
+    const policy = await config.configure(enabledInput, enabledKey);
     return { users, admins, projects, nextDaily: policy.next_daily_at, nextWeekly: policy.next_weekly_at };
   });
+  if (firstEnableOnly) {
+    const bindings = await read(tx => rows(tx, sql`select * from app.construction_followup_bindings where enterprise_id=${eid}
+      and (user_id in (${users[0]},${users[1]}) or admin_id in (${admins[0]},${admins[1]},${admins[2]})) order by id`));
+    fixtureBindings.push(...bindings.map(b => String(b.id))); report.fixture.bindingIds = fixtureBindings;
+    const services = [new FollowupService(customerActor()), new FollowupService(staffActor(admins[1])), new FollowupService(staffActor(admins[2])), new FollowupService(staffActor(admins[0]))];
+    await step('enablement alone discovers four private audiences before any due tick or client open', async () => {
+      assert.equal(bindings.length, 5); assert.deepEqual(bindings.map(b => b.audience).sort(), ['boss','customer','customer','designer','worker']);
+      for (const s of services) assert.equal((await s.list()).items.length, 1);
+      assert.equal((await read(tx => one(tx, sql`select count(*)::int n from app.construction_reports where enterprise_id=${eid}
+        and ${JSON.stringify(fixtureBindings)}::jsonb ? binding_id::text`)))!.n, 0);
+      assert.equal((await withPlatformTransaction(tx => one(tx, sql`select count(*)::int n from app.assistant_jobs where status in ('queued','running')`)))!.n, 0);
+      return { bindings: fixtureBindings, reportCount: 0, dueTick: false, clientOpen: false };
+    });
+    await step('same-key policy reentry and staff denial preserve binding identity', async () => {
+      const saved = await config.settings(), repeat = await config.configure(enabledInput, enabledKey); assert.equal(repeat.version, saved.version);
+      await assert.rejects(new ConstructionReportService({ enterpriseId: eid, adminId: admins[1] }).configure({ ...enabledInput, expectedVersion: saved.version }, randomUUID()));
+      const ids = await read(tx => rows(tx, sql`select id::text from app.construction_followup_bindings where enterprise_id=${eid}
+        and (user_id in (${users[0]},${users[1]}) or admin_id in (${admins[0]},${admins[1]},${admins[2]})) order by id`));
+      assert.deepEqual(ids.map(b => b.id), fixtureBindings); return { sameVersion: repeat.version, duplicateBindings: 0, workerDenied: true };
+    });
+    await step('reconfiguration cannot revive stopped, deleted or retention-redacted destinations', async () => {
+      const worker = bindings.find(b => b.audience === 'worker')!, designer = bindings.find(b => b.audience === 'designer')!, customer = bindings.find(b => String(b.user_id) === users[0])!;
+      await services[1].change(String(worker.id), 'stop', Number(worker.version), randomUUID());
+      await services[2].change(String(designer.id), 'delete', Number(designer.version), randomUUID());
+      await read(tx => tx.execute(sql`update app.assistant_conversations set entry_snapshot=entry_snapshot || '{"retentionRedacted":true}'::jsonb
+        where enterprise_id=${eid} and id=${String(customer.conversation_id)}`));
+      const current = await config.settings();
+      await config.configure({ ...enabledInput, expectedVersion: Number(current.version), dailyTime: '21:00' }, randomUUID());
+      const result = await read(tx => rows(tx, sql`select id::text,status,conversation_id::text from app.construction_followup_bindings where enterprise_id=${eid}
+        and ${JSON.stringify(fixtureBindings)}::jsonb ? id::text order by id`));
+      assert.deepEqual(result.map(b => b.id), fixtureBindings);
+      assert.equal(result.find(b => b.id === String(worker.id))!.status, 'stopped'); assert.equal(result.find(b => b.id === String(designer.id))!.status, 'deleted');
+      assert.equal(result.find(b => b.id === String(customer.id))!.conversation_id, String(customer.conversation_id));
+      assert.equal((await services[0].list()).items.length, 0);
+      assert.equal((await services[2].list()).items.length, 0); return { identitiesUnchanged: true, stopped: worker.id, deleted: designer.id, redacted: customer.id };
+    });
+    await step('binding-only discovery adds no model/knowledge attempts and keeps source stable', async () => {
+      report.accountingAfter = await baseline(); assert.deepEqual(report.accountingAfter, report.accountingBefore); bindCheck();
+      return { providerCalls: 0, knowledgeCalls: 0, reportCount: 0, closure3753Unchanged: true, drift: [] };
+    });
+    report.passed = true; return;
+  }
   const policy = await config.settings(), dailyAt = new Date(String(policy.next_daily_at)), period = latestReportPeriod('daily', dailyAt, '20:00');
   const weeklyAt = nextReportAt('weekly', dailyAt, '08:00');
   if (boundariesOnly) {
@@ -336,6 +394,7 @@ finally {
         name: '合成测试·V1-02已归档', status: 'archived', customerAccess: false }, randomUUID());
     }
     await withPlatformTransaction(async tx => {
+      if (assistantEnabledBefore !== undefined) await tx.execute(sql`update app.assistant_enterprise_settings set enabled=${assistantEnabledBefore} where enterprise_id=${eid}`);
       for (const b of muted) {
         assert.equal(Number((await one(tx, sql`select count(*) n from app.assistant_messages where enterprise_id=${eid} and conversation_id=${String(b.conversation_id)}`))!.n), 0);
         await tx.execute(sql`delete from app.construction_followup_bindings where enterprise_id=${eid} and id=${String(b.id)}`);

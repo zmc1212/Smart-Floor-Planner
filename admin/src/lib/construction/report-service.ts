@@ -1,13 +1,13 @@
 import { sql } from 'drizzle-orm';
 import { withTenantTransaction } from '@/db/transaction';
-import { one, type Row } from '@/db/repositories/assistant-repository';
+import { assistantWritesEnabled, one, type Row } from '@/db/repositories/assistant-repository';
 import { fail, id, key, type ActorContext } from '@/lib/assistant/contracts';
 import { idempotent } from '@/lib/assistant/core/conversation';
 import { constructionAccess } from './service';
 import { object, type ConstructionActor } from './contracts';
 import { readStageSettings } from './stages-store';
 import { nextReportAt, reportTime } from './report-calendar';
-import { enqueueReport } from './report-store';
+import { discoverFollowups, enqueueReport } from './report-store';
 
 const asDate = (v: unknown) => new Date(String(v));
 /** Domain operations only. No new settings UI, customer message or model path
@@ -44,11 +44,17 @@ export class ConstructionReportService {
           where enterprise_id=${eid} and type='construction.stage.updated.v1'`))!.id);
         const nextDaily = old?.enabled && old.daily_time === daily ? asDate(old.next_daily_at) : nextReportAt('daily', now, daily);
         const nextWeekly = old?.enabled && old.weekly_time === weekly ? asDate(old.next_weekly_at) : nextReportAt('weekly', now, weekly);
-        return (await one(tx, sql`insert into app.construction_report_settings(enterprise_id,enabled,daily_time,weekly_time,project_ids,stage_keys,next_daily_at,next_weekly_at,stage_cursor)
+        const saved = (await one(tx, sql`insert into app.construction_report_settings(enterprise_id,enabled,daily_time,weekly_time,project_ids,stage_keys,next_daily_at,next_weekly_at,stage_cursor)
           values(${eid},${input.enabled},${daily},${weekly},${JSON.stringify(projects)}::jsonb,${JSON.stringify(stages)}::jsonb,${nextDaily},${nextWeekly},${cursor})
           on conflict(enterprise_id) do update set enabled=excluded.enabled,daily_time=excluded.daily_time,weekly_time=excluded.weekly_time,
             project_ids=excluded.project_ids,stage_keys=excluded.stage_keys,next_daily_at=excluded.next_daily_at,next_weekly_at=excluded.next_weekly_at,
             stage_cursor=excluded.stage_cursor,version=construction_report_settings.version+1,updated_at=now() returning *`))!;
+        // First valid enablement establishes destinations before any due report
+        // or client visit. Reuse discovery's exact scope and lifecycle guards;
+        // its failure rolls back policy and bindings together, never half-enables.
+        const assistant = await one(tx, sql`select * from app.assistant_enterprise_settings where enterprise_id=${eid}`);
+        if (saved.enabled && assistantWritesEnabled(assistant)) await discoverFollowups(tx, eid, saved);
+        return saved;
       });
     });
   }
