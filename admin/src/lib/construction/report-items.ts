@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
 import { one, rows } from '@/db/repositories/assistant-repository';
 import { fingerprint } from '@/lib/assistant/contracts';
-import { readSiteIssue, readSiteIssueBase } from './site-issues';
+import { readSiteIssue, readSiteIssueBase, type currentRecord } from './site-issues';
 import { readPlan } from './site-plans';
 import { siteAccessRevoked } from './site-access';
 
@@ -15,6 +15,51 @@ export type ReportArrangement = { id: string; revision: number; number: number; 
 export type ReportItems = { itemsCutoffAt: string; itemsPeriodStart: string; issues: ReportIssue[]; issuesTruncated: boolean;
   arrangements: ReportArrangement[]; arrangementsTruncated: boolean };
 type RecordAccess = (recordId: string) => Promise<boolean>;
+type PublishedRecordAccess = (recordId: string) => ReturnType<typeof currentRecord>;
+export type ReportPublishedRecordItem = { recordId: string; recordVersion: number; sourceHash: string;
+  publishedAt: string; room: string; pending: string; coordination: string; carriedOver: boolean };
+export type CustomerReportItems = { itemsCutoffAt: string; itemsPeriodStart: string;
+  publishedRecordItems: ReportPublishedRecordItem[]; publishedRecordItemsTruncated: boolean };
+
+/** Only the exact customer publication is portable across the owner's chats.
+ * These are recorded pending/coordination excerpts, never internal issue state,
+ * private replies, confirmed arrangements or a grant from another consultation. */
+function publishedRecordItem(source: Awaited<ReturnType<typeof currentRecord>>, start: Date, cutoff: Date): ReportPublishedRecordItem | null {
+  if (!source || source.row.status !== 'published' || source.row.audience !== 'customer') return null;
+  const r = source.row, publishedAt = new Date(String(r.published_at)), data = r.data as { pending?: string; coordination?: string };
+  if (!(publishedAt < cutoff)) return null;
+  const pending = typeof data.pending === 'string' ? data.pending : '', coordination = typeof data.coordination === 'string' ? data.coordination : '';
+  if (!pending.trim() && !coordination.trim()) return null;
+  return { recordId: String(r.id), recordVersion: Number(r.published_version), sourceHash: source.hash,
+    publishedAt: publishedAt.toISOString(), room: String(r.room_name_snapshot), pending, coordination, carriedOver: publishedAt < start };
+}
+
+export async function collectCustomerReportItems(tx: PostgresTransaction, eid: string, pid: string, uid: string, start: Date, cutoff: Date,
+  canRead: PublishedRecordAccess): Promise<CustomerReportItems> {
+  // Filter by recipient and publication before applying the candidate bound.
+  const candidates = await rows(tx, sql`select id from app.construction_site_records where enterprise_id=${eid} and project_id=${pid}
+    and status='published' and audience='customer' and published_customer_id=${uid} and published_at<${cutoff}
+    and (coalesce(btrim(data->>'pending'),'')<>'' or coalesce(btrim(data->>'coordination'),'')<>'')
+    order by published_at desc,id desc limit 51`);
+  const publishedRecordItems: ReportPublishedRecordItem[] = [];
+  for (const candidate of candidates.slice(0, 50)) {
+    const item = publishedRecordItem(await canRead(String(candidate.id)), start, cutoff);
+    if (item) publishedRecordItems.push(item);
+  }
+  return { itemsCutoffAt: cutoff.toISOString(), itemsPeriodStart: start.toISOString(), publishedRecordItems,
+    publishedRecordItemsTruncated: candidates.length > 50 };
+}
+
+/** Revalidate saved originals, without adding later publications to an old report. */
+export async function customerReportItemsAvailable(project: Partial<CustomerReportItems>, canRead: PublishedRecordAccess) {
+  if (!project.itemsCutoffAt || !project.itemsPeriodStart) return !project.publishedRecordItems?.length;
+  const start = new Date(project.itemsPeriodStart), cutoff = new Date(project.itemsCutoffAt);
+  for (const saved of project.publishedRecordItems || []) {
+    const current = publishedRecordItem(await canRead(saved.recordId), start, cutoff);
+    if (!current || fingerprint(current) !== fingerprint(saved)) return false;
+  }
+  return true;
+}
 
 /** Select event history at the report's exclusive cutoff, then reuse the live
  * original/source/member guards. Current state is never substituted for history. */
