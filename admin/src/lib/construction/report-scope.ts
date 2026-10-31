@@ -5,14 +5,16 @@ import { fingerprint, type ActorContext } from '@/lib/assistant/contracts';
 import { currentRecord } from './site-issues';
 import { publishedSiteRecord } from './site-publications';
 import { siteAccessRevoked } from './site-access';
+import { collectReportItems, reportItemsAvailable, type ReportItems } from './report-items';
 
 export type FollowupAudience = 'customer' | 'worker' | 'designer' | 'boss';
 export type ReportRecord = { id: string; version: number; hash: string; publishedAt: string; room: string; data: Row };
-export type ReportProject = { id: string; name: string; stageKey: string | null; progressRevision: number;
+export type ReportProject = Partial<ReportItems> & { id: string; name: string; stageKey: string | null; progressRevision: number;
   stageEvents: Array<{ id: string; revision: number; stageKey: string; at: string }>;
   stageEventsTruncated: boolean; records: ReportRecord[]; recordsTruncated: boolean; noPublishedRecords: boolean };
 export type ReportFacts = { protocol: 'construction-report-facts-v1'; projects: ReportProject[]; projectsTruncated: boolean;
-  knowledgeStatus: 'not_generated'; arrangementsStatus: 'not_aggregated'; issuesStatus: 'not_aggregated' };
+  knowledgeStatus: 'not_generated'; arrangementsStatus: 'not_aggregated' | 'aggregated' | 'original_consultation_only';
+  issuesStatus: 'not_aggregated' | 'aggregated' | 'original_consultation_only' };
 
 /** Server-only routing actor. HTTP assembly must use followup.self plus its
  * existing signed Mini/Web identity; this capability never comes from input. */
@@ -76,14 +78,18 @@ export async function collectReportFacts(tx: PostgresTransaction, eid: string, b
       where enterprise_id=${eid} and type='construction.stage.updated.v1' and aggregate_id=${pid}
       and created_at<=${report.cutoff_at as Date} order by aggregate_version desc limit 31`);
     const latest = events[0], stageKey = latest ? String((latest.payload as Row).stageKey) : null;
+    const items = report.kind !== 'stage' && binding.audience !== 'customer'
+      ? await collectReportItems(tx, eid, pid, new Date(String(report.period_start)), new Date(String(report.cutoff_at)),
+        async rid => !!await accessibleRecord(tx, eid, binding, pid, rid)) : {};
     // Unknown history stays unknown; the current stage must not rewrite an old period.
-    result.push({ id: pid, name: String(p.name), stageKey, progressRevision: Number(latest?.aggregate_version || 0),
+    result.push({ ...items, id: pid, name: String(p.name), stageKey, progressRevision: Number(latest?.aggregate_version || 0),
       stageEvents: events.slice(0, 30).filter(e => new Date(String(e.created_at)) >= new Date(String(report.period_start))).reverse().map(e => ({
         id: String(e.id), revision: Number(e.aggregate_version), stageKey: String((e.payload as Row).stageKey), at: new Date(String(e.created_at)).toISOString() })),
       stageEventsTruncated: events.length > 30, records, recordsTruncated: candidates.length > 50, noPublishedRecords: records.length === 0 });
   }
+  const itemsStatus = report.kind === 'stage' ? 'not_aggregated' : binding.audience === 'customer' ? 'original_consultation_only' : 'aggregated';
   return { protocol: 'construction-report-facts-v1', projects: result, projectsTruncated: projects.length > 20,
-    knowledgeStatus: 'not_generated', arrangementsStatus: 'not_aggregated', issuesStatus: 'not_aggregated' };
+    knowledgeStatus: 'not_generated', arrangementsStatus: itemsStatus, issuesStatus: itemsStatus };
 }
 /** Revalidate originals and current relationships on every read and delivery.
  * No stored project title, count or summary escapes a revoked section. */
@@ -101,6 +107,8 @@ export async function projectReportFacts(tx: PostgresTransaction, eid: string, b
     // A withdrawn original invalidates this saved section rather than silently
     // presenting a different historical report. Corrections create a new version.
     if (records.length !== p.records.length) continue;
+    if (binding.audience === 'customer' && (p.issues?.length || p.arrangements?.length)) continue;
+    if (!await reportItemsAvailable(tx, eid, p.id, p, async rid => !!await accessibleRecord(tx, eid, binding, p.id, rid))) continue;
     projects.push(p);
   }
   return { ...facts, projects, projectsTruncated: projects.length === facts.projects.length && facts.projectsTruncated };

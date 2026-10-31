@@ -78,12 +78,14 @@ export async function currentRecord(tx: PostgresTransaction, eid: string, pid: s
   return { row: r, media, hash: fingerprint({ data: r.data, content: r.content, roomId: String(r.room_id), roomName: r.room_name_snapshot, status: r.status, media }) };
 }
 
-async function issueData(tx: PostgresTransaction, eid: string, pid: string, issueId: string): Promise<Issue | null> {
+async function issueData(tx: PostgresTransaction, eid: string, pid: string, issueId: string, asOf?: Date): Promise<Issue | null> {
   const opened = await one(tx, sql`select id,payload from app.domain_event_outbox where enterprise_id=${eid} and id=${issueId}
-    and type='construction.site.issue.opened.v1' and payload->>'projectId'=${pid}`);
+    and type='construction.site.issue.opened.v1' and payload->>'projectId'=${pid}
+    ${asOf ? sql`and created_at<${asOf}` : sql``}`);
   if (!opened) return null;
   const latest = await one(tx, sql`select payload from app.domain_event_outbox where enterprise_id=${eid} and type='construction.site.issue.progress.v1'
-    and aggregate_type='construction_site_issue' and aggregate_id=${issueId} order by aggregate_version desc limit 1`);
+    and aggregate_type='construction_site_issue' and aggregate_id=${issueId}
+    ${asOf ? sql`and created_at<${asOf}` : sql``} order by aggregate_version desc limit 1`);
   return { ...(latest?.payload || opened.payload) as Issue, issueId };
 }
 
@@ -109,8 +111,8 @@ export async function siteTransferAssignee(tx: PostgresTransaction, eid: string,
 }
 
 /** Source/assignment revision stays independent of formal execution/closure revisions. */
-export async function readSiteIssueBase(tx: PostgresTransaction, eid: string, pid: string, issueId: string): Promise<IssueView | null> {
-  const issue = await issueData(tx, eid, pid, issueId); if (!issue) return null;
+export async function readSiteIssueBase(tx: PostgresTransaction, eid: string, pid: string, issueId: string, asOf?: Date): Promise<IssueView | null> {
+  const issue = await issueData(tx, eid, pid, issueId, asOf); if (!issue) return null;
   const source = await currentRecord(tx, eid, pid, issue.recordId);
   const materials = issue.roomId ? await sharedMaterials(tx, eid, pid, issue.roomId) : null;
   const request = issue.requestMessageId ? await one(tx, sql`select m.content from app.assistant_messages m join app.construction_chats c
@@ -122,6 +124,9 @@ export async function readSiteIssueBase(tx: PostgresTransaction, eid: string, pi
   const valid = requestAvailable && source && Number(source.row.version) === issue.recordVersion && source.hash === issue.sourceHash
     && (!issue.materialVersion || materials?.version === issue.materialVersion);
   const owner = issue.ownerId ? await effectiveOwner(tx, eid, pid, issue.ownerId) : null;
+  // Historical selection does not restore a removed assignee or turn that
+  // removal into a newly recorded historical "unassigned" state.
+  if (asOf && issue.ownerId && !owner) return null;
   const ownerName = owner ? String(owner.display_name || owner.username) : '';
   const status = issue.state === 'cancelled' ? 'cancelled' : !valid ? 'invalidated' : !owner ? 'awaiting_owner' : issue.state;
   let text = `事项${issueId} · 修订${issue.revision} · 原记录${issue.recordId}：`;
@@ -145,9 +150,9 @@ export async function readSiteIssueBase(tx: PostgresTransaction, eid: string, pi
     ownerId: owner ? issue.ownerId : null, ownerName, status, sourceAvailable: !!valid, text };
 }
 
-export async function readSiteIssue(tx: PostgresTransaction, eid: string, pid: string, issueId: string): Promise<IssueView | null> {
-  const issue = await readSiteIssueBase(tx, eid, pid, issueId); if (!issue) return null;
-  const resolution = await readSiteResolution(tx, eid, pid, issueId, issue);
+export async function readSiteIssue(tx: PostgresTransaction, eid: string, pid: string, issueId: string, asOf?: Date): Promise<IssueView | null> {
+  const issue = await readSiteIssueBase(tx, eid, pid, issueId, asOf); if (!issue) return null;
+  const resolution = await readSiteResolution(tx, eid, pid, issueId, issue, asOf);
   if (!resolution) return issue;
   return { ...issue, status: resolution.available ? resolution.state === 'reopened' ? issue.status : resolution.state
     : resolution.issueRevision === issue.revision ? 'invalidated' : issue.status,

@@ -35,9 +35,10 @@ export function resolutionCommand(raw: string): ResolutionCommand | null {
   if (/^(?:落实|解决|关闭|重新处理)事项\s*[1-9]\d*(?:方案|[：:\s])/.test(raw)) fail('invalid_site_resolution', 422);
   return null;
 }
-async function latest(tx: PostgresTransaction, eid: string, issueId: string) {
+async function latest(tx: PostgresTransaction, eid: string, issueId: string, asOf?: Date) {
   return one(tx, sql`select * from app.domain_event_outbox where enterprise_id=${eid} and type=${lifecycleType}
-    and aggregate_type='construction_site_issue' and aggregate_id=${issueId} order by aggregate_version desc limit 1`);
+    and aggregate_type='construction_site_issue' and aggregate_id=${issueId}
+    ${asOf ? sql`and created_at<${asOf}` : sql``} order by aggregate_version desc limit 1`);
 }
 async function activeActor(tx: PostgresTransaction, eid: string, pid: string, aid: string, manager = false) {
   const a = await one(tx, sql`select app.construction_actor_access(${aid}::bigint,${eid}::bigint) as role,
@@ -46,16 +47,17 @@ async function activeActor(tx: PostgresTransaction, eid: string, pid: string, ai
       and ${manager ? sql`m.role='manager'` : sql`m.role<>'observer'`}) as member`);
   return a?.role === 'owner' || a?.role === 'member' && a.member === true;
 }
-export async function readSiteResolution(tx: PostgresTransaction, eid: string, pid: string, issueId: string, base?: IssueView): Promise<ResolutionView | null> {
-  const event = await latest(tx, eid, issueId); if (!event) return null;
-  const p = event.payload as Lifecycle, issue = base || await readSiteIssueBase(tx, eid, pid, issueId);
+export async function readSiteResolution(tx: PostgresTransaction, eid: string, pid: string, issueId: string, base?: IssueView, asOf?: Date): Promise<ResolutionView | null> {
+  const event = await latest(tx, eid, issueId, asOf); if (!event) return null;
+  const p = event.payload as Lifecycle, issue = base || await readSiteIssueBase(tx, eid, pid, issueId, asOf);
   let available = p.projectId === pid && !!issue && issue.status === 'awaiting_review' && issue.revision === p.issueRevision && issue.ownerId === p.ownerId;
   available = available && await activeActor(tx, eid, pid, p.actorId, p.state !== 'implemented');
   let evidence: Evidence | undefined;
   if (available && p.state !== 'reopened') {
-    const plan = p.planId && await readPlan(tx, eid, p.planId);
+    const plan = p.planId && await readPlan(tx, eid, p.planId, asOf);
     const original = p.evidenceId && await one(tx, sql`select payload,created_at from app.domain_event_outbox where enterprise_id=${eid}
-      and id=${p.evidenceId} and type=${evidenceType} and aggregate_id=${issueId}`);
+      and id=${p.evidenceId} and type=${evidenceType} and aggregate_id=${issueId}
+      ${asOf ? sql`and created_at<${asOf}` : sql``}`);
     evidence = original ? original.payload as Evidence : undefined;
     available = !!plan && plan.status === 'approved' && plan.hash === p.planHash && !!evidence
       && evidence.planId === p.planId && evidence.planHash === p.planHash && evidence.issueRevision === p.issueRevision && evidence.ownerId === p.ownerId;

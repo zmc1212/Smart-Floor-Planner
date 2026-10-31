@@ -41,16 +41,19 @@ function customerPlanDto(p: PlanView) {
   const { id, issueId, number, previousVersionId, roomName, title, difference, costDeltaCents, scheduleDeltaDays, mediaId, revision, status, previewed, reason, hash } = p;
   return { id, issueId, number, previousVersionId, roomName, title, difference, costDeltaCents, scheduleDeltaDays, mediaId, revision, status, previewed, reason, hash };
 }
-async function planEvent(tx: PostgresTransaction, eid: string, versionId: string) {
-  return one(tx, sql`select * from app.domain_event_outbox where enterprise_id=${eid} and id=${versionId} and type=${publishedType}`);
+async function planEvent(tx: PostgresTransaction, eid: string, versionId: string, asOf?: Date) {
+  return one(tx, sql`select * from app.domain_event_outbox where enterprise_id=${eid} and id=${versionId} and type=${publishedType}
+    ${asOf ? sql`and created_at<${asOf}` : sql``}`);
 }
-async function latestPlan(tx: PostgresTransaction, eid: string, issueId: string) {
+async function latestPlan(tx: PostgresTransaction, eid: string, issueId: string, asOf?: Date) {
   return one(tx, sql`select * from app.domain_event_outbox where enterprise_id=${eid} and type=${publishedType}
-    and aggregate_type='construction_site_issue' and aggregate_id=${issueId} order by aggregate_version desc limit 1`);
+    and aggregate_type='construction_site_issue' and aggregate_id=${issueId}
+    ${asOf ? sql`and created_at<${asOf}` : sql``} order by aggregate_version desc limit 1`);
 }
-async function state(tx: PostgresTransaction, eid: string, versionId: string) {
+async function state(tx: PostgresTransaction, eid: string, versionId: string, asOf?: Date) {
   const e = await one(tx, sql`select * from app.domain_event_outbox where enterprise_id=${eid} and type=${statusType}
-    and aggregate_type='construction_plan' and aggregate_id=${versionId} order by aggregate_version desc limit 1`);
+    and aggregate_type='construction_plan' and aggregate_id=${versionId}
+    ${asOf ? sql`and created_at<${asOf}` : sql``} order by aggregate_version desc limit 1`);
   return { event: e, revision: Number(e?.aggregate_version || 1), status: String((e?.payload as Row)?.status || 'pending_customer'),
     previewed: (e?.payload as Row)?.previewed === true, reason: String((e?.payload as Row)?.reason || '') };
 }
@@ -61,11 +64,12 @@ async function publisherAvailable(tx: PostgresTransaction, eid: string, p: PlanD
       and a.status='active' and m.role in ('manager','designer')) as member`);
   return access?.role === 'owner' || access?.role === 'member' && access.member === true;
 }
-export async function readPlan(tx: PostgresTransaction, eid: string, versionId: string): Promise<PlanView | null> {
-  const event = await planEvent(tx, eid, versionId); if (!event) return null;
-  const p = event.payload as PlanData, last = await latestPlan(tx, eid, p.issueId), s = await state(tx, eid, versionId);
+export async function readPlan(tx: PostgresTransaction, eid: string, versionId: string, asOf?: Date): Promise<PlanView | null> {
+  const event = await planEvent(tx, eid, versionId, asOf); if (!event) return null;
+  if (asOf && !await readPlan(tx, eid, versionId)) return null;
+  const p = event.payload as PlanData, last = await latestPlan(tx, eid, p.issueId, asOf), s = await state(tx, eid, versionId, asOf);
   if (String(last?.id) !== versionId || s.status === 'withdrawn') return null;
-  const issue = await readSiteIssueBase(tx, eid, p.projectId, p.issueId);
+  const issue = await readSiteIssueBase(tx, eid, p.projectId, p.issueId, asOf);
   if (!issue || ['invalidated','cancelled','awaiting_owner'].includes(issue.status) || issue.revision !== p.issueRevision || !issue.ownerId) return null;
   if (await siteAccessRevoked(tx, eid, p.projectId, [p.publisherId, issue.ownerId], event.created_at as Date, { reviewers: [p.publisherId] })) return null;
   const grant = await sharedMaterial(tx, eid, p.projectId, p.needGrantId);

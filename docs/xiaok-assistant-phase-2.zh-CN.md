@@ -3,20 +3,35 @@
 <!-- xiaok-v1-02-proactive-current -->
 ## 当前V1-02：确定性私人报告基础（Limited）
 
-本项是[唯一计划第2节](./xiaok-renovation-agent-development-plan.md#2-唯一当前任务)明确允许先行的独立后台工作，不重开V1-01停止的收束批，也不宣称四端用户旅程完成。没有新增供应商、模型、摄取或校验管线；KnowledgeRetriever/Evidence及原未知结果/用量合同保持。事项历史/已确认安排聚合、知识生成、客户端接入及语义/原生验收仍待完成。
+本项是[唯一计划第2节](./xiaok-renovation-agent-development-plan.md#2-唯一当前任务)明确允许先行的独立后台工作，不重开V1-01停止的收束批，也不宣称四端用户旅程完成。没有新增供应商、模型、摄取或校验管线；KnowledgeRetriever/Evidence及原未知结果/用量合同保持。员工获权事项/安排聚合现复用同一事实服务；业主范围接入、知识生成、客户端接入及语义/原生验收仍待完成。
 
 - **入口与配置：** 原鉴权`POST /api/internal/assistant/jobs/run`推进配置任务并消费原assistant队列；内部响应新增`constructionReportChecks`，没有新增用户HTTP路由、菜单或页面。`ConstructionReportService`沿`constructionAccess`校验所选企业的负责人/admin/super_admin，不借用知识预览权限。配置默认关闭，绑定至多20个项目及企业阶段；员工不能改企业策略。项目列表为空只代表有界的有效在建范围，超过20个返回并保存策略错误。停工/归档项目不生成，历史读取仍须当前有效关系。
 - **调度与版本：** 固定`Asia/Shanghai`，默认日报20:00、周一08:00周报；周报周期为上周一00:00至本周一00:00，日报为当日00:00至截止，结束时刻不包含在读取区间内。每种周期仅补最近一期，不回放全部积压日期。改时刻影响后续任务，已建任务保留原范围。按精确周期/受众键去重；明确更正沿同reportId新增版本，日报补记可把本日截止延至午夜。发布时间是记录时间边界，不推断实际施工日期；尚不宣称自动补记或业务发生日期模型。
-- **获权事实：** 不可变版本保存周期/截止/生成时间、原记录ID/版本/hash与阶段事件定位。先授权取数再序列化：业主限本人的精确对客发布，员工限当前项目权限内已发布的内部/对客记录；排除草稿及客户私聊。每份至多20项目、每项目50记录/30阶段事件，返回截断标志；未知历史阶段保持未知。事实为`facts_ready`，知识为`not_generated`，事项/安排为`not_aggregated`；任务成功只代表本地事实快照已保存，不代表AI报告、施工完成或验收。
-- **私人目的地与生命周期：** 0103新增5张强制RLS领域表，在原会话/参与者/消息中增加`construction_followup`。业主每项目一条，工人/设计师/企业负责人按企业、本人、受众固定；平台账号须所选企业显式启用。S04仍共享，C01仍普通私人咨询，新建普通聊天不改变目的地。沿原租户队列、租约/次数与终态事件；授权未能确定时不会把本地报告路由到模型。真实阶段变更现不依赖业主可见或到场提醒开关，即保存outbox事件。
+- **获权事实：** 不可变版本保存周期/截止/生成时间、原记录ID/版本/hash与阶段事件定位。先授权取数再序列化：业主限本人的精确对客发布，员工限当前项目权限内已发布的内部/对客记录；排除草稿及客户私聊。每份至多20项目、每项目50记录/30阶段事件，返回截断标志；未知历史阶段保持未知。事实为`facts_ready`，知识为`not_generated`；任务成功只代表本地事实快照已保存，不代表AI报告、施工完成或验收。
+- **事项/安排历史：** `report-items.ts`沿原`site-issues`、`site-plans`、`site-resolution`服务新增可选的不含结束时刻的截止读取；默认调用仍取当前状态。员工/老板日、周事实使用`aggregated`，保留事件ID、修订/hash、期内变化/期前遗留；每项目最多50事项候选及50最新方案候选，分别标识截断。期前未完事项保留为遗留，期前已终结且期内未变的不再列入。只有截止前明确获同意的方案才算已确认安排；截止后回复、决定、落实或关闭不能回填。同意不代表落实、验收或付款，没有记录的期限不推断。当前原件、房间/材料、发布人/成员及移除历史仍验；撤回/替代方案或已保存事项依据失效时隐藏项目段，不改旧事实。没有事项字段的旧快照保留。业主回传/方案授权仍仅限原咨询，其跟进事实明确使用`original_consultation_only`，不复制私聊/共享消息；该业主接入仍未完成。阶段事实仍为`not_aggregated`。不新增表/迁移/路由/权限解析或引用管线。
+- **私人目的地与生命周期：** 0103新增强制RLS的`construction_report_settings`、`construction_followup_bindings`、`construction_reports`、`construction_report_versions`、`construction_report_deliveries`五表，在原会话/参与者/消息中增加`construction_followup`。业主每项目一条，工人/设计师/企业负责人按企业、本人、受众固定；平台账号须所选企业显式启用。S04仍共享，C01仍普通私人咨询，新建普通聊天不改变目的地。沿原租户队列、租约/次数与终态事件；授权未能确定时不会把本地报告路由到模型。真实阶段变更现不依赖业主可见或到场提醒开关，即保存outbox事件。
 - **投递与阅读：** 报告版本/收件人唯一，消息与投递原子提交。消息正文只存`report:id:revision`引用；列表/详情/投递都重验原件和关系，包括移除后重新加入的历史。失效段不泄漏名称、计数、摘要或正文。原retentionRedacted标记同时阻断列表/详情、来源投影、后续建任务和投递，不删除原业务记录，也不静默复活旧绑定。报告已阅须当前详情token，会话消息可见确认另行处理；列表/详情本身不自动标记。归档只在真实新投递时重显，停止/删除不自动重建，恢复须明确操作。人工接待保留结果、暂停插入且不自动恢复AI，恢复时合并较早积压，避免集中刷屏。已知本地失败沿原job/run重试，provider-started/unknown不适用这条恢复。
 - **设计边界：** 已检查C01手账README、S04原PPT22/38与既有老板分组。计划3.4的私人角色列表、卡片/详情和报告追问仍是提案，尚未获批为运行时UI。本包不改小程序代码/素材/文案或还原台账，不新增原生验收声明；内部纯事实引用不是用户报告卡片。
 
-仍待实施的确定性范围包括首次启用后立即发现绑定、自动迟到记录补记及事项/已确认安排聚合。当前绑定在调度/事件到期或本人显式open时建立；保留脱敏后的目的地重新开启尚未实现。这些仍属V1-02，不能据此进入V1-03。
+仍待实施的确定性范围包括首次启用后立即发现绑定、自动迟到记录补记及业主范围报告接入。当前绑定在调度/事件到期或本人显式open时建立；保留脱敏后的目的地重新开启尚未实现。这些仍属V1-02，不能据此进入V1-03。
 
 架构采用保持聚焦：[LangGraph工作流/Agent](https://docs.langchain.com/oss/javascript/langgraph/workflows-agents)区分确定性步骤与模型自主编排，[持久化](https://docs.langchain.com/oss/javascript/langgraph/persistence)说明按会话的持久状态。本项保留现有运行时与事务型业务outbox/队列，不新增图、Agent、知识存储或投递队列，也没有新增供应商协议补丁。
 
 工程证据保留在`tmp/v1-02-proactive-foundation/`。时钟检查6/6；固定确定性矩阵service-02为13/13，时间精度/订阅边界service-03-boundaries为5/5，当前service-04-retention为6/6并补脱敏兼容。每批有各自固定源码/驱动/配置且drift[]；未变service-02范围按影响复用，不改写成同版首稿通过。provider/knowledge attempt增量0，原3753不变。首服务批员工/老板误走预览授权的失败及驱动前置失败各自保留；只有明确本地流程跳过无关预览检查，当前身份/参与者/项目/原件/策略不放宽。修正后的源码lint通过（27项既有警告）；类型检查仍原82项，受影响0新增，驱动3处类型声明修正的JavaScript完全一致。初次工程批因Next生成类型配置漂移而无效，单独保留；原脏配置已精确恢复。普通独立构建仍在既有xiaok-manual-fixture.ts43的state.keys类型错误处失败。最终受控Webpack compile-only检查exit0，完整源码/配置绑定drift[]，原配置精确恢复；不把原完整类型构建失败改记为通过。
+
+事项有界证据在`tmp/v1-02-report-items/`。service-04保留前5块通过：截止/历史、四角色队列/写入/投递/重进、事实不变/幂等及本人/跨企业拒绝。第6块先通过方案撤回，随后成员撤权重进因未来来源事件与未平移的当前合成审计时钟比较而失败；该块仍记失败，末块用量未执行。service-05-revocation复用原report80/hash，以新写且明确控制时刻的合成移除/再加入审计定向2/2通过，不重新生成报告或改判service-04。两批binding均drift[]，批间只有测试驱动变化。service-01/02夹具前置失败、service-03前2块通过后过早断言队列的失败均保留；后者2任务完成/2尚未领取的原状态见queue-diagnosis.log。驱动现有界等待原任务终态并保存owned run，不为驱动/时钟问题放宽源码或权限。最终static-closed定向lint为0，全量类型仍原82/受影响0新增，binding drift[]。没有路由/schema改动，不另跑完整构建；旧compile-only仅保留原范围，原完整构建失败不改判。provider/knowledge最大ID仍4114/3753，3753保持unknown，没有新调用或费用清零。各批结束均策略关闭、复用项目242/243归档、5395–5397停用并释放acceptance锁。这是后台工程证据，不是自然对话/原生验收。
+
+可复现入口（在admin/运行）。仅出现新的明确变化/失败时另取标签；不重跑未变证据，不执行V1-01停止批。最终汇总为同目录verification.json；仅本地后台证据，非完整原生/语义验收。
+
+```powershell
+node --import tsx --test src/lib/construction/__tests__/report-calendar.test.ts
+node --import tsx scripts/xiaok-v1-02-reports-check.ts --development --output=../tmp/v1-02-proactive-foundation/service-NAMED-CHANGE
+node --import tsx scripts/xiaok-v1-02-reports-check.ts --development --delivery-boundaries-only --output=../tmp/v1-02-proactive-foundation/boundary-NAMED-CHANGE
+node --import tsx scripts/xiaok-v1-02-report-items-check.ts --development --day=2026-11-11 --output=../tmp/v1-02-report-items/service-NAMED-CHANGE
+node --import tsx scripts/xiaok-v1-02-report-items-check.ts --development --recheck-revocation=../tmp/v1-02-report-items/service-04/report.json --output=../tmp/v1-02-report-items/revocation-NAMED-CHANGE
+npm run lint -- --ignore-pattern '.next-*/**'
+npx tsc --noEmit --pretty false
+```
 
 <!-- xiaok-v1-knowledge-current -->
 ## 当前V1-01：企业知识自然对话（Limited）
