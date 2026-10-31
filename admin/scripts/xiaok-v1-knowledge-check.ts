@@ -93,6 +93,13 @@ async function main(){
     return results;
   });
   let savedEvidence:Evidence|undefined;
+  await check('named 精艺 question retains basal preparation and pipe-root clauses under the existing five-source limit',async()=>{
+    const result=await retrieveKnowledge(cid,actor,'我在看《精艺》这份装修手册，卫生间防水前要准备什么？管根又该怎么处理？',await epoch());
+    assert.deepEqual(result.diagnostic.requestedTitles,['精艺']);assert.ok(result.evidence.length<=5);
+    assert.ok(result.evidence.some(e=>e.ref.id==='2835'),'Published basal preparation must not be crowded out by other manuals');
+    assert.ok(result.evidence.some(e=>e.ref.id==='2837'),'Published pipe-root clause must remain');
+    return {sourceIds:result.evidence.map(e=>e.ref.id),preferredDocumentIds:result.diagnostic.preferredDocumentIds};
+  });
   await check('published internal original is staff-only; drafts remain excluded',async()=>{
     const source=await withTenantTransaction(eid,tx=>one(tx,sql`select c.text from app.assistant_knowledge_chunks c
       join app.assistant_knowledge_versions v on v.enterprise_id=c.enterprise_id and v.id=c.document_version_id

@@ -387,10 +387,10 @@ function formalStatusEvidence(citations: Array<{ sourceId: string }>, sources: S
   return formal.length > 0 && citations.some(c => sources.some(source => source.sourceId === c.sourceId
     && (formal.includes(source) || source.followup?.kind === 'team_result' && issues.has(source.followup.issueId))));
 }
-function synthesisRepairIssue(raw:string,sources:SynthesisSource[],context:SynthesisReviewContext = {}) {
+export function synthesisRepairIssue(raw:string,sources:SynthesisSource[],context:SynthesisReviewContext = {}) {
   try { parseSynthesis(raw,sources,context); return null; }
   catch(error) {
-    if (error instanceof AssistantError && error.code === 'unsupported_model_commitment' && originalAnswerOnly(context.currentQuestion || '')) {
+    if (error instanceof AssistantError && error.code === 'unsupported_model_commitment' && !context.knowledgeExplanation && originalAnswerOnly(context.currentQuestion || '')) {
       // Diagnostics do not accept/normalize a commitment. Check the complete
       // envelope and authorized citations first; unknown IDs remain closed.
       // The existing hash-bound edit repair must pass the unchanged final gate.

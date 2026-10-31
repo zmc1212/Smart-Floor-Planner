@@ -20,7 +20,7 @@ export const imageContextBudgetPolicy = {
   maxDispatches: agentModelLimits.maxModelTurns + 1,
 } as const;
 
-export type RequestBudgetOptions = { profile?: ModelTurnInput['profile']; purpose?: 'answer' | 'vision' | 'summary';
+export type RequestBudgetOptions = { profile?: ModelTurnInput['profile']; purpose?: 'answer' | 'vision' | 'summary' | 'grounding';
   /** Only new server-owned runs with the matching quota reservation can bind this. */
   imageContextBudget?: typeof imageContextBudgetPolicy.version };
 export function agentRequestBudget(options: RequestBudgetOptions = {}) {
@@ -32,7 +32,7 @@ export function agentRequestBudget(options: RequestBudgetOptions = {}) {
   if (!options.profile) return { inputBudget: contextBudgetPolicy.inputBudget, summaryTrigger: contextBudgetPolicy.summaryTrigger,
     summaryTarget: contextBudgetPolicy.summaryTarget, maxOutputTokens: agentModelLimits.maxOutputTokens, policy: contextBudgetPolicy.version };
   const profile = consultationProfile(options.profile);
-  if (!profile || options.purpose && !['answer','vision','summary'].includes(options.purpose)) fail('agent_input_limit', 422);
+  if (!profile || options.purpose && !['answer','vision','summary','grounding'].includes(options.purpose)) fail('agent_input_limit', 422);
   return { inputBudget: 32000, summaryTrigger: 30000, summaryTarget: 28000,
     maxOutputTokens: !options.purpose || options.purpose === 'answer' ? profile.maxOutputTokens : agentModelLimits.maxOutputTokens,
     policy: contextBudgetPolicy.version + ':' + profile.id };

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { AiProviderError, type AiProviderRuntimeConfig } from '../provider-types';
+import { AiProviderError, type AiProviderRuntimeConfig, type ProviderResponseDiagnostic } from '../provider-types';
 import { agentModelLimits, type ModelMessage, type ModelTurnInput, type ModelTurnOutput } from '@/lib/assistant/contracts/model';
 import { consultationProfile } from '@/lib/assistant/contracts/consultation';
 import { bearerHeaders, parseJson, providerFetch, providerUrl, asObject } from './http';
@@ -125,7 +125,9 @@ export function parseAgentChat(payload: Record<string, unknown>, requestId: stri
   const choices = Array.isArray(payload.choices) ? payload.choices : [];
   if (choices.length !== 1) return invalid();
   const choice = asObject(choices[0]), message = asObject(choice.message);
-  const rawCalls = message.tool_calls === undefined ? [] : message.tool_calls;
+  // Compatible chat responses may explicitly encode the absence of calls as
+  // null. This does not create a call or excuse an empty/truncated response.
+  const rawCalls = message.tool_calls == null ? [] : message.tool_calls;
   if (!Array.isArray(rawCalls) || rawCalls.length > agentModelLimits.maxToolCalls) return invalid();
   const seen = new Set<string>();
   const toolCalls = rawCalls.map(raw => {
@@ -143,6 +145,52 @@ export function parseAgentChat(payload: Record<string, unknown>, requestId: stri
     providerRequestId: requestId?.slice(0, 200) || (typeof payload.id === 'string' ? payload.id.slice(0, 200) : null) };
 }
 
+export function agentResponseDiagnostic(payload: Record<string, unknown>, requestId: string | null = null): ProviderResponseDiagnostic {
+  const encoded = JSON.stringify(payload), choices = Array.isArray(payload.choices) ? payload.choices : [];
+  const choice = asObject(choices[0]), message = asObject(choice.message), usage = asObject(payload.usage), details = asObject(usage.prompt_tokens_details);
+  const number = (value: unknown) => Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value) : null;
+  return { protocol: 'provider-response-diagnostic-v1', requestId: requestId?.slice(0, 200) || null,
+    responseHash: createHash('sha256').update(encoded).digest('hex'), responseBytes: Buffer.byteLength(encoded),
+    choices: Array.isArray(payload.choices) ? choices.length : null,
+    finishReason: typeof choice.finish_reason === 'string' && /^[\w-]{1,32}$/.test(choice.finish_reason) ? choice.finish_reason : null,
+    contentType: message.content === null ? 'null' : Array.isArray(message.content) ? 'array' : typeof message.content,
+    contentChars: typeof message.content === 'string' ? message.content.length : 0,
+    calls: (Array.isArray(message.tool_calls) ? message.tool_calls : []).slice(0, 5).map(raw => {
+      const call = asObject(raw), fn = asObject(call.function); let argumentsObject = false;
+      if (typeof fn.arguments === 'string') try { const value = JSON.parse(fn.arguments); argumentsObject = !!value && typeof value === 'object' && !Array.isArray(value); } catch { /* Shape only. */ }
+      return { idValid: typeof call.id === 'string' && /^[\w-]{1,128}$/.test(call.id), type: call.type === 'function' ? 'function' : 'other',
+        nameValid: typeof fn.name === 'string' && /^[\w-]{1,64}$/.test(fn.name), argumentsType: typeof fn.arguments,
+        argumentsBytes: typeof fn.arguments === 'string' ? Buffer.byteLength(fn.arguments) : 0, argumentsObject };
+    }), usage: { input: number(usage.prompt_tokens), output: number(usage.completion_tokens), cached: number(details.cached_tokens),
+      written: number(details.cache_creation_input_tokens ?? usage.cache_creation_input_tokens) },
+  };
+}
+
+/** Saved1608 contains a complete JSON object followed by one unmatched closing
+ * brace. Strip only that exact, value-preserving surface; never complete a
+ * truncated object, repair a token, extract prose or touch quoted strings. */
+export function completeJsonBeforeExtraBrace(raw: string): string | null {
+  if (raw.length > 8000) return null;
+  const text = raw.trim(); if (!text.startsWith('{')) return null;
+  const stack: string[] = []; let quoted = false, escaped = false;
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index];
+    if (quoted) { if (escaped) escaped = false; else if (char === '\\') escaped = true; else if (char === '"') quoted = false; continue; }
+    if (char === '"') { quoted = true; continue; }
+    if (char === '{' || char === '[') stack.push(char);
+    else if (char === '}' || char === ']') {
+      if (stack.pop() !== (char === '}' ? '{' : '[')) return null;
+      if (!stack.length) {
+        const original = text.slice(0, index + 1);
+        if (text.slice(index + 1).trim() !== '}') return null;
+        try { const value = JSON.parse(original); return value && typeof value === 'object' && !Array.isArray(value) ? original : null; }
+        catch { return null; }
+      }
+    }
+  }
+  return null;
+}
+
 /** No transport retries or provider fallback: an unknown accepted request may already be billable. */
 export async function executeAgentChat(runtime: AiProviderRuntimeConfig, input: ModelTurnInput): Promise<ModelTurnOutput> {
   const body = agentChatBody(input, runtime.baseUrl);
@@ -150,7 +198,35 @@ export async function executeAgentChat(runtime: AiProviderRuntimeConfig, input: 
   const response = await providerFetch(providerUrl(runtime.baseUrl, '/v1/chat/completions'), {
     method: 'POST', headers: bearerHeaders(runtime.apiKey), body: JSON.stringify(body),
   }, Math.min(runtime.timeoutMs, 90000), 'Assistant model', { redactErrorBody: true });
-  const output = parseAgentChat(await parseJson(response, 'Assistant model'), response.headers.get('x-siliconcloud-trace-id') || response.headers.get('x-request-id'));
+  const payload = await parseJson(response, 'Assistant model');
+  const requestId = response.headers.get('x-siliconcloud-trace-id') || response.headers.get('x-request-id');
+  let decodePayload = payload, wireNormalization: ModelTurnOutput['wireNormalization'];
+  // Exact observed model/official transport/final channel only. All business
+  // tools retain their strict wire grammar and existing schema/permission gate.
+  if (input.model === 'qwen3.7-flash' && bailianBinding(runtime.baseUrl, input.model, input.enableThinking)
+    && input.tools.length === 1 && input.tools[0].name === 'final_response'
+    && Array.isArray(payload.choices) && payload.choices.length === 1) {
+    const message = asObject(asObject(payload.choices[0]).message), calls = message.tool_calls;
+    if (Array.isArray(calls) && calls.length === 1) {
+      const fn = asObject(asObject(calls[0]).function);
+      const normalized = fn.name === 'final_response' && typeof fn.arguments === 'string' ? completeJsonBeforeExtraBrace(fn.arguments) : null;
+      if (normalized) {
+        decodePayload = structuredClone(payload);
+        const cloned = asObject(asObject((decodePayload.choices as unknown[])[0]).message);
+        asObject(asObject((cloned.tool_calls as unknown[])[0]).function).arguments = normalized;
+        wireNormalization = { protocol: 'qwen37-final-trailing-brace-v1', rawArguments: fn.arguments as string,
+          normalizedHash: createHash('sha256').update(normalized).digest('hex') };
+      }
+    }
+  }
+  let output: ModelTurnOutput;
+  try { output = parseAgentChat(decodePayload, requestId); }
+  catch (error) {
+    if (!(error instanceof AiProviderError) || error.code !== 'INVALID_PROVIDER_RESPONSE') throw error;
+    const encoded = JSON.stringify(payload);
+    throw new AiProviderError(error.message, error.code, error.disposition, error.status, agentResponseDiagnostic(payload, requestId),
+      Buffer.byteLength(encoded) <= 64000 ? { protocol: 'invalid-provider-frame-v1', payload } : undefined);
+  }
   let format: NonNullable<ModelTurnOutput['observation']>['format'];
   if(body.response_format) {
     let jsonValid=false,objectValid=false;
@@ -159,6 +235,6 @@ export async function executeAgentChat(runtime: AiProviderRuntimeConfig, input: 
     format={mode:body.response_format.type,jsonValid,schemaValid:!objectValid||output.toolCalls.length?false
       :definition?!await toolSchemaIssue(definition,output.text):null};
   }
-  return { ...output, observation: { latencyMs: Date.now() - started, cache: cacheObservation(output.usage),
+  return { ...output, ...(wireNormalization ? { wireNormalization } : {}), observation: { latencyMs: Date.now() - started, cache: cacheObservation(output.usage),
     prefix: modelPrefixObservation(input.messages, input.tools),...(format?{format}:{}) } };
 }

@@ -122,15 +122,29 @@ export type ProviderHttpDiagnostic = {
   responseHash: string;
 };
 
+/** Invalid successful HTTP responses retain shape and billing clues, never
+ * source prose, tool arguments, headers or credentials. Unknown stays unknown. */
+export type ProviderResponseDiagnostic = {
+  protocol: 'provider-response-diagnostic-v1'; requestId: string | null;
+  responseHash: string; responseBytes: number; choices: number | null;
+  finishReason: string | null; contentType: string; contentChars: number;
+  calls: Array<{ idValid: boolean; type: string; nameValid: boolean; argumentsType: string; argumentsBytes: number; argumentsObject: boolean }>;
+  usage: { input: number | null; output: number | null; cached: number | null; written: number | null };
+};
+
 export class AiProviderError extends Error {
+  /** Internal recovery evidence; never enumerate in API errors or safe diagnostics. */
+  declare readonly privateResponse?: Record<string, unknown>;
   constructor(
     message: string,
     public readonly code: string,
     public readonly disposition: 'safe_fallback' | 'definitive_failure' | 'unknown',
     public readonly status?: number,
-    public readonly diagnostic?: ProviderHttpDiagnostic
+    public readonly diagnostic?: ProviderHttpDiagnostic | ProviderResponseDiagnostic,
+    privateResponse?: Record<string, unknown>
   ) {
     super(message);
+    if (privateResponse) Object.defineProperty(this, 'privateResponse', { value: privateResponse, enumerable: false });
   }
 }
 

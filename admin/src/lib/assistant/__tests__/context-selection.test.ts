@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { selectContextCandidates } from '../knowledge/context-selection';
 import type { Applicability } from '../contracts/professional';
-import { anchorKnowledgeQuery } from '../knowledge/query-context';
+import { anchorKnowledgeQuery, requestedKnowledgeTitles } from '../knowledge/query-context';
 
 const state = (status: Applicability['status']): Applicability => ({ status, matched: [], missing: [], mismatched: [] });
 test('K01/04/09 wrong-stage top five cannot crowd out current and unknown-condition sources', () => {
@@ -30,4 +30,19 @@ test('K01 explicit room and current question survive a model query that omitted 
 test('K01 query context is bounded without splitting supplementary Unicode',()=>{
   const query=anchorKnowledgeQuery('点位😀'.repeat(500),'书房😀'.repeat(500));assert.ok(query.length<=1000);
   assert.doesNotMatch(query,/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u);
+});
+
+test('saved1608 named-source question keeps its third needed clause instead of diversifying into another manual',()=>{
+  const rows=[{id:'pipe',document_id:'named'},{id:'other-a',document_id:'other'},
+    {id:'backfill',document_id:'named'},{id:'base',document_id:'named'},{id:'other-b',document_id:'other'},{id:'other-c',document_id:'third'}];
+  assert.ok(!selectContextCandidates(rows,new Map()).some(r=>r.id==='base'));
+  const selected=selectContextCandidates(rows,new Map(),5,new Set(['named']));
+  assert.ok(selected.some(r=>r.id==='base'));assert.equal(selected.length,5);
+  const conditions=new Map([['base',state('not_applicable')]]);
+  assert.equal(selectContextCandidates(rows,conditions,5,new Set(['named'])).at(-1)?.id,'other-c');
+});
+
+test('document preference comes from the current quoted source, never model-added search terms',()=>{
+  assert.deepEqual(requestedKnowledgeTitles(anchorKnowledgeQuery('《别的手册》','请解释《精艺》里的管根处理。')),['精艺']);
+  assert.deepEqual(requestedKnowledgeTitles(anchorKnowledgeQuery('《模型添加的手册》','管根怎么处理？')),[]);
 });

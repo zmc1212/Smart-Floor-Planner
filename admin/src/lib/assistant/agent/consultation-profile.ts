@@ -75,7 +75,7 @@ export type ConsultationLedger = {
  * uses the authorized free-stage or Qwen-campaign cap. Qwen cash is campaign-wide. */
 export function consultationDispatchBudget(input: ConsultationLedger & {
   binding: ConsultationBinding; createdAt: string; now: number; estimatedRequestTokens: number;
-  calls: number; summaries: number; perceptions: number; purpose: 'answer' | 'summary' | 'vision';
+  calls: number; summaries: number; perceptions: number; purpose: 'answer' | 'summary' | 'vision' | 'grounding';
 }) {
   const { binding, now } = input, createdAt = Date.parse(input.createdAt), accountedTokens = input.accountedTokens ?? input.observedTokens;
   if (![input.estimatedRequestTokens, input.observedTokens, accountedTokens, input.heldTokens, input.calls, input.summaries, input.perceptions].every(integer)

@@ -8,6 +8,9 @@ export type ResponseReviewIssue = { segment: number; code: 'unscoped_measurement
   | 'contradictory_measurement_comparison' | 'unmeasured_compliance_claim' | 'misattributed_rule_comparison' | 'misattributed_project_status'
   | 'source_answer_scope' | 'independent_advice_scope' | 'unsupported_source_condition' };
 export type SynthesisReviewContext = { currentQuestion?: string; currentOriginal?: { messageId: string; hash: string };
+  /** Server-only draft preparation. Acceptance additionally requires the
+   * durable hash-bound semantic review in knowledge-explanation.ts. */
+  knowledgeExplanation?: 'reviewed-knowledge-explanation-v1';
   currentNeeds?: { version: number; facts: Array<{ sourceMessageId: string; sourceHash: string; quote: string; value: string }> } };
 
 function quantityTokens(text: string) {
@@ -331,7 +334,7 @@ export function reviewSynthesisResponse(answer: SynthesisAnswer, sources: Synthe
     return mentioned.length ? mentioned.includes(room) : questionRooms.length === 1 ? questionRooms[0] === room : rooms.length === 1;
   };
   const issues: ResponseReviewIssue[] = [];
-  const sourceOnly = originalAnswerOnly(context.currentQuestion || '');
+  const sourceOnly = !context.knowledgeExplanation && originalAnswerOnly(context.currentQuestion || '');
   const independentAdvice = independentAdviceRequested(context.currentQuestion || '');
   for (const [index, segment] of answer.segments.entries()) {
     const codes = new Set<ResponseReviewIssue['code']>();

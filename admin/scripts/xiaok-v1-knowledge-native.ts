@@ -19,6 +19,7 @@ import { safeText, type ActorContext } from '@/lib/assistant/contracts';
 import { wechatideNativeClient } from './wechatide-native-client';
 import { lockAssistantAcceptance } from './assistant-acceptance-safety.mjs';
 import { reviewBudget, type RetainedReviewHold } from './assistant-review-budget';
+import { knowledgeExplanationProtocol } from '@/lib/assistant/agent/knowledge-explanation';
 
 loadEnvConfig(process.cwd(),true);
 type Row=Record<string,any>;
@@ -37,8 +38,15 @@ const retained:RetainedReviewHold[]=['tmp/anythingllm-pilot','tmp/agent-comparis
     .filter((c:Row)=>c.status!=='succeeded').map((c:Row)=>({id:c.id,runId:c.runId,reservedTokens:c.reservedTokens}))));
 let release:(()=>Promise<void>)|undefined,installed=false,ownerId='',ownerUserId='',cloneId='',cloneVersion='';
 let quotaCapacity:Row|null=null;
+let explanationConfig: { before: Row; opted: Row } | undefined;
 const knowledge=new KnowledgeService({enterpriseId:eid,adminId:'16'});
 const httpComplete=process.argv.includes('--http-complete'),httpOnly=process.argv.includes('--http-only')||httpComplete,nativePair=process.argv.includes('--native-pair');
+const naturalExplanation=process.argv.includes('--natural-explanation');
+const frameDiscriminator=process.argv.includes('--frame-discriminator');
+const boundedBusinessBatch=process.argv.includes('--bounded-business-batch');
+assert.ok(!frameDiscriminator||(naturalExplanation&&httpOnly),'Frame diagnosis is one HTTP-only engineering probe, never native/business acceptance');
+assert.ok(!boundedBusinessBatch||(naturalExplanation&&!httpOnly&&!frameDiscriminator&&!nativePair),'Closure batch is the two original journeys, HTTP first and native second, with no reused trial');
+assert.ok(!naturalExplanation||!httpComplete,'New semantic mechanism requires two fresh fixed trials; do not reuse the old excerpt journey');
 function assertBinding(){
   const binding=JSON.parse(fs.readFileSync(path.join(output,'binding.json'),'utf8')).before;
   const drift=Object.keys(binding).filter(file=>createHash('sha256').update(fs.readFileSync(path.join(root,file))).digest('hex')!==binding[file]);
@@ -92,6 +100,9 @@ async function reserve(turn:Row){assertBinding();assert.deepEqual(await runtimeS
 async function settle(turn:Row){if(!turn.runId)return;const trace=await snapshotRun(turn.runId);
   fs.writeFileSync(path.join(output,'run-'+turn.runId+'.json'),JSON.stringify(trace,null,2));turn.traceFile='run-'+turn.runId+'.json';turn.status=trace.run?.status;turn.error=trace.run?.error_code;
   const models=trace.steps.filter(s=>s.kind==='agent_model');
+  turn.firstDraftValidationFailures=trace.steps.filter(s=>s.kind==='agent_validation'&&s.status==='failed').map(s=>s.input_summary);
+  turn.sourceQuestionCoverage=(trace.steps.find(s=>s.kind==='retrieval')?.input_summary as Row|undefined)?.questionCoverage;
+  if(naturalExplanation)turn.semanticReviews=trace.steps.filter(s=>s.kind==='agent_explanation_review').map(s=>({status:s.status,...s.input_summary as Row}));
   report.calls=report.calls.filter((c:Row)=>c.id!==turn.reservationId);
   for(const model of models){const raw=model.private_checkpoint as Row,usage=raw?.usage,known=usage&&Number.isSafeInteger(usage.inputTokens)&&Number.isSafeInteger(usage.outputTokens);
     report.calls.push({id:model.provider_attempt_id||`step:${turn.runId}:${model.step_seq}`,runId:turn.runId,status:known?'succeeded':'unknown',reservedTokens:64000,
@@ -102,6 +113,8 @@ async function settle(turn:Row){if(!turn.runId)return;const trace=await snapshot
   assertBinding();assert.deepEqual(await runtimeSnapshot(),report.runtimeBefore);
   if(report.calls.some((c:Row)=>c.runId===turn.runId&&c.status!=='succeeded'))throw Error('New unknown provider outcome; fixed batch stopped');
   assert.equal(trace.run?.status,'succeeded',`Run ${turn.runId}: ${trace.run?.status}/${trace.run?.error_code}`);
+  if(naturalExplanation){assert.equal((trace.run?.policy_snapshot as Row)?.sourceAnswerMode,knowledgeExplanationProtocol);
+    assert.ok(turn.semanticReviews.some((r:Row)=>r.status==='succeeded'),'A natural answer needs its durable semantic review');}
   assert.ok(trace.steps.some(s=>s.kind==='retrieval'&&s.status==='succeeded'));
   assert.ok(trace.citations.length,'An enterprise answer requires actual citations');
   const allowed=turn.kind==='customer'?['404','405']:[cloneId,'404','405'];assert.ok(trace.citations.some(c=>allowed.includes(String(c.document_id))));
@@ -129,7 +142,11 @@ async function ask(turn:Row,current:Row,cid:string,native:boolean){await reserve
     if(native){const route=turn.kind==='customer'?'packages/assistant/chat/chat':'packages/construction/chat/chat',page=await pageAt(route);
       await wait(async()=>JSON.stringify((await page.data()).messages||(await page.data()).items).includes(turn.text.slice(0,25)),'visible actual answer');
       const citation=turn.citations[0];const selector=turn.kind==='customer'?'.citation-chip[data-id="'+citation.id+'"]':'.record-actions .text-button[data-id="'+citation.id+'"]';
-      const source=await page.$(selector);assert.ok(source);await source.tap();
+      const messageId=await evaluate(`function(id,shared){const p=getCurrentPages().at(-1),items=shared?p.data.items:p.data.messages;
+        const item=items.find(i=>(shared?(i.response&&i.response.citations)||[]:i.citations||[]).some(c=>String(c.id)===id));
+        if(!item)throw Error('Citation missing from actual page data');return String(shared?item.message.id:item.id);}`,String(citation.id),turn.kind==='shared');
+      await evaluate(`function(target){const p=getCurrentPages().at(-1);p.setData({scrollTarget:''},()=>p.setData({scrollTarget:target}));}`,(turn.kind==='shared'?'source-':'message-')+messageId);await delay(500);
+      const source=await page.$(selector);assert.ok(source);turn.sourcePosition={offset:await source.offset(),size:await source.size()};await source.tap();
       await wait(async()=>{const d=await page.data();return d.citation?.available&&d.citation.quote;},'source original opens');
       turn.capture=await capture('source-'+turn.runId,route);await evaluate('function(){getCurrentPages().at(-1).closeSheet(true);}');
       await mp.redirectTo('/'+route+(turn.kind==='customer'?'?conversationId='+cid:'?projectId='+pid));
@@ -144,19 +161,21 @@ async function main(){
   const database=new URL(resolvePostgresRuntimeConfig().connectionString);assert.ok(process.argv.includes('--development')&&['localhost','127.0.0.1'].includes(database.hostname)&&database.port==='5432'&&database.pathname==='/smart_floor_planner');
   const control=JSON.parse(fs.readFileSync(path.join(root,'tmp/xiaok-vector/connection.private.json'),'utf8')).DATABASE_URL;
   release=await lockAssistantAcceptance(control,{waitForLock:true});
+  await step('idle real development queue',async()=>{const value=await withPlatformTransaction(tx=>one(tx,sql`select count(*)::int active from app.assistant_jobs where status in ('queued','running')`));assert.equal(value?.active,0);return value;});
   if(process.argv.includes('--inventory-only')){const status=await mp.call('check_wechatide_status');report.ideStatus=status;console.log(JSON.stringify({statusKeys:Object.keys(status)}));report.passed=true;return;}
   if(!httpOnly){
   await step('unique Stable project window on secondary monitor',windowCheck);
-  const targets=(await(await fetch('http://127.0.0.1:9431/json/list')).json()).filter((t:Row)=>t.url.includes('electron-project.html')&&path.win32.normalize(new URL(t.url).searchParams.get('projectpath')||'')===path.win32.normalize(project));
-  assert.equal(targets.length,1);const target=new URL(targets[0].url);assert.equal(target.searchParams.get('appVersion'),'2.02.2608080');assert.equal(target.searchParams.get('autoPort'),'9420');
+  await step('registered Stable CLI and existing authorization',async()=>{const status=await mp.call('check_wechatide_status',{skillVersion:'0.3.11'});
+    assert.ok(['equal','agent_ahead'].includes(status.versionRelation));assert.equal(status.loginExpired,false);assert.equal(status.cliTokenRequired,false);
+    return {versionRelation:status.versionRelation,loginExpired:false,skillVersion:status.skillVersion,project};});
   await step('fresh compilation and live official SDK data',async()=>{let last:unknown;for(let i=0;i<2;i++){try{await mp.call('simulator_refresh',{project});await delay(6000);const info=await mp.systemInfo(),page=await mp.currentPage();assert.ok(page&&Object.keys(await page.data()).length);assert.equal(info.windowWidth,390);assert.equal(info.windowHeight,844);return {info,route:page.path,freshCompile:true};}catch(error){last=error;}}throw last;});
   }
   if(!process.argv.includes('--run-fixed-trials')){report.passed=true;return;}
   assertBinding();report.runtimeBefore=await runtimeSnapshot();
   report.budgetBefore=reviewBudget(root).usedMicros;report.fixedPlan={totalTriesPerJourney:2,thisBatchTrialsPerJourney:httpComplete?{customer:1,shared:2}:httpOnly||nativePair?1:2,
     customerTurns:3,sharedTurns:3,maxNewRuns:httpComplete?9:httpOnly||nativePair?6:12,configuredModelUnchanged:true,
-    sourceAnswerMode:'validated-source-excerpts-v1',priorFailures:[{batch:'http-fixed-01',runId:'1596',retained:true},{batch:'excerpt-http-02',runId:'1597',retained:true}],
-    ...(httpComplete?{reusedCustomerTrial:'wire-http-01/customer/round1',unreusedSharedPartial:'wire-http-01/run-1601',pendingZeroModelNative:true}:httpOnly?{pendingNativePair:true}:{}),...(nativePair?{pairedWith:'wire-http-01'}:{})};save();
+    sourceAnswerMode:naturalExplanation?knowledgeExplanationProtocol:'validated-source-excerpts-v1',sourceQuestionCoverage:'source-question-coverage-v1',priorFailures:[{batch:'http-fixed-01',runId:'1596',retained:true},{batch:'excerpt-http-02',runId:'1597',retained:true},{batch:'semantic-final-01',runId:'1602',retained:true}],
+    ...(httpComplete?{reusedCustomerTrial:'wire-http-01/customer/round1',unreusedSharedPartial:'wire-http-01/run-1601',pendingZeroModelNative:true}:httpOnly?{pendingNativePair:true}:{}),...(nativePair?{pairedWith:process.argv.find(v=>v.startsWith('--paired-with='))?.slice(14)||(naturalExplanation?'explanation-nullable-http-01':'wire-http-01')}:{})};save();
   // A reversible development-fixture allowance for retained historical token
   // holds. Never settle unknown usage, increase either cash cap or change a model.
   await step('temporary development token capacity within existing cash caps',async()=>withTenantTransaction(eid,async tx=>{
@@ -164,7 +183,21 @@ async function main(){
     assert.ok(before);assert.equal(before.daily_tokens,'1200000');assert.equal(before.daily_cost_micros,'100000000');
     await tx.execute(sql`update app.assistant_enterprise_settings set daily_tokens=2200000,version=version+1,updated_at=now() where enterprise_id=${eid}`);
     quotaCapacity=before;report.quotaCapacity={before,temporaryTokens:'2200000',cashCapChanged:false,historicalReservationsChanged:false};return report.quotaCapacity;
-  }));save();report.runtimeBefore=await runtimeSnapshot();
+  }));save();
+  if(naturalExplanation)await step('temporary development-only explanation strategy; configured model unchanged',async()=>withTenantTransaction(eid,async tx=>{
+    const settings=await one(tx,sql`select agent_config from app.assistant_enterprise_settings where enterprise_id=${eid} for update`);
+    const before=settings!.agent_config as Row;assert.equal(before.model,'qwen3.7-flash');assert.equal(before.knowledgeExplanation,undefined);
+    const opted={...before,knowledgeExplanation:knowledgeExplanationProtocol};
+    await tx.execute(sql`update app.assistant_enterprise_settings set agent_config=${JSON.stringify(opted)}::jsonb,version=version+1,updated_at=now() where enterprise_id=${eid}`);
+    explanationConfig={before,opted};report.strategyOptIn={protocol:knowledgeExplanationProtocol,modelChanged:false,restored:false};return report.strategyOptIn;
+  }));
+  report.runtimeBefore=await runtimeSnapshot();
+  if(frameDiscriminator)report.fixedPlan={...report.fixedPlan,kind:'invalid-function-arguments discriminator only',maxNewRuns:1,
+    businessAcceptance:false,hypotheses:['JSON envelope/double encoding','boolean serialization','incomplete JSON syntax'],noRetry:true};
+  if(boundedBusinessBatch)report.fixedPlan={...report.fixedPlan,kind:'one consolidated closure business batch',totalTriesPerJourney:2,
+    thisBatchTrialsPerJourney:2,maxNewRuns:12,rounds:['HTTP original journeys','Stable native original journeys'],
+    stopOnBlockingFailureOrUnknown:true,noRenamedDiagnosticBatches:true,originalQuestionsPreserved:true,
+    retainedCurrentRuns:['1603','1604','1605','1606','1607','1608']};
   const fixture=JSON.parse(fs.readFileSync(path.join(root,'tmp/xiaok-manual-fixture-20261030/manifest.json'),'utf8'));
   const user=await withPlatformTransaction(tx=>one(tx,sql`select id,context_version from app.users where id=${String(fixture.customerId)}`));assert.ok(user);
   const actor:ActorContext={enterpriseId:eid,principal:{kind:'user',userId:String(user.id)},contextVersion:Number(user.context_version),capabilities:['assistant.chat.self'],entry:{kind:'lead',id:'3132'}};
@@ -175,7 +208,14 @@ async function main(){
   ownerId=String((await withPlatformTransaction(tx=>one(tx,sql`insert into app.admin_users(enterprise_id,username,display_name,password_hash,role,status,must_change_password,menu_permissions)
     values(${eid},${username},'合成测试·微云V1企业负责人',${passwordHash},'enterprise_admin','active',false,ARRAY['construction-projects']) returning id`)))!.id);
   fs.writeFileSync(path.join(output,'owner-credentials.private.json'),JSON.stringify({ownerId,username,password}));report.ownedOwnerId=ownerId;save();
-  const boss=await login({username,password});ownerUserId=String(boss.userId);
+  const initialBoss=await login({username,password});ownerUserId=String(initialBoss.userId);
+  // The original owner-contact diagnosis established this existing Mini scope
+  // requirement. Only this newly owned synthetic account receives a contact.
+  await withPlatformTransaction(async tx=>{const phone='1990000'+ownerId.slice(-4).padStart(4,'0');
+    const seeded=await one(tx,sql`update app.users u set phone=${phone} where u.id=${ownerUserId} and coalesce(u.phone,'')=''
+      and exists(select 1 from app.admin_users a where a.id=${ownerId} and a.user_id=u.id and a.enterprise_id=${eid} and a.username=${username})
+      and not exists(select 1 from app.users other where other.phone=${phone} and other.id<>u.id) returning id`);assert.ok(seeded);});
+  const boss=await login({username,password});assert.equal(String(boss.userId),ownerUserId);
   const originals=await withTenantTransaction(eid,tx=>rows(tx,sql`select c.text from app.assistant_knowledge_chunks c join app.assistant_knowledge_versions v
     on v.enterprise_id=c.enterprise_id and v.id=c.document_version_id where c.enterprise_id=${eid} and v.document_id=404 and (c.text like '%线管弯头%' or c.text like '%布管穿线%') order by c.ordinal`));assert.equal(originals.length,2);
   const clone=await knowledge.execute('create',{sourceType:'manual_text',audience:'staff_internal',title:'合成测试·微云内部精艺工艺复核资料',category:'合成测试',body:'微云内部精艺工艺复核资料：原PDF第29页水电工艺标准节选，仅用于本地测试，不是现场完成记录。\n'+originals.map(o=>o.text).join('\n')},randomUUID());
@@ -188,11 +228,14 @@ async function main(){
     const page=getCurrentPages().at(-1);s.route=page.route;s.options=page.options||{};
     wx.getStorageSync=function(k){return s.memory.get(k);};wx.setStorageSync=function(k,v){s.memory.set(k,v);};wx.removeStorageSync=function(k){s.memory.delete(k);};
     wx.request=function(o){const copy={...o};const at=String(copy.url).indexOf('/api/');if(at>=0)copy.url='http://127.0.0.1:3006/api/'+String(copy.url).slice(at+5);return s.originals.request.call(wx,copy);};app.hydrateStoredSession=async function(){return true;};}`);installed=true;}
-  const customerQuestions=['我在看《精艺》这份装修手册，卫生间防水前要准备什么？','我是说管根，不是整面墙。要先处理哪些地方？','不是问材料刷完就算验收，我想知道什么条件下才适合继续铺砖？'];
+  const customerQuestions=naturalExplanation?[frameDiscriminator?'《精艺》里，防水基层要怎么准备？管根要怎么加强？':'我在看《精艺》这份装修手册，卫生间防水前要准备什么？管根又该怎么处理？','我刚才说得不准，是水管根部，不是整面墙。为什么这里还要单独处理？','不是问材料刷完就算验收，我想知道什么条件下才适合继续铺砖？']
+    :['我在看《精艺》这份装修手册，卫生间防水前要准备什么？','我是说管根，不是整面墙。要先处理哪些地方？','不是问材料刷完就算验收，我想知道什么条件下才适合继续铺砖？'];
   const staffQuestions=['微云内部的精艺工艺复核资料里，电视墙线管拐弯和穿线顺序该怎么理解？','我是说先穿线还是先铺管，为什么要这样做？','不是问我们现场已经做完没，我想知道这几项做法分别是为了解决什么问题。'];
-  const customerChecks=[[/基层|地基/,/防水坝|管根|清理/],[/管根/,/堵漏宝/,/附加层/],[/闭水/,/合格/,/贴砖|铺砖/,/干透|保护层/]];
+  const customerChecks=naturalExplanation?[[/基层|地基/,/管根/,/堵漏宝|附加层/],[/管根|水管根部/,/渗|漏|衔接|接缝|薄弱/],[/闭水/,/合格/,/贴砖|铺砖/,/干透|保护层/]]
+    :[[/基层|地基/,/防水坝|管根|清理/],[/管根/,/堵漏宝/,/附加层/],[/闭水/,/合格/,/贴砖|铺砖/,/干透|保护层/]];
   const sharedChecks=[[/大弯/,/穿线/,/维修|抽线/],[/铺.*管|铺管|铺设线管/,/穿线/,/抽|维修/],[/抽线|抽动|维修/,/先穿线|后铺管|铺设|顺序/]];
-  const rounds=httpComplete?[{round:1,native:false,kinds:['shared']},{round:2,native:false,kinds:['customer','shared']}]
+  const rounds=boundedBusinessBatch?[{round:1,native:false,kinds:['customer','shared']},{round:2,native:true,kinds:['customer','shared']}]
+    :httpComplete?[{round:1,native:false,kinds:['shared']},{round:2,native:false,kinds:['customer','shared']}]
     :httpOnly?[{round:1,native:false,kinds:['customer','shared']}]:nativePair?[{round:2,native:true,kinds:['customer','shared']}]
     :[{round:1,native:true,kinds:['customer','shared']},{round:2,native:false,kinds:['customer','shared']}];
   for(const round of rounds){
@@ -201,7 +244,8 @@ async function main(){
       const currentShared=await api('/miniprogram/construction/projects/'+pid+'/chat',worker.token),conversationId=kind==='customer'?cid:String(currentShared.conversationId);
       for(let index=0;index<3;index++){const turn:Row={kind,role:kind==='customer'?'customer':['worker','designer','boss'][index],question:(kind==='customer'?customerQuestions:staffQuestions)[index],key:randomUUID(),startedAt:new Date().toISOString(),
         expectations:(kind==='customer'?customerChecks:sharedChecks)[index]};trial.turns.push(turn);
-        await ask(turn,kind==='customer'?customer:[worker,designer,boss][index],conversationId,round.native);console.log(`fixed ${kind} round${round.round} turn${index+1}: PASS`);}
+        await ask(turn,kind==='customer'?customer:[worker,designer,boss][index],conversationId,round.native);console.log(`fixed ${kind} round${round.round} turn${index+1}: PASS`);
+        if(frameDiscriminator){report.protocolDiscriminator={decoded:true,runId:turn.runId,businessAcceptance:false};return;}}
       trial.passed=trial.turns.every((t:Row)=>t.passed);save();
     }
   }
@@ -224,7 +268,11 @@ main().catch(error=>{report.error=(error as Error).stack||String(error);process.
     if(ownerId)await withPlatformTransaction(async tx=>{await tx.execute(sql`update app.admin_users set status='disabled' where id=${ownerId} and username like 'synthetic-v1-owner-%'`);if(ownerUserId)await tx.execute(sql`update app.users set context_version=context_version+1 where id=${ownerUserId}`);});
     fs.rmSync(path.join(output,'owner-credentials.private.json'),{force:true});
   }catch(error){report.cleanupError=(error as Error).message;report.passed=false;process.exitCode=1;}
-  finally{try{if(quotaCapacity){const restored=await withTenantTransaction(eid,tx=>one(tx,sql`update app.assistant_enterprise_settings
+  finally{try{if(explanationConfig){const restored=await withTenantTransaction(eid,tx=>one(tx,sql`update app.assistant_enterprise_settings
+      set agent_config=${JSON.stringify(explanationConfig!.before)}::jsonb,version=version+1,updated_at=now() where enterprise_id=${eid}
+      and agent_config=${JSON.stringify(explanationConfig!.opted)}::jsonb returning enterprise_id`));assert.ok(restored,'Strategy changed concurrently; do not overwrite it');report.strategyOptIn.restored=true;}}
+    catch(error){report.strategyRestoreError=(error as Error).message;report.passed=false;process.exitCode=1;}
+    try{if(quotaCapacity){const restored=await withTenantTransaction(eid,tx=>one(tx,sql`update app.assistant_enterprise_settings
       set daily_tokens=${quotaCapacity!.daily_tokens},version=version+1,updated_at=now() where enterprise_id=${eid} and daily_tokens=2200000
       and daily_requests=${quotaCapacity!.daily_requests} and daily_cost_micros=${quotaCapacity!.daily_cost_micros} returning daily_tokens::text`));
       assert.ok(restored,'Quota changed concurrently; do not overwrite it');report.quotaCapacity.restored=restored.daily_tokens===quotaCapacity.daily_tokens;}}

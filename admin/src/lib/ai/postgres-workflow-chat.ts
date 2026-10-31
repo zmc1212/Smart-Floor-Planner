@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { sql } from 'drizzle-orm';
 import { executeAgentChat, agentChatBody, agentChatRequestDiagnostic } from './providers/agent-chat';
 import { bailianBinding, bailianExplicitCacheCapable, bailianThinkingCapable } from './providers/bailian-capabilities';
 import { consultationProfile } from '@/lib/assistant/contracts/consultation';
@@ -172,6 +173,18 @@ export async function executePostgresText(input: {
       return { content, agentOutput, provider: runtime.key, model: remoteModel, attemptId: attempt.id };
     } catch (error) {
       lastError = error;
+      // The new semantic-review discriminator must retain its actual failed
+      // frame, rather than repeatedly sampling a shape-only mystery. Reuse the
+      // run's private checkpoint/retention path, never public provider metadata.
+      if (input.owner.kind === 'assistant_run' && input.metadata?.sourceAnswerMode === 'reviewed-knowledge-explanation-v1'
+        && Number.isInteger(input.metadata?.turn) && error instanceof AiProviderError && error.privateResponse) {
+        await withTenantTransaction(input.enterpriseId, tx => tx.execute(sql`insert into app.assistant_run_steps
+          (enterprise_id,run_id,step_seq,kind,status,provider_attempt_id,private_checkpoint,input_summary)
+          values(${input.enterpriseId},${String(input.owner.kind === 'assistant_run' ? input.owner.runId : '')},${1900 + Number(input.metadata!.turn)},
+            'agent_invalid_provider_frame','failed',${String(attempt.id)},${JSON.stringify(error.privateResponse)}::jsonb,
+            ${JSON.stringify({ protocol: 'invalid-provider-frame-v1', attemptId: String(attempt.id), diagnostic: error.diagnostic })}::jsonb)
+          on conflict do nothing`)).catch(() => { /* Preserve the original failure/billing audit even if private-frame storage fails. */ });
+      }
       const safeFallback = !dispatched || isSafeProviderFallback(error);
       await withTenantTransaction(input.enterpriseId, (transaction) =>
         new AiCreationRepository(transaction).updateProviderAttempt(attempt.id, {

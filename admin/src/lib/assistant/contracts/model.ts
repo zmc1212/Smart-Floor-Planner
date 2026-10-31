@@ -22,6 +22,9 @@ export type ModelTurnInput = {
 };
 export type ModelTurnOutput = {
   text: string; toolCalls: ModelToolCall[]; finishReason: string | null; providerRequestId: string | null;
+  /** Server-created wire compatibility evidence, retained only in private run
+   * checkpoints. Never copied to safe provider metadata or customer messages. */
+  wireNormalization?: { protocol: 'qwen37-final-trailing-brace-v1'; rawArguments: string; normalizedHash: string };
   usage: { inputTokens: number; outputTokens: number; cachedInputTokens?: number; cacheWriteInputTokens?: number } | null;
   observation?: { latencyMs: number; cache: ReturnType<typeof import('@/lib/ai/providers/model-observation').cacheObservation>;
     prefix: ReturnType<typeof import('@/lib/ai/providers/model-observation').modelPrefixObservation>;

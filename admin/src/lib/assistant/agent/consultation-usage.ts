@@ -21,7 +21,7 @@ export function consultationRequestReservation(messages: ModelMessage[], tools: 
  * No new quota table, tenant resolver, ledger or cross-tenant lookup. */
 export async function reserveConsultationDispatch(tx: PostgresTransaction, input: {
   enterpriseId: string; runId: string; binding: ConsultationBinding; createdAt: string;
-  estimatedRequestTokens: number; purpose: 'answer' | 'vision' | 'summary';
+  estimatedRequestTokens: number; purpose: 'answer' | 'vision' | 'summary' | 'grounding';
 }) {
   const settings = await one(tx, sql`select daily_tokens,daily_cost_micros,extract(epoch from clock_timestamp())*1000 now_ms
     from app.assistant_enterprise_settings where enterprise_id=${input.enterpriseId} and enabled=true for update`);

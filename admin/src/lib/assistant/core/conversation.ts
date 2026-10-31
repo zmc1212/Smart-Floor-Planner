@@ -6,6 +6,8 @@ import { bindSpeechToMessage } from '../speech/link';
 import { speechConfigurationHash } from '../speech/local';
 import { createPreviewPolicy, previewPolicy, projectMessage, citationProjection, webCitationProjection } from '../knowledge/sources';
 import { sourceExcerptProtocol } from '../agent/source-excerpts';
+import { sourceQuestionCoverageProtocol } from '../agent/source-question-coverage';
+import { knowledgeExplanationProtocol } from '../agent/knowledge-explanation';
 import { parseWebCitationId } from '../agent/web-evidence';
 import { configuredGuidance, conversationGuidance, guidanceOpening, guidanceView } from '../requirements/guidance';
 import { requirementCheckpoint } from '../requirements/checkpoint';
@@ -136,7 +138,9 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
     values(${actor.enterpriseId},${String(c.id)},${trigger.kind},${trigger.kind === 'user_message' ? trigger.messageId : null},
     ${trigger.kind === 'domain_event' ? trigger.eventId : null},${trigger.kind === 'scheduled_task' ? trigger.occurrenceKey : null},${purpose},
     ${retryOf || null},${json({ schemaVersion: 1, actor, maxTokens: agent?.consultation ? 8192 : 2048, policyVersion: settings.policy_version, agent,
-      ...(agent && !agent.structuredFinal && ['reply','site.question'].includes(purpose) ? { sourceAnswerMode: sourceExcerptProtocol } : {}),
+      ...(agent && !agent.structuredFinal && ['reply','site.question'].includes(purpose)
+        ? { sourceAnswerMode: agent.knowledgeExplanation === knowledgeExplanationProtocol ? knowledgeExplanationProtocol : sourceExcerptProtocol,
+          sourceQuestionCoverage: sourceQuestionCoverageProtocol } : {}),
       ...(speech ? { localSpeech: { protocol: 'local-speech-v1', configurationHash: speechBinding } } : {}),
       ...(reservation.imageContextBudget ? { imageContextBudget: reservation.imageContextBudget } : {}),
       ...(reservation.imageSchema ? { imageSchema: reservation.imageSchema } : {}),

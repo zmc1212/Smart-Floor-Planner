@@ -9,3 +9,10 @@ export function anchorKnowledgeQuery(terms:string,currentQuestion:string):string
   const label='\n检索词：';
   return question+label+take(terms,1000-question.length-label.length);
 }
+
+/** Relevance preference only, derived from the actual anchored original. A
+ * model-added title after the search-term boundary cannot set this preference. */
+export function requestedKnowledgeTitles(query:string):string[] {
+  const original=query.split('\n检索词：',1)[0];
+  return [...new Set([...original.matchAll(/《([^》\r\n]{1,160})》/gu)].map(match=>match[1].trim()).filter(Boolean))].slice(0,4);
+}

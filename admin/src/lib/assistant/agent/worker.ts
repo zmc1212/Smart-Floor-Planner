@@ -49,6 +49,10 @@ import { currentSynthesisContext } from './synthesis-sources';
 import { boundKnowledgeContext } from './bound-context';
 import { anchorKnowledgeQuery } from '../knowledge/query-context';
 import { sourceExcerptProtocol, sourceExcerptFinalTool, sourceExcerptIds, parseSourceExcerptAnswer } from './source-excerpts';
+import { sourceQuestionCoverageProtocol, sourceQuestionReadTool, sourceQuestionFinalTool, parseSourceQuestionQuery,
+  readSourceQuestionCoverage, parseSourceQuestionAnswer, type SourceQuestionCoverage } from './source-question-coverage';
+import { knowledgeExplanationProtocol, knowledgeExplanationInstructions, exactKnowledgeQuoteRequested, knowledgeExplanationReadTool, knowledgeExplanationFinalTool,
+  prepareKnowledgeExplanation, acceptKnowledgeExplanation, knowledgeExplanationFailure, parseKnowledgeExplanationQuery, assertExplanationDispatchBudget } from './knowledge-explanation';
 import { knowledgeContext, projectKnowledgeContextStep, projectKnowledgeContextAvailable } from '../knowledge/applicability-context';
 import { fitAgentContext, originalMessageId, agentRequestBudget, imageContextBudgetPolicy } from './context-budget';
 import { restoreAncestorSources, ancestorSourceMessages } from './ancestor-sources';
@@ -239,13 +243,14 @@ export function projectFinalToolOutput(output: ModelTurnOutput): ModelTurnOutput
 const sourceQueryTools = new Set(['restore_sources', 'query_business', 'query_materials', 'query_followups', 'search_knowledge', 'search_web', 'read_web', 'recommend_references', 'recommend_designers']);
 /** The provider sees the same current catalog as the validator. Schema enums
  * assist generation; authorized server lookup remains the acceptance boundary. */
-export function finalToolForMessages(messages:ModelMessage[], question = '', sourceExcerpts = false, requiredKnowledge = false):ModelTool {
+export function finalToolForMessages(messages:ModelMessage[], question = '', sourceExcerpts = false, requiredKnowledge = false, sourceQuestionCoverage = false, knowledgeExplanation = false):ModelTool {
   if (currentMessageOnlyRequested(question)) return currentMessageFinalTool;
   const sourceOnly = originalAnswerOnly(question);
   const independentAdvice = independentAdviceRequested(question);
   const knowledgeScoped = sourceOnly || independentAdvice;
   let queriedSources = false, synthesisResult = false, otherDisplayResult = false, designerResult = false;
   let excerptIds:string[]|undefined;
+  let questionCoverage: SourceQuestionCoverage | undefined;
   for (const [index, message] of messages.entries()) {
     if (message.role !== 'tool' || isReadToolInputFailure(message.content)) continue;
     let requestIndex = index - 1;
@@ -257,7 +262,10 @@ export function finalToolForMessages(messages:ModelMessage[], question = '', sou
     try {
       const packet = JSON.parse(message.content);
       if (!packet || typeof packet !== 'object' || Array.isArray(packet)) continue;
-      if(call.name==='search_knowledge')excerptIds=sourceExcerptIds(packet)??excerptIds;
+      if(call.name==='search_knowledge') {
+        excerptIds=sourceExcerptIds(packet)??excerptIds;
+        if (sourceQuestionCoverage && packet.questionCoverage) questionCoverage = readSourceQuestionCoverage(packet.questionCoverage);
+      }
       // Pure source reads need an answer composed from their actual catalog.
       // A result key is a receipt, not proof that a snapshot list answers the
       // customer's question. Keep action cards and clarification displays.
@@ -271,7 +279,20 @@ export function finalToolForMessages(messages:ModelMessage[], question = '', sou
       }
     } catch { /* Unknown result shapes retain the existing source-kind boundary. */ }
   }
-  if(sourceExcerpts && (sourceOnly||requiredKnowledge) && excerptIds)return sourceExcerptFinalTool(finalTool,excerptIds);
+  if (knowledgeExplanation && questionCoverage && synthesisResult && !otherDisplayResult) {
+    const ids = [...new Set(messages.flatMap(message => {
+      if (message.role !== 'tool') return [];
+      try { const packet = JSON.parse(message.content); return (Array.isArray(packet?.synthesisSources) ? packet.synthesisSources : [])
+        .flatMap((source: { citationOptions?: Array<{ citationId?: string }> }) => source.citationOptions?.map(option => option.citationId) || [])
+        .filter((id: unknown): id is string => typeof id === 'string'); } catch { return []; }
+    }))];
+    return knowledgeExplanationFinalTool(finalTool, questionCoverage, ids);
+  }
+  if(sourceExcerpts && (sourceOnly||requiredKnowledge) && excerptIds) {
+    const tool = sourceExcerptFinalTool(finalTool,excerptIds);
+    if (sourceQuestionCoverage && !questionCoverage) fail('context_changed');
+    return questionCoverage ? sourceQuestionFinalTool(tool, questionCoverage) : tool;
+  }
   const allIds=[...new Set(messages.flatMap(message=>{
     if(message.role!=='tool')return [];
     try{const packet=JSON.parse(message.content);return (Array.isArray(packet?.synthesisSources)?packet.synthesisSources:[])
@@ -366,13 +387,15 @@ export function finalToolForMessages(messages:ModelMessage[], question = '', sou
  * has actually been read. Separate authorized writes/handoff retain their own
  * contracts. Exhaustion/disabled tools can only explain unavailability. */
 export function agentToolsForTurn(question: string, messages: ModelMessage[], tools: ModelTool[], triggerId: string,
-  sourceMode:{requiredKnowledge?:boolean;sourceExcerpts?:boolean} = {}): ModelTool[] {
-  const {requiredKnowledge=false,sourceExcerpts=false}=sourceMode;
+  sourceMode:{requiredKnowledge?:boolean;sourceExcerpts?:boolean;sourceQuestionCoverage?:boolean;knowledgeExplanation?:boolean} = {}): ModelTool[] {
+  const {requiredKnowledge=false,sourceExcerpts=false,sourceQuestionCoverage=false,knowledgeExplanation=false}=sourceMode;
+  if (knowledgeExplanation) tools = tools.map(knowledgeExplanationReadTool);
+  else if (sourceQuestionCoverage && (requiredKnowledge || originalAnswerOnly(question))) tools = tools.map(sourceQuestionReadTool);
   if (requiredKnowledge && knowledgeReadPending(question,messages,triggerId,true) && tools.some(tool=>tool.name==='search_knowledge'))
     return tools.filter(tool=>tool.name==='search_knowledge');
   if (!requiredKnowledge && currentMessageOnlyRequested(question)) return [currentMessageFinalTool];
   if (!requiredKnowledge && independentAdviceRequested(question)) return [...needToolsForRetry(messages, tools).filter(tool => ['search_knowledge', 'search_web', 'read_web'].includes(tool.name)), finalToolForMessages(messages, question,sourceExcerpts)];
-  if (!knowledgeReadPending(question, messages, triggerId, requiredKnowledge)) return [...needToolsForRetry(messages, tools), finalToolForMessages(messages, question,sourceExcerpts,requiredKnowledge)];
+  if (!knowledgeReadPending(question, messages, triggerId, requiredKnowledge)) return [...needToolsForRetry(messages, tools), finalToolForMessages(messages, question,sourceExcerpts,requiredKnowledge,sourceQuestionCoverage,knowledgeExplanation)];
   if (tools.some(tool => tool.name === 'search_knowledge')) return needToolsForRetry(messages, tools)
     .filter(tool => ['search_knowledge', 'request_designer', 'record_reference_preference'].includes(tool.name)
       || tool.name === 'record_need' && Boolean(explicitNeedWriteStatement(question)));
@@ -690,7 +713,11 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     const reviewDefinitions = review ? reviewModelTools(review, imageSchema ? String(initial.trigger.id) : undefined) : [];
     const composableReview = !!review && (initial.run.policy_snapshot as Row).reviewRuntime === composableReviewProtocol;
     const nativeFinalization=composableReview&&initial.config.structuredFinal===nativeFinalProtocol;
-    const sourceMode={requiredKnowledge:initial.shared,sourceExcerpts:!nativeFinalization&&(initial.run.policy_snapshot as Row).sourceAnswerMode===sourceExcerptProtocol};
+    const explanationBound = !nativeFinalization && (initial.run.policy_snapshot as Row).sourceAnswerMode === knowledgeExplanationProtocol;
+    const exactQuote = explanationBound && exactKnowledgeQuoteRequested(reviewContext.currentQuestion);
+    const sourceMode={requiredKnowledge:initial.shared,sourceExcerpts:!nativeFinalization&&((initial.run.policy_snapshot as Row).sourceAnswerMode===sourceExcerptProtocol || exactQuote),
+      knowledgeExplanation:explanationBound && !exactQuote,
+      sourceQuestionCoverage:!nativeFinalization&&(initial.run.policy_snapshot as Row).sourceQuestionCoverage===sourceQuestionCoverageProtocol};
     const imageFinalization = initial.config.imageContext === conversationImageProtocol;
     const imageContextBudget = imageFinalization && (initial.run.policy_snapshot as Row).imageContextBudget === imageContextBudgetPolicy.version
       ? imageContextBudgetPolicy.version : undefined;
@@ -753,7 +780,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           const limits = agentRequestBudget({ profile, purpose });
           const deadlineAt = initial.consultationDeadlineAt;
           const { messageScoped, adviceScoped, focused, dispatchTools, policyView, bounded, modelMessages, contentProjection } = compileModelRequest({
-            question: reviewContext.currentQuestion, triggerId: String(initial.trigger.id), turn, purpose,sourceExcerpts:sourceMode.sourceExcerpts,requiredKnowledge:sourceMode.requiredKnowledge,
+            question: reviewContext.currentQuestion, triggerId: String(initial.trigger.id), turn, purpose,sourceExcerpts:sourceMode.sourceExcerpts,requiredKnowledge:sourceMode.requiredKnowledge,sourceQuestionCoverage:sourceMode.sourceQuestionCoverage,knowledgeExplanation:sourceMode.knowledgeExplanation,
             messages:nativeFinalization&&purpose==='answer'&&tools.length?nativePlanningMessages(messages, completion ? reviewCompletionInstructions : undefined):claimMessages, tools,
             toolsForTurn:(question,current,available,triggerId)=>{
               const definitions=agentToolsForTurn(question,current,available,triggerId,sourceMode);
@@ -766,7 +793,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             }, profile, ...(purpose === 'answer' ? { imageContextBudget } : {}),
             ...(nativeFinalization&&purpose==='answer'&&!tools.length?{wireProjection:imageFinalization ? nativeImageFinalMessages : nativeFinalMessages}:{}),
           });
-          const summaryRequestHash = purpose === 'summary' ? fingerprint({ messages: modelMessages, tools: dispatchTools }) : null;
+          const summaryRequestHash = purpose === 'summary' || purpose === 'grounding' ? fingerprint({ messages: modelMessages, tools: dispatchTools }) : null;
           await heartbeat(lease);
           if (!consultation) outcomeKnown = false;
           const sequence = 1100 + turn * 10;
@@ -774,7 +801,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           const cached = await scoped(async tx => one(tx, sql`select status,private_checkpoint,input_summary from app.assistant_run_steps
             where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`));
           if (cached) {
-            if (purpose === 'summary' && (cached.input_summary as Row)?.summaryRequestHash !== summaryRequestHash) fail('context_changed');
+            if ((purpose === 'summary' || purpose === 'grounding') && (cached.input_summary as Row)?.summaryRequestHash !== summaryRequestHash) fail('context_changed');
             if (cached.status !== 'succeeded') fail('provider_outcome_unknown');
             outcomeKnown = true;
             const saved = cached.private_checkpoint as ModelTurnOutput;
@@ -784,6 +811,15 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           }
           const requestedTokens = consultation ? consultationRequestReservation(modelMessages, dispatchTools, limits.maxOutputTokens) : null;
           const beforeProviderCall = async () => { try { await scoped(async tx => {
+            // Semantic review consumes the same reserved dispatch envelope as
+            // generation. Never turn the new validator into unmetered calls.
+            if (!consultation && explanationBound) {
+              const calls = await rows(tx, sql`select input_summary#>>'{budget,after,estimatedTokens}' estimate from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+                and run_id=${lease.runId} and kind='agent_model'`);
+              const held = await one(tx,sql`select reserved_tokens from app.assistant_quota_reservations where enterprise_id=${lease.enterpriseId}
+                and run_id=${lease.runId} and status='held'`);
+              assertExplanationDispatchBudget(calls.map(call=>Number(call.estimate)),bounded.diagnostic.after.estimatedTokens,Number(held?.reserved_tokens));
+            }
             const reservation = consultation ? await reserveConsultationDispatch(tx, { enterpriseId: lease.enterpriseId, runId: lease.runId,
               binding: consultation, createdAt: String(initial.run.created_at), purpose,
               estimatedRequestTokens: requestedTokens! }) : null;
@@ -796,6 +832,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                   imageContext: initial.config.imageContext ?? null,
                   projectKnowledge: initial.shared,
                   sourceAnswerMode: (initial.run.policy_snapshot as Row).sourceAnswerMode ?? null,
+                  sourceQuestionCoverage: (initial.run.policy_snapshot as Row).sourceQuestionCoverage ?? null,
                   imageSchema: imageSchema ? nativeImageSchemaProtocol : null,
                   numericProseProtocol: purpose === 'answer' ? proseNumberProtocol : null,
                   citationSelectionProtocol: consultation && purpose === 'answer' ? citationSelectionProtocol : null,
@@ -809,6 +846,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                   responseScope: modelMessages.some(m => m.role === 'system' && m.content.some(p => p.type === 'text' && p.text.startsWith(availabilityScopeHintPrefix))) ? 'unavailable_occupancy_evidence' : null })}::jsonb)`);
             await tx.execute(sql`update app.assistant_jobs set provider_started_at=now(),updated_at=now() where enterprise_id=${lease.enterpriseId} and id=${lease.jobId}`);
           }); } catch(error) {
+            if (!consultation && explanationBound && error instanceof AssistantError && error.code === 'assistant_quota_exceeded') outcomeKnown = true;
             if (consultation && error instanceof AssistantError && ['assistant_quota_exceeded','provider_outcome_unknown','agent_deadline_exceeded'].includes(error.code)) {
               try { await scoped(async tx=>tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
                 values(${lease.enterpriseId},${lease.runId},${sequence+1},'agent_budget_guard','failed',
@@ -830,6 +868,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               ...(nativeFinalization&&purpose==='answer'&&!tools.length?{outputMode:'json_schema' as const}:{}),
               ...(profile ? { profile, deadlineAt } : {}) } },
             metadata: { promptVersion: agentPromptVersion, runtime: initial.config.runtime, turn, purpose, probeVersion: initial.config.probeVersion,
+              sourceAnswerMode: (initial.run.policy_snapshot as Row).sourceAnswerMode ?? null,
               ...(nativeFinalization&&purpose==='answer'&&!tools.length?{nativeFinalProjection:finalProjection}:{}),
               ...(initial.config.imageContext ? {imageContext:initial.config.imageContext} : {}) },
             beforeProviderCall,
@@ -933,7 +972,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and kind='agent_model'`);
       return consultationRuntimeBudget({summaries:Number(auxiliary?.summaries||0),perceptions:Number(auxiliary?.perceptions||0)});
     });
-    const turnTools = toolsForMessage(businessFollowup);
+    const turnTools = toolsForMessage(businessFollowup).map(tool => sourceMode.knowledgeExplanation ? knowledgeExplanationReadTool(tool) : sourceMode.sourceQuestionCoverage
+      && (initial.shared || originalAnswerOnly(reviewContext.currentQuestion)) ? sourceQuestionReadTool(tool) : tool);
     if (!initial.config.consultation) turnAllocation = await scoped(async tx => {
       const auxiliary = await one(tx, sql`select count(*) filter(where input_summary->>'purpose'='summary')::int summaries,
         count(*) filter(where input_summary->>'purpose'='vision')::int perceptions from app.assistant_run_steps
@@ -1070,6 +1110,40 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           return resolved;
         }),
         validateFinal:async(raw,turn)=>{
+          let explanationKind: unknown;
+          try { explanationKind = JSON.parse(raw)?.kind; } catch { /* Existing syntax diagnostics below. */ }
+          if (sourceMode.knowledgeExplanation && ['general', 'vision', 'unavailable', 'synthesis', 'knowledge'].includes(String(explanationKind))) {
+            const source = await scoped(tx => one(tx, sql`select id from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+              and run_id=${lease.runId} and kind='retrieval' and status='succeeded' limit 1`));
+            if (source) return knowledgeExplanationFailure(new AssistantError('invalid_model_answer', 502));
+          }
+          if (sourceMode.knowledgeExplanation && explanationKind === 'knowledge_explanation') {
+            try {
+              const draft = await scoped(async (tx, context) => {
+                const retrieval = await one(tx, sql`select input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+                  and run_id=${lease.runId} and kind='retrieval' and status='succeeded' order by step_seq desc limit 1`);
+                if (!retrieval) fail('source_read_required', 502);
+                const evidence = await currentSynthesisContext(tx, lease.actor, context.conversation, lease.runId);
+                return prepareKnowledgeExplanation(raw, evidence.sources, readSourceQuestionCoverage((retrieval.input_summary as Row)?.questionCoverage),
+                  reviewContext, initial.messages);
+              });
+              // A separate purpose keeps the exact review schema out of ordinary
+              // planning/final projections, while sharing dispatch, usage and
+              // unknown-outcome persistence with every other configured call.
+              const reviewed = await callModel(60 + turn, draft.reviewMessages, [draft.reviewTool], 'grounding');
+              const issue = acceptKnowledgeExplanation(draft, reviewed, draft.binding);
+              await scoped(async tx => {
+                const saved = await one(tx, sql`select input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+                  and run_id=${lease.runId} and step_seq=${1350 + turn}`);
+                if (saved && (saved.input_summary as Row)?.binding !== draft.binding) fail('context_changed');
+                await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary,private_checkpoint)
+                  values(${lease.enterpriseId},${lease.runId},${1350 + turn},'agent_explanation_review',${issue ? 'failed' : 'succeeded'},
+                    ${JSON.stringify({ protocol: knowledgeExplanationProtocol, binding: draft.binding, noBusinessTools: true })}::jsonb,
+                    ${JSON.stringify({ review: reviewed, issue })}::jsonb) on conflict do nothing`);
+              });
+              return issue;
+            } catch (error) { return knowledgeExplanationFailure(error); }
+          }
           const shapeIssue = await finalResponseShapeIssue(raw);
           if (shapeIssue) {
             await scoped(tx => tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
@@ -1086,6 +1160,20 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           }
           let candidate:{kind?:string;text?:unknown;segments?:Array<{text?:unknown}>};try{candidate=JSON.parse(raw);}catch{return null;}
           const question = safeText(initial.trigger.content as Parameters<typeof safeText>[0]);
+          if (sourceMode.sourceQuestionCoverage && (initial.shared || originalAnswerOnly(question)) && candidate?.kind === 'knowledge') {
+            const source = await scoped(tx => one(tx, sql`select private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+              and run_id=${lease.runId} and kind='retrieval' and status='succeeded' order by step_seq desc limit 1`));
+            if (!source) fail('source_read_required', 502);
+            const coverage = readSourceQuestionCoverage((source.input_summary as Row)?.questionCoverage);
+            try { parseSourceQuestionAnswer(raw, source.private_checkpoint as Evidence[], coverage, reviewContext); }
+            catch (error) {
+              if (!(error instanceof AssistantError) || !['invalid_model_answer', 'invalid_model_citation', 'incomplete_model_answer', 'ungrounded_response_scope', 'unsupported_model_commitment'].includes(error.code)) throw error;
+              await scoped(tx => tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
+                values(${lease.enterpriseId},${lease.runId},${1300+turn},'agent_validation','failed',
+                  ${JSON.stringify({ code: error.code, scope: sourceQuestionCoverageProtocol, noBusinessTools: true })}::jsonb) on conflict do nothing`));
+              return { code: error.code, feedback: '最终原文选择未通过逐问项校验。保留本轮questionCoverage中的所有Q编号，coverage每项必须是直接回答它的selectionId数组；缺依据用空数组。selections必须等于coverage的去重并集且最多三条。只修复最终选择，不调用工具、不新增来源或正文，沿原一次最终校验预算。' };
+            }
+          }
           const materialText = [candidate.text, ...(Array.isArray(candidate.segments) ? candidate.segments.map(s => s?.text) : [])]
             .filter((s): s is string => typeof s === 'string').join('\n');
           if (materialSharingRequested(question) && materialShareCompletionClaim(materialText)) {
@@ -1392,9 +1480,17 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             });
           }
           if (name === 'search_knowledge') {
-            if (!input || Object.keys(input).some(k => k !== 'query') || typeof input.query !== 'string' || !input.query.trim() || input.query.length > 1000) fail('invalid_message', 422);
+            const questionCoverage = sourceMode.sourceQuestionCoverage && (sourceMode.knowledgeExplanation || initial.shared || originalAnswerOnly(reviewContext.currentQuestion))
+              ? sourceMode.knowledgeExplanation ? parseKnowledgeExplanationQuery(input) : parseSourceQuestionQuery(input, reviewContext.currentQuestion) : undefined;
+            if (!input || Object.keys(input).some(k => k !== 'query' && !(questionCoverage && k === 'questions')) || typeof input.query !== 'string' || !input.query.trim() || input.query.length > 1000) fail('invalid_message', 422);
             const cached = await scoped(async tx => one(tx, sql`select status,private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`));
             if (cached && cached.status !== 'succeeded') fail('provider_outcome_unknown');
+            if (cached && questionCoverage && fingerprint((cached.input_summary as Row)?.questionCoverage) !== fingerprint(questionCoverage)) fail('context_changed');
+            if (questionCoverage) {
+              const first = await scoped(tx => one(tx, sql`select input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+                and run_id=${lease.runId} and kind='retrieval' and status='succeeded' order by step_seq limit 1`));
+              if (first && fingerprint((first.input_summary as Row)?.questionCoverage) !== fingerprint(questionCoverage)) fail('context_changed');
+            }
             if (!cached) await scoped(async tx => {
               await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status)
                 values(${lease.enterpriseId},${lease.runId},${sequence},'retrieval','knowledge.search.v1',1,'running')`);
@@ -1419,7 +1515,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                 values(${lease.enterpriseId},${lease.runId},${sequence},'retrieval','knowledge.search.v1',1,'succeeded',
                   ${JSON.stringify(selected.map(e => ({ ref: e.ref, hash: e.hash })))}::jsonb,${JSON.stringify(selected)}::jsonb)
                 on conflict(enterprise_id,run_id,step_seq) do update set status='succeeded',source_refs=excluded.source_refs,private_checkpoint=excluded.private_checkpoint`);
-              await tx.execute(sql`update app.assistant_run_steps set input_summary=${JSON.stringify({ knowledgeStatus, diagnostic })}::jsonb
+              await tx.execute(sql`update app.assistant_run_steps set input_summary=${JSON.stringify({ knowledgeStatus, diagnostic, ...(questionCoverage ? { questionCoverage } : {}) })}::jsonb
                 where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`);
               await tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,operation_key,category,measurement_kind)
                 values(${lease.enterpriseId},${lease.runId},${'agent-search:'+resultKey},'query_embedding','unavailable') on conflict do nothing`);
@@ -1441,11 +1537,11 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             const titles=Object.fromEntries((diagnostic?.candidates||[]).map(candidate=>[candidate.ref.id,candidate.title]));
             const synthesisSources = [...knowledgeSynthesisSources(selected,titles), ...(bound ? [bound.materials,bound.construction,bound.followups].flatMap(s=>businessSynthesisSources(s.resultKey,s.snapshot)) : [])];
             const unresolvedConflict = unresolvedSynthesisConflict(synthesisSources);
-            return { content: JSON.stringify({ knowledgeStatus, unresolvedConflict, evidence: answerExcerpts(selected), synthesisSources:synthesisSources.map(({evidence,...source})=>({...source,
+            return { content: JSON.stringify({ knowledgeStatus, unresolvedConflict, ...(questionCoverage ? { questionCoverage } : {}), evidence: answerExcerpts(selected), synthesisSources:synthesisSources.map(({evidence,...source})=>({...source,
               ...(evidence?.file?{file:evidence.file,...(source.text.length<=400?{citationQuote:source.text}:{})}:{}),
               ...(evidence?.professional?{professional:{origin:evidence.professional.entry.origin,conditions:evidence.professional.entry.conditions,prerequisites:evidence.professional.entry.prerequisites,exceptions:evidence.professional.entry.exceptions},applicability:evidence.professional.applicability,context:evidence.professional.context}: {})})),
               boundProjectContext: bound ? { resolution: bound.materials.snapshot.data.resolution, missing: bound.materials.snapshot.data.missing, constructionQueriedAt: bound.construction.snapshot.queriedAt } : null,
-              instructions: (unresolvedConflict ? '资料明确含尚未核实的规则冲突。综合回答第一段必须basis=uncertainty，先说明不能按企业规则择一；随后分别引述双方，不用“主流/倾向/优先”认定企业现行口径。一般建议另标身份。' : '')
+              instructions: sourceMode.knowledgeExplanation ? knowledgeExplanationInstructions : (unresolvedConflict ? '资料明确含尚未核实的规则冲突。综合回答第一段必须basis=uncertainty，先说明不能按企业规则择一；随后分别引述双方，不用“主流/倾向/优先”认定企业现行口径。一般建议另标身份。' : '')
                 + '解释专业原理、取舍、适用条件时用kind=synthesis和segments，引用本轮synthesisSources；原文查询也用该段落结构保留引用，不输出kind=knowledge或顶层text/selections。冲突保留双方并说明待核实；缺知识仍可给标明身份的一般建议。不得编造企业或现场事实。其他独立业务/案例展示结果沿其真实resultKey与原协议。'
                   + '当前问题若问验收或完成状态，直接用“当前证据不足以支持该结论，仍需核对实际检查记录”等措辞回答判断。text中禁止复述完成词，包括否定句、引号与举例中的“已验收”“已经验收”“已批准”“已经批准”“已完成验收”；不要写“不能认定已经验收/不支持已经验收”，改为“当前证据不能支持该结论”。原文quote仍须逐字保留，不能改写。' }) };
           }
@@ -1485,13 +1581,25 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     const materialReceipt = reply.kind === 'general' && result.finalFromTools ? await scoped(tx => one(tx, sql`select private_checkpoint from app.assistant_run_steps
       where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and kind='agent_material_share' and status='succeeded' order by step_seq desc limit 1`)) : null;
     const exactMaterialReceipt = materialReceipt && (materialReceipt.private_checkpoint as Row).text === reply.text;
-    if (usedSourceTool && !exactMaterialReceipt && !['business', 'knowledge','references','designers','synthesis'].includes(reply?.kind || '')) fail('invalid_model_citation', 502);
-    if (reply.kind === 'synthesis') {
+    if (usedSourceTool && !exactMaterialReceipt && !['business', 'knowledge','references','designers','synthesis','knowledge_explanation'].includes(reply?.kind || '')) fail('invalid_model_citation', 502);
+    if (reply.kind === 'synthesis' || reply.kind === 'knowledge_explanation') {
       await authorize();
       await scoped(async (tx, context) => {
         if (claimFinalization) await boundReviewClaims(tx, lease.actor, context.conversation, lease.runId);
         const evidence = await currentSynthesisContext(tx, lease.actor, context.conversation, lease.runId);
-        const answer = parseSynthesis(result.output?.text || '', evidence.sources,reviewContext);
+        let answer: ReturnType<typeof parseSynthesis>;
+        if (reply.kind === 'knowledge_explanation') {
+          if (!sourceMode.knowledgeExplanation) fail('invalid_model_answer', 502);
+          const retrieval = await one(tx, sql`select input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+            and run_id=${lease.runId} and kind='retrieval' and status='succeeded' order by step_seq desc limit 1`);
+          if (!retrieval) fail('source_read_required', 502);
+          const draft = prepareKnowledgeExplanation(result.output?.text || '', evidence.sources,
+            readSourceQuestionCoverage((retrieval.input_summary as Row)?.questionCoverage), reviewContext, initial.messages);
+          const proof = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+            and run_id=${lease.runId} and kind='agent_explanation_review' and status='succeeded' and input_summary->>'binding'=${draft.binding}`);
+          if (!proof || acceptKnowledgeExplanation(draft, (proof.private_checkpoint as Row).review as ModelTurnOutput, draft.binding)) fail('context_changed');
+          answer = draft.answer;
+        } else answer = parseSynthesis(result.output?.text || '', evidence.sources,reviewContext);
         const preferences = ((context.conversation.entry_snapshot as Row)?.referencePreferences || []) as ReferencePreference[];
         const memory = await availableNeedMemory(tx, lease.enterpriseId, String(context.conversation.id), context.conversation.entry_snapshot);
         assertRecordedReply(answer.segments.map(s => s.text).join('\n'), memory, lease.runId,
@@ -1612,14 +1720,16 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       }
     }
     if (reply.kind === 'knowledge') {
-      const evidence = await scoped(async tx => one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+      const evidence = await scoped(async tx => one(tx, sql`select private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
         and run_id=${lease.runId} and kind='retrieval' order by step_seq desc limit 1`));
       if (!evidence) fail('invalid_model_citation', 502);
       const sources = evidence.private_checkpoint as Evidence[];
       await authorize();
       const selection=JSON.stringify({selections:reply.selections});
-      const answer=sourceMode.sourceExcerpts?parseSourceExcerptAnswer(selection,sources,reviewContext):parseSelection(selection,sources);
-      await completeAnswer(lease, answer, sources, null, reviewReceipts.join('\n') || undefined, async tx => {
+      const covered = sourceMode.sourceQuestionCoverage && (initial.shared || originalAnswerOnly(reviewContext.currentQuestion))
+        ? parseSourceQuestionAnswer(result.output!.text, sources, readSourceQuestionCoverage((evidence.input_summary as Row)?.questionCoverage), reviewContext) : undefined;
+      const answer=covered?.answer ?? (sourceMode.sourceExcerpts?parseSourceExcerptAnswer(selection,sources,reviewContext):parseSelection(selection,sources));
+      await completeAnswer(lease, answer, sources, null, [...reviewReceipts, ...(covered?.followup ? [covered.followup] : [])].join('\n') || undefined, async tx => {
         if(initial.shared&&!await projectKnowledgeContextAvailable(tx,lease.actor,initial.conversation,lease.runId))fail('context_changed');
         await validateConstructionSources(tx, String(initial.conversation.id));
         for (const ref of initial.mediaRefs) if (!await resolveAgentMedia(tx, lease.enterpriseId, String(initial.conversation.id), ref)) fail('context_changed');
