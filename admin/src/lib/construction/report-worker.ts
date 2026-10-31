@@ -6,6 +6,7 @@ import { appendMessage } from '@/lib/assistant/core/conversation';
 import { completeLocalReport, failRun, type Lease } from '@/lib/assistant/infrastructure/job-queue';
 import { latestReportPeriod, nextReportAt } from './report-calendar';
 import { discoverFollowups, enqueueReport } from './report-store';
+import { dailySupplementCandidates, supplementClosedDailyReports } from './report-supplements';
 import { collectReportFacts, deliveryActor, followupAvailable, projectReportFacts, reportFactsHash, type ReportFacts } from './report-scope';
 
 /** One latest due daily and weekly period per tick, not an unbounded outage replay.
@@ -16,7 +17,8 @@ export async function advanceConstructionReports(now = new Date(), onlyEnterpris
     join app.assistant_enterprise_settings a on a.enterprise_id=s.enterprise_id and a.enabled
     where s.enabled ${onlyEnterprise ? sql`and s.enterprise_id=${onlyEnterprise}` : sql``}
     and (s.next_daily_at<=${now} or s.next_weekly_at<=${now} or exists(select 1 from app.domain_event_outbox ev
-      where ev.enterprise_id=s.enterprise_id and ev.type='construction.stage.updated.v1' and ev.id>s.stage_cursor and ev.created_at<=${now}))
+      where ev.enterprise_id=s.enterprise_id and ev.type='construction.stage.updated.v1' and ev.id>s.stage_cursor and ev.created_at<=${now})
+      or exists(select 1 ${dailySupplementCandidates(sql`s.enterprise_id`, now)}))
     order by s.enterprise_id limit 20`));
   let queued = 0;
   const errors: Array<{ enterpriseId: string; code: string }> = [];
@@ -38,6 +40,7 @@ export async function advanceConstructionReports(now = new Date(), onlyEnterpris
           const field = kind === 'daily' ? sql`next_daily_at` : sql`next_weekly_at`;
           await tx.execute(sql`update app.construction_report_settings set ${field}=${nextReportAt(kind, now, time)} where enterprise_id=${eid}`);
         }
+        n += await supplementClosedDailyReports(tx, eid, settings, now);
         const events = await rows(tx, sql`select e.* from app.domain_event_outbox e
           where e.enterprise_id=${eid} and e.type='construction.stage.updated.v1' and e.id>${String(settings.stage_cursor)}
           and e.created_at<=${now} order by e.id limit 50`);

@@ -6,8 +6,8 @@ import { idempotent } from '@/lib/assistant/core/conversation';
 import { constructionAccess } from './service';
 import { object, type ConstructionActor } from './contracts';
 import { readStageSettings } from './stages-store';
-import { nextReportAt, reportTime } from './report-calendar';
-import { discoverFollowups, enqueueReport } from './report-store';
+import { correctedReportEnd, nextReportAt, reportTime } from './report-calendar';
+import { discoverFollowups, enqueueReportCorrection } from './report-store';
 
 const asDate = (v: unknown) => new Date(String(v));
 /** Domain operations only. No new settings UI, customer message or model path
@@ -71,20 +71,12 @@ export class ConstructionReportService {
         const report = await one(tx, sql`select * from app.construction_reports where enterprise_id=${eid} and id=${reportId} for update`);
         if (!settings || !report) fail('construction_not_found', 404);
         if (Number(report.latest_revision) !== expectedRevision) fail('version_conflict');
-        const old = await one(tx, sql`select v.status,r.status as run_status,r.policy_snapshot from app.construction_report_versions v
-          join app.assistant_runs r on r.enterprise_id=v.enterprise_id and r.id=v.run_id
+        const old = await one(tx, sql`select v.period_end from app.construction_report_versions v
           where v.enterprise_id=${eid} and v.report_id=${reportId} and v.revision=${expectedRevision}`);
-        if (!old || old.run_status !== 'succeeded') fail('context_changed');
-        const b = (await one(tx, sql`select * from app.construction_followup_bindings where enterprise_id=${eid} and id=${String(report.binding_id)} for update`))!;
-        const start = asDate(report.period_start), originalEnd = asDate(report.period_end);
-        const end = report.kind === 'daily' ? new Date(Math.max(originalEnd.getTime(), Math.min(now.getTime(), start.getTime() + 86400000))) : originalEnd;
-        const updated = { ...report, latest_revision: expectedRevision + 1 };
-        const result = await enqueueReport(tx, eid, b, { ...settings, ...((old.policy_snapshot as Row).scope as Row) }, {
-          kind: report.kind as 'daily' | 'weekly' | 'stage', start, end, cutoff: new Date(Math.max(end.getTime(), now.getTime())),
-          scheduledAt: asDate(report.scheduled_at), ...(report.stage_event_id ? { stageEventId: String(report.stage_event_id) } : {}),
-        }, updated);
+        if (!old) fail('context_changed');
+        const end = correctedReportEnd(String(report.kind), asDate(report.period_start), asDate(old.period_end), now);
+        const result = await enqueueReportCorrection(tx, eid, report, settings, end);
         if (!result) fail('context_changed');
-        await tx.execute(sql`update app.construction_reports set latest_revision=${expectedRevision + 1} where enterprise_id=${eid} and id=${reportId}`);
         return result;
       });
     });

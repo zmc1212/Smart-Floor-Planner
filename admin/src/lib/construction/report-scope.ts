@@ -51,6 +51,23 @@ async function accessibleRecord(tx: PostgresTransaction, eid: string, binding: R
   if (await siteAccessRevoked(tx, eid, pid, authors, new Date(String(r.published_at)), { reviewers: r.approved_by ? [String(r.approved_by)] : [] })) return null;
   return record;
 }
+/** Detect real, still-authorized publications after a saved daily cutoff.
+ * The matching immutable publish version and outbox event must both exist. */
+export async function hasLateReportRecord(tx: PostgresTransaction, eid: string, binding: Row, facts: ReportFacts, end: Date, dayEnd: Date) {
+  const projects = await followupProjects(tx, eid, binding, true, facts.projects.map(p => p.id));
+  for (const p of projects.slice(0, 20)) {
+    const candidates = await rows(tx, sql`select r.id from app.construction_site_records r
+      join app.construction_site_record_versions v on v.enterprise_id=r.enterprise_id and v.record_id=r.id and v.version=r.published_version and v.action='publish'
+      join app.domain_event_outbox e on e.enterprise_id=r.enterprise_id and e.aggregate_id=r.id::text and e.aggregate_version=r.published_version and e.type='construction.record.publish.v1'
+      where r.enterprise_id=${eid} and r.project_id=${String(p.id)} and r.status='published'
+      and r.published_at>=${end} and r.published_at<${dayEnd} and v.created_at>=${end} and v.created_at<${dayEnd}
+      and e.created_at>=${end} and e.created_at<${dayEnd}
+      and (${binding.audience !== 'customer'} or (r.audience='customer' and r.published_customer_id=${binding.user_id ? String(binding.user_id) : null}))
+      order by r.published_at,r.id limit 50`);
+    for (const r of candidates) if (await accessibleRecord(tx, eid, binding, String(p.id), String(r.id))) return true;
+  }
+  return false;
+}
 /** Facts are selected for one private recipient before serialization, never
  * generated enterprise-wide and then hidden in a client. Published time is the
  * recorded-time boundary; it is not a claim about when construction occurred. */
@@ -76,7 +93,7 @@ export async function collectReportFacts(tx: PostgresTransaction, eid: string, b
     }
     const events = await rows(tx, sql`select id,aggregate_version,payload,created_at from app.domain_event_outbox
       where enterprise_id=${eid} and type='construction.stage.updated.v1' and aggregate_id=${pid}
-      and created_at<=${report.cutoff_at as Date} order by aggregate_version desc limit 31`);
+      and created_at<${report.cutoff_at as Date} order by aggregate_version desc limit 31`);
     const latest = events[0], stageKey = latest ? String((latest.payload as Row).stageKey) : null;
     const items = report.kind !== 'stage' && binding.audience !== 'customer'
       ? await collectReportItems(tx, eid, pid, new Date(String(report.period_start)), new Date(String(report.cutoff_at)),

@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, fingerprint, principalKey, type ActorContext } from '@/lib/assistant/contracts';
-import { deliveryActor, followupAvailable, followupProjects, type FollowupAudience } from './report-scope';
+import { deliveryActor, followupAvailable, followupProjects, projectReportFacts, type FollowupAudience, type ReportFacts } from './report-scope';
 
 export async function ensureFollowupBinding(tx: PostgresTransaction, eid: string, recipient: { kind: 'user' | 'admin'; id: string;
   audience: FollowupAudience; projectId?: string }) {
@@ -59,6 +59,30 @@ export async function enqueueReport(tx: PostgresTransaction, eid: string, bindin
   await tx.execute(sql`insert into app.assistant_jobs(enterprise_id,kind,run_id,dedupe_key)
     values(${eid},'chat_turn',${String(run.id)},${`construction-report:${String(report.id)}:${revision}`})`);
   return { reportId: String(report.id), revision, runId: String(run.id), conversationId: String(c.id) };
+}
+/** The caller locks the report. A correction adds a version to the same report
+ * and freezes its original project set, including an originally empty filter. */
+export async function enqueueReportCorrection(tx: PostgresTransaction, eid: string, report: Row, settings: Row,
+  end: Date, automatic = false) {
+  const old = await one(tx, sql`select v.*,run.status as run_status,run.policy_snapshot,run.context_revision
+    from app.construction_report_versions v join app.assistant_runs run on run.enterprise_id=v.enterprise_id and run.id=v.run_id
+    where v.enterprise_id=${eid} and v.report_id=${String(report.id)} and v.revision=${Number(report.latest_revision)}`);
+  if (!old || old.status !== 'facts_ready' || old.run_status !== 'succeeded') return null;
+  const b = await one(tx, sql`select b.*,c.context_revision from app.construction_followup_bindings b
+    join app.assistant_conversations c on c.enterprise_id=b.enterprise_id and c.id=b.conversation_id
+    where b.enterprise_id=${eid} and b.id=${String(report.binding_id)} for update of b,c`);
+  if (!b || (automatic && Number(b.context_revision) !== Number(old.context_revision))) return null;
+  const facts = automatic ? await projectReportFacts(tx, eid, b, old.facts as ReportFacts, new Date(String(old.generated_at))) : old.facts as ReportFacts;
+  if (!facts.projects.length) return null;
+  const scope = (old.policy_snapshot as Row).scope as Row;
+  const revision = Number(report.latest_revision) + 1;
+  const result = await enqueueReport(tx, eid, b, { ...settings, ...scope, project_ids: facts.projects.map(p => p.id) }, {
+    kind: report.kind as 'daily' | 'weekly' | 'stage', start: new Date(String(report.period_start)), end,
+    cutoff: report.kind === 'stage' ? new Date(String(old.cutoff_at)) : end,
+    scheduledAt: new Date(String(report.scheduled_at)), ...(report.stage_event_id ? { stageEventId: String(report.stage_event_id) } : {}),
+  }, { ...report, latest_revision: revision });
+  if (result) await tx.execute(sql`update app.construction_reports set latest_revision=${revision} where enterprise_id=${eid} and id=${String(report.id)}`);
+  return result;
 }
 export async function discoverFollowups(tx: PostgresTransaction, eid: string, settings: Row) {
   const projects = await rows(tx, sql`select p.id,l.customer_user_id from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id

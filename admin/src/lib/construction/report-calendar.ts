@@ -6,14 +6,14 @@ export function reportTime(value: unknown) {
   if (typeof value !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) fail('invalid_construction', 422);
   return value;
 }
-function midnight(now: Date) {
+export function reportDayStart(now: Date) {
   if (!Number.isFinite(now.getTime())) fail('invalid_construction', 422);
   return Math.floor((now.getTime() + offset) / dayMs) * dayMs - offset;
 }
 /** Shanghai has no DST; UTC arithmetic keeps the server's host timezone irrelevant. */
 export function latestReportPeriod(kind: 'daily' | 'weekly', now: Date, time: string): ReportPeriod {
   const [h, m] = reportTime(time).split(':').map(Number), clock = (h * 60 + m) * 60000;
-  const today = midnight(now);
+  const today = reportDayStart(now);
   if (kind === 'daily') {
     const start = today + clock <= now.getTime() ? today : today - dayMs;
     const cutoff = new Date(start + clock);
@@ -26,4 +26,10 @@ export function latestReportPeriod(kind: 'daily' | 'weekly', now: Date, time: st
 }
 export function nextReportAt(kind: 'daily' | 'weekly', now: Date, time: string) {
   return new Date(latestReportPeriod(kind, now, time).scheduledAt.getTime() + (kind === 'daily' ? dayMs : 7 * dayMs));
+}
+/** A daily supplement closes at Shanghai midnight. Later state cannot be
+ * backfilled into yesterday or a completed weekly period. */
+export function correctedReportEnd(kind: string, start: Date, previousEnd: Date, now: Date) {
+  reportDayStart(now);
+  return kind === 'daily' ? new Date(Math.max(previousEnd.getTime(), Math.min(now.getTime(), start.getTime() + dayMs))) : previousEnd;
 }

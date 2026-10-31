@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { latestReportPeriod, nextReportAt, reportTime } from '../report-calendar';
+import { correctedReportEnd, latestReportPeriod, nextReportAt, reportTime } from '../report-calendar';
 
 test('daily cutoff uses Shanghai midnight even when the host timezone differs', () => {
   const p = latestReportPeriod('daily', new Date('2026-11-01T12:00:00Z'), '20:00');
@@ -32,4 +32,18 @@ test('outage catch-up selects one latest period and advances directly past now',
 test('invalid clocks and invalid controllable time are rejected', () => {
   for (const v of ['24:00', '20:60', '8:00', '08:0', '', null, 800]) assert.throws(() => reportTime(v));
   assert.throws(() => latestReportPeriod('daily', new Date('invalid'), '20:00'));
+});
+
+test('daily corrections extend the latest saved version, capped at Shanghai midnight', () => {
+  const start = new Date('2026-11-10T16:00:00Z'), cutoff = new Date('2026-11-11T12:00:00Z');
+  const supplemented = correctedReportEnd('daily', start, cutoff, new Date('2026-11-11T14:00:00Z'));
+  assert.equal(supplemented.toISOString(), '2026-11-11T14:00:00.000Z');
+  assert.equal(correctedReportEnd('daily', start, supplemented, cutoff).toISOString(), supplemented.toISOString());
+  assert.equal(correctedReportEnd('daily', start, cutoff, new Date('2026-11-13T02:00:00Z')).toISOString(), '2026-11-11T16:00:00.000Z');
+});
+
+test('weekly corrections preserve the completed period even when requested next week', () => {
+  const p = latestReportPeriod('weekly', new Date('2026-11-02T00:00:00Z'), '08:00');
+  assert.equal(correctedReportEnd('weekly', p.start, p.end, new Date('2026-11-10T00:00:00Z')).toISOString(), p.end.toISOString());
+  assert.throws(() => correctedReportEnd('daily', p.start, p.end, new Date('invalid')));
 });

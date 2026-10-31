@@ -44,24 +44,26 @@
 
 ## 2. 唯一当前任务
 
-2026-11-01串行接管：**已在原脏checkout核实分支/HEAD并成为唯一owner；V1-02基础已提交，本次补齐员工/老板获权事项与已确认方案的截止历史聚合及来源复核，本包已提交a2fe36f6eb3375388c4a85386b24454807543568，首次有效启用即时绑定也已实服务验证，正在完成其本地提交。四端业务整体仍Limited，V1-01停止验证、解释关闭。** 不把内部快照、工程测试或提交当作四端问答/自动服务完成，不重开V1-01诊断矩阵。
+2026-11-01串行续接：**已在同一脏checkout核实dbaa861并接管，现完成日终迟到发布补记、不可变更正及截止边界的实现与有界服务证据，准备相关本地提交和容量交接。V1-02四端业务整体仍Limited；V1-01停止验证、解释关闭，所有原失败/unknown及费用不变。** 不把后台快照或内部提交当作客户端/AI报告完成。
 
 | 项目 | 当前记录 |
 | --- | --- |
-| 当前交付 / 状态 | **V1-02：一个水电工地的四端主动服务，整体Limited。后台基础与事项/安排聚合已提交，首次有效启用即时绑定已5/5验证、待本包选择性提交。** 不代表完整日/周报生成或客户端；V1-01仍Limited、解释默认关闭 |
+| 当前交付 / 状态 | **V1-02：一个水电工地的四端主动服务，整体Limited。基础/事项/首次启用已提交；本包自动日终迟到补记及更正截止已实现并取得定向证据，待本地提交。** 业主范围/保留后重新开启/客户端/工艺解释未完成；V1-01继续Limited且关闭。 |
 | 用户动作 / 入口 | 目标仍是同一小K入口的四角色私人跟进会话：真实阶段变化后收到提醒，客户端关闭时仍自动生成并保存日/周报告，打开后回看并自然追问。沿既有C01/S04及获权服务，不新建四个Agent。新会话组织/未读/报告卡片的可见实现仍须先确认3.4对应批准设计，不能自行画新UI |
-| 已核实基础 / 缺口 | 原assistant_jobs/租约/终态、会话/参与者/消息、阶段outbox及核对发布复用。0103五张强制RLS表与construction_followup已提交。员工/老板日/周事实沿原site-issues/site-plans/site-resolution按不含结束时刻的截止聚合事项/明确获同意的方案，记录事件/修订/hash、期内变化/遗留及每项目50+50候选截断，当前来源/移除历史重验，旧快照不改。有效且可写的配置现同事务立即discover原私人目的地；禁用助手只存策略，同键幂等，停止/删除/保留脱敏不复活，失败回滚策略及新绑定。facts_ready/knowledge not_generated；员工周期items aggregated、阶段not_aggregated，业主仍original_consultation_only。缺自动迟到补记、保留后重新开启、业主来源接入及客户端/工艺解释 |
+| 已核实基础 / 缺口 | 复用0103五表、原私人会话/权限、不可变事实/队列/租约及发布outbox。午夜后的Worker首次tick现有界检查最近7个已结束自然日、每企业每tick20份已完成日报；原发布记录+不可变版本+事件匹配且仍获权才沿同reportId新增版本，读取只到不含该日午夜，原facts/hash不改。无变化/失效通过原domain_event_deliveries消费facts-ready事件，不冒充用户消息；排队/失败/unknown不重建。更正沿最新版本截止、冻结已保存项目集合；周报/阶段不混入期后状态。事实仍facts_ready/knowledge not_generated，业主items original_consultation_only，未复制原咨询。剩余保留脱敏后明确重新开启、业主来源接入、新客户端和工艺生成。 |
 | 已完成基础 | 微云1454及《精艺.pdf》原件/hash保留；逐页副本376–405，发布404/405（版本410/411、55段），其余28内部草稿待复核，未自动发布。S04只读问答/出处、实时成员/阶段/来源校验、撤回与只读来源轮询已有证据。修复点名《精艺》选段保留已获权2835基层及2837管根，不更改摄取、发布或权限 |
-| 本包实际结果 / 阻断 | 首次启用tmp/v1-02-first-enable/service-01为5/5：助手禁用门、未到期/未open即建两项目5个四端目的地、同键重进/员工拒绝、停止/删除/脱敏不复活、调用增量0；binding drift[]。最终static lint0、types仍原82/受影响0、drift[]，账户/项目/策略及抑制恢复。事项包service-04前5通过/第6时钟失配失败、末块未执行保持；service-05-revocation复用report80/hash定向2/2，不混作同版全过。V1-01 stopped closure、3753 unknown、0新对话run/12未执行及费用边界不变 |
-| 下一实施动作 | 后继先核实同一工作区/分支/最终HEAD及本记录，读site-chat.mutate的发布写入、site-publications/record_versions、report-calendar/report-worker与ConstructionReportService.correct，确认可复用的持久发表事件/版本和日截止/午夜边界；沿原报告服务/不可变版本/队列实现有界自动迟到补记，不用截止后的最新状态冒充旧周期、不重建旧unknown任务。复用微云1454留存合成夹具，真实服务取定向证据，保持停止/删除/撤权/脱敏守卫。之后仍须保留脱敏后明确重新开启；业主原咨询来源不得自行复制，3.4新视觉仍待批准。均属V1-02，不跳V1-03，不新增模型/摄取调用 |
+| 本包实际结果 / 阻断 | tmp/v1-02-late-reports/service-03-formal-room前6块通过：四端实写/投递、日终补记、恰在午夜的记录排除、并发幂等、原版本不变、日/周更正、撤回隐藏；第7块移除唯一负责人被原construction_manager_required拒绝，原失败不改判、末用量块未执行。service-04-lifecycle-remainder复用原report82–85/6块，以留存设计师补成员移除/再加入及停止/删除/脱敏，定向3/3；两批仅驱动变化、产品相同、drift[]。Node时钟8/8、最终lint0无警告/types82/受影响0、与static-node类型日志相同、drift[]。01全局用户RLS前置、02无房间事项前置失败及static-pre Bun/5处驱动类型错误保留。 |
+| 下一实施动作 | 本包审阅/选择性本地提交后，继续同一V1-02的保留脱敏后明确重新开启。先读FollowupService.change/resume、ensureFollowupBinding/enqueueReport、followupAvailable及原retention服务/强制RLS合同，确保只有本人显式重新开启才得到新可写目的地，旧脱敏会话/报告/未读/待投递不能回灌；配置/发现/tick不得复活。复用248/249、5410–5412、27/29脱敏和30 deleted/31 stopped绑定；不复制业主原咨询、不摄取/模型调用、不改3.4待批准视觉，不跳V1-03。 |
 | 有界完成检查 | V1-02第4节原固定旅程及3.3/3.4合同：真实阶段与已发布记录、四端按角色获权的日/周任务，至少一轮客户端关闭，重复/并发/重启/丢回执、失败恢复、撤权/撤回、本人未读/重进及原记录/出处。独立后台检查不能替代完整小程序业务验收；模型语义核心仍按预定两试保留全部首稿 |
 | 继承失败 / 归属 | D2失败计数仍2。1596正确Evidence下自然转述被旧逐字守卫拒；1602完整Evidence漏答穿线顺序，归属Agent。1603–1608六批共16次对话调用，原首稿/修复/失败不改为首稿通过，unknown4101/4104/4107/4111/4114保留。1606重复资料前缀计划过严、1607数字诊断、1608有效JSON后多一个右括号均有离线机制证据；仅1608证明该帧原因，不外推旧unknown。1608漏基层同时包含Knowledge选段缺陷，已由context-selection修复并实服务验证，不重建知识库 |
 | 依赖 / 费用 / 授权 | 沿实际qwen3.7-flash及既有管线，未换模型/付费fallback。原¥100对话账册保守**CNY32.828897**、10个对话unknown（旧5＋上述5）保留；不是供应商实际结算。新增知识chunk3753的input_tokens/费用未知，单独记录，不能算0或混入已知对话费用。临时token容量1200000→2200000已恢复，现金上限100000000 micros及历史预占不变。仅本地合成数据；没有生产启用/外部消息授权 |
-| 当前有效证据 | 基础tmp/v1-02-proactive-foundation/时钟6/6、service-02 13/13、service-03-boundaries5/5、service-04-retention6/6仅按未变范围复用。事项tmp/v1-02-report-items/service-04前5通过/第6时钟失败、service-05-revocation2/2，产品源码相同/仅驱动改动、drift[]，原失败保留；静态82/0。新增tmp/v1-02-first-enable/service-01为5/5，static lint0/types82/受影响0、各binding drift[]。配置/发现时机是本包唯一运行时变化，事实聚合/读取/投递代码未改，原证据只复用其未变范围。无路由/schema/视觉变动，旧compile-only仅保留原范围；完整build旧xiaok-manual-fixture.ts43错误保留。providerMax4114、knowledgeMax3753 unknown不变 |
-| 工作区 / 本地提交 | G:/workspace/向总/Smart-Floor-Planner；codex/xiaok-public-site-lifecycle；基础commit2aec372d0c84dc99a3949ab4298d544f1ac54abb，事项包commit a2fe36f6eb3375388c4a85386b24454807543568（父2aec372d），13路径、realIndexDiff[]、原脏段保留。首次启用包仅report-service.ts、原reports-check驱动及7份当前双语合同/模块/计划范围，正在选择性提交；不建worktree、不清理、不整体暂存。site-plans原文案、各文档旧块、3.5及0102/AGENTS/供应商/作品/UI/线索/测绘/远程等脏差异保持。真实hash提交后写此必要续接检查点，不做hash专用提交 |
-| 运行任务 / 资源 / 续接 | 两包服务/静态批已结束，策略关闭、助手原enabled已恢复、无新报告任务；首次启用项目248/249归档、5410–5414停用、临时非夹具老板空抑制26已删，27–31夹具绑定停止/删除/脱敏状态留存。事项项目242/243归档、5395–5397停用，原report80/hash与失败保留。acceptance锁均finally释放；无Stable/窗口/原生身份控制，原服务/Worker不变。索引旧空锁经无Git/老龄/独占/元数据复核后仅清理已确认失效文件，审计index-lock-audit.json；不删在用锁。聊天接近上下文容量，本包提交后更新最终检查点，旧owner停止新开发，仅核实同项目/同脏checkout唯一后继接管；全部unknown/费用/失败计数/授权继承 |
+| 当前有效证据 | 原基础13/13、边界5/5、保留6/6，事项包service-04前5/第6时钟失败与05定向2/2，首次启用service-01 5/5继续按未变范围复用。新增late-reports/service-03前6通过/第7负责人守卫失败，04生命周期余项3/3，binding drift[]且只驱动变化；原报告/版本/hash及失败保留，无全矩阵重采样。static-node时钟8/8；static-final lint0/type原82受影响0、日志相同、drift[]。无新schema/路由/视觉，不另跑完整build；旧compile-only不扩大，旧完整build错误仍在。ProviderMax4114/KnowledgeMax3753 unknown/input_tokens null不变。 |
+| 工作区 / 本地提交 | G:/workspace/向总/Smart-Floor-Planner；codex/xiaok-public-site-lifecycle；接管HEAD dbaa861bcb3033c08d67d5572f97ec560a22da45（父a2fe36f6、再前2aec372d）。本包仅8份报告源码/定向驱动及7份当前合同/模块/计划范围，选择性审阅/提交，不建worktree、不清理、不整体暂存。原AGENTS、供应商/作品/UI/线索/测绘/远程、0102、site-plans文案、文档旧块与计划3.5脏差异继续保留；不做hash专用提交。 |
+| 运行任务 / 资源 / 续接 | 本包服务/静态任务结束；策略关闭，248/249归档、5410–5412停用，原5413/5414停用未动。27/29保留脱敏，28 stopped、30 deleted、31 stopped；临时非夹具老板空抑制已删。原report80/hash、82–85及所有失败留存；acceptance锁finally释放。未碰Stable、原生窗口/身份或既有Worker；未重建3753等unknown、没有新provider/knowledge调用。收口后将完成计划第2节的容量交接检查点，旧owner届时停止开发，仅核实同项目/同脏checkout的串行后继；继承全部失败计数、成本、证据和授权边界。 |
 | 本次计划增补 | 2026-11-01按用户要求精读Deep Agents上下文/规划与OpenClaw主动服务，采用决定、现有基础、差异及有界检查见3.5。本次只更新计划，不接管开发、不安装框架、不提升实现状态；不重开closure-business-01或追加模型/索引调用。开发仍从本记录的V1-02独立范围继续 |
 | 后继 | 完成V1-02完整业务交付后V1-03覆盖各配置阶段/工序与多项目，再V1-04直播/公开围观/设计师。V1-01仍是全版完成依赖；独立推进不能消除其Limited、历史失败或未知成本 |
+
+本次续接已执行且不得直接重放的确定性入口：在admin/用`node --import tsx scripts/xiaok-v1-02-report-items-check.ts --development --day=2026-11-11 --output=../tmp/v1-02-report-items/service-04`，随后仅复用原报告的`--recheck-revocation=../tmp/v1-02-report-items/service-04/report.json --output=../tmp/v1-02-report-items/service-05-revocation`；首次启用为`node --import tsx scripts/xiaok-v1-02-reports-check.ts --development --first-enable-only --output=../tmp/v1-02-first-enable/service-01`。各原批、退出码、binding、静态日志、原失败与清理证据留在对应目录；输出标签不可覆盖，未变范围复用。当前CLI支持定向范围，不授权重开V1-01批。
 
 续接验证命令均在`admin/`执行；原证据标签不可重用，下面保留执行范围供审计，**不授权重新运行已停止的付费/索引批**：
 
@@ -75,6 +77,8 @@ git --no-optional-locks diff --cached --check
 ```
 
 定向ESLint记录为`explanation-implementation/closure-lint.log`及`closure-driver-lint.log`（空输出/exit0）；不因文档收束重复测试。源码/配置与脏路径审计为同目录`commit-review.json`；复用组合checkout证据，不声称干净commit全量通过。保留三份AI供应商文件既有Qiniu/VLM/temperature差异、`knowledge/sources.ts`作品投影差异、全局/子目录AGENTS，以及后台/小程序作品和其他UI、线索、测绘、远程配置/文档差异；后继不得整体暂存。
+
+本包确定性证据：在admin/执行`node --import tsx scripts/xiaok-v1-02-late-reports-check.ts --development --day=2026-11-19 --output=../tmp/v1-02-late-reports/service-03-formal-room`，随后只定向剩余生命周期：`node --import tsx scripts/xiaok-v1-02-late-reports-check.ts --development --day=2026-11-21 --recheck-lifecycle=../tmp/v1-02-late-reports/service-03-formal-room/report.json --output=../tmp/v1-02-late-reports/service-04-lifecycle-remainder`。原批不得直接重放或改判；输出标签不可覆盖。publication时钟同时覆盖原记录/版本/发布事件，04新增成员审计只平移本批新记录，原始/控制时刻已保存。
 
 ## 3. 复用哪些成果
 
