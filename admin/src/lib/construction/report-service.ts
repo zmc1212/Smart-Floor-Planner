@@ -66,7 +66,7 @@ export class ConstructionReportService {
     return this.manager(async tx => {
       const eid = this.actor.enterpriseId, actor: ActorContext = { enterpriseId: eid, principal: { kind: 'admin', adminId: this.actor.adminId }, contextVersion: 0, capabilities: [] };
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`report-correct:${eid}:${requestKey}`},0))`);
-      return idempotent(tx, actor, 'construction:report-correct:' + reportId, requestKey, { expectedRevision }, async () => {
+      const result = await idempotent(tx, actor, 'construction:report-correct:' + reportId, requestKey, { expectedRevision }, async () => {
         const settings = await one(tx, sql`select * from app.construction_report_settings where enterprise_id=${eid} and enabled for share`);
         const report = await one(tx, sql`select * from app.construction_reports where enterprise_id=${eid} and id=${reportId} for update`);
         if (!settings || !report) fail('construction_not_found', 404);
@@ -79,6 +79,11 @@ export class ConstructionReportService {
         if (!result) fail('context_changed');
         return result;
       });
+      const destination = await one(tx, sql`select b.conversation_id from app.construction_reports r
+        join app.construction_followup_bindings b on b.enterprise_id=r.enterprise_id and b.id=r.binding_id
+        where r.enterprise_id=${eid} and r.id=${reportId}`);
+      if (!destination || String(destination.conversation_id) !== result.conversationId) fail('context_changed');
+      return result;
     });
   }
 }

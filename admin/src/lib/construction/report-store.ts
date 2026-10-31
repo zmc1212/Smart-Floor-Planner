@@ -41,12 +41,15 @@ export async function enqueueReport(tx: PostgresTransaction, eid: string, bindin
     projects = projects.filter(p => String(p.id) === String(event?.aggregate_id));
   }
   if (!projects.length) return null;
-  const reportKey = fingerprint({ kind: input.kind, start: input.start.toISOString(), end: input.end.toISOString(), event: input.stageEventId || null });
+  const c = (await one(tx, sql`select * from app.assistant_conversations where enterprise_id=${eid} and id=${String(binding.conversation_id)} for update`))!;
+  // Preserve existing keys for the original destination. A retained self-resume
+  // starts a new generation, even within the same scheduled period.
+  const reportKey = fingerprint({ kind: input.kind, start: input.start.toISOString(), end: input.end.toISOString(), event: input.stageEventId || null,
+    ...((c.entry_snapshot as Row).followupGeneration ? { conversationId: String(c.id) } : {}) });
   const report = correction || await one(tx, sql`insert into app.construction_reports(enterprise_id,binding_id,report_key,kind,period_start,period_end,cutoff_at,scheduled_at,stage_event_id)
     values(${eid},${String(binding.id)},${reportKey},${input.kind},${input.start},${input.end},${input.cutoff},${input.scheduledAt},${input.stageEventId || null})
     on conflict(enterprise_id,binding_id,report_key) do nothing returning *`);
   if (!report) return null;
-  const c = (await one(tx, sql`select * from app.assistant_conversations where enterprise_id=${eid} and id=${String(binding.conversation_id)} for update`))!;
   const assistant = (await one(tx, sql`select * from app.assistant_enterprise_settings where enterprise_id=${eid}`))!;
   const revision = Number(report.latest_revision), actor = deliveryActor(eid, binding);
   const run = (await one(tx, sql`insert into app.assistant_runs(enterprise_id,conversation_id,trigger_kind,trigger_schedule_key,purpose,policy_snapshot,context_revision,knowledge_epoch)
@@ -64,14 +67,14 @@ export async function enqueueReport(tx: PostgresTransaction, eid: string, bindin
  * and freezes its original project set, including an originally empty filter. */
 export async function enqueueReportCorrection(tx: PostgresTransaction, eid: string, report: Row, settings: Row,
   end: Date, automatic = false) {
-  const old = await one(tx, sql`select v.*,run.status as run_status,run.policy_snapshot,run.context_revision
+  const old = await one(tx, sql`select v.*,run.status as run_status,run.policy_snapshot,run.context_revision,run.conversation_id
     from app.construction_report_versions v join app.assistant_runs run on run.enterprise_id=v.enterprise_id and run.id=v.run_id
     where v.enterprise_id=${eid} and v.report_id=${String(report.id)} and v.revision=${Number(report.latest_revision)}`);
   if (!old || old.status !== 'facts_ready' || old.run_status !== 'succeeded') return null;
   const b = await one(tx, sql`select b.*,c.context_revision from app.construction_followup_bindings b
     join app.assistant_conversations c on c.enterprise_id=b.enterprise_id and c.id=b.conversation_id
     where b.enterprise_id=${eid} and b.id=${String(report.binding_id)} for update of b,c`);
-  if (!b || (automatic && Number(b.context_revision) !== Number(old.context_revision))) return null;
+  if (!b || b.conversation_id !== old.conversation_id || (automatic && Number(b.context_revision) !== Number(old.context_revision))) return null;
   const facts = automatic ? await projectReportFacts(tx, eid, b, old.facts as ReportFacts, new Date(String(old.generated_at))) : old.facts as ReportFacts;
   if (!facts.projects.length) return null;
   const scope = (old.policy_snapshot as Row).scope as Row;

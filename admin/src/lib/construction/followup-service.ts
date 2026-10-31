@@ -50,7 +50,8 @@ export class FollowupService {
       join app.assistant_runs run on run.enterprise_id=v.enterprise_id and run.id=v.run_id
       left join app.construction_report_deliveries d on d.enterprise_id=v.enterprise_id and d.report_id=v.report_id and d.revision=v.revision and d.binding_id=r.binding_id
       left join app.assistant_messages m on m.enterprise_id=d.enterprise_id and m.id=d.message_id
-      where r.enterprise_id=${eid} and r.binding_id=${String(b.id)} and r.id=${reportId} and v.revision=${revision || sql`r.latest_revision`}`);
+      where r.enterprise_id=${eid} and r.binding_id=${String(b.id)} and r.id=${reportId} and v.revision=${revision || sql`r.latest_revision`}
+      and run.conversation_id=${String(b.conversation_id)}`);
     if (!r) fail('assistant_resource_not_found', 404);
     const metadata = { reportId: String(r.id), revision: Number(r.revision), kind: String(r.kind), timezone: 'Asia/Shanghai',
       periodStart: r.period_start, periodEnd: r.fact_period_end, cutoffAt: r.fact_cutoff_at, scheduledAt: r.scheduled_at,
@@ -75,7 +76,10 @@ export class FollowupService {
       const items = [];
       for (const b of bindings) {
         const versions = await rows(repo.tx, sql`select d.report_id,d.revision from app.construction_report_deliveries d
-          where d.enterprise_id=${this.actor.enterpriseId} and d.binding_id=${String(b.id)} and d.state='delivered' order by d.event_id desc limit 51`);
+          join app.construction_report_versions v on v.enterprise_id=d.enterprise_id and v.report_id=d.report_id and v.revision=d.revision
+          join app.assistant_runs run on run.enterprise_id=v.enterprise_id and run.id=v.run_id
+          where d.enterprise_id=${this.actor.enterpriseId} and d.binding_id=${String(b.id)} and d.state='delivered'
+          and run.conversation_id=${String(b.conversation_id)} order by d.event_id desc limit 51`);
         let unreadReports = 0, unreadMessages = 0;
         for (const v of versions.slice(0, 50)) {
           const projected = await this.version(repo, b, String(v.report_id), Number(v.revision));
@@ -93,8 +97,11 @@ export class FollowupService {
     id(bindingId); id(beforeId);
     return this.scoped(async repo => {
       const b = await bindingForActor(repo.tx, this.actor, bindingId); await repo.conversation(String(b.conversation_id));
-      const found = await rows(repo.tx, sql`select id from app.construction_reports where enterprise_id=${this.actor.enterpriseId}
-        and binding_id=${bindingId} and id<${beforeId} order by id desc limit 20`);
+      const found = await rows(repo.tx, sql`select r.id from app.construction_reports r
+        join app.construction_report_versions v on v.enterprise_id=r.enterprise_id and v.report_id=r.id and v.revision=r.latest_revision
+        join app.assistant_runs run on run.enterprise_id=v.enterprise_id and run.id=v.run_id
+        where r.enterprise_id=${this.actor.enterpriseId} and r.binding_id=${bindingId} and r.id<${beforeId}
+        and run.conversation_id=${String(b.conversation_id)} order by r.id desc limit 20`);
       const items = [];
       for (const r of found) items.push(await this.version(repo, b, String(r.id)));
       return { items, nextCursor: found.length === 20 ? String(found.at(-1)!.id) : null };
@@ -121,15 +128,21 @@ export class FollowupService {
       });
     });
   }
-  seen(bindingId: string, throughSequence: string, requestKey: string) {
-    id(bindingId); id(throughSequence); key(requestKey);
+  seen(bindingId: string, throughSequence: string, requestKey: string, conversationId?: string) {
+    id(bindingId); id(throughSequence); key(requestKey); if (conversationId) id(conversationId);
     return this.scoped(async repo => {
-      const b = await bindingForActor(repo.tx, this.actor, bindingId); await repo.conversation(String(b.conversation_id));
+      const b = await bindingForActor(repo.tx, this.actor, bindingId), c = await repo.conversation(String(b.conversation_id));
+      const renewed = Boolean((c.entry_snapshot as Row).followupGeneration);
+      // Sequence numbers restart in a fresh conversation. A stale visibility
+      // request must not acknowledge a new message with the same sequence.
+      if ((renewed && !conversationId) || (conversationId && conversationId !== String(c.id))) fail('context_changed');
       const target = await one(repo.tx, sql`select d.report_id,d.revision from app.construction_report_deliveries d
         join app.assistant_messages m on m.enterprise_id=d.enterprise_id and m.id=d.message_id
-        where d.enterprise_id=${this.actor.enterpriseId} and d.binding_id=${bindingId} and d.state='delivered' and m.seq=${throughSequence}`);
+        where d.enterprise_id=${this.actor.enterpriseId} and d.binding_id=${bindingId} and d.state='delivered'
+        and m.conversation_id=${String(b.conversation_id)} and m.seq=${throughSequence}`);
       if (!target || !(await this.version(repo, b, String(target.report_id), Number(target.revision))).available) fail('context_changed');
-      return idempotent(repo.tx, this.actor, 'followup:seen:' + bindingId, requestKey, { throughSequence }, async () => {
+      return idempotent(repo.tx, this.actor, 'followup:seen:' + bindingId, requestKey,
+        { throughSequence, ...(renewed ? { conversationId: String(c.id) } : {}) }, async () => {
         await repo.tx.execute(sql`update app.construction_followup_bindings set last_read_seq=greatest(last_read_seq,${throughSequence}::bigint),updated_at=now()
           where enterprise_id=${this.actor.enterpriseId} and id=${bindingId}`);
         return { bindingId, throughSequence };
@@ -145,6 +158,26 @@ export class FollowupService {
       const result = await idempotent(repo.tx, this.actor, 'followup:' + action + ':' + bindingId, requestKey, { expectedVersion }, async () => {
         if (Number(b.version) !== expectedVersion) fail('version_conflict');
         const status = action === 'stop' ? 'stopped' : action === 'delete' ? 'deleted' : action === 'resume' ? 'enabled' : b.status;
+        const old = await one(repo.tx, sql`select * from app.assistant_conversations
+          where enterprise_id=${this.actor.enterpriseId} and id=${String(b.conversation_id)} and purpose='construction_followup' for update`);
+        if (!old) fail('assistant_resource_not_found', 404);
+        if (action === 'resume' && (old.entry_snapshot as Row)?.retentionRedacted === true) {
+          // Only explicit self-resume rotates a retained destination. Keep the
+          // old tombstone, content and runs untouched; never copy its context.
+          await repo.tx.execute(sql`update app.assistant_participants set status='revoked',revoked_at=coalesce(revoked_at,now()),version=version+1,updated_at=now()
+            where enterprise_id=${this.actor.enterpriseId} and conversation_id=${String(old.id)} and status='active'`);
+          const next = (await one(repo.tx, sql`insert into app.assistant_conversations(enterprise_id,purpose,mode,entry_snapshot,context_revision,policy_version)
+            select ${this.actor.enterpriseId},'construction_followup',${String(old.mode)},
+              ${JSON.stringify({ kind: 'construction_followup', audience: b.audience, scope: b.scope_key,
+                followupGeneration: Number(old.context_revision) + 1 })}::jsonb,${Number(old.context_revision) + 1},policy_version
+            from app.assistant_enterprise_settings where enterprise_id=${this.actor.enterpriseId} returning id`))!;
+          await repo.tx.execute(sql`update app.construction_followup_bindings set conversation_id=${String(next.id)},status='enabled',last_read_seq=0,
+            version=version+1,updated_at=now() where enterprise_id=${this.actor.enterpriseId} and id=${bindingId}`);
+          await repo.tx.execute(sql`insert into app.assistant_participants(enterprise_id,conversation_id,principal_kind,user_id,admin_id,grant_basis)
+            values(${this.actor.enterpriseId},${String(next.id)},${this.actor.principal.kind},${b.user_id},${b.admin_id},
+              ${JSON.stringify({ kind: 'construction_followup', bindingId })}::jsonb)`);
+          return { bindingId, conversationId: String(next.id), status, version: expectedVersion + 1 };
+        }
         await repo.tx.execute(sql`update app.construction_followup_bindings set status=${status},version=version+1,updated_at=now() where enterprise_id=${this.actor.enterpriseId} and id=${bindingId}`);
         await repo.tx.execute(sql`update app.assistant_conversations set status=${action === 'archive' ? 'archived' : action === 'delete' ? 'closed' : 'open'},
           context_revision=context_revision+${action === 'stop' || action === 'delete' ? 1 : 0},version=version+1,updated_at=now()
@@ -154,9 +187,11 @@ export class FollowupService {
           where enterprise_id=${this.actor.enterpriseId} and conversation_id=${String(b.conversation_id)} and principal_kind=${this.actor.principal.kind}`);
         return { bindingId, conversationId: String(b.conversation_id), status, version: expectedVersion + 1 };
       });
-      if (action !== 'delete') await repo.conversation(String(b.conversation_id));
+      const current = await bindingForActor(repo.tx, this.actor, bindingId, true);
+      if (String(current.conversation_id) !== result.conversationId || (action === 'resume' && current.status !== 'enabled')) fail('context_changed');
+      if (action !== 'delete') await repo.conversation(String(result.conversationId));
       return result;
-    });
+    }, action === 'resume');
   }
   retry(bindingId: string, reportId: string, revision: number, requestKey: string) {
     id(bindingId); id(reportId); key(requestKey);
@@ -164,10 +199,19 @@ export class FollowupService {
     return this.scoped(async repo => {
       const b = await bindingForActor(repo.tx, this.actor, bindingId), c = await repo.conversation(String(b.conversation_id));
       if (b.status !== 'enabled') fail('context_changed');
+      // Revalidate before idempotency lookup as well: an old retry receipt must
+      // not claim an earlier generation's run is queued in the new destination.
+      if (!await one(repo.tx, sql`select v.run_id from app.construction_reports r
+        join app.construction_report_versions v on v.enterprise_id=r.enterprise_id and v.report_id=r.id
+        join app.assistant_runs run on run.enterprise_id=v.enterprise_id and run.id=v.run_id
+        where r.enterprise_id=${this.actor.enterpriseId} and r.id=${reportId} and r.binding_id=${bindingId}
+        and v.revision=${revision} and run.conversation_id=${String(c.id)}`)) fail('context_changed');
       return idempotent(repo.tx, this.actor, 'followup:retry:' + reportId + ':' + revision, requestKey, {}, async () => {
         const job = await one(repo.tx, sql`select j.* from app.construction_reports r join app.construction_report_versions v on v.enterprise_id=r.enterprise_id and v.report_id=r.id
           join app.assistant_jobs j on j.enterprise_id=v.enterprise_id and j.run_id=v.run_id
-          where r.enterprise_id=${this.actor.enterpriseId} and r.id=${reportId} and r.binding_id=${bindingId} and v.revision=${revision} and v.status='queued' for update of j`);
+          join app.assistant_runs run on run.enterprise_id=v.enterprise_id and run.id=v.run_id
+          where r.enterprise_id=${this.actor.enterpriseId} and r.id=${reportId} and r.binding_id=${bindingId} and v.revision=${revision} and v.status='queued'
+          and run.conversation_id=${String(c.id)} for update of j`);
         if (!job || job.status !== 'failed' || job.provider_started_at || Number(job.attempts) >= 3) fail('context_changed');
         await repo.tx.execute(sql`update app.assistant_runs set status='queued',context_revision=${Number(c.context_revision)},error_code=null,completed_at=null,version=version+1
           where enterprise_id=${this.actor.enterpriseId} and id=${String(job.run_id)} and purpose='construction.report.facts'`);

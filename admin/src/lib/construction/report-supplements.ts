@@ -20,7 +20,7 @@ export function dailySupplementCandidates(eid: string | SQL, now: Date) {
       and event.aggregate_version=r.latest_revision and event.type='construction.report.facts_ready.v1'
     where r.enterprise_id=${eid} and r.kind='daily' and r.period_start>=${new Date(today - 7 * 86400000)} and r.period_start<${new Date(today)}
     and v.period_end<r.period_start+interval '24 hours' and v.status='facts_ready' and run.status='succeeded'
-    and b.status='enabled' and c.context_revision=run.context_revision
+    and b.status='enabled' and c.id=run.conversation_id and c.context_revision=run.context_revision
     and coalesce(c.entry_snapshot->>'retentionRedacted','false')<>'true'
     and not exists(select 1 from app.domain_event_deliveries d where d.enterprise_id=r.enterprise_id and d.event_id=event.id and d.consumer_key=${consumer})`;
 }

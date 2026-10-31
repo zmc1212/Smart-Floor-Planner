@@ -77,7 +77,7 @@ export async function processConstructionReport(lease: Lease) {
         where r.enterprise_id=${eid} and r.id=${String(policy.reportId)} and v.revision=${Number(policy.revision)} and v.run_id=${lease.runId} for update of v`);
       if (!settings || !report || report.version_status !== 'queued') fail('context_changed');
       const b = await one(tx, sql`select * from app.construction_followup_bindings where enterprise_id=${eid} and id=${String(report.binding_id)} and status='enabled' for update`);
-      if (!b) fail('context_changed');
+      if (!b || b.conversation_id !== run.conversation_id) fail('context_changed');
       let stageEvent: Row | undefined;
       if (report.stage_event_id) {
         stageEvent = await one(tx, sql`select e.* from app.domain_event_outbox e join app.construction_projects p
@@ -110,13 +110,18 @@ export async function deliverConstructionReports(onlyEnterprise?: string) {
     const eid = String(target.enterprise_id);
     if (!await one(tx, sql`select id from app.assistant_enterprise_settings where enterprise_id=${eid} and enabled for update skip locked`)) return 0;
     if (!await one(tx, sql`select enterprise_id from app.construction_report_settings where enterprise_id=${eid} and enabled for share`)) return 0;
-    const pending = await rows(tx, sql`select d.*,v.facts,v.generated_at,run.context_revision as generation_context_revision from app.construction_report_deliveries d
+    const pending = await rows(tx, sql`select d.*,v.facts,v.generated_at,run.context_revision as generation_context_revision,
+      run.conversation_id as generation_conversation_id from app.construction_report_deliveries d
       join app.construction_report_versions v on v.enterprise_id=d.enterprise_id and v.report_id=d.report_id and v.revision=d.revision
       join app.assistant_runs run on run.enterprise_id=v.enterprise_id and run.id=v.run_id
       where d.enterprise_id=${eid} and d.state in ('pending','held') order by d.event_id limit 20 for update of d`);
     let count = 0;
     for (const d of pending) {
       const b = (await one(tx, sql`select * from app.construction_followup_bindings where enterprise_id=${eid} and id=${String(d.binding_id)} for update`))!;
+      if (b.conversation_id !== d.generation_conversation_id) {
+        await tx.execute(sql`update app.construction_report_deliveries set state='revoked' where enterprise_id=${eid} and event_id=${String(d.event_id)}`);
+        continue;
+      }
       const actor = deliveryActor(eid, b);
       const facts = await followupAvailable(tx, eid, b) ? await projectReportFacts(tx, eid, b, d.facts as ReportFacts, new Date(String(d.generated_at))) : null;
       if (b.status !== 'enabled' || !facts?.projects.length) {
