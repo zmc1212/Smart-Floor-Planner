@@ -34,10 +34,13 @@ export async function agentMessageAvailable(tx: PostgresTransaction, enterpriseI
     where m.enterprise_id=${enterpriseId} and m.conversation_id=${conversationId} and m.id=${messageId} and s.kind='agent_synthesis_context'`);
   if (synthesis) {
     const conversation = await one(tx, sql`select * from app.assistant_conversations where enterprise_id=${enterpriseId} and id=${conversationId}`);
-    if(conversation?.purpose==='project_collaboration') {
-      // A shared project has live membership, not a private-chat owner. Never
-      // manufacture an actor from its first participant or widen preview scope.
-      if(!reader||reader.enterpriseId!==enterpriseId||reader.principal.kind!=='admin'||!reader.capabilities.includes('assistant.project.shared'))return false;
+    const staffFollowup = conversation?.purpose === 'construction_followup' && !!await one(tx, sql`select id
+      from app.construction_followup_bindings where enterprise_id=${enterpriseId} and conversation_id=${conversationId} and admin_id is not null`);
+    if(conversation?.purpose==='project_collaboration' || staffFollowup) {
+      // Reuse the current reader's live membership/private-recipient guard.
+      // Never manufacture admin authority from a participant or preview scope.
+      const capability = conversation.purpose === 'construction_followup' ? 'assistant.followup.self' : 'assistant.project.shared';
+      if(!reader||reader.enterpriseId!==enterpriseId||reader.principal.kind!=='admin'||!reader.capabilities.includes(capability))return false;
       await new AssistantRepository(tx,reader).conversation(conversationId);
       if(!await synthesisContextAvailable(tx,reader,conversation,synthesis.source_refs as SynthesisContext))return false;
     } else {

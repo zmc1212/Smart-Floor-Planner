@@ -43,7 +43,7 @@ export function parseDesignerQuery(raw: unknown): DesignerQuery {
   return { query: value.query.trim() };
 }
 export type BusinessQuery = { domain: 'appointments' | 'schemes' | 'floorplans' | 'construction'; leadId: string };
-export type BusinessSnapshot = { query: BusinessQuery; customerId: string; leadIds: string[]; version: string; displayText: string; data: unknown[]; queriedAt: string; contextConversationId?: string; reportReference?: ReportBusinessReference } | MaterialSnapshot | NeedIssueSnapshot;
+export type BusinessSnapshot = { query: BusinessQuery; customerId?: string; leadIds: string[]; version: string; displayText: string; data: unknown[]; queriedAt: string; contextConversationId?: string; reportReference?: ReportBusinessReference } | MaterialSnapshot | NeedIssueSnapshot;
 export function parseBusinessQuery(raw: unknown): BusinessQuery {
   const value = raw as BusinessQuery;
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(k => !['domain','leadId'].includes(k))
@@ -108,6 +108,7 @@ export async function businessSnapshotAvailable(tx: PostgresTransaction, enterpr
   if ('reportReference' in snapshot && snapshot.reportReference) return reportBusinessAvailable(tx, enterpriseId, snapshot.reportReference);
   if (snapshot.query.domain === 'materials') return materialSnapshotAvailable(tx, enterpriseId, snapshot as MaterialSnapshot);
   if (snapshot.query.domain === 'followups') return needIssueSnapshotAvailable(tx, enterpriseId, snapshot as NeedIssueSnapshot);
+  if (!snapshot.customerId) return false; // Staff report snapshots resolve above through their original recipient binding.
   const current = await queryBusiness(tx, { enterpriseId, principal: { kind: 'user', userId: snapshot.customerId }, contextVersion: 0, capabilities: [] }, snapshot.query, 'contextConversationId' in snapshot ? snapshot.contextConversationId : undefined);
   return current.version === snapshot.version && fingerprint(current.leadIds) === fingerprint(snapshot.leadIds);
 }

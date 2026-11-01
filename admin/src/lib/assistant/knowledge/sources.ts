@@ -40,7 +40,8 @@ export function sourceScope(actor:ActorContext,c:Row,historical=false) {
   if(actor.principal.kind==='user') return sql`d.status='active' and d.audience='customer_public' and ${published}`;
   // A project conversation is not an owner-private draft preview. Its live
   // membership is checked by AssistantRepository before retrieval or replay.
-  if(c.purpose==='project_collaboration' && actor.capabilities.includes('assistant.project.shared'))
+  if(c.purpose==='project_collaboration' && actor.capabilities.includes('assistant.project.shared')
+    || c.purpose==='construction_followup' && actor.capabilities.includes('assistant.followup.self'))
     return sql`d.status='active' and d.audience in ('customer_public','staff_internal') and ${published}`;
   const policy=previewPolicy(c);
   const selected=policy.drafts.length?sql`(${sql.join(policy.drafts.map(p=>sql`(v.id=${p.id} and v.content_hash=${p.hash} and v.edit_version=${p.editVersion})`),sql` or `)})`:sql`false`;
@@ -68,6 +69,7 @@ export async function resolveEvidence(tx:PostgresTransaction,actor:ActorContext,
 export async function validatePreviewSnapshot(tx:PostgresTransaction,actor:ActorContext,c:Row) {
   if(actor.principal.kind!=='admin') return;
   if (c.purpose === 'project_collaboration' && actor.capabilities.includes('assistant.project.shared')) return;
+  if (c.purpose === 'construction_followup' && actor.capabilities.includes('assistant.followup.self')) return;
   for(const d of previewPolicy(c).drafts) {
     const v=await one(tx,sql`select v.id from app.assistant_knowledge_versions v join app.assistant_knowledge_documents d on d.enterprise_id=v.enterprise_id and d.id=v.document_id
       join app.assistant_enterprise_settings s on s.enterprise_id=v.enterprise_id where v.enterprise_id=${actor.enterpriseId} and v.id=${d.id}

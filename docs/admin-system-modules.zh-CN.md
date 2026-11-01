@@ -2,8 +2,17 @@
 
 <!-- xiaok-v1-02-proactive -->
 
+<!-- v1-02-staff-private -->
+**员工私人报告追问06/07：Limited；本人服务与限定原生状态已验。** 原`followups/:bindingId/conversation`解析签名工人/设计师/老板收件人（含所选企业admin/super_admin），沿原ConversationService、owner参与者/仓库守卫、精确报告选择和同一Agent。引用固定本人/项目/周期/版本，实时重验职责、受众及原记录。员工快照保存admin principal并兼容旧userId；当前项目条件进入原KnowledgeRetriever/Evidence/引用管线。只读有效已发布内部/对客知识，不借管理草稿预览；发言保持私人，S04保持共享。0108仅扩展原触发器的owner本人AI模式消息。本机命令`node scripts/construction-report-migrate.mjs --development --staff-questions --audit=<新路径>`，排除外来0102。
+
+设计仍沿批准06-worker-follow-up-v001.png、07-designer-follow-up-v002.png及原手账README/共用04规则，853×1844→390×844。复用分组/引用/移除保留草稿/来源/run控件；员工普通专题未开放，人工/媒体仍仅客户可用。无新布局/Less/字体/插画/切片。native03五张页面PNG已按共用状态审看：自然提问、额度反馈保留输入、已发布来源失败/重试和精确报告重进。完整06/07视觉、多项目/根面板及无遮挡完整宿主仍未验。
+
+证据`tmp/v1-02-staff-followup/verification.json`：migration01应用0108；client02为110/110含13包体，unit01为6/6，lint01及driver-lint02/03/04/05通过；types01保留82原错误/受影响0。service01为5/5（1夹具+4员工业务）、cleanup true/drift[]，覆盖五个签名身份、事实报告保存/精确选择及同键回读、当前项目/发布来源、额度回滚、他人/租户/接待/预览拒绝和成员/原记录撤回。合成assistant回复/run/citation仅协议夹具，无provider job/预占，不算语义回答。native01选择器及native02遮挡整批失败保留；只复用native02保存的工人移除/草稿/原键断言。native03-remainder原生5/5（2前置+额度保留输入、真实本机HTTP503同来源重试、设计师隔离/持久重进），产品/驱动绑定drift[]；外围服务批因首个员工清理事务连接超时仍failed。保留原超时、Windows URL包装失败和绑定未停断言；`cleanup-final.json`已回读两名新员工停用、三绑定停止、项目归档/原记录撤回、q0、被拒消息0及账册不变，未重放原生/模型来改判。驱动现对各独立自有资源各尝试清理一次并记录每个失败。compile01仅三个受影响生产API和proxy通过，沿原进程内覆盖/compile-only，配置变化0/drift[]；全build/standalone未过。源包main2094036/assistant2008675，硬限2097152，assistant超1998848安全目标9827B；实际编译/上传字节未验。
+
+最终夹具复用未变286–288/5420–5434及新289/5435–5436：四项目归档/对客关闭、17员工停用、17员工+4客户绑定停止、原记录339–342撤回；计划false/version193/dispatch_epoch40、q0。providerMax4114/knowledgeMax3753、3753 unknown/input_tokens null和原D2=2/10对话unknown/CNY32.828897保留，新增模型/摄取0。42条reconciling预占2004000 tokens/日限1200000仍阻止正常问答/自然报告；不释放/重算预占、提额度、付费回退或重开停测批。native01的7个CLI参数文件按清单删除被自动审批以`blocked by policy`拒绝，删除0/拒绝1，不读正文、不重试/绕过；native02/03省略官方可选args并用一次性loopback内存身份，各新增参数文件0。只读清理/manifest元数据。原75文件及拒绝2保留；先前一次过宽rg涉及该旧目录，不能建立全局从未扫描的声明。无生产/远程/外部消息授权。
+
 <!-- v1-02-report-context -->
-跟进回复已复用原citation chips、参考图materializer和来源sheet。GET `followups/:bindingId/conversation/citations/:citationId`在原ConversationService内先核同一会话，再走知识/网页原投影；不授予其他私人目的地或接待员工访问权。原run查询及POST `runs/:runId/cancel|retry`、journal、待发消息纸页和生成/停止/unknown控件已接入。移除报告保留可见且可编辑的草稿，新AI发送仍要求有效显式引用。关闭/隐藏或身份、权限失效会清来源；被include的WXML已在本地导入报告模板。员工私人追问仍未开放。
+跟进回复已复用原citation chips、参考图materializer和来源sheet。GET `followups/:bindingId/conversation/citations/:citationId`在原ConversationService内先核同一会话，再走知识/网页原投影；不授予其他私人目的地或接待员工访问权。原run查询及POST `runs/:runId/cancel|retry`、journal、待发消息纸页和生成/停止/unknown控件已接入。移除报告保留可见且可编辑的草稿，新AI发送仍要求有效显式引用。关闭/隐藏或身份、权限失效会清来源；被include的WXML已在本地导入报告模板。员工私人入口/来源范围见上文；正常AI回答验收仍未完成。
 
 **报告追问04仍Limited。** 批准04的报告纸页/引用条/查看/移除/显式普通专题已有定向实服务和原生证据。选择绑定精确报告版本/项目/周期/截止/hash，新报告不会替换它；原BusinessSnapshot/synthesis的step740消费获权原事实，不把生成报告正文当新事实。KnowledgeRetriever/Evidence/引用管线及额度、租约、来源、人工暂停、unknown边界不变。正常AI发送、固定配置模型首稿、自然报告文案和真实模型派生回复的接待packet隔离，仍受继承额度/语义停测条件限制，未通过；不宣称V1-02完成或推进V1-03。
 
@@ -16,7 +25,7 @@
 <!-- v1-02-human-takeover -->
 **人工接待11：限定 Implemented；V1-02整体仍Limited。** 设计仍沿批准11-human-takeover-report-v001.png与原手账README/共用状态，853×1844→390×844。C01复用原ChatController、媒体适配及持久请求journal，支持客户私人跟进的等待补充、真实员工文字/图片、发送及结束的原键重进恢复、接待人失效反馈和明确请求/取消/结束。普通咨询草稿/目的地独立，拒绝只清本目的地待核对操作。跟进麦克风明确不可用，普通语音不变；没有新Agent、知识/权限/引用管线、新字体、生图或截图切片。
 
-GET /api/miniprogram/assistant/followups/:bindingId/conversation及messages?beforeSeq=&limit=、handoff、media[/:mediaId]，POST messages/handoff/media及原媒体DELETE均委派原ConversationService/HandoffWorkflow/HandoffService/媒体服务。服务端解析本人客户绑定和同一会话，再重验原仓库、Mini身份/所选企业/项目及参与者；正文不能选择会话/主体/租户，员工私人目的地不能使用客户适配，普通conversation API未开放。原员工handoffs列表/接单/读取/回复/媒体仅沿有效客户跟进和原显式同意/授权；0107扩展原参与者/消息触发器，保留员工私人会话owner边界。接待包/消息排除报告定位符，接待不授予收件人报告权限。明确回到AI后，无有效04显式报告引用的AI发送及全部AI上传仍禁止；正常04回复仍受原额度/语义返回条件限制。
+GET /api/miniprogram/assistant/followups/:bindingId/conversation及messages?beforeSeq=&limit=、handoff、media[/:mediaId]，POST messages/handoff/media及原媒体DELETE均委派原ConversationService/HandoffWorkflow/HandoffService/媒体服务。服务端解析本人收件绑定和同一会话，再重验原仓库、Mini身份/所选企业/项目及参与者；正文不能选择会话/主体/租户，员工提问沿上文本人收件路径，接待/媒体仍仅客户可用，普通conversation API未开放。原员工handoffs列表/接单/读取/回复/媒体仅沿有效客户跟进和原显式同意/授权；0107扩展原参与者/消息触发器，保留员工私人会话owner边界。接待包/消息排除报告定位符，接待不授予收件人报告权限。明确回到AI后，无有效04显式报告引用的AI发送及全部AI上传仍禁止；正常04回复仍受原额度/语义返回条件限制。
 
 接待切换取消聊天执行，但保留排队/运行的construction.report.facts及其context revision。后台任务、保存结果和只读历史与AI插入分开；明确结束/取消记录数据库时钟endedAt，此前创建的报告投递静默为muted，包括之后才完成的任务，历史仍可读且不集中补刷。停止/删除/改绑/dispatch epoch、当前项目/来源及其他会话取消规则不变。读报告不会恢复AI或结束接待。
 
@@ -31,7 +40,7 @@ GET /api/miniprogram/assistant/followups/:bindingId/conversation及messages?befo
 <!-- v1-02-report-history -->
 **简报记录05：V1-02内限定Implemented，整体仍Limited。** 原C01聊天/根面板纸页新增当前获权项目、上海月份及日报/周报筛选，沿原20条beforeId分页。月份归属按不可变报告周期起点的Asia/Shanghai计算，跨月周报不按投递月归档。GET /api/miniprogram/assistant/followups/:bindingId/reports接受projectId/month/kind/beforeId；原绑定context接受afterProjectId/projectId，返回每页20个获权工地、projectsNextCursor及独立重验的selectedProject，支持选中首屏以外的工地。全部沿FollowupService、原followupProjects/RLS与来源投影；非法/重复参数拒绝，正文不能选择租户/主体。项目筛选索引只保留该项目当前有效段且不返回已阅令牌；打开仍重验同一报告的完整收件人获权快照。没有新增报告中心、Agent、知识/权限或引用管线。
 
-共用controller将历史与聊天卡片分开；读取失败保留筛选和旧有效列表，同范围重读，旧筛选响应不能覆盖新选择，撤权清除名称/内容。沿原跟进设置、鉴权详情和原记录入口；只有详情实际渲染及原journal准确已阅回执后更新阅读状态，筛选/列表不写已阅。同一session重进恢复选择，换身份/企业清缓存。事实仍facts_ready、知识not_generated，追问禁用。
+共用controller将历史与聊天卡片分开；读取失败保留筛选和旧有效列表，同范围重读，旧筛选响应不能覆盖新选择，撤权清除名称/内容。沿原跟进设置、鉴权详情和原记录入口；只有详情实际渲染及原journal准确已阅回执后更新阅读状态，筛选/列表不写已阅。同一session重进恢复选择，换身份/企业清缓存。事实仍facts_ready、知识not_generated；客户追问现须上文04显式引用及原发送守卫，正常语义未验。
 
 证据：tmp/v1-02-report-history/verification.json。HTTP02索引/分页/月界有效范围保留，03补权限/已阅，05用原服务创建的21个标记合成项目250–270验证真实两页选项；04缺数据的驱动假设失败保留。Native04项目/筛选/几何有效范围及06余项5/5、最终07叠层3/3覆盖手动同范围传输503恢复、真实渲染已阅/重进与当前身份拒绝，产品/helper/官方CLI/窗口绑定drift[]。原夹具、状态码、运行时读取、选择器、轮询竞态及wrapper失败分别保留。未变逻辑复用Mini91/91、日历/月份11/11；最终包体13/13、当前定向lint0、源码lint0错误/25警告，类型原82/受影响0，均有影响/源码绑定。未重启完整build，原类型失败及compile-only边界保留。
 
@@ -44,7 +53,7 @@ GET /api/miniprogram/assistant/followups/:bindingId/conversation及messages?befo
 
 草稿可前后台重进；关闭/换范围先确认放弃。409保留选择，显式重读核对后才可再保存；未知保持原键/正文并禁止另一操作，精确租户/版本/字段回执验证后才提示保存。撤权清除计划、选项与草稿。没有新Agent/来源/引用管线、生图或截图切片。Chat Serif原字节移到主包共享样式；同获批Noto Serif SC Black/OFL生成4464B标题子集放在共用计划样式，原README记录映射与逐元素校准。助手源包1983308/1998848；真实编译/上传包字节仍未验。
 
-证据绑定组合脏checkout，不声称干净commit包含全部本机依赖。证据：`tmp/v1-02-enterprise-plan/verification.json`。HTTP01前7项通过（角色、真实CAS/同键/并发保存、可控日周调度、角色/阶段、生命周期及旧代际拒绝），最后保留停用账号实际401而驱动预期403及原清理失败；cleanup01与定向permission02分别完成，drift[]，cleanup02另恢复最初夹具的进度备注。Native02功能5/5，但旧未生效样式帧仍保留；最终native07为3/3，28px标题、16px行、纸页(16,88)/374×756、选择器、44px操作、长名省略及宿主，产品/直接驱动/adapter/官方CLI/exe/asar/窗口helper前后绑定drift[]。Native01选择器、03/04校准、05长名换行目视失败、06不支持的查询均不改判。Mini84/84、日历9/9；源码npm lint0错误/原27警告，定向与驱动lint0；类型原82/受影响0。未限定目录的lint误扫生成缓存，已停止并留原日志；原完整build类型失败与compile-only限制保留，不重启全构建。队列0、策略关闭、合成夹具/账号/原生身份与传输恢复；模型/摄取0次，无外部消息/生产变更。根面板10、物理picker/switch/键盘/真机及全聊天光学仍未验；facts_ready/knowledge not_generated仍仅事实，追问禁用。批准05筛选现已完成上述限定验证，下一步11再04。
+证据绑定组合脏checkout，不声称干净commit包含全部本机依赖。证据：`tmp/v1-02-enterprise-plan/verification.json`。HTTP01前7项通过（角色、真实CAS/同键/并发保存、可控日周调度、角色/阶段、生命周期及旧代际拒绝），最后保留停用账号实际401而驱动预期403及原清理失败；cleanup01与定向permission02分别完成，drift[]，cleanup02另恢复最初夹具的进度备注。Native02功能5/5，但旧未生效样式帧仍保留；最终native07为3/3，28px标题、16px行、纸页(16,88)/374×756、选择器、44px操作、长名省略及宿主，产品/直接驱动/adapter/官方CLI/exe/asar/窗口helper前后绑定drift[]。Native01选择器、03/04校准、05长名换行目视失败、06不支持的查询均不改判。Mini84/84、日历9/9；源码npm lint0错误/原27警告，定向与驱动lint0；类型原82/受影响0。未限定目录的lint误扫生成缓存，已停止并留原日志；原完整build类型失败与compile-only限制保留，不重启全构建。队列0、策略关闭、合成夹具/账号/原生身份与传输恢复；模型/摄取0次，无外部消息/生产变更。根面板10、物理picker/switch/键盘/真机及全聊天光学仍未验；facts_ready/knowledge not_generated仍仅事实，正常追问沿上文04保持Limited。批准05/09/10及11证据保留当前限定范围，当前交付为同V1-02的04。
 
 <!-- v1-02-personal-settings -->
 **个人跟进设置09：V1-02内限定Implemented，整体仍Limited。** 批准09纸页及01“管理跟进”补充沿同一C01定义/组件。`GET /api/miniprogram/assistant/followups/manage?beforeId=`每页最多30条当前仍获权的绑定最小元数据，包含停止、删除、保留期脱敏；不返回旧会话/报告正文、项目计数、未读或摘要。业主保留当前项目归属/开放检查，工人/设计师保留有效成员检查，所选企业owner/admin/super_admin沿提取后的原关系谓词，不另建权限系统；会话正文仍检查关闭、删除、参与者和脱敏状态。普通列表为空也能进入管理；自动发现不重开tombstone。
@@ -64,7 +73,7 @@ GET /api/miniprogram/assistant/followups/:bindingId/conversation及messages?befo
 
 原catch-all现分派`/api/miniprogram/assistant/followups`：GET本人私人绑定列表/范围、`/:bindingId/reports?beforeId=`、`/:bindingId/reports/:reportId?revision=`，以及报告获权的`.../projects/:projectId/records/:recordId[/media/:mediaId]?revision=`。POST支持本人明确open、带版本archive/stop/delete/resume、携conversationId/throughSequence的消息可见确认、携revision/readToken的报告已阅及明确本地失败重试。全部沿FollowupService和原租户仓库、代际/脱敏、项目/原件及成员守卫；Mini身份与所选企业来自原鉴权或已验证的客户入口token，不信任body传入principal/企业/受众/delivery能力。工人只放行followups分支，不开放普通客户conversations/runs/citations，保留密码修改门。范围只返回当前获权项目/阶段与私人目的地元数据；原件须属于同一仍有效报告快照的精确记录/媒体定位。偏好字段及原关系谓词提取见上文，没有另建权限、Evidence或引用管线。
 
-运行时接入位于共用C01页面/组件（`packages/assistant/chat/chat`及`pages/index/index`的小K面板）。代码加入私人跟进分组、按收件人裁剪的纸页卡片/详情、原记录/照片读取、详情实际渲染后的已阅、可见卡片序号确认，以及沿新分支的收起/停止/重开。普通咨询草稿、焦点和目的地独立，前台列表轮询不切会话。原工地项目简报入口沿批准卡片/专业角色变体进入`chat?followup=1`。用户已于2026-11-01明确批准follow-up-v1全部01–11、管理入口补充和共用状态规则并授权实施，无须再次确认。当前首轮纯事实接入已有真实HTTP/原生证据，尚非完整还原：纯事实报告追问仍禁用；人工接待11见上文，报告追问仍待完成；批准05筛选及09/10设置见上文。来源服务/代际边界不变，没有打包整屏设计像素或新增插画。
+运行时接入位于共用C01页面/组件（`packages/assistant/chat/chat`及`pages/index/index`的小K面板）。代码加入私人跟进分组、按收件人裁剪的纸页卡片/详情、原记录/照片读取、详情实际渲染后的已阅、可见卡片序号确认，以及沿新分支的收起/停止/重开。普通咨询草稿、焦点和目的地独立，前台列表轮询不切会话。原工地项目简报入口沿批准卡片/专业角色变体进入`chat?followup=1`。用户已于2026-11-01明确批准follow-up-v1全部01–11、管理入口补充和共用状态规则并授权实施，无须再次确认。当前首轮纯事实接入已有真实HTTP/原生证据，尚非完整还原：客户04显式引用与人工接待11见上文，报告追问语义仍待完成；批准05筛选及09/10设置见上文。来源服务/代际边界不变，没有打包整屏设计像素或新增插画。
 
 当前证据在`tmp/v1-02-followup-client/`。static-01原失败及static-02-package-sharing222/222保留。HTTP-01–06各夹具/合同失败保留；HTTP-07前7块通过后因驱动遗漏原普通咨询body.entryToken失败；HTTP-08沿同产品hash复用这7块、原报告/原件，仅准备+剩余4块5/5通过，不重生成或改判首稿。真实微云1454写入/重读覆盖四角色日周事实、human结果held后不重生成投递、原件照片、JWT/角色/版本/改密门、消息可见与报告已阅分离、同键恢复、收起停复/普通咨询隔离、成员移除再加入及来源撤回。该批全局Mini403保留为历史；当前所选企业聚焦修复见上文。native-01/02/03注册项/窗口/旧9420失败保留；native-04-cli用仓库既有官方注册wechatideNativeClient适配器，在唯一已核实副屏Stable2.02.2608080、base3.17.2、390×844下限定7/7通过：历史草稿、卡片详情/实际渲染已阅、认证原件照片、停止丢回执/同键恢复、工人设计师老板、重进/human只读与撤回清空。各完成HTTP/native批binding均drift[]。11张348×752页面PNG及一张1700×960宿主图已审看；另两宿主图已保存但图片查看工具阻塞后未审看。几何已保存，完整逐元素/字形校准、根面板跟进原生、实体键盘/设备和全部新增状态还原仍未验。新驱动定向lint0，类型仍原82/受影响0。compile-01在独立NEXT_DIST_DIR=.next-v1-02-followup-client退出0，绑定源码/配置drift[]，原tsconfig/next-env hash精确恢复、acceptance锁释放；仅compile-only，原完整构建类型失败保留。助手分包源文件仍1996029/1998848字节，真实上传/编译包字节未验。closed-fixtures.json记录队列0、策略false/version62、248/249归档/对客关闭、5410–5419停用、自有跟进停止、880恢复human及23个自有CLI临时参数文件已清。providerMax4114/knowledgeMax3753及3753 unknown/input_tokens null不变；无模型/摄取调用，不声明语义/完整阶段/生产完成。
 

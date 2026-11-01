@@ -4,10 +4,10 @@ const { AssistantClient } = require('../utils/assistant-client');
 const { ChatController } = require('../packages/assistant/lib/chat');
 const { FollowupChat } = require('../utils/assistant-followup-chat');
 
-function fixture() {
+function fixture(audience = 'customer') {
   let identity = 'test-session', intercept;
   const calls = [], messages = [], receipts = new Map();
-  const context = { bindingId: '81', conversationId: '901', audience: 'customer' };
+  const context = { bindingId: '81', conversationId: '901', audience };
   const conversation = { id: '901', mode: 'human', status: 'open', version: 1, humanName: '合成接待', ownerAvailable: true };
   const client = new AssistantClient(async (url, method, body, options) => {
     const call = { url, method, body, options }; calls.push(call);
@@ -18,7 +18,7 @@ function fixture() {
     if (receipts.has(key)) return { success: true, data: receipts.get(key) };
     let data;
     if (url.endsWith('/messages')) {
-      messages.push({ id: String(messages.length + 1), seq: String(messages.length + 1), authorKind: 'user', content: body.content, available: true });
+      messages.push({ id: String(messages.length + 1), seq: String(messages.length + 1), authorKind: audience === 'customer' ? 'user' : 'admin', content: body.content, available: true });
       data = { conversationId: '901', messageId: String(messages.length), runId: null, status: 'succeeded' };
     } else {
       conversation.mode = body.action === 'request' ? 'handoff_requested' : 'ai'; conversation.version++;
@@ -87,4 +87,21 @@ test('project denial clears this destination journal and preserves an unrelated 
   f.client.pending.set('send:901', { key: 'private-key', path: '/followups/81/conversation/messages', body: { content: { blocks: [{ text: 'private draft' }] } } });
   f.intercept(() => { throw { statusCode: 403, code: 'assistant_capability_forbidden' }; }); await f.chat.refresh();
   assert.equal(f.client.pending.has('send:901'), false); assert.equal(f.client.pending.has('send:123'), true); f.chat.dispose();
+});
+
+for (const audience of ['worker','designer','boss']) test(audience + ' private question keeps its exact report, own bubble and original-key reentry', async () => {
+  const f = fixture(audience); f.conversation.mode = 'ai';
+  f.conversation.reportContext = { version: 3, selected: { reportId: '20', projectId: '2' }, invalidated: false };
+  let first = true; f.intercept(c => { if (c.method === 'POST' && first) { first = false; c.lose = true; } });
+  await f.chat.open(f.context); assert.equal(f.chat.state.canCompose, true);
+  f.chat.input('厨房这个点位还需要核对什么？'); await f.chat.send();
+  assert.equal(f.chat.state.pendingSend, true); f.chat.hide(); await f.chat.open(f.context); await f.chat.recover();
+  const writes = f.calls.filter(c => c.method === 'POST');
+  assert.equal(writes.length, 2); assert.deepEqual(writes[0].body, writes[1].body);
+  assert.equal(writes[0].body.content.reportContextVersion, 3);
+  assert.equal(writes[0].options.headers['Idempotency-Key'], writes[1].options.headers['Idempotency-Key']);
+  assert.equal(f.messages.length, 1); assert.equal(f.chat.state.messages[0].isUser, true);
+  f.conversation.reportContext = { version: 3, selected: null, invalidated: true }; await f.chat.refresh();
+  f.chat.input('我再补充一下。'); await f.chat.send(); assert.equal(f.calls.filter(c => c.method === 'POST').length, 2);
+  assert.equal(f.chat.state.draft, '我再补充一下。'); f.chat.dispose();
 });

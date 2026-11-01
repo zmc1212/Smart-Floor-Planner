@@ -14,8 +14,8 @@ export function parseReportSelection(value: unknown) {
 }
 export class ReportContextService {
   constructor(readonly actor: ActorContext, readonly conversationId: string) {
-    id(conversationId); requireCapability(actor, 'assistant.chat.self');
-    if (actor.principal.kind !== 'user') fail('assistant_capability_forbidden', 403);
+    id(conversationId); requireCapability(actor, actor.capabilities.includes('assistant.followup.self') ? 'assistant.followup.self' : 'assistant.chat.self');
+    if (actor.principal.kind !== 'user' && !actor.capabilities.includes('assistant.followup.self')) fail('assistant_capability_forbidden', 403);
   }
   private scope<T>(fn: (repo: AssistantRepository, c: Row) => Promise<T>, write = false) {
     return withTenantTransaction(this.actor.enterpriseId, async tx => {
@@ -58,6 +58,7 @@ export class ReportContextService {
   /** Explicit action only. Original create/participant/idempotency services own
    * the new ordinary topic; the automatic destination is never rebound. */
   topic(requestKey: string) {
+    if (this.actor.principal.kind !== 'user') fail('assistant_capability_forbidden', 403);
     return this.scope(async (repo, c) => {
       if (c.status !== 'open' || c.mode !== 'ai') fail('conversation_read_only');
       const selected = await selectedReport(repo.tx, this.actor, c);

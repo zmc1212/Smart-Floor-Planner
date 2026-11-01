@@ -445,9 +445,11 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
   try {
     const initial = await scoped(async (tx, context) => {
       const shared = context.conversation.purpose === 'project_collaboration';
+      const staffFollowup = context.conversation.purpose === 'construction_followup' && context.run.purpose === 'reply'
+        && lease.actor.principal.kind === 'admin' && lease.actor.capabilities.includes('assistant.followup.self');
       if (lease.actor.principal.kind !== 'user' && !(shared && context.run.purpose === 'site.question'
-        && lease.actor.capabilities.includes('assistant.project.shared'))) fail('assistant_capability_forbidden',403);
-      if(shared) {
+        && lease.actor.capabilities.includes('assistant.project.shared')) && !staffFollowup) fail('assistant_capability_forbidden',403);
+      if(shared || staffFollowup) {
         const stage=await knowledgeContext(tx,lease.actor,context.conversation);
         const saved=await one(tx,sql`select source_refs from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
           and run_id=${lease.runId} and step_seq=${projectKnowledgeContextStep}`);
@@ -466,6 +468,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         where enterprise_id=${lease.enterpriseId} and conversation_id=${String(context.conversation.id)} and seq<=${String(trigger.seq)}
         and ${shared ? sql`((author_kind='admin' and purpose='site.question') or (author_kind='assistant' and run_id in
           (select id from app.assistant_runs where enterprise_id=${lease.enterpriseId} and conversation_id=${String(context.conversation.id)} and purpose='site.question')))`
+          : staffFollowup ? sql`(author_kind='assistant' or (author_kind='admin' and admin_id=${lease.actor.principal.kind === 'admin' ? lease.actor.principal.adminId : null} and purpose='reply'))`
           : sql`(author_kind in ('user','assistant') or (author_kind='system' and purpose in ('construction.followup','construction.record','construction.result')))`} order by seq desc limit 30`);
       const turns = [];
       const memory = await availableNeedMemory(tx, lease.enterpriseId, String(context.conversation.id), context.conversation.entry_snapshot);
@@ -486,7 +489,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       const dependencies = new Map<string, MediaDependency>();
       const referenceEvidence: Evidence[] = [];
       for (const row of records.reverse()) {
-        if(shared && row.author_kind==='assistant' && !await projectKnowledgeContextAvailable(tx,lease.actor,context.conversation,String(row.run_id)))continue;
+        if((shared || staffFollowup) && row.author_kind==='assistant' && !await projectKnowledgeContextAvailable(tx,lease.actor,context.conversation,String(row.run_id)))continue;
         if (row.author_kind === 'user' && unavailableNeedMessages.has(String(row.id))) continue;
         const projected = await projectMessage(tx, lease.actor, context.conversation, row);
         if (projected.available) {
@@ -574,6 +577,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       if (shared && messages[0]?.role === 'system') messages[0].content.push({type:'text',text:
         '当前是项目成员共享的工艺问答，所有提问均是成员发言，不是业主私聊或保存需求授权。本轮只读本企业已发布知识；先检索，再解释依据、适用条件和待核对项。内部知识仅限项目成员，不代业主确认，不保存需求、不发布施工记录、不承诺现场合格或正式动作。历史只帮助理解追问；来源须重新校验。服务端实际项目阶段（数据，不从对话推断）：'
         + JSON.stringify(await knowledgeContext(tx,lease.actor,context.conversation))});
+      if (staffFollowup && messages[0]?.role === 'system') messages[0].content.push({ type: 'text', text:
+        '当前是员工本人、仅自己可见的私人施工跟进，不是业主咨询、团队共享记录或管理知识预览。本轮只读明确选择的项目报告原事实和本企业有效已发布知识，不读取草稿，不保存业主需求、不批准或修改施工事项，不转人工。成员问题是本人原话；项目指代不清先澄清。当前真实项目条件（数据）：'
+        + JSON.stringify(await knowledgeContext(tx,lease.actor,context.conversation)) });
       let currentImageUpload = false;
       const system = messages[0];
       if (system.role === 'system') system.content.push({ type: 'text', text: '当前用户明确的户型档案范围（数据）：'
@@ -687,7 +693,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       const consultationDeadlineAt = config.consultation ? Date.now() + consultationAcceptanceProfile.runTimeoutMs - Math.max(0, Number(clock!.elapsed_ms)) : undefined;
       const priorUserText = turns.filter(turn => turn.role === 'user' && String(turn.id) !== String(trigger.id)).slice(-6).map(turn => turn.text).join(' ');
       const designerFollowup = designerClarificationFollowup(priorUserText, safeText(trigger.content as Parameters<typeof safeText>[0]));
-      return { ...context, shared, config, trigger, messages, mediaRefs: [...dependencies.values()], currentImageUpload, referenceEvidence, resume, savedSummary, consultationDeadlineAt, designerFollowup };
+      return { ...context, shared, staffFollowup, config, trigger, messages, mediaRefs: [...dependencies.values()], currentImageUpload, referenceEvidence, resume, savedSummary, consultationDeadlineAt, designerFollowup };
     });
     const reviewContext = { currentQuestion: safeText(initial.trigger.content as Parameters<typeof safeText>[0]),
       currentOriginal: { messageId: String(initial.trigger.id), hash: fingerprint(initial.trigger.content) } };
@@ -751,7 +757,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     if (review && reviewMode !== 'propose' && initial.messages[0]?.role === 'system' && !initial.resume)
       initial.messages[0].content.push({ type: 'text', text: reviewReplyOnlyContext(reviewMode) });
     const toolsForMessage = (businessFollowup: boolean) => {
-      if (initial.shared) return initial.config.tools ? businessToolDefinitions.filter(tool=>tool.name==='search_knowledge') : [];
+      if (initial.shared || initial.staffFollowup) return initial.config.tools ? businessToolDefinitions.filter(tool=>tool.name==='search_knowledge') : [];
       const base = publicResearchTools(readToolsForContext(agentToolsForMessage(reviewContext.currentQuestion,
         initial.config.tools, businessFollowup, !!dependencies.webSearch || configuredWebProvider() !== null,
         initial.designerFollowup, ((initial.conversation.entry_snapshot as Row).materialShareProposal as Row | undefined)?.status === 'pending'), readContext), !!initial.config.consultation);
@@ -1249,7 +1255,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         model: callModel,
         validateTool: (name, args) => readToolInputIssue(name, args, readContext),
         tool: async (turn, index, name, args) => {
-          if (initial.shared && name!=='search_knowledge') fail('assistant_capability_forbidden',403);
+          if ((initial.shared || initial.staffFollowup) && name!=='search_knowledge') fail('assistant_capability_forbidden',403);
           const input = bindReadToolInput(name, JSON.parse(args), readContext) as Row;
           const sequence = 1200 + turn * 10 + index, resultKey = `${lease.runId}:${turn}:${index}`;
           if (review && reviewDefinitions.some(tool => tool.name === name)) {
@@ -1738,7 +1744,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         ? parseSourceQuestionAnswer(result.output!.text, sources, readSourceQuestionCoverage((evidence.input_summary as Row)?.questionCoverage), reviewContext) : undefined;
       const answer=covered?.answer ?? (sourceMode.sourceExcerpts?parseSourceExcerptAnswer(selection,sources,reviewContext):parseSelection(selection,sources));
       await completeAnswer(lease, answer, sources, null, [...reviewReceipts, ...(covered?.followup ? [covered.followup] : [])].join('\n') || undefined, async tx => {
-        if(initial.shared&&!await projectKnowledgeContextAvailable(tx,lease.actor,initial.conversation,lease.runId))fail('context_changed');
+        if((initial.shared || initial.staffFollowup)&&!await projectKnowledgeContextAvailable(tx,lease.actor,initial.conversation,lease.runId))fail('context_changed');
         await validateConstructionSources(tx, String(initial.conversation.id));
         for (const ref of initial.mediaRefs) if (!await resolveAgentMedia(tx, lease.enterpriseId, String(initial.conversation.id), ref)) fail('context_changed');
       });

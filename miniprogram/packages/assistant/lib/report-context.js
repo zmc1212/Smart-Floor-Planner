@@ -22,7 +22,7 @@ class ReportQuestionController {
   canChange() { const s = this.chat?.state; return this.chat?.visible && this.identity() === this.session && s?.conversation?.id === this.cid
     && s.conversation.mode === 'ai' && s.conversation.status === 'open' && !s.busy && !s.loading && !s.pendingSend && !s.pendingAction && !s.generating && !s.uncertainRun; }
   async select(selection) { return this.write('report-context', { expectedVersion: this.state.version, selection }); }
-  topic() { return this.write('report-topic', {}); }
+  topic() { if (this.state.topicAvailable !== false) return this.write('report-topic', {}); }
   recover() { return this.write(this.client.pending.has('report-topic:' + this.cid) ? 'report-topic' : 'report-context'); }
   async write(kind, body) {
     if (!this.canChange() || this.state.busy || this.state.pending && !this.client.pending.has(kind + ':' + this.cid)) return;
@@ -53,7 +53,7 @@ const reportQuestionMethods = {
   askFollowupReport(event) {
     if (!this.data.followupActive && this.data.reportQuestion.selected) { this.followups.closeReport(); return; }
     const c = this.data.followupContext;
-    if (c?.audience !== 'customer' || !this.reportQuestions.canChange()) return;
+    if (!c || !['customer','worker','designer','boss'].includes(c.audience) || !this.reportQuestions.canChange()) return;
     const d = event.currentTarget.dataset, report = d.report ? this.data.followupReports.find(r => r.reportId === String(d.report) && r.revision === Number(d.revision)) : this.data.followupDetail;
     if (!report?.available || !report.ready || !report.projects?.length) return;
     const select = project => this.reportQuestions.select({ bindingId: c.bindingId, reportId: report.reportId, revision: report.revision, projectId: project.id })

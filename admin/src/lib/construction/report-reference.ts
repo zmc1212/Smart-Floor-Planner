@@ -29,9 +29,9 @@ export function reportContext(entry: unknown): ReportContext {
 /** A locator is not a grant. Use the same recipient binding and original-fact
  * projection as report reads; never consume a model's saved report as facts. */
 export async function resolveReportReference(tx: PostgresTransaction, actor: ActorContext, choice: ReportChoice, expected?: ReportReference) {
-  if (actor.principal.kind !== 'user') return null;
   const b = await one(tx, sql`select * from app.construction_followup_bindings where enterprise_id=${actor.enterpriseId}
-    and id=${choice.bindingId} and principal_key=${principalKey(actor)} and audience='customer' and status<>'deleted' for share`);
+    and id=${choice.bindingId} and principal_key=${principalKey(actor)} and status<>'deleted'
+    and ${actor.principal.kind === 'user' ? sql`audience='customer'` : sql`audience in ('worker','designer','boss')`} for share`);
   if (!b || !await followupAvailable(tx, actor.enterpriseId, b)) return null;
   const r = await one(tx, sql`select r.kind,r.period_start,v.period_end,v.cutoff_at,v.generated_at,v.facts,v.facts_hash
     from app.construction_reports r join app.construction_report_versions v on v.enterprise_id=r.enterprise_id and v.report_id=r.id
@@ -62,7 +62,7 @@ export async function selectedReport(tx: PostgresTransaction, actor: ActorContex
 }
 export async function reportContextView(tx: PostgresTransaction, actor: ActorContext, c: Row) {
   const stored = reportContext(c.entry_snapshot), resolved = await selectedReport(tx, actor, c);
-  return { conversationId: String(c.id), version: stored.revision, invalidated: !!stored.selection && !resolved,
+  return { conversationId: String(c.id), version: stored.revision, invalidated: !!stored.selection && !resolved, topicAvailable: actor.principal.kind === 'user',
     selected: resolved ? { ...resolved.selection, projectName: resolved.project.name,
       summary: resolved.project.records.find(r => r.data.pending || r.data.coordination)?.data.pending
         || resolved.project.records.find(r => r.data.coordination)?.data.coordination || '' } : null };

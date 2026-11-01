@@ -9,6 +9,7 @@ class FollowupChat {
     this.state = emptyFollowupChat();
   }
   set(patch) {
+    if (patch.messages && this.audience !== 'customer') patch.messages = patch.messages.map(m => ({ ...m, isUser: m.authorKind === 'admin' }));
     if (!this.visible) patch = { ...patch, conversation: null, messages: [], mediaPaths: {}, citation: null };
     Object.assign(this.state, patch);
     this.state.reception = ['human','handoff_requested'].includes(this.state.conversation?.mode);
@@ -24,7 +25,8 @@ class FollowupChat {
     return '/followups/' + this.bid + '/conversation' + value.slice(prefix.length);
   }
   async open(context) {
-    if (!context || context.audience !== 'customer') return this.hide();
+    if (!context || !['customer','worker','designer','boss'].includes(context.audience)) return this.hide();
+    this.audience = context.audience;
     const session = this.identity(), cid = context.conversationId, bid = context.bindingId, reentry = !this.visible;
     if (this.session && this.session !== session) { this.dispose(); this.chat = null; }
     this.session = session; this.visible = true;

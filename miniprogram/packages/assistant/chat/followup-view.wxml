@@ -29,7 +29,7 @@
           </view>
           <text wx:if="{{report.truncated}}" class="followup-caption">本份简报只包含部分工地。</text>
           <text wx:if="{{report.factsOnly && !followupChat.reception}}" class="followup-caption">本份仅含现场记录，暂无工艺说明。</text>
-          <view class="followup-actions"><button data-report="{{report.reportId}}" data-revision="{{report.revision}}" bindtap="readFollowupReport">查看完整{{report.kindLabel}}</button><button class="followup-primary" data-report="{{report.reportId}}" data-revision="{{report.revision}}" bindtap="askFollowupReport" disabled="{{followupContext.audience !== 'customer' || followupChat.reception || reportQuestion.disabled || reportQuestion.busy || reportQuestion.pending}}">问这份报告</button></view>
+          <view class="followup-actions"><button data-report="{{report.reportId}}" data-revision="{{report.revision}}" bindtap="readFollowupReport">查看完整{{report.kindLabel}}</button><button class="followup-primary" data-report="{{report.reportId}}" data-revision="{{report.revision}}" bindtap="askFollowupReport" disabled="{{followupChat.reception || reportQuestion.disabled || reportQuestion.busy || reportQuestion.pending}}">{{followupContext.audience === 'customer' ? '问这份报告' : '选工地追问'}}</button></view>
           <text wx:if="{{followupChat.reception}}" class="followup-caption">结束人工接待后，可继续问小K。</text>
         </block>
         <view wx:else class="followup-state">{{report.stateLabel}}</view>
@@ -72,7 +72,7 @@
       <text class="followup-caption followup-footnote">未记录不等于未施工，本日/周报不代替现场验收。</text>
       <view wx:if="{{followupError || followupPending}}" class="followup-feedback"><text>{{followupPending ? '已阅结果尚未确认。' : followupError}}</text><button wx:if="{{followupPending}}" bindtap="recoverFollowup" disabled="{{followupBusy}}">核对上次操作</button></view>
     </scroll-view>
-    <button class="followup-detail-ask followup-primary" bindtap="askFollowupReport" disabled="{{followupChat.reception || reportQuestion.disabled || reportQuestion.busy || reportQuestion.pending || followupActive && followupContext.audience !== 'customer' || !followupDetail.available || !followupDetail.ready}}">问这份报告</button>
+    <button class="followup-detail-ask followup-primary" bindtap="askFollowupReport" disabled="{{followupChat.reception || reportQuestion.disabled || reportQuestion.busy || reportQuestion.pending || !followupDetail.available || !followupDetail.ready}}">{{followupContext.audience === 'customer' ? '问这份报告' : '选工地追问'}}</button>
   </view>
 </view>
 

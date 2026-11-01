@@ -104,7 +104,8 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   const speech = purpose === 'speech.transcribe', speechBinding = speech ? speechConfigurationHash() : null;
   if (speech && !speechBinding) fail('speech_unavailable', 503);
   if (c.status !== 'open' || !(speech ? ['ai', 'human', 'handoff_requested'].includes(String(c.mode)) : c.mode === 'ai')) fail('context_changed');
-  const agent = !speech && (actor.principal.kind === 'user' || (['site.record', 'site.action', 'site.question'].includes(purpose) && actor.capabilities.includes('assistant.project.shared'))) ? agentConfig(settings.agent_config) : null;
+  const privateFollowup = c.purpose === 'construction_followup' && actor.capabilities.includes('assistant.followup.self');
+  const agent = !speech && (actor.principal.kind === 'user' || privateFollowup || (['site.record', 'site.action', 'site.question'].includes(purpose) && actor.capabilities.includes('assistant.project.shared'))) ? agentConfig(settings.agent_config) : null;
   const entry = c.entry_snapshot as Row;
   const reviewRuntime = agent && actor.principal.kind === 'user' && c.purpose === 'customer_consultation'
     && entry.agentReviewCandidate === true && entry.requirementReviewMode === true
@@ -122,7 +123,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   // Match C01's existing unknown-result state at the service boundary too.
   // A distinct question is not permission to bypass an unresolved dispatch;
   // confirmed usage review is the same recovery proof projected to the client.
-  if (!speech && (['customer_consultation','construction_followup'].includes(String(c.purpose)) && actor.principal.kind === 'user'
+  if (!speech && (privateFollowup || ['customer_consultation','construction_followup'].includes(String(c.purpose)) && actor.principal.kind === 'user'
     || c.purpose==='project_collaboration' && purpose==='site.question' && actor.capabilities.includes('assistant.project.shared')) && await one(tx, sql`select r.id from
     (select id,enterprise_id,status,error_code from app.assistant_runs where enterprise_id=${actor.enterpriseId}
       and conversation_id=${String(c.id)} and purpose not in ('speech.transcribe','construction.report.facts') order by created_at desc,id desc limit 1) r
@@ -180,7 +181,10 @@ export async function cancelRuns(tx: PostgresTransaction, actor: ActorContext, c
   }
 }
 export class ConversationService {
-  constructor(readonly actor: ActorContext, private transaction?: PostgresTransaction) { requireCapability(actor, actor.principal.kind==='user'?'assistant.chat.self':'assistant.preview.self'); }
+  constructor(readonly actor: ActorContext, private transaction?: PostgresTransaction) {
+    requireCapability(actor, actor.capabilities.includes('assistant.followup.self') ? 'assistant.followup.self'
+      : actor.principal.kind === 'user' ? 'assistant.chat.self' : 'assistant.preview.self');
+  }
   private scoped<T>(work: (repo: AssistantRepository, settings: Row | undefined) => Promise<T>, write = false) {
     const execute = async (tx: PostgresTransaction) => {
       const repo = new AssistantRepository(tx, this.actor); const settings = await repo.settings(write); return work(repo, settings);
@@ -188,6 +192,7 @@ export class ConversationService {
     return this.transaction ? execute(this.transaction) : withTenantTransaction(this.actor.enterpriseId, execute);
   }
   create(requestKey: string, previewInput:Row={}) {
+    if (this.actor.capabilities.includes('assistant.followup.self')) fail('assistant_capability_forbidden', 403);
     return this.scoped(async (repo, settings) => {
       const result = await idempotent(repo.tx, this.actor, 'create', requestKey, { entry: this.actor.entry || {},previewInput }, async () => {
       const preview=this.actor.principal.kind==='admin';
@@ -212,6 +217,7 @@ export class ConversationService {
     }, true);
   }
   list(cursor = '9223372036854775807', limit = 20) {
+    if (this.actor.capabilities.includes('assistant.followup.self')) fail('assistant_capability_forbidden', 403);
     return this.scoped(async (repo, settings) => {
       const result = await rows(repo.tx, sql`select c.*, case when coalesce(c.entry_snapshot->>'retentionRedacted','false') != 'true' then
         (select m.content->'blocks'->0->>'text' from app.assistant_messages m
@@ -243,7 +249,7 @@ export class ConversationService {
       const latest = await one(repo.tx, sql`select r.*,${runUsageReconciled()} as usage_reconciled,${runRetryAwaitingReconciliation()} as awaiting_reconciliation
         from app.assistant_runs r where r.enterprise_id=${this.actor.enterpriseId} and r.conversation_id=${conversationId} and r.purpose not in ('speech.transcribe','construction.report.facts')
         order by r.id desc limit 1`);
-      const preview = this.actor.principal.kind === 'admin' ? previewPolicy(c) : null;
+      const preview = this.actor.principal.kind === 'admin' && c.purpose === 'knowledge_preview' ? previewPolicy(c) : null;
       const handoff = (c.entry_snapshot as Row)?.handoff as Row | undefined;
       const ownerAvailable = c.mode !== 'human' || !!await currentHandoffOwner(repo.tx, this.actor.enterpriseId, conversationId, handoff);
       const entry=c.entry_snapshot as Row;

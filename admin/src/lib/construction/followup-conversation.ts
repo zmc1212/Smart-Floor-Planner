@@ -10,21 +10,20 @@ import { one } from '@/db/repositories/assistant-repository';
 import { sql } from 'drizzle-orm';
 import { parseWebCitationId } from '@/lib/assistant/agent/web-evidence';
 
-/** Only the original customer's current private destination. This adapter does
- * not grant ordinary conversation, preview or report access to reception staff. */
+/** Only the current recipient's private destination. Reception grants never
+ * confer the recipient's report, knowledge or private-question authority. */
 export async function followupConversationHttp(request: Request, path: string[], actor: ActorContext) {
-  if (actor.principal.kind !== 'user' || path.length < 2 || path.length > 5) fail('assistant_capability_forbidden', 403);
+  if (path.length < 2 || path.length > 5) fail('assistant_capability_forbidden', 403);
   const query = new URL(request.url).searchParams, resource = path[2];
   if (path[1] !== 'conversation' || resource && !['messages','handoff','media','report-context','report-topic','runs','citations'].includes(resource)
     || path.length > 3 && !['media','runs','citations'].includes(resource)
     || path.length > 4 && resource !== 'runs') fail('assistant_resource_not_found', 404);
   if ([...query.keys()].some(k => !['beforeSeq','limit'].includes(k) || resource !== 'messages' || query.getAll(k).length !== 1)) fail('invalid_message', 422);
   const context = await new FollowupService(actor).context(path[0]);
-  if (context.audience !== 'customer') fail('assistant_capability_forbidden', 403);
-  // The repository keeps followup.self as its authoritative purpose/participant
-  // branch; chat.self enables reuse of the original user-only services here.
-  const customer = { ...actor, capabilities: [...actor.capabilities, 'assistant.chat.self'] };
-  const service = new ConversationService(customer), cid = context.conversationId;
+  const customer = actor.principal.kind === 'user';
+  if (customer ? context.audience !== 'customer' : !['worker','designer','boss'].includes(context.audience)) fail('assistant_capability_forbidden', 403);
+  if (!customer && ['handoff','media','report-topic'].includes(resource)) fail('assistant_capability_forbidden', 403);
+  const service = new ConversationService(actor), cid = context.conversationId;
   if (resource === 'citations') {
     if (request.method !== 'GET' || path.length !== 4 || query.size) fail('assistant_resource_not_found', 404);
     const citationId = path[3];
@@ -53,7 +52,7 @@ export async function followupConversationHttp(request: Request, path: string[],
   }
   if (resource === 'report-context' || resource === 'report-topic') {
     if (query.size) fail('invalid_message', 422);
-    const reports = new ReportContextService(customer, cid);
+    const reports = new ReportContextService(actor, cid);
     if (request.method === 'GET' && resource === 'report-context') return reports.read();
     if (request.method !== 'POST') fail('assistant_resource_not_found', 404);
     const requestKey = key(request.headers.get('Idempotency-Key')), raw = await request.text();
@@ -62,10 +61,11 @@ export async function followupConversationHttp(request: Request, path: string[],
     if (resource === 'report-topic') { object(body, []); return reports.topic(requestKey); }
     return reports.select(requestKey, body);
   }
-  if (resource === 'media') return mediaHttp(request, customer, cid, path.slice(3));
+  const customerActor = { ...actor, capabilities: [...actor.capabilities, 'assistant.chat.self'] };
+  if (resource === 'media') return mediaHttp(request, customerActor, cid, path.slice(3));
   if (request.method === 'GET') {
     if (!resource) return service.detail(cid);
-    if (resource === 'handoff') return new HandoffWorkflow(customer).customerRead(cid);
+    if (resource === 'handoff') return new HandoffWorkflow(customerActor).customerRead(cid);
     const before = query.get('beforeSeq') || '9223372036854775807', limit = Number(query.get('limit') || 30);
     if (!/^[1-9]\d{0,18}$/.test(before) || !Number.isInteger(limit) || limit < 1 || limit > 50) fail('invalid_message', 422);
     return service.messages(cid, before, limit);
@@ -74,7 +74,7 @@ export async function followupConversationHttp(request: Request, path: string[],
   const requestKey = key(request.headers.get('Idempotency-Key')), raw = await request.text();
   if (raw.length > 20000) fail('invalid_message', 413);
   let body; try { body = JSON.parse(raw); } catch { return fail('invalid_message', 422); }
-  if (resource === 'handoff') return new HandoffWorkflow(customer).customerWrite(cid, requestKey, object(body,
+  if (resource === 'handoff') return new HandoffWorkflow(customerActor).customerWrite(cid, requestKey, object(body,
     ['action','consent','contactConsent','phone','recipientId','leadId','archiveConsent','mediaConsent','expectedVersion']));
   const b = object(body, ['clientMessageId','content']);
   if (b.clientMessageId !== requestKey) fail('invalid_message', 422);

@@ -31,6 +31,14 @@ test('select/remove is per conversation, retains draft and has no send or delive
   await f.q.select(null); assert.equal(f.chat.state.draft, '原草稿不要丢'); assert.equal(f.q.state.selected, null);
   assert.ok(f.calls.every(c => c.url.endsWith('/report-context')));
 });
+
+test('staff topic availability is independent from selecting or removing the current report', async () => {
+  const f = fixture();
+  f.chat.state.conversation.reportContext.topicAvailable = false; f.q.bind(f.chat, '/followups/81/conversation');
+  await f.q.topic(); assert.equal(f.calls.length, 0);
+  await f.q.select({ bindingId: '81', reportId: '20', revision: 1, projectId: '2' });
+  await f.q.select(null); assert.equal(f.calls.length, 2); assert.equal(f.chat.state.draft, '原草稿不要丢');
+});
 test('unknown selection recovers the original key/body after reentry and blocks a different action', async () => {
   const f = fixture(); let first = true;
   f.intercept(c => { if (first) { first = false; c.lose = true; } });

@@ -5,6 +5,7 @@ import { customerProjects } from '@/lib/construction/customer';
 import { currentStage, readStageSettings } from '@/lib/construction/stages-store';
 import { fingerprint, type ActorContext } from '../contracts';
 import type { KnowledgeContext } from '../contracts/professional';
+import { selectedReport } from '@/lib/construction/report-reference';
 
 export const projectKnowledgeContextStep = 11000;
 export async function projectKnowledgeContextAvailable(tx:PostgresTransaction,actor:ActorContext,conversation:Row,runId:string) {
@@ -16,6 +17,15 @@ export async function projectKnowledgeContextAvailable(tx:PostgresTransaction,ac
 /** Conditions never take model-supplied facts. No home selection for an unbound chat. */
 export async function knowledgeContext(tx: PostgresTransaction, actor: ActorContext, conversation: Row): Promise<KnowledgeContext> {
   const entry=conversation.entry_snapshot as Row;
+  if (conversation.purpose === 'construction_followup' && actor.capabilities.includes('assistant.followup.self')) {
+    await new AssistantRepository(tx, actor).conversation(String(conversation.id));
+    const selected = await selectedReport(tx, actor, conversation);
+    if (!selected) return {};
+    const project = await one(tx, sql`select * from app.construction_projects where enterprise_id=${actor.enterpriseId} and id=${selected.selection.projectId}`);
+    if (!project) return {};
+    const settings = await readStageSettings(tx, actor.enterpriseId), stage = currentStage(project, settings.stages);
+    return { leadId: selected.leadId, projectId: String(project.id), revision: Number(project.progress_revision), ...(stage ? { stage: stage.key } : {}) };
+  }
   if(actor.principal.kind==='admin' && conversation.purpose==='project_collaboration' && actor.capabilities.includes('assistant.project.shared')) {
     await new AssistantRepository(tx,actor).conversation(String(conversation.id));
     const project=await one(tx,sql`select p.* from app.construction_chats c join app.construction_projects p

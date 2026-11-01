@@ -17,12 +17,13 @@ assert.ok(['localhost','127.0.0.1'].includes(runtime.hostname) && runtime.port =
 const target = new URL(process.env.DATABASE_MIGRATION_URL || process.env.DATABASE_URL);
 assert.equal(target.hostname, runtime.hostname); assert.equal(target.port, runtime.port); assert.equal(target.pathname, runtime.pathname);
 const journal = JSON.parse(fs.readFileSync('drizzle/meta/_journal.json', 'utf8')).entries;
-const entry = journal.find(e => e.tag === '0103_construction_proactive_reports');
-const source = fs.readFileSync('drizzle/0103_construction_proactive_reports.sql', 'utf8');
+const tag = process.argv.includes('--staff-questions') ? '0108_construction_followup_questions' : '0103_construction_proactive_reports';
+const entry = journal.find(e => e.tag === tag);
+const source = fs.readFileSync('drizzle/' + tag + '.sql', 'utf8');
 const hash = createHash('sha256').update(source).digest('hex');
 // The preceding local migration was already applied before this task. Do not
 // require or stage its unrelated dirty source just to verify this local target.
-const previousTimestamp = 1793606400000;
+const previousTimestamp = process.argv.includes('--staff-questions') ? journal.find(e => e.tag === '0107_construction_followup_handoff').when : 1793606400000;
 const control = JSON.parse(fs.readFileSync(path.join(root, 'tmp/xiaok-vector/connection.private.json'), 'utf8')).DATABASE_URL;
 const release = await lockAssistantAcceptance(control, { waitForLock: true });
 const app = new pg.Client({ connectionString: runtime.toString() });
@@ -40,7 +41,7 @@ try {
   if (old) assert.equal(old.hash, hash, 'Applied SQL must not drift');
   else {
     assert.ok((await migration.query('select 1 from app.__drizzle_migrations where created_at=$1', [previousTimestamp])).rowCount,
-      '0102 must already be applied; do not migrate unrelated dirty work');
+      'Preceding local migration must already be applied; do not migrate unrelated dirty work');
     await migration.query(source);
     await migration.query('insert into app.__drizzle_migrations(hash,created_at) values($1,$2)', [hash, entry.when]);
     audit.applied = true;
