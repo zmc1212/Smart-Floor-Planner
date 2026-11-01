@@ -43,11 +43,33 @@ test('approved staff daily card labels retain full detail identity, original fac
   assert.equal(worker.cardPeriodLabel, '11月1日 · 截至20:00');
   assert.equal(worker.title, '11月1日 · 施工日报'); assert.equal(worker.factsOnly, true);
   assert.deepEqual(worker.projects, reportForView(f.report, f.context).projects);
-  assert.equal(reportForView(f.report, f.context).cardTitle, '');
+  assert.equal(reportForView(f.report, f.context, '', now).cardTitle, '今天我家进展');
   assert.equal(reportForView({ ...f.report, cutoffAt: '2026-11-02T01:00:00+08:00' }, { ...f.context, audience: 'worker' }).cardPeriodLabel, '');
   assert.equal(reportForView({ ...f.report, kind: 'weekly' }, { ...f.context, audience: 'designer' }).cardTitle, '');
   assert.equal(reportForView(f.report, { ...f.context, audience: 'worker' }, '', now + 86400000).cardTitle, '11月1日的施工跟进');
   assert.equal(reportForView({ reportId: '98', revision: 1, available: false }, { ...f.context, audience: 'worker' }).cardLabel, undefined);
+});
+
+test('owner daily card preserves progress separately from authoritative published confirmations and historical cutoff', () => {
+  const f = fixture(), now = Date.parse('2026-11-01T09:00:00+08:00');
+  const facts = { projects: [{ ...f.report.facts.projects[0],
+    records: [{ id: '12', version: 3, data: { completed: '厨房线路走向已核对', pending: '内部草稿不能进入业主确认区' } },
+      { id: '13', version: 1, data: { completed: '客厅线管已有记录' } }],
+    publishedRecordItems: [{ recordId: '12', pending: '台面插座位置还没定', coordination: '位置确认前先不要施工', carriedOver: true }],
+  }] };
+  const view = reportForView({ ...f.report, facts }, f.context, '', now);
+  assert.equal(view.ownerDaily, true); assert.equal(view.cardTitle, '今天我家进展');
+  assert.equal(view.cardPeriodLabel, '11月1日 · 水电阶段 · 截至20:00');
+  assert.deepEqual(view.projects[0].progress.map(l => l.text), ['厨房线路走向已核对', '客厅线管已有记录']);
+  assert.deepEqual(view.projects[0].pending.map(l => l.text), ['台面插座位置还没定', '位置确认前先不要施工']);
+  assert.equal(view.projects[0].pending[0].carriedOver, true); assert.equal(view.factsOnly, true);
+  const empty = reportForView({ ...f.report, facts: { projects: [{ ...facts.projects[0], publishedRecordItems: [] }] } }, f.context, '', now);
+  assert.deepEqual(empty.projects[0].pending, []); // Empty published projection cannot fall back to internal drafts.
+  assert.equal(reportForView(f.report, f.context, '', now + 86400000).cardTitle, '11月1日我家进展');
+  assert.equal(reportForView({ ...f.report, cutoffAt: '2026-11-02T01:00:00+08:00' }, f.context, '', now).cardPeriodLabel, '');
+  assert.equal(reportForView({ ...f.report, kind: 'stage' }, f.context).ownerDaily, false);
+  assert.equal(reportForView({ ...f.report, kind: 'weekly' }, f.context).cardTitle, '');
+  assert.equal(reportForView({ ...f.report, available: false }, f.context).ownerDaily, undefined);
 });
 
 test('boss weekly card uses the exact Shanghai period, preserves historical stages and never calls old facts this week', () => {

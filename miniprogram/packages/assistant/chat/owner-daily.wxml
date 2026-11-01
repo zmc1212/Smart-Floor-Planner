@@ -1,0 +1,27 @@
+<!-- Approved02-v002 root daily card; published facts and original report actions only. -->
+<template name="owner-daily-card">
+  <view class="followup-paper followup-card followup-owner-daily" data-report="{{report.reportId}}">
+    <view class="followup-card-marker" data-report="{{report.reportId}}"></view>
+    <text class="fabric-label">{{report.cardLabel}}</text>
+    <text class="followup-paper-title">{{report.cardTitle}}</text>
+    <text class="followup-muted followup-owner-period">{{report.cardPeriodLabel || report.periodLabel}}{{!report.cardPeriodLabel && report.projects[0].stageName ? ' · ' + report.projects[0].stageName : ''}}</text>
+    <text wx:if="{{!report.cardPeriodLabel}}" class="followup-muted">截至{{report.cutoffLabel}}</text>
+    <view wx:for="{{report.projects}}" wx:key="id" wx:for-item="project" class="followup-owner-project">
+      <view class="followup-owner-progress">
+        <block wx:for="{{project.progress}}" wx:key="key" wx:for-item="line" wx:for-index="lineIndex"><text wx:if="{{lineIndex < 2}}" class="followup-line">• {{line.text}}</text></block>
+        <text wx:if="{{!project.progress.length}}" class="followup-muted">本期暂无可见记录，未记录不等于未施工。</text>
+      </view>
+      <view wx:if="{{project.pending.length}}" class="followup-owner-pending">
+        <image class="followup-owner-leaf" src="/packages/assistant/assets/owner-daily-leaf.png" mode="aspectFit" aria-hidden="true" />
+        <text class="followup-tag">待你确认</text>
+        <text wx:for="{{project.pending}}" wx:key="key" wx:for-item="line" class="followup-line">{{line.text}}</text>
+      </view>
+    </view>
+    <text wx:if="{{report.truncated}}" class="followup-caption">本份简报只包含部分工地。</text>
+    <text wx:if="{{report.factsOnly}}" class="followup-caption">本份仅含现场记录，暂无工艺说明。</text>
+    <view class="followup-actions">
+      <button class="followup-card-action" data-report="{{report.reportId}}" data-revision="{{report.revision}}" bindtap="readFollowupReport">查看完整日报</button>
+      <button class="followup-card-action followup-primary" data-report="{{report.reportId}}" data-revision="{{report.revision}}" bindtap="askFollowupReport" disabled="{{reportQuestion.disabled || reportQuestion.busy || reportQuestion.pending}}">问这份报告</button>
+    </view>
+  </view>
+</template>

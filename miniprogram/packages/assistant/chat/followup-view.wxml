@@ -1,6 +1,7 @@
 <!-- Approved follow-up-v1 02/03/06/07/08/11; original records are data, never screenshot pixels. -->
 <import src="./report-question.wxml" />
 <import src="./boss-weekly.wxml" />
+<import src="./owner-daily.wxml" />
 <view wx:if="{{followupActive}}" class="followup-thread followup-role-{{followupContext.audience}}">
   <view class="followup-scope">
     <text class="followup-scope-title">{{followupContext.title || (followupPlatform ? '企业工地简报' : '装修跟进')}}</text>
@@ -17,6 +18,7 @@
     <block wx:for="{{followupReports}}" wx:key="reportId" wx:for-item="report"><block wx:if="{{report.deliveryState !== 'muted' && !reportQuestion.selected}}">
       <text wx:if="{{!report.bossWeekly || followupChat.reception || !report.ready}}" class="followup-time">{{report.dateLabel}}</text>
       <template wx:if="{{report.bossWeekly && report.ready && !followupChat.reception}}" is="boss-weekly-card" data="{{report, reportQuestion}}" />
+      <template wx:elif="{{report.ownerDaily && report.ready && !followupChat.reception}}" is="owner-daily-card" data="{{report, reportQuestion}}" />
       <view wx:else class="followup-paper followup-card" data-report="{{report.reportId}}"><view class="followup-card-marker" data-report="{{report.reportId}}"></view>
         <text class="fabric-label">{{followupChat.reception ? '已保存的简报' : report.cardLabel || report.kindLabel || '已保存的简报'}}</text>
         <text class="followup-paper-title">{{followupChat.reception ? report.takeoverTitle : report.cardTitle || report.title}}</text>
