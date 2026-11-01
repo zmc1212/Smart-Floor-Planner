@@ -12,6 +12,7 @@ import { needIssueSnapshotAvailable, type NeedIssueSnapshot } from '@/lib/constr
 import { formalFloorplanText } from './formal-floorplan-context';
 import { materialSharingTools } from '@/lib/construction/material-sharing-contract';
 import { selectedFormalPlan } from '../media/floorplan-selection';
+import { reportBusinessAvailable, type ReportBusinessReference } from './report-context';
 
 export const businessToolDefinitions: ModelTool[] = [
   ...materialSharingTools,
@@ -42,7 +43,7 @@ export function parseDesignerQuery(raw: unknown): DesignerQuery {
   return { query: value.query.trim() };
 }
 export type BusinessQuery = { domain: 'appointments' | 'schemes' | 'floorplans' | 'construction'; leadId: string };
-export type BusinessSnapshot = { query: BusinessQuery; customerId: string; leadIds: string[]; version: string; displayText: string; data: unknown[]; queriedAt: string; contextConversationId?: string } | MaterialSnapshot | NeedIssueSnapshot;
+export type BusinessSnapshot = { query: BusinessQuery; customerId: string; leadIds: string[]; version: string; displayText: string; data: unknown[]; queriedAt: string; contextConversationId?: string; reportReference?: ReportBusinessReference } | MaterialSnapshot | NeedIssueSnapshot;
 export function parseBusinessQuery(raw: unknown): BusinessQuery {
   const value = raw as BusinessQuery;
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(k => !['domain','leadId'].includes(k))
@@ -104,6 +105,7 @@ export async function queryBusiness(tx: PostgresTransaction, actor: ActorContext
     displayText: lines.length ? lines.join('\n') : `目前没有查到你在本企业的${name}记录。`, queriedAt: new Date().toISOString() };
 }
 export async function businessSnapshotAvailable(tx: PostgresTransaction, enterpriseId: string, snapshot: BusinessSnapshot) {
+  if ('reportReference' in snapshot && snapshot.reportReference) return reportBusinessAvailable(tx, enterpriseId, snapshot.reportReference);
   if (snapshot.query.domain === 'materials') return materialSnapshotAvailable(tx, enterpriseId, snapshot as MaterialSnapshot);
   if (snapshot.query.domain === 'followups') return needIssueSnapshotAvailable(tx, enterpriseId, snapshot as NeedIssueSnapshot);
   const current = await queryBusiness(tx, { enterpriseId, principal: { kind: 'user', userId: snapshot.customerId }, contextVersion: 0, capabilities: [] }, snapshot.query, 'contextConversationId' in snapshot ? snapshot.contextConversationId : undefined);

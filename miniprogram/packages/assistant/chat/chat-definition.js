@@ -16,6 +16,7 @@ const { settingsPageMethods } = require('../../../utils/assistant-followup-setti
 const { historyPageMethods } = require('../../../utils/assistant-report-history');
 const { planPageMethods } = require('../../../utils/assistant-report-plan');
 const { FollowupChat, emptyFollowupChat, followupChatMethods } = require('../../../utils/assistant-followup-chat');
+const { ReportQuestionController, reportQuestionMethods, emptyReportQuestion } = require('../lib/report-context');
 
 function sessionToken() {
   const app = getApp();
@@ -28,9 +29,10 @@ module.exports = () => ({
   ...historyPageMethods,
   ...planPageMethods,
   ...followupChatMethods,
+  ...reportQuestionMethods,
   data: {
     ...initial(), navigationTop: 47, navigationHeight: 44, navigationRight: 100,
-    ...initialPublic(),
+    ...initialPublic(), reportQuestion: emptyReportQuestion(),
     ...initialPlans(),
     ...initialContext(),
     ...initialFollowups(), ...initialEnterprise(), followupChat: emptyFollowupChat(), followupScrollTarget: '', professionalFollowup: false, followupHistoryOpen: false, followupManageOpen: false, followupOriginalPaths: {}, followupOriginalError: '',
@@ -90,6 +92,7 @@ module.exports = () => ({
           }
           if (patch.conversation === null) { if (this.floorplans) this.floorplans.clear(); this._portfolioKey = ''; this.recommendations.clear(); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); }
           if (patch.conversation?.id && this.floorplans && this._shown && this.floorplans.id !== String(patch.conversation.id)) this.floorplans.show(String(patch.conversation.id));
+          if (patch.conversation !== undefined && !this.data.followupActive) this.syncReportQuestion();
           const next = patch.messages;
           if (next && next.length && (!previous.length || next[next.length - 1].id !== previous[previous.length - 1].id)) {
             this.scrollBottom();
@@ -117,12 +120,18 @@ module.exports = () => ({
           if (patch.followupContext === null || patch.followupActive === false) this.followupChatController?.hide();
           if (patch.followupDetail && !patch.followupDetail.readAt) wx.nextTick(() => { if (this._alive && this._shown) this.followups.renderedReport(); });
           if (patch.followupOriginal === null && this.followupMedia) this.followupMedia.clear();
-          if (patch.followupOriginal && this.followupMedia && this.data.followupDetail && this.data.followupContext)
-            this.followupMedia.loadOriginal(this.data.followupContext, this.data.followupDetail, patch.followupOriginal);
+          if (patch.followupOriginal && this.followupMedia && this.data.followupDetail && (this.data.followupDetail.sourceContext || this.data.followupContext))
+            this.followupMedia.loadOriginal(this.data.followupDetail.sourceContext || this.data.followupContext, this.data.followupDetail, patch.followupOriginal);
+          if (patch.followupActive === false) this.syncReportQuestion();
         });
       } });
     this.followupChatController = new FollowupChat({ Controller: ChatController, Media: MediaController, client: this.controller.client, identity: sessionToken,
-      headers: () => this.followups.headers(), emit: patch => { if (this._alive) this.setData(patch); } });
+      referenceImage: value => this.referenceImages.materialize(value),
+      headers: () => this.followups.headers(), emit: patch => { if (this._alive) this.setData(patch, () => this.syncReportQuestion()); } });
+    this.reportQuestions = new ReportQuestionController({ client: this.controller.client, identity: sessionToken, headers: () => this.followups.headers(),
+      emit: patch => { if (this._alive) this.setData(patch); }, openTopic: async id => {
+        this.followups.leave(); this.closeSheet(); this.controller.visible = true; await this.controller.selectConversation(id);
+      } });
     this.followupMedia = new FollowupRecordMedia({ identity: sessionToken, headers: () => this.followups.headers(), emit: patch => {
       if (this._alive) this.setData({ ...(patch.siteRecordPaths ? { followupOriginalPaths: patch.siteRecordPaths } : {}),
         ...(patch.siteRecordError !== undefined ? { followupOriginalError: patch.siteRecordError } : {}) });
@@ -370,6 +379,7 @@ module.exports = () => ({
     clearTimeout(this._sheetTimer);
     if (this.data.sheet === 'publicSite' && this.publicSites) this.publicSites.closeDetail();
     this.controller.citationRequest = (this.controller.citationRequest || 0) + 1;
+    this.followupChatController?.clearCitation();
     this.referenceImages.clear();
     this.controller.set({ citation: null });
     this.setData({ sheetOpen: false });

@@ -291,7 +291,8 @@ class ChatController {
         this.set({ conversation: created });
       }
       const result = await this.client.mutate(`send:${this.conversationId}`, `/conversations/${this.conversationId}/messages`, {
-        content: { version: 1, blocks: [{ type: 'text', text }] },
+        content: { version: 1, blocks: [{ type: 'text', text }],
+          ...(s.conversation?.mode === 'ai' && s.conversation.reportContext?.selected ? { reportContextVersion: s.conversation.reportContext.version } : {}) },
         ...(this.speechInput ? { speech: this.speechInput } : {}),
       });
       if (!this.valid(epoch)) return;

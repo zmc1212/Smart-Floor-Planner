@@ -9,7 +9,7 @@ export type ActorContext = {
 export type MessageBlock = { type: 'text'; text: string }
   | { type: 'citation'; citationId: string; fallbackText: string }
   | { type: 'notice'; code: string; fallbackText: string };
-export type MessageContent = { version: 1; blocks: MessageBlock[] };
+export type MessageContent = { version: 1; blocks: MessageBlock[]; reportContextVersion?: number };
 export type InvocationOwner = { kind: 'generation'; generationId: bigint }
   | { kind: 'assistant_run'; runId: bigint } | { kind: 'knowledge_job'; jobId: bigint };
 export type RunTrigger = { kind: 'user_message'; messageId: string }
@@ -69,10 +69,11 @@ export function fingerprint(value: unknown): string {
 }
 export function userContent(value: unknown, max = 4000): MessageContent {
   const v = value as MessageContent;
-  if (!v || v.version !== 1 || Object.keys(v).some(k => !['version', 'blocks'].includes(k)) || !Array.isArray(v.blocks) || v.blocks.length !== 1) fail('invalid_message', 422);
+  if (!v || v.version !== 1 || Object.keys(v).some(k => !['version', 'blocks', 'reportContextVersion'].includes(k)) || !Array.isArray(v.blocks) || v.blocks.length !== 1
+    || v.reportContextVersion !== undefined && (!Number.isSafeInteger(v.reportContextVersion) || v.reportContextVersion < 1)) fail('invalid_message', 422);
   const b = v.blocks[0];
   if (b.type !== 'text' || Object.keys(b).some(k => !['type', 'text'].includes(k)) || typeof b.text !== 'string' || !b.text.trim() || b.text.length > max) fail('invalid_message', 422);
-  return { version: 1, blocks: [{ type: 'text', text: b.text }] };
+  return { version: 1, blocks: [{ type: 'text', text: b.text }], ...(v.reportContextVersion === undefined ? {} : { reportContextVersion: v.reportContextVersion }) };
 }
 /** Unknown blocks never execute HTML, URLs, or client actions. */
 export function safeText(content: { blocks: Array<{ type: string; text?: string; fallbackText?: string }> }) {

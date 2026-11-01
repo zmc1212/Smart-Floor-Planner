@@ -1,0 +1,8 @@
+<!-- Approved04 paper and removable reference; all content comes from live authorized sources. -->
+<template name="report-question-paper">
+  <view wx:if="{{q.selected}}" class="followup-paper report-question-paper"><text class="fabric-label">正在讨论这份{{q.selected.kind === 'weekly' ? '周报' : q.selected.kind === 'daily' ? '日报' : '提醒'}}</text><text class="report-question-title">{{q.title}}</text><text wx:if="{{q.selected.summary}}" class="report-question-summary" user-select>{{q.selected.summary}}</text><view class="report-question-actions"><button class="report-question-view" bindtap="viewReportQuestion" disabled="{{q.busy || q.pending}}">查看{{q.selected.kind === 'weekly' ? '周报' : q.selected.kind === 'daily' ? '日报' : '提醒'}} ↗</button><button class="report-question-topic" bindtap="newReportTopic" disabled="{{q.disabled || q.busy || q.pending}}">另开专题 ↗</button></view></view>
+</template>
+<template name="report-question-strip">
+  <view wx:if="{{q.selected || q.invalidated}}" class="report-question-strip"><text>{{q.invalidated ? '报告来源或权限已变化，请移除引用。' : '正在问：' + q.title}}</text><button class="report-question-remove" bindtap="removeReportQuestion" disabled="{{q.disabled || q.busy || q.pending}}" aria-label="移除报告引用，保留输入内容"><image class="report-question-remove-icon" src="../assets/x.png"/></button></view>
+  <view wx:if="{{q.error || q.pending}}" class="followup-feedback"><text>{{q.pending ? '上次报告操作结果正在核对。' : q.error}}</text><button wx:if="{{q.pending}}" bindtap="recoverReportQuestion" disabled="{{q.busy}}">核对上次操作</button></view>
+</template>

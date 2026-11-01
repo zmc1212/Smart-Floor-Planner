@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { reportContext } from '@/lib/construction/report-reference';
 import type { PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fingerprint, type ActorContext } from '../contracts';
@@ -27,6 +28,12 @@ export async function restoreAncestorSources(tx: PostgresTransaction, actor: Act
   const result: SynthesisContext = { version: 1, knowledge: [], snapshots: [], sources: [], web: [], history: [], ancestors: [] };
   for (const candidate of candidates) {
     const context = candidate.source_refs as SynthesisContext;
+    // Removing/replacing the explicit reference is not permission to silently
+    // restore a previous report into a new question. Historical answers still
+    // use their own live source checks when read.
+    const selected = reportContext(conversation.entry_snapshot).selection;
+    if (context.snapshots.some(s => 'reportReference' in s && s.reportReference
+      && (!selected || fingerprint(s.reportReference.selection) !== fingerprint(selected)))) continue;
     if (!await synthesisContextAvailable(tx, actor, conversation, context)) continue;
     const refs = [...(context.ancestors || []), { runId: String(candidate.run_id), messageId: String(candidate.message_id),
       contentHash: fingerprint(candidate.content), contextHash: fingerprint(context) }];

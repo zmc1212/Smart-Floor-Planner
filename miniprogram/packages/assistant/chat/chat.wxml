@@ -1,4 +1,11 @@
 <!-- C05 extends the approved C01 conversation; server metadata alone creates decision actions. -->
+<import src="./report-question.wxml" />
+<template name="citation-content">
+  <text wx:if="{{citationLoading}}" class="sheet-state">正在核对资料访问权限…</text>
+  <view wx:elif="{{citationError}}" class="notice"><text>{{citationError}}</text><button class="notice-action" bindtap="{{retry}}">重试</button></view>
+  <view wx:elif="{{citation && citation.available}}" class="source-content"><text class="source-title">{{citation.title}}</text><text wx:if="{{citation.versionLabel}}" class="sheet-helper">{{citation.versionLabel}}</text><text wx:else class="sheet-helper">版本 {{citation.versionNumber}}{{citation.historical ? ' · 回答时引用的历史版本' : ''}}</text><text wx:if="{{citation.sourceLocation}}" class="sheet-helper" user-select>{{citation.sourceLocation}}</text><image wx:if="{{citation.imagePath}}" class="message-photo" src="{{citation.imagePath}}" mode="widthFix"/><text class="source-quote" user-select>{{citation.quote}}</text><block wx:if="{{citation.reference}}"><text class="sheet-helper" user-select>出处：{{citation.reference.source}}</text><text class="sheet-helper" user-select>授权：{{citation.reference.authorization}}</text><text class="sheet-helper">仅供装修方向参考，不是你家的正式施工方案；可直接说喜欢或不合适。</text></block></view>
+  <text wx:else class="sheet-state">这份资料已撤回、过期或不再对当前身份开放。请重新提问。</text>
+</template>
 <template name="owner-public-card">
   <view wx:if="{{card}}" class="owner-public-card">
     <text class="owner-public-title">这次拟公开的内容</text><text class="owner-public-name">{{card.name}} · {{card.stageName}}</text>
@@ -43,8 +50,9 @@
 
   <include src="./followup-view.wxml" />
   <scroll-view wx:if="{{!followupActive}}" class="conversation-scroll" scroll-y enhanced show-scrollbar="{{false}}" scroll-into-view="{{scrollTarget}}" scroll-with-animation="{{false}}">
-    <view class="conversation-content {{!messages.length && !pendingText && !loading && (!fatal || needsLogin) ? 'new-conversation-content' : ''}}">
-      <view wx:if="{{!messages.length && !pendingText && !loading && (!fatal || needsLogin)}}" class="notebook-welcome">
+    <view class="conversation-content {{!reportQuestion.selected && !messages.length && !pendingText && !loading && (!fatal || needsLogin) ? 'new-conversation-content' : ''}}">
+      <template is="report-question-paper" data="{{q: reportQuestion}}" />
+      <view wx:if="{{!reportQuestion.selected && !messages.length && !pendingText && !loading && (!fatal || needsLogin)}}" class="notebook-welcome">
         <view class="welcome-art-group"><image class="welcome-sage" src="../assets/chat-notebook-sage.png" mode="aspectFit" aria-hidden="true" /><image class="welcome-mascot" src="../assets/chat-notebook-mascot.png" mode="aspectFit" aria-hidden="true" /></view>
         <view class="welcome-paper">
           <view class="welcome-paper-under" aria-hidden="true"></view>
@@ -180,6 +188,7 @@
   </scroll-view>
 
   <view wx:if="{{!followupActive}}" class="composer-dock {{keyboardHeight ? 'keyboard-open' : ''}} {{inputFocused || keyboardHeight ? 'composer-focused' : ''}}">
+    <template is="report-question-strip" data="{{q: reportQuestion}}" />
     <view wx:if="{{!keyboardHeight && conversation.requirementProposalPending}}" class="conversation-tools">
       <button wx:if="{{conversation.requirementProposalPending && conversation.mode === 'ai'}}" class="text-action" bindtap="openRequirements" disabled="{{loading || needsLogin || fatal || busy || pendingSend || pendingAction}}">查看需求提案</button>
     </view>
@@ -189,8 +198,8 @@
       <button size="mini" class="media-button" bindtap="voiceInput" aria-label="{{speechAvailable ? '语音输入；长按语音转写消息可回听原音' : '语音暂不可用，可以打字或发图'}}"><image src="../assets/microphone.png" /></button>
       <view class="composer-divider" aria-hidden="true"></view>
       <button size="mini" class="media-button" bindtap="openMedia" disabled="{{loading || busy || fatal || pendingSend || pendingAction || mediaBusy}}" aria-label="本次图片资料"><image src="../assets/image.png" /></button>
-      <textarea class="composer-input" value="{{draft}}" maxlength="{{maxChars}}" auto-height adjust-position="{{false}}" show-confirm-bar="{{false}}" placeholder="说说你想改变的地方…" placeholder-class="input-placeholder" bindinput="input" bindtap="focusInput" focus="{{inputFocused}}" bindfocus="focusInput" bindblur="blurInput" bindkeyboardheightchange="keyboardChange" disabled="{{loading || busy || fatal && !needsLogin || !canSend && !needsLogin || pendingSend || generating || uncertainRun || pendingAction || readOnly}}" aria-label="装修咨询内容" />
-      <button size="mini" class="send-button" bindtap="send" disabled="{{!draft || loading || busy || fatal && !needsLogin || !canSend && !needsLogin || pendingSend || generating || uncertainRun || pendingAction || readOnly || speechBusy || contextBusy || contextLoading || contextPending}}" aria-label="发送"><image src="../assets/arrow-up.png" /></button>
+      <textarea class="composer-input" value="{{draft}}" maxlength="{{maxChars}}" auto-height adjust-position="{{false}}" show-confirm-bar="{{false}}" placeholder="{{reportQuestion.selected ? '继续问这份报告…' : '说说你想改变的地方…'}}" placeholder-class="input-placeholder" bindinput="input" bindtap="focusInput" focus="{{inputFocused}}" bindfocus="focusInput" bindblur="blurInput" bindkeyboardheightchange="keyboardChange" disabled="{{loading || busy || fatal && !needsLogin || !canSend && !needsLogin || pendingSend || generating || uncertainRun || pendingAction || readOnly}}" aria-label="装修咨询内容" />
+      <button size="mini" class="send-button" bindtap="send" disabled="{{!draft || loading || busy || fatal && !needsLogin || !canSend && !needsLogin || pendingSend || generating || uncertainRun || pendingAction || readOnly || speechBusy || contextBusy || contextLoading || contextPending || reportQuestion.busy || reportQuestion.pending}}" aria-label="发送"><image src="../assets/arrow-up.png" /></button>
     </view>
     <view wx:if="{{inputFocused || keyboardHeight}}" class="floorplan-context-row"><button class="floorplan-scope" bindtap="openFloorplanPicker" disabled="{{contextBusy || loading || fatal || pendingSend || pendingAction || generating}}"><image src="../assets/requirement-home.png" mode="aspectFit" /><text>{{selectedFloorplan ? '已选：' + selectedFloorplan.name : '不结合户型档案'}}</text><view class="context-chevron"></view></button><button class="floorplan-browse" bindtap="browseFloorplan" disabled="{{contextBusy || loading || fatal}}"><text>查看档案</text><image src="../assets/chat-arrow-up-right.png" mode="aspectFit" /></button></view>
     <view wx:if="{{contextError}}" class="context-error"><text>{{contextError}}</text><button bindtap="reloadFloorplanContext">重试</button></view>
@@ -250,12 +259,8 @@
             <view class="discovery-card-actions"><button class="discovery-text-action" bindtap="askPublicSite" disabled="{{!canSend || publicBusy || publicPending || publicDetailLoading || loading || fatal || readOnly || busy || generating || pendingSend || pendingAction || uncertainRun || contextBusy || contextPending || speechBusy}}"><text>{{publicBusy ? '正在确认…' : '问小K'}}</text><image src="../assets/chat-arrow-up-right.png" mode="aspectFit"/></button></view>
           </view>
         </block>
-        <block wx:else>
-          <text wx:if="{{citationLoading}}" class="sheet-state">正在核对资料访问权限…</text>
-          <view wx:elif="{{citationError}}" class="notice"><text>{{citationError}}</text><button class="notice-action" bindtap="retryCitation">重试</button></view>
-          <view wx:elif="{{citation && citation.available}}" class="source-content"><text class="source-title">{{citation.title}}</text><text wx:if="{{citation.versionLabel}}" class="sheet-helper">{{citation.versionLabel}}</text><text wx:else class="sheet-helper">版本 {{citation.versionNumber}}{{citation.historical ? ' · 回答时引用的历史版本' : ''}}</text><text wx:if="{{citation.sourceLocation}}" class="sheet-helper" user-select>{{citation.sourceLocation}}</text><image wx:if="{{citation.imagePath}}" class="message-photo" src="{{citation.imagePath}}" mode="widthFix" /><text class="source-quote" user-select>{{citation.quote}}</text><block wx:if="{{citation.reference}}"><text class="sheet-helper" user-select>出处：{{citation.reference.source}}</text><text class="sheet-helper" user-select>授权：{{citation.reference.authorization}}</text><text class="sheet-helper">仅供装修方向参考，不是你家的正式施工方案；可直接说喜欢或不合适。</text></block></view>
-          <text wx:else class="sheet-state">这份资料已撤回、过期或不再对当前身份开放。请重新提问。</text>
-        </block>
+        <template wx:elif="{{sheet === 'followupCitation'}}" is="citation-content" data="{{citation: followupChat.citation, citationLoading: followupChat.citationLoading, citationError: followupChat.citationError, retry: 'retryFollowupCitation'}}"/>
+        <template wx:else is="citation-content" data="{{citation, citationLoading, citationError, retry: 'retryCitation'}}"/>
       </scroll-view>
     </view>
   </view>

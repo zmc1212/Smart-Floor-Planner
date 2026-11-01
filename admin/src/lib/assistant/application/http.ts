@@ -18,6 +18,7 @@ import { customerPlanHttp } from '@/lib/construction/plan-http';
 import { parseWebCitationId } from '../agent/web-evidence';
 import { LocationService } from '../location/service';
 import { FloorplanContextService } from '../media/floorplan-context';
+import { ReportContextService } from '@/lib/construction/report-context';
 import { followupHttp } from '@/lib/construction/followup-http';
 
 function only(body: Record<string, unknown>, allowed: string[]) {
@@ -29,6 +30,21 @@ export async function assistantHttp(request: Request, path: string[]) {
   const requestId = randomUUID();
   try {
     const identity = await customerIdentity(request);
+    if (path[0] === 'conversations' && ['report-context','report-topic'].includes(path[2]) && path.length === 3) {
+      const cid = id(path[1]), params = new URL(request.url).searchParams;
+      if (params.size) fail('invalid_message', 422);
+      const service = new ReportContextService(await locate(identity, 'conversation', cid), cid);
+      let data: unknown;
+      if (request.method === 'GET' && path[2] === 'report-context') data = await service.read();
+      else if (request.method === 'POST') {
+        const raw = await request.text(); if (raw.length > 2048) fail('invalid_message', 413);
+        let body: unknown; try { body = JSON.parse(raw); } catch { return fail('invalid_message', 422); }
+        if (path[2] === 'report-topic' && (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length)) fail('invalid_message', 422);
+        const requestKey = key(request.headers.get('Idempotency-Key'));
+        data = path[2] === 'report-topic' ? await service.topic(requestKey) : await service.select(requestKey, body);
+      } else fail('assistant_resource_not_found', 404);
+      return NextResponse.json({ success: true, data, requestId }, { headers: { 'Cache-Control': 'no-store' } });
+    }
     if (path[0] === 'conversations' && path[2] === 'floorplan-context' && path.length === 3) {
       const cid = id(path[1]), params = new URL(request.url).searchParams;
       const service = new FloorplanContextService(await locate(identity, 'conversation', cid), cid);

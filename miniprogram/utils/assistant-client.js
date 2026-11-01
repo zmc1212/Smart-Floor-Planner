@@ -163,6 +163,10 @@ class AssistantClient {
     }
     try {
       const data = await this.read(pending.path, pending.body, { ...headers, 'Idempotency-Key': pending.key }, pending.method);
+      if (slot.startsWith('report-context:') && (data.conversationId !== slot.split(':')[1]
+        || data.version !== pending.body.expectedVersion + 1 || data.invalidated !== false
+        || (pending.body.selection === null ? data.selected !== null : !data.selected || ['bindingId','reportId','revision','projectId'].some(k => data.selected[k] !== pending.body.selection[k])))) throw { code: 'invalid_response' };
+      if (slot.startsWith('report-topic:') && (!/^[1-9]\d*$/.test(String(data.id)) || data.purpose !== 'customer_consultation')) throw { code: 'invalid_response' };
       if (/^\/followups\/[1-9]\d*\/conversation\//.test(pending.path)
         && (slot.startsWith('send:') || slot.startsWith('handoff:') || slot.startsWith('media:'))
         && data.conversationId !== slot.split(':')[1]) throw { code: 'invalid_response' };

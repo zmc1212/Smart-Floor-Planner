@@ -176,16 +176,18 @@ class FollowupController {
     } catch (e) { if (this.current(epoch)) this.failure(e); }
     finally { if (this.current(epoch)) this.set({ followupLoading: false }); }
   }
-  async readReport(reportId, revision) {
+  async readReport(reportId, revision, bindingId = this.selected) {
     if (!this.current() || this.state.followupBusy || this.state.followupPending) return;
-    const epoch = this.epoch, bid = this.selected; this.set({ followupLoading: true, followupDetail: null, followupOriginal: null, followupError: '' });
+    const epoch = this.epoch, bid = bindingId, ticket = this.detailTicket = (this.detailTicket || 0) + 1;
+    this.set({ followupLoading: true, followupDetail: null, followupOriginal: null, followupError: '' });
     try {
       const report = await this.client.read(`${BASE}/${bid}/reports/${reportId}`, revision ? { revision } : {}, await this.headers());
-      if (this.current(epoch) && bid === this.selected) this.set({ followupDetail: reportForView(report, this.state.followupContext) });
+      const context = bid === this.selected && this.state.followupContext || await this.client.read(`${BASE}/${bid}`, {}, await this.headers());
+      if (this.current(epoch) && ticket === this.detailTicket) this.set({ followupDetail: { ...reportForView(report, context), sourceContext: context, bindingId: bid } });
     } catch (e) { if (this.current(epoch)) this.failure(e); }
     finally { if (this.current(epoch)) this.set({ followupLoading: false }); }
   }
-  closeReport() { this.set({ followupDetail: null, followupOriginal: null }); }
+  closeReport() { this.detailTicket = (this.detailTicket || 0) + 1; this.set({ followupDetail: null, followupOriginal: null }); }
   async write(slot, path, body, kind) {
     if (!this.current() || this.state.followupBusy || this.state.followupPending && !this.operation) return;
     if (this.operation && this.operation.slot !== slot) return;
@@ -219,7 +221,8 @@ class FollowupController {
   renderedReport() {
     const r = this.state.followupDetail;
     if (!r || !r.available || !r.ready || r.readAt || !r.readToken || !['delivered','muted'].includes(r.deliveryState) || this.state.followupBusy || this.state.followupPending) return;
-    return this.write(`followup:read:${this.selected}:${r.reportId}`, `${BASE}/${this.selected}/reports/${r.reportId}/acknowledge`, { revision: r.revision, readToken: r.readToken }, 'read');
+    const bid = r.bindingId || this.selected;
+    return this.write(`followup:read:${bid}:${r.reportId}`, `${BASE}/${bid}/reports/${r.reportId}/acknowledge`, { revision: r.revision, readToken: r.readToken }, 'read');
   }
   visibleCard(reportId) {
     const r = this.state.followupReports.find(r => r.reportId === reportId), c = this.state.followupContext;
@@ -236,7 +239,7 @@ class FollowupController {
     const r = this.state.followupDetail; if (!r || !r.available || this.state.followupOriginalLoading || !this.current()) return;
     const epoch = this.epoch; this.set({ followupOriginalLoading: true, followupError: '' });
     try {
-      const original = await this.client.read(`${BASE}/${this.selected}/reports/${r.reportId}/projects/${projectId}/records/${recordId}`, { revision: r.revision }, await this.headers());
+      const original = await this.client.read(`${BASE}/${r.bindingId || this.selected}/reports/${r.reportId}/projects/${projectId}/records/${recordId}`, { revision: r.revision }, await this.headers());
       if (this.current(epoch) && this.state.followupDetail === r) this.set({ followupOriginal: original });
     } catch (e) { if (this.current(epoch)) { this.set({ followupOriginal: null }); this.failure(e); } }
     finally { if (this.current(epoch)) this.set({ followupOriginalLoading: false }); }

@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { privateReportReply } from '@/lib/construction/report-reference';
 import { withTenantTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, id, safeText, userContent, type ActorContext } from '../contracts';
@@ -111,6 +112,7 @@ export class HandoffService {
             and id=${leadId} and customer_user_id=${customerUserId} and archived_at is null and status not in ('closed','converted') for share`))) fail('assistant_resource_not_found',404);
           const messages = await rows(repo.tx,sql`select id,seq,author_kind,content from app.assistant_messages where enterprise_id=${this.actor.enterpriseId}
             and conversation_id=${conversationId}
+            and not ${privateReportReply}
             and ${c.purpose==='construction_followup'?sql`purpose is distinct from 'construction.report.facts'`:sql`true`} order by seq desc limit 201`);
           // A packet may be bounded, but never pretend a truncated history is complete.
           const summary = await one(repo.tx,sql`select id,status,draft_fields,confirmed_fields from app.assistant_requirement_summaries
@@ -188,6 +190,7 @@ export class HandoffService {
         status: c.status, version: Number(c.version), handoff: dispatchHandoff(h), messages: [] };
       const messages=h.state==='active'?await rows(repo.tx,sql`select id,seq,author_kind,admin_id,content from app.assistant_messages where enterprise_id=${this.actor.enterpriseId}
         and conversation_id=${conversationId}
+        and not ${privateReportReply}
         and ${c.purpose==='construction_followup'?sql`purpose is distinct from 'construction.report.facts'`:sql`true`} order by seq desc limit 100`):[];
       const summary = await one(repo.tx, sql`select id,status,draft_fields,confirmed_fields from app.assistant_requirement_summaries
         where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and status!='redacted' order by id desc limit 1`);

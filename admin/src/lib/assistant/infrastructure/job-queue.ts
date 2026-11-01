@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
+import { reportContext } from '@/lib/construction/report-reference';
 import { withPlatformTransaction, withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { AssistantError, fail, fingerprint, type ActorContext, type MessageContent, type Evidence } from '../contracts';
@@ -27,6 +28,8 @@ async function authorized(repo: AssistantRepository, run: Row) {
     || (localReport ? c.status === 'closed' : c.status !== 'open') || c.context_revision !== run.context_revision || (!localReport && settings!.knowledge_epoch !== run.knowledge_epoch)
     || Number(settings!.policy_version) !== Number((run.policy_snapshot as { policyVersion: number }).policyVersion)) fail('context_changed');
   const configuredAgent = agentConfig((run.policy_snapshot as Row).agent);
+  const reportVersion = (run.policy_snapshot as Row).reportContextVersion;
+  if (!localReport && reportVersion !== undefined && reportContext(c.entry_snapshot).revision !== reportVersion) fail('context_changed');
   if (configuredAgent && agentCapabilityFingerprint(configuredAgent) !== agentCapabilityFingerprint(agentConfig(settings!.agent_config))) fail('context_changed');
   if (!localReport) await validatePreviewSnapshot(repo.tx,repo.actor,c);
   return c;

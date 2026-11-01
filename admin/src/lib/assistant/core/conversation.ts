@@ -28,6 +28,7 @@ import { syncConstructionReminders } from '@/lib/construction/reminders';
 import { currentConstructionContact } from '@/lib/construction/customer';
 import { runRetryAwaitingReconciliation, runUsageReconciled, unresolvedProviderOutcome } from './usage-review';
 import { portfolioCopyBudget } from './model-task-budget';
+import { reportContext, reportContextView, selectedReport } from '@/lib/construction/report-reference';
 
 export const reserveTokens = 12000;
 export const reserveCostMicros = 1000000;
@@ -121,10 +122,10 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   // Match C01's existing unknown-result state at the service boundary too.
   // A distinct question is not permission to bypass an unresolved dispatch;
   // confirmed usage review is the same recovery proof projected to the client.
-  if (!speech && (c.purpose === 'customer_consultation' && actor.principal.kind === 'user'
+  if (!speech && (['customer_consultation','construction_followup'].includes(String(c.purpose)) && actor.principal.kind === 'user'
     || c.purpose==='project_collaboration' && purpose==='site.question' && actor.capabilities.includes('assistant.project.shared')) && await one(tx, sql`select r.id from
     (select id,enterprise_id,status,error_code from app.assistant_runs where enterprise_id=${actor.enterpriseId}
-      and conversation_id=${String(c.id)} and purpose<>'speech.transcribe' order by created_at desc,id desc limit 1) r
+      and conversation_id=${String(c.id)} and purpose not in ('speech.transcribe','construction.report.facts') order by created_at desc,id desc limit 1) r
     where ${unresolvedProviderOutcome()} and not ${runUsageReconciled()}`)) fail('provider_outcome_unknown');
   const budget = (await one(tx, sql`select coalesce(sum(reserved_requests),0) requests,
     coalesce(sum(case when status='settled' then coalesce(settled_tokens,reserved_tokens) else reserved_tokens end),0) tokens,
@@ -138,6 +139,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
     values(${actor.enterpriseId},${String(c.id)},${trigger.kind},${trigger.kind === 'user_message' ? trigger.messageId : null},
     ${trigger.kind === 'domain_event' ? trigger.eventId : null},${trigger.kind === 'scheduled_task' ? trigger.occurrenceKey : null},${purpose},
     ${retryOf || null},${json({ schemaVersion: 1, actor, maxTokens: agent?.consultation ? 8192 : 2048, policyVersion: settings.policy_version, agent,
+      ...(reportContext(c.entry_snapshot).selection ? { reportContextVersion: reportContext(c.entry_snapshot).revision } : {}),
       ...(agent && !agent.structuredFinal && ['reply','site.question'].includes(purpose)
         ? { sourceAnswerMode: agent.knowledgeExplanation === knowledgeExplanationProtocol ? knowledgeExplanationProtocol : sourceExcerptProtocol,
           sourceQuestionCoverage: sourceQuestionCoverageProtocol } : {}),
@@ -239,7 +241,7 @@ export class ConversationService {
       const guidance = guidanceView(config, turns.map(m => ({ id: String(m.id), text: ((m.content as { blocks?: Array<{text?: string}> })?.blocks || []).map(b => b.text || '').join('\n') })), checkpoint);
       if (guidance && (!configuredGuidance(settings?.guidance_config).enabled || c.status !== 'open' || c.mode !== 'ai')) { guidance.options = []; guidance.questionKey = null; }
       const latest = await one(repo.tx, sql`select r.*,${runUsageReconciled()} as usage_reconciled,${runRetryAwaitingReconciliation()} as awaiting_reconciliation
-        from app.assistant_runs r where r.enterprise_id=${this.actor.enterpriseId} and r.conversation_id=${conversationId} and r.purpose<>'speech.transcribe'
+        from app.assistant_runs r where r.enterprise_id=${this.actor.enterpriseId} and r.conversation_id=${conversationId} and r.purpose not in ('speech.transcribe','construction.report.facts')
         order by r.id desc limit 1`);
       const preview = this.actor.principal.kind === 'admin' ? previewPolicy(c) : null;
       const handoff = (c.entry_snapshot as Row)?.handoff as Row | undefined;
@@ -248,6 +250,7 @@ export class ConversationService {
       const contentEntry=['reference_content','reference_unavailable'].includes(String(entry.kind));
       const source=entry.kind==='reference_content'?await contentEntrySource(repo.tx,entry as ContentEntry):null;
       return { ...conversationDto(c, await currentRequirementProposalPending(repo, c, settings)), ownerAvailable, guidance:contentEntry?null:guidance, latestRun: latest ? runDto(latest) : null,
+        reportContext: await reportContextView(repo.tx, this.actor, c),
         ...(contentEntry?{guidanceOpening:contentGreeting(source),guidanceEnabled:false}:{}),
         ...(preview ? { previewScope: { audience: preview.audience, draftVersionIds: preview.drafts.map(draft => draft.id) } } : {}) };
     });
@@ -277,16 +280,16 @@ export class ConversationService {
       return contact;
     });
   }
-  citation(citationId:string, includeReference = true) {
+  citation(citationId:string, includeReference = true, expectedConversationId?: string) {
     return this.scoped(async repo=>{
       const web = parseWebCitationId(citationId);
       if (web) {
         const run = await one(repo.tx, sql`select conversation_id from app.assistant_runs where enterprise_id=${this.actor.enterpriseId} and id=${web.runId}`);
-        if (!run) fail('assistant_resource_not_found', 404);
+        if (!run || expectedConversationId && String(run.conversation_id) !== expectedConversationId) fail('assistant_resource_not_found', 404);
         return webCitationProjection(repo.tx, this.actor, await repo.conversation(String(run.conversation_id)), citationId);
       }
       const citation=await one(repo.tx,sql`select * from app.assistant_message_citations where enterprise_id=${this.actor.enterpriseId} and id=${citationId}`);
-      if(!citation) fail('assistant_resource_not_found',404);
+      if(!citation || expectedConversationId && String(citation.conversation_id) !== expectedConversationId) fail('assistant_resource_not_found',404);
       const c=await repo.conversation(String(citation.conversation_id));
       const projected = await citationProjection(repo.tx,this.actor,c,citation);
       if (!includeReference || !projected.available || !('referenceCase' in projected) || !projected.referenceCase) return projected;
@@ -304,9 +307,6 @@ export class ConversationService {
       const c = await repo.conversation(conversationId); const safe = userContent(content, Number(settings!.max_message_chars));
       return idempotent(repo.tx, this.actor, 'send:' + conversationId, clientMessageId, speech === undefined ? safe : { ...safe, speech }, async () => {
         if (c.status !== 'open') fail('context_changed');
-        // Facts-only followups have no accepted AI question path yet. An old
-        // human-send receipt can still replay after explicit reception ends.
-        if (c.purpose === 'construction_followup' && c.mode === 'ai') fail('context_changed');
         const append = async (purpose?: string) => {
           const message = await appendMessage(repo.tx, this.actor, conversationId, { author: this.actor.principal.kind, content: safe, clientMessageId, purpose });
           await bindSpeechToMessage(repo.tx, this.actor, conversationId, String(message.id), safeText(safe), speech);
@@ -330,6 +330,10 @@ export class ConversationService {
           return {conversationId,messageId:String(message.id),runId:null,status:'succeeded',nextPollMs:null};
         }
         if (c.mode !== 'ai') fail('context_changed');
+        const reference = reportContext(c.entry_snapshot);
+        if (reference.selection ? safe.reportContextVersion !== reference.revision || !await selectedReport(repo.tx, this.actor, c)
+          : safe.reportContextVersion !== undefined || c.purpose === 'construction_followup') fail('context_changed');
+        if (reference.selection && !agentConfig(settings!.agent_config)) fail('assistant_disabled', 403);
         // Operational commands may finish during a run. Other busy sends roll back every write above.
         if (await one(repo.tx, sql`select id from app.assistant_runs where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and status in ('queued','running')`)) fail('conversation_busy');
         const old = intercepted ? undefined : await one(repo.tx, sql`select * from app.assistant_messages where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId}

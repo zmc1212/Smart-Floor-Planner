@@ -2,10 +2,32 @@
 
 <!-- xiaok-v1-02-proactive -->
 
+<!-- v1-02-report-context -->
+跟进回复已复用原citation chips、参考图materializer和来源sheet。GET `followups/:bindingId/conversation/citations/:citationId`在原ConversationService内先核同一会话，再走知识/网页原投影；不授予其他私人目的地或接待员工访问权。原run查询及POST `runs/:runId/cancel|retry`、journal、待发消息纸页和生成/停止/unknown控件已接入。移除报告保留可见且可编辑的草稿，新AI发送仍要求有效显式引用。关闭/隐藏或身份、权限失效会清来源；被include的WXML已在本地导入报告模板。员工私人追问仍未开放。
+
+**报告追问04仍Limited。** 批准04的报告纸页/引用条/查看/移除/显式普通专题已有定向实服务和原生证据。选择绑定精确报告版本/项目/周期/截止/hash，新报告不会替换它；原BusinessSnapshot/synthesis的step740消费获权原事实，不把生成报告正文当新事实。KnowledgeRetriever/Evidence/引用管线及额度、租约、来源、人工暂停、unknown边界不变。正常AI发送、固定配置模型首稿、自然报告文案和真实模型派生回复的接待packet隔离，仍受继承额度/语义停测条件限制，未通过；不宣称V1-02完成或推进V1-03。
+
+原生分批保留：native04只复用前2个业务通过项（含查看/移除保留草稿）；native05复用丢选择回执的原键恢复；native06为7/7，含2项前置及5项业务：显式普通专题/固定投递、原来源sheet与受控本地HTTP503/重试、合成run控件、真实人工暂停/结束、撤回。native12为3/3，含最终命名元素、4张组件图及1张被动完整宿主；旧失败批仍失败。各批绑定和清理保留、drift[]；合成回复/run/citation只算工程证据，不是模型正常回答。根面板04、真机/实体键盘和实际编译/上传字节仍未验。
+
+光学修复次数2保留：native08/09预期头像x38/动作44px，实际仍x0/43px。停止源码补丁后按Mini运行时/编译缓存共同原因判别：只读compile_wxss的diagnostic10失败；diagnostic11仅清本项目编译缓存成功。同一产品源码的native12随后实测x38/44px，并核生成/停止/未知纸页。原纸页23px标题/16px说明、15px动作、14px布签、13px引用条保持；既有公共范围栏下，这个动态两行标题纸页实测(38,199.8)、327×184.38，原近似y181预标尺不冒充完整公共壳精确还原。无新字体/插画/截图切片。
+
+兼容client14为106/106；最终仅布局变化client15为25/25，含13项包体，两批drift[]。原client09的105及offline05的41沿原范围保留。lint10通过；types10完整执行仍82原错误/受影响0（后续仅WXML/Less/类名变化）。生产compile01仅三个受影响API入口及proxy通过，源码/运行时/环境绑定drift[]；默认standalone/全量build未通过。源包main2093818/assistant2008628，硬限2097152不变；assistant仍比1998848安全目标高9780B。最终回读q0、报告计划false/version181/dispatch_epoch36；10个新合成项目均归档/对客关闭、绑定stopped/ai、原记录撤回，专题933归档、合成账号停用。provider/knowledge max仍4114/3753，新增调用0；3753 unknown/input_tokens null及原D2=2/费用不变。首次清理回读发现77个本04新CLI参数文件，已按核定路径用原生PowerShell一次清除；旧75个未动，其原两次自动拒绝保留，正文均未读。证据tmp/v1-02-report-followup/verification.json。
+
+本04命名元素台账（native12；逻辑390×844/编码348×752；限定变化组件，原公共壳保持）：
+
+| 元素 | 实测边界/字形 | 来源映射与限制 |
+| --- | --- | --- |
+| 报告纸页/悬挂布签 | (38,199.8)、327×184.38；布签(45.87,183.45)、144.25×43.68/14px | 批准04纸页；合成长标题自然两行；既有范围栏止于173.8，不宣称完整壳匹配y181 |
+| 标题/原摘要 | (57,226.8)、289×64.38/23px；(57,296.17)、289×24/16px | 原Chat Serif900/正文400；相邻5px |
+| 查看/显式专题 | x159.09/266.55、y331.17；各79.45×44/15px | 原双动作，间隔28px，实际热区44px |
+| 引用/移除/图标 | (36,697)、330×44/13px；移除(322,697)、44×44；图标20×20 | 原灰绿条和x素材；移除保留可编辑草稿 |
+| 输入/发送 | (26,765)、349×67；发送(327.5,776.5)、44×44 | 原输入区及真实宿主安全区；实体键盘仍未验 |
+| 运行头像/纸页/动作 | 头像x38、41×41；纸页x87；说明16px/动作13px、热区44px | 原共用05/06/07/未知组件；最终4页/被动宿主已审；仅合成协议夹具 |
+
 <!-- v1-02-human-takeover -->
 **人工接待11：限定 Implemented；V1-02整体仍Limited。** 设计仍沿批准11-human-takeover-report-v001.png与原手账README/共用状态，853×1844→390×844。C01复用原ChatController、媒体适配及持久请求journal，支持客户私人跟进的等待补充、真实员工文字/图片、发送及结束的原键重进恢复、接待人失效反馈和明确请求/取消/结束。普通咨询草稿/目的地独立，拒绝只清本目的地待核对操作。跟进麦克风明确不可用，普通语音不变；没有新Agent、知识/权限/引用管线、新字体、生图或截图切片。
 
-GET /api/miniprogram/assistant/followups/:bindingId/conversation及messages?beforeSeq=&limit=、handoff、media[/:mediaId]，POST messages/handoff/media及原媒体DELETE均委派原ConversationService/HandoffWorkflow/HandoffService/媒体服务。服务端解析本人客户绑定和同一会话，再重验原仓库、Mini身份/所选企业/项目及参与者；正文不能选择会话/主体/租户，员工私人目的地不能使用客户适配，普通conversation API未开放。原员工handoffs列表/接单/读取/回复/媒体仅沿有效客户跟进和原显式同意/授权；0107扩展原参与者/消息触发器，保留员工私人会话owner边界。接待包/消息排除报告定位符，接待不授予收件人报告权限。明确回到AI后，纯事实跟进仍禁止AI发送/上传，待04及原V1-01返回条件。
+GET /api/miniprogram/assistant/followups/:bindingId/conversation及messages?beforeSeq=&limit=、handoff、media[/:mediaId]，POST messages/handoff/media及原媒体DELETE均委派原ConversationService/HandoffWorkflow/HandoffService/媒体服务。服务端解析本人客户绑定和同一会话，再重验原仓库、Mini身份/所选企业/项目及参与者；正文不能选择会话/主体/租户，员工私人目的地不能使用客户适配，普通conversation API未开放。原员工handoffs列表/接单/读取/回复/媒体仅沿有效客户跟进和原显式同意/授权；0107扩展原参与者/消息触发器，保留员工私人会话owner边界。接待包/消息排除报告定位符，接待不授予收件人报告权限。明确回到AI后，无有效04显式报告引用的AI发送及全部AI上传仍禁止；正常04回复仍受原额度/语义返回条件限制。
 
 接待切换取消聊天执行，但保留排队/运行的construction.report.facts及其context revision。后台任务、保存结果和只读历史与AI插入分开；明确结束/取消记录数据库时钟endedAt，此前创建的报告投递静默为muted，包括之后才完成的任务，历史仍可读且不集中补刷。停止/删除/改绑/dispatch epoch、当前项目/来源及其他会话取消规则不变。读报告不会恢复AI或结束接待。
 

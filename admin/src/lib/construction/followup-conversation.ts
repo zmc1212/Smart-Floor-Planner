@@ -4,14 +4,20 @@ import { fail, key, type ActorContext } from '@/lib/assistant/contracts';
 import { FollowupService } from './followup-service';
 import { object } from './contracts';
 import { mediaHttp } from '@/lib/assistant/media/http';
+import { ReportContextService } from './report-context';
+import { withTenantTransaction } from '@/db/transaction';
+import { one } from '@/db/repositories/assistant-repository';
+import { sql } from 'drizzle-orm';
+import { parseWebCitationId } from '@/lib/assistant/agent/web-evidence';
 
 /** Only the original customer's current private destination. This adapter does
  * not grant ordinary conversation, preview or report access to reception staff. */
 export async function followupConversationHttp(request: Request, path: string[], actor: ActorContext) {
-  if (actor.principal.kind !== 'user' || path.length < 2 || path.length > 4) fail('assistant_capability_forbidden', 403);
+  if (actor.principal.kind !== 'user' || path.length < 2 || path.length > 5) fail('assistant_capability_forbidden', 403);
   const query = new URL(request.url).searchParams, resource = path[2];
-  if (path[1] !== 'conversation' || resource && !['messages','handoff','media'].includes(resource)
-    || path.length > 3 && resource !== 'media') fail('assistant_resource_not_found', 404);
+  if (path[1] !== 'conversation' || resource && !['messages','handoff','media','report-context','report-topic','runs','citations'].includes(resource)
+    || path.length > 3 && !['media','runs','citations'].includes(resource)
+    || path.length > 4 && resource !== 'runs') fail('assistant_resource_not_found', 404);
   if ([...query.keys()].some(k => !['beforeSeq','limit'].includes(k) || resource !== 'messages' || query.getAll(k).length !== 1)) fail('invalid_message', 422);
   const context = await new FollowupService(actor).context(path[0]);
   if (context.audience !== 'customer') fail('assistant_capability_forbidden', 403);
@@ -19,6 +25,43 @@ export async function followupConversationHttp(request: Request, path: string[],
   // branch; chat.self enables reuse of the original user-only services here.
   const customer = { ...actor, capabilities: [...actor.capabilities, 'assistant.chat.self'] };
   const service = new ConversationService(customer), cid = context.conversationId;
+  if (resource === 'citations') {
+    if (request.method !== 'GET' || path.length !== 4 || query.size) fail('assistant_resource_not_found', 404);
+    const citationId = path[3];
+    if (!/^[1-9]\d{0,18}$/.test(citationId) && !parseWebCitationId(citationId)) fail('invalid_message', 422);
+    return service.citation(citationId, true, cid);
+  }
+  if (resource === 'runs') {
+    if (![4,5].includes(path.length) || query.size) fail('assistant_resource_not_found', 404);
+    const runId = path[3];
+    if (!/^[1-9]\d{0,18}$/.test(runId)) fail('invalid_message', 422);
+    const owned = await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`select id from app.assistant_runs
+      where enterprise_id=${actor.enterpriseId} and conversation_id=${cid} and id=${runId} and purpose<>'construction.report.facts'`));
+    if (!owned) fail('assistant_resource_not_found', 404);
+    if (request.method === 'GET' && path.length === 4) return service.run(runId);
+    if (request.method !== 'POST') fail('assistant_resource_not_found', 404);
+    const raw = await request.text(); if (raw.length > 256) fail('invalid_message', 413);
+    if (path.length === 5) {
+      if (!['cancel','retry'].includes(path[4])) fail('assistant_resource_not_found', 404);
+      let body; try { body = raw ? JSON.parse(raw) : {}; } catch { return fail('invalid_message', 422); }
+      object(body, []);
+      return service.run(runId, path[4] as 'cancel' | 'retry', key(request.headers.get('Idempotency-Key')));
+    }
+    let body; try { body = JSON.parse(raw); } catch { return fail('invalid_message', 422); }
+    const b = object(body, ['action']); if (!['cancel','retry'].includes(String(b.action))) fail('invalid_message', 422);
+    return service.run(runId, b.action as 'cancel' | 'retry', key(request.headers.get('Idempotency-Key')));
+  }
+  if (resource === 'report-context' || resource === 'report-topic') {
+    if (query.size) fail('invalid_message', 422);
+    const reports = new ReportContextService(customer, cid);
+    if (request.method === 'GET' && resource === 'report-context') return reports.read();
+    if (request.method !== 'POST') fail('assistant_resource_not_found', 404);
+    const requestKey = key(request.headers.get('Idempotency-Key')), raw = await request.text();
+    if (raw.length > 2048) fail('invalid_message', 413);
+    let body; try { body = JSON.parse(raw); } catch { return fail('invalid_message', 422); }
+    if (resource === 'report-topic') { object(body, []); return reports.topic(requestKey); }
+    return reports.select(requestKey, body);
+  }
   if (resource === 'media') return mediaHttp(request, customer, cid, path.slice(3));
   if (request.method === 'GET') {
     if (!resource) return service.detail(cid);
