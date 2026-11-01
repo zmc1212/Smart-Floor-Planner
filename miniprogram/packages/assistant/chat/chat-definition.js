@@ -11,6 +11,7 @@ const { PlanChatController, initialPlans } = require('../lib/plans');
 const { SpeechController } = require('../lib/speech');
 const { FloorplanContextController, initialContext } = require('../lib/floorplan-context');
 const { FollowupController, FollowupRecordMedia, initialFollowups } = require('../lib/followups');
+const { initialEnterprise, enterpriseMethods } = require('../../../utils/assistant-followup-enterprise');
 
 function sessionToken() {
   const app = getApp();
@@ -18,12 +19,13 @@ function sessionToken() {
 }
 
 module.exports = () => ({
+  ...enterpriseMethods,
   data: {
     ...initial(), navigationTop: 47, navigationHeight: 44, navigationRight: 100,
     ...initialPublic(),
     ...initialPlans(),
     ...initialContext(),
-    ...initialFollowups(), professionalFollowup: false, followupHistoryOpen: false, followupManageOpen: false, followupOriginalPaths: {}, followupOriginalError: '',
+    ...initialFollowups(), ...initialEnterprise(), professionalFollowup: false, followupHistoryOpen: false, followupManageOpen: false, followupOriginalPaths: {}, followupOriginalError: '',
     viewportHeight: 844, keyboardHeight: 0, inputFocused: false, bottomInset: 34, sheet: '', sheetOpen: false,
     embedded: false, scrollTarget: '',
     topics: [
@@ -98,7 +100,7 @@ module.exports = () => ({
         if (!this._alive) return;
         const wasActive = this.data.followupActive;
         this.setData(patch, () => {
-          if (wasActive && patch.followupActive === false && this._shown) {
+          if (wasActive && patch.followupActive === false && this._shown && !this.data.followupEnterpriseBusy) {
             if (this.data.professionalFollowup) { this.setData({ followupManageOpen: false, followupHistoryOpen: false }); this.back(); }
             else { this.controller.visible = true; this.setData({ followupManageOpen: false, followupHistoryOpen: false }); this.controller.refresh({ forceEntry: false, background: true }); }
           }
@@ -129,6 +131,8 @@ module.exports = () => ({
     else if (selectedMode === 'customer') { delete this._options.followup; this.setData({ professionalFollowup: false }); }
     if (this._options.followup === '1') {
       this.setData({ professionalFollowup: true, loading: false });
+      this.prepareFollowupEnterprise(currentIdentity);
+      if (this.data.followupPlatform && !currentIdentity.enterpriseId) { this.followups.hide(); this.setData({ followupActive: true }); return; }
       await this.followups.show({ autoOpen: true }); return;
     }
     if (this.media && this.media.session !== sessionToken()) {
@@ -155,9 +159,10 @@ module.exports = () => ({
       if (this._alive && this._shown) await this.followups.show();
     }
   },
-  onHide() { this._shown = false; this.followups.hide(); if (this._followupObserver) this._followupObserver.disconnect(); clearTimeout(this._followupObserveTimer); this.setData({ followupHistoryOpen: false, followupManageOpen: false }); if (this.speechController) this.speechController.hide(); if (this.location) this.location.clear(); this.controller.hide(); this.siteRecords.clear(); this.recommendations.clear(); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); this.closeSheet(); this.setData({ speechBusy: false, keyboardHeight: 0, siteRecordPaths: {}, siteRecordError: '', ...initialPublic(), ...initialPlans() }); },
+  onHide() { this._shown = false; this._enterpriseEpoch = (this._enterpriseEpoch || 0) + 1; this.followups.hide(); if (this._followupObserver) this._followupObserver.disconnect(); clearTimeout(this._followupObserveTimer); this.setData({ ...initialEnterprise(), followupHistoryOpen: false, followupManageOpen: false }); if (this.speechController) this.speechController.hide(); if (this.location) this.location.clear(); this.controller.hide(); this.siteRecords.clear(); this.recommendations.clear(); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); this.closeSheet(); this.setData({ speechBusy: false, keyboardHeight: 0, siteRecordPaths: {}, siteRecordError: '', ...initialPublic(), ...initialPlans() }); },
   onUnload() {
     this._alive = false; clearTimeout(this._sheetTimer);
+    this._enterpriseEpoch = (this._enterpriseEpoch || 0) + 1;
     clearTimeout(this._followupObserveTimer); if (this.followupMedia) this.followupMedia.clear();
     if (this.followups) this.followups.hide(); if (this._followupObserver) this._followupObserver.disconnect();
     if (this.floorplans) this.floorplans.clear();

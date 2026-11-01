@@ -344,7 +344,7 @@ export class MiniProgramIdentityRepository {
     input: SelectMiniProgramIdentityContextInput
   ) {
     const contexts = await this.listContexts(userId);
-    return (
+    const selected = (
       contexts.find((context) => {
         if (context.mode !== input.mode) return false;
         if (context.mode === 'customer') return true;
@@ -360,6 +360,15 @@ export class MiniProgramIdentityRepository {
         );
       }) ?? null
     );
+    if (!selected || selected.mode !== 'staff' || input.enterpriseId == null) return selected;
+    if (selected.staffRole !== 'admin' && selected.staffRole !== 'super_admin') {
+      return selected.enterpriseId === input.enterpriseId ? selected : null;
+    }
+    // Platform management is an explicit selected-tenant context, not an
+    // employment record. Recheck the tenant for switch, refresh and every read.
+    const [enterprise] = await this.transaction.select({ id: enterprises.id, name: enterprises.name })
+      .from(enterprises).where(and(eq(enterprises.id, input.enterpriseId), eq(enterprises.status, 'active'))).limit(1);
+    return enterprise ? { ...selected, enterpriseId: enterprise.id, enterpriseName: enterprise.name } : null;
   }
 
   async bumpContextVersion(userId: bigint) {

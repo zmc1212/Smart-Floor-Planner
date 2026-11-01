@@ -1,15 +1,15 @@
 <!-- Approved follow-up-v1 02/03/06/07/08/11; original records are data, never screenshot pixels. -->
 <view wx:if="{{followupActive}}" class="followup-thread">
   <view class="followup-scope">
-    <text class="followup-scope-title">{{followupContext.title || '装修跟进'}}</text>
-    <view class="followup-scope-meta"><text>{{followupContext.audience === 'customer' ? followupContext.projects[0].stageName : '仅自己可见'}}{{followupContext.enterprise.name ? ' · ' + followupContext.enterprise.name : ''}}</text><button bindtap="followupHistory" disabled="{{followupLoading || !followupContext}}">简报记录 ↗</button></view>
+    <text class="followup-scope-title">{{followupContext.title || (followupPlatform ? '企业工地简报' : '装修跟进')}}</text>
+    <view class="followup-scope-meta"><button wx:if="{{followupPlatform}}" class="followup-enterprise-choice" bindtap="openFollowupEnterprise" disabled="{{followupBusy || followupPending || followupEnterpriseBusy}}">{{followupContext.enterprise.name || followupEnterpriseName || '选择企业'}}⌄ · 仅自己可见</button><text wx:else>{{followupContext.audience === 'customer' ? followupContext.projects[0].stageName : '仅自己可见'}}{{followupContext.enterprise.name ? ' · ' + followupContext.enterprise.name : ''}}</text><button bindtap="followupHistory" disabled="{{followupLoading || !followupContext}}">简报记录 ↗</button></view>
     <text wx:if="{{followupContext.audience !== 'customer' && followupContext}}" class="followup-caption">{{followupContext.projects.length}}{{followupContext.projectsTruncated ? '+' : ''}}个获权工地</text>
   </view>
   <view wx:if="{{followupError || followupPending}}" class="followup-feedback" role="alert"><text>{{followupPending ? '上次操作结果正在核对，请先确认结果。' : followupError}}</text><button bindtap="{{followupPending ? 'recoverFollowup' : 'refreshFollowup'}}" disabled="{{followupBusy}}">{{followupPending ? '核对上次操作' : '重新读取'}}</button></view>
   <scroll-view scroll-y class="followup-scroll" show-scrollbar="{{false}}">
     <text wx:if="{{followupLoading}}" class="followup-state">正在读取简报与当前权限…</text>
     <view wx:if="{{followupContext.conversation.mode !== 'ai' && followupContext}}" class="followup-paper followup-human"><text class="fabric-label">小K</text><text class="followup-paper-title">小K已暂停自动回复</text><text class="followup-muted">已保存的简报仍可只读查看。</text></view>
-    <text wx:if="{{!followupLoading && !followupReports.length && !followupError}}" class="followup-state">还没有已保存的简报，有新记录后可在这里回看。</text>
+    <text wx:if="{{!followupLoading && !followupReports.length && !followupError}}" class="followup-state">{{followupPlatform && !followupContext ? '请选择企业后查看工地简报。' : '还没有已保存的简报，有新记录后可在这里回看。'}}</text>
     <block wx:for="{{followupReports}}" wx:key="reportId" wx:for-item="report">
       <text class="followup-time">{{report.dateLabel}}</text>
       <view class="followup-paper followup-card" data-report="{{report.reportId}}"><view class="followup-card-marker" data-report="{{report.reportId}}"></view>
@@ -33,8 +33,10 @@
     </block>
     <button wx:if="{{followupCursor}}" class="followup-more" bindtap="moreFollowupReports" disabled="{{followupLoading}}">查看更多简报</button>
   </scroll-view>
-  <view class="followup-composer" style="margin-bottom: {{professionalFollowup ? bottomInset + 12 : 12}}px;"><image src="../assets/microphone.png"/><view class="composer-divider"></view><image src="../assets/image.png"/><text>{{followupContext.conversation.mode !== 'ai' ? '小K已暂停回复，可先查看简报。' : '工艺内容尚未生成，可先查看记录。'}}</text><view class="followup-send"><image src="../assets/arrow-up.png"/></view></view>
+  <view class="followup-composer" style="margin-bottom: {{professionalFollowup ? bottomInset + 12 : 12}}px;"><image src="../assets/microphone.png"/><view class="composer-divider"></view><image src="../assets/image.png"/><text>{{followupPlatform && !followupContext ? '选择企业后查看工地简报。' : followupContext.conversation.mode !== 'ai' ? '小K已暂停回复，可先查看简报。' : '工艺内容尚未生成，可先查看记录。'}}</text><view class="followup-send"><image src="../assets/arrow-up.png"/></view></view>
 </view>
+
+<include src="./followup-enterprise.wxml" />
 
 <view wx:if="{{followupDetail}}" class="followup-layer" catchtouchmove="swallow">
   <view class="followup-mask" bindtap="closeFollowupReport"></view>
