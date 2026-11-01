@@ -55,6 +55,7 @@ if (adapterScript) {
   if (staffNativeScript) sourceFiles.push(path.resolve(staffNativeScript),
     'design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/follow-up-v1/08-boss-weekly-digest-v003.png');
   if (process.argv.includes('--owner-daily-visual')) sourceFiles.push('design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/follow-up-v1/02-follow-up-chat-v002.png');
+  if (process.argv.includes('--owner-detail-visual')) sourceFiles.push('design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/follow-up-v1/03-report-detail-v001.png', 'tmp/v1-02-report-detail-visual/regions-03.json');
 }
 const bind = () => Object.fromEntries(sourceFiles.sort().map(f => [f.replaceAll('\\','/'), createHash('sha256').update(fs.readFileSync(path.isAbsolute(f) ? f : path.join(root,f))).digest('hex')]));
 const before = bind();

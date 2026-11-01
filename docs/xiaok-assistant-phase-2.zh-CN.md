@@ -6,6 +6,16 @@
 <!-- v1-02-staff-private -->
 **员工私人报告追问06/07：Limited；本人服务与限定原生状态已验。** 原`followups/:bindingId/conversation`解析签名工人/设计师/老板收件人（含所选企业admin/super_admin），沿原ConversationService、owner参与者/仓库守卫、精确报告选择和同一Agent。引用固定本人/项目/周期/版本，实时重验职责、受众及原记录。员工快照保存admin principal并兼容旧userId；当前项目条件进入原KnowledgeRetriever/Evidence/引用管线。只读有效已发布内部/对客知识，不借管理草稿预览；发言保持私人，S04保持共享。0108仅扩展原触发器的owner本人AI模式消息。本机命令`node scripts/construction-report-migrate.mjs --development --staff-questions --audit=<新路径>`，排除外来0102。
 
+<!-- v1-02-owner-detail -->
+**批准03业主完整日报事实详情：有界Implemented，V1-02整体Limited。** 源为03-report-detail-v001.png及同一手账README/共用03/04（853×1844→390×844）。仅ownerDaily且ready使用独立owner-report-detail WXML/Less；其余员工/周报/阶段/未就绪/失效仍为原详情分支，移除新分支后其WXML与HEAD81a7b58b逐字相同。标题31px同授权Black、动态项目名18px本机宋体、正文/布签16px、元信息/原记录13px。分区顶行右侧沿原获权原记录操作；待你确认保留publishedRecordItems、协调/期前原段，原arrangements及facts_only/缺项不变，不填设计工艺或“明日安排”。统计使用实际cutoff，历史称当日进展，保存时间不冒充模型生成；无API/schema/权限/模型编排或新素材/字体变化。后台列表轮询现在保留已有操作错误，主动同范围原记录重读仍清错；恢复规则沿批准的共用失败纸条。
+
+证据tmp/v1-02-report-detail-visual/verification.json：Node client-02为120/120含13包体、lint-02通过；最终Less改动package-02为13/13，均drift[]。native-02为4/4（2前置+详情几何+真实原记录503可见/同按钮恢复/已阅/精确引用保存及重进）；native-04-footer为3/3，仅补最终几何：纸页(15,90)/375×754，握柄(175.5,101)/39×5；正文滚动区(38,246.75)/322×508.25，追问(29,765)/334×44、16px/底部809≤真实safeArea.bottom810，滚动时固定；页脚两行13px。最终两页和一张被动完整宿主实际审阅，真实胶囊可见；宿主输入法条局部遮住右上关闭区域，不能称无遮挡完整宿主通过。逻辑390×844/编码348×752/HWND947063424。
+
+原native-01失败与数字换行实体显示原文保留；错误/页脚修复1已验。光学修复2保留：native-03-footer的CTA bottom814超安全区4px，离线官方Less4.1.3证实max(...)被折为29px，转义后保留CSS函数，native-04实测padding-bottom34px通过；普通布签自然32px的原驱动<32断言也单列纠正，未缩小16px字或44px动作。四批cleanup true/drift[]，新增CLI参数文件/模型/摄取/生图0，内存身份/storage/transport/hydration恢复并reLaunch根。306–309归档/对客关、359–362原记录撤回、124–127绑定停止、5410停用；计划false/version226/dispatch_epoch53、q0，原27/50/60–64控制不变，providerMax4114/knowledgeMax3753和3753 unknown/input_tokens null未变。原02/04/06/07/08证据按范围复用；native-02之后只改本03 Less，最终原生后仅README结果文档变化有单列影响核对。后台1446依赖无漂移，仍仅原三API+proxy/process-only/compile-only；全build/standalone未过不升级。
+
+主包2096461/assistant2084249字节，硬2097152，余691/12903B；assistant仍超原1998848安全目标85401B，单PNG≤300KB不变，实际编译/上传字节未验。完整03自然报告/工艺依据、原生长空/跨日期前/非空安排、根面板与真机/键盘未验；42条reconciling预占、原停测/失败/未知费用/CLI删除拒绝及D2=2/04光学2保持，无付费回退或新增额度。下一仍同V1-02批准01会话列表有界校准，不提前V1-03。
+<!-- /v1-02-owner-detail -->
+
 <!-- v1-02-owner-daily -->
 **批准02业主根日报组件：有界Implemented；V1-02整体仍Limited。** 当前源为02-follow-up-chat-v002.png及同一手账README/共用03/04规则，853×1844→390×844。已就绪的业主日报补批准的我家进展标题、悬挂布签、23px同授权Black标题、13px快照日期/阶段/实际截止与16px正文；历史日报不称今天。进展只取原completed前两条，独立“待你确认”区沿原获权publishedRecordItems的pending/coordination及期前原段，不再被两条highlights截掉；已发布空投影不回退内部草稿。空/失效/加载、阶段/周报、接待及共用03/04保持原批准范围。无API/schema/权限变化、不造安排/工艺或自动确认施工，facts_only提示保留；原完整报告和精确报告追问动作不变。
 

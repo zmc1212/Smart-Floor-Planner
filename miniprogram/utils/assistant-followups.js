@@ -41,6 +41,8 @@ function reportForView(report, context, projectId = '', now = Date.now()) {
   const day = Math.floor((new Date(report.periodStart).getTime() + 28800000) / 86400000) === Math.floor((now + 28800000) / 86400000) ? '今天' : dateLabel(report.periodStart);
   return { ...report, projects, kindLabel, takeoverTitle: dateLabel(report.periodStart) + kindLabel, title: dateLabel(report.periodStart) + ' · ' + kindLabel,
     bossWeekly, ownerDaily, hasArrangements: projects.some(p => p.arrangements.length),
+    detailProgressLabel: ownerDaily ? day === '今天' ? '今日进展' : '当日进展' : '',
+    detailPeriodLabel: ownerDaily ? '统计' + (dateLabel(report.periodStart) === dateLabel(report.cutoffAt) ? dateLabel(report.periodStart, true).split(' ')[1] + '—' + dateLabel(report.cutoffAt, true).split(' ')[1] : dateLabel(report.periodStart, true) + '—' + dateLabel(report.cutoffAt, true)) : '',
     arrangementsComplete: report.facts?.arrangementsStatus === 'aggregated' && !report.facts.projectsTruncated && projects.every(p => !p.arrangementsTruncated),
     cardLabel: bossWeekly ? '企业周报' : staffDaily ? context.audience === 'worker' ? '我的施工日报' : '我的项目日报' : kindLabel,
     cardTitle: bossWeekly ? '本期工地进展' : ownerDaily ? day + '我家进展' : staffDaily ? day + (context.audience === 'worker' ? '的施工跟进' : '需要你核对的事') : '',
@@ -121,7 +123,7 @@ class FollowupController {
     this.timer = this.schedule(async () => {
       if (!this.current()) return;
       if (!this.state.followupBusy && !this.state.followupPending && !this.state.followupLoading) {
-        await this.loadList();
+        await this.loadList({ background: true });
         if (this.current() && this.state.followupManageOpen) await this.loadManagement();
         if (this.current() && this.state.followupPlanOpen) await this.loadPlan();
         if (this.current() && this.selected && this.state.followupActive) await this.sync();
@@ -152,12 +154,12 @@ class FollowupController {
     this.set({ followupError: ['assistant_capability_forbidden','construction_forbidden'].includes(e.code || e.error)
       ? '当前身份无法查看这些施工跟进，请重新选择身份。' : errorCopy(e) });
   }
-  async loadList() {
+  async loadList({ background = false } = {}) {
     if (!this.current()) return;
     const epoch = this.epoch; this.set({ followupListLoading: true });
     try {
       const list = await this.client.read(BASE, {}, await this.headers()); if (!this.current(epoch)) return;
-      this.set({ followupBindings: (list.items || []).map(b => ({ ...b, latestDateLabel: b.latestReport ? dateLabel(b.latestReport.generatedAt, true) : '' })), followupError: '' });
+      this.set({ followupBindings: (list.items || []).map(b => ({ ...b, latestDateLabel: b.latestReport ? dateLabel(b.latestReport.generatedAt, true) : '' })), ...(!background ? { followupError: '' } : {}) });
     } catch (e) { if (this.current(epoch)) this.failure(e); }
     finally { if (this.current(epoch)) this.set({ followupListLoading: false }); }
   }

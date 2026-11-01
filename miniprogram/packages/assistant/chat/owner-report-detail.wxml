@@ -1,0 +1,41 @@
+<!-- Approved03: authorized owner daily facts; other recipients and states retain the shared detail. -->
+<view class="followup-sheet followup-detail-sheet followup-owner-detail">
+  <view class="followup-grip"></view>
+  <button class="followup-close" bindtap="closeFollowupReport" aria-label="关闭报告"><image src="../assets/x.png"/></button>
+  <view class="followup-detail-heading">
+    <text class="followup-detail-title">{{followupDetail.takeoverTitle}}</text>
+    <text class="followup-project-name">{{followupContext.title}}</text>
+    <text class="followup-muted followup-owner-detail-period">{{followupDetail.projects[0].stageName ? followupDetail.projects[0].stageName + ' · ' : ''}}{{followupDetail.detailPeriodLabel}}</text>
+    <text class="followup-muted">{{followupDetail.generatedLabel ? followupDetail.generatedLabel + '保存' : ''}}{{followupDetail.revision > 1 ? ' · 版本' + followupDetail.revision : ''}}</text>
+  </view>
+  <scroll-view class="followup-detail-scroll" scroll-y show-scrollbar="{{false}}">
+    <block wx:for="{{followupDetail.projects}}" wx:key="id" wx:for-item="project">
+      <view class="followup-section followup-owner-detail-progress">
+        <view class="followup-owner-section-head">
+          <text class="fabric-label">{{followupDetail.detailProgressLabel}}</text>
+          <view class="followup-original-links"><button wx:for="{{project.originalIds}}" wx:key="*this" class="followup-text-action followup-owner-original" data-project="{{project.id}}" data-record="{{item}}" bindtap="readFollowupOriginal" disabled="{{followupOriginalLoading}}">查看原记录{{project.originalIds.length > 1 ? ' ' + item : ''}} ↗</button></view>
+        </view>
+        <text wx:for="{{project.progress}}" wx:key="key" class="followup-line" user-select>{{item.text}}</text>
+        <text wx:if="{{!project.progress.length}}" class="followup-line">本期暂无已记录进展，未记录不等于未施工。</text>
+        <text wx:if="{{project.recordsTruncated}}" class="followup-caption">本项目记录达到读取上限，未包含全部记录。</text>
+      </view>
+      <view class="followup-section followup-owner-detail-pending">
+        <view class="followup-owner-section-head"><text class="followup-tag">待你确认</text></view>
+        <view wx:for="{{project.pending}}" wx:key="key"><text wx:if="{{item.carriedOver}}" class="followup-caption">期前原记录</text><text class="followup-line" user-select>{{item.text}}</text></view>
+        <text wx:if="{{!project.pending.length}}" class="followup-line">本期没有可见的待核对记录。</text>
+        <text wx:if="{{project.publishedRecordItemsTruncated || project.issuesTruncated}}" class="followup-caption">记录较多，本份简报未包含全部记录。</text>
+      </view>
+      <view class="followup-section followup-owner-detail-process"><view class="followup-owner-section-head"><text class="fabric-label">工艺关注</text></view><text class="followup-line">本份仅含已保存的现场记录，暂无工艺说明。</text></view>
+      <view class="followup-section followup-owner-detail-arrangements">
+        <view class="followup-owner-section-head"><text class="fabric-label">已确认安排</text></view>
+        <text wx:for="{{project.arrangements}}" wx:key="key" class="followup-line" user-select>{{item.text}}</text>
+        <text wx:if="{{!project.arrangements.length}}" class="followup-line">本份简报没有可引用的已确认后续安排。</text>
+        <text class="followup-caption">同意方案不等于落实、验收或付款。</text>
+      </view>
+    </block>
+    <text wx:if="{{followupDetail.truncated}}" class="followup-caption">本份简报只包含部分工地。</text>
+    <view class="followup-caption followup-footnote"><text>未记录不等于未施工，</text><text>本日报不代替现场验收。</text></view>
+    <view wx:if="{{followupError || followupPending}}" class="followup-feedback"><text>{{followupPending ? '已阅结果尚未确认。' : followupError}}</text><button wx:if="{{followupPending}}" bindtap="recoverFollowup" disabled="{{followupBusy}}">核对上次操作</button></view>
+  </scroll-view>
+  <button class="followup-detail-ask followup-primary" bindtap="askFollowupReport" disabled="{{followupChat.reception || reportQuestion.disabled || reportQuestion.busy || reportQuestion.pending || !followupDetail.available || !followupDetail.ready}}">问这份报告</button>
+</view>

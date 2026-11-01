@@ -61,7 +61,8 @@
 
 <view wx:if="{{followupDetail}}" class="followup-layer" catchtouchmove="swallow">
   <view class="followup-mask" bindtap="closeFollowupReport"></view>
-  <view class="followup-sheet followup-detail-sheet">
+  <block wx:if="{{followupDetail.ownerDaily && followupDetail.ready}}"><include src="./owner-report-detail.wxml" /></block>
+  <view wx:else class="followup-sheet followup-detail-sheet">
     <view class="followup-grip"></view><button class="followup-close" bindtap="closeFollowupReport" aria-label="关闭报告"><image src="../assets/x.png"/></button>
     <view class="followup-detail-heading"><text class="followup-detail-title">{{followupDetail.title}}</text><text class="followup-project-name">{{followupContext.title}}</text><text class="followup-muted">{{followupDetail.periodLabel}}</text><text class="followup-muted">{{followupDetail.generatedLabel ? followupDetail.generatedLabel + '保存' : ''}}{{followupDetail.revision > 1 ? ' · 版本' + followupDetail.revision : ''}}</text></view>
     <scroll-view class="followup-detail-scroll" scroll-y show-scrollbar="{{false}}">

@@ -72,6 +72,38 @@ test('owner daily card preserves progress separately from authoritative publishe
   assert.equal(reportForView({ ...f.report, available: false }, f.context).ownerDaily, undefined);
 });
 
+test('owner full daily detail labels the actual cutoff and historical day without altering other recipients', () => {
+  const f = fixture(), now = Date.parse('2026-11-01T09:00:00+08:00');
+  const report = { ...f.report, periodEnd: '2026-11-02T00:00:00+08:00', cutoffAt: '2026-11-01T18:30:00+08:00' };
+  const view = reportForView(report, f.context, '', now);
+  assert.equal(view.detailPeriodLabel, '统计00:00—18:30');
+  assert.equal(view.detailProgressLabel, '今日进展');
+  assert.equal(view.takeoverTitle, '11月1日施工日报');
+  assert.equal(view.factsOnly, true);
+  assert.equal(reportForView(report, f.context, '', now + 86400000).detailProgressLabel, '当日进展');
+  assert.equal(reportForView({ ...report, cutoffAt: '2026-11-02T01:00:00+08:00' }, f.context).detailPeriodLabel, '统计11月1日 00:00—11月2日 01:00');
+  assert.equal(reportForView(report, { ...f.context, audience: 'worker' }).detailPeriodLabel, '');
+  assert.equal(reportForView({ ...report, kind: 'weekly' }, f.context).detailProgressLabel, '');
+  assert.equal(reportForView({ ...report, available: false }, f.context).detailPeriodLabel, undefined);
+});
+
+test('background list refresh preserves a failed original read until the same record is retried', async () => {
+  const f = fixture(); await f.controller.show(); await f.controller.select('27'); await f.controller.readReport('98', 1);
+  let fail = true;
+  f.intercept(call => {
+    if (call.path.endsWith('/projects/248/records/12')) {
+      if (fail) throw { statusCode: 503, code: 'assistant_unavailable' };
+      return { id: '12', data: { completed: '书房线管有记录' } };
+    }
+  });
+  await f.controller.original('248', '12');
+  const error = f.controller.state.followupError; assert.ok(error); assert.equal(f.controller.state.followupOriginal, null);
+  await f.controller.loadList({ background: true }); await f.controller.sync();
+  assert.equal(f.controller.state.followupError, error); assert.equal(f.controller.state.followupDetail.reportId, '98');
+  fail = false; await f.controller.original('248', '12');
+  assert.equal(f.controller.state.followupOriginal.id, '12'); assert.equal(f.controller.state.followupError, '');
+});
+
 test('boss weekly card uses the exact Shanghai period, preserves historical stages and never calls old facts this week', () => {
   const f = fixture(), context = { ...f.context, audience: 'boss' }, report = { ...f.report, kind: 'weekly',
     periodStart: '2026-10-19T00:00:00+08:00', periodEnd: '2026-10-26T00:00:00+08:00', cutoffAt: '2026-10-26T00:00:00+08:00' };
