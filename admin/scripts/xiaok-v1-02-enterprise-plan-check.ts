@@ -27,6 +27,7 @@ const cleanupOnly=arg('finish-cleanup'), permissionOnly=arg('permission-only');
 assert.ok(process.argv.includes('--development')); assert.ok(!fs.existsSync(path.join(output, 'report.json')), 'Retain original batches');
 const url = new URL(process.env.DATABASE_URL!); assert.ok(['127.0.0.1','localhost'].includes(url.hostname) && url.port === '5432' && url.pathname === '/smart_floor_planner');
 fs.mkdirSync(output, { recursive: true });
+const originalOutputFiles=new Set(fs.readdirSync(output));
 const report: Row = { startedAt: new Date().toISOString(), fixedScope: ['roles and signed context','CAS and same-key save','controlled daily/weekly and audience scope',
   'stage off/on without replay','lifecycle at queue and delivery','disabled-epoch no backlog','current permission and RLS','cleanup and accounting'], checks: [] };
 const save = () => fs.writeFileSync(path.join(output, 'report.json'), JSON.stringify(report, null, 2));
@@ -223,7 +224,14 @@ main().catch(e=>{report.error=(e as Error).stack;process.exitCode=1;}).finally(a
       policy:await one(tx,sql`select enabled,version from app.construction_report_settings where enterprise_id=${eid}`)}));
     assert.equal((report.cleanup as Row).queue && ((report.cleanup as Row).queue as Row).n,0);assert.equal(((report.cleanup as Row).policy as Row).enabled,false);
   } catch(e){report.cleanupFinalError=(e as Error).stack;process.exitCode=1;}
-  finally {const after=bind(),drift=Object.keys(before).filter(f=>before[f]!==after[f]);report.drift=drift;report.runs=runs;report.finishedAt=new Date().toISOString();
+  finally {
+    try { const removed:string[]=[];
+      for(const name of fs.readdirSync(output)) if(!originalOutputFiles.has(name)&&/^cli-args-[0-9a-f-]{36}\.private\.json$/i.test(name)) {
+        const file=path.resolve(output,name);assert.equal(path.dirname(file),output);assert.ok(fs.lstatSync(file).isFile());fs.rmSync(file);removed.push(name);
+      }
+      report.privateArgsRemoved=removed;
+    } catch(e){report.privateArgsCleanupError=(e as Error).stack;process.exitCode=1;}
+    const after=bind(),drift=Object.keys(before).filter(f=>before[f]!==after[f]);report.drift=drift;report.runs=runs;report.finishedAt=new Date().toISOString();
     fs.writeFileSync(path.join(output,'binding.json'),JSON.stringify({before,after},null,2));save();await release?.();await closePostgresPool();
     if(drift.length)process.exitCode=1;console.log(JSON.stringify({output,checks:(report.checks as Row[]).length,error:report.error,cleanupError:report.cleanupError,cleanupFinalError:report.cleanupFinalError,drift}));}
 });
