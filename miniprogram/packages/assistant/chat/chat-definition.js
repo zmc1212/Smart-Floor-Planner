@@ -10,6 +10,7 @@ const { PublicChatController, initialPublic } = require('../lib/public-sites');
 const { PlanChatController, initialPlans } = require('../lib/plans');
 const { SpeechController } = require('../lib/speech');
 const { FloorplanContextController, initialContext } = require('../lib/floorplan-context');
+const { FollowupController, FollowupRecordMedia, initialFollowups } = require('../lib/followups');
 
 function sessionToken() {
   const app = getApp();
@@ -22,6 +23,7 @@ module.exports = () => ({
     ...initialPublic(),
     ...initialPlans(),
     ...initialContext(),
+    ...initialFollowups(), professionalFollowup: false, followupHistoryOpen: false, followupManageOpen: false, followupOriginalPaths: {}, followupOriginalError: '',
     viewportHeight: 844, keyboardHeight: 0, inputFocused: false, bottomInset: 34, sheet: '', sheetOpen: false,
     embedded: false, scrollTarget: '',
     topics: [
@@ -87,6 +89,30 @@ module.exports = () => ({
     });
     this.floorplans = new FloorplanContextController({ client: this.controller.client, identity: sessionToken,
       emit: patch => { if (this._alive) this.setData(patch); } });
+    this.followups = new FollowupController({ client: this.controller.client, identity: sessionToken,
+      headers: async () => {
+        if (this._options.followup === '1') return {};
+        const entry = await this.controller.ensureEntry(); return entry ? { 'X-Assistant-Entry': entry.entryToken } : {};
+      },
+      emit: patch => {
+        if (!this._alive) return;
+        const wasActive = this.data.followupActive;
+        this.setData(patch, () => {
+          if (wasActive && patch.followupActive === false && this._shown) {
+            if (this.data.professionalFollowup) { this.setData({ followupManageOpen: false, followupHistoryOpen: false }); this.back(); }
+            else { this.controller.visible = true; this.setData({ followupManageOpen: false, followupHistoryOpen: false }); this.controller.refresh({ forceEntry: false, background: true }); }
+          }
+          if (patch.followupReports || patch.followupActive !== undefined) this.observeFollowupCards();
+          if (patch.followupDetail && !patch.followupDetail.readAt) wx.nextTick(() => { if (this._alive && this._shown) this.followups.renderedReport(); });
+          if (patch.followupOriginal === null && this.followupMedia) this.followupMedia.clear();
+          if (patch.followupOriginal && this.followupMedia && this.data.followupDetail && this.data.followupContext)
+            this.followupMedia.loadOriginal(this.data.followupContext, this.data.followupDetail, patch.followupOriginal);
+        });
+      } });
+    this.followupMedia = new FollowupRecordMedia({ identity: sessionToken, headers: () => this.followups.headers(), emit: patch => {
+      if (this._alive) this.setData({ ...(patch.siteRecordPaths ? { followupOriginalPaths: patch.siteRecordPaths } : {}),
+        ...(patch.siteRecordError !== undefined ? { followupOriginalError: patch.siteRecordError } : {}) });
+    } });
   },
 
   async onShow() {
@@ -97,6 +123,14 @@ module.exports = () => ({
     this._shown = true;
     const app = getApp();
     if (app.globalData.sessionHydrationPromise) await app.globalData.sessionHydrationPromise;
+    const currentIdentity = app.globalData.bootstrap?.current?.context || app.globalData.userInfo || {};
+    const selectedMode = app.globalData.bootstrap?.current?.mode || currentIdentity.mode;
+    if (selectedMode === 'staff') this._options.followup = '1';
+    else if (selectedMode === 'customer') { delete this._options.followup; this.setData({ professionalFollowup: false }); }
+    if (this._options.followup === '1') {
+      this.setData({ professionalFollowup: true, loading: false });
+      await this.followups.show({ autoOpen: true }); return;
+    }
     if (this.media && this.media.session !== sessionToken()) {
       this.media.dispose(); this.media = null;
       this.setData({ mediaItems: [], mediaPaths: {}, mediaPending: false, mediaBusy: false, mediaError: '' });
@@ -118,11 +152,14 @@ module.exports = () => ({
       if (this._alive && this._shown && this._options.prompt && !this.data.draft && !this.data.pendingSend && !this.data.fatal) {
         this.controller.input(this._options.prompt); delete this._options.prompt;
       }
+      if (this._alive && this._shown) await this.followups.show();
     }
   },
-  onHide() { this._shown = false; if (this.speechController) this.speechController.hide(); if (this.location) this.location.clear(); this.controller.hide(); this.siteRecords.clear(); this.recommendations.clear(); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); this.closeSheet(); this.setData({ speechBusy: false, keyboardHeight: 0, siteRecordPaths: {}, siteRecordError: '', ...initialPublic(), ...initialPlans() }); },
+  onHide() { this._shown = false; this.followups.hide(); if (this._followupObserver) this._followupObserver.disconnect(); clearTimeout(this._followupObserveTimer); this.setData({ followupHistoryOpen: false, followupManageOpen: false }); if (this.speechController) this.speechController.hide(); if (this.location) this.location.clear(); this.controller.hide(); this.siteRecords.clear(); this.recommendations.clear(); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); this.closeSheet(); this.setData({ speechBusy: false, keyboardHeight: 0, siteRecordPaths: {}, siteRecordError: '', ...initialPublic(), ...initialPlans() }); },
   onUnload() {
     this._alive = false; clearTimeout(this._sheetTimer);
+    clearTimeout(this._followupObserveTimer); if (this.followupMedia) this.followupMedia.clear();
+    if (this.followups) this.followups.hide(); if (this._followupObserver) this._followupObserver.disconnect();
     if (this.floorplans) this.floorplans.clear();
     if (this.speechController) this.speechController.hide();
     if (this.location) this.location.clear();
@@ -339,7 +376,44 @@ module.exports = () => ({
       this.setData({ ['mediaPaths.' + message.mediaId]: path });
     }
   },
-  openHistory() { this.openSheet('history'); return this.controller.loadHistory(); },
+  openHistory() { this.openSheet('history'); this.followups.loadList(); return this.data.professionalFollowup ? null : this.controller.loadHistory(); },
+  selectFollowup(event) {
+    if (this.data.busy || this.data.pendingSend || this.data.pendingAction || this.data.mediaBusy || this.data.mediaPending) return;
+    this.setData({ followupHistoryOpen: false, followupManageOpen: false }); this.closeSheet(); this.controller.hide(); return this.followups.select(String(event.currentTarget.dataset.id));
+  },
+  refreshFollowup() { return this.followups.select(this.followups.selected); },
+  readFollowupReport(event) { const d = event.currentTarget.dataset; this.setData({ followupHistoryOpen: false, followupManageOpen: false }); return this.followups.readReport(String(d.report), Number(d.revision)); },
+  closeFollowupReport() { this.followups.closeReport(); },
+  followupHistory() { this.setData({ followupHistoryOpen: true, followupManageOpen: false }); },
+  closeFollowupHistory() { this.setData({ followupHistoryOpen: false }); },
+  moreFollowupReports() { return this.followups.more(); },
+  recoverFollowup() { return this.followups.recover(); },
+  manageFollowup() { this.setData({ followupManageOpen: true, followupHistoryOpen: false }); this.closeSheet(); },
+  closeFollowupManage() { this.setData({ followupManageOpen: false }); },
+  changeFollowup(event) {
+    const action = event.currentTarget.dataset.action, c = this.data.followupContext;
+    if (!c || this.data.followupBusy || this.data.followupPending) return;
+    const copy = { archive: ['收起会话？', '自动跟进仍开启，有新报告时会重新显示。'], stop: ['停止自动跟进？', '停止后不再投递，可在这里重新开启；工地原记录保留。'], resume: ['重新开启跟进？', '开启后按当前获权范围继续接收，工地原记录保留。'] }[action];
+    if (!copy) return;
+    wx.showModal({ title: copy[0], content: copy[1], success: r => { if (r.confirm && this._alive && this._shown) this.followups.change(action); } });
+  },
+  readFollowupOriginal(event) { return this.followups.original(String(event.currentTarget.dataset.project), String(event.currentTarget.dataset.record)); },
+  closeFollowupOriginal() { this.setData({ followupOriginal: null }); this.followups.set({ followupOriginal: null }); },
+  previewFollowupOriginal(event) { const r = this.data.followupOriginal; if (r) return this.followupMedia.preview(r.id, r.version, String(event.currentTarget.dataset.media)); },
+  observeFollowupCards() {
+    if (this._followupObserver) this._followupObserver.disconnect();
+    if (!this._alive || !this._shown || !this.data.followupActive || !this.data.followupReports.length) return;
+    clearTimeout(this._followupObserveTimer);
+    if (this.data.sheet) { this._followupObserveTimer = setTimeout(() => this.observeFollowupCards(), 300); return; }
+    wx.nextTick(() => {
+      if (!this._alive || !this._shown || !this.data.followupActive || this.data.followupDetail || !wx.createIntersectionObserver) return;
+      this._followupObserver = wx.createIntersectionObserver(this, { observeAll: true, thresholds: [0.5] });
+      this._followupObserver.relativeTo('.followup-scroll').observe('.followup-card-marker', r => {
+        if (r.intersectionRatio >= 0.5 && this._shown && !this.data.sheet && !this.data.followupDetail && !this.data.followupHistoryOpen && !this.data.followupManageOpen)
+          this.followups.visibleCard(String(r.dataset.report));
+      });
+    });
+  },
   openRequirements() {
     if (!this.data.conversation || this.data.busy || this.data.pendingSend || this.data.pendingAction) return;
     wx.navigateTo({ url: '/packages/assistant/requirements/requirements?conversationId=' + encodeURIComponent(this.data.conversation.id) });
@@ -373,12 +447,13 @@ module.exports = () => ({
   selectHistory(event) {
     if (this.data.mediaBusy || this.data.mediaPending) return;
     if (this.data.busy || this.data.pendingSend || this.data.pendingAction) return;
-    this.closeSheet(); return this.controller.selectConversation(event.currentTarget.dataset.id);
+    this.followups.leave(); this.controller.visible = true; this.closeSheet(); return this.controller.selectConversation(event.currentTarget.dataset.id);
   },
   newConversation() {
     if (this.data.mediaBusy || this.data.mediaPending) return;
     if (this.data.busy || this.data.pendingSend || this.data.pendingAction) return;
-    this.closeSheet(); return this.controller.newConversation();
+    this.followups.leave(); this.closeSheet(); const result = this.controller.newConversation();
+    return this.controller.visible ? result : this.controller.show(this._options);
   },
   olderMessages() { return this.controller.olderMessages(); },
   stop() { return this.controller.action('cancel'); },

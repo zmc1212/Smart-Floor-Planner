@@ -18,11 +18,13 @@ import { customerPlanHttp } from '@/lib/construction/plan-http';
 import { parseWebCitationId } from '../agent/web-evidence';
 import { LocationService } from '../location/service';
 import { FloorplanContextService } from '../media/floorplan-context';
+import { followupHttp } from '@/lib/construction/followup-http';
 
 function only(body: Record<string, unknown>, allowed: string[]) {
   if (Object.keys(body).some(k => !allowed.includes(k))) fail('invalid_message', 422);
 }
 export async function assistantHttp(request: Request, path: string[]) {
+  if(path[0]==='followups')return followupHttp(request,path.slice(1));
   if(path[0]==='handoffs')return staffHandoffHttp(request,path.slice(1));
   const requestId = randomUUID();
   try {

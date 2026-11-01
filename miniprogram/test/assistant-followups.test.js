@@ -1,0 +1,115 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const { AssistantClient } = require('../packages/assistant/lib/client');
+const { FollowupController, FollowupRecordMedia, reportForView, dateLabel } = require('../packages/assistant/lib/followups');
+
+function fixture() {
+  let session = 'customer-a', intercept;
+  const calls = [], emitted = [], context = { bindingId: '27', conversationId: '880', audience: 'customer', status: 'enabled', version: 2,
+    title: '合成测试·我家装修', enterprise: { id: '1454', name: '微云' }, conversation: { id: '880', mode: 'ai', status: 'open' },
+    projects: [{ id: '248', name: '合成测试·我家装修' }], stages: [{ key: 'water', name: '水电阶段' }] };
+  const report = { reportId: '98', revision: 1, kind: 'daily', available: true, state: 'facts_ready', contentStatus: 'facts_only',
+    periodStart: '2026-11-01T00:00:00+08:00', periodEnd: '2026-11-01T20:00:00+08:00', cutoffAt: '2026-11-01T20:00:00+08:00',
+    generatedAt: '2026-11-01T20:01:00+08:00', sequence: '9', deliveryState: 'delivered', readAt: null, readToken: 'original-token',
+    facts: { projects: [{ id: '248', name: '合成测试·我家装修', stageKey: 'water', records: [{ id: '12', version: 3, data: { completed: '书房线管有记录', pending: '' } }],
+      publishedRecordItems: [{ recordId: '11', pending: '底盒位置仍需核对', coordination: '', carriedOver: true }] }] } };
+  const client = new AssistantClient(async (url, method, body, options) => {
+    const call = { path: url.replace('/miniprogram/assistant', ''), method, body: JSON.parse(JSON.stringify(body)), options }; calls.push(call);
+    if (intercept) { const response = await intercept(call); if (response !== undefined) return { success: true, data: response }; }
+    let data;
+    if (method === 'GET' && call.path === '/followups') data = { items: [context] };
+    else if (method === 'GET' && call.path === '/followups/27') data = context;
+    else if (method === 'GET' && call.path === '/followups/27/reports') data = { items: [report], nextCursor: null };
+    else if (method === 'GET' && call.path === '/followups/27/reports/98') data = report;
+    else if (method === 'POST' && call.path.endsWith('/acknowledge')) { report.readAt = '2026-11-01T20:02:00+08:00'; data = { reportId: '98', revision: 1, read: true }; }
+    else if (method === 'POST' && call.path.endsWith('/seen')) data = { bindingId: '27', throughSequence: body.throughSequence };
+    else if (method === 'POST' && /\/(stop|resume|archive)$/.test(call.path)) {
+      const action = call.path.split('/').pop(); context.version++; context.status = action === 'stop' ? 'stopped' : 'enabled';
+      if (action === 'archive') context.conversation.status = 'archived';
+      data = { bindingId: '27', conversationId: '880', version: context.version, status: context.status };
+    } else throw Error('Unexpected request ' + method + ' ' + call.path);
+    return { success: true, data: JSON.parse(JSON.stringify(data)) };
+  });
+  const controller = new FollowupController({ client, identity: () => session, emit: p => emitted.push(p), headers: async () => ({ 'X-Assistant-Entry': 'signed-entry' }), schedule: () => 0, unschedule() {} });
+  return { client, controller, context, report, calls, emitted, intercept(fn) { intercept = fn; }, identity(value) { session = value; } };
+}
+
+test('listing and selecting never acknowledge reports or change ordinary draft/destination', async () => {
+  const f = fixture(); await f.controller.show(); await f.controller.select('27');
+  assert.ok(f.calls.every(c => c.method === 'GET'));
+  assert.ok(f.emitted.every(p => !('draft' in p) && !('conversation' in p) && !('messages' in p)));
+  assert.equal(f.controller.state.followupContext.conversationId, '880');
+  assert.equal(f.controller.state.followupReports[0].projects[0].pending[0].carriedOver, true);
+  f.controller.hide();
+});
+test('real visibility and rendered detail acknowledgements have different receipts', async () => {
+  const f = fixture(); await f.controller.show(); await f.controller.select('27');
+  await f.controller.visibleCard('98');
+  assert.deepEqual(f.calls.find(c => c.path.endsWith('/seen')).body, { throughSequence: '9', conversationId: '880' });
+  assert.equal(f.report.readAt, null);
+  await f.controller.readReport('98', 1); assert.equal(f.report.readAt, null);
+  await f.controller.renderedReport(); assert.ok(f.report.readAt);
+  assert.equal(f.controller.state.followupDetail.readAt, true);
+  f.controller.hide();
+});
+test('unknown read keeps original key and body even when the source token later changes', async () => {
+  const f = fixture(); let first = true;
+  f.intercept(c => { if (c.path.endsWith('/acknowledge') && first) { first = false; throw { statusCode: 503 }; } });
+  await f.controller.show(); await f.controller.select('27'); await f.controller.readReport('98', 1); await f.controller.renderedReport();
+  assert.equal(f.controller.state.followupPending, true);
+  f.report.readToken = 'later-token'; await f.controller.recover();
+  const writes = f.calls.filter(c => c.path.endsWith('/acknowledge'));
+  assert.equal(writes.length, 2); assert.deepEqual(writes[0].body, writes[1].body);
+  assert.equal(writes[0].options.headers['Idempotency-Key'], writes[1].options.headers['Idempotency-Key']);
+  assert.equal(writes[1].options.headers['X-Assistant-Entry'], 'signed-entry'); f.controller.hide();
+});
+test('invalid successful receipt remains unknown and is never displayed as read', async () => {
+  const f = fixture(); f.intercept(c => c.path.endsWith('/acknowledge') ? { reportId: 'OTHER', revision: 1, read: true } : undefined);
+  await f.controller.show(); await f.controller.select('27'); await f.controller.readReport('98', 1); await f.controller.renderedReport();
+  assert.equal(f.controller.state.followupPending, true); assert.equal(f.controller.state.followupDetail.readAt, null);
+  assert.ok(f.client.pending.size); f.controller.hide();
+});
+test('lost lifecycle receipt is recovered by same key without executing another action', async () => {
+  const f = fixture(); let first = true;
+  f.intercept(c => { if (c.path.endsWith('/stop') && first) { first = false; throw { statusCode: 503 }; } });
+  await f.controller.show(); await f.controller.select('27'); await f.controller.change('stop');
+  assert.equal(f.controller.state.followupPending, true); await f.controller.change('resume');
+  assert.equal(f.calls.filter(c => c.path.endsWith('/resume')).length, 0);
+  await f.controller.recover(); assert.equal(f.controller.state.followupContext.status, 'stopped');
+  const writes = f.calls.filter(c => c.path.endsWith('/stop')); assert.deepEqual(writes[0].body, writes[1].body);
+  assert.equal(writes[0].options.headers['Idempotency-Key'], writes[1].options.headers['Idempotency-Key']);
+  assert.ok(!f.calls.some(c => c.path.startsWith('/conversations/'))); f.controller.hide();
+});
+test('ordinary background list refresh never selects a destination', async () => {
+  const f = fixture(); await f.controller.show(); f.context.unreadMessages = 2; await f.controller.loadList();
+  assert.equal(f.controller.state.followupActive, false); assert.equal(f.controller.selected, undefined);
+  assert.equal(f.controller.state.followupBindings[0].unreadMessages, 2); f.controller.hide();
+});
+test('revocation clears report original and private project labels on foreground reentry', async () => {
+  const f = fixture(); await f.controller.show(); await f.controller.select('27'); await f.controller.readReport('98', 1);
+  f.controller.hide(); assert.equal(f.controller.state.followupDetail, null); assert.deepEqual(f.controller.state.followupReports, []);
+  f.identity('other-identity'); f.intercept(() => { throw { statusCode: 403, code: 'assistant_capability_forbidden' }; }); await f.controller.show();
+  assert.equal(f.controller.state.followupContext, null); assert.deepEqual(f.controller.state.followupBindings, []);
+  assert.ok(!JSON.stringify(f.controller.state).includes('合成测试·我家装修')); f.controller.hide();
+});
+test('live source withdrawal replaces content instead of returning cached names or text', async () => {
+  const f = fixture(); await f.controller.show(); await f.controller.select('27'); await f.controller.readReport('98', 1);
+  f.intercept(c => c.path === '/followups/27/reports/98' ? { reportId: '98', revision: 1, available: false, facts: null } : undefined);
+  await f.controller.sync(); assert.equal(f.controller.state.followupDetail.available, false);
+  assert.ok(!JSON.stringify(f.controller.state.followupDetail).includes('底盒位置')); f.controller.hide();
+});
+test('unavailable projections retain no private project title or field', () => {
+  const result = reportForView({ available: false, reportId: '98', revision: 1, facts: { projects: [{ name: 'PRIVATE' }] } });
+  assert.ok(!JSON.stringify(result).includes('PRIVATE'));
+});
+test('unknown generation time stays unknown instead of displaying a fabricated epoch date', () => {
+  assert.equal(dateLabel(null), ''); assert.equal(dateLabel(undefined), ''); assert.equal(dateLabel(''), '');
+});
+test('followup originals reuse authenticated media behavior with exact report/project/version locator', async () => {
+  const urls = [];
+  const media = new FollowupRecordMedia({ identity: () => 'a', emit() {}, headers: async () => ({ 'X-Assistant-Entry': 'entry' }),
+    download: async (url, options) => { urls.push({ url, options }); return { tempFilePath: 'tmp-original' }; } });
+  await media.loadOriginal({ bindingId: '27' }, { reportId: '98', revision: 2 }, { id: '12', version: 3, projectId: '248', media: [{ id: '44' }] });
+  assert.equal(urls[0].url, '/miniprogram/assistant/followups/27/reports/98/projects/248/records/12/media/44?revision=2');
+  assert.equal(urls[0].options.headers['X-Assistant-Entry'], 'entry'); media.clear();
+});

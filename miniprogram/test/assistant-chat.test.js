@@ -263,11 +263,12 @@ test('quick choices send once, preserve typed drafts and reject stale question c
   f.controller.dispose();
 });
 
-test('entry accepts one verified basis, ignores raw tenant parameters and route requires customer capability', () => {
+test('entry accepts one verified basis; private followup route adds construction roles without survey access', () => {
   assert.deepEqual(entryInput({ leadId: '12', enterpriseId: '999', staffId: '6' }), { leadId: '12' });
   assert.throws(() => entryInput({ leadId: '12', conversationId: '11' }));
   assert.equal(canAccessRoute('/packages/assistant/chat/chat', { mode: 'customer', role: 'customer' }), true);
-  assert.equal(canAccessRoute('/packages/assistant/chat/chat', { mode: 'staff', role: 'designer' }), false);
+  assert.equal(canAccessRoute('/packages/assistant/chat/chat', { mode: 'staff', role: 'designer', enterpriseId: '1' }), true);
+  assert.equal(canAccessRoute('/packages/assistant/chat/chat', { mode: 'staff', role: 'measurer', enterpriseId: '1' }), false);
 });
 
 test('unknown write retains original key and content; definitive error permits a corrected request', async () => {

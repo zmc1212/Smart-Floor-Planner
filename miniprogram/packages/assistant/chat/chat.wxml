@@ -34,13 +34,14 @@
   <view class="notebook-spine" aria-hidden="true"><view class="book-ring ring-one"></view><view class="book-ring ring-two"></view><view class="book-ring ring-three"></view><view class="book-ring ring-four"></view></view>
   <view class="chat-nav" style="padding-top: {{navigationTop}}px; padding-right: {{navigationRight}}px;">
     <view class="nav-lane" style="min-height: {{navigationHeight}}px;">
-      <button class="notebook-history" bindtap="openHistory" aria-label="历史对话" disabled="{{loading || needsLogin || fatal || busy || pendingSend || pendingAction}}"><view class="history-paper"><image src="../assets/history.png" mode="aspectFit" /></view></button>
-      <text class="notebook-brand">小K</text>
-      <button wx:if="{{!conversation || conversation.status === 'open'}}" size="mini" class="designer-entry" bindtap="openHandoff" disabled="{{loading || fatal || !canSend || busy || pendingSend || pendingAction}}"><text>{{conversation.mode === 'human' || conversation.mode === 'handoff_requested' ? '查看接待' : '找设计师'}}</text><image src="../assets/chat-arrow-up-right.png" mode="aspectFit" /></button>
+      <button wx:if="{{professionalFollowup}}" class="notebook-history" bindtap="back" aria-label="返回"><view class="history-paper"><view class="followup-back"></view></view></button><button wx:else class="notebook-history" bindtap="openHistory" aria-label="历史对话" disabled="{{loading || needsLogin || fatal || busy || pendingSend || pendingAction}}"><view class="history-paper"><image src="../assets/history.png" mode="aspectFit" /></view></button>
+      <text class="notebook-brand">小K</text><button wx:if="{{professionalFollowup}}" class="notebook-history" bindtap="openHistory" aria-label="跟进会话"><image style="width: 25px; height: 25px;" src="../assets/history.png" mode="aspectFit"/></button>
+      <button wx:if="{{!professionalFollowup && !followupActive && (!conversation || conversation.status === 'open')}}" size="mini" class="designer-entry" bindtap="openHandoff" disabled="{{loading || fatal || !canSend || busy || pendingSend || pendingAction}}"><text>{{conversation.mode === 'human' || conversation.mode === 'handoff_requested' ? '查看接待' : '找设计师'}}</text><image src="../assets/chat-arrow-up-right.png" mode="aspectFit" /></button>
     </view>
   </view>
 
-  <scroll-view class="conversation-scroll" scroll-y enhanced show-scrollbar="{{false}}" scroll-into-view="{{scrollTarget}}" scroll-with-animation="{{false}}">
+  <include src="./followup-view.wxml" />
+  <scroll-view wx:if="{{!followupActive}}" class="conversation-scroll" scroll-y enhanced show-scrollbar="{{false}}" scroll-into-view="{{scrollTarget}}" scroll-with-animation="{{false}}">
     <view class="conversation-content {{!messages.length && !pendingText && !loading && (!fatal || needsLogin) ? 'new-conversation-content' : ''}}">
       <view wx:if="{{!messages.length && !pendingText && !loading && (!fatal || needsLogin)}}" class="notebook-welcome">
         <view class="welcome-art-group"><image class="welcome-sage" src="../assets/chat-notebook-sage.png" mode="aspectFit" aria-hidden="true" /><image class="welcome-mascot" src="../assets/chat-notebook-mascot.png" mode="aspectFit" aria-hidden="true" /></view>
@@ -177,7 +178,7 @@
     </view>
   </scroll-view>
 
-  <view class="composer-dock {{keyboardHeight ? 'keyboard-open' : ''}} {{inputFocused || keyboardHeight ? 'composer-focused' : ''}}">
+  <view wx:if="{{!followupActive}}" class="composer-dock {{keyboardHeight ? 'keyboard-open' : ''}} {{inputFocused || keyboardHeight ? 'composer-focused' : ''}}">
     <view wx:if="{{!keyboardHeight && conversation.requirementProposalPending}}" class="conversation-tools">
       <button wx:if="{{conversation.requirementProposalPending && conversation.mode === 'ai'}}" class="text-action" bindtap="openRequirements" disabled="{{loading || needsLogin || fatal || busy || pendingSend || pendingAction}}">查看需求提案</button>
     </view>
@@ -198,14 +199,21 @@
   <view wx:if="{{sheet}}" class="sheet-layer {{sheetOpen ? 'is-open' : ''}}" catchtouchmove="swallow">
     <view class="sheet-mask" bindtap="closeSheet"></view>
     <view class="sheet-panel">
-      <view class="sheet-head"><text>{{sheet === 'history' ? '历史对话' : sheet === 'floorplan' ? contextDetail ? '查看户型档案' : '户型参考' : sheet === 'publicSite' ? '公开工地' : '回答依据'}}</text><button class="icon-button" bindtap="closeSheet" aria-label="关闭"><image src="../assets/x.png" /></button></view>
+      <view class="sheet-head"><text>{{sheet === 'history' ? '我的对话' : sheet === 'floorplan' ? contextDetail ? '查看户型档案' : '户型参考' : sheet === 'publicSite' ? '公开工地' : '回答依据'}}</text><button class="icon-button" bindtap="closeSheet" aria-label="关闭"><image src="../assets/x.png" /></button></view>
       <scroll-view class="sheet-scroll" scroll-y show-scrollbar="{{false}}">
         <block wx:if="{{sheet === 'history'}}">
-          <button class="notice-action" bindtap="newConversation" disabled="{{busy || pendingSend || pendingAction}}">开启新对话</button>
-          <text class="sheet-helper">{{enterpriseName}} · 仅显示你自己的对话</text>
+          <text class="sheet-helper">{{followupContext.enterprise.name || enterpriseName}} · 仅自己可见</text>
+          <button wx:if="{{!professionalFollowup}}" class="notice-action followup-new" bindtap="newConversation" disabled="{{busy || pendingSend || pendingAction}}">⊕　开启新对话</button>
+          <view class="followup-list-label"><text class="fabric-label">装修跟进</text><button class="followup-text-action" bindtap="manageFollowup" disabled="{{followupListLoading}}">管理跟进 ↗</button></view>
+          <text wx:if="{{followupListLoading}}" class="sheet-state">正在读取私人跟进…</text>
+          <view wx:if="{{followupError}}" class="notice"><text>{{followupError}}</text><button class="notice-action" bindtap="openHistory">重新读取</button></view>
+          <button wx:for="{{followupBindings}}" wx:key="bindingId" wx:if="{{item.conversationStatus !== 'archived'}}" class="followup-list-entry" data-id="{{item.bindingId}}" bindtap="selectFollowup" disabled="{{busy || pendingSend || pendingAction || mediaBusy || mediaPending}}"><image src="../assets/requirement-home.png" mode="aspectFit"/><view><text class="followup-list-title">{{item.title}}</text><text class="followup-muted">{{item.audience === 'customer' ? item.projects[0].stageName : item.enterprise.name}}　{{item.latestDateLabel}} <text wx:if="{{item.unreadMessages}}" class="followup-list-count">{{item.unreadMessages}}{{item.unreadTruncated ? '+' : ''}}</text></text><text class="followup-list-footer">{{item.status === 'stopped' ? '自动跟进已停止，可查看已保存的简报。' : item.latestReport ? '已有简报，可查看现场记录。' : '有新简报时，会在这里保存。'}}</text></view></button>
+          <text wx:if="{{!followupListLoading && !followupBindings.length && !followupError}}" class="sheet-helper">当前没有可查看的装修跟进。</text>
+          <view wx:if="{{!professionalFollowup}}" class="followup-list-label"><text>最近咨询</text><view class="followup-rule"></view></view>
+
           <text wx:if="{{historyLoading}}" class="sheet-state">正在读取对话记录…</text>
           <view wx:if="{{historyError}}" class="notice"><text>{{historyError}}</text><button class="notice-action" bindtap="openHistory">重新加载</button></view>
-          <text wx:if="{{!historyLoading && !historyError && !history.length}}" class="sheet-state">还没有对话，从一个装修问题开始吧。</text>
+          <text wx:if="{{!professionalFollowup && !historyLoading && !historyError && !history.length}}" class="sheet-state">还没有对话，从一个装修问题开始吧。</text>
           <button wx:for="{{history}}" wx:key="id" class="history-row" data-id="{{item.id}}" bindtap="selectHistory"><text class="history-title">{{item.title || '装修咨询'}}</text><text class="history-meta">{{item.createdLabel}} · {{item.status === 'open' ? '可继续咨询' : '已结束 · 查看记录'}}</text></button>
           <button wx:if="{{historyCursor}}" class="older-action" bindtap="moreHistory" disabled="{{historyLoading}}">查看更多对话</button>
         </block>

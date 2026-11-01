@@ -1,0 +1,65 @@
+/* follow-up-v1 standalone canvases 853x1844 -> 390x844; shared notebook shell remains the ruler. */
+.notebook-chat {
+  .followup-thread { min-height: 0; flex: 1; display: flex; flex-direction: column; }
+  .followup-scope { flex: none; padding: 14rpx 44rpx 0 74rpx; }
+  .followup-scope-title { display: block; font-family: 'Chat Serif',SimSun,serif; font-size: 43rpx; font-weight: 900; line-height: 1.4; }
+  .followup-scope-meta { display: flex; align-items: center; justify-content: space-between; min-height: 76rpx; border-bottom: 1rpx solid #8ca58b; color: #718b8d; font-size: 25rpx; line-height: 1.5; gap: 16rpx; }
+  .followup-scope-meta button, .followup-text-action { min-height: 44px; margin: 0; padding: 0; border-radius: 0; background: transparent; color: #073c30; font-size: 25rpx; line-height: 44px; text-decoration: underline; white-space: nowrap; }
+  .followup-scroll { flex: 1; min-height: 0; height: 0; }
+  .followup-time { display: block; margin: 26rpx 0; text-align: center; color: #718b8d; font-size: 24rpx; line-height: 1.5; }
+  .followup-paper { position: relative; margin: 36rpx 48rpx 32rpx 74rpx; padding: 37rpx 31rpx 28rpx; background: #fcf8ee; border: 1rpx solid #fffdf5; box-shadow: 0 6rpx 12rpx #8d78452e; border-radius: 2rpx; }
+  .followup-paper > .fabric-label { margin: -58rpx 0 12rpx -7rpx; transform: rotate(-6deg); font-size: 26rpx; line-height: 1.5; }
+  .followup-card-marker { position: absolute; top: 0; left: 0; width: 100%; height: 2px; opacity: 0; pointer-events: none; }
+  .followup-paper-title { display: block; font-family: 'Chat Serif',SimSun,serif; font-size: 39rpx; font-weight: 900; line-height: 1.5; margin-bottom: 5rpx; }
+  .followup-muted, .followup-caption { display: block; color: #718b8d; font-size: 25rpx; line-height: 1.65; }
+  .followup-caption { font-size: 23rpx; margin-top: 10rpx; }
+  .followup-project { padding: 20rpx 0 24rpx; border-top: 1rpx solid #9eaf94; margin-top: 15rpx; }
+  .followup-project-name { display: inline-block; padding: 1rpx 13rpx; margin: 0 0 5rpx; background: #dfe6cc; font-family: 'Chat Serif',SimSun,serif; font-size: 32rpx; line-height: 1.5; font-weight: 700; }
+  .followup-line { display: block; color: #123b32; font-size: 29rpx; line-height: 1.65; white-space: pre-wrap; overflow-wrap: break-word; margin: 7rpx 0; }
+  .followup-actions { display: flex; gap: 16rpx; margin-top: 22rpx; }
+  .followup-actions button { flex: 1; padding: 0 8rpx; margin: 0; min-height: 44px; border: 1rpx solid #436b5e; border-radius: 7rpx; background: transparent; color: #073c30; font-size: 27rpx; line-height: 44px; font-weight: 600; }
+  .followup-primary { background: #004f3d !important; color: #fffdf4 !important; }
+  .followup-primary[disabled] { background: #d6dcc4 !important; color: #8b9a81 !important; border-color: #d6dcc4; }
+  .followup-state { display: block; margin: 34rpx 52rpx 34rpx 74rpx; color: #718b8d; font-size: 27rpx; line-height: 1.7; }
+  .followup-feedback { flex: none; margin: 10rpx 40rpx 10rpx 70rpx; color: #5d7569; font-size: 26rpx; line-height: 1.6; }
+  .followup-feedback button { display: inline-block; margin: 0 0 0 12rpx; padding: 0 6rpx; min-height: 44px; color: #073c30; background: transparent; font-size: 25rpx; line-height: 44px; text-decoration: underline; }
+  .followup-more { margin: 15rpx 40rpx 35rpx 74rpx; color: #073c30; background: transparent; font-size: 27rpx; min-height: 44px; }
+  .followup-composer { flex: none; margin: 22rpx 30rpx 24rpx 50rpx; padding: 13rpx 16rpx; display: flex; align-items: center; gap: 17rpx; min-height: 68rpx; background: #fffdf7; border: 1rpx solid #e4d6bc; border-radius: 40rpx; box-shadow: 0 5rpx 12rpx #8d784526; }
+  .followup-composer > image { width: 44rpx; height: 44rpx; flex: none; opacity: .6; }
+  .followup-composer > text { flex: 1; min-width: 0; font-size: 24rpx; line-height: 1.5; color: #718b8d; }
+  .followup-send { width: 72rpx; height: 72rpx; border-radius: 50%; background: #90a697; display: flex; align-items: center; justify-content: center; flex: none; }
+  .followup-send image { width: 36rpx; height: 36rpx; }
+  .followup-layer { position: absolute; inset: 0; z-index: 80; display: flex; align-items: flex-end; }
+  .followup-mask { position: absolute; inset: 0; background: #173c2c55; }
+  .followup-sheet { position: relative; width: 100%; height: calc(100% - 145px); min-height: 300px; box-sizing: border-box; padding: 55rpx 52rpx calc(32rpx + env(safe-area-inset-bottom)) 59rpx; background: #fbf7ed; border: 1rpx solid #fffef7; box-shadow: 0 -2rpx 9rpx #4f563722; border-radius: 25rpx 25rpx 0 0; display: flex; flex-direction: column; }
+  .followup-detail-sheet { width: calc(100% - 32rpx); margin-left: 32rpx; height: calc(100% - 88px); padding-left: 25rpx; padding-right: 44rpx; }
+  .followup-grip { position: absolute; top: 17rpx; left: calc(50% - 34rpx); width: 68rpx; height: 8rpx; border-radius: 5rpx; background: #b9bdb0; }
+  .followup-close { position: absolute; right: 25rpx; top: 38rpx; width: 44px; height: 44px; padding: 14px; border-radius: 0; background: transparent; z-index: 2; }
+  .followup-close image { width: 16px; height: 16px; }
+  .followup-detail-title { display: block; font-family: 'Chat Serif',SimSun,serif; font-size: 57rpx; line-height: 1.4; font-weight: 900; padding-right: 65rpx; margin-bottom: 8rpx; }
+  .followup-detail-heading { flex: none; border-bottom: 1rpx solid #8aa285; padding-bottom: 18rpx; }
+  .followup-detail-heading > .followup-project-name { background: none; padding: 0; font-size: 34rpx; }
+  .followup-detail-scroll { min-height: 0; flex: 1; height: 0; }
+  .followup-section { padding: 36rpx 10rpx 30rpx; border-bottom: 1rpx solid #8fa78d; }
+  .followup-section > .fabric-label { margin-bottom: 22rpx; transform: rotate(-5deg); font-size: 29rpx; line-height: 1.5; }
+  .followup-tag { display: inline-block; background: #e6d1a7; padding: 2rpx 18rpx; border-radius: 6rpx; margin-bottom: 15rpx; font-size: 29rpx; line-height: 1.5; font-weight: 700; }
+  .followup-original-links { display: flex; flex-direction: column; align-items: flex-start; }
+  .followup-detail-project { display: block; font-size: 34rpx; font-weight: 700; line-height: 1.5; padding-top: 26rpx; }
+  .followup-footnote { padding: 20rpx 10rpx 26rpx; }
+  .followup-detail-ask { flex: none; width: 100%; margin-top: 20rpx; min-height: 44px; line-height: 44px; border-radius: 7rpx; font-size: 29rpx; }
+  .followup-history-row, .followup-setting-row { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 14rpx; min-height: 85px; padding: 18rpx 0; margin: 0; border-bottom: 1rpx solid #a7b59b; border-radius: 0; background: transparent; color: #073c30; text-align: left; font-size: 30rpx; line-height: 1.5; }
+  .followup-history-row > view { flex: 1; min-width: 0; }
+  .followup-history-row > text { flex: none; font-size: 23rpx; color: #718b8d; }
+  .followup-original-layer { z-index: 90; }
+  .followup-back { width: 18rpx; height: 18rpx; border-left: 2rpx solid #073c30; border-bottom: 2rpx solid #073c30; transform: rotate(45deg); }
+  .followup-list-label { display: flex; align-items: center; justify-content: space-between; margin: 34rpx 0 30rpx; gap: 12rpx; }
+  .followup-list-label .fabric-label { transform: rotate(-5deg); font-size: 26rpx; line-height: 1.5; }
+  .followup-list-entry { display: flex; gap: 22rpx; width: 100%; min-height: 145px; box-sizing: border-box; margin: 0 0 24rpx; padding: 24rpx 24rpx 22rpx 35rpx; border-left: 10rpx solid #3e6551; border-radius: 4rpx; box-shadow: 0 5rpx 9rpx #6e604124; background: #e9eddb; color: #073c30; text-align: left; }
+  .followup-list-entry > image { flex: none; width: 50rpx; height: 50rpx; margin-top: 6rpx; }
+  .followup-list-entry > view { flex: 1; min-width: 0; }
+  .followup-list-title { display: block; font-family: 'Chat Serif',SimSun,serif; font-size: 33rpx; line-height: 1.5; font-weight: 700; }
+  .followup-new { display: block; width: 100%; box-sizing: border-box; margin: 24rpx 0 0; min-height: 47px; line-height: 47px; padding: 0 30rpx; text-align: left; border: 1rpx solid #729280; border-radius: 10rpx; color: #073c30; background: transparent; font-size: 29rpx; font-weight: 600; }
+  .followup-rule { flex: 1; border-bottom: 1rpx solid #8ca58b; }
+  .followup-list-count { display: inline-block; min-width: 30rpx; border-radius: 50%; background: #004d3a; color: white; text-align: center; font-size: 21rpx; line-height: 30rpx; }
+  .followup-list-footer { display: block; padding-top: 20rpx; margin-top: 17rpx; border-top: 1rpx solid #9bae8e; font-size: 26rpx; line-height: 1.5; }
+}

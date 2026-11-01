@@ -5,7 +5,9 @@ import { fail, fingerprint, id, key, principalKey, requireCapability, type Actor
 import { idempotent } from '@/lib/assistant/core/conversation';
 import { constructionAccess } from './service';
 import { bindingForActor, ensureFollowupBinding } from './report-store';
-import { projectReportFacts, type FollowupAudience, type ReportFacts } from './report-scope';
+import { followupProjects, projectReportFacts, type FollowupAudience, type ReportFacts } from './report-scope';
+import { readStageSettings } from './stages-store';
+import { currentRecord } from './site-issues';
 
 export class FollowupService {
   constructor(readonly actor: ActorContext) { requireCapability(actor, 'assistant.followup.self'); }
@@ -14,6 +16,26 @@ export class FollowupService {
       const repo = new AssistantRepository(tx, this.actor);
       await repo.settings(write);
       return work(repo);
+    });
+  }
+  private async destination(repo: AssistantRepository, b: Row) {
+    const c = await repo.conversation(String(b.conversation_id)), eid = this.actor.enterpriseId;
+    const projects = await followupProjects(repo.tx, eid, b), settings = await readStageSettings(repo.tx, eid);
+    const enterprise = (await one(repo.tx, sql`select id::text,name from app.enterprises where id=${eid}`))!;
+    return { enterprise, title: b.audience === 'customer' ? String(projects[0]?.name || '我家装修') : b.audience === 'boss' ? '企业工地简报'
+      : b.audience === 'designer' ? '我的项目跟进' : '我的施工跟进',
+      conversation: { id: String(c.id), mode: String(c.mode), status: String(c.status), version: Number(c.version) },
+      stages: settings.stages.map(s => ({ key: s.key, name: s.name })),
+      projects: projects.slice(0, 20).map(p => ({ id: String(p.id), name: String(p.name),
+        stageKey: p.current_stage_key || null, stageName: settings.stages.find(s => s.key === p.current_stage_key)?.name || '' })),
+      projectsTruncated: projects.length > 20 };
+  }
+  context(bindingId: string) {
+    id(bindingId);
+    return this.scoped(async repo => {
+      const b = await bindingForActor(repo.tx, this.actor, bindingId);
+      return { bindingId, conversationId: String(b.conversation_id), audience: String(b.audience), status: String(b.status), version: Number(b.version),
+        ...await this.destination(repo, b) };
     });
   }
   /** Explicit self opt-in also supports selected-enterprise admin/super_admin.
@@ -80,15 +102,17 @@ export class FollowupService {
           join app.assistant_runs run on run.enterprise_id=v.enterprise_id and run.id=v.run_id
           where d.enterprise_id=${this.actor.enterpriseId} and d.binding_id=${String(b.id)} and d.state='delivered'
           and run.conversation_id=${String(b.conversation_id)} order by d.event_id desc limit 51`);
-        let unreadReports = 0, unreadMessages = 0;
+        let unreadReports = 0, unreadMessages = 0, latestReport = null;
         for (const v of versions.slice(0, 50)) {
           const projected = await this.version(repo, b, String(v.report_id), Number(v.revision));
           if (!projected.available) continue;
+          if (!latestReport && 'kind' in projected) latestReport = { reportId: projected.reportId, revision: projected.revision,
+            kind: projected.kind, generatedAt: projected.generatedAt, contentStatus: projected.contentStatus };
           if (!projected.readAt) unreadReports++;
           if (projected.sequence && BigInt(projected.sequence) > BigInt(String(b.last_read_seq))) unreadMessages++;
         }
-        items.push({ bindingId: String(b.id), conversationId: String(b.conversation_id), audience: b.audience, status: b.status,
-          conversationStatus: b.conversation_status, version: Number(b.version), unreadReports, unreadMessages, unreadTruncated: versions.length > 50 });
+        items.push({ ...await this.destination(repo, b), bindingId: String(b.id), conversationId: String(b.conversation_id), audience: b.audience, status: b.status,
+          conversationStatus: b.conversation_status, version: Number(b.version), unreadReports, unreadMessages, unreadTruncated: versions.length > 50, latestReport });
       }
       return { items, truncated: bindings.length === 30 };
     });
@@ -112,6 +136,38 @@ export class FollowupService {
     return this.scoped(async repo => {
       const b = await bindingForActor(repo.tx, this.actor, bindingId); await repo.conversation(String(b.conversation_id));
       return this.version(repo, b, reportId, revision);
+    });
+  }
+  /** The saved report is a locator, never a new publication or consultation grant. */
+  private async original(repo: AssistantRepository, bindingId: string, reportId: string, revision: number, projectId: string, recordId: string) {
+    const b = await bindingForActor(repo.tx, this.actor, bindingId); await repo.conversation(String(b.conversation_id));
+    const view = await this.version(repo, b, reportId, revision);
+    if (!view.available || !view.facts) fail('construction_not_found', 404);
+    const project = view.facts.projects.find(p => p.id === projectId);
+    if (!project || !(project.records.some(r => r.id === recordId) || project.publishedRecordItems?.some(r => r.recordId === recordId))) fail('construction_not_found', 404);
+    const original = await currentRecord(repo.tx, this.actor.enterpriseId, projectId, recordId, true);
+    if (!original) fail('construction_not_found', 404);
+    return original;
+  }
+  record(bindingId: string, reportId: string, revision: number, projectId: string, recordId: string) {
+    [bindingId, reportId, projectId, recordId].forEach(id);
+    if (!Number.isSafeInteger(revision) || revision < 1) fail('invalid_construction', 422);
+    return this.scoped(async repo => {
+      const original = await this.original(repo, bindingId, reportId, revision, projectId, recordId), r = original.row;
+      return { id: recordId, projectId, version: Number(r.published_version), room: String(r.room_name_snapshot), data: r.data,
+        media: original.media.map(m => ({ id: String(m.id), hash: String(m.source_hash) })) };
+    });
+  }
+  recordMedia(bindingId: string, reportId: string, revision: number, projectId: string, recordId: string, mediaId: string) {
+    [bindingId, reportId, projectId, recordId, mediaId].forEach(id);
+    if (!Number.isSafeInteger(revision) || revision < 1) fail('invalid_construction', 422);
+    return this.scoped(async repo => {
+      const original = await this.original(repo, bindingId, reportId, revision, projectId, recordId);
+      if (!original.media.some(m => String(m.id) === mediaId)) fail('construction_not_found', 404);
+      const m = await one(repo.tx, sql`select data,mime_type from app.construction_site_media where enterprise_id=${this.actor.enterpriseId}
+        and project_id=${projectId} and id=${mediaId} and deleted_at is null for share`);
+      if (!m) fail('construction_not_found', 404);
+      return { data: m.data as Buffer, mime: String(m.mime_type) };
     });
   }
   acknowledge(bindingId: string, reportId: string, revision: number, readToken: string, requestKey: string) {

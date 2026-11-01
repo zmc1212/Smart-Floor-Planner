@@ -68,6 +68,19 @@ function validPortfolioContactReceipt(slot, pending, data) {
     && !!mode && data.mode === mode && typeof handoff.requestId === 'string' && !!handoff.requestId.trim();
 }
 
+function validFollowupReceipt(pending, data) {
+  const parts = pending.path.split('/').filter(Boolean), body = pending.body;
+  if (parts[0] !== 'followups') return false;
+  if (parts[1] === 'open') return /^[1-9]\d*$/.test(data.bindingId) && /^[1-9]\d*$/.test(data.conversationId)
+    && Number.isSafeInteger(data.version) && data.version > 0 && ['enabled','stopped','deleted'].includes(data.status);
+  if (parts[2] === 'seen') return data.bindingId === parts[1] && data.throughSequence === body.throughSequence;
+  if (parts[2] === 'reports') return data.reportId === parts[3] && data.revision === body.revision
+    && (parts[4] === 'acknowledge' ? data.read === true : parts[4] === 'retry' && /^[1-9]\d*$/.test(data.runId) && data.status === 'queued');
+  return ['archive','stop','delete','resume'].includes(parts[2]) && data.bindingId === parts[1] && /^[1-9]\d*$/.test(data.conversationId)
+    && data.version === body.expectedVersion + 1 && (parts[2] === 'archive' ? ['enabled','stopped'].includes(data.status)
+      : data.status === { stop: 'stopped', delete: 'deleted', resume: 'enabled' }[parts[2]]);
+}
+
 const COPY = {
   portfolio_not_found: '作品或设计师当前不可用，可以返回原咨询看看其他方向。',
   portfolio_forbidden: '当前身份无法查看这份作品，请切换到业主身份。',
@@ -133,7 +146,7 @@ class AssistantClient {
 
   // Unknown network outcomes retain the original key AND body. A retry can
   // recover the committed result without producing another message or charge.
-  async mutate(slot, path, body = {}, method = 'POST') {
+  async mutate(slot, path, body = {}, method = 'POST', headers = {}) {
     let pending = this.pending.get(slot);
     if (!pending) {
       const key = operationKey();
@@ -142,7 +155,8 @@ class AssistantClient {
       this.pending.set(slot, pending);
     }
     try {
-      const data = await this.read(pending.path, pending.body, { 'Idempotency-Key': pending.key }, pending.method);
+      const data = await this.read(pending.path, pending.body, { ...headers, 'Idempotency-Key': pending.key }, pending.method);
+      if (slot.startsWith('followup:') && !validFollowupReceipt(pending, data)) throw { code: 'invalid_response' };
       if (slot.startsWith('send:') || slot.startsWith('retry:')) {
         if ((!data.runId && !(slot.startsWith('send:') && data.status === 'succeeded' && data.messageId)) || !data.conversationId) throw { code: 'invalid_response' };
       } else if ((slot === 'create' || slot.startsWith('portfolio-create:')) && !data.id) throw { code: 'invalid_response' };

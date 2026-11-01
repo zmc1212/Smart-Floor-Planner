@@ -19,3 +19,12 @@ test('branding access preserves the construction lead, finance, survey and Admin
   assert.equal(constructionRouteAllowed('/api/miniprogram/construction/projects', true), true);
   assert.equal(constructionRouteAllowed('/api/construction/projects', false), true);
 });
+
+test('construction Mini identities reach private followup handlers without ordinary consultation capabilities', () => {
+  for (const route of ['/api/miniprogram/assistant/followups', '/api/miniprogram/assistant/followups/27/reports/98',
+    '/api/miniprogram/assistant/followups/27/seen']) assert.equal(constructionRouteAllowed(route, true), true, route);
+  for (const route of ['/api/miniprogram/assistant/conversations', '/api/miniprogram/assistant/entry-context',
+    '/api/miniprogram/assistant/runs/98', '/api/miniprogram/assistant/citations/98', '/api/miniprogram/assistant/followups-other'])
+    assert.equal(constructionRouteAllowed(route, true), false, route);
+  assert.equal(constructionRouteAllowed('/api/miniprogram/assistant/followups/27', false), false);
+});

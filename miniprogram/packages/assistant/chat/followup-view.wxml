@@ -1,0 +1,75 @@
+<!-- Approved follow-up-v1 02/03/06/07/08/11; original records are data, never screenshot pixels. -->
+<view wx:if="{{followupActive}}" class="followup-thread">
+  <view class="followup-scope">
+    <text class="followup-scope-title">{{followupContext.title || '装修跟进'}}</text>
+    <view class="followup-scope-meta"><text>{{followupContext.audience === 'customer' ? followupContext.projects[0].stageName : '仅自己可见'}}{{followupContext.enterprise.name ? ' · ' + followupContext.enterprise.name : ''}}</text><button bindtap="followupHistory" disabled="{{followupLoading || !followupContext}}">简报记录 ↗</button></view>
+    <text wx:if="{{followupContext.audience !== 'customer' && followupContext}}" class="followup-caption">{{followupContext.projects.length}}{{followupContext.projectsTruncated ? '+' : ''}}个获权工地</text>
+  </view>
+  <view wx:if="{{followupError || followupPending}}" class="followup-feedback" role="alert"><text>{{followupPending ? '上次操作结果正在核对，请先确认结果。' : followupError}}</text><button bindtap="{{followupPending ? 'recoverFollowup' : 'refreshFollowup'}}" disabled="{{followupBusy}}">{{followupPending ? '核对上次操作' : '重新读取'}}</button></view>
+  <scroll-view scroll-y class="followup-scroll" show-scrollbar="{{false}}">
+    <text wx:if="{{followupLoading}}" class="followup-state">正在读取简报与当前权限…</text>
+    <view wx:if="{{followupContext.conversation.mode !== 'ai' && followupContext}}" class="followup-paper followup-human"><text class="fabric-label">小K</text><text class="followup-paper-title">小K已暂停自动回复</text><text class="followup-muted">已保存的简报仍可只读查看。</text></view>
+    <text wx:if="{{!followupLoading && !followupReports.length && !followupError}}" class="followup-state">还没有已保存的简报，有新记录后可在这里回看。</text>
+    <block wx:for="{{followupReports}}" wx:key="reportId" wx:for-item="report">
+      <text class="followup-time">{{report.dateLabel}}</text>
+      <view class="followup-paper followup-card" data-report="{{report.reportId}}"><view class="followup-card-marker" data-report="{{report.reportId}}"></view>
+        <text class="fabric-label">{{report.kindLabel || '已保存的简报'}}</text>
+        <text class="followup-paper-title">{{report.title}}</text>
+        <text class="followup-muted">{{report.available ? report.periodLabel : report.stateLabel}}</text>
+        <block wx:if="{{report.ready}}">
+          <view wx:for="{{report.projects}}" wx:key="id" wx:for-item="project" class="followup-project">
+            <text wx:if="{{followupContext.audience !== 'customer'}}" class="followup-project-name">{{project.name}}</text>
+            <text wx:if="{{project.stageName}}" class="followup-muted">{{project.stageName}}</text>
+            <text wx:for="{{project.highlights}}" wx:key="key" wx:for-item="line" class="followup-line">• {{line.text}}</text>
+            <text wx:if="{{!project.highlights.length}}" class="followup-muted">本期暂无可见记录，未记录不等于未施工。</text>
+            <button wx:if="{{followupContext.audience !== 'customer'}}" class="followup-text-action" data-report="{{report.reportId}}" data-revision="{{report.revision}}" bindtap="readFollowupReport">打开项目简报 ↗</button>
+          </view>
+          <text wx:if="{{report.truncated}}" class="followup-caption">本份简报只包含部分工地。</text>
+          <text wx:if="{{report.factsOnly}}" class="followup-caption">本份仅含现场记录，暂无工艺说明。</text>
+          <view class="followup-actions"><button data-report="{{report.reportId}}" data-revision="{{report.revision}}" bindtap="readFollowupReport">查看完整{{report.kindLabel}}</button><button class="followup-primary" disabled>问这份报告</button></view>
+        </block>
+        <view wx:else class="followup-state">{{report.stateLabel}}</view>
+      </view>
+    </block>
+    <button wx:if="{{followupCursor}}" class="followup-more" bindtap="moreFollowupReports" disabled="{{followupLoading}}">查看更多简报</button>
+  </scroll-view>
+  <view class="followup-composer" style="margin-bottom: {{professionalFollowup ? bottomInset + 12 : 12}}px;"><image src="../assets/microphone.png"/><view class="composer-divider"></view><image src="../assets/image.png"/><text>{{followupContext.conversation.mode !== 'ai' ? '小K已暂停回复，可先查看简报。' : '工艺内容尚未生成，可先查看记录。'}}</text><view class="followup-send"><image src="../assets/arrow-up.png"/></view></view>
+</view>
+
+<view wx:if="{{followupDetail}}" class="followup-layer" catchtouchmove="swallow">
+  <view class="followup-mask" bindtap="closeFollowupReport"></view>
+  <view class="followup-sheet followup-detail-sheet">
+    <view class="followup-grip"></view><button class="followup-close" bindtap="closeFollowupReport" aria-label="关闭报告"><image src="../assets/x.png"/></button>
+    <view class="followup-detail-heading"><text class="followup-detail-title">{{followupDetail.title}}</text><text class="followup-project-name">{{followupContext.title}}</text><text class="followup-muted">{{followupDetail.periodLabel}}</text><text class="followup-muted">{{followupDetail.generatedLabel ? followupDetail.generatedLabel + '保存' : ''}}{{followupDetail.revision > 1 ? ' · 版本' + followupDetail.revision : ''}}</text></view>
+    <scroll-view class="followup-detail-scroll" scroll-y show-scrollbar="{{false}}">
+      <text wx:if="{{!followupDetail.available}}" class="followup-state">来源或权限已变化，这份简报当前不可查看。</text>
+      <block wx:for="{{followupDetail.projects}}" wx:key="id" wx:for-item="project">
+        <text wx:if="{{followupContext.audience !== 'customer'}}" class="followup-detail-project">{{project.name}} · {{project.stageName}}</text>
+        <view class="followup-section"><text class="fabric-label">{{followupDetail.kind === 'weekly' ? '本周记录' : '今日记录'}}</text><text wx:for="{{project.progress}}" wx:key="key" class="followup-line" user-select>{{item.text}}</text><text wx:if="{{!project.progress.length}}" class="followup-line">本期暂无已记录进展，未记录不等于未施工。</text><view class="followup-original-links"><button wx:for="{{project.originalIds}}" wx:key="*this" class="followup-text-action" data-project="{{project.id}}" data-record="{{item}}" bindtap="readFollowupOriginal">查看原记录 {{item}} ↗</button></view><text wx:if="{{project.recordsTruncated}}" class="followup-caption">本项目记录达到读取上限，未包含全部记录。</text></view>
+        <view class="followup-section"><text class="followup-tag">待核对</text><view wx:for="{{project.pending}}" wx:key="key"><text wx:if="{{item.carriedOver}}" class="followup-caption">期前原记录</text><text class="followup-line" user-select>{{item.text}}</text></view><text wx:if="{{!project.pending.length}}" class="followup-line">本期没有可见的待核对记录。</text><text wx:if="{{project.publishedRecordItemsTruncated || project.issuesTruncated}}" class="followup-caption">记录较多，本份简报未包含全部记录。</text></view>
+        <view class="followup-section"><text class="fabric-label">工艺关注</text><text class="followup-line">本份仅含已保存的现场记录，暂无工艺说明。</text></view>
+        <view class="followup-section"><text class="fabric-label">已确认安排</text><text wx:for="{{project.arrangements}}" wx:key="key" class="followup-line" user-select>{{item.text}}</text><text wx:if="{{!project.arrangements.length}}" class="followup-line">本份简报没有可引用的已确认后续安排。</text><text class="followup-caption">同意方案不等于落实、验收或付款。</text></view>
+      </block>
+      <text class="followup-caption followup-footnote">未记录不等于未施工，本日/周报不代替现场验收。</text>
+      <view wx:if="{{followupError || followupPending}}" class="followup-feedback"><text>{{followupPending ? '已阅结果尚未确认。' : followupError}}</text><button wx:if="{{followupPending}}" bindtap="recoverFollowup" disabled="{{followupBusy}}">核对上次操作</button></view>
+    </scroll-view>
+    <button class="followup-detail-ask followup-primary" disabled>问这份报告</button>
+  </view>
+</view>
+
+<view wx:if="{{followupHistoryOpen || followupManageOpen}}" class="followup-layer" catchtouchmove="swallow">
+  <view class="followup-mask" bindtap="{{followupManageOpen ? 'closeFollowupManage' : 'closeFollowupHistory'}}"></view>
+  <view class="followup-sheet"><view class="followup-grip"></view><button class="followup-close" bindtap="{{followupManageOpen ? 'closeFollowupManage' : 'closeFollowupHistory'}}" aria-label="关闭"><image src="../assets/x.png"/></button><text class="followup-detail-title">{{followupManageOpen ? '跟进设置' : '简报记录'}}</text>
+    <scroll-view class="followup-detail-scroll" scroll-y show-scrollbar="{{false}}">
+      <block wx:if="{{followupManageOpen}}">
+        <text class="followup-muted">{{followupContext.title || '选择要查看的跟进'}}</text><text class="followup-caption">仅调整你自己的站内跟进</text>
+        <button wx:for="{{followupBindings}}" wx:key="bindingId" class="followup-setting-row" data-id="{{item.bindingId}}" bindtap="selectFollowup"><text>{{item.title}}</text><text>{{item.status === 'stopped' ? '已停止' : '跟进中'}} ›</text></button>
+        <block wx:if="{{followupContext}}"><text class="fabric-label">会话管理</text><button class="followup-setting-row" data-action="archive" bindtap="changeFollowup" disabled="{{followupBusy || followupPending}}"><view><text>收起会话</text><text class="followup-caption">从列表收起，有新报告时重新显示</text></view><text>›</text></button><button class="followup-setting-row" data-action="{{followupContext.status === 'stopped' ? 'resume' : 'stop'}}" bindtap="changeFollowup" disabled="{{followupBusy || followupPending}}"><view><text>{{followupContext.status === 'stopped' ? '重新开启跟进' : '停止自动跟进'}}</text><text class="followup-caption">工地原记录保留</text></view><text>›</text></button></block>
+      </block>
+      <block wx:else><text class="followup-project-name">{{followupContext.title}}</text><button wx:for="{{followupReports}}" wx:key="reportId" class="followup-history-row" data-report="{{item.reportId}}" data-revision="{{item.revision}}" bindtap="readFollowupReport"><view><text>{{item.title}}</text><text class="followup-caption">{{item.available ? item.stateLabel : '来源或权限已变化'}}</text></view><text>{{item.readAt ? '已读' : '未读'}} ›</text></button><button wx:if="{{followupCursor}}" class="followup-more" bindtap="moreFollowupReports" disabled="{{followupLoading}}">查看更多简报</button></block>
+      <view wx:if="{{followupError || followupPending}}" class="followup-feedback"><text>{{followupPending ? '上次操作结果正在核对。' : followupError}}</text><button wx:if="{{followupPending}}" bindtap="recoverFollowup" disabled="{{followupBusy}}">核对上次操作</button></view>
+    </scroll-view>
+  </view>
+</view>
+
+<view wx:if="{{followupOriginal}}" class="followup-layer followup-original-layer" catchtouchmove="swallow"><view class="followup-mask" bindtap="closeFollowupOriginal"></view><view class="followup-sheet"><view class="followup-grip"></view><button class="followup-close" bindtap="closeFollowupOriginal" aria-label="关闭原记录"><image src="../assets/x.png"/></button><text class="followup-detail-title">工地原记录</text><text class="followup-muted">{{followupOriginal.room}} · 记录{{followupOriginal.id}} · 版本{{followupOriginal.version}}</text><scroll-view scroll-y class="followup-detail-scroll"><text class="followup-paper-title">{{followupOriginal.data.title}}</text><text class="followup-line" user-select>{{followupOriginal.data.completed}}</text><text class="followup-line" user-select>{{followupOriginal.data.pending}}</text><text class="followup-line" user-select>{{followupOriginal.data.coordination}}</text><text class="followup-line" user-select>{{followupOriginal.data.note}}</text><view class="site-record-photos"><image wx:for="{{followupOriginal.media}}" wx:key="id" wx:if="{{followupOriginalPaths[followupOriginal.id + '_' + followupOriginal.version + '_' + item.id]}}" class="message-photo" src="{{followupOriginalPaths[followupOriginal.id + '_' + followupOriginal.version + '_' + item.id]}}" mode="aspectFill" data-media="{{item.id}}" bindtap="previewFollowupOriginal"/></view><text wx:if="{{followupOriginalError}}" class="followup-caption">{{followupOriginalError}}</text></scroll-view></view></view>

@@ -27,7 +27,7 @@ const ROUTE_CAPABILITIES = Object.freeze({
   '/packages/construction/camera/camera': 'construction.projects',
   '/packages/construction/chat/chat': 'construction.projects',
   '/packages/construction/brief/brief': 'construction.projects',
-  '/packages/assistant/chat/chat': 'customer.service',
+  '/packages/assistant/chat/chat': ['customer.service', 'construction.projects', 'enterprise.operations', 'platform.review'],
   '/packages/assistant/requirements/requirements': 'customer.service',
   '/packages/assistant/handoff/handoff': ['customer.service', 'staff.leads', 'enterprise.operations'],
   '/pages/index/index': ['customer.service', 'staff.leads', 'staff.schedule', 'enterprise.operations'],
