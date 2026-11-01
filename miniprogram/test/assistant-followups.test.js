@@ -34,6 +34,22 @@ function fixture() {
   return { client, controller, context, report, calls, emitted, intercept(fn) { intercept = fn; }, identity(value) { session = value; } };
 }
 
+test('approved staff daily card labels retain full detail identity, original facts and non-daily ranges', () => {
+  const f = fixture(), now = Date.parse('2026-11-01T09:00:00+08:00');
+  const worker = reportForView(f.report, { ...f.context, audience: 'worker' }, '', now);
+  const designer = reportForView(f.report, { ...f.context, audience: 'designer' }, '', now);
+  assert.equal(worker.cardLabel, '我的施工日报'); assert.equal(worker.cardTitle, '今天的施工跟进');
+  assert.equal(designer.cardLabel, '我的项目日报'); assert.equal(designer.cardTitle, '今天需要你核对的事');
+  assert.equal(worker.cardPeriodLabel, '11月1日 · 截至20:00');
+  assert.equal(worker.title, '11月1日 · 施工日报'); assert.equal(worker.factsOnly, true);
+  assert.deepEqual(worker.projects, reportForView(f.report, f.context).projects);
+  assert.equal(reportForView(f.report, f.context).cardTitle, '');
+  assert.equal(reportForView({ ...f.report, cutoffAt: '2026-11-02T01:00:00+08:00' }, { ...f.context, audience: 'worker' }).cardPeriodLabel, '');
+  assert.equal(reportForView({ ...f.report, kind: 'weekly' }, { ...f.context, audience: 'designer' }).cardTitle, '');
+  assert.equal(reportForView(f.report, { ...f.context, audience: 'worker' }, '', now + 86400000).cardTitle, '11月1日的施工跟进');
+  assert.equal(reportForView({ reportId: '98', revision: 1, available: false }, { ...f.context, audience: 'worker' }).cardLabel, undefined);
+});
+
 test('listing and selecting never acknowledge reports or change ordinary draft/destination', async () => {
   const f = fixture(); await f.controller.show(); await f.controller.select('27');
   assert.ok(f.calls.every(c => c.method === 'GET'));

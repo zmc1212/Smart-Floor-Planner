@@ -1,9 +1,9 @@
 <!-- Approved follow-up-v1 02/03/06/07/08/11; original records are data, never screenshot pixels. -->
 <import src="./report-question.wxml" />
-<view wx:if="{{followupActive}}" class="followup-thread">
+<view wx:if="{{followupActive}}" class="followup-thread followup-role-{{followupContext.audience}}">
   <view class="followup-scope">
     <text class="followup-scope-title">{{followupContext.title || (followupPlatform ? '企业工地简报' : '装修跟进')}}</text>
-    <view class="followup-scope-meta"><button wx:if="{{followupPlatform}}" class="followup-enterprise-choice" bindtap="openFollowupEnterprise" disabled="{{followupBusy || followupPending || followupEnterpriseBusy}}">{{followupContext.enterprise.name || followupEnterpriseName || '选择企业'}}⌄ · 仅自己可见</button><text wx:else>{{followupContext.audience === 'customer' ? followupContext.projects[0].stageName : '仅自己可见'}}{{followupContext.enterprise.name ? ' · ' + followupContext.enterprise.name : ''}}</text><button bindtap="followupHistory" disabled="{{followupLoading || !followupContext}}">简报记录 ↗</button></view>
+    <view class="followup-scope-meta"><button wx:if="{{followupPlatform}}" class="followup-enterprise-choice" bindtap="openFollowupEnterprise" disabled="{{followupBusy || followupPending || followupEnterpriseBusy}}">{{followupContext.enterprise.name || followupEnterpriseName || '选择企业'}}⌄ · 仅自己可见</button><text wx:elif="{{followupContext.audience === 'worker' || followupContext.audience === 'designer'}}">{{followupContext.enterprise.name ? followupContext.enterprise.name + ' · ' : ''}}仅自己可见</text><text wx:else>{{followupContext.audience === 'customer' ? followupContext.projects[0].stageName : '仅自己可见'}}{{followupContext.enterprise.name ? ' · ' + followupContext.enterprise.name : ''}}</text><button bindtap="followupHistory" disabled="{{followupLoading || !followupContext}}">简报记录 ↗</button></view>
     <text wx:if="{{followupContext.audience !== 'customer' && followupContext}}" class="followup-caption">{{followupContext.projects.length}}{{followupContext.projectsTruncated ? '+' : ''}}个获权工地</text>
   </view>
   <view wx:if="{{followupError || followupPending}}" class="followup-feedback" role="alert"><text>{{followupPending ? '上次操作结果正在核对，请先确认结果。' : followupError}}</text><button bindtap="{{followupPending ? 'recoverFollowup' : 'refreshFollowup'}}" disabled="{{followupBusy}}">{{followupPending ? '核对上次操作' : '重新读取'}}</button></view>
@@ -16,9 +16,9 @@
     <block wx:for="{{followupReports}}" wx:key="reportId" wx:for-item="report"><block wx:if="{{report.deliveryState !== 'muted' && !reportQuestion.selected}}">
       <text class="followup-time">{{report.dateLabel}}</text>
       <view class="followup-paper followup-card" data-report="{{report.reportId}}"><view class="followup-card-marker" data-report="{{report.reportId}}"></view>
-        <text class="fabric-label">{{followupChat.reception ? '已保存的简报' : report.kindLabel || '已保存的简报'}}</text>
-        <text class="followup-paper-title">{{followupChat.reception ? report.takeoverTitle : report.title}}</text>
-        <text class="followup-muted">{{report.available ? followupChat.reception ? '接待期间也可查看报告' : report.periodLabel : report.stateLabel}}</text>
+        <text class="fabric-label">{{followupChat.reception ? '已保存的简报' : report.cardLabel || report.kindLabel || '已保存的简报'}}</text>
+        <text class="followup-paper-title">{{followupChat.reception ? report.takeoverTitle : report.cardTitle || report.title}}</text>
+        <text class="followup-muted">{{report.available ? followupChat.reception ? '接待期间也可查看报告' : report.cardPeriodLabel || report.periodLabel : report.stateLabel}}</text>
         <block wx:if="{{report.ready}}">
           <view wx:if="{{!followupChat.reception}}" wx:for="{{report.projects}}" wx:key="id" wx:for-item="project" class="followup-project">
             <text wx:if="{{followupContext.audience !== 'customer'}}" class="followup-project-name">{{project.name}}</text>
@@ -29,7 +29,7 @@
           </view>
           <text wx:if="{{report.truncated}}" class="followup-caption">本份简报只包含部分工地。</text>
           <text wx:if="{{report.factsOnly && !followupChat.reception}}" class="followup-caption">本份仅含现场记录，暂无工艺说明。</text>
-          <view class="followup-actions"><button data-report="{{report.reportId}}" data-revision="{{report.revision}}" bindtap="readFollowupReport">查看完整{{report.kindLabel}}</button><button class="followup-primary" data-report="{{report.reportId}}" data-revision="{{report.revision}}" bindtap="askFollowupReport" disabled="{{followupChat.reception || reportQuestion.disabled || reportQuestion.busy || reportQuestion.pending}}">{{followupContext.audience === 'customer' ? '问这份报告' : '选工地追问'}}</button></view>
+          <view class="followup-actions"><button class="followup-card-action" data-report="{{report.reportId}}" data-revision="{{report.revision}}" bindtap="readFollowupReport">查看完整{{report.kindLabel}}</button><button class="followup-card-action followup-primary" data-report="{{report.reportId}}" data-revision="{{report.revision}}" bindtap="askFollowupReport" disabled="{{followupChat.reception || reportQuestion.disabled || reportQuestion.busy || reportQuestion.pending}}">{{followupContext.audience === 'customer' ? '问这份报告' : '选工地追问'}}</button></view>
           <text wx:if="{{followupChat.reception}}" class="followup-caption">结束人工接待后，可继续问小K。</text>
         </block>
         <view wx:else class="followup-state">{{report.stateLabel}}</view>

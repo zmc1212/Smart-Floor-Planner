@@ -10,8 +10,10 @@ const { randomUUID } = require('node:crypto');
 module.exports = async ctx => {
   const { root, owner, site, pid, recordId, read, step, report, save } = ctx, eid = '1454';
   const multiProject = process.argv.includes('--staff-multi-project');
+  const visualOnly = process.argv.includes('--staff-visual');
   const pendingOnly = process.argv.includes('--staff-pending-native');
   assert.ok(!pendingOnly || multiProject);
+  assert.ok(!visualOnly || multiProject && !pendingOnly);
   const nativeRemainder = process.argv.includes('--staff-native-remainder') || multiProject;
   assert.ok(!nativeRemainder || process.argv.includes('--staff-native'));
   const req = createRequire(path.join(root, 'admin/package.json')), { sql } = req('drizzle-orm');
@@ -41,6 +43,9 @@ module.exports = async ctx => {
     : result.scope;
   if (multiProject) report.scope = result.scope = 'V1-02 two-project worker/designer/boss exact drill-down and persisted report selection only; no new model or source/citation acceptance';
   if (pendingOnly) report.scope = result.scope = 'V1-02 staff original pending notes projection only; reuse native01 selection/identity/reentry evidence, no model calls';
+  if (visualOnly) report.scope = result.scope = 'Approved06/07 root daily-card visual components only; two signed recipients and fresh two-project reports are fixture preparation, previous service/navigation/revocation evidence reused';
+  if (visualOnly) result.reuse = { service: 'tmp/v1-02-staff-followup/service-01/report.json',
+    navigation: 'tmp/v1-02-project-drilldown/verification.json', scope: 'Only two-recipient root-card/long-name native components are newly checked; no selected-context, source/run, quota or revocation replay.' };
   const sign = a => new SignJWT({ sub: a.uid, id: a.uid, mode: 'staff', role: a.role, staffId: a.aid, enterpriseId: eid,
     contextVersion: a.actor.contextVersion, source: 'password' }).setProtectedHeader({ alg: 'HS256' })
     .setSubject(a.uid).setIssuedAt().setAudience('miniprogram').setExpirationTime('1h').sign(new TextEncoder().encode(process.env.JWT_SECRET));
@@ -53,7 +58,7 @@ module.exports = async ctx => {
   };
   try {
     if (multiProject) await step('fresh second utilities project and distinct published fact', async () => {
-      const created = await owner.execute('create', { leadId: '3143', name: '合成测试·镜前灯待核对', managerId: '5410', rooms: ['卫生间'] }, randomUUID());
+      const created = await owner.execute('create', { leadId: '3143', name: visualOnly ? '合成测试·江湾三期东区十六栋二单元镜前灯施工工地' : '合成测试·镜前灯待核对', managerId: '5410', rooms: ['卫生间'] }, randomUUID());
       secondaryProject = String(created.id); projectIds.push(secondaryProject);
       result.secondary = { projectId: secondaryProject }; report.staffFixture = result; save();
       let detail = await owner.execute('detail', { projectId: secondaryProject });
@@ -74,8 +79,8 @@ module.exports = async ctx => {
       await site.mutate(secondaryProject, secondaryOriginal, 'publish', { expectedVersion: Number(edited.version), audience: 'customer' }, randomUUID());
       return { projectIds, recordIds: [recordId, secondaryOriginal], noModel: true };
     });
-    await step(pendingOnly ? 'fresh signed worker for original-note projection' : multiProject ? 'fresh worker/designer/boss signed identities for two-project drill-down' : nativeRemainder ? 'fresh worker/designer signed identities for native remainder' : 'staff recipients and five real signed Mini identities; original private controls preserved', async () => {
-      for (const role of pendingOnly ? ['construction_staff'] : multiProject ? ['construction_staff','designer','enterprise_admin'] : nativeRemainder ? ['construction_staff','designer'] : ['construction_staff','designer','enterprise_admin','admin','super_admin']) {
+    await step(visualOnly ? 'fresh signed worker/designer for approved root-card components' : pendingOnly ? 'fresh signed worker for original-note projection' : multiProject ? 'fresh worker/designer/boss signed identities for two-project drill-down' : nativeRemainder ? 'fresh worker/designer signed identities for native remainder' : 'staff recipients and five real signed Mini identities; original private controls preserved', async () => {
+      for (const role of pendingOnly ? ['construction_staff'] : visualOnly ? ['construction_staff','designer'] : multiProject ? ['construction_staff','designer','enterprise_admin'] : nativeRemainder ? ['construction_staff','designer'] : ['construction_staff','designer','enterprise_admin','admin','super_admin']) {
         const a = await withPlatformTransaction(async tx => {
           const repo = new AdminUserRepository(tx), staff = await repo.create({ enterpriseId: BigInt(eid), username: prefix + ':' + role,
             displayName: '合成测试·私人跟进·' + role, passwordHash: 'unusable-local-fixture', role, status: 'active', mustChangePassword: false });
@@ -100,7 +105,7 @@ module.exports = async ctx => {
       }
       return { roles: actors.map(a => a.role), newRecipientReason: 'retained owner/private controls remain stopped or human; no rebinding' };
     });
-    await step(nativeRemainder ? 'fresh fact reports, selected references and source protocol fixtures for native remainder' : 'staff original reports save, exact selection/readback and quota rejection roll back sends', async () => {
+    await step(visualOnly ? 'fresh actual two-project fact reports; no question/source/run fixtures' : nativeRemainder ? 'fresh fact reports, selected references and source protocol fixtures for native remainder' : 'staff original reports save, exact selection/readback and quota rejection roll back sends', async () => {
       const plan = new ConstructionReportService(owner.actor), p = reportPlanDto(await plan.settings(), eid);
       await plan.configure({ expectedVersion: p.version, enabled: true, stageEnabled: false, projectIds, stageKeys: [],
         audiences: ['customer','worker','designer','boss'], dailyTime: p.dailyTime, weeklyTime: p.weeklyTime, weeklyDay: p.weeklyDay, inactivePolicy: p.inactivePolicy }, randomUUID());
@@ -116,6 +121,7 @@ module.exports = async ctx => {
         const base = '/followups/' + a.bid + '/conversation', detail = await http(a, '/followups/' + a.bid + '/reports/' + a.rid);
         assert.ok(detail.available && detail.facts.projects.some(p => p.id === pid && p.records.some(r => r.id === recordId)));
         if (multiProject) assert.deepEqual(detail.facts.projects.map(p => p.id), projectIds);
+        if (!visualOnly) {
         const body = { expectedVersion: 0, selection: { bindingId: a.bid, reportId: a.rid, revision: 1, projectId: pid } }, requestKey = randomUUID();
         a.selection = await http(a, base + '/report-context', body, requestKey);
         assert.deepEqual(await http(a, base + '/report-context', body, requestKey), a.selection);
@@ -123,6 +129,7 @@ module.exports = async ctx => {
         const state = await http(a, base); assert.equal(state.reportContext.selected.reportId, a.rid); assert.equal(state.previewScope, undefined);
         const context = await read(async tx => knowledgeContext(tx, a.actor, await one(tx, sql`select * from app.assistant_conversations where enterprise_id=${eid} and id=${a.cid}`)));
         assert.equal(context.projectId, pid); assert.equal(context.stage, 'utilities');
+        }
         if (!nativeRemainder) {
         const sendKey = randomUUID(), error = await http(a, base + '/messages', { clientMessageId: sendKey,
           content: { version: 1, reportContextVersion: a.selection.version, blocks: [{ type: 'text', text: '厨房这个点位还需要核对什么？' }] } }, sendKey, 429);
@@ -158,7 +165,7 @@ module.exports = async ctx => {
         }
         Object.assign(result.actors.find(r => r.aid === a.aid), { rid: a.rid, protocol: a.protocol }); save();
       }
-      return { normalSend: nativeRemainder ? 'Deferred to the one real native quota-feedback check; no fixture sends'
+      return { normalSend: visualOnly ? 'Not attempted; prior quota/recovery evidence reused' : nativeRemainder ? 'Deferred to the one real native quota-feedback check; no fixture sends'
         : 'blocked_by_inherited_quota; zero committed sends/dispatches', roles: actors.length, originalSnapshotAndPublishedSource: true };
     });
     if (!nativeRemainder) await step('private owner, selected tenant, reception and ordinary-preview boundaries', async () => {

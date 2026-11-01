@@ -29,13 +29,18 @@ function projectForView(p, context) {
   return { ...p, stageName: stage && stage.name || '', records, progress, pending, arrangements,
     highlights: [...progress, ...pending].slice(0, 2), originalIds: [...new Set([...records.map(r => r.id), ...(published || []).map(r => r.recordId)])] };
 }
-function reportForView(report, context, projectId = '') {
+function reportForView(report, context, projectId = '', now = Date.now()) {
   const selected = projectId && report.facts?.projects?.find(p => p.id === projectId);
   if (!report.available || projectId && !selected) return { reportId: report.reportId, revision: report.revision, selectedProjectId: projectId, available: false, title: '这份简报已不可用', stateLabel: '来源或权限已变化' };
   if (projectId) report = { ...report, selectedProjectId: projectId, facts: { ...report.facts, projects: [selected] } };
   const kindLabel = { daily: '施工日报', weekly: '施工周报', stage: '阶段提醒' }[report.kind] || '施工简报';
   const projects = (report.facts && report.facts.projects || []).map(p => projectForView(p, context));
+  const staffDaily = report.kind === 'daily' && ['worker','designer'].includes(context && context.audience);
+  const day = Math.floor((new Date(report.periodStart).getTime() + 28800000) / 86400000) === Math.floor((now + 28800000) / 86400000) ? '今天' : dateLabel(report.periodStart);
   return { ...report, projects, kindLabel, takeoverTitle: dateLabel(report.periodStart) + kindLabel, title: dateLabel(report.periodStart) + ' · ' + kindLabel,
+    cardLabel: staffDaily ? context.audience === 'worker' ? '我的施工日报' : '我的项目日报' : kindLabel,
+    cardTitle: staffDaily ? day + (context.audience === 'worker' ? '的施工跟进' : '需要你核对的事') : '',
+    cardPeriodLabel: staffDaily && dateLabel(report.periodStart) === dateLabel(report.cutoffAt) ? dateLabel(report.periodStart) + ' · 截至' + dateLabel(report.cutoffAt, true).split(' ')[1] : '',
     periodLabel: dateLabel(report.periodStart, true) + '—' + dateLabel(report.periodEnd, true), cutoffLabel: dateLabel(report.cutoffAt, true),
     generatedLabel: dateLabel(report.generatedAt, true), dateLabel: dateLabel(report.generatedAt || report.scheduledAt, true),
     stateLabel: report.state === 'facts_ready' ? '现场记录已保存' : ({ queued: '正在读取现场记录…', running: '正在读取现场记录…', failed: '这次简报未完成', indeterminate: '结果正在核对', cancelled: '这次简报已停止' }[report.state] || '正在核对结果'),
