@@ -25,7 +25,7 @@
             <text wx:if="{{project.stageName}}" class="followup-muted">{{project.stageName}}</text>
             <text wx:for="{{project.highlights}}" wx:key="key" wx:for-item="line" class="followup-line">• {{line.text}}</text>
             <text wx:if="{{!project.highlights.length}}" class="followup-muted">本期暂无可见记录，未记录不等于未施工。</text>
-            <button wx:if="{{followupContext.audience !== 'customer'}}" class="followup-text-action" data-report="{{report.reportId}}" data-revision="{{report.revision}}" bindtap="readFollowupReport">打开项目简报 ↗</button>
+            <button wx:if="{{followupContext.audience !== 'customer'}}" class="followup-text-action" data-report="{{report.reportId}}" data-revision="{{report.revision}}" data-project="{{project.id}}" bindtap="readFollowupReport">打开项目简报 ↗</button>
           </view>
           <text wx:if="{{report.truncated}}" class="followup-caption">本份简报只包含部分工地。</text>
           <text wx:if="{{report.factsOnly && !followupChat.reception}}" class="followup-caption">本份仅含现场记录，暂无工艺说明。</text>

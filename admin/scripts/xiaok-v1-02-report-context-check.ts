@@ -51,6 +51,9 @@ if (adapterScript) {
   if (process.argv.includes('--staff-native')) sourceFiles.push('tmp/v1-02-staff-followup/native.cjs',
     'design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/follow-up-v1/06-worker-follow-up-v001.png',
     'design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/follow-up-v1/07-designer-follow-up-v002.png');
+  const staffNativeScript = process.argv.find(a => a.startsWith('--staff-native-script='))?.slice(22);
+  if (staffNativeScript) sourceFiles.push(path.resolve(staffNativeScript),
+    'design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/follow-up-v1/08-boss-weekly-digest-v003.png');
 }
 const bind = () => Object.fromEntries(sourceFiles.sort().map(f => [f.replaceAll('\\','/'), createHash('sha256').update(fs.readFileSync(path.isAbsolute(f) ? f : path.join(root,f))).digest('hex')]));
 const before = bind();

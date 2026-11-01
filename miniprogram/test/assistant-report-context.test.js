@@ -1,7 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { AssistantClient } = require('../utils/assistant-client');
-const { ReportQuestionController } = require('../packages/assistant/lib/report-context');
+const { ReportQuestionController, reportQuestionMethods } = require('../packages/assistant/lib/report-context');
 const { ChatController } = require('../packages/assistant/lib/chat');
 const { FollowupChat } = require('../utils/assistant-followup-chat');
 
@@ -30,6 +30,11 @@ test('select/remove is per conversation, retains draft and has no send or delive
   assert.equal(f.q.state.title, '11月1日日报 · 合成工地'); assert.equal(f.chat.state.draft, '原草稿不要丢');
   await f.q.select(null); assert.equal(f.chat.state.draft, '原草稿不要丢'); assert.equal(f.q.state.selected, null);
   assert.ok(f.calls.every(c => c.url.endsWith('/report-context')));
+});
+test('viewing a persisted report reference reopens its exact selected project', () => {
+  const calls = [], selected = { bindingId: '81', reportId: '20', revision: 1, projectId: '2' };
+  reportQuestionMethods.viewReportQuestion.call({ data: { reportQuestion: { selected } }, followups: { readReport(...args) { calls.push(args); } } });
+  assert.deepEqual(calls, [['20', 1, '81', '2']]);
 });
 
 test('staff topic availability is independent from selecting or removing the current report', async () => {

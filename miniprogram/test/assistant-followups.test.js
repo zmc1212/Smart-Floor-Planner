@@ -102,6 +102,37 @@ test('unavailable projections retain no private project title or field', () => {
   const result = reportForView({ available: false, reportId: '98', revision: 1, facts: { projects: [{ name: 'PRIVATE' }] } });
   assert.ok(!JSON.stringify(result).includes('PRIVATE'));
 });
+test('project drill-down keeps the second project through refresh and full-report viewing resets the scope', async () => {
+  const f = fixture(); f.context.audience = 'designer';
+  f.report.facts.projects.push({ id: '249', name: '合成测试·另一工地', stageKey: 'water',
+    records: [{ id: '13', version: 1, data: { completed: '镜前灯电源位置尚待核对' } }] });
+  await f.controller.show(); await f.controller.select('27'); await f.controller.readReport('98', 1, '27', '249');
+  assert.deepEqual(f.controller.state.followupDetail.projects.map(p => p.id), ['249']);
+  assert.deepEqual(f.controller.state.followupDetail.facts.projects.map(p => p.id), ['249']);
+  await f.controller.sync(); assert.equal(f.controller.state.followupDetail.selectedProjectId, '249');
+  assert.deepEqual(f.controller.state.followupDetail.projects.map(p => p.id), ['249']);
+  assert.equal(f.controller.state.followupDetail.bindingId, '27');
+  await f.controller.renderedReport(); assert.ok(f.report.readAt);
+  await f.controller.readReport('98', 1); assert.equal(f.controller.state.followupDetail.projects.length, 2); f.controller.hide();
+});
+test('a missing or revoked selected project never falls back to another authorized project on refresh', async () => {
+  const f = fixture(); await f.controller.show(); await f.controller.select('27');
+  await f.controller.readReport('98', 1, '27', 'OTHER');
+  assert.equal(f.controller.state.followupDetail.available, false);
+  assert.ok(!JSON.stringify(f.controller.state.followupDetail).includes('底盒位置'));
+  await f.controller.sync(); assert.equal(f.controller.state.followupDetail.available, false);
+  assert.equal(f.controller.state.followupDetail.selectedProjectId, 'OTHER'); f.controller.hide();
+});
+test('staff report shows original pending notes without formal issues, while formal tracking and customer publication remain authoritative', () => {
+  const project = { id: '249', name: '合成工地', records: [{ id: '13', version: 1,
+    data: { completed: '卫生间线路走向已有记录', pending: '镜前灯电源位置待核对', coordination: '位置确认前不要施工' } }], issues: [] };
+  const report = { available: true, state: 'facts_ready', facts: { projects: [project] } };
+  assert.deepEqual(reportForView(report).projects[0].pending.map(p => p.text), ['镜前灯电源位置待核对', '位置确认前不要施工']);
+  const tracked = { ...report, facts: { projects: [{ ...project, issues: [{ id: 'issue-1', recordId: '13', text: '原事项的当前记录' }] }] } };
+  assert.deepEqual(reportForView(tracked).projects[0].pending.map(p => p.text), ['原事项的当前记录']);
+  const customer = { ...report, facts: { projects: [{ ...project, publishedRecordItems: [] }] } };
+  assert.deepEqual(reportForView(customer).projects[0].pending, []);
+});
 test('unknown generation time stays unknown instead of displaying a fabricated epoch date', () => {
   assert.equal(dateLabel(null), ''); assert.equal(dateLabel(undefined), ''); assert.equal(dateLabel(''), '');
 });

@@ -64,6 +64,6 @@ const reportQuestionMethods = {
   removeReportQuestion() { return this.reportQuestions.select(null); },
   recoverReportQuestion() { return this.reportQuestions.recover(); },
   newReportTopic() { return this.reportQuestions.topic(); },
-  viewReportQuestion() { const s = this.data.reportQuestion.selected; if (s) return this.followups.readReport(s.reportId, s.revision, s.bindingId); },
+  viewReportQuestion() { const s = this.data.reportQuestion.selected; if (s) return this.followups.readReport(s.reportId, s.revision, s.bindingId, s.projectId); },
 };
 module.exports = { ReportQuestionController, reportQuestionMethods, emptyReportQuestion, reportQuestionView };

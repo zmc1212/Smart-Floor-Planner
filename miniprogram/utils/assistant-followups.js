@@ -21,13 +21,18 @@ function projectForView(p, context) {
   const published = p.publishedRecordItems;
   const pending = published ? published.flatMap(r => ['pending','coordination'].filter(k => r[k]).map(k => ({ key: r.recordId + ':' + k,
     recordId: r.recordId, text: r[k], carriedOver: r.carriedOver }))) : (p.issues || []).map(i => ({ key: i.id, text: i.text, carriedOver: i.carriedOver }));
-  if (!published && !p.issues) for (const r of records) for (const field of ['pending','coordination']) if (r.data[field]) pending.push({ key: r.key + ':' + field, text: r.data[field] });
+  if (!published) for (const r of records) {
+    if ((p.issues || []).some(i => i.recordId === r.id)) continue;
+    for (const field of ['pending','coordination']) if (r.data[field]) pending.push({ key: r.key + ':' + field, recordId: r.id, text: r.data[field] });
+  }
   const arrangements = (p.arrangements || []).map(a => ({ key: a.id, text: `${a.title}\n${a.difference}`, carriedOver: a.carriedOver }));
   return { ...p, stageName: stage && stage.name || '', records, progress, pending, arrangements,
     highlights: [...progress, ...pending].slice(0, 2), originalIds: [...new Set([...records.map(r => r.id), ...(published || []).map(r => r.recordId)])] };
 }
-function reportForView(report, context) {
-  if (!report.available) return { reportId: report.reportId, revision: report.revision, available: false, title: '这份简报已不可用', stateLabel: '来源或权限已变化' };
+function reportForView(report, context, projectId = '') {
+  const selected = projectId && report.facts?.projects?.find(p => p.id === projectId);
+  if (!report.available || projectId && !selected) return { reportId: report.reportId, revision: report.revision, selectedProjectId: projectId, available: false, title: '这份简报已不可用', stateLabel: '来源或权限已变化' };
+  if (projectId) report = { ...report, selectedProjectId: projectId, facts: { ...report.facts, projects: [selected] } };
   const kindLabel = { daily: '施工日报', weekly: '施工周报', stage: '阶段提醒' }[report.kind] || '施工简报';
   const projects = (report.facts && report.facts.projects || []).map(p => projectForView(p, context));
   return { ...report, projects, kindLabel, takeoverTitle: dateLabel(report.periodStart) + kindLabel, title: dateLabel(report.periodStart) + ' · ' + kindLabel,
@@ -125,7 +130,8 @@ class FollowupController {
       const old = this.state.followupDetail;
       if (old) {
         const latest = await this.client.read(`${BASE}/${bid}/reports/${old.reportId}`, { revision: old.revision }, headers);
-        if (this.current(epoch) && this.state.followupDetail === old) this.set({ followupDetail: reportForView(latest, context), ...(!latest.available ? { followupOriginal: null } : {}) });
+        const detail = reportForView(latest, context, old.selectedProjectId);
+        if (this.current(epoch) && this.state.followupDetail === old) this.set({ followupDetail: { ...detail, sourceContext: context, bindingId: bid }, ...(!detail.available ? { followupOriginal: null } : {}) });
       }
       if (this.current(epoch) && this.state.followupHistoryOpen) await this.loadHistory({ background: true });
     } catch (e) { if (this.current(epoch)) this.failure(e); }
@@ -176,14 +182,14 @@ class FollowupController {
     } catch (e) { if (this.current(epoch)) this.failure(e); }
     finally { if (this.current(epoch)) this.set({ followupLoading: false }); }
   }
-  async readReport(reportId, revision, bindingId = this.selected) {
+  async readReport(reportId, revision, bindingId = this.selected, projectId = '') {
     if (!this.current() || this.state.followupBusy || this.state.followupPending) return;
     const epoch = this.epoch, bid = bindingId, ticket = this.detailTicket = (this.detailTicket || 0) + 1;
     this.set({ followupLoading: true, followupDetail: null, followupOriginal: null, followupError: '' });
     try {
       const report = await this.client.read(`${BASE}/${bid}/reports/${reportId}`, revision ? { revision } : {}, await this.headers());
       const context = bid === this.selected && this.state.followupContext || await this.client.read(`${BASE}/${bid}`, {}, await this.headers());
-      if (this.current(epoch) && ticket === this.detailTicket) this.set({ followupDetail: { ...reportForView(report, context), sourceContext: context, bindingId: bid } });
+      if (this.current(epoch) && ticket === this.detailTicket) this.set({ followupDetail: { ...reportForView(report, context, projectId), sourceContext: context, bindingId: bid } });
     } catch (e) { if (this.current(epoch)) this.failure(e); }
     finally { if (this.current(epoch)) this.set({ followupLoading: false }); }
   }

@@ -9,7 +9,10 @@ const { randomUUID } = require('node:crypto');
 
 module.exports = async ctx => {
   const { root, owner, site, pid, recordId, read, step, report, save } = ctx, eid = '1454';
-  const nativeRemainder = process.argv.includes('--staff-native-remainder');
+  const multiProject = process.argv.includes('--staff-multi-project');
+  const pendingOnly = process.argv.includes('--staff-pending-native');
+  assert.ok(!pendingOnly || multiProject);
+  const nativeRemainder = process.argv.includes('--staff-native-remainder') || multiProject;
   assert.ok(!nativeRemainder || process.argv.includes('--staff-native'));
   const req = createRequire(path.join(root, 'admin/package.json')), { sql } = req('drizzle-orm');
   const { withPlatformTransaction } = req('./src/db/transaction.ts');
@@ -18,6 +21,7 @@ module.exports = async ctx => {
   const { UserRepository } = req('./src/db/repositories/user-repository.ts');
   const { MiniProgramIdentityRepository } = req('./src/db/repositories/miniprogram-identity-repository.ts');
   const { ReportContextService } = req('./src/lib/construction/report-context.ts');
+  const { recordVersion } = req('./src/lib/construction/site-chat.ts');
   const { ConstructionReportService, reportPlanDto } = req('./src/lib/construction/report-service.ts');
   const { enqueueReport } = req('./src/lib/construction/report-store.ts');
   const { claimJob } = req('./src/lib/assistant/infrastructure/job-queue.ts');
@@ -28,12 +32,15 @@ module.exports = async ctx => {
   const { knowledgeContext } = req('./src/lib/assistant/knowledge/applicability-context.ts');
   const { SignJWT } = req('jose');
   const actors = [], ownedRuns = [], prefix = 'synthetic-v1-02-staff-' + randomUUID().slice(0, 8);
+  const projectIds = [pid]; let secondaryProject = '', secondaryOriginal = '';
   const result = { scope: 'staff06/07 owner-only report/source protocol; no normal-model or complete stage acceptance', actors: [], cleanup: false };
   if (nativeRemainder) result.reuse = { service: 'tmp/v1-02-staff-followup/service-01/report.json',
     nativePrefix: 'tmp/v1-02-staff-followup/native-02/native.json',
     scope: 'Fresh worker/designer fixtures only; prior five-role guards and worker original-key assertions are not replayed.' };
   report.scope = nativeRemainder ? 'Staff06/07 native remainder: real quota feedback, source HTTP503 retry and designer persisted reentry; fixture preparation only, no model acceptance'
     : result.scope;
+  if (multiProject) report.scope = result.scope = 'V1-02 two-project worker/designer/boss exact drill-down and persisted report selection only; no new model or source/citation acceptance';
+  if (pendingOnly) report.scope = result.scope = 'V1-02 staff original pending notes projection only; reuse native01 selection/identity/reentry evidence, no model calls';
   const sign = a => new SignJWT({ sub: a.uid, id: a.uid, mode: 'staff', role: a.role, staffId: a.aid, enterpriseId: eid,
     contextVersion: a.actor.contextVersion, source: 'password' }).setProtectedHeader({ alg: 'HS256' })
     .setSubject(a.uid).setIssuedAt().setAudience('miniprogram').setExpirationTime('1h').sign(new TextEncoder().encode(process.env.JWT_SECRET));
@@ -45,8 +52,30 @@ module.exports = async ctx => {
     return expected === 200 ? data.data : data;
   };
   try {
-    await step(nativeRemainder ? 'fresh worker/designer signed identities for native remainder' : 'staff recipients and five real signed Mini identities; original private controls preserved', async () => {
-      for (const role of nativeRemainder ? ['construction_staff','designer'] : ['construction_staff','designer','enterprise_admin','admin','super_admin']) {
+    if (multiProject) await step('fresh second utilities project and distinct published fact', async () => {
+      const created = await owner.execute('create', { leadId: '3143', name: '合成测试·镜前灯待核对', managerId: '5410', rooms: ['卫生间'] }, randomUUID());
+      secondaryProject = String(created.id); projectIds.push(secondaryProject);
+      result.secondary = { projectId: secondaryProject }; report.staffFixture = result; save();
+      let detail = await owner.execute('detail', { projectId: secondaryProject });
+      await owner.execute('update', { projectId: secondaryProject, expectedVersion: detail.project.version, name: detail.project.name, status: 'active', customerAccess: true }, randomUUID());
+      detail = await owner.execute('detail', { projectId: secondaryProject });
+      await owner.execute('progress', { projectId: secondaryProject, expectedVersion: detail.project.version, stageKey: 'utilities', note: '合成测试·镜前灯电源待核对', sendReminder: false }, randomUUID());
+      const data = { title: '合成测试·卫生间记录', roomId: String(detail.rooms[0].id), completed: '卫生间线路走向已有记录',
+        pending: '镜前灯电源位置待设计师核对', coordination: '位置确认前不要施工', note: '合成测试资料' };
+      const original = await site.withWriteScope(secondaryProject, async (tx, c) => {
+        const source = await appendMessage(tx, site.actor, String(c.id), { author: 'admin', clientMessageId: randomUUID(), purpose: 'site.source',
+          content: { version: 1, blocks: [{ type: 'text', text: '卫生间镜前灯的电源位置还没定，需要设计师再核对。' }] } });
+        const row = await one(tx, sql`insert into app.construction_site_records(enterprise_id,project_id,conversation_id,source_message_id,author_id,status,data)
+          values(${eid},${secondaryProject},${String(c.id)},${String(source.id)},5410,'draft',${JSON.stringify(data)}::jsonb) returning *`);
+        await recordVersion(tx, eid, row, '5410', 'organized'); return row;
+      });
+      secondaryOriginal = String(original.id); result.secondary.recordId = secondaryOriginal; save();
+      const edited = await site.mutate(secondaryProject, secondaryOriginal, 'edit', { expectedVersion: Number(original.version), data }, randomUUID());
+      await site.mutate(secondaryProject, secondaryOriginal, 'publish', { expectedVersion: Number(edited.version), audience: 'customer' }, randomUUID());
+      return { projectIds, recordIds: [recordId, secondaryOriginal], noModel: true };
+    });
+    await step(pendingOnly ? 'fresh signed worker for original-note projection' : multiProject ? 'fresh worker/designer/boss signed identities for two-project drill-down' : nativeRemainder ? 'fresh worker/designer signed identities for native remainder' : 'staff recipients and five real signed Mini identities; original private controls preserved', async () => {
+      for (const role of pendingOnly ? ['construction_staff'] : multiProject ? ['construction_staff','designer','enterprise_admin'] : nativeRemainder ? ['construction_staff','designer'] : ['construction_staff','designer','enterprise_admin','admin','super_admin']) {
         const a = await withPlatformTransaction(async tx => {
           const repo = new AdminUserRepository(tx), staff = await repo.create({ enterpriseId: BigInt(eid), username: prefix + ':' + role,
             displayName: '合成测试·私人跟进·' + role, passwordHash: 'unusable-local-fixture', role, status: 'active', mustChangePassword: false });
@@ -59,9 +88,11 @@ module.exports = async ctx => {
         });
         actors.push(a); result.actors.push({ aid: a.aid, uid: a.uid, role }); report.staffFixture = result; save();
         if (['construction_staff','designer'].includes(role)) {
-          const p = (await owner.execute('detail', { projectId: pid })).project;
-          await owner.execute('member', { projectId: pid, expectedVersion: p.version, adminId: a.aid,
+          for (const projectId of projectIds) {
+          const p = (await owner.execute('detail', { projectId })).project;
+          await owner.execute('member', { projectId, expectedVersion: p.version, adminId: a.aid,
             role: role === 'designer' ? 'designer' : 'worker', active: true, workLabel: '合成06/07私人提问' }, randomUUID());
+          }
         }
         a.token = await sign(a);
         const opened = await http(a, '/followups/open', {}); a.bid = opened.bindingId; a.cid = opened.conversationId;
@@ -71,7 +102,7 @@ module.exports = async ctx => {
     });
     await step(nativeRemainder ? 'fresh fact reports, selected references and source protocol fixtures for native remainder' : 'staff original reports save, exact selection/readback and quota rejection roll back sends', async () => {
       const plan = new ConstructionReportService(owner.actor), p = reportPlanDto(await plan.settings(), eid);
-      await plan.configure({ expectedVersion: p.version, enabled: true, stageEnabled: false, projectIds: [pid], stageKeys: [],
+      await plan.configure({ expectedVersion: p.version, enabled: true, stageEnabled: false, projectIds, stageKeys: [],
         audiences: ['customer','worker','designer','boss'], dailyTime: p.dailyTime, weeklyTime: p.weeklyTime, weeklyDay: p.weeklyDay, inactivePolicy: p.inactivePolicy }, randomUUID());
       for (const a of actors) {
         const clock = (await read(tx => one(tx, sql`select date_trunc('day',clock_timestamp() at time zone 'Asia/Shanghai') at time zone 'Asia/Shanghai' as start,
@@ -84,6 +115,7 @@ module.exports = async ctx => {
         await processConstructionReport(lease); await deliverConstructionReports(eid); a.rid = made.reportId;
         const base = '/followups/' + a.bid + '/conversation', detail = await http(a, '/followups/' + a.bid + '/reports/' + a.rid);
         assert.ok(detail.available && detail.facts.projects.some(p => p.id === pid && p.records.some(r => r.id === recordId)));
+        if (multiProject) assert.deepEqual(detail.facts.projects.map(p => p.id), projectIds);
         const body = { expectedVersion: 0, selection: { bindingId: a.bid, reportId: a.rid, revision: 1, projectId: pid } }, requestKey = randomUUID();
         a.selection = await http(a, base + '/report-context', body, requestKey);
         assert.deepEqual(await http(a, base + '/report-context', body, requestKey), a.selection);
@@ -97,7 +129,7 @@ module.exports = async ctx => {
         assert.equal(error.code, 'assistant_quota_exceeded');
         assert.equal(await read(async tx => !!await one(tx, sql`select id from app.assistant_messages where enterprise_id=${eid} and conversation_id=${a.cid} and client_message_id=${sendKey}`)), false);
         }
-        a.protocol = await read(async tx => {
+        a.protocol = multiProject ? null : await read(async tx => {
           const c = await one(tx, sql`select * from app.assistant_conversations where enterprise_id=${eid} and id=${a.cid}`);
           const run = await one(tx, sql`insert into app.assistant_runs(enterprise_id,conversation_id,trigger_kind,trigger_schedule_key,purpose,status,policy_snapshot,context_revision,knowledge_epoch)
             values(${eid},${a.cid},'scheduled_task',${'synthetic06-protocol:' + randomUUID()},'reply','cancelled','{}'::jsonb,${c.context_revision},1) returning id`);
@@ -120,8 +152,10 @@ module.exports = async ctx => {
           return { runId: String(run.id), messageId: String(message.id), citationId: String(citation.id), synthetic: true,
             humanMessage: { synthetic: true, naturalLanguage: true, text: question }, queuedJob: false, providerAttempt: false };
         });
-        const citation = await http(a, base + '/citations/' + a.protocol.citationId); assert.equal(citation.available, true);
-        assert.ok(citation.quote); assert.equal(citation.isDraft, false);
+        if (!multiProject) {
+          const citation = await http(a, base + '/citations/' + a.protocol.citationId); assert.equal(citation.available, true);
+          assert.ok(citation.quote); assert.equal(citation.isDraft, false);
+        }
         Object.assign(result.actors.find(r => r.aid === a.aid), { rid: a.rid, protocol: a.protocol }); save();
       }
       return { normalSend: nativeRemainder ? 'Deferred to the one real native quota-feedback check; no fixture sends'
@@ -138,8 +172,11 @@ module.exports = async ctx => {
       return { otherRecipient: 'denied', crossTenant: 'denied', receptionMediaTopic: 'denied', previewScope: 'absent' };
     });
     if (process.argv.includes('--staff-native')) {
-      const fs = require('node:fs'); const nativePath = path.join(root, 'tmp/v1-02-staff-followup/native.cjs');
-      assert.ok(fs.existsSync(nativePath)); result.native = await require(nativePath)({ ...ctx, actors, http });
+      const fs = require('node:fs'); const nativePath = process.argv.find(a => a.startsWith('--staff-native-script='))?.slice(22) || path.join(root, 'tmp/v1-02-staff-followup/native.cjs');
+      // Native uses the independent3006 service. Release only this process's
+      // idle fixture pool; keep the separate acceptance-lock Client held.
+      await req('./src/lib/postgresql.ts').closePostgresPool();
+      assert.ok(fs.existsSync(nativePath)); result.native = await require(path.resolve(nativePath))({ ...ctx, actors, http, projectIds });
       assert.equal(result.native.passed, true);
     }
     if (!nativeRemainder) await step('member removal and original withdrawal invalidate private selection and business snapshots', async () => {
@@ -163,6 +200,14 @@ module.exports = async ctx => {
     // each original failure and attempt every independent resource once.
     const cleanupErrors = [];
     const clean = async (scope, fn) => { try { await fn(); } catch (error) { cleanupErrors.push({ scope, error: error.stack }); } };
+    if (secondaryOriginal) await clean('withdraw_secondary_original', async () => {
+      const source = await read(tx => one(tx, sql`select version,status from app.construction_site_records where enterprise_id=${eid} and id=${secondaryOriginal}`));
+      if (source.status === 'published') await site.mutate(secondaryProject, secondaryOriginal, 'withdraw', { expectedVersion: Number(source.version), reason: '合成双工地检查清理' }, randomUUID());
+    });
+    if (secondaryProject) await clean('archive_secondary_project', async () => {
+      const p = (await owner.execute('detail', { projectId: secondaryProject })).project;
+      await owner.execute('update', { projectId: secondaryProject, expectedVersion: p.version, name: p.name, status: 'archived', customerAccess: false }, randomUUID());
+    });
     await clean('cancel_owned_runs', () => read(async tx => {
       for (const a of actors) if (a.cid) await cancelRuns(tx, a.actor, a.cid);
     }));

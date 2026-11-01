@@ -410,7 +410,7 @@ module.exports = () => ({
     this.setData({ followupHistoryOpen: false, followupManageOpen: false }); this.closeSheet(); this.controller.hide(); return this.followups.select(String(event.currentTarget.dataset.id));
   },
   refreshFollowup() { return this.followups.select(this.followups.selected); },
-  readFollowupReport(event) { const d = event.currentTarget.dataset; this.setData({ followupManageOpen: false }); return this.followups.readReport(String(d.report), Number(d.revision)); },
+  readFollowupReport(event) { const d = event.currentTarget.dataset; this.setData({ followupManageOpen: false }); return this.followups.readReport(String(d.report), Number(d.revision), this.followups.selected, d.project ? String(d.project) : ''); },
   closeFollowupReport() { this.followups.closeReport(); },
   moreFollowupReports() { return this.followups.more(); },
   recoverFollowup() { return this.followups.recover(); },
