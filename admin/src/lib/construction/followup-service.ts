@@ -8,6 +8,7 @@ import { bindingForActor, ensureFollowupBinding } from './report-store';
 import { followupBindingAvailable, followupProjects, projectReportFacts, type FollowupAudience, type ReportFacts } from './report-scope';
 import { readStageSettings } from './stages-store';
 import { currentRecord } from './site-issues';
+import { reportHistoryFilters, type ReportHistoryFilters } from './report-history';
 
 type ReminderPreferences = { stage: boolean; daily: boolean; weekly: boolean };
 const preferences = (b: Row): ReminderPreferences => ({ stage: b.remind_stage !== false, daily: b.remind_daily !== false, weekly: b.remind_weekly !== false });
@@ -21,24 +22,30 @@ export class FollowupService {
       return work(repo);
     });
   }
-  private async destination(repo: AssistantRepository, b: Row) {
+  private async destination(repo: AssistantRepository, b: Row, afterProjectId?: string, projectId?: string) {
     const c = await repo.conversation(String(b.conversation_id)), eid = this.actor.enterpriseId;
-    const projects = await followupProjects(repo.tx, eid, b), settings = await readStageSettings(repo.tx, eid);
+    const projects = await followupProjects(repo.tx, eid, b, false, [], [], false, afterProjectId), settings = await readStageSettings(repo.tx, eid);
+    const selected = projectId ? (await followupProjects(repo.tx, eid, b, false, [projectId]))[0] : undefined;
+    if (projectId && !selected) fail('construction_not_found', 404);
+    const projectDto = (p: Row) => ({ id: String(p.id), name: String(p.name), stageKey: p.current_stage_key || null,
+      stageName: settings.stages.find(s => s.key === p.current_stage_key)?.name || '' });
     const enterprise = (await one(repo.tx, sql`select id::text,name from app.enterprises where id=${eid}`))!;
     return { enterprise, title: b.audience === 'customer' ? String(projects[0]?.name || '我家装修') : b.audience === 'boss' ? '企业工地简报'
       : b.audience === 'designer' ? '我的项目跟进' : '我的施工跟进',
       conversation: { id: String(c.id), mode: String(c.mode), status: String(c.status), version: Number(c.version) },
       stages: settings.stages.map(s => ({ key: s.key, name: s.name })),
-      projects: projects.slice(0, 20).map(p => ({ id: String(p.id), name: String(p.name),
-        stageKey: p.current_stage_key || null, stageName: settings.stages.find(s => s.key === p.current_stage_key)?.name || '' })),
+      projects: projects.slice(0, 20).map(projectDto), projectsNextCursor: projects.length > 20 ? String(projects[19].id) : null,
+      ...(selected ? { selectedProject: projectDto(selected) } : {}),
       projectsTruncated: projects.length > 20 };
   }
-  context(bindingId: string) {
+  context(bindingId: string, options: { afterProjectId?: string; projectId?: string } = {}) {
     id(bindingId);
+    if (options.afterProjectId !== undefined) id(options.afterProjectId);
+    if (options.projectId !== undefined) id(options.projectId);
     return this.scoped(async repo => {
       const b = await bindingForActor(repo.tx, this.actor, bindingId);
       return { bindingId, conversationId: String(b.conversation_id), audience: String(b.audience), status: String(b.status), version: Number(b.version),
-        ...await this.destination(repo, b) };
+        ...await this.destination(repo, b, options.afterProjectId, options.projectId) };
     });
   }
   private async managementBinding(repo: AssistantRepository, bindingId: string) {
@@ -163,17 +170,31 @@ export class FollowupService {
       return { items, truncated: bindings.length === 30 };
     });
   }
-  reports(bindingId: string, beforeId = '9223372036854775807') {
+  reports(bindingId: string, beforeId = '9223372036854775807', filters: ReportHistoryFilters = {}) {
     id(bindingId); id(beforeId);
+    const filter = reportHistoryFilters(filters);
     return this.scoped(async repo => {
       const b = await bindingForActor(repo.tx, this.actor, bindingId); await repo.conversation(String(b.conversation_id));
+      if (filter.projectId && !(await followupProjects(repo.tx, this.actor.enterpriseId, b, false, [filter.projectId])).length)
+        fail('construction_not_found', 404);
       const found = await rows(repo.tx, sql`select r.id from app.construction_reports r
         join app.construction_report_versions v on v.enterprise_id=r.enterprise_id and v.report_id=r.id and v.revision=r.latest_revision
         join app.assistant_runs run on run.enterprise_id=v.enterprise_id and run.id=v.run_id
         where r.enterprise_id=${this.actor.enterpriseId} and r.binding_id=${bindingId} and r.id<${beforeId}
+         and ${filter.kind ? sql`r.kind=${filter.kind}` : sql`true`}
+         and ${filter.start ? sql`r.period_start>=${filter.start} and r.period_start<${filter.end!}` : sql`true`}
+         and ${filter.projectId ? sql`v.facts->'projects' @> ${JSON.stringify([{ id: filter.projectId }])}::jsonb` : sql`true`}
         and run.conversation_id=${String(b.conversation_id)} order by r.id desc limit 20`);
       const items = [];
-      for (const r of found) items.push(await this.version(repo, b, String(r.id)));
+      for (const r of found) {
+        const view = await this.version(repo, b, String(r.id));
+        if (filter.projectId && view.available && view.facts) {
+          const projects = view.facts.projects.filter(p => p.id === filter.projectId);
+          // The index is a filtered view, never a new report or an acknowledgement grant.
+          items.push(projects.length ? { ...view, facts: { ...view.facts, projects, projectsTruncated: false }, readToken: null }
+            : { reportId: String(r.id), revision: view.revision, available: false, state: 'source_unavailable', facts: null, readToken: null });
+        } else items.push(view);
+      }
       return { items, nextCursor: found.length === 20 ? String(found.at(-1)!.id) : null };
     });
   }

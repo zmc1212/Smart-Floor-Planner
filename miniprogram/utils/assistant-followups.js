@@ -3,10 +3,11 @@ const { SiteRecordMedia } = require('./assistant-site-records');
 const api = require('./api');
 const { initialSettings, settingsMethods, operationKind } = require('./assistant-followup-settings');
 const { initialPlan, planMethods } = require('./assistant-report-plan');
+const { initialHistory, historyMethods } = require('./assistant-report-history');
 const BASE = '/followups';
 const initialFollowups = () => ({ followupActive: false, followupBindings: [], followupListLoading: false, followupLoading: false,
   followupError: '', followupBusy: false, followupPending: false, followupContext: null, followupReports: [], followupCursor: null,
-  followupDetail: null, followupOriginal: null, followupOriginalLoading: false, followupHasCards: false, ...initialSettings(), ...initialPlan() });
+  followupDetail: null, followupOriginal: null, followupOriginalLoading: false, followupHasCards: false, ...initialSettings(), ...initialPlan(), ...initialHistory() });
 function dateLabel(value, time = false) {
   if (value === null || value === undefined || value === '') return '';
   const d = new Date(new Date(value).getTime() + 8 * 3600000), pad = n => String(n).padStart(2, '0');
@@ -48,15 +49,18 @@ class FollowupController {
   set(patch) { if (patch.followupReports) patch.followupHasCards = patch.followupReports.some(r => r.deliveryState !== 'muted'); Object.assign(this.state, patch); this.emit(patch); }
   current(epoch = this.epoch) { return this.visible && epoch === this.epoch && this.session === this.identity(); }
   hide() {
+    this.rememberHistory();
+    this.historyReentry = this.state.followupHistoryOpen ? { bindingId: this.selected, filters: this.state.followupHistoryFilters, scroll: this.state.followupHistoryScroll } : null;
     this.planReentry = this.state.followupPlanOpen ? { plan: this.state.followupPlan, draft: this.state.followupPlanDraft, dirty: this.state.followupPlanDirty } : null;
     this.settingsReentry = this.state.followupManageOpen ? { setting: this.state.followupSetting, draft: this.state.followupPreferenceDraft, dirty: this.state.followupPreferenceDirty } : null;
     this.visible = false; this.epoch++; this.unschedule(this.timer); this.set(initialFollowups());
   }
-  leave() { this.selected = ''; this.epoch++; this.set({ followupActive: false, followupContext: null, followupDetail: null, followupOriginal: null, followupReports: [] }); }
+  leave() { this.rememberHistory(); this.historyReentry = null; this.selected = ''; this.epoch++; this.set({ ...initialHistory(), followupActive: false, followupContext: null, followupDetail: null, followupOriginal: null, followupReports: [] }); }
   async show({ autoOpen = false } = {}) {
     if (this.session && this.session !== this.identity()) { this.selected = ''; this.operation = null;
       this.settingsReentry = null;
       this.planReentry = null;
+      this.historyReentry = null;
       if (this.client.pending.session !== this.identity()) this.client.pending.clear(); this.set(initialFollowups()); }
     this.session = this.identity(); this.visible = true;
     if (!this.session) return;
@@ -123,6 +127,7 @@ class FollowupController {
         const latest = await this.client.read(`${BASE}/${bid}/reports/${old.reportId}`, { revision: old.revision }, headers);
         if (this.current(epoch) && this.state.followupDetail === old) this.set({ followupDetail: reportForView(latest, context), ...(!latest.available ? { followupOriginal: null } : {}) });
       }
+      if (this.current(epoch) && this.state.followupHistoryOpen) await this.loadHistory({ background: true });
     } catch (e) { if (this.current(epoch)) this.failure(e); }
   }
   failure(e) {
@@ -143,6 +148,7 @@ class FollowupController {
   }
   async select(bindingId) {
     if (this.state.followupBusy || this.state.followupPending || !this.visible) return;
+    if (this.selected !== String(bindingId)) { this.historyReentry = null; this.historyPages = 1; this.set(initialHistory()); }
     const epoch = ++this.epoch; this.selected = String(bindingId);
     const stored = [...this.client.pending.entries()].find(([slot, op]) => slot.startsWith('followup:') && op.path.startsWith(`${BASE}/${this.selected}/`));
     if (stored && !this.operation) { const [slot, op] = stored; this.operation = { slot, ...op,
@@ -154,6 +160,10 @@ class FollowupController {
       if (!this.current(epoch)) return;
       this.set({ followupContext: context, followupReports: reports.items.map(r => reportForView(r, context)), followupCursor: reports.nextCursor,
         followupPending: !!this.operation });
+      const reentry = this.historyReentry; this.historyReentry = null;
+      if (reentry?.bindingId === this.selected && !this.operation) {
+        this.set({ followupHistoryFilters: reentry.filters, followupHistoryScroll: reentry.scroll }); await this.openHistory();
+      }
     } catch (e) { if (this.current(epoch)) this.failure(e); }
     finally { if (this.current(epoch)) this.set({ followupLoading: false }); }
   }
@@ -185,7 +195,12 @@ class FollowupController {
       const result = await this.client.mutate(op.slot, op.path, op.body, 'POST', await this.headers());
       if (!this.current(epoch)) return;
       this.operation = null; this.set({ followupPending: false });
-      if (op.kind === 'read' && this.state.followupDetail && result.reportId === this.state.followupDetail.reportId) this.set({ followupDetail: { ...this.state.followupDetail, readAt: true } });
+      if (op.kind === 'read') {
+        this.historyViewed(result.reportId, result.revision);
+        this.set({ followupReports: this.state.followupReports.map(r => r.reportId === result.reportId && r.revision === result.revision ? { ...r, readAt: true } : r) });
+        if (this.state.followupDetail && result.reportId === this.state.followupDetail.reportId && result.revision === this.state.followupDetail.revision)
+          this.set({ followupDetail: { ...this.state.followupDetail, readAt: true } });
+      }
       if (op.kind === 'plan') { this.set({ followupBusy: false }); await this.finishPlanWrite(op, result); }
       else if (op.kind === 'preferences' || op.kind === 'managementChange') { this.set({ followupBusy: false }); await this.finishSettingsWrite(op, result); }
       else if (op.kind === 'change') { this.set({ followupBusy: false }); if (['archive','delete'].includes(op.path.split('/').pop())) this.leave(); else await this.select(this.selected); }
@@ -229,6 +244,16 @@ class FollowupController {
 }
 Object.assign(FollowupController.prototype, settingsMethods);
 Object.assign(FollowupController.prototype, planMethods);
+Object.assign(FollowupController.prototype, historyMethods, {
+  historyErrorCopy: errorCopy,
+  historyReport(report, context) {
+    const view = reportForView(report, context);
+    return { ...view, title: report.kind === 'weekly' && view.available
+      ? dateLabel(report.periodStart) + '—' + dateLabel(new Date(new Date(report.periodEnd).getTime() - 1)) + ' · ' + view.kindLabel : view.title,
+      stageLabel: [...new Set((view.projects || []).map(p => p.stageName).filter(Boolean))].join(' · '),
+      summaryLabel: (view.summary || []).map(s => s.text).join('；') || view.stateLabel };
+  },
+});
 /** Only the locator changes; reuse original authenticated image/cache/revocation behavior. */
 class FollowupRecordMedia extends SiteRecordMedia {
   constructor({ identity, emit, headers = async () => ({}), download = api.downloadFile }) {

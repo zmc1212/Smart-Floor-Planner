@@ -13,6 +13,7 @@ const { FloorplanContextController, initialContext } = require('../lib/floorplan
 const { FollowupController, FollowupRecordMedia, initialFollowups } = require('../lib/followups');
 const { initialEnterprise, enterpriseMethods } = require('../../../utils/assistant-followup-enterprise');
 const { settingsPageMethods } = require('../../../utils/assistant-followup-settings');
+const { historyPageMethods } = require('../../../utils/assistant-report-history');
 const { planPageMethods } = require('../../../utils/assistant-report-plan');
 
 function sessionToken() {
@@ -23,6 +24,7 @@ function sessionToken() {
 module.exports = () => ({
   ...enterpriseMethods,
   ...settingsPageMethods,
+  ...historyPageMethods,
   ...planPageMethods,
   data: {
     ...initial(), navigationTop: 47, navigationHeight: 44, navigationRight: 100,
@@ -391,10 +393,8 @@ module.exports = () => ({
     this.setData({ followupHistoryOpen: false, followupManageOpen: false }); this.closeSheet(); this.controller.hide(); return this.followups.select(String(event.currentTarget.dataset.id));
   },
   refreshFollowup() { return this.followups.select(this.followups.selected); },
-  readFollowupReport(event) { const d = event.currentTarget.dataset; this.setData({ followupHistoryOpen: false, followupManageOpen: false }); return this.followups.readReport(String(d.report), Number(d.revision)); },
+  readFollowupReport(event) { const d = event.currentTarget.dataset; this.setData({ followupManageOpen: false }); return this.followups.readReport(String(d.report), Number(d.revision)); },
   closeFollowupReport() { this.followups.closeReport(); },
-  followupHistory() { this.setData({ followupHistoryOpen: true, followupManageOpen: false }); },
-  closeFollowupHistory() { this.setData({ followupHistoryOpen: false }); },
   moreFollowupReports() { return this.followups.more(); },
   recoverFollowup() { return this.followups.recover(); },
   readFollowupOriginal(event) { return this.followups.original(String(event.currentTarget.dataset.project), String(event.currentTarget.dataset.record)); },

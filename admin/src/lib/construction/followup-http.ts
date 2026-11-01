@@ -6,6 +6,7 @@ import { AssistantError, fail, id, key, type ActorContext } from '@/lib/assistan
 import { FollowupService } from './followup-service';
 import { object } from './contracts';
 import { ConstructionReportService, reportPlanDto } from './report-service';
+import type { ReportHistoryFilters } from './report-history';
 
 /** Reuses the selected Mini identity and original repository authority. Neither
  * principal, tenant, audience nor a delivery capability comes from the body. */
@@ -48,15 +49,16 @@ export async function handleFollowup(request: Request, path: string[], actor: Ac
     return reportPlanDto(await service.configure(body, key(request.headers.get('Idempotency-Key'))), actor.enterpriseId);
   }
   const service = new FollowupService(actor), method = request.method, params = new URL(request.url).searchParams;
-  const allowed = path.length === 1 && path[0] === 'manage' ? ['beforeId'] : path[1] === 'reports' ? path.length === 2 ? ['beforeId'] : ['revision'] : [];
-  if ([...params.keys()].some(k => !allowed.includes(k))) fail('invalid_construction', 422);
+  const allowed = path.length === 1 ? path[0] === 'manage' ? ['beforeId'] : ['afterProjectId','projectId'] : path[1] === 'reports' ? path.length === 2 ? ['beforeId','projectId','month','kind'] : ['revision'] : [];
+  if ([...params.keys()].some(k => !allowed.includes(k) || params.getAll(k).length !== 1)) fail('invalid_construction', 422);
   if (method === 'GET') {
     if (!path.length) return service.list();
     if (path.length === 1 && path[0] === 'manage') return service.management(params.has('beforeId') ? id(params.get('beforeId')) : undefined);
     const bid = id(path[0]);
-    if (path.length === 1) return service.context(bid);
+    if (path.length === 1) return service.context(bid, Object.fromEntries(['afterProjectId','projectId'].filter(k => params.has(k)).map(k => [k, id(params.get(k))])));
     if (path[1] === 'reports') {
-      if (path.length === 2) return service.reports(bid, params.has('beforeId') ? id(params.get('beforeId')) : undefined);
+      if (path.length === 2) return service.reports(bid, params.has('beforeId') ? id(params.get('beforeId')) : undefined,
+        Object.fromEntries(['projectId','month','kind'].filter(k => params.has(k)).map(k => [k, params.get(k)])) as ReportHistoryFilters);
       const rid = id(path[2]), revision = params.has('revision') ? Number(params.get('revision')) : undefined;
       if (revision !== undefined && (!Number.isSafeInteger(revision) || revision < 1)) fail('invalid_construction', 422);
       if (path.length === 3) return service.detail(bid, rid, revision);

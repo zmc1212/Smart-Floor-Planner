@@ -39,10 +39,11 @@ export async function followupAvailable(tx: PostgresTransaction, eid: string, bi
     from app.assistant_conversations c where c.enterprise_id=${eid} and c.id=${String(binding.conversation_id)}
     and coalesce(c.entry_snapshot->>'retentionRedacted','false')<>'true'`))?.allowed;
 }
-export async function followupProjects(tx: PostgresTransaction, eid: string, binding: Row, activeOnly = false, projectIds: string[] = [], stageKeys: string[] = [], metadataOnly = false) {
+export async function followupProjects(tx: PostgresTransaction, eid: string, binding: Row, activeOnly = false, projectIds: string[] = [], stageKeys: string[] = [], metadataOnly = false, afterId?: string) {
   if (!await (metadataOnly ? followupBindingAvailable(tx, eid, binding) : followupAvailable(tx, eid, binding))) return [];
   return rows(tx, sql`select p.* from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
     where p.enterprise_id=${eid} and ${activeOnly ? activeReportProject : sql`p.status<>'archived'`} and l.archived_at is null
+    and ${afterId ? sql`p.id>${afterId}` : sql`true`}
     and (jsonb_array_length(${JSON.stringify(projectIds)}::jsonb)=0 or ${JSON.stringify(projectIds)}::jsonb ? p.id::text)
     and (jsonb_array_length(${JSON.stringify(stageKeys)}::jsonb)=0 or ${JSON.stringify(stageKeys)}::jsonb ? p.current_stage_key)
     and (${binding.audience === 'boss'} or
