@@ -23,6 +23,19 @@ test('Monday weekly report covers the preceding Monday to Monday, not seven dail
 test('weekly before Monday delivery remains the preceding due week', () => {
   assert.equal(latestReportPeriod('weekly', new Date('2026-11-01T23:59:59Z'), '08:00').end.toISOString(), '2026-10-25T16:00:00.000Z');
 });
+
+test('a changed weekday keeps the completed calendar week and respects its own clock', () => {
+  const p = latestReportPeriod('weekly', new Date('2026-11-04T01:30:00Z'), '09:30', 3);
+  assert.equal(p.scheduledAt.toISOString(), '2026-11-04T01:30:00.000Z');
+  assert.equal(p.start.toISOString(), '2026-10-25T16:00:00.000Z');
+  assert.equal(p.end.toISOString(), '2026-11-01T16:00:00.000Z');
+  assert.equal(nextReportAt('weekly', p.scheduledAt, '09:30', 3).toISOString(), '2026-11-11T01:30:00.000Z');
+  const before = latestReportPeriod('weekly', new Date('2026-11-04T01:29:59Z'), '09:30', 3);
+  assert.equal(before.end.toISOString(), '2026-10-25T16:00:00.000Z');
+  const sunday = latestReportPeriod('weekly', new Date('2026-11-08T00:00:00Z'), '08:00', 7);
+  assert.equal(sunday.end.toISOString(), p.end.toISOString());
+  for (const invalid of [0,8,1.1]) assert.throws(() => nextReportAt('weekly', p.scheduledAt, '08:00', invalid));
+});
 test('outage catch-up selects one latest period and advances directly past now', () => {
   const now = new Date('2027-01-03T15:00:00Z');
   assert.equal(latestReportPeriod('daily', now, '20:00').scheduledAt.toISOString(), '2027-01-03T12:00:00.000Z');

@@ -1,13 +1,13 @@
 const api = require('./api');
 const { errorCopy } = require('./assistant-client');
-const initialEnterprise = () => ({ followupPlatform: false, followupEnterpriseName: '', followupEnterpriseOpen: false,
+const initialEnterprise = () => ({ followupPlatform: false, followupPlanManager: false, followupEnterpriseName: '', followupEnterpriseOpen: false,
   followupEnterprises: [], followupEnterpriseQuery: '', followupEnterpriseLoading: false, followupEnterpriseMore: false,
   followupEnterpriseBusy: false, followupEnterpriseError: '' });
 const token = () => getApp().globalData.token || wx.getStorageSync('token') || '';
 const enterpriseMethods = {
   prepareFollowupEnterprise(context) {
     const role = context.staffRole || context.role;
-    this.setData({ followupPlatform: ['admin', 'super_admin'].includes(role), followupEnterpriseName: context.enterpriseName || '' });
+    this.setData({ followupPlatform: ['admin', 'super_admin'].includes(role), followupPlanManager: ['enterprise_admin','admin','super_admin'].includes(role), followupEnterpriseName: context.enterpriseName || '' });
   },
   closeFollowupEnterprise() {
     if (this.data.followupEnterpriseBusy) return;
@@ -45,6 +45,7 @@ const enterpriseMethods = {
   },
   async selectFollowupEnterprise(event) {
     if (this.data.followupEnterpriseBusy || this.data.followupBusy || this.data.followupPending || !this._shown) return;
+    if (!await this.confirmFollowupDraft()) return;
     const id = String(event.currentTarget.dataset.id), choice = this.data.followupEnterprises.find(e => String(e._id) === id);
     if (!choice || choice.status !== 'active') return;
     const app = getApp(), context = app.globalData.bootstrap?.current?.context || app.globalData.userInfo || {};

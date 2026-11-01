@@ -44,25 +44,24 @@
 
 ## 2. 唯一当前任务
 
-2026-11-01后继已核实同一cwd/分支/HEAD43aa9a0b并串行接手，09个人站内提醒偏好、删除/脱敏管理恢复已完成限定实现、真实服务与原生验证，正在提交本包后继续10企业自动报告计划。**follow-up-v1全部01–11、管理入口与共用状态规则批准持续，不再询问。** V1-02整体仍Limited，facts_ready/knowledge not_generated及禁用追问保持。原V1-01停测、D2次数2、10个对话unknown/保守CNY32.828897及知识3753单列未知费用、解释关闭和生产边界全部继承；本包模型/摄取0次，不重启旧业务或完整构建。
+2026-11-01本owner01a19635-2e7a-7a60-9931-d5db1e141e0e已核实同一cwd/分支/HEAD0c20286e并串行接手，批准10企业自动报告计划已完成限定实现、真实服务与Stable原生验证，当前收束本包本地提交。**follow-up-v1全部01–11、管理入口与共用状态规则批准持续，不再询问。** V1-02整体仍Limited；facts_ready/knowledge not_generated及禁用追问保持。模型/摄取0次，V1-01停测、D2次数2、10个对话unknown/保守CNY32.828897及知识3753单列未知费用、解释关闭和生产边界继承。
 
 | 项目 | 当前记录 |
 | --- | --- |
-| 当前交付 / 状态 | **V1-02整体Limited，09个人跟进设置限定Implemented。** 首轮客户端866d2d9e、所选企业43aa9a0b已提交并复用；本09包待本地归属提交，立即后继是同一V1-02的10企业报告计划，不跳V1-03。 |
-| 用户动作 / 入口 | 原C01历史“管理跟进”入口始终可用，09项目/范围picker包含当前仍获权的停止、删除、脱敏绑定；本人选择阶段/日/周接收并保存，收起/停复/删除/明确新会话重开。普通咨询草稿/目的地独立，未保存选择先确认，未知同键核对。专业端仍从原项目简报进chat?followup=1；客户根面板09原生仍未验，不升级全阶段。 |
-| 已核实基础 / 缺口 | 0105已仅本地canonical迁移：原绑定3个默认开启布尔值+list_hidden、投递muted；提取原关系谓词供最小管理投影，正文沿原关闭/参与者/来源/脱敏守卫。偏好不取消必需事实保存，不补刷静默历史；停止恢复原会话，删除/脱敏后明确重开新代际，旧任务/报告/未读不迁入。全局所选企业继承沿0104。剩余10企业计划、05完整筛选、11接待、04引用/追问，整体业务语义尚未完成。 |
-| 已完成基础 | 微云1454及《精艺.pdf》原件/hash保留；逐页副本376–405，发布404/405（版本410/411、55段），其余28内部草稿待复核，未自动发布。S04只读问答/出处、实时成员/阶段/来源校验、撤回与只读来源轮询已有证据。修复点名《精艺》选段保留已获权2835基层及2837管根，不更改摄取、发布或权限 |
-| 本包实际结果 / 阻断 | 最终HTTP06完整依赖绑定2201路径9/9、drift[]；native03功能6/6，最终native06逐元素/32px原字体/宿主3/3限定检查，完整产品/驱动/CLI/窗口绑定drift[]。已选审03六页/一宿主及最终一页/一宿主。Mini71/71、鉴权14/14、lint0、类型原82/受影响0；后续字体/label影响检查复用未变范围，label后71/71。09本地可用，不升级完整V1-02或根面板09/真机验收。 |
-| 下一实施动作 | 本包提交后立即做同V1-02的10企业自动报告计划：读批准10-enterprise-report-plan-v002.png、原README功能/状态表、ConstructionReportService/report-worker与原0103/0105合同，复用现有设置/调度/权限和纸页面板，补管理入口、真实保存/版本/重进/失败恢复。现有后端已有enabled、Shanghai时间、project_ids、stage_keys等，先核实缺少的角色/生命周期控制，不重复另建调度/Agent。助手源包只余236B，先合理复用/整理共享组件并检查预算，不能动他人studio字体脏差异或声称源码字节即编译包。完成10再05、11、04；不重开V1-01停测批、不询问已有批准。 |
-| 有界完成检查 | V1-02第4节原固定旅程及3.3/3.4合同：真实阶段与已发布记录、四端按角色获权的日/周任务，至少一轮客户端关闭，重复/并发/重启/丢回执、失败恢复、撤权/撤回、本人未读/重进及原记录/出处。独立后台检查不能替代完整小程序业务验收；模型语义核心仍按预定两试保留全部首稿 |
-| 继承失败 / 归属 | D2失败计数仍2。1596正确Evidence下自然转述被旧逐字守卫拒；1602完整Evidence漏答穿线顺序，归属Agent。1603–1608六批共16次对话调用，原首稿/修复/失败不改为首稿通过，unknown4101/4104/4107/4111/4114保留。1606重复资料前缀计划过严、1607数字诊断、1608有效JSON后多一个右括号均有离线机制证据；仅1608证明该帧原因，不外推旧unknown。1608漏基层同时包含Knowledge选段缺陷，已由context-selection修复并实服务验证，不重建知识库 |
-| 依赖 / 费用 / 授权 | 沿实际qwen3.7-flash及既有管线，未换模型/付费fallback。原¥100对话账册保守**CNY32.828897**、10个对话unknown（旧5＋上述5）保留；不是供应商实际结算。新增知识chunk3753的input_tokens/费用未知，单独记录，不能算0或混入已知对话费用。临时token容量1200000→2200000已恢复，现金上限100000000 micros及历史预占不变。仅本地合成数据；没有生产启用/外部消息授权 |
-| 当前有效证据 | tmp/v1-02-followup-settings/verification.json及原各独立批。HTTP01客户入口token/数组清理失败，补清；02当前阶段夹具失败；03旧任务拒绝来自assistant_resource_not_found而非驱动预期context_changed；04余项的保留期基线保护失败；05定向余项通过。最终06补齐外层依赖/真实RLS后完整9/9。Native01误点专业返回，02 SDK switch tap不触发change且旧sheet级联/宋体缺字，03功能通过；04/05/06逐步校准行字/原字体/逐元素，原批不改判或池化首稿。前包证据按原范围复用。 |
-| 工作区 / 本地提交 | G:/workspace/向总/Smart-Floor-Planner；codex/xiaok-public-site-lifecycle；本包父HEAD43aa9a0b5d43e6e448ce4c84dbaa67065ed0c901（再父866d2d9e、7a14b9d）。本09包只暂存归属源码/双语模块合同/台账与计划第2节；基线tmp/v1-02-followup-settings/baseline。其余AGENTS/供应商/作品/UI/线索/测绘/远程/0102/site-plans/文档历史/studio-serif等脏差异保留；不整体暂存、不建worktree、不清理他人锁。 |
-| 运行任务 / 资源 / 续接 | 所有自有服务/原生测试已退出并在finally释放acceptance锁/控制器，单Stable窗口仍副屏，身份/storage/HTTP恢复。合成248恢复archived/customer_access=false；5410/5411/5413/5414/5419 disabled，5413/5414仍enterprise_id null；2759未改仍disabled。3917–3920原合成手机号不变，5412原未来审计785–788不改，原件323仍撤回。当前binding50已轮换到新会话，准确ID/策略版本见verification及最后native报告；原27/880/human不改。队列0、策略false、providerMax4114/knowledgeMax3753，3753 unknown/input_tokens null。无在途供应商/摄取/构建。 |
-| 本包证据边界 | 仅09个人接收/恢复管理，非AI报告/追问或整体业务语义。源包1998612/1998848，余236B；真实编译/上传包字节、根面板09、完整聊天全字形、物理switch手势/键盘/设备仍未验。switch沿官方trigger/change验证，行用原生label保留44px热区。批准原Noto Serif SC Black补“跟进设置”4字2544B嵌主包共用样式，原124字Chat Serif和其他studio字体未改；无生图/切片。原完整build类型失败及compile-only证据保留，没有新完整build通过声明。 |
-| 本次计划增补 | 第3.5 Deep Agents/OpenClaw规则保留，本包确定性扩展沿原事务/幂等/队列/保留期，不安装框架、不换模型、不追加校验或引用链、不重开closure-business-01/3753。原3.3/3.4及当前双语合同同步，不新增产品阶段或独立计划。 |
-| 后继 | 同一V1-02内10企业报告计划→05完整筛选→11人工接待→04引用/追问；完成四端完整业务交付后才V1-03/V1-04。V1-01仍Limited、旧失败/unknown费用保持，独立推进不消除该依赖。 |
+| 当前交付 / 状态 | **V1-02整体Limited，10企业计划限定Implemented。** 09的0c20286e、所选企业43aa9a0b及首轮客户端866d2d9e均按原范围复用。本10包源码/双语合同/台账已完成，待归属本地提交；立即后继是同V1-02的05完整筛选，不跳V1-03。 |
+| 用户动作 / 入口 | enterprise_admin及所选企业admin/super_admin在原C01历史进入“企业报告计划”，设置总开关、阶段提醒、日/周时间及星期、工地/角色并真实保存；草稿重进、409重读核对、取消放弃、丢成功回执同键恢复可用。普通咨询及个人09偏好不被计划编辑覆盖；根面板10未作独立原生验收。 |
+| 已核实基础 / 缺口 | 复用ConstructionReportService、原队列/Worker/权限及0103/0105；0106已仅本地canonical迁移，增加stage_enabled/weekly_day/audiences/inactive_policy/dispatch_epoch。时间/角色/范围等作用于后续任务，旧范围不被静默改写；停用总开关推进代际，旧run/投递/自动补充不因重开复活。生命周期仅pause_inactive，paused/archived及completion/move_in暂停新调度/投递，历史沿原权限；自定义终态需用原项目状态。剩05、11、04及完整四端语义；知识侧本包无需改变。 |
+| 本包实际结果 / 阻断 | HTTP01前7项通过，最后停用账号返回401而非驱动预期403并导致原清理失败；cleanup01、permission02及cleanup02原备注恢复完成，各批drift[]，不改判原批。Native02功能5/5，旧未生效样式帧保留；最终07逐元素3/3，完整产品/直接驱动/adapter/官方CLI/exe/asar/窗口绑定drift[]。Mini84/84、日历9/9、源码npm lint0错误/原27警告、定向/驱动lint0，类型仍原82/受影响0。 |
+| 下一实施动作 | 先复用本10包verification.json与checkpoint及原证据，不重跑迁移/完成收束/旧批。立即读批准05-report-history-v001.png与原README功能/状态表，检查FollowupService.reports、followup-http和assistant-followups/历史sheet当前仅beforeId的列表能力，补项目/月/日周筛选、同范围错误恢复及详情已阅/重进；沿当前获权投影及共用纸页，不新建报告中心/Agent/权限管线。完成05再11人工接待，最后04引用/追问；04语义仍守原V1-01停测/3753 unknown边界。 |
+| 有界完成检查 | 第4节V1-02原四端固定旅程与3.3/3.4/适用3.5合同仍未整体完成；独立调度/配置/事实证据不替代配置模型的完整日报、追问及四端客户端闭环。新实质语义核心固定两试，确定性配置包不新增模型调用。本人已读/未读、撤权/来源撤回、幂等、真实回执、关闭客户端生成/重进及失败恢复边界保持。 |
+| 已完成基础 / 可复用知识 | 微云1454与精艺.pdf原件/hash不变；376–405逐页副本，发布404/405（版本410/411、55段），余28内部草稿，不自动发布。S04/原记录及点名选段2835/2837的原定向证据按绑定复用。知识原件323仍撤回，不能当新有效夹具。 |
+| 继承失败 / 费用 | D2次数2；1596/1602及1603–1608首稿/修复/失败不改判，unknown4101/4104/4107/4111/4114等10个对话unknown、保守CNY32.828897/100保持。closure-business-01 job2125/version425/doc419/chunk3753 unknown即停，input_tokens/费用单列未知，不能算0、释放、重派、改名重开、换模型或重摄取。模型仍qwen3.7-flash；providerMax4114/knowledgeMax3753，本包新增0次。 |
+| 设计 / 视觉 / 预算 | 批准10-enterprise-report-plan-v002.png及同README共用规则；853×1844→390×844，纸页(16,88)/374×756。原字体标题28px、正文16px、52.75/66.5px行、44px操作，长名省略、grip/关闭/宿主已定向校准；选项共用原生checkbox/纸页。Chat Serif原字节移至主包styles/assistant-chat-serif.less，原路径保留import；新标题4464B子集来自同Noto Serif SC Black/OFL。无生图/切片，studio字体脏工作未动。源包1983308/1998848，余15540B；真实编译/上传包、物理控件/键盘/真机及全聊天光学仍未验。 |
+| 当前有效证据 / 原失败 | tmp/v1-02-enterprise-plan/verification.json；HTTP01/cleanup01/http02-permission/cleanup02-original-note独立保存。Native01选择器失败，02功能通过但样式旧，03/04校准中间帧，05几何断言通过但长标签换行目视失败，06不支持:first-of-type查询返回0；07改用实际行高/值边界并选审主面板、长名、角色、工地及宿主。后续仅样式/测量/夹具清理改变，不重跑未变服务和功能；原09证据沿其verification复用。 |
+| 工作区 / 本地提交 / 脏文件 | G:/workspace/向总/Smart-Floor-Planner；codex/xiaok-public-site-lifecycle；基线HEAD0c20286eed39efe474629677d7930b368d6716b8。本10包待本地提交，实际hash在下一次必要记录更新写入，不做hash-only提交循环。归属路径/基线见tmp/v1-02-enterprise-plan；文档/迁移journal按本包hunk暂存，保留他人0102及AGENTS/供应商/作品/UI/线索/测绘/远程/site-plans/历史文档/studio-serif等脏差异，不整体暂存、不建worktree。原ignored设计README只保存本次10测量hunk，不强制纳入外来整篇基线。 |
+| 运行任务 / 资源 / 清理 | 自有HTTP/原生已finally释放acceptance锁与controller，单Stable仍副屏，身份/storage/transport恢复。队列0、策略false/version108；合成248恢复archived/customer_access=false及最初进度备注，249未动；5410/5411/5413/5414/5419 disabled，global两账号enterprise_id null保持；3917–3920原手机号不变，5412审计785–788不改，2759控制账号不改。binding50/conversation910仍stopped/ai可复用；27/880/human未动。未限定lint扫描生成缓存的自有进程已停止，源码lint通过，无自有在途构建/供应商/摄取/任务。 |
+| 授权 / 上下文续接 | 仅本地合成开发，无生产启用、远程部署、外部消息、推送或新付费fallback授权。按第8节及AGENTS的容量交接规则：接近上下文上限先更新本单记录与checkpoint，安全清理后在同项目/同脏checkout串行创建唯一后继；不fork饱和历史、不并行争用。旧owner检查点后只核实交接，后继接手才继续05，继承原失败次数、未知/费用与有效证据，不能借换聊天重跑旧批。 |
+| 后继 | 同一V1-02：05完整筛选→11人工接待→04引用/追问，四端业务完整交付后才V1-03/V1-04；V1-01仍Limited、解释关闭及原返回条件保持。 |
 
 本包固定入口（仅保留审计，不因换聊天重跑）：`node --import tsx scripts/xiaok-v1-02-customer-sources-check.ts --development --output=../tmp/v1-02-customer-sources/service-01`；02加`--resume=../tmp/v1-02-customer-sources/service-01/report.json`，03再加`--continue-held=../tmp/v1-02-customer-sources/service-02-purpose-fixture/report.json`。原件已实际撤回，以上旧范围不能作为新有效夹具重放；新变更先固定新范围/时钟及来源绑定。详细退出码、复用与清理见同目录verification.json及当前双语phase-2。
 

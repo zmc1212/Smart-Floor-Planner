@@ -68,9 +68,13 @@ function validPortfolioContactReceipt(slot, pending, data) {
     && !!mode && data.mode === mode && typeof handoff.requestId === 'string' && !!handoff.requestId.trim();
 }
 
-function validFollowupReceipt(pending, data) {
+function validFollowupReceipt(pending, data, slot) {
   const parts = pending.path.split('/').filter(Boolean), body = pending.body;
   if (parts[0] !== 'followups') return false;
+  if (parts[1] === 'plan') return data.enterpriseId === slot.split(':').pop()
+    && data.version === body.expectedVersion + 1 && data.timezone === 'Asia/Shanghai'
+    && ['enabled','stageEnabled','dailyTime','weeklyTime','weeklyDay','inactivePolicy'].every(k => data[k] === body[k])
+    && ['projectIds','stageKeys','audiences'].every(k => JSON.stringify(data[k]) === JSON.stringify(body[k]));
   if (parts[1] === 'open') return /^[1-9]\d*$/.test(data.bindingId) && /^[1-9]\d*$/.test(data.conversationId)
     && Number.isSafeInteger(data.version) && data.version > 0 && ['enabled','stopped','deleted'].includes(data.status);
   if (parts[2] === 'seen') return data.bindingId === parts[1] && data.throughSequence === body.throughSequence;
@@ -159,7 +163,7 @@ class AssistantClient {
     }
     try {
       const data = await this.read(pending.path, pending.body, { ...headers, 'Idempotency-Key': pending.key }, pending.method);
-      if (slot.startsWith('followup:') && !validFollowupReceipt(pending, data)) throw { code: 'invalid_response' };
+      if (slot.startsWith('followup:') && !validFollowupReceipt(pending, data, slot)) throw { code: 'invalid_response' };
       if (slot.startsWith('send:') || slot.startsWith('retry:')) {
         if ((!data.runId && !(slot.startsWith('send:') && data.status === 'succeeded' && data.messageId)) || !data.conversationId) throw { code: 'invalid_response' };
       } else if ((slot === 'create' || slot.startsWith('portfolio-create:')) && !data.id) throw { code: 'invalid_response' };

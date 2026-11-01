@@ -13,6 +13,7 @@ const { FloorplanContextController, initialContext } = require('../lib/floorplan
 const { FollowupController, FollowupRecordMedia, initialFollowups } = require('../lib/followups');
 const { initialEnterprise, enterpriseMethods } = require('../../../utils/assistant-followup-enterprise');
 const { settingsPageMethods } = require('../../../utils/assistant-followup-settings');
+const { planPageMethods } = require('../../../utils/assistant-report-plan');
 
 function sessionToken() {
   const app = getApp();
@@ -22,6 +23,7 @@ function sessionToken() {
 module.exports = () => ({
   ...enterpriseMethods,
   ...settingsPageMethods,
+  ...planPageMethods,
   data: {
     ...initial(), navigationTop: 47, navigationHeight: 44, navigationRight: 100,
     ...initialPublic(),

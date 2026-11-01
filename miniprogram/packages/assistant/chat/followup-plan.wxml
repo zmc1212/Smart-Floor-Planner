@@ -1,0 +1,33 @@
+<!-- Approved10 plus shared choice/loading/conflict/recovery rules. -->
+<view wx:if="{{followupPlanOpen}}" class="followup-layer" catchtouchmove="swallow">
+  <view class="followup-mask" bindtap="closeReportPlan"></view>
+  <view class="followup-sheet followup-settings-sheet followup-plan-sheet">
+    <view class="followup-grip"></view><button class="followup-close" bindtap="closeReportPlan" aria-label="关闭企业报告计划" disabled="{{followupBusy || followupPending}}"><image src="../assets/x.png"/></button>
+    <text class="followup-detail-title">{{followupPlanChoice === 'projectIds' ? '适用工地' : followupPlanChoice === 'audiences' ? '接收角色' : '企业报告计划'}}</text>
+    <text class="followup-plan-subtitle">{{followupEnterpriseName}} · 管理设置</text>
+    <scroll-view class="followup-detail-scroll" scroll-y show-scrollbar="{{false}}">
+      <text wx:if="{{followupPlanLoading}}" class="followup-caption">正在读取企业计划…</text>
+      <block wx:if="{{followupPlanDraft && !followupPlanChoice}}">
+        <label class="followup-plan-row"><view class="followup-setting-icon followup-icon-report"></view><text>启用自动简报</text><switch checked="{{followupPlanDraft.enabled}}" color="#00543f" data-field="enabled" bindchange="editReportPlan" disabled="{{followupBusy || followupPending}}" aria-label="启用自动简报"/></label>
+        <label class="followup-plan-row followup-plan-stage"><view class="followup-setting-icon followup-icon-bell"></view><view><text>阶段提醒</text><text class="followup-caption">随工地阶段更新</text></view><switch checked="{{followupPlanDraft.stageEnabled}}" color="#00543f" data-field="stageEnabled" bindchange="editReportPlan" disabled="{{followupBusy || followupPending}}" aria-label="启用阶段提醒"/></label>
+        <picker mode="time" value="{{followupPlanDraft.dailyTime}}" data-field="dailyTime" bindchange="editReportPlan" disabled="{{followupBusy || followupPending}}"><view class="followup-plan-row"><view class="followup-setting-icon followup-icon-calendar"></view><text>施工日报</text><text class="followup-plan-value">每天{{followupPlanDraft.dailyTime}}　⌄</text></view></picker>
+        <picker mode="multiSelector" range="{{followupPlanWeekRange}}" value="{{followupPlanWeekValue}}" bindchange="editReportPlanWeek" disabled="{{followupBusy || followupPending}}"><view class="followup-plan-row"><view class="followup-setting-icon followup-icon-calendar"></view><text>施工周报</text><text class="followup-plan-value">{{followupPlanWeekLabel}}　⌄</text></view></picker>
+        <button class="followup-plan-row" data-field="projectIds" bindtap="chooseReportPlan" disabled="{{followupBusy || followupPending}}"><view class="followup-setting-icon followup-icon-pin"></view><text>适用工地</text><text class="followup-plan-value">{{followupPlanProjectLabel}}</text><text>›</text></button>
+        <button class="followup-plan-row" data-field="audiences" bindtap="chooseReportPlan" disabled="{{followupBusy || followupPending}}"><view class="followup-setting-icon followup-icon-people"></view><text>接收角色</text><text class="followup-plan-value">{{followupPlanRoleLabel}}</text><text>›</text></button>
+        <button class="followup-plan-row" bindtap="explainReportPlanLifecycle" disabled="{{followupBusy || followupPending}}"><view class="followup-setting-icon followup-icon-pause"></view><text>停工/完工/归档</text><text class="followup-plan-value">暂停发送</text><text>›</text></button>
+        <text class="followup-plan-note">只投递给对应工地当前获权人员。
+按北京时间执行，保存后对后续任务生效。</text>
+        <text class="followup-plan-note followup-plan-history">历史报告仍可按原权限查看。</text>
+      </block>
+      <block wx:if="{{followupPlanChoice}}">
+        <label wx:if="{{followupPlanChoice === 'projectIds'}}" class="followup-plan-row"><text>全部适用工地</text><switch checked="{{followupPlanAll}}" color="#00543f" bindchange="changeReportPlanAll" disabled="{{followupBusy || followupPending}}"/></label>
+        <checkbox-group bindchange="changeReportPlanChoices"><label wx:for="{{followupPlanChoices}}" wx:key="id" class="followup-plan-row"><checkbox value="{{item.id}}" checked="{{item.checked}}" color="#00543f" disabled="{{followupBusy || followupPending || (followupPlanChoice === 'projectIds' && followupPlanAll)}}"/><text>{{item.name}}</text></label></checkbox-group>
+        <button wx:if="{{followupPlanChoice === 'projectIds' && followupPlanCursor}}" class="followup-text-action" bindtap="moreReportPlanProjects" disabled="{{followupPlanLoading}}">更多工地 ↗</button>
+        <text class="followup-caption">{{followupPlanChoice === 'projectIds' ? '最多选择20个工地；停工、完工或归档时暂停。' : '仅影响所选角色的后续任务，不扩大任何人的项目权限。'}}</text>
+      </block>
+      <view wx:if="{{followupError || followupPending || followupPlanConflict}}" class="followup-settings-feedback" role="alert"><text>{{followupPending ? '上次操作结果正在核对。' : followupPlanConflict ? '计划已变化，你的选择已保留。请重新读取并核对后保存。' : followupError}}</text><button class="followup-text-action" bindtap="{{followupPending ? 'recoverFollowup' : 'refreshReportPlan'}}" disabled="{{followupBusy}}">{{followupPending ? '核对上次操作' : '重新读取'}}</button></view>
+      <text wx:if="{{followupPlanNotice}}" class="followup-caption" role="status">{{followupPlanNotice}}</text>
+    </scroll-view>
+    <button class="followup-primary followup-settings-save" bindtap="{{followupPlanChoice ? 'commitReportPlanChoices' : 'saveReportPlan'}}" disabled="{{followupBusy || followupPending || (!followupPlanChoice && (!followupPlanDirty || followupPlanConflict || !followupPlan))}}">{{followupBusy ? '正在保存…' : followupPlanChoice ? '确定选择' : '保存计划'}}</button>
+  </view>
+</view>

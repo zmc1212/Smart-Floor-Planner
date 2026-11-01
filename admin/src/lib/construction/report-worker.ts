@@ -7,7 +7,7 @@ import { completeLocalReport, failRun, type Lease } from '@/lib/assistant/infras
 import { latestReportPeriod, nextReportAt } from './report-calendar';
 import { discoverFollowups, enqueueReport } from './report-store';
 import { dailySupplementCandidates, supplementClosedDailyReports } from './report-supplements';
-import { collectReportFacts, deliveryActor, followupAvailable, projectReportFacts, reportFactsHash, type ReportFacts } from './report-scope';
+import { collectReportFacts, deliveryActor, followupAvailable, followupProjects, projectReportFacts, reportFactsHash, type ReportFacts } from './report-scope';
 
 /** One latest due daily and weekly period per tick, not an unbounded outage replay.
  * Time changes affect future ticks; each queued run retains its original scope. */
@@ -35,16 +35,17 @@ export async function advanceConstructionReports(now = new Date(), onlyEnterpris
           const due = settings[kind === 'daily' ? 'next_daily_at' : 'next_weekly_at'];
           if (new Date(String(due)) > now) continue;
           const time = String(settings[kind === 'daily' ? 'daily_time' : 'weekly_time']);
-          const period = latestReportPeriod(kind, now, time);
+          const period = latestReportPeriod(kind, now, time, Number(settings.weekly_day || 1));
           for (const b of bindings) if (await enqueueReport(tx, eid, b, settings, period)) n++;
           const field = kind === 'daily' ? sql`next_daily_at` : sql`next_weekly_at`;
-          await tx.execute(sql`update app.construction_report_settings set ${field}=${nextReportAt(kind, now, time)} where enterprise_id=${eid}`);
+          await tx.execute(sql`update app.construction_report_settings set ${field}=${nextReportAt(kind, now, time, Number(settings.weekly_day || 1))} where enterprise_id=${eid}`);
         }
         n += await supplementClosedDailyReports(tx, eid, settings, now);
         const events = await rows(tx, sql`select e.* from app.domain_event_outbox e
           where e.enterprise_id=${eid} and e.type='construction.stage.updated.v1' and e.id>${String(settings.stage_cursor)}
           and e.created_at<=${now} order by e.id limit 50`);
         for (const event of events) {
+          if (settings.stage_enabled === false) continue;
           const project = await one(tx, sql`select id from app.construction_projects where enterprise_id=${eid} and id=${String(event.aggregate_id)}
             and status='active' and progress_revision=${Number(event.aggregate_version)} for share`);
           if (!project) continue;
@@ -76,6 +77,7 @@ export async function processConstructionReport(lease: Lease) {
         from app.construction_reports r join app.construction_report_versions v on v.enterprise_id=r.enterprise_id and v.report_id=r.id
         where r.enterprise_id=${eid} and r.id=${String(policy.reportId)} and v.revision=${Number(policy.revision)} and v.run_id=${lease.runId} for update of v`);
       if (!settings || !report || report.version_status !== 'queued') fail('context_changed');
+      if (Number(settings.dispatch_epoch || 1) !== Number(policy.reportDispatchEpoch || 1)) fail('context_changed');
       const b = await one(tx, sql`select * from app.construction_followup_bindings where enterprise_id=${eid} and id=${String(report.binding_id)} and status='enabled' for update`);
       if (!b || b.conversation_id !== run.conversation_id) fail('context_changed');
       let stageEvent: Row | undefined;
@@ -109,9 +111,10 @@ export async function deliverConstructionReports(onlyEnterprise?: string) {
   for (const target of targets) delivered += await withTenantTransaction(String(target.enterprise_id), async tx => {
     const eid = String(target.enterprise_id);
     if (!await one(tx, sql`select id from app.assistant_enterprise_settings where enterprise_id=${eid} and enabled for update skip locked`)) return 0;
-    if (!await one(tx, sql`select enterprise_id from app.construction_report_settings where enterprise_id=${eid} and enabled for share`)) return 0;
+    const settings = await one(tx, sql`select * from app.construction_report_settings where enterprise_id=${eid} and enabled for share`);
+    if (!settings) return 0;
     const pending = await rows(tx, sql`select d.*,r.kind,v.facts,v.generated_at,run.context_revision as generation_context_revision,
-      run.conversation_id as generation_conversation_id from app.construction_report_deliveries d
+      run.conversation_id as generation_conversation_id,run.policy_snapshot from app.construction_report_deliveries d
       join app.construction_reports r on r.enterprise_id=d.enterprise_id and r.id=d.report_id
       join app.construction_report_versions v on v.enterprise_id=d.enterprise_id and v.report_id=d.report_id and v.revision=d.revision
       join app.assistant_runs run on run.enterprise_id=v.enterprise_id and run.id=v.run_id
@@ -119,12 +122,16 @@ export async function deliverConstructionReports(onlyEnterprise?: string) {
     let count = 0;
     for (const d of pending) {
       const b = (await one(tx, sql`select * from app.construction_followup_bindings where enterprise_id=${eid} and id=${String(d.binding_id)} for update`))!;
-      if (b.conversation_id !== d.generation_conversation_id) {
+      if (b.conversation_id !== d.generation_conversation_id || Number(settings.dispatch_epoch || 1) !== Number((d.policy_snapshot as Row).reportDispatchEpoch || 1)) {
         await tx.execute(sql`update app.construction_report_deliveries set state='revoked' where enterprise_id=${eid} and event_id=${String(d.event_id)}`);
         continue;
       }
       const actor = deliveryActor(eid, b);
       const facts = await followupAvailable(tx, eid, b) ? await projectReportFacts(tx, eid, b, d.facts as ReportFacts, new Date(String(d.generated_at))) : null;
+      if (facts) {
+        const active = new Set((await followupProjects(tx, eid, b, true, facts.projects.map(p => p.id))).map(p => String(p.id)));
+        facts.projects = facts.projects.filter(p => active.has(p.id));
+      }
       if (b.status !== 'enabled' || !facts?.projects.length) {
         await tx.execute(sql`update app.construction_report_deliveries set state='revoked' where enterprise_id=${eid} and event_id=${String(d.event_id)}`);
         continue;

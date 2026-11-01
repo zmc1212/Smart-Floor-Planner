@@ -2,6 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const api = require('../utils/api');
 const { initialEnterprise, enterpriseMethods } = require('../utils/assistant-followup-enterprise');
+const { settingsPageMethods } = require('../utils/assistant-followup-settings');
 function fixture(t) {
   const oldApp = global.getApp, oldWx = global.wx, calls = [];
   const context = { mode: 'staff', staffRole: 'admin', staffId: '5413', enterpriseId: '1454', enterpriseName: '微云' };
@@ -10,7 +11,7 @@ function fixture(t) {
   } };
   global.getApp = () => app; global.wx = { getStorageSync: () => 'old', setStorageSync: (k, v) => calls.push(['storage', k, v]) };
   t.after(() => { global.getApp = oldApp; global.wx = oldWx; });
-  const page = { ...enterpriseMethods, _shown: true, _alive: true, data: { ...initialEnterprise(), followupReports: [{ private: 'old-scope' }] },
+  const page = { ...enterpriseMethods, ...settingsPageMethods, _shown: true, _alive: true, data: { ...initialEnterprise(), followupReports: [{ private: 'old-scope' }] },
     setData(p) { Object.assign(this.data, p); }, followups: { selected: '27', hide() { calls.push('clear'); page.data.followupReports = []; }, async show() { calls.push('show'); } },
     followupMedia: { clear() { calls.push('clear-media'); } }, controller: { hide() {} } };
   page.prepareFollowupEnterprise(context);

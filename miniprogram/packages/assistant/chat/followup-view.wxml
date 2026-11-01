@@ -60,6 +60,7 @@
 </view>
 
 <include src="./followup-settings.wxml" />
+<include src="./followup-plan.wxml" />
 <view wx:if="{{followupHistoryOpen}}" class="followup-layer" catchtouchmove="swallow">
   <view class="followup-mask" bindtap="closeFollowupHistory"></view>
   <view class="followup-sheet"><view class="followup-grip"></view><button class="followup-close" bindtap="closeFollowupHistory" aria-label="关闭简报记录"><image src="../assets/x.png"/></button><text class="followup-detail-title">简报记录</text>

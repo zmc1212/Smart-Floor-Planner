@@ -78,6 +78,11 @@ const settingsPageMethods = {
   manageFollowup() { this.setData({ followupHistoryOpen: false }); this.closeSheet(); return this.followups.openSettings(); },
   async confirmFollowupDraft() {
     if (this.data.followupBusy || this.data.followupPending) return false;
+    if (this.data.followupPlanDirty) {
+      const identity = this.followups.identity();
+      if (!await confirm('报告计划尚未保存', '继续会放弃本次未保存的选择；取消可保留并保存。') || !this._alive || !this._shown || identity !== this.followups.identity()) return false;
+      this.followups.set({ followupPlanDraft: { ...this.data.followupPlan }, followupPlanDirty: false, followupPlanConflict: false }); this.followups.planLabels();
+    }
     if (!this.data.followupPreferenceDirty) return true;
     const identity = this.followups.identity();
     const ok = await confirm('提醒偏好尚未保存', '继续会放弃本次未保存的选择；取消可保留并保存。');

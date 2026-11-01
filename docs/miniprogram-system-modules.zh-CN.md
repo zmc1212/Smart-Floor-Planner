@@ -2,6 +2,15 @@
 
 <!-- xiaok-v1-02-proactive -->
 
+<!-- v1-02-enterprise-plan -->
+**企业报告计划10：V1-02内限定Implemented，整体仍Limited。** enterprise_admin及明确所选企业的admin/super_admin从原C01历史进入批准10纸页，复用同一页面/组件、原生switch/时间/星期/checkbox、请求journal及管理守卫。GET/POST `/api/miniprogram/assistant/followups/plan`重验签名Mini身份、当前管理角色、密码、所选企业与RLS；请求正文不能指定租户/主体。GET仅给当前计划及获权工地选项，30条cursor分页。明确选择最多20工地，空筛选表示全部适用工地，仍保留原20个活动工地上限；紧凑表单保留原stageKeys筛选。
+
+0106在原设置增加stage_enabled、weekly_day(1–7)、audiences、inactive_policy、dispatch_epoch，原字段及省略新字段的内部configure调用兼容。全部用Asia/Shanghai；修改周报发送星期不改变上一完整周一至周一的事实周期。角色/阶段/范围/时间仅影响后续任务，已排队范围保持原快照；停用总开关推进投递代际，重新开启后旧run、pending/held投递和自动补充不能成为新消息。必需日/周事实保存与个人接收偏好分开，发现/入队执行所选角色，成员/业主/来源权限独立保留。批准生命周期模式仅pause_inactive：paused/archived项目状态及原completion/move_in阶段键暂停新增调度/投递；自定义终态阶段需沿原项目状态处理，不猜阶段名称。历史阅读仍沿原权限。
+
+草稿可前后台重进；关闭/换范围先确认放弃。409保留选择，显式重读核对后才可再保存；未知保持原键/正文并禁止另一操作，精确租户/版本/字段回执验证后才提示保存。撤权清除计划、选项与草稿。没有新Agent/来源/引用管线、生图或截图切片。Chat Serif原字节移到主包共享样式；同获批Noto Serif SC Black/OFL生成4464B标题子集放在共用计划样式，原README记录映射与逐元素校准。助手源包1983308/1998848；真实编译/上传包字节仍未验。
+
+证据绑定组合脏checkout，不声称干净commit包含全部本机依赖。证据：`tmp/v1-02-enterprise-plan/verification.json`。HTTP01前7项通过（角色、真实CAS/同键/并发保存、可控日周调度、角色/阶段、生命周期及旧代际拒绝），最后保留停用账号实际401而驱动预期403及原清理失败；cleanup01与定向permission02分别完成，drift[]，cleanup02另恢复最初夹具的进度备注。Native02功能5/5，但旧未生效样式帧仍保留；最终native07为3/3，28px标题、16px行、纸页(16,88)/374×756、选择器、44px操作、长名省略及宿主，产品/直接驱动/adapter/官方CLI/exe/asar/窗口helper前后绑定drift[]。Native01选择器、03/04校准、05长名换行目视失败、06不支持的查询均不改判。Mini84/84、日历9/9；源码npm lint0错误/原27警告，定向与驱动lint0；类型原82/受影响0。未限定目录的lint误扫生成缓存，已停止并留原日志；原完整build类型失败与compile-only限制保留，不重启全构建。队列0、策略关闭、合成夹具/账号/原生身份与传输恢复；模型/摄取0次，无外部消息/生产变更。根面板10、物理picker/switch/键盘/真机及全聊天光学仍未验；facts_ready/knowledge not_generated仍仅事实，追问禁用。下一步同V1-02的批准05筛选，随后11、04。
+
 <!-- v1-02-personal-settings -->
 **个人跟进设置09：V1-02内限定Implemented，整体仍Limited。** 批准09纸页及01“管理跟进”补充沿同一C01定义/组件。`GET /api/miniprogram/assistant/followups/manage?beforeId=`每页最多30条当前仍获权的绑定最小元数据，包含停止、删除、保留期脱敏；不返回旧会话/报告正文、项目计数、未读或摘要。业主保留当前项目归属/开放检查，工人/设计师保留有效成员检查，所选企业owner/admin/super_admin沿提取后的原关系谓词，不另建权限系统；会话正文仍检查关闭、删除、参与者和脱敏状态。普通列表为空也能进入管理；自动发现不重开tombstone。
 

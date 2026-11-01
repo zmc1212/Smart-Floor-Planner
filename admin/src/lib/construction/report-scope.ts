@@ -8,6 +8,10 @@ import { siteAccessRevoked } from './site-access';
 import { collectReportItems, collectCustomerReportItems, reportItemsAvailable, customerReportItemsAvailable, type ReportItems, type CustomerReportItems } from './report-items';
 
 export type FollowupAudience = 'customer' | 'worker' | 'designer' | 'boss';
+// Existing lifecycle fields: paused/archived status, completion/move_in stages.
+// Historical reads deliberately do not use this scheduling-only predicate.
+export const activeReportProject = sql`p.status='active' and coalesce(p.current_stage_key,'') not in ('completion','move_in')`;
+export const reportAudienceEnabled = (settings: Row, binding: Row) => !Array.isArray(settings.audiences) || settings.audiences.includes(String(binding.audience));
 export type ReportRecord = { id: string; version: number; hash: string; publishedAt: string; room: string; data: Row };
 export type ReportProject = Partial<ReportItems & CustomerReportItems> & { id: string; name: string; stageKey: string | null; progressRevision: number;
   stageEvents: Array<{ id: string; revision: number; stageKey: string; at: string }>;
@@ -38,7 +42,7 @@ export async function followupAvailable(tx: PostgresTransaction, eid: string, bi
 export async function followupProjects(tx: PostgresTransaction, eid: string, binding: Row, activeOnly = false, projectIds: string[] = [], stageKeys: string[] = [], metadataOnly = false) {
   if (!await (metadataOnly ? followupBindingAvailable(tx, eid, binding) : followupAvailable(tx, eid, binding))) return [];
   return rows(tx, sql`select p.* from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
-    where p.enterprise_id=${eid} and p.status${activeOnly ? sql`='active'` : sql`<>'archived'`} and l.archived_at is null
+    where p.enterprise_id=${eid} and ${activeOnly ? activeReportProject : sql`p.status<>'archived'`} and l.archived_at is null
     and (jsonb_array_length(${JSON.stringify(projectIds)}::jsonb)=0 or ${JSON.stringify(projectIds)}::jsonb ? p.id::text)
     and (jsonb_array_length(${JSON.stringify(stageKeys)}::jsonb)=0 or ${JSON.stringify(stageKeys)}::jsonb ? p.current_stage_key)
     and (${binding.audience === 'boss'} or

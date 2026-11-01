@@ -5,6 +5,7 @@ import { customerIdentity, fromEntry } from '@/lib/assistant/application/auth';
 import { AssistantError, fail, id, key, type ActorContext } from '@/lib/assistant/contracts';
 import { FollowupService } from './followup-service';
 import { object } from './contracts';
+import { ConstructionReportService, reportPlanDto } from './report-service';
 
 /** Reuses the selected Mini identity and original repository authority. Neither
  * principal, tenant, audience nor a delivery capability comes from the body. */
@@ -34,6 +35,18 @@ export async function followupHttp(request: Request, path: string[]) {
   }
 }
 export async function handleFollowup(request: Request, path: string[], actor: ActorContext) {
+  if (path[0] === 'plan') {
+    if (actor.principal.kind !== 'admin') fail('construction_forbidden', 403);
+    const params = new URL(request.url).searchParams;
+    if (path.length !== 1 || [...params.keys()].some(k => k !== 'beforeId') || (request.method !== 'GET' && params.size)) fail('invalid_construction', 422);
+    const service = new ConstructionReportService({ enterpriseId: actor.enterpriseId, adminId: actor.principal.adminId,
+      miniProgramUserId: actor.entry?.miniProgramUserId as string | undefined, miniProgramContextVersion: actor.contextVersion });
+    if (request.method === 'GET') return service.plan(params.has('beforeId') ? id(params.get('beforeId')) : undefined);
+    if (request.method !== 'POST') fail('assistant_resource_not_found', 404);
+    const raw = await request.text(); if (raw.length > 4096) fail('invalid_construction', 413);
+    let body; try { body = JSON.parse(raw); } catch { return fail('invalid_construction', 422); }
+    return reportPlanDto(await service.configure(body, key(request.headers.get('Idempotency-Key'))), actor.enterpriseId);
+  }
   const service = new FollowupService(actor), method = request.method, params = new URL(request.url).searchParams;
   const allowed = path.length === 1 && path[0] === 'manage' ? ['beforeId'] : path[1] === 'reports' ? path.length === 2 ? ['beforeId'] : ['revision'] : [];
   if ([...params.keys()].some(k => !allowed.includes(k))) fail('invalid_construction', 422);

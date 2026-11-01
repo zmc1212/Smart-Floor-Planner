@@ -2,10 +2,11 @@ const { errorCopy, uncertain } = require('./assistant-client');
 const { SiteRecordMedia } = require('./assistant-site-records');
 const api = require('./api');
 const { initialSettings, settingsMethods, operationKind } = require('./assistant-followup-settings');
+const { initialPlan, planMethods } = require('./assistant-report-plan');
 const BASE = '/followups';
 const initialFollowups = () => ({ followupActive: false, followupBindings: [], followupListLoading: false, followupLoading: false,
   followupError: '', followupBusy: false, followupPending: false, followupContext: null, followupReports: [], followupCursor: null,
-  followupDetail: null, followupOriginal: null, followupOriginalLoading: false, followupHasCards: false, ...initialSettings() });
+  followupDetail: null, followupOriginal: null, followupOriginalLoading: false, followupHasCards: false, ...initialSettings(), ...initialPlan() });
 function dateLabel(value, time = false) {
   if (value === null || value === undefined || value === '') return '';
   const d = new Date(new Date(value).getTime() + 8 * 3600000), pad = n => String(n).padStart(2, '0');
@@ -47,6 +48,7 @@ class FollowupController {
   set(patch) { if (patch.followupReports) patch.followupHasCards = patch.followupReports.some(r => r.deliveryState !== 'muted'); Object.assign(this.state, patch); this.emit(patch); }
   current(epoch = this.epoch) { return this.visible && epoch === this.epoch && this.session === this.identity(); }
   hide() {
+    this.planReentry = this.state.followupPlanOpen ? { plan: this.state.followupPlan, draft: this.state.followupPlanDraft, dirty: this.state.followupPlanDirty } : null;
     this.settingsReentry = this.state.followupManageOpen ? { setting: this.state.followupSetting, draft: this.state.followupPreferenceDraft, dirty: this.state.followupPreferenceDirty } : null;
     this.visible = false; this.epoch++; this.unschedule(this.timer); this.set(initialFollowups());
   }
@@ -54,12 +56,22 @@ class FollowupController {
   async show({ autoOpen = false } = {}) {
     if (this.session && this.session !== this.identity()) { this.selected = ''; this.operation = null;
       this.settingsReentry = null;
+      this.planReentry = null;
       if (this.client.pending.session !== this.identity()) this.client.pending.clear(); this.set(initialFollowups()); }
     this.session = this.identity(); this.visible = true;
     if (!this.session) return;
     await this.loadList();
     if (!this.current() || this.state.followupError) return;
     this.startPolling();
+    if ([...this.client.pending.keys()].some(slot => slot.startsWith('followup:plan:')) || this.planReentry) {
+      if (autoOpen) this.set({ followupActive: true });
+      const saved = this.planReentry; this.planReentry = null;
+      await this.openPlan();
+      if (saved?.dirty && this.state.followupPlan?.enterpriseId === saved.plan.enterpriseId) {
+        this.set({ followupPlanConflict: this.state.followupPlan.version !== saved.plan.version, followupPlan: saved.plan, followupPlanDraft: saved.draft, followupPlanDirty: true }); this.planLabels();
+      }
+      return;
+    }
     const pendingSetting = [...this.client.pending.keys()].some(slot => slot.startsWith('followup:preferences:') || slot.startsWith('followup:manage:'));
     if (pendingSetting || this.settingsReentry) {
       if (autoOpen) this.set({ followupActive: true });
@@ -93,6 +105,7 @@ class FollowupController {
       if (!this.state.followupBusy && !this.state.followupPending && !this.state.followupLoading) {
         await this.loadList();
         if (this.current() && this.state.followupManageOpen) await this.loadManagement();
+        if (this.current() && this.state.followupPlanOpen) await this.loadPlan();
         if (this.current() && this.selected && this.state.followupActive) await this.sync();
       }
       this.startPolling();
@@ -115,7 +128,7 @@ class FollowupController {
   failure(e) {
     if (!this.current()) return;
     const denied = e.statusCode === 401 || e.statusCode === 403 || ['assistant_resource_not_found','identity_context_invalid'].includes(e.code || e.error);
-    if (denied) this.set({ ...initialFollowups(), followupActive: !!this.selected });
+    if (denied) { this.planReentry = null; this.set({ ...initialFollowups(), followupActive: !!this.selected }); }
     this.set({ followupError: ['assistant_capability_forbidden','construction_forbidden'].includes(e.code || e.error)
       ? '当前身份无法查看这些施工跟进，请重新选择身份。' : errorCopy(e) });
   }
@@ -173,7 +186,8 @@ class FollowupController {
       if (!this.current(epoch)) return;
       this.operation = null; this.set({ followupPending: false });
       if (op.kind === 'read' && this.state.followupDetail && result.reportId === this.state.followupDetail.reportId) this.set({ followupDetail: { ...this.state.followupDetail, readAt: true } });
-      if (op.kind === 'preferences' || op.kind === 'managementChange') { this.set({ followupBusy: false }); await this.finishSettingsWrite(op, result); }
+      if (op.kind === 'plan') { this.set({ followupBusy: false }); await this.finishPlanWrite(op, result); }
+      else if (op.kind === 'preferences' || op.kind === 'managementChange') { this.set({ followupBusy: false }); await this.finishSettingsWrite(op, result); }
       else if (op.kind === 'change') { this.set({ followupBusy: false }); if (['archive','delete'].includes(op.path.split('/').pop())) this.leave(); else await this.select(this.selected); }
       else if (!this.state.followupContext && this.selected) { this.set({ followupBusy: false }); await this.select(this.selected); }
       await this.loadList(); return result;
@@ -182,6 +196,7 @@ class FollowupController {
       this.set({ followupPending: uncertain(e) }); if (!uncertain(e)) this.operation = null;
       if ((e.code || e.error) === 'context_changed') this.set({ followupDetail: null, followupOriginal: null, followupReports: [] });
       if (op.kind === 'preferences' && ['version_conflict','context_changed'].includes(e.code || e.error)) this.set({ followupSettingsConflict: true });
+      if (op.kind === 'plan' && ['version_conflict','context_changed'].includes(e.code || e.error)) this.set({ followupPlanConflict: true });
       this.failure(e);
     } finally { if (this.current(epoch)) this.set({ followupBusy: false }); }
   }
@@ -213,6 +228,7 @@ class FollowupController {
   }
 }
 Object.assign(FollowupController.prototype, settingsMethods);
+Object.assign(FollowupController.prototype, planMethods);
 /** Only the locator changes; reuse original authenticated image/cache/revocation behavior. */
 class FollowupRecordMedia extends SiteRecordMedia {
   constructor({ identity, emit, headers = async () => ({}), download = api.downloadFile }) {

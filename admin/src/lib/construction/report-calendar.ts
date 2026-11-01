@@ -11,7 +11,8 @@ export function reportDayStart(now: Date) {
   return Math.floor((now.getTime() + offset) / dayMs) * dayMs - offset;
 }
 /** Shanghai has no DST; UTC arithmetic keeps the server's host timezone irrelevant. */
-export function latestReportPeriod(kind: 'daily' | 'weekly', now: Date, time: string): ReportPeriod {
+export function latestReportPeriod(kind: 'daily' | 'weekly', now: Date, time: string, weeklyDay = 1): ReportPeriod {
+  if (!Number.isInteger(weeklyDay) || weeklyDay < 1 || weeklyDay > 7) fail('invalid_construction', 422);
   const [h, m] = reportTime(time).split(':').map(Number), clock = (h * 60 + m) * 60000;
   const today = reportDayStart(now);
   if (kind === 'daily') {
@@ -20,12 +21,14 @@ export function latestReportPeriod(kind: 'daily' | 'weekly', now: Date, time: st
     return { kind, start: new Date(start), end: cutoff, cutoff, scheduledAt: cutoff };
   }
   const weekday = new Date(today + offset).getUTCDay();
-  let monday = today - ((weekday + 6) % 7) * dayMs;
-  if (monday + clock > now.getTime()) monday -= 7 * dayMs;
-  return { kind, start: new Date(monday - 7 * dayMs), end: new Date(monday), cutoff: new Date(monday), scheduledAt: new Date(monday + clock) };
+  let scheduledDay = today - ((weekday - weeklyDay + 7) % 7) * dayMs;
+  if (scheduledDay + clock > now.getTime()) scheduledDay -= 7 * dayMs;
+  // Changing the sending weekday never shifts the Monday-to-Monday fact week.
+  const monday = scheduledDay - ((weeklyDay + 6) % 7) * dayMs;
+  return { kind, start: new Date(monday - 7 * dayMs), end: new Date(monday), cutoff: new Date(monday), scheduledAt: new Date(scheduledDay + clock) };
 }
-export function nextReportAt(kind: 'daily' | 'weekly', now: Date, time: string) {
-  return new Date(latestReportPeriod(kind, now, time).scheduledAt.getTime() + (kind === 'daily' ? dayMs : 7 * dayMs));
+export function nextReportAt(kind: 'daily' | 'weekly', now: Date, time: string, weeklyDay = 1) {
+  return new Date(latestReportPeriod(kind, now, time, weeklyDay).scheduledAt.getTime() + (kind === 'daily' ? dayMs : 7 * dayMs));
 }
 /** A daily supplement closes at Shanghai midnight. Later state cannot be
  * backfilled into yesterday or a completed weekly period. */
