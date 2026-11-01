@@ -11,9 +11,11 @@ module.exports = async ctx => {
   const { root, owner, site, pid, recordId, read, step, report, save } = ctx, eid = '1454';
   const multiProject = process.argv.includes('--staff-multi-project');
   const visualOnly = process.argv.includes('--staff-visual');
+  const bossVisual = process.argv.includes('--boss-weekly-visual');
   const pendingOnly = process.argv.includes('--staff-pending-native');
   assert.ok(!pendingOnly || multiProject);
   assert.ok(!visualOnly || multiProject && !pendingOnly);
+  assert.ok(!bossVisual || visualOnly);
   const nativeRemainder = process.argv.includes('--staff-native-remainder') || multiProject;
   assert.ok(!nativeRemainder || process.argv.includes('--staff-native'));
   const req = createRequire(path.join(root, 'admin/package.json')), { sql } = req('drizzle-orm');
@@ -46,6 +48,10 @@ module.exports = async ctx => {
   if (visualOnly) report.scope = result.scope = 'Approved06/07 root daily-card visual components only; two signed recipients and fresh two-project reports are fixture preparation, previous service/navigation/revocation evidence reused';
   if (visualOnly) result.reuse = { service: 'tmp/v1-02-staff-followup/service-01/report.json',
     navigation: 'tmp/v1-02-project-drilldown/verification.json', scope: 'Only two-recipient root-card/long-name native components are newly checked; no selected-context, source/run, quota or revocation replay.' };
+  if (bossVisual) {
+    report.scope = result.scope = 'Approved08 boss weekly root-card components only; one signed manager and real current-week-to-cutoff two-project facts, no complete-week or model acceptance';
+    result.reuse.scope = 'Only boss weekly markup, actual action bindings, truthful period/outlook, long-name reflow and scroll are newly checked; prior services/selection/revocation reused.';
+  }
   const sign = a => new SignJWT({ sub: a.uid, id: a.uid, mode: 'staff', role: a.role, staffId: a.aid, enterpriseId: eid,
     contextVersion: a.actor.contextVersion, source: 'password' }).setProtectedHeader({ alg: 'HS256' })
     .setSubject(a.uid).setIssuedAt().setAudience('miniprogram').setExpirationTime('1h').sign(new TextEncoder().encode(process.env.JWT_SECRET));
@@ -79,8 +85,8 @@ module.exports = async ctx => {
       await site.mutate(secondaryProject, secondaryOriginal, 'publish', { expectedVersion: Number(edited.version), audience: 'customer' }, randomUUID());
       return { projectIds, recordIds: [recordId, secondaryOriginal], noModel: true };
     });
-    await step(visualOnly ? 'fresh signed worker/designer for approved root-card components' : pendingOnly ? 'fresh signed worker for original-note projection' : multiProject ? 'fresh worker/designer/boss signed identities for two-project drill-down' : nativeRemainder ? 'fresh worker/designer signed identities for native remainder' : 'staff recipients and five real signed Mini identities; original private controls preserved', async () => {
-      for (const role of pendingOnly ? ['construction_staff'] : visualOnly ? ['construction_staff','designer'] : multiProject ? ['construction_staff','designer','enterprise_admin'] : nativeRemainder ? ['construction_staff','designer'] : ['construction_staff','designer','enterprise_admin','admin','super_admin']) {
+    await step(bossVisual ? 'fresh signed enterprise manager for approved08 weekly components' : visualOnly ? 'fresh signed worker/designer for approved root-card components' : pendingOnly ? 'fresh signed worker for original-note projection' : multiProject ? 'fresh worker/designer/boss signed identities for two-project drill-down' : nativeRemainder ? 'fresh worker/designer signed identities for native remainder' : 'staff recipients and five real signed Mini identities; original private controls preserved', async () => {
+      for (const role of bossVisual ? ['enterprise_admin'] : pendingOnly ? ['construction_staff'] : visualOnly ? ['construction_staff','designer'] : multiProject ? ['construction_staff','designer','enterprise_admin'] : nativeRemainder ? ['construction_staff','designer'] : ['construction_staff','designer','enterprise_admin','admin','super_admin']) {
         const a = await withPlatformTransaction(async tx => {
           const repo = new AdminUserRepository(tx), staff = await repo.create({ enterpriseId: BigInt(eid), username: prefix + ':' + role,
             displayName: '合成测试·私人跟进·' + role, passwordHash: 'unusable-local-fixture', role, status: 'active', mustChangePassword: false });
@@ -105,17 +111,17 @@ module.exports = async ctx => {
       }
       return { roles: actors.map(a => a.role), newRecipientReason: 'retained owner/private controls remain stopped or human; no rebinding' };
     });
-    await step(visualOnly ? 'fresh actual two-project fact reports; no question/source/run fixtures' : nativeRemainder ? 'fresh fact reports, selected references and source protocol fixtures for native remainder' : 'staff original reports save, exact selection/readback and quota rejection roll back sends', async () => {
+    await step(bossVisual ? 'fresh actual weekly facts from Shanghai week start to database cutoff; no model fixtures' : visualOnly ? 'fresh actual two-project fact reports; no question/source/run fixtures' : nativeRemainder ? 'fresh fact reports, selected references and source protocol fixtures for native remainder' : 'staff original reports save, exact selection/readback and quota rejection roll back sends', async () => {
       const plan = new ConstructionReportService(owner.actor), p = reportPlanDto(await plan.settings(), eid);
       await plan.configure({ expectedVersion: p.version, enabled: true, stageEnabled: false, projectIds, stageKeys: [],
         audiences: ['customer','worker','designer','boss'], dailyTime: p.dailyTime, weeklyTime: p.weeklyTime, weeklyDay: p.weeklyDay, inactivePolicy: p.inactivePolicy }, randomUUID());
       for (const a of actors) {
-        const clock = (await read(tx => one(tx, sql`select date_trunc('day',clock_timestamp() at time zone 'Asia/Shanghai') at time zone 'Asia/Shanghai' as start,
+        const clock = (await read(tx => one(tx, sql`select date_trunc(${bossVisual ? 'week' : 'day'},clock_timestamp() at time zone 'Asia/Shanghai') at time zone 'Asia/Shanghai' as start,
           clock_timestamp()+interval '1 millisecond' as cutoff`)));
         const made = await read(async tx => enqueueReport(tx, eid,
           await one(tx, sql`select * from app.construction_followup_bindings where enterprise_id=${eid} and id=${a.bid}`),
           await one(tx, sql`select * from app.construction_report_settings where enterprise_id=${eid}`),
-          { kind: 'daily', start: new Date(clock.start), end: new Date(clock.cutoff), cutoff: new Date(clock.cutoff), scheduledAt: new Date(clock.cutoff) }));
+          { kind: bossVisual ? 'weekly' : 'daily', start: new Date(clock.start), end: new Date(clock.cutoff), cutoff: new Date(clock.cutoff), scheduledAt: new Date(clock.cutoff) }));
         assert.ok(made); ownedRuns.push(made.runId); const lease = await claimJob(); assert.equal(lease?.runId, made.runId);
         await processConstructionReport(lease); await deliverConstructionReports(eid); a.rid = made.reportId;
         const base = '/followups/' + a.bid + '/conversation', detail = await http(a, '/followups/' + a.bid + '/reports/' + a.rid);

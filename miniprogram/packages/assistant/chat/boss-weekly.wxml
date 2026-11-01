@@ -1,0 +1,32 @@
+<!-- Approved08-v003: real weekly facts, original project actions and shared unknown states. -->
+<template name="boss-weekly-card">
+  <view class="followup-boss-weekly">
+    <view class="followup-paper followup-card followup-boss-progress" data-report="{{report.reportId}}">
+      <view class="followup-card-marker" data-report="{{report.reportId}}"></view>
+      <text class="fabric-label">{{report.cardLabel}}</text>
+      <text class="followup-paper-title">{{report.cardTitle}}</text>
+      <text class="followup-muted followup-boss-period">{{report.cardPeriodLabel}}</text>
+      <text class="followup-muted followup-boss-count">{{report.projects.length}}{{report.truncated ? '+' : ''}}个工地 · 截至{{report.cutoffLabel}}</text>
+      <view wx:for="{{report.projects}}" wx:key="id" wx:for-item="project" class="followup-project followup-boss-project">
+        <view class="followup-boss-project-heading"><text class="followup-project-name">{{project.name}}</text><text wx:if="{{project.stageName}}" class="followup-boss-stage">{{project.stageName}}</text></view>
+        <text wx:for="{{project.highlights}}" wx:key="key" wx:for-item="line" class="followup-line">• {{line.text}}</text>
+        <text wx:if="{{!project.highlights.length}}" class="followup-muted">本期暂无可见记录，未记录不等于未施工。</text>
+        <button class="followup-text-action followup-boss-project-action" data-report="{{report.reportId}}" data-revision="{{report.revision}}" data-project="{{project.id}}" bindtap="readFollowupReport">查看工地详情 ↗</button>
+      </view>
+      <text wx:if="{{report.truncated}}" class="followup-caption">本份简报只包含部分工地。</text>
+    </view>
+    <view class="followup-paper followup-boss-outlook">
+      <text class="fabric-label">已确认的后续安排</text>
+      <image class="followup-boss-leaf" src="../assets/boss-weekly-leaf.png" mode="aspectFit" aria-hidden="true" />
+      <view class="followup-boss-arrangements">
+        <block wx:for="{{report.projects}}" wx:key="id" wx:for-item="project"><view wx:if="{{project.arrangements.length}}"><text class="followup-boss-arrangement-project">{{project.name}}</text><text wx:for="{{project.arrangements}}" wx:key="key" class="followup-line">{{item.text}}</text></view></block>
+        <text wx:if="{{!report.hasArrangements}}" class="followup-muted">{{report.arrangementsComplete ? '暂无记录' : '后续安排尚未完整汇总'}}</text>
+        <text wx:if="{{report.hasArrangements && !report.arrangementsComplete}}" class="followup-caption">本份简报未包含全部后续安排。</text>
+      </view>
+    </view>
+    <view class="followup-paper followup-boss-footer">
+      <view class="followup-actions"><button class="followup-card-action followup-boss-full" data-report="{{report.reportId}}" data-revision="{{report.revision}}" bindtap="readFollowupReport">查看完整周报</button><button class="followup-card-action followup-primary" data-report="{{report.reportId}}" data-revision="{{report.revision}}" bindtap="askFollowupReport" disabled="{{reportQuestion.disabled || reportQuestion.busy || reportQuestion.pending}}">选工地追问</button></view>
+      <text wx:if="{{report.factsOnly}}" class="followup-caption">本份仅含现场记录，暂无工艺说明。</text>
+    </view>
+  </view>
+</template>

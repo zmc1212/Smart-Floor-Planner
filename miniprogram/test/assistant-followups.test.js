@@ -50,6 +50,36 @@ test('approved staff daily card labels retain full detail identity, original fac
   assert.equal(reportForView({ reportId: '98', revision: 1, available: false }, { ...f.context, audience: 'worker' }).cardLabel, undefined);
 });
 
+test('boss weekly card uses the exact Shanghai period, preserves historical stages and never calls old facts this week', () => {
+  const f = fixture(), context = { ...f.context, audience: 'boss' }, report = { ...f.report, kind: 'weekly',
+    periodStart: '2026-10-19T00:00:00+08:00', periodEnd: '2026-10-26T00:00:00+08:00', cutoffAt: '2026-10-26T00:00:00+08:00' };
+  const view = reportForView(report, context, '', Date.parse('2026-11-02T00:00:00+08:00'));
+  assert.equal(view.bossWeekly, true); assert.equal(view.cardLabel, '企业周报');
+  assert.equal(view.cardTitle, '本期工地进展'); assert.equal(view.cardPeriodLabel, '10月19日—10月25日');
+  assert.equal(view.cutoffLabel, '10月26日 00:00'); assert.equal(view.projects[0].stageName, '水电阶段');
+  assert.equal(view.factsOnly, true); assert.equal(view.reportId, report.reportId);
+  assert.equal(reportForView(report, f.context).bossWeekly, false);
+  assert.equal(reportForView({ ...report, kind: 'daily' }, context).bossWeekly, false);
+  const revoked = reportForView({ ...report, available: false }, context);
+  assert.equal(revoked.bossWeekly, undefined); assert.equal(revoked.projects, undefined);
+  assert.equal(reportForView({ ...report, periodStart: '2026-12-28T00:00:00+08:00', periodEnd: '2027-01-04T00:00:00+08:00' }, context).cardPeriodLabel, '12月28日—1月3日');
+});
+
+test('weekly outlook distinguishes a complete empty projection from missing or truncated arrangements', () => {
+  const f = fixture(), context = { ...f.context, audience: 'boss' }, report = { ...f.report, kind: 'weekly' };
+  assert.equal(reportForView(report, context).arrangementsComplete, false);
+  const facts = { ...report.facts, arrangementsStatus: 'aggregated' };
+  assert.equal(reportForView({ ...report, facts }, context).arrangementsComplete, true);
+  assert.equal(reportForView({ ...report, facts }, context).hasArrangements, false);
+  assert.equal(reportForView({ ...report, facts: { ...facts, projectsTruncated: true } }, context).arrangementsComplete, false);
+  assert.equal(reportForView({ ...report, facts: { ...facts, projects: [{ ...facts.projects[0], arrangementsTruncated: true }] } }, context).arrangementsComplete, false);
+  const second = { id: '249', name: '另一工地', arrangements: [{ id: 'plan-2', title: '现场复核', difference: '已确认由设计师现场核对，时间未定' }] };
+  const populated = reportForView({ ...report, facts: { ...facts, projects: [...facts.projects, second] } }, context);
+  assert.equal(populated.hasArrangements, true); assert.equal(populated.arrangementsComplete, true);
+  assert.equal(populated.projects[1].arrangements[0].text, '现场复核\n已确认由设计师现场核对，时间未定');
+  assert.equal(reportForView({ ...report, facts: { ...facts, projects: [...facts.projects, second] } }, context, '248').hasArrangements, false);
+});
+
 test('listing and selecting never acknowledge reports or change ordinary draft/destination', async () => {
   const f = fixture(); await f.controller.show(); await f.controller.select('27');
   assert.ok(f.calls.every(c => c.method === 'GET'));
