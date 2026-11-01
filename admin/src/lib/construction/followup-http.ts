@@ -7,6 +7,7 @@ import { FollowupService } from './followup-service';
 import { object } from './contracts';
 import { ConstructionReportService, reportPlanDto } from './report-service';
 import type { ReportHistoryFilters } from './report-history';
+import { followupConversationHttp } from './followup-conversation';
 
 /** Reuses the selected Mini identity and original repository authority. Neither
  * principal, tenant, audience nor a delivery capability comes from the body. */
@@ -36,6 +37,7 @@ export async function followupHttp(request: Request, path: string[]) {
   }
 }
 export async function handleFollowup(request: Request, path: string[], actor: ActorContext) {
+  if (path[1] === 'conversation') return followupConversationHttp(request, path, actor);
   if (path[0] === 'plan') {
     if (actor.principal.kind !== 'admin') fail('construction_forbidden', 403);
     const params = new URL(request.url).searchParams;

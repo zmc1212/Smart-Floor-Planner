@@ -30,7 +30,7 @@ function reportForView(report, context) {
   if (!report.available) return { reportId: report.reportId, revision: report.revision, available: false, title: '这份简报已不可用', stateLabel: '来源或权限已变化' };
   const kindLabel = { daily: '施工日报', weekly: '施工周报', stage: '阶段提醒' }[report.kind] || '施工简报';
   const projects = (report.facts && report.facts.projects || []).map(p => projectForView(p, context));
-  return { ...report, projects, kindLabel, title: dateLabel(report.periodStart) + ' · ' + kindLabel,
+  return { ...report, projects, kindLabel, takeoverTitle: dateLabel(report.periodStart) + kindLabel, title: dateLabel(report.periodStart) + ' · ' + kindLabel,
     periodLabel: dateLabel(report.periodStart, true) + '—' + dateLabel(report.periodEnd, true), cutoffLabel: dateLabel(report.cutoffAt, true),
     generatedLabel: dateLabel(report.generatedAt, true), dateLabel: dateLabel(report.generatedAt || report.scheduledAt, true),
     stateLabel: report.state === 'facts_ready' ? '现场记录已保存' : ({ queued: '正在读取现场记录…', running: '正在读取现场记录…', failed: '这次简报未完成', indeterminate: '结果正在核对', cancelled: '这次简报已停止' }[report.state] || '正在核对结果'),

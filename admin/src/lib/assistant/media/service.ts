@@ -49,7 +49,10 @@ export class AssistantMediaService {
         if (write) fail('assistant_capability_forbidden', 403);
         const staff = await authorizeHandoffStaff(repo);
         c = await one(tx, sql`select * from app.assistant_conversations where enterprise_id=${this.actor.enterpriseId}
-          and id=${conversationId} and purpose='customer_consultation' and status='open' for update`);
+          and id=${conversationId} and status='open'
+          and (purpose='customer_consultation' or (purpose='construction_followup' and exists(select 1 from app.construction_followup_bindings b
+            where b.enterprise_id=app.assistant_conversations.enterprise_id and b.conversation_id=app.assistant_conversations.id and b.audience='customer'
+            and app.assistant_followup_conversation_access('user',b.user_id,b.enterprise_id,b.conversation_id)))) for update`);
         const h = (c?.entry_snapshot as Row)?.handoff as Row | undefined;
         if (!h || h.mediaConsent !== true || h.state !== 'active' ||
           (h.state === 'active' && (String(h.ownerId) !== String(staff.id) || !await one(tx, sql`select id from app.assistant_participants
@@ -99,6 +102,7 @@ export class AssistantMediaService {
         return { id: String(existing.id), conversationId };
       }
       if (c.status !== 'open' || !['ai', 'human', 'handoff_requested'].includes(String(c.mode))) fail('conversation_read_only');
+      if (c.purpose === 'construction_followup' && c.mode === 'ai') fail('context_changed');
       const count = await one(repo.tx, sql`select count(*) n from app.assistant_media where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId}`);
       if (Number(count!.n) >= 20) fail('media_limit', 422);
       const m = (await one(repo.tx, sql`insert into app.assistant_media(enterprise_id,conversation_id,customer_user_id,request_key,source_hash,kind,room_name,mime_type,width,height,byte_size,data,source_ref)

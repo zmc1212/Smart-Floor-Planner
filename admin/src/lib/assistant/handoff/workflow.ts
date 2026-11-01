@@ -46,7 +46,8 @@ export class HandoffWorkflow {
     return withTenantTransaction(this.actor.enterpriseId, async tx => {
       const repo = new AssistantRepository(tx,this.actor), settings = await repo.settings(write);
       const c = await repo.conversation(conversationId);
-      if (c.purpose !== 'customer_consultation') fail('assistant_capability_forbidden',403);
+      if (c.purpose !== 'customer_consultation' && !(c.purpose === 'construction_followup'
+        && this.actor.capabilities.includes('assistant.followup.self') && (c.entry_snapshot as Row).audience === 'customer')) fail('assistant_capability_forbidden',403);
       return work(repo,c,settings!);
     });
   }

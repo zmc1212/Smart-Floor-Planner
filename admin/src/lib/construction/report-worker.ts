@@ -142,6 +142,15 @@ export async function deliverConstructionReports(onlyEnterprise?: string) {
         await tx.execute(sql`update app.construction_report_deliveries set state='revoked' where enterprise_id=${eid} and event_id=${String(d.event_id)}`);
         continue;
       }
+      // Reception changes keep report tasks independent of chat cancellation.
+      // A report already created when reception explicitly ended stays in
+      // history, including work completed later; it is never a catch-up message.
+      const endedAt = ((c.entry_snapshot as Row).handoff as Row | undefined)?.endedAt;
+      if (endedAt && await one(tx, sql`select id from app.construction_reports where enterprise_id=${eid}
+        and id=${String(d.report_id)} and created_at<=${String(endedAt)}::timestamptz`)) {
+        await tx.execute(sql`update app.construction_report_deliveries set state='muted' where enterprise_id=${eid} and event_id=${String(d.event_id)}`);
+        continue;
+      }
       // Keep the immutable report and receipt. Re-enabling affects future
       // reception; muted historical results never become an unread backlog.
       if (b['remind_' + String(d.kind)] === false) {

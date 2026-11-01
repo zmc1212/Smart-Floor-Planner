@@ -743,6 +743,13 @@
       "when": 1793952000000,
       "tag": "0106_construction_report_plan",
       "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1794038400000,
+      "tag": "0107_construction_followup_handoff",
+      "breakpoints": true
     }
   ]
 }

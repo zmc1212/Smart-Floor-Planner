@@ -163,6 +163,9 @@ class AssistantClient {
     }
     try {
       const data = await this.read(pending.path, pending.body, { ...headers, 'Idempotency-Key': pending.key }, pending.method);
+      if (/^\/followups\/[1-9]\d*\/conversation\//.test(pending.path)
+        && (slot.startsWith('send:') || slot.startsWith('handoff:') || slot.startsWith('media:'))
+        && data.conversationId !== slot.split(':')[1]) throw { code: 'invalid_response' };
       if (slot.startsWith('followup:') && !validFollowupReceipt(pending, data, slot)) throw { code: 'invalid_response' };
       if (slot.startsWith('send:') || slot.startsWith('retry:')) {
         if ((!data.runId && !(slot.startsWith('send:') && data.status === 'succeeded' && data.messageId)) || !data.conversationId) throw { code: 'invalid_response' };

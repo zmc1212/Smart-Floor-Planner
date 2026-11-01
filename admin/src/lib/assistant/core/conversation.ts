@@ -162,9 +162,10 @@ export function startInternalRun(actor: ActorContext, conversationId: string, tr
       newRun(tx, actor, c, settings!, trigger.kind === 'user_message' ? trigger.messageId : null, undefined, trigger, purpose));
   });
 }
-export async function cancelRuns(tx: PostgresTransaction, actor: ActorContext, conversationId: string, runId?: string) {
+export async function cancelRuns(tx: PostgresTransaction, actor: ActorContext, conversationId: string, runId?: string, keepReports = false) {
   const cancelled = await rows(tx, sql`update app.assistant_runs set status='cancelled',completed_at=now(),updated_at=now(),version=version+1
     where enterprise_id=${actor.enterpriseId} and conversation_id=${conversationId} and status in ('queued','running')
+    ${keepReports ? sql`and purpose<>'construction.report.facts'` : sql``}
     ${runId ? sql`and id=${runId}` : sql``} returning id,purpose,policy_snapshot`);
   for (const r of cancelled) {
     const job = await one(tx, sql`update app.assistant_jobs set status='cancelled',lease_token=null,updated_at=now(),version=version+1
@@ -256,7 +257,8 @@ export class ConversationService {
       const c=await repo.conversation(conversationId);
       await syncConstructionReminders(repo.tx, this.actor, c);
       const result = await rows(repo.tx, sql`select id,seq,author_kind,content,answer_kind,created_at,purpose from app.assistant_messages
-        where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and seq<${beforeSeq} order by seq desc limit ${limit}`);
+        where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and seq<${beforeSeq}
+        and ${c.purpose === 'construction_followup' ? sql`purpose is distinct from 'construction.report.facts'` : sql`true`} order by seq desc limit ${limit}`);
       const items=[];
       for(const message of result)items.push(await projectMessage(repo.tx,this.actor,c,message));
       return { items,
@@ -302,6 +304,9 @@ export class ConversationService {
       const c = await repo.conversation(conversationId); const safe = userContent(content, Number(settings!.max_message_chars));
       return idempotent(repo.tx, this.actor, 'send:' + conversationId, clientMessageId, speech === undefined ? safe : { ...safe, speech }, async () => {
         if (c.status !== 'open') fail('context_changed');
+        // Facts-only followups have no accepted AI question path yet. An old
+        // human-send receipt can still replay after explicit reception ends.
+        if (c.purpose === 'construction_followup' && c.mode === 'ai') fail('context_changed');
         const append = async (purpose?: string) => {
           const message = await appendMessage(repo.tx, this.actor, conversationId, { author: this.actor.principal.kind, content: safe, clientMessageId, purpose });
           await bindSpeechToMessage(repo.tx, this.actor, conversationId, String(message.id), safeText(safe), speech);

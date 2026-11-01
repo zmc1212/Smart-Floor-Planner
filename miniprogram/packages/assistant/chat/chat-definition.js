@@ -15,6 +15,7 @@ const { initialEnterprise, enterpriseMethods } = require('../../../utils/assista
 const { settingsPageMethods } = require('../../../utils/assistant-followup-settings');
 const { historyPageMethods } = require('../../../utils/assistant-report-history');
 const { planPageMethods } = require('../../../utils/assistant-report-plan');
+const { FollowupChat, emptyFollowupChat, followupChatMethods } = require('../../../utils/assistant-followup-chat');
 
 function sessionToken() {
   const app = getApp();
@@ -26,12 +27,13 @@ module.exports = () => ({
   ...settingsPageMethods,
   ...historyPageMethods,
   ...planPageMethods,
+  ...followupChatMethods,
   data: {
     ...initial(), navigationTop: 47, navigationHeight: 44, navigationRight: 100,
     ...initialPublic(),
     ...initialPlans(),
     ...initialContext(),
-    ...initialFollowups(), ...initialEnterprise(), professionalFollowup: false, followupHistoryOpen: false, followupManageOpen: false, followupOriginalPaths: {}, followupOriginalError: '',
+    ...initialFollowups(), ...initialEnterprise(), followupChat: emptyFollowupChat(), followupScrollTarget: '', professionalFollowup: false, followupHistoryOpen: false, followupManageOpen: false, followupOriginalPaths: {}, followupOriginalError: '',
     viewportHeight: 844, keyboardHeight: 0, inputFocused: false, bottomInset: 34, sheet: '', sheetOpen: false,
     embedded: false, scrollTarget: '',
     topics: [
@@ -111,12 +113,16 @@ module.exports = () => ({
             else { this.controller.visible = true; this.setData({ followupManageOpen: false, followupHistoryOpen: false }); this.controller.refresh({ forceEntry: false, background: true }); }
           }
           if (patch.followupReports || patch.followupActive !== undefined) this.observeFollowupCards();
+          if (patch.followupContext && patch.followupActive !== false) this.followupChatController?.open(patch.followupContext);
+          if (patch.followupContext === null || patch.followupActive === false) this.followupChatController?.hide();
           if (patch.followupDetail && !patch.followupDetail.readAt) wx.nextTick(() => { if (this._alive && this._shown) this.followups.renderedReport(); });
           if (patch.followupOriginal === null && this.followupMedia) this.followupMedia.clear();
           if (patch.followupOriginal && this.followupMedia && this.data.followupDetail && this.data.followupContext)
             this.followupMedia.loadOriginal(this.data.followupContext, this.data.followupDetail, patch.followupOriginal);
         });
       } });
+    this.followupChatController = new FollowupChat({ Controller: ChatController, Media: MediaController, client: this.controller.client, identity: sessionToken,
+      headers: () => this.followups.headers(), emit: patch => { if (this._alive) this.setData(patch); } });
     this.followupMedia = new FollowupRecordMedia({ identity: sessionToken, headers: () => this.followups.headers(), emit: patch => {
       if (this._alive) this.setData({ ...(patch.siteRecordPaths ? { followupOriginalPaths: patch.siteRecordPaths } : {}),
         ...(patch.siteRecordError !== undefined ? { followupOriginalError: patch.siteRecordError } : {}) });
@@ -165,9 +171,10 @@ module.exports = () => ({
       if (this._alive && this._shown) await this.followups.show();
     }
   },
-  onHide() { this._shown = false; this._enterpriseEpoch = (this._enterpriseEpoch || 0) + 1; this.followups.hide(); if (this._followupObserver) this._followupObserver.disconnect(); clearTimeout(this._followupObserveTimer); this.setData({ ...initialEnterprise(), followupHistoryOpen: false, followupManageOpen: false }); if (this.speechController) this.speechController.hide(); if (this.location) this.location.clear(); this.controller.hide(); this.siteRecords.clear(); this.recommendations.clear(); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); this.closeSheet(); this.setData({ speechBusy: false, keyboardHeight: 0, siteRecordPaths: {}, siteRecordError: '', ...initialPublic(), ...initialPlans() }); },
+  onHide() { this._shown = false; this.followupChatController?.hide(); this._enterpriseEpoch = (this._enterpriseEpoch || 0) + 1; this.followups.hide(); if (this._followupObserver) this._followupObserver.disconnect(); clearTimeout(this._followupObserveTimer); this.setData({ ...initialEnterprise(), followupHistoryOpen: false, followupManageOpen: false }); if (this.speechController) this.speechController.hide(); if (this.location) this.location.clear(); this.controller.hide(); this.siteRecords.clear(); this.recommendations.clear(); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); this.closeSheet(); this.setData({ speechBusy: false, keyboardHeight: 0, siteRecordPaths: {}, siteRecordError: '', ...initialPublic(), ...initialPlans() }); },
   onUnload() {
     this._alive = false; clearTimeout(this._sheetTimer);
+    this.followupChatController?.dispose();
     this._enterpriseEpoch = (this._enterpriseEpoch || 0) + 1;
     clearTimeout(this._followupObserveTimer); if (this.followupMedia) this.followupMedia.clear();
     if (this.followups) this.followups.hide(); if (this._followupObserver) this._followupObserver.disconnect();

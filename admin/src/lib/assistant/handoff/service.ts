@@ -11,7 +11,7 @@ import { currentHandoffOwner } from './owner';
 
 type Handoff = { state: 'waiting' | 'active' | 'cancelled' | 'ended'; requestId: string; recipientId: string | null;
   recipientName: string; ownerId?: string; ownerName?: string; mediaConsent?: boolean; contactConsent: boolean; phone: string;
-  requestedAt: string; packet: Row; source: Row; leadId: string | null };
+  requestedAt: string; endedAt?: string; packet: Row; source: Row; leadId: string | null };
 const stateOf = (c: Row) => (c.entry_snapshot as Row)?.handoff as Handoff | undefined;
 // Internal capability passed only after the native graph's customer decision.
 // Neither a REST payload nor an existing model tool can construct this symbol.
@@ -110,7 +110,8 @@ export class HandoffService {
           if (leadId && (input.archiveConsent !== true || !await one(repo.tx,sql`select id from app.leads where enterprise_id=${this.actor.enterpriseId}
             and id=${leadId} and customer_user_id=${customerUserId} and archived_at is null and status not in ('closed','converted') for share`))) fail('assistant_resource_not_found',404);
           const messages = await rows(repo.tx,sql`select id,seq,author_kind,content from app.assistant_messages where enterprise_id=${this.actor.enterpriseId}
-            and conversation_id=${conversationId} order by seq desc limit 201`);
+            and conversation_id=${conversationId}
+            and ${c.purpose==='construction_followup'?sql`purpose is distinct from 'construction.report.facts'`:sql`true`} order by seq desc limit 201`);
           // A packet may be bounded, but never pretend a truncated history is complete.
           const summary = await one(repo.tx,sql`select id,status,draft_fields,confirmed_fields from app.assistant_requirement_summaries
             where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and status!='redacted' order by id desc limit 1`);
@@ -120,14 +121,15 @@ export class HandoffService {
             source:{ ...conversationSource(c), ...(portfolio ? { portfolio } : {}) } };
         } else {
           if (!h || !['waiting','active'].includes(h.state)) fail('context_changed');
-          h = {...h,state:input.action==='cancel'?'cancelled':'ended'};
+          h = {...h,state:input.action==='cancel'?'cancelled':'ended',
+            endedAt:String((await one(repo.tx,sql`select clock_timestamp()::text at`))!.at)};
           await repo.tx.execute(sql`update app.assistant_participants set status='revoked',revoked_at=now(),updated_at=now(),version=version+1
             where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and participant_role='handoff_staff'`);
         }
-        await cancelRuns(repo.tx,this.actor,conversationId);
+        await cancelRuns(repo.tx,this.actor,conversationId,undefined,c.purpose==='construction_followup');
         const mode = h.state==='waiting'?'handoff_requested':'ai';
         await repo.tx.execute(sql`update app.assistant_conversations set mode=${mode},entry_snapshot=jsonb_set(entry_snapshot-'handoffProposal','{handoff}',${JSON.stringify(h)}::jsonb),
-          context_revision=context_revision+1,version=version+1,updated_at=now() where enterprise_id=${this.actor.enterpriseId} and id=${conversationId}`);
+          context_revision=context_revision+${c.purpose==='construction_followup'?0:1},version=version+1,updated_at=now() where enterprise_id=${this.actor.enterpriseId} and id=${conversationId}`);
         const event = await one(repo.tx, sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
           values(${this.actor.enterpriseId},'assistant.handoff.customer.v1','assistant_conversation',${conversationId},${Number(c.version)+1},${JSON.stringify(this.actor.principal)}::jsonb,
             ${requestKey},${JSON.stringify({action:input.action,requestId:h.requestId,recipientId:h.recipientId,contactConsent:h.contactConsent,mediaConsent:h.mediaConsent===true,leadId:h.leadId,archiveConsent:input.archiveConsent===true,source:h.source})}::jsonb) returning id`);
@@ -144,7 +146,10 @@ export class HandoffService {
     return this.scoped(false,async repo=>{
       await authorizeHandoffStaff(repo);
       const staffId = this.actor.principal.kind==='admin'?this.actor.principal.adminId:'';
-      const list=await rows(repo.tx,sql`select * from app.assistant_conversations where enterprise_id=${this.actor.enterpriseId} and purpose='customer_consultation'
+      const list=await rows(repo.tx,sql`select * from app.assistant_conversations where enterprise_id=${this.actor.enterpriseId}
+        and (purpose='customer_consultation' or (purpose='construction_followup' and exists(select 1 from app.construction_followup_bindings b
+          where b.enterprise_id=app.assistant_conversations.enterprise_id and b.conversation_id=app.assistant_conversations.id and b.audience='customer'
+          and app.assistant_followup_conversation_access('user',b.user_id,b.enterprise_id,b.conversation_id))))
         and status='open' and ((entry_snapshot->'handoff'->>'state'='waiting' and (entry_snapshot->'handoff'->>'recipientId' is null or entry_snapshot->'handoff'->>'recipientId'=${staffId}))
           or (entry_snapshot->'handoff'->>'state'='active' and entry_snapshot->'handoff'->>'ownerId'=${staffId} and exists(select 1 from app.assistant_participants p
             where p.enterprise_id=app.assistant_conversations.enterprise_id and p.conversation_id=app.assistant_conversations.id and p.admin_id=${staffId} and p.status='active' and p.participant_role='handoff_staff'
@@ -154,7 +159,10 @@ export class HandoffService {
   }
   private async staffConversation(repo:AssistantRepository, conversationId:string) {
     const staff=await authorizeHandoffStaff(repo);
-    const c=await one(repo.tx,sql`select * from app.assistant_conversations where enterprise_id=${this.actor.enterpriseId} and id=${id(conversationId)} and purpose='customer_consultation' for update`);
+    const c=await one(repo.tx,sql`select * from app.assistant_conversations where enterprise_id=${this.actor.enterpriseId} and id=${id(conversationId)}
+      and (purpose='customer_consultation' or (purpose='construction_followup' and exists(select 1 from app.construction_followup_bindings b
+        where b.enterprise_id=app.assistant_conversations.enterprise_id and b.conversation_id=app.assistant_conversations.id and b.audience='customer'
+        and app.assistant_followup_conversation_access('user',b.user_id,b.enterprise_id,b.conversation_id)))) for update`);
     const h=c && stateOf(c), staffId=String(staff.id);
     if (!c || c.status!=='open' || !h || !['waiting','active'].includes(h.state) || (h.state==='waiting' && h.recipientId && h.recipientId!==staffId)
       || (h.state==='active' && h.ownerId!==staffId)) fail('assistant_resource_not_found',404);
@@ -179,7 +187,8 @@ export class HandoffService {
       if (h.state === 'waiting') return { conversationId: String(c.id), mode: c.mode,
         status: c.status, version: Number(c.version), handoff: dispatchHandoff(h), messages: [] };
       const messages=h.state==='active'?await rows(repo.tx,sql`select id,seq,author_kind,admin_id,content from app.assistant_messages where enterprise_id=${this.actor.enterpriseId}
-        and conversation_id=${conversationId} order by seq desc limit 100`):[];
+        and conversation_id=${conversationId}
+        and ${c.purpose==='construction_followup'?sql`purpose is distinct from 'construction.report.facts'`:sql`true`} order by seq desc limit 100`):[];
       const summary = await one(repo.tx, sql`select id,status,draft_fields,confirmed_fields from app.assistant_requirement_summaries
         where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and status!='redacted' order by id desc limit 1`);
       const projected = await this.project(repo,c);
@@ -251,12 +260,13 @@ export class HandoffService {
             return {conversationId};
           }
           h.state=input.action==='release'?'waiting':'ended';delete h.ownerId;delete h.ownerName;
+          if(h.state==='ended')h.endedAt=String((await one(repo.tx,sql`select clock_timestamp()::text at`))!.at);
           await repo.tx.execute(sql`update app.assistant_participants set status='revoked',revoked_at=now(),version=version+1
             where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and participant_role='handoff_staff'`);
         }
-        await cancelRuns(repo.tx,this.actor,conversationId);
+        await cancelRuns(repo.tx,this.actor,conversationId,undefined,current.purpose==='construction_followup');
         await repo.tx.execute(sql`update app.assistant_conversations set mode=${h.state==='active'?'human':h.state==='waiting'?'handoff_requested':'ai'},
-          entry_snapshot=jsonb_set(entry_snapshot,'{handoff}',${JSON.stringify(h)}::jsonb),context_revision=context_revision+1,version=version+1,updated_at=now()
+          entry_snapshot=jsonb_set(entry_snapshot,'{handoff}',${JSON.stringify(h)}::jsonb),context_revision=context_revision+${current.purpose==='construction_followup'?0:1},version=version+1,updated_at=now()
           where enterprise_id=${this.actor.enterpriseId} and id=${conversationId}`);
         const event = await one(repo.tx, sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
           values(${this.actor.enterpriseId},'assistant.handoff.staff.v1','assistant_conversation',${conversationId},${Number(current.version)+1},${JSON.stringify(this.actor.principal)}::jsonb,

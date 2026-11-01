@@ -2,6 +2,33 @@
 
 <!-- xiaok-v1-02-proactive -->
 
+<!-- v1-02-human-takeover -->
+**人工接待11：限定 Implemented；V1-02整体仍Limited。** 设计仍沿批准11-human-takeover-report-v001.png与原手账README/共用状态，853×1844→390×844。C01复用原ChatController、媒体适配及持久请求journal，支持客户私人跟进的等待补充、真实员工文字/图片、发送及结束的原键重进恢复、接待人失效反馈和明确请求/取消/结束。普通咨询草稿/目的地独立，拒绝只清本目的地待核对操作。跟进麦克风明确不可用，普通语音不变；没有新Agent、知识/权限/引用管线、新字体、生图或截图切片。
+
+GET /api/miniprogram/assistant/followups/:bindingId/conversation及messages?beforeSeq=&limit=、handoff、media[/:mediaId]，POST messages/handoff/media及原媒体DELETE均委派原ConversationService/HandoffWorkflow/HandoffService/媒体服务。服务端解析本人客户绑定和同一会话，再重验原仓库、Mini身份/所选企业/项目及参与者；正文不能选择会话/主体/租户，员工私人目的地不能使用客户适配，普通conversation API未开放。原员工handoffs列表/接单/读取/回复/媒体仅沿有效客户跟进和原显式同意/授权；0107扩展原参与者/消息触发器，保留员工私人会话owner边界。接待包/消息排除报告定位符，接待不授予收件人报告权限。明确回到AI后，纯事实跟进仍禁止AI发送/上传，待04及原V1-01返回条件。
+
+接待切换取消聊天执行，但保留排队/运行的construction.report.facts及其context revision。后台任务、保存结果和只读历史与AI插入分开；明确结束/取消记录数据库时钟endedAt，此前创建的报告投递静默为muted，包括之后才完成的任务，历史仍可读且不集中补刷。停止/删除/改绑/dispatch epoch、当前项目/来源及其他会话取消规则不变。读报告不会恢复AI或结束接待。
+
+证据为tmp/v1-02-human-takeover/verification.json。HTTP05的9/9及清理沿原绑定范围复用：真实等待/接单/文字/回复/私图、同键恢复/冲突、后台与排队报告跨接待继续、静默积压及租户/身份/当前项目/员工拒绝；原失败与其后接待定位符过滤、客户端journal和样式影响分列。native10在同一副屏Stable2.02.2608080/base3.17.2/390×844完成7/7：真实等待补充/接单、发送丢回执原键重进、真人回复、AI暂停期间只读报告、接待人失效、结束丢回执恢复/旧staff拒绝；定位符过滤用真实已存报告核对。9张348×752页面和2张1700×960宿主已审看。native13只定向改后组件样式/失效变体4/4，2页/1完整宿主、直接/嵌套驱动绑定drift[]；被动宿主截图核同HWND947063424、位置/遮挡及前台前后一致，不抢焦点/输入、不新窗口。业务与视觉分批复用，不虚构最终源码全套一次通过。
+
+启动根因已定位为followup-view.wxml:36的wx:else与wx:for同节点，IDE真实编译日志在App/Page注册前拒绝；加入不产生渲染节点的block修复分支，保持消息DOM。单独WXML摘要不是实际页面编译成功。native01–07、08异步接单断言、09前台截图拒绝、11旧导入Less、12深色渐变/CLI求值失败均保留原结果。最终入口失效更新后核到新Less，已实测/审看悬挂布签、浅色已保存标签、本11独立23px标题/16px说明/13–15px操作、长姓名两行自然重排及44px操作框。原C01壳/图标/Chat Serif保持，未升级完整公共壳字形光学；逐元素尺寸见现有设计README及小程序清单下表。
+
+最终包体13/13、驱动lint0，绑定drift[]。Static01客户端79/79、源码lint0错误/25警告与类型原82/涉及0仅在列明五个变化文件（WXML/Less入口及驱动绑定）后复用未变JS/后台逻辑，不重放。末次包体首包装误用Bun、首lint包装10s超时原件保留。新全量webpack构建在自有worker约8.5GB驻留后中止，不计通过；compile04采用进程内入口/output覆盖及compile-only，实际完成小程序assistant、后台handoffs、内部Worker三个受影响生产API入口及proxy，加载的.env.local/.env.production、Node/Next及驱动/配置/源码绑定drift[]，仓库配置字节未改。默认standalone/全产品构建与原全量类型失败仍未通过，打印的全路由表不代表全部路由已编译。Compile02验证钩子错误、03较窄配置绑定单列。
+
+助手源包1995992/1998848，余2856B安全量；实际打包/上传字节、根面板11、实体键盘/真机及完整跟进还原未验。最终回读队列0、计划false/version154/dispatch_epoch23，271/272归档/对客关闭，60/61 stopped/ai，5410/5419停用；原27/880/human及50/910/stopped/ai不变。身份/存储/传输/hydration已恢复，当前根路由pages/index/index，无自有controller/任务/构建/锁。providerMax4114/knowledgeMax3753及3753 unknown/input_tokens null保持，本11新增模型/摄取0次。V1-01 Limited/解释关闭、D2=2、10对话unknown及CNY32.828897/100、3753未知费用单列继承。完成11本地阶段提交后按唯一计划继续04；不授权生产启用、外部消息、付费fallback或远程部署。
+
+当前11逐元素台账（逻辑390×844；源853×1844；native13）。保留的合成接待人长姓名自然两行重排，元素盒与可见字形分开核对；公共导航/范围行保留原权威，不升级完整聊天光学。
+
+| 元素 | 最终原生边界 / 样式 |
+| --- | --- |
+| 顶部操作 / 范围 | (205,47)、81×44，右286，完整宿主胶囊已审看。范围标题(38,98)、330×30.8/22px，原范围底173.8。 |
+| 接待纸页 / 悬挂布签 | 纸页(35,209.8)、330×158.38；布签光学框(44.61,194.42)、49.79×33.76/14px，不再占正文流。 |
+| 接待标题 / 说明 / 结束 | 标题(53,238.8)、294×64.38，23px/32.2两行；说明(53,307.17)、160.73×48，16px/24；结束(225.73,311.17)、130.27×44，13px。 |
+| 已保存报告纸页 / 标签 | (35,400.17)、330×187.39；标签(44.79,381.45)、113.42×40.44，浅色rgb(212,218,195)，已去旧深色渐变。原CSS布签几何，无图像切取。 |
+| 报告标题 / 说明 / 操作 / caption | 标题(53,433.17)、294×29.89/23px；说明顶465.06，16px/24；线顶497.06，双按钮(53/205,506.06)、142×44，间距10px/字号15px；caption顶555.06，13px/19.5。 |
+| 输入与控件 | 原壳(26,783)、349×49及输入(115,790)、211×35；图片热区(28,785.5)、44×44；发送(327.5,785.5)、44×44，以内容裁切保留原39px光学圆。 |
+| 恢复与限制 | 等待/失效/发送及结束待核对沿同纸页/输入，真实报告详情只读。native10业务帧与13最终组件/完整宿主分列；根面板、实体控件/真机及完整公共壳光学仍未验。 |
+
 <!-- v1-02-report-history -->
 **简报记录05：V1-02内限定Implemented，整体仍Limited。** 原C01聊天/根面板纸页新增当前获权项目、上海月份及日报/周报筛选，沿原20条beforeId分页。月份归属按不可变报告周期起点的Asia/Shanghai计算，跨月周报不按投递月归档。GET /api/miniprogram/assistant/followups/:bindingId/reports接受projectId/month/kind/beforeId；原绑定context接受afterProjectId/projectId，返回每页20个获权工地、projectsNextCursor及独立重验的selectedProject，支持选中首屏以外的工地。全部沿FollowupService、原followupProjects/RLS与来源投影；非法/重复参数拒绝，正文不能选择租户/主体。项目筛选索引只保留该项目当前有效段且不返回已阅令牌；打开仍重验同一报告的完整收件人获权快照。没有新增报告中心、Agent、知识/权限或引用管线。
 
@@ -9,7 +36,7 @@
 
 证据：tmp/v1-02-report-history/verification.json。HTTP02索引/分页/月界有效范围保留，03补权限/已阅，05用原服务创建的21个标记合成项目250–270验证真实两页选项；04缺数据的驱动假设失败保留。Native04项目/筛选/几何有效范围及06余项5/5、最终07叠层3/3覆盖手动同范围传输503恢复、真实渲染已阅/重进与当前身份拒绝，产品/helper/官方CLI/窗口绑定drift[]。原夹具、状态码、运行时读取、选择器、轮询竞态及wrapper失败分别保留。未变逻辑复用Mini91/91、日历/月份11/11；最终包体13/13、当前定向lint0、源码lint0错误/25警告，类型原82/受影响0，均有影响/源码绑定。未重启完整build，原类型失败及compile-only边界保留。
 
-设计继续沿批准05-report-history-v001.png及原README，853×1844→390×844。限定原生叠层实测纸页(0,145)/390×699，标题32px Black、内容宽331px、项目/类型44px操作区、行标题17px/元信息13px、普通行93.23px；字形、分隔、grip/关闭及完整宿主已选审。复用requirement-home.png/x.png；5820B/22字形标题/日期子集来自获批Noto Serif SC Black/OFL，放styles/assistant-report-history.less，原Chat Serif字节不变。无生图/设计图切片。助手源包1989938/1998848，真实编译/上传包、根面板05、实体picker/键盘/真机与全聊天光学未验。队列0、计划关闭/version122，248–270归档/对客关闭，测试账号停用，原生身份/存储/传输及自有资源恢复。providerMax4114/knowledgeMax3753及3753 unknown/input_tokens null不变，模型/摄取0次。后继11再04；V1-01停测/费用与生产边界不变。
+设计继续沿批准05-report-history-v001.png及原README，853×1844→390×844。限定原生叠层实测纸页(0,145)/390×699，标题32px Black、内容宽331px、项目/类型44px操作区、行标题17px/元信息13px、普通行93.23px；字形、分隔、grip/关闭及完整宿主已选审。复用requirement-home.png/x.png；5820B/22字形标题/日期子集来自获批Noto Serif SC Black/OFL，放styles/assistant-report-history.less，原Chat Serif字节不变。无生图/设计图切片。助手源包1989938/1998848，真实编译/上传包、根面板05、实体picker/键盘/真机与全聊天光学未验。队列0、计划关闭/version122，248–270归档/对客关闭，测试账号停用，原生身份/存储/传输及自有资源恢复。providerMax4114/knowledgeMax3753及3753 unknown/input_tokens null不变，模型/摄取0次。11限定完成见上文，按唯一计划继续04；V1-01停测/费用与生产边界不变。
 
 <!-- v1-02-enterprise-plan -->
 **企业报告计划10：V1-02内限定Implemented，整体仍Limited。** enterprise_admin及明确所选企业的admin/super_admin从原C01历史进入批准10纸页，复用同一页面/组件、原生switch/时间/星期/checkbox、请求journal及管理守卫。GET/POST `/api/miniprogram/assistant/followups/plan`重验签名Mini身份、当前管理角色、密码、所选企业与RLS；请求正文不能指定租户/主体。GET仅给当前计划及获权工地选项，30条cursor分页。明确选择最多20工地，空筛选表示全部适用工地，仍保留原20个活动工地上限；紧凑表单保留原stageKeys筛选。
@@ -32,13 +59,13 @@
 <!-- v1-02-selected-enterprise -->
 **小程序所选企业管理：V1-02内限定Implemented。** 原身份切换/刷新/bootstrap与`MiniProgramIdentityRepository.selectContext`现为admin/super_admin保留明确选择的有效企业，不建立雇佣或项目成员关系；普通员工明示其他企业会被拒绝。0104迁移替换原`construction_miniprogram_access`函数，所选企业管理继承仍经当前手机号/用户/会话版本/菜单/密码及租户检查，不另建权限解析器。批准follow-up-v1第08图的企业选择沿纸页面板、原生搜索和原platform-enterprises接口20条分页；原App hydration前先清旧报告/照片，之后只打开所选私人目的地。切企不再触发普通离开跟进的跳转；未选企业时提示选择，不误称人工接待。原户型控制器移到主包utils并保留子包包装入口，行为/路径合同不变；无新插画或截图切片。
 
-证据为`tmp/v1-02-followup-management/verification.json`。HTTP-01的驱动bootstrap层级及无效企业状态清理失败保留；后续已补停用合成账号/控制企业，3917–3920的合成手机号保留为夹具，因首批前值未保存，不宣称精确恢复。HTTP-02为8/8、drift[]，覆盖三管理角色真实选企/刷新/读写、同键open、身份/改密、本人及租户拒绝和清理。native-01保留真实意外跳转失败；修复后native-02为5/5，但其两次搜索图同名覆盖且新Less当时未刷新，不作最终光学证据。native-03核验刷新后的样式；最终native-04同时绑定产品、直接/嵌套驱动、CLI适配器及窗口脚本，在同一副屏Stable2.02.2608080/base3.17.2/390×844限定4/4。3张348×752页面和2张1700×960宿主图已审看；搜索区实测(31,250.03)、331×45px，企业操作保留44px热区。入口样式失效更新后才刷新Less，原帧保留。这是组件验证，不代替完整报告/卡片逐字形校准、根面板、实体键盘/真机、真实编译包字节或阶段验收。最终Mini63/63、身份/鉴权14/14、定向lint0，类型仍原82/受影响0，绑定均drift[]；助手源分包1994826/1998848字节。未重启构建/模型/摄取批，providerMax4114/knowledgeMax3753及3753 unknown/input_tokens null保持。队列0、策略false/version62、合成248已归档、管理账号停用，原生身份/存储/传输恢复。个人接收偏好/恢复管理见上文；批准05筛选及09/10设置见上文，人工接待与报告追问仍未完成。
+证据为`tmp/v1-02-followup-management/verification.json`。HTTP-01的驱动bootstrap层级及无效企业状态清理失败保留；后续已补停用合成账号/控制企业，3917–3920的合成手机号保留为夹具，因首批前值未保存，不宣称精确恢复。HTTP-02为8/8、drift[]，覆盖三管理角色真实选企/刷新/读写、同键open、身份/改密、本人及租户拒绝和清理。native-01保留真实意外跳转失败；修复后native-02为5/5，但其两次搜索图同名覆盖且新Less当时未刷新，不作最终光学证据。native-03核验刷新后的样式；最终native-04同时绑定产品、直接/嵌套驱动、CLI适配器及窗口脚本，在同一副屏Stable2.02.2608080/base3.17.2/390×844限定4/4。3张348×752页面和2张1700×960宿主图已审看；搜索区实测(31,250.03)、331×45px，企业操作保留44px热区。入口样式失效更新后才刷新Less，原帧保留。这是组件验证，不代替完整报告/卡片逐字形校准、根面板、实体键盘/真机、真实编译包字节或阶段验收。最终Mini63/63、身份/鉴权14/14、定向lint0，类型仍原82/受影响0，绑定均drift[]；助手源分包1994826/1998848字节。未重启构建/模型/摄取批，providerMax4114/knowledgeMax3753及3753 unknown/input_tokens null保持。队列0、策略false/version62、合成248已归档、管理账号停用，原生身份/存储/传输恢复。个人接收偏好/恢复管理见上文；批准05筛选及09/10设置见上文，人工接待11见上文，报告追问仍未完成。
 
 **V1-02私人主动报告：Limited，首轮纯事实客户端已限定验证。**
 
 原catch-all现分派`/api/miniprogram/assistant/followups`：GET本人私人绑定列表/范围、`/:bindingId/reports?beforeId=`、`/:bindingId/reports/:reportId?revision=`，以及报告获权的`.../projects/:projectId/records/:recordId[/media/:mediaId]?revision=`。POST支持本人明确open、带版本archive/stop/delete/resume、携conversationId/throughSequence的消息可见确认、携revision/readToken的报告已阅及明确本地失败重试。全部沿FollowupService和原租户仓库、代际/脱敏、项目/原件及成员守卫；Mini身份与所选企业来自原鉴权或已验证的客户入口token，不信任body传入principal/企业/受众/delivery能力。工人只放行followups分支，不开放普通客户conversations/runs/citations，保留密码修改门。范围只返回当前获权项目/阶段与私人目的地元数据；原件须属于同一仍有效报告快照的精确记录/媒体定位。偏好字段及原关系谓词提取见上文，没有另建权限、Evidence或引用管线。
 
-运行时接入位于共用C01页面/组件（`packages/assistant/chat/chat`及`pages/index/index`的小K面板）。代码加入私人跟进分组、按收件人裁剪的纸页卡片/详情、原记录/照片读取、详情实际渲染后的已阅、可见卡片序号确认，以及沿新分支的收起/停止/重开。普通咨询草稿、焦点和目的地独立，前台列表轮询不切会话。原工地项目简报入口沿批准卡片/专业角色变体进入`chat?followup=1`。用户已于2026-11-01明确批准follow-up-v1全部01–11、管理入口补充和共用状态规则并授权实施，无须再次确认。当前首轮纯事实接入已有真实HTTP/原生证据，尚非完整还原：纯事实报告追问仍禁用；人工接待交互与报告追问仍待完成；批准05筛选及09/10设置见上文。来源服务/代际边界不变，没有打包整屏设计像素或新增插画。
+运行时接入位于共用C01页面/组件（`packages/assistant/chat/chat`及`pages/index/index`的小K面板）。代码加入私人跟进分组、按收件人裁剪的纸页卡片/详情、原记录/照片读取、详情实际渲染后的已阅、可见卡片序号确认，以及沿新分支的收起/停止/重开。普通咨询草稿、焦点和目的地独立，前台列表轮询不切会话。原工地项目简报入口沿批准卡片/专业角色变体进入`chat?followup=1`。用户已于2026-11-01明确批准follow-up-v1全部01–11、管理入口补充和共用状态规则并授权实施，无须再次确认。当前首轮纯事实接入已有真实HTTP/原生证据，尚非完整还原：纯事实报告追问仍禁用；人工接待11见上文，报告追问仍待完成；批准05筛选及09/10设置见上文。来源服务/代际边界不变，没有打包整屏设计像素或新增插画。
 
 当前证据在`tmp/v1-02-followup-client/`。static-01原失败及static-02-package-sharing222/222保留。HTTP-01–06各夹具/合同失败保留；HTTP-07前7块通过后因驱动遗漏原普通咨询body.entryToken失败；HTTP-08沿同产品hash复用这7块、原报告/原件，仅准备+剩余4块5/5通过，不重生成或改判首稿。真实微云1454写入/重读覆盖四角色日周事实、human结果held后不重生成投递、原件照片、JWT/角色/版本/改密门、消息可见与报告已阅分离、同键恢复、收起停复/普通咨询隔离、成员移除再加入及来源撤回。该批全局Mini403保留为历史；当前所选企业聚焦修复见上文。native-01/02/03注册项/窗口/旧9420失败保留；native-04-cli用仓库既有官方注册wechatideNativeClient适配器，在唯一已核实副屏Stable2.02.2608080、base3.17.2、390×844下限定7/7通过：历史草稿、卡片详情/实际渲染已阅、认证原件照片、停止丢回执/同键恢复、工人设计师老板、重进/human只读与撤回清空。各完成HTTP/native批binding均drift[]。11张348×752页面PNG及一张1700×960宿主图已审看；另两宿主图已保存但图片查看工具阻塞后未审看。几何已保存，完整逐元素/字形校准、根面板跟进原生、实体键盘/设备和全部新增状态还原仍未验。新驱动定向lint0，类型仍原82/受影响0。compile-01在独立NEXT_DIST_DIR=.next-v1-02-followup-client退出0，绑定源码/配置drift[]，原tsconfig/next-env hash精确恢复、acceptance锁释放；仅compile-only，原完整构建类型失败保留。助手分包源文件仍1996029/1998848字节，真实上传/编译包字节未验。closed-fixtures.json记录队列0、策略false/version62、248/249归档/对客关闭、5410–5419停用、自有跟进停止、880恢复human及23个自有CLI临时参数文件已清。providerMax4114/knowledgeMax3753及3753 unknown/input_tokens null不变；无模型/摄取调用，不声明语义/完整阶段/生产完成。
 
