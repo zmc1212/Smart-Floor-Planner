@@ -22,6 +22,11 @@ export function deliveryActor(eid: string, binding: Row): ActorContext {
   return { enterpriseId: eid, principal: binding.user_id ? { kind: 'user', userId: String(binding.user_id) }
     : { kind: 'admin', adminId: String(binding.admin_id) }, contextVersion: 0, capabilities: ['assistant.followup.delivery'] };
 }
+/** Current relationship only; this grants minimal management metadata, not content. */
+export async function followupBindingAvailable(tx: PostgresTransaction, eid: string, binding: Row) {
+  return !!(await one(tx, sql`select app.assistant_followup_binding_access(
+    ${binding.user_id ? 'user' : 'admin'},${String(binding.user_id || binding.admin_id)}::bigint,${eid}::bigint,${String(binding.id)}::bigint) as allowed`))?.allowed;
+}
 /** Retention redacts the conversation, not the underlying construction record.
  * A saved report must never rehydrate that conversation's removed content. */
 export async function followupAvailable(tx: PostgresTransaction, eid: string, binding: Row) {
@@ -30,8 +35,8 @@ export async function followupAvailable(tx: PostgresTransaction, eid: string, bi
     from app.assistant_conversations c where c.enterprise_id=${eid} and c.id=${String(binding.conversation_id)}
     and coalesce(c.entry_snapshot->>'retentionRedacted','false')<>'true'`))?.allowed;
 }
-export async function followupProjects(tx: PostgresTransaction, eid: string, binding: Row, activeOnly = false, projectIds: string[] = [], stageKeys: string[] = []) {
-  if (!await followupAvailable(tx, eid, binding)) return [];
+export async function followupProjects(tx: PostgresTransaction, eid: string, binding: Row, activeOnly = false, projectIds: string[] = [], stageKeys: string[] = [], metadataOnly = false) {
+  if (!await (metadataOnly ? followupBindingAvailable(tx, eid, binding) : followupAvailable(tx, eid, binding))) return [];
   return rows(tx, sql`select p.* from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
     where p.enterprise_id=${eid} and p.status${activeOnly ? sql`='active'` : sql`<>'archived'`} and l.archived_at is null
     and (jsonb_array_length(${JSON.stringify(projectIds)}::jsonb)=0 or ${JSON.stringify(projectIds)}::jsonb ? p.id::text)

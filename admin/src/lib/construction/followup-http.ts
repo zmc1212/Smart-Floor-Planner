@@ -35,10 +35,11 @@ export async function followupHttp(request: Request, path: string[]) {
 }
 export async function handleFollowup(request: Request, path: string[], actor: ActorContext) {
   const service = new FollowupService(actor), method = request.method, params = new URL(request.url).searchParams;
-  const allowed = path[1] === 'reports' ? path.length === 2 ? ['beforeId'] : ['revision'] : [];
+  const allowed = path.length === 1 && path[0] === 'manage' ? ['beforeId'] : path[1] === 'reports' ? path.length === 2 ? ['beforeId'] : ['revision'] : [];
   if ([...params.keys()].some(k => !allowed.includes(k))) fail('invalid_construction', 422);
   if (method === 'GET') {
     if (!path.length) return service.list();
+    if (path.length === 1 && path[0] === 'manage') return service.management(params.has('beforeId') ? id(params.get('beforeId')) : undefined);
     const bid = id(path[0]);
     if (path.length === 1) return service.context(bid);
     if (path[1] === 'reports') {
@@ -63,6 +64,10 @@ export async function handleFollowup(request: Request, path: string[], actor: Ac
   let body; try { body = JSON.parse(raw); } catch { return fail('invalid_construction', 422); }
   if (path.length === 1 && path[0] === 'open') { const b = object(body, ['projectId']); return service.open(requestKey, b.projectId === undefined ? undefined : id(b.projectId)); }
   const bid = id(path[0]);
+  if (path.length === 2 && path[1] === 'preferences') {
+    const b = object(body, ['expectedVersion','preferences']), p = object(b.preferences, ['stage','daily','weekly']);
+    return service.savePreferences(bid, p as { stage: boolean; daily: boolean; weekly: boolean }, b.expectedVersion as number, requestKey);
+  }
   if (path.length === 2 && ['archive','stop','delete','resume'].includes(path[1])) {
     const b = object(body, ['expectedVersion']); return service.change(bid, path[1] as 'archive' | 'stop' | 'delete' | 'resume', b.expectedVersion as number, requestKey);
   }

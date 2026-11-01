@@ -5,9 +5,12 @@ import { fail, fingerprint, id, key, principalKey, requireCapability, type Actor
 import { idempotent } from '@/lib/assistant/core/conversation';
 import { constructionAccess } from './service';
 import { bindingForActor, ensureFollowupBinding } from './report-store';
-import { followupProjects, projectReportFacts, type FollowupAudience, type ReportFacts } from './report-scope';
+import { followupBindingAvailable, followupProjects, projectReportFacts, type FollowupAudience, type ReportFacts } from './report-scope';
 import { readStageSettings } from './stages-store';
 import { currentRecord } from './site-issues';
+
+type ReminderPreferences = { stage: boolean; daily: boolean; weekly: boolean };
+const preferences = (b: Row): ReminderPreferences => ({ stage: b.remind_stage !== false, daily: b.remind_daily !== false, weekly: b.remind_weekly !== false });
 
 export class FollowupService {
   constructor(readonly actor: ActorContext) { requireCapability(actor, 'assistant.followup.self'); }
@@ -37,6 +40,49 @@ export class FollowupService {
       return { bindingId, conversationId: String(b.conversation_id), audience: String(b.audience), status: String(b.status), version: Number(b.version),
         ...await this.destination(repo, b) };
     });
+  }
+  private async managementBinding(repo: AssistantRepository, bindingId: string) {
+    const b = await bindingForActor(repo.tx, this.actor, bindingId, true);
+    if (!await followupBindingAvailable(repo.tx, this.actor.enterpriseId, b)) fail('assistant_resource_not_found', 404);
+    return b;
+  }
+  /** A separate minimal projection; never hydrate a deleted/redacted destination. */
+  management(beforeId = '9223372036854775807') {
+    id(beforeId);
+    return this.scoped(async repo => {
+      const a = this.actor, subject = a.principal.kind === 'user' ? a.principal.userId : a.principal.adminId;
+      const found = await rows(repo.tx, sql`select b.*,c.entry_snapshot from app.construction_followup_bindings b
+        join app.assistant_conversations c on c.enterprise_id=b.enterprise_id and c.id=b.conversation_id and c.purpose='construction_followup'
+        where b.enterprise_id=${a.enterpriseId} and b.principal_key=${principalKey(a)} and b.id<${beforeId}
+        and app.assistant_followup_binding_access(${a.principal.kind},${subject}::bigint,b.enterprise_id,b.id)
+        order by b.id desc limit 31`);
+      const items = [];
+      for (const b of found.slice(0, 30)) {
+        const p = b.audience === 'customer' ? await followupProjects(repo.tx, a.enterpriseId, b, false, [], [], true) : [];
+        items.push({ bindingId: String(b.id), title: b.audience === 'customer' ? String(p[0]?.name || '我家装修')
+          : b.audience === 'boss' ? '企业工地简报' : b.audience === 'designer' ? '我的项目跟进' : '我的施工跟进',
+        status: String(b.status), version: Number(b.version), hidden: Boolean(b.list_hidden),
+        retentionRedacted: (b.entry_snapshot as Row)?.retentionRedacted === true, preferences: preferences(b) });
+      }
+      return { items, nextCursor: found.length > 30 ? String(found[29].id) : null };
+    });
+  }
+  savePreferences(bindingId: string, value: ReminderPreferences, expectedVersion: number, requestKey: string) {
+    id(bindingId); key(requestKey);
+    if (!value || Object.keys(value).length !== 3 || !['stage','daily','weekly'].every(k => typeof value[k as keyof ReminderPreferences] === 'boolean')
+      || !Number.isSafeInteger(expectedVersion) || expectedVersion < 1) fail('invalid_construction', 422);
+    return this.scoped(async repo => {
+      const b = await this.managementBinding(repo, bindingId);
+      const result = await idempotent(repo.tx, this.actor, 'followup:preferences:' + bindingId, requestKey, { expectedVersion, preferences: value }, async () => {
+        if (Number(b.version) !== expectedVersion) fail('version_conflict');
+        await repo.tx.execute(sql`update app.construction_followup_bindings set remind_stage=${value.stage},remind_daily=${value.daily},remind_weekly=${value.weekly},
+          version=version+1,updated_at=now() where enterprise_id=${this.actor.enterpriseId} and id=${bindingId}`);
+        return { bindingId, conversationId: String(b.conversation_id), version: expectedVersion + 1, preferences: value };
+      });
+      const current = await this.managementBinding(repo, bindingId);
+      if (String(current.conversation_id) !== result.conversationId || fingerprint(preferences(current)) !== fingerprint(result.preferences)) fail('context_changed');
+      return result;
+    }, true);
   }
   /** Explicit self opt-in also supports selected-enterprise admin/super_admin.
    * Automatic discovery never opts platform accounts into every tenant. */
@@ -112,7 +158,7 @@ export class FollowupService {
           if (projected.sequence && BigInt(projected.sequence) > BigInt(String(b.last_read_seq))) unreadMessages++;
         }
         items.push({ ...await this.destination(repo, b), bindingId: String(b.id), conversationId: String(b.conversation_id), audience: b.audience, status: b.status,
-          conversationStatus: b.conversation_status, version: Number(b.version), unreadReports, unreadMessages, unreadTruncated: versions.length > 50, latestReport });
+          conversationStatus: b.conversation_status, hidden: Boolean(b.list_hidden), version: Number(b.version), unreadReports, unreadMessages, unreadTruncated: versions.length > 50, latestReport });
       }
       return { items, truncated: bindings.length === 30 };
     });
@@ -176,10 +222,10 @@ export class FollowupService {
     return this.scoped(async repo => {
       const b = await bindingForActor(repo.tx, this.actor, bindingId); await repo.conversation(String(b.conversation_id));
       const view = await this.version(repo, b, reportId, revision);
-      if (!view.available || view.readToken !== readToken || !view.sequence) fail('context_changed');
+      if (!view.available || view.readToken !== readToken || !['delivered','muted'].includes(String(view.deliveryState))) fail('context_changed');
       return idempotent(repo.tx, this.actor, 'followup:read:' + reportId, requestKey, { revision, readToken }, async () => {
         await repo.tx.execute(sql`update app.construction_report_deliveries set read_at=coalesce(read_at,now())
-          where enterprise_id=${this.actor.enterpriseId} and report_id=${reportId} and revision=${revision} and binding_id=${bindingId} and state='delivered'`);
+          where enterprise_id=${this.actor.enterpriseId} and report_id=${reportId} and revision=${revision} and binding_id=${bindingId} and state in ('delivered','muted')`);
         return { reportId, revision, read: true };
       });
     });
@@ -209,16 +255,16 @@ export class FollowupService {
     id(bindingId); key(requestKey);
     if (!['archive','stop','delete','resume'].includes(action) || !Number.isSafeInteger(expectedVersion) || expectedVersion < 1) fail('invalid_construction', 422);
     return this.scoped(async repo => {
-      const b = await bindingForActor(repo.tx, this.actor, bindingId, action === 'resume' || action === 'delete');
-      if (action !== 'resume' && !(action === 'delete' && b.status === 'deleted')) await repo.conversation(String(b.conversation_id));
+      const b = await this.managementBinding(repo, bindingId);
+      if (action !== 'resume' && action !== 'delete') await repo.conversation(String(b.conversation_id));
       const result = await idempotent(repo.tx, this.actor, 'followup:' + action + ':' + bindingId, requestKey, { expectedVersion }, async () => {
         if (Number(b.version) !== expectedVersion) fail('version_conflict');
         const status = action === 'stop' ? 'stopped' : action === 'delete' ? 'deleted' : action === 'resume' ? 'enabled' : b.status;
         const old = await one(repo.tx, sql`select * from app.assistant_conversations
           where enterprise_id=${this.actor.enterpriseId} and id=${String(b.conversation_id)} and purpose='construction_followup' for update`);
         if (!old) fail('assistant_resource_not_found', 404);
-        if (action === 'resume' && (old.entry_snapshot as Row)?.retentionRedacted === true) {
-          // Only explicit self-resume rotates a retained destination. Keep the
+        if (action === 'resume' && (b.status === 'deleted' || (old.entry_snapshot as Row)?.retentionRedacted === true)) {
+          // Only explicit self-resume rotates a deleted/retained destination. Keep the
           // old tombstone, content and runs untouched; never copy its context.
           await repo.tx.execute(sql`update app.assistant_participants set status='revoked',revoked_at=coalesce(revoked_at,now()),version=version+1,updated_at=now()
             where enterprise_id=${this.actor.enterpriseId} and conversation_id=${String(old.id)} and status='active'`);
@@ -227,15 +273,17 @@ export class FollowupService {
               ${JSON.stringify({ kind: 'construction_followup', audience: b.audience, scope: b.scope_key,
                 followupGeneration: Number(old.context_revision) + 1 })}::jsonb,${Number(old.context_revision) + 1},policy_version
             from app.assistant_enterprise_settings where enterprise_id=${this.actor.enterpriseId} returning id`))!;
-          await repo.tx.execute(sql`update app.construction_followup_bindings set conversation_id=${String(next.id)},status='enabled',last_read_seq=0,
+          await repo.tx.execute(sql`update app.construction_followup_bindings set conversation_id=${String(next.id)},status='enabled',last_read_seq=0,list_hidden=false,
             version=version+1,updated_at=now() where enterprise_id=${this.actor.enterpriseId} and id=${bindingId}`);
           await repo.tx.execute(sql`insert into app.assistant_participants(enterprise_id,conversation_id,principal_kind,user_id,admin_id,grant_basis)
             values(${this.actor.enterpriseId},${String(next.id)},${this.actor.principal.kind},${b.user_id},${b.admin_id},
               ${JSON.stringify({ kind: 'construction_followup', bindingId })}::jsonb)`);
           return { bindingId, conversationId: String(next.id), status, version: expectedVersion + 1 };
         }
-        await repo.tx.execute(sql`update app.construction_followup_bindings set status=${status},version=version+1,updated_at=now() where enterprise_id=${this.actor.enterpriseId} and id=${bindingId}`);
-        await repo.tx.execute(sql`update app.assistant_conversations set status=${action === 'archive' ? 'archived' : action === 'delete' ? 'closed' : 'open'},
+        await repo.tx.execute(sql`update app.construction_followup_bindings set status=${status},
+          list_hidden=${action === 'archive' || action === 'delete' ? true : action === 'resume' ? false : b.list_hidden},
+          version=version+1,updated_at=now() where enterprise_id=${this.actor.enterpriseId} and id=${bindingId}`);
+        if (action !== 'archive') await repo.tx.execute(sql`update app.assistant_conversations set status=${action === 'delete' ? 'closed' : 'open'},
           context_revision=context_revision+${action === 'stop' || action === 'delete' ? 1 : 0},version=version+1,updated_at=now()
           where enterprise_id=${this.actor.enterpriseId} and id=${String(b.conversation_id)}`);
         if (action === 'delete' || action === 'resume') await repo.tx.execute(sql`update app.assistant_participants set status=${action === 'delete' ? 'revoked' : 'active'},

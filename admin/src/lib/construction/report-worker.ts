@@ -110,8 +110,9 @@ export async function deliverConstructionReports(onlyEnterprise?: string) {
     const eid = String(target.enterprise_id);
     if (!await one(tx, sql`select id from app.assistant_enterprise_settings where enterprise_id=${eid} and enabled for update skip locked`)) return 0;
     if (!await one(tx, sql`select enterprise_id from app.construction_report_settings where enterprise_id=${eid} and enabled for share`)) return 0;
-    const pending = await rows(tx, sql`select d.*,v.facts,v.generated_at,run.context_revision as generation_context_revision,
+    const pending = await rows(tx, sql`select d.*,r.kind,v.facts,v.generated_at,run.context_revision as generation_context_revision,
       run.conversation_id as generation_conversation_id from app.construction_report_deliveries d
+      join app.construction_reports r on r.enterprise_id=d.enterprise_id and r.id=d.report_id
       join app.construction_report_versions v on v.enterprise_id=d.enterprise_id and v.report_id=d.report_id and v.revision=d.revision
       join app.assistant_runs run on run.enterprise_id=v.enterprise_id and run.id=v.run_id
       where d.enterprise_id=${eid} and d.state in ('pending','held') order by d.event_id limit 20 for update of d`);
@@ -134,6 +135,12 @@ export async function deliverConstructionReports(onlyEnterprise?: string) {
         await tx.execute(sql`update app.construction_report_deliveries set state='revoked' where enterprise_id=${eid} and event_id=${String(d.event_id)}`);
         continue;
       }
+      // Keep the immutable report and receipt. Re-enabling affects future
+      // reception; muted historical results never become an unread backlog.
+      if (b['remind_' + String(d.kind)] === false) {
+        await tx.execute(sql`update app.construction_report_deliveries set state='muted' where enterprise_id=${eid} and event_id=${String(d.event_id)}`);
+        continue;
+      }
       if (c.mode !== 'ai') {
         await tx.execute(sql`update app.construction_report_deliveries set state='held' where enterprise_id=${eid} and event_id=${String(d.event_id)}`);
         continue;
@@ -149,6 +156,8 @@ export async function deliverConstructionReports(onlyEnterprise?: string) {
         continue;
       }
       if (c.status === 'archived') await tx.execute(sql`update app.assistant_conversations set status='open',version=version+1,updated_at=now() where enterprise_id=${eid} and id=${String(c.id)}`);
+      if (b.list_hidden) await tx.execute(sql`update app.construction_followup_bindings set list_hidden=false,version=version+1,updated_at=now()
+        where enterprise_id=${eid} and id=${String(b.id)}`);
       // Store only an opaque report reference, never a cached private title or
       // summary. The read projection resolves current permissions and originals.
       const message = await appendMessage(tx, actor, String(c.id), { author: 'system', eventId: String(d.event_id), purpose: 'construction.report.facts',

@@ -9,8 +9,8 @@
   <scroll-view scroll-y class="followup-scroll" show-scrollbar="{{false}}">
     <text wx:if="{{followupLoading}}" class="followup-state">正在读取简报与当前权限…</text>
     <view wx:if="{{followupContext.conversation.mode !== 'ai' && followupContext}}" class="followup-paper followup-human"><text class="fabric-label">小K</text><text class="followup-paper-title">小K已暂停自动回复</text><text class="followup-muted">已保存的简报仍可只读查看。</text></view>
-    <text wx:if="{{!followupLoading && !followupReports.length && !followupError}}" class="followup-state">{{followupPlatform && !followupContext ? '请选择企业后查看工地简报。' : '还没有已保存的简报，有新记录后可在这里回看。'}}</text>
-    <block wx:for="{{followupReports}}" wx:key="reportId" wx:for-item="report">
+    <text wx:if="{{!followupLoading && !followupHasCards && !followupError}}" class="followup-state">{{followupPlatform && !followupContext ? '请选择企业后查看工地简报。' : '还没有已保存的简报，有新记录后可在这里回看。'}}</text>
+    <block wx:for="{{followupReports}}" wx:key="reportId" wx:for-item="report"><block wx:if="{{report.deliveryState !== 'muted'}}">
       <text class="followup-time">{{report.dateLabel}}</text>
       <view class="followup-paper followup-card" data-report="{{report.reportId}}"><view class="followup-card-marker" data-report="{{report.reportId}}"></view>
         <text class="fabric-label">{{report.kindLabel || '已保存的简报'}}</text>
@@ -30,7 +30,7 @@
         </block>
         <view wx:else class="followup-state">{{report.stateLabel}}</view>
       </view>
-    </block>
+    </block></block>
     <button wx:if="{{followupCursor}}" class="followup-more" bindtap="moreFollowupReports" disabled="{{followupLoading}}">查看更多简报</button>
   </scroll-view>
   <view class="followup-composer" style="margin-bottom: {{professionalFollowup ? bottomInset + 12 : 12}}px;"><image src="../assets/microphone.png"/><view class="composer-divider"></view><image src="../assets/image.png"/><text>{{followupPlatform && !followupContext ? '选择企业后查看工地简报。' : followupContext.conversation.mode !== 'ai' ? '小K已暂停回复，可先查看简报。' : '工艺内容尚未生成，可先查看记录。'}}</text><view class="followup-send"><image src="../assets/arrow-up.png"/></view></view>
@@ -59,16 +59,12 @@
   </view>
 </view>
 
-<view wx:if="{{followupHistoryOpen || followupManageOpen}}" class="followup-layer" catchtouchmove="swallow">
-  <view class="followup-mask" bindtap="{{followupManageOpen ? 'closeFollowupManage' : 'closeFollowupHistory'}}"></view>
-  <view class="followup-sheet"><view class="followup-grip"></view><button class="followup-close" bindtap="{{followupManageOpen ? 'closeFollowupManage' : 'closeFollowupHistory'}}" aria-label="关闭"><image src="../assets/x.png"/></button><text class="followup-detail-title">{{followupManageOpen ? '跟进设置' : '简报记录'}}</text>
+<include src="./followup-settings.wxml" />
+<view wx:if="{{followupHistoryOpen}}" class="followup-layer" catchtouchmove="swallow">
+  <view class="followup-mask" bindtap="closeFollowupHistory"></view>
+  <view class="followup-sheet"><view class="followup-grip"></view><button class="followup-close" bindtap="closeFollowupHistory" aria-label="关闭简报记录"><image src="../assets/x.png"/></button><text class="followup-detail-title">简报记录</text>
     <scroll-view class="followup-detail-scroll" scroll-y show-scrollbar="{{false}}">
-      <block wx:if="{{followupManageOpen}}">
-        <text class="followup-muted">{{followupContext.title || '选择要查看的跟进'}}</text><text class="followup-caption">仅调整你自己的站内跟进</text>
-        <button wx:for="{{followupBindings}}" wx:key="bindingId" class="followup-setting-row" data-id="{{item.bindingId}}" bindtap="selectFollowup"><text>{{item.title}}</text><text>{{item.status === 'stopped' ? '已停止' : '跟进中'}} ›</text></button>
-        <block wx:if="{{followupContext}}"><text class="fabric-label">会话管理</text><button class="followup-setting-row" data-action="archive" bindtap="changeFollowup" disabled="{{followupBusy || followupPending}}"><view><text>收起会话</text><text class="followup-caption">从列表收起，有新报告时重新显示</text></view><text>›</text></button><button class="followup-setting-row" data-action="{{followupContext.status === 'stopped' ? 'resume' : 'stop'}}" bindtap="changeFollowup" disabled="{{followupBusy || followupPending}}"><view><text>{{followupContext.status === 'stopped' ? '重新开启跟进' : '停止自动跟进'}}</text><text class="followup-caption">工地原记录保留</text></view><text>›</text></button></block>
-      </block>
-      <block wx:else><text class="followup-project-name">{{followupContext.title}}</text><button wx:for="{{followupReports}}" wx:key="reportId" class="followup-history-row" data-report="{{item.reportId}}" data-revision="{{item.revision}}" bindtap="readFollowupReport"><view><text>{{item.title}}</text><text class="followup-caption">{{item.available ? item.stateLabel : '来源或权限已变化'}}</text></view><text>{{item.readAt ? '已读' : '未读'}} ›</text></button><button wx:if="{{followupCursor}}" class="followup-more" bindtap="moreFollowupReports" disabled="{{followupLoading}}">查看更多简报</button></block>
+      <block><text class="followup-project-name">{{followupContext.title}}</text><button wx:for="{{followupReports}}" wx:key="reportId" class="followup-history-row" data-report="{{item.reportId}}" data-revision="{{item.revision}}" bindtap="readFollowupReport"><view><text>{{item.title}}</text><text class="followup-caption">{{item.available ? item.stateLabel : '来源或权限已变化'}}</text></view><text>{{item.readAt ? '已读' : '未读'}} ›</text></button><button wx:if="{{followupCursor}}" class="followup-more" bindtap="moreFollowupReports" disabled="{{followupLoading}}">查看更多简报</button></block>
       <view wx:if="{{followupError || followupPending}}" class="followup-feedback"><text>{{followupPending ? '上次操作结果正在核对。' : followupError}}</text><button wx:if="{{followupPending}}" bindtap="recoverFollowup" disabled="{{followupBusy}}">核对上次操作</button></view>
     </scroll-view>
   </view>

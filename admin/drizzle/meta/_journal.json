@@ -729,6 +729,13 @@
       "when": 1793779200000,
       "tag": "0104_construction_selected_management",
       "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1793865600000,
+      "tag": "0105_construction_followup_preferences",
+      "breakpoints": true
     }
   ]
 }

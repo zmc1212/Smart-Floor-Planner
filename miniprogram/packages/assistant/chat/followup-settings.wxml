@@ -1,0 +1,33 @@
+<!-- Approved09 and the manage-entry supplement; native controls, no composite pixels. -->
+<view wx:if="{{followupManageOpen}}" class="followup-layer" catchtouchmove="swallow">
+  <view class="followup-mask" bindtap="closeFollowupManage"></view>
+  <view class="followup-sheet followup-settings-sheet">
+    <view class="followup-grip"></view><button class="followup-close" bindtap="closeFollowupManage" aria-label="关闭跟进设置"><image src="../assets/x.png"/></button>
+    <text class="followup-detail-title">跟进设置</text>
+    <picker range="{{followupManagement}}" range-key="title" bindchange="selectFollowupSetting" disabled="{{followupBusy || followupPending || followupManageLoading}}">
+      <view class="followup-settings-picker"><image src="../assets/requirement-home.png"/><text>{{followupSetting.title || '选择要管理的跟进'}}</text><text>⌄</text></view>
+    </picker>
+    <text class="followup-caption">仅调整你自己的站内提醒</text>
+    <scroll-view class="followup-detail-scroll" scroll-y show-scrollbar="{{false}}">
+      <text wx:if="{{followupManageLoading}}" class="followup-caption">正在读取当前设置…</text>
+      <text wx:if="{{!followupManageLoading && !followupManagement.length && !followupError}}" class="followup-caption">当前没有可管理的跟进。</text>
+      <block wx:if="{{followupSetting}}">
+        <view class="followup-settings-group"><text class="fabric-label">接收内容</text>
+          <label class="followup-preference-row"><view class="followup-setting-icon followup-icon-bell"></view><text>阶段提醒</text><switch checked="{{followupPreferenceDraft.stage}}" color="#00543f" data-preference="stage" bindchange="editFollowupPreference" disabled="{{followupBusy || followupPending}}" aria-label="接收阶段提醒"/></label>
+          <label class="followup-preference-row"><view class="followup-setting-icon followup-icon-report"></view><text>施工日报</text><switch checked="{{followupPreferenceDraft.daily}}" color="#00543f" data-preference="daily" bindchange="editFollowupPreference" disabled="{{followupBusy || followupPending}}" aria-label="接收施工日报"/></label>
+          <label class="followup-preference-row"><view class="followup-setting-icon followup-icon-calendar"></view><text>施工周报</text><switch checked="{{followupPreferenceDraft.weekly}}" color="#00543f" data-preference="weekly" bindchange="editFollowupPreference" disabled="{{followupBusy || followupPending}}" aria-label="接收施工周报"/></label>
+        </view>
+        <view class="followup-settings-group"><text class="fabric-label">会话管理</text>
+          <button class="followup-setting-row" data-action="archive" bindtap="changeFollowup" disabled="{{followupBusy || followupPending || followupSetting.retentionRedacted || followupSetting.status === 'deleted'}}"><view class="followup-setting-icon followup-icon-hide"></view><view><text>收起会话</text><text class="followup-caption">从列表收起，有新报告时重新显示</text></view><text>›</text></button>
+          <button class="followup-setting-row" data-action="{{followupSetting.status !== 'enabled' || followupSetting.retentionRedacted ? 'resume' : 'stop'}}" bindtap="changeFollowup" disabled="{{followupBusy || followupPending}}"><view class="followup-setting-icon followup-icon-pause"></view><view><text>{{followupSetting.status !== 'enabled' || followupSetting.retentionRedacted ? '重新开启跟进' : '停止自动跟进'}}</text><text class="followup-caption">{{followupSetting.status === 'deleted' || followupSetting.retentionRedacted ? '重开会建立新的会话，旧消息不恢复' : '停止后不再接收，可在这里重新开启'}}</text></view><text>›</text></button>
+          <button class="followup-setting-row followup-setting-delete" data-action="delete" bindtap="changeFollowup" disabled="{{followupBusy || followupPending || followupSetting.status === 'deleted'}}"><view class="followup-setting-icon followup-icon-delete"></view><view><text>删除会话</text><text class="followup-caption">删除同时停止跟进，不会次日自动重建</text></view><text>›</text></button>
+        </view>
+        <text class="followup-caption">这些操作不删除工地原记录。</text>
+      </block>
+      <button wx:if="{{followupManagementCursor}}" class="followup-text-action" bindtap="moreFollowupSettings" disabled="{{followupManageLoading || followupBusy || followupPending}}">更多跟进 ↗</button>
+      <view wx:if="{{followupError || followupPending || followupSettingsConflict}}" class="followup-settings-feedback" role="alert"><text>{{followupPending ? '上次操作结果正在核对。' : followupSettingsConflict ? '设置已变化，你的选择已保留。请重新读取并核对后保存。' : followupError}}</text><button class="followup-text-action" bindtap="{{followupPending ? 'recoverFollowup' : 'refreshFollowupSettings'}}" disabled="{{followupBusy}}">{{followupPending ? '核对上次操作' : '重新读取'}}</button></view>
+      <text wx:if="{{followupSettingsNotice}}" class="followup-caption" role="status">{{followupSettingsNotice}}</text>
+    </scroll-view>
+    <button class="followup-primary followup-settings-save" bindtap="saveFollowupPreferences" disabled="{{!followupPreferenceDirty || followupSettingsConflict || followupBusy || followupPending}}">{{followupBusy ? '正在保存…' : '保存提醒偏好'}}</button>
+  </view>
+</view>

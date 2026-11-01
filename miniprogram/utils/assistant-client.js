@@ -74,6 +74,9 @@ function validFollowupReceipt(pending, data) {
   if (parts[1] === 'open') return /^[1-9]\d*$/.test(data.bindingId) && /^[1-9]\d*$/.test(data.conversationId)
     && Number.isSafeInteger(data.version) && data.version > 0 && ['enabled','stopped','deleted'].includes(data.status);
   if (parts[2] === 'seen') return data.bindingId === parts[1] && data.throughSequence === body.throughSequence;
+  if (parts[2] === 'preferences') return data.bindingId === parts[1] && /^[1-9]\d*$/.test(data.conversationId)
+    && data.version === body.expectedVersion + 1 && !!data.preferences
+    && ['stage','daily','weekly'].every(k => typeof data.preferences[k] === 'boolean' && data.preferences[k] === body.preferences[k]);
   if (parts[2] === 'reports') return data.reportId === parts[3] && data.revision === body.revision
     && (parts[4] === 'acknowledge' ? data.read === true : parts[4] === 'retry' && /^[1-9]\d*$/.test(data.runId) && data.status === 'queued');
   return ['archive','stop','delete','resume'].includes(parts[2]) && data.bindingId === parts[1] && /^[1-9]\d*$/.test(data.conversationId)

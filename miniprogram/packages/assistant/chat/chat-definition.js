@@ -12,6 +12,7 @@ const { SpeechController } = require('../lib/speech');
 const { FloorplanContextController, initialContext } = require('../lib/floorplan-context');
 const { FollowupController, FollowupRecordMedia, initialFollowups } = require('../lib/followups');
 const { initialEnterprise, enterpriseMethods } = require('../../../utils/assistant-followup-enterprise');
+const { settingsPageMethods } = require('../../../utils/assistant-followup-settings');
 
 function sessionToken() {
   const app = getApp();
@@ -20,6 +21,7 @@ function sessionToken() {
 
 module.exports = () => ({
   ...enterpriseMethods,
+  ...settingsPageMethods,
   data: {
     ...initial(), navigationTop: 47, navigationHeight: 44, navigationRight: 100,
     ...initialPublic(),
@@ -393,15 +395,6 @@ module.exports = () => ({
   closeFollowupHistory() { this.setData({ followupHistoryOpen: false }); },
   moreFollowupReports() { return this.followups.more(); },
   recoverFollowup() { return this.followups.recover(); },
-  manageFollowup() { this.setData({ followupManageOpen: true, followupHistoryOpen: false }); this.closeSheet(); },
-  closeFollowupManage() { this.setData({ followupManageOpen: false }); },
-  changeFollowup(event) {
-    const action = event.currentTarget.dataset.action, c = this.data.followupContext;
-    if (!c || this.data.followupBusy || this.data.followupPending) return;
-    const copy = { archive: ['收起会话？', '自动跟进仍开启，有新报告时会重新显示。'], stop: ['停止自动跟进？', '停止后不再投递，可在这里重新开启；工地原记录保留。'], resume: ['重新开启跟进？', '开启后按当前获权范围继续接收，工地原记录保留。'] }[action];
-    if (!copy) return;
-    wx.showModal({ title: copy[0], content: copy[1], success: r => { if (r.confirm && this._alive && this._shown) this.followups.change(action); } });
-  },
   readFollowupOriginal(event) { return this.followups.original(String(event.currentTarget.dataset.project), String(event.currentTarget.dataset.record)); },
   closeFollowupOriginal() { this.setData({ followupOriginal: null }); this.followups.set({ followupOriginal: null }); },
   previewFollowupOriginal(event) { const r = this.data.followupOriginal; if (r) return this.followupMedia.preview(r.id, r.version, String(event.currentTarget.dataset.media)); },
