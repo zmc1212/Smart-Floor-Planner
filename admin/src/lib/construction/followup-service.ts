@@ -9,7 +9,7 @@ import { followupBindingAvailable, followupProjects, projectReportFacts, type Fo
 import { readStageSettings } from './stages-store';
 import { currentRecord } from './site-issues';
 import { reportHistoryFilters, type ReportHistoryFilters } from './report-history';
-import { reportBodyView } from './report-body-view';
+import { reportBodyView, reportKnowledgeSource } from './report-body-view';
 import type { ReportBody } from './report-composition';
 import { enqueueReportBody } from './report-body-store';
 
@@ -223,6 +223,19 @@ export class FollowupService {
     return this.scoped(async repo => {
       const b = await bindingForActor(repo.tx, this.actor, bindingId); await repo.conversation(String(b.conversation_id));
       return this.version(repo, b, reportId, revision);
+    });
+  }
+  knowledgeSource(bindingId: string, reportId: string, revision: number, projectId: string, sourceId: string, original = false) {
+    [bindingId, reportId, projectId].forEach(id);
+    if (!Number.isSafeInteger(revision) || revision < 1 || !/^K[1-9]\d{0,18}$/.test(sourceId)) fail('invalid_construction', 422);
+    return this.scoped(async repo => {
+      const b = await bindingForActor(repo.tx, this.actor, bindingId), c = await repo.conversation(String(b.conversation_id));
+      const view = await this.version(repo, b, reportId, revision);
+      if (!view.available || !('body' in view) || !view.body.some(p => p.projectId === projectId && p.knowledgeSources.some(s => s.sourceId === sourceId)))
+        fail('assistant_resource_not_found', 404);
+      const v = (await one(repo.tx, sql`select body from app.construction_report_versions
+        where enterprise_id=${this.actor.enterpriseId} and report_id=${reportId} and revision=${revision}`))!;
+      return reportKnowledgeSource(repo.tx, this.actor, c, v.body as ReportBody, projectId, sourceId, original);
     });
   }
   /** The saved report is a locator, never a new publication or consultation grant. */

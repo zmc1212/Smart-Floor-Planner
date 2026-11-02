@@ -1,4 +1,4 @@
-<!-- Approved03: authorized owner daily facts; other recipients and states retain the shared detail. -->
+<!-- Approved03 daily detail. -->
 <view class="followup-sheet followup-detail-sheet followup-owner-detail">
   <view class="followup-grip"></view>
   <button class="followup-close" bindtap="closeFollowupReport" aria-label="关闭报告"><image src="../assets/x.png"/></button>
@@ -25,7 +25,7 @@
         <text wx:if="{{!project.pending.length}}" class="followup-line">本期没有可见的待核对记录。</text>
         <text wx:if="{{project.publishedRecordItemsTruncated || project.issuesTruncated}}" class="followup-caption">记录较多，本份简报未包含全部记录。</text>
       </view>
-      <view class="followup-section followup-owner-detail-process"><view class="followup-owner-section-head"><text class="fabric-label">工艺关注</text></view><text wx:for="{{project.standards}}" wx:key="key" class="followup-line" user-select>{{item.text}}</text><text wx:if="{{!project.standards.length}}" class="followup-line">{{followupDetail.generationLabel || '本份仅含已保存的现场记录，暂无工艺说明。'}}</text><button wx:if="{{followupDetail.generationRetryable}}" class="followup-text-action" bindtap="retryFollowupReport" disabled="{{followupBusy || followupPending}}">重试正文生成</button></view>
+      <view class="followup-section followup-owner-detail-process"><view class="followup-owner-section-head"><text class="fabric-label">工艺关注</text><button wx:if="{{project.knowledgeSources.length}}" class="followup-text-action followup-owner-original" data-project="{{project.id}}" bindtap="openReportSource">查看工艺依据 ↗</button></view><text wx:for="{{project.standards}}" wx:key="key" class="followup-line" user-select>{{item.text}}</text><text wx:if="{{!project.standards.length}}" class="followup-line">{{followupDetail.generationLabel || '本份仅含已保存的现场记录，暂无工艺说明。'}}</text><button wx:if="{{followupDetail.generationRetryable}}" class="followup-text-action" bindtap="retryFollowupReport" disabled="{{followupBusy || followupPending}}">重试正文生成</button></view>
       <view class="followup-section followup-owner-detail-arrangements">
         <view class="followup-owner-section-head"><text class="fabric-label">已确认安排</text></view>
         <text wx:for="{{project.arrangements}}" wx:key="key" class="followup-line" user-select>{{item.text}}</text>

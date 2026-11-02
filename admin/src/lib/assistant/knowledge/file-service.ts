@@ -3,11 +3,35 @@ import type { PostgresTransaction } from '@/db/transaction';
 import { one, type Row } from '@/db/repositories/assistant-repository';
 import type { KnowledgeActor } from './service';
 import { fail } from '../contracts';
-import type { SourceFile } from '../contracts/source-file';
+import type { SourceFile, FileLocator } from '../contracts/source-file';
 import { uploadedFile, fileContent } from './source-file';
 import { withTenantTransaction } from '@/db/transaction';
 import { authorizeKnowledgeManager } from './manager';
 import { id } from '../contracts';
+import type { ActorContext, Evidence } from '../contracts';
+import { resolveEvidence } from './sources';
+import { createHash } from 'node:crypto';
+
+export function originalFileAllowed(file: SourceFile | null, locator: FileLocator) {
+  return file?.version === 1 && file.assetId === locator.assetId && file.hash === locator.sourceHash
+    && file.name === locator.name && file.format === locator.format && Boolean(file.review)
+    && Array.isArray(file.review?.excluded) && file.review.excluded.length === 0;
+}
+
+/** Recipient downloads reuse Evidence authority. A publication with excluded
+ * blocks authorizes its excerpts, never the unredacted original file. */
+export async function evidenceOriginal(tx: PostgresTransaction, actor: ActorContext, conversation: Row, evidence: Evidence, bytes = false) {
+  const locator = evidence.file;
+  if (!locator || !await resolveEvidence(tx, actor, conversation, evidence)) return null;
+  const file = await one(tx, sql`select a.name,a.format,a.source_hash,v.source_file,${bytes ? sql`a.data` : sql`null::bytea as data`}
+    from app.assistant_knowledge_assets a join app.assistant_knowledge_versions v
+    on v.enterprise_id=a.enterprise_id and v.document_id=a.document_id and v.source_asset_id=a.id
+    where a.enterprise_id=${actor.enterpriseId} and v.id=${id(evidence.ref.version)} and a.id=${id(locator.assetId)}
+    and a.source_hash=${locator.sourceHash} and a.name=${locator.name} and a.format=${locator.format}`);
+  if (!file || !originalFileAllowed(file.source_file as SourceFile | null, locator)
+    || bytes && createHash('sha256').update(file.data as Buffer).digest('hex') !== locator.sourceHash) return null;
+  return file;
+}
 
 export function readOriginal(actor: KnowledgeActor, documentId: string, versionId: string) {
   return withTenantTransaction(actor.enterpriseId,async tx=>{

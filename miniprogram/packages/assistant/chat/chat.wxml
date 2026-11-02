@@ -263,6 +263,7 @@
             <view class="discovery-card-actions"><button class="discovery-text-action" bindtap="askPublicSite" disabled="{{!canSend || publicBusy || publicPending || publicDetailLoading || loading || fatal || readOnly || busy || generating || pendingSend || pendingAction || uncertainRun || contextBusy || contextPending || speechBusy}}"><text>{{publicBusy ? '正在确认…' : '问小K'}}</text><image src="../assets/chat-arrow-up-right.png" mode="aspectFit"/></button></view>
           </view>
         </block>
+        <block wx:elif="{{sheet === 'reportSource'}}"><template is="citation-content" data="{{citation: reportSource, citationLoading: reportSourceLoading, citationError: reportSourceError, retry: 'retryReportSource'}}"/><button wx:if="{{reportSource.available && reportSource.originalAvailable && !reportSourceLoading && !reportSourceError}}" class="notice-action" bindtap="openReportSourceFile">打开原文件</button></block>
         <template wx:elif="{{sheet === 'followupCitation'}}" is="citation-content" data="{{citation: followupChat.citation, citationLoading: followupChat.citationLoading, citationError: followupChat.citationError, retry: 'retryFollowupCitation'}}"/>
         <template wx:else is="citation-content" data="{{citation, citationLoading, citationError, retry: 'retryCitation'}}"/>
       </scroll-view>

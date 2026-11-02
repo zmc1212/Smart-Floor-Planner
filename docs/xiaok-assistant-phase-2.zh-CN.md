@@ -126,7 +126,18 @@ GET /api/miniprogram/assistant/followups/:bindingId/conversation及messages?befo
 
 原报告列表/详情HTTP增加`body`、`bodyGeneratedAt`、`generationState`、`generationError`、`generationLabel`、`generationRetryable`；原带版本/幂等的`.../reports/:reportId/retry`亦只在明确派发前失败后新建正文run，沿同一事实版本。文本派发或query embedding用量未知保留reconciling、拒绝重试，并阻止未知查询后继续发文本模型。拒绝/额度不足仍保留原事实和真实失败状态。活动聊天唯一索引排除两种定时报告purpose，普通交互仍唯一；人工接待沿原暂停插入/代际合同保留后台报告任务。
 
-批准03详情及共用04/06/07/08数据路径现显示正文分区、来源标题、失败/未知反馈和原重试动作，不改样式、素材或导航。普通专题状态/目的地保持独立。**批准稿“查看工艺依据”及报告知识引用的原文件打开动作仍缺失**，来源标题不能代替该交互；这是下一独立实施，随后做定向权限/撤回/重进检查。真实配置模型正文、固定两次首稿、带真实企业知识的报告语义、正常追问、完整生成正文原生验收、根入口和完整构建/上传字节仍未验；不推进V1-03或生产。
+批准03详情及共用04/06/07/08保留原正文分区、来源标题及失败/重试组件。普通专题状态和目的地保持独立。
+
+<!-- v1-02-report-source -->
+**报告工艺依据与原文件导航：限定Implemented，V1-02整体Limited。** 批准03动作位于工艺标题右侧，复用原记录13px/44px动作及现有来源纸页；其他受众/周期沿共用详情提供同一动作。多个实际知识引用使用原生单选。GET `/api/miniprogram/assistant/followups/:bindingId/reports/:reportId/projects/:projectId/sources/:sourceId[/original]?revision=:revision`先验签名收件人/企业、私人目的地代际、报告版本、项目事实和实际引用目录，再走原synthesis context、Evidence及citation投影。裸chunkId/未引用chunk不能获权。当前发布、受众、索引profile、hash及有效期守卫保留；项目撤权清除打开的来源，关闭/隐藏/身份变化阻断迟到响应。不新增schema、Agent、权限解析器或引用管线，不改Admin界面。
+
+来源纸页显示保存的引文、版本及原文件/页段定位；原件端点再验精确版本的asset/name/format/hash及下载字节。含排除块的发布只开放获准摘录，不能下载未脱敏整件。Mini沿认证下载、`wx.openDocument(showMenu:false)`并在使用后unlink临时文件；同范围轮询不会静默取消正在下载的原件，实际撤权仍会取消。控制逻辑放assistant分包，不增主包helper，不改样式/字体/素材或导航。两份已编辑聊天入口统一LF、精简失效注释，.gitattributes固定五个已改Mini运行文件的LF以守2MB硬限；1998848安全目标/300KB素材阈值保持，实际上传字节未验。
+
+证据`tmp/v1-02-report-sources/verification.json`。单元45/45，最终来源/下载及包体19/19、定向lint通过；tsc仍原82项/本次0。初版client127/127和后续126/127的原21B包体失败分开保留；最终19覆盖下载竞态及13项包体。service01缺入口凭据、service02探测已发布文件不可变约束、remainder03通用notice选择器导致打开计数不符均仍failed，清理true/drift[]。service02实际来源/原件/hash及收件人/企业/目录拒绝仅按其已执行范围复用；退役/受众/hash回滚守卫已到达断言，末段不可变文件探测仍失败。排除块整件披露现为有单元证据的纯谓词，重构后另验真实获权文件HTTP。remainder04四项夹具/文件/项目门检查及Stable5/5通过（两前置、来源503/手动重试、认证下载/打开调用、私人重进/实时撤权），清理true/drift[]。最终5张精确route页面已审，逻辑390×844/编码348×752；工艺动作(264.14,509.75)/94.86×44px、13px。同最小化HWND947063424只读保存副屏位置/焦点核验不变。文件查看器单独用内存观察器替代，真实查看器/真机/完整宿主/根及生成正文语义未验。无CLI参数文件、模型/Embedding/摄取/生图调用；原额度、未知费用、停测和失败次数保留。这是清晰标记的持久协议正文结合真实已发布404/410第29页Evidence的来源导航，不是配置模型验收。
+受影响三API及proxy的新Webpack compile-only检查通过（compile-01-routes），源码/驱动/配置drift[]且未改原配置；不升级完整build/standalone。最终319–322归档/对客关、372–375撤回、137–140停止、5410停用，策略false/version252/dispatch_epoch66、全队列0；404/405仍发布、其余28草稿、42条预占2004000及4114/3753未知账目不变。
+<!-- /v1-02-report-source -->
+
+真实配置模型正文、固定两次首稿、带真实企业知识的报告语义、正常追问、完整生成正文原生验收、根入口及完整构建/上传字节仍未验；不推进V1-03或生产。
 
 证据`tmp/v1-02-natural-reports/verification.json`。unit49/client126（含包体）/定向lint通过；当前类型82项诊断均在本次归属之外，归属文件0。service04原日周批failed保留：五份日报正文保存，周报被旧活动聊天索引拒绝；0110修复该机制，service05仅生成五份周报新版本并复用未变日报证据，验证精确重进/已阅/跨收件人拒绝、派发前失败/同键重试。其撤回遗漏reason失败及service06误断言facts_only的失败均保留；来源驱动修复2停止。service07只回读已撤回版本，验证真实不可用DTO（无新撤回），再验证文本unknown；service08独立验证query用量未知阻断、文本0调用。以上均为替身模型协议检查：保留各批合计12次注入回调，实际文本/Embedding/摄取/生图均0，不当自然语义或真实费用。开发库原42条reconciling/2004000 tokens、日限1200000、provider4114、knowledge3753 unknown/input_tokens null及CNY32.828897/100保持。
 

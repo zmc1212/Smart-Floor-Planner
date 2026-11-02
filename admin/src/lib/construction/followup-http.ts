@@ -64,6 +64,15 @@ export async function handleFollowup(request: Request, path: string[], actor: Ac
       const rid = id(path[2]), revision = params.has('revision') ? Number(params.get('revision')) : undefined;
       if (revision !== undefined && (!Number.isSafeInteger(revision) || revision < 1)) fail('invalid_construction', 422);
       if (path.length === 3) return service.detail(bid, rid, revision);
+      if (path[3] === 'projects' && path[5] === 'sources' && (path.length === 7 || path.length === 8 && path[7] === 'original') && revision) {
+        const source = await service.knowledgeSource(bid, rid, revision, id(path[4]), path[6], path.length === 8);
+        if (path.length === 7) return source;
+        const types = { pdf: 'application/pdf', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
+        return new Response(new Uint8Array(source.data as Buffer), { headers: {
+          'Content-Type': types[source.format as keyof typeof types], 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
+          'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(String(source.name))}` } });
+      }
       if (path[3] === 'projects' && path[5] === 'records' && [7,9].includes(path.length) && revision) {
         const pid = id(path[4]), recordId = id(path[6]);
         if (path.length === 7) return service.record(bid, rid, revision, pid, recordId);

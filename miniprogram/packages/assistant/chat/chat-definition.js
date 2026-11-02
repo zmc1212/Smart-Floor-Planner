@@ -380,6 +380,7 @@ module.exports = () => ({
     if (this.data.sheet === 'publicSite' && this.publicSites) this.publicSites.closeDetail();
     this.controller.citationRequest = (this.controller.citationRequest || 0) + 1;
     this.followupChatController?.clearCitation();
+    this.followups?.clearSource();
     this.referenceImages.clear();
     this.controller.set({ citation: null });
     this.setData({ sheetOpen: false });
@@ -415,6 +416,15 @@ module.exports = () => ({
   moreFollowupReports() { return this.followups.more(); },
   recoverFollowup() { return this.followups.recover(); },
   retryFollowupReport() { return this.followups.retryBody(this.data.followupDetail); },
+  openReportSource(event) {
+    const pid = String(event.currentTarget.dataset.project), d = this.data.followupDetail;
+    const sources = d?.projects.find(p => p.id === pid)?.knowledgeSources || [];
+    const open = source => { if (this.data.followupDetail !== d || !source) return; this.openSheet('reportSource'); return this.followups.readSource(pid, source.sourceId); };
+    if (sources.length === 1) return open(sources[0]);
+    if (sources.length > 1) wx.showActionSheet({ itemList: sources.map(s => s.title), success: result => open(sources[result.tapIndex]) });
+  },
+  retryReportSource() { return this.followups.loadSource(); },
+  openReportSourceFile() { return this.followups.openSourceFile(); },
   readFollowupOriginal(event) { return this.followups.original(String(event.currentTarget.dataset.project), String(event.currentTarget.dataset.record)); },
   closeFollowupOriginal() { this.setData({ followupOriginal: null }); this.followups.set({ followupOriginal: null }); },
   previewFollowupOriginal(event) { const r = this.data.followupOriginal; if (r) return this.followupMedia.preview(r.id, r.version, String(event.currentTarget.dataset.media)); },
