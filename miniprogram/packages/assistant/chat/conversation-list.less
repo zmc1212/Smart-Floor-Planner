@@ -1,0 +1,46 @@
+/* Approved01 and its management-entry component; 853x1844 -> 390x844. */
+.notebook-chat .conversation-list-sheet {
+  height: calc(100% - 145px); box-sizing: border-box; padding: 28px 25px ~"max(24px, env(safe-area-inset-bottom))" 29px;
+  border: 1px solid #fffdf5; border-radius: 13px 13px 0 0; display: flex; flex-direction: column; background: #fbf8ef;
+  box-shadow: 0 -2px 8px #4f563722, inset 0 0 0 5px #ffffff55;
+  .conversation-list-grip { position: absolute; top: 12px; left: calc(50% - 19.5px); width: 39px; height: 5px; border-radius: 3px; background: #bdbfb6; }
+  .sheet-head { flex: none; min-height: 44px; line-height: 44px; padding-right: 40px; font-family: 'Chat Followup Serif','Chat Serif',SimSun,serif; font-size: 31px; font-weight: 900; }
+  .sheet-head .icon-button { position: absolute; right: 9px; top: 22px; width: 44px; min-width: 44px; max-width: 44px; height: 44px; margin: 0; padding: 0; background: transparent; }
+  .sheet-head .icon-button image { width: 16px; height: 16px; }
+  .sheet-scroll { flex: 1; min-height: 0; height: 0; }
+  .sheet-helper { margin: 0; color: #71858a; font-size: 13px; line-height: 21px; }
+  .followup-new { display: flex; align-items: center; gap: 17px; height: 48px; min-height: 48px; margin: 10px 0 0; padding: 0 20px; border: 1px solid #729280; border-radius: 8px; font-size: 16px; line-height: 24px; }
+  .conversation-list-plus { position: relative; flex: none; box-sizing: border-box; width: 23px; height: 23px; border: 1.7px solid #073c30; border-radius: 50%; }
+  .conversation-list-plus::before, .conversation-list-plus::after { content: ''; position: absolute; background: #073c30; left: 4px; right: 4px; height: 1.7px; top: calc(50% - .85px); }
+  .conversation-list-plus::after { transform: rotate(90deg); }
+  .followup-list-label { min-height: 44px; margin: 15px 0 0; gap: 12px; font-size: 15px; line-height: 24px; }
+  .followup-list-label .fabric-label { box-sizing: border-box; min-width: 91px; text-align: center; padding: 3px 12px; font-size: 15px; line-height: 22px; }
+  .followup-list-label .followup-text-action { min-width: 108px; height: 44px; font-size: 13px; text-align: right; }
+  .followup-list-label .followup-text-action[disabled] { background: transparent; color: #829184; }
+  .followup-list-entry { display: block; position: relative; width: 100%; min-height: 128px; margin: 0 0 23px; padding: 13px 14px 10px 17px; border-left: 6px solid #41664f; border-radius: 7px; background: linear-gradient(100deg,#e7ead8,#edf0df); line-height: 1.5; box-shadow: 0 6px 0 -2px #fffdf5, 0 8px 7px #6e60412b; }
+  .followup-list-entry::before, .followup-list-entry::after { content: ''; position: absolute; left: -9px; width: 14px; height: 3px; border: 1px solid #8ba68b; border-radius: 3px; background: #416c55; transform: rotate(-5deg); pointer-events: none; }
+  .followup-list-entry::before { top: 22px; }
+  .followup-list-entry::after { top: auto; right: auto; bottom: 22px; }
+  .followup-list-top { display: flex; align-items: flex-start; gap: 12px; }
+  .followup-list-home { flex: none; width: 34px; height: 34px; margin-top: 0; }
+  .followup-list-identity { flex: 1; min-width: 0; }
+  .followup-list-heading, .followup-list-meta { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+  .followup-list-title { flex: 1; min-width: 0; font-size: 18px; line-height: 24px; word-break: break-word; }
+  .followup-list-count { flex: none; min-width: 18px; box-sizing: border-box; padding: 0 3px; margin-top: 1px; border-radius: 12px; font-size: 12px; line-height: 18px; }
+  .followup-list-meta { align-items: baseline; color: #71858a; font-size: 12px; line-height: 20px; }
+  .followup-list-stage { flex: 1; min-width: 0; font-size: 13px; word-break: break-word; }
+  .followup-list-date { flex: none; text-align: right; }
+  .followup-list-footer { margin: 7px 0 0 8px; padding-top: 10px; border-top: 1px solid #9bae8e; font-size: 15px; line-height: 23px; }
+  .followup-list-delivery { display: block; }
+  .followup-list-tail { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 1px; font-size: 13px; line-height: 21px; }
+  .conversation-list-arrow { flex: none; width: 6px; height: 6px; border-top: 1.5px solid #073c30; border-right: 1.5px solid #073c30; transform: rotate(45deg); margin-right: 2px; }
+  .followup-rule { position: relative; border-color: #729280; }
+  .followup-rule::after { content: ''; position: absolute; right: 0; top: -2px; width: 4px; height: 4px; border-radius: 50%; background: #416b5c; }
+  .conversation-list-row { display: flex; align-items: flex-start; gap: 12px; margin: 0; padding: 16px 0 19px; border: 0; border-bottom: 1px solid #a2b59a; border-radius: 0; background: transparent; }
+  .conversation-list-icon { flex: none; width: 25px; height: 25px; margin-top: 1px; }
+  .conversation-list-content { flex: 1; min-width: 0; }
+  .conversation-list-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 9px; }
+  .history-title { flex: 1; min-width: 0; font-size: 16px; line-height: 24px; }
+  .conversation-list-date { flex: none; font-size: 12px; color: #71858a; line-height: 20px; }
+  .history-meta { margin-top: 4px; font-size: 13px; line-height: 21px; color: #71858a; }
+}

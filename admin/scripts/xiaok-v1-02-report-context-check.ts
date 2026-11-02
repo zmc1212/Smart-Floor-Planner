@@ -56,6 +56,9 @@ if (adapterScript) {
     'design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/follow-up-v1/08-boss-weekly-digest-v003.png');
   if (process.argv.includes('--owner-daily-visual')) sourceFiles.push('design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/follow-up-v1/02-follow-up-chat-v002.png');
   if (process.argv.includes('--owner-detail-visual')) sourceFiles.push('design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/follow-up-v1/03-report-detail-v001.png', 'tmp/v1-02-report-detail-visual/regions-03.json');
+  if (process.argv.includes('--conversation-list-visual')) sourceFiles.push('design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/follow-up-v1/01-conversation-list-v001.png',
+    'design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/follow-up-v1/component-follow-up-manage-entry.svg', 'tmp/v1-02-conversation-list-visual/regions-01.json',
+    'docs/icon-sources/assistant/conversation-outline.svg', 'tmp/v1-02-conversation-list-visual/font.json', 'tmp/v1-02-conversation-list-visual/inspect-window.ps1');
 }
 const bind = () => Object.fromEntries(sourceFiles.sort().map(f => [f.replaceAll('\\','/'), createHash('sha256').update(fs.readFileSync(path.isAbsolute(f) ? f : path.join(root,f))).digest('hex')]));
 const before = bind();

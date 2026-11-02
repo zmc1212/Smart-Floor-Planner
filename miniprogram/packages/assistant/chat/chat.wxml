@@ -208,24 +208,28 @@
 
   <view wx:if="{{sheet}}" class="sheet-layer {{sheetOpen ? 'is-open' : ''}}" catchtouchmove="swallow">
     <view class="sheet-mask" bindtap="closeSheet"></view>
-    <view class="sheet-panel">
+    <view class="sheet-panel {{sheet === 'history' ? 'conversation-list-sheet' : ''}}">
+      <view wx:if="{{sheet === 'history'}}" class="conversation-list-grip"></view>
       <view class="sheet-head"><text>{{sheet === 'history' ? '我的对话' : sheet === 'floorplan' ? contextDetail ? '查看户型档案' : '户型参考' : sheet === 'publicSite' ? '公开工地' : '回答依据'}}</text><button class="icon-button" bindtap="closeSheet" aria-label="关闭"><image src="../assets/x.png" /></button></view>
       <scroll-view class="sheet-scroll" scroll-y show-scrollbar="{{false}}">
         <block wx:if="{{sheet === 'history'}}">
           <text class="sheet-helper">{{followupContext.enterprise.name || enterpriseName}} · 仅自己可见</text>
-          <button wx:if="{{!professionalFollowup}}" class="notice-action followup-new" bindtap="newConversation" disabled="{{busy || pendingSend || pendingAction}}">⊕　开启新对话</button>
+          <button wx:if="{{!professionalFollowup}}" class="notice-action followup-new" bindtap="newConversation" disabled="{{busy || pendingSend || pendingAction}}"><view class="conversation-list-plus"></view><text>开启新对话</text></button>
           <view class="followup-list-label"><text class="fabric-label">装修跟进</text><button class="followup-text-action" bindtap="manageFollowup" disabled="{{followupListLoading}}">管理跟进 ↗</button></view>
           <button wx:if="{{followupPlanManager}}" class="followup-text-action followup-plan-entry" bindtap="openReportPlan" disabled="{{followupBusy || followupPending}}">企业报告计划 ↗</button>
-          <text wx:if="{{followupListLoading}}" class="sheet-state">正在读取私人跟进…</text>
+          <text wx:if="{{followupListLoading && !followupBindings.length}}" class="sheet-state">正在读取私人跟进…</text>
           <view wx:if="{{followupError}}" class="notice"><text>{{followupError}}</text><button class="notice-action" bindtap="openHistory">重新读取</button></view>
-          <button wx:for="{{followupBindings}}" wx:key="bindingId" wx:if="{{!item.hidden}}" class="followup-list-entry" data-id="{{item.bindingId}}" bindtap="selectFollowup" disabled="{{busy || pendingSend || pendingAction || mediaBusy || mediaPending}}"><image src="../assets/requirement-home.png" mode="aspectFit"/><view><text class="followup-list-title">{{item.title}}</text><text class="followup-muted">{{item.audience === 'customer' ? item.projects[0].stageName : item.enterprise.name}}　{{item.latestDateLabel}} <text wx:if="{{item.unreadMessages}}" class="followup-list-count">{{item.unreadMessages}}{{item.unreadTruncated ? '+' : ''}}</text></text><text class="followup-list-footer">{{item.status === 'stopped' ? '自动跟进已停止，可查看已保存的简报。' : item.latestReport ? '已有简报，可查看现场记录。' : '有新简报时，会在这里保存。'}}</text></view></button>
+          <button wx:for="{{followupBindings}}" wx:key="bindingId" wx:if="{{!item.hidden}}" class="followup-list-entry" data-id="{{item.bindingId}}" bindtap="selectFollowup" disabled="{{busy || pendingSend || pendingAction || mediaBusy || mediaPending}}">
+            <view class="followup-list-top"><image class="followup-list-home" src="../assets/requirement-home.png" mode="aspectFit"/><view class="followup-list-identity"><view class="followup-list-heading"><text class="followup-list-title">{{item.title}}</text><text wx:if="{{item.unreadMessages}}" class="followup-list-count">{{item.unreadMessages}}{{item.unreadTruncated ? '+' : ''}}</text></view><view class="followup-list-meta"><text class="followup-list-stage">{{item.audience === 'customer' ? item.projects[0].stageName : item.enterprise.name}}</text><text class="followup-list-date">{{item.latestDateLabel}}</text></view></view></view>
+            <view class="followup-list-footer"><text class="followup-list-delivery">{{item.status === 'stopped' ? '自动跟进已停止' : item.latestReport ? '现场简报已送达' : '等待新的简报'}}</text><view class="followup-list-tail"><text>{{item.latestReport ? '查看已保存记录，接着问小K' : '有新简报时，会在这里保存。'}}</text><view class="conversation-list-arrow"></view></view></view>
+          </button>
           <text wx:if="{{!followupListLoading && !followupBindings.length && !followupError}}" class="sheet-helper">当前没有可查看的装修跟进。</text>
           <view wx:if="{{!professionalFollowup}}" class="followup-list-label"><text>最近咨询</text><view class="followup-rule"></view></view>
 
           <text wx:if="{{historyLoading}}" class="sheet-state">正在读取对话记录…</text>
           <view wx:if="{{historyError}}" class="notice"><text>{{historyError}}</text><button class="notice-action" bindtap="openHistory">重新加载</button></view>
           <text wx:if="{{!professionalFollowup && !historyLoading && !historyError && !history.length}}" class="sheet-state">还没有对话，从一个装修问题开始吧。</text>
-          <button wx:for="{{history}}" wx:key="id" class="history-row" data-id="{{item.id}}" bindtap="selectHistory"><text class="history-title">{{item.title || '装修咨询'}}</text><text class="history-meta">{{item.createdLabel}} · {{item.status === 'open' ? '可继续咨询' : '已结束 · 查看记录'}}</text></button>
+          <button wx:for="{{history}}" wx:key="id" class="history-row conversation-list-row" data-id="{{item.id}}" bindtap="selectHistory"><image class="conversation-list-icon" src="../assets/conversation-outline.png" mode="aspectFit"/><view class="conversation-list-content"><view class="conversation-list-heading"><text class="history-title">{{item.title || '装修咨询'}}</text><text class="conversation-list-date">{{item.createdDateLabel}}</text></view><text class="history-meta">{{item.status === 'open' ? '可继续咨询' : '已结束 · 查看记录'}}</text></view></button>
           <button wx:if="{{historyCursor}}" class="older-action" bindtap="moreHistory" disabled="{{historyLoading}}">查看更多对话</button>
         </block>
         <block wx:elif="{{sheet === 'floorplan'}}">

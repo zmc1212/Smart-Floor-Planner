@@ -480,6 +480,7 @@ test('revocation fences a slower citation response from restoring previously aut
 
 test('history and earlier-message cursors preserve conversation scope and chronological order', async () => {
   const f = fixture(); f.db.history = [f.db.conversation]; f.db.historyCursor = '11';
+  f.db.conversation.createdAt = '2026-11-01T04:00:00Z';
   f.db.items = [{ id: '22', seq: '2', content: { blocks: [{ type: 'text', text: '后来的消息' }] } }]; f.db.messageCursor = '2';
   await f.controller.show({ conversationId: '11' });
   await f.controller.loadHistory();
@@ -489,6 +490,9 @@ test('history and earlier-message cursors preserve conversation scope and chrono
   });
   await f.controller.loadHistory(true); await f.controller.olderMessages();
   assert.deepEqual(f.controller.state.history.map(item => item.id), ['11', '10']);
+  assert.equal(f.controller.state.history[0].createdDateLabel, '2026/11/01');
+  assert.equal(f.controller.state.history[0].createdLabel.startsWith('2026/11/01 '), true);
+  assert.equal(f.controller.state.history[1].createdDateLabel, '', 'missing timestamps never become a fabricated date');
   assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21', '22']);
   assert.equal(f.calls.find(call => call.body.cursor).options.headers['X-Assistant-Entry'], 'entry-A');
 });

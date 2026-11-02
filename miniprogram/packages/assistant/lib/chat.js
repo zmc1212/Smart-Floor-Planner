@@ -6,7 +6,7 @@ function historyForView(items) {
     const time = new Date(item.createdAt);
     const pad = value => String(value).padStart(2, '0');
     const createdLabel = Number.isNaN(time.getTime()) ? '装修咨询' : `${time.getFullYear()}/${pad(time.getMonth() + 1)}/${pad(time.getDate())} ${pad(time.getHours())}:${pad(time.getMinutes())}`;
-    return { ...item, createdLabel };
+    return { ...item, createdLabel, createdDateLabel: Number.isNaN(time.getTime()) ? '' : createdLabel.split(' ')[0] };
   });
 }
 const initial = () => ({

@@ -6,6 +6,16 @@
 <!-- v1-02-staff-private -->
 **员工私人报告追问06/07：Limited；本人服务与限定原生状态已验。** 原`followups/:bindingId/conversation`解析签名工人/设计师/老板收件人（含所选企业admin/super_admin），沿原ConversationService、owner参与者/仓库守卫、精确报告选择和同一Agent。引用固定本人/项目/周期/版本，实时重验职责、受众及原记录。员工快照保存admin principal并兼容旧userId；当前项目条件进入原KnowledgeRetriever/Evidence/引用管线。只读有效已发布内部/对客知识，不借管理草稿预览；发言保持私人，S04保持共享。0108仅扩展原触发器的owner本人AI模式消息。本机命令`node scripts/construction-report-migrate.mjs --development --staff-questions --audit=<新路径>`，排除外来0102。
 
+<!-- v1-02-conversation-list -->
+**批准01私人会话列表：有界Implemented；V1-02整体Limited。** 源为01-conversation-list-v001.png、原手账README与已批准管理入口SVG，853×1844→390×844。仅history改699px高/y145纸页、39×5握柄、31px同Black标题、18px项目名、独立右侧未读/时间、15px送达状态与16px普通标题；管理热区108×44px/13px。送达文案只依原已投递且当前获权latestReport，时间仍为实际保存时间，不冒充送达时刻。普通行保留真实首问标题、创建日期和开放/结束状态，不造模型摘要，无效日期留空。有旧有效列表时刷新不再插入加载行推卡，初次加载/明确错误/同范围重读仍保留。其他sheet、API/schema/角色/模型编排不变，后台无功能变化。
+
+普通图标沿已有独立MessageCircleMore矢量配色，conversation-outline.png为48×48/1283B透明图；房屋仍用requirement-home.png，纸页/加号/箭头/环扣是原生几何，无截图切片、新业务画作或生图调用。同授权Black仅补“话”到45码位/11884B，原44字轮廓/度量drift[]，见tmp/v1-02-conversation-list-visual/font.json及原README的27元素标尺。
+
+证据tmp/v1-02-conversation-list-visual/verification.json：最终client-02为120/120含13包体，lint-02通过/drift[]。native-03的两前置、两列表目标（几何、真实503/重读、卡片可见已读与完整报告未阅、管理入口）通过，但最后驱动重进同时带leadId+conversationId，整批仍failed；保存的entryInput判别已复现互斥拒绝。native-04-reentry仅补正确单目标重进、关闭保草稿、新对话不改固定绑定，3/3通过，不拼成一次最终整旅程。native-01最小化窗口前置失败、native-02的333/334严格宽度断言及外部api.js批内漂移都保留；后者整批无效不混用。分别记录加载/光学产品修复1、宽度驱动1、入口驱动1、只读最小化位置守卫纠正1。
+
+最终4页PNG已按Stable390×844/编码348×752实际审阅；同HWND947063424最小化，只读保存位置证实原副屏、检查前后焦点相同，无恢复/输入/窗口修改。完整宿主、根面板原生及真机/键盘未验。驱动只暂停后台轮询以稳定几何，显式读取/回执/写入仍走真实服务。四批cleanup true：310–313项目归档/对客关、363–366记录撤回、128–131绑定停止、1021/1024/1027/1030普通夹具归档、5410停用；计划false/version234/dispatch_epoch57、q0，原控制及providerMax4114/knowledgeMax3753/3753 unknown-input_tokens null不变。仅保存自然客户原话协议夹具，不当原生发送或模型答复证据；新模型/摄取/生图0。main2096462/assistant2092160，硬限2097152余690/4992B；assistant超未改1998848安全目标93312B，实际编译/上传字节未验。原额度/语义停测、未知费用、失败和删除拒绝保持，下一同V1-02根面板入口兼容，不提前V1-03。
+<!-- /v1-02-conversation-list -->
+
 <!-- v1-02-owner-detail -->
 **批准03业主完整日报事实详情：有界Implemented，V1-02整体Limited。** 源为03-report-detail-v001.png及同一手账README/共用03/04（853×1844→390×844）。仅ownerDaily且ready使用独立owner-report-detail WXML/Less；其余员工/周报/阶段/未就绪/失效仍为原详情分支，移除新分支后其WXML与HEAD81a7b58b逐字相同。标题31px同授权Black、动态项目名18px本机宋体、正文/布签16px、元信息/原记录13px。分区顶行右侧沿原获权原记录操作；待你确认保留publishedRecordItems、协调/期前原段，原arrangements及facts_only/缺项不变，不填设计工艺或“明日安排”。统计使用实际cutoff，历史称当日进展，保存时间不冒充模型生成；无API/schema/权限/模型编排或新素材/字体变化。后台列表轮询现在保留已有操作错误，主动同范围原记录重读仍清错；恢复规则沿批准的共用失败纸条。
 
