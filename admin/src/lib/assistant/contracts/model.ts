@@ -15,7 +15,7 @@ export type ModelTurnInput = {
   model: string; messages: ModelMessage[]; tools: ModelTool[];
   maxTokens: number; enableThinking?: boolean; jsonOutput?: boolean; requireTool?: boolean;
   /** Server-selected native final channel; business/tool turns stay function calling. */
-  outputMode?: 'json_object' | 'json_schema';
+  outputMode?: 'json_object' | 'json_schema' | 'function_call';
   /** Server-bound report final allocation; never a provider wire argument. */
   reportFinalOutputTokens?: typeof reportFinalOutputTokenLimit;
   cacheControl?: 'implicit' | 'ephemeral_system';
@@ -30,7 +30,7 @@ export type ModelTurnOutput = {
   usage: { inputTokens: number; outputTokens: number; cachedInputTokens?: number; cacheWriteInputTokens?: number } | null;
   observation?: { latencyMs: number; cache: ReturnType<typeof import('@/lib/ai/providers/model-observation').cacheObservation>;
     prefix: ReturnType<typeof import('@/lib/ai/providers/model-observation').modelPrefixObservation>;
-    format?: { mode:string;jsonValid:boolean;schemaValid:boolean|null } };
+    format?: { mode:string;jsonValid:boolean;schemaValid:boolean|null;schemaValidation?:'application' } };
   /** Application bridge metadata; never parsed from provider-controlled fields. */
   toolProtocolFeedback?: { code: 'mixed_final_response'; text: string };
 };

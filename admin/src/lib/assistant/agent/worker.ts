@@ -48,7 +48,7 @@ import { resolveSynthesisRepair, synthesisRepairBase, synthesisRepairProtocol, s
 import { currentSynthesisContext } from './synthesis-sources';
 import { boundKnowledgeContext } from './bound-context';
 import { boundReportContext, queryReportFollowups, reportFollowupTool } from './report-context';
-import { boundReportNativeFinal, reportNativeRuntimeBudget, reportNativeFinalProtocol, boundReportFinalOutput } from './report-native-final';
+import { boundReportNativeFinal, reportNativeRuntimeBudget, reportNativeFinalProtocol, boundReportFinalOutput, boundReportFinalCarrier } from './report-native-final';
 import { isReportAnswerSnapshot, reportFinalResponseIssue, reportFinalProtocol, reportAnswerFinalTool, reportQuestionCoverage, reportAnswerSynthesis, reportCoverageFailure, reportCoverageProtocol } from './report-final';
 import { projectFinalToolOutput } from './final-output';
 export { projectFinalToolOutput } from './final-output';
@@ -739,6 +739,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       privateFollowup: lease.actor.capabilities.includes('assistant.followup.self'), selected: !!reportSource });
     const nativeFinalization=reportNativeFinal||composableReview&&initial.config.structuredFinal===nativeFinalProtocol;
     const reportFinalOutputTokens = boundReportFinalOutput((initial.run.policy_snapshot as Row).reportFinalOutputTokens, reportNativeFinal);
+    const reportFinalCarrier = boundReportFinalCarrier((initial.run.policy_snapshot as Row).reportFinalCarrier, reportNativeFinal, reportFinalOutputTokens);
+    const finalOutputMode = reportFinalCarrier ? 'function_call' as const : 'json_schema' as const;
     const explanationBound = !nativeFinalization && (initial.run.policy_snapshot as Row).sourceAnswerMode === knowledgeExplanationProtocol;
     const exactQuote = explanationBound && exactKnowledgeQuoteRequested(reviewContext.currentQuestion);
     const sourceMode={requiredKnowledge:initial.shared,sourceExcerpts:!nativeFinalization&&((initial.run.policy_snapshot as Row).sourceAnswerMode===sourceExcerptProtocol || exactQuote),
@@ -830,12 +832,13 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`));
           if (cached) {
             if (((cached.input_summary as Row)?.reportFinalOutputTokens ?? undefined) !== finalAllocation.reportFinalOutputTokens) fail('context_changed');
+            if (((cached.input_summary as Row)?.reportFinalCarrier ?? undefined) !== reportFinalCarrier) fail('context_changed');
             if ((purpose === 'summary' || purpose === 'grounding') && (cached.input_summary as Row)?.summaryRequestHash !== summaryRequestHash) fail('context_changed');
             if (cached.status !== 'succeeded') fail('provider_outcome_unknown');
             outcomeKnown = true;
             const saved = cached.private_checkpoint as ModelTurnOutput;
             if (consultation && !saved.usage) fail('provider_usage_unknown', 502);
-            if(nativeFinalization&&purpose==='answer'&&!tools.length&&!dependencies.model)assertNativeFinalOutput(saved);
+            if(nativeFinalization&&purpose==='answer'&&!tools.length&&!dependencies.model)assertNativeFinalOutput(saved, finalOutputMode);
             return claims ? { ...saved, text: resolveReviewClaims(saved.text, claims) } : saved;
           }
           const requestedTokens = consultation ? consultationRequestReservation(modelMessages, dispatchTools, limits.maxOutputTokens) : null;
@@ -862,6 +865,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                   imageContext: initial.config.imageContext ?? null,
                   reportFinalOutputTokens: finalAllocation.reportFinalOutputTokens ?? null, maxOutputTokens: limits.maxOutputTokens,
                   reportNativeFinal: (initial.run.policy_snapshot as Row).reportNativeFinal ?? null,
+                   reportFinalCarrier: reportFinalCarrier ?? null,
                   projectKnowledge: initial.shared,
                   sourceAnswerMode: (initial.run.policy_snapshot as Row).sourceAnswerMode ?? null,
                   sourceQuestionCoverage: (initial.run.policy_snapshot as Row).sourceQuestionCoverage ?? null,
@@ -898,10 +902,11 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             logicalModelKey: 'chat.general', messages: [], maxTokens: limits.maxOutputTokens,
             agent: { config: initial.config, input: { messages: modelMessages, tools: dispatchTools, maxTokens: limits.maxOutputTokens, requireTool: purpose !== 'vision',
               ...finalAllocation,
-              ...(nativeFinalization&&purpose==='answer'&&!tools.length?{outputMode:'json_schema' as const}:{}),
+              ...(nativeFinalization&&purpose==='answer'&&!tools.length?{outputMode:finalOutputMode}:{}),
               ...(profile ? { profile, deadlineAt } : {}) } },
             metadata: { promptVersion: agentPromptVersion, runtime: initial.config.runtime, turn, purpose, probeVersion: initial.config.probeVersion,
               ...(reportNativeFinal ? { reportNativeFinal: reportNativeFinalProtocol } : {}),
+              ...(reportFinalCarrier ? { reportFinalCarrier } : {}),
               ...finalAllocation,
               sourceAnswerMode: (initial.run.policy_snapshot as Row).sourceAnswerMode ?? null,
               ...(nativeFinalization&&purpose==='answer'&&!tools.length?{nativeFinalProjection:finalProjection}:{}),
@@ -941,7 +946,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             fail(knowledgeReadPending(reviewContext.currentQuestion, focused, String(initial.trigger.id),initial.shared) ? 'source_read_required' : 'assistant_capability_forbidden', 502);
           if (purpose === 'answer' && providerOutput.toolCalls.some(call => reviewDefinitions.some(tool => tool.name === call.name))
             && providerOutput.toolCalls.length !== 1) fail('assistant_capability_forbidden', 502);
-          if(nativeFinalization&&purpose==='answer'&&!tools.length&&!injected)assertNativeFinalOutput(output.agentOutput);
+          if(nativeFinalization&&purpose==='answer'&&!tools.length&&!injected)assertNativeFinalOutput(output.agentOutput, finalOutputMode);
           // The original provider packet is already durable above. The graph's
           // normalized view carries exact realized claims so its existing repair
           // hash/checkpoint protocol can resume without another model dispatch.

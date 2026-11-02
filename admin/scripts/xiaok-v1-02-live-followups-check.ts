@@ -15,7 +15,7 @@ import { UserRepository } from '@/db/repositories/user-repository';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 import { type ActorContext } from '@/lib/assistant/contracts';
 import { ConversationService, cancelRuns, newRun, appendMessage } from '@/lib/assistant/core/conversation';
-import { reportNativeFinalProtocol } from '@/lib/assistant/agent/report-native-final';
+import { reportNativeFinalProtocol, reportFinalFunctionCarrier } from '@/lib/assistant/agent/report-native-final';
 import { assistantDailyLimitsEnabled } from '@/lib/assistant/core/daily-limits';
 import { ConstructionService } from '@/lib/construction/service';
 import { FollowupService } from '@/lib/construction/followup-service';
@@ -38,9 +38,9 @@ assert.ok(!fs.existsSync(path.join(output, 'report.json')), 'Keep every original
 fs.mkdirSync(output, { recursive: true });
 const nativeScript = process.argv.find(a => a.startsWith('--native-script='))?.slice(16);
 if (configured) assert.ok(nativeScript, 'Bind the planned native input/reentry scope before dispatch');
-const log: Row = { startedAt: new Date().toISOString(), owner: '01a19d1c-c6fe-7513-9b43-76f90b8b7d34',
+const log: Row = { startedAt: new Date().toISOString(), owner: '01a19d58-fff5-73a0-a337-23be214c1426',
   scope: 'Selected retained owner61/staff63 original facts only, independent of stopped report-body acceptance',
-  mechanism: 'report-native-final-v1; new-run final output4096 within original16000/four-call72000 reserve; old native2048 and read-scope2/final-format2/body2 retained',
+  mechanism: 'report-native-final-v1; new-run forced-final-function-v1 with identical schema/catalog/application guards and4096 share inside original16000/four-call72000; old JSON modes and all repair counts retained',
   serialFirstDraftReview: serialReview,
   fixedScope: { roles: ['customer', 'worker'], firstDraftsPerRole: 2, maxServiceRuns: 4, maxNativeRuns: 2,
     stop: 'First failed/unknown expectation, source/configuration drift or unavailable original; no sampling retries',
@@ -64,7 +64,7 @@ sourceFiles.push('admin/scripts/xiaok-v1-02-live-followups-check.ts', 'admin/scr
   'design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/follow-up-v1/04-report-follow-up-v001.png',
   'design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/follow-up-v1/06-worker-follow-up-v001.png');
 if (nativeScript) sourceFiles.push(path.resolve(nativeScript), 'D:/微信开发工具/微信web开发者工具/resources/app.asar', 'D:/微信开发工具/微信web开发者工具/微信开发者工具.exe');
-const bind = () => Object.fromEntries([...new Set(sourceFiles)].sort().map(p => [p.replaceAll('\\', '/'), createHash('sha256').update(fs.readFileSync(path.isAbsolute(p) ? p : path.join(root, p))).digest('hex')]));
+const bind = () => Object.fromEntries([...new Set(sourceFiles)].sort().map(p => [p.replaceAll('\\', '/'), createHash('sha256').update(fs.readFileSync(path.isAbsolute(p) ? p : path.join(root, p)) as unknown as import('node:crypto').BinaryLike).digest('hex')]));
 const before = bind();
 const owner = new ConstructionService({ enterpriseId: eid, adminId: '5410' });
 const actors: Row[] = [
@@ -103,7 +103,7 @@ async function inspectRun(a: Row, runId: string) {
   assert.ok(ownedRuns.includes(runId));
   const detail = await read(async tx => ({
     run: await one(tx, sql`select id::text,conversation_id::text,purpose,status,error_code,trigger_message_id::text,
-      policy_snapshot->>'reportNativeFinal' report_native_final from app.assistant_runs where enterprise_id=${eid} and id=${runId}`),
+      policy_snapshot->>'reportNativeFinal' report_native_final,policy_snapshot->>'reportFinalCarrier' report_final_carrier from app.assistant_runs where enterprise_id=${eid} and id=${runId}`),
     steps: await rows(tx, sql`select step_seq,kind,capability_name,status,input_summary,source_refs,private_checkpoint from app.assistant_run_steps where enterprise_id=${eid} and run_id=${runId} order by step_seq`),
     usage: await rows(tx, sql`select category,quantity::text,cost_micros::text,currency,measurement_kind,input_tokens::text,output_tokens::text from app.assistant_usage_records where enterprise_id=${eid} and run_id=${runId} order by id`),
   }));
@@ -115,14 +115,23 @@ async function inspectRun(a: Row, runId: string) {
   Object.assign(detail, { messages, raw }); fs.writeFileSync(file, JSON.stringify(detail, null, 2));
   assert.equal(detail.run?.status, 'succeeded', 'Original configured-model first draft: ' + JSON.stringify(detail.run));
   assert.equal(detail.run?.report_native_final, reportNativeFinalProtocol);
+  assert.equal(detail.run?.report_final_carrier, reportFinalFunctionCarrier);
   const modelSteps = detail.steps.filter(s => s.kind === 'agent_model');
   assert.ok(modelSteps.length <= 4, 'The original four-call reservation includes auxiliary and repair calls');
   const final = modelSteps.at(-1)!;
   assert.equal((final.input_summary as Row).reportNativeFinal, reportNativeFinalProtocol);
   assert.equal((final.input_summary as Row).reportFinalOutputTokens, 4096);
   assert.equal((final.input_summary as Row).maxOutputTokens, 4096);
-  assert.equal((((final.private_checkpoint as Row).observation as Row).format as Row).mode, 'json_schema');
+  assert.equal((final.input_summary as Row).reportFinalCarrier, reportFinalFunctionCarrier);
+  assert.equal((((final.private_checkpoint as Row).observation as Row).format as Row).mode, 'function_call');
+  assert.equal((((final.private_checkpoint as Row).observation as Row).format as Row).schemaValidation, 'application');
   assert.equal((((final.private_checkpoint as Row).observation as Row).format as Row).schemaValid, true);
+  const carrier = (final.private_checkpoint as Row).providerOutput as Row;
+  assert.equal((carrier.toolCalls as Row[]).length, 1);
+  assert.equal((carrier.toolCalls as Row[])[0].name, 'final_response');
+  assert.equal((final.private_checkpoint as Row).text, (carrier.toolCalls as Row[])[0].arguments);
+  assert.deepEqual((final.private_checkpoint as Row).toolCalls, []);
+  assert.equal(detail.steps.filter(s => s.kind === 'agent_tool' && s.capability_name === 'final_response').length, 0);
   assert.equal(detail.steps.filter(s => s.kind === 'agent_validation' && s.status === 'failed').length, 0,
     'A repaired final is not a passing first draft; retain it and stop this fixed batch');
   const source = detail.steps.find(s => Number(s.step_seq) === 740)?.private_checkpoint as Row | undefined;
@@ -247,6 +256,7 @@ async function main() {
           const policy = probe.policy_snapshot as Row, agent = policy.agent as Row;
           assert.equal(policy.reportNativeFinal, reportNativeFinalProtocol);
           assert.equal(policy.reportFinalOutputTokens, 4096);
+          assert.equal(policy.reportFinalCarrier, reportFinalFunctionCarrier);
           assert.equal(agent.imageInput, true); assert.equal(agent.structuredFinal, undefined); assert.equal(agent.imageContext, undefined);
           const reservation = (await one(tx, sql`select reserved_tokens::text,reserved_cost_micros::text from app.assistant_quota_reservations where enterprise_id=${eid} and run_id=${probeId}`))!;
           assert.equal(reservation.reserved_tokens, '72000');
@@ -256,8 +266,13 @@ async function main() {
           assert.equal((old.policy_snapshot as Row).reportNativeFinal, undefined);
           const oldNative = (await one(tx, sql`select policy_snapshot from app.assistant_runs where enterprise_id=${eid} and id=1942`))!;
           assert.equal((oldNative.policy_snapshot as Row).reportFinalOutputTokens, undefined);
+          assert.equal((oldNative.policy_snapshot as Row).reportFinalCarrier, undefined);
+          const oldOutput = (await one(tx, sql`select policy_snapshot from app.assistant_runs where enterprise_id=${eid} and id=1950`))!;
+          assert.equal((oldOutput.policy_snapshot as Row).reportFinalOutputTokens, 4096);
+          assert.equal((oldOutput.policy_snapshot as Row).reportFinalCarrier, undefined);
           checked.push({ role: a.name, newRunProtocol: policy.reportNativeFinal, reservation, imageInput: true,
-            enterpriseConfigurationUnchanged: true, old1933NotMigrated: true });
+            carrier: policy.reportFinalCarrier, enterpriseConfigurationUnchanged: true,
+            old1933NotMigrated: true, old1942And1950RetainJson: true });
           throw rollback;
         });
       } catch (e) { if (e !== rollback) throw e; }

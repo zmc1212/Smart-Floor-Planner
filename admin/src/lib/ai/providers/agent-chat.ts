@@ -31,9 +31,10 @@ export function agentChatBody(input: ModelTurnInput, baseUrl = 'https://api.sili
     || input.enableThinking !== false)) throw Error('agent_profile_mismatch');
   const reportFinal = input.reportFinalOutputTokens !== undefined;
   if (reportFinal && (input.reportFinalOutputTokens !== reportFinalOutputTokenLimit || consultation
-    || input.outputMode !== 'json_schema' || input.maxTokens !== reportFinalOutputTokenLimit
+    || !['json_schema', 'function_call'].includes(input.outputMode || '') || input.maxTokens !== reportFinalOutputTokenLimit
     || endpoint.origin !== 'https://dashscope.aliyuncs.com' || !/^\/compatible-mode(?:\/v1)?\/?$/.test(endpoint.pathname)
-    || !bailianFinalFormat(input, baseUrl) || input.tools.length !== 1 || input.tools[0].name !== 'final_response')) throw Error('agent_input_limit');
+    || input.outputMode !== 'function_call' && !bailianFinalFormat(input, baseUrl)
+    || input.tools.length !== 1 || input.tools[0].name !== 'final_response' || input.requireTool !== true)) throw Error('agent_input_limit');
   const maxOutputTokens = reportFinal ? reportFinalOutputTokenLimit : profile ? profile.maxOutputTokens : agentModelLimits.maxOutputTokens;
   if (!Number.isInteger(input.maxTokens) || input.maxTokens < 1 || input.maxTokens > maxOutputTokens) throw Error('agent_input_limit');
   let images = 0, textBytes = 0;
@@ -208,7 +209,7 @@ export async function executeAgentChat(runtime: AiProviderRuntimeConfig, input: 
   let decodePayload = payload, wireNormalization: ModelTurnOutput['wireNormalization'];
   // Exact observed model/official transport/final channel only. All business
   // tools retain their strict wire grammar and existing schema/permission gate.
-  if (input.model === 'qwen3.7-flash' && bailianBinding(runtime.baseUrl, input.model, input.enableThinking)
+  if (input.outputMode !== 'function_call' && input.model === 'qwen3.7-flash' && bailianBinding(runtime.baseUrl, input.model, input.enableThinking)
     && input.tools.length === 1 && input.tools[0].name === 'final_response'
     && Array.isArray(payload.choices) && payload.choices.length === 1) {
     const message = asObject(asObject(payload.choices[0]).message), calls = message.tool_calls;
@@ -239,6 +240,13 @@ export async function executeAgentChat(runtime: AiProviderRuntimeConfig, input: 
     const definition=input.tools.length===1&&input.tools[0].name==='final_response'?input.tools[0]:null;
     format={mode:body.response_format.type,jsonValid,schemaValid:!objectValid||output.toolCalls.length?false
       :definition?!await toolSchemaIssue(definition,output.text):null};
+  } else if (input.outputMode === 'function_call') {
+    // The function is a terminal response carrier, never a business dispatch.
+    // Keep its raw packet; the existing final projection unwraps it only after
+    // this same LangChain schema check. No provider JSON-Schema claim or repair.
+    const call = output.toolCalls.length === 1 && output.toolCalls[0].name === 'final_response' ? output.toolCalls[0] : null;
+    format = { mode: 'function_call', jsonValid: !!call,
+      schemaValid: !!call && !await toolSchemaIssue(input.tools[0], call.arguments), schemaValidation: 'application' };
   }
   return { ...output, ...(wireNormalization ? { wireNormalization } : {}), observation: { latencyMs: Date.now() - started, cache: cacheObservation(output.usage),
     prefix: modelPrefixObservation(input.messages, input.tools),...(format?{format}:{}) } };

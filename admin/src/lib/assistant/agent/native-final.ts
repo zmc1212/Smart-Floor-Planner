@@ -8,9 +8,10 @@ export const nativeImageSchemaProtocol = 'explicit-image-object-schema-v1';
 export const finishContextTool:ModelTool={name:'finish_context',description:'所需上下文已获取，结束查询并进入最终答复生成。本工具没有答复正文、不保存或批准业务；参数为空对象。',
   parameters:{type:'object',properties:{},additionalProperties:false}};
 export const contextReady=JSON.stringify({status:'context_ready',protocol:nativeFinalProtocol});
-export function assertNativeFinalOutput(output:{observation?:{format?:{mode:string;jsonValid:boolean;schemaValid:boolean|null}}}){
+export function assertNativeFinalOutput(output:{observation?:{format?:{mode:string;jsonValid:boolean;schemaValid:boolean|null;schemaValidation?:'application'}}}, mode: 'json_schema' | 'function_call' = 'json_schema'){
   const format=output.observation?.format;
-  if(format?.mode!=='json_schema'||!format.jsonValid||format.schemaValid!==true)fail('native_schema_unverified',502);
+  if(format?.mode!==mode||!format.jsonValid||format.schemaValid!==true
+    ||mode==='function_call'&&format.schemaValidation!=='application')fail('native_schema_unverified',502);
 }
 export function nativePlanningMessages(messages:ModelMessage[], instruction?: string):ModelMessage[]{
   return messages.map((m,i)=>i===0&&m.role==='system'?{...m,content:[...m.content,{type:'text',text:instruction || '本回合只选择并调用业务/只读工具；资料已足够时调用finish_context({})结束查询。此阶段不生成答复正文或final_response。随后独立的原生结构化回合才生成客户答复，业务操作仍以真实结果和原审批为准。'}]}:m);

@@ -5,6 +5,7 @@ import type { AgentConfig } from './config';
 import { agentTurnScheduleProtocol, type AgentCheckpoint } from './runtime';
 
 export const reportNativeFinalProtocol = 'report-native-final-v1';
+export const reportFinalFunctionCarrier = 'forced-final-function-v1';
 type ReportScope = { conversationPurpose: unknown; purpose: string; triggerKind: string; privateFollowup: boolean; selected: boolean };
 
 /** A new private report reply binds its own final channel, independently of
@@ -30,6 +31,14 @@ export function boundReportFinalOutput(value: unknown, native: boolean) {
   if (value === undefined) return undefined;
   if (!native || value !== reportFinalOutputTokenLimit) fail('context_changed');
   return reportFinalOutputTokenLimit;
+}
+
+/** Carrier selection belongs to admission, never to resume or provider output.
+ * Missing fields retain the original JSON path, including old failed runs. */
+export function boundReportFinalCarrier(value: unknown, native: boolean, outputTokens: unknown) {
+  if (value === undefined) return undefined;
+  if (!native || value !== reportFinalFunctionCarrier || outputTokens !== reportFinalOutputTokenLimit) fail('context_changed');
+  return reportFinalFunctionCarrier;
 }
 
 /** Auxiliary work consumes the same four-call reservation. The last primary

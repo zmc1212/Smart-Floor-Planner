@@ -118,6 +118,10 @@ export function bailianSchema(value: unknown): unknown {
 export function bailianFinalFormat(input: ModelTurnInput, baseUrl: string) {
   const binding = bailianBinding(baseUrl, input.model, input.enableThinking);
   const finalOnly = input.requireTool === true && input.tools.length === 1 && input.tools[0].name === 'final_response';
+  if (input.outputMode === 'function_call') {
+    if (!binding || !finalOnly || bailianModelProfile(binding.model).functionCalling !== 'documented') throw Error('native_output_mode_not_applicable');
+    return null;
+  }
   const mode = input.outputMode || 'json_schema';
   if (!binding || !finalOnly || !bailianStructuredOutput(binding.model, mode)) {
     if (input.outputMode) throw Error('native_output_mode_not_applicable');
