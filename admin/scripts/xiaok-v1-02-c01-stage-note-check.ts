@@ -23,12 +23,14 @@ assert.ok(process.argv.includes('--development'));
 const root = path.resolve('..'), eid = '1454';
 const output = path.resolve(process.argv.find(a => a.startsWith('--output='))?.slice(9) || '../tmp/v1-02-c01-stage-note/service-01-before');
 const nativeScript = process.argv.find(a => a.startsWith('--native-script='))?.slice(16);
+const adapterScript = process.argv.find(a => a.startsWith('--adapter-script='))?.slice(17);
 const target = new URL(process.env.DATABASE_URL!);
 assert.ok(['localhost', '127.0.0.1'].includes(target.hostname) && target.port === '5432' && target.pathname === '/smart_floor_planner');
 assert.ok(!fs.existsSync(path.join(output, 'report.json')), 'Preserve every original run');
 fs.mkdirSync(output, { recursive: true });
 const files = execFileSync('rg', ['--files', 'admin/src/lib/assistant', 'admin/src/lib/construction', 'admin/src/db', 'admin/drizzle', 'miniprogram'], { cwd: root, encoding: 'utf8' }).trim().split(/\r?\n/);
 files.push('admin/scripts/xiaok-v1-02-c01-stage-note-check.ts', 'admin/scripts/assistant-acceptance-safety.mjs', 'admin/.env.local', 'admin/package.json', 'admin/package-lock.json', 'admin/tsconfig.json', 'tmp/xiaok-vector/connection.private.json');
+if (adapterScript) files.push(path.resolve(adapterScript));
 if (nativeScript) files.push(path.resolve(nativeScript), 'admin/scripts/wechatide-native-client.ts', 'tmp/v1-02-human-takeover/host-passive.ps1', 'tmp/wechat-devtools-version-test/window.ps1', 'tmp/v1-02-conversation-list-visual/inspect-window.ps1', 'D:/微信开发工具/微信web开发者工具/resources/app.asar', 'D:/微信开发工具/微信web开发者工具/微信开发者工具.exe');
 const bind = () => Object.fromEntries(files.sort().map(f => [f.replaceAll('\\', '/'), createHash('sha256').update(fs.readFileSync(path.isAbsolute(f) ? f : path.join(root, f))).digest('hex')]));
 const before = bind(), report: Row = { startedAt: new Date().toISOString(), scope: 'C01 note-only stage notice/follow-up, original consumer and private destination isolation', checks: [], modelCalls: 0, embeddingCalls: 0, ingestionCalls: 0 };
@@ -129,6 +131,11 @@ async function main() {
     assert.deepEqual(deliveries.map(d => d.consumer_key).sort(), ['construction:need:user:' + uid, 'construction:user:' + uid]);
     assert.ok(deliveries.every(d => d.status === 'delivered')); return { deliveries, privateConversationId: privateCid };
   });
+  if (adapterScript) {
+    const adapter = (await import(pathToFileURL(path.resolve(adapterScript)).href)).default;
+    report.adapter = await adapter({ root, output, actor, owner, chat, pid, cid, read, step, progress, state, report, save });
+    report.passed = true; return;
+  }
   if (nativeScript) {
     const native = (await import(pathToFileURL(path.resolve(nativeScript)).href)).default;
     const token = await new SignJWT({ sub: uid, id: uid, mode: 'customer', role: 'user', enterpriseId: eid, contextVersion: actor.contextVersion, source: 'password' })
@@ -170,7 +177,7 @@ async function execute() {
       if (bid && actor!) { const service = new FollowupService({ ...actor, capabilities: ['assistant.followup.self'] }), b = await service.context(bid);
         if (b.status === 'enabled') await service.change(bid, 'stop', Number(b.version), randomUUID()); }
       for (const id of conversations) { const c = await chat.detail(id);
-        if (c.mode === 'handoff_requested') await new HandoffService(actor).customerWrite(id, randomUUID(), { action: 'cancel' });
+        if (['human', 'handoff_requested'].includes(String(c.mode))) await new HandoffService(actor).customerWrite(id, randomUUID(), { action: c.mode === 'human' ? 'end' : 'cancel' });
         const current = await chat.detail(id); if (current.status === 'open') await chat.archive(id, Number(current.version), randomUUID()); }
       if (pid && account) await state('archived', false);
       if (leadId) await read(tx => tx.execute(sql`update app.leads set archived_at=now() where enterprise_id=${eid} and id=${leadId} and name='合成测试C01·备注提醒'`));

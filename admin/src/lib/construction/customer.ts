@@ -45,7 +45,7 @@ export async function constructionRead(tx: PostgresTransaction, eid: string, uid
  * old question/evidence available: callers must still compare exact revisions. */
 export async function constructionFollowUpScope(tx: PostgresTransaction, eid: string, cid: string, payload: Row, lock = false) {
   if (lock) await one(tx, sql`select version from app.construction_stage_settings where enterprise_id=${eid} for share`);
-  const p = await one(tx, sql`select p.current_stage_key,p.progress_revision,coalesce(s.version,1) as settings_version
+  const p = await one(tx, sql`select p.current_stage_key,p.progress_revision,p.version,p.progress_note,coalesce(s.version,1) as settings_version
     from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
     join app.assistant_conversations c on c.enterprise_id=p.enterprise_id and c.id=${cid} and c.purpose='customer_consultation'
       and not coalesce((c.entry_snapshot->>'retentionRedacted')::boolean,false)
@@ -55,7 +55,8 @@ export async function constructionFollowUpScope(tx: PostgresTransaction, eid: st
       and l.customer_user_id=${String(payload.customerId)}
       ${payload.room ? sql`and exists(select 1 from app.construction_rooms r where r.enterprise_id=p.enterprise_id and r.project_id=p.id and r.name=${String(payload.room)})` : sql``}
     ${lock ? sql`for share of p,l,c,ap` : sql``}`);
-  return p?.current_stage_key ? { stageKey: String(p.current_stage_key), progressRevision: Number(p.progress_revision), settingsVersion: Number(p.settings_version) } : null;
+  return p?.current_stage_key ? { stageKey: String(p.current_stage_key), progressRevision: Number(p.progress_revision),
+    projectVersion: Number(p.version), progressNote: String(p.progress_note || ''), settingsVersion: Number(p.settings_version) } : null;
 }
 /** Source access is shared by customer history and staff packets. */
 export async function constructionNoticeAvailable(tx: PostgresTransaction, eid: string, cid: string, mid: string, lock = false, requireNotice = false) {

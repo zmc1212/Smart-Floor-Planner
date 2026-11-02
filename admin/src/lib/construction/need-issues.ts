@@ -9,6 +9,7 @@ import { constructionFollowUpScope, constructionNoticeAvailable } from './custom
 import { customerSiteResults } from './site-results';
 import { customerPlans } from './site-plans';
 import { currentHandoffOwner } from '@/lib/assistant/handoff/owner';
+import { notesPreserveProgress } from './stage-events';
 
 export const needIssueTool: ModelTool = {
   name: 'query_followups', description: '查询当前本人咨询中节点补充事项、团队明确回传的事项取消/恢复后的等待状态与负责人、现场落实证据及正式解决/关闭结果，以及发给本咨询的具体方案版本、差异、费用/工期变化和客户真实决定。只读；不取消/恢复或批准方案、不解决或关闭事项，不开放内部会话或未回传内容。恢复不复活旧回复或批准；普通回复或客户同意不等于现场落实、解决或关闭；关闭不等于验收付款。',
@@ -49,8 +50,13 @@ async function reviewedStageAvailable(tx: PostgresTransaction, eid: string, cid:
   const binding = current?.stageReview as Row | undefined;
   if (!binding) return false;
   const scope = await constructionFollowUpScope(tx, eid, cid, opened.payload as Row, true);
-  if (!scope || scope.stageKey !== binding.stageKey || scope.progressRevision !== binding.progressRevision
+  if (!scope || scope.stageKey !== binding.stageKey
     || scope.settingsVersion !== binding.settingsVersion || scope.settingsVersion !== Number((opened.payload as Row).settingsVersion)) return false;
+  if (scope.progressRevision !== binding.progressRevision && !(Number.isSafeInteger(binding.projectVersion)
+    && typeof binding.progressNote === 'string' && await notesPreserveProgress(tx, eid, String((opened.payload as Row).projectId), {
+      stageKey: String(binding.stageKey), progressRevision: Number(binding.progressRevision),
+      projectVersion: Number(binding.projectVersion), progressNote: binding.progressNote,
+    }))) return false;
   const review = await one(tx, sql`select id from app.domain_event_outbox where enterprise_id=${eid} and type='assistant.handoff.review.v1'
     and aggregate_id=${cid} and correlation_id=${String(binding.reviewKey)} and actor_ref->>'adminId'=${String(binding.reviewerId)}
     and payload->>'action'='correct' and payload->>'field'=${String((opened.payload as Row).field)}`);

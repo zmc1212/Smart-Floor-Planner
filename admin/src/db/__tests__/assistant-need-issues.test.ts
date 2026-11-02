@@ -27,7 +27,9 @@ const prefix = 'synthetic-xk-issues-' + randomUUID(), users: string[] = [];
 let eid: string, ownerId: string, designerId: string, workerId: string;
 const live = process.env.XIAOK_MATERIALS_LIVE === '1';
 let priorProvider: Awaited<ReturnType<typeof getPlatformLlmRuntimeConfig>> | undefined;
-const output = (name: string, args: unknown): ModelTurnOutput => ({ text: '', toolCalls: [{ id: 'call-' + name, name, arguments: JSON.stringify(args) }],
+// Match the current advertised tool schema; a single need has an empty batch.
+const output = (name: string, args: unknown): ModelTurnOutput => ({ text: '', toolCalls: [{ id: 'call-' + name, name,
+  arguments: JSON.stringify(name === 'record_need' ? { additionalNeeds: [], ...(args as Row) } : args) }],
   usage: { inputTokens: 20, outputTokens: 20 }, finishReason: 'tool_calls', providerRequestId: null });
 before(async () => {
   const url = new URL(resolvePostgresRuntimeConfig().connectionString); assert.equal(url.port, '55432'); assert.equal(url.pathname, '/xiaok_embedding_eval');
