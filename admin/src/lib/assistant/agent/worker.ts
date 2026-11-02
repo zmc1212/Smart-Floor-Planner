@@ -47,7 +47,7 @@ import { businessSynthesisSources, knowledgeSynthesisSources, parseSynthesis, sy
 import { resolveSynthesisRepair, synthesisRepairBase, synthesisRepairProtocol, synthesisRepairTool, finalAnswerRepairBase, finalAnswerRepairProtocol } from './synthesis-repair';
 import { currentSynthesisContext } from './synthesis-sources';
 import { boundKnowledgeContext } from './bound-context';
-import { boundReportContext } from './report-context';
+import { boundReportContext, queryReportFollowups, reportFollowupTool } from './report-context';
 import { projectFinalToolOutput } from './final-output';
 export { projectFinalToolOutput } from './final-output';
 import { anchorKnowledgeQuery } from '../knowledge/query-context';
@@ -194,6 +194,13 @@ export function agentToolsForMessage(text: string, enabled: boolean, businessFol
     && (tool.name !== 'recommend_references' || /参考|案例|风格图|效果图|看看.{0,6}(?:图|设计)/.test(text))
     && (tool.name !== 'recommend_designers' || designerIntent.test(text) || designerFollowup)
     && (tool.name !== 'record_reference_preference' || /喜欢|中意|满意|不合适/.test(text)))];
+}
+/** Private reports and shared site questions consume their authorized bound
+ * facts. Ordinary-consultation reads/writes must not be offered or dispatched
+ * merely because the report recipient is a customer rather than an employee. */
+export function constructionReadOnlyTools(purpose: string, enabled: boolean): ModelTool[] | null {
+  if (!['construction_followup', 'project_collaboration'].includes(purpose)) return null;
+  return enabled ? [...(purpose === 'construction_followup' ? [reportFollowupTool] : []), ...businessToolDefinitions.filter(tool => tool.name === 'search_knowledge')] : [];
 }
 export const finalTool: ModelTool = { name: 'final_response', description: '最后向客户回复。需要保存需求或查询业务时，必须先调用相应工具并收到结果，之后才能调用本工具。不能把“已记录”代替record_need。', parameters: {
   type: 'object', properties: { kind: { type: 'string', enum: ['general','vision','unavailable','business','knowledge','references','synthesis'] }, text: { type: 'string' }, resultKey: { type: 'string' }, selections: { type: 'array', items: { type: 'string' } },
@@ -752,7 +759,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     if (review && reviewMode !== 'propose' && initial.messages[0]?.role === 'system' && !initial.resume)
       initial.messages[0].content.push({ type: 'text', text: reviewReplyOnlyContext(reviewMode) });
     const toolsForMessage = (businessFollowup: boolean) => {
-      if (initial.shared || initial.staffFollowup) return initial.config.tools ? businessToolDefinitions.filter(tool=>tool.name==='search_knowledge') : [];
+      const readOnly = constructionReadOnlyTools(String(initial.conversation.purpose), initial.config.tools);
+      if (readOnly) return readOnly;
       const base = publicResearchTools(readToolsForContext(agentToolsForMessage(reviewContext.currentQuestion,
         initial.config.tools, businessFollowup, !!dependencies.webSearch || configuredWebProvider() !== null,
         initial.designerFollowup, ((initial.conversation.entry_snapshot as Row).materialShareProposal as Row | undefined)?.status === 'pending'), readContext), !!initial.config.consultation);
@@ -1250,7 +1258,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         model: callModel,
         validateTool: (name, args) => readToolInputIssue(name, args, readContext),
         tool: async (turn, index, name, args) => {
-          if ((initial.shared || initial.staffFollowup) && name!=='search_knowledge') fail('assistant_capability_forbidden',403);
+          if (constructionReadOnlyTools(String(initial.conversation.purpose), true)?.every(tool => tool.name !== name)) fail('assistant_capability_forbidden',403);
           const input = bindReadToolInput(name, JSON.parse(args), readContext) as Row;
           const sequence = 1200 + turn * 10 + index, resultKey = `${lease.runId}:${turn}:${index}`;
           if (review && reviewDefinitions.some(tool => tool.name === name)) {
@@ -1441,6 +1449,11 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           if (name === 'query_followups') {
             if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length) fail('invalid_message', 422);
             return scoped(async (tx, context) => {
+              if (context.conversation.purpose === 'construction_followup') {
+                const snapshot = await queryReportFollowups(tx, lease.actor, context.conversation, lease.runId, sequence);
+                return { content: JSON.stringify({ resultKey, ...snapshot, synthesisSources: businessSynthesisSources(resultKey, snapshot),
+                  instructions: '围绕所选报告冻结的原事实用kind=synthesis解释并引用本轮synthesisSources；不要把旧报告或用户补充升级成当前已核对事实。截止后变化未知，不保存需求、不批准施工或生成报告正文。' }) };
+              }
               const cached = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`);
               const snapshot = cached ? cached.private_checkpoint as NeedIssueSnapshot : await queryNeedIssues(tx, lease.actor, String(context.conversation.id));
               if (cached && !await needIssueSnapshotAvailable(tx, lease.enterpriseId, snapshot)) fail('context_changed');

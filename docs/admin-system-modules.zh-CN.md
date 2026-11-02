@@ -52,9 +52,14 @@
 最终夹具复用未变286–288/5420–5434及新289/5435–5436：四项目归档/对客关闭、17员工停用、17员工+4客户绑定停止、原记录339–342撤回；计划false/version193/dispatch_epoch40、q0。providerMax4114/knowledgeMax3753、3753 unknown/input_tokens null和原D2=2/10对话unknown/CNY32.828897保留，新增模型/摄取0。42条reconciling预占2004000 tokens/日限1200000仍阻止正常问答/自然报告；不释放/重算预占、提额度、付费回退或重开停测批。native01的7个CLI参数文件按清单删除被自动审批以`blocked by policy`拒绝，删除0/拒绝1，不读正文、不重试/绕过；native02/03省略官方可选args并用一次性loopback内存身份，各新增参数文件0。只读清理/manifest元数据。原75文件及拒绝2保留；先前一次过宽rg涉及该旧目录，不能建立全局从未扫描的声明。无生产/远程/外部消息授权。
 
 <!-- v1-02-report-context -->
+<!-- v1-02-live-followups -->
+**私人报告读取边界：限定Implemented，自然回答仍Limited。** 业主和员工construction_followup回复现在仅提供报告域query_followups({})及原search_knowledge；项目共享问答仍仅知识工具，显式另开的普通专题保留原服务。适配器复用boundReportContext、step740、现有持久agent_tool/BusinessSnapshot及citation catalog；新读和缓存读均重验所选收件人、报告版本、项目、原文hash及当前来源/成员权限。只消费冻结原事实，不读取生成正文，不授予需求写入、施工批准、其他咨询或额外项目访问。无路由/schema/UI/样式/素材/模型提供方或知识摄取变化。
+
+证据tmp/v1-02-live-followups/verification.json。preflight06为3/3，包含两角色在回滚事务中的新读/缓存/收件人/撤权探针；final-kind单元14/14、runtime兼容25/25及定向lint通过。最终驱动类型修复仅擦除的夹具标注，项目82条继承错误保留。configured01–03仍failed、cleanup true/drift[]：1926被普通咨询读取守卫拒绝，1927被不可用工具守卫拒绝，1928取得部分有来源正文，1929虽服务run成功却将原始business快照当作房间更正/下一步问题的回答。读取域修复次数2，该补丁/模型循环已停止。共7次qwen3.7-flash调用，输入47134/输出239 tokens，实际金额unavailable而非0。旧额度阻塞只作历史证据：用户已确认每日无限制，本轮成功准入，未释放/重算旧预占；3753及旧unknown保留。首个业务失败后的工人正常问答及计划Stable输入/重进均未执行，不新增原生、渲染状态或还原通过声明；批准04/06结构/样式/素材及台账不变。
+
 跟进回复已复用原citation chips、参考图materializer和来源sheet。GET `followups/:bindingId/conversation/citations/:citationId`在原ConversationService内先核同一会话，再走知识/网页原投影；不授予其他私人目的地或接待员工访问权。原run查询及POST `runs/:runId/cancel|retry`、journal、待发消息纸页和生成/停止/unknown控件已接入。移除报告保留可见且可编辑的草稿，新AI发送仍要求有效显式引用。关闭/隐藏或身份、权限失效会清来源；被include的WXML已在本地导入报告模板。员工私人入口/来源范围见上文；正常AI回答验收仍未完成。
 
-**报告追问04仍Limited。** 批准04的报告纸页/引用条/查看/移除/显式普通专题已有定向实服务和原生证据。选择绑定精确报告版本/项目/周期/截止/hash，新报告不会替换它；原BusinessSnapshot/synthesis的step740消费获权原事实，不把生成报告正文当新事实。KnowledgeRetriever/Evidence/引用管线及额度、租约、来源、人工暂停、unknown边界不变。正常AI发送、固定配置模型首稿、自然报告文案和真实模型派生回复的接待packet隔离，仍受继承额度/语义停测条件限制，未通过；不宣称V1-02完成或推进V1-03。
+**报告追问04仍Limited。** 批准04/06保留精确持久报告版本/项目/周期/截止/hash，并由step740消费获权原事实。每日无限制准入已验证，但自然更正/下一步回答及完整业主/员工/原生旅程未验收。读取域修复2与原正文修复2分别停测，不宣称V1-02完成或推进V1-03。
 
 原生分批保留：native04只复用前2个业务通过项（含查看/移除保留草稿）；native05复用丢选择回执的原键恢复；native06为7/7，含2项前置及5项业务：显式普通专题/固定投递、原来源sheet与受控本地HTTP503/重试、合成run控件、真实人工暂停/结束、撤回。native12为3/3，含最终命名元素、4张组件图及1张被动完整宿主；旧失败批仍失败。各批绑定和清理保留、drift[]；合成回复/run/citation只算工程证据，不是模型正常回答。根面板04、真机/实体键盘和实际编译/上传字节仍未验。
 

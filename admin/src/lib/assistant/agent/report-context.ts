@@ -6,6 +6,12 @@ import { reportContext, resolveReportReference, selectedReport, type ReportRefer
 import { siteRecordText, type SiteDraft } from '@/lib/construction/site-contract';
 import type { ReportProject } from '@/lib/construction/report-scope';
 import type { BusinessSnapshot } from './business-tools';
+import type { ModelTool } from '../contracts/model';
+
+export const reportFollowupTool: ModelTool = {
+  name: 'query_followups', description: '只读当前明确选定报告的原项目、原版本、统计周期和截止时刻的已发布现场事实、待核对内容与已有安排。返回的是报告冻结的原记录，不是生成正文或当前最新施工状态；截止后的变化、未记录的负责人或期限仍未知。不查询其他咨询、其他项目或内部会话，不保存需求、不确认或修改施工事项。',
+  parameters: { type: 'object', properties: {}, additionalProperties: false },
+};
 
 export type ReportBusinessReference = { selection: ReportReference } & ({ userId: string } | { principal: ActorContext['principal'] });
 export const reportContextStep = 740;
@@ -44,4 +50,19 @@ export async function boundReportContext(tx: PostgresTransaction, actor: ActorCo
     values(${actor.enterpriseId},${runId},${reportContextStep},'agent_source','synthesis.bound_construction.v1',1,'succeeded',
       ${JSON.stringify({ resultKey, snapshot })}::jsonb,'{"scope":"explicit_report_originals","protocol":"explicit-report-context-v1"}'::jsonb)`);
   return { resultKey, snapshot };
+}
+
+/** The existing read tool's private-report adapter. Keep the ordinary
+ * business-result/checkpoint/catalog protocol and revalidate the same bound
+ * originals on fresh reads and cached recovery. No alternate fact resolver. */
+export async function queryReportFollowups(tx: PostgresTransaction, actor: ActorContext, conversation: Row, runId: string, sequence: number): Promise<BusinessSnapshot> {
+  if (conversation.purpose !== 'construction_followup') fail('assistant_capability_forbidden', 403);
+  const bound = await boundReportContext(tx, actor, conversation, runId);
+  if (!bound) fail('context_changed');
+  const cached = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${actor.enterpriseId}
+    and run_id=${runId} and step_seq=${sequence}`);
+  if (cached && fingerprint(cached.private_checkpoint) !== fingerprint(bound.snapshot)) fail('context_changed');
+  if (!cached) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint)
+    values(${actor.enterpriseId},${runId},${sequence},'agent_tool','query_followups',1,'succeeded',${JSON.stringify(bound.snapshot)}::jsonb)`);
+  return bound.snapshot;
 }

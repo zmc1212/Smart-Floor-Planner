@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { finalTool, finalToolForMessages } from '../agent/worker';
+import { constructionReadOnlyTools, finalTool, finalToolForMessages } from '../agent/worker';
 import type { ModelMessage } from '../contracts/model';
 import { readToolInputIssue } from '../agent/read-tool-input';
 import { focusedSynthesisMessages } from '../agent/synthesis';
@@ -10,6 +10,20 @@ const completed = (name: string, content = '{}'): ModelMessage[] => [
   { role: 'tool', callId: 'read', content },
 ];
 const kinds = (messages: ModelMessage[]) => ((finalToolForMessages(messages).parameters.properties as Record<string, { enum: string[] }>).kind).enum;
+
+test('private report reads use the same bound-fact tool boundary for customers and staff', () => {
+  const customer = constructionReadOnlyTools('construction_followup', true)!;
+  assert.deepEqual(customer.map(tool => tool.name), ['query_followups', 'search_knowledge']);
+  assert.deepEqual(customer[0].parameters, { type: 'object', properties: {}, additionalProperties: false });
+  assert.match(customer[0].description, /冻结|原版本/);
+  assert.deepEqual(constructionReadOnlyTools('project_collaboration', true)!.map(tool => tool.name), ['search_knowledge']);
+  for (const name of ['query_materials', 'query_business', 'record_need', 'request_designer', 'recall_history']) {
+    assert.ok(customer.every(tool => tool.name !== name), name + ' is not an original-report read');
+  }
+  assert.deepEqual(constructionReadOnlyTools('construction_followup', false), []);
+  assert.equal(constructionReadOnlyTools('customer_consultation', true), null, 'Explicit ordinary topics retain their original services');
+  assert.equal(constructionReadOnlyTools('knowledge_preview', true), null);
+});
 
 test('resolved floorplan and material reads require a sourced answer instead of terminating at a snapshot list', () => {
   for (const [name, query, data] of [

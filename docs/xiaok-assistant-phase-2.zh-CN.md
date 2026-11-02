@@ -59,9 +59,18 @@
 本次身份/来源扩展复核[LangGraph运行时上下文合同](https://docs.langchain.com/oss/javascript/langgraph/graph-api#runtime-context)及维护中的[ToolRuntime/prebuilt测试](https://raw.githubusercontent.com/langchain-ai/langgraphjs/main/libs/langgraph-core/src/tests/prebuilt.test.ts)，保留服务端注入身份。[Issue2351](https://github.com/langchain-ai/langgraphjs/issues/2351)针对MongoDBSaver直接消费调用者选择器；本项目沿原PostgreSQL租户/收件人守卫，不透传调用者checkpoint选择器。这是保留应用鉴权的采用依据，不是框架迁移或本项目受该MongoDB专属缺陷影响的声明。仅检查上游测试、未执行上游测试；未新增供应商绕过或调用。
 
 <!-- v1-02-report-context -->
+<!-- v1-02-live-followups -->
+**私人报告读取边界：限定Implemented，自然回答仍Limited。** 业主和员工construction_followup回复现在仅提供报告域query_followups({})及原search_knowledge；项目共享问答仍仅知识工具，显式另开的普通专题保留原服务。适配器复用boundReportContext、step740、现有持久agent_tool/BusinessSnapshot及citation catalog；新读和缓存读均重验所选收件人、报告版本、项目、原文hash及当前来源/成员权限。只消费冻结原事实，不读取生成正文，不授予需求写入、施工批准、其他咨询或额外项目访问。无路由/schema/UI/样式/素材/模型提供方或知识摄取变化。
+
+证据tmp/v1-02-live-followups/verification.json。preflight06为3/3，包含两角色在回滚事务中的新读/缓存/收件人/撤权探针；final-kind单元14/14、runtime兼容25/25及定向lint通过。最终驱动类型修复仅擦除的夹具标注，项目82条继承错误保留。configured01–03仍failed、cleanup true/drift[]：1926被普通咨询读取守卫拒绝，1927被不可用工具守卫拒绝，1928取得部分有来源正文，1929虽服务run成功却将原始business快照当作房间更正/下一步问题的回答。读取域修复次数2，该补丁/模型循环已停止。共7次qwen3.7-flash调用，输入47134/输出239 tokens，实际金额unavailable而非0。旧额度阻塞只作历史证据：用户已确认每日无限制，本轮成功准入，未释放/重算旧预占；3753及旧unknown保留。首个业务失败后的工人正常问答及计划Stable输入/重进均未执行，不新增原生、渲染状态或还原通过声明；批准04/06结构/样式/素材及台账不变。
+
+离线判别见tmp/v1-02-live-followups/discriminator.json。期望为房间更正后解释周五安装前还缺什么；1929已读到正确报告快照，却选择仍被提供的{kind:business,resultKey}显示回执，现有renderer打印reportFactText而非回答问题。归属Agent最终回答合同/消费域；本缺陷的Knowledge原事实/Evidence无需修改。1928仅部分证据：下一步展开不足，且截止12:00未标时区（原来源12:00Z/上海20:00）；不能把自动断言或1929的succeeded run升级成完整验收。保留每次首稿、两轮修复失败及原正文/D2/root/source计数。重新开放受影响验收前，先定义区分权威快照展示与有来源自然回答的机制层report final contract，包含更正、下一步及时区；本检查点后不跟第三次query域、措辞/regex/prompt补丁或同范围模型批。
+
+实现参考：采用[官方middleware合同](https://docs.langchain.com/oss/javascript/langchain/middleware/custom#dynamically-selecting-tools)按运行时过滤已注册工具的做法，并检查维护中的[middleware测试](https://raw.githubusercontent.com/langchain-ai/langchainjs/main/libs/langchain/src/agents/tests/middleware.test.ts)。[Issue9418](https://github.com/langchain-ai/langchainjs/issues/9418)是已关闭的createAgent结构化回复/middleware兼容问题，不解释本项目普通咨询域读取被拒；上游测试只检查未执行。未迁移框架、另建facts store、引入提供方专用绕过或fallback。
+
 跟进回复已复用原citation chips、参考图materializer和来源sheet。GET `followups/:bindingId/conversation/citations/:citationId`在原ConversationService内先核同一会话，再走知识/网页原投影；不授予其他私人目的地或接待员工访问权。原run查询及POST `runs/:runId/cancel|retry`、journal、待发消息纸页和生成/停止/unknown控件已接入。移除报告保留可见且可编辑的草稿，新AI发送仍要求有效显式引用。关闭/隐藏或身份、权限失效会清来源；被include的WXML已在本地导入报告模板。员工私人入口/来源范围见上文；正常AI回答验收仍未完成。
 
-**报告追问04仍Limited。** 批准04的报告纸页/引用条/查看/移除/显式普通专题已有定向实服务和原生证据。选择绑定精确报告版本/项目/周期/截止/hash，新报告不会替换它；原BusinessSnapshot/synthesis的step740消费获权原事实，不把生成报告正文当新事实。KnowledgeRetriever/Evidence/引用管线及额度、租约、来源、人工暂停、unknown边界不变。正常AI发送、固定配置模型首稿、自然报告文案和真实模型派生回复的接待packet隔离，仍受继承额度/语义停测条件限制，未通过；不宣称V1-02完成或推进V1-03。
+**报告追问04仍Limited。** 批准04/06保留精确持久报告版本/项目/周期/截止/hash，并由step740消费获权原事实。每日无限制准入已验证，但自然更正/下一步回答及完整业主/员工/原生旅程未验收。读取域修复2与原正文修复2分别停测，不宣称V1-02完成或推进V1-03。
 
 原生分批保留：native04只复用前2个业务通过项（含查看/移除保留草稿）；native05复用丢选择回执的原键恢复；native06为7/7，含2项前置及5项业务：显式普通专题/固定投递、原来源sheet与受控本地HTTP503/重试、合成run控件、真实人工暂停/结束、撤回。native12为3/3，含最终命名元素、4张组件图及1张被动完整宿主；旧失败批仍失败。各批绑定和清理保留、drift[]；合成回复/run/citation只算工程证据，不是模型正常回答。根面板04、真机/实体键盘和实际编译/上传字节仍未验。
 
