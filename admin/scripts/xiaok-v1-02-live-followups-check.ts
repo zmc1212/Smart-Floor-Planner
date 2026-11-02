@@ -40,7 +40,7 @@ const nativeScript = process.argv.find(a => a.startsWith('--native-script='))?.s
 if (configured) assert.ok(nativeScript, 'Bind the planned native input/reentry scope before dispatch');
 const log: Row = { startedAt: new Date().toISOString(), owner: '01a19cd9-e4d1-7c53-89bf-b4241edf1422',
   scope: 'Selected retained owner61/staff63 original facts only, independent of stopped report-body acceptance',
-  mechanism: 'report-native-final-v1; new-run native phase/recursive numeric schema/four-call reserve, read-scope2/final-format2/body2 retained',
+  mechanism: 'report-native-final-v1; new-run final output4096 within original16000/four-call72000 reserve; old native2048 and read-scope2/final-format2/body2 retained',
   serialFirstDraftReview: serialReview,
   fixedScope: { roles: ['customer', 'worker'], firstDraftsPerRole: 2, maxServiceRuns: 4, maxNativeRuns: 2,
     stop: 'First failed/unknown expectation, source/configuration drift or unavailable original; no sampling retries',
@@ -119,6 +119,8 @@ async function inspectRun(a: Row, runId: string) {
   assert.ok(modelSteps.length <= 4, 'The original four-call reservation includes auxiliary and repair calls');
   const final = modelSteps.at(-1)!;
   assert.equal((final.input_summary as Row).reportNativeFinal, reportNativeFinalProtocol);
+  assert.equal((final.input_summary as Row).reportFinalOutputTokens, 4096);
+  assert.equal((final.input_summary as Row).maxOutputTokens, 4096);
   assert.equal((((final.private_checkpoint as Row).observation as Row).format as Row).mode, 'json_schema');
   assert.equal((((final.private_checkpoint as Row).observation as Row).format as Row).schemaValid, true);
   assert.equal(detail.steps.filter(s => s.kind === 'agent_validation' && s.status === 'failed').length, 0,
@@ -244,6 +246,7 @@ async function main() {
           const probe = (await one(tx, sql`select policy_snapshot from app.assistant_runs where enterprise_id=${eid} and id=${probeId}`))!;
           const policy = probe.policy_snapshot as Row, agent = policy.agent as Row;
           assert.equal(policy.reportNativeFinal, reportNativeFinalProtocol);
+          assert.equal(policy.reportFinalOutputTokens, 4096);
           assert.equal(agent.imageInput, true); assert.equal(agent.structuredFinal, undefined); assert.equal(agent.imageContext, undefined);
           const reservation = (await one(tx, sql`select reserved_tokens::text,reserved_cost_micros::text from app.assistant_quota_reservations where enterprise_id=${eid} and run_id=${probeId}`))!;
           assert.equal(reservation.reserved_tokens, '72000');
@@ -251,6 +254,8 @@ async function main() {
           assert.equal(JSON.stringify((await one(tx, sql`select agent_config from app.assistant_enterprise_settings where enterprise_id=${eid}`))!.agent_config), beforeConfig);
           const old = (await one(tx, sql`select policy_snapshot from app.assistant_runs where enterprise_id=${eid} and id=1933`))!;
           assert.equal((old.policy_snapshot as Row).reportNativeFinal, undefined);
+          const oldNative = (await one(tx, sql`select policy_snapshot from app.assistant_runs where enterprise_id=${eid} and id=1942`))!;
+          assert.equal((oldNative.policy_snapshot as Row).reportFinalOutputTokens, undefined);
           checked.push({ role: a.name, newRunProtocol: policy.reportNativeFinal, reservation, imageInput: true,
             enterpriseConfigurationUnchanged: true, old1933NotMigrated: true });
           throw rollback;

@@ -16,6 +16,8 @@ export type ModelTurnInput = {
   maxTokens: number; enableThinking?: boolean; jsonOutput?: boolean; requireTool?: boolean;
   /** Server-selected native final channel; business/tool turns stay function calling. */
   outputMode?: 'json_object' | 'json_schema';
+  /** Server-bound report final allocation; never a provider wire argument. */
+  reportFinalOutputTokens?: typeof reportFinalOutputTokenLimit;
   cacheControl?: 'implicit' | 'ephemeral_system';
   /** Server-bound opt-in only; never emitted as a provider/model argument. */
   profile?: 'bailian-deepseek-flash-consultation-v1' | 'bailian-qwen37-flash-long-v1'; deadlineAt?: number;
@@ -40,3 +42,4 @@ export interface AgentModelGateway {
 /** Conservative application budgets, not a claim about a provider's advertised maximums. */
 export const agentModelLimits = { contextLimit: 16000, maxImages: 4, maxImageBytes: 4 * 1024 * 1024,
   maxOutputTokens: 2048, maxToolCalls: 4, maxModelTurns: 4, maxTextBytes: 48000 } as const;
+export const reportFinalOutputTokenLimit = 4096 as const;

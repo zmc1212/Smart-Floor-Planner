@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { AiProviderError, type AiProviderRuntimeConfig, type ProviderResponseDiagnostic } from '../provider-types';
-import { agentModelLimits, type ModelMessage, type ModelTurnInput, type ModelTurnOutput } from '@/lib/assistant/contracts/model';
+import { agentModelLimits, reportFinalOutputTokenLimit, type ModelMessage, type ModelTurnInput, type ModelTurnOutput } from '@/lib/assistant/contracts/model';
 import { consultationProfile } from '@/lib/assistant/contracts/consultation';
 import { bearerHeaders, parseJson, providerFetch, providerUrl, asObject } from './http';
 import { thinkingBody } from './thinking';
@@ -29,7 +29,12 @@ export function agentChatBody(input: ModelTurnInput, baseUrl = 'https://api.sili
   if (consultation && (!profile || input.model !== profile.model
     || endpoint.origin !== 'https://dashscope.aliyuncs.com' || !/^\/compatible-mode(?:\/v1)?\/?$/.test(endpoint.pathname)
     || input.enableThinking !== false)) throw Error('agent_profile_mismatch');
-  const maxOutputTokens = profile ? profile.maxOutputTokens : agentModelLimits.maxOutputTokens;
+  const reportFinal = input.reportFinalOutputTokens !== undefined;
+  if (reportFinal && (input.reportFinalOutputTokens !== reportFinalOutputTokenLimit || consultation
+    || input.outputMode !== 'json_schema' || input.maxTokens !== reportFinalOutputTokenLimit
+    || endpoint.origin !== 'https://dashscope.aliyuncs.com' || !/^\/compatible-mode(?:\/v1)?\/?$/.test(endpoint.pathname)
+    || !bailianFinalFormat(input, baseUrl) || input.tools.length !== 1 || input.tools[0].name !== 'final_response')) throw Error('agent_input_limit');
+  const maxOutputTokens = reportFinal ? reportFinalOutputTokenLimit : profile ? profile.maxOutputTokens : agentModelLimits.maxOutputTokens;
   if (!Number.isInteger(input.maxTokens) || input.maxTokens < 1 || input.maxTokens > maxOutputTokens) throw Error('agent_input_limit');
   let images = 0, textBytes = 0;
   // Verified SiliconFlow Qwen3.5 template rejects any later system message.

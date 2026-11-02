@@ -1,6 +1,6 @@
 import { bailianStructuredOutput } from '@/lib/ai/providers/bailian-capabilities';
 import { fail } from '../contracts';
-import { agentModelLimits } from '../contracts/model';
+import { agentModelLimits, reportFinalOutputTokenLimit } from '../contracts/model';
 import type { AgentConfig } from './config';
 import { agentTurnScheduleProtocol, type AgentCheckpoint } from './runtime';
 
@@ -22,6 +22,14 @@ export function boundReportNativeFinal(policy: unknown, config: AgentConfig, sco
   if (policy === undefined) return false; // Old runs never migrate during resume.
   if (policy !== reportNativeFinalProtocol || !reportNativeAdmission(config, scope)) fail('context_changed');
   return true;
+}
+
+/** Only newly admitted runs select the larger final share. An absent field on
+ * an old run always means its original2048 allocation, including resume. */
+export function boundReportFinalOutput(value: unknown, native: boolean) {
+  if (value === undefined) return undefined;
+  if (!native || value !== reportFinalOutputTokenLimit) fail('context_changed');
+  return reportFinalOutputTokenLimit;
 }
 
 /** Auxiliary work consumes the same four-call reservation. The last primary

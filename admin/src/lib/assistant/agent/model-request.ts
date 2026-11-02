@@ -22,6 +22,7 @@ export function compileModelRequest(input: {
   messages: ModelMessage[]; tools: ModelTool[];
   profile?: ModelTurnInput['profile'];
   imageContextBudget?: RequestBudgetOptions['imageContextBudget'];
+  reportFinalOutputTokens?: RequestBudgetOptions['reportFinalOutputTokens'];
   sourceExcerpts?:boolean;
   sourceQuestionCoverage?:boolean;
   knowledgeExplanation?:boolean;
@@ -49,7 +50,8 @@ export function compileModelRequest(input: {
   const excerptView=excerptMode?sourceExcerptModelView(contentView):contentView;
   if (excerptMode && input.sourceQuestionCoverage) excerptView.push({ role: 'system', content: [{ type: 'text', text: sourceQuestionCoverageInstructions }] });
   const wireView=input.wireProjection?input.wireProjection(excerptView):excerptView;
-  const bounded = fitAgentContext(wireView, dispatchTools, { profile: input.profile, purpose, imageContextBudget: input.imageContextBudget });
+  const bounded = fitAgentContext(wireView, dispatchTools, { profile: input.profile, purpose, imageContextBudget: input.imageContextBudget,
+    reportFinalOutputTokens: input.reportFinalOutputTokens });
   return { messageScoped, adviceScoped, focused, dispatchTools, policyView, bounded, modelMessages: bounded.messages,
     contentProjection: contentView === policyView ? null : consultationModelViewVersion };
 }

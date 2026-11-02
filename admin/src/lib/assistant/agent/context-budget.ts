@@ -1,5 +1,5 @@
 import { fail } from '../contracts';
-import { agentModelLimits, type ModelMessage, type ModelTool, type ModelTurnInput } from '../contracts/model';
+import { agentModelLimits, reportFinalOutputTokenLimit, type ModelMessage, type ModelTool, type ModelTurnInput } from '../contracts/model';
 import { consultationProfile } from '../contracts/consultation';
 
 /** Application estimate, deliberately independent of a provider's advertised window.
@@ -21,9 +21,15 @@ export const imageContextBudgetPolicy = {
 } as const;
 
 export type RequestBudgetOptions = { profile?: ModelTurnInput['profile']; purpose?: 'answer' | 'vision' | 'summary' | 'grounding';
+  reportFinalOutputTokens?: typeof reportFinalOutputTokenLimit;
   /** Only new server-owned runs with the matching quota reservation can bind this. */
   imageContextBudget?: typeof imageContextBudgetPolicy.version };
 export function agentRequestBudget(options: RequestBudgetOptions = {}) {
+  if (options.reportFinalOutputTokens !== undefined) {
+    if (options.reportFinalOutputTokens !== reportFinalOutputTokenLimit || options.profile || options.imageContextBudget
+      || options.purpose !== 'answer') fail('agent_input_limit', 422);
+    return { ...contextBudgetPolicy, maxOutputTokens: reportFinalOutputTokenLimit, policy: contextBudgetPolicy.version };
+  }
   if (options.imageContextBudget !== undefined) {
     if (options.imageContextBudget !== imageContextBudgetPolicy.version || options.profile
       || options.purpose && options.purpose !== 'answer') fail('agent_input_limit', 422);
