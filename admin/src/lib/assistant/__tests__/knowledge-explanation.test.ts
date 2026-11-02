@@ -114,7 +114,13 @@ test('grounding compilation retains its own bounded schema and cannot acquire bu
   assert.deepEqual(compiled.modelMessages, draft.reviewMessages);
   const wire = agentChatBody({ model: 'qwen3.7-flash', messages: compiled.modelMessages,
     tools: compiled.dispatchTools, maxTokens: 2048, requireTool: true, enableThinking: false }, 'https://dashscope.aliyuncs.com/compatible-mode/v1');
-  assert.deepEqual(wire.tool_choice, { type: 'function', function: { name: 'final_response' } });
+  // qwen3.7's already documented native final format supersedes tool_choice.
+  // The isolated review schema must still be the only outgoing capability.
+  assert.equal(wire.tools, undefined); assert.equal(wire.tool_choice, undefined);
+  const format = wire.response_format as { type: string; json_schema: { name: string; strict: boolean; schema: { properties: Record<string, unknown>; additionalProperties: boolean } } };
+  assert.equal(format.type, 'json_schema'); assert.equal(format.json_schema.name, 'final_response'); assert.equal(format.json_schema.strict, true);
+  assert.deepEqual(Object.keys(format.json_schema.schema.properties).sort(), ['checks', 'questionsComplete']);
+  assert.equal(format.json_schema.schema.additionalProperties, false);
   assert.equal(knowledgeExplanationProtocol, 'reviewed-knowledge-explanation-v1');
 });
 

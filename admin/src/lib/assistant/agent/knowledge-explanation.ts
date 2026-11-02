@@ -2,7 +2,7 @@ import { AssistantError, fail, fingerprint } from '../contracts';
 import type { ModelMessage, ModelTool, ModelTurnOutput } from '../contracts/model';
 import { parseSynthesis, synthesisRepairIssue, type SynthesisAnswer, type SynthesisSource } from './synthesis';
 import type { SynthesisReviewContext } from './synthesis-review';
-import { parseSourceQuestionQuery, sourceQuestionReadTool, type SourceQuestionCoverage } from './source-question-coverage';
+import { parseSourceQuestionQuery, sourceQuestionReadTool, questionSynthesisFinalTool, type SourceQuestionCoverage } from './source-question-coverage';
 
 export const knowledgeExplanationProtocol = 'reviewed-knowledge-explanation-v1';
 const explanationDiagnostics = new WeakMap<AssistantError, string>();
@@ -37,22 +37,7 @@ export function assertExplanationDispatchBudget(previousEstimates: number[], nex
 }
 
 export function knowledgeExplanationFinalTool(base: ModelTool, coverage: SourceQuestionCoverage, citationIds: string[]): ModelTool {
-  const segment = structuredClone((base.parameters.properties as Record<string, Record<string, unknown>>).segments);
-  const properties = (segment.items as Record<string, unknown>).properties as Record<string, Record<string, unknown>>;
-  const citation = ((properties.citations.items as Record<string, unknown>).properties as Record<string, unknown>);
-  citation.citationId = { type: 'string', enum: citationIds };
-  if (!citationIds.length) {
-    properties.basis.enum = ['advice', 'uncertainty'];
-    properties.citations.maxItems = 0;
-  }
-  const keys = coverage.questions.map((_, index) => 'Q' + (index + 1));
-  return { name: base.name, description: knowledgeExplanationInstructions, parameters: {
-    type: 'object', additionalProperties: false, required: ['kind', 'answers'], properties: {
-      kind: { type: 'string', enum: ['knowledge_explanation'] },
-      answers: { type: 'object', additionalProperties: false, required: keys,
-        properties: Object.fromEntries(keys.map(key => [key, { ...segment, minItems: 1, maxItems: 6 }])) },
-    },
-  } };
+  return questionSynthesisFinalTool(base, coverage, citationIds, 'knowledge_explanation', knowledgeExplanationInstructions);
 }
 
 export type KnowledgeExplanationDraft = {

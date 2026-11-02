@@ -30,7 +30,7 @@ const kinds = (messages: ModelMessage[]) => (finalToolForMessages(messages).para
 test('a paired report read requires a sourced synthesis and retains the original catalog through model projection', async () => {
   const messages = [current, ...pair], before = JSON.stringify(messages);
   for (const view of [messages, focusedSynthesisMessages(messages, 'current')]) {
-    const tool = finalToolForMessages(view, question);
+    const tool = finalToolForMessages(view);
     assert.deepEqual(kinds(view), ['synthesis']);
     assert.deepEqual(tool.parameters.required, ['kind', 'segments']);
     assert.ok(await toolSchemaIssue(tool, bad));

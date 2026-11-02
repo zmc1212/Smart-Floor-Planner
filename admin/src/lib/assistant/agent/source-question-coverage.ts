@@ -46,6 +46,27 @@ export function sourceQuestionFinalTool(tool: ModelTool, coverage: SourceQuestio
   } };
 }
 
+/** Shared per-question synthesis envelope. Questions are supplied separately
+ * as data, never interpolated into trusted tool descriptions. */
+export function questionSynthesisFinalTool(base: ModelTool, coverage: SourceQuestionCoverage, citationIds: string[], kind: string, description: string): ModelTool {
+  const segment = structuredClone((base.parameters.properties as Record<string, Record<string, unknown>>).segments);
+  const properties = (segment.items as Record<string, unknown>).properties as Record<string, Record<string, unknown>>;
+  const citation = ((properties.citations.items as Record<string, unknown>).properties as Record<string, unknown>);
+  citation.citationId = { type: 'string', enum: citationIds };
+  if (!citationIds.length) {
+    properties.basis.enum = ['advice', 'uncertainty'];
+    properties.citations.maxItems = 0;
+  }
+  const keys = coverage.questions.map((_, index) => 'Q' + (index + 1));
+  return { name: base.name, description, parameters: {
+    type: 'object', additionalProperties: false, required: ['kind', 'answers'], properties: {
+      kind: { type: 'string', enum: [kind] },
+      answers: { type: 'object', additionalProperties: false, required: keys,
+        properties: Object.fromEntries(keys.map(key => [key, { ...segment, minItems: 1, maxItems: 6 }])) },
+    },
+  } };
+}
+
 /** Every planned question must survive finalization. A valid citation alone
  * cannot turn an omitted question into a complete answer. Semantic matching
  * remains a configured-model acceptance concern, not a keyword heuristic. */

@@ -61,9 +61,13 @@
 <!-- v1-02-report-context -->
 <!-- v1-02-live-followups -->
 <!-- v1-02-report-final -->
-**报告最终回答合同：限定Implemented，自然回答/原生验收待执行。** 真正配对且携带reportReference的报告域query_followups包复用原synthesis/citation catalog作为回答来源；生成仅提供synthesis，服务端校验及最终持久化拒绝business快照显示绕过。普通专题显示和项目共享工具保留原合同，仍沿原一次最终修复和实时租户/收件人/来源撤回校验。周期/截止展示实际转换为Asia/Shanghai（12:00Z为20:00），冻结日期/hash及发布事实不改；房间更正不写需求。无UI/API/路由/schema/素材或Knowledge摄取变化，批准04/06仍为设计来源。保存1929离线首稿现被生成/服务端校验拒绝，定向单元/runtime71/71及lint通过；真实旅程仍待验收。证据tmp/v1-02-live-followups/report-final-offline.json及report-final-unit02/。
+**报告最终回答合同：限定Implemented，自然回答仍Limited。** 配对报告query已要求有来源synthesis，生成/服务端/持久化拒绝business整段显示；12:00Z实际转为上海20:00，原事实不改。保存1929确定性拒绝，定向单元/runtime71/71（1882项绑定drift[]）、真实服务权限3/3、lint及types82继承/本次0通过。固定report-final-configured01在业主1930通过、1931失败后停止：事实及synthesis正确，但漏答本轮房间更正和周五下一步。员工/原生未执行，cleanup true/drift[]。新增4次qwen3.7-flash输入28112/输出312，实际金额unavailable。原读取域/正文修复2及所有首稿/费用保留。report-final-discriminator.json已证明当前原话完整进入编译，扁平synthesis缺逐问项回答合同。下一项复用SourceQuestionCoverage/分组synthesis绑定完整当前原句，沿原query/final调用及catalog；不重采本轮格式，不增规划模型/Agent/知识库或权限解析器。普通显示/共享工具、租户/收件人/撤回/一次修复及批准04/06 UI保持，无路由/schema/素材/摄取/生产变化。证据tmp/v1-02-live-followups/verification.json#reportFinalMechanism。
+
+当前原话覆盖机制限定工程Implemented，正常回答仍Limited。完整当前原句（保留更正/条件，最多6组无损合并）复用SourceQuestionCoverage/原分组synthesis schema、原query/final调用/catalog，服务端严格投影后沿原synthesis守卫。89/89（1884绑定drift[]）、lint及types82继承/本次0过，保存1931离线拒绝且原来源不改。固定report-coverage-configured01在业主1932通过、1933失败后停止：首稿漏Q2，原唯一修复补齐结构却新增无引用日期，被原安全守卫拒绝，未交付答案；未分房间的原记录也不能推出客厅开关/插座具体结论。完整业主/员工/原生未验收，员工/原生未执行，cleanup true/drift[]。新增6次qwen3.7-flash输入40020/输出770，另有查询Embedding输入57，实际金额unavailable。两个最终格式策略已失败于同一业务期望，停止第三次同类补丁/采样，原读取域2/正文2/首稿/费用保留。保存1933已证明首稿与读工具并存、并非native Schema；仅修复是native/schema-valid。下一步只用原trace判别既有native-final收尾/分组数值约束与来源语义校验，在原预算内取得新机制证据后才决定准入；诊断本身不授权新模型/fallback、额外规划/审阅调用、摄取、UI/设计或生产。证据tmp/v1-02-live-followups/verification.json#reportCoverageMechanism及report-coverage-discriminator.json。
 
 机制参考复用[LangChain结构化输出](https://docs.langchain.com/oss/javascript/langchain/structured-output)、[工具调用消息配对](https://docs.langchain.com/oss/javascript/langchain/messages)、[上游ToolNode测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)及[原始响应问题11395](https://github.com/langchain-ai/langchainjs/issues/11395)。应用层推论：生成Schema不能替代服务端权限及最终语义校验；保留现有框架/传输/原稿用量，不把上游问题归因为本项目缺陷，不新增提供方特例或Agent。
+
+
 
 **私人报告读取边界：限定Implemented，自然回答仍Limited。** 业主和员工construction_followup回复现在仅提供报告域query_followups({})及原search_knowledge；项目共享问答仍仅知识工具，显式另开的普通专题保留原服务。适配器复用boundReportContext、step740、现有持久agent_tool/BusinessSnapshot及citation catalog；新读和缓存读均重验所选收件人、报告版本、项目、原文hash及当前来源/成员权限。只消费冻结原事实，不读取生成正文，不授予需求写入、施工批准、其他咨询或额外项目访问。无路由/schema/UI/样式/素材/模型提供方或知识摄取变化。
 
@@ -71,7 +75,7 @@
 
 离线判别见tmp/v1-02-live-followups/discriminator.json。期望为房间更正后解释周五安装前还缺什么；1929已读到正确报告快照，却选择仍被提供的{kind:business,resultKey}显示回执，现有renderer打印reportFactText而非回答问题。归属Agent最终回答合同/消费域；本缺陷的Knowledge原事实/Evidence无需修改。1928仅部分证据：下一步展开不足，且截止12:00未标时区（原来源12:00Z/上海20:00）；不能把自动断言或1929的succeeded run升级成完整验收。保留每次首稿、两轮修复失败及原正文/D2/root/source计数。重新开放受影响验收前，先定义区分权威快照展示与有来源自然回答的机制层report final contract，包含更正、下一步及时区；原query域循环继续停止；没有实际机制变化及判别证据，不得换措辞/regex/prompt或重放同范围模型批。这是局部策略止损，不是暂停已授权开发。
 
-当前固定批已因1931首稿漏答停止，不重采相同扁平格式；先实施上方有判别证据的逐问项覆盖机制，再决定受影响范围准入。所有原失败计数与第2节自动推进/容量交接规则保留。
+1931与1933两批最终格式策略均保留failed，停止第三次同类补丁/采样；继续上方原trace/native分离与来源语义的离线判别，原预算/权限/自动推进/容量交接不变。
 
 实现参考：采用[官方middleware合同](https://docs.langchain.com/oss/javascript/langchain/middleware/custom#dynamically-selecting-tools)按运行时过滤已注册工具的做法，并检查维护中的[middleware测试](https://raw.githubusercontent.com/langchain-ai/langchainjs/main/libs/langchain/src/agents/tests/middleware.test.ts)。[Issue9418](https://github.com/langchain-ai/langchainjs/issues/9418)是已关闭的createAgent结构化回复/middleware兼容问题，不解释本项目普通咨询域读取被拒；上游测试只检查未执行。未迁移框架、另建facts store、引入提供方专用绕过或fallback。
 

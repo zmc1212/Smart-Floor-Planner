@@ -13,6 +13,7 @@ import { formalBusinessResultKeys } from './formal-business-repair';
 import { originalAnswerOnly, independentAdviceRequested } from './read-tool-input';
 import { numericCitationCandidates } from './citation-coverage';
 import { publicPdfSource } from './source-document';
+import { isReportAnswerSnapshot, reportQuestionCoverage } from './report-final';
 
 export type SynthesisSource = { sourceId: string; kind: 'knowledge' | 'project' | 'history' | 'web'; title: string; text: string; fullTextCitable?:true; evidence?: Evidence; web?: import('../contracts/web-source').WebSourceLocator; resultKey?: string; citationQuotes?: string[]; summaryTitle?:string|null; material?: MaterialSource; history?: HistoryRef & { seq: string };
   followup?: Omit<IssueState, 'question' | 'value'> };
@@ -87,7 +88,14 @@ export function focusedSynthesisMessages(messages: ModelMessage[], triggerId: st
   const tail: ModelMessage = repairTask
     ? { role: 'user', content: [{ type: 'text', text: repairTask }] } : messages[index];
   const scope = originalAnswerOnly(question) ? 'original' : independentAdviceRequested(question) ? 'independent_advice' : 'all';
-  return [...systems, ...images, messages[index], ...messages.slice(index + 1).map(message => synthesisModelProjection(message, originals, scope, historyFields)), tail];
+  return [...systems, ...images, messages[index], ...messages.slice(index + 1).map(message => {
+    const projected = synthesisModelProjection(message, originals, scope, historyFields);
+    if (projected.role !== 'tool' || !question) return projected;
+    try {
+      const packet = JSON.parse(projected.content);
+      return isReportAnswerSnapshot(packet) ? { ...projected, content: JSON.stringify({ ...packet, questionCoverage: reportQuestionCoverage(question) }) } : projected;
+    } catch { return projected; }
+  }), tail];
 }
 
 /** Model view only. Keep full original text and readable source locations;

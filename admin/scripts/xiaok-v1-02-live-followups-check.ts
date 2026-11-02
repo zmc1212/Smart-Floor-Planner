@@ -39,7 +39,7 @@ const nativeScript = process.argv.find(a => a.startsWith('--native-script='))?.s
 if (configured) assert.ok(nativeScript, 'Bind the planned native input/reentry scope before dispatch');
 const log: Row = { startedAt: new Date().toISOString(), owner: '01a19ca6-854b-7893-a1d1-1381a1c64810',
   scope: 'Selected retained owner61/staff63 original facts only, independent of stopped report-body acceptance',
-  mechanism: 'report-originals-sourced-answer-v1; read-scope repairs2 and all old failures retained',
+  mechanism: 'report-current-request-coverage-v1; read-scope repairs2, flat-final failure1931 and all old failures retained',
   serialFirstDraftReview: serialReview,
   fixedScope: { roles: ['customer', 'worker'], firstDraftsPerRole: 2, maxServiceRuns: 4, maxNativeRuns: 2,
     stop: 'First failed/unknown expectation, source/configuration drift or unavailable original; no sampling retries',

@@ -43,12 +43,12 @@ import { visionContext, withVisionObservations } from './vision';
 import { constructionNoticeAvailable } from '@/lib/construction/customer';
 import { materialTool, parseMaterialQuery, queryMaterials, materialSnapshotAvailable, type MaterialDependency, type MaterialSnapshot } from './materials';
 import { needIssueTool, queryNeedIssues, needIssueSnapshotAvailable, type NeedIssueDependency, type NeedIssueSnapshot } from '@/lib/construction/need-issues';
-import { businessSynthesisSources, knowledgeSynthesisSources, parseSynthesis, synthesisInstructions, synthesisRepairFeedback, unresolvedSynthesisConflict, availabilityScopeHintPrefix, synthesisRepairProjectionVersion, synthesisContextProjectionVersion } from './synthesis';
+import { businessSynthesisSources, knowledgeSynthesisSources, parseSynthesis, synthesisInstructions, synthesisRepairFeedback, synthesisRepairIssue, unresolvedSynthesisConflict, availabilityScopeHintPrefix, synthesisRepairProjectionVersion, synthesisContextProjectionVersion } from './synthesis';
 import { resolveSynthesisRepair, synthesisRepairBase, synthesisRepairProtocol, synthesisRepairTool, finalAnswerRepairBase, finalAnswerRepairProtocol } from './synthesis-repair';
 import { currentSynthesisContext } from './synthesis-sources';
 import { boundKnowledgeContext } from './bound-context';
 import { boundReportContext, queryReportFollowups, reportFollowupTool } from './report-context';
-import { isReportAnswerSnapshot, reportFinalResponseIssue, reportFinalProtocol } from './report-final';
+import { isReportAnswerSnapshot, reportFinalResponseIssue, reportFinalProtocol, reportAnswerFinalTool, reportQuestionCoverage, reportAnswerSynthesis, reportCoverageFailure, reportCoverageProtocol } from './report-final';
 import { projectFinalToolOutput } from './final-output';
 export { projectFinalToolOutput } from './final-output';
 import { anchorKnowledgeQuery } from '../knowledge/query-context';
@@ -209,7 +209,7 @@ export const finalTool: ModelTool = { name: 'final_response', description: '最�
       citations: { type: 'array', maxItems: 4, items: { type: 'object', properties: { citationId: { type: 'string', description:'只选本轮来源citationOptions中的完整citationId。服务端装配原文，不提供sourceId、quote或引用模式。' } }, required: ['citationId'], additionalProperties: false } } },
       required: ['basis','text','citations'], additionalProperties: false } } }, required: ['kind'], additionalProperties: false,
 } };
-export const agentSourceFinalProtocol = 'source-final-kind-v6';
+export const agentSourceFinalProtocol = 'source-final-kind-v7';
 export const agentToolFinalProtocol = 'deferred-structured-final-v1';
 export const agentNeedBatchProtocol = 'same-turn-need-batch-v2';
 export const agentDesignerProtocol = 'designer-recommendation-v1';
@@ -314,6 +314,7 @@ export function finalToolForMessages(messages:ModelMessage[], question = '', sou
       .map((option:{citationId?:unknown}) => option.citationId).filter((id:unknown):id is string => typeof id === 'string'); } catch { return []; }
   }))] : allIds;
   const repairTool = synthesisRepairTool(messages, allIds);
+  if (reportAnswer && question.trim()) return reportAnswerFinalTool(finalTool, question, allIds);
   if (repairTool) {
     if (!knowledgeScoped) return repairTool;
     const properties = repairTool.parameters.properties as Record<string, Record<string, unknown>>;
@@ -1131,6 +1132,29 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           return resolved;
         }),
         validateFinal:async(raw,turn)=>{
+          let reportScoped = false;
+          if (reportSource) {
+            const normalized = await scoped(async tx => {
+              const read = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+                and run_id=${lease.runId} and kind='agent_tool' and capability_name='query_followups' and status='succeeded' order by step_seq desc limit 1`);
+              if (!isReportAnswerSnapshot(read?.private_checkpoint)) return { raw };
+              try {
+                const normalized = reportAnswerSynthesis(raw, reportQuestionCoverage(reviewContext.currentQuestion));
+                const evidence = await currentSynthesisContext(tx, lease.actor, initial.conversation, lease.runId);
+                parseSynthesis(normalized, evidence.sources, reviewContext);
+                return { raw: normalized, report: true };
+              } catch (error) {
+                const issue = reportCoverageFailure(error);
+                await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
+                  values(${lease.enterpriseId},${lease.runId},${1300+turn},'agent_validation','failed',
+                    ${JSON.stringify({ code: issue.code, scope: reportCoverageProtocol, noBusinessTools: true })}::jsonb) on conflict do nothing`);
+                return { raw, issue };
+              }
+            });
+            if (normalized.issue) return normalized.issue;
+            raw = normalized.raw;
+            reportScoped = !!normalized.report;
+          }
           let explanationKind: unknown;
           try { explanationKind = JSON.parse(raw)?.kind; } catch { /* Existing syntax diagnostics below. */ }
           if (reportSource && explanationKind !== 'synthesis') {
@@ -1264,11 +1288,12 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               const source=originals.find(ref=>ref.messageId===fact.sourceMessageId);
               return source?[{sourceMessageId:source.messageId,sourceHash:source.hash,quote:fact.quote,value:fact.value}]:[];
             })};
-            const issue=synthesisRepairFeedback(raw,evidence.sources,{...reviewContext,currentNeeds});
+            const issue=reportScoped ? synthesisRepairIssue(raw,evidence.sources,{...reviewContext,currentNeeds})
+              : synthesisRepairFeedback(raw,evidence.sources,{...reviewContext,currentNeeds});
             if(issue)await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
               values(${lease.enterpriseId},${lease.runId},${1300+turn},'agent_validation','failed',${JSON.stringify({code:issue.code,scope:issue.code==='ungrounded_response_scope'?'authorized_response_scope':'authorized_citation_only',noBusinessTools:true})}::jsonb)
               on conflict(enterprise_id,run_id,step_seq) do nothing`);
-            return issue;
+            return issue && reportScoped ? reportCoverageFailure(new AssistantError(issue.code, 502)) : issue;
           });
         },
         model: callModel,
@@ -1610,8 +1635,13 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           and capability_name in ('propose_requirement_changes','propose_designer_reception','propose_reception_cancellation') order by step_seq`)) : [];
     const reviewReceipts = [...new Set(await Promise.all(reviewSteps.map(async step => (await reviewReceipt(step.private_checkpoint as ReviewMarker)).text)))];
     const receiptBlocks = reviewReceipts.map(text => ({ type: 'text' as const, text }));
+    const answerRaw = reportSource ? await scoped(async tx => {
+      const read = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+        and run_id=${lease.runId} and kind='agent_tool' and capability_name='query_followups' and status='succeeded' order by step_seq desc limit 1`);
+      return isReportAnswerSnapshot(read?.private_checkpoint) ? reportAnswerSynthesis(result.output?.text || '', reportQuestionCoverage(reviewContext.currentQuestion)) : result.output?.text || '';
+    }) : result.output?.text || '';
     let reply: { kind?: string; text?: string; resultKey?: string; selections?: string[] };
-    try { reply = JSON.parse((result.output?.text || '').replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch { fail('invalid_model_answer', 502); }
+    try { reply = JSON.parse(answerRaw.replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch { fail('invalid_model_answer', 502); }
     if (reportSource && reply.kind !== 'synthesis') await scoped(async tx => {
       const read = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
         and run_id=${lease.runId} and kind='agent_tool' and capability_name='query_followups' and status='succeeded' order by step_seq desc limit 1`);
@@ -1642,7 +1672,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             and run_id=${lease.runId} and kind='agent_explanation_review' and status='succeeded' and input_summary->>'binding'=${draft.binding}`);
           if (!proof || acceptKnowledgeExplanation(draft, (proof.private_checkpoint as Row).review as ModelTurnOutput, draft.binding)) fail('context_changed');
           answer = draft.answer;
-        } else answer = parseSynthesis(result.output?.text || '', evidence.sources,reviewContext);
+        } else answer = parseSynthesis(answerRaw, evidence.sources,reviewContext);
         const preferences = ((context.conversation.entry_snapshot as Row)?.referencePreferences || []) as ReferencePreference[];
         const memory = await availableNeedMemory(tx, lease.enterpriseId, String(context.conversation.id), context.conversation.entry_snapshot);
         assertRecordedReply(answer.segments.map(s => s.text).join('\n'), memory, lease.runId,
@@ -1650,7 +1680,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         // Persist the full consulted set, including conflict candidates and missing-data snapshots.
         await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs,private_checkpoint,input_summary)
           values(${lease.enterpriseId},${lease.runId},1006,'agent_synthesis_context','succeeded',${JSON.stringify(evidence)}::jsonb,${JSON.stringify(answer)}::jsonb,
-            ${JSON.stringify({ promptVersion: agentPromptVersion, triggerMessageId: String(initial.trigger.id), imagePixels: initial.mediaRefs.length > 0 && initial.config.imageInput })}::jsonb)`);
+            ${JSON.stringify({ promptVersion: agentPromptVersion, triggerMessageId: String(initial.trigger.id), imagePixels: initial.mediaRefs.length > 0 && initial.config.imageInput,
+              ...(reportSource ? { reportCoverage: reportQuestionCoverage(reviewContext.currentQuestion), reportCoverageProtocol } : {}) })}::jsonb)`);
         const blocks: import('../contracts').MessageContent['blocks'] = [];
         const message = await appendMessage(tx, lease.actor, String(context.conversation.id), { author: 'assistant', runId: lease.runId,
           purpose: 'agent.reply', content: { version: 1, blocks } });
