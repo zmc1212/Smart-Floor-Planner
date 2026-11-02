@@ -27,6 +27,7 @@ loadEnvConfig(process.cwd(), true);
 const root = path.resolve('..'), eid = '1454';
 assert.ok(process.argv.includes('--development'));
 const configured = process.argv.includes('--configured-model');
+const serialReview = process.argv.includes('--serial-first-draft-review');
 assert.ok(configured || process.argv.includes('--preflight-only'));
 const target = new URL(resolvePostgresRuntimeConfig().connectionString);
 assert.ok(['localhost', '127.0.0.1'].includes(target.hostname) && target.port === '5432' && target.pathname === '/smart_floor_planner');
@@ -36,8 +37,10 @@ assert.ok(!fs.existsSync(path.join(output, 'report.json')), 'Keep every original
 fs.mkdirSync(output, { recursive: true });
 const nativeScript = process.argv.find(a => a.startsWith('--native-script='))?.slice(16);
 if (configured) assert.ok(nativeScript, 'Bind the planned native input/reentry scope before dispatch');
-const log: Row = { startedAt: new Date().toISOString(), owner: '01a19c68-273c-7730-8595-d107c4d163c7',
+const log: Row = { startedAt: new Date().toISOString(), owner: '01a19ca6-854b-7893-a1d1-1381a1c64810',
   scope: 'Selected retained owner61/staff63 original facts only, independent of stopped report-body acceptance',
+  mechanism: 'report-originals-sourced-answer-v1; read-scope repairs2 and all old failures retained',
+  serialFirstDraftReview: serialReview,
   fixedScope: { roles: ['customer', 'worker'], firstDraftsPerRole: 2, maxServiceRuns: 4, maxNativeRuns: 2,
     stop: 'First failed/unknown expectation, source/configuration drift or unavailable original; no sampling retries',
     serviceTrials: [
@@ -109,6 +112,8 @@ async function inspectRun(a: Row, runId: string) {
   const raw = await read(tx => one(tx, sql`select id::text,content from app.assistant_messages where enterprise_id=${eid} and run_id=${runId} and author_kind='assistant' order by id desc limit 1`));
   Object.assign(detail, { messages, raw }); fs.writeFileSync(file, JSON.stringify(detail, null, 2));
   assert.equal(detail.run?.status, 'succeeded', 'Original configured-model first draft: ' + JSON.stringify(detail.run));
+  assert.equal(detail.steps.filter(s => s.kind === 'agent_validation' && s.status === 'failed').length, 0,
+    'A repaired final is not a passing first draft; retain it and stop this fixed batch');
   const source = detail.steps.find(s => Number(s.step_seq) === 740)?.private_checkpoint as Row | undefined;
   assert.equal(((source?.snapshot as Row)?.reportReference as Row)?.selection && (((source!.snapshot as Row).reportReference as Row).selection as Row).reportId, a.rid);
   assert.ok(raw, 'No injected or guard-only answer');
@@ -123,7 +128,29 @@ async function inspectRun(a: Row, runId: string) {
 }
 async function waitRun(a: Row, runId: string) {
   const end = Date.now() + 300000;
-  while (Date.now() < end) { const result = await inspectRun(a, runId); if (result) return result; await new Promise(resolve => setTimeout(resolve, 1500)); }
+  while (Date.now() < end) {
+    const result = await inspectRun(a, runId);
+    if (result) {
+      if (serialReview) {
+        // The serial Codex controller reviews the saved first draft before the
+        // next send. This is evidence review, never a user approval/model call.
+        const reviewFile = path.join(output, 'review-' + runId + '.json');
+        log.pendingFirstDraftReview = { role: a.name, runId, messageId: result.messageId, text: result.text,
+          expected: (log.fixedScope as Row).expected, reviewFile }; save();
+        console.log('FIRST_DRAFT_REVIEW ' + runId);
+        const reviewEnd = Date.now() + 300000;
+        while (!fs.existsSync(reviewFile) && Date.now() < reviewEnd) await new Promise(resolve => setTimeout(resolve, 500));
+        assert.ok(fs.existsSync(reviewFile), 'Saved first draft review did not arrive; stop without another send');
+        const verdict = JSON.parse(fs.readFileSync(reviewFile, 'utf8'));
+        assert.equal(String(verdict.runId), runId); assert.equal(verdict.reviewer, log.owner);
+        (log.firstDraftReviews as Row[] || (log.firstDraftReviews = []) as Row[]).push(verdict);
+        log.pendingFirstDraftReview = null; save();
+        assert.equal(verdict.accepted, true, 'Original first draft business expectation failed: ' + verdict.reason);
+      }
+      return result;
+    }
+    await new Promise(resolve => setTimeout(resolve, 1500));
+  }
   throw Error('Original run remains unresolved; preserve unknown outcome without a retry: ' + runId);
 }
 async function registerRun(a: Row, runId: string, text: string, transport: string, messageId?: string) {

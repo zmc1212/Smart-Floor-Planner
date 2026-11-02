@@ -53,6 +53,9 @@
 
 <!-- v1-02-report-context -->
 <!-- v1-02-live-followups -->
+<!-- v1-02-report-final -->
+**报告最终回答合同：限定Implemented，自然回答/原生验收待执行。** 真正配对且携带reportReference的报告域query_followups包复用原synthesis/citation catalog作为回答来源；生成仅提供synthesis，服务端校验及最终持久化拒绝business快照显示绕过。普通专题显示和项目共享工具保留原合同，仍沿原一次最终修复和实时租户/收件人/来源撤回校验。周期/截止展示实际转换为Asia/Shanghai（12:00Z为20:00），冻结日期/hash及发布事实不改；房间更正不写需求。无UI/API/路由/schema/素材或Knowledge摄取变化，批准04/06仍为设计来源。保存1929离线首稿现被生成/服务端校验拒绝，定向单元/runtime71/71及lint通过；真实旅程仍待验收。证据tmp/v1-02-live-followups/report-final-offline.json及report-final-unit02/。
+
 **私人报告读取边界：限定Implemented，自然回答仍Limited。** 业主和员工construction_followup回复现在仅提供报告域query_followups({})及原search_knowledge；项目共享问答仍仅知识工具，显式另开的普通专题保留原服务。适配器复用boundReportContext、step740、现有持久agent_tool/BusinessSnapshot及citation catalog；新读和缓存读均重验所选收件人、报告版本、项目、原文hash及当前来源/成员权限。只消费冻结原事实，不读取生成正文，不授予需求写入、施工批准、其他咨询或额外项目访问。无路由/schema/UI/样式/素材/模型提供方或知识摄取变化。
 
 证据tmp/v1-02-live-followups/verification.json。preflight06为3/3，包含两角色在回滚事务中的新读/缓存/收件人/撤权探针；final-kind单元14/14、runtime兼容25/25及定向lint通过。最终驱动类型修复仅擦除的夹具标注，项目82条继承错误保留。configured01–03仍failed、cleanup true/drift[]：1926被普通咨询读取守卫拒绝，1927被不可用工具守卫拒绝，1928取得部分有来源正文，1929虽服务run成功却将原始business快照当作房间更正/下一步问题的回答。读取域修复次数2，该补丁/模型循环已停止。共7次qwen3.7-flash调用，输入47134/输出239 tokens，实际金额unavailable而非0。旧额度阻塞只作历史证据：用户已确认每日无限制，本轮成功准入，未释放/重算旧预占；3753及旧unknown保留。首个业务失败后的工人正常问答及计划Stable输入/重进均未执行，不新增原生、渲染状态或还原通过声明；批准04/06结构/样式/素材及台账不变。

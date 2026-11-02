@@ -15,8 +15,14 @@ export const reportFollowupTool: ModelTool = {
 
 export type ReportBusinessReference = { selection: ReportReference } & ({ userId: string } | { principal: ActorContext['principal'] });
 export const reportContextStep = 740;
+function reportLocalTime(value: string) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai',
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })
+    .formatToParts(new Date(value)).map(part => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}（Asia/Shanghai，UTC+08:00）`;
+}
 export function reportFactText(selection: ReportReference, project: ReportProject) {
-  return `报告所选项目：${project.name}。报告周期：${selection.periodStart}至${selection.periodEnd}；事实截止：${selection.cutoffAt}（Asia/Shanghai）。\n`
+  return `报告所选项目：${project.name}。报告周期：${reportLocalTime(selection.periodStart)}至${reportLocalTime(selection.periodEnd)}；事实截止：${reportLocalTime(selection.cutoffAt)}。\n`
     + `报告保存时团队标记阶段：${project.stageKey || '尚未标记'}。这不是当前施工状态或验收结论。\n`
     + project.records.map(r => `团队核对发布的原记录${r.id}（版本${r.version}，${r.publishedAt}）：\n${siteRecordText(r.data as SiteDraft, r.room)}`).join('\n')
     + (!project.records.length ? '\n本期无可见的已发布记录，未记录不等于未施工。' : '')

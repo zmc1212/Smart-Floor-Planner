@@ -48,6 +48,7 @@ import { resolveSynthesisRepair, synthesisRepairBase, synthesisRepairProtocol, s
 import { currentSynthesisContext } from './synthesis-sources';
 import { boundKnowledgeContext } from './bound-context';
 import { boundReportContext, queryReportFollowups, reportFollowupTool } from './report-context';
+import { isReportAnswerSnapshot, reportFinalResponseIssue, reportFinalProtocol } from './report-final';
 import { projectFinalToolOutput } from './final-output';
 export { projectFinalToolOutput } from './final-output';
 import { anchorKnowledgeQuery } from '../knowledge/query-context';
@@ -208,7 +209,7 @@ export const finalTool: ModelTool = { name: 'final_response', description: '最�
       citations: { type: 'array', maxItems: 4, items: { type: 'object', properties: { citationId: { type: 'string', description:'只选本轮来源citationOptions中的完整citationId。服务端装配原文，不提供sourceId、quote或引用模式。' } }, required: ['citationId'], additionalProperties: false } } },
       required: ['basis','text','citations'], additionalProperties: false } } }, required: ['kind'], additionalProperties: false,
 } };
-export const agentSourceFinalProtocol = 'source-final-kind-v5';
+export const agentSourceFinalProtocol = 'source-final-kind-v6';
 export const agentToolFinalProtocol = 'deferred-structured-final-v1';
 export const agentNeedBatchProtocol = 'same-turn-need-batch-v2';
 export const agentDesignerProtocol = 'designer-recommendation-v1';
@@ -251,7 +252,7 @@ export function finalToolForMessages(messages:ModelMessage[], question = '', sou
   const sourceOnly = originalAnswerOnly(question);
   const independentAdvice = independentAdviceRequested(question);
   const knowledgeScoped = sourceOnly || independentAdvice;
-  let queriedSources = false, synthesisResult = false, otherDisplayResult = false, designerResult = false;
+  let queriedSources = false, synthesisResult = false, reportAnswer = false, otherDisplayResult = false, designerResult = false;
   let excerptIds:string[]|undefined;
   let questionCoverage: SourceQuestionCoverage | undefined;
   for (const [index, message] of messages.entries()) {
@@ -272,7 +273,10 @@ export function finalToolForMessages(messages:ModelMessage[], question = '', sou
       // Pure source reads need an answer composed from their actual catalog.
       // A result key is a receipt, not proof that a snapshot list answers the
       // customer's question. Keep action cards and clarification displays.
+      const reportRead = call.name === 'query_followups' && Array.isArray(packet.synthesisSources) && isReportAnswerSnapshot(packet);
+      if (reportRead) reportAnswer = true;
       const sourceRead = call.name === 'restore_sources' || call.name === 'search_knowledge' || call.name === 'search_web' || call.name === 'read_web'
+        || reportRead
         || call.name === 'query_business' && packet.query?.domain === 'floorplans'
         || call.name === 'query_materials' && packet.query?.domain === 'materials' && packet.data?.resolution === 'resolved';
       if (sourceRead && Array.isArray(packet.synthesisSources)) synthesisResult = true;
@@ -350,7 +354,7 @@ export function finalToolForMessages(messages:ModelMessage[], question = '', sou
   }
   if(!ids.length&&!queriedSources&&!independentAdvice)return finalTool;
   const parameters=structuredClone(finalTool.parameters);
-  const knowledgeOnly = knowledgeScoped || synthesisResult && !otherDisplayResult;
+  const knowledgeOnly = knowledgeScoped || reportAnswer || synthesisResult && !otherDisplayResult;
   const properties = parameters.properties as Record<string, Record<string, unknown>>;
   // `designers` is advertised only after an actual recommendation receipt;
   // a result key remains the server acceptance boundary.
@@ -1129,6 +1133,18 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         validateFinal:async(raw,turn)=>{
           let explanationKind: unknown;
           try { explanationKind = JSON.parse(raw)?.kind; } catch { /* Existing syntax diagnostics below. */ }
+          if (reportSource && explanationKind !== 'synthesis') {
+            const issue = await scoped(async tx => {
+              const read = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+                and run_id=${lease.runId} and kind='agent_tool' and capability_name='query_followups' and status='succeeded' order by step_seq desc limit 1`);
+              const found = reportFinalResponseIssue(raw, read?.private_checkpoint);
+              if (found) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
+                values(${lease.enterpriseId},${lease.runId},${1300+turn},'agent_validation','failed',
+                  ${JSON.stringify({ code: found.code, scope: reportFinalProtocol, noBusinessTools: true })}::jsonb) on conflict do nothing`);
+              return found;
+            });
+            if (issue) return issue;
+          }
           if (sourceMode.knowledgeExplanation && ['general', 'vision', 'unavailable', 'synthesis', 'knowledge'].includes(String(explanationKind))) {
             const source = await scoped(tx => one(tx, sql`select id from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
               and run_id=${lease.runId} and kind='retrieval' and status='succeeded' limit 1`));
@@ -1596,6 +1612,11 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     const receiptBlocks = reviewReceipts.map(text => ({ type: 'text' as const, text }));
     let reply: { kind?: string; text?: string; resultKey?: string; selections?: string[] };
     try { reply = JSON.parse((result.output?.text || '').replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch { fail('invalid_model_answer', 502); }
+    if (reportSource && reply.kind !== 'synthesis') await scoped(async tx => {
+      const read = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+        and run_id=${lease.runId} and kind='agent_tool' and capability_name='query_followups' and status='succeeded' order by step_seq desc limit 1`);
+      if (reportFinalResponseIssue(JSON.stringify(reply), read?.private_checkpoint)) fail('invalid_model_answer', 502);
+    });
     if(sourceMode.sourceExcerpts&&initial.config.tools&&(initial.shared||originalAnswerOnly(reviewContext.currentQuestion))&&reply.kind!=='knowledge')fail('invalid_model_answer',502);
     const usedSourceTool = await scoped(async tx => one(tx, sql`select id from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}
        and (capability_name in ('query_business','query_materials','query_followups','knowledge.search.v1','web.search.v1','web.read.v1','references.search.v1','designers.search.v1')
@@ -1764,6 +1785,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       const step = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}
          and step_seq=${1200 + Number(match[1])*10 + Number(match[2])} and capability_name in ('query_business','query_materials','query_followups')`);
       if (!step) fail('invalid_model_answer', 502);
+      if (isReportAnswerSnapshot(step.private_checkpoint)) fail('invalid_model_answer', 502);
       return step.private_checkpoint as BusinessSnapshot;
     }) : null;
     const modelText = references ? NO_REFERENCE : business ? business.displayText : parseAgentReply(result.output?.text || '');
