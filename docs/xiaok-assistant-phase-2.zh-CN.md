@@ -159,6 +159,16 @@ assistant独有FollowupChat包装器按当前session及binding:conversation保�
 最终main2096882/assistant2096851，硬2097152，余270/301B；1998848安全目标/PNG≤300KB不变，真实上传字节未验。同最小化副屏Stable2.02.2608080/base3.17.2/HWND947063424，390×844/编码348×752，最终页已审；身份/storage/transport恢复，无CLI参数文件/根/焦点/窗口操作。328/329工地归档/对客关、381/382记录撤回、146/147绑定停止、5410停用，计划false/version272/epoch73、队列0，cleanup true/drift[]。原42条reconciling/2004000预占对daily1200000、provider4114/knowledge3753未知账目及旧失败/停测保持；下一正常回答/阶段工艺/自然报告验收仍依原额度/unknown返回条件，不第三次429试跑、不提前V1-03。根验收另需正式组件动作机制，修复次数仍2。
 <!-- /v1-02-followup-compose -->
 
+<!-- v1-02-stage-note -->
+**同阶段补备注不再丢私人阶段提醒：限定Implemented，V1-02整体仍Limited。** progress_revision也包含备注修改，原事件版本相等判断会在调度前/Worker前误丢有效提醒。report-worker.ts共用currentStageEvent先锁同企业原项目，再在新语句读取已提交的更新阶段事件：当前key须一致，且不存在更新的同项目阶段事件。只改备注保留原事件/时间/冻结事实版本，真实阶段更正仍拒绝旧任务；原租户/收件人/来源、生命周期/epoch/租约/预算及投递幂等不变。无route/schema/Agent/API或Mini结构/样式/字体/素材变化。
+
+证据tmp/v1-02-stage-note/verification.json。service01真实复现event5108版本3、项目版本4仍utilities，预期queue1实际0，原failed/cleanup true/drift[]保留。机制修复1次后service02及native04四个服务检查通过：调度前备注仍投递1/重复0，Worker前备注仍保存冻结事实并私人投递，真实阶段更正拒绝旧报告且新事件恢复。unit16/16、定向lint通过，tsc原82/本worker0、drift[]。native04自定义驱动前后hash绑定，Stable3/3（两前置+批准02真实水电卡/私人重进）通过；同最小化副屏Stable2.02.2608080/base3.17.2/HWND947063424、390×844/编码348×752，两页已审。native03原观察保留，自定义驱动未单独绑定而不算验收通过。Mini4192dbf2、client142/包体13及未变权限/来源证据按范围复用，不重放。
+
+附加同key离开再返回的case05仍failed：旧报告270已被拒绝，但恢复tick预期1实际0，回读发现新报告271/event5178已facts_ready。现场观察到本项目既有assistant-worker PID267212（2026-10-31T16:00:22Z启动），未停止；可能由其先处理仅为归因假设，不把该恢复结果计作绑定源码验收。两次只读诊断包装失败保留，原有效读取/失败不覆盖，不重开查询/测试循环。admin/scripts/xiaok-v1-02-stage-note-check.cjs保存三个已验核心用例及这一严格附加回归，末项须控制Worker调度；额外用例不抹掉备注修复证据，也不代表V1-02整旅程通过。
+
+最终330–334工地归档/对客关、383–387记录撤回，绑定精确ID见final-state.json，5410停用，策略false/version287/epoch78、队列0，各批cleanup true/drift[]。原42条2004000预占对daily1200000、provider4114/knowledge3753 unknown、404/405发布及28草稿不变，实际模型/Embedding/摄取/生图0。无生产/远程/窗口/根或付费操作；这是实际事件/事实/卡片行为，不是生成工艺/自然答复语义通过。下一独立代码点为reminders.ts同类progress revision假设，须沿其原C01受众/事件消费幂等/私人隔离合同先复现再改；无新视觉源或还原状态升级。
+<!-- /v1-02-stage-note -->
+
 真实配置模型正文、固定两次首稿、带真实企业知识的报告语义、正常追问、完整生成正文原生验收、根入口及完整构建/上传字节仍未验；不推进V1-03或生产。
 
 证据`tmp/v1-02-natural-reports/verification.json`。unit49/client126（含包体）/定向lint通过；当前类型82项诊断均在本次归属之外，归属文件0。service04原日周批failed保留：五份日报正文保存，周报被旧活动聊天索引拒绝；0110修复该机制，service05仅生成五份周报新版本并复用未变日报证据，验证精确重进/已阅/跨收件人拒绝、派发前失败/同键重试。其撤回遗漏reason失败及service06误断言facts_only的失败均保留；来源驱动修复2停止。service07只回读已撤回版本，验证真实不可用DTO（无新撤回），再验证文本unknown；service08独立验证query用量未知阻断、文本0调用。以上均为替身模型协议检查：保留各批合计12次注入回调，实际文本/Embedding/摄取/生图均0，不当自然语义或真实费用。开发库原42条reconciling/2004000 tokens、日限1200000、provider4114、knowledge3753 unknown/input_tokens null及CNY32.828897/100保持。

@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
+import { withPlatformTransaction, withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { AssistantError, fail } from '@/lib/assistant/contracts';
 import { appendMessage } from '@/lib/assistant/core/conversation';
@@ -9,6 +9,20 @@ import { discoverFollowups, enqueueReport } from './report-store';
 import { dailySupplementCandidates, supplementClosedDailyReports } from './report-supplements';
 import { collectReportFacts, deliveryActor, followupAvailable, followupProjects, projectReportFacts, reportFactsHash, type ReportFacts } from './report-scope';
 import { enqueueReportBody } from './report-body-store';
+
+/** Progress revisions also include note edits. Lock the project first, then
+ * read the latest committed stage event in a fresh statement so a concurrent
+ * correction back to the same key cannot revive an older event. */
+async function currentStageEvent(tx: PostgresTransaction, eid: string, eventId: string) {
+  const event = await one(tx, sql`select e.*,p.current_stage_key as project_stage_key,p.status as project_status
+    from app.domain_event_outbox e join app.construction_projects p on p.enterprise_id=e.enterprise_id and p.id::text=e.aggregate_id
+    where e.enterprise_id=${eid} and e.id=${eventId} and e.type='construction.stage.updated.v1' for share of p`);
+  if (!event || event.project_stage_key !== (event.payload as Row).stageKey) return;
+  const newer = await one(tx, sql`select id from app.domain_event_outbox where enterprise_id=${eid}
+    and type='construction.stage.updated.v1' and aggregate_id=${String(event.aggregate_id)}
+    and aggregate_version>${Number(event.aggregate_version)} limit 1`);
+  return newer ? undefined : event;
+}
 
 /** One latest due daily and weekly period per tick, not an unbounded outage replay.
  * Time changes affect future ticks; each queued run retains its original scope. */
@@ -47,9 +61,8 @@ export async function advanceConstructionReports(now = new Date(), onlyEnterpris
           and e.created_at<=${now} order by e.id limit 50`);
         for (const event of events) {
           if (settings.stage_enabled === false) continue;
-          const project = await one(tx, sql`select id from app.construction_projects where enterprise_id=${eid} and id=${String(event.aggregate_id)}
-            and status='active' and progress_revision=${Number(event.aggregate_version)} for share`);
-          if (!project) continue;
+          const current = await currentStageEvent(tx, eid, String(event.id));
+          if (!current || current.project_status !== 'active') continue;
           const at = new Date(String(event.created_at));
           // PostgreSQL preserves microseconds; JSON/Date retains milliseconds.
           // Include the source event's whole millisecond instead of excluding it.
@@ -83,9 +96,7 @@ export async function processConstructionReport(lease: Lease) {
       if (!b || b.conversation_id !== run.conversation_id) fail('context_changed');
       let stageEvent: Row | undefined;
       if (report.stage_event_id) {
-        stageEvent = await one(tx, sql`select e.* from app.domain_event_outbox e join app.construction_projects p
-          on p.enterprise_id=e.enterprise_id and p.id::text=e.aggregate_id and p.progress_revision=e.aggregate_version
-          where e.enterprise_id=${eid} and e.id=${String(report.stage_event_id)} and e.type='construction.stage.updated.v1' for share of p`);
+        stageEvent = await currentStageEvent(tx, eid, String(report.stage_event_id));
         if (!stageEvent) fail('context_changed');
       }
       const facts = await collectReportFacts(tx, eid, b, { ...report, stage_event: stageEvent, period_end: report.fact_period_end, cutoff_at: report.fact_cutoff_at }, policy.scope as Row);
