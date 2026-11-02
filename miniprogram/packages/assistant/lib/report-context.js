@@ -50,16 +50,35 @@ const reportQuestionMethods = {
     this.reportQuestions.bind(chat, followup ? '/followups/' + this.followups.selected + '/conversation' : '/conversations/' + chat?.conversationId);
     if (this.reportQuestions.state.invalidated && this.data.followupDetail) this.followups.closeReport();
   },
-  askFollowupReport(event) {
+  async askFollowupReport(event) {
     if (!this.data.followupActive && this.data.reportQuestion.selected) { this.followups.closeReport(); return; }
     const c = this.data.followupContext;
     if (!c || !['customer','worker','designer','boss'].includes(c.audience) || !this.reportQuestions.canChange()) return;
     const d = event.currentTarget.dataset, report = d.report ? this.data.followupReports.find(r => r.reportId === String(d.report) && r.revision === Number(d.revision)) : this.data.followupDetail;
     if (!report?.available || !report.ready || !report.projects?.length) return;
-    const select = project => this.reportQuestions.select({ bindingId: c.bindingId, reportId: report.reportId, revision: report.revision, projectId: project.id })
-      .then(() => { if (this.reportQuestions.state.selected) this.followups.closeReport(); });
-    if (report.projects.length === 1) return select(report.projects[0]);
-    wx.showActionSheet({ itemList: report.projects.map(p => p.name), success: r => select(report.projects[r.tapIndex]) });
+    const q = this.reportQuestions, chat = q.chat, version = q.state.version, epoch = this.followups.epoch;
+    const project = report.projects.length === 1 ? report.projects[0] : await new Promise(resolve => wx.showActionSheet({
+      itemList: report.projects.map(p => p.name), success: r => resolve(report.projects[r.tapIndex]), fail: () => resolve(null) }));
+    if (!project || q.chat !== chat || q.state.version !== version || !q.canChange() || !this.followups.current(epoch)) return;
+    await q.select({ bindingId: c.bindingId, reportId: report.reportId, revision: report.revision, projectId: project.id });
+    const s = q.state.selected;
+    if (!q.state.pending && !q.state.error && s?.bindingId === c.bindingId && s.reportId === report.reportId && s.revision === report.revision && s.projectId === project.id) {
+      this.followups.closeReport(); return true;
+    }
+  },
+  async sendFollowup() {
+    const f = this.followupChatController, q = this.reportQuestions;
+    if (this._startingFollowup || q.state.busy || q.state.pending) return;
+    if (f.canSend() || f.state.pendingSend) return f.send();
+    const draft = f.state.draft, chat = f.chat;
+    if (!draft?.trim() || !q.canChange()) return;
+    const report = this.data.followupReports.find(r => r.available && r.ready && r.deliveryState !== 'muted' && r.projects?.length);
+    if (!report) { this.followups.set({ followupError: '还没有已保存的简报，有新记录后可在这里回看。' }); return; }
+    this._startingFollowup = true;
+    try {
+      const selected = await this.askFollowupReport({ currentTarget: { dataset: { report: report.reportId, revision: report.revision } } });
+      if (selected && this.followupChatController === f && f.chat === chat && f.state.draft === draft && f.canSend()) return f.send();
+    } finally { this._startingFollowup = false; }
   },
   removeReportQuestion() { return this.reportQuestions.select(null); },
   recoverReportQuestion() { return this.reportQuestions.recover(); },
