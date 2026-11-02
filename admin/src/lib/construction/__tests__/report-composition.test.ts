@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parseReportBody, reportFinalTool, reportMessages, reportSectionKinds } from '../report-composition';
 import { sourceCitationCatalog } from '@/lib/assistant/agent/citation-catalog';
+import { toolSchemaIssue } from '@/lib/assistant/agent/tool-protocol';
 import type { SynthesisContext } from '@/lib/assistant/agent/synthesis';
 import type { ReportReference } from '../report-reference';
 
@@ -51,4 +52,23 @@ test('scheduled context is bounded to explicit originals with no ordinary conver
   assert.ok(JSON.stringify(messages).includes('citationOptions'));
   assert.ok(JSON.stringify(messages).includes(selection.cutoffAt));
   assert.ok(!JSON.stringify(messages).includes('triggerMessageId'));
+});
+
+test('report native schema reuses per-project citations and rejects uncited quantities before generation', async () => {
+  const tool = reportFinalTool(['9'], [project]);
+  assert.equal(await toolSchemaIssue(tool, JSON.stringify(output())), null);
+  const uncited = output();
+  uncited.projects[0].standards = section('水管打压8-12公斤。[citationId: not-a-structured-reference]');
+  assert.ok(await toolSchemaIssue(tool, JSON.stringify(uncited)));
+  const foreign = output();
+  foreign.projects[0].standards.segments[0].citations = [{ citationId: 'outside-this-project' }];
+  assert.ok(await toolSchemaIssue(tool, JSON.stringify(foreign)));
+  const empty = reportFinalTool(['9'], [{ ...project, context: { ...context, sources: [] } }]);
+  assert.ok(await toolSchemaIssue(empty, JSON.stringify(output())));
+  // Native grammar cannot prove what an original supports. Existing quantity
+  // and approval checks remain necessary after schema-valid generation.
+  const invented = output();
+  invented.projects[0].standards = section('插座间距为99厘米。', 1);
+  assert.equal(await toolSchemaIssue(tool, JSON.stringify(invented)), null);
+  assert.throws(() => parseReportBody(JSON.stringify(invented), [project]));
 });

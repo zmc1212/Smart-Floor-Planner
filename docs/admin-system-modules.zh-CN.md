@@ -149,6 +149,13 @@ assistant独有FollowupChat包装器按当前session及binding:conversation保�
 最终main2096882/assistant2096851，硬2097152，余270/301B；1998848安全目标/PNG≤300KB不变，真实上传字节未验。同最小化副屏Stable2.02.2608080/base3.17.2/HWND947063424，390×844/编码348×752，最终页已审；身份/storage/transport恢复，无CLI参数文件/根/焦点/窗口操作。328/329工地归档/对客关、381/382记录撤回、146/147绑定停止、5410停用，计划false/version272/epoch73、队列0，cleanup true/drift[]。原42条reconciling/2004000预占对daily1200000、provider4114/knowledge3753未知账目及旧失败/停测保持；下一正常回答/阶段工艺/自然报告验收仍依原额度/unknown返回条件，不第三次429试跑、不提前V1-03。根验收另需正式组件动作机制，修复次数仍2。
 <!-- /v1-02-followup-compose -->
 
+<!-- v1-02-live-reports -->
+**真实配置模型报告正文仍Limited。** 用户于2026-11-02明确模型使用无限制；现有daily-limit开关已关闭，原预占、unknown及每次运行/上下文界限继续保留。不能再仅以历史42条/2004000预占视为当前全局准入阻塞。模型仍为qwen3.7-flash；精确能力表现登记已文档化JSON Object/Schema，复用原final-only strict response_format，业务工具回合及搜索/缓存/Partial/Batch独立闸门不变。报告Schema复用nativeFinalDefinition、每个项目原citation catalog及既有1200字/4引文上限；不解码字符串数组、不换提示词，不新增Agent/检索器/事实库、不改来源或放宽本地数值/承诺/租户/撤回守卫，无路由/角色或Mini结构/样式/素材变化。
+
+证据tmp/v1-02-live-reports/verification.json。日限单元2/2、协议/来源守卫33/33及定向lint过；tsc保留82继承/本次0。事前固定五私人目的地/两工地/daily+weekly/每项两次首稿，最多20正文，首失败即停。configured01前置误拒其他老板既有会话，派发0；改为原binding59/消息完整hash不变证明。configured02报告272/run1919仅一次query embedding unknown/数量null，文本调用0；定位原18089转发缺失后沿已批准监管脚本恢复，鉴权health200、原profile/revision/1024维一致。DTO额外字段清理失败保留，cleanup02沿版本287不可变服务回执恢复原配置。configured03 run1921/attempt4115返回projects字符串而被拒；机制1后configured04 run1923/4116真实JSON/Schema均有效，但未引用声明被unsupported_model_commitment拒绝；机制2后configured05 run1925/4117结构有效，仍未通过同一正文语义期望。按两轮修复规则停止第三次正文补丁/模型批，每个停止批其余19项均未执行；不把原失败改判成功。
+
+所有自有夹具已归档/撤回/停止/撤权，原账册及binding59不变，策略false/version296/epoch82、q0，最终实批drift[]；外部3006/Worker267212保留。按既有开发授权恢复的专用Embedding监管84052/SSH518972保持可用。三次已知文本调用输入7666/输出1873 tokens，另111已观测query tokens；1919查询用量及本次实际金额仍未知，不能计0。知识attempt3753、发布404/405版本410/411与其余28草稿未变，无摄取/生图。未新增原生、正常追问、完整正文语义、真机/根入口/真实viewer/上传验收，不提前V1-03或生产。下一独立授权项仍为原业主/员工选定报告的事实追问：消费冻结原事实，不依赖失败的模型正文。
+
 <!-- v1-02-stage-note -->
 **同阶段补备注保留原节点提醒与补问：限定Implemented，V1-02整体仍Limited。** report-worker.ts抽出的stage-events.ts共用最新阶段事件机制：先锁同企业原项目，再以新语句拒绝任何更新事件，离开后绕回同key也不能复活旧事件。普通C01提醒及历史回读额外以已有construction_audits的真实progress输入证明每次递增仅来自备注变化（按expectedVersion排序、JS同一trim规则忽略同备注重提），不放宽撤权/重授、暂停/恢复等非备注进度修订；缺少原审计证明时保守不可用。补问仍绑定原triggerEventId/settingsVersion/客户/房间/会话授权，稳定需求去重和原construction:user/need消费键不变。私人construction_followup不再消费普通C01提醒；其固定报告目的地仍沿原管线。只改备注不重写原事件、时间、文本或冻结事实；无路由/schema/Agent/API或Mini结构/样式/字体/素材变化。 新的跨节点人工stageReview另保存服务端projectVersion/progressNote锚点；need-issues.ts在现有阶段/配置/客户授权和原话hash/不可变核对事件校验后，才共用notesPreserveProgress证明备注增量。事项ID/修订/负责人不因备注变化，旧节点问题、记忆和派生答复仍不可用；缺这两个锚点的历史核对保持原严格revision校验，不补造历史快照。
 

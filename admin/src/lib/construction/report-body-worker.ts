@@ -143,7 +143,7 @@ export async function processReportComposition(lease: Lease, dependencies: {
     const authorize = () => scoped(async tx => {
       for (const p of projects) if (!await synthesisContextAvailable(tx, lease.actor, await projectConversation(tx, lease, p), p.context)) fail('context_changed');
     });
-    const finalTool = reportFinalTool(projects.map(p => p.projectId));
+    const finalTool = reportFinalTool(projects.map(p => p.projectId), projects);
     const limits = agentRequestBudget({ profile: initial.config.consultation?.profile });
     const result = await runRenovationAgent({ messages: reportMessages(initial.scope, projects), tools: [], resume: initial.resume, ports: {
       authorize,

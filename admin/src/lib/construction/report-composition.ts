@@ -1,6 +1,7 @@
 import { fail } from '@/lib/assistant/contracts';
 import type { ModelMessage, ModelTool } from '@/lib/assistant/contracts/model';
 import { modelCitationCatalog } from '@/lib/assistant/agent/citation-catalog';
+import { nativeFinalDefinition } from '@/lib/assistant/agent/native-final';
 import { parseSynthesis, type SynthesisAnswer, type SynthesisContext } from '@/lib/assistant/agent/synthesis';
 import type { ReportReference } from './report-reference';
 
@@ -10,18 +11,31 @@ export type ReportSectionKind = typeof reportSectionKinds[number];
 export type ComposedProject = { projectId: string; selection: ReportReference; context: SynthesisContext; sections: Record<ReportSectionKind, SynthesisAnswer> };
 export type ReportBody = { protocol: typeof reportCompositionProtocol; projects: ComposedProject[] };
 const segment = { type: 'object', additionalProperties: false, required: ['basis','text','citations'], properties: {
-  basis: { type: 'string', enum: ['evidence','advice','uncertainty'] }, text: { type: 'string', minLength: 1, maxLength: 1800 },
-  citations: { type: 'array', maxItems: 6, items: { type: 'object', additionalProperties: false,
+  basis: { type: 'string', enum: ['evidence','advice','uncertainty'] }, text: { type: 'string', minLength: 1, maxLength: 1200 },
+  citations: { type: 'array', maxItems: 4, items: { type: 'object', additionalProperties: false,
     required: ['citationId'], properties: { citationId: { type: 'string' } } } },
 } };
-export function reportFinalTool(projectIds: string[]): ModelTool {
+export function reportFinalTool(projectIds: string[], projects: Array<Pick<ComposedProject, 'projectId' | 'context'>> = []): ModelTool {
+  const projectSchemas = projectIds.map(projectId => {
+    const source = projects.find(p => p.projectId === projectId);
+    const ids = source?.context.sources.flatMap(modelCitationCatalog).map(c => c.citationId);
+    const item = structuredClone(segment);
+    if (ids) Object.assign(item.properties.citations, ids.length ? { items: { type: 'object', additionalProperties: false,
+      required: ['citationId'], properties: { citationId: { type: 'string', enum: ids } } } } : { maxItems: 0 });
+    // The same final schema already used by ordinary synthesis: uncited
+    // quantities/evidence are excluded before generation, not repaired later.
+    const section = nativeFinalDefinition({ name: 'final_response', description: 'Report synthesis section', parameters: {
+      type: 'object', additionalProperties: false, required: ['kind','segments'], properties: {
+        kind: { type: 'string', enum: ['synthesis'] }, segments: { type: 'array', minItems: 1, maxItems: 6, items: item },
+      },
+    } }).parameters.anyOf as Array<Record<string, unknown>>;
+    return { type: 'object', additionalProperties: false, required: ['projectId', ...reportSectionKinds], properties: {
+      projectId: { type: 'string', enum: [projectId] }, ...Object.fromEntries(reportSectionKinds.map(kind => [kind, section[0]])),
+    } };
+  });
   return { name: 'final_response', description: '提交本次报告的完整正文。只引用本项目已有来源目录；不执行、批准或保存任何施工动作。', parameters: {
     type: 'object', additionalProperties: false, required: ['projects'], properties: { projects: { type: 'array',
-      minItems: projectIds.length, maxItems: projectIds.length, items: { type: 'object', additionalProperties: false,
-        required: ['projectId', ...reportSectionKinds], properties: { projectId: { type: 'string', enum: projectIds },
-          ...Object.fromEntries(reportSectionKinds.map(kind => [kind, { type: 'object', additionalProperties: false,
-            required: ['kind','segments'], properties: { kind: { type: 'string', enum: ['synthesis'] },
-              segments: { type: 'array', minItems: 1, maxItems: 6, items: segment } } }])) } } } },
+      minItems: projectIds.length, maxItems: projectIds.length, items: { anyOf: projectSchemas } } },
   } };
 }
 

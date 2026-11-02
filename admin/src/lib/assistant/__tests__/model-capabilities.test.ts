@@ -11,6 +11,7 @@ import { assertToolPairs, toolSchemaIssue } from '../agent/tool-protocol';
 import { runRenovationAgent, type AgentCheckpoint } from '../agent/runtime';
 import { agentConfig } from '../agent/config';
 import { nativeFinalProtocol } from '../agent/native-final';
+import { reportFinalTool } from '@/lib/construction/report-composition';
 import { partialBody, joinDraft, validateDraft, type ApprovedDraft } from '../agent/draft-continuation';
 import { searchWeb } from '../agent/web';
 import { fingerprint } from '../contracts';
@@ -60,19 +61,44 @@ test('an unregistered Bailian model connects with advanced capabilities off and 
   assert.equal(agentConfig({...agentBase,structuredFinal:undefined})?.model,other);
   assert.throws(()=>partialBody({...binding,model:other},'厨房收纳草稿：'),/invalid_draft_prefix/);
 });
-test('Qwen3.7 accepts its verified non-thinking tool path without enabling unverified advanced channels',()=>{
+test('Qwen3.7 uses its documented final schema while unrelated advanced channels remain gated',()=>{
   const model='qwen3.7-flash';
   assert.equal(assistantThinkingOverrideAllowed(runtime,model,false),true);
   assert.equal(assistantThinkingOverrideAllowed({...runtime,baseUrl:'https://dashscope-intl.aliyuncs.com/compatible-mode'},model,false),false);
   const body=agentChatBody({...input,model},base);
   assert.equal(body.enable_thinking,false);
-  assert.equal(body.tools?.[0].function.name,'final_response');
-  assert.equal(body.response_format,undefined);
-  assert.throws(()=>agentChatBody({...input,model,outputMode:'json_schema'},base),/not_applicable/);
+  assert.equal(body.tools,undefined);
+  assert.equal(body.response_format?.type,'json_schema');
+  assert.equal(agentChatBody({...input,model,outputMode:'json_object'},base).response_format?.type,'json_object');
+  const business=agentChatBody({...input,model,tools:[{...final,name:'search_knowledge'},final]},base);
+  assert.equal(business.response_format,undefined);
+  assert.equal(business.tools?.[0].function.name,'search_knowledge');
   assert.equal(nativeSearchBindingFor(runtime,{providerKey:'dashscope',model}),null);
   assert.equal(explicitCacheControl(runtime,model,false,{messages:input.messages},false),undefined);
   assert.equal(bailianCapabilities(bailianBinding(base,model,false)!).batch,'unknown');
   assert.equal(bailianPartialCapable(model),false);
+});
+
+test('Qwen3.7 report wire enforces nested array types and retains the original local schema rejection',async()=>{
+  const definition=reportFinalTool(['9']),original=globalThis.fetch;
+  const section={kind:'synthesis',segments:[{basis:'uncertainty',text:'本次没有已确认的安排。',citations:[]}]};
+  const raw={projects:[{projectId:'9',progress:section,pending:section,standards:section,arrangements:section}]};
+  let calls=0;
+  try {
+    globalThis.fetch=async(_url,init)=>{
+      calls++;const wire=JSON.parse(String(init?.body));
+      assert.equal(wire.response_format.type,'json_schema');assert.equal(wire.response_format.json_schema.strict,true);
+      assert.equal(wire.response_format.json_schema.schema.properties.projects.type,'array');
+      assert.equal(wire.tools,undefined);assert.equal(wire.tool_choice,undefined);
+      return new Response(JSON.stringify({...payload(),choices:[{message:{content:JSON.stringify(raw)},finish_reason:'stop'}]}),{status:200});
+    };
+    const result=await executeAgentChat(runtime,{...input,model:'qwen3.7-flash',tools:[definition]});
+    assert.equal(calls,1);assert.equal(result.observation?.format?.schemaValid,true);
+    assert.ok(Array.isArray(JSON.parse(result.text).projects));
+    // The observed run1921 double-encoded projects remains invalid; the
+    // application must not reinterpret a malformed provider result as valid.
+    assert.ok(await toolSchemaIssue(definition,JSON.stringify({projects:JSON.stringify(raw.projects)})));
+  } finally {globalThis.fetch=original;}
 });
 
 test('native final Schema and Object are distinct wire channels; business rounds retain function tools',()=>{

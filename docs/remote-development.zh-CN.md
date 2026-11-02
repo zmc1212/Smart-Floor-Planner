@@ -1,5 +1,9 @@
 # 远端开发连接记录
 
+<!-- xiaok-embedding-forward-recovery-20261102 -->
+**原Embedding开发转发恢复（2026-11-02，限定Implemented）：** V1-02 report272/body1919仅在查询Embedding阶段unknown，文本provider调用0；鉴权GET /health证实本机127.0.0.1:18089 ECONNREFUSED且无专用监管/监听。按本记录原授权，以既有密钥属主和原admin/scripts/xiaok-embedding/tunnel.ps1恢复隐藏专用监管84052/SSH子进程518972，保持BatchMode/StrictHostKeyChecking、回环18089→原远端8089和原凭据，未改远端进程/ComfyUI/DB隧道/配置/生产。随后鉴权health200、Qwen原revision/profile/1024维一致、queued0；专用服务保持可用，不在测试清理时终止。原1919及3753未知用量保留，未重放；后续新报告查询有37 tokens观测，摄取0。证据tmp/v1-02-live-reports/embedding-health-01.json、embedding-supervisor.json、embedding-health-02.json和diagnosis-02.json。此恢复不代表正文/四端业务验收通过。
+
+
 <!-- portfolio-development-recovery-20261030 -->
 **开发环境设计师推荐恢复（2026-10-30）：本次报错范围Implemented。** 原企业1454／客户咨询802的推荐请求因开发主库缺少`app.portfolio_portraits`返回`503 assistant_unavailable`。先完成受ACL保护的59,164,410字节custom备份并核验`PGDMP`签名及archive目录，再仅向已批准的本机5432／远端15432开发主库补齐原有、源码未改的`0095_portfolio_enrichment`（SHA256 `a1183439b97cee7f697f49359ba32b15f053e437449185b9d1ead24ed2c42928`）。主库该迁移精确hash、六个作品集迁移、九张强制RLS表及头像同意列均已核验。原认证推荐请求现为200，当前地区实际可推荐公开作品0项；Stable新编译390×844，通过真实历史入口重进原咨询802，原错误消失（原生3/3，一张核route／咨询ID的348×752截图审看，源码／配置drift[]）。未修改客户资料、作品、模型答复、UI、API或权限策略；模型调用0，未生产发布。只读请求观察器及原最小化副屏窗口已恢复。
 
