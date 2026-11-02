@@ -48,7 +48,7 @@ import { resolveSynthesisRepair, synthesisRepairBase, synthesisRepairProtocol, s
 import { currentSynthesisContext } from './synthesis-sources';
 import { boundKnowledgeContext } from './bound-context';
 import { boundReportContext, queryReportFollowups, reportFollowupTool } from './report-context';
-import { boundReportNativeFinal, reportNativeRuntimeBudget } from './report-native-final';
+import { boundReportNativeFinal, reportNativeRuntimeBudget, reportNativeFinalProtocol } from './report-native-final';
 import { isReportAnswerSnapshot, reportFinalResponseIssue, reportFinalProtocol, reportAnswerFinalTool, reportQuestionCoverage, reportAnswerSynthesis, reportCoverageFailure, reportCoverageProtocol } from './report-final';
 import { projectFinalToolOutput } from './final-output';
 export { projectFinalToolOutput } from './final-output';
@@ -896,6 +896,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               ...(nativeFinalization&&purpose==='answer'&&!tools.length?{outputMode:'json_schema' as const}:{}),
               ...(profile ? { profile, deadlineAt } : {}) } },
             metadata: { promptVersion: agentPromptVersion, runtime: initial.config.runtime, turn, purpose, probeVersion: initial.config.probeVersion,
+              ...(reportNativeFinal ? { reportNativeFinal: reportNativeFinalProtocol } : {}),
               sourceAnswerMode: (initial.run.policy_snapshot as Row).sourceAnswerMode ?? null,
               ...(nativeFinalization&&purpose==='answer'&&!tools.length?{nativeFinalProjection:finalProjection}:{}),
               ...(initial.config.imageContext ? {imageContext:initial.config.imageContext} : {}) },

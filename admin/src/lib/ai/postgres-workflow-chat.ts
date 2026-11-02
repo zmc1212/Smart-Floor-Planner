@@ -6,6 +6,9 @@ import { consultationProfile } from '@/lib/assistant/contracts/consultation';
 import type { ModelTurnInput } from '@/lib/assistant/contracts/model';
 import type { AgentConfig } from '@/lib/assistant/agent/config';
 import type { InvocationOwner } from '@/lib/assistant/contracts';
+import { reportNativeFinalProtocol } from '@/lib/assistant/agent/report-native-final';
+import { nativeFinalProjection } from '@/lib/assistant/agent/native-final';
+import { nativeImageFinalProjection } from '@/lib/assistant/agent/image-context';
 import { AiCreationRepository } from '@/db/repositories/ai-creation-repository';
 import { withTenantTransaction } from '@/db/transaction';
 import { resolveProviderCostEstimate } from '@/lib/ai/provider-cost';
@@ -49,6 +52,21 @@ export function assistantThinkingOverrideAllowed(runtime: Pick<AiProviderRuntime
 
 function requestFingerprint(value: unknown) {
   return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
+}
+
+/** Retain an already-returned invalid frame only in the existing run-private
+ * checkpoint. This neither settles usage nor changes unknown/fallback rules.
+ * Native report finals previously retained only shape/usage diagnostics. */
+export function privateAgentFailureFrame(owner: InvocationOwner, metadata: Record<string, unknown> | undefined, error: unknown) {
+  if (owner.kind !== 'assistant_run' || !Number.isInteger(metadata?.turn)
+    || !(error instanceof AiProviderError) || error.privateResponse?.protocol !== 'invalid-provider-frame-v1') return null;
+  const explanation = metadata?.sourceAnswerMode === 'reviewed-knowledge-explanation-v1';
+  const report = metadata?.reportNativeFinal === reportNativeFinalProtocol && metadata.purpose === 'answer'
+    && [nativeFinalProjection, nativeImageFinalProjection].includes(String(metadata.nativeFinalProjection))
+    && Number(metadata.turn) >= 0 && Number(metadata.turn) < 4;
+  if (!explanation && !report) return null;
+  try { return Buffer.byteLength(JSON.stringify(error.privateResponse)) <= 64000 ? error.privateResponse : null; }
+  catch { return null; }
 }
 
 /** Explicit caching stays opt-in. The marker is only valid for a DashScope
@@ -176,12 +194,12 @@ export async function executePostgresText(input: {
       // The new semantic-review discriminator must retain its actual failed
       // frame, rather than repeatedly sampling a shape-only mystery. Reuse the
       // run's private checkpoint/retention path, never public provider metadata.
-      if (input.owner.kind === 'assistant_run' && input.metadata?.sourceAnswerMode === 'reviewed-knowledge-explanation-v1'
-        && Number.isInteger(input.metadata?.turn) && error instanceof AiProviderError && error.privateResponse) {
+      const privateFrame = privateAgentFailureFrame(input.owner, input.metadata, error);
+      if (privateFrame && input.owner.kind === 'assistant_run' && error instanceof AiProviderError) {
         await withTenantTransaction(input.enterpriseId, tx => tx.execute(sql`insert into app.assistant_run_steps
           (enterprise_id,run_id,step_seq,kind,status,provider_attempt_id,private_checkpoint,input_summary)
           values(${input.enterpriseId},${String(input.owner.kind === 'assistant_run' ? input.owner.runId : '')},${1900 + Number(input.metadata!.turn)},
-            'agent_invalid_provider_frame','failed',${String(attempt.id)},${JSON.stringify(error.privateResponse)}::jsonb,
+            'agent_invalid_provider_frame','failed',${String(attempt.id)},${JSON.stringify(privateFrame)}::jsonb,
             ${JSON.stringify({ protocol: 'invalid-provider-frame-v1', attemptId: String(attempt.id), diagnostic: error.diagnostic })}::jsonb)
           on conflict do nothing`)).catch(() => { /* Preserve the original failure/billing audit even if private-frame storage fails. */ });
       }
