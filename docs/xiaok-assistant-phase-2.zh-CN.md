@@ -166,7 +166,7 @@ assistant独有FollowupChat包装器按当前session及binding:conversation保�
 
 所有自有夹具已归档/撤回/停止/撤权，原账册及binding59不变，策略false/version296/epoch82、q0，最终实批drift[]；外部3006/Worker267212保留。按既有开发授权恢复的专用Embedding监管84052/SSH518972保持可用。三次已知文本调用输入7666/输出1873 tokens，另111已观测query tokens；1919查询用量及本次实际金额仍未知，不能计0。知识attempt3753、发布404/405版本410/411与其余28草稿未变，无摄取/生图。未新增原生、正常追问、完整正文语义、真机/根入口/真实viewer/上传验收，不提前V1-03或生产。下一独立授权项仍为原业主/员工选定报告的事实追问：消费冻结原事实，不依赖失败的模型正文。
 
-两轮后共同原因/判别（停止新调用）：期望为同一水电日报完整自然正文，实得run1925仍失败。tmp/v1-02-live-reports/faithful-discriminator.json补齐保存的Evidence.file元数据后逐段重放原守卫，只有精艺两工艺段缺数字29；其余进展/待核对/安排和第三工艺段通过。模型采用标题“原PDF第29页”，引用的副本typed file.page=1，两者的原件—副本页码映射尚未进入同一可核实引用合同。Knowledge拥有该locator元数据；Agent不应从标题建立数字白名单。下一只读核对持久原件/副本元数据，未证明映射前不改发布来源、重摄取、放宽数值或重开第三正文批。旧D2=2及本正文修复2均跨聊天保持；事实追问独立消费原报告facts，仍可在原授权内继续。
+两轮后共同原因/判别（停止新调用）：期望为同一水电日报完整自然正文，实得run1925仍失败。tmp/v1-02-live-reports/faithful-discriminator.json补齐保存的Evidence.file元数据后逐段重放原守卫，只有精艺两工艺段缺数字29；其余进展/待核对/安排和第三工艺段通过。模型采用标题“原PDF第29页”，引用的副本typed file.page=1，两者的原件—副本页码映射尚未进入同一可核实引用合同。Knowledge拥有该locator元数据；Agent不应从标题建立数字白名单。只读元数据审计已完成：source-map-read.json中404/410及405/411的professional=null，source_file无原页对应；本地prepared清单、原件SHA与实际副本SHA一致，可证明asset139/140分别来自原PDF29/30页，但这一关系尚未持久化进引用合同。未修改发布源/索引/守卫，也不从标题造数字白名单；不重开第三正文批。旧D2=2及本正文修复2均跨聊天保持；事实追问独立消费原报告facts，仍可在原授权内继续。
 
 采用依据：核对[阿里云精确模型结构化输出文档](https://help.aliyun.com/en/model-studio/qwen-structured-output)、[LangChain原生输出策略](https://docs.langchain.com/oss/javascript/langchain/structured-output)及[Qwen Code的schema校验式终结输出](https://github.com/QwenLM/qwen-code/blob/main/docs/users/features/structured-output.md)。沿现有能力表/运行时/本地来源校验集成，未迁移框架；文档支持、mock wire、真实schema有效及业务语义通过分别记账。
 
