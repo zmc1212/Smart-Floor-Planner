@@ -2,6 +2,12 @@ import { createHash } from 'node:crypto';
 import { fail } from '@/lib/assistant/contracts';
 
 type Json = Record<string, unknown>;
+// WVP uses GET for both reads and device commands. Only these observational
+// endpoints may be replayed once after an explicit authentication rejection.
+const authenticationRecoveryReads = new Set([
+  '/api/record/plan/channel/list', '/api/record/plan/query', '/api/record/plan/get',
+  '/api/cloud/record/list', '/api/cloud/record/play/path',
+]);
 export type CameraChannel = { deviceId: string; channelId: string; name: string; online: boolean; ptzType: number };
 export type CameraStream = { app: string; stream: string };
 export type PtzCommand = 'left' | 'right' | 'up' | 'down' | 'stop';
@@ -28,10 +34,26 @@ export class WvpClient {
   }
   private async raw(path: string, params: Record<string, string> = {}, authenticated = true, timeout = 15000, operation?: {method:'POST'|'DELETE';body:unknown}) {
     const url = new URL(path, this.origin); url.search = new URLSearchParams(params).toString();
-    let response: Response;
-    try { response = await this.transport(url, { headers: { ...(authenticated ? { 'access-token': await this.login() } : {}),...(operation?{'Content-Type':'application/json'}:{}) },...(operation?{method:operation.method,body:JSON.stringify(operation.body)}:{}), cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(timeout) }); }
-    catch { fail('camera_service_unavailable', 503); }
-    if (response.status === 401) { this.token = ''; fail('camera_service_auth_failed', 503); }
+    const recover = authenticated && !operation && (authenticationRecoveryReads.has(path)
+      || /^\/api\/device\/query\/devices\/\d{20}\/channels$/.test(path));
+    const request = async () => {
+      const token = authenticated ? await this.login() : '';
+      try {
+        const response = await this.transport(url, { headers: { ...(authenticated ? { 'access-token': token } : {}),...(operation?{'Content-Type':'application/json'}:{}) },...(operation?{method:operation.method,body:JSON.stringify(operation.body)}:{}), cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(timeout) });
+        return { response, token };
+      } catch { fail('camera_service_unavailable', 503); }
+    };
+    let { response, token } = await request();
+    const rejectToken = async () => {
+      // A late rejection for an older request must not evict a newer token.
+      if (authenticated && this.token === token) this.token = '';
+      await response.body?.cancel().catch(() => undefined);
+    };
+    if (response.status === 401 && recover) {
+      await rejectToken();
+      ({ response, token } = await request());
+    }
+    if (response.status === 401) { await rejectToken(); fail('camera_service_auth_failed', 503); }
     if (!response.ok) fail('camera_service_unavailable', 503);
     const body = await response.text();
     if (body.length > 2 * 1024 * 1024) fail('camera_invalid_response', 502);

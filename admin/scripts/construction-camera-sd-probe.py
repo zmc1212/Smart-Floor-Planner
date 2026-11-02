@@ -13,6 +13,7 @@ import hashlib
 import ipaddress
 import json
 from pathlib import Path
+import re
 import sys
 import subprocess
 import time
@@ -32,13 +33,29 @@ def main():
     parser.add_argument("--record-seconds", type=int, default=0, help="Create a bounded manual SD test recording, then send StopRecord")
     parser.add_argument("--device-id", default="34020000001320000003")
     parser.add_argument("--channel-id", default="34020000001320000004")
+    parser.add_argument("--expected-serial", default="0383000200efd453afbc",
+                        help="Explicit physical identity of the user-authorized test camera; never inferred from a reachable IP")
+    parser.add_argument("--from-time", help="Bounded query start in camera local time: YYYY-MM-DD HH:MM:SS")
+    parser.add_argument("--to-time", help="Bounded query end in camera local time: YYYY-MM-DD HH:MM:SS")
     args = parser.parse_args()
     if args.record_seconds and not 5 <= args.record_seconds <= 60:
         parser.error("--record-seconds must be between 5 and 60")
-    if args.wvp_only and (args.reboot or args.format_sd):
-        parser.error("--wvp-only cannot be combined with device reboot/formatting")
-    if (args.device_id, args.channel_id) != ("34020000001320000003", "34020000001320000004"):
-        parser.error("This probe is scoped to the authorized test device and channel")
+    if args.wvp_only and (args.reboot or args.reboot_gb or args.format_sd or args.record_seconds):
+        parser.error("--wvp-only is read-only; device writes require physical identity verification")
+    if not all(re.fullmatch(r"\d{20}", value) for value in (args.device_id, args.channel_id)):
+        parser.error("Device and channel IDs must each contain exactly 20 digits")
+    if not re.fullmatch(r"[a-zA-Z0-9_-]{6,64}", args.expected_serial):
+        parser.error("An explicit physical camera serial is required")
+    if bool(args.from_time) != bool(args.to_time):
+        parser.error("--from-time and --to-time must be supplied together")
+    if args.from_time:
+        try:
+            start = dt.datetime.strptime(args.from_time, "%Y-%m-%d %H:%M:%S")
+            end = dt.datetime.strptime(args.to_time, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            parser.error("Query times must use YYYY-MM-DD HH:MM:SS")
+        if not dt.timedelta(0) < end-start <= dt.timedelta(days=1):
+            parser.error("Query interval must be positive and at most one day")
     root = Path(__file__).resolve().parents[2]
     output = root / "tmp/cloud-camera-sd"
     output.mkdir(parents=True, exist_ok=True)
@@ -47,6 +64,7 @@ def main():
               "scope": "Local authorized test camera; SD recognition and WVP device recordings",
               "wvpSourceCommit": "3fcd3ae80c30c95aeb82ef830af439a835257067",
               "cardInstalledReportedByUser": True, "checks": [],
+              "expectedSerial": args.expected_serial,
               "sourceSha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
               "cleanup": {"cardFormatted": False, "recordingPlanChanged": False,
                           "factoryReset": False, "playbackSessionCreated": False}}
@@ -78,7 +96,7 @@ def main():
 
     def storage():
         identity = cam.login()
-        if identity.get("SerialNumber") != "0383000200efd453afbc":
+        if identity.get("SerialNumber") != args.expected_serial:
             raise ValueError("Camera identity differs from the authorized test camera; no device write is permitted")
         return {"identityVerified": True, "clock": cam.call("frmDeviceTimeCtrl"),
                 "sd": cam.call("frmIotRecordCfg")}
@@ -139,6 +157,8 @@ def main():
             environment["WVP_ADMIN_PASSWORD"].encode()).hexdigest()})
         token = login["accessToken"]
         if args.reboot_gb:
+            if not before:
+                raise ValueError("Cannot reboot without verifying the authorized camera identity")
             device_path = "/api/device/query/devices/" + args.device_id
             registered = request(device_path, token=token).get("registerTimeStamp", 0)
             check("gb_reboot", lambda: {"acknowledged": True, "data": request(
@@ -171,6 +191,8 @@ def main():
             else:
                 report["rebootRecovery"] = "not_readable_within_150s"
         if args.record_seconds:
+            if not current.get("identityVerified") or report["sdRecognized"] is not True:
+                raise ValueError("Cannot record without verifying the authorized physical camera and readable SD card")
             record_params = {"deviceId": args.device_id, "channelId": args.channel_id,
                              "recordCmdStr": "Record"}
             try:
@@ -185,10 +207,13 @@ def main():
             report["cleanup"]["boundedManualRecordSeconds"] = args.record_seconds
             time.sleep(5)
         day = dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).strftime("%Y-%m-%d")
+        query_from = args.from_time or day + " 00:00:00"
+        query_to = args.to_time or day + " 23:59:59"
+        report["query"] = {"from": query_from, "to": query_to}
         records = check("wvp_device_recordings", lambda: request(
             "/api/gb_record/query/" + args.device_id + "/" + args.channel_id,
-            {"startTime": day + " 00:00:00", "endTime": day + " 23:59:59"}, token))
-        report["recordCount"] = (records or {}).get("sumNum", 0)
+            {"startTime": query_from, "endTime": query_to}, token))
+        report["recordCount"] = records.get("sumNum") if isinstance(records, dict) else None
         report["sdPlaybackThroughWvp"] = "unverified_requires_nonempty_recording_and_decoded_playback"
     finally:
         report["finished"] = dt.datetime.now(dt.timezone.utc).isoformat()

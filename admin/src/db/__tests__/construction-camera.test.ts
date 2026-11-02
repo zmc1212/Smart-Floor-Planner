@@ -27,7 +27,7 @@ const wvp = new WvpClient({ origin: 'http://wvp.test', mediaOrigin: 'http://medi
   throw Error('unexpected upstream route');
 }) as typeof fetch);
 before(async () => {
-  const url = new URL(resolvePostgresRuntimeConfig().connectionString); assert.equal(url.port, '55432'); assert.equal(url.pathname, '/cloud_camera_unit_eval');
+  const url = new URL(resolvePostgresRuntimeConfig().connectionString); assert.equal(url.port, '55432'); assert.match(url.pathname, /^\/cloud_camera_unit_eval(?:_[a-z0-9_]{1,48})?$/);
   jpeg = await sharp({ create: { width: 64, height: 48, channels: 3, background: '#00b879' } }).jpeg().toBuffer();
   await withPlatformTransaction(async tx => {
     const role = await one(tx, sql`select rolsuper,rolbypassrls from pg_roles where rolname=current_user`); assert.equal(role?.rolsuper, false); assert.equal(role?.rolbypassrls, false);

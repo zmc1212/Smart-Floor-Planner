@@ -47,7 +47,7 @@ const fixtureCamera=()=>new CameraService(owner,source);
 async function current(){return (await fixtureCamera().list(projects[0][0])).items[0];}
 async function enter(actor=manager,pid=projects[0][0]){const entry=await new CameraService(actor,source).entry(pid);return exchangeCameraEntry(entry.url.split('#entry=')[1]);}
 before(async()=>{
-  const database=new URL(resolvePostgresRuntimeConfig().connectionString);assert.equal(database.port,'55432');assert.equal(database.pathname,'/cloud_camera_unit_eval');
+  const database=new URL(resolvePostgresRuntimeConfig().connectionString);assert.equal(database.port,'55432');assert.match(database.pathname,/^\/cloud_camera_unit_eval(?:_[a-z0-9_]{1,48})?$/);
   storageServer=createServer((req,res)=>{
     if(req.headers.authorization!=='Bearer '+storageToken){res.writeHead(401).end();return;}
     if(storageOutage){res.writeHead(503).end();return;}

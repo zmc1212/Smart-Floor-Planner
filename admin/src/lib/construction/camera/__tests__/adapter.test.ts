@@ -37,6 +37,89 @@ test('upstream authentication failures never replay a PTZ move automatically', a
   await assert.rejects(wvp.ptz('34020000001320000003','34020000001320000004','left'), /auth_failed/); assert.equal(moved, 1);
 });
 
+test('expired authentication recovers one observational request with a fresh token', async () => {
+  let logins = 0, reads = 0;
+  const wvp = new WvpClient(config, (async (input: URL, init?: RequestInit) => {
+    if (input.pathname === '/api/user/login') return Response.json({ code: 0, data: { accessToken: 'token-' + ++logins } });
+    reads++;
+    assert.equal(new Headers(init?.headers).get('access-token'), 'token-' + reads);
+    return reads === 1 ? new Response('expired', { status: 401 })
+      : Response.json({ code: 0, data: { list: [{ deviceId: '34020000001320000004', status: 'ON' }] } });
+  }) as typeof fetch);
+  assert.equal((await wvp.channels('34020000001320000003')).length, 1);
+  assert.equal(logins, 2); assert.equal(reads, 2);
+});
+
+test('repeated authentication rejection and failed refresh are bounded', async () => {
+  for (const failedRefresh of [false, true]) {
+    let logins = 0, reads = 0;
+    const wvp = new WvpClient(config, (async (input: URL) => {
+      if (input.pathname === '/api/user/login') {
+        logins++;
+        return failedRefresh && logins === 2 ? new Response(null, { status: 401 })
+          : Response.json({ code: 0, data: { accessToken: 'token-' + logins } });
+      }
+      reads++; return new Response(null, { status: 401 });
+    }) as typeof fetch);
+    await assert.rejects(wvp.channels('34020000001320000003'), /camera_service_auth_failed/);
+    assert.equal(logins, 2); assert.equal(reads, failedRefresh ? 1 : 2);
+  }
+});
+
+test('parallel expired reads share refresh and a late old rejection preserves the new token', async () => {
+  let logins = 0, oldReads = 0;
+  let releaseLate!: () => void;
+  const late = new Promise<void>(resolve => { releaseLate = resolve; });
+  const wvp = new WvpClient(config, (async (input: URL, init?: RequestInit) => {
+    if (input.pathname === '/api/user/login') {
+      logins++;
+      if (logins === 2) await Promise.resolve();
+      return Response.json({ code: 0, data: { accessToken: 'token-' + logins } });
+    }
+    if (new Headers(init?.headers).get('access-token') === 'token-1') {
+      if (++oldReads === 3) await late;
+      return new Response(null, { status: 401 });
+    }
+    return Response.json({ code: 0, data: { list: [] } });
+  }) as typeof fetch);
+  const requests = Array.from({ length: 3 }, () => wvp.channels('34020000001320000003'));
+  await Promise.all(requests.slice(0, 2));
+  releaseLate(); await requests[2];
+  await wvp.channels('34020000001320000003');
+  assert.equal(oldReads, 3); assert.equal(logins, 2);
+});
+
+test('authentication recovery never replays stream start, capture, plan writes or deletion', async () => {
+  const operations = [
+    (wvp: WvpClient) => wvp.play('34020000001320000003', '34020000001320000004'),
+    (wvp: WvpClient) => wvp.snapshot('34020000001320000003', '34020000001320000004'),
+    (wvp: WvpClient) => wvp.linkRecording(6, 7),
+    (wvp: WvpClient) => wvp.deleteCloudRecording(1),
+  ];
+  for (const operation of operations) {
+    let commands = 0, logins = 0;
+    const wvp = new WvpClient(config, (async (input: URL) => {
+      if (input.pathname === '/api/user/login') { logins++; return Response.json({ code: 0, data: { accessToken: 'synthetic' } }); }
+      commands++; return new Response(null, { status: 401 });
+    }) as typeof fetch);
+    await assert.rejects(operation(wvp), /camera_service_auth_failed/);
+    assert.equal(commands, 1); assert.equal(logins, 1);
+  }
+});
+
+test('transport failures, forbidden and server errors never cause authentication replay', async () => {
+  for (const status of [0, 403, 500]) {
+    let reads = 0, logins = 0;
+    const wvp = new WvpClient(config, (async (input: URL) => {
+      if (input.pathname === '/api/user/login') { logins++; return Response.json({ code: 0, data: { accessToken: 'synthetic' } }); }
+      reads++; if (!status) throw Error('unknown outcome');
+      return new Response(null, { status });
+    }) as typeof fetch);
+    await assert.rejects(wvp.channels('34020000001320000003'), /camera_service_unavailable/);
+    assert.equal(reads, 1); assert.equal(logins, 1);
+  }
+});
+
 test('recording plans use minute offsets and require explicit plan membership lookup',async()=>{
   const name='SFP-00000000-0000-4000-8000-000000000001',items:Record<string,unknown>[]=[];let added=false;
   const wvp=new WvpClient(config,(async(input:URL,init?:RequestInit)=>{
