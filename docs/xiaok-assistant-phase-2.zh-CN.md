@@ -65,6 +65,8 @@
 
 当前原话覆盖机制限定工程Implemented，正常回答仍Limited。完整当前原句（保留更正/条件，最多6组无损合并）复用SourceQuestionCoverage/原分组synthesis schema、原query/final调用/catalog，服务端严格投影后沿原synthesis守卫。89/89（1884绑定drift[]）、lint及types82继承/本次0过，保存1931离线拒绝且原来源不改。固定report-coverage-configured01在业主1932通过、1933失败后停止：首稿漏Q2，原唯一修复补齐结构却新增无引用日期，被原安全守卫拒绝，未交付答案；未分房间的原记录也不能推出客厅开关/插座具体结论。完整业主/员工/原生未验收，员工/原生未执行，cleanup true/drift[]。新增6次qwen3.7-flash输入40020/输出770，另有查询Embedding输入57，实际金额unavailable。两个最终格式策略已失败于同一业务期望，停止第三次同类补丁/采样，原读取域2/正文2/首稿/费用保留。保存1933已证明首稿与读工具并存、并非native Schema；仅修复是native/schema-valid。下一步只用原trace判别既有native-final收尾/分组数值约束与来源语义校验，在原预算内取得新机制证据后才决定准入；诊断本身不授权新模型/fallback、额外规划/审阅调用、摄取、UI/设计或生产。证据tmp/v1-02-live-followups/verification.json#reportCoverageMechanism及report-coverage-discriminator.json。
 
+下一项report-native-final-v1尚未实施。report-native-reserved-discriminator.json在不改生产源、无模型/DB写/配置写的前提下，证明既有平铺数值-引用约束递归到各Q可拒绝1933修复稿；既有runtime的3次primary+1次reserved repair保留原4次上限。实际structuredFinal/knowledgeExplanation/imageContext均null、imageInput=true、1933预占72000；不能全局翻开关、丢图、扩大预占或迁移旧run。拟仅为新报告run持久绑定独立native收尾/3+1与分组数值投影，复用原provider/schema/租约/checkpoint/引用/权限，先核准入和恢复边界再实现；不新建Agent/知识/审阅调用，不以协议注入测试冒充自然房间/排期回答通过。保存原格式策略失败2，取得真实机制及确定性兼容证据后才决定原固定2/2/2模型/原生范围，仍首失败即停。
+
 机制参考复用[LangChain结构化输出](https://docs.langchain.com/oss/javascript/langchain/structured-output)、[工具调用消息配对](https://docs.langchain.com/oss/javascript/langchain/messages)、[上游ToolNode测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)及[原始响应问题11395](https://github.com/langchain-ai/langchainjs/issues/11395)。应用层推论：生成Schema不能替代服务端权限及最终语义校验；保留现有框架/传输/原稿用量，不把上游问题归因为本项目缺陷，不新增提供方特例或Agent。
 
 
