@@ -20,13 +20,13 @@ const args = process.argv.includes('--gateway') ? ['--import','tsx','scripts/con
 if(process.argv.includes('--retention-check'))args.splice(0,args.length,'--import','tsx','scripts/construction-camera-retention-live.ts');
 if(process.argv.includes('--recovery-check'))args.splice(0,args.length,'--import','tsx','scripts/construction-camera-recovery-live.ts');
 if(process.argv.includes('--storage-check')){args.splice(0,args.length,'--import','tsx','scripts/construction-camera-storage-live.ts');if(process.argv.includes('--ui-hold'))args.push('--ui-hold');}
-if(process.argv.includes('--soak-check')){args.splice(0,args.length,'--import','tsx','scripts/construction-camera-soak.ts');if(process.argv.includes('--smoke'))args.push('--smoke');}
+if(process.argv.includes('--soak-check')){args.splice(0,args.length,'--import','tsx','scripts/construction-camera-soak.ts');for(const flag of ['--smoke','--preflight'])if(process.argv.includes(flag))args.push(flag);}
 if(process.argv.includes('--soak-control')){args.splice(0,args.length,'--import','tsx','scripts/construction-camera-soak-control.ts');for(const flag of ['--request-stop','--cleanup-orphan'])if(process.argv.includes(flag))args.push(flag);}
 if(building)args.splice(0,args.length,'node_modules/next/dist/bin/next','build','--webpack');
 if(process.argv.includes('--playback-only')&&process.argv.includes('--recording-check'))args.push('--playback-only');
 if(process.argv.includes('--background')){
- if(!process.argv.includes('--soak-check')||process.argv.includes('--smoke'))throw Error('Only the full bounded soak supports background mode');
- const out=path.join(root,'../tmp/cloud-camera'),log=path.join(out,'soak-process-'+new Date().toISOString().replace(/[:.]/g,'-')+'.log');fs.mkdirSync(out,{recursive:true});const fd=fs.openSync(log,'a');
+ if(!process.argv.includes('--soak-check')||process.argv.includes('--smoke')||process.argv.includes('--preflight'))throw Error('Only the full bounded soak supports background mode');
+ const out=process.env.CAMERA_TEST_OUTPUT?path.resolve(process.env.CAMERA_TEST_OUTPUT):path.join(root,'../tmp/cloud-camera'),log=path.join(out,'soak-process-'+new Date().toISOString().replace(/[:.]/g,'-')+'.log');fs.mkdirSync(out,{recursive:true});const fd=fs.openSync(log,'a');
  const background=spawn(process.execPath,args,{cwd:root,env,windowsHide:true,detached:true,stdio:['ignore',fd,fd]});background.unref();fs.closeSync(fd);console.log(JSON.stringify({pid:background.pid,log}));process.exit(0);
 }
 const child = spawn(process.execPath,args,{cwd:root,env,windowsHide:true,stdio:building?['ignore','pipe','pipe']:'inherit'});
