@@ -178,3 +178,28 @@ test('private MP4 stop preserves the live stream and never accepts an unknown st
   const wvp=new WvpClient({...config,mediaSecret:'fixture'},(async(input:URL)=>{const u=new URL(input);assert.equal(u.pathname,'/index/api/stopRecord');assert.equal(u.searchParams.get('type'),'1');assert.equal(u.searchParams.get('stream'),'owned');assert.equal(u.searchParams.has('force'),false);return Response.json(result);}) as typeof fetch);
   await wvp.stopRecording({app:'rtp',stream:'owned'});result={code:0};await assert.rejects(wvp.stopRecording({app:'rtp',stream:'owned'}),/invalid_response/);
 });
+
+test('SD queries and starts retain unknown authentication outcomes without replay',async()=>{
+  const d='34020000001320000005',c='34020000001320000006',from=new Date('2026-11-03T00:00:00+08:00'),to=new Date(from.getTime()+30000);
+  for(const operation of ['query','start','stop']){
+    let requests=0;
+    const wvp=new WvpClient(config,(async(input:URL)=>{
+      if(input.pathname==='/api/user/login')return Response.json({code:0,data:{accessToken:'fixture'}});
+      requests++;return new Response(null,{status:401});
+    }) as typeof fetch);
+    await assert.rejects(operation==='query'?wvp.sdRecordings(d,c,from,to):operation==='start'?wvp.startSdPlayback(d,c,from,to):wvp.stopSdPlayback(d,c,'owned'),/auth_failed/);
+    assert.equal(requests,1);
+  }
+});
+
+test('SD media ownership requires the pinned deterministic time stream and a complete channel index',async()=>{
+  const d='34020000001320000005',c='34020000001320000006',from=new Date('2026-11-03T00:00:00+08:00'),to=new Date(from.getTime()+30000);
+  let wrong=false;
+  const wvp=new WvpClient(config,(async(input:URL)=>{
+    if(input.pathname==='/api/user/login')return Response.json({code:0,data:{accessToken:'fixture'}});
+    if(input.pathname.startsWith('/api/gb_record/'))return Response.json({code:0,data:{deviceId:d,channelId:wrong?d:c,sumNum:1,recordList:[{deviceId:d,startTime:'2026-11-03 00:00:00',endTime:'2026-11-03 00:00:30'}]}});
+    return Response.json({code:0,data:{app:'rtp',stream:wrong?'foreign':d+'_'+c+'_20261103000000_20261103000030'}});
+  }) as typeof fetch);
+  assert.equal((await wvp.sdRecordings(d,c,from,to)).length,1);assert.match((await wvp.startSdPlayback(d,c,from,to)).stream,/_20261103000000_20261103000030$/);
+  wrong=true;await assert.rejects(wvp.sdRecordings(d,c,from,to),/invalid_response/);await assert.rejects(wvp.startSdPlayback(d,c,from,to),/invalid_stream/);
+});

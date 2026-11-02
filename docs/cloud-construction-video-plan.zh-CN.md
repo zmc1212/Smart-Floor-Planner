@@ -48,20 +48,22 @@
 
 English mirror: [cloud-construction-video-plan.md](./cloud-construction-video-plan.md)
 
-更新：2026-11-03。原74小时失败及已停录证据保留；有界401恢复与新设备SD查询/真实解码已通过限定检查。整体仍Limited：SD尚未接入产品，新74小时/公网4G/微信/生产均未通过。唯一当前调度、检查点和下一动作见第1节。
+更新：2026-11-03。原74小时失败及已停录证据保留；有界401恢复与新设备SD查询/真实解码已通过限定检查。整体仍Limited：SD软件及真实服务/H5/Admin/Stable入口已接入验证，最终审阅/本地提交未完成；新74小时/公网4G/微信真机/生产均未通过。唯一当前调度、检查点和下一动作见第1节。
 
 ## 1. 当前交付记录
 
 | 项目 | 内容 |
 | --- | --- |
-| 当前ID | CV-04有界鉴权恢复与新设备SD能力验证完成；整体Limited，继续CV-02双模式软件集成。原74小时失败、SD原设备失败与旧固定测试库失败完整保留 |
-| 用户结果 | 负责人在原工地视频管理录像/保留天数，核对容量、策略/存储历史、每日封存覆盖及每段清理状态；员工继续H5直播/私有回放及重进 |
-| 技术方向/基础 | Mini web-view + H5；mpegts.js1.8.2/FLV、hls.js1.6.13/MSE/原生HLS，复用WVP/ZLM、施工项目/成员/租户权限，不依赖live-player |
-| 实际状态 | F盘批次2026-10-23T07-33-15-912Z于10月23日21:27:40运行5.8866小时/350观测后因camera_service_auth_failed失败。控制器564360已退出，自清理将自有策略39关闭为40，enabled=false/state=stopped、区间33。22:05独立ZLM核验actualRecording=false；6段封口索引、前5次小时私有206/匿名401。46冻结文件及3镜像/挂载不变，F盘容量正常；24/72小时/自然到期未通过 |
-| 完成检查 | 2026-11-03：14项适配器检查、49入口类型/0错误、定向ESLint0；配置中真实WVP的显式合成401注入→重新登录→只读恢复通过，2次登录/1次注入/无设备写入。42项适配/存储/真实服务/权限回归在新建隔离库全部通过，339项依赖无漂移，完成后只删除本控制器新建库。旧固定unit库两批失败/超时保留，不合并为全通过。新设备SD两批非空查询/实际1080p解码/时间推进/本会话停止通过，新近批另确认媒体消失；无格式化/重启/录制计划变更。证据tmp/cloud-camera-continue-20261103/{adapter-02,auth-live-01,regression-03}.json及lint-02.log、types-02.log；SD证据见§2.1。未变Mini/H5视觉与云录历史证据仅复用原范围，未重跑74小时或生产 |
-| 失败/未知/资源 | 原云端长测1批失败保留，401修复后尚无新长测；原设备SD历次拒绝/无卡不重写。新设备首次整日查询超时未知，旧探测文件probe-20261102T155645Z.json的失败查询不能按其中默认0条解释；脚本已改失败为null。固定unit库regression-01为45秒控制器超时且有清理断言失败，02为42项19过/23失败（固定通道旧夹具冲突），03改每批新库后42/42、339绑定稳定；不合并旧失败、不继续补第三个夹具变体。adapter-01是误用Bun、auth临时驱动首次是TLA/CJS转换错误，均在有效服务验收前失败，后续独立通过证据保留。本轮所有测试进程/回放已退出，无本轮长测/原生控制器/租约锁；WVP/ZLM/探针/共享3006/SSH等依赖保留。旧cloud_camera_eval仅95条迁移且缺construction_service_orders，不可直接把它当当前软件集成库；现有fixed unit库保留故障数据、未运行真实网关。后继优先微云1454的标记测试项目；如需隔离库迁移，先按远端边界备份/核对。所有模型/生图调用0，首次超时查询结果未知，无新增付费或生产授权。 |
-| 未核验/未实现 | 真实24/72小时/自然到期仍未通过；401恢复已修复但未用新批次长期验证。SD设备能力已过，产品SD源索引/绑定时间边界/租约回放/持久停止、模式配置及小程序/H5接入仍未实现。多路、企业默认、客户授权/抓拍保留、实机PTZ/断电断网/服务重启、HTTPS/微信/公网4G/生产等保持原未验范围 |
-| 下一ID | CV-02双模式软件集成：沿既有批准H5直播/回放/日期/片段与Admin合同，先定义设备SD索引的绑定时间/时差、过期、媒体权限和持久停止所有权，再实现有线云录像/4G本地SD配置及实际用户入口；完成相关服务/原生检查后再冻结源恢复新74小时批次，避免开发中漂移。新设备固定0383000200efd2aea3ff/192.168.10.100/GB0005/视频0006；用户允许测试，不继承旧设备格式化许可。工作区G:/workspace/向总/Smart-Floor-Planner，分支codex/xiaok-public-site-lifecycle，起点3901fcfe9733cfb75673a1c1f0d2279b161c5a58。相关原脏文件已保存tmp/cloud-camera-continue-20261103/baseline；其他改动保留。原automation-4暂停；当前无新长测/回放/设备写入运行，无模型/生图/付费调用，无生产/公网4G授权 |
+| 当前ID | CV-02双模式软件限定验收与最终审阅已完成，待摄像头本地分项提交；整体Limited，完整build外域阻断，随后CV-04新冻结源长测 |
+| 用户结果/入口 | 微云1454标记工地12、摄像头8/绑定9；负责人在原后台“录制设置”保存有线云录或4G本地SD，员工沿原Mini摄像头壳进入H5日期/片段回放。复用批准Ant/H5源、WVP/ZLM及租户/项目权限，无新视觉方案/插画/切片 |
+| 实际状态 | 0111策略模式、连续校准窗口、短时SD索引和持久共享回放/STOP已接入。SD不改设备录制、不持续云上传，设备源只认本绑定/启用后的可信窗口；已退休绑定不读卡。退出/撤权/过期先持久失效，再STOP并确认流消失。当前绑定9已由真实Admin从SD切到cloud/off/3天再恢复SD，云录仍关闭 |
+| 已执行检查 | regression-04：52/52、349绑定无漂移，专用新建通过库已由控制器删除；原失败保留。service-live.json：真实Mini保存/重进、H5源查询、私有网关1920×1080/50帧/5.015秒推进、匿名401、退出后旧代次401及所属媒体消失，成员无设置权限，共5项、355相关绑定无漂移。H5 390×844实际出画/时间推进/无横向溢出、空日期禁播、重进保留日期和模式且不自动播放、日期恢复通过；修复日期切换已停画面仍显示“正在回放”，沿既有批准状态文案复验。Admin1280×720两种弹窗、真实保存反馈/读回/恢复SD通过。证据tmp/cloud-camera-dual-20261103/的service-live.json、h5-ui.json/admin-ui.json及PNG |
+| 工程检查与漂移 | 最终types-successor-01同一52入口0诊断、lint-successor-01含最终native脚本通过，各353绑定无漂移。复用全量lint 0错误/28警告/1740稳定绑定。完整build的webpack103秒成功后仍被未改xiaok-manual-fixture.ts:43的state.keys unknown阻断；Next自动临时类型include为原构建唯一漂移，保留工作区、不纳本次功能提交。原types-final/lint-final的Agent依赖漂移继续无效。未改小K、未缩减检查范围；Tailwind扫描src/ESLint排除.next*产物不改主题。 |
+| 原生剩余/失败次数 | native.json为17:58:02Z–17:59:27Z的新批次，5/5、相关绑定无漂移：同一Stable2.02.2608080/基础库3.17.2/390×844/新编译，真实项目控件→WebView入口、重进签发新入口、拒绝清空src及原按钮重试恢复真实服务。403为明确的客户端故障注入，真实权限拒绝另由service/regression覆盖。已查看native-project-entry.png/native-camera.png/native-camera-error.png（模拟器编码348×752）；SD实际播放沿独立H5/私有解码证据，不将此入口批次当真机播放。先前分包reLaunch超时保留native-subpackage-relaunch-01.json，transport=[]；采用维护客户端的分包redirectTo后通过，正常入口失败1次已解决，不再盲跑。旧9431及通用Windows版本号前检失败分别保留。finally恢复wx/token/bootstrap并释放锁，handoff-cleanup.json再次只读确认首页/qa=[] |
+| 环境/迁移/成本 | 专用cloud_camera_eval在既有55432→获准远端15433隔离边界内，经1,512,667字节受限custom备份/PGDMP/2195行目录校验后95→112迁移，3张新表强制RLS和0111精确hash通过。backup SHA256=58f01fcda457e44d9c789ad5d8d37fab03b4889b1d6cc67fd2615f779dc6446b，见migration.json；未迁开发主库/生产。微云1454在该隔离库为标记测试上下文，新增合成账号/项目，不动真实客户。模型/生图/付费调用0，无新格式化/重启/手动录制/设备计划修改 |
+| 顺序接续检查点 | 当前工作区G:/workspace/向总/Smart-Floor-Planner，分支codex/xiaok-public-site-lifecycle，HEAD 0d83d1e6911a29a1b81d6100a52136b7486e1a5c；云视频基线475168874dc80b78d0e7d2a4e7dcb47df450810d之后两次提交仅Agent序号/文档。摄像头增量未提交，全部既有脏改动保留，禁止干净worktree。自有文件与全脏清单/测试源影响在本批handoff-owned-files.json/handoff-dirty-files.json/impact-check.json。journal既有0102不是本次，0111才是；.env/eslint/tsconfig及共享文档必须按所有权部分暂存。此为接近上下文容量后的串行检查点，后继按根规则接管同一计划；旧聊天只核实交接，不再开发 |
+| 资源/权限边界 | handoff-cleanup.json确认绑定9仍SD/enabled=false/stopped，3条自有回放stopped、精确上游媒体均消失，隔离库pendingSd=0/activeCloud=0。验证PID/启动时间/命令后停止本批Next181032与网关230652，3017/3018无监听；见handoff-resources.json。H5/Admin页关闭/视口恢复，两个无媒体临时错误页受URL策略限制未主动关闭，随旧聊天结束自动清理。共享WVP/ZLM/容量探针、3006、SSH、原卷保留，无运行中的本批构建/回归/原生任务或自有锁。旧74小时失败、旧机SD失败及首次整日查询超时未知保留；automation-4仍暂停，不新建/恢复自动化。新机0383000200efd2aea3ff/192.168.10.100/GB0005/视频0006，不继承格式化权限。自动审批blocked by policy拒绝删除.next-camera-dual缓存，目录保留且不绕过 |
+| 精确下一步/下一ID | 仅暂存摄像头自有增量并本地提交：journal只取0111，.env仅SD配置、ESLint仅通用.next*排除；tsconfig自动临时include不提交；共享文档只取摄像头段/行，保留其他任务改动和旧服务订单证据。代码/双语合同已审阅，稳定52入口类型及定向lint已补齐，复用有效回归/真实SD/H5/Admin/原生证据。提交后串行CV-04冻结新源并作新长测前检，不重开旧失败批次、不恢复/创建自动化。公网4G/微信真机/生产仍无授权。 |
 
 设计/实施源：2026-10-22用户批准单路H5/云工地配色、摄像头切换、抓拍历史及云台，去掉源地址/诊断。当时排除录像；2026-10-23进一步明确批准在播放器下加入直播/回放切换、日期、真实片段、返回直播，空/失败沿用既有反馈。当前实现保留此层级和配色，无截图切片/新增插画；Admin沿双语Ant Design/refactor合同。不能将空查询或接口完成记为SD支持。
 
@@ -98,6 +100,8 @@ English mirror: [cloud-construction-video-plan.md](./cloud-construction-video-pl
 8. `--soak-check --smoke`真实3分钟；`--soak-check --background`隐藏启动74小时。`--soak-control`核验PID，`--request-stop`写本次标记，`--cleanup-orphan`拒绝存活控制器/其他fixture/已变启用策略，确认MP4实际停止。46源码/配置及3镜像/挂载绑定，每分钟观测（盲区≤120秒）、Worker新鲜/实际在录、封口缺口≤2秒、每小时私有206/匿名401、24/72小时覆盖及自然三天文件/索引真实消失；不加速时钟。本机/Docker/转发/服务须运行，automation-4每小时跟进本对话，无变化安静。
 9. F盘：所属写入关闭/确认停止后先复制/hash校验，沿原wvp-stack项目/环境合并既有WVP compose及admin/docker-compose.camera-media.local.yml，设CAMERA_RECORDING_HOST_PATH=F:/SmartFloorPlannerCamera/media/record，仅up -d --no-deps zlm，不重启摄像头/其他服务。探针自动合并docker-compose.camera-storage.host.yml。旧media-data卷作固定回退副本；回退须停录/完整校验新增媒体复制，不能直接撤覆盖挂载。先前0.913Mbps样本估算74小时≈30.4GB/28.3GiB（另留余量），三天到期从F盘删整段；Docker稀疏VHD内可用不等于Windows物理余量。
 
+10. SD模式配置服务端CAMERA_SD_PYTHON、CAMERA_SD_VENDOR_ADAPTER（已验证厂家core.py目录）、CAMERA_SD_DEVICES_FILE（受限JSON，键为deviceId/channelId，值含ip/port/username/password/serial）。只读适配器核对物理序列号后读取frmIotRecordCfg/frmDeviceTimeCtrl，无设备写入，12秒有界。没有可达可信时间源时明确拒绝SD；本机局域网适配不等于已具备公网4G时钟通道。固定上游[回放流命名](https://github.com/648540858/wvp-GB28181-pro/blob/3fcd3ae80c30c95aeb82ef830af439a835257067/src/main/java/com/genersoft/iot/vmp/service/impl/RtpServerServiceImpl.java)、[DeviceStatus只返回Online](https://github.com/648540858/wvp-GB28181-pro/blob/3fcd3ae80c30c95aeb82ef830af439a835257067/src/main/java/com/genersoft/iot/vmp/gb28181/transmit/event/request/impl/message/response/cmd/DeviceStatusResponseMessageHandler.java)已按源码核对。
+
 ### 1.3 当前证据、原失败与限制
 
 - verification.json（15:12:51–15:15:33）：219绑定无漂移，37服务/适配、19Mini、21类型入口/0错误、定向lint/H5语法及当时2探针测试通过。后续源码仅server.py/宿主compose/测试明确Windows inode证据，3项探针对应复验通过；JS/租户/归属行为未变。native.json（15:22:59–15:23:43）：227绑定无漂移，Stable2.02.2608080/SDK0.13/base3.17.2原生5项通过；新就绪/拒绝截图已审看，逻辑390×844/PNG348×752，只证入口/反馈，不计微信真机H5解码。孤儿清理另验真实MP4停止，保留外部新意图。
@@ -132,6 +136,16 @@ English mirror: [cloud-construction-video-plan.md](./cloud-construction-video-pl
 | 容量/保护/恢复 |80/90%预警，95%/低字节/inode或无指标保护所属MP4；H5确认暂停，直播/历史仍可用 | 持久意图/转换审计、确认实际停止；回差恢复、明确关闭不续录、外部计划不动 |
 | 每日覆盖 | 沿原Ant日期/表格/加载/Empty/错误重试；封存记录超过1000条明确部分统计 | 仅负责人有效绑定，只读有效索引，不推断日期两端停机或物理可播；关闭中止、重进今天、刷新复位分页 |
 | 时间/索引不可核对 | 原失败/重试反馈，保留期望策略及补查快照/页码 | 不认领未核实区间、不跳过失败页、不把历史迁到当前绑定 |
+
+### 1.9 CV-02双模式集成合同（软件限定Implemented，整体Limited）
+
+已串行接替`475168874dc80b78d0e7d2a4e7dcb47df450810d`，同工作区既有脏改动保留。用户从原工地录像设置选择有线云录像/4G本地SD，沿批准H5摄像头、日期、片段及返回直播观看。SD时间归属、撤权及持久停止已完成限定软件验收与审阅，证据/限制见第1节；不重验已过硬件能力。
+
+- 模式保存沿负责人录像策略/版本/幂等。SD不修改设备录制、不持续云上传；所属云录停止确认后才开放SD，外部计划及历史云录保留。SD容量/覆盖不承诺三天物理删除。
+- 固定WVP状态只返回Online，不能用作设备时钟。复用已验证厂家只读认证适配器和私有物理序列号映射读取时间/卡状态；不可达时拒绝SD。只认领绑定及SD启用后连续校准窗口；采样间隔上限120秒、绝对时差上限60秒，断档/跳时另开窗口、不追认前段。新绑定不读旧工地SD，旧绑定不再远程读卡。
+- 所选摄像头日期每次最多查询一小时，有更早窗口时复用查询按钮继续；实际返回区间裁到已校准归属并分为至多五分钟片段。短时索引非云备份，开流前重验权限/设备索引；覆写/离线沿原失败刷新路径，超时保持未知、不写0条。
+- 固定上游按设备/通道/起止时间共享回放流。开流前持久记录精确所有权/STOP义务，业务观众共享租约，最后有效观众退出/失权才停止该流；未知开流不重发，超过上游开流等待窗口后持久补STOP并确认媒体消失。其他流、直播、云录及既有代次/传输中鉴权保留。
+- 完成检查为有界服务/适配/RLS/迁移隔离，微云1454标记项目真实保存/重进/SD查询解码/退出撤权，原云录兼容、批准H5/Admin渲染及Stable单控制器入口。软件源稳定前不开新长测、不恢复/创建自动化；原74小时失败、公网4G/微信真机/生产未验保留。
 
 ## 2. 事实基线与既有计划关系
 
@@ -170,7 +184,7 @@ English mirror: [cloud-construction-video-plan.md](./cloud-construction-video-pl
 
 复测脚本 `admin/scripts/construction-camera-sd-probe.py` 复用本地 WVP onboarding 认证，强制原设备序列号校验后才允许重启/格式化；`--camera-ip` 可指定已从实际 SIP 连接定位的 DHCP 地址。默认只读；`--reboot`、`--record-seconds 5..60`（finally补StopRecord）和用户明确授权后才可使用的 `--format-sd` 是显式测试动作。凭据只在忽略目录。硬件可读后再产生短录像、查询非空区间、启动回放并验证解码/时间推进，最后停止本会话；无需用户手动播放验收。移动/定位/倍速分别记录。
 
-按已满足的能力前提与原授权，计划现采用双模式目标：**有线保持云端持续录像与可配置三天保留；4G使用SD本地持续录制，仅看直播/回放时上传媒体，退出后停止本次回放/断流**。抓拍/必要片段可单独保存；SD窗口取实际设备索引与卡容量，不套用云端三天物理删除承诺；断网期间可本地录像、远程不可读。当前产品仍只有云录像入口，SD回放/模式配置/持久停止义务尚待软件集成，不把本次协议验证标为已实现产品。公网4G/微信真机仍需分别验证；云端原74小时失败和原设备所有失败继续保留。
+按已满足的能力前提与原授权，计划现采用双模式目标：**有线保持云端持续录像与可配置三天保留；4G使用SD本地持续录制，仅看直播/回放时上传媒体，退出后停止本次回放/断流**。抓拍/必要片段可单独保存；SD窗口取实际设备索引与卡容量，不套用云端三天物理删除承诺；断网期间可本地录像、远程不可读。当前SD模式/回放/持久停止已按§1.9接入并完成真实H5/Admin及Stable入口5项；最终审阅和限定检查完成、本地提交收口，全量构建有外域阻断，保持Limited，协议验证本身不计产品集成。公网4G/微信真机仍需分别验证；云端原74小时失败和原设备所有失败继续保留。
 
 ## 3. 产品范围与建议默认值
 

@@ -1,5 +1,7 @@
 # 远端开发连接记录
 
+**2026-11-03云视频隔离迁移：限定Implemented。** 仅既有55432→远端15433、sfp-remote-dev/sfp-remote-dev-vector内的cloud_camera_eval由95升级到112条迁移，未动开发主库/生产。迁移前受限ACL custom备份1,512,667字节，PGDMP/2195行目录通过，SHA256 `58f01fcda457e44d9c789ad5d8d37fab03b4889b1d6cc67fd2615f779dc6446b`；0111 SHA256 `b49c17a108c10f33058c28e030fe64a5698e1a02300f996ae6c12a1b48bb055a`及3张新SD表强制RLS通过，完整恢复演练未做。证据tmp/cloud-camera-dual-20261103/migration.json及before-0111-2026-11-02T16-51-37-040Z.dump。只新增标记微云1454合成账号/项目，不改真实客户、SSH/端点/凭据/卷；SD/H5/Admin与Stable入口5项证据、构建外域阻断及已停止的3017/3018测试资源见原视频计划§1。
+
 <!-- xiaok-embedding-forward-recovery-20261102 -->
 **原Embedding开发转发恢复（2026-11-02，限定Implemented）：** V1-02 report272/body1919仅在查询Embedding阶段unknown，文本provider调用0；鉴权GET /health证实本机127.0.0.1:18089 ECONNREFUSED且无专用监管/监听。按本记录原授权，以既有密钥属主和原admin/scripts/xiaok-embedding/tunnel.ps1恢复隐藏专用监管84052/SSH子进程518972，保持BatchMode/StrictHostKeyChecking、回环18089→原远端8089和原凭据，未改远端进程/ComfyUI/DB隧道/配置/生产。随后鉴权health200、Qwen原revision/profile/1024维一致、queued0；专用服务保持可用，不在测试清理时终止。原1919及3753未知用量保留，未重放；后续新报告查询有37 tokens观测，摄取0。证据tmp/v1-02-live-reports/embedding-health-01.json、embedding-supervisor.json、embedding-health-02.json和diagnosis-02.json。此恢复不代表正文/四端业务验收通过。
 

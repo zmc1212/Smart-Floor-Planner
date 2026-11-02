@@ -10,6 +10,9 @@ export type StageSettings = { stages: Stage[]; version: number; owner: boolean }
 export type Detail = { project: Project; owner: boolean; manage: boolean; rooms: Array<{ id: string; name: string }>; stages: Stage[]; settingsVersion: number; staff: Staff[]; assignments: Array<{ stage_key: string; admin_id: string; is_primary: boolean; display_name: string; staff_status: string }>; members: Array<{ admin_id: string; role: string; active: boolean; work_label: string; display_name: string; staff_status: string }>; audits: Array<{ action: string; created_at: string }> };
 export type Pending = { path: string; method: string; body: object; key: string };
 const messages: Record<string, string> = {
+  camera_sd_clock_unavailable:'暂时无法核对设备时间或本地连续录像，请联系管理员检查设备连接与SD卡。',
+  camera_playback_busy:'该摄像头仍在回放或核对停止状态，请停止播放并稍后重试。',
+  camera_playback_stop_unconfirmed:'回放停止结果尚待核对，系统将继续处理，请稍后重试。',
   camera_storage_low:'云录像存储空间不足，已启用录制保护；恢复安全空间后自动核对原录像设置。直播和已有录像仍可查看。',
   camera_storage_unavailable:'暂时无法核对云录像存储空间，已启用录制保护。请联系管理员检查，直播和已有录像仍可查看。',
   camera_recording_clock_unavailable:'录像时间暂无法核对，请联系管理员处理。',

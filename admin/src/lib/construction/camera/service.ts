@@ -9,6 +9,7 @@ import { object, text, version, type ConstructionActor } from '../contracts';
 import { cameraWvp, gbId, type WvpClient } from './wvp';
 import {currentStorageHealth} from './storage';
 import {guardLiveWriter} from './writer-policy';
+import {authorizeSdMedia,reconcileSdPlaybacks} from './sd';
 
 export const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 const secret = () => randomBytes(32).toString('base64url');
@@ -87,7 +88,7 @@ export class CameraService {
   async list(pid: string) {
     const result=await withTenantTransaction(this.actor.enterpriseId, async tx => {
       const access = await cameraAccess(tx, this.actor, pid);
-      const items = await rows(tx, sql`select b.id as binding_id,c.id,c.name,c.version,c.ptz_enabled,r.enabled recording_enabled,r.retention_days,r.version recording_version,r.state recording_state,r.last_error recording_error,r.last_segment_at from app.construction_camera_bindings b
+      const items = await rows(tx, sql`select b.id as binding_id,c.id,c.name,c.version,c.ptz_enabled,r.enabled recording_enabled,r.retention_days,r.version recording_version,r.state recording_state,r.last_error recording_error,r.last_segment_at,r.recording_mode,r.sd_last_error,r.sd_checked_at from app.construction_camera_bindings b
         join app.construction_cameras c on c.enterprise_id=b.enterprise_id and c.id=b.camera_id
         left join app.construction_camera_recording_policies r on r.enterprise_id=b.enterprise_id and r.binding_id=b.id
         where b.enterprise_id=${this.actor.enterpriseId} and b.project_id=${pid} and b.ended_at is null and c.enabled order by c.id`);
@@ -122,6 +123,7 @@ export class CameraService {
       if (b) {
         const recording=await one(tx,sql`select binding_id from app.construction_camera_recording_policies where enterprise_id=${eid} and binding_id=${String(b.id)} and (enabled or state<>'stopped')`);
         if(recording)fail('camera_recording_busy',409);
+        if(await one(tx,sql`select id from app.construction_camera_sd_playbacks where enterprise_id=${eid} and binding_id=${String(b.id)} and state<>'stopped' limit 1`))fail('camera_playback_busy',409);
         const control = await one(tx, sql`select camera_id from app.construction_camera_controls where enterprise_id=${eid} and camera_id=${cameraId} and stop_required`);
         if (control) fail('camera_control_busy', 409);
         await tx.execute(sql`update app.construction_camera_bindings set ended_at=now() where enterprise_id=${eid} and id=${String(b.id)}`);
@@ -179,7 +181,7 @@ export async function cameraSession(tx: PostgresTransaction, token: string, csrf
     and closed_at is null and expires_at>now() and absolute_expires_at>now() for update`);
   if (!s || (csrf !== undefined && digest(csrf) !== s.csrf_hash)) fail('camera_session_expired', 401);
   const access = await cameraAccess(tx, s.actor as ConstructionActor, String(s.project_id));
-  return { ...s, recording_id:s.recording_id, binding_id: s.binding_id, stream_id: s.stream_id, stream_app: s.stream_app,
+  return { ...s, recording_id:s.recording_id, sd_playback_id:s.sd_playback_id, binding_id: s.binding_id, stream_id: s.stream_id, stream_app: s.stream_app,
     play_version: s.play_version, view_expires_at: s.view_expires_at,
     access, actor: s.actor as ConstructionActor, eid, hash, pid: String(s.project_id) };
 }
@@ -188,21 +190,23 @@ export async function sessionState(token: string) {
   const s = await withTenantTransaction(eid, tx => cameraSession(tx, token));
   return new CameraService(s.actor).list(s.pid);
 }
-export async function sessionHeartbeat(token: string, csrf: string, stop = false) {
+export async function sessionHeartbeat(token: string, csrf: string, stop = false, upstream?:WvpClient) {
   const { eid, hash } = parseCameraToken(token);
-  return withTenantTransaction(eid, async tx => {
-    await cameraSession(tx, token, csrf);
+  const result=await withTenantTransaction(eid, async tx => {
+    const s=await cameraSession(tx, token, csrf);
     await tx.execute(sql`update app.construction_camera_sessions set expires_at=least(absolute_expires_at,now()+interval '60 seconds'),
       view_expires_at=${stop ? sql`null` : sql`case when stream_id is not null then now()+interval '60 seconds' else null end`},
       play_version=play_version+${stop ? 1 : 0},stream_id=${stop ? sql`null` : sql`stream_id`} where token_hash=${hash}`);
-    return { stopped: stop };
+    return { stopped: stop,playbackId:s.sd_playback_id?String(s.sd_playback_id):null };
   });
+  if(stop&&result.playbackId)await reconcileSdPlaybacks(upstream,result.playbackId);
+  return {stopped:stop};
 }
 export async function startCameraView(token: string, csrf: string, bindingId: string, upstream = cameraWvp()) {
   const { eid, hash } = parseCameraToken(token);
   const intent = await withTenantTransaction(eid, async tx => {
     const s = await cameraSession(tx, token, csrf), c = await binding(tx, eid, s.pid, bindingId);
-    const n = await one(tx, sql`update app.construction_camera_sessions set binding_id=${bindingId},recording_id=null,play_version=play_version+1,stream_id=null,view_expires_at=null where token_hash=${hash} returning play_version`);
+    const n = await one(tx, sql`update app.construction_camera_sessions set binding_id=${bindingId},recording_id=null,sd_playback_id=null,play_version=play_version+1,stream_id=null,view_expires_at=null where token_hash=${hash} returning play_version`);
     return { c, generation: Number(n!.play_version) };
   });
   const stream = await upstream.play(String(intent.c.device_id), String(intent.c.channel_id));
@@ -219,6 +223,7 @@ export async function authorizeCameraMedia(token: string, generation: number) {
   return withTenantTransaction(eid, async tx => {
     const s = await cameraSession(tx, token);
     if (s.recording_id || !s.binding_id || !s.stream_id || Number(s.play_version) !== generation || new Date(String(s.view_expires_at)).getTime() <= Date.now()) fail('camera_view_expired', 401);
+    if(s.sd_playback_id)return authorizeSdMedia(tx,s);
     await binding(tx, eid, s.pid, String(s.binding_id));
     return { app: String(s.stream_app), stream: String(s.stream_id) };
   });

@@ -10,6 +10,10 @@ const authenticationRecoveryReads = new Set([
 ]);
 export type CameraChannel = { deviceId: string; channelId: string; name: string; online: boolean; ptzType: number };
 export type CameraStream = { app: string; stream: string };
+export function sdPlaybackStream(device: string, channel: string, from: Date, to: Date) {
+  const compact = (d: Date) => new Date(d.getTime()+28800000).toISOString().slice(0,19).replace(/[-:T]/g,'');
+  return { app: 'rtp', stream: `${gbId(device)}_${gbId(channel)}_${compact(from)}_${compact(to)}` };
+}
 export type PtzCommand = 'left' | 'right' | 'up' | 'down' | 'stop';
 export const gbId = (value: unknown) => {
   if (typeof value !== 'string' || !/^\d{20}$/.test(value)) fail('camera_invalid_channel', 422);
@@ -138,6 +142,36 @@ export class WvpClient {
     const r=await this.raw('/api/cloud/record/list',{app:mediaPart(stream.app),stream:mediaPart(stream.stream),page:String(page),count:'100',startTime:wvpTime(from),endTime:wvpTime(to),ascOrder:'true'}) as Json;
     if(!Array.isArray(r?.list)||r.list.length>100)fail('camera_invalid_response',502);
     return {items:r.list,total:Number(r.total||0)};
+  }
+  async sdRecordings(device: string, channel: string, from: Date, to: Date) {
+    const { wvpTime } = await import('./recording-contract');
+    // GB queries are observational, but not replayed: a timed-out SIP query has
+    // an unknown outcome and may still be collecting device responses.
+    const result = await this.raw(`/api/gb_record/query/${gbId(device)}/${gbId(channel)}`, { startTime: wvpTime(from), endTime: wvpTime(to) }, true, 30000) as Json;
+    if (result?.deviceId !== device || result.channelId !== channel || !Array.isArray(result.recordList) || result.recordList.length > 1000 || !Number.isSafeInteger(result.sumNum) || Number(result.sumNum) !== result.recordList.length) fail('camera_invalid_response',502);
+    return result.recordList as Json[];
+  }
+  async startSdPlayback(device: string, channel: string, from: Date, to: Date) {
+    const { wvpTime } = await import('./recording-contract');
+    const expected = sdPlaybackStream(device,channel,from,to);
+    const result = await this.raw(`/api/playback/start/${gbId(device)}/${gbId(channel)}`, { startTime: wvpTime(from), endTime: wvpTime(to) }, true, 30000) as Json;
+    if (result?.app !== expected.app || (result.stream ?? result.streamId) !== expected.stream) fail('camera_invalid_stream',502);
+    return expected;
+  }
+  async stopSdPlayback(device: string, channel: string, stream: string) {
+    await this.raw(`/api/playback/stop/${gbId(device)}/${gbId(channel)}/${mediaPart(stream)}`, {}, true, 8000);
+  }
+  async mediaExists(stream: CameraStream) {
+    if (!this.config.mediaSecret) fail('camera_recording_not_configured',503);
+    const url = new URL('/index/api/getMediaList',this.mediaOrigin);
+    url.search = new URLSearchParams({secret:this.config.mediaSecret,app:mediaPart(stream.app),stream:mediaPart(stream.stream)}).toString();
+    try {
+      const response = await this.transport(url,{redirect:'error',cache:'no-store',signal:AbortSignal.timeout(8000)});
+      if (!response.ok) fail('camera_service_unavailable',503);
+      const result = await response.json();
+      if (result.code !== 0 || (result.data !== undefined && !Array.isArray(result.data))) fail('camera_invalid_response',502);
+      return (result.data?.length ?? 0) > 0;
+    } catch { fail('camera_service_unavailable',503); }
   }
   async cloudPath(sourceId:number) {
     const r=await this.raw('/api/cloud/record/play/path',{recordId:String(sourceId)}) as Json;

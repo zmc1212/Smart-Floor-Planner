@@ -8,7 +8,7 @@
     <div class="mode-tabs" role="group" aria-label="观看内容"><button id="live-tab" aria-pressed="true">直播</button><button id="playback-tab" class="secondary" aria-pressed="false">回放</button></div>
     <div id="live-actions" class="actions"><button id="play" disabled>开始播放</button><button id="stop" class="secondary" disabled>停止播放</button><button id="capture" class="secondary" hidden disabled>抓拍</button></div>
     <div id="playback-panel" hidden>
-      <p class="hint">工地云端录像。SD 卡回放尚不可用。</p>
+      <p class="hint">按摄像头设置读取云端或本地SD录像；退出后停止本次回放。</p>
       <label for="recording-date">录像日期</label><div class="date-row"><input id="recording-date" type="date"><button id="query-recordings" class="secondary">查询</button></div>
       <label for="recording">录像片段</label><select id="recording" disabled><option>请选择日期查询</option></select>
       <p id="recording-status" class="hint" role="status" aria-live="polite">仅显示实际保存且未过期的录像；中断期间可能存在缺口。</p>

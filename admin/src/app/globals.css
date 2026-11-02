@@ -2,7 +2,8 @@
    override its global `a { color: colorLink }` reset (sidebar nav, etc.). */
 @layer theme, base, antd, components, utilities;
 
-@import "tailwindcss";
+/* Limit utility detection to application source, excluding local build outputs. */
+@import "tailwindcss" source("../");
 
 @plugin "tailwindcss-animate";
 

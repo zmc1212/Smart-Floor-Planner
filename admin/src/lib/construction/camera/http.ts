@@ -5,6 +5,7 @@ import { object } from '../contracts';
 import { CameraService, cameraCookie, cameraPublicOrigin, cameraSnapshots, captureCamera, exchangeCameraEntry, sessionHeartbeat, sessionState, startCameraView } from './service';
 import { cameraPtz } from './ptz';
 import {saveRecordingPolicy,listCameraRecordings,startRecordingView} from './recordings';
+import {startSdRecordingView} from './sd';
 
 export const cameraJson = (data: unknown) => NextResponse.json({ success: true, data }, { headers: { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' } });
 export function cameraError(error: unknown) {
@@ -61,8 +62,8 @@ export async function sessionCameraHttp(request: Request, path: string[]) {
     const b = await body(request);
     if (['heartbeat','stop'].includes(route)) { object(b, []); return cameraJson(await sessionHeartbeat(token, csrf, route === 'stop')); }
     if (route === 'live') { object(b, ['bindingId']); return cameraJson(await startCameraView(token, csrf, id(b.bindingId))); }
-    if (route === 'recordings/query') { object(b,['date']); return cameraJson(await listCameraRecordings(token,b.date,csrf)); }
-    if (route === 'playback') { object(b,['recordingId']); return cameraJson(await startRecordingView(token,csrf,id(b.recordingId))); }
+    if (route === 'recordings/query') { object(b,['date','bindingId','before']); return cameraJson(await listCameraRecordings(token,b.date,csrf,b.bindingId===undefined?undefined:id(b.bindingId),b.before)); }
+    if (route === 'playback') { object(b,['recordingId','source']); if(b.source!==undefined&&!['cloud','sd'].includes(String(b.source)))fail('camera_invalid_request',422);return cameraJson(await (b.source==='sd'?startSdRecordingView(token,csrf,id(b.recordingId)):startRecordingView(token,csrf,id(b.recordingId)))); }
     if (route === 'snapshots') { object(b, ['bindingId']); return cameraJson(await captureCamera(token, csrf, id(b.bindingId), request.headers.get('idempotency-key') || '')); }
     if (route === 'ptz') { object(b, ['bindingId', 'command', 'sequence']); return cameraJson(await cameraPtz(token, csrf, id(b.bindingId), b.command, b.sequence)); }
     fail('camera_not_found', 404);

@@ -13,6 +13,7 @@ import { cameraMediaPath, rewriteCameraPlaylist } from '../src/lib/construction/
 import { cameraWatchdog } from '../src/lib/construction/camera/ptz';
 import { cameraWvp } from '../src/lib/construction/camera/wvp';
 import {authorizeRecordingMedia,reconcileRecordings,purgeCameraRecordings} from '../src/lib/construction/camera/recordings';
+import {refreshSdWindows,reconcileSdPlaybacks} from '../src/lib/construction/camera/sd';
 
 loadEnvConfig(process.cwd(), process.env.NODE_ENV !== 'production');
 const origin = cameraPublicOrigin();
@@ -36,7 +37,19 @@ const watchdog = setInterval(async () => {
   finally { watchdogBusy = false; }
 }, 500);
 // Provider reconciliation must never delay the short PTZ STOP watchdog.
-let recorderBusy=false,lastPurge=0;
+let recorderBusy=false,lastPurge=0,sdBusy=false,sdClockBusy=false;
+const sdWatcher=setInterval(async()=>{
+  if(sdBusy)return;sdBusy=true;
+  try{await reconcileSdPlaybacks();}
+  catch{console.error('SD playback cleanup unavailable; durable ownership retained');}
+  finally{sdBusy=false;}
+},5000);
+const sdClockWatcher=setInterval(async()=>{
+  if(sdClockBusy)return;sdClockBusy=true;
+  try{await refreshSdWindows();}
+  catch{console.error('SD clock sampling unavailable; unverified intervals remain unavailable');}
+  finally{sdClockBusy=false;}
+},30000);
 const recorder=setInterval(async()=>{
   if(recorderBusy)return;recorderBusy=true;
   try{await reconcileRecordings();if(Date.now()-lastPurge>600000){await purgeCameraRecordings();lastPurge=Date.now();}}
@@ -123,5 +136,5 @@ const server = http.createServer(async (req, res) => {
   }
 });
 server.listen(Number(process.env.CAMERA_GATEWAY_PORT || 3017), process.env.CAMERA_BIND_HOST || '127.0.0.1', () => console.log('Construction camera gateway listening'));
-async function shutdown() { clearInterval(watchdog);clearInterval(recorder); server.closeAllConnections(); server.close(); await closePostgresPool(); }
+async function shutdown() { clearInterval(watchdog);clearInterval(recorder);clearInterval(sdWatcher);clearInterval(sdClockWatcher); server.closeAllConnections(); server.close(); await closePostgresPool(); }
 process.on('SIGINT', shutdown); process.on('SIGTERM', shutdown);

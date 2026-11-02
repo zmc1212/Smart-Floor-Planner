@@ -9,11 +9,14 @@ import {recordingFilePath,shanghaiDay} from './recording-contract';
 import {openRecordingPeriod,closeRecordingPeriod,reconcileRecordingIndex} from './recording-index';
 import {sampleRecordingClock} from './recording-clock';
 import {refreshStorageHealth,requireStorageReady,type StorageHealth} from './storage';
+import {listSdRecordings} from './sd';
 
 const nodeDays=()=>{const n=Number(process.env.CAMERA_NODE_RETENTION_DAYS||7);if(!Number.isSafeInteger(n)||n<1||n>30)fail('camera_recording_not_configured',503);return n;};
 const errorCode=(e:unknown)=>e instanceof AssistantError?e.code:'camera_service_unavailable';
 export async function saveRecordingPolicy(actor:ConstructionActor,pid:string,input:Row) {
-  object(input,['bindingId','enabled','retentionDays','expectedVersion']);
+  object(input,['bindingId','enabled','retentionDays','expectedVersion','recordingMode']);
+  const mode=input.recordingMode??'cloud';
+  if(!['cloud','sd'].includes(String(mode))||(mode==='sd'&&input.enabled!==false))fail('camera_invalid_request',422);
   const bid=id(input.bindingId),expected=input.expectedVersion===0?0:version(input.expectedVersion);
   if(typeof input.enabled!=='boolean'||!Number.isSafeInteger(input.retentionDays)||Number(input.retentionDays)<1||Number(input.retentionDays)>nodeDays())fail('camera_invalid_retention',422);
   return withTenantTransaction(actor.enterpriseId,async tx=>{
@@ -24,16 +27,18 @@ export async function saveRecordingPolicy(actor:ConstructionActor,pid:string,inp
     const binding=await one(tx,sql`select b.id,b.camera_id from app.construction_camera_bindings b join app.construction_cameras c on c.enterprise_id=b.enterprise_id and c.id=b.camera_id where b.enterprise_id=${actor.enterpriseId} and b.project_id=${pid} and b.id=${bid} and b.ended_at is null and c.enabled for update of b,c`);
     if(!binding)fail('camera_binding_unavailable',404);
     const old=await one(tx,sql`select * from app.construction_camera_recording_policies where enterprise_id=${actor.enterpriseId} and binding_id=${bid} for update`);
-    if(old&&old.enabled===input.enabled&&Number(old.retention_days)===input.retentionDays)return {version:Number(old.version),state:old.state};
+    if(old&&old.enabled===input.enabled&&Number(old.retention_days)===input.retentionDays&&old.recording_mode===mode)return {version:Number(old.version),state:old.state};
     if((old?Number(old.version):0)!==expected)fail('version_conflict',409);
+    if(old?.recording_mode==='sd'&&mode!=='sd'&&await one(tx,sql`select id from app.construction_camera_sd_playbacks where enterprise_id=${actor.enterpriseId} and binding_id=${bid} and state<>'stopped' limit 1`))fail('camera_playback_busy',409);
     // Always allow disabling/reducing retention, even while storage is blocked.
     if(input.enabled&&(!old?.enabled||Number(input.retentionDays)>Number(old.retention_days)))await requireStorageReady();
-    const saved=await one(tx,sql`insert into app.construction_camera_recording_policies(enterprise_id,project_id,binding_id,camera_id,enabled,retention_days,started_at)
-      values(${actor.enterpriseId},${pid},${bid},${String(binding.camera_id)},${input.enabled},${Number(input.retentionDays)},${input.enabled?sql`now()`:sql`null`})
+    const saved=await one(tx,sql`insert into app.construction_camera_recording_policies(enterprise_id,project_id,binding_id,camera_id,enabled,retention_days,started_at,recording_mode,sd_activated_at)
+      values(${actor.enterpriseId},${pid},${bid},${String(binding.camera_id)},${input.enabled},${Number(input.retentionDays)},${input.enabled?sql`now()`:sql`null`},${String(mode)},${mode==='sd'?sql`now()`:sql`null`})
       on conflict(binding_id) do update set enabled=excluded.enabled,retention_days=excluded.retention_days,version=construction_camera_recording_policies.version+1,state='pending',last_error=null,
+      recording_mode=excluded.recording_mode,sd_activated_at=case when excluded.recording_mode='sd' and construction_camera_recording_policies.recording_mode<>'sd' then now() else construction_camera_recording_policies.sd_activated_at end,
       started_at=case when excluded.enabled and not construction_camera_recording_policies.enabled then now() else construction_camera_recording_policies.started_at end,
       stopped_at=case when excluded.enabled then null else construction_camera_recording_policies.stopped_at end,updated_at=now() returning version,state`);
-    await tx.execute(sql`insert into app.construction_audits(enterprise_id,project_id,actor_ref,action,snapshot) values(${actor.enterpriseId},${pid},${JSON.stringify({kind:'admin',id:actor.adminId})}::jsonb,'camera.recording.configure',${JSON.stringify({bindingId:bid,enabled:input.enabled,retentionDays:input.retentionDays})}::jsonb)`);
+    await tx.execute(sql`insert into app.construction_audits(enterprise_id,project_id,actor_ref,action,snapshot) values(${actor.enterpriseId},${pid},${JSON.stringify({kind:'admin',id:actor.adminId})}::jsonb,'camera.recording.configure',${JSON.stringify({bindingId:bid,enabled:input.enabled,retentionDays:input.retentionDays,recordingMode:mode})}::jsonb)`);
     return saved;
   });
 }
@@ -102,8 +107,12 @@ export async function reconcileRecordings(upstream=cameraWvp()) {
     catch(e){await withTenantTransaction(String(p.enterprise_id),tx=>tx.execute(sql`update app.construction_camera_recording_policies set state='error',last_error=${errorCode(e)},checked_at=now() where binding_id=${String(p.binding_id)}`));}
   }
 }
-export async function listCameraRecordings(token:string,day:unknown,csrf?:string) {
+export async function listCameraRecordings(token:string,day:unknown,csrf?:string,bindingId?:string,before?:unknown) {
   const {eid}=parseCameraToken(token),{from,to}=shanghaiDay(day);
+  if(bindingId){
+    const mode=await withTenantTransaction(eid,async tx=>{const s=await cameraSession(tx,token,csrf);return one(tx,sql`select recording_mode from app.construction_camera_recording_policies where enterprise_id=${eid} and project_id=${s.pid} and binding_id=${id(bindingId)}`);});
+    if(mode?.recording_mode==='sd')return listSdRecordings(token,csrf,day,bindingId,before);
+  }
   return withTenantTransaction(eid,async tx=>{
     const s=await cameraSession(tx,token,csrf);
     const items=await rows(tx,sql`select r.id,r.binding_id,c.name,r.started_at,r.ended_at,r.bytes from app.construction_recordings r
@@ -111,6 +120,7 @@ export async function listCameraRecordings(token:string,day:unknown,csrf?:string
       join app.construction_camera_bindings b on b.enterprise_id=r.enterprise_id and b.id=r.binding_id
       join app.construction_cameras c on c.enterprise_id=b.enterprise_id and c.id=b.camera_id
       where r.enterprise_id=${eid} and r.project_id=${s.pid} and r.state='ready' and r.started_at>=${from} and r.started_at<${to}
+      ${bindingId?sql`and r.binding_id=${id(bindingId)}`:sql``}
       and r.started_at+r.clock_offset_min_ms*interval '1 millisecond'>=now()-p.retention_days*interval '1 day' order by r.started_at limit 300`);
     const paused=await one(tx,sql`select p.last_error from app.construction_camera_recording_policies p
       join app.construction_camera_bindings b on b.enterprise_id=p.enterprise_id and b.id=p.binding_id
@@ -128,7 +138,7 @@ export async function startRecordingView(token:string,csrf:string,recordingId:st
   const {eid,hash}=parseCameraToken(token),rid=id(recordingId);
   return withTenantTransaction(eid,async tx=>{
     const s=await cameraSession(tx,token,csrf),r=await authorizedRecording(tx,eid,s.pid,rid);
-    const row=await one(tx,sql`update app.construction_camera_sessions set recording_id=${rid},binding_id=${String(r.binding_id)},stream_id='recording',stream_app=null,view_expires_at=now()+interval '60 seconds',play_version=play_version+1 where token_hash=${hash} returning play_version`);
+    const row=await one(tx,sql`update app.construction_camera_sessions set recording_id=${rid},sd_playback_id=null,binding_id=${String(r.binding_id)},stream_id='recording',stream_app=null,view_expires_at=now()+interval '60 seconds',play_version=play_version+1 where token_hash=${hash} returning play_version`);
     return {generation:Number(row!.play_version),url:`/camera-recording/${row!.play_version}/${rid}.mp4`,startedAt:r.started_at,endedAt:r.ended_at};
   });
 }
