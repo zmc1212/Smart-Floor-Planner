@@ -757,6 +757,20 @@
       "when": 1794124800000,
       "tag": "0108_construction_followup_questions",
       "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1794211200000,
+      "tag": "0109_construction_report_composition",
+      "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1794297600000,
+      "tag": "0110_construction_report_run_independence",
+      "breakpoints": true
     }
   ]
 }

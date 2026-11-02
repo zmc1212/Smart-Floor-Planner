@@ -100,12 +100,16 @@ export async function terminalEvent(tx: PostgresTransaction, enterpriseId: strin
   await tx.execute(sql`insert into app.domain_event_deliveries(enterprise_id,event_id,consumer_key)
     values(${enterpriseId},${String(event!.id)},'assistant.run.metrics.v1') on conflict do nothing`);
 }
-export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Row, settings: Row, messageId: string | null, retryOf?: string, trigger: RunTrigger = { kind: 'user_message', messageId: messageId! }, purpose = 'reply') {
+export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Row, settings: Row, messageId: string | null, retryOf?: string, trigger: RunTrigger = { kind: 'user_message', messageId: messageId! }, purpose = 'reply', reportComposition?: { protocol: 'construction-report-composition-v1'; reportId: string; revision: number; bindingId: string; dispatchEpoch: number; factsHash: string }) {
   const speech = purpose === 'speech.transcribe', speechBinding = speech ? speechConfigurationHash() : null;
+  const report = purpose === 'construction.report.compose' && trigger.kind === 'scheduled_task' && !!reportComposition
+    && c.purpose === 'construction_followup' && actor.capabilities.includes('assistant.followup.delivery');
+  if (purpose === 'construction.report.compose' && !report) fail('assistant_capability_forbidden', 403);
   if (speech && !speechBinding) fail('speech_unavailable', 503);
-  if (c.status !== 'open' || !(speech ? ['ai', 'human', 'handoff_requested'].includes(String(c.mode)) : c.mode === 'ai')) fail('context_changed');
+  if ((report ? c.status === 'closed' : c.status !== 'open') || !((speech || report) ? ['ai', 'human', 'handoff_requested'].includes(String(c.mode)) : c.mode === 'ai')) fail('context_changed');
   const privateFollowup = c.purpose === 'construction_followup' && actor.capabilities.includes('assistant.followup.self');
-  const agent = !speech && (actor.principal.kind === 'user' || privateFollowup || (['site.record', 'site.action', 'site.question'].includes(purpose) && actor.capabilities.includes('assistant.project.shared'))) ? agentConfig(settings.agent_config) : null;
+  const agent = !speech && (report || actor.principal.kind === 'user' || privateFollowup || (['site.record', 'site.action', 'site.question'].includes(purpose) && actor.capabilities.includes('assistant.project.shared'))) ? agentConfig(settings.agent_config) : null;
+  if (report && !agent) fail('assistant_capability_forbidden', 403);
   const entry = c.entry_snapshot as Row;
   const reviewRuntime = agent && actor.principal.kind === 'user' && c.purpose === 'customer_consultation'
     && entry.agentReviewCandidate === true && entry.requirementReviewMode === true
@@ -119,14 +123,14 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   if (!Number.isInteger(rate) || rate < 1 || rate > 1000) fail('assistant_disabled', 403);
   const recent = await one(tx, sql`select count(*) as n from app.assistant_runs where enterprise_id=${actor.enterpriseId} and created_at>now()-interval '1 minute'`);
   if (Number(recent!.n) >= rate) fail('assistant_quota_exceeded', 429);
-  if (purpose !== 'site.record' && await one(tx, sql`select id from app.assistant_runs where enterprise_id=${actor.enterpriseId} and conversation_id=${String(c.id)} and status in ('queued','running')`)) fail('conversation_busy');
+  if (!report && purpose !== 'site.record' && await one(tx, sql`select id from app.assistant_runs where enterprise_id=${actor.enterpriseId} and conversation_id=${String(c.id)} and status in ('queued','running') and purpose not in ('construction.report.facts','construction.report.compose')`)) fail('conversation_busy');
   // Match C01's existing unknown-result state at the service boundary too.
   // A distinct question is not permission to bypass an unresolved dispatch;
   // confirmed usage review is the same recovery proof projected to the client.
-  if (!speech && (privateFollowup || ['customer_consultation','construction_followup'].includes(String(c.purpose)) && actor.principal.kind === 'user'
+  if (!speech && !report && (privateFollowup || ['customer_consultation','construction_followup'].includes(String(c.purpose)) && actor.principal.kind === 'user'
     || c.purpose==='project_collaboration' && purpose==='site.question' && actor.capabilities.includes('assistant.project.shared')) && await one(tx, sql`select r.id from
     (select id,enterprise_id,status,error_code from app.assistant_runs where enterprise_id=${actor.enterpriseId}
-      and conversation_id=${String(c.id)} and purpose not in ('speech.transcribe','construction.report.facts') order by created_at desc,id desc limit 1) r
+      and conversation_id=${String(c.id)} and purpose not in ('speech.transcribe','construction.report.facts','construction.report.compose') order by created_at desc,id desc limit 1) r
     where ${unresolvedProviderOutcome()} and not ${runUsageReconciled()}`)) fail('provider_outcome_unknown');
   const budget = (await one(tx, sql`select coalesce(sum(reserved_requests),0) requests,
     coalesce(sum(case when status='settled' then coalesce(settled_tokens,reserved_tokens) else reserved_tokens end),0) tokens,
@@ -140,7 +144,8 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
     values(${actor.enterpriseId},${String(c.id)},${trigger.kind},${trigger.kind === 'user_message' ? trigger.messageId : null},
     ${trigger.kind === 'domain_event' ? trigger.eventId : null},${trigger.kind === 'scheduled_task' ? trigger.occurrenceKey : null},${purpose},
     ${retryOf || null},${json({ schemaVersion: 1, actor, maxTokens: agent?.consultation ? 8192 : 2048, policyVersion: settings.policy_version, agent,
-      ...(reportContext(c.entry_snapshot).selection ? { reportContextVersion: reportContext(c.entry_snapshot).revision } : {}),
+      ...(!report && reportContext(c.entry_snapshot).selection ? { reportContextVersion: reportContext(c.entry_snapshot).revision } : {}),
+      ...(report ? { reportComposition } : {}),
       ...(agent && !agent.structuredFinal && ['reply','site.question'].includes(purpose)
         ? { sourceAnswerMode: agent.knowledgeExplanation === knowledgeExplanationProtocol ? knowledgeExplanationProtocol : sourceExcerptProtocol,
           sourceQuestionCoverage: sourceQuestionCoverageProtocol } : {}),
@@ -168,7 +173,7 @@ export function startInternalRun(actor: ActorContext, conversationId: string, tr
 export async function cancelRuns(tx: PostgresTransaction, actor: ActorContext, conversationId: string, runId?: string, keepReports = false) {
   const cancelled = await rows(tx, sql`update app.assistant_runs set status='cancelled',completed_at=now(),updated_at=now(),version=version+1
     where enterprise_id=${actor.enterpriseId} and conversation_id=${conversationId} and status in ('queued','running')
-    ${keepReports ? sql`and purpose<>'construction.report.facts'` : sql``}
+    ${keepReports ? sql`and purpose not in ('construction.report.facts','construction.report.compose')` : sql``}
     ${runId ? sql`and id=${runId}` : sql``} returning id,purpose,policy_snapshot`);
   for (const r of cancelled) {
     const job = await one(tx, sql`update app.assistant_jobs set status='cancelled',lease_token=null,updated_at=now(),version=version+1
@@ -247,7 +252,7 @@ export class ConversationService {
       const guidance = guidanceView(config, turns.map(m => ({ id: String(m.id), text: ((m.content as { blocks?: Array<{text?: string}> })?.blocks || []).map(b => b.text || '').join('\n') })), checkpoint);
       if (guidance && (!configuredGuidance(settings?.guidance_config).enabled || c.status !== 'open' || c.mode !== 'ai')) { guidance.options = []; guidance.questionKey = null; }
       const latest = await one(repo.tx, sql`select r.*,${runUsageReconciled()} as usage_reconciled,${runRetryAwaitingReconciliation()} as awaiting_reconciliation
-        from app.assistant_runs r where r.enterprise_id=${this.actor.enterpriseId} and r.conversation_id=${conversationId} and r.purpose not in ('speech.transcribe','construction.report.facts')
+        from app.assistant_runs r where r.enterprise_id=${this.actor.enterpriseId} and r.conversation_id=${conversationId} and r.purpose not in ('speech.transcribe','construction.report.facts','construction.report.compose')
         order by r.id desc limit 1`);
       const preview = this.actor.principal.kind === 'admin' && c.purpose === 'knowledge_preview' ? previewPolicy(c) : null;
       const handoff = (c.entry_snapshot as Row)?.handoff as Row | undefined;

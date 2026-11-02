@@ -35,6 +35,6 @@ test('the report model view keeps original facts, cutoff and missing-state disti
       data: { title: '合成记录', completed: '仅核对线路走向', pending: '插座位置待本人确认', coordination: '', note: '', photos: [] } }] });
   assert.ok(text.includes('仅核对线路走向') && text.includes('插座位置待本人确认'));
   assert.ok(text.includes(selection.cutoffAt) && text.includes('版本2'));
-  assert.ok(text.includes('不是当前施工状态或验收结论') && text.includes('尚未生成企业工艺说明'));
+  assert.ok(text.includes('不是当前施工状态或验收结论') && text.includes('不包含生成正文中的推断') && text.includes('企业工艺须另取有效知识'));
   assert.ok(!text.includes('已确认插座位置'));
 });

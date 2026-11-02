@@ -24,12 +24,16 @@ async function authorized(repo: AssistantRepository, run: Row) {
   const c = await repo.conversation(String(run.conversation_id));
   const localReport = run.purpose === 'construction.report.facts' && c.purpose === 'construction_followup'
     && (run.policy_snapshot as Row).localWorkflow === 'construction-report-facts-v1';
-  if (!((run.purpose === 'speech.transcribe' || localReport) ? ['ai', 'human', 'handoff_requested'].includes(String(c.mode)) : c.mode === 'ai')
-    || (localReport ? c.status === 'closed' : c.status !== 'open') || c.context_revision !== run.context_revision || (!localReport && settings!.knowledge_epoch !== run.knowledge_epoch)
+  const composedReport = run.purpose === 'construction.report.compose' && c.purpose === 'construction_followup'
+    && ((run.policy_snapshot as Row).reportComposition as Row | undefined)?.protocol === 'construction-report-composition-v1'
+    && repo.actor.capabilities.includes('assistant.followup.delivery');
+  const scheduledReport = localReport || composedReport;
+  if (!((run.purpose === 'speech.transcribe' || scheduledReport) ? ['ai', 'human', 'handoff_requested'].includes(String(c.mode)) : c.mode === 'ai')
+    || (scheduledReport ? c.status === 'closed' : c.status !== 'open') || c.context_revision !== run.context_revision || (!localReport && settings!.knowledge_epoch !== run.knowledge_epoch)
     || Number(settings!.policy_version) !== Number((run.policy_snapshot as { policyVersion: number }).policyVersion)) fail('context_changed');
   const configuredAgent = agentConfig((run.policy_snapshot as Row).agent);
   const reportVersion = (run.policy_snapshot as Row).reportContextVersion;
-  if (!localReport && reportVersion !== undefined && reportContext(c.entry_snapshot).revision !== reportVersion) fail('context_changed');
+  if (!scheduledReport && reportVersion !== undefined && reportContext(c.entry_snapshot).revision !== reportVersion) fail('context_changed');
   if (configuredAgent && agentCapabilityFingerprint(configuredAgent) !== agentCapabilityFingerprint(agentConfig(settings!.agent_config))) fail('context_changed');
   if (!localReport) await validatePreviewSnapshot(repo.tx,repo.actor,c);
   return c;
@@ -157,15 +161,29 @@ export async function completeLocalReport(lease: Lease, commit: (tx: PostgresTra
     await finish(tx, lease, 'succeeded', null);
   });
 }
+/** A generated report commits to its existing version, never as an ordinary
+ * chat answer. Usage and unknown-result reconciliation retain the original run. */
+export async function completeReportComposition(lease: Lease, commit: (tx: PostgresTransaction, run: Row) => Promise<void>) {
+  return withTenantTransaction(lease.enterpriseId, async tx => {
+    const { run } = await runContext(tx, lease);
+    if (run.purpose !== 'construction.report.compose') fail('context_changed');
+    await commit(tx, run);
+    await tx.execute(sql`update app.assistant_quota_reservations set status='reconciling',version=version+1,updated_at=now()
+      where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}`);
+    await finish(tx, lease, 'succeeded', null);
+  });
+}
 export async function failRun(lease: Lease, code: string, outcomeKnown=false) {
   return withTenantTransaction(lease.enterpriseId, async tx => {
     const { job, run } = await live(tx, lease);
-    const unknown=job.provider_started_at && !outcomeKnown;
+    const queryUnknown = run.purpose === 'construction.report.compose' && !!await one(tx, sql`select id from app.assistant_usage_records
+      where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and category='query_embedding' and quantity is null limit 1`);
+    const unknown=job.provider_started_at && !outcomeKnown || queryUnknown;
     const status = unknown ? 'indeterminate' : 'failed';
     await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
       values(${lease.enterpriseId},${lease.runId},${Number(job.attempts)},${code === 'retrieval_unavailable' ? 'retrieval' : 'execution'},${status},
       ${JSON.stringify({ code: unknown ? 'provider_outcome_unknown' : code })}::jsonb) on conflict do nothing`);
-    await tx.execute(sql`update app.assistant_quota_reservations set status=${job.provider_started_at ? 'reconciling' : 'released'},version=version+1,updated_at=now()
+    await tx.execute(sql`update app.assistant_quota_reservations set status=${job.provider_started_at || queryUnknown ? 'reconciling' : 'released'},version=version+1,updated_at=now()
       where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}`);
     if (run.purpose === 'speech.transcribe' && (run.policy_snapshot as Row).localSpeech)
       await tx.execute(sql`update app.assistant_quota_reservations set status='settled',settled_tokens=0,settled_cost_micros=0,version=version+1,updated_at=now() where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}`);

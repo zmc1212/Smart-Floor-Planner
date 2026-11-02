@@ -50,6 +50,41 @@ test('approved staff daily card labels retain full detail identity, original fac
   assert.equal(reportForView({ reportId: '98', revision: 1, available: false }, { ...f.context, audience: 'worker' }).cardLabel, undefined);
 });
 
+test('composed text uses the approved sections while keeping original-record actions and exact report scope', () => {
+  const f = fixture(), line = text => [{ key: text, text }];
+  const report = { ...f.report, contentStatus: 'composed', bodyGeneratedAt: '2026-11-01T20:03:00+08:00', body: [{ projectId: '248',
+    progress: line('模型归纳的获权进展'), pending: line('待本人核对'), standards: line('有效企业依据'), arrangements: line('已记录的安排') }] };
+  const view = reportForView(report, f.context, '248');
+  assert.equal(view.factsOnly, false); assert.equal(view.projects[0].standards[0].text, '有效企业依据');
+  assert.deepEqual(view.projects[0].originalIds, ['12', '11']); assert.equal(view.generatedLabel, '11月1日 20:03');
+  assert.equal(view.reportId, f.report.reportId); assert.equal(view.revision, 1); assert.equal(view.cutoffAt, f.report.cutoffAt);
+  const withdrawn = reportForView({ ...report, body: [], contentStatus: 'facts_only', generationState: 'source_unavailable' }, f.context);
+  assert.equal(withdrawn.projects[0].standards, undefined); assert.equal(withdrawn.projects[0].progress[0].text, '书房线管有记录');
+});
+
+test('pre-dispatch body retry retains its operation key through a lost response and refreshes the same detail', async () => {
+  const f = fixture(); f.report.generationRetryable = true; f.report.generationState = 'failed';
+  await f.controller.show({ autoOpen: true }); await f.controller.readReport('98', 1);
+  const attempts = [];
+  f.intercept(call => {
+    if (call.method === 'POST' && call.path.endsWith('/retry')) {
+      attempts.push(call);
+      if (attempts.length === 1) throw Object.assign(Error('lost response'), { statusCode: 0 });
+      f.report.generationState = 'queued'; f.report.generationRetryable = false;
+      return { reportId: '98', revision: 1, runId: 'saved-run', status: 'queued' };
+    }
+  });
+  await f.controller.retryBody(f.controller.state.followupDetail);
+  assert.equal(f.controller.state.followupPending, true);
+  await f.controller.recover();
+  assert.equal(attempts.length, 2); assert.deepEqual(attempts[0].body, attempts[1].body);
+  assert.ok(attempts[0].options.headers['Idempotency-Key']);
+  assert.equal(attempts[0].options.headers['Idempotency-Key'], attempts[1].options.headers['Idempotency-Key']);
+  assert.equal(f.controller.state.followupDetail.reportId, '98'); assert.equal(f.controller.state.followupDetail.generationState, 'queued');
+  assert.equal(f.controller.state.followupDetail.generationRetryable, false);
+  assert.ok(!f.calls.some(c => /\/messages$|\/send$/.test(c.path))); f.controller.hide();
+});
+
 test('owner daily card preserves progress separately from authoritative published confirmations and historical cutoff', () => {
   const f = fixture(), now = Date.parse('2026-11-01T09:00:00+08:00');
   const facts = { projects: [{ ...f.report.facts.projects[0],

@@ -21,22 +21,28 @@ export type RetrievalDiagnostic = {
   candidates:Array<{ref:Evidence['ref'];hash:string;title:string;documentId:string;contentHash:string;similarity:number;semanticRank:number|null;lexicalRank:number|null;fusionRank:number;
     disposition:'selected'|'below_similarity'|'ranked_out';selectionRank:number|null;applicability:ReturnType<typeof applicability>|null;contextIncluded?:boolean;contextChars?:number}>;
 };
-async function authorize(tx: PostgresTransaction, actor: ActorContext, conversationId: string, epoch: number) {
-  const repo=new AssistantRepository(tx,actor), settings=await repo.settings(true), conversation=await repo.conversation(id(conversationId));
-  if (conversation.status!=='open' || conversation.mode!=='ai' || Number(settings!.knowledge_epoch)!==epoch) fail('context_changed');
+/** A server-owned scheduled run can supply its original lease/source guard and
+ * an explicit report selection. It cannot change candidate/source predicates. */
+export type KnowledgeRetrievalScope = { authorize(tx: PostgresTransaction): Promise<import('@/db/repositories/assistant-repository').Row> };
+async function authorize(tx: PostgresTransaction, actor: ActorContext, conversationId: string, epoch: number, scope?: KnowledgeRetrievalScope) {
+  const repo=new AssistantRepository(tx,actor), settings=await repo.settings(true), current=await repo.conversation(id(conversationId));
+  if (Number(settings!.knowledge_epoch)!==epoch) fail('context_changed');
+  if (scope && !actor.capabilities.includes('assistant.followup.delivery')) fail('assistant_capability_forbidden', 403);
+  const conversation = scope ? await scope.authorize(tx) : current;
+  if (String(conversation.id) !== conversationId || (!scope && (conversation.status!=='open' || conversation.mode!=='ai'))) fail('context_changed');
   await validatePreviewSnapshot(tx,actor,conversation);
   return {profile:await activeProfile(tx,actor.enterpriseId,settings!),conversation};
 }
 /** The Agent, legacy wrapper and Admin diagnostic use this exact authorized retrieval. */
-export async function retrieveKnowledge(conversationId:string,actor:ActorContext,query:string,epoch:number,gateway?:EmbeddingGateway) {
+export async function retrieveKnowledge(conversationId:string,actor:ActorContext,query:string,epoch:number,gateway?:EmbeddingGateway,scope?: KnowledgeRetrievalScope) {
   text(query,1000); requireCapability(actor,actor.principal.kind==='user'?'assistant.chat.self'
-    :actor.capabilities.includes('assistant.project.shared')?'assistant.project.shared':'assistant.preview.self');
+    :actor.capabilities.includes('assistant.project.shared')?'assistant.project.shared':actor.capabilities.includes('assistant.followup.self')?'assistant.followup.self':'assistant.preview.self');
   if (!Number.isSafeInteger(epoch) || epoch<0) fail('invalid_message',422);
   const started=Date.now();
-  await withTenantTransaction(actor.enterpriseId,tx=>authorize(tx,actor,conversationId,epoch));
+  await withTenantTransaction(actor.enterpriseId,tx=>authorize(tx,actor,conversationId,epoch,scope));
   const result=await (gateway ?? embeddingGateway()).embed([query],'query');
   return withTenantTransaction(actor.enterpriseId,async tx=>{
-    const {profile,conversation}=await authorize(tx,actor,conversationId,epoch),context=await knowledgeContext(tx,actor,conversation),expanded=expandChineseQuery(query),terms=expanded.terms;
+    const {profile,conversation}=await authorize(tx,actor,conversationId,epoch,scope),context=await knowledgeContext(tx,actor,conversation),expanded=expandChineseQuery(query),terms=expanded.terms;
     type Candidate={id:string;distance:number;terms:string[];text:string;text_hash:string;document_version_id:string;document_id:string;title:string;content_hash:string;professional:ProfessionalKnowledge|null;lexical:number;semantic_rank:number|null;lexical_rank:number|null;locator:{file?:FileLocator}};
     const candidates=await rows<Candidate>(tx,sql`with authorized as materialized (
       select c.id::text,c.text,c.text_hash,c.content_hash,c.document_version_id::text,c.terms,c.locator,d.id::text as document_id,d.title,v.professional,

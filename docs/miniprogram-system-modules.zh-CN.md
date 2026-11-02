@@ -132,7 +132,22 @@ GET /api/miniprogram/assistant/followups/:bindingId/conversation及messages?befo
 
 证据为`tmp/v1-02-followup-management/verification.json`。HTTP-01的驱动bootstrap层级及无效企业状态清理失败保留；后续已补停用合成账号/控制企业，3917–3920的合成手机号保留为夹具，因首批前值未保存，不宣称精确恢复。HTTP-02为8/8、drift[]，覆盖三管理角色真实选企/刷新/读写、同键open、身份/改密、本人及租户拒绝和清理。native-01保留真实意外跳转失败；修复后native-02为5/5，但其两次搜索图同名覆盖且新Less当时未刷新，不作最终光学证据。native-03核验刷新后的样式；最终native-04同时绑定产品、直接/嵌套驱动、CLI适配器及窗口脚本，在同一副屏Stable2.02.2608080/base3.17.2/390×844限定4/4。3张348×752页面和2张1700×960宿主图已审看；搜索区实测(31,250.03)、331×45px，企业操作保留44px热区。入口样式失效更新后才刷新Less，原帧保留。这是组件验证，不代替完整报告/卡片逐字形校准、根面板、实体键盘/真机、真实编译包字节或阶段验收。最终Mini63/63、身份/鉴权14/14、定向lint0，类型仍原82/受影响0，绑定均drift[]；助手源分包1994826/1998848字节。未重启构建/模型/摄取批，providerMax4114/knowledgeMax3753及3753 unknown/input_tokens null保持。队列0、策略false/version62、合成248已归档、管理账号停用，原生身份/存储/传输恢复。个人接收偏好/恢复管理见上文；批准05筛选及09/10设置见上文，人工接待11见上文，报告追问仍未完成。
 
-**V1-02私人主动报告：Limited，首轮纯事实客户端已限定验证。**
+**V1-02私人主动报告：Limited，正文运行时已接通，真实模型验收待完成。**
+
+<!-- v1-02-report-composition -->
+**自然报告正文：运行时/协议已接通，V1-02整体仍Limited。** 原本地事实事务之后，`construction.report.compose`沿原`newRun`预算/账本准入；绑定report/版本、收件人/绑定、原会话代际、dispatch epoch、项目集合、周期/截止和事实hash，不读取普通聊天历史或旧模型日报。`report-body-worker.ts`复用`runRenovationAgent`、`executePostgresText`、KnowledgeRetriever/Evidence、原synthesis/引用目录及来源解析器。内部检索scope在I/O前后提供原租约/项目守卫，候选受众/发布谓词不变；终稿工具沿原共用投影，在来源敏感提交前保存供应商原包和用量。没有新增Agent、事实库、权限解析器或引用管线。
+
+0109/0110已应用授权开发库与隔离评估库，报告表继续强制RLS。不可变事实仍为`queued/facts_ready`；同版本另存`body_run_id`、`body`、`body_generated_at`、`body_error_code`、`body_attempts`（至多3次已准入尝试）及knowledge状态`not_generated/queued/ready/failed`。正文按项目保存进展/待核对/工艺/安排，使用原synthesis格式。读取只投影获权展示行、依据类型及解析后的来源标题/定位，不下发私有Evidence/checkpoint；全部已读原件继续重验，撤回可使整段报告不可用。追问始终消费原事实，生成正文不成为新事实。正文完成清除该版本旧的报告已阅回执，并把新展示正文绑定进readToken；不追加普通回答或第二条投递消息。
+
+原报告列表/详情HTTP增加`body`、`bodyGeneratedAt`、`generationState`、`generationError`、`generationLabel`、`generationRetryable`；原带版本/幂等的`.../reports/:reportId/retry`亦只在明确派发前失败后新建正文run，沿同一事实版本。文本派发或query embedding用量未知保留reconciling、拒绝重试，并阻止未知查询后继续发文本模型。拒绝/额度不足仍保留原事实和真实失败状态。活动聊天唯一索引排除两种定时报告purpose，普通交互仍唯一；人工接待沿原暂停插入/代际合同保留后台报告任务。
+
+批准03详情及共用04/06/07/08数据路径现显示正文分区、来源标题、失败/未知反馈和原重试动作，不改样式、素材或导航。普通专题状态/目的地保持独立。**批准稿“查看工艺依据”及报告知识引用的原文件打开动作仍缺失**，来源标题不能代替该交互；这是下一独立实施，随后做定向权限/撤回/重进检查。真实配置模型正文、固定两次首稿、带真实企业知识的报告语义、正常追问、完整生成正文原生验收、根入口和完整构建/上传字节仍未验；不推进V1-03或生产。
+
+证据`tmp/v1-02-natural-reports/verification.json`。unit49/client126（含包体）/定向lint通过；当前类型82项诊断均在本次归属之外，归属文件0。service04原日周批failed保留：五份日报正文保存，周报被旧活动聊天索引拒绝；0110修复该机制，service05仅生成五份周报新版本并复用未变日报证据，验证精确重进/已阅/跨收件人拒绝、派发前失败/同键重试。其撤回遗漏reason失败及service06误断言facts_only的失败均保留；来源驱动修复2停止。service07只回读已撤回版本，验证真实不可用DTO（无新撤回），再验证文本unknown；service08独立验证query用量未知阻断、文本0调用。以上均为替身模型协议检查：保留各批合计12次注入回调，实际文本/Embedding/摄取/生图均0，不当自然语义或真实费用。开发库原42条reconciling/2004000 tokens、日限1200000、provider4114、knowledge3753 unknown/input_tokens null及CNY32.828897/100保持。
+
+native01两前置和真实额度失败详情通过；同键重试原请求保留，但合并末步因误用普通conversationId入口404失败。native02-reentry仅补原lead/私人绑定入口重进（两前置+一目标），不拼成一批最终旅程。两批cleanup true/drift[]，三张最终状态页已审；Stable2.02.2608080/base3.17.2/390×844、编码348×752、同保存副屏/最小化HWND、官方CLI/内存身份/参数文件0。完整宿主/根入口/生成正文光学未通过。开发317/318归档/对客关、370/371撤回、135/136停止、5410停用，策略false/version244/epoch62、q0；原控制与账目不变。原完整build/standalone失败限制仍保留，本次原生HTTP实际服务了修改后的详情/retry，不宣称新的完整生产构建。
+
+
 
 原catch-all现分派`/api/miniprogram/assistant/followups`：GET本人私人绑定列表/范围、`/:bindingId/reports?beforeId=`、`/:bindingId/reports/:reportId?revision=`，以及报告获权的`.../projects/:projectId/records/:recordId[/media/:mediaId]?revision=`。POST支持本人明确open、带版本archive/stop/delete/resume、携conversationId/throughSequence的消息可见确认、携revision/readToken的报告已阅及明确本地失败重试。全部沿FollowupService和原租户仓库、代际/脱敏、项目/原件及成员守卫；Mini身份与所选企业来自原鉴权或已验证的客户入口token，不信任body传入principal/企业/受众/delivery能力。工人只放行followups分支，不开放普通客户conversations/runs/citations，保留密码修改门。范围只返回当前获权项目/阶段与私人目的地元数据；原件须属于同一仍有效报告快照的精确记录/媒体定位。偏好字段及原关系谓词提取见上文，没有另建权限、Evidence或引用管线。
 

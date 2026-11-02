@@ -34,7 +34,7 @@ function reportForView(report, context, projectId = '', now = Date.now()) {
   if (!report.available || projectId && !selected) return { reportId: report.reportId, revision: report.revision, selectedProjectId: projectId, available: false, title: '这份简报已不可用', stateLabel: '来源或权限已变化' };
   if (projectId) report = { ...report, selectedProjectId: projectId, facts: { ...report.facts, projects: [selected] } };
   const kindLabel = { daily: '施工日报', weekly: '施工周报', stage: '阶段提醒' }[report.kind] || '施工简报';
-  const projects = (report.facts && report.facts.projects || []).map(p => projectForView(p, context));
+  const projects = (report.facts && report.facts.projects || []).map(p => { const v = projectForView(p, context), b = report.body?.find(b => b.projectId === p.id); return b ? { ...v, ...b, highlights: [...b.progress, ...b.pending].slice(0, 2) } : v; });
   const staffDaily = report.kind === 'daily' && ['worker','designer'].includes(context && context.audience);
   const ownerDaily = report.kind === 'daily' && context?.audience === 'customer';
   const bossWeekly = report.kind === 'weekly' && context?.audience === 'boss';
@@ -48,7 +48,7 @@ function reportForView(report, context, projectId = '', now = Date.now()) {
     cardTitle: bossWeekly ? '本期工地进展' : ownerDaily ? day + '我家进展' : staffDaily ? day + (context.audience === 'worker' ? '的施工跟进' : '需要你核对的事') : '',
     cardPeriodLabel: bossWeekly ? dateLabel(report.periodStart) + '—' + dateLabel(new Date(new Date(report.periodEnd).getTime() - 1)) : (staffDaily || ownerDaily) && dateLabel(report.periodStart) === dateLabel(report.cutoffAt) ? dateLabel(report.periodStart) + (ownerDaily && projects[0]?.stageName ? ' · ' + projects[0].stageName : '') + ' · 截至' + dateLabel(report.cutoffAt, true).split(' ')[1] : '',
     periodLabel: dateLabel(report.periodStart, true) + '—' + dateLabel(report.periodEnd, true), cutoffLabel: dateLabel(report.cutoffAt, true),
-    generatedLabel: dateLabel(report.generatedAt, true), dateLabel: dateLabel(report.generatedAt || report.scheduledAt, true),
+    generatedLabel: dateLabel(report.bodyGeneratedAt || report.generatedAt, true), dateLabel: dateLabel(report.generatedAt || report.scheduledAt, true),
     stateLabel: report.state === 'facts_ready' ? '现场记录已保存' : ({ queued: '正在读取现场记录…', running: '正在读取现场记录…', failed: '这次简报未完成', indeterminate: '结果正在核对', cancelled: '这次简报已停止' }[report.state] || '正在核对结果'),
     factsOnly: report.contentStatus === 'facts_only', ready: report.state === 'facts_ready' && !!report.facts,
     summary: projects.flatMap(p => p.highlights).slice(0, 2), truncated: !!(report.facts && report.facts.projectsTruncated),
@@ -223,6 +223,7 @@ class FollowupController {
       if (op.kind === 'plan') { this.set({ followupBusy: false }); await this.finishPlanWrite(op, result); }
       else if (op.kind === 'preferences' || op.kind === 'managementChange') { this.set({ followupBusy: false }); await this.finishSettingsWrite(op, result); }
       else if (op.kind === 'change') { this.set({ followupBusy: false }); if (['archive','delete'].includes(op.path.split('/').pop())) this.leave(); else await this.select(this.selected); }
+      else if (op.kind === 'body') { this.set({ followupBusy: false }); await this.sync(); }
       else if (!this.state.followupContext && this.selected) { this.set({ followupBusy: false }); await this.select(this.selected); }
       await this.loadList(); return result;
     } catch (e) {
@@ -235,6 +236,7 @@ class FollowupController {
     } finally { if (this.current(epoch)) this.set({ followupBusy: false }); }
   }
   recover() { if (this.operation) return this.write(this.operation.slot, this.operation.path, this.operation.body, this.operation.kind); }
+  retryBody(r) { return this.write(`body:${r.reportId}`, `${BASE}/${this.selected}/reports/${r.reportId}/retry`, { revision: r.revision }, 'body'); }
   renderedReport() {
     const r = this.state.followupDetail;
     if (!r || !r.available || !r.ready || r.readAt || !r.readToken || !['delivered','muted'].includes(r.deliveryState) || this.state.followupBusy || this.state.followupPending) return;

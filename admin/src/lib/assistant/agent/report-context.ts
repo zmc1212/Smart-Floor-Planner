@@ -17,7 +17,7 @@ export function reportFactText(selection: ReportReference, project: ReportProjec
     + (project.publishedRecordItems?.length ? '\n原记录中的待核对项：\n' + project.publishedRecordItems.map(r => [r.pending, r.coordination].filter(Boolean).join('\n')).join('\n') : '')
     + (project.issues?.length ? '\n报告截止时获权的原事项：\n' + project.issues.map(i => `事项${i.id}（版本${i.revision}）：${i.text}`).join('\n') : '')
     + (project.arrangements?.length ? '\n报告截止时获权的原安排：\n' + project.arrangements.map(a => `安排${a.id}（版本${a.revision}）：${a.title}\n${a.difference}`).join('\n') : '')
-    + '\n本报告尚未生成企业工艺说明。用户后续补充是用户原话，不是团队核对、工程决定或原报告更改。截止后变化须另查当前原服务，不把旧报告当成最新事实。';
+    + '\n以上为原报告的现场事实，不包含生成正文中的推断。企业工艺须另取有效知识。用户后续补充是用户原话，不是团队核对、工程决定或原报告更改。截止后变化须另查当前原服务，不把旧报告当成最新事实。';
 }
 export async function reportBusinessAvailable(tx: PostgresTransaction, enterpriseId: string, ref: ReportBusinessReference) {
   const principal = 'principal' in ref ? ref.principal : { kind: 'user' as const, userId: ref.userId };

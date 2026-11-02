@@ -8,6 +8,7 @@ import { latestReportPeriod, nextReportAt } from './report-calendar';
 import { discoverFollowups, enqueueReport } from './report-store';
 import { dailySupplementCandidates, supplementClosedDailyReports } from './report-supplements';
 import { collectReportFacts, deliveryActor, followupAvailable, followupProjects, projectReportFacts, reportFactsHash, type ReportFacts } from './report-scope';
+import { enqueueReportBody } from './report-body-store';
 
 /** One latest due daily and weekly period per tick, not an unbounded outage replay.
  * Time changes affect future ticks; each queued run retains its original scope. */
@@ -96,6 +97,7 @@ export async function processConstructionReport(lease: Lease) {
         ${JSON.stringify({ reportId: String(report.id), revision: Number(policy.revision) })}::jsonb) returning id`))!;
       await tx.execute(sql`insert into app.construction_report_deliveries(enterprise_id,report_id,revision,binding_id,event_id)
         values(${eid},${String(report.id)},${Number(policy.revision)},${String(b.id)},${String(event.id)}) on conflict do nothing`);
+      await enqueueReportBody(tx, eid, String(report.id), Number(policy.revision));
     });
   } catch (error) {
     // Completion may already have committed after a lost receipt. The lease

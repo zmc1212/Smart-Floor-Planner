@@ -9,6 +9,9 @@ import { followupBindingAvailable, followupProjects, projectReportFacts, type Fo
 import { readStageSettings } from './stages-store';
 import { currentRecord } from './site-issues';
 import { reportHistoryFilters, type ReportHistoryFilters } from './report-history';
+import { reportBodyView } from './report-body-view';
+import type { ReportBody } from './report-composition';
+import { enqueueReportBody } from './report-body-store';
 
 type ReminderPreferences = { stage: boolean; daily: boolean; weekly: boolean };
 const preferences = (b: Row): ReminderPreferences => ({ stage: b.remind_stage !== false, daily: b.remind_daily !== false, weekly: b.remind_weekly !== false });
@@ -120,9 +123,15 @@ export class FollowupService {
   private async version(repo: AssistantRepository, b: Row, reportId: string, revision?: number) {
     const eid = this.actor.enterpriseId;
     const r = await one(repo.tx, sql`select r.*,v.revision,v.status as fact_status,v.facts,v.facts_hash,v.generated_at,
+      v.body,v.body_generated_at,v.knowledge_status,v.body_error_code,v.body_attempts,body_job.provider_started_at as body_dispatched,
+      exists(select 1 from app.assistant_usage_records body_usage where body_usage.enterprise_id=v.enterprise_id and body_usage.run_id=v.body_run_id
+        and body_usage.category='query_embedding' and body_usage.quantity is null) as body_unknown_io,
+      body_run.status as body_run_status,body_run.error_code as body_run_error,
       v.period_end as fact_period_end,v.cutoff_at as fact_cutoff_at,run.status as run_status,run.error_code,d.state as delivery_state,d.read_at,d.message_id,m.seq
       from app.construction_reports r join app.construction_report_versions v on v.enterprise_id=r.enterprise_id and v.report_id=r.id
       join app.assistant_runs run on run.enterprise_id=v.enterprise_id and run.id=v.run_id
+      left join app.assistant_runs body_run on body_run.enterprise_id=v.enterprise_id and body_run.id=v.body_run_id
+      left join app.assistant_jobs body_job on body_job.enterprise_id=body_run.enterprise_id and body_job.run_id=body_run.id
       left join app.construction_report_deliveries d on d.enterprise_id=v.enterprise_id and d.report_id=v.report_id and d.revision=v.revision and d.binding_id=r.binding_id
       left join app.assistant_messages m on m.enterprise_id=d.enterprise_id and m.id=d.message_id
       where r.enterprise_id=${eid} and r.binding_id=${String(b.id)} and r.id=${reportId} and v.revision=${revision || sql`r.latest_revision`}
@@ -136,8 +145,18 @@ export class FollowupService {
     const facts = await projectReportFacts(repo.tx, eid, b, r.facts as ReportFacts, new Date(String(r.generated_at)));
     if (!facts.projects.length) return { reportId, revision: Number(r.revision), available: false, state: 'source_unavailable',
       contentStatus: 'not_generated' as const, facts: null, readToken: null, readAt: null, sequence: null };
-    return { ...metadata, available: true, state: 'facts_ready', contentStatus: 'facts_only' as const, facts,
-      readToken: fingerprint({ subject: principalKey(this.actor), bindingId: String(b.id), reportId, revision: Number(r.revision), factsHash: fingerprint(facts) }) };
+    const body = await reportBodyView(repo.tx, this.actor, await repo.conversation(String(b.conversation_id)), facts, r.body as ReportBody | null);
+    return { ...metadata, available: true, state: 'facts_ready', contentStatus: body.length ? 'composed' as const : 'facts_only' as const, facts, body,
+      bodyGeneratedAt: body.length ? r.body_generated_at : null,
+      generationState: r.body ? body.length ? 'ready' : 'source_unavailable' : r.body_run_status || r.knowledge_status,
+      generationError: r.body_run_error || r.body_error_code || null,
+      generationRetryable: b.status === 'enabled' && !r.body && !r.body_dispatched && !r.body_unknown_io && Number(r.body_attempts) < 3
+        && (r.body_run_status === 'failed' || !r.body_run_status && r.knowledge_status === 'failed'),
+      generationLabel: r.body ? body.length ? '' : '工艺来源或权限已变化，可先查看有效记录。'
+        : ['queued','running'].includes(String(r.body_run_status)) ? '正文生成中，可先查看原记录。'
+        : r.body_run_status === 'indeterminate' ? '正文结果正在核对，可先查看原记录。'
+        : r.knowledge_status === 'failed' || r.body_run_status === 'failed' ? '正文暂未生成，可先查看原记录。' : '',
+      readToken: fingerprint({ subject: principalKey(this.actor), bindingId: String(b.id), reportId, revision: Number(r.revision), factsHash: fingerprint(facts), bodyHash: fingerprint(body) }) };
   }
   list() {
     return this.scoped(async repo => {
@@ -191,7 +210,8 @@ export class FollowupService {
         if (filter.projectId && view.available && view.facts) {
           const projects = view.facts.projects.filter(p => p.id === filter.projectId);
           // The index is a filtered view, never a new report or an acknowledgement grant.
-          items.push(projects.length ? { ...view, facts: { ...view.facts, projects, projectsTruncated: false }, readToken: null }
+          items.push(projects.length ? { ...view, facts: { ...view.facts, projects, projectsTruncated: false },
+            ...('body' in view ? { body: view.body.filter(p => p.projectId === filter.projectId) } : {}), readToken: null }
             : { reportId: String(r.id), revision: view.revision, available: false, state: 'source_unavailable', facts: null, readToken: null });
         } else items.push(view);
       }
@@ -332,6 +352,9 @@ export class FollowupService {
         where r.enterprise_id=${this.actor.enterpriseId} and r.id=${reportId} and r.binding_id=${bindingId}
         and v.revision=${revision} and run.conversation_id=${String(c.id)}`)) fail('context_changed');
       return idempotent(repo.tx, this.actor, 'followup:retry:' + reportId + ':' + revision, requestKey, {}, async () => {
+        if (await one(repo.tx, sql`select report_id from app.construction_report_versions where enterprise_id=${this.actor.enterpriseId}
+          and report_id=${reportId} and revision=${revision} and status='facts_ready'`))
+          return { reportId, revision, ...await enqueueReportBody(repo.tx, this.actor.enterpriseId, reportId, revision) };
         const job = await one(repo.tx, sql`select j.* from app.construction_reports r join app.construction_report_versions v on v.enterprise_id=r.enterprise_id and v.report_id=r.id
           join app.assistant_jobs j on j.enterprise_id=v.enterprise_id and j.run_id=v.run_id
           join app.assistant_runs run on run.enterprise_id=v.enterprise_id and run.id=v.run_id

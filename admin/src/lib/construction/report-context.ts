@@ -33,7 +33,7 @@ export class ReportContextService {
         if (c.status !== 'open' || c.mode !== 'ai') fail('conversation_read_only');
         if (reportContext(c.entry_snapshot).revision !== body.expectedVersion) fail('version_conflict');
         if (await one(repo.tx, sql`select r.id from app.assistant_runs r where r.enterprise_id=${this.actor.enterpriseId}
-          and r.conversation_id=${this.conversationId} and r.purpose<>'construction.report.facts'
+          and r.conversation_id=${this.conversationId} and r.purpose not in ('construction.report.facts','construction.report.compose')
           and (r.status in ('queued','running') or r.status='indeterminate' and not ${runUsageReconciled()}) limit 1`)) fail('conversation_busy');
         let selection: ReportReference | null = null;
         if (body.selection) {

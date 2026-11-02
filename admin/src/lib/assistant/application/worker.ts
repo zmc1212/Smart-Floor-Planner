@@ -5,6 +5,7 @@ import { processSiteRecord } from '@/lib/construction/site-worker';
 import { processSiteAction } from '@/lib/construction/site-action-worker';
 import { processSpeech } from '../speech/worker';
 import { processConstructionReport } from '@/lib/construction/report-worker';
+import { processReportComposition } from '@/lib/construction/report-body-worker';
 
 /** Application assembly chooses a domain processor; the job/lease core stays domain-neutral. */
 export async function processAssistantRun(lease: Lease) {
@@ -17,6 +18,7 @@ export async function processAssistantRun(lease: Lease) {
     return;
   }
   if (purpose === 'construction.report.facts') await processConstructionReport(lease);
+  else if (purpose === 'construction.report.compose') await processReportComposition(lease);
   else if (purpose === 'speech.transcribe') await processSpeech(lease);
   else if (purpose === 'site.record') await processSiteRecord(lease);
   else if (purpose === 'site.action') await processSiteAction(lease);

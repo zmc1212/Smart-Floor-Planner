@@ -25,7 +25,7 @@
         <text wx:if="{{!project.pending.length}}" class="followup-line">本期没有可见的待核对记录。</text>
         <text wx:if="{{project.publishedRecordItemsTruncated || project.issuesTruncated}}" class="followup-caption">记录较多，本份简报未包含全部记录。</text>
       </view>
-      <view class="followup-section followup-owner-detail-process"><view class="followup-owner-section-head"><text class="fabric-label">工艺关注</text></view><text class="followup-line">本份仅含已保存的现场记录，暂无工艺说明。</text></view>
+      <view class="followup-section followup-owner-detail-process"><view class="followup-owner-section-head"><text class="fabric-label">工艺关注</text></view><text wx:for="{{project.standards}}" wx:key="key" class="followup-line" user-select>{{item.text}}</text><text wx:if="{{!project.standards.length}}" class="followup-line">{{followupDetail.generationLabel || '本份仅含已保存的现场记录，暂无工艺说明。'}}</text><button wx:if="{{followupDetail.generationRetryable}}" class="followup-text-action" bindtap="retryFollowupReport" disabled="{{followupBusy || followupPending}}">重试正文生成</button></view>
       <view class="followup-section followup-owner-detail-arrangements">
         <view class="followup-owner-section-head"><text class="fabric-label">已确认安排</text></view>
         <text wx:for="{{project.arrangements}}" wx:key="key" class="followup-line" user-select>{{item.text}}</text>
@@ -35,7 +35,7 @@
     </block>
     <text wx:if="{{followupDetail.truncated}}" class="followup-caption">本份简报只包含部分工地。</text>
     <view class="followup-caption followup-footnote"><text>未记录不等于未施工，</text><text>本日报不代替现场验收。</text></view>
-    <view wx:if="{{followupError || followupPending}}" class="followup-feedback"><text>{{followupPending ? '已阅结果尚未确认。' : followupError}}</text><button wx:if="{{followupPending}}" bindtap="recoverFollowup" disabled="{{followupBusy}}">核对上次操作</button></view>
+    <view wx:if="{{followupError || followupPending}}" class="followup-feedback"><text>{{followupPending ? '上次操作结果正在核对。' : followupError}}</text><button wx:if="{{followupPending}}" bindtap="recoverFollowup" disabled="{{followupBusy}}">核对上次操作</button></view>
   </scroll-view>
   <button class="followup-detail-ask followup-primary" bindtap="askFollowupReport" disabled="{{followupChat.reception || reportQuestion.disabled || reportQuestion.busy || reportQuestion.pending || !followupDetail.available || !followupDetail.ready}}">问这份报告</button>
 </view>
