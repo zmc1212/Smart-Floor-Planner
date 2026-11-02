@@ -63,17 +63,31 @@ export function nativeFinalDefinition(tool:ModelTool):ModelTool{
     }
     if(kind==='synthesis'){
       required.push('segments');
-      const item=p.segments.items as Record<string,unknown>,cited=structuredClone(item),uncited=structuredClone(item);
-      const c=cited.properties as Record<string,Record<string,unknown>>,u=uncited.properties as Record<string,Record<string,unknown>>;
-      c.citations.minItems=Math.max(1,Number(c.citations.minItems)||0);
-      u.citations.maxItems=0;u.text.pattern='^[^0-9]*$';
-      u.basis.enum=(u.basis.enum as string[]).filter(basis=>basis!=='evidence');
-      p.segments.items={anyOf:c.citations.maxItems===0?[uncited]:[cited,uncited]};
+      p.segments=numericSynthesisSegments(p.segments);
+    }
+    if(kind==='report_answer'){
+      required.push('answers');
+      const groups=p.answers?.properties as Record<string,Record<string,unknown>>|undefined;
+      if(!groups||!Object.keys(groups).length)fail('invalid_agent_tools',500);
+      p.answers.properties=Object.fromEntries(Object.entries(groups).map(([key,group])=>[key,numericSynthesisSegments(group)]));
     }
     return {type:'object',properties:p,required:[...new Set(required)],additionalProperties:parameters.additionalProperties};
   });
   const rest={...parameters};delete rest.properties;delete rest.required;delete rest.additionalProperties;
   return {...tool,parameters:{...rest,anyOf:branches}};
+}
+
+/** Apply the same original quantity/citation alternatives to flat segments
+ * and each report question. Bounds and catalog enums survive unchanged. */
+function numericSynthesisSegments(group:Record<string,unknown>){
+  const segments=structuredClone(group),item=segments.items as Record<string,unknown>;
+  const cited=structuredClone(item),uncited=structuredClone(item);
+  const c=cited.properties as Record<string,Record<string,unknown>>,u=uncited.properties as Record<string,Record<string,unknown>>;
+  c.citations.minItems=Math.max(1,Number(c.citations.minItems)||0);
+  u.citations.maxItems=0;u.text.pattern='^[^0-9]*$';
+  u.basis.enum=(u.basis.enum as string[]).filter(basis=>basis!=='evidence');
+  segments.items={anyOf:c.citations.maxItems===0?[uncited]:[cited,uncited]};
+  return segments;
 }
 
 /** Equivalent object root for providers that have emitted an array for a

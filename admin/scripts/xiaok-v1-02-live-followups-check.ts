@@ -14,7 +14,8 @@ import { MiniProgramIdentityRepository } from '@/db/repositories/miniprogram-ide
 import { UserRepository } from '@/db/repositories/user-repository';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 import { type ActorContext } from '@/lib/assistant/contracts';
-import { ConversationService, cancelRuns } from '@/lib/assistant/core/conversation';
+import { ConversationService, cancelRuns, newRun, appendMessage } from '@/lib/assistant/core/conversation';
+import { reportNativeFinalProtocol } from '@/lib/assistant/agent/report-native-final';
 import { assistantDailyLimitsEnabled } from '@/lib/assistant/core/daily-limits';
 import { ConstructionService } from '@/lib/construction/service';
 import { FollowupService } from '@/lib/construction/followup-service';
@@ -37,9 +38,9 @@ assert.ok(!fs.existsSync(path.join(output, 'report.json')), 'Keep every original
 fs.mkdirSync(output, { recursive: true });
 const nativeScript = process.argv.find(a => a.startsWith('--native-script='))?.slice(16);
 if (configured) assert.ok(nativeScript, 'Bind the planned native input/reentry scope before dispatch');
-const log: Row = { startedAt: new Date().toISOString(), owner: '01a19ca6-854b-7893-a1d1-1381a1c64810',
+const log: Row = { startedAt: new Date().toISOString(), owner: '01a19cd9-e4d1-7c53-89bf-b4241edf1422',
   scope: 'Selected retained owner61/staff63 original facts only, independent of stopped report-body acceptance',
-  mechanism: 'report-current-request-coverage-v1; read-scope repairs2, flat-final failure1931 and all old failures retained',
+  mechanism: 'report-native-final-v1; new-run native phase/recursive numeric schema/four-call reserve, read-scope2/final-format2/body2 retained',
   serialFirstDraftReview: serialReview,
   fixedScope: { roles: ['customer', 'worker'], firstDraftsPerRole: 2, maxServiceRuns: 4, maxNativeRuns: 2,
     stop: 'First failed/unknown expectation, source/configuration drift or unavailable original; no sampling retries',
@@ -101,7 +102,8 @@ async function denied(fn: () => Promise<unknown>) {
 async function inspectRun(a: Row, runId: string) {
   assert.ok(ownedRuns.includes(runId));
   const detail = await read(async tx => ({
-    run: await one(tx, sql`select id::text,conversation_id::text,purpose,status,error_code,trigger_message_id::text from app.assistant_runs where enterprise_id=${eid} and id=${runId}`),
+    run: await one(tx, sql`select id::text,conversation_id::text,purpose,status,error_code,trigger_message_id::text,
+      policy_snapshot->>'reportNativeFinal' report_native_final from app.assistant_runs where enterprise_id=${eid} and id=${runId}`),
     steps: await rows(tx, sql`select step_seq,kind,capability_name,status,input_summary,source_refs,private_checkpoint from app.assistant_run_steps where enterprise_id=${eid} and run_id=${runId} order by step_seq`),
     usage: await rows(tx, sql`select category,quantity::text,cost_micros::text,currency,measurement_kind,input_tokens::text,output_tokens::text from app.assistant_usage_records where enterprise_id=${eid} and run_id=${runId} order by id`),
   }));
@@ -112,6 +114,13 @@ async function inspectRun(a: Row, runId: string) {
   const raw = await read(tx => one(tx, sql`select id::text,content from app.assistant_messages where enterprise_id=${eid} and run_id=${runId} and author_kind='assistant' order by id desc limit 1`));
   Object.assign(detail, { messages, raw }); fs.writeFileSync(file, JSON.stringify(detail, null, 2));
   assert.equal(detail.run?.status, 'succeeded', 'Original configured-model first draft: ' + JSON.stringify(detail.run));
+  assert.equal(detail.run?.report_native_final, reportNativeFinalProtocol);
+  const modelSteps = detail.steps.filter(s => s.kind === 'agent_model');
+  assert.ok(modelSteps.length <= 4, 'The original four-call reservation includes auxiliary and repair calls');
+  const final = modelSteps.at(-1)!;
+  assert.equal((final.input_summary as Row).reportNativeFinal, reportNativeFinalProtocol);
+  assert.equal((((final.private_checkpoint as Row).observation as Row).format as Row).mode, 'json_schema');
+  assert.equal((((final.private_checkpoint as Row).observation as Row).format as Row).schemaValid, true);
   assert.equal(detail.steps.filter(s => s.kind === 'agent_validation' && s.status === 'failed').length, 0,
     'A repaired final is not a passing first draft; retain it and stop this fixed batch');
   const source = detail.steps.find(s => Number(s.step_seq) === 740)?.private_checkpoint as Row | undefined;
@@ -213,6 +222,41 @@ async function main() {
         });
       } catch (e) { if (e !== rollback) throw e; }
       assert.equal((await read(tx => one(tx, sql`select count(*)::int n from app.assistant_run_steps where enterprise_id=${eid} and run_id=${String(runId)} and step_seq in(7777,7778)`)))!.n, 0);
+    }
+    return { checked, temporaryRowsRolledBack: true, originalRunsNotResumed: true, providerCalls: 0 };
+  });
+  await step('rollback-only new report runs bind native final and original quota while old run/config remain unchanged', async () => {
+    const checked: Row[] = [];
+    for (const a of actors) {
+      const rollback = new Error('intentional_new_report_native_admission_rollback');
+      let probeId: string | undefined;
+      try {
+        await read(async tx => {
+          const c = (await one(tx, sql`select * from app.assistant_conversations where enterprise_id=${eid} and id=${String(a.cid)}`))!;
+          const settings = (await one(tx, sql`select * from app.assistant_enterprise_settings where enterprise_id=${eid}`))!;
+          const beforeConfig = JSON.stringify(settings.agent_config);
+          // Match ConversationService.send's author/principal contract for
+          // both recipients; the database forbids anonymous user messages.
+          const message = await appendMessage(tx, actor(a), String(a.cid), { author: actor(a).principal.kind, clientMessageId: randomUUID(),
+            content: { version: 1, blocks: [{ type: 'text', text: '合成测试：核验新报告运行绑定，事务结束即回滚。' }] } });
+          const receipt = await newRun(tx, actor(a), c, settings, String(message.id));
+          probeId = receipt.runId;
+          const probe = (await one(tx, sql`select policy_snapshot from app.assistant_runs where enterprise_id=${eid} and id=${probeId}`))!;
+          const policy = probe.policy_snapshot as Row, agent = policy.agent as Row;
+          assert.equal(policy.reportNativeFinal, reportNativeFinalProtocol);
+          assert.equal(agent.imageInput, true); assert.equal(agent.structuredFinal, undefined); assert.equal(agent.imageContext, undefined);
+          const reservation = (await one(tx, sql`select reserved_tokens::text,reserved_cost_micros::text from app.assistant_quota_reservations where enterprise_id=${eid} and run_id=${probeId}`))!;
+          assert.equal(reservation.reserved_tokens, '72000');
+          assert.equal(reservation.reserved_cost_micros, '1000000');
+          assert.equal(JSON.stringify((await one(tx, sql`select agent_config from app.assistant_enterprise_settings where enterprise_id=${eid}`))!.agent_config), beforeConfig);
+          const old = (await one(tx, sql`select policy_snapshot from app.assistant_runs where enterprise_id=${eid} and id=1933`))!;
+          assert.equal((old.policy_snapshot as Row).reportNativeFinal, undefined);
+          checked.push({ role: a.name, newRunProtocol: policy.reportNativeFinal, reservation, imageInput: true,
+            enterpriseConfigurationUnchanged: true, old1933NotMigrated: true });
+          throw rollback;
+        });
+      } catch (e) { if (e !== rollback) throw e; }
+      assert.equal(await read(tx => one(tx, sql`select id from app.assistant_runs where enterprise_id=${eid} and id=${probeId!}`)), undefined);
     }
     return { checked, temporaryRowsRolledBack: true, originalRunsNotResumed: true, providerCalls: 0 };
   });

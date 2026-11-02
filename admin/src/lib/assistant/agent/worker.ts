@@ -48,6 +48,7 @@ import { resolveSynthesisRepair, synthesisRepairBase, synthesisRepairProtocol, s
 import { currentSynthesisContext } from './synthesis-sources';
 import { boundKnowledgeContext } from './bound-context';
 import { boundReportContext, queryReportFollowups, reportFollowupTool } from './report-context';
+import { boundReportNativeFinal, reportNativeRuntimeBudget } from './report-native-final';
 import { isReportAnswerSnapshot, reportFinalResponseIssue, reportFinalProtocol, reportAnswerFinalTool, reportQuestionCoverage, reportAnswerSynthesis, reportCoverageFailure, reportCoverageProtocol } from './report-final';
 import { projectFinalToolOutput } from './final-output';
 export { projectFinalToolOutput } from './final-output';
@@ -733,13 +734,16 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       && initial.messages.some(message => message.role === 'user' && message.content.some(part => part.type === 'image'));
     const reviewDefinitions = review ? reviewModelTools(review, imageSchema ? String(initial.trigger.id) : undefined) : [];
     const composableReview = !!review && (initial.run.policy_snapshot as Row).reviewRuntime === composableReviewProtocol;
-    const nativeFinalization=composableReview&&initial.config.structuredFinal===nativeFinalProtocol;
+    const reportNativeFinal = boundReportNativeFinal((initial.run.policy_snapshot as Row).reportNativeFinal, initial.config, {
+      conversationPurpose: initial.conversation.purpose, purpose: String(initial.run.purpose), triggerKind: String(initial.run.trigger_kind),
+      privateFollowup: lease.actor.capabilities.includes('assistant.followup.self'), selected: !!reportSource });
+    const nativeFinalization=reportNativeFinal||composableReview&&initial.config.structuredFinal===nativeFinalProtocol;
     const explanationBound = !nativeFinalization && (initial.run.policy_snapshot as Row).sourceAnswerMode === knowledgeExplanationProtocol;
     const exactQuote = explanationBound && exactKnowledgeQuoteRequested(reviewContext.currentQuestion);
     const sourceMode={requiredKnowledge:initial.shared,sourceExcerpts:!nativeFinalization&&((initial.run.policy_snapshot as Row).sourceAnswerMode===sourceExcerptProtocol || exactQuote),
       knowledgeExplanation:explanationBound && !exactQuote,
       sourceQuestionCoverage:!nativeFinalization&&(initial.run.policy_snapshot as Row).sourceQuestionCoverage===sourceQuestionCoverageProtocol};
-    const imageFinalization = initial.config.imageContext === conversationImageProtocol;
+    const imageFinalization = reportNativeFinal || initial.config.imageContext === conversationImageProtocol;
     const imageContextBudget = imageFinalization && (initial.run.policy_snapshot as Row).imageContextBudget === imageContextBudgetPolicy.version
       ? imageContextBudgetPolicy.version : undefined;
     const finalProjection = imageFinalization ? nativeImageFinalProjection : nativeFinalProjection;
@@ -791,7 +795,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       }
       return { status: marker.effect === 'proposal' ? 'pending' as const : 'unchanged' as const, text: reviewProposalReply(marker.name, marker.effect) };
     };
-    let turnAllocation: ReturnType<typeof consultationRuntimeBudget> | ReturnType<typeof homeSourceRuntimeBudget>;
+    let turnAllocation: ReturnType<typeof consultationRuntimeBudget> | ReturnType<typeof homeSourceRuntimeBudget> | ReturnType<typeof reportNativeRuntimeBudget>;
     const callModel = async (turn: number, messages: ModelMessage[], tools: ModelTool[], purpose: ModelRequestPurpose = 'answer'): Promise<ModelTurnOutput> => {
           const claims = claimFinalization && purpose === 'answer' && !tools.length
             ? await scoped((tx, context) => boundReviewClaims(tx, lease.actor, context.conversation, lease.runId)) : null;
@@ -810,7 +814,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                 ? [...definitions.filter(tool=>tool.name!==finishContextTool.name&&tool.name!=='final_response'),finish]
                 :definitions.map(definition => {
                   const final = claims ? reviewClaimDefinition(nativeFinalDefinition(definition), claims) : nativeFinalDefinition(definition);
-                  return imageSchema ? explicitNativeObjectRoot(final) : final;
+                  return imageSchema || reportNativeFinal ? explicitNativeObjectRoot(final) : final;
                 });
             }, profile, ...(purpose === 'answer' ? { imageContextBudget } : {}),
             ...(nativeFinalization&&purpose==='answer'&&!tools.length?{wireProjection:imageFinalization ? nativeImageFinalMessages : nativeFinalMessages}:{}),
@@ -835,11 +839,12 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           const beforeProviderCall = async () => { try { await scoped(async tx => {
             // Semantic review consumes the same reserved dispatch envelope as
             // generation. Never turn the new validator into unmetered calls.
-            if (!consultation && explanationBound) {
+            if (!consultation && (explanationBound || reportNativeFinal)) {
               const calls = await rows(tx, sql`select input_summary#>>'{budget,after,estimatedTokens}' estimate from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
                 and run_id=${lease.runId} and kind='agent_model'`);
               const held = await one(tx,sql`select reserved_tokens from app.assistant_quota_reservations where enterprise_id=${lease.enterpriseId}
                 and run_id=${lease.runId} and status='held'`);
+              if (reportNativeFinal && calls.length >= 4) fail('assistant_quota_exceeded', 429);
               assertExplanationDispatchBudget(calls.map(call=>Number(call.estimate)),bounded.diagnostic.after.estimatedTokens,Number(held?.reserved_tokens));
             }
             const reservation = consultation ? await reserveConsultationDispatch(tx, { enterpriseId: lease.enterpriseId, runId: lease.runId,
@@ -852,6 +857,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                   policyProjection:policyView===focused?null:modelPolicyProjectionVersion,
                   contentProjection,...(nativeFinalization&&purpose==='answer'&&!tools.length?{nativeFinalProjection:finalProjection}:{}),
                   imageContext: initial.config.imageContext ?? null,
+                  reportNativeFinal: (initial.run.policy_snapshot as Row).reportNativeFinal ?? null,
                   projectKnowledge: initial.shared,
                   sourceAnswerMode: (initial.run.policy_snapshot as Row).sourceAnswerMode ?? null,
                   sourceQuestionCoverage: (initial.run.policy_snapshot as Row).sourceQuestionCoverage ?? null,
@@ -1000,6 +1006,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       const auxiliary = await one(tx, sql`select count(*) filter(where input_summary->>'purpose'='summary')::int summaries,
         count(*) filter(where input_summary->>'purpose'='vision')::int perceptions from app.assistant_run_steps
         where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and kind='agent_model'`);
+      if (reportNativeFinal) return reportNativeRuntimeBudget({ summaries: Number(auxiliary?.summaries || 0),
+        perceptions: Number(auxiliary?.perceptions || 0), resume: initial.resume });
       return homeSourceRuntimeBudget({ policy: (initial.run.policy_snapshot as Row).homeSourceBudget, boundHome: !!readContext?.leadId,
         images: initial.mediaRefs.length, nativeFinalization, tools: agentToolsForTurn(reviewContext.currentQuestion, initial.messages, turnTools, String(initial.trigger.id),sourceMode),
         summaries: Number(auxiliary?.summaries || 0), perceptions: Number(auxiliary?.perceptions || 0), resume: initial.resume,

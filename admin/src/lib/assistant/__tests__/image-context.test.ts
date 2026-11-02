@@ -31,9 +31,10 @@ test('D2 image capability requires the explicit exact native strategy and fences
     { imageInput: true, imageContext: 'unknown' },
     { imageInput: true, imageContext: conversationImageProtocol, structuredFinal: undefined },
     { imageInput: true, imageContext: conversationImageProtocol, providerKey: 'other' },
-    { imageInput: true, imageContext: conversationImageProtocol, model: 'qwen3.7-flash' },
+    { imageInput: true, imageContext: conversationImageProtocol, model: 'unsupported-model' },
   ]) assert.throws(() => agentConfig({ ...base, ...invalid }), /assistant_capability_forbidden/);
   assert.equal(agentConfig(base)?.imageInput, false);
+  assert.equal(agentConfig({ ...base, imageInput: true, imageContext: conversationImageProtocol, model: 'qwen3.7-flash' })?.imageContext, conversationImageProtocol);
 });
 
 test('image provenance stays data and cannot masquerade as the current customer original', () => {

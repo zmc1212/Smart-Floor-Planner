@@ -18,6 +18,7 @@ import { stageHandoffProposal } from '../handoff/proposal';
 import { currentHandoffOwner } from '../handoff/owner';
 import { agentConfig, type AgentConfig } from '../agent/config';
 import { homeSourceBudgetProtocol } from '../agent/home-source-budget';
+import { reportNativeAdmission, reportNativeFinalProtocol } from '../agent/report-native-final';
 import { imageContextBudgetPolicy } from '../agent/context-budget';
 import { conversationImageProtocol } from '../agent/image-context';
 import { nativeImageSchemaProtocol } from '../agent/native-final';
@@ -109,6 +110,8 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   if ((report ? c.status === 'closed' : c.status !== 'open') || !((speech || report) ? ['ai', 'human', 'handoff_requested'].includes(String(c.mode)) : c.mode === 'ai')) fail('context_changed');
   const privateFollowup = c.purpose === 'construction_followup' && actor.capabilities.includes('assistant.followup.self');
   const agent = !speech && (report || actor.principal.kind === 'user' || privateFollowup || (['site.record', 'site.action', 'site.question'].includes(purpose) && actor.capabilities.includes('assistant.project.shared'))) ? agentConfig(settings.agent_config) : null;
+  const reportNativeFinal = reportNativeAdmission(agent, { conversationPurpose: c.purpose, purpose, triggerKind: trigger.kind,
+    privateFollowup, selected: !!reportContext(c.entry_snapshot).selection });
   if (report && !agent) fail('assistant_capability_forbidden', 403);
   const entry = c.entry_snapshot as Row;
   const reviewRuntime = agent && actor.principal.kind === 'user' && c.purpose === 'customer_consultation'
@@ -146,6 +149,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
     ${retryOf || null},${json({ schemaVersion: 1, actor, maxTokens: agent?.consultation ? 8192 : 2048, policyVersion: settings.policy_version, agent,
       ...(!report && reportContext(c.entry_snapshot).selection ? { reportContextVersion: reportContext(c.entry_snapshot).revision } : {}),
       ...(report ? { reportComposition } : {}),
+      ...(reportNativeFinal ? { reportNativeFinal: reportNativeFinalProtocol } : {}),
       ...(agent && !agent.structuredFinal && ['reply','site.question'].includes(purpose)
         ? { sourceAnswerMode: agent.knowledgeExplanation === knowledgeExplanationProtocol ? knowledgeExplanationProtocol : sourceExcerptProtocol,
           sourceQuestionCoverage: sourceQuestionCoverageProtocol } : {}),
