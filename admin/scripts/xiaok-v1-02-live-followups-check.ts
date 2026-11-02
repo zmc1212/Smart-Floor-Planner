@@ -38,7 +38,7 @@ assert.ok(!fs.existsSync(path.join(output, 'report.json')), 'Keep every original
 fs.mkdirSync(output, { recursive: true });
 const nativeScript = process.argv.find(a => a.startsWith('--native-script='))?.slice(16);
 if (configured) assert.ok(nativeScript, 'Bind the planned native input/reentry scope before dispatch');
-const log: Row = { startedAt: new Date().toISOString(), owner: '01a19cd9-e4d1-7c53-89bf-b4241edf1422',
+const log: Row = { startedAt: new Date().toISOString(), owner: '01a19d1c-c6fe-7513-9b43-76f90b8b7d34',
   scope: 'Selected retained owner61/staff63 original facts only, independent of stopped report-body acceptance',
   mechanism: 'report-native-final-v1; new-run final output4096 within original16000/four-call72000 reserve; old native2048 and read-scope2/final-format2/body2 retained',
   serialFirstDraftReview: serialReview,

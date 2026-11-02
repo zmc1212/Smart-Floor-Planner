@@ -6,6 +6,41 @@ export const proseNumberProtocol = 'structured-list-marker-v2';
 // turn a quantity into an ordinal. Quantities in item bodies remain untouched.
 const startsWithUnit = /^(?:℃|°[CF]?|[%‰㎡㎥²³]|(?:mm|cm|km|kg|ml|mpa|kpa|kw|m|h|s|l|v|w)(?:\b|$)|毫米|厘米|千米|平方米|立方米|千克|毫升|兆帕|千瓦|小时|分钟|秒|天|周|个月|年|度|元|万元|遍|次|米|吨|克|升)/iu;
 
+const plain = (node: RootContent | { children?: unknown[]; value?: unknown }): string => {
+  if ('value' in node && typeof node.value === 'string') return node.value;
+  return 'children' in node && Array.isArray(node.children) ? node.children.map(child => plain(child as RootContent)).join('') : '';
+};
+
+/** Sentence-delimited inline lists use the same CommonMark item parser as
+ * ordinary lists. Unicode boundaries locate candidate items; only a complete
+ * consecutive 1..N sequence with one marker style is annotated. Sentence
+ * bodies, measurements and dates are never removed from the analysis view. */
+function sentenceInlineMarkers(text: string, offset: number): Array<[number, number]> {
+  for (let colon = 0; colon < text.length; colon++) {
+    if (text[colon] !== '：' && text[colon] !== ':') continue;
+    let start = colon + 1; while (text[start] === ' ' || text[start] === '\t') start++;
+    const tail = text.slice(start), spans: Array<[number, number]> = [];
+    let punctuation = '', invalid = false;
+    for (const boundary of new Intl.Segmenter('zh-CN', { granularity: 'sentence' }).segment(tail)) {
+      const candidate = tail.slice(boundary.index), list = fromMarkdown(candidate).children[0];
+      if (list?.type !== 'list' || !list.ordered) {
+        if (!boundary.index) break;
+        continue;
+      }
+      const item = list.children[0], paragraph = item?.children[0];
+      const itemStart = item?.position?.start.offset, end = paragraph?.position?.start.offset;
+      if (paragraph?.type !== 'paragraph' || itemStart !== 0 || end === undefined) { invalid = true; break; }
+      const marker = /^(\d{1,9})([.)])([\t ]+)$/.exec(candidate.slice(0, end));
+      if (!marker || marker[1] !== String(spans.length + 1) || list.start !== spans.length + 1
+        || punctuation && punctuation !== marker[2] || startsWithUnit.test(plain(paragraph).trimStart())) { invalid = true; break; }
+      punctuation = marker[2]; spans.push([offset + start + boundary.index, offset + start + boundary.index + end]);
+      if (spans.length > 12) { invalid = true; break; }
+    }
+    if (!invalid && spans.length >= 2) return spans;
+  }
+  return [];
+}
+
 /** A conservative inline-list grammar, separate from numerical claim parsing.
  * Colon + two or more semicolon-delimited, consecutive 1..N items, with the
  * same marker and horizontal space. A failed/ambiguous item rejects the whole
@@ -31,7 +66,7 @@ function inlineMarkers(text: string, offset: number): Array<[number, number]> {
     }
     if (spans.length === parts.length) return spans;
   }
-  return [];
+  return sentenceInlineMarkers(text, offset);
 }
 
 /** Claim-analysis view only. Parse CommonMark structure rather than guessing
@@ -40,10 +75,6 @@ function inlineMarkers(text: string, offset: number): Array<[number, number]> {
  * UI prose, quoted originals and citation identities are never rewritten. */
 export function proseNumberView(text: string): string {
   const spans: Array<[number, number]> = [];
-  const plain = (node: RootContent | { children?: unknown[]; value?: unknown }): string => {
-    if ('value' in node && typeof node.value === 'string') return node.value;
-    return 'children' in node && Array.isArray(node.children) ? node.children.map(child => plain(child as RootContent)).join('') : '';
-  };
   const visit = (node: RootContent) => {
     if (node.type === 'code' || node.type === 'blockquote') return;
     if (node.type === 'paragraph' && node.children.length === 1 && node.children[0].type === 'text') {
