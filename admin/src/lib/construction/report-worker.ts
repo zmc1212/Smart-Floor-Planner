@@ -9,20 +9,7 @@ import { discoverFollowups, enqueueReport } from './report-store';
 import { dailySupplementCandidates, supplementClosedDailyReports } from './report-supplements';
 import { collectReportFacts, deliveryActor, followupAvailable, followupProjects, projectReportFacts, reportFactsHash, type ReportFacts } from './report-scope';
 import { enqueueReportBody } from './report-body-store';
-
-/** Progress revisions also include note edits. Lock the project first, then
- * read the latest committed stage event in a fresh statement so a concurrent
- * correction back to the same key cannot revive an older event. */
-async function currentStageEvent(tx: PostgresTransaction, eid: string, eventId: string) {
-  const event = await one(tx, sql`select e.*,p.current_stage_key as project_stage_key,p.status as project_status
-    from app.domain_event_outbox e join app.construction_projects p on p.enterprise_id=e.enterprise_id and p.id::text=e.aggregate_id
-    where e.enterprise_id=${eid} and e.id=${eventId} and e.type='construction.stage.updated.v1' for share of p`);
-  if (!event || event.project_stage_key !== (event.payload as Row).stageKey) return;
-  const newer = await one(tx, sql`select id from app.domain_event_outbox where enterprise_id=${eid}
-    and type='construction.stage.updated.v1' and aggregate_id=${String(event.aggregate_id)}
-    and aggregate_version>${Number(event.aggregate_version)} limit 1`);
-  return newer ? undefined : event;
-}
+import { currentStageEvent } from './stage-events';
 
 /** One latest due daily and weekly period per tick, not an unbounded outage replay.
  * Time changes affect future ticks; each queued run retains its original scope. */

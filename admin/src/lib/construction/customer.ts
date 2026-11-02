@@ -5,6 +5,7 @@ import { fail, id, type ActorContext } from '@/lib/assistant/contracts';
 import { currentStage, readStageSettings, stageContact } from './stages-store';
 import { publishedSiteRecord, siteRecordProjection } from './site-publications';
 import { siteRecordText, type SiteDraft } from './site-contract';
+import { currentStageEvent } from './stage-events';
 
 export async function customerProjects(tx: PostgresTransaction, eid: string, uid: string, leadId = '') {
   return rows(tx, sql`select p.* from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
@@ -58,7 +59,7 @@ export async function constructionFollowUpScope(tx: PostgresTransaction, eid: st
 }
 /** Source access is shared by customer history and staff packets. */
 export async function constructionNoticeAvailable(tx: PostgresTransaction, eid: string, cid: string, mid: string, lock = false, requireNotice = false) {
-  const notice = await one(tx, sql`select e.aggregate_id,e.aggregate_version,e.payload,m.purpose from app.assistant_messages m
+  const notice = await one(tx, sql`select e.id,e.aggregate_id,e.aggregate_version,e.payload,m.purpose from app.assistant_messages m
     join app.domain_event_outbox e on e.enterprise_id=m.enterprise_id and e.id=m.source_event_id
     where m.enterprise_id=${eid} and m.conversation_id=${cid} and m.id=${mid} and m.purpose in ('construction.update','construction.stage','construction.followup','construction.record','construction.result','construction.plan')`);
   if (!notice) return !requireNotice;
@@ -77,18 +78,19 @@ export async function constructionNoticeAvailable(tx: PostgresTransaction, eid: 
   const followUp = notice.purpose === 'construction.followup';
   if (followUp) {
     const scope = await constructionFollowUpScope(tx, eid, cid, payload, lock);
-    return !!scope && scope.progressRevision === Number(payload.progressRevision) && scope.stageKey === payload.stageKey
-      && scope.settingsVersion === Number(payload.settingsVersion);
+    if (!scope || scope.stageKey !== payload.stageKey || scope.settingsVersion !== Number(payload.settingsVersion)) return false;
+    const event = await currentStageEvent(tx, eid, String(payload.triggerEventId), true);
+    return !!event && String(event.aggregate_id) === String(payload.projectId)
+      && Number((event.payload as Row).settingsVersion) === Number(payload.settingsVersion);
   }
   if (lock) await one(tx, sql`select version from app.construction_stage_settings where enterprise_id=${eid} for share`);
-  return !!await one(tx, sql`select p.id from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
+  const authorized = await one(tx, sql`select p.id from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
     join app.assistant_participants ap on ap.enterprise_id=p.enterprise_id and ap.conversation_id=${cid} and ap.user_id=l.customer_user_id and ap.status='active'
     left join app.construction_stage_settings s on s.enterprise_id=p.enterprise_id
-    where p.enterprise_id=${eid} and p.id=${String(followUp ? payload.projectId : notice.aggregate_id)} and p.customer_access and p.status='active' and l.archived_at is null
-    ${followUp ? sql`and l.customer_user_id=${String(payload.customerId)}` : sql``}
-    ${followUp && payload.room ? sql`and exists(select 1 from app.construction_rooms r where r.enterprise_id=p.enterprise_id and r.project_id=p.id and r.name=${String(payload.room)})` : sql``}
-    and p.progress_revision=${Number(followUp ? payload.progressRevision : notice.aggregate_version)} and p.current_stage_key=${String(payload.stageKey)}
+    where p.enterprise_id=${eid} and p.id=${String(notice.aggregate_id)} and p.customer_access and p.status='active' and l.archived_at is null
+    and p.current_stage_key=${String(payload.stageKey)}
     and coalesce(s.version,1)=${Number(payload.settingsVersion)} ${lock ? sql`for share of p,l,ap` : sql``}`);
+  return !!authorized && !!await currentStageEvent(tx, eid, String(notice.id), true);
 }
 /** Only server-projected, currently authorized sources can expose a dial action; model text cannot. */
 export async function constructionMessageActions(tx: PostgresTransaction, actor: ActorContext, cid: string, mid: string) {

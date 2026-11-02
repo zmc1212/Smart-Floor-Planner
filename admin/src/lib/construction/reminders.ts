@@ -7,6 +7,7 @@ import { currentStage, readStageSettings } from './stages-store';
 import { appendStageFollowUp } from './follow-ups';
 import { syncSitePublications } from './site-publications';
 import { syncPublicConsents } from './public-projections';
+import { currentStageEvent } from './stage-events';
 
 /** Outbox writes, progress and chat delivery commit together; no model invents a construction fact. */
 export async function recordStageReminder(tx: PostgresTransaction, actor: ActorContext, project: Row, settingsVersion: number, text: string) {
@@ -21,6 +22,9 @@ export async function syncConstructionReminders(tx: PostgresTransaction, actor: 
   if (actor.principal.kind !== 'user' || conversation.status !== 'open' || conversation.mode !== 'ai') return;
   if (!await one(tx, sql`select enterprise_id from app.assistant_enterprise_settings where enterprise_id=${actor.enterpriseId} and enabled`)) return;
   await syncSitePublications(tx, actor, conversation);
+  // Private follow-up has its own report delivery and must not consume C01's
+  // original per-customer stage/need consumer keys.
+  if (conversation.purpose !== 'customer_consultation') return;
   await one(tx, sql`select version from app.construction_stage_settings where enterprise_id=${actor.enterpriseId} for share`);
   const cid = String(conversation.id), uid = actor.principal.userId;
   const projects = await rows(tx, sql`select p.* from app.construction_projects p
@@ -33,8 +37,8 @@ export async function syncConstructionReminders(tx: PostgresTransaction, actor: 
     const event = await one(tx, sql`select e.* from app.domain_event_outbox e
       left join app.construction_stage_settings s on s.enterprise_id=e.enterprise_id
       where e.enterprise_id=${actor.enterpriseId} and e.type='construction.stage.updated.v1' and e.aggregate_id=${String(p.id)}
-      and e.aggregate_version=${Number(p.progress_revision)} and e.payload->>'settingsVersion'=coalesce(s.version,1)::text`);
-    if (!event) continue;
+      and e.payload->>'settingsVersion'=coalesce(s.version,1)::text order by e.aggregate_version desc limit 1`);
+    if (!event || !await currentStageEvent(tx, actor.enterpriseId, String(event.id), true)) continue;
     const consumer = 'construction:user:' + uid;
     const delivery = await one(tx, sql`insert into app.domain_event_deliveries(enterprise_id,event_id,consumer_key,status)
       values(${actor.enterpriseId},${String(event.id)},${consumer},'processing') on conflict(enterprise_id,event_id,consumer_key) do nothing returning id`);
