@@ -48,7 +48,7 @@
 
 | 项目 | 唯一当前记录 |
 | --- | --- |
-| 用户动作 / 当前交付 | 从客户小K“我的对话”区分真实项目跟进和普通咨询，看右侧未读/时间，进入管理，关闭保草稿、新建普通对话不改自动投递归属。批准01-conversation-list-v001+原README/管理局部SVG及共用规则为源，01–11及实施授权持续。本01深链组件有界完成；后继为同V1-02实际客户根Tab的同组件入口兼容补验，正常模型/自然报告/完整四端仍未过。 |
+| 用户动作 / 当前交付 | 从客户小K“我的对话”区分真实项目跟进和普通咨询，看右侧未读/时间，进入管理，关闭保草稿、新建普通对话不改自动投递归属。批准01-conversation-list-v001+原README/管理局部SVG及共用规则为源，01–11及实施授权持续。本01深链组件有界完成并已提交ae3441d1358a7060445196bb1d810992d29e9f7e；根Tab补验两轮修复后仍未触发，按下文停测/返回条件保持Limited，正常模型/自然报告/完整四端仍未过。 |
 | 最新决定 / 测试语言 | 自然客户原话只为“厨房台面要放电饭煲和热水壶，插座的位置怎么安排合适？”，合成标记仅项目/entry元数据；没有assistant回复/run/citation夹具，也没有模型发送。该保存原话是列表/重进协议夹具，不当自然答复验收，旧怪异气泡不改判。 |
 | 已完成实现 / 事实 | 仅history加699px/y145纸页、握柄39×5、31px同Black标题，18px项目名及独立未读/时间，15px真实送达提示、16px普通首问标题/创建日期。管理108×44px/13px不依赖可见卡存在；无效日期留空。有旧有效数据的背景刷新不插加载行推卡，初始加载和明确失败仍沿批准状态。最新简报来自原已送达且获权版本，保存时间不冒充投递时间，不造模型摘要或今日施工。其他sheet/API/schema/权限/编排不变。 |
 | 素材 / 字体 | 房屋仍用requirement-home.png，普通图标复用独立MessageCircleMore几何/深绿配色，conversation-outline.png为48×48透明/1283B。加号/箭头/环扣/纸层原生构建，无截图切片；无新生图。同Black只补“话”到45码位11884B，原44轮廓/度量无漂移。原02/08叶枝/用量保留，03设计历史520未知不重提。 |
@@ -60,8 +60,10 @@
 | 复用基础 / 已验03 | 16fee6c3批准03业主完整事实详情、81a7b58b02根日报、0bbaff6d08周报、7431135d06/07根卡、b037d7cc下钻、9521e56c员工本人服务、b6d403b704及2ac4bb5011沿原范围复用，不重放业务/撤权/模型/摄取。03 client120/native02业务/native04-footer最终几何及原失败保留；纸页/原记录/固定追问及facts_only/发布待确认等未变。 |
 | 阻塞 / 停测 | 正常问答/自然报告/两次固定配置首稿仍未过：42条reconciling预占2004000>daily1200000，不释放/重算/提额度/换模型/付费fallback/改标签采样；normalSendRepairIterations0。V1-01 Limited/解释关；closure-business-01 job2125/version425/doc419/chunk3753停止，不重试/释放/重派/摄取/增校验层。原1603–1608失败、10对话unknown、CNY32.828897/100及3753未知费用保持。 |
 | 知识 / 边界 / 资源 | 微云1454、精艺.pdf/SHA efcdc6f1e01ec848d0908e99ddd08929a7f0f07b3942f5b539864361f4aa049b；404/405版本410/411发布，其余28草稿及323撤回沿原证据，不因回答/换聊天重摄取。原7 CLI删除删0/拒1、旧75/拒2不读正文/不换工具或聊天重试删除。自有job/controller/锁/build0，外来3006保留。仅本地合成开发；无生产/远程/外部消息/新增额度。 |
-| 工作区 / 文档 / 提交 | 保留继承脏checkout，不建worktree、不清理/整体暂存。六份双语模块/二期合同新增01当前块、两台账各更新原两route行、计划仅本第2节；README/测量/证据ignored不force-add。仅提交本01可归属代码/测试/图标/字形及对应文档hunks，真实提交见verification.json；AGENTS/作品/供应商/其他UI/线索/测绘/远程/site-plans/studio-serif/0102及外部api.js不混入。文档更新含当前代码/限制，无API或后台功能变化。 |
-| 下一具体动作 | 同V1-02实际客户根Tab入口：先读pages/index的异步chat-panel挂载和官方组件选择器能力，用同原批准01/README，验证根页历史入口/关闭/真实列表及管理衔接。只补根入口兼容，不重放深链503/已读/普通咨询或02/03/06/07/08/撤权/模型/摄取。若官方CLI不能定位组件，先用保存的运行时组件事实判别，不发明HTML替代原生验收、不改权责或新视觉。保持源包余量；接近容量按第8节先检查点后串行续接。 |
+| 工作区 / 文档 / 提交 | 保留继承脏checkout，不建worktree、不清理/整体暂存。六份双语模块/二期合同新增01当前块、两台账各更新原两route行、计划仅本第2节；README/测量/证据ignored不force-add。本01产品/文档已限定提交ae3441d1358a7060445196bb1d810992d29e9f7e；根停测仅补当前说明/原两route状态，不再改产品或为文档重跑，真实提交见verification.json/root-verification.json；AGENTS/作品/供应商/其他UI/线索/测绘/远程/site-plans/studio-serif/0102及外部api.js不混入。文档更新含当前代码/限制，无API或后台功能变化。 |
+| 根入口期望 / 实际 / 归属 | 实际根Tab按钮应打开组件sheet=history并进入获权列表/管理。native05先因Page/组件计时器驱动误读失败；native06复用修正后，CLI跨组件选择器实际返回外层component/node7，sheet仍空；只读root-capability证内部(26,47)/44×44按钮/handler存在。native07用已注册元素touchstart/end触摸真实中心(48,69)仍无history读取。归属原生自动化组件动作接入，不能据此判产品根UI失败或Knowledge/Agent缺陷。两次根入口驱动修复未过同一期望，rootEntryHarnessRepairIterations=2，停止第三轮同类选择器/坐标补丁。 |
+| 根补验 / 最新清理 | tmp/v1-02-conversation-list-visual/root-verification.json；native05/06/07全部failed/cleanup true/drift[]，3张失败PNG已审。后两批复用05编译且产品hash无漂移，根补验产品改动0；新增CLI参数/模型/摄取/生图0，身份/storage/transport/hydration恢复。最终七批310–316归档/对客关、363–369撤回、128–134停止、四普通夹具归档、5410停用；计划false/version240/dispatch_epoch60、q0，原控制/provider4114/knowledge3753 unknown-input_tokens-null保持。只读budget-read仍42条reconciling预占2004000、日限1200000，未释放或重算。 |
+| 下一具体动作 / 返回条件 | 当前根入口补验停止；只在有正式组件内元素动作机制及其判别证据后重开原范围，不再变选择器/坐标抽试、不加产品测试钩子、不回退Computer Use/9420/窗口焦点或要求用户手测。正常模型/自然报告仍需原未知预占的核账决定/可验证解除条件；用户未授权释放/重算/提额度/换模型/付费fallback，不启动新模型批。不重放原已验深链/02/03/06/07/08/撤权/摄取，不提前V1-03、不重启旧队列。若有真正独立的新缺口先给出具体用户输入/输出及依赖，不能以测试数量或重复检查点制造进度；容量按第8节串行续接。 |
 
 固定本机命令（admin cwd）：node --import tsx scripts/xiaok-v1-02-report-context-check.ts --development --adapter-script=../tmp/v1-02-conversation-list-visual/adapter.cjs --conversation-list-visual --staff-native-script=../tmp/v1-02-conversation-list-visual/native.cjs --output=../tmp/v1-02-conversation-list-visual/native-03。只补重进换adapter-reentry.cjs/native-reentry.cjs/native-04-reentry；原native-01/02/03 failed均保留。客户端checks.cjs client-02/lint-02；read-final.cjs只读回读四批已清理状态。分段范围、原错、字形、窗口检查与文档后置影响见verification.json，不为文档变动重跑。
 
