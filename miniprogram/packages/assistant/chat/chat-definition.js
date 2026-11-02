@@ -415,11 +415,12 @@ module.exports = () => ({
   closeFollowupReport() { this.followups.closeReport(); },
   moreFollowupReports() { return this.followups.more(); },
   recoverFollowup() { return this.followups.recover(); },
-  retryFollowupReport() { return this.followups.retryBody(this.data.followupDetail); },
+  retryFollowupReport(event) { const d = event?.currentTarget?.dataset, r = this.followups.sourceReport(d?.report ? String(d.report) : '', Number(d?.revision)); if (r?.generationRetryable) return this.followups.retryBody(r); },
   openReportSource(event) {
-    const pid = String(event.currentTarget.dataset.project), d = this.data.followupDetail;
-    const sources = d?.projects.find(p => p.id === pid)?.knowledgeSources || [];
-    const open = source => { if (this.data.followupDetail !== d || !source) return; this.openSheet('reportSource'); return this.followups.readSource(pid, source.sourceId); };
+    const data = event.currentTarget.dataset, pid = String(data.project), rid = data.report ? String(data.report) : '', revision = Number(data.revision);
+    const owner = this.followups, epoch = owner.epoch, d = owner.sourceReport(rid, revision);
+    const sources = d?.projects?.find(p => p.id === pid)?.knowledgeSources || [];
+    const open = source => { if (!owner.current(epoch) || owner.sourceReport(rid, revision) !== d || !source) return; this.openSheet('reportSource'); return owner.readSource(pid, source.sourceId, rid, revision); };
     if (sources.length === 1) return open(sources[0]);
     if (sources.length > 1) wx.showActionSheet({ itemList: sources.map(s => s.title), success: result => open(sources[result.tapIndex]) });
   },

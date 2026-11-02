@@ -1,272 +1,272 @@
 <!-- C05 extends the approved C01 conversation; server metadata alone creates decision actions. -->
 <import src="./report-question.wxml" />
 <template name="citation-content">
-  <text wx:if="{{citationLoading}}" class="sheet-state">正在核对资料访问权限…</text>
-  <view wx:elif="{{citationError}}" class="notice"><text>{{citationError}}</text><button class="notice-action" bindtap="{{retry}}">重试</button></view>
-  <view wx:elif="{{citation && citation.available}}" class="source-content"><text class="source-title">{{citation.title}}</text><text wx:if="{{citation.versionLabel}}" class="sheet-helper">{{citation.versionLabel}}</text><text wx:else class="sheet-helper">版本 {{citation.versionNumber}}{{citation.historical ? ' · 回答时引用的历史版本' : ''}}</text><text wx:if="{{citation.sourceLocation}}" class="sheet-helper" user-select>{{citation.sourceLocation}}</text><image wx:if="{{citation.imagePath}}" class="message-photo" src="{{citation.imagePath}}" mode="widthFix"/><text class="source-quote" user-select>{{citation.quote}}</text><block wx:if="{{citation.reference}}"><text class="sheet-helper" user-select>出处：{{citation.reference.source}}</text><text class="sheet-helper" user-select>授权：{{citation.reference.authorization}}</text><text class="sheet-helper">仅供装修方向参考，不是你家的正式施工方案；可直接说喜欢或不合适。</text></block></view>
-  <text wx:else class="sheet-state">这份资料已撤回、过期或不再对当前身份开放。请重新提问。</text>
+<text wx:if="{{citationLoading}}" class="sheet-state">正在核对资料访问权限…</text>
+<view wx:elif="{{citationError}}" class="notice"><text>{{citationError}}</text><button class="notice-action" bindtap="{{retry}}">重试</button></view>
+<view wx:elif="{{citation && citation.available}}" class="source-content"><text class="source-title">{{citation.title}}</text><text wx:if="{{citation.versionLabel}}" class="sheet-helper">{{citation.versionLabel}}</text><text wx:else class="sheet-helper">版本 {{citation.versionNumber}}{{citation.historical ? ' · 回答时引用的历史版本' : ''}}</text><text wx:if="{{citation.sourceLocation}}" class="sheet-helper" user-select>{{citation.sourceLocation}}</text><image wx:if="{{citation.imagePath}}" class="message-photo" src="{{citation.imagePath}}" mode="widthFix"/><text class="source-quote" user-select>{{citation.quote}}</text><block wx:if="{{citation.reference}}"><text class="sheet-helper" user-select>出处：{{citation.reference.source}}</text><text class="sheet-helper" user-select>授权：{{citation.reference.authorization}}</text><text class="sheet-helper">仅供装修方向参考，不是你家的正式施工方案；可直接说喜欢或不合适。</text></block></view>
+<text wx:else class="sheet-state">这份资料已撤回、过期或不再对当前身份开放。请重新提问。</text>
 </template>
 <template name="owner-public-card">
-  <view wx:if="{{card}}" class="owner-public-card">
-    <text class="owner-public-title">这次拟公开的内容</text><text class="owner-public-name">{{card.name}} · {{card.stageName}}</text>
-    <view class="owner-public-photos"><block wx:for="{{expanded === card.key && card.full ? card.photos : card.summaryPhotos}}" wx:key="id"><image wx:if="{{paths[item.key]}}" src="{{paths[item.key]}}" mode="aspectFill" data-key="{{item.key}}" bindtap="previewPublic"/></block></view>
-    <text class="owner-public-count">现场照片 {{card.photos.length}} 张 · 服务节选 {{card.excerptCount}} 条</text>
-    <view wx:for="{{expanded === card.key && card.full ? card.full.excerpts : card.excerpts}}" wx:key="key" class="owner-public-quote"><text wx:if="{{expanded === card.key}}" class="owner-public-meta">{{item.role}} · {{item.dateLabel}}</text><text user-select>{{item.text}}</text></view>
-    <text class="owner-public-scope">公开后，进入本企业公开工地页的访客可查看。</text><text class="owner-public-scope">不公开姓名、电话和门牌；新增内容会重新征求同意。</text>
-    <text class="owner-public-meta">{{card.statusLabel}}{{card.reason ? ' · ' + card.reason : ''}}</text>
-    <block wx:if="{{card.canDecide}}"><button class="owner-public-primary" data-key="{{card.key}}" data-action="{{expanded === card.key && card.full ? 'approve' : 'preview'}}" bindtap="publicDecision" disabled="{{busy || pending || disabled}}">{{busy ? '正在确认…' : expanded === card.key && card.full ? '同意公开这一版' : '查看全部公开内容'}}</button><view class="owner-public-options"><button data-key="{{card.key}}" data-action="decline" bindtap="publicDecision" disabled="{{busy || pending || disabled}}">暂不公开</button><button bindtap="laterPublic" disabled="{{busy}}">稍后再看</button></view></block>
-    <button wx:elif="{{card.canWithdraw}}" class="notice-action" data-key="{{card.key}}" data-action="withdraw" bindtap="publicDecision" disabled="{{busy || pending || disabled}}">撤回这一版公开授权</button>
-    <text class="owner-public-meta">只决定这次预览，其他聊天照常继续。</text>
-  </view>
+<view wx:if="{{card}}" class="owner-public-card">
+<text class="owner-public-title">这次拟公开的内容</text><text class="owner-public-name">{{card.name}} · {{card.stageName}}</text>
+<view class="owner-public-photos"><block wx:for="{{expanded === card.key && card.full ? card.photos : card.summaryPhotos}}" wx:key="id"><image wx:if="{{paths[item.key]}}" src="{{paths[item.key]}}" mode="aspectFill" data-key="{{item.key}}" bindtap="previewPublic"/></block></view>
+<text class="owner-public-count">现场照片 {{card.photos.length}} 张 · 服务节选 {{card.excerptCount}} 条</text>
+<view wx:for="{{expanded === card.key && card.full ? card.full.excerpts : card.excerpts}}" wx:key="key" class="owner-public-quote"><text wx:if="{{expanded === card.key}}" class="owner-public-meta">{{item.role}} · {{item.dateLabel}}</text><text user-select>{{item.text}}</text></view>
+<text class="owner-public-scope">公开后，进入本企业公开工地页的访客可查看。</text><text class="owner-public-scope">不公开姓名、电话和门牌；新增内容会重新征求同意。</text>
+<text class="owner-public-meta">{{card.statusLabel}}{{card.reason ? ' · ' + card.reason : ''}}</text>
+<block wx:if="{{card.canDecide}}"><button class="owner-public-primary" data-key="{{card.key}}" data-action="{{expanded === card.key && card.full ? 'approve' : 'preview'}}" bindtap="publicDecision" disabled="{{busy || pending || disabled}}">{{busy ? '正在确认…' : expanded === card.key && card.full ? '同意公开这一版' : '查看全部公开内容'}}</button><view class="owner-public-options"><button data-key="{{card.key}}" data-action="decline" bindtap="publicDecision" disabled="{{busy || pending || disabled}}">暂不公开</button><button bindtap="laterPublic" disabled="{{busy}}">稍后再看</button></view></block>
+<button wx:elif="{{card.canWithdraw}}" class="notice-action" data-key="{{card.key}}" data-action="withdraw" bindtap="publicDecision" disabled="{{busy || pending || disabled}}">撤回这一版公开授权</button>
+<text class="owner-public-meta">只决定这次预览，其他聊天照常继续。</text>
+</view>
 </template>
 <template name="plan-decision-card">
-  <view wx:if="{{card}}" class="owner-public-card">
-    <text class="owner-public-title">这次方案，请你决定</text>
-    <text class="owner-public-name">{{card.title}} · V{{card.number}} · {{card.roomName}}</text>
-    <view class="owner-public-quote"><text user-select>{{card.full ? card.difference : card.summary}}</text></view>
-    <text class="owner-public-scope">费用变化 {{card.costLabel}} · 工期变化 {{card.scheduleLabel}}</text>
-    <view wx:if="{{card.full}}" class="owner-public-photos"><image wx:if="{{paths[card.key]}}" src="{{paths[card.key]}}" mode="aspectFit" data-id="{{card.id}}" bindtap="previewPlan"/><text wx:else class="owner-public-meta">正在读取这一版图纸…</text></view>
-    <text class="owner-public-meta">方案 {{card.id}} · {{card.statusLabel}}{{card.reason ? ' · ' + card.reason : ''}}</text>
-    <text class="owner-public-scope">只决定这一版图纸、差异及上述影响；现场落实与事项关闭由团队另行核对。</text>
-    <block wx:if="{{card.canDecide}}">
-      <button class="owner-public-primary" data-id="{{card.id}}" data-action="{{card.full && expanded === card.id ? 'approve' : 'preview'}}" bindtap="planDecision" disabled="{{busy || pending || disabled || card.full && !paths[card.key]}}">{{busy ? '正在确认…' : card.full && expanded === card.id ? '同意这一版方案' : '查看完整图纸与差异'}}</button>
-      <view class="owner-public-options"><button data-id="{{card.id}}" data-action="decline" bindtap="planDecision" disabled="{{busy || pending || disabled}}">不同意这一版</button><button data-id="{{card.id}}" data-action="defer" bindtap="planDecision" disabled="{{busy || pending || disabled}}">稍后决定</button></view>
-      <button class="notice-action" data-id="{{card.id}}" data-action="request-changes" bindtap="planDecision" disabled="{{busy || pending || disabled}}">希望调整一下</button>
-    </block>
-    <button wx:elif="{{!card.full}}" class="notice-action" data-id="{{card.id}}" data-action="details" bindtap="planDecision" disabled="{{busy || pending || disabled}}">查看这一版图纸</button>
-    <text class="owner-public-meta">拒绝或稍后决定，其他聊天照常继续。</text>
-  </view>
+<view wx:if="{{card}}" class="owner-public-card">
+<text class="owner-public-title">这次方案，请你决定</text>
+<text class="owner-public-name">{{card.title}} · V{{card.number}} · {{card.roomName}}</text>
+<view class="owner-public-quote"><text user-select>{{card.full ? card.difference : card.summary}}</text></view>
+<text class="owner-public-scope">费用变化 {{card.costLabel}} · 工期变化 {{card.scheduleLabel}}</text>
+<view wx:if="{{card.full}}" class="owner-public-photos"><image wx:if="{{paths[card.key]}}" src="{{paths[card.key]}}" mode="aspectFit" data-id="{{card.id}}" bindtap="previewPlan"/><text wx:else class="owner-public-meta">正在读取这一版图纸…</text></view>
+<text class="owner-public-meta">方案 {{card.id}} · {{card.statusLabel}}{{card.reason ? ' · ' + card.reason : ''}}</text>
+<text class="owner-public-scope">只决定这一版图纸、差异及上述影响；现场落实与事项关闭由团队另行核对。</text>
+<block wx:if="{{card.canDecide}}">
+<button class="owner-public-primary" data-id="{{card.id}}" data-action="{{card.full && expanded === card.id ? 'approve' : 'preview'}}" bindtap="planDecision" disabled="{{busy || pending || disabled || card.full && !paths[card.key]}}">{{busy ? '正在确认…' : card.full && expanded === card.id ? '同意这一版方案' : '查看完整图纸与差异'}}</button>
+<view class="owner-public-options"><button data-id="{{card.id}}" data-action="decline" bindtap="planDecision" disabled="{{busy || pending || disabled}}">不同意这一版</button><button data-id="{{card.id}}" data-action="defer" bindtap="planDecision" disabled="{{busy || pending || disabled}}">稍后决定</button></view>
+<button class="notice-action" data-id="{{card.id}}" data-action="request-changes" bindtap="planDecision" disabled="{{busy || pending || disabled}}">希望调整一下</button>
+</block>
+<button wx:elif="{{!card.full}}" class="notice-action" data-id="{{card.id}}" data-action="details" bindtap="planDecision" disabled="{{busy || pending || disabled}}">查看这一版图纸</button>
+<text class="owner-public-meta">拒绝或稍后决定，其他聊天照常继续。</text>
+</view>
 </template>
 <view class="chat-page notebook-chat {{embedded ? 'embedded-chat' : ''}}" style="height: {{viewportHeight - keyboardHeight - (embedded && !keyboardHeight ? 50 + bottomInset : 0)}}px;">
-  <view class="notebook-spine" aria-hidden="true"><view class="book-ring ring-one"></view><view class="book-ring ring-two"></view><view class="book-ring ring-three"></view><view class="book-ring ring-four"></view></view>
-  <view class="chat-nav" style="padding-top: {{navigationTop}}px; padding-right: {{navigationRight}}px;">
-    <view class="nav-lane" style="min-height: {{navigationHeight}}px;">
-      <button wx:if="{{professionalFollowup}}" class="notebook-history" bindtap="back" aria-label="返回"><view class="history-paper"><view class="followup-back"></view></view></button><button wx:else class="notebook-history" bindtap="openHistory" aria-label="历史对话" disabled="{{loading || needsLogin || fatal || busy || pendingSend || pendingAction}}"><view class="history-paper"><image src="../assets/history.png" mode="aspectFit" /></view></button>
-      <text class="notebook-brand">小K</text><button wx:if="{{professionalFollowup}}" class="notebook-history" bindtap="openHistory" aria-label="跟进会话"><image style="width: 25px; height: 25px;" src="../assets/history.png" mode="aspectFit"/></button>
-      <button wx:if="{{followupActive && followupContext.audience === 'customer'}}" size="mini" class="designer-entry" bindtap="openFollowupHandoff" disabled="{{followupChat.loading || followupChat.fatal || !followupChat.conversation || followupChat.busy || followupChat.pendingSend || followupChat.pendingAction}}"><text>{{followupChat.reception ? '查看接待' : '找设计师'}}</text><image src="../assets/chat-arrow-up-right.png" mode="aspectFit" /></button>
-      <button wx:if="{{!professionalFollowup && !followupActive && (!conversation || conversation.status === 'open')}}" size="mini" class="designer-entry" bindtap="openHandoff" disabled="{{loading || fatal || !canSend || busy || pendingSend || pendingAction}}"><text>{{conversation.mode === 'human' || conversation.mode === 'handoff_requested' ? '查看接待' : '找设计师'}}</text><image src="../assets/chat-arrow-up-right.png" mode="aspectFit" /></button>
-    </view>
-  </view>
+<view class="notebook-spine" aria-hidden="true"><view class="book-ring ring-one"></view><view class="book-ring ring-two"></view><view class="book-ring ring-three"></view><view class="book-ring ring-four"></view></view>
+<view class="chat-nav" style="padding-top: {{navigationTop}}px; padding-right: {{navigationRight}}px;">
+<view class="nav-lane" style="min-height: {{navigationHeight}}px;">
+<button wx:if="{{professionalFollowup}}" class="notebook-history" bindtap="back" aria-label="返回"><view class="history-paper"><view class="followup-back"></view></view></button><button wx:else class="notebook-history" bindtap="openHistory" aria-label="历史对话" disabled="{{loading || needsLogin || fatal || busy || pendingSend || pendingAction}}"><view class="history-paper"><image src="../assets/history.png" mode="aspectFit" /></view></button>
+<text class="notebook-brand">小K</text><button wx:if="{{professionalFollowup}}" class="notebook-history" bindtap="openHistory" aria-label="跟进会话"><image style="width: 25px; height: 25px;" src="../assets/history.png" mode="aspectFit"/></button>
+<button wx:if="{{followupActive && followupContext.audience === 'customer'}}" size="mini" class="designer-entry" bindtap="openFollowupHandoff" disabled="{{followupChat.loading || followupChat.fatal || !followupChat.conversation || followupChat.busy || followupChat.pendingSend || followupChat.pendingAction}}"><text>{{followupChat.reception ? '查看接待' : '找设计师'}}</text><image src="../assets/chat-arrow-up-right.png" mode="aspectFit" /></button>
+<button wx:if="{{!professionalFollowup && !followupActive && (!conversation || conversation.status === 'open')}}" size="mini" class="designer-entry" bindtap="openHandoff" disabled="{{loading || fatal || !canSend || busy || pendingSend || pendingAction}}"><text>{{conversation.mode === 'human' || conversation.mode === 'handoff_requested' ? '查看接待' : '找设计师'}}</text><image src="../assets/chat-arrow-up-right.png" mode="aspectFit" /></button>
+</view>
+</view>
 
-  <include src="./followup-view.wxml" />
-  <scroll-view wx:if="{{!followupActive}}" class="conversation-scroll" scroll-y enhanced show-scrollbar="{{false}}" scroll-into-view="{{scrollTarget}}" scroll-with-animation="{{false}}">
-    <view class="conversation-content {{!reportQuestion.selected && !messages.length && !pendingText && !loading && (!fatal || needsLogin) ? 'new-conversation-content' : ''}}">
-      <template is="report-question-paper" data="{{q: reportQuestion}}" />
-      <view wx:if="{{!reportQuestion.selected && !messages.length && !pendingText && !loading && (!fatal || needsLogin)}}" class="notebook-welcome">
-        <view class="welcome-art-group"><image class="welcome-sage" src="../assets/chat-notebook-sage.png" mode="aspectFit" aria-hidden="true" /><image class="welcome-mascot" src="../assets/chat-notebook-mascot.png" mode="aspectFit" aria-hidden="true" /></view>
-        <view class="welcome-paper">
-          <view class="welcome-paper-under" aria-hidden="true"></view>
-          <view class="welcome-tape" aria-hidden="true"></view>
-          <text class="fabric-label welcome-label">新的一页</text>
-          <text class="welcome-title">小K会客室</text>
-          <view class="pencil-underline" aria-hidden="true"></view>
-          <text class="welcome-subtitle">把关于家的想法，慢慢聊清楚。</text>
-          <view class="topic-intro"><view></view><text>今天，想先聊点什么？</text><view></view></view>
-          <view class="notebook-topics">
-            <button wx:for="{{topics}}" wx:key="title" class="topic-note topic-{{index}}" data-text="{{item.text}}" bindtap="pickPrompt" disabled="{{busy || pendingSend}}"><text class="topic-number">0{{index + 1}}</text><image class="topic-icon" src="../assets/{{item.icon}}.png" mode="aspectFit" /><text class="topic-title">{{item.title}}</text><text class="topic-helper">{{item.helper}}</text><view class="note-fold" aria-hidden="true"></view></button>
-          </view>
-          <view class="welcome-handnote"><image src="../assets/chat-corner-arrow.png" mode="aspectFit" aria-hidden="true" /><text>也可以直接写下你的想法</text></view>
-        </view>
-      </view>
+<include src="./followup-view.wxml" />
+<scroll-view wx:if="{{!followupActive}}" class="conversation-scroll" scroll-y enhanced show-scrollbar="{{false}}" scroll-into-view="{{scrollTarget}}" scroll-with-animation="{{false}}">
+<view class="conversation-content {{!reportQuestion.selected && !messages.length && !pendingText && !loading && (!fatal || needsLogin) ? 'new-conversation-content' : ''}}">
+<template is="report-question-paper" data="{{q: reportQuestion}}" />
+<view wx:if="{{!reportQuestion.selected && !messages.length && !pendingText && !loading && (!fatal || needsLogin)}}" class="notebook-welcome">
+<view class="welcome-art-group"><image class="welcome-sage" src="../assets/chat-notebook-sage.png" mode="aspectFit" aria-hidden="true" /><image class="welcome-mascot" src="../assets/chat-notebook-mascot.png" mode="aspectFit" aria-hidden="true" /></view>
+<view class="welcome-paper">
+<view class="welcome-paper-under" aria-hidden="true"></view>
+<view class="welcome-tape" aria-hidden="true"></view>
+<text class="fabric-label welcome-label">新的一页</text>
+<text class="welcome-title">小K会客室</text>
+<view class="pencil-underline" aria-hidden="true"></view>
+<text class="welcome-subtitle">把关于家的想法，慢慢聊清楚。</text>
+<view class="topic-intro"><view></view><text>今天，想先聊点什么？</text><view></view></view>
+<view class="notebook-topics">
+<button wx:for="{{topics}}" wx:key="title" class="topic-note topic-{{index}}" data-text="{{item.text}}" bindtap="pickPrompt" disabled="{{busy || pendingSend}}"><text class="topic-number">0{{index + 1}}</text><image class="topic-icon" src="../assets/{{item.icon}}.png" mode="aspectFit" /><text class="topic-title">{{item.title}}</text><text class="topic-helper">{{item.helper}}</text><view class="note-fold" aria-hidden="true"></view></button>
+</view>
+<view class="welcome-handnote"><image src="../assets/chat-corner-arrow.png" mode="aspectFit" aria-hidden="true" /><text>也可以直接写下你的想法</text></view>
+</view>
+</view>
 
-      <view wx:if="{{loading}}" class="status-message"><view class="loading-dot"></view><text>正在读取你的装修咨询…</text></view>
-      <view wx:if="{{error}}" class="notice {{needsLogin ? 'login-note' : ''}}" role="alert">
-        <text>{{error}}</text>
-        <button wx:if="{{needsLogin}}" class="notice-action" bindtap="login">去登录</button>
-        <button wx:elif="{{pendingSend}}" class="notice-action" bindtap="send" disabled="{{busy}}">确认发送结果</button>
-        <button wx:elif="{{pendingAction}}" class="notice-action" bindtap="confirmAction" disabled="{{busy}}">确认操作结果</button>
-        <button wx:else class="notice-action" bindtap="refresh" disabled="{{busy}}">重新连接</button>
-      </view>
-      <view wx:if="{{!loading && !fatal}}">
-        <view wx:if="{{!canSend}}" class="notice muted">当前企业暂未开放小K咨询，已有对话仍可查看。</view>
-        <view wx:if="{{conversation.mode === 'handoff_requested' || conversation.mode === 'human'}}" class="handoff-state"><text class="fabric-label">小K</text><text class="handoff-heading">{{conversation.mode === 'human' ? conversation.ownerAvailable === false ? '接待人暂不可用' : (conversation.humanName || '设计师') + '正在接待' : '正在等待设计师'}}</text><text class="handoff-description">{{conversation.mode === 'human' && conversation.ownerAvailable === false ? '你可以结束接续，回到小K继续聊。' : '你可以继续补充资料；小K已暂停自动回复。'}}</text><button class="handoff-return" bindtap="endHandoff" disabled="{{busy || pendingSend || pendingAction}}">{{conversation.mode === 'human' ? '结束接续，回到小K' : '取消等待，回到小K'}}</button></view>
-        <button wx:if="{{messageCursor}}" class="older-action" bindtap="olderMessages" disabled="{{busy}}">查看更早的消息</button>
+<view wx:if="{{loading}}" class="status-message"><view class="loading-dot"></view><text>正在读取你的装修咨询…</text></view>
+<view wx:if="{{error}}" class="notice {{needsLogin ? 'login-note' : ''}}" role="alert">
+<text>{{error}}</text>
+<button wx:if="{{needsLogin}}" class="notice-action" bindtap="login">去登录</button>
+<button wx:elif="{{pendingSend}}" class="notice-action" bindtap="send" disabled="{{busy}}">确认发送结果</button>
+<button wx:elif="{{pendingAction}}" class="notice-action" bindtap="confirmAction" disabled="{{busy}}">确认操作结果</button>
+<button wx:else class="notice-action" bindtap="refresh" disabled="{{busy}}">重新连接</button>
+</view>
+<view wx:if="{{!loading && !fatal}}">
+<view wx:if="{{!canSend}}" class="notice muted">当前企业暂未开放小K咨询，已有对话仍可查看。</view>
+<view wx:if="{{conversation.mode === 'handoff_requested' || conversation.mode === 'human'}}" class="handoff-state"><text class="fabric-label">小K</text><text class="handoff-heading">{{conversation.mode === 'human' ? conversation.ownerAvailable === false ? '接待人暂不可用' : (conversation.humanName || '设计师') + '正在接待' : '正在等待设计师'}}</text><text class="handoff-description">{{conversation.mode === 'human' && conversation.ownerAvailable === false ? '你可以结束接续，回到小K继续聊。' : '你可以继续补充资料；小K已暂停自动回复。'}}</text><button class="handoff-return" bindtap="endHandoff" disabled="{{busy || pendingSend || pendingAction}}">{{conversation.mode === 'human' ? '结束接续，回到小K' : '取消等待，回到小K'}}</button></view>
+<button wx:if="{{messageCursor}}" class="older-action" bindtap="olderMessages" disabled="{{busy}}">查看更早的消息</button>
 
-        <view wx:for="{{messages}}" wx:key="id" class="message {{item.authorKind === 'system' && !item.constructionReminder && !item.constructionFollowUp && !item.planDecision ? 'system-message' : item.isUser ? 'user-message' : 'assistant-message'}} {{item.publicConsent || item.planDecision ? 'consent-message' : ''}} {{item.designerRecommendation && item.id == latestDesignerMessageId ? 'featured-message' : ''}}" id="message-{{item.id}}">
-          <view wx:if="{{!item.isUser && (item.authorKind !== 'system' || item.constructionReminder || item.constructionFollowUp || item.publicConsent || item.planDecision)}}" class="avatar"><image src="../assets/{{item.authorKind === 'admin' ? 'person' : 'xiaok-chat-avatar'}}.png" mode="aspectFit" /></view>
-          <view class="message-main {{!item.isUser && item.designerRecommendation && item.id == latestDesignerMessageId ? 'notebook-reference-message' : ''}}">
-            <view wx:if="{{!item.isUser && item.designerRecommendation && item.id == latestDesignerMessageId}}" class="answer-label"><text class="fabric-label">小K</text><text>装修搭档</text></view>
-            <view class="bubble {{item.available === false ? 'unavailable-bubble' : ''}}" data-message="{{item.id}}" bindlongpress="voiceMessage">
-              <block wx:if="{{item.mediaId}}">
-                <image wx:if="{{item.mediaAvailable && mediaPaths[item.mediaId]}}" class="message-photo" src="{{mediaPaths[item.mediaId]}}" mode="widthFix" data-id="{{item.mediaId}}" bindtap="previewMedia" bindlongpress="removeMedia" />
-                <button wx:elif="{{item.mediaAvailable}}" data-id="{{item.mediaId}}" bindtap="previewMedia">图片 · 点击查看</button>
-                <text wx:else>图片已不可用</text>
-              </block>
-              <block wx:else><text wx:for="{{item.blocks}}" wx:for-item="block" wx:key="key" class="message-block" user-select>{{block.text}}</text></block>
-            </view>
-            <view wx:if="{{item.citations.length}}" class="citations">
-              <button wx:for="{{item.citations}}" wx:for-item="citation" wx:key="id" class="citation-chip {{citation.available ? '' : 'unavailable'}}" data-id="{{citation.id}}" bindtap="openCitation"><image src="../assets/book-open.png" /><text>{{citation.title}}</text></button>
-            </view>
-            <button wx:if="{{item.suggestDesigner && conversation.mode === 'ai'}}" class="notice-action" bindtap="openHandoff" disabled="{{busy || pendingSend || pendingAction}}">请设计师接着聊</button>
-            <button wx:for="{{item.constructionContacts}}" wx:for-item="contact" wx:key="projectId" class="construction-contact" data-project="{{contact.projectId}}" data-message="{{item.id}}" bindtap="contactKeeper" disabled="{{contactLoading || loading || fatal}}">联系管家{{item.constructionContacts.length > 1 ? ' · ' + contact.projectName : ''}}</button>
-            <text wx:if="{{item.constructionReminder && !item.constructionContacts.length}}" class="pending-label">本阶段联系电话尚未配置。</text>
-            <view wx:for="{{item.siteRecordList}}" wx:for-item="record" wx:key="id" class="site-record-photos"><block wx:for="{{record.assets}}" wx:for-item="asset" wx:key="*this"><image wx:if="{{siteRecordPaths[record.id + '_' + record.version + '_' + asset]}}" class="message-photo" src="{{siteRecordPaths[record.id + '_' + record.version + '_' + asset]}}" mode="aspectFill" data-record="{{record.id}}" data-version="{{record.version}}" data-media="{{asset}}" bindtap="previewSiteRecord" /></block></view>
-            <text wx:if="{{item.siteRecordList.length && siteRecordError}}" class="pending-label">{{siteRecordError}}</text>
-            <button wx:if="{{item.siteWatch}}" class="notice-action" data-message="{{item.id}}" bindtap="cancelSiteWatch" disabled="{{busy || pendingSend || pendingAction}}">取消关注</button>
-            <template wx:if="{{item.publicConsent}}" is="owner-public-card" data="{{card: publicCards[item.publicConsent.id + '_' + item.publicConsent.versionId], expanded: publicExpanded, paths: publicPaths, busy: publicBusy, pending: publicPending, disabled: readOnly || fatal}}"/>
-            <template wx:if="{{item.planDecision}}" is="plan-decision-card" data="{{card: planCards[item.planDecision.id], expanded: planExpanded, paths: planPaths, busy: planBusy, pending: planPending, disabled: readOnly || fatal}}"/>
-            <button wx:if="{{item.publicContext}}" class="citation-chip" data-id="{{item.publicContext.id}}" data-version="{{item.publicContext.versionId}}" bindtap="openPublicSite">正在围观：{{item.publicContext.name}} · 查看公开节选</button>
-            <button wx:for="{{item.publicReferences}}" wx:for-item="reference" wx:key="id" class="citation-chip" data-id="{{reference.id}}" data-version="{{reference.versionId}}" bindtap="openPublicSite">公开工地 · {{reference.name}}</button>
-            <view wx:if="{{item.designerRecommendation && item.id == latestDesignerMessageId}}" class="designer-cards">
-              <view wx:for="{{item.designerRecommendation.items}}" wx:for-item="card" wx:key="authorId" class="designer-card">
-                <view class="designer-card-head">
-                  <view class="designer-card-avatar">
-                    <image wx:if="{{designerCardPortraits[card.authorId]}}" src="{{designerCardPortraits[card.authorId]}}" mode="aspectFill" />
-                    <text wx:else>{{card.initial}}</text>
-                  </view>
-                  <view class="designer-card-identity">
-                    <text class="designer-card-name">{{card.authorName}}</text>
-                    <text wx:if="{{card.professionalTitle || card.experienceLabel}}" class="designer-card-title">{{card.professionalTitle}}{{card.professionalTitle && card.experienceLabel ? ' · ' : ''}}{{card.experienceLabel}}</text>
-                  </view>
-                  <button class="designer-card-link" data-id="{{card.authorId}}" data-work="{{card.work.id}}" bindtap="openCardDesigner" disabled="{{busy || pendingSend || pendingAction}}">查看设计室 <view class="chevron"></view></button>
-                </view>
-                <text wx:if="{{card.reason}}" class="designer-card-reason">{{card.reason}}</text>
-                <view class="designer-card-work" data-work="{{card.work.id}}" data-version="{{card.work.versionId}}" bindtap="openCardWork">
-                  <view class="designer-card-cover">
-                    <image wx:if="{{designerCardImages['i' + card.work.coverAssetId]}}" src="{{designerCardImages['i' + card.work.coverAssetId]}}" mode="aspectFill" />
-                    <text wx:if="{{card.work.tourCount}}" class="designer-card-3d">3D</text>
-                  </view>
-                  <view class="designer-card-copy">
-                    <text class="work-byline">{{card.authorName}}的作品</text><text class="designer-card-work-title">{{card.work.title}}</text>
-                    <text wx:if="{{card.work.areaLabel || card.work.rooms}}" class="work-layout">{{card.work.areaLabel}}{{card.work.areaLabel && card.work.rooms ? ' · ' : ''}}{{card.work.rooms}}</text>
-                    <view wx:if="{{card.work.primaryStyle || card.work.layoutTypes.length}}" class="designer-card-tags">
-                      <text wx:if="{{card.work.primaryStyle}}" class="designer-card-tag style-tag">{{card.work.primaryStyle}}</text>
-                      <text wx:for="{{card.work.layoutTypes}}" wx:for-item="layout" wx:key="*this" class="designer-card-tag">{{layout}}</text>
-                    </view>
-                    <button class="work-open" data-work="{{card.work.id}}" data-version="{{card.work.versionId}}" catchtap="openCardWork"><text>查看作品</text><image src="../assets/chat-arrow-up-right.png" /></button><text wx:if="{{card.work.tourCount || card.work.cityName}}" class="designer-card-meta">{{card.work.tourCount ? card.work.tourCount + ' 个 3D 空间' : ''}}{{card.work.tourCount && card.work.cityName ? ' · ' : ''}}{{card.work.cityName}}</text>
-                  </view>
-                  <view class="chevron designer-card-arrow"></view>
-                </view>
-              </view>
-              <text wx:if="{{item.designerRecommendation.notice}}" class="designer-card-notice">{{item.designerRecommendation.notice}}</text>
-            </view>
-          </view>
-        </view>
+<view wx:for="{{messages}}" wx:key="id" class="message {{item.authorKind === 'system' && !item.constructionReminder && !item.constructionFollowUp && !item.planDecision ? 'system-message' : item.isUser ? 'user-message' : 'assistant-message'}} {{item.publicConsent || item.planDecision ? 'consent-message' : ''}} {{item.designerRecommendation && item.id == latestDesignerMessageId ? 'featured-message' : ''}}" id="message-{{item.id}}">
+<view wx:if="{{!item.isUser && (item.authorKind !== 'system' || item.constructionReminder || item.constructionFollowUp || item.publicConsent || item.planDecision)}}" class="avatar"><image src="../assets/{{item.authorKind === 'admin' ? 'person' : 'xiaok-chat-avatar'}}.png" mode="aspectFit" /></view>
+<view class="message-main {{!item.isUser && item.designerRecommendation && item.id == latestDesignerMessageId ? 'notebook-reference-message' : ''}}">
+<view wx:if="{{!item.isUser && item.designerRecommendation && item.id == latestDesignerMessageId}}" class="answer-label"><text class="fabric-label">小K</text><text>装修搭档</text></view>
+<view class="bubble {{item.available === false ? 'unavailable-bubble' : ''}}" data-message="{{item.id}}" bindlongpress="voiceMessage">
+<block wx:if="{{item.mediaId}}">
+<image wx:if="{{item.mediaAvailable && mediaPaths[item.mediaId]}}" class="message-photo" src="{{mediaPaths[item.mediaId]}}" mode="widthFix" data-id="{{item.mediaId}}" bindtap="previewMedia" bindlongpress="removeMedia" />
+<button wx:elif="{{item.mediaAvailable}}" data-id="{{item.mediaId}}" bindtap="previewMedia">图片 · 点击查看</button>
+<text wx:else>图片已不可用</text>
+</block>
+<block wx:else><text wx:for="{{item.blocks}}" wx:for-item="block" wx:key="key" class="message-block" user-select>{{block.text}}</text></block>
+</view>
+<view wx:if="{{item.citations.length}}" class="citations">
+<button wx:for="{{item.citations}}" wx:for-item="citation" wx:key="id" class="citation-chip {{citation.available ? '' : 'unavailable'}}" data-id="{{citation.id}}" bindtap="openCitation"><image src="../assets/book-open.png" /><text>{{citation.title}}</text></button>
+</view>
+<button wx:if="{{item.suggestDesigner && conversation.mode === 'ai'}}" class="notice-action" bindtap="openHandoff" disabled="{{busy || pendingSend || pendingAction}}">请设计师接着聊</button>
+<button wx:for="{{item.constructionContacts}}" wx:for-item="contact" wx:key="projectId" class="construction-contact" data-project="{{contact.projectId}}" data-message="{{item.id}}" bindtap="contactKeeper" disabled="{{contactLoading || loading || fatal}}">联系管家{{item.constructionContacts.length > 1 ? ' · ' + contact.projectName : ''}}</button>
+<text wx:if="{{item.constructionReminder && !item.constructionContacts.length}}" class="pending-label">本阶段联系电话尚未配置。</text>
+<view wx:for="{{item.siteRecordList}}" wx:for-item="record" wx:key="id" class="site-record-photos"><block wx:for="{{record.assets}}" wx:for-item="asset" wx:key="*this"><image wx:if="{{siteRecordPaths[record.id + '_' + record.version + '_' + asset]}}" class="message-photo" src="{{siteRecordPaths[record.id + '_' + record.version + '_' + asset]}}" mode="aspectFill" data-record="{{record.id}}" data-version="{{record.version}}" data-media="{{asset}}" bindtap="previewSiteRecord" /></block></view>
+<text wx:if="{{item.siteRecordList.length && siteRecordError}}" class="pending-label">{{siteRecordError}}</text>
+<button wx:if="{{item.siteWatch}}" class="notice-action" data-message="{{item.id}}" bindtap="cancelSiteWatch" disabled="{{busy || pendingSend || pendingAction}}">取消关注</button>
+<template wx:if="{{item.publicConsent}}" is="owner-public-card" data="{{card: publicCards[item.publicConsent.id + '_' + item.publicConsent.versionId], expanded: publicExpanded, paths: publicPaths, busy: publicBusy, pending: publicPending, disabled: readOnly || fatal}}"/>
+<template wx:if="{{item.planDecision}}" is="plan-decision-card" data="{{card: planCards[item.planDecision.id], expanded: planExpanded, paths: planPaths, busy: planBusy, pending: planPending, disabled: readOnly || fatal}}"/>
+<button wx:if="{{item.publicContext}}" class="citation-chip" data-id="{{item.publicContext.id}}" data-version="{{item.publicContext.versionId}}" bindtap="openPublicSite">正在围观：{{item.publicContext.name}} · 查看公开节选</button>
+<button wx:for="{{item.publicReferences}}" wx:for-item="reference" wx:key="id" class="citation-chip" data-id="{{reference.id}}" data-version="{{reference.versionId}}" bindtap="openPublicSite">公开工地 · {{reference.name}}</button>
+<view wx:if="{{item.designerRecommendation && item.id == latestDesignerMessageId}}" class="designer-cards">
+<view wx:for="{{item.designerRecommendation.items}}" wx:for-item="card" wx:key="authorId" class="designer-card">
+<view class="designer-card-head">
+<view class="designer-card-avatar">
+<image wx:if="{{designerCardPortraits[card.authorId]}}" src="{{designerCardPortraits[card.authorId]}}" mode="aspectFill" />
+<text wx:else>{{card.initial}}</text>
+</view>
+<view class="designer-card-identity">
+<text class="designer-card-name">{{card.authorName}}</text>
+<text wx:if="{{card.professionalTitle || card.experienceLabel}}" class="designer-card-title">{{card.professionalTitle}}{{card.professionalTitle && card.experienceLabel ? ' · ' : ''}}{{card.experienceLabel}}</text>
+</view>
+<button class="designer-card-link" data-id="{{card.authorId}}" data-work="{{card.work.id}}" bindtap="openCardDesigner" disabled="{{busy || pendingSend || pendingAction}}">查看设计室 <view class="chevron"></view></button>
+</view>
+<text wx:if="{{card.reason}}" class="designer-card-reason">{{card.reason}}</text>
+<view class="designer-card-work" data-work="{{card.work.id}}" data-version="{{card.work.versionId}}" bindtap="openCardWork">
+<view class="designer-card-cover">
+<image wx:if="{{designerCardImages['i' + card.work.coverAssetId]}}" src="{{designerCardImages['i' + card.work.coverAssetId]}}" mode="aspectFill" />
+<text wx:if="{{card.work.tourCount}}" class="designer-card-3d">3D</text>
+</view>
+<view class="designer-card-copy">
+<text class="work-byline">{{card.authorName}}的作品</text><text class="designer-card-work-title">{{card.work.title}}</text>
+<text wx:if="{{card.work.areaLabel || card.work.rooms}}" class="work-layout">{{card.work.areaLabel}}{{card.work.areaLabel && card.work.rooms ? ' · ' : ''}}{{card.work.rooms}}</text>
+<view wx:if="{{card.work.primaryStyle || card.work.layoutTypes.length}}" class="designer-card-tags">
+<text wx:if="{{card.work.primaryStyle}}" class="designer-card-tag style-tag">{{card.work.primaryStyle}}</text>
+<text wx:for="{{card.work.layoutTypes}}" wx:for-item="layout" wx:key="*this" class="designer-card-tag">{{layout}}</text>
+</view>
+<button class="work-open" data-work="{{card.work.id}}" data-version="{{card.work.versionId}}" catchtap="openCardWork"><text>查看作品</text><image src="../assets/chat-arrow-up-right.png" /></button><text wx:if="{{card.work.tourCount || card.work.cityName}}" class="designer-card-meta">{{card.work.tourCount ? card.work.tourCount + ' 个 3D 空间' : ''}}{{card.work.tourCount && card.work.cityName ? ' · ' : ''}}{{card.work.cityName}}</text>
+</view>
+<view class="chevron designer-card-arrow"></view>
+</view>
+</view>
+<text wx:if="{{item.designerRecommendation.notice}}" class="designer-card-notice">{{item.designerRecommendation.notice}}</text>
+</view>
+</view>
+</view>
 
-        <button wx:if="{{designerCardError}}" class="designer-card-retry" bindtap="retryDesignerCards">{{designerCardError}}</button>
-        <view wx:if="{{planError || planPending}}" class="notice"><text>{{planError || '有一项方案决定等待核对。'}}</text><button class="notice-action" bindtap="retryPlan" disabled="{{planBusy}}">核对同次决定</button><button wx:if="{{!planPending}}" class="notice-action" bindtap="refresh">重新读取</button></view>
-        <view wx:if="{{enterpriseId && !fatal && run.status === 'succeeded' && conversation.mode === 'ai'}}" class="public-recommendations">
-          <view wx:for="{{publicItems}}" wx:key="id" class="public-recommendation discovery-paper">
-            <view class="discovery-card-head"><text class="fabric-label">公开工地</text><text class="discovery-disclosure">业主授权公开</text></view>
-            <view class="public-photo-mat"><image wx:if="{{item.photos.length && publicPaths[item.photos[0].key]}}" src="{{publicPaths[item.photos[0].key]}}" mode="aspectFill"/><text wx:else class="discovery-photo-empty">照片暂不可用</text><view class="photo-tape" aria-hidden="true"></view></view>
-            <text class="public-recommendation-name">{{item.name}}</text><text wx:if="{{item.stageName}}" class="public-stage-label">{{item.stageName}}</text><text wx:if="{{item.district}}" class="public-district">{{item.district}}</text>
-            <view class="discovery-card-actions"><button class="discovery-text-action" data-id="{{item.id}}" data-version="{{item.versionId}}" bindtap="openPublicSite"><text>查看工地</text><image src="../assets/chat-arrow-up-right.png" mode="aspectFit"/></button></view>
-          </view>
-          <button wx:if="{{publicItems.length}}" class="discovery-more discovery-text-action" bindtap="browseSites" disabled="{{publicLoading || publicBusy}}"><text>{{publicBrowsing ? '重新读取' : '更多公开工地'}}</text><image src="../assets/chat-arrow-up-right.png" mode="aspectFit"/></button>
-          <view wx:else class="discovery-entries"><text class="discovery-section-title">继续了解</text><button class="discovery-entry" bindtap="browseSites" disabled="{{publicLoading || publicBusy}}"><image class="discovery-entry-icon" src="../assets/requirement-home.png" mode="aspectFit"/><view class="discovery-entry-copy"><text class="discovery-entry-title">附近公开工地</text><text class="discovery-entry-description">看看施工现场与当前阶段</text></view><image class="discovery-entry-arrow" src="../assets/chat-arrow-up-right.png" mode="aspectFit"/></button></view>
-          <text wx:if="{{publicLoading || publicNotice}}" class="portfolio-notice">{{publicLoading ? '正在读取公开工地…' : publicNotice}}</text>
-          <view wx:if="{{publicError || publicPending}}" class="notice"><text>{{publicError || '有一项公开材料操作等待确认结果。'}}</text><button class="notice-action" bindtap="retryPublic" disabled="{{publicBusy}}">{{publicPending ? '核对同次操作结果' : '重新读取'}}</button></view>
-        </view>
-        <view wx:if="{{conversation && messages.length && run.status === 'succeeded' && conversation.mode === 'ai' && !readOnly && !hasDesignerRecommendation}}" class="portfolio-recommendations">
-          <button wx:if="{{!portfolioItems.length}}" class="discovery-entry" bindtap="loadDesigners" disabled="{{portfolioLoading || busy}}"><image class="discovery-entry-icon" src="../assets/image.png" mode="aspectFit"/><view class="discovery-entry-copy"><text class="discovery-entry-title">设计师作品</text><text class="discovery-entry-description">{{portfolioLoading ? '正在查找公开作品…' : '从真实作品里找灵感'}}</text></view><image class="discovery-entry-arrow" src="../assets/chat-arrow-up-right.png" mode="aspectFit"/></button>
-          <view wx:for="{{portfolioItems}}" wx:key="authorId" class="portfolio-recommendation discovery-paper">
-            <view class="discovery-card-head"><text class="fabric-label">设计师作品</text></view><text class="portfolio-designer-name">{{item.authorName}}</text><text wx:if="{{item.titleLabel}}" class="portfolio-author-meta">{{item.titleLabel}}</text>
-            <view class="portfolio-card-main"><view class="portfolio-card-cover"><image wx:if="{{portfolioImages['i' + item.work.coverAssetId]}}" src="{{portfolioImages['i' + item.work.coverAssetId]}}" mode="aspectFill"/><text wx:else class="discovery-photo-empty">照片暂不可用</text><view class="photo-tape" aria-hidden="true"></view><text class="portfolio-image-label">{{item.work.coverLabel}}</text></view>
-              <view class="portfolio-card-copy"><text class="portfolio-work-title">{{item.work.title}}</text><text wx:if="{{item.work.chatMeta}}" class="portfolio-work-meta">{{item.work.chatMeta}}</text></view></view>
-            <text wx:if="{{item.reason}}" class="portfolio-reason">{{item.reason}}</text><view class="discovery-card-actions"><button class="discovery-text-action" data-work="{{item.work.id}}" data-version="{{item.work.versionId}}" bindtap="openCardWork"><text>查看作品</text><image src="../assets/chat-arrow-up-right.png" mode="aspectFit"/></button><button class="discovery-text-action" data-id="{{item.authorId}}" bindtap="openDesigner"><text>设计师主页</text><image src="../assets/chat-arrow-up-right.png" mode="aspectFit"/></button></view><text class="discovery-disclosure">作品来自设计师公开发布</text>
-          </view>
-          <text wx:if="{{portfolioNotice}}" class="portfolio-notice">{{portfolioNotice}}</text>
-          <button wx:if="{{portfolioError}}" class="notice-action" bindtap="loadDesigners">{{portfolioError}} 重新读取</button>
-        </view>
-        <view wx:if="{{guidance && guidance.options.length && canSend && !readOnly && (!run || run.status === 'succeeded') && !pendingSend && !pendingAction}}" class="guidance-options">
-          <button wx:for="{{guidance.options}}" wx:key="*this" class="guidance-option {{selectedOptionMap[item] ? 'is-selected' : ''}}" data-key="{{guidance.questionKey}}" data-text="{{item}}" bindtap="chooseOption" disabled="{{busy || draft}}">{{item}}</button>
-          <button wx:if="{{guidance.answerType === 'multiple'}}" class="guidance-option" bindtap="confirmOptions" disabled="{{busy || draft || !selectedOptions.length}}">确认补充</button>
-        </view>
-        <view wx:if="{{pendingText}}" class="message user-message pending-message"><view class="bubble"><text>{{pendingText}}</text><text class="pending-label">{{busy ? '发送中…' : pendingSend ? '发送结果待确认' : '发送失败，内容已保留'}}</text><button wx:if="{{!busy}}" bindtap="send">{{pendingSend ? '核对结果' : '重试'}}</button></view></view>
-        <view wx:if="{{runLabel}}" class="run-state">
-          <view class="avatar"><image src="../assets/xiaok-chat-avatar.png" mode="aspectFit" /></view>
-          <view class="run-paper"><text class="run-label">{{runLabel}}</text><view wx:if="{{generating}}" class="processing-dots" aria-hidden="true"><view></view><view></view><view></view></view>
-            <button wx:if="{{generating}}" class="run-action" bindtap="stop" disabled="{{busy || pendingAction}}"><text>停止回答</text></button>
-            <button wx:elif="{{retryable && canSend && !readOnly}}" class="run-action" bindtap="retryRun" disabled="{{busy || pendingAction}}"><text>重新回答</text><image src="../assets/chat-arrow-up-right.png" mode="aspectFit" /></button>
-            <button wx:elif="{{uncertainRun}}" class="run-action" bindtap="refresh" disabled="{{busy}}"><text>刷新状态</text></button>
-          </view>
-        </view>
-        <view wx:if="{{readOnly && conversation.mode !== 'human' && conversation.mode !== 'handoff_requested'}}" class="archive-note"><text>{{conversation.status === 'open' ? '这段对话当前只可查看记录。' : '这段对话已结束，记录仍为你保留。'}}</text><button wx:if="{{canSend}}" class="notice-action" bindtap="newConversation">开启新对话</button></view>
-      </view>
-      <view id="conversation-end" class="conversation-end"></view>
-    </view>
-  </scroll-view>
+<button wx:if="{{designerCardError}}" class="designer-card-retry" bindtap="retryDesignerCards">{{designerCardError}}</button>
+<view wx:if="{{planError || planPending}}" class="notice"><text>{{planError || '有一项方案决定等待核对。'}}</text><button class="notice-action" bindtap="retryPlan" disabled="{{planBusy}}">核对同次决定</button><button wx:if="{{!planPending}}" class="notice-action" bindtap="refresh">重新读取</button></view>
+<view wx:if="{{enterpriseId && !fatal && run.status === 'succeeded' && conversation.mode === 'ai'}}" class="public-recommendations">
+<view wx:for="{{publicItems}}" wx:key="id" class="public-recommendation discovery-paper">
+<view class="discovery-card-head"><text class="fabric-label">公开工地</text><text class="discovery-disclosure">业主授权公开</text></view>
+<view class="public-photo-mat"><image wx:if="{{item.photos.length && publicPaths[item.photos[0].key]}}" src="{{publicPaths[item.photos[0].key]}}" mode="aspectFill"/><text wx:else class="discovery-photo-empty">照片暂不可用</text><view class="photo-tape" aria-hidden="true"></view></view>
+<text class="public-recommendation-name">{{item.name}}</text><text wx:if="{{item.stageName}}" class="public-stage-label">{{item.stageName}}</text><text wx:if="{{item.district}}" class="public-district">{{item.district}}</text>
+<view class="discovery-card-actions"><button class="discovery-text-action" data-id="{{item.id}}" data-version="{{item.versionId}}" bindtap="openPublicSite"><text>查看工地</text><image src="../assets/chat-arrow-up-right.png" mode="aspectFit"/></button></view>
+</view>
+<button wx:if="{{publicItems.length}}" class="discovery-more discovery-text-action" bindtap="browseSites" disabled="{{publicLoading || publicBusy}}"><text>{{publicBrowsing ? '重新读取' : '更多公开工地'}}</text><image src="../assets/chat-arrow-up-right.png" mode="aspectFit"/></button>
+<view wx:else class="discovery-entries"><text class="discovery-section-title">继续了解</text><button class="discovery-entry" bindtap="browseSites" disabled="{{publicLoading || publicBusy}}"><image class="discovery-entry-icon" src="../assets/requirement-home.png" mode="aspectFit"/><view class="discovery-entry-copy"><text class="discovery-entry-title">附近公开工地</text><text class="discovery-entry-description">看看施工现场与当前阶段</text></view><image class="discovery-entry-arrow" src="../assets/chat-arrow-up-right.png" mode="aspectFit"/></button></view>
+<text wx:if="{{publicLoading || publicNotice}}" class="portfolio-notice">{{publicLoading ? '正在读取公开工地…' : publicNotice}}</text>
+<view wx:if="{{publicError || publicPending}}" class="notice"><text>{{publicError || '有一项公开材料操作等待确认结果。'}}</text><button class="notice-action" bindtap="retryPublic" disabled="{{publicBusy}}">{{publicPending ? '核对同次操作结果' : '重新读取'}}</button></view>
+</view>
+<view wx:if="{{conversation && messages.length && run.status === 'succeeded' && conversation.mode === 'ai' && !readOnly && !hasDesignerRecommendation}}" class="portfolio-recommendations">
+<button wx:if="{{!portfolioItems.length}}" class="discovery-entry" bindtap="loadDesigners" disabled="{{portfolioLoading || busy}}"><image class="discovery-entry-icon" src="../assets/image.png" mode="aspectFit"/><view class="discovery-entry-copy"><text class="discovery-entry-title">设计师作品</text><text class="discovery-entry-description">{{portfolioLoading ? '正在查找公开作品…' : '从真实作品里找灵感'}}</text></view><image class="discovery-entry-arrow" src="../assets/chat-arrow-up-right.png" mode="aspectFit"/></button>
+<view wx:for="{{portfolioItems}}" wx:key="authorId" class="portfolio-recommendation discovery-paper">
+<view class="discovery-card-head"><text class="fabric-label">设计师作品</text></view><text class="portfolio-designer-name">{{item.authorName}}</text><text wx:if="{{item.titleLabel}}" class="portfolio-author-meta">{{item.titleLabel}}</text>
+<view class="portfolio-card-main"><view class="portfolio-card-cover"><image wx:if="{{portfolioImages['i' + item.work.coverAssetId]}}" src="{{portfolioImages['i' + item.work.coverAssetId]}}" mode="aspectFill"/><text wx:else class="discovery-photo-empty">照片暂不可用</text><view class="photo-tape" aria-hidden="true"></view><text class="portfolio-image-label">{{item.work.coverLabel}}</text></view>
+<view class="portfolio-card-copy"><text class="portfolio-work-title">{{item.work.title}}</text><text wx:if="{{item.work.chatMeta}}" class="portfolio-work-meta">{{item.work.chatMeta}}</text></view></view>
+<text wx:if="{{item.reason}}" class="portfolio-reason">{{item.reason}}</text><view class="discovery-card-actions"><button class="discovery-text-action" data-work="{{item.work.id}}" data-version="{{item.work.versionId}}" bindtap="openCardWork"><text>查看作品</text><image src="../assets/chat-arrow-up-right.png" mode="aspectFit"/></button><button class="discovery-text-action" data-id="{{item.authorId}}" bindtap="openDesigner"><text>设计师主页</text><image src="../assets/chat-arrow-up-right.png" mode="aspectFit"/></button></view><text class="discovery-disclosure">作品来自设计师公开发布</text>
+</view>
+<text wx:if="{{portfolioNotice}}" class="portfolio-notice">{{portfolioNotice}}</text>
+<button wx:if="{{portfolioError}}" class="notice-action" bindtap="loadDesigners">{{portfolioError}} 重新读取</button>
+</view>
+<view wx:if="{{guidance && guidance.options.length && canSend && !readOnly && (!run || run.status === 'succeeded') && !pendingSend && !pendingAction}}" class="guidance-options">
+<button wx:for="{{guidance.options}}" wx:key="*this" class="guidance-option {{selectedOptionMap[item] ? 'is-selected' : ''}}" data-key="{{guidance.questionKey}}" data-text="{{item}}" bindtap="chooseOption" disabled="{{busy || draft}}">{{item}}</button>
+<button wx:if="{{guidance.answerType === 'multiple'}}" class="guidance-option" bindtap="confirmOptions" disabled="{{busy || draft || !selectedOptions.length}}">确认补充</button>
+</view>
+<view wx:if="{{pendingText}}" class="message user-message pending-message"><view class="bubble"><text>{{pendingText}}</text><text class="pending-label">{{busy ? '发送中…' : pendingSend ? '发送结果待确认' : '发送失败，内容已保留'}}</text><button wx:if="{{!busy}}" bindtap="send">{{pendingSend ? '核对结果' : '重试'}}</button></view></view>
+<view wx:if="{{runLabel}}" class="run-state">
+<view class="avatar"><image src="../assets/xiaok-chat-avatar.png" mode="aspectFit" /></view>
+<view class="run-paper"><text class="run-label">{{runLabel}}</text><view wx:if="{{generating}}" class="processing-dots" aria-hidden="true"><view></view><view></view><view></view></view>
+<button wx:if="{{generating}}" class="run-action" bindtap="stop" disabled="{{busy || pendingAction}}"><text>停止回答</text></button>
+<button wx:elif="{{retryable && canSend && !readOnly}}" class="run-action" bindtap="retryRun" disabled="{{busy || pendingAction}}"><text>重新回答</text><image src="../assets/chat-arrow-up-right.png" mode="aspectFit" /></button>
+<button wx:elif="{{uncertainRun}}" class="run-action" bindtap="refresh" disabled="{{busy}}"><text>刷新状态</text></button>
+</view>
+</view>
+<view wx:if="{{readOnly && conversation.mode !== 'human' && conversation.mode !== 'handoff_requested'}}" class="archive-note"><text>{{conversation.status === 'open' ? '这段对话当前只可查看记录。' : '这段对话已结束，记录仍为你保留。'}}</text><button wx:if="{{canSend}}" class="notice-action" bindtap="newConversation">开启新对话</button></view>
+</view>
+<view id="conversation-end" class="conversation-end"></view>
+</view>
+</scroll-view>
 
-  <view wx:if="{{!followupActive}}" class="composer-dock {{keyboardHeight ? 'keyboard-open' : ''}} {{inputFocused || keyboardHeight ? 'composer-focused' : ''}}">
-    <template is="report-question-strip" data="{{q: reportQuestion}}" />
-    <view wx:if="{{!keyboardHeight && conversation.requirementProposalPending}}" class="conversation-tools">
-      <button wx:if="{{conversation.requirementProposalPending && conversation.mode === 'ai'}}" class="text-action" bindtap="openRequirements" disabled="{{loading || needsLogin || fatal || busy || pendingSend || pendingAction}}">查看需求提案</button>
-    </view>
-    <view wx:if="{{mediaBusy || mediaPending || mediaError}}" class="notice"><text>{{mediaBusy ? '图片发送中…' : mediaError}}</text><button wx:if="{{!mediaBusy}}" class="notice-action" bindtap="retryMedia">{{mediaPending ? '核对发送结果' : '重试'}}</button></view>
-    <view wx:if="{{speechBusy || speechError}}" class="notice" role="status"><text>{{speechBusy ? '录音处理中，转成文字后可修改再发送。' : speechError}}</text><button wx:if="{{!speechBusy}}" class="notice-action" bindtap="voiceInput">处理录音</button></view>
-    <view class="composer">
-      <button size="mini" class="media-button" bindtap="voiceInput" aria-label="{{speechAvailable ? '语音输入；长按语音转写消息可回听原音' : '语音暂不可用，可以打字或发图'}}"><image src="../assets/microphone.png" /></button>
-      <view class="composer-divider" aria-hidden="true"></view>
-      <button size="mini" class="media-button" bindtap="openMedia" disabled="{{loading || busy || fatal || pendingSend || pendingAction || mediaBusy}}" aria-label="本次图片资料"><image src="../assets/image.png" /></button>
-      <textarea class="composer-input" value="{{draft}}" maxlength="{{maxChars}}" auto-height adjust-position="{{false}}" show-confirm-bar="{{false}}" placeholder="{{reportQuestion.selected ? '继续问这份报告…' : '说说你想改变的地方…'}}" placeholder-class="input-placeholder" bindinput="input" bindtap="focusInput" focus="{{inputFocused}}" bindfocus="focusInput" bindblur="blurInput" bindkeyboardheightchange="keyboardChange" disabled="{{loading || busy || fatal && !needsLogin || !canSend && !needsLogin || pendingSend || generating || uncertainRun || pendingAction || readOnly}}" aria-label="装修咨询内容" />
-      <button size="mini" class="send-button" bindtap="send" disabled="{{!draft || loading || busy || fatal && !needsLogin || !canSend && !needsLogin || pendingSend || generating || uncertainRun || pendingAction || readOnly || speechBusy || contextBusy || contextLoading || contextPending || reportQuestion.busy || reportQuestion.pending}}" aria-label="发送"><image src="../assets/arrow-up.png" /></button>
-    </view>
-    <view wx:if="{{inputFocused || keyboardHeight}}" class="floorplan-context-row"><button class="floorplan-scope" bindtap="openFloorplanPicker" disabled="{{contextBusy || loading || fatal || pendingSend || pendingAction || generating}}"><image src="../assets/requirement-home.png" mode="aspectFit" /><text>{{selectedFloorplan ? '已选：' + selectedFloorplan.name : '不结合户型档案'}}</text><view class="context-chevron"></view></button><button class="floorplan-browse" bindtap="browseFloorplan" disabled="{{contextBusy || loading || fatal}}"><text>查看档案</text><image src="../assets/chat-arrow-up-right.png" mode="aspectFit" /></button></view>
-    <view wx:if="{{contextError}}" class="context-error"><text>{{contextError}}</text><button bindtap="reloadFloorplanContext">重试</button></view>
-    <view wx:if="{{draft.length > maxChars - 200}}" class="composer-footer"><text>{{draft.length}}/{{maxChars}}</text></view>
-  </view>
+<view wx:if="{{!followupActive}}" class="composer-dock {{keyboardHeight ? 'keyboard-open' : ''}} {{inputFocused || keyboardHeight ? 'composer-focused' : ''}}">
+<template is="report-question-strip" data="{{q: reportQuestion}}" />
+<view wx:if="{{!keyboardHeight && conversation.requirementProposalPending}}" class="conversation-tools">
+<button wx:if="{{conversation.requirementProposalPending && conversation.mode === 'ai'}}" class="text-action" bindtap="openRequirements" disabled="{{loading || needsLogin || fatal || busy || pendingSend || pendingAction}}">查看需求提案</button>
+</view>
+<view wx:if="{{mediaBusy || mediaPending || mediaError}}" class="notice"><text>{{mediaBusy ? '图片发送中…' : mediaError}}</text><button wx:if="{{!mediaBusy}}" class="notice-action" bindtap="retryMedia">{{mediaPending ? '核对发送结果' : '重试'}}</button></view>
+<view wx:if="{{speechBusy || speechError}}" class="notice" role="status"><text>{{speechBusy ? '录音处理中，转成文字后可修改再发送。' : speechError}}</text><button wx:if="{{!speechBusy}}" class="notice-action" bindtap="voiceInput">处理录音</button></view>
+<view class="composer">
+<button size="mini" class="media-button" bindtap="voiceInput" aria-label="{{speechAvailable ? '语音输入；长按语音转写消息可回听原音' : '语音暂不可用，可以打字或发图'}}"><image src="../assets/microphone.png" /></button>
+<view class="composer-divider" aria-hidden="true"></view>
+<button size="mini" class="media-button" bindtap="openMedia" disabled="{{loading || busy || fatal || pendingSend || pendingAction || mediaBusy}}" aria-label="本次图片资料"><image src="../assets/image.png" /></button>
+<textarea class="composer-input" value="{{draft}}" maxlength="{{maxChars}}" auto-height adjust-position="{{false}}" show-confirm-bar="{{false}}" placeholder="{{reportQuestion.selected ? '继续问这份报告…' : '说说你想改变的地方…'}}" placeholder-class="input-placeholder" bindinput="input" bindtap="focusInput" focus="{{inputFocused}}" bindfocus="focusInput" bindblur="blurInput" bindkeyboardheightchange="keyboardChange" disabled="{{loading || busy || fatal && !needsLogin || !canSend && !needsLogin || pendingSend || generating || uncertainRun || pendingAction || readOnly}}" aria-label="装修咨询内容" />
+<button size="mini" class="send-button" bindtap="send" disabled="{{!draft || loading || busy || fatal && !needsLogin || !canSend && !needsLogin || pendingSend || generating || uncertainRun || pendingAction || readOnly || speechBusy || contextBusy || contextLoading || contextPending || reportQuestion.busy || reportQuestion.pending}}" aria-label="发送"><image src="../assets/arrow-up.png" /></button>
+</view>
+<view wx:if="{{inputFocused || keyboardHeight}}" class="floorplan-context-row"><button class="floorplan-scope" bindtap="openFloorplanPicker" disabled="{{contextBusy || loading || fatal || pendingSend || pendingAction || generating}}"><image src="../assets/requirement-home.png" mode="aspectFit" /><text>{{selectedFloorplan ? '已选：' + selectedFloorplan.name : '不结合户型档案'}}</text><view class="context-chevron"></view></button><button class="floorplan-browse" bindtap="browseFloorplan" disabled="{{contextBusy || loading || fatal}}"><text>查看档案</text><image src="../assets/chat-arrow-up-right.png" mode="aspectFit" /></button></view>
+<view wx:if="{{contextError}}" class="context-error"><text>{{contextError}}</text><button bindtap="reloadFloorplanContext">重试</button></view>
+<view wx:if="{{draft.length > maxChars - 200}}" class="composer-footer"><text>{{draft.length}}/{{maxChars}}</text></view>
+</view>
 
-  <view wx:if="{{sheet}}" class="sheet-layer {{sheetOpen ? 'is-open' : ''}}" catchtouchmove="swallow">
-    <view class="sheet-mask" bindtap="closeSheet"></view>
-    <view class="sheet-panel {{sheet === 'history' ? 'conversation-list-sheet' : ''}}">
-      <view wx:if="{{sheet === 'history'}}" class="conversation-list-grip"></view>
-      <view class="sheet-head"><text>{{sheet === 'history' ? '我的对话' : sheet === 'floorplan' ? contextDetail ? '查看户型档案' : '户型参考' : sheet === 'publicSite' ? '公开工地' : '回答依据'}}</text><button class="icon-button" bindtap="closeSheet" aria-label="关闭"><image src="../assets/x.png" /></button></view>
-      <scroll-view class="sheet-scroll" scroll-y show-scrollbar="{{false}}">
-        <block wx:if="{{sheet === 'history'}}">
-          <text class="sheet-helper">{{followupContext.enterprise.name || enterpriseName}} · 仅自己可见</text>
-          <button wx:if="{{!professionalFollowup}}" class="notice-action followup-new" bindtap="newConversation" disabled="{{busy || pendingSend || pendingAction}}"><view class="conversation-list-plus"></view><text>开启新对话</text></button>
-          <view class="followup-list-label"><text class="fabric-label">装修跟进</text><button class="followup-text-action" bindtap="manageFollowup" disabled="{{followupListLoading}}">管理跟进 ↗</button></view>
-          <button wx:if="{{followupPlanManager}}" class="followup-text-action followup-plan-entry" bindtap="openReportPlan" disabled="{{followupBusy || followupPending}}">企业报告计划 ↗</button>
-          <text wx:if="{{followupListLoading && !followupBindings.length}}" class="sheet-state">正在读取私人跟进…</text>
-          <view wx:if="{{followupError}}" class="notice"><text>{{followupError}}</text><button class="notice-action" bindtap="openHistory">重新读取</button></view>
-          <button wx:for="{{followupBindings}}" wx:key="bindingId" wx:if="{{!item.hidden}}" class="followup-list-entry" data-id="{{item.bindingId}}" bindtap="selectFollowup" disabled="{{busy || pendingSend || pendingAction || mediaBusy || mediaPending}}">
-            <view class="followup-list-top"><image class="followup-list-home" src="../assets/requirement-home.png" mode="aspectFit"/><view class="followup-list-identity"><view class="followup-list-heading"><text class="followup-list-title">{{item.title}}</text><text wx:if="{{item.unreadMessages}}" class="followup-list-count">{{item.unreadMessages}}{{item.unreadTruncated ? '+' : ''}}</text></view><view class="followup-list-meta"><text class="followup-list-stage">{{item.audience === 'customer' ? item.projects[0].stageName : item.enterprise.name}}</text><text class="followup-list-date">{{item.latestDateLabel}}</text></view></view></view>
-            <view class="followup-list-footer"><text class="followup-list-delivery">{{item.status === 'stopped' ? '自动跟进已停止' : item.latestReport ? '现场简报已送达' : '等待新的简报'}}</text><view class="followup-list-tail"><text>{{item.latestReport ? '查看已保存记录，接着问小K' : '有新简报时，会在这里保存。'}}</text><view class="conversation-list-arrow"></view></view></view>
-          </button>
-          <text wx:if="{{!followupListLoading && !followupBindings.length && !followupError}}" class="sheet-helper">当前没有可查看的装修跟进。</text>
-          <view wx:if="{{!professionalFollowup}}" class="followup-list-label"><text>最近咨询</text><view class="followup-rule"></view></view>
+<view wx:if="{{sheet}}" class="sheet-layer {{sheetOpen ? 'is-open' : ''}}" catchtouchmove="swallow">
+<view class="sheet-mask" bindtap="closeSheet"></view>
+<view class="sheet-panel {{sheet === 'history' ? 'conversation-list-sheet' : ''}}">
+<view wx:if="{{sheet === 'history'}}" class="conversation-list-grip"></view>
+<view class="sheet-head"><text>{{sheet === 'history' ? '我的对话' : sheet === 'floorplan' ? contextDetail ? '查看户型档案' : '户型参考' : sheet === 'publicSite' ? '公开工地' : '回答依据'}}</text><button class="icon-button" bindtap="closeSheet" aria-label="关闭"><image src="../assets/x.png" /></button></view>
+<scroll-view class="sheet-scroll" scroll-y show-scrollbar="{{false}}">
+<block wx:if="{{sheet === 'history'}}">
+<text class="sheet-helper">{{followupContext.enterprise.name || enterpriseName}} · 仅自己可见</text>
+<button wx:if="{{!professionalFollowup}}" class="notice-action followup-new" bindtap="newConversation" disabled="{{busy || pendingSend || pendingAction}}"><view class="conversation-list-plus"></view><text>开启新对话</text></button>
+<view class="followup-list-label"><text class="fabric-label">装修跟进</text><button class="followup-text-action" bindtap="manageFollowup" disabled="{{followupListLoading}}">管理跟进 ↗</button></view>
+<button wx:if="{{followupPlanManager}}" class="followup-text-action followup-plan-entry" bindtap="openReportPlan" disabled="{{followupBusy || followupPending}}">企业报告计划 ↗</button>
+<text wx:if="{{followupListLoading && !followupBindings.length}}" class="sheet-state">正在读取私人跟进…</text>
+<view wx:if="{{followupError}}" class="notice"><text>{{followupError}}</text><button class="notice-action" bindtap="openHistory">重新读取</button></view>
+<button wx:for="{{followupBindings}}" wx:key="bindingId" wx:if="{{!item.hidden}}" class="followup-list-entry" data-id="{{item.bindingId}}" bindtap="selectFollowup" disabled="{{busy || pendingSend || pendingAction || mediaBusy || mediaPending}}">
+<view class="followup-list-top"><image class="followup-list-home" src="../assets/requirement-home.png" mode="aspectFit"/><view class="followup-list-identity"><view class="followup-list-heading"><text class="followup-list-title">{{item.title}}</text><text wx:if="{{item.unreadMessages}}" class="followup-list-count">{{item.unreadMessages}}{{item.unreadTruncated ? '+' : ''}}</text></view><view class="followup-list-meta"><text class="followup-list-stage">{{item.audience === 'customer' ? item.projects[0].stageName : item.enterprise.name}}</text><text class="followup-list-date">{{item.latestDateLabel}}</text></view></view></view>
+<view class="followup-list-footer"><text class="followup-list-delivery">{{item.status === 'stopped' ? '自动跟进已停止' : item.latestReport ? '现场简报已送达' : '等待新的简报'}}</text><view class="followup-list-tail"><text>{{item.latestReport ? '查看已保存记录，接着问小K' : '有新简报时，会在这里保存。'}}</text><view class="conversation-list-arrow"></view></view></view>
+</button>
+<text wx:if="{{!followupListLoading && !followupBindings.length && !followupError}}" class="sheet-helper">当前没有可查看的装修跟进。</text>
+<view wx:if="{{!professionalFollowup}}" class="followup-list-label"><text>最近咨询</text><view class="followup-rule"></view></view>
 
-          <text wx:if="{{historyLoading}}" class="sheet-state">正在读取对话记录…</text>
-          <view wx:if="{{historyError}}" class="notice"><text>{{historyError}}</text><button class="notice-action" bindtap="openHistory">重新加载</button></view>
-          <text wx:if="{{!professionalFollowup && !historyLoading && !historyError && !history.length}}" class="sheet-state">还没有对话，从一个装修问题开始吧。</text>
-          <button wx:for="{{history}}" wx:key="id" class="history-row conversation-list-row" data-id="{{item.id}}" bindtap="selectHistory"><image class="conversation-list-icon" src="../assets/conversation-outline.png" mode="aspectFit"/><view class="conversation-list-content"><view class="conversation-list-heading"><text class="history-title">{{item.title || '装修咨询'}}</text><text class="conversation-list-date">{{item.createdDateLabel}}</text></view><text class="history-meta">{{item.status === 'open' ? '可继续咨询' : '已结束 · 查看记录'}}</text></view></button>
-          <button wx:if="{{historyCursor}}" class="older-action" bindtap="moreHistory" disabled="{{historyLoading}}">查看更多对话</button>
-        </block>
-        <block wx:elif="{{sheet === 'floorplan'}}">
-          <text class="sheet-helper">仅使用你在当前企业有权查看的档案。查看不会更改选择，也不会发送消息。</text>
-          <view wx:if="{{contextError}}" class="notice"><text>{{contextError}}</text><button class="notice-action" bindtap="reloadFloorplanContext">{{contextPending ? '核对选择结果' : '重新读取'}}</button></view>
-          <text wx:if="{{contextLoading}}" class="sheet-state">正在核对档案与访问权限…</text>
-          <block wx:elif="{{contextDetail}}">
-            <button class="notice-action" bindtap="floorplanList">返回档案列表</button>
-            <text class="source-title">{{contextDetail.name}}</text>
-            <text class="source-quote" user-select>{{contextDetail.text}}</text>
-            <button class="notice-action" bindtap="openFullArchive">打开完整服务档案</button>
-            <button class="floorplan-use" data-index="detail" bindtap="chooseFloorplan" disabled="{{contextBusy || contextPending || readOnly || generating}}">{{contextBusy ? '正在选用…' : '使用此档案'}}</button>
-          </block>
-          <block wx:else>
-            <view class="floorplan-choice"><button class="history-row {{!selectedFloorplan ? 'is-selected' : ''}}" data-index="none" bindtap="chooseFloorplan" disabled="{{contextBusy || contextPending || readOnly || generating}}"><text class="history-title">不结合户型档案</text><text class="history-meta">{{!selectedFloorplan ? '当前选择 · ' : ''}}仍可聊想法、自己发图片</text></button></view>
-            <text wx:if="{{!contextItems.length && !contextError}}" class="sheet-state">暂无可用的已完成正式户型，可以先不结合档案继续聊。</text>
-            <view wx:for="{{contextItems}}" wx:key="leadId" class="floorplan-choice">
-              <button class="history-row {{selectedFloorplan.floorPlanId === item.id && selectedFloorplan.leadId === item.leadId ? 'is-selected' : ''}}" data-index="{{index}}" bindtap="{{contextBrowseOnly ? 'viewFloorplan' : 'chooseFloorplan'}}" disabled="{{contextBusy || contextPending || !contextBrowseOnly && (readOnly || generating)}}"><text class="history-title">{{item.name}}</text><text class="history-meta">{{selectedFloorplan.floorPlanId === item.id && selectedFloorplan.leadId === item.leadId ? '已选用 · ' : ''}}{{item.rooms.length}} 个空间 · 正式户型</text></button>
-              <button class="floorplan-preview" data-index="{{index}}" bindtap="viewFloorplan">查看</button>
-            </view>
-          </block>
-        </block>
-        <block wx:elif="{{sheet === 'publicSite'}}">
-          <text wx:if="{{publicDetailLoading}}" class="sheet-state">正在核对资料访问权限…</text>
-          <view wx:if="{{publicDetailError || publicError || publicPending}}" class="notice"><text>{{publicDetailError || publicError || '有一项公开材料操作等待确认结果。'}}</text><button class="notice-action" bindtap="retryPublic" disabled="{{publicBusy || publicDetailLoading}}">{{publicPending ? '核对同次操作结果' : '重新读取'}}</button></view>
-          <view wx:if="{{publicDetail}}" class="public-recommendation discovery-paper">
-            <view class="discovery-card-head"><text class="fabric-label">公开工地</text><text class="discovery-disclosure">业主授权公开</text></view>
-            <text class="public-recommendation-name">{{publicDetail.name}}</text><text wx:if="{{publicDetail.stageName}}" class="public-stage-label">{{publicDetail.stageName}}</text><text class="public-district">{{publicDetail.district}} · {{publicDetail.dateLabel}}</text>
-            <view wx:for="{{publicDetail.photos}}" wx:key="key" class="public-photo-mat"><image wx:if="{{publicDetailPaths[item.key]}}" src="{{publicDetailPaths[item.key]}}" mode="aspectFill" data-key="{{item.key}}" bindtap="previewPublicDetail"/><text wx:else class="discovery-photo-empty">照片暂不可用</text><view class="photo-tape" aria-hidden="true"></view></view>
-            <view wx:for="{{publicDetail.excerpts}}" wx:key="key"><text class="sheet-helper">{{item.role}} · {{item.dateLabel}}</text><text class="source-quote" user-select>{{item.text}}</text></view>
-            <view class="discovery-card-actions"><button class="discovery-text-action" bindtap="askPublicSite" disabled="{{!canSend || publicBusy || publicPending || publicDetailLoading || loading || fatal || readOnly || busy || generating || pendingSend || pendingAction || uncertainRun || contextBusy || contextPending || speechBusy}}"><text>{{publicBusy ? '正在确认…' : '问小K'}}</text><image src="../assets/chat-arrow-up-right.png" mode="aspectFit"/></button></view>
-          </view>
-        </block>
-        <block wx:elif="{{sheet === 'reportSource'}}"><template is="citation-content" data="{{citation: reportSource, citationLoading: reportSourceLoading, citationError: reportSourceError, retry: 'retryReportSource'}}"/><button wx:if="{{reportSource.available && reportSource.originalAvailable && !reportSourceLoading && !reportSourceError}}" class="notice-action" bindtap="openReportSourceFile">打开原文件</button></block>
-        <template wx:elif="{{sheet === 'followupCitation'}}" is="citation-content" data="{{citation: followupChat.citation, citationLoading: followupChat.citationLoading, citationError: followupChat.citationError, retry: 'retryFollowupCitation'}}"/>
-        <template wx:else is="citation-content" data="{{citation, citationLoading, citationError, retry: 'retryCitation'}}"/>
-      </scroll-view>
-    </view>
-  </view>
+<text wx:if="{{historyLoading}}" class="sheet-state">正在读取对话记录…</text>
+<view wx:if="{{historyError}}" class="notice"><text>{{historyError}}</text><button class="notice-action" bindtap="openHistory">重新加载</button></view>
+<text wx:if="{{!professionalFollowup && !historyLoading && !historyError && !history.length}}" class="sheet-state">还没有对话，从一个装修问题开始吧。</text>
+<button wx:for="{{history}}" wx:key="id" class="history-row conversation-list-row" data-id="{{item.id}}" bindtap="selectHistory"><image class="conversation-list-icon" src="../assets/conversation-outline.png" mode="aspectFit"/><view class="conversation-list-content"><view class="conversation-list-heading"><text class="history-title">{{item.title || '装修咨询'}}</text><text class="conversation-list-date">{{item.createdDateLabel}}</text></view><text class="history-meta">{{item.status === 'open' ? '可继续咨询' : '已结束 · 查看记录'}}</text></view></button>
+<button wx:if="{{historyCursor}}" class="older-action" bindtap="moreHistory" disabled="{{historyLoading}}">查看更多对话</button>
+</block>
+<block wx:elif="{{sheet === 'floorplan'}}">
+<text class="sheet-helper">仅使用你在当前企业有权查看的档案。查看不会更改选择，也不会发送消息。</text>
+<view wx:if="{{contextError}}" class="notice"><text>{{contextError}}</text><button class="notice-action" bindtap="reloadFloorplanContext">{{contextPending ? '核对选择结果' : '重新读取'}}</button></view>
+<text wx:if="{{contextLoading}}" class="sheet-state">正在核对档案与访问权限…</text>
+<block wx:elif="{{contextDetail}}">
+<button class="notice-action" bindtap="floorplanList">返回档案列表</button>
+<text class="source-title">{{contextDetail.name}}</text>
+<text class="source-quote" user-select>{{contextDetail.text}}</text>
+<button class="notice-action" bindtap="openFullArchive">打开完整服务档案</button>
+<button class="floorplan-use" data-index="detail" bindtap="chooseFloorplan" disabled="{{contextBusy || contextPending || readOnly || generating}}">{{contextBusy ? '正在选用…' : '使用此档案'}}</button>
+</block>
+<block wx:else>
+<view class="floorplan-choice"><button class="history-row {{!selectedFloorplan ? 'is-selected' : ''}}" data-index="none" bindtap="chooseFloorplan" disabled="{{contextBusy || contextPending || readOnly || generating}}"><text class="history-title">不结合户型档案</text><text class="history-meta">{{!selectedFloorplan ? '当前选择 · ' : ''}}仍可聊想法、自己发图片</text></button></view>
+<text wx:if="{{!contextItems.length && !contextError}}" class="sheet-state">暂无可用的已完成正式户型，可以先不结合档案继续聊。</text>
+<view wx:for="{{contextItems}}" wx:key="leadId" class="floorplan-choice">
+<button class="history-row {{selectedFloorplan.floorPlanId === item.id && selectedFloorplan.leadId === item.leadId ? 'is-selected' : ''}}" data-index="{{index}}" bindtap="{{contextBrowseOnly ? 'viewFloorplan' : 'chooseFloorplan'}}" disabled="{{contextBusy || contextPending || !contextBrowseOnly && (readOnly || generating)}}"><text class="history-title">{{item.name}}</text><text class="history-meta">{{selectedFloorplan.floorPlanId === item.id && selectedFloorplan.leadId === item.leadId ? '已选用 · ' : ''}}{{item.rooms.length}} 个空间 · 正式户型</text></button>
+<button class="floorplan-preview" data-index="{{index}}" bindtap="viewFloorplan">查看</button>
+</view>
+</block>
+</block>
+<block wx:elif="{{sheet === 'publicSite'}}">
+<text wx:if="{{publicDetailLoading}}" class="sheet-state">正在核对资料访问权限…</text>
+<view wx:if="{{publicDetailError || publicError || publicPending}}" class="notice"><text>{{publicDetailError || publicError || '有一项公开材料操作等待确认结果。'}}</text><button class="notice-action" bindtap="retryPublic" disabled="{{publicBusy || publicDetailLoading}}">{{publicPending ? '核对同次操作结果' : '重新读取'}}</button></view>
+<view wx:if="{{publicDetail}}" class="public-recommendation discovery-paper">
+<view class="discovery-card-head"><text class="fabric-label">公开工地</text><text class="discovery-disclosure">业主授权公开</text></view>
+<text class="public-recommendation-name">{{publicDetail.name}}</text><text wx:if="{{publicDetail.stageName}}" class="public-stage-label">{{publicDetail.stageName}}</text><text class="public-district">{{publicDetail.district}} · {{publicDetail.dateLabel}}</text>
+<view wx:for="{{publicDetail.photos}}" wx:key="key" class="public-photo-mat"><image wx:if="{{publicDetailPaths[item.key]}}" src="{{publicDetailPaths[item.key]}}" mode="aspectFill" data-key="{{item.key}}" bindtap="previewPublicDetail"/><text wx:else class="discovery-photo-empty">照片暂不可用</text><view class="photo-tape" aria-hidden="true"></view></view>
+<view wx:for="{{publicDetail.excerpts}}" wx:key="key"><text class="sheet-helper">{{item.role}} · {{item.dateLabel}}</text><text class="source-quote" user-select>{{item.text}}</text></view>
+<view class="discovery-card-actions"><button class="discovery-text-action" bindtap="askPublicSite" disabled="{{!canSend || publicBusy || publicPending || publicDetailLoading || loading || fatal || readOnly || busy || generating || pendingSend || pendingAction || uncertainRun || contextBusy || contextPending || speechBusy}}"><text>{{publicBusy ? '正在确认…' : '问小K'}}</text><image src="../assets/chat-arrow-up-right.png" mode="aspectFit"/></button></view>
+</view>
+</block>
+<block wx:elif="{{sheet === 'reportSource'}}"><template is="citation-content" data="{{citation: reportSource, citationLoading: reportSourceLoading, citationError: reportSourceError, retry: 'retryReportSource'}}"/><button wx:if="{{reportSource.available && reportSource.originalAvailable && !reportSourceLoading && !reportSourceError}}" class="notice-action" bindtap="openReportSourceFile">打开原文件</button></block>
+<template wx:elif="{{sheet === 'followupCitation'}}" is="citation-content" data="{{citation: followupChat.citation, citationLoading: followupChat.citationLoading, citationError: followupChat.citationError, retry: 'retryFollowupCitation'}}"/>
+<template wx:else is="citation-content" data="{{citation, citationLoading, citationError, retry: 'retryCitation'}}"/>
+</scroll-view>
+</view>
+</view>
 </view>

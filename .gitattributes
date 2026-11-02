@@ -12,3 +12,5 @@ miniprogram/packages/assistant/chat/chat.wxml text eol=lf
 miniprogram/packages/assistant/chat/followup-view.wxml text eol=lf
 miniprogram/packages/assistant/chat/owner-report-detail.wxml text eol=lf
 miniprogram/packages/assistant/lib/followups.js text eol=lf
+miniprogram/packages/assistant/chat/stage-reminder.wxml text eol=lf
+miniprogram/packages/assistant/chat/report-sections.wxml text eol=lf

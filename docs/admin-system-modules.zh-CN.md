@@ -129,6 +129,16 @@ GET /api/miniprogram/assistant/followups/:bindingId/conversation及messages?befo
 受影响三API及proxy的新Webpack compile-only检查通过（compile-01-routes），源码/驱动/配置drift[]且未改原配置；不升级完整build/standalone。最终319–322归档/对客关、372–375撤回、137–140停止、5410停用，策略false/version252/dispatch_epoch66、全队列0；404/405仍发布、其余28草稿、42条预占2004000及4114/3753未知账目不变。
 <!-- /v1-02-report-source -->
 
+<!-- v1-02-stage-reminder -->
+**批准02阶段提醒与工艺依据直达：限定Implemented，V1-02整体仍Limited。** 源为原手账README及02-follow-up-chat-v002.png/共用03/04，853×1844→390×844。已就绪阶段卡使用报告冻结的stageKey及实际保存的standards，不再用进展/待核对摘要；保留纸张/布签、21px标题/16px正文，长原文自然增高，并直接提供原13px/44px工艺来源动作。没有工艺正文时沿真实生成标签/重试，不造示例施工、来源或本阶段建议；接待沿批准11。无新素材/字体/主包helper/API/schema/Agent/权限变化。
+
+assistant控制器把直开绑定到当前binding、精确report/revision/project和当前实际引用目录，复用原来源API、原生单选、来源纸页与认证原件下载，不挂完整详情、不写整份报告已读。列表轮询重验直接来源；同范围不取消下载，版本/目录变化、关闭/隐藏/身份/绑定变化及项目撤权阻断晚到响应。来源错误保留到明确重试。三个相同详情正文提取为report-sections.wxml，业主嵌套include显式导入；原chat缩进精简及LF属性守原2MB硬限，无截图切片。
+
+证据tmp/v1-02-stage-reminder/verification.json。最终Node client03为134/134（含13包体），语法/模板展开等价及外部api.js哈希通过、drift[]。定向ESLint仅chat-definition.js原有两个未使用catch占位符，本次新增0；后台依赖未变，不重跑后台构建/类型。service02五项已执行检查验证真实阶段变更→调度→Worker→一份私人投递、重复tick不重复，404/410目录/原件hash、错误收件人/版本/定位与项目撤权；整批仍failed。native02两前置及阶段直开503/重试、认证下载/不误写完整已读按原范围有效；native03滚动修复仍失败。native04注册节点判别证实复合选择器返回view，简单class才返回真实button；私人重进/实时撤权目标通过，但只验容器的日报断言不足以证明正文。截图检查发现并修复嵌套模板导入回归；native05实际业主待确认/协调/生成反馈/安排空态文字通过，通用详情断言因JSON转义真实换行及把非空协议段误期望为空而整批failed。保存的原生通用工艺正文和三个待核实段已离线复核，无新调用；不拼成一批全通过旅程。
+
+最终源码包main2096882/assistant2096739，硬2097152，余270/413B；1998848安全目标、PNG≤300KB不变。Stable2.02.2608080/base3.17.2，同最小化副屏HWND947063424，390×844/编码348×752，最终页面已审。五工地323–327归档/对客关、记录376–380撤回、绑定141–145停止、5410停用；计划false/version266/epoch71、队列0，各服务批cleanup true/drift[]。provider4114/knowledge3753 unknown账目、42条2004000预占及28草稿不变。实际模型/Embedding/摄取/生图、CLI参数文件、根重试及焦点/窗口修改均0。协议正文结合真实Evidence仅证明来源导航；配置模型语义两首稿、真实查看器/真机/完整宿主/根及完整构建上传字节未验。下一已核独立缺口为批准02在未选报告前隐藏输入框，继续同V1-02，沿原精确选择journal补用户主动提问入口。
+<!-- /v1-02-stage-reminder -->
+
 真实配置模型正文、固定两次首稿、带真实企业知识的报告语义、正常追问、完整生成正文原生验收、根入口及完整构建/上传字节仍未验；不推进V1-03或生产。
 
 证据`tmp/v1-02-natural-reports/verification.json`。unit49/client126（含包体）/定向lint通过；当前类型82项诊断均在本次归属之外，归属文件0。service04原日周批failed保留：五份日报正文保存，周报被旧活动聊天索引拒绝；0110修复该机制，service05仅生成五份周报新版本并复用未变日报证据，验证精确重进/已阅/跨收件人拒绝、派发前失败/同键重试。其撤回遗漏reason失败及service06误断言facts_only的失败均保留；来源驱动修复2停止。service07只回读已撤回版本，验证真实不可用DTO（无新撤回），再验证文本unknown；service08独立验证query用量未知阻断、文本0调用。以上均为替身模型协议检查：保留各批合计12次注入回调，实际文本/Embedding/摄取/生图均0，不当自然语义或真实费用。开发库原42条reconciling/2004000 tokens、日限1200000、provider4114、knowledge3753 unknown/input_tokens null及CNY32.828897/100保持。
