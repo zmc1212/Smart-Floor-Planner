@@ -1,9 +1,44 @@
-// Local Docker Desktop only. Shares the existing media volume read-only.
+// Explicit local deployment or read-only remote verification. Never implicitly
+// start local Docker after the development dependencies have moved remotely.
 import fs from 'node:fs';
 import path from 'node:path';
 import cp from 'node:child_process';
 import {randomBytes} from 'node:crypto';
+import assert from 'node:assert/strict';
+import {pathToFileURL} from 'node:url';
+import {cameraDeployment, cameraTransport, inspectCameraEnvironment} from './construction-camera-environment.mjs';
 const root=path.resolve(import.meta.dirname,'..'),out=path.join(root,'../tmp/cloud-camera');
+
+export function storageArguments(args) {
+ const options={};
+ for(let i=0;i<args.length;i++){
+  const key=args[i];assert.ok(['--context','--output','--check','--deploy-local'].includes(key),'Unknown storage option');
+  assert.ok(!Object.hasOwn(options,key),'Duplicate storage option');
+  if(key==='--check'||key==='--deploy-local')options[key]=true;
+  else{assert.ok(args[i+1]&&!args[i+1].startsWith('--'),'Storage option requires a value');options[key]=args[++i];}
+ }
+ cameraDeployment(options['--context']);
+ assert.ok(!!options['--check']!==!!options['--deploy-local'],'Choose read-only --check or explicit --deploy-local');
+ if(options['--deploy-local'])assert.equal(options['--context'],'desktop-linux','Remote mode is read-only; maintain remote compose through SSH');
+ if(options['--check'])assert.ok(options['--output'],'Use a new explicit output file for read-only evidence');
+ return options;
+}
+
+async function main(args){
+ const options=storageArguments(args),context=options['--context'];
+ // This check happens before any capacity configuration write or compose call.
+ cameraTransport(context);
+ if(options['--check']){
+  const output=path.resolve(options['--output']);
+  const relative=path.relative(path.resolve(root,'../tmp'),output);
+  assert.ok(relative&&!relative.startsWith('..')&&!path.isAbsolute(relative),'Evidence must stay in repository tmp');
+  assert.ok(fs.existsSync(path.dirname(output))&&!fs.existsSync(output),'Use an existing private evidence directory and a new file');
+  const storage=JSON.parse(fs.readFileSync(path.join(out,'storage.private.json'),'utf8'));
+  const report=await inspectCameraEnvironment(context,storage);
+  fs.writeFileSync(output,JSON.stringify(report,null,2),{flag:'wx',mode:0o600});
+  console.log(JSON.stringify({context,recordingHostPath:report.recordingHostPath,physicalCapacityVerified:true,anonymous:401,output}));
+  return;
+ }
 const docker=args=>cp.execFileSync('docker',['--context','desktop-linux',...args],{encoding:'utf8',windowsHide:true,stdio:['ignore','pipe','pipe']}).trim();
 const mounts=JSON.parse(docker(['inspect','--format','{{json .Mounts}}','wvp-stack-zlm-1']));
 const media=mounts.find(m=>m.Destination==='/opt/media/www'&&m.Type==='volume'&&m.RW);
@@ -15,6 +50,7 @@ if(recording&&(recording.Type!=='bind'||!recording.RW))throw Error('Refuse an un
 if(process.platform==='win32'&&!recording)throw Error('Windows recording requires an approved host bind; Docker virtual free space is insufficient evidence');
 const hostPath=source=>fs.realpathSync(process.platform==='win32'?source.replace(/^\/run\/desktop\/mnt\/host\/([a-z])\//i,(_all,drive)=>drive.toUpperCase()+':/'):source);
 const recordingPath=recording?hostPath(recording.Source):null;
+assert.equal(recordingPath?.replaceAll('\\','/').toLowerCase(),cameraDeployment(context).recordingHostPath.toLowerCase(),'Local deployment requires the approved F recording directory');
 const host=recordingPath?fs.statfsSync(recordingPath,{bigint:true}):null;
 fs.mkdirSync(out,{recursive:true});const privatePath=path.join(out,'storage.private.json');
 const config=fs.existsSync(privatePath)?JSON.parse(fs.readFileSync(privatePath,'utf8')):{origin:'http://127.0.0.1:18082',token:randomBytes(32).toString('hex')};
@@ -39,3 +75,8 @@ if(recordingPath){
 const image=docker(['inspect','--format','{{.Image}}','sfp-camera-storage-storage-1']);
 const report={checkedAt:new Date().toISOString(),node:sample.node,mediaVolume:media.Name,recordingHostPath:recordingPath,physicalCapacityVerified:!!recordingPath,mountReadOnly:true,anonymous:401,image,totalBytes:sample.totalBytes,availableBytes:sample.availableBytes};
 fs.writeFileSync(path.join(out,'storage-deployment.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report));
+}
+
+if(process.argv[1]&&pathToFileURL(path.resolve(process.argv[1])).href===import.meta.url){
+ main(process.argv.slice(2)).catch(error=>{console.error(error.message);process.exitCode=1;});
+}

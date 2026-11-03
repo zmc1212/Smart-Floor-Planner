@@ -16,6 +16,7 @@ import {cameraWvp} from '../src/lib/construction/camera/wvp';
 import {currentStorageHealth} from '../src/lib/construction/camera/storage';
 import {retrySoakRead,assertSoakStorageMounts,type SoakReadFailure} from './construction-camera-soak-recovery';
 import {executionIdentity} from './construction-camera-execution.mjs';
+import {cameraDeployment,cameraTransport,cameraImages} from './construction-camera-environment.mjs';
 
 async function run(){
  const connection=resolvePostgresRuntimeConfig().connectionString,database=new URL(connection);assert.ok(['127.0.0.1','localhost'].includes(database.hostname));assert.equal(database.port,'55432');assert.equal(database.pathname,'/cloud_camera_eval');
@@ -39,14 +40,12 @@ async function run(){
  // A new batch supplements the original binding before execution; it never
  // rewrites the frozen scope or receipts of a historical run.
  if(process.env.CAMERA_SOAK_BINDING_MANIFEST){const manifest=path.resolve(process.env.CAMERA_SOAK_BINDING_MANIFEST),extra=JSON.parse(fs.readFileSync(manifest,'utf8'));assert.ok(Array.isArray(extra.files)&&extra.files.every((f:unknown)=>typeof f==='string'&&fs.statSync(path.resolve(root,f)).isFile()));files.push(...extra.files,manifest);report.before=bind();}
- const images=()=>{
-  const snapshot=JSON.parse(cp.execFileSync('docker',['--context','desktop-linux','inspect','--format','{"name":{{json .Name}},"image":{{json .Image}},"mounts":{{json .Mounts}}}','wvp-stack-zlm-1','wvp-stack-wvp-1','sfp-camera-storage-storage-1'],{encoding:'utf8',windowsHide:true}).trim().split(/\r?\n/).map(l=>l.trim()).join(',').replace(/^/,'[').replace(/$/,']')) as {name:string;image:string;mounts:{Destination:string}[]}[];
-  // Docker's mount order is not stable. Retain every field but compare by target.
-  return snapshot.map(s=>({...s,mounts:s.mounts.sort((a,b)=>a.Destination.localeCompare(b.Destination))})).sort((a,b)=>a.name.localeCompare(b.name));
- };
+ const deployment=cameraDeployment(process.env.CAMERA_DOCKER_CONTEXT);assert.equal(process.env.CAMERA_RECORDING_HOST_PATH,deployment.recordingHostPath);
+ const transport=cameraTransport(deployment.context);report.transport=transport;
+ const images=()=>{assert.deepEqual(cameraTransport(deployment.context),transport,'Camera transport changed');return cameraImages(deployment.context);};
  const persist=()=>{const data=JSON.stringify(report,null,2),temporary=file+'.tmp';fs.writeFileSync(temporary,data);fs.renameSync(temporary,file);fs.writeFileSync(alias,data);};
  report.imagesBefore=images();
- try{assertSoakStorageMounts(report.imagesBefore as ReturnType<typeof images>,process.env.CAMERA_RECORDING_HOST_PATH||'F:/SmartFloorPlannerCamera/media/record');}
+ try{assertSoakStorageMounts(report.imagesBefore as ReturnType<typeof images>,deployment.recordingHostPath);}
  catch(e){report.status='failed';report.passed=false;report.soakPassed=false;report.error=(e as Error).message;report.finished=new Date().toISOString();persist();throw e;}
  const lock=new pg.Client({connectionString:connection,application_name:'construction-camera-soak'});let locked=false,touched=false,version=0,sourceStart=0,interrupted=false,originalMode='cloud',originalDays=3;
  lock.on('error',()=>{interrupted=true;report.lockConnectionLost=true;});

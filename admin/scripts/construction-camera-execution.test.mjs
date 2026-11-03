@@ -43,6 +43,16 @@ test('deep dependency verification rejects installed-package drift', t => {
   assert.throws(() => verifyExecution(f.file, true), /Execution bytes changed/);
 });
 
+test('external interpreter and SSH binding drift is rejected by shallow verification too', t => {
+  const f = fixture(t), pin = path.join(f.output, 'public-ssh-config'); fs.writeFileSync(pin, 'bound SSH alias');
+  const manifest = JSON.parse(fs.readFileSync(f.file, 'utf8')); delete manifest.sha256;
+  manifest.externalPins = [{path: pin, sha256: createHash('sha256').update(fs.readFileSync(pin)).digest('hex')}];
+  fs.writeFileSync(f.file, JSON.stringify({...manifest, sha256: createHash('sha256').update(JSON.stringify(manifest)).digest('hex')}));
+  verifyExecution(f.file, false);
+  fs.writeFileSync(pin, 'redirected SSH alias');
+  assert.throws(() => verifyExecution(f.file, false), /Pinned execution resource changed/);
+});
+
 test('bounded concurrent verification retains the same manifest and rejection', async t => {
   const f = fixture(t);
   assert.deepEqual(await verifyExecutionAsync(f.file), verifyExecution(f.file));

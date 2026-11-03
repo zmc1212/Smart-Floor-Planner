@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
 import {setTimeout as delay} from 'node:timers/promises';
+import {cameraDeployment, cameraEnvironmentIdentity, inspectCameraEnvironment, cameraCommand, REMOTE_CAMERA_CONTEXT} from './construction-camera-environment.mjs';
 
 const digest = value => createHash('sha256').update(value).digest('hex');
 const slash = value => value.replaceAll('\\', '/');
@@ -64,7 +65,7 @@ export function verifyExecution(file, deep = true) {
     assert.ok(fs.lstatSync(target).isFile(), 'Execution file is missing or linked');
     assert.equal(digest(fs.readFileSync(target)), entry.sha256, 'Execution bytes changed: ' + entry.target);
   }
-  for (const pin of manifest.externalPins) assert.equal(digest(fs.readFileSync(pin.path)), pin.sha256, 'Pinned interpreter changed');
+  for (const pin of manifest.externalPins) assert.equal(digest(fs.readFileSync(pin.path)), pin.sha256, 'Pinned execution resource changed');
   return {manifest: manifest.sha256, executionRoot: manifest.executionRoot, files: manifest.entries.length, deep};
 }
 
@@ -75,7 +76,7 @@ export async function verifyExecutionAsync(file) {
     assert.ok((await fs.promises.lstat(target)).isFile(), 'Execution file is missing or linked');
     assert.equal(digest(await fs.promises.readFile(target)), entry.sha256, 'Execution bytes changed: ' + entry.target);
   });
-  for (const pin of manifest.externalPins) assert.equal(digest(fs.readFileSync(pin.path)), pin.sha256, 'Pinned interpreter changed');
+  for (const pin of manifest.externalPins) assert.equal(digest(fs.readFileSync(pin.path)), pin.sha256, 'Pinned execution resource changed');
   return {manifest: manifest.sha256, executionRoot: manifest.executionRoot, files: manifest.entries.length, deep: true};
 }
 
@@ -120,7 +121,14 @@ function privateDirectory(folder) {
   if (process.platform === 'win32') cp.execFileSync('icacls', [folder, '/inheritance:r', '/grant:r', `${os.userInfo().username}:(OI)(CI)F`, '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F'], {windowsHide: true, stdio: 'pipe'});
 }
 
-async function prepare(workspace, output) {
+export function executionDeploymentEnvironment(context) {
+  const deployment = cameraDeployment(context);
+  return {CAMERA_DOCKER_CONTEXT: deployment.context, CAMERA_RECORDING_HOST_PATH: deployment.recordingHostPath};
+}
+
+async function prepare(workspace, output, flags) {
+  assert.ok(flags.length === 2 && flags[0] === '--context', 'Prepare requires explicit --context sfp-remote-dev or --context desktop-linux');
+  const deploymentEnv = executionDeploymentEnvironment(flags[1]);
   assert.ok(path.basename(output).startsWith('cloud-camera-operations-'));
   assert.ok(samePath(path.dirname(output), path.join(workspace, 'tmp')));
   assert.ok(!fs.existsSync(output), 'Use a new batch; never replace a prior execution or receipt');
@@ -129,6 +137,17 @@ async function prepare(workspace, output) {
   nextEnv.default.loadEnvConfig(admin, true);
   assert.ok(!process.env.NODE_OPTIONS, 'Unbound NODE_OPTIONS cannot enter a frozen execution');
   privateDirectory(output);
+  const externalFiles = [process.execPath, process.env.CAMERA_SD_PYTHON || 'E:/anaconda3/python.exe'];
+  if (flags[1] === REMOTE_CAMERA_CONTEXT) {
+    for (const binary of ['ssh.exe', 'docker.exe']) externalFiles.push(cameraCommand('where.exe', [binary]).split(/\r?\n/)[0]);
+    externalFiles.push(path.join(os.homedir(), '.ssh/config'), path.join(os.homedir(), '.ssh/known_hosts'));
+    const contextMetadata = JSON.parse(cameraCommand('docker', ['context', 'inspect', flags[1], '--format', '{{json .Storage.MetadataPath}}']));
+    assert.ok(typeof contextMetadata === 'string' && path.isAbsolute(contextMetadata), 'Docker context metadata must be a local configuration file');
+    externalFiles.push(path.join(contextMetadata, 'meta.json'));
+  }
+  const externalPins = [...new Set(externalFiles)].map(file => ({path: file, sha256: digest(fs.readFileSync(file))}));
+  const storageConfig = JSON.parse(fs.readFileSync(path.join(workspace, 'tmp/cloud-camera/storage.private.json'), 'utf8'));
+  const deploymentBefore = await inspectCameraEnvironment(flags[1], storageConfig);
   const executionRoot = path.join(output, 'execution'), entries = [];
   const copy = (source, relative, kind = 'source') => {
     const target = path.join(output, relative);
@@ -179,18 +198,22 @@ async function prepare(workspace, output) {
   const vendor = Object.fromEntries(fs.readFileSync(path.join(executionRoot, 'external/vendor.env'), 'utf8').replace(/^\uFEFF/, '').split(/\r?\n/).filter(line => /^[A-Z_]+=/.test(line)).map(line => { const i = line.indexOf('='); return [line.slice(0, i), line.slice(i + 1).replace(/^['"]|['"]$/g, '')]; }));
   const storage = JSON.parse(fs.readFileSync(path.join(executionRoot, 'tmp/cloud-camera/storage.private.json'), 'utf8'));
   const manifestFile = path.join(output, 'execution-manifest.json');
-  const env = {...process.env, NODE_ENV: 'development', DATABASE_URL: db.toString(), NODE_PATH: path.join(executionRoot, 'admin/node_modules'), TSX_TSCONFIG_PATH: path.join(executionRoot, 'admin/tsconfig.json'), NEXT_DIST_DIR: '.next-camera', CAMERA_PUBLIC_ORIGIN: 'http://localhost:3017', CAMERA_APP_ORIGIN: 'http://127.0.0.1:3018', CAMERA_WVP_ORIGIN: 'http://127.0.0.1:18080', CAMERA_MEDIA_ORIGIN: `http://127.0.0.1:${vendor.MEDIA_HTTP_PORT || '8080'}`, CAMERA_WVP_USERNAME: 'admin', CAMERA_WVP_PASSWORD: vendor.WVP_ADMIN_PASSWORD, CAMERA_ZLM_SECRET: vendor.ZLM_SECRET, CAMERA_MEDIA_SERVER_ID: 'wvp-zlm-01', CAMERA_NODE_RETENTION_DAYS: vendor.RECORD_DAYS || '7', CAMERA_RECORDING_ROOT: '/opt/media/www/record', CAMERA_RECORDING_HOST_PATH: 'F:/SmartFloorPlannerCamera/media/record', CAMERA_STORAGE_ORIGIN: storage.origin, CAMERA_STORAGE_TOKEN: storage.token, CAMERA_SD_PYTHON: process.env.CAMERA_SD_PYTHON || 'E:/anaconda3/python.exe', CAMERA_SD_VENDOR_ADAPTER: path.join(executionRoot, 'external/vendor'), CAMERA_SD_DEVICES_FILE: path.join(executionRoot, 'external/devices.private.json'), CAMERA_LOCAL_WVP_ENV: path.join(executionRoot, 'external/vendor.env'), CAMERA_TEST_OUTPUT: output, CAMERA_SOAK_BINDING_MANIFEST: path.join(output, 'binding-manifest.json'), CAMERA_EXECUTION_MANIFEST: manifestFile};
+  const env = {...process.env, ...deploymentEnv, NODE_ENV: 'development', DATABASE_URL: db.toString(), NODE_PATH: path.join(executionRoot, 'admin/node_modules'), TSX_TSCONFIG_PATH: path.join(executionRoot, 'admin/tsconfig.json'), NEXT_DIST_DIR: '.next-camera', CAMERA_PUBLIC_ORIGIN: 'http://localhost:3017', CAMERA_APP_ORIGIN: 'http://127.0.0.1:3018', CAMERA_WVP_ORIGIN: 'http://127.0.0.1:18080', CAMERA_MEDIA_ORIGIN: `http://127.0.0.1:${vendor.MEDIA_HTTP_PORT || '8080'}`, CAMERA_WVP_USERNAME: 'admin', CAMERA_WVP_PASSWORD: vendor.WVP_ADMIN_PASSWORD, CAMERA_ZLM_SECRET: vendor.ZLM_SECRET, CAMERA_MEDIA_SERVER_ID: 'wvp-zlm-01', CAMERA_NODE_RETENTION_DAYS: vendor.RECORD_DAYS || '7', CAMERA_RECORDING_ROOT: '/opt/media/www/record', CAMERA_STORAGE_ORIGIN: storage.origin, CAMERA_STORAGE_TOKEN: storage.token, CAMERA_SD_PYTHON: process.env.CAMERA_SD_PYTHON || 'E:/anaconda3/python.exe', CAMERA_SD_VENDOR_ADAPTER: path.join(executionRoot, 'external/vendor'), CAMERA_SD_DEVICES_FILE: path.join(executionRoot, 'external/devices.private.json'), CAMERA_LOCAL_WVP_ENV: path.join(executionRoot, 'external/vendor.env'), CAMERA_TEST_OUTPUT: output, CAMERA_SOAK_BINDING_MANIFEST: path.join(output, 'binding-manifest.json'), CAMERA_EXECUTION_MANIFEST: manifestFile};
   const generated = (relative, value) => {
     const content = JSON.stringify(value, null, 2);
     fs.writeFileSync(path.join(output, relative), content, {flag: 'wx', mode: 0o600});
     entries.push({source: null, target: relative, kind: 'configuration', sha256: digest(content), bytes: Buffer.byteLength(content)});
   };
+  const deploymentAfter = await inspectCameraEnvironment(flags[1], storage);
+  assert.deepEqual(cameraEnvironmentIdentity(deploymentAfter), cameraEnvironmentIdentity(deploymentBefore), 'Camera deployment changed during preparation');
+  generated('camera-environment.json', {before: deploymentBefore, after: deploymentAfter});
   generated('runtime.private.json', env);
   generated('binding-manifest.json', {files: entries.filter(entry => entry.kind !== 'dependency').map(entry => path.join(output, entry.target)).concat(manifestFile)});
-  const body = {format: 1, created: new Date().toISOString(), workspace, output, executionRoot, head: cp.execFileSync('git', ['rev-parse', 'HEAD'], {cwd: workspace, encoding: 'utf8', windowsHide: true}).trim(), entries, generatedSources, generatedMutable: ['execution/admin/next-env.d.ts', 'execution/admin/.next-camera/'], externalPins: [...new Set([process.execPath, env.CAMERA_SD_PYTHON])].map(file => ({path: file, sha256: digest(fs.readFileSync(file))}))};
+  const body = {format: 1, created: new Date().toISOString(), workspace, output, executionRoot, head: cp.execFileSync('git', ['rev-parse', 'HEAD'], {cwd: workspace, encoding: 'utf8', windowsHide: true}).trim(), entries, generatedSources, generatedMutable: ['execution/admin/next-env.d.ts', 'execution/admin/.next-camera/'], externalPins};
   // Recheck the complete captured inputs once. Later working-tree changes are
   // independent of these physical copies and cannot alter this run's identity.
   await mapFiles(entries.filter(entry => entry.source), async entry => assert.equal(digest(await fs.promises.readFile(entry.source)), entry.sha256, 'Input drift during snapshot preparation'));
+  for (const pin of externalPins) assert.equal(digest(fs.readFileSync(pin.path)), pin.sha256, 'External binding changed during preparation');
   fs.writeFileSync(manifestFile, JSON.stringify({...body, sha256: digest(JSON.stringify(body))}), {flag: 'wx'});
   console.log(JSON.stringify({phase: 'prepared', ...await verifyExecutionAsync(manifestFile), bytes: entries.reduce((n, entry) => n + entry.bytes, 0)}));
 }
@@ -207,6 +230,12 @@ async function launch(command, output, flags) {
   const admin = path.join(manifest.executionRoot, 'admin');
   const env = JSON.parse(fs.readFileSync(path.join(output, 'runtime.private.json'), 'utf8'));
   assert.ok(samePath(env.CAMERA_EXECUTION_MANIFEST, manifestFile));
+  // Stopping an owned recorder must still work during a capacity-probe outage.
+  if (command !== 'soak-control') {
+    const deployment = JSON.parse(fs.readFileSync(path.join(output, 'camera-environment.json'), 'utf8'));
+    const current = await inspectCameraEnvironment(env.CAMERA_DOCKER_CONTEXT, {origin: env.CAMERA_STORAGE_ORIGIN, token: env.CAMERA_STORAGE_TOKEN});
+    assert.deepEqual(cameraEnvironmentIdentity(current), cameraEnvironmentIdentity(deployment.after), 'Camera deployment differs from the prepared batch');
+  }
   const scripts = {gateway: 'construction-camera-gateway.ts', 'soak-preflight': 'construction-camera-soak.ts', 'soak-smoke': 'construction-camera-soak.ts', 'soak-crash': 'construction-camera-soak.ts', 'soak-start': 'construction-camera-soak.ts', 'soak-control': 'construction-camera-soak-control.ts'};
   if (command === 'next') await freePort(3018);
   if (command === 'gateway') await freePort(3017);
@@ -245,7 +274,7 @@ if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === imp
   const workspace = path.resolve(import.meta.dirname, '../..');
   const output = path.resolve(outputArg || '');
   Promise.resolve().then(async () => {
-    if (command === 'prepare') await prepare(workspace, output);
+    if (command === 'prepare') await prepare(workspace, output, flags);
     else if (command === 'verify') console.log(JSON.stringify(await verifyExecutionAsync(path.join(output, 'execution-manifest.json'))));
     else await launch(command, output, flags);
   }).catch(error => { console.error(error.message); process.exitCode = 1; });

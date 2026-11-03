@@ -1,5 +1,22 @@
 # 远端开发连接记录
 
+**2026-11-03用户授权本地Docker清零：限定Implemented。** 剩余8个本地在用Docker依赖已迁至批准的`192.168.10.54`：WVP、ZLM、MySQL、Redis、接入服务、只读容量探针，以及独立公开直播PostgreSQL／媒体服务。既有远端5个容器的ID、启动时间、状态和完整挂载字段保持；仅对挂载列表排序后比较，未删字段。未重启既有远端Docker／服务，未迁主库／评估库schema，无生产发布。
+
+- 本机Docker Desktop和`docker-desktop` WSL均已停止，Docker进程**0**，辅助服务Stopped／Manual，Desktop `AutoStart=false`，无Desktop登录自启项；默认CLI context为`sfp-remote-dev`。原本地容器、数据卷、F录像和旧VHD保留用于回退；未启动或删除其他历史停用项目。隧道断开时不得自动启动本机Docker兜底。
+- 远端实际目录为受ACL保护的`D:/Smart-Floor-Planner-Dev/migrated-services-20261103/`；`deployment.private.json`含真实环境／凭据，禁止入Git。Compose运维须通过SSH在远端真实目录执行。8个原卷完成冷复制，WVP容器内部历史抓图新增第9个持久卷，另复制ZLM内部抓图缓存。录像`/opt/media/www/record`和只读探针共同挂载远端物理D盘的`record/`；独立主机保留原容器／卷名及应用内路径。
+- 13份基础镜像／冷备份／SQL（12,341,617,952字节）和额外ZLM缓存归档完成传输及hash校验；原F盘53个录像文件（6,431,924,380字节）恢复时逐文件SHA-256一致，8个原卷完成tar内容／元数据比较。7个镜像跨本机containerd manifest ID与远端classic config digest，文件层与配置内容一致；映射和原ID断言失败保留。已封存、完成checkpoint且无WAL尾文件的SQLite，以immutable只读方式完整性核验ok，原普通只读打开失败保留。此为本次依赖恢复，不升级主库／评估库完整恢复演练状态。
+- 新增独立`admin/scripts/remote-dev/docker-services-tunnel.ps1`，保持本机／远端回环端口**8080、18080、18081、18082、11935、18554、18084、55434**，应用origin不变。`install-docker-services-tunnel.ps1 -Start`安装／启动当前用户隐藏`SFP-Remote-Docker-Services.lnk`监管，沿用严格主机检查和原SSH身份。核完整身份后仅中断该SSH子进程，8,180ms内8端口自动恢复；数据库／Embedding隧道独立保持。远端仍依赖既有Windows交互登录Docker任务，未新增登录前／重启验收。
+- 仅将批准实体摄像头的持久`GB28181CFG.SIP_IP`从`192.168.10.32`改至`192.168.10.54`，其他持久GB字段、设备／通道ID、凭据和启用状态逐项回读保持。`OnlineStatus`为动态连接状态，不作为持久配置相等判断。新增2条入站SIP／RTP规则，仅允许摄像头`192.168.10.100`访问TCP／UDP15060及30000–30099；HTTP管理／媒体控制仍只绑定远端回环。无格式化、重启、固件、录制模式或设备计划操作。
+- 验证：远端8个运行／健康，原5个保持；恢复的公开直播库150张RLS／150张force-RLS关系；鉴权容量与原生D盘总量1,403,827,589,120字节一致，匿名指标401；ZLM唯一测试文件确实写入远端D，原生hash一致后仅移除该自有文件。原H5入口200，真实私有MP4 Range206且有MP4头、匿名401，直播SIP／RTP200并接收70,358字节FLV。首轮发现原用户停止清理已释放3017／3018，容量unavailable失败保留；本次临时恢复网关／Next用于验证，随后按PID／创建时间／解释器／子树守卫释放，原3006 PID540892保持。未新增小程序原生／视觉／长期验收。本机内存仍偏紧，其他Node／ChatGPT／IDE进程保持，未声称整机可用内存已增加，也未擅停其他任务。
+
+原74小时批次`2026-11-03T09-03-04-699Z`仍按用户要求保持停止，4次观测及interrupted／failed原回执不变。最终独立确认SD/off/stopped版本46、MP4=false，SD／观看／云台／写入义务0且无长测控制器；未恢复长测或自动化。未来仅在用户明确授权录制后，创建绑定远端新环境的新批次，并设置`CAMERA_RECORDING_HOST_PATH=D:/Smart-Floor-Planner-Dev/migrated-services-20261103/record`；不得复用F／本机原生statfs／旧物理挂载证据、修改固定05快照，或对本部署执行仅适用于本地Docker的容量部署脚本。
+
+回退须主动、串行：先确认所属停写及义务清空，重新备份远端数据库／媒体并核字节和索引后，再同步切换后的新增写入。仅在明确回退时恢复原本地依赖，原服务就绪后只恢复摄像头原SIP目标，只停止本次新增依赖隧道。不得用旧本地快照覆盖既有远端主库／向量库。凭据、租户、留存、源撤回和生产边界保持。证据及精确归属：`tmp/docker-remote-migration-20261103-01/completion.json`、备份／恢复清单、provider追踪及进程回执；原准备／清理／验证失败全部保留。无产品UI／API／schema／角色变更，模型调用0，无新原生验收。
+
+**CV-04只读驱动前置已验：** 固定执行prepare及长测改用显式Docker context/精确宿主目录；容量工具的`--context sfp-remote-dev --check --output <tmp下全新JSON>`只读验证远端Windows原生D、同源RW/RO挂载、15秒探针及匿名401，未知/错源拒绝且不回退本地Docker。新固定06的85333文件/7外部资源绑定前后稳定，JS18/18、清理守卫4/4、62入口类型0及6文件lint0；只读前后SD/off/stopped46、MP4=false/义务0，网关停止导致DB健康行unavailable不算Worker通过。首个缺失SSH转发失败保留，恢复原8端口监管443384/350404后物理前检02通过，监管继续常驻。无3017/3018/录制/自动化启动，无UI/API/schema/角色/素材变化，Mini/Stable只复用未变入口；整体Limited，实际短录/父丢失及新24/72小时/自然到期等待明确恢复录制。证据tmp/cloud-camera-remote-preflight-20261103-01/validation-06.json，调度仅看视频计划第1节。
+
+机制参考：[Docker镜像存储](https://docs.docker.com/desktop/features/containerd/)、[SQLite只读WAL](https://www.sqlite.org/wal.html#read_only_databases)。下列历史记录保留原日期与范围；当前Docker位置以本条为准。
+
 **2026-11-03抓拍保留隔离迁移：限定Implemented。** 仅cloud_camera_eval在既有55432→批准远端15433/sfp-remote-dev-vector上114→115应用0116，独立0114运行库仍未应用，未迁主库/生产。1,760,060字节PGDMP/TOC备份SHA256`0855d964a16fd5f4d57fcba1b6aef54db35f5580a2b2d2ae694a4b61b03b90c7`，受限ACL/抓拍强制RLS/精确hash/原策略及图片字节保留通过。完整恢复演练未验；证据tmp/cloud-camera-snapshot-20261103/migration.json，SSH/凭据/端点/卷与部署边界保持。
 
 **2026-11-03业主视频隔离迁移：限定Implemented。** 仅cloud_camera_eval（既有55432→批准远端15433/sfp-remote-dev-vector）113→114应用0115；独立0114前后均不存在，未迁主库/生产。1,671,521字节custom备份SHA256`4d8f020fc1a2545ff25a54388bfeec5bfb51411ad973aab8fa9170e00903325c`，受限ACL/PGDMP/TOC通过；新授权表强制RLS/精确hash、全部原策略及抓拍字节保留。首次同步Docker EOF在DDL前，原回执保留，异步备份后完成；完整恢复演练未验。证据tmp/cloud-camera-customer-20261103/migration*.json。SSH/端点/凭据/卷与生产边界保持。
@@ -171,7 +188,7 @@ docker --context sfp-remote-dev info
 
 ## 运维与回滚
 
-摄像头CV-04执行/回滚合同见[视频计划§1.13](./cloud-construction-video-plan.zh-CN.md#113-cv-04固定执行与运维合同limited验收进行中)。实际执行副本保留当前Admin脏源码/配置/已安装依赖，网关和控制器只使用原55432→远端15433的`cloud_camera_eval`，不改变SSH/凭据/转发/主库或生产部署。本交付不迁移，运行库仍缺0114，不得把混合完整journal当启动前置。释放自有评估运行时前，仅关闭版本仍归属本批次的录像，确认实际MP4=false、原SD/off/stopped及无pending SD/观看/PTZ义务，再核验PID/创建时间/可执行文件/副本路径后停止。保留共享3006、WVP/ZLM/探针、SSH、F录像/探针overlay及旧卷。数据库回退须新鲜备份核验及审核过的兼容迁移；媒体回退须先停写并完整复制/hash核验F新增录像，再切挂载。旧卷及PGDMP/TOC校验本身不代表无损回滚/完整恢复演练。生产HTTPS/业务域名/进程监督及发布仍未授权/未验。
+摄像头CV-04执行/回滚合同见[视频计划§1.13](./cloud-construction-video-plan.zh-CN.md)。prepare显式--context sfp-remote-dev，使用新固定06及远端D目录，原生容量通过批准SSH主机读取；不得把旧F/固定05环境当新远端批。数据库仍仅原55432→远端15433/cloud_camera_eval，当前前置无schema迁移，0114仍缺，不重放混合journal；凭据/主库/向量库及独立转发保持。释放所属评估运行时前，仅关闭版本归属本批的录像并确认物理MP4=false、原SD/off/stopped及SD/观看/PTZ/写入义务0，再核完整进程身份。保留共享3006、远端WVP/ZLM/探针/D媒体及独立SSH监管；F/旧卷仅为回退数据，切回前须新鲜备份、完整hash/索引核对切换后的新增写入。存储不可达不新增为清理停录前置；未知写入不重放。当前用户停录及automation-4暂停保持；实际短录/父丢失/24/72小时/自然到期须明确恢复后验收。生产HTTPS/业务域名/监督/部署及完整恢复演练仍未授权/未验。
 
 小K隔离恢复验收使用 `XIAOK_RESTORE_TARGET=remote-dev npm run test:assistant:restore`（PowerShell先设置同名环境变量，从admin运行）。脚本固定Docker context/SSH端点、评估容器及127.0.0.1:15433绑定，使用既有55432应用隧道获取互斥锁；不访问开发主库或原卷。最新实跑0058–0063恢复、22表摘要、权限/引用/用量检查及随机克隆库/dump清理均通过，证据 `tmp/xiaok-vector/assistant-restore-acceptance.json`。这不是生产回滚或无人登录连通性验收。
 
