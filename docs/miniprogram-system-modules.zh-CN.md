@@ -1,11 +1,15 @@
 # 小程序当前功能清单
 
 <!-- construction-public-live-current -->
-**云工地直播——Limited（2026-11-03）。** UI来源保持批准C05-02 v002及共享连接/离线/disabled组件；业主同意仍须当前attempt/version/revision的真实播放进度。CORS、每次媒体/每chunk授权、撤回和未知结果如实核对均保留。未改Mini结构、样式、文案、素材、模型、企业/角色/RLS或录像设置。native-business01/02首播仍失败，两轮止损及原失败/费用不清零；不据此认定编解码限制、设备离线或正常播放通过。
+**云工地直播——Limited（2026-11-04）。** UI来源保持批准C05-02 v002及共享连接/离线/disabled组件；业主同意仍须当前attempt/version/revision的真实播放进度。CORS、每次媒体/每chunk授权、撤回和未知结果如实核对均保留。未改Mini结构、样式、文案、素材、模型、企业/角色/RLS或录像设置。native-business01/02首播仍失败，两轮止损及原失败/费用不清零；不据此认定编解码限制、设备离线或正常播放通过。
 
 新增仅开发环境显式启用`PUBLIC_LIVE_MEDIA_DIAGNOSTICS=1`的白名单元数据：独立trace ID、清单/分片类别、阶段、上游实际HTTP状态或null、首个abort来源、结果、耗时与字节。覆盖初始授权/数据库异常、上游拒绝、caller abort、原15秒传输超时、断开、下游取消及后续撤回；不记录URL、能力token、源标识、正文或原始错误。诊断失败不改变响应/权限，生产忽略开关。`tmp/public-live-package/successor03/`：fast05为7/7、248绑定；types03为3入口/7581程序依赖/诊断0；lint03通过；media-service02为真实隔离数据库/会话/媒体服务加受控loopback HTTP的8/8，均drift[]。这是工程证据，不是第三轮原生业务批或完整阶段交付；旧CORS后503的具体原因仍未知。
 
-只读私有源核验：`cloud_camera_eval`中微云1454/项目12/绑定9/机位8(v2)在WVP在线，但业主私有授权关闭(v12)、临时微信身份已清理；账号本身仍有效。未重新开授权，未播放/公开真实视频。既有远端Docker元信息确认开发主库有摄像头表、缺业主授权表；未迁库、改隧道或配置。最终隔离媒体状态live1/v35/rev137 withdrawn，代理保留14条/未清0、观看会话0，photo1/v1仍published，自有控制器/job/server/锁0。同源真实私有正常播放、明确公开许可下的公开播放、设计师旅程、编译包体/字体及完整光学验收仍未通过。见[直播合同](./construction-public-live-contract.zh-CN.md)。
+**既有设计师/作品旅程：限定Implemented（2026-11-04）。** 本次未改产品代码或设计，沿批准D01 notebook README及D02 v5，在390×844（PNG348×752）核验。自有55434/sfp_public_live_eval中，带合成标记的1454设计师5/作品1/当前公开版本3经既有D01深链及真实作品点击打开；当前版本仅一次偏好实写，重进保留，“和小K聊聊”返回原咨询1且保存上下文可见。一次受控503通过原重试恢复；真实撤回后，当前作品/图片读取被拒，两条原生旧入口清除受保护内容。native05为6项固定检查（含2项环境/身份前置）、1542依赖绑定、7张路由核对截图，cleanup true/drift[]；独立已发布作品身份/租户/精确版本服务检查5/5。这仅完成notebook无联系动作的返回路径，不升级推荐模型、gallery/申请联系/人工接续、真机微信或完整光学/字体/编译包体范围。
+
+native01元信息超时、02 TSX setIdentity捕获__name保留为业务前驱动失败。native03属性selector测量null；04已真实保存/重进偏好，但测试边界在任何C01服务调用前拦截必需POST entry-context；原业务失败2次后止损。保存源码/VM及entry-discriminator02复用真实Mini ChatController/AssistantClient和实际assistantHttp：旧边界未调服务即失败，修正后入口/会话/消息200且保存上下文可见，无关模型写入仍被拒。只凭该已证机制重新开放一次原固定范围，失败计数不清零。最终作品1行版本13/公开版本3已撤回；两条已发生的偏好消息33/34分别属于版本2/3，后者supersedes前者，原失败写入不擦除。内存身份/存储钩子/全局状态已还原，临时服务及验收锁释放；final-state核idle队列、活动观看会话/未清代理0、live1/v35/rev137 withdrawn及photo1/v1仍published。新增模型/Embedding/生图均0。证据：`tmp/public-live-package/successor03/{designer-native05,designer-permissions01,designer-entry-discriminator02}/`及`designer-final-state.json`。
+
+只读私有源核验：`cloud_camera_eval`中微云1454/项目12/绑定9/机位8(v2)在WVP在线，但业主私有授权关闭(v12)、临时微信身份已清理；账号本身仍有效。未重新开授权，未播放/公开真实视频。既有远端Docker元信息确认开发主库有摄像头表、缺业主授权表；未迁库、改隧道或配置。最终隔离媒体状态live1/v35/rev137 withdrawn，代理保留14条/未清0、观看会话0，photo1/v1仍published，自有控制器/job/server/锁0。同源真实私有正常播放、明确公开许可下的公开播放、编译包体/字体及完整光学验收仍未通过。见[直播合同](./construction-public-live-contract.zh-CN.md)。
 <!-- /construction-public-live-current -->
 
 <!-- xiaok-v1-02-proactive -->

@@ -75,6 +75,11 @@ Native09复用其中1181项未变Mini/运行时依赖的编译与就绪证据，
 
 ### 当前预览与媒体传输（2026-11-03）
 
+**既有设计师/作品旅程：限定Implemented（2026-11-04）。** 本次未改产品代码或设计，沿批准D01 notebook README及D02 v5，在390×844（PNG348×752）核验。自有55434/sfp_public_live_eval中，带合成标记的1454设计师5/作品1/当前公开版本3经既有D01深链及真实作品点击打开；当前版本仅一次偏好实写，重进保留，“和小K聊聊”返回原咨询1且保存上下文可见。一次受控503通过原重试恢复；真实撤回后，当前作品/图片读取被拒，两条原生旧入口清除受保护内容。native05为6项固定检查（含2项环境/身份前置）、1542依赖绑定、7张路由核对截图，cleanup true/drift[]；独立已发布作品身份/租户/精确版本服务检查5/5。这仅完成notebook无联系动作的返回路径，不升级推荐模型、gallery/申请联系/人工接续、真机微信或完整光学/字体/编译包体范围。
+
+native01元信息超时、02 TSX setIdentity捕获__name保留为业务前驱动失败。native03属性selector测量null；04已真实保存/重进偏好，但测试边界在任何C01服务调用前拦截必需POST entry-context；原业务失败2次后止损。保存源码/VM及entry-discriminator02复用真实Mini ChatController/AssistantClient和实际assistantHttp：旧边界未调服务即失败，修正后入口/会话/消息200且保存上下文可见，无关模型写入仍被拒。只凭该已证机制重新开放一次原固定范围，失败计数不清零。最终作品1行版本13/公开版本3已撤回；两条已发生的偏好消息33/34分别属于版本2/3，后者supersedes前者，原失败写入不擦除。内存身份/存储钩子/全局状态已还原，临时服务及验收锁释放；final-state核idle队列、活动观看会话/未清代理0、live1/v35/rev137 withdrawn及photo1/v1仍published。新增模型/Embedding/生图均0。证据：`tmp/public-live-package/successor03/{designer-native05,designer-permissions01,designer-entry-discriminator02}/`及`designer-final-state.json`。
+
+
 开发诊断仅在显式`PUBLIC_LIVE_MEDIA_DIAGNOSTICS=1`时启用，生产忽略。服务端只输出独立trace ID、资源类别、阶段/结果、HTTP状态或null、首个abort来源、耗时和字节；不输出源/能力URL、token、源标识、正文或原始错误。初始授权/数据库异常在调用上游前独立分类；原15秒传输deadline仍从初始授权后开始，每chunk权限检查不变，日志异常不改变交付或对客错误响应。
 
 当前工程证据在`tmp/public-live-package/successor03/`：fast05为7/7（248绑定）、types03为3入口/7581程序依赖/诊断0、lint03通过，media-service02为受控HTTP配合真实隔离数据库/会话/媒体服务的8项。上游404/503、成功改写、caller body abort、真实15000ms超时、连接断开、跨租户/畸形会话上游前拒绝、传输中撤回和元数据不泄密均通过，drift[]。初始授权诊断以media-service02为最终绑定，media-service01属于此前版本。最终live1/v35/rev137 withdrawn、代理历史14条/未清0、活动观看会话0、photo1/v1 published。这些受控服务检查没有启动真实WVP/ZLM源或录像。fast01外层超时、fast02夹具origin/清理挂起、types01测试代码NODE_ENV只读诊断、首次审计模块解析失败及主库连接前置/拒绝均保留，不用后续绿色覆盖原失败。
