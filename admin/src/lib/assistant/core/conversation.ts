@@ -8,7 +8,7 @@ import { createPreviewPolicy, previewPolicy, projectMessage, citationProjection,
 import { sourceExcerptProtocol } from '../agent/source-excerpts';
 import { sourceQuestionCoverageProtocol } from '../agent/source-question-coverage';
 import { knowledgeExplanationProtocol } from '../agent/knowledge-explanation';
-import { reportAnswerGroundingProtocol } from '../agent/report-source-scope';
+import { reportAnswerGroundingProtocol, reportSourceProjectionProtocol } from '../agent/report-source-scope';
 import { parseWebCitationId } from '../agent/web-evidence';
 import { configuredGuidance, conversationGuidance, guidanceOpening, guidanceView } from '../requirements/guidance';
 import { requirementCheckpoint } from '../requirements/checkpoint';
@@ -152,7 +152,8 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
       ...(!report && reportContext(c.entry_snapshot).selection ? { reportContextVersion: reportContext(c.entry_snapshot).revision } : {}),
       ...(report ? { reportComposition } : {}),
       ...(reportNativeFinal ? { reportNativeFinal: reportNativeFinalProtocol, reportFinalOutputTokens: reportFinalOutputTokenLimit,
-        reportFinalCarrier: reportFinalFunctionCarrier, reportAnswerGrounding: reportAnswerGroundingProtocol } : {}),
+        reportFinalCarrier: reportFinalFunctionCarrier, reportAnswerGrounding: reportAnswerGroundingProtocol,
+        reportSourceProjection: reportSourceProjectionProtocol } : {}),
       ...(agent && !agent.structuredFinal && ['reply','site.question'].includes(purpose)
         ? { sourceAnswerMode: agent.knowledgeExplanation === knowledgeExplanationProtocol ? knowledgeExplanationProtocol : sourceExcerptProtocol,
           sourceQuestionCoverage: sourceQuestionCoverageProtocol } : {}),

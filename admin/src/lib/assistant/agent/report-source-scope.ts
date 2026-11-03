@@ -6,8 +6,10 @@ import { siteRecordText, type SiteDraft } from '@/lib/construction/site-contract
 import { reportLocalTime } from './report-time';
 
 export const reportAnswerGroundingProtocol = 'report-answer-grounding-v1';
+export const reportSourceProjectionProtocol = 'report-parent-context-v1';
 export type ReportSourceScope = {
   protocol: typeof reportAnswerGroundingProtocol;
+  projection?: typeof reportSourceProjectionProtocol;
   reportId: string; revision: number; factsHash: string; projectId: string; cutoffAt: string;
   kind: 'metadata' | 'stage' | 'record' | 'published_pending' | 'issue' | 'arrangement';
   itemId?: string; itemVersion?: number; sourceHash?: string;
@@ -22,21 +24,42 @@ export function boundReportAnswerGrounding(value: unknown, native: boolean) {
   return true;
 }
 
+/** Source projection is pinned at admission independently of the final format.
+ * An old run must retain its exact original text, catalog IDs and checkpoints. */
+export function boundReportSourceProjection(value: unknown, grounded: boolean) {
+  if (value === undefined) return false;
+  if (!grounded || value !== reportSourceProjectionProtocol) fail('context_changed');
+  return true;
+}
+
 /** Read projection of the SAME authorized immutable report snapshot. Metadata
  * and each original have independent citation spans and explicit scope; a
  * user's room correction cannot supply a missing room on a published record. */
 export function scopedReportSynthesisSources(resultKey: string, snapshot: BusinessSnapshot): SynthesisSource[] | null {
-  if (!('reportAnswerGrounding' in snapshot) || snapshot.reportAnswerGrounding === undefined) return null;
+  if (!('reportAnswerGrounding' in snapshot) || snapshot.reportAnswerGrounding === undefined) {
+    if ('reportSourceProjection' in snapshot && snapshot.reportSourceProjection !== undefined) fail('context_changed');
+    return null;
+  }
   if (snapshot.reportAnswerGrounding !== reportAnswerGroundingProtocol || !snapshot.reportReference) fail('context_changed');
+  const contextual = boundReportSourceProjection(snapshot.reportSourceProjection, true);
   const selection = snapshot.reportReference.selection;
   const projects = snapshot.data as ReportProject[];
   if (projects.length !== 1 || String(projects[0].id) !== selection.projectId) fail('context_changed');
   const project = projects[0];
-  const common = { protocol: reportAnswerGroundingProtocol, reportId: selection.reportId, revision: selection.revision,
+  const common = { protocol: reportAnswerGroundingProtocol,
+    ...(contextual ? { projection: reportSourceProjectionProtocol } as const : {}), reportId: selection.reportId, revision: selection.revision,
     factsHash: selection.factsHash, projectId: selection.projectId, cutoffAt: selection.cutoffAt } as const;
+  // Child originals inherit this SAME immutable report's temporal scope. Keep
+  // that trusted provenance in their citable text as well as reportScope:
+  // otherwise a correctly qualified record citation loses its own cutoff.
+  // This is read projection only, never an event timestamp or new arrangement.
+  const parentContext = contextual
+    ? `原文所属${selection.kind === 'daily' ? '日报' : '周报'}的项目：${project.name}。报告事实截止：${reportLocalTime(selection.cutoffAt)}。这是报告统计范围，不是原记录发生/发布时间、完成期限或当前排期。\n`
+    : '';
   const source = (key: string, title: string, text: string, kind: ReportSourceScope['kind'], room = '',
     item?: Pick<ReportSourceScope, 'itemId' | 'itemVersion' | 'sourceHash'>): SynthesisSource => ({
-    sourceId: `B${resultKey}:${key}`, kind: 'project', title, summaryTitle: title, text, resultKey,
+    sourceId: `B${resultKey}:${key}`, kind: 'project', title, summaryTitle: title,
+    text: kind === 'metadata' ? text : parentContext + text, resultKey,
     reportScope: { ...common, kind, ...item, room: room ? { status: 'recorded', name: room } : { status: 'unspecified' } },
   });
   const roomText = (room: string) => room ? `原记录明确房间：${room}。` : '原记录未注明房间，不能据此确定对应哪个房间。';

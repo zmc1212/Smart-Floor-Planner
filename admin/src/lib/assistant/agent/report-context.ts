@@ -8,7 +8,7 @@ import type { ReportProject } from '@/lib/construction/report-scope';
 import type { BusinessSnapshot } from './business-tools';
 import type { ModelTool } from '../contracts/model';
 import { reportLocalTime } from './report-time';
-import { boundReportAnswerGrounding, reportAnswerGroundingProtocol } from './report-source-scope';
+import { boundReportAnswerGrounding, boundReportSourceProjection, reportAnswerGroundingProtocol, reportSourceProjectionProtocol } from './report-source-scope';
 import { reportNativeFinalProtocol } from './report-native-final';
 
 export const reportFollowupTool: ModelTool = {
@@ -46,11 +46,13 @@ export async function boundReportContext(tx: PostgresTransaction, actor: ActorCo
   if (!run) fail('context_changed');
   const policy = run.policy_snapshot as Row;
   const grounding = boundReportAnswerGrounding(policy.reportAnswerGrounding, policy.reportNativeFinal === reportNativeFinalProtocol);
+  const sourceProjection = boundReportSourceProjection(policy.reportSourceProjection, grounding);
   const snapshot: BusinessSnapshot = { query: { domain: 'construction', leadId: resolved.leadId },
     ...(actor.principal.kind === 'user' ? { customerId: actor.principal.userId } : {}),
     leadIds: [resolved.leadId], version: resolved.selection.factsHash, queriedAt: resolved.selection.cutoffAt,
     reportReference: { selection: resolved.selection, principal: actor.principal },
     ...(grounding ? { reportAnswerGrounding: reportAnswerGroundingProtocol } : {}),
+    ...(sourceProjection ? { reportSourceProjection: reportSourceProjectionProtocol } : {}),
     data: [{ ...resolved.project, projectId: resolved.project.id, leadId: resolved.leadId }],
     displayText: reportFactText(resolved.selection, resolved.project) };
   const saved = previous?.private_checkpoint as { resultKey: string; snapshot: BusinessSnapshot } | undefined;

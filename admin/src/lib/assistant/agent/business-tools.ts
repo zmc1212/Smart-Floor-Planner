@@ -43,7 +43,7 @@ export function parseDesignerQuery(raw: unknown): DesignerQuery {
   return { query: value.query.trim() };
 }
 export type BusinessQuery = { domain: 'appointments' | 'schemes' | 'floorplans' | 'construction'; leadId: string };
-export type BusinessSnapshot = { query: BusinessQuery; customerId?: string; leadIds: string[]; version: string; displayText: string; data: unknown[]; queriedAt: string; contextConversationId?: string; reportReference?: ReportBusinessReference; reportAnswerGrounding?: 'report-answer-grounding-v1' } | MaterialSnapshot | NeedIssueSnapshot;
+export type BusinessSnapshot = { query: BusinessQuery; customerId?: string; leadIds: string[]; version: string; displayText: string; data: unknown[]; queriedAt: string; contextConversationId?: string; reportReference?: ReportBusinessReference; reportAnswerGrounding?: 'report-answer-grounding-v1'; reportSourceProjection?: 'report-parent-context-v1' } | MaterialSnapshot | NeedIssueSnapshot;
 export function parseBusinessQuery(raw: unknown): BusinessQuery {
   const value = raw as BusinessQuery;
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(k => !['domain','leadId'].includes(k))
