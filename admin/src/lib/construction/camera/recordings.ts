@@ -10,35 +10,69 @@ import {openRecordingPeriod,closeRecordingPeriod,reconcileRecordingIndex} from '
 import {sampleRecordingClock} from './recording-clock';
 import {refreshStorageHealth,requireStorageReady,type StorageHealth} from './storage';
 import {listSdRecordings} from './sd';
+import {nodeRetentionDays,retentionDefault,lockRetentionDefault} from './retention-defaults';
 
-const nodeDays=()=>{const n=Number(process.env.CAMERA_NODE_RETENTION_DAYS||7);if(!Number.isSafeInteger(n)||n<1||n>30)fail('camera_recording_not_configured',503);return n;};
+const nodeDays=nodeRetentionDays;
 const errorCode=(e:unknown)=>e instanceof AssistantError?e.code:'camera_service_unavailable';
+export async function saveRetentionDefault(actor:ConstructionActor,pid:string,input:Row) {
+  object(input,['retentionDays','expectedVersion']);
+  const expected=input.expectedVersion===0?0:version(input.expectedVersion),days=Number(input.retentionDays);
+  if(!Number.isSafeInteger(input.retentionDays)||days<1||days>nodeDays())fail('camera_invalid_retention',422);
+  return withTenantTransaction(actor.enterpriseId,async tx=>{
+    if(!(await cameraAccess(tx,actor,pid)).owner)fail('camera_forbidden',403);
+    await lockRetentionDefault(tx,actor.enterpriseId);
+    const old=await retentionDefault(tx,actor.enterpriseId);
+    if(old.version>0&&old.retentionDays===days)return old;
+    if(old.version!==expected)fail('version_conflict',409);
+    const affected=await rows(tx,sql`select p.binding_id,p.enabled,p.retention_days from app.construction_camera_recording_policies p
+      join app.construction_camera_bindings b on b.enterprise_id=p.enterprise_id and b.id=p.binding_id
+      where p.enterprise_id=${actor.enterpriseId} and p.retention_override_days is null and p.recording_mode='cloud' and b.ended_at is null order by p.binding_id`);
+    if(affected.some(p=>p.enabled&&days>Number(p.retention_days)))await requireStorageReady();
+    for(const p of affected)await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`camera-recording:${p.binding_id}`},0))`);
+    const saved=await one(tx,sql`insert into app.construction_camera_retention_defaults(enterprise_id,retention_days)
+      values(${actor.enterpriseId},${days}) on conflict(enterprise_id) do update set retention_days=excluded.retention_days,
+      version=construction_camera_retention_defaults.version+1,updated_at=now() returning retention_days,version`);
+    // Keep retired bindings, SD cloud history, explicit off and every override intact.
+    await tx.execute(sql`update app.construction_camera_recording_policies p set retention_days=${days},version=p.version+1,updated_at=now()
+      from app.construction_camera_bindings b where p.enterprise_id=${actor.enterpriseId} and b.enterprise_id=p.enterprise_id and b.id=p.binding_id
+      and b.ended_at is null and p.recording_mode='cloud' and p.retention_override_days is null and p.retention_days<>${days}`);
+    await tx.execute(sql`insert into app.construction_audits(enterprise_id,project_id,actor_ref,action,snapshot)
+      values(${actor.enterpriseId},${pid},${JSON.stringify({kind:'admin',id:actor.adminId})}::jsonb,'camera.retention.default',${JSON.stringify({retentionDays:days,version:Number(saved!.version),affected:affected.length})}::jsonb)`);
+    return {retentionDays:days,version:Number(saved!.version)};
+  });
+}
 export async function saveRecordingPolicy(actor:ConstructionActor,pid:string,input:Row) {
-  object(input,['bindingId','enabled','retentionDays','expectedVersion','recordingMode']);
+  object(input,['bindingId','enabled','retentionDays','expectedVersion','recordingMode','retentionSource']);
   const mode=input.recordingMode??'cloud';
+  const inherited=input.retentionSource==='enterprise';
+  if(input.retentionSource!==undefined&&!['enterprise','camera'].includes(String(input.retentionSource)))fail('camera_invalid_request',422);
   if(!['cloud','sd'].includes(String(mode))||(mode==='sd'&&input.enabled!==false))fail('camera_invalid_request',422);
   const bid=id(input.bindingId),expected=input.expectedVersion===0?0:version(input.expectedVersion);
-  if(typeof input.enabled!=='boolean'||!Number.isSafeInteger(input.retentionDays)||Number(input.retentionDays)<1||Number(input.retentionDays)>nodeDays())fail('camera_invalid_retention',422);
+  if(typeof input.enabled!=='boolean'||(!inherited&&(!Number.isSafeInteger(input.retentionDays)||Number(input.retentionDays)<1||Number(input.retentionDays)>nodeDays())))fail('camera_invalid_retention',422);
   return withTenantTransaction(actor.enterpriseId,async tx=>{
     const access=await cameraAccess(tx,actor,pid);if(!access.owner)fail('camera_forbidden',403);
+    await lockRetentionDefault(tx,actor.enterpriseId);
     // Use the worker's lock before binding/camera row locks. Provider indexing
     // also touches policy FKs; opposite row-lock order can otherwise deadlock.
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`camera-recording:${bid}`},0))`);
     const binding=await one(tx,sql`select b.id,b.camera_id from app.construction_camera_bindings b join app.construction_cameras c on c.enterprise_id=b.enterprise_id and c.id=b.camera_id where b.enterprise_id=${actor.enterpriseId} and b.project_id=${pid} and b.id=${bid} and b.ended_at is null and c.enabled for update of b,c`);
     if(!binding)fail('camera_binding_unavailable',404);
     const old=await one(tx,sql`select * from app.construction_camera_recording_policies where enterprise_id=${actor.enterpriseId} and binding_id=${bid} for update`);
-    if(old&&old.enabled===input.enabled&&Number(old.retention_days)===input.retentionDays&&old.recording_mode===mode)return {version:Number(old.version),state:old.state};
+    const override=mode==='sd'&&old?old.retention_override_days:inherited?null:Number(input.retentionDays);
+    const days=mode==='sd'&&old?Number(old.retention_days):override===null?(await retentionDefault(tx,actor.enterpriseId)).retentionDays:Number(override);
+    if(days<1||days>nodeDays())fail('camera_invalid_retention',422);
+    if(old&&old.enabled===input.enabled&&Number(old.retention_days)===days&&old.recording_mode===mode&&old.retention_override_days===override)return {version:Number(old.version),state:old.state};
     if((old?Number(old.version):0)!==expected)fail('version_conflict',409);
     if(old?.recording_mode==='sd'&&mode!=='sd'&&await one(tx,sql`select id from app.construction_camera_sd_playbacks where enterprise_id=${actor.enterpriseId} and binding_id=${bid} and state<>'stopped' limit 1`))fail('camera_playback_busy',409);
     // Always allow disabling/reducing retention, even while storage is blocked.
-    if(input.enabled&&(!old?.enabled||Number(input.retentionDays)>Number(old.retention_days)))await requireStorageReady();
-    const saved=await one(tx,sql`insert into app.construction_camera_recording_policies(enterprise_id,project_id,binding_id,camera_id,enabled,retention_days,started_at,recording_mode,sd_activated_at)
-      values(${actor.enterpriseId},${pid},${bid},${String(binding.camera_id)},${input.enabled},${Number(input.retentionDays)},${input.enabled?sql`now()`:sql`null`},${String(mode)},${mode==='sd'?sql`now()`:sql`null`})
-      on conflict(binding_id) do update set enabled=excluded.enabled,retention_days=excluded.retention_days,version=construction_camera_recording_policies.version+1,state='pending',last_error=null,
+    if(input.enabled&&(!old?.enabled||days>Number(old.retention_days)))await requireStorageReady();
+    const saved=await one(tx,sql`insert into app.construction_camera_recording_policies(enterprise_id,project_id,binding_id,camera_id,enabled,retention_days,retention_override_days,started_at,recording_mode,sd_activated_at)
+      values(${actor.enterpriseId},${pid},${bid},${String(binding.camera_id)},${input.enabled},${days},${override},${input.enabled?sql`now()`:sql`null`},${String(mode)},${mode==='sd'?sql`now()`:sql`null`})
+      on conflict(binding_id) do update set enabled=excluded.enabled,retention_days=excluded.retention_days,retention_override_days=excluded.retention_override_days,version=construction_camera_recording_policies.version+1,state='pending',last_error=null,
       recording_mode=excluded.recording_mode,sd_activated_at=case when excluded.recording_mode='sd' and construction_camera_recording_policies.recording_mode<>'sd' then now() else construction_camera_recording_policies.sd_activated_at end,
       started_at=case when excluded.enabled and not construction_camera_recording_policies.enabled then now() else construction_camera_recording_policies.started_at end,
       stopped_at=case when excluded.enabled then null else construction_camera_recording_policies.stopped_at end,updated_at=now() returning version,state`);
-    await tx.execute(sql`insert into app.construction_audits(enterprise_id,project_id,actor_ref,action,snapshot) values(${actor.enterpriseId},${pid},${JSON.stringify({kind:'admin',id:actor.adminId})}::jsonb,'camera.recording.configure',${JSON.stringify({bindingId:bid,enabled:input.enabled,retentionDays:input.retentionDays,recordingMode:mode})}::jsonb)`);
+    await tx.execute(sql`insert into app.construction_audits(enterprise_id,project_id,actor_ref,action,snapshot) values(${actor.enterpriseId},${pid},${JSON.stringify({kind:'admin',id:actor.adminId})}::jsonb,'camera.recording.configure',${JSON.stringify({bindingId:bid,enabled:input.enabled,retentionDays:days,retentionSource:override===null?'enterprise':'camera',recordingMode:mode})}::jsonb)`);
     return saved;
   });
 }
@@ -151,12 +185,17 @@ export async function authorizeRecordingMedia(token:string,generation:number,rec
   });
 }
 export async function purgeCameraRecordings(upstream=cameraWvp()) {
-  const candidates=await withPlatformTransaction(tx=>rows(tx,sql`select r.id,r.enterprise_id from app.construction_recordings r join app.construction_camera_recording_policies p on p.enterprise_id=r.enterprise_id and p.binding_id=r.binding_id
-    where r.state in ('ready','deleting') and r.ended_at+r.clock_offset_max_ms*interval '1 millisecond'<now()-p.retention_days*interval '1 day' order by r.ended_at limit 30`));
+  const candidates=await withPlatformTransaction(tx=>rows(tx,sql`select r.id,r.enterprise_id,r.binding_id from app.construction_recordings r join app.construction_camera_recording_policies p on p.enterprise_id=r.enterprise_id and p.binding_id=r.binding_id
+    where r.state='deleting' or (r.state='ready' and r.ended_at+r.clock_offset_max_ms*interval '1 millisecond'<now()-p.retention_days*interval '1 day') order by r.ended_at limit 30`));
   for(const candidate of candidates){
     const eid=String(candidate.enterprise_id),rid=String(candidate.id);
     const record=await withTenantTransaction(eid,async tx=>{
-      const r=await one(tx,sql`select * from app.construction_recordings where id=${rid} and state in ('ready','deleting') for update`);if(!r)return null;
+      await lockRetentionDefault(tx,eid);
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`camera-recording:${candidate.binding_id}`},0))`);
+      // Recheck the current effective policy after candidate selection. A default
+      // extension must protect files that have not yet entered durable deletion.
+      const r=await one(tx,sql`select r.* from app.construction_recordings r join app.construction_camera_recording_policies p on p.enterprise_id=r.enterprise_id and p.binding_id=r.binding_id
+        where r.id=${rid} and (r.state='deleting' or (r.state='ready' and r.ended_at+r.clock_offset_max_ms*interval '1 millisecond'<now()-p.retention_days*interval '1 day')) for update of r,p`);if(!r)return null;
       if(await one(tx,sql`select token_hash from app.construction_camera_sessions where enterprise_id=${eid} and recording_id=${rid} and view_expires_at>now() and expires_at>now() and closed_at is null limit 1`))return null;
       await tx.execute(sql`update app.construction_recordings set state='deleting' where id=${rid}`);return r;
     });

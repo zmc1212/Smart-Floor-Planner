@@ -24,9 +24,11 @@ try { await migrate(drizzle(owner), { migrationsFolder: path.join(root, 'drizzle
 finally { await owner.end(); }
 if(runtime){console.log('Isolated cloud_camera_eval schema migrated');process.exit(0);}
 const env = { ...process.env, DATABASE_URL: app.toString(), CAMERA_PUBLIC_ORIGIN: 'http://localhost:3017', NODE_ENV: 'test' };
-const out = path.join(root, '../tmp/cloud-camera'); fs.mkdirSync(out, { recursive: true });
+const out = process.env.CAMERA_TEST_OUTPUT || path.join(root, '../tmp/cloud-camera'); fs.mkdirSync(out, { recursive: true });
 console.log(JSON.stringify({database,created}));
-const child = spawn(process.execPath, ['--import','tsx','--test','--test-reporter=tap','--test-concurrency=1','src/lib/construction/camera/__tests__/adapter.test.ts','src/lib/construction/camera/__tests__/storage.test.ts','src/db/__tests__/construction-camera.test.ts','src/db/__tests__/construction-recordings.test.ts','src/db/__tests__/construction-camera-sd.test.ts'], { cwd: root, env, windowsHide: true, stdio: ['ignore','pipe','pipe'] });
+const defaultsTest='src/db/__tests__/construction-camera-retention-defaults.test.ts';
+const targets=process.argv.includes('--defaults-only')?[defaultsTest]:[defaultsTest,'src/lib/construction/camera/__tests__/adapter.test.ts','src/lib/construction/camera/__tests__/storage.test.ts','src/db/__tests__/construction-camera.test.ts','src/db/__tests__/construction-recordings.test.ts','src/db/__tests__/construction-camera-sd.test.ts'];
+const child = spawn(process.execPath, ['--import','tsx','--test','--test-reporter=tap','--test-concurrency=1',...targets], { cwd: root, env, windowsHide: true, stdio: ['ignore','pipe','pipe'] });
 let log = ''; child.stdout.on('data', b => log += b); child.stderr.on('data', b => log += b);
 process.exitCode = await new Promise((resolve,reject) => { child.on('error',reject); child.on('exit', c => resolve(c ?? 1)); });
 fs.writeFileSync(path.join(out, 'checks.log'), log);

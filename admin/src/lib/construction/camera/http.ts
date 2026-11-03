@@ -4,7 +4,7 @@ import type { ConstructionActor } from '../contracts';
 import { object } from '../contracts';
 import { CameraService, cameraCookie, cameraPublicOrigin, cameraSnapshots, captureCamera, exchangeCameraEntry, sessionHeartbeat, sessionState, startCameraView } from './service';
 import { cameraPtz } from './ptz';
-import {saveRecordingPolicy,listCameraRecordings,startRecordingView} from './recordings';
+import {saveRecordingPolicy,saveRetentionDefault,listCameraRecordings,startRecordingView} from './recordings';
 import {startSdRecordingView} from './sd';
 
 export const cameraJson = (data: unknown) => NextResponse.json({ success: true, data }, { headers: { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' } });
@@ -31,6 +31,7 @@ export async function staffCameraHttp(request: Request, actor: ConstructionActor
   if (path[2] === 'binding' && request.method === 'POST') return cameraJson(await service.bind(pid, await body(request)));
   if (path[2] === 'configure' && request.method === 'POST') return cameraJson(await service.configure(pid, await body(request)));
   if (path[2] === 'recording' && request.method === 'POST') return cameraJson(await saveRecordingPolicy(actor,pid,await body(request)));
+  if (path[2] === 'retention-default' && request.method === 'POST') return cameraJson(await saveRetentionDefault(actor,pid,await body(request)));
   if (path[2] === 'entry' && request.method === 'POST') { object(await body(request), []); return cameraJson(await service.entry(pid)); }
   fail('camera_not_found', 404);
 }

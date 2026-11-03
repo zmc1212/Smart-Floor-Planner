@@ -10,6 +10,7 @@ import { cameraWvp, gbId, type WvpClient } from './wvp';
 import {currentStorageHealth} from './storage';
 import {guardLiveWriter} from './writer-policy';
 import {authorizeSdMedia,reconcileSdPlaybacks} from './sd';
+import {retentionDefault,nodeRetentionDays} from './retention-defaults';
 
 export const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 const secret = () => randomBytes(32).toString('base64url');
@@ -88,12 +89,15 @@ export class CameraService {
   async list(pid: string) {
     const result=await withTenantTransaction(this.actor.enterpriseId, async tx => {
       const access = await cameraAccess(tx, this.actor, pid);
-      const items = await rows(tx, sql`select b.id as binding_id,c.id,c.name,c.version,c.ptz_enabled,r.enabled recording_enabled,r.retention_days,r.version recording_version,r.state recording_state,r.last_error recording_error,r.last_segment_at,r.recording_mode,r.sd_last_error,r.sd_checked_at from app.construction_camera_bindings b
+      const defaults=await retentionDefault(tx,this.actor.enterpriseId);
+      const items = await rows(tx, sql`select b.id as binding_id,c.id,c.name,c.version,c.ptz_enabled,r.enabled recording_enabled,coalesce(r.retention_days,${defaults.retentionDays}) retention_days,r.retention_override_days,r.version recording_version,r.state recording_state,r.last_error recording_error,r.last_segment_at,r.recording_mode,r.sd_last_error,r.sd_checked_at from app.construction_camera_bindings b
         join app.construction_cameras c on c.enterprise_id=b.enterprise_id and c.id=b.camera_id
         left join app.construction_camera_recording_policies r on r.enterprise_id=b.enterprise_id and r.binding_id=b.id
         where b.enterprise_id=${this.actor.enterpriseId} and b.project_id=${pid} and b.ended_at is null and c.enabled order by c.id`);
       const order = access.manage ? await activeOrder(tx, this.actor.enterpriseId, pid) : null;
-      return { project: access.project, canManage: access.manage, canConfigure: access.owner, canCapture: access.manage, canControl: access.manage, maxRetentionDays:Number(process.env.CAMERA_NODE_RETENTION_DAYS||7), items,
+      const affected=access.owner?await one(tx,sql`select count(*) n from app.construction_camera_recording_policies p join app.construction_camera_bindings b on b.enterprise_id=p.enterprise_id and b.id=p.binding_id where p.enterprise_id=${this.actor.enterpriseId} and p.retention_override_days is null and p.recording_mode='cloud' and b.ended_at is null`):null;
+      return { project: access.project, canManage: access.manage, canConfigure: access.owner, canCapture: access.manage, canControl: access.manage, maxRetentionDays:nodeRetentionDays(), items,
+        retentionDefault:access.owner?{...defaults,affectedCount:Number(affected!.n)}:null,
         serviceOrder: order ? { id: String(order.id), status: String(order.status), cameraCount: Number(order.camera_count), boundCount: Number(order.bound) } : null };
     });
     return {...result,storage:result.canConfigure&&result.items.length?await currentStorageHealth():null};
