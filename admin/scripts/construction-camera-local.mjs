@@ -20,7 +20,7 @@ const args = process.argv.includes('--gateway') ? ['--import','tsx','scripts/con
 if(process.argv.includes('--retention-check'))args.splice(0,args.length,'--import','tsx','scripts/construction-camera-retention-live.ts');
 if(process.argv.includes('--recovery-check'))args.splice(0,args.length,'--import','tsx','scripts/construction-camera-recovery-live.ts');
 if(process.argv.includes('--storage-check')){args.splice(0,args.length,'--import','tsx','scripts/construction-camera-storage-live.ts');if(process.argv.includes('--ui-hold'))args.push('--ui-hold');}
-if(process.argv.includes('--soak-check')){args.splice(0,args.length,'--import','tsx','scripts/construction-camera-soak.ts');for(const flag of ['--smoke','--preflight'])if(process.argv.includes(flag))args.push(flag);}
+if(process.argv.includes('--soak-check')){args.splice(0,args.length,'--import','tsx','scripts/construction-camera-soak.ts');for(const flag of ['--smoke','--preflight','--cleanup-recovery-check'])if(process.argv.includes(flag))args.push(flag);}
 if(process.argv.includes('--soak-control')){args.splice(0,args.length,'--import','tsx','scripts/construction-camera-soak-control.ts');for(const flag of ['--request-stop','--cleanup-orphan'])if(process.argv.includes(flag))args.push(flag);}
 if(building)args.splice(0,args.length,'node_modules/next/dist/bin/next','build','--webpack');
 if(process.argv.includes('--playback-only')&&process.argv.includes('--recording-check'))args.push('--playback-only');

@@ -4,6 +4,7 @@ const root = path.resolve(import.meta.dirname, '..');
 const configPath = path.join(root, 'tsconfig.json');
 const config = ts.parseJsonConfigFileContent(ts.readConfigFile(configPath, ts.sys.readFile).config, ts.sys, root);
 const files = [
+  'scripts/construction-camera-soak-watch.ts','scripts/construction-camera-soak-recovery.test.ts',
   'src/lib/construction/camera/sd.ts','src/lib/construction/camera/sd-clock.ts','src/db/__tests__/construction-camera-sd.test.ts',
   'src/lib/construction/camera-cleanup.ts','src/lib/construction/camera-cleanup-contract.ts','src/components/construction/camera-cleanup.tsx','src/app/api/construction/video-cleanup/projects/[projectId]/bindings/[bindingId]/route.ts','src/db/__tests__/construction-camera-cleanup.test.ts','src/lib/construction/__tests__/camera-cleanup-contract.test.ts','scripts/construction-camera-cleanup-http.ts',
   'src/lib/construction/camera/wvp.ts','src/lib/construction/camera/service.ts','src/lib/construction/camera/http.ts','src/lib/construction/camera/ptz.ts','src/lib/construction/camera/media.ts',
