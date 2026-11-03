@@ -1,7 +1,7 @@
 # 后台系统当前功能清单
 
 <!-- construction-public-live-current -->
-**独立公开直播：Limited；Admin照片读取和预览已完成限定开发验证（2026-11-03）。** `/construction-projects`原Ant Drawer/公开材料Tab保持独立精确机位授权、业主完整预览/决定、管理审核、无声自有代理、短会话和五张强制RLS表。原咨询投递保持ActorContext/原参与者、同键/租户/接收者拒绝及回滚证据。原Admin照片/直播并发挂载现统一前置锁顺序：企业/访问、企业设置、项目。staffLiveAccess在cameraAccess持有项目共享锁前预先锁设置，原摄像头、身份、角色与RLS检查保持。原UI503/PG40P01及修复前受控55P03失败保留；同一固定锁序驱动修复后5/5，覆盖设置阻塞时照片事务仍可取得项目更新锁、enterprise_admin/admin/super_admin并发照片/直播读取及持久重进、跨租户拒绝。受影响原咨询投递回归3/3，cleanup.stopped=true/drift[]。真实Chrome Admin在276项源/配置绑定、drift[]下5/5：首次并发照片挂载、关闭Drawer重进、合成草稿实写和640×360真实视频、暂停10,190ms时钟不变并恢复至1445解码帧/106.382507秒，以及实际停止200/stopped=true且照片版本1仍公开。当前Chrome走原生HLS，Hls.js回退未验。临时播放观察器已还原，合成cookie/标签已清，自有Next/WVP/源/helper已停，活动直播/代理义务0。证据tmp/public-live-package/admin-recovery01/。未改结构、样式、素材、API/schema/权限或生产。定向lint0/0；仅诊断性质的全量lint0错误/30警告和types82与原诊断集合逐项一致、本功能0；这两项未事前建立新的全Admin绑定，不作新的全产品验收。 Mini同字节Brotli字体修复后源码预算42/42；当前编译包体、原生字体读取及Stable C05/C03业主/匿名播放、重进、503/停止仍未验。未授权真实摄像头公开或生产。见[公开直播合同](./construction-public-live-contract.zh-CN.md)。
+**独立公开直播：Limited（2026-11-03）。** 原投递3/3、锁序5/5、真实Admin5/5及同字体源码预算42/42沿各自有效范围复用。本轮只改验收驱动：跨盘绑定路径、CLI结构化错误/耗时/退出/信号、精确公开session POST及内存匿名身份、未知安装回执清理、被动宿主捕获，以及按源码复用已编译并就绪的Mini运行时。native09有实际同意/重进服务回执，匿名元数据/session/HLS清单200，清理完成且drift[]；原始三个通过步骤不能完成C05原生验收：截图复核发现预览/同意目标在390×844可见区外，owner-full-scope.png没有显示直播范围卡。匿名播放离线失败，暂停、503/重试及原生停止/重进未执行。保留native01–09及所有机制/前检/类型失败。最终绑定版本驱动6/6、定向lint/types0。未改Mini结构/样式/素材、路由/API/角色/RLS，无模型/图片或生产操作。实际编译包体、原生Brotli/字体加载及完整原生还原仍未验。自有live1/version28/revision113已撤回，照片1/version1仍公开，活动授权/未结代理/自有库advisory锁0；自有源/WVP/Next已停，启动配置字节已恢复。见[公开直播合同](./construction-public-live-contract.zh-CN.md)及tmp/public-live-package/native09/。
 <!-- /construction-public-live-current -->
 
 <!-- xiaok-v1-02-proactive -->

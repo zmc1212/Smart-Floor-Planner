@@ -1,7 +1,7 @@
 # 小程序当前功能清单
 
 <!-- construction-public-live-current -->
-**独立公开直播：Limited；源码预算已修复、Admin预览已验，原生还原未验（2026-11-03）。** `packages/assistant/chat/chat`与`pages/index/index`保持批准C05-02 v002授权/重进状态；Agent C03-04传原咨询/企业/精确公开版本，先附加后接续，客户端20/20仍仅逻辑证据。`packages/construction/public-site/public-site`和`packages/construction/public-live/public-live`保持批准C03-04/C03-05及16:9 contain播放器；原生业务/光学未执行。Admin锁序修复后的原咨询回归3/3，另有锁序5/5及实际Admin5/5，已解决照片首次挂载/重进及预览缺口，见admin-recovery01和[合同](./construction-public-live-contract.zh-CN.md)。未改Mini结构、样式、素材、文案或权限。font-package01在1180项绑定/drift[]下42/42：原696,256字体字节（SHA79b60b72…）封装为696,261字节assets/studio-serif.woff2.br并显式包含，旧base64副本/本地配置保留且排除。保守packOptions源码主包2,094,813/assistant1,853,163字节，符合原2MiB硬上限及96KiB预留。当前预览编译大小/原生文件字体读取未验，原Mini32/34和native01–06失败保留；设计师/作品旧几何字体证据沿原绑定。无新模型/图片调用或生产。
+**独立公开直播：Limited（2026-11-03）。** 原投递3/3、锁序5/5、真实Admin5/5及同字体源码预算42/42沿各自有效范围复用。本轮只改验收驱动：跨盘绑定路径、CLI结构化错误/耗时/退出/信号、精确公开session POST及内存匿名身份、未知安装回执清理、被动宿主捕获，以及按源码复用已编译并就绪的Mini运行时。native09有实际同意/重进服务回执，匿名元数据/session/HLS清单200，清理完成且drift[]；原始三个通过步骤不能完成C05原生验收：截图复核发现预览/同意目标在390×844可见区外，owner-full-scope.png没有显示直播范围卡。匿名播放离线失败，暂停、503/重试及原生停止/重进未执行。保留native01–09及所有机制/前检/类型失败。最终绑定版本驱动6/6、定向lint/types0。未改Mini结构/样式/素材、路由/API/角色/RLS，无模型/图片或生产操作。实际编译包体、原生Brotli/字体加载及完整原生还原仍未验。自有live1/version28/revision113已撤回，照片1/version1仍公开，活动授权/未结代理/自有库advisory锁0；自有源/WVP/Next已停，启动配置字节已恢复。见[公开直播合同](./construction-public-live-contract.zh-CN.md)及tmp/public-live-package/native09/。
 <!-- /construction-public-live-current -->
 
 <!-- xiaok-v1-02-proactive -->

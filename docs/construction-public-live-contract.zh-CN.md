@@ -42,9 +42,13 @@
 本地验证使用新建`127.0.0.1:55434/sfp_public_live_eval`、标记微云1454合成夹具、独立ZLM18084/RTSP18554、合成WVP18085、Next3019及带声音测试流；不使用既有camera数据库、真实摄像头、生产迁移、应用模型/图片调用或旧unknown账册。保留service01的Range失败/清理初始未确认、service02正确拦住未清理状态、service03的HLS根失败，以及HTTP01的驱动JWT前置失败。`service04/report.json`、`http02/report.json`是各自无漂移的成功范围；未执行的原生检查不因它们而升级。
 
 <!-- public-live-native-bounded-status -->
+Native01–08保留原失败。native-mechanism02在1191项绑定/drift[]下固定判别：编译前直接/封套对象通过；单次刷新后currentPage/直接wx元信息通过，原封套10,751ms返回结构化桥接超时（exit1/killed=false/signal=null）。安装的Stable0.3.11直传fnSource至App.callFunction，桥接默认10s；没有证明必须用封套或30s外层截断是根因。execFile Error.stack遗漏stdout业务JSON，客户端现保留具体错误、耗时/退出/信号。native07跨盘假漂移已用真实文件未变/修改/删除及配置回归修正，未移除绑定。native08立即getData在14,966ms失败，cleanup.stopped=true/drift[]；随后相同读取1,899ms成功，135次观测持续可见/非最小化并有有效被动宿主。固定可见/最小化/可见对照三次均成功（1,326/857/776ms），不证明最小化是原因；该对照最终焦点断言失败，整批保留失败，未置前重试。
 
-原生自动化在业务执行前阻塞。native05（异步封套）和native06（同步定义对象封套）均在fresh compile后无法取得当前wx运行信息回执；06在finally已停止合成授权/代理，依赖无漂移，尚未安装控制器。较早独立元信息/对象封套判别成功只证明较窄条件，不能当业务验收。归属原生验收驱动；共同原因假设为编译前后evaluate回执/通道条件，尚未证实，单改封套并未解决。保留精确CLI trace，先离线比较原成功判别与05/06，再考虑有机制依据的重开。最新用户指令为“正常开发继续，仅重复试修止损”，工程包数不停止正常开发；同一原生期望已失败两轮，须先做机制判别，不继续封套/重编译采样。授权实际点击、原生播放、重进、重试/停止与光学校验仍未执行；独立Admin、清理和静态检查可串行继续。
+Native09复用其中1181项未变Mini/运行时依赖的编译与就绪证据，不再刷新；实际源/配置绑定结束drift[]，精确数量见report.json。原始断言记录三个通过、匿名视频失败；同意及原咨询重进确有持久写入/回读，但C05可见用户期望未通过：预览(45,1923.90625)/263×147.9375及同意(45,2275.796875)/263×46在390×844可见区外，owner-full-scope.png显示照片/历史状态，并未显示直播范围卡。有效被动宿主捕获保持前台焦点，也不能弥补目标缺失。原断言/截图及本次复核分别保留，不能合成完整原生授权或光学通过。
 
+匿名请求Authorization为空，实际元数据/session200；Next日志有两次公开HLS清单200，未观察到分片请求，保留的DevTools媒体日志未给出原生解码错误细节，不能据此宣称模拟器编解码限制。播放离线失败，暂停、503恢复、业主停止/旧链接重进未执行。下一步先沿已有滚动容器使当前消息/卡片/按钮真实在屏，再采实际视频错误及清单/分片判别。静态代码另暴露同意状态缺口：playbackFailed清除livePreviewUrl但保留liveExpanded，decide(approve)只核对展开；应先按批准C05与共享加载/错误/disabled状态测试并修正当前版本的预览就绪约束，再验所有受影响路径，不另创布局或授权来源。
+
+最终确定性驱动范围driver-verification03.json：单元6/6、定向lint/types0、drift[]；首轮单元转义夹具失败及类型01/02原失败保留。Mini结构/样式/素材/文案/API及后台权限未改。自有live1/version28/revision113已withdrawn，独立照片1/version1仍published，活动授权/未结代理/自有55434 advisory锁0，保留代理总记录8。所有尝试的内存覆盖已恢复，自有源/WVP/Next及3019/18085/18086已停，Docker55434/18084/18554保留。绑定收口后tsconfig/next-env恢复启动前精确字节，不倒算运行中漂移。新模型/Embedding/图片0；旧9图金额unknown及全部旧未知/次数保持。实际编译包体、原生Brotli/字体读取和还原未验。后续默认shell缺Core Utility清单；只在子进程直接加载已安装Utility DLL的只读判别已成功（powershell-utility-probe.json），没有全局修复，后继可按这一实证处理。
 <!-- /public-live-native-bounded-status -->
 
 ## 2026-11-03有界收口与保留缺口
