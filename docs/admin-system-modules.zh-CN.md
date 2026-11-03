@@ -1,7 +1,7 @@
 # 后台系统当前功能清单
 
 <!-- construction-public-live-current -->
-**独立公开直播：Limited；第2工程包有界收口（2026-11-03）。** `/construction-projects`原Drawer/公开材料Tab增加沿Ant Design的直播区块。所选企业`/api/construction/public-live/:projectId`、原业主`/api/miniprogram/assistant/public-live/:conversationId`和匿名`/api/public/construction-live/:enterpriseId/*`使用独立精确机位授权/版本、业主明确预览决定、管理审核、自有无声代理、会话hash与0114五表强制RLS；每个媒体资源/chunk重验范围，停止不改照片授权、不停共享源。历史service04六项/HTTP02三项仅证明各自真实无声媒体、状态、角色与清理范围，不能证明原咨询消息投递。Admin02的保存/勾选门槛/待决定状态/Drawer重进无漂移；boundary-independent02五项SQL角色、身份、RLS、清理与回滚通过。**原咨询投递失败：**`liveEvent`裸join被RLS隐藏的`app.users`，outbox/状态虽成功，`message_id=null`且直播消息0。Admin稳定预览及相邻照片读取恢复未通过；native01–06均未进入业务。当前Mini32/34，两项包体预算失败；定向lint0错误，类型保留82项继承诊断/本功能0。未生产迁移、公开真实摄像头或完成真机验收。API/Worker/配置/来源及精确证据见[公开直播合同](./construction-public-live-contract.zh-CN.md)。
+**独立公开直播：Limited；原咨询投递已修复（2026-11-03）。** `/construction-projects`原Drawer/公开材料Tab增加沿Ant Design的直播区块。所选企业`/api/construction/public-live/:projectId`、原业主`/api/miniprogram/assistant/public-live/:conversationId`和匿名`/api/public/construction-live/:enterpriseId/*`使用独立精确机位授权/版本、业主明确预览决定、管理审核、自有无声代理、会话hash与0114五表强制RLS；每个媒体资源/chunk重验范围，停止不改照片授权、不停共享源。`liveEvent`现以已认证调用者ActorContext复用既有system消息写入，锁定原咨询及客户参与者，不再读取被RLS隐藏的全局用户表。发送时接收者缺失则失败关闭并回滚；终止撤权在原目的地关闭时仍能提交。`delivery-service01`三项真实隔离服务检查通过：原业主消息读回、同键去重、决定/审核/停止消息持久化、租户/接收者拒绝及回滚；用户表仍不可见，不新建咨询/run/job。boundary01原失败保留；历史service04/HTTP02媒体、Admin02状态4项和boundary-independent02 SQL5项按原范围复用。Admin稳定预览、相邻照片读取恢复、小程序包体及Stable业主/访客播放、重进、503和停止仍未通过。未生产迁移、公开真实摄像头或完成真机验收。见[公开直播合同](./construction-public-live-contract.zh-CN.md)。
 <!-- /construction-public-live-current -->
 
 <!-- xiaok-v1-02-proactive -->

@@ -636,7 +636,13 @@ module.exports = () => ({
 		wx.navigateTo({ url: '/packages/construction/public-live/public-live?enterpriseId=' + this.data.enterpriseId + '&key=' + item.key + '&conversationId=' + this.controller.conversationId + '&siteId=' + this.data.publicDetail.id + '&versionId=' + this.data.publicDetail.versionId });
 	},
 	publicLiveTab(e) { this.setData({ publicLiveTab: e.currentTarget.dataset.tab }); },
-	publicLiveDesigner() { wx.navigateTo({ url: '/packages/assistant/chat/chat?publicEnterpriseId=' + this.data.enterpriseId + '&findDesigner=1' }); },
+	publicLiveDesigner() {
+		const item = this.data.publicDetail, cid = this.controller.conversationId;
+		if (!this._alive || !this._shown || this.data.sheet !== 'publicSite' || !item || this.data.publicDetailLoading || this.data.publicDetailError || this.data.publicBusy || this.data.publicPending || this.data.loading || this.data.fatal || this.data.readOnly) return;
+		if (![this.data.enterpriseId, item.id, item.versionId].every(value => /^[1-9]\d{0,18}$/.test(String(value))) || cid && !/^[1-9]\d{0,18}$/.test(String(cid))) return;
+		const values = { ...(cid ? { conversationId: cid } : {}), publicEnterpriseId: this.data.enterpriseId, publicSiteId: item.id, publicVersionId: item.versionId, findDesigner: '1' };
+		wx.navigateTo({ url: '/packages/assistant/chat/chat?' + Object.keys(values).map(key => key + '=' + encodeURIComponent(values[key])).join('&') });
+	},
 	laterPublic() { this.publicSites.later(); },
 	async retryPublic() {
 		if (this.data.publicPending) { if (await this.publicSites.retry()) { if (this.data.sheet === 'publicSite') this.closeSheet(); await this.controller.refresh(); } }

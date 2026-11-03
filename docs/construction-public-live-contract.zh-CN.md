@@ -2,12 +2,12 @@
 
 英文镜像：[construction-public-live-contract.md](./construction-public-live-contract.md)。执行及实际状态只维护在[小K唯一计划](./xiaok-renovation-agent-development-plan.md)第2节；本文是运行时合同，不是另一份任务队列。
 
-当前Limited：独立授权、无声代理和客户端状态已接线，尚未完成原用户旅程。历史service04六项/HTTP02三项证明当时媒体与状态范围，但原咨询消息投递的新断言失败；Admin02仅证明状态写入/重进，SQL独立边界五项通过。原生01–06未进入业务，当前Mini32/34有两项包体失败，类型保留82继承诊断。本合同同时保留要求与当前缺口，不能把状态成功当投递或播放成功。真实摄像头公开和生产部署未授权。
+当前Limited：独立授权、无声代理和客户端状态已接线，尚未完成原用户旅程。历史service04六项/HTTP02三项证明当时媒体与状态范围。boundary01原投递失败保留；现复用ActorContext/原参与者的修复已通过delivery-service01三项真实服务检查；Admin02仅证明状态写入/重进，SQL独立边界五项通过。原生01–06未进入业务，当前Mini32/34有两项包体失败，类型保留82继承诊断。本合同同时保留要求与当前缺口，不能把状态成功当投递或播放成功。真实摄像头公开和生产部署未授权。
 
 ## 入口与设计
 
 - `/construction-projects` → 项目Drawer → 原公开材料Tab → **直播公开**，沿Ant Design Form/Select/Card/Steps/Alert与共享操作反馈。摄像头管理者及所选企业管理角色可准备合法绑定、公开名称与机位别名，普通观看成员不能准备。只有`enterprise_admin`、`admin`、`super_admin`可审核当前业主的这一版同意；平台管理无需入职或成为项目成员。
-- 合同要求业主在既有私人客户咨询收到持久服务事件；当前`liveEvent`的用户表RLS关联使该追加缺失，不能宣称已投递。原生卡设计先展开完整画面、受众和范围，再明确同意/拒绝/稍后；阅读、普通回复及沉默不构成同意。同意只进入待企业审核。重进读取实际保存版本、revision和当前关系。
+- 业主在既有私人客户咨询收到持久服务事件。`liveEvent`锁定该咨询及有效原客户参与者，再以已认证调用者ActorContext复用既有system消息写入；不关联全局用户表、不伪造接收者身份。发送目的地缺失则失败回滚；终止撤权在目的地关闭时仍有效。原生卡设计先展开完整画面、受众和范围，再明确同意/拒绝/稍后；阅读、普通回复及沉默不构成同意。同意只进入待企业审核。重进读取实际保存版本、revision和当前关系。
 - `packages/construction/public-site/public-site`及原Agent详情纸页在当前批准存在时显示独立直播入口。`packages/construction/public-live/public-live`仅一个16:9完整画面，真实连接/播放/暂停/失败反馈、别名、全屏及返回/本人咨询动作；不提供进度条、音量、PTZ、抓拍、录像下载或历史回放。
 - 批准源为`design-references/xiaok-p4b-public-sites-v1/README.md`，Agent风格C03-04/C03-05 v001及C05-02 v002，853×1844映射390×844。普通状态复用共享规则；精确16:9组件规格优先于生图的近似画框。纸页、书脊、装订、布签和控件均为原生代码，不切片整屏。复用既有独立F1头像并优化PNG编码，原件/比较保留于`tmp/public-live-package/avatar-*`。
 
@@ -43,14 +43,14 @@
 
 <!-- public-live-native-bounded-status -->
 
-原生自动化在业务执行前阻塞。native05（异步封套）和native06（同步定义对象封套）均在fresh compile后无法取得当前wx运行信息回执；06在finally已停止合成授权/代理，依赖无漂移，尚未安装控制器。较早独立元信息/对象封套判别成功只证明较窄条件，不能当业务验收。归属原生验收驱动；共同原因假设为编译前后evaluate回执/通道条件，尚未证实，单改封套并未解决。保留精确CLI trace，先离线比较原成功判别与05/06，再考虑有机制依据的重开。第二个/最后工程包不得增开第三包或继续封套/重编译抽样循环。授权实际点击、原生播放、重进、重试/停止与光学校验仍未执行；独立Admin、清理和静态检查可串行继续。
+原生自动化在业务执行前阻塞。native05（异步封套）和native06（同步定义对象封套）均在fresh compile后无法取得当前wx运行信息回执；06在finally已停止合成授权/代理，依赖无漂移，尚未安装控制器。较早独立元信息/对象封套判别成功只证明较窄条件，不能当业务验收。归属原生验收驱动；共同原因假设为编译前后evaluate回执/通道条件，尚未证实，单改封套并未解决。保留精确CLI trace，先离线比较原成功判别与05/06，再考虑有机制依据的重开。最新用户指令为“正常开发继续，仅重复试修止损”，工程包数不停止正常开发；同一原生期望已失败两轮，须先做机制判别，不继续封套/重编译采样。授权实际点击、原生播放、重进、重试/停止与光学校验仍未执行；独立Admin、清理和静态检查可串行继续。
 
 <!-- /public-live-native-bounded-status -->
 
 ## 2026-11-03有界收口与保留缺口
 
 - `tmp/public-live-package/admin-ui01`因外部cleanup新增私有视频授权计数/删除而drifted；唯一复核`admin-ui02`最终272文件无漂移，4项仅为真实保存/勾选门槛/发送状态/重进。初次Admin预览无稳定视频帧；相邻照片材料重进出现服务错误，均未通过。临时浏览器cookie已清除，自有3019/helper已停。
-- `boundary01`原消息断言失败并已停止代理；只读判别确认sfp_app租户下users0/conversation1/participant1/deliveryJoin0，message_id=null、直播消息0。`domain_event_outbox`已有事件不等于咨询已收到；原service04/HTTP02不再支撑“原咨询投递通过”。不改RLS、不开放用户表、不另开第3工程包。
+- `boundary01`原消息断言失败并已停止代理；只读判别确认sfp_app租户下users0/conversation1/participant1/deliveryJoin0，message_id=null、直播消息0。`domain_event_outbox`已有事件不等于咨询已收到；原service04/HTTP02不再支撑“原咨询投递通过”。该原失败保留，不改记通过；后续定点修复保留RLS，不开放用户表。
 - `boundary-independent01`保留缺少内建角色行的夹具失败；改用已有合成员工服务准备后，`boundary-independent02`原5项工程检查通过、cleanup.stopped=true、drift[]。覆盖五表计数/非绕过RLS、角色/业主context/准备者密码状态撤回及恢复不复活、模拟自有代理stopping拦截、真实域删除和完整回滚、跨租户拒绝。不是用户端业务验收。自有55434仅补0113及外部当前0115兼容结构；canonical01仍仅是当时完整journal/0114证据，未迁移共享库。
 - `mini-final01`是误用Bun的解释器前置失败；真实Node v24.9.0的`mini-final02`34项中32通过/2失败、1175文件无漂移。assistant源2,084,200字节，高于含96KiB预留的1,998,848预算；主包源向上取整2050KiB，高于2048KiB硬上限。保留预算，不删用例或放宽阈值。
 - `lint-final01`31相关文件0错误/3警告、无漂移。`types-final01`87项中5项是诊断脚本缺少宿主声明；仅补可擦除声明，转译JS前后hash相同。`types-final02`为82项继承诊断、本功能0/新增0、2950文件无漂移。独立dist构建结果见唯一计划第2节；不运行共享清缓存prebuild。
@@ -58,3 +58,9 @@
 - 已离线比较两个成功判别与05/06：前者返回当前wx对象/包裹数组，后者在fresh compile后仅有skill-call输出、无成功回执。编译前后条件与封套同时变化，尚无控制变量证据证明共同机制；不能据此启动第7轮。全部原失败、修复次数、9次旧图片费用unknown、新模型/图片调用0和生产边界不变。
 
 收口集成保留外部`24c16782`（业主私有视频明确授权），只在其journal后追加0114；无关0102登记仍留工作区。暂存0114 SQL hash与canonical01相同，新合并journal不同且未重跑。build-final01编译108s后在继承`scripts/xiaok-manual-fixture.ts:43`（state.keys unknown）类型失败，原批还保留tsconfig自动格式漂移；只移除自有include/还原自有next-env导入，继承设置保留。自有合成源/WVP/Next/helper已停，代理/授权及自有库advisory锁均0；隔离DB/媒体容器与夹具保留供核查。
+
+## 用户纠偏后的定点续作（2026-11-03）
+
+- `tmp/public-live-package/delivery-service01/report.json`：真实服务3/3，cleanup.stopped=true、drift[]。员工发送生成原咨询非空message_id且原业主能读回，同键不重复。业主同意、管理审核和员工停止在同一原咨询形成四条持久消息/投递。跨租户及接收者失效均失败关闭，失败事件完整回滚；全局用户仍不可见，不新建咨询/run/job，无新迁移、模型、原生或媒体创建调用。
+- `publicLiveDesigner`对应既有C03-04“找设计师聊”及`PublicSitesController.privateChat`入口合同，传递conversationId/publicEnterpriseId/publicSiteId/publicVersionId/findDesigner，由既有onShow先附加再接续；保留原草稿，不携带lead/project/owner身份。隐藏、加载、不可用或不完整详情不能跳转；附加失败/已撤回不触发接续。结构/样式/素材和视觉层级不变。`tmp/public-live-package/resumed-fixes01`客户端20/20仅为逻辑证据，不新增渲染/原生验收。
+- 正常授权开发继续包体修复及原用户旅程；历史失败、同一问题两轮失败计数、未知费用和部署边界保持，不授权真实摄像头公开或生产。

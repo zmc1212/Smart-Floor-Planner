@@ -89,6 +89,44 @@ test('public browsing is anonymous, keeps the visitor consultation and never car
   c.hide();assert.equal(c.state.items.length,0);
 });
 
+test('the public-paper designer action resumes the same consultation and exact public version before handoff', async()=>{
+  const oldApp=global.getApp,oldWx=global.wx;const calls=[];let url;
+  global.getApp=()=>({globalData:{token:'a'}});global.wx={navigateTo(input){url=input.url;}};
+  try{
+    const makePage=require('../packages/assistant/chat/chat-definition');const page=makePage();
+    Object.assign(page,{_alive:true,_shown:true,controller:{conversationId:'11'},data:{sheet:'publicSite',publicDetail:material(),enterpriseId:'1',draft:'保留我的装修问题'}});
+    page.publicLiveDesigner();assert.ok(url);
+    const options=Object.fromEntries(new URL('https://mini.test'+url).searchParams);
+    assert.deepEqual(options,{conversationId:'11',publicEnterpriseId:'1',publicSiteId:'21',publicVersionId:'31',findDesigner:'1'});
+    assert.deepEqual(entryInput(options),{conversationId:'11'});assert.doesNotMatch(url,/leadId|projectId|ownerId/);
+    assert.equal(page.data.draft,'保留我的装修问题');
+    const resumed=makePage();Object.assign(resumed,{_alive:true,_options:options,data:{enterpriseId:'1',draft:'保留我的装修问题'},
+      liveConsent:{},location:{},plans:{},floorplans:{async show(){}},speechController:{async show(){}},followups:{async show(){}},
+      controller:{conversationId:'11',async show(input){assert.deepEqual(entryInput(input),{conversationId:'11'});},async refresh(){calls.push('refresh');},async handoff(){calls.push('handoff');}},
+      publicSites:{async attach(...args){calls.push(args);return true;}},async syncLocation(){}});
+    await resumed.onShow();assert.deepEqual(calls,[['11','1','21','31'],'refresh','handoff']);
+    assert.equal(resumed.data.draft,'保留我的装修问题');assert.equal(resumed._options.findDesigner,undefined);
+    calls.length=0;resumed._options={...options,publicSiteId:'21',publicVersionId:'31',findDesigner:'1'};
+    resumed.publicSites.attach=async(...args)=>{calls.push(args);return false;};
+    await resumed.onShow();assert.deepEqual(calls,[['11','1','21','31']]);assert.equal(resumed._options.findDesigner,'1');
+  }finally{global.getApp=oldApp;global.wx=oldWx;}
+});
+
+test('the public-paper designer action rejects hidden, unavailable or incomplete detail and retains anonymous entry',()=>{
+  const previous=global.wx;const urls=[];global.wx={navigateTo:input=>urls.push(input.url)};
+  try{
+    const makePage=require('../packages/assistant/chat/chat-definition');
+    const ready=()=>Object.assign(makePage(),{_alive:true,_shown:true,controller:{conversationId:'11'},data:{sheet:'publicSite',publicDetail:material(),enterpriseId:'1'}});
+    for(const change of [p=>p._shown=false,p=>p._alive=false,p=>p.data.sheet='',p=>p.data.publicDetail=null,p=>p.data.publicDetailLoading=true,p=>p.data.publicDetailError='已撤回',p=>p.data.readOnly=true,p=>p.data.publicPending=true,p=>p.data.publicDetail.versionId='',p=>p.controller.conversationId='bad']){
+      const page=ready();change(page);page.publicLiveDesigner();
+    }
+    assert.deepEqual(urls,[]);
+    const guest=ready();guest.controller.conversationId='';guest.publicLiveDesigner();
+    const options=Object.fromEntries(new URL('https://mini.test'+urls[0]).searchParams);
+    assert.deepEqual(entryInput(options),{publicEnterpriseId:'1'});assert.equal(options.publicSiteId,'21');assert.equal(options.publicVersionId,'31');assert.equal(options.findDesigner,'1');
+  }finally{global.wx=previous;}
+});
+
 test('withdrawal removes detail and a late response cannot restore it after hiding', async()=>{
   let resolve;const c=new PublicSitesController({emit(){},identity:()=>'',media:noMedia(),client:{read(){return new Promise(r=>{resolve=r;});}}});
   const loading=c.show({enterpriseId:'1',siteId:'21',versionId:'31'},true);c.hide();resolve(material());await loading;assert.equal(c.state.site,null);

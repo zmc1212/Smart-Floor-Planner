@@ -62,7 +62,7 @@ export class PublicLiveCustomer {
           consented_version_id=${action==='approve'?value.versionId:null},consented_by=${action==='approve'?String(l.customer_id):null},reviewed_by=null
           where enterprise_id=${this.actor.enterpriseId} and id=${liveId} returning *`))!;
         await liveAudit(tx,updated,this.actor.principal,'owner.'+action);
-        if(!['preview','later'].includes(action))await liveEvent(tx,updated,'owner.'+action,this.actor.principal);
+        if(!['preview','later'].includes(action))await liveEvent(tx,updated,'owner.'+action,this.actor);
         return {id:liveId,key:String(l.public_key),versionId:value.versionId,revision:Number(updated.revision),status:next,
           ...(action==='preview'&&source?{material:liveDto(updated,source.version)}:{})};
       });

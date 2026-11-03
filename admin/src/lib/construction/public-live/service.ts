@@ -79,7 +79,7 @@ export class PublicLiveService {
           reviewed_by=${action==='publish'?this.actor.adminId:null},previewed_version_id=${action==='submit'?null:l.previewed_version_id as string|null},
           consented_version_id=${['withdraw','reject','submit'].includes(action)?null:l.consented_version_id as string|null},consented_by=${['withdraw','reject','submit'].includes(action)?null:l.consented_by as string|null}
           where enterprise_id=${eid} and id=${String(l.id)} returning *`))!;
-        await liveAudit(tx,updated,this.actor,action,value.reason);await liveEvent(tx,updated,action,this.actor);
+        await liveAudit(tx,updated,this.actor,action,value.reason);await liveEvent(tx,updated,action,siteActor(this.actor));
         return {id:String(l.id),key:String(l.public_key),versionId:value.versionId,revision:Number(updated.revision),status:next};
       });
     });

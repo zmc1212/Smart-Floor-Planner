@@ -58,17 +58,19 @@ export async function liveAudit(tx: PostgresTransaction,l: Row, actor: unknown,a
     values(${String(l.enterprise_id)},${String(l.project_id)},${String(l.id)},${String(l.current_version_id)},${JSON.stringify(actor)}::jsonb,${action},${reason})`);
 }
 /** Same original private destination; no new consultation or member is created. */
-export async function liveEvent(tx: PostgresTransaction,l: Row,action: string,actor: unknown) {
+export async function liveEvent(tx: PostgresTransaction,l: Row,action: string,actor: ActorContext) {
+  if(actor.enterpriseId!==String(l.enterprise_id))fail('public_live_unavailable',404);
   const event = (await one(tx,sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
     values(${String(l.enterprise_id)},'construction.public.live.v1','construction_public_live',${String(l.id)},${Number(l.revision)},${JSON.stringify(actor)}::jsonb,${String(l.id)},
       ${JSON.stringify({ liveId: String(l.id), versionId: String(l.current_version_id), customerId: String(l.customer_id), action })}::jsonb) returning id`))!;
-  if (!l.conversation_id) return;
-  const c = await one(tx,sql`select c.id,u.context_version from app.assistant_conversations c
+  if (!l.conversation_id) {if(action==='submit')fail('public_live_owner_chat_required');return;}
+  const c = await one(tx,sql`select c.id from app.assistant_conversations c
     join app.assistant_participants p on p.enterprise_id=c.enterprise_id and p.conversation_id=c.id and p.user_id=${String(l.customer_id)} and p.status='active'
-    join app.users u on u.id=p.user_id where c.enterprise_id=${String(l.enterprise_id)} and c.id=${String(l.conversation_id)} and c.purpose='customer_consultation' and c.status='open' for update of c`);
-  if (!c) return;
-  const owner: ActorContext = { enterpriseId: String(l.enterprise_id), principal: { kind: 'user', userId: String(l.customer_id) }, contextVersion: Number(c.context_version), capabilities: ['assistant.chat.self'] };
-  const m = await appendMessage(tx,owner,String(c.id),{author:'system',eventId:String(event.id),purpose:'construction.public.live',
+    where c.enterprise_id=${String(l.enterprise_id)} and c.id=${String(l.conversation_id)} and c.purpose='customer_consultation' and c.status='open' for update of c,p`);
+  if (!c) {if(action==='submit')fail('public_live_owner_chat_required');return;}
+  // The authenticated caller is the system-event writer. The recipient is the
+  // locked original conversation/participant, not a fabricated user identity.
+  const m = await appendMessage(tx,actor,String(c.id),{author:'system',eventId:String(event.id),purpose:'construction.public.live',
     content:{version:1,blocks:[{type:'text',text: action === 'submit' ? '团队想公开一路现场直播，请先查看完整范围，再决定是否同意。' : `这路直播：${liveLabels[String(l.status)] || '状态已更新'}。照片和服务记录的授权不变。`}]}});
   await tx.execute(sql`update app.construction_public_live set message_id=${String(m.id)} where enterprise_id=${String(l.enterprise_id)} and id=${String(l.id)}`);
   await tx.execute(sql`insert into app.domain_event_deliveries(enterprise_id,event_id,consumer_key,status)
