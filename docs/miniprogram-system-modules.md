@@ -1,5 +1,9 @@
 # Mini Program: Current Module Inventory
 
+<!-- construction-public-live-current -->
+**Independent public live — Limited; code wired, native restoration unverified (2026-11-03).** `packages/assistant/chat/chat` and `pages/index/index` share the approved C05-02 v002 consent component: complete audience/frame, explicit agree/decline/later, pending-review/stopped state and exact-key recovery. These states are implemented, but the current original-chat event append is blocked by the RLS-hidden user join (`message_id=null`); owner-list readability is not delivery. `packages/construction/public-site/public-site` and the original Agent paper use approved Agent C03-04; new `packages/construction/public-live/public-live` uses C03-05 with a 16:9 contain player, real connection/error/pause/fullscreen/stop paths and return to the visitor consultation. Paper/controls are native code; no reference slices or new image calls. The existing standalone F1 PNG is palette re-encoded (19,084 bytes), with original/alpha checks retained and native optical fidelity pending. Owner/anonymous APIs, independent forced-RLS grants, revocation and cleanup follow [the contract](./construction-public-live-contract.md). Current Node Mini32/34 passes the logic scopes but fails assistant source reserve and main 2MiB packaging; earlier46/28 remain their historical versions. SQL boundary5 and Admin state4 pass bounded scopes; original-chat delivery, Admin stable preview, adjacent photo recovery and Stable owner/anonymous playback/reentry/503/stop remain unpassed. No new native or release claim.
+<!-- /construction-public-live-current -->
+
 <!-- xiaok-v1-02-proactive -->
 
 <!-- v1-02-staff-private -->

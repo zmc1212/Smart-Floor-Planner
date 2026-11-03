@@ -1,5 +1,9 @@
 # Admin System: Current Module Inventory
 
+<!-- construction-public-live-current -->
+**Independent public live — Limited; package 2 bounded closeout (2026-11-03).** The existing `/construction-projects` Drawer/public-materials tab adds an Ant Design live workbench. Selected-enterprise `/api/construction/public-live/:projectId`, original-owner `/api/miniprogram/assistant/public-live/:conversationId`, and anonymous `/api/public/construction-live/:enterpriseId/*` use an independent exact-camera grant/version, explicit owner preview/decision, management review, owned silent relay, hashed short sessions and five forced-RLS tables (0114). Every media resource/chunk rechecks current scope; stopping never changes photo consent or stops the shared source. Historical service04 (6 checks) and HTTP02 (3) prove their real silent-media/state/role/cleanup scopes, but do not prove original-chat message delivery. Admin02 verifies save, checkbox gating, pending state and Drawer reentry with no source drift; boundary-independent02 verifies five SQL role/identity/RLS/cleanup/rollback checks. **Original-chat delivery fails:** `liveEvent` joins RLS-hidden `app.users`, leaving `message_id=null` and no live message despite outbox/state success. Admin stable preview and adjacent photo-read recovery remain unpassed; native01–06 stop before business execution. Current Mini32/34 has two package-budget failures; scoped lint has 0 errors, and types retain 82 inherited diagnostics with 0 feature diagnostics. No production migration, real-camera publication or device acceptance. API/worker/configuration/source and exact evidence: [public-live contract](./construction-public-live-contract.md).
+<!-- /construction-public-live-current -->
+
 <!-- xiaok-v1-02-proactive -->
 
 <!-- v1-02-staff-private -->

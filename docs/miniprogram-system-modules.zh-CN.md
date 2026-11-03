@@ -1,5 +1,9 @@
 # 小程序当前功能清单
 
+<!-- construction-public-live-current -->
+**独立公开直播：Limited；代码已接线，原生还原未验（2026-11-03）。** `packages/assistant/chat/chat`与`pages/index/index`共用批准C05-02 v002授权组件：完整受众/画面、明确同意/拒绝/稍后、待审核/停止状态与原键恢复。状态逻辑已接入，但原咨询事件追加因用户表RLS关联失败而`message_id=null`，业主列表可读不代表已投递。`packages/construction/public-site/public-site`及原Agent纸页沿批准C03-04，新`packages/construction/public-live/public-live`沿C03-05，单一16:9 contain播放器与真实连接/失败/暂停/全屏/停止路径、本人咨询返回；纸页/控件为原生代码，不切片设计图、不新增生图。既有独立F1 PNG经调色板重编码为19,084字节，原件/alpha检查保留，原生光学尚未验。业主/匿名API、独立强制RLS授权、撤回与清理沿[合同](./construction-public-live-contract.zh-CN.md)。当前Node Mini32/34：逻辑范围通过，assistant预留预算与主包2MiB两项失败；较早46/28仅保留原版本证据。SQL边界5项及Admin状态4项有界通过；原咨询投递、Admin稳定预览、相邻照片恢复及Stable业主/访客播放、重进、503和停止仍未通过，不升级原生或发布状态。
+<!-- /construction-public-live-current -->
+
 <!-- xiaok-v1-02-proactive -->
 
 <!-- v1-02-staff-private -->

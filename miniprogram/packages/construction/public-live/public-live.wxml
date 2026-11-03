@@ -1,0 +1,13 @@
+<view class="live-notebook">
+  <view class="live-spine"><view wx:for="{{[0,1,2,3,4,5]}}" wx:key="*this" class="live-stitch" style="top:{{90 + item * 125}}px"/></view>
+  <view class="live-nav" style="padding-top:{{navTop}}px;padding-right:{{navRight}}px"><button class="live-history" bindtap="back" aria-label="返回"><view class="live-clock"/></button><text class="live-brand">小K</text><button class="live-designer" bindtap="designer">找设计师 ↗</button></view>
+  <view class="live-paper" style="top:{{navTop + navHeight + 6}}px"><view class="live-grip"/><button class="live-close" bindtap="back" aria-label="关闭直播">×</button>
+    <scroll-view scroll-y class="live-scroll"><view class="live-content"><text class="live-title">工地直播</text><text class="live-project">{{detail.name || '公开工地'}}</text><view class="live-rule"/>
+      <text class="live-fabric">{{state === 'playing' ? '直播中' : state === 'paused' ? '已暂停' : state === 'offline' ? '暂时离线' : state === 'stopped' ? '已停止公开' : '正在连接'}}</text>
+      <view class="live-video-mat"><view class="live-video-frame"><video wx:if="{{src}}" id="public-live-video" src="{{src}}" autoplay muted object-fit="contain" controls="{{false}}" show-center-play-btn="{{false}}" show-play-btn="{{false}}" enable-progress-gesture="{{false}}" bindplay="played" binderror="playbackError"/><view wx:if="{{!src || state === 'connecting'}}" class="live-state-layer"><text>{{error || '正在连接直播'}}</text><button wx:if="{{state === 'offline'}}" bindtap="retry">重试</button><button wx:if="{{state === 'stopped'}}" bindtap="back">返回工地</button></view></view>
+        <view wx:if="{{src}}" class="live-video-tools"><button bindtap="toggle">{{paused ? '继续观看' : '暂停'}}</button><text>实时 · 无声</text><button bindtap="fullscreen">全屏</button></view>
+      </view><view class="live-rule"/><text class="live-fabric">公开机位</text><text class="live-alias">{{detail.alias || '当前不可用'}}</text><text class="live-copy">仅此机位的实时无声画面。</text><text class="live-helper">由业主授权，经企业审核公开。</text><view class="live-rule"/>
+      <button class="live-primary" bindtap="consult">围观中有疑问？问小K</button><button class="live-link" bindtap="back">返回工地详情 ↗</button>
+    </view></scroll-view>
+  </view>
+</view>

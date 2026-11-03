@@ -6,6 +6,7 @@ import { notify } from '@/components/admin/operation-feedback';
 import { CITY_OPTIONS, districtOptions } from '@/lib/portfolio/regions';
 import type { PublicMaterialInput, PublicSourceInput, PublicPhotoInput } from '@/lib/construction/public-contract';
 import { constructionRequest, ConstructionRequestError, errorText } from './client';
+import { PublicLiveWorkbench } from './public-live-workbench';
 
 type Source = PublicSourceInput & { role: string; date: string; media: Array<{id:string;width:number;height:number}> };
 type Material = { id:string;versionId:string;revision:number;status:string;statusLabel:string;name:string;cityCode:string;district:string;stageName:string;reason:string;
@@ -69,6 +70,7 @@ export function PublicationWorkbench({projectId,identity}:{projectId:string;iden
   };
   const maskedPhoto=(p:PublicPhotoInput,url:string)=><div style={{position:'relative',lineHeight:0}}><img src={url} alt="待公开现场照片" style={{width:'100%',display:'block',borderRadius:8}}/>{p.masks.map((m,i)=><div key={i} style={{position:'absolute',left:m.x*100+'%',top:m.y*100+'%',width:m.width*100+'%',height:m.height*100+'%',background:'#17202b',pointerEvents:'none'}}/>)}</div>;
   return <Spin spinning={loading}><div style={{width:'100%',display:'grid',gap:16}}>
+    <PublicLiveWorkbench key={projectId} projectId={projectId}/>
     <Steps size="small" current={!material||['draft','rejected','declined','withdrawn'].includes(material.status)?0:material.status==='pending_owner'?1:material.status==='owner_approved'?2:3} items={['准备材料','业主授权','企业审核','公开'].map(title=>({title}))}/>
     {error&&<Alert type="error" showIcon message={error} description="编辑内容已保留。版本冲突时请读取最新材料，重新核对后再保存。"/>}
     {pending&&<Alert type="warning" showIcon message={pending.label+'结果待确认'} action={<Button disabled={busy} onClick={()=>write('save')}>核对同次操作结果</Button>}/>}

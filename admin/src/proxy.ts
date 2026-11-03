@@ -166,6 +166,7 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/api/construction-camera/') ||
     pathname.startsWith('/api/public/design-reports/') ||
     pathname.startsWith('/api/public/construction/') ||
+    pathname.startsWith('/api/public/construction-live/') ||
     pathname === '/api/internal/seed' ||
     pathname === '/api/internal/lead-claim-windows/run' ||
     pathname === '/api/internal/assistant/jobs/run' ||

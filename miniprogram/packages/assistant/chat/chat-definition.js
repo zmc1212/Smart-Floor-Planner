@@ -7,6 +7,7 @@ const { NearbyLocationController } = require('../lib/location');
 const { latestDesignerCard } = require('../lib/client');
 const { SiteRecordMedia } = require('../lib/site-records');
 const { PublicChatController, initialPublic } = require('../lib/public-sites');
+const { LiveConsentController, initialLive } = require('../lib/public-live');
 const { PlanChatController, initialPlans } = require('../lib/plans');
 const { SpeechController } = require('../lib/speech');
 const { FloorplanContextController, initialContext } = require('../lib/floorplan-context');
@@ -33,6 +34,7 @@ module.exports = () => ({
 	data: {
 		...initial(), navigationTop: 47, navigationHeight: 44, navigationRight: 100,
 		...initialPublic(), reportQuestion: emptyReportQuestion(),
+		...initialLive(),
 		...initialPlans(),
 		...initialContext(),
 		...initialFollowups(), ...initialEnterprise(), followupChat: emptyFollowupChat(), followupScrollTarget: '', professionalFollowup: false, followupHistoryOpen: false, followupManageOpen: false, followupOriginalPaths: {}, followupOriginalError: '',
@@ -69,6 +71,7 @@ module.exports = () => ({
 				const previous = this.data.messages;
 				this.setData(patch, () => {
 					if (patch.fatal || patch.needsLogin) {
+						if (this.liveConsent) this.liveConsent.clear();
 						if (this.floorplans) this.floorplans.clear();
 						this.siteRecords.clear();
 						this.recommendations.clear();
@@ -79,6 +82,7 @@ module.exports = () => ({
 						if (this.media) this.media.dispose(); this.media = null;
 						this.setData({ mediaPaths: {}, mediaItems: [], sheet: '' });
 					} else if (patch.messages) {
+						if (this._shown && this.liveConsent) this.liveConsent.load(this.controller.conversationId);
 						if (this._shown) this.siteRecords.load(this.controller.conversationId, patch.messages);
 						if (this._shown && this.publicSites) this.publicSites.load(this.controller.conversationId, this.data.enterpriseId, patch.messages);
 						if (this._shown && this.plans) this.plans.load(this.controller.conversationId, patch.messages);
@@ -90,7 +94,7 @@ module.exports = () => ({
 							this.recommendations.load(patch.messages.length ? this.data.conversation?.id : null);
 						}
 					}
-					if (patch.conversation === null) { if (this.floorplans) this.floorplans.clear(); this._portfolioKey = ''; this.recommendations.clear(); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); }
+					if (patch.conversation === null) { if (this.liveConsent) this.liveConsent.clear(); if (this.floorplans) this.floorplans.clear(); this._portfolioKey = ''; this.recommendations.clear(); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); }
 					if (patch.conversation?.id && this.floorplans && this._shown && this.floorplans.id !== String(patch.conversation.id)) this.floorplans.show(String(patch.conversation.id));
 					if (patch.conversation !== undefined && !this.data.followupActive) this.syncReportQuestion();
 					const next = patch.messages;
@@ -139,9 +143,10 @@ module.exports = () => ({
 	},
 
 	async onShow() {
+		if (!this.liveConsent) this.liveConsent = new LiveConsentController({ identity: sessionToken, emit: p => { if (this._alive && this._shown) this.setData(p); } });
 		if (!this.location) this.location = new NearbyLocationController({ identity: sessionToken, client: this.controller.client });
 		if (!this.plans) this.plans = new PlanChatController({ identity: sessionToken, client: this.controller.client, emit: p => { if (this._alive && this._shown) this.setData(p); } });
-		if (!this.publicSites) this.publicSites = new PublicChatController({ identity: sessionToken, client: this.controller.client, emit: p => { if (this._alive && this._shown) this.setData(p); } });
+		if (!this.publicSites) this.publicSites = new PublicChatController({ identity: sessionToken, client: this.controller.client, emit: p => { if (this._alive && this._shown) { this.setData(p); if (p.publicDetail) this.liveConsent.entry(this.data.enterpriseId, p.publicDetail.id); else if (p.publicDetail === null) this.liveConsent.set({ publicLiveEntry: null }); } } });
 		this._portfolioKey = '';
 		this._shown = true;
 		const app = getApp();
@@ -180,9 +185,10 @@ module.exports = () => ({
 			if (this._alive && this._shown) await this.followups.show();
 		}
 	},
-	onHide() { this._shown = false; this.followupChatController?.hide(); this._enterpriseEpoch = (this._enterpriseEpoch || 0) + 1; this.followups.hide(); if (this._followupObserver) this._followupObserver.disconnect(); clearTimeout(this._followupObserveTimer); this.setData({ ...initialEnterprise(), followupHistoryOpen: false, followupManageOpen: false }); if (this.speechController) this.speechController.hide(); if (this.location) this.location.clear(); this.controller.hide(); this.siteRecords.clear(); this.recommendations.clear(); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); this.closeSheet(); this.setData({ speechBusy: false, keyboardHeight: 0, siteRecordPaths: {}, siteRecordError: '', ...initialPublic(), ...initialPlans() }); },
+	onHide() { if (this.liveConsent) this.liveConsent.clear(); this._shown = false; this.followupChatController?.hide(); this._enterpriseEpoch = (this._enterpriseEpoch || 0) + 1; this.followups.hide(); if (this._followupObserver) this._followupObserver.disconnect(); clearTimeout(this._followupObserveTimer); this.setData({ ...initialEnterprise(), followupHistoryOpen: false, followupManageOpen: false }); if (this.speechController) this.speechController.hide(); if (this.location) this.location.clear(); this.controller.hide(); this.siteRecords.clear(); this.recommendations.clear(); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); this.closeSheet(); this.setData({ speechBusy: false, keyboardHeight: 0, siteRecordPaths: {}, siteRecordError: '', ...initialPublic(), ...initialPlans() }); },
 	onUnload() {
 		this._alive = false; clearTimeout(this._sheetTimer);
+		if (this.liveConsent) this.liveConsent.clear();
 		this.followupChatController?.dispose();
 		this._enterpriseEpoch = (this._enterpriseEpoch || 0) + 1;
 		clearTimeout(this._followupObserveTimer); if (this.followupMedia) this.followupMedia.clear();
@@ -611,6 +617,26 @@ module.exports = () => ({
 		const ok = await this.publicSites.decide(d.key, d.action);
 		if (ok && d.action !== 'preview') await this.controller.refresh();
 	},
+	async liveDecision(e) {
+		if (!this.liveConsent || this.data.readOnly) return;
+		const d = e.currentTarget.dataset;
+		if (await this.liveConsent.decide(String(d.id), d.action)) await this.controller.refresh();
+	},
+	stopPublicLive(e) {
+		if (this.data.liveBusy || this.data.livePending || this.data.readOnly) return;
+		const id = String(e.currentTarget.dataset.id);
+		wx.showModal({ title: '停止公开直播', content: '仅停止这路直播，照片和服务记录的授权不变。', confirmText: '停止公开', success: async r => { if (r.confirm && await this.liveConsent.decide(id, 'withdraw')) await this.controller.refresh(); } });
+	},
+	retryLiveConsent() { return this.liveConsent.retry(); },
+	retryLivePreview(e) { return this.liveConsent.preview(String(e.currentTarget.dataset.id)); },
+	livePlaybackError() { this.liveConsent.playbackFailed(); },
+	watchPublicLive() {
+		const item = this.data.publicLiveEntry;
+		if (!item || !/^[a-f0-9]{48}$/.test(item.key)) return;
+		wx.navigateTo({ url: '/packages/construction/public-live/public-live?enterpriseId=' + this.data.enterpriseId + '&key=' + item.key + '&conversationId=' + this.controller.conversationId + '&siteId=' + this.data.publicDetail.id + '&versionId=' + this.data.publicDetail.versionId });
+	},
+	publicLiveTab(e) { this.setData({ publicLiveTab: e.currentTarget.dataset.tab }); },
+	publicLiveDesigner() { wx.navigateTo({ url: '/packages/assistant/chat/chat?publicEnterpriseId=' + this.data.enterpriseId + '&findDesigner=1' }); },
 	laterPublic() { this.publicSites.later(); },
 	async retryPublic() {
 		if (this.data.publicPending) { if (await this.publicSites.retry()) { if (this.data.sheet === 'publicSite') this.closeSheet(); await this.controller.refresh(); } }
