@@ -54,18 +54,18 @@ English mirror: [cloud-construction-video-plan.md](./cloud-construction-video-pl
 
 | 项目 | 内容 |
 | --- | --- |
-| 当前交付 / 用户结果 | CV-04固定执行及运维/交付进行中，整体Limited。用户持续要求“云工地计划全部开发完了吗，没有就继续”，无需人工验收回复；当前源码/短测见下。全新74小时尚未启动，24/72小时及自然到期仍待验。 |
+| 当前交付 / 用户结果 | CV-04仍Limited。新真实74小时批次2026-11-03T09-03-04-699Z已于2026-11-03T09:05:51.567Z（2026-11-03 17:05:51 +08:00）开始录制，预计2026-11-06T11:05:51.567Z（2026-11-06 19:05:51 +08:00）结束；最近保存观测2026-11-03T09:08:54.182Z、累计4次。running不等于24/72小时/自然到期通过。采样/短录/私有回放/所属父丢失清理有下述有界证据；原失败仍failed，旧具体SDK回执仍未知。继续同一云工地全计划授权，无人工验收回复门槛。 |
 | 已完成前序 / 复用 | CV-02企业默认/业主授权、CV-03抓拍留存均保持限定Implemented，见§1.10–1.12。继承2284绑定映射实际副本后仅construction-camera-soak.ts有变，另新增执行工具/测试，副本外漂移0；摄像头service/H5/Mini入口源码未改。前序兼容78/抓拍9/Stable5加入口宿主3仅按原范围复用，不作真机播放证明。 |
-| 工作区 / 本地提交 | 仍用G:/workspace/向总/Smart-Floor-Planner、codex/xiaok-public-site-lifecycle，HEAD b9d6e68801ec57c21fdaf49efaada7c1355a554a。保留起始234项脏工作，本检查点当前242项。独立公开直播b9d6e68801ec57c21fdaf49efaada7c1355a554a保留；independent-commit-impact.json证明固定执行未变，camera/ConstructionService/Mini视频入口无直接public-live导入，不把本批算作新公开直播代码验收。自有3脚本加8份双语计划/清单/远端文档，其余保留；无干净checkout/worktree/小程序副本/并行聊天。 |
-| 固定执行 / 配置 | tmp/cloud-camera-operations-20261103-04/execution-manifest.json，SHA2565ff4b4c6e72dc1ba96a16a83eed72e9c617ea8824d01470e790aa5116471ffc4；85322实际文件/1140115872字节，含83498个已安装依赖文件。逐项原路径→副本hash含必要脏源码/私有配置；Next/网关/控制器同副本执行，原工作区修改不能热更新。固定Node/Python，执行前已排除Next生成声明/输出；运维合同见§1.13。 |
-| 已执行 / 源码绑定检查 | offline-frozen.json：12/12、62类型入口/0、定向lint0，85322深度前后绑定稳定。只读前检2026-11-03T06-17-13-264Z通过，策略未变；固定网关身份/F同盘挂载/健康且≥100GiB/无既有写入或pending SD。HTTP-entry-02真实Mini员工入口/H5批准HTML字节相同、一次性重放401/匿名401、停止回执/状态200/无观看媒体401、两次新入口重进、策略28不变，源配置/驱动稳定。 |
-| 真实清理 / 正常smoke | Crash2026-11-03T06-21-48-951Z在实际录制观测1次、清理者确认后故意退出87；原failed/注入回执保留failed。独立清理cleaned/2次，实际MP4=false、恢复SD/off/stopped、策略28/cleanupConfirmed=true，watch结束06:24:01UTC。正常smoke 2026-11-03T06-25-43-584Z：completed，观测18，passed=True，cleanupConfirmed=True |
-| 原失败 / 持续计数 | 初次ctx只读调用无返回，改有界宿主读取；首轮单元命令漏--import tsx，旧TS测试未加载。准备01/02因串行小文件/哈希耗时在封存前停止，半成品保留。固定03通过11/62/lint，但CIM中文ANSI输出使前检在任何策略/provider写入前拒绝；同PID/创建时间/UTF8只读诊断定位，04以强制UTF8及真实中文子进程测试修复。首轮释放守卫在停止前拒绝OS conhost叶进程，核验父子归属后交OS自行退出，再释放03根/端口。HTTP01错误预期停止后元数据401，实际合同为200；保留失败，02核验停止/媒体/重进，未改产品。产品修复计数0，CIM机制修复1；模型/生图/付费/未知provider写入成本0。 |
+| 工作区 / 本地提交 | 仍用G:/workspace/向总/Smart-Floor-Planner、codex/xiaok-public-site-lifecycle。提交前基线eed4b2b82cd1f12ef933fd0187c967d626a54e65，接着执行有守卫的11路径摄像头提交。采样3代码与固定05相同，v2追踪/测试有源码绑定；原handoff-owned-files.json仅为继承9路径快照。旧update-tested-record.py/commit-sampling.py未执行。无干净checkout/worktree/Mini副本或并行云工地owner，Git变化不会热更新实际副本。 |
+| 固定执行 / 配置 | 复用不可变固定05 execution-manifest.json SHA25657cb4dc9294f5918b5953ffd128f4fc9cfe0ad8be7f02f2b818cfff28bd0fe7a，85324文件/1140136185字节、83498已安装依赖。新actual-74h-01独有私有runtime/夹具/scope/binding-manifest/控制器/监督/追踪输出；额外provider-trace-v2.mjs SHA25629d24e3b1a1f5c72981022b289f33e75cdd2dd2287928bfbc5af70312138f595、start-traced-74h.mjs/control.mjs及私有配置在执行前绑定，不得编辑运行资源。short-evidence-summary.json确认v1/v2主线程追踪函数逐字节相同，新增编译Worker排除有单独冷启动及真实父丢失证据，不追认v1 smoke为v2执行。保留04/05原失败、私有凭据及原Node/Python/配置/媒体overlay。 |
+| 已执行 / 源码绑定检查 | 固定05离线单元5/兼容80/62入口类型0/lint0及85324前后深查稳定继续有效；cadence02的60/0/最大6174ms保留15秒/容量守卫，cadence01的60/17仍failed。v2追踪4/4加lint0有2文件前后绑定；provider-trace-cold-dependencies.json补齐4/4和12个Node/测试/preload/esbuild JS/原生binary/package明确绑定，逐字节同固定副本、漂移[]。v1主路径183.792秒/18观测、私有206/匿名401、封口缺口0、85324/3镜像稳定。v2父丢失02在确认策略后真实exit87/1观测；监督599116在2次守卫尝试后cleaned/lastExit0，独立确认SD/off/stopped/版本43、MP4=false/所有义务0/controllers[]、85324终态深查稳定。short-evidence-summary.json另核3媒体镜像/挂载及主线程transport相同。新固定Next的H5入口HTTP200仅为就绪，未变Mini/H5/Stable只按原范围复用，不称新原生/微信真机通过。 |
+| 真实清理 / 正常smoke | 原05批次2026-11-03T07-31-39-594Z仍为5观测/camera_invalid_response/部分录像失败。独立正常2026-11-03T08-17-06-957Z completed：183.792秒/18观测、最大间隔10013.696ms、1段封口/私有206/匿名401、DB只读失败[]、85324/3镜像稳定；另独立确认SD/off/版本40/MP4=false/4类义务0。包装器首个末尾额外读取null/无回执保留；不带追踪的独立02读取4731ms确认清理，不改写原失败。v1父丢失准备01在生成运行/写入前卡住，已核身份终止，继续准备failed。v2真实父丢失02在2次尝试后恢复SD/off/版本43；原安全输出watcher未保留首尝试详情，不称0错误。上述仅短录/清理范围，不是当前长测结论。当前策略44/cloud/on/3天仅归新控制器。 |
+| 原失败 / 持续计数 | 存储机制修复1，其后首轮真实正常主路径失败1；固定04健康行过期9观测失败、历史鉴权5.8866小时/350、5观测DB/inline清理失败、8小时盲区、旧SD/整日UNKNOWN、准备01/02、ANSI03/conhost/漏tsx/HTTP01错误预期均保留。CIM机制修复1保持。采样驱动修正1：原60观测/17启动前过期仍failed，就绪后60/0/最大6174ms在原15秒保护下通过。44观测/65秒超时及I/O前CJS准备错误仅诊断。模型/生图/付费调用成本0；新失败的具体摄像头endpoint及当时ack仍未知，当前停录/归属已确认。不重放未知写入，不因新聊天清零持续次数。 可选追踪启动修复1：旧v1父丢失准备未到写入/观测，继续准备failed；包装器首个额外读回null及宿主Core Utility/编码准备错误分别保留。v2排除Worker的4/4只是工程证据，不清零存储/CIM/鉴权/真实正常运行失败。 |
 | 数据库 / 部署 | 仅原55432→批准远端15433/cloud_camera_eval；本交付不迁移。0116后运行库115条账本，独立0114仍未迁。前序受限PGDMP/TOC备份、RLS/hash证据保留，完整恢复演练未验；主库/生产/SSH/凭据/转发/卷均未改。 |
-| 自有资源 / 夹具 | 当前固定04 Next109672/网关246804，3018/3017；活跃控制器/策略版本以最新带时间戳回执为准，正常运行中不得沿用crash清理版本推定当前关闭。标记微云1454/项目12/摄像头8/绑定9，默认3/版本9、客户12授权off/版本12，无新身份准备。固定03 Next468832/网关516188在只读确认策略25 SD/off/stopped、actualWriter=false、SD/观看/PTZ/写入义务全0后释放。共享3006/WVP/ZLM/探针/F/SSH/3019未动；未占原生控制器/锁/浏览器。 |
+| 自有资源 / 夹具 | 新actual-74h-01启动者428972/控制器325984/清理监督136004；网关558544/Next521868、3017/3018。准确创建/解释器/脚本身份见launcher-process.json、driver.json、gateway-process.json及05/next-process.json，当前控制器持有camera-soak:9 advisory。仍标记微云1454/项目12/摄像头8/绑定9，策略44/cloud/on/3天，终态须恢复原SD/off。前网关549568仅在新鲜SD/off/版本43/实际MP4=false/所有义务0及身份匹配后释放。正常/失败准备/父丢失控制器及清理者均已结束。共享3006/3019、WVP/ZLM/Redis/探针、F/旧卷/SSH保持，无原生/浏览器锁。不得从本带时间记录推定仍存活，任何动作前刷新回执及完整进程身份。 |
 | 构建 / 原生 / 物理限制 | 无产品路由/schema/UI变更，不称新整包构建通过。前序构建编译后受无关xiaok-manual-fixture.ts:43的state.keys unknown阻断，generated-type漂移原回执保留。Mini入口/模板/资产未改，只复用前序对应Stable范围；仅一台批准摄像头，多路吞吐、物理PTZ/微信真机/公网4G及生产未验。 |
-| 精确下一步 | 正常smoke已通过；完成定向文档/本地提交，再仅从此固定版本启动新74小时，记录run/PID/结束时间，等待真实24/72小时及自然到期；不重放旧失败批次/automation-4。 正常smoke启动深查在精确manifest相同时可复用为crash后依赖证据，保留故意退出原回执；不要求工作区冻结。 |
-| 授权 / 串行接续 | 唯一串行云工地owner，不接管小K/公开直播；无新增格式化/重启/手动录制/设备计划/公网4G/付费/生产权限。automation-4仍暂停，不创建/恢复；原.next-camera-dual删除自动审查拒绝保留、不绕过。真正接近上下文边界时更新本记录，只建同项目/同脏工作区一个全新后继，核验工作区后串行转交运行任务/证据/失败/资源；旧owner停止新开发。 |
+| 精确下一步 | 读取actual-74h-01/soak.json/driver.json并核当前身份，让现有唯一控制器继续真实时间录像，不开另批、不改固定源码/配置。24/72小时须真实到点；预计2026-11-06 19:05:51 +08:00只是估计。通过仍须两个里程碑、分钟观测≤120秒、封口缺口≤2秒、小时私有206/匿名401及三天自然到期真实404/410且WVP索引消失。包装器持续保存脱敏逐接口回执及终态私有WVP/ZLM/Redis日志；失败先按原始I/O归因，不盲重跑。如获授权需停，用node tmp/cloud-camera-operations-20261103-05/actual-74h-01/control.mjs --request-stop；孤儿清理仍拒绝活owner/版本变化。终态核源码/媒体/实际停录/SD/义务，再只释放身份吻合的自有服务。旧Redis C盘VHD/RDB85.4秒/AOF延迟及宿主压力仍仅支持线索，不当作旧SDK原因。不改持久化/期限/回执/租户守卫，不重启共享服务、不建/恢复自动化、不生产发布。 |
+| 授权 / 串行接续 | 本后继串行持有同一云工地计划，继承owner已停止开发。继续同一全计划授权，保留原失败/持续次数/成本；不接管小K/公开直播、不建并行聊天/worktree，接近上下文时按下述规则交接。无新格式化/重启/手动录制/设备计划/公网4G/付费/生产权限；共享WVP/ZLM/Redis/3019配置保持。automation-4继续暂停，不建/恢复；.next-camera-dual删除自动审批拒绝继续保留，不绕过。 |
 
 设计/实施源：2026-10-22用户批准单路H5/云工地配色、摄像头切换、抓拍历史及云台，去掉源地址/诊断。当时排除录像；2026-10-23进一步明确批准在播放器下加入直播/回放切换、日期、真实片段、返回直播，空/失败沿用既有反馈。当前实现保留此层级和配色，无截图切片/新增插画；Admin沿双语Ant Design/refactor合同。不能将空查询或接口完成记为SD支持。
 
@@ -169,6 +169,8 @@ English mirror: [cloud-construction-video-plan.md](./cloud-construction-video-pl
 
 ### 1.13 CV-04固定执行与运维合同（Limited，验收进行中）
 
+- 可选provider诊断：仅对具名绑定试验以CAMERA_PROVIDER_TRACE_DIR预加载admin/scripts/construction-camera-provider-trace.mjs。仅应用主线程的全新逐进程JSONL保留规范化接口、request/header/body阶段、HTTP/code/布尔result/status及有限结构；不记URL/query/headers/body/token/原始message，不重发、不改变期限/原响应/成功守卫。响应体异步观测上限2MiB/1秒，未知/截断仍为未知；preload及环境须前后绑定，不是默认产品日志或录像恢复证明。
+- 独立健康采样：网关在串行录像/索引对账之外启动5秒、互不重叠的采样，停机时先排空当前读取再关闭数据库。原15秒新鲜度/容量/故障保护规则不变，采样失败不把未知证据当健康。固定04在探针直接响应正常时因健康行过期失败，原回执保持失败；重开必须有具名机制修复及定向固定源码验证，不能再跑未改变的74小时。
 - `admin/scripts/construction-camera-execution.mjs`在`tmp/cloud-camera-operations-*`准备全新Git忽略、受限ACL批次，实际复制当前Admin脏源码/配置、已安装Node依赖、批准的厂商只读适配器和私有夹具/配置。manifest逐文件记录原路径→执行路径/SHA256/字节数，固定Node/Python并在封存前重查输入。不创建Git checkout/小程序副本、不迁移/调用provider/设置设备；既有批次不覆盖。Windows依赖仅用`robocopy /E /MT:16`复制，不用mirror/purge/move/delete；准备失败保留证据和未完成文件。
 - 网关、可选Next和控制器执行同一实际Admin副本/已保存私有环境，只指向原55432/cloud_camera_eval和3017/3018，原工作区后续修改不能热更新。启动/结束在录像观察窗口之外有界并发校验全部复制依赖；每分钟检查源码/配置和网关PID、创建时间、解释器/精确副本路径；观察耗时计入计划间隔。Next生成的`next-env.d.ts`/`.next-camera/`执行前已声明可变，保留原路径映射；历史回执/绑定不改。
 - 原工作区运行`node admin/scripts/construction-camera-execution.mjs prepare tmp/cloud-camera-operations-<batch>`，随后对同一输出参数使用`verify`、`gateway`、可选`next`、`soak-preflight`、`soak-crash`、`soak-smoke`、`soak-start`。准备不启动服务，3017/3018占用时拒绝。前检要求标记微云1454/项目12/绑定9、批准GB设备/通道、全部写入确认停止、无pending SD、存储健康新鲜/物理空闲≥100GiB，录像可写/探针只读同指批准F路径；不从基础compose重建WVP或撤overlay。
@@ -381,6 +383,8 @@ PTZ 每设备仅一个短控制租约，命令带序号和失效时间，拒绝�
 - 远程工作前读取 `remote-development.md` 与中文镜像；H5 正式业务域名/HTTPS 与媒体代理同源配置作为部署检查，不能用关闭域名校验作为上线方案。本计划不启动远程部署、采购、支付、摄像头生产录制或改变现有网络暴露。
 
 ## 10. 参考与本轮核对
+
+- 诊断参考：[Redis延迟机制](https://redis.io/docs/latest/operate/oss_and_stack/management/optimization/latency/)、[Node Worker预加载继承](https://github.com/nodejs/node/blob/main/doc/api/worker_threads.md)、[esbuild同步Worker/Atomics协议](https://github.com/evanw/esbuild/blob/main/lib/npm/node.ts)。与本机安装源码及分辨证据对照，不据此推断旧摄像头回执或因无关上游issue升级依赖。
 
 - [微信 web-view 官方文档](https://developers.weixin.qq.com/miniprogram/dev/component/web-view.html)：主体/业务域名、嵌入与通信约束。`web-view`业务域名不是`request`合法域名。
 - [mpegts.js 官方项目](https://github.com/xqq/mpegts.js)：播放器能力依据；采用已验证的本地1.8.2基线，升级另行验证。

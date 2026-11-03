@@ -59,6 +59,17 @@ export async function refreshStorageHealth(probe=readStorageProbe){
     return health(saved);
   });
 }
+// Reconciliation includes bounded but serial provider/index calls. Capacity
+// evidence has a shorter lifetime and must keep sampling while those await.
+export function startStorageHealthSampler(refresh:()=>Promise<unknown>=refreshStorageHealth,onError:()=>void=()=>{}){
+  let stopped=false,pending:Promise<void>|null=null;
+  const tick=()=>{
+    if(stopped||pending)return;
+    pending=Promise.resolve().then(refresh).then(()=>{},onError).finally(()=>{pending=null;});
+  };
+  const timer=setInterval(tick,5000);tick();
+  return async()=>{stopped=true;clearInterval(timer);await pending;};
+}
 export async function requireStorageReady(){
   let current=await currentStorageHealth();
   if(current.level==='unavailable')current=await refreshStorageHealth();

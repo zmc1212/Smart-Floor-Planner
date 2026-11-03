@@ -15,6 +15,7 @@ import { cameraWvp } from '../src/lib/construction/camera/wvp';
 import {authorizeRecordingMedia,reconcileRecordings,purgeCameraRecordings} from '../src/lib/construction/camera/recordings';
 import {refreshSdWindows,reconcileSdPlaybacks} from '../src/lib/construction/camera/sd';
 import {purgeCameraSnapshots} from '../src/lib/construction/camera/snapshot-retention';
+import {startStorageHealthSampler} from '../src/lib/construction/camera/storage';
 
 loadEnvConfig(process.cwd(), process.env.NODE_ENV !== 'production');
 const origin = cameraPublicOrigin();
@@ -39,6 +40,7 @@ const watchdog = setInterval(async () => {
 }, 500);
 // Provider reconciliation must never delay the short PTZ STOP watchdog.
 let recorderBusy=false,lastPurge=0,sdBusy=false,sdClockBusy=false,snapshotBusy=false;
+const stopStorageSampler=startStorageHealthSampler(undefined,()=>console.error('Camera storage sampling unavailable; recording remains protected'));
 // Database-only byte cleanup stays independent of WVP/storage outages and PTZ.
 const snapshots=setInterval(async()=>{
   if(snapshotBusy)return;snapshotBusy=true;
@@ -144,5 +146,5 @@ const server = http.createServer(async (req, res) => {
   }
 });
 server.listen(Number(process.env.CAMERA_GATEWAY_PORT || 3017), process.env.CAMERA_BIND_HOST || '127.0.0.1', () => console.log('Construction camera gateway listening'));
-async function shutdown() { clearInterval(watchdog);clearInterval(recorder);clearInterval(sdWatcher);clearInterval(sdClockWatcher);clearInterval(snapshots); server.closeAllConnections(); server.close(); await closePostgresPool(); }
+async function shutdown() { clearInterval(watchdog);clearInterval(recorder);clearInterval(sdWatcher);clearInterval(sdClockWatcher);clearInterval(snapshots); server.closeAllConnections(); server.close(); await stopStorageSampler(); await closePostgresPool(); }
 process.on('SIGINT', shutdown); process.on('SIGTERM', shutdown);

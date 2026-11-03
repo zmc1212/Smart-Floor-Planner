@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {validateStorageSample,evaluateStorage,readStorageProbe} from '../storage';
+import {validateStorageSample,evaluateStorage,readStorageProbe,startStorageHealthSampler} from '../storage';
 const GiB=1024n**3n;
 const sample=(available=900n)=>({version:1,node:'wvp-zlm-01',sampledAt:new Date().toISOString(),totalBytes:String(1000n*GiB),availableBytes:String(available*GiB),freeBytes:String(available*GiB),files:'100000',availableFiles:'90000'});
 test('capacity boundaries, free-byte/inode floors and hysteresis protect without flapping',()=>{
@@ -24,4 +24,33 @@ test('private capacity transport pins endpoint, auth and bounded response; error
     await assert.rejects(readStorageProbe((async()=>new Response('x'.repeat(4097))) as typeof fetch),/storage_unavailable/);
     process.env.CAMERA_STORAGE_ORIGIN='http://user:secret@storage.test/';await assert.rejects(readStorageProbe(transport),/storage_unavailable/);
   }finally{for(const [key,value] of [['CAMERA_STORAGE_ORIGIN',previous.origin],['CAMERA_STORAGE_TOKEN',previous.token]])if(value===undefined)delete process.env[key!];else process.env[key!]=value;}
+});
+
+test('independent capacity sampling continues across a slow recording task and recovers after a failed sample',async t=>{
+  t.mock.timers.enable({apis:['setInterval']});
+  let samples=0,errors=0,recordingFinished=false;
+  let finishRecording!:()=>void;
+  const recording=new Promise<void>(resolve=>{finishRecording=resolve;}).then(()=>{recordingFinished=true;});
+  const stop=startStorageHealthSampler(async()=>{if(++samples===2)throw Error('database temporarily unavailable');},()=>{errors++;});
+  const settle=()=>new Promise<void>(resolve=>setImmediate(resolve));
+  try{
+    await settle();assert.equal(samples,1);
+    for(let i=0;i<4;i++){t.mock.timers.tick(5000);await settle();}
+    assert.equal(samples,5);assert.equal(errors,1);assert.equal(recordingFinished,false);
+    finishRecording();await recording;
+    await stop();t.mock.timers.tick(20000);await settle();assert.equal(samples,5);
+  }finally{finishRecording();await stop();t.mock.timers.reset();}
+});
+
+test('capacity sampling never overlaps and shutdown drains its pending sample',async t=>{
+  t.mock.timers.enable({apis:['setInterval']});
+  let samples=0,finishSample!:()=>void;
+  const stop=startStorageHealthSampler(()=>{samples++;return new Promise<void>(resolve=>{finishSample=resolve;});});
+  const settle=()=>new Promise<void>(resolve=>setImmediate(resolve));
+  try{
+    await settle();t.mock.timers.tick(20000);await settle();assert.equal(samples,1);
+    let drained=false;const closing=stop().then(()=>{drained=true;});
+    await settle();assert.equal(drained,false);finishSample();await closing;assert.equal(drained,true);
+    t.mock.timers.tick(20000);await settle();assert.equal(samples,1);
+  }finally{finishSample?.();await stop();t.mock.timers.reset();}
 });
