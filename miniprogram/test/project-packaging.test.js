@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { packageSourceFiles } = require('./helpers/package-source');
 
 const projectConfigPath = path.join(__dirname, '..', 'project.config.json');
 
@@ -32,7 +33,7 @@ test('source package keeps the Mini Program runtime directories', () => {
   }
 });
 
-test('source package ignores only development files after unused artwork was deleted', () => {
+test('source package excludes development configuration and the superseded encoded font copy', () => {
   const projectConfig = JSON.parse(fs.readFileSync(projectConfigPath, 'utf8'));
   const ignoredFiles = new Set(
     projectConfig.packOptions.ignore
@@ -43,6 +44,9 @@ test('source package ignores only development files after unused artwork was del
   assert.deepEqual(ignoredFiles, new Set([
     'DESIGN.md',
     'design-tokens.json',
+    'project.config.json',
+    'project.private.config.json',
+    'packages/assistant/assets/studio-serif-data.js',
   ]));
 });
 
@@ -99,11 +103,8 @@ test('role guides stay in their own subpackage and under the WeChat 2MB limit', 
 });
 
 test('assistant subpackage stays under 2MB with standalone PNG assets below 300KB each', () => {
-  const root = path.join(__dirname, '..', 'packages', 'assistant');
   let total = 0;
-  for (const file of fs.readdirSync(root, { recursive: true })) {
-    const absolute = path.join(root, file);
-    if (!fs.statSync(absolute).isFile()) continue;
+  for (const { absolute, relative: file } of packageSourceFiles('packages/assistant')) {
     const bytes = fs.readFileSync(absolute);
     total += bytes.length;
     assert.ok(!file.endsWith('.webp'), 'runtime WebP is prohibited');
@@ -157,31 +158,11 @@ test('platform subpackage source stays under the WeChat 2MB subpackage limit', (
 
 test('main package source stays under the WeChat 2MB main-package limit', () => {
   const miniRoot = path.join(__dirname, '..');
-  const projectConfig = JSON.parse(fs.readFileSync(projectConfigPath, 'utf8'));
-  const ignoredFiles = new Set(
-    projectConfig.packOptions.ignore
-      .filter((rule) => rule.type === 'file')
-      .map((rule) => rule.value.replace(/\\/g, '/'))
-  );
-  const ignoredFolders = new Set(
-    projectConfig.packOptions.ignore
-      .filter((rule) => rule.type === 'folder')
-      .map((rule) => rule.value.replace(/\\/g, '/'))
-  );
-  ignoredFolders.add('node_modules');
-  ignoredFolders.add('packages');
-  ignoredFolders.add('scripts');
-  ignoredFolders.add('.cloudbase');
-
   let total = 0;
-  for (const file of fs.readdirSync(miniRoot, { recursive: true })) {
-    const absolute = path.join(miniRoot, file);
-    if (!fs.statSync(absolute).isFile()) continue;
-    const packagedPath = file.replace(/\\/g, '/');
-    const top = packagedPath.split('/')[0];
-    if (ignoredFolders.has(top)) continue;
-    if (ignoredFiles.has(packagedPath)) continue;
-    total += fs.statSync(absolute).size;
+  for (const file of packageSourceFiles()) {
+    const top = file.relative.split('/')[0];
+    if (top === 'packages' || top === '.cloudbase') continue;
+    total += file.size;
   }
   assert.ok(
     total <= 2048 * 1024,

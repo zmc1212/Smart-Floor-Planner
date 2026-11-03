@@ -2,6 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { packageSourceFiles } = require('./helpers/package-source');
 const { tourInput, selectTour, toursForView, tourUrl } = require('../packages/assistant/lib/tour');
 
 const tour = (url, provider = 'Matterport', title = '') => ({ url, provider, title });
@@ -38,15 +39,10 @@ test('assistant tour-view is packaged with licensed PNG icons under the size lim
   const root = path.join(__dirname, '..');
   const app = JSON.parse(fs.readFileSync(path.join(root, 'app.json'), 'utf8'));
   assert.ok(app.subPackages.some(item => item.root === 'packages/assistant' && item.pages.includes('tour-view/tour-view')));
-  let total = 0;
-  const walk = dir => {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) walk(full); else total += fs.statSync(full).size;
-    }
-  };
-  walk(path.join(root, 'packages/assistant'));
-  assert.ok(total <= 2 * 1024 * 1024, 'assistant subpackage is ' + total + ' bytes');
+  const total = packageSourceFiles('packages/assistant').reduce((sum, file) => sum + file.size, 0);
+  // DevTools counts ~81KB more than the source-file sum (2111KB reported for a
+  // 2032KB tree on 2026-10-30), so keep 96KB of accounting headroom.
+  assert.ok(total <= 2048 * 1024 - 96 * 1024, 'assistant subpackage is ' + total + ' bytes');
   for (const name of ['tour-3d.png', 'copy-link.png', 'tour-play.png', 'tour-3d-ink.png']) {
     const file = path.join(root, 'packages/assistant/assets', name);
     const bytes = fs.readFileSync(file);
