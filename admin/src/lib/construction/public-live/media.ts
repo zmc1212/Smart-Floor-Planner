@@ -8,6 +8,7 @@ import type { ConstructionActor } from '../contracts';
 import { liveDto, liveSource, staffLiveAccess } from './store';
 import { liveKey, liveResource } from './contract';
 import { publicLiveUpstream, type LiveUpstream } from './upstream';
+import { liveMediaCorsHeaders } from './media-cors';
 
 export type LiveViewer={kind:'public'}|{kind:'owner';actor:ActorContext;conversationId:string}|{kind:'staff';actor:ConstructionActor;projectId:string};
 type Source=NonNullable<Awaited<ReturnType<typeof liveSource>>>;
@@ -118,7 +119,7 @@ export function rewriteLivePlaylist(text:string,source:URL,app:string,stream:str
   };
   return text.split(/\r?\n/).map(line=>!line||line.startsWith('#')?line.replace(/URI="([^"]+)"/g,(_,value)=>`URI="${rewrite(value)}"`):rewrite(line.trim())).join('\n');
 }
-const mediaHeaders={'Cache-Control':'no-store, private, max-age=0','Pragma':'no-cache','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'};
+const mediaHeaders={...liveMediaCorsHeaders,'Cache-Control':'no-store, private, max-age=0','Pragma':'no-cache','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'};
 /** Every bounded playlist/segment and each response chunk rechecks the live grant. */
 export async function publicLiveMedia(request:Request,eid:string,key:string,token:string,resource:string,upstream=publicLiveUpstream()) {
   liveResource(resource);const s=await session(eid,key,token);

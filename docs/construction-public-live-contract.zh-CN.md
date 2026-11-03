@@ -17,7 +17,7 @@
 | --- | --- |
 | 所选企业cookie | `/api/construction/public-live/:projectId` GET读取、POST保存；POST `submit`、`publish`、`reject`、`withdraw`、`session`、`reconcile` |
 | 原咨询业主bearer | `/api/miniprogram/assistant/public-live/:conversationId` GET；POST `:liveId/preview`、`approve`、`decline`、`later`、`withdraw`、`session` |
-| 匿名 | `/api/public/construction-live/:enterpriseId/site/:publicPhotoSiteId` GET当前入口；`/:publicKey` GET安全元数据；`/:publicKey/session` POST；`/:publicKey/media/:token/:resource` GET |
+| 匿名 | `/api/public/construction-live/:enterpriseId/site/:publicPhotoSiteId` GET当前入口；`/:publicKey` GET安全元数据；`/:publicKey/session` POST；`/:publicKey/media/:token/:resource` GET及仅媒体OPTIONS |
 
 应用响应均no-store。公开元数据仅公开名称/别名、授权版本/revision及范围，不含摄像头/绑定/设备标识、私有源地址或私聊。照片目录ID仍重验自己的来源；直播分享入口可独立于照片公开存在。
 
@@ -46,7 +46,7 @@ Native01–08保留原失败。native-mechanism02在1191项绑定/drift[]下固�
 
 Native09复用其中1181项未变Mini/运行时依赖的编译与就绪证据，不再刷新；实际源/配置绑定结束drift[]，精确数量见report.json。原始断言记录三个通过、匿名视频失败；同意及原咨询重进确有持久写入/回读，但C05可见用户期望未通过：预览(45,1923.90625)/263×147.9375及同意(45,2275.796875)/263×46在390×844可见区外，owner-full-scope.png显示照片/历史状态，并未显示直播范围卡。有效被动宿主捕获保持前台焦点，也不能弥补目标缺失。原断言/截图及本次复核分别保留，不能合成完整原生授权或光学通过。
 
-匿名请求Authorization为空，实际元数据/session200；Next日志有两次公开HLS清单200，未观察到分片请求，保留的DevTools媒体日志未给出原生解码错误细节，不能据此宣称模拟器编解码限制。播放离线失败，暂停、503恢复、业主停止/旧链接重进未执行。下一步先沿已有滚动容器使当前消息/卡片/按钮真实在屏，再采实际视频错误及清单/分片判别。静态代码另暴露同意状态缺口：playbackFailed清除livePreviewUrl但保留liveExpanded，decide(approve)只核对展开；应先按批准C05与共享加载/错误/disabled状态测试并修正当前版本的预览就绪约束，再验所有受影响路径，不另创布局或授权来源。
+冻结native09批中，匿名Authorization为空、元数据/session200，两清单200但未观察分片或真实解码错误，不能认定模拟器编解码限制；播放/暂停/503/停止均未通过。该源还存在playbackFailed清URL后仍可仅凭展开同意的缺口。下方successor01记录其后就绪守卫、真实在屏与实际媒体判别，原native09结论不升级。
 
 最终确定性驱动范围driver-verification03.json：单元6/6、定向lint/types0、drift[]；首轮单元转义夹具失败及类型01/02原失败保留。Mini结构/样式/素材/文案/API及后台权限未改。自有live1/version28/revision113已withdrawn，独立照片1/version1仍published，活动授权/未结代理/自有55434 advisory锁0，保留代理总记录8。所有尝试的内存覆盖已恢复，自有源/WVP/Next及3019/18085/18086已停，Docker55434/18084/18554保留。绑定收口后tsconfig/next-env恢复启动前精确字节，不倒算运行中漂移。新模型/Embedding/图片0；旧9图金额unknown及全部旧未知/次数保持。实际编译包体、原生Brotli/字体读取和还原未验。后续默认shell缺Core Utility清单；只在子进程直接加载已安装Utility DLL的只读判别已成功（powershell-utility-probe.json），没有全局修复，后继可按这一实证处理。
 <!-- /public-live-native-bounded-status -->
@@ -70,3 +70,32 @@ Native09复用其中1181项未变Mini/运行时依赖的编译与就绪证据，
 - 正常授权开发继续包体修复及原用户旅程；历史失败、同一问题两轮失败计数、未知费用和部署边界保持，不授权真实摄像头公开或生产。
 - 确定性包体续作`tmp/public-live-package/font-package01`在1180项绑定/drift[]下通过Node客户端/包体42/42。真实`packOptions`现排除保留的base64开发字体副本和本地项目配置，显式包含`assets/studio-serif.woff2.br`（696,261字节）；官方`readCompressedFile`还原原696,256字节、SHA-256 `79b60b72cddf95eaec6bec7fb3b6a519afba685b47c6ddd0cc01f1d452bc1325`，再沿同一全局900字重Data URL加载。源码主包2,094,813/assistant1,853,163字节，通过未放宽的2MiB硬上限/assistant96KiB预留；这是保守源码计数，不是编译预览大小。当前编译体积/原生包文件加载仍未验，旧字体/几何原生证据只属原绑定。未改字形、样式、路由、API或权限。 Official support: [upload whitelist](https://developers.weixin.qq.com/miniprogram/dev/framework/structure.html#允许上传的文件), [packOptions](https://developers.weixin.qq.com/miniprogram/dev/devtools/projectconfig.html#packOptions), [Brotli file read](https://developers.weixin.qq.com/miniprogram/dev/api/file/FileSystemManager.readCompressedFile.html), [Data URL font](https://developers.weixin.qq.com/miniprogram/dev/api/ui/font/wx.loadFontFace.html).
 - 原Admin照片/直播并发挂载现统一前置锁顺序：企业/访问、企业设置、项目。staffLiveAccess在cameraAccess持有项目共享锁前预先锁设置，原摄像头、身份、角色与RLS检查保持。原UI503/PG40P01及修复前受控55P03失败保留；同一固定锁序驱动修复后5/5，覆盖设置阻塞时照片事务仍可取得项目更新锁、enterprise_admin/admin/super_admin并发照片/直播读取及持久重进、跨租户拒绝。受影响原咨询投递回归3/3，cleanup.stopped=true/drift[]。真实Chrome Admin在276项源/配置绑定、drift[]下5/5：首次并发照片挂载、关闭Drawer重进、合成草稿实写和640×360真实视频、暂停10,190ms时钟不变并恢复至1445解码帧/106.382507秒，以及实际停止200/stopped=true且照片版本1仍公开。当前Chrome走原生HLS，Hls.js回退未验。临时播放观察器已还原，合成cookie/标签已清，自有Next/WVP/源/helper已停，活动直播/代理义务0。证据tmp/public-live-package/admin-recovery01/。未改结构、样式、素材、API/schema/权限或生产。定向lint0/0；仅诊断性质的全量lint0错误/30警告和types82与原诊断集合逐项一致、本功能0；这两项未事前建立新的全Admin绑定，不作新的全产品验收。
+
+<!-- public-live-successor01 -->
+
+### 当前预览与媒体传输（2026-11-03）
+
+来源保持C05-02 v002及共享状态。只有当前attempt/version/revision/身份绑定的真实正向时间进度才启用原同意动作；展开、session URL、播放意图或诊断MP4均不产生同意条件。session/解码失败清URL/就绪，重试换attempt并清错误；未变读取保留有效预览，版本/revision/身份变化清展开。已提交结果未知仍保留原幂等键/body核对，不新造决定。
+
+| 触发 | 原反馈/动作 | 恢复与边界 |
+| --- | --- | --- |
+| 当前申请未展开 | 原完整预览动作；拒绝/稍后可用 | 原咨询读取当前版本 |
+| 连接中/有URL但无进度 | 范围可读，同意禁用 | 等待或重试，不产生新同意 |
+| 当前预览正向进度 | 启用原明确同意 | 仅当前版本/revision/attempt |
+| session/解码失败 | 原离线文案/重试，同意禁用 | 新attempt隔离旧回调 |
+| 版本/revision/身份变化 | 清预览/就绪/展开 | 重开当前获权版本 |
+| 提交结果未知 | 原待核对反馈 | 只核对原键/body，不新发决定 |
+
+合法形状的媒体GET及其拒绝/失败响应返回Access-Control-Allow-Origin: *，不允许凭据。OPTIONS仅对合法形状的媒体能力路径允许GET及可选Range，不披露媒体/session状态、不授权写入；真实GET/每chunk仍沿原直播/session/来源守卫。[HLS.js原始文档](https://github.com/video-dev/hls.js/blob/master/README.md#cors)要求清单与分片允许GET跨域；这项修正与解码能力及余下首播失败分开。
+
+证据：successor01/client-green01为54/54；target-check02新增未知同意重进后55/55，其原3条CommonJS lint错误保留。target-check03为11/11且lint0；cors-fast01为7/7、lint/types0，253项绑定/drift[]；package-check01为13/13、1263项/drift[]。原驱动路径/缺用例及context工具超时与应用失败分别留存，未重放未变全套或模型试验。
+
+media01 fresh compile后元信息桥接11174ms超时/exit1/killed=false，未安装业务控制器/创建媒体；readiness01因Desktop PowerShell UTF8前置失败，未编译。readiness02按要求只重编译一次：Page.getData10850ms超时而两种wx读取成功；固定page-bridge01随后在相同编译绑定下取得非空真实page data和正元素。这仅证明后续就绪，不归因为延时/焦点；后续复用1180项相同Mini/runtime依赖。
+
+media02仅完成固定机制判别：C05当前范围/同意目标(45,337.90625)–(308,735.796875)，确在实测y99–736裁切区，同意禁用。真实HLS为networkError/manifestLoadError/code0；同源合成MP4进度0.256262秒且仍不能同意。直接清单/分片200，160364字节、无声Constrained-Baseline H264640×360且首帧解码成功，不能认定不支持编解码。hooks/临时资产/控制器均还原，未同意/发布。
+
+CORS后native-business01进入分片请求但业主预览就绪仍失败。window01用同一真实员工会话验证即时分片200/336144字节，另一个当前最旧分片延迟5秒为上游404/public_live_media_unavailable。仅自有已迁移ZLM运行时segRetain1→10（直播索引/时长不变）后，native-business02仍在同一期望失败，两轮止损；1524源/配置结束drift[]，运行时10批内不漂移，实际分片200与清单503共存。两批均未进入同意/发布/公开播放/暂停/503恢复/停止目标；下一次须用真实上游HTTP/abort结果及CORS后的SDK错误判别，不做第三轮相似业务试跑，不弱化守卫。归属公开直播媒体传输，Agent/知识无变更。
+
+ZLM当前位于已记录Docker context sfp-remote-dev、容器8aac1f73…及远端D实际挂载；不是本机Docker。挂载配置与原夹具字节一致，未重启容器/动SSH/隧道/F。失败保留窗口实验已凭回执与回读恢复1，本地镜像/tsconfig/next-env恢复原字节。自有授权/代理/job/控制器清空，保留代理总12，photo1/version1仍published。原3353源/20证据及全部失败/unknown保持，外部camera提交676be882及差异保留；新模型/Embedding/图片0，旧9图金额unknown。整个V1-04（含本人项目直播及设计师作品旅程）仍Limited，独立交付只沿唯一计划第2节。
+
+<!-- /public-live-successor01 -->

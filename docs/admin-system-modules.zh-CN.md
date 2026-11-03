@@ -1,7 +1,7 @@
 # 后台系统当前功能清单
 
 <!-- construction-public-live-current -->
-**独立公开直播：Limited（2026-11-03）。** 原投递3/3、锁序5/5、真实Admin5/5及同字体源码预算42/42沿各自有效范围复用。本轮只改验收驱动：跨盘绑定路径、CLI结构化错误/耗时/退出/信号、精确公开session POST及内存匿名身份、未知安装回执清理、被动宿主捕获，以及按源码复用已编译并就绪的Mini运行时。native09有实际同意/重进服务回执，匿名元数据/session/HLS清单200，清理完成且drift[]；原始三个通过步骤不能完成C05原生验收：截图复核发现预览/同意目标在390×844可见区外，owner-full-scope.png没有显示直播范围卡。匿名播放离线失败，暂停、503/重试及原生停止/重进未执行。保留native01–09及所有机制/前检/类型失败。最终绑定版本驱动6/6、定向lint/types0。未改Mini结构/样式/素材、路由/API/角色/RLS，无模型/图片或生产操作。实际编译包体、原生Brotli/字体加载及完整原生还原仍未验。自有live1/version28/revision113已撤回，照片1/version1仍公开，活动授权/未结代理/自有库advisory锁0；自有源/WVP/Next已停，启动配置字节已恢复。见[公开直播合同](./construction-public-live-contract.zh-CN.md)及tmp/public-live-package/native09/。
+**独立公开直播——Limited（2026-11-03）。** 来源保持C05-02 v002及既有连接/离线/disabled共享组件。原chat/root仅在当前预览attempt、version、revision收到真实正向播放进度后允许新同意；URL或展开不构成同意条件。session/解码失败、版本/revision或身份变化清除就绪；重试隔离迟到回调，已提交但回执未知只按原键/原body核对。未改字体、布局、素材、模型、租户、角色或RLS。匿名媒体GET新增不携带凭据的CORS；合法形状的媒体OPTIONS仅允许GET/Range，不开放元数据/session写入；实际每次媒体/分块仍重验当前授权与撤回。原生驱动按liveCards当前messageId和conversation-scroll真实裁切区（含输入框遮挡）定位后操作/截图。证据在tmp/public-live-package/successor01/：客户端55/55、驱动11/11、CORS/定位7/7、包体13/13、定向lint/types0，分别绑定，不以数量完成旅程。media02已验真实在屏预览/范围/禁用同意、实际HLS manifestLoadError/code0、同源MP4进度及可解码的无声H264分片。CORS修复后实际进入分片请求，但native-business01/02均未通过当前业主预览就绪，当前构建的同意/审核/公开播放/暂停/503恢复/停止仍未通过；同一首播期望两轮失败已止损。window01证明即时200与延迟5秒上游404，保留数1→10实验仍未解决首播，已恢复1；不认定模拟器编解码限制。原native01–09、前置失败和费用unknown全保留。自有授权/代理/控制器/job已清理，启动配置字节还原；原照片发布保持。源码包体通过，编译包体/原生字体读取及完整光学还原未验。见[公开直播合同](./construction-public-live-contract.zh-CN.md)。
 <!-- /construction-public-live-current -->
 
 <!-- xiaok-v1-02-proactive -->

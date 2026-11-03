@@ -629,7 +629,8 @@ module.exports = () => ({
 	},
 	retryLiveConsent() { return this.liveConsent.retry(); },
 	retryLivePreview(e) { return this.liveConsent.preview(String(e.currentTarget.dataset.id)); },
-	livePlaybackError() { this.liveConsent.playbackFailed(); },
+	livePlaybackProgress(e) { this.liveConsent.playbackProgress(String(e.currentTarget.dataset.id), Number(e.currentTarget.dataset.attempt), e.detail.currentTime); },
+	livePlaybackError(e) { this.liveConsent.playbackFailed(String(e.currentTarget.dataset.id), Number(e.currentTarget.dataset.attempt)); },
 	watchPublicLive() {
 		const item = this.data.publicLiveEntry;
 		if (!item || !/^[a-f0-9]{48}$/.test(item.key)) return;

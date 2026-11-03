@@ -7,7 +7,8 @@ import type { ConstructionActor } from '../contracts';
 import { publishedPublicMaterial } from '../public-read';
 import { PublicLiveService } from './service';
 import { PublicLiveCustomer } from './customer';
-import { liveKey } from './contract';
+import { liveKey, liveResource } from './contract';
+import { liveMediaCorsHeaders, liveMediaPreflight } from './media-cors';
 import { openLiveSession, publicLiveDetail, publicLiveMedia, reconcileLiveProxies, stopLiveProxies, type LiveViewer } from './media';
 
 const headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'};
@@ -78,7 +79,13 @@ export async function anonymousLiveHttp(request:Request,eid:string,path:string[]
     if(!l)fail('public_live_unavailable',404);
     return sessionFor(eid,String(l.id),String(l.current_version_id),{kind:'public'});
   }
-  if(path[1]==='media'&&path.length>=4&&request.method==='GET')return publicLiveMedia(request,eid,publicKey,path[2],path.slice(3).join('/'));
+  if(path[1]==='media'&&path.length>=4&&['GET','OPTIONS'].includes(request.method)){
+    const resource=liveResource(path.slice(3).join('/'));
+    if(!/^[A-Za-z0-9_-]{43}$/.test(path[2]))fail('public_live_unavailable',404);
+    if(request.method==='OPTIONS')return liveMediaPreflight(request);
+    try{return await publicLiveMedia(request,eid,publicKey,path[2],resource);}
+    catch(error){const response=liveFailure(error);for(const [name,value]of Object.entries(liveMediaCorsHeaders))response.headers.set(name,value);return response;}
+  }
   fail('public_live_unavailable',404);
 }
 export {reconcileLiveProxies};

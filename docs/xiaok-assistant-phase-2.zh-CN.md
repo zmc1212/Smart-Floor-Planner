@@ -1,5 +1,9 @@
 # 小K第二期：需求整理与人工交接
 
+<!-- public-live-two-repair-stop -->
+**公开直播首播失败计数（2026-11-03）：** 当前C05预期是完整范围真实在屏且当前预览正向进度后明确同意。successor01/media02仅证明在屏失败预览/禁用同意、HLS manifestLoadError/code0、MP4进度及直接H264解码，不是业务通过。CORS后native-business01因分片503未就绪；即时/延迟上游200→404判别证明保留风险。native-business02独立绑定保留数1→10后同一期望仍失败，修复数2止损，夹具已恢复。归属公开直播媒体HTTP/abort/session传输，非Agent/Evidence；共同原因假设为当前请求/校验/取消时序下HLS传输不完整，下一判别须采上游真实状态/取消及SDK错误，不再换封套/延时/保留数相似试跑。所有失败绑定/unknown保留；V1-02原报告追问与其独立，可按唯一计划第2节串行推进。
+<!-- /public-live-two-repair-stop -->
+
 <!-- xiaok-v1-02-proactive-current -->
 ## 当前V1-02：确定性私人报告基础（Limited）
 

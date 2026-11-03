@@ -7,3 +7,4 @@ async function handle(request:Request,context:Context){
 }
 export const GET=handle;
 export const POST=handle;
+export const OPTIONS=handle;

@@ -16,6 +16,8 @@ import { PublicSiteCatalog } from '@/lib/construction/public-read';
 import type { createLiveFixture } from './public-live-fixture';
 loadEnvConfig(process.cwd(),true);
 const root=path.resolve('..'),output=path.resolve(process.argv.find(a=>a.startsWith('--output='))?.slice(9)||'../tmp/public-live-package/native01');
+const diagnoseOwnerMedia=process.argv.includes('--diagnose-owner-media'),controlVideoUrl=process.argv.find(a=>a.startsWith('--control-video-url='))?.slice('--control-video-url='.length);
+if(diagnoseOwnerMedia)assert.match(controlVideoUrl||'',/^http:\/\/127\.0\.0\.1:3019\/construction-camera\/__qa-public-live-[a-f0-9-]+\.mp4$/);
 assert.ok(!fs.existsSync(path.join(output,'native.json')));fs.mkdirSync(output,{recursive:true});
 const f=JSON.parse(fs.readFileSync('../tmp/public-live-package/native-fixture.json','utf8')) as Awaited<ReturnType<typeof createLiveFixture>> & {photoId:string;photoVersionId:string;liveId:string;versionId:string;revision:number;key:string};
 const require=createRequire(path.resolve('package.json'));
@@ -43,12 +45,16 @@ async function main(){
       'D:/微信开发工具/微信web开发者工具/resources/app.asar.unpacked/wechatide-skill/wechatide-tools/references/tools.yaml',
       ...cp.execFileSync('git',['ls-files','-co','--exclude-standard','-z','miniprogram'],{cwd:root,encoding:'utf8',maxBuffer:4*1024*1024}).split('\0').filter(Boolean)];
     const reuseArg=process.argv.find(a=>a.startsWith('--reuse-compiled-mini='))?.slice('--reuse-compiled-mini='.length);
-    let reuseEvidence: {before:Record<string,string>;drift:string[];lockReleased:boolean;calls:Array<{name:string;ok:boolean}>}|undefined;
+    if(diagnoseOwnerMedia)seeds.push('admin/public'+new URL(controlVideoUrl!).pathname);
+    let reuseEvidence: {before:Record<string,string>;drift:string[];lockReleased:boolean;calls:Array<{name:string;ok:boolean;dataKeys?:number;elements?:number}>}|undefined;
     if(reuseArg){
       const file=path.resolve(reuseArg),bytes=fs.readFileSync(file);reuseEvidence=JSON.parse(bytes.toString('utf8'));
       assert.equal(reuseEvidence!.lockReleased,true);assert.deepEqual(reuseEvidence!.drift,[]);
-      assert.ok(reuseEvidence!.calls.some(c=>c.name==='visible-same-read'&&c.ok));
-      seeds.push(file,'tmp/public-live-package/native08/report.json','tmp/public-live-package/native08/native.json','tmp/public-live-package/native08/visibility-window-trace.json');
+      const legacyReady=reuseEvidence!.calls.some(c=>c.name==='visible-same-read'&&c.ok);
+      const pageReady=reuseEvidence!.calls.some(c=>c.name==='sdk-data'&&c.ok)&&reuseEvidence!.calls.some(c=>c.name==='app-data'&&c.ok&&(c.dataKeys||0)>0)&&reuseEvidence!.calls.some(c=>c.name==='elements'&&c.ok&&(c.elements||0)>0);
+      assert.ok(legacyReady||pageReady,'A nonempty actual page and positive SDK elements are required');
+      seeds.push(file);
+      if(legacyReady)seeds.push('tmp/public-live-package/native08/report.json','tmp/public-live-package/native08/native.json','tmp/public-live-package/native08/visibility-window-trace.json');
       report.compileReuse={evidence:path.relative(root,file),sha256:createHash('sha256').update(bytes).digest('hex'),reason:'Same compiled Mini/runtime sources; reuse the completed compile plus settled successful Page.getData evidence, not the failed immediate-read/business batch.'};
     }
     report.before=bindPublicLive(seeds);
@@ -59,7 +65,7 @@ async function main(){
     }
     save();
     const admitted=await manager.read(f.pid);assert.equal(admitted.material?.versionId,f.versionId);assert.equal(admitted.material?.key,f.key);assert.equal(admitted.material?.status,'pending_owner');
-    report.native=await require(path.join(root,'admin/scripts/public-live-native.cjs'))({root,output,fixture:f,token,client:cli,compileReuse:report.compileReuse,assertHeld:async()=>{await release!.assertHeld();assert.deepEqual(comparePublicLive(report.before),[]);},
+    report.native=await require(path.join(root,'admin/scripts/public-live-native.cjs'))({root,output,fixture:f,token,client:cli,diagnoseOwnerMedia,controlVideoUrl,compileReuse:report.compileReuse,assertHeld:async()=>{await release!.assertHeld();assert.deepEqual(comparePublicLive(report.before),[]);},
       publish:async()=>{const v=await manager.read(f.pid);assert.equal(v.material?.status,'owner_approved');await manager.mutate(f.pid,'publish',{versionId:v.material!.versionId,expectedRevision:v.revision},randomUUID());},
       assertPhoto:async()=>{assert.equal((await new PublicSiteCatalog(f.eid).detail(f.photoId)).versionId,f.photoVersionId);}});
     report.drift=comparePublicLive(report.before);assert.deepEqual(report.drift,[]);report.passed=true;

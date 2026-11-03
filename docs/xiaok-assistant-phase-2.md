@@ -1,5 +1,9 @@
 # XiaoK Phase Two: Requirements and Human Handoff
 
+<!-- public-live-two-repair-stop -->
+**Public live startup failure accounting (2026-11-03):** current C05 needs a visible complete scope plus actual current preview progress before explicit consent. successor01/media02 has visible failed preview, disabled approval, HLS manifestLoadError/code0, MP4 progress and directly decoded H264; no business pass. After CORS, native-business01 fails readiness with segment503; the immediate/delayed upstream200→404 discriminator supports a retention risk. The independently pinned1→10 retention experiment in native-business02 still fails the same expectation; repair count2 stops similar retries, and the fixture is restored. Owning domain: public-live media HTTP/abort/session delivery, not Agent/Evidence. Common-cause hypothesis is incomplete HLS delivery under current request/validation/abort timing; next discriminating evidence must record actual upstream status/cancellation plus SDK error, rather than changing another envelope/delay/retention value. Preserve all failed source-bound batches and unknowns. V1-02 original report questions are independent and may proceed serially under sole-plan section2.
+<!-- /public-live-two-repair-stop -->
+
 <!-- xiaok-v1-02-proactive-current -->
 ## Current V1-02: deterministic private report foundation (Limited)
 
