@@ -1,0 +1,2105 @@
+{
+  "delivery": "K-01",
+  "sourcePdf": "G:\\workspace\\向总\\Smart-Floor-Planner\\docs\\装修施工标准手册制度规范\\精艺.pdf",
+  "sourcePdfSha256": "efcdc6f1e01ec848d0908e99ddd08929a7f0f07b3942f5b539864361f4aa049b",
+  "reviewProvenance": {
+    "reviewer": "Codex offline visual review",
+    "method": "逐页查看既有 2400x1629 派生 PNG，并将可见标题、页码、表格关键区域与原 OCR 片段逐项对照；不调用 OCR/模型服务。",
+    "renderSourceRoot": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages",
+    "renderProfile": "2400px wide, alpha=false, existing PyMuPDF-compatible page PNG",
+    "scope": "实际逐页图像观察与关键区域差异记录，不是全册文字/表格转录，不构成发布或文字核准。",
+    "initialSampleScope": "05/15/20/29/30 initially checked key regions only; the first five are not full-text sign-off.",
+    "recordedAt": "2026-11-03"
+  },
+  "pages": [
+    {
+      "physicalPdfPage": 1,
+      "printedPage": "unknown",
+      "status": "visual-confirmed-no-table",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\01.png",
+      "reviewedRegions": [
+        {
+          "label": "cover title and brand",
+          "box": [
+            0,
+            0,
+            2400,
+            800
+          ]
+        },
+        {
+          "label": "left QR/contact block",
+          "box": [
+            0,
+            650,
+            1200,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "封面标题可见为西城启元·装修手册；品牌/地址/电话区域存在；未见预算表或施工表。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "cover title",
+          "sourceText": "闪房（宜昌）装修手册",
+          "classification": "character/segmentation difference; contact text not copied",
+          "ocrObservation": "邑 闪 房（宜昌）/西城启元",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/01.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [],
+      "suggestions": [
+        "保留封面原图；联系方式不进入本审查索引。"
+      ],
+      "unresolved": [
+        "封面无可确认的物理/印刷页码，记 unknown。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    },
+    {
+      "physicalPdfPage": 2,
+      "printedPage": "01/02",
+      "status": "visual-reviewed-text-unresolved",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\02.png",
+      "reviewedRegions": [
+        {
+          "label": "left brand introduction",
+          "box": [
+            60,
+            100,
+            1180,
+            1450
+          ]
+        },
+        {
+          "label": "right 84m² case title/images",
+          "box": [
+            1210,
+            80,
+            2380,
+            1550
+          ]
+        },
+        {
+          "label": "printed footers",
+          "box": [
+            50,
+            1450,
+            2350,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "左页为品牌简介，右页为两室现代风装修案例 84m²；印刷页脚为 01/02；无预算表。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "brand paragraph",
+          "sourceText": "业主手机即可…装修盲区",
+          "classification": "missing character and glyph substitution",
+          "ocrObservation": "业主手即可…装修肓区",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/02.ocr.json",
+            "lineIndex": "unknown"
+          }
+        },
+        {
+          "region": "case title",
+          "sourceText": "84m²",
+          "classification": "superscript/unit formatting loss",
+          "ocrObservation": "84m2",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/02.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [],
+      "suggestions": [
+        "保留原 OCR 与原图；宣传段落需另行文字校审。"
+      ],
+      "unresolved": [
+        "整段品牌简介未逐字转录。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    },
+    {
+      "physicalPdfPage": 3,
+      "printedPage": "03/04",
+      "status": "visual-confirmed-no-table",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\03.png",
+      "reviewedRegions": [
+        {
+          "label": "left/right image collage slogans",
+          "box": [
+            0,
+            0,
+            2400,
+            1500
+          ]
+        },
+        {
+          "label": "printed footers",
+          "box": [
+            50,
+            1450,
+            2350,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "案例图页；可见好看的是设计，治愈的是生活、全案设计·一体化服务、烟火食光·舒享人生等宣传语；印刷页为 03/04；无表格。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "service slogan",
+          "sourceText": "全案设计·一体化服务",
+          "classification": "OCR segmentation/character noise",
+          "ocrObservation": "金一案一一设一一讠…体一一化服一务",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/03.ocr.json",
+            "lineIndex": "unknown"
+          }
+        },
+        {
+          "region": "footer slogan",
+          "sourceText": "省心/省时/更省力",
+          "classification": "missing/substituted characters",
+          "ocrObservation": "，心/省时7．更省",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/03.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [],
+      "suggestions": [
+        "图像内容不作表格索引；宣传语如需检索应另行人工转录。"
+      ],
+      "unresolved": [
+        "未逐字核准全部宣传文案。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    },
+    {
+      "physicalPdfPage": 4,
+      "printedPage": "05/06",
+      "status": "visual-reviewed-text-unresolved",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\04.png",
+      "reviewedRegions": [
+        {
+          "label": "six core advantages cards",
+          "box": [
+            70,
+            100,
+            1180,
+            1450
+          ]
+        },
+        {
+          "label": "construction drawings and title blocks",
+          "box": [
+            1210,
+            180,
+            2370,
+            1450
+          ]
+        },
+        {
+          "label": "printed footers",
+          "box": [
+            50,
+            1450,
+            2350,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "左页六大核心优势为自有工人、自有监理、可视化管控、进度实时播报、36大必做工艺、交付后五年质保；右页为施工图，印刷页 05/06。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "advantage cards",
+          "sourceText": "六大核心优势卡片文字",
+          "classification": "layout/duplicate OCR noise",
+          "ocrObservation": "多处出现 =闪房、零散数字和重复行",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/04.ocr.json",
+            "lineIndex": "unknown"
+          }
+        },
+        {
+          "region": "construction drawings",
+          "sourceText": "图纸尺寸及 P-1 标题块",
+          "classification": "small drawing text not safely transcribed",
+          "ocrObservation": "数字与零件标签混杂",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/04.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [],
+      "suggestions": [
+        "施工图尺寸需在单独图纸复核中读取，不用本次 OCR 片段替换原图。"
+      ],
+      "unresolved": [
+        "图纸尺寸和标题块小字未核准。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    },
+    {
+      "physicalPdfPage": 5,
+      "printedPage": "07/08",
+      "status": "visual-confirmed-text-unresolved",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\05.png",
+      "reviewedRegions": [
+        {
+          "label": "83.98m² budget summary",
+          "box": [
+            70,
+            200,
+            1180,
+            1450
+          ]
+        },
+        {
+          "label": "basic-package table",
+          "box": [
+            1210,
+            200,
+            2370,
+            1450
+          ]
+        },
+        {
+          "label": "printed footers",
+          "box": [
+            50,
+            1450,
+            2350,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "预算汇总和基础半包表；可见分项 55,024、24,779、56,801、总计 136,605，以及电器 14,400、家具 9,800、其他 24,200；印刷页 07/08。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "summary/table",
+          "sourceText": "83.98㎡及多处金额/单位",
+          "classification": "numeric/unit/table OCR unresolved",
+          "ocrObservation": "单位、 小数点和表格单元格存在替换",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/05.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [
+        "源文算术疑点：55,024+24,779+56,801=136,604，但印刷总计为 136,605；不改价，待确认舍入口径。"
+      ],
+      "suggestions": [
+        "保留原 OCR 与原图；任何金额接入前逐单元格复核。"
+      ],
+      "unresolved": [
+        "未完成全表文字/数字逐格校订；总计舍入差异未决。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    },
+    {
+      "physicalPdfPage": 6,
+      "printedPage": "09/10",
+      "status": "visual-reviewed-text-unresolved",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\06.png",
+      "reviewedRegions": [
+        {
+          "label": "left 83.98m² basic half-package table",
+          "box": [
+            70,
+            180,
+            1180,
+            1500
+          ]
+        },
+        {
+          "label": "right water/electric and totals",
+          "box": [
+            1210,
+            180,
+            2370,
+            1500
+          ]
+        },
+        {
+          "label": "printed footers",
+          "box": [
+            50,
+            1450,
+            2350,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "基础半包工程预算表；左侧卧室/厨房/卫生间分项，右侧水电、综合项目及工程合计；可见工程总价约 55,023.91；印刷页 09/10。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "header",
+          "sourceText": "基础半包工程预算表",
+          "classification": "layout segmentation",
+          "ocrObservation": "基础半包工程预算表重复且表格标题/工艺说明混乱",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/06.ocr.json",
+            "lineIndex": "unknown"
+          }
+        },
+        {
+          "region": "numeric cells",
+          "sourceText": "83.98、4045.12、13377.10 等表格数字",
+          "classification": "digit/punctuation substitution",
+          "ocrObservation": "83．98、4045．i2、1337L10 等",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/06.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [],
+      "suggestions": [
+        "金额仅作为源文观察，不作为当前报价；表格需人工逐格复核。"
+      ],
+      "unresolved": [
+        "多行金额、单位与工艺说明未全文核准。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    },
+    {
+      "physicalPdfPage": 7,
+      "printedPage": "11/12",
+      "status": "visual-reviewed-text-unresolved",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\07.png",
+      "reviewedRegions": [
+        {
+          "label": "main-material table left",
+          "box": [
+            70,
+            100,
+            1180,
+            1500
+          ]
+        },
+        {
+          "label": "main-material table right",
+          "box": [
+            1210,
+            100,
+            2370,
+            1500
+          ]
+        },
+        {
+          "label": "printed footers",
+          "box": [
+            50,
+            1450,
+            2350,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "主材预算表；页眉可见建筑装修面积 83.98㎡；可见瓷砖、地板、门套、卫浴、吊顶、石材、橱柜、灯具、封阳台等分组，右页合计 56801.40；印刷页 11/12。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "header",
+          "sourceText": "建筑装修面积：83.98㎡",
+          "classification": "unit/superscript loss",
+          "ocrObservation": "建筑装修面积：83．98",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/07.ocr.json",
+            "lineIndex": "unknown"
+          }
+        },
+        {
+          "region": "table rows",
+          "sourceText": "多组材料名称与金额",
+          "classification": "table alignment unresolved",
+          "ocrObservation": "数量如 5.50、4.40、5.72 被拆散，行序与金额未稳定对齐",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/07.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [],
+      "suggestions": [
+        "保留表格原图及 OCR；不要以 OCR 行序重建价格表。"
+      ],
+      "unresolved": [
+        "主材全表金额/品牌规格未逐格核准。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    },
+    {
+      "physicalPdfPage": 8,
+      "printedPage": "13/14",
+      "status": "visual-reviewed-text-unresolved",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\08.png",
+      "reviewedRegions": [
+        {
+          "label": "custom cabinet table",
+          "box": [
+            70,
+            180,
+            1180,
+            1450
+          ]
+        },
+        {
+          "label": "appliance/furniture tables and disclaimer",
+          "box": [
+            1210,
+            100,
+            2370,
+            1450
+          ]
+        },
+        {
+          "label": "printed footers",
+          "box": [
+            50,
+            1450,
+            2350,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "定制柜、 电器、家具预算表；页眉出现 83.98㎡；总计可见定制柜 24779.37、电器 14400.00、家具 9800.00；两处注明此预算表仅供业主参考、不包含在装修总价内；印刷页 13/14。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "disclaimer/header",
+          "sourceText": "83.98㎡；此预算表仅供业主参考，不包含在装修总价内",
+          "classification": "unit/segmentation difference",
+          "ocrObservation": "83．98 帚；免责声明分行但可识别",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/08.ocr.json",
+            "lineIndex": "unknown"
+          }
+        },
+        {
+          "region": "cabinet table",
+          "sourceText": "柜体/柜门金额及 24779.37",
+          "classification": "table alignment unresolved",
+          "ocrObservation": "2．5、3．25、2．825 等数量被拆散，序号/金额错位",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/08.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [],
+      "suggestions": [
+        "保留预算参考免责声明，不转成当前报价或装修总价组成。"
+      ],
+      "unresolved": [
+        "定制柜表格未逐格校订。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    },
+    {
+      "physicalPdfPage": 9,
+      "printedPage": "15/16",
+      "status": "visual-confirmed-no-table",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\09.png",
+      "reviewedRegions": [
+        {
+          "label": "case headings and interior images",
+          "box": [
+            0,
+            0,
+            2400,
+            1450
+          ]
+        },
+        {
+          "label": "printed footers",
+          "box": [
+            50,
+            1450,
+            2350,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "三室中古风装修案例 97m²；可见简而有度、复古从容及底部宣传句；印刷页 15/16；无预算表。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "case heading",
+          "sourceText": "三室中古风装修案例 97m²",
+          "classification": "spacing/superscript loss",
+          "ocrObservation": "三 室 中 古 风 装 修 案 例 97m",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/09.ocr.json",
+            "lineIndex": "unknown"
+          }
+        },
+        {
+          "region": "slogan",
+          "sourceText": "褪去纷扰，在温柔里安然入梦。",
+          "classification": "character substitution",
+          "ocrObservation": "褪 去 纷 扰 ， 在 温 柔 里 安 然 人 梦 。",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/09.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [],
+      "suggestions": [
+        "图像页不建立预算数字；宣传文案保留原图。"
+      ],
+      "unresolved": [
+        "未逐字校准英文副标题。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    },
+    {
+      "physicalPdfPage": 10,
+      "printedPage": "17/18",
+      "status": "visual-reviewed-text-unresolved",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\10.png",
+      "reviewedRegions": [
+        {
+          "label": "left case slogan/images",
+          "box": [
+            0,
+            0,
+            1180,
+            1450
+          ]
+        },
+        {
+          "label": "right construction drawing P-2/P-4 area",
+          "box": [
+            1210,
+            100,
+            2370,
+            1450
+          ]
+        },
+        {
+          "label": "printed footers",
+          "box": [
+            50,
+            1450,
+            2350,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "左页为木色案例图及木桌烟火宣传句；右页为施工图，标题块可见 P-2/P-4；印刷页 17/18。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "slogan",
+          "sourceText": "木色舒展 自成风雅；暖灯落木桌，三餐有温柔烟火。",
+          "classification": "Chinese/English segmentation and character noise",
+          "ocrObservation": "wood color is comfortable / 自成风…；嗳灯落木桌…",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/10.ocr.json",
+            "lineIndex": "unknown"
+          }
+        },
+        {
+          "region": "drawing dimensions",
+          "sourceText": "施工图尺寸与房间标注",
+          "classification": "small drawing text pending",
+          "ocrObservation": "OCR 仅识别施工图标题，未可靠识别尺寸",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/10.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [],
+      "suggestions": [
+        "施工图尺寸保持未决，不用 OCR 猜测。"
+      ],
+      "unresolved": [
+        "施工图细部尺寸未确认。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    },
+    {
+      "physicalPdfPage": 11,
+      "printedPage": "19/20",
+      "status": "visual-reviewed-text-unresolved",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\11.png",
+      "reviewedRegions": [
+        {
+          "label": "97m² summary",
+          "box": [
+            70,
+            120,
+            1180,
+            800
+          ]
+        },
+        {
+          "label": "basic half-package table",
+          "box": [
+            1210,
+            120,
+            2370,
+            1500
+          ]
+        },
+        {
+          "label": "printed footers",
+          "box": [
+            50,
+            1450,
+            2350,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "97m²预算明细/基础半包页；左侧可见半包 61,871、衣柜 33,730、主材 58,447、总计 154,048，以及电器 17,900、家具 11,100、其他 29,000；印刷页 19/20。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "summary",
+          "sourceText": "半包/衣柜/主材/合计金额及电器家具其他",
+          "classification": "layout/amount alignment",
+          "ocrObservation": "¥17,900、¥11,100、¥29,000 可识别，但标题与金额行混排",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/11.ocr.json",
+            "lineIndex": "unknown"
+          }
+        },
+        {
+          "region": "table",
+          "sourceText": "基础工程、客餐厅、阳台等小计",
+          "classification": "character/table noise",
+          "ocrObservation": "基础工程被识别为基的工程，行名多有替换",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/11.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [],
+      "suggestions": [
+        "金额语境仅为源文样例；不转成当前报价。"
+      ],
+      "unresolved": [
+        "97m²表格未逐格校订。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    },
+    {
+      "physicalPdfPage": 12,
+      "printedPage": "21/22",
+      "status": "visual-reviewed-text-unresolved",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\12.png",
+      "reviewedRegions": [
+        {
+          "label": "97m² half-package table",
+          "box": [
+            70,
+            120,
+            1180,
+            1500
+          ]
+        },
+        {
+          "label": "water/electric and comprehensive totals",
+          "box": [
+            1210,
+            120,
+            2370,
+            1500
+          ]
+        },
+        {
+          "label": "printed footers",
+          "box": [
+            50,
+            1450,
+            2350,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "97m²基础半包预算表；左侧次卧/厨房/卫生间小计，右侧水电、综合项目和工程总价 61870.65；印刷页 21/22。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "table headings",
+          "sourceText": "次卧室、厨房、卫生间、水电改造施工项目",
+          "classification": "character/segmentation noise",
+          "ocrObservation": "次 室 1、烹 内 找 平、水咆改0施工項目等",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/12.ocr.json",
+            "lineIndex": "unknown"
+          }
+        },
+        {
+          "region": "header",
+          "sourceText": "建筑装修面积：97㎡",
+          "classification": "unit substitution",
+          "ocrObservation": "建筑装修面积：97帚",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/12.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [],
+      "suggestions": [
+        "小计及总价保留原图，逐格核对后才可作为离线导入候选。"
+      ],
+      "unresolved": [
+        "表格工艺说明与多数金额未核准。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    },
+    {
+      "physicalPdfPage": 13,
+      "printedPage": "23/24",
+      "status": "visual-reviewed-text-unresolved",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\13.png",
+      "reviewedRegions": [
+        {
+          "label": "97m² main-material tables",
+          "box": [
+            70,
+            100,
+            2370,
+            1500
+          ]
+        },
+        {
+          "label": "printed footers",
+          "box": [
+            50,
+            1450,
+            2350,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "97m²主材预算表；左侧瓷砖/地板/门套/卫浴/集成吊顶，右侧石材/橱柜/灯具/封阳台/其它，右页合计 58446.90；印刷页 23/24。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "header",
+          "sourceText": "建筑装修面积：97㎡",
+          "classification": "unit substitution",
+          "ocrObservation": "建筑装修面积：97帚",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/13.ocr.json",
+            "lineIndex": "unknown"
+          }
+        },
+        {
+          "region": "table labels",
+          "sourceText": "门及门套、踢脚线、封阳台等",
+          "classification": "glyph substitution",
+          "ocrObservation": "冂及冂套、地板&踢线等",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/13.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [],
+      "suggestions": [
+        "保留原表分组与品牌规格，不根据 OCR 自动重建。"
+      ],
+      "unresolved": [
+        "金额、品牌规格及行序未全文核准。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    },
+    {
+      "physicalPdfPage": 14,
+      "printedPage": "25/26",
+      "status": "visual-reviewed-text-unresolved",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\14.png",
+      "reviewedRegions": [
+        {
+          "label": "97m² custom cabinet table",
+          "box": [
+            70,
+            100,
+            1180,
+            1500
+          ]
+        },
+        {
+          "label": "83.98m² appliance/furniture tables",
+          "box": [
+            1210,
+            100,
+            2370,
+            1500
+          ]
+        },
+        {
+          "label": "printed footers",
+          "box": [
+            50,
+            1450,
+            2350,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "左页 97m²定制柜总价 33730.07；右页 83.98m²电器总价 17900、家具总价 11100，均带‘仅供业主参考、不包含在装修总价内’语境；印刷页 25/26。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "cabinet table",
+          "sourceText": "柜体/柜门/其它/管理费/总价",
+          "classification": "numeric/table alignment",
+          "ocrObservation": "宽高数量被拆散为 2．5、3．25、6，812 等",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/14.ocr.json",
+            "lineIndex": "unknown"
+          }
+        },
+        {
+          "region": "appliance table",
+          "sourceText": "挂机空调、风管机、电视、冰箱、洗衣机",
+          "classification": "table alignment unresolved",
+          "ocrObservation": "项目行可识别但单价/金额分列混乱",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/14.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [],
+      "suggestions": [
+        "两个面积及免责声明分开保留；不合并成一个报价。"
+      ],
+      "unresolved": [
+        "定制柜、电器、家具表格未逐格核准。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    },
+    {
+      "physicalPdfPage": 15,
+      "printedPage": "27/28",
+      "status": "visual-confirmed-no-table",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\15.png",
+      "reviewedRegions": [
+        {
+          "label": "123m² modern case heading/images",
+          "box": [
+            0,
+            0,
+            2400,
+            1450
+          ]
+        },
+        {
+          "label": "printed footers",
+          "box": [
+            50,
+            1450,
+            2350,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "三室现代风装修案例 123m²；印刷页 27/28；为图片案例页，无预算表。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "case heading",
+          "sourceText": "三室现代风装修案例 123m²",
+          "classification": "spacing/superscript loss",
+          "ocrObservation": "三 室 现 代 风 装 修 案 例 123m2",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/15.ocr.json",
+            "lineIndex": "unknown"
+          }
+        },
+        {
+          "region": "footer",
+          "sourceText": "从设计到落地·让理想家如期而至",
+          "classification": "character/segmentation noise",
+          "ocrObservation": "设 计 到 落 地 亠 让 理 想 家 如 期 而 。 到",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/15.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [],
+      "suggestions": [
+        "案例页保持图像证据，不将面积/宣传语当作预算数据。"
+      ],
+      "unresolved": [
+        "未逐字核准全部图像宣传语。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    },
+    {
+      "physicalPdfPage": 16,
+      "printedPage": "29/30",
+      "status": "visual-reviewed-text-unresolved",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\16.png",
+      "reviewedRegions": [
+        {
+          "label": "case images and slogan",
+          "box": [
+            0,
+            0,
+            1180,
+            1450
+          ]
+        },
+        {
+          "label": "construction drawings P-2/P-5",
+          "box": [
+            1210,
+            100,
+            2370,
+            1450
+          ]
+        },
+        {
+          "label": "printed footers",
+          "box": [
+            50,
+            1450,
+            2350,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "案例图与施工图同页；左侧可见利落格局·通透开阔，右侧标题块可见 P-2/P-5；印刷页 29/30。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "slogan",
+          "sourceText": "利落格局 通透开阔",
+          "classification": "spacing difference",
+          "ocrObservation": "利 落 格 局 / 通 透 开 阔",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/16.ocr.json",
+            "lineIndex": "unknown"
+          }
+        },
+        {
+          "region": "drawing dimensions",
+          "sourceText": "P-2/P-5 图纸尺寸与房间标注",
+          "classification": "small drawing text pending",
+          "ocrObservation": "OCR 主要为施工图和页码，尺寸未可靠识别",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/16.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [],
+      "suggestions": [
+        "施工图小字保留未决；不以行业经验补全尺寸。"
+      ],
+      "unresolved": [
+        "施工图尺寸、标注与标题块日期未逐项核准。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    },
+    {
+      "physicalPdfPage": 17,
+      "printedPage": "31/32",
+      "status": "visual-reviewed-text-unresolved",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\17.png",
+      "reviewedRegions": [
+        {
+          "label": "123m² summary table",
+          "box": [
+            70,
+            150,
+            1180,
+            1450
+          ]
+        },
+        {
+          "label": "basic half-package table",
+          "box": [
+            1210,
+            150,
+            2370,
+            1500
+          ]
+        },
+        {
+          "label": "printed footers",
+          "box": [
+            50,
+            1450,
+            2350,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "123m²预算明细与基础半包；左侧可见半包 86,049、衣柜 43,737、主材 84,362、合计 214,148，电器 21,200、家具 13,600、合计 34,800；印刷页 31/32。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "summary",
+          "sourceText": "¥86,049、¥43,737、¥84,362、¥214,148",
+          "classification": "punctuation/spacing difference",
+          "ocrObservation": "¥ 86，049、¥ 43，737、¥ 84，362、¥ 214，148",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/17.ocr.json",
+            "lineIndex": "unknown"
+          }
+        },
+        {
+          "region": "table headings",
+          "sourceText": "拆墙及原有门窗、排水管包管",
+          "classification": "character noise",
+          "ocrObservation": "拆 地及瞟门窗、排水管包管〈单）",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/17.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [],
+      "suggestions": [
+        "金额只作源文观察；按表格原图复核。"
+      ],
+      "unresolved": [
+        "基础半包表行值与工艺说明未逐格校订。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    },
+    {
+      "physicalPdfPage": 18,
+      "printedPage": "33/34",
+      "status": "visual-reviewed-text-unresolved",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\18.png",
+      "reviewedRegions": [
+        {
+          "label": "123m² basic half-package tables",
+          "box": [
+            70,
+            100,
+            2370,
+            1500
+          ]
+        },
+        {
+          "label": "printed footers",
+          "box": [
+            50,
+            1450,
+            2350,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "123m²基础半包续表；左页主卧/次卧/客房，右页厨房/主卫/公卫/水电；印刷页 33/34。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "room headings",
+          "sourceText": "主卧室、次卧室1、客房",
+          "classification": "character substitution",
+          "ocrObservation": "主卧室、次卧璽1、客房等，部分字形替换",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/18.ocr.json",
+            "lineIndex": "unknown"
+          }
+        },
+        {
+          "region": "units",
+          "sourceText": "m²、m 等单位列",
+          "classification": "unit OCR unresolved",
+          "ocrObservation": "m、雲、帚、霜混杂",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/18.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [],
+      "suggestions": [
+        "不要用 OCR 的单位字符替换原表单位。"
+      ],
+      "unresolved": [
+        "所有续表数值与工艺说明未逐格核准。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    },
+    {
+      "physicalPdfPage": 19,
+      "printedPage": "35/36",
+      "status": "visual-reviewed-text-unresolved",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\19.png",
+      "reviewedRegions": [
+        {
+          "label": "comprehensive project totals",
+          "box": [
+            70,
+            100,
+            1180,
+            1200
+          ]
+        },
+        {
+          "label": "main-material continuation table",
+          "box": [
+            1210,
+            100,
+            2370,
+            1500
+          ]
+        },
+        {
+          "label": "printed footers",
+          "box": [
+            50,
+            1450,
+            2350,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "左页综合项目与工程直接费/管理/设计/总价，右页主材续表；印刷页 35/36；页眉仍为 123㎡。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "comprehensive totals",
+          "sourceText": "工程直接费合计、工程施工管理服务费、工程设计服务费、工程总价",
+          "classification": "character noise",
+          "ocrObservation": "工程熹接黌合计、工程施工管珊服务费等",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/19.ocr.json",
+            "lineIndex": "unknown"
+          }
+        },
+        {
+          "region": "main-material rows",
+          "sourceText": "主材项目及金额",
+          "classification": "numeric/table segmentation",
+          "ocrObservation": "金额如 344、n189、3859‘48 等碎片",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/19.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [],
+      "suggestions": [
+        "左页合计不得仅由当前局部小计推导；保留前后页关系。"
+      ],
+      "unresolved": [
+        "工程总价与主材续表未全文核准。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    },
+    {
+      "physicalPdfPage": 20,
+      "printedPage": "37/38",
+      "status": "visual-confirmed-text-unresolved",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\20.png",
+      "reviewedRegions": [
+        {
+          "label": "main-material table and totals",
+          "box": [
+            70,
+            100,
+            1180,
+            1500
+          ]
+        },
+        {
+          "label": "custom cabinet table and totals",
+          "box": [
+            1210,
+            100,
+            2370,
+            1500
+          ]
+        },
+        {
+          "label": "printed footers",
+          "box": [
+            50,
+            1450,
+            2350,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "主材与定制柜预算表；可见主材合计 84362.45、定制柜总价 43736.88；印刷页 37/38。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "cabinet table",
+          "sourceText": "43.65、26188.80、3976.08、43736.88",
+          "classification": "numeric OCR unresolved",
+          "ocrObservation": "对应数值在 OCR 中不均匀识别",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/20.ocr.json",
+            "lineIndex": "unknown"
+          }
+        },
+        {
+          "region": "table continuation",
+          "sourceText": "封阳台三行 15000/1640/1320",
+          "classification": "table scope unresolved",
+          "ocrObservation": "行值与小计关系未稳定抽取",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/20.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [
+        "柜门 43.65×250=10912.50，但印刷为 10912；舍入口径未说明。",
+        "封阳台小计印刷为 16640，未含可见第三行 1320；可能是选配/口径，保留原表不更正。",
+        "本页左上为前页续表，不能仅按当前页局部小计推导全表合计。"
+      ],
+      "suggestions": [
+        "原文金额和表格口径分离记录；不改价、不推导工程结论。"
+      ],
+      "unresolved": [
+        "源文舍入与封阳台小计口径未决；全文文字未核准。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    },
+    {
+      "physicalPdfPage": 21,
+      "printedPage": "39/40",
+      "status": "visual-reviewed-text-unresolved",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\21.png",
+      "reviewedRegions": [
+        {
+          "label": "83.98m² appliance/furniture budget tables",
+          "box": [
+            70,
+            100,
+            1180,
+            1500
+          ]
+        },
+        {
+          "label": "123m² case images and heading",
+          "box": [
+            1210,
+            80,
+            2370,
+            1450
+          ]
+        },
+        {
+          "label": "printed footers",
+          "box": [
+            50,
+            1450,
+            2350,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "左页电器/家具预算，明确仅供业主参考且面积为 83.98㎡；右页为 123m²现代风案例图；印刷页 39/40；两种面积语境并存。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "disclaimer/header",
+          "sourceText": "此预算表仅供业主参考，不包含在装修总价内；83.98㎡",
+          "classification": "unit/segmentation difference",
+          "ocrObservation": "免责声明可识别，83．98 单位缺失",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/21.ocr.json",
+            "lineIndex": "unknown"
+          }
+        },
+        {
+          "region": "case heading",
+          "sourceText": "四室现代风装修案例 123m²",
+          "classification": "image-led text omission",
+          "ocrObservation": "OCR 基本未保留右侧图像标题",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/21.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [
+        "同页 83.98㎡预算与 123m²案例图是不同语境，不能合并或相互修正。"
+      ],
+      "suggestions": [
+        "保留页面内分区和免责声明，价格不作为当前条款。"
+      ],
+      "unresolved": [
+        "电器/家具行值及案例宣传语未逐字核准。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    },
+    {
+      "physicalPdfPage": 22,
+      "printedPage": "41/42",
+      "status": "visual-confirmed-no-table",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\22.png",
+      "reviewedRegions": [
+        {
+          "label": "case images and bilingual title",
+          "box": [
+            0,
+            0,
+            2400,
+            1500
+          ]
+        },
+        {
+          "label": "printed footers",
+          "box": [
+            50,
+            1450,
+            2350,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "案例图页；可见全案设计·一体化服务及 Comprehensive Design·Integrated Services、素色空间·温柔栖居；印刷页 41/42；无预算表。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "English title",
+          "sourceText": "Comprehensive Design · Integrated Services",
+          "classification": "glyph substitution",
+          "ocrObservation": "C01nprehensive Design · lntegrated Services",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/22.ocr.json",
+            "lineIndex": "unknown"
+          }
+        },
+        {
+          "region": "footer",
+          "sourceText": "素色空间，温柔栖居",
+          "classification": "spacing only",
+          "ocrObservation": "素 色 空 间 ， 温 柔 栖 居",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/22.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [],
+      "suggestions": [
+        "宣传页保留图像证据，不进入价格/施工数据。"
+      ],
+      "unresolved": [
+        "英文与中文宣传文案未逐字核准。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    },
+    {
+      "physicalPdfPage": 23,
+      "printedPage": "43/44",
+      "status": "visual-confirmed-no-table",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\23.png",
+      "reviewedRegions": [
+        {
+          "label": "case images and slogans",
+          "box": [
+            0,
+            0,
+            2400,
+            1500
+          ]
+        },
+        {
+          "label": "printed footers",
+          "box": [
+            50,
+            1450,
+            2350,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "案例图页；可见省心/省时/更省力及英文 Worry-free, time-saving, and labor-saving；印刷页 43/44；无预算表。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "footer",
+          "sourceText": "省心/省时/更省力",
+          "classification": "spacing only",
+          "ocrObservation": "省 心 / 省 时 / 更 省 力",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/23.ocr.json",
+            "lineIndex": "unknown"
+          }
+        },
+        {
+          "region": "page marker",
+          "sourceText": "43/44",
+          "classification": "footer/page OCR noise",
+          "ocrObservation": "批45 / 44<",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/23.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [],
+      "suggestions": [
+        "不把页脚 OCR 误识别为报价或物理页码。"
+      ],
+      "unresolved": [
+        "未逐字核准英文宣传语。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    },
+    {
+      "physicalPdfPage": 24,
+      "printedPage": "45/46",
+      "status": "visual-reviewed-text-unresolved",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\24.png",
+      "reviewedRegions": [
+        {
+          "label": "construction drawings P-2/P-5",
+          "box": [
+            70,
+            150,
+            1180,
+            1450
+          ]
+        },
+        {
+          "label": "123m² summary and appliance/furniture summary",
+          "box": [
+            1210,
+            120,
+            2370,
+            1450
+          ]
+        },
+        {
+          "label": "printed footers",
+          "box": [
+            50,
+            1450,
+            2350,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "左页为施工图 P-2/P-5；右页 123m²预算汇总可见半包 83,682、衣柜 41,984、主材 85,954、合计 211,620，电器 21,200、家具 13,600、合计 34,800；印刷页 45/46。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "summary",
+          "sourceText": "¥83,682、¥41,984、¥85,954、¥211,620",
+          "classification": "punctuation/spacing difference",
+          "ocrObservation": "¥ 83，682、¥ 41，984、¥ 85，954、¥ 211，620",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/24.ocr.json",
+            "lineIndex": "unknown"
+          }
+        },
+        {
+          "region": "drawing",
+          "sourceText": "P-2/P-5 施工图尺寸",
+          "classification": "small drawing text pending",
+          "ocrObservation": "仅提取 P-5 与少量标签",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/24.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [],
+      "suggestions": [
+        "施工图和汇总表分区处理；金额不作为当前报价。"
+      ],
+      "unresolved": [
+        "施工图尺寸与汇总表明细未逐项核准。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    },
+    {
+      "physicalPdfPage": 25,
+      "printedPage": "47/48",
+      "status": "visual-reviewed-text-unresolved",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\25.png",
+      "reviewedRegions": [
+        {
+          "label": "123m² basic half-package left table",
+          "box": [
+            70,
+            100,
+            1180,
+            1500
+          ]
+        },
+        {
+          "label": "123m² basic half-package right table",
+          "box": [
+            1210,
+            100,
+            2370,
+            1500
+          ]
+        },
+        {
+          "label": "printed footers",
+          "box": [
+            50,
+            1450,
+            2350,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "123m²基础半包预算表；左页基础工程/客餐厅/阳台，右页主卧/次卧/书房续表；印刷页 47/48。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "item names",
+          "sourceText": "拆墙及原有门窗、拆墙处墙面修补、阳台落差填充",
+          "classification": "character substitution",
+          "ocrObservation": "拆墻及原有门窗、柝处墙面修补、阳台落差填充等",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/25.ocr.json",
+            "lineIndex": "unknown"
+          }
+        },
+        {
+          "region": "tile specifications",
+          "sourceText": "800mm×800mm、300mm×800mm 正铺",
+          "classification": "dimension/unit OCR noise",
+          "ocrObservation": "8闐mm、羽0m、B00m 等",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/25.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [],
+      "suggestions": [
+        "瓷砖规格、单位和数量按原图人工复核，不修补 OCR。"
+      ],
+      "unresolved": [
+        "整页表格数字/工艺说明未逐格核准。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    },
+    {
+      "physicalPdfPage": 26,
+      "printedPage": "49/50",
+      "status": "visual-reviewed-text-unresolved",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\26.png",
+      "reviewedRegions": [
+        {
+          "label": "guest/kitchen/bathroom tables",
+          "box": [
+            70,
+            100,
+            1180,
+            1500
+          ]
+        },
+        {
+          "label": "water/electric and comprehensive totals",
+          "box": [
+            1210,
+            100,
+            2370,
+            1500
+          ]
+        },
+        {
+          "label": "printed footers",
+          "box": [
+            50,
+            1450,
+            2350,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "123m²基础半包续表与水电/综合项目；可见水电小计 19185.00、综合小计 3440.00；印刷页 49/50。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "room tables",
+          "sourceText": "客房、厨房、主卫、公卫及防水项目",
+          "classification": "table/character noise",
+          "ocrObservation": "客房、地囿砖、墻面砖等多处字符/尺寸碎片",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/26.ocr.json",
+            "lineIndex": "unknown"
+          }
+        },
+        {
+          "region": "water/electric",
+          "sourceText": "照明线、插座线、厨房/餐厅、风管机专线",
+          "classification": "line/character segmentation",
+          "ocrObservation": "l.照明线、2．，插线、生（厨房／餐厅）等",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/26.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [],
+      "suggestions": [
+        "水电项目单位和专线规格需回看原图；不按 OCR 片段推定。"
+      ],
+      "unresolved": [
+        "水电/综合表与左页房间表未逐格核准。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    },
+    {
+      "physicalPdfPage": 27,
+      "printedPage": "51/52",
+      "status": "visual-reviewed-text-unresolved",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\27.png",
+      "reviewedRegions": [
+        {
+          "label": "123m² main-material table",
+          "box": [
+            70,
+            100,
+            2370,
+            1500
+          ]
+        },
+        {
+          "label": "printed footers",
+          "box": [
+            50,
+            1450,
+            2350,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "123m²主材预算表；可见瓷砖、地板/踢脚线、门及门套、卫浴、集成吊顶、石材、橱柜、灯具、封阳台、其它；右页合计 85954.25；印刷页 51/52。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "header",
+          "sourceText": "主材预算表；建筑装修面积 123㎡",
+          "classification": "unit substitution",
+          "ocrObservation": "主材预算表、建筑装修面积 123帚",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/27.ocr.json",
+            "lineIndex": "unknown"
+          }
+        },
+        {
+          "region": "table rows",
+          "sourceText": "瓷砖/封阳台/其它等行值",
+          "classification": "numeric/table OCR noise",
+          "ocrObservation": "数 0、126．55、4L 等碎片化数字",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/27.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [],
+      "suggestions": [
+        "合计和行值均保留原图语境，不改写金额。"
+      ],
+      "unresolved": [
+        "主材表未逐格校订。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    },
+    {
+      "physicalPdfPage": 28,
+      "printedPage": "53/54",
+      "status": "visual-reviewed-text-unresolved",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\28.png",
+      "reviewedRegions": [
+        {
+          "label": "123m² custom cabinet table",
+          "box": [
+            70,
+            100,
+            1180,
+            1500
+          ]
+        },
+        {
+          "label": "83.98m² appliance/furniture tables and disclaimer",
+          "box": [
+            1210,
+            100,
+            2370,
+            1500
+          ]
+        },
+        {
+          "label": "printed footers",
+          "box": [
+            50,
+            1450,
+            2350,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "左页 123m²定制柜表总价 41983.76；右页 83.98m²电器总价 21200、家具总价 13600，带仅供业主参考免责声明；印刷页 53/54。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "cabinet table",
+          "sourceText": "柜体合计 41.77、柜门合计 10443.25、管理费 3816.71、总价 41983.76",
+          "classification": "numeric/character noise",
+          "ocrObservation": "41L77、10443.25 等数字被拆散，部分标题错字",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/28.ocr.json",
+            "lineIndex": "unknown"
+          }
+        },
+        {
+          "region": "appliance table",
+          "sourceText": "挂机空调、风管机、电视、冰箱、洗衣机",
+          "classification": "table alignment unresolved",
+          "ocrObservation": "项目可识别但金额/单位列混排",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/28.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [
+        "左页 123m²定制柜与右页 83.98m²电器/家具为不同页内语境，不能合并。"
+      ],
+      "suggestions": [
+        "保留免责声明与面积边界，不转成当前报价。"
+      ],
+      "unresolved": [
+        "定制柜、电器、家具明细未逐格核准。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    },
+    {
+      "physicalPdfPage": 29,
+      "printedPage": "55/56",
+      "status": "visual-confirmed-text-unresolved",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\29.png",
+      "reviewedRegions": [
+        {
+          "label": "demolition standards",
+          "box": [
+            70,
+            140,
+            1150,
+            570
+          ]
+        },
+        {
+          "label": "water/electric standards including item 10",
+          "box": [
+            70,
+            800,
+            1150,
+            1500
+          ]
+        },
+        {
+          "label": "masonry standards",
+          "box": [
+            1210,
+            140,
+            2370,
+            1450
+          ]
+        },
+        {
+          "label": "printed footers",
+          "box": [
+            50,
+            1450,
+            2350,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "拆除、水电、泥工标准页；左下水电第2条可见‘16管开槽深度不少于3厘米，20管开槽深度不少于3.5厘米，保证水泥砂浆厚度不低于1.2厘米’；水电第10条印‘厨卫用线：厨房卫生间单放专线4m²’；印刷页 55/56。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "water/electric item 2",
+          "sourceText": "16管开槽深度不少于3厘米，20管开槽深度不少于3.5厘米，保证水泥砂浆厚度不低于1.2厘米",
+          "classification": "prior review wording correction; pipe specification must not become groove depth",
+          "ocrObservation": "unknown (not a verbatim OCR excerpt)",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/29.ocr.json",
+            "lineIndex": "unknown"
+          },
+          "comparisonTarget": "prior-review",
+          "comparisonObservation": "prior review incorrectly restated pipe specification as groove depth; this is a comparison correction, not an OCR excerpt."
+        },
+        {
+          "region": "water/electric item 10",
+          "sourceText": "厨卫用线：厨房卫生间单放专线4m²",
+          "classification": "source-unit-question; preserve exact source",
+          "ocrObservation": "单位/字符不稳定",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/29.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [
+        "‘4m²’是源文印刷单位疑点；不直接改成 mm²，不用行业经验替换。"
+      ],
+      "suggestions": [
+        "保留上述两句原文及区域定位；发布前需独立人工文字/单位复核。"
+      ],
+      "unresolved": [
+        "全文施工术语/数字/单位未逐条核准；4m²源文单位疑点未决。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    },
+    {
+      "physicalPdfPage": 30,
+      "printedPage": "57/58",
+      "status": "visual-confirmed-text-unresolved",
+      "visualEvidence": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\v1-01-weiyun-jingyi\\pages\\30.png",
+      "reviewedRegions": [
+        {
+          "label": "waterproofing upper-left",
+          "box": [
+            70,
+            140,
+            1150,
+            800
+          ]
+        },
+        {
+          "label": "filling lower-left",
+          "box": [
+            70,
+            800,
+            1150,
+            1450
+          ]
+        },
+        {
+          "label": "carpentry/paint right",
+          "box": [
+            1210,
+            140,
+            2370,
+            1450
+          ]
+        },
+        {
+          "label": "printed footers",
+          "box": [
+            50,
+            1450,
+            2350,
+            1629
+          ]
+        }
+      ],
+      "confirmed": [
+        "防水、回填、木工、油漆标准页；左上防水第5条印‘淋浴区高度180mm’，左下回填第6条印‘淋浴区墙防水≥1800mm’；印刷页 57/58。"
+      ],
+      "ocrDifferences": [
+        {
+          "region": "upper-left waterproof item 5",
+          "sourceText": "淋浴区高度180mm",
+          "classification": "source text retained",
+          "ocrObservation": "防水术语/单位在 OCR 中不稳定",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/30.ocr.json",
+            "lineIndex": "unknown"
+          }
+        },
+        {
+          "region": "lower-left filling item 6",
+          "sourceText": "淋浴区墙防水≥1800mm",
+          "classification": "source-conflict; retain exact source",
+          "ocrObservation": "数字与单位易被 OCR 合并",
+          "observationIsVerbatim": false,
+          "originalOcrExcerpt": "unknown",
+          "originalOcrLocator": {
+            "ocrJson": "pages/30.ocr.json",
+            "lineIndex": "unknown"
+          }
+        }
+      ],
+      "sourceQuestions": [
+        "同页两处源文形成 180mm 与 1800mm 内部冲突；分别保留精确区域和原句，不用行业经验归一化。"
+      ],
+      "suggestions": [
+        "将冲突作为 source-conflict 交给后续人工/业务确认，不直接修订原文或发布文本。"
+      ],
+      "unresolved": [
+        "防水/回填冲突及其余施工数字、单位、工艺未全文核准。"
+      ],
+      "reviewProvenance": "manual-image-review-2026-11-03"
+    }
+  ]
+}
