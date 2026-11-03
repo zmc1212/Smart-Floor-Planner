@@ -14,6 +14,7 @@ import { cameraWatchdog } from '../src/lib/construction/camera/ptz';
 import { cameraWvp } from '../src/lib/construction/camera/wvp';
 import {authorizeRecordingMedia,reconcileRecordings,purgeCameraRecordings} from '../src/lib/construction/camera/recordings';
 import {refreshSdWindows,reconcileSdPlaybacks} from '../src/lib/construction/camera/sd';
+import {purgeCameraSnapshots} from '../src/lib/construction/camera/snapshot-retention';
 
 loadEnvConfig(process.cwd(), process.env.NODE_ENV !== 'production');
 const origin = cameraPublicOrigin();
@@ -37,7 +38,14 @@ const watchdog = setInterval(async () => {
   finally { watchdogBusy = false; }
 }, 500);
 // Provider reconciliation must never delay the short PTZ STOP watchdog.
-let recorderBusy=false,lastPurge=0,sdBusy=false,sdClockBusy=false;
+let recorderBusy=false,lastPurge=0,sdBusy=false,sdClockBusy=false,snapshotBusy=false;
+// Database-only byte cleanup stays independent of WVP/storage outages and PTZ.
+const snapshots=setInterval(async()=>{
+  if(snapshotBusy)return;snapshotBusy=true;
+  try{await purgeCameraSnapshots();}
+  catch{console.error('Camera snapshot cleanup unavailable; private expiry remains enforced');}
+  finally{snapshotBusy=false;}
+},60000);
 const sdWatcher=setInterval(async()=>{
   if(sdBusy)return;sdBusy=true;
   try{await reconcileSdPlaybacks();}
@@ -136,5 +144,5 @@ const server = http.createServer(async (req, res) => {
   }
 });
 server.listen(Number(process.env.CAMERA_GATEWAY_PORT || 3017), process.env.CAMERA_BIND_HOST || '127.0.0.1', () => console.log('Construction camera gateway listening'));
-async function shutdown() { clearInterval(watchdog);clearInterval(recorder);clearInterval(sdWatcher);clearInterval(sdClockWatcher); server.closeAllConnections(); server.close(); await closePostgresPool(); }
+async function shutdown() { clearInterval(watchdog);clearInterval(recorder);clearInterval(sdWatcher);clearInterval(sdClockWatcher);clearInterval(snapshots); server.closeAllConnections(); server.close(); await closePostgresPool(); }
 process.on('SIGINT', shutdown); process.on('SIGTERM', shutdown);

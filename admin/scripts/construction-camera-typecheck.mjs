@@ -4,6 +4,7 @@ const root = path.resolve(import.meta.dirname, '..');
 const configPath = path.join(root, 'tsconfig.json');
 const config = ts.parseJsonConfigFileContent(ts.readConfigFile(configPath, ts.sys.readFile).config, ts.sys, root);
 const files = [
+  'src/lib/construction/camera/snapshot-retention.ts','src/db/__tests__/construction-camera-snapshot-retention.test.ts',
   'src/lib/construction/camera/access.ts','src/lib/construction/camera/customer-grants.ts','src/db/__tests__/construction-camera-customer.test.ts',
   'src/components/construction/camera-customer-grant.tsx','src/app/api/miniprogram/construction/[[...path]]/route.ts',
   'src/db/__tests__/construction-camera-retention-defaults.test.ts',

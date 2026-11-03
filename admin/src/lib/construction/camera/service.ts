@@ -13,6 +13,7 @@ import {authorizeSdMedia,reconcileSdPlaybacks} from './sd';
 import {retentionDefault,nodeRetentionDays} from './retention-defaults';
 import { cameraAccess, cameraActorRef, isCameraCustomer, type CameraActor } from './access';
 import { currentCameraCustomerGrant } from './customer-grants';
+import { retainedSnapshot, snapshotRetentionJoins } from './snapshot-retention';
 export { cameraAccess } from './access';
 
 export const digest = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -240,9 +241,14 @@ export async function captureCamera(token: string, csrf: string, bindingId: stri
     const c = await binding(tx, eid, s.pid, bindingId);
     const principal = cameraActorRef(s.actor), customer = isCameraCustomer(s.actor);
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`camera-snapshot:${eid}:${s.pid}:${principal.kind}:${principal.id}:${requestKey}`},0))`);
-    const old = await one(tx, sql`select id,state,binding_id from app.construction_camera_snapshots where enterprise_id=${eid} and project_id=${s.pid}
-      and ${customer ? sql`actor_user_id` : sql`actor_id`}=${principal.id} and request_key=${requestKey}`);
-    if (old) { if (String(old.binding_id) !== bindingId) fail('idempotency_conflict', 409); return { existing: old }; }
+    const old = await one(tx, sql`select s.id,s.state,s.binding_id,(${retainedSnapshot()}) retained
+      from app.construction_camera_snapshots s ${snapshotRetentionJoins} where s.enterprise_id=${eid} and s.project_id=${s.pid}
+      and ${customer ? sql`s.actor_user_id` : sql`s.actor_id`}=${principal.id} and s.request_key=${requestKey}`);
+    if (old) {
+      if (String(old.binding_id) !== bindingId) fail('idempotency_conflict', 409);
+      if (old.state === 'expired' || (old.state === 'ready' && !old.retained)) fail('camera_snapshot_unavailable', 404);
+      return { existing: { id: old.id, state: old.state, binding_id: old.binding_id } };
+    }
     const recent = await one(tx, sql`select id from app.construction_camera_snapshots where enterprise_id=${eid} and binding_id=${bindingId} and created_at>now()-interval '3 seconds'`);
     if (recent) fail('camera_capture_busy', 429);
     const created = (await one(tx, sql`insert into app.construction_camera_snapshots(enterprise_id,project_id,binding_id,actor_id,actor_user_id,request_key)
@@ -257,7 +263,9 @@ export async function captureCamera(token: string, csrf: string, bindingId: stri
     await withTenantTransaction(eid, async tx => {
       const s = await cameraSession(tx, token, csrf); if (!s.access.canCapture) fail('camera_forbidden', 403);
       await binding(tx, eid, s.pid, bindingId);
-      await tx.execute(sql`update app.construction_camera_snapshots set state='ready',data=${normalized.data},width=${normalized.info.width},height=${normalized.info.height},captured_at=now() where enterprise_id=${eid} and id=${claim.id!}`);
+      const saved = await one(tx, sql`update app.construction_camera_snapshots set state='ready',data=${normalized.data},width=${normalized.info.width},height=${normalized.info.height},captured_at=now()
+        where enterprise_id=${eid} and id=${claim.id!} and state='pending' returning id`);
+      if (!saved) fail('camera_snapshot_unavailable', 404);
       await audit(tx, claim.actor!, claim.pid!, 'snapshot', { id: claim.id, bindingId });
     });
     return { id: claim.id, state: 'ready' };
@@ -272,12 +280,14 @@ export async function cameraSnapshots(token: string, imageId?: string) {
     const s = await cameraSession(tx, token);
     if (isCameraCustomer(s.actor) && !s.access.canCapture) fail('camera_forbidden', 403);
     if (imageId) {
-      const image = await one(tx, sql`select data from app.construction_camera_snapshots where enterprise_id=${eid} and project_id=${s.pid} and id=${id(imageId)} and state='ready'`);
+      const image = await one(tx, sql`select s.data from app.construction_camera_snapshots s ${snapshotRetentionJoins}
+        where s.enterprise_id=${eid} and s.project_id=${s.pid} and s.id=${id(imageId)} and s.state='ready' and ${retainedSnapshot()}`);
       if (!image) fail('camera_snapshot_unavailable', 404); return image;
     }
     return { items: await rows(tx, sql`select s.id,s.state,s.captured_at,s.created_at,c.name from app.construction_camera_snapshots s
+      ${snapshotRetentionJoins}
       join app.construction_camera_bindings b on b.enterprise_id=s.enterprise_id and b.id=s.binding_id
       join app.construction_cameras c on c.enterprise_id=b.enterprise_id and c.id=b.camera_id
-      where s.enterprise_id=${eid} and s.project_id=${s.pid} order by s.id desc limit 30`) };
+      where s.enterprise_id=${eid} and s.project_id=${s.pid} and ${retainedSnapshot()} order by s.id desc limit 30`) };
   });
 }
