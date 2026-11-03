@@ -9,6 +9,7 @@ import { liveDto, liveSource, staffLiveAccess } from './store';
 import { liveKey, liveResource } from './contract';
 import { publicLiveUpstream, type LiveUpstream } from './upstream';
 import { liveMediaCorsHeaders } from './media-cors';
+import { liveMediaDiagnostics } from './media-diagnostics';
 
 export type LiveViewer={kind:'public'}|{kind:'owner';actor:ActorContext;conversationId:string}|{kind:'staff';actor:ConstructionActor;projectId:string};
 type Source=NonNullable<Awaited<ReturnType<typeof liveSource>>>;
@@ -122,28 +123,55 @@ export function rewriteLivePlaylist(text:string,source:URL,app:string,stream:str
 const mediaHeaders={...liveMediaCorsHeaders,'Cache-Control':'no-store, private, max-age=0','Pragma':'no-cache','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'};
 /** Every bounded playlist/segment and each response chunk rechecks the live grant. */
 export async function publicLiveMedia(request:Request,eid:string,key:string,token:string,resource:string,upstream=publicLiveUpstream()) {
-  liveResource(resource);const s=await session(eid,key,token);
+  liveResource(resource);
+  // Keep the existing transport deadline after initial authorization, while
+  // distinguishing an authorization/DB failure before an upstream call too.
+  const abort=new AbortController(),signals={combined:request.signal,caller:request.signal,timeout:abort.signal};
+  const diagnostic=liveMediaDiagnostics(resource,signals);
+  let s:Awaited<ReturnType<typeof session>>;
+  try{s=await session(eid,key,token);}
+  catch(error){diagnostic.failure('authorization',error instanceof AssistantError?'authorization_denied':'authorization_error');throw error;}
   // HLS clients may send Range even for a playlist. Return the same bounded
   // live resource in full; Range never bypasses grant or source checks.
-  const abort=new AbortController(),signal=AbortSignal.any([abort.signal,request.signal,AbortSignal.timeout(15000)]);
-  const response=await upstream.media(String(s.app),String(s.stream),resource,signal);
+  signals.timeout=AbortSignal.timeout(15000);
+  const signal=signals.combined=AbortSignal.any([abort.signal,request.signal,signals.timeout]);
+  let response:Response;
+  try{response=await upstream.media(String(s.app),String(s.stream),resource,signal);}
+  catch(error){diagnostic.failure('headers');throw error;}
+  diagnostic.headers(response);
   if(!response.ok||!response.body)fail('public_live_media_unavailable',503);
   if(resource.endsWith('.m3u8')){
-    const text=await response.text();await session(eid,key,token);
-    const source=new URL(response.url||`http://media.invalid/${s.app}/${s.stream}/${resource}`);
-    const prefix=`/api/public/construction-live/${eid}/${key}/media/${token}`;
-    return new Response(rewriteLivePlaylist(text,source,String(s.app),String(s.stream),prefix),{headers:{...mediaHeaders,'Content-Type':'application/vnd.apple.mpegurl'}});
+    let phase:'body'|'authorization'|'validation'='body';
+    try{
+      const text=await response.text();diagnostic.addBytes(Buffer.byteLength(text));
+      phase='authorization';await session(eid,key,token);
+      phase='validation';
+      const source=new URL(response.url||`http://media.invalid/${s.app}/${s.stream}/${resource}`);
+      const prefix=`/api/public/construction-live/${eid}/${key}/media/${token}`;
+      const playlist=rewriteLivePlaylist(text,source,String(s.app),String(s.stream),prefix);
+      diagnostic.complete();
+      return new Response(playlist,{headers:{...mediaHeaders,'Content-Type':'application/vnd.apple.mpegurl'}});
+    }catch(error){
+      diagnostic.failure(phase,phase==='authorization'?(error instanceof AssistantError?'authorization_denied':'authorization_error'):phase==='validation'?'invalid_media':'transport_error');
+      throw error;
+    }
   }
   const reader=response.body.getReader();let bytes=0;
   const body=new ReadableStream<Uint8Array>({
     async pull(controller){
+      let phase:'authorization'|'body'|'validation'='authorization';
       try{
-        await session(eid,key,token);const part=await reader.read();await session(eid,key,token);
-        if(part.done){controller.close();return;}
+        await session(eid,key,token);phase='body';const part=await reader.read();phase='authorization';await session(eid,key,token);
+        if(part.done){diagnostic.complete();controller.close();return;}
+        phase='validation';
         bytes+=part.value.byteLength;if(bytes>16*1024*1024)fail('public_live_invalid_media',502);
+        diagnostic.addBytes(part.value.byteLength);
         controller.enqueue(part.value);
-      }catch(error){abort.abort();await reader.cancel().catch(()=>undefined);controller.error(error);}
-    },async cancel(){abort.abort();await reader.cancel().catch(()=>undefined);},
+      }catch(error){
+        diagnostic.failure(phase,phase==='authorization'?(error instanceof AssistantError?'authorization_denied':'authorization_error'):phase==='validation'?'invalid_media':'transport_error');
+        abort.abort();await reader.cancel().catch(()=>undefined);controller.error(error);
+      }
+    },async cancel(){diagnostic.cancel();abort.abort();await reader.cancel().catch(()=>undefined);},
   });
   return new Response(body,{headers:{...mediaHeaders,'Content-Type':resource.endsWith('.ts')?'video/mp2t':'video/mp4'}});
 }

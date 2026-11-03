@@ -75,6 +75,13 @@ Native09复用其中1181项未变Mini/运行时依赖的编译与就绪证据，
 
 ### 当前预览与媒体传输（2026-11-03）
 
+开发诊断仅在显式`PUBLIC_LIVE_MEDIA_DIAGNOSTICS=1`时启用，生产忽略。服务端只输出独立trace ID、资源类别、阶段/结果、HTTP状态或null、首个abort来源、耗时和字节；不输出源/能力URL、token、源标识、正文或原始错误。初始授权/数据库异常在调用上游前独立分类；原15秒传输deadline仍从初始授权后开始，每chunk权限检查不变，日志异常不改变交付或对客错误响应。
+
+当前工程证据在`tmp/public-live-package/successor03/`：fast05为7/7（248绑定）、types03为3入口/7581程序依赖/诊断0、lint03通过，media-service02为受控HTTP配合真实隔离数据库/会话/媒体服务的8项。上游404/503、成功改写、caller body abort、真实15000ms超时、连接断开、跨租户/畸形会话上游前拒绝、传输中撤回和元数据不泄密均通过，drift[]。初始授权诊断以media-service02为最终绑定，media-service01属于此前版本。最终live1/v35/rev137 withdrawn、代理历史14条/未清0、活动观看会话0、photo1/v1 published。这些受控服务检查没有启动真实WVP/ZLM源或录像。fast01外层超时、fast02夹具origin/清理挂起、types01测试代码NODE_ENV只读诊断、首次审计模块解析失败及主库连接前置/拒绝均保留，不用后续绿色覆盖原失败。
+
+既有真实源审计与播放结论分开：private-audit03观察1454/项目12/绑定9/机位8(v2)的真实WVP通道在线，客户12/context1有效，但私有授权关闭(v12)、临时微信身份不存在；审计保留源指纹/绑定时间，不写设备ID。较早private-audit02的身份null是租户RLS不可见，不是账号过期，已沿平台身份查询纠正。primary-schema01通过既有明确远端Docker context及只读事务确认开发主库有摄像头表、无客户授权表；旧本地5432配置及15432拒绝连接不能证明设备离线。未新开授权、公开真实画面、迁库、改隧道、重启源、PTZ或恢复录像。必要私有正常播放仍未验；独立设计师/作品旅程不依赖该授权/schema缺口。旧CORS后native503仍缺当时上游/abort记录，不能倒用本次受控结果给旧失败归因、清零两轮计数或重开相似native-business03全批。
+
+
 来源保持C05-02 v002及共享状态。只有当前attempt/version/revision/身份绑定的真实正向时间进度才启用原同意动作；展开、session URL、播放意图或诊断MP4均不产生同意条件。session/解码失败清URL/就绪，重试换attempt并清错误；未变读取保留有效预览，版本/revision/身份变化清展开。已提交结果未知仍保留原幂等键/body核对，不新造决定。
 
 | 触发 | 原反馈/动作 | 恢复与边界 |

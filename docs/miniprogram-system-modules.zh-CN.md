@@ -1,7 +1,11 @@
 # 小程序当前功能清单
 
 <!-- construction-public-live-current -->
-**独立公开直播——Limited（2026-11-03）。** 来源保持C05-02 v002及既有连接/离线/disabled共享组件。原chat/root仅在当前预览attempt、version、revision收到真实正向播放进度后允许新同意；URL或展开不构成同意条件。session/解码失败、版本/revision或身份变化清除就绪；重试隔离迟到回调，已提交但回执未知只按原键/原body核对。未改字体、布局、素材、模型、租户、角色或RLS。匿名媒体GET新增不携带凭据的CORS；合法形状的媒体OPTIONS仅允许GET/Range，不开放元数据/session写入；实际每次媒体/分块仍重验当前授权与撤回。原生驱动按liveCards当前messageId和conversation-scroll真实裁切区（含输入框遮挡）定位后操作/截图。证据在tmp/public-live-package/successor01/：客户端55/55、驱动11/11、CORS/定位7/7、包体13/13、定向lint/types0，分别绑定，不以数量完成旅程。media02已验真实在屏预览/范围/禁用同意、实际HLS manifestLoadError/code0、同源MP4进度及可解码的无声H264分片。CORS修复后实际进入分片请求，但native-business01/02均未通过当前业主预览就绪，当前构建的同意/审核/公开播放/暂停/503恢复/停止仍未通过；同一首播期望两轮失败已止损。window01证明即时200与延迟5秒上游404，保留数1→10实验仍未解决首播，已恢复1；不认定模拟器编解码限制。原native01–09、前置失败和费用unknown全保留。自有授权/代理/控制器/job已清理，启动配置字节还原；原照片发布保持。源码包体通过，编译包体/原生字体读取及完整光学还原未验。见[公开直播合同](./construction-public-live-contract.zh-CN.md)。
+**云工地直播——Limited（2026-11-03）。** UI来源保持批准C05-02 v002及共享连接/离线/disabled组件；业主同意仍须当前attempt/version/revision的真实播放进度。CORS、每次媒体/每chunk授权、撤回和未知结果如实核对均保留。未改Mini结构、样式、文案、素材、模型、企业/角色/RLS或录像设置。native-business01/02首播仍失败，两轮止损及原失败/费用不清零；不据此认定编解码限制、设备离线或正常播放通过。
+
+新增仅开发环境显式启用`PUBLIC_LIVE_MEDIA_DIAGNOSTICS=1`的白名单元数据：独立trace ID、清单/分片类别、阶段、上游实际HTTP状态或null、首个abort来源、结果、耗时与字节。覆盖初始授权/数据库异常、上游拒绝、caller abort、原15秒传输超时、断开、下游取消及后续撤回；不记录URL、能力token、源标识、正文或原始错误。诊断失败不改变响应/权限，生产忽略开关。`tmp/public-live-package/successor03/`：fast05为7/7、248绑定；types03为3入口/7581程序依赖/诊断0；lint03通过；media-service02为真实隔离数据库/会话/媒体服务加受控loopback HTTP的8/8，均drift[]。这是工程证据，不是第三轮原生业务批或完整阶段交付；旧CORS后503的具体原因仍未知。
+
+只读私有源核验：`cloud_camera_eval`中微云1454/项目12/绑定9/机位8(v2)在WVP在线，但业主私有授权关闭(v12)、临时微信身份已清理；账号本身仍有效。未重新开授权，未播放/公开真实视频。既有远端Docker元信息确认开发主库有摄像头表、缺业主授权表；未迁库、改隧道或配置。最终隔离媒体状态live1/v35/rev137 withdrawn，代理保留14条/未清0、观看会话0，photo1/v1仍published，自有控制器/job/server/锁0。同源真实私有正常播放、明确公开许可下的公开播放、设计师旅程、编译包体/字体及完整光学验收仍未通过。见[直播合同](./construction-public-live-contract.zh-CN.md)。
 <!-- /construction-public-live-current -->
 
 <!-- xiaok-v1-02-proactive -->
