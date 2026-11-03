@@ -171,6 +171,8 @@ docker --context sfp-remote-dev info
 
 ## 运维与回滚
 
+摄像头CV-04执行/回滚合同见[视频计划§1.13](./cloud-construction-video-plan.zh-CN.md#113-cv-04固定执行与运维合同limited验收进行中)。实际执行副本保留当前Admin脏源码/配置/已安装依赖，网关和控制器只使用原55432→远端15433的`cloud_camera_eval`，不改变SSH/凭据/转发/主库或生产部署。本交付不迁移，运行库仍缺0114，不得把混合完整journal当启动前置。释放自有评估运行时前，仅关闭版本仍归属本批次的录像，确认实际MP4=false、原SD/off/stopped及无pending SD/观看/PTZ义务，再核验PID/创建时间/可执行文件/副本路径后停止。保留共享3006、WVP/ZLM/探针、SSH、F录像/探针overlay及旧卷。数据库回退须新鲜备份核验及审核过的兼容迁移；媒体回退须先停写并完整复制/hash核验F新增录像，再切挂载。旧卷及PGDMP/TOC校验本身不代表无损回滚/完整恢复演练。生产HTTPS/业务域名/进程监督及发布仍未授权/未验。
+
 小K隔离恢复验收使用 `XIAOK_RESTORE_TARGET=remote-dev npm run test:assistant:restore`（PowerShell先设置同名环境变量，从admin运行）。脚本固定Docker context/SSH端点、评估容器及127.0.0.1:15433绑定，使用既有55432应用隧道获取互斥锁；不访问开发主库或原卷。最新实跑0058–0063恢复、22表摘要、权限/引用/用量检查及随机克隆库/dump清理均通过，证据 `tmp/xiaok-vector/assistant-restore-acceptance.json`。这不是生产回滚或无人登录连通性验收。
 
 1. 用 `docker info` 核对远端引擎，再通过 SSH 在 `D:/Smart-Floor-Planner-Dev/` 维护 compose；

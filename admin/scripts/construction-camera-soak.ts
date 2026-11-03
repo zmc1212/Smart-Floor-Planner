@@ -15,6 +15,7 @@ import {saveRecordingPolicy,listCameraRecordings,startRecordingView} from '../sr
 import {cameraWvp} from '../src/lib/construction/camera/wvp';
 import {currentStorageHealth} from '../src/lib/construction/camera/storage';
 import {retrySoakRead,assertSoakStorageMounts,type SoakReadFailure} from './construction-camera-soak-recovery';
+import {executionIdentity} from './construction-camera-execution.mjs';
 
 async function run(){
  const connection=resolvePostgresRuntimeConfig().connectionString,database=new URL(connection);assert.ok(['127.0.0.1','localhost'].includes(database.hostname));assert.equal(database.port,'55432');assert.equal(database.pathname,'/cloud_camera_eval');
@@ -28,6 +29,7 @@ async function run(){
  const report:Record<string,unknown>={runId,mode:preflight?'read-only-preflight':smoke?'driver-smoke':'74h-soak',started,pid:process.pid,controllerScript:path.resolve(process.argv[1]),status:'starting',targetHours:preflight?0:durationMs/3600000,intervalMs,observations:0,milestones:[],checks:[],fixture:{enterpriseId:fixture.enterpriseId,projectId:fixture.projectId,bindingId:fixture.bindingId,ownerId:fixture.ownerId}};
  const milestones=report.milestones as Record<string,unknown>[],checks=report.checks as Record<string,unknown>[];
  const readFailures:SoakReadFailure[]=[];report.databaseReadFailures=readFailures;
+ report.executionBefore=await executionIdentity(true);
  const folders=['admin/src/lib/construction/camera','admin/public/construction-camera'];
  const walk=(folder:string):string[]=>fs.readdirSync(path.join(root,folder),{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(folder+'/'+e.name):[folder+'/'+e.name]);
  const files=[...folders.flatMap(walk),'admin/src/db/transaction.ts','admin/src/db/repositories/assistant-repository.ts','admin/src/db/construction-camera-schema.ts','admin/src/lib/postgresql.ts','admin/src/lib/construction/service.ts','admin/src/lib/construction/contracts.ts','admin/src/lib/assistant/contracts/index.ts','admin/src/lib/admin-user-roles.ts','admin/scripts/construction-camera-gateway.ts','admin/scripts/construction-camera-local.mjs','admin/scripts/construction-camera-soak.ts','admin/docker/camera-storage/server.py','admin/docker/camera-storage/Dockerfile','admin/docker-compose.camera-storage.yml','admin/drizzle/0090_construction_cameras.sql','admin/drizzle/0091_construction_recordings.sql','admin/drizzle/0092_construction_recording_recovery.sql','admin/drizzle/0093_construction_recording_clock.sql','admin/drizzle/0094_construction_camera_storage.sql','tmp/cloud-camera/storage.private.json',process.env.CAMERA_LOCAL_WVP_ENV!];
@@ -88,12 +90,16 @@ async function run(){
   // this process disappears. It uses the existing orphan/version guards.
   persist();const watchLog=path.join(out,'soak-cleanup-'+runId+'.log'),fd=fs.openSync(watchLog,'a');
   const watcher=cp.spawn(process.execPath,['--import','tsx','scripts/construction-camera-soak-watch.ts',file],{cwd:process.cwd(),env:process.env,windowsHide:true,detached:true,stdio:['ignore',fd,fd]});watcher.unref();fs.closeSync(fd);report.cleanupSupervisorPid=watcher.pid;persist();
+  const supervisorReceipt=path.join(out,'soak-cleanup-'+runId+'.json');let supervisorReady=false;
+  for(let n=0;n<50;n++){if(fs.existsSync(supervisorReceipt)){const ready=JSON.parse(fs.readFileSync(supervisorReceipt,'utf8'));if(ready.pid===watcher.pid&&ready.parentPid===process.pid&&ready.status==='waiting-parent'){supervisorReady=true;break;}}await delay(100);}
+  assert.ok(supervisorReady,'Independent cleanup owner did not acknowledge this controller');report.cleanupSupervisorReady=true;
   await waitState('recording');const period=await withTenantTransaction(fixture.enterpriseId,tx=>one(tx,sql`select id,source_started_at from app.construction_camera_recording_periods where binding_id=${fixture.bindingId} and ended_at is null`));assert.ok(period?.source_started_at);sourceStart=new Date(String(period.source_started_at)).getTime();report.periodId=period.id;report.sourceStartedAt=period.source_started_at;
   const began=performance.now();let last=began,hour=0;report.status='running';report.recordingStarted=new Date().toISOString();report.expectedFinish=new Date(Date.now()+durationMs).toISOString();persist();console.log(JSON.stringify({runId,status:'running',mode:report.mode,pid:process.pid,expectedFinish:report.expectedFinish}));
   while(performance.now()-began<durationMs){
    if(interrupted||fs.existsSync(path.join(out,'soak-stop-'+runId+'.json')))throw Error(report.lockConnectionLost?'Soak database lease lost':'Soak interrupted by an explicit stop request');
    const now=performance.now(),gap=now-last;report.maxObservationGapMs=Math.max(Number(report.maxObservationGapMs||0),gap);if(gap>120000)throw Error('Unobserved interval exceeds120s; continuous operation cannot be claimed');last=now;
    const current=bind(),drift=files.filter(f=>(report.before as Record<string,string>)[f]!==current[f]);if(drift.length){report.drift=drift;throw Error('Bound source/configuration changed during soak');}
+   if(report.executionBefore)report.executionObserved=await executionIdentity(false);
    const p=(await policy())!;assert.equal(Number(p.version),version,'Policy changed externally; do not overwrite its new intent');assert.equal(p.recording_mode,'cloud');assert.equal(p.enabled,true);assert.equal(p.retention_days,3);assert.equal(p.state,'recording',String(p.last_error));assert.equal(p.fresh,true,'Worker observation must remain fresh');
    const health=await storageHealth();assert.equal(health.blocked,false,String(health.reason));assert.equal(await source.isRecording({app:String(p.stream_app),stream:String(p.stream_id)}),true);
    const records=await history(),covered=coverage(records),elapsed=performance.now()-began;
@@ -105,7 +111,9 @@ async function run(){
    for(const target of [24,72])if(!smoke&&elapsed>=target*3600000&&!milestones.some(m=>m.hours===target)){assert.ok(records.length>=target-1);milestones.push({hours:target,at:new Date().toISOString(),passed:true,coverage:covered,observations:report.observations});persist();}
    if(!smoke){const expired=records.find(r=>r.state==='deleted');if(expired&&!report.naturalExpiry){assert.ok(await source.cloudPath(Number(expired.source_id))===null);assert.ok([404,410].includes(await source.recordingFileStatus(String(expired.file_path))));report.naturalExpiry={recordingId:expired.id,at:new Date().toISOString(),bytesMissing:true,indexMissing:true};}}
    persist();if(crashCheck){report.status='failed';report.passed=false;report.soakPassed=false;report.error='Injected controller exit for cleanup recovery';report.finished=new Date().toISOString();persist();process.exit(87);}
-   await delay(Math.min(intervalMs,Math.max(0,durationMs-(performance.now()-began))));
+   // Account for observation work instead of adding its duration to every
+   // interval. Dependency hashing happens before/after the observed window.
+   await delay(Math.min(Math.max(0,intervalMs-(performance.now()-now)),Math.max(0,durationMs-(performance.now()-began))));
   }
   report.status='finishing';const p=(await policy())!;assert.equal(Number(p.version),version);const stopped=await saveRecordingPolicy(actor,fixture.projectId,{bindingId:fixture.bindingId,enabled:false,retentionDays:3,expectedVersion:version});version=Number(stopped!.version);report.policyVersion=version;await waitState('stopped');
   // Stop seals the tail. Only this run's new files count toward acceptance.
@@ -120,6 +128,7 @@ async function run(){
   if(touched)try{const p=await policy();report.cleanupConfirmed=p?.enabled===false&&p.state==='stopped'&&Number(p.version)===version&&(originalMode!=='sd'||p.recording_mode==='sd')&&await source.isRecording({app:String(p.stream_app),stream:String(p.stream_id)})===false;}catch{report.cleanupConfirmed=false;}
   report.after=bind();report.drift=files.filter(f=>(report.before as Record<string,string>)[f]!== (report.after as Record<string,string>)[f]);if((report.drift as string[]).length){report.passed=false;report.soakPassed=false;report.driverSmokePassed=false;report.status='failed';process.exitCode=1;}
   try{report.imagesAfter=images();assert.deepEqual(report.imagesAfter,report.imagesBefore);}catch(e){report.imageError=(e as Error).message;report.passed=false;report.soakPassed=false;report.driverSmokePassed=false;report.status='failed';process.exitCode=1;}
+  try{report.executionAfter=await executionIdentity(true);}catch(e){report.executionError=(e as Error).message;report.passed=false;report.soakPassed=false;report.driverSmokePassed=false;report.status='failed';process.exitCode=1;}
   report.finished=new Date().toISOString();persist();if(locked)try{await lock.query('select pg_advisory_unlock(hashtextextended($1,0))',['camera-soak:'+fixture.bindingId]);}catch{}await lock.end();await closePostgresPool();process.off('SIGINT',signal);process.off('SIGTERM',signal);
  }
 }
