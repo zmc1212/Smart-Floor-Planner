@@ -1,5 +1,7 @@
 # 远端开发连接记录
 
+**2026-11-03业主视频隔离迁移：限定Implemented。** 仅cloud_camera_eval（既有55432→批准远端15433/sfp-remote-dev-vector）113→114应用0115；独立0114前后均不存在，未迁主库/生产。1,671,521字节custom备份SHA256`4d8f020fc1a2545ff25a54388bfeec5bfb51411ad973aab8fa9170e00903325c`，受限ACL/PGDMP/TOC通过；新授权表强制RLS/精确hash、全部原策略及抓拍字节保留。首次同步Docker EOF在DDL前，原回执保留，异步备份后完成；完整恢复演练未验。证据tmp/cloud-camera-customer-20261103/migration*.json。SSH/端点/凭据/卷与生产边界保持。
+
 **2026-11-03云视频隔离迁移：限定Implemented。** 同既有55432→远端15433、sfp-remote-dev/sfp-remote-dev-vector内cloud_camera_eval由112升级113（0113企业默认留存），未迁开发主库/生产或其他任务0114。受限ACL custom备份1,667,303字节，PGDMP/目录校验通过，SHA256 `2631555a2a8c8e915f4d782d0acb28817a392b457c6de36cfef82fd90e2ab24b`；新默认表强制RLS、0113精确hash及旧策略全部原字段不变通过，旧策略显式回填。证据tmp/cloud-camera-defaults-20261103/migration.json及其before-0113备份；旧95→112/SD迁移回执仍在tmp/cloud-camera-dual-20261103/。新专用unit库按各批记录journal执行，成功后只清理自有新库，失败原库保留。SSH/端点/凭据/真实客户/卷保留；无主库/生产/设备配置权限扩展；完整恢复演练未做。
 
 <!-- xiaok-embedding-forward-recovery-20261102 -->

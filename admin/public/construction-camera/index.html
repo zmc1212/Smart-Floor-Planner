@@ -17,6 +17,6 @@
     <details id="live-settings"><summary>播放设置</summary><label for="mode">播放方式</label><select id="mode"><option value="auto">自动选择</option><option value="flv">低延迟直播</option><option value="hls">兼容播放</option></select><p class="hint">默认静音，可用画面上的控件开启声音或全屏。</p></details>
   </section>
   <section id="ptz" hidden><h2>云台控制</h2><p class="hint">轻点调整方向，每次短暂移动后自动停止。</p><div class="ptz-grid"><button data-direction="up" class="up" aria-label="向上">↑</button><button data-direction="left" class="left" aria-label="向左">←</button><button data-direction="stop" class="secondary center">停止</button><button data-direction="right" class="right" aria-label="向右">→</button><button data-direction="down" class="down" aria-label="向下">↓</button></div></section>
-  <section><div class="section-heading"><h2>抓拍记录</h2><button id="refresh" class="text-button" disabled>刷新</button></div><p id="history-status" class="hint">正在读取…</p><div id="history" class="history"></div></section>
+  <section id="snapshots-section"><div class="section-heading"><h2>抓拍记录</h2><button id="refresh" class="text-button" disabled>刷新</button></div><p id="history-status" class="hint">正在读取…</p><div id="history" class="history"></div></section>
   <p class="hint footer">现场画面仅供获授权的工地成员查看。</p>
 </main><dialog id="preview"><button id="close-preview" class="secondary">关闭图片</button><img id="preview-image" alt="工地抓拍大图"></dialog></body></html>

@@ -19,7 +19,7 @@
   async function stop(quiet = false) { intent++; destroy(); if (csrf) { stopPending = api('stop', {}).catch(() => {}); await stopPending; } if (!quiet) status('播放已停止'); }
   const recordingKey=r=>(r.source||'cloud')+':'+r.id;
   const selectedRecording=()=>recordings.find(r=>recordingKey(r)===$('recording').value);
-  function capabilities() { const c = selected(); $('play').disabled = !c; $('capture').hidden = viewMode!=='live'||!state?.canCapture; $('capture').disabled = !c || captureBusy; $('ptz').hidden = viewMode!=='live'||!state?.canControl || !c?.ptz_enabled; $('play-recording').disabled=queryBusy||!selectedRecording();$('query-recordings').disabled=queryBusy||!state; }
+  function capabilities() { const c = selected(); $('play').disabled = !c; $('capture').hidden = viewMode!=='live'||!state?.canCapture; $('capture').disabled = !c || captureBusy; $('ptz').hidden = viewMode!=='live'||!state?.canControl || !c?.ptz_enabled; $('snapshots-section').hidden=state?.canViewSnapshots===false; $('play-recording').disabled=queryBusy||!selectedRecording();$('query-recordings').disabled=queryBusy||!state; }
   const preference=name=>'camera-'+name+':'+state.project.id;
   async function loadRecordings(append=false){
     if(!state)return;if(!active)status('选择日期和录像片段后开始回放。');const g=++recordingQuery;queryBusy=true;if(!append){recordings=[];earlier=null;}capabilities();$('recording').disabled=true;$('recording-status').textContent='正在读取录像片段…';
@@ -57,6 +57,7 @@
     finally{capabilities();}
   }
   async function loadHistory() {
+    if (state?.canViewSnapshots === false) { $('history').replaceChildren(); return; }
     try {
       const result = await api('snapshots'); $('history').replaceChildren();
       $('history-status').textContent = result.items.length ? '抓拍仅保存在当前工地，可再次查看。' : '还没有抓拍记录。';

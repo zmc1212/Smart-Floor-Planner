@@ -2,10 +2,12 @@ import { NextResponse } from 'next/server';
 import { AssistantError, fail, id } from '@/lib/assistant/contracts';
 import type { ConstructionActor } from '../contracts';
 import { object } from '../contracts';
-import { CameraService, cameraCookie, cameraPublicOrigin, cameraSnapshots, captureCamera, exchangeCameraEntry, sessionHeartbeat, sessionState, startCameraView } from './service';
+import { CameraService, cameraCookie, cameraPublicOrigin, cameraSnapshots, captureCamera, createCameraEntry, listCameraProject, exchangeCameraEntry, sessionHeartbeat, sessionState, startCameraView } from './service';
 import { cameraPtz } from './ptz';
 import {saveRecordingPolicy,saveRetentionDefault,listCameraRecordings,startRecordingView} from './recordings';
 import {startSdRecordingView} from './sd';
+import { customerCameraActor, customerCameraProjects, type CameraCustomerIdentity } from './access';
+import { saveCameraCustomerGrant } from './customer-grants';
 
 export const cameraJson = (data: unknown) => NextResponse.json({ success: true, data }, { headers: { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' } });
 export function cameraError(error: unknown) {
@@ -32,8 +34,20 @@ export async function staffCameraHttp(request: Request, actor: ConstructionActor
   if (path[2] === 'configure' && request.method === 'POST') return cameraJson(await service.configure(pid, await body(request)));
   if (path[2] === 'recording' && request.method === 'POST') return cameraJson(await saveRecordingPolicy(actor,pid,await body(request)));
   if (path[2] === 'retention-default' && request.method === 'POST') return cameraJson(await saveRetentionDefault(actor,pid,await body(request)));
+  if (path[2] === 'customer-grant' && request.method === 'POST') return cameraJson(await saveCameraCustomerGrant(actor,pid,await body(request)));
   if (path[2] === 'entry' && request.method === 'POST') { object(await body(request), []); return cameraJson(await service.entry(pid)); }
   fail('camera_not_found', 404);
+}
+export async function customerCameraHttp(request: Request, identity: CameraCustomerIdentity, path: string[]) {
+  if (new URL(request.url).search) fail('camera_invalid_request', 422);
+  if (request.method === 'GET' && path.length === 2 && path[0] === 'customer-projects')
+    return cameraJson(await customerCameraProjects(identity, id(path[1])));
+  if (path[0] !== 'projects' || path.length !== 3 ||
+    !(request.method === 'GET' && path[2] === 'cameras' || request.method === 'POST' && path[2] === 'entry')) fail('camera_not_found', 404);
+  const pid = id(path[1]), actor = await customerCameraActor(identity, pid);
+  if (request.method === 'GET') return cameraJson(await listCameraProject(actor, pid));
+  object(await body(request), []);
+  return cameraJson(await createCameraEntry(actor, pid));
 }
 export function cookieToken(cookie: string | null) {
   const value = cookie?.split(';').map(x => x.trim()).find(x => x.startsWith(cameraCookie + '='))?.slice(cameraCookie.length + 1);

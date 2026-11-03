@@ -12,7 +12,7 @@ Page({
     try {
       const app = getApp(); if (app.hydrateStoredSession) await app.hydrateStoredSession();
       const current = app.globalData || {}, token = current.token || wx.getStorageSync('token');
-      if (!this._projectId || !token || !canAccessRoute('/packages/construction/projects/projects', current.bootstrap || current.userInfo)) throw new Error('forbidden');
+      if (!this._projectId || !token || !canAccessRoute('/packages/construction/camera/camera', current.bootstrap || current.userInfo)) throw new Error('forbidden');
       const result = await api.request('/miniprogram/construction/video/projects/' + this._projectId + '/entry', 'POST', {});
       if (!this._visible || g !== this._generation || token !== (getApp().globalData.token || wx.getStorageSync('token'))) return;
       const url = result.data && result.data.url;

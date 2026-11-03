@@ -11,6 +11,9 @@ import {currentStorageHealth} from './storage';
 import {guardLiveWriter} from './writer-policy';
 import {authorizeSdMedia,reconcileSdPlaybacks} from './sd';
 import {retentionDefault,nodeRetentionDays} from './retention-defaults';
+import { cameraAccess, cameraActorRef, isCameraCustomer, type CameraActor } from './access';
+import { currentCameraCustomerGrant } from './customer-grants';
+export { cameraAccess } from './access';
 
 export const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 const secret = () => randomBytes(32).toString('base64url');
@@ -27,16 +30,6 @@ export function cameraPublicOrigin() {
     (u.protocol !== 'https:' && !(u.protocol === 'http:' && process.env.NODE_ENV !== 'production' && ['localhost', '127.0.0.1'].includes(u.hostname)))) fail('camera_not_configured', 503);
   return u.origin;
 }
-export async function cameraAccess(tx: PostgresTransaction, actor: ConstructionActor, projectId: string) {
-  const owner = await constructionAccess(tx, actor), pid = id(projectId);
-  const p = await one(tx, sql`select p.id,p.name,p.status from app.construction_projects p
-    join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
-    where p.enterprise_id=${actor.enterpriseId} and p.id=${pid} and p.status='active' and l.archived_at is null for share of p,l`);
-  if (!p) fail('camera_project_unavailable', 404);
-  const m = await one(tx, sql`select role from app.construction_members where enterprise_id=${actor.enterpriseId} and project_id=${pid} and admin_id=${actor.adminId} and active for share`);
-  if (!owner && !m) fail('camera_project_unavailable', 404);
-  return { project: p, manage: owner || m?.role === 'manager', owner };
-}
 async function activeOrder(tx: PostgresTransaction, eid: string, pid: string) {
   return await one(tx, sql`select o.id,o.status,o.camera_count,
     (select count(*) from app.construction_camera_bindings b
@@ -51,9 +44,9 @@ async function binding(tx: PostgresTransaction, eid: string, pid: string, bindin
   if (!r) fail('camera_binding_unavailable', 404);
   return r;
 }
-async function audit(tx: PostgresTransaction, actor: ConstructionActor, pid: string, action: string, snapshot: Row) {
+async function audit(tx: PostgresTransaction, actor: CameraActor, pid: string, action: string, snapshot: Row) {
   await tx.execute(sql`insert into app.construction_audits(enterprise_id,project_id,actor_ref,action,snapshot)
-    values(${actor.enterpriseId},${pid},${JSON.stringify({ kind: 'admin', id: actor.adminId })}::jsonb,${'camera.' + action},${JSON.stringify(snapshot)}::jsonb)`);
+    values(${actor.enterpriseId},${pid},${JSON.stringify(cameraActorRef(actor))}::jsonb,${'camera.' + action},${JSON.stringify(snapshot)}::jsonb)`);
 }
 export class CameraService {
   constructor(readonly actor: ConstructionActor, private readonly upstream?: WvpClient) {}
@@ -87,20 +80,7 @@ export class CameraService {
     });
   }
   async list(pid: string) {
-    const result=await withTenantTransaction(this.actor.enterpriseId, async tx => {
-      const access = await cameraAccess(tx, this.actor, pid);
-      const defaults=await retentionDefault(tx,this.actor.enterpriseId);
-      const items = await rows(tx, sql`select b.id as binding_id,c.id,c.name,c.version,c.ptz_enabled,r.enabled recording_enabled,coalesce(r.retention_days,${defaults.retentionDays}) retention_days,r.retention_override_days,r.version recording_version,r.state recording_state,r.last_error recording_error,r.last_segment_at,r.recording_mode,r.sd_last_error,r.sd_checked_at from app.construction_camera_bindings b
-        join app.construction_cameras c on c.enterprise_id=b.enterprise_id and c.id=b.camera_id
-        left join app.construction_camera_recording_policies r on r.enterprise_id=b.enterprise_id and r.binding_id=b.id
-        where b.enterprise_id=${this.actor.enterpriseId} and b.project_id=${pid} and b.ended_at is null and c.enabled order by c.id`);
-      const order = access.manage ? await activeOrder(tx, this.actor.enterpriseId, pid) : null;
-      const affected=access.owner?await one(tx,sql`select count(*) n from app.construction_camera_recording_policies p join app.construction_camera_bindings b on b.enterprise_id=p.enterprise_id and b.id=p.binding_id where p.enterprise_id=${this.actor.enterpriseId} and p.retention_override_days is null and p.recording_mode='cloud' and b.ended_at is null`):null;
-      return { project: access.project, canManage: access.manage, canConfigure: access.owner, canCapture: access.manage, canControl: access.manage, maxRetentionDays:nodeRetentionDays(), items,
-        retentionDefault:access.owner?{...defaults,affectedCount:Number(affected!.n)}:null,
-        serviceOrder: order ? { id: String(order.id), status: String(order.status), cameraCount: Number(order.camera_count), boundCount: Number(order.bound) } : null };
-    });
-    return {...result,storage:result.canConfigure&&result.items.length?await currentStorageHealth():null};
+    return listCameraProject(this.actor, pid);
   }
   async bind(pid: string, input: Row) {
     object(input, ['cameraId', 'expectedVersion', 'bind']);
@@ -158,21 +138,42 @@ export class CameraService {
     });
   }
   async entry(pid: string) {
-    const token = this.actor.enterpriseId + '.' + secret(), origin = cameraPublicOrigin();
-    await withTenantTransaction(this.actor.enterpriseId, async tx => {
-      await cameraAccess(tx, this.actor, pid);
-      await tx.execute(sql`insert into app.construction_camera_entries(enterprise_id,token_hash,project_id,actor,expires_at)
-        values(${this.actor.enterpriseId},${digest(token)},${pid},${JSON.stringify(this.actor)}::jsonb,now()+interval '30 seconds')`);
-    });
-    return { url: origin + '/construction-camera#entry=' + token, expiresIn: 30 };
+    return createCameraEntry(this.actor, pid);
   }
+}
+export async function listCameraProject(actor: CameraActor, pid: string) {
+  const eid = actor.enterpriseId;
+  const result = await withTenantTransaction(eid, async tx => {
+    const access = await cameraAccess(tx, actor, pid), defaults = await retentionDefault(tx, eid);
+    const items = await rows(tx, sql`select b.id as binding_id,c.id,c.name,c.version,c.ptz_enabled,r.enabled recording_enabled,coalesce(r.retention_days,${defaults.retentionDays}) retention_days,r.retention_override_days,r.version recording_version,r.state recording_state,r.last_error recording_error,r.last_segment_at,r.recording_mode,r.sd_last_error,r.sd_checked_at from app.construction_camera_bindings b
+      join app.construction_cameras c on c.enterprise_id=b.enterprise_id and c.id=b.camera_id
+      left join app.construction_camera_recording_policies r on r.enterprise_id=b.enterprise_id and r.binding_id=b.id
+      where b.enterprise_id=${eid} and b.project_id=${pid} and b.ended_at is null and c.enabled order by c.id`);
+    const order = access.manage ? await activeOrder(tx, eid, pid) : null;
+    const affected = access.owner ? await one(tx, sql`select count(*) n from app.construction_camera_recording_policies p join app.construction_camera_bindings b on b.enterprise_id=p.enterprise_id and b.id=p.binding_id where p.enterprise_id=${eid} and p.retention_override_days is null and p.recording_mode='cloud' and b.ended_at is null`) : null;
+    return { project: access.project, canManage: access.manage, canConfigure: access.owner, canCapture: access.canCapture, canControl: access.canControl,
+      canViewSnapshots: !isCameraCustomer(actor) || access.canCapture, maxRetentionDays: nodeRetentionDays(), items,
+      customerGrant: access.owner ? await currentCameraCustomerGrant(tx, eid, pid) : null,
+      retentionDefault: access.owner ? { ...defaults, affectedCount: Number(affected!.n) } : null,
+      serviceOrder: order ? { id: String(order.id), status: String(order.status), cameraCount: Number(order.camera_count), boundCount: Number(order.bound) } : null };
+  });
+  return { ...result, storage: result.canConfigure && result.items.length ? await currentStorageHealth() : null };
+}
+export async function createCameraEntry(actor: CameraActor, pid: string) {
+  const token = actor.enterpriseId + '.' + secret(), origin = cameraPublicOrigin();
+  await withTenantTransaction(actor.enterpriseId, async tx => {
+    await cameraAccess(tx, actor, pid);
+    await tx.execute(sql`insert into app.construction_camera_entries(enterprise_id,token_hash,project_id,actor,expires_at)
+      values(${actor.enterpriseId},${digest(token)},${pid},${JSON.stringify(actor)}::jsonb,now()+interval '30 seconds')`);
+  });
+  return { url: origin + '/construction-camera#entry=' + token, expiresIn: 30 };
 }
 export async function exchangeCameraEntry(token: string) {
   const { eid, hash } = parseCameraToken(token), session = eid + '.' + secret(), csrf = secret();
   await withTenantTransaction(eid, async tx => {
     const e = await one(tx, sql`select * from app.construction_camera_entries where enterprise_id=${eid} and token_hash=${hash} and consumed_at is null and expires_at>now() for update`);
     if (!e) fail('camera_entry_expired', 401);
-    await cameraAccess(tx, e.actor as ConstructionActor, String(e.project_id));
+    await cameraAccess(tx, e.actor as CameraActor, String(e.project_id));
     await tx.execute(sql`update app.construction_camera_entries set consumed_at=now() where token_hash=${hash}`);
     await tx.execute(sql`insert into app.construction_camera_sessions(enterprise_id,token_hash,project_id,actor,csrf_hash,expires_at,absolute_expires_at)
       values(${eid},${digest(session)},${String(e.project_id)},${JSON.stringify(e.actor)}::jsonb,${digest(csrf)},now()+interval '60 seconds',now()+interval '4 hours')`);
@@ -184,15 +185,15 @@ export async function cameraSession(tx: PostgresTransaction, token: string, csrf
   const s = await one(tx, sql`select * from app.construction_camera_sessions where enterprise_id=${eid} and token_hash=${hash}
     and closed_at is null and expires_at>now() and absolute_expires_at>now() for update`);
   if (!s || (csrf !== undefined && digest(csrf) !== s.csrf_hash)) fail('camera_session_expired', 401);
-  const access = await cameraAccess(tx, s.actor as ConstructionActor, String(s.project_id));
+  const access = await cameraAccess(tx, s.actor as CameraActor, String(s.project_id));
   return { ...s, recording_id:s.recording_id, sd_playback_id:s.sd_playback_id, binding_id: s.binding_id, stream_id: s.stream_id, stream_app: s.stream_app,
     play_version: s.play_version, view_expires_at: s.view_expires_at,
-    access, actor: s.actor as ConstructionActor, eid, hash, pid: String(s.project_id) };
+    access, actor: s.actor as CameraActor, eid, hash, pid: String(s.project_id) };
 }
 export async function sessionState(token: string) {
   const { eid } = parseCameraToken(token);
   const s = await withTenantTransaction(eid, tx => cameraSession(tx, token));
-  return new CameraService(s.actor).list(s.pid);
+  return listCameraProject(s.actor, s.pid);
 }
 export async function sessionHeartbeat(token: string, csrf: string, stop = false, upstream?:WvpClient) {
   const { eid, hash } = parseCameraToken(token);
@@ -235,15 +236,17 @@ export async function authorizeCameraMedia(token: string, generation: number) {
 export async function captureCamera(token: string, csrf: string, bindingId: string, requestKey: string, upstream = cameraWvp()) {
   key(requestKey); const { eid } = parseCameraToken(token);
   const claim = await withTenantTransaction(eid, async tx => {
-    const s = await cameraSession(tx, token, csrf); if (!s.access.manage) fail('camera_forbidden', 403);
+    const s = await cameraSession(tx, token, csrf); if (!s.access.canCapture) fail('camera_forbidden', 403);
     const c = await binding(tx, eid, s.pid, bindingId);
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`camera-snapshot:${eid}:${s.pid}:${s.actor.adminId}:${requestKey}`},0))`);
-    const old = await one(tx, sql`select id,state,binding_id from app.construction_camera_snapshots where enterprise_id=${eid} and project_id=${s.pid} and actor_id=${s.actor.adminId} and request_key=${requestKey}`);
+    const principal = cameraActorRef(s.actor), customer = isCameraCustomer(s.actor);
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`camera-snapshot:${eid}:${s.pid}:${principal.kind}:${principal.id}:${requestKey}`},0))`);
+    const old = await one(tx, sql`select id,state,binding_id from app.construction_camera_snapshots where enterprise_id=${eid} and project_id=${s.pid}
+      and ${customer ? sql`actor_user_id` : sql`actor_id`}=${principal.id} and request_key=${requestKey}`);
     if (old) { if (String(old.binding_id) !== bindingId) fail('idempotency_conflict', 409); return { existing: old }; }
     const recent = await one(tx, sql`select id from app.construction_camera_snapshots where enterprise_id=${eid} and binding_id=${bindingId} and created_at>now()-interval '3 seconds'`);
     if (recent) fail('camera_capture_busy', 429);
-    const created = (await one(tx, sql`insert into app.construction_camera_snapshots(enterprise_id,project_id,binding_id,actor_id,request_key)
-      values(${eid},${s.pid},${bindingId},${s.actor.adminId},${requestKey}) returning id`))!;
+    const created = (await one(tx, sql`insert into app.construction_camera_snapshots(enterprise_id,project_id,binding_id,actor_id,actor_user_id,request_key)
+      values(${eid},${s.pid},${bindingId},${customer ? null : principal.id},${customer ? principal.id : null},${requestKey}) returning id`))!;
     return { id: String(created.id), c, actor: s.actor, pid: s.pid };
   });
   if (claim.existing) return claim.existing;
@@ -252,7 +255,7 @@ export async function captureCamera(token: string, csrf: string, bindingId: stri
     const normalized = await sharp(image, { limitInputPixels: 32000000 }).rotate().jpeg({ quality: 88 }).toBuffer({ resolveWithObject: true });
     if (normalized.data.length > 4194304) fail('camera_snapshot_too_large', 502);
     await withTenantTransaction(eid, async tx => {
-      const s = await cameraSession(tx, token, csrf); if (!s.access.manage) fail('camera_forbidden', 403);
+      const s = await cameraSession(tx, token, csrf); if (!s.access.canCapture) fail('camera_forbidden', 403);
       await binding(tx, eid, s.pid, bindingId);
       await tx.execute(sql`update app.construction_camera_snapshots set state='ready',data=${normalized.data},width=${normalized.info.width},height=${normalized.info.height},captured_at=now() where enterprise_id=${eid} and id=${claim.id!}`);
       await audit(tx, claim.actor!, claim.pid!, 'snapshot', { id: claim.id, bindingId });
@@ -267,6 +270,7 @@ export async function cameraSnapshots(token: string, imageId?: string) {
   const { eid } = parseCameraToken(token);
   return withTenantTransaction(eid, async tx => {
     const s = await cameraSession(tx, token);
+    if (isCameraCustomer(s.actor) && !s.access.canCapture) fail('camera_forbidden', 403);
     if (imageId) {
       const image = await one(tx, sql`select data from app.construction_camera_snapshots where enterprise_id=${eid} and project_id=${s.pid} and id=${id(imageId)} and state='ready'`);
       if (!image) fail('camera_snapshot_unavailable', 404); return image;

@@ -4,7 +4,7 @@ import { verifyMiniProgramToken } from '@/lib/miniprogram-jwt';
 import { AssistantError, fail } from '@/lib/assistant/contracts';
 import { ConstructionService } from '@/lib/construction/service';
 import { siteChatHttp } from '@/lib/construction/site-http';
-import { staffCameraHttp } from '@/lib/construction/camera/http';
+import { staffCameraHttp, customerCameraHttp } from '@/lib/construction/camera/http';
 
 export const runtime = 'nodejs';
 type Context = { params: Promise<{ path?: string[] }> };
@@ -12,10 +12,15 @@ async function handle(request: NextRequest, context: Context) {
   try {
     const actor = await resolveMiniProgramContext(request);
     if (!actor) fail('Unauthorized', 401);
-    if (actor.mode !== 'staff' || !actor.staff?._id || !actor.enterpriseId) fail('construction_forbidden', 403);
     const token = await verifyMiniProgramToken(request.headers.get('authorization')!.slice(7));
-    if (!token || (token.source === 'password' && actor.staff.mustChangePassword)) fail('construction_password_required', 403);
+    if (!token) fail('Unauthorized', 401);
     const p = (await context.params).path || [], read = request.method === 'GET';
+    if (actor.mode === 'customer' && p[0] === 'video') {
+      if (!actor.user.openid) fail('Unauthorized', 401);
+      return await customerCameraHttp(request, { userId: actor.user._id, contextVersion: token.contextVersion }, p.slice(1));
+    }
+    if (actor.mode !== 'staff' || !actor.staff?._id || !actor.enterpriseId) fail('construction_forbidden', 403);
+    if (token.source === 'password' && actor.staff.mustChangePassword) fail('construction_password_required', 403);
     if (p[0] === 'video') return await staffCameraHttp(request, {
       enterpriseId: actor.enterpriseId, adminId: actor.staff._id, miniProgramUserId: actor.user._id, miniProgramContextVersion: token.contextVersion,
     }, p.slice(1));

@@ -54,17 +54,17 @@ English mirror: [cloud-construction-video-plan.md](./cloud-construction-video-pl
 
 | 项目 | 内容 |
 | --- | --- |
-| 当前ID | CV-02企业默认留存/摄像头覆盖限定软件交付完成，整体Limited；下一CV-02业主视频显式授权 |
-| 用户结果/入口 | 原Admin施工项目工地视频Tab：企业默认弹窗、单机继承/显式天数、真实保存/重进/反馈。Mini员工入口/H5布局不变，有效策略共用于私有回放/清理；沿批准Ant/refactor及H5源，无新视觉方向。 |
-| 实际状态 | 0113将旧策略保留为显式覆盖；默认初始3、节点当前1..7。企业变更仅更新活动继承云端策略，不启录；SD原云历史/退役绑定/覆盖不变。原子传播、版本幂等、三管理角色继承、存储拒绝回滚、清理时重查已实现。微云1454绑定9最终恢复SD/off/3天/显式，actualWriter=false；历史策略3仍40/off。企业默认已持久为3，见ui-cleanup.json/final-state.json。 |
-| 已执行检查 | 兼容57/57；默认5/5（共享清理分支改变后亦补跑），55入口类型0/定向lint0，各有效批2132绑定稳定。真实Mini保存回读/继承/保持关闭，H5实际云索引/媒体206/匿名401，409/422拒绝和恢复SD：live.json六项无漂移。Admin真实保存/重进/继承/独立标签/冲突/草稿保留/重读恢复：admin-ui.json与截图。原Stable5/5只复用未变入口，不称新原生/实机播放通过。 |
-| 原始失败/漂移 | 首轮默认测试：未使存储缓存失效、夹具漏删线索，两项准备错误修正且defaults-01保留。UI按钮可访问名含瞬态loading导致定位失败；新DOM反证早先弹窗关闭/HMR假说，正则定位完成真实409恢复。lint-drift-02退出0但共享construction-cleanup.ts改变，保留无效；影响是to_regclass保护的可选公开直播清理。受影响默认清理补跑及最终类型/lint通过，不缩绑定。 |
-| 工程限制 | 全量lint命令退出0，仅作未冻结诊断，最后UI/共享清理变更由定向lint覆盖。构建89秒编译成功后，仍因外域scripts/xiaok-manual-fixture.ts:43的unknown state.keys失败，不称整包通过/不接管小K。UI实际1103x621（视口覆盖未改变IAB），弹窗宽520/底493、577/无溢出；Mini模板/资源/还原台账不变。 |
-| 环境/迁移/成本 | 只迁既有55432→获准远端15433的cloud_camera_eval，112→113；未迁主库/生产。受限custom备份1667303字节，PGDMP/目录/RLS/精确hash通过，旧策略字段全保留。backup SHA256 2631555a2a8c8e915f4d782d0acb28817a392b457c6de36cfef82fd90e2ab24b，见migration.json。新专用unit库沿各批journal（存在时含其他任务新增0114），通过仅删自有新库，原失败库保留。无新媒体删除/开录/重放provider写；模型/生图/付费0。 |
-| 工作区/所有权 | 同G:/workspace/向总/Smart-Floor-Planner，分支codex/xiaok-public-site-lifecycle，基线bae20c16e5897a33fa81cef449c2e057dcaa1a83；自有清单/baseline在tmp/cloud-camera-defaults-20261103/。保留其他脏改动及其0114公开直播journal/清理改动，共享文件只暂存本交付。当前检查点待本地提交。 |
-| 资源/权限边界 | 本轮自有网关147636及隔离Next435640按PID/启动时刻/命令核验后已停止；3017/3018无监听，actualWriter=false/pendingSd=0/liveLeases=0，见final-state.json/resources.json。共享3006/WVP/ZLM F overlay/探针/SSH/旧卷保留。无新格式化/重启/手动录制/设备计划/公网4G/付费/生产权限；automation-4暂停，不新建/恢复；.next-camera-dual旧删除拒绝保留，不绕过。 |
-| 复用证据/剩余 | 原CV-04有界只读/失联清理/F挂载修复证据仍在tmp/cloud-camera-reliability-20261103/及§1.9。失败74小时批次、8小时盲区、旧机SD失败、首次整日UNKNOWN保持原结论，无24/72小时/自然到期/实机微信/公网4G验收声明。 |
-| 精确下一步/下一ID | CV-02业主视频显式授权：先核现客户/项目授权schema、Mini项目批准源/还原台账、CameraService/session actor合同及相关测试。仅沿现批准入口/Ant/共享状态实现，保留私有与公开区分、直播/回放/抓拍/云台范围、租户/当前客户/撤销/代次校验；真实实写/回读/重进/拒绝/恢复、双语文档/本地提交后，继续抓拍保留及其余获准CV-04。软件稳定才新开冻结源74小时，不恢复失败批次/自动化，不要求其他聊天冻结工作区。 |
+| 当前交付 / 用户结果 | CV-03私有抓拍自动保留，尚未实施。按§5.2随摄像头有效保留策略到期拒读并自动清理，保留有效抓拍/读回/幂等与原H5历史/恢复。整体Limited；用户持续指令“云工地计划全部开发完了吗，没有就继续”，无需等手测回复。 |
+| 刚完成前序 | CV-02业主视频显式授权限定Implemented，见§1.11。用户2026-11-03明确选择并授权“服务档案现有文字按钮落地”。当前客户/工地授权、抓拍/PTZ默认关闭且独立授权、身份/归属/授权版本围栏与SD撤权停止已接入；不接管小K运行时或公开直播。 |
+| 工作区 / 本地提交 | 同一G:/workspace/向总/Smart-Floor-Planner，codex/xiaok-public-site-lifecycle；前序HEAD4c5693264fb1049237a0fcb09e92464ec6147715。本交付35项自有路径已审阅用于相关本地提交，真实hash在下一次必要接续元数据更新记录。保留其他脏改动，尤其0114公开直播/journal/cleanup/模块清单；不建干净worktree或并行测试聊天。 |
+| 已执行 / 可复用 | tmp/cloud-camera-customer-20261103/：compatibility-01 69/69（含新增授权12项）、mini-01 26/26、types-03同60入口0、lint-02定向0，各有效批2281绑定稳定。live.json真实5/5、2286绑定无漂移：Mini写入/读回、本人/跨项目/客户写配置拒绝、私有MP4 206/匿名401、业主直播撤权4274ms断流且员工可继续、真实1920×1080抓拍/重试同ID13/重进、SD最终stopped且媒体不存在。Admin真实保存1→并发2/409/草稿保留/重读恢复3/重进，实际615×769、约520px弹窗底682.52/按钮底662.53。H5真实SD1920×1080推进23.779→129.803秒。Stable功能5/5及可见入口/全宿主补验3/3，无漂移；逻辑390×844/编码348×752，按钮[14,673.17,362,45]、固定栏top749、间隔30.83px，全宿主1700×960。未变范围复用，不因文档/接续重复全套或供应商调用。 |
+| 配置 / 构建限制 | 全量lint exit0仅作未冻结诊断。构建编译79秒成功后在独立未跟踪scripts/public-live-native-diagnostic.ts:12的wx未声明失败，不称整包通过。服务清理后发现批次外tsconfig字节漂移；保留types-02原绑定，当前配置以types-03/lint-02重跑同60入口/定向lint，未缩绑定，不接管无关修复或全产品重放。 |
+| 原准备失败 | 保留两次无写入patch上下文不匹配、DDL前首次同步Docker EOF、临时3019已占用（未接管，改随机49162）、登录跳转超时后核实际已登录、隐藏forceRender弹窗零尺寸测量（排除）、AX checkbox/DOM button定位差异、首次原生视觉属性选择器null（类+dataset判别通过）、CUA FrameArrived超时（批准window.ps1 Capture补全宿主）、文档误匹配正文行（加表格行守卫）、资源时间戳UTC误解析及所属esbuild子进程守卫。客户业务修复计数0，12项首轮通过。未知供应商写入/成本0，模型/生图/付费0。 |
+| 隔离迁移 | 仅既有55432→远端15433的cloud_camera_eval 113→114应用0115；独立0114前后均未应用，未迁主库/生产。受限ACL的1,671,521字节PGDMP/TOC备份SHA2564d8f020fc1a2545ff25a54388bfeec5bfb51411ad973aab8fa9170e00903325c；强制RLS/精确hash/全部原策略和抓拍字节保留。migration.json/migration-01.json，完整恢复演练未验。未来自有迁移保留待办0114 SQL/时间/顺序，不运行整份journal的运行库迁移。 |
+| 最终夹具 / 已释放资源 | final-state.json：微云1454标记项目12/摄像头8/绑定9为SD/off/stopped/版本25/保留3/显式3，企业默认3/版本9；客户12视频/抓拍/PTZ均关闭、授权版本10；新抓拍13保留私有；临时合成微信身份已移除，原客户/账号/项目保留。历史绑定3版本40/off/3未变。actualWriter=false、pendingSd=0、liveLeases=0。按命令/启动时刻/父子关系核验后，自有Next554012/gateway533176/UI桥64140及所属esbuild子进程已停，3017/3018空闲，resources.json；验收锁/控制器/transport/storage覆盖已释放。保留共享3006/WVP/ZLM批准F挂载/探针/SSH/旧卷及无关3019。 |
+| 未完成 / 原限制 | 抓拍自动保留和其余独立CV-04仍未完成。前序默认/可靠性证据保留在tmp/cloud-camera-defaults-20261103/及tmp/cloud-camera-reliability-20261103/。原74小时失败/8小时盲区/旧机SD失败/首次整日UNKNOWN保留，未宣称24/72小时/自然到期/微信真机/公网4G通过。软件稳定后新开冻结执行源74小时，不恢复失败批次或automation-4，不要求全工作区冻结。 |
+| 精确下一步 / 后继 | 读§5.2及现抓拍schema/service/gateway清理和双语模块清单；按有效摄像头策略（默认/继承/覆盖；SD抓拍仍为服务器私有图片）接入到期拒读/自动字节清理，保留作者幂等/审计/源归属及原H5历史。补有界老化/策略变化/竞态/租户/客户授权测试、真实API/读回/重进/失败反馈及相关原生回归。完成双语文档/本地提交后继续其余CV-04。现有组件/共享状态是来源，只有真正缺少/冲突设计才问。 |
+| 授权 / 串行上下文接续 | 无新格式化/重启/手动录像/设备计划/公网4G/付费/生产授权；automation-4继续暂停，不创建/恢复。此前.next-camera-dual自动审批拒删保留，不绕过。本聊天封存已完成授权交付并在串行移交后不开新开发；根既有授权允许创建一个同项目/同脏工作区的新后继，核工作区/接管后旧聊天仅验证接续。携带本记录、原失败/证据、未知结果/成本/资源锁和边界，不接管小K、不建并行owner。 |
 
 设计/实施源：2026-10-22用户批准单路H5/云工地配色、摄像头切换、抓拍历史及云台，去掉源地址/诊断。当时排除录像；2026-10-23进一步明确批准在播放器下加入直播/回放切换、日期、真实片段、返回直播，空/失败沿用既有反馈。当前实现保留此层级和配色，无截图切片/新增插画；Admin沿双语Ant Design/refactor合同。不能将空查询或接口完成记为SD支持。
 
@@ -152,6 +152,12 @@ English mirror: [cloud-construction-video-plan.md](./cloud-construction-video-pl
 ### 1.10 企业默认留存与摄像头覆盖（Implemented）
 
 **CV-02企业默认留存与摄像头覆盖：Implemented。** 原`/construction-projects`工地视频Tab/Ant表单增加企业默认及摄像头继承/单独设置，设计源为双语Admin refactor合同和既有反馈。Admin/Mini `POST video/projects/:id/retention-default`接收节点范围内整数`retentionDays`（当前1..7）和`expectedVersion`；cameras GET返回仅管理者可读的`retentionDefault`（天数/版本/影响路数）及实际天数/可空`retention_override_days`。录像POST增加`retentionSource=enterprise|camera`，不传沿旧显式设置语义。0113强制RLS迁移新增`construction_camera_retention_defaults`，将所有旧策略回填为显式覆盖，不改录制/历史；新未设置摄像头显示企业默认（初始3、受节点上限约束），不会自动启录。企业保存原子更新仍在绑定的继承云端策略，包括保持关闭的策略；显式覆盖、SD原云历史、历史绑定保留原天数，SD回切云端才重新解析继承。三管理角色沿原项目/租户校验，经理/成员不能改默认。共用advisory锁、版本幂等/审计保护传播及单机保存，存储拒绝整笔回滚。清理候选真正认领时重查有效策略；已持久deleting继续重试，延长不能恢复正在清理的文件。不增加客户/公开授权。证据`tmp/cloud-camera-defaults-20261103/`：兼容57/57，默认5/5（共享清理改动后亦补跑），55入口类型0和定向lint0，各批2132绑定无漂移；真实Mini/服务/H5六项、私有206/匿名401，Admin保存/重进/继承/真实冲突/保留输入/恢复。IAB实际1103×621，Modal宽520、底493/577，无横向溢出；screenshots/admin-ui.json核对既有Ant语言，无Mini模板/插画/台账变更。原Stable5/5只复用未变入口，不作实机播放证明。首轮缓存故障注入/线索清理错误、自动化按钮瞬态loading名称准备失败完整保留；一批lint因漂移无效。全量lint命令退出0，仅作未冻结诊断；构建编译成功后仍被外域`scripts/xiaok-manual-fixture.ts:43`类型错误阻断。模型/生图/付费0。业主视频授权、抓拍自动保留、完整24/72小时/自然到期仍未完成，调度只看原计划唯一当前记录。
+
+### 1.11 业主视频显式授权（限定Implemented，整体Limited）
+
+**CV-02业主私有视频显式授权：授权开发范围内Implemented。** `/construction-projects`工地视频Tab复用Ant Modal/Form/Switch，POST `/api/construction/video/projects/:id/customer-grant`（员工Mini视频API同路径）保存`userId/enabled/captureEnabled/ptzEnabled/expectedVersion`。仅enterprise_admin及所选企业admin/super_admin可保存，经理/成员不可。0115新增强制RLS的`construction_camera_customer_grants`，与报告`customer_access`及公开直播同意分离。一次性入口绑定当前客户/身份/授权版本；每次API、媒体复核及SD停止Worker都重查当前归属、生命周期与授权，重新开启不复活旧入口/会话；业主变更/归档/项目暂停撤销授权。客户抓拍以独立`actor_user_id`外键及幂等键保存，原员工抓拍保留；抓拍/历史及PTZ默认关闭，须分别授权。客户GET Mini `construction/video/customer-projects/:leadId`只返回本人已授权工地；用户明确批准“我的服务档案”复用文字按钮“工地视频”，进入原camera宿主页/H5，无新图片/样式或小K运行时变更。证据见视频计划§1.11及`tmp/cloud-camera-customer-20261103/`：兼容69/69、Mini26/26、60入口类型/定向lint0、真实服务5/5（直播撤权4274ms断流且员工不受影响、私有MP4 206/匿名401、真实1920×1080抓拍、SD最终停止确认）、Admin保存/重进/实际409草稿保留/恢复、Stable5/5加可见入口/宿主补验3/3，绑定均稳定。H5真实SD1920×1080从23.779推进至129.803秒。全量lint0；构建编译79秒成功后被无关public-live-native-diagnostic.ts:12的wx类型错误阻断。抓拍自动保留、全新24/72小时/自然到期、微信真机/公网4G及生产仍按各自范围未实现或未验证，模型/生图/付费0。
+
+界面来源：用户2026-11-03明确选择并授权“服务档案现有文字按钮落地”；复用原V4档案booking-secondary及原camera/H5共享权限状态。Admin沿双语Ant/refactor合同。真实Admin615×769、约520px弹窗底682.52/按钮底662.53，无溢出。原生390×844按钮[14,673.17,362,45]、固定栏top749，间隔30.83px；胶囊[296,51,87,32]，完整1700×960宿主图已核。首批原生5/5是功能回执；顶部截图未展示按钮，补验以类选择器dataset测量与滚动截图完成。属性选择器几何null及CUA FrameArrived超时均保留，最终沿批准window.ps1 Capture取得全宿主图。未从SDK入口结果推断微信真机播放。
 
 ## 2. 事实基线与既有计划关系
 

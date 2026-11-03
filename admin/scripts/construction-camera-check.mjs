@@ -27,7 +27,8 @@ const env = { ...process.env, DATABASE_URL: app.toString(), CAMERA_PUBLIC_ORIGIN
 const out = process.env.CAMERA_TEST_OUTPUT || path.join(root, '../tmp/cloud-camera'); fs.mkdirSync(out, { recursive: true });
 console.log(JSON.stringify({database,created}));
 const defaultsTest='src/db/__tests__/construction-camera-retention-defaults.test.ts';
-const targets=process.argv.includes('--defaults-only')?[defaultsTest]:[defaultsTest,'src/lib/construction/camera/__tests__/adapter.test.ts','src/lib/construction/camera/__tests__/storage.test.ts','src/db/__tests__/construction-camera.test.ts','src/db/__tests__/construction-recordings.test.ts','src/db/__tests__/construction-camera-sd.test.ts'];
+const customersTest='src/db/__tests__/construction-camera-customer.test.ts';
+const targets=process.argv.includes('--customers-only')?[customersTest]:process.argv.includes('--defaults-only')?[defaultsTest]:[customersTest,defaultsTest,'src/lib/construction/camera/__tests__/adapter.test.ts','src/lib/construction/camera/__tests__/storage.test.ts','src/db/__tests__/construction-camera.test.ts','src/db/__tests__/construction-recordings.test.ts','src/db/__tests__/construction-camera-sd.test.ts'];
 const child = spawn(process.execPath, ['--import','tsx','--test','--test-reporter=tap','--test-concurrency=1',...targets], { cwd: root, env, windowsHide: true, stdio: ['ignore','pipe','pipe'] });
 let log = ''; child.stdout.on('data', b => log += b); child.stderr.on('data', b => log += b);
 process.exitCode = await new Promise((resolve,reject) => { child.on('error',reject); child.on('exit', c => resolve(c ?? 1)); });

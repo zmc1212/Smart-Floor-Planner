@@ -11,6 +11,7 @@ const {
 } = require('../../../utils/protectedImageCache');
 const { formatAppointmentDisplay } = require('../../../utils/appointmentTimeRange.js');
 const sitePhotos = require('../../../utils/sitePhotoService.js');
+const customerCamera = require('../../../utils/customerCamera.js');
 
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
@@ -224,6 +225,9 @@ Page({
     sitePhotoLimitReached: false,
     sitePhotoManagerOpen: false,
     sitePhotoSheetOpen: false,
+    cameraProjects: [],
+    cameraLoading: false,
+    cameraError: '',
   },
 
   onLoad(query) {
@@ -242,9 +246,13 @@ Page({
   },
 
   onUnload() {
+    customerCamera.invalidate(this);
     this._assetRequestId = (this._assetRequestId || 0) + 1;
     this._archiveReady = false;
   },
+
+  loadCameraProjects() { return customerCamera.load(this); },
+  openCamera(event) { return customerCamera.open(this, event); },
 
   async load(options) {
     const silent = Boolean(options && options.silent);
@@ -254,6 +262,7 @@ Page({
     try {
       const result = await api.request(`/miniprogram/customer-projects/${encodeURIComponent(this.data.leadId)}`, 'GET');
       const project = result.data || {};
+      void customerCamera.load(this);
       const appointment = project.appointment || null;
       const publishedSchemes = decoratePublishedSchemes(
         project.publishedSchemes,

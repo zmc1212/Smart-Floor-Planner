@@ -188,6 +188,11 @@
     </view>
   </view>
 
+  <view wx:if="{{!loading && !error && !isTerminated && (cameraProjects.length || cameraError)}}" class="booking-actions">
+    <button wx:for="{{cameraProjects}}" wx:key="id" class="booking-secondary" data-project="{{item.id}}" bindtap="openCamera">工地视频{{cameraProjects.length > 1 ? ' · ' + item.name : ''}}</button>
+    <text wx:if="{{cameraError}}" class="booking-helper">{{cameraError}}</text><button wx:if="{{cameraError}}" class="booking-secondary" bindtap="loadCameraProjects" disabled="{{cameraLoading}}">重新读取工地视频</button>
+  </view>
+
   <view wx:if="{{!loading && !error && !sitePhotoSheetOpen && !isTerminated}}" class="footer-bar">
     <button class="footer-outline" bindtap="contactDesigner">
       <image class="footer-contact-icon" src="/packages/business/assets/customer-project-v4/message-circle-more.png" mode="aspectFit" />

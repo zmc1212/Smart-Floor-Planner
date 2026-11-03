@@ -13,7 +13,7 @@ export async function cameraPtz(token: string, csrf: string, bindingId: string, 
   if (!['left','right','up','down','stop'].includes(String(command)) || !Number.isSafeInteger(sequence) || Number(sequence) < 1) fail('camera_invalid_command', 422);
   const { eid, hash } = parseCameraToken(token);
   const c = await withTenantTransaction(eid, async tx => {
-    const s = await cameraSession(tx, token, csrf); if (!s.access.manage) fail('camera_forbidden', 403);
+    const s = await cameraSession(tx, token, csrf); if (!s.access.canControl) fail('camera_forbidden', 403);
     const camera = await one(tx, sql`select c.* from app.construction_camera_bindings b join app.construction_cameras c on c.enterprise_id=b.enterprise_id and c.id=b.camera_id
       where b.enterprise_id=${eid} and b.project_id=${s.pid} and b.id=${bindingId} and b.ended_at is null and c.enabled and c.ptz_enabled`);
     if (!camera) fail('camera_ptz_unavailable', 409);
@@ -35,7 +35,7 @@ export async function cameraPtz(token: string, csrf: string, bindingId: string, 
     if (!control?.stop_required || control.session_hash !== hash) fail('camera_command_expired', 409);
     try {
       if (command !== 'stop') {
-        const s = await cameraSession(tx, token, csrf); if (!s.access.manage || Number(control.sequence) !== Number(sequence) || new Date(String(control.expires_at)).getTime() <= Date.now()) fail('camera_command_expired', 409);
+        const s = await cameraSession(tx, token, csrf); if (!s.access.canControl || Number(control.sequence) !== Number(sequence) || new Date(String(control.expires_at)).getTime() <= Date.now()) fail('camera_command_expired', 409);
         const enabled = await one(tx, sql`select c.id from app.construction_cameras c join app.construction_camera_bindings b on b.enterprise_id=c.enterprise_id and b.camera_id=c.id where c.id=${String(c.id)} and c.enabled and c.ptz_enabled and b.id=${bindingId} and b.project_id=${s.pid} and b.ended_at is null for share of c,b`);
         if (!enabled) fail('camera_ptz_unavailable',409);
         await upstream.ptz(String(c.device_id), String(c.channel_id), command as PtzCommand);
