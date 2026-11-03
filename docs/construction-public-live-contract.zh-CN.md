@@ -2,7 +2,7 @@
 
 英文镜像：[construction-public-live-contract.md](./construction-public-live-contract.md)。执行及实际状态只维护在[小K唯一计划](./xiaok-renovation-agent-development-plan.md)第2节；本文是运行时合同，不是另一份任务队列。
 
-当前Limited：独立授权、无声代理和客户端状态已接线，尚未完成原用户旅程。历史service04六项/HTTP02三项证明当时媒体与状态范围。boundary01原投递失败保留；现复用ActorContext/原参与者的修复已通过delivery-service01三项真实服务检查；Admin02仅证明状态写入/重进，SQL独立边界五项通过。原生01–06未进入业务，当前Mini32/34有两项包体失败，类型保留82继承诊断。本合同同时保留要求与当前缺口，不能把状态成功当投递或播放成功。真实摄像头公开和生产部署未授权。
+当前Limited：原咨询投递、Admin并发照片/重进及稳定预览已有限定实证，源码包体已修复；Mini原生完整旅程和编译/字体读取仍未验。原失败保留；真实摄像头公开和生产未授权。
 
 ## 入口与设计
 
@@ -65,3 +65,4 @@
 - `publicLiveDesigner`对应既有C03-04“找设计师聊”及`PublicSitesController.privateChat`入口合同，传递conversationId/publicEnterpriseId/publicSiteId/publicVersionId/findDesigner，由既有onShow先附加再接续；保留原草稿，不携带lead/project/owner身份。隐藏、加载、不可用或不完整详情不能跳转；附加失败/已撤回不触发接续。结构/样式/素材和视觉层级不变。`tmp/public-live-package/resumed-fixes01`客户端20/20仅为逻辑证据，不新增渲染/原生验收。
 - 正常授权开发继续包体修复及原用户旅程；历史失败、同一问题两轮失败计数、未知费用和部署边界保持，不授权真实摄像头公开或生产。
 - 确定性包体续作`tmp/public-live-package/font-package01`在1180项绑定/drift[]下通过Node客户端/包体42/42。真实`packOptions`现排除保留的base64开发字体副本和本地项目配置，显式包含`assets/studio-serif.woff2.br`（696,261字节）；官方`readCompressedFile`还原原696,256字节、SHA-256 `79b60b72cddf95eaec6bec7fb3b6a519afba685b47c6ddd0cc01f1d452bc1325`，再沿同一全局900字重Data URL加载。源码主包2,094,813/assistant1,853,163字节，通过未放宽的2MiB硬上限/assistant96KiB预留；这是保守源码计数，不是编译预览大小。当前编译体积/原生包文件加载仍未验，旧字体/几何原生证据只属原绑定。未改字形、样式、路由、API或权限。 Official support: [upload whitelist](https://developers.weixin.qq.com/miniprogram/dev/framework/structure.html#允许上传的文件), [packOptions](https://developers.weixin.qq.com/miniprogram/dev/devtools/projectconfig.html#packOptions), [Brotli file read](https://developers.weixin.qq.com/miniprogram/dev/api/file/FileSystemManager.readCompressedFile.html), [Data URL font](https://developers.weixin.qq.com/miniprogram/dev/api/ui/font/wx.loadFontFace.html).
+- 原Admin照片/直播并发挂载现统一前置锁顺序：企业/访问、企业设置、项目。staffLiveAccess在cameraAccess持有项目共享锁前预先锁设置，原摄像头、身份、角色与RLS检查保持。原UI503/PG40P01及修复前受控55P03失败保留；同一固定锁序驱动修复后5/5，覆盖设置阻塞时照片事务仍可取得项目更新锁、enterprise_admin/admin/super_admin并发照片/直播读取及持久重进、跨租户拒绝。受影响原咨询投递回归3/3，cleanup.stopped=true/drift[]。真实Chrome Admin在276项源/配置绑定、drift[]下5/5：首次并发照片挂载、关闭Drawer重进、合成草稿实写和640×360真实视频、暂停10,190ms时钟不变并恢复至1445解码帧/106.382507秒，以及实际停止200/stopped=true且照片版本1仍公开。当前Chrome走原生HLS，Hls.js回退未验。临时播放观察器已还原，合成cookie/标签已清，自有Next/WVP/源/helper已停，活动直播/代理义务0。证据tmp/public-live-package/admin-recovery01/。未改结构、样式、素材、API/schema/权限或生产。定向lint0/0；仅诊断性质的全量lint0错误/30警告和types82与原诊断集合逐项一致、本功能0；这两项未事前建立新的全Admin绑定，不作新的全产品验收。

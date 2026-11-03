@@ -4,11 +4,19 @@ import { AssistantRepository, one, type Row } from '@/db/repositories/assistant-
 import { fail, id, type ActorContext } from '@/lib/assistant/contracts';
 import { appendMessage } from '@/lib/assistant/core/conversation';
 import { cameraAccess } from '../camera/service';
+import { constructionAccess } from '../service';
 import { siteActor } from '../site-chat';
 import type { ConstructionActor } from '../contracts';
 import { liveAudience, liveLabels, liveScope } from './contract';
 
 export async function staffLiveAccess(tx: PostgresTransaction, actor: ConstructionActor, pid: string, write = false) {
+  id(pid);
+  // Photo materials lock enterprise/access, settings, then project rows. Reserve
+  // the same leading locks before cameraAccess takes its project share lock.
+  // Keep the original camera and identity/settings checks below unchanged.
+  await constructionAccess(tx, actor);
+  await one(tx, sql`select enterprise_id from app.assistant_enterprise_settings
+    where enterprise_id=${actor.enterpriseId} for update`);
   const access = await cameraAccess(tx, actor, id(pid));
   await new AssistantRepository(tx, siteActor(actor)).settings(write);
   if (!access.manage) fail('public_live_forbidden',403);
