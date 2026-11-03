@@ -16,11 +16,13 @@ import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresq
 import { type ActorContext } from '@/lib/assistant/contracts';
 import { ConversationService, cancelRuns, newRun, appendMessage } from '@/lib/assistant/core/conversation';
 import { reportNativeFinalProtocol, reportFinalFunctionCarrier } from '@/lib/assistant/agent/report-native-final';
+import { reportAnswerGroundingProtocol } from '@/lib/assistant/agent/report-source-scope';
 import { assistantDailyLimitsEnabled } from '@/lib/assistant/core/daily-limits';
 import { ConstructionService } from '@/lib/construction/service';
 import { FollowupService } from '@/lib/construction/followup-service';
 import { ReportContextService } from '@/lib/construction/report-context';
 import { queryReportFollowups } from '@/lib/assistant/agent/report-context';
+import { businessSynthesisSources } from '@/lib/assistant/agent/synthesis';
 import { SignJWT } from 'jose';
 import { lockAssistantAcceptance } from './assistant-acceptance-safety.mjs';
 
@@ -38,9 +40,9 @@ assert.ok(!fs.existsSync(path.join(output, 'report.json')), 'Keep every original
 fs.mkdirSync(output, { recursive: true });
 const nativeScript = process.argv.find(a => a.startsWith('--native-script='))?.slice(16);
 if (configured) assert.ok(nativeScript, 'Bind the planned native input/reentry scope before dispatch');
-const log: Row = { startedAt: new Date().toISOString(), owner: '01a19d58-fff5-73a0-a337-23be214c1426',
+const log: Row = { startedAt: new Date().toISOString(), owner: '01a1a1c8-a95e-7932-81e1-ae19b74f9814',
   scope: 'Selected retained owner61/staff63 original facts only, independent of stopped report-body acceptance',
-  mechanism: 'report-native-final-v1; new-run forced-final-function-v1 with identical schema/catalog/application guards and4096 share inside original16000/four-call72000; old JSON modes and all repair counts retained',
+  mechanism: 'report-answer-grounding-v1; new-run per-original report scope and shared hash-bound semantic review within original four-call72000; forced-final-function-v1/schema/numeric guards/4096 final share unchanged; original customer2/worker2 and every failed first draft retained',
   serialFirstDraftReview: serialReview,
   fixedScope: { roles: ['customer', 'worker'], firstDraftsPerRole: 2, maxServiceRuns: 4, maxNativeRuns: 2,
     stop: 'First failed/unknown expectation, source/configuration drift or unavailable original; no sampling retries',
@@ -118,7 +120,13 @@ async function inspectRun(a: Row, runId: string) {
   assert.equal(detail.run?.report_final_carrier, reportFinalFunctionCarrier);
   const modelSteps = detail.steps.filter(s => s.kind === 'agent_model');
   assert.ok(modelSteps.length <= 4, 'The original four-call reservation includes auxiliary and repair calls');
-  const final = modelSteps.at(-1)!;
+  const final = modelSteps.filter(step => (step.input_summary as Row).purpose === 'answer').at(-1)!;
+  const review = detail.steps.filter(step => step.kind === 'agent_report_review');
+  assert.equal(review.length, 1, 'Exactly one review of the saved first draft, with no redraft loop');
+  assert.equal(review[0].status, 'succeeded');
+  assert.equal((review[0].input_summary as Row).protocol, reportAnswerGroundingProtocol);
+  assert.equal((review[0].input_summary as Row).noRedraft, true);
+  assert.equal(modelSteps.filter(step => (step.input_summary as Row).purpose === 'grounding').length, 1);
   assert.equal((final.input_summary as Row).reportNativeFinal, reportNativeFinalProtocol);
   assert.equal((final.input_summary as Row).reportFinalOutputTokens, 4096);
   assert.equal((final.input_summary as Row).maxOutputTokens, 4096);
@@ -135,6 +143,7 @@ async function inspectRun(a: Row, runId: string) {
   assert.equal(detail.steps.filter(s => s.kind === 'agent_validation' && s.status === 'failed').length, 0,
     'A repaired final is not a passing first draft; retain it and stop this fixed batch');
   const source = detail.steps.find(s => Number(s.step_seq) === 740)?.private_checkpoint as Row | undefined;
+  assert.equal((source?.snapshot as Row)?.reportAnswerGrounding, reportAnswerGroundingProtocol);
   assert.equal(((source?.snapshot as Row)?.reportReference as Row)?.selection && (((source!.snapshot as Row).reportReference as Row).selection as Row).reportId, a.rid);
   assert.ok(raw, 'No injected or guard-only answer');
   const message = messages.items.find(m => m.id === raw.id);
@@ -257,6 +266,12 @@ async function main() {
           assert.equal(policy.reportNativeFinal, reportNativeFinalProtocol);
           assert.equal(policy.reportFinalOutputTokens, 4096);
           assert.equal(policy.reportFinalCarrier, reportFinalFunctionCarrier);
+          assert.equal(policy.reportAnswerGrounding, reportAnswerGroundingProtocol);
+          const scopedSnapshot = await queryReportFollowups(tx, actor(a), c, String(probeId), 7779);
+          assert.equal('reportReference' in scopedSnapshot ? scopedSnapshot.reportReference?.selection.reportId : undefined, a.rid);
+          const reportSources = businessSynthesisSources('probe:' + probeId, scopedSnapshot);
+          assert.ok(reportSources.some(source => source.reportScope?.kind === 'metadata'));
+          for (const source of reportSources) assert.equal(source.reportScope?.reportId, a.rid);
           assert.equal(agent.imageInput, true); assert.equal(agent.structuredFinal, undefined); assert.equal(agent.imageContext, undefined);
           const reservation = (await one(tx, sql`select reserved_tokens::text,reserved_cost_micros::text from app.assistant_quota_reservations where enterprise_id=${eid} and run_id=${probeId}`))!;
           assert.equal(reservation.reserved_tokens, '72000');
@@ -270,6 +285,8 @@ async function main() {
           const oldOutput = (await one(tx, sql`select policy_snapshot from app.assistant_runs where enterprise_id=${eid} and id=1950`))!;
           assert.equal((oldOutput.policy_snapshot as Row).reportFinalOutputTokens, 4096);
           assert.equal((oldOutput.policy_snapshot as Row).reportFinalCarrier, undefined);
+          const oldFunction = (await one(tx, sql`select policy_snapshot from app.assistant_runs where enterprise_id=${eid} and id=1956`))!;
+          assert.equal((oldFunction.policy_snapshot as Row).reportAnswerGrounding, undefined);
           checked.push({ role: a.name, newRunProtocol: policy.reportNativeFinal, reservation, imageInput: true,
             carrier: policy.reportFinalCarrier, enterpriseConfigurationUnchanged: true,
             old1933NotMigrated: true, old1942And1950RetainJson: true });

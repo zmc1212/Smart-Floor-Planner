@@ -49,6 +49,8 @@ import { currentSynthesisContext } from './synthesis-sources';
 import { boundKnowledgeContext } from './bound-context';
 import { boundReportContext, queryReportFollowups, reportFollowupTool } from './report-context';
 import { boundReportNativeFinal, reportNativeRuntimeBudget, reportNativeFinalProtocol, boundReportFinalOutput, boundReportFinalCarrier } from './report-native-final';
+import { boundReportAnswerGrounding, reportAnswerGroundingProtocol } from './report-source-scope';
+import { prepareReportAnswerReview, assertReportAnswerReview, reportAnswerValidationFailure } from './report-answer-review';
 import { isReportAnswerSnapshot, reportFinalResponseIssue, reportFinalProtocol, reportAnswerFinalTool, reportQuestionCoverage, reportAnswerSynthesis, reportCoverageFailure, reportCoverageProtocol } from './report-final';
 import { projectFinalToolOutput } from './final-output';
 export { projectFinalToolOutput } from './final-output';
@@ -740,6 +742,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     const nativeFinalization=reportNativeFinal||composableReview&&initial.config.structuredFinal===nativeFinalProtocol;
     const reportFinalOutputTokens = boundReportFinalOutput((initial.run.policy_snapshot as Row).reportFinalOutputTokens, reportNativeFinal);
     const reportFinalCarrier = boundReportFinalCarrier((initial.run.policy_snapshot as Row).reportFinalCarrier, reportNativeFinal, reportFinalOutputTokens);
+    const reportAnswerGrounding = boundReportAnswerGrounding((initial.run.policy_snapshot as Row).reportAnswerGrounding, reportNativeFinal);
     const finalOutputMode = reportFinalCarrier ? 'function_call' as const : 'json_schema' as const;
     const explanationBound = !nativeFinalization && (initial.run.policy_snapshot as Row).sourceAnswerMode === knowledgeExplanationProtocol;
     const exactQuote = explanationBound && exactKnowledgeQuoteRequested(reviewContext.currentQuestion);
@@ -1154,6 +1157,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         validateFinal:async(raw,turn)=>{
           let reportScoped = false;
           if (reportSource) {
+            const reportRaw = raw;
             const normalized = await scoped(async tx => {
               const read = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
                 and run_id=${lease.runId} and kind='agent_tool' and capability_name='query_followups' and status='succeeded' order by step_seq desc limit 1`);
@@ -1171,9 +1175,31 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                 return { raw, issue };
               }
             });
-            if (normalized.issue) return normalized.issue;
+            if (normalized.issue) return reportAnswerValidationFailure(normalized.issue, reportAnswerGrounding);
             raw = normalized.raw;
             reportScoped = !!normalized.report;
+            if (reportAnswerGrounding && reportScoped) {
+              const draft = await scoped(async (tx, context) => {
+                const evidence = await currentSynthesisContext(tx, lease.actor, context.conversation, lease.runId);
+                return prepareReportAnswerReview(reportRaw, evidence.sources, reviewContext, initial.messages);
+              });
+              // Uses the original shared dispatch/unknown/usage path and the
+              // remaining slot of the four-call hold, never an extra retry.
+              const reviewed = await callModel(60 + turn, draft.reviewMessages, [draft.reviewTool], 'grounding');
+              let accepted = false;
+              try { assertReportAnswerReview(draft, reviewed, draft.binding); accepted = true; }
+              finally {
+                await scoped(async tx => {
+                  const previous = await one(tx, sql`select input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+                    and run_id=${lease.runId} and step_seq=${1360 + turn}`);
+                  if (previous && (previous.input_summary as Row).binding !== draft.binding) fail('context_changed');
+                  await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary,private_checkpoint)
+                    values(${lease.enterpriseId},${lease.runId},${1360 + turn},'agent_report_review',${accepted ? 'succeeded' : 'failed'},
+                      ${JSON.stringify({ protocol: reportAnswerGroundingProtocol, binding: draft.binding, noBusinessTools: true, noRedraft: true })}::jsonb,
+                      ${JSON.stringify({ review: reviewed })}::jsonb) on conflict do nothing`);
+                });
+              }
+            }
           }
           let explanationKind: unknown;
           try { explanationKind = JSON.parse(raw)?.kind; } catch { /* Existing syntax diagnostics below. */ }
@@ -1691,6 +1717,13 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           const proof = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
             and run_id=${lease.runId} and kind='agent_explanation_review' and status='succeeded' and input_summary->>'binding'=${draft.binding}`);
           if (!proof || acceptKnowledgeExplanation(draft, (proof.private_checkpoint as Row).review as ModelTurnOutput, draft.binding)) fail('context_changed');
+          answer = draft.answer;
+        } else if (reportAnswerGrounding) {
+          const draft = prepareReportAnswerReview(result.output?.text || '', evidence.sources, reviewContext, initial.messages);
+          const proof = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+            and run_id=${lease.runId} and kind='agent_report_review' and status='succeeded' and input_summary->>'binding'=${draft.binding}`);
+          if (!proof) fail('context_changed');
+          assertReportAnswerReview(draft, (proof.private_checkpoint as Row).review as ModelTurnOutput, draft.binding);
           answer = draft.answer;
         } else answer = parseSynthesis(answerRaw, evidence.sources,reviewContext);
         const preferences = ((context.conversation.entry_snapshot as Row)?.referencePreferences || []) as ReferencePreference[];

@@ -14,9 +14,10 @@ import { originalAnswerOnly, independentAdviceRequested } from './read-tool-inpu
 import { numericCitationCandidates } from './citation-coverage';
 import { publicPdfSource } from './source-document';
 import { isReportAnswerSnapshot, reportQuestionCoverage } from './report-final';
+import { scopedReportSynthesisSources, type ReportSourceScope } from './report-source-scope';
 
 export type SynthesisSource = { sourceId: string; kind: 'knowledge' | 'project' | 'history' | 'web'; title: string; text: string; fullTextCitable?:true; evidence?: Evidence; web?: import('../contracts/web-source').WebSourceLocator; resultKey?: string; citationQuotes?: string[]; summaryTitle?:string|null; material?: MaterialSource; history?: HistoryRef & { seq: string };
-  followup?: Omit<IssueState, 'question' | 'value'> };
+  followup?: Omit<IssueState, 'question' | 'value'>; reportScope?: ReportSourceScope };
 export type SynthesisSegment = { basis: 'evidence' | 'advice' | 'uncertainty'; text: string; citations: Array<{ sourceId: string; quote: string }> };
 export type SynthesisAnswer = { kind: 'synthesis'; segments: SynthesisSegment[] };
 export type SynthesisContext = { version: 1; knowledge: Evidence[]; snapshots: BusinessSnapshot[]; sources: SynthesisSource[]; history?: HistorySnapshot[]; web?: Evidence[]; ancestors?: import('./ancestor-sources').AncestorSourceRef[] };
@@ -288,6 +289,8 @@ export function businessSynthesisSources(resultKey: string, snapshot: BusinessSn
   return businessSourceList(resultKey,snapshot).map(citableSource);
 }
 function businessSourceList(resultKey: string, snapshot: BusinessSnapshot): SynthesisSource[] {
+  const reportSources = scopedReportSynthesisSources(resultKey, snapshot);
+  if (reportSources) return reportSources;
   const aggregate = businessSynthesisSource(resultKey, snapshot);
   if (snapshot.query.domain === 'followups') {
     const issues = (snapshot as NeedIssueSnapshot).data;

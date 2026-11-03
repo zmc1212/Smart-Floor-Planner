@@ -7,6 +7,9 @@ import { siteRecordText, type SiteDraft } from '@/lib/construction/site-contract
 import type { ReportProject } from '@/lib/construction/report-scope';
 import type { BusinessSnapshot } from './business-tools';
 import type { ModelTool } from '../contracts/model';
+import { reportLocalTime } from './report-time';
+import { boundReportAnswerGrounding, reportAnswerGroundingProtocol } from './report-source-scope';
+import { reportNativeFinalProtocol } from './report-native-final';
 
 export const reportFollowupTool: ModelTool = {
   name: 'query_followups', description: '只读当前明确选定报告的原项目、原版本、统计周期和截止时刻的已发布现场事实、待核对内容与已有安排。返回的是报告冻结的原记录，不是生成正文或当前最新施工状态；截止后的变化、未记录的负责人或期限仍未知。不查询其他咨询、其他项目或内部会话，不保存需求、不确认或修改施工事项。',
@@ -15,12 +18,6 @@ export const reportFollowupTool: ModelTool = {
 
 export type ReportBusinessReference = { selection: ReportReference } & ({ userId: string } | { principal: ActorContext['principal'] });
 export const reportContextStep = 740;
-function reportLocalTime(value: string) {
-  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai',
-    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })
-    .formatToParts(new Date(value)).map(part => [part.type, part.value]));
-  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}（Asia/Shanghai，UTC+08:00）`;
-}
 export function reportFactText(selection: ReportReference, project: ReportProject) {
   return `报告所选项目：${project.name}。报告周期：${reportLocalTime(selection.periodStart)}至${reportLocalTime(selection.periodEnd)}；事实截止：${reportLocalTime(selection.cutoffAt)}。\n`
     + `报告保存时团队标记阶段：${project.stageKey || '尚未标记'}。这不是当前施工状态或验收结论。\n`
@@ -44,10 +41,16 @@ export async function boundReportContext(tx: PostgresTransaction, actor: ActorCo
   const previous = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${actor.enterpriseId}
     and run_id=${runId} and step_seq=${reportContextStep}`);
   const resultKey = 'report:' + runId;
+  const run = await one(tx, sql`select policy_snapshot from app.assistant_runs where enterprise_id=${actor.enterpriseId}
+    and id=${runId} and conversation_id=${String(conversation.id)}`);
+  if (!run) fail('context_changed');
+  const policy = run.policy_snapshot as Row;
+  const grounding = boundReportAnswerGrounding(policy.reportAnswerGrounding, policy.reportNativeFinal === reportNativeFinalProtocol);
   const snapshot: BusinessSnapshot = { query: { domain: 'construction', leadId: resolved.leadId },
     ...(actor.principal.kind === 'user' ? { customerId: actor.principal.userId } : {}),
     leadIds: [resolved.leadId], version: resolved.selection.factsHash, queriedAt: resolved.selection.cutoffAt,
     reportReference: { selection: resolved.selection, principal: actor.principal },
+    ...(grounding ? { reportAnswerGrounding: reportAnswerGroundingProtocol } : {}),
     data: [{ ...resolved.project, projectId: resolved.project.id, leadId: resolved.leadId }],
     displayText: reportFactText(resolved.selection, resolved.project) };
   const saved = previous?.private_checkpoint as { resultKey: string; snapshot: BusinessSnapshot } | undefined;

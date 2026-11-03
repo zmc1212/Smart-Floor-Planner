@@ -75,6 +75,17 @@ export function prepareKnowledgeExplanation(raw: string, sources: SynthesisSourc
     }catch{/* Diagnosis cannot replace or hide the original guard. */}
     throw error;
   }
+  return prepareSourceAnswerReview(raw, answer, sources, coverage, context, answers, history);
+}
+
+/** Shared semantic validator input, not another Agent or source resolver. Each
+ * caller must first pass its own complete envelope and original synthesis
+ * guards. The draft, consulted sources, current question and originals bind
+ * the verdict; a review never rewrites the draft or grants access. */
+export function prepareSourceAnswerReview(raw: string, answer: SynthesisAnswer, sources: SynthesisSource[],
+  coverage: SourceQuestionCoverage, context: SynthesisReviewContext, answers: Record<string, unknown>,
+  history: ModelMessage[] = [], protocol: string = knowledgeExplanationProtocol): KnowledgeExplanationDraft {
+  const keys = keysFor(coverage);
   const originals = history.filter(m => m.role === 'user').slice(-6);
   let offset = 0;
   const canonicalAnswers = Object.fromEntries(keys.map(key => {
@@ -82,10 +93,11 @@ export function prepareKnowledgeExplanation(raw: string, sources: SynthesisSourc
     const segments = answer.segments.slice(offset, offset + count); offset += count;
     return [key, segments];
   }));
-  const packet = { protocol: knowledgeExplanationProtocol, currentQuestion: context.currentQuestion, originals,
+  const packet = { protocol, currentQuestion: context.currentQuestion, originals,
     questions: Object.fromEntries(keys.map((key, i) => [key, coverage.questions[i]])), answers: canonicalAnswers,
-    sources: sources.map(({ sourceId, kind, title, text, material, followup, evidence }) => ({ sourceId, kind, title, text,
+    sources: sources.map(({ sourceId, kind, title, text, material, followup, reportScope, evidence }) => ({ sourceId, kind, title, text,
       ...(material ? { material } : {}), ...(followup ? { followup } : {}),
+      ...(reportScope ? { reportScope } : {}),
       ...(evidence?.professional ? { applicability: evidence.professional.applicability,
         conditions: evidence.professional.entry.conditions, exceptions: evidence.professional.entry.exceptions } : {}) })),
   };
