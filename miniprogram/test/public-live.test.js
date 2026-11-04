@@ -1,4 +1,5 @@
 const test=require('node:test'),assert=require('node:assert/strict');
+const fs=require('node:fs');
 const {LiveConsentController,mediaUrl}=require('../packages/assistant/lib/public-live');
 const card={id:'7',versionId:'8',messageId:'20',revision:3,key:'a'.repeat(48),status:'pending_owner',statusLabel:'待你决定',available:true,canDecide:true,canWithdraw:true,alias:'客厅机位',name:'测试工地'};
 const path='/api/public/construction-live/1454/'+card.key+'/media/'+'b'.repeat(43)+'/hls.m3u8';
@@ -47,12 +48,65 @@ test('a decoder error revokes preview readiness and retry ignores late callbacks
   const old=j.c.state.livePreviewAttempt;
   j.c.playbackProgress('7',old,1);j.c.playbackFailed('7',old);
   assert.equal(j.c.state.liveExpanded,'7');assert.equal(j.c.state.livePreviewReady,false);
+  assert.match(j.c.state.liveError,/^暂时无法连接直播/);
   assert.equal(await j.c.decide('7','approve'),false);assert.equal(j.approvals().length,0);
   await j.c.preview('7');const current=j.c.state.livePreviewAttempt;assert.notEqual(current,old);
   j.c.playbackProgress('7',old,2);j.c.playbackFailed('7',old);
   assert.ok(j.c.state.livePreviewUrl);assert.equal(j.c.state.livePreviewReady,false);
   j.c.playbackProgress('7',current,1);assert.equal(j.c.state.livePreviewReady,true);
   assert.equal(j.c.state.liveError,'');assert.equal(await j.c.decide('7','approve'),true);
+});
+
+function publicPlayer(request) {
+  const source = fs.readFileSync(require.resolve('../packages/construction/public-live/public-live'), 'utf8');
+  let page;
+  new Function('Page', 'require', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'wx', source)(
+    definition => { page = definition; }, () => ({ request, getBaseUrls: () => ['http://127.0.0.1:3006/api'] }),
+    () => 1, () => {}, () => 1, () => {}, { createVideoContext: () => ({ stop() {} }) },
+  );
+  return Object.assign(page, { options: { enterpriseId: '1454', key: card.key }, epoch: 0, alive: true, visible: true,
+    setData(patch) { Object.assign(this.data, patch); } });
+}
+
+test('public 503 and decoder failures permit retry, and playback needs positive time progress', async () => {
+  const detail = { key: card.key, versionId: card.versionId, revision: card.revision };
+  let sessionUnavailable = true;
+  const page = publicPlayer(async (_, method) => {
+    if (method === 'POST' && sessionUnavailable) throw { statusCode: 503 };
+    return { success: true, data: method === 'POST' ? { ...detail, url: path } : detail };
+  });
+  await page.connect();
+  assert.equal(page.data.state, 'failed');
+  assert.equal(page.data.error, '暂时无法连接直播，请重试。');
+  assert.equal(page.data.src, '');
+  sessionUnavailable = false;
+  await page.retry();
+  assert.ok(page.data.src.endsWith('/hls.m3u8'));
+  for (const time of [undefined, 0, NaN]) page.played({ detail: { currentTime: time } });
+  assert.equal(page.data.state, 'connecting');
+  page.played({ detail: { currentTime: 0.25 } });
+  assert.equal(page.data.state, 'playing');
+  page.playbackError();
+  assert.equal(page.data.state, 'failed');
+  assert.equal(page.data.error, '暂时无法连接直播，请重试。');
+  assert.equal(page.data.src, '');
+});
+
+test('withdrawal keeps the stopped feedback even if an old player reports an error', async () => {
+  const detail = { key: card.key, versionId: card.versionId, revision: card.revision };
+  let withdrawn = false;
+  const page = publicPlayer(async (_, method) => withdrawn
+    ? { success: false, code: 'public_live_unavailable' }
+    : { success: true, data: method === 'POST' ? { ...detail, url: path } : detail });
+  await page.connect();
+  withdrawn = true;
+  await page.check(page.epoch);
+  page.playbackError();
+  assert.equal(page.data.state, 'stopped');
+  assert.equal(page.data.error, '直播已停止公开');
+  await page.retry();
+  assert.equal(page.data.state, 'stopped');
+  assert.equal(page.data.error, '直播已停止公开');
 });
 
 test('a still-available replacement version cannot inherit expansion, media or readiness',async()=>{

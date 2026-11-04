@@ -6,15 +6,16 @@ button::after { border:0; }
 .live-spine { position:absolute; z-index:6; inset:0 auto 0 0; width:17px; border-right:1px solid #244c38; box-shadow:inset -2px 0 3px #002d2380,2px 0 3px #92825b26; background:repeating-linear-gradient(40deg,#8baf8d1a 0,#8baf8d1a 1px,transparent 1px,transparent 5px),linear-gradient(90deg,#155842,#176c51 35%,#0a5b43 75%,#46826a); }
 .live-stitch { position:absolute; left:3px; width:19px; height:5px; border-radius:5px; background:#c1d3b0; box-shadow:1px 2px 2px #003f33; transform:rotate(-9deg); }
 .live-nav { position:absolute; top:0; left:17px; right:0; display:flex; align-items:center; gap:10px; padding-left:12px; height:44px; }
-.live-history { flex:none; width:38px; min-height:44px; display:flex; align-items:center; justify-content:center; background:#efe6d3; box-shadow:0 2px 4px #b9aa8e55; transform:rotate(-3deg); }
+.live-nav button { min-width:0; box-sizing:border-box; }
+.live-nav .live-history { flex:none; width:38px; min-width:38px; max-width:38px; min-height:44px; display:flex; align-items:center; justify-content:center; background:#efe6d3; box-shadow:0 2px 4px #b9aa8e55; transform:rotate(-3deg); }
 .live-clock { width:17px; height:17px; border:1.5px solid #073c30; border-radius:50%; position:relative; }
 .live-clock::after { content:''; position:absolute; width:5px; height:6px; left:7px; top:3px; border-left:1px solid #073c30; border-bottom:1px solid #073c30; transform:rotate(-15deg); }
-.live-brand { font-family:'Chat Serif','Songti SC',SimSun,serif; font-weight:900; font-size:23px; flex:1; }
-.live-designer { min-height:44px; flex:none; font-size:13px; white-space:nowrap; padding:0 12px; position:relative; }
-.live-designer::after { content:''; position:absolute; inset:8px 0; border:1px solid #78917a; border-radius:25px; }
+.live-brand { font-family:'Chat Serif','Songti SC',SimSun,serif; font-weight:900; font-size:23px; flex:1; min-width:0; white-space:nowrap; }
+.live-nav .live-designer { width:92px; min-height:44px; flex:none; display:flex; align-items:center; justify-content:center; font-size:13px; white-space:nowrap; padding:0 12px; position:relative; }
+.live-designer::before { content:''; position:absolute; inset:8px 0; border:1px solid #78917a; border-radius:25px; }
 .live-paper { position:absolute; left:17px; right:0; bottom:0; border-radius:14px 14px 0 0; border:1px solid #fffdf6; box-shadow:0 -2px 7px #8d78452b; background:radial-gradient(ellipse at 70% 30%,#ffffff70,transparent 75%),#fbf7ed; }
 .live-grip { position:absolute; top:10px; left:calc(50% - 20px); width:40px; height:4px; border-radius:3px; background:#c5c2b7; }
-.live-close { position:absolute; right:9px; top:23px; width:44px; height:44px; font-size:30px; z-index:2; }
+.live-paper button.live-close { position:absolute; right:9px; top:23px; width:44px; min-width:44px; max-width:44px; height:44px; font-size:30px; z-index:2; }
 .live-scroll { position:absolute; top:38px; bottom:0; width:100%; height:auto; }
 .live-content { padding:9px 20px 30px; }
 .live-title { display:block; font:900 32px/1.35 'Chat Serif','Songti SC',SimSun,serif; margin:0 0 8px; }
@@ -31,5 +32,5 @@ button::after { border:0; }
 .live-alias { display:table; margin:15px 0; padding:2px 14px; border:1px solid #668a73; border-radius:18px; font-size:16px; }
 .live-copy { display:block; margin:12px 0; font-size:16px; line-height:1.7; }
 .live-helper { display:block; font-size:13px; line-height:1.7; color:#748d87; }
-.live-primary { width:100%; min-height:44px; padding:12px 10px; border-radius:7px; background:#00513c; color:#fffdf0; font-size:17px; }
+.live-content button.live-primary { width:100%; min-height:44px; box-sizing:border-box; padding:12px 10px; border-radius:7px; background:#00513c; color:#fffdf0; font-size:17px; }
 .live-link { display:block; min-height:44px; padding:10px; margin:8px auto; font-size:16px; text-decoration:underline; text-underline-offset:6px; }

@@ -1,6 +1,8 @@
 const api = require('../../../utils/api');
 const empty = () => ({ loading:true, detail:null, src:'', state:'connecting', error:'', paused:false, navTop:47, navRight:100, navHeight:44 });
 const validId = v => /^[1-9]\d{0,18}$/.test(String(v||''));
+const withdrawn = error => [401,403,404].includes(error.statusCode) || error.code === 'public_live_unavailable';
+const connectionError = '暂时无法连接直播，请重试。';
 function sourceUrl(url) {
   if(typeof url!=='string')throw {code:'invalid_response'};
   const path=url.replace(/^(?:https:\/\/[A-Za-z0-9.-]+(?::\d+)?|http:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?)(?=\/)/,'');
@@ -34,17 +36,20 @@ Page({
       this.setData({src:sourceUrl(session.url),loading:false});
       this.poll=setInterval(()=>this.check(epoch),5000);
       this.renew=setTimeout(()=>{if(valid()&&!this.data.paused)this.connect();},90000);
-    }catch(error){if(valid()){this.setData({src:'',loading:false,state:[401,403,404].includes(error.statusCode)||error.code==='public_live_unavailable'?'stopped':'offline',error:[401,403,404].includes(error.statusCode)?'直播已停止公开':'机位暂时离线，暂时无法连接直播。'});}}
+    }catch(error){if(valid()){const stopped=withdrawn(error);this.setData({src:'',loading:false,state:stopped?'stopped':'failed',error:stopped?'直播已停止公开':connectionError});}}
   },
   async check(epoch) {
     if(this.checking)return;this.checking=true;
     try {const detail=await this.read();if(epoch!==this.epoch||!this.visible)return;
       if(detail.versionId!==this.data.detail?.versionId||detail.revision!==this.data.detail?.revision)throw {code:'public_live_unavailable'};
-    }catch(error){if(epoch===this.epoch&&this.visible){try{wx.createVideoContext('public-live-video',this).stop();}catch(_){}this.setData({src:'',state:[401,403,404].includes(error.statusCode)||error.code==='public_live_unavailable'?'stopped':'offline',error:[401,403,404].includes(error.statusCode)||error.code==='public_live_unavailable'?'直播已停止公开':'暂时无法核对直播状态，请重试。'});clearInterval(this.poll);clearTimeout(this.renew);}}
+    }catch(error){if(epoch===this.epoch&&this.visible){const stopped=withdrawn(error);try{wx.createVideoContext('public-live-video',this).stop();}catch(_){}this.setData({src:'',state:stopped?'stopped':'failed',error:stopped?'直播已停止公开':'暂时无法核对直播状态，请重试。'});clearInterval(this.poll);clearTimeout(this.renew);}}
     finally{this.checking=false;}
   },
-  played() {if(this.data.src)this.setData({state:'playing',paused:false,error:''});},
-  playbackError() {this.setData({src:'',loading:false,state:'offline',error:'机位暂时离线，暂时无法连接直播。'});},
+  played(event) {
+    const time = event.detail.currentTime;
+    if (this.data.src && this.data.state === 'connecting' && Number.isFinite(time) && time > 0) this.setData({state:'playing',error:''});
+  },
+  playbackError() {if(this.data.src)this.setData({src:'',loading:false,state:'failed',error:connectionError});},
   toggle() {if(this.data.paused){this.connect();return;}try{wx.createVideoContext('public-live-video',this).pause();}catch(_){}this.setData({paused:true,state:'paused'});},
   fullscreen() {if(this.data.src)wx.createVideoContext('public-live-video',this).requestFullScreen({direction:90});},
   retry() {return this.connect();},

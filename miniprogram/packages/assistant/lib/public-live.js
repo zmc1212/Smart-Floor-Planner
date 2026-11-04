@@ -73,6 +73,6 @@ class LiveConsentController {
   }
   retry() {const op=this.pending();return op?this.write(op):this.load(this.cid);}
   playbackProgress(id,attempt,time) {if(this.currentPreview(id,attempt)&&Number.isFinite(time)&&time>0)this.set({livePreviewReady:true});}
-  playbackFailed(id,attempt) {if(this.currentPreview(id,attempt))this.resetPreview({liveError:'机位暂时离线，可以重试预览；请仍仔细核对观看范围。'});}
+  playbackFailed(id,attempt) {if(this.currentPreview(id,attempt))this.resetPreview({liveError:'暂时无法连接直播，可以重试预览；请仍仔细核对观看范围。'});}
 }
 module.exports={LiveConsentController,initialLive,liveError:copy,mediaUrl};
