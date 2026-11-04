@@ -30,6 +30,11 @@ export function liveRow(tx: PostgresTransaction, eid: string, liveId: string, lo
   return one(tx, sql`select * from app.construction_public_live where enterprise_id=${eid} and id=${id(liveId)} ${lock ? sql`for update` : sql`for share`}`);
 }
 export async function liveSource(tx: PostgresTransaction, eid: string, liveId: string, versionId?: string) {
+  // Anonymous reads follow the same leading policy lock as management and
+  // consent writes, while still permitting concurrent viewers to read.
+  const policy = await one(tx, sql`select enterprise_id from app.assistant_enterprise_settings
+    where enterprise_id=${eid} and enabled for share`);
+  if (!policy) return null;
   const l = await liveRow(tx,eid,liveId);
   if (!l?.current_version_id || versionId && String(l.current_version_id) !== versionId) return null;
   const v = await one(tx, sql`select * from app.construction_public_live_versions where enterprise_id=${eid} and live_id=${liveId} and id=${String(l.current_version_id)} for share`);
@@ -39,13 +44,12 @@ export async function liveSource(tx: PostgresTransaction, eid: string, liveId: s
     join app.construction_projects p on p.enterprise_id=b.enterprise_id and p.id=b.project_id
     join app.leads lead on lead.enterprise_id=p.enterprise_id and lead.id=p.lead_id
     join app.enterprises e on e.id=p.enterprise_id and e.status='active'
-    join app.assistant_enterprise_settings s on s.enterprise_id=e.id and s.enabled
     where b.enterprise_id=${eid} and b.project_id=${String(l.project_id)} and b.id=${String(v.binding_id)} and b.camera_id=${String(v.camera_id)}
       and b.ended_at is null and c.enabled and c.version=${Number(v.camera_version)} and p.status='active' and p.customer_access
       and lead.customer_user_id=${String(l.customer_id)} and lead.archived_at is null and lead.status<>'closed'
       and not exists(select 1 from app.construction_camera_controls ctrl where ctrl.enterprise_id=b.enterprise_id and ctrl.camera_id=c.id and ctrl.stop_required)
       and not exists(select 1 from app.construction_camera_sd_playbacks sd where sd.enterprise_id=b.enterprise_id and sd.binding_id=b.id and sd.state<>'stopped')
-    for share of b,c,p,lead,e,s`);
+    for share of b,c,p,lead,e`);
   if (!source) return null;
   const actor = (v.scope as Row).preparedActor as ConstructionActor;
   const permission = await one(tx, actor?.miniProgramUserId

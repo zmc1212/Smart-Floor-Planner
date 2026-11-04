@@ -22,18 +22,25 @@ function playbackUrl(path:string){
 }
 const lock=(tx:PostgresTransaction,eid:string,lid:string)=>tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`public-live-media:${eid}:${lid}`},0))`);
 async function authorize(tx:PostgresTransaction,eid:string,lid:string,vid:string,viewer:LiveViewer):Promise<Source> {
+  // Staff and owner checks take the policy row exclusively. Acquire it before
+  // liveSource takes shared locks, just as the preparation and decision paths do.
+  if(viewer.kind==='staff'){
+    if(viewer.actor.enterpriseId!==eid)fail('public_live_unavailable',404);
+    await staffLiveAccess(tx,viewer.actor,viewer.projectId);
+  }else if(viewer.kind==='owner'){
+    if(viewer.actor.enterpriseId!==eid||viewer.actor.principal.kind!=='user')fail('public_live_unavailable',404);
+    const r=new AssistantRepository(tx,viewer.actor);await r.settings();const c=await r.conversation(viewer.conversationId);
+    if(c.purpose!=='customer_consultation')fail('public_live_unavailable',404);
+  }
   const s=await liveSource(tx,eid,lid,vid);
   if(!s||['withdrawn','rejected','declined'].includes(String(s.live.status)))fail('public_live_unavailable',404);
   const l=s.live;
   if(viewer.kind==='public'){
     if(l.status!=='published'||!l.reviewed_by||String(l.consented_version_id)!==vid||String(l.consented_by)!==String(l.customer_id))fail('public_live_unavailable',404);
   }else if(viewer.kind==='staff'){
-    if(viewer.actor.enterpriseId!==eid||viewer.projectId!==String(l.project_id))fail('public_live_unavailable',404);
-    await staffLiveAccess(tx,viewer.actor,viewer.projectId);
+    if(viewer.projectId!==String(l.project_id))fail('public_live_unavailable',404);
   }else{
-    if(viewer.actor.enterpriseId!==eid||viewer.actor.principal.kind!=='user'||viewer.actor.principal.userId!==String(l.customer_id)||viewer.conversationId!==String(l.conversation_id)||l.status==='draft')fail('public_live_unavailable',404);
-    const r=new AssistantRepository(tx,viewer.actor);await r.settings();const c=await r.conversation(viewer.conversationId);
-    if(c.purpose!=='customer_consultation')fail('public_live_unavailable',404);
+    if(viewer.actor.principal.kind!=='user'||viewer.actor.principal.userId!==String(l.customer_id)||viewer.conversationId!==String(l.conversation_id)||l.status==='draft')fail('public_live_unavailable',404);
   }
   return s;
 }

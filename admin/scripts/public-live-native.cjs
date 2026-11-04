@@ -98,12 +98,13 @@ module.exports=async ctx=>{
       await tap(p,liveTargetSelectors(r.card.messageId,'action')[0]);await wait(async()=>{const d=await p.data();return Object.values(d.liveCards||{}).some(c=>c.id===f.liveId&&c.status==='owner_approved');},'persisted owner approval');
       await cli.reLaunch('/'+route+'?conversationId='+f.cid);p=await page(route);r=await ownerReady(p);assert.equal(r.card.status,'owner_approved');await capture('owner-reentry',route);return {originalConversation:f.cid,status:r.card.status,actualTaps:true};
     });
+    if(ctx.ownerOnly){report.scope='Owner HLS preview, approval and original chat reentry only';report.passed=true;return report;}
     await step('real manager review then anonymous detail entry, actual video playback and pause',async()=>{
       await ctx.publish();
       await cli.evaluate(()=>{const app=getApp(),s=app.__qaPublicLive;s.ownerIdentity={token:app.globalData.token,userInfo:app.globalData.userInfo,bootstrap:app.globalData.bootstrap};s.memory.set('token','');s.memory.set('userInfo',null);app.globalData.token='';app.globalData.userInfo=null;app.globalData.bootstrap=null;return {anonymous:true};});
       await cli.reLaunch('/'+detail+'?enterpriseId='+f.eid+'&siteId='+f.photoId+'&versionId='+f.photoVersionId);let p=await page(detail);
       await wait(async()=>{const d=await p.data();return d.site?.id===f.photoId&&d.liveEntry?.key===f.key;},'real public detail and independent live entry');await capture('public-detail',detail);
-      await tap(p,'.public-live-row button');p=await page(player);await wait(async()=>{const d=await p.data();if(d.state==='offline')throw Error('Native player offline: '+d.error);return d.state==='playing';},'actual native video play',90);await capture('public-playing',player);
+      await tap(p,'.public-live-row button');p=await page(player);await wait(async()=>{const d=await p.data();if(d.state==='failed')throw Error('Native player connection failed: '+d.error);return d.state==='playing';},'actual native video play',90);await capture('public-playing',player);
       await cli.evaluate(()=>{wx.createSelectorQuery().select('.live-video-frame').boundingClientRect().select('.live-video-tools button').boundingClientRect().exec(rects=>{getApp().__qaPublicLive.playerMetrics=rects;});return {requested:true};});
       report.playerBounds=await wait(()=>cli.evaluate(()=>getApp().__qaPublicLive.playerMetrics||null),'player element bounds');
       assert.ok(Math.abs(report.playerBounds[0].width/report.playerBounds[0].height-16/9)<0.03);assert.ok(report.playerBounds[1].height>=44);
@@ -113,7 +114,7 @@ module.exports=async ctx=>{
     await step('real HTTP503 clears media and the visible retry returns to current live',async()=>{
       await cli.evaluate(()=>{getApp().__qaPublicLive.failNextLive=true;return {armed:true};});
       await cli.reLaunch('/'+player+'?enterpriseId='+f.eid+'&key='+f.key);const p=await page(player);
-      await wait(async()=>{const d=await p.data();return d.state==='offline'&&!d.src;},'real503 offline feedback');await capture('public-503',player);
+      await wait(async()=>{const d=await p.data();return d.state==='failed'&&!d.src;},'real503 connection failure feedback');await capture('public-503',player);
       await tap(p,'.live-state-layer button');await wait(async()=>(await p.data()).state==='playing','same-scope actual retry');await capture('public-recovered',player);return {realHttp503:true,srcCleared:true,retried:true};
     });
     await step('owner stops through the real original card; old session and link fail, photos remain',async()=>{
