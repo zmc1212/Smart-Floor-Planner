@@ -17,7 +17,7 @@ Stable 前置现可在创建夹具前通过。C05 从原咨询取得预览和媒
 
 native01元信息超时、02 TSX setIdentity捕获__name保留为业务前驱动失败。native03属性selector测量null；04已真实保存/重进偏好，但测试边界在任何C01服务调用前拦截必需POST entry-context；原业务失败2次后止损。保存源码/VM及entry-discriminator02复用真实Mini ChatController/AssistantClient和实际assistantHttp：旧边界未调服务即失败，修正后入口/会话/消息200且保存上下文可见，无关模型写入仍被拒。只凭该已证机制重新开放一次原固定范围，失败计数不清零。最终作品1行版本13/公开版本3已撤回；两条已发生的偏好消息33/34分别属于版本2/3，后者supersedes前者，原失败写入不擦除。内存身份/存储钩子/全局状态已还原，临时服务及验收锁释放；final-state核idle队列、活动观看会话/未清代理0、live1/v35/rev137 withdrawn及photo1/v1仍published。新增模型/Embedding/生图均0。证据：`tmp/public-live-package/successor03/{designer-native05,designer-permissions01,designer-entry-discriminator02}/`及`designer-final-state.json`。
 
-只读私有源核验（2026-11-04）。`cloud_camera_eval` 中仅微云 1454／项目 12／绑定 9／机位 8（v2）有活动绑定，WVP 显示在线。测试业主观看授权关闭 v16、临时微信身份已撤回，可用测试业主为 0。此前真实画面的单次本机回环匿名验收许可已用完。小程序本人项目实播需要已有观看授权的测试业主，C03 真实围观需要该画面单独获准公开。既有 H5 读回、C05 Stable 原咨询预览及 C03 合成流播放分别沿原验证范围使用。见 `tmp/public-live-package/successor03/private-audit-20261104-resume03/report.json` 和[直播合同](./construction-public-live-contract.zh-CN.md)。
+业主本人项目直播（2026-11-04）。在隔离库 `cloud_camera_eval` 复用带标记测试业主，从 Stable 390×844 项目档案进入微云 1454／项目 12／绑定 9／机位 8（v2）。H5 兼容播放使用原始 1920×1080 HLS，首次和重进分别连续播放 2.248、2.124 秒，解码 27、25 帧。测试撤回临时观看授权后，旧 H5 会话和新入口均返回 404，项目档案隐藏摄像头。最终授权关闭 v22、活动会话 0、临时身份已移除。默认自动方式选择 FLV 并解码 142 帧，最长观测连续范围 1.212 秒。此前单次本机匿名验收许可已用完，C03 真实机位原生围观仍需独立明确授权。见 `tmp/public-live-package/v104-owner-project-native{01,02,03}/report.json` 和[直播合同](./construction-public-live-contract.zh-CN.md)。
 <!-- /construction-public-live-current -->
 
 <!-- xiaok-v1-02-proactive -->
