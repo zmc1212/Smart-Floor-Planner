@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { parseAgentReply } from '../agent/context';
 import { sourceCitationCatalog } from '../agent/citation-catalog';
-import { parseSynthesis, synthesisRepairFeedback, type SynthesisSource, type SynthesisSegment } from '../agent/synthesis';
+import { focusedSynthesisMessages, parseSynthesis, synthesisRepairFeedback, type SynthesisSource, type SynthesisSegment } from '../agent/synthesis';
 
 // Verbatim failing excerpts from preserved runs 938/939/943. The original
 // reports in tmp/xiaok-source-integrity-merged-recovered-{a,b} remain immutable.
@@ -63,6 +63,42 @@ test('run940 describing a reference-to-record comparison does not claim an obser
   const text = '先对齐口径：这份《施工工艺标准2.0》是参考手册，不是你们项目已采纳的合同标准；下面只是拿它和已发布的主卫现场记录做对照。';
   assert.doesNotThrow(() => parseSynthesis(raw(text, [title]), [title, site]));
   rejects('已发布的现场记录写的是局部同槽并共用线盒。', [rule], 'misattributed_project_observation');
+});
+
+test('run10408 cannot promote a site-record coordination instruction to a completed marking', () => {
+  const completed = '设计师发来平面图二版，保留原有餐边柜的位置。';
+  const pending = '现场只标记位置，等设计师核对后再确认点位。';
+  const fixture = (id: string, completion: string): SynthesisSource => {
+    const text = '客餐厅图纸二版交接\n本次完成：' + completion + '\n待沟通：' + pending;
+    return { sourceId: id, kind: 'project', title: '已发布现场记录（客餐厅）', text, material: {
+      ref: { type: 'site_record', id, version: '2' }, hash: id, leadId: '8235', projectId: '1927', roomId: '1',
+      roomName: '客餐厅', sourceMessageId: '1', mediaIds: [], audience: 'customer_self', basis: 'published_project_record',
+      status: 'current', text, siteCompleted: completion,
+    } };
+  };
+  const coordination = fixture('Bcoordination', completed);
+  const recorded = fixture('Brecorded', '现场已用纸胶带标记了餐边柜旁插座位置。');
+  const answer = (text: string, source: SynthesisSource) => JSON.stringify({ kind: 'synthesis',
+    segments: [{ basis: 'evidence', text, citations: [{ sourceId: source.sourceId, quote: source.text }] }] });
+  const assertion = '现场仅标记了大致位置，尚未最终确认点位。';
+  assert.throws(() => parseSynthesis(answer(assertion, coordination), [coordination, recorded]), /ungrounded_response_scope/);
+  assert.throws(() => parseSynthesis(answer('现场已标记但尚未确认点位。', coordination), [coordination]), /ungrounded_response_scope/);
+  assert.throws(() => parseSynthesis(answer(assertion, rule), [coordination, rule]), /ungrounded_response_scope/);
+  assert.match(synthesisRepairFeedback(answer(assertion, coordination), [coordination, recorded])!.feedback, /misattributed_project_observation/);
+  assert.doesNotThrow(() => parseSynthesis(answer('记录中的现场位置标记仍待沟通。', coordination), [coordination]));
+  assert.doesNotThrow(() => parseSynthesis(answer('现场已标记了餐边柜旁插座位置。', recorded), [recorded]));
+  const packet = JSON.stringify({ query: { domain: 'materials' }, synthesisSources: [coordination] });
+  const projected = focusedSynthesisMessages([
+    { role: 'user', content: [{ type: 'text', text: JSON.stringify({ sourceMessageId: '1', text: '图纸差异怎么处理？' }) }] },
+    { role: 'assistant', content: '', toolCalls: [{ id: 'read', name: 'query_materials', arguments: '{}' }] },
+    { role: 'tool', callId: 'read', content: packet },
+  ], '1').find(message => message.role === 'tool');
+  assert.ok(projected?.content);
+  const projection = JSON.parse(projected.content).synthesisSources[0];
+  assert.equal(projection.text, coordination.text);
+  assert.equal(projection.material.siteCompleted, undefined);
+  assert.equal(projection.material.hash, undefined);
+  assert.equal(JSON.parse(packet).synthesisSources[0].material.siteCompleted, completed);
 });
 
 test('run938/939 inferred mechanisms cannot acquire evidence status from a prescription', () => {

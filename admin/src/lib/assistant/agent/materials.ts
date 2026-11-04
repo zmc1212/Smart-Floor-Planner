@@ -27,6 +27,7 @@ export type MaterialSource = {
   sourceMessageId: string | null; mediaIds: string[]; audience: 'customer_self';
   basis: 'owned_conversation' | 'customer_shared_grant' | 'returned_drawing_review' | 'delivered_formal_plan' | 'primary_plan' | 'published_project_record'; status: 'current'; text: string;
   floorplan?: { protocol: typeof formalFloorplanContextProtocol; name: string };
+  siteCompleted?: string;
   original?: { grantId: string; conversationId: string; sourceHash: string; mediaHash: string | null; authority: 'customer_reference'; imagePixels: false };
   review?: { issueId: string; issueRevision: number; needGrantId: string; drawingGrantId: string; materialVersion: string; authority: 'team_returned_association' };
   formal?: { issueId: string; issueRevision: number; number: number; revision: number; decision: string; previousVersionId: string | null;
@@ -195,11 +196,12 @@ export async function queryMaterials(tx: PostgresTransaction, actor: ActorContex
       if (!record) continue;
       const media = await rows(tx, sql`select a.media_id from app.construction_site_attachments a join app.construction_site_media m
         on m.enterprise_id=a.enterprise_id and m.id=a.media_id and m.deleted_at is null where a.enterprise_id=${eid} and a.record_id=${String(record.id)} order by a.position`);
-      const text = siteRecordText(record.data as SiteDraft, String(record.room_name_snapshot));
+      const data = record.data as SiteDraft;
+      const text = siteRecordText(data, String(record.room_name_snapshot));
       sources.push({ ref: { type: 'site_record', id: String(record.id), version: String(record.published_version) }, hash: fingerprint({ data: record.data, media }),
         leadId, projectId, roomId: record.room_id ? String(record.room_id) : null, roomName: String(record.room_name_snapshot),
         sourceMessageId: record.source_message_id ? String(record.source_message_id) : null, mediaIds: media.map(m => String(m.media_id)),
-        audience: 'customer_self', basis: 'published_project_record', status: 'current', text });
+        audience: 'customer_self', basis: 'published_project_record', status: 'current', text, siteCompleted: data.completed || '' });
       lines.push(`团队已核对发布的现场记录（${String(record.room_name_snapshot || project.name)}）：${text}`);
     }
   }

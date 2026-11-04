@@ -62,7 +62,23 @@ function unsupportedSourceCondition(text: string, citations: Citations, sources:
  * about the site. This check does not infer observations from the question. */
 function unsupportedProjectObservation(text: string, citations: Citations, sources: SynthesisSource[]) {
   const projects = actualRecordCitations(citations, sources);
+  const hasTypedSiteRecord = sources.some(source =>
+    source.material?.ref.type === 'site_record' && typeof source.material.siteCompleted === 'string');
+  const siteCompletions = projects.flatMap(citation => {
+    const material = sources.find(source => source.sourceId === citation.sourceId)?.material;
+    return material?.ref.type === 'site_record' && typeof material.siteCompleted === 'string'
+      ? [{ quote: citation.quote, completed: material.siteCompleted }] : [];
+  });
   return text.split(/[，,。！？!?；;\n]/u).some(clause => {
+    // A whole-record citation can contain the requested action without proving
+    // it happened. Use the published completion field, including for multiline excerpts.
+    const marking = hasTypedSiteRecord && /现场.{0,10}?(?:已(?:经)?标记|标记了)/u.exec(clause);
+    if (marking) {
+      const claim = clause.slice(0, marking.index + marking[0].length);
+      if (!nonassertive(claim) && !/不一定|尚待|尚未|并未|没有|未能/u.test(claim)
+        && !siteCompletions.some(({ quote, completed }) => quote.includes('标记') && completed.includes('标记')
+          && (quote.includes(completed) || completed.includes(quote)))) return true;
+    }
     if (nonassertive(clause)) return false;
     const marker = /(?:现场(?:记录|观察|看到)|记录(?:本身)?(?:也|只)?(?:注明|看到|写的是|写明|显示)|(?:这条|该条|本次|当前)(?:现场)?记录(?:写|显示|中|里))/u.exec(clause);
     if (!marker) return false;

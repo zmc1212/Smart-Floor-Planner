@@ -137,7 +137,9 @@ function synthesisModelProjection(message: ModelMessage, originals: Map<string, 
     if (scope === 'original' && source.kind !== 'knowledge' || scope === 'independent_advice' && !['knowledge', 'web'].includes(source.kind)) return [];
     const copy: Record<string, unknown> = { ...source };
     if (source.material?.text === source.text) {
-      const material: Record<string, unknown> = { ...source.material }; delete material.text; copy.material = material;
+      const material: Record<string, unknown> = { ...source.material };
+      delete material.text;
+      copy.material = material;
     }
     if (source.citationQuotes?.length === 1 && source.citationQuotes[0] === source.text) delete copy.citationQuotes;
     if (source.citationQuote === source.text) delete copy.citationQuote;
@@ -150,6 +152,11 @@ function synthesisModelProjection(message: ModelMessage, originals: Map<string, 
       return [];
     }
     originals.set(key, source.sourceId);
+    if (source.material?.ref.type === 'site_record' && source.material.text === source.text) {
+      const material = copy.material as Record<string, unknown>;
+      delete material.hash;
+      delete material.siteCompleted;
+    }
     // The durable source and deduplication identity above retain every Evidence
     // field. Send its full original text once, rather than copying the same
     // web/knowledge body into evidence.text a second time in the model view.
@@ -387,7 +394,7 @@ function selectedCitationContext(answer: SynthesisAnswer, sources: SynthesisSour
 const projectQuantityRepairInstructions = '被标记段落把现场数值或现场与规范的对照交给了不支持该实况的来源。条款出现相同数字不证明现场记录。仅从本轮已有来源中补选实际支持该现场主张的project来源citationId，规范要求仍引用知识条款；已有获权现场原文支持的正确数值应保留。删去数字但保留“现场低于要求”等比较仍然需要现场引用，不能靠删数字绕过。没有对应现场依据就删去该现场断言，说明本次无法确认。不得换单位、推算或改写原文，不拿需求意向或正式方案当作现场实测。';
 const groundingRepairInstructions = {
   misattributed_project_status: '当前节点和阶段电话状态须选本轮实际状态摘录，不能拿同一sourceId下的现场记录合集、缺项或事项摘录替代。仅从已有statusCitationCandidates中核对选择支持本段事实的原文，候选不自动证明；原文不支持则删去该断言，保留本次无法确认。节点不是验收结论，电话未配置只限制电话入口，不阻断原聊天或人工接续。',
-  misattributed_project_observation: '现场观察或施工记录缺项即使没有数字也须引用本段对应的实际记录原文；知识条款、节点或需求/图纸缺项不证明施工记录写了什么或没写什么。仅补选本轮已有且支持该观察的现场来源，不能拿历史原话、需求或正式方案替代。没有对应来源则删去观察断言，明确本次无法核实。',
+  misattributed_project_observation: '现场观察或施工记录缺项即使没有数字也须引用本段对应的实际记录原文；知识条款、节点或需求/图纸缺项不证明施工记录写了什么或没写什么。仅补选本轮已有且支持该观察的现场来源，不能拿历史原话、需求或正式方案替代。待沟通中的标记动作保留待核对状态，只有本次完成字段有依据才说已经标记。没有对应来源则删去观察断言，明确本次无法核实。',
   unsupported_evidence_mechanism: '引文仅规定做法，没有解释正文中的因果或风险机理。保留有据条款及现场观察；把原文未说明的通用机理拆到advice段，不让evidence或引用使其成为企业依据。一般建议仍不得新增现场事实、量数或正式承诺。',
   contradictory_measurement_comparison: '本段对同一量数的达标判断与所引现场数值、条款上下限矛盾。核对同一对象、同一单位和严格或含等号的边界，只作记录值与条款的直接定性对照；不计算差值、不将局部对照升级为工程合格。不能靠删除数值保留错误达标结论。',
   unmeasured_compliance_claim: '所引记录明确该量数未量测，未知既不是不足也不是达标。删除对该项满足或不符的确定结论，保留已知观察、条款和待实测项；条件性风险可以放一般建议，但不能把假设说成当前现场事实。',
