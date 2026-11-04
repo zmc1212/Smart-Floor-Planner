@@ -3,6 +3,8 @@ const fs = require('node:fs'), path = require('node:path'), cp = require('node:c
 
 module.exports = async ctx => {
   const { root, output, actors, reuseReadySession = false } = ctx, project = path.join(root, 'miniprogram'), route = 'packages/assistant/chat/chat';
+  const apiOrigin = ctx.apiOrigin || 'http://127.0.0.1:3006';
+  assert.match(apiOrigin, /^http:\/\/127\.0\.0\.1:\d{1,5}$/);
   const pwsh = 'C:/Users/Administrator/.cache/codex-runtimes/codex-primary-runtime/dependencies/native/powershell/pwsh.exe';
   const report = { scope: 'Stable scheduled reports on the approved private follow-up views with actual local service readback', checks: [], captures: [] };
   let cli, installed = false;
@@ -80,7 +82,7 @@ module.exports = async ctx => {
         const app = getApp(), state = app.__qaLiveFollowups;
         const header = { Authorization: 'Bearer ' + app.globalData.token, 'content-type': 'application/json' };
         const request = (endpoint, method, data) => new Promise(resolve => state.request.call(wx, {
-          url: 'http://127.0.0.1:3006/api/miniprogram/assistant/' + endpoint, method, data, timeout: 5500, header,
+          url: '__API_ORIGIN__/api/miniprogram/assistant/' + endpoint, method, data, timeout: 5500, header,
           success: r => resolve({ status: r.statusCode, envelope: r.data }), fail: e => resolve({ error: e.errMsg }),
         }));
         if ('__LEAD__') {
@@ -92,7 +94,8 @@ module.exports = async ctx => {
         if (reports.error) return { step: 'reports', error: reports.error };
         return { status: reports.status, authenticated: reports.envelope?.success === true };
       };
-      const probe = (await evaluateSource(check.toString().replaceAll('__LEAD__', a.leadId || '').replace('__BINDING__', a.bid))).result.result;
+      const probe = (await evaluateSource(check.toString().replace('__API_ORIGIN__', apiOrigin)
+        .replaceAll('__LEAD__', a.leadId || '').replace('__BINDING__', a.bid))).result.result;
       (report.transport ??= []).push({ bindingId: a.bid, ...probe }); save();
       assert.deepEqual(probe, { status: 200, authenticated: true }, 'Signed simulator request to the local service');
     }
@@ -124,7 +127,7 @@ module.exports = async ctx => {
       return { existingWindow: true, refreshed: !reuseReadySession, rootGestures: 'not exercised' };
     });
     await step('memory-only local transport and exact original destinations', async () => {
-      await cli.evaluate(() => {
+      const installTransport = () => {
         const app = getApp(); if (Object.keys(app).some(k => /^__qa/.test(k))) throw Error('Native controller already present');
         const s = { request: wx.request, download: wx.downloadFile, get: wx.getStorageSync, set: wx.setStorageSync, remove: wx.removeStorageSync,
           hydrate: app.hydrateStoredSession, saved: { ...app.globalData }, memory: new Map(), requests: [],
@@ -137,7 +140,7 @@ module.exports = async ctx => {
           if (!/^\/api\/(miniprogram\/(assistant\/(followups|entry-context|conversations|catalog)|bootstrap)|auth\/miniprogram|branding\/)/.test(suffix)
             || method !== 'GET' && !/^\/api\/miniprogram\/assistant\/(followups|entry-context)/.test(suffix)) { options.fail?.({ errMsg: 'Synthetic followup denied unrelated API' }); return { abort() {} }; }
           const item = { path: suffix, method, key: options.header?.['Idempotency-Key'], clientMessageId: options.data?.clientMessageId }; s.requests.push(item);
-          return s.request.call(wx, { ...options, url: 'http://127.0.0.1:3006' + suffix,
+          return s.request.call(wx, { ...options, url: '__API_ORIGIN__' + suffix,
             success(response) { item.status = response.statusCode; item.runId = response.data?.data?.runId; item.messageId = response.data?.data?.messageId; options.success?.(response); },
             fail(error) { item.status = 'network_failure'; item.error = error.errMsg; options.fail?.(error); } });
         };
@@ -148,10 +151,12 @@ module.exports = async ctx => {
         wx.downloadFile = options => {
           const suffix = String(options.url).split('/api/')[1] || '';
           if (!/^miniprogram\/assistant\/followups\//.test(suffix)) { options.fail?.({ errMsg: 'Unexpected report media' }); return { abort() {} }; }
-          return s.download.call(wx, { ...options, url: 'http://127.0.0.1:3006/api/' + suffix,
+          return s.download.call(wx, { ...options, url: '__API_ORIGIN__/api/' + suffix,
             success(response) { s.downloads.push(response.statusCode); options.success?.(response); } });
         };
-      }); installed = true;
+      };
+      await evaluateSource(installTransport.toString().replaceAll('__API_ORIGIN__', apiOrigin));
+      installed = true;
       return { credentialsPersisted: false, noSyntheticAnswer: true, rootSelectorRetries: 0 };
     });
     for (const a of actors) {
@@ -162,7 +167,8 @@ module.exports = async ctx => {
           if (expected.kind === 'stage') {
             const card = '.followup-stage[data-report="' + expected.id + '"]', first = expected.body[0];
             const source = first.knowledgeSources[0];
-            const stageNames = { installation: '安装', utilities: '水电', demolition: '拆改', masonry_carpentry: '泥木', painting: '油漆', furnishing: '软装' };
+            const stageNames = { preparation: '前期', design: '设计', installation: '安装', utilities: '水电',
+              demolition: '拆改', masonry_carpentry: '泥木', painting: '油漆', furnishing: '软装' };
             const name = expected.stageKey ? stageNames[expected.stageKey] : source ? '水电' : '安装';
             assert.ok(name);
             const readStage = async () => {
