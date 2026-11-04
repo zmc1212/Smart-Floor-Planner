@@ -2,7 +2,8 @@ import { AssistantError, fail, fingerprint } from '../contracts';
 import type { ModelMessage, ModelTool, ModelTurnOutput } from '../contracts/model';
 import { parseSynthesis, synthesisRepairIssue, type SynthesisAnswer, type SynthesisSource } from './synthesis';
 import type { SynthesisReviewContext } from './synthesis-review';
-import { parseSourceQuestionQuery, sourceQuestionReadTool, questionSynthesisFinalTool, type SourceQuestionCoverage } from './source-question-coverage';
+import { sourceQuestionReadTool, questionSynthesisFinalTool, type SourceQuestionCoverage } from './source-question-coverage';
+import { parsePlannedSourceQuestions } from './source-question-plan';
 
 export const knowledgeExplanationProtocol = 'reviewed-knowledge-explanation-v1';
 const explanationDiagnostics = new WeakMap<AssistantError, string>();
@@ -25,8 +26,7 @@ export function knowledgeExplanationReadTool(tool: ModelTool): ModelTool {
  * must not fail a natural question before retrieval. The independent semantic
  * reviewer compares the complete original, never trusts this plan as complete. */
 export function parseKnowledgeExplanationQuery(input: Record<string, unknown>): SourceQuestionCoverage {
-  return parseSourceQuestionQuery(input, Array.isArray(input?.questions)
-    ? input.questions.filter((q): q is string => typeof q === 'string').join('\n') : '');
+  return parsePlannedSourceQuestions(input);
 }
 
 /** One auxiliary review slot fits only within the original held token budget;

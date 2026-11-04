@@ -5,13 +5,15 @@ import type { SynthesisReviewContext } from './synthesis-review';
 import { reportAnswerSynthesis, reportQuestionCoverage } from './report-final';
 import { prepareSourceAnswerReview, acceptKnowledgeExplanation, type KnowledgeExplanationDraft } from './knowledge-explanation';
 import { reportAnswerGroundingProtocol } from './report-source-scope';
+import type { SourceQuestionCoverage } from './source-question-coverage';
 
 /** The ordinary guards run first, including uncited dates. The shared reviewer
  * then checks semantic support against the exact per-original report scopes.
  * A failed review stops the draft: it does not request another answer. */
-export function prepareReportAnswerReview(raw: string, sources: SynthesisSource[], context: SynthesisReviewContext, history: ModelMessage[] = []) {
+export function prepareReportAnswerReview(raw: string, sources: SynthesisSource[], context: SynthesisReviewContext, history: ModelMessage[] = [],
+  plannedCoverage?: SourceQuestionCoverage) {
   if (!context.currentQuestion || !sources.some(source => source.reportScope?.protocol === reportAnswerGroundingProtocol)) fail('context_changed');
-  const coverage = reportQuestionCoverage(context.currentQuestion);
+  const coverage = plannedCoverage ?? reportQuestionCoverage(context.currentQuestion);
   const answer = parseSynthesis(reportAnswerSynthesis(raw, coverage), sources, context);
   const answers = (JSON.parse(raw) as { answers: Record<string, unknown> }).answers;
   return prepareSourceAnswerReview(raw, answer, sources, coverage, context, answers, history, reportAnswerGroundingProtocol);

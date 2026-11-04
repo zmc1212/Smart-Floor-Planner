@@ -18,8 +18,8 @@ export function reportQuestionCoverage(question: string): SourceQuestionCoverage
   return { protocol: sourceQuestionCoverageProtocol, questions: groups };
 }
 
-export function reportAnswerFinalTool(base: ModelTool, question: string, citationIds: string[]) {
-  return questionSynthesisFinalTool(base, reportQuestionCoverage(question), citationIds, 'report_answer', reportCoverageInstructions);
+export function reportAnswerFinalTool(base: ModelTool, question: string, citationIds: string[], coverage = reportQuestionCoverage(question)) {
+  return questionSynthesisFinalTool(base, coverage, citationIds, 'report_answer', reportCoverageInstructions);
 }
 
 /** Validate the complete envelope before projecting to the original synthesis

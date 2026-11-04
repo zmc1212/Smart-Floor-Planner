@@ -15,6 +15,7 @@ import { numericCitationCandidates } from './citation-coverage';
 import { publicPdfSource } from './source-document';
 import { isReportAnswerSnapshot, reportQuestionCoverage } from './report-final';
 import { scopedReportSynthesisSources, type ReportSourceScope } from './report-source-scope';
+import type { SourceQuestionCoverage } from './source-question-coverage';
 
 export type SynthesisSource = { sourceId: string; kind: 'knowledge' | 'project' | 'history' | 'web'; title: string; text: string; fullTextCitable?:true; evidence?: Evidence; web?: import('../contracts/web-source').WebSourceLocator; resultKey?: string; citationQuotes?: string[]; summaryTitle?:string|null; material?: MaterialSource; history?: HistoryRef & { seq: string };
   followup?: Omit<IssueState, 'question' | 'value'>; reportScope?: ReportSourceScope };
@@ -42,7 +43,7 @@ export function unresolvedSynthesisConflict(sources: SynthesisSource[]) {
  * A bound repair instead ends with its fixed application task; the original
  * remains before the sources, never rewritten or persisted as a new turn.
  * Model context only: no new user message/run or second agent loop. */
-export function focusedSynthesisMessages(messages: ModelMessage[], triggerId: string): ModelMessage[] {
+export function focusedSynthesisMessages(messages: ModelMessage[], triggerId: string, reportPlan?: SourceQuestionCoverage | null): ModelMessage[] {
   const repairBase = synthesisRepairBase(messages);
   const repairTask = repairBase?.businessSourceOnly ? '当前是同轮唯一一次正式状态恢复，仅提交business_repair、绑定原稿的baseHash及已列出的resultKey，由原服务展示权威状态及边界。不写text／edits／append，不生成完成声明，不调用业务工具；实时来源或权限失效仍拒绝。'
     : repairBase?.businessResultKeys?.length ? '当前是同轮唯一一次最终修正。可用synthesis_repair按原稿hash独立编辑；若已读取的权威正式业务快照足以回答当前问题，可用business_repair及baseHash、已有resultKey交给原服务展示，不写text／edits／append或新完成声明。不调用业务工具，全部实时来源与权限仍重验。'
@@ -88,14 +89,19 @@ export function focusedSynthesisMessages(messages: ModelMessage[], triggerId: st
   // No user/tool text, citation or provider-selected value enters the reminder.
   const tail: ModelMessage = repairTask
     ? { role: 'user', content: [{ type: 'text', text: repairTask }] } : messages[index];
-  const scope = originalAnswerOnly(question) ? 'original' : independentAdviceRequested(question) ? 'independent_advice' : 'all';
+  const scope = reportPlan !== undefined ? 'all' : originalAnswerOnly(question) ? 'original' : independentAdviceRequested(question) ? 'independent_advice' : 'all';
   return [...systems, ...images, messages[index], ...messages.slice(index + 1).map(message => {
     const projected = synthesisModelProjection(message, originals, scope, historyFields);
-    if (projected.role !== 'tool' || !question) return projected;
-    try {
-      const packet = JSON.parse(projected.content);
-      return isReportAnswerSnapshot(packet) ? { ...projected, content: JSON.stringify({ ...packet, questionCoverage: reportQuestionCoverage(question) }) } : projected;
-    } catch { return projected; }
+    if (projected.role !== 'tool') return projected;
+    let packet: unknown;
+    try { packet = JSON.parse(projected.content); } catch { return projected; }
+    if (!isReportAnswerSnapshot(packet)) return projected;
+    if (reportPlan !== undefined) {
+      const saved = 'questionCoverage' in packet ? packet.questionCoverage : null;
+      if (!question || !reportPlan || fingerprint(saved ?? null) !== fingerprint(reportPlan)) fail('context_changed');
+      return projected;
+    }
+    return question ? { ...projected, content: JSON.stringify({ ...packet, questionCoverage: reportQuestionCoverage(question) }) } : projected;
   }), tail];
 }
 

@@ -2,7 +2,7 @@ import type { ModelMessage, ModelTool, ModelTurnInput } from '../contracts/model
 import { currentMessageOnlyRequested, currentMessageView } from './current-message-scope';
 import { independentAdviceRequested, originalAnswerOnly } from './read-tool-input';
 import { sourceExcerptModelView } from './source-excerpts';
-import { sourceQuestionCoverageInstructions } from './source-question-coverage';
+import { sourceQuestionCoverageInstructions, type SourceQuestionCoverage } from './source-question-coverage';
 import { independentAdviceView } from './independent-advice-context';
 import { focusedSynthesisMessages } from './synthesis';
 import { projectSynthesisPolicy } from './model-policy';
@@ -27,15 +27,16 @@ export function compileModelRequest(input: {
   sourceQuestionCoverage?:boolean;
   knowledgeExplanation?:boolean;
   requiredKnowledge?:boolean;
+  reportPlan?: SourceQuestionCoverage | null;
   wireProjection?(messages:ModelMessage[]):ModelMessage[];
   toolsForTurn(question: string, messages: ModelMessage[], tools: ModelTool[], triggerId: string): ModelTool[];
 }) {
   const { question, triggerId, turn, purpose, messages, tools } = input;
-  const messageScoped = purpose === 'answer' && currentMessageOnlyRequested(question);
-  const adviceScoped = purpose === 'answer' && !messageScoped && independentAdviceRequested(question);
+  const messageScoped = purpose === 'answer' && input.reportPlan === undefined && currentMessageOnlyRequested(question);
+  const adviceScoped = purpose === 'answer' && input.reportPlan === undefined && !messageScoped && independentAdviceRequested(question);
   const focused = messageScoped ? currentMessageView(messages, triggerId, question)
     : adviceScoped ? independentAdviceView(messages, triggerId, question)
-    : (turn > 0 || input.profile) && purpose === 'answer' ? focusedSynthesisMessages(messages, triggerId) : messages;
+    : (turn > 0 || input.profile) && purpose === 'answer' ? focusedSynthesisMessages(messages, triggerId, input.reportPlan) : messages;
   let dispatchTools = purpose === 'vision' ? [] : purpose === 'summary' || purpose === 'grounding' ? tools
     : input.toolsForTurn(question, focused, tools, triggerId);
   if (input.profile === consultationLongProfile.id && purpose === 'answer' && dispatchTools.length === 1)

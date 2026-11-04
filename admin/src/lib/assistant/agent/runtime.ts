@@ -19,6 +19,9 @@ export type AgentRuntimePorts = {
   validateTool?(name: string, args: string): { code: string; feedback: string } | null;
   /** Save only authorized application checkpoints, never framework/global conversation state. */
   checkpoint(state: AgentCheckpoint): Promise<void>;
+  /** The application can proceed directly to the existing native final when
+   * its required reads are already available. Final dispatch revalidates them. */
+  canFinalizeContext?(messages: ModelMessage[]): boolean;
   /** Application-owned direct tool reply. Complete the whole paired batch first.
    * Reconstruct from durable authorized results on every validation/resume;
    * never dispatch a tool/provider or infer success from model wording. */
@@ -114,7 +117,8 @@ export async function runRenovationAgent(input: {
       // provider budget or replaying a write. Exhaustion belongs to this run.
       const finalTurn = state.turn === primaryTurns - 1;
       const businessTools=tools.filter(tool=>!state.exhaustedTools.includes(tool.name));
-      const availableTools = state.validationRepairs || finalTurn || state.finalizing ? [] : nativeFinal&&(businessTools.length||input.nativeFinishTool)?[...businessTools,finish]:businessTools;
+      const contextComplete = nativeFinal && ports.canFinalizeContext?.(state.messages);
+      const availableTools = state.validationRepairs || finalTurn || state.finalizing || contextComplete ? [] : nativeFinal&&(businessTools.length||input.nativeFinishTool)?[...businessTools,finish]:businessTools;
       const messages: ModelMessage[] = !availableTools.length && !state.validationRepairs
         ? [...state.messages, { role: 'system', content: [{ type: 'text', text: finalTurnInstructions }] }] : state.messages;
       const output = await ports.model(state.turn, messages, availableTools);

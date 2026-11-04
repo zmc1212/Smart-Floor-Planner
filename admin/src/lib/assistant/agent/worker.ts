@@ -47,9 +47,11 @@ import { businessSynthesisSources, knowledgeSynthesisSources, parseSynthesis, sy
 import { resolveSynthesisRepair, synthesisRepairBase, synthesisRepairProtocol, synthesisRepairTool, finalAnswerRepairBase, finalAnswerRepairProtocol } from './synthesis-repair';
 import { currentSynthesisContext } from './synthesis-sources';
 import { boundKnowledgeContext } from './bound-context';
-import { boundReportContext, queryReportFollowups, reportFollowupTool } from './report-context';
+import { boundReportContext, latestReportFollowup, queryReportFollowups, reportFollowupTool, reportSelectionHistory } from './report-context';
 import { boundReportNativeFinal, reportNativeRuntimeBudget, reportNativeFinalProtocol, boundReportFinalOutput, boundReportFinalCarrier, boundReportFinalSchema } from './report-native-final';
 import { boundReportAnswerGrounding, reportAnswerGroundingProtocol } from './report-source-scope';
+import { boundReportHistoryScope, boundReportQuestionPlanning, boundReportReadCompletion, readReportQuestionPlan, reportHistoryScopeProtocol,
+  reportQuestionPlanningProtocol, reportQuestionPlanningTool, reportReadCompletionProtocol } from './report-question-plan';
 import { prepareReportAnswerReview, assertReportAnswerReview, reportAnswerValidationFailure } from './report-answer-review';
 import { isReportAnswerSnapshot, reportFinalResponseIssue, reportFinalProtocol, reportAnswerFinalTool, reportQuestionCoverage, reportAnswerSynthesis, reportCoverageFailure, reportCoverageProtocol } from './report-final';
 import { projectFinalToolOutput } from './final-output';
@@ -202,9 +204,9 @@ export function agentToolsForMessage(text: string, enabled: boolean, businessFol
 /** Private reports and shared site questions consume their authorized bound
  * facts. Ordinary-consultation reads/writes must not be offered or dispatched
  * merely because the report recipient is a customer rather than an employee. */
-export function constructionReadOnlyTools(purpose: string, enabled: boolean): ModelTool[] | null {
+export function constructionReadOnlyTools(purpose: string, enabled: boolean, reportPlanning = false): ModelTool[] | null {
   if (!['construction_followup', 'project_collaboration'].includes(purpose)) return null;
-  return enabled ? [...(purpose === 'construction_followup' ? [reportFollowupTool] : []), ...businessToolDefinitions.filter(tool => tool.name === 'search_knowledge')] : [];
+  return enabled ? [...(purpose === 'construction_followup' ? [reportQuestionPlanningTool(reportFollowupTool, reportPlanning)] : []), ...businessToolDefinitions.filter(tool => tool.name === 'search_knowledge')] : [];
 }
 export const finalTool: ModelTool = { name: 'final_response', description: '最后向客户回复。需要保存需求或查询业务时，必须先调用相应工具并收到结果，之后才能调用本工具。不能把“已记录”代替record_need。', parameters: {
   type: 'object', properties: { kind: { type: 'string', enum: ['general','vision','unavailable','business','knowledge','references','synthesis'] }, text: { type: 'string' }, resultKey: { type: 'string' }, selections: { type: 'array', items: { type: 'string' } },
@@ -248,16 +250,33 @@ export function projectNeedBatchOutput(output: ModelTurnOutput, recordOnly: bool
  * business action. Do not accept it before same-round tools have returned.
  * Preserve the provider output separately; all actual tool calls stay paired. */
 const sourceQueryTools = new Set(['restore_sources', 'query_business', 'query_materials', 'query_followups', 'search_knowledge', 'search_web', 'read_web', 'recommend_references', 'recommend_designers']);
+function hasReportRead(messages: ModelMessage[]) {
+  return messages.some((message, index) => {
+    if (message.role !== 'tool') return false;
+    let requestIndex = index - 1;
+    while (requestIndex >= 0 && messages[requestIndex].role === 'tool') requestIndex--;
+    const request = messages[requestIndex];
+    if (request?.role !== 'assistant' || !request.toolCalls?.some(call => call.id === message.callId && call.name === 'query_followups')) return false;
+    try { return isReportAnswerSnapshot(JSON.parse(message.content)); } catch { return false; }
+  });
+}
+
+export function reportRequiredReadsComplete(question: string, triggerId: string, messages: ModelMessage[]) {
+  return hasReportRead(messages) && !knowledgeReadPending(question, messages, triggerId);
+}
+
 /** The provider sees the same current catalog as the validator. Schema enums
  * assist generation; authorized server lookup remains the acceptance boundary. */
-export function finalToolForMessages(messages:ModelMessage[], question = '', sourceExcerpts = false, requiredKnowledge = false, sourceQuestionCoverage = false, knowledgeExplanation = false):ModelTool {
-  if (currentMessageOnlyRequested(question)) return currentMessageFinalTool;
+export function finalToolForMessages(messages:ModelMessage[], question = '', sourceExcerpts = false, requiredKnowledge = false, sourceQuestionCoverage = false, knowledgeExplanation = false,
+  reportPlan?: SourceQuestionCoverage | null):ModelTool {
+  if (reportPlan === undefined && currentMessageOnlyRequested(question)) return currentMessageFinalTool;
   const sourceOnly = originalAnswerOnly(question);
   const independentAdvice = independentAdviceRequested(question);
   const knowledgeScoped = sourceOnly || independentAdvice;
   let queriedSources = false, synthesisResult = false, reportAnswer = false, otherDisplayResult = false, designerResult = false;
   let excerptIds:string[]|undefined;
   let questionCoverage: SourceQuestionCoverage | undefined;
+  let reportPacketCoverage: unknown;
   for (const [index, message] of messages.entries()) {
     if (message.role !== 'tool' || isReadToolInputFailure(message.content)) continue;
     let requestIndex = index - 1;
@@ -277,7 +296,10 @@ export function finalToolForMessages(messages:ModelMessage[], question = '', sou
       // A result key is a receipt, not proof that a snapshot list answers the
       // customer's question. Keep action cards and clarification displays.
       const reportRead = call.name === 'query_followups' && Array.isArray(packet.synthesisSources) && isReportAnswerSnapshot(packet);
-      if (reportRead) reportAnswer = true;
+      if (reportRead) {
+        reportAnswer = true;
+        reportPacketCoverage = 'questionCoverage' in packet ? packet.questionCoverage : undefined;
+      }
       const sourceRead = call.name === 'restore_sources' || call.name === 'search_knowledge' || call.name === 'search_web' || call.name === 'read_web'
         || reportRead
         || call.name === 'query_business' && packet.query?.domain === 'floorplans'
@@ -317,7 +339,11 @@ export function finalToolForMessages(messages:ModelMessage[], question = '', sou
       .map((option:{citationId?:unknown}) => option.citationId).filter((id:unknown):id is string => typeof id === 'string'); } catch { return []; }
   }))] : allIds;
   const repairTool = synthesisRepairTool(messages, allIds);
-  if (reportAnswer && question.trim()) return reportAnswerFinalTool(finalTool, question, allIds);
+  if (reportPlan && (!reportAnswer || fingerprint(reportPacketCoverage ?? null) !== fingerprint(reportPlan))) fail('context_changed');
+  if (reportAnswer && question.trim()) {
+    if (reportPlan === null) fail('context_changed');
+    return reportAnswerFinalTool(finalTool, question, allIds, reportPlan);
+  }
   if (repairTool) {
     if (!knowledgeScoped) return repairTool;
     const properties = repairTool.parameters.properties as Record<string, Record<string, unknown>>;
@@ -398,8 +424,10 @@ export function finalToolForMessages(messages:ModelMessage[], question = '', sou
  * has actually been read. Separate authorized writes/handoff retain their own
  * contracts. Exhaustion/disabled tools can only explain unavailability. */
 export function agentToolsForTurn(question: string, messages: ModelMessage[], tools: ModelTool[], triggerId: string,
-  sourceMode:{requiredKnowledge?:boolean;sourceExcerpts?:boolean;sourceQuestionCoverage?:boolean;knowledgeExplanation?:boolean} = {}): ModelTool[] {
+  sourceMode:{requiredKnowledge?:boolean;sourceExcerpts?:boolean;sourceQuestionCoverage?:boolean;knowledgeExplanation?:boolean;reportPlan?: SourceQuestionCoverage | null} = {}): ModelTool[] {
   const {requiredKnowledge=false,sourceExcerpts=false,sourceQuestionCoverage=false,knowledgeExplanation=false}=sourceMode;
+  if (sourceMode.reportPlan !== undefined) return [...needToolsForRetry(messages, tools),
+    finalToolForMessages(messages, question, false, false, false, false, sourceMode.reportPlan)];
   if (knowledgeExplanation) tools = tools.map(knowledgeExplanationReadTool);
   else if (sourceQuestionCoverage && (requiredKnowledge || originalAnswerOnly(question))) tools = tools.map(sourceQuestionReadTool);
   if (requiredKnowledge && knowledgeReadPending(question,messages,triggerId,true) && tools.some(tool=>tool.name==='search_knowledge'))
@@ -474,8 +502,12 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       const trigger = await one(tx, sql`select id,seq,content from app.assistant_messages where enterprise_id=${lease.enterpriseId}
         and conversation_id=${String(context.conversation.id)} and id=${String(context.run.trigger_message_id)}`);
       if (!trigger) fail('context_changed');
-      const records = await rows(tx, sql`select id,seq,content,author_kind,answer_kind,created_at,purpose,run_id from app.assistant_messages
-        where enterprise_id=${lease.enterpriseId} and conversation_id=${String(context.conversation.id)} and seq<=${String(trigger.seq)}
+      const policy = context.run.policy_snapshot as Row;
+      const reportHistoryVersion = boundReportHistoryScope(policy.reportHistoryScope, policy.reportReadCompletion === reportReadCompletionProtocol,
+        policy.reportContextVersion, (trigger.content as Row).reportContextVersion);
+      const records = await rows(tx, sql`select m.id,m.seq,m.content,m.author_kind,m.answer_kind,m.created_at,m.purpose,m.run_id from app.assistant_messages m
+        where m.enterprise_id=${lease.enterpriseId} and m.conversation_id=${String(context.conversation.id)} and m.seq<=${String(trigger.seq)}
+        and ${reportSelectionHistory(reportHistoryVersion)}
         and ${shared ? sql`((author_kind='admin' and purpose='site.question') or (author_kind='assistant' and run_id in
           (select id from app.assistant_runs where enterprise_id=${lease.enterpriseId} and conversation_id=${String(context.conversation.id)} and purpose='site.question')))`
           : staffFollowup ? sql`(author_kind='assistant' or (author_kind='admin' and admin_id=${lease.actor.principal.kind === 'admin' ? lease.actor.principal.adminId : null} and purpose='reply'))`
@@ -703,7 +735,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       const consultationDeadlineAt = config.consultation ? Date.now() + consultationAcceptanceProfile.runTimeoutMs - Math.max(0, Number(clock!.elapsed_ms)) : undefined;
       const priorUserText = turns.filter(turn => turn.role === 'user' && String(turn.id) !== String(trigger.id)).slice(-6).map(turn => turn.text).join(' ');
       const designerFollowup = designerClarificationFollowup(priorUserText, safeText(trigger.content as Parameters<typeof safeText>[0]));
-      return { ...context, shared, staffFollowup, config, trigger, messages, mediaRefs: [...dependencies.values()], currentImageUpload, referenceEvidence, resume, savedSummary, consultationDeadlineAt, designerFollowup };
+      return { ...context, shared, staffFollowup, config, trigger, messages, mediaRefs: [...dependencies.values()], currentImageUpload, referenceEvidence, resume, savedSummary, consultationDeadlineAt, designerFollowup, reportHistoryVersion };
     });
     const reviewContext = { currentQuestion: safeText(initial.trigger.content as Parameters<typeof safeText>[0]),
       currentOriginal: { messageId: String(initial.trigger.id), hash: fingerprint(initial.trigger.content) } };
@@ -744,6 +776,17 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     const reportFinalCarrier = boundReportFinalCarrier((initial.run.policy_snapshot as Row).reportFinalCarrier, reportNativeFinal, reportFinalOutputTokens);
     const reportFinalSchema = boundReportFinalSchema((initial.run.policy_snapshot as Row).reportFinalSchema, reportNativeFinal, reportFinalCarrier);
     const reportAnswerGrounding = boundReportAnswerGrounding((initial.run.policy_snapshot as Row).reportAnswerGrounding, reportNativeFinal);
+    const reportQuestionPlanning = boundReportQuestionPlanning((initial.run.policy_snapshot as Row).reportQuestionPlanning, reportAnswerGrounding && !!reportFinalSchema);
+    const reportReadCompletion = boundReportReadCompletion((initial.run.policy_snapshot as Row).reportReadCompletion, reportQuestionPlanning);
+    const plannedReportCoverage = (snapshot: unknown) => {
+      if (!reportQuestionPlanning) return undefined;
+      if (!isReportAnswerSnapshot(reportSource) || !isReportAnswerSnapshot(snapshot)
+        || fingerprint(snapshot.reportReference) !== fingerprint(reportSource.reportReference)) fail('context_changed');
+      return readReportQuestionPlan('reportQuestionPlan' in snapshot ? snapshot.reportQuestionPlan : undefined, {
+        enterpriseId: lease.enterpriseId, runId: lease.runId, messageId: String(initial.trigger.id), question: reviewContext.currentQuestion,
+        selection: reportSource.reportReference.selection,
+      }, true)!;
+    };
     const finalOutputMode = reportFinalCarrier ? 'function_call' as const : 'json_schema' as const;
     const explanationBound = !nativeFinalization && (initial.run.policy_snapshot as Row).sourceAnswerMode === knowledgeExplanationProtocol;
     const exactQuote = explanationBound && exactKnowledgeQuoteRequested(reviewContext.currentQuestion);
@@ -775,7 +818,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     if (review && reviewMode !== 'propose' && initial.messages[0]?.role === 'system' && !initial.resume)
       initial.messages[0].content.push({ type: 'text', text: reviewReplyOnlyContext(reviewMode) });
     const toolsForMessage = (businessFollowup: boolean) => {
-      const readOnly = constructionReadOnlyTools(String(initial.conversation.purpose), initial.config.tools);
+      const readOnly = constructionReadOnlyTools(String(initial.conversation.purpose), initial.config.tools, reportQuestionPlanning);
       if (readOnly) return readOnly;
       const base = publicResearchTools(readToolsForContext(agentToolsForMessage(reviewContext.currentQuestion,
         initial.config.tools, businessFollowup, !!dependencies.webSearch || configuredWebProvider() !== null,
@@ -813,11 +856,18 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           const finalAllocation = reportFinalOutputTokens && purpose === 'answer' && !tools.length ? { reportFinalOutputTokens } : {};
           const limits = agentRequestBudget({ profile, purpose, ...finalAllocation });
           const deadlineAt = initial.consultationDeadlineAt;
+          let reportPlan: SourceQuestionCoverage | null | undefined;
+          if (reportQuestionPlanning && purpose === 'answer') {
+            reportPlan = hasReportRead(messages) ? await scoped(async tx => plannedReportCoverage(
+              (await latestReportFollowup(tx, lease.enterpriseId, lease.runId))?.private_checkpoint)!) : null;
+            if (!tools.length && (!reportPlan || reportReadCompletion && knowledgeReadPending(reviewContext.currentQuestion, messages, String(initial.trigger.id))))
+              fail('source_read_required', 502);
+          }
           const { messageScoped, adviceScoped, focused, dispatchTools, policyView, bounded, modelMessages, contentProjection } = compileModelRequest({
             question: reviewContext.currentQuestion, triggerId: String(initial.trigger.id), turn, purpose,sourceExcerpts:sourceMode.sourceExcerpts,requiredKnowledge:sourceMode.requiredKnowledge,sourceQuestionCoverage:sourceMode.sourceQuestionCoverage,knowledgeExplanation:sourceMode.knowledgeExplanation,
-            messages:nativeFinalization&&purpose==='answer'&&tools.length?nativePlanningMessages(messages, completion ? reviewCompletionInstructions : undefined):claimMessages, tools,
+            messages:nativeFinalization&&purpose==='answer'&&tools.length?nativePlanningMessages(messages, completion ? reviewCompletionInstructions : undefined):claimMessages, tools, reportPlan,
             toolsForTurn:(question,current,available,triggerId)=>{
-              const definitions=agentToolsForTurn(question,current,available,triggerId,sourceMode);
+              const definitions=agentToolsForTurn(question,current,available,triggerId,{ ...sourceMode, reportPlan });
               return !nativeFinalization||purpose!=='answer'?definitions:available.length
                 ? [...definitions.filter(tool=>tool.name!==finishContextTool.name&&tool.name!=='final_response'),finish]
                 :definitions.map(definition => {
@@ -829,6 +879,11 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             ...(nativeFinalization&&purpose==='answer'&&!tools.length?{wireProjection:imageFinalization ? nativeImageFinalMessages : nativeFinalMessages}:{}),
           });
           const summaryRequestHash = purpose === 'summary' || purpose === 'grounding' ? fingerprint({ messages: modelMessages, tools: dispatchTools }) : null;
+          const reportPlanningBinding = reportQuestionPlanning ? {
+            protocol: reportQuestionPlanningProtocol, requestHash: fingerprint({ tools: dispatchTools, plan: reportPlan ?? null }),
+            ...(reportReadCompletion ? { completion: reportReadCompletionProtocol } : {}),
+            ...(initial.reportHistoryVersion !== undefined ? { history: reportHistoryScopeProtocol, selectionVersion: initial.reportHistoryVersion } : {}),
+          } : undefined;
           await heartbeat(lease);
           if (!consultation) outcomeKnown = false;
           const sequence = 1100 + turn * 10;
@@ -839,6 +894,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             if (((cached.input_summary as Row)?.reportFinalOutputTokens ?? undefined) !== finalAllocation.reportFinalOutputTokens) fail('context_changed');
             if (((cached.input_summary as Row)?.reportFinalCarrier ?? undefined) !== reportFinalCarrier) fail('context_changed');
             if (((cached.input_summary as Row)?.reportFinalSchema ?? undefined) !== reportFinalSchema) fail('context_changed');
+            if (reportQuestionPlanning && fingerprint((cached.input_summary as Row)?.reportPlanningBinding ?? null) !== fingerprint(reportPlanningBinding)) fail('context_changed');
             if ((purpose === 'summary' || purpose === 'grounding') && (cached.input_summary as Row)?.summaryRequestHash !== summaryRequestHash) fail('context_changed');
             if (cached.status !== 'succeeded') fail('provider_outcome_unknown');
             outcomeKnown = true;
@@ -873,6 +929,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                   reportNativeFinal: (initial.run.policy_snapshot as Row).reportNativeFinal ?? null,
                   reportFinalCarrier: reportFinalCarrier ?? null,
                   reportFinalSchema: reportFinalSchema ?? null,
+                  ...(reportPlanningBinding ? { reportPlanningBinding } : {}),
                   projectKnowledge: initial.shared,
                   sourceAnswerMode: (initial.run.policy_snapshot as Row).sourceAnswerMode ?? null,
                   sourceQuestionCoverage: (initial.run.policy_snapshot as Row).sourceQuestionCoverage ?? null,
@@ -915,6 +972,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               ...(reportNativeFinal ? { reportNativeFinal: reportNativeFinalProtocol } : {}),
               ...(reportFinalCarrier ? { reportFinalCarrier } : {}),
               ...(reportFinalSchema ? { reportFinalSchema } : {}),
+              ...(reportPlanningBinding ? { reportPlanningBinding } : {}),
               ...finalAllocation,
               sourceAnswerMode: (initial.run.policy_snapshot as Row).sourceAnswerMode ?? null,
               ...(nativeFinalization&&purpose==='answer'&&!tools.length?{nativeFinalProjection:finalProjection}:{}),
@@ -1039,6 +1097,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       reservedValidationRepairs: turnAllocation?.reservedValidationRepairs, primaryModelTurns: turnAllocation?.primaryModelTurns,
       ports: {
         authorize,
+        ...(reportReadCompletion ? { canFinalizeContext: (messages: ModelMessage[]) =>
+          reportRequiredReadsComplete(reviewContext.currentQuestion, String(initial.trigger.id), messages) } : {}),
         checkpoint: state => scoped(async tx => {
           for (const ref of initial.mediaRefs) if (!await resolveAgentMedia(tx, lease.enterpriseId, String(initial.conversation.id), ref)) fail('context_changed');
           await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary,private_checkpoint,source_refs)
@@ -1164,14 +1224,14 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           if (reportSource) {
             const reportRaw = raw;
             const normalized = await scoped(async tx => {
-              const read = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
-                and run_id=${lease.runId} and kind='agent_tool' and capability_name='query_followups' and status='succeeded' order by step_seq desc limit 1`);
+              const read = await latestReportFollowup(tx, lease.enterpriseId, lease.runId);
+              const coverage = plannedReportCoverage(read?.private_checkpoint);
               if (!isReportAnswerSnapshot(read?.private_checkpoint)) return { raw };
               try {
-                const normalized = reportAnswerSynthesis(raw, reportQuestionCoverage(reviewContext.currentQuestion));
+                const normalized = reportAnswerSynthesis(raw, coverage ?? reportQuestionCoverage(reviewContext.currentQuestion));
                 const evidence = await currentSynthesisContext(tx, lease.actor, initial.conversation, lease.runId);
                 parseSynthesis(normalized, evidence.sources, reviewContext);
-                return { raw: normalized, report: true };
+                return { raw: normalized, report: true, coverage };
               } catch (error) {
                 const issue = reportCoverageFailure(error);
                 await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
@@ -1186,7 +1246,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             if (reportAnswerGrounding && reportScoped) {
               const draft = await scoped(async (tx, context) => {
                 const evidence = await currentSynthesisContext(tx, lease.actor, context.conversation, lease.runId);
-                return prepareReportAnswerReview(reportRaw, evidence.sources, reviewContext, initial.messages);
+                return prepareReportAnswerReview(reportRaw, evidence.sources, reviewContext, initial.messages, normalized.coverage);
               });
               // Uses the original shared dispatch/unknown/usage path and the
               // remaining slot of the four-call hold, never an extra retry.
@@ -1210,8 +1270,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           try { explanationKind = JSON.parse(raw)?.kind; } catch { /* Existing syntax diagnostics below. */ }
           if (reportSource && explanationKind !== 'synthesis') {
             const issue = await scoped(async tx => {
-              const read = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
-                and run_id=${lease.runId} and kind='agent_tool' and capability_name='query_followups' and status='succeeded' order by step_seq desc limit 1`);
+              const read = await latestReportFollowup(tx, lease.enterpriseId, lease.runId);
               const found = reportFinalResponseIssue(raw, read?.private_checkpoint);
               if (found) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
                 values(${lease.enterpriseId},${lease.runId},${1300+turn},'agent_validation','failed',
@@ -1344,7 +1403,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             if(issue)await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
               values(${lease.enterpriseId},${lease.runId},${1300+turn},'agent_validation','failed',${JSON.stringify({code:issue.code,scope:issue.code==='ungrounded_response_scope'?'authorized_response_scope':'authorized_citation_only',noBusinessTools:true})}::jsonb)
               on conflict(enterprise_id,run_id,step_seq) do nothing`);
-            return issue && reportScoped ? reportCoverageFailure(new AssistantError(issue.code, 502)) : issue;
+            return issue && reportScoped ? reportAnswerValidationFailure(reportCoverageFailure(new AssistantError(issue.code, 502)), reportQuestionPlanning) : issue;
           });
         },
         model: callModel,
@@ -1539,13 +1598,14 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             return { content: 'waiting', stop: true };
           }
           if (name === 'query_followups') {
-            if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length) fail('invalid_message', 422);
             return scoped(async (tx, context) => {
               if (context.conversation.purpose === 'construction_followup') {
-                const snapshot = await queryReportFollowups(tx, lease.actor, context.conversation, lease.runId, sequence);
+                const { snapshot, questionCoverage } = await queryReportFollowups(tx, lease.actor, context.conversation, lease.runId, sequence, input);
                 return { content: JSON.stringify({ resultKey, ...snapshot, synthesisSources: businessSynthesisSources(resultKey, snapshot),
+                  ...(questionCoverage ? { questionCoverage } : {}),
                   instructions: '围绕所选报告冻结的原事实用kind=synthesis解释并引用本轮synthesisSources；不要把旧报告或用户补充升级成当前已核对事实。截止后变化未知，不保存需求、不批准施工或生成报告正文。' }) };
               }
+              if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length) fail('invalid_message', 422);
               const cached = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`);
               const snapshot = cached ? cached.private_checkpoint as NeedIssueSnapshot : await queryNeedIssues(tx, lease.actor, String(context.conversation.id));
               if (cached && !await needIssueSnapshotAvailable(tx, lease.enterpriseId, snapshot)) fail('context_changed');
@@ -1686,16 +1746,14 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           and capability_name in ('propose_requirement_changes','propose_designer_reception','propose_reception_cancellation') order by step_seq`)) : [];
     const reviewReceipts = [...new Set(await Promise.all(reviewSteps.map(async step => (await reviewReceipt(step.private_checkpoint as ReviewMarker)).text)))];
     const receiptBlocks = reviewReceipts.map(text => ({ type: 'text' as const, text }));
-    const answerRaw = reportSource ? await scoped(async tx => {
-      const read = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
-        and run_id=${lease.runId} and kind='agent_tool' and capability_name='query_followups' and status='succeeded' order by step_seq desc limit 1`);
-      return isReportAnswerSnapshot(read?.private_checkpoint) ? reportAnswerSynthesis(result.output?.text || '', reportQuestionCoverage(reviewContext.currentQuestion)) : result.output?.text || '';
-    }) : result.output?.text || '';
+    const reportRead = reportSource ? await scoped(tx => latestReportFollowup(tx, lease.enterpriseId, lease.runId)) : null;
+    const reportCoverage = plannedReportCoverage(reportRead?.private_checkpoint);
+    const answerRaw = isReportAnswerSnapshot(reportRead?.private_checkpoint)
+      ? reportAnswerSynthesis(result.output?.text || '', reportCoverage ?? reportQuestionCoverage(reviewContext.currentQuestion)) : result.output?.text || '';
     let reply: { kind?: string; text?: string; resultKey?: string; selections?: string[] };
     try { reply = JSON.parse(answerRaw.replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch { fail('invalid_model_answer', 502); }
     if (reportSource && reply.kind !== 'synthesis') await scoped(async tx => {
-      const read = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
-        and run_id=${lease.runId} and kind='agent_tool' and capability_name='query_followups' and status='succeeded' order by step_seq desc limit 1`);
+      const read = await latestReportFollowup(tx, lease.enterpriseId, lease.runId);
       if (reportFinalResponseIssue(JSON.stringify(reply), read?.private_checkpoint)) fail('invalid_model_answer', 502);
     });
     if(sourceMode.sourceExcerpts&&initial.config.tools&&(initial.shared||originalAnswerOnly(reviewContext.currentQuestion))&&reply.kind!=='knowledge')fail('invalid_model_answer',502);
@@ -1724,7 +1782,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           if (!proof || acceptKnowledgeExplanation(draft, (proof.private_checkpoint as Row).review as ModelTurnOutput, draft.binding)) fail('context_changed');
           answer = draft.answer;
         } else if (reportAnswerGrounding) {
-          const draft = prepareReportAnswerReview(result.output?.text || '', evidence.sources, reviewContext, initial.messages);
+          if (reportQuestionPlanning && fingerprint(plannedReportCoverage((await latestReportFollowup(tx, lease.enterpriseId, lease.runId))?.private_checkpoint)) !== fingerprint(reportCoverage)) fail('context_changed');
+          const draft = prepareReportAnswerReview(result.output?.text || '', evidence.sources, reviewContext, initial.messages, reportCoverage);
           const proof = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
             and run_id=${lease.runId} and kind='agent_report_review' and status='succeeded' and input_summary->>'binding'=${draft.binding}`);
           if (!proof) fail('context_changed');
@@ -1739,7 +1798,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs,private_checkpoint,input_summary)
           values(${lease.enterpriseId},${lease.runId},1006,'agent_synthesis_context','succeeded',${JSON.stringify(evidence)}::jsonb,${JSON.stringify(answer)}::jsonb,
             ${JSON.stringify({ promptVersion: agentPromptVersion, triggerMessageId: String(initial.trigger.id), imagePixels: initial.mediaRefs.length > 0 && initial.config.imageInput,
-              ...(reportSource ? { reportCoverage: reportQuestionCoverage(reviewContext.currentQuestion), reportCoverageProtocol } : {}) })}::jsonb)`);
+              ...(reportSource ? { reportCoverage: reportCoverage ?? reportQuestionCoverage(reviewContext.currentQuestion), reportCoverageProtocol } : {}) })}::jsonb)`);
         const blocks: import('../contracts').MessageContent['blocks'] = [];
         const message = await appendMessage(tx, lease.actor, String(context.conversation.id), { author: 'assistant', runId: lease.runId,
           purpose: 'agent.reply', content: { version: 1, blocks } });

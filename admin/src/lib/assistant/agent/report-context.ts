@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
 import { one, type Row } from '@/db/repositories/assistant-repository';
-import { fail, fingerprint, type ActorContext } from '../contracts';
+import { fail, fingerprint, safeText, type ActorContext } from '../contracts';
 import { reportContext, resolveReportReference, selectedReport, type ReportReference } from '@/lib/construction/report-reference';
 import { siteRecordText, type SiteDraft } from '@/lib/construction/site-contract';
 import type { ReportProject } from '@/lib/construction/report-scope';
@@ -10,6 +10,7 @@ import type { ModelTool } from '../contracts/model';
 import { reportLocalTime } from './report-time';
 import { boundReportAnswerGrounding, boundReportSourceProjection, reportAnswerGroundingProtocol, reportSourceProjectionProtocol } from './report-source-scope';
 import { reportNativeFinalProtocol } from './report-native-final';
+import { boundReportQuestionPlanning, createReportQuestionPlan, readReportQuestionPlan, type ReportQuestionPlanScope } from './report-question-plan';
 
 export const reportFollowupTool: ModelTool = {
   name: 'query_followups', description: '只读当前明确选定报告的原项目、原版本、统计周期和截止时刻的已发布现场事实、待核对内容与已有安排。返回的是报告冻结的原记录，不是生成正文或当前最新施工状态；截止后的变化、未记录的负责人或期限仍未知。不查询其他咨询、其他项目或内部会话，不保存需求、不确认或修改施工事项。',
@@ -18,6 +19,17 @@ export const reportFollowupTool: ModelTool = {
 
 export type ReportBusinessReference = { selection: ReportReference } & ({ userId: string } | { principal: ActorContext['principal'] });
 export const reportContextStep = 740;
+
+/** Applies to the existing conversation history query as alias m. The client
+ * can still read older turns through its authorized message history. */
+export function reportSelectionHistory(version: number | undefined) {
+  if (version === undefined) return sql`true`;
+  return sql`((m.author_kind in ('user','admin') and m.content->'reportContextVersion' = ${JSON.stringify(version)}::jsonb)
+    or (m.author_kind='assistant' and exists (
+      select 1 from app.assistant_runs r where r.enterprise_id=m.enterprise_id and r.conversation_id=m.conversation_id
+        and r.id=m.run_id and r.policy_snapshot->'reportContextVersion' = ${JSON.stringify(version)}::jsonb)))`;
+}
+
 export function reportFactText(selection: ReportReference, project: ReportProject) {
   return `报告所选项目：${project.name}。报告周期：${reportLocalTime(selection.periodStart)}至${reportLocalTime(selection.periodEnd)}；事实截止：${reportLocalTime(selection.cutoffAt)}。\n`
     + `报告保存时团队标记阶段：${project.stageKey || '尚未标记'}。这不是当前施工状态或验收结论。\n`
@@ -41,12 +53,13 @@ export async function boundReportContext(tx: PostgresTransaction, actor: ActorCo
   const previous = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${actor.enterpriseId}
     and run_id=${runId} and step_seq=${reportContextStep}`);
   const resultKey = 'report:' + runId;
-  const run = await one(tx, sql`select policy_snapshot from app.assistant_runs where enterprise_id=${actor.enterpriseId}
+  const run = await one(tx, sql`select policy_snapshot,trigger_message_id from app.assistant_runs where enterprise_id=${actor.enterpriseId}
     and id=${runId} and conversation_id=${String(conversation.id)}`);
   if (!run) fail('context_changed');
   const policy = run.policy_snapshot as Row;
   const grounding = boundReportAnswerGrounding(policy.reportAnswerGrounding, policy.reportNativeFinal === reportNativeFinalProtocol);
   const sourceProjection = boundReportSourceProjection(policy.reportSourceProjection, grounding);
+  const questionPlanning = boundReportQuestionPlanning(policy.reportQuestionPlanning, grounding && sourceProjection);
   const snapshot: BusinessSnapshot = { query: { domain: 'construction', leadId: resolved.leadId },
     ...(actor.principal.kind === 'user' ? { customerId: actor.principal.userId } : {}),
     leadIds: [resolved.leadId], version: resolved.selection.factsHash, queriedAt: resolved.selection.cutoffAt,
@@ -60,20 +73,40 @@ export async function boundReportContext(tx: PostgresTransaction, actor: ActorCo
   if (!saved) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint,input_summary)
     values(${actor.enterpriseId},${runId},${reportContextStep},'agent_source','synthesis.bound_construction.v1',1,'succeeded',
       ${JSON.stringify({ resultKey, snapshot })}::jsonb,'{"scope":"explicit_report_originals","protocol":"explicit-report-context-v1"}'::jsonb)`);
-  return { resultKey, snapshot };
+  return { resultKey, snapshot, selection: resolved.selection, questionPlanning, messageId: String(run.trigger_message_id) };
+}
+
+export async function latestReportFollowup(tx: PostgresTransaction, enterpriseId: string, runId: string) {
+  return one(tx, sql`select step_seq,private_checkpoint from app.assistant_run_steps where enterprise_id=${enterpriseId}
+    and run_id=${runId} and kind='agent_tool' and capability_name='query_followups' and status='succeeded' order by step_seq desc limit 1`);
 }
 
 /** The existing read tool's private-report adapter. Keep the ordinary
  * business-result/checkpoint/catalog protocol and revalidate the same bound
  * originals on fresh reads and cached recovery. No alternate fact resolver. */
-export async function queryReportFollowups(tx: PostgresTransaction, actor: ActorContext, conversation: Row, runId: string, sequence: number): Promise<BusinessSnapshot> {
+export async function queryReportFollowups(tx: PostgresTransaction, actor: ActorContext, conversation: Row, runId: string, sequence: number,
+  input: Record<string, unknown> = {}) {
   if (conversation.purpose !== 'construction_followup') fail('assistant_capability_forbidden', 403);
   const bound = await boundReportContext(tx, actor, conversation, runId);
   if (!bound) fail('context_changed');
-  const cached = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${actor.enterpriseId}
-    and run_id=${runId} and step_seq=${sequence}`);
-  if (cached && fingerprint(cached.private_checkpoint) !== fingerprint(bound.snapshot)) fail('context_changed');
+  const { snapshot, questionPlanning } = bound;
+  if (!questionPlanning && (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length)) fail('invalid_message', 422);
+  let scope: ReportQuestionPlanScope | undefined;
+  if (questionPlanning) {
+    const original = await one(tx, sql`select content from app.assistant_messages where enterprise_id=${actor.enterpriseId}
+      and conversation_id=${String(conversation.id)} and id=${bound.messageId}`);
+    if (!original) fail('context_changed');
+    scope = { enterpriseId: actor.enterpriseId, runId, messageId: bound.messageId,
+      question: safeText(original.content as Parameters<typeof safeText>[0]), selection: bound.selection };
+  }
+  const plan = scope ? createReportQuestionPlan(input, scope) : undefined;
+  const durable = plan ? { ...snapshot, reportQuestionPlan: plan } : snapshot;
+  const cached = questionPlanning ? await latestReportFollowup(tx, actor.enterpriseId, runId)
+    : await one(tx, sql`select step_seq,private_checkpoint from app.assistant_run_steps where enterprise_id=${actor.enterpriseId}
+      and run_id=${runId} and step_seq=${sequence}`);
+  const questionCoverage = scope ? readReportQuestionPlan(cached ? (cached.private_checkpoint as Row)?.reportQuestionPlan : plan, scope, true) : undefined;
+  if (cached && (Number(cached.step_seq) !== sequence || fingerprint(cached.private_checkpoint) !== fingerprint(durable))) fail('context_changed');
   if (!cached) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint)
-    values(${actor.enterpriseId},${runId},${sequence},'agent_tool','query_followups',1,'succeeded',${JSON.stringify(bound.snapshot)}::jsonb)`);
-  return bound.snapshot;
+    values(${actor.enterpriseId},${runId},${sequence},'agent_tool','query_followups',1,'succeeded',${JSON.stringify(durable)}::jsonb)`);
+  return { snapshot, questionCoverage };
 }
