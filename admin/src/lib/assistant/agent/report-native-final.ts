@@ -9,6 +9,8 @@ export const reportFinalFunctionCarrier = 'forced-final-function-v1';
 export const reportStructuralFinalSchema = 'report-structural-final-schema-v1';
 export const reportBodyFinalProtocol = 'report-body-final-output-v1';
 export const reportBodyProjectSlotsProtocol = 'report-body-project-slots-v1';
+export const reportBodyFlatSegmentsProtocol = 'report-body-flat-segments-v1';
+export type ReportBodyWire = 'legacy' | 'slots' | 'flat';
 type ReportScope = { conversationPurpose: unknown; purpose: string; triggerKind: string; privateFollowup: boolean; selected: boolean };
 
 /** A new private report reply binds its own final channel, independently of
@@ -47,13 +49,15 @@ export function reportBodyFinalPolicy(config: AgentConfig | null) {
   if (!config || !reportBodyFinalAdmission(config)) return {};
   return { reportBodyFinal: reportBodyFinalProtocol,
     ...(bailianModelProfile(config.model).functionCalling === 'documented' ? {
-      reportBodyFinalCarrier: reportFinalFunctionCarrier, reportBodyProjectSlots: reportBodyProjectSlotsProtocol } : {}) };
+      reportBodyFinalCarrier: reportFinalFunctionCarrier, reportBodyProjectSlots: reportBodyFlatSegmentsProtocol } : {}) };
 }
 
-export function boundReportBodyProjectSlots(value: unknown, carrier: unknown) {
-  if (value === undefined) return false;
-  if (value !== reportBodyProjectSlotsProtocol || carrier !== reportFinalFunctionCarrier) fail('context_changed');
-  return true;
+export function boundReportBodyWire(value: unknown, carrier: unknown): ReportBodyWire {
+  if (value === undefined) return 'legacy';
+  if (carrier !== reportFinalFunctionCarrier) fail('context_changed');
+  if (value === reportBodyProjectSlotsProtocol) return 'slots';
+  if (value === reportBodyFlatSegmentsProtocol) return 'flat';
+  return fail('context_changed');
 }
 
 export function boundReportBodyFinal(value: unknown, config: AgentConfig) {

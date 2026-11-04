@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parseReportBody, projectReportBodyFinal, reportFinalTool, reportMessages, reportSectionKinds } from '../report-composition';
+import { parseReportBody, projectReportBodyFinal, reportFinalTool, reportFlatFinalTool, reportMessages, reportSectionKinds } from '../report-composition';
 import { sourceCitationCatalog } from '@/lib/assistant/agent/citation-catalog';
 import { toolSchemaIssue } from '@/lib/assistant/agent/tool-protocol';
 import type { SynthesisContext } from '@/lib/assistant/agent/synthesis';
@@ -147,5 +147,27 @@ test('fixed project slots use server identities and reject strings, missing slot
     const raw = JSON.stringify(candidate);
     assert.ok(await toolSchemaIssue(definition, raw));
     assert.throws(() => parseReportBody(raw, projects, true));
+  }
+});
+
+test('flat segment fields round-trip through the same body schema and original source checks', async () => {
+  const body = output().projects[0];
+  const flat = Object.fromEntries(reportSectionKinds.map(section => {
+    const { basis, text, citations } = body[section].segments[0];
+    return ['P1_' + section + '_1', [basis, text, ...citations.map(c => c.citationId)]];
+  }));
+  const tool = reportFlatFinalTool(1);
+  const canonical = { projectCount: 1, tool: reportFinalTool(['9'], [project], true) };
+  const packet = (value: unknown) => ({ text: '', finishReason: 'tool_calls', providerRequestId: null, usage: null,
+    toolCalls: [{ id: 'terminal', name: 'final_response', arguments: JSON.stringify(value) }] });
+  const projected = await projectReportBodyFinal(packet(flat), tool, true, canonical);
+  assert.deepEqual(parseReportBody(projected.text, [project], true), parseReportBody(JSON.stringify(output()), [project]));
+  const invented = { ...flat, P1_standards_1: [...flat.P1_standards_1] };
+  invented.P1_standards_1[1] = '插座间距为99厘米。';
+  const unsupported = await projectReportBodyFinal(packet(invented), tool, true, canonical);
+  assert.throws(() => parseReportBody(unsupported.text, [project], true), /unsupported_model_commitment/);
+  for (const invalid of [{ ...flat, P1_progress_3: flat.P1_progress_1 }, { ...flat, P2_pending_1: flat.P1_pending_1 },
+    { ...flat, P1_standards_1: ['evidence', '应先核对插座。', 'Cforeign'] }]) {
+    await assert.rejects(() => projectReportBodyFinal(packet(invalid), tool, true, canonical), /native_schema_unverified/);
   }
 });

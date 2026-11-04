@@ -7,8 +7,8 @@ import { executePostgresText } from '@/lib/ai/postgres-workflow-chat';
 import { agentConfig } from '@/lib/assistant/agent/config';
 import { runRenovationAgent, type AgentCheckpoint } from '@/lib/assistant/agent/runtime';
 import { agentRequestBudget, fitAgentContext } from '@/lib/assistant/agent/context-budget';
-import { boundReportBodyFinal, boundReportBodyProjectSlots, boundReportFinalCarrier, reportBodyFinalProtocol,
-  reportBodyProjectSlotsProtocol } from '@/lib/assistant/agent/report-native-final';
+import { boundReportBodyFinal, boundReportBodyWire, boundReportFinalCarrier, reportBodyFinalProtocol,
+  reportBodyFlatSegmentsProtocol, reportBodyProjectSlotsProtocol } from '@/lib/assistant/agent/report-native-final';
 import { consultationRequestReservation, reserveConsultationDispatch, settleConsultationDispatch } from '@/lib/assistant/agent/consultation-usage';
 import { businessSynthesisSources, knowledgeSynthesisSources, type SynthesisContext } from '@/lib/assistant/agent/synthesis';
 import { synthesisContextAvailable } from '@/lib/assistant/agent/synthesis-sources';
@@ -21,7 +21,7 @@ import { consultationProfile } from '@/lib/assistant/contracts/consultation';
 import { completeReportComposition, failRun, heartbeat, runContext, type Lease } from '@/lib/assistant/infrastructure/job-queue';
 import { followupAvailable, followupProjects, type ReportFacts } from './report-scope';
 import { reportContextProtocol, resolveReportReference, type ReportReference } from './report-reference';
-import { parseReportBody, projectReportBodyFinal, reportCompositionProtocol, reportFinalTool, reportMessages } from './report-composition';
+import { parseReportBody, projectReportBodyFinal, reportCompositionProtocol, reportFinalTool, reportFlatFinalTool, reportMessages } from './report-composition';
 
 type ProjectContext = { projectId: string; selection: ReportReference; context: SynthesisContext };
 type Composition = { protocol: typeof reportCompositionProtocol; reportId: string; revision: number; bindingId: string; dispatchEpoch: number; factsHash: string };
@@ -74,7 +74,7 @@ export async function processReportComposition(lease: Lease, dependencies: {
       if (!config) fail('context_changed');
       const reportFinalOutputTokens = boundReportBodyFinal(policy.reportBodyFinal, config);
       const reportBodyFinalCarrier = boundReportFinalCarrier(policy.reportBodyFinalCarrier, !!reportFinalOutputTokens, reportFinalOutputTokens);
-      const fixedSlots = boundReportBodyProjectSlots(policy.reportBodyProjectSlots, reportBodyFinalCarrier);
+      const wire = boundReportBodyWire(policy.reportBodyProjectSlots, reportBodyFinalCarrier);
       const list: ProjectContext[] = [];
       for (const p of (context.report.facts as ReportFacts).projects) {
         const resolved = await resolveReportReference(tx, lease.actor, { reportId: context.scope.reportId,
@@ -91,7 +91,7 @@ export async function processReportComposition(lease: Lease, dependencies: {
       }
       const checkpoint = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
         and run_id=${lease.runId} and step_seq=1000 and kind='agent_checkpoint'`);
-      return { config, run: context.run, conversation: context.conversation, projects: list, reportFinalOutputTokens, reportBodyFinalCarrier, fixedSlots,
+      return { config, run: context.run, conversation: context.conversation, projects: list, reportFinalOutputTokens, reportBodyFinalCarrier, wire,
         resume: checkpoint?.private_checkpoint as AgentCheckpoint | undefined,
         scope: { ...context.scope, audience: context.binding.audience, kind: context.report.kind, timezone: 'Asia/Shanghai',
           periodStart: context.report.period_start, periodEnd: context.report.fact_period_end, cutoffAt: context.report.fact_cutoff_at,
@@ -148,14 +148,18 @@ export async function processReportComposition(lease: Lease, dependencies: {
     const authorize = () => scoped(async tx => {
       for (const p of projects) if (!await synthesisContextAvailable(tx, lease.actor, await projectConversation(tx, lease, p), p.context)) fail('context_changed');
     });
-    const { reportFinalOutputTokens, reportBodyFinalCarrier, fixedSlots } = initial;
-    const finalTool = reportFinalTool(projects.map(p => p.projectId), projects, fixedSlots);
+    const { reportFinalOutputTokens, reportBodyFinalCarrier, wire } = initial;
+    const fixedSlots = wire !== 'legacy', flatSegments = wire === 'flat';
+    const bodyTool = reportFinalTool(projects.map(p => p.projectId), projects, fixedSlots);
+    const finalTool = flatSegments ? reportFlatFinalTool(projects.length) : bodyTool;
+    const canonical = flatSegments ? { projectCount: projects.length, tool: bodyTool } : undefined;
     const budget = { profile: initial.config.consultation?.profile,
       ...(reportFinalOutputTokens ? { purpose: 'answer' as const, reportFinalOutputTokens } : {}) };
     const finalAllocation = reportFinalOutputTokens ? { reportBodyFinal: reportBodyFinalProtocol, maxOutputTokens: reportFinalOutputTokens,
-      ...(reportBodyFinalCarrier ? { reportBodyFinalCarrier } : {}), ...(fixedSlots ? { reportBodyProjectSlots: reportBodyProjectSlotsProtocol } : {}) } : {};
+      ...(reportBodyFinalCarrier ? { reportBodyFinalCarrier } : {}),
+      ...(fixedSlots ? { reportBodyProjectSlots: flatSegments ? reportBodyFlatSegmentsProtocol : reportBodyProjectSlotsProtocol } : {}) } : {};
     const limits = agentRequestBudget(budget);
-    const result = await runRenovationAgent({ messages: reportMessages(initial.scope, projects, fixedSlots), tools: [], resume: initial.resume, ports: {
+    const result = await runRenovationAgent({ messages: reportMessages(initial.scope, projects, fixedSlots, flatSegments), tools: [], resume: initial.resume, ports: {
       authorize,
       tool: async () => fail('assistant_capability_forbidden', 403),
       checkpoint: state => scoped(async tx => {
@@ -178,7 +182,7 @@ export async function processReportComposition(lease: Lease, dependencies: {
           outcomeKnown = true;
           const output = cached.private_checkpoint as ModelTurnOutput;
           if (!output.usage) fail('provider_usage_unknown', 502);
-          return projectReportBodyFinal(output, finalTool, !!reportBodyFinalCarrier);
+          return projectReportBodyFinal(output, finalTool, !!reportBodyFinalCarrier, canonical);
         }
         outcomeKnown = false;
         const beforeProviderCall = () => scoped(async tx => {
@@ -223,7 +227,7 @@ export async function processReportComposition(lease: Lease, dependencies: {
             private_checkpoint=${JSON.stringify(output)}::jsonb where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence} and status='running'`);
         });
         if (!output.usage) fail('provider_usage_unknown', 502);
-        return projectReportBodyFinal(output, finalTool, !!reportBodyFinalCarrier);
+        return projectReportBodyFinal(output, finalTool, !!reportBodyFinalCarrier, canonical);
       },
     } });
     const body = parseReportBody(result.output?.text || '', projects, fixedSlots);

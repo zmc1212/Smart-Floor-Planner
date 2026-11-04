@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { reportFinalOutputTokenLimit, type ModelMessage, type ModelTurnInput } from '../contracts/model';
-import { boundReportBodyFinal, boundReportBodyProjectSlots, boundReportFinalOutput, reportBodyFinalAdmission, reportBodyFinalPolicy,
-  reportBodyFinalProtocol, reportBodyProjectSlotsProtocol, reportFinalFunctionCarrier, reportNativeRuntimeBudget } from '../agent/report-native-final';
+import { boundReportBodyFinal, boundReportBodyWire, boundReportFinalOutput, reportBodyFinalAdmission, reportBodyFinalPolicy,
+  reportBodyFinalProtocol, reportBodyFlatSegmentsProtocol, reportBodyProjectSlotsProtocol, reportFinalFunctionCarrier, reportNativeRuntimeBudget } from '../agent/report-native-final';
 import { agentRequestBudget, fitAgentContext, imageContextBudgetPolicy } from '../agent/context-budget';
 import type { AgentConfig } from '../agent/config';
 import { reportFinalTool } from '@/lib/construction/report-composition';
@@ -56,10 +56,11 @@ test('new scheduled report bodies allocate4096 on the same schema while historic
     probeVersion: 'test', imageInput: true, tools: true };
   assert.equal(reportBodyFinalAdmission(config), true);
   assert.deepEqual(reportBodyFinalPolicy(config), { reportBodyFinal: reportBodyFinalProtocol, reportBodyFinalCarrier: reportFinalFunctionCarrier,
-    reportBodyProjectSlots: reportBodyProjectSlotsProtocol });
-  assert.equal(boundReportBodyProjectSlots(undefined, reportFinalFunctionCarrier), false);
-  assert.equal(boundReportBodyProjectSlots(reportBodyProjectSlotsProtocol, reportFinalFunctionCarrier), true);
-  assert.throws(() => boundReportBodyProjectSlots(reportBodyProjectSlotsProtocol, undefined), /context_changed/);
+    reportBodyProjectSlots: reportBodyFlatSegmentsProtocol });
+  assert.equal(boundReportBodyWire(undefined, reportFinalFunctionCarrier), 'legacy');
+  assert.equal(boundReportBodyWire(reportBodyProjectSlotsProtocol, reportFinalFunctionCarrier), 'slots');
+  assert.equal(boundReportBodyWire(reportBodyFlatSegmentsProtocol, reportFinalFunctionCarrier), 'flat');
+  assert.throws(() => boundReportBodyWire(reportBodyFlatSegmentsProtocol, undefined), /context_changed/);
   const unsupported = { ...config, providerKey: 'siliconflow' };
   assert.equal(reportBodyFinalAdmission(unsupported), false);
   assert.deepEqual(reportBodyFinalPolicy(unsupported), {});
