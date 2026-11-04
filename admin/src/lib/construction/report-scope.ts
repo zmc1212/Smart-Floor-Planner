@@ -16,7 +16,7 @@ export const activeReportProject = sql`p.status='active' and coalesce(p.current_
 export const reportAudienceEnabled = (settings: Row, binding: Row) => !Array.isArray(settings.audiences) || settings.audiences.includes(String(binding.audience));
 export type ReportRecord = { id: string; version: number; hash: string; publishedAt: string; room: string; data: Row; publishedStageKey?: string };
 export type ReportProject = Partial<ReportItems & CustomerReportItems> & { id: string; name: string; stageKey: string | null; progressRevision: number;
-  weekOpeningStage?: ReportWorkmanshipStage; weekStageNames?: Record<string, string>;
+  weekOpeningStage?: ReportWorkmanshipStage; weekStageNames?: Record<string, string>; reminderStageName?: string;
   stageEvents: Array<{ id: string; revision: number; stageKey: string; at: string }>;
   stageEventsTruncated: boolean; records: ReportRecord[]; recordsTruncated: boolean; noPublishedRecords: boolean };
 export type ReportFacts = { protocol: 'construction-report-facts-v1'; projects: ReportProject[]; projectsTruncated: boolean;
@@ -89,14 +89,16 @@ export async function hasLateReportRecord(tx: PostgresTransaction, eid: string, 
 export async function collectReportFacts(tx: PostgresTransaction, eid: string, binding: Row, report: Row, settings: Row): Promise<ReportFacts> {
   const projectIds = settings.project_ids as string[], stageKeys = settings.stage_keys as string[];
   const weekly = report.kind === 'weekly';
-  const stageSettings = weekly ? (await readStageSettings(tx, eid)).stages : [];
+  const stageEvent = report.stage_event as Row | undefined;
+  const stageSettings = weekly || stageEvent ? (await readStageSettings(tx, eid)).stages : [];
   const projects = (await followupProjects(tx, eid, binding, true, projectIds, stageKeys))
     .filter(p => !report.stage_event_id || String(p.id) === String((report.stage_event as Row)?.aggregate_id));
   const result: ReportProject[] = [];
   for (const p of projects.slice(0, 20)) {
     const pid = String(p.id);
     const start = reportDate(report.period_start), cutoff = reportDate(report.cutoff_at);
-    const events = await rows(tx, sql`select id,aggregate_version,payload,created_at from app.domain_event_outbox
+    // A reminder has one immutable trigger. Do not infer it from a rounded cutoff.
+    const events = stageEvent ? [stageEvent] : await rows(tx, sql`select id,aggregate_version,payload,created_at from app.domain_event_outbox
       where enterprise_id=${eid} and type='construction.stage.updated.v1' and aggregate_id=${pid}
       and created_at<${cutoff} order by aggregate_version desc limit 31`);
     const latest = events[0], stageKey = latest ? String((latest.payload as Row).stageKey) : null;
@@ -133,6 +135,7 @@ export async function collectReportFacts(tx: PostgresTransaction, eid: string, b
     // Unknown history stays unknown; the current stage must not rewrite an old period.
     result.push({ ...items, id: pid, name: String(p.name), stageKey, progressRevision: Number(latest?.aggregate_version || 0),
       stageEvents, ...(weekOpeningStage ? { weekOpeningStage } : {}),
+      ...(stageEvent ? { reminderStageName: stageSettings.find(stage => stage.key === stageKey)?.name } : {}),
       ...(weekly ? { weekStageNames: Object.fromEntries(stageSettings.filter(stage => stage.key === stageKey || stage.key === weekOpeningStage?.key
         || stageEvents.some(event => event.stageKey === stage.key)).map(stage => [stage.key, stage.name])) } : {}),
       stageEventsTruncated: events.length > 30, records, recordsTruncated: candidates.length > 50, noPublishedRecords: records.length === 0 });

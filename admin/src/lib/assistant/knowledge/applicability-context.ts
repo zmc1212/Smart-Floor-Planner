@@ -12,8 +12,9 @@ export const projectKnowledgeContextStep = 11000;
 export async function reportStageKnowledgeContext(tx: PostgresTransaction, actor: ActorContext, conversation: Row, stage: ReportWorkmanshipStage) {
   if (conversation.purpose !== 'construction_followup' || !actor.capabilities.includes('assistant.followup.self')) return;
   const selected = await selectedReport(tx, actor, conversation);
-  if (selected?.selection.kind !== 'weekly') return;
-  return reportWorkmanshipKnowledgeContext(selected.project, selected.leadId, stage);
+  const kind = selected?.selection.kind;
+  if (!selected || kind !== 'weekly' && kind !== 'stage') return;
+  return reportWorkmanshipKnowledgeContext(selected.project, selected.leadId, stage, kind);
 }
 export async function projectKnowledgeContextAvailable(tx:PostgresTransaction,actor:ActorContext,conversation:Row,runId:string) {
   const saved=await one(tx,sql`select source_refs from app.assistant_run_steps where enterprise_id=${actor.enterpriseId}

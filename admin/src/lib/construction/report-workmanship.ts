@@ -4,6 +4,7 @@ import type { ReportProject } from './report-scope';
 import { defaultConstructionStages } from './stages';
 
 export const reportWorkmanshipProtocol = 'weekly-stage-workmanship-v1';
+export const reminderWorkmanshipProtocol = 'reminder-stage-workmanship-v1';
 const stageLimit = 4;
 const defaultNames = new Map(defaultConstructionStages.map(({ key, name }) => [key, name]));
 const standardHeadings = new Map([
@@ -24,15 +25,15 @@ export function reportWorkmanshipStages(project: ReportProject) {
 }
 
 export function reportWorkmanshipName(stage: ReportWorkmanshipStage, project: ReportProject) {
-  const configured = project.weekStageNames?.[stage.key];
+  const configured = project.weekStageNames?.[stage.key] ?? (stage.key === project.stageKey ? project.reminderStageName : undefined);
   return typeof configured === 'string' ? configured : defaultNames.get(stage.key) || stage.key;
 }
 
-export function reportWorkmanshipQuery(stage: ReportWorkmanshipStage, project: ReportProject) {
+export function reportWorkmanshipQuery(stage: ReportWorkmanshipStage, project: ReportProject, kind: 'weekly' | 'stage' = 'weekly') {
   const name = reportWorkmanshipName(stage, project);
-  const waterproof = stage.key === 'masonry_carpentry' && project.records.some(record =>
+  const waterproof = kind === 'weekly' && stage.key === 'masonry_carpentry' && project.records.some(record =>
     record.publishedStageKey === stage.key && ['title', 'completed', 'pending', 'coordination', 'note'].some(field => String(record.data[field] || '').includes('防水')));
-  return { query: `施工周报 ${name}${waterproof ? ' 防水' : ''} 工艺标准 操作核对 验收注意事项`, waterproof };
+  return { query: `施工${kind === 'weekly' ? '周报' : '阶段提醒'} ${name}${waterproof ? ' 防水' : ''} 工艺标准 操作核对 验收注意事项`, waterproof };
 }
 
 /** A search hit alone cannot prove that a standard belongs to a stage. Use an
@@ -48,7 +49,14 @@ export function reportWorkmanshipMatches(source: Evidence, stage: ReportWorkmans
   return classified || !!heading && [name, ...(standardHeadings.get(stage.key) || [])].includes(heading);
 }
 
-export function reportWorkmanshipKnowledgeContext(project: ReportProject, leadId: string, stage: ReportWorkmanshipStage): KnowledgeContext | undefined {
-  if (!reportWorkmanshipStages(project).stages.some(candidate => candidate.key === stage.key && candidate.revision === stage.revision)) return;
+export function reminderWorkmanshipStage(project: ReportProject): ReportWorkmanshipStage | undefined {
+  const [event] = project.stageEvents;
+  if (event?.stageKey && project.stageEvents.length === 1 && project.stageKey === event.stageKey && project.progressRevision === event.revision)
+    return { key: event.stageKey, revision: event.revision };
+}
+
+export function reportWorkmanshipKnowledgeContext(project: ReportProject, leadId: string, stage: ReportWorkmanshipStage, kind: 'weekly' | 'stage' = 'weekly'): KnowledgeContext | undefined {
+  const stages = kind === 'weekly' ? reportWorkmanshipStages(project).stages : [reminderWorkmanshipStage(project)];
+  if (!stages.some(candidate => candidate?.key === stage.key && candidate.revision === stage.revision)) return;
   return { leadId, projectId: project.id, stage: stage.key, revision: stage.revision };
 }

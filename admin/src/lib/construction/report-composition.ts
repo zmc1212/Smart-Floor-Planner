@@ -6,11 +6,11 @@ import { nativeFinalDefinition } from '@/lib/assistant/agent/native-final';
 import { parseSynthesis, type SynthesisAnswer, type SynthesisContext, type SynthesisSource } from '@/lib/assistant/agent/synthesis';
 import { toolSchemaIssue } from '@/lib/assistant/agent/tool-protocol';
 import type { ReportReference } from './report-reference';
-import type { reportWorkmanshipProtocol } from './report-workmanship';
+import type { reminderWorkmanshipProtocol, reportWorkmanshipProtocol } from './report-workmanship';
 
 export const reportCompositionProtocol = 'construction-report-composition-v1';
 export type ReportCompositionScope = { protocol: typeof reportCompositionProtocol; reportId: string; revision: number; bindingId: string;
-  dispatchEpoch: number; factsHash: string; workmanship?: typeof reportWorkmanshipProtocol };
+  dispatchEpoch: number; factsHash: string; workmanship?: typeof reportWorkmanshipProtocol | typeof reminderWorkmanshipProtocol };
 export const reportSectionKinds = ['progress', 'pending', 'standards', 'arrangements'] as const;
 export type ReportSectionKind = typeof reportSectionKinds[number];
 export type ComposedProject = { projectId: string; selection: ReportReference; context: SynthesisContext; sections: Record<ReportSectionKind, SynthesisAnswer>;

@@ -25,7 +25,8 @@ import { reportContextProtocol, resolveReportReference, type ReportReference } f
 import { parseReportBody, projectReportBodyFinal, reportCompositionProtocol, reportFinalTool, reportFlatFinalTool, reportMessages, type ComposedProject, type ReportCompositionScope } from './report-composition';
 import { assertReportGuidanceReview, prepareReportGuidanceReview, reportGuidanceFactText, reportGuidanceItems, reportGuidanceProject } from './report-guidance-review';
 import { projectReportGuidanceOnly, reportGuidanceChoices, reportGuidanceFinalTool, reportGuidanceStandardSources } from './report-guidance-final';
-import { reportWorkmanshipMatches, reportWorkmanshipName, reportWorkmanshipProtocol, reportWorkmanshipQuery, reportWorkmanshipStages } from './report-workmanship';
+import { reminderWorkmanshipProtocol, reminderWorkmanshipStage, reportWorkmanshipMatches, reportWorkmanshipName, reportWorkmanshipProtocol, reportWorkmanshipQuery, reportWorkmanshipStages } from './report-workmanship';
+import { currentReportStageEvent } from './stage-events';
 
 type ProjectContext = Pick<ComposedProject, 'projectId' | 'selection' | 'context' | 'weekWorkmanship'> & { guidanceItems?: string[] };
 function selectedConversation(c: Row, selection: ReportReference): Row {
@@ -37,7 +38,6 @@ function selectedConversation(c: Row, selection: ReportReference): Row {
 async function reportGuard(tx: PostgresTransaction, lease: Lease) {
   const context = await runContext(tx, lease), scope = (context.run.policy_snapshot as Row).reportComposition as ReportCompositionScope;
   if (context.run.purpose !== 'construction.report.compose' || scope?.protocol !== reportCompositionProtocol) fail('context_changed');
-  if (scope.workmanship !== undefined && scope.workmanship !== reportWorkmanshipProtocol) fail('context_changed');
   const report = await one(tx, sql`select r.*,v.facts,v.facts_hash,v.generated_at,v.period_end as fact_period_end,v.cutoff_at as fact_cutoff_at,
     v.body_run_id from app.construction_reports r join app.construction_report_versions v
     on v.enterprise_id=r.enterprise_id and v.report_id=r.id join app.assistant_runs parent
@@ -45,11 +45,23 @@ async function reportGuard(tx: PostgresTransaction, lease: Lease) {
     where r.enterprise_id=${lease.enterpriseId} and r.id=${scope.reportId} and r.binding_id=${scope.bindingId}
     and v.revision=${scope.revision} and v.status='facts_ready' and parent.status='succeeded'
     and parent.conversation_id=${String(context.conversation.id)} and v.body_run_id=${lease.runId} for share of v`);
-  const plan = await one(tx, sql`select dispatch_epoch from app.construction_report_settings where enterprise_id=${lease.enterpriseId} and enabled for share`);
+  const plan = await one(tx, sql`select dispatch_epoch,stage_enabled from app.construction_report_settings where enterprise_id=${lease.enterpriseId} and enabled for share`);
   const binding = await one(tx, sql`select * from app.construction_followup_bindings where enterprise_id=${lease.enterpriseId}
     and id=${scope.bindingId} and status='enabled' and conversation_id=${String(context.conversation.id)} for share`);
   if (!report || report.facts_hash !== scope.factsHash || !binding || !plan || Number(plan.dispatch_epoch) !== scope.dispatchEpoch
     || !await followupAvailable(tx, lease.enterpriseId, binding)) fail('context_changed');
+  if (scope.workmanship !== undefined && !(report.kind === 'weekly' && scope.workmanship === reportWorkmanshipProtocol
+    || report.kind === 'stage' && scope.workmanship === reminderWorkmanshipProtocol)) fail('context_changed');
+  if (report.kind === 'stage') {
+    const event = await currentReportStageEvent(tx, lease.enterpriseId, report.stage_event_id);
+    if (!event || plan.stage_enabled === false) fail('context_changed');
+    if (scope.workmanship === reminderWorkmanshipProtocol) {
+      const [project, ...others] = (report.facts as ReportFacts).projects;
+      if (!project || others.length || project.id !== String(event.aggregate_id)
+        || project.stageEvents[0]?.id !== String(event.id) || project.progressRevision !== Number(event.aggregate_version)
+        || !reminderWorkmanshipStage(project)) fail('context_changed');
+    }
+  }
   const ids = (report.facts as ReportFacts).projects.map(p => p.id);
   const active = await followupProjects(tx, lease.enterpriseId, binding, true, ids);
   if (active.length !== ids.length || active.some(p => !ids.includes(String(p.id)))) fail('context_changed');
@@ -161,6 +173,17 @@ export async function processReportComposition(lease: Lease, dependencies: {
     const weeklyWorkmanship = initial.scope.workmanship === reportWorkmanshipProtocol && initial.scope.kind === 'weekly' && initial.selectGuidance;
     for (const [index, project] of projects.entries()) {
       const [facts] = project.context.snapshots[0].data as ReportProject[];
+      if (initial.scope.workmanship === reminderWorkmanshipProtocol) {
+        const stage = reminderWorkmanshipStage(facts);
+        if (!stage) fail('context_changed');
+        const { query } = reportWorkmanshipQuery(stage, facts, 'stage');
+        const name = reportWorkmanshipName(stage, facts);
+        const sources = (await readWorkmanship(project, 800 + index, query, stage)).filter(source =>
+          source.evidence && reportWorkmanshipMatches(source.evidence, stage, name, false) && sourceCitationCatalog(source).length);
+        project.context.knowledge = sources.map(source => source.evidence!);
+        project.context.sources.push(...sources);
+        continue;
+      }
       if (!weeklyWorkmanship) {
         const sources = await readWorkmanship(project, 800 + index,
           `施工${initial.scope.kind === 'weekly' ? '周报' : '日报'} ${facts.stageKey || '阶段待确认'} 工艺要求 操作核对 验收注意事项`);

@@ -9,7 +9,7 @@ import { discoverFollowups, enqueueReport } from './report-store';
 import { dailySupplementCandidates, supplementClosedDailyReports } from './report-supplements';
 import { collectReportFacts, deliveryActor, followupAvailable, followupProjects, projectReportFacts, reportFactsHash, type ReportFacts } from './report-scope';
 import { enqueueReportBody } from './report-body-store';
-import { currentStageEvent } from './stage-events';
+import { currentReportStageEvent } from './stage-events';
 
 /** One latest due daily and weekly period per tick, not an unbounded outage replay.
  * Time changes affect future ticks; each queued run retains its original scope. */
@@ -48,8 +48,7 @@ export async function advanceConstructionReports(now = new Date(), onlyEnterpris
           and e.created_at<=${now} order by e.id limit 50`);
         for (const event of events) {
           if (settings.stage_enabled === false) continue;
-          const current = await currentStageEvent(tx, eid, String(event.id));
-          if (!current || current.project_status !== 'active') continue;
+          if (!await currentReportStageEvent(tx, eid, event.id)) continue;
           const at = new Date(String(event.created_at));
           // PostgreSQL preserves microseconds; JSON/Date retains milliseconds.
           // Include the source event's whole millisecond instead of excluding it.
@@ -82,9 +81,9 @@ export async function processConstructionReport(lease: Lease) {
       const b = await one(tx, sql`select * from app.construction_followup_bindings where enterprise_id=${eid} and id=${String(report.binding_id)} and status='enabled' for update`);
       if (!b || b.conversation_id !== run.conversation_id) fail('context_changed');
       let stageEvent: Row | undefined;
-      if (report.stage_event_id) {
-        stageEvent = await currentStageEvent(tx, eid, String(report.stage_event_id));
-        if (!stageEvent) fail('context_changed');
+      if (report.kind === 'stage') {
+        stageEvent = await currentReportStageEvent(tx, eid, report.stage_event_id);
+        if (!stageEvent || settings.stage_enabled === false) fail('context_changed');
       }
       const facts = await collectReportFacts(tx, eid, b, { ...report, stage_event: stageEvent, period_end: report.fact_period_end, cutoff_at: report.fact_cutoff_at }, policy.scope as Row);
       if (!facts.projects.length) fail('context_changed');
@@ -113,7 +112,7 @@ export async function deliverConstructionReports(onlyEnterprise?: string) {
     if (!await one(tx, sql`select id from app.assistant_enterprise_settings where enterprise_id=${eid} and enabled for update skip locked`)) return 0;
     const settings = await one(tx, sql`select * from app.construction_report_settings where enterprise_id=${eid} and enabled for share`);
     if (!settings) return 0;
-    const pending = await rows(tx, sql`select d.*,r.kind,v.facts,v.generated_at,run.context_revision as generation_context_revision,
+    const pending = await rows(tx, sql`select d.*,r.kind,r.stage_event_id,v.facts,v.generated_at,run.context_revision as generation_context_revision,
       run.conversation_id as generation_conversation_id,run.policy_snapshot from app.construction_report_deliveries d
       join app.construction_reports r on r.enterprise_id=d.enterprise_id and r.id=d.report_id
       join app.construction_report_versions v on v.enterprise_id=d.enterprise_id and v.report_id=d.report_id and v.revision=d.revision
@@ -122,7 +121,8 @@ export async function deliverConstructionReports(onlyEnterprise?: string) {
     let count = 0;
     for (const d of pending) {
       const b = (await one(tx, sql`select * from app.construction_followup_bindings where enterprise_id=${eid} and id=${String(d.binding_id)} for update`))!;
-      if (b.conversation_id !== d.generation_conversation_id || Number(settings.dispatch_epoch || 1) !== Number((d.policy_snapshot as Row).reportDispatchEpoch || 1)) {
+      if (b.conversation_id !== d.generation_conversation_id || Number(settings.dispatch_epoch || 1) !== Number((d.policy_snapshot as Row).reportDispatchEpoch || 1)
+        || d.kind === 'stage' && (settings.stage_enabled === false || !await currentReportStageEvent(tx, eid, d.stage_event_id))) {
         await tx.execute(sql`update app.construction_report_deliveries set state='revoked' where enterprise_id=${eid} and event_id=${String(d.event_id)}`);
         continue;
       }
@@ -161,12 +161,14 @@ export async function deliverConstructionReports(onlyEnterprise?: string) {
         await tx.execute(sql`update app.construction_report_deliveries set state='held' where enterprise_id=${eid} and event_id=${String(d.event_id)}`);
         continue;
       }
-      // Collapse held backlogs to the latest revision/period of each kind.
+      // Collapse period backlogs by kind, but never let a different project's
+      // valid stage event supersede this one in a multi-project destination.
       const newer = await one(tx, sql`select newer.event_id from app.construction_report_deliveries newer
         join app.construction_reports nr on nr.enterprise_id=newer.enterprise_id and nr.id=newer.report_id
         join app.construction_reports old on old.enterprise_id=${eid} and old.id=${String(d.report_id)}
         where newer.enterprise_id=${eid} and newer.binding_id=${String(b.id)} and newer.state in ('pending','held','delivered')
-        and nr.kind=old.kind and newer.event_id>${String(d.event_id)} limit 1`);
+        and nr.kind=old.kind and (old.kind<>'stage' or nr.stage_event_id=old.stage_event_id)
+        and newer.event_id>${String(d.event_id)} limit 1`);
       if (d.state === 'held' && newer) {
         await tx.execute(sql`update app.construction_report_deliveries set state='revoked' where enterprise_id=${eid} and event_id=${String(d.event_id)}`);
         continue;

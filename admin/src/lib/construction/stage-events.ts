@@ -54,3 +54,11 @@ export async function currentStageEvent(tx: PostgresTransaction, eid: string, ev
     progressRevision: Number(event.aggregate_version), projectVersion: Number(input.expectedVersion) + 1,
     progressNote: String(input.note ?? '').trim() }) ? event : undefined;
 }
+
+/** Only the latest event of an active construction stage may produce a new
+ * private reminder. A pause/resume cannot revive the old event. */
+export async function currentReportStageEvent(tx: PostgresTransaction, eid: string, eventId: unknown) {
+  if (!eventId) return;
+  const event = await currentStageEvent(tx, eid, String(eventId), true);
+  if (event?.project_status === 'active' && !['completion', 'move_in'].includes(String(event.project_stage_key))) return event;
+}

@@ -114,7 +114,7 @@ module.exports = async ctx => {
           const item = { path: suffix, method, key: options.header?.['Idempotency-Key'], clientMessageId: options.data?.clientMessageId }; s.requests.push(item);
           return s.request.call(wx, { ...options, url: 'http://127.0.0.1:3006' + suffix,
             success(response) { item.status = response.statusCode; item.runId = response.data?.data?.runId; item.messageId = response.data?.data?.messageId; options.success?.(response); },
-            fail(error) { item.status = 'network_failure'; options.fail?.(error); } });
+            fail(error) { item.status = 'network_failure'; item.error = error.errMsg; options.fail?.(error); } });
         };
         wx.openDocument = options => {
           s.opened.push({ fileType: options.fileType, showMenu: options.showMenu });
@@ -134,6 +134,58 @@ module.exports = async ctx => {
         const results = [];
         for (const expected of a.reports) {
           let p = await identity(a);
+          if (expected.kind === 'stage') {
+            const card = '.followup-stage[data-report="' + expected.id + '"]', first = expected.body[0];
+            const source = first.knowledgeSources[0], name = source ? '水电' : '安装';
+            const readStage = async () => {
+              await wait(() => p.$(card), 'rendered private stage reminder');
+              const item = (await p.data()).followupReports.find(r => r.reportId === expected.id);
+              assert.equal(item.deliveryState, 'delivered');
+              assert.ok(item.cardTitle.startsWith(name));
+              assert.deepEqual(item.projects.map(project => project.id), [first.projectId]);
+              return item.projects[0];
+            };
+            const actual = await readStage();
+            let original;
+            if (source) {
+              assert.ok(actual.standards.every(line => line.text.startsWith('水电工艺标准')));
+              const selector = card + ' .followup-stage-source';
+              await wait(() => p.$(selector), 'rendered stage source button');
+              const fn = () => getCurrentPages().at(-1).openReportSource({ currentTarget: { dataset: {
+                report: '__REPORT__', revision: __REVISION__, project: '__PROJECT__',
+              } } });
+              await evaluateSource(fn.toString().replace('__REPORT__', expected.id).replace('__REVISION__', expected.revision).replace('__PROJECT__', first.projectId));
+              const quote = await wait(async () => {
+                const d = await p.data();
+                return d.reportSource?.available && !d.reportSourceLoading ? d.reportSource : null;
+              }, 'stage source readback');
+              assert.equal(quote.id, source.sourceId);
+              assert.ok(first.standards.some(line => line.citations.some(citation => citation.quote === quote.quote)));
+              const before = await cli.evaluate(() => getApp().__qaLiveFollowups.opened.length);
+              await tap(p, '.sheet-panel .notice-action');
+              original = await wait(async () => {
+                const observed = await cli.evaluate(() => {
+                  const s = getApp().__qaLiveFollowups; return { opened: s.opened, downloads: s.downloads };
+                });
+                return observed.opened[before] ? { ...observed.opened[before], status: observed.downloads[before] } : null;
+              }, 'authenticated stage PDF');
+              assert.deepEqual(original, { fileType: 'pdf', showMenu: false, status: 200 });
+            } else {
+              assert.deepEqual(actual.standards, []);
+              assert.equal(await p.$(card + ' .followup-stage-source'), null);
+              const missing = await cli.call('automation_element_action', { project, selector: card + ' .followup-muted', action: 'text' });
+              assert.ok(JSON.stringify(missing).includes('暂无工艺说明'));
+            }
+            p = await enter(a);
+            await readStage();
+            await capture(a.name + '-' + a.bid + '-stage-' + expected.id);
+            const result = { reportId: expected.id, kind: expected.kind, revision: expected.revision,
+              source: source?.sourceId, sourceEntry: source ? 'verified rendered control and native handler' : undefined, original, missing: !source, reentry: true };
+            results.push(result);
+            (report.journeys ??= []).push({ audience: a.name, bindingId: a.bid, ...result });
+            save();
+            continue;
+          }
           const card = '.followup-card-action[data-report="' + expected.id + '"][data-revision="' + expected.revision + '"]';
           await wait(() => p.$(card), 'delivered report card');
           await tap(p, card);

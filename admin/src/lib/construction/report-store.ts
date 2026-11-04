@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { currentReportStageEvent } from './stage-events';
 import type { PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, fingerprint, principalKey, type ActorContext } from '@/lib/assistant/contracts';
@@ -37,9 +38,10 @@ export async function enqueueReport(tx: PostgresTransaction, eid: string, bindin
   if (!reportAudienceEnabled(settings, binding) || (input.kind === 'stage' && settings.stage_enabled === false)) return null;
   if (!await followupAvailable(tx, eid, binding)) return null;
   let projects = await followupProjects(tx, eid, binding, true, settings.project_ids as string[], settings.stage_keys as string[]);
-  if (input.stageEventId) {
-    const event = await one(tx, sql`select aggregate_id from app.domain_event_outbox where enterprise_id=${eid} and id=${input.stageEventId} and type='construction.stage.updated.v1'`);
-    projects = projects.filter(p => String(p.id) === String(event?.aggregate_id));
+  if (input.kind === 'stage') {
+    const event = await currentReportStageEvent(tx, eid, input.stageEventId);
+    if (!event) return null;
+    projects = projects.filter(p => String(p.id) === String(event.aggregate_id));
   }
   if (!projects.length) return null;
   const c = (await one(tx, sql`select * from app.assistant_conversations where enterprise_id=${eid} and id=${String(binding.conversation_id)} for update`))!;

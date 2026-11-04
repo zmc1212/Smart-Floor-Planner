@@ -36,6 +36,8 @@ assert.equal(assistantDailyLimitsEnabled(), false, 'Bind the user-confirmed unli
 const output = path.resolve(process.argv.find(a => a.startsWith('--output='))?.slice(9) || '../tmp/v1-02-live-reports/configured-01');
 const native = process.argv.includes('--stable');
 const weeklyStages = process.argv.includes('--weekly-stages');
+const stageReminders = process.argv.includes('--stage-reminders');
+assert.ok(!stageReminders || !weeklyStages);
 assert.ok(!fs.existsSync(path.join(output, 'report.json')), 'Retain every original attempt');
 fs.mkdirSync(output, { recursive: true });
 const prefix = 'synthetic-v1-02-live-' + randomUUID();
@@ -43,10 +45,12 @@ const users: string[] = [], admins: string[] = [], leads: string[] = [], project
 const staffUsers: string[] = [];
 let unrelatedBindingIds: string[] = [];
 const log: Row = { startedAt: new Date().toISOString(), prefix, owner: process.env.CODEX_THREAD_ID,
-  scope: 'Configured-model daily/weekly report bodies only; scheduled discovery/native/follow-up evidence is not upgraded by this batch',
-  fixedScope: { audiences: ['customer','customer','worker','designer','boss'], projects: 2, kinds: weeklyStages ? ['weekly'] : ['daily','weekly'],
+  scope: stageReminders ? 'Current stage reminder bodies and private readback; lifecycle scheduling is checked separately' : 'Configured-model daily/weekly report bodies only; scheduled discovery/native/follow-up evidence is not upgraded by this batch',
+  fixedScope: { audiences: ['customer','customer','worker','designer','boss'], projects: 2, kinds: stageReminders ? ['stage'] : weeklyStages ? ['weekly'] : ['daily','weekly'],
+    ...(stageReminders ? { stages: 'A: installation following masonry; B: utilities' } : {}),
     ...(weeklyStages ? { stages: 'A: masonry waterproofing then installation; B: utilities' } : {}),
-    firstDraftsPerCase: 2, maxBodyRuns: weeklyStages ? 10 : 20, secondDraft: 'preplanned independent correction revision with unchanged original facts, never retry after failure',
+    firstDraftsPerCase: stageReminders ? 1 : 2, maxBodyRuns: stageReminders ? 8 : weeklyStages ? 10 : 20,
+    ...(stageReminders ? {} : { secondDraft: 'preplanned independent correction revision with unchanged original facts, never retry after failure' }),
     stop: 'first failed/indeterminate body, source/configuration drift or unavailable original source',
     reused: 'Existing scheduler, fact-worker, private destination, native components, permissions and revocation evidence at their unchanged scopes' },
   checks: [], attempts: [], fixture: { users, admins, leads, projects, records, bindings: [] }, ingestionCalls: 0, injectedModelCalls: 0 };
@@ -120,7 +124,7 @@ async function waitReport(id: string, revision: number, b: Row) {
       const detail = await service.detail(String(b.id),id,revision) as unknown as Row;
       if (detail.available && detail.deliveryState==='delivered') return { state,detail };
       // Public service saves delivery independently; allow existing Worker to finish it.
-      if (detail.available && (await read(tx=>one(tx,sql`select id from app.construction_report_deliveries where enterprise_id=${eid} and report_id=${id} and revision=${revision}`)))) return {state,detail};
+      if (!stageReminders && detail.available && (await read(tx=>one(tx,sql`select id from app.construction_report_deliveries where enterprise_id=${eid} and report_id=${id} and revision=${revision}`)))) return {state,detail};
     }
     await new Promise(resolve=>setTimeout(resolve,500));
   }
@@ -154,12 +158,12 @@ async function main() {
     for(let i=0;i<2;i++) {
       leads.push(String((await read(tx=>one(tx,sql`insert into app.leads(enterprise_id,customer_user_id,name,phone,source)
         values(${eid},${users[i]},${prefix+':lead:'+i},${'138'+String(Date.now()).slice(-7)+i},'natural') returning id`)))!.id));
-      const pid = String((await owner.execute('create',{leadId:leads[i],name:'合成实模验收·'+(weeklyStages ? '跨阶段' : '水电')+(i?'乙户':'甲户'),managerId:admins[1],rooms:['厨房']},randomUUID())).id);
+      const pid = String((await owner.execute('create',{leadId:leads[i],name:'合成实模验收·'+(stageReminders ? '阶段提醒' : weeklyStages ? '跨阶段' : '水电')+(i?'乙户':'甲户'),managerId:admins[1],rooms:['厨房']},randomUUID())).id);
       projects.push(pid); save();
       let p = (await owner.execute('detail',{projectId:pid})).project as Row;
       await owner.execute('member',{projectId:pid,expectedVersion:p.version,adminId:admins[2],role:'designer',active:true,workLabel:'合成实模验收'},randomUUID());
       p = (await owner.execute('detail',{projectId:pid})).project as Row;
-      const waterproof = weeklyStages && i === 0;
+      const waterproof = (weeklyStages || stageReminders) && i === 0;
       await owner.execute('progress',{projectId:pid,expectedVersion:p.version,stageKey:waterproof ? 'masonry_carpentry' : 'utilities',note:'合成实模验收：团队记录当前阶段',sendReminder:false},randomUUID());
       await original(pid,waterproof ? {title:'合成实模验收·卫生间防水原记录',completed:'卫生间基层已查看',pending:'防水前请先核对管根处理和闭水条件',coordination:''}
         : i ? {completed:'卧室照明回路已核对',pending:'客厅双控开关位置待业主确认',coordination:''}
@@ -171,8 +175,8 @@ async function main() {
       }
     }
     await original(projects[0],{completed:'',pending:'内部交接标记：蓝色工具箱未交接',coordination:''},'internal');
-    await plan.configure({expectedVersion:Number(policy.version),enabled:true,stageEnabled:false,dailyTime:'23:59',weeklyTime:'23:59',
-      projectIds:projects,stageKeys:weeklyStages ? ['utilities','installation','masonry_carpentry'] : ['utilities'],audiences:['customer','worker','designer','boss']},randomUUID());
+    await plan.configure({expectedVersion:Number(policy.version),enabled:true,stageEnabled:stageReminders,dailyTime:'23:59',weeklyTime:'23:59',
+      projectIds:projects,stageKeys:stageReminders ? ['utilities','installation'] : weeklyStages ? ['utilities','installation','masonry_carpentry'] : ['utilities'],audiences:['customer','worker','designer','boss']},randomUUID());
     bindings.push(...await read(tx=>rows(tx,sql`select * from app.construction_followup_bindings where enterprise_id=${eid}
       and (user_id in (${users[0]},${users[1]}) or admin_id in (${admins[0]},${admins[1]},${admins[2]})) order by id`)));
     assert.deepEqual(bindings.map(b=>b.audience).sort(),['boss','customer','customer','designer','worker']);
@@ -183,10 +187,20 @@ async function main() {
   // original automatic enqueue path is reused with fixed controlled periods.
   const dailyAt = new Date(Date.now()+86400000), weeklyAt = nextReportAt('weekly',dailyAt,'08:00');
   const weekly = latestReportPeriod('weekly',weeklyAt,'08:00');
-  const periods = weeklyStages ? [weekly] : [latestReportPeriod('daily',new Date(new Date().toISOString().slice(0,10)+'T15:59:00Z'),'23:59'),weekly];
+  const periods = stageReminders ? await read(async tx => {
+    const result = [];
+    for (const projectId of projects) {
+      const event = (await one(tx, sql`select id,created_at from app.domain_event_outbox where enterprise_id=${eid}
+        and aggregate_id=${projectId} and type='construction.stage.updated.v1' order by aggregate_version desc limit 1`))!;
+      const at = new Date(String(event.created_at));
+      result.push({kind:'stage' as const, start:at, end:at, cutoff:new Date(+at+1), scheduledAt:at, stageEventId:String(event.id), projectId});
+    }
+    return result;
+  }) : weeklyStages ? [weekly] : [latestReportPeriod('daily',new Date(new Date().toISOString().slice(0,10)+'T15:59:00Z'),'23:59'),weekly];
   for(const period of periods) for(const b of bindings) {
+    if ('projectId' in period && b.audience==='customer' && String(b.project_id)!==period.projectId) continue;
     let current: Row | undefined;
-    for(let trial=1;trial<=2;trial++) await step(`${period.kind}/${b.audience}/${b.id} first draft ${trial} of 2`,async()=>{
+    for(let trial=1;trial<=(stageReminders ? 1 : 2);trial++) await step(`${period.kind}/${b.audience}/${b.id} first draft ${trial}`,async()=>{
       checkBinding(); assert.deepEqual(await config(),log.configurationBefore);
       const queued = await read(async tx=>{
         const settings = (await one(tx,sql`select * from app.construction_report_settings where enterprise_id=${eid} for update`))!;
@@ -202,6 +216,29 @@ async function main() {
       const composed = result.detail.body as Array<{ projectId: string; guidance: Array<{ basis: string; text: string }>;
         standards: Array<{ basis: string; text: string; citations: Array<{ sourceId: string; quote: string }> }>;
         knowledgeSources: Array<{ sourceId: string }> }>;
+      if ('projectId' in period) {
+        const expectedKey = period.projectId===projects[0] ? 'installation' : 'utilities';
+        const [project] = composed;
+        assert.deepEqual(composed.map(p=>p.projectId),[period.projectId]);
+        const [fact] = (result.detail.facts as ReportFacts).projects;
+        assert.equal(fact.stageKey,expectedKey);
+        assert.deepEqual(fact.stageEvents.map(e=>e.id),[period.stageEventId]);
+        assert.equal(result.detail.deliveryState,'delivered');
+        if (expectedKey==='installation') {
+          assert.deepEqual(project.standards,[]);
+          assert.deepEqual(project.knowledgeSources,[]);
+        } else {
+          assert.ok(project.knowledgeSources.length);
+          assert.ok(project.standards.every(line=>line.basis==='evidence' && line.citations.length===1 && line.citations[0].quote.startsWith('水电工艺标准')));
+          const source = project.knowledgeSources[0].sourceId;
+          const followup = new FollowupService(actor(b));
+          await followup.knowledgeSource(String(b.id),id,revision,period.projectId,source,true);
+          const other = bindings.find(c=>c.audience==='customer' && c.project_id!==b.project_id)!;
+          await assert.rejects(new FollowupService(actor(other)).knowledgeSource(String(b.id),id,revision,period.projectId,source,true), /not_found/);
+        }
+        checkBinding(); assert.deepEqual(await config(),log.configurationBefore);
+        return {reportId:id,revision,runId:result.state.body_run_id,stageKey:expectedKey,body:composed};
+      }
       assert.equal(composed.length, b.audience === 'customer' ? 1 : projects.length);
       for (const project of composed) {
         assert.equal(project.guidance.length, 1);
@@ -262,8 +299,8 @@ async function main() {
         enterpriseId: eid, contextVersion, source: 'password' }).setProtectedHeader({ alg: 'HS256' })
         .setSubject(uid).setIssuedAt().setAudience('miniprogram').setExpirationTime('1h').sign(new TextEncoder().encode(process.env.JWT_SECRET));
       const reports = (log.attempts as Array<{ bindingId?: string; kind: string; reportId: string; revision: number; trial: number; result: { detail: Row } }>)
-        .filter(a => a.trial === 2 && String(a.bindingId) === String(b.id));
-      assert.equal(reports.length, periods.length);
+        .filter(a => a.trial === (stageReminders ? 1 : 2) && String(a.bindingId) === String(b.id));
+      assert.equal(reports.length, stageReminders && b.audience==='customer' ? 1 : periods.length);
       actors.push({ name: String(b.audience), leadId: aid ? undefined : leads[users.indexOf(uid)], uid, aid, role, token,
         bid: String(b.id), cid: String(b.conversation_id), reports: reports.map(r => ({ id: r.reportId, revision: r.revision, kind: r.kind, body: r.result.detail.body })) });
     }

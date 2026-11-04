@@ -151,6 +151,7 @@ export class FollowupService {
       generationState: r.body ? body.length ? 'ready' : 'source_unavailable' : r.body_run_status || r.knowledge_status,
       generationError: r.body_run_error || r.body_error_code || null,
       generationRetryable: b.status === 'enabled' && !r.body && !r.body_dispatched && !r.body_unknown_io && Number(r.body_attempts) < 3
+        && !(r.kind === 'stage' && (r.body_run_error || r.body_error_code) === 'context_changed')
         && (r.body_run_status === 'failed' || !r.body_run_status && r.knowledge_status === 'failed'),
       generationLabel: r.body ? body.length ? '' : '工艺来源或权限已变化，可先查看有效记录。'
         : ['queued','running'].includes(String(r.body_run_status)) ? '正文生成中，可先查看原记录。'
@@ -196,8 +197,11 @@ export class FollowupService {
       const b = await bindingForActor(repo.tx, this.actor, bindingId); await repo.conversation(String(b.conversation_id));
       if (filter.projectId && !(await followupProjects(repo.tx, this.actor.enterpriseId, b, false, [filter.projectId])).length)
         fail('construction_not_found', 404);
-      const found = await rows(repo.tx, sql`select r.id from app.construction_reports r
-        join app.construction_report_versions v on v.enterprise_id=r.enterprise_id and v.report_id=r.id and v.revision=r.latest_revision
+      // A queued correction must not hide the reminder the recipient already received.
+      const found = await rows(repo.tx, sql`select r.id,v.revision from app.construction_reports r
+        join app.construction_report_versions v on v.enterprise_id=r.enterprise_id and v.report_id=r.id
+          and v.revision=case when r.kind<>'stage' then r.latest_revision else (select max(d.revision) from app.construction_report_deliveries d
+            where d.enterprise_id=r.enterprise_id and d.report_id=r.id and d.binding_id=r.binding_id and d.state in ('delivered','muted')) end
         join app.assistant_runs run on run.enterprise_id=v.enterprise_id and run.id=v.run_id
         where r.enterprise_id=${this.actor.enterpriseId} and r.binding_id=${bindingId} and r.id<${beforeId}
          and ${filter.kind ? sql`r.kind=${filter.kind}` : sql`true`}
@@ -206,7 +210,7 @@ export class FollowupService {
         and run.conversation_id=${String(b.conversation_id)} order by r.id desc limit 20`);
       const items = [];
       for (const r of found) {
-        const view = await this.version(repo, b, String(r.id));
+        const view = await this.version(repo, b, String(r.id), Number(r.revision));
         if (filter.projectId && view.available && view.facts) {
           const projects = view.facts.projects.filter(p => p.id === filter.projectId);
           // The index is a filtered view, never a new report or an acknowledgement grant.

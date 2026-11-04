@@ -88,6 +88,29 @@ test('weekly workmanship follows saved stage history and rejects installation ke
   const result = parseReportBody(projectReportGuidanceOnly(raw, [scoped], choices, true), [scoped], true).projects[0];
   assert.deepEqual(result.sections.standards.segments.map(item => item.text), [original.text]);
 });
+test('a reminder admits only the trigger stage and never offers wrong-stage standards as selectable evidence', async () => {
+  const current = { key: 'installation', revision: 5 };
+  const facts: ReportProject = { id: '9', name: '合成安装提醒', stageKey: current.key, progressRevision: current.revision,
+    stageEvents: [{ id: '9', revision: current.revision, stageKey: current.key, at: selection.cutoffAt }], stageEventsTruncated: false,
+    records: [], recordsTruncated: false, noPublishedRecords: true };
+  assert.match(reportWorkmanshipQuery(current, facts, 'stage').query, /施工阶段提醒 安装/);
+  assert.equal(reportWorkmanshipKnowledgeContext(facts, '60', { ...current, revision: 3 }, 'stage'), undefined);
+  assert.equal(reportWorkmanshipKnowledgeContext(facts, '60', { ...current, key: 'utilities' }, 'stage'), undefined);
+  const hits: Evidence[] = ['水电工艺标准：水管安装后，用管卡进行固定。', '防水工艺标准：待基层干燥后再涂防水。',
+    '安装工艺标准：柜体固定前需确认墙体条件。'].map((text, i) => ({
+    ref: { type: 'knowledge_chunk', id: String(101 + i), version: '411' }, hash: 'test', text }));
+  const selected = hits.filter(evidence => reportWorkmanshipMatches(evidence, current, '安装', false));
+  assert.deepEqual(selected.map(e => e.ref.id), ['103']);
+  const sources = selected.map(evidence => ({ sourceId: 'K' + evidence.ref.id, kind: 'knowledge' as const, title: '工艺原文', text: evidence.text, evidence }));
+  const scoped = { ...project, context: { ...context, sources } };
+  const choices = [reportGuidanceChoices(scoped, [])];
+  assert.ok(await toolSchemaIssue(reportGuidanceFinalTool([scoped], choices, true),
+    JSON.stringify({ P1_guidance: 'review_original', P1_standard: sourceCitationCatalog({ ...sources[0], sourceId: 'K101', text: hits[0].text })[0].citationId })));
+  const empty = { ...scoped, context: { ...scoped.context, sources: [] } };
+  const raw = JSON.stringify({ P1_guidance: 'review_original' });
+  assert.deepEqual(parseReportBody(projectReportGuidanceOnly(raw, [empty], choices, true), [empty], true)
+    .projects[0].sections.standards.segments[0].citations, []);
+});
 test('missing, repeated, foreign or malformed project groups cannot become a report', () => {
   const valid = output();
   for (const projects of [[], [valid.projects[0],valid.projects[0]], [{ ...valid.projects[0], projectId: '999' }], [null]])
