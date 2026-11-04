@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { privateAgentFailureFrame } from '@/lib/ai/postgres-workflow-chat';
 import { AiProviderError, isSafeProviderFallback } from '@/lib/ai/provider-types';
 import { agentResponseDiagnostic, parseAgentChat } from '@/lib/ai/providers/agent-chat';
-import { reportNativeFinalProtocol } from '../agent/report-native-final';
+import { reportBodyFinalProtocol, reportNativeFinalProtocol } from '../agent/report-native-final';
 import { nativeFinalProjection } from '../agent/native-final';
 import { nativeImageFinalProjection } from '../agent/image-context';
 import type { InvocationOwner } from '../contracts';
@@ -32,6 +32,14 @@ test('ordinary, wrong-purpose, wrong-protocol and out-of-range calls cannot opt 
   assert.equal(privateAgentFailureFrame({ kind: 'knowledge_job', jobId: 1n }, metadata, error), null);
   assert.equal(privateAgentFailureFrame({ kind: 'generation', generationId: 1n }, metadata, error), null);
   assert.equal(privateAgentFailureFrame(owner, metadata, new Error('transport failed')), null);
+});
+
+test('only the bound scheduled-body request retains an invalid body frame under the original unknown-outcome rule', () => {
+  const body = { turn: 0, purpose: 'answer', reportBodyFinal: reportBodyFinalProtocol, maxOutputTokens: 4096 };
+  assert.equal(privateAgentFailureFrame(owner, body, error), frame);
+  for (const changed of [{ reportBodyFinal: undefined }, { turn: 1 }, { purpose: 'summary' }, { maxOutputTokens: 2048 }])
+    assert.equal(privateAgentFailureFrame(owner, { ...body, ...changed }, error), null);
+  assert.equal(isSafeProviderFallback(error), false);
 });
 
 test('original knowledge-explanation private frames remain supported; malformed/oversize data stays out of checkpoints', () => {

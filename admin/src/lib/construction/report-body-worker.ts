@@ -8,6 +8,7 @@ import { agentConfig } from '@/lib/assistant/agent/config';
 import { runRenovationAgent, type AgentCheckpoint } from '@/lib/assistant/agent/runtime';
 import { projectFinalToolOutput } from '@/lib/assistant/agent/final-output';
 import { agentRequestBudget, fitAgentContext } from '@/lib/assistant/agent/context-budget';
+import { boundReportBodyFinal, reportBodyFinalProtocol } from '@/lib/assistant/agent/report-native-final';
 import { consultationRequestReservation, reserveConsultationDispatch, settleConsultationDispatch } from '@/lib/assistant/agent/consultation-usage';
 import { businessSynthesisSources, knowledgeSynthesisSources, type SynthesisContext } from '@/lib/assistant/agent/synthesis';
 import { synthesisContextAvailable } from '@/lib/assistant/agent/synthesis-sources';
@@ -68,8 +69,10 @@ export async function processReportComposition(lease: Lease, dependencies: {
   let projects: ProjectContext[] = [];
   try {
     const initial = await scoped(async (tx, context) => {
-      const config = agentConfig((context.run.policy_snapshot as Row).agent);
+      const policy = context.run.policy_snapshot as Row;
+      const config = agentConfig(policy.agent);
       if (!config) fail('context_changed');
+      const reportFinalOutputTokens = boundReportBodyFinal(policy.reportBodyFinal, config);
       const list: ProjectContext[] = [];
       for (const p of (context.report.facts as ReportFacts).projects) {
         const resolved = await resolveReportReference(tx, lease.actor, { reportId: context.scope.reportId,
@@ -86,7 +89,7 @@ export async function processReportComposition(lease: Lease, dependencies: {
       }
       const checkpoint = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
         and run_id=${lease.runId} and step_seq=1000 and kind='agent_checkpoint'`);
-      return { config, run: context.run, conversation: context.conversation, projects: list,
+      return { config, run: context.run, conversation: context.conversation, projects: list, reportFinalOutputTokens,
         resume: checkpoint?.private_checkpoint as AgentCheckpoint | undefined,
         scope: { ...context.scope, audience: context.binding.audience, kind: context.report.kind, timezone: 'Asia/Shanghai',
           periodStart: context.report.period_start, periodEnd: context.report.fact_period_end, cutoffAt: context.report.fact_cutoff_at,
@@ -144,7 +147,11 @@ export async function processReportComposition(lease: Lease, dependencies: {
       for (const p of projects) if (!await synthesisContextAvailable(tx, lease.actor, await projectConversation(tx, lease, p), p.context)) fail('context_changed');
     });
     const finalTool = reportFinalTool(projects.map(p => p.projectId), projects);
-    const limits = agentRequestBudget({ profile: initial.config.consultation?.profile });
+    const { reportFinalOutputTokens } = initial;
+    const budget = { profile: initial.config.consultation?.profile,
+      ...(reportFinalOutputTokens ? { purpose: 'answer' as const, reportFinalOutputTokens } : {}) };
+    const finalAllocation = reportFinalOutputTokens ? { reportBodyFinal: reportBodyFinalProtocol, maxOutputTokens: reportFinalOutputTokens } : {};
+    const limits = agentRequestBudget(budget);
     const result = await runRenovationAgent({ messages: reportMessages(initial.scope, projects), tools: [], resume: initial.resume, ports: {
       authorize,
       tool: async () => fail('assistant_capability_forbidden', 403),
@@ -157,8 +164,8 @@ export async function processReportComposition(lease: Lease, dependencies: {
       validateFinal: async raw => { parseReportBody(raw, projects); return null; },
       model: async (turn, messages) => {
         await heartbeat(lease);
-        const bounded = fitAgentContext(messages, [finalTool], { profile: initial.config.consultation?.profile });
-        const requestHash = fingerprint({ messages: bounded.messages, tool: finalTool, config: initial.config, scope: initial.scope });
+        const bounded = fitAgentContext(messages, [finalTool], budget);
+        const requestHash = fingerprint({ messages: bounded.messages, tool: finalTool, config: initial.config, scope: initial.scope, ...finalAllocation });
         const sequence = 1100 + turn * 10;
         const cached = await scoped(async tx => one(tx, sql`select * from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
           and run_id=${lease.runId} and step_seq=${sequence}`));
@@ -185,7 +192,7 @@ export async function processReportComposition(lease: Lease, dependencies: {
           }
           await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
             values(${lease.enterpriseId},${lease.runId},${sequence},'agent_model','running',${JSON.stringify({ turn, purpose: 'answer', requestHash,
-              protocol: reportCompositionProtocol, scope: initial.scope, budget: bounded.diagnostic })}::jsonb)`);
+              protocol: reportCompositionProtocol, scope: initial.scope, budget: bounded.diagnostic, ...finalAllocation })}::jsonb)`);
           await tx.execute(sql`update app.assistant_jobs set provider_started_at=now(),updated_at=now() where enterprise_id=${lease.enterpriseId} and id=${lease.jobId}`);
         });
         const packet = dependencies.model ? await (async () => { await beforeProviderCall(); return { attemptId: null,
@@ -193,10 +200,11 @@ export async function processReportComposition(lease: Lease, dependencies: {
           : await executePostgresText({ enterpriseId: BigInt(lease.enterpriseId), owner: { kind: 'assistant_run', runId: BigInt(lease.runId) },
             logicalModelKey: 'chat.general', messages: [], maxTokens: limits.maxOutputTokens,
             agent: { config: initial.config, input: { messages: bounded.messages, tools: [finalTool], maxTokens: limits.maxOutputTokens,
-              requireTool: true, ...(initial.config.consultation ? { profile: initial.config.consultation.profile,
+              requireTool: true, ...(reportFinalOutputTokens ? { outputMode: 'json_schema', reportFinalOutputTokens } : {}),
+              ...(initial.config.consultation ? { profile: initial.config.consultation.profile,
                 deadlineAt: new Date(String(initial.run.created_at)).getTime() + consultationProfile(initial.config.consultation.profile)!.runTimeoutMs } : {}) } },
             metadata: { promptVersion: reportCompositionProtocol, runtime: initial.config.runtime, turn, purpose: 'answer', reportId: initial.scope.reportId,
-              revision: initial.scope.revision, probeVersion: initial.config.probeVersion }, beforeProviderCall });
+              revision: initial.scope.revision, probeVersion: initial.config.probeVersion, ...finalAllocation }, beforeProviderCall });
         outcomeKnown = true;
         if (!packet.agentOutput) fail('invalid_model_answer', 502);
         const output = packet.agentOutput;

@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { reportFinalOutputTokenLimit, type ModelMessage, type ModelTurnInput } from '../contracts/model';
-import { boundReportFinalOutput, reportNativeRuntimeBudget } from '../agent/report-native-final';
-import { agentRequestBudget, imageContextBudgetPolicy } from '../agent/context-budget';
+import { boundReportBodyFinal, boundReportFinalOutput, reportBodyFinalAdmission, reportBodyFinalProtocol, reportNativeRuntimeBudget } from '../agent/report-native-final';
+import { agentRequestBudget, fitAgentContext, imageContextBudgetPolicy } from '../agent/context-budget';
+import type { AgentConfig } from '../agent/config';
+import { reportFinalTool } from '@/lib/construction/report-composition';
 import { compileModelRequest } from '../agent/model-request';
 import { nativeFinalDefinition, nativeImageFinalMessages, explicitNativeObjectRoot } from '../agent/native-final';
 import { reportAnswerFinalTool } from '../agent/report-final';
@@ -46,6 +48,25 @@ test('provider wire accepts the bound final allocation only for native final-onl
   assert.throws(() => agentChatBody({ ...input, tools: [tool, { name: 'query_followups', description: 'Read', parameters: {} }] }, endpoint));
   assert.throws(() => agentChatBody(input, 'https://example.com/v1'), /agent_input_limit/);
   assert.equal(agentChatBody({ ...input, reportFinalOutputTokens: undefined, maxTokens: 2048 }, endpoint).max_tokens, 2048);
+});
+
+test('new scheduled report bodies allocate4096 on the same schema while historical and unsupported bindings retain their limits', () => {
+  const config: AgentConfig = { runtime: 'langgraph-v1', providerKey: 'dashscope', model: 'qwen3.7-flash',
+    probeVersion: 'test', imageInput: true, tools: true };
+  assert.equal(reportBodyFinalAdmission(config), true);
+  const unsupported = { ...config, providerKey: 'siliconflow' };
+  assert.equal(reportBodyFinalAdmission(unsupported), false);
+  assert.throws(() => boundReportBodyFinal(reportBodyFinalProtocol, unsupported), /context_changed/);
+  assert.throws(() => boundReportBodyFinal('unexpected', config), /context_changed/);
+  const tool = reportFinalTool(['9', '10']);
+  const legacy = agentChatBody({ ...input, tools: [tool], maxTokens: 2048, reportFinalOutputTokens: boundReportBodyFinal(undefined, config) }, endpoint);
+  const tokens = boundReportBodyFinal(reportBodyFinalProtocol, config)!;
+  const body = agentChatBody({ ...input, tools: [tool], maxTokens: tokens, reportFinalOutputTokens: tokens }, endpoint);
+  assert.equal(legacy.max_tokens, 2048);
+  assert.equal(body.max_tokens, 4096);
+  assert.deepEqual(body.response_format, legacy.response_format);
+  const estimate = fitAgentContext(input.messages, [tool], { purpose: 'answer', reportFinalOutputTokens: tokens }).diagnostic.after.estimatedTokens;
+  assert.ok(estimate <= 16000 && 4 * estimate <= 72000);
 });
 
 test('actual compiler reserves the extra output inside the original estimate and preserves image bytes, schema and question', () => {

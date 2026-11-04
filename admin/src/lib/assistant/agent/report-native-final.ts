@@ -7,6 +7,7 @@ import { agentTurnScheduleProtocol, type AgentCheckpoint } from './runtime';
 export const reportNativeFinalProtocol = 'report-native-final-v1';
 export const reportFinalFunctionCarrier = 'forced-final-function-v1';
 export const reportStructuralFinalSchema = 'report-structural-final-schema-v1';
+export const reportBodyFinalProtocol = 'report-body-final-output-v1';
 type ReportScope = { conversationPurpose: unknown; purpose: string; triggerKind: string; privateFollowup: boolean; selected: boolean };
 
 /** A new private report reply binds its own final channel, independently of
@@ -31,6 +32,19 @@ export function boundReportNativeFinal(policy: unknown, config: AgentConfig, sco
 export function boundReportFinalOutput(value: unknown, native: boolean) {
   if (value === undefined) return undefined;
   if (!native || value !== reportFinalOutputTokenLimit) fail('context_changed');
+  return reportFinalOutputTokenLimit;
+}
+
+/** Scheduled composition has one final envelope and uses the existing
+ * final-only allowance inside its original reservation. */
+export function reportBodyFinalAdmission(config: AgentConfig | null) {
+  return !!config && !config.consultation && config.providerKey === 'dashscope'
+    && bailianStructuredOutput(config.model, 'json_schema');
+}
+
+export function boundReportBodyFinal(value: unknown, config: AgentConfig) {
+  if (value === undefined) return undefined;
+  if (value !== reportBodyFinalProtocol || !reportBodyFinalAdmission(config)) fail('context_changed');
   return reportFinalOutputTokenLimit;
 }
 

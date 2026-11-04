@@ -166,7 +166,7 @@ GET /api/miniprogram/assistant/followups/:bindingId/conversation及messages?befo
 **V1-02私人主动报告：Limited，正文运行时已接通，真实模型验收待完成。**
 
 <!-- v1-02-report-composition -->
-**自然报告正文：运行时/协议已接通，V1-02整体仍Limited。** 原本地事实事务之后，`construction.report.compose`沿原`newRun`预算/账本准入；绑定report/版本、收件人/绑定、原会话代际、dispatch epoch、项目集合、周期/截止和事实hash，不读取普通聊天历史或旧模型日报。`report-body-worker.ts`复用`runRenovationAgent`、`executePostgresText`、KnowledgeRetriever/Evidence、原synthesis/引用目录及来源解析器。内部检索scope在I/O前后提供原租约/项目守卫，候选受众/发布谓词不变；终稿工具沿原共用投影，在来源敏感提交前保存供应商原包和用量。没有新增Agent、事实库、权限解析器或引用管线。 正文生成接收项目原事实、获权知识原文、适用条件和逐字引用编号。读取服务沿原复核展示知识标题和文件定位。正文仍经原引用、量数和承诺守卫。
+**自然报告正文：运行时/协议已接通，V1-02整体仍Limited。** 原本地事实事务之后，`construction.report.compose`沿原`newRun`预算/账本准入；绑定report/版本、收件人/绑定、原会话代际、dispatch epoch、项目集合、周期/截止和事实hash，不读取普通聊天历史或旧模型日报。`report-body-worker.ts`复用`runRenovationAgent`、`executePostgresText`、KnowledgeRetriever/Evidence、原synthesis/引用目录及来源解析器。内部检索scope在I/O前后提供原租约/项目守卫，候选受众/发布谓词不变；终稿工具沿原共用投影，在来源敏感提交前保存供应商原包和用量。没有新增Agent、事实库、权限解析器或引用管线。 正文生成接收项目原事实、获权知识原文、适用条件和逐字引用编号。读取服务沿原复核展示知识标题和文件定位。正文仍经原引用、量数和承诺守卫。 获准新定时报表正文使用现有4096 tokens终稿份额，预占、配置模型、结构、复核与旧运行不变。截断帧仅保存在该运行的私有审计记录，未知结果仍不可重试。
 
 0109/0110已应用授权开发库与隔离评估库，报告表继续强制RLS。不可变事实仍为`queued/facts_ready`；同版本另存`body_run_id`、`body`、`body_generated_at`、`body_error_code`、`body_attempts`（至多3次已准入尝试）及knowledge状态`not_generated/queued/ready/failed`。正文按项目保存进展/待核对/工艺/安排，使用原synthesis格式。读取只投影获权展示行、依据类型及解析后的来源标题/定位，不下发私有Evidence/checkpoint；全部已读原件继续重验，撤回可使整段报告不可用。追问始终消费原事实，生成正文不成为新事实。正文完成清除该版本旧的报告已阅回执，并把新展示正文绑定进readToken；不追加普通回答或第二条投递消息。
 

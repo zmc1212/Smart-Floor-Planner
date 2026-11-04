@@ -6,7 +6,8 @@ import { consultationProfile } from '@/lib/assistant/contracts/consultation';
 import type { ModelTurnInput } from '@/lib/assistant/contracts/model';
 import type { AgentConfig } from '@/lib/assistant/agent/config';
 import type { InvocationOwner } from '@/lib/assistant/contracts';
-import { reportNativeFinalProtocol } from '@/lib/assistant/agent/report-native-final';
+import { reportBodyFinalProtocol, reportNativeFinalProtocol } from '@/lib/assistant/agent/report-native-final';
+import { reportFinalOutputTokenLimit } from '@/lib/assistant/contracts/model';
 import { nativeFinalProjection } from '@/lib/assistant/agent/native-final';
 import { nativeImageFinalProjection } from '@/lib/assistant/agent/image-context';
 import { AiCreationRepository } from '@/db/repositories/ai-creation-repository';
@@ -64,7 +65,9 @@ export function privateAgentFailureFrame(owner: InvocationOwner, metadata: Recor
   const report = metadata?.reportNativeFinal === reportNativeFinalProtocol && metadata.purpose === 'answer'
     && [nativeFinalProjection, nativeImageFinalProjection].includes(String(metadata.nativeFinalProjection))
     && Number(metadata.turn) >= 0 && Number(metadata.turn) < 4;
-  if (!explanation && !report) return null;
+  const body = metadata?.reportBodyFinal === reportBodyFinalProtocol && metadata.purpose === 'answer'
+    && metadata.maxOutputTokens === reportFinalOutputTokenLimit && metadata.turn === 0;
+  if (!explanation && !report && !body) return null;
   try { return Buffer.byteLength(JSON.stringify(error.privateResponse)) <= 64000 ? error.privateResponse : null; }
   catch { return null; }
 }
