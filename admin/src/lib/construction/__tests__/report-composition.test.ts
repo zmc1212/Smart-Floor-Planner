@@ -54,6 +54,36 @@ test('scheduled context is bounded to explicit originals with no ordinary conver
   assert.ok(!JSON.stringify(messages).includes('triggerMessageId'));
 });
 
+test('report input separates PDF presentation metadata from cited quantities and applicability', () => {
+  const title = '精艺 · 原PDF第29页 · 施工工艺';
+  const text = '冷热水管打压8-12公斤，掉压须在正常范围内。';
+  const file = { assetId: '139', sourceHash: 'file-hash', name: 'jingyi-pdf-page-29-ocr.pdf', format: 'pdf' as const,
+    parser: 'test', blockId: 'b20', kind: 'paragraph' as const, section: [], page: 1, label: 'PDF第1页 · 段落20' };
+  const source: SynthesisContext['sources'][number] = { sourceId: 'K100', kind: 'knowledge', title, text,
+    evidence: { ref: { type: 'knowledge_chunk', id: '100', version: '410' }, text, hash: 'chunk-hash', file,
+      professional: { documentId: '404', title, contentHash: 'version-hash', context: { stage: 'utilities' },
+        applicability: { status: 'unknown', matched: [], missing: ['material'], mismatched: [] },
+        entry: { version: 1, kind: 'construction', topics: ['试压'], conditions: [], prerequisites: ['先查材质'], exceptions: [],
+          origin: { title, version: 'v1', locator: '原PDF第29页', authority: 'reference' }, claim: null,
+          review: { note: '原PDF第29页已核对', adminId: '1', reviewedAt: selection.cutoffAt } } } } };
+  const scoped = { ...project, context: { ...context, sources: [context.sources[0], source] } };
+  const packet = reportMessages({}, [scoped])[1];
+  assert.ok(packet.role === 'user' && packet.content[0].type === 'text');
+  const projected = JSON.parse(packet.content[0].text).projects[0].sources[1];
+  assert.deepEqual(projected, { sourceId: source.sourceId, kind: 'knowledge', text,
+    citationOptions: [{ citationId: sourceCitationCatalog(source)[0].citationId }], conditions: { authority: 'reference', conditions: [],
+      prerequisites: ['先查材质'], exceptions: [], applicability: { status: 'unknown', matched: [], missing: ['material'], mismatched: [] } } });
+  const raw = output();
+  const standards = raw.projects[0].standards = section(text);
+  standards.segments[0] = { basis: 'evidence', text, citations: projected.citationOptions };
+  const saved = parseReportBody(JSON.stringify(raw), [scoped]).projects[0];
+  assert.equal(saved.context.sources[1].title, title);
+  assert.deepEqual(saved.context.sources[1].evidence?.file, file);
+  assert.equal(saved.sections.standards.segments[0].citations[0].quote, text);
+  standards.segments[0].text = text.replace('8-12公斤', '8-29公斤');
+  assert.throws(() => parseReportBody(JSON.stringify(raw), [scoped]), /unsupported_model_commitment/);
+});
+
 test('report native schema reuses per-project citations and rejects uncited quantities before generation', async () => {
   const tool = reportFinalTool(['9'], [project]);
   assert.equal(await toolSchemaIssue(tool, JSON.stringify(output())), null);

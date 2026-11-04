@@ -63,7 +63,15 @@ export function reportMessages(scope: Record<string, unknown>, projects: Array<{
     + '无记录明确说明未记录不等于未施工；无标准说明本次未取得有效标准，不能补造。记录/阅读/提醒/同意均不等于施工完成、验收、付款或批准。'
     + '每个项目提交progress/pending/standards/arrangements四段，每段均用kind=synthesis及segments。无信息也提交具体缺项。不要将内部ID、工具名或协议标签写给用户。' }] },
   { role: 'user', content: [{ type: 'text', text: JSON.stringify({ scope, projects: projects.map(p => ({ projectId: p.projectId,
-    sources: p.context.sources.map(source => ({ sourceId: source.sourceId, kind: source.kind, title: source.title,
-      text: source.text, citationOptions: modelCitationCatalog(source), conditions: source.evidence?.professional,
-      location: source.evidence?.file })) })) }) }] }];
+    sources: p.context.sources.map(source => {
+      // Report reads display the reauthorized citation's title and locator.
+      // Those labels are not original text or input for composing technical claims.
+      const professional = source.evidence?.professional;
+      return { sourceId: source.sourceId, kind: source.kind,
+        ...(source.kind === 'project' ? { title: source.title } : {}),
+        text: source.text, citationOptions: modelCitationCatalog(source),
+        ...(professional ? { conditions: { authority: professional.entry.origin.authority,
+          conditions: professional.entry.conditions, prerequisites: professional.entry.prerequisites,
+          exceptions: professional.entry.exceptions, applicability: professional.applicability } } : {}) };
+    }) })) }) }] }];
 }
