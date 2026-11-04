@@ -35,11 +35,14 @@ assert.equal(bindingIds.length, 5);
 const ownedBindingIds = new Set(bindingIds);
 const prefix = retained.prefix;
 const recipientLifecycle = process.argv.includes('--recipient-lifecycle');
+const earlyStages = process.argv.includes('--early-stage-reminders');
+assert.ok(!(earlyStages && recipientLifecycle));
 const output = path.resolve(process.argv.find(a => a.startsWith('--output='))?.slice(9) || '../tmp/v1-03-stage-coverage/reminder-lifecycle-01');
 fs.mkdirSync(output, { recursive: true });
 const evidence = path.join(output, 'report.json');
 const log: Row = { scope: recipientLifecycle ? 'V1-03 household and membership boundaries in isolated clone; body transport double only'
-  : 'V1-03 current stage events and private delivery in isolated clone; body transport double only', checks: [], fixture: retained.fixture };
+  : earlyStages ? 'V1-03 preparation and design reminders with no eligible evidence; isolated transport doubles only'
+    : 'V1-03 current stage events and private delivery in isolated clone; body transport double only', checks: [], fixture: retained.fixture };
 fs.writeFileSync(evidence, JSON.stringify(log), { flag: 'wx' });
 const save = () => fs.writeFileSync(evidence, JSON.stringify(log, null, 2));
 const read = <T>(work: Parameters<typeof withTenantTransaction<T>>[1]) => withTenantTransaction(eid, work);
@@ -216,6 +219,47 @@ async function checkRecipients() {
     return { old: previous.id, revokedBeforeBody: revoked.id, independent: kept.id, newAfterRegrant: replacement.id };
   });
 }
+async function checkEarlyStages() {
+  await step('preparation and design deliver separately to all four roles when workmanship is unavailable', async () => {
+    const stages = [[projects[0], 'preparation'], [projects[1], 'design']] as const;
+    const events = [];
+    for (const [project, stage] of stages) events.push(await progress(project, stage));
+    assert.equal(await tick(), 8);
+    assert.equal(await tick(), 0);
+    await drain();
+    assert.equal(modelDoubles, 8);
+    assert.equal(await deliverConstructionReports(eid), 8);
+    assert.equal(await deliverConstructionReports(eid), 0);
+    const destinations = new Set<string>();
+    const deliveries = [];
+    for (const [index, [projectId, stageKey]] of stages.entries()) {
+      const saved = await reports(events[index]);
+      const audiences: string[] = [];
+      for (const receipt of saved) {
+        const bindingId = String(receipt.binding_id), reportId = String(receipt.id);
+        const recipient = bindings.find(b => String(b.id) === bindingId);
+        assert.ok(recipient && receipt.body_run_id && receipt.message_id);
+        assert.equal(receipt.delivery_state, 'delivered');
+        audiences.push(String(recipient.audience)); destinations.add(bindingId);
+        const followup = service(recipient);
+        const view = await followup.detail(bindingId, reportId, 1);
+        assert.deepEqual(view.facts?.projects.map(p => [p.id, p.stageKey, p.stageEvents[0]?.id]), [[projectId, stageKey, events[index].id]]);
+        assert.ok('body' in view && view.contentStatus === 'composed' && view.readToken);
+        assert.deepEqual(view.body.map(p => ({ projectId: p.projectId, standards: p.standards, sources: p.knowledgeSources })),
+          [{ projectId, standards: [], sources: [] }]);
+        await followup.acknowledge(bindingId, reportId, 1, view.readToken, randomUUID());
+        const reopened = (await service(recipient).reports(bindingId)).items.find(item => item.reportId === reportId) as Row | undefined;
+        assert.ok(reopened?.readAt);
+        const wrongHome = bindings.find(b => b.audience === 'customer' && String(b.project_id) !== projectId)!;
+        await assert.rejects(service(wrongHome).detail(bindingId, reportId, 1), /assistant_resource_not_found/);
+        deliveries.push({ projectId, stageKey, audience: recipient.audience, bindingId, reportId });
+      }
+      assert.deepEqual(audiences.sort(), ['boss', 'customer', 'designer', 'worker']);
+    }
+    assert.equal(destinations.size, 5);
+    return deliveries;
+  });
+}
 async function main() {
   assert.equal(new URL(resolvePostgresRuntimeConfig().connectionString).pathname, url.pathname);
   release = await lockAssistantAcceptance(target, { waitForLock: true });
@@ -239,7 +283,7 @@ async function main() {
         on l.enterprise_id=p.enterprise_id and l.id=p.lead_id where p.enterprise_id=${eid} and p.id=${projectId}
         and p.status='archived' and l.name like ${prefix+':lead:%'}`)));
       await status(projectId, 'active'); revivedProjects.add(projectId);
-      await progress(projectId, 'preparation');
+      await progress(projectId, earlyStages && projectId === projects[0] ? 'design' : 'preparation');
     }
     policy = await plan.settings();
     await read(tx => tx.execute(sql`update app.assistant_enterprise_settings set enabled=true where enterprise_id=${eid}`));
@@ -260,6 +304,11 @@ async function main() {
   });
   if (recipientLifecycle) {
     await checkRecipients();
+    log.passed = true;
+    return;
+  }
+  if (earlyStages) {
+    await checkEarlyStages();
     log.passed = true;
     return;
   }
