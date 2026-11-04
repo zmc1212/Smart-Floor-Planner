@@ -75,7 +75,10 @@ function expandReportSegments(raw: string, projectCount: number) {
         const key = reportSegmentKey(project, section, segment);
         if (!Object.hasOwn(value, key)) break;
         const [basis, text, ...citations] = value[key];
-        segments.push({ basis, text, citations: citations.map(citationId => ({ citationId })) });
+        // A lone empty slot in advice represents the omitted optional citation.
+        // Every supplied citation ID still goes through the original catalog.
+        const citationIds = basis === 'advice' && citations.length === 1 && citations[0] === '' ? [] : citations;
+        segments.push({ basis, text, citations: citationIds.map(citationId => ({ citationId })) });
         count++;
       }
       return [section, { kind: 'synthesis', segments }];

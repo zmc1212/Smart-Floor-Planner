@@ -162,12 +162,27 @@ test('flat segment fields round-trip through the same body schema and original s
     toolCalls: [{ id: 'terminal', name: 'final_response', arguments: JSON.stringify(value) }] });
   const projected = await projectReportBodyFinal(packet(flat), tool, true, canonical);
   assert.deepEqual(parseReportBody(projected.text, [project], true), parseReportBody(JSON.stringify(output()), [project]));
+  const advice = ['advice', '建议与团队核对后续安排。'];
+  const adviceBody = (citations: string[]) => packet({ ...flat, P1_arrangements_1: [...advice, ...citations] });
+  const omitted = await projectReportBodyFinal(adviceBody([]), tool, true, canonical);
+  const empty = await projectReportBodyFinal(adviceBody(['']), tool, true, canonical);
+  assert.deepEqual(empty, omitted);
+  const citationId = sourceCitationCatalog(context.sources[0])[0].citationId;
+  const citedAdvice = await projectReportBodyFinal(adviceBody([citationId]), tool, true, canonical);
+  const cited = parseReportBody(citedAdvice.text, [project], true).projects[0].sections.arrangements.segments[0];
+  assert.equal(cited.citations[0].quote, context.sources[0].text);
+  for (const citations of [[' '], ['Cforeign'], ['', ''], [citationId, '']]) {
+    await assert.rejects(() => projectReportBodyFinal(adviceBody(citations), tool, true, canonical), /native_schema_unverified/);
+  }
   const invented = { ...flat, P1_standards_1: [...flat.P1_standards_1] };
   invented.P1_standards_1[1] = '插座间距为99厘米。';
   const unsupported = await projectReportBodyFinal(packet(invented), tool, true, canonical);
   assert.throws(() => parseReportBody(unsupported.text, [project], true), /unsupported_model_commitment/);
   for (const invalid of [{ ...flat, P1_progress_3: flat.P1_progress_1 }, { ...flat, P2_pending_1: flat.P1_pending_1 },
-    { ...flat, P1_standards_1: ['evidence', '应先核对插座。', 'Cforeign'] }]) {
+    { ...flat, P1_standards_1: ['evidence', '应先核对插座。', 'Cforeign'] },
+    { ...flat, P1_standards_1: ['evidence', '应先核对插座。', ''] },
+    { ...flat, P1_standards_1: ['evidence', '应先核对插座。'] },
+    { ...flat, P1_arrangements_1: ['uncertainty', '后续安排有待确认。', ''] }]) {
     await assert.rejects(() => projectReportBodyFinal(packet(invalid), tool, true, canonical), /native_schema_unverified/);
   }
 });
