@@ -186,3 +186,45 @@ test('flat segment fields round-trip through the same body schema and original s
     await assert.rejects(() => projectReportBodyFinal(packet(invalid), tool, true, canonical), /native_schema_unverified/);
   }
 });
+
+test('a report quote selects the exact current knowledge span and binds it to the same segment', async () => {
+  const rule = { ...context.sources[1], text: '所有冷热水管打压8-12公斤，焊接处不泄露。' };
+  const scoped = { ...project, context: { ...context, sources: [context.sources[0], rule] } };
+  const [recordId, ruleId] = scoped.context.sources.map(source => sourceCitationCatalog(source)[0].citationId);
+  const message = reportMessages({}, [scoped], true, true, true)[1];
+  assert.ok(message.role === 'user' && message.content[0].type === 'text');
+  const [projectSource, knowledgeSource] = JSON.parse(message.content[0].text).projects[0].sources;
+  assert.equal(projectSource.citationOptions[0].quoteToken, undefined);
+  assert.equal(knowledgeSource.citationOptions[0].quoteToken, '[[quote:' + ruleId + ']]');
+  const flat = {
+    P1_progress_1: ['evidence', '厨房已穿线。', recordId],
+    P1_pending_1: ['uncertainty', '本次记录未说明水管试压结果。企业原文：[[quote:' + ruleId + ']]', recordId],
+    P1_standards_1: ['evidence', '水电工艺：[[quote:' + ruleId + ']]', ruleId],
+    P1_arrangements_1: ['uncertainty', '本次没有可引用的后续安排。'],
+  };
+  const tool = reportFlatFinalTool(1);
+  const canonical = { projectCount: 1, tool: reportFinalTool(['9'], [scoped], true), quoteSources: [[rule]] };
+  const projectPacket = (fields: Record<string, unknown>, definition: typeof canonical & { citationList?: boolean } = canonical) => projectReportBodyFinal({
+    text: '', finishReason: 'tool_calls', providerRequestId: null, usage: null,
+    toolCalls: [{ id: 'terminal', name: 'final_response', arguments: JSON.stringify(fields) }],
+  }, tool, true, definition);
+  const projected = await projectPacket(flat);
+  const [saved] = parseReportBody(projected.text, [scoped], true).projects;
+  assert.match(saved.sections.pending.segments[0].text, /8-12公斤/);
+  assert.deepEqual(saved.sections.pending.segments[0].citations.map(citation => citation.sourceId), ['Boriginal', 'K100']);
+  assert.deepEqual(saved.sections.standards.segments[0].citations, [{ sourceId: 'K100', quote: rule.text }]);
+  assert.ok(!projected.text.includes('[[quote:'));
+  for (const value of ['[[quote:' + recordId + ']]', '[[quote:C12345678900000]]', '[[quote:' + ruleId + ']']) {
+    await assert.rejects(() => projectPacket({ ...flat, P1_pending_1: ['uncertainty', value, recordId] }), /invalid_model_citation/);
+  }
+  await assert.rejects(() => projectPacket(flat, { ...canonical, quoteSources: [[]] }), /invalid_model_citation/);
+  const invented = await projectPacket({ ...flat, P1_pending_1: ['uncertainty', flat.P1_pending_1[1] + ' 另需打压99公斤。', recordId] });
+  assert.throws(() => parseReportBody(invented.text, [scoped], true), /unsupported_model_commitment/);
+  const grouped = Object.fromEntries(Object.entries(flat).map(([key, [basis, text, ...ids]]) => [key, [basis, text, ids]]));
+  await assert.rejects(() => projectPacket(grouped), /native_schema_unverified/);
+  const listProtocol = { ...canonical, citationList: true };
+  assert.deepEqual(await projectPacket(grouped, listProtocol), projected);
+  for (const ids of [[['Cdeep']], [''], ['Cforeign'], Array<string>(5).fill(recordId)]) {
+    await assert.rejects(() => projectPacket({ ...grouped, P1_progress_1: ['evidence', '厨房已穿线。', ids] }, listProtocol), /native_schema_unverified/);
+  }
+});

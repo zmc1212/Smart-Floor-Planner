@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { reportFinalOutputTokenLimit, type ModelMessage, type ModelTurnInput } from '../contracts/model';
 import { boundReportBodyFinal, boundReportBodyWire, boundReportFinalOutput, reportBodyFinalAdmission, reportBodyFinalPolicy,
-  reportBodyFinalProtocol, reportBodyFlatSegmentsProtocol, reportBodyProjectSlotsProtocol, reportFinalFunctionCarrier, reportNativeRuntimeBudget } from '../agent/report-native-final';
+  reportBodyCitationListProtocol, reportBodyFinalProtocol, reportBodyFlatSegmentsProtocol, reportBodyProjectSlotsProtocol,
+  reportBodyQuotedSegmentsProtocol, reportFinalFunctionCarrier, reportNativeRuntimeBudget } from '../agent/report-native-final';
 import { agentRequestBudget, fitAgentContext, imageContextBudgetPolicy } from '../agent/context-budget';
 import type { AgentConfig } from '../agent/config';
 import { reportFinalTool } from '@/lib/construction/report-composition';
@@ -56,10 +57,12 @@ test('new scheduled report bodies allocate4096 on the same schema while historic
     probeVersion: 'test', imageInput: true, tools: true };
   assert.equal(reportBodyFinalAdmission(config), true);
   assert.deepEqual(reportBodyFinalPolicy(config), { reportBodyFinal: reportBodyFinalProtocol, reportBodyFinalCarrier: reportFinalFunctionCarrier,
-    reportBodyProjectSlots: reportBodyFlatSegmentsProtocol });
+    reportBodyProjectSlots: reportBodyCitationListProtocol });
   assert.equal(boundReportBodyWire(undefined, reportFinalFunctionCarrier), 'legacy');
   assert.equal(boundReportBodyWire(reportBodyProjectSlotsProtocol, reportFinalFunctionCarrier), 'slots');
   assert.equal(boundReportBodyWire(reportBodyFlatSegmentsProtocol, reportFinalFunctionCarrier), 'flat');
+  assert.equal(boundReportBodyWire(reportBodyQuotedSegmentsProtocol, reportFinalFunctionCarrier), 'quoted');
+  assert.equal(boundReportBodyWire(reportBodyCitationListProtocol, reportFinalFunctionCarrier), 'citation-list');
   assert.throws(() => boundReportBodyWire(reportBodyFlatSegmentsProtocol, undefined), /context_changed/);
   const unsupported = { ...config, providerKey: 'siliconflow' };
   assert.equal(reportBodyFinalAdmission(unsupported), false);
