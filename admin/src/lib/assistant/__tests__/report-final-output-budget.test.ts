@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { reportFinalOutputTokenLimit, type ModelMessage, type ModelTurnInput } from '../contracts/model';
-import { boundReportBodyFactCoverage, boundReportBodyFinal, boundReportBodyWire, boundReportFinalOutput, reportBodyFinalAdmission, reportBodyFinalPolicy,
+import { boundReportBodyFactCoverage, boundReportBodyFinal, boundReportBodyWire, boundReportFinalOutput, boundReportGuidanceInput, boundReportGuidanceReview, reportBodyFinalAdmission, reportBodyFinalPolicy,
   reportBodyCitationListProtocol, reportBodyFinalProtocol, reportBodyFlatSegmentsProtocol, reportBodyProjectSlotsProtocol,
-  reportBodyQuotedSegmentsProtocol, reportFinalFunctionCarrier, reportNativeRuntimeBudget, scheduledReportFactCoverageProtocol } from '../agent/report-native-final';
+  reportBodyQuotedSegmentsProtocol, reportFinalFunctionCarrier, reportGuidanceInputProtocol, reportGuidanceReviewProtocol, reportGuidanceTaskProtocol, reportNativeRuntimeBudget, reportPendingGuidanceProtocol, scheduledReportFactCoverageProtocol } from '../agent/report-native-final';
 import { agentRequestBudget, fitAgentContext, imageContextBudgetPolicy } from '../agent/context-budget';
 import type { AgentConfig } from '../agent/config';
 import { reportFinalTool } from '@/lib/construction/report-composition';
@@ -57,7 +57,15 @@ test('new scheduled report bodies allocate4096 on the same schema while historic
     probeVersion: 'test', imageInput: true, tools: true };
   assert.equal(reportBodyFinalAdmission(config), true);
   assert.deepEqual(reportBodyFinalPolicy(config), { reportBodyFinal: reportBodyFinalProtocol, reportBodyFinalCarrier: reportFinalFunctionCarrier,
-    reportBodyProjectSlots: reportBodyCitationListProtocol, reportBodyFactCoverage: scheduledReportFactCoverageProtocol });
+    reportBodyProjectSlots: reportBodyCitationListProtocol, reportBodyFactCoverage: scheduledReportFactCoverageProtocol,
+    reportGuidanceReview: reportGuidanceReviewProtocol, reportGuidanceInput: reportGuidanceTaskProtocol });
+  assert.equal(boundReportGuidanceReview(undefined, 'citation-list'), false);
+  assert.equal(boundReportGuidanceReview(reportGuidanceReviewProtocol, 'citation-list'), true);
+  assert.throws(() => boundReportGuidanceReview(reportGuidanceReviewProtocol, 'quoted'), /context_changed/);
+  assert.equal(boundReportGuidanceInput(undefined, true), undefined);
+  assert.equal(boundReportGuidanceInput(reportGuidanceInputProtocol, true), reportGuidanceInputProtocol);
+  assert.equal(boundReportGuidanceInput(reportPendingGuidanceProtocol, true), reportPendingGuidanceProtocol);
+  assert.throws(() => boundReportGuidanceInput(reportGuidanceInputProtocol, false), /context_changed/);
   assert.equal(boundReportBodyFactCoverage(undefined, 4096), false);
   assert.equal(boundReportBodyFactCoverage(scheduledReportFactCoverageProtocol, 4096), true);
   assert.throws(() => boundReportBodyFactCoverage(scheduledReportFactCoverageProtocol, undefined), /context_changed/);

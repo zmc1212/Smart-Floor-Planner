@@ -5,6 +5,7 @@ import { sourceCitationCatalog } from '@/lib/assistant/agent/citation-catalog';
 import { toolSchemaIssue } from '@/lib/assistant/agent/tool-protocol';
 import type { SynthesisContext } from '@/lib/assistant/agent/synthesis';
 import type { ReportReference } from '../report-reference';
+import { projectReportGuidanceOnly, reportGuidanceFinalTool } from '../report-guidance-final';
 
 const selection: ReportReference = { bindingId: '7', reportId: '8', revision: 1, projectId: '9', conversationId: '10',
   kind: 'daily', periodStart: '2026-11-01T16:00:00.000Z', periodEnd: '2026-11-02T12:00:00.000Z', cutoffAt: '2026-11-02T12:00:00.000Z', factsHash: 'frozen' };
@@ -24,6 +25,19 @@ test('report wording uses the existing exact citation catalog and preserves ever
   assert.equal(body.projects[0].sections.standards.segments[0].citations[0].quote, context.sources[1].text);
   assert.equal(body.projects[0].selection.cutoffAt, selection.cutoffAt);
   assert.deepEqual(reportFinalTool(['9']).parameters.required, ['projects']);
+});
+test('guidance-only final cannot author arrangements and inserts the exact authorized workmanship excerpt', async () => {
+  const tool = reportGuidanceFinalTool([project]);
+  const exact = sourceCitationCatalog(context.sources[1])[0];
+  const raw = JSON.stringify({ P1_guidance: '请先核对厨房插座的位置。', P1_standard: exact.citationId });
+  assert.equal(await toolSchemaIssue(tool, raw), null);
+  const { sections } = parseReportBody(projectReportGuidanceOnly(raw, [project]), [project], true).projects[0];
+  assert.deepEqual(sections.standards.segments[0].citations, [{ sourceId: exact.sourceId, quote: exact.quote }]);
+  assert.equal(sections.arrangements.segments[0].basis, 'uncertainty');
+  for (const fields of [{ P1_arrangements: '灯已安装完成。' }, { P1_standard: '' },
+    { P1_standard: sourceCitationCatalog(context.sources[0])[0].citationId }]) {
+    assert.ok(await toolSchemaIssue(tool, JSON.stringify({ ...JSON.parse(raw), ...fields })));
+  }
 });
 test('missing, repeated, foreign or malformed project groups cannot become a report', () => {
   const valid = output();

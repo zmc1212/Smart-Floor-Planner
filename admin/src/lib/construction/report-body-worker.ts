@@ -7,7 +7,7 @@ import { executePostgresText } from '@/lib/ai/postgres-workflow-chat';
 import { agentConfig } from '@/lib/assistant/agent/config';
 import { runRenovationAgent, type AgentCheckpoint } from '@/lib/assistant/agent/runtime';
 import { agentRequestBudget, fitAgentContext } from '@/lib/assistant/agent/context-budget';
-import { boundReportBodyFactCoverage, boundReportBodyFinal, boundReportBodyWire, boundReportFinalCarrier, reportBodyFinalProtocol } from '@/lib/assistant/agent/report-native-final';
+import { boundReportBodyFactCoverage, boundReportBodyFinal, boundReportBodyWire, boundReportFinalCarrier, boundReportGuidanceInput, boundReportGuidanceReview, reportBodyFinalProtocol, reportGuidanceOnlyProtocol, reportGuidanceTaskProtocol, reportPendingGuidanceProtocol, reportGuidanceReviewProtocol } from '@/lib/assistant/agent/report-native-final';
 import { consultationRequestReservation, reserveConsultationDispatch, settleConsultationDispatch } from '@/lib/assistant/agent/consultation-usage';
 import { businessSynthesisSources, knowledgeSynthesisSources, type SynthesisContext } from '@/lib/assistant/agent/synthesis';
 import { synthesisContextAvailable } from '@/lib/assistant/agent/synthesis-sources';
@@ -18,9 +18,11 @@ import { resolveEvidence } from '@/lib/assistant/knowledge/sources';
 import { embeddingGateway } from '@/lib/assistant/infrastructure/embedding-gateway';
 import { consultationProfile } from '@/lib/assistant/contracts/consultation';
 import { completeReportComposition, failRun, heartbeat, runContext, type Lease } from '@/lib/assistant/infrastructure/job-queue';
-import { followupAvailable, followupProjects, type ReportFacts } from './report-scope';
+import { followupAvailable, followupProjects, type FollowupAudience, type ReportFacts } from './report-scope';
 import { reportContextProtocol, resolveReportReference, type ReportReference } from './report-reference';
 import { parseReportBody, projectReportBodyFinal, reportCompositionProtocol, reportFinalTool, reportFlatFinalTool, reportMessages } from './report-composition';
+import { assertReportGuidanceReview, prepareReportGuidanceReview, reportGuidanceFactText, reportGuidanceProject } from './report-guidance-review';
+import { projectReportGuidanceOnly, reportGuidanceFinalTool } from './report-guidance-final';
 
 type ProjectContext = { projectId: string; selection: ReportReference; context: SynthesisContext };
 type Composition = { protocol: typeof reportCompositionProtocol; reportId: string; revision: number; bindingId: string; dispatchEpoch: number; factsHash: string };
@@ -75,6 +77,9 @@ export async function processReportComposition(lease: Lease, dependencies: {
       const factCoverage = boundReportBodyFactCoverage(policy.reportBodyFactCoverage, reportFinalOutputTokens);
       const reportBodyFinalCarrier = boundReportFinalCarrier(policy.reportBodyFinalCarrier, !!reportFinalOutputTokens, reportFinalOutputTokens);
       const wire = boundReportBodyWire(policy.reportBodyProjectSlots, reportBodyFinalCarrier);
+      const reviewGuidance = boundReportGuidanceReview(policy.reportGuidanceReview, wire);
+      const projectGuidanceInput = boundReportGuidanceInput(policy.reportGuidanceInput, reviewGuidance);
+      const audience = context.binding.audience as FollowupAudience;
       const list: ProjectContext[] = [];
       for (const p of (context.report.facts as ReportFacts).projects) {
         const resolved = await resolveReportReference(tx, lease.actor, { reportId: context.scope.reportId,
@@ -85,16 +90,18 @@ export async function processReportComposition(lease: Lease, dependencies: {
           ...(lease.actor.principal.kind === 'user' ? { customerId: lease.actor.principal.userId } : {}), leadIds: [resolved.leadId],
           version: resolved.selection.factsHash, queriedAt: resolved.selection.cutoffAt,
           reportReference: { selection: resolved.selection, principal: lease.actor.principal },
-          data: [{ ...resolved.project, projectId: p.id, leadId: resolved.leadId }], displayText: reportFactText(resolved.selection, resolved.project, factCoverage) };
+          data: [{ ...resolved.project, projectId: p.id, leadId: resolved.leadId }],
+          displayText: projectGuidanceInput === reportGuidanceTaskProtocol ? reportGuidanceFactText(resolved.selection, resolved.project, audience)
+            : reportFactText(resolved.selection, projectGuidanceInput ? reportGuidanceProject(resolved.project, audience) : resolved.project, factCoverage) };
         list.push({ projectId: p.id, selection: resolved.selection,
           context: { version: 1, knowledge: [], snapshots: [snapshot], sources: businessSynthesisSources(resultKey, snapshot) } });
       }
       const checkpoint = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
         and run_id=${lease.runId} and step_seq=1000 and kind='agent_checkpoint'`);
-      return { config, run: context.run, conversation: context.conversation, projects: list, reportFinalOutputTokens, reportBodyFinalCarrier, wire,
+      return { config, run: context.run, conversation: context.conversation, projects: list, reportFinalOutputTokens, reportBodyFinalCarrier, wire, reviewGuidance, projectGuidanceInput,
         reportBodyProjectSlots: policy.reportBodyProjectSlots, reportBodyFactCoverage: policy.reportBodyFactCoverage,
         resume: checkpoint?.private_checkpoint as AgentCheckpoint | undefined,
-        scope: { ...context.scope, audience: context.binding.audience, kind: context.report.kind, timezone: 'Asia/Shanghai',
+        scope: { ...context.scope, audience, kind: context.report.kind, timezone: 'Asia/Shanghai',
           periodStart: context.report.period_start, periodEnd: context.report.fact_period_end, cutoffAt: context.report.fact_cutoff_at,
           factsGeneratedAt: context.report.generated_at, projectsTruncated: (context.report.facts as ReportFacts).projectsTruncated } };
     });
@@ -150,74 +157,80 @@ export async function processReportComposition(lease: Lease, dependencies: {
       for (const p of projects) if (!await synthesisContextAvailable(tx, lease.actor, await projectConversation(tx, lease, p), p.context)) fail('context_changed');
     });
     const { reportFinalOutputTokens, reportBodyFinalCarrier, wire } = initial;
+    const guidanceOnly = initial.projectGuidanceInput === reportGuidanceOnlyProtocol || initial.projectGuidanceInput === reportGuidanceTaskProtocol;
+    const guidanceSection = !initial.reviewGuidance ? undefined : guidanceOnly || initial.projectGuidanceInput === reportPendingGuidanceProtocol ? 'pending' : 'arrangements';
     const citationList = wire === 'citation-list';
     const quotedSegments = wire === 'quoted' || citationList;
     const fixedSlots = wire !== 'legacy', flatSegments = wire === 'flat' || quotedSegments;
-    const bodyTool = reportFinalTool(projects.map(p => p.projectId), projects, fixedSlots);
-    const finalTool = flatSegments ? reportFlatFinalTool(projects.length) : bodyTool;
-    const canonical = flatSegments ? { projectCount: projects.length, tool: bodyTool, citationList,
+    const bodyTool = guidanceOnly ? reportGuidanceFinalTool(projects) : reportFinalTool(projects.map(p => p.projectId), projects, fixedSlots);
+    const finalTool = flatSegments && !guidanceOnly ? reportFlatFinalTool(projects.length) : bodyTool;
+    const canonical = flatSegments && !guidanceOnly ? { projectCount: projects.length, tool: bodyTool, citationList,
       ...(quotedSegments ? { quoteSources: projects.map(p => p.context.sources.filter(source => source.kind === 'knowledge')) } : {}) } : undefined;
     const budget = { profile: initial.config.consultation?.profile,
       ...(reportFinalOutputTokens ? { purpose: 'answer' as const, reportFinalOutputTokens } : {}) };
     const finalAllocation = reportFinalOutputTokens ? { reportBodyFinal: reportBodyFinalProtocol, maxOutputTokens: reportFinalOutputTokens,
       ...(reportBodyFinalCarrier ? { reportBodyFinalCarrier } : {}),
       ...(initial.reportBodyFactCoverage ? { reportBodyFactCoverage: initial.reportBodyFactCoverage } : {}),
+      ...(initial.reviewGuidance ? { reportGuidanceReview: reportGuidanceReviewProtocol } : {}),
+      ...(initial.projectGuidanceInput ? { reportGuidanceInput: initial.projectGuidanceInput } : {}),
       ...(fixedSlots ? { reportBodyProjectSlots: initial.reportBodyProjectSlots } : {}) } : {};
-    const limits = agentRequestBudget(budget);
-    const result = await runRenovationAgent({ messages: reportMessages(initial.scope, projects, fixedSlots, flatSegments, quotedSegments), tools: [], resume: initial.resume, ports: {
-      authorize,
-      tool: async () => fail('assistant_capability_forbidden', 403),
-      checkpoint: state => scoped(async tx => {
-        await authorizeSources(tx);
-        await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,private_checkpoint)
-          values(${lease.enterpriseId},${lease.runId},1000,'agent_checkpoint','succeeded',${JSON.stringify(state)}::jsonb)
-          on conflict(enterprise_id,run_id,step_seq) do update set private_checkpoint=excluded.private_checkpoint`);
-      }),
-      validateFinal: async raw => { parseReportBody(raw, projects, fixedSlots); return null; },
-      model: async (turn, messages) => {
+    async function dispatch(turn: number, messages: ModelMessage[], tool: ModelTool, reviewBinding?: string) {
+        const purpose = reviewBinding ? 'grounding' : 'answer';
+        const requestBudget = reviewBinding ? { purpose: 'grounding' as const } : budget;
+        const limits = agentRequestBudget(requestBudget);
+        const allocation = reviewBinding ? { reportGuidanceReview: reportGuidanceReviewProtocol, reviewBinding } : finalAllocation;
         await heartbeat(lease);
-        const bounded = fitAgentContext(messages, [finalTool], budget);
-        const requestHash = fingerprint({ messages: bounded.messages, tool: finalTool, config: initial.config, scope: initial.scope, ...finalAllocation });
+        const bounded = fitAgentContext(messages, [tool], requestBudget);
+        const requestHash = fingerprint({ messages: bounded.messages, tool, config: initial.config, scope: initial.scope, ...allocation });
         const sequence = 1100 + turn * 10;
         const cached = await scoped(async tx => one(tx, sql`select * from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
           and run_id=${lease.runId} and step_seq=${sequence}`));
         if (cached) {
           if ((cached.input_summary as Row).requestHash !== requestHash) fail('context_changed');
-          if (cached.status !== 'succeeded') fail('provider_outcome_unknown', 502);
+          if (cached.status !== 'succeeded') {
+            outcomeKnown = false;
+            fail('provider_outcome_unknown', 502);
+          }
           outcomeKnown = true;
           const output = cached.private_checkpoint as ModelTurnOutput;
           if (!output.usage) fail('provider_usage_unknown', 502);
-          return projectReportBodyFinal(output, finalTool, !!reportBodyFinalCarrier, canonical);
+          return output;
         }
-        outcomeKnown = false;
-        const beforeProviderCall = () => scoped(async tx => {
+        const beforeProviderCall = async () => {
+          await scoped(async tx => {
           await authorizeSources(tx);
           if (await one(tx, sql`select id from app.assistant_usage_records where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}
             and category='query_embedding' and quantity is null limit 1`)) fail('provider_usage_unknown', 502);
           if (initial.config.consultation) await reserveConsultationDispatch(tx, { enterpriseId: lease.enterpriseId, runId: lease.runId,
             binding: initial.config.consultation, createdAt: String(initial.run.created_at), purpose: 'answer',
-            estimatedRequestTokens: consultationRequestReservation(bounded.messages, [finalTool], limits.maxOutputTokens) });
+            estimatedRequestTokens: consultationRequestReservation(bounded.messages, [tool], limits.maxOutputTokens) });
           else {
             const q = await one(tx, sql`select reserved_tokens from app.assistant_quota_reservations where enterprise_id=${lease.enterpriseId}
               and run_id=${lease.runId} and status='held' for update`);
-            if (!q || bounded.diagnostic.after.estimatedTokens > Number(q.reserved_tokens)) fail('assistant_quota_exceeded', 429);
+            const first = reviewBinding ? await one(tx, sql`select input_summary from app.assistant_run_steps
+              where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=1100 and status='succeeded'`) : null;
+            const firstEstimate = (first?.input_summary as { budget?: { after?: { estimatedTokens?: number } } } | undefined)?.budget?.after?.estimatedTokens;
+            if (reviewBinding && (!firstEstimate || !Number.isSafeInteger(firstEstimate))) fail('context_changed');
+            if (!q || (firstEstimate || 0) + bounded.diagnostic.after.estimatedTokens > Number(q.reserved_tokens)) fail('assistant_quota_exceeded', 429);
           }
           await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
-            values(${lease.enterpriseId},${lease.runId},${sequence},'agent_model','running',${JSON.stringify({ turn, purpose: 'answer', requestHash,
-              protocol: reportCompositionProtocol, scope: initial.scope, budget: bounded.diagnostic, ...finalAllocation })}::jsonb)`);
+            values(${lease.enterpriseId},${lease.runId},${sequence},'agent_model','running',${JSON.stringify({ turn, purpose, requestHash,
+              protocol: reportCompositionProtocol, scope: initial.scope, budget: bounded.diagnostic, ...allocation })}::jsonb)`);
           await tx.execute(sql`update app.assistant_jobs set provider_started_at=now(),updated_at=now() where enterprise_id=${lease.enterpriseId} and id=${lease.jobId}`);
-        });
+          });
+          outcomeKnown = false;
+        };
         const packet = dependencies.model ? await (async () => { await beforeProviderCall(); return { attemptId: null,
-          agentOutput: await dependencies.model!(bounded.messages, [finalTool], turn) }; })()
+          agentOutput: await dependencies.model!(bounded.messages, [tool], turn) }; })()
           : await executePostgresText({ enterpriseId: BigInt(lease.enterpriseId), owner: { kind: 'assistant_run', runId: BigInt(lease.runId) },
             logicalModelKey: 'chat.general', messages: [], maxTokens: limits.maxOutputTokens,
-            agent: { config: initial.config, input: { messages: bounded.messages, tools: [finalTool], maxTokens: limits.maxOutputTokens,
-              requireTool: true, ...(reportFinalOutputTokens ? {
+            agent: { config: initial.config, input: { messages: bounded.messages, tools: [tool], maxTokens: limits.maxOutputTokens,
+              requireTool: true, ...(reviewBinding ? { outputMode: 'json_schema' as const } : reportFinalOutputTokens ? {
                 outputMode: reportBodyFinalCarrier ? 'function_call' : 'json_schema', reportFinalOutputTokens } : {}),
               ...(initial.config.consultation ? { profile: initial.config.consultation.profile,
                 deadlineAt: new Date(String(initial.run.created_at)).getTime() + consultationProfile(initial.config.consultation.profile)!.runTimeoutMs } : {}) } },
-            metadata: { promptVersion: reportCompositionProtocol, runtime: initial.config.runtime, turn, purpose: 'answer', reportId: initial.scope.reportId,
-              revision: initial.scope.revision, probeVersion: initial.config.probeVersion, ...finalAllocation }, beforeProviderCall });
+            metadata: { promptVersion: reportCompositionProtocol, runtime: initial.config.runtime, turn, purpose, reportId: initial.scope.reportId,
+              revision: initial.scope.revision, probeVersion: initial.config.probeVersion, ...allocation }, beforeProviderCall });
         outcomeKnown = true;
         if (!packet.agentOutput) fail('invalid_model_answer', 502);
         const output = packet.agentOutput;
@@ -232,10 +245,31 @@ export async function processReportComposition(lease: Lease, dependencies: {
             private_checkpoint=${JSON.stringify(output)}::jsonb where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence} and status='running'`);
         });
         if (!output.usage) fail('provider_usage_unknown', 502);
-        return projectReportBodyFinal(output, finalTool, !!reportBodyFinalCarrier, canonical);
+        return output;
+    }
+    const result = await runRenovationAgent({ messages: reportMessages(initial.scope, projects, fixedSlots, flatSegments, quotedSegments, guidanceSection, guidanceOnly), tools: [], resume: initial.resume, ports: {
+      authorize,
+      tool: async () => fail('assistant_capability_forbidden', 403),
+      checkpoint: state => scoped(async tx => {
+        await authorizeSources(tx);
+        await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,private_checkpoint)
+          values(${lease.enterpriseId},${lease.runId},1000,'agent_checkpoint','succeeded',${JSON.stringify(state)}::jsonb)
+          on conflict(enterprise_id,run_id,step_seq) do update set private_checkpoint=excluded.private_checkpoint`);
+      }),
+      validateFinal: async raw => { parseReportBody(raw, projects, fixedSlots); return null; },
+      model: async (turn, messages) => {
+        if (initial.reviewGuidance && turn !== 0) fail('invalid_model_answer', 502);
+        const output = await projectReportBodyFinal(await dispatch(turn, messages, finalTool), finalTool, !!reportBodyFinalCarrier, canonical);
+        return guidanceOnly ? { ...output, text: projectReportGuidanceOnly(output.text, projects) } : output;
       },
     } });
     const body = parseReportBody(result.output?.text || '', projects, fixedSlots);
+    if (guidanceSection) {
+      const review = prepareReportGuidanceReview(body, initial.scope.audience, guidanceSection);
+      const verdict = await dispatch(1, review.messages, review.tool, review.binding);
+      await assertReportGuidanceReview(review, verdict);
+      body.guidanceReviewed = guidanceSection === 'pending' ? 'pending' : true;
+    }
     await completeReportComposition(lease, async tx => {
       await reportGuard(tx, lease); await authorizeSources(tx);
       await tx.execute(sql`update app.construction_report_versions set body=${JSON.stringify(body)}::jsonb,knowledge_status='ready',body_generated_at=now(),body_error_code=null

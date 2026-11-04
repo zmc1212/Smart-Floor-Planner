@@ -13,6 +13,11 @@ export const reportBodyFlatSegmentsProtocol = 'report-body-flat-segments-v1';
 export const reportBodyQuotedSegmentsProtocol = 'report-body-quoted-segments-v1';
 export const reportBodyCitationListProtocol = 'report-body-citation-list-v1';
 export const scheduledReportFactCoverageProtocol = 'scheduled-report-fact-coverage-v1';
+export const reportGuidanceReviewProtocol = 'report-guidance-review-v1';
+export const reportGuidanceInputProtocol = 'report-guidance-customer-pending-v1';
+export const reportPendingGuidanceProtocol = 'report-pending-guidance-v1';
+export const reportGuidanceOnlyProtocol = 'report-guidance-only-v1';
+export const reportGuidanceTaskProtocol = 'report-guidance-pending-source-v1';
 export type ReportBodyWire = 'legacy' | 'slots' | 'flat' | 'quoted' | 'citation-list';
 type ReportScope = { conversationPurpose: unknown; purpose: string; triggerKind: string; privateFollowup: boolean; selected: boolean };
 
@@ -52,7 +57,22 @@ export function reportBodyFinalPolicy(config: AgentConfig | null) {
   if (!config || !reportBodyFinalAdmission(config)) return {};
   return { reportBodyFinal: reportBodyFinalProtocol, reportBodyFactCoverage: scheduledReportFactCoverageProtocol,
     ...(bailianModelProfile(config.model).functionCalling === 'documented' ? {
-      reportBodyFinalCarrier: reportFinalFunctionCarrier, reportBodyProjectSlots: reportBodyCitationListProtocol } : {}) };
+      reportBodyFinalCarrier: reportFinalFunctionCarrier, reportBodyProjectSlots: reportBodyCitationListProtocol,
+      reportGuidanceReview: reportGuidanceReviewProtocol, reportGuidanceInput: reportGuidanceTaskProtocol } : {}) };
+}
+
+export function boundReportGuidanceReview(value: unknown, wire: ReportBodyWire) {
+  if (value === undefined) return false;
+  if (value !== reportGuidanceReviewProtocol || wire !== 'citation-list') fail('context_changed');
+  return true;
+}
+
+export function boundReportGuidanceInput(value: unknown, reviewed: boolean) {
+  if (value === undefined) return undefined;
+  const protocol = [reportGuidanceInputProtocol, reportPendingGuidanceProtocol, reportGuidanceOnlyProtocol, reportGuidanceTaskProtocol]
+    .find(protocol => protocol === value);
+  if (!reviewed || !protocol) fail('context_changed');
+  return protocol;
 }
 
 export function boundReportBodyFactCoverage(value: unknown, finalOutputTokens?: number) {

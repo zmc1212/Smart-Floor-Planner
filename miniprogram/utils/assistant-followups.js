@@ -14,10 +14,19 @@ function dateLabel(value, time = false) {
   if (!Number.isFinite(d.getTime())) return '';
   return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日${time ? ' ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) : ''}`;
 }
-function projectForView(p, context) {
+function projectForView(p, context, report) {
   const stages = context && context.stages || [], stage = stages.find(s => s.key === p.stageKey);
   const records = (p.records || []).map(r => ({ ...r, key: r.id + ':' + r.version, label: `${r.room || '工地'} · 记录${r.id} · 版本${r.version}` }));
   const progress = records.filter(r => r.data.completed).map(r => ({ key: r.key, text: r.data.completed }));
+  if (report.kind === 'weekly') {
+    const start = Date.parse(report.periodStart), cutoff = Date.parse(report.cutoffAt);
+    const history = (p.stageEvents || []).filter(event => Date.parse(event.at) >= start && Date.parse(event.at) < cutoff);
+    for (const [index, event] of history.entries()) {
+      if (event.stageKey === history[index - 1]?.stageKey) continue;
+      const marked = stages.find(s => s.key === event.stageKey);
+      if (marked) progress.push({ key: 'stage:' + event.id, text: dateLabel(event.at, true) + ' · 团队标记为' + marked.name });
+    }
+  }
   const published = p.publishedRecordItems;
   const pending = published ? published.flatMap(r => ['pending','coordination'].filter(k => r[k]).map(k => ({ key: r.recordId + ':' + k,
     recordId: r.recordId, text: r[k], carriedOver: r.carriedOver }))) : (p.issues || []).map(i => ({ key: i.id, text: i.text, carriedOver: i.carriedOver }));
@@ -34,7 +43,12 @@ function reportForView(report, context, projectId = '', now = Date.now()) {
   if (!report.available || projectId && !selected) return { reportId: report.reportId, revision: report.revision, selectedProjectId: projectId, available: false, title: '这份简报已不可用', stateLabel: '来源或权限已变化' };
   if (projectId) report = { ...report, selectedProjectId: projectId, facts: { ...report.facts, projects: [selected] } };
   const kindLabel = { daily: '施工日报', weekly: '施工周报', stage: '阶段提醒' }[report.kind] || '施工简报';
-  const projects = (report.facts && report.facts.projects || []).map(p => { const v = projectForView(p, context), b = report.body?.find(b => b.projectId === p.id); return b ? { ...v, ...b, highlights: [...b.progress, ...b.pending].slice(0, 2) } : v; });
+  const projects = (report.facts?.projects || []).map(p => {
+    const facts = projectForView(p, context, report);
+    const body = report.body?.find(b => b.projectId === p.id);
+    return body ? { ...facts, pending: [...facts.pending, ...(body.guidance || [])],
+      standards: body.standards, knowledgeSources: body.knowledgeSources } : facts;
+  });
   const staffDaily = report.kind === 'daily' && ['worker','designer'].includes(context && context.audience);
   const ownerDaily = report.kind === 'daily' && context?.audience === 'customer';
   const bossWeekly = report.kind === 'weekly' && context?.audience === 'boss';

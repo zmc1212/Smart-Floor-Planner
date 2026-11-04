@@ -50,16 +50,24 @@ test('approved staff daily card labels retain full detail identity, original fac
   assert.equal(reportForView({ reportId: '98', revision: 1, available: false }, { ...f.context, audience: 'worker' }).cardLabel, undefined);
 });
 
-test('composed text uses the approved sections while keeping original-record actions and exact report scope', () => {
+test('composed detail keeps the original progress, pending and approved arrangements for the exact project', () => {
   const f = fixture(), line = text => [{ key: text, text }];
-  const report = { ...f.report, contentStatus: 'composed', bodyGeneratedAt: '2026-11-01T20:03:00+08:00', body: [{ projectId: '248',
-    progress: line('模型归纳的获权进展'), pending: line('待本人核对'), standards: line('有效企业依据'), arrangements: line('已记录的安排') }] };
+  const facts = { projects: [{ ...f.report.facts.projects[0],
+    arrangements: [{ id: '9', title: '原已批准安排', difference: '现场团队复核点位' }] }, { id: '249', records: [], arrangements: [] }] };
+  const report = { ...f.report, facts, contentStatus: 'composed', bodyGeneratedAt: '2026-11-01T20:03:00+08:00', body: [{ projectId: '248',
+    progress: line('模型归纳的获权进展'), pending: line('待本人核对'), standards: line('有效企业依据'), arrangements: line('已记录的安排'),
+    guidance: line('建议向现场核对位置') }] };
   const view = reportForView(report, f.context, '248');
   assert.equal(view.factsOnly, false); assert.equal(view.projects[0].standards[0].text, '有效企业依据');
   assert.deepEqual(view.projects[0].originalIds, ['12', '11']); assert.equal(view.generatedLabel, '11月1日 20:03');
   assert.equal(view.reportId, f.report.reportId); assert.equal(view.revision, 1); assert.equal(view.cutoffAt, f.report.cutoffAt);
+  assert.deepEqual(view.projects[0].progress.map(l => l.text), ['书房线管有记录']);
+  assert.deepEqual(view.projects[0].pending.map(l => l.text), ['底盒位置仍需核对', '建议向现场核对位置']);
+  assert.deepEqual(view.projects[0].arrangements.map(l => l.text), ['原已批准安排\n现场团队复核点位']);
+  assert.deepEqual(reportForView(report, f.context, '249').projects[0].arrangements, []);
   const withdrawn = reportForView({ ...report, body: [], contentStatus: 'facts_only', generationState: 'source_unavailable' }, f.context);
   assert.equal(withdrawn.projects[0].standards, undefined); assert.equal(withdrawn.projects[0].progress[0].text, '书房线管有记录');
+  assert.deepEqual(withdrawn.projects[0].pending.map(l => l.text), ['底盒位置仍需核对']);
 });
 
 test('pre-dispatch body retry retains its operation key through a lost response and refreshes the same detail', async () => {
@@ -142,10 +150,16 @@ test('background list refresh preserves a failed original read until the same re
 test('boss weekly card uses the exact Shanghai period, preserves historical stages and never calls old facts this week', () => {
   const f = fixture(), context = { ...f.context, audience: 'boss' }, report = { ...f.report, kind: 'weekly',
     periodStart: '2026-10-19T00:00:00+08:00', periodEnd: '2026-10-26T00:00:00+08:00', cutoffAt: '2026-10-26T00:00:00+08:00' };
+  report.facts.projects[0].stageEvents = [
+    { id: 'start', at: '2026-10-18T16:00:00Z', stageKey: 'water' },
+    { id: 'duplicate', at: '2026-10-19T08:00:00Z', stageKey: 'water' },
+    { id: 'cutoff', at: '2026-10-25T16:00:00Z', stageKey: 'water' },
+  ];
   const view = reportForView(report, context, '', Date.parse('2026-11-02T00:00:00+08:00'));
   assert.equal(view.bossWeekly, true); assert.equal(view.cardLabel, '企业周报');
   assert.equal(view.cardTitle, '本期工地进展'); assert.equal(view.cardPeriodLabel, '10月19日—10月25日');
   assert.equal(view.cutoffLabel, '10月26日 00:00'); assert.equal(view.projects[0].stageName, '水电阶段');
+  assert.deepEqual(view.projects[0].progress.filter(l => l.key.startsWith('stage:')).map(l => l.key), ['stage:start']);
   assert.equal(view.factsOnly, true); assert.equal(view.reportId, report.reportId);
   assert.equal(reportForView(report, f.context).bossWeekly, false);
   assert.equal(reportForView({ ...report, kind: 'daily' }, context).bossWeekly, false);

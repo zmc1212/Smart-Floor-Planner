@@ -1,6 +1,6 @@
 import type { PostgresTransaction } from '@/db/transaction';
 import type { Row } from '@/db/repositories/assistant-repository';
-import type { ActorContext } from '@/lib/assistant/contracts';
+import type { ActorContext, Evidence } from '@/lib/assistant/contracts';
 import { synthesisContextAvailable } from '@/lib/assistant/agent/synthesis-sources';
 import { reportContextProtocol } from './report-reference';
 import { reportCompositionProtocol, reportSectionKinds, type ReportBody } from './report-composition';
@@ -23,7 +23,7 @@ export async function reportBodyView(tx: PostgresTransaction, actor: ActorContex
     if (!facts.projects.some(f => f.id === p.projectId)) continue;
     const c = projectConversation(conversation, p.selection);
     if (!await synthesisContextAvailable(tx, actor, c, p.context)) continue;
-    const sections = Object.fromEntries(reportSectionKinds.map(kind => [kind, p.sections[kind].segments.map((s, i) => {
+    const sections = Object.fromEntries(reportSectionKinds.filter(kind => kind !== 'standards').map(kind => [kind, p.sections[kind].segments.map((s, i) => {
       const citations = s.citations.map(citation => {
         const source = p.context.sources.find(source => source.sourceId === citation.sourceId)!;
         return { sourceId: source.sourceId, title: source.title, quote: citation.quote, location: source.evidence?.file || null };
@@ -32,10 +32,23 @@ export async function reportBodyView(tx: PostgresTransaction, actor: ActorContex
       return { key: `${kind}:${i}`, basis: s.basis, text: (s.basis === 'advice' ? '建议：' : s.basis === 'uncertainty' ? '待核实：' : '')
         + s.text + (labels.length ? '\n来源：' + labels.join('；') : ''), citations };
     })]));
-    const cited = new Set(reportSectionKinds.flatMap(kind => p.sections[kind].segments.flatMap(s => s.citations.map(c => c.sourceId))));
+    const originals = new Map<string, { sourceId: string; title: string; quote: string; location: Evidence['file'] | null }>();
+    for (const segment of p.sections.standards.segments) for (const citation of segment.citations) {
+      const source = p.context.sources.find(s => s.sourceId === citation.sourceId && s.kind === 'knowledge' && s.evidence);
+      if (source?.evidence && source.text.includes(citation.quote)) {
+        originals.set(JSON.stringify([citation.sourceId, citation.quote]), { ...citation, title: source.title, location: source.evidence.file || null });
+      }
+    }
+    const standards = [...originals.values()].map((citation, index) => ({
+      key: `standards:${index}`, basis: 'evidence', citations: [citation],
+      text: citation.quote + '\n来源：' + citation.title + (citation.location ? ` · ${citation.location.label}` : ''),
+    }));
+    const cited = new Set(standards.flatMap(segment => segment.citations.map(c => c.sourceId)));
     const knowledgeSources = p.context.sources.filter(s => s.kind === 'knowledge' && s.evidence && cited.has(s.sourceId))
       .map(s => ({ sourceId: s.sourceId, title: s.title }));
-    result.push({ projectId: p.projectId, ...sections, knowledgeSources });
+    const reviewed = body.guidanceReviewed === 'pending' ? sections.pending : body.guidanceReviewed === true ? sections.arrangements : [];
+    const guidance = reviewed.filter(s => s.basis === 'advice').map(s => ({ ...s, key: `guidance:${s.key}` }));
+    result.push({ projectId: p.projectId, ...sections, standards, knowledgeSources, guidance });
   }
   return result;
 }

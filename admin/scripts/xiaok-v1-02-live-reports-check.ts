@@ -179,6 +179,21 @@ async function main() {
       current = await read(tx=>one(tx,sql`select * from app.construction_reports where enterprise_id=${eid} and id=${id}`));
       assert.equal(result.state.body_status,'succeeded');
       assert.equal(result.detail.contentStatus,'composed');
+      const composed = result.detail.body as Array<{ projectId: string; guidance: Array<{ basis: string; text: string }>;
+        standards: Array<{ text: string; citations: Array<{ sourceId: string; quote: string }> }>;
+        knowledgeSources: Array<{ sourceId: string }> }>;
+      assert.equal(composed.length, b.audience === 'customer' ? 1 : projects.length);
+      for (const project of composed) {
+        assert.equal(project.guidance.length, 1);
+        assert.equal(project.guidance[0].basis, 'advice');
+        assert.ok(project.standards.length, 'This water-stage fixture requires an authorized workmanship excerpt');
+        const sources = new Set(project.knowledgeSources.map(s => s.sourceId));
+        for (const item of project.standards) {
+          assert.equal(item.citations.length, 1);
+          const { sourceId, quote } = item.citations[0];
+          assert.ok(sources.has(sourceId) && item.text.startsWith(quote + '\n'), 'The report must display the exact cited excerpt');
+        }
+      }
       const visible = JSON.stringify(result.detail);
       if(b.audience==='customer') {
         assert.ok(!visible.includes('蓝色工具箱'),'Internal publication must not leak to customer');
