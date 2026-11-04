@@ -2,7 +2,7 @@
 const fs = require('node:fs'), path = require('node:path'), cp = require('node:child_process'), assert = require('node:assert/strict');
 
 module.exports = async ctx => {
-  const { root, output, actors } = ctx, project = path.join(root, 'miniprogram'), route = 'packages/assistant/chat/chat';
+  const { root, output, actors, reuseReadySession = false } = ctx, project = path.join(root, 'miniprogram'), route = 'packages/assistant/chat/chat';
   const pwsh = 'C:/Users/Administrator/.cache/codex-runtimes/codex-primary-runtime/dependencies/native/powershell/pwsh.exe';
   const report = { scope: 'Stable scheduled reports on the approved private follow-up views with actual local service readback', checks: [], captures: [] };
   let cli, installed = false;
@@ -74,10 +74,32 @@ module.exports = async ctx => {
       s.memory.set('token', v.token); s.memory.set('userInfo', app.globalData.userInfo); return { installed: true };
     };
     const result = await evaluateSource(fn.toString().replace('__IDENTITY_URL__', 'http://127.0.0.1:' + server.address().port + ticket));
-    assert.equal(result.result.result.installed, true); assert.equal(sessions.size, 0); return enter(a);
+    assert.equal(result.result.result.installed, true); assert.equal(sessions.size, 0);
+    if (reuseReadySession && !report.transport?.some(item => item.bindingId === a.bid)) {
+      const check = async () => {
+        const app = getApp(), state = app.__qaLiveFollowups;
+        const header = { Authorization: 'Bearer ' + app.globalData.token, 'content-type': 'application/json' };
+        const request = (endpoint, method, data) => new Promise(resolve => state.request.call(wx, {
+          url: 'http://127.0.0.1:3006/api/miniprogram/assistant/' + endpoint, method, data, timeout: 5500, header,
+          success: r => resolve({ status: r.statusCode, envelope: r.data }), fail: e => resolve({ error: e.errMsg }),
+        }));
+        if ('__LEAD__') {
+          const entry = await request('entry-context', 'POST', { leadId: '__LEAD__' });
+          if (entry.status !== 200 || !entry.envelope?.data?.entryToken) return { step: 'entry', status: entry.status, error: entry.error || entry.envelope?.code };
+          header['X-Assistant-Entry'] = entry.envelope.data.entryToken;
+        }
+        const reports = await request('followups/__BINDING__/reports', 'GET');
+        if (reports.error) return { step: 'reports', error: reports.error };
+        return { status: reports.status, authenticated: reports.envelope?.success === true };
+      };
+      const probe = (await evaluateSource(check.toString().replaceAll('__LEAD__', a.leadId || '').replace('__BINDING__', a.bid))).result.result;
+      (report.transport ??= []).push({ bindingId: a.bid, ...probe }); save();
+      assert.deepEqual(probe, { status: 200, authenticated: true }, 'Signed simulator request to the local service');
+    }
+    return enter(a);
   };
   try {
-    await step('one verified existing Stable window and fresh compilation', async () => {
+    await step(reuseReadySession ? 'verify the live Stable session without resetting its bridge' : 'one verified existing Stable window and fresh compilation', async () => {
       cli = require(path.join(root, 'admin/scripts/wechatide-native-client.ts')).wechatideNativeClient(project, output);
       cli.evaluate = async fn => (await evaluateSource(fn.toString())).result.result;
       report.argumentTransport = { argsFiles: false, credentials: 'one-use loopback memory only' };
@@ -91,12 +113,15 @@ module.exports = async ctx => {
       assert.equal(report.savedPlacement.Handle, report.placement.Handle); assert.equal(report.savedPlacement.ProjectWindows, 1);
       assert.ok(report.placement.OnSecondary || report.savedPlacement.Minimized && report.savedPlacement.SavedOnSecondary);
       assert.equal(report.savedPlacement.ForegroundBefore, report.savedPlacement.ForegroundAfter);
-      await cli.call('simulator_refresh', { project }); await delay(1800);
-      try { report.systemInfo = await cli.systemInfo(); }
-      catch (e) { report.initialRuntimeFailure = e.message; await cli.call('simulator_refresh', { project }); await delay(1800); report.systemInfo = await cli.systemInfo(); }
+      if (reuseReadySession) report.systemInfo = await cli.systemInfo();
+      else {
+        await cli.call('simulator_refresh', { project }); await delay(1800);
+        try { report.systemInfo = await cli.systemInfo(); }
+        catch (e) { report.initialRuntimeFailure = e.message; await cli.call('simulator_refresh', { project }); await delay(1800); report.systemInfo = await cli.systemInfo(); }
+      }
       assert.equal(report.systemInfo.windowWidth, 390); assert.equal(report.systemInfo.windowHeight, 844); assert.equal(report.systemInfo.SDKVersion, '3.17.2');
       assert.deepEqual(await cli.evaluate(() => Object.keys(getApp()).filter(k => /^__qa/.test(k))), []);
-      return { existingWindow: true, compiled: true, rootGestures: 'not exercised' };
+      return { existingWindow: true, refreshed: !reuseReadySession, rootGestures: 'not exercised' };
     });
     await step('memory-only local transport and exact original destinations', async () => {
       await cli.evaluate(() => {
@@ -130,13 +155,16 @@ module.exports = async ctx => {
       return { credentialsPersisted: false, noSyntheticAnswer: true, rootSelectorRetries: 0 };
     });
     for (const a of actors) {
-      await step(a.name + ' ' + a.bid + ' daily and weekly native details and reentry', async () => {
+      await step(a.name + ' ' + a.bid + ' saved reports and reentry', async () => {
         const results = [];
         for (const expected of a.reports) {
           let p = await identity(a);
           if (expected.kind === 'stage') {
             const card = '.followup-stage[data-report="' + expected.id + '"]', first = expected.body[0];
-            const source = first.knowledgeSources[0], name = source ? '水电' : '安装';
+            const source = first.knowledgeSources[0];
+            const stageNames = { installation: '安装', utilities: '水电', demolition: '拆改', masonry_carpentry: '泥木' };
+            const name = expected.stageKey ? stageNames[expected.stageKey] : source ? '水电' : '安装';
+            assert.ok(name);
             const readStage = async () => {
               await wait(() => p.$(card), 'rendered private stage reminder');
               const item = (await p.data()).followupReports.find(r => r.reportId === expected.id);
@@ -148,7 +176,9 @@ module.exports = async ctx => {
             const actual = await readStage();
             let original;
             if (source) {
-              assert.ok(actual.standards.every(line => line.text.startsWith('水电工艺标准')));
+              const [line] = first.standards;
+              assert.ok(line?.citations?.length);
+              assert.ok(actual.standards.some(item => item.text.includes(line.citations[0].quote)));
               const selector = card + ' .followup-stage-source';
               await wait(() => p.$(selector), 'rendered stage source button');
               const fn = () => getCurrentPages().at(-1).openReportSource({ currentTarget: { dataset: {
@@ -161,8 +191,10 @@ module.exports = async ctx => {
               }, 'stage source readback');
               assert.equal(quote.id, source.sourceId);
               assert.ok(first.standards.some(line => line.citations.some(citation => citation.quote === quote.quote)));
+              assert.equal(quote.originalAvailable, true);
               const before = await cli.evaluate(() => getApp().__qaLiveFollowups.opened.length);
-              await tap(p, '.sheet-panel .notice-action');
+              const originalButton = await wait(() => p.$('.sheet-panel .notice-action'), 'rendered original-file action');
+              await originalButton.tap();
               original = await wait(async () => {
                 const observed = await cli.evaluate(() => {
                   const s = getApp().__qaLiveFollowups; return { opened: s.opened, downloads: s.downloads };
@@ -179,7 +211,7 @@ module.exports = async ctx => {
             p = await enter(a);
             await readStage();
             await capture(a.name + '-' + a.bid + '-stage-' + expected.id);
-            const result = { reportId: expected.id, kind: expected.kind, revision: expected.revision,
+            const result = { reportId: expected.id, kind: expected.kind, stageKey: expected.stageKey, revision: expected.revision,
               source: source?.sourceId, sourceEntry: source ? 'verified rendered control and native handler' : undefined, original, missing: !source, reentry: true };
             results.push(result);
             (report.journeys ??= []).push({ audience: a.name, bindingId: a.bid, ...result });
