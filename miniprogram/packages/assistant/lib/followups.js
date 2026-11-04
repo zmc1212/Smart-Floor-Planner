@@ -12,7 +12,8 @@ function stageNote(project) {
       const split = quote.indexOf('\n\n');
       const body = split === -1 ? '' : quote.slice(split + 2);
       const checklist = /^(?:内部测试参考。)?适用条件：([^\n]+)\n核对事项：([^\n]+)$/u.exec(body);
-      note = checklist ? checklist[1].replace(/。$/u, '') + '时，' + checklist[2] : '';
+      const faq = /^问：[^\n]+\n答：([^\n]+)$/u.exec(body);
+      note = checklist ? checklist[1].replace(/。$/u, '') + '时，' + checklist[2] : faq?.[1] || '';
     }
     if (note.length <= 80 && /[。！？]$/u.test(note) && !/SHA-256|\n/u.test(note)) return note;
   }

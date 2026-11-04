@@ -46,6 +46,10 @@ test('stage cards retain short exact excerpts and hide long, unmatched or revoke
     return f.controller.state.followupReports[0].projects[0].stageNote;
   };
   assert.equal(stage('封槽前，先核对插座点位，记得留好管线照片。'), '封槽前，先核对插座点位，记得留好管线照片。');
+  const faqPrefix = '专业类型：施工工艺/检查\n实际阶段适用：preparation\n\n问：开工费用交底要核对什么？\n答：';
+  const answer = '开工费用交底时，对照施工图逐项核对施工范围和对应费用。';
+  assert.equal(stage(faqPrefix + answer), answer);
+  assert.equal(stage(faqPrefix + answer.repeat(4)), '可查看本阶段的工艺核对要点。');
   assert.equal(stage('封槽前，' + '核对全部插座点位。'.repeat(15)), '可查看本阶段的工艺核对要点。');
   assert.equal(stage('仅在房屋交接之后'), '可查看本阶段的工艺核对要点。');
   assert.equal(stage('封槽前，先核对插座点位。', 'K999'), '可查看本阶段的工艺核对要点。');
