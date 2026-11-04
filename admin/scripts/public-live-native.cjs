@@ -3,14 +3,15 @@ const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_pro
 const {liveTargetSelectors,revealNativeLiveTarget}=require('./public-live-native-target.cjs');
 const diagnoseOwnerMedia=require('./public-live-native-media.cjs');
 module.exports=async ctx=>{
-  const {root,output,fixture:f,token}=ctx,project=path.join(root,'miniprogram'),route='packages/assistant/chat/chat',player='packages/construction/public-live/public-live',detail='packages/construction/public-site/public-site';
+  const {root,output}=ctx,project=path.join(root,'miniprogram'),route='packages/assistant/chat/chat',player='packages/construction/public-live/public-live',detail='packages/construction/public-site/public-site';
+  let {fixture:f,token}=ctx;
   const report={checks:[],captures:[],scope:'Approved C05 live decision, C03 actual public entry/player, persisted reentry, 503 retry and stop; no real camera or model calls'};
   const delay=ms=>new Promise(r=>setTimeout(r,ms)),tickets=new Map();let cli,installed=false;
   const server=http.createServer((req,res)=>{const value=tickets.get(req.url);if(value){tickets.delete(req.url);res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(value));}else{res.writeHead(503,{'Content-Type':'application/json'});res.end(JSON.stringify({success:false,error:'public_live_unavailable'}));}});
   await new Promise(r=>server.listen(0,'127.0.0.1',r));
   const save=()=>fs.writeFileSync(path.join(output,'native.json'),JSON.stringify(report,null,2)+'\n');
   const wait=async(fn,label,count=60)=>{for(let i=0;i<count;i++){const x=await fn();if(x)return x;await delay(400);}throw Error(label+' did not settle');};
-  const step=async(name,fn)=>{try{await ctx.assertHeld();const data=await fn();await ctx.assertHeld();report.checks.push({name,passed:true,data});console.log('native '+name+': PASS');return data;}catch(e){report.checks.push({name,passed:false,error:e.stack,cliFailure:e.toJSON?.()});throw e;}finally{save();}};
+  const step=async(name,fn)=>{try{await ctx.assertHeld();const data=await fn();await ctx.assertHeld();report.checks.push({name,passed:true,data});console.log('native '+name+': PASS');return data;}catch(e){report.checks.push({name,passed:false,error:e.stack,cliFailure:e.toJSON?.(),observations:e.observations});throw e;}finally{save();}};
   const page=target=>wait(async()=>{const p=await cli.currentPage();return p?.path===target?p:null;},'exact route '+target);
   const tap=async(p,selector)=>{const el=await p.$(selector);assert.ok(el,selector);await el.tap();};
   const capture=async(name,target)=>{assert.equal((await cli.pageStack()).at(-1).path,target);await delay(400);const file=path.join(output,name+'.png');assert.ok(!fs.existsSync(file));await cli.screenshot({path:file});const b=fs.readFileSync(file);report.captures.push({file,route:target,logical:[390,844],encoded:[b.readUInt32BE(16),b.readUInt32BE(20)]});save();};
@@ -30,7 +31,10 @@ module.exports=async ctx=>{
     };
     cli.evaluate=fn=>cli.evaluateSource(fn.toString());
     await step('one verified Stable project, idle queue and source-bound compiled runtime',async()=>{
-      await ctx.assertHeld();report.status=await cli.call('check_wechatide_status',{skillVersion:'0.3.11'});assert.equal(report.status.loginExpired,false);assert.ok(['equal','agent_ahead'].includes(report.status.versionRelation));
+      await ctx.assertHeld();
+      const status=await cli.call('check_wechatide_status',{skillVersion:'0.3.11'});
+      report.status={loginExpired:status.loginExpired,versionRelation:status.versionRelation};
+      assert.equal(report.status.loginExpired,false);assert.ok(['equal','agent_ahead'].includes(report.status.versionRelation));
       const projects=(await cli.call('project_list')).projects.filter(p=>path.resolve(p.projectPath).toLowerCase()===project.toLowerCase());assert.ok(projects.length);assert.ok(projects.every(p=>p.appId==='wxa7728432f59779d1'));
       report.placement=host(path.join(root,'tmp/wechat-devtools-version-test/window.ps1'),['-Action','Inspect','-IncludeHidden']);
       report.savedPlacement=host(path.join(root,'tmp/v1-02-conversation-list-visual/inspect-window.ps1'));
@@ -44,13 +48,32 @@ module.exports=async ctx=>{
       }
       if(ctx.compileReuse)report.compileReuse=ctx.compileReuse;
       else await cli.call('simulator_refresh',{project});
-      // Use the tool's bounded automator-readiness wait, not a fixed delay or
-      // a successful refresh receipt as proof of compilation/readiness.
-      await cli.call('automation_page_action',{project,action:'getData',wait:0});
-      report.system=await cli.evaluate(()=>{const w=wx.getWindowInfo(),a=wx.getAppBaseInfo();return {windowWidth:w.windowWidth,windowHeight:w.windowHeight,SDKVersion:a.SDKVersion};});
+      // Refresh dispatches a compile action. Give that handover a bounded
+      // interval and require live page data, viewport and app ownership.
+      const readiness=await cli.call('automation_page_action',{project,action:'getData',wait:ctx.compileReuse?0:3});
+      assert.ok(Object.keys(readiness.data||{}).length,'Stable page data is empty after compilation');
+      // The registered system-info command uses App.callWxMethod. Keep the
+      // script evaluator for the controller state that only it can read.
+      const {windowWidth,windowHeight,SDKVersion}=await cli.systemInfo();
+      report.system={windowWidth,windowHeight,SDKVersion};
       assert.equal(report.system.windowWidth,390);assert.equal(report.system.windowHeight,844);assert.equal(report.system.SDKVersion,'3.17.2');
-      assert.deepEqual((await cli.evaluate(()=>({controllers:Object.keys(getApp()).filter(k=>/^__qa/.test(k))}))).controllers,[]);return {sameProject:true,argsFiles:0,physicalWechat:false};
+      // Use an explicit return and a readiness receipt. The former expression
+      // callback reproducibly lost its reply even when the page RPCs were live.
+      const ownership=await cli.evaluate(()=>{
+        try{
+          const app=getApp();
+          if(!app||!app.globalData)return {ready:false,reason:'app-not-ready'};
+          return {ready:true,controllers:Object.keys(app).filter(k=>/^__qa/.test(k)),route:getCurrentPages().at(-1)?.route||''};
+        }catch(error){return {ready:false,reason:error?.name||'runtime-error'};}
+      });
+      assert.equal(ownership.ready,true,ownership.reason);
+      assert.deepEqual(ownership.controllers,[]);
+      const current=await cli.currentPage();
+      assert.ok(ownership.route);
+      assert.equal(current?.path,ownership.route);
+      return {sameProject:true,argsFiles:0,physicalWechat:false,readyRoute:ownership.route};
     });
+    if(ctx.prepare)({fixture:f,token}=await ctx.prepare());
     await step('memory-only synthetic identity and real isolated HTTP transport',async()=>{
       // A response timeout may follow execution. Finally must reconcile this
       // attempt even when no successful installation receipt is delivered.
@@ -75,7 +98,7 @@ module.exports=async ctx=>{
       const ticket='/session/'+randomUUID();tickets.set(ticket,{token,uid:f.users.owner,eid:f.eid,cid:f.cid,key:f.key,port:server.address().port});
       const fn=()=>{const app=getApp(),s=app.__qaPublicLive;s.identityReady=false;s.request.call(wx,{url:'__TICKET__',success:r=>{const v=r.data;s.port=v.port;s.expectedPublicSession='/api/public/construction-live/'+v.eid+'/'+v.key+'/session';s.memory.set('token',v.token);app.globalData.token=v.token;app.globalData.userInfo={id:v.uid,_id:v.uid,mode:'customer',role:'user',nickname:'合成公开直播业主',phone:'synthetic'};app.globalData.bootstrap={current:{mode:'customer',role:'user',context:{mode:'customer',enterpriseId:v.eid,enterpriseName:'微云'},capabilities:['customer.service','account']},badges:{status:'ok',counts:{}}};app.globalData.sessionHydrated=true;app.globalData.sessionHydrationPromise=Promise.resolve();s.identityReady=true;},fail:e=>{s.identityError=String(e.errMsg||'identity_load_failed');}});return {requested:true};};
       await cli.evaluateSource(fn.toString().replace('__TICKET__','http://127.0.0.1:'+server.address().port+ticket));
-      await wait(async()=>{const state=await cli.evaluate(()=>({ready:getApp().__qaPublicLive.identityReady,error:getApp().__qaPublicLive.identityError}));if(state.error)throw Error(state.error);return state.ready;},'one-use memory identity');
+      await wait(async()=>{const state=await cli.evaluate(()=>{const s=getApp().__qaPublicLive;return {ready:s.identityReady,error:s.identityError||''};});if(state.error)throw Error(state.error);return state.ready;},'one-use memory identity');
       return {tokensPersisted:false,serviceAnswersMocked:false};
     });
     if(ctx.diagnoseOwnerMedia){
@@ -85,18 +108,61 @@ module.exports=async ctx=>{
     }
     await step('owner opens full 16:9 preview, explicitly approves and reenters the original chat',async()=>{
       await cli.reLaunch('/'+route+'?conversationId='+f.cid);let p=await page(route),r=await ownerReady(p);assert.equal(r.card.status,'pending_owner');
+      await cli.evaluate(()=>{
+        const s=getApp().__qaPublicLive,p=getCurrentPages().at(-1),progress=p.livePlaybackProgress,error=p.livePlaybackError;
+        s.ownerPlaybackHooks={page:p,progress,error};
+        p.livePlaybackProgress=function(e){
+          const result=progress.call(this,e),data=e.currentTarget.dataset,time=e.detail.currentTime;
+          if(this.liveConsent.state.livePreviewReady&&this.liveConsent.currentPreview(String(data.id),Number(data.attempt))&&Number.isFinite(time)&&time>0){
+            s.ownerProgress={liveId:String(data.id),attempt:Number(data.attempt),currentTime:time};
+          }
+          return result;
+        };
+        p.livePlaybackError=function(e){
+          const detail=e.detail||{},data=e.currentTarget.dataset;
+          s.ownerMediaError={attempt:Number(data.attempt),code:String(detail.errCode??detail.code??''),
+            message:String(detail.errMsg||detail.message||'').replace(/https?:\/\/[^\s]+/gi,'[media URL]').slice(0,300)};
+          return error.call(this,e);
+        };
+        return {observing:true};
+      });
       report.ownerActionTarget=await revealNativeLiveTarget(cli,project,f.liveId,r.card.messageId,'action',wait);
-      await tap(p,liveTargetSelectors(r.card.messageId,'action')[0]);await wait(async()=>{const d=await p.data();return d.liveExpanded===f.liveId&&!d.liveBusy?d:null;},'complete live scope');
+      await tap(p,liveTargetSelectors(r.card.messageId,'action')[0]);
+      if(ctx.beforeOwnerPlayback){
+        await wait(async()=>{const d=await p.data();return d.liveExpanded===f.liveId&&!d.livePreviewUrl;},'expanded connecting scope');
+        r=await ownerReady(p);
+        report.ownerConnectingTarget=await revealNativeLiveTarget(cli,project,f.liveId,r.card.messageId,'scope',wait);
+        await capture('owner-connecting-scope',route);
+        await ctx.beforeOwnerPlayback();
+      }
+      await wait(async()=>{const d=await p.data();return d.liveExpanded===f.liveId&&!d.liveBusy?d:null;},'complete live scope');
+      try{
+        await wait(async()=>{const d=await p.data();if(d.liveError&&!d.livePreviewUrl)throw Error('Current owner preview is not ready: '+d.liveError);return d.livePreviewReady&&!!d.livePreviewUrl;},'actual current-version owner preview progress');
+      }finally{
+        try{
+          const media=await cli.evaluate(()=>{const s=getApp().__qaPublicLive;return {progress:s.ownerProgress||null,error:s.ownerMediaError||null};});
+          report.ownerProgress=media.progress;report.ownerMediaError=media.error;
+        }catch(error){report.ownerMediaObservationError=error.message;}
+        save();
+      }
+      assert.equal(report.ownerProgress?.liveId,f.liveId);
+      assert.equal(report.ownerProgress.attempt,(await p.data()).livePreviewAttempt);
+      assert.ok(report.ownerProgress.currentTime>0);
       r=await ownerReady(p);report.ownerScopeTarget=await revealNativeLiveTarget(cli,project,f.liveId,r.card.messageId,'scope',wait);
-      await wait(async()=>{const d=await p.data();if(d.liveError&&!d.livePreviewUrl)throw Error('Current owner preview is not ready: '+d.liveError);return d.livePreviewReady&&!!d.livePreviewUrl;},'actual current-version owner preview progress');
-      await capture('owner-full-scope',route);
-      const hostFile=path.join(output,'owner-full-host.png');
-      try{report.ownerHost=host(path.join(root,'tmp/v1-02-human-takeover/host-passive.ps1'),['-OutputPath',hostFile]);}
-      catch(e){report.ownerHost={captured:false,error:e.message,scope:'Optional optical evidence; no focus/capture retry'};}
+      if(ctx.beforeOwnerPlayback)assert.equal(report.ownerScopeTarget.observations.length,1,'Scope moved after playback began');
+      else{
+        await capture('owner-full-scope',route);
+        const hostFile=path.join(output,'owner-full-host.png');
+        try{report.ownerHost=host(path.join(root,'tmp/v1-02-human-takeover/host-passive.ps1'),['-OutputPath',hostFile]);}
+        catch(e){report.ownerHost={captured:false,error:e.message,scope:'Optional optical evidence; no focus/capture retry'};}
+      }
       const target=report.ownerScopeTarget.observations.at(-1).measurement,metrics=[target.start,null,target.end];
       assert.ok(metrics[0]?.width>200);assert.ok(Math.abs(metrics[0].width/metrics[0].height-16/9)<0.03);assert.ok(metrics[2]?.height>=44);report.ownerBounds=metrics;
+      const ready=await p.data();assert.ok(ready.livePreviewReady&&ready.livePreviewUrl&&ready.livePreviewAttempt===report.ownerProgress.attempt,'Current preview stopped before consent');
       await tap(p,liveTargetSelectors(r.card.messageId,'action')[0]);await wait(async()=>{const d=await p.data();return Object.values(d.liveCards||{}).some(c=>c.id===f.liveId&&c.status==='owner_approved');},'persisted owner approval');
-      await cli.reLaunch('/'+route+'?conversationId='+f.cid);p=await page(route);r=await ownerReady(p);assert.equal(r.card.status,'owner_approved');await capture('owner-reentry',route);return {originalConversation:f.cid,status:r.card.status,actualTaps:true};
+      await cli.reLaunch('/'+route+'?conversationId='+f.cid);p=await page(route);r=await ownerReady(p);assert.equal(r.card.status,'owner_approved');
+      report.ownerReentryTarget=await revealNativeLiveTarget(cli,project,f.liveId,r.card.messageId,'stop',wait);
+      await capture('owner-reentry',route);return {originalConversation:f.cid,status:r.card.status,actualTaps:true};
     });
     if(ctx.ownerOnly){report.scope='Owner HLS preview, approval and original chat reentry only';report.passed=true;return report;}
     await step('real manager review then anonymous detail entry, actual video playback and pause',async()=>{
@@ -129,7 +195,7 @@ module.exports=async ctx=>{
     report.passed=true;return report;
   }catch(e){report.passed=false;report.error=e.stack;report.cliFailure=e.toJSON?.();try{await ctx.assertHeld();const target=(await cli.currentPage())?.path;if(target)await capture('failure',target);}catch(x){report.captureError=x.message;}throw e;}
   finally{
-    try{if(cli&&installed){report.restored=await cli.evaluate(()=>{const app=getApp(),s=app.__qaPublicLive;if(!s)return {restored:true,absent:true};for(const p of getCurrentPages()){p.liveConsent?.clear();p.publicSites?.clear();p.controller?.hide();p.clear?.();}wx.request=s.request;wx.downloadFile=s.download;wx.getStorageSync=s.get;wx.setStorageSync=s.set;wx.removeStorageSync=s.remove;wx.showModal=s.modal;app.hydrateStoredSession=s.hydrate;for(const k of Object.keys(app.globalData))if(!(k in s.saved))delete app.globalData[k];Object.assign(app.globalData,s.saved);delete app.__qaPublicLive;return {restored:true,requests:s.requests};});await cli.reLaunch('/pages/index/index');}}
+    try{if(cli&&installed){report.restored=await cli.evaluate(()=>{const app=getApp(),s=app.__qaPublicLive;if(!s)return {restored:true,absent:true};const hook=s.ownerPlaybackHooks;if(hook){hook.page.livePlaybackProgress=hook.progress;hook.page.livePlaybackError=hook.error;}for(const p of getCurrentPages()){p.liveConsent?.clear();p.publicSites?.clear();p.controller?.hide();p.clear?.();}wx.request=s.request;wx.downloadFile=s.download;wx.getStorageSync=s.get;wx.setStorageSync=s.set;wx.removeStorageSync=s.remove;wx.showModal=s.modal;app.hydrateStoredSession=s.hydrate;for(const k of Object.keys(app.globalData))if(!(k in s.saved))delete app.globalData[k];Object.assign(app.globalData,s.saved);delete app.__qaPublicLive;return {restored:true,requests:s.requests};});await cli.reLaunch('/pages/index/index');}}
     catch(e){report.cleanupError=e.stack;report.passed=false;throw e;}
     finally{await new Promise(r=>server.close(r));save();}
   }

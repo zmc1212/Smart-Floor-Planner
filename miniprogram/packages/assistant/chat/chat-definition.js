@@ -620,7 +620,7 @@ module.exports = () => ({
 	async liveDecision(e) {
 		if (!this.liveConsent || this.data.readOnly) return;
 		const d = e.currentTarget.dataset;
-		if (await this.liveConsent.decide(String(d.id), d.action)) await this.controller.refresh();
+		if (await this.liveConsent.decide(String(d.id), d.action) && d.action !== 'preview') await this.controller.refresh();
 	},
 	stopPublicLive(e) {
 		if (this.data.liveBusy || this.data.livePending || this.data.readOnly) return;

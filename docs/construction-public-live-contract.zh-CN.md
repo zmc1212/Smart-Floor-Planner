@@ -12,6 +12,8 @@
 
 共享锁后两次复验沿批准的 C05-02 v002 入口与同一 Stable 工程，显式编译后均读到 390×844 和基础库 3.17.2。两次都在 `automation_evaluate` 检查控制器归属时超时，当时尚未安装合成身份或打开原咨询。第二次在副屏无焦点显示已核窗口，并恢复原最小化状态。两批合成授权、会话和转发夹具已清理，源码绑定均无漂移。旧播放失败单列保留。本次改动后的 C05 正向播放、同意及持久重进仍待核。证据见 `tmp/public-live-package/owner-shared-lock-native-{01,02}/`。
 
+续验驱动先等待编译交接，再检查实时页面数据、专用 systemInfo 调用和控制器归属，通过后才创建合成夹具。沿批准的 C05-02 v002 卡片，预览按当前版本回执更新授权卡并保留原咨询挂载，同意后仍重读原咨询。Stable 390×844 已记录播放器正向进度。驱动按滚动方向取整，保留实测裁切边界。原负载播放至 0.975 秒后报 bufferAppendError。同尺寸、帧率、编码的 200 kbit/s VBV 对照播放至 0.960 秒后报 bufferStalledError。两次均在同意前丢失当前预览资格。C05 同意与持久重进、C03 完整播放及真实微信真机仍待核。旧失败与隔离清理保留，证据见 tmp/public-live-package/ 下的 c05-native-retain-preview-01 和 c05-native-bounded-payload-01。
+
 ## 入口与设计
 
 - `/construction-projects` → 项目Drawer → 原公开材料Tab → **直播公开**，沿Ant Design Form/Select/Card/Steps/Alert与共享操作反馈。摄像头管理者及所选企业管理角色可准备合法绑定、公开名称与机位别名，普通观看成员不能准备。只有`enterprise_admin`、`admin`、`super_admin`可审核当前业主的这一版同意；平台管理无需入职或成为项目成员。

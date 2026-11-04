@@ -21,7 +21,11 @@ function liveScrollPlan(m) {
   assert.ok(target.left >= clip.left && target.right <= clip.right, 'Live target clipped horizontally');
   assert.ok(target.bottom > target.top && target.bottom - target.top <= clip.bottom - clip.top, 'Live target cannot fit the scroll viewport');
   const delta = target.top < clip.top ? target.top - clip.top : target.bottom > clip.bottom ? target.bottom - clip.bottom : 0;
-  return { visible: delta === 0, scrollTop: Math.max(0, m.offset.scrollTop + delta), clip, target };
+  const requested = m.offset.scrollTop + delta;
+  // Stable applies integer offsets. Round toward the direction of travel so
+  // a fractional target can clear the measured clip instead of stalling.
+  const scrollTop = delta > 0 ? Math.ceil(requested) : delta < 0 ? Math.floor(requested) : requested;
+  return { visible: delta === 0, scrollTop: Math.max(0, scrollTop), clip, target };
 }
 
 async function revealLiveTarget({ measure, scroll }) {

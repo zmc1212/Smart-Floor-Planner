@@ -9,8 +9,20 @@ test('the retained native09 offscreen scope is rejected until the actual scroll 
   const original = layout(); let top = 0; const scrolls = [];
   const receipt = await revealLiveTarget({ measure: async () => ({ ...original, offset: { scrollTop: top }, start: rect(original.start.top - top, original.start.bottom - top), end: rect(original.end.top - top, original.end.bottom - top) }), scroll: async value => { scrolls.push(value); top = value; } });
   assert.equal(liveScrollPlan(original).visible, false);
-  assert.equal(scrolls.length, 1); assert.equal(scrolls[0], 1579.796875);
+  assert.equal(scrolls.length, 1); assert.equal(scrolls[0], 1580);
   assert.ok(receipt.final.target.top >= 106); assert.ok(receipt.final.target.bottom <= 742);
+});
+
+test('C05 clears the real fractional button edge on an integer-only scroll container', async () => {
+  const original = { ...layout(), container: { left: 0, right: 390, top: 91, bottom: 744 }, composer: { top: 744 },
+    start: rect(379.3125, 527.25), end: rect(731.203125, 777.203125) };
+  let offset = 0;
+  const result = await revealLiveTarget({ measure: async () => ({ ...original, offset: { scrollTop: offset },
+    start: rect(original.start.top - offset, original.start.bottom - offset), end: rect(original.end.top - offset, original.end.bottom - offset) }),
+  scroll: async value => { offset = Math.trunc(value); } });
+  assert.equal(offset, 42);
+  assert.equal(result.observations.length, 2);
+  assert.equal(result.final.target.bottom, 735.203125);
 });
 
 test('a successful scroll receipt cannot pass a target that physically remains offscreen', async () => {

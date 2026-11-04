@@ -25,6 +25,24 @@ function previewJourney() {
   return {c,calls,change:patch=>Object.assign(current,patch),failSession:value=>{sessionFailure=value;},approvals:()=>calls.filter(r=>r.p.endsWith('/approve'))};
 }
 
+test('chat keeps the current preview mounted and refreshes the persisted approval',async()=>{
+  const {c,calls}=previewJourney();
+  const page=require('../packages/assistant/chat/chat-definition')();
+  let refreshes=0;
+  page.liveConsent=c;
+  page.controller={async refresh(){refreshes++;}};
+  const action=type=>page.liveDecision({currentTarget:{dataset:{id:'7',action:type}}});
+  await c.load('9');
+  await action('preview');
+  assert.equal(refreshes,0);
+  assert.equal(c.state.liveExpanded,'7');
+  assert.ok(calls.some(r=>r.p.endsWith('/session')));
+  c.playbackProgress('7',c.state.livePreviewAttempt,0.5);
+  await action('approve');
+  assert.equal(refreshes,1);
+  assert.equal(c.card('7').status,'owner_approved');
+});
+
 test('a media-session failure leaves the scope readable but cannot submit consent',async()=>{
   const j=previewJourney();j.failSession(true);await j.c.load('9');await j.c.decide('7','preview');
   assert.equal(j.c.state.liveExpanded,'7');assert.equal(j.c.state.livePreviewUrl,'');
