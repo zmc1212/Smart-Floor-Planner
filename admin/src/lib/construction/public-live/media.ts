@@ -11,7 +11,7 @@ import { publicLiveUpstream, type LiveUpstream } from './upstream';
 import { liveMediaCorsHeaders } from './media-cors';
 import { liveMediaDiagnostics } from './media-diagnostics';
 
-export type LiveViewer={kind:'public'}|{kind:'owner';actor:ActorContext;conversationId:string}|{kind:'staff';actor:ConstructionActor;projectId:string};
+export type LiveViewer={kind:'public'}|{kind:'owner';actor:ActorContext;conversationId:string;previewRevision?:number}|{kind:'staff';actor:ConstructionActor;projectId:string};
 type Source=NonNullable<Awaited<ReturnType<typeof liveSource>>>;
 const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
 function playbackUrl(path:string){
@@ -30,7 +30,7 @@ async function authorize(tx:PostgresTransaction,eid:string,lid:string,vid:string
   }else if(viewer.kind==='owner'){
     if(viewer.actor.enterpriseId!==eid||viewer.actor.principal.kind!=='user')fail('public_live_unavailable',404);
     const r=new AssistantRepository(tx,viewer.actor);await r.settings(false,ownerLock);const c=await r.conversation(viewer.conversationId,ownerLock);
-    if(c.purpose!=='customer_consultation')fail('public_live_unavailable',404);
+    if(c.purpose!=='customer_consultation'||viewer.previewRevision!==undefined&&c.status!=='open')fail('public_live_unavailable',404);
   }
   const s=await liveSource(tx,eid,lid,vid);
   if(!s||['withdrawn','rejected','declined'].includes(String(s.live.status)))fail('public_live_unavailable',404);
@@ -41,6 +41,7 @@ async function authorize(tx:PostgresTransaction,eid:string,lid:string,vid:string
     if(viewer.projectId!==String(l.project_id))fail('public_live_unavailable',404);
   }else{
     if(viewer.actor.principal.kind!=='user'||viewer.actor.principal.userId!==String(l.customer_id)||viewer.conversationId!==String(l.conversation_id)||l.status==='draft')fail('public_live_unavailable',404);
+    if(viewer.previewRevision!==undefined&&(l.status!=='pending_owner'||Number(l.revision)!==viewer.previewRevision||String(l.previewed_version_id)!==vid))fail('public_live_unavailable',404);
   }
   return s;
 }
@@ -94,6 +95,8 @@ export async function openLiveSession(eid:string,lid:string,vid:string,viewer:Li
     await lock(tx,eid,lid);const s=await authorize(tx,eid,lid,vid,viewer);
     const current=await one(tx,sql`select id from app.construction_public_live_proxies where enterprise_id=${eid} and id=${String(p.id)} and state='ready' and expires_at>now() for update`);
     if(!current)fail('public_live_media_unavailable',503);
+    if(viewer.kind==='owner'&&viewer.previewRevision!==undefined)await tx.execute(sql`delete from app.construction_public_live_sessions
+      where enterprise_id=${eid} and live_id=${lid} and audience='owner' and actor ? 'previewRevision'`);
     const count=await one(tx,sql`select count(*) as n from app.construction_public_live_sessions where enterprise_id=${eid} and live_id=${lid} and expires_at>now()`);
     if(Number(count?.n)>=200)fail('public_live_busy',429);
     const token=randomBytes(32).toString('base64url');
@@ -104,7 +107,7 @@ export async function openLiveSession(eid:string,lid:string,vid:string,viewer:Li
       url:playbackUrl(`/api/public/construction-live/${eid}/${String(s.live.public_key)}/media/${token}/hls.m3u8`)};
   });
 }
-async function session(eid:string,key:string,token:string) {
+async function session(eid:string,key:string,token:string,update?:'segment'|'played') {
   id(eid);liveKey(key);if(!/^[A-Za-z0-9_-]{43}$/.test(token))fail('public_live_unavailable',404);
   return withTenantTransaction(eid,async tx=>{
     const row=await one(tx,sql`select s.*,p.app,p.stream from app.construction_public_live_sessions s
@@ -114,8 +117,21 @@ async function session(eid:string,key:string,token:string) {
     if(!row)fail('public_live_unavailable',404);
     const s=await authorize(tx,eid,String(row.live_id),String(row.version_id),row.actor as LiveViewer,'share');
     if(Number(s.live.revision)!==Number(row.revision))fail('public_live_unavailable',404);
+    const viewer=row.actor as LiveViewer|null;
+    if(update==='played'){
+      if(viewer?.kind!=='owner'||viewer.previewRevision===undefined||!row.first_segment_at)fail('public_live_preview_required',422);
+      if(!await one(tx,sql`update app.construction_public_live_sessions set played_at=coalesce(played_at,clock_timestamp())
+        where enterprise_id=${eid} and token_hash=${hash(token)} returning token_hash`))fail('public_live_unavailable',404);
+    }else if(update==='segment'&&viewer?.kind==='owner'&&viewer.previewRevision!==undefined&&!row.first_segment_at){
+      await tx.execute(sql`update app.construction_public_live_sessions set first_segment_at=now()
+        where enterprise_id=${eid} and token_hash=${hash(token)} and first_segment_at is null`);
+    }
     return row;
   });
+}
+export async function recordOwnerPlayback(eid:string,key:string,token:string) {
+  await session(eid,key,token,'played');
+  return {played:true};
 }
 export function rewriteLivePlaylist(text:string,source:URL,app:string,stream:string,prefix:string) {
   if(!text.startsWith('#EXTM3U')||text.length>262144||/#EXT-X-(?:KEY|MAP):/.test(text))fail('public_live_invalid_playlist',502);
@@ -168,7 +184,8 @@ export async function publicLiveMedia(request:Request,eid:string,key:string,toke
     async pull(controller){
       let phase:'authorization'|'body'|'validation'='authorization';
       try{
-        await session(eid,key,token);phase='body';const part=await reader.read();phase='authorization';await session(eid,key,token);
+        await session(eid,key,token);phase='body';const part=await reader.read();phase='authorization';
+        await session(eid,key,token,part.done&&bytes>0?'segment':undefined);
         if(part.done){diagnostic.complete();controller.close();return;}
         phase='validation';
         bytes+=part.value.byteLength;if(bytes>16*1024*1024)fail('public_live_invalid_media',502);

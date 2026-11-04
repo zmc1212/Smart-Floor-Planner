@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 
 function liveTargetSelectors(messageId, kind) {
   assert.match(String(messageId), /^[1-9]\d*$/);
-  const suffix = { action: ['.owner-live-primary', '.owner-live-primary'], scope: ['.owner-live-preview', '.owner-live-primary'], stop: ['.owner-live-stop', '.owner-live-stop'] }[kind];
+  const suffix = { action: ['.owner-live-primary', '.owner-live-primary'], scope: ['.owner-live-preview', '.owner-live-primary'], approve: ['.owner-live-approve', '.owner-live-approve'], stop: ['.owner-live-stop', '.owner-live-stop'] }[kind];
   assert.ok(suffix, 'Unknown live target kind');
   return suffix.map(child => '#message-' + messageId + ' ' + child);
 }

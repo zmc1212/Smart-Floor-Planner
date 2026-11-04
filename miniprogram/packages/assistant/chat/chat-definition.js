@@ -143,7 +143,12 @@ module.exports = () => ({
 	},
 
 	async onShow() {
-		if (!this.liveConsent) this.liveConsent = new LiveConsentController({ identity: sessionToken, emit: p => { if (this._alive && this._shown) this.setData(p); } });
+		if (!this.liveConsent) this.liveConsent = new LiveConsentController({ identity: sessionToken,
+			openPreview: (cid, receipt) => new Promise((resolve, reject) => wx.navigateTo({
+				url: '/packages/construction/camera/camera?conversationId=' + encodeURIComponent(cid)
+					+ '&liveId=' + encodeURIComponent(receipt.id) + '&versionId=' + encodeURIComponent(receipt.versionId)
+					+ '&revision=' + encodeURIComponent(receipt.revision), success: resolve, fail: reject,
+			})), emit: p => { if (this._alive && this._shown) this.setData(p); } });
 		if (!this.location) this.location = new NearbyLocationController({ identity: sessionToken, client: this.controller.client });
 		if (!this.plans) this.plans = new PlanChatController({ identity: sessionToken, client: this.controller.client, emit: p => { if (this._alive && this._shown) this.setData(p); } });
 		if (!this.publicSites) this.publicSites = new PublicChatController({ identity: sessionToken, client: this.controller.client, emit: p => { if (this._alive && this._shown) { this.setData(p); if (p.publicDetail) this.liveConsent.entry(this.data.enterpriseId, p.publicDetail.id); else if (p.publicDetail === null) this.liveConsent.set({ publicLiveEntry: null }); } } });
@@ -628,9 +633,6 @@ module.exports = () => ({
 		wx.showModal({ title: '停止公开直播', content: '仅停止这路直播，照片和服务记录的授权不变。', confirmText: '停止公开', success: async r => { if (r.confirm && await this.liveConsent.decide(id, 'withdraw')) await this.controller.refresh(); } });
 	},
 	retryLiveConsent() { return this.liveConsent.retry(); },
-	retryLivePreview(e) { return this.liveConsent.preview(String(e.currentTarget.dataset.id)); },
-	livePlaybackProgress(e) { this.liveConsent.playbackProgress(String(e.currentTarget.dataset.id), Number(e.currentTarget.dataset.attempt), e.detail.currentTime); },
-	livePlaybackError(e) { this.liveConsent.playbackFailed(String(e.currentTarget.dataset.id), Number(e.currentTarget.dataset.attempt)); },
 	watchPublicLive() {
 		const item = this.data.publicLiveEntry;
 		if (!item || !/^[a-f0-9]{48}$/.test(item.key)) return;

@@ -234,6 +234,12 @@ export async function authorizeCameraMedia(token: string, generation: number) {
     return { app: String(s.stream_app), stream: String(s.stream_id) };
   });
 }
+export async function normalizeCameraSnapshot(image: Buffer) {
+  const normalized = await sharp(image, { limitInputPixels: 32000000 }).rotate().jpeg({ quality: 88 }).toBuffer({ resolveWithObject: true });
+  if (normalized.data.length > 4194304) fail('camera_snapshot_too_large', 502);
+  return normalized;
+}
+
 export async function captureCamera(token: string, csrf: string, bindingId: string, requestKey: string, upstream = cameraWvp()) {
   key(requestKey); const { eid } = parseCameraToken(token);
   const claim = await withTenantTransaction(eid, async tx => {
@@ -258,8 +264,7 @@ export async function captureCamera(token: string, csrf: string, bindingId: stri
   if (claim.existing) return claim.existing;
   try {
     const image = await upstream.snapshot(String(claim.c!.device_id), String(claim.c!.channel_id));
-    const normalized = await sharp(image, { limitInputPixels: 32000000 }).rotate().jpeg({ quality: 88 }).toBuffer({ resolveWithObject: true });
-    if (normalized.data.length > 4194304) fail('camera_snapshot_too_large', 502);
+    const normalized = await normalizeCameraSnapshot(image);
     await withTenantTransaction(eid, async tx => {
       const s = await cameraSession(tx, token, csrf); if (!s.access.canCapture) fail('camera_forbidden', 403);
       await binding(tx, eid, s.pid, bindingId);
@@ -281,13 +286,13 @@ export async function cameraSnapshots(token: string, imageId?: string) {
     if (isCameraCustomer(s.actor) && !s.access.canCapture) fail('camera_forbidden', 403);
     if (imageId) {
       const image = await one(tx, sql`select s.data from app.construction_camera_snapshots s ${snapshotRetentionJoins}
-        where s.enterprise_id=${eid} and s.project_id=${s.pid} and s.id=${id(imageId)} and s.state='ready' and ${retainedSnapshot()}`);
+        where s.enterprise_id=${eid} and s.project_id=${s.pid} and s.id=${id(imageId)} and s.scheduled_live_version_id is null and s.state='ready' and ${retainedSnapshot()}`);
       if (!image) fail('camera_snapshot_unavailable', 404); return image;
     }
     return { items: await rows(tx, sql`select s.id,s.state,s.captured_at,s.created_at,c.name from app.construction_camera_snapshots s
       ${snapshotRetentionJoins}
       join app.construction_camera_bindings b on b.enterprise_id=s.enterprise_id and b.id=s.binding_id
       join app.construction_cameras c on c.enterprise_id=b.enterprise_id and c.id=b.camera_id
-      where s.enterprise_id=${eid} and s.project_id=${s.pid} and ${retainedSnapshot()} order by s.id desc limit 30`) };
+      where s.enterprise_id=${eid} and s.project_id=${s.pid} and s.scheduled_live_version_id is null and ${retainedSnapshot()} order by s.id desc limit 30`) };
   });
 }

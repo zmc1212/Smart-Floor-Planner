@@ -4,6 +4,7 @@ import cp from 'node:child_process';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { createHash, randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import { loadEnvConfig } from '@next/env';
 import { SignJWT } from 'jose';
 import { WechatideCliError, wechatideNativeClient } from './wechatide-native-client';
@@ -11,6 +12,7 @@ import { lockAssistantAcceptance } from './assistant-acceptance-safety.mjs';
 import { bindPublicLive,comparePublicLive } from './public-live-bindings.mjs';
 import { closePostgresPool } from '@/lib/postgresql';
 import { PublicLiveService } from '@/lib/construction/public-live/service';
+import { PublicLiveCustomer } from '@/lib/construction/public-live/customer';
 import { stopLiveProxies } from '@/lib/construction/public-live/media';
 import { PublicSiteCatalog } from '@/lib/construction/public-read';
 import type { createLiveFixture } from './public-live-fixture';
@@ -66,6 +68,14 @@ async function main(){
     save();
     const admitted=await manager.read(f.pid);assert.equal(admitted.material?.versionId,f.versionId);assert.equal(admitted.material?.key,f.key);assert.equal(admitted.material?.status,'pending_owner');
     report.native=await require(path.join(root,'admin/scripts/public-live-native.cjs'))({root,output,fixture:f,token,client:cli,diagnoseOwnerMedia,controlVideoUrl,compileReuse:report.compileReuse,assertHeld:async()=>{await release!.assertHeld();assert.deepEqual(comparePublicLive(report.before),[]);},
+      waitForWebPlayback:async()=>{
+        const owner=new PublicLiveCustomer(f.actor,f.cid);
+        for(let attempt=0;attempt<30;attempt++){
+          if((await owner.read()).items.some(card=>card.id===f.liveId&&card.playbackReady))return {engine:'Stable WebView',played:true};
+          await delay(1000);
+        }
+        throw new Error('Stable WebView did not deliver a current playback receipt');
+      },
       publish:async()=>{const v=await manager.read(f.pid);assert.equal(v.material?.status,'owner_approved');await manager.mutate(f.pid,'publish',{versionId:v.material!.versionId,expectedRevision:v.revision},randomUUID());},
       assertPhoto:async()=>{assert.equal((await new PublicSiteCatalog(f.eid).detail(f.photoId)).versionId,f.photoVersionId);}});
     report.drift=comparePublicLive(report.before);assert.deepEqual(report.drift,[]);report.passed=true;

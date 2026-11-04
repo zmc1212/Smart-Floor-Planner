@@ -3,16 +3,22 @@
     <text class="fabric-label owner-live-label">直播公开确认</text>
     <text class="owner-live-name">{{card.name}}</text>
     <view class="owner-live-heading"><text>{{card.alias}}</text><text class="owner-live-status">{{card.statusLabel}}</text></view>
-    <block wx:if="{{expanded === card.id}}">
-      <view class="owner-live-preview"><video wx:if="{{previewUrl}}" id="owner-live-video" src="{{previewUrl}}" data-id="{{card.id}}" data-attempt="{{attempt}}" autoplay muted controls="{{false}}" object-fit="contain" show-center-play-btn="{{false}}" show-play-btn="{{false}}" enable-progress-gesture="{{false}}" bindtimeupdate="livePlaybackProgress" binderror="livePlaybackError"/><view wx:else class="owner-live-connecting"><text>{{error || '正在连接授权预览'}}</text><button data-id="{{card.id}}" bindtap="retryLivePreview">重试预览</button></view></view>
+    <block wx:if="{{card.canDecide}}">
+      <view class="owner-live-preview" style="position:relative;width:100%;height:0;padding-top:56.25%;overflow:hidden">
+        <image wx:if="{{coverPath}}" src="{{coverPath}}" mode="aspectFit" style="display:block;position:absolute;left:0;top:0;width:100%;height:100%"/>
+        <view wx:else class="owner-live-connecting">暂无定时抓拍</view>
+      </view>
+      <text wx:if="{{coverPath && card.coverTime}}" class="owner-live-cover-time">抓拍于 {{card.coverTime}}</text>
+      <button class="owner-live-primary owner-live-play" data-id="{{card.id}}" data-action="preview" bindtap="liveDecision" disabled="{{busy || pending}}">播放直播</button>
+    </block>
+    <block wx:if="{{card.canDecide && card.playbackReady}}">
       <text class="fabric-label owner-live-scope-label">观看范围</text>
       <text class="owner-live-body">进入本企业公开工地页的访客均可观看，含分享链接进入。</text>
       <text class="owner-live-body">仅此机位，无声直播，不提供回放。</text>
       <text class="owner-live-body">同意后仍需企业审核，才会公开。</text>
       <view class="owner-live-rule"/>
-      <button wx:if="{{card.canDecide}}" class="owner-live-primary" data-id="{{card.id}}" data-action="approve" bindtap="liveDecision" disabled="{{busy || pending || !ready || !previewUrl}}">{{busy ? '正在核对决定…' : '同意公开这路直播'}}</button>
+      <button class="owner-live-primary owner-live-approve" data-id="{{card.id}}" data-action="approve" bindtap="liveDecision" disabled="{{busy || pending}}">{{busy ? '正在核对决定…' : '同意公开这路直播'}}</button>
     </block>
-    <button wx:elif="{{card.canDecide}}" class="owner-live-primary" data-id="{{card.id}}" data-action="preview" bindtap="liveDecision" disabled="{{busy || pending}}">查看全部画面与观看范围</button>
     <text wx:if="{{!card.available}}" class="owner-live-body">机位、业主或访问范围已有变化，原决定不再用于公开。</text>
     <view wx:if="{{card.canDecide}}" class="owner-live-options"><button data-id="{{card.id}}" data-action="decline" bindtap="liveDecision" disabled="{{busy || pending}}">暂不公开</button><text>｜</text><button data-id="{{card.id}}" data-action="later" bindtap="liveDecision" disabled="{{busy || pending}}">稍后再看</button></view>
     <button wx:if="{{card.canWithdraw}}" class="owner-live-stop" data-id="{{card.id}}" bindtap="stopPublicLive" disabled="{{busy || pending}}">{{card.status === 'published' ? '停止公开直播' : '撤回直播申请'}}</button>

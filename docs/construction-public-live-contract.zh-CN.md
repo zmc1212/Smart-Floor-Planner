@@ -2,7 +2,7 @@
 
 英文镜像：[construction-public-live-contract.md](./construction-public-live-contract.md)。执行及实际状态只维护在[小K唯一计划](./xiaok-renovation-agent-development-plan.md)第2节；本文是运行时合同，不是另一份任务队列。
 
-当前Limited：原咨询投递、Admin并发照片/重进及稳定预览已有限定实证，源码包体已修复；Mini原生完整旅程和编译/字体读取仍未验。原失败保留；真实摄像头公开和生产未授权。
+当前Limited：原咨询投递、Admin并发照片/重进及稳定预览已有限定实证，源码包体已修复；C05 隔离合成 Stable WebView 旅程已通过，C03 完整原生播放及编译/字体读取仍未验。原失败保留；真实摄像头公开和生产未授权。
 
 业主及员工媒体授权依次读取企业策略、适用的身份与咨询，再读取直播授权。源读取在直播数据行之前对启用策略持共享锁。媒体输出前继续复验授权。真实应用角色数据库屏障下，两条并发业主清单请求由 `[503,200]` 和 `40P01` 恢复为 `[200,200]`。`enterprise_admin`、`admin`、`super_admin` 返回 200。错误业主被拒，撤权后业主旧清单、分片与匿名旧清单均 404。匿名请求在策略锁等待时，策略写入方仍能获取授权行。证据见 `tmp/public-live-package/owner-preview-lock-{before01,after01}/`。
 
@@ -13,6 +13,12 @@
 共享锁后两次复验沿批准的 C05-02 v002 入口与同一 Stable 工程，显式编译后均读到 390×844 和基础库 3.17.2。两次都在 `automation_evaluate` 检查控制器归属时超时，当时尚未安装合成身份或打开原咨询。第二次在副屏无焦点显示已核窗口，并恢复原最小化状态。两批合成授权、会话和转发夹具已清理，源码绑定均无漂移。旧播放失败单列保留。本次改动后的 C05 正向播放、同意及持久重进仍待核。证据见 `tmp/public-live-package/owner-shared-lock-native-{01,02}/`。
 
 续验驱动先等待编译交接，再检查实时页面数据、专用 systemInfo 调用和控制器归属，通过后才创建合成夹具。沿批准的 C05-02 v002 卡片，预览按当前版本回执更新授权卡并保留原咨询挂载，同意后仍重读原咨询。Stable 390×844 已记录播放器正向进度。驱动按滚动方向取整，保留实测裁切边界。原负载播放至 0.975 秒后报 bufferAppendError。同尺寸、帧率、编码的 200 kbit/s VBV 对照播放至 0.960 秒后报 bufferStalledError。两次均在同意前丢失当前预览资格。C05 同意与持久重进、C03 完整播放及真实微信真机仍待核。旧失败与隔离清理保留，证据见 tmp/public-live-package/ 下的 c05-native-retain-preview-01 和 c05-native-bounded-payload-01。
+
+已批准的 C05 封面卡只显示当前绑定和直播版本最近一次有效的定时 JPEG。待业主决定且来源有效时，每 15 分钟由公开直播 Worker 通过原抓拍表和 WVP JPEG 适配器最多认领一次。封面请求重验原咨询、待决定状态和当前来源。定时封面不会进入普通私有抓拍历史或公开材料；暂无封面时，获权用户仍可打开直播。
+
+从原咨询点击播放，通过现有摄像头 WebView 打开精确版本的 C05 无声只读 H5。播放器实际解码并推进后上报；服务端仅在同一获权会话已完整输出分片时接收。重新预览使旧回执失效。返回原咨询时重读资格；同意时再次核验当前业主、身份上下文、咨询、版本、修订号及未过期回执。公开仍需企业审核。H5 播放回执以同一短会话路径的 `POST .../media/:token/played` 提交。数据变更见迁移 0117。
+
+Stable 390×844 已通过 C05 隔离合成旅程。业主看到 263×147.9375 的定时封面，通过原 WebView 实际播放 HLS，完整送出两个分片，再返回原咨询。提前提交回执和同意均被拒。实际 H5 回执启用明确同意，重进读到已同意、待企业审核。匿名播放和错误业主封面读取被拒。同槽抓拍只写一次，1553 项绑定零漂移，所属测试资源已清理。证据见 tmp/public-live-package/c05-webview-03/。
 
 ## 入口与设计
 
@@ -26,7 +32,7 @@
 | 调用者 | 入口 |
 | --- | --- |
 | 所选企业cookie | `/api/construction/public-live/:projectId` GET读取、POST保存；POST `submit`、`publish`、`reject`、`withdraw`、`session`、`reconcile` |
-| 原咨询业主bearer | `/api/miniprogram/assistant/public-live/:conversationId` GET；POST `:liveId/preview`、`approve`、`decline`、`later`、`withdraw`、`session` |
+| 原咨询业主bearer | `/api/miniprogram/assistant/public-live/:conversationId` GET；GET `:liveId/cover/:coverId`；POST `:liveId/preview`、`webview`、`approve`、`decline`、`later`、`withdraw`、`session` |
 | 匿名 | `/api/public/construction-live/:enterpriseId/site/:publicPhotoSiteId` GET当前入口；`/:publicKey` GET安全元数据；`/:publicKey/session` POST；`/:publicKey/media/:token/:resource` GET及仅媒体OPTIONS |
 
 应用响应均no-store。公开元数据仅公开名称/别名、授权版本/revision及范围，不含摄像头/绑定/设备标识、私有源地址或私聊。照片目录ID仍重验自己的来源；直播分享入口可独立于照片公开存在。

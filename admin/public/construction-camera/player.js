@@ -71,8 +71,8 @@
       }
     } catch (e) { $('history-status').textContent = message(e); }
   }
-  async function attachStream(stream,generation,live) {
-      const mode = $('mode').value, flv = window.mpegts?.getFeatureList().mseLivePlayback;
+  async function attachStream(stream,generation,live,ownerPreview=false) {
+      const mode = ownerPreview ? 'hls' : $('mode').value, flv = window.mpegts?.getFeatureList().mseLivePlayback;
       if (mode !== 'hls' && flv) {
         player = window.mpegts.createPlayer({ type: 'flv', isLive: live, url: stream.flv }, { enableWorker: false, enableStashBuffer: false, liveBufferLatencyChasing: live });
         player.on(window.mpegts.Events.ERROR, () => { if (generation === intent) { void stop(true); status('播放中断，可重新播放或切换兼容播放。', true); } });
@@ -80,7 +80,7 @@
       } else if (mode !== 'flv' && window.Hls?.isSupported()) {
         player = new window.Hls({ enableWorker: false, backBufferLength: 15, liveSyncDurationCount: 2 });
         const hls = player;
-        hls.on(window.Hls.Events.ERROR, (_, data) => { if (data.fatal && generation === intent) { void stop(true); status('播放中断，可重新播放或切换播放方式。', true); } });
+        hls.on(window.Hls.Events.ERROR, (_, data) => { if (data.fatal && generation === intent) { void stop(true); status(ownerPreview?'直播暂时无法播放，请重试。':'播放中断，可重新播放或切换播放方式。', true); } });
         hls.loadSource(stream.hls); hls.attachMedia(video); await video.play();
       } else if (mode !== 'flv' && video.canPlayType('application/vnd.apple.mpegurl')) { video.src = stream.hls; await video.play(); }
       else throw Object.assign(new Error(), { code: 'unsupported' });
@@ -131,6 +131,40 @@
       if(localStorage.getItem(preference('view'))==='playback')await setView('playback');
     } catch (e) { status(message(e), true); $('history-status').textContent = '访问不可用'; }
   }
+  function initOwnerPreview(ticket) {
+    history.replaceState(null,'',location.pathname);
+    for(const id of ['camera','live-settings','playback-panel','ptz','snapshots-section','capture']) $(id).hidden=true;
+    for(const selector of ['label[for="camera"]','.mode-tabs','.footer']) document.querySelector(selector).hidden=true;
+    $('project').textContent='工地直播预览';
+    $('stop').hidden=true;
+    video.controls=false;
+    const match=/^([1-9]\d{0,18})\.([a-f0-9]{48})\.([A-Za-z0-9_-]{43})$/.exec(ticket);
+    if(!match){status('预览入口已失效，请返回咨询重新进入。',true);return;}
+    const base='/api/public/construction-live/'+match[1]+'/'+match[2]+'/media/'+match[3];
+    let confirmed=false, reporting=false, retryAfter=0;
+    video.addEventListener('timeupdate',async()=>{
+      if(confirmed||reporting||Date.now()<retryAfter||document.hidden||video.paused||!video.videoWidth||!video.played.length||video.currentTime-video.played.start(0)<0.25)return;
+      if(video.getVideoPlaybackQuality&&video.getVideoPlaybackQuality().totalVideoFrames===0)return;
+      reporting=true;
+      try{
+        const response=await fetch(base+'/played',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',cache:'no-store'});
+        if(!response.ok||!(await response.json()).data?.played)throw new Error();
+        confirmed=true;status('已观看当前机位，可以返回咨询继续。');
+      }catch{retryAfter=Date.now()+1000;}
+      finally{reporting=false;}
+    });
+    async function start(){
+      const generation=++intent;destroy();status('正在连接直播…');
+      try{await attachStream({hls:base+'/hls.m3u8'},generation,true,true);}
+      catch{if(generation===intent)status('请点击开始播放，或返回咨询重新进入。',true);}
+    }
+    $('play').disabled=false;$('play').onclick=start;
+    video.addEventListener('error',()=>{status('直播暂时无法播放，请重试。',true);});
+    window.addEventListener('pagehide',()=>{intent++;destroy();});
+    void start();
+  }
+  const ownerPreview=new URLSearchParams(location.hash.slice(1)).get('ownerLive');
+  if(ownerPreview!==null){initOwnerPreview(ownerPreview);return;}
   $('play').onclick = play; $('stop').onclick = () => stop(); $('capture').onclick = capture; $('refresh').onclick = loadHistory;
   $('camera').onchange = async () => {recordingQuery++;await stop(true);if(viewMode==='playback')await loadRecordings();else{capabilities();status('已切换摄像头，请点击开始播放。');} };
   $('mode').onchange = () => stop(); $('close-preview').onclick = () => $('preview').close();

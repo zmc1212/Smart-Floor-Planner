@@ -91,7 +91,7 @@ module.exports=async ctx=>{
           const item={path:suffix,method};s.requests.push(item);const fault=s.failNextLive&&method==='GET'&&/^\/api\/public\/construction-live\/\d+\/[a-f0-9]{48}$/.test(suffix);if(fault)s.failNextLive=false;
           return s.request.call(wx,{...options,url:'http://127.0.0.1:'+(fault?s.port:3019)+suffix,success(r){item.status=r.statusCode;if(/\/assistant\/public-live\/\d+\/\d+\/session$/.test(suffix)&&r.data?.data?.url)s.lastOwnerSessionUrl=r.data.data.url;options.success?.(r);},fail(e){item.status='network_failure';options.fail?.(e);}});
         };
-        wx.downloadFile=options=>{const raw=String(options.url),at=raw.indexOf('/api/'),suffix=at<0?'':raw.slice(at);if(!/^\/api\/public\/construction\//.test(suffix)){options.fail?.({errMsg:'Denied unrelated media'});return {abort(){}};}return s.download.call(wx,{...options,url:'http://127.0.0.1:3019'+suffix});};
+        wx.downloadFile=options=>{const raw=String(options.url),at=raw.indexOf('/api/'),suffix=at<0?'':raw.slice(at);if(!/^\/api\/(?:public\/construction\/|miniprogram\/assistant\/public-live\/\d+\/\d+\/cover\/\d+$)/.test(suffix)){options.fail?.({errMsg:'Denied unrelated media'});return {abort(){}};}return s.download.call(wx,{...options,url:'http://127.0.0.1:3019'+suffix});};
         wx.showModal=options=>{if(options.title==='停止公开直播'){s.stopConfirmation={title:options.title,content:options.content};options.success?.({confirm:true,cancel:false});options.complete?.({confirm:true,cancel:false});return;}return s.modal.call(wx,options);};
         return {installed:true};
       });
@@ -106,65 +106,37 @@ module.exports=async ctx=>{
       report.mediaDiagnostic=await step('current owner HLS event and same-origin MP4 comparison',()=>diagnoseOwnerMedia({cli,project,fixture:f,output,controlVideoUrl:ctx.controlVideoUrl,page,ownerReady,wait,capture}));
       report.passed=true;return report;
     }
-    await step('owner opens full 16:9 preview, explicitly approves and reenters the original chat',async()=>{
-      await cli.reLaunch('/'+route+'?conversationId='+f.cid);let p=await page(route),r=await ownerReady(p);assert.equal(r.card.status,'pending_owner');
-      await cli.evaluate(()=>{
-        const s=getApp().__qaPublicLive,p=getCurrentPages().at(-1),progress=p.livePlaybackProgress,error=p.livePlaybackError;
-        s.ownerPlaybackHooks={page:p,progress,error};
-        p.livePlaybackProgress=function(e){
-          const result=progress.call(this,e),data=e.currentTarget.dataset,time=e.detail.currentTime;
-          if(this.liveConsent.state.livePreviewReady&&this.liveConsent.currentPreview(String(data.id),Number(data.attempt))&&Number.isFinite(time)&&time>0){
-            s.ownerProgress={liveId:String(data.id),attempt:Number(data.attempt),currentTime:time};
-          }
-          return result;
-        };
-        p.livePlaybackError=function(e){
-          const detail=e.detail||{},data=e.currentTarget.dataset;
-          s.ownerMediaError={attempt:Number(data.attempt),code:String(detail.errCode??detail.code??''),
-            message:String(detail.errMsg||detail.message||'').replace(/https?:\/\/[^\s]+/gi,'[media URL]').slice(0,300)};
-          return error.call(this,e);
-        };
-        return {observing:true};
-      });
-      report.ownerActionTarget=await revealNativeLiveTarget(cli,project,f.liveId,r.card.messageId,'action',wait);
-      await tap(p,liveTargetSelectors(r.card.messageId,'action')[0]);
-      if(ctx.beforeOwnerPlayback){
-        await wait(async()=>{const d=await p.data();return d.liveExpanded===f.liveId&&!d.livePreviewUrl;},'expanded connecting scope');
-        r=await ownerReady(p);
-        report.ownerConnectingTarget=await revealNativeLiveTarget(cli,project,f.liveId,r.card.messageId,'scope',wait);
-        await capture('owner-connecting-scope',route);
-        await ctx.beforeOwnerPlayback();
-      }
-      await wait(async()=>{const d=await p.data();return d.liveExpanded===f.liveId&&!d.liveBusy?d:null;},'complete live scope');
-      try{
-        await wait(async()=>{const d=await p.data();if(d.liveError&&!d.livePreviewUrl)throw Error('Current owner preview is not ready: '+d.liveError);return d.livePreviewReady&&!!d.livePreviewUrl;},'actual current-version owner preview progress');
-      }finally{
-        try{
-          const media=await cli.evaluate(()=>{const s=getApp().__qaPublicLive;return {progress:s.ownerProgress||null,error:s.ownerMediaError||null};});
-          report.ownerProgress=media.progress;report.ownerMediaError=media.error;
-        }catch(error){report.ownerMediaObservationError=error.message;}
-        save();
-      }
-      assert.equal(report.ownerProgress?.liveId,f.liveId);
-      assert.equal(report.ownerProgress.attempt,(await p.data()).livePreviewAttempt);
-      assert.ok(report.ownerProgress.currentTime>0);
-      r=await ownerReady(p);report.ownerScopeTarget=await revealNativeLiveTarget(cli,project,f.liveId,r.card.messageId,'scope',wait);
-      if(ctx.beforeOwnerPlayback)assert.equal(report.ownerScopeTarget.observations.length,1,'Scope moved after playback began');
-      else{
-        await capture('owner-full-scope',route);
-        const hostFile=path.join(output,'owner-full-host.png');
-        try{report.ownerHost=host(path.join(root,'tmp/v1-02-human-takeover/host-passive.ps1'),['-OutputPath',hostFile]);}
-        catch(e){report.ownerHost={captured:false,error:e.message,scope:'Optional optical evidence; no focus/capture retry'};}
-      }
-      const target=report.ownerScopeTarget.observations.at(-1).measurement,metrics=[target.start,null,target.end];
-      assert.ok(metrics[0]?.width>200);assert.ok(Math.abs(metrics[0].width/metrics[0].height-16/9)<0.03);assert.ok(metrics[2]?.height>=44);report.ownerBounds=metrics;
-      const ready=await p.data();assert.ok(ready.livePreviewReady&&ready.livePreviewUrl&&ready.livePreviewAttempt===report.ownerProgress.attempt,'Current preview stopped before consent');
-      await tap(p,liveTargetSelectors(r.card.messageId,'action')[0]);await wait(async()=>{const d=await p.data();return Object.values(d.liveCards||{}).some(c=>c.id===f.liveId&&c.status==='owner_approved');},'persisted owner approval');
-      await cli.reLaunch('/'+route+'?conversationId='+f.cid);p=await page(route);r=await ownerReady(p);assert.equal(r.card.status,'owner_approved');
+
+    await step('owner sees the scheduled cover, opens H5, approves and reenters the original chat',async()=>{
+      await cli.reLaunch('/'+route+'?conversationId='+f.cid);
+      let p=await page(route),r=await ownerReady(p);
+      assert.equal(r.card.status,'pending_owner');
+      assert.equal(r.card.playbackReady,false);
+      await wait(async()=>{const d=await p.data();return d.liveCoverPaths?.[r.card.cover?.id];},'authorized scheduled cover');
+      const playSelector='#message-'+r.card.messageId+' .owner-live-play';
+      const approveSelector='#message-'+r.card.messageId+' .owner-live-approve';
+      assert.equal(await p.$(approveSelector),null);
+      report.ownerActionTarget=await revealNativeLiveTarget(cli,project,f.liveId,r.card.messageId,'scope',wait);
+      const frame=report.ownerActionTarget.observations.at(-1).measurement.start;
+      assert.ok(Math.abs(frame.width/frame.height-16/9)<0.03,'Scheduled cover frame must be 16:9');
+      await capture('owner-cover',route);
+      await tap(p,playSelector);
+      const camera='packages/construction/camera/camera',viewer=await page(camera);
+      const src=await wait(async()=>{const d=await viewer.data();if(!d.loading&&d.error)throw Error(d.error);return d.src;},'authorized H5 entry');
+      assert.match(src,/\/construction-camera#ownerLive=/);
+      report.webPlayback=await ctx.waitForWebPlayback(src);
+      await cli.evaluate(()=>{wx.navigateBack({delta:1});return {requested:true};});
+      p=await page(route);
+      r=await wait(async()=>{const current=await ownerReady(p);return current.card.playbackReady?current:null;},'persisted playback receipt in the original chat',18);
+      report.ownerApprovalTarget=await revealNativeLiveTarget(cli,project,f.liveId,r.card.messageId,'approve',wait);
+      await tap(p,'#message-'+r.card.messageId+' .owner-live-approve');
+      await wait(async()=>{const d=await p.data();return Object.values(d.liveCards||{}).some(c=>c.id===f.liveId&&c.status==='owner_approved');},'persisted owner approval');
+      await cli.reLaunch('/'+route+'?conversationId='+f.cid);
+      p=await page(route);r=await ownerReady(p);assert.equal(r.card.status,'owner_approved');
       report.ownerReentryTarget=await revealNativeLiveTarget(cli,project,f.liveId,r.card.messageId,'stop',wait);
       await capture('owner-reentry',route);return {originalConversation:f.cid,status:r.card.status,actualTaps:true};
     });
-    if(ctx.ownerOnly){report.scope='Owner HLS preview, approval and original chat reentry only';report.passed=true;return report;}
+    if(ctx.ownerOnly){report.scope='Owner H5 preview, approval and original chat reentry only';report.passed=true;return report;}
     await step('real manager review then anonymous detail entry, actual video playback and pause',async()=>{
       await ctx.publish();
       await cli.evaluate(()=>{const app=getApp(),s=app.__qaPublicLive;s.ownerIdentity={token:app.globalData.token,userInfo:app.globalData.userInfo,bootstrap:app.globalData.bootstrap};s.memory.set('token','');s.memory.set('userInfo',null);app.globalData.token='';app.globalData.userInfo=null;app.globalData.bootstrap=null;return {anonymous:true};});
@@ -195,7 +167,7 @@ module.exports=async ctx=>{
     report.passed=true;return report;
   }catch(e){report.passed=false;report.error=e.stack;report.cliFailure=e.toJSON?.();try{await ctx.assertHeld();const target=(await cli.currentPage())?.path;if(target)await capture('failure',target);}catch(x){report.captureError=x.message;}throw e;}
   finally{
-    try{if(cli&&installed){report.restored=await cli.evaluate(()=>{const app=getApp(),s=app.__qaPublicLive;if(!s)return {restored:true,absent:true};const hook=s.ownerPlaybackHooks;if(hook){hook.page.livePlaybackProgress=hook.progress;hook.page.livePlaybackError=hook.error;}for(const p of getCurrentPages()){p.liveConsent?.clear();p.publicSites?.clear();p.controller?.hide();p.clear?.();}wx.request=s.request;wx.downloadFile=s.download;wx.getStorageSync=s.get;wx.setStorageSync=s.set;wx.removeStorageSync=s.remove;wx.showModal=s.modal;app.hydrateStoredSession=s.hydrate;for(const k of Object.keys(app.globalData))if(!(k in s.saved))delete app.globalData[k];Object.assign(app.globalData,s.saved);delete app.__qaPublicLive;return {restored:true,requests:s.requests};});await cli.reLaunch('/pages/index/index');}}
+    try{if(cli&&installed){report.restored=await cli.evaluate(()=>{const app=getApp(),s=app.__qaPublicLive;if(!s)return {restored:true,absent:true};for(const p of getCurrentPages()){p.liveConsent?.clear();p.publicSites?.clear();p.controller?.hide();p.clear?.();}wx.request=s.request;wx.downloadFile=s.download;wx.getStorageSync=s.get;wx.setStorageSync=s.set;wx.removeStorageSync=s.remove;wx.showModal=s.modal;app.hydrateStoredSession=s.hydrate;for(const k of Object.keys(app.globalData))if(!(k in s.saved))delete app.globalData[k];Object.assign(app.globalData,s.saved);delete app.__qaPublicLive;return {restored:true,requests:s.requests};});await cli.reLaunch('/pages/index/index');}}
     catch(e){report.cleanupError=e.stack;report.passed=false;throw e;}
     finally{await new Promise(r=>server.close(r));save();}
   }

@@ -7,9 +7,9 @@ import type { ConstructionActor } from '../contracts';
 import { publishedPublicMaterial } from '../public-read';
 import { PublicLiveService } from './service';
 import { PublicLiveCustomer } from './customer';
-import { liveKey, liveResource } from './contract';
+import { liveDecision, liveKey, liveResource } from './contract';
 import { liveMediaCorsHeaders, liveMediaPreflight } from './media-cors';
-import { openLiveSession, publicLiveDetail, publicLiveMedia, reconcileLiveProxies, stopLiveProxies, type LiveViewer } from './media';
+import { openLiveSession, publicLiveDetail, publicLiveMedia, reconcileLiveProxies, recordOwnerPlayback, stopLiveProxies, type LiveViewer } from './media';
 
 const headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'};
 export const liveJson=(data:unknown)=>NextResponse.json({success:true,data},{headers});
@@ -50,8 +50,16 @@ export async function staffLiveHttp(request:Request,actor:ConstructionActor,pid:
 export async function ownerLiveHttp(request:Request,actor:ActorContext,cid:string,path:string[]) {
   noQuery(request);const service=new PublicLiveCustomer(actor,id(cid));
   if(!path.length&&request.method==='GET')return liveJson(await service.read());
+  if(request.method==='GET'&&path.length===3&&path[1]==='cover'){
+    const cover=await service.cover(id(path[0]),id(path[2]));
+    return new Response(new Uint8Array(cover),{headers:{...headers,'Content-Type':'image/jpeg'}});
+  }
   if(request.method!=='POST'||path.length!==2)fail('public_live_unavailable',404);
   const lid=id(path[0]),value=await body(request);
+  if(path[1]==='webview'){
+    const {versionId,expectedRevision}=liveDecision(value);
+    return sessionFor(actor.enterpriseId,lid,versionId,{kind:'owner',actor,conversationId:cid,previewRevision:expectedRevision});
+  }
   if(path[1]==='session'){
     if(Object.keys(value).some(k=>k!=='versionId'))fail('invalid_public_live',422);
     return sessionFor(actor.enterpriseId,lid,id(value.versionId),{kind:'owner',actor,conversationId:cid});
@@ -78,6 +86,10 @@ export async function anonymousLiveHttp(request:Request,eid:string,path:string[]
     const l=await withTenantTransaction(eid,tx=>one(tx,sql`select id,current_version_id from app.construction_public_live where enterprise_id=${eid} and public_key=${publicKey}`));
     if(!l)fail('public_live_unavailable',404);
     return sessionFor(eid,String(l.id),String(l.current_version_id),{kind:'public'});
+  }
+  if(path[1]==='media'&&path[3]==='played'&&path.length===4&&request.method==='POST'){
+    if(!request.headers.get('content-type')?.startsWith('application/json')||Object.keys(await body(request)).length)fail('invalid_public_live',422);
+    return liveJson(await recordOwnerPlayback(eid,publicKey,path[2]));
   }
   if(path[1]==='media'&&path.length>=4&&['GET','OPTIONS'].includes(request.method)){
     const resource=liveResource(path.slice(3).join('/'));
