@@ -2,23 +2,28 @@ import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fingerprint, type ActorContext } from '@/lib/assistant/contracts';
+import type { ReportWorkmanshipStage } from '@/lib/assistant/contracts/professional';
 import { currentRecord } from './site-issues';
 import { publishedSiteRecord } from './site-publications';
 import { siteAccessRevoked } from './site-access';
 import { collectReportItems, collectCustomerReportItems, reportItemsAvailable, customerReportItemsAvailable, type ReportItems, type CustomerReportItems } from './report-items';
+import { readStageSettings } from './stages-store';
 
 export type FollowupAudience = 'customer' | 'worker' | 'designer' | 'boss';
 // Existing lifecycle fields: paused/archived status, completion/move_in stages.
 // Historical reads deliberately do not use this scheduling-only predicate.
 export const activeReportProject = sql`p.status='active' and coalesce(p.current_stage_key,'') not in ('completion','move_in')`;
 export const reportAudienceEnabled = (settings: Row, binding: Row) => !Array.isArray(settings.audiences) || settings.audiences.includes(String(binding.audience));
-export type ReportRecord = { id: string; version: number; hash: string; publishedAt: string; room: string; data: Row };
+export type ReportRecord = { id: string; version: number; hash: string; publishedAt: string; room: string; data: Row; publishedStageKey?: string };
 export type ReportProject = Partial<ReportItems & CustomerReportItems> & { id: string; name: string; stageKey: string | null; progressRevision: number;
+  weekOpeningStage?: ReportWorkmanshipStage; weekStageNames?: Record<string, string>;
   stageEvents: Array<{ id: string; revision: number; stageKey: string; at: string }>;
   stageEventsTruncated: boolean; records: ReportRecord[]; recordsTruncated: boolean; noPublishedRecords: boolean };
 export type ReportFacts = { protocol: 'construction-report-facts-v1'; projects: ReportProject[]; projectsTruncated: boolean;
   knowledgeStatus: 'not_generated'; arrangementsStatus: 'not_aggregated' | 'aggregated' | 'original_consultation_only';
   issuesStatus: 'not_aggregated' | 'aggregated' | 'original_consultation_only' | 'published_records_only' };
+
+const reportDate = (value: unknown) => value instanceof Date ? value : new Date(String(value));
 
 /** Server-only routing actor. HTTP assembly must use followup.self plus its
  * existing signed Mini/Web identity; this capability never comes from input. */
@@ -83,14 +88,29 @@ export async function hasLateReportRecord(tx: PostgresTransaction, eid: string, 
  * recorded-time boundary; it is not a claim about when construction occurred. */
 export async function collectReportFacts(tx: PostgresTransaction, eid: string, binding: Row, report: Row, settings: Row): Promise<ReportFacts> {
   const projectIds = settings.project_ids as string[], stageKeys = settings.stage_keys as string[];
+  const weekly = report.kind === 'weekly';
+  const stageSettings = weekly ? (await readStageSettings(tx, eid)).stages : [];
   const projects = (await followupProjects(tx, eid, binding, true, projectIds, stageKeys))
     .filter(p => !report.stage_event_id || String(p.id) === String((report.stage_event as Row)?.aggregate_id));
   const result: ReportProject[] = [];
   for (const p of projects.slice(0, 20)) {
     const pid = String(p.id);
+    const start = reportDate(report.period_start), cutoff = reportDate(report.cutoff_at);
+    const events = await rows(tx, sql`select id,aggregate_version,payload,created_at from app.domain_event_outbox
+      where enterprise_id=${eid} and type='construction.stage.updated.v1' and aggregate_id=${pid}
+      and created_at<${cutoff} order by aggregate_version desc limit 31`);
+    const latest = events[0], stageKey = latest ? String((latest.payload as Row).stageKey) : null;
+    const opening = weekly ? events.find(event => reportDate(event.created_at) < start)
+      || (events.length === 31 ? await one(tx, sql`select aggregate_version,payload,created_at from app.domain_event_outbox
+        where enterprise_id=${eid} and type='construction.stage.updated.v1' and aggregate_id=${pid}
+        and created_at<${start} order by aggregate_version desc limit 1`) : undefined) : undefined;
+    const stageEvents = events.slice(0, 30).filter(e => reportDate(e.created_at) >= start).reverse().map(e => ({
+      id: String(e.id), revision: Number(e.aggregate_version), stageKey: String((e.payload as Row).stageKey), at: reportDate(e.created_at).toISOString() }));
+    const weekOpeningStage = opening ? { key: String((opening.payload as Row).stageKey), revision: Number(opening.aggregate_version) } : undefined;
     const candidates = report.kind === 'stage' ? [] : await rows(tx, sql`select r.id from app.construction_site_records r
       where r.enterprise_id=${eid} and r.project_id=${pid} and r.status='published' and r.published_at>=${report.period_start as Date}
       and r.published_at<${report.period_end as Date}
+      ${weekly ? sql`and r.published_at<${cutoff}` : sql``}
       and (${binding.audience !== 'customer'} or (r.audience='customer' and r.published_customer_id=${binding.user_id ? String(binding.user_id) : null}))
       order by r.published_at,r.id limit 51`);
     const records: ReportRecord[] = [];
@@ -98,22 +118,23 @@ export async function collectReportFacts(tx: PostgresTransaction, eid: string, b
       const source = await accessibleRecord(tx, eid, binding, pid, String(candidate.id));
       if (!source) continue;
       const r = source.row;
+      const publishedAt = reportDate(r.published_at);
+      const recordedStage = weekly && !events.some(event => +reportDate(event.created_at) === +publishedAt)
+        ? events.find(event => reportDate(event.created_at) < publishedAt) : undefined;
+      const publishedStageKey = recordedStage ? String((recordedStage.payload as Row).stageKey) : undefined;
       records.push({ id: String(r.id), version: Number(r.published_version), hash: source.hash,
-        publishedAt: new Date(String(r.published_at)).toISOString(), room: String(r.room_name_snapshot), data: r.data as Row });
+        publishedAt: publishedAt.toISOString(), room: String(r.room_name_snapshot), data: r.data as Row,
+        ...(publishedStageKey ? { publishedStageKey } : {}) });
     }
-    const events = await rows(tx, sql`select id,aggregate_version,payload,created_at from app.domain_event_outbox
-      where enterprise_id=${eid} and type='construction.stage.updated.v1' and aggregate_id=${pid}
-      and created_at<${report.cutoff_at as Date} order by aggregate_version desc limit 31`);
-    const latest = events[0], stageKey = latest ? String((latest.payload as Row).stageKey) : null;
-    const start = new Date(String(report.period_start)), cutoff = new Date(String(report.cutoff_at));
     const items = report.kind === 'stage' ? {} : binding.audience === 'customer'
       ? await collectCustomerReportItems(tx, eid, pid, String(binding.user_id), start, cutoff,
         rid => accessibleRecord(tx, eid, binding, pid, rid))
       : await collectReportItems(tx, eid, pid, start, cutoff, async rid => !!await accessibleRecord(tx, eid, binding, pid, rid));
     // Unknown history stays unknown; the current stage must not rewrite an old period.
     result.push({ ...items, id: pid, name: String(p.name), stageKey, progressRevision: Number(latest?.aggregate_version || 0),
-      stageEvents: events.slice(0, 30).filter(e => new Date(String(e.created_at)) >= new Date(String(report.period_start))).reverse().map(e => ({
-        id: String(e.id), revision: Number(e.aggregate_version), stageKey: String((e.payload as Row).stageKey), at: new Date(String(e.created_at)).toISOString() })),
+      stageEvents, ...(weekOpeningStage ? { weekOpeningStage } : {}),
+      ...(weekly ? { weekStageNames: Object.fromEntries(stageSettings.filter(stage => stage.key === stageKey || stage.key === weekOpeningStage?.key
+        || stageEvents.some(event => event.stageKey === stage.key)).map(stage => [stage.key, stage.name])) } : {}),
       stageEventsTruncated: events.length > 30, records, recordsTruncated: candidates.length > 50, noPublishedRecords: records.length === 0 });
   }
   const itemsStatus = report.kind === 'stage' ? 'not_aggregated' : binding.audience === 'customer' ? 'original_consultation_only' : 'aggregated';

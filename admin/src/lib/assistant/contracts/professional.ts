@@ -11,6 +11,7 @@ export type ProfessionalKnowledge = {
   review: { note: string; adminId: string; reviewedAt: string };
 };
 export type KnowledgeContext = { stage?: string; projectId?: string; revision?: number; leadId?: string };
+export type ReportWorkmanshipStage = { key: string; revision: number };
 export type Applicability = { status: 'applicable' | 'unknown' | 'not_applicable'; matched: string[]; missing: string[]; mismatched: string[] };
 export type ProfessionalEvidence = {
   documentId: string; title: string; contentHash: string;

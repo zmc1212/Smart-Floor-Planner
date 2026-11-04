@@ -3,13 +3,15 @@ import { withTenantTransaction, type PostgresTransaction } from '@/db/transactio
 import { one, type Row } from '@/db/repositories/assistant-repository';
 import { AssistantError, fail, fingerprint, type Evidence, type KnowledgeRetriever } from '@/lib/assistant/contracts';
 import type { ModelMessage, ModelTool, ModelTurnOutput } from '@/lib/assistant/contracts/model';
+import type { ReportWorkmanshipStage } from '@/lib/assistant/contracts/professional';
 import { executePostgresText } from '@/lib/ai/postgres-workflow-chat';
 import { agentConfig } from '@/lib/assistant/agent/config';
 import { runRenovationAgent, type AgentCheckpoint } from '@/lib/assistant/agent/runtime';
 import { agentRequestBudget, fitAgentContext } from '@/lib/assistant/agent/context-budget';
 import { boundReportBodyFactCoverage, boundReportBodyFinal, boundReportBodyWire, boundReportFinalCarrier, boundReportGuidanceInput, boundReportGuidanceReview, reportBodyFinalProtocol, reportGuidanceOnlyProtocol, reportGuidanceOriginalProtocol, reportGuidanceSelectionProtocol, reportGuidanceTaskProtocol, reportPendingGuidanceProtocol, reportGuidanceReviewProtocol } from '@/lib/assistant/agent/report-native-final';
 import { consultationRequestReservation, reserveConsultationDispatch, settleConsultationDispatch } from '@/lib/assistant/agent/consultation-usage';
-import { businessSynthesisSources, knowledgeSynthesisSources, type SynthesisContext } from '@/lib/assistant/agent/synthesis';
+import { businessSynthesisSources, knowledgeSynthesisSources } from '@/lib/assistant/agent/synthesis';
+import { sourceCitationCatalog } from '@/lib/assistant/agent/citation-catalog';
 import { synthesisContextAvailable } from '@/lib/assistant/agent/synthesis-sources';
 import { reportFactText } from '@/lib/assistant/agent/report-context';
 import type { BusinessSnapshot } from '@/lib/assistant/agent/business-tools';
@@ -18,14 +20,14 @@ import { resolveEvidence } from '@/lib/assistant/knowledge/sources';
 import { embeddingGateway } from '@/lib/assistant/infrastructure/embedding-gateway';
 import { consultationProfile } from '@/lib/assistant/contracts/consultation';
 import { completeReportComposition, failRun, heartbeat, runContext, type Lease } from '@/lib/assistant/infrastructure/job-queue';
-import { followupAvailable, followupProjects, type FollowupAudience, type ReportFacts } from './report-scope';
+import { followupAvailable, followupProjects, type FollowupAudience, type ReportFacts, type ReportProject } from './report-scope';
 import { reportContextProtocol, resolveReportReference, type ReportReference } from './report-reference';
-import { parseReportBody, projectReportBodyFinal, reportCompositionProtocol, reportFinalTool, reportFlatFinalTool, reportMessages } from './report-composition';
+import { parseReportBody, projectReportBodyFinal, reportCompositionProtocol, reportFinalTool, reportFlatFinalTool, reportMessages, type ComposedProject, type ReportCompositionScope } from './report-composition';
 import { assertReportGuidanceReview, prepareReportGuidanceReview, reportGuidanceFactText, reportGuidanceItems, reportGuidanceProject } from './report-guidance-review';
 import { projectReportGuidanceOnly, reportGuidanceChoices, reportGuidanceFinalTool, reportGuidanceStandardSources } from './report-guidance-final';
+import { reportWorkmanshipMatches, reportWorkmanshipName, reportWorkmanshipProtocol, reportWorkmanshipQuery, reportWorkmanshipStages } from './report-workmanship';
 
-type ProjectContext = { projectId: string; selection: ReportReference; context: SynthesisContext; guidanceItems?: string[] };
-type Composition = { protocol: typeof reportCompositionProtocol; reportId: string; revision: number; bindingId: string; dispatchEpoch: number; factsHash: string };
+type ProjectContext = Pick<ComposedProject, 'projectId' | 'selection' | 'context' | 'weekWorkmanship'> & { guidanceItems?: string[] };
 function selectedConversation(c: Row, selection: ReportReference): Row {
   // A private in-memory view for this run's original project. Never write the
   // selection to the user's current chat or consume their chat history/memory.
@@ -33,8 +35,9 @@ function selectedConversation(c: Row, selection: ReportReference): Row {
     reportContext: { protocol: reportContextProtocol, revision: 0, selection } } };
 }
 async function reportGuard(tx: PostgresTransaction, lease: Lease) {
-  const context = await runContext(tx, lease), scope = (context.run.policy_snapshot as Row).reportComposition as Composition;
+  const context = await runContext(tx, lease), scope = (context.run.policy_snapshot as Row).reportComposition as ReportCompositionScope;
   if (context.run.purpose !== 'construction.report.compose' || scope?.protocol !== reportCompositionProtocol) fail('context_changed');
+  if (scope.workmanship !== undefined && scope.workmanship !== reportWorkmanshipProtocol) fail('context_changed');
   const report = await one(tx, sql`select r.*,v.facts,v.facts_hash,v.generated_at,v.period_end as fact_period_end,v.cutoff_at as fact_cutoff_at,
     v.body_run_id from app.construction_reports r join app.construction_report_versions v
     on v.enterprise_id=r.enterprise_id and v.report_id=r.id join app.assistant_runs parent
@@ -109,21 +112,21 @@ export async function processReportComposition(lease: Lease, dependencies: {
           factsGeneratedAt: context.report.generated_at, projectsTruncated: (context.report.facts as ReportFacts).projectsTruncated } };
     });
     projects = initial.projects;
-    for (const [index, project] of projects.entries()) {
-      const sequence = 800 + index;
+    async function readWorkmanship(project: ProjectContext, sequence: number, query: string, stage?: ReportWorkmanshipStage) {
+      const sourceRefs = stage ? { selection: project.selection, stage, query } : project.selection;
       const saved = await scoped(async tx => one(tx, sql`select * from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
         and run_id=${lease.runId} and step_seq=${sequence}`));
       let evidence: Evidence[];
       if (saved) {
-        if (saved.status !== 'succeeded' || fingerprint(saved.source_refs) !== fingerprint(project.selection)) fail('retrieval_outcome_unknown', 502);
+        if (saved.status !== 'succeeded' || fingerprint(saved.source_refs) !== fingerprint(sourceRefs)) fail('retrieval_outcome_unknown', 502);
         evidence = saved.private_checkpoint as Evidence[];
       } else {
         await scoped(async tx => {
           await projectConversation(tx, lease, project);
           await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,source_refs)
-            values(${lease.enterpriseId},${lease.runId},${sequence},'agent_knowledge','knowledge.search.v1',1,'running',${JSON.stringify(project.selection)}::jsonb)`);
+            values(${lease.enterpriseId},${lease.runId},${sequence},'agent_knowledge','knowledge.search.v1',1,'running',${JSON.stringify(sourceRefs)}::jsonb)`);
         });
-        const gateway = embeddingGateway(), operation = `report-query:${lease.runId}:${project.projectId}`;
+        const gateway = embeddingGateway(), operation = `report-query:${lease.runId}:${project.projectId}` + (stage ? `:${stage.revision}` : '');
         const metered = { ...gateway, embed: async (...args: Parameters<typeof gateway.embed>) => {
           await scoped(async tx => tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,operation_key,category,measurement_kind)
             values(${lease.enterpriseId},${lease.runId},${operation},'query_embedding','unavailable')`));
@@ -134,9 +137,9 @@ export async function processReportComposition(lease: Lease, dependencies: {
           return result;
         } };
         const retriever = dependencies.retriever || conversationKnowledgeRetriever(String(initial.conversation.id), metered,
-          { authorize: tx => projectConversation(tx, lease, project) });
-        const factProject = initial.projects[index].context.snapshots[0].data as Array<{ stageKey?: string }>;
-        evidence = await retriever.retrieve(lease.actor, `施工${initial.scope.kind === 'weekly' ? '周报' : '日报'} ${factProject[0].stageKey || '阶段待确认'} 工艺要求 操作核对 验收注意事项`, Number(initial.run.knowledge_epoch));
+          { authorize: tx => projectConversation(tx, lease, project), ...(stage ? { reportStage: stage } : {}) });
+        evidence = await retriever.retrieve(lease.actor, query, Number(initial.run.knowledge_epoch));
+        if (stage) evidence = evidence.map(item => ({ ...item, reportStage: stage }));
         await scoped(async tx => {
           const c = await projectConversation(tx, lease, project);
           for (const e of evidence) if (!await resolveEvidence(tx, lease.actor, c, e)) fail('context_changed');
@@ -153,8 +156,31 @@ export async function processReportComposition(lease: Lease, dependencies: {
         }
         return names;
       });
-      project.context.knowledge = evidence;
-      project.context.sources.push(...knowledgeSynthesisSources(evidence, titles));
+      return knowledgeSynthesisSources(evidence, titles);
+    }
+    const weeklyWorkmanship = initial.scope.workmanship === reportWorkmanshipProtocol && initial.scope.kind === 'weekly' && initial.selectGuidance;
+    for (const [index, project] of projects.entries()) {
+      const [facts] = project.context.snapshots[0].data as ReportProject[];
+      if (!weeklyWorkmanship) {
+        const sources = await readWorkmanship(project, 800 + index,
+          `施工${initial.scope.kind === 'weekly' ? '周报' : '日报'} ${facts.stageKey || '阶段待确认'} 工艺要求 操作核对 验收注意事项`);
+        project.context.knowledge = sources.map(source => source.evidence!);
+        project.context.sources.push(...sources);
+        continue;
+      }
+      const { stages, truncated } = reportWorkmanshipStages(facts);
+      project.weekWorkmanship = { stages: [], truncated };
+      for (const [stageIndex, stage] of stages.entries()) {
+        const name = reportWorkmanshipName(stage, facts), { query, waterproof } = reportWorkmanshipQuery(stage, facts);
+        const sources = await readWorkmanship(project, 20000 + index * 10 + stageIndex, query, stage);
+        const eligible = sources.filter(source => source.evidence && reportWorkmanshipMatches(source.evidence, stage, name, waterproof)
+          && sourceCitationCatalog(source).length);
+        const source = eligible.find(candidate => candidate.evidence?.file) ?? eligible[0];
+        project.weekWorkmanship.stages.push({ name, ...(source ? { sourceId: source.sourceId } : {}) });
+        if (!source) continue;
+        project.context.knowledge.push(source.evidence!);
+        if (!project.context.sources.some(candidate => candidate.sourceId === source.sourceId)) project.context.sources.push(source);
+      }
     }
     const authorize = () => scoped(async tx => {
       for (const p of projects) if (!await synthesisContextAvailable(tx, lease.actor, await projectConversation(tx, lease, p), p.context)) fail('context_changed');
@@ -253,8 +279,8 @@ export async function processReportComposition(lease: Lease, dependencies: {
     }
     const visibleProjects = initial.preferOriginal ? projects.map(project => ({ ...project,
       context: { ...project.context, sources: [...project.context.sources.filter(source => source.kind !== 'knowledge'),
-        ...reportGuidanceStandardSources(project, true)] } })) : projects;
-    const result = await runRenovationAgent({ messages: reportMessages(initial.scope, visibleProjects, fixedSlots, flatSegments, quotedSegments, guidanceSection, guidanceOnly, choices), tools: [], resume: initial.resume, ports: {
+        ...(weeklyWorkmanship ? [] : reportGuidanceStandardSources(project, true))] } })) : projects;
+    const result = await runRenovationAgent({ messages: reportMessages(initial.scope, visibleProjects, fixedSlots, flatSegments, quotedSegments, guidanceSection, guidanceOnly, choices, weeklyWorkmanship), tools: [], resume: initial.resume, ports: {
       authorize,
       tool: async () => fail('assistant_capability_forbidden', 403),
       checkpoint: state => scoped(async tx => {

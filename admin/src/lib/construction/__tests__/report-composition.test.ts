@@ -6,6 +6,9 @@ import { toolSchemaIssue } from '@/lib/assistant/agent/tool-protocol';
 import type { SynthesisContext } from '@/lib/assistant/agent/synthesis';
 import type { ReportReference } from '../report-reference';
 import { projectReportGuidanceOnly, reportGuidanceChoices, reportGuidanceFinalTool } from '../report-guidance-final';
+import { reportWorkmanshipKnowledgeContext, reportWorkmanshipMatches, reportWorkmanshipName, reportWorkmanshipQuery, reportWorkmanshipStages } from '../report-workmanship';
+import type { ReportProject } from '../report-scope';
+import type { Evidence } from '@/lib/assistant/contracts';
 
 const selection: ReportReference = { bindingId: '7', reportId: '8', revision: 1, projectId: '9', conversationId: '10',
   kind: 'daily', periodStart: '2026-11-01T16:00:00.000Z', periodEnd: '2026-11-02T12:00:00.000Z', cutoffAt: '2026-11-02T12:00:00.000Z', factsHash: 'frozen' };
@@ -56,6 +59,34 @@ test('a scheduled recommendation can select a current pending item and cannot pu
     assert.ok(await toolSchemaIssue(tool, bad));
     assert.throws(() => projectReportGuidanceOnly(bad, [project], choices), /invalid_model_citation/);
   }
+});
+test('weekly workmanship follows saved stage history and rejects installation keyword collisions', async () => {
+  const waterproof = { key: 'masonry_carpentry', revision: 2 }, install = { key: 'installation', revision: 3 };
+  const facts: ReportProject = { id: '9', name: '合成周报工地', stageKey: install.key, progressRevision: install.revision,
+    weekOpeningStage: waterproof, stageEvents: [{ id: '5', revision: install.revision, stageKey: install.key, at: selection.cutoffAt }],
+    stageEventsTruncated: false, records: [{ id: '80', version: 1, hash: 'test', publishedAt: selection.periodStart,
+      room: '卫生间', publishedStageKey: waterproof.key, data: { pending: '卫生间防水做完后再核对闭水条件' } }], recordsTruncated: false, noPublishedRecords: false };
+  assert.deepEqual(reportWorkmanshipStages(facts), { stages: [waterproof, install], truncated: false });
+  assert.deepEqual(reportWorkmanshipKnowledgeContext(facts, '60', waterproof), { projectId: '9', leadId: '60', stage: waterproof.key, revision: 2 });
+  assert.equal(reportWorkmanshipKnowledgeContext(facts, '60', { ...waterproof, revision: 90 }), undefined);
+  assert.match(reportWorkmanshipQuery(waterproof, facts).query, /泥木 防水/);
+  assert.doesNotMatch(reportWorkmanshipQuery(install, facts).query, /防水/);
+  const original: Evidence = { ref: { type: 'knowledge_chunk', id: '2835', version: '411' }, hash: 'real-heading-control',
+    text: '防水工艺标准：1、基层找平：防水前，地基放坡找平。' };
+  const wrong = { ...original, text: '水电工艺标准：水管安装后，用管卡进行固定。' };
+  assert.ok(reportWorkmanshipMatches(original, waterproof, '泥木', true));
+  assert.equal(reportWorkmanshipMatches(original, waterproof, '泥木', false), false);
+  assert.equal(reportWorkmanshipMatches(wrong, install, '安装', false), false);
+  const custom = { key: 'constructor', revision: 4 };
+  assert.equal(reportWorkmanshipName(custom, { ...facts, weekStageNames: {} }), custom.key);
+  assert.equal(reportWorkmanshipMatches(wrong, custom, custom.key, false), false);
+  const scoped = { ...project, context: { ...context, sources: [context.sources[0], { ...context.sources[1], text: original.text, evidence: original }] },
+    weekWorkmanship: { stages: [{ name: '泥木', sourceId: 'K100' }, { name: '安装' }], truncated: false } };
+  const choices = [reportGuidanceChoices(scoped, [])], raw = JSON.stringify({ P1_guidance: choices[0][0].id });
+  assert.equal(await toolSchemaIssue(reportGuidanceFinalTool([scoped], choices, true), raw), null);
+  assert.ok(await toolSchemaIssue(reportGuidanceFinalTool([scoped], choices, true), JSON.stringify({ ...JSON.parse(raw), P1_standard: 'K100' })));
+  const result = parseReportBody(projectReportGuidanceOnly(raw, [scoped], choices, true), [scoped], true).projects[0];
+  assert.deepEqual(result.sections.standards.segments.map(item => item.text), [original.text]);
 });
 test('missing, repeated, foreign or malformed project groups cannot become a report', () => {
   const valid = output();

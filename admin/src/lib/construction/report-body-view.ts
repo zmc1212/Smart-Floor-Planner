@@ -9,6 +9,7 @@ import { citationProjection } from '@/lib/assistant/knowledge/sources';
 import { evidenceOriginal } from '@/lib/assistant/knowledge/file-service';
 import { fail } from '@/lib/assistant/contracts';
 
+type ReportOriginal = { sourceId: string; title: string; quote: string; location: Evidence['file'] | null };
 function projectConversation(conversation: Row, selection: ReportBody['projects'][number]['selection']) {
   return { ...conversation, entry_snapshot: { ...conversation.entry_snapshot as Row,
     reportContext: { protocol: reportContextProtocol, revision: 0, selection } } };
@@ -32,17 +33,23 @@ export async function reportBodyView(tx: PostgresTransaction, actor: ActorContex
       return { key: `${kind}:${i}`, basis: s.basis, text: (s.basis === 'advice' ? '建议：' : s.basis === 'uncertainty' ? '待核实：' : '')
         + s.text + (labels.length ? '\n来源：' + labels.join('；') : ''), citations };
     })]));
-    const originals = new Map<string, { sourceId: string; title: string; quote: string; location: Evidence['file'] | null }>();
+    const originals = new Map<string, ReportOriginal>();
     for (const segment of p.sections.standards.segments) for (const citation of segment.citations) {
       const source = p.context.sources.find(s => s.sourceId === citation.sourceId && s.kind === 'knowledge' && s.evidence);
       if (source?.evidence && source.text.includes(citation.quote)) {
         originals.set(JSON.stringify([citation.sourceId, citation.quote]), { ...citation, title: source.title, location: source.evidence.file || null });
       }
     }
-    const standards = [...originals.values()].map((citation, index) => ({
+    const displayOriginal = (citation: ReportOriginal, index: number, stage?: string) => ({
       key: `standards:${index}`, basis: 'evidence', citations: [citation],
-      text: citation.quote + '\n来源：' + citation.title + (citation.location ? ` · ${citation.location.label}` : ''),
-    }));
+      text: (stage ? stage + ' · ' : '') + citation.quote + '\n来源：' + citation.title + (citation.location ? ` · ${citation.location.label}` : ''),
+    });
+    const standards = p.weekWorkmanship ? p.weekWorkmanship.stages.map((stage, index) => {
+      const citation = [...originals.values()].find(original => original.sourceId === stage.sourceId);
+      return citation ? displayOriginal(citation, index, stage.name)
+        : { key: `standards:${index}`, basis: 'uncertainty', citations: [], text: stage.name + ' · 本次没有可引用的企业工艺依据。' };
+    }) : [...originals.values()].map((citation, index) => displayOriginal(citation, index));
+    if (p.weekWorkmanship?.truncated) standards.push({ key: 'standards:truncated', basis: 'uncertainty', citations: [], text: '阶段记录较多，本份简报未覆盖全部阶段的工艺依据。' });
     const cited = new Set(standards.flatMap(segment => segment.citations.map(c => c.sourceId)));
     const knowledgeSources = p.context.sources.filter(s => s.kind === 'knowledge' && s.evidence && cited.has(s.sourceId))
       .map(s => ({ sourceId: s.sourceId, title: s.title }));

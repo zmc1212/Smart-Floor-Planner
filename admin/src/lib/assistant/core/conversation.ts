@@ -33,6 +33,7 @@ import { currentConstructionContact } from '@/lib/construction/customer';
 import { runRetryAwaitingReconciliation, runUsageReconciled, unresolvedProviderOutcome } from './usage-review';
 import { portfolioCopyBudget } from './model-task-budget';
 import { reportContext, reportContextView, selectedReport } from '@/lib/construction/report-reference';
+import type { ReportCompositionScope } from '@/lib/construction/report-composition';
 
 export const reserveTokens = 12000;
 export const reserveCostMicros = 1000000;
@@ -104,7 +105,7 @@ export async function terminalEvent(tx: PostgresTransaction, enterpriseId: strin
   await tx.execute(sql`insert into app.domain_event_deliveries(enterprise_id,event_id,consumer_key)
     values(${enterpriseId},${String(event!.id)},'assistant.run.metrics.v1') on conflict do nothing`);
 }
-export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Row, settings: Row, messageId: string | null, retryOf?: string, trigger: RunTrigger = { kind: 'user_message', messageId: messageId! }, purpose = 'reply', reportComposition?: { protocol: 'construction-report-composition-v1'; reportId: string; revision: number; bindingId: string; dispatchEpoch: number; factsHash: string }) {
+export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Row, settings: Row, messageId: string | null, retryOf?: string, trigger: RunTrigger = { kind: 'user_message', messageId: messageId! }, purpose = 'reply', reportComposition?: ReportCompositionScope) {
   const speech = purpose === 'speech.transcribe', speechBinding = speech ? speechConfigurationHash() : null;
   const report = purpose === 'construction.report.compose' && trigger.kind === 'scheduled_task' && !!reportComposition
     && c.purpose === 'construction_followup' && actor.capabilities.includes('assistant.followup.delivery');

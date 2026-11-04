@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, fingerprint, id, type ActorContext, type Evidence } from '../contracts';
-import { knowledgeContext } from './applicability-context';
+import { knowledgeContext, reportStageKnowledgeContext } from './applicability-context';
 import { agentMessageAvailable } from '../agent/media-context';
 import { constructionMessageActions } from '@/lib/construction/customer';
 import { siteRecordProjection, siteBusinessRecords } from '@/lib/construction/site-publications';
@@ -61,8 +61,10 @@ export async function resolveEvidence(tx:PostgresTransaction,actor:ActorContext,
     join app.assistant_knowledge_index_profiles ip on ip.enterprise_id=c.enterprise_id and ip.id=c.index_profile_id
     where c.enterprise_id=${actor.enterpriseId} and c.id=${id(evidence.ref.id)} and v.id=${id(evidence.ref.version)}
     and c.text_hash=${evidence.hash} and ${sourceReady} and ${sourceScope(actor,conversation,historical)}`);
+  const stageContext = row && evidence.reportStage ? await reportStageKnowledgeContext(tx,actor,conversation,evidence.reportStage) : undefined;
+  if (evidence.reportStage && !stageContext) return undefined;
   if (row && evidence.professional && (fingerprint(evidence.professional.entry)!==fingerprint(row.professional)
-    || evidence.professional.contentHash!==row.content_hash || fingerprint(evidence.professional.context)!==fingerprint(await knowledgeContext(tx,actor,conversation)))) return undefined;
+    || evidence.professional.contentHash!==row.content_hash || fingerprint(evidence.professional.context)!==fingerprint(stageContext ?? await knowledgeContext(tx,actor,conversation)))) return undefined;
   if(row && evidence.file && fingerprint(evidence.file)!==fingerprint((row.locator as {file?:FileLocator})?.file))return undefined;
   return row;
 }

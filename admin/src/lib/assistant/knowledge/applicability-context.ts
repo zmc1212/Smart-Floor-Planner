@@ -4,10 +4,17 @@ import { sql } from 'drizzle-orm';
 import { customerProjects } from '@/lib/construction/customer';
 import { currentStage, readStageSettings } from '@/lib/construction/stages-store';
 import { fingerprint, type ActorContext } from '../contracts';
-import type { KnowledgeContext } from '../contracts/professional';
+import type { KnowledgeContext, ReportWorkmanshipStage } from '../contracts/professional';
 import { selectedReport } from '@/lib/construction/report-reference';
+import { reportWorkmanshipKnowledgeContext } from '@/lib/construction/report-workmanship';
 
 export const projectKnowledgeContextStep = 11000;
+export async function reportStageKnowledgeContext(tx: PostgresTransaction, actor: ActorContext, conversation: Row, stage: ReportWorkmanshipStage) {
+  if (conversation.purpose !== 'construction_followup' || !actor.capabilities.includes('assistant.followup.self')) return;
+  const selected = await selectedReport(tx, actor, conversation);
+  if (selected?.selection.kind !== 'weekly') return;
+  return reportWorkmanshipKnowledgeContext(selected.project, selected.leadId, stage);
+}
 export async function projectKnowledgeContextAvailable(tx:PostgresTransaction,actor:ActorContext,conversation:Row,runId:string) {
   const saved=await one(tx,sql`select source_refs from app.assistant_run_steps where enterprise_id=${actor.enterpriseId}
     and run_id=${runId} and step_seq=${projectKnowledgeContextStep} and kind='agent_project_knowledge_context' and status='succeeded'`);

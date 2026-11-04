@@ -2,13 +2,13 @@ import { sql } from 'drizzle-orm';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { AssistantRepository, rows } from '@/db/repositories/assistant-repository';
 import { fail, id, requireCapability, type ActorContext, type EmbeddingGateway, type Evidence } from '../contracts';
-import type { KnowledgeContext, ProfessionalKnowledge } from '../contracts/professional';
+import type { KnowledgeContext, ProfessionalKnowledge, ReportWorkmanshipStage } from '../contracts/professional';
 import { embeddingGateway } from '../infrastructure/embedding-gateway';
 import { activeProfile, text } from './service';
 import { expandChineseQuery, queryExpansionConfiguration, queryTermWeights, type QueryExpansionTrace } from './chinese-lexical';
 import { sourceScope, sourceReady, validatePreviewSnapshot } from './sources';
 import { applicability } from './professional';
-import { knowledgeContext } from './applicability-context';
+import { knowledgeContext, reportStageKnowledgeContext } from './applicability-context';
 import type { FileLocator } from '../contracts/source-file';
 import { selectContextCandidates } from './context-selection';
 import { fuseBranchCandidates, hybridFusionConfiguration } from './hybrid-fusion';
@@ -23,7 +23,7 @@ export type RetrievalDiagnostic = {
 };
 /** A server-owned scheduled run can supply its original lease/source guard and
  * an explicit report selection. It cannot change candidate/source predicates. */
-export type KnowledgeRetrievalScope = { authorize(tx: PostgresTransaction): Promise<import('@/db/repositories/assistant-repository').Row> };
+export type KnowledgeRetrievalScope = { authorize(tx: PostgresTransaction): Promise<import('@/db/repositories/assistant-repository').Row>; reportStage?: ReportWorkmanshipStage };
 async function authorize(tx: PostgresTransaction, actor: ActorContext, conversationId: string, epoch: number, scope?: KnowledgeRetrievalScope) {
   const repo=new AssistantRepository(tx,actor), settings=await repo.settings(true), current=await repo.conversation(id(conversationId));
   if (Number(settings!.knowledge_epoch)!==epoch) fail('context_changed');
@@ -31,7 +31,9 @@ async function authorize(tx: PostgresTransaction, actor: ActorContext, conversat
   const conversation = scope ? await scope.authorize(tx) : current;
   if (String(conversation.id) !== conversationId || (!scope && (conversation.status!=='open' || conversation.mode!=='ai'))) fail('context_changed');
   await validatePreviewSnapshot(tx,actor,conversation);
-  return {profile:await activeProfile(tx,actor.enterpriseId,settings!),conversation};
+  const stageContext = scope?.reportStage ? await reportStageKnowledgeContext(tx,actor,conversation,scope.reportStage) : undefined;
+  if (scope?.reportStage && !stageContext) fail('context_changed');
+  return {profile:await activeProfile(tx,actor.enterpriseId,settings!),conversation,stageContext};
 }
 /** The Agent, legacy wrapper and Admin diagnostic use this exact authorized retrieval. */
 export async function retrieveKnowledge(conversationId:string,actor:ActorContext,query:string,epoch:number,gateway?:EmbeddingGateway,scope?: KnowledgeRetrievalScope) {
@@ -42,7 +44,7 @@ export async function retrieveKnowledge(conversationId:string,actor:ActorContext
   await withTenantTransaction(actor.enterpriseId,tx=>authorize(tx,actor,conversationId,epoch,scope));
   const result=await (gateway ?? embeddingGateway()).embed([query],'query');
   return withTenantTransaction(actor.enterpriseId,async tx=>{
-    const {profile,conversation}=await authorize(tx,actor,conversationId,epoch,scope),context=await knowledgeContext(tx,actor,conversation),expanded=expandChineseQuery(query),terms=expanded.terms;
+    const {profile,conversation,stageContext}=await authorize(tx,actor,conversationId,epoch,scope),context=stageContext ?? await knowledgeContext(tx,actor,conversation),expanded=expandChineseQuery(query),terms=expanded.terms;
     type Candidate={id:string;distance:number;terms:string[];text:string;text_hash:string;document_version_id:string;document_id:string;title:string;content_hash:string;professional:ProfessionalKnowledge|null;lexical:number;semantic_rank:number|null;lexical_rank:number|null;locator:{file?:FileLocator}};
     const candidates=await rows<Candidate>(tx,sql`with authorized as materialized (
       select c.id::text,c.text,c.text_hash,c.content_hash,c.document_version_id::text,c.terms,c.locator,d.id::text as document_id,d.title,v.professional,

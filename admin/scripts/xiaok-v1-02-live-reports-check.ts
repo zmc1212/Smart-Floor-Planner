@@ -35,6 +35,7 @@ assert.ok(['localhost','127.0.0.1'].includes(target.hostname) && target.port ===
 assert.equal(assistantDailyLimitsEnabled(), false, 'Bind the user-confirmed unlimited daily admission setting');
 const output = path.resolve(process.argv.find(a => a.startsWith('--output='))?.slice(9) || '../tmp/v1-02-live-reports/configured-01');
 const native = process.argv.includes('--stable');
+const weeklyStages = process.argv.includes('--weekly-stages');
 assert.ok(!fs.existsSync(path.join(output, 'report.json')), 'Retain every original attempt');
 fs.mkdirSync(output, { recursive: true });
 const prefix = 'synthetic-v1-02-live-' + randomUUID();
@@ -43,8 +44,9 @@ const staffUsers: string[] = [];
 let unrelatedBindingIds: string[] = [];
 const log: Row = { startedAt: new Date().toISOString(), prefix, owner: process.env.CODEX_THREAD_ID,
   scope: 'Configured-model daily/weekly report bodies only; scheduled discovery/native/follow-up evidence is not upgraded by this batch',
-  fixedScope: { audiences: ['customer','customer','worker','designer','boss'], projects: 2, kinds: ['daily','weekly'],
-    firstDraftsPerCase: 2, maxBodyRuns: 20, secondDraft: 'preplanned independent correction revision with unchanged original facts, never retry after failure',
+  fixedScope: { audiences: ['customer','customer','worker','designer','boss'], projects: 2, kinds: weeklyStages ? ['weekly'] : ['daily','weekly'],
+    ...(weeklyStages ? { stages: 'A: masonry waterproofing then installation; B: utilities' } : {}),
+    firstDraftsPerCase: 2, maxBodyRuns: weeklyStages ? 10 : 20, secondDraft: 'preplanned independent correction revision with unchanged original facts, never retry after failure',
     stop: 'first failed/indeterminate body, source/configuration drift or unavailable original source',
     reused: 'Existing scheduler, fact-worker, private destination, native components, permissions and revocation evidence at their unchanged scopes' },
   checks: [], attempts: [], fixture: { users, admins, leads, projects, records, bindings: [] }, ingestionCalls: 0, injectedModelCalls: 0 };
@@ -132,7 +134,7 @@ async function main() {
   log.configurationBefore = await config(); log.originalLedgerBefore = await originalLedger();
   assert.equal(((log.configurationBefore as Row).settings as Row).enabled,true);
   assert.deepEqual(((log.configurationBefore as Row).published as Row[]).map(p=>[p.id,p.status,p.published_version_id]),[['404','active','410'],['405','active','411']]);
-  await step('fresh labelled four-end fixtures, real water-stage writes and publication',async()=>{
+  await step('fresh labelled four-end fixtures, real stage writes and publication',async()=>{
     const others = await read(tx=>rows(tx,sql`select a.id,b.id::text binding_id,b.status from app.admin_users a left join app.construction_followup_bindings b
       on b.enterprise_id=a.enterprise_id and b.principal_key='admin:'||a.id::text and b.audience='boss'
       where a.enterprise_id=${eid} and a.status='active' and a.role='enterprise_admin'`));
@@ -152,18 +154,25 @@ async function main() {
     for(let i=0;i<2;i++) {
       leads.push(String((await read(tx=>one(tx,sql`insert into app.leads(enterprise_id,customer_user_id,name,phone,source)
         values(${eid},${users[i]},${prefix+':lead:'+i},${'138'+String(Date.now()).slice(-7)+i},'natural') returning id`)))!.id));
-      const pid = String((await owner.execute('create',{leadId:leads[i],name:'合成实模验收·水电'+(i?'乙户':'甲户'),managerId:admins[1],rooms:['厨房']},randomUUID())).id);
+      const pid = String((await owner.execute('create',{leadId:leads[i],name:'合成实模验收·'+(weeklyStages ? '跨阶段' : '水电')+(i?'乙户':'甲户'),managerId:admins[1],rooms:['厨房']},randomUUID())).id);
       projects.push(pid); save();
       let p = (await owner.execute('detail',{projectId:pid})).project as Row;
       await owner.execute('member',{projectId:pid,expectedVersion:p.version,adminId:admins[2],role:'designer',active:true,workLabel:'合成实模验收'},randomUUID());
       p = (await owner.execute('detail',{projectId:pid})).project as Row;
-      await owner.execute('progress',{projectId:pid,expectedVersion:p.version,stageKey:'utilities',note:'合成实模验收：团队已记录水电阶段，未表示验收通过',sendReminder:false},randomUUID());
-      await original(pid,i ? {completed:'卧室照明回路已核对',pending:'客厅双控开关位置待业主确认',coordination:''}
+      const waterproof = weeklyStages && i === 0;
+      await owner.execute('progress',{projectId:pid,expectedVersion:p.version,stageKey:waterproof ? 'masonry_carpentry' : 'utilities',note:'合成实模验收：团队记录当前阶段',sendReminder:false},randomUUID());
+      await original(pid,waterproof ? {title:'合成实模验收·卫生间防水原记录',completed:'卫生间基层已查看',pending:'防水前请先核对管根处理和闭水条件',coordination:''}
+        : i ? {completed:'卧室照明回路已核对',pending:'客厅双控开关位置待业主确认',coordination:''}
         : {completed:'厨房线路走向已核对',pending:'厨房台面插座位置待业主确认',coordination:'镜前灯电源位置待设计师核对'},'customer');
+      if(waterproof) {
+        p = (await owner.execute('detail',{projectId:pid})).project as Row;
+        await owner.execute('progress',{projectId:pid,expectedVersion:p.version,stageKey:'installation',note:'合成实模验收：已进入安装节点',sendReminder:false},randomUUID());
+        await original(pid,{title:'合成实模验收·安装原记录',completed:'安装位置已与现场对照',pending:'台盆安装位置请业主再核对',coordination:''},'customer');
+      }
     }
     await original(projects[0],{completed:'',pending:'内部交接标记：蓝色工具箱未交接',coordination:''},'internal');
     await plan.configure({expectedVersion:Number(policy.version),enabled:true,stageEnabled:false,dailyTime:'23:59',weeklyTime:'23:59',
-      projectIds:projects,stageKeys:['utilities'],audiences:['customer','worker','designer','boss']},randomUUID());
+      projectIds:projects,stageKeys:weeklyStages ? ['utilities','installation','masonry_carpentry'] : ['utilities'],audiences:['customer','worker','designer','boss']},randomUUID());
     bindings.push(...await read(tx=>rows(tx,sql`select * from app.construction_followup_bindings where enterprise_id=${eid}
       and (user_id in (${users[0]},${users[1]}) or admin_id in (${admins[0]},${admins[1]},${admins[2]})) order by id`)));
     assert.deepEqual(bindings.map(b=>b.audience).sort(),['boss','customer','customer','designer','worker']);
@@ -173,7 +182,8 @@ async function main() {
   // Isolate body semantics from the already-covered scheduling matrix. The
   // original automatic enqueue path is reused with fixed controlled periods.
   const dailyAt = new Date(Date.now()+86400000), weeklyAt = nextReportAt('weekly',dailyAt,'08:00');
-  const periods = [latestReportPeriod('daily',new Date(new Date().toISOString().slice(0,10)+'T15:59:00Z'),'23:59'),latestReportPeriod('weekly',weeklyAt,'08:00')];
+  const weekly = latestReportPeriod('weekly',weeklyAt,'08:00');
+  const periods = weeklyStages ? [weekly] : [latestReportPeriod('daily',new Date(new Date().toISOString().slice(0,10)+'T15:59:00Z'),'23:59'),weekly];
   for(const period of periods) for(const b of bindings) {
     let current: Row | undefined;
     for(let trial=1;trial<=2;trial++) await step(`${period.kind}/${b.audience}/${b.id} first draft ${trial} of 2`,async()=>{
@@ -190,19 +200,31 @@ async function main() {
       assert.equal(result.state.body_status,'succeeded');
       assert.equal(result.detail.contentStatus,'composed');
       const composed = result.detail.body as Array<{ projectId: string; guidance: Array<{ basis: string; text: string }>;
-        standards: Array<{ text: string; citations: Array<{ sourceId: string; quote: string }> }>;
+        standards: Array<{ basis: string; text: string; citations: Array<{ sourceId: string; quote: string }> }>;
         knowledgeSources: Array<{ sourceId: string }> }>;
       assert.equal(composed.length, b.audience === 'customer' ? 1 : projects.length);
       for (const project of composed) {
         assert.equal(project.guidance.length, 1);
         assert.equal(project.guidance[0].basis, 'advice');
         assert.match(project.guidance[0].text, /请优先核对原记录中的这一项/);
-        assert.ok(project.standards.length, 'This water-stage fixture requires an authorized workmanship excerpt');
+        assert.ok(project.standards.some(item => item.basis === 'evidence'), 'The selected fixture requires an authorized workmanship excerpt');
         const sources = new Set(project.knowledgeSources.map(s => s.sourceId));
         for (const item of project.standards) {
+          if (weeklyStages && item.basis === 'uncertainty') { assert.deepEqual(item.citations, []); continue; }
           assert.equal(item.citations.length, 1);
           const { sourceId, quote } = item.citations[0];
-          assert.ok(sources.has(sourceId) && item.text.startsWith(quote + '\n'), 'The report must display the exact cited excerpt');
+          assert.ok(sources.has(sourceId) && (weeklyStages ? item.text.includes(quote + '\n') : item.text.startsWith(quote + '\n')), 'The report must display the exact cited excerpt');
+        }
+        if (weeklyStages && project.projectId === projects[0]) {
+          const facts = (result.detail.facts as ReportFacts).projects.find(f => f.id === project.projectId)!;
+          assert.equal(facts.stageKey, 'installation');
+          assert.ok(facts.stageEvents.some(e => e.stageKey === 'masonry_carpentry'));
+          assert.ok(facts.records.some(r => r.publishedStageKey === 'masonry_carpentry' && String(r.data.pending).includes('防水')));
+          assert.ok(project.standards.some(item => item.text.startsWith('泥木 · 防水工艺标准') && item.basis === 'evidence'));
+          assert.ok(project.standards.some(item => item.text === '安装 · 本次没有可引用的企业工艺依据。' && item.basis === 'uncertainty'));
+        } else if (weeklyStages) {
+          assert.ok(project.standards.some(item => item.text.startsWith('水电 · 水电工艺标准') && item.basis === 'evidence'));
+          assert.ok(project.standards.every(item => !item.text.includes('防水工艺标准')));
         }
       }
       const visible = JSON.stringify(result.detail);
@@ -215,7 +237,7 @@ async function main() {
     });
   }
   log.configuredPassed = true; save();
-  if (native) await step('Stable native daily and weekly readback across four roles', async () => {
+  if (native) await step('Stable native report readback across four roles', async () => {
     checkBinding(); assert.deepEqual(await config(),log.configurationBefore);
     assert.ok(process.env.JWT_SECRET);
     const actors = [];
@@ -241,7 +263,7 @@ async function main() {
         .setSubject(uid).setIssuedAt().setAudience('miniprogram').setExpirationTime('1h').sign(new TextEncoder().encode(process.env.JWT_SECRET));
       const reports = (log.attempts as Array<{ bindingId?: string; kind: string; reportId: string; revision: number; trial: number; result: { detail: Row } }>)
         .filter(a => a.trial === 2 && String(a.bindingId) === String(b.id));
-      assert.equal(reports.length, 2);
+      assert.equal(reports.length, periods.length);
       actors.push({ name: String(b.audience), leadId: aid ? undefined : leads[users.indexOf(uid)], uid, aid, role, token,
         bid: String(b.id), cid: String(b.conversation_id), reports: reports.map(r => ({ id: r.reportId, revision: r.revision, kind: r.kind, body: r.result.detail.body })) });
     }

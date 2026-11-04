@@ -4,7 +4,7 @@ import { resolveCatalogCitation, sourceCitationCatalog } from '@/lib/assistant/a
 import type { SynthesisAnswer } from '@/lib/assistant/agent/synthesis';
 import type { ComposedProject } from './report-composition';
 
-type Project = Pick<ComposedProject, 'context'>;
+type Project = Pick<ComposedProject, 'context' | 'weekWorkmanship'>;
 const key = (index: number, field: 'guidance' | 'standard') => `P${index + 1}_${field}`;
 const knowledge = (project: Project) => project.context.sources.filter(source => source.kind === 'knowledge');
 export function reportGuidanceStandardSources(project: Project, preferOriginal: boolean) {
@@ -34,7 +34,7 @@ export function reportGuidanceFinalTool(projects: Project[], choices?: GuidanceC
     const guidance = key(index, 'guidance');
     properties[guidance] = choices ? { type: 'string', enum: choices[index].map(choice => choice.id) }
       : { type: 'string', minLength: 2, maxLength: 1200 };
-    const standardIds = reportGuidanceStandardSources(project, preferOriginal).flatMap(sourceCitationCatalog).map(c => c.citationId);
+    const standardIds = project.weekWorkmanship ? [] : reportGuidanceStandardSources(project, preferOriginal).flatMap(sourceCitationCatalog).map(c => c.citationId);
     if (standardIds.length) properties[key(index, 'standard')] = { type: 'string', enum: [...new Set(standardIds)] };
     return guidance;
   });
@@ -52,9 +52,18 @@ export function projectReportGuidanceOnly(raw: string, projects: Project[], choi
     const sources = reportGuidanceStandardSources(project, preferOriginal);
     // Preserve retrieval order. An omitted selection may still display the
     // first exact, file-backed reference without asserting site applicability.
-    const selected = id ?? (preferOriginal && sources[0]?.evidence?.file ? sourceCitationCatalog(sources[0])[0]?.citationId : undefined);
+    const selected = id ?? (!project.weekWorkmanship && preferOriginal && sources[0]?.evidence?.file ? sourceCitationCatalog(sources[0])[0]?.citationId : undefined);
     const citation = selected ? resolveCatalogCitation({ citationId: selected }, sources) : null;
-    if (id && !citation) fail('invalid_model_citation', 502);
+    if (id && (!citation || project.weekWorkmanship)) fail('invalid_model_citation', 502);
+    const stageCitations = [...new Set(project.weekWorkmanship?.stages.flatMap(stage => stage.sourceId ? [stage.sourceId] : []))].map(sourceId => {
+      const source = project.context.sources.find(item => item.sourceId === sourceId && item.kind === 'knowledge');
+      if (!source) fail('invalid_model_citation', 502);
+      const first = sourceCitationCatalog(source)[0];
+      const original = first && resolveCatalogCitation({ citationId: first.citationId }, [source]);
+      if (!original) fail('invalid_model_citation', 502);
+      return original;
+    });
+    const originals = citation ? [citation] : stageCitations;
     const guidance = value[key(index, 'guidance')];
     const choice = choices?.[index].find(item => item.id === guidance);
     if (choices && !choice) fail('invalid_model_citation', 502);
@@ -64,7 +73,7 @@ export function projectReportGuidanceOnly(raw: string, projects: Project[], choi
     return ['P' + (index + 1), {
       progress: section('进展以本份报告的原记录为准。'),
       pending,
-      standards: citation ? { kind: 'synthesis', segments: [{ basis: 'evidence', text: citation.quote, citations: [citation] }] }
+      standards: originals.length ? { kind: 'synthesis', segments: originals.map(original => ({ basis: 'evidence', text: original.quote, citations: [original] })) }
         : section('本次没有选用工艺原文。'),
       arrangements: section('安排以本份报告中已确认的原记录为准。'),
     }];
