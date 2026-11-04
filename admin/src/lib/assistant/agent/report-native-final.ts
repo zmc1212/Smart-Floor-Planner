@@ -1,4 +1,4 @@
-import { bailianStructuredOutput } from '@/lib/ai/providers/bailian-capabilities';
+import { bailianModelProfile, bailianStructuredOutput } from '@/lib/ai/providers/bailian-capabilities';
 import { fail } from '../contracts';
 import { agentModelLimits, reportFinalOutputTokenLimit } from '../contracts/model';
 import type { AgentConfig } from './config';
@@ -40,6 +40,12 @@ export function boundReportFinalOutput(value: unknown, native: boolean) {
 export function reportBodyFinalAdmission(config: AgentConfig | null) {
   return !!config && !config.consultation && config.providerKey === 'dashscope'
     && bailianStructuredOutput(config.model, 'json_schema');
+}
+
+export function reportBodyFinalPolicy(config: AgentConfig | null) {
+  if (!config || !reportBodyFinalAdmission(config)) return {};
+  return { reportBodyFinal: reportBodyFinalProtocol,
+    ...(bailianModelProfile(config.model).functionCalling === 'documented' ? { reportBodyFinalCarrier: reportFinalFunctionCarrier } : {}) };
 }
 
 export function boundReportBodyFinal(value: unknown, config: AgentConfig) {

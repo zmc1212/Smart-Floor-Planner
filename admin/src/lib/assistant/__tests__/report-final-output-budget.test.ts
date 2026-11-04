@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { reportFinalOutputTokenLimit, type ModelMessage, type ModelTurnInput } from '../contracts/model';
-import { boundReportBodyFinal, boundReportFinalOutput, reportBodyFinalAdmission, reportBodyFinalProtocol, reportNativeRuntimeBudget } from '../agent/report-native-final';
+import { boundReportBodyFinal, boundReportFinalOutput, reportBodyFinalAdmission, reportBodyFinalPolicy, reportBodyFinalProtocol,
+  reportFinalFunctionCarrier, reportNativeRuntimeBudget } from '../agent/report-native-final';
 import { agentRequestBudget, fitAgentContext, imageContextBudgetPolicy } from '../agent/context-budget';
 import type { AgentConfig } from '../agent/config';
 import { reportFinalTool } from '@/lib/construction/report-composition';
@@ -54,8 +55,10 @@ test('new scheduled report bodies allocate4096 on the same schema while historic
   const config: AgentConfig = { runtime: 'langgraph-v1', providerKey: 'dashscope', model: 'qwen3.7-flash',
     probeVersion: 'test', imageInput: true, tools: true };
   assert.equal(reportBodyFinalAdmission(config), true);
+  assert.deepEqual(reportBodyFinalPolicy(config), { reportBodyFinal: reportBodyFinalProtocol, reportBodyFinalCarrier: reportFinalFunctionCarrier });
   const unsupported = { ...config, providerKey: 'siliconflow' };
   assert.equal(reportBodyFinalAdmission(unsupported), false);
+  assert.deepEqual(reportBodyFinalPolicy(unsupported), {});
   assert.throws(() => boundReportBodyFinal(reportBodyFinalProtocol, unsupported), /context_changed/);
   assert.throws(() => boundReportBodyFinal('unexpected', config), /context_changed/);
   const tool = reportFinalTool(['9', '10']);
@@ -65,6 +68,11 @@ test('new scheduled report bodies allocate4096 on the same schema while historic
   assert.equal(legacy.max_tokens, 2048);
   assert.equal(body.max_tokens, 4096);
   assert.deepEqual(body.response_format, legacy.response_format);
+  const terminal = agentChatBody({ ...input, tools: [tool], maxTokens: tokens, reportFinalOutputTokens: tokens, outputMode: 'function_call' }, endpoint);
+  assert.equal(terminal.response_format, undefined);
+  assert.deepEqual(terminal.tools?.[0].function, tool);
+  assert.deepEqual(terminal.tool_choice, { type: 'function', function: { name: 'final_response' } });
+  assert.equal(terminal.max_tokens, body.max_tokens);
   const estimate = fitAgentContext(input.messages, [tool], { purpose: 'answer', reportFinalOutputTokens: tokens }).diagnostic.after.estimatedTokens;
   assert.ok(estimate <= 16000 && 4 * estimate <= 72000);
 });

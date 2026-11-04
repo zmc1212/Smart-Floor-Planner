@@ -1,8 +1,10 @@
 import { fail } from '@/lib/assistant/contracts';
-import type { ModelMessage, ModelTool } from '@/lib/assistant/contracts/model';
+import type { ModelMessage, ModelTool, ModelTurnOutput } from '@/lib/assistant/contracts/model';
 import { modelCitationCatalog } from '@/lib/assistant/agent/citation-catalog';
+import { projectFinalToolOutput } from '@/lib/assistant/agent/final-output';
 import { nativeFinalDefinition } from '@/lib/assistant/agent/native-final';
 import { parseSynthesis, type SynthesisAnswer, type SynthesisContext } from '@/lib/assistant/agent/synthesis';
+import { toolSchemaIssue } from '@/lib/assistant/agent/tool-protocol';
 import type { ReportReference } from './report-reference';
 
 export const reportCompositionProtocol = 'construction-report-composition-v1';
@@ -37,6 +39,19 @@ export function reportFinalTool(projectIds: string[], projects: Array<Pick<Compo
     type: 'object', additionalProperties: false, required: ['projects'], properties: { projects: { type: 'array',
       minItems: projectIds.length, maxItems: projectIds.length, items: { anyOf: projectSchemas } } },
   } };
+}
+
+/** Scheduled composition consumes one terminal result and never runs its
+ * final function as a business tool. Reject accompanying free text. */
+export async function projectReportBodyFinal(output: ModelTurnOutput, tool: ModelTool, functionCarrier: boolean) {
+  if (functionCarrier) {
+    const [call] = output.toolCalls;
+    if (output.finishReason !== 'tool_calls' || output.text.trim() || output.toolCalls.length !== 1 || call.name !== tool.name
+      || await toolSchemaIssue(tool, call.arguments)) fail('native_schema_unverified', 502);
+  }
+  const projected = projectFinalToolOutput(output);
+  if (projected.toolCalls.length || projected.toolProtocolFeedback) fail('invalid_model_answer', 502);
+  return projected;
 }
 
 /** Reuses the original synthesis parser, citation catalog, numeric/commitment

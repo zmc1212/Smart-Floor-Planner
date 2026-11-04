@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parseReportBody, reportFinalTool, reportMessages, reportSectionKinds } from '../report-composition';
+import { parseReportBody, projectReportBodyFinal, reportFinalTool, reportMessages, reportSectionKinds } from '../report-composition';
 import { sourceCitationCatalog } from '@/lib/assistant/agent/citation-catalog';
 import { toolSchemaIssue } from '@/lib/assistant/agent/tool-protocol';
 import type { SynthesisContext } from '@/lib/assistant/agent/synthesis';
@@ -101,4 +101,22 @@ test('report native schema reuses per-project citations and rejects uncited quan
   invented.projects[0].standards = section('插座间距为99厘米。', 1);
   assert.equal(await toolSchemaIssue(tool, JSON.stringify(invented)), null);
   assert.throws(() => parseReportBody(JSON.stringify(invented), [project]));
+});
+
+test('scheduled function final accepts one complete body and refuses trailing prose, invalid groups and mixed calls', async () => {
+  const tool = reportFinalTool(['9'], [project]);
+  const argumentsText = JSON.stringify(output());
+  const packet = { text: '', toolCalls: [{ id: 'terminal', name: 'final_response', arguments: argumentsText }],
+    finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 500, outputTokens: 400 } };
+  assert.equal((await projectReportBodyFinal(packet, tool, true)).text, argumentsText);
+  for (const invalid of [
+    { ...packet, text: '说明及自我修正' },
+    { ...packet, finishReason: 'length' },
+    { ...packet, toolCalls: [...packet.toolCalls, { id: 'other', name: 'search_knowledge', arguments: '{}' }] },
+    { ...packet, toolCalls: [{ ...packet.toolCalls[0], arguments: argumentsText + '\n尾随解释' }] },
+    { ...packet, toolCalls: [{ ...packet.toolCalls[0], arguments: argumentsText.replace('"projectId":"9"', '"projectId":"999"') }] },
+    { ...packet, text: argumentsText, toolCalls: [], finishReason: 'stop' },
+  ]) await assert.rejects(() => projectReportBodyFinal(invalid, tool, true), /native_schema_unverified/);
+  const legacy = { ...packet, text: argumentsText, toolCalls: [], finishReason: 'stop' };
+  assert.equal(await projectReportBodyFinal(legacy, tool, false), legacy);
 });
