@@ -30,14 +30,25 @@ export function reportSelectionHistory(version: number | undefined) {
         and r.id=m.run_id and r.policy_snapshot->'reportContextVersion' = ${JSON.stringify(version)}::jsonb)))`;
 }
 
-export function reportFactText(selection: ReportReference, project: ReportProject) {
+export function reportFactText(selection: ReportReference, project: ReportProject, scheduledCoverage = false) {
+  const stages = scheduledCoverage && selection.kind === 'weekly'
+    ? project.stageEvents.filter(event => Date.parse(event.at) >= Date.parse(selection.periodStart) && Date.parse(event.at) < Date.parse(selection.cutoffAt))
+      .filter((event, index, events) => event.stageKey !== events[index - 1]?.stageKey)
+    : [];
+  const limits = scheduledCoverage ? [
+    project.recordsTruncated && '施工记录', project.stageEventsTruncated && '阶段记录',
+    project.publishedRecordItemsTruncated && '已发布待核对项', project.issuesTruncated && '事项',
+    project.arrangementsTruncated && '已确认安排',
+  ].filter(Boolean) : [];
   return `报告所选项目：${project.name}。报告周期：${reportLocalTime(selection.periodStart)}至${reportLocalTime(selection.periodEnd)}；事实截止：${reportLocalTime(selection.cutoffAt)}。\n`
     + `报告保存时团队标记阶段：${project.stageKey || '尚未标记'}。这不是当前施工状态或验收结论。\n`
+    + (stages.length ? stages.map(event => `报告周期内团队标记阶段：${reportLocalTime(event.at)}，${event.stageKey}。\n`).join('') : '')
     + project.records.map(r => `团队核对发布的原记录${r.id}（版本${r.version}，${r.publishedAt}）：\n${siteRecordText(r.data as SiteDraft, r.room)}`).join('\n')
     + (!project.records.length ? '\n本期无可见的已发布记录，未记录不等于未施工。' : '')
     + (project.publishedRecordItems?.length ? '\n原记录中的待核对项：\n' + project.publishedRecordItems.map(r => [r.pending, r.coordination].filter(Boolean).join('\n')).join('\n') : '')
     + (project.issues?.length ? '\n报告截止时获权的原事项：\n' + project.issues.map(i => `事项${i.id}（版本${i.revision}）：${i.text}`).join('\n') : '')
     + (project.arrangements?.length ? '\n报告截止时获权的原安排：\n' + project.arrangements.map(a => `安排${a.id}（版本${a.revision}）：${a.title}\n${a.difference}`).join('\n') : '')
+    + (limits.length ? '\n本次有界读取未覆盖全部' + limits.join('、') + '。' : '')
     + '\n以上为原报告的现场事实，不包含生成正文中的推断。企业工艺须另取有效知识。用户后续补充是用户原话，不是团队核对、工程决定或原报告更改。截止后变化须另查当前原服务，不把旧报告当成最新事实。';
 }
 export async function reportBusinessAvailable(tx: PostgresTransaction, enterpriseId: string, ref: ReportBusinessReference) {

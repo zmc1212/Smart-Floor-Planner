@@ -12,6 +12,7 @@ export const reportBodyProjectSlotsProtocol = 'report-body-project-slots-v1';
 export const reportBodyFlatSegmentsProtocol = 'report-body-flat-segments-v1';
 export const reportBodyQuotedSegmentsProtocol = 'report-body-quoted-segments-v1';
 export const reportBodyCitationListProtocol = 'report-body-citation-list-v1';
+export const scheduledReportFactCoverageProtocol = 'scheduled-report-fact-coverage-v1';
 export type ReportBodyWire = 'legacy' | 'slots' | 'flat' | 'quoted' | 'citation-list';
 type ReportScope = { conversationPurpose: unknown; purpose: string; triggerKind: string; privateFollowup: boolean; selected: boolean };
 
@@ -49,9 +50,15 @@ export function reportBodyFinalAdmission(config: AgentConfig | null) {
 
 export function reportBodyFinalPolicy(config: AgentConfig | null) {
   if (!config || !reportBodyFinalAdmission(config)) return {};
-  return { reportBodyFinal: reportBodyFinalProtocol,
+  return { reportBodyFinal: reportBodyFinalProtocol, reportBodyFactCoverage: scheduledReportFactCoverageProtocol,
     ...(bailianModelProfile(config.model).functionCalling === 'documented' ? {
       reportBodyFinalCarrier: reportFinalFunctionCarrier, reportBodyProjectSlots: reportBodyCitationListProtocol } : {}) };
+}
+
+export function boundReportBodyFactCoverage(value: unknown, finalOutputTokens?: number) {
+  if (value === undefined) return false;
+  if (value !== scheduledReportFactCoverageProtocol || finalOutputTokens !== reportFinalOutputTokenLimit) fail('context_changed');
+  return true;
 }
 
 export function boundReportBodyWire(value: unknown, carrier: unknown): ReportBodyWire {

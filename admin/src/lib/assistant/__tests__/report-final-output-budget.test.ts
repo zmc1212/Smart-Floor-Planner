@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { reportFinalOutputTokenLimit, type ModelMessage, type ModelTurnInput } from '../contracts/model';
-import { boundReportBodyFinal, boundReportBodyWire, boundReportFinalOutput, reportBodyFinalAdmission, reportBodyFinalPolicy,
+import { boundReportBodyFactCoverage, boundReportBodyFinal, boundReportBodyWire, boundReportFinalOutput, reportBodyFinalAdmission, reportBodyFinalPolicy,
   reportBodyCitationListProtocol, reportBodyFinalProtocol, reportBodyFlatSegmentsProtocol, reportBodyProjectSlotsProtocol,
-  reportBodyQuotedSegmentsProtocol, reportFinalFunctionCarrier, reportNativeRuntimeBudget } from '../agent/report-native-final';
+  reportBodyQuotedSegmentsProtocol, reportFinalFunctionCarrier, reportNativeRuntimeBudget, scheduledReportFactCoverageProtocol } from '../agent/report-native-final';
 import { agentRequestBudget, fitAgentContext, imageContextBudgetPolicy } from '../agent/context-budget';
 import type { AgentConfig } from '../agent/config';
 import { reportFinalTool } from '@/lib/construction/report-composition';
@@ -57,7 +57,10 @@ test('new scheduled report bodies allocate4096 on the same schema while historic
     probeVersion: 'test', imageInput: true, tools: true };
   assert.equal(reportBodyFinalAdmission(config), true);
   assert.deepEqual(reportBodyFinalPolicy(config), { reportBodyFinal: reportBodyFinalProtocol, reportBodyFinalCarrier: reportFinalFunctionCarrier,
-    reportBodyProjectSlots: reportBodyCitationListProtocol });
+    reportBodyProjectSlots: reportBodyCitationListProtocol, reportBodyFactCoverage: scheduledReportFactCoverageProtocol });
+  assert.equal(boundReportBodyFactCoverage(undefined, 4096), false);
+  assert.equal(boundReportBodyFactCoverage(scheduledReportFactCoverageProtocol, 4096), true);
+  assert.throws(() => boundReportBodyFactCoverage(scheduledReportFactCoverageProtocol, undefined), /context_changed/);
   assert.equal(boundReportBodyWire(undefined, reportFinalFunctionCarrier), 'legacy');
   assert.equal(boundReportBodyWire(reportBodyProjectSlotsProtocol, reportFinalFunctionCarrier), 'slots');
   assert.equal(boundReportBodyWire(reportBodyFlatSegmentsProtocol, reportFinalFunctionCarrier), 'flat');

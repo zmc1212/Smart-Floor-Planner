@@ -7,7 +7,7 @@ import { executePostgresText } from '@/lib/ai/postgres-workflow-chat';
 import { agentConfig } from '@/lib/assistant/agent/config';
 import { runRenovationAgent, type AgentCheckpoint } from '@/lib/assistant/agent/runtime';
 import { agentRequestBudget, fitAgentContext } from '@/lib/assistant/agent/context-budget';
-import { boundReportBodyFinal, boundReportBodyWire, boundReportFinalCarrier, reportBodyFinalProtocol } from '@/lib/assistant/agent/report-native-final';
+import { boundReportBodyFactCoverage, boundReportBodyFinal, boundReportBodyWire, boundReportFinalCarrier, reportBodyFinalProtocol } from '@/lib/assistant/agent/report-native-final';
 import { consultationRequestReservation, reserveConsultationDispatch, settleConsultationDispatch } from '@/lib/assistant/agent/consultation-usage';
 import { businessSynthesisSources, knowledgeSynthesisSources, type SynthesisContext } from '@/lib/assistant/agent/synthesis';
 import { synthesisContextAvailable } from '@/lib/assistant/agent/synthesis-sources';
@@ -72,6 +72,7 @@ export async function processReportComposition(lease: Lease, dependencies: {
       const config = agentConfig(policy.agent);
       if (!config) fail('context_changed');
       const reportFinalOutputTokens = boundReportBodyFinal(policy.reportBodyFinal, config);
+      const factCoverage = boundReportBodyFactCoverage(policy.reportBodyFactCoverage, reportFinalOutputTokens);
       const reportBodyFinalCarrier = boundReportFinalCarrier(policy.reportBodyFinalCarrier, !!reportFinalOutputTokens, reportFinalOutputTokens);
       const wire = boundReportBodyWire(policy.reportBodyProjectSlots, reportBodyFinalCarrier);
       const list: ProjectContext[] = [];
@@ -84,14 +85,14 @@ export async function processReportComposition(lease: Lease, dependencies: {
           ...(lease.actor.principal.kind === 'user' ? { customerId: lease.actor.principal.userId } : {}), leadIds: [resolved.leadId],
           version: resolved.selection.factsHash, queriedAt: resolved.selection.cutoffAt,
           reportReference: { selection: resolved.selection, principal: lease.actor.principal },
-          data: [{ ...resolved.project, projectId: p.id, leadId: resolved.leadId }], displayText: reportFactText(resolved.selection, resolved.project) };
+          data: [{ ...resolved.project, projectId: p.id, leadId: resolved.leadId }], displayText: reportFactText(resolved.selection, resolved.project, factCoverage) };
         list.push({ projectId: p.id, selection: resolved.selection,
           context: { version: 1, knowledge: [], snapshots: [snapshot], sources: businessSynthesisSources(resultKey, snapshot) } });
       }
       const checkpoint = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
         and run_id=${lease.runId} and step_seq=1000 and kind='agent_checkpoint'`);
       return { config, run: context.run, conversation: context.conversation, projects: list, reportFinalOutputTokens, reportBodyFinalCarrier, wire,
-        reportBodyProjectSlots: policy.reportBodyProjectSlots,
+        reportBodyProjectSlots: policy.reportBodyProjectSlots, reportBodyFactCoverage: policy.reportBodyFactCoverage,
         resume: checkpoint?.private_checkpoint as AgentCheckpoint | undefined,
         scope: { ...context.scope, audience: context.binding.audience, kind: context.report.kind, timezone: 'Asia/Shanghai',
           periodStart: context.report.period_start, periodEnd: context.report.fact_period_end, cutoffAt: context.report.fact_cutoff_at,
@@ -160,6 +161,7 @@ export async function processReportComposition(lease: Lease, dependencies: {
       ...(reportFinalOutputTokens ? { purpose: 'answer' as const, reportFinalOutputTokens } : {}) };
     const finalAllocation = reportFinalOutputTokens ? { reportBodyFinal: reportBodyFinalProtocol, maxOutputTokens: reportFinalOutputTokens,
       ...(reportBodyFinalCarrier ? { reportBodyFinalCarrier } : {}),
+      ...(initial.reportBodyFactCoverage ? { reportBodyFactCoverage: initial.reportBodyFactCoverage } : {}),
       ...(fixedSlots ? { reportBodyProjectSlots: initial.reportBodyProjectSlots } : {}) } : {};
     const limits = agentRequestBudget(budget);
     const result = await runRenovationAgent({ messages: reportMessages(initial.scope, projects, fixedSlots, flatSegments, quotedSegments), tools: [], resume: initial.resume, ports: {

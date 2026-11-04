@@ -155,8 +155,14 @@ export function parseReportBody(raw: string, projects: Array<Pick<ComposedProjec
   return { protocol: reportCompositionProtocol, projects: projects.map((project, i) => {
     const p = fixedSlots ? groups[i] : groups.find(p => p.projectId === project.projectId);
     if (!p || Object.keys(p).some(k => (fixedSlots || k !== 'projectId') && !reportSectionKinds.includes(k as ReportSectionKind))) fail('invalid_model_answer', 502);
-    const sections = Object.fromEntries(reportSectionKinds.map(kind => [kind,
-      parseSynthesis(JSON.stringify(p[kind]), project.context.sources)])) as Record<ReportSectionKind, SynthesisAnswer>;
+    const sections = Object.fromEntries(reportSectionKinds.map(kind => {
+      const section = parseSynthesis(JSON.stringify(p[kind]), project.context.sources);
+      // A schema-valid single-character fragment is not report prose.
+      if (section.segments.some(segment => (segment.text.match(/[\p{L}\p{N}]/gu)?.length ?? 0) < 2)) {
+        fail('invalid_model_answer', 502);
+      }
+      return [kind, section];
+    })) as Record<ReportSectionKind, SynthesisAnswer>;
     return { ...project, sections };
   }) };
 }

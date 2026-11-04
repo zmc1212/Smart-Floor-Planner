@@ -32,6 +32,16 @@ test('missing, repeated, foreign or malformed project groups cannot become a rep
   const broken = { ...valid.projects[0] } as Record<string, unknown>; delete broken.standards;
   assert.throws(() => parseReportBody(JSON.stringify({ projects: [broken] }), [project]));
 });
+test('schema-valid single-character fragments cannot be saved as report prose', () => {
+  const [valid] = output().projects;
+  for (const text of ['待', ' 工。 ', '后…']) {
+    const broken = { ...valid, arrangements: section(text) };
+    assert.throws(() => parseReportBody(JSON.stringify({ projects: [broken] }), [project]), /invalid_model_answer/);
+    const slot = { progress: broken.progress, pending: broken.pending, standards: broken.standards, arrangements: broken.arrangements };
+    assert.throws(() => parseReportBody(JSON.stringify({ P1: slot }), [project], true), /invalid_model_answer/);
+  }
+  assert.doesNotThrow(() => parseReportBody(JSON.stringify(output()), [project]));
+});
 test('a project cannot cite a foreign project catalog or invent measurements/approval', () => {
   const raw = output();
   raw.projects[0].standards = section('插座间距为99厘米。', 1);

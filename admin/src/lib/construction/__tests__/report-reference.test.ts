@@ -38,3 +38,26 @@ test('the report model view keeps original facts, cutoff and missing-state disti
   assert.ok(text.includes('不是当前施工状态或验收结论') && text.includes('不包含生成正文中的推断') && text.includes('企业工艺须另取有效知识'));
   assert.ok(!text.includes('已确认插座位置'));
 });
+
+test('new scheduled weekly input includes in-period stage history and marks bounded facts', () => {
+  const selection = { ...choice, conversationId: '8', kind: 'weekly', periodStart: '2026-10-26T00:00:00Z',
+    periodEnd: '2026-11-02T00:00:00Z', cutoffAt: '2026-11-02T00:00:00Z', factsHash: 'saved' };
+  const project = { id: '4', name: '合成工地', stageKey: 'utilities', progressRevision: 5,
+    stageEvents: [
+      { id: '1', revision: 1, stageKey: 'design', at: '2026-10-25T00:00:00Z' },
+      { id: '2', revision: 2, stageKey: 'demolition', at: '2026-10-26T00:00:00Z' },
+      { id: '3', revision: 3, stageKey: 'demolition', at: '2026-10-27T00:00:00Z' },
+      { id: '4', revision: 4, stageKey: 'utilities', at: '2026-10-28T00:00:00Z' },
+      { id: '5', revision: 5, stageKey: 'carpentry', at: selection.cutoffAt },
+    ], stageEventsTruncated: true, recordsTruncated: false, noPublishedRecords: true, records: [] };
+  const original = reportFactText(selection, project);
+  assert.ok(!original.includes('报告周期内团队标记阶段') && !original.includes('有界读取'));
+  const scheduled = reportFactText(selection, project, true);
+  const stages = scheduled.split('\n').filter(line => line.startsWith('报告周期内团队标记阶段'));
+  assert.deepEqual(stages, [
+    '报告周期内团队标记阶段：2026-10-26 08:00:00（Asia/Shanghai，UTC+08:00），demolition。',
+    '报告周期内团队标记阶段：2026-10-28 08:00:00（Asia/Shanghai，UTC+08:00），utilities。',
+  ]);
+  assert.ok(scheduled.includes('本次有界读取未覆盖全部阶段记录。'));
+  assert.ok(scheduled.includes('未记录不等于未施工'));
+});
