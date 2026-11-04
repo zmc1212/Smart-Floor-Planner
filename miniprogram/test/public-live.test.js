@@ -71,11 +71,16 @@ function publicPlayer(request) {
   let page;
   new Function('Page', 'require', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'wx', source)(
     definition => { page = definition; }, () => ({ request, getBaseUrls: () => ['http://127.0.0.1:3006/api'] }),
-    () => 1, () => {}, () => 1, () => {}, { createVideoContext: () => ({ stop() {} }) },
+    () => 1, () => {}, () => 1, () => {}, { createVideoContext: () => ({ stop() {}, pause() {} }) },
   );
   return Object.assign(page, { options: { enterpriseId: '1454', key: card.key }, epoch: 0, alive: true, visible: true,
     setData(patch) { Object.assign(this.data, patch); } });
 }
+
+const playerEvent = (epoch, currentTime) => ({
+  currentTarget: { dataset: { playerEpoch: epoch } },
+  detail: { currentTime },
+});
 
 test('public 503 and decoder failures permit retry, and playback needs positive time progress', async () => {
   const detail = { key: card.key, versionId: card.versionId, revision: card.revision };
@@ -91,14 +96,50 @@ test('public 503 and decoder failures permit retry, and playback needs positive 
   sessionUnavailable = false;
   await page.retry();
   assert.ok(page.data.src.endsWith('/hls.m3u8'));
-  for (const time of [undefined, 0, NaN]) page.played({ detail: { currentTime: time } });
+  for (const time of [undefined, 0, NaN]) page.played(playerEvent(page.epoch, time));
   assert.equal(page.data.state, 'connecting');
-  page.played({ detail: { currentTime: 0.25 } });
+  page.played(playerEvent(page.epoch, 0.25));
   assert.equal(page.data.state, 'playing');
-  page.playbackError();
+  page.playbackError(playerEvent(page.epoch));
   assert.equal(page.data.state, 'failed');
   assert.equal(page.data.error, '暂时无法连接直播，请重试。');
   assert.equal(page.data.src, '');
+});
+
+test('continuing public live waits for the new player and ignores late progress and errors', async () => {
+  const detail = { key: card.key, versionId: card.versionId, revision: card.revision };
+  const response = data => ({ success: true, data });
+  let resolveSession;
+  const pending = new Promise(resolve => { resolveSession = resolve; });
+  let sessions = 0;
+  const page = publicPlayer(async (_, method) => {
+    if (method === 'GET') return response(detail);
+    if (++sessions === 1) return response({ ...detail, url: path });
+    return pending;
+  });
+  await page.connect();
+  const oldEpoch = page.epoch;
+  page.played(playerEvent(oldEpoch, 0.25));
+  page.toggle();
+  assert.equal(page.data.state, 'paused');
+
+  page.toggle();
+  assert.equal(page.data.src, '');
+  page.played(playerEvent(oldEpoch, 3));
+  assert.equal(page.data.state, 'connecting');
+  resolveSession(response({ ...detail, url: path.replace('b'.repeat(43), 'c'.repeat(43)) }));
+  await new Promise(setImmediate);
+  assert.equal(sessions, 2);
+  page.played(playerEvent(oldEpoch, 3));
+  assert.equal(page.data.state, 'connecting');
+  page.playbackError(playerEvent(oldEpoch));
+  assert.equal(page.data.state, 'connecting');
+  assert.equal(page.data.playerEpoch, page.epoch);
+  assert.ok(page.data.src.includes('c'.repeat(43)));
+  page.toggle();
+  assert.equal(page.data.state, 'connecting');
+  page.played(playerEvent(page.epoch, 0.25));
+  assert.equal(page.data.state, 'playing');
 });
 
 test('withdrawal keeps the stopped feedback even if an old player reports an error', async () => {
@@ -110,7 +151,7 @@ test('withdrawal keeps the stopped feedback even if an old player reports an err
   await page.connect();
   withdrawn = true;
   await page.check(page.epoch);
-  page.playbackError();
+  page.playbackError(playerEvent(page.epoch));
   assert.equal(page.data.state, 'stopped');
   assert.equal(page.data.error, '直播已停止公开');
   await page.retry();

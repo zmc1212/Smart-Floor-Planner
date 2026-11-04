@@ -1,5 +1,5 @@
 const api = require('../../../utils/api');
-const empty = () => ({ loading:true, detail:null, src:'', state:'connecting', error:'', paused:false, navTop:47, navRight:100, navHeight:44 });
+const empty = () => ({ loading:true, detail:null, src:'', playerEpoch:0, state:'connecting', error:'', paused:false, navTop:47, navRight:100, navHeight:44 });
 const validId = v => /^[1-9]\d{0,18}$/.test(String(v||''));
 const withdrawn = error => [401,403,404].includes(error.statusCode) || error.code === 'public_live_unavailable';
 const connectionError = '暂时无法连接直播，请重试。';
@@ -33,7 +33,7 @@ Page({
       const detail=await this.read();if(!valid())return;this.setData({detail});
       const session=await this.read('/session','POST');if(!valid())return;
       if(session.key!==detail.key||session.versionId!==detail.versionId||session.revision!==detail.revision)throw {code:'public_live_unavailable'};
-      this.setData({src:sourceUrl(session.url),loading:false});
+      this.setData({src:sourceUrl(session.url),playerEpoch:epoch,loading:false});
       this.poll=setInterval(()=>this.check(epoch),5000);
       this.renew=setTimeout(()=>{if(valid()&&!this.data.paused)this.connect();},90000);
     }catch(error){if(valid()){const stopped=withdrawn(error);this.setData({src:'',loading:false,state:stopped?'stopped':'failed',error:stopped?'直播已停止公开':connectionError});}}
@@ -42,15 +42,29 @@ Page({
     if(this.checking)return;this.checking=true;
     try {const detail=await this.read();if(epoch!==this.epoch||!this.visible)return;
       if(detail.versionId!==this.data.detail?.versionId||detail.revision!==this.data.detail?.revision)throw {code:'public_live_unavailable'};
-    }catch(error){if(epoch===this.epoch&&this.visible){const stopped=withdrawn(error);try{wx.createVideoContext('public-live-video',this).stop();}catch(_){}this.setData({src:'',state:stopped?'stopped':'failed',error:stopped?'直播已停止公开':'暂时无法核对直播状态，请重试。'});clearInterval(this.poll);clearTimeout(this.renew);}}
+    }catch(error){if(epoch===this.epoch&&this.visible){const stopped=withdrawn(error);try{wx.createVideoContext('public-live-video',this).stop();}catch(_){}this.setData({src:'',state:stopped?'stopped':'failed',error:stopped?'直播已停止公开':'暂时无法核对直播状态，请重试。',paused:false});clearInterval(this.poll);clearTimeout(this.renew);}}
     finally{this.checking=false;}
+  },
+  isCurrentPlayer(event) {
+    return this.data.src && Number(event?.currentTarget?.dataset?.playerEpoch) === this.epoch;
   },
   played(event) {
     const time = event.detail.currentTime;
-    if (this.data.src && this.data.state === 'connecting' && Number.isFinite(time) && time > 0) this.setData({state:'playing',error:''});
+    if (this.isCurrentPlayer(event) && this.data.state === 'connecting' && Number.isFinite(time) && time > 0) {
+      this.setData({state:'playing',error:''});
+    }
   },
-  playbackError() {if(this.data.src)this.setData({src:'',loading:false,state:'failed',error:connectionError});},
-  toggle() {if(this.data.paused){this.connect();return;}try{wx.createVideoContext('public-live-video',this).pause();}catch(_){}this.setData({paused:true,state:'paused'});},
+  playbackError(event) {
+    if (!this.isCurrentPlayer(event)) return;
+    clearTimeout(this.renew);
+    this.setData({src:'',loading:false,state:'failed',error:connectionError,paused:false});
+  },
+  toggle() {
+    if (this.data.state === 'paused') return this.connect();
+    if (this.data.state !== 'playing') return;
+    try { wx.createVideoContext('public-live-video',this).pause(); } catch (_) { return; }
+    this.setData({paused:true,state:'paused'});
+  },
   fullscreen() {if(this.data.src)wx.createVideoContext('public-live-video',this).requestFullScreen({direction:90});},
   retry() {return this.connect();},
   back() {wx.navigateBack({fail:()=>{if(validId(this.options.siteId)&&validId(this.options.versionId))wx.redirectTo({url:'/packages/construction/public-site/public-site?enterpriseId='+this.options.enterpriseId+'&siteId='+this.options.siteId+'&versionId='+this.options.versionId});else wx.redirectTo({url:'/packages/construction/public-sites/public-sites?enterpriseId='+this.options.enterpriseId});}});},
