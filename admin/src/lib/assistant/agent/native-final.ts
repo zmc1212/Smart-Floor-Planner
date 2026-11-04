@@ -48,7 +48,7 @@ function quotedFinalMessages(messages:ModelMessage[], imagesAllowed:boolean):Mod
 /** Native decoding can enforce citation presence for quantities; it cannot
  * establish whether a selected original supports them. All existing semantic,
  * receipt, tenant and source validators remain mandatory after generation. */
-export function nativeFinalDefinition(tool:ModelTool):ModelTool{
+export function nativeFinalDefinition(tool:ModelTool, options: { reportNumberValidation?: 'synthesis' } = {}):ModelTool{
   const parameters=structuredClone(tool.parameters),properties=parameters.properties as Record<string,Record<string,unknown>>|undefined;
   if(!properties?.kind)return tool;
   const kinds=properties.kind.enum;
@@ -70,7 +70,7 @@ export function nativeFinalDefinition(tool:ModelTool):ModelTool{
       required.push('answers');
       const groups=p.answers?.properties as Record<string,Record<string,unknown>>|undefined;
       if(!groups||!Object.keys(groups).length)fail('invalid_agent_tools',500);
-      p.answers.properties=Object.fromEntries(Object.entries(groups).map(([key,group])=>[key,numericSynthesisSegments(group)]));
+      p.answers.properties=Object.fromEntries(Object.entries(groups).map(([key,group])=>[key,numericSynthesisSegments(group, options.reportNumberValidation !== 'synthesis')]));
     }
     return {type:'object',properties:p,required:[...new Set(required)],additionalProperties:parameters.additionalProperties};
   });
@@ -80,12 +80,16 @@ export function nativeFinalDefinition(tool:ModelTool):ModelTool{
 
 /** Apply the same original quantity/citation alternatives to flat segments
  * and each report question. Bounds and catalog enums survive unchanged. */
-function numericSynthesisSegments(group:Record<string,unknown>){
+function numericSynthesisSegments(group:Record<string,unknown>, filterDigits = true){
   const segments=structuredClone(group),item=segments.items as Record<string,unknown>;
   const cited=structuredClone(item),uncited=structuredClone(item);
   const c=cited.properties as Record<string,Record<string,unknown>>,u=uncited.properties as Record<string,Record<string,unknown>>;
   c.citations.minItems=Math.max(1,Number(c.citations.minItems)||0);
-  u.citations.maxItems=0;u.text.pattern='^[^0-9]*$';
+  u.citations.maxItems=0;
+  // A JSON Schema digit pattern cannot distinguish a CommonMark list marker
+  // from a quantity. Newly bound report runs keep the exact structural and
+  // citation constraints here; the unchanged synthesis parser owns quantities.
+  if (filterDigits) u.text.pattern='^[^0-9]*$';
   u.basis.enum=(u.basis.enum as string[]).filter(basis=>basis!=='evidence');
   segments.items={anyOf:c.citations.maxItems===0?[uncited]:[cited,uncited]};
   return segments;

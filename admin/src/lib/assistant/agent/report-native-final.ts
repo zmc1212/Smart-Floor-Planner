@@ -6,6 +6,7 @@ import { agentTurnScheduleProtocol, type AgentCheckpoint } from './runtime';
 
 export const reportNativeFinalProtocol = 'report-native-final-v1';
 export const reportFinalFunctionCarrier = 'forced-final-function-v1';
+export const reportStructuralFinalSchema = 'report-structural-final-schema-v1';
 type ReportScope = { conversationPurpose: unknown; purpose: string; triggerKind: string; privateFollowup: boolean; selected: boolean };
 
 /** A new private report reply binds its own final channel, independently of
@@ -39,6 +40,14 @@ export function boundReportFinalCarrier(value: unknown, native: boolean, outputT
   if (value === undefined) return undefined;
   if (!native || value !== reportFinalFunctionCarrier || outputTokens !== reportFinalOutputTokenLimit) fail('context_changed');
   return reportFinalFunctionCarrier;
+}
+
+/** New runs share synthesis's existing prose/quantity parser. Old snapshots
+ * retain their original digit-filtering schema, including on resume. */
+export function boundReportFinalSchema(value: unknown, native: boolean, carrier: unknown) {
+  if (value === undefined) return undefined;
+  if (value !== reportStructuralFinalSchema || !native || carrier !== reportFinalFunctionCarrier) fail('context_changed');
+  return reportStructuralFinalSchema;
 }
 
 /** Auxiliary work consumes the same four-call reservation. The last primary

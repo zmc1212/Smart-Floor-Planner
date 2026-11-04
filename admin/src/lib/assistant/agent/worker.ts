@@ -48,7 +48,7 @@ import { resolveSynthesisRepair, synthesisRepairBase, synthesisRepairProtocol, s
 import { currentSynthesisContext } from './synthesis-sources';
 import { boundKnowledgeContext } from './bound-context';
 import { boundReportContext, queryReportFollowups, reportFollowupTool } from './report-context';
-import { boundReportNativeFinal, reportNativeRuntimeBudget, reportNativeFinalProtocol, boundReportFinalOutput, boundReportFinalCarrier } from './report-native-final';
+import { boundReportNativeFinal, reportNativeRuntimeBudget, reportNativeFinalProtocol, boundReportFinalOutput, boundReportFinalCarrier, boundReportFinalSchema } from './report-native-final';
 import { boundReportAnswerGrounding, reportAnswerGroundingProtocol } from './report-source-scope';
 import { prepareReportAnswerReview, assertReportAnswerReview, reportAnswerValidationFailure } from './report-answer-review';
 import { isReportAnswerSnapshot, reportFinalResponseIssue, reportFinalProtocol, reportAnswerFinalTool, reportQuestionCoverage, reportAnswerSynthesis, reportCoverageFailure, reportCoverageProtocol } from './report-final';
@@ -742,6 +742,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     const nativeFinalization=reportNativeFinal||composableReview&&initial.config.structuredFinal===nativeFinalProtocol;
     const reportFinalOutputTokens = boundReportFinalOutput((initial.run.policy_snapshot as Row).reportFinalOutputTokens, reportNativeFinal);
     const reportFinalCarrier = boundReportFinalCarrier((initial.run.policy_snapshot as Row).reportFinalCarrier, reportNativeFinal, reportFinalOutputTokens);
+    const reportFinalSchema = boundReportFinalSchema((initial.run.policy_snapshot as Row).reportFinalSchema, reportNativeFinal, reportFinalCarrier);
     const reportAnswerGrounding = boundReportAnswerGrounding((initial.run.policy_snapshot as Row).reportAnswerGrounding, reportNativeFinal);
     const finalOutputMode = reportFinalCarrier ? 'function_call' as const : 'json_schema' as const;
     const explanationBound = !nativeFinalization && (initial.run.policy_snapshot as Row).sourceAnswerMode === knowledgeExplanationProtocol;
@@ -820,7 +821,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               return !nativeFinalization||purpose!=='answer'?definitions:available.length
                 ? [...definitions.filter(tool=>tool.name!==finishContextTool.name&&tool.name!=='final_response'),finish]
                 :definitions.map(definition => {
-                  const final = claims ? reviewClaimDefinition(nativeFinalDefinition(definition), claims) : nativeFinalDefinition(definition);
+                  const native = nativeFinalDefinition(definition, reportFinalSchema ? { reportNumberValidation: 'synthesis' } : {});
+                  const final = claims ? reviewClaimDefinition(native, claims) : native;
                   return imageSchema || reportNativeFinal ? explicitNativeObjectRoot(final) : final;
                 });
             }, profile, ...finalAllocation, ...(purpose === 'answer' ? { imageContextBudget } : {}),
@@ -836,6 +838,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           if (cached) {
             if (((cached.input_summary as Row)?.reportFinalOutputTokens ?? undefined) !== finalAllocation.reportFinalOutputTokens) fail('context_changed');
             if (((cached.input_summary as Row)?.reportFinalCarrier ?? undefined) !== reportFinalCarrier) fail('context_changed');
+            if (((cached.input_summary as Row)?.reportFinalSchema ?? undefined) !== reportFinalSchema) fail('context_changed');
             if ((purpose === 'summary' || purpose === 'grounding') && (cached.input_summary as Row)?.summaryRequestHash !== summaryRequestHash) fail('context_changed');
             if (cached.status !== 'succeeded') fail('provider_outcome_unknown');
             outcomeKnown = true;
@@ -868,7 +871,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                   imageContext: initial.config.imageContext ?? null,
                   reportFinalOutputTokens: finalAllocation.reportFinalOutputTokens ?? null, maxOutputTokens: limits.maxOutputTokens,
                   reportNativeFinal: (initial.run.policy_snapshot as Row).reportNativeFinal ?? null,
-                   reportFinalCarrier: reportFinalCarrier ?? null,
+                  reportFinalCarrier: reportFinalCarrier ?? null,
+                  reportFinalSchema: reportFinalSchema ?? null,
                   projectKnowledge: initial.shared,
                   sourceAnswerMode: (initial.run.policy_snapshot as Row).sourceAnswerMode ?? null,
                   sourceQuestionCoverage: (initial.run.policy_snapshot as Row).sourceQuestionCoverage ?? null,
@@ -910,6 +914,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             metadata: { promptVersion: agentPromptVersion, runtime: initial.config.runtime, turn, purpose, probeVersion: initial.config.probeVersion,
               ...(reportNativeFinal ? { reportNativeFinal: reportNativeFinalProtocol } : {}),
               ...(reportFinalCarrier ? { reportFinalCarrier } : {}),
+              ...(reportFinalSchema ? { reportFinalSchema } : {}),
               ...finalAllocation,
               sourceAnswerMode: (initial.run.policy_snapshot as Row).sourceAnswerMode ?? null,
               ...(nativeFinalization&&purpose==='answer'&&!tools.length?{nativeFinalProjection:finalProjection}:{}),

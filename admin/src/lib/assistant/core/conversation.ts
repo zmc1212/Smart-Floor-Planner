@@ -19,7 +19,7 @@ import { stageHandoffProposal } from '../handoff/proposal';
 import { currentHandoffOwner } from '../handoff/owner';
 import { agentConfig, type AgentConfig } from '../agent/config';
 import { homeSourceBudgetProtocol } from '../agent/home-source-budget';
-import { reportNativeAdmission, reportNativeFinalProtocol, reportFinalFunctionCarrier } from '../agent/report-native-final';
+import { reportNativeAdmission, reportNativeFinalProtocol, reportFinalFunctionCarrier, reportStructuralFinalSchema } from '../agent/report-native-final';
 import { reportFinalOutputTokenLimit } from '../contracts/model';
 import { imageContextBudgetPolicy } from '../agent/context-budget';
 import { conversationImageProtocol } from '../agent/image-context';
@@ -152,7 +152,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
       ...(!report && reportContext(c.entry_snapshot).selection ? { reportContextVersion: reportContext(c.entry_snapshot).revision } : {}),
       ...(report ? { reportComposition } : {}),
       ...(reportNativeFinal ? { reportNativeFinal: reportNativeFinalProtocol, reportFinalOutputTokens: reportFinalOutputTokenLimit,
-        reportFinalCarrier: reportFinalFunctionCarrier, reportAnswerGrounding: reportAnswerGroundingProtocol,
+        reportFinalCarrier: reportFinalFunctionCarrier, reportFinalSchema: reportStructuralFinalSchema, reportAnswerGrounding: reportAnswerGroundingProtocol,
         reportSourceProjection: reportSourceProjectionProtocol } : {}),
       ...(agent && !agent.structuredFinal && ['reply','site.question'].includes(purpose)
         ? { sourceAnswerMode: agent.knowledgeExplanation === knowledgeExplanationProtocol ? knowledgeExplanationProtocol : sourceExcerptProtocol,
