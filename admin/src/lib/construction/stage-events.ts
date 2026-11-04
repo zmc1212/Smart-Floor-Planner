@@ -1,8 +1,17 @@
 import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
+import { siteAccessRevoked } from './site-access';
 
 type ProgressAnchor = { stageKey: string; progressRevision: number; projectVersion: number; progressNote: string };
+
+function stageEventAudit(tx: PostgresTransaction, eid: string, eventId: string, projectId: string) {
+  return one(tx, sql`select a.id,a.snapshot from app.construction_audits a
+    join app.domain_event_outbox e on e.enterprise_id=a.enterprise_id and e.id=${eventId} and e.aggregate_id=a.project_id::text
+    where a.enterprise_id=${eid} and a.project_id=${projectId} and a.action='progress'
+    and a.created_at=e.created_at and a.snapshot->>'stageKey'=e.payload->>'stageKey'
+    order by a.id desc limit 1`);
+}
 
 /** A server-owned stage/review snapshot may survive later note edits, while
  * every non-note progress revision keeps its original revocation semantics. */
@@ -43,11 +52,7 @@ export async function currentStageEvent(tx: PostgresTransaction, eid: string, ev
   // every intervening revision is a real note change from existing service
   // audits, rather than accepting any same-key revision (e.g. revoke/regrant).
   // Join timestamps inside PostgreSQL: JS Date loses sub-millisecond precision.
-  const origin = await one(tx, sql`select a.snapshot from app.construction_audits a
-    join app.domain_event_outbox e on e.enterprise_id=a.enterprise_id and e.id=${eventId} and e.aggregate_id=a.project_id::text
-    where a.enterprise_id=${eid} and a.project_id=${String(event.aggregate_id)} and a.action='progress'
-      and a.created_at=e.created_at and a.snapshot->>'stageKey'=e.payload->>'stageKey'
-    order by a.id desc limit 1`);
+  const origin = await stageEventAudit(tx, eid, eventId, String(event.aggregate_id));
   if (!origin) return;
   const input = origin.snapshot as Row;
   return await notesPreserveProgress(tx, eid, String(event.aggregate_id), { stageKey: String(event.project_stage_key),
@@ -57,8 +62,16 @@ export async function currentStageEvent(tx: PostgresTransaction, eid: string, ev
 
 /** Only the latest event of an active construction stage may produce a new
  * private reminder. A pause/resume cannot revive the old event. */
-export async function currentReportStageEvent(tx: PostgresTransaction, eid: string, eventId: unknown) {
+export async function currentReportStageEvent(tx: PostgresTransaction, eid: string, eventId: unknown, recipient?: Row) {
   if (!eventId) return;
   const event = await currentStageEvent(tx, eid, String(eventId), true);
-  if (event?.project_status === 'active' && !['completion', 'move_in'].includes(String(event.project_stage_key))) return event;
+  if (event?.project_status !== 'active' || ['completion', 'move_in'].includes(String(event.project_stage_key))) return;
+  if (recipient?.admin_id && (recipient.audience === 'worker' || recipient.audience === 'designer')) {
+    const projectId = String(event.aggregate_id);
+    const origin = await stageEventAudit(tx, eid, String(event.id), projectId);
+    // Both audits are inserted under the project lock. Transaction timestamps
+    // can be out of order when a concurrent member update waits for that lock.
+    if (!origin || await siteAccessRevoked(tx, eid, projectId, [String(recipient.admin_id)], { afterAuditId: String(origin.id) })) return;
+  }
+  return event;
 }

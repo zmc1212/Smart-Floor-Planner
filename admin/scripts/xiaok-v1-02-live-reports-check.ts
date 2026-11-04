@@ -37,14 +37,17 @@ const output = path.resolve(process.argv.find(a => a.startsWith('--output='))?.s
 const native = process.argv.includes('--stable');
 const weeklyStages = process.argv.includes('--weekly-stages');
 const matchedReminders = process.argv.includes('--matched-reminders');
-const stageReminders = process.argv.includes('--stage-reminders') || matchedReminders;
+const paintingReminders = process.argv.includes('--painting-reminders');
+const stageReminders = process.argv.includes('--stage-reminders') || matchedReminders || paintingReminders;
 assert.ok(!stageReminders || !weeklyStages);
 assert.ok(!matchedReminders || !native, 'This batch verifies the published-stage service scope only');
-const reminderStages = matchedReminders ? ['demolition', 'masonry_carpentry'] : ['installation', 'utilities'];
+assert.ok(!matchedReminders || !paintingReminders);
+const reminderStages = paintingReminders ? ['painting', 'furnishing'] : matchedReminders ? ['demolition', 'masonry_carpentry'] : ['installation', 'utilities'];
 const reminderHeadings = new Map([
   ['demolition', /^(?:拆除|拆改)(?:施工|工艺)标准[：:]/u],
   ['masonry_carpentry', /^(?:泥木|瓦工|木工)(?:施工|工艺)标准[：:]/u],
   ['utilities', /^水电(?:施工|工艺)标准[：:]/u],
+  ['painting', /^(?:油漆|漆工)(?:施工|工艺)标准[：:]/u],
 ]);
 assert.ok(!fs.existsSync(path.join(output, 'report.json')), 'Retain every original attempt');
 fs.mkdirSync(output, { recursive: true });
@@ -55,7 +58,7 @@ let unrelatedBindingIds: string[] = [];
 const log: Row = { startedAt: new Date().toISOString(), prefix, owner: process.env.CODEX_THREAD_ID,
   scope: stageReminders ? 'Current stage reminder bodies and private readback; lifecycle scheduling is checked separately' : 'Configured-model daily/weekly report bodies only; scheduled discovery/native/follow-up evidence is not upgraded by this batch',
   fixedScope: { audiences: ['customer','customer','worker','designer','boss'], projects: 2, kinds: stageReminders ? ['stage'] : weeklyStages ? ['weekly'] : ['daily','weekly'],
-    ...(stageReminders ? { stages: matchedReminders ? 'A: demolition; B: masonry without a confirmed waterproof substage' : 'A: installation following masonry; B: utilities' } : {}),
+    ...(stageReminders ? { stages: paintingReminders ? 'A: painting; B: furnishing with no authorized workmanship' : matchedReminders ? 'A: demolition; B: masonry without a confirmed waterproof substage' : 'A: installation following masonry; B: utilities' } : {}),
     ...(weeklyStages ? { stages: 'A: masonry waterproofing then installation; B: utilities' } : {}),
     firstDraftsPerCase: stageReminders ? 1 : 2, maxBodyRuns: stageReminders ? 8 : weeklyStages ? 10 : 20,
     ...(stageReminders ? {} : { secondDraft: 'preplanned independent correction revision with unchanged original facts, never retry after failure' }),
@@ -171,7 +174,7 @@ async function main() {
       let p = (await owner.execute('detail',{projectId:pid})).project as Row;
       await owner.execute('member',{projectId:pid,expectedVersion:p.version,adminId:admins[2],role:'designer',active:true,workLabel:'合成实模验收'},randomUUID());
       p = (await owner.execute('detail',{projectId:pid})).project as Row;
-      const waterproof = (weeklyStages || stageReminders && !matchedReminders) && i === 0;
+      const waterproof = (weeklyStages || stageReminders && !matchedReminders && !paintingReminders) && i === 0;
       await owner.execute('progress',{projectId:pid,expectedVersion:p.version,stageKey:waterproof ? 'masonry_carpentry' : 'utilities',note:'合成实模验收：团队记录当前阶段',sendReminder:false},randomUUID());
       await original(pid,waterproof ? {title:'合成实模验收·卫生间防水原记录',completed:'卫生间基层已查看',pending:'防水前请先核对管根处理和闭水条件',coordination:''}
         : i ? {completed:'卧室照明回路已核对',pending:'客厅双控开关位置待业主确认',coordination:''}
@@ -180,7 +183,7 @@ async function main() {
         p = (await owner.execute('detail',{projectId:pid})).project as Row;
         await owner.execute('progress',{projectId:pid,expectedVersion:p.version,stageKey:'installation',note:'合成实模验收：已进入安装节点',sendReminder:false},randomUUID());
         await original(pid,{title:'合成实模验收·安装原记录',completed:'安装位置已与现场对照',pending:'台盆安装位置请业主再核对',coordination:''},'customer');
-      } else if (matchedReminders) {
+      } else if (matchedReminders || paintingReminders) {
         p = (await owner.execute('detail',{projectId:pid})).project as Row;
         await owner.execute('progress',{projectId:pid,expectedVersion:p.version,stageKey:reminderStages[i],note:'合成实模验收：团队更新当前施工阶段',sendReminder:false},randomUUID());
       }
@@ -235,7 +238,7 @@ async function main() {
         assert.equal(fact.stageKey,expectedKey);
         assert.deepEqual(fact.stageEvents.map(e=>e.id),[period.stageEventId]);
         assert.equal(result.detail.deliveryState,'delivered');
-        if (expectedKey==='installation') {
+        if (expectedKey==='installation' || expectedKey==='furnishing') {
           assert.deepEqual(project.standards,[]);
           assert.deepEqual(project.knowledgeSources,[]);
         } else {
@@ -314,10 +317,11 @@ async function main() {
         .filter(a => a.trial === (stageReminders ? 1 : 2) && String(a.bindingId) === String(b.id));
       assert.equal(reports.length, stageReminders && b.audience==='customer' ? 1 : periods.length);
       actors.push({ name: String(b.audience), leadId: aid ? undefined : leads[users.indexOf(uid)], uid, aid, role, token,
-        bid: String(b.id), cid: String(b.conversation_id), reports: reports.map(r => ({ id: r.reportId, revision: r.revision, kind: r.kind, body: r.result.detail.body })) });
+        bid: String(b.id), cid: String(b.conversation_id), reports: reports.map(r => ({ id: r.reportId, revision: r.revision, kind: r.kind, body: r.result.detail.body,
+          ...(r.kind === 'stage' ? { stageKey: (r.result.detail.facts as ReportFacts).projects[0].stageKey } : {}) })) });
     }
     const runNative = (await import(pathToFileURL(path.join(root,'admin/scripts/xiaok-v1-02-live-reports-native.cjs')).href)).default;
-    return runNative({ root, output, actors });
+    return runNative({ root, output, actors, reuseReadySession: paintingReminders });
   });
   log.passed=true;
 }

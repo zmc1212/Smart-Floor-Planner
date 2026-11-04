@@ -77,6 +77,12 @@ test('weekly workmanship follows saved stage history and rejects installation ke
   assert.ok(reportWorkmanshipMatches(original, waterproof, '泥木', true));
   assert.equal(reportWorkmanshipMatches(original, waterproof, '泥木', false), false);
   assert.equal(reportWorkmanshipMatches(wrong, install, '安装', false), false);
+  const painting = { key: 'painting', revision: 4 };
+  const paintStandard = { ...original, text: '漆工工艺标准：3、灯槽清理：灯槽内灰尘清理干净。' };
+  assert.ok(reportWorkmanshipMatches(paintStandard, painting, '油漆', false));
+  assert.equal(reportWorkmanshipMatches(paintStandard, install, '安装', false), false);
+  assert.equal(reportWorkmanshipMatches({ ...original, text: '木工工艺标准：石膏拼缝采用V型槽工艺，防止乳胶漆面开裂。' }, painting, '油漆', false), false);
+  assert.equal(reportWorkmanshipMatches({ ...original, text: '工程预算表：顶面乳胶漆。' }, painting, '油漆', false), false);
   const custom = { key: 'constructor', revision: 4 };
   assert.equal(reportWorkmanshipName(custom, { ...facts, weekStageNames: {} }), custom.key);
   assert.equal(reportWorkmanshipMatches(wrong, custom, custom.key, false), false);

@@ -53,7 +53,7 @@ async function reportGuard(tx: PostgresTransaction, lease: Lease) {
   if (scope.workmanship !== undefined && !(report.kind === 'weekly' && scope.workmanship === reportWorkmanshipProtocol
     || report.kind === 'stage' && isReminderWorkmanship(scope.workmanship))) fail('context_changed');
   if (report.kind === 'stage') {
-    const event = await currentReportStageEvent(tx, lease.enterpriseId, report.stage_event_id);
+    const event = await currentReportStageEvent(tx, lease.enterpriseId, report.stage_event_id, binding);
     if (!event || plan.stage_enabled === false) fail('context_changed');
     if (isReminderWorkmanship(scope.workmanship)) {
       const [project, ...others] = (report.facts as ReportFacts).projects;

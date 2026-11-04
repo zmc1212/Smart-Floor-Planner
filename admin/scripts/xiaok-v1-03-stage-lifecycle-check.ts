@@ -32,11 +32,14 @@ assert.ok(retained.cleanup === true && retained.prefix.startsWith('synthetic-rep
 const { projects, admins, users, bindingIds } = retained.fixture as { projects: string[]; admins: string[]; users: string[]; bindingIds: string[] };
 assert.equal(projects.length, 2);
 assert.equal(bindingIds.length, 5);
+const ownedBindingIds = new Set(bindingIds);
 const prefix = retained.prefix;
+const recipientLifecycle = process.argv.includes('--recipient-lifecycle');
 const output = path.resolve(process.argv.find(a => a.startsWith('--output='))?.slice(9) || '../tmp/v1-03-stage-coverage/reminder-lifecycle-01');
 fs.mkdirSync(output, { recursive: true });
 const evidence = path.join(output, 'report.json');
-const log: Row = { scope: 'V1-03 current stage events and private delivery in isolated clone; body transport double only', checks: [], fixture: retained.fixture };
+const log: Row = { scope: recipientLifecycle ? 'V1-03 household and membership boundaries in isolated clone; body transport double only'
+  : 'V1-03 current stage events and private delivery in isolated clone; body transport double only', checks: [], fixture: retained.fixture };
 fs.writeFileSync(evidence, JSON.stringify(log), { flag: 'wx' });
 const save = () => fs.writeFileSync(evidence, JSON.stringify(log, null, 2));
 const read = <T>(work: Parameters<typeof withTenantTransaction<T>>[1]) => withTenantTransaction(eid, work);
@@ -53,6 +56,8 @@ let release: (() => Promise<void>) | undefined, before: ReturnType<typeof hashes
 let enabledByUs = false, assistantEnabledByUs = false, modelDoubles = 0;
 const revivedProjects = new Set<string>(), revivedAdmins = new Set<string>(), resumedBindings: Row[] = [];
 const bindings: Row[] = [];
+let extraLead: string | undefined;
+let restoreMembership: (() => Promise<unknown>) | undefined;
 let heldBoss: Row | undefined;
 const actor = (b: Row): ActorContext => ({ enterpriseId: eid, principal: b.user_id ? { kind: 'user', userId: String(b.user_id) }
   : { kind: 'admin', adminId: String(b.admin_id) }, contextVersion: b.user_id ? 1 : 0, capabilities: ['assistant.followup.self'] });
@@ -95,7 +100,7 @@ async function drain(factsOnly = 0, forbidBody = false) {
     const run = (await read(tx => one(tx, sql`select r.purpose,p.binding_id::text from app.assistant_runs r join app.construction_report_versions v
       on v.enterprise_id=r.enterprise_id and (v.run_id=r.id or v.body_run_id=r.id)
       join app.construction_reports p on p.enterprise_id=v.enterprise_id and p.id=v.report_id where r.enterprise_id=${eid} and r.id=${lease.runId}`)))!;
-    assert.ok(bindingIds.includes(String(run.binding_id)), 'Do not process an unowned job');
+    assert.ok(ownedBindingIds.has(String(run.binding_id)), 'Do not process an unowned job');
     if (run.purpose === 'construction.report.facts') await processConstructionReport(lease);
     else {
       assert.equal(factsOnly, 0);
@@ -113,9 +118,107 @@ async function drain(factsOnly = 0, forbidBody = false) {
   }
   assert.ok(factsOnly, 'Owned queue should drain');
 }
+async function checkRecipients() {
+  const customer = bindings.find(b => String(b.project_id) === projects[0])!;
+  const other = bindings.find(b => String(b.project_id) === projects[1])!;
+  const designer = bindings.find(b => b.audience === 'designer')!;
+  await step('one homeowner receives and reopens two project-specific reminders; the other household stays private', async () => {
+    extraLead = String((await read(tx => one(tx, sql`insert into app.leads(enterprise_id,customer_user_id,name,phone,source)
+      values(${eid},${String(customer.user_id)},${prefix+':lead:additional:'+randomUUID()},'13800000000','natural') returning id`)))!.id);
+    const additional = String((await owner.execute('create', { leadId: extraLead, name: '合成验收·甲户第二套房', managerId: admins[1], rooms: ['厨房'] }, randomUUID())).id);
+    revivedProjects.add(additional);
+    const first = await service(customer).open(randomUUID(), projects[0]);
+    const second = await service(customer).open(randomUUID(), additional);
+    const firstBinding = String(first.bindingId), secondBinding = String(second.bindingId);
+    const found = await read(tx => one(tx, sql`select * from app.construction_followup_bindings where enterprise_id=${eid} and id=${secondBinding}`));
+    assert.ok(found);
+    resumedBindings.push(found);
+    ownedBindingIds.add(secondBinding);
+    assert.notEqual(first.conversationId, second.conversationId);
+    assert.deepEqual((await service(customer).context(firstBinding)).projects.map(p => p.id), [projects[0]]);
+    assert.deepEqual((await service(customer).context(secondBinding)).projects.map(p => p.id), [additional]);
+    await assert.rejects(service(customer).context(firstBinding, { projectId: additional }), /construction_not_found/);
+    await assert.rejects(service(other).context(secondBinding), /assistant_resource_not_found/);
+    const { version, enabled, stageEnabled, dailyTime, weeklyTime, weeklyDay, projectIds, stageKeys, audiences, inactivePolicy } = reportPlanDto(await plan.settings(), eid);
+    const activePlan = { enabled, stageEnabled, dailyTime, weeklyTime, weeklyDay, projectIds, stageKeys, audiences, inactivePolicy };
+    await plan.configure({ ...activePlan, expectedVersion: version, projectIds: [projects[0], additional], audiences: ['customer'] }, randomUUID());
+    const eventA = await progress(projects[0], 'design');
+    const eventB = await progress(additional, 'furnishing');
+    assert.equal(await tick(), 2);
+    await drain();
+    assert.equal(await deliverConstructionReports(eid), 2);
+    const [receiptA] = await reports(eventA), [receiptB] = await reports(eventB);
+    assert.deepEqual([receiptA.binding_id, receiptB.binding_id], [firstBinding, secondBinding]);
+    assert.ok(receiptA.message_id && receiptB.message_id);
+    for (const [bindingId, receipt, pid] of [[firstBinding, receiptA, projects[0]], [secondBinding, receiptB, additional]] as const) {
+      const detail = await service(customer).detail(bindingId, String(receipt.id));
+      assert.deepEqual(detail.facts?.projects.map(p => p.id), [pid]);
+      assert.ok(detail.readToken);
+      await service(customer).acknowledge(bindingId, String(receipt.id), 1, detail.readToken, randomUUID());
+      assert.ok((await service(customer).detail(bindingId, String(receipt.id))).readAt);
+    }
+    await assert.rejects(service(customer).detail(firstBinding, String(receiptB.id)), /assistant_resource_not_found/);
+    await assert.rejects(service(other).detail(secondBinding, String(receiptB.id)), /assistant_resource_not_found/);
+    await status(additional, 'archived');
+    await plan.configure({ ...activePlan, expectedVersion: Number((await plan.settings()).version) }, randomUUID());
+    assert.deepEqual((await service(customer).list()).items.filter(b => b.bindingId === firstBinding || b.bindingId === secondBinding)
+      .map(b => b.bindingId), [firstBinding]);
+    return { projects: [projects[0], additional], conversations: [first.conversationId, second.conversationId], reports: [receiptA.id, receiptB.id], otherDenied: true };
+  });
+  await step('removing and regranting one project cannot deliver its queued reminder; the other project still arrives', async () => {
+    const designerId = String(designer.admin_id);
+    const setMembership = async (active: boolean) => owner.execute('member', { projectId: projects[0], expectedVersion: (await detail(projects[0])).version,
+      adminId: designerId, role: 'designer', active, workLabel: '合成实模验收' }, randomUUID());
+    const old = await progress(projects[0], 'installation');
+    const independent = await progress(projects[1], 'utilities');
+    assert.equal(await tick(), 8);
+    restoreMembership = () => setMembership(true);
+    await setMembership(false);
+    assert.deepEqual((await service(designer).context(String(designer.id))).projects.map(p => p.id), [projects[1]]);
+    await setMembership(true); restoreMembership = undefined;
+    await drain();
+    const delivered = await deliverConstructionReports(eid);
+    const previous = (await reports(old)).find(r => r.binding_id === String(designer.id))!;
+    const kept = (await reports(independent)).find(r => r.binding_id === String(designer.id))!;
+    log.membershipObservation = { old: previous, independent: kept, delivered }; save();
+    assert.equal(previous.status, 'failed');
+    assert.equal(previous.error_code, 'context_changed');
+    assert.equal(previous.body_run_id, null);
+    assert.equal(previous.message_id, null);
+    assert.equal(kept.delivery_state, 'delivered');
+    assert.equal(delivered, 7);
+    const followup = service(designer), bid = String(designer.id);
+    assert.ok(!(await followup.reports(bid)).items.some(r => r.reportId === previous.id));
+    const saved = await followup.detail(bid, String(kept.id));
+    assert.deepEqual(saved.facts?.projects.map(p => p.id), [projects[1]]);
+    assert.ok(saved.readToken);
+    await followup.acknowledge(bid, String(kept.id), 1, saved.readToken, randomUUID());
+    assert.ok((await service(designer).detail(bid, String(kept.id))).readAt);
+    const inFlight = await progress(projects[0], 'painting');
+    assert.equal(await tick(), 4); await drain(4);
+    restoreMembership = () => setMembership(true);
+    await setMembership(false);
+    await setMembership(true); restoreMembership = undefined;
+    const before = modelDoubles;
+    await drain();
+    assert.equal(modelDoubles - before, 3);
+    assert.equal(await deliverConstructionReports(eid), 3);
+    const revoked = (await reports(inFlight)).find(r => r.binding_id === bid)!;
+    assert.equal(revoked.delivery_state, 'revoked');
+    assert.equal(revoked.message_id, null);
+    assert.deepEqual(await read(tx => one(tx, sql`select status,error_code from app.assistant_runs
+      where enterprise_id=${eid} and id=${String(revoked.body_run_id)}`)), { status: 'failed', error_code: 'context_changed' });
+    const fresh = await progress(projects[0], 'demolition');
+    assert.equal(await tick(), 4); await drain(); assert.equal(await deliverConstructionReports(eid), 4);
+    const replacement = (await reports(fresh)).find(r => r.binding_id === bid)!;
+    assert.ok(replacement.message_id);
+    assert.deepEqual((await service(designer).detail(bid, String(replacement.id))).facts?.projects.map(p => p.id), [projects[0]]);
+    return { old: previous.id, revokedBeforeBody: revoked.id, independent: kept.id, newAfterRegrant: replacement.id };
+  });
+}
 async function main() {
   assert.equal(new URL(resolvePostgresRuntimeConfig().connectionString).pathname, url.pathname);
-  release = await lockAssistantAcceptance(target);
+  release = await lockAssistantAcceptance(target, { waitForLock: true });
   before = hashes();
   await step('reactivate only labelled fixtures; existing policy and queue idle', async () => {
     assert.equal((await read(tx => one(tx, sql`select name from app.enterprises where id=${eid}`)))?.name, '微云');
@@ -155,6 +258,11 @@ async function main() {
     }
     return { projects, bindingIds };
   });
+  if (recipientLifecycle) {
+    await checkRecipients();
+    log.passed = true;
+    return;
+  }
   const boss = bindings.find(b => b.audience === 'boss')!, customerA = bindings.find(b => String(b.project_id) === projects[0])!;
   let originalA!: Row, originalB!: Row;
   await step('separate current reminders reach all five private destinations; held boss receives both projects', async () => {
@@ -242,6 +350,7 @@ async function main() {
 }
 async function cleanup() {
   if (!release) return;
+  await restoreMembership?.();
   if (heldBoss) await bossMode(heldBoss, 'ai');
   if (enabledByUs && policy) {
     const { enabled, stageEnabled, dailyTime, weeklyTime, weeklyDay, projectIds, stageKeys, audiences, inactivePolicy } = reportPlanDto(policy, eid);
@@ -258,6 +367,8 @@ async function cleanup() {
     });
   }
   for (const p of revivedProjects) if ((await detail(p)).status !== 'archived') await status(p, 'archived');
+  if (extraLead) await read(tx => tx.execute(sql`update app.leads set archived_at=now() where enterprise_id=${eid}
+    and id=${extraLead} and name like ${prefix+':lead:additional:%'}`));
   for (const id of revivedAdmins) await read(tx => tx.execute(sql`update app.admin_users set status='disabled'
     where enterprise_id=${eid} and id=${id} and username like ${prefix+':%'}`));
   if (assistantEnabledByUs) await read(tx => tx.execute(sql`update app.assistant_enterprise_settings set enabled=false where enterprise_id=${eid}`));

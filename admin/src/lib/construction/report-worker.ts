@@ -82,7 +82,7 @@ export async function processConstructionReport(lease: Lease) {
       if (!b || b.conversation_id !== run.conversation_id) fail('context_changed');
       let stageEvent: Row | undefined;
       if (report.kind === 'stage') {
-        stageEvent = await currentReportStageEvent(tx, eid, report.stage_event_id);
+        stageEvent = await currentReportStageEvent(tx, eid, report.stage_event_id, b);
         if (!stageEvent || settings.stage_enabled === false) fail('context_changed');
       }
       const facts = await collectReportFacts(tx, eid, b, { ...report, stage_event: stageEvent, period_end: report.fact_period_end, cutoff_at: report.fact_cutoff_at }, policy.scope as Row);
@@ -122,7 +122,7 @@ export async function deliverConstructionReports(onlyEnterprise?: string) {
     for (const d of pending) {
       const b = (await one(tx, sql`select * from app.construction_followup_bindings where enterprise_id=${eid} and id=${String(d.binding_id)} for update`))!;
       if (b.conversation_id !== d.generation_conversation_id || Number(settings.dispatch_epoch || 1) !== Number((d.policy_snapshot as Row).reportDispatchEpoch || 1)
-        || d.kind === 'stage' && (settings.stage_enabled === false || !await currentReportStageEvent(tx, eid, d.stage_event_id))) {
+        || d.kind === 'stage' && (settings.stage_enabled === false || !await currentReportStageEvent(tx, eid, d.stage_event_id, b))) {
         await tx.execute(sql`update app.construction_report_deliveries set state='revoked' where enterprise_id=${eid} and event_id=${String(d.event_id)}`);
         continue;
       }

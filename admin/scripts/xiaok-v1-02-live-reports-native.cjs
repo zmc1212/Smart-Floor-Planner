@@ -162,7 +162,7 @@ module.exports = async ctx => {
           if (expected.kind === 'stage') {
             const card = '.followup-stage[data-report="' + expected.id + '"]', first = expected.body[0];
             const source = first.knowledgeSources[0];
-            const stageNames = { installation: '安装', utilities: '水电', demolition: '拆改', masonry_carpentry: '泥木' };
+            const stageNames = { installation: '安装', utilities: '水电', demolition: '拆改', masonry_carpentry: '泥木', painting: '油漆', furnishing: '软装' };
             const name = expected.stageKey ? stageNames[expected.stageKey] : source ? '水电' : '安装';
             assert.ok(name);
             const readStage = async () => {

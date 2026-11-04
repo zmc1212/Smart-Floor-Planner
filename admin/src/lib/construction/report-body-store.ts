@@ -30,7 +30,7 @@ export async function enqueueReportBody(tx: PostgresTransaction, eid: string, re
   const settings = await one(tx, sql`select * from app.assistant_enterprise_settings where enterprise_id=${eid} and enabled for update`);
   const plan = await one(tx, sql`select * from app.construction_report_settings where enterprise_id=${eid} and enabled for share`);
   if (!b || !settings || !plan || !await followupAvailable(tx, eid, b)) fail('context_changed');
-  if (v.report_kind === 'stage' && (plan.stage_enabled === false || !await currentReportStageEvent(tx, eid, v.stage_event_id))) fail('context_changed');
+  if (v.report_kind === 'stage' && (plan.stage_enabled === false || !await currentReportStageEvent(tx, eid, v.stage_event_id, b))) fail('context_changed');
   const c = await one(tx, sql`select * from app.assistant_conversations where enterprise_id=${eid} and id=${String(b.conversation_id)} for update`);
   const parent = await one(tx, sql`select context_revision,conversation_id,policy_snapshot from app.assistant_runs where enterprise_id=${eid} and id=${String(v.run_id)}`);
   if (!c || !parent || c.id !== parent.conversation_id || c.context_revision !== parent.context_revision

@@ -39,7 +39,7 @@ export async function enqueueReport(tx: PostgresTransaction, eid: string, bindin
   if (!await followupAvailable(tx, eid, binding)) return null;
   let projects = await followupProjects(tx, eid, binding, true, settings.project_ids as string[], settings.stage_keys as string[]);
   if (input.kind === 'stage') {
-    const event = await currentReportStageEvent(tx, eid, input.stageEventId);
+    const event = await currentReportStageEvent(tx, eid, input.stageEventId, binding);
     if (!event) return null;
     projects = projects.filter(p => String(p.id) === String(event.aggregate_id));
   }

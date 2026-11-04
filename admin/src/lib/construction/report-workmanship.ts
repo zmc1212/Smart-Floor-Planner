@@ -12,6 +12,7 @@ const stageLimit = 4;
 const defaultNames = new Map(defaultConstructionStages.map(({ key, name }) => [key, name]));
 const standardHeadings = new Map([
   ['demolition', ['拆除', '拆改']], ['utilities', ['水电']], ['masonry_carpentry', ['泥木', '瓦工', '木工']],
+  ['painting', ['漆工']],
 ]);
 
 /** The stage history is a recorded-time boundary, independent of today's project stage. */
