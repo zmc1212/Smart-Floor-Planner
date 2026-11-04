@@ -21,15 +21,15 @@ function playbackUrl(path:string){
   return u.origin+path;
 }
 const lock=(tx:PostgresTransaction,eid:string,lid:string)=>tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`public-live-media:${eid}:${lid}`},0))`);
-async function authorize(tx:PostgresTransaction,eid:string,lid:string,vid:string,viewer:LiveViewer):Promise<Source> {
-  // Staff and owner checks take the policy row exclusively. Acquire it before
-  // liveSource takes shared locks, just as the preparation and decision paths do.
+async function authorize(tx:PostgresTransaction,eid:string,lid:string,vid:string,viewer:LiveViewer,ownerLock:'update'|'share'='update'):Promise<Source> {
+  // Match the policy -> consultation -> grant order of the write paths.
+  // Only an existing owner session's read checks opt into shared locks.
   if(viewer.kind==='staff'){
     if(viewer.actor.enterpriseId!==eid)fail('public_live_unavailable',404);
     await staffLiveAccess(tx,viewer.actor,viewer.projectId);
   }else if(viewer.kind==='owner'){
     if(viewer.actor.enterpriseId!==eid||viewer.actor.principal.kind!=='user')fail('public_live_unavailable',404);
-    const r=new AssistantRepository(tx,viewer.actor);await r.settings();const c=await r.conversation(viewer.conversationId);
+    const r=new AssistantRepository(tx,viewer.actor);await r.settings(false,ownerLock);const c=await r.conversation(viewer.conversationId,ownerLock);
     if(c.purpose!=='customer_consultation')fail('public_live_unavailable',404);
   }
   const s=await liveSource(tx,eid,lid,vid);
@@ -112,7 +112,7 @@ async function session(eid:string,key:string,token:string) {
       join app.construction_public_live_proxies p on p.enterprise_id=s.enterprise_id and p.id=s.proxy_id and p.state='ready' and p.expires_at>now()
       where s.enterprise_id=${eid} and s.token_hash=${hash(token)} and s.expires_at>now()`);
     if(!row)fail('public_live_unavailable',404);
-    const s=await authorize(tx,eid,String(row.live_id),String(row.version_id),row.actor as LiveViewer);
+    const s=await authorize(tx,eid,String(row.live_id),String(row.version_id),row.actor as LiveViewer,'share');
     if(Number(s.live.revision)!==Number(row.revision))fail('public_live_unavailable',404);
     return row;
   });

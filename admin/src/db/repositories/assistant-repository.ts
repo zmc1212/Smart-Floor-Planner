@@ -4,6 +4,7 @@ import { fail, type ActorContext } from '@/lib/assistant/contracts';
 import { authorizeKnowledgeManager } from '@/lib/assistant/knowledge/manager';
 
 export type Row = Record<string, unknown>;
+type RowLock = 'update' | 'share';
 export function assistantWritesEnabled(settings: Row | undefined) {
   return Boolean(settings?.enabled && Number(settings.retention_days) >= 1
     && Number(settings.daily_requests) >= 1 && Number(settings.daily_tokens) >= 1
@@ -57,14 +58,16 @@ export class AssistantRepository {
     const user = await one(this.tx, sql`select app.assistant_identity_is_current(${a.principal.userId}::bigint,${a.contextVersion}::integer) as valid`);
     if (!user?.valid) fail('identity_context_invalid', 401);
   }
-  async settings(write = false) {
+  async settings(write = false, readLock: RowLock = 'update') {
     await this.identity();
-    const settings = await one(this.tx, sql`select * from app.assistant_enterprise_settings where enterprise_id=${this.actor.enterpriseId} for update`);
+    const lock = !write && readLock === 'share' ? sql`share` : sql`update`;
+    const settings = await one(this.tx, sql`select * from app.assistant_enterprise_settings where enterprise_id=${this.actor.enterpriseId} for ${lock}`);
     if (write && !assistantWritesEnabled(settings)) fail('assistant_disabled', 403);
     return settings;
   }
-  async conversation(conversationId: string) {
+  async conversation(conversationId: string, readLock: RowLock = 'update') {
     const a = this.actor;
+    const lock = readLock === 'share' ? sql`share` : sql`update`;
     if (a.capabilities.some(c => c === 'assistant.followup.self' || c === 'assistant.followup.delivery')) {
       const subject = a.principal.kind === 'user' ? a.principal.userId : a.principal.adminId;
       const conversation = await one(this.tx, sql`select c.* from app.assistant_conversations c
@@ -73,13 +76,13 @@ export class AssistantRepository {
         and coalesce(c.entry_snapshot->>'retentionRedacted','false')<>'true'
         and p.principal_kind=${a.principal.kind} and p.status='active'
         and ${a.principal.kind === 'user' ? sql`p.user_id=${subject}` : sql`p.admin_id=${subject}`}
-        and app.assistant_followup_conversation_access(${a.principal.kind},${subject}::bigint,${a.enterpriseId}::bigint,c.id) for update of c,p`);
+        and app.assistant_followup_conversation_access(${a.principal.kind},${subject}::bigint,${a.enterpriseId}::bigint,c.id) for ${lock} of c,p`);
       if (!conversation) fail('assistant_resource_not_found', 404);
       return conversation;
     }
     if (a.principal.kind === 'admin' && a.capabilities.includes('assistant.project.shared')) {
       const conversation = await one(this.tx, sql`select * from app.assistant_conversations where enterprise_id=${a.enterpriseId}
-        and id=${conversationId} and purpose='project_collaboration' for update`);
+        and id=${conversationId} and purpose='project_collaboration' for ${lock}`);
       if (!conversation || !(await one(this.tx, sql`select app.assistant_shared_conversation_access(${a.principal.adminId}::bigint,
         ${a.enterpriseId}::bigint,${conversationId}::bigint,${a.entry?.miniProgramUserId || null}::bigint,${a.entry?.miniProgramContextVersion ?? 0}::integer) as allowed`))?.allowed) fail('assistant_resource_not_found', 404);
       return conversation;
@@ -89,7 +92,7 @@ export class AssistantRepository {
       where c.enterprise_id=${a.enterpriseId} and c.id=${conversationId}
       and c.purpose=${a.principal.kind==='user'?'customer_consultation':'knowledge_preview'}
       and ${a.principal.kind==='user'?sql`p.user_id=${a.principal.userId}`:sql`p.admin_id=${a.principal.adminId}`}
-      and p.status='active' for update of c,p`);
+      and p.status='active' for ${lock} of c,p`);
     if (!conversation) fail('assistant_resource_not_found', 404);
     return conversation;
   }
