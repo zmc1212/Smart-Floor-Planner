@@ -18,6 +18,8 @@ export const reportGuidanceInputProtocol = 'report-guidance-customer-pending-v1'
 export const reportPendingGuidanceProtocol = 'report-pending-guidance-v1';
 export const reportGuidanceOnlyProtocol = 'report-guidance-only-v1';
 export const reportGuidanceTaskProtocol = 'report-guidance-pending-source-v1';
+export const reportGuidanceSelectionProtocol = 'report-guidance-pending-selection-v1';
+export const reportGuidanceOriginalProtocol = 'report-guidance-original-selection-v1';
 export type ReportBodyWire = 'legacy' | 'slots' | 'flat' | 'quoted' | 'citation-list';
 type ReportScope = { conversationPurpose: unknown; purpose: string; triggerKind: string; privateFollowup: boolean; selected: boolean };
 
@@ -58,7 +60,7 @@ export function reportBodyFinalPolicy(config: AgentConfig | null) {
   return { reportBodyFinal: reportBodyFinalProtocol, reportBodyFactCoverage: scheduledReportFactCoverageProtocol,
     ...(bailianModelProfile(config.model).functionCalling === 'documented' ? {
       reportBodyFinalCarrier: reportFinalFunctionCarrier, reportBodyProjectSlots: reportBodyCitationListProtocol,
-      reportGuidanceReview: reportGuidanceReviewProtocol, reportGuidanceInput: reportGuidanceTaskProtocol } : {}) };
+      reportGuidanceInput: reportGuidanceOriginalProtocol } : {}) };
 }
 
 export function boundReportGuidanceReview(value: unknown, wire: ReportBodyWire) {
@@ -67,8 +69,10 @@ export function boundReportGuidanceReview(value: unknown, wire: ReportBodyWire) 
   return true;
 }
 
-export function boundReportGuidanceInput(value: unknown, reviewed: boolean) {
+export function boundReportGuidanceInput(value: unknown, reviewed: boolean, wire?: ReportBodyWire) {
   if (value === undefined) return undefined;
+  if ((value === reportGuidanceSelectionProtocol || value === reportGuidanceOriginalProtocol)
+    && wire === 'citation-list' && !reviewed) return value;
   const protocol = [reportGuidanceInputProtocol, reportPendingGuidanceProtocol, reportGuidanceOnlyProtocol, reportGuidanceTaskProtocol]
     .find(protocol => protocol === value);
   if (!reviewed || !protocol) fail('context_changed');

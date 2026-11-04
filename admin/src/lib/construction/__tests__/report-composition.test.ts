@@ -5,7 +5,7 @@ import { sourceCitationCatalog } from '@/lib/assistant/agent/citation-catalog';
 import { toolSchemaIssue } from '@/lib/assistant/agent/tool-protocol';
 import type { SynthesisContext } from '@/lib/assistant/agent/synthesis';
 import type { ReportReference } from '../report-reference';
-import { projectReportGuidanceOnly, reportGuidanceFinalTool } from '../report-guidance-final';
+import { projectReportGuidanceOnly, reportGuidanceChoices, reportGuidanceFinalTool } from '../report-guidance-final';
 
 const selection: ReportReference = { bindingId: '7', reportId: '8', revision: 1, projectId: '9', conversationId: '10',
   kind: 'daily', periodStart: '2026-11-01T16:00:00.000Z', periodEnd: '2026-11-02T12:00:00.000Z', cutoffAt: '2026-11-02T12:00:00.000Z', factsHash: 'frozen' };
@@ -37,6 +37,24 @@ test('guidance-only final cannot author arrangements and inserts the exact autho
   for (const fields of [{ P1_arrangements: '灯已安装完成。' }, { P1_standard: '' },
     { P1_standard: sourceCitationCatalog(context.sources[0])[0].citationId }]) {
     assert.ok(await toolSchemaIssue(tool, JSON.stringify({ ...JSON.parse(raw), ...fields })));
+  }
+});
+test('a scheduled recommendation can select a current pending item and cannot publish a supplied claim', async () => {
+  const item = '插座位置仍待业主核对。';
+  const [choice] = reportGuidanceChoices(project, [item]);
+  const [foreign] = reportGuidanceChoices({ ...project, selection: { ...selection, revision: 2 } }, [item]);
+  const choices = [[choice]];
+  const tool = reportGuidanceFinalTool([project], choices);
+  const raw = JSON.stringify({ P1_guidance: choice.id });
+  assert.equal(await toolSchemaIssue(tool, raw), null);
+  const pending = parseReportBody(projectReportGuidanceOnly(raw, [project], choices), [project], true).projects[0].sections.pending;
+  assert.equal(pending.segments[0].basis, 'advice');
+  assert.equal(pending.segments[0].citations[0].quote, item);
+  assert.match(pending.segments[0].text, /请优先核对/);
+  for (const id of [foreign.id, '插座已安装，施工队明早到场。', 'review_original']) {
+    const bad = JSON.stringify({ P1_guidance: id });
+    assert.ok(await toolSchemaIssue(tool, bad));
+    assert.throws(() => projectReportGuidanceOnly(bad, [project], choices), /invalid_model_citation/);
   }
 });
 test('missing, repeated, foreign or malformed project groups cannot become a report', () => {

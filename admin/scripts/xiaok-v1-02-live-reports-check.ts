@@ -4,11 +4,16 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { loadEnvConfig } from '@next/env';
+import { SignJWT } from 'jose';
 import { sql } from 'drizzle-orm';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
+import { AdminUserRepository } from '@/db/repositories/admin-user-repository';
+import { MiniProgramIdentityRepository } from '@/db/repositories/miniprogram-identity-repository';
+import { UserRepository } from '@/db/repositories/user-repository';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 import { type ActorContext } from '@/lib/assistant/contracts';
 import { appendMessage, cancelRuns } from '@/lib/assistant/core/conversation';
@@ -29,10 +34,12 @@ const target = new URL(resolvePostgresRuntimeConfig().connectionString);
 assert.ok(['localhost','127.0.0.1'].includes(target.hostname) && target.port === '5432' && target.pathname === '/smart_floor_planner');
 assert.equal(assistantDailyLimitsEnabled(), false, 'Bind the user-confirmed unlimited daily admission setting');
 const output = path.resolve(process.argv.find(a => a.startsWith('--output='))?.slice(9) || '../tmp/v1-02-live-reports/configured-01');
+const native = process.argv.includes('--stable');
 assert.ok(!fs.existsSync(path.join(output, 'report.json')), 'Retain every original attempt');
 fs.mkdirSync(output, { recursive: true });
 const prefix = 'synthetic-v1-02-live-' + randomUUID();
 const users: string[] = [], admins: string[] = [], leads: string[] = [], projects: string[] = [], records: string[] = [], bindings: Row[] = [];
+const staffUsers: string[] = [];
 let unrelatedBindingIds: string[] = [];
 const log: Row = { startedAt: new Date().toISOString(), prefix, owner: process.env.CODEX_THREAD_ID,
   scope: 'Configured-model daily/weekly report bodies only; scheduled discovery/native/follow-up evidence is not upgraded by this batch',
@@ -48,8 +55,11 @@ const files = execFileSync('rg', ['--files','admin/src/lib/assistant','admin/src
 files.push('admin/src/lib/platform-llm-config.ts','admin/src/lib/platform-llm-profile.ts','admin/src/app/api/internal/assistant/jobs/run/route.ts',
   'admin/scripts/assistant-worker.mjs','admin/scripts/xiaok-v1-02-live-reports-check.ts','admin/scripts/assistant-acceptance-safety.mjs',
   'admin/package.json','admin/package-lock.json','admin/tsconfig.json','admin/.env.local','tmp/xiaok-vector/connection.private.json');
-const binding = () => Object.fromEntries([...new Set(files)].filter(p => fs.existsSync(path.join(root,p))).sort()
-  .map(p => [p, createHash('sha256').update(fs.readFileSync(path.join(root,p))).digest('hex')]));
+if (native) files.push('admin/scripts/xiaok-v1-02-live-reports-native.cjs','admin/scripts/wechatide-native-client.ts',
+  'tmp/wechat-devtools-version-test/window.ps1','tmp/v1-02-conversation-list-visual/inspect-window.ps1',
+  'D:/微信开发工具/微信web开发者工具/resources/app.asar','D:/微信开发工具/微信web开发者工具/微信开发者工具.exe');
+const binding = () => Object.fromEntries([...new Set(files)].filter(p => fs.existsSync(path.resolve(root,p))).sort()
+  .map(p => [p, createHash('sha256').update(fs.readFileSync(path.resolve(root,p))).digest('hex')]));
 let before: ReturnType<typeof binding>, release: (() => Promise<void>) | undefined, policy: Row | undefined;
 let owner: ConstructionService, plan: ConstructionReportService;
 const actor = (b: Row): ActorContext => ({ enterpriseId: eid, principal: b.user_id
@@ -186,6 +196,7 @@ async function main() {
       for (const project of composed) {
         assert.equal(project.guidance.length, 1);
         assert.equal(project.guidance[0].basis, 'advice');
+        assert.match(project.guidance[0].text, /请优先核对原记录中的这一项/);
         assert.ok(project.standards.length, 'This water-stage fixture requires an authorized workmanship excerpt');
         const sources = new Set(project.knowledgeSources.map(s => s.sourceId));
         for (const item of project.standards) {
@@ -203,6 +214,40 @@ async function main() {
       return {reportId:id,revision,runId:result.state.body_run_id,body:result.detail.body};
     });
   }
+  log.configuredPassed = true; save();
+  if (native) await step('Stable native daily and weekly readback across four roles', async () => {
+    checkBinding(); assert.deepEqual(await config(),log.configurationBefore);
+    assert.ok(process.env.JWT_SECRET);
+    const actors = [];
+    for (const b of bindings) {
+      const aid = b.admin_id ? String(b.admin_id) : undefined;
+      let uid = String(b.user_id), contextVersion = 1;
+      const role = b.audience === 'customer' ? 'user' : b.audience === 'boss' ? 'enterprise_admin' : b.audience === 'worker' ? 'construction_staff' : 'designer';
+      if (aid) {
+        const user = await withPlatformTransaction(async tx => {
+          const account = await new AdminUserRepository(tx).findById(BigInt(aid));
+          assert.ok(account && admins.includes(aid) && !account.userId);
+          const mini = new MiniProgramIdentityRepository(tx), u = await mini.ensureStaffUser(account);
+          staffUsers.push(String(u.id));
+          await new UserRepository(tx).update(u.id, { phone: '199' + String(u.id).padStart(8, '0') });
+          assert.ok(await mini.selectContext(u.id, { mode: 'staff', staffId: BigInt(aid), enterpriseId: BigInt(eid) }));
+          return u;
+        });
+        uid = String(user.id); contextVersion = Number(user.contextVersion);
+      }
+      const mode = aid ? 'staff' : 'customer';
+      const token = await new SignJWT({ sub: uid, id: uid, mode, role, ...(aid ? { staffId: aid } : {}),
+        enterpriseId: eid, contextVersion, source: 'password' }).setProtectedHeader({ alg: 'HS256' })
+        .setSubject(uid).setIssuedAt().setAudience('miniprogram').setExpirationTime('1h').sign(new TextEncoder().encode(process.env.JWT_SECRET));
+      const reports = (log.attempts as Array<{ bindingId?: string; kind: string; reportId: string; revision: number; trial: number; result: { detail: Row } }>)
+        .filter(a => a.trial === 2 && String(a.bindingId) === String(b.id));
+      assert.equal(reports.length, 2);
+      actors.push({ name: String(b.audience), leadId: aid ? undefined : leads[users.indexOf(uid)], uid, aid, role, token,
+        bid: String(b.id), cid: String(b.conversation_id), reports: reports.map(r => ({ id: r.reportId, revision: r.revision, kind: r.kind, body: r.result.detail.body })) });
+    }
+    const runNative = (await import(pathToFileURL(path.join(root,'admin/scripts/xiaok-v1-02-live-reports-native.cjs')).href)).default;
+    return runNative({ root, output, actors });
+  });
   log.passed=true;
 }
 async function cleanup() {
@@ -226,6 +271,7 @@ async function cleanup() {
     for(const lid of leads)await tx.execute(sql`update app.leads set archived_at=now() where enterprise_id=${eid} and id=${lid} and name like ${prefix+':%'}`);
   });
   if(users.length)await withPlatformTransaction(async tx=>{for(const uid of users)await tx.execute(sql`update app.users set context_version=context_version+1 where id=${uid} and nickname like ${prefix+':%'}`);});
+  if(staffUsers.length)await withPlatformTransaction(async tx=>{for(const uid of staffUsers)await tx.execute(sql`update app.users set phone=null,context_version=context_version+1 where id=${uid}`);});
       log.originalLedgerAfter=await originalLedger();if(log.originalLedgerBefore)assert.deepEqual(log.originalLedgerAfter,log.originalLedgerBefore);
   if(log.unrelatedDestinationsBefore){log.unrelatedDestinationsAfter=await unrelatedDestinations();assert.deepEqual(log.unrelatedDestinationsAfter,log.unrelatedDestinationsBefore);}
   log.accounting = await read(async tx=>({

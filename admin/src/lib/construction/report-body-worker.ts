@@ -7,7 +7,7 @@ import { executePostgresText } from '@/lib/ai/postgres-workflow-chat';
 import { agentConfig } from '@/lib/assistant/agent/config';
 import { runRenovationAgent, type AgentCheckpoint } from '@/lib/assistant/agent/runtime';
 import { agentRequestBudget, fitAgentContext } from '@/lib/assistant/agent/context-budget';
-import { boundReportBodyFactCoverage, boundReportBodyFinal, boundReportBodyWire, boundReportFinalCarrier, boundReportGuidanceInput, boundReportGuidanceReview, reportBodyFinalProtocol, reportGuidanceOnlyProtocol, reportGuidanceTaskProtocol, reportPendingGuidanceProtocol, reportGuidanceReviewProtocol } from '@/lib/assistant/agent/report-native-final';
+import { boundReportBodyFactCoverage, boundReportBodyFinal, boundReportBodyWire, boundReportFinalCarrier, boundReportGuidanceInput, boundReportGuidanceReview, reportBodyFinalProtocol, reportGuidanceOnlyProtocol, reportGuidanceOriginalProtocol, reportGuidanceSelectionProtocol, reportGuidanceTaskProtocol, reportPendingGuidanceProtocol, reportGuidanceReviewProtocol } from '@/lib/assistant/agent/report-native-final';
 import { consultationRequestReservation, reserveConsultationDispatch, settleConsultationDispatch } from '@/lib/assistant/agent/consultation-usage';
 import { businessSynthesisSources, knowledgeSynthesisSources, type SynthesisContext } from '@/lib/assistant/agent/synthesis';
 import { synthesisContextAvailable } from '@/lib/assistant/agent/synthesis-sources';
@@ -21,10 +21,10 @@ import { completeReportComposition, failRun, heartbeat, runContext, type Lease }
 import { followupAvailable, followupProjects, type FollowupAudience, type ReportFacts } from './report-scope';
 import { reportContextProtocol, resolveReportReference, type ReportReference } from './report-reference';
 import { parseReportBody, projectReportBodyFinal, reportCompositionProtocol, reportFinalTool, reportFlatFinalTool, reportMessages } from './report-composition';
-import { assertReportGuidanceReview, prepareReportGuidanceReview, reportGuidanceFactText, reportGuidanceProject } from './report-guidance-review';
-import { projectReportGuidanceOnly, reportGuidanceFinalTool } from './report-guidance-final';
+import { assertReportGuidanceReview, prepareReportGuidanceReview, reportGuidanceFactText, reportGuidanceItems, reportGuidanceProject } from './report-guidance-review';
+import { projectReportGuidanceOnly, reportGuidanceChoices, reportGuidanceFinalTool, reportGuidanceStandardSources } from './report-guidance-final';
 
-type ProjectContext = { projectId: string; selection: ReportReference; context: SynthesisContext };
+type ProjectContext = { projectId: string; selection: ReportReference; context: SynthesisContext; guidanceItems?: string[] };
 type Composition = { protocol: typeof reportCompositionProtocol; reportId: string; revision: number; bindingId: string; dispatchEpoch: number; factsHash: string };
 function selectedConversation(c: Row, selection: ReportReference): Row {
   // A private in-memory view for this run's original project. Never write the
@@ -78,7 +78,9 @@ export async function processReportComposition(lease: Lease, dependencies: {
       const reportBodyFinalCarrier = boundReportFinalCarrier(policy.reportBodyFinalCarrier, !!reportFinalOutputTokens, reportFinalOutputTokens);
       const wire = boundReportBodyWire(policy.reportBodyProjectSlots, reportBodyFinalCarrier);
       const reviewGuidance = boundReportGuidanceReview(policy.reportGuidanceReview, wire);
-      const projectGuidanceInput = boundReportGuidanceInput(policy.reportGuidanceInput, reviewGuidance);
+      const projectGuidanceInput = boundReportGuidanceInput(policy.reportGuidanceInput, reviewGuidance, wire);
+      const preferOriginal = projectGuidanceInput === reportGuidanceOriginalProtocol;
+      const selectGuidance = preferOriginal || projectGuidanceInput === reportGuidanceSelectionProtocol;
       const audience = context.binding.audience as FollowupAudience;
       const list: ProjectContext[] = [];
       for (const p of (context.report.facts as ReportFacts).projects) {
@@ -91,14 +93,15 @@ export async function processReportComposition(lease: Lease, dependencies: {
           version: resolved.selection.factsHash, queriedAt: resolved.selection.cutoffAt,
           reportReference: { selection: resolved.selection, principal: lease.actor.principal },
           data: [{ ...resolved.project, projectId: p.id, leadId: resolved.leadId }],
-          displayText: projectGuidanceInput === reportGuidanceTaskProtocol ? reportGuidanceFactText(resolved.selection, resolved.project, audience)
+          displayText: selectGuidance || projectGuidanceInput === reportGuidanceTaskProtocol ? reportGuidanceFactText(resolved.selection, resolved.project, audience)
             : reportFactText(resolved.selection, projectGuidanceInput ? reportGuidanceProject(resolved.project, audience) : resolved.project, factCoverage) };
         list.push({ projectId: p.id, selection: resolved.selection,
+          ...(selectGuidance ? { guidanceItems: reportGuidanceItems(resolved.project, audience, true) } : {}),
           context: { version: 1, knowledge: [], snapshots: [snapshot], sources: businessSynthesisSources(resultKey, snapshot) } });
       }
       const checkpoint = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
         and run_id=${lease.runId} and step_seq=1000 and kind='agent_checkpoint'`);
-      return { config, run: context.run, conversation: context.conversation, projects: list, reportFinalOutputTokens, reportBodyFinalCarrier, wire, reviewGuidance, projectGuidanceInput,
+      return { config, run: context.run, conversation: context.conversation, projects: list, reportFinalOutputTokens, reportBodyFinalCarrier, wire, reviewGuidance, projectGuidanceInput, selectGuidance, preferOriginal,
         reportBodyProjectSlots: policy.reportBodyProjectSlots, reportBodyFactCoverage: policy.reportBodyFactCoverage,
         resume: checkpoint?.private_checkpoint as AgentCheckpoint | undefined,
         scope: { ...context.scope, audience, kind: context.report.kind, timezone: 'Asia/Shanghai',
@@ -157,12 +160,13 @@ export async function processReportComposition(lease: Lease, dependencies: {
       for (const p of projects) if (!await synthesisContextAvailable(tx, lease.actor, await projectConversation(tx, lease, p), p.context)) fail('context_changed');
     });
     const { reportFinalOutputTokens, reportBodyFinalCarrier, wire } = initial;
-    const guidanceOnly = initial.projectGuidanceInput === reportGuidanceOnlyProtocol || initial.projectGuidanceInput === reportGuidanceTaskProtocol;
+    const choices = initial.selectGuidance ? projects.map(p => reportGuidanceChoices(p, p.guidanceItems ?? [])) : undefined;
+    const guidanceOnly = initial.selectGuidance || initial.projectGuidanceInput === reportGuidanceOnlyProtocol || initial.projectGuidanceInput === reportGuidanceTaskProtocol;
     const guidanceSection = !initial.reviewGuidance ? undefined : guidanceOnly || initial.projectGuidanceInput === reportPendingGuidanceProtocol ? 'pending' : 'arrangements';
     const citationList = wire === 'citation-list';
     const quotedSegments = wire === 'quoted' || citationList;
     const fixedSlots = wire !== 'legacy', flatSegments = wire === 'flat' || quotedSegments;
-    const bodyTool = guidanceOnly ? reportGuidanceFinalTool(projects) : reportFinalTool(projects.map(p => p.projectId), projects, fixedSlots);
+    const bodyTool = guidanceOnly ? reportGuidanceFinalTool(projects, choices, initial.preferOriginal) : reportFinalTool(projects.map(p => p.projectId), projects, fixedSlots);
     const finalTool = flatSegments && !guidanceOnly ? reportFlatFinalTool(projects.length) : bodyTool;
     const canonical = flatSegments && !guidanceOnly ? { projectCount: projects.length, tool: bodyTool, citationList,
       ...(quotedSegments ? { quoteSources: projects.map(p => p.context.sources.filter(source => source.kind === 'knowledge')) } : {}) } : undefined;
@@ -247,7 +251,10 @@ export async function processReportComposition(lease: Lease, dependencies: {
         if (!output.usage) fail('provider_usage_unknown', 502);
         return output;
     }
-    const result = await runRenovationAgent({ messages: reportMessages(initial.scope, projects, fixedSlots, flatSegments, quotedSegments, guidanceSection, guidanceOnly), tools: [], resume: initial.resume, ports: {
+    const visibleProjects = initial.preferOriginal ? projects.map(project => ({ ...project,
+      context: { ...project.context, sources: [...project.context.sources.filter(source => source.kind !== 'knowledge'),
+        ...reportGuidanceStandardSources(project, true)] } })) : projects;
+    const result = await runRenovationAgent({ messages: reportMessages(initial.scope, visibleProjects, fixedSlots, flatSegments, quotedSegments, guidanceSection, guidanceOnly, choices), tools: [], resume: initial.resume, ports: {
       authorize,
       tool: async () => fail('assistant_capability_forbidden', 403),
       checkpoint: state => scoped(async tx => {
@@ -258,9 +265,9 @@ export async function processReportComposition(lease: Lease, dependencies: {
       }),
       validateFinal: async raw => { parseReportBody(raw, projects, fixedSlots); return null; },
       model: async (turn, messages) => {
-        if (initial.reviewGuidance && turn !== 0) fail('invalid_model_answer', 502);
+        if ((initial.reviewGuidance || initial.selectGuidance) && turn !== 0) fail('invalid_model_answer', 502);
         const output = await projectReportBodyFinal(await dispatch(turn, messages, finalTool), finalTool, !!reportBodyFinalCarrier, canonical);
-        return guidanceOnly ? { ...output, text: projectReportGuidanceOnly(output.text, projects) } : output;
+        return guidanceOnly ? { ...output, text: projectReportGuidanceOnly(output.text, projects, choices, initial.preferOriginal) } : output;
       },
     } });
     const body = parseReportBody(result.output?.text || '', projects, fixedSlots);
@@ -270,6 +277,7 @@ export async function processReportComposition(lease: Lease, dependencies: {
       await assertReportGuidanceReview(review, verdict);
       body.guidanceReviewed = guidanceSection === 'pending' ? 'pending' : true;
     }
+    if (initial.selectGuidance) body.guidanceReviewed = 'pending';
     await completeReportComposition(lease, async tx => {
       await reportGuard(tx, lease); await authorizeSources(tx);
       await tx.execute(sql`update app.construction_report_versions set body=${JSON.stringify(body)}::jsonb,knowledge_status='ready',body_generated_at=now(),body_error_code=null

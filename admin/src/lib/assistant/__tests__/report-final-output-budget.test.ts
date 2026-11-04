@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { reportFinalOutputTokenLimit, type ModelMessage, type ModelTurnInput } from '../contracts/model';
 import { boundReportBodyFactCoverage, boundReportBodyFinal, boundReportBodyWire, boundReportFinalOutput, boundReportGuidanceInput, boundReportGuidanceReview, reportBodyFinalAdmission, reportBodyFinalPolicy,
   reportBodyCitationListProtocol, reportBodyFinalProtocol, reportBodyFlatSegmentsProtocol, reportBodyProjectSlotsProtocol,
-  reportBodyQuotedSegmentsProtocol, reportFinalFunctionCarrier, reportGuidanceInputProtocol, reportGuidanceReviewProtocol, reportGuidanceTaskProtocol, reportNativeRuntimeBudget, reportPendingGuidanceProtocol, scheduledReportFactCoverageProtocol } from '../agent/report-native-final';
+  reportBodyQuotedSegmentsProtocol, reportFinalFunctionCarrier, reportGuidanceInputProtocol, reportGuidanceOriginalProtocol, reportGuidanceReviewProtocol, reportGuidanceSelectionProtocol, reportGuidanceTaskProtocol, reportNativeRuntimeBudget, reportPendingGuidanceProtocol, scheduledReportFactCoverageProtocol } from '../agent/report-native-final';
 import { agentRequestBudget, fitAgentContext, imageContextBudgetPolicy } from '../agent/context-budget';
 import type { AgentConfig } from '../agent/config';
 import { reportFinalTool } from '@/lib/construction/report-composition';
@@ -58,13 +58,18 @@ test('new scheduled report bodies allocate4096 on the same schema while historic
   assert.equal(reportBodyFinalAdmission(config), true);
   assert.deepEqual(reportBodyFinalPolicy(config), { reportBodyFinal: reportBodyFinalProtocol, reportBodyFinalCarrier: reportFinalFunctionCarrier,
     reportBodyProjectSlots: reportBodyCitationListProtocol, reportBodyFactCoverage: scheduledReportFactCoverageProtocol,
-    reportGuidanceReview: reportGuidanceReviewProtocol, reportGuidanceInput: reportGuidanceTaskProtocol });
+    reportGuidanceInput: reportGuidanceOriginalProtocol });
   assert.equal(boundReportGuidanceReview(undefined, 'citation-list'), false);
   assert.equal(boundReportGuidanceReview(reportGuidanceReviewProtocol, 'citation-list'), true);
   assert.throws(() => boundReportGuidanceReview(reportGuidanceReviewProtocol, 'quoted'), /context_changed/);
   assert.equal(boundReportGuidanceInput(undefined, true), undefined);
   assert.equal(boundReportGuidanceInput(reportGuidanceInputProtocol, true), reportGuidanceInputProtocol);
   assert.equal(boundReportGuidanceInput(reportPendingGuidanceProtocol, true), reportPendingGuidanceProtocol);
+  assert.equal(boundReportGuidanceInput(reportGuidanceTaskProtocol, true), reportGuidanceTaskProtocol);
+  assert.equal(boundReportGuidanceInput(reportGuidanceSelectionProtocol, false, 'citation-list'), reportGuidanceSelectionProtocol);
+  assert.equal(boundReportGuidanceInput(reportGuidanceOriginalProtocol, false, 'citation-list'), reportGuidanceOriginalProtocol);
+  assert.throws(() => boundReportGuidanceInput(reportGuidanceSelectionProtocol, false, 'flat'), /context_changed/);
+  assert.throws(() => boundReportGuidanceInput(reportGuidanceSelectionProtocol, true, 'citation-list'), /context_changed/);
   assert.throws(() => boundReportGuidanceInput(reportGuidanceInputProtocol, false), /context_changed/);
   assert.equal(boundReportBodyFactCoverage(undefined, 4096), false);
   assert.equal(boundReportBodyFactCoverage(scheduledReportFactCoverageProtocol, 4096), true);

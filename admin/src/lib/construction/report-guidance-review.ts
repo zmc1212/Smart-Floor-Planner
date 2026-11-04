@@ -20,13 +20,18 @@ export function reportGuidanceProject(project: ReportProject, audience: Followup
 
 /** Project progress, stage events and confirmed arrangements are rendered
  * from the original report. None is needed to phrase a check of pending work. */
-export function reportGuidanceFactText(selection: ReportReference, project: ReportProject, audience: FollowupAudience) {
+export function reportGuidanceItems(project: ReportProject, audience: FollowupAudience, openOnly = false) {
   const pending = (project.publishedRecordItems ?? project.records.map(r => ({
     room: r.room, pending: String(r.data.pending || ''), coordination: String(r.data.coordination || ''),
   }))).flatMap(r => (audience === 'customer' ? [r.pending] : [r.pending, r.coordination])
     .filter(text => text.trim()).map(text => r.room ? `${r.room}：${text}` : text));
-  const issues = audience === 'customer' ? [] : (project.issues || []).map(issue => issue.text);
-  const items = [...new Set([...pending, ...issues])];
+  const issues = audience === 'customer' ? [] : (project.issues || [])
+    .filter(issue => !openOnly || !['cancelled', 'resolved', 'closed'].includes(issue.status)).map(issue => issue.text);
+  return [...new Set([...pending, ...issues])];
+}
+
+export function reportGuidanceFactText(selection: ReportReference, project: ReportProject, audience: FollowupAudience) {
+  const items = reportGuidanceItems(project, audience);
   return `报告所选项目：${project.name}。报告事实截止：${reportLocalTime(selection.cutoffAt)}。\n`
     + (items.length ? items.join('\n') : '本期没有可见的待核对记录。')
     + (project.recordsTruncated || project.publishedRecordItemsTruncated || project.issuesTruncated ? '\n本次未覆盖全部待核对记录。' : '');
