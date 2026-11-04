@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { reportFinalOutputTokenLimit, type ModelMessage, type ModelTurnInput } from '../contracts/model';
-import { boundReportBodyFinal, boundReportFinalOutput, reportBodyFinalAdmission, reportBodyFinalPolicy, reportBodyFinalProtocol,
-  reportFinalFunctionCarrier, reportNativeRuntimeBudget } from '../agent/report-native-final';
+import { boundReportBodyFinal, boundReportBodyProjectSlots, boundReportFinalOutput, reportBodyFinalAdmission, reportBodyFinalPolicy,
+  reportBodyFinalProtocol, reportBodyProjectSlotsProtocol, reportFinalFunctionCarrier, reportNativeRuntimeBudget } from '../agent/report-native-final';
 import { agentRequestBudget, fitAgentContext, imageContextBudgetPolicy } from '../agent/context-budget';
 import type { AgentConfig } from '../agent/config';
 import { reportFinalTool } from '@/lib/construction/report-composition';
@@ -55,7 +55,11 @@ test('new scheduled report bodies allocate4096 on the same schema while historic
   const config: AgentConfig = { runtime: 'langgraph-v1', providerKey: 'dashscope', model: 'qwen3.7-flash',
     probeVersion: 'test', imageInput: true, tools: true };
   assert.equal(reportBodyFinalAdmission(config), true);
-  assert.deepEqual(reportBodyFinalPolicy(config), { reportBodyFinal: reportBodyFinalProtocol, reportBodyFinalCarrier: reportFinalFunctionCarrier });
+  assert.deepEqual(reportBodyFinalPolicy(config), { reportBodyFinal: reportBodyFinalProtocol, reportBodyFinalCarrier: reportFinalFunctionCarrier,
+    reportBodyProjectSlots: reportBodyProjectSlotsProtocol });
+  assert.equal(boundReportBodyProjectSlots(undefined, reportFinalFunctionCarrier), false);
+  assert.equal(boundReportBodyProjectSlots(reportBodyProjectSlotsProtocol, reportFinalFunctionCarrier), true);
+  assert.throws(() => boundReportBodyProjectSlots(reportBodyProjectSlotsProtocol, undefined), /context_changed/);
   const unsupported = { ...config, providerKey: 'siliconflow' };
   assert.equal(reportBodyFinalAdmission(unsupported), false);
   assert.deepEqual(reportBodyFinalPolicy(unsupported), {});

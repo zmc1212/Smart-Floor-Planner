@@ -120,3 +120,32 @@ test('scheduled function final accepts one complete body and refuses trailing pr
   const legacy = { ...packet, text: argumentsText, toolCalls: [], finishReason: 'stop' };
   assert.equal(await projectReportBodyFinal(legacy, tool, false), legacy);
 });
+
+test('fixed project slots use server identities and reject strings, missing slots and other-project citations', async () => {
+  const rule = { ...context.sources[1], sourceId: 'K200' };
+  const other = { ...project, projectId: '10', selection: { ...selection, projectId: '10' },
+    context: { ...context, sources: [context.sources[0], rule] } };
+  const projects = [project, other];
+  const row = output().projects[0];
+  const first = { progress: row.progress, pending: row.pending, standards: row.standards, arrangements: row.arrangements };
+  const second = structuredClone(first);
+  second.standards.segments[0].citations = [{ citationId: sourceCitationCatalog(rule)[0].citationId }];
+  const valid = { P1: first, P2: second };
+  const definition = reportFinalTool(['9', '10'], projects, true);
+  const wire = JSON.stringify(valid);
+  assert.equal(await toolSchemaIssue(definition, wire), null);
+  const packet = reportMessages({}, projects, true)[1];
+  assert.ok(packet.role === 'user' && packet.content[0].type === 'text');
+  const inputs = JSON.parse(packet.content[0].text).projects;
+  assert.deepEqual(inputs.map((p: Record<string, unknown>) => [p.slot, p.projectId]), [['P1', undefined], ['P2', undefined]]);
+  const saved = parseReportBody(wire, projects, true);
+  assert.deepEqual(saved.projects.map(p => p.projectId), ['9', '10']);
+  assert.deepEqual(saved.projects.map(p => p.sections.standards.segments[0].citations[0].sourceId), ['K100', 'K200']);
+  const bad = [{ P1: JSON.stringify(first), P2: second }, { P1: first }, { P1: first, P3: second },
+    { ...valid, P2: { projectId: '9', ...second } }, { ...valid, P2: first }, output()];
+  for (const candidate of bad) {
+    const raw = JSON.stringify(candidate);
+    assert.ok(await toolSchemaIssue(definition, raw));
+    assert.throws(() => parseReportBody(raw, projects, true));
+  }
+});

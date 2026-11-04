@@ -8,6 +8,7 @@ export const reportNativeFinalProtocol = 'report-native-final-v1';
 export const reportFinalFunctionCarrier = 'forced-final-function-v1';
 export const reportStructuralFinalSchema = 'report-structural-final-schema-v1';
 export const reportBodyFinalProtocol = 'report-body-final-output-v1';
+export const reportBodyProjectSlotsProtocol = 'report-body-project-slots-v1';
 type ReportScope = { conversationPurpose: unknown; purpose: string; triggerKind: string; privateFollowup: boolean; selected: boolean };
 
 /** A new private report reply binds its own final channel, independently of
@@ -45,7 +46,14 @@ export function reportBodyFinalAdmission(config: AgentConfig | null) {
 export function reportBodyFinalPolicy(config: AgentConfig | null) {
   if (!config || !reportBodyFinalAdmission(config)) return {};
   return { reportBodyFinal: reportBodyFinalProtocol,
-    ...(bailianModelProfile(config.model).functionCalling === 'documented' ? { reportBodyFinalCarrier: reportFinalFunctionCarrier } : {}) };
+    ...(bailianModelProfile(config.model).functionCalling === 'documented' ? {
+      reportBodyFinalCarrier: reportFinalFunctionCarrier, reportBodyProjectSlots: reportBodyProjectSlotsProtocol } : {}) };
+}
+
+export function boundReportBodyProjectSlots(value: unknown, carrier: unknown) {
+  if (value === undefined) return false;
+  if (value !== reportBodyProjectSlotsProtocol || carrier !== reportFinalFunctionCarrier) fail('context_changed');
+  return true;
 }
 
 export function boundReportBodyFinal(value: unknown, config: AgentConfig) {
