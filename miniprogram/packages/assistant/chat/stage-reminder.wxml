@@ -6,8 +6,8 @@
 <text class="followup-paper-title">{{report.cardTitle}}</text>
 <view wx:for="{{report.projects}}" wx:key="id" wx:for-item="project">
 <text wx:if="{{audience !== 'customer'}}" class="followup-project-name">{{project.name}}</text>
-<text wx:for="{{project.standards}}" wx:key="key" class="followup-line" user-select>{{item.text}}</text>
-<text wx:if="{{!project.standards.length}}" class="followup-muted">{{report.generationLabel || '本份仅含已保存的现场记录，暂无工艺说明。'}}</text>
+<text wx:if="{{project.stageNote}}" class="followup-line" style="overflow-wrap: anywhere; word-break: break-word;" user-select>{{project.stageNote}}</text>
+<text wx:else class="followup-muted">{{report.generationLabel || '本份仅含已保存的现场记录，暂无工艺说明。'}}</text>
 <button wx:if="{{project.knowledgeSources.length}}" class="followup-text-action followup-stage-source" data-report="{{report.reportId}}" data-revision="{{report.revision}}" data-project="{{project.id}}" bindtap="openReportSource">查看工艺依据 ↗</button>
 </view>
 <button wx:if="{{report.generationRetryable}}" class="followup-text-action" data-report="{{report.reportId}}" data-revision="{{report.revision}}" bindtap="retryFollowupReport" disabled="{{busy || pending}}">重试正文生成</button>

@@ -1,10 +1,29 @@
 const shared = require('../../../utils/assistant-followups');
 const api = require('../../../utils/api');
 const { errorCopy } = require('../../../utils/assistant-client');
+
+function stageNote(project) {
+  for (const standard of project.standards || []) {
+    const citation = standard.citations?.find(c => project.knowledgeSources?.some(source => source.sourceId === c.sourceId));
+    const quote = citation?.quote?.trim().replace(/\r\n/g, '\n');
+    if (!quote) continue;
+    let note = quote;
+    if (quote.startsWith('专业类型：')) {
+      const split = quote.indexOf('\n\n');
+      const body = split === -1 ? '' : quote.slice(split + 2);
+      const checklist = /^(?:内部测试参考。)?适用条件：([^\n]+)\n核对事项：([^\n]+)$/u.exec(body);
+      note = checklist ? checklist[1].replace(/。$/u, '') + '时，' + checklist[2] : '';
+    }
+    if (note.length <= 80 && /[。！？]$/u.test(note) && !/SHA-256|\n/u.test(note)) return note;
+  }
+  return project.knowledgeSources?.length ? '可查看本阶段的工艺核对要点。' : '';
+}
+
 function stageForView(report) {
-  if (report.kind !== 'stage' || !report.ready) return report;
+  if (report.kind !== 'stage' || !report.ready || !report.available) return report;
   const name = report.projects[0]?.stageName;
   return { ...report, stageReminder: true,
+    projects: report.projects.map(project => ({ ...project, stageNote: stageNote(project) })),
     cardTitle: name ? name + (name.endsWith('阶段') ? '' : '阶段') + '开始了' : report.kindLabel };
 }
 class FollowupController extends shared.FollowupController {

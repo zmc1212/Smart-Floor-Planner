@@ -22,6 +22,36 @@ test('report source uses the selected report revision/project catalog and signed
   assert.equal(f.controller.state.reportSource.quote, f.quote.quote);
   assert.equal(f.controller.state.followupDetail, f.detail); assert.equal(f.controller.state.followupActive, false);
 });
+test('stage reminders show a short conditional checklist and keep the exact source behind its action', async () => {
+  const f = fixture();
+  const quote = '专业类型：施工工艺/检查\n实际阶段适用：furnishing\n依据：内测原稿；来源版本：SHA-256 abc\n\n'
+    + '内部测试参考。适用条件：已收到家具或窗帘。\n核对事项：对照清单核对款色，发现破损或缺件时记录差异。';
+  const project = { ...f.detail.projects[0], stageName: '软装',
+    standards: [{ text: quote + '\n来源：内测原稿', citations: [{ sourceId: 'K55', quote }] }] };
+  const report = { ...f.detail, kind: 'stage', ready: true, projects: [project] };
+  f.controller.set({ followupActive: true, followupReports: [report] });
+  assert.equal(f.controller.state.followupReports[0].projects[0].stageNote, '已收到家具或窗帘时，对照清单核对款色，发现破损或缺件时记录差异。');
+  assert.equal(project.standards[0].citations[0].quote, quote);
+  f.response({ ...f.quote, quote });
+  await f.controller.readSource('248', 'K55', '98', 2);
+  assert.equal(f.controller.state.reportSource.quote, quote);
+  assert.equal(f.calls[0].path, '/followups/27/reports/98/projects/248/sources/K55');
+});
+test('stage cards retain short exact excerpts and hide long, unmatched or revoked content', () => {
+  const f = fixture();
+  const project = { ...f.detail.projects[0], stageName: '水电' };
+  const stage = (quote, sourceId = 'K55', knowledgeSources = project.knowledgeSources, available = true) => {
+    f.controller.set({ followupReports: [{ ...f.detail, kind: 'stage', ready: true, available,
+      projects: [{ ...project, knowledgeSources, standards: [{ text: quote, citations: [{ sourceId, quote }] }] }] }] });
+    return f.controller.state.followupReports[0].projects[0].stageNote;
+  };
+  assert.equal(stage('封槽前，先核对插座点位，记得留好管线照片。'), '封槽前，先核对插座点位，记得留好管线照片。');
+  assert.equal(stage('封槽前，' + '核对全部插座点位。'.repeat(15)), '可查看本阶段的工艺核对要点。');
+  assert.equal(stage('仅在房屋交接之后'), '可查看本阶段的工艺核对要点。');
+  assert.equal(stage('封槽前，先核对插座点位。', 'K999'), '可查看本阶段的工艺核对要点。');
+  assert.equal(stage('封槽前，先核对插座点位。', 'K55', []), '');
+  assert.equal(stage('封槽前，先核对插座点位。', 'K55', project.knowledgeSources, false), undefined);
+});
 test('close, hide and identity changes fence late source replies', async () => {
   for (const action of ['close','hide','identity']) {
     const f = fixture(); let done; f.wait(new Promise(r => { done = r; }));
