@@ -6,6 +6,7 @@ import { parsePlannedSourceQuestions, readSourceQuestionCoverage, sourceQuestion
 export const reportQuestionPlanningProtocol = 'report-read-question-plan-v1';
 export const reportReadCompletionProtocol = 'report-required-reads-complete-v1';
 export const reportHistoryScopeProtocol = 'report-selection-history-v1';
+export const reportCoordinationProtocol = 'report-coordination-referral-v1';
 export type ReportQuestionPlanScope = {
   enterpriseId: string; runId: string; messageId: string; question: string; selection: ReportReference;
 };

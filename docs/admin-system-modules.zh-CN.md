@@ -76,6 +76,8 @@ native01元信息超时、02 TSX setIdentity捕获__name保留为业务前驱动
 
 批01运行20成功保存两个问项，随后在读取阶段请求未开放的 `final_response`，以 `assistant_capability_forbidden` 停止。批02运行23完成终稿但把选报版本8的周五条件带入版本14的计划，原复核以 `ungrounded_response_scope` 拒绝。保留两次失败及此前14/15、1933结果。保存帧和隔离库查询分别验证终稿交接及选报历史隔离，同一选报内更正仍保留。83项快测通过、13入口类型诊断0、定向lint通过，隔离业主和工人缓存、缺计划、租户、接收人及撤权回归通过。固定批03在首个业主运行26以ungrounded_response_scope停止。运行只使用当前原话并保留两个问项，语义复核拒绝未落实到具体核对事项的Q2。其余3条服务和2条Stable原生用例未执行。 本次三批共8次模型调用，输入54538、输出1167 tokens，实际费用未返回。自有夹具与运行配置已恢复，原未知用量保留。证据见 `tmp/public-live-package/successor05/resume01/`。
 
+**私人报告追问。** 新运行将现场协作与装修知识分开。业主和员工沿同一 Agent 处理，按原收件人、选报、来源版本和撤回校验。纯现场协作在获权读取后由服务端保存统一引导。知识回复沿原检索、引用和语义复核。历史运行、原接口和报告资料状态继续按原契约读取。详见 [小K阶段二契约](./xiaok-assistant-phase-2.zh-CN.md)。
+
 
 **私人报告读取边界：限定Implemented，自然回答仍Limited。** 业主和员工construction_followup回复现在仅提供报告域query_followups（新运行携带绑定问项，旧运行使用{}）及原search_knowledge；项目共享问答仍仅知识工具，显式另开的普通专题保留原服务。适配器复用boundReportContext、step740、现有持久agent_tool/BusinessSnapshot及citation catalog；新读和缓存读均重验所选收件人、报告版本、项目、原文hash及当前来源/成员权限。只消费冻结原事实，不读取生成正文，不授予需求写入、施工批准、其他咨询或额外项目访问。无路由/schema/UI/样式/素材/模型提供方或知识摄取变化。
 

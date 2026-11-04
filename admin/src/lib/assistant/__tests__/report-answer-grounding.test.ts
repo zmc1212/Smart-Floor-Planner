@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import type { ModelMessage, ModelTurnOutput } from '../contracts/model';
 import type { BusinessSnapshot } from '../agent/business-tools';
 import type { ReportProject } from '@/lib/construction/report-scope';
-import { businessSynthesisSources, focusedSynthesisMessages } from '../agent/synthesis';
+import { businessSynthesisSources, focusedSynthesisMessages, parseSynthesis } from '../agent/synthesis';
 import { reportFactText } from '../agent/report-context';
 import { sourceCitationCatalog, modelCitationCatalog } from '../agent/citation-catalog';
 import { boundReportAnswerGrounding, reportAnswerGroundingProtocol } from '../agent/report-source-scope';
@@ -13,6 +13,8 @@ import { reportAnswerFinalTool } from '../agent/report-final';
 import { finalTool } from '../agent/worker';
 import { explicitNativeObjectRoot, nativeFinalDefinition } from '../agent/native-final';
 import { toolSchemaIssue } from '../agent/tool-protocol';
+import { boundReportCoordination, prepareReportKnowledgeReview, reportCoordinationAnswer, reportCoordinationText } from '../agent/report-coordination';
+import { reportCoordinationProtocol } from '../agent/report-question-plan';
 
 const selection = { bindingId: '22', reportId: '61', revision: 1, projectId: '247', conversationId: '855', kind: 'daily',
   periodStart: '2026-10-31T16:00:00.000Z', periodEnd: '2026-11-01T12:00:00.000Z', cutoffAt: '2026-11-01T12:00:00.000Z', factsHash: 'frozen-hash' };
@@ -34,6 +36,36 @@ const response = (supported = true): ModelTurnOutput => ({ text: JSON.stringify(
   checks: Object.fromEntries(['Q1', 'Q2'].map(key => [key, { complete: true, supported, conditionsPreserved: true,
     reason: supported ? '' : '未注明房间的原记录不证明客厅的灯位或控制逻辑状态。' }])) }),
   toolCalls: [], finishReason: 'stop', providerRequestId: null, usage: null });
+
+test('server referral adds no approval, transfer, report fact, or unsupported numerical commitment', () => {
+  assert.equal(boundReportCoordination(undefined, true), false);
+  assert.equal(boundReportCoordination(reportCoordinationProtocol, true), true);
+  assert.throws(() => boundReportCoordination(reportCoordinationProtocol, false), /context_changed/);
+  for (const currentQuestion of [question, '我说的是A户，客户刚口头说可以往左挪一点。这样算确认了吗，下一步怎么接？']) {
+    const answer = parseSynthesis(reportCoordinationAnswer, [], { currentQuestion });
+    assert.deepEqual(answer.segments, [{ basis: 'uncertainty', text: reportCoordinationText, citations: [] }]);
+  }
+});
+
+test('a mixed reply only generates knowledge from knowledge sources and binds the fixed referral into its original review', () => {
+  const knowledge = { sourceId: 'K:example', kind: 'knowledge' as const, title: '说明', text: '导线接头应放在接线盒内。' };
+  const context = { currentQuestion: '导线接头放哪？我家现在能施工吗？' };
+  const knowledgeRaw = JSON.stringify({ kind: 'synthesis', segments: [
+    { basis: 'evidence', text: '导线接头应放在接线盒内。', citations: [citation(knowledge as typeof record)] },
+  ] });
+  const mixed = prepareReportKnowledgeReview(knowledgeRaw, [...sources, knowledge], context, [], true);
+  const onlyKnowledge = prepareReportKnowledgeReview(knowledgeRaw, [knowledge], context, [], false);
+  assert.equal(mixed.answer.segments.at(-1)?.text, reportCoordinationText);
+  assert.notEqual(mixed.binding, onlyKnowledge.binding);
+  const reviewMessage = mixed.reviewMessages[1];
+  assert.ok(reviewMessage.role === 'user' && reviewMessage.content[0].type === 'text');
+  const review = JSON.parse(reviewMessage.content[0].text);
+  assert.equal(review.currentQuestion, context.currentQuestion);
+  assert.deepEqual(review.sources.map((source: { kind: string }) => source.kind), ['knowledge']);
+  assert.throws(() => prepareReportKnowledgeReview(knowledgeRaw, sources, context, [], true), /invalid_model_citation/);
+  const uncited = JSON.stringify({ kind: 'synthesis', segments: [{ basis: 'advice', text: '可直接埋进墙内。', citations: [] }] });
+  assert.throws(() => prepareReportKnowledgeReview(uncited, [knowledge], context, [], true), /ungrounded_response_scope/);
+});
 
 test('new admission is explicit; old report sources and unknown policy cannot gain the new mechanism', () => {
   assert.equal(boundReportAnswerGrounding(undefined, true), false);

@@ -9,7 +9,7 @@ import { sourceExcerptProtocol } from '../agent/source-excerpts';
 import { sourceQuestionCoverageProtocol } from '../agent/source-question-coverage';
 import { knowledgeExplanationProtocol } from '../agent/knowledge-explanation';
 import { reportAnswerGroundingProtocol, reportSourceProjectionProtocol } from '../agent/report-source-scope';
-import { reportHistoryScopeProtocol, reportQuestionPlanningProtocol, reportReadCompletionProtocol } from '../agent/report-question-plan';
+import { reportCoordinationProtocol, reportHistoryScopeProtocol, reportQuestionPlanningProtocol, reportReadCompletionProtocol } from '../agent/report-question-plan';
 import { parseWebCitationId } from '../agent/web-evidence';
 import { configuredGuidance, conversationGuidance, guidanceOpening, guidanceView } from '../requirements/guidance';
 import { requirementCheckpoint } from '../requirements/checkpoint';
@@ -155,7 +155,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
       ...(reportNativeFinal ? { reportNativeFinal: reportNativeFinalProtocol, reportFinalOutputTokens: reportFinalOutputTokenLimit,
         reportFinalCarrier: reportFinalFunctionCarrier, reportFinalSchema: reportStructuralFinalSchema, reportAnswerGrounding: reportAnswerGroundingProtocol,
         reportSourceProjection: reportSourceProjectionProtocol, reportQuestionPlanning: reportQuestionPlanningProtocol,
-        reportReadCompletion: reportReadCompletionProtocol, reportHistoryScope: reportHistoryScopeProtocol } : {}),
+        reportReadCompletion: reportReadCompletionProtocol, reportHistoryScope: reportHistoryScopeProtocol, reportCoordination: reportCoordinationProtocol } : {}),
       ...(agent && !agent.structuredFinal && ['reply','site.question'].includes(purpose)
         ? { sourceAnswerMode: agent.knowledgeExplanation === knowledgeExplanationProtocol ? knowledgeExplanationProtocol : sourceExcerptProtocol,
           sourceQuestionCoverage: sourceQuestionCoverageProtocol } : {}),
