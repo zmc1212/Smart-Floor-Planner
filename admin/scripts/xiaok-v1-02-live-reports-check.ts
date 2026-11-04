@@ -36,8 +36,16 @@ assert.equal(assistantDailyLimitsEnabled(), false, 'Bind the user-confirmed unli
 const output = path.resolve(process.argv.find(a => a.startsWith('--output='))?.slice(9) || '../tmp/v1-02-live-reports/configured-01');
 const native = process.argv.includes('--stable');
 const weeklyStages = process.argv.includes('--weekly-stages');
-const stageReminders = process.argv.includes('--stage-reminders');
+const matchedReminders = process.argv.includes('--matched-reminders');
+const stageReminders = process.argv.includes('--stage-reminders') || matchedReminders;
 assert.ok(!stageReminders || !weeklyStages);
+assert.ok(!matchedReminders || !native, 'This batch verifies the published-stage service scope only');
+const reminderStages = matchedReminders ? ['demolition', 'masonry_carpentry'] : ['installation', 'utilities'];
+const reminderHeadings = new Map([
+  ['demolition', /^(?:拆除|拆改)(?:施工|工艺)标准[：:]/u],
+  ['masonry_carpentry', /^(?:泥木|瓦工|木工)(?:施工|工艺)标准[：:]/u],
+  ['utilities', /^水电(?:施工|工艺)标准[：:]/u],
+]);
 assert.ok(!fs.existsSync(path.join(output, 'report.json')), 'Retain every original attempt');
 fs.mkdirSync(output, { recursive: true });
 const prefix = 'synthetic-v1-02-live-' + randomUUID();
@@ -47,7 +55,7 @@ let unrelatedBindingIds: string[] = [];
 const log: Row = { startedAt: new Date().toISOString(), prefix, owner: process.env.CODEX_THREAD_ID,
   scope: stageReminders ? 'Current stage reminder bodies and private readback; lifecycle scheduling is checked separately' : 'Configured-model daily/weekly report bodies only; scheduled discovery/native/follow-up evidence is not upgraded by this batch',
   fixedScope: { audiences: ['customer','customer','worker','designer','boss'], projects: 2, kinds: stageReminders ? ['stage'] : weeklyStages ? ['weekly'] : ['daily','weekly'],
-    ...(stageReminders ? { stages: 'A: installation following masonry; B: utilities' } : {}),
+    ...(stageReminders ? { stages: matchedReminders ? 'A: demolition; B: masonry without a confirmed waterproof substage' : 'A: installation following masonry; B: utilities' } : {}),
     ...(weeklyStages ? { stages: 'A: masonry waterproofing then installation; B: utilities' } : {}),
     firstDraftsPerCase: stageReminders ? 1 : 2, maxBodyRuns: stageReminders ? 8 : weeklyStages ? 10 : 20,
     ...(stageReminders ? {} : { secondDraft: 'preplanned independent correction revision with unchanged original facts, never retry after failure' }),
@@ -163,7 +171,7 @@ async function main() {
       let p = (await owner.execute('detail',{projectId:pid})).project as Row;
       await owner.execute('member',{projectId:pid,expectedVersion:p.version,adminId:admins[2],role:'designer',active:true,workLabel:'合成实模验收'},randomUUID());
       p = (await owner.execute('detail',{projectId:pid})).project as Row;
-      const waterproof = (weeklyStages || stageReminders) && i === 0;
+      const waterproof = (weeklyStages || stageReminders && !matchedReminders) && i === 0;
       await owner.execute('progress',{projectId:pid,expectedVersion:p.version,stageKey:waterproof ? 'masonry_carpentry' : 'utilities',note:'合成实模验收：团队记录当前阶段',sendReminder:false},randomUUID());
       await original(pid,waterproof ? {title:'合成实模验收·卫生间防水原记录',completed:'卫生间基层已查看',pending:'防水前请先核对管根处理和闭水条件',coordination:''}
         : i ? {completed:'卧室照明回路已核对',pending:'客厅双控开关位置待业主确认',coordination:''}
@@ -172,11 +180,14 @@ async function main() {
         p = (await owner.execute('detail',{projectId:pid})).project as Row;
         await owner.execute('progress',{projectId:pid,expectedVersion:p.version,stageKey:'installation',note:'合成实模验收：已进入安装节点',sendReminder:false},randomUUID());
         await original(pid,{title:'合成实模验收·安装原记录',completed:'安装位置已与现场对照',pending:'台盆安装位置请业主再核对',coordination:''},'customer');
+      } else if (matchedReminders) {
+        p = (await owner.execute('detail',{projectId:pid})).project as Row;
+        await owner.execute('progress',{projectId:pid,expectedVersion:p.version,stageKey:reminderStages[i],note:'合成实模验收：团队更新当前施工阶段',sendReminder:false},randomUUID());
       }
     }
     await original(projects[0],{completed:'',pending:'内部交接标记：蓝色工具箱未交接',coordination:''},'internal');
     await plan.configure({expectedVersion:Number(policy.version),enabled:true,stageEnabled:stageReminders,dailyTime:'23:59',weeklyTime:'23:59',
-      projectIds:projects,stageKeys:stageReminders ? ['utilities','installation'] : weeklyStages ? ['utilities','installation','masonry_carpentry'] : ['utilities'],audiences:['customer','worker','designer','boss']},randomUUID());
+      projectIds:projects,stageKeys:stageReminders ? reminderStages : weeklyStages ? ['utilities','installation','masonry_carpentry'] : ['utilities'],audiences:['customer','worker','designer','boss']},randomUUID());
     bindings.push(...await read(tx=>rows(tx,sql`select * from app.construction_followup_bindings where enterprise_id=${eid}
       and (user_id in (${users[0]},${users[1]}) or admin_id in (${admins[0]},${admins[1]},${admins[2]})) order by id`)));
     assert.deepEqual(bindings.map(b=>b.audience).sort(),['boss','customer','customer','designer','worker']);
@@ -217,7 +228,7 @@ async function main() {
         standards: Array<{ basis: string; text: string; citations: Array<{ sourceId: string; quote: string }> }>;
         knowledgeSources: Array<{ sourceId: string }> }>;
       if ('projectId' in period) {
-        const expectedKey = period.projectId===projects[0] ? 'installation' : 'utilities';
+        const expectedKey = reminderStages[projects.indexOf(period.projectId)];
         const [project] = composed;
         assert.deepEqual(composed.map(p=>p.projectId),[period.projectId]);
         const [fact] = (result.detail.facts as ReportFacts).projects;
@@ -229,7 +240,8 @@ async function main() {
           assert.deepEqual(project.knowledgeSources,[]);
         } else {
           assert.ok(project.knowledgeSources.length);
-          assert.ok(project.standards.every(line=>line.basis==='evidence' && line.citations.length===1 && line.citations[0].quote.startsWith('水电工艺标准')));
+          const heading = reminderHeadings.get(expectedKey)!;
+          assert.ok(project.standards.every(line=>line.basis==='evidence' && line.citations.length===1 && heading.test(line.citations[0].quote)));
           const source = project.knowledgeSources[0].sourceId;
           const followup = new FollowupService(actor(b));
           await followup.knowledgeSource(String(b.id),id,revision,period.projectId,source,true);

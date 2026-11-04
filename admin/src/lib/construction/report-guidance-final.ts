@@ -28,31 +28,34 @@ export function reportGuidanceChoices(project: Pick<ComposedProject, 'selection'
     ? '请按本项目的待核对记录逐项确认。' : '如需补充待核对事项，请先向现场团队核实。' }];
 }
 
-export function reportGuidanceFinalTool(projects: Project[], choices?: GuidanceChoice[][], preferOriginal = false): ModelTool {
+export function reportGuidanceFinalTool(projects: Project[], choices?: GuidanceChoice[][], preferOriginal = false, serverReminderWorkmanship = false): ModelTool {
   const properties: Record<string, unknown> = {};
   const required = projects.map((project, index) => {
     const guidance = key(index, 'guidance');
     properties[guidance] = choices ? { type: 'string', enum: choices[index].map(choice => choice.id) }
       : { type: 'string', minLength: 2, maxLength: 1200 };
-    const standardIds = project.weekWorkmanship ? [] : reportGuidanceStandardSources(project, preferOriginal).flatMap(sourceCitationCatalog).map(c => c.citationId);
+    const standardIds = project.weekWorkmanship || serverReminderWorkmanship ? [] : reportGuidanceStandardSources(project, preferOriginal).flatMap(sourceCitationCatalog).map(c => c.citationId);
     if (standardIds.length) properties[key(index, 'standard')] = { type: 'string', enum: [...new Set(standardIds)] };
     return guidance;
   });
-  return { name: 'final_response', description: choices ? '只提交各项目的核对项编号和可选工艺引用编号。'
+  return { name: 'final_response', description: serverReminderWorkmanship ? '只提交本次阶段提醒的核对提示编号。' : choices ? '只提交各项目的核对项编号和可选工艺引用编号。'
     : '只提交各项目给收件人的待核对建议和可选工艺引用编号。',
     parameters: { type: 'object', additionalProperties: false, required, properties } };
 }
 
 /** Project and arrangement facts remain in the authorized report snapshot.
  * Only validated guidance and an exact catalog reference reach body parsing. */
-export function projectReportGuidanceOnly(raw: string, projects: Project[], choices?: GuidanceChoice[][], preferOriginal = false) {
+export function projectReportGuidanceOnly(raw: string, projects: Project[], choices?: GuidanceChoice[][], preferOriginal = false, serverReminderWorkmanship = false) {
   const value = JSON.parse(raw) as Record<string, string>;
   return JSON.stringify(Object.fromEntries(projects.map((project, index) => {
     const id = value[key(index, 'standard')];
-    const sources = reportGuidanceStandardSources(project, preferOriginal);
+    if (serverReminderWorkmanship && id !== undefined) fail('invalid_model_citation', 502);
+    const sources = reportGuidanceStandardSources(project, preferOriginal || serverReminderWorkmanship);
     // Preserve retrieval order. An omitted selection may still display the
     // first exact, file-backed reference without asserting site applicability.
-    const selected = id ?? (!project.weekWorkmanship && preferOriginal && sources[0]?.evidence?.file ? sourceCitationCatalog(sources[0])[0]?.citationId : undefined);
+    const firstSource = sources[0];
+    const selected = id ?? (!project.weekWorkmanship && firstSource
+      && (serverReminderWorkmanship || preferOriginal && firstSource.evidence?.file) ? sourceCitationCatalog(firstSource)[0]?.citationId : undefined);
     const citation = selected ? resolveCatalogCitation({ citationId: selected }, sources) : null;
     if (id && (!citation || project.weekWorkmanship)) fail('invalid_model_citation', 502);
     const stageCitations = [...new Set(project.weekWorkmanship?.stages.flatMap(stage => stage.sourceId ? [stage.sourceId] : []))].map(sourceId => {

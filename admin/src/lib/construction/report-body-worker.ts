@@ -25,7 +25,7 @@ import { reportContextProtocol, resolveReportReference, type ReportReference } f
 import { parseReportBody, projectReportBodyFinal, reportCompositionProtocol, reportFinalTool, reportFlatFinalTool, reportMessages, type ComposedProject, type ReportCompositionScope } from './report-composition';
 import { assertReportGuidanceReview, prepareReportGuidanceReview, reportGuidanceFactText, reportGuidanceItems, reportGuidanceProject } from './report-guidance-review';
 import { projectReportGuidanceOnly, reportGuidanceChoices, reportGuidanceFinalTool, reportGuidanceStandardSources } from './report-guidance-final';
-import { reminderWorkmanshipProtocol, reminderWorkmanshipStage, reportWorkmanshipMatches, reportWorkmanshipName, reportWorkmanshipProtocol, reportWorkmanshipQuery, reportWorkmanshipStages } from './report-workmanship';
+import { isReminderWorkmanship, reminderWorkmanshipStage, reportWorkmanshipMatches, reportWorkmanshipName, reportWorkmanshipProtocol, reportWorkmanshipQuery, reportWorkmanshipStages, serverReminderWorkmanshipProtocol } from './report-workmanship';
 import { currentReportStageEvent } from './stage-events';
 
 type ProjectContext = Pick<ComposedProject, 'projectId' | 'selection' | 'context' | 'weekWorkmanship'> & { guidanceItems?: string[] };
@@ -51,11 +51,11 @@ async function reportGuard(tx: PostgresTransaction, lease: Lease) {
   if (!report || report.facts_hash !== scope.factsHash || !binding || !plan || Number(plan.dispatch_epoch) !== scope.dispatchEpoch
     || !await followupAvailable(tx, lease.enterpriseId, binding)) fail('context_changed');
   if (scope.workmanship !== undefined && !(report.kind === 'weekly' && scope.workmanship === reportWorkmanshipProtocol
-    || report.kind === 'stage' && scope.workmanship === reminderWorkmanshipProtocol)) fail('context_changed');
+    || report.kind === 'stage' && isReminderWorkmanship(scope.workmanship))) fail('context_changed');
   if (report.kind === 'stage') {
     const event = await currentReportStageEvent(tx, lease.enterpriseId, report.stage_event_id);
     if (!event || plan.stage_enabled === false) fail('context_changed');
-    if (scope.workmanship === reminderWorkmanshipProtocol) {
+    if (isReminderWorkmanship(scope.workmanship)) {
       const [project, ...others] = (report.facts as ReportFacts).projects;
       if (!project || others.length || project.id !== String(event.aggregate_id)
         || project.stageEvents[0]?.id !== String(event.id) || project.progressRevision !== Number(event.aggregate_version)
@@ -171,9 +171,10 @@ export async function processReportComposition(lease: Lease, dependencies: {
       return knowledgeSynthesisSources(evidence, titles);
     }
     const weeklyWorkmanship = initial.scope.workmanship === reportWorkmanshipProtocol && initial.scope.kind === 'weekly' && initial.selectGuidance;
+    const serverReminderWorkmanship = initial.scope.workmanship === serverReminderWorkmanshipProtocol && initial.selectGuidance;
     for (const [index, project] of projects.entries()) {
       const [facts] = project.context.snapshots[0].data as ReportProject[];
-      if (initial.scope.workmanship === reminderWorkmanshipProtocol) {
+      if (isReminderWorkmanship(initial.scope.workmanship)) {
         const stage = reminderWorkmanshipStage(facts);
         if (!stage) fail('context_changed');
         const { query } = reportWorkmanshipQuery(stage, facts, 'stage');
@@ -215,7 +216,8 @@ export async function processReportComposition(lease: Lease, dependencies: {
     const citationList = wire === 'citation-list';
     const quotedSegments = wire === 'quoted' || citationList;
     const fixedSlots = wire !== 'legacy', flatSegments = wire === 'flat' || quotedSegments;
-    const bodyTool = guidanceOnly ? reportGuidanceFinalTool(projects, choices, initial.preferOriginal) : reportFinalTool(projects.map(p => p.projectId), projects, fixedSlots);
+    const bodyTool = guidanceOnly ? reportGuidanceFinalTool(projects, choices, initial.preferOriginal, serverReminderWorkmanship)
+      : reportFinalTool(projects.map(p => p.projectId), projects, fixedSlots);
     const finalTool = flatSegments && !guidanceOnly ? reportFlatFinalTool(projects.length) : bodyTool;
     const canonical = flatSegments && !guidanceOnly ? { projectCount: projects.length, tool: bodyTool, citationList,
       ...(quotedSegments ? { quoteSources: projects.map(p => p.context.sources.filter(source => source.kind === 'knowledge')) } : {}) } : undefined;
@@ -300,10 +302,10 @@ export async function processReportComposition(lease: Lease, dependencies: {
         if (!output.usage) fail('provider_usage_unknown', 502);
         return output;
     }
-    const visibleProjects = initial.preferOriginal ? projects.map(project => ({ ...project,
+    const visibleProjects = initial.preferOriginal || serverReminderWorkmanship ? projects.map(project => ({ ...project,
       context: { ...project.context, sources: [...project.context.sources.filter(source => source.kind !== 'knowledge'),
-        ...(weeklyWorkmanship ? [] : reportGuidanceStandardSources(project, true))] } })) : projects;
-    const result = await runRenovationAgent({ messages: reportMessages(initial.scope, visibleProjects, fixedSlots, flatSegments, quotedSegments, guidanceSection, guidanceOnly, choices, weeklyWorkmanship), tools: [], resume: initial.resume, ports: {
+        ...(weeklyWorkmanship || serverReminderWorkmanship ? [] : reportGuidanceStandardSources(project, true))] } })) : projects;
+    const result = await runRenovationAgent({ messages: reportMessages(initial.scope, visibleProjects, fixedSlots, flatSegments, quotedSegments, guidanceSection, guidanceOnly, choices, weeklyWorkmanship, serverReminderWorkmanship), tools: [], resume: initial.resume, ports: {
       authorize,
       tool: async () => fail('assistant_capability_forbidden', 403),
       checkpoint: state => scoped(async tx => {
@@ -316,7 +318,7 @@ export async function processReportComposition(lease: Lease, dependencies: {
       model: async (turn, messages) => {
         if ((initial.reviewGuidance || initial.selectGuidance) && turn !== 0) fail('invalid_model_answer', 502);
         const output = await projectReportBodyFinal(await dispatch(turn, messages, finalTool), finalTool, !!reportBodyFinalCarrier, canonical);
-        return guidanceOnly ? { ...output, text: projectReportGuidanceOnly(output.text, projects, choices, initial.preferOriginal) } : output;
+        return guidanceOnly ? { ...output, text: projectReportGuidanceOnly(output.text, projects, choices, initial.preferOriginal, serverReminderWorkmanship) } : output;
       },
     } });
     const body = parseReportBody(result.output?.text || '', projects, fixedSlots);

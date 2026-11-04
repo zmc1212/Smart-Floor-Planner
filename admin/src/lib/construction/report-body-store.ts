@@ -5,7 +5,7 @@ import { AssistantError, fail } from '@/lib/assistant/contracts';
 import { newRun } from '@/lib/assistant/core/conversation';
 import { deliveryActor, followupAvailable } from './report-scope';
 import { reportCompositionProtocol } from './report-composition';
-import { reminderWorkmanshipProtocol, reportWorkmanshipProtocol } from './report-workmanship';
+import { reportWorkmanshipProtocol, serverReminderWorkmanshipProtocol } from './report-workmanship';
 import { currentReportStageEvent } from './stage-events';
 
 /** Called in the original facts transaction. A quota rejection must not roll
@@ -44,7 +44,7 @@ export async function enqueueReportBody(tx: PostgresTransaction, eid: string, re
       { kind: 'scheduled_task', occurrenceKey: `report-body:${reportId}:${revision}:${v.body_run_id || 'initial'}` }, 'construction.report.compose',
       { protocol: reportCompositionProtocol, reportId, revision, bindingId: String(b.id), dispatchEpoch: Number(plan.dispatch_epoch), factsHash: String(v.facts_hash),
         ...(v.report_kind === 'weekly' ? { workmanship: reportWorkmanshipProtocol } : v.report_kind === 'stage'
-          ? { workmanship: reminderWorkmanshipProtocol } : {}) });
+          ? { workmanship: serverReminderWorkmanshipProtocol } : {}) });
     await tx.execute(sql`update app.construction_report_versions set body_run_id=${result.runId},knowledge_status='queued',body_error_code=null,body_attempts=body_attempts+1
       where enterprise_id=${eid} and report_id=${reportId} and revision=${revision}`);
     await tx.execute(sql`release savepoint report_body_admission`);

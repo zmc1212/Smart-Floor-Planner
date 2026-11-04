@@ -110,6 +110,14 @@ test('a reminder admits only the trigger stage and never offers wrong-stage stan
   const raw = JSON.stringify({ P1_guidance: 'review_original' });
   assert.deepEqual(parseReportBody(projectReportGuidanceOnly(raw, [empty], choices, true), [empty], true)
     .projects[0].sections.standards.segments[0].citations, []);
+  const stageTool = reportGuidanceFinalTool([scoped], choices, true, true);
+  const externalId = JSON.stringify({ P1_guidance: 'review_original', P1_standard: sourceCitationCatalog(sources[0])[0].citationId });
+  assert.ok(await toolSchemaIssue(stageTool, externalId));
+  assert.throws(() => projectReportGuidanceOnly(externalId, [scoped], choices, true, true), /invalid_model_citation/);
+  const projected = parseReportBody(projectReportGuidanceOnly(raw, [scoped], choices, true, true), [scoped], true);
+  assert.deepEqual(projected.projects[0].sections.standards.segments[0].citations, [{ sourceId: 'K103', quote: hits[2].text }]);
+  assert.deepEqual(parseReportBody(projectReportGuidanceOnly(raw, [empty], choices, true, true), [empty], true)
+    .projects[0].sections.standards.segments[0].citations, []);
 });
 test('missing, repeated, foreign or malformed project groups cannot become a report', () => {
   const valid = output();

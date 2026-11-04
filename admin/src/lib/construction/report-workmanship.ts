@@ -5,6 +5,9 @@ import { defaultConstructionStages } from './stages';
 
 export const reportWorkmanshipProtocol = 'weekly-stage-workmanship-v1';
 export const reminderWorkmanshipProtocol = 'reminder-stage-workmanship-v1';
+export const serverReminderWorkmanshipProtocol = 'reminder-stage-workmanship-v2';
+export const isReminderWorkmanship = (protocol: unknown) =>
+  protocol === reminderWorkmanshipProtocol || protocol === serverReminderWorkmanshipProtocol;
 const stageLimit = 4;
 const defaultNames = new Map(defaultConstructionStages.map(({ key, name }) => [key, name]));
 const standardHeadings = new Map([
