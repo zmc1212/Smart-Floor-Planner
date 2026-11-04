@@ -78,7 +78,9 @@
         player.on(window.mpegts.Events.ERROR, () => { if (generation === intent) { void stop(true); status('播放中断，可重新播放或切换兼容播放。', true); } });
         player.attachMediaElement(video); player.load(); await player.play();
       } else if (mode !== 'flv' && window.Hls?.isSupported()) {
-        player = new window.Hls({ enableWorker: false, backBufferLength: 15, liveSyncDurationCount: 2 });
+        // The owner relay has a short sliding playlist. Starting at its oldest
+        // segment can leave a stalled viewer behind the next playlist update.
+        player = new window.Hls({ enableWorker: false, backBufferLength: 15, liveSyncDurationCount: ownerPreview ? 1 : 2 });
         const hls = player;
         hls.on(window.Hls.Events.ERROR, (_, data) => { if (data.fatal && generation === intent) { void stop(true); status(ownerPreview?'直播暂时无法播放，请重试。':'播放中断，可重新播放或切换播放方式。', true); } });
         hls.loadSource(stream.hls); hls.attachMedia(video); await video.play();

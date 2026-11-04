@@ -144,6 +144,7 @@ export function rewriteLivePlaylist(text:string,source:URL,app:string,stream:str
   return text.split(/\r?\n/).map(line=>!line||line.startsWith('#')?line.replace(/URI="([^"]+)"/g,(_,value)=>`URI="${rewrite(value)}"`):rewrite(line.trim())).join('\n');
 }
 const mediaHeaders={...liveMediaCorsHeaders,'Cache-Control':'no-store, private, max-age=0','Pragma':'no-cache','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'};
+const SEGMENT_OUTPUT_BYTES = 128 * 1024;
 /** Every bounded playlist/segment and each response chunk rechecks the live grant. */
 export async function publicLiveMedia(request:Request,eid:string,key:string,token:string,resource:string,upstream=publicLiveUpstream()) {
   liveResource(resource);
@@ -179,18 +180,53 @@ export async function publicLiveMedia(request:Request,eid:string,key:string,toke
       throw error;
     }
   }
-  const reader=response.body.getReader();let bytes=0;
+  const reader = response.body.getReader();
+  let bytes = 0;
+  let remainder: Uint8Array | undefined;
+  let ended = false;
+
+  // Transport chunk sizes can vary with the relay or network. Use a bounded
+  // output size so a split upstream packet does not add a database round trip.
+  async function readBlock() {
+    if (ended) return null;
+    const block = new Uint8Array(SEGMENT_OUTPUT_BYTES);
+    let written = 0;
+    while (written < block.length) {
+      signal.throwIfAborted();
+      if (!remainder?.length) {
+        const part = await reader.read();
+        if (part.done) {
+          ended = true;
+          break;
+        }
+        remainder = part.value;
+      }
+      const count = Math.min(remainder.length, block.length - written);
+      block.set(remainder.subarray(0, count), written);
+      written += count;
+      remainder = count < remainder.length ? remainder.subarray(count) : undefined;
+    }
+    return written ? block.subarray(0, written) : null;
+  }
+
   const body=new ReadableStream<Uint8Array>({
     async pull(controller){
-      let phase:'authorization'|'body'|'validation'='authorization';
+      let phase:'authorization'|'body'|'validation'='body';
       try{
-        await session(eid,key,token);phase='body';const part=await reader.read();phase='authorization';
-        await session(eid,key,token,part.done&&bytes>0?'segment':undefined);
-        if(part.done){diagnostic.complete();controller.close();return;}
+        signal.throwIfAborted();
+        const block = await readBlock();
+        signal.throwIfAborted();
+        // The request was authorized before opening upstream. Check again at
+        // the output boundary, including after a stalled upstream read.
+        phase='authorization';
+        await session(eid,key,token,!block&&bytes>0?'segment':undefined);
+        phase='body';
+        signal.throwIfAborted();
+        if(!block){diagnostic.complete();controller.close();return;}
         phase='validation';
-        bytes+=part.value.byteLength;if(bytes>16*1024*1024)fail('public_live_invalid_media',502);
-        diagnostic.addBytes(part.value.byteLength);
-        controller.enqueue(part.value);
+        bytes+=block.byteLength;if(bytes>16*1024*1024)fail('public_live_invalid_media',502);
+        diagnostic.addBytes(block.byteLength);
+        controller.enqueue(block);
       }catch(error){
         diagnostic.failure(phase,phase==='authorization'?(error instanceof AssistantError?'authorization_denied':'authorization_error'):phase==='validation'?'invalid_media':'transport_error');
         abort.abort();await reader.cancel().catch(()=>undefined);controller.error(error);
