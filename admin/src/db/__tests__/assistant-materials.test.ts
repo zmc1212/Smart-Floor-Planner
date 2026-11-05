@@ -174,6 +174,26 @@ test('a mixed site question still reads knowledge and saves the reviewed knowled
     { type: 'text', text: '待核实：' + missing }, { type: 'text', text: reportCoordinationText },
   ]);
 });
+test('a bound coordination scope rejects an unadvertised project read even in the same tool batch', async () => {
+  for (const sameBatch of [true, false]) {
+    const x = await fixture();
+    const turns: number[] = [];
+    const result = await x.send('书房两个点位对不上，现场能定吗？还有图纸版本一般怎么核对？', async (_messages, _tools, turn) => {
+      turns.push(turn);
+      const read = output('query_business', { domain: 'construction' });
+      if (turn > 0) return read;
+      const scope = output('query_materials', { room: '书房', scope: 'knowledge_and_site' });
+      return sameBatch ? { ...scope, toolCalls: [...scope.toolCalls, ...read.toolCalls] } : scope;
+    });
+    assert.equal(result.run.status, 'failed');
+    assert.equal(result.run.errorCode, 'assistant_capability_forbidden');
+    assert.equal(result.run.outputMessageId, null);
+    assert.deepEqual(turns, sameBatch ? [0] : [0, 1]);
+    const steps = await withTenantTransaction(x.eid, tx => rows(tx, sql`select capability_name from app.assistant_run_steps
+      where enterprise_id=${x.eid} and run_id=${result.lease.runId} and capability_name is not null`));
+    assert.deepEqual(steps.map(step => step.capability_name), ['owner-question-scope-v1']);
+  }
+});
 test('XK01/07 a scoped home cannot be replaced by a model argument; a generic multi-home chat asks instead of merging', async () => {
   const x = await fixture(), otherLead = await x.lead();
   await assert.rejects(x.query('书房', otherLead), /assistant_resource_not_found/);

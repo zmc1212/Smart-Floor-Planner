@@ -254,6 +254,7 @@ export function projectNeedBatchOutput(output: ModelTurnOutput, recordOnly: bool
  * business action. Do not accept it before same-round tools have returned.
  * Preserve the provider output separately; all actual tool calls stay paired. */
 const sourceQueryTools = new Set(['restore_sources', 'query_business', 'query_materials', 'query_followups', 'search_knowledge', 'search_web', 'read_web', 'recommend_references', 'recommend_designers']);
+const ownerKnowledgeTools = new Set(['search_knowledge', 'search_web', 'read_web']);
 function hasReportRead(messages: ModelMessage[]) {
   return messages.some((message, index) => {
     if (message.role !== 'tool') return false;
@@ -910,12 +911,11 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             messages:nativeFinalization&&purpose==='answer'&&tools.length?nativePlanningMessages(messages, completion ? reviewCompletionInstructions : undefined):claimMessages, tools, reportPlan, homeSourceView,
             toolsForTurn:(question,current,available,triggerId)=>{
               if (ownerReads?.ownerScope === 'knowledge_and_site') {
+                available = available.filter(tool => ownerKnowledgeTools.has(tool.name));
                 if (!ownerReads.knowledge) {
-                  const reads = available.filter(tool => ['search_knowledge', 'search_web', 'read_web'].includes(tool.name));
-                  if (!reads.length) fail('source_read_required', 502);
-                  return reads;
+                  if (!available.length) fail('source_read_required', 502);
+                  return available;
                 }
-                available = available.filter(tool => ['search_knowledge', 'search_web', 'read_web'].includes(tool.name));
               }
               const definitions=agentToolsForTurn(question,current,available,triggerId,{ ...sourceMode, reportPlan });
               return !nativeFinalization||purpose!=='answer'?definitions:available.length
@@ -1062,7 +1062,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           // schema even when a provider ignores required tool selection.
           if (consultation && !usageKnown) fail('provider_usage_unknown', 502);
           if (purpose === 'answer' && providerOutput.toolCalls.some(call => !dispatchTools.some(tool => tool.name === call.name))
-            && (knowledgeReadPending(reviewContext.currentQuestion, focused, String(initial.trigger.id),sourceMode.requiredKnowledge)
+            && (ownerReads?.ownerScope || knowledgeReadPending(reviewContext.currentQuestion, focused, String(initial.trigger.id),sourceMode.requiredKnowledge)
               || !recoverableUnavailableRead(providerOutput, dispatchTools)))
             fail(knowledgeReadPending(reviewContext.currentQuestion, focused, String(initial.trigger.id),sourceMode.requiredKnowledge) ? 'source_read_required' : 'assistant_capability_forbidden', 502);
           if (purpose === 'answer' && providerOutput.toolCalls.some(call => reviewDefinitions.some(tool => tool.name === call.name))
@@ -1491,6 +1491,10 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         validateTool: (name, args) => readToolInputIssue(name, args, readContext, !!ownerScopeIdentity),
         tool: async (turn, index, name, args) => {
           if (constructionReadOnlyTools(String(initial.conversation.purpose), true)?.every(tool => tool.name !== name)) fail('assistant_capability_forbidden',403);
+          if (ownerScopeIdentity && name !== 'query_materials') {
+            const scope = await scoped(tx => ownerScopeForRun(tx));
+            if (scope === 'site' || scope === 'knowledge_and_site' && !ownerKnowledgeTools.has(name)) fail('assistant_capability_forbidden', 403);
+          }
           const input = bindReadToolInput(name, JSON.parse(args), readContext) as Row;
           const sequence = 1200 + turn * 10 + index, resultKey = `${lease.runId}:${turn}:${index}`;
           if (review && reviewDefinitions.some(tool => tool.name === name)) {
