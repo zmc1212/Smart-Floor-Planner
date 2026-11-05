@@ -6,11 +6,11 @@ import type {ModelMessage,ModelTool} from '../contracts/model';
 import {fingerprint} from '../contracts';
 import {agentBasePolicy,agentOpeningMemoryPrefix,buildAgentContext} from '../agent/context';
 import {readMemory} from '../agent/memory';
-import {synthesisModelInstructions,synthesisQuestionPrefix} from '../agent/model-policy';
+import {publicSourceModelInstructions,synthesisModelInstructions,synthesisQuestionPrefix} from '../agent/model-policy';
 import {projectConsultationModelView} from '../agent/consultation-model-view';
 import {compileModelRequest} from '../agent/model-request';
 import {consultationLongProfile} from '../contracts/consultation';
-import {assertToolPairs} from '../agent/context-budget';
+import {assertToolPairs,estimateAgentRequest,fitAgentContext} from '../agent/context-budget';
 import {modelCitationCatalog} from '../agent/citation-catalog';
 
 test('brand guesses cannot narrow discovery, including inline site filters; actual user/discovered domains can',()=>{
@@ -75,7 +75,7 @@ test('legacy, active navigation, other purposes and unrecognized policy/data ret
     messages,tools:[final],profile,toolsForTurn:(_q,_m,tools)=>tools});
   assert.equal(compile().contentProjection,null);assert.equal(compile(consultationLongProfile.id,'summary').contentProjection,null);
   assert.equal(compile(consultationLongProfile.id,'vision').contentProjection,null);
-  assert.equal(compile(consultationLongProfile.id).contentProjection,'tool-content-artifact-v2');
+  assert.equal(compile(consultationLongProfile.id).contentProjection,'tool-content-artifact-v3');
   const unknown=structuredClone(messages),tool=unknown.at(-1) as Extract<ModelMessage,{role:'tool'}>,packet=JSON.parse(tool.content);
   packet.synthesisSources[0].citationOptions[0].hint='自定义提示必须保留';packet.navigation={custom:true};
   tool.content=JSON.stringify(packet);const projected=projectConsultationModelView(unknown,[final]);
@@ -130,4 +130,53 @@ test('repeated valid HTML reads share model content while both timed receipts re
     const views=focusedSynthesisMessages(messagesFor(different),'10').filter((m):m is Extract<ModelMessage,{role:'tool'}>=>m.role==='tool').map(m=>JSON.parse(m.content));
     assert.equal(views[1].synthesisSources.length,1,'different content/locator/conditions or an invalid receipt cannot share an original');
   }
+});
+
+test('public-source encoding survives knowledge-off without replacing action or memory policy',()=>{
+  const {messages,source}=sourceFixture();
+  const input=messages.filter(message=>!(message.role==='system'&&message.content.some(part=>part.type==='text'&&part.text.startsWith(synthesisModelInstructions))));
+  const before=JSON.stringify(input),write={...final,name:'record_need'};
+  const compiled=compileModelRequest({question:'帮我查这款产品的官网条件。',triggerId:'10',turn:1,purpose:'answer',messages:input,tools:[final,write],
+    toolsForTurn:(_q,_m,available)=>available});
+  const policies=compiled.modelMessages.flatMap(m=>m.role==='system'?m.content:[]);
+  for(const system of input){if(system.role!=='system')continue;
+    for(const part of system.content)assert.ok(policies.some(p=>JSON.stringify(p)===JSON.stringify(part)));}
+  assert.equal(policies.filter(p=>p.type==='text'&&p.text.startsWith(publicSourceModelInstructions)).length,1);
+  assert.ok(compiled.dispatchTools.some(t=>t.name==='record_need'));assert.ok(!compiled.dispatchTools.some(t=>t.name==='search_knowledge'));
+  const packet=JSON.parse((compiled.modelMessages.find(m=>m.role==='tool') as Extract<ModelMessage,{role:'tool'}>).content);
+  assert.equal(packet.synthesisSources[0].text,source.text);assert.deepEqual(packet.synthesisSources[0].evidence.ref,source.evidence.ref);
+  assert.deepEqual(packet.synthesisSources[0].evidence.unknownAuthority,source.evidence.unknownAuthority);
+  assert.equal(JSON.stringify(input),before);assertToolPairs(compiled.modelMessages);
+});
+
+test('source protocol is not enabled by an unread request or a project-only query',()=>{
+  const {messages}=sourceFixture();
+  const withoutContract=messages.filter(m=>!(m.role==='system'&&m.content.some(p=>p.type==='text'&&p.text.startsWith(synthesisModelInstructions))));
+  for(const mixed of [false,true]){
+    const input=structuredClone(withoutContract);
+    const tool=input.find((m):m is Extract<ModelMessage,{role:'tool'}>=>m.role==='tool')!;
+    const packet=JSON.parse(tool.content);
+    if(mixed)packet.synthesisSources=[{...packet.synthesisSources[0],sourceId:'B1',kind:'project'}];
+    else packet.synthesisSources=[];
+    tool.content=JSON.stringify(packet);
+    const result=compileModelRequest({question:'帮我查官网并看看我家。',triggerId:'10',turn:1,purpose:'answer',messages:input,tools:[final],toolsForTurn:(_q,_m,t)=>t});
+    assert.ok(!result.modelMessages.some(m=>m.role==='system'&&m.content.some(p=>p.type==='text'&&p.text.startsWith(publicSourceModelInstructions))));
+  }
+});
+
+test('derived numeric hints cannot push a complete public source over the current request budget',()=>{
+  const {messages,source}=sourceFixture(),text='温度5℃以上，湿度85%以下，仅适用指定型号。'.repeat(10);
+  const numeric={...source,text,evidence:{...source.evidence,text}};
+  const tool=messages.find((m):m is Extract<ModelMessage,{role:'tool'}>=>m.role==='tool')!;
+  const packet=JSON.parse(tool.content);packet.synthesisSources=[{...numeric,citationOptions:modelCitationCatalog(numeric)}];tool.content=JSON.stringify(packet);
+  const frame=(size:number):ModelMessage[]=>[...messages,{role:'system',content:[{type:'text',text:'x'.repeat(size)}]}];
+  const oversized=projectConsultationModelView(frame(40000),[final],synthesisModelInstructions,{preservePolicy:true,budget:{}});
+  const size=40000-(estimateAgentRequest(oversized,[final]).estimatedTokens-16000)*3;
+  const input=frame(size),before=JSON.stringify(input);
+  const old=projectConsultationModelView(input,[final],synthesisModelInstructions,{preservePolicy:true});
+  assert.ok(estimateAgentRequest(old,[final]).estimatedTokens>16000,'The former byte-only hint allowance overflowed this valid base request');
+  const bounded=projectConsultationModelView(input,[final],synthesisModelInstructions,{preservePolicy:true,budget:{}});
+  assert.ok(estimateAgentRequest(bounded,[final]).estimatedTokens<=16000);fitAgentContext(bounded,[final]);
+  assert.equal(JSON.parse((bounded.find(m=>m.role==='tool') as Extract<ModelMessage,{role:'tool'}>).content).synthesisSources[0].text,text);
+  assert.equal(JSON.stringify(input),before);
 });

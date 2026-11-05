@@ -4,10 +4,10 @@ import { independentAdviceRequested, originalAnswerOnly } from './read-tool-inpu
 import { sourceExcerptModelView } from './source-excerpts';
 import { sourceQuestionCoverageInstructions, type SourceQuestionCoverage } from './source-question-coverage';
 import { independentAdviceView } from './independent-advice-context';
-import { focusedSynthesisMessages } from './synthesis';
-import { projectSynthesisPolicy } from './model-policy';
+import { focusedSynthesisMessages, synthesisInstructions } from './synthesis';
+import { projectSynthesisPolicy, publicSourceModelInstructions, synthesisModelInstructions, synthesisQuestionPrefix } from './model-policy';
 import { fitAgentContext, type RequestBudgetOptions } from './context-budget';
-import { consultationModelViewVersion, projectConsultationModelView } from './consultation-model-view';
+import { consultationModelViewVersion, hasSynthesisContract, projectConsultationModelView } from './consultation-model-view';
 import { consultationLongProfile } from '../contracts/consultation';
 import { constrainSynthesisRepairTool } from './synthesis-repair';
 import { knowledgeExplanationInstructions, naturalKnowledgeInstructions } from './knowledge-explanation';
@@ -64,9 +64,21 @@ export function compileModelRequest(input: {
     || dispatchTools.some(tool => tool.name === 'final_response' && ((tool.parameters.properties as Record<string, { enum?: string[] }>)?.kind?.enum || []).includes('knowledge_explanation')));
   const reportMode = purpose === 'answer' && dispatchTools.some(tool => tool.name === 'final_response'
     && ((tool.parameters.properties as Record<string, { enum?: string[] }>)?.kind?.enum || []).includes('report_answer'));
-  const policyView = purpose === 'answer' ? projectSynthesisPolicy(focused,Boolean(excerptMode),explanationMode
+  // Source encoding is independent of the enterprise-knowledge switch. Only
+  // an actual public read uses these existing shared clauses, including any
+  // independently authorized business/history sources in the same answer;
+  // the worker's complete security, memory and action policy stays untouched.
+  const publicSourceProtocol = purpose === 'answer' && publicSources && !input.profile && !input.naturalKnowledge && input.reportPlan === undefined
+    && !hasSynthesisContract(focused, synthesisInstructions) && !hasSynthesisContract(focused, synthesisModelInstructions);
+  const policyInput = publicSourceProtocol && !hasSynthesisContract(focused, publicSourceModelInstructions)
+    ? [...focused, { role: 'system' as const, content: [{ type: 'text' as const,
+      text: publicSourceModelInstructions + synthesisQuestionPrefix + JSON.stringify({ currentQuestion: question }) }] }]
+    : focused;
+  const policyView = purpose === 'answer' ? projectSynthesisPolicy(policyInput,Boolean(excerptMode),explanationMode
     ? input.naturalKnowledge ? naturalKnowledgeInstructions : knowledgeExplanationInstructions : reportMode?reportCoverageInstructions:undefined) : focused;
-  const contentView = input.profile && purpose === 'answer' ? projectConsultationModelView(policyView, dispatchTools) : policyView;
+  const contentView = publicSourceProtocol ? projectConsultationModelView(policyView, dispatchTools, publicSourceModelInstructions,
+    { preservePolicy: true, budget: { profile: input.profile, purpose, imageContextBudget: input.imageContextBudget,
+      reportFinalOutputTokens: input.reportFinalOutputTokens } }) : input.profile && purpose === 'answer' ? projectConsultationModelView(policyView, dispatchTools) : policyView;
   const excerptView=excerptMode?sourceExcerptModelView(contentView):contentView;
   if (excerptMode && input.sourceQuestionCoverage) excerptView.push({ role: 'system', content: [{ type: 'text', text: sourceQuestionCoverageInstructions }] });
   const wireView=input.wireProjection?input.wireProjection(excerptView):excerptView;
