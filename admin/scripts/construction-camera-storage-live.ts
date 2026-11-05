@@ -13,6 +13,7 @@ import {CameraService,exchangeCameraEntry,startCameraView,sessionHeartbeat} from
 import {saveRecordingPolicy,listCameraRecordings,startRecordingView} from '../src/lib/construction/camera/recordings';
 import {cameraWvp} from '../src/lib/construction/camera/wvp';
 import {currentStorageHealth} from '../src/lib/construction/camera/storage';
+import {cameraLiveDeployment} from './construction-camera-environment.mjs';
 
 async function run(){
  const database=new URL(resolvePostgresRuntimeConfig().connectionString);assert.equal(database.port,'55432');assert.equal(database.pathname,'/cloud_camera_eval');
@@ -24,9 +25,9 @@ async function run(){
  const report:Record<string,unknown>={started:new Date().toISOString(),scenario:'Simulated capacity/outage evidence; real WVP writer, live FLV and private playback. The physical disk is never filled.',checks:[]};
  const checks=report.checks as Record<string,unknown>[],evidence=path.join(out,'storage-live-'+String(report.started).replace(/[:.]/g,'-')+'.json');
  const verification=JSON.parse(fs.readFileSync(path.join(out,'verification.json'),'utf8'));
- const files=[...new Set([...Object.keys(verification.before),'admin/drizzle/0094_construction_camera_storage.sql','admin/src/lib/construction/camera/storage.ts','admin/src/lib/construction/camera/writer-policy.ts','admin/src/lib/construction/camera/__tests__/storage.test.ts','admin/scripts/construction-camera-storage-live.ts','admin/docker/camera-storage/server.py','admin/docker/camera-storage/Dockerfile','admin/docker-compose.camera-storage.yml','admin/scripts/construction-camera-storage-local.mjs','tmp/cloud-camera/storage.private.json'])] as string[];
+ const files=[...new Set([...Object.keys(verification.before),'admin/drizzle/0094_construction_camera_storage.sql','admin/src/lib/construction/camera/storage.ts','admin/src/lib/construction/camera/writer-policy.ts','admin/src/lib/construction/camera/__tests__/storage.test.ts','admin/scripts/construction-camera-storage-live.ts','admin/docker/camera-storage/server.py','admin/docker/camera-storage/Dockerfile','admin/docker-compose.camera-storage.yml','admin/scripts/construction-camera-storage-local.mjs','admin/scripts/construction-camera-environment.mjs','tmp/cloud-camera/storage.private.json'])] as string[];
  const bind=()=>Object.fromEntries(files.map(f=>[f,fs.existsSync(path.resolve(root,f))?createHash('sha256').update(fs.readFileSync(path.resolve(root,f))).digest('hex'):'missing']));report.before=bind();
- const image=()=>cp.execFileSync('docker',['--context','desktop-linux','inspect','--format','{{.Image}}','sfp-camera-storage-storage-1'],{encoding:'utf8',windowsHide:true}).trim();report.imageBefore=image();
+ const batch=cameraLiveDeployment(process.env);report.deployment=batch.context;report.recordingHostPath=batch.recordingHostPath;report.transport=batch.transport;report.imagesBefore=batch.images;
  const persist=()=>fs.writeFileSync(evidence,JSON.stringify(report,null,2));
  const server=createServer(async(req,res)=>{
   if(req.url!=='/storage'||req.headers.authorization!=='Bearer '+token){res.writeHead(401).end();return;}
@@ -76,7 +77,7 @@ async function run(){
   try{if(touched){const p=await policy();if(p?.enabled){assert.equal(Number(p.version),ownedVersion,'Do not overwrite a human policy change');await saveRecordingPolicy(actor,fixture.projectId,{bindingId:fixture.bindingId,enabled:false,retentionDays:3,expectedVersion:ownedVersion});}}}catch(e){report.cleanupError=(e as Error).message;report.passed=false;process.exitCode=1;}
   try{if(fixtureGateway){stopOwned(fixtureGateway);process.env.CAMERA_STORAGE_ORIGIN=realOrigin;process.env.CAMERA_STORAGE_TOKEN=realToken;report.restoredGatewayPid=spawnGateway();await gatewayReady();await waitState('ok','stopped',false);}}catch(e){report.gatewayCleanupError=(e as Error).message;report.passed=false;process.exitCode=1;}
   process.env.CAMERA_STORAGE_ORIGIN=realOrigin;process.env.CAMERA_STORAGE_TOKEN=realToken;await new Promise<void>(r=>{server.close(()=>r());server.closeAllConnections();});
-  report.after=bind();report.drift=files.filter(f=>(report.before as Record<string,string>)[f]!== (report.after as Record<string,string>)[f]);report.imageAfter=image();if((report.drift as string[]).length||report.imageBefore!==report.imageAfter){report.passed=false;report.bindingError='Source or probe-image drift';process.exitCode=1;}
+  report.after=bind();report.drift=files.filter(f=>(report.before as Record<string,string>)[f]!== (report.after as Record<string,string>)[f]);try{report.imagesAfter=batch.capture();}catch(e){report.bindingError=(e as Error).message;}if((report.drift as string[]).length||report.bindingError||JSON.stringify(report.imagesAfter)!==JSON.stringify(report.imagesBefore)){report.passed=false;report.bindingError=(report.bindingError as string)||'Source or deployment drift';process.exitCode=1;}
   report.finished=new Date().toISOString();persist();fs.writeFileSync(path.join(out,'storage-live.json'),JSON.stringify(report,null,2));await closePostgresPool();
  }
 }

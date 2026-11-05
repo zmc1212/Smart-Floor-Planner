@@ -11,6 +11,7 @@ import {closePostgresPool,resolvePostgresRuntimeConfig} from '../src/lib/postgre
 import {CameraService,exchangeCameraEntry,sessionHeartbeat} from '../src/lib/construction/camera/service';
 import {saveRecordingPolicy,reconcileRecordings,listCameraRecordings,startRecordingView} from '../src/lib/construction/camera/recordings';
 import {cameraWvp} from '../src/lib/construction/camera/wvp';
+import {cameraLiveDeployment} from './construction-camera-environment.mjs';
 
 async function run(){
  const db=new URL(resolvePostgresRuntimeConfig().connectionString);assert.equal(db.port,'55432');assert.equal(db.pathname,'/cloud_camera_eval');
@@ -19,10 +20,10 @@ async function run(){
  const actor={enterpriseId:fixture.enterpriseId,adminId:fixture.ownerId},service=new CameraService(actor),source=cameraWvp();
  const checks:Record<string,unknown>[]=[],report:Record<string,unknown>={started:new Date().toISOString(),checks};
  const prior=JSON.parse(fs.readFileSync(path.join(out,'verification.json'),'utf8'));
- const files=[...new Set([...Object.keys(prior.before),'admin/drizzle/0092_construction_recording_recovery.sql','admin/drizzle/0093_construction_recording_clock.sql','admin/src/lib/construction/camera/recording-index.ts','admin/src/lib/construction/camera/recording-clock.ts','admin/scripts/construction-camera-recovery-live.ts','admin/package-lock.json','admin/tsconfig.json','tmp/cloud-camera/fixture.private.json',process.env.CAMERA_LOCAL_WVP_ENV!,'G:/workspace/向总/wvp/docker/zlm/start.sh'])] as string[];
+ const files=[...new Set([...Object.keys(prior.before),'admin/drizzle/0092_construction_recording_recovery.sql','admin/drizzle/0093_construction_recording_clock.sql','admin/src/lib/construction/camera/recording-index.ts','admin/src/lib/construction/camera/recording-clock.ts','admin/scripts/construction-camera-recovery-live.ts','admin/package-lock.json','admin/tsconfig.json','tmp/cloud-camera/fixture.private.json',process.env.CAMERA_LOCAL_WVP_ENV!,'admin/scripts/construction-camera-environment.mjs'])] as string[];
  const bind=()=>Object.fromEntries(files.map(f=>[f,createHash('sha256').update(fs.readFileSync(path.resolve(root,f))).digest('hex')]));
  const before=bind();report.before=before;
- const image=()=>cp.execFileSync('docker',['inspect','--format','{{.Image}}','wvp-stack-zlm-1'],{encoding:'utf8',windowsHide:true}).trim();report.mediaImageBefore=image();
+ const batch=cameraLiveDeployment(process.env);report.deployment=batch.context;report.recordingHostPath=batch.recordingHostPath;report.transport=batch.transport;report.imagesBefore=batch.images;
  const deadlocks=async()=>String((await withTenantTransaction(fixture.enterpriseId,tx=>one(tx,sql`select deadlocks from pg_stat_database where datname=current_database()`)))!.deadlocks);report.deadlocksBefore=await deadlocks();
  const evidence=path.join(out,'recovery-live-'+String(report.started).replace(/[:.]/g,'-')+'.json');
  let touched=false,sourceStart=0,session:Awaited<ReturnType<typeof exchangeCameraEntry>>|undefined;
@@ -80,7 +81,7 @@ async function run(){
  finally{
   if(session)try{await sessionHeartbeat(session.session,session.csrf,true);}catch(e){report.sessionCleanupError=(e as Error).message;report.passed=false;process.exitCode=1;}
   if(touched)try{const c=await camera();if(c.recording_enabled)await saveRecordingPolicy(actor,fixture.projectId,{bindingId:fixture.bindingId,enabled:false,retentionDays:3,expectedVersion:Number(c.recording_version)});await reconcileRecordings();const p=await waitState('stopped');report.cleanup={enabled:p.enabled,state:p.state};}catch(e){report.cleanupError=(e as Error).message;report.passed=false;process.exitCode=1;}
-  report.after=bind();report.drift=files.filter(f=>before[f]!== (report.after as Record<string,string>)[f]);report.mediaImageAfter=image();report.deadlocksAfter=await deadlocks();if((report.drift as string[]).length||report.mediaImageBefore!==report.mediaImageAfter||report.deadlocksBefore!==report.deadlocksAfter){report.passed=false;process.exitCode=1;report.bindingError='Source/media drift or a new deadlock';}
+  report.after=bind();report.drift=files.filter(f=>before[f]!== (report.after as Record<string,string>)[f]);try{report.imagesAfter=batch.capture();}catch(e){report.bindingError=(e as Error).message;}report.deadlocksAfter=await deadlocks();if((report.drift as string[]).length||report.bindingError||JSON.stringify(report.imagesAfter)!==JSON.stringify(report.imagesBefore)||report.deadlocksBefore!==report.deadlocksAfter){report.passed=false;process.exitCode=1;report.bindingError=(report.bindingError as string)||'Source/media drift or a new deadlock';}
   report.finished=new Date().toISOString();persist();fs.writeFileSync(path.join(out,'recovery-live.json'),JSON.stringify(report,null,2));await closePostgresPool();
  }
 }

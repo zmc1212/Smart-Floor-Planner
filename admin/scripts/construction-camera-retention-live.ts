@@ -8,13 +8,15 @@ import {one,rows} from '../src/db/repositories/assistant-repository';
 import {closePostgresPool,resolvePostgresRuntimeConfig} from '../src/lib/postgresql';
 import {purgeCameraRecordings,reconcileRecordings} from '../src/lib/construction/camera/recordings';
 import {cameraWvp} from '../src/lib/construction/camera/wvp';
+import {cameraLiveDeployment} from './construction-camera-environment.mjs';
 
 async function run(){
  const db=new URL(resolvePostgresRuntimeConfig().connectionString);assert.equal(db.port,'55432');assert.equal(db.pathname,'/cloud_camera_eval');
  const out=path.resolve('../tmp/cloud-camera'),fixture=JSON.parse(fs.readFileSync(path.join(out,'fixture.private.json'),'utf8'));
- const files=['scripts/construction-camera-retention-live.ts','src/lib/construction/camera/recordings.ts','src/lib/construction/camera/wvp.ts','src/lib/construction/camera/recording-contract.ts','src/db/transaction.ts','src/lib/postgresql.ts','drizzle/0091_construction_recordings.sql','../tmp/cloud-camera/fixture.private.json',process.env.CAMERA_LOCAL_WVP_ENV!,'G:/workspace/向总/wvp/docker/zlm/start.sh'];
+ const files=['scripts/construction-camera-retention-live.ts','src/lib/construction/camera/recordings.ts','src/lib/construction/camera/wvp.ts','src/lib/construction/camera/recording-contract.ts','src/db/transaction.ts','src/lib/postgresql.ts','drizzle/0091_construction_recordings.sql','../tmp/cloud-camera/fixture.private.json',process.env.CAMERA_LOCAL_WVP_ENV!,'scripts/construction-camera-environment.mjs'];
+ const batch=cameraLiveDeployment(process.env);
  const bind=()=>Object.fromEntries(files.map(f=>[f,createHash('sha256').update(fs.readFileSync(f)).digest('hex')]));
- const report:Record<string,unknown>={started:new Date().toISOString(),before:bind(),checks:[]};
+ const report:Record<string,unknown>={started:new Date().toISOString(),before:bind(),deployment:batch.context,recordingHostPath:batch.recordingHostPath,transport:batch.transport,imagesBefore:batch.images,checks:[]};
  try{
   const record=await withTenantTransaction(fixture.enterpriseId,async tx=>{
    const enterprise=await one(tx,sql`select name from app.enterprises where id=${fixture.enterpriseId}`);assert.equal(enterprise?.name,'测试专用 · 云工地摄像头');
@@ -35,6 +37,6 @@ async function run(){
   await reconcileRecordings();const retained=await withTenantTransaction(fixture.enterpriseId,tx=>one(tx,sql`select state from app.construction_recordings where id=${String(record.id)}`));assert.equal(retained?.state,'deleted');
   report.checks=[{name:'expired synthetic fixture deletes real bytes and WVP index; reconciliation does not resurrect it',passed:true,physicalStatus:status}];report.passed=true;
  }catch(e){report.error=(e as Error).message;report.passed=false;process.exitCode=1;}
- finally{report.after=bind();report.drift=files.filter(f=>(report.before as Record<string,string>)[f]!== (report.after as Record<string,string>)[f]);if((report.drift as string[]).length){report.passed=false;process.exitCode=1;}report.finished=new Date().toISOString();fs.writeFileSync(path.join(out,'retention-live.json'),JSON.stringify(report,null,2));console.log(JSON.stringify({passed:report.passed,checks:report.checks,error:report.error,drift:report.drift}));await closePostgresPool();}
+ finally{report.after=bind();report.drift=files.filter(f=>(report.before as Record<string,string>)[f]!== (report.after as Record<string,string>)[f]);let deploymentError='';try{report.imagesAfter=batch.capture();}catch(e){deploymentError=(e as Error).message;}if((report.drift as string[]).length||deploymentError||JSON.stringify(report.imagesAfter)!==JSON.stringify(report.imagesBefore)){report.passed=false;report.bindingError=deploymentError||'Source or deployment drift';process.exitCode=1;}report.finished=new Date().toISOString();fs.writeFileSync(path.join(out,'retention-live.json'),JSON.stringify(report,null,2));console.log(JSON.stringify({passed:report.passed,checks:report.checks,error:report.error,drift:report.drift}));await closePostgresPool();}
 }
 void run().catch(async e=>{console.error(e.message);process.exitCode=1;await closePostgresPool();});

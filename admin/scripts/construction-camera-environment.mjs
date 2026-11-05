@@ -109,6 +109,23 @@ export function assertCameraCapacity(sample, native, now = Date.now()) {
   assert.equal(bytes(sample.availableFiles), 0n);
 }
 
+// Read-only deployment identity for one live acceptance batch. The context must be
+// explicit, so a stopped local engine or a shifted default context can never be
+// silently bound as the evidence host.
+export function cameraLiveDeployment(env, command = cameraCommand) {
+  const deployment = cameraDeployment(env.CAMERA_DOCKER_CONTEXT);
+  assert.equal(env.CAMERA_RECORDING_HOST_PATH, deployment.recordingHostPath, 'A live batch must name the deployment recording host path');
+  const transport = cameraTransport(deployment.context, command);
+  const capture = () => {
+    assert.deepEqual(cameraTransport(deployment.context, command), transport, 'Camera transport changed during the batch');
+    const images = cameraImages(deployment.context, command);
+    assertCameraMounts(images, deployment.recordingHostPath);
+    return images;
+  };
+  const images = capture();
+  return {context: deployment.context, recordingHostPath: deployment.recordingHostPath, transport, images, capture};
+}
+
 export function cameraEnvironmentIdentity(report) {
   return {transport: report.transport, images: report.images, recordingHostPath: report.recordingHostPath, nativeHost: report.native.host, totalBytes: report.native.totalBytes};
 }

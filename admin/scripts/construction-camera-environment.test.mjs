@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {cameraDeployment, cameraTransport, inspectCameraEnvironment, assertCameraCapacity, REMOTE_CAMERA_CONTEXT, REMOTE_CAMERA_RECORDING_PATH} from './construction-camera-environment.mjs';
+import {cameraDeployment, cameraTransport, cameraLiveDeployment, inspectCameraEnvironment, assertCameraCapacity, REMOTE_CAMERA_CONTEXT, REMOTE_CAMERA_RECORDING_PATH, LOCAL_CAMERA_RECORDING_PATH} from './construction-camera-environment.mjs';
 import {executionDeploymentEnvironment} from './construction-camera-execution.mjs';
 import {storageArguments} from './construction-camera-storage-local.mjs';
 
@@ -39,7 +40,7 @@ function fixture() {
     return options.headers?.Authorization ? Response.json(sample) : new Response('', {status: 401});
   };
   const storage = {origin: 'http://127.0.0.1:18082', token: 'private'.repeat(8)};
-  return {images, native, sample, calls, requests, control, run: () => inspectCameraEnvironment(REMOTE_CAMERA_CONTEXT, storage, {command, request})};
+  return {images, native, sample, calls, requests, control, command, run: () => inspectCameraEnvironment(REMOTE_CAMERA_CONTEXT, storage, {command, request})};
 }
 
 test('explicit context and action prevent implicit local deployment or a remote compose mutation', () => {
@@ -107,4 +108,44 @@ test('mount ordering is normalized without discarding full mount fields', async 
   f.control.after[0].mounts.reverse(); await f.run();
   const changed = fixture(); changed.control.after = structuredClone(changed.images); changed.control.after[0].mounts[1].Propagation = 'shared';
   await assert.rejects(changed.run(), /changed during physical preflight/);
+});
+
+const liveEnv = {CAMERA_DOCKER_CONTEXT: REMOTE_CAMERA_CONTEXT, CAMERA_RECORDING_HOST_PATH: REMOTE_CAMERA_RECORDING_PATH};
+
+test('a live batch binds the approved remote deployment without touching the host disk or probe', () => {
+  const f = fixture();
+  const batch = cameraLiveDeployment(liveEnv, f.command);
+  assert.equal(batch.context, REMOTE_CAMERA_CONTEXT);
+  assert.equal(batch.recordingHostPath, REMOTE_CAMERA_RECORDING_PATH);
+  assert.deepEqual(batch.images.map(image => image.name), ['/sfp-camera-storage-storage-1', '/wvp-stack-wvp-1', '/wvp-stack-zlm-1']);
+  assert.ok(f.calls.every(call => call.binary === 'ssh' || call.args[0] === 'context' || call.args[1] === REMOTE_CAMERA_CONTEXT));
+  assert.equal(f.calls.some(call => call.args.includes('-EncodedCommand')), false);
+  assert.equal(f.requests.length, 0);
+});
+
+test('a live batch fails closed on an implicit engine, a mixed host or a mid-batch overlay change', () => {
+  assert.throws(() => cameraLiveDeployment({}, () => {throw Error('must not invoke a command');}), /explicit/);
+  assert.throws(() => cameraLiveDeployment({...liveEnv, CAMERA_RECORDING_HOST_PATH: LOCAL_CAMERA_RECORDING_PATH}, () => {throw Error('must not invoke a command');}), /recording host path/);
+  const f = fixture();
+  const batch = cameraLiveDeployment(liveEnv, f.command);
+  f.control.after = structuredClone(f.images); f.control.after[2].mounts[1].RW = true;
+  assert.throws(batch.capture, /read-write\/read-only/);
+});
+
+test('a live batch refuses a container replaced under the same names', () => {
+  const f = fixture();
+  const batch = cameraLiveDeployment(liveEnv, f.command);
+  f.control.after = structuredClone(f.images); f.control.after[0].id = 'f'.repeat(64);
+  assert.notEqual(JSON.stringify(batch.capture()), JSON.stringify(batch.images));
+});
+
+// The drivers used to call a bare local `docker inspect`, which silently bound a
+// live batch to whichever engine happened to answer. They must go through the
+// shared explicit-context binding instead.
+test('live acceptance drivers bind their deployment through the shared module', () => {
+  for (const name of ['construction-camera-storage-live.ts', 'construction-camera-recovery-live.ts', 'construction-camera-retention-live.ts']) {
+    const source = fs.readFileSync(new URL('./' + name, import.meta.url), 'utf8');
+    assert.match(source, /cameraLiveDeployment\(process\.env\)/);
+    assert.doesNotMatch(source, /execFileSync\('docker'/);
+  }
 });
