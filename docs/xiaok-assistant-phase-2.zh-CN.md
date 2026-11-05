@@ -23,6 +23,12 @@
 复用依据为[LangGraph模型输入与持久状态分离](https://docs.langchain.com/oss/javascript/langgraph/add-memory#manage-short-term-memory)和[上游消息/工具测试](https://github.com/langchain-ai/langchain/blob/master/libs/core/tests/unit_tests/test_messages.py)；[trimMessages问题](https://github.com/langchain-ai/langchainjs/issues/11152)不授权丢弃当前原文。[百炼JSON Schema合同](https://help.aliyun.com/zh/model-studio/qwen-structured-output)及原native结构保留，不重写框架、不新增Agent或权限/引用管线。
 <!-- /xiaok-public-web-current -->
 
+<!-- xiaok-nearby-city-current -->
+**附近已公开工地：城市原话承接有界Implemented，实时观看整体Limited。** `PublicCustomerService.recommendations`现把最近一条获权用户原话传给原`recommendationRegion`，再读同一已发布目录；明确城市不必先由模型保存住房需求。不新增城市规则、权限解析器或需求事实；当前批准版本/原来源/业主/企业校验、城市/区县过滤和撤回保留，只是粗粒度浏览，不声称精确距离或最近。沿原C01公开卡片/空态，无UI变化；观看已批准工地不要求观看者公开自己工地。
+
+原杭州原话在杭州/成都真实标记公开夹具均存在时仍回`needRegion:true/items:[]`；适配修复后服务实际写入/读回/重进、其他客户拒绝与撤回通过，杭州撤回不拿成都补位。client13/地区3/lint通过，types57旧/涉及0；Stable390x844三组有真实可见组件范围、3张383x828截图已审，1496绑定drift[]、资源/配置恢复/队列0。整理和会话就绪回复均为明确工程夹具，不算模型语义通过；模型/生图/摄像头调用0。前次仅数据断言未显示列表，已剔除；首次过早DOM断言失败也保留。[证据](../tmp/v1-nearby-city-20261106/assessment.json)。历史公开31帧只复用原子检查，原批清理失败与独立清理读回分开；当前完整Stable HLS/真实微信未验，原两轮止损保留，无新直播公开或生产通过声明。
+<!-- /xiaok-nearby-city-current -->
+
 <!-- xiaok-style-recommendations-current -->
 **V1-04按风格推荐公开设计师：有界Implemented，整版仍Limited。** C01复用原设计师/作品服务，严格过滤主/辅助风格、城市、公开版本/许可及有效作者。`recommendDesigners`现将本轮原话与紧接着的上次成功推荐查询原话核对；其他咨询、没有该查询的回复或中间插话不承接偏好。私有`requestMessageIds`保留出处，不自动保存需求、建线索、联系、预约或改归属；卡片、作品及图片重进仍核当前公开权限和版本。
 

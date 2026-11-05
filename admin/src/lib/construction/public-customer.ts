@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
-import { fail, id, key, requireCapability, type ActorContext } from '@/lib/assistant/contracts';
+import { fail, id, key, requireCapability, safeText, type ActorContext } from '@/lib/assistant/contracts';
 import { appendMessage, cancelRuns, idempotent } from '@/lib/assistant/core/conversation';
 import { object } from './contracts';
 import { publicRevision, type PublicContent } from './public-contract';
@@ -86,7 +86,8 @@ export class PublicCustomerService {
       const areas = await publicCandidates(tx, this.actor.enterpriseId);
       const memory = readMemory(c.entry_snapshot);
       const housing = memory.facts.filter(f => f.field === 'housing' && f.status === 'current').map(f => f.value).join(' ');
-      const region = recommendationRegion(c.entry_snapshot, housing);
+      const latestText = messages[0] ? safeText(messages[0].content as Parameters<typeof safeText>[0]) : '';
+      const region = recommendationRegion(c.entry_snapshot, housing, latestText);
       if (region) return { items: areas.filter(a => a.cityCode === region.cityCode && (!region.district || a.district === region.district)).slice(0, 3),
         enterpriseId: this.actor.enterpriseId, needRegion: false, region };
       const texts = [...messages.map(m => ((m.content as { blocks: Array<{ text?: string }> }).blocks || []).map(b => b.text || '').join('\n')),
