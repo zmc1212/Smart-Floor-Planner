@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { agentToolsForMessage, agentToolsForTurn } from '../agent/worker';
+import { drawingChecklistRequested } from '../agent/read-tool-input';
 import type { ModelMessage } from '../contracts/model';
 
 const question = '合成点位说明第二节如何区分方案同意和关闭？';
@@ -64,4 +65,26 @@ test('read gating preserves separate explicit writes and disabled/final-only too
   const tools = agentToolsForTurn(question, [original()], [], 'current');
   assert.deepEqual(tools.map(t => t.name), ['final_response']);
   assert.deepEqual((tools[0].parameters.properties as Record<string, { enum: string[] }>).kind.enum, ['unavailable']);
+});
+
+test('drawing review procedures must read authorized knowledge before composing a checklist', () => {
+  for (const text of ['设计师刚把新版图发我，签字前我先看哪些地方？', '这套点位图签署前如何复核？',
+    '平面图确认前要核对什么？客餐厅那处现场已经标记了吗？']) {
+    assert.equal(drawingChecklistRequested(text), true);
+    const tools = agentToolsForMessage(text, true);
+    const planned = (messages: ModelMessage[]) => agentToolsForTurn(text, messages, tools, 'current', {
+      requiredKnowledge: drawingChecklistRequested(text), sourceExcerpts: false,
+    });
+    const followups: ModelMessage[] = [
+      { role: 'assistant', content: '', toolCalls: [{ id: 'site', name: 'query_followups', arguments: '{}' }] },
+      { role: 'tool', callId: 'site', content: '{"resultKey":"test-site","data":[]}' },
+    ];
+    assert.deepEqual(planned([original(text), ...followups]).map(tool => tool.name), ['search_knowledge']);
+    assert.ok(planned([original(text), ...read()]).some(tool => tool.name === 'final_response'));
+  }
+  for (const text of ['我看的是客餐厅那张，餐边柜不动，旁边插座的位置两张图不一样。',
+    '这版图纸现场确认了吗，现在能签字吗？', '请按《图纸交接》原文说明：签字前要看什么？',
+    '新版图签字前看哪些？别查资料。', '新版图签字前看哪些？转人工。']) {
+    assert.equal(drawingChecklistRequested(text), false, text);
+  }
 });

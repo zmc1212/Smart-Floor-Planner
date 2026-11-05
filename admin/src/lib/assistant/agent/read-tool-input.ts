@@ -10,6 +10,18 @@ import { readWebTool, parsePublicRead } from './public-research';
 
 export const sourceReadProtocol = 'original-source-read-v1';
 export const sourceAnswerProtocol = 'question-source-scope-v2';
+export const drawingChecklistReadProtocol = 'drawing-checklist-read-v1';
+
+/** Scope a procedural drawing review before sign-off to the knowledge read.
+ * A question about whether a particular drawing is approved or ready to sign
+ * still needs its own actual project record. */
+export function drawingChecklistRequested(question: string): boolean {
+  return /图纸|新版图|平面图|点位图|设计图/.test(question)
+    && /签字前|签字之前|签署前|签图前|审图前|确认(?:图纸|方案)前|确认前/.test(question)
+    && /(?:看|核对|检查|复核|审)(?:哪(?:些|几)|什么)|(?:怎么|如何)(?:看|核对|检查|复核|审图)|有(?:哪些|什么).{0,8}(?:要点|注意|要核对)|(?:核对|检查)清单/.test(question)
+    && !/(?:不|别)(?:用|要|必)?查(?:资料|知识库|原文)/.test(question)
+    && !originalAnswerOnly(question) && !explicitNeedWriteStatement(question) && !explicitHumanHandoffRequested(question);
+}
 /** Select an existing read contract, never a document, query or answer. Only
  * the actual current request is inspected; quoted history/tool data cannot
  * establish an executed read. Authorization remains with the existing port. */

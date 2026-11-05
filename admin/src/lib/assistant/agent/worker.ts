@@ -72,7 +72,7 @@ import { citationProtocolVersion } from './citation-catalog';
 import { agentChatProtocolVersion } from '@/lib/ai/providers/agent-chat';
 import { historyTool, parseHistoryQuery, recallHistory, historyRefsAvailable, historySynthesisSources, reviewHistorySnapshot, type HistoryRef, type HistorySnapshot } from './history';
 import { historySummaryPolicy, historySummaryCapability, historySummaryStep, summaryInput, summaryRequest, selectedSummary, summaryTool, withHistorySummary } from './summary';
-import { isReadToolInputFailure, readToolInputIssue, readToolInputProtocol, bindReadToolInput, readToolContext, readToolsForContext, knowledgeReadPending, originalAnswerOnly, independentAdviceRequested, explicitHumanHandoffRequested, sourceReadProtocol, sourceAnswerProtocol, type ReadToolContext } from './read-tool-input';
+import { isReadToolInputFailure, readToolInputIssue, readToolInputProtocol, bindReadToolInput, readToolContext, readToolsForContext, knowledgeReadPending, originalAnswerOnly, independentAdviceRequested, explicitHumanHandoffRequested, sourceReadProtocol, sourceAnswerProtocol, drawingChecklistReadProtocol, drawingChecklistRequested, type ReadToolContext } from './read-tool-input';
 import { currentMessageOnlyRequested, currentMessageFinalTool, currentMessageReplyFeedback, currentMessageScopeProtocol } from './current-message-scope';
 import { independentAdviceContextProtocol } from './independent-advice-context';
 import { compileModelRequest, type ModelRequestPurpose } from './model-request';
@@ -803,9 +803,12 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     const finalOutputMode = reportFinalCarrier ? 'function_call' as const : 'json_schema' as const;
     const explanationBound = !nativeFinalization && (initial.run.policy_snapshot as Row).sourceAnswerMode === knowledgeExplanationProtocol;
     const exactQuote = explanationBound && exactKnowledgeQuoteRequested(reviewContext.currentQuestion);
-    const sourceMode={requiredKnowledge:initial.shared,sourceExcerpts:!nativeFinalization&&((initial.run.policy_snapshot as Row).sourceAnswerMode===sourceExcerptProtocol || exactQuote),
+    const drawingChecklistRead = !explanationBound && !nativeFinalization && initial.config.tools
+      && (initial.run.policy_snapshot as Row).drawingChecklistRead === drawingChecklistReadProtocol
+      && drawingChecklistRequested(reviewContext.currentQuestion);
+    const sourceMode={requiredKnowledge:initial.shared || drawingChecklistRead,sourceExcerpts:!drawingChecklistRead&&!nativeFinalization&&((initial.run.policy_snapshot as Row).sourceAnswerMode===sourceExcerptProtocol || exactQuote),
       knowledgeExplanation:explanationBound && !exactQuote,
-      sourceQuestionCoverage:!nativeFinalization&&(initial.run.policy_snapshot as Row).sourceQuestionCoverage===sourceQuestionCoverageProtocol};
+      sourceQuestionCoverage:!drawingChecklistRead&&!nativeFinalization&&(initial.run.policy_snapshot as Row).sourceQuestionCoverage===sourceQuestionCoverageProtocol};
     const imageFinalization = reportNativeFinal || initial.config.imageContext === conversationImageProtocol;
     const imageContextBudget = imageFinalization && (initial.run.policy_snapshot as Row).imageContextBudget === imageContextBudgetPolicy.version
       ? imageContextBudgetPolicy.version : undefined;
@@ -956,7 +959,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                   citationProtocol:purpose==='answer'?citationProtocolVersion:null,
                   repairProtocol: purpose === 'answer' ? synthesisRepairBase(focused) ? synthesisRepairProtocol : finalAnswerRepairBase(focused) ? finalAnswerRepairProtocol : null : null,
                   repairProjection: purpose === 'answer' && focused !== messages && (synthesisRepairBase(focused) || finalAnswerRepairBase(focused)) ? synthesisRepairProjectionVersion : null,
-                  transportProtocol: agentChatProtocolVersion, readProtocol: agentReadProtocol, readInputProtocol: readToolInputProtocol, readContext, sourceReadProtocol: purpose === 'answer' ? sourceReadProtocol : null, sourceReadPending: purpose === 'answer' && knowledgeReadPending(reviewContext.currentQuestion, focused, String(initial.trigger.id)), sourceAnswerProtocol: purpose === 'answer' && originalAnswerOnly(reviewContext.currentQuestion) ? sourceAnswerProtocol : null, finalProtocol: purpose === 'answer' ? agentSourceFinalProtocol : null, needQuoteProtocol: purpose === 'answer' && dispatchTools.some(tool => tool.name === 'record_need') && needOriginalQuotes(reviewContext.currentQuestion).length ? agentNeedQuoteProtocol : null, activeToolNames: dispatchTools.map(tool => tool.name),
+                  transportProtocol: agentChatProtocolVersion, readProtocol: agentReadProtocol, readInputProtocol: readToolInputProtocol, readContext, sourceReadProtocol: purpose === 'answer' ? sourceReadProtocol : null, sourceReadPending: purpose === 'answer' && knowledgeReadPending(reviewContext.currentQuestion, focused, String(initial.trigger.id), sourceMode.requiredKnowledge), sourceAnswerProtocol: purpose === 'answer' && originalAnswerOnly(reviewContext.currentQuestion) ? sourceAnswerProtocol : null, finalProtocol: purpose === 'answer' ? agentSourceFinalProtocol : null, needQuoteProtocol: purpose === 'answer' && dispatchTools.some(tool => tool.name === 'record_need') && needOriginalQuotes(reviewContext.currentQuestion).length ? agentNeedQuoteProtocol : null, activeToolNames: dispatchTools.map(tool => tool.name),
                   needInputProtocol: purpose === 'answer' && dispatchTools.some(tool => tool.name === 'record_need') ? agentNeedInputProtocol : null,
                   finalOnly: purpose === 'answer' && tools.length === 0,
                   responseScope: modelMessages.some(m => m.role === 'system' && m.content.some(p => p.type === 'text' && p.text.startsWith(availabilityScopeHintPrefix))) ? 'unavailable_occupancy_evidence' : null })}::jsonb)`);
@@ -1023,9 +1026,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           // schema even when a provider ignores required tool selection.
           if (consultation && !usageKnown) fail('provider_usage_unknown', 502);
           if (purpose === 'answer' && providerOutput.toolCalls.some(call => !dispatchTools.some(tool => tool.name === call.name))
-            && (knowledgeReadPending(reviewContext.currentQuestion, focused, String(initial.trigger.id),initial.shared)
+            && (knowledgeReadPending(reviewContext.currentQuestion, focused, String(initial.trigger.id),sourceMode.requiredKnowledge)
               || !recoverableUnavailableRead(providerOutput, dispatchTools)))
-            fail(knowledgeReadPending(reviewContext.currentQuestion, focused, String(initial.trigger.id),initial.shared) ? 'source_read_required' : 'assistant_capability_forbidden', 502);
+            fail(knowledgeReadPending(reviewContext.currentQuestion, focused, String(initial.trigger.id),sourceMode.requiredKnowledge) ? 'source_read_required' : 'assistant_capability_forbidden', 502);
           if (purpose === 'answer' && providerOutput.toolCalls.some(call => reviewDefinitions.some(tool => tool.name === call.name))
             && providerOutput.toolCalls.length !== 1) fail('assistant_capability_forbidden', 502);
           if(nativeFinalization&&purpose==='answer'&&!tools.length&&!injected)assertNativeFinalOutput(output.agentOutput, finalOutputMode);
@@ -1229,7 +1232,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         resolveFinal: (raw, state) => scoped(async (tx, context) => {
           const claims = claimFinalization ? await boundReviewClaims(tx, lease.actor, context.conversation, lease.runId) : null;
           if (claims) raw = resolveReviewClaims(raw, claims);
-          if (knowledgeReadPending(safeText(initial.trigger.content as Parameters<typeof safeText>[0]), state.messages, String(initial.trigger.id),initial.shared)) {
+          if (knowledgeReadPending(safeText(initial.trigger.content as Parameters<typeof safeText>[0]), state.messages, String(initial.trigger.id),sourceMode.requiredKnowledge)) {
             let kind: unknown;
             try { kind = JSON.parse(raw).kind; } catch { /* Plaintext cannot bypass the source read. */ }
             if (initial.config.tools || kind !== 'unavailable') fail('source_read_required', 502);
@@ -1738,7 +1741,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             });
             // Short follow-ups receive both current materials and the actual node.
             // Source validation and checkpoints are shared with explicit business tools.
-            const bound = coordinationReferral ? null : await scoped(async (tx, context) => {
+            // A checklist explains the review procedure. The model can still
+            // request authorized site facts separately for a mixed question.
+            const bound = coordinationReferral || drawingChecklistRead ? null : await scoped(async (tx, context) => {
               const current = await boundKnowledgeContext(tx, lease.actor, context.conversation, lease.runId, turn, index, resultKey);
               if (current) {
                 const { snapshot } = current.materials;
@@ -1756,6 +1761,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               ...(evidence?.professional?{professional:{origin:evidence.professional.entry.origin,conditions:evidence.professional.entry.conditions,prerequisites:evidence.professional.entry.prerequisites,exceptions:evidence.professional.entry.exceptions},applicability:evidence.professional.applicability,context:evidence.professional.context}: {})})),
               boundProjectContext: bound ? { resolution: bound.materials.snapshot.data.resolution, missing: bound.materials.snapshot.data.missing, constructionQueriedAt: bound.construction.snapshot.queriedAt } : null,
               instructions: sourceMode.knowledgeExplanation ? knowledgeExplanationInstructions : (unresolvedConflict ? '资料明确含尚未核实的规则冲突。综合回答第一段必须basis=uncertainty，先说明不能按企业规则择一；随后分别引述双方，不用“主流/倾向/优先”认定企业现行口径。一般建议另标身份。' : '')
+                + (drawingChecklistRead ? '签字前的核对方法使用本轮有效知识引用；若另问本人项目实况，使用对应的获权现场读取。' : '')
                 + '解释专业原理、取舍、适用条件时用kind=synthesis和segments，引用本轮synthesisSources；原文查询也用该段落结构保留引用，不输出kind=knowledge或顶层text/selections。冲突保留双方并说明待核实；缺知识仍可给标明身份的一般建议。不得编造企业或现场事实。其他独立业务/案例展示结果沿其真实resultKey与原协议。'
                   + '当前问题若问验收或完成状态，直接用“当前证据不足以支持该结论，仍需核对实际检查记录”等措辞回答判断。text中禁止复述完成词，包括否定句、引号与举例中的“已验收”“已经验收”“已批准”“已经批准”“已完成验收”；不要写“不能认定已经验收/不支持已经验收”，改为“当前证据不能支持该结论”。原文quote仍须逐字保留，不能改写。' }) };
           }

@@ -50,6 +50,9 @@ const bailianProfiles: Readonly<Record<string, BailianModelProfile>> = {
   // Search/cache/Partial/Batch retain their independent unverified gates.
   'qwen3.7-flash': { ...bailianUnknownProfile, functionCalling: 'documented', thinkingControl: 'documented',
     jsonObject: 'documented', jsonSchema: 'documented' },
+  // Beijing Chat Completions tool round trips with thinking disabled were
+  // recorded in the 2026-10-23 consultation trial.
+  'deepseek-v4.1-flash-1017': { ...bailianUnknownProfile, functionCalling: 'documented', thinkingControl: 'documented' },
   'qwen3.8-flash': { functionCalling: 'documented', jsonObject: 'documented', jsonSchema: 'documented',
     nativeSearch: 'documented_dashscope_generation', implicitCache: 'documented', explicitCache: 'opt_in_unmeasured',
     partial: 'documentation_conflict', batch: 'documented', thinkingControl: 'documented' },
