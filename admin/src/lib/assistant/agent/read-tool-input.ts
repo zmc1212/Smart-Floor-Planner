@@ -2,6 +2,7 @@ import { AssistantError, fail, id } from '../contracts';
 import { businessToolDefinitions, parseBusinessQuery, parseDesignerQuery } from './business-tools';
 import { historyTool, parseHistoryQuery } from './history';
 import { materialTool, parseMaterialQuery } from './materials';
+import { ownerQuestionMaterialTool, readOwnerMaterialInput } from './owner-question-scope';
 import type { ModelMessage, ModelTool } from '../contracts/model';
 import { originalMessageId } from './context-budget';
 import { explicitNeedWriteStatement } from './memory';
@@ -157,15 +158,18 @@ function inputIssues(parameters: ModelTool['parameters'], input: unknown): Input
 }
 
 /** Reuse strict application parsers. No database/provider call or value repair. */
-export function readToolInputIssue(name: string, args: string, context?: ReadToolContext): { code: string; feedback: string } | null {
+export function readToolInputIssue(name: string, args: string, context?: ReadToolContext, ownerScope = false): { code: string; feedback: string } | null {
   const validator = validators.get(name);
   if (!validator) return null;
-  const tool = readToolsForContext([validator.tool], context)[0];
+  const scopedMaterials = ownerScope && name === 'query_materials';
+  const tool = readToolsForContext([scopedMaterials ? ownerQuestionMaterialTool(validator.tool) : validator.tool], context)[0];
   let input: unknown;
   try {
     try { input = JSON.parse(args); }
     catch (error) { if (!(error instanceof SyntaxError)) throw error; return feedback([{ path: '$', code: 'json', expected: 'object' }]); }
-    validator.parse(bindReadToolInput(name, input, context));
+    const bound = bindReadToolInput(name, input, context);
+    if (scopedMaterials) readOwnerMaterialInput(bound as Record<string, unknown>);
+    else validator.parse(bound);
     return null;
   } catch (error) {
     if (!(error instanceof AssistantError) || !['invalid_message', 'invalid_web_query', 'private_web_query'].includes(error.code) || error.status !== 422) throw error;

@@ -11,11 +11,12 @@ import { ConversationService } from '@/lib/assistant/core/conversation';
 import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
 import { processAgentAnswer, agentToolsForMessage } from '@/lib/assistant/agent/worker';
 import { queryMaterials, materialSnapshotAvailable, parseMaterialQuery, type MaterialSnapshot } from '@/lib/assistant/agent/materials';
-import { fingerprint, type ActorContext } from '@/lib/assistant/contracts';
+import { fingerprint, type ActorContext, type MessageContent } from '@/lib/assistant/contracts';
 import type { ModelTurnOutput } from '@/lib/assistant/contracts/model';
 import { HandoffService } from '@/lib/assistant/handoff/service';
 import { FloorplanContextService } from '@/lib/assistant/media/floorplan-context';
 import { agentPromptVersion } from '@/lib/assistant/agent/context';
+import { reportCoordinationText } from '@/lib/assistant/agent/report-coordination';
 import { getPlatformLlmRuntimeConfig, savePlatformLlmConfig } from '@/lib/platform-llm-config';
 
 const prefix = 'synthetic-xk-materials-' + randomUUID(), tenants: string[] = [], users: string[] = [];
@@ -122,7 +123,7 @@ test('XK01/03 customer originals and formal v4 sources compose without inventing
   const result = await x.send('找书房对应图纸和需求', async (messages, tools, turn) => {
     assert.ok(tools.some(t => t.name === 'query_materials'));
     const resultKey = messages.filter(m => m.role === 'tool').map(m => JSON.parse(m.content).resultKey).at(-1);
-    return turn === 0 ? output('query_materials', { room: '书房' }) : output('final_response', { kind: 'business', resultKey, text: '伪造的已批准点位图' });
+    return turn === 0 ? output('query_materials', { room: '书房', scope: 'materials' }) : output('final_response', { kind: 'business', resultKey, text: '伪造的已批准点位图' });
   });
   assert.equal(result.run.status, 'succeeded', JSON.stringify(result.run));
   const history = await new ConversationService(x.actor).messages(x.cid);
@@ -131,6 +132,47 @@ test('XK01/03 customer originals and formal v4 sources compose without inventing
   assert.equal(Number((await withTenantTransaction(x.eid, tx => one(tx, sql`select count(*) n from app.construction_site_records where enterprise_id=${x.eid}`)))!.n), 0);
   const steps = await withTenantTransaction(x.eid, tx => rows(tx, sql`select kind from app.assistant_run_steps where enterprise_id=${x.eid} and run_id=${result.lease.runId}`));
   assert.ok(steps.some(s => s.kind === 'agent_material_context'));
+});
+test('a site clarification uses the fixed referral without reading materials or dispatching a final draft', async () => {
+  const x = await fixture();
+  const result = await x.send('我看的是客餐厅那张，餐边柜不动，旁边插座的位置两张图不一样。', async (_messages, tools, turn) => {
+    assert.equal(turn, 0);
+    assert.ok(tools.some(tool => tool.name === 'query_materials'));
+    return output('query_materials', { room: '客餐厅', scope: 'site' });
+  });
+  assert.equal(result.run.status, 'succeeded', JSON.stringify(result.run));
+  const answer = (await new ConversationService(x.actor).messages(x.cid)).items.find(item => item.id === result.run.outputMessageId)!;
+  assert.equal(answer.available, true);
+  assert.deepEqual((answer.content as MessageContent).blocks, [{ type: 'text', text: reportCoordinationText }]);
+  const steps = await withTenantTransaction(x.eid, tx => rows(tx, sql`select capability_name from app.assistant_run_steps
+    where enterprise_id=${x.eid} and run_id=${result.lease.runId} and capability_name is not null`));
+  assert.deepEqual(steps.map(step => step.capability_name), ['owner-question-scope-v1']);
+});
+test('a mixed site question still reads knowledge and saves the reviewed knowledge result with the fixed referral', async () => {
+  const x = await fixture();
+  const missing = '这次没有查到可用于解释图纸版本差异核对方法的企业资料。';
+  const result = await x.send('书房插座在两张图上对不上，现在能定吗？另外，图纸交接通常怎么查两版差异？', async (messages, _tools, turn, requestTools) => {
+    if (turn === 0) return output('query_materials', { room: '书房', scope: 'knowledge_and_site' });
+    if (turn === 1) {
+      assert.deepEqual(requestTools?.map(tool => tool.name), ['search_knowledge']);
+      return output('search_knowledge', { query: '签字前核对平面图和点位图' });
+    }
+    if (turn === 2) {
+      assert.ok(requestTools?.every(tool => tool.name !== 'query_materials'));
+      return output('final_response', { kind: 'synthesis', segments: [{ basis: 'uncertainty', text: missing, citations: [] }] });
+    }
+    assert.equal(turn, 62);
+    assert.match(JSON.stringify(messages), new RegExp(reportCoordinationText));
+    return output('final_response', { questionsComplete: true, checks: { Q1: {
+      complete: true, supported: true, conditionsPreserved: true, reason: '',
+    } } });
+  });
+  assert.equal(result.run.status, 'succeeded', JSON.stringify(result.run));
+  const answer = (await x.chat.messages(x.cid)).items.find(item => item.id === result.run.outputMessageId)!;
+  assert.equal(answer.available, true);
+  assert.deepEqual((answer.content as MessageContent).blocks, [
+    { type: 'text', text: '待核实：' + missing }, { type: 'text', text: reportCoordinationText },
+  ]);
 });
 test('XK01/07 a scoped home cannot be replaced by a model argument; a generic multi-home chat asks instead of merging', async () => {
   const x = await fixture(), otherLead = await x.lead();
@@ -156,7 +198,7 @@ test('XK03 repeated room names across floors require clarification and an absent
 });
 test('XK07/08 a changed plan invalidates saved references, derived history and a late model reply', async () => {
   const x = await fixture(); await x.save('书房', 'desk', '偶尔两人办公');
-  const first = await x.send('找书房资料', async (messages, _tools, turn) => turn === 0 ? output('query_materials', { room: '书房' })
+  const first = await x.send('找书房资料', async (messages, _tools, turn) => turn === 0 ? output('query_materials', { room: '书房', scope: 'materials' })
     : output('final_response', { kind: 'business', resultKey: messages.filter(m => m.role === 'tool').map(m => JSON.parse(m.content).resultKey).at(-1) }));
   assert.equal(first.run.status, 'succeeded');
   const old = await x.query();
@@ -164,7 +206,7 @@ test('XK07/08 a changed plan invalidates saved references, derived history and a
   assert.equal(await withTenantTransaction(x.eid, tx => materialSnapshotAvailable(tx, x.eid, old)), false);
   assert.equal((await x.chat.messages(x.cid)).items.find(m => m.id === first.run.outputMessageId)!.available, false);
   const second = await x.send('再核对书房资料', async (messages, _tools, turn) => {
-    if (turn === 0) return output('query_materials', { room: '书房' });
+    if (turn === 0) return output('query_materials', { room: '书房', scope: 'materials' });
     await withTenantTransaction(x.eid, tx => tx.execute(sql`update app.leads set primary_floor_plan_id=${x.planId} where enterprise_id=${x.eid} and id=${x.leadId}`));
     return output('final_response', { kind: 'business', resultKey: messages.filter(m => m.role === 'tool').map(m => JSON.parse(m.content).resultKey).at(-1) });
   });
@@ -173,7 +215,7 @@ test('XK07/08 a changed plan invalidates saved references, derived history and a
 test('XK08 human takeover after a materials query fences the answer while keeping the original request', async () => {
   const x = await fixture();
   const result = await x.send('找书房资料', async (messages, _tools, turn) => {
-    if (turn === 0) return output('query_materials', { room: '书房' });
+    if (turn === 0) return output('query_materials', { room: '书房', scope: 'materials' });
     await new HandoffService(x.actor).customerWrite(x.cid, randomUUID(), { action: 'request' });
     return output('final_response', { kind: 'business', resultKey: messages.filter(m => m.role === 'tool').map(m => JSON.parse(m.content).resultKey).at(-1) });
   });

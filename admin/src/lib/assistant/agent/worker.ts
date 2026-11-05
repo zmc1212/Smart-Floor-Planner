@@ -77,6 +77,7 @@ import { currentMessageOnlyRequested, currentMessageFinalTool, currentMessageRep
 import { independentAdviceContextProtocol } from './independent-advice-context';
 import { compileModelRequest, type ModelRequestPurpose } from './model-request';
 import { homeSourceViewProtocol, knowledgeSynthesisReadInstructions } from './home-source-view';
+import { ownerQuestionMaterialTool, ownerQuestionScope, ownerQuestionScopeProtocol, readOwnerMaterialInput, readOwnerQuestionScope } from './owner-question-scope';
 import { consultationAcceptanceProfile } from '../contracts/consultation';
 import { consultationRequestReservation, reserveConsultationDispatch, settleConsultationDispatch } from './consultation-usage';
 import { configuredWebProvider, parseWebQuery, searchWeb, webSearchTool, type WebSearchSnapshot } from './web';
@@ -789,12 +790,28 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     const homeSourceView = siteObservationReferral && !nativeFinalization && homeEntry.kind === 'lead'
       && (initial.run.policy_snapshot as Row).homeSourceView === homeSourceViewProtocol
       ? { conversationId: String(initial.conversation.id), leadId: String(homeEntry.id) } : undefined;
+    const ownerScopeIdentity = homeSourceView && !review && !initial.mediaRefs.length
+      && (initial.run.policy_snapshot as Row).ownerQuestionScope === ownerQuestionScopeProtocol
+      && !explicitNeedWriteStatement(reviewContext.currentQuestion) && !explicitHumanHandoffRequested(reviewContext.currentQuestion)
+      ? { ...homeSourceView, enterpriseId: lease.enterpriseId, runId: lease.runId, messageId: String(initial.trigger.id),
+        question: reviewContext.currentQuestion } : undefined;
+    const ownerScopeForRun = async (tx: Parameters<typeof runContext>[0]) => {
+      if (!ownerScopeIdentity) return null;
+      const step = await one(tx, sql`select private_checkpoint from app.assistant_run_steps
+        where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}
+        and capability_name=${ownerQuestionScopeProtocol} and status='succeeded' order by step_seq limit 1`);
+      return step ? readOwnerQuestionScope(step.private_checkpoint, ownerScopeIdentity) : null;
+    };
     const coordinationReads = async (tx: Parameters<typeof runContext>[0]) => {
-      const read = await latestReportFollowup(tx, lease.enterpriseId, lease.runId);
+      const ownerScope = await ownerScopeForRun(tx);
+      const read = coordinationReferral ? await latestReportFollowup(tx, lease.enterpriseId, lease.runId) : null;
       if (read) plannedReportCoverage(read.private_checkpoint);
+      if (ownerScope === 'site') return { site: true, knowledge: false, ownerScope };
+      if (!ownerScope && !coordinationReferral) return { site: false, knowledge: false, ownerScope };
       const knowledge = await one(tx, sql`select id from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
-        and run_id=${lease.runId} and kind='retrieval' and capability_name='knowledge.search.v1' and status='succeeded' limit 1`);
-      return { site: !!read, knowledge: !!knowledge };
+        and run_id=${lease.runId} and status='succeeded' and
+        (capability_name='knowledge.search.v1' or ${!!ownerScope} and capability_name in ('web.search.v1','web.read.v1')) limit 1`);
+      return { site: !!read || !!ownerScope, knowledge: !!knowledge, ownerScope };
     };
     const plannedReportCoverage = (snapshot: unknown) => {
       if (!reportQuestionPlanning) return undefined;
@@ -848,7 +865,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       // provider exactly one final_response and a named tool_choice.
       return review ? reviewMode !== 'propose' ? []
         : designerOnly ? reviewDefinitions.filter(tool => tool.name === 'propose_designer_reception')
-        : [...base.filter(tool => !['record_need', 'request_designer'].includes(tool.name)), ...reviewDefinitions] : base;
+        : [...base.filter(tool => !['record_need', 'request_designer'].includes(tool.name)), ...reviewDefinitions]
+        : ownerScopeIdentity ? base.map(ownerQuestionMaterialTool) : base;
     };
     const reviewReceipt = async (marker: ReviewMarker) => {
       if (marker.name === 'propose_requirement_changes' && marker.effect === 'proposal') {
@@ -878,6 +896,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           const limits = agentRequestBudget({ profile, purpose, ...finalAllocation });
           const deadlineAt = initial.consultationDeadlineAt;
           let reportPlan: SourceQuestionCoverage | null | undefined;
+          const ownerReads = purpose === 'answer' && ownerScopeIdentity ? await scoped(tx => coordinationReads(tx)) : null;
           if (coordinationReferral && purpose === 'answer' && !tools.length
             && !(await scoped(tx => coordinationReads(tx))).knowledge) fail('source_read_required', 502);
           if (reportQuestionPlanning && !coordinationReferral && purpose === 'answer') {
@@ -890,6 +909,14 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             question: reviewContext.currentQuestion, triggerId: String(initial.trigger.id), turn, purpose,sourceExcerpts:sourceMode.sourceExcerpts,requiredKnowledge:sourceMode.requiredKnowledge,sourceQuestionCoverage:sourceMode.sourceQuestionCoverage,knowledgeExplanation:sourceMode.knowledgeExplanation,
             messages:nativeFinalization&&purpose==='answer'&&tools.length?nativePlanningMessages(messages, completion ? reviewCompletionInstructions : undefined):claimMessages, tools, reportPlan, homeSourceView,
             toolsForTurn:(question,current,available,triggerId)=>{
+              if (ownerReads?.ownerScope === 'knowledge_and_site') {
+                if (!ownerReads.knowledge) {
+                  const reads = available.filter(tool => ['search_knowledge', 'search_web', 'read_web'].includes(tool.name));
+                  if (!reads.length) fail('source_read_required', 502);
+                  return reads;
+                }
+                available = available.filter(tool => ['search_knowledge', 'search_web', 'read_web'].includes(tool.name));
+              }
               const definitions=agentToolsForTurn(question,current,available,triggerId,{ ...sourceMode, reportPlan });
               return !nativeFinalization||purpose!=='answer'?definitions:available.length
                 ? [...definitions.filter(tool=>tool.name!==finishContextTool.name&&tool.name!=='final_response'),finish]
@@ -902,6 +929,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             ...(nativeFinalization&&purpose==='answer'&&!tools.length?{wireProjection:imageFinalization ? nativeImageFinalMessages : nativeFinalMessages}:{}),
           });
           const summaryRequestHash = purpose === 'summary' || purpose === 'grounding' ? fingerprint({ messages: modelMessages, tools: dispatchTools }) : null;
+          const ownerScopeRequest = ownerReads ? fingerprint({ scope: ownerReads.ownerScope, tools: dispatchTools }) : undefined;
           const reportPlanningBinding = reportQuestionPlanning ? {
             protocol: reportQuestionPlanningProtocol, requestHash: fingerprint({ tools: dispatchTools, plan: reportPlan ?? null }),
             ...(reportReadCompletion ? { completion: reportReadCompletionProtocol } : {}),
@@ -919,6 +947,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             if (((cached.input_summary as Row)?.reportFinalCarrier ?? undefined) !== reportFinalCarrier) fail('context_changed');
             if (((cached.input_summary as Row)?.reportFinalSchema ?? undefined) !== reportFinalSchema) fail('context_changed');
             if (reportQuestionPlanning && fingerprint((cached.input_summary as Row)?.reportPlanningBinding ?? null) !== fingerprint(reportPlanningBinding)) fail('context_changed');
+            if (ownerScopeRequest && (cached.input_summary as Row)?.ownerScopeRequest !== ownerScopeRequest) fail('context_changed');
             if ((purpose === 'summary' || purpose === 'grounding') && (cached.input_summary as Row)?.summaryRequestHash !== summaryRequestHash) fail('context_changed');
             if (cached.status !== 'succeeded') fail('provider_outcome_unknown');
             outcomeKnown = true;
@@ -931,7 +960,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           const beforeProviderCall = async () => { try { await scoped(async tx => {
             // Semantic review consumes the same reserved dispatch envelope as
             // generation. Never turn the new validator into unmetered calls.
-            if (!consultation && (explanationBound || reportNativeFinal)) {
+            if (!consultation && (explanationBound || reportNativeFinal || ownerReads?.ownerScope === 'knowledge_and_site'
+              || purpose === 'grounding' && ownerScopeIdentity)) {
               const calls = await rows(tx, sql`select input_summary#>>'{budget,after,estimatedTokens}' estimate from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
                 and run_id=${lease.runId} and kind='agent_model'`);
               const held = await one(tx,sql`select reserved_tokens from app.assistant_quota_reservations where enterprise_id=${lease.enterpriseId}
@@ -954,6 +984,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                   reportFinalCarrier: reportFinalCarrier ?? null,
                   reportFinalSchema: reportFinalSchema ?? null,
                   ...(reportPlanningBinding ? { reportPlanningBinding } : {}),
+                  ...(ownerScopeRequest ? { ownerScopeRequest } : {}),
                   projectKnowledge: initial.shared,
                   sourceAnswerMode: (initial.run.policy_snapshot as Row).sourceAnswerMode ?? null,
                   sourceQuestionCoverage: (initial.run.policy_snapshot as Row).sourceQuestionCoverage ?? null,
@@ -1054,7 +1085,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           if (previous && (previous.input_summary as Row).binding !== draft.binding) fail('context_changed');
           await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary,private_checkpoint)
             values(${lease.enterpriseId},${lease.runId},${1360 + turn},'agent_report_review',${accepted ? 'succeeded' : 'failed'},
-              ${JSON.stringify({ protocol: coordinationReferral ? reportCoordinationProtocol : reportAnswerGroundingProtocol, binding: draft.binding, noBusinessTools: true, noRedraft: true })}::jsonb,
+              ${JSON.stringify({ protocol: coordinationReferral || ownerScopeIdentity ? reportCoordinationProtocol : reportAnswerGroundingProtocol, binding: draft.binding, noBusinessTools: true, noRedraft: true })}::jsonb,
               ${JSON.stringify({ review: reviewed })}::jsonb) on conflict do nothing`);
         });
       }
@@ -1166,9 +1197,10 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             on conflict(enterprise_id,run_id,step_seq) do update set source_refs=excluded.source_refs`);
         }),
         resolveToolReply: async state => {
-          if (coordinationReferral && !knowledgeReadPending(reviewContext.currentQuestion, state.messages, String(initial.trigger.id))) {
+          if (coordinationReferral || ownerScopeIdentity) {
             const reads = await scoped(tx => coordinationReads(tx));
-            if (reads.site && !reads.knowledge) return reportCoordinationAnswer;
+            if (reads.ownerScope === 'site' || coordinationReferral && reads.site && !reads.knowledge
+              && !knowledgeReadPending(reviewContext.currentQuestion, state.messages, String(initial.trigger.id))) return reportCoordinationAnswer;
           }
           const last = state.messages.at(-1);
           if (last?.role === 'tool') {
@@ -1265,11 +1297,13 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           return resolved;
         }),
         validateFinal:async(raw,turn)=>{
-          if (coordinationReferral) {
+          const ownerScope = ownerScopeIdentity ? await scoped(tx => ownerScopeForRun(tx)) : null;
+          if (coordinationReferral || ownerScope) {
             const draft = await scoped(async (tx, context) => {
               const reads = await coordinationReads(tx);
               const evidence = await currentSynthesisContext(tx, lease.actor, context.conversation, lease.runId);
               if (!reads.knowledge) {
+                if (reads.ownerScope === 'knowledge_and_site') fail('source_read_required', 502);
                 if (!reads.site || raw !== reportCoordinationAnswer) fail('invalid_model_answer', 502);
                 parseSynthesis(raw, [], reviewContext);
                 return null;
@@ -1454,7 +1488,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           });
         },
         model: callModel,
-        validateTool: (name, args) => readToolInputIssue(name, args, readContext),
+        validateTool: (name, args) => readToolInputIssue(name, args, readContext, !!ownerScopeIdentity),
         tool: async (turn, index, name, args) => {
           if (constructionReadOnlyTools(String(initial.conversation.purpose), true)?.every(tool => tool.name !== name)) fail('assistant_capability_forbidden',403);
           const input = bindReadToolInput(name, JSON.parse(args), readContext) as Row;
@@ -1666,9 +1700,24 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             });
           }
           if (name === 'query_materials') {
-            const query = parseMaterialQuery(input);
+            const scopedQuery = ownerScopeIdentity ? readOwnerMaterialInput(input) : null;
+            const query = scopedQuery?.query ?? parseMaterialQuery(input);
             return scoped(async (tx, context) => {
               const cached = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`);
+              if (ownerScopeIdentity && scopedQuery && scopedQuery.scope !== 'materials') {
+                const scope = scopedQuery.scope;
+                const previousScope = await ownerScopeForRun(tx);
+                if (previousScope && previousScope !== scope
+                  || cached && readOwnerQuestionScope(cached.private_checkpoint, ownerScopeIdentity) !== scope) fail('context_changed');
+                if (!cached) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint)
+                  values(${lease.enterpriseId},${lease.runId},${sequence},'agent_tool',${ownerQuestionScopeProtocol},1,'succeeded',
+                    ${JSON.stringify(ownerQuestionScope(ownerScopeIdentity, scope))}::jsonb)`);
+                return { content: JSON.stringify({ status: 'site_coordination', scope,
+                  instructions: scope === 'knowledge_and_site'
+                    ? '只查并回答本轮独立知识问项，使用真实知识出处提交综合解释。现场部分由服务端追加固定引导。'
+                    : '现场部分由服务端回复现场团队引导。' }) };
+              }
+              if (await ownerScopeForRun(tx)) fail('context_changed');
               const snapshot = cached ? cached.private_checkpoint as MaterialSnapshot : await queryMaterials(tx, lease.actor, String(context.conversation.id), query);
               if (cached && (snapshot.query.leadId !== query.leadId || snapshot.query.room !== query.room || !await materialSnapshotAvailable(tx, lease.enterpriseId, snapshot))) fail('context_changed');
               if (!cached) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint,source_refs)
@@ -1749,6 +1798,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             // A checklist explains the review procedure. The model can still
             // request authorized site facts separately for a mixed question.
             const bound = coordinationReferral || drawingChecklistRead ? null : await scoped(async (tx, context) => {
+              if (await ownerScopeForRun(tx)) return null;
               const current = await boundKnowledgeContext(tx, lease.actor, context.conversation, lease.runId, turn, index, resultKey);
               if (current) {
                 const { snapshot } = current.materials;
@@ -1831,10 +1881,10 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             and run_id=${lease.runId} and kind='agent_explanation_review' and status='succeeded' and input_summary->>'binding'=${draft.binding}`);
           if (!proof || acceptKnowledgeExplanation(draft, (proof.private_checkpoint as Row).review as ModelTurnOutput, draft.binding)) fail('context_changed');
           answer = draft.answer;
-        } else if (coordinationReferral) {
+        } else if (coordinationReferral || ownerScopeIdentity && await ownerScopeForRun(tx)) {
           const reads = await coordinationReads(tx);
           if (result.finalFromTools) {
-            if (!reads.site || reads.knowledge || answerRaw !== reportCoordinationAnswer) fail('context_changed');
+            if (!reads.site || reads.knowledge || reads.ownerScope === 'knowledge_and_site' || answerRaw !== reportCoordinationAnswer) fail('context_changed');
             answer = parseSynthesis(answerRaw, [], reviewContext);
           } else {
             if (!reads.knowledge) fail('source_read_required', 502);

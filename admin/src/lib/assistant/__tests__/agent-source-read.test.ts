@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { agentToolsForMessage, agentToolsForTurn } from '../agent/worker';
-import { drawingChecklistRequested } from '../agent/read-tool-input';
+import { drawingChecklistRequested, readToolContext, readToolInputIssue } from '../agent/read-tool-input';
+import { ownerQuestionScope, readOwnerQuestionScope } from '../agent/owner-question-scope';
 import type { ModelMessage } from '../contracts/model';
 
 const question = '合成点位说明第二节如何区分方案同意和关闭？';
@@ -11,6 +12,22 @@ const read = (content = '{"knowledgeStatus":"ready","evidence":[],"synthesisSour
   { role: 'tool', callId: 'read', content },
 ];
 const names = (text = question, messages: ModelMessage[] = [original(text)]) => agentToolsForTurn(text, messages, agentToolsForMessage(text, true), 'current').map(t => t.name);
+
+test('owner question scope is required only for newly bound material calls and cannot replace the home or trigger', () => {
+  const context = readToolContext({ kind: 'lead', id: '2' });
+  const legacy = JSON.stringify({ room: '客餐厅' });
+  assert.equal(readToolInputIssue('query_materials', legacy, context), null);
+  assert.match(readToolInputIssue('query_materials', legacy, context, true)!.feedback, /"path":"scope","code":"required"/);
+  for (const scope of ['materials', 'site', 'knowledge_and_site']) {
+    assert.equal(readToolInputIssue('query_materials', JSON.stringify({ room: '客餐厅', scope }), context, true), null);
+    assert.ok(readToolInputIssue('query_materials', JSON.stringify({ leadId: '3', room: '客餐厅', scope }), context, true));
+  }
+  const identity = { enterpriseId: '1', conversationId: '2', runId: '3', messageId: '4', leadId: '2', question: '我说的是客餐厅。' };
+  const receipt = ownerQuestionScope(identity, 'site');
+  assert.equal(readOwnerQuestionScope(receipt, identity), 'site');
+  assert.throws(() => readOwnerQuestionScope(receipt, { ...identity, messageId: '5' }), /context_changed/);
+  assert.throws(() => readOwnerQuestionScope({ ...receipt, scope: 'knowledge_and_site' }, identity), /context_changed/);
+});
 
 test('a project knowledge question must obtain this turn\'s paired read even without naming a source',()=>{
   for(const text of ['卫生间防水前要准备哪些？','只回答当前这句话：管根呢？','不查资料，只给一般建议。']) {
