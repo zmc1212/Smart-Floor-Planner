@@ -76,6 +76,7 @@ import { isReadToolInputFailure, readToolInputIssue, readToolInputProtocol, bind
 import { currentMessageOnlyRequested, currentMessageFinalTool, currentMessageReplyFeedback, currentMessageScopeProtocol } from './current-message-scope';
 import { independentAdviceContextProtocol } from './independent-advice-context';
 import { compileModelRequest, type ModelRequestPurpose } from './model-request';
+import { homeSourceViewProtocol, knowledgeSynthesisReadInstructions } from './home-source-view';
 import { consultationAcceptanceProfile } from '../contracts/consultation';
 import { consultationRequestReservation, reserveConsultationDispatch, settleConsultationDispatch } from './consultation-usage';
 import { configuredWebProvider, parseWebQuery, searchWeb, webSearchTool, type WebSearchSnapshot } from './web';
@@ -784,6 +785,10 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     const coordinationReferral = boundReportCoordination((initial.run.policy_snapshot as Row).reportCoordination, reportReadCompletion && !!reportSource);
     const siteObservationReferral = (initial.run.policy_snapshot as Row).siteObservationReferral === siteObservationReferralProtocol
       && initial.conversation.purpose === 'customer_consultation' && lease.actor.principal.kind === 'user';
+    const homeEntry = initial.conversation.entry_snapshot as Row;
+    const homeSourceView = siteObservationReferral && !nativeFinalization && homeEntry.kind === 'lead'
+      && (initial.run.policy_snapshot as Row).homeSourceView === homeSourceViewProtocol
+      ? { conversationId: String(initial.conversation.id), leadId: String(homeEntry.id) } : undefined;
     const coordinationReads = async (tx: Parameters<typeof runContext>[0]) => {
       const read = await latestReportFollowup(tx, lease.enterpriseId, lease.runId);
       if (read) plannedReportCoverage(read.private_checkpoint);
@@ -881,9 +886,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             if (!tools.length && (!reportPlan || reportReadCompletion && knowledgeReadPending(reviewContext.currentQuestion, messages, String(initial.trigger.id))))
               fail('source_read_required', 502);
           }
-          const { messageScoped, adviceScoped, focused, dispatchTools, policyView, bounded, modelMessages, contentProjection } = compileModelRequest({
+          const { messageScoped, adviceScoped, focused, dispatchTools, policyView, bounded, modelMessages, contentProjection, homeSourceProjection } = compileModelRequest({
             question: reviewContext.currentQuestion, triggerId: String(initial.trigger.id), turn, purpose,sourceExcerpts:sourceMode.sourceExcerpts,requiredKnowledge:sourceMode.requiredKnowledge,sourceQuestionCoverage:sourceMode.sourceQuestionCoverage,knowledgeExplanation:sourceMode.knowledgeExplanation,
-            messages:nativeFinalization&&purpose==='answer'&&tools.length?nativePlanningMessages(messages, completion ? reviewCompletionInstructions : undefined):claimMessages, tools, reportPlan,
+            messages:nativeFinalization&&purpose==='answer'&&tools.length?nativePlanningMessages(messages, completion ? reviewCompletionInstructions : undefined):claimMessages, tools, reportPlan, homeSourceView,
             toolsForTurn:(question,current,available,triggerId)=>{
               const definitions=agentToolsForTurn(question,current,available,triggerId,{ ...sourceMode, reportPlan });
               return !nativeFinalization||purpose!=='answer'?definitions:available.length
@@ -942,7 +947,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                   currentMessageScope: messageScoped ? currentMessageScopeProtocol : null,
                   independentAdviceContext: adviceScoped ? independentAdviceContextProtocol : null,
                   policyProjection:policyView===focused?null:modelPolicyProjectionVersion,
-                  contentProjection,...(nativeFinalization&&purpose==='answer'&&!tools.length?{nativeFinalProjection:finalProjection}:{}),
+                  contentProjection,...(homeSourceProjection ? { homeSourceProjection } : {}),...(nativeFinalization&&purpose==='answer'&&!tools.length?{nativeFinalProjection:finalProjection}:{}),
                   imageContext: initial.config.imageContext ?? null,
                   reportFinalOutputTokens: finalAllocation.reportFinalOutputTokens ?? null, maxOutputTokens: limits.maxOutputTokens,
                   reportNativeFinal: (initial.run.policy_snapshot as Row).reportNativeFinal ?? null,
@@ -1762,8 +1767,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               boundProjectContext: bound ? { resolution: bound.materials.snapshot.data.resolution, missing: bound.materials.snapshot.data.missing, constructionQueriedAt: bound.construction.snapshot.queriedAt } : null,
               instructions: sourceMode.knowledgeExplanation ? knowledgeExplanationInstructions : (unresolvedConflict ? '资料明确含尚未核实的规则冲突。综合回答第一段必须basis=uncertainty，先说明不能按企业规则择一；随后分别引述双方，不用“主流/倾向/优先”认定企业现行口径。一般建议另标身份。' : '')
                 + (drawingChecklistRead ? '签字前的核对方法使用本轮有效知识引用；若另问本人项目实况，使用对应的获权现场读取。' : '')
-                + '解释专业原理、取舍、适用条件时用kind=synthesis和segments，引用本轮synthesisSources；原文查询也用该段落结构保留引用，不输出kind=knowledge或顶层text/selections。冲突保留双方并说明待核实；缺知识仍可给标明身份的一般建议。不得编造企业或现场事实。其他独立业务/案例展示结果沿其真实resultKey与原协议。'
-                  + '当前问题若问验收或完成状态，直接用“当前证据不足以支持该结论，仍需核对实际检查记录”等措辞回答判断。text中禁止复述完成词，包括否定句、引号与举例中的“已验收”“已经验收”“已批准”“已经批准”“已完成验收”；不要写“不能认定已经验收/不支持已经验收”，改为“当前证据不能支持该结论”。原文quote仍须逐字保留，不能改写。' }) };
+                + knowledgeSynthesisReadInstructions }) };
           }
           if (name !== 'record_need') fail('assistant_capability_forbidden', 403);
           try { return await scoped(async (tx, context) => {

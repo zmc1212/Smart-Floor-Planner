@@ -12,6 +12,7 @@ import { consultationLongProfile } from '../contracts/consultation';
 import { constrainSynthesisRepairTool } from './synthesis-repair';
 import { knowledgeExplanationInstructions } from './knowledge-explanation';
 import { reportCoverageInstructions } from './report-final';
+import { homeSourceViewProtocol, projectHomeSourceView, type HomeSourceView } from './home-source-view';
 
 export type ModelRequestPurpose = 'answer' | 'vision' | 'summary' | 'grounding';
 
@@ -28,15 +29,18 @@ export function compileModelRequest(input: {
   knowledgeExplanation?:boolean;
   requiredKnowledge?:boolean;
   reportPlan?: SourceQuestionCoverage | null;
+  homeSourceView?: HomeSourceView;
   wireProjection?(messages:ModelMessage[]):ModelMessage[];
   toolsForTurn(question: string, messages: ModelMessage[], tools: ModelTool[], triggerId: string): ModelTool[];
 }) {
   const { question, triggerId, turn, purpose, messages, tools } = input;
   const messageScoped = purpose === 'answer' && input.reportPlan === undefined && currentMessageOnlyRequested(question);
   const adviceScoped = purpose === 'answer' && input.reportPlan === undefined && !messageScoped && independentAdviceRequested(question);
+  const homeView = input.homeSourceView && purpose === 'answer' && !messageScoped && !adviceScoped
+    ? projectHomeSourceView(messages, triggerId, input.homeSourceView) : messages;
   const focused = messageScoped ? currentMessageView(messages, triggerId, question)
     : adviceScoped ? independentAdviceView(messages, triggerId, question)
-    : (turn > 0 || input.profile) && purpose === 'answer' ? focusedSynthesisMessages(messages, triggerId, input.reportPlan) : messages;
+    : (turn > 0 || input.profile) && purpose === 'answer' ? focusedSynthesisMessages(homeView, triggerId, input.reportPlan) : homeView;
   let dispatchTools = purpose === 'vision' ? [] : purpose === 'summary' || purpose === 'grounding' ? tools
     : input.toolsForTurn(question, focused, tools, triggerId);
   if (input.profile === consultationLongProfile.id && purpose === 'answer' && dispatchTools.length === 1)
@@ -54,5 +58,6 @@ export function compileModelRequest(input: {
   const bounded = fitAgentContext(wireView, dispatchTools, { profile: input.profile, purpose, imageContextBudget: input.imageContextBudget,
     reportFinalOutputTokens: input.reportFinalOutputTokens });
   return { messageScoped, adviceScoped, focused, dispatchTools, policyView, bounded, modelMessages: bounded.messages,
+    homeSourceProjection: homeView === messages ? null : homeSourceViewProtocol,
     contentProjection: contentView === policyView ? null : consultationModelViewVersion };
 }

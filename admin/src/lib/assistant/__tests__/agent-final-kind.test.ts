@@ -4,6 +4,8 @@ import { constructionReadOnlyTools, finalTool, finalToolForMessages } from '../a
 import type { ModelMessage } from '../contracts/model';
 import { readToolInputIssue } from '../agent/read-tool-input';
 import { focusedSynthesisMessages } from '../agent/synthesis';
+import { compileModelRequest } from '../agent/model-request';
+import { homeSourceViewProtocol, knowledgeSynthesisReadInstructions } from '../agent/home-source-view';
 
 const completed = (name: string, content = '{}'): ModelMessage[] => [
   { role: 'assistant', content: '', toolCalls: [{ id: 'read', name, arguments: '{}' }] },
@@ -59,6 +61,51 @@ test('model projection retains material resolution for the actual final schema w
     assert.deepEqual(packet.data, { resolution }); assert.equal(packet.displayText, undefined);
     assert.equal(kinds(focused).includes('business'), resolution !== 'resolved');
     assert.equal(JSON.stringify(messages), before);
+  }
+});
+
+test('a bound owner request keeps the explicit room receipt and knowledge citation catalog without the automatic whole-home catalog', () => {
+  const question = '我看的是客餐厅那张，餐边柜不动，旁边插座的位置两张图不一样。';
+  const original: ModelMessage = { role: 'user', content: [{ type: 'text', text: JSON.stringify({ sourceMessageId: '1', text: question }) }] };
+  const site = { sourceId: 'Broom', resultKey: 'room', kind: 'project', text: '位置待设计师核对。', citationOptions: [{ citationId: 'Croom' }] };
+  const clause = { sourceId: 'Kpage', kind: 'knowledge', text: '位置不一致时先核对图纸版本。', citationOptions: [{ citationId: 'Cpage' }] };
+  const auto = { sourceId: 'Bstage:key', resultKey: 'stage:key', kind: 'project', text: '自动项目目录。', citationOptions: [{ citationId: 'Cauto' }] };
+  function read(name: string, callId: string, packet: object): ModelMessage[] {
+    return [{ role: 'assistant', content: '', toolCalls: [{ id: callId, name, arguments: '{}' }] },
+      { role: 'tool', callId, content: JSON.stringify(packet) }];
+  }
+  const material = { resultKey: 'room', query: { domain: 'materials', conversationId: '9', leadId: '7', room: '客餐厅' },
+    leadIds: ['7'], data: { resolution: 'resolved' }, synthesisSources: [site] };
+  const knowledge = { knowledgeStatus: 'ready', unresolvedConflict: false, evidence: [], boundProjectContext: { resolution: 'resolved' },
+    synthesisSources: [clause, auto], instructions: knowledgeSynthesisReadInstructions };
+  const messages = (receipt = material, result = knowledge) => [original,
+    ...read('query_materials', 'read-room', receipt), ...read('search_knowledge', 'read-standard', result)];
+  const home = { conversationId: '9', leadId: '7' };
+  const compile = (input: ModelMessage[], bind = true) => compileModelRequest({
+    question, triggerId: '1', turn: 2, purpose: 'answer', messages: input, tools: [],
+    ...(bind ? { homeSourceView: home } : {}), toolsForTurn: (_q, current) => [finalToolForMessages(current)],
+  });
+  const checkpoint = messages(), before = structuredClone(checkpoint);
+  const result = compile(checkpoint);
+  assert.equal(result.homeSourceProjection, homeSourceViewProtocol);
+  const packets = result.modelMessages.flatMap(message => message.role === 'tool' ? [JSON.parse(message.content)] : []);
+  assert.deepEqual(packets[0].synthesisSources.map(({ sourceId, text }: typeof site) => ({ sourceId, text })),
+    [{ sourceId: site.sourceId, text: site.text }]);
+  assert.deepEqual(packets[1].synthesisSources.map(({ sourceId, text }: typeof clause) => ({ sourceId, text })),
+    [{ sourceId: clause.sourceId, text: clause.text }]);
+  assert.equal(packets[1].boundProjectContext, undefined);
+  const schema = JSON.stringify(result.dispatchTools);
+  for (const packet of packets) assert.ok(schema.includes(packet.synthesisSources[0].citationOptions[0].citationId));
+  assert.deepEqual(checkpoint, before);
+
+  for (const control of [compile(checkpoint, false), compile([original, ...read('search_knowledge', 'k', knowledge)]),
+    compile(messages({ ...material, query: { ...material.query, conversationId: '8' } })),
+    compile(messages({ ...material, data: { resolution: 'clarification' } })),
+    compile(messages(material, { ...knowledge, unresolvedConflict: true })),
+    compile([...read('query_materials', 'old-room', material), original, ...read('search_knowledge', 'k', knowledge)])]) {
+    assert.equal(control.homeSourceProjection, null);
+    assert.match(JSON.stringify(control.modelMessages), /Bstage:key/);
+    assert.notDeepEqual(control.dispatchTools, result.dispatchTools);
   }
 });
 
