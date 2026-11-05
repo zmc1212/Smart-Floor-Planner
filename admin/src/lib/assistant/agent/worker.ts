@@ -43,14 +43,14 @@ import { visionContext, withVisionObservations } from './vision';
 import { constructionNoticeAvailable } from '@/lib/construction/customer';
 import { materialTool, parseMaterialQuery, queryMaterials, materialSnapshotAvailable, type MaterialDependency, type MaterialSnapshot } from './materials';
 import { needIssueTool, queryNeedIssues, needIssueSnapshotAvailable, type NeedIssueDependency, type NeedIssueSnapshot } from '@/lib/construction/need-issues';
-import { businessSynthesisSources, knowledgeSynthesisSources, parseSynthesis, synthesisInstructions, synthesisRepairFeedback, synthesisRepairIssue, unresolvedSynthesisConflict, availabilityScopeHintPrefix, synthesisRepairProjectionVersion, synthesisContextProjectionVersion } from './synthesis';
+import { businessSynthesisSources, knowledgeSynthesisSources, parseSynthesis, referUnsupportedSiteObservation, synthesisInstructions, synthesisRepairFeedback, synthesisRepairIssue, unresolvedSynthesisConflict, availabilityScopeHintPrefix, synthesisRepairProjectionVersion, synthesisContextProjectionVersion } from './synthesis';
 import { resolveSynthesisRepair, synthesisRepairBase, synthesisRepairProtocol, synthesisRepairTool, finalAnswerRepairBase, finalAnswerRepairProtocol } from './synthesis-repair';
 import { currentSynthesisContext } from './synthesis-sources';
 import { boundKnowledgeContext } from './bound-context';
 import { boundReportContext, latestReportFollowup, queryReportFollowups, reportFollowupTool, reportSelectionHistory } from './report-context';
 import { boundReportNativeFinal, reportNativeRuntimeBudget, reportNativeFinalProtocol, boundReportFinalOutput, boundReportFinalCarrier, boundReportFinalSchema } from './report-native-final';
 import { boundReportAnswerGrounding, reportAnswerGroundingProtocol } from './report-source-scope';
-import { boundReportHistoryScope, boundReportQuestionPlanning, boundReportReadCompletion, readReportQuestionPlan, reportCoordinationProtocol, reportHistoryScopeProtocol,
+import { boundReportHistoryScope, boundReportQuestionPlanning, boundReportReadCompletion, readReportQuestionPlan, reportCoordinationProtocol, reportHistoryScopeProtocol, siteObservationReferralProtocol,
   reportQuestionPlanningProtocol, reportQuestionPlanningTool, reportReadCompletionProtocol } from './report-question-plan';
 import { boundReportCoordination, prepareReportKnowledgeReview, reportCoordinationAnswer, reportCoordinationText } from './report-coordination';
 import { prepareReportAnswerReview, assertReportAnswerReview, reportAnswerValidationFailure } from './report-answer-review';
@@ -782,6 +782,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     const reportQuestionPlanning = boundReportQuestionPlanning((initial.run.policy_snapshot as Row).reportQuestionPlanning, reportAnswerGrounding && !!reportFinalSchema);
     const reportReadCompletion = boundReportReadCompletion((initial.run.policy_snapshot as Row).reportReadCompletion, reportQuestionPlanning);
     const coordinationReferral = boundReportCoordination((initial.run.policy_snapshot as Row).reportCoordination, reportReadCompletion && !!reportSource);
+    const siteObservationReferral = (initial.run.policy_snapshot as Row).siteObservationReferral === siteObservationReferralProtocol
+      && initial.conversation.purpose === 'customer_consultation' && lease.actor.principal.kind === 'user';
     const coordinationReads = async (tx: Parameters<typeof runContext>[0]) => {
       const read = await latestReportFollowup(tx, lease.enterpriseId, lease.runId);
       if (read) plannedReportCoverage(read.private_checkpoint);
@@ -1432,8 +1434,11 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               const source=originals.find(ref=>ref.messageId===fact.sourceMessageId);
               return source?[{sourceMessageId:source.messageId,sourceHash:source.hash,quote:fact.quote,value:fact.value}]:[];
             })};
-            const issue=reportScoped ? synthesisRepairIssue(raw,evidence.sources,{...reviewContext,currentNeeds})
-              : synthesisRepairFeedback(raw,evidence.sources,{...reviewContext,currentNeeds});
+            const review = { ...reviewContext, currentNeeds };
+            const projected = siteObservationReferral && !claimFinalization
+              ? referUnsupportedSiteObservation(raw, evidence.sources, reviewContext) : raw;
+            const issue=reportScoped ? synthesisRepairIssue(projected,evidence.sources,review)
+              : synthesisRepairFeedback(projected,evidence.sources,review);
             if(issue)await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
               values(${lease.enterpriseId},${lease.runId},${1300+turn},'agent_validation','failed',${JSON.stringify({code:issue.code,scope:issue.code==='ungrounded_response_scope'?'authorized_response_scope':'authorized_citation_only',noBusinessTools:true})}::jsonb)
               on conflict(enterprise_id,run_id,step_seq) do nothing`);
@@ -1838,7 +1843,11 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           if (!proof) fail('context_changed');
           assertReportAnswerReview(draft, (proof.private_checkpoint as Row).review as ModelTurnOutput, draft.binding);
           answer = draft.answer;
-        } else answer = parseSynthesis(answerRaw, evidence.sources,reviewContext);
+        } else {
+          const projected = siteObservationReferral && !claimFinalization
+            ? referUnsupportedSiteObservation(answerRaw, evidence.sources, reviewContext) : answerRaw;
+          answer = parseSynthesis(projected, evidence.sources, reviewContext);
+        }
         const preferences = ((context.conversation.entry_snapshot as Row)?.referencePreferences || []) as ReferencePreference[];
         const memory = await availableNeedMemory(tx, lease.enterpriseId, String(context.conversation.id), context.conversation.entry_snapshot);
         assertRecordedReply(answer.segments.map(s => s.text).join('\n'), memory, lease.runId,
@@ -1854,7 +1863,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           purpose: 'agent.reply', content: { version: 1, blocks } });
         const saved = new Map<string, string>(), projectTitles = new Set<string>();
         for (const segment of answer.segments) {
-          const label = coordinationReferral && segment.text === reportCoordinationText ? ''
+          const label = (coordinationReferral || siteObservationReferral) && segment.text === reportCoordinationText ? ''
             : segment.basis === 'advice' ? '一般建议：' : segment.basis === 'uncertainty' ? '待核实：' : '';
           blocks.push({ type: 'text', text: label && !segment.text.startsWith(label) ? label + segment.text : segment.text });
           for (const citation of segment.citations) {

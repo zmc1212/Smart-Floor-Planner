@@ -1,7 +1,7 @@
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import type { RootContent } from 'mdast';
 
-export const proseNumberProtocol = 'structured-list-marker-v2';
+export const proseNumberProtocol = 'structured-list-marker-v3';
 // Ambiguous "1. ℃"/"1. 米" is kept as a numerical claim. Markup cannot
 // turn a quantity into an ordinal. Quantities in item bodies remain untouched.
 const startsWithUnit = /^(?:℃|°[CF]?|[%‰㎡㎥²³]|(?:mm|cm|km|kg|ml|mpa|kpa|kw|m|h|s|l|v|w)(?:\b|$)|毫米|厘米|千米|平方米|立方米|千克|毫升|兆帕|千瓦|小时|分钟|秒|天|周|个月|年|度|元|万元|遍|次|米|吨|克|升)/iu;
@@ -60,7 +60,9 @@ function inlineMarkers(text: string, offset: number): Array<[number, number]> {
       punctuation = part[marker];
       let end = marker + 1; while (part[end] === ' ' || part[end] === '\t') end++;
       const body = part.slice(end).trimStart();
-      if (end === marker + 1 || !body.trim() || startsWithUnit.test(body)) break;
+      const itemText = body.startsWith('**') || body.startsWith('__')
+        ? plain(fromMarkdown(body).children[0] ?? {}).trimStart() : body;
+      if (end === marker + 1 || !body.trim() || startsWithUnit.test(itemText)) break;
       spans.push([offset + cursor + start, offset + cursor + end]);
       cursor += part.length + 1;
     }
@@ -77,10 +79,18 @@ export function proseNumberView(text: string): string {
   const spans: Array<[number, number]> = [];
   const visit = (node: RootContent) => {
     if (node.type === 'code' || node.type === 'blockquote') return;
-    if (node.type === 'paragraph' && node.children.length === 1 && node.children[0].type === 'text') {
+    if (node.type === 'paragraph' && node.children.every(child => child.type === 'text'
+      || child.type === 'strong' && child.children.every(part => part.type === 'text'))) {
       const start = node.position?.start.offset, end = node.position?.end.offset;
-      if (start !== undefined && end !== undefined && text.slice(start, end) === node.children[0].value)
-        spans.push(...inlineMarkers(node.children[0].value, start));
+      const textNodes = node.children.filter(child => child.type === 'text');
+      if (start !== undefined && end !== undefined && textNodes.every(child =>
+        child.position && text.slice(child.position.start.offset, child.position.end.offset) === child.value)) {
+        const markers = inlineMarkers(text.slice(start, end), start);
+        if (markers.every(([from, to]) => textNodes.some(child => {
+          const first = child.position?.start.offset, last = child.position?.end.offset;
+          return first !== undefined && last !== undefined && from >= first && to <= last;
+        }))) spans.push(...markers);
+      }
     }
     if (node.type === 'list' && node.ordered) for (const item of node.children) {
       const start = item.position?.start.offset, paragraph = item.children[0], end = paragraph?.position?.start.offset;

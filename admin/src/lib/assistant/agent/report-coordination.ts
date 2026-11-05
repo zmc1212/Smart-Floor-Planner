@@ -1,12 +1,12 @@
 import { fail, fingerprint } from '../contracts';
 import type { ModelMessage } from '../contracts/model';
 import { prepareSourceAnswerReview } from './knowledge-explanation';
-import { reportCoordinationProtocol } from './report-question-plan';
+import { reportCoordinationProtocol, reportCoordinationText } from './report-question-plan';
 import { sourceQuestionCoverageProtocol, type SourceQuestionCoverage } from './source-question-plan';
 import { parseSynthesis, type SynthesisSource } from './synthesis';
 import type { SynthesisReviewContext } from './synthesis-review';
 
-export const reportCoordinationText = '这件事需要现场确认，请和现场团队核实。';
+export { reportCoordinationText } from './report-question-plan';
 const referral = { basis: 'uncertainty' as const, text: reportCoordinationText, citations: [] };
 export const reportCoordinationAnswer = JSON.stringify({ kind: 'synthesis', segments: [referral] });
 

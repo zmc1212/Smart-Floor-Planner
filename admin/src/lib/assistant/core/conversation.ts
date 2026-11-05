@@ -9,7 +9,7 @@ import { sourceExcerptProtocol } from '../agent/source-excerpts';
 import { sourceQuestionCoverageProtocol } from '../agent/source-question-coverage';
 import { knowledgeExplanationProtocol } from '../agent/knowledge-explanation';
 import { reportAnswerGroundingProtocol, reportSourceProjectionProtocol } from '../agent/report-source-scope';
-import { reportCoordinationProtocol, reportHistoryScopeProtocol, reportQuestionPlanningProtocol, reportReadCompletionProtocol } from '../agent/report-question-plan';
+import { reportCoordinationProtocol, reportHistoryScopeProtocol, reportQuestionPlanningProtocol, reportReadCompletionProtocol, siteObservationReferralProtocol } from '../agent/report-question-plan';
 import { parseWebCitationId } from '../agent/web-evidence';
 import { configuredGuidance, conversationGuidance, guidanceOpening, guidanceView } from '../requirements/guidance';
 import { requirementCheckpoint } from '../requirements/checkpoint';
@@ -165,7 +165,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
       ...(reservation.imageContextBudget ? { imageContextBudget: reservation.imageContextBudget } : {}),
       ...(reservation.imageSchema ? { imageSchema: reservation.imageSchema } : {}),
       ...(agent && actor.principal.kind === 'user' && c.purpose === 'customer_consultation' && purpose === 'reply'
-        ? { homeSourceBudget: homeSourceBudgetProtocol } : {}),
+        ? { homeSourceBudget: homeSourceBudgetProtocol, siteObservationReferral: siteObservationReferralProtocol } : {}),
       ...(reviewRuntime ? { reviewRuntime } : {}) })}::jsonb,${Number(c.context_revision)},${Number(settings.knowledge_epoch)}) returning *`))!;
   const runId = String(r.id);
   await tx.execute(sql`insert into app.assistant_jobs(enterprise_id,kind,run_id,dedupe_key) values(${actor.enterpriseId},'chat_turn',${runId},${'run:' + runId})`);

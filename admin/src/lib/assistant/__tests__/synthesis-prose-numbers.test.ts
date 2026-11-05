@@ -40,6 +40,17 @@ test('plain inline-list grammar annotates only consecutive decorations and retai
   assert.match(proseNumberView('条件：1. 温度27℃；2. 含水率1.5%。'),/27℃/);
 });
 
+test('run10419 bold labels in a consecutive inline list leave item claims and the displayed prose intact',()=>{
+  const text='结合当前项目进度（客餐厅），建议您重点检查：1. **平面布局**是否保留了原有餐边柜等固定设施；2. **插座/开关点位**在两张图上的位置是否一致，如有不同需请设计师再次核对确认。';
+  assert.equal(proseNumberView(text).length,text.length);
+  assert.doesNotMatch(proseNumberView(text),/\d/);
+  assert.equal(parseSynthesis(reply(text),[]).segments[0].text,text);
+  for(const invalid of ['核对：1. **毫米**够用；2. **型号**要一致。','核对：1. **温度27℃**；2. **型号**。',
+    '核对：1. **户型**；2. **已验收**。','核对：1. **型号；2. 位置**。','核对：1. **型号**；3. **位置**。',
+    '核对：1. `型号`；2. **位置**。'])
+    assert.throws(()=>parseSynthesis(reply(invalid),[]),/unsupported_model_commitment/,invalid);
+});
+
 test('Unicode sentence boundaries and CommonMark item structure distinguish inline question ordinals from quantities',()=>{
   for(const text of ['建议先问：1. 回路设计是否确定？2. 何时能够核对？3. 有更新安排吗？仍须团队确认。',
     '😀核对： 1) 位置正确吗？ 2) 条件是否适用？',

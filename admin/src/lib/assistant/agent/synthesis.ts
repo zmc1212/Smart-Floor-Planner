@@ -15,6 +15,7 @@ import { numericCitationCandidates } from './citation-coverage';
 import { publicPdfSource } from './source-document';
 import { isReportAnswerSnapshot, reportQuestionCoverage } from './report-final';
 import { scopedReportSynthesisSources, type ReportSourceScope } from './report-source-scope';
+import { reportCoordinationText } from './report-question-plan';
 import type { SourceQuestionCoverage } from './source-question-coverage';
 
 export type SynthesisSource = { sourceId: string; kind: 'knowledge' | 'project' | 'history' | 'web'; title: string; text: string; fullTextCitable?:true; evidence?: Evidence; web?: import('../contracts/web-source').WebSourceLocator; resultKey?: string; citationQuotes?: string[]; summaryTitle?:string|null; material?: MaterialSource; history?: HistoryRef & { seq: string };
@@ -648,6 +649,43 @@ export function synthesisRepairIssue(raw:string,sources:SynthesisSource[],contex
 export function parseSynthesis(raw: string, sources: SynthesisSource[], context: SynthesisReviewContext = {}): SynthesisAnswer {
   return checkedSynthesis(raw, sources, context);
 }
+
+/** Keep a separately sourced explanation when an otherwise valid draft adds
+ * an unsupported observation about a cited published site record. */
+export function referUnsupportedSiteObservation(raw: string, sources: SynthesisSource[], context: SynthesisReviewContext): string {
+  if (!sources.some(source => source.material?.ref.type === 'site_record')) return raw;
+  const rejected: Array<{ path: string; code: string }> = [];
+  try {
+    const answer = checkedSynthesis(raw, sources, context, rejected);
+    if (rejected.length) return raw;
+    const issues = reviewSynthesisResponse(answer, sources, context);
+    if (issues.length !== 1 || issues[0].code !== 'misattributed_project_observation') return raw;
+    const siteIndex = issues[0].segment - 1;
+    const material = (sourceId: string) => sources.find(source => source.sourceId === sourceId)?.material;
+    const site = answer.segments[siteIndex];
+    if (site.basis !== 'evidence' || !site.citations.every(citation => {
+      const record = material(citation.sourceId);
+      return record?.ref.type === 'site_record' && record.basis === 'published_project_record'
+        && typeof record.siteCompleted === 'string';
+    })) return raw;
+    const other = answer.segments.filter((_, index) => index !== siteIndex);
+    const grounded = other.filter(segment => segment.citations.length > 0);
+    if (!grounded.some(segment => segment.basis === 'evidence')
+      || grounded.some(segment => segment.citations.some(citation => !sources.some(source =>
+        source.sourceId === citation.sourceId && (source.kind === 'knowledge' || source.kind === 'web'))))) return raw;
+    // Source-free suggestions cannot stand in for the missing site decision.
+    const segments = answer.segments.flatMap((segment, index) => index === siteIndex
+      ? [{ basis: 'uncertainty' as const, text: reportCoordinationText, citations: [] }]
+      : segment.basis === 'advice' && !segment.citations.length ? [] : [segment]);
+    const projected = JSON.stringify({ kind: 'synthesis', segments });
+    parseSynthesis(projected, sources, context);
+    return projected;
+  } catch (error) {
+    if (!(error instanceof AssistantError)) throw error;
+    return raw; // Let the existing final validator handle shape and source errors.
+  }
+}
+
 /** A diagnostic collector is private to the existing repair feedback. It never
  * yields an accepted answer or bypasses structural/source/conflict validation. */
 function checkedSynthesis(raw: string, sources: SynthesisSource[], context: SynthesisReviewContext,

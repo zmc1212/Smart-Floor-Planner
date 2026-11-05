@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { parseAgentReply } from '../agent/context';
 import { sourceCitationCatalog } from '../agent/citation-catalog';
-import { focusedSynthesisMessages, parseSynthesis, synthesisRepairFeedback, type SynthesisSource, type SynthesisSegment } from '../agent/synthesis';
+import { focusedSynthesisMessages, parseSynthesis, referUnsupportedSiteObservation, synthesisRepairFeedback, type SynthesisSource, type SynthesisSegment } from '../agent/synthesis';
+import { reportCoordinationText } from '../agent/report-question-plan';
 
 // Verbatim failing excerpts from preserved runs 938/939/943. The original
 // reports in tmp/xiaok-source-integrity-merged-recovered-{a,b} remain immutable.
@@ -99,6 +100,33 @@ test('run10408 cannot promote a site-record coordination instruction to a comple
   assert.equal(projection.material.siteCompleted, undefined);
   assert.equal(projection.material.hash, undefined);
   assert.equal(JSON.parse(packet).synthesisSources[0].material.siteCompleted, completed);
+
+  const original = { ...rule, text: '签字前对照最新版平面图和点位图，按房间记录版本差异，把有疑问的位置交给设计师核对。' };
+  const question = { currentQuestion: '设计师刚把新版图发我，签字前我先看哪些地方？' };
+  const knowledge = JSON.parse(raw(original.text, [original])).segments[0];
+  const observation = JSON.parse(raw('目前现场只标记了位置，等设计师核对后再确认点位。', [coordination])).segments[0];
+  const advice = { basis: 'advice', text: '一般建议确认开关高度。', citations: [] };
+  const mixed = (...segments: unknown[]) => JSON.stringify({ kind: 'synthesis', segments });
+  const sources = [original, coordination];
+  const saved = mixed(knowledge, observation, advice);
+  assert.throws(() => parseSynthesis(saved, sources, question), /ungrounded_response_scope/);
+  const result = referUnsupportedSiteObservation(saved, sources, question);
+  assert.deepEqual(parseSynthesis(result, sources, question).segments, [
+    parseSynthesis(mixed(knowledge), sources, question).segments[0],
+    { basis: 'uncertainty', text: reportCoordinationText, citations: [] },
+  ]);
+  assert.equal(referUnsupportedSiteObservation(result, sources, question), result);
+  assert.equal(referUnsupportedSiteObservation(saved, [coordination], question), saved);
+  assert.equal(referUnsupportedSiteObservation(saved, [original], question), saved);
+  for (const unchanged of [
+    mixed(observation, advice),
+    mixed({ ...knowledge, text: original.text + '还应预留30毫米。' }, observation),
+    mixed(knowledge, observation, { ...advice, text: '我已联系楼下。' }),
+    mixed(knowledge, observation, observation),
+    mixed(knowledge, { ...observation, citations: [...observation.citations, ...knowledge.citations] }),
+  ]) assert.equal(referUnsupportedSiteObservation(unchanged, sources, question), unchanged);
+  const factual = mixed(knowledge, JSON.parse(raw('现场已标记了餐边柜旁插座位置。', [recorded])).segments[0]);
+  assert.equal(referUnsupportedSiteObservation(factual, [...sources, recorded], question), factual);
 });
 
 test('run938/939 inferred mechanisms cannot acquire evidence status from a prescription', () => {
