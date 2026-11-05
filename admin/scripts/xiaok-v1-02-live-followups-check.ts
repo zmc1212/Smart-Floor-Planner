@@ -228,10 +228,12 @@ async function main() {
       try {
         await read(async tx => {
           const c = (await one(tx, sql`select * from app.assistant_conversations where enterprise_id=${eid} and id=${String(a.cid)}`))!;
-          const snapshot: Row & { reportReference?: { selection: { reportId: string } } } = await queryReportFollowups(tx, actor(a), c, String(runId), 7777);
-          assert.deepEqual(await queryReportFollowups(tx, actor(a), c, String(runId), 7777), snapshot);
-          assert.equal(snapshot.reportReference?.selection.reportId, a.rid);
-          assert.ok((snapshot.data as Row[]).every(p => p.id === a.pid));
+          const stored = await queryReportFollowups(tx, actor(a), c, String(runId), 7777);
+          const snapshot = stored.snapshot;
+          assert.deepEqual(await queryReportFollowups(tx, actor(a), c, String(runId), 7777), stored);
+          const reference = (snapshot as Row).reportReference as { selection: { reportId: string } } | undefined;
+          assert.equal(reference?.selection.reportId, a.rid);
+          assert.ok(((snapshot as Row).data as Row[]).every(p => p.id === a.pid));
           const other = actors.find(other => other.name !== a.name)!;
           await denied(() => queryReportFollowups(tx, actor(other), c, String(runId), 7778));
           if (a.name === 'customer') await tx.execute(sql`update app.construction_projects set customer_access=false where enterprise_id=${eid} and id=${String(a.pid)}`);
@@ -267,8 +269,9 @@ async function main() {
           assert.equal(policy.reportFinalOutputTokens, 4096);
           assert.equal(policy.reportFinalCarrier, reportFinalFunctionCarrier);
           assert.equal(policy.reportAnswerGrounding, reportAnswerGroundingProtocol);
-          const scopedSnapshot = await queryReportFollowups(tx, actor(a), c, String(probeId), 7779);
-          assert.equal('reportReference' in scopedSnapshot ? scopedSnapshot.reportReference?.selection.reportId : undefined, a.rid);
+          const scopedSnapshot = (await queryReportFollowups(tx, actor(a), c, String(probeId), 7779)).snapshot;
+          const scopedReference = (scopedSnapshot as Row).reportReference as { selection: { reportId: string } } | undefined;
+          assert.equal(scopedReference?.selection.reportId, a.rid);
           const reportSources = businessSynthesisSources('probe:' + probeId, scopedSnapshot);
           assert.ok(reportSources.some(source => source.reportScope?.kind === 'metadata'));
           for (const source of reportSources) assert.equal(source.reportScope?.reportId, a.rid);

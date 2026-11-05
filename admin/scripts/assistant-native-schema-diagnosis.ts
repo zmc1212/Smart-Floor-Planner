@@ -37,7 +37,7 @@ function binding(){const files=['admin/scripts/assistant-native-schema-diagnosis
   'admin/src/lib/ai/providers/agent-chat.ts','admin/src/lib/ai/providers/bailian-capabilities.ts','admin/src/lib/ai/providers/thinking.ts','admin/src/lib/ai/providers/http.ts',
   'admin/src/db/repositories/ai-creation-repository.ts','admin/src/db/transaction.ts','admin/package-lock.json','admin/tsconfig.json',
   'tmp/xiaok-vector/connection.private.json','tmp/xiaok-intelligent-consult/.env.qwen37','tmp/xiaok-intelligent-consult/openwebui-qwen37-cost.mjs'];
-  return Object.fromEntries(files.map(f=>[f,createHash('sha256').update(fs.readFileSync(path.join(root,f))).digest('hex')]));}
+  return Object.fromEntries(files.map(f=>[f,createHash('sha256').update(new Uint8Array(fs.readFileSync(path.join(root,f)))).digest('hex')]));}
 /** Diagnostic alternate wire encoding: disjoint envelope/segment branches,
  * preserving the original source-ID enums without conditional keywords. */
 function directSchema(tool:ModelTool):ModelTool{
@@ -80,7 +80,7 @@ async function main(){
     const last=data.steps.filter(s=>s.kind==='agent_model').at(-1)!;
     const compiled=compileModelRequest({question:sourceCase.text,triggerId:String(data.run!.trigger_message_id),turn:Number((last.input_summary as {turn:number}).turn),purpose:'answer',
       messages:[...checkpoint.messages,{role:'system',content:[{type:'text',text:finalTurnInstructions}]}],tools:[],
-      toolsForTurn:(q,m,t,trigger)=>agentToolsForTurn(q,m,t,trigger).map(nativeFinalDefinition)});
+      toolsForTurn:(q,m,t,trigger)=>agentToolsForTurn(q,m,t,trigger).map(tool=>nativeFinalDefinition(tool))});
     const baseline:ModelTurnInput={model:'qwen3.8-flash',enableThinking:false,maxTokens:2048,requireTool:true,outputMode:'json_schema',messages:compiled.modelMessages,tools:compiled.dispatchTools};
     const body=agentChatBody(baseline,'https://dashscope.aliyuncs.com/compatible-mode');
     report.baselineHash=createHash('sha256').update(JSON.stringify(body)).digest('hex');

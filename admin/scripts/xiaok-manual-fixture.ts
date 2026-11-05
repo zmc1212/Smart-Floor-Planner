@@ -65,6 +65,9 @@ type FixtureCredentials = {
     phoneNote?: string;
   }>;
 };
+type ProjectDetail = { project: { version: number } };
+type WorkDetail = { work: { version: number } };
+type KnowledgeCreated = { document: { id: unknown; title: unknown }; draft: { id: unknown } };
 let state: FixtureState, credentials: FixtureCredentials;
 let lock: pg.Client | undefined;
 function save() { fs.writeFileSync(manifestFile, JSON.stringify(state, null, 2)); }
@@ -155,10 +158,10 @@ async function createProject(slot: string, leadId: string, managerId: string, me
   const result = await write('project.' + slot, { leadId, name: prefix + slot + '工地·小K全流程', managerId, rooms: ['客厅', '书房', '主卧', '次卧'] }, (b, k) => owner.execute('create', b, k));
   const id = String(result.id);
   for (const [role, adminId] of Object.entries(members)) {
-    const detail = await owner.execute('detail', { projectId: id });
+    const detail = await owner.execute('detail', { projectId: id }) as ProjectDetail;
     await write('member.' + slot + '.' + role, { projectId: id, expectedVersion: detail.project.version, adminId, role, active: true, workLabel: prefix + '·' + role }, (b, k) => owner.execute('member', b, k));
   }
-  const detail = await owner.execute('detail', { projectId: id });
+  const detail = await owner.execute('detail', { projectId: id }) as ProjectDetail;
   await write('stage.' + slot, { projectId: id, expectedVersion: detail.project.version, stageKey: stage, note: '合成手测起始节点，不是实际施工或验收记录。', sendReminder: false }, (b, k) => owner.execute('progress', b, k));
   return id;
 }
@@ -305,9 +308,9 @@ async function main() {
       images: [{ assetId: String(uploaded.assetId), kind: 'render', aiGenerated: true, showroom: false, caption: '合成手测效果图，非真实交付', space: index === 2 ? '主卧' : '客厅' }],
       coverAssetId: String(uploaded.assetId), showOnProfile: true, recommendable: true };
     await write(slot + '.save', { workId, expectedVersion: 1, content }, (b, k) => service.execute('save', b, k));
-    let detail = await service.execute('detail', { workId });
+    let detail = await service.execute('detail', { workId }) as WorkDetail;
     await write(slot + '.submit', { workId, expectedVersion: detail.work.version }, (b, k) => service.execute('submit', b, k));
-    detail = await service.execute('detail', { workId });
+    detail = await service.execute('detail', { workId }) as WorkDetail;
     await write(slot + '.publish', { workId, expectedVersion: detail.work.version }, (b, k) => managerPortfolio.execute('publish', b, k));
     works.push({ workId, authorId: spec.authorId, title: spec.title, style: spec.style, template: spec.template });
   }
@@ -322,7 +325,7 @@ async function main() {
     ['public', 'customer_public', prefix + '·书房使用说明', '【合成测试资料，不用于实际施工】\n书房长时间使用屏幕时，应先了解采光方向与使用习惯，再讨论书桌方向和遮光方式。靠窗是布置意向，不代表已核对现场尺寸或批准插座点位。本说明不提供实际户型尺寸、现场完成状态、报价或工期承诺。'],
     ['internal', 'staff_internal', prefix + '·内部核对流程', '【合成测试资料，仅员工内部手测】\n测试设计师先核对本项目已共享的需求与图纸，再提交方案给测试业主决定。客户同意、现场落实、事项关闭和工程验收分别核对。此文不对外提供，不是企业实际承诺。'],
   ]) {
-    const created = await write('knowledge.' + slot, { title, audience, sourceType: 'manual_text', category: '合成手测专用', body }, (b, k) => knowledge.execute('create', b, k));
+    const created = await write('knowledge.' + slot, { title, audience, sourceType: 'manual_text', category: '合成手测专用', body }, (b, k) => knowledge.execute('create', b, k)) as KnowledgeCreated;
     knowledgeDrafts.push({ documentId: String(created.document.id), versionId: String(created.draft.id), title, audience, status: 'draft' });
   }
   for (const doc of knowledgeDrafts) {
@@ -342,7 +345,7 @@ async function main() {
     doc.status = 'published';
   }
   const extraDraft = await write('knowledge.draft', { title: prefix + '·点位调整流程草稿', audience: 'customer_public', sourceType: 'manual_text', category: '合成手测专用',
-    body: '【合成测试草稿，不用于实际施工】\n进入泥木阶段后应结合已发布现场记录，核实原点位是否已经实施。客户同意方案、现场落实、正式解决和关闭分别记录。本草稿留给人工编辑、索引及发布测试；未发布前不应成为客户答复依据。' }, (b, k) => knowledge.execute('create', b, k));
+    body: '【合成测试草稿，不用于实际施工】\n进入泥木阶段后应结合已发布现场记录，核实原点位是否已经实施。客户同意方案、现场落实、正式解决和关闭分别记录。本草稿留给人工编辑、索引及发布测试；未发布前不应成为客户答复依据。' }, (b, k) => knowledge.execute('create', b, k)) as KnowledgeCreated;
   knowledgeDrafts.push({ documentId: String(extraDraft.document.id), versionId: String(extraDraft.draft.id), title: String(extraDraft.document.title), audience: 'customer_public', status: 'draft' });
   const orders = new ServiceOrderService({ enterpriseId: eid!, adminId: ownerId });
   const order = await write('service-order.create', { cameraCount: 2, retentionDays: 3, serviceDays: 30, note: '合成手测服务订单，金额仅供报价/确认/安装验收流程测试，无真实设备或支付。' }, (b, k) => orders.create(projectA, b, k));
