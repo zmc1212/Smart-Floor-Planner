@@ -7,7 +7,7 @@ import { speechConfigurationHash } from '../speech/local';
 import { createPreviewPolicy, previewPolicy, projectMessage, citationProjection, webCitationProjection } from '../knowledge/sources';
 import { sourceExcerptProtocol } from '../agent/source-excerpts';
 import { sourceQuestionCoverageProtocol } from '../agent/source-question-coverage';
-import { knowledgeExplanationProtocol } from '../agent/knowledge-explanation';
+import { naturalKnowledgeProtocol, knowledgeQuantityScopeProtocol } from '../agent/knowledge-explanation';
 import { reportAnswerGroundingProtocol, reportSourceProjectionProtocol } from '../agent/report-source-scope';
 import { reportCoordinationProtocol, reportHistoryScopeProtocol, reportQuestionPlanningProtocol, reportReadCompletionProtocol, siteObservationReferralProtocol } from '../agent/report-question-plan';
 import { drawingChecklistReadProtocol } from '../agent/read-tool-input';
@@ -163,8 +163,9 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
         reportSourceProjection: reportSourceProjectionProtocol, reportQuestionPlanning: reportQuestionPlanningProtocol,
         reportReadCompletion: reportReadCompletionProtocol, reportHistoryScope: reportHistoryScopeProtocol, reportCoordination: reportCoordinationProtocol } : {}),
       ...(agent && !agent.structuredFinal && ['reply','site.question'].includes(purpose)
-        ? { sourceAnswerMode: agent.knowledgeExplanation === knowledgeExplanationProtocol ? knowledgeExplanationProtocol : sourceExcerptProtocol,
-          ...(agent.knowledgeQuantityScope ? { knowledgeQuantityScope: agent.knowledgeQuantityScope } : {}),
+        ? { sourceAnswerMode: agent.knowledgeExplanation || sourceExcerptProtocol,
+          ...(agent.knowledgeExplanation === naturalKnowledgeProtocol ? { knowledgeQuantityScope: knowledgeQuantityScopeProtocol }
+            : agent.knowledgeQuantityScope ? { knowledgeQuantityScope: agent.knowledgeQuantityScope } : {}),
           sourceQuestionCoverage: sourceQuestionCoverageProtocol } : {}),
       ...(speech ? { localSpeech: { protocol: 'local-speech-v1', configurationHash: speechBinding } } : {}),
       ...(reservation.imageContextBudget ? { imageContextBudget: reservation.imageContextBudget } : {}),

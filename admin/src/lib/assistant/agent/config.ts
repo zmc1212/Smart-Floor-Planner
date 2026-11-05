@@ -7,7 +7,7 @@ import { reviewClaimProtocol } from './review-claims';
 import { reviewCompletionProtocol } from './review-completion';
 import { conversationImageProtocol } from './image-context';
 export type AgentConfig = { runtime: 'langgraph-v1'; model: string; providerKey: string; imageInput: boolean; tools: boolean; probeVersion: string; consultation?: ConsultationBinding; structuredFinal?:typeof nativeFinalProtocol; requirementClaims?: typeof reviewClaimProtocol; reviewCompletion?: typeof reviewCompletionProtocol; imageContext?: typeof conversationImageProtocol;
-  knowledgeExplanation?: 'reviewed-knowledge-explanation-v1'; knowledgeQuantityScope?: 'reviewed-coating-quantity-scope-v1' };
+  knowledgeExplanation?: 'reviewed-knowledge-explanation-v1' | 'natural-knowledge-answer-v1'; knowledgeQuantityScope?: 'reviewed-coating-quantity-scope-v1' };
 /** Deliberately opt-in per enterprise; missing/incomplete capability evidence stays on the legacy executor. */
 export function agentConfig(value: unknown): AgentConfig | null {
   if (!value || typeof value !== 'object') return null;
@@ -15,10 +15,10 @@ export function agentConfig(value: unknown): AgentConfig | null {
   const consultation = c.consultation === undefined ? undefined : consultationBinding(c.consultation);
   // Keep an unaccepted semantic path opt-in. It cannot silently replace the
   // established answer mode for ordinary enterprise users during development.
-  if (c.knowledgeExplanation !== undefined && (c.knowledgeExplanation !== 'reviewed-knowledge-explanation-v1'
+  if (c.knowledgeExplanation !== undefined && (!['reviewed-knowledge-explanation-v1', 'natural-knowledge-answer-v1'].includes(String(c.knowledgeExplanation))
     || c.tools !== true || c.structuredFinal !== undefined)) fail('assistant_capability_forbidden', 403);
   if (c.knowledgeQuantityScope !== undefined && (c.knowledgeQuantityScope !== 'reviewed-coating-quantity-scope-v1'
-    || c.knowledgeExplanation !== 'reviewed-knowledge-explanation-v1')) fail('assistant_capability_forbidden', 403);
+    || !['reviewed-knowledge-explanation-v1', 'natural-knowledge-answer-v1'].includes(String(c.knowledgeExplanation)))) fail('assistant_capability_forbidden', 403);
   // An invalid opt-in must never silently dispatch through the legacy model.
   if (c.consultation !== undefined && (!consultation || c.model !== consultationProfile(consultation.profile)?.model || c.tools !== true)) fail('assistant_capability_forbidden', 403);
   if (c.imageContext !== undefined && (c.imageContext !== conversationImageProtocol || c.imageInput !== true || c.structuredFinal !== nativeFinalProtocol)) fail('assistant_capability_forbidden', 403);

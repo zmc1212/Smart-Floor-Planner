@@ -18,17 +18,48 @@ import { KnowledgeService } from '@/lib/assistant/knowledge/service';
 import { safeText, type ActorContext } from '@/lib/assistant/contracts';
 import { wechatideNativeClient } from './wechatide-native-client';
 import { lockAssistantAcceptance } from './assistant-acceptance-safety.mjs';
-import { reviewBudget, type RetainedReviewHold } from './assistant-review-budget';
-import { knowledgeExplanationProtocol } from '@/lib/assistant/agent/knowledge-explanation';
+import { reviewBudget, reviewTokens, type RetainedReviewHold } from './assistant-review-budget';
+import { knowledgeExplanationProtocol, naturalKnowledgeProtocol, knowledgeQuantityScopeProtocol } from '@/lib/assistant/agent/knowledge-explanation';
 import { getPlatformLlmOverrideRuntime } from '@/lib/platform-llm-config';
 import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
 import { processAssistantRun } from '@/lib/assistant/application/worker';
 
-loadEnvConfig(process.cwd(),true);
 type Row=Record<string,any>;
+const naturalAnswer=process.argv.includes('--natural-answer');
+const customerQuestions=['我在看《精艺》这份装修手册，卫生间防水前要准备什么？管根又该怎么处理？','我刚才说得不准，是水管根部，不是整面墙。为什么这里还要单独处理？','不是问材料刷完就算验收，我想知道什么条件下才适合继续铺砖？'];
+const staffQuestions=['微云内部的精艺工艺复核资料里，电视墙线管拐弯和穿线顺序该怎么理解？','我是说先穿线还是先铺管，为什么要这样做？','不是问我们现场已经做完没，我想知道这几项做法分别是为了解决什么问题。'];
+const generalQuestion='卫生间做干湿分离有什么好处？';
+const webQuestion='帮我查一下网上关于卫生间通风的建议，告诉我出处。';
+const naturalScope={protocol:naturalKnowledgeProtocol,model:'qwen3.8-flash',provider:'Beijing DashScope',thinkingDisabled:true,
+  enterpriseId:'1454',internalSource:'417/423',customerSources:['404/410','405/411'],reindex:false,
+  journeys:{customer:customerQuestions,shared:staffQuestions,general:[generalQuestion],web:[webQuestion]},
+  trialsPerJourney:2,rounds:['HTTP','Stable'],maxNewRuns:16,maxModelCalls:80,maxNewCostMicros:5000000,
+  reservedTokensPerRun:320000,conservativeMicrosPerToken:5,cumulativeCapMicros:100000000,
+  stopOn:['first blocking failure','unknown provider outcome','source/configuration drift','budget cap'],
+  priorStoppedBatch:'authorized-original-20261105-01/environment-recovered',priorRemainingTurns:10,
+  retainedFailures:['2202','D2=2'],retainedUnknown:'3753',semanticAcceptance:'requires transcript review',
+  reuse:'77 focused regressions, service03-citations, unchanged tenant/revocation/failure coverage'};
+const naturalScopeHash=createHash('sha256').update(JSON.stringify(naturalScope)).digest('hex');
+if(process.argv.includes('--describe-plan')){
+  assert.ok(naturalAnswer,'Describe the new natural-answer scope explicitly');
+  console.log(JSON.stringify({scope:naturalScope,scopeHash:naturalScopeHash,authorization:'pending',providerCalls:0},null,2));
+  process.exit(0);
+}
+let naturalAuthorization:Row|undefined;
+if(naturalAnswer&&process.argv.includes('--run-fixed-trials')){
+  const file=process.argv.find(v=>v.startsWith('--authorization-file='))?.slice('--authorization-file='.length);
+  assert.ok(file,'Plan section6.2 requires a separately authorized new scope before dispatch');
+  naturalAuthorization=JSON.parse(fs.readFileSync(path.resolve(file),'utf8'));
+  assert.equal(naturalAuthorization!.scopeHash,naturalScopeHash,'Authorization must match this fixed scope');
+  assert.equal(naturalAuthorization!.status,'approved');
+  assert.ok(naturalAuthorization!.userInstruction&&naturalAuthorization!.recordedAt,'Retain the actual user instruction');
+}
+loadEnvConfig(process.cwd(),true);
 const root=path.resolve('..'), eid='1454', pid='237', project=path.join(root,'miniprogram');
 const label=process.argv.find(v=>v.startsWith('--label='))?.slice(8)||'native-preflight-01';
 assert.match(label,/^[a-z0-9-]+$/);
+if(naturalAnswer){assert.ok(!label.startsWith('authorized-original-'),'Never resume or rename the stopped original batch');
+  if(naturalAuthorization)assert.equal(naturalAuthorization.label,label);}
 const evidencePhase=process.argv.find(v=>v.startsWith('--evidence-phase='))?.slice('--evidence-phase='.length);
 if(evidencePhase)assert.match(evidencePhase,/^[a-z0-9-]+$/);
 const output=path.join(root,'tmp/v1-01-weiyun-jingyi',label,...(evidencePhase?[evidencePhase]:[]));fs.mkdirSync(output,{recursive:true});
@@ -48,7 +79,8 @@ let platformConfig: { before: Row; opted: Row } | undefined;
 const ownedChats: Array<{ service: ConversationService; id: string }> = [];
 const knowledge=new KnowledgeService({enterpriseId:eid,adminId:'16'});
 const httpComplete=process.argv.includes('--http-complete'),httpOnly=process.argv.includes('--http-only')||httpComplete,nativePair=process.argv.includes('--native-pair');
-const naturalExplanation=process.argv.includes('--natural-explanation');
+const naturalExplanation=naturalAnswer||process.argv.includes('--natural-explanation');
+const explanationProtocol=naturalAnswer?naturalKnowledgeProtocol:knowledgeExplanationProtocol;
 const frameDiscriminator=process.argv.includes('--frame-discriminator');
 const boundedBusinessBatch=process.argv.includes('--bounded-business-batch');
 const reusedInternalId=process.argv.find(v=>v.startsWith('--reuse-internal-source='))?.slice('--reuse-internal-source='.length);
@@ -58,6 +90,8 @@ assert.ok(!authorizedModel||authorizedModel==='qwen3.8-flash'&&!!reusedInternalI
 assert.ok(!frameDiscriminator||(naturalExplanation&&httpOnly),'Frame diagnosis is one HTTP-only engineering probe, never native/business acceptance');
 assert.ok(!boundedBusinessBatch||(naturalExplanation&&!httpOnly&&!frameDiscriminator&&!nativePair),'Closure batch is the two original journeys, HTTP first and native second, with no reused trial');
 assert.ok(!naturalExplanation||!httpComplete,'New semantic mechanism requires two fresh fixed trials; do not reuse the old excerpt journey');
+assert.ok(!naturalAnswer||(boundedBusinessBatch&&reusedInternalId==='417'&&authorizedModel==='qwen3.8-flash'),
+  'The natural-answer batch uses its fixed source/model and two complete rounds');
 function assertBinding(){
   const binding=JSON.parse(fs.readFileSync(path.join(output,'binding.json'),'utf8')).before;
   const drift=Object.keys(binding).filter(file=>createHash('sha256').update(fs.readFileSync(path.join(root,file))).digest('hex')!==binding[file]);
@@ -67,6 +101,9 @@ async function runtimeSnapshot(){return withPlatformTransaction(async tx=>({
   enterprise:await one(tx,sql`select enabled,md5(agent_config::text) agent_hash,active_index_profile_id,daily_requests,daily_tokens::text,daily_cost_micros::text from app.assistant_enterprise_settings where enterprise_id=${eid}`),
   platform:await rows(tx,sql`select key,md5(llm_config::text) config_hash from app.platform_configs where key='default'`),
   providers:await rows(tx,sql`select key,md5(to_jsonb(p)::text) config_hash from app.ai_provider_configs p where key in ('llm-settings-override','vlm-settings-override') order by key`),
+  ...(naturalAnswer?{sources:await rows(tx,sql`select d.id::text,d.status,d.audience,d.published_version_id::text,
+    v.content_hash,v.indexed_hash,v.index_status from app.assistant_knowledge_documents d join app.assistant_knowledge_versions v
+    on v.enterprise_id=d.enterprise_id and v.id=d.published_version_id where d.enterprise_id=${eid} and d.id in (404,405,417) order by d.id`)}:{}),
 }));}
 async function wait<T>(read:()=>Promise<T|null|false|undefined>,name:string,seconds=180):Promise<T>{
   const end=Date.now()+seconds*1000;while(Date.now()<end){const value=await read();if(value)return value;await delay(500);}throw Error('Timed out: '+name);
@@ -106,6 +143,10 @@ async function snapshotRun(runId:string){return withTenantTransaction(eid,async 
   citations:await rows(tx,sql`select c.id::text,c.document_id::text,c.document_version_id::text,c.quote_snapshot from app.assistant_message_citations c where c.enterprise_id=${eid} and c.run_id=${runId}`),
 }));}
 async function reserve(turn:Row){assertBinding();assert.deepEqual(await runtimeSnapshot(),report.runtimeBefore,'Configured runtime changed before dispatch');reviewBudget(root).assertReservation(0,320000,retained);
+  if(naturalAnswer){assert.ok(report.reservationHistory.filter((r:Row)=>r.state==='reserved').length<naturalScope.maxNewRuns);
+    assert.ok(report.calls.length+5<=naturalScope.maxModelCalls,'The fixed model-dispatch allowance is exhausted');
+    assert.ok((reviewTokens(report.calls)+naturalScope.reservedTokensPerRun)*naturalScope.conservativeMicrosPerToken<=naturalScope.maxNewCostMicros,
+      'New batch conservative reservation exceeds CNY5; stop without expanding scope');}
   turn.reservationId='pending-'+turn.key;report.calls.push({id:turn.reservationId,runId:'unresolved-operation:'+turn.key,status:'unknown',reservedTokens:320000});
   report.reservationHistory.push({key:turn.key,state:'reserved',tokens:320000,at:new Date().toISOString()});save();}
 async function settle(turn:Row){if(!turn.runId)return;const trace=await snapshotRun(turn.runId);
@@ -120,15 +161,24 @@ async function settle(turn:Row){if(!turn.runId)return;const trace=await snapshot
       ...(known?{usage:{total_tokens:usage.inputTokens+usage.outputTokens}}:{}),rawStep:model.step_seq});}
   if(!models.length&&trace.run?.status==='indeterminate')report.calls.push({id:turn.reservationId,runId:turn.runId,status:'unknown',reservedTokens:320000});
   report.reservationHistory.push({key:turn.key,runId:turn.runId,state:models.every(m=>m.status==='succeeded')?'observed':'retained',at:new Date().toISOString()});
-  turn.text=trace.output?safeText(trace.output.content as Parameters<typeof safeText>[0]):'';turn.citations=trace.citations;turn.modelCalls=models.length;save();
+  turn.text=trace.output?safeText(trace.output.content as Parameters<typeof safeText>[0]):'';
+  const webCitations=((trace.output?.content as Row)?.blocks||[]).filter((b:Row)=>b.type==='citation'&&String(b.citationId).startsWith('w:')).map((b:Row)=>({id:String(b.citationId)}));
+  turn.citations=[...trace.citations,...webCitations];turn.modelCalls=models.length;save();
   assertBinding();assert.deepEqual(await runtimeSnapshot(),report.runtimeBefore);
   if(report.calls.some((c:Row)=>c.runId===turn.runId&&c.status!=='succeeded'))throw Error('New unknown provider outcome; fixed batch stopped');
   assert.equal(trace.run?.status,'succeeded',`Run ${turn.runId}: ${trace.run?.status}/${trace.run?.error_code}`);
-  if(naturalExplanation){assert.equal((trace.run?.policy_snapshot as Row)?.sourceAnswerMode,knowledgeExplanationProtocol);
-    assert.ok(turn.semanticReviews.some((r:Row)=>r.status==='succeeded'),'A natural answer needs its durable semantic review');}
-  assert.ok(trace.steps.some(s=>s.kind==='retrieval'&&s.status==='succeeded'));
-  assert.ok(trace.citations.length,'An enterprise answer requires actual citations');
-  const allowed=turn.kind==='customer'?['404','405']:[cloneId,'404','405'];assert.ok(trace.citations.some(c=>allowed.includes(String(c.document_id))));
+  if(naturalExplanation){assert.equal((trace.run?.policy_snapshot as Row)?.sourceAnswerMode,explanationProtocol);
+    if(turn.sourceKind!=='general')assert.ok(turn.semanticReviews.some((r:Row)=>r.status==='succeeded'),'A source-backed answer needs its durable semantic review');}
+  if(naturalAnswer)assert.equal((trace.run?.policy_snapshot as Row)?.knowledgeQuantityScope,knowledgeQuantityScopeProtocol);
+  if(turn.sourceKind==='general'){
+    assert.equal(trace.steps.filter(s=>s.kind==='retrieval').length,0,'General knowledge should not force retrieval');
+    assert.equal(turn.citations.length,0);
+  }else{
+    assert.ok(trace.steps.some(s=>s.kind==='retrieval'&&s.status==='succeeded'));
+    if(turn.sourceKind==='web')assert.ok(webCitations.length,'A real web answer requires persisted original-page citations');
+    else {assert.ok(trace.citations.length,'An enterprise answer requires actual citations');
+      const allowed=turn.kind==='customer'?['404','405']:[cloneId,'404','405'];assert.ok(trace.citations.some(c=>allowed.includes(String(c.document_id))));}
+  }
   for(const expectation of turn.expectations)assert.match(turn.text,expectation);
   assert.doesNotMatch(turn.text,/本项目(?:已|已经)(?:验收|完成)|我家(?:已经)?验收合格/u);
   if(turn.kind==='shared')assert.doesNotMatch(turn.text,/必须先开槽|严禁先穿线/u,'Do not strengthen source wording into a new enterprise prohibition');
@@ -159,7 +209,8 @@ async function ask(turn:Row,current:Row,cid:string,native:boolean){await reserve
     await settle(turn);
     if(native){const route=turn.kind==='customer'?'packages/assistant/chat/chat':'packages/construction/chat/chat',page=await pageAt(route);
       await wait(async()=>JSON.stringify((await page.data()).messages||(await page.data()).items).includes(turn.text.slice(0,25)),'visible actual answer');
-      const citation=turn.citations[0];const selector=turn.kind==='customer'?'.citation-chip[data-id="'+citation.id+'"]':'.record-actions .text-button[data-id="'+citation.id+'"]';
+      const citation=turn.citations[0];
+      if(citation){const selector=turn.kind==='customer'?'.citation-chip[data-id="'+citation.id+'"]':'.record-actions .text-button[data-id="'+citation.id+'"]';
       const messageId=await evaluate(`function(id,shared){const p=getCurrentPages().at(-1),items=shared?p.data.items:p.data.messages;
         const item=items.find(i=>(shared?(i.response&&i.response.citations)||[]:i.citations||[]).some(c=>String(c.id)===id));
         if(!item)throw Error('Citation missing from actual page data');return String(shared?item.message.id:item.id);}`,String(citation.id),turn.kind==='shared');
@@ -167,11 +218,14 @@ async function ask(turn:Row,current:Row,cid:string,native:boolean){await reserve
       const source=await page.$(selector);assert.ok(source);turn.sourcePosition={offset:await source.offset(),size:await source.size()};await source.tap();
       await wait(async()=>{const d=await page.data();return d.citation?.available&&d.citation.quote;},'source original opens');
       turn.capture=await capture('source-'+turn.runId,route);await evaluate('function(){getCurrentPages().at(-1).closeSheet(true);}');
+      }else turn.capture=await capture('answer-'+turn.runId,route);
       await mp.redirectTo('/'+route+(turn.kind==='customer'?'?conversationId='+cid:'?projectId='+pid));
       const reentry=await pageAt(route);await wait(async()=>JSON.stringify((await reentry.data()).messages||(await reentry.data()).items).includes(turn.text.slice(0,25)),'persisted native reentry');turn.reentry=true;
     }else{const read=await api(turn.kind==='customer'?'/miniprogram/assistant/conversations/'+cid+'/messages':'/miniprogram/construction/projects/'+pid+'/chat',current.token);
       fs.writeFileSync(path.join(output,'readback-'+turn.runId+'.json'),JSON.stringify(read,null,2));
-      assert.ok(JSON.stringify(read).includes(turn.text.slice(0,25)));turn.reentry=true;}
+      assert.ok(JSON.stringify(read).includes(turn.text.slice(0,25)));turn.reentry=true;
+      if(turn.sourceKind==='web')for(const citation of turn.citations){const original=await api('/miniprogram/assistant/citations/'+encodeURIComponent(citation.id),current.token);
+        assert.equal(original.available,true);assert.ok(original.quote);turn.originalPages=(turn.originalPages||[]).concat({id:citation.id,available:true,quoteChars:original.quote.length});}}
     turn.passed=true;
   }finally{if(turn.runId&&!turn.traceFile)await settle(turn);save();}
 }
@@ -181,19 +235,25 @@ async function main(){
   release=await lockAssistantAcceptance(control,{waitForLock:true});
   await step('idle real development queue',async()=>{const value=await withPlatformTransaction(tx=>one(tx,sql`select count(*)::int active from app.assistant_jobs where status in ('queued','running')`));assert.equal(value?.active,0);return value;});
   if(process.argv.includes('--inventory-only')){const status=await mp.call('check_wechatide_status');report.ideStatus=status;console.log(JSON.stringify({statusKeys:Object.keys(status)}));report.passed=true;return;}
-  if(!httpOnly){
+  const prepareNative=async()=>{
   await step('unique Stable project window on secondary monitor',windowCheck);
   await step('registered Stable CLI and existing authorization',async()=>{const status=await mp.call('check_wechatide_status',{skillVersion:'0.3.11'});
     assert.ok(['equal','agent_ahead'].includes(status.versionRelation));assert.equal(status.loginExpired,false);assert.equal(status.cliTokenRequired,false);
     return {versionRelation:status.versionRelation,loginExpired:false,skillVersion:status.skillVersion,project};});
-  await step(reusedInternalId?'compiled runtime and live official SDK data':'fresh compilation and live official SDK data',async()=>{if(reusedInternalId){const info=await mp.systemInfo(),page=await mp.currentPage();assert.ok(page&&Object.keys(await page.data()).length);assert.equal(info.windowWidth,390);assert.equal(info.windowHeight,844);return {info,route:page.path,existingRuntime:true,refreshed:false};}let last:unknown;for(let i=0;i<2;i++){try{await mp.call('simulator_refresh',{project});await delay(6000);const info=await mp.systemInfo(),page=await mp.currentPage();assert.ok(page&&Object.keys(await page.data()).length);assert.equal(info.windowWidth,390);assert.equal(info.windowHeight,844);return {info,route:page.path,freshCompile:true};}catch(error){last=error;}}throw last;});
-  }
+  await step(reusedInternalId&&!naturalAnswer?'compiled runtime and live official SDK data':'fresh compilation and live official SDK data',async()=>{if(reusedInternalId&&!naturalAnswer){const info=await mp.systemInfo(),page=await mp.currentPage();assert.ok(page&&Object.keys(await page.data()).length);assert.equal(info.windowWidth,390);assert.equal(info.windowHeight,844);return {info,route:page.path,existingRuntime:true,refreshed:false};}let last:unknown;for(let i=0;i<2;i++){try{await mp.call('simulator_refresh',{project});await delay(6000);const info=await mp.systemInfo(),page=await mp.currentPage();assert.ok(page&&Object.keys(await page.data()).length);assert.equal(info.windowWidth,390);assert.equal(info.windowHeight,844);return {info,route:page.path,freshCompile:true};}catch(error){last=error;}}throw last;});
+  };
+  if(!httpOnly&&(!naturalAnswer||!process.argv.includes('--run-fixed-trials')))await prepareNative();
   if(!process.argv.includes('--run-fixed-trials')){report.passed=true;return;}
   assertBinding();report.runtimeBefore=await runtimeSnapshot();
+  if(naturalAnswer){const sources=report.runtimeBefore.sources as Row[];assert.equal(sources.length,3);
+    for(const [id,version,status,audience] of [['404','410','active','customer_public'],['405','411','active','customer_public'],['417','423','retired','staff_internal']]){
+      const source=sources.find(s=>s.id===id);assert.ok(source);assert.equal(source.published_version_id,version);assert.equal(source.status,status);
+      assert.equal(source.audience,audience);assert.equal(source.index_status,'ready');assert.equal(source.content_hash,source.indexed_hash);
+    }}
   report.budgetBefore=reviewBudget(root).usedMicros;report.fixedPlan={totalTriesPerJourney:2,thisBatchTrialsPerJourney:httpComplete?{customer:1,shared:2}:httpOnly||nativePair?1:2,
     customerTurns:3,sharedTurns:3,maxNewRuns:httpComplete?9:httpOnly||nativePair?6:12,configuredModelUnchanged:!authorizedModel,
     ...(authorizedModel?{authorizedModel,thinkingDisabled:process.env.ASSISTANT_TEXT_DISABLE_THINKING==='1'}:{}),
-    sourceAnswerMode:naturalExplanation?knowledgeExplanationProtocol:'validated-source-excerpts-v1',sourceQuestionCoverage:'source-question-coverage-v1',priorFailures:[{batch:'http-fixed-01',runId:'1596',retained:true},{batch:'excerpt-http-02',runId:'1597',retained:true},{batch:'semantic-final-01',runId:'1602',retained:true}],
+    sourceAnswerMode:naturalExplanation?explanationProtocol:'validated-source-excerpts-v1',sourceQuestionCoverage:naturalAnswer?'server-bound-current-turn':'source-question-coverage-v1',priorFailures:[{batch:'http-fixed-01',runId:'1596',retained:true},{batch:'excerpt-http-02',runId:'1597',retained:true},{batch:'semantic-final-01',runId:'1602',retained:true}],
     ...(httpComplete?{reusedCustomerTrial:'wire-http-01/customer/round1',unreusedSharedPartial:'wire-http-01/run-1601',pendingZeroModelNative:true}:httpOnly?{pendingNativePair:true}:{}),...(nativePair?{pairedWith:process.argv.find(v=>v.startsWith('--paired-with='))?.slice(14)||(naturalExplanation?'explanation-nullable-http-01':'wire-http-01')}:{})};save();
   // A reversible development-fixture allowance for retained historical token
   // holds. Never settle unknown usage, increase either cash cap or change a model.
@@ -217,9 +277,9 @@ async function main(){
   if(naturalExplanation)await step('temporary development-only explanation strategy',async()=>withTenantTransaction(eid,async tx=>{
     const settings=await one(tx,sql`select agent_config from app.assistant_enterprise_settings where enterprise_id=${eid} for update`);
     const before=settings!.agent_config as Row;assert.equal(before.model,'qwen3.7-flash');assert.equal(before.knowledgeExplanation,undefined);
-    const opted={...before,...(authorizedModel?{model:authorizedModel}:{}),knowledgeExplanation:knowledgeExplanationProtocol};
+    const opted={...before,...(authorizedModel?{model:authorizedModel}:{}),knowledgeExplanation:explanationProtocol};
     await tx.execute(sql`update app.assistant_enterprise_settings set agent_config=${JSON.stringify(opted)}::jsonb,version=version+1,updated_at=now() where enterprise_id=${eid}`);
-    explanationConfig={before,opted};report.strategyOptIn={protocol:knowledgeExplanationProtocol,modelChanged:!!authorizedModel,model:opted.model,restored:false};return report.strategyOptIn;
+    explanationConfig={before,opted};report.strategyOptIn={protocol:explanationProtocol,modelChanged:!!authorizedModel,model:opted.model,restored:false};return report.strategyOptIn;
   }));
   report.runtimeBefore=await runtimeSnapshot();
   if(frameDiscriminator)report.fixedPlan={...report.fixedPlan,kind:'invalid-function-arguments discriminator only',maxNewRuns:1,
@@ -228,6 +288,9 @@ async function main(){
     thisBatchTrialsPerJourney:2,maxNewRuns:12,rounds:['HTTP original journeys','Stable native original journeys'],
     stopOnBlockingFailureOrUnknown:true,noRenamedDiagnosticBatches:true,originalQuestionsPreserved:true,
     retainedCurrentRuns:['1603','1604','1605','1606','1607','1608']};
+  if(naturalAnswer){report.fixedPlan={...report.fixedPlan,...naturalScope,scopeHash:naturalScopeHash,authorization:naturalAuthorization};
+    assert.equal(process.env.ASSISTANT_WEB_SEARCH_PROVIDER,'searxng');assert.equal(process.env.ASSISTANT_WEB_SEARCH_URL,'http://127.0.0.1:18090');
+    assert.equal(process.env.ASSISTANT_WEB_DNS,'alidns');assert.equal(process.env.ASSISTANT_TEXT_DISABLE_THINKING,'1');}
   const fixture=JSON.parse(fs.readFileSync(path.join(root,'tmp/xiaok-manual-fixture-20261030/manifest.json'),'utf8'));
   const user=await withPlatformTransaction(tx=>one(tx,sql`select id,context_version from app.users where id=${String(fixture.customerId)}`));assert.ok(user);
   const actor:ActorContext={enterpriseId:eid,principal:{kind:'user',userId:String(user.id)},contextVersion:Number(user.context_version),capabilities:['assistant.chat.self'],entry:{kind:'lead',id:'3132'}};
@@ -253,6 +316,7 @@ async function main(){
     assert.equal(document.title,'合成测试·微云内部精艺工艺复核资料');assert.equal(document.audience,'staff_internal');assert.equal(document.status,'retired');
     const version=(detail.versions as Row[]).find(v=>String(v.id)===String(document.published_version_id));
     assert.ok(version?.published_at&&version.index_status==='ready'&&version.content_hash===version.indexed_hash);
+    if(naturalAnswer)assert.equal(String(version.id),'423','The new scope reuses the exact indexed fixture version');
     for(const original of originals)assert.ok(String(version.body).includes(original.text as string),'Reused internal fixture must retain both unchanged original clauses');
     cloneId=reusedInternalId;cloneVersion=String(version.id);report.temporaryKnowledge={cloneId,cloneVersion,previouslyPublished:true,indexReused:true,originalStatus:'retired'};save();
     await knowledge.execute('publish',{documentId:cloneId,versionId:cloneVersion,expectedVersion:Number(document.version),expectedEditVersion:Number(version.edit_version)},randomUUID());
@@ -263,14 +327,15 @@ async function main(){
   await wait(async()=>{const j=await knowledge.execute('job',{jobId:indexed.jobId});if(['failed','indeterminate'].includes(String(j.status)))throw Error('Index '+j.status+'/'+j.last_error);return j.status==='succeeded'?j:null;},'real test-source indexing');
   await knowledge.execute('publish',{documentId:cloneId,versionId:cloneVersion,expectedVersion:1,expectedEditVersion:1},randomUUID());
   }
-  if(!httpOnly){await evaluate(`function(){const app=getApp();if(app.__qaV1Knowledge)throw Error('Another native controller owns the fixture');
+  if(naturalAnswer)report.runtimeBefore=await runtimeSnapshot(); // Bind the explicitly reactivated fixture before any question.
+  const installNative=async()=>{await evaluate(`function(){const app=getApp();if(app.__qaV1Knowledge)throw Error('Another native controller owns the fixture');
     const s=app.__qaV1Knowledge={global:{...app.globalData},hydrate:app.hydrateStoredSession,memory:new Map(),originals:{get:wx.getStorageSync,set:wx.setStorageSync,remove:wx.removeStorageSync,request:wx.request}};
     const page=getCurrentPages().at(-1);s.route=page.route;s.options=page.options||{};
     wx.getStorageSync=function(k){return s.memory.get(k);};wx.setStorageSync=function(k,v){s.memory.set(k,v);};wx.removeStorageSync=function(k){s.memory.delete(k);};
-    wx.request=function(o){const copy={...o};const at=String(copy.url).indexOf('/api/');if(at>=0)copy.url='http://127.0.0.1:3006/api/'+String(copy.url).slice(at+5);return s.originals.request.call(wx,copy);};app.hydrateStoredSession=async function(){return true;};}`);installed=true;}
-  const customerQuestions=naturalExplanation?[frameDiscriminator?'《精艺》里，防水基层要怎么准备？管根要怎么加强？':'我在看《精艺》这份装修手册，卫生间防水前要准备什么？管根又该怎么处理？','我刚才说得不准，是水管根部，不是整面墙。为什么这里还要单独处理？','不是问材料刷完就算验收，我想知道什么条件下才适合继续铺砖？']
+    wx.request=function(o){const copy={...o};const at=String(copy.url).indexOf('/api/');if(at>=0)copy.url='http://127.0.0.1:3006/api/'+String(copy.url).slice(at+5);return s.originals.request.call(wx,copy);};app.hydrateStoredSession=async function(){return true;};}`);installed=true;};
+  if(!httpOnly&&!naturalAnswer)await installNative();
+  const activeCustomerQuestions=naturalExplanation?(frameDiscriminator?['《精艺》里，防水基层要怎么准备？管根要怎么加强？',...customerQuestions.slice(1)]:customerQuestions)
     :['我在看《精艺》这份装修手册，卫生间防水前要准备什么？','我是说管根，不是整面墙。要先处理哪些地方？','不是问材料刷完就算验收，我想知道什么条件下才适合继续铺砖？'];
-  const staffQuestions=['微云内部的精艺工艺复核资料里，电视墙线管拐弯和穿线顺序该怎么理解？','我是说先穿线还是先铺管，为什么要这样做？','不是问我们现场已经做完没，我想知道这几项做法分别是为了解决什么问题。'];
   const customerChecks=naturalExplanation?[[/基层|地基/,/管根/,/堵漏宝|附加层/],[/管根|水管根部/,/渗|漏|衔接|接缝|薄弱/],[/闭水/,/合格/,/贴砖|铺砖/,/干透|保护层/]]
     :[[/基层|地基/,/防水坝|管根|清理/],[/管根/,/堵漏宝/,/附加层/],[/闭水/,/合格/,/贴砖|铺砖/,/干透|保护层/]];
   const sharedChecks=[[/大弯/,/穿线/,/维修|抽线/],[/铺.*管|铺管|铺设线管/,/穿线/,/抽|维修/],[/抽线|抽动|维修/,/先穿线|后铺管|铺设|顺序/]];
@@ -279,15 +344,24 @@ async function main(){
     :httpOnly?[{round:1,native:false,kinds:['customer','shared']}]:nativePair?[{round:2,native:true,kinds:['customer','shared']}]
     :[{round:1,native:true,kinds:['customer','shared']},{round:2,native:false,kinds:['customer','shared']}];
   for(const round of rounds){
+    if(naturalAnswer&&round.native){await prepareNative();await installNative();}
     const customerChat=new ConversationService(actor),conversation=await customerChat.create(randomUUID()),cid=String(conversation.id);
     ownedChats.push({service:customerChat,id:cid});report.ownedConversationIds=ownedChats.map(c=>c.id);save();
     for(const kind of round.kinds) {const trial:Row={round:round.round,kind,native:round.native,turns:[]};report.trials.push(trial);save();
       const currentShared=kind==='shared'?await api('/miniprogram/construction/projects/'+pid+'/chat',worker.token):null,conversationId=kind==='customer'?cid:String(currentShared!.conversationId);
-      for(let index=0;index<3;index++){const turn:Row={kind,role:kind==='customer'?'customer':['worker','designer','boss'][index],question:(kind==='customer'?customerQuestions:staffQuestions)[index],key:randomUUID(),startedAt:new Date().toISOString(),
+      for(let index=0;index<3;index++){const turn:Row={kind,role:kind==='customer'?'customer':['worker','designer','boss'][index],question:(kind==='customer'?activeCustomerQuestions:staffQuestions)[index],key:randomUUID(),startedAt:new Date().toISOString(),
         expectations:(kind==='customer'?customerChecks:sharedChecks)[index]};trial.turns.push(turn);
         await ask(turn,kind==='customer'?customer:[worker,designer,boss][index],conversationId,round.native);console.log(`fixed ${kind} round${round.round} turn${index+1}: PASS`);
         if(frameDiscriminator){report.protocolDiscriminator={decoded:true,runId:turn.runId,businessAcceptance:false};return;}}
       trial.passed=trial.turns.every((t:Row)=>t.passed);save();
+    }
+    if(naturalAnswer)for(const sourceKind of ['general','web']){
+      const extra=await customerChat.create(randomUUID()),extraId=String(extra.id);ownedChats.push({service:customerChat,id:extraId});
+      report.ownedConversationIds=ownedChats.map(c=>c.id);
+      const turn:Row={kind:'customer',sourceKind,role:'customer',question:sourceKind==='general'?generalQuestion:webQuestion,
+        key:randomUUID(),startedAt:new Date().toISOString(),expectations:sourceKind==='general'?[/干湿|洗浴|洗澡/,/清洁|积水|潮湿|水汽|方便|安全|卫生/]:[/通风|排风|换气/,/湿|霉|空气|气味/]};
+      const trial:Row={round:round.round,kind:sourceKind,native:round.native,turns:[turn]};report.trials.push(trial);save();
+      await ask(turn,customer,extraId,round.native);trial.passed=turn.passed;save();
     }
   }
   const cited=report.trials.filter((t:Row)=>t.kind==='shared').flatMap((t:Row)=>t.turns).flatMap((t:Row)=>t.citations).find((c:Row)=>c.document_id===cloneId);assert.ok(cited,'Fixed internal-source journey must actually cite its scoped original before testing withdrawal');
@@ -298,7 +372,8 @@ async function main(){
     if(!httpOnly){const page=await identity(worker,'packages/construction/chat/chat?projectId='+pid);await wait(async()=>JSON.stringify((await page.data()).items).includes('原回答不再沿用'),'withdrawn derived answer');
       return capture('withdrawn-source-reentry','packages/construction/chat/chat');}
     const read=await api('/miniprogram/construction/projects/'+pid+'/chat',worker.token);assert.match(JSON.stringify(read),/原回答不再沿用/);return {httpReentry:true,sourceRevoked:true};});
-  report.passed=report.trials.length===(httpComplete?3:httpOnly||nativePair?2:4)&&report.trials.every((t:Row)=>t.passed);report.budgetAfter=reviewBudget(root).usedMicros;
+  report.passed=report.trials.length===(naturalAnswer?8:httpComplete?3:httpOnly||nativePair?2:4)&&report.trials.every((t:Row)=>t.passed);report.budgetAfter=reviewBudget(root).usedMicros;
+  if(naturalAnswer){report.semanticAcceptance='pending transcript review';report.newConservativeCostMicros=reviewTokens(report.calls)*naturalScope.conservativeMicrosPerToken;}
 }
 main().catch(error=>{report.error=(error as Error).stack||String(error);process.exitCode=1;console.error((error as Error).message);}).finally(async()=>{
   try{if(installed){const original=await evaluate(`function(){const app=getApp(),s=app.__qaV1Knowledge;if(!s)return null;const original={route:s.route,options:s.options};

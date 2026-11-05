@@ -10,7 +10,7 @@ import { fitAgentContext, type RequestBudgetOptions } from './context-budget';
 import { consultationModelViewVersion, projectConsultationModelView } from './consultation-model-view';
 import { consultationLongProfile } from '../contracts/consultation';
 import { constrainSynthesisRepairTool } from './synthesis-repair';
-import { knowledgeExplanationInstructions } from './knowledge-explanation';
+import { knowledgeExplanationInstructions, naturalKnowledgeInstructions } from './knowledge-explanation';
 import { reportCoverageInstructions } from './report-final';
 import { homeSourceViewProtocol, projectHomeSourceView, type HomeSourceView } from './home-source-view';
 
@@ -27,6 +27,7 @@ export function compileModelRequest(input: {
   sourceExcerpts?:boolean;
   sourceQuestionCoverage?:boolean;
   knowledgeExplanation?:boolean;
+  naturalKnowledge?:boolean;
   requiredKnowledge?:boolean;
   reportPlan?: SourceQuestionCoverage | null;
   homeSourceView?: HomeSourceView;
@@ -46,11 +47,12 @@ export function compileModelRequest(input: {
   if (input.profile === consultationLongProfile.id && purpose === 'answer' && dispatchTools.length === 1)
     dispatchTools = [constrainSynthesisRepairTool(dispatchTools[0], focused)];
   const excerptMode=purpose==='answer'&&input.sourceExcerpts&&(input.requiredKnowledge||originalAnswerOnly(question));
-  const explanationMode = purpose === 'answer' && input.knowledgeExplanation && (input.requiredKnowledge || originalAnswerOnly(question)
+  const explanationMode = purpose === 'answer' && input.knowledgeExplanation && (input.naturalKnowledge || input.requiredKnowledge || originalAnswerOnly(question)
     || dispatchTools.some(tool => tool.name === 'final_response' && ((tool.parameters.properties as Record<string, { enum?: string[] }>)?.kind?.enum || []).includes('knowledge_explanation')));
   const reportMode = purpose === 'answer' && dispatchTools.some(tool => tool.name === 'final_response'
     && ((tool.parameters.properties as Record<string, { enum?: string[] }>)?.kind?.enum || []).includes('report_answer'));
-  const policyView = purpose === 'answer' ? projectSynthesisPolicy(focused,Boolean(excerptMode),explanationMode?knowledgeExplanationInstructions:reportMode?reportCoverageInstructions:undefined) : focused;
+  const policyView = purpose === 'answer' ? projectSynthesisPolicy(focused,Boolean(excerptMode),explanationMode
+    ? input.naturalKnowledge ? naturalKnowledgeInstructions : knowledgeExplanationInstructions : reportMode?reportCoverageInstructions:undefined) : focused;
   const contentView = input.profile && purpose === 'answer' ? projectConsultationModelView(policyView, dispatchTools) : policyView;
   const excerptView=excerptMode?sourceExcerptModelView(contentView):contentView;
   if (excerptMode && input.sourceQuestionCoverage) excerptView.push({ role: 'system', content: [{ type: 'text', text: sourceQuestionCoverageInstructions }] });
