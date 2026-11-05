@@ -225,7 +225,7 @@ export const agentSourceFinalProtocol = 'source-final-kind-v7';
 export const agentToolFinalProtocol = 'deferred-structured-final-v1';
 export const agentNeedBatchProtocol = 'same-turn-need-batch-v2';
 export const agentDesignerProtocol = 'designer-recommendation-v1';
-export type DesignerToolSnapshot = DesignerSnapshot & { count?: number; needContext?: boolean; notice?: string };
+export type DesignerToolSnapshot = DesignerSnapshot & { count?: number; needContext?: boolean; notice?: string; requestMessageIds?: string[] };
 /** A designer lead-in may only describe published works. Completion, price,
  * availability and visit promises have no service receipt here; an explicit
  * "可以申请联系" remains allowed. */
@@ -1662,18 +1662,20 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             return scoped(async (tx, context) => {
               const cached = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`);
               const snapshot = cached ? cached.private_checkpoint as DesignerToolSnapshot : await (async () => {
-                const result = await recommendDesigners(tx, lease.actor, context.conversation, { ...query, triggerText: reviewContext.currentQuestion });
+                const result = await recommendDesigners(tx, lease.actor, context.conversation, { ...query, triggerText: reviewContext.currentQuestion },
+                  { triggerMessageId: String(initial.trigger.id) });
                 return {
                   ...(result.cityCode ? { cityCode: result.cityCode } : {}), ...(result.style ? { style: result.style } : {}),
                   ...(result.layout ? { layout: result.layout } : {}), communityId: null, count: result.items.length,
-                  needContext: result.needContext === true, notice: result.notice,
+                  needContext: result.needContext === true, notice: result.notice, requestMessageIds: result.requestMessageIds,
                   items: result.items.map(item => ({ workId: item.work.id, versionId: item.work.versionId })),
                 } satisfies DesignerToolSnapshot;
               })();
               if (!cached) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint,input_summary)
                 values(${lease.enterpriseId},${lease.runId},${sequence},'retrieval','designers.search.v1',1,'succeeded',${JSON.stringify(snapshot)}::jsonb,
                   ${JSON.stringify({ protocol: agentDesignerProtocol, count: snapshot.count ?? 0, needContext: snapshot.needContext === true,
-                    scope: { cityCode: snapshot.cityCode ?? null, style: snapshot.style ?? null, layout: snapshot.layout ?? null } })}::jsonb)`);
+                    scope: { cityCode: snapshot.cityCode ?? null, style: snapshot.style ?? null, layout: snapshot.layout ?? null },
+                    requestMessageIds: snapshot.requestMessageIds ?? [] })}::jsonb)`);
               return { content: JSON.stringify({ resultKey, count: snapshot.count ?? 0, needContext: snapshot.needContext === true, notice: snapshot.notice,
                 instructions: snapshot.needContext
                   ? '本次没有可用的明确地区。用final_response kind=designers与本resultKey说明可允许定位后通过现有推荐入口重试，或补充房屋所在城市；风格/户型不是必填。不猜城市、不编造设计师或作品。'

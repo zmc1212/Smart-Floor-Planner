@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
 import { one, type Row } from '@/db/repositories/assistant-repository';
-import { id, type ActorContext } from '@/lib/assistant/contracts';
+import { fail, id, safeText, type ActorContext } from '@/lib/assistant/contracts';
 import { readMemory } from '@/lib/assistant/agent/memory';
 import { CITY_OPTIONS } from './regions';
 import { LAYOUT_OPTIONS, STYLE_OPTIONS } from './options';
@@ -71,21 +71,51 @@ function card(candidate: Candidate, reason: string, match: string): DesignerCard
   };
 }
 
-export async function recommendDesigners(tx: PostgresTransaction, actor: ActorContext, conversation: Row, input: Row = {}): Promise<{ items: DesignerCard[]; notice: string; needContext?: boolean; cityCode?: string; style?: string; layout?: string }> {
+/** Continue only the immediately preceding, successful designer lookup.
+ * These are authorized original messages, not inferred or saved need facts.
+ * Ordinary replies, intervening user turns and other consultations do not carry
+ * a preference into this read. Publication is still checked independently. */
+async function designerRequestContext(tx: PostgresTransaction, actor: ActorContext, conversation: Row, input: Row,
+  context?: { triggerMessageId: string }): Promise<{ triggerText: string; requestMessageIds: string[] }> {
+  const triggerText = typeof input.triggerText === 'string' ? input.triggerText : '';
+  if (!context || actor.principal.kind !== 'user' || conversation.purpose !== 'customer_consultation')
+    return { triggerText, requestMessageIds: [] };
+  const current = await one(tx, sql`select id,seq,content from app.assistant_messages where enterprise_id=${actor.enterpriseId}
+    and conversation_id=${String(conversation.id)} and id=${id(context.triggerMessageId)} and author_kind='user'`);
+  if (!current || safeText(current.content as Parameters<typeof safeText>[0]) !== triggerText) fail('context_changed');
+  const prior = await one(tx, sql`select source.id,source.content from app.assistant_messages response
+    join app.assistant_runs r on r.enterprise_id=response.enterprise_id and r.conversation_id=response.conversation_id
+      and r.output_message_id=response.id and r.status='succeeded'
+    join app.assistant_messages source on source.enterprise_id=r.enterprise_id and source.conversation_id=r.conversation_id
+      and source.id=r.trigger_message_id and source.author_kind='user'
+    where response.enterprise_id=${actor.enterpriseId} and response.conversation_id=${String(conversation.id)}
+      and response.id=(select m.id from app.assistant_messages m where m.enterprise_id=${actor.enterpriseId}
+        and m.conversation_id=${String(conversation.id)} and m.author_kind='assistant' and m.seq<${String(current.seq)} order by m.seq desc limit 1)
+      and exists(select 1 from app.assistant_run_steps s where s.enterprise_id=r.enterprise_id and s.run_id=r.id
+        and s.capability_name='designers.search.v1' and s.status='succeeded')
+      and not exists(select 1 from app.assistant_messages m where m.enterprise_id=source.enterprise_id
+        and m.conversation_id=source.conversation_id and m.author_kind='user' and m.seq>source.seq and m.seq<${String(current.seq)})`);
+  return { triggerText: prior ? safeText(prior.content as Parameters<typeof safeText>[0]) + '\n' + triggerText : triggerText,
+    requestMessageIds: [...(prior ? [String(prior.id)] : []), String(current.id)] };
+}
+
+export async function recommendDesigners(tx: PostgresTransaction, actor: ActorContext, conversation: Row, input: Row = {},
+  context?: { triggerMessageId: string }): Promise<{ items: DesignerCard[]; notice: string; needContext?: boolean; cityCode?: string; style?: string; layout?: string; requestMessageIds?: string[] }> {
+  const request = await designerRequestContext(tx, actor, conversation, input, context);
   const facts = readMemory(conversation.entry_snapshot).facts.filter(fact => fact.status === 'current');
   const query = resolveDesignerQuery({
     memoryHousing: facts.filter(fact => fact.field === 'housing').map(fact => fact.value).join(' '),
     memoryStyle: facts.filter(fact => fact.field === 'style').map(fact => fact.value).join(' '),
-    triggerText: typeof input.triggerText === 'string' ? input.triggerText : '',
+    triggerText: request.triggerText,
     input,
     location: recommendationRegion(conversation.entry_snapshot)?.source === 'wechat_location'
       ? recommendationRegion(conversation.entry_snapshot) as NearbyRegion : null,
   });
-  if (!query) return { items: [], notice: designerNotice, needContext: true };
+  if (!query) return { items: [], notice: designerNotice, needContext: true, requestMessageIds: request.requestMessageIds };
   const candidates = (await portfolioCandidates(tx, actor.enterpriseId, { city: query.cityCode, style: query.style || undefined, layout: query.layout || undefined, recommend: true }))
     .filter(candidate => servesCity(candidate, query.cityCode));
   const items = matchDesigners(candidates, query).map(({ candidate, reason, match }) => card(candidate, reason, match));
-  return { items, notice: designerNotice, cityCode: query.cityCode, style: query.style, layout: query.layout };
+  return { items, notice: designerNotice, cityCode: query.cityCode, style: query.style, layout: query.layout, requestMessageIds: request.requestMessageIds };
 }
 
 export type DesignerSnapshot = {
