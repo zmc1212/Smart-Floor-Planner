@@ -1802,7 +1802,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               // Distinguish only a known absent profile before I/O; never swallow real/unknown provider failures.
               const profile = await scoped(async tx => one(tx, sql`select active_index_profile_id from app.assistant_enterprise_settings where enterprise_id=${lease.enterpriseId}`));
               if (!profile?.active_index_profile_id) { evidence = []; knowledgeStatus = 'not_ready'; }
-              else {const query=anchorKnowledgeQuery(input.query,safeText(initial.trigger.content as Parameters<typeof safeText>[0]));const result=await retrieveKnowledge(String(initial.conversation.id),lease.actor,query,Number(initial.run.knowledge_epoch));evidence=result.evidence;diagnostic=result.diagnostic;}
+              else {const query=anchorKnowledgeQuery(input.query,safeText(initial.trigger.content as Parameters<typeof safeText>[0]));const result=await retrieveKnowledge(String(initial.conversation.id),lease.actor,query,Number(initial.run.knowledge_epoch),undefined,undefined,sourceMode.naturalKnowledge?'ranked':'document_coverage');evidence=result.evidence;diagnostic=result.diagnostic;}
             }
             const selected = evidence.filter(e => e.similarity === undefined || e.similarity >= 0.3).slice(0, 5);
             if(diagnostic)diagnostic={...diagnostic,candidates:diagnostic.candidates.map(c=>{const included=selected.find(e=>e.ref.id===c.ref.id);return {...c,contextIncluded:!!included,contextChars:included?Array.from(included.text).length:0};})};

@@ -46,3 +46,22 @@ test('document preference comes from the current quoted source, never model-adde
   assert.deepEqual(requestedKnowledgeTitles(anchorKnowledgeQuery('《别的手册》','请解释《精艺》里的管根处理。')),['精艺']);
   assert.deepEqual(requestedKnowledgeTitles(anchorKnowledgeQuery('《模型添加的手册》','管根怎么处理？')),[]);
 });
+
+test('natural follow-up retains saved2205 tiling prerequisites instead of lower-ranked photo records',()=>{
+  const ranked=[
+    {id:'2841',document_id:'405'}, {id:'2844',document_id:'405'}, {id:'2837',document_id:'405'},
+    {id:'2842',document_id:'405'}, {id:'2848',document_id:'405',text:'保护层干透后施工面层防水，二次闭水合格后贴砖。'},
+    {id:'2835',document_id:'405'}, {id:'2833',document_id:'404'}, {id:'2828',document_id:'404'}, {id:'7',document_id:'7'},
+  ];
+  assert.ok(!selectContextCandidates(ranked,new Map()).some(c=>c.id==='2848'));
+  const selected=selectContextCandidates(ranked,new Map(),5,new Set(),'ranked');
+  assert.equal(selected.length,5);assert.equal(selected[4],ranked[4]);assert.ok(!selected.some(c=>c.id==='7'));
+});
+
+test('natural ranking preserves applicability and explicit-source precedence without changing legacy coverage',()=>{
+  const rows=[{id:'wrong-stage',document_id:'named'},{id:'top',document_id:'other'},
+    {id:'named',document_id:'named'},{id:'unknown',document_id:'other'}];
+  const conditions=new Map([['wrong-stage',state('not_applicable')],['unknown',state('unknown')]]);
+  assert.deepEqual(selectContextCandidates(rows,conditions,3,new Set(['named']),'ranked').map(c=>c.id),['named','top','unknown']);
+  assert.equal(selectContextCandidates(rows,conditions,5,new Set(['named']),'ranked').at(-1)?.id,'wrong-stage');
+});

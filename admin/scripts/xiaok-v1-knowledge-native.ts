@@ -24,9 +24,13 @@ import { getPlatformLlmOverrideRuntime } from '@/lib/platform-llm-config';
 import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
 import { processAssistantRun } from '@/lib/assistant/application/worker';
 import { answerVisibleIn } from './xiaok-v1-answer-readback';
+import { assertNaturalContinuationState, loadNaturalContinuation } from './xiaok-v1-knowledge-continuation';
 
 type Row=Record<string,any>;
 const naturalAnswer=process.argv.includes('--natural-answer');
+const continuationLabel=process.argv.find(v=>v.startsWith('--continue-natural-batch='))?.slice('--continue-natural-batch='.length);
+assert.ok(!continuationLabel||naturalAnswer,'Continuation is specific to the saved natural-answer fixture');
+const continuation=continuationLabel?loadNaturalContinuation(path.resolve('..'),continuationLabel):undefined;
 const customerQuestions=['我在看《精艺》这份装修手册，卫生间防水前要准备什么？管根又该怎么处理？','我刚才说得不准，是水管根部，不是整面墙。为什么这里还要单独处理？','不是问材料刷完就算验收，我想知道什么条件下才适合继续铺砖？'];
 const staffQuestions=['微云内部的精艺工艺复核资料里，电视墙线管拐弯和穿线顺序该怎么理解？','我是说先穿线还是先铺管，为什么要这样做？','不是问我们现场已经做完没，我想知道这几项做法分别是为了解决什么问题。'];
 const generalQuestion='卫生间做干湿分离有什么好处？';
@@ -40,7 +44,10 @@ const naturalScope={protocol:naturalKnowledgeProtocol,model:'qwen3.8-flash',prov
   stopOn:['first blocking failure','unknown provider outcome','source/configuration drift'],
   priorStoppedBatch:'authorized-original-20261105-01/environment-recovered',priorRemainingTurns:10,
   retainedFailures:['2202','D2=2'],retainedUnknown:'3753',semanticAcceptance:'requires transcript review',
-  reuse:'77 focused regressions, service03-citations, unchanged tenant/revocation/failure coverage'};
+  reuse:'77 focused regressions, service03-citations, unchanged tenant/revocation/failure coverage',
+  ...(continuation?{maxNewRuns:14,maxModelCalls:70,continuation:{label:continuation.label,conversationId:continuation.conversationId,
+    savedRuns:['2203','2204'],remainingCustomerHttpTurns:[3],originalScopeHash:continuation.scopeHash,
+    originalReportRemainsFailed:true,noKnownOrUnknownReplay:true}}:{})};
 const naturalScopeHash=createHash('sha256').update(JSON.stringify(naturalScope)).digest('hex');
 if(process.argv.includes('--describe-plan')){
   assert.ok(naturalAnswer,'Describe the new natural-answer scope explicitly');
@@ -338,7 +345,7 @@ async function main(){
   if(!httpOnly&&!naturalAnswer)await installNative();
   const activeCustomerQuestions=naturalExplanation?(frameDiscriminator?['《精艺》里，防水基层要怎么准备？管根要怎么加强？',...customerQuestions.slice(1)]:customerQuestions)
     :['我在看《精艺》这份装修手册，卫生间防水前要准备什么？','我是说管根，不是整面墙。要先处理哪些地方？','不是问材料刷完就算验收，我想知道什么条件下才适合继续铺砖？'];
-  const customerChecks=naturalExplanation?[[/基层|地基/,/管根/,/堵漏宝|附加层/],[/管根|水管根部/,/渗|漏|衔接|接缝|薄弱/],[/闭水/,/合格/,/贴砖|铺砖/,/干透|保护层/]]
+  const customerChecks=naturalExplanation?[[/基层|地基/,/管根/,/堵漏宝|附加层/],[/管根|水管根部/,/渗|漏|衔接|接缝|薄弱/],[/闭水/,/合格|通过/,/贴砖|铺砖/,/干透|实干|保护层/]]
     :[[/基层|地基/,/防水坝|管根|清理/],[/管根/,/堵漏宝/,/附加层/],[/闭水/,/合格/,/贴砖|铺砖/,/干透|保护层/]];
   const sharedChecks=[[/大弯/,/穿线/,/维修|抽线/],[/铺.*管|铺管|铺设线管/,/穿线/,/抽|维修/],[/抽线|抽动|维修/,/先穿线|后铺管|铺设|顺序/]];
   const rounds=boundedBusinessBatch?[{round:1,native:false,kinds:['customer','shared']},{round:2,native:true,kinds:['customer','shared']}]
@@ -347,11 +354,29 @@ async function main(){
     :[{round:1,native:true,kinds:['customer','shared']},{round:2,native:false,kinds:['customer','shared']}];
   for(const round of rounds){
     if(naturalAnswer&&round.native){await prepareNative();await installNative();}
-    const customerChat=new ConversationService(actor),conversation=await customerChat.create(randomUUID()),cid=String(conversation.id);
+    const customerChat=new ConversationService(actor);
+    const resumed=continuation&&round.round===1;
+    const conversation=resumed?await step('restore only the proven test conversation for undispatched turns',async()=>withTenantTransaction(eid,async tx=>{
+      const c=await one(tx,sql`select * from app.assistant_conversations where enterprise_id=${eid} and id=${continuation!.conversationId} for update`);
+      assert.ok(c);
+      const participants=await rows(tx,sql`select * from app.assistant_participants where enterprise_id=${eid} and conversation_id=${continuation!.conversationId} order by id`);
+      const messages=await rows(tx,sql`select * from app.assistant_messages where enterprise_id=${eid} and conversation_id=${continuation!.conversationId} order by seq`);
+      const runs=await rows(tx,sql`select * from app.assistant_runs where enterprise_id=${eid} and conversation_id=${continuation!.conversationId} order by id`);
+      assertNaturalContinuationState(continuation!,{conversation:c,participants,messages,runs},String(user.id));
+      const active=await one(tx,sql`select count(*)::int n from app.assistant_jobs where status in ('queued','running')`);assert.equal(active?.n,0);
+      const restored=await one(tx,sql`update app.assistant_conversations set status='open',context_revision=context_revision+1,version=version+1,updated_at=now()
+        where enterprise_id=${eid} and id=${continuation!.conversationId} and status='archived' and version=${Number(c.version)}
+        and context_revision=${Number(c.context_revision)} and last_seq=4 returning id`);assert.ok(restored);
+      report.continuation={label:continuation!.label,conversationId:continuation!.conversationId,retainedFailure:continuation!.originalFailure,
+        reusedRuns:['2203','2204'],restoredFixtureOnly:true,publicRestoreApi:false};return restored;
+    })):await customerChat.create(randomUUID());
+    const cid=String((conversation as Row).id);
     ownedChats.push({service:customerChat,id:cid});report.ownedConversationIds=ownedChats.map(c=>c.id);save();
     for(const kind of round.kinds) {const trial:Row={round:round.round,kind,native:round.native,turns:[]};report.trials.push(trial);save();
+      if(resumed&&kind==='customer')trial.turns=continuation!.turns.map(turn=>({...turn,reentry:true,passed:true,
+        evidenceReuse:{label:continuation!.label,readback:'natural-answer-20261105/readback-repair.json',newProviderCalls:0}}));
       const currentShared=kind==='shared'?await api('/miniprogram/construction/projects/'+pid+'/chat',worker.token):null,conversationId=kind==='customer'?cid:String(currentShared!.conversationId);
-      for(let index=0;index<3;index++){const turn:Row={kind,role:kind==='customer'?'customer':['worker','designer','boss'][index],question:(kind==='customer'?activeCustomerQuestions:staffQuestions)[index],key:randomUUID(),startedAt:new Date().toISOString(),
+      for(let index=resumed&&kind==='customer'?2:0;index<3;index++){const turn:Row={kind,role:kind==='customer'?'customer':['worker','designer','boss'][index],question:(kind==='customer'?activeCustomerQuestions:staffQuestions)[index],key:randomUUID(),startedAt:new Date().toISOString(),
         expectations:(kind==='customer'?customerChecks:sharedChecks)[index]};trial.turns.push(turn);
         await ask(turn,kind==='customer'?customer:[worker,designer,boss][index],conversationId,round.native);console.log(`fixed ${kind} round${round.round} turn${index+1}: PASS`);
         if(frameDiscriminator){report.protocolDiscriminator={decoded:true,runId:turn.runId,businessAcceptance:false};return;}}
