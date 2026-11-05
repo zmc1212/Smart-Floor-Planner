@@ -7,7 +7,7 @@ import { reviewClaimProtocol } from './review-claims';
 import { reviewCompletionProtocol } from './review-completion';
 import { conversationImageProtocol } from './image-context';
 export type AgentConfig = { runtime: 'langgraph-v1'; model: string; providerKey: string; imageInput: boolean; tools: boolean; probeVersion: string; consultation?: ConsultationBinding; structuredFinal?:typeof nativeFinalProtocol; requirementClaims?: typeof reviewClaimProtocol; reviewCompletion?: typeof reviewCompletionProtocol; imageContext?: typeof conversationImageProtocol;
-  knowledgeExplanation?: 'reviewed-knowledge-explanation-v1' };
+  knowledgeExplanation?: 'reviewed-knowledge-explanation-v1'; knowledgeQuantityScope?: 'reviewed-coating-quantity-scope-v1' };
 /** Deliberately opt-in per enterprise; missing/incomplete capability evidence stays on the legacy executor. */
 export function agentConfig(value: unknown): AgentConfig | null {
   if (!value || typeof value !== 'object') return null;
@@ -17,6 +17,8 @@ export function agentConfig(value: unknown): AgentConfig | null {
   // established answer mode for ordinary enterprise users during development.
   if (c.knowledgeExplanation !== undefined && (c.knowledgeExplanation !== 'reviewed-knowledge-explanation-v1'
     || c.tools !== true || c.structuredFinal !== undefined)) fail('assistant_capability_forbidden', 403);
+  if (c.knowledgeQuantityScope !== undefined && (c.knowledgeQuantityScope !== 'reviewed-coating-quantity-scope-v1'
+    || c.knowledgeExplanation !== 'reviewed-knowledge-explanation-v1')) fail('assistant_capability_forbidden', 403);
   // An invalid opt-in must never silently dispatch through the legacy model.
   if (c.consultation !== undefined && (!consultation || c.model !== consultationProfile(consultation.profile)?.model || c.tools !== true)) fail('assistant_capability_forbidden', 403);
   if (c.imageContext !== undefined && (c.imageContext !== conversationImageProtocol || c.imageInput !== true || c.structuredFinal !== nativeFinalProtocol)) fail('assistant_capability_forbidden', 403);
@@ -28,6 +30,7 @@ export function agentConfig(value: unknown): AgentConfig | null {
     || typeof c.imageInput !== 'boolean' || typeof c.tools !== 'boolean') return null;
   return { runtime: c.runtime, model: c.model, providerKey: c.providerKey, imageInput: c.imageInput, tools: c.tools, probeVersion: c.probeVersion,
     ...(c.knowledgeExplanation ? { knowledgeExplanation: c.knowledgeExplanation as AgentConfig['knowledgeExplanation'] } : {}),
+    ...(c.knowledgeQuantityScope ? { knowledgeQuantityScope: c.knowledgeQuantityScope as AgentConfig['knowledgeQuantityScope'] } : {}),
     ...(consultation ? { consultation } : {}),...(c.structuredFinal===nativeFinalProtocol?{structuredFinal:nativeFinalProtocol}:{}),
     ...(c.requirementClaims === reviewClaimProtocol ? { requirementClaims: reviewClaimProtocol } : {}),
     ...(c.reviewCompletion === reviewCompletionProtocol ? { reviewCompletion: reviewCompletionProtocol } : {}),
@@ -43,5 +46,6 @@ export function agentCapabilityFingerprint(config: AgentConfig | null) {
   delete capability.requirementClaims;
   delete capability.reviewCompletion;
   delete capability.knowledgeExplanation; // Strategy is bound in the run snapshot.
+  delete capability.knowledgeQuantityScope;
   return fingerprint(capability);
 }

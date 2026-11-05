@@ -164,6 +164,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
         reportReadCompletion: reportReadCompletionProtocol, reportHistoryScope: reportHistoryScopeProtocol, reportCoordination: reportCoordinationProtocol } : {}),
       ...(agent && !agent.structuredFinal && ['reply','site.question'].includes(purpose)
         ? { sourceAnswerMode: agent.knowledgeExplanation === knowledgeExplanationProtocol ? knowledgeExplanationProtocol : sourceExcerptProtocol,
+          ...(agent.knowledgeQuantityScope ? { knowledgeQuantityScope: agent.knowledgeQuantityScope } : {}),
           sourceQuestionCoverage: sourceQuestionCoverageProtocol } : {}),
       ...(speech ? { localSpeech: { protocol: 'local-speech-v1', configurationHash: speechBinding } } : {}),
       ...(reservation.imageContextBudget ? { imageContextBudget: reservation.imageContextBudget } : {}),

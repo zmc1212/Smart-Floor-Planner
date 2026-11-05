@@ -363,13 +363,16 @@ const repairLayoutInstructions = '最终仍最多6段，优先二至四个必要
 export const citationRepairPrefix='服务端引用校验未通过，这是同一回答的唯一一次格式修复，不是新提问或业务授权。';
 export const citationRepairInstructions='只用已有synthesisSources。直接修改numericTextPaths指定的正文路径：先核对numericSourceCandidates中的本轮已有来源，只有原文支持相同对象、条件、单位时才补选引用并保留正确数值；候选不是自动证明。确无依据才删除removeUnsupportedNumbers中的主张。permittedQuoteNumbers只表示本段现有原文中的数字，不自动授权任意单位/比较/推论。当前无计算校验工具，不输出原文没有的差值、合计、换算或推算天数，也不能换成汉字量数。标题/文件名版号不能代替quote。copyExactQuote保持同源原字词/标点；numericQuoteCorrections仅补已引用正式版本标题，不授权费用、工期、尺寸或批准。每段量数须有本段原文及条件支持。沿原segments/citations格式，只提交final_response，不调用工具或扩大权限。'+repairLayoutInstructions;
 
+function coatingPassQuantities(text: string) {
+  return [...text.matchAll(/([零〇一二两三四五六七八九十百千万]+\s*遍)(?=(?:涂层|涂刷|交叉涂刷|刷漆))|(?:涂刷|刷漆)\s*([零〇一二两三四五六七八九十百千万]+\s*遍)/gu)]
+    .map(match => (match[1] || match[2]).replace(/[ \t\u3000]/g, ''));
+}
 function wordQuantities(text: string) {
   const values = [...text.matchAll(/[零〇一二两三四五六七八九十百千万]+(?:点[零〇一二两三四五六七八九]+)?\s*(?:毫米|厘米|公分|千米|米|小时|分钟|秒|天|万元|元)/gu)]
     .map(match => match[0].replace(/[ \t\u3000]/g, ''));
   // Only observed coating-pass quantities, not conversational repetition such
   // as “再说两遍” or “再核对两遍”. Preserve literal quantities, never convert.
-  const passes = [...text.matchAll(/([零〇一二两三四五六七八九十百千万]+\s*遍)(?=(?:涂层|涂刷|交叉涂刷|刷漆))|(?:涂刷|刷漆)\s*([零〇一二两三四五六七八九十百千万]+\s*遍)/gu)]
-    .map(match => (match[1] || match[2]).replace(/[ \t\u3000]/g, ''));
+  const passes = coatingPassQuantities(text);
   return [...values, ...passes];
 }
 function unsupportedWordQuantities(text: string, quoted: string) {
@@ -650,6 +653,17 @@ export function parseSynthesis(raw: string, sources: SynthesisSource[], context:
   return checkedSynthesis(raw, sources, context);
 }
 
+export type PendingCoatingQuantity = { segment: number; quantities: string[] };
+/** A preparation result, never an accepted reply. Only the bound knowledge
+ * explanation reviewer may decide whether these mentions assert a quantity.
+ * Digits, other word units, citations, receipts and scope retain their guards. */
+export function prepareCoatingQuantityReview(raw: string, sources: SynthesisSource[], context: SynthesisReviewContext) {
+  if (context.knowledgeExplanation !== 'reviewed-knowledge-explanation-v1') fail('assistant_capability_forbidden', 403);
+  const pending: PendingCoatingQuantity[] = [];
+  const answer = checkedSynthesis(raw, sources, context, undefined, pending);
+  return { answer, pending };
+}
+
 /** Keep a separately sourced explanation when an otherwise valid draft adds
  * an unsupported observation about a cited published site record. */
 export function referUnsupportedSiteObservation(raw: string, sources: SynthesisSource[], context: SynthesisReviewContext): string {
@@ -689,7 +703,7 @@ export function referUnsupportedSiteObservation(raw: string, sources: SynthesisS
 /** A diagnostic collector is private to the existing repair feedback. It never
  * yields an accepted answer or bypasses structural/source/conflict validation. */
 function checkedSynthesis(raw: string, sources: SynthesisSource[], context: SynthesisReviewContext,
-  rejected?: Array<{ path: string; code: string }>): SynthesisAnswer {
+  rejected?: Array<{ path: string; code: string }>, pending?: PendingCoatingQuantity[]): SynthesisAnswer {
   if (Buffer.byteLength(raw) > 24000) fail('invalid_model_answer', 502);
   let value: SynthesisAnswer;
   try { value = JSON.parse(raw); } catch { return fail('invalid_model_answer', 502); }
@@ -726,8 +740,11 @@ function checkedSynthesis(raw: string, sources: SynthesisSource[], context: Synt
     const numericText = citedClock ? claimText.replace(/24\s*小时制/g, '') : claimText;
     try {
       if ((numericText.match(/\d+(?:\.\d+)?/g) || []).some(n => !numbers.has(n))) fail('unsupported_model_commitment', 502);
-      if (unsupportedWordQuantities(numericText, cited.join('\n')).length) fail('unsupported_model_commitment', 502);
+      const missing = unsupportedWordQuantities(numericText, cited.join('\n'));
+      const passes = pending ? new Set(coatingPassQuantities(numericText)) : new Set<string>();
+      if (missing.some(quantity => !passes.has(quantity))) fail('unsupported_model_commitment', 502);
       parseAgentReply(JSON.stringify({ kind: 'general', text: s.text }), { formalStatusEvidence: formalStatusEvidence(s.citations, sources, context) });
+      if (pending && missing.length) pending.push({ segment: value.segments.indexOf(s), quantities: [...new Set(missing)] });
     } catch (error) {
       if (!rejected || !(error instanceof AssistantError) || error.code !== 'unsupported_model_commitment') throw error;
       rejected.push({ path: `segments[${value.segments.indexOf(s)}].text`, code: error.code });

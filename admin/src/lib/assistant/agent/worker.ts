@@ -61,7 +61,7 @@ import { anchorKnowledgeQuery } from '../knowledge/query-context';
 import { sourceExcerptProtocol, sourceExcerptFinalTool, sourceExcerptIds, parseSourceExcerptAnswer } from './source-excerpts';
 import { sourceQuestionCoverageProtocol, sourceQuestionReadTool, sourceQuestionFinalTool, parseSourceQuestionQuery,
   readSourceQuestionCoverage, parseSourceQuestionAnswer, type SourceQuestionCoverage } from './source-question-coverage';
-import { knowledgeExplanationProtocol, knowledgeExplanationInstructions, exactKnowledgeQuoteRequested, knowledgeExplanationReadTool, knowledgeExplanationFinalTool,
+import { knowledgeExplanationProtocol, knowledgeQuantityScopeProtocol, knowledgeExplanationInstructions, exactKnowledgeQuoteRequested, knowledgeExplanationReadTool, knowledgeExplanationFinalTool,
   prepareKnowledgeExplanation, acceptKnowledgeExplanation, knowledgeExplanationFailure, parseKnowledgeExplanationQuery, assertExplanationDispatchBudget } from './knowledge-explanation';
 import { knowledgeContext, projectKnowledgeContextStep, projectKnowledgeContextAvailable } from '../knowledge/applicability-context';
 import { fitAgentContext, originalMessageId, agentRequestBudget, imageContextBudgetPolicy } from './context-budget';
@@ -829,6 +829,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     };
     const finalOutputMode = reportFinalCarrier ? 'function_call' as const : 'json_schema' as const;
     const explanationBound = !nativeFinalization && (initial.run.policy_snapshot as Row).sourceAnswerMode === knowledgeExplanationProtocol;
+    const quantityScope = (initial.run.policy_snapshot as Row).knowledgeQuantityScope;
+    if (quantityScope !== undefined && (!explanationBound || quantityScope !== knowledgeQuantityScopeProtocol)) fail('assistant_capability_forbidden', 403);
     const exactQuote = explanationBound && exactKnowledgeQuoteRequested(reviewContext.currentQuestion);
     const drawingChecklistRead = !explanationBound && !nativeFinalization && initial.config.tools
       && (initial.run.policy_snapshot as Row).drawingChecklistRead === drawingChecklistReadProtocol
@@ -1379,7 +1381,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                 if (!retrieval) fail('source_read_required', 502);
                 const evidence = await currentSynthesisContext(tx, lease.actor, context.conversation, lease.runId);
                 return prepareKnowledgeExplanation(raw, evidence.sources, readSourceQuestionCoverage((retrieval.input_summary as Row)?.questionCoverage),
-                  reviewContext, initial.messages);
+                  reviewContext, initial.messages, quantityScope as typeof knowledgeQuantityScopeProtocol | undefined);
               });
               // A separate purpose keeps the exact review schema out of ordinary
               // planning/final projections, while sharing dispatch, usage and
@@ -1890,7 +1892,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             and run_id=${lease.runId} and kind='retrieval' and status='succeeded' order by step_seq desc limit 1`);
           if (!retrieval) fail('source_read_required', 502);
           const draft = prepareKnowledgeExplanation(result.output?.text || '', evidence.sources,
-            readSourceQuestionCoverage((retrieval.input_summary as Row)?.questionCoverage), reviewContext, initial.messages);
+            readSourceQuestionCoverage((retrieval.input_summary as Row)?.questionCoverage), reviewContext, initial.messages,
+            quantityScope as typeof knowledgeQuantityScopeProtocol | undefined);
           const proof = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
             and run_id=${lease.runId} and kind='agent_explanation_review' and status='succeeded' and input_summary->>'binding'=${draft.binding}`);
           if (!proof || acceptKnowledgeExplanation(draft, (proof.private_checkpoint as Row).review as ModelTurnOutput, draft.binding)) fail('context_changed');
