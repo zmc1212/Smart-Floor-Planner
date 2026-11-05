@@ -20,13 +20,18 @@ import { wechatideNativeClient } from './wechatide-native-client';
 import { lockAssistantAcceptance } from './assistant-acceptance-safety.mjs';
 import { reviewBudget, type RetainedReviewHold } from './assistant-review-budget';
 import { knowledgeExplanationProtocol } from '@/lib/assistant/agent/knowledge-explanation';
+import { getPlatformLlmOverrideRuntime } from '@/lib/platform-llm-config';
+import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
+import { processAssistantRun } from '@/lib/assistant/application/worker';
 
 loadEnvConfig(process.cwd(),true);
 type Row=Record<string,any>;
 const root=path.resolve('..'), eid='1454', pid='237', project=path.join(root,'miniprogram');
 const label=process.argv.find(v=>v.startsWith('--label='))?.slice(8)||'native-preflight-01';
 assert.match(label,/^[a-z0-9-]+$/);
-const output=path.join(root,'tmp/v1-01-weiyun-jingyi',label);fs.mkdirSync(output,{recursive:true});
+const evidencePhase=process.argv.find(v=>v.startsWith('--evidence-phase='))?.slice('--evidence-phase='.length);
+if(evidencePhase)assert.match(evidencePhase,/^[a-z0-9-]+$/);
+const output=path.join(root,'tmp/v1-01-weiyun-jingyi',label,...(evidencePhase?[evidencePhase]:[]));fs.mkdirSync(output,{recursive:true});
 assert.ok(!fs.existsSync(path.join(output,'report.json')),'Keep original attempts; use a distinct justified evidence label');
 const ledger=path.join(root,'tmp/agent-contract/trial-v1-knowledge-'+label+'.json');
 const report:Row={startedAt:new Date().toISOString(),enterpriseId:eid,checks:[],trials:[],calls:[],reservationHistory:[],passed:false};
@@ -39,11 +44,17 @@ const retained:RetainedReviewHold[]=['tmp/anythingllm-pilot','tmp/agent-comparis
 let release:(()=>Promise<void>)|undefined,installed=false,ownerId='',ownerUserId='',cloneId='',cloneVersion='';
 let quotaCapacity:Row|null=null;
 let explanationConfig: { before: Row; opted: Row } | undefined;
+let platformConfig: { before: Row; opted: Row } | undefined;
+const ownedChats: Array<{ service: ConversationService; id: string }> = [];
 const knowledge=new KnowledgeService({enterpriseId:eid,adminId:'16'});
 const httpComplete=process.argv.includes('--http-complete'),httpOnly=process.argv.includes('--http-only')||httpComplete,nativePair=process.argv.includes('--native-pair');
 const naturalExplanation=process.argv.includes('--natural-explanation');
 const frameDiscriminator=process.argv.includes('--frame-discriminator');
 const boundedBusinessBatch=process.argv.includes('--bounded-business-batch');
+const reusedInternalId=process.argv.find(v=>v.startsWith('--reuse-internal-source='))?.slice('--reuse-internal-source='.length);
+const authorizedModel=process.argv.find(v=>v.startsWith('--authorized-model='))?.slice(19);
+assert.ok(!reusedInternalId||/^\d+$/.test(reusedInternalId)&&boundedBusinessBatch&&naturalExplanation,'Published source reuse belongs to the authorized original closure scope');
+assert.ok(!authorizedModel||authorizedModel==='qwen3.8-flash'&&!!reusedInternalId,'Only the currently approved model may replace the historical trial binding');
 assert.ok(!frameDiscriminator||(naturalExplanation&&httpOnly),'Frame diagnosis is one HTTP-only engineering probe, never native/business acceptance');
 assert.ok(!boundedBusinessBatch||(naturalExplanation&&!httpOnly&&!frameDiscriminator&&!nativePair),'Closure batch is the two original journeys, HTTP first and native second, with no reused trial');
 assert.ok(!naturalExplanation||!httpComplete,'New semantic mechanism requires two fresh fixed trials; do not reuse the old excerpt journey');
@@ -69,7 +80,7 @@ async function api(url:string,token:string,method='GET',body?:unknown,key?:strin
 }
 async function windowCheck(){
   const r=await execFile('powershell.exe',['-NoProfile','-File',path.join(root,'admin/scripts/wechatide-window-state.ps1')],{windowsHide:true,timeout:10000});
-  const state=JSON.parse(r.stdout.replace(/^\uFEFF/,'').trim()),windows=state.Windows.filter((w:Row)=>['WeChat Web Devtools','miniprogram'].includes(w.Title));
+  const state=JSON.parse(r.stdout.replace(/^\uFEFF/,'').trim()),windows=state.Windows.filter((w:Row)=>reusedInternalId?w.Title==='miniprogram':['WeChat Web Devtools','miniprogram'].includes(w.Title));
   assert.equal(windows.length,1);const w=windows[0],b=w.Minimized?w.NormalBounds:w.Bounds,x=(b.Left+b.Right)/2,y=(b.Top+b.Bottom)/2;
   assert.ok(state.Screens.some((s:Row)=>!s.Primary&&x>=s.Bounds.X&&x<s.Bounds.X+s.Bounds.Width&&y>=s.Bounds.Y&&y<s.Bounds.Y+s.Bounds.Height));
   report.window=state;return {secondaryMonitor:true,minimized:w.Minimized};
@@ -137,6 +148,13 @@ async function ask(turn:Row,current:Row,cid:string,native:boolean){await reserve
       const sent=await api(base+'/messages',current.token,'POST',body,turn.key);turn.runId=String(sent.runId);
       const repeated=await api(base+'/messages',current.token,'POST',body,turn.key);assert.equal(String(repeated.runId),turn.runId);turn.originalKeyReused=true;
     }
+    if(reusedInternalId){
+      const foreign=await withPlatformTransaction(tx=>one(tx,sql`select count(*)::int n from app.assistant_jobs
+        where status in ('queued','running') and (enterprise_id<>${eid} or run_id is distinct from ${turn.runId}::bigint)`));
+      assert.equal(foreign?.n,0,'Another job appeared before the fixed Worker claim');
+      const lease=await claimJob();
+      if(lease){assert.equal(lease.enterpriseId,eid);assert.equal(lease.runId,turn.runId);await processAssistantRun(lease);turn.worker='existing application processor';}
+    }
     save();await wait(async()=>{const value=await withTenantTransaction(eid,tx=>one(tx,sql`select status from app.assistant_runs where enterprise_id=${eid} and id=${turn.runId}`));return value&&!['queued','running'].includes(String(value.status))?value:null;},'configured Worker answer',360);
     await settle(turn);
     if(native){const route=turn.kind==='customer'?'packages/assistant/chat/chat':'packages/construction/chat/chat',page=await pageAt(route);
@@ -168,28 +186,40 @@ async function main(){
   await step('registered Stable CLI and existing authorization',async()=>{const status=await mp.call('check_wechatide_status',{skillVersion:'0.3.11'});
     assert.ok(['equal','agent_ahead'].includes(status.versionRelation));assert.equal(status.loginExpired,false);assert.equal(status.cliTokenRequired,false);
     return {versionRelation:status.versionRelation,loginExpired:false,skillVersion:status.skillVersion,project};});
-  await step('fresh compilation and live official SDK data',async()=>{let last:unknown;for(let i=0;i<2;i++){try{await mp.call('simulator_refresh',{project});await delay(6000);const info=await mp.systemInfo(),page=await mp.currentPage();assert.ok(page&&Object.keys(await page.data()).length);assert.equal(info.windowWidth,390);assert.equal(info.windowHeight,844);return {info,route:page.path,freshCompile:true};}catch(error){last=error;}}throw last;});
+  await step(reusedInternalId?'compiled runtime and live official SDK data':'fresh compilation and live official SDK data',async()=>{if(reusedInternalId){const info=await mp.systemInfo(),page=await mp.currentPage();assert.ok(page&&Object.keys(await page.data()).length);assert.equal(info.windowWidth,390);assert.equal(info.windowHeight,844);return {info,route:page.path,existingRuntime:true,refreshed:false};}let last:unknown;for(let i=0;i<2;i++){try{await mp.call('simulator_refresh',{project});await delay(6000);const info=await mp.systemInfo(),page=await mp.currentPage();assert.ok(page&&Object.keys(await page.data()).length);assert.equal(info.windowWidth,390);assert.equal(info.windowHeight,844);return {info,route:page.path,freshCompile:true};}catch(error){last=error;}}throw last;});
   }
   if(!process.argv.includes('--run-fixed-trials')){report.passed=true;return;}
   assertBinding();report.runtimeBefore=await runtimeSnapshot();
   report.budgetBefore=reviewBudget(root).usedMicros;report.fixedPlan={totalTriesPerJourney:2,thisBatchTrialsPerJourney:httpComplete?{customer:1,shared:2}:httpOnly||nativePair?1:2,
-    customerTurns:3,sharedTurns:3,maxNewRuns:httpComplete?9:httpOnly||nativePair?6:12,configuredModelUnchanged:true,
+    customerTurns:3,sharedTurns:3,maxNewRuns:httpComplete?9:httpOnly||nativePair?6:12,configuredModelUnchanged:!authorizedModel,
+    ...(authorizedModel?{authorizedModel,thinkingDisabled:process.env.ASSISTANT_TEXT_DISABLE_THINKING==='1'}:{}),
     sourceAnswerMode:naturalExplanation?knowledgeExplanationProtocol:'validated-source-excerpts-v1',sourceQuestionCoverage:'source-question-coverage-v1',priorFailures:[{batch:'http-fixed-01',runId:'1596',retained:true},{batch:'excerpt-http-02',runId:'1597',retained:true},{batch:'semantic-final-01',runId:'1602',retained:true}],
     ...(httpComplete?{reusedCustomerTrial:'wire-http-01/customer/round1',unreusedSharedPartial:'wire-http-01/run-1601',pendingZeroModelNative:true}:httpOnly?{pendingNativePair:true}:{}),...(nativePair?{pairedWith:process.argv.find(v=>v.startsWith('--paired-with='))?.slice(14)||(naturalExplanation?'explanation-nullable-http-01':'wire-http-01')}:{})};save();
   // A reversible development-fixture allowance for retained historical token
   // holds. Never settle unknown usage, increase either cash cap or change a model.
-  await step('temporary development token capacity within existing cash caps',async()=>withTenantTransaction(eid,async tx=>{
+  if(!reusedInternalId)await step('temporary development token capacity within existing cash caps',async()=>withTenantTransaction(eid,async tx=>{
     const before=await one(tx,sql`select daily_tokens::text,daily_requests,daily_cost_micros::text from app.assistant_enterprise_settings where enterprise_id=${eid} for update`);
     assert.ok(before);assert.equal(before.daily_tokens,'1200000');assert.equal(before.daily_cost_micros,'100000000');
     await tx.execute(sql`update app.assistant_enterprise_settings set daily_tokens=2200000,version=version+1,updated_at=now() where enterprise_id=${eid}`);
     quotaCapacity=before;report.quotaCapacity={before,temporaryTokens:'2200000',cashCapChanged:false,historicalReservationsChanged:false};return report.quotaCapacity;
   }));save();
-  if(naturalExplanation)await step('temporary development-only explanation strategy; configured model unchanged',async()=>withTenantTransaction(eid,async tx=>{
+  if(authorizedModel)await step('bind the approved model on the existing development provider',async()=>{
+    const before=await withPlatformTransaction(tx=>one(tx,sql`select llm_config from app.platform_configs where key='default'`));
+    const previous=before?.llm_config as Row;
+    assert.equal(previous?.providerKey,'dashscope');assert.equal(previous?.model,'qwen3.7-flash');
+    const opted={...previous,model:authorizedModel};
+    const changed=await withPlatformTransaction(tx=>one(tx,sql`update app.platform_configs set llm_config=${JSON.stringify(opted)}::jsonb
+      where key='default' and llm_config=${JSON.stringify(before!.llm_config)}::jsonb returning key`));assert.ok(changed);
+    platformConfig={before:previous,opted};
+    const runtime=await getPlatformLlmOverrideRuntime();assert.equal(runtime?.modelMappings['chat.general'],authorizedModel);
+    return {model:authorizedModel,credentialsChanged:false,restored:false};
+  });
+  if(naturalExplanation)await step('temporary development-only explanation strategy',async()=>withTenantTransaction(eid,async tx=>{
     const settings=await one(tx,sql`select agent_config from app.assistant_enterprise_settings where enterprise_id=${eid} for update`);
     const before=settings!.agent_config as Row;assert.equal(before.model,'qwen3.7-flash');assert.equal(before.knowledgeExplanation,undefined);
-    const opted={...before,knowledgeExplanation:knowledgeExplanationProtocol};
+    const opted={...before,...(authorizedModel?{model:authorizedModel}:{}),knowledgeExplanation:knowledgeExplanationProtocol};
     await tx.execute(sql`update app.assistant_enterprise_settings set agent_config=${JSON.stringify(opted)}::jsonb,version=version+1,updated_at=now() where enterprise_id=${eid}`);
-    explanationConfig={before,opted};report.strategyOptIn={protocol:knowledgeExplanationProtocol,modelChanged:false,restored:false};return report.strategyOptIn;
+    explanationConfig={before,opted};report.strategyOptIn={protocol:knowledgeExplanationProtocol,modelChanged:!!authorizedModel,model:opted.model,restored:false};return report.strategyOptIn;
   }));
   report.runtimeBefore=await runtimeSnapshot();
   if(frameDiscriminator)report.fixedPlan={...report.fixedPlan,kind:'invalid-function-arguments discriminator only',maxNewRuns:1,
@@ -218,11 +248,21 @@ async function main(){
   const boss=await login({username,password});assert.equal(String(boss.userId),ownerUserId);
   const originals=await withTenantTransaction(eid,tx=>rows(tx,sql`select c.text from app.assistant_knowledge_chunks c join app.assistant_knowledge_versions v
     on v.enterprise_id=c.enterprise_id and v.id=c.document_version_id where c.enterprise_id=${eid} and v.document_id=404 and (c.text like '%线管弯头%' or c.text like '%布管穿线%') order by c.ordinal`));assert.equal(originals.length,2);
+  if(reusedInternalId){
+    const detail=await knowledge.execute('detail',{documentId:reusedInternalId}),document=detail.document as Row;
+    assert.equal(document.title,'合成测试·微云内部精艺工艺复核资料');assert.equal(document.audience,'staff_internal');assert.equal(document.status,'retired');
+    const version=(detail.versions as Row[]).find(v=>String(v.id)===String(document.published_version_id));
+    assert.ok(version?.published_at&&version.index_status==='ready'&&version.content_hash===version.indexed_hash);
+    for(const original of originals)assert.ok(String(version.body).includes(original.text as string),'Reused internal fixture must retain both unchanged original clauses');
+    cloneId=reusedInternalId;cloneVersion=String(version.id);report.temporaryKnowledge={cloneId,cloneVersion,previouslyPublished:true,indexReused:true,originalStatus:'retired'};save();
+    await knowledge.execute('publish',{documentId:cloneId,versionId:cloneVersion,expectedVersion:Number(document.version),expectedEditVersion:Number(version.edit_version)},randomUUID());
+  }else{
   const clone=await knowledge.execute('create',{sourceType:'manual_text',audience:'staff_internal',title:'合成测试·微云内部精艺工艺复核资料',category:'合成测试',body:'微云内部精艺工艺复核资料：原PDF第29页水电工艺标准节选，仅用于本地测试，不是现场完成记录。\n'+originals.map(o=>o.text).join('\n')},randomUUID());
   cloneId=String((clone.document as Row).id);cloneVersion=String((clone.draft as Row).id);report.temporaryKnowledge={cloneId,cloneVersion};save();
   const indexed=await knowledge.execute('index',{documentId:cloneId,versionId:cloneVersion,expectedEditVersion:1},randomUUID());
   await wait(async()=>{const j=await knowledge.execute('job',{jobId:indexed.jobId});if(['failed','indeterminate'].includes(String(j.status)))throw Error('Index '+j.status+'/'+j.last_error);return j.status==='succeeded'?j:null;},'real test-source indexing');
   await knowledge.execute('publish',{documentId:cloneId,versionId:cloneVersion,expectedVersion:1,expectedEditVersion:1},randomUUID());
+  }
   if(!httpOnly){await evaluate(`function(){const app=getApp();if(app.__qaV1Knowledge)throw Error('Another native controller owns the fixture');
     const s=app.__qaV1Knowledge={global:{...app.globalData},hydrate:app.hydrateStoredSession,memory:new Map(),originals:{get:wx.getStorageSync,set:wx.setStorageSync,remove:wx.removeStorageSync,request:wx.request}};
     const page=getCurrentPages().at(-1);s.route=page.route;s.options=page.options||{};
@@ -239,9 +279,10 @@ async function main(){
     :httpOnly?[{round:1,native:false,kinds:['customer','shared']}]:nativePair?[{round:2,native:true,kinds:['customer','shared']}]
     :[{round:1,native:true,kinds:['customer','shared']},{round:2,native:false,kinds:['customer','shared']}];
   for(const round of rounds){
-    const conversation=await new ConversationService(actor).create(randomUUID()),cid=String(conversation.id);
+    const customerChat=new ConversationService(actor),conversation=await customerChat.create(randomUUID()),cid=String(conversation.id);
+    ownedChats.push({service:customerChat,id:cid});report.ownedConversationIds=ownedChats.map(c=>c.id);save();
     for(const kind of round.kinds) {const trial:Row={round:round.round,kind,native:round.native,turns:[]};report.trials.push(trial);save();
-      const currentShared=await api('/miniprogram/construction/projects/'+pid+'/chat',worker.token),conversationId=kind==='customer'?cid:String(currentShared.conversationId);
+      const currentShared=kind==='shared'?await api('/miniprogram/construction/projects/'+pid+'/chat',worker.token):null,conversationId=kind==='customer'?cid:String(currentShared!.conversationId);
       for(let index=0;index<3;index++){const turn:Row={kind,role:kind==='customer'?'customer':['worker','designer','boss'][index],question:(kind==='customer'?customerQuestions:staffQuestions)[index],key:randomUUID(),startedAt:new Date().toISOString(),
         expectations:(kind==='customer'?customerChecks:sharedChecks)[index]};trial.turns.push(turn);
         await ask(turn,kind==='customer'?customer:[worker,designer,boss][index],conversationId,round.native);console.log(`fixed ${kind} round${round.round} turn${index+1}: PASS`);
@@ -264,6 +305,9 @@ main().catch(error=>{report.error=(error as Error).stack||String(error);process.
       wx.getStorageSync=s.originals.get;wx.setStorageSync=s.originals.set;wx.removeStorageSync=s.originals.remove;wx.request=s.originals.request;app.hydrateStoredSession=s.hydrate;
       for(const key of Object.keys(app.globalData))delete app.globalData[key];Object.assign(app.globalData,s.global);delete app.__qaV1Knowledge;return original;}`);
       if(original?.route)await mp.reLaunch('/'+original.route+(Object.keys(original.options).length?'?'+new URLSearchParams(original.options).toString():''));report.sessionRestored=true;}
+    if(reusedInternalId)for(const chat of ownedChats){const current=await withTenantTransaction(eid,tx=>one(tx,sql`select status,version from app.assistant_conversations where enterprise_id=${eid} and id=${chat.id}`));
+      if(current?.status==='open')await chat.service.archive(chat.id,Number(current.version),randomUUID());}
+    report.ownedChatsArchived=reusedInternalId?ownedChats.length:0;
     if(cloneId){const detail=await knowledge.execute('detail',{documentId:cloneId});if((detail.document as Row).status!=='retired')await knowledge.execute('retire',{documentId:cloneId,expectedVersion:Number((detail.document as Row).version)},randomUUID());}
     if(ownerId)await withPlatformTransaction(async tx=>{await tx.execute(sql`update app.admin_users set status='disabled' where id=${ownerId} and username like 'synthetic-v1-owner-%'`);if(ownerUserId)await tx.execute(sql`update app.users set context_version=context_version+1 where id=${ownerUserId}`);});
     fs.rmSync(path.join(output,'owner-credentials.private.json'),{force:true});
@@ -277,5 +321,9 @@ main().catch(error=>{report.error=(error as Error).stack||String(error);process.
       and daily_requests=${quotaCapacity!.daily_requests} and daily_cost_micros=${quotaCapacity!.daily_cost_micros} returning daily_tokens::text`));
       assert.ok(restored,'Quota changed concurrently; do not overwrite it');report.quotaCapacity.restored=restored.daily_tokens===quotaCapacity.daily_tokens;}}
     catch(error){report.quotaRestoreError=(error as Error).message;report.passed=false;process.exitCode=1;}
+    try{if(platformConfig){const restored=await withPlatformTransaction(tx=>one(tx,sql`update app.platform_configs
+      set llm_config=${JSON.stringify(platformConfig!.before)}::jsonb where key='default'
+      and llm_config=${JSON.stringify(platformConfig!.opted)}::jsonb returning key`));assert.ok(restored,'Platform model changed concurrently; do not overwrite it');report.platformRestored=true;}}
+    catch(error){report.platformRestoreError=(error as Error).message;report.passed=false;process.exitCode=1;}
     if(release)await release();report.finishedAt=new Date().toISOString();save();await closePostgresPool();}
 });

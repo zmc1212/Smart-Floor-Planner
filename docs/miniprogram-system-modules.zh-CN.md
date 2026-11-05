@@ -287,6 +287,8 @@ native01两前置和真实额度失败详情通过；同键重试原请求保留
 
 S04现将普通工艺提问/改口沿同一Agent/KnowledgeRetriever/Evidence进入只读`site.question`任务，保留原记录/动作核对流程。既有`GET/POST /api/miniprogram/construction/projects/:projectId/chat[/messages]`持久保存问题/回执/重进；新增`GET .../chat/citations/:citationId`以no-store返回获权原文或失效状态。有效成员及`assistant.project.shared`仅可读当前已发布的customer_public/staff_internal来源，不可读管理草稿或业主私聊。owner/admin/super_admin仍在所选企业继承管理权限，不要求变成员工。派发/提交/回读重验服务端实际阶段/修订、知识epoch、来源生命周期及权限。无新表/迁移。新建非原生结构化收尾的原文问题复用已校验片段选择；旧快照和模型配置保留。
 
+S04历史方案/事项的成员撤权边界现兼容数据库时间字符串与Date，保留微秒精度；审计编号边界仍独立解析，无效边界使旧依据不可用。修复非空工地聊天GET因把时间当编号而生成缺参SQL的503，不更改租户、成员、审核人或管理者降级/撤权语义。原237工地同一员工真实HTTP已从503恢复200，定向3/3；方案及落实权限实库回归另行保留结果。无新路由、模型、UI或资料受众变化，沿原S04与C01设计。证据 `tmp/v1-01-weiyun-jingyi/explanation-implementation/{shared-entry-diagnosis-20261105,shared-entry-diagnosis-after-20261105,site-access-service-20261105-01/report}.json`。
+
 入口仍为C01和`packages/construction/chat/chat`。显式待验开关启用的新建知识问答按当前问项自然解释，沿原引用与持久hash绑定语义校验；逐字请求及历史任务保留摘录协议。校验共用原用量/派发/来源授权。本包收束结果见下。无客户端markup/样式/素材/导航变更。沿原S04 PPT22/38和C01共享来源sheet规则，在原回答/文字按钮/滚动sheet中提供出处、加载、重试、失效；轮询重验已打开出处，失败/隐藏/撤权清除原文，迟到结果不可恢复。无Less/素材/导航或新视觉方向；来源变体已作390×844原生状态检查，整体还原状态不升级。 四角色/跨企业/撤回及真实检索失败恢复服务检查通过。四端配置模型/原生业务验收仍待完成；run1596原文转述失败、后续派发前429及原原生窗口发现失败保留于`tmp/v1-01-weiyun-jingyi/`和双语二期契约，V1-01整体仍为Limited。
 
 当前收束（2026-11-01）：逐问自然解释须经过原引用/数值/现场事实/回执守卫及持久同模型语义证明，待验开关仍关闭。官方qwen3.7-flash仅final实参的完整JSON多余右括号规范化私存原始帧，截断仍拒绝。点名《精艺》保留获权基层/管根段落且来源上限不变，不重新摄取或改权限。离线135/135、实服务8/8、Stable预检4/4通过，类型仍原82/受影响新增0。唯一最后两旅程各两试固定批在夹具索引job2125/chunk3753 unknown即停止，0新对话run/计划12个未执行、drift[]，资料撤回、策略/配额恢复。1603–1608原失败、10个对话unknown及保守账册CNY32.828897保留；3753用量/费用单列未知。V1-01仍Limited；按唯一计划推进独立V1-02调度/保存/获权私人投递，不再开诊断矩阵，不升级UI还原。证据tmp/v1-01-weiyun-jingyi/下closure-business-01与explanation-implementation/closure-offline.log。
