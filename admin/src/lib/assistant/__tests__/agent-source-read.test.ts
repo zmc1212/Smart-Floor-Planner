@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { agentToolsForMessage, agentToolsForTurn } from '../agent/worker';
+import { agentToolsForMessage, agentToolsForTurn, projectFinalToolOutput } from '../agent/worker';
 import { drawingChecklistRequested, readToolContext, readToolInputIssue } from '../agent/read-tool-input';
-import { ownerQuestionScope, readOwnerQuestionScope } from '../agent/owner-question-scope';
+import { ownerArchiveReadRequested, ownerQuestionScope, readOwnerQuestionScope } from '../agent/owner-question-scope';
 import type { ModelMessage } from '../contracts/model';
 
 const question = '合成点位说明第二节如何区分方案同意和关闭？';
@@ -27,6 +27,40 @@ test('owner question scope is required only for newly bound material calls and c
   assert.equal(readOwnerQuestionScope(receipt, identity), 'site');
   assert.throws(() => readOwnerQuestionScope(receipt, { ...identity, messageId: '5' }), /context_changed/);
   assert.throws(() => readOwnerQuestionScope({ ...receipt, scope: 'knowledge_and_site' }, identity), /context_changed/);
+});
+
+test('only a current artifact request opens the owner archive scope', () => {
+  const context = readToolContext({ kind: 'lead', id: '2' });
+  const control = { room: '书房', scope: 'materials' };
+  for (const question of ['帮我找下书房对应的图纸和客户需求。', '找书房资料', '再核对书房资料']) {
+    assert.equal(ownerArchiveReadRequested(question), true, question);
+    assert.equal(readToolInputIssue('query_materials', JSON.stringify(control), context, true, true), null);
+  }
+  for (const question of ['我看的是客餐厅那张，餐边柜不动，旁边插座的位置两张图不一样。',
+    '书房两个点位对不上，现场能定吗？图纸版本一般怎么核对？', '设计师刚把新版图发我，签字前我先看哪些地方？',
+    '别查书房图纸', '他说“查书房图纸”', '看看书房怎么核对图纸']) {
+    assert.equal(ownerArchiveReadRequested(question), false, question);
+  }
+  assert.match(readToolInputIssue('query_materials', JSON.stringify(control), context, true, false)!.feedback,
+    /"path":"scope","code":"enum"/);
+  for (const scope of ['site', 'knowledge_and_site']) {
+    assert.equal(readToolInputIssue('query_materials', JSON.stringify({ ...control, scope }), context, true, false), null);
+  }
+});
+
+test('bound owner citation transport wraps scalar selections without replacing or removing IDs', () => {
+  const raw = JSON.stringify({ kind: 'synthesis', segments: [
+    { basis: 'evidence', text: '先核对两个版本。', citations: ['supplied', { citationId: 'already-wrapped' }, ''] },
+  ] });
+  const output = { text: '', toolCalls: [{ id: 'final', name: 'final_response', arguments: raw }],
+    usage: null, finishReason: null, providerRequestId: null };
+  assert.equal(projectFinalToolOutput(output).text, raw);
+  const projected = projectFinalToolOutput(output, true);
+  assert.deepEqual(JSON.parse(projected.text), { kind: 'synthesis', segments: [
+    { basis: 'evidence', text: '先核对两个版本。', citations: [{ citationId: 'supplied' }, { citationId: 'already-wrapped' }, { citationId: '' }] },
+  ] });
+  assert.equal(output.toolCalls[0].arguments, raw);
+  assert.deepEqual(projected.toolCalls, []);
 });
 
 test('a project knowledge question must obtain this turn\'s paired read even without naming a source',()=>{

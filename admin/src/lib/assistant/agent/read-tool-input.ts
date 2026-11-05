@@ -158,17 +158,17 @@ function inputIssues(parameters: ModelTool['parameters'], input: unknown): Input
 }
 
 /** Reuse strict application parsers. No database/provider call or value repair. */
-export function readToolInputIssue(name: string, args: string, context?: ReadToolContext, ownerScope = false): { code: string; feedback: string } | null {
+export function readToolInputIssue(name: string, args: string, context?: ReadToolContext, ownerScope = false, archiveAllowed = true): { code: string; feedback: string } | null {
   const validator = validators.get(name);
   if (!validator) return null;
   const scopedMaterials = ownerScope && name === 'query_materials';
-  const tool = readToolsForContext([scopedMaterials ? ownerQuestionMaterialTool(validator.tool) : validator.tool], context)[0];
+  const tool = readToolsForContext([scopedMaterials ? ownerQuestionMaterialTool(validator.tool, archiveAllowed) : validator.tool], context)[0];
   let input: unknown;
   try {
     try { input = JSON.parse(args); }
     catch (error) { if (!(error instanceof SyntaxError)) throw error; return feedback([{ path: '$', code: 'json', expected: 'object' }]); }
     const bound = bindReadToolInput(name, input, context);
-    if (scopedMaterials) readOwnerMaterialInput(bound as Record<string, unknown>);
+    if (scopedMaterials) readOwnerMaterialInput(bound as Record<string, unknown>, archiveAllowed);
     else validator.parse(bound);
     return null;
   } catch (error) {

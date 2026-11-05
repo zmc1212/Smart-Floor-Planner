@@ -22,7 +22,8 @@ import { currentHandoffOwner } from '../handoff/owner';
 import { agentConfig, type AgentConfig } from '../agent/config';
 import { homeSourceBudgetProtocol } from '../agent/home-source-budget';
 import { homeSourceViewProtocol } from '../agent/home-source-view';
-import { ownerQuestionScopeProtocol } from '../agent/owner-question-scope';
+import { ownerArchiveReadProtocol, ownerQuestionScopeProtocol } from '../agent/owner-question-scope';
+import { ownerCitationCarrierProtocol } from '../agent/final-output';
 import { reportBodyFinalPolicy, reportNativeAdmission, reportNativeFinalProtocol, reportFinalFunctionCarrier, reportStructuralFinalSchema } from '../agent/report-native-final';
 import { reportFinalOutputTokenLimit } from '../contracts/model';
 import { imageContextBudgetPolicy } from '../agent/context-budget';
@@ -169,7 +170,9 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
       ...(reservation.imageSchema ? { imageSchema: reservation.imageSchema } : {}),
       ...(agent && actor.principal.kind === 'user' && c.purpose === 'customer_consultation' && purpose === 'reply'
         ? { homeSourceBudget: homeSourceBudgetProtocol, siteObservationReferral: siteObservationReferralProtocol,
-          drawingChecklistRead: drawingChecklistReadProtocol, homeSourceView: homeSourceViewProtocol, ownerQuestionScope: ownerQuestionScopeProtocol } : {}),
+          drawingChecklistRead: drawingChecklistReadProtocol, homeSourceView: homeSourceViewProtocol,
+          ownerQuestionScope: ownerQuestionScopeProtocol, ownerArchiveRead: ownerArchiveReadProtocol,
+          ...(agent.providerKey === 'dashscope' && agent.model === 'qwen3.8-flash' ? { ownerCitationCarrier: ownerCitationCarrierProtocol } : {}) } : {}),
       ...(reviewRuntime ? { reviewRuntime } : {}) })}::jsonb,${Number(c.context_revision)},${Number(settings.knowledge_epoch)}) returning *`))!;
   const runId = String(r.id);
   await tx.execute(sql`insert into app.assistant_jobs(enterprise_id,kind,run_id,dedupe_key) values(${actor.enterpriseId},'chat_turn',${runId},${'run:' + runId})`);

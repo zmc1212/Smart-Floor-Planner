@@ -135,12 +135,20 @@ test('XK01/03 customer originals and formal v4 sources compose without inventing
 });
 test('a site clarification uses the fixed referral without reading materials or dispatching a final draft', async () => {
   const x = await fixture();
-  const result = await x.send('我看的是客餐厅那张，餐边柜不动，旁边插座的位置两张图不一样。', async (_messages, tools, turn) => {
-    assert.equal(turn, 0);
-    assert.ok(tools.some(tool => tool.name === 'query_materials'));
+  const turns: number[] = [];
+  const result = await x.send('我看的是客餐厅那张，餐边柜不动，旁边插座的位置两张图不一样。', async (messages, tools, turn) => {
+    turns.push(turn);
+    const route = tools.find(tool => tool.name === 'query_materials')!;
+    assert.deepEqual((route.parameters.properties as Record<string, unknown>).scope,
+      { type: 'string', enum: ['site', 'knowledge_and_site'] });
+    assert.equal(tools.some(tool => ['query_business', 'query_followups'].includes(tool.name)), false);
+    assert.doesNotMatch(JSON.stringify(messages), /结合现场资料核对时，优先用query_materials|问本人项目的工地进度、施工节点/);
+    if (turn === 0) return output('query_materials', { room: '客餐厅', scope: 'materials' });
+    assert.match(JSON.stringify(messages), /invalid_arguments/);
     return output('query_materials', { room: '客餐厅', scope: 'site' });
   });
   assert.equal(result.run.status, 'succeeded', JSON.stringify(result.run));
+  assert.deepEqual(turns, [0, 1]);
   const answer = (await new ConversationService(x.actor).messages(x.cid)).items.find(item => item.id === result.run.outputMessageId)!;
   assert.equal(answer.available, true);
   assert.deepEqual((answer.content as MessageContent).blocks, [{ type: 'text', text: reportCoordinationText }]);
@@ -188,10 +196,10 @@ test('a bound coordination scope rejects an unadvertised project read even in th
     assert.equal(result.run.status, 'failed');
     assert.equal(result.run.errorCode, 'assistant_capability_forbidden');
     assert.equal(result.run.outputMessageId, null);
-    assert.deepEqual(turns, sameBatch ? [0] : [0, 1]);
+    assert.deepEqual(turns, [0, 1]);
     const steps = await withTenantTransaction(x.eid, tx => rows(tx, sql`select capability_name from app.assistant_run_steps
       where enterprise_id=${x.eid} and run_id=${result.lease.runId} and capability_name is not null`));
-    assert.deepEqual(steps.map(step => step.capability_name), ['owner-question-scope-v1']);
+    assert.deepEqual(steps.map(step => step.capability_name), sameBatch ? [] : ['owner-question-scope-v1']);
   }
 });
 test('XK01/07 a scoped home cannot be replaced by a model argument; a generic multi-home chat asks instead of merging', async () => {

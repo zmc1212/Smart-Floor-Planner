@@ -19,7 +19,7 @@ import { factFields, needWriteFeedback, needOriginalQuotes, hasExplicitNeedCorre
 import { availableNeedMemory, needMemoryNoticeRefs, unavailableNeedMessageIds, needContextStep, needSourceRefs, needRunSourcesAvailable } from './memory-sources';
 import { persistNeedWrites } from './memory-store';
 import { isNeedInquiry, needWriteProhibition } from './need-write-intent';
-import { buildAgentContext, parseAgentReply, agentPromptVersion } from './context';
+import { buildAgentContext, parseAgentReply, agentPromptVersion, ownerNoArchivePolicy } from './context';
 import { recommendationRegion } from '../location/region';
 import { publicCandidates } from '@/lib/construction/public-read';
 import { hydrateImages, resolveAgentMedia, withoutImageBytes, type MediaDependency } from './media-context';
@@ -55,7 +55,7 @@ import { boundReportHistoryScope, boundReportQuestionPlanning, boundReportReadCo
 import { boundReportCoordination, prepareReportKnowledgeReview, reportCoordinationAnswer, reportCoordinationText } from './report-coordination';
 import { prepareReportAnswerReview, assertReportAnswerReview, reportAnswerValidationFailure } from './report-answer-review';
 import { isReportAnswerSnapshot, reportFinalResponseIssue, reportFinalProtocol, reportAnswerFinalTool, reportQuestionCoverage, reportAnswerSynthesis, reportCoverageFailure, reportCoverageProtocol } from './report-final';
-import { projectFinalToolOutput } from './final-output';
+import { ownerCitationCarrierProtocol, projectFinalToolOutput } from './final-output';
 export { projectFinalToolOutput } from './final-output';
 import { anchorKnowledgeQuery } from '../knowledge/query-context';
 import { sourceExcerptProtocol, sourceExcerptFinalTool, sourceExcerptIds, parseSourceExcerptAnswer } from './source-excerpts';
@@ -77,7 +77,8 @@ import { currentMessageOnlyRequested, currentMessageFinalTool, currentMessageRep
 import { independentAdviceContextProtocol } from './independent-advice-context';
 import { compileModelRequest, type ModelRequestPurpose } from './model-request';
 import { homeSourceViewProtocol, knowledgeSynthesisReadInstructions } from './home-source-view';
-import { ownerQuestionMaterialTool, ownerQuestionScope, ownerQuestionScopeProtocol, readOwnerMaterialInput, readOwnerQuestionScope } from './owner-question-scope';
+import { ownerArchiveReadProtocol, ownerArchiveReadRequested, ownerQuestionMaterialTool, ownerQuestionScope, ownerQuestionScopeProtocol,
+  ownerReadToolAllowed, readOwnerMaterialInput, readOwnerQuestionScope } from './owner-question-scope';
 import { consultationAcceptanceProfile } from '../contracts/consultation';
 import { consultationRequestReservation, reserveConsultationDispatch, settleConsultationDispatch } from './consultation-usage';
 import { configuredWebProvider, parseWebQuery, searchWeb, webSearchTool, type WebSearchSnapshot } from './web';
@@ -796,6 +797,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       && !explicitNeedWriteStatement(reviewContext.currentQuestion) && !explicitHumanHandoffRequested(reviewContext.currentQuestion)
       ? { ...homeSourceView, enterpriseId: lease.enterpriseId, runId: lease.runId, messageId: String(initial.trigger.id),
         question: reviewContext.currentQuestion } : undefined;
+    const ownerArchiveBound = !!ownerScopeIdentity && (initial.run.policy_snapshot as Row).ownerArchiveRead === ownerArchiveReadProtocol;
+    const archiveAllowed = !ownerArchiveBound || ownerArchiveReadRequested(reviewContext.currentQuestion);
+    const ownerCitationCarrier = ownerArchiveBound && (initial.run.policy_snapshot as Row).ownerCitationCarrier === ownerCitationCarrierProtocol;
     const ownerScopeForRun = async (tx: Parameters<typeof runContext>[0]) => {
       if (!ownerScopeIdentity) return null;
       const step = await one(tx, sql`select private_checkpoint from app.assistant_run_steps
@@ -867,7 +871,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       return review ? reviewMode !== 'propose' ? []
         : designerOnly ? reviewDefinitions.filter(tool => tool.name === 'propose_designer_reception')
         : [...base.filter(tool => !['record_need', 'request_designer'].includes(tool.name)), ...reviewDefinitions]
-        : ownerScopeIdentity ? base.map(ownerQuestionMaterialTool) : base;
+        : ownerScopeIdentity ? base.filter(tool => ownerReadToolAllowed(tool.name, archiveAllowed))
+          .map(tool => ownerQuestionMaterialTool(tool, archiveAllowed)) : base;
     };
     const reviewReceipt = async (marker: ReviewMarker) => {
       if (marker.name === 'propose_requirement_changes' && marker.effect === 'proposal') {
@@ -908,7 +913,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           }
           const { messageScoped, adviceScoped, focused, dispatchTools, policyView, bounded, modelMessages, contentProjection, homeSourceProjection } = compileModelRequest({
             question: reviewContext.currentQuestion, triggerId: String(initial.trigger.id), turn, purpose,sourceExcerpts:sourceMode.sourceExcerpts,requiredKnowledge:sourceMode.requiredKnowledge,sourceQuestionCoverage:sourceMode.sourceQuestionCoverage,knowledgeExplanation:sourceMode.knowledgeExplanation,
-            messages:nativeFinalization&&purpose==='answer'&&tools.length?nativePlanningMessages(messages, completion ? reviewCompletionInstructions : undefined):claimMessages, tools, reportPlan, homeSourceView,
+            messages:nativeFinalization&&purpose==='answer'&&tools.length?nativePlanningMessages(messages, completion ? reviewCompletionInstructions : undefined)
+              : purpose === 'answer' && !archiveAllowed ? ownerNoArchivePolicy(claimMessages) : claimMessages,
+            tools, reportPlan, homeSourceView,
             toolsForTurn:(question,current,available,triggerId)=>{
               if (ownerReads?.ownerScope === 'knowledge_and_site') {
                 available = available.filter(tool => ownerKnowledgeTools.has(tool.name));
@@ -929,7 +936,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             ...(nativeFinalization&&purpose==='answer'&&!tools.length?{wireProjection:imageFinalization ? nativeImageFinalMessages : nativeFinalMessages}:{}),
           });
           const summaryRequestHash = purpose === 'summary' || purpose === 'grounding' ? fingerprint({ messages: modelMessages, tools: dispatchTools }) : null;
-          const ownerScopeRequest = ownerReads ? fingerprint({ scope: ownerReads.ownerScope, tools: dispatchTools }) : undefined;
+          const ownerScopeRequest = ownerReads ? fingerprint({ scope: ownerReads.ownerScope, tools: dispatchTools,
+            ...(ownerArchiveBound ? { archiveAllowed, modelMessages } : {}),
+            ...(ownerCitationCarrier ? { ownerCitationCarrier: ownerCitationCarrierProtocol } : {}) }) : undefined;
           const reportPlanningBinding = reportQuestionPlanning ? {
             protocol: reportQuestionPlanningProtocol, requestHash: fingerprint({ tools: dispatchTools, plan: reportPlan ?? null }),
             ...(reportReadCompletion ? { completion: reportReadCompletionProtocol } : {}),
@@ -1046,7 +1055,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             if (consultation) usageKnown = await settleConsultationDispatch(tx, lease.enterpriseId, lease.runId);
           });
           const providerOutput = output.agentOutput;
-          const finalProjected = purpose === 'answer' ? projectFinalToolOutput(providerOutput) : providerOutput;
+          const finalProjected = purpose === 'answer' ? projectFinalToolOutput(providerOutput, ownerCitationCarrier) : providerOutput;
           output.agentOutput = purpose === 'answer' ? projectNeedBatchOutput(finalProjected,
             Boolean(explicitNeedWriteStatement(safeText(initial.trigger.content as Parameters<typeof safeText>[0])))) : finalProjected;
           const needBatchProjected = output.agentOutput !== finalProjected;
@@ -1488,9 +1497,10 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           });
         },
         model: callModel,
-        validateTool: (name, args) => readToolInputIssue(name, args, readContext, !!ownerScopeIdentity),
+        validateTool: (name, args) => readToolInputIssue(name, args, readContext, !!ownerScopeIdentity, archiveAllowed),
         tool: async (turn, index, name, args) => {
           if (constructionReadOnlyTools(String(initial.conversation.purpose), true)?.every(tool => tool.name !== name)) fail('assistant_capability_forbidden',403);
+          if (!ownerReadToolAllowed(name, archiveAllowed)) fail('assistant_capability_forbidden', 403);
           if (ownerScopeIdentity && name !== 'query_materials') {
             const scope = await scoped(tx => ownerScopeForRun(tx));
             if (scope === 'site' || scope === 'knowledge_and_site' && !ownerKnowledgeTools.has(name)) fail('assistant_capability_forbidden', 403);
@@ -1704,7 +1714,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             });
           }
           if (name === 'query_materials') {
-            const scopedQuery = ownerScopeIdentity ? readOwnerMaterialInput(input) : null;
+            const scopedQuery = ownerScopeIdentity ? readOwnerMaterialInput(input, archiveAllowed) : null;
             const query = scopedQuery?.query ?? parseMaterialQuery(input);
             return scoped(async (tx, context) => {
               const cached = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`);
@@ -1801,7 +1811,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             // Source validation and checkpoints are shared with explicit business tools.
             // A checklist explains the review procedure. The model can still
             // request authorized site facts separately for a mixed question.
-            const bound = coordinationReferral || drawingChecklistRead ? null : await scoped(async (tx, context) => {
+            const bound = coordinationReferral || drawingChecklistRead || ownerArchiveBound ? null : await scoped(async (tx, context) => {
               if (await ownerScopeForRun(tx)) return null;
               const current = await boundKnowledgeContext(tx, lease.actor, context.conversation, lease.runId, turn, index, resultKey);
               if (current) {
