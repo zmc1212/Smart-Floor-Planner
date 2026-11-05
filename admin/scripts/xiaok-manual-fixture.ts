@@ -37,7 +37,35 @@ const eid = flag('enterprise-id'), uid = flag('customer-id');
 const output = path.resolve(flag('output') || path.join(root, 'tmp/xiaok-manual-fixture-20261030'));
 const tag = 'xiaok-manual-1454-v1', prefix = '合成手测';
 const manifestFile = path.join(output, 'manifest.json'), credentialsFile = path.join(output, 'accounts.private.json');
-let state: Row, credentials: Row;
+type FixtureState = {
+  tag: string;
+  enterpriseId: string;
+  customerId: string;
+  createdAt: string;
+  keys: Record<string, string>;
+  inputs: Record<string, Row>;
+  // staff() persists an ID string; other once() slots keep their own result type.
+  results: Record<string, unknown> & Record<`staff.${string}`, string>;
+  complete: boolean;
+  current?: string;
+  userContextVersions?: Record<string, number>;
+  foundationReady?: boolean;
+  dataset?: Row;
+  error?: { step?: string; code: unknown; message: string; at: string };
+};
+type FixtureCredentials = {
+  enterpriseId: string;
+  note: string;
+  accounts: Record<string, {
+    username: string;
+    password: string;
+    role: string;
+    name: string;
+    developmentPhonePlaceholder?: string;
+    phoneNote?: string;
+  }>;
+};
+let state: FixtureState, credentials: FixtureCredentials;
 let lock: pg.Client | undefined;
 function save() { fs.writeFileSync(manifestFile, JSON.stringify(state, null, 2)); }
 function key(slot: string) { if (!state.keys[slot]) { state.keys[slot] = randomUUID(); save(); } return state.keys[slot] as string; }
