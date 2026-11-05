@@ -23,6 +23,7 @@ import { knowledgeExplanationProtocol, naturalKnowledgeProtocol, knowledgeQuanti
 import { getPlatformLlmOverrideRuntime } from '@/lib/platform-llm-config';
 import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
 import { processAssistantRun } from '@/lib/assistant/application/worker';
+import { answerVisibleIn } from './xiaok-v1-answer-readback';
 
 type Row=Record<string,any>;
 const naturalAnswer=process.argv.includes('--natural-answer');
@@ -209,7 +210,7 @@ async function ask(turn:Row,current:Row,cid:string,native:boolean){await reserve
     save();await wait(async()=>{const value=await withTenantTransaction(eid,tx=>one(tx,sql`select status from app.assistant_runs where enterprise_id=${eid} and id=${turn.runId}`));return value&&!['queued','running'].includes(String(value.status))?value:null;},'configured Worker answer',360);
     await settle(turn);
     if(native){const route=turn.kind==='customer'?'packages/assistant/chat/chat':'packages/construction/chat/chat',page=await pageAt(route);
-      await wait(async()=>JSON.stringify((await page.data()).messages||(await page.data()).items).includes(turn.text.slice(0,25)),'visible actual answer');
+      await wait(async()=>{const data=await page.data();return answerVisibleIn(data.messages||data.items,turn.text.slice(0,25));},'visible actual answer');
       const citation=turn.citations[0];
       if(citation){const selector=turn.kind==='customer'?'.citation-chip[data-id="'+citation.id+'"]':'.record-actions .text-button[data-id="'+citation.id+'"]';
       const messageId=await evaluate(`function(id,shared){const p=getCurrentPages().at(-1),items=shared?p.data.items:p.data.messages;
@@ -221,10 +222,10 @@ async function ask(turn:Row,current:Row,cid:string,native:boolean){await reserve
       turn.capture=await capture('source-'+turn.runId,route);await evaluate('function(){getCurrentPages().at(-1).closeSheet(true);}');
       }else turn.capture=await capture('answer-'+turn.runId,route);
       await mp.redirectTo('/'+route+(turn.kind==='customer'?'?conversationId='+cid:'?projectId='+pid));
-      const reentry=await pageAt(route);await wait(async()=>JSON.stringify((await reentry.data()).messages||(await reentry.data()).items).includes(turn.text.slice(0,25)),'persisted native reentry');turn.reentry=true;
+      const reentry=await pageAt(route);await wait(async()=>{const data=await reentry.data();return answerVisibleIn(data.messages||data.items,turn.text.slice(0,25));},'persisted native reentry');turn.reentry=true;
     }else{const read=await api(turn.kind==='customer'?'/miniprogram/assistant/conversations/'+cid+'/messages':'/miniprogram/construction/projects/'+pid+'/chat',current.token);
       fs.writeFileSync(path.join(output,'readback-'+turn.runId+'.json'),JSON.stringify(read,null,2));
-      assert.ok(JSON.stringify(read).includes(turn.text.slice(0,25)));turn.reentry=true;
+      assert.ok(answerVisibleIn(read,turn.text.slice(0,25)));turn.reentry=true;
       if(turn.sourceKind==='web')for(const citation of turn.citations){const original=await api('/miniprogram/assistant/citations/'+encodeURIComponent(citation.id),current.token);
         assert.equal(original.available,true);assert.ok(original.quote);turn.originalPages=(turn.originalPages||[]).concat({id:citation.id,available:true,quoteChars:original.quote.length});}}
     turn.passed=true;
