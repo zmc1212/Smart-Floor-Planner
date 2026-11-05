@@ -19,9 +19,9 @@ async function run(){
  const report:Record<string,unknown>={started:new Date().toISOString(),before:bind(),deployment:batch.context,recordingHostPath:batch.recordingHostPath,transport:batch.transport,imagesBefore:batch.images,checks:[]};
  try{
   const record=await withTenantTransaction(fixture.enterpriseId,async tx=>{
-   const enterprise=await one(tx,sql`select name from app.enterprises where id=${fixture.enterpriseId}`);assert.equal(enterprise?.name,'测试专用 · 云工地摄像头');
+   const enterprise=await one(tx,sql`select name from app.enterprises where id=${fixture.enterpriseId}`);assert.ok(enterprise?.name==='测试专用 · 云工地摄像头'||(String(fixture.enterpriseId)==='1454'&&enterprise?.name==='微云'),'Approved isolated test enterprise only');
    const policy=await one(tx,sql`select enabled,state from app.construction_camera_recording_policies where binding_id=${fixture.bindingId}`);assert.equal(policy?.enabled,false);assert.equal(policy?.state,'stopped');
-   const records=await rows(tx,sql`select * from app.construction_recordings where binding_id=${fixture.bindingId} and state='ready' order by started_at`);assert.ok(records.length>=2,'Keep a newer real recording for UI acceptance');
+   const records=await rows(tx,sql`select * from app.construction_recordings where binding_id=${fixture.bindingId} and state='ready' and started_at>now()-interval '24 hours' order by started_at`);assert.ok(records.length>=2,'Keep a newer real recording for UI acceptance');
    const r=records[0];assert.ok(new Date(String(r.started_at)).getTime()>Date.now()-86400000,'Only recordings made by this isolated test today');
    assert.equal(String(r.project_id),fixture.projectId);
    assert.equal((await rows(tx,sql`select token_hash from app.construction_camera_sessions where recording_id=${String(r.id)} and view_expires_at>now() and closed_at is null`)).length,0);

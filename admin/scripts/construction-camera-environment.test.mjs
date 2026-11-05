@@ -149,3 +149,12 @@ test('live acceptance drivers bind their deployment through the shared module', 
     assert.doesNotMatch(source, /execFileSync\('docker'/);
   }
 });
+
+// One approved test camera's GB id must never be baked into a driver: the
+// migrated remote stack registers a different device, and an embedded id would
+// keep the run green while observing a camera the fixture does not own.
+test('live acceptance drivers take the stream identity from the fixture policy', () => {
+  for (const name of ['construction-camera-recording-live.ts', 'construction-camera-storage-live.ts', 'construction-camera-recovery-live.ts', 'construction-camera-retention-live.ts']) {
+    assert.doesNotMatch(fs.readFileSync(new URL('./' + name, import.meta.url), 'utf8'), /\b3402\d{16}\b/);
+  }
+});
