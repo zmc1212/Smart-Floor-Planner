@@ -13,7 +13,7 @@ import {CameraService,exchangeCameraEntry,startCameraView,sessionHeartbeat} from
 import {saveRecordingPolicy,listCameraRecordings,startRecordingView} from '../src/lib/construction/camera/recordings';
 import {cameraWvp} from '../src/lib/construction/camera/wvp';
 import {currentStorageHealth} from '../src/lib/construction/camera/storage';
-import {cameraLiveDeployment} from './construction-camera-environment.mjs';
+import {cameraLiveDeployment, ownedGateway} from './construction-camera-environment.mjs';
 
 async function run(){
  const database=new URL(resolvePostgresRuntimeConfig().connectionString);assert.equal(database.port,'55432');assert.equal(database.pathname,'/cloud_camera_eval');
@@ -41,7 +41,7 @@ async function run(){
  await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));const fixtureOrigin='http://127.0.0.1:'+(server.address() as {port:number}).port;
  const policy=()=>withTenantTransaction(fixture.enterpriseId,tx=>one(tx,sql`select * from app.construction_camera_recording_policies where binding_id=${fixture.bindingId}`));
  function listener(){const cmd='$p=Get-NetTCPConnection -LocalPort 3017 -State Listen -ErrorAction SilentlyContinue; if($p){Get-CimInstance Win32_Process -Filter "ProcessId=$($p.OwningProcess)"|Select-Object ProcessId,CommandLine|ConvertTo-Json -Compress}else{[pscustomobject]@{ProcessId=0;CommandLine=""}|ConvertTo-Json -Compress}';return JSON.parse(cp.execFileSync('powershell',['-NoProfile','-Command',cmd],{encoding:'utf8',windowsHide:true}));}
- function stopOwned(pid:number){const current=listener();assert.equal(Number(current.ProcessId),pid);assert.match(current.CommandLine,/node.*--import tsx scripts[\\/]construction-camera-gateway\.ts/i);process.kill(pid,'SIGKILL');}
+ function stopOwned(pid:number){const current=listener();assert.equal(Number(current.ProcessId),pid);assert.match(current.CommandLine,ownedGateway);process.kill(pid,'SIGKILL');}
  function spawnGateway(){const child=cp.spawn(process.execPath,['--import','tsx','scripts/construction-camera-gateway.ts'],{cwd:process.cwd(),env:process.env,windowsHide:true,detached:true,stdio:'ignore'});child.unref();return Number(child.pid);}
  async function gatewayReady(){for(let n=0;n<30;n++){try{const r=await fetch('http://localhost:3017/camera-gateway-health',{signal:AbortSignal.timeout(1500)});if(r.ok)return;}catch{}await delay(1000);}throw Error('Gateway not ready');}
  async function waitState(level:string,state:string,actual:boolean){let last,lastActual;for(let n=0;n<45;n++){last=await policy();if(last?.storage_level===level&&last.state===state&&(await currentStorageHealth()).level===level){lastActual=await source.isRecording({app:String(last.stream_app),stream:String(last.stream_id)});if(lastActual===actual)return last;}await delay(2000);}throw Error('Storage transition timeout '+JSON.stringify({wanted:{level,state,actual},observed:{level:last?.storage_level,state:last?.state,error:last?.last_error,actual:lastActual}}));}

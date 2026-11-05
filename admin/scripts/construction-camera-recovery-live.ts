@@ -11,7 +11,7 @@ import {closePostgresPool,resolvePostgresRuntimeConfig} from '../src/lib/postgre
 import {CameraService,exchangeCameraEntry,sessionHeartbeat} from '../src/lib/construction/camera/service';
 import {saveRecordingPolicy,reconcileRecordings,listCameraRecordings,startRecordingView} from '../src/lib/construction/camera/recordings';
 import {cameraWvp} from '../src/lib/construction/camera/wvp';
-import {cameraLiveDeployment} from './construction-camera-environment.mjs';
+import {cameraLiveDeployment, ownedGateway} from './construction-camera-environment.mjs';
 
 async function run(){
  const db=new URL(resolvePostgresRuntimeConfig().connectionString);assert.equal(db.port,'55432');assert.equal(db.pathname,'/cloud_camera_eval');
@@ -57,7 +57,7 @@ async function run(){
    const recovered=await waitState('recording',new Date(String(p.checked_at)).getTime());return {closedStreams:1,closeResult:result.result,state:recovered.state,recoveryMs:Date.now()-began};
   });
   await check('gateway process restart preserves recording and resumes durable reconciliation',async()=>{
-   const old=listener();assert.ok(old.ProcessId);assert.ok(/node.*--import tsx scripts[\\/]construction-camera-gateway\.ts/i.test(old.CommandLine));
+   const old=listener();assert.ok(old.ProcessId);assert.ok(ownedGateway.test(old.CommandLine));
    const began=Date.now();process.kill(Number(old.ProcessId),'SIGKILL');
    let previousCheck=0;
    try{await delay(2000);const p=(await policy())!;previousCheck=new Date(String(p.checked_at)).getTime();assert.equal(await source.isRecording({app:String(p.stream_app),stream:String(p.stream_id)}),true,'Gateway shutdown must not stop the WVP writer');}

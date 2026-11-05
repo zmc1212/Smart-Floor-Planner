@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {cameraDeployment, cameraTransport, cameraLiveDeployment, inspectCameraEnvironment, assertCameraCapacity, REMOTE_CAMERA_CONTEXT, REMOTE_CAMERA_RECORDING_PATH, LOCAL_CAMERA_RECORDING_PATH} from './construction-camera-environment.mjs';
+import {cameraDeployment, cameraTransport, cameraLiveDeployment, inspectCameraEnvironment, assertCameraCapacity, ownedGateway, REMOTE_CAMERA_CONTEXT, REMOTE_CAMERA_RECORDING_PATH, LOCAL_CAMERA_RECORDING_PATH} from './construction-camera-environment.mjs';
 import {executionDeploymentEnvironment} from './construction-camera-execution.mjs';
 import {storageArguments} from './construction-camera-storage-local.mjs';
 
@@ -156,5 +156,16 @@ test('live acceptance drivers bind their deployment through the shared module', 
 test('live acceptance drivers take the stream identity from the fixture policy', () => {
   for (const name of ['construction-camera-recording-live.ts', 'construction-camera-storage-live.ts', 'construction-camera-recovery-live.ts', 'construction-camera-retention-live.ts']) {
     assert.doesNotMatch(fs.readFileSync(new URL('./' + name, import.meta.url), 'utf8'), /\b3402\d{16}\b/);
+  }
+});
+
+// Recovery and storage restart the gateway they own. The sealed batch launches it
+// by absolute path while the local harness uses a relative one, so both are owned
+// and an unrelated 3017 listener must never be killed.
+test('owned gateway identity covers both launch forms and refuses other processes', () => {
+  assert.match(String.raw`D:\nodejs\node.exe --import tsx scripts/construction-camera-gateway.ts`, ownedGateway);
+  assert.match(String.raw`D:\nodejs\node.exe --import tsx G:\workspace\向总\Smart-Floor-Planner\tmp\cloud-camera-operations-20261105-08\execution\admin\scripts\construction-camera-gateway.ts`, ownedGateway);
+  for (const foreign of [String.raw`D:\nodejs\node.exe --import tsx scripts/construction-camera-soak.ts`, String.raw`D:\nodejs\node.exe server.js`, String.raw`C:\Windows\System32\notepad.exe`]) {
+    assert.doesNotMatch(foreign, ownedGateway);
   }
 });

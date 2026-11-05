@@ -109,6 +109,12 @@ export function assertCameraCapacity(sample, native, now = Date.now()) {
   assert.equal(bytes(sample.availableFiles), 0n);
 }
 
+// A driver may only stop the gateway it owns. The same script is launched either
+// relative to the workspace by the local harness or by absolute path from a
+// sealed batch copy, so the identity is the interpreter plus that script under a
+// `scripts/` directory; an unrelated 3017 listener stays out of scope.
+export const ownedGateway = /node.*--import tsx (?:.*[\\/])?scripts[\\/]construction-camera-gateway\.ts/i;
+
 // Read-only deployment identity for one live acceptance batch. The context must be
 // explicit, so a stopped local engine or a shifted default context can never be
 // silently bound as the evidence host.
