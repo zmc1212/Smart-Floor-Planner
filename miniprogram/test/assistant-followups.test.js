@@ -247,6 +247,49 @@ test('live source withdrawal replaces content instead of returning cached names 
   await f.controller.sync(); assert.equal(f.controller.state.followupDetail.available, false);
   assert.ok(!JSON.stringify(f.controller.state.followupDetail).includes('底盒位置')); f.controller.hide();
 });
+
+test('withdrawing one project clears its open original while the other report project stays readable', async () => {
+  const f = fixture(); f.context.audience = 'boss';
+  f.report.facts.projects.push({ id: '249', name: '合成测试·仍获权工地', records: [] });
+  const original = { id: '12', projectId: '248', version: 3, data: { completed: '即将撤回的原记录' }, media: [{ id: '61' }] };
+  f.intercept(c => c.path.endsWith('/records/12') ? original : undefined);
+  await f.controller.show(); await f.controller.select('27'); await f.controller.readReport('98', 1);
+  await f.controller.original('248', '12'); assert.equal(f.controller.state.followupOriginal.id, '12');
+  const start = f.emitted.length;
+  f.report.facts.projects = f.report.facts.projects.filter(p => p.id !== '248');
+  await f.controller.sync();
+  assert.equal(f.controller.state.followupDetail.available, true);
+  assert.deepEqual(f.controller.state.followupDetail.projects.map(p => p.id), ['249']);
+  assert.equal(f.controller.state.followupOriginal, null);
+  assert.ok(f.emitted.slice(start).some(p => p.followupOriginal === null), 'the existing view clears private photo files on this patch');
+  f.controller.hide();
+});
+
+test('a failed report revalidation clears its open original and permits the same authorized record to reopen', async () => {
+  const f = fixture(); let failed = false;
+  const original = { id: '12', projectId: '248', version: 3, data: {}, media: [{ id: '61' }] };
+  f.intercept(c => {
+    if (failed && c.path === '/followups/27/reports/98') throw { statusCode: 503, code: 'assistant_unavailable' };
+    if (c.path.endsWith('/records/12')) return original;
+  });
+  await f.controller.show(); await f.controller.select('27'); await f.controller.readReport('98', 1);
+  await f.controller.original('248', '12'); failed = true; await f.controller.sync();
+  assert.equal(f.controller.state.followupOriginal, null);
+  assert.ok(f.controller.state.followupError);
+  failed = false; await f.controller.sync(); await f.controller.original('248', '12');
+  assert.equal(f.controller.state.followupOriginal.id, '12'); f.controller.hide();
+});
+
+test('an unchanged authorized original survives report refresh without restarting its photo download', async () => {
+  const f = fixture();
+  f.intercept(c => c.path.endsWith('/records/12') ? { id: '12', projectId: '248', version: 3, data: {}, media: [{ id: '61' }] } : undefined);
+  await f.controller.show(); await f.controller.select('27'); await f.controller.readReport('98', 1);
+  await f.controller.original('248', '12'); const original = f.controller.state.followupOriginal;
+  const start = f.emitted.length; await f.controller.sync();
+  assert.equal(f.controller.state.followupOriginal, original);
+  assert.ok(!f.emitted.slice(start).some(p => Object.hasOwn(p, 'followupOriginal')));
+  f.controller.hide();
+});
 test('unavailable projections retain no private project title or field', () => {
   const result = reportForView({ available: false, reportId: '98', revision: 1, facts: { projects: [{ name: 'PRIVATE' }] } });
   assert.ok(!JSON.stringify(result).includes('PRIVATE'));

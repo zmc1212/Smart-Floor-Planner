@@ -13,6 +13,12 @@
 
 核验：选定企业管理权限/CAS/拒绝及正式无知识日报正文→投递→重进通过。Chrome实际开启/关闭保存并刷新重读，原会话及合成配置已恢复（`admin-ui.json`、`admin-ui-capture.json`、`admin-knowledge-switch-verified.jpg`）。Stable沿批准组件点开/重进报告，明确复用run10581为客户端夹具，0新增模型调用（`native-replay01/native.json`，逻辑390×844/编码383×828）。两组自然三轮问答首稿全部保留，0企业检索/Embedding。14次实模共59290/3086输入/输出tokens，实费未知。驱动中的联网失败仅证明受控恢复，未证明正向网页读取/引用。20项定向检查及lint通过；类型57个既有错误/涉及文件0，生产build被Windows Turbopack junction os87阻塞。 四角色日/周报还以已保存建议的工程夹具通过真实事实/正文/投递/重读、周期/内部受众过滤及成员撤权，0新增付费调用（`role-reports02/report.json`）；不冒充新模型质量、四角色原生或照片理解验收。
 
+<!-- xiaok-report-photo-sources -->
+**施工照片与日/周报原图：权限链范围Implemented，实模整理质量Limited。** 复用原S04同项目经理/工人文字与照片→`site.record`待核对草稿→人工发布→原日/周报事实/正文/投递链，不重复建设识图或报告平台。仅当期获权发布版本进入报告；业主排除内部记录。原记录/规范化原图沿既有`followups/:bindingId/reports/:reportId/projects/:projectId/records/:recordId[/media/:mediaId]?revision=`实时重验项目、成员、受众及来源版本。客户端在多项目报告仍部分可读时也会清除被撤回项目的已打开原记录；重验失败同样清空原记录和临时图片，获权未变刷新不重下载。无新路由/schema/界面结构/样式/素材，沿批准02/03/04/06/07/08共用原记录与失效状态。
+
+证据`tmp/v1-report-photos-20261106/assessment.json`：修前3项中2失败保留；修后客户端39/39，工程夹具驱动8份四角色日/周报真实上传/发布/Worker/投递/原图hash回读、内部受众和成员/记录撤回通过；Stable390×844（编码383×828）10项通过，1181项原生依赖绑定drift[]，测试资源已清理。S04整理和报告建议在此工程批为显式夹具，不冒充模型质量。配置模型首试run10606/attempt3027被HTTP429明确拒绝、无草稿；第二固定工人试次未派发，用量/实费未知，无新unknown结果、不自动重采。原失败及直播两轮止损保持；照片理解、正向联网和完整V1仍Limited。
+<!-- /xiaok-report-photo-sources -->
+
 <!-- public-live-two-repair-stop -->
 **公开直播首播失败计数（2026-11-03）：** 当前C05预期是完整范围真实在屏且当前预览正向进度后明确同意。successor01/media02仅证明在屏失败预览/禁用同意、HLS manifestLoadError/code0、MP4进度及直接H264解码，不是业务通过。CORS后native-business01因分片503未就绪；即时/延迟上游200→404判别证明保留风险。native-business02独立绑定保留数1→10后同一期望仍失败，修复数2止损，夹具已恢复。归属公开直播媒体HTTP/abort/session传输，非Agent/Evidence；共同原因假设为当前请求/校验/取消时序下HLS传输不完整，下一判别须采上游真实状态/取消及SDK错误，不再换封套/延时/保留数相似试跑。所有失败绑定/unknown保留；V1-02原报告追问与其独立，可按唯一计划第2节串行推进。
 <!-- /public-live-two-repair-stop -->

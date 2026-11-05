@@ -156,10 +156,14 @@ class FollowupController {
       if (old) {
         const latest = await this.client.read(`${BASE}/${bid}/reports/${old.reportId}`, { revision: old.revision }, headers);
         const detail = reportForView(latest, context, old.selectedProjectId);
-        if (this.current(epoch) && this.state.followupDetail === old) this.set({ followupDetail: { ...detail, sourceContext: context, bindingId: bid }, ...(!detail.available ? { followupOriginal: null } : {}) });
+        if (this.current(epoch) && this.state.followupDetail === old) {
+          const original = this.state.followupOriginal;
+          const sourceAvailable = detail.available && (!original || detail.projects.some(p => p.id === original.projectId && p.originalIds.includes(original.id)));
+          this.set({ followupDetail: { ...detail, sourceContext: context, bindingId: bid }, ...(!sourceAvailable ? { followupOriginal: null } : {}) });
+        }
       }
       if (this.current(epoch) && this.state.followupHistoryOpen) await this.loadHistory({ background: true });
-    } catch (e) { if (this.current(epoch)) this.failure(e); }
+    } catch (e) { if (this.current(epoch)) { this.set({ followupOriginal: null }); this.failure(e); } }
   }
   failure(e) {
     if (!this.current()) return;
