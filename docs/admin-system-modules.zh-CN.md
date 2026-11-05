@@ -1,18 +1,18 @@
 # 后台系统当前功能清单
 
 <!-- xiaok-enterprise-knowledge-mode -->
-**企业知识开关/无知识库首版：Limited。** 企业JSON配置`agent_config.enterpriseKnowledgeEnabled`缺省关闭；后台原`/assistant-knowledge`新增Ant Design“知识设置”表单，GET/PUT `/api/assistant/settings`沿既有选定企业知识管理授权、三管理角色、CAS和同值重试。切换递增policy_version，新运行固化模式；关闭不派发企业检索/Embedding、不把旧企业知识上下文送入模型。问答使用模型通用知识/按需联网，业务读写权限仍由原服务执行。阶段/日周报复用原事实/正文Worker/投递/阅读链，模型仅补阶段通用建议，原记录展示进展/待核对/安排，经批准“工艺关注”组件标注“通用建议（模型知识）”，不冒充企业来源或reviewed证明。显式后台知识维护/试问保留；开启模式的回答质量、四角色/照片及整版仍Limited；完工/入住自动报告排除保持。Mini结构/样式/素材/路由未改。[架构合同](xiaok-assistant-phase-2.zh-CN.md#企业知识开关与无知识库首版limited)，证据`tmp/v1-knowledge-switch-20261106/`。
+**企业知识开关/无知识库首版：Limited。** 企业JSON配置`agent_config.enterpriseKnowledgeEnabled`缺省关闭；后台原`/assistant-knowledge`新增Ant Design“知识设置”表单，GET/PUT `/api/assistant/settings`沿既有选定企业知识管理授权、三管理角色、CAS和同值重试。切换递增policy_version，新运行固化模式；关闭不派发企业检索/Embedding、不把旧企业知识上下文送入模型。问答使用模型通用知识/按需联网，业务读写权限仍由原服务执行。阶段/日周报复用原事实/正文Worker/投递/阅读链，模型仅补阶段通用建议，原记录展示进展/待核对/安排，经批准“工艺关注”组件标注“通用建议（模型知识）”，不冒充企业来源或reviewed证明。显式后台知识维护/试问保留；开启模式的回答质量及整版仍Limited，固定照片范围见下文；完工/入住自动报告排除保持。Mini结构/样式/素材/路由未改。[架构合同](xiaok-assistant-phase-2.zh-CN.md#企业知识开关与无知识库首版limited)，证据`tmp/v1-knowledge-switch-20261106/`。
 
-已验范围：开关开启/关闭保存刷新、固定自然对话、正式无知识报告投递/重读及业主Stable重进通过，企业检索/Embedding为0。四角色日/周周期/受众取数与成员撤权用保存建议夹具通过，0付费调用。正向联网读取、实模照片整理及整版闭环仍Limited；四角色原图原生的限定证据见下文；详见当前架构/证据，未生产部署。
+已验范围：开关开启/关闭保存刷新、固定自然对话、正式无知识报告投递/重读及业主Stable重进通过，企业检索/Embedding为0。四角色日/周周期/受众取数与成员撤权用保存建议夹具通过，0付费调用。完整自然联网对话及整版闭环仍Limited；经理/工人固定照片整理与四角色原图原生证据见下文；详见当前架构/证据，未生产部署。
 
 <!-- xiaok-public-web-current -->
 **公开联网：原文读取Implemented，完整自然问答Limited。** 原SearXNG/公开HTML链已取得真实厂商正文并保存URL/时间/hash。当前轮来源沿既有别名复用相同完整正文，保留各次回执与实时授权；普通公开来源final-only复用kind必填结构，量数仍由原解析器核对。21定向/87兼容检查通过，类型57旧诊断/涉及0；run10628保存了可核查回答。完整旅程两轮修复仍失败，已停止同类实模/补丁；原文正确，失败归Agent来源消费/结构与段落引用，知识域无需改动。原成本待对账重试守卫保持；未完成整段/两组/原生验收，无API/角色/客户端结构/样式/素材变化。原输入/输出、调用与共因假设见[当前合同](xiaok-assistant-phase-2.zh-CN.md)及`tmp/v1-web-positive-20261106/`，旧失败/unknown及停止计数保留。
 <!-- /xiaok-public-web-current -->
 
 <!-- xiaok-report-photo-sources -->
-**施工照片与日/周报原图：权限链范围Implemented，实模整理质量Limited。** 复用原S04同项目经理/工人文字与照片→`site.record`待核对草稿→人工发布→原日/周报事实/正文/投递链，不重复建设识图或报告平台。仅当期获权发布版本进入报告；业主排除内部记录。原记录/规范化原图沿既有`followups/:bindingId/reports/:reportId/projects/:projectId/records/:recordId[/media/:mediaId]?revision=`实时重验项目、成员、受众及来源版本。客户端在多项目报告仍部分可读时也会清除被撤回项目的已打开原记录；重验失败同样清空原记录和临时图片，获权未变刷新不重下载。无新路由/schema/界面结构/样式/素材，沿批准02/03/04/06/07/08共用原记录与失效状态。
+**施工照片与日/周报原图：固定V1范围Implemented，整版仍Limited。** 复用原S04经理/工人文字与获权照片→`site.record`草稿→经理核对发布→原日报/周报链。保留项目、原记录/媒体与发布版本/时间；业主排除内部内容。既有`followups/:bindingId/reports/:reportId/projects/:projectId/records/:recordId[/media/:mediaId]?revision=`实时重验成员、受众、原记录和规范化原图。多项目部分撤回或重验失败均清空已打开原记录/临时图；获权未变刷新不重下载。沿批准02/03/04/06/07/08原记录与失效组件，无新API/schema/界面结构/样式/素材。
 
-证据`tmp/v1-report-photos-20261106/assessment.json`：修前3项中2失败保留；修后客户端39/39，工程夹具驱动8份四角色日/周报真实上传/发布/Worker/投递/原图hash回读、内部受众和成员/记录撤回通过；Stable390×844（编码383×828）10项通过，1181项原生依赖绑定drift[]，测试资源已清理。S04整理和报告建议在此工程批为显式夹具，不冒充模型质量。配置模型首试run10606/attempt3027被HTTP429明确拒绝、无草稿；第二固定工人试次未派发，用量/实费未知，无新unknown结果、不自动重采。原失败及直播两轮止损保持；照片理解、正向联网和完整V1仍Limited。
+证据`tmp/v1-report-photos-20261106/assessment.json`：配置qwen3.8-flash真实读取两张CC0测试照片，工人10632保留窗框已装/收口未做/待经理核对，经理10638保留厨房拆顶完成/水电未验；各自发布后进入真实日/周报，原图hash回读、撤回与清理通过。两次成功实模1741/129输入/输出tokens，实费未知；原经理10606/3027的HTTP429完整保留，工人成功证明图片链恢复后才单次恢复经理，未重采成功输出。原39客户端/13包体、8份四角色报告、Stable390×844（编码383×828）10项及1181原生绑定drift[]复用；两个新批304项绑定各drift[]，建议沿原保存夹具。双例仅证明此开发整理流程，非广泛图片识别、工程验收或真机/生产通过；企业知识仍默认关闭。
 <!-- /xiaok-report-photo-sources -->
 
 <!-- construction-public-live-current -->
