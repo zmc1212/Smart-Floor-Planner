@@ -33,22 +33,23 @@ const webQuestion='帮我查一下网上关于卫生间通风的建议，告诉�
 const naturalScope={protocol:naturalKnowledgeProtocol,model:'qwen3.8-flash',provider:'Beijing DashScope',thinkingDisabled:true,
   enterpriseId:'1454',internalSource:'417/423',customerSources:['404/410','405/411'],reindex:false,
   journeys:{customer:customerQuestions,shared:staffQuestions,general:[generalQuestion],web:[webQuestion]},
-  trialsPerJourney:2,rounds:['HTTP','Stable'],maxNewRuns:16,maxModelCalls:80,maxNewCostMicros:5000000,
-  reservedTokensPerRun:320000,conservativeMicrosPerToken:5,cumulativeCapMicros:100000000,
-  stopOn:['first blocking failure','unknown provider outcome','source/configuration drift','budget cap'],
+  trialsPerJourney:2,rounds:['HTTP','Stable'],maxNewRuns:16,maxModelCalls:80,maxNewCostMicros:null,
+  reservedTokensPerRun:320000,conservativeMicrosPerToken:5,cumulativeCapMicros:null,
+  feeAuthorization:'2026-11-05 user removed fee ceilings for subsequent work under the XiaoK development plan',
+  stopOn:['first blocking failure','unknown provider outcome','source/configuration drift'],
   priorStoppedBatch:'authorized-original-20261105-01/environment-recovered',priorRemainingTurns:10,
   retainedFailures:['2202','D2=2'],retainedUnknown:'3753',semanticAcceptance:'requires transcript review',
   reuse:'77 focused regressions, service03-citations, unchanged tenant/revocation/failure coverage'};
 const naturalScopeHash=createHash('sha256').update(JSON.stringify(naturalScope)).digest('hex');
 if(process.argv.includes('--describe-plan')){
   assert.ok(naturalAnswer,'Describe the new natural-answer scope explicitly');
-  console.log(JSON.stringify({scope:naturalScope,scopeHash:naturalScopeHash,authorization:'pending',providerCalls:0},null,2));
+  console.log(JSON.stringify({scope:naturalScope,scopeHash:naturalScopeHash,authorization:'standing plan authorization, 2026-11-05',providerCalls:0},null,2));
   process.exit(0);
 }
 let naturalAuthorization:Row|undefined;
 if(naturalAnswer&&process.argv.includes('--run-fixed-trials')){
   const file=process.argv.find(v=>v.startsWith('--authorization-file='))?.slice('--authorization-file='.length);
-  assert.ok(file,'Plan section6.2 requires a separately authorized new scope before dispatch');
+  assert.ok(file,'Record the standing plan authorization and fixed scope before dispatch');
   naturalAuthorization=JSON.parse(fs.readFileSync(path.resolve(file),'utf8'));
   assert.equal(naturalAuthorization!.scopeHash,naturalScopeHash,'Authorization must match this fixed scope');
   assert.equal(naturalAuthorization!.status,'approved');
@@ -142,11 +143,11 @@ async function snapshotRun(runId:string){return withTenantTransaction(eid,async 
   output:await one(tx,sql`select m.* from app.assistant_messages m join app.assistant_runs r on r.enterprise_id=m.enterprise_id and r.output_message_id=m.id where r.enterprise_id=${eid} and r.id=${runId}`),
   citations:await rows(tx,sql`select c.id::text,c.document_id::text,c.document_version_id::text,c.quote_snapshot from app.assistant_message_citations c where c.enterprise_id=${eid} and c.run_id=${runId}`),
 }));}
-async function reserve(turn:Row){assertBinding();assert.deepEqual(await runtimeSnapshot(),report.runtimeBefore,'Configured runtime changed before dispatch');reviewBudget(root).assertReservation(0,320000,retained);
+async function reserve(turn:Row){assertBinding();assert.deepEqual(await runtimeSnapshot(),report.runtimeBefore,'Configured runtime changed before dispatch');
+  reviewBudget(root,naturalAnswer?{plan:'xiaok-renovation-agent-development-plan',costLimit:null}:undefined).assertReservation(0,320000,retained);
   if(naturalAnswer){assert.ok(report.reservationHistory.filter((r:Row)=>r.state==='reserved').length<naturalScope.maxNewRuns);
     assert.ok(report.calls.length+5<=naturalScope.maxModelCalls,'The fixed model-dispatch allowance is exhausted');
-    assert.ok((reviewTokens(report.calls)+naturalScope.reservedTokensPerRun)*naturalScope.conservativeMicrosPerToken<=naturalScope.maxNewCostMicros,
-      'New batch conservative reservation exceeds CNY5; stop without expanding scope');}
+  }
   turn.reservationId='pending-'+turn.key;report.calls.push({id:turn.reservationId,runId:'unresolved-operation:'+turn.key,status:'unknown',reservedTokens:320000});
   report.reservationHistory.push({key:turn.key,state:'reserved',tokens:320000,at:new Date().toISOString()});save();}
 async function settle(turn:Row){if(!turn.runId)return;const trace=await snapshotRun(turn.runId);

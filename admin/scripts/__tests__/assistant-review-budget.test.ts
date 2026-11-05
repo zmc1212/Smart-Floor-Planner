@@ -56,3 +56,19 @@ test('a separately authorized new batch retains exact unknown holds and the cumu
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+
+test('standing no-fee-limit authorization preserves accounting and exact unknown holds',()=>{
+  const hold={id:'unknown-original',runId:'original-run',reservedTokens:64000};
+  const f=fixture([{id:'observed-original',status:'succeeded',usage:{total_tokens:21000000}},{...hold,status:'unknown'}]);
+  try{
+    const original=reviewBudget(f.root),authorized=reviewBudget(f.root,{plan:'xiaok-renovation-agent-development-plan',costLimit:null});
+    assert.ok(original.usedMicros>100000000);assert.equal(original.costLimit,100000000);assert.equal(authorized.costLimit,null);
+    assert.throws(()=>original.assertReservation(0,320000,[hold]),/fee reservation exceeds/);
+    assert.doesNotThrow(()=>authorized.assertReservation(0,320000,[hold]));
+    assert.equal(authorized.usedMicros,original.usedMicros);assert.equal(authorized.usedTokens,original.usedTokens);assert.equal(authorized.unknownCount,1);
+    assert.throws(()=>authorized.assertReservation(0,320000),/Unresolved provider outcome/);
+    assert.throws(()=>authorized.assertReservation(0,320000,[{...hold,reservedTokens:1}]),/Unresolved provider outcome/);
+    assert.throws(()=>authorized.assertReservation(0,-1,[hold]),/Invalid token reservation/);
+  }finally{f.close();}
+});
