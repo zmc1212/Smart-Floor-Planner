@@ -145,6 +145,18 @@ function synthesisModelProjection(message: ModelMessage, originals: Map<string, 
     if (source.citationQuotes?.length === 1 && source.citationQuotes[0] === source.text) delete copy.citationQuotes;
     if (source.citationQuote === source.text) delete copy.citationQuote;
     const identity = { ...copy }; delete identity.sourceId; delete identity.resultKey; delete identity.citationQuotes;
+    if (source.kind === 'web' && source.web?.parser === 'public-html-text-v1' && source.evidence?.ref.type === 'web_page'
+      && source.evidence.hash === source.web.hash && source.evidence.ref.version === source.web.hash
+      && source.web.hash === fingerprint({ url: source.web.url, title: source.web.title, text: source.text, retrievedAt: source.web.retrievedAt })
+      && fingerprint(source.evidence.web) === fingerprint(source.web)) {
+      // HTML receipt hashes include read time. Share identical public content
+      // only in the existing model view; both hash-bound reads and their usage
+      // stay durable and are still authorized separately before commit/reentry.
+      const web = { ...source.web } as Record<string, unknown>; delete web.retrievedAt; delete web.hash;
+      const ref = { ...source.evidence.ref } as Record<string, unknown>; delete ref.id; delete ref.version;
+      const evidence = { ...source.evidence, ref, web } as Record<string, unknown>; delete evidence.hash;
+      identity.web = web; identity.evidence = evidence;
+    }
     // K<immutable chunk ID> also separates revisions reusing the same asset.
     if (source.file) identity.sourceId = source.sourceId;
     const key = fingerprint(identity), canonicalSourceId = originals.get(key);

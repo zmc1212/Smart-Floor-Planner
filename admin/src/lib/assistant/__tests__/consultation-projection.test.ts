@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {publicDiscoveryQuery} from '../agent/public-research';
 import {focusedSynthesisMessages,knowledgeSynthesisSources} from '../agent/synthesis';
 import type {ModelMessage,ModelTool} from '../contracts/model';
+import {fingerprint} from '../contracts';
 import {agentBasePolicy,agentOpeningMemoryPrefix,buildAgentContext} from '../agent/context';
 import {readMemory} from '../agent/memory';
 import {synthesisModelInstructions,synthesisQuestionPrefix} from '../agent/model-policy';
@@ -96,4 +97,37 @@ test('model source projection keeps full originals once and never aliases a diff
   for(const source of packet.synthesisSources){assert.equal(source.text,text);assert.equal('text' in source.evidence,false);assert.ok(source.evidence.hash);assert.ok(source.citationOptions.length);}
   assert.equal(JSON.stringify(messages),original);
   assert.ok(Buffer.byteLength(JSON.stringify(projected))<Buffer.byteLength(original));
+});
+
+test('repeated valid HTML reads share model content while both timed receipts remain durable',()=>{
+  const text='合成公开产品原文：仅用于指定型号，现场条件仍待核实。'.repeat(30);
+  const source=(id:string,at:string,body=text,url='https://maker.example/product')=>{
+    const title='合成公开产品',hash=fingerprint({url,title,text:body,retrievedAt:at});
+    const web={url,title,hash,retrievedAt:at,parser:'public-html-text-v1' as const,textBytes:Buffer.byteLength(body)};
+    return {sourceId:'W'+id,kind:'web' as const,title,text:body,web,
+      evidence:{ref:{type:'web_page' as const,id,version:hash},hash,text:body,web}};
+  };
+  const first=source('1:1200:0','2026-11-06T00:00:00Z'),second=source('1:1210:0','2026-11-06T00:01:00Z');
+  const messagesFor=(next:typeof second):ModelMessage[]=>[
+    {role:'user',content:[{type:'text',text:JSON.stringify({sourceMessageId:'10',text:'帮我查一下这款产品的官网要求。'})}]},
+    {role:'assistant',content:'',toolCalls:[{id:'read-first',name:'search_web',arguments:'{}'}]},
+    {role:'tool',callId:'read-first',content:JSON.stringify({synthesisSources:[first]})},
+    {role:'assistant',content:'',toolCalls:[{id:'read-next',name:'search_web',arguments:'{}'}]},
+    {role:'tool',callId:'read-next',content:JSON.stringify({synthesisSources:[next]})},
+  ];
+  const messages=messagesFor(second),original=JSON.stringify(messages),projected=focusedSynthesisMessages(messages,'10');
+  const packets=projected.filter((m):m is Extract<ModelMessage,{role:'tool'}>=>m.role==='tool').map(m=>JSON.parse(m.content));
+  assert.notEqual(first.evidence.hash,second.evidence.hash,'each receipt still binds its actual read time');
+  assert.equal(packets[0].synthesisSources[0].text,text);
+  assert.deepEqual(packets[1].synthesisSources,[]);
+  assert.equal(packets[1].sourceAliases[0].canonicalSourceId,first.sourceId);
+  assert.equal(packets[1].sourceAliases[0].sourceId,second.sourceId);
+  assert.equal(JSON.stringify(messages),original);assertToolPairs(projected);
+  for(const different of [source('1:1210:0','2026-11-06T00:01:00Z',text+'适用条件发生变化。'),
+    source('1:1210:0','2026-11-06T00:01:00Z',text,'https://other.example/product'),
+    {...second,evidence:{...second.evidence,hash:'invalid-receipt'}},
+    {...second,web:{...second.web,unknownCondition:'另一适用范围'}}]) {
+    const views=focusedSynthesisMessages(messagesFor(different),'10').filter((m):m is Extract<ModelMessage,{role:'tool'}>=>m.role==='tool').map(m=>JSON.parse(m.content));
+    assert.equal(views[1].synthesisSources.length,1,'different content/locator/conditions or an invalid receipt cannot share an original');
+  }
 });

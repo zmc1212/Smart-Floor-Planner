@@ -6,6 +6,21 @@ import {runRenovationAgent,type AgentCheckpoint} from '../agent/runtime';
 import {agentConfig,agentCapabilityFingerprint} from '../agent/config';
 import {toolSchemaIssue} from '../agent/tool-protocol';
 import type {ModelTool,ModelTurnOutput} from '../contracts/model';
+
+test('ordinary public-source final-only dispatch requires selected reply fields and retains application quantity validation',async()=>{
+  const tool:ModelTool={name:'final_response',description:'Final',parameters:{type:'object',properties:{kind:{enum:['general','synthesis']},text:{type:'string'},resultKey:{type:'string'},segments:{type:'array',items:{type:'object',properties:{basis:{enum:['advice','evidence','uncertainty']},text:{type:'string'},citations:{type:'array',items:{type:'object',properties:{citationId:{type:'string'}},required:['citationId']}}},required:['basis','text','citations']}}},required:['kind'],additionalProperties:false}};
+  const compiled=compileModelRequest({question:'刚才是公司规定吗？',triggerId:'10',turn:3,purpose:'answer',messages:[
+    {role:'user',content:[{type:'text',text:JSON.stringify({sourceMessageId:'10',text:'刚才是公司规定吗？'})}]},
+    {role:'assistant',content:'',toolCalls:[{id:'read',name:'search_web',arguments:'{}'}]},
+    {role:'tool',callId:'read',content:JSON.stringify({synthesisSources:[{sourceId:'W1',kind:'web',title:'官网',text:'公开产品说明。'}]})},
+  ],tools:[],toolsForTurn:()=>[tool]});
+  const [strict]=compiled.dispatchTools;
+  assert.ok(await toolSchemaIssue(strict,JSON.stringify({kind:'synthesis',text:'结构错误的原回答',resultKey:'old-result'})));
+  assert.equal(await toolSchemaIssue(strict,JSON.stringify({kind:'synthesis',segments:[{basis:'uncertainty',text:'目前未核实企业采用情况。',citations:[]}]})),null);
+  assert.equal(await toolSchemaIssue(strict,JSON.stringify({kind:'general',text:'1. 这是原应用负责检查的内容。'})),null);
+  const [unchanged]=compileModelRequest({question:'查一下',triggerId:'10',turn:0,purpose:'answer',messages:[],tools:[tool],toolsForTurn:()=>[{...tool,name:'search_web'},tool]}).dispatchTools;
+  assert.equal(unchanged.name,'search_web');assert.deepEqual(tool.parameters.required,['kind']);
+});
 const response=(text:string):ModelTurnOutput=>({text,toolCalls:[],finishReason:'stop',providerRequestId:'synthetic',usage:{inputTokens:1,outputTokens:1}});
 test('native final schema blocks the saved uncited-quantity failure without weakening source semantics',async()=>{
   const tool:ModelTool={name:'final_response',description:'Final',parameters:{type:'object',properties:{kind:{enum:['general','synthesis']},text:{type:'string'},segments:{type:'array',items:{type:'object',properties:{basis:{enum:['advice','evidence','uncertainty']},text:{type:'string'},citations:{type:'array',items:{type:'object',properties:{citationId:{enum:['known-original']}},required:['citationId']}}},required:['basis','text','citations']}}},required:['kind']}};

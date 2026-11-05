@@ -13,6 +13,14 @@
 
 核验：选定企业管理权限/CAS/拒绝及正式无知识日报正文→投递→重进通过。Chrome实际开启/关闭保存并刷新重读，原会话及合成配置已恢复（`admin-ui.json`、`admin-ui-capture.json`、`admin-knowledge-switch-verified.jpg`）。Stable沿批准组件点开/重进报告，明确复用run10581为客户端夹具，0新增模型调用（`native-replay01/native.json`，逻辑390×844/编码383×828）。两组自然三轮问答首稿全部保留，0企业检索/Embedding。14次实模共59290/3086输入/输出tokens，实费未知。驱动中的联网失败仅证明受控恢复，未证明正向网页读取/引用。20项定向检查及lint通过；类型57个既有错误/涉及文件0，生产build被Windows Turbopack junction os87阻塞。 四角色日/周报还以已保存建议的工程夹具通过真实事实/正文/投递/重读、周期/内部受众过滤及成员撤权，0新增付费调用（`role-reports02/report.json`）；不冒充新模型质量、四角色原生或照片理解验收。
 
+<!-- xiaok-public-web-current -->
+**公开联网链：原文读取Implemented，完整自然问答Limited。** 原SearXNG/公开HTML读取已能获得厂商官网正文，按真实URL、读取时间和hash保存，不进入企业知识库。模型视图复用既有`sourceAliases`：仅对回执hash公式、ref/hash及完整web定位一致的`public-html-text-v1`，在URL/标题/正文/解析及其他条件相同、仅读取回执不同时共享正文；两次原始读取、来源ID/hash、用量及提交/重进逐条授权仍保留。普通公开来源final-only接入既有`nativeFinalDefinition`的kind必填结构（synthesis必须含segments）；量数仍由原应用解析器检查。既有原生/知识模式、修复及报告合同保持。未改API、角色、客户端结构/样式或素材。
+
+当前证据`tmp/v1-web-positive-20261106/`：原run10626的17559估算超限可离线重放；相同输入按完整正文别名为15965，预算仍16000。21定向及最终87兼容检查通过，lint0错误/1既有unused警告；类型仍57旧诊断/涉及0。run10628已保存可核查官网条件回答；完整旅程两轮修复仍失败，停止同类补丁/实模：10629最终kind=synthesis却缺segments，10630把已读的5℃/85%写进无引用advice段被原量数守卫拒绝。归Agent来源消费/结构协议，检索原文正确，知识域无需改动；不加正则、提示词判分或放宽守卫。共同假设为企业开关同时省略通用综合协议，待离线对照现有协议装配；不是新一轮采样。10629原重试因成本待对账被拒，未绕过；夹具/零派发错误单列，原失败与旧D2/直播两轮不清零。9实模59611/1290输入/输出tokens，实费未知/0新unknown结果，0企业检索/Embedding；资源已清理，源码/配置drift[]。未完成正向整段/两组/原生业务验收。
+
+采用沿[LangGraph模型输入与持久状态分离](https://docs.langchain.com/oss/javascript/langgraph/add-memory#manage-short-term-memory)及[上游消息/工具调用测试](https://github.com/langchain-ai/langchain/blob/master/libs/core/tests/unit_tests/test_messages.py)的原则，复用本项目当前轮完整来源别名及工具配对；已核上游[trimMessages问题](https://github.com/langchain-ai/langchainjs/issues/11152)，不把历史裁剪当当前原文丢弃依据。最终结构沿[百炼JSON Schema合同](https://help.aliyun.com/zh/model-studio/qwen-structured-output)和现有原生结构能力，保留供应商首稿与本地事实校验。
+<!-- /xiaok-public-web-current -->
+
 <!-- xiaok-report-photo-sources -->
 **施工照片与日/周报原图：权限链范围Implemented，实模整理质量Limited。** 复用原S04同项目经理/工人文字与照片→`site.record`待核对草稿→人工发布→原日/周报事实/正文/投递链，不重复建设识图或报告平台。仅当期获权发布版本进入报告；业主排除内部记录。原记录/规范化原图沿既有`followups/:bindingId/reports/:reportId/projects/:projectId/records/:recordId[/media/:mediaId]?revision=`实时重验项目、成员、受众及来源版本。客户端在多项目报告仍部分可读时也会清除被撤回项目的已打开原记录；重验失败同样清空原记录和临时图片，获权未变刷新不重下载。无新路由/schema/界面结构/样式/素材，沿批准02/03/04/06/07/08共用原记录与失效状态。
 

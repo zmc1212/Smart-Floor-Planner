@@ -48,7 +48,7 @@ function quotedFinalMessages(messages:ModelMessage[], imagesAllowed:boolean):Mod
 /** Native decoding can enforce citation presence for quantities; it cannot
  * establish whether a selected original supports them. All existing semantic,
  * receipt, tenant and source validators remain mandatory after generation. */
-export function nativeFinalDefinition(tool:ModelTool, options: { reportNumberValidation?: 'synthesis' } = {}):ModelTool{
+export function nativeFinalDefinition(tool:ModelTool, options: { reportNumberValidation?: 'synthesis'; quantityValidation?: 'application' } = {}):ModelTool{
   const parameters=structuredClone(tool.parameters),properties=parameters.properties as Record<string,Record<string,unknown>>|undefined;
   if(!properties?.kind)return tool;
   const kinds=properties.kind.enum;
@@ -60,11 +60,11 @@ export function nativeFinalDefinition(tool:ModelTool, options: { reportNumberVal
     const p=structuredClone(properties),required=[...((parameters.required as string[])||[])];
     p.kind={...p.kind,const:kind};delete p.kind.enum;
     if(['general','vision','unavailable'].includes(kind)){
-      required.push('text');p.text={...p.text,pattern:'^[^0-9]*$'};
+      required.push('text');if(options.quantityValidation!=='application')p.text={...p.text,pattern:'^[^0-9]*$'};
     }
     if(kind==='synthesis'){
       required.push('segments');
-      p.segments=numericSynthesisSegments(p.segments);
+      p.segments=numericSynthesisSegments(p.segments, options.quantityValidation!=='application');
     }
     if(kind==='report_answer'){
       required.push('answers');
