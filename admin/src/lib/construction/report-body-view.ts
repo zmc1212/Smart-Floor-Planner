@@ -8,6 +8,7 @@ import type { ReportFacts } from './report-scope';
 import { citationProjection } from '@/lib/assistant/knowledge/sources';
 import { evidenceOriginal } from '@/lib/assistant/knowledge/file-service';
 import { fail } from '@/lib/assistant/contracts';
+import { generalReportAdviceProtocol } from './report-general-advice';
 
 type ReportOriginal = { sourceId: string; title: string; quote: string; location: Evidence['file'] | null };
 function projectConversation(conversation: Row, selection: ReportBody['projects'][number]['selection']) {
@@ -44,7 +45,10 @@ export async function reportBodyView(tx: PostgresTransaction, actor: ActorContex
       key: `standards:${index}`, basis: 'evidence', citations: [citation],
       text: (stage ? stage + ' · ' : '') + citation.quote + '\n来源：' + citation.title + (citation.location ? ` · ${citation.location.label}` : ''),
     });
-    const standards = p.weekWorkmanship ? p.weekWorkmanship.stages.map((stage, index) => {
+    const standards = body.generalAdvice === generalReportAdviceProtocol && !p.context.knowledge.length
+      ? p.sections.standards.segments.filter(s => s.basis === 'advice' && !s.citations.length).map((s, index) => ({
+        key: `standards:${index}`, basis: 'advice', citations: [] as ReportOriginal[], text: '通用建议（模型知识）：' + s.text,
+      })) : p.weekWorkmanship ? p.weekWorkmanship.stages.map((stage, index) => {
       const citation = [...originals.values()].find(original => original.sourceId === stage.sourceId);
       return citation ? displayOriginal(citation, index, stage.name)
         : { key: `standards:${index}`, basis: 'uncertainty', citations: [], text: stage.name + ' · 本次没有可引用的企业工艺依据。' };

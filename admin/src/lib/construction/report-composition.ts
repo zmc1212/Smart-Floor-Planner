@@ -15,7 +15,7 @@ export const reportSectionKinds = ['progress', 'pending', 'standards', 'arrangem
 export type ReportSectionKind = typeof reportSectionKinds[number];
 export type ComposedProject = { projectId: string; selection: ReportReference; context: SynthesisContext; sections: Record<ReportSectionKind, SynthesisAnswer>;
   weekWorkmanship?: { stages: Array<{ name: string; sourceId?: string }>; truncated: boolean } };
-export type ReportBody = { protocol: typeof reportCompositionProtocol; projects: ComposedProject[]; guidanceReviewed?: true | 'pending' };
+export type ReportBody = { protocol: typeof reportCompositionProtocol; projects: ComposedProject[]; guidanceReviewed?: true | 'pending'; generalAdvice?: 'model-general-stage-advice-v1' };
 const reportProjectSlot = (index: number) => 'P' + (index + 1);
 const maxReportSegments = 6;
 const reportSegmentKey = (project: number, section: ReportSectionKind, segment: number) =>
@@ -130,7 +130,12 @@ export async function projectReportBodyFinal(output: ModelTurnOutput, tool: Mode
   let normalized: string | undefined;
   if (functionCarrier) {
     const [call] = output.toolCalls;
-    if (output.finishReason !== 'tool_calls' || output.text.trim() || output.toolCalls.length !== 1 || call.name !== tool.name) fail('native_schema_unverified', 502);
+    // Some forced-function provider responses finish with `stop`. Accept only
+    // their complete, application-schema-checked carrier; never truncated,
+    // mixed or free-text output. Keep the original provider packet unchanged.
+    const terminal = output.finishReason === 'tool_calls' || output.finishReason === 'stop'
+      && output.observation?.format?.mode === 'function_call' && output.observation.format.schemaValid === true;
+    if (!terminal || output.text.trim() || output.toolCalls.length !== 1 || call.name !== tool.name) fail('native_schema_unverified', 502);
     normalized = canonical?.citationList ? flattenReportCitationLists(call.arguments) : call.arguments;
     if (await toolSchemaIssue(tool, normalized)) fail('native_schema_unverified', 502);
   }

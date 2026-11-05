@@ -10,6 +10,7 @@ import { processAnswer } from './answer-worker';
 import { resolveEvidence, validatePreviewSnapshot, previewPolicy } from '../knowledge/sources';
 import { parseAnswer, safeInsufficientContent, type GroundedAnswer } from '../knowledge/answer';
 import { agentConfig, agentCapabilityFingerprint } from '../agent/config';
+import { assertKnowledgePolicy, runKnowledgeEnabled } from '../knowledge-policy';
 
 export const workerTiming = { providerMs: 90000, leaseMs: 150000, requestMs: 180000, heartbeatMs: 30000 };
 export type Lease = { enterpriseId: string; jobId: string; runId: string; token: string; actor: ActorContext };
@@ -28,8 +29,11 @@ async function authorized(repo: AssistantRepository, run: Row) {
     && ((run.policy_snapshot as Row).reportComposition as Row | undefined)?.protocol === 'construction-report-composition-v1'
     && repo.actor.capabilities.includes('assistant.followup.delivery');
   const scheduledReport = localReport || composedReport;
+  if (!localReport && run.purpose !== 'speech.transcribe' && c.purpose !== 'knowledge_preview')
+    assertKnowledgePolicy((run.policy_snapshot as Row).knowledgePolicy, settings!.agent_config);
   if (!((run.purpose === 'speech.transcribe' || scheduledReport) ? ['ai', 'human', 'handoff_requested'].includes(String(c.mode)) : c.mode === 'ai')
-    || (scheduledReport ? c.status === 'closed' : c.status !== 'open') || c.context_revision !== run.context_revision || (!localReport && settings!.knowledge_epoch !== run.knowledge_epoch)
+    || (scheduledReport ? c.status === 'closed' : c.status !== 'open') || c.context_revision !== run.context_revision
+    || (!localReport && run.purpose !== 'speech.transcribe' && runKnowledgeEnabled(run.policy_snapshot as Row) && settings!.knowledge_epoch !== run.knowledge_epoch)
     || Number(settings!.policy_version) !== Number((run.policy_snapshot as { policyVersion: number }).policyVersion)) fail('context_changed');
   const configuredAgent = agentConfig((run.policy_snapshot as Row).agent);
   const reportVersion = (run.policy_snapshot as Row).reportContextVersion;

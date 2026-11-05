@@ -27,6 +27,8 @@ import { assertReportGuidanceReview, prepareReportGuidanceReview, reportGuidance
 import { projectReportGuidanceOnly, reportGuidanceChoices, reportGuidanceFinalTool, reportGuidanceStandardSources } from './report-guidance-final';
 import { isReminderWorkmanship, reminderWorkmanshipStage, reportWorkmanshipMatches, reportWorkmanshipName, reportWorkmanshipProtocol, reportWorkmanshipQuery, reportWorkmanshipStages, serverReminderWorkmanshipProtocol } from './report-workmanship';
 import { currentReportStageEvent } from './stage-events';
+import { runKnowledgeEnabled } from '@/lib/assistant/knowledge-policy';
+import { generalReportMessages, generalReportTool, parseGeneralReport } from './report-general-advice';
 
 type ProjectContext = Pick<ComposedProject, 'projectId' | 'selection' | 'context' | 'weekWorkmanship'> & { guidanceItems?: string[] };
 function selectedConversation(c: Row, selection: ReportReference): Row {
@@ -86,14 +88,15 @@ export async function processReportComposition(lease: Lease, dependencies: {
   try {
     const initial = await scoped(async (tx, context) => {
       const policy = context.run.policy_snapshot as Row;
+      const knowledgeEnabled = runKnowledgeEnabled(policy);
       const config = agentConfig(policy.agent);
       if (!config) fail('context_changed');
       const reportFinalOutputTokens = boundReportBodyFinal(policy.reportBodyFinal, config);
       const factCoverage = boundReportBodyFactCoverage(policy.reportBodyFactCoverage, reportFinalOutputTokens);
       const reportBodyFinalCarrier = boundReportFinalCarrier(policy.reportBodyFinalCarrier, !!reportFinalOutputTokens, reportFinalOutputTokens);
       const wire = boundReportBodyWire(policy.reportBodyProjectSlots, reportBodyFinalCarrier);
-      const reviewGuidance = boundReportGuidanceReview(policy.reportGuidanceReview, wire);
-      const projectGuidanceInput = boundReportGuidanceInput(policy.reportGuidanceInput, reviewGuidance, wire);
+      const reviewGuidance = knowledgeEnabled && boundReportGuidanceReview(policy.reportGuidanceReview, wire);
+      const projectGuidanceInput = knowledgeEnabled ? boundReportGuidanceInput(policy.reportGuidanceInput, reviewGuidance, wire) : undefined;
       const preferOriginal = projectGuidanceInput === reportGuidanceOriginalProtocol;
       const selectGuidance = preferOriginal || projectGuidanceInput === reportGuidanceSelectionProtocol;
       const audience = context.binding.audience as FollowupAudience;
@@ -116,7 +119,7 @@ export async function processReportComposition(lease: Lease, dependencies: {
       }
       const checkpoint = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
         and run_id=${lease.runId} and step_seq=1000 and kind='agent_checkpoint'`);
-      return { config, run: context.run, conversation: context.conversation, projects: list, reportFinalOutputTokens, reportBodyFinalCarrier, wire, reviewGuidance, projectGuidanceInput, selectGuidance, preferOriginal,
+      return { config, knowledgeEnabled, run: context.run, conversation: context.conversation, projects: list, reportFinalOutputTokens, reportBodyFinalCarrier, wire, reviewGuidance, projectGuidanceInput, selectGuidance, preferOriginal,
         reportBodyProjectSlots: policy.reportBodyProjectSlots, reportBodyFactCoverage: policy.reportBodyFactCoverage,
         resume: checkpoint?.private_checkpoint as AgentCheckpoint | undefined,
         scope: { ...context.scope, audience, kind: context.report.kind, timezone: 'Asia/Shanghai',
@@ -170,9 +173,10 @@ export async function processReportComposition(lease: Lease, dependencies: {
       });
       return knowledgeSynthesisSources(evidence, titles);
     }
-    const weeklyWorkmanship = initial.scope.workmanship === reportWorkmanshipProtocol && initial.scope.kind === 'weekly' && initial.selectGuidance;
-    const serverReminderWorkmanship = initial.scope.workmanship === serverReminderWorkmanshipProtocol && initial.selectGuidance;
+    const weeklyWorkmanship = initial.knowledgeEnabled && initial.scope.workmanship === reportWorkmanshipProtocol && initial.scope.kind === 'weekly' && initial.selectGuidance;
+    const serverReminderWorkmanship = initial.knowledgeEnabled && initial.scope.workmanship === serverReminderWorkmanshipProtocol && initial.selectGuidance;
     for (const [index, project] of projects.entries()) {
+      if (!initial.knowledgeEnabled) continue;
       const [facts] = project.context.snapshots[0].data as ReportProject[];
       if (isReminderWorkmanship(initial.scope.workmanship)) {
         const stage = reminderWorkmanshipStage(facts);
@@ -216,10 +220,10 @@ export async function processReportComposition(lease: Lease, dependencies: {
     const citationList = wire === 'citation-list';
     const quotedSegments = wire === 'quoted' || citationList;
     const fixedSlots = wire !== 'legacy', flatSegments = wire === 'flat' || quotedSegments;
-    const bodyTool = guidanceOnly ? reportGuidanceFinalTool(projects, choices, initial.preferOriginal, serverReminderWorkmanship)
+    const bodyTool = !initial.knowledgeEnabled ? generalReportTool(projects.length) : guidanceOnly ? reportGuidanceFinalTool(projects, choices, initial.preferOriginal, serverReminderWorkmanship)
       : reportFinalTool(projects.map(p => p.projectId), projects, fixedSlots);
-    const finalTool = flatSegments && !guidanceOnly ? reportFlatFinalTool(projects.length) : bodyTool;
-    const canonical = flatSegments && !guidanceOnly ? { projectCount: projects.length, tool: bodyTool, citationList,
+    const finalTool = initial.knowledgeEnabled && flatSegments && !guidanceOnly ? reportFlatFinalTool(projects.length) : bodyTool;
+    const canonical = initial.knowledgeEnabled && flatSegments && !guidanceOnly ? { projectCount: projects.length, tool: bodyTool, citationList,
       ...(quotedSegments ? { quoteSources: projects.map(p => p.context.sources.filter(source => source.kind === 'knowledge')) } : {}) } : undefined;
     const budget = { profile: initial.config.consultation?.profile,
       ...(reportFinalOutputTokens ? { purpose: 'answer' as const, reportFinalOutputTokens } : {}) };
@@ -305,7 +309,10 @@ export async function processReportComposition(lease: Lease, dependencies: {
     const visibleProjects = initial.preferOriginal || serverReminderWorkmanship ? projects.map(project => ({ ...project,
       context: { ...project.context, sources: [...project.context.sources.filter(source => source.kind !== 'knowledge'),
         ...(weeklyWorkmanship || serverReminderWorkmanship ? [] : reportGuidanceStandardSources(project, true))] } })) : projects;
-    const result = await runRenovationAgent({ messages: reportMessages(initial.scope, visibleProjects, fixedSlots, flatSegments, quotedSegments, guidanceSection, guidanceOnly, choices, weeklyWorkmanship, serverReminderWorkmanship), tools: [], resume: initial.resume, ports: {
+    const parseBody = (raw: string) => initial.knowledgeEnabled ? parseReportBody(raw, projects, fixedSlots) : parseGeneralReport(raw, projects);
+    const result = await runRenovationAgent({ messages: initial.knowledgeEnabled
+      ? reportMessages(initial.scope, visibleProjects, fixedSlots, flatSegments, quotedSegments, guidanceSection, guidanceOnly, choices, weeklyWorkmanship, serverReminderWorkmanship)
+      : generalReportMessages(initial.scope, projects), tools: [], resume: initial.resume, ports: {
       authorize,
       tool: async () => fail('assistant_capability_forbidden', 403),
       checkpoint: state => scoped(async tx => {
@@ -314,14 +321,14 @@ export async function processReportComposition(lease: Lease, dependencies: {
           values(${lease.enterpriseId},${lease.runId},1000,'agent_checkpoint','succeeded',${JSON.stringify(state)}::jsonb)
           on conflict(enterprise_id,run_id,step_seq) do update set private_checkpoint=excluded.private_checkpoint`);
       }),
-      validateFinal: async raw => { parseReportBody(raw, projects, fixedSlots); return null; },
+      validateFinal: async raw => { parseBody(raw); return null; },
       model: async (turn, messages) => {
         if ((initial.reviewGuidance || initial.selectGuidance) && turn !== 0) fail('invalid_model_answer', 502);
         const output = await projectReportBodyFinal(await dispatch(turn, messages, finalTool), finalTool, !!reportBodyFinalCarrier, canonical);
         return guidanceOnly ? { ...output, text: projectReportGuidanceOnly(output.text, projects, choices, initial.preferOriginal, serverReminderWorkmanship) } : output;
       },
     } });
-    const body = parseReportBody(result.output?.text || '', projects, fixedSlots);
+    const body = parseBody(result.output?.text || '');
     if (guidanceSection) {
       const review = prepareReportGuidanceReview(body, initial.scope.audience, guidanceSection);
       const verdict = await dispatch(1, review.messages, review.tool, review.binding);

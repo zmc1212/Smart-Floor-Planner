@@ -1,5 +1,18 @@
 # 小K第二期：需求整理与人工交接
 
+<!-- xiaok-enterprise-knowledge-mode -->
+## 企业知识开关与无知识库首版（Limited）
+
+首版先用模型知识和按需实际联网，企业知识结合可选并后续开发。复用企业JSON配置`agent_config.enterpriseKnowledgeEnabled`，缺省/false关闭、true显式开启。GET/PUT `/api/assistant/settings`及原`/assistant-knowledge` Ant Design配置标签沿既有选定企业知识管理权限、CAS及同值重试；老板仍需原assistant-knowledge授权，admin/super_admin在所选企业继承管理。无需迁移，不新增Agent或存储。
+
+新任务固化`enterprise-knowledge-policy-v1`；切换递增policy_version，派发、缓存接续和提交均受原守卫约束。未固化模式的历史任务按已结合知识处理，关闭时不能继续。关闭移除企业检索/知识案例工具，在Embedding前拒绝检索，排除旧知识模式助手回复，不恢复含企业知识的综合上下文。获权项目事实、成员、媒体、幂等和用量仍归业务服务。明确的后台知识试问/维护独立保留；开关不发布或删除知识。开启复用原KnowledgeRetriever/Evidence，旧失败及回答质量Limited不升级。
+
+阶段/日/周报告保持同一事实、正文和投递链，以及原收件人/周期/精确引用守卫。关闭时跳过readWorkmanship，原Worker只生成一至两条阶段通用注意事项，进展/待核对/已确认安排继续展示原记录。复用综合解析器拒绝新增无据工程量数/承诺，不增加判分模型，不伪造guidanceReviewed证明。正文`model-general-stage-advice-v1`经原批准“工艺关注”组件展示“通用建议（模型知识）”，没有企业来源按钮。完工/入住保留原自动报告生命周期排除。Mini结构/样式/素材/路由未改；四角色/照片及整版闭环分别记范围。
+
+采用决定：保留现有LangGraph authorize/model/tool/checkpoint接口，以服务端上下文选择工具，与[维护中的LangChain运行上下文/中间件指引](https://github.com/langchain-ai/docs/blob/main/src/oss/javascript/migrate/langchain-v1.mdx)一致；复用已维护的供应商能力配置及最终函数协议。Qwen原响应3013/run10579只有一个完整、结构合法的最终函数，但finish_reason=stop，被原报告解析器拒绝。现仅在应用侧已核为function_call/schemaValid时接受stop，随后仍验函数名称/数量、无附带正文和完整schema；length、未核验及混合响应继续拒绝，原包/失败保留。[官方函数调用合同](https://help.aliyun.com/en/model-studio/qwen-function-calling)。证据`tmp/v1-knowledge-switch-20261106/`。
+
+核验：选定企业管理权限/CAS/拒绝及正式无知识日报正文→投递→重进通过。Chrome实际开启/关闭保存并刷新重读，原会话及合成配置已恢复（`admin-ui.json`、`admin-ui-capture.json`、`admin-knowledge-switch-verified.jpg`）。Stable沿批准组件点开/重进报告，明确复用run10581为客户端夹具，0新增模型调用（`native-replay01/native.json`，逻辑390×844/编码383×828）。两组自然三轮问答首稿全部保留，0企业检索/Embedding。14次实模共59290/3086输入/输出tokens，实费未知。驱动中的联网失败仅证明受控恢复，未证明正向网页读取/引用。20项定向检查及lint通过；类型57个既有错误/涉及文件0，生产build被Windows Turbopack junction os87阻塞。 四角色日/周报还以已保存建议的工程夹具通过真实事实/正文/投递/重读、周期/内部受众过滤及成员撤权，0新增付费调用（`role-reports02/report.json`）；不冒充新模型质量、四角色原生或照片理解验收。
+
 <!-- public-live-two-repair-stop -->
 **公开直播首播失败计数（2026-11-03）：** 当前C05预期是完整范围真实在屏且当前预览正向进度后明确同意。successor01/media02仅证明在屏失败预览/禁用同意、HLS manifestLoadError/code0、MP4进度及直接H264解码，不是业务通过。CORS后native-business01因分片503未就绪；即时/延迟上游200→404判别证明保留风险。native-business02独立绑定保留数1→10后同一期望仍失败，修复数2止损，夹具已恢复。归属公开直播媒体HTTP/abort/session传输，非Agent/Evidence；共同原因假设为当前请求/校验/取消时序下HLS传输不完整，下一判别须采上游真实状态/取消及SDK错误，不再换封套/延时/保留数相似试跑。所有失败绑定/unknown保留；V1-02原报告追问与其独立，可按唯一计划第2节串行推进。
 <!-- /public-live-two-repair-stop -->

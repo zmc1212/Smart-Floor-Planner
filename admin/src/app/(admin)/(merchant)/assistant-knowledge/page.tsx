@@ -11,6 +11,7 @@ import type { Audience, KnowledgeDocument } from '@/components/assistant/contrac
 const KnowledgeEditor = lazy(() => import('@/components/assistant/knowledge-editor').then(module => ({ default: module.KnowledgeEditor })));
 const PreviewPanel = lazy(() => import('@/components/assistant/preview-panel').then(module => ({ default: module.PreviewPanel })));
 const GuidanceEditor = lazy(() => import('@/components/assistant/guidance-editor').then(module => ({ default: module.GuidanceEditor })));
+const KnowledgeSettings = lazy(() => import('@/components/assistant/knowledge-settings').then(module => ({ default: module.KnowledgeSettings })));
 const HandoffPanel = lazy(() => import('@/components/assistant/handoff-panel').then(module => ({ default: module.HandoffPanel })));
 const KnowledgeOperationsPanel = lazy(() => import('@/components/assistant/knowledge-operations').then(module => ({ default: module.KnowledgeOperationsPanel })));
 
@@ -45,6 +46,7 @@ function KnowledgeWorkbench({ canHandoff, canUsage }: { canHandoff: boolean; can
   ];
   return <>
     <Tabs activeKey={tab} onChange={setTab} items={[
+      { key: 'settings', label: '知识设置', children: <Suspense fallback={<Skeleton active />}><KnowledgeSettings /></Suspense> },
       { key: 'knowledge', label: '企业知识', children: <Space direction="vertical" size={20} style={{ width: '100%' }}>
         <Alert type="info" showIcon message="先维护资料，再索引、试问和发布" description="新草稿不会覆盖当前已发布知识。客户只能引用本企业已发布且有效的客户可见资料。" />
         {error && <Alert type="error" showIcon message={error} action={<Button onClick={refresh}>重新加载</Button>} />}

@@ -1,5 +1,10 @@
 # 后台系统当前功能清单
 
+<!-- xiaok-enterprise-knowledge-mode -->
+**企业知识开关/无知识库首版：Limited。** 企业JSON配置`agent_config.enterpriseKnowledgeEnabled`缺省关闭；后台原`/assistant-knowledge`新增Ant Design“知识设置”表单，GET/PUT `/api/assistant/settings`沿既有选定企业知识管理授权、三管理角色、CAS和同值重试。切换递增policy_version，新运行固化模式；关闭不派发企业检索/Embedding、不把旧企业知识上下文送入模型。问答使用模型通用知识/按需联网，业务读写权限仍由原服务执行。阶段/日周报复用原事实/正文Worker/投递/阅读链，模型仅补阶段通用建议，原记录展示进展/待核对/安排，经批准“工艺关注”组件标注“通用建议（模型知识）”，不冒充企业来源或reviewed证明。显式后台知识维护/试问保留；开启模式的回答质量、四角色/照片及整版仍Limited；完工/入住自动报告排除保持。Mini结构/样式/素材/路由未改。[架构合同](xiaok-assistant-phase-2.zh-CN.md#企业知识开关与无知识库首版limited)，证据`tmp/v1-knowledge-switch-20261106/`。
+
+已验范围：开关开启/关闭保存刷新、固定自然对话、正式无知识报告投递/重读及业主Stable重进通过，企业检索/Embedding为0。四角色日/周周期/受众取数与成员撤权用保存建议夹具通过，0付费调用。正向联网读取、照片/四角色原生及整版闭环仍Limited；详见当前架构/证据，未生产部署。
+
 <!-- construction-public-live-current -->
 已批准的 C05 封面卡只显示当前绑定和直播版本最近一次有效的定时 JPEG。待业主决定且来源有效时，每 15 分钟由公开直播 Worker 通过原抓拍表和 WVP JPEG 适配器最多认领一次。封面请求重验原咨询、待决定状态和当前来源。定时封面不会进入普通私有抓拍历史或公开材料；暂无封面时，获权用户仍可打开直播。 同意依据迁移 0117 的当前 H5 播放回执。见[施工公开直播合同](./construction-public-live-contract.zh-CN.md)。 Stable 390×844 已通过 C05 隔离合成旅程。业主看到 263×147.9375 的定时封面，通过原 WebView 实际播放 HLS，完整送出两个分片，再返回原咨询。提前提交回执和同意均被拒。实际 H5 回执启用明确同意，重进读到已同意、待企业审核。匿名播放和错误业主封面读取被拒。同槽抓拍只写一次，1553 项绑定零漂移，所属测试资源已清理。证据见 tmp/public-live-package/c05-webview-03/。
 

@@ -16,6 +16,7 @@ import { agentConfig } from '../agent/config';
 import { processAgentAnswer } from '../agent/worker';
 import { nativeSearchDependency, selectedNativeSearch } from '../agent/native-search';
 import { reportCoordinationProtocol } from '../agent/report-question-plan';
+import { runKnowledgeEnabled } from '../knowledge-policy';
 
 type Dependencies={retriever?:KnowledgeRetriever;model?:TextModelGateway};
 export async function processAnswer(lease:Lease,deps:Dependencies={}) {
@@ -58,6 +59,7 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
       await completeGuidance(lease, lines.length ? '目前记下的想法：\n' + lines.join('\n') + '\n想改哪里，直接告诉我就好。' : '还没有足够的信息可以回顾，你可以先说说想法。');
       return;
     }
+    if (!runKnowledgeEnabled(policy)) fail('assistant_disabled', 403);
     const followup: string | undefined = undefined;
     const guidance = conversationGuidance(context.conversation.entry_snapshot);
     if (guidance && lease.actor.principal.kind === 'user') {

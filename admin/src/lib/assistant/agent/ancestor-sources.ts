@@ -2,10 +2,11 @@ import { sql } from 'drizzle-orm';
 import { reportContext } from '@/lib/construction/report-reference';
 import type { PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
-import { fingerprint, type ActorContext } from '../contracts';
+import { fail, fingerprint, type ActorContext } from '../contracts';
 import type { ModelMessage } from '../contracts/model';
 import type { SynthesisContext } from './synthesis';
 import { synthesisContextAvailable } from './synthesis-sources';
+import { enterpriseKnowledgeEnabled } from '../knowledge-policy';
 
 export type AncestorSourceRef = { runId: string; messageId: string; contentHash: string; contextHash: string };
 export const ancestorSourcesProtocol = 'authorized-ancestor-sources-v1';
@@ -18,7 +19,13 @@ export async function restoreAncestorSources(tx: PostgresTransaction, actor: Act
   const saved = await one(tx, sql`select private_checkpoint from app.assistant_run_steps
     where enterprise_id=${actor.enterpriseId} and run_id=${runId} and step_seq=${ancestorSourcesStep}
       and capability_name='source.restore.v1' and status='succeeded'`);
-  if (saved) return saved.private_checkpoint as SynthesisContext;
+  const settings = await one(tx, sql`select agent_config from app.assistant_enterprise_settings where enterprise_id=${actor.enterpriseId} for share`);
+  const allowKnowledge = conversation.purpose === 'knowledge_preview' || enterpriseKnowledgeEnabled(settings?.agent_config);
+  if (saved) {
+    const context = saved.private_checkpoint as SynthesisContext;
+    if (!allowKnowledge && context.knowledge.length) fail('context_changed');
+    return context;
+  }
   const candidates = await rows(tx, sql`select r.id run_id,m.id message_id,m.content,s.source_refs
     from app.assistant_runs r join app.assistant_messages m on m.enterprise_id=r.enterprise_id and m.id=r.output_message_id
     join app.assistant_run_steps s on s.enterprise_id=r.enterprise_id and s.run_id=r.id
@@ -28,6 +35,8 @@ export async function restoreAncestorSources(tx: PostgresTransaction, actor: Act
   const result: SynthesisContext = { version: 1, knowledge: [], snapshots: [], sources: [], web: [], history: [], ancestors: [] };
   for (const candidate of candidates) {
     const context = candidate.source_refs as SynthesisContext;
+    // Source choice controls new model input, not historical human access.
+    if (!allowKnowledge && context.knowledge.length) continue;
     // Removing/replacing the explicit reference is not permission to silently
     // restore a previous report into a new question. Historical answers still
     // use their own live source checks when read.

@@ -13,6 +13,7 @@ import type { FileLocator } from '../contracts/source-file';
 import { selectContextCandidates, type ContextSelectionPolicy } from './context-selection';
 import { fuseBranchCandidates, hybridFusionConfiguration } from './hybrid-fusion';
 import { requestedKnowledgeTitles } from './query-context';
+import { enterpriseKnowledgeEnabled } from '../knowledge-policy';
 
 export const retrievalConfiguration = {version:'professional-hybrid-v6',perBranch:hybridFusionConfiguration.perBranch,limit:5,rrfK:hybridFusionConfiguration.rrfK,fusion:hybridFusionConfiguration.rankSource,minSimilarity:0.3,reranker:'none',queryExpansion:queryExpansionConfiguration,agentQuery:'current_question_and_model_terms_v1',contextSelection:'server_applicability_requested_source_document_coverage',maxPerDocumentFirstPass:2,parser:'manual_text_faq_or_local_file_v1'} as const;
 export const retrievalConfigurationFor = (policy: ContextSelectionPolicy) => policy === 'ranked'
@@ -29,6 +30,7 @@ export type RetrievalDiagnostic = {
 export type KnowledgeRetrievalScope = { authorize(tx: PostgresTransaction): Promise<import('@/db/repositories/assistant-repository').Row>; reportStage?: ReportWorkmanshipStage };
 async function authorize(tx: PostgresTransaction, actor: ActorContext, conversationId: string, epoch: number, scope?: KnowledgeRetrievalScope) {
   const repo=new AssistantRepository(tx,actor), settings=await repo.settings(true), current=await repo.conversation(id(conversationId));
+  if (current.purpose !== 'knowledge_preview' && !enterpriseKnowledgeEnabled(settings!.agent_config)) fail('enterprise_knowledge_disabled', 403);
   if (Number(settings!.knowledge_epoch)!==epoch) fail('context_changed');
   if (scope && !actor.capabilities.includes('assistant.followup.delivery')) fail('assistant_capability_forbidden', 403);
   const conversation = scope ? await scope.authorize(tx) : current;
