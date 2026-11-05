@@ -1,6 +1,6 @@
 # 小K与云工地并行辅助开发计划
 
-> 制定／启动日期：2026-11-03（Asia/Shanghai）。用户已明确要求“按计划开发”；首批工程、离线资料两线在各自受管理worktree实施，当前结果见第2节。
+> 制定／启动日期：2026-11-03；集成准备：2026-11-05（Asia/Shanghai）。用户已明确要求“按计划开发”并继续开发；首批工程、离线资料两线已在各自受管理worktree实施，集成结果见第2节。
 >
 > 目标：用独立的工程修复和离线资料校审，减少两个主计划的构建阻断、资料准备和重复排查时间。首批只安排工程线 E-01、资料线 K-01；业务夹具与健康诊断按实际收益后续选用。
 >
@@ -12,12 +12,12 @@
 
 | 已核对的依据 | 辅助工作能带来的结果 | 仍由主线完成的结果 |
 | --- | --- | --- |
-| 云工地当前记录明确：webpack编译完成后，完整构建被 `admin/scripts/xiaok-manual-fixture.ts:43` 的 `state.keys` 类型错误阻断；当前源码仍以通用 `Row` 保存该状态 | E-01从这个明确阻断开始，提交保持原行为的类型修复及稳定版本下的检查证据 | 两条主线在实际集成版本完成各自受影响检查；全量构建是否通过按真实结果记录 |
+| 编制时云工地记录明确：webpack编译完成后，完整构建被 `admin/scripts/xiaok-manual-fixture.ts:43` 的 `state.keys` 类型错误阻断；当前源码仍以通用 `Row` 保存该状态 | E-01从这个明确阻断开始，提交保持原行为的类型修复及稳定版本下的检查证据 | 两条主线在实际集成版本完成各自受影响检查；全量构建是否通过按真实结果记录 |
 | 两个主计划都保留了共享源码或配置漂移导致检查无效的批次；现工作区存在大量不相关脏改动 | 辅助线隔离开发，交付小补丁和明确依赖，减少新增漂移及无法复用的检查 | 原负责人串行集成共享文件、复用有效证据和执行必要业务验收 |
 | `精艺.pdf` 有30份逐页OCR副本，现有记录仅29/30页已复核并对客发布，其余28页待复核 | K-01建立原册、单页副本、OCR文本的离线对照和校审记录，后续批量完成草稿资料复核准备 | 小K负责人通过现有Knowledge服务处理真正需要的来源变更、发布、检索与撤回检查 |
 | 最新报告追问记录仍保留语义失败及停测上限；云工地24/72小时及自然到期证据也未被短测替代 | 辅助交付减少外围等待，为主线腾出修复和验收时间 | 模型正常回答、公开直播完整授权及真实播放、录像长期稳定性仍须各主线独立完成 |
 
-资料线对小K后续阶段标准覆盖的帮助较直接，对云工地视频底座的帮助较间接；它不能解决WVP、录制恢复或设备问题。工程线对两边的共同构建与联调基础有直接作用。当前没有足够工时数据计算提效百分比，本计划不承诺固定倍数或完成日期。
+资料线对小K后续阶段标准覆盖的帮助较直接，对云工地视频底座的帮助较间接；它不能解决WVP、录制恢复或设备问题。工程线对两边的共同构建与联调基础有直接作用。当前没有足够工时数据计算提效百分比，本计划不承诺固定倍数或完成日期。E-01已在集成分支解除本表编制记录的原阻断，待主线负责人合入后以实际版本结果为准。
 
 ## 2. 唯一当前辅助交付记录
 
@@ -25,20 +25,20 @@
 
 | 项目 | 当前记录 |
 | --- | --- |
-| 用户决定与范围 | 2026-11-03用户明确“按计划开发”，授权本计划E-01、K-01及同格式余下25页的辅助实施；不接管两条主线或启动§7候选 |
-| 实际状态 | 首批辅助交付已完成／待主线采用。E-01定向lint与类型差异／JS擦除检查通过，正式构建越过原阻断但仍受下一既有类型错误阻断。K-01已实际查看30页，完成独立逐页观察、历史导入映射、原文疑点与修订建议分离及有界工具验证。观察不等于全文／表格逐格校订或可发布；两条主线业务状态不提升。无新增服务、数据库、开发聊天或模型／付费OCR请求 |
-| 辅助负责人 | 本聊天负责工程线与本计划维护；子代理 `/root/knowledge_review` 仅负责独立资料工作树及交付回执，不编辑本节。两条主线当前负责人及业务任务仍以各自唯一记录为准 |
-| 工程当前项 E-01 | `feec62e4`仅含夹具1文件的29增／1删类型标注。原状态与账号16条诊断消失，脚本25→9条、完整源码快照289→273条，无新增诊断；6053输入中只变该脚本。注释擦除后JS逐字节一致。正式 `npm run build -- --webpack` exit1：编译42秒成功，随后 `scripts/xiaok-manual-fixture.ts:159:82` 的原 `detail.project` unknown阻断；不扩大为全库类型治理，未执行夹具或业务写入 |
-| 资料当前项 K-01 | 最终增量 `1ed8946b`（前置初稿 `44d6c3f6`）完成4个路径：`scripts/knowledge-review/review_jingyi.py`、`K-01-manual-review.json`、`K-01-index.json`、`K-01-review.md`。独立notes为30页实际观察（6页无表格／20页关键区域文字未决／4页原样本文字未决）；工具加载notes并绑定来源hash、原PNG/OCR/searchable、单页PDF/copy page1及历史文档376–405／版本382–411。保留29页4m²单位疑点、30页180mm/1800mm内部冲突、05/20算术／舍入／续表口径问题；修正16/20管规格与槽深关系，校准29页区域。概述明确非逐字，无法可靠摘录的原OCR字段为unknown；不得拿概述当原文或推定文字已核准 |
-| 工作区与编制基线 | 原工作区 `G:/workspace/向总/Smart-Floor-Planner`、`codex/xiaok-public-site-lifecycle`、观察HEAD `e7cbfe602ee1b2c3495a1a77382c18f2d3b41d66`只读保留。工程实际工作区 `G:/AppData/.codex/worktrees/parallel-support-engineering/Smart-Floor-Planner`、`codex/parallel-support-engineering`、E-01提交 `feec62e4`，本计划随独立文档提交收口；资料实际工作区 `G:/AppData/.codex/worktrees/parallel-support-knowledge-review/Smart-Floor-Planner`、`codex/parallel-support-knowledge-review`，提交序列 `44d6c3f6`→`1ed8946b`。两树均已受管理创建确认，同观察HEAD起点；未互相复制脏依赖或回写原编制快照 |
-| 相关脏文件与旧worktree | 已检查原有9份工作树／171项已跟踪脏路径，未占用旧树。工程快照包含1762份源码／公开资源／实际配置，共18340545字节，复制前后drift=[]；包含原未提交Admin源码及必要量房源，未复制凭据、环境文件、数据库或构建缓存。只借用现有node_modules作只读依赖，各批检查绑定实际输入；快照脏文件不夹带进辅助提交 |
-| 复用基础与证据 | 工程证据根为其工作树 `tmp/parallel-support/engineering/E-01/`：source-snapshot.json、baseline/repaired{-before,}.json、static-comparison.json、erasure.json、lint.log、build-{before,after,run}.json及原始驱动。TypeScript5.9.3实际tsconfig源码输入6053项、正式构建7800绑定均drift=[]，原prebuild核量房镜像83份／无输入改写，JS SHA256均55d96f8636f5ad28280ef59b1f41d0ac5335f10344183232807e34531227ab52。资料原证据根为其工作树 `tmp/parallel-support/knowledge-review/K-01/`，含5页原件对照图及30页manifest；维护人最终限定验证为工程树 `tmp/parallel-support/knowledge-review/K-01-parent/verification.json`：130输入前后绑定无漂移，真实CLI exit0、30PNG一致／30单页PDF页数与hash及历史ID匹配／30notes，错来源hash与重复页拒绝，空notes不能产生任何视觉批准，全部复用已核渲染。Python3／PyMuPDF1.28.2，未重渲整册；主线旧失败／费用／unknown保留 |
-| 阻塞与失败次数 | E-01修复迭代1已通过限定期望；剩余273条为同一源码快照原诊断，完整build未通过。首次从根调用ESLint未找到Admin配置（exit2）后改Admin cwd通过；首构建指纹落盘晚于调用7.5秒，observed01-*保留为观察批（编译114秒，输入最终drift=[]），未作正式前置证据；按顺序重跑一次的bindingCompletedAt早于startedAt，正式结果如上。context-mode一次只读请求无响应已中止并改文件留日志。K-01初稿的源文解释／定位／摘录字段问题已在同一有界审查增量修正，维护人限定验收首跑通过；30页仍各有未决项，不能作全文或表格核准。未重开小K／云工地历史失败或调用额度 |
-| 运行资源、未知结果与成本 | 两线自有检查均结束；保留源码快照／缓存／复核输入和只读node_modules junction供主线采用，未归档工作树。资料线一次长回合中断后已把25页有效观察落盘，原apply_patch结果已核实并完成有界提交；无遗留子进程或未知外部调用。无新增服务／数据库／DevTools控制器／锁／模型／生图／付费OCR；主线运行资源和unknown账册未动 |
-| 提效观察 | 工程源码快照落盘于11:21:22（Asia/Shanghai）；原类型批11:21:49–11:22:56、修复批11:23:29–11:25:24，正式构建11:34:27启动并于11:36:31完成后置绑定。首次工具／工作树准备与两项检查驱动失误有额外耗时，未推算速度倍数。主线尚未采用，合入／复验成本及是否真正减少关键路径等待仍未知 |
-| 采用与回交 | 工程树补丁为 `tmp/parallel-support/engineering/E-01/0001-fix-dev-type-retained-XiaoK-fixture-manifests.patch`，资料树组合补丁为 `tmp/parallel-support/knowledge-review/K-01/K-01-final.patch`（相对e7cbfe60，含最终4路径；也可顺序采用44d6c3f6、1ed8946b）。只读观察主线 `bae20c16`，夹具仍原fd2357…hash；两补丁 `git apply --check` exit0，可应用但尚未采用。未向其他聊天发消息、未编辑两条主计划／共享工作区，未改知识发布状态 |
-| 精确下一步与后继 | 首批已收口。主负责人按§6串行采用E-01及所需校审资料，只复验实际受影响范围并回填采用事实；独立服务返回unknown仍由对应后续工程判断，不扩大本次补丁。K-01原文冲突／表格逐格校订仍有未决，若主线要采用相应内容，先在原Knowledge服务流程内解决内容／版本／受众／撤回检查，不自动发布。没有新的已准入辅助项，§7候选不启动，无自动下一辅助ID；本计划保持“辅助准备完成、实际接入待主线” |
-| 文档影响与验证 | 已读根／Admin指令及Admin／Mini双语夹具清单，核过原初始化／重进／key/once/write。最终差异只含夹具类型、4份离线工具／校审产物及本辅助计划；不改变产品UI、页面／路由、API、权限、知识发布或数据持久行为，故运行时模块清单／双语合同／还原台账无变更。本计划仅一份当前记录，9个本地链接／容量交接规则／行尾空白检查通过；本次无业务服务或原生验收需求，未把工具守卫当业务旅程。原编制检查与旧失败保留 |
+| 用户决定与范围 | 2026-11-03用户明确“按计划开发”，授权E-01、K-01及同格式余下25页的辅助实施；2026-11-05用户要求继续开发，本聊天据此在隔离worktree准备主线可合入成果。不接管两条主线业务，不启动§7候选 |
+| 实际状态 | 首批辅助成果已集成为可合入分支 `codex/parallel-support-integration`（基于主线HEAD `4eabf4ce`），待主线负责人在当前回归批次结束后合入。E-01在当前HEAD复验：夹具诊断25→9、全量脚本诊断652→636、drift=[]、ESLint exit0、擦除后JS逐字节一致；原阻断消失，后续仍受既有`detail.project` unknown阻断，完整build未通过。K-01的4个离线路径与辅助提交逐字节一致，未改知识库、发布或权限状态。无新增服务、数据库、模型／OCR／DevTools调用 |
+| 辅助负责人 | 本聊天继续担任本计划维护人，并在独立worktree完成集成准备；资料线原交付由其独立工作树完成，不回写本节。两条主线负责人及业务任务仍以各自唯一记录为准 |
+| 工程当前项 E-01 | 集成分支提交 `ab426d37`（原 `feec62e4`，同一blob `ed8b9483`）。当前HEAD基线6095输入、652条诊断（夹具25）→修复后636条（夹具9），无新增、无漂移；9条剩余依次为 `detail.project`（159:82、162:66）、`detail.work`（309:62、311:63）、`created.*`／`extraDraft.*`（326、346）。`eslint scripts/xiaok-manual-fixture.ts` exit0；擦除后JS SHA256均 `d3669627…`。未运行夹具、未写业务数据。全量build未在当前HEAD重跑；辅助构建证据为编译42秒成功后命中上述 `detail.project`，不扩大为全库治理 |
+| 资料当前项 K-01 | 集成分支提交 `c377a287`→`930c1a6a`，与辅助线最终树 `git diff` 为空；4个路径：`scripts/knowledge-review/review_jingyi.py`、`K-01-manual-review.json`、`K-01-index.json`、`K-01-review.md`。内容仍为30页实际观察（6页无表格／20页关键区域文字未决／4页原样本文字未决），保留29页4m²单位疑点、30页180mm/1800mm内部冲突、05/20算术／舍入／续表口径问题。工具无worktree绝对路径，`--help` exit0；复用辅助线既有真实CLI、30PNG一致、单页PDF页数／hash与历史文档／版本匹配证据，未重渲、未写主库、未发布草稿或改动404/405·410/411 |
+| 工作区与编制基线 | 主线当前 `G:/workspace/向总/Smart-Floor-Planner`、`codex/xiaok-public-site-lifecycle`、HEAD `4eabf4ce`；该工作区正运行 `run-access-regressions-20261105.mjs`，本聊天未写入、未提交、未改动其HEAD。集成实际工作区 `G:/AppData/.codex/worktrees/parallel-support-integration/Smart-Floor-Planner`、`codex/parallel-support-integration`，基线提交 `4eabf4ce`。辅助证据工作区仍为 engineering `8915f5a2`（E-01 `feec62e4`）与 knowledge-review `1ed8946b`（`44d6c3f6`→`1ed8946b`）。集成分支只含辅助成果与文档，不复制主线脏改 |
+| 相关脏文件与旧worktree | 已检查现有10份工作树；未占用旧树或主线脏文件。集成worktree从HEAD干净创建，仅以Windows junction只读复用主线 `admin/node_modules`；证据写在其 `tmp/parallel-support/engineering/E-01-adoption/`，该目录被Git忽略。主线既有171项脏路径、环境文件、数据库和构建缓存均未复制或改动。若主线HEAD在合入前推进，先在集成分支merge/rebase并重跑受影响检查 |
+| 复用基础与证据 | 集成证据根 `G:/AppData/.codex/worktrees/parallel-support-integration/Smart-Floor-Planner/tmp/parallel-support/engineering/E-01-adoption/`：`adoption-summary.json`、`head-before.json`／`head-after.json`、`erasure.json`、`lint.log`、`typecheck.cjs`、`erasure-adoption.cjs`。辅助原证据仍在其工作树 `tmp/parallel-support/engineering/E-01/` 与 `tmp/parallel-support/knowledge-review/K-01/`。当前HEAD复验TypeScript5.9.3、前后绑定drift=[]；K-01复用既有真实CLI、30PNG一致性、单页PDF页数／hash与历史文档／版本匹配证据；未重放未知调用 |
+| 阻塞与失败次数 | E-01修复迭代1在当前HEAD通过限定检查；剩余9条夹具诊断属同一脚本既有`unknown`，全量build仍被`detail.project`阻断，未尝试第三次相似修复。K-01的30页内容未决项保持原记录，不能作为全文／表格核准或发布依据。主线回归批次与两条主计划既有失败／费用／unknown帐册未动；本次未新增失败 |
+| 运行资源、未知结果与成本 | 集成准备只运行两次TypeScript程序诊断、一次单文件ESLint和一次本地擦除检查；无服务、数据库、Worker、DevTools控制器、锁、模型、生图、付费OCR或外部请求。node_modules为只读junction，集成worktree保留供主线合入；主线回归批次进程与资源未被抢占或终止 |
+| 提效观察 | 集成分支准备约14:40–14:50（Asia/Shanghai），含worktree创建、两次诊断、lint、擦除与K-01复核；未推算速度倍数。主线尚未实际合入，合入／复验成本及是否减少关键路径等待仍未知；不把本批静态检查当作业务验收 |
+| 采用与回交 | 交付车辆为分支 `codex/parallel-support-integration`（`4eabf4ce`起）：E-01 `ab426d37`、K-01 `c377a287`／`930c1a6a`、计划文档 `c2937715` 及本次回填提交。主线负责人可在当前回归批次结束后 `git merge --no-ff codex/parallel-support-integration` 或按提交顺序cherry-pick；两原补丁仍在辅助工作树 `tmp/parallel-support/...` 可 `git apply --check`。本聊天未向其他聊天发消息、未改两条主计划、未改知识发布状态 |
+| 精确下一步与后继 | 主线负责人在共享工作区空闲后合入集成分支，按§6复验实际合并结果的夹具诊断、受影响构建／兼容检查，并把真实采用提交／指纹和剩余阻断回填各自主计划；若主线HEAD已推进，先合并并重跑受影响检查，不缩小原范围。E-01后续`detail.project`等既有诊断另作独立判断；K-01若要改变已发布资料内容，必须先走原Knowledge服务的版本／受众／撤回检查。没有新的已准入辅助项，§7候选不启动 |
+| 文档影响与验证 | 已读根／Admin指令、Admin／Mini双语清单及本计划；集成分支差异只含夹具类型、4份离线工具／校审产物和本计划文档。不改变产品UI、页面／路由、API、权限、知识发布或数据持久行为，故运行时模块清单／双语合同／还原台账无变更。本次完成当前HEAD类型诊断前后对比、ESLint、擦除等价、K-01内容一致性、Python帮助入口和行尾空白检查；未执行夹具、业务服务或原生验收，不把静态检查当业务旅程。原编制检查与旧失败保留 |
 
 编制时的来源指纹仅用于说明本次判断依赖哪个版本，不构成后续开发的冻结要求：
 
