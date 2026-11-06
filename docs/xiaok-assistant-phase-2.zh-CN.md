@@ -3,15 +3,15 @@
 <!-- xiaok-fastgpt-capabilities -->
 ## FastGPT阶段提醒与知识问答工作流（Limited）
 
-已配置两个私有v4.17.4 `advanced`工作流。阶段用原生AI接原获权事件/事实/正文/投递服务；知识按回合用HTTP调用原模型网关，原Agent仍负责消息、原生工具、历史、KnowledgeRetriever/Evidence、来源与保存，并非替换为第二个自主Agent。仅`XIAOK_FASTGPT_WORKFLOWS_FILE`显式开发启用；图片/咨询绑定调用沿原模型路径。沿原C01及咨询/私人跟进边界，企业知识默认关闭；无产品路由/表/UI变更或生产启用。
+两个私有v4.17.4 advanced工作流仅通过XIAOK_FASTGPT_WORKFLOWS_FILE显式开发启用。阶段用FastGPT原生AI接原获权事件、校验、保存及私人投递；知识按回合用受保护HTTP回调执行一次原模型网关请求。工具、历史、KnowledgeRetriever/Evidence、来源、动作、计量和保存仍归原Agent，不增加第二自主Agent/事实库/会话或切换默认供应商，企业知识保持关闭。V2会重复原工具循环，故本次选工作流（[固定类型](https://github.com/labring/FastGPT/blob/v4.17.4/packages/global/core/app/constants.ts)、[V2定义](https://github.com/labring/FastGPT/blob/v4.17.4/packages/global/core/workflow/template/system/agent/index.ts)）。
 
-采用依据：[固定版本应用类型](https://github.com/labring/FastGPT/blob/v4.17.4/packages/global/core/app/constants.ts)、[V2自主工具循环定义](https://github.com/labring/FastGPT/blob/v4.17.4/packages/global/core/workflow/template/system/agent/index.ts)。本次工作流保留现有网关/权限合同，收益是编排和配置，未证明回答质量提升。回调绑定请求哈希、原守卫、单次provider调用及服务端原结果回执；不能由平台回复编造结果或重放模型。最终平台回执前，原run私人观察及原唯一用量操作保留真实输出与计量。
+已修边界：真实当前阶段只在原项目/最新事件守卫通过后交原校验，历史日周报不授权该字段；普通知识复用原唯一完整回答修复，替代增量编辑，原稿及事实/动作/来源校验仍保留；预检与派发共用原来源投影，不重复计Evidence正文；普通网页/历史读取沿原四次总预算预留一次修复，写动作不适用；原精确引用ID载体扩展到final工具/文本通道，原输出/ID/目录校验不变。采用完整结构化回答恢复方式，非另迁框架（[AgentNode固定源码](https://github.com/langchain-ai/langchainjs/blob/8103487c55784c5befd84c1bc803546f720f806e/libs/langchain/src/agents/nodes/AgentNode.ts)、[协议测试](https://github.com/langchain-ai/langchainjs/blob/8103487c55784c5befd84c1bc803546f720f806e/libs/langchain/src/agents/tests/responses.int.test.ts)、[历史恢复问题](https://github.com/langchain-ai/langchainjs/issues/9426)）；上游示例不证明Qwen回答质量，先前网页编码修复独立保留。
 
-当前证据：[assessment](../tmp/fastgpt-capabilities-20261106/assessment.json)及trial01/knowledge01–03原trace/原生截图。阶段10784的“当前阶段为水电（utilities）”被判未获引用的现场断言，`misattributed_project_status`→回调422→`native_schema_unverified`。知识10785未获引文支持的涂刷遍数被拒；独立字节解码修复后，10786原有唯一修复同时`remove=true`和修改正文/引用，违背原编辑协议，最终`invalid_model_answer`。预期为自然、有适当依据的基层处理建议，实际发布提醒/知识回答均0；其余固定问句、第二组完整旅程及正常保存/投递/更正、项目切换/重进均未派发。Knowledge01另保留为驱动就绪失败/模型0次，不记模型结果。
+阶段：水电/安装两份真实原生模型正文已保存私人投递，幂等及跨用户/租户拒绝通过。C01原阶段卡通过既有stageNote展示保存的通用建议。Stable重进、实际HTTP503反馈/恢复、旧事件不得新生成及项目撤权后清除旧建议通过；后续复用原正文为明确工程夹具，模型0次，不计新质量通过。正常换阶段保留已投递历史卡；service08错误要求历史报告消失的断言保留失败，service10按原合同修正。设计沿批准follow-up-v1屏02/共享状态，未改markup/样式/素材/导航或产品API。
 
-共6次已知模型调用（阶段原生1、原网关5），22624/1238输入/输出token与原账逐次一致，金额未知、新unknown0。原生390×844/SDK3.17.2真实输入与原失败反馈已核看，编码348×752。各批前后实际发布流程/代码/配置漂移`[]`；本任务设置/用户/项目/绑定/隧道已清理，队列/待投递0。113项相关快速检查及lint通过；类型57继承/受影响0。无新增真机、企业知识、像素、全V1或生产验收。
+知识完整旅程仍未通过。service07首组原生五答虽已保存，但官网查询只读第三方；问当前进度时，已实际读到获权水电阶段却重复前一刷墙回答，原provider稿已如此，非平台传输篡改。第二固定组第2轮终止：唯一修复仍带[1][2]，被原数值守卫视为无依据数值；保存稿仅删除该精确展示标记即可通过，归引用/工程数值表示混淆，不证明编造实际工程量。第二组3–5轮及原生跨项目切换未执行。停止修词/正则补丁和继续重采；下一判别检查先离线比较现有发现/读取路径和当前问句/来源视图，有新机制证据才重开验收。
 
-PChouse声明`gb2312`却按UTF-8读取的源码缺陷，已用[jsdom标准探测](https://github.com/jsdom/html-encoding-sniffer/tree/v4.0.0)及原生TextDecoder在提取/哈希前修复；同一保存字节及原DNS真实读取均恢复中文，BOM/HTTP/meta优先级、UTF-8默认和失败回执通过。4.0.0保留现有Node支持范围，旧原文不改写；该修复并非回答失败的唯一原因。剩余阻断归原Agent回答范围/最终编辑协议，非FastGPT传输或KnowledgeRetriever。共同机制是套回原回合仍保留旧输出负担；工作流原始观察与原provider输出逐项相同。下一检查复用保存引文和编辑schema核对，先证明不同输出机制的必要性；未追加修词/正则/校验补丁或继续重采，旧问答失败和停止批仍保留。
+[assessment](../tmp/fastgpt-capabilities-20261106/unblock/assessment.json)、semantic-diagnosis.json及service01–10保留全部首稿/修复/失败和纯驱动批。本次实际29次（阶段原生2/网关27），159091/6051输入/输出token逐条对原账；27份网关包与提前工作流观察相同，工程夹具不计调用或质量试验。金额未知。原接线6次22624/1238、报告22次21229/1693及旧403/429/3753unknown分别保留。各批源码/配置/发布流程漂移[]，本任务设置/用户/项目/绑定/隧道恢复，队列/待投递0。52定向、40客户端、先前相关兼容及lint通过；类型57继承/受影响0。未验企业RAG、真机、像素、全V1或生产。已证收益为阶段/报告编排和追踪；知识HTTP外包层未证明回答更好。
 <!-- /xiaok-fastgpt-capabilities -->
 
 <!-- xiaok-fastgpt-report-pilot -->

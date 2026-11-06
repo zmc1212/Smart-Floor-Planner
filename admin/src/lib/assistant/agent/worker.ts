@@ -47,7 +47,7 @@ import { visionContext, withVisionObservations } from './vision';
 import { constructionNoticeAvailable } from '@/lib/construction/customer';
 import { materialTool, parseMaterialQuery, queryMaterials, materialSnapshotAvailable, type MaterialDependency, type MaterialSnapshot } from './materials';
 import { needIssueTool, queryNeedIssues, needIssueSnapshotAvailable, type NeedIssueDependency, type NeedIssueSnapshot } from '@/lib/construction/need-issues';
-import { businessSynthesisSources, knowledgeSynthesisSources, parseSynthesis, referUnsupportedSiteObservation, synthesisInstructions, synthesisRepairFeedback, synthesisRepairIssue, unresolvedSynthesisConflict, availabilityScopeHintPrefix, synthesisRepairProjectionVersion, synthesisContextProjectionVersion } from './synthesis';
+import { businessSynthesisSources, knowledgeSynthesisSources, parseSynthesis, referUnsupportedSiteObservation, synthesisInstructions, synthesisRepairFeedback, synthesisRepairIssue, unresolvedSynthesisConflict, availabilityScopeHintPrefix, synthesisRepairProjectionVersion, synthesisContextProjectionVersion, synthesisModelMessages } from './synthesis';
 import { resolveSynthesisRepair, synthesisRepairBase, synthesisRepairProtocol, synthesisRepairTool, finalAnswerRepairBase, finalAnswerRepairProtocol } from './synthesis-repair';
 import { currentSynthesisContext } from './synthesis-sources';
 import { boundKnowledgeContext } from './bound-context';
@@ -1110,7 +1110,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           usageKnown = await recordAgentModelUsage(lease.enterpriseId,lease.runId,turn,output,
             consultation?tx=>settleConsultationDispatch(tx,lease.enterpriseId,lease.runId):undefined);
           const providerOutput = output.agentOutput;
-          const finalProjected = purpose === 'answer' ? projectFinalToolOutput(providerOutput, ownerCitationCarrier) : providerOutput;
+          const finalProjected = purpose === 'answer' ? projectFinalToolOutput(providerOutput, ownerCitationCarrier || initial.minimalDialogue) : providerOutput;
           const needOriginals = initial.minimalDialogue && purpose === 'answer' ? bindNeedOriginals(finalProjected) : finalProjected;
           output.agentOutput = purpose === 'answer' ? projectNeedBatchOutput(needOriginals,
             Boolean(explicitNeedWriteStatement(safeText(initial.trigger.content as Parameters<typeof safeText>[0])))) : needOriginals;
@@ -1164,7 +1164,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       initial.messages = withHistorySummary(initial.messages, initial.savedSummary.private_checkpoint as HistorySnapshot);
     } else if (!initial.resume && !initial.savedSummary && initial.config.tools && !currentMessageOnlyRequested(reviewContext.currentQuestion) && !independentAdviceRequested(reviewContext.currentQuestion) && (!dependencies.model || dependencies.summary)
       && !initialTools.some(t => summaryWrites.includes(t.name))) {
-      const bounded = fitAgentContext(projectSynthesisPolicy(initial.messages), [...initialTools, finalTool], { profile: initial.config.consultation?.profile, imageContextBudget });
+      const bounded = fitAgentContext(projectSynthesisPolicy(synthesisModelMessages(initial.messages)), [...initialTools, finalTool], { profile: initial.config.consultation?.profile, imageContextBudget });
       const first = bounded.messages.map(originalMessageId).find(Boolean);
       const input = first && await scoped((tx, context) => summaryInput(tx, lease.actor, context.conversation, first, String(initial.trigger.seq), safeText(initial.trigger.content as Parameters<typeof safeText>[0])));
       if (input) {
@@ -1174,7 +1174,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           const output = await callModel(-2, summaryRequest(input, safeText(initial.trigger.content as Parameters<typeof safeText>[0])), [summaryTool], 'summary');
           const snapshot = selectedSummary(input, output);
           const messages = withHistorySummary(initial.messages, snapshot);
-          fitAgentContext(projectSynthesisPolicy(messages), [...initialTools, finalTool], { profile: initial.config.consultation?.profile, imageContextBudget });
+          fitAgentContext(projectSynthesisPolicy(synthesisModelMessages(messages)), [...initialTools, finalTool], { profile: initial.config.consultation?.profile, imageContextBudget });
           await scoped(async tx => {
             await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,source_refs,private_checkpoint,input_summary)
               values(${lease.enterpriseId},${lease.runId},${historySummaryStep},'agent_summary_context',${historySummaryCapability},1,'succeeded',
@@ -1223,7 +1223,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and kind='agent_model'`);
       if (reportNativeFinal) return reportNativeRuntimeBudget({ summaries: Number(auxiliary?.summaries || 0),
         perceptions: Number(auxiliary?.perceptions || 0), resume: initial.resume });
-      return homeSourceRuntimeBudget({ policy: (initial.run.policy_snapshot as Row).homeSourceBudget, boundHome: !!readContext?.leadId,
+      return homeSourceRuntimeBudget({ policy: (initial.run.policy_snapshot as Row).homeSourceBudget, boundHome: !!readContext?.leadId, ordinaryDialogue: initial.minimalDialogue,
         images: initial.mediaRefs.length, nativeFinalization, tools: agentToolsForTurn(reviewContext.currentQuestion, initial.messages, turnTools, String(initial.trigger.id),sourceMode),
         summaries: Number(auxiliary?.summaries || 0), perceptions: Number(auxiliary?.perceptions || 0), resume: initial.resume,
         scheduleProtocol: agentTurnScheduleProtocol });

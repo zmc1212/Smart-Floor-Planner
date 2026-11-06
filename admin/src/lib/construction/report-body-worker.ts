@@ -121,7 +121,9 @@ export async function processReportComposition(lease: Lease, dependencies: {
       }
       const checkpoint = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
         and run_id=${lease.runId} and step_seq=1000 and kind='agent_checkpoint'`);
-      return { config, knowledgeEnabled, run: context.run, conversation: context.conversation, projects: list, reportFinalOutputTokens, reportBodyFinalCarrier, wire, reviewGuidance, projectGuidanceInput, selectGuidance, preferOriginal,
+      const stage = context.report.kind === 'stage' && (context.report.facts as ReportFacts).projects[0];
+      const currentStage = stage && stage.reminderStageName ? {projectId:stage.id,name:stage.reminderStageName} : undefined;
+      return { config, knowledgeEnabled, currentStage, run: context.run, conversation: context.conversation, projects: list, reportFinalOutputTokens, reportBodyFinalCarrier, wire, reviewGuidance, projectGuidanceInput, selectGuidance, preferOriginal,
         reportBodyProjectSlots: policy.reportBodyProjectSlots, reportBodyFactCoverage: policy.reportBodyFactCoverage,
         resume: checkpoint?.private_checkpoint as AgentCheckpoint | undefined,
         scope: { ...context.scope, audience, kind: context.report.kind, timezone: 'Asia/Shanghai',
@@ -316,10 +318,10 @@ export async function processReportComposition(lease: Lease, dependencies: {
     const visibleProjects = initial.preferOriginal || serverReminderWorkmanship ? projects.map(project => ({ ...project,
       context: { ...project.context, sources: [...project.context.sources.filter(source => source.kind !== 'knowledge'),
         ...(weeklyWorkmanship || serverReminderWorkmanship ? [] : reportGuidanceStandardSources(project, true))] } })) : projects;
-    const parseBody = (raw: string) => initial.knowledgeEnabled ? parseReportBody(raw, projects, fixedSlots) : parseGeneralReport(raw, projects);
+    const parseBody = (raw: string) => initial.knowledgeEnabled ? parseReportBody(raw, projects, fixedSlots) : parseGeneralReport(raw, projects, initial.currentStage);
     const result = await runRenovationAgent({ messages: initial.knowledgeEnabled
       ? reportMessages(initial.scope, visibleProjects, fixedSlots, flatSegments, quotedSegments, guidanceSection, guidanceOnly, choices, weeklyWorkmanship, serverReminderWorkmanship)
-      : generalReportMessages(initial.scope, projects), tools: [], resume: initial.resume, ports: {
+      : generalReportMessages(initial.scope, projects, initial.currentStage), tools: [], resume: initial.resume, ports: {
       authorize,
       tool: async () => fail('assistant_capability_forbidden', 403),
       checkpoint: state => scoped(async tx => {

@@ -60,8 +60,7 @@ export function focusedSynthesisMessages(messages: ModelMessage[], triggerId: st
   }));
   if (index < 0) fail('context_changed');
   if (preserveConversation) {
-    const originals = new Map<string, string>(), historyFields = new Map<string, string>();
-    const projected = messages.map(message => synthesisModelProjection(message, originals, 'all', historyFields));
+    const projected = synthesisModelMessages(messages);
     return repairTask ? [...projected, { role: 'user', content: [{ type: 'text', text: repairTask }] }] : projected;
   }
   // Later control messages (for example the single format-repair feedback)
@@ -114,6 +113,13 @@ export function focusedSynthesisMessages(messages: ModelMessage[], triggerId: st
 /** Model view only. Keep full original text and readable source locations;
  * duplicate quote hints and opaque file identity stay in the durable result.
  * Snapshots and commit/reentry authorization use the original full metadata. */
+/** One provider view for both preflight budgeting and dispatch. Durable
+ * contexts retain every receipt; identical Evidence.text is sent only once. */
+export function synthesisModelMessages(messages: ModelMessage[]): ModelMessage[] {
+  const originals = new Map<string,string>(), historyFields = new Map<string,string>();
+  return messages.map(message => synthesisModelProjection(message, originals, 'all', historyFields));
+}
+
 function synthesisModelProjection(message: ModelMessage, originals: Map<string, string>, scope: 'all' | 'original' | 'independent_advice' = 'all', historyFields = new Map<string, string>()): ModelMessage {
   if (message.role !== 'tool') return message;
   let packet: Record<string, unknown>;
@@ -423,6 +429,11 @@ const groundingRepairInstructions = {
 };
 export function synthesisRepairFeedback(raw:string,sources:SynthesisSource[],context:SynthesisReviewContext = {}) {
   const issue = synthesisRepairIssue(raw, sources, context);
+  // Ordinary model-knowledge answers reuse the existing complete final-response
+  // repair. An incremental edit language adds an unrelated failure mode; the
+  // complete answer still passes the same source/numeric/action checks. Retain
+  // the original formal-business projection and legacy checkpoint protocol.
+  if (context.generalKnowledge && !(issue && 'businessResultKeys' in issue && issue.businessResultKeys?.length)) return issue;
   return withSynthesisRepairProtocol(issue, raw, issue && 'businessResultKeys' in issue ? issue.businessResultKeys : []);
 }
 function formalStatusEvidence(citations: Array<{ sourceId: string }>, sources: SynthesisSource[], context: SynthesisReviewContext) {
@@ -631,8 +642,12 @@ export function synthesisRepairIssue(raw:string,sources:SynthesisSource[],contex
     const materialNumericRepair = error.code === 'unsupported_model_commitment' && quotesVerified && numericGaps.length > 0 && materialOriginals.length > 0
       && numericGaps.every(gap => value.segments[gap.segment - 1].basis === 'advice'
         || gap.unsupportedNumbers.every(number => numericSourceCandidates(gap.unsupportedNumbers, materialOriginals).some(candidate => candidate.valuesInOriginal.includes(number))));
-    if (materialNumericRepair) checkedSynthesis(raw, sources, context, []);
-    if(error.code==='unsupported_model_commitment'&&!hasFile&&!sources.some(s=>s.material?.ref.type==='formal_plan')&&!materialNumericRepair)throw error;
+    // A real web original in model-knowledge dialogue is as eligible for the
+    // original single repair as a parsed file. This does not accept the draft:
+    // syntax/citations/formal commitments have already been checked above.
+    const webNumericRepair = !!context.generalKnowledge && quotesVerified && numericGaps.length > 0 && sources.some(s => s.kind === 'web');
+    if (materialNumericRepair || webNumericRepair) checkedSynthesis(raw, sources, context, []);
+    if(error.code==='unsupported_model_commitment'&&!hasFile&&!sources.some(s=>s.material?.ref.type==='formal_plan')&&!materialNumericRepair&&!webNumericRepair)throw error;
     const missing=numericGaps.map(gap=>gap.segment);
     const numericTextPaths=numericGaps.map(gap=>({path:`segments[${gap.segment-1}].text`,removeUnsupportedNumbers:gap.unsupportedNumbers,
       permittedQuoteNumbers:[...new Set(value.segments[gap.segment-1].citations.flatMap(c=>typeof c.quote==='string'?c.quote.match(/\d+(?:\.\d+)?/g)||[]:[]))],
@@ -656,7 +671,7 @@ export function synthesisRepairIssue(raw:string,sources:SynthesisSource[],contex
       const supported = new Set(quote.match(/\d+(?:\.\d+)?/g) || []);
       return absent.every(n => supported.has(n)) ? [{ segment, sourceId: source.sourceId, copyExactQuote: quote }] : [];
     });
-    if(missing.length&&!hasFile&&numericQuoteCorrections.length!==missing.length&&!materialNumericRepair)fail('unsupported_model_commitment',502);
+    if(missing.length&&!hasFile&&numericQuoteCorrections.length!==missing.length&&!materialNumericRepair&&!webNumericRepair)fail('unsupported_model_commitment',502);
     if(error.code==='unsupported_model_commitment'&&!missing.length)throw error;
     const catalogAnswer = isCatalogSynthesisDraft(raw);
     if(catalogAnswer)return {code:error.code,feedback:'这是同轮唯一一次引用/依据修复，不调用业务工具、不新增来源或动作。引用仍只选已有citationOptions的citationId，不复制quote、不切换旧格式。核对以下正文路径和numericSourceCandidates，候选仅供定位，不证明任意主张。原文确实支持本段对象/单位时补引用保留正确数值，没有依据再删除；汉字量数不能绕过或换算：'+JSON.stringify(numericTextPaths)+'。所引用文件的可信名称/版号仅作元数据，不作为工程数值或采用依据；条件和一般建议身份保留。'+repairLayoutInstructions+'只返回final_response。'};

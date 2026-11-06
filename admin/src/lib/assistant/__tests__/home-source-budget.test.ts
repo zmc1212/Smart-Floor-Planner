@@ -12,10 +12,17 @@ test('read-only bound-home turns reserve one final repair within the same four t
   }
   for (const extra of [{ policy: undefined }, { boundHome: false }, { images: 1 }, { nativeFinalization: true },
     { tools: [...tools, { name: 'record_need', description: '', parameters: {} }] },
-    { tools: [...tools, { name: 'search_web', description: '', parameters: {} }] },
     { tools: tools.filter(t => t.name === 'search_knowledge') }, { resume: { primaryModelTurns: 3 } }])
     assert.equal(homeSourceRuntimeBudget({ ...base, ...extra }), undefined);
   assert.ok(homeSourceRuntimeBudget({ ...base, resume: { turnSchedule: agentTurnScheduleProtocol, primaryModelTurns: 3 } }));
+});
+test('ordinary public web/history reads keep the same four slots and reserve a complete-answer repair without granting writes',()=>{
+ const web={name:'search_web',description:'public read',parameters:{}};
+ assert.deepEqual(homeSourceRuntimeBudget({...base,tools:[...tools,web]}),homeSourceRuntimeBudget(base));
+ assert.ok(homeSourceRuntimeBudget({...base,boundHome:false,ordinaryDialogue:true,tools:[web]}));
+ assert.ok(homeSourceRuntimeBudget({...base,boundHome:false,ordinaryDialogue:true,tools:[{...web,name:'recall_history'}]}));
+ assert.equal(homeSourceRuntimeBudget({...base,ordinaryDialogue:true,tools:[web,{...web,name:'record_need'}]}),undefined);
+ assert.equal(homeSourceRuntimeBudget({...base,tools:[web]}),undefined);
 });
 test('two actual source reads, a rejected final and its final-only repair never dispatch a fifth call or repeat a read', async () => {
   const budget = homeSourceRuntimeBudget(base)!; let calls = 0, reads = 0;

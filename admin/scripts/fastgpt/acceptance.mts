@@ -39,16 +39,35 @@ const {lockAssistantAcceptance}=await imp('scripts/assistant-acceptance-safety.m
 const eid='1454',prefix='synthetic-fastgpt-capabilities-'+randomUUID(),read=(fn:any)=>withTenantTransaction(eid,fn),platform=(fn:any)=>withPlatformTransaction(fn);
 const questions=['卧室墙面摸着掉粉，想重新刷漆，通常先处理什么？','补充一下，是住人的老房子，不是空房，想尽量少影响生活。','我刚才说的是什么房间、什么居住情况？处理时该注意什么？','帮我查下立邦官网，旧墙面起粉可以直接刷面漆吗？','结合我家现在的施工进度，接下来有什么要注意的？'];
 const knowledgeOnly=process.argv.includes('--scope=knowledge');
-const report:any={status:'running',passed:false,enterpriseId:eid,target:'55432/xiaok_embedding_eval',model:'qwen3.7-flash',fixedTrials:2,questions,
-  selectedScope:knowledgeOnly?'knowledge; stage first-draft failure retained, not repaired or replayed':'stage and knowledge',
+const stageFixtureArg=process.argv.find(a=>a.startsWith('--stage-fixture='))?.slice('--stage-fixture='.length);
+const stageFixtureDir=stageFixtureArg?path.resolve(stageFixtureArg):undefined;
+let stageFixtureModels:any[]=[];
+const stageServiceOnly=process.argv.includes('--stage-service-only');
+if(stageServiceOnly)assert.ok(stageFixtureDir&&process.argv.includes('--native'),'Stage engineering checks require saved stage bodies and Stable native validation; no new model calls');
+if(stageFixtureDir){
+ assert.ok(stageFixtureDir.toLowerCase().startsWith(folder.toLowerCase()+path.sep),'Stage fixture must remain in this retained pilot evidence');
+ const source=JSON.parse(fs.readFileSync(path.join(stageFixtureDir,'report.json'),'utf8'));
+ const audits=fs.readFileSync(path.join(stageFixtureDir,'workflow-attempts.jsonl'),'utf8').trim().split('\n').map(l=>JSON.parse(l));
+ assert.equal(source.stage.length,2);stageFixtureModels=source.stage.map((s:any)=>{assert.equal(s.passed,true);const a=audits.find(a=>a.kind==='stage'&&a.value.runId===s.runId);assert.ok(a);const raw=a.value.response.choices[0].message.content.trim();assert.ok(JSON.parse(raw).P1);return{sourceRunId:s.runId,raw};});
+}
+const report:any={status:'running',passed:false,enterpriseId:eid,target:'55432/xiaok_embedding_eval',model:'qwen3.7-flash',fixedTrials:stageServiceOnly?0:2,questions:stageServiceOnly?[]:questions,
+  selectedScope:stageServiceOnly?'Stage saved-body engineering regression only; knowledge semantic failures remain; new model calls zero':knowledgeOnly?'knowledge; stage first-draft failure retained, not repaired or replayed':'stage and knowledge',
   scope:'Unified original C01, original private stage feeds and persistent knowledge conversations; no per-Agent sessions, real provider gateway/tools/history/source checks, no new prompts or knowledge ingestion.',
-  stage:[],trials:[],newRepairIterations:process.argv.includes('--encoding-repair')?1:0,retainedFailures:'../fastgpt-report-pilot-20261106 and original dialogue evidence; not reopened or relabelled'};
+  stage:[],trials:[],newRepairIterations:process.argv.includes('--capability-repair')?2:process.argv.includes('--encoding-repair')?1:0,
+  ...(process.argv.includes('--capability-repair')?{repairIterationByDomain:{stage:1,knowledge:2,webSource:1},changedMechanism:'Revalidated stage authority reaches the existing scope validator; ordinary model-knowledge uses one complete final-response repair; first drafts/source guards unchanged.'}:{}),
+  retainedFailures:'../fastgpt-report-pilot-20261106 and original dialogue evidence; not reopened or relabelled'};
+if(stageFixtureDir)report.stageAdviceFixture={sourceDirectory:path.relative(root,stageFixtureDir),sourceRunIds:stageFixtureModels.map(m=>m.sourceRunId),newStageModelCalls:0,purpose:'Engineering reuse of both already successful natural native-stage drafts for client binding/reentry; no new semantic stage trial or duplicated provider usage.'};
+if(process.argv.includes('--context-repair'))report.contextPreflightRepair={iteration:1,previousFailure:'10797 agent_input_limit before any model dispatch',change:'Summary preflight reuses the existing dispatch source projection; no source clipping, token-limit increase or new prompt.'};
+if(process.argv.includes('--read-repair-reserve'))report.finalRepairReserve={iteration:1,previousFailure:'10802 used all four primary slots, so its final validation never dispatched a repair',change:'Existing four-call read budget includes ordinary web/history reads: up to three primary calls plus its existing sole final repair; total/model limits unchanged, writes excluded.'};
+if(process.argv.includes('--citation-carrier'))report.citationCarrierCompatibility={iteration:1,previousFailure:'10807 selected real catalog IDs in a string array; old ordinary path accepted object arrays only',change:'Reuse existing exact-ID carrier in ordinary model-knowledge final tool/text channels; raw provider observation, content and catalog membership unchanged.'};
 const save=()=>fs.writeFileSync(path.join(out,'report.json'),JSON.stringify(report,null,2));save();
 const sourceFiles=new Set<string>(),ts=require('typescript'),cfg=ts.readConfigFile('tsconfig.json',ts.sys.readFile),options=ts.parseJsonConfigFileContent(cfg.config,ts.sys,process.cwd()).options;
 function visit(f:string){if(sourceFiles.has(f)||f.includes('node_modules')||!fs.existsSync(f))return;sourceFiles.add(f);for(const i of ts.preProcessFile(fs.readFileSync(f,'utf8'),true,true).importedFiles){const r=ts.resolveModuleName(i.fileName,f,options,ts.sys).resolvedModule?.resolvedFileName;if(r)visit(path.resolve(r));}}
 for(const p of ['src/lib/assistant/application/worker.ts','src/lib/assistant/application/http.ts','src/lib/construction/report-body-worker.ts','src/lib/construction/report-worker.ts','src/lib/construction/service.ts','scripts/wechatide-native-client.ts'])visit(path.resolve(p));
 visit(path.join(root,'miniprogram/packages/assistant/chat/chat.js'));
 visit(path.join(root,'miniprogram/packages/assistant/chat/chat-definition.js'));
+for(const name of fs.readdirSync(path.join(root,'miniprogram/packages/assistant/chat')).filter(n=>/\.(wxml|less|json)$/.test(n)))sourceFiles.add(path.join(root,'miniprogram/packages/assistant/chat',name));
+if(stageFixtureDir)for(const name of ['report.json','workflow-attempts.jsonl'])sourceFiles.add(path.join(stageFixtureDir,name));
 for(const p of [fileURLToPath(import.meta.url),'scripts/fastgpt/platform.mjs','scripts/fastgpt/capabilities.mjs','scripts/fastgpt/acceptance-native.cjs','scripts/assistant-acceptance-safety.mjs','package.json','package-lock.json','tsconfig.json','.env.local',runtimeFile,path.join(folder,'platform.json'),path.join(root,'tmp/xiaok-vector/connection.private.json'),
  '../miniprogram/packages/assistant/chat/chat-definition.js','../miniprogram/packages/assistant/chat/chat.wxml','../miniprogram/packages/assistant/chat/chat.less','../miniprogram/utils/assistant.js','../miniprogram/utils/assistant-followups.js']){const full=path.resolve(p);if(fs.existsSync(full))sourceFiles.add(full);}
 const binding=()=>Object.fromEntries([...sourceFiles].sort().map(p=>[path.relative(root,p).replaceAll('\\','/'),createHash('sha256').update(fs.readFileSync(p)).digest('hex')]));
@@ -61,7 +80,14 @@ const chatActor=(uid:string,leadId?:string)=>({...actorFor(uid),capabilities:['a
 async function trace(runId:string){return read(async(tx:any)=>({run:await one(tx,sql`select id::text,status,error_code,output_message_id::text,policy_snapshot from app.assistant_runs where enterprise_id=1454 and id=${runId}`),steps:await rows(tx,sql`select step_seq,kind,status,capability_name,input_summary,private_checkpoint,source_refs,provider_attempt_id::text from app.assistant_run_steps where enterprise_id=1454 and run_id=${runId} order by step_seq`),usage:await rows(tx,sql`select category,input_tokens,output_tokens,measurement_kind,provider_attempt_id::text from app.assistant_usage_records where enterprise_id=1454 and run_id=${runId}`)}));}
 async function consume(question:string,runId:string,cid:string){
  const item:any={question,runId,conversationId:cid};activeJourney.turns.push(item);save();
- const lease=await claimJob();assert.equal(lease?.runId,runId,'Only the owned queued request may be claimed');await processAssistantRun(lease);
+ let lease:any=null;const claimUntil=Date.now()+10000;item.claimWait={emptyClaims:0};
+ while(!lease&&Date.now()<claimUntil){
+  lease=await claimJob();if(lease)break;
+  item.claimWait.emptyClaims++;const pending=await read((tx:any)=>one(tx,sql`select status,error_code from app.assistant_runs where enterprise_id=1454 and id=${runId}`));
+  assert.equal(pending?.status,'queued',pending?.error_code||'Only an undispatched queued run may wait for a skipped claim lock');
+  await new Promise(resolve=>setTimeout(resolve,150));
+ }
+ save();assert.equal(lease?.runId,runId,'Only the owned queued request may be claimed');await processAssistantRun(lease);
  const original=await trace(runId);fs.writeFileSync(path.join(out,'run-'+runId+'.json'),JSON.stringify(original,null,2));
  item.status=original.run.status;item.error=original.run.error_code;save();assert.equal(original.run.status,'succeeded',original.run.error_code);
  const messages=await new ConversationService(chatActor(users[0])).messages(cid);const answer=messages.items.find((m:any)=>String(m.id)===String(original.run.output_message_id));assert.ok(answer);
@@ -74,6 +100,15 @@ async function consume(question:string,runId:string,cid:string){
   assert.ok(business.some((s:any)=>JSON.stringify(s.private_checkpoint).includes('"projectId":"'+expected+'"')||JSON.stringify(s.private_checkpoint).includes('"id":"'+expected+'"')));
   assert.ok(!business.some((s:any)=>JSON.stringify(s.private_checkpoint).includes('"projectId":"'+other+'"')));}
  const detail=await new ConversationService(chatActor(users[0])).detail(cid);assert.equal(String(detail.id),cid);save();return item;
+}
+async function correctStage(){
+ const first=report.stage[0];assert.ok(first);const d=await owner.execute('detail',{projectId:projects[0]});await owner.execute('progress',{projectId:projects[0],expectedVersion:Number(d.project.version),stageKey:'demolition',note:'合成测试·更正阶段',sendReminder:false},randomUUID());
+ const followups=new FollowupService(actorFor(users[0])),historical=await followups.detail(first.bindingId,first.reportId,1);assert.equal(historical.available,true,'Delivered reminders remain historical records after normal stage progression');
+ const {currentReportStageEvent}=await imp('src/lib/construction/stage-events.ts');
+ const oldEvent=await read(async(tx:any)=>{const r=await one(tx,sql`select stage_event_id from app.construction_reports where enterprise_id=1454 and id=${first.reportId}`);return currentReportStageEvent(tx,eid,r.stage_event_id);});assert.equal(oldEvent,undefined,'Superseded events cannot generate a new current-stage reminder');
+ const changed=await owner.execute('detail',{projectId:projects[0]});await owner.execute('update',{projectId:projects[0],expectedVersion:Number(changed.project.version),name:changed.project.name,status:'active',customerAccess:false},randomUUID());
+ await assert.rejects(()=>followups.detail(first.bindingId,first.reportId,1),(error:any)=>error.code==='assistant_resource_not_found','Project revocation must deny the original private conversation');
+ report.stageCorrection={oldEventCannotGenerateNew:true,historicalReminderRetained:true,projectAccessRevoked:true};save();return{bindingId:first.bindingId,reportId:first.reportId};
 }
 try{
  release=await lockAssistantAcceptance(process.env.DATABASE_URL,{waitForLock:true});report.before=await counts();assert.equal(report.before.queue,0);assert.equal(report.before.pending,0);
@@ -106,31 +141,31 @@ try{
   const d=await owner.execute('detail',{projectId:projects[i]});await owner.execute('progress',{projectId:projects[i],expectedVersion:Number(d.project.version),stageKey:i?'installation':'utilities',note:'合成测试·阶段子流程',sendReminder:false},randomUUID());
   if(knowledgeOnly)continue;
   const now=await read((tx:any)=>one(tx,sql`select clock_timestamp() at`));const queued=await advanceConstructionReports(new Date(now.at),eid);assert.deepEqual(queued.errors,[]);assert.equal(queued.queued,1);assert.equal((await advanceConstructionReports(new Date(now.at),eid)).queued,0);
-  const fact=await claimJob();assert.ok(fact);await processConstructionReport(fact);const body=await claimJob();assert.ok(body);await processReportComposition(body);
+  const fact=await claimJob();assert.ok(fact);await processConstructionReport(fact);const body=await claimJob();assert.ok(body);
+  await processReportComposition(body,stageFixtureModels.length?{model:async(_messages:any,_tools:any,turn:number)=>{assert.equal(turn,0);const m=stageFixtureModels[i];return{text:'',toolCalls:[{id:'fixture-stage-'+m.sourceRunId,name:'final_response',arguments:m.raw}],finishReason:'tool_calls',providerRequestId:'engineering-reuse:'+m.sourceRunId,usage:{inputTokens:0,outputTokens:0}};}}:{});
   const bodyTrace=await trace(body.runId);fs.writeFileSync(path.join(out,'run-'+body.runId+'.json'),JSON.stringify(bodyTrace,null,2));assert.equal(bodyTrace.run.status,'succeeded',bodyTrace.run.error_code);
   assert.equal(await deliverConstructionReports(eid),1);assert.equal(await deliverConstructionReports(eid),0);
   const r=await read((tx:any)=>one(tx,sql`select r.id::text from app.construction_reports r join app.construction_report_versions v on v.enterprise_id=r.enterprise_id and v.report_id=r.id where r.enterprise_id=1454 and v.body_run_id=${body.runId}`));
   const svc=new FollowupService(actorFor(users[0])),opened=await svc.detail(String(bindings[i].id),r.id,1);assert.equal(opened.available,true);assert.equal(opened.kind,'stage');assert.deepEqual(opened.body,(await svc.detail(String(bindings[i].id),r.id,1)).body);
   await assert.rejects(()=>new FollowupService(actorFor(users[1])).detail(String(bindings[i].id),r.id,1));
   await assert.rejects(()=>new FollowupService({...actorFor(users[0]),enterpriseId:'2385'}).detail(String(bindings[i].id),r.id,1));
-  report.stage.push({projectId:projects[i],bindingId:String(bindings[i].id),conversationId:String(bindings[i].conversation_id),reportId:r.id,runId:body.runId,body:opened.body,passed:true});save();
+  report.stage.push({projectId:projects[i],bindingId:String(bindings[i].id),conversationId:String(bindings[i].conversation_id),reportId:r.id,runId:body.runId,body:opened.body,modelOrigin:stageFixtureModels.length?'saved-stage-advice-engineering-fixture':'actual-native-FastGPT',...(stageFixtureModels.length?{sourceRunId:stageFixtureModels[i].sourceRunId}:{}),passed:true});save();
  }
- for(let trial=0;trial<2;trial++){
+ for(let trial=0;trial<(stageServiceOnly?1:2);trial++){
   if(report.trials.some((t:any)=>t.trial===trial+1))continue;
   const cid=chatIds[trial],actor=chatActor(users[0]),service=new ConversationService(actor);activeJourney={trial:trial+1,conversationId:cid,turns:[]};report.trials.push(activeJourney);save();
   if(trial===0&&process.argv.includes('--native')){
    const {SignJWT}=require('jose');const token=await new SignJWT({id:users[0],mode:'customer',role:'user',enterpriseId:eid,contextVersion:1,source:'password'}).setProtectedHeader({alg:'HS256'}).setSubject(users[0]).setIssuedAt().setAudience('miniprogram').setExpirationTime('1h').sign(new TextEncoder().encode(process.env.JWT_SECRET||'fallback_secret_random_123'));
    const {assistantHttp}=await imp('src/lib/assistant/application/http.ts');
-   report.native=await require(path.resolve('scripts/fastgpt/acceptance-native.cjs'))({root,output:out,actor:{uid:users[0],token,cid,bid:String(bindings[0].id)},questions,stage:report.stage,assistantHttp,
+   report.native=await require(path.resolve('scripts/fastgpt/acceptance-native.cjs'))({root,output:out,actor:{uid:users[0],token,cid,bid:String(bindings[0].id)},questions:stageServiceOnly?[]:questions,stage:report.stage,assistantHttp,
     onQueued:async(question:string,runId:string,actualCid:string)=>{assert.equal(actualCid,cid);assert.equal(question,questions[activeJourney.turns.length]);return consume(question,runId,cid);},
-    onSwitch:async()=>{const nextCid=chatIds[1],svc=new ConversationService(chatActor(users[0]));activeJourney={trial:2,conversationId:nextCid,turns:[]};report.trials.push(activeJourney);save();
+    onSwitch:stageServiceOnly?undefined:async()=>{const nextCid=chatIds[1],svc=new ConversationService(chatActor(users[0]));activeJourney={trial:2,conversationId:nextCid,turns:[]};report.trials.push(activeJourney);save();
       for(const question of questions){const key=randomUUID(),content={version:1,blocks:[{type:'text',text:question}]};const sent=await svc.send(nextCid,key,content);assert.equal((await svc.send(nextCid,key,content)).runId,sent.runId);await consume(question,sent.runId,nextCid);}
-      await assert.rejects(()=>new ConversationService(chatActor(users[1])).detail(nextCid));return{conversationId:nextCid,messageId:activeJourney.turns.at(-1).messageId};}});save();assert.equal(report.native.passed,true,report.native.error);
+      await assert.rejects(()=>new ConversationService(chatActor(users[1])).detail(nextCid));return{conversationId:nextCid,messageId:activeJourney.turns.at(-1).messageId};},onStageCorrection:knowledgeOnly?undefined:correctStage});save();assert.equal(report.native.passed,true,report.native.error);
   }else for(const question of questions){const key=randomUUID(),content={version:1,blocks:[{type:'text',text:question}]};const sent=await service.send(cid,key,content);assert.equal((await service.send(cid,key,content)).runId,sent.runId);await consume(question,sent.runId,cid);}
   await assert.rejects(()=>new ConversationService(chatActor(users[1])).detail(cid));
  }
- if(!knowledgeOnly){const first=report.stage[0];const d=await owner.execute('detail',{projectId:projects[0]});await owner.execute('progress',{projectId:projects[0],expectedVersion:Number(d.project.version),stageKey:'demolition',note:'合成测试·更正阶段',sendReminder:false},randomUUID());
- const revoked=await new FollowupService(actorFor(users[0])).detail(first.bindingId,first.reportId,1);assert.equal(revoked.available,false);report.stageCorrection={oldReminderRevoked:true};}
+ if(!knowledgeOnly&&!report.stageCorrection)await correctStage();
  report.after=await counts();assert.equal(report.after.queue,0);assert.equal(report.after.pending,0);report.passed=true;report.status='passed';
 }catch(error){report.passed=false;report.status='failed';report.error=(error as Error).stack||String(error);process.exitCode=1;}
 finally{

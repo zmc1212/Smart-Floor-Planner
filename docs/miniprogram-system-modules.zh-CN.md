@@ -1,7 +1,9 @@
 # 小程序当前功能清单
 
 <!-- xiaok-fastgpt-capabilities -->
-**FastGPT阶段/知识工作流：Limited，仅开发启用。** 沿批准C01 `packages/assistant/chat/chat`、follow-up-v1屏02/03/04/共享状态及原笔记本布局。阶段提醒留在原项目私人跟进；知识问答沿用户原持久咨询及原项目上下文/历史。不为Agent另建会话，不新增入口、标记/样式/插画/导航或客户端API。服务端显式启用两个私有`advanced`工作流接原模型/报告端口；权限、业务读写、来源撤回、保存和真实回执仍由原服务控制，企业知识默认关闭。实际原生输入已到远端知识工作流、原模型及真实网页读取器；校验拒绝时沿原页面失败反馈。连通尚不证明多轮/重进/项目切换或阶段投递成功；当前结果与原失败见[二期合同](xiaok-assistant-phase-2.zh-CN.md#fastgpt阶段提醒与知识问答工作流limited)、`tmp/fastgpt-capabilities-20261106/`。无生产或真机验收声明。
+**FastGPT阶段/知识工作流：Limited，仅开发启用。** 沿C01 packages/assistant/chat/chat、原持久咨询/项目私人跟进、项目上下文及历史，不另建Agent入口/会话或客户端API。设计仍为design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/README.md及follow-up-v1屏02/共享状态。企业知识关闭时，保存的通用建议接到原内联stageNote字段；markup/样式/插画/导航不变。
+
+Stable390×844/SDK3.17.2（编码348×752）验证两阶段卡及重进、实际503反馈/恢复、正常换阶段保留历史、项目撤权后旧建议清除；后续用明确保存正文工程夹具，模型0次。原两份阶段正文已由FastGPT原生模型真实生成并沿原服务保存投递。知识未通过：首组原生五答已存但官网选源和当前进度相关性不合格，第二服务组第2轮失败，原生跨项目切换未验。企业知识仍关闭，权限/来源撤回/真实回执保留；[当前合同和原失败](xiaok-assistant-phase-2.zh-CN.md#fastgpt阶段提醒与知识问答工作流limited)。未作生产或真机声明。
 <!-- /xiaok-fastgpt-capabilities -->
 
 <!-- xiaok-fastgpt-report-pilot -->

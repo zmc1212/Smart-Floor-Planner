@@ -1,9 +1,9 @@
 # 后台系统当前功能清单
 
 <!-- xiaok-fastgpt-capabilities -->
-**FastGPT阶段/知识拆分：Limited，显式开发启用。** 两个私有`advanced`工作流复用远端v4.17.4。`XIAOK_FASTGPT_WORKFLOWS_FILE`指向ACL保护的JSON，含回环18300/API key/knowledgeAppId/stageAppId；`setup-capabilities.mts`用原授权API创建，不重置已激活密码。原Worker将启用范围内普通文字回答回合交给`FastGPTKnowledgeWorkflow`，短期HTTP回调只执行一次完全相同的原模型网关请求。工具、历史、KnowledgeRetriever/Evidence、当前来源和最终保存仍归原Agent。原run私人观察及原唯一用量操作保留provider输出/尝试/用量，即使后续平台回调失败仍可核查。阶段正文采用仅允许`stage`的`FastGPTReportWorkflow`；事件选择、事实、校验、保存、幂等投递与撤回均沿原服务。未新增产品API/表/UI或更换默认供应商。内部回环18310回调须短期票据、模型前后原守卫及真实回执；错误不重放模型。范围外图片/咨询等沿原路径。
+**FastGPT阶段/知识拆分：Limited，显式开发启用。** 两个私有advanced工作流复用远端v4.17.4。XIAOK_FASTGPT_WORKFLOWS_FILE指向保护的回环18300/API key/应用ID配置，留空沿原路径。阶段用原生AI接原获权事件/报告；知识回调仅执行一次原模型网关请求。原Agent工具/历史、KnowledgeRetriever/Evidence、租户/来源守卫、持久任务、真实回执及计量保留，图片/咨询绑定沿原路径；无产品API/表或默认供应商切换。
 
-当前阶段/知识实测首稿被原回答边界拒绝，连通不等于用户验收。独立网页读取器已按BOM/HTTP/meta声明探测编码，修复可复现的`gb2312`原文误按UTF-8解读；非法字节沿原读取失败回执。原来源哈希/租户守卫及回答校验保持。沿批准C01及原咨询/私人跟进会话区分，企业知识默认关闭。实际结果与原失败见[二期合同](xiaok-assistant-phase-2.zh-CN.md#fastgpt阶段提醒与知识问答工作流limited)、`tmp/fastgpt-capabilities-20261106/`；未启用生产、真实客户或外部投递。
+阶段授权、完整回答修复、预检同源投影、原四次读取预算及既有精确ID载体均守原校验。两份真实阶段正文已保存投递；复用正文的原生重进、实际503恢复、旧事件禁新生成、保留历史及项目撤权通过。知识仍Limited：原生五答中官网仅第三方、当前进度答偏，第二组第2轮因引文标号/数值混淆失败；保存成功不等于语义通过。企业知识默认关闭，结果及原失败见[二期合同](xiaok-assistant-phase-2.zh-CN.md#fastgpt阶段提醒与知识问答工作流limited)。未启用生产、真实客户或外部投递。
 <!-- /xiaok-fastgpt-capabilities -->
 
 <!-- xiaok-fastgpt-report-pilot -->

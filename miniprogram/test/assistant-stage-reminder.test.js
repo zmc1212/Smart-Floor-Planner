@@ -20,6 +20,15 @@ function fixture({ composed = true } = {}) {
 }
 const open = f => f.c.readSource('248','K404','101',2);
 
+test('knowledge-off stage cards show the saved model advice and clear it when that report becomes unavailable',()=>{
+ const f=fixture(),advice=['通用建议（模型知识）：封槽前核对管线与照片。','通用建议（模型知识）：安装前核对成品保护。'];
+ f.raw.body[0].standards=advice.map(text=>({basis:'advice',text,citations:[]}));f.raw.body[0].knowledgeSources=[];
+ f.c.set({followupReports:[reportForView(f.raw,f.context)]});
+ const p=f.c.state.followupReports[0].projects[0];assert.equal(p.stageNote,advice.join('\n'));assert.deepEqual(p.knowledgeSources,[]);
+ f.c.set({followupReports:[reportForView({...f.raw,available:false},f.context)]});
+ assert.equal(f.c.state.followupReports[0].available,false);assert.equal(f.c.state.followupReports[0].projects,undefined);
+});
+
 test('stage reminder uses the frozen stage and actual standards, not current-stage or progress highlights', () => {
   const f=fixture(),r=f.c.state.followupReports[0];
   assert.equal(r.cardTitle,'水电阶段开始了'); assert.equal(r.stageReminder,true); assert.equal(r.projects[0].stageKey,'water');

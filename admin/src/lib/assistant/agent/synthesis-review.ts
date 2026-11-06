@@ -11,6 +11,9 @@ export type SynthesisReviewContext = { currentQuestion?: string; currentOriginal
   /** Bound only by the knowledge-off ordinary-dialogue run policy. Uncited
    * advice is model knowledge, not an assertion from an enterprise/site source. */
   generalKnowledge?: boolean;
+  /** Server-owned stage label after currentReportStageEvent authorization.
+   * Historical reports and ordinary chat must not bind this current fact. */
+  currentProjectStage?: string;
   /** Server-only draft preparation. Acceptance additionally requires the
    * durable hash-bound semantic review in knowledge-explanation.ts. */
   knowledgeExplanation?: 'reviewed-knowledge-explanation-v1';
@@ -149,8 +152,9 @@ function projectStatusClaims(text: string, stageValues: string[] = []): ProjectS
   });
 }
 
-function unsupportedProjectStatus(text: string, citations: Citations, sources: SynthesisSource[]) {
-  const quoted = actualProjectCitations(citations, sources).flatMap(citation => projectStatusClaims(citation.quote));
+function unsupportedProjectStatus(text: string, citations: Citations, sources: SynthesisSource[], currentStage?: string) {
+  const quoted = [...actualProjectCitations(citations, sources).flatMap(citation => projectStatusClaims(citation.quote)),
+    ...(currentStage ? projectStatusClaims('当前阶段为' + currentStage).filter(claim => claim.field === 'stage') : [])];
   const values = [...new Set(sources.filter(source => source.kind === 'project' && !source.material && !source.followup)
     .flatMap(source => projectStatusClaims(source.text)).filter(claim => claim.field === 'stage').map(claim => claim.value))];
   return projectStatusClaims(text, values).some(claim => !quoted.some(original => original.field === claim.field && original.value === claim.value));
@@ -370,7 +374,7 @@ export function reviewSynthesisResponse(answer: SynthesisAnswer, sources: Synthe
     if (unsupportedProjectQuantity(segment.text, citations, sources)) codes.add('misattributed_project_quantity');
     if (unsupportedProjectObservation(segment.text, citations, sources)) codes.add('misattributed_project_observation');
     if (unsupportedRecordGap(segment.text, citations, sources)) codes.add('misattributed_project_observation');
-    if (unsupportedProjectStatus(segment.text, citations, sources)) codes.add('misattributed_project_status');
+    if (unsupportedProjectStatus(segment.text, citations, sources, context.currentProjectStage)) codes.add('misattributed_project_status');
     if (unsupportedRuleComparison(segment.text, citations, sources)) codes.add('misattributed_rule_comparison');
     if (segment.basis === 'evidence' && unsupportedEvidenceMechanism(segment.text, citations)) codes.add('unsupported_evidence_mechanism');
     for (const code of projectAssessmentIssues(segment.text, segment.basis, citations, sources)) codes.add(code);

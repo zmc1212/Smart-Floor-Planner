@@ -17,10 +17,13 @@ function projectOwnerCitationCarrier(raw: string): string {
   return changed ? JSON.stringify(reply) : raw;
 }
 
-/** Final selection is a projection; the durable packet keeps all original calls. */
+/** Final selection is a projection; the durable packet keeps all original calls.
+ * The existing exact-ID carrier is also valid for a text-only final channel;
+ * neither form supplies authority until the original catalog parser resolves it. */
 export function projectFinalToolOutput(output: ModelTurnOutput, ownerCitationCarrier = false): ModelTurnOutput {
   const finals = output.toolCalls.filter(call => call.name === 'final_response');
-  if (!finals.length) return output;
+  if (!finals.length) return ownerCitationCarrier && !output.toolCalls.length && output.text
+    ? { ...output, text: projectOwnerCitationCarrier(output.text) } : output;
   if (finals.length === 1 && output.toolCalls.length === 1) return {
     ...output, text: ownerCitationCarrier ? projectOwnerCitationCarrier(finals[0].arguments) : finals[0].arguments, toolCalls: [],
   };

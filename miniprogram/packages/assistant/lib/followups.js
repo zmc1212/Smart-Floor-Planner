@@ -3,6 +3,9 @@ const api = require('../../../utils/api');
 const { errorCopy } = require('../../../utils/assistant-client');
 
 function stageNote(project) {
+  const general = !project.knowledgeSources?.length && (project.standards || [])
+    .filter(standard => standard.basis === 'advice' && !standard.citations?.length);
+  if (general?.length) return general.map(standard => standard.text).join('\n');
   for (const standard of project.standards || []) {
     const citation = standard.citations?.find(c => project.knowledgeSources?.some(source => source.sourceId === c.sourceId));
     const quote = citation?.quote?.trim().replace(/\r\n/g, '\n');
