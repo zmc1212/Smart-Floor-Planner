@@ -1,11 +1,9 @@
 # 小程序当前功能清单
 
 <!-- xiaok-fastgpt-capabilities -->
-**FastGPT阶段/知识工作流：Limited，仅开发启用。** XIAOK_FASTGPT_WORKFLOWS_FILE选择两个私有v4.17.4流程；工具/历史、KnowledgeRetriever/Evidence、租户/来源检查、任务、真实回执和计量仍归原小K。保留统一C01及原持久会话，企业知识关闭，默认供应商/API/schema及生产未切。
+**FastGPT阶段/知识工作流：Limited，原生问答完整旅程未通过，停止新增实模。** 显式开发候选沿C01原会话，由FastGPT v4.17.4单一ToolCall循环控制问答，绕过旧LangGraph问答编排；原获权工具、KnowledgeRetriever/Evidence、租户/来源、持久任务、原网关逐次计量和最终校验/保存保持。旧包裹及阶段/报告路径保留，企业知识关闭。UI/API/schema、默认Worker和生产未切。
 
-保留修复将已解析引用元数据与量数分离、以当前问题收尾、保留域名提示及无域名候选、选读整页、仅恢复已引公开原文，并在全失败时也限制导航。reader整页沿原18KB总量，48KB输入/四调用/三查询/六读取和实时权限保留；第五次调用试验已撤回，无效帧按unknown/不重试规则留私有原包。阶段真实正文/重进/503/撤权证据维持原通过范围。完整知识验收仍失败，官网选源和当前进度语义未过，不能凭保存或单元数推断；八个停止批58次含3222unknown全部保留，不新开实模批。见[当前合同](xiaok-assistant-phase-2.zh-CN.md#fastgpt阶段提醒与知识问答工作流limited)及tmp/fastgpt-knowledge-repair-20261106/。知识包裹层未证明回答改善，不足以支持替换主架构。
-
-客户端仍为packages/assistant/chat/chat，沿design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/README.md、follow-up-v1/共享状态及既有还原的引用chip/sheet，markup/样式/插画/导航不变。生成正文仅移除本段已选内部引用标记，来源原文/引用访问不变；末次序列化仅单元/保存稿复核，未取得新的Stable验收。原生390×844/SDK3.17.2（编码348×752）前三次发送/重进证据保留，复合回顾/建议漏答，官网引文/跨项目及最终当前阶段回答未验；不升级真机或还原台账状态。
+用户指定`deepseek-v4.1-flash-1017`后保持同一链路、原两组五轮和四调用/2048输出/48KB。Qwen前三轮后按用户换模型指令停；DeepSeek第二批前三轮保存，第四题三次上游搜索失败、官网原文0页，模型如实说明后因general/synthesis旧格式合同被拒，官网/进度与第二组未通过。本轮15次观测46669输入/3852输出（Qwen5、DeepSeek10），金额未知、unknown0；历史unknown不重放。引用目录遗漏已复用原投影补齐；末次仅离线修正首个拒绝被后续context_changed覆盖，不改原失败。8项定向/lint通过；类型57继承/受影响0。五批drift空、夹具/设置/原生注入恢复、队列/待投递0。见[合同](xiaok-assistant-phase-2.zh-CN.md#fastgpt阶段提醒与知识问答工作流limited)及`tmp/fastgpt-native-qa-20261106/assessment.json`。传输/局部通过不证明问答质量提升；下一步仅用已存I/O收敛单一接口，不自动新开模型批。
 <!-- /xiaok-fastgpt-capabilities -->
 
 <!-- xiaok-fastgpt-report-pilot -->

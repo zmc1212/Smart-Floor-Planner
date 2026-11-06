@@ -6,7 +6,7 @@ import { assertToolPairs, toolSchemaIssue } from './tool-protocol';
 import {finishContextTool,contextReady,nativeFinalProtocol} from './native-final';
 
 type ReadReceipt = { name: string; argumentsHash: string; messageIndex: number };
-export type AgentCheckpoint = { version: 1; turn: number; messages: ModelMessage[]; output: ModelTurnOutput | null; validationRepairs?:number; argumentFailures?: number; exhaustedTools?: string[]; readReceipts?: ReadReceipt[]; finalFromTools?: boolean; turnSchedule?: typeof agentTurnScheduleProtocol; primaryModelTurns?: number; nativeFinalization?:typeof nativeFinalProtocol; finalizing?:boolean };
+export type AgentCheckpoint = { version: 1; turn: number; messages: ModelMessage[]; output: ModelTurnOutput | null; validationRepairs?:number; argumentFailures?: number; exhaustedTools?: string[]; readReceipts?: ReadReceipt[]; finalFromTools?: boolean; turnSchedule?: typeof agentTurnScheduleProtocol; primaryModelTurns?: number; nativeFinalization?:typeof nativeFinalProtocol; finalizing?:boolean; nativeWorkflow?: 'fastgpt-native-knowledge-v1' };
 export type AgentToolResult = { content: string; stop?: boolean; exhausted?: boolean };
 export type AgentRuntimePorts = {
   /** Must check lease, actor, mode, revision and source availability on every call. */
@@ -93,6 +93,7 @@ export async function runRenovationAgent(input: {
   nativeFinishTool?: ModelTool;
 }) {
   const { ports, tools } = input;
+  if (input.resume?.nativeWorkflow) fail('context_changed', 409);
   if (input.reservedValidationRepairs !== undefined && input.reservedValidationRepairs !== 1) fail('invalid_agent_tools', 500);
   const reservedRepair = input.reservedValidationRepairs === 1;
   const primaryTurns = input.primaryModelTurns ?? agentModelLimits.maxModelTurns;

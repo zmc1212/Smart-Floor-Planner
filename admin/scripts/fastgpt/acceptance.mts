@@ -10,10 +10,15 @@ import {workflowSnapshot} from './platform.mjs';
 
 const require=createRequire(process.cwd()+'/package.json');require('@next/env').loadEnvConfig(process.cwd(),true);
 const primary=process.env.DATABASE_URL,root=path.resolve('..'),folder=path.join(root,'tmp/fastgpt-capabilities-20261106');
+const nativeKnowledge=process.argv.includes('--native-knowledge');
+const nativeModel=process.argv.find(a=>a.startsWith('--model='))?.slice(8)||'qwen3.7-flash';
+assert.ok(['qwen3.7-flash','deepseek-v4.1-flash-1017'].includes(nativeModel),'Only the fixed original or user-requested model is allowed');
 const out=path.resolve(process.argv.find(a=>a.startsWith('--out='))?.slice(6)||path.join(folder,'trial01'));
 fs.mkdirSync(out,{recursive:true});assert.ok(!fs.existsSync(path.join(out,'report.json')),'Never overwrite or resample an earlier attempt');
 assert.ok(process.argv.includes('--live'),'Explicit --live required');
-const configuration=JSON.parse(fs.readFileSync(path.join(folder,'runtime.private.json'),'utf8'));
+const configuration=JSON.parse(fs.readFileSync(path.join(root,nativeKnowledge?'tmp/fastgpt-native-qa-20261106/runtime'+(nativeModel==='qwen3.7-flash'?'':'-deepseek')+'.private.json':'tmp/fastgpt-capabilities-20261106/runtime.private.json'),'utf8'));
+if(nativeKnowledge)assert.ok(configuration.nativeKnowledgeAppId&&process.argv.includes('--scope=knowledge'),'Native QA uses its isolated configuration and the fixed knowledge scope');
+if(nativeKnowledge)assert.equal(configuration.nativeModel,nativeModel,'The named test model must match the configured native application');
 const runtimeFile=path.join(out,'runtime.private.json');configuration.auditFile=path.join(out,'workflow-attempts.jsonl');fs.writeFileSync(runtimeFile,JSON.stringify(configuration,null,2));
 execFileSync('icacls.exe',[runtimeFile,'/inheritance:r','/grant:r','Administrator:F','SYSTEM:F'],{windowsHide:true,stdio:'ignore'});
 process.env.XIAOK_FASTGPT_WORKFLOWS_FILE=runtimeFile;
@@ -50,12 +55,14 @@ if(stageFixtureDir){
  const audits=fs.readFileSync(path.join(stageFixtureDir,'workflow-attempts.jsonl'),'utf8').trim().split('\n').map(l=>JSON.parse(l));
  assert.equal(source.stage.length,2);stageFixtureModels=source.stage.map((s:any)=>{assert.equal(s.passed,true);const a=audits.find(a=>a.kind==='stage'&&a.value.runId===s.runId);assert.ok(a);const raw=a.value.response.choices[0].message.content.trim();assert.ok(JSON.parse(raw).P1);return{sourceRunId:s.runId,raw};});
 }
-const report:any={status:'running',passed:false,enterpriseId:eid,target:'55432/xiaok_embedding_eval',model:'qwen3.7-flash',fixedTrials:stageServiceOnly?0:2,questions:stageServiceOnly?[]:questions,
+const report:any={status:'running',passed:false,enterpriseId:eid,target:'55432/xiaok_embedding_eval',model:nativeKnowledge?nativeModel:'qwen3.7-flash',fixedTrials:stageServiceOnly?0:2,questions:stageServiceOnly?[]:questions,
   selectedScope:stageServiceOnly?'Stage saved-body engineering regression only; knowledge semantic failures remain; new model calls zero':knowledgeOnly?'knowledge; stage first-draft failure retained, not repaired or replayed':'stage and knowledge',
   scope:'Unified original C01, original private stage feeds and persistent knowledge conversations; no per-Agent sessions, real provider gateway/tools/history/source checks, no new prompts or knowledge ingestion.',
   stage:[],trials:[],newRepairIterations:process.argv.includes('--capability-repair')?2:process.argv.includes('--encoding-repair')?1:0,
   ...(process.argv.includes('--capability-repair')?{repairIterationByDomain:{stage:1,knowledge:2,webSource:1},changedMechanism:'Revalidated stage authority reaches the existing scope validator; ordinary model-knowledge uses one complete final-response repair; first drafts/source guards unchanged.'}:{}),
   retainedFailures:'../fastgpt-report-pilot-20261106 and original dialogue evidence; not reopened or relabelled'};
+if(nativeKnowledge){report.scope='One native FastGPT ToolCall controller; explicitly bound '+nativeModel+' through original guarded model/accounting ports, original authorized tools and final validation/storage; no LangGraph Q&A loop or second persistent session.';
+  report.nativeKnowledge={newMechanism:true,retainedFailedRepairIterations:2,semanticRepairs:0,comparison:'Same original two five-turn journeys; current question, actual sources, first draft and validation outcome retained separately; first blocking failure or unknown stops the batch.'};}
 if(process.argv.includes('--knowledge-mechanism-repair'))report.knowledgeMechanism={
   retainedFailedRepairIterations:2,
   changedMechanism:'Validated reference ordinals and selected catalog-marker namespace; current-question tail; no proactive history selector; domain hints without suppressing broader discovery; explicit single-original reads; actually cited whole public originals restored; original four-call loop and one final repair when a call remains; failed reads keep other registered candidates; ordinary final-only replies reuse the named final_response function carrier and unchanged application schema/citation validation.',
@@ -79,15 +86,17 @@ visit(path.join(root,'miniprogram/packages/assistant/chat/chat.js'));
 visit(path.join(root,'miniprogram/packages/assistant/chat/chat-definition.js'));
 for(const name of fs.readdirSync(path.join(root,'miniprogram/packages/assistant/chat')).filter(n=>/\.(wxml|less|json)$/.test(n)))sourceFiles.add(path.join(root,'miniprogram/packages/assistant/chat',name));
 if(stageFixtureDir)for(const name of ['report.json','workflow-attempts.jsonl'])sourceFiles.add(path.join(stageFixtureDir,name));
-for(const p of [fileURLToPath(import.meta.url),'scripts/fastgpt/platform.mjs','scripts/fastgpt/capabilities.mjs','scripts/fastgpt/acceptance-native.cjs','scripts/assistant-acceptance-safety.mjs','package.json','package-lock.json','tsconfig.json','.env.local',runtimeFile,path.join(folder,'platform.json'),path.join(root,'tmp/xiaok-vector/connection.private.json'),
+for(const p of [fileURLToPath(import.meta.url),'scripts/fastgpt/platform.mjs','scripts/fastgpt/capabilities.mjs','scripts/fastgpt/native-knowledge-workflow.mjs','scripts/fastgpt/setup-native-knowledge.mts','src/lib/assistant/__tests__/fastgpt-native-knowledge.test.ts','scripts/fastgpt/acceptance-native.cjs','scripts/assistant-acceptance-safety.mjs','package.json','package-lock.json','tsconfig.json','.env.local',runtimeFile,path.join(folder,'platform.json'),path.join(root,'tmp/xiaok-vector/connection.private.json'),
  '../miniprogram/packages/assistant/chat/chat-definition.js','../miniprogram/packages/assistant/chat/chat.wxml','../miniprogram/packages/assistant/chat/chat.less','../miniprogram/utils/assistant.js','../miniprogram/utils/assistant-followups.js',
  '../scripts/assistant-public-reader.py','../scripts/openwebui-comparison/upstream.manifest.json','../scripts/openwebui-comparison/egress_proxy_server.py',
  '../tmp/fastgpt-knowledge-repair-20261106/run.mts','../tmp/fastgpt-knowledge-repair-20261106/resources.mjs',
  '../tmp/fastgpt-knowledge-repair-20261106/reader-requirements-lock.txt',
+  '../tmp/fastgpt-native-qa-20261106/run.mts','../tmp/fastgpt-native-qa-20261106/resources.mjs',
  'src/lib/assistant/__tests__/public-selection.test.ts','src/lib/assistant/__tests__/knowledge-dialogue-boundaries.test.ts',
  'src/lib/assistant/__tests__/home-source-budget.test.ts','src/db/__tests__/assistant-history.test.ts']){const full=path.resolve(p);if(fs.existsSync(full))sourceFiles.add(full);}
 const binding=()=>Object.fromEntries([...sourceFiles].sort().map(p=>[path.relative(root,p).replaceAll('\\','/'),createHash('sha256').update(fs.readFileSync(p)).digest('hex')]));
-const snapshot=async()=>({knowledge:await workflowSnapshot({...configuration,appId:configuration.knowledgeAppId}),stage:await workflowSnapshot({...configuration,appId:configuration.stageAppId})});
+const snapshot=async()=>({knowledge:await workflowSnapshot({...configuration,appId:configuration.knowledgeAppId}),stage:await workflowSnapshot({...configuration,appId:configuration.stageAppId}),
+  ...(nativeKnowledge?{nativeKnowledge:await workflowSnapshot({...configuration,appId:configuration.nativeKnowledgeAppId,nodeCount:configuration.nativeNodeCount})}:{})});
 const counts=()=>platform(async(tx:any)=>({provider:Number((await one(tx,sql`select count(*)::int n from app.ai_provider_attempts`)).n),queue:Number((await one(tx,sql`select count(*)::int n from app.assistant_jobs where status in ('queued','running')`)).n),pending:Number((await one(tx,sql`select count(*)::int n from app.construction_report_deliveries where state in ('pending','held')`)).n)}));
 let release:any,reverse:any,assistantBefore:any,planBefore:any,platformBefore:any,owner:any,ownerId='',managerId='';
 const users:string[]=[],projects:string[]=[],bindings:any[]=[],chatIds:string[]=[];let activeJourney:any;
@@ -106,6 +115,8 @@ async function consume(question:string,runId:string,cid:string){
  save();assert.equal(lease?.runId,runId,'Only the owned queued request may be claimed');await processAssistantRun(lease);
  const original=await trace(runId);fs.writeFileSync(path.join(out,'run-'+runId+'.json'),JSON.stringify(original,null,2));
  item.status=original.run.status;item.error=original.run.error_code;save();assert.equal(original.run.status,'succeeded',original.run.error_code);
+  if(nativeKnowledge){const models=original.steps.filter((s:any)=>s.kind==='agent_model');assert.ok(models.length>0&&models.every((s:any)=>s.input_summary?.nativeProtocol==='fastgpt-native-knowledge-v1'),'Every Q&A turn must be generated inside the native FastGPT loop');
+    assert.ok(models.every((s:any)=>s.provider_attempt_id&&s.private_checkpoint?.usage),'Each original model dispatch must retain its attempt and usage');}
  const messages=await new ConversationService(chatActor(users[0])).messages(cid);const answer=messages.items.find((m:any)=>String(m.id)===String(original.run.output_message_id));assert.ok(answer);
  item.messageId=String(answer.id);item.answer=safeText(answer.content);item.citations=answer.citations||[];
  item.citationReadback=[];

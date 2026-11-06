@@ -3,11 +3,14 @@ import {createHash} from 'node:crypto';
 import http from 'node:http';
 import {FastGPTReportWorkflow} from '@/lib/construction/fastgpt-report-workflow';
 import {FastGPTKnowledgeWorkflow} from './knowledge-workflow';
+import {FastGPTNativeKnowledge} from './native-knowledge';
 
-type Configuration={baseUrl:string;apiKey:string;knowledgeAppId:string;stageAppId:string;auditFile?:string};
+type Configuration={baseUrl:string;apiKey:string;knowledgeAppId:string;stageAppId:string;auditFile?:string;
+  nativeKnowledgeAppId?:string; nativeModel?:string; nativeTransportModel?:string; nativeBridgeKey?:string};
 class FastGPTWorkflows {
   readonly knowledge:FastGPTKnowledgeWorkflow;
   readonly stage:FastGPTReportWorkflow;
+  readonly nativeKnowledge?:FastGPTNativeKnowledge;
   private server?:http.Server;
   private starting?:Promise<void>;
   constructor(configuration:Configuration) {
@@ -16,8 +19,12 @@ class FastGPTWorkflows {
     };
     this.knowledge=new FastGPTKnowledgeWorkflow({...configuration,appId:configuration.knowledgeAppId,record:value=>record('knowledge',value)});
     this.stage=new FastGPTReportWorkflow({...configuration,appId:configuration.stageAppId,record:value=>record('stage',value)},['stage']);
+    if(configuration.nativeKnowledgeAppId) this.nativeKnowledge=new FastGPTNativeKnowledge({
+      ...configuration,appId:configuration.nativeKnowledgeAppId,model:configuration.nativeTransportModel!,bridgeKey:configuration.nativeBridgeKey!,
+      record:value=>record('nativeKnowledge',value)});
   }
   async handle(request:Request) {
+    if(new URL(request.url).pathname.startsWith('/native-')) return this.nativeKnowledge?.handle(request) ?? Response.json({error:'not_found'},{status:404});
     return new URL(request.url).pathname.startsWith('/knowledge-')?this.knowledge.handle(request):this.stage.handle(request);
   }
   ready():Promise<void> {

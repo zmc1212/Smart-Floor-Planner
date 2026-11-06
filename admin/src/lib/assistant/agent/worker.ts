@@ -4,6 +4,7 @@ import { withTenantTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { executePostgresText } from '@/lib/ai/postgres-workflow-chat';
 import { fastGPTWorkflows } from '../fastgpt/runtime';
+import { nativeKnowledgeProtocol } from '../fastgpt/native-knowledge';
 import { recordAgentModelUsage } from '../core/model-usage';
 import { AiProviderError } from '@/lib/ai/provider-types';
 import { agentRejectionAudited, isDefiniteAgentRejection } from './provider-rejection';
@@ -937,7 +938,49 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       return { status: marker.effect === 'proposal' ? 'pending' as const : 'unchanged' as const, text: reviewProposalReply(marker.name, marker.effect) };
     };
     let turnAllocation: ReturnType<typeof consultationRuntimeBudget> | ReturnType<typeof homeSourceRuntimeBudget> | ReturnType<typeof reportNativeRuntimeBudget>;
+    const nativeWorkflow = initial.minimalDialogue && initial.config.tools && !initial.mediaRefs.length
+      && !dependencies.model && publicResearch ? fastGPTWorkflows()?.nativeKnowledge : undefined;
     const callModel = async (turn: number, messages: ModelMessage[], tools: ModelTool[], purpose: ModelRequestPurpose = 'answer'): Promise<ModelTurnOutput> => {
+          if (nativeWorkflow && purpose === 'answer') {
+            // FastGPT supplied this complete native turn. No second planning,
+            // schema selection, history rewrite or LangGraph loop runs here.
+            const bounded = fitAgentContext(messages, tools);
+            const requestHash = fingerprint({ messages: bounded.messages, tools, config: initial.config });
+            const sequence = 1100 + turn * 10;
+            await heartbeat(lease);
+            const cached = await scoped(tx => one(tx, sql`select status,input_summary,private_checkpoint
+              from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`));
+            if (cached) {
+              if ((cached.input_summary as Row)?.nativeProtocol !== nativeKnowledgeProtocol
+                || (cached.input_summary as Row)?.requestHash !== requestHash) fail('context_changed');
+              if (cached.status !== 'succeeded') fail('provider_outcome_unknown');
+              return cached.private_checkpoint as ModelTurnOutput;
+            }
+            outcomeKnown = false;
+            const output = await executePostgresText({ enterpriseId: BigInt(lease.enterpriseId),
+              owner: { kind: 'assistant_run', runId: BigInt(lease.runId) }, logicalModelKey: 'chat.general', messages: [],
+              maxTokens: 2048, agent: { config: initial.config, input: {
+                messages: bounded.messages, tools, maxTokens: 2048, requireTool: true,
+              } }, metadata: { runtime: nativeKnowledgeProtocol, turn, purpose, requestHash },
+              beforeProviderCall: async () => {
+                await authorize();
+                await scoped(async tx => {
+                  await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
+                    values(${lease.enterpriseId},${lease.runId},${sequence},'agent_model','running',
+                      ${JSON.stringify({ nativeProtocol: nativeKnowledgeProtocol, requestHash, turn, purpose, budget: bounded.diagnostic })}::jsonb)`);
+                  await tx.execute(sql`update app.assistant_jobs set provider_started_at=now(),updated_at=now()
+                    where enterprise_id=${lease.enterpriseId} and id=${lease.jobId}`);
+                });
+              },
+            });
+            outcomeKnown = true;
+            if (!output.agentOutput) fail('invalid_model_answer', 502);
+            await recordAgentModelUsage(lease.enterpriseId, lease.runId, turn, output);
+            await scoped(tx => tx.execute(sql`update app.assistant_run_steps set status='succeeded',
+              provider_attempt_id=${String(output.attemptId)},private_checkpoint=${JSON.stringify(output.agentOutput)}::jsonb
+              where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`));
+            return output.agentOutput;
+          }
           const claims = claimFinalization && purpose === 'answer' && !tools.length
             ? await scoped((tx, context) => boundReviewClaims(tx, lease.actor, context.conversation, lease.runId)) : null;
           const claimMessages: ModelMessage[] = claims ? [...messages, { role: 'user', content: [{ type: 'text', text:
@@ -1237,7 +1280,11 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         summaries: Number(auxiliary?.summaries || 0), perceptions: Number(auxiliary?.perceptions || 0), resume: initial.resume,
         scheduleProtocol: agentTurnScheduleProtocol });
     });
-    const result = await runRenovationAgent({ messages: initial.messages, tools: turnTools, resume: initial.resume,
+    if (nativeWorkflow) await fastGPTWorkflows()!.ready();
+    const runDialogue = nativeWorkflow ? nativeWorkflow.run.bind(nativeWorkflow) : runRenovationAgent;
+    const result = await runDialogue({ messages: initial.messages, question: reviewContext.currentQuestion,
+      tools: nativeWorkflow ? [historyTool, ...businessToolDefinitions.filter(tool => tool.name === 'query_business'),
+        ...publicResearchTools([webSearchTool], true, true)] : turnTools, resume: initial.resume,
       nativeFinalization,
       nativeFinishTool: completion ? finish : undefined,
       reservedValidationRepairs: turnAllocation?.reservedValidationRepairs, primaryModelTurns: turnAllocation?.primaryModelTurns,
