@@ -44,6 +44,7 @@ const {lockAssistantAcceptance}=await imp('scripts/assistant-acceptance-safety.m
 const eid='1454',prefix='synthetic-fastgpt-capabilities-'+randomUUID(),read=(fn:any)=>withTenantTransaction(eid,fn),platform=(fn:any)=>withPlatformTransaction(fn);
 const questions=['卧室墙面摸着掉粉，想重新刷漆，通常先处理什么？','补充一下，是住人的老房子，不是空房，想尽量少影响生活。','我刚才说的是什么房间、什么居住情况？处理时该注意什么？','帮我查下立邦官网，旧墙面起粉可以直接刷面漆吗？','结合我家现在的施工进度，接下来有什么要注意的？'];
 const knowledgeOnly=process.argv.includes('--scope=knowledge');
+const reviewEachTurn=process.argv.includes('--review-each-turn');
 const stageFixtureArg=process.argv.find(a=>a.startsWith('--stage-fixture='))?.slice('--stage-fixture='.length);
 const stageFixtureDir=stageFixtureArg?path.resolve(stageFixtureArg):undefined;
 let stageFixtureModels:any[]=[];
@@ -56,6 +57,7 @@ if(stageFixtureDir){
  assert.equal(source.stage.length,2);stageFixtureModels=source.stage.map((s:any)=>{assert.equal(s.passed,true);const a=audits.find(a=>a.kind==='stage'&&a.value.runId===s.runId);assert.ok(a);const raw=a.value.response.choices[0].message.content.trim();assert.ok(JSON.parse(raw).P1);return{sourceRunId:s.runId,raw};});
 }
 const report:any={status:'running',passed:false,enterpriseId:eid,target:'55432/xiaok_embedding_eval',model:nativeKnowledge?nativeModel:'qwen3.7-flash',fixedTrials:stageServiceOnly?0:2,questions:stageServiceOnly?[]:questions,
+  reviewEachTurn,
   selectedScope:stageServiceOnly?'Stage saved-body engineering regression only; knowledge semantic failures remain; new model calls zero':knowledgeOnly?'knowledge; stage first-draft failure retained, not repaired or replayed':'stage and knowledge',
   scope:'Unified original C01, original private stage feeds and persistent knowledge conversations; no per-Agent sessions, real provider gateway/tools/history/source checks, no new prompts or knowledge ingestion.',
   stage:[],trials:[],newRepairIterations:process.argv.includes('--capability-repair')?2:process.argv.includes('--encoding-repair')?1:0,
@@ -99,7 +101,7 @@ const snapshot=async()=>({knowledge:await workflowSnapshot({...configuration,app
   ...(nativeKnowledge?{nativeKnowledge:await workflowSnapshot({...configuration,appId:configuration.nativeKnowledgeAppId,nodeCount:configuration.nativeNodeCount})}:{})});
 const counts=()=>platform(async(tx:any)=>({provider:Number((await one(tx,sql`select count(*)::int n from app.ai_provider_attempts`)).n),queue:Number((await one(tx,sql`select count(*)::int n from app.assistant_jobs where status in ('queued','running')`)).n),pending:Number((await one(tx,sql`select count(*)::int n from app.construction_report_deliveries where state in ('pending','held')`)).n)}));
 let release:any,reverse:any,assistantBefore:any,planBefore:any,platformBefore:any,owner:any,ownerId='',managerId='';
-const users:string[]=[],projects:string[]=[],bindings:any[]=[],chatIds:string[]=[];let activeJourney:any;
+const users:string[]=[],projects:string[]=[],bindings:any[]=[],chatIds:string[]=[];let activeJourney:any,activeReview:Promise<unknown>|undefined;
 const actorFor=(uid:string)=>({enterpriseId:eid,principal:{kind:'user',userId:uid},contextVersion:1,capabilities:['assistant.chat.self','assistant.followup.self']});
 const chatActor=(uid:string,leadId?:string)=>({...actorFor(uid),capabilities:['assistant.chat.self'],...(leadId?{entry:{kind:'lead',id:leadId}}:{})});
 async function trace(runId:string){return read(async(tx:any)=>({run:await one(tx,sql`select id::text,status,error_code,output_message_id::text,policy_snapshot from app.assistant_runs where enterprise_id=1454 and id=${runId}`),steps:await rows(tx,sql`select step_seq,kind,status,capability_name,input_summary,private_checkpoint,source_refs,provider_attempt_id::text from app.assistant_run_steps where enterprise_id=1454 and run_id=${runId} order by step_seq`),usage:await rows(tx,sql`select category,input_tokens,output_tokens,measurement_kind,provider_attempt_id::text from app.assistant_usage_records where enterprise_id=1454 and run_id=${runId}`)}));}
@@ -139,7 +141,16 @@ async function consume(question:string,runId:string,cid:string){
   assert.ok(!business.some((s:any)=>JSON.stringify(s.private_checkpoint).includes('"projectId":"'+other+'"')));
   assert.match(item.answer,activeJourney.trial===1?/水电/:/安装/,'The actual answer must address the current authorized stage');
   assert.notEqual(item.answer,activeJourney.turns.at(-2)?.answer,'A new project-stage question must not repeat the painting answer');}
- const detail=await new ConversationService(chatActor(users[0])).detail(cid);assert.equal(String(detail.id),cid);save();return item;
+  const detail=await new ConversationService(chatActor(users[0])).detail(cid);assert.equal(String(detail.id),cid);save();
+  if(reviewEachTurn){
+    const file=path.join(out,'review-'+runId+'.json');item.review={status:'pending',file};save();
+    const until=Date.now()+150000;
+    while(!fs.existsSync(file)&&Date.now()<until)await new Promise(resolve=>setTimeout(resolve,500));
+    assert.ok(fs.existsSync(file),'Stop before the next turn when first-draft review is unavailable');
+    const decision=JSON.parse(fs.readFileSync(file,'utf8'));assert.equal(decision.runId,runId);
+    item.review=decision;save();assert.equal(decision.accepted,true,decision.reason||'First-draft review failed; do not continue or resample');
+  }
+  return item;
 }
 async function correctStage(){
  const first=report.stage[0];assert.ok(first);const d=await owner.execute('detail',{projectId:projects[0]});await owner.execute('progress',{projectId:projects[0],expectedVersion:Number(d.project.version),stageKey:'demolition',note:'合成测试·更正阶段',sendReminder:false},randomUUID());
@@ -198,7 +209,8 @@ try{
    const {SignJWT}=require('jose');const token=await new SignJWT({id:users[0],mode:'customer',role:'user',enterpriseId:eid,contextVersion:1,source:'password'}).setProtectedHeader({alg:'HS256'}).setSubject(users[0]).setIssuedAt().setAudience('miniprogram').setExpirationTime('1h').sign(new TextEncoder().encode(process.env.JWT_SECRET||'fallback_secret_random_123'));
    const {assistantHttp}=await imp('src/lib/assistant/application/http.ts');
    report.native=await require(path.resolve('scripts/fastgpt/acceptance-native.cjs'))({root,output:out,actor:{uid:users[0],token,cid,bid:String(bindings[0].id)},questions:stageServiceOnly?[]:questions,stage:report.stage,assistantHttp,
-    onQueued:async(question:string,runId:string,actualCid:string)=>{assert.equal(actualCid,cid);assert.equal(question,questions[activeJourney.turns.length]);return consume(question,runId,cid);},
+     onQueued:async(question:string,runId:string,actualCid:string)=>{assert.equal(actualCid,cid);assert.equal(question,questions[activeJourney.turns.length]);activeReview=consume(question,runId,cid);return activeReview;},
+     onTurnReviewed:async()=>{if(activeReview)await activeReview;},
     onSwitch:stageServiceOnly?undefined:async()=>{const nextCid=chatIds[1],svc=new ConversationService(chatActor(users[0]));activeJourney={trial:2,conversationId:nextCid,turns:[]};report.trials.push(activeJourney);save();
       for(const question of questions){const key=randomUUID(),content={version:1,blocks:[{type:'text',text:question}]};const sent=await svc.send(nextCid,key,content);assert.equal((await svc.send(nextCid,key,content)).runId,sent.runId);await consume(question,sent.runId,nextCid);}
       await assert.rejects(()=>new ConversationService(chatActor(users[1])).detail(nextCid));return{conversationId:nextCid,messageId:activeJourney.turns.at(-1).messageId};},onStageCorrection:knowledgeOnly?undefined:correctStage});save();assert.equal(report.native.passed,true,report.native.error);

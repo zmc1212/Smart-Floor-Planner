@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- Existing Stable DevTools CLI controller. */
 const fs=require('fs'),path=require('path'),http=require('http'),cp=require('child_process'),assert=require('assert/strict'),crypto=require('crypto');
-module.exports=async({root,output,actor,questions,stage,assistantHttp,onQueued,onSwitch,onStageCorrection})=>{
+module.exports=async({root,output,actor,questions,stage,assistantHttp,onQueued,onTurnReviewed,onSwitch,onStageCorrection})=>{
  const project=path.join(root,'miniprogram'),route='packages/assistant/chat/chat',cli=require(path.join(root,'admin/scripts/wechatide-native-client.ts')).wechatideNativeClient(project,output);
  const evidence={scope:questions.length?'Approved unified C01, original private stage feeds and one persistent knowledge conversation; real native inputs, writes and reentry, no per-Agent conversations':'Stage saved-body engineering regression, original private feeds/reentry/withdrawal and actual HTTP503 recovery; no knowledge model trial',checks:[],captures:[],requests:[]};
  const save=()=>fs.writeFileSync(path.join(output,'native.json'),JSON.stringify(evidence,null,2));
@@ -58,6 +58,7 @@ module.exports=async({root,output,actor,questions,stage,assistantHttp,onQueued,o
    await wait(async()=>{const d=await page.data();return d.draft===questions[i]&&!d.contextLoading;},'visible native draft '+i);
    if(i===0)await capture('knowledge-input');await send.tap();
    await wait(async()=>{const d=await page.data();return !d.busy&&!d.generating&&!d.pendingSend&&!d.uncertainRun&&(d.messages||[]).some(m=>(m.content?.blocks||[]).some(b=>b.text===questions[i]))&&(d.messages||[]).filter(m=>m.authorKind==='assistant'||m.role==='assistant').length>count;},'real knowledge answer '+i);
+    if(onTurnReviewed)await onTurnReviewed();
    await capture('knowledge-turn-'+(i+1));evidence.checks.push({question:questions[i],sameConversation:actor.cid,realInputAndSend:true,passed:true});save();
    if(i===3){
     const d=await page.data(),answer=d.messages.filter(m=>m.authorKind==='assistant'||m.role==='assistant').at(-1);

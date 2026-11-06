@@ -186,16 +186,33 @@ export function searxngResults(input: unknown): Array<{ url: string; title: stri
   return results;
 }
 
+/** DDGS discovery supplies links only; its body/snippet is never page evidence. */
+export function ddgsResults(input: unknown): Array<{ url: string; title: string }> {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) fail('invalid_web_search_response', 502);
+  const data = input as { results?: unknown };
+  if (!Array.isArray(data.results)) fail('invalid_web_search_response', 502);
+  return data.results.map(item => {
+    if (!item || typeof item !== 'object' || typeof item.href !== 'string' || typeof item.title !== 'string') fail('invalid_web_search_response', 502);
+    return { url: item.href, title: item.title };
+  }).slice(0, 8);
+}
+
 /** A provider boundary: changing search services does not change Agent/Evidence. */
 export function configuredWebProvider(): WebSearchProvider | null {
-  if (process.env.ASSISTANT_WEB_SEARCH_PROVIDER !== 'searxng' || !process.env.ASSISTANT_WEB_SEARCH_URL) return null;
+  const provider = process.env.ASSISTANT_WEB_SEARCH_PROVIDER;
+  if (!['searxng', 'ddgs'].includes(provider || '') || !process.env.ASSISTANT_WEB_SEARCH_URL) return null;
   let base: URL;
   try { base = new URL(process.env.ASSISTANT_WEB_SEARCH_URL); } catch { return null; }
   if (!['http:', 'https:'].includes(base.protocol) || base.username || base.password || base.search || base.hash) return null;
-  return { name: 'searxng', async search(query) {
-    const url = new URL('search', base.href.endsWith('/') ? base : base.href + '/');
-    url.searchParams.set('q', query.query + (query.domains.length ? ' (' + query.domains.map(d => 'site:' + d).join(' OR ') + ')' : ''));
-    url.searchParams.set('format', 'json'); url.searchParams.set('language', 'zh-CN'); url.searchParams.set('safesearch', '1');
+  return { name: provider!, async search(query) {
+    const url = new URL(provider === 'ddgs' ? 'search/text' : 'search', base.href.endsWith('/') ? base : base.href + '/');
+    const text = query.query + (query.domains.length ? ' (' + query.domains.map(d => 'site:' + d).join(' OR ') + ')' : '');
+    if (provider === 'ddgs') {
+      url.searchParams.set('query', text); url.searchParams.set('region', 'cn-zh'); url.searchParams.set('safesearch', 'moderate');
+      url.searchParams.set('max_results', '8'); url.searchParams.set('backend', process.env.ASSISTANT_DDGS_BACKEND || 'yahoo');
+    } else {
+      url.searchParams.set('q', text); url.searchParams.set('format', 'json'); url.searchParams.set('language', 'zh-CN'); url.searchParams.set('safesearch', '1');
+    }
     const response = await fetch(url, { signal: AbortSignal.timeout(12000), redirect: 'error', headers: { Accept: 'application/json' } });
     if (!response.ok) fail('web_search_http_' + response.status, 503);
     if (!response.body) fail('invalid_web_search_response', 502);
@@ -208,7 +225,8 @@ export function configuredWebProvider(): WebSearchProvider | null {
         chunks.push(Buffer.from(chunk.value));
       }
     } finally { await reader.cancel().catch(() => {}); }
-    return searxngResults(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+    const packet = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    return provider === 'ddgs' ? ddgsResults(packet) : searxngResults(packet);
   } };
 }
 export async function searchWeb(query: WebQuery, provider = configuredWebProvider(), read = readPublicPage): Promise<WebSearchSnapshot> {
