@@ -1,9 +1,9 @@
 # 小程序当前功能清单
 
 <!-- xiaok-fastgpt-capabilities -->
-**FastGPT阶段/知识工作流：Limited，原生问答完整旅程未通过，停止新增实模。** 显式开发候选沿C01原会话，由FastGPT v4.17.4单一ToolCall循环控制问答，绕过旧LangGraph问答编排；原获权工具、KnowledgeRetriever/Evidence、租户/来源、持久任务、原网关逐次计量和最终校验/保存保持。旧包裹及阶段/报告路径保留，企业知识关闭。UI/API/schema、默认Worker和生产未切。
+**FastGPT阶段/知识工作流：Limited，已收敛保存I/O接口，原生完整问答旅程未通过，停止新增实模。** 显式开发候选沿C01原会话，由FastGPT v4.17.4单一ToolCall控制问答；原服务守获权工具、KnowledgeRetriever/Evidence、租户/来源、持久任务、网关计量及最终校验/保存。原生输入现在共同复用既有来源/引用目录与公开内容投影：完整原文和引用ID保留，重复元数据及有界导航沿原路径处理。提交和保存共同依据实时获权来源集合，不把调用过工具或空检索当证据；普通答复在原生终稿通过前也复用保存端的真实承诺解析器。UI/API/schema、默认Worker及生产未切，企业知识仍关闭。
 
-用户指定`deepseek-v4.1-flash-1017`后保持同一链路、原两组五轮和四调用/2048输出/48KB。Qwen前三轮后按用户换模型指令停；DeepSeek第二批前三轮保存，第四题三次上游搜索失败、官网原文0页，模型如实说明后因general/synthesis旧格式合同被拒，官网/进度与第二组未通过。本轮15次观测46669输入/3852输出（Qwen5、DeepSeek10），金额未知、unknown0；历史unknown不重放。引用目录遗漏已复用原投影补齐；末次仅离线修正首个拒绝被后续context_changed覆盖，不改原失败。8项定向/lint通过；类型57继承/受影响0。五批drift空、夹具/设置/原生注入恢复、队列/待投递0。见[合同](xiaok-assistant-phase-2.zh-CN.md#fastgpt阶段提醒与知识问答工作流limited)及`tmp/fastgpt-native-qa-20261106/assessment.json`。传输/局部通过不证明问答质量提升；下一步仅用已存I/O收敛单一接口，不自动新开模型批。
+19项定向通过；lint无错误/1项继承警告，类型仍为原57项、受影响文件无诊断。保存I/O服务回放模拟平台传输，沿既有模型注入口，在隔离1454真实执行Worker/工具/checkpoint/保存/读回。service04原样保存10919无来源首稿及10907网页稿，六个引用可重开；service05保持10915原始无效ID拒绝且不保存。网页夹具仅重绑run作用域ID，不改原文或正文。重复回调、发送幂等、重进、他客/租户拒绝和来源hash变更失效通过。service04因负例驱动误要求422而实际409/invalid_model_citation，原批仍失败；service05只修驱动处理，复用未变正例证据。供应商attempt前后均1488，新增实模0；绑定无drift，夹具/设置/资源恢复。原失败与历史15次用量不改。官网选源、完整两组五轮、项目成员撤权及原生显示质量仍未验收。见[合同](xiaok-assistant-phase-2.zh-CN.md#fastgpt阶段提醒与知识问答工作流limited)、tmp/fastgpt-native-qa-20261106/interface-calibration/及admin/scripts/fastgpt/replay-native-knowledge.mts。这些是接口证据，不证明模型回答质量提升。
 <!-- /xiaok-fastgpt-capabilities -->
 
 <!-- xiaok-fastgpt-report-pilot -->

@@ -3,19 +3,23 @@
 <!-- xiaok-fastgpt-capabilities -->
 ## FastGPT阶段提醒与知识问答工作流（Limited）
 
-用户授权的原生问答候选仅经XIAOK_FASTGPT_WORKFLOWS_FILE显式开发启用。FastGPT v4.17.4单一ToolCall节点负责原C01/项目咨询的理解、工具选择和回答；合格的纯文字minimal-dialogue运行绕过旧LangGraph问答循环。原服务仍拥有获权会话上下文、KnowledgeRetriever/Evidence、真实工具、实时租户/来源/版本、持久任务、原网关逐次attempt/用量、最终校验、保存和撤回。平台不传chatId，仅取本run快照，不建第二持久用户会话。旧包裹及原生阶段/报告工作流保留；企业知识、产品UI/API/schema、默认Worker及生产不变。
+仅经XIAOK_FASTGPT_WORKFLOWS_FILE显式开发启用。FastGPT v4.17.4单一ToolCall控制原C01/项目会话，合格纯文字minimal-dialogue绕过旧LangGraph问答循环。原服务拥有上下文、KnowledgeRetriever/Evidence、租户/成员/来源/版本守卫、持久任务、网关attempt/用量、最终解析、保存和撤回。不传chatId、不建第二持久用户会话；企业知识、UI/API/schema、默认Worker及生产不变。
 
 采用固定官方[ToolCall共享循环](https://github.com/labring/FastGPT/blob/v4.17.4/packages/service/core/workflow/dispatch/ai/toolcall/toolCall.ts)、[工具目录](https://github.com/labring/FastGPT/blob/v4.17.4/packages/service/core/workflow/dispatch/ai/toolcall/hooks/useToolCatalog.ts)及[stopTool](https://github.com/labring/FastGPT/blob/v4.17.4/packages/service/core/workflow/dispatch/ai/toolcall/stopTool.ts)。私有HTTP桥仅把原生回合接回原模型网关和获权服务端口，不再运行另一个规划器、不改写原稿、不增加供应商重试。文字试点未提供文件能力，原生默认read_files在实模派发前排除，其他未知工具/调用仍拒绝。final_response沿原必选函数合同，stopTool交回原校验/保存；短期票据不进实际provider输入。四调用、2048输出、48KB输入及原公开读取/TLS/SSRF/来源额度保留。已完成终稿重进复核；未完成原生运行保守停止，不重开结果含糊的平台循环。
 
-引用/来源复用原唯一管线：解开原生HTTP结果封套后，对当前上下文和实时工具回复调用synthesisModelMessages，由原目录提供精确citationOptions/citationId，sourceId不转为引用ID。完整原文、条件、provider包和checkpoint原样保留；模型载荷重复部分/private Evidence text沿原共享函数投影。不另建知识库、权限解析、引用管线、关键词路由或语义提示补丁。此缺陷归Agent适配域；知识摄取/发布/检索未改。
+原生单一接口现共同复用synthesisModelMessages和保留原策略的projectConsultationModelView：解开HTTP结果、提供原精确引用目录，完整text/条件保留；重复元数据及有界导航沿既有内容/原件投影处理。已存输入辨别检查确认遗漏第二投影时消息50953字节；复用后32104，总请求37394字节/估算15281token，未省略原文，48KB/四调用/2048输出不变。sourceId不转引用ID。归属Agent传输适配，摄取/发布/检索未改；不新加规划器、提示条款、语义校验器或重试机制。
 
-固定验收仍为两组五轮：通用建议、住人老房补充、复合回顾/建议、厂家真实原文及可开引用、水电/安装当前进度建议；原C01发送、服务写入/读回、重进、幂等、他客/租户/项目拒绝和实际503恢复保持。首个阻塞失败/unknown停批。用户随后指定deepseek-v4.1-flash-1017，其他问答参数不变；不同模型/失败不合并成通过组，不作完整模型排名。
+提交与保存均在currentSynthesisContext真实授权/版本复核后，以实际非history来源决定原来源回答合同；调用过工具、空检索都不等于Evidence。无此来源时general/unavailable在提交及落库共同复用parseAgentReply；synthesis仍沿原目录/解析/来源校验。原生路径支持既有模型注入口，持久步骤标modelPort=injected，不建provider attempt、不把保存用量冒充本次观测；真实调用仍走原网关/账本。终稿通过校验不是保存成功回执，只有原Worker正式落库。重复回调等同一操作；unknown不重试、首因不覆盖。
 
-当前证据：native01因默认文件工具在实模前失败，随后零供应商完整桥接检查通过。native02/10909保留Qwen未提交原结构化终稿的纯文本首稿。native03保存Qwen前三轮/四次调用，后按用户换模型指令归档所属咨询以停止余题，不算Qwen理解失败。deepseek01前两轮保存；10915正确回顾卧室/住人老房，但适配遗漏目录而使用H93991/H93993来源ID，原失败保留；catalog-replay.json零模型证明补齐目录、不改原稿且仍拒来源ID。deepseek02为复用共享投影后的唯一固定复测，前三轮保存。第四题10919实际记录三次web_search_upstream_unavailable、网页读取0、无官网原文；如实无来源/通用建议首稿用了general，旧来源回答校验要求synthesis，故失败。原run仍为context_changed，是后续原生恢复回调覆盖了首个invalid_model_citation；末次只离线修正为保留首因并在平台报错时拒绝，不改原失败。官网选源、当前进度及第二组仍未执行/未通过。用户截图指出接口尚未校准便过早跑整旅程，本轮停止新增实模；下一步仅用已存I/O收敛单一接口，不补提示/路由/校验规则或自动开新模型批。各已完成批绑定实际源码、发布版本/配置及409项依赖，drift空，设置/夹具恢复，队列/待投递0。
+当前离线验收固定为保存的10919搜索失败/general首稿、10907真实网页原文/目录稿和10915无效sourceId首稿；夹具为admin/scripts/fastgpt/fixtures/native-knowledge-saved-io.json。admin/scripts/fastgpt/replay-native-knowledge.mts仅模拟平台传输/模型响应，在隔离55432/xiaok_embedding_eval/1454真实执行获权Worker/工具/checkpoint/保存/读回，并阻止外部fetch。网页用例仅重绑run作用域candidate/source/citation ID，原文/正文不改，映射留证；历史首稿、原失败不改绿。
+
+service04原样保存无来源答复及两个网页原件，六个引用可重开；重复回调、发送幂等/重进、他客/租户拒绝及来源hash变更后失效通过。负例原解析返回409/invalid_model_citation，驱动却误要求422，导致model_unavailable，原批仍失败。service05只修驱动错误处理并单独复核该负例：invalid_model_citation、不保存回复、不重试。复用service04未变正例范围，不把失败整批拼成完整旅程通过。更早驱动导入/双单例失败及遗漏投影超限均保留。每批前后绑定源码/驱动/夹具/配置，drift空；设置、合成用户/会话和所属桥接均恢复/释放，队列/待投递0，provider attempt均1488未增加，新增实模0。证据tmp/fastgpt-native-qa-20261106/interface-calibration/；从admin复跑：node --import tsx scripts/fastgpt/replay-native-knowledge.mts --out=../tmp/fastgpt-native-qa-20261106/interface-calibration/NEW_LABEL（必须新目录）。
+
+原对照仍未通过：native01因read_files在实模前停；native02保留Qwen缺final_response的纯文本稿；native03保存前三轮后按用户换模型指示停。deepseek01保存前两轮，10915正确回顾历史但目录遗漏导致提交sourceId；deepseek02保存前三轮，10919三次上游搜索失败/官网原文0后，如实fallback又撞旧输出合同。原context_changed失败与首个invalid_model_citation原因保留。官网选源、当前进度答复、第二组五轮、完整项目成员撤权及原生显示质量未完成；C01 follow-up-v1/共享状态/tab-context-v1及旧原生证据只按原范围复用，纯文本Markdown标记未新验收。用户当前要求停止新增模型批，不自动换模型或语义复测。
 
 已完成批用量：Qwen5次观测14459输入/1254输出，deepseek01四次12196/1094；金额未知，不记零；deepseek02另6次20014/1504。本候选共15次已观测46669/3852，缓存输入13312，新增unknown0，批次仍分账。旧续修58次（57次账本305097/7796；3222诊断2074/479且unknown）、原unblock29/159091/6051、接线6/22624/1238、报告22/21229/1693及旧403/429/3753unknown全保留；unknown不重放，失败计数不清零。历史原证据仍在tmp/fastgpt-knowledge-repair-20261106/；本候选的原请求/首稿/失败/投影/用量/原生截图在tmp/fastgpt-native-qa-20261106/。
 
-工程与效果分列：8项定向检查/lint及零供应商桥接通过；末次类型57继承/受影响0。旧62项与兼容14/42按旧范围保留，27例未归因不改绿。原阶段水电/安装正文、私人投递/重进、503恢复、旧事件拒绝、历史保留和撤权沿原通过范围；C01仍follow-up-v1/共享状态及tab-context-v1，无新设计/还原台账升级；现有纯文本气泡会原样显示Markdown标记，原生可见不等于显示质量校准完成。完整知识、企业RAG、真机、全V1及生产仍未验收；传输成功不证明回答更好。
+工程结果：19项定向通过；lint无错误/1项继承未用导入警告，原57项类型诊断不变/受影响0。旧62项及兼容14/42仅保留旧范围，27例未归因与历史unknown保持。完整问答、企业RAG、真机、全V1及生产未验收；保存I/O接口闭环不证明FastGPT/DeepSeek回答效果提升。
 <!-- /xiaok-fastgpt-capabilities -->
 
 <!-- xiaok-fastgpt-report-pilot -->

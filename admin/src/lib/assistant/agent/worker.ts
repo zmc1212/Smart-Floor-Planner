@@ -48,7 +48,7 @@ import { visionContext, withVisionObservations } from './vision';
 import { constructionNoticeAvailable } from '@/lib/construction/customer';
 import { materialTool, parseMaterialQuery, queryMaterials, materialSnapshotAvailable, type MaterialDependency, type MaterialSnapshot } from './materials';
 import { needIssueTool, queryNeedIssues, needIssueSnapshotAvailable, type NeedIssueDependency, type NeedIssueSnapshot } from '@/lib/construction/need-issues';
-import { businessSynthesisSources, knowledgeSynthesisSources, parseSynthesis, referUnsupportedSiteObservation, synthesisInstructions, synthesisRepairFeedback, synthesisRepairIssue, unresolvedSynthesisConflict, availabilityScopeHintPrefix, synthesisRepairProjectionVersion, synthesisContextProjectionVersion, synthesisModelMessages } from './synthesis';
+import { businessSynthesisSources, knowledgeSynthesisSources, parseSynthesis, requiresSourceAnswer, referUnsupportedSiteObservation, synthesisInstructions, synthesisRepairFeedback, synthesisRepairIssue, unresolvedSynthesisConflict, availabilityScopeHintPrefix, synthesisRepairProjectionVersion, synthesisContextProjectionVersion, synthesisModelMessages } from './synthesis';
 import { resolveSynthesisRepair, synthesisRepairBase, synthesisRepairProtocol, synthesisRepairTool, finalAnswerRepairBase, finalAnswerRepairProtocol } from './synthesis-repair';
 import { currentSynthesisContext } from './synthesis-sources';
 import { boundKnowledgeContext } from './bound-context';
@@ -939,7 +939,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     };
     let turnAllocation: ReturnType<typeof consultationRuntimeBudget> | ReturnType<typeof homeSourceRuntimeBudget> | ReturnType<typeof reportNativeRuntimeBudget>;
     const nativeWorkflow = initial.minimalDialogue && initial.config.tools && !initial.mediaRefs.length
-      && !dependencies.model && publicResearch ? fastGPTWorkflows()?.nativeKnowledge : undefined;
+      && publicResearch ? fastGPTWorkflows()?.nativeKnowledge : undefined;
     const callModel = async (turn: number, messages: ModelMessage[], tools: ModelTool[], purpose: ModelRequestPurpose = 'answer'): Promise<ModelTurnOutput> => {
           if (nativeWorkflow && purpose === 'answer') {
             // FastGPT supplied this complete native turn. No second planning,
@@ -957,27 +957,32 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               return cached.private_checkpoint as ModelTurnOutput;
             }
             outcomeKnown = false;
-            const output = await executePostgresText({ enterpriseId: BigInt(lease.enterpriseId),
+             const beforeNativeCall = async () => {
+               await authorize();
+               await scoped(async tx => {
+                 await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
+                   values(${lease.enterpriseId},${lease.runId},${sequence},'agent_model','running',
+                     ${JSON.stringify({ nativeProtocol: nativeKnowledgeProtocol, requestHash, turn, purpose, budget: bounded.diagnostic,
+                       ...(dependencies.model ? { modelPort: 'injected' } : {}) })}::jsonb)`);
+                 if (!dependencies.model) await tx.execute(sql`update app.assistant_jobs set provider_started_at=now(),updated_at=now()
+                   where enterprise_id=${lease.enterpriseId} and id=${lease.jobId}`);
+               });
+             };
+             const output = dependencies.model ? await (async () => {
+               await beforeNativeCall();
+               return { agentOutput: await dependencies.model!(bounded.messages, tools, turn, tools), attemptId: null };
+             })() : await executePostgresText({ enterpriseId: BigInt(lease.enterpriseId),
               owner: { kind: 'assistant_run', runId: BigInt(lease.runId) }, logicalModelKey: 'chat.general', messages: [],
               maxTokens: 2048, agent: { config: initial.config, input: {
                 messages: bounded.messages, tools, maxTokens: 2048, requireTool: true,
               } }, metadata: { runtime: nativeKnowledgeProtocol, turn, purpose, requestHash },
-              beforeProviderCall: async () => {
-                await authorize();
-                await scoped(async tx => {
-                  await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
-                    values(${lease.enterpriseId},${lease.runId},${sequence},'agent_model','running',
-                      ${JSON.stringify({ nativeProtocol: nativeKnowledgeProtocol, requestHash, turn, purpose, budget: bounded.diagnostic })}::jsonb)`);
-                  await tx.execute(sql`update app.assistant_jobs set provider_started_at=now(),updated_at=now()
-                    where enterprise_id=${lease.enterpriseId} and id=${lease.jobId}`);
-                });
-              },
+               beforeProviderCall: beforeNativeCall,
             });
             outcomeKnown = true;
             if (!output.agentOutput) fail('invalid_model_answer', 502);
             await recordAgentModelUsage(lease.enterpriseId, lease.runId, turn, output);
             await scoped(tx => tx.execute(sql`update app.assistant_run_steps set status='succeeded',
-              provider_attempt_id=${String(output.attemptId)},private_checkpoint=${JSON.stringify(output.agentOutput)}::jsonb
+               provider_attempt_id=${output.attemptId === null ? null : String(output.attemptId)},private_checkpoint=${JSON.stringify(output.agentOutput)}::jsonb
               where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`));
             return output.agentOutput;
           }
@@ -1587,8 +1592,17 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           }
           if(candidate?.kind!=='synthesis'){
             if(['business','knowledge','references','designers'].includes(candidate?.kind||''))return null;
-            const used=await scoped(async tx=>one(tx,sql`select id from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}
+             const used = nativeWorkflow ? await scoped(async (tx, context) => requiresSourceAnswer(
+               (await currentSynthesisContext(tx, lease.actor, context.conversation, lease.runId)).sources))
+               : await scoped(async tx=>one(tx,sql`select id from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}
               and capability_name in ('query_business','query_materials','query_followups','knowledge.search.v1','web.search.v1','references.search.v1','designers.search.v1') limit 1`));
+             if (nativeWorkflow && !used) {
+               try { parseAgentReply(raw); }
+               catch (error) {
+                 if (error instanceof AssistantError) return { code: error.code, feedback: error.message };
+                 throw error;
+               }
+             }
             return used?{code:'invalid_model_citation',feedback:'上一回复的提交格式不符合本轮已查询来源的协议。只修复最终回复，不再调用业务或保存工具，不新增事实。专业解释用final_response kind=synthesis，segments中的每个引用仅提交本轮synthesisSources.citationOptions里的citationId，由服务端装配完整原文；不提交sourceId/quote/quoteFromSource。没有可引用来源时仅用advice或uncertainty段及空citations，保留一般建议/本次未知的身份，不编造企业或项目事实。普通查询可用本轮已返回的business/references/designers resultKey，原文选择可用knowledge selections。保留已取得的客户历史原话及当前有效更正，不把历史变成正式批准。'}:null;
           }
           return scoped(async(tx,context)=>{
@@ -1989,7 +2003,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       if (reportFinalResponseIssue(JSON.stringify(reply), read?.private_checkpoint)) fail('invalid_model_answer', 502);
     });
     if(sourceMode.sourceExcerpts&&initial.config.tools&&(initial.shared||originalAnswerOnly(reviewContext.currentQuestion))&&reply.kind!=='knowledge')fail('invalid_model_answer',502);
-    const usedSourceTool = await scoped(async tx => one(tx, sql`select id from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}
+     const usedSourceTool = nativeWorkflow ? await scoped(async (tx, context) => requiresSourceAnswer(
+       (await currentSynthesisContext(tx, lease.actor, context.conversation, lease.runId)).sources))
+       : await scoped(async tx => one(tx, sql`select id from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}
        and (capability_name in ('query_business','query_materials','query_followups','knowledge.search.v1','web.search.v1','web.read.v1','references.search.v1','designers.search.v1')
          or capability_name='source.restore.v1' and jsonb_array_length(private_checkpoint->'sources')>0) limit 1`));
     const materialReceipt = reply.kind === 'general' && result.finalFromTools ? await scoped(tx => one(tx, sql`select private_checkpoint from app.assistant_run_steps

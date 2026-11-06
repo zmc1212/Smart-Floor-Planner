@@ -22,6 +22,11 @@ export type SynthesisSource = { sourceId: string; kind: 'knowledge' | 'project' 
   followup?: Omit<IssueState, 'question' | 'value'>; reportScope?: ReportSourceScope };
 export type SynthesisSegment = { basis: 'evidence' | 'advice' | 'uncertainty'; text: string; citations: Array<{ sourceId: string; quote: string }> };
 export type SynthesisAnswer = { kind: 'synthesis'; segments: SynthesisSegment[] };
+/** Source-answer format follows the authorized material actually returned,
+ * not an attempted read. History alone retains the ordinary reply contract. */
+export function requiresSourceAnswer(sources: SynthesisSource[]): boolean {
+  return sources.some(source => source.kind !== 'history');
+}
 export type SynthesisContext = { version: 1; knowledge: Evidence[]; snapshots: BusinessSnapshot[]; sources: SynthesisSource[]; history?: HistorySnapshot[]; web?: Evidence[]; ancestors?: import('./ancestor-sources').AncestorSourceRef[] };
 export const availabilityScopeHintPrefix = '本轮回答范围（仅约束表达';
 export const synthesisRepairProjectionVersion = 'bound-repair-tail-v2';

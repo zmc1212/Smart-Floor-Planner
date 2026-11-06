@@ -4,6 +4,7 @@ import { agentModelLimits, type ModelMessage, type ModelTool, type ModelTurnOutp
 import type { AgentCheckpoint, AgentRuntimePorts } from '../agent/runtime';
 import { toolSchemaIssue } from '../agent/tool-protocol';
 import { synthesisModelMessages } from '../agent/synthesis';
+import { projectConsultationModelView } from '../agent/consultation-model-view';
 
 export const nativeKnowledgeProtocol = 'fastgpt-native-knowledge-v1';
 export const nativeKnowledgeReadNames = ['search_web', 'read_web', 'query_business', 'recall_history'] as const;
@@ -11,8 +12,8 @@ const names = new Set<string>([...nativeKnowledgeReadNames, 'final_response']);
 const marker = 'XIAOK_NATIVE_TRANSPORT_TICKET=';
 /** Remove the vendor HTTP envelope, then reuse XiaoK's one model-facing
  * Evidence/catalog projection. Original tool receipts/checkpoints stay exact. */
-export function nativeKnowledgeModelMessages(messages: ModelMessage[]): ModelMessage[] {
-  return synthesisModelMessages(messages.map(message => {
+export function nativeKnowledgeModelMessages(messages: ModelMessage[], tools?: ModelTool[]): ModelMessage[] {
+  const sources = synthesisModelMessages(messages.map(message => {
     if (message.role !== 'tool') return message;
     try {
       const packet = JSON.parse(message.content);
@@ -22,6 +23,10 @@ export function nativeKnowledgeModelMessages(messages: ModelMessage[]): ModelMes
       return { ...message, content: JSON.stringify(original) };
     } catch { return message; }
   }));
+  // Reuse the ordinary content/artifact boundary too: complete originals and
+  // citation catalogs stay, duplicate metadata and excess navigation do not.
+  return tools ? projectConsultationModelView(sources, tools, undefined,
+    { preservePolicy: true, navigationOnly: true, budget: { purpose: 'answer' } }) : sources;
 }
 type NativeInput = { messages: ModelMessage[]; tools: ModelTool[]; ports: AgentRuntimePorts; resume?: AgentCheckpoint; question?: string };
 type Call = { turn: number; index: number; name: string; args: string; pending?: Promise<Response>; result?: string };
@@ -63,7 +68,7 @@ export class FastGPTNativeKnowledge {
         const system = ticket.input.messages.flatMap(m => m.role === 'system' ? m.content : [])
           .filter(p => p.type === 'text').map(p => p.type === 'text' ? p.text : '').join('\n');
         return Response.json({ instructions: system + '\n' + marker + id,
-          input: JSON.stringify({ context: nativeKnowledgeModelMessages(ticket.input.messages).filter(m => m.role !== 'system'), current_request: ticket.input.question ?? null }) });
+          input: JSON.stringify({ context: nativeKnowledgeModelMessages(ticket.input.messages, ticket.input.tools).filter(m => m.role !== 'system'), current_request: ticket.input.question ?? null }) });
       }
       if (request.method !== 'POST' || !url.pathname.startsWith('/native-tool/')) return Response.json({ error: 'not_found' }, { status: 404 });
       const name = url.pathname.slice('/native-tool/'.length);
@@ -149,7 +154,7 @@ export class FastGPTNativeKnowledge {
       // dispatch. Unknown tools and any attempted file call remain forbidden.
       const tools = nativeTools.filter(t => t.name !== 'read_files');
       if (tools.some(t => !names.has(t.name))) fail('assistant_capability_forbidden', 403);
-      const projected = nativeKnowledgeModelMessages(messages);
+      const projected = nativeKnowledgeModelMessages(messages, tools);
       const output = await ticket.input.ports.model(turn, projected, tools);
       if (output.toolCalls.length > agentModelLimits.maxToolCalls) fail('assistant_capability_forbidden', 403);
       const calls = output.toolCalls.map((call, index) => {
