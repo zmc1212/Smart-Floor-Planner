@@ -2,6 +2,8 @@
 
 <!-- xiaok-fastgpt-capabilities -->
 **阶段/知识开发工作流：Limited。** 原授权v4.17.4实例保留阶段/旧包裹应用，并新增Qwen及用户指定deepseek-v4.1-flash-1017两个私有原生问答对照应用；独立传输别名/渠道仅指向短期票据回环18310，实际模型仍走原获权供应商网关/逐次计量。保护配置tmp/fastgpt-native-qa-20261106/runtime.private.json及runtime-deepseek.private.json。当前管理登录已通过官方API验证，仅留ACL保护会话，不存密码；未重置root或切默认模型。五个原生问答批均停，完整旅程未通过；现已停止新增实模。设置、微云1454/55432合成夹具及原生注入恢复，源码/发布配置drift空，队列/待投递0。反向18310、reader及egress沿finally关闭，所属18300转发在收拢时释放。见[合同](xiaok-assistant-phase-2.zh-CN.md#fastgpt阶段提醒与知识问答工作流limited)。未迁业务容器/数据库，未扩生产、真实客户或外部消息授权。
+
+用户现指定deepseek-v4.1-flash，测试入口留独立主干后缀；因搜索前置失败，未创建/调用第三个FastGPT应用。原远端配置未变；开源搜索临时实例/隧道已清理，原18090 ID/镜像/卷/启动时间和本机代理设置保持。新增模型调用0，原两组五轮未执行；仅在正常搜索源具备后按首个失败即停恢复。证据tmp/fastgpt-native-qa-20261106/opensource-search/assessment.json。
 <!-- /xiaok-fastgpt-capabilities -->
 
 <!-- xiaok-fastgpt-report-pilot -->

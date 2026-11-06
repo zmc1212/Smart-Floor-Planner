@@ -12,8 +12,8 @@ fs.mkdirSync(out, { recursive: true });
 const original = JSON.parse(fs.readFileSync(path.join(root, 'tmp/fastgpt-report-pilot-20261106/fastgpt.private.json'), 'utf8'));
 const old = JSON.parse(fs.readFileSync(path.join(root, 'tmp/fastgpt-capabilities-20261106/runtime.private.json'), 'utf8'));
 const requestedModel = process.argv.find(a => a.startsWith('--model='))?.slice(8) || original.model;
-if (!['qwen3.7-flash', 'deepseek-v4.1-flash-1017'].includes(requestedModel)) throw Error('Use only the fixed original or user-requested model');
-const suffix = requestedModel === 'qwen3.7-flash' ? '' : '-deepseek';
+if (!['qwen3.7-flash', 'deepseek-v4.1-flash-1017', 'deepseek-v4.1-flash'].includes(requestedModel)) throw Error('Use only the fixed original or user-requested model');
+const suffix = requestedModel === 'qwen3.7-flash' ? '' : requestedModel === 'deepseek-v4.1-flash' ? '-deepseek-mainline' : '-deepseek';
 const priorNative = JSON.parse(fs.readFileSync(path.join(out, 'runtime.private.json'), 'utf8'));
 const file = path.join(out, 'runtime' + suffix + '.private.json');
 const state: any = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {

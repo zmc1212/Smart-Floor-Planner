@@ -1,9 +1,11 @@
 # 小程序当前功能清单
 
 <!-- xiaok-fastgpt-capabilities -->
-**FastGPT阶段/知识工作流：Limited，已收敛保存I/O接口，原生完整问答旅程未通过，停止新增实模。** 显式开发候选沿C01原会话，由FastGPT v4.17.4单一ToolCall控制问答；原服务守获权工具、KnowledgeRetriever/Evidence、租户/来源、持久任务、网关计量及最终校验/保存。原生输入现在共同复用既有来源/引用目录与公开内容投影：完整原文和引用ID保留，重复元数据及有界导航沿原路径处理。提交和保存共同依据实时获权来源集合，不把调用过工具或空检索当证据；普通答复在原生终稿通过前也复用保存端的真实承诺解析器。UI/API/schema、默认Worker及生产未切，企业知识仍关闭。
+**FastGPT阶段/知识工作流：Limited，已收敛保存I/O接口，原生完整问答旅程未通过，当前主干复验在搜索前置停止。** 显式开发候选沿C01原会话，由FastGPT v4.17.4单一ToolCall控制问答；原服务守获权工具、KnowledgeRetriever/Evidence、租户/来源、持久任务、网关计量及最终校验/保存。原生输入现在共同复用既有来源/引用目录与公开内容投影：完整原文和引用ID保留，重复元数据及有界导航沿原路径处理。提交和保存共同依据实时获权来源集合，不把调用过工具或空检索当证据；普通答复在原生终稿通过前也复用保存端的真实承诺解析器。UI/API/schema、默认Worker及生产未切，企业知识仍关闭。
 
 19项定向通过；lint无错误/1项继承警告，类型仍为原57项、受影响文件无诊断。保存I/O服务回放模拟平台传输，沿既有模型注入口，在隔离1454真实执行Worker/工具/checkpoint/保存/读回。service04原样保存10919无来源首稿及10907网页稿，六个引用可重开；service05保持10915原始无效ID拒绝且不保存。网页夹具仅重绑run作用域ID，不改原文或正文。重复回调、发送幂等、重进、他客/租户拒绝和来源hash变更失效通过。service04因负例驱动误要求422而实际409/invalid_model_citation，原批仍失败；service05只修驱动处理，复用未变正例证据。供应商attempt前后均1488，新增实模0；绑定无drift，夹具/设置/资源恢复。原失败与历史15次用量不改。官网选源、完整两组五轮、项目成员撤权及原生显示质量仍未验收。见[合同](xiaok-assistant-phase-2.zh-CN.md#fastgpt阶段提醒与知识问答工作流limited)、tmp/fastgpt-native-qa-20261106/interface-calibration/及admin/scripts/fastgpt/replay-native-knowledge.mts。这些是接口证据，不证明模型回答质量提升。
+
+**当前固定复验：Limited，派发前停止。** 用户明确指定百炼deepseek-v4.1-flash（不带1017），已由只读目录确认。原两组五轮、工具、项目和额度不变；首个公开搜索前置返回web_search_upstream_unavailable，新增实模0，问答轮次未执行。用户排除商业博查；继续开源SearxNG，临时免费引擎实例实际0结果后已删除。传输证据为360/搜狗验证码重定向、DuckDuckGo/Brave超时，以及现有普通代理下DuckDuckGo真人验证页。不绕验证、不压掉上游错误、不修话术。测试配置为主干ID留独立后缀；其FastGPT应用尚未创建/调用。原服务、默认Worker、UI/API/schema及供应商配置未变。仅在正常可用的获权开源搜索源具备后恢复原固定批，首个失败/unknown即停。证据tmp/fastgpt-native-qa-20261106/opensource-search/assessment.json。EvalScope/RAGAS/DeepEval仅作后续离线候选，未安装、未接运行时校验、无评审模型调用。
 <!-- /xiaok-fastgpt-capabilities -->
 
 <!-- xiaok-fastgpt-report-pilot -->

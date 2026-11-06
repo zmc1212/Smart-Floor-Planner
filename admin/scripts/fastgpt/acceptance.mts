@@ -12,11 +12,11 @@ const require=createRequire(process.cwd()+'/package.json');require('@next/env').
 const primary=process.env.DATABASE_URL,root=path.resolve('..'),folder=path.join(root,'tmp/fastgpt-capabilities-20261106');
 const nativeKnowledge=process.argv.includes('--native-knowledge');
 const nativeModel=process.argv.find(a=>a.startsWith('--model='))?.slice(8)||'qwen3.7-flash';
-assert.ok(['qwen3.7-flash','deepseek-v4.1-flash-1017'].includes(nativeModel),'Only the fixed original or user-requested model is allowed');
+assert.ok(['qwen3.7-flash','deepseek-v4.1-flash-1017','deepseek-v4.1-flash'].includes(nativeModel),'Only the fixed original or user-requested model is allowed');
 const out=path.resolve(process.argv.find(a=>a.startsWith('--out='))?.slice(6)||path.join(folder,'trial01'));
 fs.mkdirSync(out,{recursive:true});assert.ok(!fs.existsSync(path.join(out,'report.json')),'Never overwrite or resample an earlier attempt');
 assert.ok(process.argv.includes('--live'),'Explicit --live required');
-const configuration=JSON.parse(fs.readFileSync(path.join(root,nativeKnowledge?'tmp/fastgpt-native-qa-20261106/runtime'+(nativeModel==='qwen3.7-flash'?'':'-deepseek')+'.private.json':'tmp/fastgpt-capabilities-20261106/runtime.private.json'),'utf8'));
+const configuration=JSON.parse(fs.readFileSync(path.join(root,nativeKnowledge?'tmp/fastgpt-native-qa-20261106/runtime'+(nativeModel==='qwen3.7-flash'?'':nativeModel==='deepseek-v4.1-flash'?'-deepseek-mainline':'-deepseek')+'.private.json':'tmp/fastgpt-capabilities-20261106/runtime.private.json'),'utf8'));
 if(nativeKnowledge)assert.ok(configuration.nativeKnowledgeAppId&&process.argv.includes('--scope=knowledge'),'Native QA uses its isolated configuration and the fixed knowledge scope');
 if(nativeKnowledge)assert.equal(configuration.nativeModel,nativeModel,'The named test model must match the configured native application');
 const runtimeFile=path.join(out,'runtime.private.json');configuration.auditFile=path.join(out,'workflow-attempts.jsonl');fs.writeFileSync(runtimeFile,JSON.stringify(configuration,null,2));

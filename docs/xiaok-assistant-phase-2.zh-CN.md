@@ -15,11 +15,14 @@
 
 service04原样保存无来源答复及两个网页原件，六个引用可重开；重复回调、发送幂等/重进、他客/租户拒绝及来源hash变更后失效通过。负例原解析返回409/invalid_model_citation，驱动却误要求422，导致model_unavailable，原批仍失败。service05只修驱动错误处理并单独复核该负例：invalid_model_citation、不保存回复、不重试。复用service04未变正例范围，不把失败整批拼成完整旅程通过。更早驱动导入/双单例失败及遗漏投影超限均保留。每批前后绑定源码/驱动/夹具/配置，drift空；设置、合成用户/会话和所属桥接均恢复/释放，队列/待投递0，provider attempt均1488未增加，新增实模0。证据tmp/fastgpt-native-qa-20261106/interface-calibration/；从admin复跑：node --import tsx scripts/fastgpt/replay-native-knowledge.mts --out=../tmp/fastgpt-native-qa-20261106/interface-calibration/NEW_LABEL（必须新目录）。
 
-原对照仍未通过：native01因read_files在实模前停；native02保留Qwen缺final_response的纯文本稿；native03保存前三轮后按用户换模型指示停。deepseek01保存前两轮，10915正确回顾历史但目录遗漏导致提交sourceId；deepseek02保存前三轮，10919三次上游搜索失败/官网原文0后，如实fallback又撞旧输出合同。原context_changed失败与首个invalid_model_citation原因保留。官网选源、当前进度答复、第二组五轮、完整项目成员撤权及原生显示质量未完成；C01 follow-up-v1/共享状态/tab-context-v1及旧原生证据只按原范围复用，纯文本Markdown标记未新验收。用户当前要求停止新增模型批，不自动换模型或语义复测。
+原对照仍未通过：native01因read_files在实模前停；native02保留Qwen缺final_response的纯文本稿；native03保存前三轮后按用户换模型指示停。deepseek01保存前两轮，10915正确回顾历史但目录遗漏导致提交sourceId；deepseek02保存前三轮，10919三次上游搜索失败/官网原文0后，如实fallback又撞旧输出合同。原context_changed失败与首个invalid_model_citation原因保留。官网选源、当前进度答复、第二组五轮、完整项目成员撤权及原生显示质量未完成；C01 follow-up-v1/共享状态/tab-context-v1及旧原生证据只按原范围复用，纯文本Markdown标记未新验收。此前停止保留为历史；用户随后授权下述明确主干模型固定复验，仍首个失败即停。
 
 已完成批用量：Qwen5次观测14459输入/1254输出，deepseek01四次12196/1094；金额未知，不记零；deepseek02另6次20014/1504。本候选共15次已观测46669/3852，缓存输入13312，新增unknown0，批次仍分账。旧续修58次（57次账本305097/7796；3222诊断2074/479且unknown）、原unblock29/159091/6051、接线6/22624/1238、报告22/21229/1693及旧403/429/3753unknown全保留；unknown不重放，失败计数不清零。历史原证据仍在tmp/fastgpt-knowledge-repair-20261106/；本候选的原请求/首稿/失败/投影/用量/原生截图在tmp/fastgpt-native-qa-20261106/。
 
 工程结果：19项定向通过；lint无错误/1项继承未用导入警告，原57项类型诊断不变/受影响0。旧62项及兼容14/42仅保留旧范围，27例未归因与历史unknown保持。完整问答、企业RAG、真机、全V1及生产未验收；保存I/O接口闭环不证明FastGPT/DeepSeek回答效果提升。
+**当前固定复验：Limited，派发前停止。** 用户明确指定百炼deepseek-v4.1-flash（不带1017），已由只读目录确认。原两组五轮、工具、项目和额度不变；首个公开搜索前置返回web_search_upstream_unavailable，新增实模0，问答轮次未执行。用户排除商业博查；继续开源SearxNG，临时免费引擎实例实际0结果后已删除。传输证据为360/搜狗验证码重定向、DuckDuckGo/Brave超时，以及现有普通代理下DuckDuckGo真人验证页。不绕验证、不压掉上游错误、不修话术。测试配置为主干ID留独立后缀；其FastGPT应用尚未创建/调用。原服务、默认Worker、UI/API/schema及供应商配置未变。仅在正常可用的获权开源搜索源具备后恢复原固定批，首个失败/unknown即停。证据tmp/fastgpt-native-qa-20261106/opensource-search/assessment.json。EvalScope/RAGAS/DeepEval仅作后续离线候选，未安装、未接运行时校验、无评审模型调用。
+
+采用决定：用成熟开源搜索组件和原候选/原文/Evidence管线，不开商业搜索账户、不自建话题选源规则。固定搜狗适配仍假设next_request（[官方源码](https://github.com/searxng/searxng/blob/master/searx/engines/sogou.py)）；仅修这个假设不会解除上游验证码。免费实例实验仅改其自己的引擎配置，在finally释放带归属标签的容器/SSH，原18090镜像/ID/启动时间/卷及普通代理设置保持。[SearxNG](https://docs.searxng.org/)负责成熟搜索接口。[RAGAS faithfulness](https://docs.ragas.io/en/latest/concepts/metrics/available_metrics/faithfulness/)检查来源支持的回答声明，[context recall](https://docs.ragas.io/en/latest/concepts/metrics/available_metrics/context_recall/)需要参考标注；普通模型知识、来源不可用均不编造评分。[EvalScope集成](https://github.com/modelscope/evalscope/blob/main/skills/evalscope/rag-reference.md)在固定对话证据具备后作离线选项，不另立运行时门槛。
 <!-- /xiaok-fastgpt-capabilities -->
 
 <!-- xiaok-fastgpt-report-pilot -->
