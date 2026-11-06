@@ -1,0 +1,205 @@
+# Isolated development pilot, adapted from FastGPT v4.17.4 (09192051).
+# Run on the remote host from D:/Smart-Floor-Planner-Dev/fastgpt-pilot/.
+name: sfp-fastgpt-pilot
+services:
+  mongo:
+    image: registry.cn-hangzhou.aliyuncs.com/fastgpt/mongo:5.0.32
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: fastgpt
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?}
+    volumes:
+      - mongo:/data/db
+    entrypoint:
+      - bash
+      - -ec
+      - |
+        openssl rand -base64 128 > /data/mongodb.key
+        chmod 400 /data/mongodb.key
+        chown 999:999 /data/mongodb.key
+        docker-entrypoint.sh mongod --keyFile /data/mongodb.key --replSet rs0 &
+        pid=$$!
+        # Root initialization briefly starts a standalone mongod. Wait for the
+        # final replica-set process rather than accepting that temporary ping.
+        until mongo -u fastgpt -p "$$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --quiet --eval 'try { if(rs.status().ok === 1) quit(0); } catch(e) {} var o=db.adminCommand({getCmdLineOpts:1}).parsed; if(!o.replication || o.replication.replSet !== "rs0") quit(1); var r=rs.initiate({_id:"rs0",members:[{_id:0,host:"mongo:27017"}]}); quit(r.ok === 1 ? 0 : 1);'; do sleep 2; done
+        wait "$$pid"
+    healthcheck:
+      test: [CMD-SHELL, 'mongo -u fastgpt -p "$$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --quiet --eval "db.hello().isWritablePrimary" | grep true']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  vector:
+    image: pgvector/pgvector:0.8.2-pg17@sha256:feb68f4f15446397d8cac7f4fe48fe4586de83160d1fc48b46283312d1a33966
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fastgpt
+      POSTGRES_PASSWORD: ${VECTOR_PASSWORD:?}
+      POSTGRES_DB: fastgpt
+    volumes:
+      - vector:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD, pg_isready, -U, fastgpt, -d, fastgpt]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  redis:
+    image: registry.cn-hangzhou.aliyuncs.com/fastgpt/redis:7.2-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
+    command: [sh, -ec, 'exec redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction']
+    volumes:
+      - redis:/data
+    healthcheck:
+      test: [CMD-SHELL, 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep PONG']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  minio:
+    image: registry.cn-hangzhou.aliyuncs.com/fastgpt/minio:RELEASE.2025-09-07T16-13-09Z
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: fastgpt
+      MINIO_ROOT_PASSWORD: ${STORAGE_PASSWORD:?}
+    command: [server, /data, --console-address, ':9001']
+    volumes:
+      - minio:/data
+    healthcheck:
+      test: [CMD, curl, -fsS, http://localhost:9000/minio/health/live]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  proxy-db:
+    image: pgvector/pgvector:0.8.2-pg17@sha256:feb68f4f15446397d8cac7f4fe48fe4586de83160d1fc48b46283312d1a33966
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fastgpt
+      POSTGRES_PASSWORD: ${PROXY_DB_PASSWORD:?}
+      POSTGRES_DB: aiproxy
+    volumes:
+      - proxy-db:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD, pg_isready, -U, fastgpt, -d, aiproxy]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  aiproxy:
+    image: registry.cn-hangzhou.aliyuncs.com/labring/aiproxy:v0.7.7
+    restart: unless-stopped
+    depends_on:
+      proxy-db:
+        condition: service_healthy
+    environment:
+      ADMIN_KEY: ${PROXY_TOKEN:?}
+      SQL_DSN: postgres://fastgpt:${PROXY_DB_PASSWORD:?}@proxy-db:5432/aiproxy
+      RETRY_TIMES: '0'
+      BILLING_ENABLED: 'false'
+      DISABLE_MODEL_CONFIG: 'true'
+      LOG_DETAIL_STORAGE_HOURS: '24'
+    healthcheck:
+      test: [CMD, curl, -fsS, http://localhost:3000/api/status]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  code-sandbox:
+    image: registry.cn-hangzhou.aliyuncs.com/fastgpt/fastgpt-code-sandbox:v5.0.0
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    environment:
+      SANDBOX_TOKEN: ${SANDBOX_TOKEN:?}
+      SANDBOX_MAX_TIMEOUT: '15000'
+      SANDBOX_MAX_MEMORY_MB: '128'
+  plugin:
+    image: registry.cn-hangzhou.aliyuncs.com/fastgpt/fastgpt-plugin:v1.2.0
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      AUTH_TOKEN: ${PLUGIN_TOKEN:?}
+      MONGODB_URI: mongodb://fastgpt:${MONGO_PASSWORD:?}@mongo:27017/fastgpt?authSource=admin
+      REDIS_URL: redis://default:${REDIS_PASSWORD:?}@redis:6379
+      STORAGE_VENDOR: minio
+      STORAGE_REGION: us-east-1
+      STORAGE_ACCESS_KEY_ID: fastgpt
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_PASSWORD:?}
+      STORAGE_PUBLIC_BUCKET: fastgpt-public
+      STORAGE_PRIVATE_BUCKET: fastgpt-private
+      STORAGE_DOWNLOAD_URL_MODE: short-proxy
+      STORAGE_S3_ENDPOINT: http://minio:9000
+      STORAGE_S3_FORCE_PATH_STYLE: 'true'
+      SERVICE_REQUEST_MAX_CONTENT_LENGTH: '10'
+      MAX_API_SIZE: '10'
+      NO_PROXY: localhost,127.0.0.1,mongo,redis,minio
+    healthcheck:
+      test: [CMD, curl, -fsS, http://localhost:3000/health]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  app:
+    image: registry.cn-hangzhou.aliyuncs.com/fastgpt/fastgpt:v4.17.4
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:18300:3000'
+    depends_on:
+      mongo:
+        condition: service_healthy
+      vector:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      aiproxy:
+        condition: service_healthy
+      plugin:
+        condition: service_healthy
+    environment:
+      HOSTNAME: 0.0.0.0
+      NODE_OPTIONS: --require=/app/pilot/disable-openai-retries.cjs
+      FE_DOMAIN: http://localhost:18300
+      ROOT_KEY: ${ROOT_KEY:?}
+      DEFAULT_ROOT_PSW: ${ROOT_PASSWORD:?}
+      FILE_TOKEN_KEY: ${FILE_TOKEN_KEY:?}
+      AES256_SECRET_KEY: ${AES256_SECRET_KEY:?}
+      INVOKE_TOKEN_SECRET: ${INVOKE_TOKEN_SECRET:?}
+      MONGODB_URI: mongodb://fastgpt:${MONGO_PASSWORD:?}@mongo:27017/fastgpt?authSource=admin
+      PG_URL: postgresql://fastgpt:${VECTOR_PASSWORD:?}@vector:5432/fastgpt
+      REDIS_URL: redis://default:${REDIS_PASSWORD:?}@redis:6379
+      DB_MAX_LINK: '20'
+      SYNC_INDEX: 'true'
+      STORAGE_VENDOR: minio
+      STORAGE_REGION: us-east-1
+      STORAGE_ACCESS_KEY_ID: fastgpt
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_PASSWORD:?}
+      STORAGE_PUBLIC_BUCKET: fastgpt-public
+      STORAGE_PRIVATE_BUCKET: fastgpt-private
+      STORAGE_DOWNLOAD_URL_MODE: short-proxy
+      STORAGE_S3_ENDPOINT: http://minio:9000
+      STORAGE_S3_FORCE_PATH_STYLE: 'true'
+      AIPROXY_API_ENDPOINT: http://aiproxy:3000
+      AIPROXY_API_TOKEN: ${PROXY_TOKEN:?}
+      PLUGIN_BASE_URL: http://plugin:3000
+      PLUGIN_TOKEN: ${PLUGIN_TOKEN:?}
+      CODE_SANDBOX_URL: http://code-sandbox:3000
+      CODE_SANDBOX_TOKEN: ${SANDBOX_TOKEN:?}
+      DATASET_PARSE_MAX_PROCESS: '2'
+      VECTOR_MAX_PROCESS: '2'
+      QA_MAX_PROCESS: '1'
+      VLM_MAX_PROCESS: '1'
+      LOG_CONSOLE_LEVEL: info
+      # This private development stack intentionally calls the scoped host bridge.
+      CHECK_INTERNAL_IP: 'false'
+      NO_PROXY: localhost,127.0.0.1,mongo,vector,redis,minio,aiproxy,plugin,code-sandbox,host.docker.internal
+    volumes:
+      - ./config.json:/app/data/config.json:ro
+      - ./disable-openai-retries.cjs:/app/pilot/disable-openai-retries.cjs:ro
+      - ./secure-pilot-root.cjs:/app/pilot/secure-pilot-root.cjs:ro
+volumes:
+  mongo:
+  vector:
+  redis:
+  minio:
+  proxy-db:

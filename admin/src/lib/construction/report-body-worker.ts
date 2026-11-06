@@ -29,6 +29,7 @@ import { isReminderWorkmanship, reminderWorkmanshipStage, reportWorkmanshipMatch
 import { currentReportStageEvent } from './stage-events';
 import { runKnowledgeEnabled } from '@/lib/assistant/knowledge-policy';
 import { generalReportMessages, generalReportTool, parseGeneralReport } from './report-general-advice';
+import type { ReportWorkflowGuard } from './fastgpt-report-workflow';
 
 type ProjectContext = Pick<ComposedProject, 'projectId' | 'selection' | 'context' | 'weekWorkmanship'> & { guidanceItems?: string[] };
 function selectedConversation(c: Row, selection: ReportReference): Row {
@@ -79,7 +80,7 @@ async function projectConversation(tx: PostgresTransaction, lease: Lease, projec
  * ledger as chat, with a bounded scheduled-task context instead of chat history. */
 export async function processReportComposition(lease: Lease, dependencies: {
   retriever?: KnowledgeRetriever;
-  model?: (messages: ModelMessage[], tools: ModelTool[], turn: number) => Promise<ModelTurnOutput>;
+  model?: (messages: ModelMessage[], tools: ModelTool[], turn: number, guard?: ReportWorkflowGuard) => Promise<ModelTurnOutput>;
 } = {}) {
   let outcomeKnown = false;
   const scoped = <T>(work: (tx: PostgresTransaction, context: Awaited<ReturnType<typeof reportGuard>>) => Promise<T>) =>
@@ -280,7 +281,9 @@ export async function processReportComposition(lease: Lease, dependencies: {
           outcomeKnown = false;
         };
         const packet = dependencies.model ? await (async () => { await beforeProviderCall(); return { attemptId: null,
-          agentOutput: await dependencies.model!(bounded.messages, [tool], turn) }; })()
+          agentOutput: await dependencies.model!(bounded.messages, [tool], turn, {
+            authorize, validate: raw => { parseBody(raw); }, runId: lease.runId, enterpriseId: lease.enterpriseId,
+          }) }; })()
           : await executePostgresText({ enterpriseId: BigInt(lease.enterpriseId), owner: { kind: 'assistant_run', runId: BigInt(lease.runId) },
             logicalModelKey: 'chat.general', messages: [], maxTokens: limits.maxOutputTokens,
             agent: { config: initial.config, input: { messages: bounded.messages, tools: [tool], maxTokens: limits.maxOutputTokens,

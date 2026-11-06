@@ -1,0 +1,10 @@
+{
+  "feConfigs": {},
+  "systemEnv": {
+    "datasetParseMaxProcess": 2,
+    "vectorMaxProcess": 2,
+    "qaMaxProcess": 1,
+    "vlmMaxProcess": 1,
+    "hnswEfSearch": 100
+  }
+}

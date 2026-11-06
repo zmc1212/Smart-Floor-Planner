@@ -1,5 +1,9 @@
 # 小程序当前功能清单
 
+<!-- xiaok-fastgpt-report-pilot -->
+**FastGPT四端日报/周报试点：Limited。** 远端自托管v4.17.4与原百炼`qwen3.7-flash`已配置，日周共用五节点：获权HTTP取数→原报告指令/原生AI→原服务校验→返回待保存结果。`FastGPTReportWorkflow`仅接原模型端口；保存、幂等投递、周期、租户/成员/来源撤回、用量和私人重进仍归原服务。业务生产路由、UI和默认Worker未切换；内部回调仅测试桥18310及短期票据。知识默认关闭，AI仅补通用注意事项；实际进度/待核对/安排和经理/工人照片原件仍来自原记录。C01 `packages/assistant/chat/chat`及批准follow-up-v1的02/03/04/共享状态不变。28项相关检查通过，继承类型诊断57/影响0。service04/05同原指令生成、保存读取16份四角色日周报；Stable八份/10检查/17截图通过，service05完整服务、权限/恢复/清理及配置/源码核对通过。service04因后台密码激活导致终检401，原失败状态保留；service01–03原失败不混入新版本通过数。22次原生节点21229输入/1693输出token与原账本一致，金额未知。见[二期合同](xiaok-assistant-phase-2.zh-CN.md#fastgpt四端日报周报开发试点limited)、[远端记录](remote-development.zh-CN.md)及`tmp/fastgpt-report-pilot-20261106/`。无新增照片像素理解/企业知识验收、整体迁移、生产或外部消息。
+<!-- /xiaok-fastgpt-report-pilot -->
+
 <!-- xiaok-enterprise-knowledge-mode -->
 **企业知识开关/无知识库首版：Limited。** 企业JSON配置`agent_config.enterpriseKnowledgeEnabled`缺省关闭，由原后台知识设置表单及GET/PUT `/api/assistant/settings`沿选定企业管理权限/CAS维护。新运行固化模式，切换沿policy_version隔离旧任务。关闭不派发企业检索/Embedding、不将旧知识上下文送入模型；当前业务、角色、原记录/媒体权限及真实回执保持。阶段/日周报复用原事实/正文/投递/阅读链，原记录呈现进展/待核对/安排，经原“工艺关注”组件展示“通用建议（模型知识）”，没有企业来源按钮或伪造reviewed证明。显式后台知识试问独立保留。Mini结构/样式/素材/路由未改，沿批准02/03/04共用组件。开启模式质量及整版未验范围保持，固定照片范围见下文；完工/入住自动报告排除保持。[架构合同](xiaok-assistant-phase-2.zh-CN.md#企业知识开关与无知识库首版limited)，证据`tmp/v1-knowledge-switch-20261106/`。
 

@@ -2,7 +2,7 @@
 const fs = require('node:fs'), path = require('node:path'), http = require('node:http');
 const crypto = require('node:crypto'), cp = require('node:child_process'), assert = require('node:assert/strict');
 
-module.exports = async ({ root, output, actors, assistantHttp, withdraw }) => {
+module.exports = async ({ root, output, actors, assistantHttp, withdraw, captureBodies = false }) => {
   const project = path.join(root, 'miniprogram'), route = 'packages/assistant/chat/chat';
   const cli = require(path.join(root, 'admin/scripts/wechatide-native-client.ts')).wechatideNativeClient(project, output);
   const evidence = { scope: 'Existing approved report/original-photo components; synthetic identities and loopback transport, real authenticated handlers', checks: [], requests: [], captures: [] };
@@ -72,6 +72,7 @@ module.exports = async ({ root, output, actors, assistantHttp, withdraw }) => {
       for (const report of actor.reports) {
         page = await enter(actor); await tap(page, `.followup-card-action[data-report="${report.reportId}"]`);
         await wait(async () => { const d = await page.data(); return d.followupDetail?.reportId === report.reportId && d.followupDetail.ready; }, 'saved report detail');
+        if (captureBodies) await capture(actor.name + '-' + report.kind + '-body');
         const photo = await original(page, actor); await capture(actor.name + '-' + report.kind + '-original');
         evidence.checks.push({ actor: actor.name, kind: report.kind, reportId: report.reportId, recordId: actor.record.id, originalMediaId: actor.record.mediaId, renderedImages: photo.images, passed: true }); save();
       }

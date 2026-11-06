@@ -1,5 +1,17 @@
 # 小K第二期：需求整理与人工交接
 
+<!-- xiaok-fastgpt-report-pilot -->
+## FastGPT四端日报/周报开发试点（Limited）
+
+用户2026-11-06授权的远端试点已部署：官方v4.17.4（09192051），专用`sfp-fastgpt-pilot`九服务/独立卷网络，回环18300经SSH；原百炼`qwen3.7-flash`自定义兼容接口已配置。部署源`admin/deployment/fastgpt/`及`admin/scripts/fastgpt/remote.ps1`，运行边界见[远端记录](remote-development.zh-CN.md)。不购买云套餐、不切原默认Worker或正式收件人；模型API仍计费，金额未返回不记零。
+
+日周共用`admin/scripts/fastgpt/workflow.mjs`五节点：开始→HTTP读获权输入/原模型指令→原生AI→HTTP回传原服务校验→返回待保存结果。`FastGPTReportWorkflow`接`processReportComposition`原模型端口，GET `/report-input`与POST `/report-result`仅在临时测试桥18310运行，使用不进入模型输入的短期单任务票据。取数、提交和最终保存复用原实时权限/来源守卫；校验失败422、失权409、未知票据404，不创建第二权限解析器、事实库或报告存储。原用量、保存、幂等投递、周期、成员/来源撤回及私人重进保持，未知传输不重放。知识关闭时AI仅补通用注意事项，实际进度/待核对/安排与经理/工人照片原件仍取原记录；未新验照片像素理解或企业知识，不自动整体迁移。
+
+采用依据：[官方Compose](https://github.com/labring/FastGPT/blob/v4.17.4/document/public/deploy/docker/main/cn/docker-compose.pg.yml)、[HTTP节点](https://github.com/labring/FastGPT/blob/v4.17.4/packages/service/core/workflow/dispatch/tools/http468.ts)、[兼容聊天接口](https://github.com/labring/FastGPT/blob/v4.17.4/projects/app/src/pages/api/v1/chat/completions.ts)。采用原生编排及AUTO_EXECUTE固定标题，避免附加标题模型调用。该版兼容usage固定1/1/1，试点取原生compose节点token观察并保留原包；专用preload通过SDK retry-count阻断网络重放，AIProxy重试0，不改官方镜像或全局服务。平台编排不等于回答质量提升，也不替代原业务边界。
+
+入口仍为批准C01 `packages/assistant/chat/chat`及follow-up-v1的02/03/04/共享状态，不改markup、样式、素材、导航或产品API。`admin/scripts/xiaok-v1-report-photos-check.mts --engineering --fastgpt`使用隔离55432/xiaok_embedding_eval/微云1454明确合成记录，四角色各日/周，业主输入排除内部记录；工程组织夹具不算模型理解通过。service01探测同步阻塞（无模型调用）、02返回前导换行、03设计师首稿将现场阶段混入advice而被原解析拒绝均保留。机制修正为复用原报告完整指令，不放宽校验或改写首稿；service04/05同原指令16份真实生成/保存/读取可查，service04原生八份/10检查/17截图通过，但终检管理会话401，原批不改绿；service05完整服务、周期、内部记录隔离、幂等、跨租户/成员/来源撤回、恢复和清理通过。最终核对实际已发布版本的只读SSH指纹及模型API目录，主体源码315项与补充平台核对器前后无drift；后续已将该核对器纳入默认绑定。28相关检查通过，继承类型诊断57/影响0。22条原账本与原生节点观察均为21229输入/1693输出token，金额未知，详见verification.json及usage-ledger.json。部署/收尾脚本修正不改变已验报告模型、工作流或小程序UI；按影响复用原生证据，不重跑模型。证据`tmp/fastgpt-report-pilot-20261106/`；批前后绑定源码/驱动/配置/工作流，失败/unknown/drift停批，不采样到绿。旧自然问答失败保持；无整体迁移、真实客户、生产或外部消息。
+<!-- /xiaok-fastgpt-report-pilot -->
+
 <!-- xiaok-enterprise-knowledge-mode -->
 ## 企业知识开关与无知识库首版（Limited）
 

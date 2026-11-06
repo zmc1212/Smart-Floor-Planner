@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { workflowSnapshot } from './fastgpt/platform.mjs';
 
 const require = createRequire(process.cwd() + '/package.json');
 require('@next/env').loadEnvConfig(process.cwd(), true);
@@ -34,15 +35,19 @@ const base = path.join(root, 'tmp/v1-knowledge-switch-20261106');
 const out = path.resolve(process.argv.find(a => a.startsWith('--out='))?.slice(6) || '../tmp/v1-report-photos-20261106/service01');
 const live = process.argv.includes('--live');
 const engineering=process.argv.includes('--engineering');
+const fastgpt=process.argv.includes('--fastgpt');
+const fastgptSettings=fastgpt?JSON.parse(fs.readFileSync('../tmp/fastgpt-report-pilot-20261106/fastgpt.private.json','utf8')):null;
+assert.ok(!fastgpt || engineering, 'FastGPT report pilot uses explicitly human-confirmed site fixtures, not new site inference');
 const replay = process.argv.find(a => a.startsWith('--replay='))?.slice(9);
 assert.equal([live,!!replay,engineering].filter(Boolean).length,1,'Choose --live, --replay=<prior report.json>, or --engineering; no automatic retry');
 fs.mkdirSync(out, { recursive: true });
 assert.ok(!fs.existsSync(path.join(out, 'report.json')), 'Never overwrite an earlier attempt');
 const report: any = {
   target: 'isolated55432/xiaok_embedding_eval', enterpriseId: '1454', passed: false,
-  plan: 'Manager kitchen photo and worker window photo: two fixed first drafts through the existing S04 Worker, human publication, then four-role daily/weekly originals and revocation. Report advice reused; no new report model calls.',
+  plan: fastgpt ? 'Two fixed four-role daily/weekly trials use native FastGPT generation and the original report services; site records are explicit human-confirmed engineering fixtures, not new image-recognition acceptance.' : 'Manager kitchen photo and worker window photo: two fixed first drafts through the existing S04 Worker, human publication, then four-role daily/weekly originals and revocation. Report advice reused; no new report model calls.',
   live, engineeringFixture:engineering, trials: [], model: 'qwen3.8-flash', repairRounds: 0,
-  modelOutputIsEngineeringFixture: true, sourceRun: '10581', results: [],
+  modelOutputIsEngineeringFixture: !fastgpt,
+  sourceRecordOrganizationIsEngineeringFixture: engineering, sourceRun: '10581', results: [],
 };
 const save = () => fs.writeFileSync(path.join(out, 'report.json'), JSON.stringify(report, null, 2));
 const eid = '1454', prefix = 'synthetic-photo-report-' + randomUUID();
@@ -63,11 +68,13 @@ function visit(f: string) {
 }
 for (const f of ['src/lib/construction/service.ts', 'src/lib/construction/site-chat.ts', 'src/lib/construction/report-worker.ts',
   'src/lib/construction/report-body-worker.ts', 'src/lib/construction/followup-service.ts', 'src/lib/construction/site-worker.ts']) visit(path.resolve(f));
-for (const f of [fileURLToPath(import.meta.url), path.join(base, 'service-live04-remaining-trial/run-10581.json'),
+for (const f of [path.resolve('src/lib/construction/fastgpt-report-workflow.ts'),path.resolve('scripts/fastgpt/workflow.mjs'),fileURLToPath(import.meta.url), path.join(base, 'service-live04-remaining-trial/run-10581.json'),
   path.resolve('package.json'), path.resolve('package-lock.json'), path.resolve('tsconfig.json'), path.resolve('.env.local'),
   path.resolve('../tmp/xiaok-vector/connection.private.json'), path.resolve('scripts/xiaok-v1-report-photos-native.cjs'),
   path.resolve('../miniprogram/utils/assistant-followups.js'), path.resolve('../miniprogram/test/assistant-followups.test.js'),
   ...['demolition.jpg','window.jpg','workshop.jpg','manifest.json'].map(f => path.resolve('../tmp/xiaok-vector/renovation-photos',f))]) files.add(f);
+if(fastgpt)for(const f of ['scripts/fastgpt/platform.mjs','deployment/fastgpt/compose.yml','deployment/fastgpt/config.json','deployment/fastgpt/disable-openai-retries.cjs','deployment/fastgpt/secure-pilot-root.cjs',
+  'scripts/fastgpt/setup.mts','scripts/fastgpt/remote.ps1','../tmp/fastgpt-report-pilot-20261106/fastgpt.private.json','../tmp/fastgpt-report-pilot-20261106/platform.json'])files.add(path.resolve(f));
 const binding = () => Object.fromEntries([...files].sort().map(f => [path.relative(root, f).replaceAll('\\', '/'), createHash('sha256').update(fs.readFileSync(f)).digest('hex')]));
 const counts = () => platform(async (tx: any) => ({
   provider: Number((await one(tx, sql`select count(*)::int n from app.ai_provider_attempts`)).n),
@@ -85,17 +92,19 @@ const allRecords: any[] = [];
 const staffUsers: string[] = [];
 const users: string[] = [], bindings: any[] = [];
 const priorFetch = globalThis.fetch;
+let workflowBridge:any, callbackServer:any, reverseTunnel:any;
+const externalRequests:any[]=[];
 try {
   const u = new URL(resolvePostgresRuntimeConfig().connectionString);
   assert.ok(['localhost', '127.0.0.1'].includes(u.hostname) && u.port === '55432' && u.pathname === '/xiaok_embedding_eval');
   release = await lockAssistantAcceptance(process.env.DATABASE_URL, { waitForLock: true });
-  if (!live) globalThis.fetch = async () => { throw Error('Replay permits no external fetch or paid model'); };
+  if (!live && !fastgpt) globalThis.fetch = async () => { throw Error('Replay permits no external fetch or paid model'); };
   report.before = await counts(); assert.equal(report.before.queue, 0); assert.equal(report.before.pending, 0);
   assistantBefore = await read((tx: any) => one(tx, sql`select * from app.assistant_enterprise_settings where enterprise_id=1454`));
   settingsBefore = await read((tx: any) => one(tx, sql`select * from app.construction_report_settings where enterprise_id=1454`));
   assert.equal(assistantBefore.enabled, false); assert.equal(settingsBefore.enabled, false);
   await read((tx: any) => tx.execute(sql`update app.assistant_enterprise_settings set enabled=true,
-    agent_config=${JSON.stringify({...assistantBefore.agent_config,model:'qwen3.8-flash',enterpriseKnowledgeEnabled:false})}::jsonb,policy_version=policy_version+1,version=version+1 where enterprise_id=1454`));
+    agent_config=${JSON.stringify({...assistantBefore.agent_config,model:fastgptSettings?.model||'qwen3.8-flash',enterpriseKnowledgeEnabled:false})}::jsonb,policy_version=policy_version+1,version=version+1 where enterprise_id=1454`));
   if (live) {
     const sourceUrl = new URL(providerSourceDatabase!);
     assert.ok(['localhost','127.0.0.1'].includes(sourceUrl.hostname) && sourceUrl.port==='5432' && sourceUrl.pathname==='/smart_floor_planner');
@@ -106,6 +115,32 @@ try {
     await platform((tx:any)=>tx.execute(sql`update app.platform_configs set llm_config=${JSON.stringify({...source,model:'qwen3.8-flash'})}::jsonb where key='default'`));
   }
   report.bindingBefore = binding(); save();
+  if (fastgpt) {
+    const {FastGPTReportWorkflow}=await imp('src/lib/construction/fastgpt-report-workflow.ts');
+    const config=fastgptSettings; report.model=config.model;
+    workflowBridge=new FastGPTReportWorkflow({...config,record:(entry:any)=>{externalRequests.push(entry);fs.writeFileSync(path.join(out,'fastgpt-requests.json'),JSON.stringify(externalRequests,null,2));}});
+    const http=require('node:http'),cp=require('node:child_process');
+    callbackServer=http.createServer(async(req:any,res:any)=>{
+      try {const chunks=[];for await(const chunk of req)chunks.push(chunk);
+        const response=await workflowBridge.handle(new Request('http://localhost'+req.url,{method:req.method,headers:req.headers,...(req.method==='GET'?{}:{body:Buffer.concat(chunks)})}));
+        res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));
+      }catch{res.writeHead(503);res.end();}
+    });
+    await new Promise((resolve,reject)=>{callbackServer.once('error',reject);callbackServer.listen(18310,'127.0.0.1',resolve);});
+    reverseTunnel=cp.spawn('ssh',['-i','C:/Users/Administrator/.ssh/toonflow_remote_ed25519','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','ExitOnForwardFailure=yes','-N','-R','127.0.0.1:18310:127.0.0.1:18310','Administrator@192.168.10.54'],{windowsHide:true,stdio:['ignore','ignore','pipe']});
+    reverseTunnel.stderr.on('data',(bytes:any)=>{report.reverseTunnelError=String(bytes).slice(0,300);});
+    report.externalWorkflow={platform:'FastGPT',appId:config.appId,baseUrl:config.baseUrl,model:config.model,mode:'same report services / native workflow AI / no enterprise retrieval'};
+    const probeScript='fetch("http://host.docker.internal:18310/report-input").then(async r=>{console.log(JSON.stringify({status:r.status,body:await r.json()}));process.exit(r.status===404?0:1)}).catch(()=>process.exit(2))';
+    const remoteProbe='$ProgressPreference="SilentlyContinue"; $probe=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("'+Buffer.from(probeScript).toString('base64')+'")); $probe | docker --config D:/Smart-Floor-Planner-Dev/docker-cli exec -i sfp-fastgpt-pilot-app-1 node';
+    const probeArgs=['-i','C:/Users/Administrator/.ssh/toonflow_remote_ed25519','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','Administrator@192.168.10.54','powershell -NoProfile -EncodedCommand '+Buffer.from(remoteProbe,'utf16le').toString('base64')];
+    await new Promise(resolve=>setTimeout(resolve,800));
+    // Keep the event loop free to serve the callback being probed by SSH.
+    const networkProbe=await new Promise<string>((resolve,reject)=>cp.execFile('ssh',probeArgs,{encoding:'utf8',windowsHide:true,timeout:15000},(error:any,stdout:string)=>error?reject(error):resolve(stdout)));
+    assert.ok(networkProbe.includes('404'),'FastGPT container must reach the scoped callback before any model dispatch');
+    const snapshot=()=>workflowSnapshot(config);
+    report.workflowBefore=await snapshot();workflowBridge.snapshot=snapshot;
+
+  }
   await platform(async (tx: any) => {
     for (let i = 0; i < 2; i++) {
       const id = String((await one(tx, sql`insert into app.users(nickname,context_version) values(${prefix + ':customer:' + i},1) returning id`)).id);
@@ -192,16 +227,19 @@ try {
     const b = await read((tx: any) => ensureFollowupBinding(tx, eid, recipient)); bindings.push(b);
   }
   report.fixture = { users, ownerId, managerId, workerId, designerId, projectId: pid, records: { older, internal, current }, bindingIds: bindings.map(b => String(b.id)) };
+  // Exercise the saved designer-scope rejection first; keep all eight cases.
+  if(fastgpt)bindings.sort((a:any,b:any)=>['designer','customer','worker','boss'].indexOf(a.audience)-['designer','customer','worker','boss'].indexOf(b.audience));
   for (const b of bindings) for (const kind of ['daily', 'weekly']) {
     const actor = { enterpriseId: eid, principal: b.user_id ? { kind: 'user', userId: String(b.user_id) } : { kind: 'admin', adminId: String(b.admin_id) },
       contextVersion: b.user_id ? 1 : 0, capabilities: ['assistant.followup.self', 'assistant.chat.self'] };
     const q = await read((tx: any) => enqueueReport(tx, eid, b, settings, { kind, start: kind === 'daily' ? dailyStart : weeklyStart, end, cutoff: end, scheduledAt: end }));
     assert.ok(q, b.audience + ':' + kind + ' must enqueue');
+    if(fastgpt){const beforeDuplicate=await counts();await read((tx:any)=>enqueueReport(tx,eid,b,settings,{kind,start:kind==='daily'?dailyStart:weeklyStart,end,cutoff:end,scheduledAt:end}));assert.deepEqual(await counts(),beforeDuplicate,'Same report occurrence does not enqueue another generation');}
     const factLease = await claimJob(); assert.equal(factLease.runId, q.runId); await processConstructionReport(factLease);
     const v = await read((tx: any) => one(tx, sql`select * from app.construction_report_versions where enterprise_id=1454 and report_id=${q.reportId} and revision=1`));
     assert.equal(v.status, 'facts_ready');
     const bodyLease = await claimJob(); assert.equal(bodyLease.runId, String(v.body_run_id));
-    await processReportComposition(bodyLease, { model: fixtureModel, retriever: { retrieve: async () => { throw Error('No enterprise retrieval allowed'); } } });
+    await processReportComposition(bodyLease, { model: fastgpt ? workflowBridge.model : fixtureModel, retriever: { retrieve: async () => { throw Error('No enterprise retrieval allowed'); } } });
     const run = await read((tx: any) => one(tx, sql`select status,error_code,policy_snapshot from app.assistant_runs where enterprise_id=1454 and id=${String(v.body_run_id)}`));
     assert.equal(run.status, 'succeeded', run.error_code);
     assert.equal(run.policy_snapshot.knowledgePolicy.enabled, false);
@@ -213,12 +251,14 @@ try {
     assert.equal(ids.includes(internal.id), b.audience !== 'customer');
     assert.ok(JSON.stringify(opened.body).includes('通用建议（模型知识）')); assert.equal(opened.body[0].knowledgeSources.length, 0);
     await assert.rejects(() => new FollowupService({ ...actor, principal: { kind: 'user', userId: users[1] }, contextVersion: 1 }).detail(String(b.id), q.reportId, 1), /not_found|forbidden/);
+    if(fastgpt)await assert.rejects(()=>new FollowupService({...actor,enterpriseId:'2385'}).detail(String(b.id),q.reportId,1),/not_found|forbidden/);
     fs.writeFileSync(path.join(out, b.audience + '-' + kind + '.json'), JSON.stringify(opened, null, 2));
     for(const r of allRecords.filter(r=>ids.includes(r.id))) {
       const source=await svc.record(String(b.id),q.reportId,1,pid,r.id);assert.equal(source.version,Number(r.version));assert.ok(source.media.some((m:any)=>m.id===r.mediaId));
       const photo=await svc.recordMedia(String(b.id),q.reportId,1,pid,r.id,r.mediaId);assert.equal(createHash('sha256').update(photo.data).digest('hex'),r.normalizedHash);
     }
     if(b.audience==='customer') await assert.rejects(()=>svc.record(String(b.id),q.reportId,1,pid,internal.id),/not_found|forbidden/);
+    if(fastgpt){const usage=await read((tx:any)=>one(tx,sql`select sum(input_tokens)::int as input,sum(output_tokens)::int as output from app.assistant_usage_records where enterprise_id=1454 and run_id=${String(v.body_run_id)}`));assert.ok(usage.input>0&&usage.output>0);}
     report.results.push({ audience: b.audience, kind, reportId: q.reportId, runId: String(v.body_run_id), recordIds: ids, originalsVerified:true, passed: true }); save();
   }
   let withdrawn=false;
@@ -241,7 +281,7 @@ try {
       actors.push({name:b.audience,uid,aid,role,token,bid:String(b.id),cid:String(b.conversation_id),leadId:String(lead.id),projectId:pid,record:current,reports:report.results.filter((r:any)=>r.audience===b.audience)});
     }
     const {assistantHttp}=await imp('src/lib/assistant/application/http.ts');
-    report.native=await require(path.resolve('scripts/xiaok-v1-report-photos-native.cjs'))({root,output:out,actors,assistantHttp,withdraw});save();assert.equal(report.native.passed,true);
+    report.native=await require(path.resolve('scripts/xiaok-v1-report-photos-native.cjs'))({root,output:out,actors,assistantHttp,withdraw,captureBodies:fastgpt});save();assert.equal(report.native.passed,true);
   }
   // The recipient relationship is revalidated on saved reads, not just generation.
   detail = await owner.execute('detail', { projectId: pid });
@@ -280,7 +320,13 @@ finally {
     report.usage=await read((tx:any)=>rows(tx,sql`select u.run_id::text,u.provider_attempt_id::text,u.input_tokens,u.output_tokens,u.quantity from app.assistant_usage_records u where u.enterprise_id=1454 and u.run_id in (select id from app.assistant_runs where enterprise_id=1454 and conversation_id in(select conversation_id from app.construction_chats where enterprise_id=1454 and project_id=${pid||'0'})) order by u.id`)).catch((e:any)=>({error:String(e)}));
     report.finalCounts = await counts(); assert.equal(report.finalCounts.queue, 0); assert.equal(report.finalCounts.pending, 0);
   } catch (e) { report.cleanupError = String(e); report.passed = false; process.exitCode = 1; }
-  globalThis.fetch = priorFetch;
+  if(reverseTunnel)reverseTunnel.kill();
+   if(callbackServer)await new Promise(resolve=>callbackServer.close(resolve));
+   try{if(workflowBridge?.snapshot){report.workflowAfter=await workflowBridge.snapshot();if(report.workflowBefore!==report.workflowAfter){report.passed=false;process.exitCode=1;report.workflowDrift=true;}}}
+   catch(e){report.passed=false;process.exitCode=1;report.workflowSnapshotError=String(e);}
+   if(fastgpt&&report.results.length){report.externalUsage=await read((tx:any)=>rows(tx,sql`select run_id::text,operation_key,measurement_kind,input_tokens,output_tokens,quantity from app.assistant_usage_records where enterprise_id=1454 and run_id in (${sql.join(report.results.map((r:any)=>sql`${r.runId}`),sql`,`)}) order by id`));}
+   report.externalRequests=externalRequests.map((x:any)=>({runId:x.runId,chatId:x.chatId,nativeModelObservation:x.response?.responseData?.find((n:any)=>n.nodeId==='compose'),compatibilityUsageIsPlaceholder:true,actualCurrency:'unavailable'}));
+   globalThis.fetch = priorFetch;
   if (release) await release();
   if (report.bindingBefore) { report.bindingAfter = binding(); report.drift = Object.keys(report.bindingBefore).filter(f => report.bindingBefore[f] !== report.bindingAfter[f]); if (report.drift.length) { report.passed = false; process.exitCode = 1; } }
   save(); await closePostgresPool();

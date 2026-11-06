@@ -1,5 +1,13 @@
 # 远端开发连接记录
 
+<!-- xiaok-fastgpt-report-pilot -->
+## FastGPT报告工作流开发实例（Limited）
+
+2026-11-06用户授权的专用实例位于`D:/Smart-Floor-Planner-Dev/fastgpt-pilot`；Compose项目`sfp-fastgpt-pilot`，九服务、独立卷/网络；应用仅远端回环18300，本机同端口SSH转发。官方v4.17.4/source09192051及逐blob/manifest校验记录见`verified-images.json`。Docker Hub超时/Desktop拉取停滞保留，PullDirect仅从官方阿里云镜像仓库分段下载并校验导入，不改全局代理或其他容器。Mongo副本集、必需plugin及平台接口已就绪；默认root安装凭据已按官方reset-root算法随机化，后经用户在页面激活新密码；安装凭据不再代表当前登录密码，脚本保留已激活密码。
+
+部署源`admin/deployment/fastgpt/`；`admin/scripts/fastgpt/remote.ps1`提供Prepare/Pull/PullDirect/Up/Status/Tunnel，Up仅初始化默认安装凭据，保留已激活密码。管理配置可由`FASTGPT_PILOT_ROOT_PASSWORD`环境变量显式提供当前密码；用户提供的新密码尚未通过脚本登录，报告API不受影响。验收改读实际已发布版本的只读SSH指纹及模型API目录，不依赖浏览器会话。凭据仅远端ACL保护的`.env.fastgpt`及本机`tmp/fastgpt-report-pilot-20261106/fastgpt.private.json`，不入Git/不输出值。已有百炼`qwen3.7-flash`兼容接口接通；自托管不扣FastGPT云积分，模型供应商仍计费、金额未返回不记零。原生AI节点提供token观察；试点preload阻断SDK自动网络重放，AIProxy重试0。每次服务验证暂开反向SSH18310，finally关闭；只处理隔离55432/微云1454合成数据。实际批、原生验证及边界见[二期合同](xiaok-assistant-phase-2.zh-CN.md#fastgpt四端日报周报开发试点limited)。无生产切换或真实客户/外部投递。
+<!-- /xiaok-fastgpt-report-pilot -->
+
 **2026-11-03用户授权本地Docker清零：限定Implemented。** 剩余8个本地在用Docker依赖已迁至批准的`192.168.10.54`：WVP、ZLM、MySQL、Redis、接入服务、只读容量探针，以及独立公开直播PostgreSQL／媒体服务。既有远端5个容器的ID、启动时间、状态和完整挂载字段保持；仅对挂载列表排序后比较，未删字段。未重启既有远端Docker／服务，未迁主库／评估库schema，无生产发布。
 
 - 本机Docker Desktop和`docker-desktop` WSL均已停止，Docker进程**0**，辅助服务Stopped／Manual，Desktop `AutoStart=false`，无Desktop登录自启项；默认CLI context为`sfp-remote-dev`。原本地容器、数据卷、F录像和旧VHD保留用于回退；未启动或删除其他历史停用项目。隧道断开时不得自动启动本机Docker兜底。
