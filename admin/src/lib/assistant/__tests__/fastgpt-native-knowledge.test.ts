@@ -9,6 +9,8 @@ import { fitAgentContext } from '../agent/context-budget';
 import type { ModelMessage, ModelTurnOutput } from '../contracts/model';
 import type { AgentCheckpoint, AgentRuntimePorts } from '../agent/runtime';
 import { runRenovationAgent } from '../agent/runtime';
+import { AssistantError } from '../contracts';
+import { AiProviderError } from '@/lib/ai/provider-types';
 
 const config = { baseUrl: 'http://127.0.0.1:18300', appId: 'native-fixture', apiKey: 'fixture',
   model: 'qwen3.7-flash', bridgeKey: 'fixture-transport-key-32-characters-long', record: () => {} };
@@ -142,6 +144,52 @@ function ports(overrides: Partial<AgentRuntimePorts> = {}): AgentRuntimePorts {
   return { authorize: async () => {}, model: async () => modelOutput('final_response', final),
     checkpoint: async () => {}, tool: async () => ({ content: '{"stage":"水电"}' }), ...overrides };
 }
+
+test('a local pre-dispatch configuration rejection keeps its code and never becomes a provider unknown or replay', async () => {
+  const previous = globalThis.fetch, audits: unknown[] = [];
+  const adapter = new FastGPTNativeKnowledge({ ...config, record: value => audits.push(value) });
+  let checks = 0;
+  try {
+    globalThis.fetch = async (_url, options) => {
+      const id = JSON.parse(String(options?.body)).variables.workflowTicket;
+      const input = await (await adapter.handle(request('/native-input', id))).json();
+      const body = { model: config.model, messages: [{ role: 'system', content: input.instructions }], tools: [] };
+      const rejected = await adapter.handle(request('/native-model/v1/chat/completions', config.bridgeKey, body));
+      assert.equal(rejected.status, 503);
+      assert.equal((await rejected.json()).error.message, 'assistant_thinking_configuration_invalid');
+      const repeated = await adapter.handle(request('/native-model/v1/chat/completions', config.bridgeKey, body));
+      assert.equal((await repeated.json()).error.message, 'assistant_thinking_configuration_invalid');
+      return Response.json({ error: 'local_configuration_rejected' });
+    };
+    await assert.rejects(() => adapter.run({ messages, tools: [], ports: ports({ model: async () => {
+      checks++; throw new AssistantError('assistant_thinking_configuration_invalid', 503);
+    } }) }), { code: 'assistant_thinking_configuration_invalid', status: 503 });
+    assert.equal(checks, 1);
+    assert.ok(!JSON.stringify(audits).includes('provider_outcome_unknown'));
+  } finally { globalThis.fetch = previous; }
+});
+
+test('the native envelope preserves a definitive provider403 and an actual unknown without replay', async () => {
+  const previous = globalThis.fetch;
+  try {
+    for (const disposition of ['safe_fallback', 'unknown'] as const) {
+      const failure = new AiProviderError('Synthetic provider failure', disposition === 'unknown' ? 'TIMEOUT' : 'HTTP_403', disposition, disposition === 'unknown' ? 504 : 403);
+      const adapter = new FastGPTNativeKnowledge(config); let calls = 0;
+      globalThis.fetch = async (_url, options) => {
+        const id = JSON.parse(String(options?.body)).variables.workflowTicket;
+        const input = await (await adapter.handle(request('/native-input', id))).json();
+        await adapter.handle(request('/native-model/v1/chat/completions', config.bridgeKey, {
+          model: config.model, messages: [{ role: 'system', content: input.instructions }], tools: [],
+        }));
+        return Response.json({ error: 'native_model_rejected' });
+      };
+      await assert.rejects(() => adapter.run({ messages, tools: [], ports: ports({ model: async () => {
+        calls++; throw failure;
+      } }) }), error => error === failure);
+      assert.equal(calls, 1);
+    }
+  } finally { globalThis.fetch = previous; }
+});
 
 test('one native controller calls original guarded reads once, keeps raw provider drafts, and checkpoints the validated final', async () => {
   const previous = globalThis.fetch, audits: unknown[] = [], saved: AgentCheckpoint[] = [];

@@ -53,6 +53,10 @@ const bailianProfiles: Readonly<Record<string, BailianModelProfile>> = {
   // Beijing Chat Completions tool round trips with thinking disabled were
   // recorded in the 2026-10-23 consultation trial.
   'deepseek-v4.1-flash-1017': { ...bailianUnknownProfile, functionCalling: 'documented', thinkingControl: 'documented' },
+  // The exact mainline ID independently documents Function Calling and the
+  // enable_thinking switch; verified 2026-11-07, not inferred from the1017 ID.
+  // https://help.aliyun.com/en/model-studio/deepseek-api
+  'deepseek-v4.1-flash': { ...bailianUnknownProfile, functionCalling: 'documented', thinkingControl: 'documented' },
   'qwen3.8-flash': { functionCalling: 'documented', jsonObject: 'documented', jsonSchema: 'documented',
     nativeSearch: 'documented_dashscope_generation', implicitCache: 'documented', explicitCache: 'opt_in_unmeasured',
     partial: 'documentation_conflict', batch: 'documented', thinkingControl: 'documented' },

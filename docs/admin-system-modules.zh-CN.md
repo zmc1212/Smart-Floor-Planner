@@ -1,11 +1,11 @@
 # 后台系统当前功能清单
 
 <!-- xiaok-fastgpt-capabilities -->
-**FastGPT阶段/知识工作流：Limited，已收敛保存I/O接口，原生完整问答旅程未通过，DDGS官网原文前置已证，主干首轮在本地派发前停止。** 显式开发候选沿C01原会话，由FastGPT v4.17.4单一ToolCall控制问答；原服务守获权工具、KnowledgeRetriever/Evidence、租户/来源、持久任务、网关计量及最终校验/保存。原生输入现在共同复用既有来源/引用目录与公开内容投影：完整原文和引用ID保留，重复元数据及有界导航沿原路径处理。提交和保存共同依据实时获权来源集合，不把调用过工具或空检索当证据；普通答复在原生终稿通过前也复用保存端的真实承诺解析器。UI/API/schema、默认Worker及生产未切，企业知识仍关闭。
+**FastGPT阶段/知识工作流：Limited，保存I/O接口已收敛，库存OpenSERP官网产品原文已证，固定主干复验首个供应商403停止。** 显式开发候选沿C01原会话，由FastGPT v4.17.4单一ToolCall控制问答；原服务守获权工具、KnowledgeRetriever/Evidence、租户/来源、持久任务、网关计量及最终校验/保存。原生输入复用既有来源/引用目录与公开内容投影，保留完整原文和引用ID。提交/保存共同依据实时获权来源，调用或空检索不当证据；本地配置错误与供应商明确失败保留原异常处置语义。UI/API路由/schema、默认Worker、生产未切，企业知识关闭。
 
 19项定向通过；lint无错误/1项继承警告，类型仍为原57项、受影响文件无诊断。保存I/O服务回放模拟平台传输，沿既有模型注入口，在隔离1454真实执行Worker/工具/checkpoint/保存/读回。service04原样保存10919无来源首稿及10907网页稿，六个引用可重开；service05保持10915原始无效ID拒绝且不保存。网页夹具仅重绑run作用域ID，不改原文或正文。重复回调、发送幂等、重进、他客/租户拒绝和来源hash变更失效通过。service04因负例驱动误要求422而实际409/invalid_model_citation，原批仍失败；service05只修驱动处理，复用未变正例证据。供应商attempt前后均1488，新增实模0；绑定无drift，夹具/设置/资源恢复。原失败与历史15次用量不改。官网选源、完整两组五轮、项目成员撤权及原生显示质量仍未验收。见[合同](xiaok-assistant-phase-2.zh-CN.md#fastgpt阶段提醒与知识问答工作流limited)、tmp/fastgpt-native-qa-20261106/interface-calibration/及admin/scripts/fastgpt/replay-native-knowledge.mts。这些是接口证据，不证明模型回答质量提升。
 
-**当前固定复验：Limited，首轮在本地派发前停止。** 显式开发搜索现可选DDGS9.16.1官方API（Yahoo/现有普通代理），仅投影URL/标题，沿原候选、受控原文和Evidence；官网首页与product/1382完整原文已真实读取。一次查询500及三个子站读取失败原件保留，不称稳定性通过。主干deepseek-v4.1-flash私有应用已创建并调用，原两组五轮首问10927失败、无答案保存；DISABLE_THINKING=1下准确ID未登记thinking能力（只登记1017），原派发前守卫拒绝，桥把无code异常映射成provider_outcome_unknown。原函数零调用辨别复现；供应商账本1488不变/新增实模0，后9轮未派发、第二组未开始。未修话术、补能力或重跑。24项相关检查通过、lint0错误/31警告、继承类型57/影响0；配置/合成夹具恢复，队列/待投递0，源码/发布配置drift空。默认Worker、UI/API/schema、企业知识及生产保持。证据tmp/fastgpt-native-qa-20261107/assessment.json；先保留精确模型配置/错误归类问题，完整问答仍未验收。
+**当前固定复验：Limited，准确模型配置已修，首个供应商请求403后停止。** deepseek-v4.1-flash按官方独立文档登记function-calling/thinking-control；模型/thinking绑定错误在attempt前以明确503本地拒绝。原两组五轮首问10928随后真实派发attempt3266，百炼明确HTTP403拒绝/accepted=false，账本1488→1489、无答复保存、后9轮未派发。供应商原始原因未保留，不能认定权限/开通/余额。桥丢失供应商处置语义，原run保留indeterminate/provider_outcome_unknown；后续零实模修复跨FastGPT封套保留同一AssistantError/AiProviderError，不重试。10927/10928原失败和各自执行绑定不改绿。该DDGS绑定批次停止后，仅搜索层改用库存OpenSERP0.8.17/百度浏览器直连，两条固定公开查询发现官网候选；product/1161原件71293字节/解析10338字节，完整并绑定哈希。首页未进入上下文、Bing/Google相关性及SearXNG上游失败保留。49项相关离线检查通过，定点lint0错误/警告，继承类型57/影响0；原生完整问答未通过。配置/夹具恢复、队列0、所属资源清理、执行绑定无漂移；UI/API路由/schema、默认Worker、企业知识、生产不变。证据tmp/fastgpt-native-qa-20261107/blocker-repair01/assessment.json。
 <!-- /xiaok-fastgpt-capabilities -->
 
 <!-- xiaok-fastgpt-report-pilot -->

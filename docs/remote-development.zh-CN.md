@@ -3,7 +3,7 @@
 <!-- xiaok-fastgpt-capabilities -->
 **阶段/知识开发工作流：Limited。** 原授权v4.17.4实例保留阶段/旧包裹应用，并新增Qwen及用户指定deepseek-v4.1-flash-1017两个私有原生问答对照应用；独立传输别名/渠道仅指向短期票据回环18310，实际模型仍走原获权供应商网关/逐次计量。保护配置tmp/fastgpt-native-qa-20261106/runtime.private.json及runtime-deepseek.private.json。当前管理登录已通过官方API验证，仅留ACL保护会话，不存密码；未重置root或切默认模型。五个原生问答批均停，完整旅程未通过；现已停止新增实模。设置、微云1454/55432合成夹具及原生注入恢复，源码/发布配置drift空，队列/待投递0。反向18310、reader及egress沿finally关闭，所属18300转发在收拢时释放。见[合同](xiaok-assistant-phase-2.zh-CN.md#fastgpt阶段提醒与知识问答工作流limited)。未迁业务容器/数据库，未扩生产、真实客户或外部消息授权。
 
-用户指定的deepseek-v4.1-flash主干私有应用6aedfd3e093915ea6cf27ab0/9节点已创建，配置仅ACL保护runtime-deepseek-mainline.private.json；未切默认模型。临时本机DDGS9.16.1官方API/Yahoo/普通代理回环18098已接原搜索边界并真实找到官网、读到首页及product/1382原文；单次500/三个子站读取失败保留。原两组五轮首问10927在原准确模型thinking守卫拒绝，桥错误归类provider_outcome_unknown；供应商调用0/账本1488不变，后9轮未派发。原配置/合成夹具恢复、队列0、源码/发布配置无漂移；DDGS/reader/egress及所属18300/18097转发已清理，原18090未操作，末端SSH只读身份复核失败未验；本机代理设置回读保持。未补话术/能力/重试，未扩生产。当前证据tmp/fastgpt-native-qa-20261107/assessment.json；旧搜索失败原件保留。
+主干私有应用6aedfd3e093915ea6cf27ab0/9节点及ACL保护runtime-deepseek-mainline.private.json沿用，未切默认模型。准确主干thinking/function能力已按官方文档登记；固定复验首问10928/attempt3266遭供应商明确403后停止，无答案、后9轮未派发。10927/10928原状态/绑定保留，后续错误透传修复仅零实模验证。搜索替换为本机隔离库存OpenSERP0.8.17/百度浏览器直连127.0.0.1:18098，固定二进制/配置、不依赖普通代理，product/1161真实原文已保留。Bing/Google与SearXNG对照、DDGS500机制及首页上下文失败仍留证。所属搜索/浏览器/reader/egress及转发沿finally清理，无新增浏览器进程残留；原18090容器身份/启动时间/挂载回读一致（af8d0587，2026-10-23T02:46:45.56428242Z）。配置/合成夹具恢复、队列0、各执行源码/发布绑定无漂移；无关进程/转发与全局代理保持。账本1488→1489仅增一个明确拒绝attempt，无返回usage、金额/原因未知，不重试模型。未扩生产、迁移业务容器/数据库或改UI/默认Worker/企业知识。证据tmp/fastgpt-native-qa-20261107/blocker-repair01/assessment.json。
 <!-- /xiaok-fastgpt-capabilities -->
 
 <!-- xiaok-fastgpt-report-pilot -->

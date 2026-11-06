@@ -6,6 +6,7 @@ import { consultationProfile } from '@/lib/assistant/contracts/consultation';
 import type { ModelTurnInput } from '@/lib/assistant/contracts/model';
 import type { AgentConfig } from '@/lib/assistant/agent/config';
 import type { InvocationOwner } from '@/lib/assistant/contracts';
+import { AssistantError } from '@/lib/assistant/contracts';
 import { reportBodyFinalProtocol, reportNativeFinalProtocol } from '@/lib/assistant/agent/report-native-final';
 import { reportFinalOutputTokenLimit } from '@/lib/assistant/contracts/model';
 import { nativeFinalProjection } from '@/lib/assistant/agent/native-final';
@@ -29,11 +30,17 @@ import {
 
 type WorkflowChatModelKey = Extract<AiLogicalModelKey, 'chat.general' | 'vision.reference_analysis'>;
 
+function configurationFailure(code: string, message: string): never {
+  const error = new AssistantError(code, 503);
+  error.message = message;
+  throw error;
+}
+
 export function boundAssistantModel(runtime: Pick<AiProviderRuntimeConfig, 'key' | 'adapterType' | 'adapterConfig'>,
   config: Pick<AgentConfig, 'model' | 'providerKey'>, deploymentOverride?: string) {
   if (runtime.adapterType !== 'openai_compatible' || config.providerKey !== (runtime.adapterConfig?.providerPreset || runtime.key)
     || (deploymentOverride?.trim() && deploymentOverride.trim() !== config.model)) {
-    throw new Error('Agent provider capability probe no longer matches current configuration');
+    configurationFailure('assistant_model_configuration_invalid', 'Agent provider capability probe no longer matches current configuration');
   }
   // A persisted enterprise capability probe binds the Agent model. The global
   // chatbot's model choice must not replace it when reusing that provider's credentials.
@@ -49,6 +56,14 @@ export function assistantThinkingOverrideAllowed(runtime: Pick<AiProviderRuntime
     || preset === 'deepseek' && new URL(runtime.baseUrl).origin === 'https://api.deepseek.com' || consultationRuntime
     || preset === 'dashscope' && bailianBinding(runtime.baseUrl, model, false)?.region === 'cn-beijing'
       && bailianThinkingCapable(model));
+}
+
+/** Shared by dispatch and zero-call readiness checks, before an attempt exists. */
+export function assertAssistantThinkingOverride(runtime: Pick<AiProviderRuntimeConfig, 'adapterType' | 'adapterConfig' | 'baseUrl'>,
+  model: string, enableThinking: boolean | undefined, consultationRuntime = false) {
+  if (enableThinking !== undefined && !assistantThinkingOverrideAllowed(runtime, model, consultationRuntime)) {
+    configurationFailure('assistant_thinking_configuration_invalid', 'Assistant thinking override requires a verified provider/model binding');
+  }
 }
 
 function requestFingerprint(value: unknown) {
@@ -125,16 +140,14 @@ export async function executePostgresText(input: {
     if (!remoteModel) continue;
     if (input.agent && (input.owner.kind !== 'assistant_run' || runtime.adapterType !== 'openai_compatible'
       || input.agent.config.model !== remoteModel || input.agent.config.providerKey !== (runtime.adapterConfig?.providerPreset || runtime.key))) {
-      throw new Error('Agent provider capability probe no longer matches current configuration');
+      configurationFailure('assistant_model_configuration_invalid', 'Agent provider capability probe no longer matches current configuration');
     }
     const consultation = input.agent?.config.consultation;
     const consultationRuntime = consultation && runtime.adapterType === 'openai_compatible'
       && new URL(runtime.baseUrl).origin === 'https://dashscope.aliyuncs.com' && remoteModel === consultationProfile(consultation.profile)?.model;
-    if (consultation && (!consultationRuntime || input.agent!.input.profile !== consultation.profile)) throw new Error('Consultation profile does not match the configured runtime');
+    if (consultation && (!consultationRuntime || input.agent!.input.profile !== consultation.profile)) configurationFailure('assistant_model_configuration_invalid', 'Consultation profile does not match the configured runtime');
     const enableThinking=consultation ? false : input.owner.kind==='assistant_run' && process.env.ASSISTANT_TEXT_DISABLE_THINKING==='1'?false:undefined;
-    if (enableThinking !== undefined && !assistantThinkingOverrideAllowed(runtime, remoteModel, !!consultationRuntime)) {
-      throw new Error('Assistant thinking override requires an approved SiliconFlow or official DeepSeek runtime');
-    }
+    assertAssistantThinkingOverride(runtime, remoteModel, enableThinking, !!consultationRuntime);
     const cacheControl = input.owner.kind === 'assistant_run' && input.agent
       ? input.agent.input.cacheControl ?? explicitCacheControl(runtime, remoteModel, enableThinking, input.agent.input, !!consultation)
       : undefined;

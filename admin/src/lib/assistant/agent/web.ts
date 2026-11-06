@@ -197,36 +197,75 @@ export function ddgsResults(input: unknown): Array<{ url: string; title: string 
   }).slice(0, 8);
 }
 
+/** Stock OpenSERP v2 envelope. Ads, answers and extraction are not originals. */
+export function openserpResults(input: unknown): Array<{ url: string; title: string }> {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) fail('invalid_web_search_response', 502);
+  const data = input as { results?: unknown; meta?: { engines_responded?: unknown; engines_failed?: unknown } };
+  if (!Array.isArray(data.results) || !data.meta || !Array.isArray(data.meta.engines_responded)
+    || !Array.isArray(data.meta.engines_failed)) fail('invalid_web_search_response', 502);
+  const seen = new Set<string>();
+  const results = data.results.flatMap(item => {
+    if (!item || typeof item !== 'object' || typeof item.type !== 'string'
+      || typeof item.url !== 'string' || typeof item.title !== 'string') fail('invalid_web_search_response', 502);
+    if (item.type !== 'organic' || seen.has(item.url)) return [];
+    seen.add(item.url); return [{ url: item.url, title: item.title }];
+  }).slice(0, 8);
+  // Partial results remain useful. Zero organic results with failed engines
+  // cannot establish that the requested public information is absent.
+  if (!results.length && data.meta.engines_failed.length) fail('web_search_upstream_unavailable', 503);
+  return results;
+}
+
 /** A provider boundary: changing search services does not change Agent/Evidence. */
 export function configuredWebProvider(): WebSearchProvider | null {
   const provider = process.env.ASSISTANT_WEB_SEARCH_PROVIDER;
-  if (!['searxng', 'ddgs'].includes(provider || '') || !process.env.ASSISTANT_WEB_SEARCH_URL) return null;
+  if (!['searxng', 'ddgs', 'openserp'].includes(provider || '') || !process.env.ASSISTANT_WEB_SEARCH_URL) return null;
   let base: URL;
   try { base = new URL(process.env.ASSISTANT_WEB_SEARCH_URL); } catch { return null; }
   if (!['http:', 'https:'].includes(base.protocol) || base.username || base.password || base.search || base.hash) return null;
   return { name: provider!, async search(query) {
-    const url = new URL(provider === 'ddgs' ? 'search/text' : 'search', base.href.endsWith('/') ? base : base.href + '/');
+    const endpoint = provider === 'ddgs' ? 'search/text' : provider === 'openserp' ? 'mega/search' : 'search';
+    const url = new URL(endpoint, base.href.endsWith('/') ? base : base.href + '/');
     const text = query.query + (query.domains.length ? ' (' + query.domains.map(d => 'site:' + d).join(' OR ') + ')' : '');
     if (provider === 'ddgs') {
       url.searchParams.set('query', text); url.searchParams.set('region', 'cn-zh'); url.searchParams.set('safesearch', 'moderate');
       url.searchParams.set('max_results', '8'); url.searchParams.set('backend', process.env.ASSISTANT_DDGS_BACKEND || 'yahoo');
+    } else if (provider === 'openserp') {
+      const engines = process.env.ASSISTANT_OPENSERP_ENGINES || 'baidu';
+      if (!/^(?:baidu|bing|google|duckduckgo|yandex|ecosia)(?:,(?:baidu|bing|google|duckduckgo|yandex|ecosia))*$/.test(engines)) fail('invalid_web_search_configuration', 503);
+      url.searchParams.set('text', text); url.searchParams.set('limit', '8');
+      url.searchParams.set('engines', engines); url.searchParams.set('extract', '0');
     } else {
       url.searchParams.set('q', text); url.searchParams.set('format', 'json'); url.searchParams.set('language', 'zh-CN'); url.searchParams.set('safesearch', '1');
     }
-    const response = await fetch(url, { signal: AbortSignal.timeout(12000), redirect: 'error', headers: { Accept: 'application/json' } });
-    if (!response.ok) fail('web_search_http_' + response.status, 503);
-    if (!response.body) fail('invalid_web_search_response', 502);
-    const reader = response.body.getReader(), chunks: Buffer[] = []; let size = 0;
+    const signal = AbortSignal.timeout(12000);
     try {
-      while (true) {
-        const chunk = await reader.read(); if (chunk.done) break;
-        size += chunk.value.byteLength;
-        if (size > 512000) fail('web_search_response_too_large', 502);
-        chunks.push(Buffer.from(chunk.value));
+      const response = await fetch(url, { signal, redirect: 'error', headers: { Accept: 'application/json' } });
+      if (!response.body) fail('invalid_web_search_response', 502);
+      const reader = response.body.getReader(), chunks: Buffer[] = []; let size = 0;
+      try {
+        while (true) {
+          const chunk = await reader.read(); if (chunk.done) break;
+          size += chunk.value.byteLength;
+          if (size > 512000) fail('web_search_response_too_large', 502);
+          chunks.push(Buffer.from(chunk.value));
+        }
+      } finally { await reader.cancel().catch(() => {}); }
+      let packet;
+      try { packet = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
+      catch { return fail(response.ok ? 'invalid_web_search_response' : 'web_search_http_' + response.status, response.ok ? 502 : 503); }
+      if (!response.ok) {
+        if (provider === 'openserp' && ['captcha_detected', 'blocked', 'rate_limited', 'search_timeout', 'request_timeout',
+          'proxy_connect', 'proxy_auth', 'proxy_timeout', 'proxy_unavailable', 'parser_failure', 'all_engines_failed', 'circuit_open'].includes(packet?.error)) {
+          fail('web_search_upstream_' + packet.error, 503);
+        }
+        fail('web_search_http_' + response.status, 503);
       }
-    } finally { await reader.cancel().catch(() => {}); }
-    const packet = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-    return provider === 'ddgs' ? ddgsResults(packet) : searxngResults(packet);
+      return provider === 'ddgs' ? ddgsResults(packet) : provider === 'openserp' ? openserpResults(packet) : searxngResults(packet);
+    } catch (error) {
+      if (signal.aborted) fail('web_search_timeout', 503);
+      throw error;
+    }
   } };
 }
 export async function searchWeb(query: WebQuery, provider = configuredWebProvider(), read = readPublicPage): Promise<WebSearchSnapshot> {

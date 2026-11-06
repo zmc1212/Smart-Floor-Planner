@@ -1,0 +1,49 @@
+# Stock OpenSERP v0.8.17. Search discovery only; originals use the guarded reader.
+server:
+  host: 127.0.0.1
+  port: 18098
+  debug: false
+  verbose: false
+  raw_requests: false
+  insecure: false
+app:
+  save_log: false
+  timeout: 8
+  mega_timeout: 10s
+  head: false
+  leave_head: false
+  leakless: true
+  max_processes: 2
+  idle_ttl: 5m
+extract:
+  enabled: false
+proxies:
+  global: ""
+  allow_request_proxy_url: false
+  lanes:
+    enabled: false
+    drop_cookies_on_challenge: false
+cache:
+  ttl_seconds: 60
+  max_size: 64
+resilience:
+  max_retries: 0
+  allow_endpoint_fallback: false
+cors:
+  enabled: false
+captcha:
+  solver_enabled: false
+baidu:
+  disabled: false
+  rate_requests: 30
+  rate_burst: 2
+google:
+  disabled: true
+bing:
+  disabled: true
+duckduckgo:
+  disabled: true
+yandex:
+  disabled: true
+ecosia:
+  disabled: true

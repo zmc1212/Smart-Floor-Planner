@@ -1,10 +1,11 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
-import { fail, fingerprint } from '../contracts';
+import { AssistantError, fail, fingerprint } from '../contracts';
 import { agentModelLimits, type ModelMessage, type ModelTool, type ModelTurnOutput } from '../contracts/model';
 import type { AgentCheckpoint, AgentRuntimePorts } from '../agent/runtime';
 import { toolSchemaIssue } from '../agent/tool-protocol';
 import { synthesisModelMessages } from '../agent/synthesis';
 import { projectConsultationModelView } from '../agent/consultation-model-view';
+import { AiProviderError } from '@/lib/ai/provider-types';
 
 export const nativeKnowledgeProtocol = 'fastgpt-native-knowledge-v1';
 export const nativeKnowledgeReadNames = ['search_web', 'read_web', 'query_business', 'recall_history'] as const;
@@ -33,6 +34,7 @@ type Call = { turn: number; index: number; name: string; args: string; pending?:
 type Ticket = {
   input: NativeInput; expires: number; calls: Call[]; messages: ModelMessage[];
   turn: number; busy: boolean; final?: ModelTurnOutput; failure?: string;
+  failureError?: AssistantError | AiProviderError;
 };
 export type NativeKnowledgeConfig = {
   baseUrl: string; apiKey: string; appId: string; model: string; bridgeKey: string;
@@ -184,7 +186,12 @@ export class FastGPTNativeKnowledge {
       { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' } });
     } catch (error) {
       if (ticket) ticket.failure ??= (error as { code?: string }).code || 'provider_outcome_unknown';
-      return Response.json({ error: { message: ticket?.failure || 'context_unavailable' } }, { status: 502 });
+      if (ticket && (error instanceof AssistantError || error instanceof AiProviderError)
+        && ticket.failure === error.code) ticket.failureError ??= error;
+      this.config.record({ kind: 'native_model_failure', turn: ticket ? ticket.turn - 1 : null,
+        code: ticket?.failure || 'context_unavailable', applicationError: error instanceof AssistantError });
+      return Response.json({ error: { message: ticket?.failure || 'context_unavailable' } },
+        { status: error instanceof AssistantError ? error.status : 502 });
     } finally { if (ticket) ticket.busy = false; }
   }
 
@@ -211,6 +218,9 @@ export class FastGPTNativeKnowledge {
       });
       const packet = await response.json();
       this.config.record({ kind: 'native_workflow', status: response.status, response: JSON.parse(JSON.stringify(packet).replaceAll(id, '[expired scoped ticket]')) });
+      // Keep the original local error or provider disposition across FastGPT's
+      // HTTP envelope. A definitive403 must not become an ambiguous model call.
+      if (ticket.failureError) throw ticket.failureError;
       if (!response.ok || packet.error || ticket.failure || !ticket.final) fail(ticket.failure || 'fastgpt_workflow_unavailable', 502);
       await input.ports.authorize();
       return { output: ticket.final, finalFromTools: false, stop: false };
