@@ -48,9 +48,10 @@ export function hasSynthesisContract(messages: ModelMessage[], contract: string)
  * Evidence, source snapshots and links stay in the original durable checkpoint
  * for authorization, original opening, follow-up restoration and commit. */
 export function projectConsultationModelView(messages: ModelMessage[], tools: ModelTool[], contract = synthesisModelInstructions,
-  options: { preservePolicy?: boolean; budget?: RequestBudgetOptions } = {}): ModelMessage[] {
+  options: { preservePolicy?: boolean; budget?: RequestBudgetOptions; navigationOnly?: boolean } = {}): ModelMessage[] {
   const finalOnly = tools.length === 1 && tools[0].name === 'final_response';
-  if (!tools.length || (tools.some(tool => !readOnlyTools.has(tool.name)) && !options.preservePolicy) || !hasSynthesisContract(messages, contract)) return messages;
+  if (!tools.length || (tools.some(tool => !readOnlyTools.has(tool.name)) && !options.preservePolicy)
+    || !hasSynthesisContract(messages, contract) && !options.navigationOnly) return messages;
   const calls = new Map<string, string>();
   const projectedMessages = messages.map(message => {
     if (message.role === 'assistant') {

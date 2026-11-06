@@ -20,7 +20,7 @@ export const publicDiscoveryScopeProtocol = 'public-domain-provenance-v1';
 /** Narrowing a search requires a user-supplied domain or an actual discovered
  * host. Model guesses are recorded but cannot erase the public search space.
  * This is discovery provenance only; all reader SSRF/TLS checks still apply. */
-export function publicDiscoveryQuery(query: WebQuery, question: string, discoveredUrls: string[]) {
+export function publicDiscoveryQuery(query: WebQuery, question: string, discoveredUrls: string[], allowSearchHints = false) {
   const hosts = new Set<string>();
   for (const match of question.matchAll(/(?:https?:\/\/)?(?:[a-z0-9-]+\.)+[a-z]{2,63}(?::\d+)?(?:\/[^\s，。！？；、"'<>]*)?/gi)) {
     try { hosts.add(publicWebUrl(/^https?:\/\//i.test(match[0]) ? match[0] : 'https://' + match[0]).hostname); } catch { /* Not a usable public source. */ }
@@ -32,8 +32,16 @@ export function publicDiscoveryQuery(query: WebQuery, question: string, discover
   const text = query.query.replace(/\bsite:((?:[a-z0-9-]+\.)+[a-z]{2,63})(?:\/[^\s]*)?/gi,
     (match,domain:string)=>allowed(domain.toLowerCase())?match:'').trim();
   if (!text) fail('invalid_web_query',422);
+  // An unverified domain can help discover candidates without becoming a
+  // source restriction or proof of authorship. Keep the verified outer scope;
+  // record the actual hint query and fall back if it yields no scoped result.
+  const searchHint = allowSearchHints && rejected.length && requested.length <= 3
+    ? { ...query, domains: requested } : undefined;
+  if (searchHint) for (const domain of requested) publicWebUrl('https://' + domain);
   return { query: { ...query, query:text, domains:query.domains.filter(allowed) },
-    scope: { protocol:publicDiscoveryScopeProtocol,requestedDomains:requested,rejectedDomains:rejected } };
+    ...(searchHint ? { searchHint } : {}),
+    scope: { protocol:publicDiscoveryScopeProtocol,requestedDomains:requested,rejectedDomains:searchHint?[]:rejected,
+      ...(searchHint?{unverifiedHintDomains:searchHint.domains}: {}) } };
 }
 export const readWebTool: ModelTool = { name: 'read_web',
   description: '实际读取本run search_web或read_web返回的一个公开候选。只传候选id，不能传自造URL、客户信息或前轮编号。按真实出链受控导航到相关原文/PDF，返回完整原页、条件、页码和读取失败；搜索摘要不是依据，公开原文不证明企业采用或本人现场达标。',
@@ -44,10 +52,12 @@ export function parsePublicRead(value: unknown): { candidateId: string } {
     || typeof input.candidateId !== 'string' || !/^P[1-9]\d{0,18}:12\d{2}:\d{1,3}$/.test(input.candidateId)) fail('invalid_web_candidate',422);
   return {candidateId:input.candidateId};
 }
-export function publicResearchTools(tools: ModelTool[], enabled: boolean): ModelTool[] {
+export function publicResearchTools(tools: ModelTool[], enabled: boolean, explicitSelection = false): ModelTool[] {
   if (!enabled || !tools.some(tool=>tool.name==='search_web')) return tools;
   return [...tools.map(tool=>tool.name!=='search_web'?tool:{...tool,
-    description:'发现公开互联网候选，query只传公共术语/厂家/产品，不传客户姓名、电话、地址、项目编号或私聊原话。domains只能用客户明确提供或本run实际发现的域名，未知填[]，不根据品牌猜官网。返回实际候选id、标题和网址，尚未读取原文，搜索摘要不得当证据；要核实请用read_web选择实际候选。最多三个查询，与读取共用本run有界研究时限。'}),readWebTool];
+    description:explicitSelection
+      ? '发现公开互联网候选，query只传公共术语/厂家/产品，不传客户姓名、电话、地址、项目编号或私聊原话。domains为可选公开域名搜索提示，未知可填[]；提示不证明官网身份或来源有效。返回真实候选id/标题/网址，搜索摘要不是证据，选择相关候选交read_web读取原文。'
+      : '发现公开互联网候选，query只传公共术语/厂家/产品，不传客户姓名、电话、地址、项目编号或私聊原话。domains只能用客户明确提供或本run实际发现的域名，未知填[]，不根据品牌猜官网。返回实际候选id、标题和网址，尚未读取原文，搜索摘要不得当证据；要核实请用read_web选择实际候选。最多三个查询，与读取共用本run有界研究时限。'}),readWebTool];
 }
 const digest = (value: Buffer) => createHash('sha256').update(value).digest('hex');
 const inDomains = (url: string, domains: string[]) => !domains.length || domains.some(domain => {
@@ -103,7 +113,7 @@ export async function configuredPublicRead(url: string, remainingMs: number): Pr
  * with an explicit context-limit result; no truncated clause becomes evidence. */
 export function publicDocumentPages(document: PublicReadDocument, retrievedAt: string): WebPage[] {
   if (!validPublicDocument(document)) fail('invalid_web_reader_response', 502);
-  return document.pages.filter(page => Buffer.byteLength(page.text) <= 12000 && (document.mediaType === 'application/pdf' || page.text.trim().length >= 40)).map(page => {
+  return document.pages.filter(page => Buffer.byteLength(page.text) <= 18000 && (document.mediaType === 'application/pdf' || page.text.trim().length >= 40)).map(page => {
     const locator: Omit<WebPage, 'hash' | 'text'> = { url: document.url, title: document.title, retrievedAt, parser: publicReaderParser,
       textBytes: Buffer.byteLength(page.text), document: { hash: document.original.sha256, mediaType: document.mediaType,
         page: page.page, pages: document.pages.length, bytes: document.original.bytes } };
@@ -186,7 +196,8 @@ export function publicDirectoryQuery(query: WebQuery): WebQuery | null {
 
 export async function searchPublicResearch(query: WebQuery, provider: WebSearchProvider | null = configuredWebProvider(),
   read: PublicReader = configuredPublicRead, previous?: PublicResearchState, deadlineAt = Infinity,
-  mode?: { runId: string; sequence: number; discoverOnly?: boolean; selected?: PublicCandidate; alternatives?: PublicCandidate[] }): Promise<WebSearchSnapshot> {
+  mode?: { runId: string; sequence: number; discoverOnly?: boolean; selected?: PublicCandidate; alternatives?: PublicCandidate[];
+    explicitSelection?: boolean; searchHint?: WebQuery }): Promise<WebSearchSnapshot> {
   const retrievedAt = new Date().toISOString();
   const state: PublicResearchState = previous ? structuredClone(previous) : { version: 1, startedAt: retrievedAt, queries: [], visited: [], reads: 0, navigation: [] };
   const deadline = Math.min(Date.parse(state.startedAt) + 60000, deadlineAt);
@@ -196,7 +207,8 @@ export async function searchPublicResearch(query: WebQuery, provider: WebSearchP
   if (!mode?.selected && state.queries.length >= 3 || Date.now() >= deadline || !mode?.discoverOnly && state.reads >= 6) {
     result.failures.push({ code: 'web_research_limit' }); return result;
   }
-  if (!mode?.selected) state.queries.push(query);
+  const initialQuery = mode?.explicitSelection && mode.searchHint ? mode.searchHint : query;
+  if (!mode?.selected) state.queries.push(initialQuery);
   const queue: Array<{ url: string; title: string; parent: string | null; depth: number }> = [];
   try {
     const search = async (input: WebQuery) => {
@@ -207,9 +219,28 @@ export async function searchPublicResearch(query: WebQuery, provider: WebSearchP
       (state.discoveries ||= []).push({ query: input, candidates: candidates.slice(0,8) });
       return candidates;
     };
-    let candidates = mode?.selected ? [mode.selected, ...(mode.alternatives || []).filter(c => c.id !== mode.selected!.id)] : await search(query);
+    const hintedDiscovery = !!(mode?.explicitSelection && mode.discoverOnly && mode.searchHint);
+    let candidates: Array<{url:string;title:string}> = [];
+    if (hintedDiscovery) {
+      // A guess must not erase the original discovery space, even when it
+      // returns plausible third-party results or the scoped engine fails.
+      try { candidates = await search(initialQuery); }
+      catch (error) { result.failures.push({code:error instanceof AssistantError ? error.code : 'web_search_unavailable'}); }
+      if (state.queries.length < 3 && Date.now() < deadline) {
+        const fallback = publicDirectoryQuery(query) || query;
+        state.queries.push(fallback);
+        try {
+          const broader = await search(fallback), hints = candidates;
+          // Both frontiers retain room in the existing eight-candidate view.
+          candidates = Array.from({length:Math.max(hints.length,broader.length)},(_,i)=>[hints[i],broader[i]])
+            .flat().filter((candidate):candidate is {url:string;title:string}=>!!candidate);
+        } catch (error) { result.failures.push({code:error instanceof AssistantError ? error.code : 'web_search_unavailable'}); }
+      }
+    } else candidates = mode?.selected ? [mode.selected, ...(mode.explicitSelection ? [] : mode.alternatives || []).filter(c => c.id !== mode.selected!.id)] : await search(initialQuery);
+    const scopedDiscovery = mode?.explicitSelection && initialQuery.domains.length > 0
+      && candidates.some(candidate => { try { return inDomains(publicWebUrl(candidate.url).href, initialQuery.domains); } catch { return false; } });
     let prefixUsed = false;
-    while (mode?.discoverOnly && state.queries.length < 3 && Date.now() < deadline) {
+    while (mode?.discoverOnly && !hintedDiscovery && !scopedDiscovery && state.queries.length < 3 && Date.now() < deadline) {
       const refinement = publicOriginalRefinement(query, candidates);
       const aliasQuery = refinement && !state.queries.some(old => fingerprint(old) === fingerprint(refinement.query)) ? refinement.query : null;
       const relaxed = !prefixUsed && !aliasQuery ? publicDirectoryQuery(query) : null;
@@ -285,8 +316,11 @@ export async function searchPublicResearch(query: WebQuery, provider: WebSearchP
           if (!inDomains(url, query.domains) || state.visited.includes(url)) continue;
           const anchor={ ...link, url, parent: document.url, depth: candidate.depth + 1 };
           if (mode && result.candidates!.length<100 && !result.candidates!.some(c => c.url === url)) result.candidates!.push({...anchor,id:`P${mode.runId}:${mode.sequence}:${result.candidates!.length}`});
-          if (rankPublicCandidate(anchor,query.query)>0 && !/\b(?:appstore|play\.google)\b|\/apps?(?:\/|\?|$)/i.test(url) && !queue.some(c => c.url === url)) queue.push(anchor);
+          if (!mode?.explicitSelection && rankPublicCandidate(anchor,query.query)>0 && !/\b(?:appstore|play\.google)\b|\/apps?(?:\/|\?|$)/i.test(url) && !queue.some(c => c.url === url)) queue.push(anchor);
         }
+        // Ordinary read_web reads exactly the selected document. Links are
+        // candidates for another explicit read, never automatically fetched.
+        if (mode?.explicitSelection) break;
         // Bound the best unique pending links, not the first hundred insertions.
         // Repeated site menus must not prevent a later original-document link
         // from ever entering ranking. Originals/failed reads stay durable.

@@ -1,7 +1,7 @@
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import type { RootContent } from 'mdast';
 
-export const proseNumberProtocol = 'structured-list-marker-v3';
+export const proseNumberProtocol = 'structured-list-and-reference-marker-v5';
 // Ambiguous "1. ℃"/"1. 米" is kept as a numerical claim. Markup cannot
 // turn a quantity into an ordinal. Quantities in item bodies remain untouched.
 const startsWithUnit = /^(?:℃|°[CF]?|[%‰㎡㎥²³]|(?:mm|cm|km|kg|ml|mpa|kpa|kw|m|h|s|l|v|w)(?:\b|$)|毫米|厘米|千米|平方米|立方米|千克|毫升|兆帕|千瓦|小时|分钟|秒|天|周|个月|年|度|元|万元|遍|次|米|吨|克|升)/iu;
@@ -71,14 +71,58 @@ function inlineMarkers(text: string, offset: number): Array<[number, number]> {
   return sentenceInlineMarkers(text, offset);
 }
 
-/** Claim-analysis view only. Parse CommonMark structure rather than guessing
- * numbers from line prefixes. Omit verified ordered-list marker spans; retain
- * every item body, unrecognized form, measurement, date, version and code.
- * UI prose, quoted originals and citation identities are never rewritten. */
-export function proseNumberView(text: string): string {
+/** A view of exact selected reference markers, never a rewrite of a provider
+ * packet or source original. Verbatim code and block quotes stay untouched. */
+export function referenceMarkerText(text: string, references: readonly string[]) {
+  if (!references.length) return text;
   const spans: Array<[number, number]> = [];
   const visit = (node: RootContent) => {
     if (node.type === 'code' || node.type === 'blockquote') return;
+    if (node.type === 'text') {
+      const start=node.position?.start.offset,end=node.position?.end.offset;
+      if (start!==undefined&&end!==undefined&&text.slice(start,end)===node.value)
+        for (const reference of new Set(references)) {
+          const marker='['+reference+']';let position=node.value.indexOf(marker);
+          while(position>=0){
+            // Do not join numerical fragments or turn an embedded reference
+            // into a supported physical value. Keep ordinary code/quotes.
+            if (!/\d/.test(node.value[position-1]||'')&&!/\d/.test(node.value[position+marker.length]||''))
+              spans.push([start+position,start+position+marker.length]);
+            position=node.value.indexOf(marker,position+marker.length);
+          }
+        }
+    }
+    if ('children' in node) for(const child of node.children)visit(child as RootContent);
+  };
+  for(const node of fromMarkdown(text).children)visit(node);
+  let result=text;
+  for(const [start,end] of spans.sort((a,b)=>b[0]-a[0]))result=result.slice(0,start)+' '+result.slice(end);
+  return result;
+}
+
+/** Claim-analysis only: omit structural list/reference ordinals while keeping
+ * measurements, dates, unknown syntax and every original item body. */
+export function proseNumberView(text: string, citationCount = 0): string {
+  const spans: Array<[number, number]> = [];
+  const visit = (node: RootContent) => {
+    if (node.type === 'code' || node.type === 'blockquote') return;
+    // The segment's already-validated citations supply the reference namespace.
+    // A sentence-end [1][2] is presentation, never a new source or a quantity.
+    // Unknown ordinals, ranges, decimals, labels and unit-bearing values stay
+    // visible to the numerical guard. Do not edit UI prose or source originals.
+    if (node.type === 'text' && citationCount > 0) {
+      const start = node.position?.start.offset, end = node.position?.end.offset;
+      if (start !== undefined && end !== undefined && text.slice(start, end) === node.value) {
+        for (const match of node.value.matchAll(/(?:\[[1-9]\d?\])+/gu)) {
+          const before = node.value.slice(0, match.index), after = node.value.slice(match.index! + match[0].length);
+          const ordinals = [...match[0].matchAll(/\[(\d+)\]/g)].map(item => Number(item[1]));
+          if (!before.trim() || /[\d\[\]:：=＝~～—–-]\s*$/u.test(before)
+            || !/^(?:[。！？；，,.!?;]|\s*$)/u.test(after)
+            || startsWithUnit.test(after.trimStart()) || ordinals.some(ordinal => ordinal > citationCount)) continue;
+          spans.push([start + match.index!, start + match.index! + match[0].length]);
+        }
+      }
+    }
     if (node.type === 'paragraph' && node.children.every(child => child.type === 'text'
       || child.type === 'strong' && child.children.every(part => part.type === 'text'))) {
       const start = node.position?.start.offset, end = node.position?.end.offset;

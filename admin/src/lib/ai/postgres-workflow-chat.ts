@@ -62,12 +62,14 @@ export function privateAgentFailureFrame(owner: InvocationOwner, metadata: Recor
   if (owner.kind !== 'assistant_run' || !Number.isInteger(metadata?.turn)
     || !(error instanceof AiProviderError) || error.privateResponse?.protocol !== 'invalid-provider-frame-v1') return null;
   const explanation = metadata?.sourceAnswerMode === 'reviewed-knowledge-explanation-v1';
+  const dialogue = metadata?.probeVersion === 'minimal-dialogue-v3' && metadata.purpose === 'answer'
+    && Number(metadata.turn) >= 0 && Number(metadata.turn) < 4;
   const report = metadata?.reportNativeFinal === reportNativeFinalProtocol && metadata.purpose === 'answer'
     && [nativeFinalProjection, nativeImageFinalProjection].includes(String(metadata.nativeFinalProjection))
     && Number(metadata.turn) >= 0 && Number(metadata.turn) < 4;
   const body = metadata?.reportBodyFinal === reportBodyFinalProtocol && metadata.purpose === 'answer'
     && metadata.maxOutputTokens === reportFinalOutputTokenLimit && metadata.turn === 0;
-  if (!explanation && !report && !body) return null;
+  if (!explanation && !dialogue && !report && !body) return null;
   try { return Buffer.byteLength(JSON.stringify(error.privateResponse)) <= 64000 ? error.privateResponse : null; }
   catch { return null; }
 }

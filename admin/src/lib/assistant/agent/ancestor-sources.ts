@@ -22,6 +22,17 @@ export function publicOnlySynthesisContext(context: SynthesisContext) {
     && Array.isArray(context.snapshots) && !context.snapshots.length && !(context.history?.length);
 }
 
+/** Restore whole originals actually cited by the committed answer, not every
+ * page its research happened to visit. The parent context/hash and live source
+ * checks remain intact; no quotation is shortened or promoted to authority. */
+export function selectedAncestorSources(context: SynthesisContext, answer: unknown) {
+  const value = answer as { kind?: unknown; segments?: Array<{ citations?: Array<{ sourceId?: unknown }> }> } | null;
+  if (value?.kind !== 'synthesis' || !Array.isArray(value.segments)) return [];
+  const selected = new Set(value.segments.flatMap(segment => Array.isArray(segment?.citations)
+    ? segment.citations.flatMap(citation => typeof citation?.sourceId === 'string' ? [citation.sourceId] : []) : []));
+  return context.sources.filter(source => selected.has(source.sourceId));
+}
+
 /** Only committed answers in this same authorized conversation can introduce
  * ancestor Evidence. Display ordinals and generated prose are never parsed. */
 export async function restoreAncestorSources(tx: PostgresTransaction, actor: ActorContext, conversation: Row,
@@ -38,7 +49,7 @@ export async function restoreAncestorSources(tx: PostgresTransaction, actor: Act
     if (!allowKnowledge && context.knowledge.length) fail('context_changed');
     return context;
   }
-  const candidates = await rows(tx, sql`select r.id run_id,m.id message_id,m.content,s.source_refs
+  const candidates = await rows(tx, sql`select r.id run_id,m.id message_id,m.content,s.source_refs,s.private_checkpoint answer
     from app.assistant_runs r join app.assistant_messages m on m.enterprise_id=r.enterprise_id and m.id=r.output_message_id
     join app.assistant_run_steps s on s.enterprise_id=r.enterprise_id and s.run_id=r.id
     where r.enterprise_id=${actor.enterpriseId} and r.conversation_id=${String(conversation.id)}
@@ -57,15 +68,17 @@ export async function restoreAncestorSources(tx: PostgresTransaction, actor: Act
     if (context.snapshots.some(s => 'reportReference' in s && s.reportReference
       && (!selected || fingerprint(s.reportReference.selection) !== fingerprint(selected)))) continue;
     if (!await synthesisContextAvailable(tx, actor, conversation, context)) continue;
+    const sources = options.publicOnly ? selectedAncestorSources(context, candidate.answer) : context.sources;
+    if (options.publicOnly && !sources.length) continue;
     const refs = [...(context.ancestors || []), { runId: String(candidate.run_id), messageId: String(candidate.message_id),
       contentHash: fingerprint(candidate.content), contextHash: fingerprint(context) }];
     const combined = [...new Map([...result.ancestors!, ...refs].map(ref => [ref.messageId, ref])).values()];
     // A bounded restoration is explicit; never discard a dependency to make an
     // inherited answer appear valid. A fresh read remains available instead.
-    if (combined.length > 32 || result.sources.length + context.sources.length > 80) continue;
+    if (combined.length > 32 || result.sources.length + sources.length > 80) continue;
     result.ancestors = combined;
     for (const key of ['knowledge','snapshots','sources','web','history'] as const)
-      (result[key] as unknown[]).push(...(context[key] || []));
+      (result[key] as unknown[]).push(...(key === 'sources' ? sources : context[key] || []));
   }
   for (const key of ['knowledge','snapshots','sources','web','history'] as const)
     (result[key] as unknown[]) = [...new Map((result[key] as unknown[]).map(value => [fingerprint(value), value])).values()];

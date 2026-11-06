@@ -14,6 +14,7 @@ import { contextBudgetPolicy } from '@/lib/assistant/agent/context-budget';
 import { summaryInput, selectedSummary, historySummaryPolicy, historySummaryCapability } from '@/lib/assistant/agent/summary';
 import { fingerprint, safeText, type ActorContext } from '@/lib/assistant/contracts';
 import type { ModelTurnOutput } from '@/lib/assistant/contracts/model';
+import { minimalDialogueProtocol } from '@/lib/assistant/agent/minimal-dialogue';
 
 const prefix = 'synthetic-history-' + (process.env.ASSISTANT_TEST_RUN_ID || randomUUID()), enterprises: string[] = [], users: string[] = [];
 let actor: ActorContext, other: ActorContext;
@@ -429,5 +430,29 @@ test('AG09: tools-disabled consultations do not invoke the optional selector or 
   }finally{
     await withTenantTransaction(actor.enterpriseId,tx=>tx.execute(sql`update app.assistant_enterprise_settings set agent_config=jsonb_set(agent_config,'{tools}','true'::jsonb)
       where enterprise_id=${actor.enterpriseId}`));
+  }
+});
+
+test('ordinary dialogue recalls original history on demand without spending an optional summary call', async () => {
+  const before=await withTenantTransaction(actor.enterpriseId,tx=>one(tx,sql`select agent_config from app.assistant_enterprise_settings where enterprise_id=${actor.enterpriseId}`));
+  try {
+    await withTenantTransaction(actor.enterpriseId,tx=>tx.execute(sql`update app.assistant_enterprise_settings
+      set agent_config=${JSON.stringify({...before!.agent_config as object,providerKey:'dashscope',model:'qwen3.7-flash',probeVersion:minimalDialogueProtocol,enterpriseKnowledgeEnabled:false})}::jsonb,
+        policy_version=policy_version+1 where enterprise_id=${actor.enterpriseId}`));
+    const {id}=await longChat();let summaries=0,calls=0;
+    const result=await ask(id,{summary:async()=>{summaries++;throw Error('Ordinary dialogue must use lazy history recall');},model:async(messages,_tools,turn)=>{
+      calls++;
+      if(!turn)return recall();
+      assert.match(JSON.stringify(messages),/晚上十点以后不要使用会震动的设备/);
+      const receipt=messages.findLast(message=>message.role==='tool');assert.ok(receipt&&receipt.role==='tool');
+      const source=JSON.parse(receipt.content).synthesisSources[0];
+      return {...response(),text:JSON.stringify({kind:'synthesis',segments:[{basis:'evidence',text:'你早先限定书房隔音不拆墙，夜间不使用会震动的设备；拆墙只作比较，不表示同意。',citations:[{sourceId:source.sourceId,quote:source.text}]}]})};
+    }});
+    assert.equal(result.run.status,'succeeded');assert.equal(summaries,0);assert.equal(calls,2);
+    const steps=await withTenantTransaction(actor.enterpriseId,tx=>rows(tx,sql`select kind from app.assistant_run_steps where enterprise_id=${actor.enterpriseId} and run_id=${String(result.sent.runId)}`));
+    assert.equal(steps.filter(step=>step.kind==='agent_summary_context').length,0);
+  } finally {
+    await withTenantTransaction(actor.enterpriseId,tx=>tx.execute(sql`update app.assistant_enterprise_settings set agent_config=${JSON.stringify(before!.agent_config)}::jsonb,
+      policy_version=policy_version+1 where enterprise_id=${actor.enterpriseId}`));
   }
 });

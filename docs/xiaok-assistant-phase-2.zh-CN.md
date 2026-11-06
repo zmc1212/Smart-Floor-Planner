@@ -3,15 +3,21 @@
 <!-- xiaok-fastgpt-capabilities -->
 ## FastGPT阶段提醒与知识问答工作流（Limited）
 
-两个私有v4.17.4 advanced工作流仅通过XIAOK_FASTGPT_WORKFLOWS_FILE显式开发启用。阶段用FastGPT原生AI接原获权事件、校验、保存及私人投递；知识按回合用受保护HTTP回调执行一次原模型网关请求。工具、历史、KnowledgeRetriever/Evidence、来源、动作、计量和保存仍归原Agent，不增加第二自主Agent/事实库/会话或切换默认供应商，企业知识保持关闭。V2会重复原工具循环，故本次选工作流（[固定类型](https://github.com/labring/FastGPT/blob/v4.17.4/packages/global/core/app/constants.ts)、[V2定义](https://github.com/labring/FastGPT/blob/v4.17.4/packages/global/core/workflow/template/system/agent/index.ts)）。
+两个私有v4.17.4 advanced工作流仅通过XIAOK_FASTGPT_WORKFLOWS_FILE显式开发启用。阶段用原生AI接原获权事件、校验、保存及私人投递；知识以受保护HTTP回调包裹原模型网关回合。工具、历史、KnowledgeRetriever/Evidence、实时来源、业务动作、持久状态、计量和提交仍归原Agent。沿统一C01和原项目/私人会话，企业知识保持关闭，默认供应商及生产未切换。V2会重复原工具循环（[固定定义](https://github.com/labring/FastGPT/blob/v4.17.4/packages/global/core/workflow/template/system/agent/index.ts)）。
 
-已修边界：真实当前阶段只在原项目/最新事件守卫通过后交原校验，历史日周报不授权该字段；普通知识复用原唯一完整回答修复，替代增量编辑，原稿及事实/动作/来源校验仍保留；预检与派发共用原来源投影，不重复计Evidence正文；普通网页/历史读取沿原四次总预算预留一次修复，写动作不适用；原精确引用ID载体扩展到final工具/文本通道，原输出/ID/目录校验不变。采用完整结构化回答恢复方式，非另迁框架（[AgentNode固定源码](https://github.com/langchain-ai/langchainjs/blob/8103487c55784c5befd84c1bc803546f720f806e/libs/langchain/src/agents/nodes/AgentNode.ts)、[协议测试](https://github.com/langchain-ai/langchainjs/blob/8103487c55784c5befd84c1bc803546f720f806e/libs/langchain/src/agents/tests/responses.int.test.ts)、[历史恢复问题](https://github.com/langchain-ai/langchainjs/issues/9426)）；上游示例不证明Qwen回答质量，先前网页编码修复独立保留。
+保留修复：当前阶段仍须原项目/最新事件守卫；来源答复保留标准工具对/自然历史并以当前问题收尾，不再预先为普通历史选择占读取槽。普通新轮沿原四次循环，有剩余时仅完整修复一次；既有预留调度/写动作保留。额外第五次调用试验已撤回，不作为成功修复交付。未核域名提示报错或命中第三方时仍保留无域名目录候选，不赋官网/来源权限；只读选中原页，一个失败页不撤销其他已登记候选。既有八候选规划/最终移除导航覆盖无Evidence情形。公开历史只恢复已引完整原页，父hash/实时权限不变。完整reader页统一沿已有18KB总量，解除冲突12KB单页上限，旧HTML仍12KB；48KB输入、三查询/六读取、TLS/SSRF、额度和权限保留。
 
-阶段：水电/安装两份真实原生模型正文已保存私人投递，幂等及跨用户/租户拒绝通过。C01原阶段卡通过既有stageNote展示保存的通用建议。Stable重进、实际HTTP503反馈/恢复、旧事件不得新生成及项目撤权后清除旧建议通过；后续复用原正文为明确工程夹具，模型0次，不计新质量通过。正常换阶段保留已投递历史卡；service08错误要求历史报告消失的断言保留失败，service10按原合同修正。设计沿批准follow-up-v1屏02/共享状态，未改markup/样式/素材/导航或产品API。
+引用反馈、主张分析与展示复用同一resolver/catalog。合法句尾序号及本段已选、已解析目录原文对应的精确ID标记是元数据，不当工程量；任意/他源ID和真实量数不获豁免。provider包、回答检查点和来源原文保持原样，公开正文移除重复内部目录标记，沿既有引用块/原文sheet。普通Qwen仅最终答复复用具名final_response函数及应用结构/来源校验；无效返回原包按既有unknown/不重试规则私有留存。复用维护中的协议能力而非重写框架（[AgentNode](https://github.com/langchain-ai/langchainjs/blob/8103487c55784c5befd84c1bc803546f720f806e/libs/langchain/src/agents/nodes/AgentNode.ts)、[协议测试](https://github.com/langchain-ai/langchainjs/blob/8103487c55784c5befd84c1bc803546f720f806e/libs/langchain/src/agents/tests/responses.int.test.ts)、[工具内容/审计数据](https://reference.langchain.com/javascript/langchain-core/tools/ToolParams/responseFormat)）。
 
-知识完整旅程仍未通过。service07首组原生五答虽已保存，但官网查询只读第三方；问当前进度时，已实际读到获权水电阶段却重复前一刷墙回答，原provider稿已如此，非平台传输篡改。第二固定组第2轮终止：唯一修复仍带[1][2]，被原数值守卫视为无依据数值；保存稿仅删除该精确展示标记即可通过，归引用/工程数值表示混淆，不证明编造实际工程量。第二组3–5轮及原生跨项目切换未执行。停止修词/正则补丁和继续重采；下一判别检查先离线比较现有发现/读取路径和当前问句/来源视图，有新机制证据才重开验收。
+原阶段证据按原范围复用：水电/安装两份真实原生正文已保存私人投递，幂等/他客/跨租户拒绝通过；保存正文的Stable C01重进、实际503恢复、旧事件不得新生成、历史保留和项目撤权通过。设计仍为follow-up-v1屏02/共享状态及tab-context-v1，markup/样式/插画/导航/API/schema未改。最新生成正文标记投影仅零模型验证，未取得新的原生显示验收，不升级还原台账状态。
 
-[assessment](../tmp/fastgpt-capabilities-20261106/unblock/assessment.json)、semantic-diagnosis.json及service01–10保留全部首稿/修复/失败和纯驱动批。本次实际29次（阶段原生2/网关27），159091/6051输入/输出token逐条对原账；27份网关包与提前工作流观察相同，工程夹具不计调用或质量试验。金额未知。原接线6次22624/1238、报告22次21229/1693及旧403/429/3753unknown分别保留。各批源码/配置/发布流程漂移[]，本任务设置/用户/项目/绑定/隧道恢复，队列/待投递0。52定向、40客户端、先前相关兼容及lint通过；类型57继承/受影响0。未验企业RAG、真机、像素、全V1或生产。已证收益为阶段/报告编排和追踪；知识HTTP外包层未证明回答更好。
+完整知识旅程仍未通过。原service07五答虽保存，官网只读第三方，真实查到水电后仍重复刷墙回答，第二组又在[1][2]失败。续修journey01–08均保留原阻塞/unknown并停止：读取槽不足、错误/丢失域名提示、无关/超大页、读工具过早耗尽、导航泄入、无效provider帧、来源无据陈述及把目录ID数字当量数。journey06前三次原生发送/重进可用，10902复合回顾/建议仍漏答；最终源码的第二组、当前进度语义试验及原生官网引文/跨项目切换未执行，没有完整知识成功记录。
+
+保存稿判别不新增模型采样：原10828的[1][2]和10907两份原样目录标记稿现在可解析，额外7天仍拒绝，10905含来源不支持的涂刷/收尾陈述仍拒绝；原失败状态不变。完整官网单页在未变请求24704B/11051估算token内可容纳，真实官网目录/底漆原页可读，但不证明模型完整官网选源通过。当前搜狗实际resp.next_request AttributeError亦已记录（[上游问题](https://github.com/searxng/searxng/issues/6797)），未修且不表示现实无资料。证据tmp/fastgpt-knowledge-repair-20261106/的catalog-marker-replay.json、whole-page-discriminator.json、目录/产品探针及原失败hint-probe01分别保留。用户最新截图指出补丁/重跑循环，本轮停止新增实模并收拢；原两轮失败次数不因批名或离线通过清零。
+
+调用：续修58次=57次已记账305097输入/7796输出token（56份原网关包逐份匹配、1次直接历史选择），3222另有诊断2074/479且unknown未结，不重放。金额不可用，不记零。原unblock29/159091/6051、接线6/22624/1238、报告22/21229/1693及旧403/429/3753unknown分别保留；首稿、唯一修复、撤回试验、用量及全部失败不改写，夹具/零模型探针不计质量成功。已完成批源码/配置/流程无漂移，本任务资源/设置/夹具恢复，队列/待投递0。
+
+工程证据另列：62项定向单元/lint和真实惰性历史、来源/引文/他客拒绝在原记录范围通过；旧综合兼容14/42，首例改前基线同错，另27未逐项归因。类型57继承/受影响0；末次标记修复只有原稿/单元复核，没有新的完整服务/原生旅程。当前效果判断：阶段/报告编排和追踪有用，知识HTTP包裹层未证明回答质量提升，不足以支持替换主架构；完整知识、企业RAG、真机、像素、全V1及生产验收均未通过。
 <!-- /xiaok-fastgpt-capabilities -->
 
 <!-- xiaok-fastgpt-report-pilot -->

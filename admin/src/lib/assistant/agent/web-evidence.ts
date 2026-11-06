@@ -19,7 +19,7 @@ export function webSynthesisSources(evidence: Evidence[]): SynthesisSource[] {
 function pageValid(page: WebPage, snapshot: WebSearchSnapshot) {
   const base = typeof page.text === 'string' && typeof page.url === 'string'
     && typeof page.title === 'string' && typeof page.retrievedAt === 'string' && Number.isFinite(Date.parse(page.retrievedAt))
-    && page.textBytes === Buffer.byteLength(page.text) && page.textBytes <= 12000;
+    && page.textBytes === Buffer.byteLength(page.text) && page.textBytes <= (page.parser === publicReaderParser ? 18000 : 12000);
   if (!base) return false;
   if (page.parser === 'public-html-text-v1') return page.hash === fingerprint({ url: page.url, title: page.title, text: page.text, retrievedAt: page.retrievedAt });
   const { hash, ...original } = page;

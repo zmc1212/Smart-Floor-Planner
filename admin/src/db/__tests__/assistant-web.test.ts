@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { before, after, test } from 'node:test';
-import { randomUUID } from 'node:crypto';
+import { randomUUID,createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { one, rows } from '@/db/repositories/assistant-repository';
@@ -12,6 +12,8 @@ import { readMemory } from '@/lib/assistant/agent/memory';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 import { safeText, type ActorContext } from '@/lib/assistant/contracts';
 import type { ModelMessage, ModelTurnOutput } from '@/lib/assistant/contracts/model';
+import {minimalDialogueProtocol} from '@/lib/assistant/agent/minimal-dialogue';
+import {publicDocumentPages,publicReaderParser,type PublicReadDocument} from '@/lib/assistant/agent/public-research';
 
 const prefix = 'synthetic-web-evidence-' + randomUUID(), fixtures: Array<{ enterpriseId: string; userId: string; conversationId: string }> = [];
 let runId: string, citationId: string, searches = 0;
@@ -116,4 +118,49 @@ test('retention removal of the captured source invalidates the derived reply and
     where enterprise_id=${fixtures[0].enterpriseId} and run_id=${runId} and capability_name='web.search.v1'`));
   assert.equal((await chat().citation(citationId)).available, false);
   assert.ok((await chat().messages(fixtures[0].conversationId)).items.some(m => !m.available));
+});
+
+test('a failed single-page read keeps other registered candidates available inside four calls',async()=>{
+  const eid=fixtures[0].enterpriseId;
+  const before=await withTenantTransaction(eid,tx=>one(tx,sql`select agent_config from app.assistant_enterprise_settings where enterprise_id=${eid}`));
+  try{
+    await withTenantTransaction(eid,tx=>tx.execute(sql`update app.assistant_enterprise_settings set agent_config=${JSON.stringify({...before!.agent_config as object,providerKey:'dashscope',model:'qwen3.7-flash',probeVersion:minimalDialogueProtocol,enterpriseKnowledgeEnabled:false})}::jsonb,policy_version=policy_version+1 where enterprise_id=${eid}`));
+    const cid=String((await chat().create(randomUUID())).id);
+    const sent=await chat().send(cid,randomUUID(),{version:1,blocks:[{type:'text',text:'家里还住着人，旧墙掉粉想重新刷漆，有什么需要注意的？'}]});
+    const lease=await claimJob();assert.ok(lease);assert.equal(lease.runId,sent.runId);
+    let reads=0,calls=0;const at=new Date().toISOString();
+    const candidates=[0,1].map(index=>({id:`P${lease.runId}:1200:${index}`,url:`https://manufacturer.example/page${index}`,title:'合成厂家施工原文',parent:null,depth:0}));
+    await processAgentAnswer(lease,{
+      webSearch:async query=>({version:1,provider:'labelled-candidate-fixture',query,status:'ready',pages:[],failures:[],retrievedAt:at,candidates}),
+      webRead:async(query,selected)=>{
+        reads++;
+        if(selected.id===candidates[0].id)return{version:1,provider:'labelled-candidate-fixture',query,status:'unavailable',pages:[],failures:[{url:selected.url,code:'web_context_limit'}],retrievedAt:at,
+          candidates:Array.from({length:100},(_,index)=>({id:`P${lease.runId}:1210:${index}`,url:`https://manufacturer.example/nav${index}`,title:'未读导航链接'.repeat(30),parent:selected.url,depth:1}))};
+        assert.equal(selected.id,candidates[1].id);
+        const text='重新涂刷前先检查基层，清除疏松和掉粉的旧涂层，保持基面清洁干燥；施工期间应隔离生活区域并做好防尘保护。\n\n'+'合成完整原文条件。'.repeat(500),bytes=Buffer.from(text);
+        assert.ok(bytes.length>12000&&bytes.length<=18000);
+        const document:PublicReadDocument={version:1,url:selected.url,title:'合成厂家完整施工原文',parser:publicReaderParser,mediaType:'text/html',pages:[{page:1,text}],links:[],redirects:[],
+          original:{sha256:createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length,base64:bytes.toString('base64')},egress:'upstream-v0.9.2-resolve-and-pin-proxy',tlsVerification:true};
+        return{version:1,provider:'labelled-original-fixture',query,status:'ready',pages:publicDocumentPages(document,at),documents:[document],failures:[],retrievedAt:at};
+      },model:async(messages,tools,turnNumber)=>{
+        calls++;
+        if(turnNumber===0)return turn('search_web',{query:'旧墙掉粉 基层处理 居住防护',domains:[]});
+        if(turnNumber<3){
+          assert.ok(tools.some(tool=>tool.name==='read_web'),'A single failed candidate does not revoke the reader');
+          if(turnNumber===2){const failed=messages.filter(message=>message.role==='tool').map(message=>JSON.parse(message.content)).find(packet=>packet.failures?.some((failure:{code:string})=>failure.code==='web_context_limit'));
+            assert.ok(failed);assert.equal(failed.candidates.length,8);assert.equal(failed.navigation.candidateCount,100);assert.deepEqual(failed.synthesisSources,[]);}
+          return turn('read_web',{candidateId:candidates[turnNumber-1].id});
+        }
+        const source=sources(messages).find(source=>source.kind==='web')!;assert.ok(source);
+        return turn('final_response',{kind:'synthesis',segments:[{basis:'evidence',text:'重新涂刷前应检查基层并清除疏松掉粉的涂层，保持基面清洁干燥；施工时隔离生活区域并做好防尘保护。',citations:[{citationId:source.citationOptions[0].citationId}]}]});
+      },
+    });
+    assert.equal((await chat().run(String(sent.runId))).status,'succeeded');assert.equal(calls,4);assert.equal(reads,2);
+    const answer=(await chat().messages(cid)).items.find(message=>message.authorKind==='assistant')!;
+    assert.equal(answer.available,true);assert.equal(answer.citations.length,1);
+    assert.equal((await chat().citation(answer.citations[0].id)).available,true);
+    await assert.rejects(chat(fixtures[1]).citation(answer.citations[0].id),/assistant_resource_not_found/);
+  }finally{
+    await withTenantTransaction(eid,tx=>tx.execute(sql`update app.assistant_enterprise_settings set agent_config=${JSON.stringify(before!.agent_config)}::jsonb,policy_version=policy_version+1 where enterprise_id=${eid}`));
+  }
 });

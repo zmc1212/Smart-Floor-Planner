@@ -1,6 +1,6 @@
 import type { SynthesisSource } from './synthesis';
 import { fail, fingerprint } from '../contracts';
-import { proseNumberView } from './prose-number-view';
+import { proseNumberView, referenceMarkerText } from './prose-number-view';
 import { citedPdfPage } from './source-document';
 
 export const citationProtocolVersion = 'source-catalog-v1';
@@ -67,11 +67,24 @@ export function resolveCatalogCitation(citation: Record<string, unknown>, source
   return { sourceId: matches[0].sourceId, quote: matches[0].quote };
 }
 
+/** The same resolved catalog selections own feedback, numerical analysis and
+ * display markers. No ID is looked up outside the authorized source set. */
+export function selectedCatalogCitationIds(citations: Array<{sourceId:string;quote:string}>, sources: SynthesisSource[]) {
+  return [...new Set(citations.flatMap(citation=>{
+    const resolved=resolveCatalogCitation(citation as unknown as Record<string,unknown>,sources)||citation;
+    const source=sources.find(source=>source.sourceId===resolved.sourceId);
+    return source?sourceCitationCatalog(source).filter(option=>option.quote===resolved.quote).map(option=>option.citationId):[];
+  }))];
+}
+export function sourceReferenceText(text:string,citations:Array<{sourceId:string;quote:string}>,sources:SynthesisSource[]) {
+  return referenceMarkerText(text,selectedCatalogCitationIds(citations,sources));
+}
+
 /** Only an exact quoted filename, named edition or actual PDF page supported by a cited
  * source's typed trusted metadata is exempt from engineering-number matching.
  * Original prose still reaches commitment/scope guards. A bare number or a
  * quantity (including one glued to a document label) is never exempted. */
-export function engineeringClaimText(text: string, citedSources: SynthesisSource[]) {
+export function engineeringClaimText(text: string, citedSources: SynthesisSource[], citationCount = 0, citations:Array<{sourceId:string;quote:string}>=[]) {
   const aliases = new Map<string, { name: string; version: string }>();
   const filenames = new Set<string>();
   const pdfPages = new Set<number>();
@@ -96,7 +109,7 @@ export function engineeringClaimText(text: string, citedSources: SynthesisSource
       }
     }
   }
-  let result = proseNumberView(text);
+  let result = proseNumberView(sourceReferenceText(text,citations,citedSources), citationCount);
   for (const page of pdfPages) {
     // Coordinates describe this segment's cited original, not quantities in
     // its prose. Never trust a display label, another segment or a bare number.

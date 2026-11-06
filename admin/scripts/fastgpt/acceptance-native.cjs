@@ -59,6 +59,16 @@ module.exports=async({root,output,actor,questions,stage,assistantHttp,onQueued,o
    if(i===0)await capture('knowledge-input');await send.tap();
    await wait(async()=>{const d=await page.data();return !d.busy&&!d.generating&&!d.pendingSend&&!d.uncertainRun&&(d.messages||[]).some(m=>(m.content?.blocks||[]).some(b=>b.text===questions[i]))&&(d.messages||[]).filter(m=>m.authorKind==='assistant'||m.role==='assistant').length>count;},'real knowledge answer '+i);
    await capture('knowledge-turn-'+(i+1));evidence.checks.push({question:questions[i],sameConversation:actor.cid,realInputAndSend:true,passed:true});save();
+   if(i===3){
+    const d=await page.data(),answer=d.messages.filter(m=>m.authorKind==='assistant'||m.role==='assistant').at(-1);
+    const official=answer?.citations?.find(c=>c.available&&String(c.sourceUrl||c.sourceLocation||'').includes('nipponpaint.com.cn'));
+    const citationId=official?.id||answer?.citations?.find(c=>c.available)?.id;assert.ok(citationId,'Saved official answer must have a native citation entry');
+    const chip=await page.$('.citation-chip[data-id="'+citationId+'"]');assert.ok(chip);await chip.tap();
+    const citation=await wait(async()=>{const v=await page.data();return v.sheet==='citation'&&!v.citationLoading&&v.citation?.available?v.citation:null;},'original official citation');
+    assert.ok(new URL(citation.sourceUrl).hostname.endsWith('nipponpaint.com.cn'));assert.ok(citation.quote.length>4);await capture('knowledge-official-citation');
+    await evaluate('function(){getCurrentPages().at(-1).closeSheet();}');
+    evidence.checks.push({officialCitation:{id:citation.id,sourceUrl:citation.sourceUrl},actualTap:true,passed:true});save();
+   }
   }
   if(questions.length){page=await enterChat();await capture('knowledge-reentry');evidence.checks.push({persistedReentry:true,sameConversation:actor.cid,passed:true});}
   if(onSwitch){const next=await onSwitch();page=await enterChat(next.conversationId);assert.ok((await page.data()).messages.some(m=>m.id===next.messageId));await capture('knowledge-other-project');

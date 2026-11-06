@@ -7,7 +7,7 @@ import type { MaterialSource, MaterialSnapshot } from './materials';
 import type { IssueState, NeedIssueSnapshot } from '@/lib/construction/need-issues';
 import { reviewSynthesisResponse, synthesisComparisonRepairData, synthesisStatusCitationCandidates, unavailableOccupancyRooms, occupancyDiscussionRequested, occupancyReentryRequested, type SynthesisReviewContext } from './synthesis-review';
 import type { HistorySnapshot, HistoryRef } from './history';
-import { modelCitationCatalog, sourceCitationCatalog, resolveCatalogCitation, engineeringClaimText } from './citation-catalog';
+import { modelCitationCatalog, sourceCitationCatalog, resolveCatalogCitation, engineeringClaimText, selectedCatalogCitationIds } from './citation-catalog';
 import { withSynthesisRepairProtocol, synthesisRepairBase, finalAnswerRepairBase, isCatalogSynthesisDraft } from './synthesis-repair';
 import { formalBusinessResultKeys } from './formal-business-repair';
 import { originalAnswerOnly, independentAdviceRequested } from './read-tool-input';
@@ -44,7 +44,7 @@ export function unresolvedSynthesisConflict(sources: SynthesisSource[]) {
  * A bound repair instead ends with its fixed application task; the original
  * remains before the sources, never rewritten or persisted as a new turn.
  * Model context only: no new user message/run or second agent loop. */
-export function focusedSynthesisMessages(messages: ModelMessage[], triggerId: string, reportPlan?: SourceQuestionCoverage | null, preserveConversation = false): ModelMessage[] {
+export function focusedSynthesisMessages(messages: ModelMessage[], triggerId: string, reportPlan?: SourceQuestionCoverage | null, preserveConversation = false, finalOnly = false): ModelMessage[] {
   const repairBase = synthesisRepairBase(messages);
   const repairTask = repairBase?.businessSourceOnly ? '当前是同轮唯一一次正式状态恢复，仅提交business_repair、绑定原稿的baseHash及已列出的resultKey，由原服务展示权威状态及边界。不写text／edits／append，不生成完成声明，不调用业务工具；实时来源或权限失效仍拒绝。'
     : repairBase?.businessResultKeys?.length ? '当前是同轮唯一一次最终修正。可用synthesis_repair按原稿hash独立编辑；若已读取的权威正式业务快照足以回答当前问题，可用business_repair及baseHash、已有resultKey交给原服务展示，不写text／edits／append或新完成声明。不调用业务工具，全部实时来源与权限仍重验。'
@@ -61,7 +61,10 @@ export function focusedSynthesisMessages(messages: ModelMessage[], triggerId: st
   if (index < 0) fail('context_changed');
   if (preserveConversation) {
     const projected = synthesisModelMessages(messages);
-    return repairTask ? [...projected, { role: 'user', content: [{ type: 'text', text: repairTask }] }] : projected;
+    const last = projected.at(-1);
+    return repairTask ? last?.role === 'user' && last.content.length === 1 && last.content[0].type === 'text' && last.content[0].text === repairTask
+      ? projected : [...projected, { role: 'user', content: [{ type: 'text', text: repairTask }] }]
+      : finalOnly && projected.at(-1)?.role !== 'user' ? [...projected, messages[index]] : projected;
   }
   // Later control messages (for example the single format-repair feedback)
   // already belong to the post-trigger sequence. Keep their order, once only.
@@ -410,11 +413,7 @@ function numericSourceCandidates(numbers: string[], sources: SynthesisSource[]) 
 function selectedCitationContext(answer: SynthesisAnswer, sources: SynthesisSource[], segments: Set<number>) {
   return answer.segments.flatMap((segment, index) => {
     if (!segments.has(index)) return [];
-    const ids = segment.citations.flatMap(citation => {
-      const resolved = resolveCatalogCitation(citation as unknown as Record<string, unknown>, sources) || citation;
-      const source = sources.find(item => item.sourceId === resolved.sourceId);
-      return source ? sourceCitationCatalog(source).filter(option => option.quote === resolved.quote).map(option => option.citationId) : [];
-    });
+    const ids = selectedCatalogCitationIds(segment.citations,sources);
     return ids.length ? [{ path: `segments[${index}].citations`, selectedCitationIds: [...new Set(ids)] }] : [];
   });
 }
@@ -543,7 +542,7 @@ export function synthesisRepairIssue(raw:string,sources:SynthesisSource[],contex
     if(citationCorrections.length>4)throw error;
     const numericGaps=value.segments.flatMap((s,i)=>{
       const quoted=(s.citations||[]).map(c=>c.quote).join('\n'),numbers=new Set(quoted.match(/\d+(?:\.\d+)?/g)||[]);
-      const claimText=engineeringClaimText(s.text,sources.filter(source=>s.citations.some(c=>c.sourceId===source.sourceId)));
+      const claimText=engineeringClaimText(s.text,sources.filter(source=>s.citations.some(c=>c.sourceId===source.sourceId)),s.citations.length,s.citations);
       const unsupportedNumbers=[...new Set([...(claimText.match(/\d+(?:\.\d+)?/g)||[]).filter(n=>!numbers.has(n)),
         ...unsupportedWordQuantities(claimText, quoted)])];
       return unsupportedNumbers.length?[{segment:i+1,unsupportedNumbers}]:[];
@@ -770,7 +769,7 @@ function checkedSynthesis(raw: string, sources: SynthesisSource[], context: Synt
     // "24小时制" names a display notation, not a 24-hour deadline. Only an
     // exact authorized XLSX clock quote permits that name; all quantities and
     // the original unmodified prose still pass the existing commitment guards.
-    const claimText=engineeringClaimText(s.text,sources.filter(source=>s.citations.some(c=>c.sourceId===source.sourceId)));
+    const claimText=engineeringClaimText(s.text,sources.filter(source=>s.citations.some(c=>c.sourceId===source.sourceId)),s.citations.length,s.citations);
     const numericText = citedClock ? claimText.replace(/24\s*小时制/g, '') : claimText;
     try {
       const generalAdvice = context.generalKnowledge && s.basis === 'advice' && !s.citations.length;

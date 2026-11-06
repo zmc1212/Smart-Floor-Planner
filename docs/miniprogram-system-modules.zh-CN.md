@@ -1,9 +1,11 @@
 # 小程序当前功能清单
 
 <!-- xiaok-fastgpt-capabilities -->
-**FastGPT阶段/知识工作流：Limited，仅开发启用。** 沿C01 packages/assistant/chat/chat、原持久咨询/项目私人跟进、项目上下文及历史，不另建Agent入口/会话或客户端API。设计仍为design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/README.md及follow-up-v1屏02/共享状态。企业知识关闭时，保存的通用建议接到原内联stageNote字段；markup/样式/插画/导航不变。
+**FastGPT阶段/知识工作流：Limited，仅开发启用。** XIAOK_FASTGPT_WORKFLOWS_FILE选择两个私有v4.17.4流程；工具/历史、KnowledgeRetriever/Evidence、租户/来源检查、任务、真实回执和计量仍归原小K。保留统一C01及原持久会话，企业知识关闭，默认供应商/API/schema及生产未切。
 
-Stable390×844/SDK3.17.2（编码348×752）验证两阶段卡及重进、实际503反馈/恢复、正常换阶段保留历史、项目撤权后旧建议清除；后续用明确保存正文工程夹具，模型0次。原两份阶段正文已由FastGPT原生模型真实生成并沿原服务保存投递。知识未通过：首组原生五答已存但官网选源和当前进度相关性不合格，第二服务组第2轮失败，原生跨项目切换未验。企业知识仍关闭，权限/来源撤回/真实回执保留；[当前合同和原失败](xiaok-assistant-phase-2.zh-CN.md#fastgpt阶段提醒与知识问答工作流limited)。未作生产或真机声明。
+保留修复将已解析引用元数据与量数分离、以当前问题收尾、保留域名提示及无域名候选、选读整页、仅恢复已引公开原文，并在全失败时也限制导航。reader整页沿原18KB总量，48KB输入/四调用/三查询/六读取和实时权限保留；第五次调用试验已撤回，无效帧按unknown/不重试规则留私有原包。阶段真实正文/重进/503/撤权证据维持原通过范围。完整知识验收仍失败，官网选源和当前进度语义未过，不能凭保存或单元数推断；八个停止批58次含3222unknown全部保留，不新开实模批。见[当前合同](xiaok-assistant-phase-2.zh-CN.md#fastgpt阶段提醒与知识问答工作流limited)及tmp/fastgpt-knowledge-repair-20261106/。知识包裹层未证明回答改善，不足以支持替换主架构。
+
+客户端仍为packages/assistant/chat/chat，沿design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/README.md、follow-up-v1/共享状态及既有还原的引用chip/sheet，markup/样式/插画/导航不变。生成正文仅移除本段已选内部引用标记，来源原文/引用访问不变；末次序列化仅单元/保存稿复核，未取得新的Stable验收。原生390×844/SDK3.17.2（编码348×752）前三次发送/重进证据保留，复合回顾/建议漏答，官网引文/跨项目及最终当前阶段回答未验；不升级真机或还原台账状态。
 <!-- /xiaok-fastgpt-capabilities -->
 
 <!-- xiaok-fastgpt-report-pilot -->

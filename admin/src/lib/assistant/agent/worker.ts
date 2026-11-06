@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { bindNeedOriginals, legacyMinimalDialogueProtocol, minimalDialogueProtocol } from './minimal-dialogue';
+import { bindNeedOriginals, legacyMinimalDialogueProtocol, minimalDialogueProtocol, minimalFinalCarrier } from './minimal-dialogue';
 import { withTenantTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { executePostgresText } from '@/lib/ai/postgres-workflow-chat';
@@ -72,7 +72,7 @@ import { fitAgentContext, originalMessageId, agentRequestBudget, imageContextBud
 import { restoreAncestorSources, ancestorSourceMessages, publicOnlySynthesisContext } from './ancestor-sources';
 import { searchPublicResearch, parsePublicRead, publicResearchTools, publicDiscoveryQuery, type PublicCandidate, type PublicResearchState } from './public-research';
 import { projectSynthesisPolicy, modelPolicyProjectionVersion, synthesisQuestionPrefix } from './model-policy';
-import { citationProtocolVersion } from './citation-catalog';
+import { citationProtocolVersion, sourceReferenceText } from './citation-catalog';
 import { agentChatProtocolVersion } from '@/lib/ai/providers/agent-chat';
 import { historyTool, parseHistoryQuery, recallHistory, historyRefsAvailable, historySynthesisSources, reviewHistorySnapshot, type HistoryRef, type HistorySnapshot } from './history';
 import { historySummaryPolicy, historySummaryCapability, historySummaryStep, summaryInput, summaryRequest, selectedSummary, summaryTool, withHistorySummary } from './summary';
@@ -905,12 +905,13 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     if (review && reviewMode !== 'propose' && initial.messages[0]?.role === 'system' && !initial.resume)
       initial.messages[0].content.push({ type: 'text', text: reviewReplyOnlyContext(reviewMode) });
     const publicKnowledge = (!initial.knowledgeEnabled || sourceMode.naturalKnowledge) && (!!dependencies.webSearch || configuredWebProvider() !== null);
+    const publicResearch = !!initial.config.consultation || initial.minimalDialogue;
     const toolsForMessage = (businessFollowup: boolean) => {
       const readOnly = constructionReadOnlyTools(String(initial.conversation.purpose), initial.config.tools, reportQuestionPlanning, coordinationReferral, publicKnowledge);
       if (readOnly) return knowledgeTools(readOnly, initial.knowledgeEnabled);
       const base = knowledgeTools(publicResearchTools(readToolsForContext(agentToolsForMessage(reviewContext.currentQuestion,
         initial.config.tools, businessFollowup, !!dependencies.webSearch || configuredWebProvider() !== null,
-        initial.designerFollowup, ((initial.conversation.entry_snapshot as Row).materialShareProposal as Row | undefined)?.status === 'pending'), readContext), !!initial.config.consultation), initial.knowledgeEnabled);
+        initial.designerFollowup, ((initial.conversation.entry_snapshot as Row).materialShareProposal as Row | undefined)?.status === 'pending'), readContext), publicResearch, initial.minimalDialogue), initial.knowledgeEnabled);
       // fitAgentContext appends the final tool. An empty candidate list gives the
       // provider exactly one final_response and a named tool_choice.
       return review ? reviewMode !== 'propose' ? []
@@ -982,6 +983,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             }, profile, ...finalAllocation, ...(purpose === 'answer' ? { imageContextBudget } : {}),
             ...(nativeFinalization&&purpose==='answer'&&!tools.length?{wireProjection:imageFinalization ? nativeImageFinalMessages : nativeFinalMessages}:{}),
           });
+          const dialogueFinalCarrier = minimalFinalCarrier(initial.minimalDialogue && purpose === 'answer', initial.config, dispatchTools);
           const summaryRequestHash = purpose === 'summary' || purpose === 'grounding' ? fingerprint({ messages: modelMessages, tools: dispatchTools }) : null;
           const ownerScopeRequest = ownerReads ? fingerprint({ scope: ownerReads.ownerScope, tools: dispatchTools,
             ...(ownerArchiveBound ? { archiveAllowed, modelMessages } : {}),
@@ -999,6 +1001,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           const cached = await scoped(async tx => one(tx, sql`select status,private_checkpoint,input_summary from app.assistant_run_steps
             where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`));
           if (cached) {
+            if (((cached.input_summary as Row)?.dialogueFinalCarrier ?? undefined) !== dialogueFinalCarrier) fail('context_changed');
             if (((cached.input_summary as Row)?.reportFinalOutputTokens ?? undefined) !== finalAllocation.reportFinalOutputTokens) fail('context_changed');
             if (((cached.input_summary as Row)?.reportFinalCarrier ?? undefined) !== reportFinalCarrier) fail('context_changed');
             if (((cached.input_summary as Row)?.reportFinalSchema ?? undefined) !== reportFinalSchema) fail('context_changed');
@@ -1038,6 +1041,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                   reportFinalOutputTokens: finalAllocation.reportFinalOutputTokens ?? null, maxOutputTokens: limits.maxOutputTokens,
                   reportNativeFinal: (initial.run.policy_snapshot as Row).reportNativeFinal ?? null,
                   reportFinalCarrier: reportFinalCarrier ?? null,
+                  ...(dialogueFinalCarrier ? { dialogueFinalCarrier } : {}),
                   reportFinalSchema: reportFinalSchema ?? null,
                   ...(reportPlanningBinding ? { reportPlanningBinding } : {}),
                   ...(ownerScopeRequest ? { ownerScopeRequest } : {}),
@@ -1073,8 +1077,10 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             agent: { config: initial.config, input: { messages: modelMessages, tools: dispatchTools, maxTokens: limits.maxOutputTokens, requireTool: purpose !== 'vision',
               ...finalAllocation,
               ...(nativeFinalization&&purpose==='answer'&&!tools.length?{outputMode:finalOutputMode}:{}),
+              ...(dialogueFinalCarrier ? { outputMode: dialogueFinalCarrier } : {}),
               ...(profile ? { profile, deadlineAt } : {}) } },
             metadata: { promptVersion: agentPromptVersion, runtime: initial.config.runtime, turn, purpose, probeVersion: initial.config.probeVersion,
+              ...(dialogueFinalCarrier ? { dialogueFinalCarrier } : {}),
               ...(reportNativeFinal ? { reportNativeFinal: reportNativeFinalProtocol } : {}),
               ...(reportFinalCarrier ? { reportFinalCarrier } : {}),
               ...(reportFinalSchema ? { reportFinalSchema } : {}),
@@ -1093,7 +1099,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           })() : workflow ? await workflow.knowledge.dispatch({ enterpriseId: lease.enterpriseId, runId: lease.runId,
             conversationId: String(initial.conversation.id), turn, question: reviewContext.currentQuestion,
             model: initial.config.model, toolNames: dispatchTools.map(tool => tool.name),
-            requestHash: fingerprint({modelMessages,dispatchTools,limits,config:initial.config}) }, {authorize}, async () => {
+            requestHash: fingerprint({modelMessages,dispatchTools,limits,config:initial.config,...(dialogueFinalCarrier ? {outputMode:dialogueFinalCarrier} : {})}) }, {authorize}, async () => {
               const packet = await executeProvider(); outcomeKnown = true;
               if (packet.agentOutput) await recordAgentModelUsage(lease.enterpriseId,lease.runId,turn,packet,async tx=>{
                 await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary,private_checkpoint,provider_attempt_id)
@@ -1160,9 +1166,12 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     // inherit a prior memory revision or reinterpret history as authorization.
     const summaryWrites = ['record_need','request_designer','record_reference_preference','prepare_material_share','revoke_material_share', ...reviewDefinitions.map(tool => tool.name)];
     const initialTools = toolsForMessage(false);
+    // Ordinary chat already fits complete recent turns and can recall original
+    // history on demand. An optional selector must not consume a needed slot
+    // before the existing discovery/read/final sequence within four calls.
     if (!initial.resume && initial.savedSummary?.status === 'succeeded') {
       initial.messages = withHistorySummary(initial.messages, initial.savedSummary.private_checkpoint as HistorySnapshot);
-    } else if (!initial.resume && !initial.savedSummary && initial.config.tools && !currentMessageOnlyRequested(reviewContext.currentQuestion) && !independentAdviceRequested(reviewContext.currentQuestion) && (!dependencies.model || dependencies.summary)
+    } else if (!initial.minimalDialogue && !initial.resume && !initial.savedSummary && initial.config.tools && !currentMessageOnlyRequested(reviewContext.currentQuestion) && !independentAdviceRequested(reviewContext.currentQuestion) && (!dependencies.model || dependencies.summary)
       && !initialTools.some(t => summaryWrites.includes(t.name))) {
       const bounded = fitAgentContext(projectSynthesisPolicy(synthesisModelMessages(initial.messages)), [...initialTools, finalTool], { profile: initial.config.consultation?.profile, imageContextBudget });
       const first = bounded.messages.map(originalMessageId).find(Boolean);
@@ -1605,7 +1614,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           }
           if (name === 'search_web' || name === 'read_web') {
             const reading = name === 'read_web';
-            if (reading && !initial.config.consultation) fail('assistant_capability_forbidden',403);
+            if (reading && !publicResearch) fail('assistant_capability_forbidden',403);
             let selected: PublicCandidate | undefined;
             let sourceSnapshot: WebSearchSnapshot | undefined;
             if (reading) {
@@ -1623,9 +1632,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                 and capability_name in ('web.search.v1','web.read.v1') and status='succeeded' and step_seq<${sequence} order by step_seq desc limit 1`));
             const priorSnapshot = prior?.private_checkpoint as WebSearchSnapshot | undefined;
             const discovery = !reading ? publicDiscoveryQuery(parseWebQuery(input),reviewContext.currentQuestion,
-              [...(priorSnapshot?.candidates||[]).map(candidate=>candidate.url),...(priorSnapshot?.pages||[]).map(page=>page.url)]) : null;
+              [...(priorSnapshot?.candidates||[]).map(candidate=>candidate.url),...(priorSnapshot?.pages||[]).map(page=>page.url)], initial.minimalDialogue) : null;
             const query = reading ? parseWebQuery(sourceSnapshot!.query) : discovery?.query || parseWebQuery(input);
-            const queryHash = fingerprint(reading ? {query,candidateId:selected!.id} : query);
+            const queryHash = fingerprint(reading ? {query,candidateId:selected!.id} : discovery?.searchHint ? {query,searchHint:discovery.searchHint} : query);
             const capability = reading ? 'web.read.v1' : 'web.search.v1';
             const cached = await scoped(async tx => one(tx, sql`select status,private_checkpoint,input_summary from app.assistant_run_steps
               where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`));
@@ -1633,7 +1642,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             if (cached && (cached.input_summary as Row)?.queryHash !== queryHash) fail('context_changed');
             const previous = await scoped(async tx => one(tx, sql`select count(*)::int n from app.assistant_run_steps
               where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and capability_name='web.search.v1' and step_seq<>${sequence}`));
-            const maxQueries = initial.config.consultation ? 3 : 2;
+            const maxQueries = publicResearch ? 3 : 2;
             if (!cached && !reading && Number(previous?.n) >= maxQueries) return { exhausted: true, content: JSON.stringify({ webStatus: 'limit', synthesisSources: [], instructions: '本轮联网查询已达上限。使用已有获权来源解释，不再查询，不编造搜索结果。' }) };
             if (!cached) await scoped(async tx => tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,input_summary)
               values(${lease.enterpriseId},${lease.runId},${sequence},'retrieval',${capability},1,'running',${JSON.stringify({ queryHash, ...(discovery?{discoveryScope:discovery.scope}:{}), ...(selected?{candidateId:selected.id}: {}) })}::jsonb)`));
@@ -1641,8 +1650,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             const alternatives = sourceSnapshot?.candidates;
             const snapshot = cached ? cached.private_checkpoint as WebSearchSnapshot : reading && dependencies.webRead ? await dependencies.webRead(query,selected!,state,sequence,alternatives)
               : !reading && dependencies.webSearch ? await dependencies.webSearch(query)
-              : initial.config.consultation ? await searchPublicResearch(query, undefined, undefined,
-                state, initial.consultationDeadlineAt, {runId:lease.runId,sequence,...(reading?{selected,alternatives}: {discoverOnly:true})}) : await searchWeb(query);
+              : publicResearch ? await searchPublicResearch(query, undefined, undefined,
+                state, initial.consultationDeadlineAt, {runId:lease.runId,sequence,explicitSelection:initial.minimalDialogue,
+                  ...(reading?{selected,alternatives}: {discoverOnly:true,searchHint:discovery?.searchHint})}) : await searchWeb(query);
             if (snapshot.version !== 1 || fingerprint(snapshot.query) !== fingerprint(query)) fail('context_changed');
             const evidence = webEvidence(snapshot, lease.runId, sequence);
             await scoped(async tx => {
@@ -1652,7 +1662,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               await tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,operation_key,category,quantity,measurement_kind)
                 values(${lease.enterpriseId},${lease.runId},${'agent-web:'+resultKey},${reading?'web_read':'web_search'},1,'observed') on conflict do nothing`);
             });
-            return { exhausted: (!initial.config.consultation || reading) && snapshot.status !== 'ready' || !reading && Number(previous?.n) >= maxQueries - 1
+            return { exhausted: (!publicResearch || reading && !initial.minimalDialogue) && snapshot.status !== 'ready' || !reading && Number(previous?.n) >= maxQueries - 1
                 || !!snapshot.research && (snapshot.research.reads >= 6 || !reading && snapshot.research.queries.length >= 3 || Date.now() - Date.parse(snapshot.research.startedAt) >= 60000), content: JSON.stringify({
               webStatus: snapshot.status, provider: snapshot.provider, retrievedAt: snapshot.retrievedAt,
               ...(discovery?{discoveryScope:discovery.scope}:{}),
@@ -2000,9 +2010,10 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           purpose: 'agent.reply', content: { version: 1, blocks } });
         const saved = new Map<string, string>(), projectTitles = new Set<string>();
         for (const segment of answer.segments) {
+          const displayText = sourceReferenceText(segment.text,segment.citations,evidence.sources);
           const label = (coordinationReferral || siteObservationReferral) && segment.text === reportCoordinationText ? ''
             : segment.basis === 'advice' ? '一般建议：' : segment.basis === 'uncertainty' ? '待核实：' : '';
-          blocks.push({ type: 'text', text: label && !segment.text.startsWith(label) ? label + segment.text : segment.text });
+          blocks.push({ type: 'text', text: label && !displayText.startsWith(label) ? label + displayText : displayText });
           for (const citation of segment.citations) {
             const source = evidence.sources.find(s => s.sourceId === citation.sourceId)!;
             if (source.kind === 'web') {

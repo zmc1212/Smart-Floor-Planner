@@ -46,11 +46,16 @@ export function compileModelRequest(input: {
   const adviceScoped = purpose === 'answer' && input.reportPlan === undefined && !messageScoped && independentAdviceRequested(question);
   const homeView = input.homeSourceView && purpose === 'answer' && !messageScoped && !adviceScoped
     ? projectHomeSourceView(messages, triggerId, input.homeSourceView) : messages;
-  const focused = messageScoped ? currentMessageView(messages, triggerId, question)
+  let focused = messageScoped ? currentMessageView(messages, triggerId, question)
     : adviceScoped ? independentAdviceView(messages, triggerId, question)
     : (turn > 0 || input.profile || difyDialogue) && purpose === 'answer' ? focusedSynthesisMessages(homeView, triggerId, input.reportPlan, minimalDialogue) : homeView;
   let dispatchTools = purpose === 'vision' ? [] : purpose === 'summary' || purpose === 'grounding' ? tools
     : input.toolsForTurn(question, focused, tools, triggerId);
+  // Keep natural history, but use the existing current-question tail for a
+  // final-only source answer. Old restored pages cannot become the last task.
+  // Planning/action turns stay in order; a bound repair retains its own task.
+  if (minimalDialogue && dispatchTools.length === 1 && dispatchTools[0].name === 'final_response')
+    focused = focusedSynthesisMessages(focused, triggerId, input.reportPlan, true, true);
   // Final-only providers use this tool as a JSON schema even on the ordinary
   // path. Reuse the existing kind-specific contract so synthesis requires its
   // segments before generation, just as the application parser requires them.
@@ -89,8 +94,8 @@ export function compileModelRequest(input: {
   }
   const policyView = purpose === 'answer' ? projectSynthesisPolicy(policyInput,Boolean(excerptMode),explanationMode
     ? input.naturalKnowledge ? naturalKnowledgeInstructions : knowledgeExplanationInstructions : reportMode?reportCoverageInstructions:undefined) : focused;
-  const contentView = publicSourceProtocol ? projectConsultationModelView(policyView, dispatchTools, publicContract,
-    { preservePolicy: true, budget: { profile: input.profile, purpose, imageContextBudget: input.imageContextBudget,
+  const contentView = publicSourceProtocol || minimalDialogue ? projectConsultationModelView(policyView, dispatchTools, publicContract,
+    { preservePolicy: true, navigationOnly: !publicSourceProtocol, budget: { profile: input.profile, purpose, imageContextBudget: input.imageContextBudget,
       reportFinalOutputTokens: input.reportFinalOutputTokens } }) : input.profile && purpose === 'answer' ? projectConsultationModelView(policyView, dispatchTools) : policyView;
   const excerptView=excerptMode?sourceExcerptModelView(contentView):contentView;
   if (excerptMode && input.sourceQuestionCoverage) excerptView.push({ role: 'system', content: [{ type: 'text', text: sourceQuestionCoverageInstructions }] });

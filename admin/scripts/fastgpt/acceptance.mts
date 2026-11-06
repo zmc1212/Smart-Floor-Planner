@@ -56,6 +56,17 @@ const report:any={status:'running',passed:false,enterpriseId:eid,target:'55432/x
   stage:[],trials:[],newRepairIterations:process.argv.includes('--capability-repair')?2:process.argv.includes('--encoding-repair')?1:0,
   ...(process.argv.includes('--capability-repair')?{repairIterationByDomain:{stage:1,knowledge:2,webSource:1},changedMechanism:'Revalidated stage authority reaches the existing scope validator; ordinary model-knowledge uses one complete final-response repair; first drafts/source guards unchanged.'}:{}),
   retainedFailures:'../fastgpt-report-pilot-20261106 and original dialogue evidence; not reopened or relabelled'};
+if(process.argv.includes('--knowledge-mechanism-repair'))report.knowledgeMechanism={
+  retainedFailedRepairIterations:2,
+  changedMechanism:'Validated reference ordinals and selected catalog-marker namespace; current-question tail; no proactive history selector; domain hints without suppressing broader discovery; explicit single-original reads; actually cited whole public originals restored; original four-call loop and one final repair when a call remains; failed reads keep other registered candidates; ordinary final-only replies reuse the named final_response function carrier and unchanged application schema/citation validation.',
+  retainedMechanismFailure:'journey01/10844 lost its read slot; journey02/10849 lost a correct domain hint, expanded into unrelated pages and exceeded input; journey03/10851 selected another valid candidate after a large page but the old reader-exhaustion flag rejected it. All remain failed. Zero-model input/source comparisons plus a real four-call failure-to-next-candidate service regression justify this mechanism change without increasing quota/input limits.',
+  retainedUnknown:'journey04/10897 attempt3222 returned malformed function arguments despite JSON-Schema-only dispatch. Provider diagnostic/requestId/2074 input and479 output tokens retained; status remains unknown, not settled or replayed. Existing function carrier is a new transport mechanism, not a repair of that original attempt.',
+  navigationBoundary:'journey05/10898 retained two unread oversized-page failures but116 navigation links leaked into its final-only input before any Evidence existed. Saved zero-model comparison:42768 bytes/17072 estimated tokens to7770/5406, failure receipts and private checkpoint unchanged. Reuse the original eight-candidate planning frontier and remove unused final navigation even when no source could be read; no original is clipped or quota increased.',
+  hintBoundary:'journey06/10903 guessed the wrong niigao.com and then1688.com; a hint error bypassed fallback and a third-party hit erased broader discovery. The current service preserves actual unconstrained directory candidates after either condition. The real Sogou AttributeError remains; actual directory/product reads and saved12472-byte full-original replay prove an existing18KB total source allowance is sufficient, without adding primary calls or enlarging48KB input. Prior failures and unknown3222 are not reset.',
+  withdrawnRepairExperiment:'journey08 used one fifth terminal repair within the original hold but still failed. It repeated the same catalog-ID markers whose digits were misclassified as quantities. The added-call experiment is withdrawn; its five actual attempts, first draft and sole repair remain failed in evidence. Current runtime retains four calls.',
+  stoppedForConsolidation:'After journey01–08 no new real-model batch is scheduled. Saved10907 drafts now parse unchanged through the existing selected catalog resolver; adding7days still fails and10905 remains rejected. This zero-model discriminator is engineering evidence, not a whole semantic/native journey. Official selection and current-progress acceptance remain incomplete; the user screenshot called out the repeated patch/retest loop.',
+  qualityAcceptance:'Both fixed five-turn journeys, actual manufacturer original/citation, current stage relevance, original C01 sends/reentry/project switch and actual503 recovery. First blocking failure or unknown stops this batch.',
+};
 if(stageFixtureDir)report.stageAdviceFixture={sourceDirectory:path.relative(root,stageFixtureDir),sourceRunIds:stageFixtureModels.map(m=>m.sourceRunId),newStageModelCalls:0,purpose:'Engineering reuse of both already successful natural native-stage drafts for client binding/reentry; no new semantic stage trial or duplicated provider usage.'};
 if(process.argv.includes('--context-repair'))report.contextPreflightRepair={iteration:1,previousFailure:'10797 agent_input_limit before any model dispatch',change:'Summary preflight reuses the existing dispatch source projection; no source clipping, token-limit increase or new prompt.'};
 if(process.argv.includes('--read-repair-reserve'))report.finalRepairReserve={iteration:1,previousFailure:'10802 used all four primary slots, so its final validation never dispatched a repair',change:'Existing four-call read budget includes ordinary web/history reads: up to three primary calls plus its existing sole final repair; total/model limits unchanged, writes excluded.'};
@@ -69,7 +80,12 @@ visit(path.join(root,'miniprogram/packages/assistant/chat/chat-definition.js'));
 for(const name of fs.readdirSync(path.join(root,'miniprogram/packages/assistant/chat')).filter(n=>/\.(wxml|less|json)$/.test(n)))sourceFiles.add(path.join(root,'miniprogram/packages/assistant/chat',name));
 if(stageFixtureDir)for(const name of ['report.json','workflow-attempts.jsonl'])sourceFiles.add(path.join(stageFixtureDir,name));
 for(const p of [fileURLToPath(import.meta.url),'scripts/fastgpt/platform.mjs','scripts/fastgpt/capabilities.mjs','scripts/fastgpt/acceptance-native.cjs','scripts/assistant-acceptance-safety.mjs','package.json','package-lock.json','tsconfig.json','.env.local',runtimeFile,path.join(folder,'platform.json'),path.join(root,'tmp/xiaok-vector/connection.private.json'),
- '../miniprogram/packages/assistant/chat/chat-definition.js','../miniprogram/packages/assistant/chat/chat.wxml','../miniprogram/packages/assistant/chat/chat.less','../miniprogram/utils/assistant.js','../miniprogram/utils/assistant-followups.js']){const full=path.resolve(p);if(fs.existsSync(full))sourceFiles.add(full);}
+ '../miniprogram/packages/assistant/chat/chat-definition.js','../miniprogram/packages/assistant/chat/chat.wxml','../miniprogram/packages/assistant/chat/chat.less','../miniprogram/utils/assistant.js','../miniprogram/utils/assistant-followups.js',
+ '../scripts/assistant-public-reader.py','../scripts/openwebui-comparison/upstream.manifest.json','../scripts/openwebui-comparison/egress_proxy_server.py',
+ '../tmp/fastgpt-knowledge-repair-20261106/run.mts','../tmp/fastgpt-knowledge-repair-20261106/resources.mjs',
+ '../tmp/fastgpt-knowledge-repair-20261106/reader-requirements-lock.txt',
+ 'src/lib/assistant/__tests__/public-selection.test.ts','src/lib/assistant/__tests__/knowledge-dialogue-boundaries.test.ts',
+ 'src/lib/assistant/__tests__/home-source-budget.test.ts','src/db/__tests__/assistant-history.test.ts']){const full=path.resolve(p);if(fs.existsSync(full))sourceFiles.add(full);}
 const binding=()=>Object.fromEntries([...sourceFiles].sort().map(p=>[path.relative(root,p).replaceAll('\\','/'),createHash('sha256').update(fs.readFileSync(p)).digest('hex')]));
 const snapshot=async()=>({knowledge:await workflowSnapshot({...configuration,appId:configuration.knowledgeAppId}),stage:await workflowSnapshot({...configuration,appId:configuration.stageAppId})});
 const counts=()=>platform(async(tx:any)=>({provider:Number((await one(tx,sql`select count(*)::int n from app.ai_provider_attempts`)).n),queue:Number((await one(tx,sql`select count(*)::int n from app.assistant_jobs where status in ('queued','running')`)).n),pending:Number((await one(tx,sql`select count(*)::int n from app.construction_report_deliveries where state in ('pending','held')`)).n)}));
@@ -92,13 +108,26 @@ async function consume(question:string,runId:string,cid:string){
  item.status=original.run.status;item.error=original.run.error_code;save();assert.equal(original.run.status,'succeeded',original.run.error_code);
  const messages=await new ConversationService(chatActor(users[0])).messages(cid);const answer=messages.items.find((m:any)=>String(m.id)===String(original.run.output_message_id));assert.ok(answer);
  item.messageId=String(answer.id);item.answer=safeText(answer.content);item.citations=answer.citations||[];
+ item.citationReadback=[];
+ for(const citation of item.citations){
+  const opened=await new ConversationService(chatActor(users[0])).citation(String(citation.id),false,cid);assert.equal(opened.available,true);
+  await assert.rejects(()=>new ConversationService(chatActor(users[1])).citation(String(citation.id),false,cid));
+  await assert.rejects(()=>new ConversationService({...chatActor(users[0]),enterpriseId:'2385'}).citation(String(citation.id),false,cid));
+  item.citationReadback.push({id:opened.id,available:opened.available,sourceUrl:opened.sourceUrl,quote:opened.quote});
+ }
  assert.ok(item.answer.length>5);assert.equal(original.run.policy_snapshot.knowledgePolicy.enabled,false);
  if(question===questions[2]){assert.match(item.answer,/卧室/);assert.match(item.answer,/住|居住|老房/);}
- if(question===questions[3])assert.ok(original.steps.some((s:any)=>s.kind==='retrieval'&&s.status==='succeeded'&&s.private_checkpoint?.status==='ready'&&s.private_checkpoint?.pages?.length),'The requested web lookup must actually read an original page');
+ if(question===questions[3]){
+  const pages=original.steps.filter((s:any)=>s.kind==='retrieval'&&s.status==='succeeded').flatMap((s:any)=>s.private_checkpoint?.pages||[]);
+  assert.ok(pages.some((p:any)=>new URL(p.url).hostname==='www.nipponpaint.com.cn'||new URL(p.url).hostname==='nipponpaint.com.cn'),'Manufacturer lookup must read the actual official original, not a third party');
+  assert.ok(item.citationReadback.some((c:any)=>c.sourceUrl&&new URL(c.sourceUrl).hostname.endsWith('nipponpaint.com.cn')),'The saved answer must expose a readable official citation');
+ }
  if(question===questions[4]){const business=original.steps.filter((s:any)=>s.capability_name==='query_business'&&s.status==='succeeded');assert.ok(business.length,'Current progress requires a real authorized business read');
   const expected=projects[activeJourney.trial-1],other=projects[activeJourney.trial===1?1:0];
   assert.ok(business.some((s:any)=>JSON.stringify(s.private_checkpoint).includes('"projectId":"'+expected+'"')||JSON.stringify(s.private_checkpoint).includes('"id":"'+expected+'"')));
-  assert.ok(!business.some((s:any)=>JSON.stringify(s.private_checkpoint).includes('"projectId":"'+other+'"')));}
+  assert.ok(!business.some((s:any)=>JSON.stringify(s.private_checkpoint).includes('"projectId":"'+other+'"')));
+  assert.match(item.answer,activeJourney.trial===1?/水电/:/安装/,'The actual answer must address the current authorized stage');
+  assert.notEqual(item.answer,activeJourney.turns.at(-2)?.answer,'A new project-stage question must not repeat the painting answer');}
  const detail=await new ConversationService(chatActor(users[0])).detail(cid);assert.equal(String(detail.id),cid);save();return item;
 }
 async function correctStage(){
