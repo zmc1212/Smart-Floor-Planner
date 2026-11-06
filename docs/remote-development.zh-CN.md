@@ -1,5 +1,9 @@
 # 远端开发连接记录
 
+<!-- xiaok-fastgpt-capabilities -->
+**阶段/知识开发工作流：Limited。** 同一隔离FastGPT实例已有两个私有`advanced`应用，由`admin/scripts/fastgpt/setup-capabilities.mts`通过有效API key创建，无须重置root密码或新建环境。本机保护配置为`tmp/fastgpt-capabilities-20261106/runtime.private.json`。仅为本任务Worker显式设置`XIAOK_FASTGPT_WORKFLOWS_FILE`，留空沿原路径；知识调用原模型回调，阶段用已配置的FastGPT原生模型。`knowledge-input/knowledge-turn/knowledge-result`及报告回调仅在本任务回环18310桥运行，须短期票据和原权限守卫；复用原18300转发，临时反向18310在清理时关闭。仅55432/微云1454合成数据，恢复设置/账号/队列并核对前后实际发布版本。原生连通/用量已有证据，阶段/知识回答发布仍被原校验失败阻断，见[当前能力合同](xiaok-assistant-phase-2.zh-CN.md#fastgpt阶段提醒与知识问答工作流limited)。未迁业务容器/数据库，未新增生产切换、真实客户或外部投递权限。
+<!-- /xiaok-fastgpt-capabilities -->
+
 <!-- xiaok-fastgpt-report-pilot -->
 ## FastGPT报告工作流开发实例（Limited）
 

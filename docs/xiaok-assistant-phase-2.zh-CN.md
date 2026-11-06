@@ -1,5 +1,19 @@
 # 小K第二期：需求整理与人工交接
 
+<!-- xiaok-fastgpt-capabilities -->
+## FastGPT阶段提醒与知识问答工作流（Limited）
+
+已配置两个私有v4.17.4 `advanced`工作流。阶段用原生AI接原获权事件/事实/正文/投递服务；知识按回合用HTTP调用原模型网关，原Agent仍负责消息、原生工具、历史、KnowledgeRetriever/Evidence、来源与保存，并非替换为第二个自主Agent。仅`XIAOK_FASTGPT_WORKFLOWS_FILE`显式开发启用；图片/咨询绑定调用沿原模型路径。沿原C01及咨询/私人跟进边界，企业知识默认关闭；无产品路由/表/UI变更或生产启用。
+
+采用依据：[固定版本应用类型](https://github.com/labring/FastGPT/blob/v4.17.4/packages/global/core/app/constants.ts)、[V2自主工具循环定义](https://github.com/labring/FastGPT/blob/v4.17.4/packages/global/core/workflow/template/system/agent/index.ts)。本次工作流保留现有网关/权限合同，收益是编排和配置，未证明回答质量提升。回调绑定请求哈希、原守卫、单次provider调用及服务端原结果回执；不能由平台回复编造结果或重放模型。最终平台回执前，原run私人观察及原唯一用量操作保留真实输出与计量。
+
+当前证据：[assessment](../tmp/fastgpt-capabilities-20261106/assessment.json)及trial01/knowledge01–03原trace/原生截图。阶段10784的“当前阶段为水电（utilities）”被判未获引用的现场断言，`misattributed_project_status`→回调422→`native_schema_unverified`。知识10785未获引文支持的涂刷遍数被拒；独立字节解码修复后，10786原有唯一修复同时`remove=true`和修改正文/引用，违背原编辑协议，最终`invalid_model_answer`。预期为自然、有适当依据的基层处理建议，实际发布提醒/知识回答均0；其余固定问句、第二组完整旅程及正常保存/投递/更正、项目切换/重进均未派发。Knowledge01另保留为驱动就绪失败/模型0次，不记模型结果。
+
+共6次已知模型调用（阶段原生1、原网关5），22624/1238输入/输出token与原账逐次一致，金额未知、新unknown0。原生390×844/SDK3.17.2真实输入与原失败反馈已核看，编码348×752。各批前后实际发布流程/代码/配置漂移`[]`；本任务设置/用户/项目/绑定/隧道已清理，队列/待投递0。113项相关快速检查及lint通过；类型57继承/受影响0。无新增真机、企业知识、像素、全V1或生产验收。
+
+PChouse声明`gb2312`却按UTF-8读取的源码缺陷，已用[jsdom标准探测](https://github.com/jsdom/html-encoding-sniffer/tree/v4.0.0)及原生TextDecoder在提取/哈希前修复；同一保存字节及原DNS真实读取均恢复中文，BOM/HTTP/meta优先级、UTF-8默认和失败回执通过。4.0.0保留现有Node支持范围，旧原文不改写；该修复并非回答失败的唯一原因。剩余阻断归原Agent回答范围/最终编辑协议，非FastGPT传输或KnowledgeRetriever。共同机制是套回原回合仍保留旧输出负担；工作流原始观察与原provider输出逐项相同。下一检查复用保存引文和编辑schema核对，先证明不同输出机制的必要性；未追加修词/正则/校验补丁或继续重采，旧问答失败和停止批仍保留。
+<!-- /xiaok-fastgpt-capabilities -->
+
 <!-- xiaok-fastgpt-report-pilot -->
 ## FastGPT四端日报/周报开发试点（Limited）
 

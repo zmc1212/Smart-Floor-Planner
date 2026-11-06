@@ -1,5 +1,9 @@
 # Remote Development Connection Record
 
+<!-- xiaok-fastgpt-capabilities -->
+**Stage/knowledge development workflows: Limited.** The same isolated FastGPT instance now has two private `advanced` apps created by `admin/scripts/fastgpt/setup-capabilities.mts` through its valid API key; no root-password reset or new environment is required. The protected local configuration is `tmp/fastgpt-capabilities-20261106/runtime.private.json`. Set `XIAOK_FASTGPT_WORKFLOWS_FILE` explicitly for the owned development Worker; blank retains original behavior. Knowledge uses original-model callbacks, stage uses the configured native FastGPT model. Internal `knowledge-input/knowledge-turn/knowledge-result` and report callbacks exist only on the owned loopback18310 bridge with short-lived guarded tickets; the existing18300 forward is reused and the temporary reverse18310 tunnel is closed in cleanup. Tests target synthetic Weiyun1454 on55432, restore settings/accounts/queues and verify actual published workflows before/after. Native connectivity and usage are evidenced, while stage/knowledge answer publication remains blocked by retained original validation failures. See the [current capability contract](xiaok-assistant-phase-2.md#fastgpt-stage-and-knowledge-workflows-limited). No business-container/database move, production switch, real-customer or external-message permission is added.
+<!-- /xiaok-fastgpt-capabilities -->
+
 <!-- xiaok-fastgpt-report-pilot -->
 ## FastGPT report workflow development instance (Limited)
 

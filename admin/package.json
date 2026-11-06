@@ -87,6 +87,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "drizzle-orm": "^0.45.2",
+    "html-encoding-sniffer": "4.0.0",
     "jose": "^6.2.2",
     "jsqr": "^1.4.0",
     "linkedom": "0.18.14",
@@ -120,6 +121,7 @@
   "devDependencies": {
     "@dxfjs/parser": "0.3.2",
     "@tailwindcss/postcss": "^4",
+    "@types/html-encoding-sniffer": "3.0.2",
     "@types/node": "^20",
     "@types/pg": "^8.20.0",
     "@types/qrcode": "^1.5.6",

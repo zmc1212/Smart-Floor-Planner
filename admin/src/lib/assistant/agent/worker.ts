@@ -3,6 +3,8 @@ import { bindNeedOriginals, legacyMinimalDialogueProtocol, minimalDialogueProtoc
 import { withTenantTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { executePostgresText } from '@/lib/ai/postgres-workflow-chat';
+import { fastGPTWorkflows } from '../fastgpt/runtime';
+import { recordAgentModelUsage } from '../core/model-usage';
 import { AiProviderError } from '@/lib/ai/provider-types';
 import { agentRejectionAudited, isDefiniteAgentRejection } from './provider-rejection';
 import { AssistantError, fail, fingerprint, safeText, type Evidence } from '../contracts';
@@ -1066,12 +1068,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             throw error;
           } outcomeKnown = false; };
           const injected = purpose === 'vision' ? dependencies.vision : purpose === 'summary' ? dependencies.summary : dependencies.model;
-          const output = injected ? await (async () => {
-            await beforeProviderCall();
-            // Preserve legacy business-tools callbacks while allowing tests to
-            // observe the exact final/repair schema sent to the real provider.
-            return { agentOutput: await injected(modelMessages, tools, turn, dispatchTools), attemptId: null };
-          })() : await executePostgresText({ enterpriseId: BigInt(lease.enterpriseId), owner: { kind: 'assistant_run', runId: BigInt(lease.runId) },
+          const executeProvider = () => executePostgresText({ enterpriseId: BigInt(lease.enterpriseId), owner: { kind: 'assistant_run', runId: BigInt(lease.runId) },
             logicalModelKey: 'chat.general', messages: [], maxTokens: limits.maxOutputTokens,
             agent: { config: initial.config, input: { messages: modelMessages, tools: dispatchTools, maxTokens: limits.maxOutputTokens, requireTool: purpose !== 'vision',
               ...finalAllocation,
@@ -1088,17 +1085,30 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               ...(initial.config.imageContext ? {imageContext:initial.config.imageContext} : {}) },
             beforeProviderCall,
           });
+          const workflow = !injected && purpose === 'answer' && !consultation && !initial.mediaRefs.length ? fastGPTWorkflows() : undefined;
+          if (workflow) await workflow.ready();
+          const output = injected ? await (async () => {
+            await beforeProviderCall();
+            return { agentOutput: await injected(modelMessages, tools, turn, dispatchTools), attemptId: null };
+          })() : workflow ? await workflow.knowledge.dispatch({ enterpriseId: lease.enterpriseId, runId: lease.runId,
+            conversationId: String(initial.conversation.id), turn, question: reviewContext.currentQuestion,
+            model: initial.config.model, toolNames: dispatchTools.map(tool => tool.name),
+            requestHash: fingerprint({modelMessages,dispatchTools,limits,config:initial.config}) }, {authorize}, async () => {
+              const packet = await executeProvider(); outcomeKnown = true;
+              if (packet.agentOutput) await recordAgentModelUsage(lease.enterpriseId,lease.runId,turn,packet,async tx=>{
+                await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary,private_checkpoint,provider_attempt_id)
+                  values(${lease.enterpriseId},${lease.runId},${131000+turn},'agent_workflow_observation','succeeded',
+                    ${JSON.stringify({protocol:'fastgpt-knowledge-observation-v1',turn})}::jsonb,${JSON.stringify(packet.agentOutput)}::jsonb,${String(packet.attemptId)}) on conflict do nothing`);
+                return true;
+              });
+              return packet;
+            }) : await executeProvider();
           outcomeKnown = true;
           if (!output.agentOutput) fail('invalid_model_answer', 502);
           // Record billing evidence even if the customer has just revoked the lease.
           let usageKnown = true;
-          await withTenantTransaction(lease.enterpriseId, async tx => {
-            await tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,provider_attempt_id,operation_key,category,quantity,measurement_kind,input_tokens,output_tokens)
-              values(${lease.enterpriseId},${lease.runId},${output.attemptId ? String(output.attemptId) : null},${'agent:'+lease.runId+':'+turn},'tokens',
-                ${output.agentOutput!.usage ? output.agentOutput!.usage.inputTokens + output.agentOutput!.usage.outputTokens : null},
-                ${output.agentOutput!.usage ? 'observed' : 'unavailable'},${output.agentOutput!.usage?.inputTokens ?? null},${output.agentOutput!.usage?.outputTokens ?? null}) on conflict do nothing`);
-            if (consultation) usageKnown = await settleConsultationDispatch(tx, lease.enterpriseId, lease.runId);
-          });
+          usageKnown = await recordAgentModelUsage(lease.enterpriseId,lease.runId,turn,output,
+            consultation?tx=>settleConsultationDispatch(tx,lease.enterpriseId,lease.runId):undefined);
           const providerOutput = output.agentOutput;
           const finalProjected = purpose === 'answer' ? projectFinalToolOutput(providerOutput, ownerCitationCarrier) : providerOutput;
           const needOriginals = initial.minimalDialogue && purpose === 'answer' ? bindNeedOriginals(finalProjected) : finalProjected;

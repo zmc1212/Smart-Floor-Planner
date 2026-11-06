@@ -1,5 +1,11 @@
 # 后台系统当前功能清单
 
+<!-- xiaok-fastgpt-capabilities -->
+**FastGPT阶段/知识拆分：Limited，显式开发启用。** 两个私有`advanced`工作流复用远端v4.17.4。`XIAOK_FASTGPT_WORKFLOWS_FILE`指向ACL保护的JSON，含回环18300/API key/knowledgeAppId/stageAppId；`setup-capabilities.mts`用原授权API创建，不重置已激活密码。原Worker将启用范围内普通文字回答回合交给`FastGPTKnowledgeWorkflow`，短期HTTP回调只执行一次完全相同的原模型网关请求。工具、历史、KnowledgeRetriever/Evidence、当前来源和最终保存仍归原Agent。原run私人观察及原唯一用量操作保留provider输出/尝试/用量，即使后续平台回调失败仍可核查。阶段正文采用仅允许`stage`的`FastGPTReportWorkflow`；事件选择、事实、校验、保存、幂等投递与撤回均沿原服务。未新增产品API/表/UI或更换默认供应商。内部回环18310回调须短期票据、模型前后原守卫及真实回执；错误不重放模型。范围外图片/咨询等沿原路径。
+
+当前阶段/知识实测首稿被原回答边界拒绝，连通不等于用户验收。独立网页读取器已按BOM/HTTP/meta声明探测编码，修复可复现的`gb2312`原文误按UTF-8解读；非法字节沿原读取失败回执。原来源哈希/租户守卫及回答校验保持。沿批准C01及原咨询/私人跟进会话区分，企业知识默认关闭。实际结果与原失败见[二期合同](xiaok-assistant-phase-2.zh-CN.md#fastgpt阶段提醒与知识问答工作流limited)、`tmp/fastgpt-capabilities-20261106/`；未启用生产、真实客户或外部投递。
+<!-- /xiaok-fastgpt-capabilities -->
+
 <!-- xiaok-fastgpt-report-pilot -->
 **FastGPT四端日报/周报试点：Limited。** 远端自托管v4.17.4与原百炼`qwen3.7-flash`已配置，日周共用五节点：获权HTTP取数→原报告指令/原生AI→原服务校验→返回待保存结果。`FastGPTReportWorkflow`仅接原模型端口；保存、幂等投递、周期、租户/成员/来源撤回、用量和私人重进仍归原服务。业务生产路由、UI和默认Worker未切换；内部回调仅测试桥18310及短期票据。知识默认关闭，AI仅补通用注意事项；实际进度/待核对/安排和经理/工人照片原件仍来自原记录。C01 `packages/assistant/chat/chat`及批准follow-up-v1的02/03/04/共享状态不变。28项相关检查通过，继承类型诊断57/影响0。service04/05同原指令生成、保存读取16份四角色日周报；Stable八份/10检查/17截图通过，service05完整服务、权限/恢复/清理及配置/源码核对通过。service04因后台密码激活导致终检401，原失败状态保留；service01–03原失败不混入新版本通过数。22次原生节点21229输入/1693输出token与原账本一致，金额未知。见[二期合同](xiaok-assistant-phase-2.zh-CN.md#fastgpt四端日报周报开发试点limited)、[远端记录](remote-development.zh-CN.md)及`tmp/fastgpt-report-pilot-20261106/`。无新增照片像素理解/企业知识验收、整体迁移、生产或外部消息。
 <!-- /xiaok-fastgpt-report-pilot -->

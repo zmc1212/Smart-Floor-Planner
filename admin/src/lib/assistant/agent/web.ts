@@ -3,6 +3,8 @@ import { isIP } from 'node:net';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { parseHTML } from 'linkedom';
+import { MIMEType } from 'node:util';
+import sniffHTMLEncoding from 'html-encoding-sniffer';
 import { AssistantError, fail, fingerprint } from '../contracts';
 import type { ModelTool } from '../contracts/model';
 import type { WebSourceLocator } from '../contracts/web-source';
@@ -109,7 +111,7 @@ export async function readPublicPage(value: string, remainingRedirects = 3, dead
   })]).finally(() => clearTimeout(dnsTimer));
   if (!addresses.length || addresses.some(a => !publicWebAddress(a.address))) fail('unsafe_web_url', 422);
   const pinned = addresses.find(a => a.family === 4) || addresses[0];
-  const result = await new Promise<{ body: string; status: number; location?: string; type: string }>((resolve, reject) => {
+  const result = await new Promise<{ bytes: Buffer; status: number; location?: string; type: string }>((resolve, reject) => {
     const request = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, {
       method: 'GET', headers: { Accept: 'text/html,text/plain;q=0.9', 'Accept-Encoding': 'identity', 'User-Agent': 'SmartFloorPlanner-Research/1.0' },
       family: pinned.family,
@@ -118,7 +120,7 @@ export async function readPublicPage(value: string, remainingRedirects = 3, dead
       const chunks: Buffer[] = []; let size = 0;
       response.on('data', (chunk: Buffer) => { size += chunk.length; if (size > 512_000) request.destroy(new AssistantError('web_page_too_large', 502)); else chunks.push(chunk); });
       response.once('error', reject);
-      response.once('end', () => resolve({ body: Buffer.concat(chunks).toString('utf8'), status: response.statusCode || 0,
+      response.once('end', () => resolve({ bytes: Buffer.concat(chunks), status: response.statusCode || 0,
         location: response.headers.location, type: String(response.headers['content-type'] || '') }));
     });
     const timer = setTimeout(() => request.destroy(new AssistantError('web_timeout', 503)), Math.max(1, deadline - Date.now()));
@@ -132,7 +134,20 @@ export async function readPublicPage(value: string, remainingRedirects = 3, dead
   }
   if (result.status !== 200) fail('web_http_' + result.status, 503);
   if (!/^(?:text\/html|text\/plain|application\/xhtml\+xml)(?:;|$)/i.test(result.type)) fail('unsupported_web_content', 422);
-  return { url: url.href, body: result.body, type: result.type };
+  return { url: url.href, body: decodePublicPage(result.bytes, result.type), type: result.type };
+}
+
+/** Decode original bytes before HTML extraction or hashing. The maintained
+ * HTML sniffer applies BOM, HTTP charset and meta precedence. Keep UTF-8 as
+ * the existing undeclared-page default; invalid bytes are a read failure. */
+export function decodePublicPage(bytes: Uint8Array, type: string): string {
+  try {
+    const mime = new MIMEType(type);
+    const encoding = sniffHTMLEncoding(mime.essence === 'text/plain' ? bytes.subarray(0, 3) : bytes, {
+      transportLayerEncodingLabel: mime.params.get('charset') || undefined, defaultEncoding: 'UTF-8',
+    });
+    return new TextDecoder(encoding, { fatal: true }).decode(bytes);
+  } catch { return fail('web_text_unavailable', 502); }
 }
 
 /** Retain complete parsed article text; never make snippets into cited facts. */

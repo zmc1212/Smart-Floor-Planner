@@ -1,5 +1,9 @@
 # 小程序当前功能清单
 
+<!-- xiaok-fastgpt-capabilities -->
+**FastGPT阶段/知识工作流：Limited，仅开发启用。** 沿批准C01 `packages/assistant/chat/chat`、follow-up-v1屏02/03/04/共享状态及原笔记本布局。阶段提醒留在原项目私人跟进；知识问答沿用户原持久咨询及原项目上下文/历史。不为Agent另建会话，不新增入口、标记/样式/插画/导航或客户端API。服务端显式启用两个私有`advanced`工作流接原模型/报告端口；权限、业务读写、来源撤回、保存和真实回执仍由原服务控制，企业知识默认关闭。实际原生输入已到远端知识工作流、原模型及真实网页读取器；校验拒绝时沿原页面失败反馈。连通尚不证明多轮/重进/项目切换或阶段投递成功；当前结果与原失败见[二期合同](xiaok-assistant-phase-2.zh-CN.md#fastgpt阶段提醒与知识问答工作流limited)、`tmp/fastgpt-capabilities-20261106/`。无生产或真机验收声明。
+<!-- /xiaok-fastgpt-capabilities -->
+
 <!-- xiaok-fastgpt-report-pilot -->
 **FastGPT四端日报/周报试点：Limited。** 远端自托管v4.17.4与原百炼`qwen3.7-flash`已配置，日周共用五节点：获权HTTP取数→原报告指令/原生AI→原服务校验→返回待保存结果。`FastGPTReportWorkflow`仅接原模型端口；保存、幂等投递、周期、租户/成员/来源撤回、用量和私人重进仍归原服务。业务生产路由、UI和默认Worker未切换；内部回调仅测试桥18310及短期票据。知识默认关闭，AI仅补通用注意事项；实际进度/待核对/安排和经理/工人照片原件仍来自原记录。C01 `packages/assistant/chat/chat`及批准follow-up-v1的02/03/04/共享状态不变。28项相关检查通过，继承类型诊断57/影响0。service04/05同原指令生成、保存读取16份四角色日周报；Stable八份/10检查/17截图通过，service05完整服务、权限/恢复/清理及配置/源码核对通过。service04因后台密码激活导致终检401，原失败状态保留；service01–03原失败不混入新版本通过数。22次原生节点21229输入/1693输出token与原账本一致，金额未知。见[二期合同](xiaok-assistant-phase-2.zh-CN.md#fastgpt四端日报周报开发试点limited)、[远端记录](remote-development.zh-CN.md)及`tmp/fastgpt-report-pilot-20261106/`。无新增照片像素理解/企业知识验收、整体迁移、生产或外部消息。
 <!-- /xiaok-fastgpt-report-pilot -->

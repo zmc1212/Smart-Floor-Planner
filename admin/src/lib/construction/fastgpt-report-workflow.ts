@@ -28,7 +28,7 @@ export type FastGPTReportConfig = {
  * Tickets are single-run, short-lived, and never included in model input. */
 export class FastGPTReportWorkflow {
   private readonly tickets = new Map<string, Ticket>();
-  constructor(private readonly config: FastGPTReportConfig) {
+  constructor(private readonly config: FastGPTReportConfig,private readonly kinds:readonly string[]=['daily','weekly']) {
     const url = new URL(config.baseUrl);
     if (!['localhost', '127.0.0.1'].includes(url.hostname) || url.port !== '18300') {
       throw new Error('FastGPT report pilot requires the isolated SSH loopback endpoint :18300');
@@ -74,7 +74,7 @@ export class FastGPTReportWorkflow {
       typeof m.content === 'string' ? [{ type: 'text' as const, text: m.content }] : m.content);
     const text = parts.filter(p => p.type === 'text').map(p => p.type === 'text' ? p.text : '').join('\n');
     const input = JSON.parse(text);
-    if (!['daily', 'weekly'].includes(input.scope?.kind)) fail('assistant_capability_forbidden', 403);
+    if (!this.kinds.includes(input.scope?.kind)) fail('assistant_capability_forbidden', 403);
     const ticketId = randomUUID() + randomUUID();
     const instructions = messages.filter(m => m.role === 'system').flatMap(m =>
       typeof m.content === 'string' ? [{type:'text' as const,text:m.content}] : m.content)

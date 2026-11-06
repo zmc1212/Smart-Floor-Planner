@@ -30,6 +30,7 @@ import { currentReportStageEvent } from './stage-events';
 import { runKnowledgeEnabled } from '@/lib/assistant/knowledge-policy';
 import { generalReportMessages, generalReportTool, parseGeneralReport } from './report-general-advice';
 import type { ReportWorkflowGuard } from './fastgpt-report-workflow';
+import { fastGPTWorkflows } from '@/lib/assistant/fastgpt/runtime';
 
 type ProjectContext = Pick<ComposedProject, 'projectId' | 'selection' | 'context' | 'weekWorkmanship'> & { guidanceItems?: string[] };
 function selectedConversation(c: Row, selection: ReportReference): Row {
@@ -128,6 +129,9 @@ export async function processReportComposition(lease: Lease, dependencies: {
           factsGeneratedAt: context.report.generated_at, projectsTruncated: (context.report.facts as ReportFacts).projectsTruncated } };
     });
     projects = initial.projects;
+    const workflow = !dependencies.model && initial.scope.kind === 'stage' ? fastGPTWorkflows() : undefined;
+    if (workflow) await workflow.ready();
+    const reportModel = dependencies.model || workflow?.stage.model;
     async function readWorkmanship(project: ProjectContext, sequence: number, query: string, stage?: ReportWorkmanshipStage) {
       const sourceRefs = stage ? { selection: project.selection, stage, query } : project.selection;
       const saved = await scoped(async tx => one(tx, sql`select * from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
@@ -280,8 +284,8 @@ export async function processReportComposition(lease: Lease, dependencies: {
           });
           outcomeKnown = false;
         };
-        const packet = dependencies.model ? await (async () => { await beforeProviderCall(); return { attemptId: null,
-          agentOutput: await dependencies.model!(bounded.messages, [tool], turn, {
+        const packet = reportModel ? await (async () => { await beforeProviderCall(); return { attemptId: null,
+          agentOutput: await reportModel(bounded.messages, [tool], turn, {
             authorize, validate: raw => { parseBody(raw); }, runId: lease.runId, enterpriseId: lease.enterpriseId,
           }) }; })()
           : await executePostgresText({ enterpriseId: BigInt(lease.enterpriseId), owner: { kind: 'assistant_run', runId: BigInt(lease.runId) },
