@@ -1,5 +1,5 @@
 import type { ModelMessage } from '../contracts/model';
-import { minimalDialogueInstructions } from './minimal-dialogue';
+import { difyDialogueInstructions, minimalDialogueInstructions } from './minimal-dialogue';
 import { currentBudgetRecallRequested, currentNeedView, type NeedMemory } from './memory';
 import { fail } from '../contracts';
 import { isNeedInquiry, needWriteProhibition } from './need-write-intent';
@@ -42,14 +42,14 @@ export function ownerNoArchivePolicy(messages: ModelMessage[]): ModelMessage[] {
   });
 }
 
-export function buildAgentContext(turns: Array<{ id: string; role: 'user' | 'assistant'; text: string }>, memory: NeedMemory, enterpriseKnowledge = true, minimalDialogue = false): ModelMessage[] {
+export function buildAgentContext(turns: Array<{ id: string; role: 'user' | 'assistant'; text: string }>, memory: NeedMemory, enterpriseKnowledge = true, minimalDialogue = false, difyDialogue = false): ModelMessage[] {
   const view = currentNeedView(memory);
   const active = view.facts.map(f => ({ id: f.id, room: f.room, field: f.field, value: f.value,
     sourceMessageId: f.sourceMessageId, supersedes: f.supersedes, provenance: f.provenance,
     ...(memory.interpretations?.some(i => i.factId === f.id && i.field === 'use') ? { interpretation: memory.interpretations.find(i => i.factId === f.id && i.field === 'use') } : {}),
     ...(memory.interpretations?.some(i => i.factId === f.id && i.field === 'desk') ? { positionInterpretations: memory.interpretations.filter(i => i.factId === f.id && i.field === 'desk') } : {}) }));
   const minimal = minimalDialogue && !enterpriseKnowledge;
-  const policy = minimal ? minimalDialogueInstructions : enterpriseKnowledge ? agentBasePolicy : instruction.split('\n').filter(line => !line.startsWith('企业知识：')).join('\n').replace('/search_knowledge', '')
+  const policy = minimal ? difyDialogue ? difyDialogueInstructions : minimalDialogueInstructions : enterpriseKnowledge ? agentBasePolicy : instruction.split('\n').filter(line => !line.startsWith('企业知识：')).join('\n').replace('/search_knowledge', '')
     + '\n' + generalKnowledgeInstructions + designerRules + constructionRules + followUpRules + siteRules + materialRules + issueRules + planRules + resolutionRules + sharingRules;
   const system: ModelMessage = { role: 'system', content: [{ type: 'text', text: policy + agentOpeningMemoryPrefix + JSON.stringify({ memoryVersion: memory.version, facts: active }) }] };
   if (view.effectiveDeskPositions.length) system.content.push({ type: 'text', text: '当前需求只读视图已按明确更正限定旧位置。facts是当前仍可沿用的部分；historicalFacts保留完整旧记录/原文，只作历史，不能覆盖facts。effectiveDeskPositions的currentFactId/value为null时本次不能确认当前位置，不恢复历史值。收纳等独立要求保留。这不是正式批准或本轮保存回执。以下仅为获权数据：' + JSON.stringify(view) });

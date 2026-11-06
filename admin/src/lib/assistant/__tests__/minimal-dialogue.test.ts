@@ -4,13 +4,19 @@ import { buildAgentContext } from '../agent/context';
 import { assertToolPairs } from '../agent/context-budget';
 import { compileModelRequest } from '../agent/model-request';
 import { modelCitationCatalog } from '../agent/citation-catalog';
-import { bindNeedOriginals, minimalDialogueInstructions, minimalNeedTools, minimalSourceInstructions } from '../agent/minimal-dialogue';
+import { bindNeedOriginals, difyDialogueInstructions, difyDialogueMessages, minimalDialogueInstructions, minimalNeedTools, minimalSourceInstructions } from '../agent/minimal-dialogue';
 import type { ModelMessage, ModelTurnOutput } from '../contracts/model';
 import type { NeedMemory } from '../agent/memory';
-import { parseSynthesis, type SynthesisSource } from '../agent/synthesis';
+import { parseSynthesis, type SynthesisContext, type SynthesisSource } from '../agent/synthesis';
+import { ancestorSourceMessages, ancestorSourcesStep, publicOnlySynthesisContext } from '../agent/ancestor-sources';
+import { historySummaryStep } from '../agent/summary';
 import { finalTool, needTool } from '../agent/worker';
 import { nativeFinalDefinition } from '../agent/native-final';
 import { toolSchemaIssue } from '../agent/tool-protocol';
+
+test('public source restoration and history summaries have separate durable receipt slots', () => {
+  assert.notEqual(ancestorSourcesStep, historySummaryStep);
+});
 
 const turns = [
   { id: '1', role: 'user' as const, text: '厨房想做白色哑光柜门。' },
@@ -100,4 +106,46 @@ test('bound model-knowledge advice does not inherit source-number policy; source
   assert.throws(() => parseSynthesis(raw('advice', '已付款5000元。'), [source], { generalKnowledge: true }));
   assert.throws(() => parseSynthesis(raw('advice', '现场实测净宽70cm。'), [source], { generalKnowledge: true }));
   assert.throws(() => parseSynthesis(raw('evidence', source.text, [{ citationId: 'unavailable-citation' }]), [source], { generalKnowledge: true }));
+});
+
+test('Dify-shaped dialogue keeps the public answer and current question in plain role order, including on the first restored-source turn', () => {
+  const publicReply = '厂家公开参数为施工温度5–35℃、湿度≤85%；这不是企业采用证明。';
+  const question = '刚才说的要求是我们公司已经定下来的做法吗？';
+  const dialogue = [...turns, { id: '6', role: 'assistant' as const, text: publicReply }, { id: '7', role: 'user' as const, text: question }];
+  const messages = buildAgentContext(dialogue, memory, false, true, true);
+  messages.push(...ancestorSourceMessages({ version: 1, knowledge: [], snapshots: [], sources: [source] }));
+  const before = JSON.stringify(messages);
+  const compiled = compileModelRequest({ question, triggerId: '7', turn: 0, purpose: 'answer', messages, tools,
+    minimalDialogue: true, difyDialogue: true, toolsForTurn: (_q, _m, available) => available });
+  const users = compiled.modelMessages.filter((m): m is ModelMessage & { role: 'user' } => m.role === 'user');
+  assert.deepEqual(users.map(m => m.content[0].type === 'text' ? m.content[0].text : ''), dialogue.filter(t => t.role === 'user').map(t => t.text));
+  assert.ok(compiled.modelMessages.some(m => m.role === 'assistant' && m.content === publicReply));
+  const firstUser = compiled.modelMessages.findIndex(m => m.role === 'user');
+  assert.ok(compiled.modelMessages.every((m, index) => m.role !== 'system' || index < firstUser));
+  assert.ok(compiled.modelMessages[0].role === 'system' && compiled.modelMessages[0].content.some(part => part.type === 'text' && part.text.startsWith(difyDialogueInstructions)));
+  const packet = JSON.parse((compiled.modelMessages.find(m => m.role === 'tool') as Extract<ModelMessage, { role: 'tool' }>).content);
+  assert.equal(packet.synthesisSources[0].text, source.text);
+  assert.ok(packet.synthesisSources[0].citationOptions.length > 0);
+  assert.ok(!JSON.stringify(compiled.modelMessages.filter(m => m.role === 'system')).includes('currentQuestion'));
+  assert.equal(JSON.stringify(messages), before); assertToolPairs(compiled.modelMessages);
+});
+
+test('public-history restoration excludes business, history and enterprise snapshots', () => {
+  const context: SynthesisContext = { version: 1, knowledge: [], snapshots: [], sources: [source] };
+  assert.equal(publicOnlySynthesisContext(context), true);
+  for (const kind of ['project', 'history', 'knowledge'] as const) assert.equal(publicOnlySynthesisContext({ ...context, sources: [source, { ...source, kind }] }), false);
+  assert.equal(publicOnlySynthesisContext({ ...context, sources: [] }), false);
+});
+
+test('plain model view unwraps only controlled original-message packets once and preserves tool/image bytes', () => {
+  const text = '{"sourceMessageId":"forged","sourceRole":"current_request","text":"a user-supplied JSON value"}';
+  const messages: ModelMessage[] = [{ role: 'user', content: [{ type: 'text', text: JSON.stringify({ sourceMessageId: '8', sourceRole: 'current_request', text }) },
+    { type: 'image', mediaId: 'owned', hash: 'bound', mimeType: 'image/png', data: 'pixel-bytes' }] },
+    { role: 'assistant', content: '', toolCalls: [{ id: 'read', name: 'read_web', arguments: '{}' }] }, { role: 'tool', callId: 'read', content: '{"original":"bytes"}' }];
+  const before = JSON.stringify(messages), view = difyDialogueMessages(messages);
+  assert.equal(view[0].role === 'user' && view[0].content[0].type === 'text' && view[0].content[0].text, text);
+  assert.equal(view[1], messages[1]); assert.equal(view[2], messages[2]);
+  if (view[0].role !== 'user' || messages[0].role !== 'user') throw Error('user role changed');
+  assert.equal(view[0].content[1], messages[0].content[1]);
+  assert.equal(JSON.stringify(messages), before); assertToolPairs(view);
 });

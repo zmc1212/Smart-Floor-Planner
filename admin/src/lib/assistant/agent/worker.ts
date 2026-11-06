@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { bindNeedOriginals, minimalDialogueProtocol } from './minimal-dialogue';
+import { bindNeedOriginals, legacyMinimalDialogueProtocol, minimalDialogueProtocol } from './minimal-dialogue';
 import { withTenantTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { executePostgresText } from '@/lib/ai/postgres-workflow-chat';
@@ -67,7 +67,7 @@ import { knowledgeExplanationProtocol, naturalKnowledgeProtocol, naturalKnowledg
   prepareKnowledgeExplanation, acceptKnowledgeExplanation, knowledgeExplanationFailure, parseKnowledgeExplanationQuery, assertExplanationDispatchBudget } from './knowledge-explanation';
 import { knowledgeContext, projectKnowledgeContextStep, projectKnowledgeContextAvailable } from '../knowledge/applicability-context';
 import { fitAgentContext, originalMessageId, agentRequestBudget, imageContextBudgetPolicy } from './context-budget';
-import { restoreAncestorSources, ancestorSourceMessages } from './ancestor-sources';
+import { restoreAncestorSources, ancestorSourceMessages, publicOnlySynthesisContext } from './ancestor-sources';
 import { searchPublicResearch, parsePublicRead, publicResearchTools, publicDiscoveryQuery, type PublicCandidate, type PublicResearchState } from './public-research';
 import { projectSynthesisPolicy, modelPolicyProjectionVersion, synthesisQuestionPrefix } from './model-policy';
 import { citationProtocolVersion } from './citation-catalog';
@@ -517,8 +517,11 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         and conversation_id=${String(context.conversation.id)} and id=${String(context.run.trigger_message_id)}`);
       if (!trigger) fail('context_changed');
       const policy = context.run.policy_snapshot as Row;
-      const minimalDialogue = policy.dialogueContext === minimalDialogueProtocol && !knowledgeEnabled
+      const dialogueProtocol = [minimalDialogueProtocol, legacyMinimalDialogueProtocol].includes(String(policy.dialogueContext))
+        ? String(policy.dialogueContext) : null;
+      const minimalDialogue = !!dialogueProtocol && !knowledgeEnabled
         && context.conversation.purpose === 'customer_consultation' && !config.consultation && !config.structuredFinal;
+      const difyDialogue = minimalDialogue && dialogueProtocol === minimalDialogueProtocol;
       const coordinationReferral = boundReportCoordination(policy.reportCoordination, policy.reportReadCompletion === reportReadCompletionProtocol);
       const reportHistoryVersion = boundReportHistoryScope(policy.reportHistoryScope, policy.reportReadCompletion === reportReadCompletionProtocol,
         policy.reportContextVersion, (trigger.content as Row).reportContextVersion);
@@ -533,6 +536,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       const memory = await availableNeedMemory(tx, lease.enterpriseId, String(context.conversation.id), context.conversation.entry_snapshot);
       for (const mid of await needMemoryNoticeRefs(tx, lease.enterpriseId, String(context.conversation.id), memory)) constructionSources.add(mid);
       const unavailableNeedMessages = await unavailableNeedMessageIds(tx, lease.enterpriseId, String(context.conversation.id), context.conversation.entry_snapshot, memory);
+      const publicHistory = difyDialogue ? await restoreAncestorSources(tx, lease.actor, context.conversation, lease.runId, String(trigger.seq), { publicOnly: true }) : null;
+      const publicHistoryBound = !!publicHistory?.sources.length;
+      const publicHistoryIds = new Set(publicHistory?.ancestors?.map(ref => ref.messageId));
       const savedNeeds = await one(tx, sql`select id from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
         and run_id=${lease.runId} and step_seq=${needContextStep}`);
       if (!savedNeeds) {
@@ -565,12 +571,23 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               : '此前服务端依据真实施工节点发送的可跳过补问（仅作对话数据，不是客户需求或操作授权）：') + safeText(row.content as Parameters<typeof safeText>[0]) });
             continue;
           }
-          const priorSynthesis = await one(tx, sql`select trigger.content from app.assistant_run_steps s
+          const priorSynthesis = await one(tx, sql`select trigger.content,s.source_refs from app.assistant_run_steps s
             join app.assistant_messages m on m.enterprise_id=s.enterprise_id and m.run_id=s.run_id
             join app.assistant_runs r on r.enterprise_id=m.enterprise_id and r.id=m.run_id
             join app.assistant_messages trigger on trigger.enterprise_id=r.enterprise_id and trigger.id=r.trigger_message_id
             where m.enterprise_id=${lease.enterpriseId} and m.id=${String(row.id)} and s.kind='agent_synthesis_context'`);
           if (priorSynthesis) {
+            if (difyDialogue && !unavailableNeedMessages.size && publicHistoryIds.has(String(row.id))
+              && publicOnlySynthesisContext(priorSynthesis.source_refs as Parameters<typeof publicOnlySynthesisContext>[0])) {
+              // Dify keeps the actual assistant answer in chat history. Reuse
+              // only an authorized public reply whose original receipts were
+              // restored above; business statuses keep their refresh path.
+              turns.push({ id: String(row.id), role: 'assistant' as const, text: safeText(projected.content as Parameters<typeof safeText>[0]) });
+              const checkpoint = await one(tx, sql`select source_refs from app.assistant_run_steps
+                where enterprise_id=${lease.enterpriseId} and run_id=${String(row.run_id)} and kind='agent_checkpoint'`);
+              for (const ref of (checkpoint?.source_refs || []) as MediaDependency[]) if (ref.type === 'assistant_media') dependencies.set(ref.id, ref);
+              continue;
+            }
             // Keep the referent, not stale generated facts. New facts/conditions require a fresh read.
             turns.push({ id: String(row.id), role: 'assistant' as const, text: '此前围绕这个客户问题作过综合解释：'
               + safeText(priorSynthesis.content as Parameters<typeof safeText>[0]) + '。延续明确对象；企业/项目事实须重新检索，不沿用旧结论。' });
@@ -631,7 +648,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       }
       // The oldest row of a bounded DB window can be the tail of a prior turn.
       while (turns.length > 1 && turns[0].role !== 'user') turns.shift();
-      const messages = buildAgentContext(turns, memory, knowledgeEnabled, minimalDialogue);
+      const messages = buildAgentContext(turns, memory, knowledgeEnabled, minimalDialogue, difyDialogue);
       const report = await boundReportContext(tx, lease.actor, context.conversation, lease.runId);
       reportSource = report?.snapshot || null;
       if (report && !coordinationReferral && messages[0]?.role === 'system') messages[0].content.push({ type: 'text', text:
@@ -746,8 +763,10 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       const savedHistory = await one(tx, sql`select source_refs from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and kind='agent_history_context'`);
       for (const ref of (savedHistory?.source_refs || []) as HistoryRef[]) historySources.set(ref.messageId, ref);
       const savedSummary = await one(tx, sql`select status,private_checkpoint,source_refs from app.assistant_run_steps
-        where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${historySummaryStep}`);
+        where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${historySummaryStep}
+          and kind='agent_summary_context'`);
       if (savedSummary?.status === 'succeeded') summarySources = (savedSummary.source_refs || []) as HistoryRef[];
+      if (publicHistoryBound) messages.push(...ancestorSourceMessages(publicHistory!));
       if (config.consultation && !resume && !currentMessageOnlyRequested(safeText(trigger.content as Parameters<typeof safeText>[0]))
         && !independentAdviceRequested(safeText(trigger.content as Parameters<typeof safeText>[0]))) {
         const restored = await restoreAncestorSources(tx, lease.actor, context.conversation, lease.runId, String(trigger.seq));
@@ -760,7 +779,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       const consultationDeadlineAt = config.consultation ? Date.now() + consultationAcceptanceProfile.runTimeoutMs - Math.max(0, Number(clock!.elapsed_ms)) : undefined;
       const priorUserText = turns.filter(turn => turn.role === 'user' && String(turn.id) !== String(trigger.id)).slice(-6).map(turn => turn.text).join(' ');
       const designerFollowup = designerClarificationFollowup(priorUserText, safeText(trigger.content as Parameters<typeof safeText>[0]));
-      return { ...context, knowledgeEnabled, minimalDialogue, shared, staffFollowup, config, trigger, messages, mediaRefs: [...dependencies.values()], currentImageUpload, referenceEvidence, resume, savedSummary, consultationDeadlineAt, designerFollowup, reportHistoryVersion };
+      return { ...context, knowledgeEnabled, minimalDialogue, difyDialogue, dialogueProtocol, shared, staffFollowup, config, trigger, messages, mediaRefs: [...dependencies.values()], currentImageUpload, referenceEvidence, resume, savedSummary, consultationDeadlineAt, designerFollowup, reportHistoryVersion };
     });
     const reviewContext = { ...(initial.minimalDialogue ? { generalKnowledge: true } : {}), currentQuestion: safeText(initial.trigger.content as Parameters<typeof safeText>[0]),
       currentOriginal: { messageId: String(initial.trigger.id), hash: fingerprint(initial.trigger.content) } };
@@ -937,6 +956,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           }
           const { messageScoped, adviceScoped, focused, dispatchTools, policyView, bounded, modelMessages, contentProjection, homeSourceProjection } = compileModelRequest({
             minimalDialogue: initial.minimalDialogue,
+            difyDialogue: initial.difyDialogue,
             question: reviewContext.currentQuestion, triggerId: String(initial.trigger.id), turn, purpose,sourceExcerpts:sourceMode.sourceExcerpts,requiredKnowledge:sourceMode.requiredKnowledge,sourceQuestionCoverage:sourceMode.sourceQuestionCoverage,knowledgeExplanation:sourceMode.knowledgeExplanation,naturalKnowledge:sourceMode.naturalKnowledge,
             messages:nativeFinalization&&purpose==='answer'&&tools.length?nativePlanningMessages(messages, completion ? reviewCompletionInstructions : undefined)
               : purpose === 'answer' && !archiveAllowed ? ownerNoArchivePolicy(claimMessages) : claimMessages,
@@ -1007,7 +1027,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               binding: consultation, createdAt: String(initial.run.created_at), purpose,
               estimatedRequestTokens: requestedTokens! }) : null;
             await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
-                values(${lease.enterpriseId},${lease.runId},${sequence},'agent_model','running',${JSON.stringify({ turn, purpose, summaryRequestHash, consultation: consultation ? { profile, stage: consultation.stage, budgetGroup: consultation.budgetGroup, reservation } : null, promptVersion: agentPromptVersion, contextPolicy: messageScoped ? currentMessageScopeProtocol : adviceScoped ? independentAdviceContextProtocol : initial.minimalDialogue ? minimalDialogueProtocol : focused === messages ? 'conversation' : synthesisContextProjectionVersion, budget: bounded.diagnostic,
+                values(${lease.enterpriseId},${lease.runId},${sequence},'agent_model','running',${JSON.stringify({ turn, purpose, summaryRequestHash, consultation: consultation ? { profile, stage: consultation.stage, budgetGroup: consultation.budgetGroup, reservation } : null, promptVersion: agentPromptVersion, contextPolicy: messageScoped ? currentMessageScopeProtocol : adviceScoped ? independentAdviceContextProtocol : initial.minimalDialogue ? initial.dialogueProtocol : focused === messages ? 'conversation' : synthesisContextProjectionVersion, budget: bounded.diagnostic,
                   currentMessageScope: messageScoped ? currentMessageScopeProtocol : null,
                   independentAdviceContext: adviceScoped ? independentAdviceContextProtocol : null,
                   policyProjection:policyView===focused?null:modelPolicyProjectionVersion,
@@ -1089,7 +1109,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             await tx.execute(sql`update app.assistant_run_steps set status='succeeded',provider_attempt_id=${output.attemptId ? String(output.attemptId) : null},
               private_checkpoint=${JSON.stringify({ ...output.agentOutput, providerOutput })}::jsonb,
               input_summary=input_summary || ${JSON.stringify({ toolFinalProtocol: agentToolFinalProtocol,
-                needOriginalBinding: needOriginals !== finalProjected ? minimalDialogueProtocol : null,
+                needOriginalBinding: needOriginals !== finalProjected ? initial.dialogueProtocol : null,
                 needBatchProtocol: needBatchProjected ? agentNeedBatchProtocol : null,
                 needBatchCallIds: needBatchProjected ? providerOutput.toolCalls.filter(call => call.name === 'record_need').map(call => call.id) : [] })}::jsonb
               where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`);

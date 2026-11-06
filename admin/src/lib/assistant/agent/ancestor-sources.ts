@@ -10,19 +10,31 @@ import { enterpriseKnowledgeEnabled } from '../knowledge-policy';
 
 export type AncestorSourceRef = { runId: string; messageId: string; contentHash: string; contextHash: string };
 export const ancestorSourcesProtocol = 'authorized-ancestor-sources-v1';
-export const ancestorSourcesStep = 1008;
+// 1008 belongs to history.summary.v1. Public source receipts must not be read
+// as summary HistoryRefs when a conversation first acquires web evidence.
+export const ancestorSourcesStep = 1013;
+
+/** Public dialogue may retain its original assistant text without inheriting
+ * historical project/status/need snapshots as current business facts. */
+export function publicOnlySynthesisContext(context: SynthesisContext) {
+  return Array.isArray(context?.sources) && context.sources.length > 0 && context.sources.every(source => source?.kind === 'web')
+    && Array.isArray(context.knowledge) && !context.knowledge.length
+    && Array.isArray(context.snapshots) && !context.snapshots.length && !(context.history?.length);
+}
 
 /** Only committed answers in this same authorized conversation can introduce
  * ancestor Evidence. Display ordinals and generated prose are never parsed. */
 export async function restoreAncestorSources(tx: PostgresTransaction, actor: ActorContext, conversation: Row,
-  runId: string, beforeSeq: string): Promise<SynthesisContext> {
-  const saved = await one(tx, sql`select private_checkpoint from app.assistant_run_steps
-    where enterprise_id=${actor.enterpriseId} and run_id=${runId} and step_seq=${ancestorSourcesStep}
-      and capability_name='source.restore.v1' and status='succeeded'`);
+  runId: string, beforeSeq: string, options: { publicOnly?: boolean } = {}): Promise<SynthesisContext> {
+  const saved = await one(tx, sql`select private_checkpoint,input_summary from app.assistant_run_steps
+    where enterprise_id=${actor.enterpriseId} and run_id=${runId}
+      and kind='agent_source_context' and capability_name='source.restore.v1' and status='succeeded'`);
   const settings = await one(tx, sql`select agent_config from app.assistant_enterprise_settings where enterprise_id=${actor.enterpriseId} for share`);
   const allowKnowledge = conversation.purpose === 'knowledge_preview' || enterpriseKnowledgeEnabled(settings?.agent_config);
   if (saved) {
     const context = saved.private_checkpoint as SynthesisContext;
+    if (!!(saved.input_summary as Row)?.publicOnly !== !!options.publicOnly
+      || options.publicOnly && context.sources.length > 0 && !publicOnlySynthesisContext(context)) fail('context_changed');
     if (!allowKnowledge && context.knowledge.length) fail('context_changed');
     return context;
   }
@@ -35,6 +47,7 @@ export async function restoreAncestorSources(tx: PostgresTransaction, actor: Act
   const result: SynthesisContext = { version: 1, knowledge: [], snapshots: [], sources: [], web: [], history: [], ancestors: [] };
   for (const candidate of candidates) {
     const context = candidate.source_refs as SynthesisContext;
+    if (options.publicOnly && !publicOnlySynthesisContext(context)) continue;
     // Source choice controls new model input, not historical human access.
     if (!allowKnowledge && context.knowledge.length) continue;
     // Removing/replacing the explicit reference is not permission to silently
@@ -59,7 +72,8 @@ export async function restoreAncestorSources(tx: PostgresTransaction, actor: Act
   await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint,source_refs,input_summary)
     values(${actor.enterpriseId},${runId},${ancestorSourcesStep},'agent_source_context','source.restore.v1',1,'succeeded',
       ${JSON.stringify(result)}::jsonb,${JSON.stringify(result.ancestors)}::jsonb,
-      ${JSON.stringify({ protocol: ancestorSourcesProtocol, beforeSeq, sourceCount: result.sources.length })}::jsonb)`);
+      ${JSON.stringify({ protocol: ancestorSourcesProtocol, beforeSeq, sourceCount: result.sources.length,
+        ...(options.publicOnly ? { publicOnly: true } : {}) })}::jsonb)`);
   return result;
 }
 

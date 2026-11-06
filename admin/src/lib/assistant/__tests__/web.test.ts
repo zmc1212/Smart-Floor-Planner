@@ -15,6 +15,18 @@ const provider: WebSearchProvider = { name: 'synthetic-free-provider', search: a
 const read = async (url: string) => ({ url, body: html, type: 'text/html; charset=utf-8' });
 const standalone = '这是独立问题，不结合我家或项目，想听一般建议：地板选择应该先比较什么？';
 
+test('unpersistable page text is a read failure while other complete public originals remain usable', async () => {
+  const body = '完整公开施工说明，保留条件和原文。'.repeat(8);
+  assert.throws(() => extractWebPage({ url: 'https://manufacturer.example/bad', body: body + '\u0000', type: 'text/plain' }), /web_text_unavailable/);
+  const mixed: WebSearchProvider = { name: 'synthetic-free-provider', search: async () => [
+    { title: 'bad page', url: 'https://manufacturer.example/bad' }, { title: 'valid page', url: 'https://manufacturer.example/floor' }] };
+  const snapshot = await searchWeb(query, mixed, async url => url.endsWith('/bad') ? { url, body: body + '\u0000', type: 'text/plain' } : read(url));
+  assert.equal(snapshot.status, 'ready'); assert.equal(snapshot.pages.length, 1);
+  assert.deepEqual(snapshot.failures, [{ url: 'https://manufacturer.example/bad', code: 'web_text_unavailable' }]);
+  assert.equal(snapshot.pages[0].text, extractWebPage(await read('https://manufacturer.example/floor'), snapshot.retrievedAt).text);
+  assert.ok(!JSON.stringify(snapshot).includes('\\u0000'));
+});
+
 test('upstream engine failure is unavailable rather than an empty public-information search', async () => {
   assert.deepEqual(searxngResults({ results: [], unresponsive_engines: [] }), []);
   assert.throws(() => searxngResults({ results: [], unresponsive_engines: [['duckduckgo', 'timeout']] }), /web_search_upstream_unavailable/);

@@ -148,7 +148,11 @@ export function extractWebPage(input: { url: string; body: string; type: string 
   }
   text = text.replace(/\r/g, '').split('\n').map(line => line.replace(/[\t \u00a0]+/g, ' ').trim()).filter(Boolean).join('\n');
   const textBytes = Buffer.byteLength(text);
-  if (text.length < 40 || /just a moment|verify you are human|enable javascript.*cookies|access denied|验证码|安全验证/i.test(text.slice(0, 500))) fail('web_text_unavailable', 502);
+  // JSONB cannot represent U+0000. Reject this page before building a durable
+  // original/hash; searchWeb records the existing read-failure receipt and can
+  // continue with other valid pages. Never silently edit a cited original.
+  if (text.includes('\u0000') || title.includes('\u0000') || text.length < 40
+    || /just a moment|verify you are human|enable javascript.*cookies|access denied|验证码|安全验证/i.test(text.slice(0, 500))) fail('web_text_unavailable', 502);
   if (textBytes > 12000) fail('web_page_too_large', 502);
   const url = publicWebUrl(input.url).href;
   return { url, title: title.slice(0, 200), text, retrievedAt, parser: 'public-html-text-v1', textBytes,
