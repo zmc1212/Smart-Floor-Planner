@@ -6,9 +6,9 @@
 已验范围：开关开启/关闭保存刷新、固定自然对话、正式无知识报告投递/重读及业主Stable重进通过，企业检索/Embedding为0。四角色日/周周期/受众取数与成员撤权用保存建议夹具通过，0付费调用。完整自然联网对话及整版闭环仍Limited；经理/工人固定照片整理与四角色原图原生证据见下文；详见当前架构/证据，未生产部署。
 
 <!-- xiaok-public-web-current -->
-**公开联网：原文读取/域名出处接线Implemented，完整自然问答Limited/停批。** 普通`search_web`现于执行前复用`public-domain-provenance-v1`。限定域名须来自当前客户原话或同run先前成功发现的候选/原页；模型猜测和无出处的内嵌site限制被移除，并保留于`discoveryScope`审计。原工具参数/检查点、实际原文/hash/定位、隐私/SSRF、查询/调用预算、来源/租户/撤回/真实回执及最终合同保留。无提示、引用/数值守卫、Agent、API、UI或企业知识变更。Qwen3.8-Max及Qwen3.7-Plus分别登记其已文档化的工具/思考控制/JSON能力，搜索/缓存/Partial/Batch仍unknown；选用保持显式，测试配置已恢复。
+**公开联网：原文读取/域名出处接线Implemented，完整自然问答Limited/用户暂缓。** 普通`search_web`现于执行前复用`public-domain-provenance-v1`。限定域名须来自当前客户原话或同run先前成功发现的候选/原页；模型猜测和无出处的内嵌site限制被移除，并保留于`discoveryScope`审计。原工具参数/检查点、实际原文/hash/定位、隐私/SSRF、查询/调用预算、来源/租户/撤回/真实回执及最终合同保留。无提示、引用/数值守卫、Agent、API、UI或企业知识变更。Qwen3.8-Max及Qwen3.7-Plus分别登记其已文档化的工具/思考控制/JSON能力，搜索/缓存/Partial/Batch仍unknown；选用保持显式，测试配置已恢复。
 
-用户允许的换模型验收保留Max10668/3051首请求HTTP403无答复、Plus10669猜`nippontpaint.com.cn`后无原文却写量数，以及接线修复后10670有官网引用的5–35℃/≤85%首答。企业采用追问10671把URL页面编号866/1398当产品型号，原守卫拒绝整答，已停批；第二组/原生未派发，不再换型号或重采。[当前证据](../tmp/v1-public-protocol-20261106/replacement-assessment.json)：42项定向、1454实际服务写入/幂等/重进/其他客户拒绝/来源撤回及lint通过；types与原57条基线完全相同/涉及0。三个实模批各1507绑定drift[]，配置恢复/合成账号撤权/队列0。新增7次请求中6次成功调用记录35751/643输入/输出tokens，403无用量，实费未知、0新unknown。原两轮失败/待对账/unknown沿[原证据](../tmp/v1-public-protocol-20261106/assessment.json)保留。其余四项V1限定证据复用，整版未完成；Max访问需服务商侧核实，目录可读不证明该型号可调用。
+用户允许的换模型验收保留Max10668/3051首请求HTTP403无答复、Plus10669猜`nippontpaint.com.cn`后无原文却写量数，以及接线修复后10670有官网引用的5–35℃/≤85%首答。企业采用追问10671把URL页面编号866/1398当产品型号，原守卫拒绝整答，已停批；第二组/原生未派发，不再换型号或重采。[当前证据](../tmp/v1-public-protocol-20261106/replacement-assessment.json)：42项定向、1454实际服务写入/幂等/重进/其他客户拒绝/来源撤回及lint通过；types与原57条基线完全相同/涉及0。三个实模批各1507绑定drift[]，配置恢复/合成账号撤权/队列0。新增7次请求中6次成功调用记录35751/643输入/输出tokens，403无用量，实费未知、0新unknown。原两轮失败/待对账/unknown沿[原证据](../tmp/v1-public-protocol-20261106/assessment.json)保留。其余四项V1限定证据复用，整版未完成；用户已明确暂缓普通问答、V1保留未完成；仅在明确恢复后再继续，原换模型授权不自动续跑。Max的403及目录不证明调用权限的事实保留。
 <!-- /xiaok-public-web-current -->
 
 <!-- xiaok-nearby-city-current -->
