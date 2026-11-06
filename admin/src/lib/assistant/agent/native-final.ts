@@ -1,6 +1,7 @@
 import type {ModelMessage,ModelPart,ModelTool} from '../contracts/model';
 import {fail} from '../contracts';
 import {assertToolPairs} from './tool-protocol';
+import { finalResponseFields } from './final-response-shape';
 
 export const nativeFinalProtocol='native-sourced-final-v1';
 export const nativeFinalProjection='quoted-native-schema-v2';
@@ -48,7 +49,7 @@ function quotedFinalMessages(messages:ModelMessage[], imagesAllowed:boolean):Mod
 /** Native decoding can enforce citation presence for quantities; it cannot
  * establish whether a selected original supports them. All existing semantic,
  * receipt, tenant and source validators remain mandatory after generation. */
-export function nativeFinalDefinition(tool:ModelTool, options: { reportNumberValidation?: 'synthesis'; quantityValidation?: 'application' } = {}):ModelTool{
+export function nativeFinalDefinition(tool:ModelTool, options: { reportNumberValidation?: 'synthesis'; quantityValidation?: 'application'; taggedFields?: boolean } = {}):ModelTool{
   const parameters=structuredClone(tool.parameters),properties=parameters.properties as Record<string,Record<string,unknown>>|undefined;
   if(!properties?.kind)return tool;
   const kinds=properties.kind.enum;
@@ -58,6 +59,11 @@ export function nativeFinalDefinition(tool:ModelTool, options: { reportNumberVal
   // are retained; local semantic validation still checks each actual original.
   const branches=kinds.map(kind=>{
     const p=structuredClone(properties),required=[...((parameters.required as string[])||[])];
+    const shape = options.taggedFields ? finalResponseFields(kind) : null;
+    if (shape) {
+      for (const field of Object.keys(p)) if (!shape.allowed.includes(field)) delete p[field];
+      required.splice(0, required.length, ...shape.required);
+    }
     p.kind={...p.kind,const:kind};delete p.kind.enum;
     if(['general','vision','unavailable'].includes(kind)){
       required.push('text');if(options.quantityValidation!=='application')p.text={...p.text,pattern:'^[^0-9]*$'};
@@ -72,7 +78,7 @@ export function nativeFinalDefinition(tool:ModelTool, options: { reportNumberVal
       if(!groups||!Object.keys(groups).length)fail('invalid_agent_tools',500);
       p.answers.properties=Object.fromEntries(Object.entries(groups).map(([key,group])=>[key,numericSynthesisSegments(group, options.reportNumberValidation !== 'synthesis')]));
     }
-    return {type:'object',properties:p,required:[...new Set(required)],additionalProperties:parameters.additionalProperties};
+    return {type:'object',properties:p,required:[...new Set(required)],additionalProperties:shape ? false : parameters.additionalProperties};
   });
   const rest={...parameters};delete rest.properties;delete rest.required;delete rest.additionalProperties;
   return {...tool,parameters:{...rest,anyOf:branches}};

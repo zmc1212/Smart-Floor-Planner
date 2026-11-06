@@ -13,6 +13,16 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 const sourceReads = new Set(['search_knowledge', 'search_web', 'read_web', 'restore_sources', 'query_materials', 'query_business', 'query_followups', 'recall_history']);
 const readOnlyTools = new Set([...sourceReads, 'final_response']);
 
+export function hasSourceRead(messages: ModelMessage[]) {
+  const calls = new Map<string, string>();
+  for (const message of messages) {
+    if (message.role === 'assistant') for (const call of message.toolCalls || []) calls.set(call.id, call.name);
+    if (message.role !== 'tool' || !sourceReads.has(calls.get(message.callId) || '')) continue;
+    try { if (JSON.parse(message.content)?.synthesisSources?.length) return true; } catch { /* Not a source receipt. */ }
+  }
+  return false;
+}
+
 // With only source reads/final available, the complete synthesis contract owns
 // source selection and the answer. Unavailable action/display routing is not
 // model content. Keep identity/security/receipts; never project memory.

@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { minimalDialogueProtocol } from '../agent/minimal-dialogue';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, fingerprint, key, principalKey, requireCapability, safeText, userContent, type ActorContext, type MessageContent, type RunTrigger } from '../contracts';
@@ -157,6 +158,10 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
     ${trigger.kind === 'domain_event' ? trigger.eventId : null},${trigger.kind === 'scheduled_task' ? trigger.occurrenceKey : null},${purpose},
     ${retryOf || null},${json({ schemaVersion: 1, actor, maxTokens: agent?.consultation ? 8192 : 2048, policyVersion: settings.policy_version, agent,
       knowledgePolicy: c.purpose === 'knowledge_preview' ? { ...knowledgePolicy(settings.agent_config), enabled: true } : knowledgePolicy(settings.agent_config),
+      ...(agent && actor.principal.kind === 'user' && c.purpose === 'customer_consultation' && purpose === 'reply'
+        && !enterpriseKnowledgeEnabled(settings.agent_config) && !reviewRuntime && !agent.consultation && !agent.structuredFinal
+        && !agent.imageContext && !agent.knowledgeExplanation && !reportContext(c.entry_snapshot).selection
+        ? { dialogueContext: minimalDialogueProtocol } : {}),
       ...(!report && reportContext(c.entry_snapshot).selection ? { reportContextVersion: reportContext(c.entry_snapshot).revision } : {}),
       ...(report ? { reportComposition } : {}),
       ...(report ? reportBodyFinalPolicy(agent) : {}),

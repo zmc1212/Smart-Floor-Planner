@@ -8,6 +8,9 @@ export type ResponseReviewIssue = { segment: number; code: 'unscoped_measurement
   | 'contradictory_measurement_comparison' | 'unmeasured_compliance_claim' | 'misattributed_rule_comparison' | 'misattributed_project_status'
   | 'source_answer_scope' | 'independent_advice_scope' | 'unsupported_source_condition' };
 export type SynthesisReviewContext = { currentQuestion?: string; currentOriginal?: { messageId: string; hash: string };
+  /** Bound only by the knowledge-off ordinary-dialogue run policy. Uncited
+   * advice is model knowledge, not an assertion from an enterprise/site source. */
+  generalKnowledge?: boolean;
   /** Server-only draft preparation. Acceptance additionally requires the
    * durable hash-bound semantic review in knowledge-explanation.ts. */
   knowledgeExplanation?: 'reviewed-knowledge-explanation-v1';

@@ -13,6 +13,11 @@ const fields: Record<string, { required: string[]; properties: Record<string, un
   // Citation/segment semantics still belong to the existing synthesis parser.
   synthesis: { required: ['kind', 'segments'], properties: { segments: { type: 'array' } } },
 };
+/** Share the existing decoder contract with the provider schema. */
+export function finalResponseFields(kind: string) {
+  const shape = fields[kind];
+  return shape ? { required: [...shape.required], allowed: ['kind', ...Object.keys(shape.properties)] } : null;
+}
 /** Recover a format error through the existing single final-validation budget.
  * Never delete a provider field, coerce a value or dispatch a business tool. */
 export async function finalResponseShapeIssue(raw: string) {

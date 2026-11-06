@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { bindNeedOriginals, minimalDialogueProtocol } from './minimal-dialogue';
 import { withTenantTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { executePostgresText } from '@/lib/ai/postgres-workflow-chat';
@@ -516,6 +517,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         and conversation_id=${String(context.conversation.id)} and id=${String(context.run.trigger_message_id)}`);
       if (!trigger) fail('context_changed');
       const policy = context.run.policy_snapshot as Row;
+      const minimalDialogue = policy.dialogueContext === minimalDialogueProtocol && !knowledgeEnabled
+        && context.conversation.purpose === 'customer_consultation' && !config.consultation && !config.structuredFinal;
       const coordinationReferral = boundReportCoordination(policy.reportCoordination, policy.reportReadCompletion === reportReadCompletionProtocol);
       const reportHistoryVersion = boundReportHistoryScope(policy.reportHistoryScope, policy.reportReadCompletion === reportReadCompletionProtocol,
         policy.reportContextVersion, (trigger.content as Row).reportContextVersion);
@@ -628,7 +631,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       }
       // The oldest row of a bounded DB window can be the tail of a prior turn.
       while (turns.length > 1 && turns[0].role !== 'user') turns.shift();
-      const messages = buildAgentContext(turns, memory, knowledgeEnabled);
+      const messages = buildAgentContext(turns, memory, knowledgeEnabled, minimalDialogue);
       const report = await boundReportContext(tx, lease.actor, context.conversation, lease.runId);
       reportSource = report?.snapshot || null;
       if (report && !coordinationReferral && messages[0]?.role === 'system') messages[0].content.push({ type: 'text', text:
@@ -642,7 +645,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         + JSON.stringify(await knowledgeContext(tx,lease.actor,context.conversation)) });
       let currentImageUpload = false;
       const system = messages[0];
-      if (!knowledgeEnabled && system.role === 'system') system.content.push({ type: 'text', text: generalKnowledgeInstructions });
+      if (!knowledgeEnabled && !minimalDialogue && system.role === 'system') system.content.push({ type: 'text', text: generalKnowledgeInstructions });
       if (!knowledgeEnabled && (shared || staffFollowup) && system.role === 'system') system.content.push({ type: 'text', text:
         (shared ? '当前是有效项目成员共享的只读问答。' : '当前是员工本人私人报告追问。')
         + '以下是当前获权业务条件，不是企业知识资料或工程合格结论：' + JSON.stringify(await knowledgeContext(tx, lease.actor, context.conversation)) });
@@ -757,9 +760,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       const consultationDeadlineAt = config.consultation ? Date.now() + consultationAcceptanceProfile.runTimeoutMs - Math.max(0, Number(clock!.elapsed_ms)) : undefined;
       const priorUserText = turns.filter(turn => turn.role === 'user' && String(turn.id) !== String(trigger.id)).slice(-6).map(turn => turn.text).join(' ');
       const designerFollowup = designerClarificationFollowup(priorUserText, safeText(trigger.content as Parameters<typeof safeText>[0]));
-      return { ...context, knowledgeEnabled, shared, staffFollowup, config, trigger, messages, mediaRefs: [...dependencies.values()], currentImageUpload, referenceEvidence, resume, savedSummary, consultationDeadlineAt, designerFollowup, reportHistoryVersion };
+      return { ...context, knowledgeEnabled, minimalDialogue, shared, staffFollowup, config, trigger, messages, mediaRefs: [...dependencies.values()], currentImageUpload, referenceEvidence, resume, savedSummary, consultationDeadlineAt, designerFollowup, reportHistoryVersion };
     });
-    const reviewContext = { currentQuestion: safeText(initial.trigger.content as Parameters<typeof safeText>[0]),
+    const reviewContext = { ...(initial.minimalDialogue ? { generalKnowledge: true } : {}), currentQuestion: safeText(initial.trigger.content as Parameters<typeof safeText>[0]),
       currentOriginal: { messageId: String(initial.trigger.id), hash: fingerprint(initial.trigger.content) } };
     reviewEnabled = reviewCandidate(initial.conversation.entry_snapshot, initial.run.policy_snapshot);
     const authorize = async () => { await scoped(async (tx, context) => {
@@ -933,6 +936,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               fail('source_read_required', 502);
           }
           const { messageScoped, adviceScoped, focused, dispatchTools, policyView, bounded, modelMessages, contentProjection, homeSourceProjection } = compileModelRequest({
+            minimalDialogue: initial.minimalDialogue,
             question: reviewContext.currentQuestion, triggerId: String(initial.trigger.id), turn, purpose,sourceExcerpts:sourceMode.sourceExcerpts,requiredKnowledge:sourceMode.requiredKnowledge,sourceQuestionCoverage:sourceMode.sourceQuestionCoverage,knowledgeExplanation:sourceMode.knowledgeExplanation,naturalKnowledge:sourceMode.naturalKnowledge,
             messages:nativeFinalization&&purpose==='answer'&&tools.length?nativePlanningMessages(messages, completion ? reviewCompletionInstructions : undefined)
               : purpose === 'answer' && !archiveAllowed ? ownerNoArchivePolicy(claimMessages) : claimMessages,
@@ -1003,7 +1007,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               binding: consultation, createdAt: String(initial.run.created_at), purpose,
               estimatedRequestTokens: requestedTokens! }) : null;
             await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
-                values(${lease.enterpriseId},${lease.runId},${sequence},'agent_model','running',${JSON.stringify({ turn, purpose, summaryRequestHash, consultation: consultation ? { profile, stage: consultation.stage, budgetGroup: consultation.budgetGroup, reservation } : null, promptVersion: agentPromptVersion, contextPolicy: messageScoped ? currentMessageScopeProtocol : adviceScoped ? independentAdviceContextProtocol : focused === messages ? 'conversation' : synthesisContextProjectionVersion, budget: bounded.diagnostic,
+                values(${lease.enterpriseId},${lease.runId},${sequence},'agent_model','running',${JSON.stringify({ turn, purpose, summaryRequestHash, consultation: consultation ? { profile, stage: consultation.stage, budgetGroup: consultation.budgetGroup, reservation } : null, promptVersion: agentPromptVersion, contextPolicy: messageScoped ? currentMessageScopeProtocol : adviceScoped ? independentAdviceContextProtocol : initial.minimalDialogue ? minimalDialogueProtocol : focused === messages ? 'conversation' : synthesisContextProjectionVersion, budget: bounded.diagnostic,
                   currentMessageScope: messageScoped ? currentMessageScopeProtocol : null,
                   independentAdviceContext: adviceScoped ? independentAdviceContextProtocol : null,
                   policyProjection:policyView===focused?null:modelPolicyProjectionVersion,
@@ -1077,13 +1081,15 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           });
           const providerOutput = output.agentOutput;
           const finalProjected = purpose === 'answer' ? projectFinalToolOutput(providerOutput, ownerCitationCarrier) : providerOutput;
-          output.agentOutput = purpose === 'answer' ? projectNeedBatchOutput(finalProjected,
-            Boolean(explicitNeedWriteStatement(safeText(initial.trigger.content as Parameters<typeof safeText>[0])))) : finalProjected;
-          const needBatchProjected = output.agentOutput !== finalProjected;
+          const needOriginals = initial.minimalDialogue && purpose === 'answer' ? bindNeedOriginals(finalProjected) : finalProjected;
+          output.agentOutput = purpose === 'answer' ? projectNeedBatchOutput(needOriginals,
+            Boolean(explicitNeedWriteStatement(safeText(initial.trigger.content as Parameters<typeof safeText>[0])))) : needOriginals;
+          const needBatchProjected = output.agentOutput !== needOriginals;
           await scoped(async tx => {
             await tx.execute(sql`update app.assistant_run_steps set status='succeeded',provider_attempt_id=${output.attemptId ? String(output.attemptId) : null},
               private_checkpoint=${JSON.stringify({ ...output.agentOutput, providerOutput })}::jsonb,
               input_summary=input_summary || ${JSON.stringify({ toolFinalProtocol: agentToolFinalProtocol,
+                needOriginalBinding: needOriginals !== finalProjected ? minimalDialogueProtocol : null,
                 needBatchProtocol: needBatchProjected ? agentNeedBatchProtocol : null,
                 needBatchCallIds: needBatchProjected ? providerOutput.toolCalls.filter(call => call.name === 'record_need').map(call => call.id) : [] })}::jsonb
               where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`);
