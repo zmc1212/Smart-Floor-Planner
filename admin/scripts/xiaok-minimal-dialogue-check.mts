@@ -19,7 +19,7 @@ const {claimJob}=await imp('src/lib/assistant/infrastructure/job-queue.ts');
 const {lockAssistantAcceptance}=await imp('scripts/assistant-acceptance-safety.mjs');
 assert.ok(process.argv.includes('--live'),'Explicit --live required; no automatic retry');
 const model=process.argv.find(a=>a.startsWith('--model='))?.slice(8)||'qwen3.8-flash';
-assert.ok(['qwen3.8-flash','qwen3.8-max','qwen3.7-plus'].includes(model),'Use only the fixed original or authorized replacement model');
+assert.ok(['qwen3.8-flash','qwen3.8-max','qwen3.7-plus','deepseek-v4.1-flash-1017'].includes(model),'Use only the fixed original or authorized replacement model');
 const out=path.resolve(process.argv.find(a=>a.startsWith('--out='))?.slice(6)||'../tmp/xiaok-minimal-dialogue-20261106/trials02');fs.mkdirSync(out,{recursive:true});
 assert.ok(!fs.existsSync(path.join(out,'report.json')),'Do not overwrite or resample a previous attempt');
 const eid='1454',prefix='synthetic-minimal-dialogue-'+randomUUID(),read=(fn:any)=>withTenantTransaction(eid,fn),platform=(fn:any)=>withPlatformTransaction(fn);
