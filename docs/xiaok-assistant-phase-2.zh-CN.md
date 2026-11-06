@@ -1,5 +1,24 @@
 # 小K第二期：需求整理与人工交接
 
+<!-- xiaok-mineru-fastgpt-preview -->
+## MinerU/FastGPT员工草稿预览（Limited）
+
+当前有限能力复用原后台`/assistant-knowledge`本人草稿试问、ConversationService、持久任务和现有Agent。用户授权范围为微云1454员工草稿及小范围真实对话，28候选不发布。只有进程显式配置`XIAOK_FASTGPT_RETRIEVAL_FILE`、准确租户及`fastgpt-mineru-preview-v1`快照才能启用；企业知识默认关闭，默认Worker、对客C01布局/入口及生产不切换。知识管理员定义和数据库实时复查不变，不把“员工”扩成全部工人可读草稿；管理员试问仍仅本人可读。
+
+知识域采用已落盘的MinerU导出，不再发解析请求、重灌原FastGPT数据集或覆盖原源。服务端`KnowledgeService.importMineru`沿知识管理、原PDF资产hash、CAS和未发布守卫，清除旧核对/索引并创建真实完成的本地导入回执；公开路由白名单不接受此动作。28份为独立内部草稿，只有14/27页按本轮范围核对和索引；9/10/16/23页为图片无正文，不凭空补文。`ExtractionLocator`记录原PDF/语料hash、原PDF页号、chunkIndex及原块hash；原单页资产页号仍为1。saxes严格解析允许的表格结构，保留原单元格、合并关系和原数值；v2在同一表内给明细/小计保留原结构分组，避免小计与“瓷砖”失联。不是报价计算器，不修正原表算术或同页面积冲突。
+
+FastGPT只承担可替换候选检索，沿固定官方[searchTest](https://github.com/labring/FastGPT/blob/v4.17.4/projects/app/src/pages/api/core/dataset/searchTest.ts)协议。`limit=20000`是上游上下文预算，非返回条数；固定mixedRecall，关闭重排和扩展查询模型，不调用回答端。每个返回项必须匹配准确dataset/collection/chunkIndex/q SHA256；只输出校验后的排名，原文由原本地当前版本读取。真实embedding排名与fullText-only命中分开，后者similarity/semanticRank为空，不伪造向量得分。原KnowledgeRetriever在调用前后守本人、租户、来源ready/受众/版本/hash/epoch/撤回，外部结果永不授予权限。网络/数据变化失败不重试、不回退，保留原失败；显式适配不改变未配置企业/客户检索。
+
+Agent域复用原search_knowledge和自然解释、引用目录、最终校验、网关计量及保存；该草稿范围只有知识读取，无项目/业务写工具、不新建第二用户会话。实际10936输入“123平米那份主材预算里，瓷砖类的小计是多少？”，旧逐行Evidence遗漏原小计12522.25，首稿及唯一修复误将局部行相加为3496，守卫拒绝。知识v2使正确原小计成为首条Evidence；10937首稿已读到正确值，但含未被其所引段支持的额外明细，唯一修复只留正确12,522.25仍被拒。保存trace证明旧数值tokenizer把千分位拆成12和522.25；共享groundedNumberTokens只在比较/诊断中等价完整分组，既不改正文/原件，也不放宽无源金额、单位/条件或办理回执。保存的10937唯一修复离线原样通过。原失败和两次修复计数保留，不补提示/关键词或新语义校验器。
+
+当前语义证据：两组鞋柜单价/家具包含追问4首稿保存、幂等及重进通过；家具排除答复仅验证该排除条款，同页原表出现83.98㎡而页级前缀为97㎡，不能据此认证全页户型版本一致。v2加数值格式修正后，事前固定的两次同题独立Chrome预览10938/10939均在首稿答12522.25，原草稿引用可读。Chrome复核了解析完成/60片索引、原来源、刷新重进、旧登录态账号撤权及恢复、撤回后的历史屏蔽和失败反馈。既有Ant Design设计/布局不变；诊断面板沿现有“无”样式容纳空similarity。未改Mini展示，不把本轮后台证据当成客户C01、Stable原生或真机质量验收。
+
+工程证据保留原live-report异步拒绝断言失败及client-grouped期望1个Worker lease而实际0的整批失败，不改绿。后者实际10940已在claimJob授权阶段context_changed，任务failed、无输出、provider_started_at空、模型步骤/用量0；独立只读revocation-audit复核通过，客户有效身份读本人管理员草稿仍404，其他管理员/他租户/改源失效复用engineering02。驱动现正确核对claim前拒绝，无须重跑成功语义问题。主库只读复查376–405共30份、仅410/411发布；本轮隔离28份均无发布指针。默认设置恢复、队列0，所属资源清理见原证据。
+
+用量按原步骤观测共18次文本attempt，64317输入/2029输出，缓存输入14080，文本用量未知0；金额未知，不记零。FastGPT查询embedding、本地Qwen索引与Zcode既有MinerU用量分账，不把本地导入0调用写成云解析免费。10928 indeterminate、3753unknown及10930普通建议停止批保持，不以本轮RAG工作修复或重开。188项受影响快速测试通过，全量lint0错误/31既有警告，类型57项既有诊断/受影响0；无route/schema变化，不新增生产构建门槛。
+
+代码：`admin/scripts/fastgpt/mineru-preview.mts`（prepare/engineering/live）与`mineru-preview-client.mts`（原UI串行控制）；每批绑定实际依赖、驱动/配置/原件并保留所有首稿。证据统一在`tmp/xiaok-mineru-fastgpt-preview-20261107/`：`preparation.json`、`engineering02.json`（实际工程报告按原文件名保留）、`table-context-failure.json`、`table-context-v2.json`、`offline-grouping-replay.json`、`live-report.json`、`client02.json`、`client-v2.json`、`client-grouped.json`、`client-ui-observations.json`、`revocation-audit.json`、`main-source-status.json`及`usage-summary.json`。跨表合成、其余候选的完整OCR/表格校核和客户知识启用均未验收，28候选不自动发布。
+
 <!-- xiaok-fastgpt-capabilities -->
 ## FastGPT阶段提醒与知识问答工作流（Limited）
 

@@ -68,6 +68,7 @@ export async function fileChunks(file: SourceFile, chunk: (s: string) => Promise
       ...(block.paragraph ? { paragraph: block.paragraph } : {}), ...(block.table ? { table: block.table } : {}),
       ...(block.row ? { row: block.row, columns: block.cells?.map(c => c.column) } : {}),
       ...(block.sheet ? { sheet: block.sheet, range: block.range } : {}), label: fileLabel(block),
+      ...(block.extraction ? { extraction: block.extraction } : {}),
     } });
     offset += Array.from(text).length + 2;
   }

@@ -8,11 +8,12 @@ import { sourceCitationCatalog } from '../agent/citation-catalog';
 import { knowledgeSynthesisSources, synthesisInstructions } from '../agent/synthesis';
 import { synthesisQuestionPrefix } from '../agent/model-policy';
 import { compileModelRequest } from '../agent/model-request';
+import { buildAgentContext, agentBasePolicy } from '../agent/context';
 import { agentToolsForMessage, agentToolsForTurn, finalToolForMessages, constructionReadOnlyTools } from '../agent/worker';
 import { answerExcerpts } from '../knowledge/answer';
 import { currentKnowledgeQuestion, naturalKnowledgeProtocol, naturalKnowledgeInstructions, naturalKnowledgeReadTool,
   knowledgeExplanationProtocol, knowledgeQuantityScopeProtocol, knowledgeExplanationFailure,
-  prepareKnowledgeExplanation, acceptKnowledgeExplanation } from '../agent/knowledge-explanation';
+  prepareKnowledgeExplanation, acceptKnowledgeExplanation, parseNaturalKnowledgeAnswer, sourceBoundaryValidationProtocol } from '../agent/knowledge-explanation';
 
 const question = '我刚才说得不准，是水管根部，不是整面墙。为什么这里还要单独处理？';
 const evidence: Evidence[] = [{ ref: { type: 'knowledge_chunk', id: '1', version: '1' }, hash: 'synthetic',
@@ -87,6 +88,48 @@ test('an omitted WHY or strengthened sequence still fails and repairs the flat a
   }
 });
 
+test('read-only natural input reuses the source view without unavailable action policies or changing originals', () => {
+  const history = buildAgentContext([{ id: 'current', role: 'user', text: question }], { version: 0, facts: [] });
+  if (history[0].role === 'system') history[0].content.push({ type: 'text', text: synthesisInstructions + synthesisQuestionPrefix + JSON.stringify({ currentQuestion: question }) });
+  const original = structuredClone(history);
+  const compiled = compileModelRequest({ question, triggerId: 'current', turn: 0, purpose: 'answer', messages: history,
+    tools: constructionReadOnlyTools('project_collaboration', true)!, knowledgeExplanation: true, naturalKnowledge: true,
+    toolsForTurn: (q, m, t, id) => agentToolsForTurn(q, m, t, id, { knowledgeExplanation: true, naturalKnowledge: true }) });
+  assert.ok(compiled.contentProjection);
+  assert.ok(!compiled.modelMessages.some(m => m.role === 'system' && m.content.some(p => p.type === 'text' && p.text.startsWith(agentBasePolicy))));
+  assert.deepEqual(compiled.modelMessages.filter(m => m.role === 'user'), history.filter(m => m.role === 'user'));
+  assert.deepEqual(history, original);
+  // Actual action-capable turns keep their own rules. The view is selected by
+  // application tools and the exact trusted contract, never by user text.
+  const withWrite = compileModelRequest({ question, triggerId: 'current', turn: 0, purpose: 'answer', messages: history,
+    tools: [{ name: 'record_need', description: '', parameters: {} }], knowledgeExplanation: true, naturalKnowledge: true,
+    toolsForTurn: (_q, _m, tools) => tools });
+  assert.equal(withWrite.contentProjection, null);
+});
+
+test('causal paraphrases reach source-bound semantic review while unsupported reasons require rejection', () => {
+  const original = [{ ...evidence[0], text: '先铺管后穿线，避免先穿线后铺管而无法抽动电线，便于后期维修。' }];
+  const selected = knowledgeSynthesisSources(original), id = sourceCitationCatalog(selected[0])[0].citationId;
+  const q = '先穿线还是先铺管，为什么？';
+  const draftRaw = JSON.stringify({ kind: 'knowledge_explanation', segments: [{ basis: 'evidence',
+    text: '先铺管再穿线，避免电线无法抽动，以便后期检修。', citations: [{ citationId: id }] }] });
+  const draft = prepareKnowledgeExplanation(draftRaw, selected, currentKnowledgeQuestion(q), { currentQuestion: q }, [], knowledgeQuantityScopeProtocol, naturalKnowledgeProtocol);
+  assert.equal(acceptKnowledgeExplanation(draft, verdict(), draft.binding), null);
+  const rejected = acceptKnowledgeExplanation(draft, verdict({ supported: false, reason: '所引原文未支持这项原因' }), draft.binding);
+  assert.equal(rejected?.code, 'ungrounded_response_scope');
+  const grouped = JSON.stringify({ kind: 'knowledge_explanation', answers: { Q1: JSON.parse(draftRaw).segments } });
+  assert.throws(() => prepareKnowledgeExplanation(grouped, selected, currentKnowledgeQuestion(q), { currentQuestion: q }, [], knowledgeQuantityScopeProtocol), /ungrounded_response_scope/);
+});
+
+test('ordinary natural answers retain strict citation, number, quantity and operation boundaries without a model verdict', () => {
+  assert.equal(parseNaturalKnowledgeAnswer(raw(), sources, { currentQuestion: question }).segments.length, 1);
+  for (const text of ['必须涂刷900毫米。', '管根需要涂刷三遍。', '我已经联系施工经理并安排验收。'])
+    assert.throws(() => parseNaturalKnowledgeAnswer(raw(text), sources, { currentQuestion: question }), /unsupported_model_commitment/);
+  assert.throws(() => parseNaturalKnowledgeAnswer(raw(), [{ ...sources[0], text: '来源已撤回或换版。' }], { currentQuestion: question }), /invalid_model_citation/);
+  const changed = JSON.parse(raw()); changed.segments[0].citations = [{ citationId: 'invented' }];
+  assert.throws(() => parseNaturalKnowledgeAnswer(JSON.stringify(changed), sources, { currentQuestion: question }), /invalid_model_citation/);
+});
+
 test('incidental pass counts reach the existing review while real counts and numeric hallucinations stay blocked', () => {
   const draft = prepare('管根需要单独加强，不是靠大面那一遍涂刷顺带覆盖。');
   assert.equal(acceptKnowledgeExplanation(draft, verdict({}, false), draft.binding), null);
@@ -141,7 +184,12 @@ test('natural mode is explicitly selected at admission without changing capabili
   assert.equal(agentConfig(base)?.knowledgeExplanation, undefined);
   const old = agentConfig({ ...base, knowledgeExplanation: knowledgeExplanationProtocol });
   const natural = agentConfig({ ...base, knowledgeExplanation: naturalKnowledgeProtocol });
+  const direct = agentConfig({ ...base, knowledgeExplanation: naturalKnowledgeProtocol, knowledgeAnswerValidation: sourceBoundaryValidationProtocol });
   assert.equal(natural?.knowledgeExplanation, naturalKnowledgeProtocol);
   assert.equal(agentCapabilityFingerprint(old), agentCapabilityFingerprint(natural));
+  assert.equal(direct?.knowledgeAnswerValidation, sourceBoundaryValidationProtocol);
+  assert.equal(agentCapabilityFingerprint(natural), agentCapabilityFingerprint(direct));
+  assert.throws(() => agentConfig({ ...base, knowledgeAnswerValidation: sourceBoundaryValidationProtocol }), /assistant_capability_forbidden/);
+  assert.throws(() => agentConfig({ ...base, knowledgeExplanation: knowledgeExplanationProtocol, knowledgeAnswerValidation: sourceBoundaryValidationProtocol }), /assistant_capability_forbidden/);
   assert.throws(() => agentConfig({ ...base, tools: false, knowledgeExplanation: naturalKnowledgeProtocol }), /assistant_capability_forbidden/);
 });

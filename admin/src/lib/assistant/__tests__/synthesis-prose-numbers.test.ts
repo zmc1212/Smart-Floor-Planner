@@ -1,11 +1,23 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
-import {proseNumberView} from '../agent/prose-number-view';
+import {proseNumberView,groundedNumberTokens} from '../agent/prose-number-view';
 import {parseSynthesis,type SynthesisSource} from '../agent/synthesis';
 import {reportAnswerSynthesis,reportQuestionCoverage} from '../agent/report-final';
 
 const reply=(text:string)=>JSON.stringify({kind:'synthesis',segments:[{basis:'advice',text,citations:[]}]});
+
+test('printed thousands separators preserve exact decimal grounding in both directions',()=>{
+  const check=(text:string,quote:string)=>parseSynthesis(JSON.stringify({kind:'synthesis',segments:[{
+    basis:'evidence',text,citations:[{sourceId:'K1',quote}],
+  }]}),[{sourceId:'K1',kind:'knowledge',title:'原始预算',text:quote}]);
+  assert.deepEqual(groundedNumberTokens('12,522.25 / 1,234,567.00 / 12,52.25'),['12522.25','1234567.00','12','52.25']);
+  for(const [text,quote] of [['瓷砖小计12,522.25元。','瓷砖小计12522.25元。'],
+    ['瓷砖小计12522.25元。','瓷砖小计12,522.25元。']])
+    assert.equal(check(text,quote).segments[0].text,text);
+  for(const text of ['瓷砖小计12,523.25元。','瓷砖小计12,52.25元。','瓷砖小计12522.250元。','瓷砖小计12,522.25元，已付款。'])
+    assert.throws(()=>check(text,'瓷砖小计12522.25元。'),/unsupported_model_commitment/,text);
+});
 
 test('CommonMark ordered-list markers are presentation, while original prose and source-free advice stay unchanged',()=>{
   for(const text of ['可比较：\n1. 脚感与清洁习惯。\n2. 核对厂家适用条件。\n3. 未知现场仍需核对。',

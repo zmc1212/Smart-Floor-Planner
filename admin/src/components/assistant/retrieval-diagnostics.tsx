@@ -33,7 +33,7 @@ export function RetrievalDiagnostics({runId}:{runId:string}) {
             <Typography.Paragraph type="secondary">配置 {trace.configuration?.version} · profile {trace.profileId} · {trace.elapsedMs}ms · 无额外重排 · 查询输入 {trace.embeddingUsage?.inputTokens??'未知'} tokens · 费用未知</Typography.Paragraph>
             {!trace.candidates?.length?<Alert type="warning" message="当前授权范围未召回候选" description="先核对发布、受众、有效期与索引，再调整专业表述并复跑同题。"/>:<Collapse items={trace.candidates.map(c=>({key:c.ref.id,label:`${c.title} · ${c.disposition==='selected'?'检索入选':c.disposition==='below_similarity'?'相关度低':'排名未入选'}`,
               children:<Space direction="vertical" size={12}>
-                <Typography.Text type="secondary">文档 {c.documentId} / 版本 {c.ref.version} / 片段 {c.ref.id} · 向量序 {c.semanticRank??'无'} · 词法序 {c.lexicalRank??'无'} · 融合序 {c.fusionRank} · 相似度 {c.similarity.toFixed(3)}</Typography.Text>
+                <Typography.Text type="secondary">文档 {c.documentId} / 版本 {c.ref.version} / 片段 {c.ref.id} · 向量序 {c.semanticRank??'无'} · 词法序 {c.lexicalRank??'无'} · 融合序 {c.fusionRank} · 相似度 {c.similarity===null?'无':c.similarity.toFixed(3)}</Typography.Text>
                 <Typography.Text type="secondary">{c.contextIncluded===undefined?'历史记录未包含上下文装配明细':c.contextIncluded?`本轮模型使用 ${c.contextChars} 字符（原文可能按预算截取）`:'未送入本轮模型：请核对条件或上下文预算'}</Typography.Text>
                 <Typography.Text>{c.applicability?({applicable:'结构条件匹配，前置检查仍须核实',unknown:'适用条件待核实',not_applicable:'当前条件明确不适用'}[c.applicability.status]):'普通条目，未登记结构条件'}</Typography.Text>
                 {c.applicability && <Typography.Paragraph>{[...c.applicability.matched,...c.applicability.mismatched,...c.applicability.missing.map(s=>'缺少：'+s)].join('\n')}</Typography.Paragraph>}

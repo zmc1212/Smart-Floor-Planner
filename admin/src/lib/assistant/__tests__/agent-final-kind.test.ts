@@ -24,7 +24,7 @@ test('private report reads use the same bound-fact tool boundary for customers a
   }
   assert.deepEqual(constructionReadOnlyTools('construction_followup', false), []);
   assert.equal(constructionReadOnlyTools('customer_consultation', true), null, 'Explicit ordinary topics retain their original services');
-  assert.equal(constructionReadOnlyTools('knowledge_preview', true), null);
+  assert.deepEqual(constructionReadOnlyTools('knowledge_preview', true)!.map(tool => tool.name), ['search_knowledge']);
 });
 
 test('resolved floorplan and material reads require a sourced answer instead of terminating at a snapshot list', () => {

@@ -2,6 +2,15 @@ import { fromMarkdown } from 'mdast-util-from-markdown';
 import type { RootContent } from 'mdast';
 
 export const proseNumberProtocol = 'structured-list-and-reference-marker-v5';
+
+/** Compare printed numbers without changing prose, source originals or decimal
+ * precision. A complete ASCII thousands grouping is presentation, not several
+ * independent quantities. Malformed grouping retains the old tokenization. */
+export function groundedNumberTokens(text: string): string[] {
+  return (text.match(/\d+(?:[,.]\d+)*/g) || []).flatMap(token =>
+    /^[1-9]\d{0,2}(?:,\d{3})+(?:\.\d+)?$/.test(token)
+      ? [token.replaceAll(',', '')] : token.match(/\d+(?:\.\d+)?/g) || []);
+}
 // Ambiguous "1. ℃"/"1. 米" is kept as a numerical claim. Markup cannot
 // turn a quantity into an ordinal. Quantities in item bodies remain untouched.
 const startsWithUnit = /^(?:℃|°[CF]?|[%‰㎡㎥²³]|(?:mm|cm|km|kg|ml|mpa|kpa|kw|m|h|s|l|v|w)(?:\b|$)|毫米|厘米|千米|平方米|立方米|千克|毫升|兆帕|千瓦|小时|分钟|秒|天|周|个月|年|度|元|万元|遍|次|米|吨|克|升)/iu;

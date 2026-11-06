@@ -12,6 +12,7 @@ import { withSynthesisRepairProtocol, synthesisRepairBase, finalAnswerRepairBase
 import { formalBusinessResultKeys } from './formal-business-repair';
 import { originalAnswerOnly, independentAdviceRequested } from './read-tool-input';
 import { numericCitationCandidates } from './citation-coverage';
+import { groundedNumberTokens } from './prose-number-view';
 import { publicPdfSource } from './source-document';
 import { isReportAnswerSnapshot, reportQuestionCoverage } from './report-final';
 import { scopedReportSynthesisSources, type ReportSourceScope } from './report-source-scope';
@@ -411,7 +412,7 @@ function unsupportedWordQuantities(text: string, quoted: string) {
   return wordQuantities(text).filter(quantity => !original.includes(quantity));
 }
 function numericSourceCandidates(numbers: string[], sources: SynthesisSource[]) {
-  return numericCitationCandidates(numbers, sources, quote => [...(quote.match(/\d+(?:\.\d+)?/g) || []), ...wordQuantities(quote)]);
+  return numericCitationCandidates(numbers, sources, quote => [...(groundedNumberTokens(quote)), ...wordQuantities(quote)]);
 }
 /** Describe the model's existing selections, never union/apply candidates to an
  * answer. IDs must resolve to the exact authorized original catalog span. */
@@ -546,9 +547,9 @@ export function synthesisRepairIssue(raw:string,sources:SynthesisSource[],contex
     }
     if(citationCorrections.length>4)throw error;
     const numericGaps=value.segments.flatMap((s,i)=>{
-      const quoted=(s.citations||[]).map(c=>c.quote).join('\n'),numbers=new Set(quoted.match(/\d+(?:\.\d+)?/g)||[]);
+      const quoted=(s.citations||[]).map(c=>c.quote).join('\n'),numbers=new Set(groundedNumberTokens(quoted));
       const claimText=engineeringClaimText(s.text,sources.filter(source=>s.citations.some(c=>c.sourceId===source.sourceId)),s.citations.length,s.citations);
-      const unsupportedNumbers=[...new Set([...(claimText.match(/\d+(?:\.\d+)?/g)||[]).filter(n=>!numbers.has(n)),
+      const unsupportedNumbers=[...new Set([...(groundedNumberTokens(claimText)).filter(n=>!numbers.has(n)),
         ...unsupportedWordQuantities(claimText, quoted)])];
       return unsupportedNumbers.length?[{segment:i+1,unsupportedNumbers}]:[];
     });
@@ -621,10 +622,10 @@ export function synthesisRepairIssue(raw:string,sources:SynthesisSource[],contex
         && sources.filter(other => other.sourceId === source.sourceId).length === 1
         && context.currentNeeds?.facts.some(fact => fact.sourceMessageId === source.history!.messageId
           && fact.sourceHash === source.history!.hash && source.text.includes(fact.quote) && fact.quote.includes(fact.value)
-          && numbers.some(number => new Set(fact.value.match(/\d+(?:\.\d+)?/g) || []).has(number))));
+          && numbers.some(number => new Set(groundedNumberTokens(fact.value)).has(number))));
       const supported = numbers.filter(number => context.currentNeeds?.facts.some(fact =>
         originals.some(source => source.history!.messageId === fact.sourceMessageId && source.history!.hash === fact.sourceHash)
-        && new Set(fact.value.match(/\d+(?:\.\d+)?/g) || []).has(number)));
+        && new Set(groundedNumberTokens(fact.value)).has(number)));
       return { path: `segments[${gap.segment - 1}].text`, numbersToSupportOrRemove: gap.unsupportedNumbers,
         numericSourceCandidates: numericSourceCandidates(supported, originals) };
     });
@@ -654,13 +655,13 @@ export function synthesisRepairIssue(raw:string,sources:SynthesisSource[],contex
     if(error.code==='unsupported_model_commitment'&&!hasFile&&!sources.some(s=>s.material?.ref.type==='formal_plan')&&!materialNumericRepair&&!webNumericRepair)throw error;
     const missing=numericGaps.map(gap=>gap.segment);
     const numericTextPaths=numericGaps.map(gap=>({path:`segments[${gap.segment-1}].text`,removeUnsupportedNumbers:gap.unsupportedNumbers,
-      permittedQuoteNumbers:[...new Set(value.segments[gap.segment-1].citations.flatMap(c=>typeof c.quote==='string'?c.quote.match(/\d+(?:\.\d+)?/g)||[]:[]))],
+      permittedQuoteNumbers:[...new Set(value.segments[gap.segment-1].citations.flatMap(c=>typeof c.quote==='string'?groundedNumberTokens(c.quote):[]))],
       numericSourceCandidates: numericSourceCandidates(gap.unsupportedNumbers, sources) }));
     // Exact plan identifiers/version numbers can need their header repeated in
     // this segment. Do not extend this exception to prices or site measurements.
     const numericQuoteCorrections = missing.flatMap(segment => {
-      const s = value.segments[segment - 1], quoted = new Set(s.citations.flatMap(c => typeof c.quote === 'string' ? c.quote.match(/\d+(?:\.\d+)?/g) || [] : []));
-      const absent = (s.text.match(/\d+(?:\.\d+)?/g) || []).filter(n => !quoted.has(n));
+      const s = value.segments[segment - 1], quoted = new Set(s.citations.flatMap(c => typeof c.quote === 'string' ? groundedNumberTokens(c.quote) : []));
+      const absent = (groundedNumberTokens(s.text)).filter(n => !quoted.has(n));
       if (!absent.length || unsupportedWordQuantities(s.text, s.citations.map(c => c.quote).join('\n')).length) return [];
       const source = s.citations.map(c => sources.find(source => source.sourceId === c.sourceId)!).find(source => {
         if (source.material?.ref.type !== 'formal_plan' || !source.material.formal
@@ -668,11 +669,11 @@ export function synthesisRepairIssue(raw:string,sources:SynthesisSource[],contex
         const withoutHeaders = s.text.replace(new RegExp('方案\\s*' + source.material.ref.id + '(?![\\d.])', 'g'), '方案编号')
           .replace(new RegExp('(?:V\\s*' + source.material.formal.number + '(?![\\d.])|版本\\s*' + source.material.formal.number
             + '(?![\\d.])|第\\s*' + source.material.formal.number + '\\s*版)', 'g'), '本版');
-        return !(withoutHeaders.match(/\d+(?:\.\d+)?/g) || []).some(n => absent.includes(n));
+        return !(groundedNumberTokens(withoutHeaders)).some(n => absent.includes(n));
       });
       if (!source) return [];
       const quote = source.text.length <= 400 ? source.text : source.text.split('\n')[0];
-      const supported = new Set(quote.match(/\d+(?:\.\d+)?/g) || []);
+      const supported = new Set(groundedNumberTokens(quote));
       return absent.every(n => supported.has(n)) ? [{ segment, sourceId: source.sourceId, copyExactQuote: quote }] : [];
     });
     if(missing.length&&!hasFile&&numericQuoteCorrections.length!==missing.length&&!materialNumericRepair&&!webNumericRepair)fail('unsupported_model_commitment',502);
@@ -694,7 +695,7 @@ export type PendingCoatingQuantity = { segment: number; quantities: string[] };
  * explanation reviewer may decide whether these mentions assert a quantity.
  * Digits, other word units, citations, receipts and scope retain their guards. */
 export function prepareCoatingQuantityReview(raw: string, sources: SynthesisSource[], context: SynthesisReviewContext) {
-  if (context.knowledgeExplanation !== 'reviewed-knowledge-explanation-v1') fail('assistant_capability_forbidden', 403);
+  if (!['reviewed-knowledge-explanation-v1', 'natural-knowledge-answer-v1'].includes(context.knowledgeExplanation || '')) fail('assistant_capability_forbidden', 403);
   const pending: PendingCoatingQuantity[] = [];
   const answer = checkedSynthesis(raw, sources, context, undefined, pending);
   return { answer, pending };
@@ -770,7 +771,7 @@ function checkedSynthesis(raw: string, sources: SynthesisSource[], context: Synt
     // Source assertions retain exact numerical grounding. In explicitly bound
     // model-knowledge chat, uncited advice has the same scope as a general
     // reply. Formal commitments and project/source-role checks still run.
-    const numbers = new Set(cited.join('\n').match(/\d+(?:\.\d+)?/g) || []);
+    const numbers = new Set(groundedNumberTokens(cited.join('\n')));
     // "24小时制" names a display notation, not a 24-hour deadline. Only an
     // exact authorized XLSX clock quote permits that name; all quantities and
     // the original unmodified prose still pass the existing commitment guards.
@@ -778,7 +779,7 @@ function checkedSynthesis(raw: string, sources: SynthesisSource[], context: Synt
     const numericText = citedClock ? claimText.replace(/24\s*小时制/g, '') : claimText;
     try {
       const generalAdvice = context.generalKnowledge && s.basis === 'advice' && !s.citations.length;
-      if (!generalAdvice && (numericText.match(/\d+(?:\.\d+)?/g) || []).some(n => !numbers.has(n))) fail('unsupported_model_commitment', 502);
+      if (!generalAdvice && (groundedNumberTokens(numericText)).some(n => !numbers.has(n))) fail('unsupported_model_commitment', 502);
       const missing = generalAdvice ? [] : unsupportedWordQuantities(numericText, cited.join('\n'));
       const passes = pending ? new Set(coatingPassQuantities(numericText)) : new Set<string>();
       if (missing.some(quantity => !passes.has(quantity))) fail('unsupported_model_commitment', 502);

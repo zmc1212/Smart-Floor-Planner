@@ -12,6 +12,7 @@ import { professionalKnowledge, professionalText } from './professional';
 import { fileContent, uploadedFile } from './source-file';
 import { storeOriginal, queueFileParse, reviewFile } from './file-service';
 import type { SourceFile } from '../contracts/source-file';
+import { parseMineruPage, type MineruPage } from './mineru';
 
 export type KnowledgeActor = { enterpriseId: string; adminId: string };
 export function text(value: unknown, max: number, allowEmpty = false): string {
@@ -169,8 +170,31 @@ export class KnowledgeService {
             values(${a.enterpriseId},${did},${Number(next.n)},${String(v.body)},${JSON.stringify(v.faq)}::jsonb,${v.reference_case ? JSON.stringify(v.reference_case) : null}::jsonb,${v.professional ? JSON.stringify(v.professional) : null}::jsonb,${v.source_asset_id ?? null},${v.source_file ? JSON.stringify(v.source_file) : null}::jsonb,${String(v.content_hash)},${v.effective_from as Date},${v.effective_to as Date|null},${a.adminId}) returning *`))!;
         }
         if (expected(input.expectedEditVersion) !== Number(v.edit_version)) fail('version_conflict');
-        if (['replaceFile','reviewFile','parse','cancelParse'].includes(action)) {
+        if (['replaceFile','reviewFile','parse','cancelParse','importMineru'].includes(action)) {
           if (d.source_type!=='file' || v.published_at || d.status==='retired') fail('version_conflict');
+          // Server-side import seam only; public routes do not accept parser
+          // output or paths. Existing original, author, CAS and index guards apply.
+          if (action === 'importMineru') {
+            const original = v.source_file as SourceFile;
+            if (original.format !== 'pdf' || input.assetHash !== original.hash) fail('knowledge_file_invalid', 422);
+            const file: SourceFile = { ...original, parsed: parseMineruPage(input.mineru as MineruPage), review: null };
+            const c = fileContent(file);
+            await tx.execute(sql`update app.assistant_jobs set status='cancelled',lease_token=null,lease_expires_at=null,last_error='context_changed',updated_at=now()
+              where enterprise_id=${a.enterpriseId} and knowledge_version_id=${String(v.id)} and status in ('queued','running')`);
+            const updated = (await one(tx, sql`update app.assistant_knowledge_versions set source_file=${JSON.stringify(file)}::jsonb,body=${c.body},content_hash=${c.hash},
+              edit_version=edit_version+1,index_status='pending',indexed_hash=null,chunk_count=0,updated_at=now()
+              where enterprise_id=${a.enterpriseId} and id=${String(v.id)} returning *`))!;
+            // The imported export is an actual completed extraction operation,
+            // distinct from the cancelled local parser. Keep a truthful durable
+            // receipt so the existing file panel does not report it as pending.
+            // This import makes no model call; prior MinerU usage stays separate.
+            const job = (await one(tx, sql`insert into app.assistant_jobs(enterprise_id,kind,knowledge_version_id,content_hash,knowledge_edit_version,
+              requested_by,dedupe_key,status,attempts) values(${a.enterpriseId},'knowledge_parse',${String(v.id)},${c.hash},${Number(updated.edit_version)},
+              ${a.adminId},${'mineru-import:' + v.id + ':' + updated.edit_version + ':' + c.hash},'succeeded',1) returning id`))!;
+            await tx.execute(sql`insert into app.assistant_knowledge_attempts(enterprise_id,job_id,lease_token,operation,batch_ordinal,profile_key,model_revision,status,input_tokens,completed_at)
+              values(${a.enterpriseId},${String(job.id)},${randomUUID()},'parse',0,'mineru-export-import-v1',${file.parsed!.parser},'succeeded',0,now())`);
+            return updated;
+          }
           if (action==='parse') {
             if ((v.source_file as SourceFile).parsed) fail('version_conflict');
             const old=await one(tx,sql`select * from app.assistant_jobs where enterprise_id=${a.enterpriseId} and knowledge_version_id=${String(v.id)} and kind='knowledge_parse' order by id desc limit 1 for update`);

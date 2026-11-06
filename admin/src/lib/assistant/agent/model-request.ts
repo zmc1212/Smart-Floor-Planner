@@ -96,7 +96,8 @@ export function compileModelRequest(input: {
     ? input.naturalKnowledge ? naturalKnowledgeInstructions : knowledgeExplanationInstructions : reportMode?reportCoverageInstructions:undefined) : focused;
   const contentView = publicSourceProtocol || minimalDialogue ? projectConsultationModelView(policyView, dispatchTools, publicContract,
     { preservePolicy: true, navigationOnly: !publicSourceProtocol, budget: { profile: input.profile, purpose, imageContextBudget: input.imageContextBudget,
-      reportFinalOutputTokens: input.reportFinalOutputTokens } }) : input.profile && purpose === 'answer' ? projectConsultationModelView(policyView, dispatchTools) : policyView;
+      reportFinalOutputTokens: input.reportFinalOutputTokens } }) : purpose === 'answer' && (input.profile || input.naturalKnowledge)
+    ? projectConsultationModelView(policyView, dispatchTools, input.naturalKnowledge ? naturalKnowledgeInstructions : undefined) : policyView;
   const excerptView=excerptMode?sourceExcerptModelView(contentView):contentView;
   if (excerptMode && input.sourceQuestionCoverage) excerptView.push({ role: 'system', content: [{ type: 'text', text: sourceQuestionCoverageInstructions }] });
   const wireView=input.wireProjection?input.wireProjection(excerptView):excerptView;

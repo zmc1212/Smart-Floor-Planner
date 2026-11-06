@@ -14,9 +14,10 @@ export type SynthesisReviewContext = { currentQuestion?: string; currentOriginal
   /** Server-owned stage label after currentReportStageEvent authorization.
    * Historical reports and ordinary chat must not bind this current fact. */
   currentProjectStage?: string;
-  /** Server-only draft preparation. Acceptance additionally requires the
-   * durable hash-bound semantic review in knowledge-explanation.ts. */
-  knowledgeExplanation?: 'reviewed-knowledge-explanation-v1';
+  /** Server-owned source-answer context, never supplied by a client. Legacy
+   * explanation runs additionally require their durable semantic proof;
+   * explicitly bound source-boundary runs use the strict original parser. */
+  knowledgeExplanation?: 'reviewed-knowledge-explanation-v1' | 'natural-knowledge-answer-v1';
   currentNeeds?: { version: number; facts: Array<{ sourceMessageId: string; sourceHash: string; quote: string; value: string }> } };
 
 function quantityTokens(text: string) {
@@ -376,7 +377,12 @@ export function reviewSynthesisResponse(answer: SynthesisAnswer, sources: Synthe
     if (unsupportedRecordGap(segment.text, citations, sources)) codes.add('misattributed_project_observation');
     if (unsupportedProjectStatus(segment.text, citations, sources, context.currentProjectStage)) codes.add('misattributed_project_status');
     if (unsupportedRuleComparison(segment.text, citations, sources)) codes.add('misattributed_rule_comparison');
-    if (segment.basis === 'evidence' && unsupportedEvidenceMechanism(segment.text, citations)) codes.add('unsupported_evidence_mechanism');
+    // Natural explanations require the existing source-bound semantic proof
+    // before commit. Causal entailment belongs to that review: a vocabulary
+    // match cannot distinguish a synonym from an unsupported explanation.
+    // Legacy paths retain their original heuristic; hard guards above remain.
+    if (context.knowledgeExplanation !== 'natural-knowledge-answer-v1'
+      && segment.basis === 'evidence' && unsupportedEvidenceMechanism(segment.text, citations)) codes.add('unsupported_evidence_mechanism');
     for (const code of projectAssessmentIssues(segment.text, segment.basis, citations, sources)) codes.add(code);
     if (/混合(?:行|原话)|最小待核实项|qualifiedBy|currentFactId|supersedes/.test(segment.text)) codes.add('internal_wording');
     for (const sentence of segment.text.split(/[。！？!?；;\n]/)) {

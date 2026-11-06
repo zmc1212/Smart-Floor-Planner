@@ -5,6 +5,7 @@ import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assi
 import { executePostgresText } from '@/lib/ai/postgres-workflow-chat';
 import { fastGPTWorkflows } from '../fastgpt/runtime';
 import { nativeKnowledgeProtocol } from '../fastgpt/native-knowledge';
+import { fastGPTPreviewConfiguration, fastGPTPreviewProtocol } from '../knowledge/fastgpt-retrieval';
 import { recordAgentModelUsage } from '../core/model-usage';
 import { AiProviderError } from '@/lib/ai/provider-types';
 import { agentRejectionAudited, isDefiniteAgentRejection } from './provider-rejection';
@@ -67,7 +68,9 @@ import { sourceExcerptProtocol, sourceExcerptFinalTool, sourceExcerptIds, parseS
 import { sourceQuestionCoverageProtocol, sourceQuestionReadTool, sourceQuestionFinalTool, parseSourceQuestionQuery,
   readSourceQuestionCoverage, parseSourceQuestionAnswer, type SourceQuestionCoverage } from './source-question-coverage';
 import { knowledgeExplanationProtocol, naturalKnowledgeProtocol, naturalKnowledgeInstructions, naturalKnowledgeReadTool, currentKnowledgeQuestion, knowledgeQuantityScopeProtocol, knowledgeExplanationInstructions, exactKnowledgeQuoteRequested, knowledgeExplanationReadTool, knowledgeExplanationFinalTool,
-  prepareKnowledgeExplanation, acceptKnowledgeExplanation, knowledgeExplanationFailure, parseKnowledgeExplanationQuery, assertExplanationDispatchBudget } from './knowledge-explanation';
+  prepareKnowledgeExplanation, acceptKnowledgeExplanation, knowledgeExplanationFailure, parseKnowledgeExplanationQuery, assertExplanationDispatchBudget,
+  naturalKnowledgeRuntimeBudget, naturalKnowledgeReadComplete, naturalKnowledgeScheduleProtocol,
+  parseNaturalKnowledgeAnswer, sourceBoundaryValidationProtocol } from './knowledge-explanation';
 import { knowledgeContext, projectKnowledgeContextStep, projectKnowledgeContextAvailable } from '../knowledge/applicability-context';
 import { fitAgentContext, originalMessageId, agentRequestBudget, imageContextBudgetPolicy } from './context-budget';
 import { restoreAncestorSources, ancestorSourceMessages, publicOnlySynthesisContext } from './ancestor-sources';
@@ -214,6 +217,7 @@ export function agentToolsForMessage(text: string, enabled: boolean, businessFol
  * facts. Ordinary-consultation reads/writes must not be offered or dispatched
  * merely because the report recipient is a customer rather than an employee. */
 export function constructionReadOnlyTools(purpose: string, enabled: boolean, reportPlanning = false, coordination = false, publicKnowledge = false): ModelTool[] | null {
+  if (purpose === 'knowledge_preview') return enabled ? businessToolDefinitions.filter(tool => tool.name === 'search_knowledge') : [];
   if (!['construction_followup', 'project_collaboration'].includes(purpose)) return null;
   const reportTool = coordination ? { ...reportFollowupTool, description: '用于本工地的进度、施工安排、现场决定、核对或人员协调。服务端给出统一现场核实引导。装修工艺、验收标准等知识须另用search_knowledge；混合问题按两类各调用对应工具。' } : reportFollowupTool;
   return enabled ? [...(purpose === 'construction_followup' ? [reportQuestionPlanningTool(reportTool, reportPlanning)] : []),
@@ -502,8 +506,12 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       const shared = context.conversation.purpose === 'project_collaboration';
       const staffFollowup = context.conversation.purpose === 'construction_followup' && context.run.purpose === 'reply'
         && lease.actor.principal.kind === 'admin' && lease.actor.capabilities.includes('assistant.followup.self');
+      const staffPreview = context.conversation.purpose === 'knowledge_preview' && context.run.purpose === 'reply'
+        && lease.actor.principal.kind === 'admin' && lease.actor.capabilities.includes('assistant.preview.self')
+        && (context.run.policy_snapshot as Row).staffKnowledgePreview === fastGPTPreviewProtocol;
+      if (staffPreview && !fastGPTPreviewConfiguration(lease.enterpriseId)) fail('context_changed');
       if (lease.actor.principal.kind !== 'user' && !(shared && context.run.purpose === 'site.question'
-        && lease.actor.capabilities.includes('assistant.project.shared')) && !staffFollowup) fail('assistant_capability_forbidden',403);
+        && lease.actor.capabilities.includes('assistant.project.shared')) && !staffFollowup && !staffPreview) fail('assistant_capability_forbidden',403);
       if(shared || staffFollowup) {
         const stage=await knowledgeContext(tx,lease.actor,context.conversation);
         const saved=await one(tx,sql`select source_refs from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
@@ -533,7 +541,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         and ${reportSelectionHistory(reportHistoryVersion)}
         and ${shared ? sql`((author_kind='admin' and purpose='site.question') or (author_kind='assistant' and run_id in
           (select id from app.assistant_runs where enterprise_id=${lease.enterpriseId} and conversation_id=${String(context.conversation.id)} and purpose='site.question')))`
-          : staffFollowup ? sql`(author_kind='assistant' or (author_kind='admin' and admin_id=${lease.actor.principal.kind === 'admin' ? lease.actor.principal.adminId : null} and purpose='reply'))`
+          : staffFollowup || staffPreview ? sql`(author_kind='assistant' or (author_kind='admin' and admin_id=${lease.actor.principal.kind === 'admin' ? lease.actor.principal.adminId : null} and purpose='reply'))`
           : sql`(author_kind in ('user','assistant') or (author_kind='system' and purpose in ('construction.followup','construction.record','construction.result')))`} order by seq desc limit 30`);
       const turns = [];
       const memory = await availableNeedMemory(tx, lease.enterpriseId, String(context.conversation.id), context.conversation.entry_snapshot);
@@ -782,7 +790,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       const consultationDeadlineAt = config.consultation ? Date.now() + consultationAcceptanceProfile.runTimeoutMs - Math.max(0, Number(clock!.elapsed_ms)) : undefined;
       const priorUserText = turns.filter(turn => turn.role === 'user' && String(turn.id) !== String(trigger.id)).slice(-6).map(turn => turn.text).join(' ');
       const designerFollowup = designerClarificationFollowup(priorUserText, safeText(trigger.content as Parameters<typeof safeText>[0]));
-      return { ...context, knowledgeEnabled, minimalDialogue, difyDialogue, dialogueProtocol, shared, staffFollowup, config, trigger, messages, mediaRefs: [...dependencies.values()], currentImageUpload, referenceEvidence, resume, savedSummary, consultationDeadlineAt, designerFollowup, reportHistoryVersion };
+      return { ...context, knowledgeEnabled, minimalDialogue, difyDialogue, dialogueProtocol, shared, staffFollowup, staffPreview, config, trigger, messages, mediaRefs: [...dependencies.values()], currentImageUpload, referenceEvidence, resume, savedSummary, consultationDeadlineAt, designerFollowup, reportHistoryVersion };
     });
     const reviewContext = { ...(initial.minimalDialogue ? { generalKnowledge: true } : {}), currentQuestion: safeText(initial.trigger.content as Parameters<typeof safeText>[0]),
       currentOriginal: { messageId: String(initial.trigger.id), hash: fingerprint(initial.trigger.content) } };
@@ -871,6 +879,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     const naturalKnowledge = initial.knowledgeEnabled && !nativeFinalization && (initial.run.policy_snapshot as Row).sourceAnswerMode === naturalKnowledgeProtocol;
     const explanationBound = naturalKnowledge || initial.knowledgeEnabled && !nativeFinalization && (initial.run.policy_snapshot as Row).sourceAnswerMode === knowledgeExplanationProtocol;
     const explanationMode = naturalKnowledge ? naturalKnowledgeProtocol : knowledgeExplanationProtocol;
+    const sourceBoundaryFinal = naturalKnowledge && !initial.mediaRefs.length && !initial.config.consultation
+      && (initial.run.policy_snapshot as Row).knowledgeAnswerValidation === sourceBoundaryValidationProtocol
+      && (initial.staffPreview || ['customer_consultation','project_collaboration'].includes(String(initial.conversation.purpose)));
     const quantityScope = (initial.run.policy_snapshot as Row).knowledgeQuantityScope;
     if (naturalKnowledge && quantityScope !== knowledgeQuantityScopeProtocol) fail('assistant_capability_forbidden', 403);
     if (quantityScope !== undefined && (!explanationBound || quantityScope !== knowledgeQuantityScopeProtocol)) fail('assistant_capability_forbidden', 403);
@@ -937,7 +948,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       }
       return { status: marker.effect === 'proposal' ? 'pending' as const : 'unchanged' as const, text: reviewProposalReply(marker.name, marker.effect) };
     };
-    let turnAllocation: ReturnType<typeof consultationRuntimeBudget> | ReturnType<typeof homeSourceRuntimeBudget> | ReturnType<typeof reportNativeRuntimeBudget>;
+    let turnAllocation: ReturnType<typeof consultationRuntimeBudget> | ReturnType<typeof homeSourceRuntimeBudget> | ReturnType<typeof reportNativeRuntimeBudget> | ReturnType<typeof naturalKnowledgeRuntimeBudget>;
     const nativeWorkflow = initial.minimalDialogue && initial.config.tools && !initial.mediaRefs.length
       && publicResearch ? fastGPTWorkflows()?.nativeKnowledge : undefined;
     const callModel = async (turn: number, messages: ModelMessage[], tools: ModelTool[], purpose: ModelRequestPurpose = 'answer'): Promise<ModelTurnOutput> => {
@@ -1214,12 +1225,16 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     // inherit a prior memory revision or reinterpret history as authorization.
     const summaryWrites = ['record_need','request_designer','record_reference_preference','prepare_material_share','revoke_material_share', ...reviewDefinitions.map(tool => tool.name)];
     const initialTools = toolsForMessage(false);
+    const naturalReadBudget = (tools: ModelTool[]) => naturalKnowledgeRuntimeBudget({
+      policy: (initial.run.policy_snapshot as Row).naturalKnowledgeSchedule, natural: sourceMode.naturalKnowledge,
+      images: initial.mediaRefs.length, tools,
+    });
     // Ordinary chat already fits complete recent turns and can recall original
     // history on demand. An optional selector must not consume a needed slot
     // before the existing discovery/read/final sequence within four calls.
     if (!initial.resume && initial.savedSummary?.status === 'succeeded') {
       initial.messages = withHistorySummary(initial.messages, initial.savedSummary.private_checkpoint as HistorySnapshot);
-    } else if (!initial.minimalDialogue && !initial.resume && !initial.savedSummary && initial.config.tools && !currentMessageOnlyRequested(reviewContext.currentQuestion) && !independentAdviceRequested(reviewContext.currentQuestion) && (!dependencies.model || dependencies.summary)
+    } else if (!initial.minimalDialogue && !naturalReadBudget(initialTools) && !initial.resume && !initial.savedSummary && initial.config.tools && !currentMessageOnlyRequested(reviewContext.currentQuestion) && !independentAdviceRequested(reviewContext.currentQuestion) && (!dependencies.model || dependencies.summary)
       && !initialTools.some(t => summaryWrites.includes(t.name))) {
       const bounded = fitAgentContext(projectSynthesisPolicy(synthesisModelMessages(initial.messages)), [...initialTools, finalTool], { profile: initial.config.consultation?.profile, imageContextBudget });
       const first = bounded.messages.map(originalMessageId).find(Boolean);
@@ -1278,6 +1293,11 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       const auxiliary = await one(tx, sql`select count(*) filter(where input_summary->>'purpose'='summary')::int summaries,
         count(*) filter(where input_summary->>'purpose'='vision')::int perceptions from app.assistant_run_steps
         where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and kind='agent_model'`);
+      const naturalBudget = naturalReadBudget(turnTools);
+      if (naturalBudget) {
+        if (Number(auxiliary?.summaries || 0) || Number(auxiliary?.perceptions || 0)) fail('context_changed');
+        return naturalBudget;
+      }
       if (reportNativeFinal) return reportNativeRuntimeBudget({ summaries: Number(auxiliary?.summaries || 0),
         perceptions: Number(auxiliary?.perceptions || 0), resume: initial.resume });
       return homeSourceRuntimeBudget({ policy: (initial.run.policy_snapshot as Row).homeSourceBudget, boundHome: !!readContext?.leadId, ordinaryDialogue: initial.minimalDialogue,
@@ -1297,7 +1317,10 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         authorize,
         ...(reportReadCompletion ? { canFinalizeContext: (messages: ModelMessage[]) =>
           coordinationReferral ? !knowledgeReadPending(reviewContext.currentQuestion, messages, String(initial.trigger.id), true)
-            : reportRequiredReadsComplete(reviewContext.currentQuestion, String(initial.trigger.id), messages) } : {}),
+            : reportRequiredReadsComplete(reviewContext.currentQuestion, String(initial.trigger.id), messages) }
+          : sourceMode.naturalKnowledge && !initial.config.consultation && !initial.mediaRefs.length
+            && (initial.run.policy_snapshot as Row).naturalKnowledgeSchedule === naturalKnowledgeScheduleProtocol
+            ? { canFinalizeContext: (messages: ModelMessage[]) => naturalKnowledgeReadComplete(messages, String(initial.trigger.id)) } : {}),
         checkpoint: state => scoped(async tx => {
           for (const ref of initial.mediaRefs) if (!await resolveAgentMedia(tx, lease.enterpriseId, String(initial.conversation.id), ref)) fail('context_changed');
           await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary,private_checkpoint,source_refs)
@@ -1491,6 +1514,16 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           }
           if (sourceMode.knowledgeExplanation && explanationKind === 'knowledge_explanation') {
             try {
+              if (sourceBoundaryFinal) {
+                await scoped(async (tx, context) => {
+                  const read = await one(tx, sql`select id from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+                    and run_id=${lease.runId} and kind='retrieval' and status='succeeded' limit 1`);
+                  if (!read) fail('source_read_required', 502);
+                  const evidence = await currentSynthesisContext(tx, lease.actor, context.conversation, lease.runId);
+                  parseNaturalKnowledgeAnswer(raw, evidence.sources, reviewContext);
+                });
+                return null;
+              }
               const draft = await scoped(async (tx, context) => {
                 const retrieval = await one(tx, sql`select input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
                   and run_id=${lease.runId} and kind='retrieval' and status='succeeded' order by step_seq desc limit 1`);
@@ -1943,7 +1976,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             // Source validation and checkpoints are shared with explicit business tools.
             // A checklist explains the review procedure. The model can still
             // request authorized site facts separately for a mixed question.
-            const bound = coordinationReferral || drawingChecklistRead || ownerArchiveBound ? null : await scoped(async (tx, context) => {
+            const bound = initial.staffPreview || coordinationReferral || drawingChecklistRead || ownerArchiveBound ? null : await scoped(async (tx, context) => {
               if (await ownerScopeForRun(tx)) return null;
               const current = await boundKnowledgeContext(tx, lease.actor, context.conversation, lease.runId, turn, index, resultKey);
               if (current) {
@@ -2023,14 +2056,17 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           const retrieval = await one(tx, sql`select input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
             and run_id=${lease.runId} and kind='retrieval' and status='succeeded' order by step_seq desc limit 1`);
           if (!retrieval) fail('source_read_required', 502);
-          const draft = prepareKnowledgeExplanation(result.output?.text || '', evidence.sources,
-            sourceMode.naturalKnowledge ? currentKnowledgeQuestion(reviewContext.currentQuestion)
-              : readSourceQuestionCoverage((retrieval.input_summary as Row)?.questionCoverage), reviewContext, initial.messages,
-            quantityScope as typeof knowledgeQuantityScopeProtocol | undefined, explanationMode);
-          const proof = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
-            and run_id=${lease.runId} and kind='agent_explanation_review' and status='succeeded' and input_summary->>'binding'=${draft.binding}`);
-          if (!proof || acceptKnowledgeExplanation(draft, (proof.private_checkpoint as Row).review as ModelTurnOutput, draft.binding)) fail('context_changed');
-          answer = draft.answer;
+          if (sourceBoundaryFinal) answer = parseNaturalKnowledgeAnswer(result.output?.text || '', evidence.sources, reviewContext);
+          else {
+            const draft = prepareKnowledgeExplanation(result.output?.text || '', evidence.sources,
+              sourceMode.naturalKnowledge ? currentKnowledgeQuestion(reviewContext.currentQuestion)
+                : readSourceQuestionCoverage((retrieval.input_summary as Row)?.questionCoverage), reviewContext, initial.messages,
+              quantityScope as typeof knowledgeQuantityScopeProtocol | undefined, explanationMode);
+            const proof = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+              and run_id=${lease.runId} and kind='agent_explanation_review' and status='succeeded' and input_summary->>'binding'=${draft.binding}`);
+            if (!proof || acceptKnowledgeExplanation(draft, (proof.private_checkpoint as Row).review as ModelTurnOutput, draft.binding)) fail('context_changed');
+            answer = draft.answer;
+          }
         } else if (coordinationReferral || ownerScopeIdentity && await ownerScopeForRun(tx)) {
           const reads = await coordinationReads(tx);
           if (result.finalFromTools) {
@@ -2066,6 +2102,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs,private_checkpoint,input_summary)
           values(${lease.enterpriseId},${lease.runId},1006,'agent_synthesis_context','succeeded',${JSON.stringify(evidence)}::jsonb,${JSON.stringify(answer)}::jsonb,
             ${JSON.stringify({ promptVersion: agentPromptVersion, triggerMessageId: String(initial.trigger.id), imagePixels: initial.mediaRefs.length > 0 && initial.config.imageInput,
+              ...(sourceBoundaryFinal ? { knowledgeAnswerValidation: sourceBoundaryValidationProtocol, semanticJudge: false } : {}),
               ...(reportSource ? { reportCoverage: reportCoverage ?? reportQuestionCoverage(reviewContext.currentQuestion), reportCoverageProtocol } : {}),
               ...(coordinationReferral ? { reportCoordination: reportCoordinationProtocol, fixedReferral: result.finalFromTools === true } : {}) })}::jsonb)`);
         const blocks: import('../contracts').MessageContent['blocks'] = [];

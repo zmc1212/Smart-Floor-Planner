@@ -1,4 +1,9 @@
-/** Parser output is local extraction, never LLM-authored source material. */
+/** Extraction provenance is bound into the existing source/version hash. */
+export type ExtractionLocator = {
+  provider: 'mineru'; corpusSha256: string; sourceSha256: string;
+  pdfPage: number; chunkIndex: number; chunkSha256: string;
+};
+/** Parser output contains extracted originals, never Agent-authored answers. */
 export type FileBlock = {
   id: string; kind: 'heading' | 'paragraph' | 'table_row' | 'footnote'; text: string;
   section: string[]; paragraph?: number; page?: number; table?: number; row?: number;
@@ -6,6 +11,7 @@ export type FileBlock = {
   cells?: Array<{ column: number; span: number; text: string; merge?: string; ref?: string; rowSpan?: number;
     numberFormat?: { raw: string; id: number; code: string; dateSystem?: '1900' | '1904' } }>;
   headers?: string[]; notes?: string[];
+  extraction?: ExtractionLocator;
 };
 export type ParsedFile = { parser: string; blocks: FileBlock[]; warnings: string[]; pages?: number };
 export type SourceFile = {
@@ -16,4 +22,5 @@ export type FileLocator = {
   assetId: string; sourceHash: string; name: string; format: SourceFile['format']; parser: string;
   blockId: string; kind: FileBlock['kind']; section: string[]; paragraph?: number; page?: number;
   table?: number; row?: number; columns?: number[]; sheet?: string; range?: string; label: string;
+  extraction?: ExtractionLocator;
 };

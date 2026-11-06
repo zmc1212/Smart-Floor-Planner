@@ -6,9 +6,10 @@ import { fail, fingerprint, key, principalKey, requireCapability, safeText, user
 import { bindSpeechToMessage } from '../speech/link';
 import { speechConfigurationHash } from '../speech/local';
 import { createPreviewPolicy, previewPolicy, projectMessage, citationProjection, webCitationProjection } from '../knowledge/sources';
+import { fastGPTPreviewConfiguration, fastGPTPreviewProtocol } from '../knowledge/fastgpt-retrieval';
 import { sourceExcerptProtocol } from '../agent/source-excerpts';
 import { sourceQuestionCoverageProtocol } from '../agent/source-question-coverage';
-import { naturalKnowledgeProtocol, knowledgeQuantityScopeProtocol } from '../agent/knowledge-explanation';
+import { naturalKnowledgeProtocol, naturalKnowledgeScheduleProtocol, knowledgeQuantityScopeProtocol, sourceBoundaryValidationProtocol } from '../agent/knowledge-explanation';
 import { reportAnswerGroundingProtocol, reportSourceProjectionProtocol } from '../agent/report-source-scope';
 import { reportCoordinationProtocol, reportHistoryScopeProtocol, reportQuestionPlanningProtocol, reportReadCompletionProtocol, siteObservationReferralProtocol } from '../agent/report-question-plan';
 import { drawingChecklistReadProtocol } from '../agent/read-tool-input';
@@ -119,7 +120,9 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   if (speech && !speechBinding) fail('speech_unavailable', 503);
   if ((report ? c.status === 'closed' : c.status !== 'open') || !((speech || report) ? ['ai', 'human', 'handoff_requested'].includes(String(c.mode)) : c.mode === 'ai')) fail('context_changed');
   const privateFollowup = c.purpose === 'construction_followup' && actor.capabilities.includes('assistant.followup.self');
-  const agent = !speech && (report || actor.principal.kind === 'user' || privateFollowup || (['site.record', 'site.action', 'site.question'].includes(purpose) && actor.capabilities.includes('assistant.project.shared'))) ? agentConfig(settings.agent_config) : null;
+  const staffPreview = actor.principal.kind === 'admin' && c.purpose === 'knowledge_preview'
+    && actor.capabilities.includes('assistant.preview.self') && !!fastGPTPreviewConfiguration(actor.enterpriseId);
+  const agent = !speech && (report || actor.principal.kind === 'user' || privateFollowup || staffPreview || (['site.record', 'site.action', 'site.question'].includes(purpose) && actor.capabilities.includes('assistant.project.shared'))) ? agentConfig(settings.agent_config) : null;
   const reportNativeFinal = reportNativeAdmission(agent, { conversationPurpose: c.purpose, purpose, triggerKind: trigger.kind,
     privateFollowup, selected: !!reportContext(c.entry_snapshot).selection });
   if (report && !agent) fail('assistant_capability_forbidden', 403);
@@ -158,6 +161,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
     ${trigger.kind === 'domain_event' ? trigger.eventId : null},${trigger.kind === 'scheduled_task' ? trigger.occurrenceKey : null},${purpose},
     ${retryOf || null},${json({ schemaVersion: 1, actor, maxTokens: agent?.consultation ? 8192 : 2048, policyVersion: settings.policy_version, agent,
       knowledgePolicy: c.purpose === 'knowledge_preview' ? { ...knowledgePolicy(settings.agent_config), enabled: true } : knowledgePolicy(settings.agent_config),
+      ...(staffPreview && agent ? { staffKnowledgePreview: fastGPTPreviewProtocol } : {}),
       ...(agent && actor.principal.kind === 'user' && c.purpose === 'customer_consultation' && purpose === 'reply'
         && !enterpriseKnowledgeEnabled(settings.agent_config) && !reviewRuntime && !agent.consultation && !agent.structuredFinal
         && !agent.imageContext && !agent.knowledgeExplanation && !reportContext(c.entry_snapshot).selection
@@ -171,7 +175,10 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
         reportReadCompletion: reportReadCompletionProtocol, reportHistoryScope: reportHistoryScopeProtocol, reportCoordination: reportCoordinationProtocol } : {}),
       ...(agent && (enterpriseKnowledgeEnabled(settings.agent_config) || c.purpose === 'knowledge_preview') && !agent.structuredFinal && ['reply','site.question'].includes(purpose)
         ? { sourceAnswerMode: agent.knowledgeExplanation || sourceExcerptProtocol,
-          ...(agent.knowledgeExplanation === naturalKnowledgeProtocol ? { knowledgeQuantityScope: knowledgeQuantityScopeProtocol }
+          ...(agent.knowledgeExplanation === naturalKnowledgeProtocol ? { knowledgeQuantityScope: knowledgeQuantityScopeProtocol,
+          ...(agent.knowledgeAnswerValidation === sourceBoundaryValidationProtocol && (staffPreview || ['customer_consultation','project_collaboration'].includes(String(c.purpose)))
+              ? { knowledgeAnswerValidation: sourceBoundaryValidationProtocol } : {}),
+            ...(!agent.consultation ? { naturalKnowledgeSchedule: naturalKnowledgeScheduleProtocol } : {}) }
             : agent.knowledgeQuantityScope ? { knowledgeQuantityScope: agent.knowledgeQuantityScope } : {}),
           sourceQuestionCoverage: sourceQuestionCoverageProtocol } : {}),
       ...(speech ? { localSpeech: { protocol: 'local-speech-v1', configurationHash: speechBinding } } : {}),

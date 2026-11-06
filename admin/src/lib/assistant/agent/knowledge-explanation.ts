@@ -4,9 +4,44 @@ import { parseSynthesis, prepareCoatingQuantityReview, synthesisRepairIssue, typ
 import type { SynthesisReviewContext } from './synthesis-review';
 import { sourceQuestionReadTool, questionSynthesisFinalTool, sourceQuestionCoverageProtocol, type SourceQuestionCoverage } from './source-question-coverage';
 import { parsePlannedSourceQuestions } from './source-question-plan';
+import { originalMessageId } from './context-budget';
 
 export const knowledgeExplanationProtocol = 'reviewed-knowledge-explanation-v1';
 export const naturalKnowledgeProtocol = 'natural-knowledge-answer-v1';
+export const sourceBoundaryValidationProtocol = 'server-source-boundary-v1';
+export const naturalKnowledgeScheduleProtocol = 'natural-read-answer-review-v1';
+const naturalReadTools = new Set(['search_knowledge', 'search_web', 'read_web', 'recall_history', 'query_materials', 'query_business', 'query_followups']);
+/** One optional read batch, then an answer. Reserve the existing sole repair
+ * and both possible semantic reviews inside the same five-dispatch hold.
+ * This schedules an attempt; it never declares retrieved evidence sufficient.
+ * Business actions, images and historical snapshots retain their allocation. */
+export function naturalKnowledgeRuntimeBudget(input: { policy: unknown; natural: boolean; images: number; tools: ModelTool[] }) {
+  if (input.policy !== naturalKnowledgeScheduleProtocol || !input.natural || input.images
+    || input.tools.some(tool => !naturalReadTools.has(tool.name))) return undefined;
+  return { primaryModelTurns: 2, reservedValidationRepairs: 1 as const, auxiliaryCalls: 0, maxScheduledCalls: 5,
+    reservedGroundingCalls: 2, sourceReadSchedule: naturalKnowledgeScheduleProtocol };
+}
+/** Source selection itself resolves a read-only turn even when the initial
+ * catalog also offered an unused action. Only the first, fully paired source
+ * batch qualifies; an action or a malformed/unfinished read keeps its flow. */
+export function naturalKnowledgeReadComplete(messages: ModelMessage[], triggerId: string): boolean {
+  const start = messages.findIndex(message => originalMessageId(message) === triggerId);
+  if (start < 0) return false;
+  const batch = messages.slice(start + 1).find(message => message.role === 'assistant' && message.toolCalls?.length);
+  if (batch?.role !== 'assistant' || !batch.toolCalls?.length
+    || batch.toolCalls.some(call => !['search_knowledge', 'search_web', 'read_web'].includes(call.name))) return false;
+  const index = messages.indexOf(batch);
+  const results = messages.slice(index + 1, index + 1 + batch.toolCalls.length);
+  return batch.toolCalls.every(call => {
+    const result = results.find(message => message.role === 'tool' && message.callId === call.id);
+    if (result?.role !== 'tool') return false;
+    try {
+      const packet = JSON.parse(result.content);
+      return Array.isArray(packet?.synthesisSources) && (call.name !== 'search_knowledge'
+        || ['ready', 'not_ready'].includes(packet.knowledgeStatus) && Array.isArray(packet.evidence));
+    } catch { return false; }
+  });
+}
 export type KnowledgeExplanationMode = typeof knowledgeExplanationProtocol | typeof naturalKnowledgeProtocol;
 export const knowledgeQuantityScopeProtocol = 'reviewed-coating-quantity-scope-v1';
 const explanationDiagnostics = new WeakMap<AssistantError, string>();
@@ -79,6 +114,21 @@ const object = (value: unknown): value is Record<string, unknown> => !!value && 
 export function prepareKnowledgeExplanation(raw: string, sources: SynthesisSource[], coverage: SourceQuestionCoverage,
   context: SynthesisReviewContext, history: ModelMessage[] = [], quantityScope?: typeof knowledgeQuantityScopeProtocol,
   mode: KnowledgeExplanationMode = knowledgeExplanationProtocol): KnowledgeExplanationDraft {
+  const { answer, answers, quantityMentions } = checkedKnowledgeExplanation(raw, sources, coverage, context, quantityScope, mode);
+  return prepareSourceAnswerReview(raw, answer, sources, coverage, context, answers, history, mode, quantityMentions);
+}
+
+/** Ordinary natural answers use the original deterministic source, citation,
+ * number and receipt checks. No model regrades its own prose. In particular,
+ * this path cannot defer unsupported quantities to a semantic verdict. */
+export function parseNaturalKnowledgeAnswer(raw: string, sources: SynthesisSource[], context: SynthesisReviewContext): SynthesisAnswer {
+  return checkedKnowledgeExplanation(raw, sources, currentKnowledgeQuestion(context.currentQuestion || ''), context,
+    undefined, naturalKnowledgeProtocol).answer;
+}
+
+function checkedKnowledgeExplanation(raw: string, sources: SynthesisSource[], coverage: SourceQuestionCoverage,
+  context: SynthesisReviewContext, quantityScope: typeof knowledgeQuantityScopeProtocol | undefined,
+  mode: KnowledgeExplanationMode) {
   const natural = mode === naturalKnowledgeProtocol;
   if (natural && fingerprint(coverage) !== fingerprint(currentKnowledgeQuestion(context.currentQuestion || ''))) fail('context_changed');
   if (quantityScope !== undefined && quantityScope !== knowledgeQuantityScopeProtocol) fail('assistant_capability_forbidden', 403);
@@ -92,7 +142,7 @@ export function prepareKnowledgeExplanation(raw: string, sources: SynthesisSourc
   if (keys.some(key => !Array.isArray(answers[key]) || !(answers[key] as unknown[]).length)) fail('incomplete_model_answer', 502);
   const segments = keys.flatMap(key => answers[key] as SynthesisAnswer['segments']);
   const synthesisRaw = JSON.stringify({ kind: 'synthesis', segments });
-  const reviewContext: SynthesisReviewContext = { ...context, knowledgeExplanation: knowledgeExplanationProtocol };
+  const reviewContext: SynthesisReviewContext = { ...context, knowledgeExplanation: mode };
   let answer: SynthesisAnswer;
   let quantityMentions: PendingCoatingQuantity[] | undefined;
   try {
@@ -111,7 +161,7 @@ export function prepareKnowledgeExplanation(raw: string, sources: SynthesisSourc
     }catch{/* Diagnosis cannot replace or hide the original guard. */}
     throw error;
   }
-  return prepareSourceAnswerReview(raw, answer, sources, coverage, context, answers, history, mode, quantityMentions);
+  return { answer, answers, quantityMentions };
 }
 
 /** Shared semantic validator input, not another Agent or source resolver. Each
