@@ -17,11 +17,13 @@ const {processAssistantRun}=await imp('src/lib/assistant/application/worker.ts')
 const {claimJob}=await imp('src/lib/assistant/infrastructure/job-queue.ts');
 const {lockAssistantAcceptance}=await imp('scripts/assistant-acceptance-safety.mjs');
 assert.ok(process.argv.includes('--live'),'Explicit --live required; no automatic retry');
+const model=process.argv.find(a=>a.startsWith('--model='))?.slice(8)||'qwen3.8-flash';
+assert.ok(['qwen3.8-flash','qwen3.8-max','qwen3.7-plus'].includes(model),'Use only the fixed original or authorized replacement model');
 const out=path.resolve(process.argv.find(a=>a.startsWith('--out='))?.slice(6)||'../tmp/v1-public-protocol-20261106/service01');fs.mkdirSync(out,{recursive:true});
 assert.ok(!fs.existsSync(path.join(out,'report.json')),'Do not overwrite or resample a previous attempt');
 const eid='1454',prefix='synthetic-public-web-'+randomUUID(),read=(fn:any)=>withTenantTransaction(eid,fn),platform=(fn:any)=>withPlatformTransaction(fn);
 const questions=['我家准备用立邦醛零防霉耐水腻子，帮我查一下官网的施工温度和湿度条件。','刚才说的要求是我们公司已经定下来的做法吗？'];
-const report:any={scope:'Mechanism-only reopening: existing shared source contract and budget-safe artifact hints. Two fixed natural two-turn dialogues, actual configured model/web, knowledge off. Stop on first blocker; no repair or resampling',model:'qwen3.8-flash',fixedTrials:2,questions,maxModelCalls:16,originalFailedRepairCount:2,newMechanismTrials:2,repairIterations:0,trials:[],providerHttpErrors:[],passed:false};
+const report:any={scope:'Two fixed original natural two-turn dialogues, actual configured model/web, knowledge off. Ordinary search now reuses the existing domain provenance boundary; original prompt, source contract, budget and answer guards remain. Stop on first blocker; no repair or resampling',model,fixedTrials:2,questions,maxModelCalls:16,originalFailedRepairCount:2,retainedReplacementRuns:['10668','10669'],newMechanismTrials:2,repairIterations:0,trials:[],providerHttpErrors:[],passed:false};
 const save=()=>fs.writeFileSync(path.join(out,'report.json'),JSON.stringify(report,null,2));
 const ts=require('typescript'),cfg=ts.readConfigFile('tsconfig.json',ts.sys.readFile),options=ts.parseJsonConfigFileContent(cfg.config,ts.sys,process.cwd()).options,files=new Set<string>();
 function visit(f:string){if(files.has(f)||f.includes('node_modules')||!fs.existsSync(f))return;files.add(f);for(const i of ts.preProcessFile(fs.readFileSync(f,'utf8'),true,true).importedFiles){const r=ts.resolveModuleName(i.fileName,f,options,ts.sys).resolvedModule?.resolvedFileName;if(r)visit(path.resolve(r));}}
@@ -36,11 +38,11 @@ const originalFetch=globalThis.fetch,owned:any[]=[],users:string[]=[];let releas
 try{
  release=await lockAssistantAcceptance(process.env.DATABASE_URL,{waitForLock:true});report.before=await counts();assert.equal(report.before.queue,0);
  assistantBefore=await read((tx:any)=>one(tx,sql`select * from app.assistant_enterprise_settings where enterprise_id=1454`));assert.equal(assistantBefore.enabled,false);
- await read((tx:any)=>tx.execute(sql`update app.assistant_enterprise_settings set enabled=true,agent_config=${JSON.stringify({...assistantBefore.agent_config,model:'qwen3.8-flash',enterpriseKnowledgeEnabled:false})}::jsonb,policy_version=policy_version+1,version=version+1 where enterprise_id=1454`));
+ await read((tx:any)=>tx.execute(sql`update app.assistant_enterprise_settings set enabled=true,agent_config=${JSON.stringify({...assistantBefore.agent_config,model,enterpriseKnowledgeEnabled:false})}::jsonb,policy_version=policy_version+1,version=version+1 where enterprise_id=1454`));
  const sourceUrl=new URL(providerSourceDatabase!);assert.ok(['localhost','127.0.0.1'].includes(sourceUrl.hostname)&&sourceUrl.port==='5432'&&sourceUrl.pathname==='/smart_floor_planner');
  const sourceClient=new (require('pg').Client)({connectionString:providerSourceDatabase});let source:any;
  try{await sourceClient.connect();await sourceClient.query('begin read only');source=(await sourceClient.query("select llm_config from app.platform_configs where key='default'")).rows[0]?.llm_config;await sourceClient.query('rollback');}finally{await sourceClient.end();}
- assert.equal(source.providerKey,'dashscope');platformBefore=await platform((tx:any)=>one(tx,sql`select llm_config from app.platform_configs where key='default' for update`));opted={...source,model:'qwen3.8-flash'};
+ assert.equal(source.providerKey,'dashscope');platformBefore=await platform((tx:any)=>one(tx,sql`select llm_config from app.platform_configs where key='default' for update`));opted={...source,model};
  await platform((tx:any)=>tx.execute(sql`update app.platform_configs set llm_config=${JSON.stringify(opted)}::jsonb where key='default'`));
  globalThis.fetch=async(...args:Parameters<typeof originalFetch>)=>{const response=await originalFetch(...args);if(response.status===429){const body=await response.clone().text();report.providerHttpErrors.push({status:429,bodyHash:createHash('sha256').update(body).digest('hex'),body});save();}return response;};
  report.bindingBefore=binding();report.runtimeBefore=await runtime();save();
@@ -61,6 +63,10 @@ try{
      attempts:await rows(tx,sql`select id::text,status,accepted,error_code,actual_cost,metadata from app.ai_provider_attempts where enterprise_id=1454 and assistant_run_id=${queued.runId} order by id`)}));
    fs.writeFileSync(path.join(out,'run-'+queued.runId+'.json'),JSON.stringify(trace,null,2));item.status=trace.run.status;item.error=trace.run.error_code;item.attempts=trace.attempts.map((a:any)=>({id:a.id,status:a.status,accepted:a.accepted,error:a.error_code}));save();
    assert.equal(trace.run.status,'succeeded',trace.run.error_code);
+   for(const step of trace.steps.filter((s:any)=>s.capability_name==='web.search.v1')){
+    assert.equal(step.input_summary?.discoveryScope?.protocol,'public-domain-provenance-v1');
+    assert.deepEqual(step.private_checkpoint.query.domains,[],'Original question names no domain; a model guess cannot constrain discovery');
+   }
    assert.ok(!trace.steps.some((s:any)=>s.capability_name==='knowledge.search.v1'));assert.ok(!trace.usage.some((u:any)=>u.category==='query_embedding'));
    const messages=await service.messages(cid),again=await new ConversationService(actor).messages(cid);assert.deepEqual(messages.items,again.items);
    const reply=messages.items.find((m:any)=>m.id===trace.run.output_message_id);assert.ok(reply);item.answer=reply.content;item.reply=reply;item.reentrySame=true;

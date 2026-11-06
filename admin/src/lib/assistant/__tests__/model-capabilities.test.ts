@@ -38,6 +38,17 @@ test('platform transport binds any safe model; the capability table keeps unregi
   assert.equal(bailianStructuredOutput('qwen3-max','json_schema'),false);assert.equal(bailianPartialCapable('qwen3-max'),false);
   for(const model of ['','Qwen/Qwen3.5-4B','qwen3.8 flash','qwen3.8-flash\n','a'.repeat(129)])assert.equal(bailianBinding(base,model,false),null);
 });
+for(const model of ['qwen3.8-max','qwen3.7-plus'])test(`${model} uses its documented tool/schema transport without inheriting Flash search/cache capabilities`,()=>{
+  const profile=bailianModelProfile(model);
+  assert.equal(profile.functionCalling,'documented');assert.equal(profile.thinkingControl,'documented');
+  assert.equal(bailianStructuredOutput(model,'json_object'),true);assert.equal(bailianStructuredOutput(model,'json_schema'),true);
+  assert.equal(profile.explicitCache,'unknown');assert.equal(profile.batch,'unknown');assert.equal(profile.partial,'unknown');
+  assert.equal(bailianNativeSearchCapable(model),false);
+  const body=agentChatBody({...input,model},base);
+  assert.equal(body.model,model);assert.equal(body.enable_thinking,false);
+  assert.equal(body.response_format?.type,'json_schema');assert.equal(body.tools,undefined);
+  assert.equal(explicitCacheControl(runtime,model,false,{messages:input.messages},false),undefined);
+});
 test('an unregistered Bailian model connects with advanced capabilities off and structured opt-ins rejected',()=>{
   const other='qwen3-max',search={model:other,providerKey:'dashscope'};
   // Same transport; a final-only round degrades to plain function tools instead

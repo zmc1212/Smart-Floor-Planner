@@ -56,6 +56,15 @@ const bailianProfiles: Readonly<Record<string, BailianModelProfile>> = {
   'qwen3.8-flash': { functionCalling: 'documented', jsonObject: 'documented', jsonSchema: 'documented',
     nativeSearch: 'documented_dashscope_generation', implicitCache: 'documented', explicitCache: 'opt_in_unmeasured',
     partial: 'documentation_conflict', batch: 'documented', thinkingControl: 'documented' },
+  // Exact model documented for tools, thinking control and JSON Object/Schema:
+  // https://help.aliyun.com/zh/model-studio/qwen-function-calling
+  // https://help.aliyun.com/zh/model-studio/qwen-structured-output
+  // Other capabilities retain their independent unverified gates.
+  'qwen3.8-max': { ...bailianUnknownProfile, functionCalling: 'documented', thinkingControl: 'documented',
+    jsonObject: 'documented', jsonSchema: 'documented' },
+  // The same official pages document this exact Plus model independently.
+  'qwen3.7-plus': { ...bailianUnknownProfile, functionCalling: 'documented', thinkingControl: 'documented',
+    jsonObject: 'documented', jsonSchema: 'documented' },
 };
 export function bailianModelProfile(model: unknown): BailianModelProfile {
   return typeof model === 'string' && bailianModelId.test(model) ? bailianProfiles[model] ?? bailianUnknownProfile : bailianUnknownProfile;

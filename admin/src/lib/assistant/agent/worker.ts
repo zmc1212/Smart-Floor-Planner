@@ -1582,11 +1582,11 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               selected = sourceSnapshot?.candidates?.find(candidate=>candidate.id===candidateId);
               if (!selected) fail('invalid_web_candidate',422);
             }
-            const prior = initial.config.consultation ? await scoped(async tx => one(tx, sql`select private_checkpoint
+            const prior = await scoped(async tx => one(tx, sql`select private_checkpoint
               from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}
-                and capability_name in ('web.search.v1','web.read.v1') and status='succeeded' and step_seq<${sequence} order by step_seq desc limit 1`)) : null;
+                and capability_name in ('web.search.v1','web.read.v1') and status='succeeded' and step_seq<${sequence} order by step_seq desc limit 1`));
             const priorSnapshot = prior?.private_checkpoint as WebSearchSnapshot | undefined;
-            const discovery = !reading && initial.config.consultation ? publicDiscoveryQuery(parseWebQuery(input),reviewContext.currentQuestion,
+            const discovery = !reading ? publicDiscoveryQuery(parseWebQuery(input),reviewContext.currentQuestion,
               [...(priorSnapshot?.candidates||[]).map(candidate=>candidate.url),...(priorSnapshot?.pages||[]).map(page=>page.url)]) : null;
             const query = reading ? parseWebQuery(sourceSnapshot!.query) : discovery?.query || parseWebQuery(input);
             const queryHash = fingerprint(reading ? {query,candidateId:selected!.id} : query);
