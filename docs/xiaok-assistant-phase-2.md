@@ -1,5 +1,15 @@
 # XiaoK Phase Two: Requirements and Human Handoff
 
+<!-- xiaok-site-language-current -->
+## Worker-language site recording (Limited)
+
+The fixed nine-category evaluation uses unchanged S04 services, isolated enterprise1454 and the current development `dashscope/qwen3.7-flash`. Twenty natural input turns across eighteen groups produce twenty first-draft site extractions and two fresh admission interpretations. Partial progress, same-message correction, hearsay and explicit photo mismatch have useful results. Ambiguous half-day timing was attached to delivery or an invented installer; an across-turn room correction leaves the original completed draft active and loses prior unfinished work; missing sealant is sometimes only coordination. Some notes expose internal room IDs. These are Agent/expression and record-context defects; no knowledge rebuilding or prompt/product repair was attempted.
+
+`live01` remains failed: the driver omitted the legitimate `site.action`→`site.record` child. Categories01–08 retain their original evidence; admission10964 succeeded. Only its unstarted child10965 and the unstarted second admission10966 were cancelled through `cancelRuns`. `continuation02` tests only category09, reusing the original successful first admission without resampling; both extraction trials and the second admission are their first provider calls. Each batch has zero internal source drift. The driver and `admin/tsconfig.json` differ between batches; do not combine them into an all-green acceptance batch. Raw bindings, copied drivers and the configuration uncertainty remain in the evidence.
+
+The22 actual calls observed14852 input/1895 output tokens; currency is unknown. Replayed usage938/17 has no new provider attempt and is excluded. Original failures/unknowns remain unchanged. Own fixtures are archived, media cleared, actors disabled, settings restored and queue0; no new publication, UI/native/dialect-ASR/device or production acceptance. See [assessment](../tmp/xiaok-site-language-20261107/assessment.json), [owned cleanup](../tmp/xiaok-site-language-20261107/cleanup-owned.json) and the durable corpus `admin/scripts/fixtures/xiaok-site-language-cases.json`. Repeat with `node --import tsx scripts/xiaok-site-language-acceptance.mts --cases=scripts/fixtures/xiaok-site-language-cases.json --out=<new-output>` from admin; it requires the existing isolated lock and idle queue, never overwrites an earlier batch, and never auto-repairs a semantic failure. The user's next request is functional-design analysis before implementation.
+<!-- /xiaok-site-language-current -->
+
 <!-- xiaok-mineru-fastgpt-preview -->
 ## MinerU/FastGPT staff draft preview (Limited)
 

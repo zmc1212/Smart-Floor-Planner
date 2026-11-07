@@ -1,0 +1,64 @@
+{
+  "purpose": "Assess the unchanged S04 service on realistic worker language. Expected behavior stays outside user messages. Original first drafts are retained; no prompt or product repairs and no publication.",
+  "trialsPerCase": 2,
+  "stopRule": "A provider/service failure, unknown result, source/configuration drift, or lost lock stops dispatch. Each scenario is independent; semantic review follows the fixed first drafts and does not trigger resampling.",
+  "cases": [
+    {
+      "id": "01-colloquial-typos",
+      "category": "口语、错别字和同音字",
+      "turns": [{"text": "客厅窗框今天按上咯，边边收囗还木弄，等周工来瞅哈。", "photos": ["window.jpg"]}],
+      "expectations": ["识别窗框安装进展", "收口未做保留为未完成", "等待周工核对，不编造其到场或同意", "不从照片判断合格"]
+    },
+    {
+      "id": "02-partial-negation",
+      "category": "差不多、部分完成和多项否定",
+      "turns": [{"text": "今天客厅线穿得差不多，门口还剩两根没穿，接头也没接，不能算全好了。", "photos": []}],
+      "expectations": ["保留部分完成程度，不写全部穿线完成", "门口两根未穿和接头未接均保留", "不推断具体完成比例或验收"]
+    },
+    {
+      "id": "03-self-correction",
+      "category": "同一条消息中自己改口",
+      "turns": [{"text": "厨房旧吊顶今天拆完了。哎不对，门边还有一小块没拆，水电还没验。", "photos": []}],
+      "expectations": ["以后面的更正为准，不能写吊顶全部拆完", "门边残留未拆和水电未验同时保留", "不将未验收写成验收通过"]
+    },
+    {
+      "id": "04-hearsay-uncertainty",
+      "category": "听别人说、自己没看到",
+      "turns": [{"text": "今天老李说厨房水管试过没漏，我没在场，也不晓得试了多久，周工还没来验。", "photos": []}],
+      "expectations": ["保留老李转述及作者未在场、时长未知", "不能升级成已确认试压合格或正式验收", "经理尚未验收保留为待核对"]
+    },
+    {
+      "id": "05-future-not-completed",
+      "category": "缺料、明天的计划和不确定工期",
+      "turns": [{"text": "今天料没送来，厨房的管子一根都没接。明天料到再弄，老王说可能半天。", "photos": []}],
+      "expectations": ["已完成为空或明确没有完成工作", "缺料和管道未接保留", "明天是有条件计划、半天是不确定估计，不能成为已完成或承诺"]
+    },
+    {
+      "id": "06-vague-photo",
+      "category": "指代含糊并附一张照片",
+      "turns": [{"text": "今天就弄到这样了，那边还差一点。", "photos": ["window.jpg"]}],
+      "expectations": ["具体工作和部位未知应说明或追问", "不能仅凭窗户照片编造窗框已经安装完成", "保留尚有未完成部分，不能猜差什么"]
+    },
+    {
+      "id": "07-photo-text-mismatch",
+      "category": "文字说厨房但附的是客厅照片",
+      "turns": [{"text": "厨房旧吊顶今天拆完了，水电还没验。发的这张是客厅窗户，厨房的照片忘拍了。", "photos": ["window.jpg"]}],
+      "expectations": ["厨房拆顶仅依据作者原话整理", "水电未验保留", "照片不是厨房进展的佐证，应保留错配或缺图说明", "不新增客厅窗框已完成事实"]
+    },
+    {
+      "id": "08-reentry-correction",
+      "category": "保存重进后更正上一条房间",
+      "turns": [
+        {"text": "今天客厅窗框按好了，边上收口还没做。", "photos": ["window.jpg"]},
+        {"text": "刚才说错房间了，是卧室窗框，客厅窗框还没装。", "photos": []}
+      ],
+      "expectations": ["同一工地保持两轮真实原话", "正确承接上一条窗框安装进展，更正为卧室", "客厅未装，不应继续把旧的客厅完成作为当前有效草稿无提示地发布", "收口未完成不能在更正时丢失", "不覆盖原始资料"]
+    },
+    {
+      "id": "09-everyday-wording-entry",
+      "category": "不含标准上报词的日常说法",
+      "turns": [{"text": "客厅窗子安起咯，边边还差点胶，等周工过来瞅一眼。", "photos": ["window.jpg"]}],
+      "expectations": ["应识别为现场进展并整理，或主动澄清关键内容", "不能只返回通用已保留回执而跳过理解", "等待核对、未打胶和部位不确定需保留"]
+    }
+  ]
+}

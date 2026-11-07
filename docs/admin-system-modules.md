@@ -1,5 +1,9 @@
 # Admin System: Current Module Inventory
 
+<!-- xiaok-site-language-current -->
+**Worker-language site recording: Limited.** Fixed real-service trials across nine categories preserve partial progress, in-message corrections, hearsay and explicitly mismatched photos, but ambiguous time/assignees can be invented, cross-turn corrections leave the old draft current, and unfinished work can appear only under coordination. Product code, prompts and UI are unchanged; there is no new native/device acceptance or restoration of the proposed site-chat design. Original driver failure, continuation, configuration differences and semantic findings remain separate in the [phase-two contract](xiaok-assistant-phase-2.md#worker-language-site-recording-limited) and [assessment](../tmp/xiaok-site-language-20261107/assessment.json).
+<!-- /xiaok-site-language-current -->
+
 <!-- xiaok-mineru-fastgpt-preview -->
 **MinerU/FastGPT staff draft preview: bounded Implemented; complete enterprise knowledge dialogue remains Limited.** Admin `/assistant-knowledge` uses the existing owner-private preview, ConversationService and Agent. Only explicit `XIAOK_FASTGPT_RETRIEVAL_FILE` for enterprise1454 enables the adapter. Server-only `importMineru` retains the original PDF and source hashes; `mineru-reviewed-page-v3` binds each reviewed table to its own title, printed area, exclusions, book page and original layout region. FastGPT provides checked candidates; KnowledgeRetriever/Evidence supplies current authorized text. When one table's rank applies to several rows, the first pass takes up to two rows per reviewed table before filling the remaining slots. The context limit and source guards remain in force.
 

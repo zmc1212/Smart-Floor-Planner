@@ -1,5 +1,15 @@
 # 小K第二期：需求整理与人工交接
 
+<!-- xiaok-site-language-current -->
+## 施工现场口语上报质量（Limited）
+
+固定9类验证使用未改的S04服务、隔离微云1454及当前开发`dashscope/qwen3.7-flash`。18组共20轮自然原话，产生20份现场整理首稿和两份新入口理解。部分完成、同句改口、转述与明确图文错配有可用结果；含糊“半天”被误接送货时间或补出安装人员，跨轮改房间未使旧完成草稿失效且丢失原未完成项，缺胶有时仅归待沟通，部分note暴露内部房间ID。问题归Agent理解/表达及现场记录接续；本轮未重建知识、修提示词或产品。
+
+`live01`仍为failed：驱动漏处理正常`site.action`→`site.record`后续任务。01–08类保留原首稿/重进证据，10964入口理解成功；只将未开始供应商调用的子任务10965和第二入口10966经原`cancelRuns`取消。`continuation02`只续09类，第一入口复用原成功稿且不重采，两份整理和第二入口均为此前未执行的首次调用。两批各自源码漂移为0；批间驱动和`admin/tsconfig.json`不同，不能池化成一批全绿验收。绑定、原驱动副本及配置差异未知保留于证据。
+
+22次实际模型调用观测输入14852/输出1895tokens，金额未知；复用入口的938/17无新provider attempt，不计新增实费用量。旧失败/unknown不变。自有夹具归档、媒体清理、员工停用、配置恢复、队列0；无新对客发布、界面/原生/方言ASR/真机或生产验收。见[核对结果](../tmp/xiaok-site-language-20261107/assessment.json)、[自有任务清理](../tmp/xiaok-site-language-20261107/cleanup-owned.json)及固定用例`admin/scripts/fixtures/xiaok-site-language-cases.json`。复跑在admin执行`node --import tsx scripts/xiaok-site-language-acceptance.mts --cases=scripts/fixtures/xiaok-site-language-cases.json --out=<新目录>`，沿原隔离锁/空队列，不覆盖旧批，不因语义失败自动修复。用户后续要求先分析功能设计，尚未授权本轮产品修改。
+<!-- /xiaok-site-language-current -->
+
 <!-- xiaok-mineru-fastgpt-preview -->
 ## MinerU/FastGPT员工草稿预览（Limited）
 

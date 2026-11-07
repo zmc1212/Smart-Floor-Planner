@@ -1,5 +1,9 @@
 # 小程序当前功能清单
 
+<!-- xiaok-site-language-current -->
+**施工现场口语上报质量：Limited。** 固定9类真实服务试验中，部分完成、同句改口、转述与明确图文错配可保留；含糊时间/人员仍会补猜，跨轮更正未替换旧草稿，未完成工作有时仅归入待沟通。产品代码、提示词和界面未改，无新原生/真机验收，新版工地交流图仍未还原。原驱动失败、续验、配置差异及逐条语义结论分别保留，见[二期合同](xiaok-assistant-phase-2.zh-CN.md#施工现场口语上报质量limited)和[核对结果](../tmp/xiaok-site-language-20261107/assessment.json)。
+<!-- /xiaok-site-language-current -->
+
 <!-- xiaok-mineru-fastgpt-preview -->
 **MinerU/FastGPT员工草稿预览：有限范围Implemented，完整企业知识问答仍Limited。** 后台`/assistant-knowledge`沿用仅本人可见的试问、ConversationService和现有Agent，仅显式`XIAOK_FASTGPT_RETRIEVAL_FILE`匹配微云1454时启用。服务端`importMineru`保留原PDF和来源hash；`mineru-reviewed-page-v3`逐表绑定已核表题、原印面积、排除项、书页及原版面位置。FastGPT仅给核验过的候选，获权现行原文仍由KnowledgeRetriever/Evidence供给。同一原表多行继承相同排名时，首轮每表最多取两行，再按排名补足；证据上限和来源守卫不变。
 
