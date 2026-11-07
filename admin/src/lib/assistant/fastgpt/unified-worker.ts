@@ -4,6 +4,7 @@ import { one, type Row } from '@/db/repositories/assistant-repository';
 import { executePostgresText } from '@/lib/ai/postgres-workflow-chat';
 import { AiProviderError } from '@/lib/ai/provider-types';
 import { AssistantError, fail, fingerprint, type Evidence, type MessageContent } from '../contracts';
+import type { ModelMessage, ModelTool } from '../contracts/model';
 import { agentConfig } from '../agent/config';
 import { enterpriseKnowledgeEnabled, generalKnowledgeInstructions, runKnowledgeEnabled } from '../knowledge-policy';
 import { knowledgeSynthesisSources, type SynthesisAnswer } from '../agent/synthesis';
@@ -19,8 +20,8 @@ import { completeRun, failRun, heartbeat, markProviderStarted, runContext, type 
 import { fastGPTRagConfiguration, fastGPTRagProtocol } from './rag-config';
 import { fastGPTWorkflows } from './runtime';
 import { nativeConversation } from './rag-session';
-import { ragAnswerParts, type RagCitationSource } from './native-rag';
-import { retrieveUnifiedKnowledge, unifiedInstructions, unifiedTools } from './unified-tools';
+import { ragAnswerParts, ragSources, type RagCitationSource } from './native-rag';
+import { retrieveUnifiedKnowledge, unifiedInstructions, unifiedTools, workflowGroundedInstructions, knowledgeQuestionClasses, nativeKnowledgeTextQuery } from './unified-tools';
 import { nativeCites, nativeHistoryCites } from './native-cites';
 
 /** Native ToolCall is the sole loop. These ports reuse existing authorized
@@ -49,43 +50,76 @@ export async function processUnifiedAnswer(lease: Lease, bound: NonNullable<Retu
       await scoped(async (tx, state) => { if (!await synthesisContextAvailable(tx, lease.actor, state.conversation, context)) fail('context_changed'); });
     };
     const workflows = fastGPTWorkflows(); if (!workflows?.unified) fail('context_changed');
+    const nativeGrounding = !!bound.configuration.grounding;
+    const classifiedGrounding = bound.configuration.grounding === 'native-dataset-classified';
+    const enterpriseAvailable = () => scoped(async (tx, state) => {
+      const settings = await one(tx, sql`select agent_config from app.assistant_enterprise_settings where enterprise_id=${lease.enterpriseId}`);
+      if (!runKnowledgeEnabled(state.run.policy_snapshot as Row) || !enterpriseKnowledgeEnabled(settings?.agent_config)) return false;
+      for (const s of bound.configuration.sources) {
+        const row = await resolveEvidence(tx, lease.actor, state.conversation, s.evidence);
+        if (!row || !String(row.text).includes(s.evidence.text) || !s.q.includes(s.evidence.text)) return false;
+      }
+      return true;
+    });
+    let nativeQuery = '';
+    let selectedQuestionClass: string | undefined, enterpriseRequested = true;
+    const nativeOperation = 'unified-native-query:' + lease.runId;
+    const dispatchModel = async (turn: number, input: ModelMessage[], tools: ModelTool[], classification = false) => {
+      const output = await executePostgresText({ enterpriseId: BigInt(lease.enterpriseId), owner: { kind: 'assistant_run', runId: BigInt(lease.runId) },
+        logicalModelKey: 'chat.general', messages: [], maxTokens: 2048, metadata: { protocol: 'fastgpt-unified-v1', turn, phase: classification ? 'classification' : 'answer' },
+        beforeProviderCall: guard, agent: { config, input: { messages: input, tools, maxTokens: 2048, temperature: 0.3 } } });
+      attemptId = String(output.attemptId);
+      await recordAgentModelUsage(lease.enterpriseId, lease.runId, turn, output);
+      if (!output.agentOutput) fail('invalid_model_answer', 502);
+      await scoped(tx => tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,provider_attempt_id,private_checkpoint)
+        values(${lease.enterpriseId},${lease.runId},${1100 + turn},${classification ? 'fastgpt_unified_classification' : 'fastgpt_unified_model'},'succeeded',${attemptId},
+          ${JSON.stringify({ input: { messages: input, tools }, output: output.agentOutput })}::jsonb)`));
+      return output.agentOutput;
+    };
     await workflows.ready(); await markProviderStarted(lease);
     let previousWeb: WebSearchSnapshot | undefined;
     const webReads = new Map<number, WebSearchSnapshot>();
     const deadline = Date.now() + 140000;
-    const result = await workflows.unified.run({ messages: [{ role: 'system', content: [{ type: 'text', text: unifiedInstructions
+    const result = await workflows.unified.run({ messages: [{ role: 'system', content: [{ type: 'text', text: (nativeGrounding ? workflowGroundedInstructions : unifiedInstructions)
       + (runKnowledgeEnabled(initial.run.policy_snapshot as Row) ? '' : '\n' + generalKnowledgeInstructions)
       + (catalog.size ? '\n仍获权的历史引用原文：' + JSON.stringify(nativeHistoryCites([...catalog.values()])) : '') }] },
       ...messages.map(m => m.role === 'assistant' ? { role: 'assistant' as const, content: m.content }
-        : { role: 'user' as const, content: [{ type: 'text' as const, text: m.content }] })], tools: unifiedTools,
-      ports: { authorize: guard, checkpoint: async () => {},
-        model: async (turn, input, tools) => {
-          const output = await executePostgresText({ enterpriseId: BigInt(lease.enterpriseId), owner: { kind: 'assistant_run', runId: BigInt(lease.runId) },
-            logicalModelKey: 'chat.general', messages: [], maxTokens: 2048, metadata: { protocol: 'fastgpt-unified-v1', turn },
-            beforeProviderCall: guard, agent: { config, input: { messages: input, tools, maxTokens: 2048, temperature: 0.3 } } });
-          attemptId = String(output.attemptId);
-          await recordAgentModelUsage(lease.enterpriseId, lease.runId, turn, output);
-          if (!output.agentOutput) fail('invalid_model_answer', 502);
-          await scoped(tx => tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,provider_attempt_id,private_checkpoint)
-            values(${lease.enterpriseId},${lease.runId},${1100 + turn},'fastgpt_unified_model','succeeded',${attemptId},
-              ${JSON.stringify({ input: { messages: input, tools }, output: output.agentOutput })}::jsonb)`));
-          return output.agentOutput;
+        : { role: 'user' as const, content: [{ type: 'text' as const, text: m.content }] })],
+      tools: nativeGrounding ? unifiedTools.filter(t => t.name !== 'search_enterprise') : unifiedTools,
+      ...(nativeGrounding ? { grounding: {
+        ...(classifiedGrounding ? { classifications: knowledgeQuestionClasses,
+          classify: (turn: number, input: ModelMessage[]) => dispatchModel(turn, input, [], true) } : {}),
+        query: async (selection?: string) => {
+          await guard();
+          selectedQuestionClass = selection;
+          enterpriseRequested = !classifiedGrounding || selection === knowledgeQuestionClasses[0].value;
+          nativeQuery = enterpriseRequested && await enterpriseAvailable() ? nativeKnowledgeTextQuery(messages.at(-1)!.content) : '';
+          if (nativeQuery) await scoped(tx => tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,operation_key,category,measurement_kind)
+            values(${lease.enterpriseId},${lease.runId},${nativeOperation},'query_embedding','unavailable')`));
+          return nativeQuery;
         },
+        sources: async (quotes: unknown) => {
+          const found = ragSources(quotes, bound.configuration.sources);
+          if ((!nativeQuery && found.length) || nativeQuery && !await enterpriseAvailable()) fail('context_changed');
+          await scoped(tx => tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,source_refs,private_checkpoint,input_summary)
+            values(${lease.enterpriseId},${lease.runId},1199,'retrieval','knowledge.search.v1',1,'succeeded',
+              ${JSON.stringify(found.map(s => ({ ref: s.evidence.ref, hash: s.evidence.hash })))}::jsonb,
+              ${JSON.stringify(found.map(s => s.evidence))}::jsonb,
+              ${JSON.stringify({ protocol: 'fastgpt-unified-native-dataset-v1', query: nativeQuery, skipped: !nativeQuery,
+                selection: selectedQuestionClass, requested: enterpriseRequested, native: quotes })}::jsonb)`));
+          for (const s of found) catalog.set(s.nativeId, s);
+          context.knowledge.push(...found.map(s => s.evidence)); context.sources.push(...knowledgeSynthesisSources(found.map(s => s.evidence)));
+          return JSON.stringify({ status: nativeQuery ? 'ready' : enterpriseRequested ? 'unavailable' : 'not_requested', kind: 'enterprise', ...nativeCites(found.map(s => ({
+            id: s.nativeId, sourceName: 'PPT第17、18、19、21页原文摘录', content: `${s.q}\n${s.a}`.trim() }))) });
+        },
+      } } : {}),
+      ports: { authorize: guard, checkpoint: async () => {},
+        model: (turn, input, tools) => dispatchModel(turn, input, tools),
         tool: async (turn, index, name, args) => {
           await guard();
           const input = JSON.parse(args), sequence = 1200 + turn * 10 + index;
           if (name === 'search_enterprise') {
-            const available = await scoped(async (tx, state) => {
-              const settings = await one(tx, sql`select agent_config from app.assistant_enterprise_settings where enterprise_id=${lease.enterpriseId}`);
-              if (!enterpriseKnowledgeEnabled(settings?.agent_config)) return false;
-              // Corpus contents never enter a model if even one fixed original
-              // has lost its audience/version. General/web remain usable.
-              for (const s of bound.configuration.sources) {
-                const row = await resolveEvidence(tx, lease.actor, state.conversation, s.evidence);
-                if (!row || !String(row.text).includes(s.evidence.text) || !s.q.includes(s.evidence.text)) return false;
-              }
-              return true;
-            });
+            const available = await enterpriseAvailable();
             if (!available) return { content: JSON.stringify({ status: 'unavailable', sources: [] }) };
             await scoped(tx => tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,operation_key,category,measurement_kind)
               values(${lease.enterpriseId},${lease.runId},${'unified-query:' + lease.runId + ':' + sequence},'query_embedding','unavailable')`));
@@ -137,6 +171,9 @@ export async function processUnifiedAnswer(lease: Lease, bound: NonNullable<Retu
         },
       } });
     await guard();
+    if (nativeGrounding && nativeQuery && result.embeddingTokens != null) await scoped(tx => tx.execute(sql`update app.assistant_usage_records
+      set measurement_kind='observed',quantity=${result.embeddingTokens},input_tokens=${result.embeddingTokens}
+      where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and operation_key=${nativeOperation}`));
     for (const key of ['knowledge','sources','web'] as const)
       (context[key] as unknown[]) = [...new Map((context[key] as unknown[]).map(v => [fingerprint(v), v])).values()];
     const parts = ragAnswerParts(result.output.text, [...catalog.values()]);

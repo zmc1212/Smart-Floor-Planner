@@ -45,7 +45,11 @@ export function nativeKnowledgeModelMessages(messages: ModelMessage[], tools?: M
   return tools ? projectConsultationModelView(sources, tools, undefined,
     { preservePolicy: true, navigationOnly: true, budget: { purpose: 'answer' } }) : sources;
 }
-type NativeInput = { messages: ModelMessage[]; tools: ModelTool[]; ports: AgentRuntimePorts; resume?: AgentCheckpoint; question?: string };
+type NativeInput = { messages: ModelMessage[]; tools: ModelTool[]; ports: AgentRuntimePorts; resume?: AgentCheckpoint; question?: string;
+  /** Native datasetSearch is an ordered workflow step, not an optional model tool. */
+  grounding?: { query: (selection?: string) => Promise<string>; sources: (quotes: unknown) => Promise<string>;
+    classifications?: Array<{ key: string; value: string }>;
+    classify?: (turn: number, messages: ModelMessage[]) => Promise<ModelTurnOutput> } };
 type Call = { turn: number; index: number; name: string; args: string; pending?: Promise<Response>; result?: string };
 type Ticket = {
   input: NativeInput; expires: number; calls: Call[]; messages: ModelMessage[];
@@ -54,6 +58,11 @@ type Ticket = {
   requests?: Map<string, Promise<Response>>;
   argumentFailures?: number;
   toolQueue?: Promise<void>;
+  knowledgeQuery?: Promise<string>;
+  sourceHash?: string;
+  sourcePacket?: Promise<string>;
+  sourcesReady?: boolean;
+  classification?: string;
 };
 export type NativeKnowledgeConfig = {
   baseUrl: string; apiKey: string; appId: string; model: string; bridgeKey: string;
@@ -89,12 +98,37 @@ export class FastGPTNativeKnowledge {
     if (!ticket || ticket.expires < Date.now()) return Response.json({ error: 'not_found' }, { status: 404 });
     try {
       await ticket.input.ports.authorize();
+      const system = ticket.input.messages.flatMap(m => m.role === 'system' ? m.content : [])
+        .filter(p => p.type === 'text').map(p => p.type === 'text' ? p.text : '').join('\n');
       if (url.pathname === '/native-input' && request.method === 'GET') {
-        const system = ticket.input.messages.flatMap(m => m.role === 'system' ? m.content : [])
-          .filter(p => p.type === 'text').map(p => p.type === 'text' ? p.text : '').join('\n');
+        if (ticket.input.grounding) {
+          if (ticket.input.grounding.classifications) return Response.json({ instructions: system + '\n' + marker + id, classifierMarker: marker + id });
+          ticket.knowledgeQuery ??= ticket.input.grounding.query();
+          return Response.json({ instructions: system + '\n' + marker + id, knowledgeQuery: await ticket.knowledgeQuery });
+        }
         if (this.config.plainAnswers) return Response.json({ instructions: system + '\n' + marker + id });
         return Response.json({ instructions: system + '\n' + marker + id,
           input: JSON.stringify({ context: nativeKnowledgeModelMessages(ticket.input.messages, ticket.input.tools).filter(m => m.role !== 'system'), current_request: ticket.input.question ?? null }) });
+      }
+      if (url.pathname === '/native-query' && request.method === 'POST' && ticket.input.grounding?.classifications) {
+        const { selection } = await request.json();
+        if (!ticket.classification || selection !== ticket.classification) fail('context_changed');
+        ticket.knowledgeQuery ??= ticket.input.grounding.query(selection);
+        return Response.json({ knowledgeQuery: await ticket.knowledgeQuery });
+      }
+      if (url.pathname === '/native-sources' && request.method === 'POST' && ticket.input.grounding) {
+        if (!ticket.knowledgeQuery) fail('context_changed');
+        await ticket.knowledgeQuery;
+        const bytes = await request.text();
+        if (Buffer.byteLength(bytes) > 1000000) fail('invalid_message', 422);
+        const quotes = JSON.parse(bytes), hash = fingerprint(quotes);
+        if (ticket.sourceHash && ticket.sourceHash !== hash) fail('context_changed');
+        ticket.sourceHash = hash;
+        ticket.sourcePacket ??= ticket.input.grounding.sources(quotes);
+        const packet = await ticket.sourcePacket;
+        await ticket.input.ports.authorize();
+        ticket.sourcesReady = true;
+        return Response.json({ instructions: [system, packet, marker + id].filter(Boolean).join('\n') });
       }
       if (request.method !== 'POST' || !url.pathname.startsWith('/native-tool/')) return Response.json({ error: 'not_found' }, { status: 404 });
       const name = url.pathname.slice('/native-tool/'.length);
@@ -187,6 +221,9 @@ export class FastGPTNativeKnowledge {
       ticket = this.tickets.get(ids[0]);
       if (!ticket || ticket.expires < Date.now() || ticket.final) fail('context_changed', 409);
       if (ticket.failure) fail(ticket.failure, 502);
+      const classifying = !!ticket.input.grounding?.classifications && !ticket.classification && !ticket.sourcesReady;
+      if (ticket.input.grounding && !ticket.sourcesReady && !classifying) fail('context_changed');
+      if (classifying && (body.tools?.length || !ticket.input.grounding?.classify)) fail('context_changed');
       await ticket.input.ports.authorize();
       if (ticket.busy || ticket.turn >= agentModelLimits.maxModelTurns) fail('agent_iteration_limit', 422);
       ticket.busy = true;
@@ -216,7 +253,7 @@ export class FastGPTNativeKnowledge {
       // The configured model sees XiaoK's original provider-neutral schemas.
       const tools = this.config.plainAnswers ? transportTools.map(t => ticket!.input.tools.find(original => original.name === t.name)!) : transportTools;
       const projected = this.config.plainAnswers ? unifiedModelMessages(messages) : nativeKnowledgeModelMessages(messages, tools);
-      const output = await ticket.input.ports.model(turn, projected, tools);
+      const output = classifying ? await ticket.input.grounding!.classify!(turn, projected) : await ticket.input.ports.model(turn, projected, tools);
       if (output.toolCalls.length > agentModelLimits.maxToolCalls) fail('assistant_capability_forbidden', 403);
       const calls = output.toolCalls.map((call, index) => {
         if (!tools.some(t => t.name === call.name) || !allowed(call.name)) fail('assistant_capability_forbidden', 403);
@@ -226,14 +263,22 @@ export class FastGPTNativeKnowledge {
       });
       if (calls.some(c => c.name === 'final_response') && calls.length !== 1) fail('invalid_model_answer', 502);
       ticket.calls.push(...calls);
-      if (this.config.plainAnswers && !calls.length) {
+      if (classifying) {
+        if (calls.length || output.finishReason !== 'stop') fail('invalid_model_answer', 502);
+        // Same category matching as native classifyQuestion.ts. Unknown output
+        // is rejected rather than taking its generic last-category fallback.
+        const choices = ticket.input.grounding!.classifications!;
+        const selected = choices.find(c => output.text.includes(c.key)) || choices.find(c => output.text.includes(c.value));
+        if (!selected) fail('invalid_model_answer', 502);
+        ticket.classification = selected.value;
+      } else if (this.config.plainAnswers && !calls.length) {
         if (output.finishReason !== 'stop' || !output.text.trim()) fail('invalid_model_answer', 502);
         ticket.final = output;
       }
       ticket.messages.push({ role: 'assistant', content: output.text,
         toolCalls: calls.map(c => ({ id: `${c.turn}:${c.index}`, name: c.name, arguments: c.args })) });
       await ticket.input.ports.checkpoint(this.state(ticket));
-      this.config.record({ kind: 'native_model', turn, request: { messages: projected, tools }, output });
+      this.config.record({ kind: 'native_model', phase: classifying ? 'classification' : 'answer', turn, request: { messages: projected, tools }, output });
       const result = { id: output.providerRequestId || randomUUID(), object: 'chat.completion', created: Math.floor(Date.now() / 1000), model: this.config.model,
         choices: [{ index: 0, message: { role: 'assistant', content: output.text || null,
           ...(output.toolCalls.length ? { tool_calls: output.toolCalls.map(c => ({ id: c.id, type: 'function', function: { name: c.name,
@@ -259,7 +304,7 @@ export class FastGPTNativeKnowledge {
     } finally { if (ticket) ticket.busy = false; }
   }
 
-  async run(input: NativeInput): Promise<{ output: ModelTurnOutput; finalFromTools: false; stop: false }> {
+  async run(input: NativeInput): Promise<{ output: ModelTurnOutput; finalFromTools: false; stop: false; embeddingTokens?: number | null }> {
     await input.ports.authorize();
     if (input.resume) {
       if (input.resume.nativeWorkflow !== nativeKnowledgeProtocol || !input.resume.output
@@ -288,7 +333,10 @@ export class FastGPTNativeKnowledge {
       if (ticket.failureError) throw ticket.failureError;
       if (!response.ok || packet.error || ticket.failure || !ticket.final) fail(ticket.failure || 'fastgpt_workflow_unavailable', 502);
       await input.ports.authorize();
-      return { output: ticket.final, finalFromTools: false, stop: false };
+      const retrieval = packet.responseData?.filter((r: { moduleType: string }) => r.moduleType === 'datasetSearchNode');
+      const embeddingTokens = retrieval?.length === 1 && Number.isSafeInteger(retrieval[0].embeddingTokens) && retrieval[0].embeddingTokens >= 0
+        ? retrieval[0].embeddingTokens as number : null;
+      return { output: ticket.final, finalFromTools: false, stop: false, ...(input.grounding ? { embeddingTokens } : {}) };
     } finally { this.tickets.delete(id); }
   }
 }

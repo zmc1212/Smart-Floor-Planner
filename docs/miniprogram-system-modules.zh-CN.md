@@ -22,15 +22,19 @@ Stable 2.02.2608080 / 基础库3.17.2在微云标记项目404校验新版排版�
 
 <!-- xiaok-mineru-fastgpt-preview -->
 
-**FastGPT统一装修会话：Limited，业务验收失败，仅隔离显式试点。** 用户已授权将通用装修问答、实际联网与企业工艺接入同一C01会话。`XIAOK_FASTGPT_WORKFLOWS_FILE.rag.mode=unified`将固定v4.17.4原生ToolCall接回原会话服务，数据集仍用百炼text-embedding-v4。qwen3.7-flash及qwen3.7-plus的有界试验均保留；切换对话模型未证明联合旅程通过，候选没有默认启用。原C01 `packages/assistant/chat/chat`、`/api/miniprogram/assistant/conversations/*`、schema、markup/样式/素材和批准设计不变；仅文字咨询选择该路径，需求审阅、其他业务动作与媒体沿原处理器。
+**FastGPT统一装修会话：Limited。企业取证机制已验证，统一业务验收仍失败。** 显式`XIAOK_FASTGPT_WORKFLOWS_FILE.rag.mode=unified`和`rag.grounding=native-dataset-classified`选择隔离v4.17.4工作流：原生classifyQuestion→原权限/查询准备→原生datasetSearchNode→原文复核→原生ToolCall。通用/公开问题走官方空查询分支，不传企业材料、不调用embedding；企业问题先取证再作答。qwen3.7-plus及百炼text-embedding-v4固定，不新增作答提示条款、关键词路由、换模型、第二Agent、事实库或改答。原生分类仅配置两个分类范围，未知结果拒绝；查询以JSON字符串编码，保留原文并阻止原生URL/文件自动读取分支。
 
-小K持有持久会话与获权模型原答历史，FastGPT使用`NO_RECORD_HISTORIES`。桥接复用原生ToolCall、原扁平工具schema、未改写的原生知识引用格式及原Knowledge/Evidence和网页引用目录，不另加关键词路由、第二Agent、事实库或改答。原生`[id](CITE)`只解析真实选中ID；来源暴露前、提交前及重进沿当前租户/本人/受众/版本/hash守卫，已读来源与历史依赖继续可撤回。企业撤回时固定资料工具不可用；关知识排除企业派生历史。公开候选摘要不是Evidence，原文读取保留SSRF/DNS/TLS/隐私检查。这些已接入的边界不等于统一路径原生撤权/重进验收通过。
+原C01 `packages/assistant/chat/chat`、`/api/miniprogram/assistant/conversations/*`、schema、markup/样式/素材和批准390×844设计不变；仅显式启用的文字咨询选择候选。原服务继续持有真实保存、获权模型原答历史、引用目录、当前租户/本人/受众/版本/hash检查、来源依赖重进、幂等和逐次计量。FastGPT使用`NO_RECORD_HISTORIES`，原生CITE只解析真实选中来源。固定四份资料中任一必需发布失权，整个固定资料集不可用。联网沿原搜索/原文读取和SSRF/DNS/TLS/隐私边界，候选摘要不是Evidence。分类独立计量，不能成为保存答案。
 
-最终有界机制检查在10994停止：三个工具均已提供、企业知识已开启，但模型没有检索，自编企业排版/确认职责并无引用保存。消息写入成功，事实依据失败。通用10993在审阅范围通过；随后联网/混合追问、第二组及统一路径引用/重进/撤权/503闭环均未执行。此前泛化常识、假引用、参数错误与引用前缀错误继续保留为失败或明确质量限制。按两轮修复停止规则，不再追加模型试答。22项定向检查、相关类型与lint通过；全量lint为0错误/31项既有警告。独立真实搜索/读取已取得官网product1161原文，模型调用和业务写入均为0，仅证明联网基础服务。
+原固定2组4问在11025停止。通用11024正确分类并保存原答，企业embedding/引用均0；亮面与防滑、提亮关系的泛化仍按既有通用路由口径保留为质量限制。企业11025正确分类，回答前拿到PPT19原文，却自编“拍照/视频给客户确认”步骤，并称会让设计师备注需求。归Agent取证后的来源消费/动作承诺，不是缺Evidence；原答继续判失败。首组联网/混合追问及整组第二次未执行，统一旅程未完成，不再修词、正则、换模型或重采样。
 
-原网关/逐次计量、Promise去重和HTTP串行回调保留计费及每run限额，unknown不重试。官方`searchTest`不返回embedding token，应用记录保持unavailable；AIProxy保存实际2次embedding/30输入。统一本批attempt3331–3340共10次模型、11997输入/2702输出；代理传输不重复算生成，代理零单价不代表免费，金额仍未知。`tmp/xiaok-fastgpt-unified-20261107/closure.json`保留完整来源绑定、失败、用量、发布及清理核对；停止后比对无源码漂移，所有自有资源已释放。
+独立`workflow-grounding/saved-permissions01`只用这两条已保存原答，新增模型0次。Stable DevTools验证原文读回/重进、实际点击PPT19引用、真实撤回受众权限后隐藏相关企业回答而保留通用答、恢复权限，以及实际HTTP503及恢复。跨用户/租户拒绝、旧身份失效和刷新身份重进也通过。这证明失败草稿的访问控制，不替失败语义或未执行联网/混合旅程判通过。C01设计源仍为`design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/README.md`，原生截图沿既有布局与资料不可用状态；真机未验。
 
-授权隔离库`xiaok_embedding_eval`/微云1454的2511–2514/2756–2759已复查仍为active/customer_public。旧RAG原稿10980/10982–10984和`repair1-saved09`的保存/引用/重进/撤权/HTTP503证据按未变范围保留，不替新统一旅程判通过；基线仍在`tmp/xiaok-fastgpt-rag-session-20261107/`。C01设计源仍为`design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/README.md`、390×844；已查看的通用回答原生截图沿既有布局，不算统一旅程完整视觉验收。预算报价线下，28条混合候选退役，主库376–405/410–411只读；未宣告全V1、生产或真机通过。
+31项定向检查、相关类型/lint通过；全量lint为0错误/31项既有警告。分类批与390文件保存访问审计的源码/配置绑定无漂移。无条件前置检索11001因来源相关性失败保留；11022/11023在模型调用前失败：引用输入类型为hidden，修复又只存草稿未发布。发布修复显式传`isPublish:true`，核对publishedVersionId变化及version/detail的输入值/类型。无模型原生探针已定位并验证接线，不算业务验收。
+
+本轮工作流调查新增5次qwen3.7-plus(attempt3341–3345)，5433输入/1464输出；2次text-embedding-v4查询、59输入。原生工作流有embeddingTokens才记observed，失败/缺失保持unavailable。代理625为失败传输，626/627为探针替身回调，不计真实模型；金额未知，代理零单价不代表免费。前批10次模型11997/2702、2次embedding30，以及旧RAG用量/unknown3324和所有失败分批保留。`tmp/xiaok-fastgpt-unified-20261107/workflow-grounding/closure.json`保存完整绑定、原稿、用量和清理；自有资源与设置已恢复。
+
+用户授权隔离库`xiaok_embedding_eval`/微云1454的2511–2514/2756–2759经临时撤权恢复后仍为active/customer_public。旧RAG10980/10982–10984及`repair1-saved09`的保存/引用/重进/撤权/503证据按原范围复用，不替本统一旅程判通过；基线`tmp/xiaok-fastgpt-rag-session-20261107/`不改写。预算报价线下，28条混合候选继续退役，主库376–405/410–411只读；候选未默认启用，未宣告生产或全V1完成。
 
 <!-- xiaok-fastgpt-capabilities -->
 **FastGPT阶段/知识工作流：Limited，保存I/O接口已收敛，库存OpenSERP官网产品原文已证，固定主干复验首个供应商403停止。** 显式开发候选沿C01原会话，由FastGPT v4.17.4单一ToolCall控制问答；原服务守获权工具、KnowledgeRetriever/Evidence、租户/来源、持久任务、网关计量及最终校验/保存。原生输入复用既有来源/引用目录与公开内容投影，保留完整原文和引用ID。提交/保存共同依据实时获权来源，调用或空检索不当证据；本地配置错误与供应商明确失败保留原异常处置语义。UI/API路由/schema、默认Worker、生产未切，企业知识关闭。

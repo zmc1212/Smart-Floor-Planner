@@ -7,7 +7,9 @@ import { createRequire } from 'node:module';
 import { spawn, execFile } from 'node:child_process';
 import { workflowSnapshot } from './platform.mjs';
 const require = createRequire(import.meta.url); require('@next/env').loadEnvConfig(process.cwd(), true);
-const root = path.resolve('..'), base = path.join(root, 'tmp/xiaok-fastgpt-unified-20261107', ...(process.argv.includes('--plus') ? ['plus'] : []));
+const grounding = process.argv.includes('--workflow-grounding');
+const classified = process.argv.includes('--classified');
+const root = path.resolve('..'), base = path.join(root, 'tmp/xiaok-fastgpt-unified-20261107', ...(process.argv.includes('--plus') ? ['plus'] : []), ...(grounding ? ['workflow-grounding'] : []), ...(classified ? ['classified'] : []));
 const label = process.argv.find(x => x.startsWith('--label='))?.slice(8) || 'native01'; assert.match(label, /^[a-z0-9-]+$/);
 const savedLabel = process.argv.find(x => x.startsWith('--verify-saved='))?.slice(15);
 assert.ok(!process.argv.some(x => x.startsWith('--continue=')), 'Unified trial originals must not be replayed');
@@ -20,6 +22,7 @@ const out = path.join(base, label); assert.ok(!fs.existsSync(path.join(out, 'ass
 const readJson = (p: string) => JSON.parse(fs.readFileSync(p, 'utf8'));
 const setup = readJson(path.join(base, 'preparation.json')); assert.equal(setup.status, 'ready');
 const configFile = path.join(base, 'runtime.private.json'), config = readJson(configFile);
+if (grounding) { assert.equal(config.rag.model, 'qwen3.7-plus'); assert.equal(config.rag.grounding, classified ? 'native-dataset-classified' : 'native-dataset'); }
 const originalDatabase = process.env.DATABASE_URL;
 process.env.DATABASE_URL = readJson(path.join(root, 'tmp/xiaok-vector/connection.private.json')).DATABASE_URL;
 process.env.XIAOK_FASTGPT_WORKFLOWS_FILE = configFile; process.env.ASSISTANT_TEXT_MODEL = config.rag.model; process.env.ASSISTANT_TEXT_DISABLE_THINKING = '1';
@@ -67,7 +70,7 @@ const remote = async (code: string) => {
   return new Promise<string>((resolve, reject) => execFile('ssh', [...sshArgs, 'Administrator@192.168.10.54', 'powershell -NoProfile -EncodedCommand ' + Buffer.from(script, 'utf16le').toString('base64')],
     { windowsHide: true, timeout: 20000, encoding: 'utf8' }, (e, stdout) => e ? reject(Error('Read-only pilot probe failed')) : resolve(stdout)));
 };
-const workflow = () => workflowSnapshot({ ...config, appId: config.rag.appId, nodeCount: 6 });
+const workflow = () => workflowSnapshot({ ...config, appId: config.rag.appId, nodeCount: classified ? 9 : grounding ? 7 : 6 });
 const ledger = async (after = 0) => {
   assert.ok(Number.isSafeInteger(after) && after >= 0);
   const query = `begin read only; select json_build_object('lastId',(select coalesce(max(id),0) from logs),'logs',(select coalesce(json_agg(r),'[]') from (select id,model,endpoint,channel_id,code,retry_times,input_tokens,output_tokens,cached_tokens,total_tokens,request_id,created_at,input_amount,output_amount,used_amount from logs where id>${after} order by id) r)); rollback;`;
@@ -100,10 +103,25 @@ async function consume(question: string, runId: string, cid: string) {
   const trace = await readTrace(runId); fs.writeFileSync(path.join(out, 'run-' + runId + '.json'), JSON.stringify(trace, null, 2));
   item.status = trace.run.status; item.error = trace.run.error_code; save(); assert.equal(item.status, 'succeeded', item.error || 'run must succeed');
   const model = trace.steps.filter((s: any) => s.kind === 'fastgpt_unified_model'); assert.ok(model.length >= 1 && model.length <= 4); assert.ok(model[0].provider_attempt_id); assert.ok(model[0].private_checkpoint.output.usage);
+  const classifications = trace.steps.filter((s: any) => s.kind === 'fastgpt_unified_classification');
+  assert.equal(classifications.length, classified ? 1 : 0);
   const service = new ConversationService(actor(users[0])), answer = (await service.messages(cid)).items.find((m: any) => m.id === trace.run.output_message_id);
   assert.ok(answer?.available); item.messageId = answer.id; item.answer = answer.content.blocks.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('');
   item.citations = answer.citations; item.raw = model.at(-1).private_checkpoint.output.text; assert.equal(item.answer, item.raw.replace(/\[[^\]]+\]\(CITE\)/g, ''));
   const questionIndex = (report.runs.length - 1) % 4;
+  if (grounding) {
+    const retrieval = trace.steps.find((s: any) => s.input_summary?.protocol === 'fastgpt-unified-native-dataset-v1');
+    assert.ok(retrieval, 'Native workflow must complete the source gate before the first model');
+    assert.ok(model.every((s: any) => !s.private_checkpoint.input.tools.some((t: any) => t.name === 'search_enterprise')));
+    const skipped = classified ? [0,2].includes(questionIndex) : report.runs.length === 5;
+    assert.equal(retrieval.input_summary.skipped, skipped);
+    const usage = trace.usage.filter((u: any) => u.category === 'query_embedding');
+    assert.equal(usage.length, skipped ? 0 : 1);
+    if (!skipped) { assert.equal(usage[0].measurement_kind, 'observed'); assert.ok(Number(usage[0].input_tokens) > 0); }
+    if (questionIndex === 1) assert.ok(retrieval.private_checkpoint.some((e: any) => e.text.includes('设计师')));
+    item.grounding = { nativeWorkflowBeforeAnswer: true, skipped, sources: retrieval.private_checkpoint.length,
+      embeddingTokens: skipped ? 0 : Number(usage[0].input_tokens) };
+  }
   if (questionIndex === 0) { assert.equal(answer.citations.length, 0); assert.equal(model.length, 1); }
   if (questionIndex === 1) assert.ok(answer.citations.some((c: any) => c.title.includes('第19页')));
   if (questionIndex === 2) {
@@ -120,8 +138,8 @@ async function consume(question: string, runId: string, cid: string) {
     on m.enterprise_id=r.enterprise_id and m.id=r.trigger_message_id where r.enterprise_id=1454 and r.id=${runId}`));
   const repeated = await service.send(cid, trigger.client_message_id, trigger.content);
   assert.equal(String(repeated.runId), runId, 'Same client message must not create another run');
-  assert.equal(trace.usage.filter((u: any) => u.category === 'tokens' && u.measurement_kind === 'observed').length, model.length);
-  item.modelCalls = model.length;
+  assert.equal(trace.usage.filter((u: any) => u.category === 'tokens' && u.measurement_kind === 'observed').length, model.length + classifications.length);
+  item.modelCalls = model.length + classifications.length;
   item.checked = { savedOriginal: true, selectedCitations: true, sourceOpen: true, sameUserReentry: true, otherUserDenied: true, crossTenantDenied: true, perTurnUsage: true, sendIdempotent: true };
   assert.deepEqual(binding(), report.bindingBefore); save(); console.log(JSON.stringify({ reviewRequired: runId, question, answer: item.answer, citations: answer.citations.map((c: any) => c.title) }));
   const file = path.join(out, 'review-' + runId + '.json'), until = Date.now() + 240000;
