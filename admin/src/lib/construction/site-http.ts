@@ -44,9 +44,10 @@ export async function siteChatHttp(request: Request, actor: ConstructionActor, p
     return json(await service.upload(projectId, requestKey, Buffer.from(await file.arrayBuffer())));
   }
   let body;
-  const raw = await limitedBytes(request, 20000);
-  try { body = JSON.parse(raw.toString('utf8')); } catch { fail('invalid_construction', 422); }
+  const raw = await limitedBytes(request, path.join('/') === 'messages' ? 3 * 1024 * 1024 : 20000);
+  try { body = JSON.parse(raw.toString('utf8')); } catch { fail('invalid_construction', raw.length > 20000 ? 413 : 422); }
   if (!body || typeof body !== 'object' || Array.isArray(body)) fail('invalid_construction', 422);
+  if (body.recording === undefined && raw.length > 20000) fail('invalid_construction', 413);
   if (path[0] === 'media' && path[2] === 'remove' && path.length === 3) {
     if (Object.keys(body).length) fail('invalid_construction', 422);
     return json(await service.removeMedia(projectId, id(path[1]), requestKey));

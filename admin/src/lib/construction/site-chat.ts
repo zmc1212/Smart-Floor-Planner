@@ -17,6 +17,7 @@ import { siteActionAcknowledgement, siteActionConfirmation, siteActionInterpreta
 import { bindSpeechToMessage } from '@/lib/assistant/speech/link';
 import { siteKnowledgeQuestion, siteKnowledgeResponse } from './site-knowledge';
 import { citationProjection } from '@/lib/assistant/knowledge/sources';
+import { captureInput, capturedRecord, saveSiteCapture, scheduleCapturedRecord, siteQuickWorks } from './site-capture';
 
 export function siteActor(a: ConstructionActor): ActorContext {
   return { enterpriseId: a.enterpriseId, principal: { kind: 'admin', adminId: a.adminId }, contextVersion: 1,
@@ -82,11 +83,11 @@ export class SiteChatService {
       const eid = this.staff.enterpriseId;
       const issues = await projectSiteIssues(tx, eid, projectId);
       const plans = await projectPlans(tx, eid, projectId);
-      const pageMessages = await rows(tx, sql`select m.id,m.seq,m.author_kind,m.admin_id,m.content,m.created_at,a.display_name
+      const pageMessages = await rows(tx, sql`select m.id,m.seq,m.client_message_id,m.author_kind,m.admin_id,m.content,m.created_at,a.display_name
         from app.assistant_messages m left join app.admin_users a on a.id=m.admin_id
         where m.enterprise_id=${eid} and m.conversation_id=${String(c.id)} and m.seq<${beforeSeq} and m.author_kind='admin' order by m.seq desc limit ${limit}`);
       // Pending work remains discoverable even after the original leaves recent history.
-      const pendingMessages = await rows(tx, sql`select m.id,m.seq,m.author_kind,m.admin_id,m.content,m.created_at,a.display_name
+      const pendingMessages = await rows(tx, sql`select m.id,m.seq,m.client_message_id,m.author_kind,m.admin_id,m.content,m.created_at,a.display_name
         from app.construction_site_records r join app.assistant_messages m on m.enterprise_id=r.enterprise_id and m.id=r.source_message_id
         left join app.admin_users a on a.id=m.admin_id where r.enterprise_id=${eid} and r.project_id=${projectId}
         and ((r.status='changes_requested' and not exists(select 1 from app.construction_site_records child
@@ -115,8 +116,11 @@ export class SiteChatService {
           where x.enterprise_id=${eid} and x.project_id=${projectId} and x.record_id=${String(record.id)} and a.deleted_at is null order by x.position`);
         const canAct = permission.write && (permission.manage || String(record.author_id) === this.staff.adminId);
         const canEdit = canAct && record.status !== 'changes_requested';
+        const captured = await capturedRecord(tx, eid, projectId, String(record.id));
+        const speech = await one(tx, sql`select id::text,duration_ms,transcript from app.assistant_speech_assets
+          where enterprise_id=${eid} and conversation_id=${String(c.id)} and message_id=${String(message.id)} and deleted_at is null`);
         items.push({ message, issue: issues.find(i => i.recordId === String(record.id)) || null,
-          record: { ...record, canEdit, canPublish: canEdit && (!record.resubmission_of_id || permission.manage),
+          record: { ...record, captured, speech, canEdit, canPublish: canEdit && ((!captured && !record.resubmission_of_id) || permission.manage),
             canRequestChanges: permission.write && permission.manage && ['draft','published'].includes(String(record.status)),
             canResubmit: permission.write && String(record.author_id) === this.staff.adminId && record.status === 'changes_requested' && !record.resubmitted_record_id,
             resubmittedRecordId: record.resubmitted_record_id || null, canPublishCustomer: permission.manage, media } });
@@ -134,7 +138,8 @@ export class SiteChatService {
           (select value::bigint from jsonb_array_elements_text(${JSON.stringify(issues.map(i => i.recordId))}::jsonb)) order by r.id for share`)) {
         records[String(record.id)] = Number(record.version);
       }
-      return siteDto({ conversationId: c.id, project: { id: p.id, name: p.name, status: p.status, customerAccess: p.customer_access, stageName: stage?.name || '' },
+      return siteDto({ conversationId: c.id, project: { id: p.id, name: p.name, status: p.status, customerAccess: p.customer_access, stageName: stage?.name || '', stageKey: p.current_stage_key },
+        quickWorks: siteQuickWorks.filter(w => w.stage === (p.current_stage_key === 'masonry_carpentry' ? 'masonry_carpentry' : 'utilities')),
         ...permission, rooms, plans,
         items, versions: { records,
           issues: Object.fromEntries(issues.map(i => [i.issueId, i.revision])), materials,
@@ -156,18 +161,25 @@ export class SiteChatService {
     });
   }
   send(projectId: string, body: Row, requestKey: string) {
-    object(body, ['text', 'mediaIds', 'versions', 'speech']); key(requestKey);
+    object(body, ['text', 'mediaIds', 'versions', 'speech', 'capture', 'recording']); key(requestKey);
     const versions = parseSiteVersions(body.versions);
     const raw = text(body.text, 4000, false), mediaIds = body.mediaIds;
-    if (!Array.isArray(mediaIds) || mediaIds.length > 4 || new Set(mediaIds).size !== mediaIds.length || (!raw && !mediaIds.length)) fail('invalid_construction', 422);
+    const capture = body.capture === undefined ? null : captureInput(body.capture);
+    if (capture && body.speech !== undefined) fail('invalid_construction', 422);
+    if (!Array.isArray(mediaIds) || mediaIds.length > 4 || new Set(mediaIds).size !== mediaIds.length
+      || (!body.capture && (!raw && !mediaIds.length || body.recording !== undefined))) fail('invalid_construction', 422);
     mediaIds.forEach(id);
     return this.scope(projectId, true, async (tx, c, _p, permission) => {
       const result = await idempotent(tx, this.actor, 'site:send:' + projectId, requestKey, body, async () => {
+      const perform = async () => {
       const eid = this.staff.enterpriseId;
       for (const mid of mediaIds) if (!await one(tx, sql`select id from app.construction_site_media a where a.enterprise_id=${eid} and a.project_id=${projectId} and a.id=${mid}
         and a.uploader_id=${this.staff.adminId} and a.deleted_at is null and not exists(select 1 from app.construction_site_attachments x where x.enterprise_id=a.enterprise_id and x.project_id=a.project_id and x.media_id=a.id)
         and not ${sharedMediaUsed(eid, projectId, mid)} for share`)) fail('construction_media_unavailable', 422);
       const intent = siteIssueCommand(raw) || planCommand(raw) || resolutionCommand(raw) ? 'request' : siteMessageIntent(raw, mediaIds.length);
+      // Explicit shortcuts and audio are reports. Typed questions/actions keep their existing routing.
+      if (capture && (capture.kind === 'quick' || body.recording !== undefined || intent === 'report'
+        || intent === 'clarify' && !siteActionAcknowledgement(raw))) return saveSiteCapture(tx, this.actor, c, projectId, body, requestKey);
       const knowledgeQuestion=siteKnowledgeQuestion(raw,intent,mediaIds.length);
       const message = await appendMessage(tx, this.actor, String(c.id), { author: 'admin', clientMessageId: requestKey, purpose: knowledgeQuestion?'site.question':'site.source',
         content: { version: 1, blocks: raw ? [{ type: 'text', text: raw }] : [{ type: 'notice', code: 'site_photos', fallbackText: `现场照片 · ${mediaIds.length}张` }] } });
@@ -225,6 +237,9 @@ export class SiteChatService {
         values(${eid},${projectId},${String(c.id)},${String(message.id)},${this.staff.adminId},${String(result.runId)}) returning id`))!;
       for (let i = 0; i < mediaIds.length; i++) await tx.execute(sql`insert into app.construction_site_attachments(enterprise_id,project_id,record_id,media_id,position) values(${eid},${projectId},${String(r.id)},${mediaIds[i]},${i})`);
       return { ...result, recordId: String(r.id) };
+      };
+      const sent = await perform();
+      return capture && !('requestKey' in sent) ? { ...sent, status: 'received', organizationStatus: sent.status, requestKey, speechId: null, mediaIds } : sent;
       });
       await validateResolutionReceipt(tx, this.staff.enterpriseId, projectId, result);
       return result;
@@ -311,6 +326,11 @@ export class SiteChatService {
       if (r.status === 'changes_requested') fail('site_rework_state_conflict');
       if (action === 'retry') {
         if (r.status !== 'organizing' || !r.source_message_id) fail('context_changed');
+        if (!r.run_id && await capturedRecord(tx, eid, projectId, recordId)) {
+          const result = await scheduleCapturedRecord(tx, this.actor, c, r);
+          await tx.execute(sql`update app.construction_site_records set version=version+1,updated_at=now() where enterprise_id=${eid} and id=${recordId}`);
+          return { id: recordId, version: Number(r.version) + 1, ...result };
+        }
         const old = await one(tx, sql`select status from app.assistant_runs where enterprise_id=${eid} and id=${String(r.run_id)}`);
         if (!old || !['failed', 'cancelled'].includes(String(old.status)) || await one(tx, sql`select id from app.assistant_quota_reservations where enterprise_id=${eid} and run_id=${String(r.run_id)} and status in ('held','reconciling')`)) fail('site_retry_unavailable');
         const result = await newRun(tx, this.actor, c, (await one(tx, sql`select * from app.assistant_enterprise_settings where enterprise_id=${eid}`))!, String(r.source_message_id), String(r.run_id),
@@ -332,6 +352,7 @@ export class SiteChatService {
         // A correction immediately revokes the previous publication; it requires a new explicit review.
         await tx.execute(sql`update app.construction_site_records set data=${JSON.stringify(data)}::jsonb,room_id=${data.roomId},room_name_snapshot=${String(room?.name || '')},status='draft',audience='internal',published_version=null,published_customer_id=null,approved_by=null,published_at=null,withdrawal_reason='' where enterprise_id=${eid} and id=${recordId}`);
       } else if (action === 'publish') {
+        if (!permission.manage && await capturedRecord(tx, eid, projectId, recordId)) fail('construction_forbidden', 403);
         if (r.resubmission_of_id && !permission.manage) fail('construction_forbidden', 403);
         if (r.status !== 'draft' || !r.source_message_id || !['internal', 'customer'].includes(String(body.audience))) fail('context_changed');
         if (body.audience === 'customer' && (!permission.manage || !p.customer_access || !p.customer_user_id || p.archived_at)) fail('construction_forbidden', 403);

@@ -1,5 +1,19 @@
 # 小K第二期：需求整理与人工交接
 
+<!-- site-capture-current -->
+## 现场上报与送达合同
+
+**现场上报与送达回执：本地已实现（Implemented），固定范围Stable验收完成。** 批准的[V3随手报/常用工作方案](../design-references/cloud-site-redesign-20261107/README.md#05-通用现场上报与回执已批准实施)对应`packages/construction/chat/chat`。拍照、说一句采用两个54px大按钮，打字和常用工作为次操作。照片和一段录音可一次发送；常用工作明确选择当前项目房间（或全屋/待核对）、工作和做完/部分/未做/说不准后一次提交。点选直接保存为核对草稿，不调用模型、不自动改变阶段。原话、原图、原音保留，新上报仅管理人员可发布，负责人/admin/super_admin继承沿原权限。
+
+原`POST /api/miniprogram/construction/projects/:id/chat/messages`增加`capture:{kind:'free'}`或`{kind:'quick',workId,roomId,location,progress}`及可选`recording`（base64 PCM WAV，16kHz单声道16-bit，300ms–60s、≤2MB）。保留文字4000字、最多4张各4MB照片、每会话20段录音限制；仅原音消息JSON允许3MB。项目成员、原件归属和原幂等作用域保护同一事务中的消息、记录、附图、原音、submitted版本及审计事件；`received`回执绑定本次request/message/record/media/audio。capture标记持久保存在版本快照，未知回执沿`/operations/:key`核对。普通文字查询/事项继续原路径。无迁移、新路由、自动发布、报表管线或知识改动。
+
+Mini `site-capture.js`先把临时文件复制至自有`USER_DATA_PATH/site-capture`，按员工/企业/项目保存草稿与队列，成功后才清输入并显示“已留在手机”。重进/重连先复核权限，用原上传键续传；发送结果不明时先查原操作再决定重发。本次全部材料已提交服务端才显示“已收到”，小K整理中/失败单独反馈。本机保存失败保留当前输入，不谎称持久保存；成员撤权清空可见记录及本机原件；401登录过期只隐藏，保留同身份重新登录后恢复。重连发生在旧请求中时补一次权限复核续传，不吞掉重连事件。最多20条本机队列，不承诺操作系统后台上传。原补拍、更正、版本冲突、发布/撤回保留。
+
+自由语音在收到后沿原`site.record` Worker及本地faster-whisper适配器转写，保留配置/原件hash、实时权限、心跳及实际本地音频计量。转写须显式配置ASR；未配置时已收到原音仍可回听，失败草稿可手工改或重试；模型准入失败也不回滚原材料。C01语音路径不变。5组真实服务与2段固定qwen3.7-flash语音管线通过，源码漂移0；2次已知模型调用输入825/输出141tokens，金额未知。第二段“那排”转成“纳排”，未贴砖归待沟通，通用口语质量仍Limited。真机相机/麦克风授权、方言及工地噪声未验。[服务证据](../tmp/site-capture-20261107/service-check.json)、[42项定向检查](../tmp/site-capture-20261107/fast-tests-final.log)。全仓lint0错误/31警告，Webpack编译通过；完整构建被既有`.next-qa/dev/types/routes.d.ts`语法错误阻断。[原生最终复核](../tmp/site-capture-20261107/native.json)通过54px双按钮、常用工作重进/一次提交、登录过期保留与恢复、成员撤权，含宿主窗口与390×844实测。断网重进续传、原音回听和丢回执不重复写入复用[前批已通过子项](../tmp/site-capture-20261107/native-r4/native.json)；该批仍保留write标记未清的失败，最终批修正并重验。42项定向检查、两批各自源码绑定/漂移0；未复采2份模型首稿。三种管理角色的发布检查通过，原清理status取值错误与[独立清理回读](../tmp/site-capture-20261107/roles-cleanup.json)分别保留。原生只替代了设备采集输入，使用真实本机文件/存储、HTTP和数据库；真机麦克风/相机不算已验。
+
+本轮自有服务已停止，标记测试项目已暂停、合成员工停用、临时设置恢复初始值，原记录与失败保留；[清理回读](../tmp/site-capture-20261107/cleanup-owned.json)确认活动队列为0。
+<!-- /site-capture-current -->
+
 <!-- xiaok-site-language-current -->
 ## 施工现场口语上报质量（Limited）
 

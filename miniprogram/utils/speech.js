@@ -6,13 +6,14 @@ const invoke = (method, input = {}) => new Promise((resolve, reject) => wx[metho
 
 /** Shared recorder/playback adapter. Original C01/S04 send controllers own all business writes. */
 class SpeechController {
-  constructor({ identity, emit, getDraft, setDraft, reload, request = api.request }) {
-    Object.assign(this, { identity, emit, getDraft, setDraft, reload, request }); this.epoch = 0;
+  constructor({ identity, emit, getDraft, setDraft, reload, captureAudio, request = api.request }) {
+    Object.assign(this, { identity, emit, getDraft, setDraft, reload, captureAudio, request }); this.epoch = 0;
   }
   valid(epoch) { return this.visible && this.epoch === epoch && this.session === this.identity(); }
   setBusy(busy) { this.busy = busy; this.emit({ speechBusy: busy }); }
   async show(base) {
     this.hide(); this.loadedAsset = null; this.visible = true; this.base = base; this.session = this.identity(); this.client = new AssistantClient(this.request, base);
+    if (this.captureAudio) { this.available = true; this.emit({ speechAvailable: true }); return true; }
     return this.refresh(true);
   }
   hide() {
@@ -55,6 +56,7 @@ class SpeechController {
   binding() { return this.asset?.status === 'succeeded' ? { id: this.asset.id, version: this.asset.version } : undefined; }
   async afterSend() { this.loadedAsset = null; return this.refresh(); }
   async microphone() {
+    if (this.captureAudio) { this.available = true; this.asset = null; return this.record(); }
     const epoch = this.epoch; if (!await this.refresh() || !this.valid(epoch)) return;
     const pending = this.client.pending.get('speech-upload:' + this.base);
     const retry = [...this.client.pending.entries()].find(([slot]) => slot.startsWith('speech-retry:' + this.base + ':'));
@@ -123,6 +125,7 @@ class SpeechController {
       if (!this.valid(epoch) || this.cancelled) { release(); disposeOriginal(result); return; }
       detach();
       try {
+        if (this.captureAudio) { await this.captureAudio(result); return; }
         const data = await new Promise((resolve, reject) => wx.getFileSystemManager().readFile({ filePath: result.tempFilePath, encoding: 'base64', success: r => resolve(r.data), fail: reject }));
         if (this.valid(epoch)) await this.upload(data);
       } catch (_) { if (this.valid(epoch)) { this.setBusy(false); this.message(); } }
@@ -132,7 +135,7 @@ class SpeechController {
     this.recorder.onStop(this.onStop); this.recorder.onError(this.onError); this.setBusy(true);
     try { this.recorder.start({ duration: 60000, sampleRate: 16000, numberOfChannels: 1, encodeBitRate: 48000, format: 'wav' }); }
     catch (_) { detach(); release(); this.setBusy(false); this.message(); return; }
-    const choice = await invoke('showModal', { title: '正在录音', content: '说完后结束录音，转成文字后可修改再发送。最长60秒。', confirmText: '结束录音', cancelText: '取消' }).catch(() => ({ cancel: true }));
+    const choice = await invoke('showModal', { title: '正在录音', content: this.captureAudio ? '说完后结束录音，可以回听、补充照片再发送。最长60秒。' : '说完后结束录音，转成文字后可修改再发送。最长60秒。', confirmText: '结束录音', cancelText: '取消' }).catch(() => ({ cancel: true }));
     if (!this.valid(epoch) || !this.recorder) return;
     decided = true; this.cancelled = !choice.confirm; if (!stopped) manager.stop();
     if (this.cancelled) { if (stopped) { detach(); release(); disposeOriginal(stopped); } this.setBusy(false); }
@@ -150,6 +153,10 @@ class SpeechController {
   stopPlayback() {
     if (this.player) { this.player.stop(); this.player.destroy(); this.player = null; }
     if (this.audioPath) { try { wx.getFileSystemManager().unlink({ filePath: this.audioPath, fail() {} }); } catch (_) {} this.audioPath = ''; }
+  }
+  playLocal(path) {
+    this.stopPlayback(); this.player = wx.createInnerAudioContext(); this.player.src = path;
+    this.player.onEnded(() => this.stopPlayback()); this.player.onError(() => { this.stopPlayback(); this.message('录音暂时无法回听，请重试。'); }); this.player.play();
   }
   async play(id) {
     this.stopPlayback(); const epoch = this.epoch;

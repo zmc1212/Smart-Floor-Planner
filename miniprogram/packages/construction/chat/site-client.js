@@ -20,6 +20,7 @@ function errorText(e) {
     site_reopen_required: '本事项已有正式处理记录，请先由管理人员说明原因并重新处理。',
     construction_staff_unavailable: '未找到唯一且有权接续的项目成员，请核对姓名和当前分工。',
     media_limit: '本工地图片数量已达当前上限，请联系负责人。', media_invalid: '请选择4MB以内的JPEG或PNG图片。',
+    speech_limit: '本项目录音数量已达当前上限，请联系负责人。原材料仍留在手机。', speech_audio_invalid: '录音格式无法读取，请保留原材料并重新录制。',
     construction_media_unavailable: '照片已不可访问，请重新读取。', idempotency_conflict: '本次操作内容不一致，请重新读取。',
   })[code] || (e && e.statusCode === 403 ? '当前身份已无此工地权限，请返回工地列表。' : e && e.statusCode === 404 ? '工地或原材料已不可访问，请返回列表。' : '暂时未能完成，请保留内容后重试。');
 }
@@ -45,7 +46,7 @@ function decorate(item) {
   return { ...item, text: (item.message.content.blocks || []).map(b => b.text || b.fallbackText || '').join('\n'),
     time: new Date(item.message.created_at).toLocaleString('zh-CN', { hour12: false }),
     record: { ...r, data, generating, failed, label: labels[r.status], canPublish: r.canPublish === undefined ? r.canEdit : r.canPublish, updatedLabel: r.updated_at && !Number.isNaN(updated.getTime()) ? updated.toLocaleString('zh-CN', { hour12: false }) : '',
-      canRetry: failed && ['failed', 'cancelled'].includes(r.run_status) && !r.pending_cost,
+      canRetry: failed && (['failed', 'cancelled'].includes(r.run_status) || !!r.captured && !r.run_id) && !r.pending_cost,
       scopeLabel: r.audience === 'customer' ? '项目成员和本项目业主可查看' : '仅本项目成员可查看',
       rows: [{ label: '施工部位', value: r.room_name_snapshot || '待核对' }, { label: '本次完成', value: data.completed || '待核对' },
         { label: '尚未完成', value: data.pending || '未说明' }, { label: '待沟通', value: data.coordination || '未说明', coordination: true }] } };
@@ -57,7 +58,7 @@ class SiteClient {
     Object.assign(this, { emit, identity, storage, request, uploadFile, download }); this.epoch = 0; this.paths = new Set();
     this.state = { loading: true, busy: false, error: '', fatal: false, items: [], mediaPaths: {}, draft: '', attachments: [], pending: null, pendingRetakeCount: 0, pendingRetakeTarget: '' };
   }
-  set(p) { if (p.fatal) Object.assign(p, { citation: null, citationLoading: false, citationError: '' }); Object.assign(this.state, p); this.emit(p); }
+  set(p) { if (p.fatal) Object.assign(p, { write: false, citation: null, citationLoading: false, citationError: '' }); if (p.fatal === false) p.fatalStatus = 0; Object.assign(this.state, p); this.emit(p); }
   current(epoch) { const s = this.identity(); return this.visible && s.token === this.session.token && s.key === this.session.key && epoch === this.epoch; }
   clean() { this.sourceVersions = null; for (const path of this.paths) { try { wx.getFileSystemManager().unlink({ filePath: path, fail() {} }); } catch { /* Page teardown. */ } } this.paths.clear(); }
   hide() { this.visible = false; ++this.epoch; this.clean(); this.set({ items: [], mediaPaths: {}, project: null, rooms: [], sheet: '', citation: null, citationLoading: false, citationError: '', versions: [], edit: {}, conflict: null, write: false, draft: '', attachments: [], resubmit: null, pendingRetakeCount: 0, pendingRetakeTarget: '' }); }
@@ -123,7 +124,7 @@ class SiteClient {
       if (!valid()) return;
       const fatal = [401, 403, 404].includes(e.statusCode);
       if (fatal) { this.clean(); this.storage.remove(this.draftKey); this.set({ items: [], mediaPaths: {}, project: null, rooms: [], attachments: [], draft: '', sheet: '', resubmit: null, versions: [], pendingRetakeCount: 0, pendingRetakeTarget: '' }); }
-      this.set({ loading: false, fatal, error: errorText(e) });
+      this.set({ loading: false, fatal, fatalStatus: fatal ? e.statusCode : 0, error: errorText(e) });
     }
   }
   unlink(path) { if (!path) return; this.paths.delete(path); try { wx.getFileSystemManager().unlink({ filePath: path, fail() {} }); } catch { /* Native temp file already expired. */ } }
@@ -139,7 +140,7 @@ class SiteClient {
         const known = e.statusCode >= 400 && e.statusCode < 500;
         if (known) { this.storage.remove(this.storageKey); this.set({ pending: null }); }
         this.set({ error: known ? errorText(e) : '提交结果待核对。请核对同一次操作，内容已保留。' });
-        if ([401, 403, 404].includes(e.statusCode)) { this.clean(); this.storage.remove(this.draftKey); this.set({ fatal: true, items: [], mediaPaths: {}, project: null, rooms: [], draft: '', attachments: [], sheet: '', resubmit: null, versions: [], pendingRetakeCount: 0, pendingRetakeTarget: '' }); }
+        if ([401, 403, 404].includes(e.statusCode)) { this.clean(); this.storage.remove(this.draftKey); this.set({ fatal: true, fatalStatus: e.statusCode, items: [], mediaPaths: {}, project: null, rooms: [], draft: '', attachments: [], sheet: '', resubmit: null, versions: [], pendingRetakeCount: 0, pendingRetakeTarget: '' }); }
         if (e.error === 'version_conflict' || e.code === 'version_conflict') {
           await this.load(false, epoch);
           if (this.current(epoch)) { const id = op.path.split('/')[2], latest = this.state.items.find(i => i.record.id === id)?.record;
@@ -177,7 +178,7 @@ class SiteClient {
       if (e.statusCode === 409 && ['context_changed','version_conflict'].includes(e.error || e.code)) {
         this.storage.remove(this.storageKey); this.set({ pending: null }); await this.load(false, epoch);
       }
-      this.set({ error: errorText(e) }); if ([401,403,404].includes(e.statusCode)) { this.clean(); this.storage.remove(this.draftKey); this.set({ fatal: true, items: [], mediaPaths: {}, project: null, rooms: [], draft: '', attachments: [], sheet: '', resubmit: null, versions: [], pendingRetakeCount: 0, pendingRetakeTarget: '' }); }
+      this.set({ error: errorText(e) }); if ([401,403,404].includes(e.statusCode)) { this.clean(); this.storage.remove(this.draftKey); this.set({ fatal: true, fatalStatus: e.statusCode, items: [], mediaPaths: {}, project: null, rooms: [], draft: '', attachments: [], sheet: '', resubmit: null, versions: [], pendingRetakeCount: 0, pendingRetakeTarget: '' }); }
     } }
     finally { if (this.current(epoch)) this.set({ busy: false }); }
   }

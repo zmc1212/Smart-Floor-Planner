@@ -1,5 +1,13 @@
 # 小程序当前功能清单
 
+<!-- site-capture-current -->
+**现场上报/回执：本地已实现（Implemented）。** 批准的[V3随手报与常用工作](../design-references/cloud-site-redesign-20261107/README.md#05-通用现场上报与回执已批准实施)对应`packages/construction/chat/chat`：54px拍照/说一句双按钮，打字/常用工作次入口，原图/原音预览及工作/部位/进展一次提交。点选保留部分完成/说不准，不切阶段、不调用模型；新上报由管理人员核对发布，原补拍/更正/版本保留。
+
+先按员工/企业/项目持久保存原件和草稿/队列，才显示“待上传 · 已留在手机”；失败保留当前输入。重进/重连先复核权限，再用原上传键/提交键续传。消息和本次全部原件提交成功才显示“已收到”，整理中/失败独立反馈；401保留同身份重登恢复，成员撤权清空可见内容及本机原件。复用原messages/operations/media/speech接口、租户/原件归属与版本快照，无schema迁移。PCM原音先保存，转写须显式本地ASR配置，未配置仍可回听；普通打字查询/事项与C01语音保留。[接口、限制及验收合同](xiaok-assistant-phase-2.zh-CN.md#现场上报与送达合同)。
+
+已验证42项定向检查、5组真实服务、3种管理角色、2段固定qwen语音管线、[最终原生布局/重登/撤权](../tmp/site-capture-20261107/native.json)及[前批上传/原音已通过子项](../tmp/site-capture-20261107/native-r4/native.json)。原失败保留，不把前批改称全绿。全仓lint0错误/31警告；Webpack编译通过，完整构建仍被既有生成类型语法错误阻断。通用口语及跨轮更正仍Limited，真机、方言噪声ASR和生产未验。新增5张小型Lucide图标复用原家族，小K业务插画沿用原独立素材。
+<!-- /site-capture-current -->
+
 <!-- xiaok-site-language-current -->
 **施工现场口语上报质量：Limited。** 固定9类真实服务试验中，部分完成、同句改口、转述与明确图文错配可保留；含糊时间/人员仍会补猜，跨轮更正未替换旧草稿，未完成工作有时仅归入待沟通。产品代码、提示词和界面未改，无新原生/真机验收，新版工地交流图仍未还原。原驱动失败、续验、配置差异及逐条语义结论分别保留，见[二期合同](xiaok-assistant-phase-2.zh-CN.md#施工现场口语上报质量limited)和[核对结果](../tmp/xiaok-site-language-20261107/assessment.json)。
 <!-- /xiaok-site-language-current -->

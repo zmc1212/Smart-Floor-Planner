@@ -10,6 +10,8 @@ import { completeRun, failRun, heartbeat, runContext, type Lease } from '@/lib/a
 import { siteDraftPrompt, sitePromptVersion, parseSiteDraft, siteRecordText, siteDraftTool, siteDraftOutput } from './site-contract';
 import { recordVersion } from './site-chat';
 import { constructionAccess } from './service';
+import { transcribeCapturedSpeech } from './site-capture-speech';
+import { transcribeLocal } from '@/lib/assistant/speech/local';
 
 type Model = (messages: ModelMessage[]) => Promise<ModelTurnOutput>;
 function ownerAccess(tx: Parameters<typeof runContext>[0], lease: Lease) {
@@ -19,7 +21,7 @@ function ownerAccess(tx: Parameters<typeof runContext>[0], lease: Lease) {
     miniProgramContextVersion: lease.actor.entry?.miniProgramContextVersion as number | undefined });
 }
 /** One bounded extraction, no tools or auto-publication. Postgres remains the job and review authority. */
-export async function processSiteRecord(lease: Lease, model?: Model) {
+export async function processSiteRecord(lease: Lease, model?: Model, transcribe = transcribeLocal) {
   let returned = false;
   const scoped = <T>(work: (tx: Parameters<typeof runContext>[0], record: Row, context: Awaited<ReturnType<typeof runContext>>) => Promise<T>) =>
     withTenantTransaction(lease.enterpriseId, async tx => {
@@ -34,16 +36,19 @@ export async function processSiteRecord(lease: Lease, model?: Model) {
       return work(tx, r, context);
     });
   try {
+    await transcribeCapturedSpeech(lease, scoped, transcribe);
     const initial = await scoped(async (tx, r, context) => {
       const source = await one(tx, sql`select content from app.assistant_messages where enterprise_id=${lease.enterpriseId} and conversation_id=${String(r.conversation_id)} and id=${String(r.source_message_id)} and author_kind='admin'`);
       if (!source) fail('context_changed');
+      const speech = await one(tx, sql`select transcript from app.assistant_speech_assets where enterprise_id=${lease.enterpriseId}
+        and conversation_id=${String(r.conversation_id)} and message_id=${String(r.source_message_id)} and deleted_at is null`);
       const rooms = await rows(tx, sql`select id::text,name from app.construction_rooms where enterprise_id=${lease.enterpriseId} and project_id=${String(r.project_id)} order by id`);
       const media = await rows(tx, sql`select m.id::text,m.source_hash,m.mime_type,m.data from app.construction_site_attachments x join app.construction_site_media m on m.enterprise_id=x.enterprise_id and m.project_id=x.project_id and m.id=x.media_id
         where x.enterprise_id=${lease.enterpriseId} and x.project_id=${String(r.project_id)} and x.record_id=${String(r.id)} and m.deleted_at is null order by x.position`);
       const config = agentConfig((context.run.policy_snapshot as Row).agent);
       const images = config?.imageInput ? media.map(m => ({ type: 'image' as const, mediaId: String(m.id), hash: String(m.source_hash), mimeType: 'image/jpeg' as const, data: (m.data as Buffer).toString('base64') })) : [];
       const messages: ModelMessage[] = [{ role: 'system', content: [{ type: 'text', text: siteDraftPrompt }] }, { role: 'user', content: [
-        { type: 'text', text: JSON.stringify({ rooms, originalText: safeText(source.content as Parameters<typeof safeText>[0]), photoCount: media.length,
+        { type: 'text', text: JSON.stringify({ rooms, originalText: [safeText(source.content as Parameters<typeof safeText>[0]), speech?.transcript].filter(Boolean).join('\n'), photoCount: media.length,
           imageInput: !!images.length, instruction: images.length ? '照片仅辅助辨认部位；事实以原话为准。' : '没有提供图片像素，不可描述照片内容。' }) }, ...images] }];
       const cached = await one(tx, sql`select status,private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=1100`);
       if (cached && ((cached.input_summary as Row)?.promptVersion !== sitePromptVersion || cached.status !== 'succeeded')) fail('provider_outcome_unknown');
