@@ -5,11 +5,12 @@
 <!-- /xiaok-site-language-current -->
 
 <!-- xiaok-mineru-fastgpt-preview -->
-**一期PPT工艺知识试问（Limited）。** 用户2026-11-07限定一期企业知识为《家客来小K装修服务功能方案》的工艺内容，费用由线下沟通。微云1454隔离库的PPT第17/18/19/21页为4份内部未发布服务说明草稿，覆盖水路施工、防水后续检查、排版铺贴和成品保护。标题保留PPT页码，正文沿已核图中文字。这些条目是PPT阶段提示示例。
 
-原后台`/assistant-knowledge`本人试问使用选定的4份草稿、原KnowledgeRetriever/Evidence和原生原句选择。实时知识管理员、本人、租户、版本/hash/epoch和撤回守卫沿原服务。旧28份整册混合候选通过原服务退役，旧草稿选择被拒绝。原文、旧索引与失败证据留审计，主库376–405/410–411作只读历史对照。预算表、推算和报价退出一期语料及用例。
+**一期PPT工艺：FastGPT独立应用限定检查通过，小K接入仍Limited。** 用户2026-11-07最新方向是先复用Zcode原生RAG：百炼text-embedding-v4→混合检索→qwen3.7-flash作答。独立测试库仅含PPT第17/18/19/21页4段已核原文。预算、金额推算和报价退出一期，费用线下沟通。
 
-实际试问10972保存了“先排版，再铺贴”，可展开第19页草稿引用并重进。三句原文均进入候选，原生试问选了最直接的工序句。题目只明确问先做什么，固定预期额外要求纹理沟通和核对人。原始驱动又误要求Agent检查点，原批仍失败，余3问未执行。驱动已按原生单次调用回执校正，离线重放确认三句均可被选择。回读、权限探针和定向lint通过，默认知识关闭，4稿未发布。见[二期合同](xiaok-assistant-phase-2.zh-CN.md#一期ppt工艺资料试问limited)和[回读审计](../tmp/xiaok-mineru-fastgpt-preview-20261107/craft-only/audit-ppt-craft.json)。
+固定4道检索目标页全部第1；两组各2问共4条首稿覆盖先排版、发图说明方向、设计师/师傅核对和团队安排防水后检查，两次追问均明确资料未给等待时间。quoteList候选均与独立原文一致；节点级来源不等于逐句引用绑定或客户端展示。源码、驱动、模型目录和实际发布工作流前后无漂移。[结果](../tmp/xiaok-mineru-fastgpt-preview-20261107/fastgpt-ppt-craft/assessment.json) · [二期合同](xiaok-assistant-phase-2.zh-CN.md#一期ppt工艺资料试问limited)。
+
+原后台本人试问、4份未发布草稿2756–2759、KnowledgeRetriever/Evidence和实时管理员/本人/租户/版本/hash/epoch/退役守卫保持。10972及余3问未执行保留原失败批状态；旧28份混合候选保持退役，主库376–405/410–411只读。无产品UI/API/schema/权限变化，无小程序验收或生产切换，企业知识默认关闭。后续接入保留FastGPT回答，来源映射沿原Evidence当前授权合同。
 
 <!-- xiaok-fastgpt-capabilities -->
 **FastGPT阶段/知识工作流：Limited，保存I/O接口已收敛，库存OpenSERP官网产品原文已证，固定主干复验首个供应商403停止。** 显式开发候选沿C01原会话，由FastGPT v4.17.4单一ToolCall控制问答；原服务守获权工具、KnowledgeRetriever/Evidence、租户/来源、持久任务、网关计量及最终校验/保存。原生输入复用既有来源/引用目录与公开内容投影，保留完整原文和引用ID。提交/保存共同依据实时获权来源，调用或空检索不当证据；本地配置错误与供应商明确失败保留原异常处置语义。UI/API路由/schema、默认Worker、生产未切，企业知识关闭。

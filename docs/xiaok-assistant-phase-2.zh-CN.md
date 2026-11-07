@@ -13,15 +13,17 @@
 <!-- xiaok-mineru-fastgpt-preview -->
 ## 一期PPT工艺资料试问（Limited）
 
-用户2026-11-07指定一期仅用《家客来小K装修服务功能方案》的工艺内容，预算、金额推算和报价线下沟通。微云1454隔离员工草稿沿`admin/scripts/fixtures/xiaok-ppt-craft-preview.json`核准原图。88页PPT的第17/18/19/21页分别提供水路施工、防水后续检查、排版铺贴和成品保护的阶段提示。原`KnowledgeService`创建和索引4份`manual_text`草稿，文档2511–2514、版本2756–2759，保留题名页码、原句、PPT与图像hash。
+用户2026-11-07最新纠正：先采用Zcode已跑通的FastGPT原生RAG测试，明确百炼text-embedding-v4及qwen3.7-flash。当前验收由此替代后台原生原句试问。一期仅取PPT第17/18/19/21页已核工艺原文，内容为阶段提示示例而非详细施工参数；预算报价线下沟通。
 
-28份旧整册隔离候选经原服务退役，旧ready版本不能再加入试问。原文和独立FastGPT索引留审计。当前`/assistant-knowledge`本人试问仅选4份PPT稿，沿原生KnowledgeRetriever/Evidence与原句选择。无已发布员工来源进入这一快照，四稿均内部未发布。其他管理员、控制租户、当前合成客户和改版探针通过。主库376–405只读回查与原记录一致，仍仅410/411发布。
+专用库6aeebd1a093915ea6cf2da78/collection6aeebd1a093915ea6cf2da8f只有4块已索引原文。应用6aeebd3e093915ea6cf2db61/发布版6aeebd3e093915ea6cf2db7e沿开始→混合检索→引用上下文作答。向量模型6aee0821093915ea6cf27ee7走百炼通道5，回答走通道1；原Zcode资源/默认模型未重发或替换。实际发布工作流、模型目录、preload/配置、驱动、题集和语料前后绑定无漂移。
 
-10972的实际检索把第19页全部51字符送入选择，离线按同一来源ID/hash重放得到“先做排版，再安排铺贴”、发图说明纹理、设计师和师傅核对三个候选。保存首稿只选第一句，原句引用可打开且重进保持。既有原生试问优先最直接的一条，题目明确问先怎么做，固定预期另含怎么沟通及谁核对。三条同时选择可离线通过，差异属于选段及题意与验收预期的覆盖，PPT读取和检索已有完整材料。见[原句重放](../tmp/xiaok-mineru-fastgpt-preview-20261107/craft-only/selection-replay-10972.json)。
+限定验收通过：4道检索目标页全排第1；预先固定两组各2问共4条首稿合格，无修复或额外采样。铺砖回答覆盖先排版、发图表达方向、设计师/师傅核对；防水回答保留团队安排后续检查并明确资料未给等待时长。quoteList的ID、库/集合/页及原文逐项相符。该列表是召回来源，不是逐句引用选择，正文无行内引用标记。追问显式带入上一问/原答；FastGPT自动生成独立会话ID/标题，未验证同一小K会话持久重进。historyPreview缩略长文显示，不当作完整供应商wire。
 
-原客户端批在一次成功保存后因驱动误查Agent检查点而停止，另3问未派发，原批保留failed。驱动已沿原生路径校验单次model/answer回执，首稿的额外沟通信息仍未覆盖，完整工艺对话尚未验收。本批只派发工艺问题。4次文档embedding共89输入token，真实查询42、预查42/39，1次文本attempt3324用量及金额未知。源码与原批驱动配置绑定无漂移，设置和合成账号恢复，任务队列0。定向lint和计划检查通过。
+AIProxy577–596记12次embedding/320输入（含先前4次索引/171）；8次qwen共5686输入/464输出、缓存896：4次回答节点4206/438，4次辅助标题1480/26。不传chatId仍生成标题，原dispatch相反假设由实际响应/账本及官方[preChatRound](https://github.com/labring/FastGPT/blob/v4.17.4/packages/service/core/chat/utils/prepare.ts)、[标题流程](https://github.com/labring/FastGPT/blob/v4.17.4/packages/service/core/chat/title.ts)校正。代理金额为零配置，实际费用未知。原setup数组引用断言、前置路径/模型名称存储/JSON/null账本误判及清理日期转换失败独立保留，均未导致模型重发。所属SSH18300已核身份释放，测试锁清理。
 
-在admin用`scripts/xiaok-ppt-craft-preview.mts`准备隔离资料，`scripts/fastgpt/mineru-preview-client.mts --reviewed --fixture-dir=<craft-only>`消费已核PPT清单并运行原试问入口。已有回读见[工艺审计](../tmp/xiaok-mineru-fastgpt-preview-20261107/craft-only/audit-ppt-craft.json)。旧预算批及用量作为下列历史证据保留。
+[结果](../tmp/xiaok-mineru-fastgpt-preview-20261107/fastgpt-ppt-craft/assessment.json)及原请求/响应/逐条审读/continue-check.mjs同目录保存，驱动拒绝覆盖回执。原后台试问作为历史对照：4份未发布草稿2511–2514/版本2756–2759、28份混合候选退役及本人/租户/客户/改版探针；10972只选工序句，原批失败、余3问未执行。attempt3324 tokens/费用未知，原embedding89+42/42/39独立保留。[回读审计](../tmp/xiaok-mineru-fastgpt-preview-20261107/craft-only/audit-ppt-craft.json) · [选段重放](../tmp/xiaok-mineru-fastgpt-preview-20261107/craft-only/selection-replay-10972.json)。
+
+本次无产品代码/UI/API/schema/角色变化，企业知识默认关闭、草稿未发布，无小程序/原生或生产通过声明。后续保留FastGPT原生检索与回答，来源身份沿原KnowledgeRetriever/Evidence实时授权、版本/撤回、持久任务和计量合同接回小K。
 
 > 原整册MinerU/FastGPT试验的历史证据。用户已把一期范围改为上面的PPT工艺。
 

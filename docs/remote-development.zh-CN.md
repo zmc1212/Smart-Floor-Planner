@@ -14,6 +14,8 @@
 **阶段/知识开发工作流：Limited。** 原授权v4.17.4实例保留阶段/旧包裹应用，并新增Qwen及用户指定deepseek-v4.1-flash-1017两个私有原生问答对照应用；独立传输别名/渠道仅指向短期票据回环18310，实际模型仍走原获权供应商网关/逐次计量。保护配置tmp/fastgpt-native-qa-20261106/runtime.private.json及runtime-deepseek.private.json。当前管理登录已通过官方API验证，仅留ACL保护会话，不存密码；未重置root或切默认模型。五个原生问答批均停，完整旅程未通过；现已停止新增实模。设置、微云1454/55432合成夹具及原生注入恢复，源码/发布配置drift空，队列/待投递0。反向18310、reader及egress沿finally关闭，所属18300转发在收拢时释放。见[合同](xiaok-assistant-phase-2.zh-CN.md#fastgpt阶段提醒与知识问答工作流limited)。未迁业务容器/数据库，未扩生产、真实客户或外部消息授权。
 
 主干私有应用6aedfd3e093915ea6cf27ab0/9节点及ACL保护runtime-deepseek-mainline.private.json沿用，未切默认模型。准确主干thinking/function能力已按官方文档登记；固定复验首问10928/attempt3266遭供应商明确403后停止，无答案、后9轮未派发。10927/10928原状态/绑定保留，后续错误透传修复仅零实模验证。搜索替换为本机隔离库存OpenSERP0.8.17/百度浏览器直连127.0.0.1:18098，固定二进制/配置、不依赖普通代理，product/1161真实原文已保留。Bing/Google与SearXNG对照、DDGS500机制及首页上下文失败仍留证。所属搜索/浏览器/reader/egress及转发沿finally清理，无新增浏览器进程残留；原18090容器身份/启动时间/挂载回读一致（af8d0587，2026-10-23T02:46:45.56428242Z）。配置/合成夹具恢复、队列0、各执行源码/发布绑定无漂移；无关进程/转发与全局代理保持。账本1488→1489仅增一个明确拒绝attempt，无返回usage、金额/原因未知，不重试模型。未扩生产、迁移业务容器/数据库或改UI/默认Worker/企业知识。证据tmp/fastgpt-native-qa-20261107/blocker-repair01/assessment.json。
+
+当前一期PPT工艺应用：独立API限定检查通过，小K接入仍Limited。专用库6aeebd1a093915ea6cf2da78/collection6aeebd1a093915ea6cf2da8f只有4段原文；应用6aeebd3e093915ea6cf2db61/发布版6aeebd3e093915ea6cf2db7e复用3节点RAG。实际账本核实百炼text-embedding-v4/通道5及qwen3.7-flash/通道1。4道检索目标页全第1，两组各2问通过，原Zcode资源/默认配置保持。12次embedding/320输入和8次LLM/5686输入/464输出含4次标题，实际费用未知。未新增主机端口、迁业务库、切默认Worker/知识、发布草稿或上线生产。原setup/前置/清理失败保留，所属SSH18300及锁已释放。[证据](../tmp/xiaok-mineru-fastgpt-preview-20261107/fastgpt-ppt-craft/assessment.json)。
 <!-- /xiaok-fastgpt-capabilities -->
 
 <!-- xiaok-fastgpt-report-pilot -->
