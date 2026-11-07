@@ -8,6 +8,7 @@ export function selectContextCandidates<T extends { id: string; document_id: str
   ranked: T[], conditions: ReadonlyMap<string, Applicability | null>, limit = 5,
   preferredDocuments: ReadonlySet<string> = new Set(),
   policy: ContextSelectionPolicy = 'document_coverage',
+  coverageGroup?: (candidate: T) => string,
 ): T[] {
   const usable = ranked.filter(c => conditions.get(c.id)?.status !== 'not_applicable');
   const incompatible = ranked.filter(c => conditions.get(c.id)?.status === 'not_applicable');
@@ -20,13 +21,15 @@ export function selectContextCandidates<T extends { id: string; document_id: str
   // Natural questions need the strongest clauses, even when all come from one
   // manual. A document-count quota must not replace a relevant procedure with
   // lower-ranked material. Legacy/workflow coverage remains the default.
-  if (policy === 'ranked') return [...preferred, ...remaining, ...incompatible].slice(0, limit);
-  for (const group of [preferred, remaining, incompatible]) {
-    for (const maxPerDocument of [2, Infinity]) {
+  if (policy === 'ranked' && !coverageGroup) return [...preferred, ...remaining, ...incompatible].slice(0, limit);
+  const groupOf = coverageGroup ?? ((c: T) => c.document_id);
+  for (const group of coverageGroup ? [[...preferred, ...remaining], incompatible] : [preferred, remaining, incompatible]) {
+    for (const maxPerGroup of [2, Infinity]) {
       for (const c of group) {
         if (selected.length === limit) return selected;
-        if (selected.includes(c) || (counts.get(c.document_id) || 0) >= maxPerDocument) continue;
-        selected.push(c); counts.set(c.document_id, (counts.get(c.document_id) || 0) + 1);
+        const key = groupOf(c), count = counts.get(key) || 0;
+        if (selected.includes(c) || count >= maxPerGroup) continue;
+        selected.push(c); counts.set(key, count + 1);
       }
     }
   }

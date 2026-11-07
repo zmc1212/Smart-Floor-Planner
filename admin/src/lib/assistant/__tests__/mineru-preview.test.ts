@@ -37,6 +37,35 @@ test('table group context follows the original band to subtotal rows, then chang
   assert.ok(!rows[5].headers?.includes('一 | 甲分组 | '));
   assert.equal(rows[3].text, ' | 小计 | 12.50');
 });
+test('reviewed MinerU rows bind only the conditions of their own original table', () => {
+  const prefix = table.slice(0, table.indexOf('\n'));
+  const electrical = prefix + '\n<table><tr><td>电器</td><td>合价</td></tr><tr><td>冰箱</td><td>17900</td></tr></table>';
+  const unlabelled = prefix + '\n<table><tr><td>汇总</td><td>11100</td></tr></table>';
+  const chunks = [{ ...page.chunks[0], chunkIndex: 38, q: prefix + '\n定制柜预算表\n建筑装修面积：97m²' }, ...page.chunks,
+    { ...page.chunks[0], chunkIndex: 40, q: electrical }, { ...page.chunks[0], chunkIndex: 41, q: unlabelled }];
+  const reviewed: MineruPage = { ...page, chunks, review: {
+    protocol: 'mineru-table-review-v1', layoutSha256: 'c'.repeat(64), pageImageSha256: 'd'.repeat(64),
+    limitations: ['未标面积的汇总表保留原样。'],
+    tables: [
+      { chunkIndex: 39, chunkSha256: hash(table), region: [10, 20, 480, 900], bookPage: '25', context: ['定制柜预算表', '建筑装修面积：97m²'] },
+      { chunkIndex: 40, chunkSha256: hash(electrical), region: [520, 20, 990, 480], bookPage: '26', context: ['电器预算表', '仅供参考，不包含在装修总价内', '建筑装修面积：83.98m²'] },
+      { chunkIndex: 41, chunkSha256: hash(unlabelled), region: [520, 500, 990, 550], bookPage: '26', context: [] },
+    ],
+  } };
+  const parsed = parseMineruPage(reviewed);
+  const row = parsed.blocks.find(b => b.text === '冰箱 | 17900')!;
+  assert.equal(parsed.parser, 'mineru-reviewed-page-v3');
+  assert.deepEqual(row.headers?.slice(0, 3), reviewed.review!.tables[1].context);
+  assert.deepEqual(row.section, ['【来源:精艺装修手册 PDF第14页|书页26】']);
+  assert.equal(row.extraction?.chunkSha256, hash(electrical));
+  assert.equal(row.extraction?.review?.contextSha256, hash(JSON.stringify(reviewed.review!.tables[1].context)));
+  assert.deepEqual(row.extraction?.review?.region, [520, 20, 990, 480]);
+  assert.deepEqual(parsed.blocks.at(-1)?.headers, ['汇总 | 11100']);
+  assert.ok(parsed.warnings.includes('未标面积的汇总表保留原样。'));
+  assert.deepEqual(parsed.blocks.map(b => b.cells), parseMineruPage({ ...reviewed, review: undefined }).blocks.map(b => b.cells));
+  assert.throws(() => parseMineruPage({ ...reviewed, review: { ...reviewed.review!, tables: reviewed.review!.tables.slice(0, 2) } }), /context_changed/);
+  assert.throws(() => parseMineruPage({ ...reviewed, chunks: chunks.map(c => c.chunkIndex === 40 ? { ...c, q: c.q.replace('17900', '18000') } : c) }), /context_changed/);
+});
 const config: FastGPTRetrievalConfig = { protocol: fastGPTPreviewProtocol, enterpriseId: '1454', baseUrl: 'http://127.0.0.1:18300',
   apiKey: 'fixture-only', datasetId: 'a'.repeat(24), collectionId: 'b'.repeat(24), corpusSha256: 'b'.repeat(64), chunks: [{ chunkIndex: 39, sha256: hash(table) }] };
 const row = { datasetId: config.datasetId, collectionId: config.collectionId, chunkIndex: 39, q: table, score: [{ type: 'embedding', value: 0.8, index: 0 }] };

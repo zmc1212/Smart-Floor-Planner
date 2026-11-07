@@ -10,13 +10,16 @@ const require = createRequire(path.resolve('package.json'));
 require('@next/env').loadEnvConfig(process.cwd(), true);
 const primary = process.env.DATABASE_URL;
 const root = path.resolve('..'), eid = '1454';
-const out = path.resolve(process.argv.find(x => x.startsWith('--out='))?.slice(6) || '../tmp/xiaok-mineru-fastgpt-preview-20261107');
+const baseOut = path.join(root, 'tmp/xiaok-mineru-fastgpt-preview-20261107');
+const reviewed = process.argv.includes('--reviewed'), checkOnly = process.argv.includes('--check-only');
+const out = path.resolve(process.argv.find(x => x.startsWith('--out='))?.slice(6) || (reviewed ? path.join(baseOut, 'ocr-review') : baseOut));
 assert.ok(out.startsWith(path.join(root, 'tmp') + path.sep));
 const preparing = process.argv.includes('--prepare'), live = process.argv.includes('--live'), engineering = process.argv.includes('--engineering');
 assert.equal([preparing, live, engineering].filter(Boolean).length, 1, 'Choose --prepare, --engineering or --live');
+assert.ok((!reviewed || preparing) && (!checkOnly || reviewed), 'Use --prepare --reviewed [--check-only] for the reviewed draft import');
 fs.mkdirSync(out, { recursive: true });
 process.env.DATABASE_URL = JSON.parse(fs.readFileSync(path.join(root, 'tmp/xiaok-vector/connection.private.json'), 'utf8')).DATABASE_URL;
-process.env.XIAOK_FASTGPT_RETRIEVAL_FILE = path.join(out, 'retrieval.private.json');
+process.env.XIAOK_FASTGPT_RETRIEVAL_FILE = path.join(reviewed ? baseOut : out, 'retrieval.private.json');
 const target = new URL(process.env.DATABASE_URL!);
 assert.equal(target.hostname, '127.0.0.1'); assert.equal(target.port, '55432'); assert.equal(target.pathname, '/xiaok_embedding_eval');
 const imp = (p: string) => import(pathToFileURL(path.resolve(p)).href);
@@ -43,11 +46,45 @@ const corpusFile = path.join(root, 'tmp/mineru-online-test/corpus-chunks.json'),
 const config = json(process.env.XIAOK_FASTGPT_RETRIEVAL_FILE);
 assert.equal(config.enterpriseId, eid); assert.equal(config.corpusSha256, sha(fs.readFileSync(corpusFile)));
 assert.equal(sha(fs.readFileSync(path.join(root, 'docs/装修施工标准手册制度规范/精艺.pdf'))), sourceSha256);
+const previous = reviewed ? json(path.join(baseOut, 'preparation.json')) : null;
+const reviewPath = path.join(out, 'reviewed-contexts.json');
+const reviewHash = reviewed ? sha(fs.readFileSync(reviewPath)) : undefined;
+const reviewInputs = new Map<number, any>(reviewed ? json(reviewPath).map((r: any) => [r.page, r]) : []);
+const pageInput = (page: number) => ({ page, sourceSha256, corpusSha256: config.corpusSha256,
+  chunks: corpus.filter((x: any) => x.pdf_page === page), ...(reviewed ? { review: reviewInputs.get(page) } : {}) });
+if (reviewed) {
+  assert.equal(previous.status, 'ready'); assert.equal(previous.enterpriseId, eid);
+  assert.equal(previous.sourceSha256, sourceSha256); assert.equal(previous.corpusSha256, config.corpusSha256);
+  assert.equal(reviewInputs.size, 28);
+  const { parseMineruPage } = await imp('src/lib/assistant/knowledge/mineru.ts');
+  const { fileContent, filePassages } = await imp('src/lib/assistant/knowledge/source-file.ts');
+  const layout = path.join(root, 'tmp/mineru-online-test/result-p1-28/85e6f144-ffa5-4178-9909-abfbeb6a9c46_content_list.json');
+  const layoutHash = sha(fs.readFileSync(layout)), pages = [];
+  for (let page = 1; page <= 28; page++) {
+    const input = pageInput(page), review = input.review;
+    assert.ok(review); assert.equal(review.layoutSha256, layoutHash);
+    assert.equal(review.pageImageSha256, sha(fs.readFileSync(path.join(out, 'pages', `page-${String(page).padStart(2, '0')}.png`))));
+    const parsed = parseMineruPage(input), legacy = parseMineruPage({ ...input, review: undefined });
+    assert.deepEqual(parsed.blocks.map((b: any) => [b.id, b.text, b.cells]), legacy.blocks.map((b: any) => [b.id, b.text, b.cells]));
+    const file = { assetId: 'preflight', version: 1, hash: sourceSha256, name: '精艺.pdf', format: 'pdf', parsed, review: null };
+    pages.push({ page, tables: review.tables.length, blocks: parsed.blocks.length, chars: fileContent(file).body.length,
+      maxPassageChars: Math.max(0, ...filePassages(file).map((p: any) => p.text.length)), warnings: parsed.warnings });
+  }
+  assert.equal(pages.reduce((n, p) => n + p.tables, 0), 42);
+  assert.equal(pages.filter(p => p.blocks).length, 24);
+  save('parser-preflight.json', { sourceSha256, layoutHash, reviewHash, corpusSha256: config.corpusSha256, pages, originalBlockTextAndCellsUnchanged: true });
+  if (checkOnly) {
+    console.log(JSON.stringify({ pages: pages.length, tables: 42, nonempty: 24, maxPageChars: Math.max(...pages.map(p => p.chars)),
+      maxPassageChars: Math.max(...pages.map(p => p.maxPassageChars)) }));
+    process.exit(0);
+  }
+}
 const preparationPath = path.join(out, 'preparation.json');
 const preparation: any = fs.existsSync(preparationPath) ? json(preparationPath) : {
-  prefix: 'synthetic-mineru-preview-' + randomUUID(), enterpriseId: eid, sourceSha256,
-  corpusSha256: config.corpusSha256, parts: [], adminIds: [], status: 'preparing',
+  prefix: previous?.prefix ?? 'synthetic-mineru-preview-' + randomUUID(), enterpriseId: eid, sourceSha256,
+  corpusSha256: config.corpusSha256, parts: [], adminIds: previous?.adminIds ?? [], status: 'preparing', reviewHash,
 };
+if (reviewed) assert.equal(preparation.reviewHash, reviewHash);
 const actor = (adminId = preparation.adminIds[0]): any => ({ enterpriseId: eid, principal: { kind: 'admin', adminId }, contextVersion: 1, capabilities: ['assistant.preview.self'] });
 const snapshot = () => tenant((tx: any) => one(tx, sql`select * from app.assistant_enterprise_settings where enterprise_id=${eid}`));
 const queues = () => platform((tx: any) => one(tx, sql`select count(*)::int active from app.assistant_jobs where status in ('queued','running')`));
@@ -98,11 +135,29 @@ try {
     assert.equal(pages.sha256, sourceSha256);
     for (let page = 1; page <= 28; page++) {
       let part = preparation.parts.find((x: any) => x.page === page);
-      if (!part) { part = { page, keys: { create: randomUUID(), import: randomUUID(), review: randomUUID(), index: randomUUID() } }; preparation.parts.push(part); save('preparation.json', preparation); }
+      if (!part) { part = { page, keys: { create: randomUUID(), revise: randomUUID(), import: randomUUID(), review: randomUUID(), index: randomUUID() } }; preparation.parts.push(part); save('preparation.json', preparation); }
       const source = pages.parts.find((p: any) => p.page === page), bytes = fs.readFileSync(source.path);
       assert.equal(sha(bytes), source.sha256);
+      if (reviewed && !part.documentId) {
+        const retained = previous.parts.find((p: any) => p.page === page);
+        assert.equal(retained.assetHash, source.sha256);
+        const detail = await service.execute('detail', { documentId: retained.documentId });
+        assert.equal(detail.document.category, preparation.prefix);
+        assert.equal(detail.document.audience, 'staff_internal');
+        assert.equal(detail.document.published_version_id, null);
+        if (detail.document.status === 'retired') {
+          assert.ok([14, 27].includes(page), 'Only replace the two previously retired test sources');
+          part.replacesRetiredDocumentId = retained.documentId;
+        } else {
+          const draft = await service.execute('newVersion', { documentId: retained.documentId, fromVersionId: retained.versionId,
+            expectedVersion: Number(detail.document.version) }, part.keys.revise);
+          part.documentId = retained.documentId; part.versionId = String(draft.id); part.assetHash = source.sha256;
+          assert.equal(draft.source_file.hash, source.sha256);
+          save('preparation.json', preparation);
+        }
+      }
       if (!part.documentId) {
-        const created = await service.execute('createFile', { title: `合成测试·MinerU候选·精艺原PDF第${page}页`,
+        const created = await service.execute('createFile', { title: `合成测试·MinerU${reviewed ? '校核' : '候选'}·精艺原PDF第${page}页`,
           category: preparation.prefix, audience: 'staff_internal', fileName: path.basename(source.path), fileBase64: bytes.toString('base64'),
           authorization: `用户2026-11-07授权微云1454隔离员工草稿预览。原精艺.pdf SHA256=${sourceSha256}；原PDF第${page}页图像保留副本。MinerU候选不发布，样板预算不作正式报价。` }, part.keys.create);
         part.documentId = String(created.document.id); part.versionId = String(created.draft.id); part.assetHash = source.sha256;
@@ -113,13 +168,13 @@ try {
         const draft = detail.versions.find((x: any) => String(x.id) === part.versionId);
         const imported = await service.execute('importMineru', { documentId: part.documentId, versionId: part.versionId,
           expectedEditVersion: Number(draft.edit_version), assetHash: source.sha256,
-          mineru: { page, sourceSha256, corpusSha256: config.corpusSha256, chunks: corpus.filter((x: any) => x.pdf_page === page) } }, part.keys.import);
+          mineru: pageInput(page) }, part.keys.import);
         part.imported = true; part.blocks = imported.source_file.parsed.blocks.length;
+        part.parser = imported.source_file.parsed.parser; part.contentHash = imported.content_hash;
         save('preparation.json', preparation);
       }
-      // The first delivery indexes two bounded original pages. Other candidates
-      // remain unreviewed drafts, including four image-only pages.
-      if ([14, 27].includes(page) && !part.indexed) {
+      // Index only the fixed preview sources, leaving all other pages as drafts.
+      if ((reviewed ? page === 14 : [14, 27].includes(page)) && !part.indexed) {
         let detail = await service.execute('detail', { documentId: part.documentId });
         let draft = detail.versions.find((x: any) => String(x.id) === part.versionId);
         if (!draft.source_file.review) {
@@ -141,6 +196,7 @@ try {
     }
     const published = await tenant((tx: any) => rows(tx, sql`select id from app.assistant_knowledge_versions where enterprise_id=${eid}
       and id in (${sql.join(preparation.parts.map((p: any) => sql`${p.versionId}`), sql`,`)}) and published_at is not null`));
+    if (reviewed) assert.equal(sha(fs.readFileSync(reviewPath)), reviewHash);
     assert.equal(published.length, 0); preparation.status = 'ready'; preparation.unpublished = 28; save('preparation.json', preparation);
   } else if (engineering) {
     assert.equal(preparation.status, 'ready');
@@ -271,6 +327,10 @@ try {
   if (engineering) {
     await clean(() => platform((tx: any) => tx.execute(sql`update app.admin_users set menu_permissions=ARRAY['assistant-knowledge'] where id=${preparation.adminIds[1]}`)));
     report.cleanup = { restored: !restoreErrors.length, errors: restoreErrors, queues: await queues() }; save(engineeringReportName + '.json', report);
+  }
+  if (preparing && reviewed) {
+    preparation.cleanup = { restored: !restoreErrors.length, errors: restoreErrors, queues: release ? await queues() : null };
+    save('preparation.json', preparation);
   }
   await release?.(); await closePostgresPool();
   console.log(JSON.stringify({ mode: preparing ? 'prepare' : engineering ? 'engineering' : 'live', status: preparing ? preparation.status : report.status,

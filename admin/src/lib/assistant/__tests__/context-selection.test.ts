@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { selectContextCandidates } from '../knowledge/context-selection';
+
+test('ranked table preview leaves room for another original table without losing the top detail rows', () => {
+  const ranked = ['e1','e2','e3','e4','e5','f1','f2','c1'].map(id => ({ id, document_id: 'same-pdf', table: id[0] }));
+  const group = (row: typeof ranked[number]) => row.table;
+  assert.deepEqual(selectContextCandidates(ranked, new Map(), 5, new Set(), 'ranked').map(r => r.id), ['e1','e2','e3','e4','e5']);
+  assert.deepEqual(selectContextCandidates(ranked, new Map(), 5, new Set(), 'ranked', group).map(r => r.id), ['e1','e2','f1','f2','c1']);
+  assert.deepEqual(selectContextCandidates(ranked.slice(0, 5), new Map(), 5, new Set(), 'ranked', group).map(r => r.id), ['e1','e2','e3','e4','e5']);
+});
 import type { Applicability } from '../contracts/professional';
 import { anchorKnowledgeQuery, requestedKnowledgeTitles } from '../knowledge/query-context';
 

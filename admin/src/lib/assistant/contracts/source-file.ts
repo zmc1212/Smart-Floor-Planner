@@ -2,6 +2,8 @@
 export type ExtractionLocator = {
   provider: 'mineru'; corpusSha256: string; sourceSha256: string;
   pdfPage: number; chunkIndex: number; chunkSha256: string;
+  review?: { protocol: 'mineru-table-review-v1'; layoutSha256: string; pageImageSha256: string;
+    region: [number, number, number, number]; bookPage: string; contextSha256: string };
 };
 /** Parser output contains extracted originals, never Agent-authored answers. */
 export type FileBlock = {

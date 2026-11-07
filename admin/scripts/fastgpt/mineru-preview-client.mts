@@ -7,17 +7,24 @@ import { createRequire } from 'node:module';
 const require = createRequire(path.resolve('package.json'));
 require('@next/env').loadEnvConfig(process.cwd(), true);
 const primary = process.env.DATABASE_URL, root = path.resolve('..'), eid = '1454';
-const out = path.join(root, 'tmp/xiaok-mineru-fastgpt-preview-20261107');
+const baseOut = path.join(root, 'tmp/xiaok-mineru-fastgpt-preview-20261107');
+const reviewed = process.argv.includes('--reviewed'), contextV2 = process.argv.includes('--source-v2');
+assert.ok(!(reviewed && contextV2));
+const out = reviewed ? path.join(baseOut, 'ocr-review') : baseOut;
 const read = (name: string) => JSON.parse(fs.readFileSync(path.join(out, name), 'utf8'));
-const fixture = read('preparation.json'), contextV2 = process.argv.includes('--source-v2');
-const selected = contextV2 ? read('table-context-v2.json').source : fixture.parts.find((p: any) => p.page === 27);
-const label = process.argv.find(x => x.startsWith('--label='))?.slice(8) || 'client-service';
+const fixture = read('preparation.json');
+assert.equal(fixture.status, 'ready'); assert.equal(fixture.enterpriseId, eid);
+const selected = contextV2 ? read('table-context-v2.json').source : fixture.parts.find((p: any) => p.page === (reviewed ? 14 : 27));
+const label = process.argv.find(x => x.startsWith('--label='))?.slice(8) || (reviewed ? 'client-reviewed' : 'client-service');
 assert.match(label, /^[a-zA-Z0-9-]+$/);
+const continueFrom = process.argv.find(x => x.startsWith('--continue-reviewed='))?.slice('--continue-reviewed='.length);
+if (continueFrom) { assert.ok(reviewed && continueFrom !== label); assert.match(continueFrom, /^[a-zA-Z0-9-]+$/); }
+const priorBatch = continueFrom ? read(continueFrom + '.json') : undefined;
 const reportFile = path.join(out, label + '.json');
 assert.ok(!fs.existsSync(reportFile), 'Keep the first client batch intact');
 process.env.DATABASE_URL = JSON.parse(fs.readFileSync(path.join(root, 'tmp/xiaok-vector/connection.private.json'), 'utf8')).DATABASE_URL;
-process.env.XIAOK_FASTGPT_RETRIEVAL_FILE = path.join(out, 'retrieval.private.json');
-const url = new URL(process.env.DATABASE_URL!); assert.equal(url.port, '55432'); assert.equal(url.pathname, '/xiaok_embedding_eval');
+process.env.XIAOK_FASTGPT_RETRIEVAL_FILE = path.join(baseOut, 'retrieval.private.json');
+const url = new URL(process.env.DATABASE_URL!); assert.equal(url.hostname, '127.0.0.1'); assert.equal(url.port, '55432'); assert.equal(url.pathname, '/xiaok_embedding_eval');
 const { sql } = require('drizzle-orm');
 const { withTenantTransaction, withPlatformTransaction } = require(path.resolve('src/db/transaction.ts'));
 const { one, rows } = require(path.resolve('src/db/repositories/assistant-repository.ts'));
@@ -26,17 +33,30 @@ const { claimKnowledgeJob, runKnowledgeJob } = require(path.resolve('src/lib/ass
 const { ConversationService, cancelRuns } = require(path.resolve('src/lib/assistant/core/conversation.ts'));
 const { claimJob } = require(path.resolve('src/lib/assistant/infrastructure/job-queue.ts'));
 const { processAssistantRun } = require(path.resolve('src/lib/assistant/application/worker.ts'));
+const { retrieveKnowledge } = require(path.resolve('src/lib/assistant/knowledge/retrieval.ts'));
+const { resolveEvidence, validatePreviewSnapshot } = require(path.resolve('src/lib/assistant/knowledge/sources.ts'));
 const { closePostgresPool } = require(path.resolve('src/lib/postgresql.ts'));
 const { lockAssistantAcceptance } = await import('../assistant-acceptance-safety.mjs');
 const tenant = (fn: any) => withTenantTransaction(eid, fn), platform = (fn: any) => withPlatformTransaction(fn);
 const actor = { enterpriseId: eid, principal: { kind: 'admin', adminId: fixture.adminIds[0] }, contextVersion: 1, capabilities: ['assistant.preview.self'] };
 const service = new ConversationService(actor), knowledge = new KnowledgeService({ enterpriseId: eid, adminId: fixture.adminIds[0] });
-const report: any = { status: 'preparing', source: selected, fixedQuestion: '123平米那份主材预算里，瓷砖类的小计是多少？',
-  fixedModel: 'qwen3.7-flash', maxNormalRuns: contextV2 ? 2 : 1, runs: [], commands: [], unknownCost: true };
+const questions = reviewed ? ['我在看手册里97平米那页柜子预算，右边电器、家具也都是97平米的吗？能算进装修总价吗？',
+  '那家具参考表里，沙发茶几和主卧室床各多少钱？'] : ['123平米那份主材预算里，瓷砖类的小计是多少？'];
+const trials = continueFrom ? 1 : reviewed || contextV2 ? 2 : 1;
+if (priorBatch) {
+  assert.equal(priorBatch.status, 'failed'); assert.match(priorBatch.error, /Client controller timed out/);
+  assert.equal(priorBatch.cleanup.restored, true); assert.deepEqual(priorBatch.fixedQuestions, questions);
+  assert.equal(priorBatch.fixedTrials, 2); assert.equal(priorBatch.runs.length, questions.length);
+  assert.equal(new Set(priorBatch.runs.map((r: any) => r.conversationId)).size, 1);
+  for (const run of priorBatch.runs) assert.equal(read('review-' + run.runId + '.json').accepted, true);
+}
+const report: any = { status: 'preparing', source: selected, fixedQuestions: questions, fixedTrials: trials,
+  fixedModel: 'qwen3.7-flash', maxNormalRuns: questions.length * trials, runs: [], commands: [], unknownCost: true, continueFrom };
 const save = () => fs.writeFileSync(reportFile, JSON.stringify(report, null, 2));
 const files = ['src/lib/assistant/knowledge/mineru.ts', 'src/lib/assistant/knowledge/fastgpt-retrieval.ts', 'src/lib/assistant/knowledge/retrieval.ts',
   'src/lib/assistant/knowledge/sources.ts', 'src/lib/assistant/agent/worker.ts', 'src/lib/assistant/core/conversation.ts', 'src/lib/assistant/infrastructure/answer-worker.ts',
-  'src/components/assistant/preview-panel.tsx', 'src/components/assistant/retrieval-diagnostics.tsx', 'scripts/fastgpt/mineru-preview-client.mts'];
+  'src/components/assistant/preview-panel.tsx', 'src/components/assistant/retrieval-diagnostics.tsx', 'scripts/fastgpt/mineru-preview-client.mts',
+  'src/app/api/assistant/preview/[...path]/route.ts', 'src/app/(admin)/(merchant)/assistant-knowledge/page.tsx'];
 const binding = () => {
   const ts = require('typescript'), cfg = ts.readConfigFile('tsconfig.json', ts.sys.readFile);
   const options = ts.parseJsonConfigFileContent(cfg.config, ts.sys, process.cwd()).options, inputs = new Set<string>();
@@ -51,14 +71,30 @@ const binding = () => {
   for (const f of files) visit(path.resolve(f));
   for (const f of ['package-lock.json', 'package.json', '.env.local']) inputs.add(path.resolve(f));
   inputs.add(process.env.XIAOK_FASTGPT_RETRIEVAL_FILE!);
+  if (reviewed) for (const f of ['reviewed-contexts.json', 'preparation.json']) inputs.add(path.join(out, f));
   return Object.fromEntries([...inputs].sort().map(f => [path.relative(root, f).replaceAll('\\', '/'), createHash('sha256').update(fs.readFileSync(f)).digest('hex')]));
 };
-let release: any, before: any, platformBefore: any, retired = false, stop = false, seenCommands = 0;
+let release: any, before: any, platformBefore: any, accountBefore: any, retired = false, stop = false, seenCommands = 0;
 const cids = new Set<string>();
+const verifyPrevious = (runs: any[]) => {
+  if (reviewed && runs.length) {
+    const result = read('review-' + runs.at(-1).runId + '.json');
+    assert.equal(result.accepted, true, result.reason);
+  }
+};
 try {
   release = await lockAssistantAcceptance(process.env.DATABASE_URL, { waitForLock: true });
   before = await tenant((tx: any) => one(tx, sql`select * from app.assistant_enterprise_settings where enterprise_id=${eid}`));
   assert.equal(before.enabled, false);
+  if (reviewed) await platform(async (tx: any) => {
+    const password = process.env.MINERU_REVIEW_SYNTHETIC_PASSWORD;
+    assert.ok(password && password.length >= 20);
+    accountBefore = await one(tx, sql`select password_hash,menu_permissions from app.admin_users where enterprise_id=${eid}
+      and id=${fixture.adminIds[0]} and username=${fixture.prefix + ':0'} and status='active' for update`);
+    assert.ok(accountBefore?.menu_permissions.includes('assistant-knowledge'));
+    await tx.execute(sql`update app.admin_users set password_hash=${await require('bcryptjs').hash(password, 10)}
+      where enterprise_id=${eid} and id=${fixture.adminIds[0]}`);
+  });
   platformBefore = await platform((tx: any) => one(tx, sql`select llm_config from app.platform_configs where key='default'`));
   const client = new (require('pg').Client)({ connectionString: primary }); let source: any;
   try { await client.connect(); await client.query('begin read only'); source = (await client.query("select llm_config from app.platform_configs where key='default'")).rows[0].llm_config; await client.query('rollback'); } finally { await client.end(); }
@@ -74,8 +110,23 @@ try {
     const lease = await claimKnowledgeJob(); assert.ok(lease); assert.equal(lease.jobId, index.jobId); await runKnowledgeJob(lease);
     assert.equal((await knowledge.execute('job', { jobId: index.jobId })).status, 'succeeded');
   }
-  report.bindingBefore = binding(); report.status = 'ready'; save(); console.log(JSON.stringify({ ready: true, documentId: selected.documentId, versionId: selected.versionId, fixedQuestion: report.fixedQuestion }));
-  const deadline = Date.now() + 15 * 60 * 1000;
+  if (reviewed) {
+    assert.equal(draft.source_file.parsed.parser, 'mineru-reviewed-page-v3');
+    assert.equal(draft.published_at, null); assert.equal(detail.document.audience, 'staff_internal');
+    report.sourceBinding = { editVersion: draft.edit_version, contentHash: draft.content_hash, assetHash: draft.source_file.hash, reviewHash: fixture.reviewHash };
+  }
+  report.bindingBefore = binding();
+  if (priorBatch) {
+    assert.deepEqual(report.sourceBinding, priorBatch.sourceBinding); assert.equal(report.fixedModel, priorBatch.fixedModel);
+    const runtime = (b: Record<string, string>) => Object.fromEntries(Object.entries(b)
+      .filter(([file]) => file !== 'admin/scripts/fastgpt/mineru-preview-client.mts'));
+    assert.deepEqual(runtime(report.bindingBefore), runtime(priorBatch.bindingBefore));
+    report.continuation = { previousDriverBindingPreservedIn: continueFrom + '.json',
+      matchingRuntimeAndConfiguration: true, completedPreviousRuns: priorBatch.runs.map((r: any) => r.runId) };
+  }
+  report.status = 'ready'; save();
+  console.log(JSON.stringify({ ready: true, documentId: selected.documentId, versionId: selected.versionId, questions }));
+  const deadline = Date.now() + (reviewed ? 30 : 15) * 60 * 1000;
   while (!stop && Date.now() < deadline) {
     await release.assertHeld();
     const commandsPath = path.join(out, label + '-commands.jsonl');
@@ -84,6 +135,7 @@ try {
       if (command.action === 'revoke_admin') await platform((tx: any) => tx.execute(sql`update app.admin_users set menu_permissions=ARRAY[]::text[] where id=${fixture.adminIds[0]}`));
       else if (command.action === 'restore_admin') await platform((tx: any) => tx.execute(sql`update app.admin_users set menu_permissions=ARRAY['assistant-knowledge'] where id=${fixture.adminIds[0]}`));
       else if (command.action === 'retire_source') {
+        assert.ok(!reviewed, 'Keep the reviewed draft available');
         const current = await knowledge.execute('detail', { documentId: selected.documentId });
         await knowledge.execute('retire', { documentId: selected.documentId, expectedVersion: Number(current.document.version) }, randomUUID()); retired = true;
       } else if (command.action === 'stop') stop = true;
@@ -99,9 +151,50 @@ try {
       assert.equal(context.purpose, 'knowledge_preview');
       assert.deepEqual(context.entry_snapshot.preview.drafts.map((d: any) => d.id), [selected.versionId]);
       const question = context.content.blocks.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n');
-      if (!retired) { assert.ok(report.runs.filter((r: any) => !r.revoked).length < report.maxNormalRuns); assert.equal(question, report.fixedQuestion); }
-      cids.add(String(context.id));
+      const cid = String(context.id), alreadySeen = cids.has(cid);
+      cids.add(cid);
+      if (!retired) {
+        const runs = report.runs.filter((r: any) => !r.revoked), turn = runs.length % questions.length;
+        assert.ok(runs.length < report.maxNormalRuns); assert.equal(question, questions[turn]);
+        if (reviewed) {
+          if (turn) assert.equal(cid, runs.at(-1).conversationId); else assert.equal(alreadySeen, false);
+          verifyPrevious(runs);
+        }
+      }
       assert.deepEqual(binding(), report.bindingBefore);
+      if (reviewed && !report.runs.length) {
+        const retrieved = await retrieveKnowledge(cid, actor, questions[0], Number(before.knowledge_epoch));
+        const followup = await retrieveKnowledge(cid, actor, questions[1], Number(before.knowledge_epoch));
+        fs.writeFileSync(path.join(out, label + '-retrieval-preflight.json'), JSON.stringify({ opening: retrieved, followup }, null, 2), { flag: 'wx' });
+        assert.ok(retrieved.diagnostic.externalIndex);
+        assert.ok(retrieved.evidence.every((e: any) => e.ref.version === selected.versionId));
+        assert.ok(retrieved.evidence.some((e: any) => [38, 39].includes(e.file?.extraction?.chunkIndex) && e.text.includes('97m²')));
+        const right = retrieved.evidence.filter((e: any) => [40, 42].includes(e.file?.extraction?.chunkIndex));
+        assert.deepEqual(new Set(right.map((e: any) => e.file.extraction.chunkIndex)), new Set([40, 42]));
+        assert.ok(right.every((e: any) => e.file.extraction.review?.bookPage === '26'
+          && e.text.includes('83.98') && e.text.includes('不包含在装修总价内')));
+        for (const [name, value] of [['沙发茶几', '3000.00'], ['主卧室床', '2000.00']]) {
+          assert.ok(followup.evidence.some((e: any) => e.ref.version === selected.versionId && e.file?.extraction?.chunkIndex === 42
+            && e.text.includes(name) && e.text.includes(value)), name);
+        }
+        await assert.rejects(() => new ConversationService({ ...actor, principal: { kind: 'admin', adminId: fixture.adminIds[1] } }).detail(cid), /assistant_resource_not_found/);
+        await assert.rejects(() => new ConversationService({ ...actor, enterpriseId: '2385' }).detail(cid));
+        await assert.rejects(() => new ConversationService({ ...actor, principal: { kind: 'user', userId: '1' }, capabilities: ['assistant.chat.self'] }).detail(cid));
+        // Probe the actual source guards against the reviewed version in a
+        // rolled-back isolated transaction. Keep the retained draft indexed.
+        const rollback = new Error('rollback source-revision probe');
+        await assert.rejects(() => tenant(async (tx: any) => {
+          const c = await one(tx, sql`select * from app.assistant_conversations where enterprise_id=${eid} and id=${cid}`);
+          assert.ok(await resolveEvidence(tx, actor, c, right[0]));
+          await tx.execute(sql`update app.assistant_knowledge_versions set edit_version=edit_version+1
+            where enterprise_id=${eid} and id=${selected.versionId} and published_at is null`);
+          await assert.rejects(() => validatePreviewSnapshot(tx, actor, c), /context_changed/);
+          assert.equal(await resolveEvidence(tx, actor, c, right[0]), undefined);
+          throw rollback;
+        }), error => error === rollback);
+        report.guards = { otherOwnerDenied: true, crossTenantDenied: true, customerPrincipalDenied: true, reviewedRevisionRollbackDenial: true };
+        save();
+      }
       const beforeCount = await platform((tx: any) => one(tx, sql`select count(*)::int n from app.ai_provider_attempts`));
       await processAssistantRun(job);
       const trace = await tenant(async (tx: any) => ({ run: await one(tx, sql`select * from app.assistant_runs where enterprise_id=${eid} and id=${job.runId}`),
@@ -112,7 +205,10 @@ try {
       report.runs.push({ runId: job.runId, conversationId: String(context.id), question, status: trace.run.status, error: trace.run.error_code,
         providerAttempts: afterCount.n - beforeCount.n, revoked: retired, messageId: trace.run.output_message_id }); save();
       if (retired) { assert.equal(afterCount.n, beforeCount.n); assert.equal(trace.run.error_code, 'context_changed'); assert.equal(trace.run.output_message_id, null); }
-      else assert.equal(trace.run.status, 'succeeded', String(trace.run.error_code));
+      else {
+        assert.equal(trace.run.status, 'succeeded', String(trace.run.error_code));
+        if (reviewed) assert.equal(trace.steps.find((s: any) => s.kind === 'agent_checkpoint')?.private_checkpoint?.validationRepairs, 0, 'Keep first-draft outcomes separate from repairs');
+      }
       assert.deepEqual(binding(), report.bindingBefore);
       console.log(JSON.stringify(report.runs.at(-1)));
     } else await new Promise(resolve => setTimeout(resolve, 500));
@@ -133,13 +229,18 @@ try {
     }
   }
   assert.ok(stop, 'Client controller timed out');
+  verifyPrevious(report.runs);
   assert.equal(report.runs.filter((r: any) => !r.revoked).length, report.maxNormalRuns);
-  assert.equal(report.runs.filter((r: any) => r.revoked).length, 1);
+  assert.equal(report.runs.filter((r: any) => r.revoked).length, reviewed ? 0 : 1);
   report.status = 'passed'; report.bindingAfter = binding();
+  assert.deepEqual(report.bindingAfter, report.bindingBefore);
 } catch (error) { report.status = 'failed'; report.error = (error as Error).stack; process.exitCode = 1; }
 finally {
   const errors: string[] = [], clean = async (fn: () => Promise<unknown>) => { try { await fn(); } catch (error) { errors.push(String(error)); } };
-  await clean(() => platform((tx: any) => tx.execute(sql`update app.admin_users set menu_permissions=ARRAY['assistant-knowledge'] where id=${fixture.adminIds[0]}`)));
+  if (accountBefore) await clean(() => platform((tx: any) => tx.execute(sql`update app.admin_users
+    set password_hash=${accountBefore.password_hash},menu_permissions=array(select jsonb_array_elements_text(${JSON.stringify(accountBefore.menu_permissions)}::jsonb))
+    where enterprise_id=${eid} and id=${fixture.adminIds[0]}`)));
+  else if (!reviewed) await clean(() => platform((tx: any) => tx.execute(sql`update app.admin_users set menu_permissions=ARRAY['assistant-knowledge'] where id=${fixture.adminIds[0]}`)));
   for (const cid of cids) await clean(async () => { await tenant((tx: any) => cancelRuns(tx, actor, cid)); const c = await service.detail(cid); if (c.status === 'open') await service.archive(cid, c.version, randomUUID()); });
   if (before) await clean(() => tenant((tx: any) => tx.execute(sql`update app.assistant_enterprise_settings set enabled=${before.enabled},agent_config=${JSON.stringify(before.agent_config)}::jsonb,policy_version=policy_version+1,version=version+1 where enterprise_id=${eid}`)));
   if (platformBefore) await clean(() => platform((tx: any) => tx.execute(sql`update app.platform_configs set llm_config=${JSON.stringify(platformBefore.llm_config)}::jsonb where key='default'`)));

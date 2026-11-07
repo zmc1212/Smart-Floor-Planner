@@ -23,7 +23,8 @@ export const retrievalConfigurationFor = (policy: ContextSelectionPolicy) => pol
 export type RetrievalDiagnostic = {
   configuration:ReturnType<typeof retrievalConfigurationFor>; profileId:string; epoch:number; query:string; terms:string[]; expansion:QueryExpansionTrace; context:KnowledgeContext; elapsedMs:number; embeddingUsage:{inputTokens:number}|null;costMicros:null;
   requestedTitles?:string[]; preferredDocumentIds?:string[];
-  externalIndex?: { protocol: typeof fastGPTPreviewProtocol; datasetId: string; collectionId: string; corpusSha256: string; returned: number };
+  externalIndex?: { protocol: typeof fastGPTPreviewProtocol; datasetId: string; collectionId: string; corpusSha256: string; returned: number;
+    contextCoverage?: 'reviewed_table_first_pass_2' };
   candidates:Array<{ref:Evidence['ref'];hash:string;title:string;documentId:string;contentHash:string;similarity:number|null;semanticRank:number|null;lexicalRank:number|null;fusionRank:number;
     disposition:'selected'|'below_similarity'|'ranked_out';selectionRank:number|null;applicability:ReturnType<typeof applicability>|null;contextIncluded?:boolean;contextChars?:number}>;
 };
@@ -108,12 +109,21 @@ export async function retrieveKnowledge(conversationId:string,actor:ActorContext
     const requestedTitles=requestedKnowledgeTitles(query);
     const normalize=(value:string)=>value.replace(/\s/gu,'').toLowerCase();
     const preferredDocuments=new Set(fused.filter(c=>requestedTitles.some(title=>normalize(c.title).includes(normalize(title)))).map(c=>c.document_id));
-    const selected=selectContextCandidates(fused.filter(c=>c.distance===null || 1-c.distance>=retrievalConfiguration.minSimilarity),conditions,retrievalConfiguration.limit,preferredDocuments,selection);
+    const eligible=fused.filter(c=>c.distance===null || 1-c.distance>=retrievalConfiguration.minSimilarity);
+    // FastGPT ranks whole export chunks. A single reviewed table's rank is
+    // inherited by many local rows; let other eligible tables supply their
+    // conditions before spending all five slots on repeats of one table.
+    const reviewedTables=!!external && eligible.some(c=>c.locator?.file?.extraction?.review);
+    const selected=selectContextCandidates(eligible,conditions,retrievalConfiguration.limit,preferredDocuments,selection,reviewedTables ? c=>{
+      const extraction=c.locator?.file?.extraction;
+      return extraction?.review ? `table:${c.document_version_id}:${extraction.chunkIndex}` : `row:${c.id}`;
+    } : undefined);
     const evidence:Evidence[]=selected.map(c=>({ref:{type:'knowledge_chunk',id:c.id,version:c.document_version_id},text:c.text,hash:c.text_hash,...(c.distance===null?{}:{similarity:1-c.distance}),
       ...(c.locator?.file?{file:c.locator.file}:{}),
       ...(c.professional?{professional:{documentId:c.document_id,title:c.title,contentHash:c.content_hash,entry:c.professional,applicability:applicability(c.professional,context),context}}:{})}));
     const diagnostic:RetrievalDiagnostic={configuration:retrievalConfigurationFor(selection),profileId:String(profile.id),epoch,query,terms,expansion:expanded.expansion,context,elapsedMs:Date.now()-started,embeddingUsage:result?.usage ?? null,costMicros:null,
-      ...(external?{externalIndex:{protocol:fastGPTPreviewProtocol,datasetId:external.datasetId,collectionId:external.collectionId,corpusSha256:external.corpusSha256,returned:externalCandidates.length}}:{}),
+      ...(external?{externalIndex:{protocol:fastGPTPreviewProtocol,datasetId:external.datasetId,collectionId:external.collectionId,corpusSha256:external.corpusSha256,returned:externalCandidates.length,
+        ...(reviewedTables?{contextCoverage:'reviewed_table_first_pass_2' as const}:{})}}:{}),
       requestedTitles,preferredDocumentIds:[...preferredDocuments],
       candidates:fused.map((c,i)=>({ref:{type:'knowledge_chunk',id:c.id,version:c.document_version_id},hash:c.text_hash,title:c.title,documentId:c.document_id,contentHash:c.content_hash,similarity:c.distance===null?null:1-c.distance,
         semanticRank:c.semantic_rank,lexicalRank:c.lexical_rank,fusionRank:i+1,
