@@ -1,8 +1,12 @@
 <!-- Approved site-chat-record-interactions-v3, 853×1844 → 390×844. Native controls and originals only. -->
 <view class="site-chat" style="height: {{viewportHeight - keyboardHeight}}px;">
-  <view class="book-spine"><view wx:for="{{[0,1,2,3,4,5]}}" wx:key="*this" class="book-stitch" style="top:{{88 + item * 130}}px"/></view>
-  <view class="book-nav" style="padding-top:{{navTop}}px;padding-right:{{navRight}}px"><button class="book-back" bindtap="back" aria-label="返回"><image src="../assets/notebook/back.png"/></button><text class="book-nav-title">工地交流</text></view>
-  <view wx:if="{{project}}" class="project-context"><image class="book-icon" src="../assets/notebook/members.png"/><view><text class="project-name">{{project.name}} · {{project.stageName || '节点待标记'}}</text><text class="helper">项目成员共享</text></view></view>
+  <image class="site-paper-texture" src="../assets/notebook/capture-v3-paper.png" mode="aspectFill"/>
+  <view class="book-spine"><view wx:for="{{[10.2,34,57.9,83.6]}}" wx:key="*this" class="book-stitch" style="top:{{item}}%"/></view>
+  <view class="book-nav" style="padding-top:{{navTop}}px;padding-right:{{navRight}}px"><button class="book-back" bindtap="back" aria-label="返回"><image src="../assets/notebook/chevron.png" mode="aspectFit"/></button><text class="book-nav-title">工地交流</text></view>
+  <view wx:if="{{project}}" class="project-context">
+    <view class="project-badge"><image class="book-icon" src="../assets/notebook/capture-v3-members.png" mode="aspectFit"/></view>
+    <view class="project-copy"><text class="project-name">{{project.name}} · {{project.stageName || '节点待标记'}}</text><text class="helper">项目成员共享</text></view>
+  </view>
   <scroll-view class="chat-scroll" scroll-y enhanced scroll-into-view="{{scrollTarget}}" show-scrollbar="{{false}}">
     <view class="chat-content">
       <view wx:if="{{loading}}" class="state">正在读取本工地对话…</view>
@@ -14,48 +18,86 @@
       <button wx:if="{{nextCursor}}" class="text-button history" bindtap="older" disabled="{{busy}}">查看更早的对话</button>
       <view wx:if="{{!loading && !items.length && !captureQueue.length && !fatal}}" class="empty"><text>说说现场进展</text><text class="helper">拍照、说一句或选常用工作，发完可查看送达状态。</text></view>
       <view wx:for="{{items}}" wx:key="message.id" class="conversation-turn" id="source-{{item.message.id}}">
-        <view class="source-message"><view class="source-copy"><view class="source-bubble"><text class="source-author">{{item.message.display_name || '项目成员'}} · {{item.time}}</text><text user-select>{{item.text}}</text>
-          <button wx:if="{{item.record.speech}}" class="voice-original text-button" data-message="{{item.message.id}}" bindtap="voiceMessage">回听原音</button>
-          <text wx:if="{{item.record.speech.transcript}}" class="speech-transcript" user-select>语音转写：{{item.record.speech.transcript}}</text>
-          <view wx:if="{{item.record.captured && item.record.media.length}}" class="photo-grid capture-photos"><view wx:for="{{item.record.media}}" wx:for-item="media" wx:key="id" class="photo-slot" data-id="{{media.id}}" bindtap="preview"><image wx:if="{{mediaPaths[media.id]}}" src="{{mediaPaths[media.id]}}" mode="aspectFill"/><text wx:else>照片读取中</text></view></view>
-        </view><view wx:if="{{item.record.captured}}" class="delivery-receipt received"><view class="receipt-badge"><image src="../assets/notebook/capture-received.png"/><text>已收到</text></view><text class="receipt-detail">{{item.record.status === 'published' ? '已核对发布' : item.record.status === 'withdrawn' ? '已撤回' : '等经理核对'}}</text></view></view></view>
-        <view wx:if="{{!item.record.captured && item.record.media.length}}" class="source-photos"><text class="photos-label">{{item.response ? '资料原件' : '现场照片'}} · {{item.record.media.length}}张</text><view class="photo-grid"><view wx:for="{{item.record.media}}" wx:for-item="media" wx:key="id" class="photo-slot" data-id="{{media.id}}" bindtap="preview"><image wx:if="{{mediaPaths[media.id]}}" src="{{mediaPaths[media.id]}}" mode="aspectFill" /><text wx:else>照片读取中</text></view></view></view>
-        <text wx:if="{{item.record.captured && item.record.generating}}" class="organizing-note">小K正在整理，原材料已收到。</text>
-        <view wx:else class="xiaok-reply">
-          <view class="xiaok-heading"><image wx:if="{{index === items.length - 1}}" class="xiaok-art" src="../assets/notebook/xiaok-chat.png" mode="aspectFit" /><text class="xiaok-name">小K</text><text class="xiaok-chip">{{item.response ? '项目协作' : '现场整理'}}</text></view>
+        <view class="source-message"><view class="source-copy">
+          <view class="source-bubble">
+            <view class="source-author"><text>{{item.message.display_name || '项目成员'}}</text><text wx:if="{{item.time}}" class="source-time"> · {{item.time}}</text></view>
+            <text class="source-text" user-select>{{item.text}}</text>
+            <button wx:if="{{item.record.speech}}" class="voice-original text-button" data-message="{{item.message.id}}" bindtap="voiceMessage">回听原音</button>
+            <text wx:if="{{item.record.speech.transcript}}" class="speech-transcript" user-select>语音转写：{{item.record.speech.transcript}}</text>
+            <view wx:if="{{!item.response && item.record.media.length}}" class="photo-grid message-photos {{item.record.media.length === 1 ? 'single-photo' : ''}}">
+              <view wx:for="{{item.record.media}}" wx:for-item="media" wx:key="id" class="photo-slot" data-id="{{media.id}}" bindtap="preview"><image wx:if="{{mediaPaths[media.id]}}" src="{{mediaPaths[media.id]}}" mode="aspectFill"/><text wx:else>照片读取中</text></view>
+            </view>
+          </view>
+          <view wx:if="{{item.record.captured}}" class="delivery-receipt received">
+            <view class="receipt-badge"><image src="../assets/notebook/capture-received.png" mode="aspectFit"/><text>已收到</text></view>
+            <text class="receipt-detail">{{item.record.status === 'published' ? '已核对发布' : item.record.status === 'withdrawn' || item.record.status === 'changes_requested' ? item.record.label : '等经理核对'}}</text>
+          </view>
+          <text wx:if="{{item.record.captured && item.record.generating}}" class="organizing-note">小K正在整理，原材料已收到。</text>
+        </view></view>
+        <view wx:if="{{item.response && item.record.media.length}}" class="source-photos"><text class="photos-label">资料原件 · {{item.record.media.length}}张</text><view class="photo-grid"><view wx:for="{{item.record.media}}" wx:for-item="media" wx:key="id" class="photo-slot" data-id="{{media.id}}" bindtap="preview"><image wx:if="{{mediaPaths[media.id]}}" src="{{mediaPaths[media.id]}}" mode="aspectFill"/><text wx:else>照片读取中</text></view></view></view>
+        <view wx:if="{{!item.record.captured || !item.record.generating}}" class="xiaok-reply">
+          <view class="xiaok-heading">
+            <text class="xiaok-name">小K</text><text class="xiaok-chip">{{item.response ? '项目协作' : '现场整理 · ' + item.record.label}}</text>
+            <image wx:if="{{item.response && index === items.length - 1}}" class="xiaok-answer-art" src="../assets/notebook/xiaok-chat.png" mode="aspectFit"/>
+          </view>
           <text wx:if="{{item.response}}" class="reply-intro" user-select>{{item.response.text}}</text>
           <view wx:if="{{item.response && item.response.citations && item.response.citations.length}}" class="record-actions"><button wx:for="{{item.response.citations}}" wx:for-item="citation" wx:key="id" class="text-button" data-id="{{citation.id}}" bindtap="openCitation" disabled="{{busy || pending}}">知识来源 · {{citation.title}}</button></view>
-          <text wx:else class="reply-intro">{{item.record.generating ? '原话和照片已保存，正在整理进展草稿…' : item.record.failed ? '本次整理未完成，原话和照片已保留。可以稍后重试，或先人工核对内容。' : item.record.status === 'changes_requested' ? (item.record.resubmittedRecordId ? '补拍已关联提交，请查看补交记录的审核结果。' : '请按补拍要求提供新照片，补交后等待管理人员复审。') : item.record.status === 'withdrawn' ? '这条发布记录已撤回，内部原始资料继续保留。' : item.record.media.length && item.record.image_input ? '我把这段话和照片整理成了进展草稿，发布前请核对一下。' : '按原话整理的进展草稿，照片随记录保留，发布前请核对一下。'}}</text>
+          <text wx:if="{{!item.response}}" class="reply-intro">{{item.record.generating ? '原话和照片已保存，正在整理进展草稿…' : item.record.failed ? '本次整理未完成，原话和照片已保留。可以稍后重试，或先人工核对内容。' : item.record.status === 'changes_requested' ? (item.record.resubmittedRecordId ? '补拍已关联提交，请查看补交记录的审核结果。' : '请按补拍要求提供新照片，补交后等待管理人员复审。') : item.record.status === 'withdrawn' ? '这条发布记录已撤回，内部原始资料继续保留。' : item.record.status === 'published' ? '已核对发布。' : '已整理好，核对后再发布。'}}</text>
           <view wx:if="{{!item.response}}" class="record-card">
-            <view class="record-heading"><image src="../assets/notebook/file.png" mode="aspectFit" /><text class="record-title">{{item.record.data.title || '现场施工进展'}}</text><text class="status-chip">{{item.record.label}}</text></view>
-            <view wx:for="{{item.record.rows}}" wx:for-item="row" wx:key="label" class="record-row {{row.coordination && item.record.data.coordination ? 'coordination' : ''}}"><text class="record-label">{{row.label}}</text><text class="record-value" user-select>{{row.value}}</text></view>
+            <view class="record-heading"><image src="../assets/notebook/file.png" mode="aspectFit"/><text class="record-title">{{item.record.data.title || '现场施工进展'}}</text></view>
+            <view class="record-summary">
+              <view class="record-facts">
+                <view wx:for="{{item.record.rows}}" wx:for-item="row" wx:key="label" class="record-row {{row.tone}}">
+                  <view class="record-label">
+                    <image wx:if="{{row.tone === 'done'}}" class="record-state-icon" src="../assets/notebook/capture-received.png" mode="aspectFit"/>
+                    <image wx:elif="{{row.tone === 'pending'}}" class="record-state-icon" src="../assets/notebook/review-clock.png" mode="aspectFit"/>
+                    <text>{{row.label}}</text>
+                  </view>
+                  <text class="record-value" user-select>{{row.value}}</text>
+                </view>
+              </view>
+              <image wx:if="{{index === items.length - 1}}" class="xiaok-art" src="../assets/notebook/capture-v3-xiaok.png" mode="aspectFit"/>
+            </view>
             <text wx:if="{{item.record.data.note}}" class="record-note" user-select>{{item.record.data.note}}</text>
             <text wx:if="{{item.record.resubmission_of_id}}" class="record-helper">补拍原记录 {{item.record.original_record_id}} · 上次提交 {{item.record.resubmission_of_id}}</text>
             <text wx:if="{{item.record.review_requirements}}" class="record-note" user-select>补拍要求：{{item.record.review_requirements}}</text>
             <text wx:if="{{item.record.resubmittedRecordId}}" class="record-helper">已关联补交记录 {{item.record.resubmittedRecordId}}，审核请查看该次提交。</text>
-            <text class="record-helper">进展按原话整理，照片随记录保留。</text>
             <text wx:if="{{item.issue}}" class="record-helper" user-select>{{item.issue.text}}</text>
-            <text wx:if="{{item.record.updatedLabel}}" class="record-helper">最后更新：{{item.record.updatedLabel}} · 版本 {{item.record.version}}</text>
-            <view wx:if="{{item.record.status === 'published'}}" class="publication"><text>发布人：{{item.record.approved_name}} · 版本 {{item.record.published_version}}</text><text>{{item.record.scopeLabel}}</text></view>
-            <text wx:elif="{{item.record.status === 'withdrawn'}}" class="record-helper">撤回原因：{{item.record.withdrawal_reason}}</text>
-            <view wx:else class="scope-row">共享草稿：仅本项目成员可查看</view>
-            <view wx:if="{{(item.record.canEdit || item.record.canResubmit) && write}}" class="record-actions">
-              <button wx:if="{{item.record.canResubmit}}" class="primary begin-resubmit" data-id="{{item.record.id}}" bindtap="beginResubmit" disabled="{{busy || pending}}">按要求补拍</button>
-              <button wx:elif="{{item.record.status === 'draft' && item.record.canPublish}}" class="primary" data-id="{{item.record.id}}" bindtap="openPublish" disabled="{{busy || pending}}">{{item.record.resubmission_of_id ? '复审并发布' : '核对发布'}}</button>
-              <button wx:elif="{{item.record.canRetry}}" class="primary" data-id="{{item.record.id}}" bindtap="retry" disabled="{{busy || pending}}">重新整理</button>
+            <text wx:if="{{item.record.status === 'withdrawn'}}" class="record-helper">撤回原因：{{item.record.withdrawal_reason}}</text>
+            <view wx:if="{{write && (item.record.canEdit || item.record.canResubmit || item.record.canRequestChanges)}}" class="record-actions {{item.record.status === 'draft' && item.record.canPublish ? 'review-actions' : ''}}">
               <button wx:if="{{item.record.canEdit}}" class="secondary" data-id="{{item.record.id}}" bindtap="openEdit" disabled="{{busy || pending}}">{{item.record.status === 'published' ? '更正内容' : '修改内容'}}</button>
+              <button wx:if="{{item.record.canRequestChanges}}" class="text-button request-changes" data-id="{{item.record.id}}" bindtap="openRequestChanges" disabled="{{busy || pending}}">要求补拍</button>
+              <button wx:if="{{item.record.canResubmit}}" class="primary begin-resubmit" data-id="{{item.record.id}}" bindtap="beginResubmit" disabled="{{busy || pending}}">按要求补拍</button>
+              <button wx:elif="{{item.record.status === 'draft' && item.record.canPublish}}" class="primary" data-id="{{item.record.id}}" bindtap="openPublish" disabled="{{busy || pending}}"><text class="review-publish-label">{{item.record.resubmission_of_id ? '复审并发布' : '核对发布'}}</text></button>
+              <button wx:elif="{{item.record.canEdit && item.record.canRetry}}" class="primary" data-id="{{item.record.id}}" bindtap="retry" disabled="{{busy || pending}}">重新整理</button>
             </view>
-            <view class="record-links"><button class="text-button" data-id="{{item.record.id}}" bindtap="versions" disabled="{{busy || pending}}">原记录与版本</button><button wx:if="{{item.record.canRequestChanges && write}}" class="text-button request-changes" data-id="{{item.record.id}}" bindtap="openRequestChanges" disabled="{{busy || pending}}">打回补拍</button><button wx:if="{{item.record.status === 'published' && item.record.canEdit && write}}" class="text-button" data-id="{{item.record.id}}" bindtap="openWithdraw" disabled="{{busy || pending}}">撤回发布</button></view>
           </view>
+        </view>
+        <view wx:if="{{!item.response && (!item.record.captured || !item.record.generating)}}" class="record-footer">
+          <text class="record-scope">{{item.record.status === 'published' ? item.record.scopeLabel : '当前仅项目成员可见'}}</text>
+          <view class="record-links">
+            <button class="text-button" data-id="{{item.record.id}}" bindtap="versions" disabled="{{busy || pending}}">原记录与版本</button>
+            <button wx:if="{{item.record.status === 'published' && item.record.canEdit && write}}" class="text-button" data-id="{{item.record.id}}" bindtap="openWithdraw" disabled="{{busy || pending}}">撤回发布</button>
+          </view>
+          <text wx:if="{{item.record.status === 'published'}}" class="helper">发布人：{{item.record.approved_name}} · 版本 {{item.record.published_version}}</text>
+          <text wx:if="{{item.record.updatedLabel}}" class="helper">最后更新：{{item.record.updatedLabel}} · 版本 {{item.record.version}}</text>
         </view>
       </view>
       <view wx:for="{{captureQueue}}" wx:key="key" class="conversation-turn local-capture" id="capture-{{item.key}}">
-        <view class="source-message"><view class="source-copy"><view class="source-bubble"><text class="source-author">我的现场上报</text><text user-select>{{item.text}}</text>
+        <view class="source-message"><view class="source-copy"><view class="source-bubble">
+          <view class="source-author"><text>我的现场上报</text><text wx:if="{{item.time}}" class="source-time"> · {{item.time}}</text></view>
+          <text class="source-text" user-select>{{item.text}}</text>
           <button wx:if="{{item.voice}}" class="text-button voice-original" data-path="{{item.voice.path}}" bindtap="playCapture">回听原音</button>
-          <view wx:if="{{item.photos.length}}" class="photo-grid capture-photos"><view wx:for="{{item.photos}}" wx:for-item="photo" wx:key="id" class="photo-slot" data-path="{{photo.path}}" bindtap="previewCapture"><image src="{{photo.path}}" mode="aspectFill"/></view></view>
-        </view><view class="delivery-receipt {{item.received ? 'received' : 'waiting'}}"><view class="receipt-badge"><image src="{{item.received ? '../assets/notebook/capture-received.png' : '../assets/notebook/capture-upload.png'}}"/><text>{{item.received ? '已收到' : item.uploading ? '发送中' : item.uncertain ? '送达待核对' : '待上传'}}</text></view><text class="receipt-detail">{{item.received ? '等经理核对' : '已留在手机'}}</text></view>
+          <view wx:if="{{item.photos.length}}" class="photo-grid message-photos {{item.photos.length === 1 ? 'single-photo' : ''}}"><view wx:for="{{item.photos}}" wx:for-item="photo" wx:key="id" class="photo-slot" data-path="{{photo.path}}" bindtap="previewCapture"><image src="{{photo.path}}" mode="aspectFill"/></view></view>
+        </view><view class="delivery-receipt {{item.received ? 'received' : 'waiting'}}">
+          <view class="receipt-badge">
+            <image src="{{item.received ? '../assets/notebook/capture-received.png' : '../assets/notebook/capture-upload.png'}}" mode="aspectFit"/>
+            <text>{{item.received ? '已收到' : item.uploading ? '发送中' : item.uncertain ? '送达待核对' : '待上传'}}</text>
+          </view>
+          <text class="receipt-detail">{{item.received ? '等经理核对' : '已留在手机'}}</text>
+        </view>
           <button wx:if="{{!item.received}}" class="text-button retry-capture" bindtap="retryCapture" disabled="{{captureSending || !write || fatal}}">{{item.uncertain ? '核对送达' : '继续上传'}}</button>
-          <text wx:if="{{item.error && !item.received}}" class="helper">{{item.error}}</text>
+          <text wx:if="{{!item.received && item.error && item.error !== '待上传 · 已留在手机' && item.error !== '送达结果待核对'}}" class="helper">{{item.error}}</text>
         </view></view>
       </view>
       <view class="scroll-end"></view>
@@ -70,10 +112,10 @@
     <view wx:if="{{textMode || captureText || draft || resubmit}}" class="composer"><textarea class="composer-input" value="{{resubmit || draft || attachments.length ? draft : captureText}}" focus="{{inputFocus}}" placeholder="说说今天干了什么…" maxlength="4000" auto-height adjust-position="{{false}}" show-confirm-bar="{{false}}" aria-label="现场进展" bindinput="input" bindkeyboardheightchange="keyboard" disabled="{{busy || pending || !write || fatal}}"/></view>
     <view wx:if="{{captureText || capturePhotos.length || captureVoice || draft || attachments.length}}" class="capture-submit-row"><button class="primary capture-send" bindtap="send" disabled="{{busy || pending || !write || fatal || speechBusy || captureSaving}}" loading="{{captureSaving}}">发送</button></view>
     <view class="capture-secondary"><button class="quick-entry" bindtap="openQuickWork" disabled="{{!write || fatal || resubmit || busy || pending}}"><text>选常用工作</text></button><button class="type-entry" bindtap="typeReport" disabled="{{!write || fatal}}">打字</button></view>
-    <view class="capture-actions"><button class="capture-action add-photo" bindtap="photo" disabled="{{busy || pending || !write || fatal || captureSaving || capturePhotos.length >= 4}}"><image src="../assets/notebook/capture-camera.png"/><text>拍照</text></button><button class="capture-action voice" bindtap="voice" disabled="{{busy || pending || !write || fatal || speechBusy || resubmit || captureSaving}}"><image src="../assets/notebook/capture-mic.png"/><text>说一句</text></button></view>
+    <view class="capture-actions"><button class="capture-action add-photo" bindtap="photo" disabled="{{busy || pending || !write || fatal || captureSaving || capturePhotos.length >= 4}}"><image src="../assets/notebook/capture-camera.png" mode="aspectFit"/><text>拍照</text></button><button class="capture-action voice" bindtap="voice" disabled="{{busy || pending || !write || fatal || speechBusy || resubmit || captureSaving}}"><image src="../assets/notebook/capture-mic.png" mode="aspectFit"/><text>说一句</text></button></view>
   </view>
   <view wx:if="{{sheet === 'quick'}}" class="sheet-mask quick-mask {{sheetOpen ? 'open' : ''}}" bindtap="closeSheet" catchtouchmove="stop"><view class="sheet quick-sheet" catchtap="stop">
-    <view class="quick-heading"><text>选常用工作</text><button class="text-button" bindtap="closeSheet">收起</button></view>
+    <view class="quick-heading"><text>选常用工作</text><button class="text-button" bindtap="closeSheet">收起<image src="../assets/notebook/chevron.png" mode="aspectFit"/></button></view>
     <text wx:if="{{captureError}}" class="feedback">{{captureError}}</text>
     <scroll-view scroll-y class="quick-body"><text class="quick-stage">{{project.stageKey === 'utilities' ? '水电常用' : project.stageKey === 'masonry_carpentry' ? '泥木常用' : '常用工作'}}</text>
       <view class="quick-works"><button wx:for="{{quickWorks}}" wx:key="id" class="quick-option {{quickChoice.workId === item.id ? 'selected' : ''}}" data-id="{{item.id}}" bindtap="selectQuickWork"><image wx:if="{{quickChoice.workId === item.id}}" src="../assets/notebook/capture-check.png"/>{{item.label}}</button></view>
@@ -82,7 +124,7 @@
     </scroll-view>
     <view class="quick-footer"><button class="text-button" bindtap="quickToText">直接说或写</button><button class="primary quick-submit" bindtap="submitQuickWork" disabled="{{!quickChoice.workId || !quickChoice.progress || quickChoice.roomId === '' || captureSaving || !write || fatal}}">提交经理核对</button></view>
   </view></view>
-  <view wx:elif="{{sheet}}" class="sheet-mask {{sheetOpen ? 'open' : ''}}" bindtap="closeSheet" catchtouchmove="stop"><view class="sheet" catchtap="stop">
+  <view wx:elif="{{sheet}}" class="sheet-mask {{sheetOpen ? 'open' : ''}}" bindtap="closeSheet" catchtouchmove="stop"><view class="sheet record-sheet" catchtap="stop">
     <view class="sheet-heading"><text>{{sheet === 'edit' ? '核对现场内容' : sheet === 'publish' ? '核对发布范围' : sheet === 'withdraw' ? '撤回发布' : sheet === 'request_changes' ? '打回并要求补拍' : sheet === 'source' ? '知识来源' : '原记录与版本'}}</text><button class="text-button" bindtap="closeSheet" disabled="{{busy || pending}}">关闭</button></view>
     <view wx:if="{{pending || error}}" class="feedback" role="alert"><text>{{pending ? '提交结果待核对，原内容和版本已保留。' : error}}</text><button wx:if="{{pending}}" bindtap="reconcile" disabled="{{busy}}">核对同一次操作</button></view>
     <scroll-view class="sheet-body {{sheet === 'edit' || sheet === 'versions' || sheet === 'source' || conflict ? 'is-long' : ''}}" scroll-y>

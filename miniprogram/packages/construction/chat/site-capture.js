@@ -1,4 +1,4 @@
-const { key, errorText } = require('./site-client');
+const { key, errorText, siteMessageTime } = require('./site-client');
 const clone = value => JSON.parse(JSON.stringify(value));
 const emptyDraft = () => ({ text: '', photos: [], voice: null, quick: { workId: '', roomId: '', location: null, progress: '' } });
 const fileCall = (name, options) => new Promise((resolve, reject) => wx.getFileSystemManager()[name]({ ...options, success: resolve, fail: reject }));
@@ -42,7 +42,7 @@ class SiteCapture {
     const draft = this.value.draft;
     const pending = this.site.state.items || [];
     this.emit({ captureText: draft.text, capturePhotos: draft.photos, captureVoice: draft.voice, quickChoice: draft.quick,
-      captureQueue: this.value.queue.filter(e => !pending.some(i => i.message.client_message_id === e.key)).map(e => ({ ...e,
+      captureQueue: this.value.queue.filter(e => !pending.some(i => i.message.client_message_id === e.key)).map(e => ({ ...e, time: siteMessageTime(e.createdAt),
         received: !!e.receipt, uncertain: !e.receipt && e.dispatched, uploading: this.activeKey === e.key,
         text: e.displayText || (e.voice ? '语音上报' : '现场照片 · ' + e.photos.length + '张') })), captureSending: !!this.activeKey });
   }

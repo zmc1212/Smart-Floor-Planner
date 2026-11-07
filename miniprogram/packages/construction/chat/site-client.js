@@ -34,22 +34,33 @@ function upload(path, filePath, requestKey) {
         else reject({ ...value, statusCode: res.statusCode }); }, fail: reject });
   });
 }
+function siteMessageTime(value) {
+  const date = new Date(value || '');
+  if (Number.isNaN(date.getTime())) return '';
+  const today = new Date();
+  const clock = date.toTimeString().slice(0, 5);
+  if (date.toDateString() === today.toDateString()) return '今天 ' + clock;
+  const year = date.getFullYear() === today.getFullYear() ? '' : date.getFullYear() + '年';
+  return year + (date.getMonth() + 1) + '月' + date.getDate() + '日 ' + clock;
+}
 function decorate(item) {
   if (!item.record) return { ...item, record: { id: '', media: item.response && item.response.media || [] },
     text: (item.message.content.blocks || []).map(b => b.text || b.fallbackText || '').join('\n'),
-    time: new Date(item.message.created_at).toLocaleString('zh-CN', { hour12: false }) };
+    time: siteMessageTime(item.message.created_at) };
   const r = item.record, data = r.data || {};
   const updated = new Date(r.updated_at);
   const generating = r.status === 'organizing' && ACTIVE.includes(r.run_status);
   const failed = r.status === 'organizing' && !generating;
   const labels = { organizing: generating ? '正在整理' : '整理未完成', draft: r.resubmission_of_id ? '待复审' : '待核对', published: '已发布', withdrawn: '已撤回', changes_requested: r.resubmittedRecordId ? '已补交' : '待补拍' };
   return { ...item, text: (item.message.content.blocks || []).map(b => b.text || b.fallbackText || '').join('\n'),
-    time: new Date(item.message.created_at).toLocaleString('zh-CN', { hour12: false }),
+    time: siteMessageTime(item.message.created_at),
     record: { ...r, data, generating, failed, label: labels[r.status], canPublish: r.canPublish === undefined ? r.canEdit : r.canPublish, updatedLabel: r.updated_at && !Number.isNaN(updated.getTime()) ? updated.toLocaleString('zh-CN', { hour12: false }) : '',
       canRetry: failed && (['failed', 'cancelled'].includes(r.run_status) || !!r.captured && !r.run_id) && !r.pending_cost,
       scopeLabel: r.audience === 'customer' ? '项目成员和本项目业主可查看' : '仅本项目成员可查看',
-      rows: [{ label: '施工部位', value: r.room_name_snapshot || '待核对' }, { label: '本次完成', value: data.completed || '待核对' },
-        { label: '尚未完成', value: data.pending || '未说明' }, { label: '待沟通', value: data.coordination || '未说明', coordination: true }] } };
+      rows: [{ label: '施工部位', value: r.room_name_snapshot || '待核对' },
+        { label: '本次完成', value: data.completed, tone: 'done' },
+        { label: '尚未完成', value: data.pending, tone: 'pending' },
+        { label: '待沟通', value: data.coordination, tone: 'coordination' }].filter(row => row.value) } };
 }
 /** A pending command keeps its original body/version/key across reentry, scoped to staff + enterprise + project. */
 class SiteClient {
@@ -208,4 +219,4 @@ class SiteClient {
     }
   }
 }
-module.exports = { SiteClient, decorate, errorText, key };
+module.exports = { SiteClient, decorate, errorText, key, siteMessageTime };
