@@ -14,6 +14,7 @@ class FastGPTWorkflows {
   readonly stage:FastGPTReportWorkflow;
   readonly nativeKnowledge?:FastGPTNativeKnowledge;
   readonly rag?:FastGPTNativeRag;
+  readonly unified?:FastGPTNativeKnowledge;
   private server?:http.Server;
   private starting?:Promise<void>;
   constructor(configuration:Configuration) {
@@ -22,12 +23,16 @@ class FastGPTWorkflows {
     };
     this.knowledge=new FastGPTKnowledgeWorkflow({...configuration,appId:configuration.knowledgeAppId,record:value=>record('knowledge',value)});
     this.stage=new FastGPTReportWorkflow({...configuration,appId:configuration.stageAppId,record:value=>record('stage',value)},['stage']);
-    if(configuration.rag) this.rag=new FastGPTNativeRag({...configuration.rag,baseUrl:configuration.baseUrl,apiKey:configuration.apiKey,record:value=>record('rag',value)});
+    if(configuration.rag?.mode==='unified') this.unified=new FastGPTNativeKnowledge({baseUrl:configuration.baseUrl,apiKey:configuration.apiKey,
+      appId:configuration.rag.appId,model:configuration.rag.transportModel,bridgeKey:configuration.rag.bridgeKey,
+      plainAnswers:true,routePrefix:'/unified',record:value=>record('unified',value)});
+    else if(configuration.rag) this.rag=new FastGPTNativeRag({...configuration.rag,baseUrl:configuration.baseUrl,apiKey:configuration.apiKey,record:value=>record('rag',value)});
     if(configuration.nativeKnowledgeAppId) this.nativeKnowledge=new FastGPTNativeKnowledge({
       ...configuration,appId:configuration.nativeKnowledgeAppId,model:configuration.nativeTransportModel!,bridgeKey:configuration.nativeBridgeKey!,
       record:value=>record('nativeKnowledge',value)});
   }
   async handle(request:Request) {
+    if(new URL(request.url).pathname.startsWith('/unified-')) return this.unified?.handle(request) ?? Response.json({error:'not_found'},{status:404});
     if(new URL(request.url).pathname.startsWith('/rag-')) return this.rag?.handle(request) ?? Response.json({error:'not_found'},{status:404});
     if(new URL(request.url).pathname.startsWith('/native-')) return this.nativeKnowledge?.handle(request) ?? Response.json({error:'not_found'},{status:404});
     return new URL(request.url).pathname.startsWith('/knowledge-')?this.knowledge.handle(request):this.stage.handle(request);

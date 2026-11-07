@@ -130,10 +130,11 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   if (report && !agent) fail('assistant_capability_forbidden', 403);
   const entry = c.entry_snapshot as Row;
   const rag = agent && purpose === 'reply' && trigger.kind === 'user_message' && c.purpose === 'customer_consultation'
-    && actor.principal.kind === 'user' && enterpriseKnowledgeEnabled(settings.agent_config) ? fastGPTRagConfiguration(actor.enterpriseId) : undefined;
+    && actor.principal.kind === 'user' && entry.requirementReviewMode !== true ? fastGPTRagConfiguration(actor.enterpriseId) : undefined;
   const ragTrigger = rag ? await one(tx, sql`select content from app.assistant_messages where enterprise_id=${actor.enterpriseId}
     and conversation_id=${String(c.id)} and id=${messageId}`) : undefined;
-  const nativeRag = rag && (ragTrigger?.content as MessageContent)?.blocks.every(b => b.type === 'text')
+  const nativeRag = rag && (rag.configuration.mode === 'unified' || enterpriseKnowledgeEnabled(settings.agent_config))
+    && (ragTrigger?.content as MessageContent)?.blocks.every(b => b.type === 'text')
     ? { protocol: fastGPTRagProtocol, binding: rag.binding } : undefined;
   const reviewRuntime = agent && actor.principal.kind === 'user' && c.purpose === 'customer_consultation'
     && entry.agentReviewCandidate === true && entry.requirementReviewMode === true

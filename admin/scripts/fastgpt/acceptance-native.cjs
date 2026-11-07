@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- Existing Stable DevTools CLI controller. */
 const fs=require('fs'),path=require('path'),http=require('http'),cp=require('child_process'),assert=require('assert/strict'),crypto=require('crypto');
-module.exports=async({root,output,actor,questions,stage,assistantHttp,onQueued,onTurnReviewed,onSwitch,onStageCorrection,expectedCitationPages,onSourceRevoked,onSourceRestored,initialCitation,initialCitations,savedMessages})=>{
+module.exports=async({root,output,actor,questions,stage,assistantHttp,onQueued,onTurnReviewed,onSwitch,onStageCorrection,expectedCitationPages,expectedWebDomains,onSourceRevoked,onSourceRestored,initialCitation,initialCitations,savedMessages})=>{
  const project=path.join(root,'miniprogram'),route='packages/assistant/chat/chat',cli=require(path.join(root,'admin/scripts/wechatide-native-client.ts')).wechatideNativeClient(project,output);
  const evidence={scope:questions.length?'Approved unified C01, original private stage feeds and one persistent knowledge conversation; real native inputs, writes and reentry, no per-Agent conversations':'Stage saved-body engineering regression, original private feeds/reentry/withdrawal and actual HTTP503 recovery; no knowledge model trial',checks:[],captures:[],requests:[]};
  const save=()=>fs.writeFileSync(path.join(output,'native.json'),JSON.stringify(evidence,null,2));
@@ -54,7 +54,7 @@ module.exports=async({root,output,actor,questions,stage,assistantHttp,onQueued,o
   if(savedMessages){evidence.scope='Original persisted native RAG replies: real reentry/citation taps, source withdrawal/restoration and HTTP503 recovery, without generating another answer';
    const checkSaved=async()=>{const d=await page.data();for(const original of savedMessages){const m=d.messages.find(m=>m.id===original.id);assert.ok(m?.available);assert.equal(m.content.blocks.filter(b=>b.type==='text').map(b=>b.text).join(''),original.text);}};
    await checkSaved();page=await enterChat();await checkSaved();await capture('knowledge-saved-readback');evidence.checks.push({persistedReentry:true,sameConversation:actor.cid,exactSavedProse:true,messageIds:savedMessages.map(m=>m.id),noModelReplay:true,passed:true});save();}
-  for(const retained of initialCitations||(initialCitation?[initialCitation]:[])){const chip=await page.$('.citation-chip[data-id="'+retained.id+'"]');assert.ok(chip);await chip.tap();const c=await wait(async()=>{const d=await page.data();return d.sheet==='citation'&&!d.citationLoading&&d.citation?.available?d.citation:null;},'retained original citation');assert.ok(c.title.includes('第'+retained.page+'页'));assert.ok(c.quote.length>4);await capture('retained-original-citation-'+retained.id);await evaluate('function(){getCurrentPages().at(-1).closeSheet();}');evidence.checks.push({reusedOriginalCitation:retained.id,actualTap:true,noModelReplay:true,passed:true});save();}
+  for(const retained of initialCitations||(initialCitation?[initialCitation]:[])){const chip=await page.$('.citation-chip[data-id="'+retained.id+'"]');assert.ok(chip);await chip.tap();const c=await wait(async()=>{const d=await page.data();return d.sheet==='citation'&&!d.citationLoading&&d.citation?.available?d.citation:null;},'retained original citation');if(retained.page)assert.ok(c.title.includes('第'+retained.page+'页'));if(retained.domain)assert.ok(new URL(c.sourceUrl).hostname.endsWith(retained.domain));assert.ok(c.quote.length>4);await capture('retained-original-citation-'+retained.id.replaceAll(':','_'));await evaluate('function(){getCurrentPages().at(-1).closeSheet();}');evidence.checks.push({reusedOriginalCitation:retained.id,actualTap:true,noModelReplay:true,passed:true});save();}
   for(let i=0;i<questions.length;i++){
    await wait(async()=>{const d=await page.data();return d.canSend&&!d.loading&&!d.busy&&!d.fatal&&!d.generating&&!d.pendingSend&&!d.pendingAction&&!d.readOnly&&!d.contextLoading&&!d.contextBusy&&!d.contextPending&&!d.speechBusy&&!d.reportQuestion?.busy&&!d.reportQuestion?.pending;},'enabled composer '+i);
    const before=await page.data(),count=(before.messages||[]).filter(m=>m.authorKind==='assistant'||m.role==='assistant').length;
@@ -64,14 +64,14 @@ module.exports=async({root,output,actor,questions,stage,assistantHttp,onQueued,o
    await wait(async()=>{const d=await page.data();return !d.busy&&!d.generating&&!d.pendingSend&&!d.uncertainRun&&(d.messages||[]).some(m=>(m.content?.blocks||[]).some(b=>b.text===questions[i]))&&(d.messages||[]).filter(m=>m.authorKind==='assistant'||m.role==='assistant').length>count;},'real knowledge answer '+i);
     if(onTurnReviewed)await onTurnReviewed();
    await capture('knowledge-turn-'+(i+1));evidence.checks.push({question:questions[i],sameConversation:actor.cid,realInputAndSend:true,passed:true});save();
-   if(i===3||expectedCitationPages?.[i]){
+   if((!expectedWebDomains&&i===3)||expectedWebDomains?.[i]||expectedCitationPages?.[i]){
     const d=await page.data(),answer=d.messages.filter(m=>m.authorKind==='assistant'||m.role==='assistant').at(-1);
     const official=answer?.citations?.find(c=>c.available&&String(c.sourceUrl||c.sourceLocation||'').includes('nipponpaint.com.cn'));
     const citationId=official?.id||answer?.citations?.find(c=>c.available)?.id;assert.ok(citationId,'Saved official answer must have a native citation entry');
     const chip=await page.$('.citation-chip[data-id="'+citationId+'"]');assert.ok(chip);await chip.tap();
     const citation=await wait(async()=>{const v=await page.data();return v.sheet==='citation'&&!v.citationLoading&&v.citation?.available?v.citation:null;},'original official citation');
     if(expectedCitationPages?.[i]){assert.ok(citation.title.includes('第'+expectedCitationPages[i]+'页'));assert.equal(citation.isDraft,false);assert.ok(Number.isInteger(citation.locator.start));}
-    else assert.ok(new URL(citation.sourceUrl).hostname.endsWith('nipponpaint.com.cn'));assert.ok(citation.quote.length>4);await capture('knowledge-citation-'+(i+1));
+    else assert.ok(new URL(citation.sourceUrl).hostname.endsWith(expectedWebDomains?.[i]||'nipponpaint.com.cn'));assert.ok(citation.quote.length>4);await capture('knowledge-citation-'+(i+1));
     await evaluate('function(){getCurrentPages().at(-1).closeSheet();}');
     evidence.checks.push({officialCitation:{id:citation.id,sourceUrl:citation.sourceUrl,title:citation.title,sourceLocation:citation.sourceLocation,quote:citation.quote},actualTap:true,passed:true});save();
    }

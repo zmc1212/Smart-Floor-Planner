@@ -1,0 +1,17 @@
+{
+  "repository": "labring/FastGPT",
+  "ref": "v4.17.4",
+  "files": [
+    {
+      "path": "dataset.const.ts",
+      "upstream": "https://github.com/labring/FastGPT/blob/v4.17.4/packages/global/core/ai/prompt/dataset.const.ts",
+      "sha256": "b0979723da7b284530cd217eb3eab0c668fac3ccc9fd44b032c9268624eabd3f"
+    },
+    {
+      "path": "LICENSE.FastGPT",
+      "upstream": "https://github.com/labring/FastGPT/blob/v4.17.4/LICENSE",
+      "sha256": "3a66bf692d2ffd2a691061e4c8591617bab33c2d1cb0de70e1e1faa13fd0543e"
+    }
+  ],
+  "purpose": "Unchanged native dataset ToolCall citation protocol; source identities, authorization and persistence remain original XiaoK services."
+}

@@ -18,13 +18,15 @@
 
 <!-- xiaok-mineru-fastgpt-preview -->
 
-**一期PPT工艺：FastGPT真实小K会话接入Limited。** 百炼text-embedding-v4原生混合检索→原服务来源授权→FastGPT原生qwen3.7-flash回答。`XIAOK_FASTGPT_WORKFLOWS_FILE.rag`显式绑定企业/配置摘要，接管知识开启后的文字咨询回复；其他purpose和默认配置保留。原C01入口`packages/assistant/chat/chat`、`/api/miniprogram/assistant/conversations/*`、schema、组件/样式/素材不改。此固定语料路径暂不承担联网或业务工具动作。
+**FastGPT统一装修会话：Limited，业务验收失败，仅隔离显式试点。** 用户已授权将通用装修问答、实际联网与企业工艺接入同一C01会话。`XIAOK_FASTGPT_WORKFLOWS_FILE.rag.mode=unified`将固定v4.17.4原生ToolCall接回原会话服务，数据集仍用百炼text-embedding-v4。qwen3.7-flash及qwen3.7-plus的有界试验均保留；切换对话模型未证明联合旅程通过，候选没有默认启用。原C01 `packages/assistant/chat/chat`、`/api/miniprogram/assistant/conversations/*`、schema、markup/样式/素材和批准设计不变；仅文字咨询选择该路径，需求审阅、其他业务动作与媒体沿原处理器。
 
-原生`[id](CITE)`通过既有KnowledgeRetriever/Evidence与引用保存映射，候选不是引用。模型前/提交/重进按当前租户、受众、版本/hash检查；全体已读来源和历史依赖可撤回。四段固定语料整体授权准入，任一来源撤权即停止该路径。小K保存唯一原会话，FastGPT使用`NO_RECORD_HISTORIES`；历史读获权模型原答，保留CITE，不把UI“知识来源”标签送回模型。原网关保留attempt/实际用量/unknown，不重试不明调用，不重写模型正文。
+小K持有持久会话与获权模型原答历史，FastGPT使用`NO_RECORD_HISTORIES`。桥接复用原生ToolCall、原扁平工具schema、未改写的原生知识引用格式及原Knowledge/Evidence和网页引用目录，不另加关键词路由、第二Agent、事实库或改答。原生`[id](CITE)`只解析真实选中ID；来源暴露前、提交前及重进沿当前租户/本人/受众/版本/hash守卫，已读来源与历史依赖继续可撤回。企业撤回时固定资料工具不可用；关知识排除企业派生历史。公开候选摘要不是Evidence，原文读取保留SSRF/DNS/TLS/隐私检查。这些已接入的边界不等于统一路径原生撤权/重进验收通过。
 
-按用户“直接发布，验证后不撤回”，仅隔离`xiaok_embedding_eval`/微云1454文档2511–2514、版本2756–2759对客发布保留；临时撤权后恢复。固定两组各2问的首稿10980/10982–10984均通过，保存、原文引用、本人/跨租户及幂等检查通过。CLI中断保留；repair1-saved09已通过原生重进、4个引用实际点击、撤权失效/恢复、真实HTTP503恢复及旧身份撤回/新身份读回；复用四条原答，新增模型/embedding调用均0。撤权新请求10985在调用前被拒绝。21项定向检查、相关lint和源码依赖类型检查通过；全量tsc被既有生成路由语法错误阻断。
+最终有界机制检查在10994停止：三个工具均已提供、企业知识已开启，但模型没有检索，自编企业排版/确认职责并无引用保存。消息写入成功，事实依据失败。通用10993在审阅范围通过；随后联网/混合追问、第二组及统一路径引用/重进/撤权/503闭环均未执行。此前泛化常识、假引用、参数错误与引用前缀错误继续保留为失败或明确质量限制。按两轮修复停止规则，不再追加模型试答。22项定向检查、相关类型与lint通过；全量lint为0错误/31项既有警告。独立真实搜索/读取已取得官网product1161原文，模型调用和业务写入均为0，仅证明联网基础服务。
 
-沿批准C01 `design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/README.md`核对原生390×844引用抽屉/完整正文/重进反馈，无视觉还原改动。旧失败和完整证据见[二期合同](xiaok-assistant-phase-2.zh-CN.md#一期ppt工艺资料试问limited)及`tmp/xiaok-fastgpt-rag-session-20261107/`。预算报价线下，旧28混合候选退役、主库376–405/410–411只读；未宣告全V1、生产或真机通过。
+原网关/逐次计量、Promise去重和HTTP串行回调保留计费及每run限额，unknown不重试。官方`searchTest`不返回embedding token，应用记录保持unavailable；AIProxy保存实际2次embedding/30输入。统一本批attempt3331–3340共10次模型、11997输入/2702输出；代理传输不重复算生成，代理零单价不代表免费，金额仍未知。`tmp/xiaok-fastgpt-unified-20261107/closure.json`保留完整来源绑定、失败、用量、发布及清理核对；停止后比对无源码漂移，所有自有资源已释放。
+
+授权隔离库`xiaok_embedding_eval`/微云1454的2511–2514/2756–2759已复查仍为active/customer_public。旧RAG原稿10980/10982–10984和`repair1-saved09`的保存/引用/重进/撤权/HTTP503证据按未变范围保留，不替新统一旅程判通过；基线仍在`tmp/xiaok-fastgpt-rag-session-20261107/`。C01设计源仍为`design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/README.md`、390×844；已查看的通用回答原生截图沿既有布局，不算统一旅程完整视觉验收。预算报价线下，28条混合候选退役，主库376–405/410–411只读；未宣告全V1、生产或真机通过。
 
 <!-- xiaok-fastgpt-capabilities -->
 **FastGPT阶段/知识工作流：Limited，保存I/O接口已收敛，库存OpenSERP官网产品原文已证，固定主干复验首个供应商403停止。** 显式开发候选沿C01原会话，由FastGPT v4.17.4单一ToolCall控制问答；原服务守获权工具、KnowledgeRetriever/Evidence、租户/来源、持久任务、网关计量及最终校验/保存。原生输入复用既有来源/引用目录与公开内容投影，保留完整原文和引用ID。提交/保存共同依据实时获权来源，调用或空检索不当证据；本地配置错误与供应商明确失败保留原异常处置语义。UI/API路由/schema、默认Worker、生产未切，企业知识关闭。

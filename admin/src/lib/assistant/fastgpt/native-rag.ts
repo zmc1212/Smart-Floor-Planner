@@ -25,7 +25,8 @@ export function ragSources(quotes: unknown, configured: RagSource[]): RagSource[
     seen.add(source.nativeId); return source;
   });
 }
-export type RagPart = { text: string } | { source: RagSource };
+export type RagCitationSource = Pick<RagSource, 'nativeId' | 'evidence'> & { sourceId?: string; quote?: string };
+export type RagPart = { text: string } | { source: RagCitationSource };
 /** Citation chips/notices are UI projections, never assistant history. Native
  * originals retain their own CITE protocol so the model sees the actual reply. */
 export function ragHistoryText(content: MessageContent, nativeOriginal?: string) {
@@ -33,11 +34,11 @@ export function ragHistoryText(content: MessageContent, nativeOriginal?: string)
 }
 /** Decode the vendor's documented CITE protocol only. No answer rewriting or
  * semantic keyword rules; retrieved-but-uncited hits never become citations. */
-export function ragAnswerParts(text: string, sources: RagSource[]): RagPart[] {
+export function ragAnswerParts(text: string, sources: RagCitationSource[]): RagPart[] {
   if (!text.trim() || text.length > 16000) fail('invalid_model_answer', 502);
   const parts: RagPart[] = [];
   for (const paragraph of text.match(/[^]+?(?:\n\n|$)/g) || []) {
-    const selected: RagSource[] = [];
+    const selected: RagCitationSource[] = [];
     const prose = paragraph.replace(/\[([^\]]+)\]\(CITE\)/g, (_match, id: string) => {
       const source = sources.find(s => s.nativeId === id);
       if (!source) fail('invalid_model_citation', 502);

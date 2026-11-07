@@ -1,26 +1,26 @@
 import { sql } from 'drizzle-orm';
 import { withTenantTransaction } from '@/db/transaction';
-import { one, rows, type Row } from '@/db/repositories/assistant-repository';
+import { type Row } from '@/db/repositories/assistant-repository';
 import { executePostgresText } from '@/lib/ai/postgres-workflow-chat';
 import { AiProviderError } from '@/lib/ai/provider-types';
-import { AssistantError, fail, fingerprint, safeText, type MessageContent } from '../contracts';
+import { AssistantError, fail, type MessageContent } from '../contracts';
 import { agentConfig } from '../agent/config';
-import { knowledgeSynthesisSources, type SynthesisContext } from '../agent/synthesis';
+import { knowledgeSynthesisSources } from '../agent/synthesis';
 import { synthesisContextAvailable } from '../agent/synthesis-sources';
-import { readMemory } from '../agent/memory';
-import type { HistorySnapshot } from '../agent/history';
-import { projectMessage, resolveEvidence } from '../knowledge/sources';
+import { resolveEvidence } from '../knowledge/sources';
 import { saveKnowledgeCitation } from '../knowledge/save-citation';
 import { completeRun, failRun, heartbeat, markProviderStarted, recordRunUsage, runContext, type Lease } from '../infrastructure/job-queue';
 import { fastGPTRagConfiguration, fastGPTRagProtocol, type RagSource } from './rag-config';
 import { fastGPTWorkflows } from './runtime';
-import { ragAnswerParts, ragHistoryText, type RagChatMessage } from './native-rag';
+import { nativeConversation } from './rag-session';
+import { processUnifiedAnswer } from './unified-worker';
 
 export async function processNativeRagAnswer(lease: Lease) {
   let returned = false, attemptId: string | undefined;
   try {
     const bound = fastGPTRagConfiguration(lease.enterpriseId);
     if (!bound) fail('context_changed');
+    if (bound.configuration.mode === 'unified') return await processUnifiedAnswer(lease, bound);
     const authorize = () => withTenantTransaction(lease.enterpriseId, async tx => {
       const state = await runContext(tx, lease), policy = state.run.policy_snapshot as Row;
       if ((policy.nativeRag as Row)?.protocol !== fastGPTRagProtocol || (policy.nativeRag as Row)?.binding !== bound.binding
@@ -36,48 +36,7 @@ export async function processNativeRagAnswer(lease: Lease) {
     });
     const initial = await authorize(), config = agentConfig((initial.run.policy_snapshot as Row).agent);
     if (!config || config.model !== bound.configuration.model || config.providerKey !== 'dashscope') fail('context_changed');
-    const context: SynthesisContext = { version: 1, knowledge: [], snapshots: [], sources: [], web: [], history: [], ancestors: [] };
-    const messages = await withTenantTransaction(lease.enterpriseId, async tx => {
-      const { conversation, run } = await runContext(tx, lease);
-      const originals = await rows(tx, sql`select m.* from app.assistant_messages m join app.assistant_messages trigger
-        on trigger.enterprise_id=m.enterprise_id and trigger.conversation_id=m.conversation_id
-        where m.enterprise_id=${lease.enterpriseId} and m.conversation_id=${String(conversation.id)} and trigger.id=${String(run.trigger_message_id)}
-          and m.seq<=trigger.seq and m.author_kind in ('user','assistant') order by m.seq desc limit 7`);
-      if (!originals.length || String(originals[0].id) !== String(run.trigger_message_id)) fail('context_changed');
-      const result: RagChatMessage[] = [], history: HistorySnapshot['sources'] = [];
-      for (const m of originals.reverse()) {
-        const projected = await projectMessage(tx, lease.actor, conversation, m);
-        if (!projected.available) continue;
-        let nativeOriginal: string | undefined;
-        if (m.author_kind === 'assistant') {
-          const prior = await one(tx, sql`select source_refs,private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
-            and run_id=${String(m.run_id)} and kind='agent_synthesis_context' and status='succeeded'`);
-          // Do not import unbound historical generated prose into a new answer.
-          if (!prior) continue;
-          const original = prior.source_refs as SynthesisContext;
-          if (!await synthesisContextAvailable(tx, lease.actor, conversation, original)) continue;
-          if ((prior.input_summary as Row)?.protocol === fastGPTRagProtocol) {
-            nativeOriginal = String((prior.private_checkpoint as Row).raw);
-            ragAnswerParts(nativeOriginal, bound.configuration.sources);
-          }
-          for (const key of ['knowledge','snapshots','sources','web','history','ancestors'] as const)
-            (context[key] as unknown[]).push(...(original[key] || []));
-          context.ancestors!.push({ runId: String(m.run_id), messageId: String(m.id), contentHash: fingerprint(m.content), contextHash: fingerprint(original) });
-        } else {
-          history.push({ messageId: String(m.id), hash: fingerprint(m.content), memoryVersion: readMemory(conversation.entry_snapshot).version,
-            text: safeText(projected.content as MessageContent), seq: String(m.seq) });
-        }
-        const text = ragHistoryText(projected.content as MessageContent, nativeOriginal);
-        if (text.trim()) result.push({ role: m.author_kind === 'assistant' ? 'assistant' : 'user', content: text });
-      }
-      if (result.at(-1)?.role !== 'user' || Buffer.byteLength(JSON.stringify(result)) > 16000) fail('invalid_message', 422);
-      context.history!.push({ query: '本轮获权会话历史', beforeSeq: String(BigInt(String(originals.at(-1)!.seq)) + BigInt(1)),
-        sources: history, hasMore: false, oversized: false });
-      for (const key of ['knowledge','snapshots','sources','web','history','ancestors'] as const)
-        (context[key] as unknown[]) = [...new Map((context[key] as unknown[]).map(value => [fingerprint(value), value])).values()];
-      if (context.ancestors!.length > 32 || !await synthesisContextAvailable(tx, lease.actor, conversation, context)) fail('context_changed');
-      return result;
-    });
+    const { context, messages } = await nativeConversation(lease, bound.configuration.sources);
     const workflows = fastGPTWorkflows();
     if (!workflows?.rag) fail('context_changed');
     await workflows.ready(); await heartbeat(lease);

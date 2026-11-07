@@ -14,7 +14,9 @@ import { assertKnowledgePolicy, runKnowledgeEnabled } from '../knowledge-policy'
 
 export const workerTiming = { providerMs: 90000, leaseMs: 150000, requestMs: 180000, heartbeatMs: 30000 };
 export type Lease = { enterpriseId: string; jobId: string; runId: string; token: string; actor: ActorContext };
-export type RunResult = { content: MessageContent; usage: { inputTokens: number; outputTokens: number } | null; attemptId?: string };
+export type RunResult = { content: MessageContent; usage: { inputTokens: number; outputTokens: number } | null; attemptId?: string;
+  /** Internal native ToolCall completion; each dispatch already uses the original Agent ledger. */
+  usageMode?: 'per_turn' };
 async function finish(tx: PostgresTransaction, lease: Lease, status: string, error: string | null, outputMessageId?: string) {
   await tx.execute(sql`update app.assistant_jobs set status=${status},last_error=${error},lease_token=null,lease_expires_at=null,updated_at=now(),version=version+1 where enterprise_id=${lease.enterpriseId} and id=${lease.jobId}`);
   await tx.execute(sql`update app.assistant_runs set status=${status},error_code=${error},output_message_id=${outputMessageId || null},completed_at=now(),updated_at=now(),version=version+1 where enterprise_id=${lease.enterpriseId} and id=${lease.runId}`);
@@ -131,7 +133,12 @@ export async function completeRun(lease: Lease, result: RunResult, commit?: (tx:
     if (result.usage && (!Number.isSafeInteger(result.usage.inputTokens) || !Number.isSafeInteger(result.usage.outputTokens) || result.usage.inputTokens < 0 || result.usage.outputTokens < 0)) fail('invalid_message', 422);
     const message = await appendMessage(tx, lease.actor, String(run.conversation_id), { author: 'assistant', content: result.content, runId: lease.runId });
     await commit?.(tx, run, String(message.id));
-    await recordRunUsage(tx, lease, result);
+    if (result.usageMode === 'per_turn') {
+      const observed = await one(tx, sql`select id from app.assistant_usage_records where enterprise_id=${lease.enterpriseId}
+        and run_id=${lease.runId} and category='tokens' and provider_attempt_id=${result.attemptId || null}
+        and operation_key like ${'agent:' + lease.runId + ':%'} limit 1`);
+      if (!observed) fail('context_changed');
+    } else await recordRunUsage(tx, lease, result);
     // Unknown billing retains the conservative reservation for reconciliation.
     await tx.execute(sql`update app.assistant_quota_reservations set status='reconciling',version=version+1,updated_at=now() where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}`);
     await finish(tx, lease, 'succeeded', null, String(message.id));

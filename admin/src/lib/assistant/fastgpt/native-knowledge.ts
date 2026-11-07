@@ -11,6 +11,22 @@ export const nativeKnowledgeProtocol = 'fastgpt-native-knowledge-v1';
 export const nativeKnowledgeReadNames = ['search_web', 'read_web', 'query_business', 'recall_history'] as const;
 const names = new Set<string>([...nativeKnowledgeReadNames, 'final_response']);
 const marker = 'XIAOK_NATIVE_TRANSPORT_TICKET=';
+/** Mechanical transport decoding only; original prose and tool facts stay
+ * untouched, while assistant call/result pairs use their original schemas. */
+export function unifiedModelMessages(messages: ModelMessage[]): ModelMessage[] {
+  return messages.map(m => {
+    if (m.role === 'assistant' && m.toolCalls) return { ...m, toolCalls: m.toolCalls.map(c => {
+      const payload = JSON.parse(c.arguments).payload;
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) fail('invalid_message', 422);
+      return { ...c, arguments: JSON.stringify(payload) };
+    }) };
+    if (m.role === 'tool') {
+      const value = JSON.parse(m.content);
+      if (typeof value.result === 'string') return { ...m, content: value.result };
+    }
+    return m;
+  });
+}
 /** Remove the vendor HTTP envelope, then reuse XiaoK's one model-facing
  * Evidence/catalog projection. Original tool receipts/checkpoints stay exact. */
 export function nativeKnowledgeModelMessages(messages: ModelMessage[], tools?: ModelTool[]): ModelMessage[] {
@@ -35,10 +51,16 @@ type Ticket = {
   input: NativeInput; expires: number; calls: Call[]; messages: ModelMessage[];
   turn: number; busy: boolean; final?: ModelTurnOutput; failure?: string;
   failureError?: AssistantError | AiProviderError;
+  requests?: Map<string, Promise<Response>>;
+  argumentFailures?: number;
+  toolQueue?: Promise<void>;
 };
 export type NativeKnowledgeConfig = {
   baseUrl: string; apiKey: string; appId: string; model: string; bridgeKey: string;
   record: (value: unknown) => void;
+  /** Explicit plain-answer workflow. Reuses native ToolCall transport without
+   * the legacy structured final_response or serialized history wrapper. */
+  plainAnswers?: boolean; routePrefix?: '/unified';
 };
 
 /** FastGPT's maintained ToolCall node owns the entire tool/model loop. This
@@ -60,6 +82,7 @@ export class FastGPTNativeKnowledge {
 
   async handle(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    if (this.config.routePrefix) url.pathname = url.pathname.replace(this.config.routePrefix, '/native');
     if (url.pathname === '/native-model/v1/chat/completions') return this.model(request);
     const id = request.headers.get('authorization')?.replace(/^Bearer /, '') || '';
     const ticket = this.tickets.get(id);
@@ -69,6 +92,7 @@ export class FastGPTNativeKnowledge {
       if (url.pathname === '/native-input' && request.method === 'GET') {
         const system = ticket.input.messages.flatMap(m => m.role === 'system' ? m.content : [])
           .filter(p => p.type === 'text').map(p => p.type === 'text' ? p.text : '').join('\n');
+        if (this.config.plainAnswers) return Response.json({ instructions: system + '\n' + marker + id });
         return Response.json({ instructions: system + '\n' + marker + id,
           input: JSON.stringify({ context: nativeKnowledgeModelMessages(ticket.input.messages, ticket.input.tools).filter(m => m.role !== 'system'), current_request: ticket.input.question ?? null }) });
       }
@@ -79,10 +103,14 @@ export class FastGPTNativeKnowledge {
       const payload = JSON.parse(bytes);
       const args = JSON.stringify(payload);
       const call = ticket.calls.find(c => c.name === name && fingerprint(JSON.parse(c.args)) === fingerprint(payload));
-      if (!call || ticket.failure || !names.has(name)) return Response.json({ error: 'assistant_capability_forbidden' }, { status: 403 });
+      const allowed = this.config.plainAnswers ? ticket.input.tools.some(t => t.name === name) : names.has(name);
+      if (!call || ticket.failure || !allowed) return Response.json({ error: 'assistant_capability_forbidden' }, { status: 403 });
       // Repeated/concurrent HTTP requests await the original operation. Neither
       // a failure nor an ambiguous model outcome clears its promise.
-      call.pending ??= (async () => {
+      if (!call.pending) {
+      const execute = async () => {
+        if (ticket.failure) fail(ticket.failure, 409);
+        await ticket.input.ports.authorize();
         if (name === 'final_response') {
           const state = this.state(ticket);
           const raw = await ticket.input.ports.resolveFinal?.(args, state) ?? args;
@@ -95,7 +123,16 @@ export class FastGPTNativeKnowledge {
           ticket.final = { text: raw, toolCalls: [], finishReason: 'stop', providerRequestId: null, usage: null };
         } else {
           const definition = ticket.input.tools.find(t => t.name === name);
-          if (!definition || await toolSchemaIssue(definition, args)) fail('invalid_message', 422);
+          if (!definition) fail('assistant_capability_forbidden', 403);
+          const issue = await toolSchemaIssue(definition, args);
+          if (issue) {
+            if (!this.config.plainAnswers || (ticket.argumentFailures || 0) >= 1) fail('invalid_message', 422);
+            ticket.argumentFailures = (ticket.argumentFailures || 0) + 1;
+            // Reuse the existing schema-only tool feedback. Never coerce
+            // values, guess a domain or dispatch a rejected operation.
+            call.result = issue.feedback;
+            return Response.json({ result: call.result });
+          }
           const invalid = ticket.input.ports.validateTool?.(name, args);
           if (invalid) return Response.json({ result: JSON.stringify({ status: 'invalid_tool_input', ...invalid }) });
           const result = await ticket.input.ports.tool(call.turn, call.index, name, args);
@@ -106,7 +143,10 @@ export class FastGPTNativeKnowledge {
         await ticket.input.ports.authorize();
         await ticket.input.ports.checkpoint(this.state(ticket));
         return Response.json({ result: call.result || 'validated_not_saved' });
-      })();
+      };
+      call.pending = this.config.plainAnswers ? (ticket.toolQueue || Promise.resolve()).then(execute) : execute();
+      if (this.config.plainAnswers) ticket.toolQueue = call.pending.then(() => {}, () => {});
+      }
       return (await call.pending).clone();
     } catch (error) {
       ticket.failure ??= (error as { code?: string }).code || 'context_unavailable';
@@ -115,6 +155,21 @@ export class FastGPTNativeKnowledge {
   }
 
   private async model(request: Request): Promise<Response> {
+    if (!this.config.plainAnswers) return this.dispatchModel(request);
+    const body = await request.clone().text();
+    const id = body.match(/XIAOK_NATIVE_TRANSPORT_TICKET=([^\\"\s]+)/)?.[1];
+    const ticket = id && this.tickets.get(id);
+    if (!ticket || ticket.expires < Date.now()) return Response.json({ error: 'not_found' }, { status: 404 });
+    // Native HTTP retries await the same dispatch, including its failure. No
+    // repeated model call or replay of a completed tool-producing turn.
+    ticket.requests ??= new Map();
+    const hash = fingerprint({ body, authorization: request.headers.get('authorization') });
+    let pending = ticket.requests.get(hash);
+    if (!pending) { pending = this.dispatchModel(request); ticket.requests.set(hash, pending); }
+    return (await pending).clone();
+  }
+
+  private async dispatchModel(request: Request): Promise<Response> {
     const key = request.headers.get('authorization')?.replace(/^Bearer /, '') || '';
     if (key.length !== this.config.bridgeKey.length || !timingSafeEqual(Buffer.from(key), Buffer.from(this.config.bridgeKey))) {
       return Response.json({ error: { message: 'not_found' } }, { status: 404 });
@@ -154,26 +209,35 @@ export class FastGPTNativeKnowledge {
       // ToolCall v4.17.4 always installs its file reader. This text-only pilot
       // supplies no file access; exclude that specific native capability before
       // dispatch. Unknown tools and any attempted file call remain forbidden.
-      const tools = nativeTools.filter(t => t.name !== 'read_files');
-      if (tools.some(t => !names.has(t.name))) fail('assistant_capability_forbidden', 403);
-      const projected = nativeKnowledgeModelMessages(messages, tools);
+      const transportTools = nativeTools.filter(t => t.name !== 'read_files');
+      const allowed = (name: string) => this.config.plainAnswers ? ticket!.input.tools.some(t => t.name === name) : names.has(name);
+      if (transportTools.some(t => !allowed(t.name))) fail('assistant_capability_forbidden', 403);
+      // The HTTP node's payload wrapper belongs only to FastGPT transport.
+      // The configured model sees XiaoK's original provider-neutral schemas.
+      const tools = this.config.plainAnswers ? transportTools.map(t => ticket!.input.tools.find(original => original.name === t.name)!) : transportTools;
+      const projected = this.config.plainAnswers ? unifiedModelMessages(messages) : nativeKnowledgeModelMessages(messages, tools);
       const output = await ticket.input.ports.model(turn, projected, tools);
       if (output.toolCalls.length > agentModelLimits.maxToolCalls) fail('assistant_capability_forbidden', 403);
       const calls = output.toolCalls.map((call, index) => {
-        if (!tools.some(t => t.name === call.name) || !names.has(call.name)) fail('assistant_capability_forbidden', 403);
-        const payload = JSON.parse(call.arguments).payload;
+        if (!tools.some(t => t.name === call.name) || !allowed(call.name)) fail('assistant_capability_forbidden', 403);
+        const decoded = JSON.parse(call.arguments), payload = this.config.plainAnswers ? decoded : decoded.payload;
         if (!payload || typeof payload !== 'object' || Array.isArray(payload)) fail('invalid_message', 422);
         return { turn, index, name: call.name, args: JSON.stringify(payload) };
       });
       if (calls.some(c => c.name === 'final_response') && calls.length !== 1) fail('invalid_model_answer', 502);
       ticket.calls.push(...calls);
+      if (this.config.plainAnswers && !calls.length) {
+        if (output.finishReason !== 'stop' || !output.text.trim()) fail('invalid_model_answer', 502);
+        ticket.final = output;
+      }
       ticket.messages.push({ role: 'assistant', content: output.text,
         toolCalls: calls.map(c => ({ id: `${c.turn}:${c.index}`, name: c.name, arguments: c.args })) });
       await ticket.input.ports.checkpoint(this.state(ticket));
       this.config.record({ kind: 'native_model', turn, request: { messages: projected, tools }, output });
       const result = { id: output.providerRequestId || randomUUID(), object: 'chat.completion', created: Math.floor(Date.now() / 1000), model: this.config.model,
         choices: [{ index: 0, message: { role: 'assistant', content: output.text || null,
-          ...(output.toolCalls.length ? { tool_calls: output.toolCalls.map(c => ({ id: c.id, type: 'function', function: { name: c.name, arguments: c.arguments } })) } : {}) },
+          ...(output.toolCalls.length ? { tool_calls: output.toolCalls.map(c => ({ id: c.id, type: 'function', function: { name: c.name,
+            arguments: this.config.plainAnswers ? JSON.stringify({ payload: JSON.parse(c.arguments) }) : c.arguments } })) } : {}) },
           finish_reason: output.toolCalls.length ? 'tool_calls' : 'stop' }],
         usage: output.usage ? { prompt_tokens: output.usage.inputTokens, completion_tokens: output.usage.outputTokens,
           total_tokens: output.usage.inputTokens + output.usage.outputTokens } : undefined };
@@ -209,12 +273,13 @@ export class FastGPTNativeKnowledge {
     this.tickets.set(id, ticket);
     try {
       await input.ports.checkpoint(this.state(ticket));
-      // No chatId: XiaoK supplies the one authorized conversation snapshot.
-      // FastGPT owns only this run, without a second persistent user session.
+      const nativeHistory = input.messages.flatMap<{ role: 'assistant' | 'user'; content: string }>(m => m.role === 'assistant' ? [{ role: m.role, content: m.content }]
+        : m.role === 'user' ? [{ role: m.role, content: m.content.flatMap(p => p.type === 'text' ? [p.text] : []).join('\n') }] : []);
       const response = await fetch(this.config.baseUrl + '/api/v1/chat/completions', {
         method: 'POST', signal: AbortSignal.timeout(150000), headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + this.config.apiKey },
         body: JSON.stringify({ appId: this.config.appId, stream: false, detail: true,
-          variables: { workflowTicket: id }, messages: [{ role: 'user', content: 'AUTO_EXECUTE' }] }),
+          ...(this.config.plainAnswers ? { chatId: 'NO_RECORD_HISTORIES', retainDatasetCite: true } : {}),
+          variables: { workflowTicket: id }, messages: this.config.plainAnswers ? nativeHistory : [{ role: 'user', content: 'AUTO_EXECUTE' }] }),
       });
       const packet = await response.json();
       this.config.record({ kind: 'native_workflow', status: response.status, response: JSON.parse(JSON.stringify(packet).replaceAll(id, '[expired scoped ticket]')) });
