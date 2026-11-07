@@ -12,14 +12,17 @@ const primary = process.env.DATABASE_URL;
 const root = path.resolve('..'), eid = '1454';
 const baseOut = path.join(root, 'tmp/xiaok-mineru-fastgpt-preview-20261107');
 const reviewed = process.argv.includes('--reviewed'), checkOnly = process.argv.includes('--check-only');
-const out = path.resolve(process.argv.find(x => x.startsWith('--out='))?.slice(6) || (reviewed ? path.join(baseOut, 'ocr-review') : baseOut));
+const reviewInputArg = process.argv.find(x => x.startsWith('--review-input='))?.slice('--review-input='.length);
+const reviewInput = reviewInputArg ? path.resolve(reviewInputArg) : undefined;
+if (reviewInput) assert.ok(reviewed && reviewInput.startsWith(path.join(root, 'tmp') + path.sep));
+const out = path.resolve(process.argv.find(x => x.startsWith('--out='))?.slice(6) || reviewInput || (reviewed ? path.join(baseOut, 'ocr-review') : baseOut));
 assert.ok(out.startsWith(path.join(root, 'tmp') + path.sep));
 const preparing = process.argv.includes('--prepare'), live = process.argv.includes('--live'), engineering = process.argv.includes('--engineering');
 assert.equal([preparing, live, engineering].filter(Boolean).length, 1, 'Choose --prepare, --engineering or --live');
 assert.ok((!reviewed || preparing) && (!checkOnly || reviewed), 'Use --prepare --reviewed [--check-only] for the reviewed draft import');
 fs.mkdirSync(out, { recursive: true });
 process.env.DATABASE_URL = JSON.parse(fs.readFileSync(path.join(root, 'tmp/xiaok-vector/connection.private.json'), 'utf8')).DATABASE_URL;
-process.env.XIAOK_FASTGPT_RETRIEVAL_FILE = path.join(reviewed ? baseOut : out, 'retrieval.private.json');
+process.env.XIAOK_FASTGPT_RETRIEVAL_FILE = path.join(reviewInput ?? (reviewed ? baseOut : out), 'retrieval.private.json');
 const target = new URL(process.env.DATABASE_URL!);
 assert.equal(target.hostname, '127.0.0.1'); assert.equal(target.port, '55432'); assert.equal(target.pathname, '/xiaok_embedding_eval');
 const imp = (p: string) => import(pathToFileURL(path.resolve(p)).href);
@@ -42,11 +45,11 @@ const sha = (s: Buffer | string) => createHash('sha256').update(s).digest('hex')
 const json = (p: string) => JSON.parse(fs.readFileSync(p, 'utf8'));
 const save = (name: string, value: unknown) => fs.writeFileSync(path.join(out, name), JSON.stringify(value, null, 2));
 const sourceSha256 = 'efcdc6f1e01ec848d0908e99ddd08929a7f0f07b3942f5b539864361f4aa049b';
-const corpusFile = path.join(root, 'tmp/mineru-online-test/corpus-chunks.json'), corpus = json(corpusFile);
+const corpusFile = reviewInput ? path.join(reviewInput, 'corpus-chunks.json') : path.join(root, 'tmp/mineru-online-test/corpus-chunks.json'), corpus = json(corpusFile);
 const config = json(process.env.XIAOK_FASTGPT_RETRIEVAL_FILE);
 assert.equal(config.enterpriseId, eid); assert.equal(config.corpusSha256, sha(fs.readFileSync(corpusFile)));
 assert.equal(sha(fs.readFileSync(path.join(root, 'docs/装修施工标准手册制度规范/精艺.pdf'))), sourceSha256);
-const previous = reviewed ? json(path.join(baseOut, 'preparation.json')) : null;
+const previous = reviewed ? json(path.join(baseOut, reviewInput ? 'ocr-review/preparation.json' : 'preparation.json')) : null;
 const reviewPath = path.join(out, 'reviewed-contexts.json');
 const reviewHash = reviewed ? sha(fs.readFileSync(reviewPath)) : undefined;
 const reviewInputs = new Map<number, any>(reviewed ? json(reviewPath).map((r: any) => [r.page, r]) : []);
@@ -54,16 +57,20 @@ const pageInput = (page: number) => ({ page, sourceSha256, corpusSha256: config.
   chunks: corpus.filter((x: any) => x.pdf_page === page), ...(reviewed ? { review: reviewInputs.get(page) } : {}) });
 if (reviewed) {
   assert.equal(previous.status, 'ready'); assert.equal(previous.enterpriseId, eid);
-  assert.equal(previous.sourceSha256, sourceSha256); assert.equal(previous.corpusSha256, config.corpusSha256);
+  assert.equal(previous.sourceSha256, sourceSha256);
+  if (!reviewInput) assert.equal(previous.corpusSha256, config.corpusSha256);
   assert.equal(reviewInputs.size, 28);
   const { parseMineruPage } = await imp('src/lib/assistant/knowledge/mineru.ts');
   const { fileContent, filePassages } = await imp('src/lib/assistant/knowledge/source-file.ts');
   const layout = path.join(root, 'tmp/mineru-online-test/result-p1-28/85e6f144-ffa5-4178-9909-abfbeb6a9c46_content_list.json');
-  const layoutHash = sha(fs.readFileSync(layout)), pages = [];
+  const layoutFiles: string[] = reviewInput ? json(path.join(reviewInput, 'review-layout-paths.json')) : [layout];
+  const layoutHashes = new Set(layoutFiles.map(f => {
+    assert.ok(path.resolve(f).startsWith(path.join(root, 'tmp') + path.sep)); return sha(fs.readFileSync(f));
+  })), pages = [];
   for (let page = 1; page <= 28; page++) {
     const input = pageInput(page), review = input.review;
-    assert.ok(review); assert.equal(review.layoutSha256, layoutHash);
-    assert.equal(review.pageImageSha256, sha(fs.readFileSync(path.join(out, 'pages', `page-${String(page).padStart(2, '0')}.png`))));
+    assert.ok(review); assert.ok(layoutHashes.has(review.layoutSha256));
+    assert.equal(review.pageImageSha256, sha(fs.readFileSync(path.join(reviewInput ? path.join(baseOut, 'ocr-review') : out, 'pages', `page-${String(page).padStart(2, '0')}.png`))));
     const parsed = parseMineruPage(input), legacy = parseMineruPage({ ...input, review: undefined });
     assert.deepEqual(parsed.blocks.map((b: any) => [b.id, b.text, b.cells]), legacy.blocks.map((b: any) => [b.id, b.text, b.cells]));
     const file = { assetId: 'preflight', version: 1, hash: sourceSha256, name: '精艺.pdf', format: 'pdf', parsed, review: null };
@@ -71,10 +78,10 @@ if (reviewed) {
       maxPassageChars: Math.max(0, ...filePassages(file).map((p: any) => p.text.length)), warnings: parsed.warnings });
   }
   assert.equal(pages.reduce((n, p) => n + p.tables, 0), 42);
-  assert.equal(pages.filter(p => p.blocks).length, 24);
-  save('parser-preflight.json', { sourceSha256, layoutHash, reviewHash, corpusSha256: config.corpusSha256, pages, originalBlockTextAndCellsUnchanged: true });
+  assert.equal(pages.filter(p => p.blocks).length, reviewInput ? 28 : 24);
+  save('parser-preflight.json', { sourceSha256, layoutHashes: [...layoutHashes], reviewHash, corpusSha256: config.corpusSha256, pages, originalBlockTextAndCellsUnchanged: true });
   if (checkOnly) {
-    console.log(JSON.stringify({ pages: pages.length, tables: 42, nonempty: 24, maxPageChars: Math.max(...pages.map(p => p.chars)),
+    console.log(JSON.stringify({ pages: pages.length, tables: 42, nonempty: pages.filter(p => p.blocks).length, maxPageChars: Math.max(...pages.map(p => p.chars)),
       maxPassageChars: Math.max(...pages.map(p => p.maxPassageChars)) }));
     process.exit(0);
   }
@@ -174,7 +181,7 @@ try {
         save('preparation.json', preparation);
       }
       // Index only the fixed preview sources, leaving all other pages as drafts.
-      if ((reviewed ? page === 14 : [14, 27].includes(page)) && !part.indexed) {
+      if ((reviewInput ? [9, 10, 14, 16, 20, 23].includes(page) : reviewed ? page === 14 : [14, 27].includes(page)) && !part.indexed) {
         let detail = await service.execute('detail', { documentId: part.documentId });
         let draft = detail.versions.find((x: any) => String(x.id) === part.versionId);
         if (!draft.source_file.review) {

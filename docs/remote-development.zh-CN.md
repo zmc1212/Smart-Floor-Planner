@@ -1,5 +1,15 @@
 # 远端开发连接记录
 
+<!-- xiaok-mineru-native -->
+
+**远端MinerU：部署及本地解析Implemented，小K真实问答仍Limited。** 用户2026-11-07明确授权，专用目录`D:/Smart-Floor-Planner-Dev/mineru-pilot`已安装独立Python3.12.10/MinerU4.1.7，依赖锁、官方Python签名及hash留存。Windows原生ONNX/DirectML+llama.cpp已识别RTX4080；19模型文件约2.12GB来自官方OpenDataLab ModelScope库，独立状态/缓存、关闭遥测、本机推理，不改全局PATH/Python或默认Worker，不设公网服务端口。现有20容器身份/启动/状态/全部挂载字段前后一致（仅规范化挂载排序），未重启或迁移其他服务。
+
+`admin/deployment/mineru/install-native.ps1`安装；`run-native.ps1`支持Version/Hardware/DownloadModels/VerifyModels/Parse，必须在专用根内读写且拒绝覆盖输出。前台SSH任务保留运行，避免SSH结束时丢失后台进程。例：`powershell -NoProfile -ExecutionPolicy Bypass -File D:/Smart-Floor-Planner-Dev/mineru-pilot/run-native.ps1 -Action Parse -InputFile input/jingyi.pdf -OutputFile output/jingyi-next.zip -Tier standard`。
+
+原精艺.pdf完整30页standard解析117.86秒，重点6页41.68秒；输入/ZIP传输hash一致。4页图注/脚注16块已回填，20页书页37/38均123㎡；basic裁块识别123但漏m，仅留诊断。原表单元格不改，独立108块FastGPT校核索引不覆盖旧索引；隔离28员工草稿均未发布，仅本轮6页索引。小K10971书页正确但解释/引用失败，固定批停止，余5问未派发，见[合同](xiaok-assistant-phase-2.zh-CN.md#minerufastgpt员工草稿预览limited)。下载超时、镜像回退和驱动失败保留，金额未知不记零。版本/依赖/模型指纹、完整原件和[完整性回执](../tmp/xiaok-mineru-fastgpt-preview-20261107/ocr-followup/ocr-integrity.json)在原ocr-followup目录。SSH身份及生产边界沿下文，原PDF/主库376–405/410–411不替换。
+
+<!-- /xiaok-mineru-native -->
+
 <!-- xiaok-fastgpt-capabilities -->
 **阶段/知识开发工作流：Limited。** 原授权v4.17.4实例保留阶段/旧包裹应用，并新增Qwen及用户指定deepseek-v4.1-flash-1017两个私有原生问答对照应用；独立传输别名/渠道仅指向短期票据回环18310，实际模型仍走原获权供应商网关/逐次计量。保护配置tmp/fastgpt-native-qa-20261106/runtime.private.json及runtime-deepseek.private.json。当前管理登录已通过官方API验证，仅留ACL保护会话，不存密码；未重置root或切默认模型。五个原生问答批均停，完整旅程未通过；现已停止新增实模。设置、微云1454/55432合成夹具及原生注入恢复，源码/发布配置drift空，队列/待投递0。反向18310、reader及egress沿finally关闭，所属18300转发在收拢时释放。见[合同](xiaok-assistant-phase-2.zh-CN.md#fastgpt阶段提醒与知识问答工作流limited)。未迁业务容器/数据库，未扩生产、真实客户或外部消息授权。
 

@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { parseMineruPage, type MineruPage } from '../knowledge/mineru';
 import { fastGPTCandidates, fastGPTPreviewProtocol, type FastGPTRetrievalConfig } from '../knowledge/fastgpt-retrieval';
 import { constructionReadOnlyTools } from '../agent/worker';
+import { fileLabel } from '../knowledge/source-file';
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const table = '【来源:精艺装修手册 PDF第14页|书页25-26|样板面积97㎡】\n[表格]\n<table><tr><td rowspan="2">项目</td><td colspan="2">样板价格</td></tr><tr><td>数量</td><td>原表合价</td></tr><tr><td>鞋柜</td><td>22</td><td>1568.00</td></tr></table>';
@@ -65,6 +66,22 @@ test('reviewed MinerU rows bind only the conditions of their own original table'
   assert.deepEqual(parsed.blocks.map(b => b.cells), parseMineruPage({ ...reviewed, review: undefined }).blocks.map(b => b.cells));
   assert.throws(() => parseMineruPage({ ...reviewed, review: { ...reviewed.review!, tables: reviewed.review!.tables.slice(0, 2) } }), /context_changed/);
   assert.throws(() => parseMineruPage({ ...reviewed, chunks: chunks.map(c => c.chunkIndex === 40 ? { ...c, q: c.q.replace('17900', '18000') } : c) }), /context_changed/);
+});
+test('reviewed text and table keep their distinct printed pages inside one PDF spread', () => {
+  const caption = page.chunks[0].q.split('\n')[0] + '\n定制柜预算表\n建筑装修面积：97m²';
+  const input: MineruPage = { ...page, chunks: [{ ...page.chunks[0], chunkIndex: 38, q: caption }, ...page.chunks],
+    review: { protocol: 'mineru-table-review-v1', layoutSha256: 'c'.repeat(64), pageImageSha256: 'd'.repeat(64),
+      tables: [{ chunkIndex: 39, chunkSha256: hash(table), region: [520, 20, 990, 480], bookPage: '26', context: [] }],
+      texts: [{ chunkIndex: 38, chunkSha256: hash(caption), region: [20, 20, 480, 100], bookPage: '25' }] } };
+  const parsed = parseMineruPage(input);
+  assert.equal(parsed.parser, 'mineru-reviewed-page-v4');
+  assert.deepEqual(parsed.blocks[0].section, ['【来源:精艺装修手册 PDF第14页|书页25】']);
+  assert.deepEqual(parsed.blocks[1].section, ['【来源:精艺装修手册 PDF第14页|书页26】']);
+  assert.equal(parsed.blocks[0].page, 1);
+  assert.equal(fileLabel(parsed.blocks[0]), '原PDF第14页 · 书页25 · 段落1');
+  assert.match(fileLabel(parsed.blocks[1]), /^原PDF第14页 · 书页26 · 表1/);
+  assert.throws(() => parseMineruPage({ ...input, review: { ...input.review!, texts: [] } }), /context_changed/);
+  assert.throws(() => parseMineruPage({ ...input, review: { ...input.review!, texts: [{ ...input.review!.texts![0], chunkSha256: 'e'.repeat(64) }] } }), /context_changed/);
 });
 const config: FastGPTRetrievalConfig = { protocol: fastGPTPreviewProtocol, enterpriseId: '1454', baseUrl: 'http://127.0.0.1:18300',
   apiKey: 'fixture-only', datasetId: 'a'.repeat(24), collectionId: 'b'.repeat(24), corpusSha256: 'b'.repeat(64), chunks: [{ chunkIndex: 39, sha256: hash(table) }] };

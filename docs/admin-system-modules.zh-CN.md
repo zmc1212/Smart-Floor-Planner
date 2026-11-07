@@ -5,11 +5,11 @@
 <!-- /xiaok-site-language-current -->
 
 <!-- xiaok-mineru-fastgpt-preview -->
-**MinerU/FastGPT员工草稿预览：有限范围Implemented，完整企业知识问答仍Limited。** 后台`/assistant-knowledge`沿用仅本人可见的试问、ConversationService和现有Agent，仅显式`XIAOK_FASTGPT_RETRIEVAL_FILE`匹配微云1454时启用。服务端`importMineru`保留原PDF和来源hash；`mineru-reviewed-page-v3`逐表绑定已核表题、原印面积、排除项、书页及原版面位置。FastGPT仅给核验过的候选，获权现行原文仍由KnowledgeRetriever/Evidence供给。同一原表多行继承相同排名时，首轮每表最多取两行，再按排名补足；证据上限和来源守卫不变。
+**MinerU/FastGPT员工草稿预览：解析/定位有限范围Implemented，完整企业知识问答仍Limited。** 后台`/assistant-knowledge`沿用本人试问、ConversationService和原Agent；仅显式`XIAOK_FASTGPT_RETRIEVAL_FILE`匹配微云1454时启用。远端独立MinerU4.1.7已本地GPU解析完整30页。原服务`importMineru`保留原PDF/hash/CAS/未发布守卫；`mineru-reviewed-page-v4`在v3逐表条件之外，校验每个文字块的hash/版面/书页，引用标签显示原PDF页及书页，单页资产物理页仍为1。FastGPT只给核验候选，KnowledgeRetriever/Evidence供当前获权原文，原每表两行首选及5证据上限不变。
 
-隔离库28份候选仍是内部未发布草稿。已逐页对照原图并核42张表的位置和条件，保留导出的原单元格；9/10/16/23页现有导出无可检索正文，PDF20页书页38的面积字符仍待核，未逐格认证OCR。仅本次试问的第14页建立校核稿索引。开发主库原376–405不变，仅410/411发布。本人/租户、知识管理权限及版本/hash/epoch/撤回继续由原服务控制，普通工人和客户无草稿权限；对客C01、默认知识开关、小程序运行时不变。
+隔离28份候选仍为内部未发布草稿。4页9/10/16/23补回16块图注/脚注；20页主材书页37、定制柜38均核实123㎡，相同面积不证明同套预算。14页左柜书页25、右电器/家具26，各自97/83.98㎡及排除条件保留。42表原导出单元格未改，未逐格认证OCR或确认现价。独立FastGPT校核索引108块，仅6页9/10/14/16/20/23新草稿索引ready；原数据集/主库376–405不覆盖，仍仅410/411发布。租户、本人、实时知识管理员、版本/hash/epoch/撤回继续受原服务控制，客户和普通工人不获草稿权限；默认知识关闭，C01/小程序运行时及视觉不变。
 
-第14页固定实模复验两组四份首稿10942–10945通过：左柜97㎡，右侧电器/家具各83.98㎡且仅参考、不含总价，家具追问3000/2000元。已核对草稿引用、刷新重进、撤权和恢复。原漏答10941及10942/10943之后控制器超时保留为独立记录；两份开场正文将跨页简称书页26，右表原引确为26，左柜实际在25。见[二期合同](xiaok-assistant-phase-2.zh-CN.md#minerufastgpt员工草稿预览limited)和[校核回读](../tmp/xiaok-mineru-fastgpt-preview-20261107/ocr-review/audit-reviewed.json)。
+新固定两组各3问在首条10971失败即停，其余5条未执行。原稿书页25/26已正确，但第二段引用缺97㎡来源且推断柜子包含于基础/主材预算，唯一修复未改，`unsupported_model_commitment`拒绝且无助手输出。重进可见原问题、归档及失败反馈；不算真实问答或新引用展示验收通过。权限/改版撤回探针和回读通过，设置/合成账号恢复，所属进程清理。27项相关检查/lint通过；57既有类型诊断无新增。旧10941漏答、10942–10945限定成功及控制器超时原件保留。见[二期合同](xiaok-assistant-phase-2.zh-CN.md#minerufastgpt员工草稿预览limited)、[回读审计](../tmp/xiaok-mineru-fastgpt-preview-20261107/ocr-followup/audit-native.json)和[远端记录](remote-development.zh-CN.md)。
 
 <!-- xiaok-fastgpt-capabilities -->
 **FastGPT阶段/知识工作流：Limited，保存I/O接口已收敛，库存OpenSERP官网产品原文已证，固定主干复验首个供应商403停止。** 显式开发候选沿C01原会话，由FastGPT v4.17.4单一ToolCall控制问答；原服务守获权工具、KnowledgeRetriever/Evidence、租户/来源、持久任务、网关计量及最终校验/保存。原生输入复用既有来源/引用目录与公开内容投影，保留完整原文和引用ID。提交/保存共同依据实时获权来源，调用或空检索不当证据；本地配置错误与供应商明确失败保留原异常处置语义。UI/API路由/schema、默认Worker、生产未切，企业知识关闭。

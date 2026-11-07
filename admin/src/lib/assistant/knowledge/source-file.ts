@@ -23,7 +23,10 @@ export function fileQuoteSpans(text:string,quote:string,start:number) {
 }
 export function fileLabel(b: FileBlock): string {
   if (b.sheet) return [`工作表「${b.sheet}」`, b.range, b.row ? `第${b.row}行` : ''].filter(Boolean).join(' · ');
-  return [b.page ? `PDF第${b.page}页` : b.section.join(' / '), b.table ? `表${b.table}·第${b.row}行` : b.paragraph ? `段落${b.paragraph}` : '', b.cells ? `列${b.cells.map(c => c.span > 1 ? `${c.column}–${c.column + c.span - 1}` : c.column).join('、')}` : ''].filter(Boolean).join(' · ');
+  const location = b.extraction?.review
+    ? `原PDF第${b.extraction.pdfPage}页 · 书页${b.extraction.review.bookPage}`
+    : b.page ? `PDF第${b.page}页` : b.section.join(' / ');
+  return [location, b.table ? `表${b.table}·第${b.row}行` : b.paragraph ? `段落${b.paragraph}` : '', b.cells ? `列${b.cells.map(c => c.span > 1 ? `${c.column}–${c.column + c.span - 1}` : c.column).join('、')}` : ''].filter(Boolean).join(' · ');
 }
 export function filePassages(file: SourceFile) {
   if (!file.parsed) return [];

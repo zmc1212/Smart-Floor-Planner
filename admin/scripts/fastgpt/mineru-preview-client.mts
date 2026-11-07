@@ -10,11 +10,21 @@ const primary = process.env.DATABASE_URL, root = path.resolve('..'), eid = '1454
 const baseOut = path.join(root, 'tmp/xiaok-mineru-fastgpt-preview-20261107');
 const reviewed = process.argv.includes('--reviewed'), contextV2 = process.argv.includes('--source-v2');
 assert.ok(!(reviewed && contextV2));
-const out = reviewed ? path.join(baseOut, 'ocr-review') : baseOut;
+const fixtureArg = process.argv.find(x => x.startsWith('--fixture-dir='))?.slice('--fixture-dir='.length);
+const out = fixtureArg ? path.resolve(fixtureArg) : reviewed ? path.join(baseOut, 'ocr-review') : baseOut;
+assert.ok(out.startsWith(path.join(root, 'tmp') + path.sep));
 const read = (name: string) => JSON.parse(fs.readFileSync(path.join(out, name), 'utf8'));
+const reviewCase = fixtureArg ? read('acceptance-case.json') : undefined;
+if (reviewCase) {
+  assert.ok(reviewed); assert.equal(reviewCase.protocol, 'mineru-native-ocr-bookpage-v1'); assert.equal(reviewCase.trials, 2);
+  assert.ok(Array.isArray(reviewCase.questions) && reviewCase.questions.length === 3
+    && reviewCase.questions.every((q: unknown) => typeof q === 'string' && q.length > 0 && q.length < 1000));
+}
 const fixture = read('preparation.json');
 assert.equal(fixture.status, 'ready'); assert.equal(fixture.enterpriseId, eid);
 const selected = contextV2 ? read('table-context-v2.json').source : fixture.parts.find((p: any) => p.page === (reviewed ? 14 : 27));
+const previewParts = reviewCase ? fixture.parts.filter((p: any) => reviewCase.pages.includes(p.page)) : [selected];
+if (reviewCase) assert.equal(previewParts.length, reviewCase.pages.length);
 const label = process.argv.find(x => x.startsWith('--label='))?.slice(8) || (reviewed ? 'client-reviewed' : 'client-service');
 assert.match(label, /^[a-zA-Z0-9-]+$/);
 const continueFrom = process.argv.find(x => x.startsWith('--continue-reviewed='))?.slice('--continue-reviewed='.length);
@@ -23,7 +33,7 @@ const priorBatch = continueFrom ? read(continueFrom + '.json') : undefined;
 const reportFile = path.join(out, label + '.json');
 assert.ok(!fs.existsSync(reportFile), 'Keep the first client batch intact');
 process.env.DATABASE_URL = JSON.parse(fs.readFileSync(path.join(root, 'tmp/xiaok-vector/connection.private.json'), 'utf8')).DATABASE_URL;
-process.env.XIAOK_FASTGPT_RETRIEVAL_FILE = path.join(baseOut, 'retrieval.private.json');
+process.env.XIAOK_FASTGPT_RETRIEVAL_FILE = path.join(fixtureArg ? out : baseOut, 'retrieval.private.json');
 const url = new URL(process.env.DATABASE_URL!); assert.equal(url.hostname, '127.0.0.1'); assert.equal(url.port, '55432'); assert.equal(url.pathname, '/xiaok_embedding_eval');
 const { sql } = require('drizzle-orm');
 const { withTenantTransaction, withPlatformTransaction } = require(path.resolve('src/db/transaction.ts'));
@@ -40,8 +50,8 @@ const { lockAssistantAcceptance } = await import('../assistant-acceptance-safety
 const tenant = (fn: any) => withTenantTransaction(eid, fn), platform = (fn: any) => withPlatformTransaction(fn);
 const actor = { enterpriseId: eid, principal: { kind: 'admin', adminId: fixture.adminIds[0] }, contextVersion: 1, capabilities: ['assistant.preview.self'] };
 const service = new ConversationService(actor), knowledge = new KnowledgeService({ enterpriseId: eid, adminId: fixture.adminIds[0] });
-const questions = reviewed ? ['我在看手册里97平米那页柜子预算，右边电器、家具也都是97平米的吗？能算进装修总价吗？',
-  '那家具参考表里，沙发茶几和主卧室床各多少钱？'] : ['123平米那份主材预算里，瓷砖类的小计是多少？'];
+const questions: string[] = reviewCase?.questions ?? (reviewed ? ['我在看手册里97平米那页柜子预算，右边电器、家具也都是97平米的吗？能算进装修总价吗？',
+  '那家具参考表里，沙发茶几和主卧室床各多少钱？'] : ['123平米那份主材预算里，瓷砖类的小计是多少？']);
 const trials = continueFrom ? 1 : reviewed || contextV2 ? 2 : 1;
 if (priorBatch) {
   assert.equal(priorBatch.status, 'failed'); assert.match(priorBatch.error, /Client controller timed out/);
@@ -72,10 +82,12 @@ const binding = () => {
   for (const f of ['package-lock.json', 'package.json', '.env.local']) inputs.add(path.resolve(f));
   inputs.add(process.env.XIAOK_FASTGPT_RETRIEVAL_FILE!);
   if (reviewed) for (const f of ['reviewed-contexts.json', 'preparation.json']) inputs.add(path.join(out, f));
+  if (reviewCase) for (const f of ['acceptance-case.json', 'corpus-chunks.json', 'corpus-provenance.json']) inputs.add(path.join(out, f));
   return Object.fromEntries([...inputs].sort().map(f => [path.relative(root, f).replaceAll('\\', '/'), createHash('sha256').update(fs.readFileSync(f)).digest('hex')]));
 };
 let release: any, before: any, platformBefore: any, accountBefore: any, retired = false, stop = false, seenCommands = 0;
 const cids = new Set<string>();
+const seenCids = new Set<string>();
 const verifyPrevious = (runs: any[]) => {
   if (reviewed && runs.length) {
     const result = read('review-' + runs.at(-1).runId + '.json');
@@ -111,9 +123,25 @@ try {
     assert.equal((await knowledge.execute('job', { jobId: index.jobId })).status, 'succeeded');
   }
   if (reviewed) {
-    assert.equal(draft.source_file.parsed.parser, 'mineru-reviewed-page-v3');
+    assert.equal(draft.source_file.parsed.parser, reviewCase?.parser ?? 'mineru-reviewed-page-v3');
     assert.equal(draft.published_at, null); assert.equal(detail.document.audience, 'staff_internal');
     report.sourceBinding = { editVersion: draft.edit_version, contentHash: draft.content_hash, assetHash: draft.source_file.hash, reviewHash: fixture.reviewHash };
+  }
+  if (reviewCase) {
+    report.sourceBindings = [];
+    for (const part of previewParts) {
+      const detail = await knowledge.execute('detail', { documentId: part.documentId });
+      const v = detail.versions.find((v: any) => String(v.id) === part.versionId);
+      assert.equal(v.published_at, null); assert.equal(v.index_status, 'ready'); assert.equal(v.indexed_hash, v.content_hash);
+      assert.equal(v.source_file.parsed.parser, reviewCase.parser); assert.equal(detail.document.audience, 'staff_internal');
+      report.sourceBindings.push({ page: part.page, documentId: part.documentId, versionId: part.versionId, editVersion: v.edit_version,
+        contentHash: v.content_hash, assetHash: v.source_file.hash });
+    }
+    report.seedConversations = [];
+    for (let trial = 0; trial < trials; trial++) {
+      const c = await service.create(randomUUID(), { audience: 'staff_internal', draftVersionIds: previewParts.map((p: any) => p.versionId) });
+      cids.add(String(c.id)); report.seedConversations.push(String(c.id));
+    }
   }
   report.bindingBefore = binding();
   if (priorBatch) {
@@ -149,10 +177,10 @@ try {
         on c.enterprise_id=r.enterprise_id and c.id=r.conversation_id join app.assistant_messages m on m.enterprise_id=r.enterprise_id and m.id=r.trigger_message_id
         where r.enterprise_id=${eid} and r.id=${job.runId}`));
       assert.equal(context.purpose, 'knowledge_preview');
-      assert.deepEqual(context.entry_snapshot.preview.drafts.map((d: any) => d.id), [selected.versionId]);
+      assert.deepEqual(context.entry_snapshot.preview.drafts.map((d: any) => d.id).sort(), previewParts.map((p: any) => p.versionId).sort());
       const question = context.content.blocks.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n');
-      const cid = String(context.id), alreadySeen = cids.has(cid);
-      cids.add(cid);
+      const cid = String(context.id), alreadySeen = seenCids.has(cid);
+      cids.add(cid); seenCids.add(cid);
       if (!retired) {
         const runs = report.runs.filter((r: any) => !r.revoked), turn = runs.length % questions.length;
         assert.ok(runs.length < report.maxNormalRuns); assert.equal(question, questions[turn]);
@@ -167,6 +195,7 @@ try {
         const followup = await retrieveKnowledge(cid, actor, questions[1], Number(before.knowledge_epoch));
         fs.writeFileSync(path.join(out, label + '-retrieval-preflight.json'), JSON.stringify({ opening: retrieved, followup }, null, 2), { flag: 'wx' });
         assert.ok(retrieved.diagnostic.externalIndex);
+        if (!reviewCase) {
         assert.ok(retrieved.evidence.every((e: any) => e.ref.version === selected.versionId));
         assert.ok(retrieved.evidence.some((e: any) => [38, 39].includes(e.file?.extraction?.chunkIndex) && e.text.includes('97m²')));
         const right = retrieved.evidence.filter((e: any) => [40, 42].includes(e.file?.extraction?.chunkIndex));
@@ -177,6 +206,13 @@ try {
           assert.ok(followup.evidence.some((e: any) => e.ref.version === selected.versionId && e.file?.extraction?.chunkIndex === 42
             && e.text.includes(name) && e.text.includes(value)), name);
         }
+        } else {
+          assert.ok(retrieved.evidence.length && followup.evidence.length);
+          assert.ok([...retrieved.evidence, ...followup.evidence].every((e: any) => previewParts.some((p: any) => p.versionId === e.ref.version)
+            && e.file?.extraction?.review?.bookPage));
+        }
+        const probe = retrieved.evidence.find((e: any) => e.ref.version === selected.versionId);
+        assert.ok(probe);
         await assert.rejects(() => new ConversationService({ ...actor, principal: { kind: 'admin', adminId: fixture.adminIds[1] } }).detail(cid), /assistant_resource_not_found/);
         await assert.rejects(() => new ConversationService({ ...actor, enterpriseId: '2385' }).detail(cid));
         await assert.rejects(() => new ConversationService({ ...actor, principal: { kind: 'user', userId: '1' }, capabilities: ['assistant.chat.self'] }).detail(cid));
@@ -185,11 +221,11 @@ try {
         const rollback = new Error('rollback source-revision probe');
         await assert.rejects(() => tenant(async (tx: any) => {
           const c = await one(tx, sql`select * from app.assistant_conversations where enterprise_id=${eid} and id=${cid}`);
-          assert.ok(await resolveEvidence(tx, actor, c, right[0]));
+          assert.ok(await resolveEvidence(tx, actor, c, probe));
           await tx.execute(sql`update app.assistant_knowledge_versions set edit_version=edit_version+1
             where enterprise_id=${eid} and id=${selected.versionId} and published_at is null`);
           await assert.rejects(() => validatePreviewSnapshot(tx, actor, c), /context_changed/);
-          assert.equal(await resolveEvidence(tx, actor, c, right[0]), undefined);
+          assert.equal(await resolveEvidence(tx, actor, c, probe), undefined);
           throw rollback;
         }), error => error === rollback);
         report.guards = { otherOwnerDenied: true, crossTenantDenied: true, customerPrincipalDenied: true, reviewedRevisionRollbackDenial: true };
