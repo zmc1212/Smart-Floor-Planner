@@ -1,0 +1,53 @@
+{
+  "protocol": "xiaok-ppt-craft-preview-v1",
+  "source": {
+    "file": "docs/装修施工标准手册制度规范/家客来小K装修服务功能方案.pptx",
+    "sha256": "9221a83057fb1b2aa691ecde6cf60a0aa2dfb0d352aad4b6eab2cb6f15209af4",
+    "kind": "stage_guidance_examples"
+  },
+  "drafts": [
+    {
+      "slide": 17,
+      "image": "ppt/media/image19.png",
+      "imageSha256": "0a22f63e3445dddaeea10418e52ddcac2ff71d1bd5074ddf6de08205ccbf7369",
+      "title": "小K方案PPT第17页·水路施工（阶段提示示例）",
+      "body": "这个阶段主要在做家里的用水管路。"
+    },
+    {
+      "slide": 18,
+      "image": "ppt/media/image21.png",
+      "imageSha256": "86c7bfe230ab59fd194bfb5fd2f200b07d31f1772bc04cf636d4e126f9631045",
+      "title": "小K方案PPT第18页·防水施工和后续检查（阶段提示示例）",
+      "body": "接下来会安排卫生间防水施工和后续检查。\n\n施工和后续检查，由项目团队安排"
+    },
+    {
+      "slide": 19,
+      "image": "ppt/media/image22.png",
+      "imageSha256": "dd4e139cb56bc7e381dc12b76da30a72a4a375de51bd67f2dcbf2c547fff3339",
+      "title": "小K方案PPT第19页·瓷砖排版和铺贴（阶段提示示例）",
+      "body": "接下来师傅会先做排版，再安排铺贴。\n\n喜欢的纹理与方向，可以发图说明。\n\n具体排版由设计师和师傅核对。"
+    },
+    {
+      "slide": 21,
+      "image": "ppt/media/image25.png",
+      "imageSha256": "3a201fa305056fc6db670be80c83ae4b56c3617006e8aba635db8e2f3e387f35",
+      "title": "小K方案PPT第21页·门窗和成品保护（阶段提示示例）",
+      "body": "施工期间，现场会保留门窗和成品保护。\n\n保护材料先保留\n交给施工团队处理。"
+    }
+  ],
+  "acceptance": {
+    "trials": 2,
+    "questions": [
+      {
+        "text": "客厅地砖还没铺，我想让纹理顺着窗户的方向走，师傅会先怎么弄？",
+        "slide": 19,
+        "expected": "先排版再铺贴。纹理方向可以发图说明，具体排版由设计师和师傅核对。"
+      },
+      {
+        "text": "那卫生间防水做完还会检查吗？这份说明里有没有写要等多久？",
+        "slide": 18,
+        "expected": "项目团队安排防水施工和后续检查。PPT未给具体等待时间。"
+      }
+    ]
+  }
+}

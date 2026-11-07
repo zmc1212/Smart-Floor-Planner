@@ -2,18 +2,21 @@
 
 ## Default Local Test Enterprise And Knowledge
 
-- User instruction, 2026-10-31: subsequent local development and test journeys
-  default to **微云 (enterprise ID `1454`)** and
-  `docs/装修施工标准手册制度规范/精艺.pdf`, SHA-256
-  `efcdc6f1e01ec848d0908e99ddd08929a7f0f07b3942f5b539864361f4aa049b`.
+- Local development and test journeys default to **微云 (enterprise ID `1454`)**.
+- User instruction, 2026-11-07: V1 enterprise knowledge and acceptance use only
+  the craftsmanship content of `家客来小K装修服务功能方案.pptx`. Use the verified
+  passages in `admin/scripts/fixtures/xiaok-ppt-craft-preview.json` for staff
+  draft trials. Discuss budgets and quotes offline. Budget tables, price
+  inference and quote scenarios are outside the V1 knowledge and test scope.
 - Reuse its retained labelled test accounts/projects; create missing synthetic
   records inside this enterprise through existing services and preserve real
   customer data. Cross-tenant denial checks may use an explicit control tenant.
-- Thirty page-preserving local OCR copies are documents `376`–`405`. Only
-  visually checked construction pages29/30 (documents `404`/`405`, versions
-  `410`/`411`) are published for customer-scope tests; the other28 are internal
-  drafts pending OCR/table review. Recheck current status; do not auto-publish
-  drafts, replace existing sources or turn sample prices into current terms.
+- Retain the historical source `docs/装修施工标准手册制度规范/精艺.pdf`,
+  SHA-256 `efcdc6f1e01ec848d0908e99ddd08929a7f0f07b3942f5b539864361f4aa049b`.
+  Its primary documents `376`–`405` and the previously approved customer-scope
+  versions `410`/`411` on `404`/`405` are read-only historical controls.
+  Keep the isolated full-manual preview corpus out of V1 and retain its receipts
+  for audit. The PPT additions stay unpublished staff drafts.
 - This is development testing, not production seeding or rollout permission;
   original permission/revocation requirements remain in force.
 

@@ -11,9 +11,23 @@ The22 actual calls observed14852 input/1895 output tokens; currency is unknown. 
 <!-- /xiaok-site-language-current -->
 
 <!-- xiaok-mineru-fastgpt-preview -->
-## MinerU/FastGPT staff draft preview (Limited)
+## V1 PPT craftsmanship preview (Limited)
 
-The capability reuses Admin `/assistant-knowledge`, owner-private previews, ConversationService, durable jobs and the current Agent for enterprise1454 staff drafts and bounded real-dialogue checks. All28 candidates remain unpublished. Explicit `XIAOK_FASTGPT_RETRIEVAL_FILE`, the exact tenant and fastgpt-mineru-preview-v1 snapshot are required. Live knowledge-manager, owner, version/hash/epoch and revocation guards remain; customers/ordinary workers gain no draft access. Default enterprise knowledge, Worker, C01, Mini and production do not switch.
+On2026-11-07 the user limited V1 enterprise knowledge to craftsmanship passages in 家客来小K装修服务功能方案 and assigned budgets and quotes to offline discussion. The isolated Weiyun1454 staff fixtures use verified text from slides17/18/19/21 of the88-slide deck for water routing, waterproofing inspection, tile layout and finish protection. Existing KnowledgeService creates and indexes four manual_text drafts, documents2511–2514 and versions2756–2759. The manifest records the original passages, slide numbers and deck/image hashes.
+
+The existing service retired28 prior mixed full-manual candidates. A retired indexed version fails draft selection. Originals and the separate FastGPT index remain audit evidence. The current owner-private Admin preview selects only four PPT drafts through native KnowledgeRetriever/Evidence and quotation selection. The staff scope has zero active published sources and all four selected drafts are internal/unpublished. Other-manager, control-tenant, current synthetic customer and revision probes passed. Primary376–405 match the read-only baseline with only410/411 published.
+
+Actual retrieval for10972 included all51 characters of the slide19 passage. Replaying the same source ID and hash yields three candidates covering layout before tiling, sending a picture of the desired texture, and review by the designer and installer. The saved first reply selected the first quotation, which reopens with its draft citation. Native preview favors a directly answering quote. The question explicitly asks what happens first, while the fixed rubric additionally requires the communication and review steps. Offline selection of all three succeeds. The observed gap concerns excerpt choice and the question's coverage of the rubric. See [selection replay](../tmp/xiaok-mineru-fastgpt-preview-20261107/craft-only/selection-replay-10972.json).
+
+The original client batch stopped after one saved reply because its driver incorrectly required an Agent checkpoint. Three remaining turns were not dispatched. The driver now checks one native model/answer receipt. The first reply still lacks the additional communication points, and full craft dialogue remains unaccepted. Actual usage was four indexing embeddings with89 input tokens, query42, preflight42/39, and one text attempt3324 with unavailable tokens and cost. Original bindings show no drift. Settings and the synthetic credential/menu were restored, active job queue0. Scoped lint and plan checks passed.
+
+In admin, scripts/xiaok-ppt-craft-preview.mts prepares the isolated sources. scripts/fastgpt/mineru-preview-client.mts --reviewed --fixture-dir=<craft-only> reads the fixed PPT manifest and uses the existing preview entry. See [readback audit](../tmp/xiaok-mineru-fastgpt-preview-20261107/craft-only/audit-ppt-craft.json). The historical batch and accounting below remain retained.
+
+> Historical full-manual MinerU/FastGPT evidence. The user scoped the current V1 preview to the PPT passages above.
+
+### MinerU/FastGPT staff draft preview (Limited)
+
+The earlier full-manual pilot reused Admin `/assistant-knowledge`, owner-private previews, ConversationService, durable jobs and the current Agent for enterprise1454 staff drafts and bounded real-dialogue checks. All28 candidates remain unpublished. Explicit `XIAOK_FASTGPT_RETRIEVAL_FILE`, the exact tenant and fastgpt-mineru-preview-v1 snapshot are required. Live knowledge-manager, owner, version/hash/epoch and revocation guards remain; customers/ordinary workers gain no draft access. Default enterprise knowledge, Worker, C01, Mini and production do not switch.
 
 Server-only KnowledgeService.importMineru retains original PDF asset hashes, CAS, unpublished checks and real receipts; HTTP does not expose it. V3 binds each table to its title/area/exclusions/book page/layout hashes. V4 additionally requires complete non-table chunk hash/normalized-region/book-page bindings, rejecting missing, duplicate or stale mappings. Physical page1 remains correct for the preserved single-page asset; original PDF/book pages enter paragraph text and citation labels. All42 original exported tables retain cells, spans and structural bands. Page-wide cleaner areas and preceding-paragraph inheritance do not supply table conditions; printed arithmetic and budget identities are not rewritten.
 

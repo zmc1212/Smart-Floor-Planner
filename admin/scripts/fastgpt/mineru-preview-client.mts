@@ -14,15 +14,29 @@ const fixtureArg = process.argv.find(x => x.startsWith('--fixture-dir='))?.slice
 const out = fixtureArg ? path.resolve(fixtureArg) : reviewed ? path.join(baseOut, 'ocr-review') : baseOut;
 assert.ok(out.startsWith(path.join(root, 'tmp') + path.sep));
 const read = (name: string) => JSON.parse(fs.readFileSync(path.join(out, name), 'utf8'));
-const reviewCase = fixtureArg ? read('acceptance-case.json') : undefined;
-if (reviewCase) {
-  assert.ok(reviewed); assert.equal(reviewCase.protocol, 'mineru-native-ocr-bookpage-v1'); assert.equal(reviewCase.trials, 2);
-  assert.ok(Array.isArray(reviewCase.questions) && reviewCase.questions.length === 3
-    && reviewCase.questions.every((q: unknown) => typeof q === 'string' && q.length > 0 && q.length < 1000));
-}
 const fixture = read('preparation.json');
 assert.equal(fixture.status, 'ready'); assert.equal(fixture.enterpriseId, eid);
-const selected = contextV2 ? read('table-context-v2.json').source : fixture.parts.find((p: any) => p.page === (reviewed ? 14 : 27));
+const pptCraft = fixture.protocol === 'xiaok-ppt-craft-preview-v1';
+const craftManifest = pptCraft ? path.resolve('scripts/fixtures/xiaok-ppt-craft-preview.json') : undefined;
+const craftInput = craftManifest ? JSON.parse(fs.readFileSync(craftManifest, 'utf8')) : undefined;
+if (craftManifest) {
+  assert.ok(fixtureArg && reviewed);
+  assert.equal(createHash('sha256').update(fs.readFileSync(craftManifest)).digest('hex'), fixture.manifestSha256);
+  assert.equal(createHash('sha256').update(fs.readFileSync(path.join(root, craftInput.source.file))).digest('hex'), fixture.sourceSha256);
+}
+const reviewCase = craftInput ? {
+  protocol: craftInput.protocol, trials: craftInput.acceptance.trials,
+  pages: craftInput.drafts.map((draft: { slide: number }) => draft.slide),
+  questions: craftInput.acceptance.questions.map((question: { text: string }) => question.text),
+} : fixtureArg ? read('acceptance-case.json') : undefined;
+if (reviewCase) {
+  assert.ok(reviewed); assert.equal(reviewCase.protocol, pptCraft ? 'xiaok-ppt-craft-preview-v1' : 'mineru-native-ocr-bookpage-v1');
+  assert.equal(reviewCase.trials, 2);
+  assert.ok(Array.isArray(reviewCase.questions) && reviewCase.questions.length === (pptCraft ? 2 : 3)
+    && reviewCase.questions.every((q: unknown) => typeof q === 'string' && q.length > 0 && q.length < 1000));
+}
+const selectedPage = pptCraft ? craftInput.acceptance.questions[0].slide : reviewed ? 14 : 27;
+const selected = contextV2 ? read('table-context-v2.json').source : fixture.parts.find((p: any) => p.page === selectedPage);
 const previewParts = reviewCase ? fixture.parts.filter((p: any) => reviewCase.pages.includes(p.page)) : [selected];
 if (reviewCase) assert.equal(previewParts.length, reviewCase.pages.length);
 const label = process.argv.find(x => x.startsWith('--label='))?.slice(8) || (reviewed ? 'client-reviewed' : 'client-service');
@@ -33,7 +47,7 @@ const priorBatch = continueFrom ? read(continueFrom + '.json') : undefined;
 const reportFile = path.join(out, label + '.json');
 assert.ok(!fs.existsSync(reportFile), 'Keep the first client batch intact');
 process.env.DATABASE_URL = JSON.parse(fs.readFileSync(path.join(root, 'tmp/xiaok-vector/connection.private.json'), 'utf8')).DATABASE_URL;
-process.env.XIAOK_FASTGPT_RETRIEVAL_FILE = path.join(fixtureArg ? out : baseOut, 'retrieval.private.json');
+process.env.XIAOK_FASTGPT_RETRIEVAL_FILE = pptCraft ? '' : path.join(fixtureArg ? out : baseOut, 'retrieval.private.json');
 const url = new URL(process.env.DATABASE_URL!); assert.equal(url.hostname, '127.0.0.1'); assert.equal(url.port, '55432'); assert.equal(url.pathname, '/xiaok_embedding_eval');
 const { sql } = require('drizzle-orm');
 const { withTenantTransaction, withPlatformTransaction } = require(path.resolve('src/db/transaction.ts'));
@@ -80,9 +94,15 @@ const binding = () => {
   };
   for (const f of files) visit(path.resolve(f));
   for (const f of ['package-lock.json', 'package.json', '.env.local']) inputs.add(path.resolve(f));
-  inputs.add(process.env.XIAOK_FASTGPT_RETRIEVAL_FILE!);
-  if (reviewed) for (const f of ['reviewed-contexts.json', 'preparation.json']) inputs.add(path.join(out, f));
-  if (reviewCase) for (const f of ['acceptance-case.json', 'corpus-chunks.json', 'corpus-provenance.json']) inputs.add(path.join(out, f));
+  if (process.env.XIAOK_FASTGPT_RETRIEVAL_FILE) inputs.add(process.env.XIAOK_FASTGPT_RETRIEVAL_FILE);
+  if (reviewed) inputs.add(path.join(out, 'preparation.json'));
+  if (craftManifest) {
+    inputs.add(craftManifest);
+    inputs.add(path.join(root, craftInput.source.file));
+  } else {
+    if (reviewed) inputs.add(path.join(out, 'reviewed-contexts.json'));
+    if (reviewCase) for (const f of ['acceptance-case.json', 'corpus-chunks.json', 'corpus-provenance.json']) inputs.add(path.join(out, f));
+  }
   return Object.fromEntries([...inputs].sort().map(f => [path.relative(root, f).replaceAll('\\', '/'), createHash('sha256').update(fs.readFileSync(f)).digest('hex')]));
 };
 let release: any, before: any, platformBefore: any, accountBefore: any, retired = false, stop = false, seenCommands = 0;
@@ -117,15 +137,16 @@ try {
   await tenant((tx: any) => tx.execute(sql`update app.assistant_enterprise_settings set enabled=true,agent_config=${JSON.stringify(config)}::jsonb,policy_version=policy_version+1,version=version+1 where enterprise_id=${eid}`));
   const detail = await knowledge.execute('detail', { documentId: selected.documentId });
   const draft = detail.versions.find((v: any) => String(v.id) === selected.versionId);
+  if (pptCraft) assert.equal(draft.index_status, 'ready');
   if (draft.index_status !== 'ready') {
     const index = await knowledge.execute('index', { documentId: selected.documentId, versionId: selected.versionId, expectedEditVersion: Number(draft.edit_version) }, randomUUID());
     const lease = await claimKnowledgeJob(); assert.ok(lease); assert.equal(lease.jobId, index.jobId); await runKnowledgeJob(lease);
     assert.equal((await knowledge.execute('job', { jobId: index.jobId })).status, 'succeeded');
   }
   if (reviewed) {
-    assert.equal(draft.source_file.parsed.parser, reviewCase?.parser ?? 'mineru-reviewed-page-v3');
+    if (!pptCraft) assert.equal(draft.source_file.parsed.parser, reviewCase?.parser ?? 'mineru-reviewed-page-v3');
     assert.equal(draft.published_at, null); assert.equal(detail.document.audience, 'staff_internal');
-    report.sourceBinding = { editVersion: draft.edit_version, contentHash: draft.content_hash, assetHash: draft.source_file.hash, reviewHash: fixture.reviewHash };
+    report.sourceBinding = { editVersion: draft.edit_version, contentHash: draft.content_hash, assetHash: draft.source_file?.hash ?? null, reviewHash: fixture.reviewHash };
   }
   if (reviewCase) {
     report.sourceBindings = [];
@@ -133,9 +154,23 @@ try {
       const detail = await knowledge.execute('detail', { documentId: part.documentId });
       const v = detail.versions.find((v: any) => String(v.id) === part.versionId);
       assert.equal(v.published_at, null); assert.equal(v.index_status, 'ready'); assert.equal(v.indexed_hash, v.content_hash);
-      assert.equal(v.source_file.parsed.parser, reviewCase.parser); assert.equal(detail.document.audience, 'staff_internal');
+      assert.equal(detail.document.audience, 'staff_internal');
+      if (pptCraft) {
+        const source = craftInput.drafts.find((entry: { slide: number }) => entry.slide === part.page);
+        assert.equal(detail.document.category, fixture.category);
+        assert.equal(detail.document.status, 'draft');
+        assert.equal(detail.document.source_type, 'manual_text');
+        assert.equal(detail.document.title, source.title);
+        assert.equal(v.body, source.body);
+        assert.equal(v.content_hash, part.contentHash);
+      } else assert.equal(v.source_file.parsed.parser, reviewCase.parser);
       report.sourceBindings.push({ page: part.page, documentId: part.documentId, versionId: part.versionId, editVersion: v.edit_version,
-        contentHash: v.content_hash, assetHash: v.source_file.hash });
+        contentHash: v.content_hash, assetHash: v.source_file?.hash ?? null });
+    }
+    if (pptCraft) {
+      const activeStaff = await tenant((tx: any) => rows(tx, sql`select id from app.assistant_knowledge_documents
+        where enterprise_id=${eid} and audience='staff_internal' and status='active' and published_version_id is not null`));
+      assert.equal(activeStaff.length, 0);
     }
     report.seedConversations = [];
     for (let trial = 0; trial < trials; trial++) {
@@ -194,8 +229,14 @@ try {
         const retrieved = await retrieveKnowledge(cid, actor, questions[0], Number(before.knowledge_epoch));
         const followup = await retrieveKnowledge(cid, actor, questions[1], Number(before.knowledge_epoch));
         fs.writeFileSync(path.join(out, label + '-retrieval-preflight.json'), JSON.stringify({ opening: retrieved, followup }, null, 2), { flag: 'wx' });
+        if (pptCraft) {
+          assert.equal(retrieved.diagnostic.externalIndex, undefined);
+          assert.ok(retrieved.evidence.some((e: any) => e.ref.version === selected.versionId));
+          const followupPage = craftInput.acceptance.questions[1].slide;
+          assert.ok(followup.evidence.some((e: any) => previewParts.some((p: any) => p.page === followupPage && p.versionId === e.ref.version)));
+          assert.ok([...retrieved.evidence, ...followup.evidence].every((e: any) => previewParts.some((p: any) => p.versionId === e.ref.version)));
+        } else if (!reviewCase) {
         assert.ok(retrieved.diagnostic.externalIndex);
-        if (!reviewCase) {
         assert.ok(retrieved.evidence.every((e: any) => e.ref.version === selected.versionId));
         assert.ok(retrieved.evidence.some((e: any) => [38, 39].includes(e.file?.extraction?.chunkIndex) && e.text.includes('97m²')));
         const right = retrieved.evidence.filter((e: any) => [40, 42].includes(e.file?.extraction?.chunkIndex));
@@ -207,6 +248,7 @@ try {
             && e.text.includes(name) && e.text.includes(value)), name);
         }
         } else {
+          assert.ok(retrieved.diagnostic.externalIndex);
           assert.ok(retrieved.evidence.length && followup.evidence.length);
           assert.ok([...retrieved.evidence, ...followup.evidence].every((e: any) => previewParts.some((p: any) => p.versionId === e.ref.version)
             && e.file?.extraction?.review?.bookPage));
@@ -243,7 +285,17 @@ try {
       if (retired) { assert.equal(afterCount.n, beforeCount.n); assert.equal(trace.run.error_code, 'context_changed'); assert.equal(trace.run.output_message_id, null); }
       else {
         assert.equal(trace.run.status, 'succeeded', String(trace.run.error_code));
-        if (reviewed) assert.equal(trace.steps.find((s: any) => s.kind === 'agent_checkpoint')?.private_checkpoint?.validationRepairs, 0, 'Keep first-draft outcomes separate from repairs');
+        if (pptCraft) {
+          const modelSteps = trace.steps.filter((step: any) => step.kind === 'model');
+          const answer = trace.steps.find((step: any) => step.kind === 'answer');
+          assert.equal(modelSteps.length, 1);
+          assert.equal(afterCount.n - beforeCount.n, 1);
+          assert.ok(modelSteps[0].provider_attempt_id);
+          assert.equal(answer?.provider_attempt_id, modelSteps[0].provider_attempt_id);
+        } else if (reviewed) {
+          assert.equal(trace.steps.find((s: any) => s.kind === 'agent_checkpoint')?.private_checkpoint?.validationRepairs, 0,
+            'Keep first-draft outcomes separate from repairs');
+        }
       }
       assert.deepEqual(binding(), report.bindingBefore);
       console.log(JSON.stringify(report.runs.at(-1)));

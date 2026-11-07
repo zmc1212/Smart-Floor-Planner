@@ -5,11 +5,11 @@
 <!-- /xiaok-site-language-current -->
 
 <!-- xiaok-mineru-fastgpt-preview -->
-**MinerU/FastGPT员工草稿预览：解析/定位有限范围Implemented，完整企业知识问答仍Limited。** 后台`/assistant-knowledge`沿用本人试问、ConversationService和原Agent；仅显式`XIAOK_FASTGPT_RETRIEVAL_FILE`匹配微云1454时启用。远端独立MinerU4.1.7已本地GPU解析完整30页。原服务`importMineru`保留原PDF/hash/CAS/未发布守卫；`mineru-reviewed-page-v4`在v3逐表条件之外，校验每个文字块的hash/版面/书页，引用标签显示原PDF页及书页，单页资产物理页仍为1。FastGPT只给核验候选，KnowledgeRetriever/Evidence供当前获权原文，原每表两行首选及5证据上限不变。
+**一期PPT工艺知识试问（Limited）。** 用户2026-11-07限定一期企业知识为《家客来小K装修服务功能方案》的工艺内容，费用由线下沟通。微云1454隔离库的PPT第17/18/19/21页为4份内部未发布服务说明草稿，覆盖水路施工、防水后续检查、排版铺贴和成品保护。标题保留PPT页码，正文沿已核图中文字。这些条目是PPT阶段提示示例。
 
-隔离28份候选仍为内部未发布草稿。4页9/10/16/23补回16块图注/脚注；20页主材书页37、定制柜38均核实123㎡，相同面积不证明同套预算。14页左柜书页25、右电器/家具26，各自97/83.98㎡及排除条件保留。42表原导出单元格未改，未逐格认证OCR或确认现价。独立FastGPT校核索引108块，仅6页9/10/14/16/20/23新草稿索引ready；原数据集/主库376–405不覆盖，仍仅410/411发布。租户、本人、实时知识管理员、版本/hash/epoch/撤回继续受原服务控制，客户和普通工人不获草稿权限；默认知识关闭，C01/小程序运行时及视觉不变。
+原后台`/assistant-knowledge`本人试问使用选定的4份草稿、原KnowledgeRetriever/Evidence和原生原句选择。实时知识管理员、本人、租户、版本/hash/epoch和撤回守卫沿原服务。旧28份整册混合候选通过原服务退役，旧草稿选择被拒绝。原文、旧索引与失败证据留审计，主库376–405/410–411作只读历史对照。预算表、推算和报价退出一期语料及用例。
 
-新固定两组各3问在首条10971失败即停，其余5条未执行。原稿书页25/26已正确，但第二段引用缺97㎡来源且推断柜子包含于基础/主材预算，唯一修复未改，`unsupported_model_commitment`拒绝且无助手输出。重进可见原问题、归档及失败反馈；不算真实问答或新引用展示验收通过。权限/改版撤回探针和回读通过，设置/合成账号恢复，所属进程清理。27项相关检查/lint通过；57既有类型诊断无新增。旧10941漏答、10942–10945限定成功及控制器超时原件保留。见[二期合同](xiaok-assistant-phase-2.zh-CN.md#minerufastgpt员工草稿预览limited)、[回读审计](../tmp/xiaok-mineru-fastgpt-preview-20261107/ocr-followup/audit-native.json)和[远端记录](remote-development.zh-CN.md)。
+实际试问10972保存了“先排版，再铺贴”，可展开第19页草稿引用并重进。三句原文均进入候选，原生试问选了最直接的工序句。题目只明确问先做什么，固定预期额外要求纹理沟通和核对人。原始驱动又误要求Agent检查点，原批仍失败，余3问未执行。驱动已按原生单次调用回执校正，离线重放确认三句均可被选择。回读、权限探针和定向lint通过，默认知识关闭，4稿未发布。见[二期合同](xiaok-assistant-phase-2.zh-CN.md#一期ppt工艺资料试问limited)和[回读审计](../tmp/xiaok-mineru-fastgpt-preview-20261107/craft-only/audit-ppt-craft.json)。
 
 <!-- xiaok-fastgpt-capabilities -->
 **FastGPT阶段/知识工作流：Limited，保存I/O接口已收敛，库存OpenSERP官网产品原文已证，固定主干复验首个供应商403停止。** 显式开发候选沿C01原会话，由FastGPT v4.17.4单一ToolCall控制问答；原服务守获权工具、KnowledgeRetriever/Evidence、租户/来源、持久任务、网关计量及最终校验/保存。原生输入复用既有来源/引用目录与公开内容投影，保留完整原文和引用ID。提交/保存共同依据实时获权来源，调用或空检索不当证据；本地配置错误与供应商明确失败保留原异常处置语义。UI/API路由/schema、默认Worker、生产未切，企业知识关闭。

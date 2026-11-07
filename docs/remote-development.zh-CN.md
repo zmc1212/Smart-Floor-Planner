@@ -6,7 +6,7 @@
 
 `admin/deployment/mineru/install-native.ps1`安装；`run-native.ps1`支持Version/Hardware/DownloadModels/VerifyModels/Parse，必须在专用根内读写且拒绝覆盖输出。前台SSH任务保留运行，避免SSH结束时丢失后台进程。例：`powershell -NoProfile -ExecutionPolicy Bypass -File D:/Smart-Floor-Planner-Dev/mineru-pilot/run-native.ps1 -Action Parse -InputFile input/jingyi.pdf -OutputFile output/jingyi-next.zip -Tier standard`。
 
-原精艺.pdf完整30页standard解析117.86秒，重点6页41.68秒；输入/ZIP传输hash一致。4页图注/脚注16块已回填，20页书页37/38均123㎡；basic裁块识别123但漏m，仅留诊断。原表单元格不改，独立108块FastGPT校核索引不覆盖旧索引；隔离28员工草稿均未发布，仅本轮6页索引。小K10971书页正确但解释/引用失败，固定批停止，余5问未派发，见[合同](xiaok-assistant-phase-2.zh-CN.md#minerufastgpt员工草稿预览limited)。下载超时、镜像回退和驱动失败保留，金额未知不记零。版本/依赖/模型指纹、完整原件和[完整性回执](../tmp/xiaok-mineru-fastgpt-preview-20261107/ocr-followup/ocr-integrity.json)在原ocr-followup目录。SSH身份及生产边界沿下文，原PDF/主库376–405/410–411不替换。
+原精艺.pdf完整30页standard解析117.86秒，重点6页41.68秒；输入/ZIP传输hash一致。4页图注/脚注16块已回填，20页书页37/38均123㎡；basic裁块识别123但漏m，仅留诊断。原表单元格保留，独立108块FastGPT索引及旧问答留历史审计。用户将一期限定为PPT工艺后，旧28份隔离候选已退役。10971书页正确但解释/引用失败，旧固定批余5问未派发，见[合同](xiaok-assistant-phase-2.zh-CN.md#minerufastgpt员工草稿预览limited)。下载超时、镜像回退和驱动失败保留，金额未知不记零。版本/依赖/模型指纹、完整原件和[完整性回执](../tmp/xiaok-mineru-fastgpt-preview-20261107/ocr-followup/ocr-integrity.json)在原ocr-followup目录。SSH身份及生产边界沿下文，原PDF/主库376–405/410–411不替换。
 
 <!-- /xiaok-mineru-native -->
 

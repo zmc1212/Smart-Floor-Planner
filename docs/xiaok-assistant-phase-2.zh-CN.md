@@ -11,9 +11,23 @@
 <!-- /xiaok-site-language-current -->
 
 <!-- xiaok-mineru-fastgpt-preview -->
-## MinerU/FastGPT员工草稿预览（Limited）
+## 一期PPT工艺资料试问（Limited）
 
-当前能力复用后台`/assistant-knowledge`本人试问、ConversationService、持久任务和原Agent。范围为微云1454员工草稿和小范围真实对话，28候选不发布。只有显式`XIAOK_FASTGPT_RETRIEVAL_FILE`、准确租户及`fastgpt-mineru-preview-v1`快照可用。实时知识管理员、本人、版本/hash/epoch/撤回守卫保留，普通工人和客户无草稿权限；企业知识默认关闭，默认Worker、C01、Mini/生产不切。
+用户2026-11-07指定一期仅用《家客来小K装修服务功能方案》的工艺内容，预算、金额推算和报价线下沟通。微云1454隔离员工草稿沿`admin/scripts/fixtures/xiaok-ppt-craft-preview.json`核准原图。88页PPT的第17/18/19/21页分别提供水路施工、防水后续检查、排版铺贴和成品保护的阶段提示。原`KnowledgeService`创建和索引4份`manual_text`草稿，文档2511–2514、版本2756–2759，保留题名页码、原句、PPT与图像hash。
+
+28份旧整册隔离候选经原服务退役，旧ready版本不能再加入试问。原文和独立FastGPT索引留审计。当前`/assistant-knowledge`本人试问仅选4份PPT稿，沿原生KnowledgeRetriever/Evidence与原句选择。无已发布员工来源进入这一快照，四稿均内部未发布。其他管理员、控制租户、当前合成客户和改版探针通过。主库376–405只读回查与原记录一致，仍仅410/411发布。
+
+10972的实际检索把第19页全部51字符送入选择，离线按同一来源ID/hash重放得到“先做排版，再安排铺贴”、发图说明纹理、设计师和师傅核对三个候选。保存首稿只选第一句，原句引用可打开且重进保持。既有原生试问优先最直接的一条，题目明确问先怎么做，固定预期另含怎么沟通及谁核对。三条同时选择可离线通过，差异属于选段及题意与验收预期的覆盖，PPT读取和检索已有完整材料。见[原句重放](../tmp/xiaok-mineru-fastgpt-preview-20261107/craft-only/selection-replay-10972.json)。
+
+原客户端批在一次成功保存后因驱动误查Agent检查点而停止，另3问未派发，原批保留failed。驱动已沿原生路径校验单次model/answer回执，首稿的额外沟通信息仍未覆盖，完整工艺对话尚未验收。本批只派发工艺问题。4次文档embedding共89输入token，真实查询42、预查42/39，1次文本attempt3324用量及金额未知。源码与原批驱动配置绑定无漂移，设置和合成账号恢复，任务队列0。定向lint和计划检查通过。
+
+在admin用`scripts/xiaok-ppt-craft-preview.mts`准备隔离资料，`scripts/fastgpt/mineru-preview-client.mts --reviewed --fixture-dir=<craft-only>`消费已核PPT清单并运行原试问入口。已有回读见[工艺审计](../tmp/xiaok-mineru-fastgpt-preview-20261107/craft-only/audit-ppt-craft.json)。旧预算批及用量作为下列历史证据保留。
+
+> 原整册MinerU/FastGPT试验的历史证据。用户已把一期范围改为上面的PPT工艺。
+
+### MinerU/FastGPT员工草稿预览（Limited）
+
+原整册校核批复用后台`/assistant-knowledge`本人试问、ConversationService、持久任务和原Agent。范围为微云1454员工草稿和小范围真实对话，28候选不发布。只有显式`XIAOK_FASTGPT_RETRIEVAL_FILE`、准确租户及`fastgpt-mineru-preview-v1`快照可用。实时知识管理员、本人、版本/hash/epoch/撤回守卫保留，普通工人和客户无草稿权限；企业知识默认关闭，默认Worker、C01、Mini/生产不切。
 
 知识域沿server-only `KnowledgeService.importMineru`复用原PDF资产hash、CAS、未发布检查和真实回执，HTTP不开放导入。v3逐表绑定表题/面积/限制/书页/版面hash；v4另要求全部非表块都有准确chunk hash、归一化版面和书页，缺失/重复/陈旧绑定拒绝。单页副本物理页仍为1，原PDF/书页进入段落正文与引用标签。保留42张表原单元格/合并/结构分组，去掉清洗页级面积和前段继承，不改原表算术或归并预算。
 
