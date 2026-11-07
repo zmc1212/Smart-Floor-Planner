@@ -12,6 +12,16 @@ Mini `site-capture.js`先把临时文件复制至自有`USER_DATA_PATH/site-capt
 自由语音在收到后沿原`site.record` Worker及本地faster-whisper适配器转写，保留配置/原件hash、实时权限、心跳及实际本地音频计量。转写须显式配置ASR；未配置时已收到原音仍可回听，失败草稿可手工改或重试；模型准入失败也不回滚原材料。C01语音路径不变。5组真实服务与2段固定qwen3.7-flash语音管线通过，源码漂移0；2次已知模型调用输入825/输出141tokens，金额未知。第二段“那排”转成“纳排”，未贴砖归待沟通，通用口语质量仍Limited。真机相机/麦克风授权、方言及工地噪声未验。[服务证据](../tmp/site-capture-20261107/service-check.json)、[42项定向检查](../tmp/site-capture-20261107/fast-tests-final.log)。全仓lint0错误/31警告，Webpack编译通过；完整构建被既有`.next-qa/dev/types/routes.d.ts`语法错误阻断。[原生最终复核](../tmp/site-capture-20261107/native.json)通过54px双按钮、常用工作重进/一次提交、登录过期保留与恢复、成员撤权，含宿主窗口与390×844实测。断网重进续传、原音回听和丢回执不重复写入复用[前批已通过子项](../tmp/site-capture-20261107/native-r4/native.json)；该批仍保留write标记未清的失败，最终批修正并重验。42项定向检查、两批各自源码绑定/漂移0；未复采2份模型首稿。三种管理角色的发布检查通过，原清理status取值错误与[独立清理回读](../tmp/site-capture-20261107/roles-cleanup.json)分别保留。原生只替代了设备采集输入，使用真实本机文件/存储、HTTP和数据库；真机麦克风/相机不算已验。
 
 本轮自有服务已停止，标记测试项目已暂停、合成员工停用、临时设置恢复初始值，原记录与失败保留；[清理回读](../tmp/site-capture-20261107/cleanup-owned.json)确认活动队列为0。
+
+<!-- site-speech-development -->
+**常规本机开发服务（3006）的语音转写已启用。** `admin/.env.local`将`local-faster-whisper`绑定到固定目录`G:/AppData/Smart-Floor-Planner/assistant-speech/venv`中的Python环境和已有medium模型缓存，4项`ASSISTANT_ASR_*`配置已补入`.env.example`。`npm run dev`沿现有监督程序运行后台Worker；小程序使用原配置的`192.168.10.32:3006`，没有新UI、路由、迁移或生产设置。
+
+微云1454标记项目402的原生录音入口接收两段固定夹具，经落盘回听、先收到原音、后台自动转写、qwen3.7-flash整理，形成记录475/476（run2219/2220）。经理查看转写，修正第二条标题/无依据备注及未完成项后内部发布，重进保持；工人能读核对结果，撤销成员后内容/原音均拒绝。原音字节不变。[原记录原生续验](../tmp/site-speech-dev-20261107/continuation.json)与[持久配置/清理回读](../tmp/site-speech-dev-20261107/postcheck.json)通过，源码绑定稳定，续验新增模型调用0。两段5.86s/6.345s音频在本机CPU的ASR步骤分别约13.9s/11.5s，仅为两次观测，不承诺时延。
+
+[原生首批](../tmp/site-speech-dev-20261107/native.json)保持failed：经理保存按钮选择器失败，且广绑定捕获其他FastGPT传输改动。[影响分析及首稿评估](../tmp/site-speech-dev-20261107/assessment.json)保留失败，确认实际语音路径未变，不将原批改称全绿。第一稿保留部分完成；第二稿把房间清单误当原话并泄露房间ID，ASR另有“那排”→“纳排”。经理更正完成的是核对流程，不算识别/Agent质量通过。2次已知模型调用共999tokens，金额未知；未改提示词/规则、未重采。原生麦克风输入为固定夹具，真机采集/授权、方言噪声及生产未验。测试身份已恢复、项目暂停；正常开发服务和ASR保持启用。
+
+另保留[续验前置失败](../tmp/site-speech-dev-20261107/continuation-setup-failure.json)及[空输入驱动失败](../tmp/site-speech-dev-20261107/continuation-empty-input-failure/continuation.json)。最终复核确认Stable CLI拒绝空字符串input，改用其支持的原生input事件，保存前核对字段已清空，再回读更正结果。
+<!-- /site-speech-development -->
 <!-- /site-capture-current -->
 
 <!-- xiaok-site-language-current -->

@@ -6,6 +6,10 @@
 先按员工/企业/项目持久保存原件和草稿/队列，才显示“待上传 · 已留在手机”；失败保留当前输入。重进/重连先复核权限，再用原上传键/提交键续传。消息和本次全部原件提交成功才显示“已收到”，整理中/失败独立反馈；401保留同身份重登恢复，成员撤权清空可见内容及本机原件。复用原messages/operations/media/speech接口、租户/原件归属与版本快照，无schema迁移。PCM原音先保存，转写须显式本地ASR配置，未配置仍可回听；普通打字查询/事项与C01语音保留。[接口、限制及验收合同](xiaok-assistant-phase-2.zh-CN.md#现场上报与送达合同)。
 
 已验证42项定向检查、5组真实服务、3种管理角色、2段固定qwen语音管线、[最终原生布局/重登/撤权](../tmp/site-capture-20261107/native.json)及[前批上传/原音已通过子项](../tmp/site-capture-20261107/native-r4/native.json)。原失败保留，不把前批改称全绿。全仓lint0错误/31警告；Webpack编译通过，完整构建仍被既有生成类型语法错误阻断。通用口语及跨轮更正仍Limited，真机、方言噪声ASR和生产未验。新增5张小型Lucide图标复用原家族，小K业务插画沿用原独立素材。
+
+<!-- site-speech-development -->
+常规3006开发服务已持久启用ASR，沿现有受监督Worker自动转写原音并整理。标记项目402的两段原生录音流程已接到经理修改/核对发布及重进；原记录续验、配置/清理回读通过且不新增模型调用。原批选择器失败/无关源码漂移、第二稿房间归属错误均保留，识别及Agent质量仍Limited；麦克风输入为固定夹具。[开发配置与证据](xiaok-assistant-phase-2.zh-CN.md#现场上报与送达合同)。
+<!-- /site-speech-development -->
 <!-- /site-capture-current -->
 
 <!-- xiaok-site-language-current -->
