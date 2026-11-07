@@ -13,17 +13,17 @@
 <!-- xiaok-mineru-fastgpt-preview -->
 ## 一期PPT工艺资料试问（Limited）
 
-用户2026-11-07最新纠正：先采用Zcode已跑通的FastGPT原生RAG测试，明确百炼text-embedding-v4及qwen3.7-flash。当前验收由此替代后台原生原句试问。一期仅取PPT第17/18/19/21页已核工艺原文，内容为阶段提示示例而非详细施工参数；预算报价线下沟通。
+2026-11-07最新授权：按已验Zcode/FastGPT原生RAG接回小K真实会话，仍用百炼text-embedding-v4和qwen3.7-flash；用户后续明确“直接发布，验证后不撤回”。仅隔离`127.0.0.1:55432/xiaok_embedding_eval`／微云1454的4份PPT工艺文档2511–2514／版本2756–2759已沿KnowledgeService发布为customer_public并保留；临时权限撤回检查后恢复。PPT范围仅17/18/19/21页所核原文，预算报价线下；主库376–405/410–411只读、28份旧混合候选退役，生产不变。
 
-专用库6aeebd1a093915ea6cf2da78/collection6aeebd1a093915ea6cf2da8f只有4块已索引原文。应用6aeebd3e093915ea6cf2db61/发布版6aeebd3e093915ea6cf2db7e沿开始→混合检索→引用上下文作答。向量模型6aee0821093915ea6cf27ee7走百炼通道5，回答走通道1；原Zcode资源/默认模型未重发或替换。实际发布工作流、模型目录、preload/配置、驱动、题集和语料前后绑定无漂移。
+原C01/API/schema/样式/素材不变。`XIAOK_FASTGPT_WORKFLOWS_FILE.rag`显式绑定企业、配置摘要及原生来源ID到Evidence；只覆盖企业知识开启后的文字咨询回复，其他Agent入口保留。独立基线应用6aeebd3e093915ea6cf2db61不改；接入应用6aeec3f9093915ea6cf2e489复用原混合检索、提示和温度0.3/max1950，增加原服务HTTP来源校验节点。向量仍是原channel5/text-embedding-v4；channel6只是原模型网关的本地传输，真实qwen调用沿PostgreSQL供应商attempt和计量。FastGPT不负责业务写入/权限决策，不新建Agent、事实库或引用管线。 固定四段语料整体授权准入；任一来源撤权即停止此原生路径，恢复授权后重新开放。该试点文字路径暂不承担联网或业务工具动作。
 
-限定验收通过：4道检索目标页全排第1；预先固定两组各2问共4条首稿合格，无修复或额外采样。铺砖回答覆盖先排版、发图表达方向、设计师/师傅核对；防水回答保留团队安排后续检查并明确资料未给等待时长。quoteList的ID、库/集合/页及原文逐项相符。该列表是召回来源，不是逐句引用选择，正文无行内引用标记。追问显式带入上一问/原答；FastGPT自动生成独立会话ID/标题，未验证同一小K会话持久重进。historyPreview缩略长文显示，不当作完整供应商wire。
+采用官方v4.17.4 [引用保留协议](https://github.com/labring/FastGPT/blob/v4.17.4/projects/app/src/service/core/workflow/nodeResponse.ts)：`retainDatasetCite:true`保留模型原生`[id](CITE)`，仅这些选择映射到小K引用；quoteList候选不自动变成引用，正文不做原句选择或改写。守卫在模型读取前核对每个候选ID/dataset/collection/原文，再以原`resolveEvidence`重验租户、受众、版本/hash/epoch；保存与回读使用同一来源和引用服务。完整已读候选及历史依赖保存在原synthesis context，撤回任一依据会隐藏派生旧答，原文引用按当前权限返回。来源为带PPT页码标题的核验文字，locator为原文位置，并非上传文件locator。
 
-AIProxy577–596记12次embedding/320输入（含先前4次索引/171）；8次qwen共5686输入/464输出、缓存896：4次回答节点4206/438，4次辅助标题1480/26。不传chatId仍生成标题，原dispatch相反假设由实际响应/账本及官方[preChatRound](https://github.com/labring/FastGPT/blob/v4.17.4/packages/service/core/chat/utils/prepare.ts)、[标题流程](https://github.com/labring/FastGPT/blob/v4.17.4/packages/service/core/chat/title.ts)校正。代理金额为零配置，实际费用未知。原setup数组引用断言、前置路径/模型名称存储/JSON/null账本误判及清理日期转换失败独立保留，均未导致模型重发。所属SSH18300已核身份释放，测试锁清理。
+按官方[preChatRound](https://github.com/labring/FastGPT/blob/v4.17.4/packages/service/core/chat/utils/prepare.ts)使用`chatId:NO_RECORD_HISTORIES`，小K原会话提供获权历史，避免FastGPT另建历史/标题。普通Agent温度仍0，只有显式原生调用传递原0.3。短期票据、同请求Promise去重、持久job/配额、调用前标记、未知结果不重试及原供应商usage保留；原生query embedding也记实际token或unavailable，金额未知不能当0。
 
-[结果](../tmp/xiaok-mineru-fastgpt-preview-20261107/fastgpt-ppt-craft/assessment.json)及原请求/响应/逐条审读/continue-check.mjs同目录保存，驱动拒绝覆盖回执。原后台试问作为历史对照：4份未发布草稿2511–2514/版本2756–2759、28份混合候选退役及本人/租户/客户/改版探针；10972只选工序句，原批失败、余3问未执行。attempt3324 tokens/费用未知，原embedding89+42/42/39独立保留。[回读审计](../tmp/xiaok-mineru-fastgpt-preview-20261107/craft-only/audit-ppt-craft.json) · [选段重放](../tmp/xiaok-mineru-fastgpt-preview-20261107/craft-only/selection-replay-10972.json)。
+当前工程21项定向检查、相关lint和受影响源码/递归依赖类型检查通过；全仓lint0错误/32警告（之后移除本轮未用import）。完整tsc被既有.next-qa生成路由5个语法错误阻断，不冒称全仓类型通过。原10977/3325成功但文字来源的文件locator驱动断言失败；10978调用前源码漂移取消，native03前置停。10979/3326事实正确但无CITE：safeText把UI“知识来源”标签送入历史。history-boundary-diagnosis.json保留原输入输出与Agent传输共因。修复迭代1改读获权模型原答并保留CITE，引用放在完整段落后，不加提示词/语义规则；已返回用量先记账再校验/保存。固定两组各2问10980/10982–10984首稿均通过：先排版、发图说明、设计师/师傅核对；防水有后续检查而资料未载等待时长。native06/native08 CLI中断不改判；repair1-saved09已通过原生重进、4个引用实际点击、撤权失效/恢复、真实HTTP503恢复及旧身份撤回/新身份读回；复用四条原答，新增模型/embedding调用均0。撤权新请求10985在调用前被拒绝。全绑定未缩小，独立改动影响分析与每批原失败保留于tmp/xiaok-fastgpt-rag-session-20261107/。
 
-本次无产品代码/UI/API/schema/角色变化，企业知识默认关闭、草稿未发布，无小程序/原生或生产通过声明。后续保留FastGPT原生检索与回答，来源身份沿原KnowledgeRetriever/Evidence实时授权、版本/撤回、持久任务和计量合同接回小K。
+原独立基线4检索/4首稿及AIProxy577–596保留：12embedding/320输入（索引4/171），8qwen5686输入/464输出（标题4/1480/26）。本次接线实际6次qwen attempt3325–3330为6504输入/593输出；其中修复后固定4次为4366/424。6次原生query embedding为171输入，修复后4次为102；AIProxy597–608含同一模型传输，不能重复算成12次模型，未再生成标题。费用未知不能当0。 源码/工作流前后绑定一致；原生注入、设置/供应商、所属隧道与锁均清理。publication-after.json确认4份资料active/customer_public且原发布版本保留。原C01视觉不改，实际引用/撤权/恢复截图与源映射见native-ui-observations.json；真机未验证不阻断本开发交付。历史10972后台原句选择仍是失败批/另3问未执行，3324未知及其余停止批不重放或改判。
 
 > 原整册MinerU/FastGPT试验的历史证据。用户已把一期范围改为上面的PPT工艺。
 

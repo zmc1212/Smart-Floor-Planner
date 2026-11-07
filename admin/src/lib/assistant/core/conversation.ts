@@ -7,6 +7,7 @@ import { bindSpeechToMessage } from '../speech/link';
 import { speechConfigurationHash } from '../speech/local';
 import { createPreviewPolicy, previewPolicy, projectMessage, citationProjection, webCitationProjection } from '../knowledge/sources';
 import { fastGPTPreviewConfiguration, fastGPTPreviewProtocol } from '../knowledge/fastgpt-retrieval';
+import { fastGPTRagConfiguration, fastGPTRagProtocol } from '../fastgpt/rag-config';
 import { sourceExcerptProtocol } from '../agent/source-excerpts';
 import { sourceQuestionCoverageProtocol } from '../agent/source-question-coverage';
 import { naturalKnowledgeProtocol, naturalKnowledgeScheduleProtocol, knowledgeQuantityScopeProtocol, sourceBoundaryValidationProtocol } from '../agent/knowledge-explanation';
@@ -65,6 +66,7 @@ const json = (value: unknown) => JSON.stringify(value);
 export function conversationDto(c: Row, requirementProposalPending = false) {
   const guidance = conversationGuidance(c.entry_snapshot);
   const entry = c.entry_snapshot as Row;
+
   return { id: String(c.id), purpose: c.purpose, status: c.status, mode: c.mode, title: c.title, version: c.version, contextRevision: c.context_revision, createdAt: c.created_at,
     ...(entry?.requirementReviewMode===true && entry?.requirementWorkflow==='langgraph' ? {reviewWorkflow:'langgraph'} : {}),
     requirementProposalPending,
@@ -127,6 +129,12 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
     privateFollowup, selected: !!reportContext(c.entry_snapshot).selection });
   if (report && !agent) fail('assistant_capability_forbidden', 403);
   const entry = c.entry_snapshot as Row;
+  const rag = agent && purpose === 'reply' && trigger.kind === 'user_message' && c.purpose === 'customer_consultation'
+    && actor.principal.kind === 'user' && enterpriseKnowledgeEnabled(settings.agent_config) ? fastGPTRagConfiguration(actor.enterpriseId) : undefined;
+  const ragTrigger = rag ? await one(tx, sql`select content from app.assistant_messages where enterprise_id=${actor.enterpriseId}
+    and conversation_id=${String(c.id)} and id=${messageId}`) : undefined;
+  const nativeRag = rag && (ragTrigger?.content as MessageContent)?.blocks.every(b => b.type === 'text')
+    ? { protocol: fastGPTRagProtocol, binding: rag.binding } : undefined;
   const reviewRuntime = agent && actor.principal.kind === 'user' && c.purpose === 'customer_consultation'
     && entry.agentReviewCandidate === true && entry.requirementReviewMode === true
     && entry.requirementWorkflow === 'langgraph' ? boundReviewProtocol(entry, actor.enterpriseId) : null;
@@ -161,6 +169,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
     ${trigger.kind === 'domain_event' ? trigger.eventId : null},${trigger.kind === 'scheduled_task' ? trigger.occurrenceKey : null},${purpose},
     ${retryOf || null},${json({ schemaVersion: 1, actor, maxTokens: agent?.consultation ? 8192 : 2048, policyVersion: settings.policy_version, agent,
       knowledgePolicy: c.purpose === 'knowledge_preview' ? { ...knowledgePolicy(settings.agent_config), enabled: true } : knowledgePolicy(settings.agent_config),
+      ...(nativeRag ? { nativeRag } : {}),
       ...(staffPreview && agent ? { staffKnowledgePreview: fastGPTPreviewProtocol } : {}),
       ...(agent && actor.principal.kind === 'user' && c.purpose === 'customer_consultation' && purpose === 'reply'
         && !enterpriseKnowledgeEnabled(settings.agent_config) && !reviewRuntime && !agent.consultation && !agent.structuredFinal

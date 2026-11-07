@@ -131,14 +131,21 @@ export async function completeRun(lease: Lease, result: RunResult, commit?: (tx:
     if (result.usage && (!Number.isSafeInteger(result.usage.inputTokens) || !Number.isSafeInteger(result.usage.outputTokens) || result.usage.inputTokens < 0 || result.usage.outputTokens < 0)) fail('invalid_message', 422);
     const message = await appendMessage(tx, lease.actor, String(run.conversation_id), { author: 'assistant', content: result.content, runId: lease.runId });
     await commit?.(tx, run, String(message.id));
-    await tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,provider_attempt_id,operation_key,category,quantity,measurement_kind,input_tokens,output_tokens)
-      values(${lease.enterpriseId},${lease.runId},${result.attemptId || null},${'run:' + lease.runId},'tokens',
-      ${result.usage ? result.usage.inputTokens + result.usage.outputTokens : null},${result.usage ? 'observed' : 'unavailable'},${result.usage?.inputTokens ?? null},${result.usage?.outputTokens ?? null}) on conflict do nothing`);
+    await recordRunUsage(tx, lease, result);
     // Unknown billing retains the conservative reservation for reconciliation.
     await tx.execute(sql`update app.assistant_quota_reservations set status='reconciling',version=version+1,updated_at=now() where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}`);
     await finish(tx, lease, 'succeeded', null, String(message.id));
     return String(message.id);
   });
+}
+/** Preserve actual completed usage even when later authorization/answer
+ * validation prevents delivery. The successful commit uses this same key. */
+export async function recordRunUsage(tx: PostgresTransaction, lease: Lease, result: Pick<RunResult, 'usage' | 'attemptId'>) {
+  if (result.usage && (!Number.isSafeInteger(result.usage.inputTokens) || !Number.isSafeInteger(result.usage.outputTokens)
+    || result.usage.inputTokens < 0 || result.usage.outputTokens < 0)) fail('invalid_message', 422);
+  await tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,provider_attempt_id,operation_key,category,quantity,measurement_kind,input_tokens,output_tokens)
+    values(${lease.enterpriseId},${lease.runId},${result.attemptId || null},${'run:' + lease.runId},'tokens',
+    ${result.usage ? result.usage.inputTokens + result.usage.outputTokens : null},${result.usage ? 'observed' : 'unavailable'},${result.usage?.inputTokens ?? null},${result.usage?.outputTokens ?? null}) on conflict do nothing`);
 }
 /** A transcription is an editable private draft, not an assistant reply or a user send. */
 export async function completeLocalSpeech(lease: Lease, durationMs: number, commit: (tx: PostgresTransaction) => Promise<void>) {

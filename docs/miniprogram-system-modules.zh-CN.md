@@ -6,11 +6,13 @@
 
 <!-- xiaok-mineru-fastgpt-preview -->
 
-**一期PPT工艺：FastGPT独立应用限定检查通过，小K接入仍Limited。** 用户2026-11-07最新方向是先复用Zcode原生RAG：百炼text-embedding-v4→混合检索→qwen3.7-flash作答。独立测试库仅含PPT第17/18/19/21页4段已核原文。预算、金额推算和报价退出一期，费用线下沟通。
+**一期PPT工艺：FastGPT真实小K会话接入Limited。** 百炼text-embedding-v4原生混合检索→原服务来源授权→FastGPT原生qwen3.7-flash回答。`XIAOK_FASTGPT_WORKFLOWS_FILE.rag`显式绑定企业/配置摘要，接管知识开启后的文字咨询回复；其他purpose和默认配置保留。原C01入口`packages/assistant/chat/chat`、`/api/miniprogram/assistant/conversations/*`、schema、组件/样式/素材不改。此固定语料路径暂不承担联网或业务工具动作。
 
-固定4道检索目标页全部第1；两组各2问共4条首稿覆盖先排版、发图说明方向、设计师/师傅核对和团队安排防水后检查，两次追问均明确资料未给等待时间。quoteList候选均与独立原文一致；节点级来源不等于逐句引用绑定或客户端展示。源码、驱动、模型目录和实际发布工作流前后无漂移。[结果](../tmp/xiaok-mineru-fastgpt-preview-20261107/fastgpt-ppt-craft/assessment.json) · [二期合同](xiaok-assistant-phase-2.zh-CN.md#一期ppt工艺资料试问limited)。
+原生`[id](CITE)`通过既有KnowledgeRetriever/Evidence与引用保存映射，候选不是引用。模型前/提交/重进按当前租户、受众、版本/hash检查；全体已读来源和历史依赖可撤回。四段固定语料整体授权准入，任一来源撤权即停止该路径。小K保存唯一原会话，FastGPT使用`NO_RECORD_HISTORIES`；历史读获权模型原答，保留CITE，不把UI“知识来源”标签送回模型。原网关保留attempt/实际用量/unknown，不重试不明调用，不重写模型正文。
 
-原后台本人试问、4份未发布草稿2756–2759、KnowledgeRetriever/Evidence和实时管理员/本人/租户/版本/hash/epoch/退役守卫保持。10972及余3问未执行保留原失败批状态；旧28份混合候选保持退役，主库376–405/410–411只读。无产品UI/API/schema/权限变化，无小程序验收或生产切换，企业知识默认关闭。后续接入保留FastGPT回答，来源映射沿原Evidence当前授权合同。
+按用户“直接发布，验证后不撤回”，仅隔离`xiaok_embedding_eval`/微云1454文档2511–2514、版本2756–2759对客发布保留；临时撤权后恢复。固定两组各2问的首稿10980/10982–10984均通过，保存、原文引用、本人/跨租户及幂等检查通过。CLI中断保留；repair1-saved09已通过原生重进、4个引用实际点击、撤权失效/恢复、真实HTTP503恢复及旧身份撤回/新身份读回；复用四条原答，新增模型/embedding调用均0。撤权新请求10985在调用前被拒绝。21项定向检查、相关lint和源码依赖类型检查通过；全量tsc被既有生成路由语法错误阻断。
+
+沿批准C01 `design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/README.md`核对原生390×844引用抽屉/完整正文/重进反馈，无视觉还原改动。旧失败和完整证据见[二期合同](xiaok-assistant-phase-2.zh-CN.md#一期ppt工艺资料试问limited)及`tmp/xiaok-fastgpt-rag-session-20261107/`。预算报价线下，旧28混合候选退役、主库376–405/410–411只读；未宣告全V1、生产或真机通过。
 
 <!-- xiaok-fastgpt-capabilities -->
 **FastGPT阶段/知识工作流：Limited，保存I/O接口已收敛，库存OpenSERP官网产品原文已证，固定主干复验首个供应商403停止。** 显式开发候选沿C01原会话，由FastGPT v4.17.4单一ToolCall控制问答；原服务守获权工具、KnowledgeRetriever/Evidence、租户/来源、持久任务、网关计量及最终校验/保存。原生输入复用既有来源/引用目录与公开内容投影，保留完整原文和引用ID。提交/保存共同依据实时获权来源，调用或空检索不当证据；本地配置错误与供应商明确失败保留原异常处置语义。UI/API路由/schema、默认Worker、生产未切，企业知识关闭。

@@ -14,6 +14,8 @@ export type ModelMessage = { role: 'system' | 'user'; content: ModelPart[] }
 export type ModelTurnInput = {
   model: string; messages: ModelMessage[]; tools: ModelTool[];
   maxTokens: number; enableThinking?: boolean; jsonOutput?: boolean; requireTool?: boolean;
+  /** Explicit native-workflow generation setting; ordinary Agent turns retain 0. */
+  temperature?: number;
   /** Server-selected native final channel; business/tool turns stay function calling. */
   outputMode?: 'json_object' | 'json_schema' | 'function_call';
   /** Server-bound report final allocation; never a provider wire argument. */

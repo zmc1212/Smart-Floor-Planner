@@ -16,7 +16,11 @@
   Its primary documents `376`–`405` and the previously approved customer-scope
   versions `410`/`411` on `404`/`405` are read-only historical controls.
   Keep the isolated full-manual preview corpus out of V1 and retain its receipts
-  for audit. The PPT additions stay unpublished staff drafts.
+  for audit. The later 2026-11-07 user instruction explicitly permits publishing
+  the four labelled PPT craft test documents `2511`–`2514` / versions
+  `2756`–`2759` in isolated `xiaok_embedding_eval` (enterprise `1454`) and
+  retaining publication after verification. Restore temporary test revocations;
+  this exception does not authorize primary/production publication.
 - This is development testing, not production seeding or rollout permission;
   original permission/revocation requirements remain in force.
 

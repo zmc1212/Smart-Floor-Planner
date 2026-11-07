@@ -18,6 +18,7 @@ import { nativeSearchDependency, selectedNativeSearch } from '../agent/native-se
 import { reportCoordinationProtocol } from '../agent/report-question-plan';
 import { runKnowledgeEnabled } from '../knowledge-policy';
 import { fastGPTPreviewProtocol } from '../knowledge/fastgpt-retrieval';
+import { processNativeRagAnswer } from '../fastgpt/rag-worker';
 
 type Dependencies={retriever?:KnowledgeRetriever;model?:TextModelGateway};
 export async function processAnswer(lease:Lease,deps:Dependencies={}) {
@@ -26,6 +27,7 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
   try {
     const context=await withTenantTransaction(lease.enterpriseId,tx=>runContext(tx,lease));
     const policy = context.run.policy_snapshot as Row;
+    if (policy.nativeRag) { await processNativeRagAnswer(lease); return; }
     const agent = agentConfig(policy.agent);
     const privateStaffReport = policy.reportCoordination === reportCoordinationProtocol
       && lease.actor.principal.kind === 'admin' && context.conversation.purpose === 'construction_followup'

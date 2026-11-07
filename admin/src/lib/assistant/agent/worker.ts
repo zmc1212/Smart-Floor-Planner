@@ -1,3 +1,4 @@
+import { saveKnowledgeCitation } from '../knowledge/save-citation';
 import { sql } from 'drizzle-orm';
 import { bindNeedOriginals, legacyMinimalDialogueProtocol, minimalDialogueProtocol, minimalFinalCarrier } from './minimal-dialogue';
 import { withTenantTransaction } from '@/db/transaction';
@@ -12,7 +13,7 @@ import { agentRejectionAudited, isDefiniteAgentRejection } from './provider-reje
 import { AssistantError, fail, fingerprint, safeText, type Evidence } from '../contracts';
 import { type ModelTool, type ModelTurnOutput, type ModelMessage } from '../contracts/model';
 import { appendMessage, terminalEvent } from '../core/conversation';
-import { projectMessage, resolveEvidence, previewPolicy } from '../knowledge/sources';
+import { projectMessage, resolveEvidence } from '../knowledge/sources';
 import { runContext, failRun, heartbeat, completeAnswer, type Lease } from '../infrastructure/job-queue';
 import { runRenovationAgent, recoverableUnavailableRead, agentReadProtocol, agentToolReplyProtocol, agentTurnScheduleProtocol, type AgentCheckpoint } from './runtime';
 import { agentConfig, agentCapabilityFingerprint } from './config';
@@ -2128,17 +2129,10 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             const e = source.evidence;
             let citationId = saved.get(e.ref.id);
             if (!citationId) {
-              const row = (await resolveEvidence(tx, lease.actor, context.conversation, e))!;
               const quotes = answer.segments.flatMap(s => s.citations.filter(c => c.sourceId === source.sourceId).map(c => c.quote));
               const start = Math.min(...quotes.map(q => e.text.indexOf(q))), end = Math.max(...quotes.map(q => e.text.indexOf(q) + q.length));
-              const quoteSnapshot = e.text.slice(start, end);
-              if (quoteSnapshot.length > 600) fail('invalid_model_citation', 502);
-              const isDraft = lease.actor.principal.kind === 'admin' && context.conversation.purpose==='knowledge_preview' && previewPolicy(context.conversation).drafts.some(d => d.id === e.ref.version);
-              const inserted = (await one(tx, sql`insert into app.assistant_message_citations(enterprise_id,conversation_id,message_id,run_id,source_kind,resource_type,resource_id,resource_version,
-                document_id,document_version_id,chunk_id,source_hash,quote_snapshot,locator,is_draft)
-                values(${lease.enterpriseId},${String(context.conversation.id)},${String(message.id)},${lease.runId},'knowledge','knowledge_chunk',${e.ref.id},${e.ref.version},
-                  ${String(row.document_id)},${e.ref.version},${e.ref.id},${e.hash},${quoteSnapshot},${JSON.stringify({ ...(row.locator as Row), synthesis: true })}::jsonb,${isDraft}) returning id`))!;
-              citationId = String(inserted.id); saved.set(e.ref.id, citationId);
+              citationId = await saveKnowledgeCitation(tx, lease.actor, context.conversation, lease.runId, String(message.id), e, e.text.slice(start, end));
+              saved.set(e.ref.id, citationId);
             }
             blocks.push({ type: 'citation', citationId, fallbackText: '知识来源' });
           }

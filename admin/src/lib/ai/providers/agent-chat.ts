@@ -77,7 +77,7 @@ export function agentChatBody(input: ModelTurnInput, baseUrl = 'https://api.sili
   if (finalSchema?.type === 'json_object' && !JSON.stringify(messages).toLowerCase().includes('json')) throw Error('json_keyword_required');
   const formatBody: {response_format?: {type:string;json_schema?:unknown}} = finalSchema ? {response_format:finalSchema}
     : input.jsonOutput ? {response_format:{type:'json_object'}} : {};
-  return { model: input.model, messages, temperature: 0, max_tokens: input.maxTokens,
+  return { model: input.model, messages, temperature: input.temperature ?? 0, max_tokens: input.maxTokens,
     ...formatBody,
     ...thinkingBody(baseUrl, input.enableThinking),
     ...(input.tools.length && !finalSchema ? { tools: input.tools.map(tool => ({ type: 'function', function: tool })),
