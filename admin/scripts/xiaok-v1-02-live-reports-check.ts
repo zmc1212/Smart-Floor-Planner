@@ -39,6 +39,9 @@ const weeklyStages = process.argv.includes('--weekly-stages');
 const matchedReminders = process.argv.includes('--matched-reminders');
 const paintingReminders = process.argv.includes('--painting-reminders');
 const stageReminders = process.argv.includes('--stage-reminders') || matchedReminders || paintingReminders;
+const designerOnly = process.argv.includes('--designer-only');
+assert.ok(!designerOnly || (!stageReminders && !weeklyStages && !matchedReminders && !paintingReminders && !native),
+  'The designer-only scope reruns the failed designer body case under the empty-slot omission projection');
 assert.ok(!stageReminders || !weeklyStages);
 assert.ok(!matchedReminders || !native, 'This batch verifies the published-stage service scope only');
 assert.ok(!matchedReminders || !paintingReminders);
@@ -57,10 +60,11 @@ const staffUsers: string[] = [];
 let unrelatedBindingIds: string[] = [];
 const log: Row = { startedAt: new Date().toISOString(), prefix, owner: process.env.CODEX_THREAD_ID,
   scope: stageReminders ? 'Current stage reminder bodies and private readback; lifecycle scheduling is checked separately' : 'Configured-model daily/weekly report bodies only; scheduled discovery/native/follow-up evidence is not upgraded by this batch',
-  fixedScope: { audiences: ['customer','customer','worker','designer','boss'], projects: 2, kinds: stageReminders ? ['stage'] : weeklyStages ? ['weekly'] : ['daily','weekly'],
+  fixedScope: { audiences: designerOnly ? ['designer'] : ['customer','customer','worker','designer','boss'], projects: 2, kinds: stageReminders ? ['stage'] : weeklyStages ? ['weekly'] : designerOnly ? ['daily'] : ['daily','weekly'],
+    ...(designerOnly ? { mechanism: 'empty-slot/empty-citation omission projection (f71f4d1f); reruns the fixed13 designer case' } : {}),
     ...(stageReminders ? { stages: paintingReminders ? 'A: painting; B: furnishing with no authorized workmanship' : matchedReminders ? 'A: demolition; B: masonry without a confirmed waterproof substage' : 'A: installation following masonry; B: utilities' } : {}),
     ...(weeklyStages ? { stages: 'A: masonry waterproofing then installation; B: utilities' } : {}),
-    firstDraftsPerCase: stageReminders ? 1 : 2, maxBodyRuns: stageReminders ? 8 : weeklyStages ? 10 : 20,
+    firstDraftsPerCase: stageReminders ? 1 : 2, maxBodyRuns: stageReminders ? 8 : weeklyStages ? 10 : designerOnly ? 2 : 20,
     ...(stageReminders ? {} : { secondDraft: 'preplanned independent correction revision with unchanged original facts, never retry after failure' }),
     stop: 'first failed/indeterminate body, source/configuration drift or unavailable original source',
     reused: 'Existing scheduler, fact-worker, private destination, native components, permissions and revocation evidence at their unchanged scopes' },
@@ -210,8 +214,11 @@ async function main() {
       result.push({kind:'stage' as const, start:at, end:at, cutoff:new Date(+at+1), scheduledAt:at, stageEventId:String(event.id), projectId});
     }
     return result;
-  }) : weeklyStages ? [weekly] : [latestReportPeriod('daily',new Date(new Date().toISOString().slice(0,10)+'T15:59:00Z'),'23:59'),weekly];
-  for(const period of periods) for(const b of bindings) {
+  }) : weeklyStages ? [weekly] : designerOnly
+    ? [latestReportPeriod('daily', new Date(new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10) + 'T15:59:00Z'), '23:59')]
+    : [latestReportPeriod('daily',new Date(new Date().toISOString().slice(0,10)+'T15:59:00Z'),'23:59'),weekly];
+  const enqueueBindings = designerOnly ? bindings.filter(b => b.audience === 'designer') : bindings;
+  for(const period of periods) for(const b of enqueueBindings) {
     if ('projectId' in period && b.audience==='customer' && String(b.project_id)!==period.projectId) continue;
     let current: Row | undefined;
     for(let trial=1;trial<=(stageReminders ? 1 : 2);trial++) await step(`${period.kind}/${b.audience}/${b.id} first draft ${trial}`,async()=>{
