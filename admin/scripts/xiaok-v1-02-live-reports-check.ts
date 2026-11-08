@@ -41,10 +41,13 @@ const paintingReminders = process.argv.includes('--painting-reminders');
 const stageReminders = process.argv.includes('--stage-reminders') || matchedReminders || paintingReminders;
 const designerOnly = process.argv.includes('--designer-only');
 const scheduledDaily = process.argv.includes('--scheduled-daily');
+const fourRoleDaily = process.argv.includes('--four-role-daily');
 assert.ok(!designerOnly || (!stageReminders && !weeklyStages && !matchedReminders && !paintingReminders && !native),
   'The designer-only scope reruns the failed designer body case under the empty-slot omission projection');
 assert.ok(!scheduledDaily || (!stageReminders && !weeklyStages && !matchedReminders && !paintingReminders && !native && !designerOnly),
   'The scheduled-daily scope verifies scheduler-discovered daily semantics through the production tick path');
+assert.ok(!fourRoleDaily || (!stageReminders && !weeklyStages && !matchedReminders && !paintingReminders && !scheduledDaily && !designerOnly),
+  'The four-role daily scope runs one daily per binding across the four ends with the Stable readback');
 assert.ok(!stageReminders || !weeklyStages);
 assert.ok(!matchedReminders || !native, 'This batch verifies the published-stage service scope only');
 assert.ok(!matchedReminders || !paintingReminders);
@@ -64,14 +67,14 @@ let unrelatedBindingIds: string[] = [];
 const log: Row = { startedAt: new Date().toISOString(), prefix, owner: process.env.CODEX_THREAD_ID,
   scope: stageReminders ? 'Current stage reminder bodies and private readback; lifecycle scheduling is checked separately' : 'Configured-model daily/weekly report bodies only; scheduled discovery/native/follow-up evidence is not upgraded by this batch',
   fixedScope: { audiences: scheduledDaily ? ['customer', 'worker', 'designer'] : designerOnly ? ['designer'] : ['customer','customer','worker','designer','boss'], projects: 2,
-    kinds: stageReminders ? ['stage'] : weeklyStages ? ['weekly'] : designerOnly ? ['daily'] : scheduledDaily ? ['daily'] : ['daily','weekly'],
+    kinds: stageReminders ? ['stage'] : weeklyStages ? ['weekly'] : designerOnly || fourRoleDaily || scheduledDaily ? ['daily'] : ['daily','weekly'],
     ...(scheduledDaily ? { mechanism: 'scheduler-discovered dailies through the production internal tick; staged knowledge admission; the boss audience is excluded because discoverFollowups would enqueue real enterprise-admin destinations',
       scheduled: 'dailyTime staged to now+30s so the due period ends at the staged occurrence and the fresh records stay inside it' } : {}),
     ...(designerOnly ? { mechanism: 'empty-slot/empty-citation omission projection (f71f4d1f); reruns the fixed13 designer case' } : {}),
     ...(stageReminders ? { stages: paintingReminders ? 'A: painting; B: furnishing with no authorized workmanship' : matchedReminders ? 'A: demolition; B: masonry without a confirmed waterproof substage' : 'A: installation following masonry; B: utilities' } : {}),
     ...(weeklyStages ? { stages: 'A: masonry waterproofing then installation; B: utilities' } : {}),
-    firstDraftsPerCase: stageReminders ? 1 : 2, maxBodyRuns: stageReminders ? 8 : weeklyStages ? 10 : designerOnly ? 2 : scheduledDaily ? 4 : 20,
-    ...(stageReminders ? {} : { secondDraft: 'preplanned independent correction revision with unchanged original facts, never retry after failure' }),
+    firstDraftsPerCase: stageReminders ? 1 : 2, maxBodyRuns: stageReminders ? 8 : weeklyStages ? 10 : designerOnly ? 2 : scheduledDaily || fourRoleDaily ? 5 : 20,
+    ...(stageReminders || fourRoleDaily || scheduledDaily ? {} : { secondDraft: 'preplanned independent correction revision with unchanged original facts, never retry after failure' }),
     stop: 'first failed/indeterminate body, source/configuration drift or unavailable original source',
     reused: 'Existing scheduler, fact-worker, private destination, native components, permissions and revocation evidence at their unchanged scopes' },
   checks: [], attempts: [], fixture: { users, admins, leads, projects, records, bindings: [] }, ingestionCalls: 0, injectedModelCalls: 0 };
@@ -279,7 +282,6 @@ async function main() {
   }
   // Isolate body semantics from the already-covered scheduling matrix. The
   // original automatic enqueue path is reused with fixed controlled periods.
-  if (!scheduledDaily) {
   const dailyAt = new Date(Date.now()+86400000), weeklyAt = nextReportAt('weekly',dailyAt,'08:00');
   const weekly = latestReportPeriod('weekly',weeklyAt,'08:00');
   const periods = stageReminders ? await read(async tx => {
@@ -291,14 +293,13 @@ async function main() {
       result.push({kind:'stage' as const, start:at, end:at, cutoff:new Date(+at+1), scheduledAt:at, stageEventId:String(event.id), projectId});
     }
     return result;
-  }) : weeklyStages ? [weekly] : designerOnly
-    ? [latestReportPeriod('daily', new Date(new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10) + 'T15:59:00Z'), '23:59')]
+  }) : weeklyStages ? [weekly] : designerOnly || fourRoleDaily ? [latestReportPeriod('daily', new Date(new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10) + 'T15:59:00Z'), '23:59')]
     : [latestReportPeriod('daily',new Date(new Date().toISOString().slice(0,10)+'T15:59:00Z'),'23:59'),weekly];
   const enqueueBindings = designerOnly ? bindings.filter(b => b.audience === 'designer') : bindings;
-  for(const period of periods) for(const b of enqueueBindings) {
+  if (!scheduledDaily) for(const period of periods) for(const b of enqueueBindings) {
     if ('projectId' in period && b.audience==='customer' && String(b.project_id)!==period.projectId) continue;
     let current: Row | undefined;
-    for(let trial=1;trial<=(stageReminders ? 1 : 2);trial++) await step(`${period.kind}/${b.audience}/${b.id} first draft ${trial}`,async()=>{
+    for(let trial=1;trial<=(stageReminders || fourRoleDaily ? 1 : 2);trial++) await step(`${period.kind}/${b.audience}/${b.id} first draft ${trial}`,async()=>{
       checkBinding(); assert.deepEqual(await config(),log.configurationBefore);
       const queued = await read(async tx=>{
         const settings = (await one(tx,sql`select * from app.construction_report_settings where enterprise_id=${eid} for update`))!;
@@ -372,7 +373,6 @@ async function main() {
       return {reportId:id,revision,runId:result.state.body_run_id,body:result.detail.body};
     });
   }
-  }
   log.configuredPassed = true; save();
   if (native) await step('Stable native report readback across four roles', async () => {
     checkBinding(); assert.deepEqual(await config(),log.configurationBefore);
@@ -399,7 +399,7 @@ async function main() {
         enterpriseId: eid, contextVersion, source: 'password' }).setProtectedHeader({ alg: 'HS256' })
         .setSubject(uid).setIssuedAt().setAudience('miniprogram').setExpirationTime('1h').sign(new TextEncoder().encode(process.env.JWT_SECRET));
       const reports = (log.attempts as Array<{ bindingId?: string; kind: string; reportId: string; revision: number; trial: number; result: { detail: Row } }>)
-        .filter(a => a.trial === (stageReminders ? 1 : 2) && String(a.bindingId) === String(b.id));
+        .filter(a => a.trial === (stageReminders || fourRoleDaily ? 1 : 2) && String(a.bindingId) === String(b.id));
       assert.equal(reports.length, stageReminders && b.audience==='customer' ? 1 : periods.length);
       actors.push({ name: String(b.audience), leadId: aid ? undefined : leads[users.indexOf(uid)], uid, aid, role, token,
         bid: String(b.id), cid: String(b.conversation_id), reports: reports.map(r => ({ id: r.reportId, revision: r.revision, kind: r.kind, body: r.result.detail.body,

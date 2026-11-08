@@ -111,7 +111,7 @@ module.exports = async ctx => {
       const projects = (await cli.call('project_list')).projects.filter(p => path.resolve(p.projectPath).toLowerCase() === project.toLowerCase());
       assert.ok(projects.length); assert.ok(projects.every(p => p.appId === JSON.parse(fs.readFileSync(path.join(project, 'project.config.json'))).appid));
       report.placement = JSON.parse(cp.execFileSync(pwsh, ['-NoProfile', '-File', path.join(root, 'tmp/wechat-devtools-version-test/window.ps1'), '-Action', 'Inspect', '-IncludeHidden'], { encoding: 'utf8', windowsHide: true }));
-      report.savedPlacement = JSON.parse(cp.execFileSync(pwsh, ['-NoProfile', '-File', path.join(root, 'tmp/v1-02-conversation-list-visual/inspect-window.ps1')], { encoding: 'utf8', windowsHide: true }));
+      report.savedPlacement = JSON.parse(cp.execFileSync(pwsh, ['-NoProfile', '-File', path.join(root, 'tmp/v1-02-followup-journey04/inspect-saved-placement.ps1')], { encoding: 'utf8', windowsHide: true }));
       assert.equal(report.placement.ProjectWindows, 1);
       assert.equal(report.savedPlacement.Handle, report.placement.Handle); assert.equal(report.savedPlacement.ProjectWindows, 1);
       assert.ok(report.placement.OnSecondary || report.savedPlacement.Minimized && report.savedPlacement.SavedOnSecondary);
@@ -251,7 +251,7 @@ module.exports = async ctx => {
           assert.ok(quote.quote && first.standards.some(item => item.citations.some(c => c.quote === quote.quote)));
           assert.equal(quote.originalAvailable, true);
           const before = await cli.evaluate(() => getApp().__qaLiveFollowups.opened.length);
-          const originalButton = await wait(() => p.$('.sheet-panel .notice-action'), 'rendered original-file control', 12);
+          const originalButton = await wait(() => p.$('.sheet-panel .notice-action'), 'rendered original-file control');
           await originalButton.tap();
           const original = await wait(async () => {
             const observed = await cli.evaluate(() => {
