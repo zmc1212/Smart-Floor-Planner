@@ -40,8 +40,11 @@ const matchedReminders = process.argv.includes('--matched-reminders');
 const paintingReminders = process.argv.includes('--painting-reminders');
 const stageReminders = process.argv.includes('--stage-reminders') || matchedReminders || paintingReminders;
 const designerOnly = process.argv.includes('--designer-only');
+const scheduledDaily = process.argv.includes('--scheduled-daily');
 assert.ok(!designerOnly || (!stageReminders && !weeklyStages && !matchedReminders && !paintingReminders && !native),
   'The designer-only scope reruns the failed designer body case under the empty-slot omission projection');
+assert.ok(!scheduledDaily || (!stageReminders && !weeklyStages && !matchedReminders && !paintingReminders && !native && !designerOnly),
+  'The scheduled-daily scope verifies scheduler-discovered daily semantics through the production tick path');
 assert.ok(!stageReminders || !weeklyStages);
 assert.ok(!matchedReminders || !native, 'This batch verifies the published-stage service scope only');
 assert.ok(!matchedReminders || !paintingReminders);
@@ -60,11 +63,14 @@ const staffUsers: string[] = [];
 let unrelatedBindingIds: string[] = [];
 const log: Row = { startedAt: new Date().toISOString(), prefix, owner: process.env.CODEX_THREAD_ID,
   scope: stageReminders ? 'Current stage reminder bodies and private readback; lifecycle scheduling is checked separately' : 'Configured-model daily/weekly report bodies only; scheduled discovery/native/follow-up evidence is not upgraded by this batch',
-  fixedScope: { audiences: designerOnly ? ['designer'] : ['customer','customer','worker','designer','boss'], projects: 2, kinds: stageReminders ? ['stage'] : weeklyStages ? ['weekly'] : designerOnly ? ['daily'] : ['daily','weekly'],
+  fixedScope: { audiences: scheduledDaily ? ['customer', 'worker', 'designer'] : designerOnly ? ['designer'] : ['customer','customer','worker','designer','boss'], projects: 2,
+    kinds: stageReminders ? ['stage'] : weeklyStages ? ['weekly'] : designerOnly ? ['daily'] : scheduledDaily ? ['daily'] : ['daily','weekly'],
+    ...(scheduledDaily ? { mechanism: 'scheduler-discovered dailies through the production internal tick; staged knowledge admission; the boss audience is excluded because discoverFollowups would enqueue real enterprise-admin destinations',
+      scheduled: 'dailyTime staged to now+30s so the due period ends at the staged occurrence and the fresh records stay inside it' } : {}),
     ...(designerOnly ? { mechanism: 'empty-slot/empty-citation omission projection (f71f4d1f); reruns the fixed13 designer case' } : {}),
     ...(stageReminders ? { stages: paintingReminders ? 'A: painting; B: furnishing with no authorized workmanship' : matchedReminders ? 'A: demolition; B: masonry without a confirmed waterproof substage' : 'A: installation following masonry; B: utilities' } : {}),
     ...(weeklyStages ? { stages: 'A: masonry waterproofing then installation; B: utilities' } : {}),
-    firstDraftsPerCase: stageReminders ? 1 : 2, maxBodyRuns: stageReminders ? 8 : weeklyStages ? 10 : designerOnly ? 2 : 20,
+    firstDraftsPerCase: stageReminders ? 1 : 2, maxBodyRuns: stageReminders ? 8 : weeklyStages ? 10 : designerOnly ? 2 : scheduledDaily ? 4 : 20,
     ...(stageReminders ? {} : { secondDraft: 'preplanned independent correction revision with unchanged original facts, never retry after failure' }),
     stop: 'first failed/indeterminate body, source/configuration drift or unavailable original source',
     reused: 'Existing scheduler, fact-worker, private destination, native components, permissions and revocation evidence at their unchanged scopes' },
@@ -193,16 +199,87 @@ async function main() {
       }
     }
     await original(projects[0],{completed:'',pending:'内部交接标记：蓝色工具箱未交接',coordination:''},'internal');
-    await plan.configure({expectedVersion:Number(policy.version),enabled:true,stageEnabled:stageReminders,dailyTime:'23:59',weeklyTime:'23:59',
-      projectIds:projects,stageKeys:stageReminders ? reminderStages : weeklyStages ? ['utilities','installation','masonry_carpentry'] : ['utilities'],audiences:['customer','worker','designer','boss']},randomUUID());
+    await plan.configure({expectedVersion:Number(policy.version),enabled:true,stageEnabled:stageReminders,
+      dailyTime: scheduledDaily ? new Date(Date.now() + 8 * 3600 * 1000 + 90000).toISOString().slice(11, 16) : '23:59',weeklyTime:'23:59',
+      projectIds:projects,stageKeys:stageReminders ? reminderStages : weeklyStages ? ['utilities','installation','masonry_carpentry'] : ['utilities'],
+      audiences: scheduledDaily ? ['customer','worker','designer'] : ['customer','worker','designer','boss']},randomUUID());
     bindings.push(...await read(tx=>rows(tx,sql`select * from app.construction_followup_bindings where enterprise_id=${eid}
       and (user_id in (${users[0]},${users[1]}) or admin_id in (${admins[0]},${admins[1]},${admins[2]})) order by id`)));
-    assert.deepEqual(bindings.map(b=>b.audience).sort(),['boss','customer','customer','designer','worker']);
+    assert.deepEqual(bindings.map(b=>b.audience).sort(), scheduledDaily ? ['customer','customer','designer','worker'] : ['boss','customer','customer','designer','worker']);
     (log.fixture as Row).bindings=bindings.map(b=>({id:String(b.id),conversationId:String(b.conversation_id),audience:b.audience,userId:b.user_id,adminId:b.admin_id})); save();
     return {projects,records,bindings:bindings.length,dailyLimitsEnforced:false};
   });
+  if (scheduledDaily) {
+    const endpoint = 'http://localhost:3006/api/internal/assistant/jobs/run';
+    const secret = process.env.CRON_SECRET;
+    assert.ok(secret, 'CRON_SECRET is required to drive the production tick path');
+    const tick = async () => {
+      const response = await fetch(endpoint, { method: 'POST', headers: { 'x-cron-secret': secret }, signal: AbortSignal.timeout(170000) });
+      assert.equal(response.ok, true, 'the production internal tick accepted');
+    };
+    const scheduledIds = bindings.map(b => String(b.id));
+    await step('scheduler discovers due dailies at the staged time and dedups the period', async () => {
+      const deadline = Date.now() + 150000;
+      let scheduled: Row[] = [];
+      while (Date.now() < deadline && scheduled.length < bindings.length) {
+        await tick();
+        scheduled = await read(tx => rows(tx, sql`select r.id::text report_id, r.report_key, r.binding_id::text binding_id, r.period_end, r.cutoff_at, r.scheduled_at, v.revision
+          from app.construction_reports r join app.construction_report_versions v on v.enterprise_id=r.enterprise_id and v.report_id=r.id and v.revision=1
+          where r.enterprise_id=${eid} and r.kind='daily' and ${JSON.stringify(scheduledIds)}::jsonb ? r.binding_id::text order by r.id`));
+      }
+      assert.equal(scheduled.length, bindings.length, 'the scheduler enqueued exactly one daily per binding');
+      assert.equal(new Set(scheduled.map(r => r.binding_id + ':' + r.report_key)).size, scheduled.length, 'one report per binding and period key');
+      assert.ok(scheduled.every(r => new Date(String(r.scheduled_at)).getTime() > Date.now() - 300000), 'scheduled_at is the staged occurrence');
+      await tick();
+      const after = await read(tx => one(tx, sql`select count(*)::int n from app.construction_reports
+        where enterprise_id=${eid} and kind='daily' and ${JSON.stringify(scheduledIds)}::jsonb ? binding_id::text`));
+      assert.equal(after!.n, scheduled.length, 'a second tick does not duplicate the period');
+      const settings = await read(tx => one(tx, sql`select next_daily_at, daily_time from app.construction_report_settings where enterprise_id=${eid}`));
+      assert.ok(new Date(String(settings.next_daily_at)) > new Date(Date.now() + 3600 * 1000), 'next_daily_at moved past the staged occurrence');
+      log.scheduled = { reports: scheduled.map(r => ({ reportId: r.report_id, bindingId: r.binding_id, reportKey: r.report_key,
+        periodEnd: r.period_end, cutoff: r.cutoff_at, scheduledAt: r.scheduled_at })), nextDailyAt: settings.next_daily_at, dailyTime: settings.daily_time };
+      save();
+      return { reports: scheduled.length };
+    });
+    for (const scheduled of ((log.scheduled as Row).reports as Row[])) {
+      const b = bindings.find(candidate => String(candidate.id) === String(scheduled.bindingId))!;
+      await step(`scheduled daily/${b.audience}/${b.id} compose and delivery`, async () => {
+        checkBinding(); assert.deepEqual(await config(), log.configurationBefore);
+        const attempt: Row = { trial: 1, kind: 'daily', audience: b.audience, bindingId: String(b.id),
+          reportId: scheduled.reportId, revision: 1, scheduled: true, startedAt: new Date().toISOString() };
+        (log.attempts as Row[]).push(attempt); save();
+        const result = await waitReport(String(scheduled.reportId), 1, b);
+        attempt.result = result; attempt.finishedAt = new Date().toISOString(); save();
+        assert.equal(result.state.body_status, 'succeeded');
+        assert.equal(result.detail.deliveryState, 'delivered');
+        const composed = result.detail.body as Array<{ projectId: string; guidance: Array<{ basis: string; text: string }>;
+          standards: Array<{ basis: string; text: string; citations: Array<{ sourceId: string; quote: string }> }>;
+          knowledgeSources: Array<{ sourceId: string }> }>;
+        assert.equal(composed.length, b.audience === 'customer' ? 1 : projects.length);
+        for (const project of composed) {
+          assert.equal(project.guidance.length, 1);
+          assert.equal(project.guidance[0].basis, 'advice');
+          assert.match(project.guidance[0].text, /请优先核对原记录中的这一项/);
+          assert.ok(project.standards.some(item => item.basis === 'evidence'), 'the scheduled body requires an authorized workmanship excerpt');
+          const sources = new Set(project.knowledgeSources.map(s => s.sourceId));
+          for (const item of project.standards) {
+            if (item.basis === 'uncertainty') { assert.deepEqual(item.citations, []); continue; }
+            assert.equal(item.citations.length, 1);
+            const { sourceId, quote } = item.citations[0];
+            assert.ok(sources.has(sourceId) && item.text.startsWith(quote + '\n'), 'the scheduled report displays the exact cited excerpt');
+          }
+        }
+        const visible = JSON.stringify(result.detail);
+        if (b.audience === 'customer') assert.ok(!visible.includes('蓝色工具箱'), 'internal publication must not leak to customer');
+        checkBinding(); assert.deepEqual(await config(), log.configurationBefore);
+        return { reportId: scheduled.reportId, runId: result.state.body_run_id, body: result.detail.body };
+      });
+    }
+    log.configuredPassed = true; save();
+  }
   // Isolate body semantics from the already-covered scheduling matrix. The
   // original automatic enqueue path is reused with fixed controlled periods.
+  if (!scheduledDaily) {
   const dailyAt = new Date(Date.now()+86400000), weeklyAt = nextReportAt('weekly',dailyAt,'08:00');
   const weekly = latestReportPeriod('weekly',weeklyAt,'08:00');
   const periods = stageReminders ? await read(async tx => {
@@ -294,6 +371,7 @@ async function main() {
       checkBinding(); assert.deepEqual(await config(),log.configurationBefore);
       return {reportId:id,revision,runId:result.state.body_run_id,body:result.detail.body};
     });
+  }
   }
   log.configuredPassed = true; save();
   if (native) await step('Stable native report readback across four roles', async () => {
