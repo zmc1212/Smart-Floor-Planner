@@ -281,9 +281,22 @@ test('flat segment fields round-trip through the same body schema and original s
   const citedAdvice = await projectReportBodyFinal(adviceBody([citationId]), tool, true, canonical);
   const cited = parseReportBody(citedAdvice.text, [project], true).projects[0].sections.arrangements.segments[0];
   assert.equal(cited.citations[0].quote, context.sources[0].text);
-  for (const citations of [[' '], ['Cforeign'], ['', ''], [citationId, '']]) {
-    await assert.rejects(() => projectReportBodyFinal(adviceBody(citations), tool, true, canonical), /native_schema_unverified/);
+  // A supplied empty string is the omitted optional citation on the optional
+  // bases: the fixed13 saved-frame discriminator proved the omission passes the
+  // original validation, so it decodes like an absent citation while evidence
+  // keeps its strict failure and non-string entries still reject.
+  const omittedEmpty = await projectReportBodyFinal(adviceBody(['']), tool, true, canonical);
+  assert.deepEqual(omittedEmpty, omitted);
+  const mixed = await projectReportBodyFinal(adviceBody([citationId, '']), tool, true, canonical);
+  assert.deepEqual(parseReportBody(mixed.text, [project], true), parseReportBody(citedAdvice.text, [project], true));
+  const omittedUncertainty = await projectReportBodyFinal(packet({ ...flat,
+    P1_arrangements_1: ['uncertainty', '后续安排有待确认。', ''] }), tool, true, canonical);
+  assert.deepEqual(parseReportBody(omittedUncertainty.text, [project], true).projects[0].sections.arrangements.segments[0].citations, []);
+  for (const citations of [[' '], ['Cforeign'], [null], [citationId, 'Cforeign']]) {
+    await assert.rejects(() => projectReportBodyFinal(adviceBody(citations as string[]), tool, true, canonical), /native_schema_unverified/);
   }
+  await assert.rejects(() => projectReportBodyFinal(packet({ ...flat,
+    P1_standards_1: ['evidence', '应先核对插座。', ''] }), tool, true, canonical), /native_schema_unverified/);
   const invented = { ...flat, P1_standards_1: [...flat.P1_standards_1] };
   invented.P1_standards_1[1] = '插座间距为99厘米。';
   const unsupported = await projectReportBodyFinal(packet(invented), tool, true, canonical);
@@ -292,9 +305,34 @@ test('flat segment fields round-trip through the same body schema and original s
     { ...flat, P1_standards_1: ['evidence', '应先核对插座。', 'Cforeign'] },
     { ...flat, P1_standards_1: ['evidence', '应先核对插座。', ''] },
     { ...flat, P1_standards_1: ['evidence', '应先核对插座。'] },
-    { ...flat, P1_arrangements_1: ['uncertainty', '后续安排有待确认。', ''] }]) {
+    { ...flat, P1_progress_1: ['evidence', '   ', ''] }]) {
     await assert.rejects(() => projectReportBodyFinal(packet(invalid), tool, true, canonical), /native_schema_unverified/);
   }
+  const blankText = await projectReportBodyFinal(packet({ ...flat,
+    P1_progress_2: ['uncertainty', '   ', ''] }), tool, true, canonical);
+  assert.deepEqual(parseReportBody(blankText.text, [project], true).projects[0].sections.progress.segments.map(s => s.text),
+    [flat.P1_progress_1[1]]);
+  // Fixed13's saved designer frame shape: padded blank slots decode as omitted
+  // optional segments while every substantive slot and real citation survives
+  // byte-identically, and a section left with only blank slots still fails.
+  const padded = { ...flat };
+  for (let segment = 2; segment <= 6; segment++) {
+    padded['P1_progress_' + segment] = ['uncertainty', '', ''];
+    padded['P1_pending_' + segment] = ['uncertainty', '', ''];
+    padded['P1_standards_' + segment] = ['uncertainty', '', ''];
+    padded['P1_arrangements_' + segment] = ['uncertainty', '', ''];
+  }
+  padded.P1_standards_2 = ['uncertainty', '无其他工艺标准引用。', ''];
+  const paddedFinal = await projectReportBodyFinal(packet(padded), tool, true, canonical);
+  const paddedBody = parseReportBody(paddedFinal.text, [project], true).projects[0];
+  assert.deepEqual(paddedBody.sections.progress.segments.map(s => s.text), [flat.P1_progress_1[1]]);
+  assert.deepEqual(paddedBody.sections.standards.segments.map(s => s.text),
+    [flat.P1_standards_1[1], '无其他工艺标准引用。']);
+  assert.deepEqual(paddedBody.sections.standards.segments[0].citations[0].quote, context.sources[1].text);
+  assert.equal(paddedBody.sections.standards.segments[1].citations.length, 0);
+  const blankSection = { ...flat };
+  for (let segment = 1; segment <= 6; segment++) blankSection['P1_pending_' + segment] = ['uncertainty', '', ''];
+  await assert.rejects(() => projectReportBodyFinal(packet(blankSection), tool, true, canonical), /native_schema_unverified|invalid_model_answer/);
 });
 
 test('a report quote selects the exact current knowledge span and binds it to the same segment', async () => {

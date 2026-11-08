@@ -93,8 +93,12 @@ function flattenReportCitationLists(raw: string) {
   for (const [key, segment] of Object.entries(fields)) {
     if (!Array.isArray(segment) || segment.length !== 3 || !Array.isArray(segment[2])) continue;
     const [basis, text, ids] = segment;
-    if (ids.length > 4 || ids.some(id => typeof id !== 'string' || !id.length)) continue;
-    fields[key] = [basis, text, ...ids];
+    if (ids.length > 4 || ids.some(id => typeof id !== 'string')) continue;
+    // A supplied empty string is the omitted optional citation on the optional
+    // bases; evidence keeps its original strict failure and real IDs stay.
+    const kept = basis === 'evidence' ? ids : ids.filter(id => id.length);
+    if (kept.length > 4) continue;
+    fields[key] = [basis, text, ...kept];
     changed = true;
   }
   return changed ? JSON.stringify(fields) : raw;
@@ -102,7 +106,7 @@ function flattenReportCitationLists(raw: string) {
 
 function expandReportSegments(raw: string, projectCount: number, quoteSources?: SynthesisSource[][]) {
   const value = JSON.parse(raw) as Record<string, string[]>;
-  let count = 0;
+  let decoded = 0;
   const projects = Array.from({ length: projectCount }, (_, project) => [reportProjectSlot(project),
     Object.fromEntries(reportSectionKinds.map(section => {
       const segments = [];
@@ -110,16 +114,25 @@ function expandReportSegments(raw: string, projectCount: number, quoteSources?: 
         const key = reportSegmentKey(project, section, segment);
         if (!Object.hasOwn(value, key)) break;
         const [basis, rawText, ...citations] = value[key];
-        // A lone empty slot in advice represents the omitted optional citation.
-        // Every supplied citation ID still goes through the original catalog.
-        const citationIds = basis === 'advice' && citations.length === 1 && citations[0] === '' ? [] : citations;
+        // A supplied empty string is the omitted optional citation on the
+        // optional bases; evidence keeps its strict citation requirement and
+        // every supplied citation ID still goes through the original catalog.
+        const citationIds = basis === 'evidence' ? citations : citations.filter(citation => citation !== '');
+        // An empty padded slot is the model's omitted optional segment, not
+        // report prose. Every non-empty slot still decodes exactly once, and a
+        // section left without segments still fails the original minimum.
+        if (!rawText.trim()) {
+          if (basis === 'evidence') fail('native_schema_unverified', 502);
+          decoded++;
+          continue;
+        }
         const text = quoteSources ? expandReportQuotes(rawText, citationIds, quoteSources[project]) : rawText;
         segments.push({ basis, text, citations: citationIds.map(citationId => ({ citationId })) });
-        count++;
+        decoded++;
       }
       return [section, { kind: 'synthesis', segments }];
     }))]);
-  if (count !== Object.keys(value).length) fail('native_schema_unverified', 502);
+  if (decoded !== Object.keys(value).length) fail('native_schema_unverified', 502);
   return JSON.stringify(Object.fromEntries(projects));
 }
 
