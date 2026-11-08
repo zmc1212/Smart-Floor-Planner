@@ -251,8 +251,15 @@ module.exports = async ctx => {
           assert.ok(quote.quote && first.standards.some(item => item.citations.some(c => c.quote === quote.quote)));
           assert.equal(quote.originalAvailable, true);
           const before = await cli.evaluate(() => getApp().__qaLiveFollowups.opened.length);
-          const originalButton = await wait(() => p.$('.sheet-panel .notice-action'), 'rendered original-file control');
-          await originalButton.tap();
+          // The source sheet re-renders when its materializer settles, which
+          // can invalidate an element handle between the query and the tap.
+          let originalTapped = false;
+          for (let attempt = 0; attempt < 3 && !originalTapped; attempt++) {
+            const originalButton = await wait(() => p.$('.sheet-panel .notice-action'), 'rendered original-file control');
+            try { await originalButton.tap(); originalTapped = true; }
+            catch { await delay(600); }
+          }
+          assert.ok(originalTapped, 'the original-file control tapped on a live element');
           const original = await wait(async () => {
             const observed = await cli.evaluate(() => {
               const s = getApp().__qaLiveFollowups;

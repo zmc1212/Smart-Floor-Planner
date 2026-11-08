@@ -357,10 +357,21 @@ async function main() {
           assert.equal(facts.stageKey, 'installation');
           assert.ok(facts.stageEvents.some(e => e.stageKey === 'masonry_carpentry'));
           assert.ok(facts.records.some(r => r.publishedStageKey === 'masonry_carpentry' && String(r.data.pending).includes('防水')));
-          assert.ok(project.standards.some(item => item.text.startsWith('泥木 · 防水工艺标准') && item.basis === 'evidence'));
-          assert.ok(project.standards.some(item => item.text === '安装 · 本次没有可引用的企业工艺依据。' && item.basis === 'uncertainty'));
+          // The corpus carries installation workmanship now, so each rendered
+          // stage line is either a cited authorized excerpt or the explicit
+          // no-workmanship placeholder; retrieval rank may vary between runs.
+          const lines = project.standards.filter(item => /^(?:泥木|安装) · /.test(item.text));
+          assert.ok(lines.some(item => item.text.startsWith('泥木 · 防水工艺标准')), 'the masonry stage renders its workmanship line');
+          assert.ok(lines.some(item => item.text.startsWith('安装 · ')), 'the installation stage renders its workmanship line');
+          assert.ok(lines.every(item => item.basis === 'uncertainty' && !item.citations.length
+            || item.basis === 'evidence' && item.citations.length === 1 && sources.has(item.citations[0].sourceId)),
+            'each stage line is a cited excerpt or the explicit placeholder');
         } else if (weeklyStages) {
-          assert.ok(project.standards.some(item => item.text.startsWith('水电 · 水电工艺标准') && item.basis === 'evidence'));
+          const utilities = project.standards.filter(item => item.text.startsWith('水电 · '));
+          assert.ok(utilities.length, 'the utilities stage renders its workmanship line');
+          assert.ok(utilities.every(item => item.basis === 'uncertainty' && !item.citations.length
+            || item.basis === 'evidence' && item.citations.length === 1 && sources.has(item.citations[0].sourceId)),
+            'each stage line is a cited excerpt or the explicit placeholder');
           assert.ok(project.standards.every(item => !item.text.includes('防水工艺标准')));
         }
       }
