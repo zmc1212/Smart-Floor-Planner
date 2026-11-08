@@ -9,20 +9,28 @@ import { workflowSnapshot } from './platform.mjs';
 const require = createRequire(import.meta.url); require('@next/env').loadEnvConfig(process.cwd(), true);
 const grounding = process.argv.includes('--workflow-grounding');
 const classified = process.argv.includes('--classified');
-const root = path.resolve('..'), base = path.join(root, 'tmp/xiaok-fastgpt-unified-20261107', ...(process.argv.includes('--plus') ? ['plus'] : []), ...(grounding ? ['workflow-grounding'] : []), ...(classified ? ['classified'] : []));
+const nativeQuote = process.argv.includes('--native-chat-quote');
+assert.ok(!nativeQuote || classified && grounding);
+const root = path.resolve('..'), base = path.join(root, 'tmp/xiaok-fastgpt-unified-20261107', ...(process.argv.includes('--plus') ? ['plus'] : []), ...(grounding ? ['workflow-grounding'] : []), ...(classified ? ['classified'] : []), ...(nativeQuote ? ['native-chat-quote-bounded'] : []));
 const label = process.argv.find(x => x.startsWith('--label='))?.slice(8) || 'native01'; assert.match(label, /^[a-z0-9-]+$/);
 const savedLabel = process.argv.find(x => x.startsWith('--verify-saved='))?.slice(15);
+const webLabel = process.argv.find(x => x.startsWith('--resume-web='))?.slice(13);
+const boundedLabel = process.argv.find(x => x.startsWith('--resume-bounded='))?.slice(17);
+assert.ok((!webLabel && !boundedLabel) || nativeQuote && !savedLabel);
 assert.ok(!process.argv.some(x => x.startsWith('--continue=')), 'Unified trial originals must not be replayed');
 const verifySaved = !!savedLabel;
-const continueLabel = savedLabel || process.argv.find(x => x.startsWith('--continue='))?.slice(11);
+const continueLabel = savedLabel || webLabel || boundedLabel;
 if (continueLabel) assert.match(continueLabel, /^[a-z0-9-]+$/);
 const prior = continueLabel ? readPrior(continueLabel) : null;
+const originalWebRun = webLabel ? prior?.runs[2]?.runId as string | undefined : undefined;
+const boundedTrial0 = boundedLabel && prior ? prior.runs.filter((r: any) => r.conversationId === prior.runs[0].conversationId) : [];
+const boundedLater = boundedLabel && prior ? prior.runs.filter((r: any) => r.conversationId !== prior.runs[0].conversationId) : [];
 function readPrior(name: string) { return JSON.parse(fs.readFileSync(path.join(base, name, 'assessment.json'), 'utf8')); }
 const out = path.join(base, label); assert.ok(!fs.existsSync(path.join(out, 'assessment.json')), 'Preserve every original batch'); fs.mkdirSync(out, { recursive: true });
 const readJson = (p: string) => JSON.parse(fs.readFileSync(p, 'utf8'));
 const setup = readJson(path.join(base, 'preparation.json')); assert.equal(setup.status, 'ready');
 const configFile = path.join(base, 'runtime.private.json'), config = readJson(configFile);
-if (grounding) { assert.equal(config.rag.model, 'qwen3.7-plus'); assert.equal(config.rag.grounding, classified ? 'native-dataset-classified' : 'native-dataset'); }
+if (grounding) { assert.equal(config.rag.model, 'qwen3.7-plus'); assert.equal(config.rag.grounding, nativeQuote ? 'native-chat-quote' : classified ? 'native-dataset-classified' : 'native-dataset'); }
 const originalDatabase = process.env.DATABASE_URL;
 process.env.DATABASE_URL = readJson(path.join(root, 'tmp/xiaok-vector/connection.private.json')).DATABASE_URL;
 process.env.XIAOK_FASTGPT_WORKFLOWS_FILE = configFile; process.env.ASSISTANT_TEXT_MODEL = config.rag.model; process.env.ASSISTANT_TEXT_DISABLE_THINKING = '1';
@@ -58,7 +66,7 @@ const binding = () => {
   ['scripts/fastgpt/unified-acceptance.mts', 'scripts/fastgpt/acceptance-native.cjs', 'scripts/fastgpt/platform.mjs', 'scripts/wechatide-native-client.ts',
     'src/lib/assistant/application/http.ts', 'src/lib/assistant/application/worker.ts', 'src/lib/assistant/fastgpt/rag-worker.ts',
     'src/lib/assistant/fastgpt/runtime.ts', '../miniprogram/packages/assistant/chat/chat.js', '../miniprogram/app.js'].forEach(p => visit(path.resolve(p)));
-  ['package.json', 'package-lock.json', '.env.local', '../miniprogram/project.config.json', '../miniprogram/packages/assistant/chat/chat.wxml',
+  ['package.json', 'package-lock.json', '.env.local', '../miniprogram/project.config.json', '../miniprogram/project.private.config.json', '../miniprogram/packages/assistant/chat/chat.wxml',
     '../miniprogram/packages/assistant/chat/chat.less', 'scripts/fixtures/xiaok-ppt-craft-preview.json', 'scripts/fastgpt/unified-workflow.mjs',
     'scripts/assistant-acceptance-safety.mjs'].forEach(p => { if (fs.existsSync(p)) files.add(path.resolve(p)); });
   files.add(configFile); files.add(path.join(base, 'workflow.json'));
@@ -70,7 +78,7 @@ const remote = async (code: string) => {
   return new Promise<string>((resolve, reject) => execFile('ssh', [...sshArgs, 'Administrator@192.168.10.54', 'powershell -NoProfile -EncodedCommand ' + Buffer.from(script, 'utf16le').toString('base64')],
     { windowsHide: true, timeout: 20000, encoding: 'utf8' }, (e, stdout) => e ? reject(Error('Read-only pilot probe failed')) : resolve(stdout)));
 };
-const workflow = () => workflowSnapshot({ ...config, appId: config.rag.appId, nodeCount: classified ? 9 : grounding ? 7 : 6 });
+const workflow = () => workflowSnapshot({ ...config, appId: config.rag.appId, nodeCount: nativeQuote ? 18 : classified ? 9 : grounding ? 7 : 6 });
 const ledger = async (after = 0) => {
   assert.ok(Number.isSafeInteger(after) && after >= 0);
   const query = `begin read only; select json_build_object('lastId',(select coalesce(max(id),0) from logs),'logs',(select coalesce(json_agg(r),'[]') from (select id,model,endpoint,channel_id,code,retry_times,input_tokens,output_tokens,cached_tokens,total_tokens,request_id,created_at,input_amount,output_amount,used_amount from logs where id>${after} order by id) r)); rollback;`;
@@ -85,7 +93,7 @@ let release: any, settingsBefore: any, platformBefore: any, forward: any, revers
 const users: string[] = [], cids: string[] = [];
 let pending: Promise<void> = Promise.resolve(), stopped = false;
 const readTrace = (runId: string) => tenant(async (tx: any) => ({
-  run: await one(tx, sql`select id::text,status,error_code,output_message_id::text,policy_snapshot from app.assistant_runs where enterprise_id=1454 and id=${runId}`),
+  run: await one(tx, sql`select id::text,status,error_code,output_message_id::text,trigger_message_id::text,retry_of_run_id::text,policy_snapshot from app.assistant_runs where enterprise_id=1454 and id=${runId}`),
   steps: await rows(tx, sql`select kind,status,input_summary,private_checkpoint,source_refs,provider_attempt_id::text from app.assistant_run_steps where enterprise_id=1454 and run_id=${runId} order by step_seq`),
   usage: await rows(tx, sql`select category,measurement_kind,input_tokens,output_tokens,quantity,provider_attempt_id::text from app.assistant_usage_records where enterprise_id=1454 and run_id=${runId}`),
 }));
@@ -102,6 +110,14 @@ async function consume(question: string, runId: string, cid: string) {
   assert.equal(lease?.runId, runId); await processAssistantRun(lease);
   const trace = await readTrace(runId); fs.writeFileSync(path.join(out, 'run-' + runId + '.json'), JSON.stringify(trace, null, 2));
   item.status = trace.run.status; item.error = trace.run.error_code; save(); assert.equal(item.status, 'succeeded', item.error || 'run must succeed');
+  const resentAfter = report.runs.length === 3 ? originalWebRun : undefined;
+  assert.equal(trace.run.retry_of_run_id, null);
+  if (resentAfter) {
+    const original = await readTrace(resentAfter);
+    assert.notEqual(trace.run.trigger_message_id, original.run.trigger_message_id);
+    assert.equal(original.run.error_code, 'invalid_model_citation');
+    item.resentAfter = resentAfter;
+  }
   const model = trace.steps.filter((s: any) => s.kind === 'fastgpt_unified_model'); assert.ok(model.length >= 1 && model.length <= 4); assert.ok(model[0].provider_attempt_id); assert.ok(model[0].private_checkpoint.output.usage);
   const classifications = trace.steps.filter((s: any) => s.kind === 'fastgpt_unified_classification');
   assert.equal(classifications.length, classified ? 1 : 0);
@@ -127,6 +143,31 @@ async function consume(question: string, runId: string, cid: string) {
   if (questionIndex === 2) {
     assert.ok(trace.steps.some((s: any) => s.kind === 'retrieval' && s.private_checkpoint?.candidates?.length));
     assert.ok(answer.citations.some((c: any) => String(c.sourceUrl).includes('nipponpaint.com.cn')));
+  }
+  if (nativeQuote) {
+    const final = model.at(-1).private_checkpoint.input;
+    assert.equal(final.tools.length, 0);
+    assert.ok(final.messages.every((m: any) => m.role !== 'tool' && !m.toolCalls?.length));
+    const system = final.messages.filter((m: any) => m.role === 'system').flatMap((m: any) => m.content.map((p: any) => p.text)).join('\n');
+    if (questionIndex === 0) assert.ok(!system.includes('<Cites>'));
+    if (questionIndex === 1 || questionIndex === 3) {
+      assert.ok(system.includes('## 严格要求'));
+      assert.ok(final.messages.every((m: any) => m.role !== 'assistant'), 'A grounded enterprise turn gets the user history without earlier AI prose');
+    }
+    if (questionIndex === 1) {
+      const original = trace.steps.find((s: any) => s.input_summary?.protocol === 'fastgpt-unified-native-dataset-v1')
+        .input_summary.native.find((q: any) => q.q.includes('具体排版由设计师和师傅核对'));
+      assert.ok(system.includes('<Cites>') && system.includes(original?.q), 'The final chatNode needs the exact native PPT19 quote');
+    }
+    if (questionIndex === 2) {
+      assert.ok(trace.steps.some((s: any) => s.kind === 'retrieval' && s.private_checkpoint?.pages?.some((p: any) =>
+        /(^|\.)nipponpaint\.com\.cn$/.test(new URL(p.url).hostname))));
+      assert.ok(system.includes('<Cites>') && system.includes('nipponpaint.com.cn'), 'The final chatNode needs actual official web Evidence');
+    }
+    if (questionIndex === 3) {
+      assert.ok(system.includes('<Cites>') && system.includes('nipponpaint.com.cn'), 'The follow-up can cite the still-authorized earlier web read');
+      assert.ok(final.messages.some((m: any) => m.role === 'user' && m.content.some((p: any) => p.text.includes(questions[1]))), 'The final chatNode retains the user correction');
+    }
   }
   for (const c of answer.citations) {
     const opened = await service.citation(c.id, false, cid); assert.ok(opened.available);
@@ -171,19 +212,46 @@ try {
   await tenant((tx: any) => tx.execute(sql`update app.assistant_enterprise_settings set enabled=true,agent_config=${JSON.stringify({ runtime: 'langgraph-v1', providerKey: 'dashscope', model: report.model,
     imageInput: false, tools: true, probeVersion: 'fastgpt-rag-session-20261107', enterpriseKnowledgeEnabled: true })}::jsonb,policy_version=policy_version+1,version=version+1 where enterprise_id=1454`));
   if (prior) {
-    // Resume only one observed, reviewed saved answer. A CLI interruption is
-    // recoverable without paying for that answer again; retain its exact error.
-    assert.equal(prior.status, 'failed'); assert.ok(prior.error); assert.equal(prior.runs.length, verifySaved ? 8 : 1);
+    assert.equal(prior.status, 'failed'); assert.ok(prior.error);
+    assert.equal(prior.runs.length, verifySaved ? 8 : boundedLabel ? boundedTrial0.length + boundedLater.length : 3);
     assert.ok(prior.native.some((n: any) => n.passed === false));
     assert.ok(prior.cleanup.settingsRestored && prior.cleanup.providerRestored && prior.cleanup.lockReleased && prior.cleanup.bridgeClosed);
     const current = binding(), permitted = new Set(['admin/scripts/fastgpt/unified-acceptance.mts', 'admin/scripts/fastgpt/acceptance-native.cjs']);
+    if (boundedLabel) {
+      assert.deepEqual(prior.bindingBefore, prior.bindingAfter);
+      assert.equal(prior.workflowBefore, prior.workflowAfter);
+      assert.ok(boundedTrial0.length >= 4 && boundedTrial0.length % 4 === 0, 'Bounded resume keeps complete four-question trials');
+      assert.ok(boundedTrial0.every((r: any, i: number) => r.status === 'succeeded' && r.review?.accepted && r.question === questions[i % 4]),
+        'The retained trial must be fully reviewed in its original question order');
+      assert.ok(boundedLater.every((r: any, i: number) => i + 1 < boundedLater.length
+        ? r.status === 'succeeded' && r.review?.accepted : r.status !== 'succeeded'),
+        'An interrupted later trial reruns from its start with at most one failed tail');
+      // Since that batch: the dispatch catch logs unexpected-503 causes, the
+      // native driver retries a transient citation sheet, the unified bridge
+      // accepts the vendor's merged adjacent-Human shape in every phase, and a
+      // web-needing turn may reuse the still-authorized earlier web reads of
+      // the same conversation (the recorded invalid_message and empty-read
+      // failures). No answered content, permission or source decision changed.
+      permitted.add('admin/src/lib/assistant/application/http.ts');
+      permitted.add('admin/src/lib/assistant/fastgpt/native-knowledge.ts');
+      permitted.add('admin/src/lib/assistant/fastgpt/unified-worker.ts');
+    } else if (webLabel) {
+      assert.deepEqual(prior.bindingBefore, prior.bindingAfter);
+      assert.equal(prior.workflowBefore, prior.workflowAfter);
+      assert.ok(originalWebRun);
+      assert.equal(prior.runs[2].question, questions[2]);
+      assert.equal(prior.runs[2].error, 'invalid_model_citation');
+      // The production change projects short IDs only for actual web reads.
+      // Reuse the two original turns, which made no web calls.
+      permitted.add('admin/src/lib/assistant/fastgpt/unified-worker.ts');
+    }
     const changed = [...new Set([...Object.keys(prior.bindingBefore), ...Object.keys(current)])].filter(k => prior.bindingBefore[k] !== current[k]);
     const impactFile = process.argv.find(x => x.startsWith('--impact='))?.slice(9);
     const impacts = impactFile ? readJson(path.resolve(impactFile)).changes : [];
     assert.ok(changed.every(k => permitted.has(k) || impacts.some((i: any) => i.file === k && i.before === prior.bindingBefore[k] && i.after === current[k] && i.impact === 'unrelated-dispatch-only')),
       'Every non-driver source change needs an explicit recorded impact check');
     users.push(...prior.users); cids.push(...new Set<string>(prior.runs.map((r: any) => r.conversationId)));
-    for (const original of prior.runs) {
+    for (const original of webLabel ? prior.runs.slice(0, 2) : boundedLabel ? boundedTrial0 : prior.runs) {
       assert.equal(original.status, 'succeeded');
       const review = original.review || readJson(path.join(base, continueLabel!, 'review-' + original.runId + '.json')); assert.equal(review.accepted, true);
       const saved = (await new ConversationService(actor(users[0])).messages(original.conversationId)).items.find((m: any) => m.id === original.messageId);
@@ -196,7 +264,8 @@ try {
       }
       report.runs.push({ ...original, reusedFrom: continueLabel, review });
     }
-    report.continuation = { prior: continueLabel, originalFailure: prior.error, changed, impacts, originalProviderCalls: prior.runs.length, remainingProviderCalls: verifySaved ? 0 : 3 };
+    report.continuation = { prior: continueLabel, originalFailure: prior.error, changed, impacts, retainedRuns: report.runs.map((r: any) => r.runId),
+      ...(webLabel ? { resendingAfterKnownWebFailure: originalWebRun } : boundedLabel ? { boundedRetainedTrial: boundedTrial0.map((r: any) => r.runId), rerunLaterTrial: true, interruptedTrialFailure: prior.error.split('\n')[0] } : {}) };
   } else await platform(async (tx: any) => { for (let i = 0; i < 2; i++) {
     const prefix = 'synthetic-fastgpt-unified-' + label + '-' + randomUUID(); const u = await one(tx, sql`insert into app.users(nickname,context_version) values(${prefix},1) returning id`);
     users.push(String(u.id)); await tx.execute(sql`insert into app.wechat_identities(user_id,openid) values(${String(u.id)},${prefix})`);
@@ -209,23 +278,32 @@ try {
   for (let trial = 0; trial < 2; trial++) {
     const resume = !!prior && (verifySaved || trial === 0);
     const cid = resume ? cids[trial] : String((await new ConversationService(actor(users[0])).create(randomUUID())).id); if (!resume) cids.push(cid); report.conversations = cids; save();
-    if(trial===1&&!prior)await sourceAudience('staff_internal');
+    if(trial===1&&!verifySaved)await sourceAudience('staff_internal');
     const trialOut = path.join(out, 'trial' + (trial + 1)); fs.mkdirSync(trialOut, { recursive: true });
-    const retained = verifySaved ? prior.runs.filter((r: any) => r.conversationId === cid) : [];
-    const result = await require(path.resolve('scripts/fastgpt/acceptance-native.cjs'))({ root, output: trialOut, actor: { uid: users[0], token, cid }, questions: verifySaved ? [] : resume ? questions.slice(1) : questions, stage: [], assistantHttp,
-      ...(verifySaved ? { savedMessages: retained.map((r: any) => ({ id: r.messageId, text: r.answer })),
+    const retained = resume ? report.runs.filter((r: any) => r.conversationId === cid) : [], resend = !!webLabel && trial === 0;
+    const offset = !!boundedLabel && trial === 0 ? boundedTrial0.length : resend ? 2 : 0;
+    const result = await require(path.resolve('scripts/fastgpt/acceptance-native.cjs'))({ root, output: trialOut, actor: { uid: users[0], token, cid },
+      questions: verifySaved ? [] : questions.slice(offset), stage: [], assistantHttp, priorFailedRunId: resend ? originalWebRun : undefined,
+      ...(retained.length ? { savedMessages: retained.map((r: any) => ({ id: r.messageId, text: r.answer })),
         initialCitations: retained.flatMap((r: any) => r.citations.map((c: any) => ({id:c.id,...(c.id.startsWith('w:')?{domain:'nipponpaint.com.cn'}:{page:c.title.match(/第(\d+)页/)?.[1]})}))) }
-        : resume ? { initialCitation: { id: prior.runs[0].citations[0].id, page: 19 } } : {}),
-      expectedCitationPages: [null,19,null,null], expectedWebDomains: [null,null,'nipponpaint.com.cn',null], onQueued: (q: string, run: string, conversation: string) => { pending = consume(q, run, conversation).catch(error => { stopped = true; throw error; }); return pending; },
+        : {}),
+      expectedCitationPages: [null,19,null,null].slice(offset), expectedWebDomains: [null,null,'nipponpaint.com.cn',null].slice(offset),
+      onQueued: (q: string, run: string, conversation: string) => { pending = consume(q, run, conversation).catch(error => { stopped = true; throw error; }); return pending; },
       onTurnReviewed: () => pending,
       ...(trial === 1 ? { onSourceRevoked: async () => {
         await sourceAudience('staff_internal'); const service = new ConversationService(actor(users[0])), saved = report.runs.filter((r: any) => r.conversationId === cid);
-        for (const run of saved) for (const c of run.citations) assert.equal((await service.citation(c.id, false, cid)).available, c.title.includes('第19页') ? false : true);
         const affected = saved.filter((r: any) => r.question !== questions[0]);
-        for (const run of affected) assert.equal((await service.messages(cid)).items.find((m: any) => m.id === run.messageId).available, false);
+        for (const run of affected) {
+          assert.equal((await service.messages(cid)).items.find((m: any) => m.id === run.messageId).available, false);
+          for (const c of run.citations) assert.equal((await service.citation(c.id, false, cid)).available, false);
+        }
         assert.equal((await service.messages(cid)).items.find((m: any) => m.id === saved[0].messageId).available, true);
         report.checks.push({withdrawal: true, originalServiceMetadata: true, noModelCalls: true, unrelatedGeneralReadable:true});save();return {messageIds:affected.map((r:any)=>r.messageId)};
-      }, onSourceRestored: async () => { await sourceAudience('customer_public'); } } : {}),
+      }, onSourceRestored: async () => {
+        await sourceAudience('customer_public'); const service = new ConversationService(actor(users[0]));
+        for (const run of report.runs.filter((r: any) => r.conversationId === cid)) for (const c of run.citations)
+          assert.equal((await service.citation(c.id, false, cid)).available, true);
+      } } : {}),
     });
     report.native.push(result); save(); await pending; assert.equal(result.passed, true, result.error);
   }
@@ -238,12 +316,16 @@ try {
   report.checks.push({ oldSessionPermissionRevoked: true, refreshedIdentityReentry: true });
   report.proxyLedger = await ledger(report.ledgerBaselineId);
   assert.equal(report.proxyLedger.logs.filter((r: any) => r.model === 'qwen3.7-flash').length, 0, 'No secondary native titles');
-  assert.equal(report.proxyLedger.logs.filter((r: any) => r.model === config.rag.transportModel).length, verifySaved ? 0 : report.runs.reduce((n:number,r:any)=>n+r.modelCalls,0));
+  assert.equal(report.proxyLedger.logs.filter((r: any) => r.model === config.rag.transportModel).length, report.runs.filter((r: any) => !r.reusedFrom).reduce((n:number,r:any)=>n+r.modelCalls,0));
   if (verifySaved) assert.equal(report.proxyLedger.logs.filter((r: any) => r.model === 'text-embedding-v4').length, 0);
   report.status = 'passed'; save(); console.log(JSON.stringify({ passed: true, runs: report.runs.map((r: any) => r.runId), nativeChecks: report.native.map((n: any) => n.checks.length) }));
 } catch (error) { report.status = 'failed'; report.error = error instanceof Error ? error.message : String(error); save(); console.error(report.error); process.exitCode = 1;
 } finally {
   const cleanup = async (key: string, f: () => Promise<any>) => { try { await f(); report.cleanup[key] = true; } catch (e) { report.cleanup[key] = String(e); process.exitCode = 1; } };
+  if (report.bindingBefore && !report.bindingAfter) await cleanup('failedBatchBindingAudited', async () => {
+    report.bindingAfter = binding(); report.workflowAfter = await workflow();
+    assert.deepEqual(report.bindingAfter, report.bindingBefore); assert.equal(report.workflowAfter, report.workflowBefore);
+  });
   await cleanup('undispatchedOwnedRunsCancelled', () => tenant(async (tx: any) => {
     for (const item of report.runs) {
       const pending = await one(tx, sql`select r.status,j.provider_started_at from app.assistant_runs r join app.assistant_jobs j

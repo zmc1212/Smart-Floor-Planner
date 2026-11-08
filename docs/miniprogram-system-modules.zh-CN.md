@@ -22,17 +22,17 @@ Stable 2.02.2608080 / 基础库3.17.2在微云标记项目404校验新版排版�
 
 <!-- xiaok-mineru-fastgpt-preview -->
 
-**FastGPT统一装修会话：Limited。企业取证机制已验证，统一业务验收仍失败。** 显式`XIAOK_FASTGPT_WORKFLOWS_FILE.rag.mode=unified`和`rag.grounding=native-dataset-classified`选择隔离v4.17.4工作流：原生classifyQuestion→原权限/查询准备→原生datasetSearchNode→原文复核→原生ToolCall。通用/公开问题走官方空查询分支，不传企业材料、不调用embedding；企业问题先取证再作答。qwen3.7-plus及百炼text-embedding-v4固定，不新增作答提示条款、关键词路由、换模型、第二Agent、事实库或改答。原生分类仅配置两个分类范围，未知结果拒绝；查询以JSON字符串编码，保留原文并阻止原生URL/文件自动读取分支。
+**FastGPT统一装修会话：Limited。固定原生四问旅程已在隔离工作流中端到端通过；候选仍为显式启用、非默认、非生产。** 显式`XIAOK_FASTGPT_WORKFLOWS_FILE.rag.mode=unified`和`rag.grounding=native-chat-quote`选择隔离v4.17.4工作流：原生classifyQuestion→原权限/查询准备→原生datasetSearchNode→原文复核→原生ToolCall仅作有界联网取证（其stopTool把已读原文交给作答节点）→原生chatNode以未改动的v4.17.4严格引用模板（`fastgpt/vendor/strict-quote.ts`）作唯一最终作答节点。通用/公开问题走官方空查询分支，不传企业材料、不调用embedding；企业/混合问题先取证再作答。qwen3.7-plus及百炼text-embedding-v4固定，不新增作答提示条款、关键词路由、换模型、第二Agent、事实库或改答。未知分类拒绝。桥接在所有阶段接受厂商合并的相邻用户消息数组形状；需联网的一轮在取证未新读页面时可沿用本会话仍获权的更早网页原文，仅在完全无获权网页依据时失败。
 
-原C01 `packages/assistant/chat/chat`、`/api/miniprogram/assistant/conversations/*`、schema、markup/样式/素材和批准390×844设计不变；仅显式启用的文字咨询选择候选。原服务继续持有真实保存、获权模型原答历史、引用目录、当前租户/本人/受众/版本/hash检查、来源依赖重进、幂等和逐次计量。FastGPT使用`NO_RECORD_HISTORIES`，原生CITE只解析真实选中来源。固定四份资料中任一必需发布失权，整个固定资料集不可用。联网沿原搜索/原文读取和SSRF/DNS/TLS/隐私边界，候选摘要不是Evidence。分类独立计量，不能成为保存答案。
+原C01 `packages/assistant/chat/chat`、`/api/miniprogram/assistant/conversations/*`、schema、markup/样式/素材和批准390×844设计不变；仅显式启用的文字咨询选择候选。原服务继续持有真实保存、获权模型原答历史、引用目录、当前租户/本人/受众/版本/hash检查、来源依赖重进、幂等和逐次计量。FastGPT使用`NO_RECORD_HISTORIES`，原生CITE只解析真实选中来源；网页引用用每轮短编号（`w:<run>:<index>[:<part>]`），保存时逐个对照该轮获权原文核验。固定四份资料中任一必需发布失权，整个固定资料集不可用。联网沿原搜索/原文读取和SSRF/DNS/TLS/隐私边界，候选摘要不是Evidence。分类独立计量，不能成为保存答案。
 
-原固定2组4问在11025停止。通用11024正确分类并保存原答，企业embedding/引用均0；亮面与防滑、提亮关系的泛化仍按既有通用路由口径保留为质量限制。企业11025正确分类，回答前拿到PPT19原文，却自编“拍照/视频给客户确认”步骤，并称会让设计师备注需求。归Agent取证后的来源消费/动作承诺，不是缺Evidence；原答继续判失败。首组联网/混合追问及整组第二次未执行，统一旅程未完成，不再修词、正则、换模型或重采样。
+固定2组4问旅程已在本工作流的真实C01会话中完成（`quote-bounded06`/`quote-bounded07`）。第一组保留两条已评审原答，官网问题在其记录的`invalid_model_citation`首稿（11033）之后经正常输入框重发并通过，混合回顾轮在其记录的`invalid_message`合成失败（11035）之后完成。第二组全新会话跑满四问：真实输入与发送、实际点击引用、原文重进、撤回受众后相关回答隐藏而通用答可读、恢复权限、旧会话失效与刷新身份重进、真实HTTP503恢复；代理台账无次要原生标题调用。两处失败均为机制级真实产品缺陷并已按机制修复，不是修词补丁：桥接在所有阶段接受厂商合并的相邻用户形状；需联网轮沿用本会话仍获权的更早网页原文。11025原答仍为失败历史草稿。逐首稿记录的评审限制：通用稿篇幅/Markdown层级偏重与防滑泛化、哑光更正偶被弱化复述、原文之外的墙固建议、宣传性表述密度与同页引用重复。
 
-独立`workflow-grounding/saved-permissions01`只用这两条已保存原答，新增模型0次。Stable DevTools验证原文读回/重进、实际点击PPT19引用、真实撤回受众权限后隐藏相关企业回答而保留通用答、恢复权限，以及实际HTTP503及恢复。跨用户/租户拒绝、旧身份失效和刷新身份重进也通过。这证明失败草稿的访问控制，不替失败语义或未执行联网/混合旅程判通过。C01设计源仍为`design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/README.md`，原生截图沿既有布局与资料不可用状态；真机未验。
+独立`workflow-grounding/saved-permissions01`只用这两条已保存原答，新增模型0次。Stable DevTools验证原文读回/重进、实际点击PPT19引用、真实撤回受众权限后隐藏相关企业回答而保留通用答、恢复权限，以及实际HTTP503及恢复。跨用户/租户拒绝、旧身份失效和刷新身份重进也通过。这证明失败草稿的访问控制，不替失败语义判通过；联网/混合旅程的完成以上方记录为准。C01设计源仍为`design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/README.md`，原生截图沿既有布局与资料不可用状态；真机未验。
 
 31项定向检查、相关类型/lint通过；全量lint为0错误/31项既有警告。分类批与390文件保存访问审计的源码/配置绑定无漂移。无条件前置检索11001因来源相关性失败保留；11022/11023在模型调用前失败：引用输入类型为hidden，修复又只存草稿未发布。发布修复显式传`isPublish:true`，核对publishedVersionId变化及version/detail的输入值/类型。无模型原生探针已定位并验证接线，不算业务验收。
 
-本轮工作流调查新增5次qwen3.7-plus(attempt3341–3345)，5433输入/1464输出；2次text-embedding-v4查询、59输入。原生工作流有embeddingTokens才记observed，失败/缺失保持unavailable。代理625为失败传输，626/627为探针替身回调，不计真实模型；金额未知，代理零单价不代表免费。前批10次模型11997/2702、2次embedding30，以及旧RAG用量/unknown3324和所有失败分批保留。`tmp/xiaok-fastgpt-unified-20261107/workflow-grounding/closure.json`保存完整绑定、原稿、用量和清理；自有资源与设置已恢复。
+本轮工作流调查在quote-native01→quote-bounded07各批新增51次真实qwen3.7-plus（attempt3346–3396），114402输入/9089输出，8次企业检索的query_embedding预留（FastGPT报告embeddingTokens才记observed，否则unavailable）。此前attempt3341–3345、代理625/626/627探针、前批10次模型11997/2702、2次embedding30、旧RAG用量/unknown3324和所有失败分批保留不变。金额未知，代理零单价不代表免费。完成旅程的记录为`tmp/xiaok-fastgpt-unified-20261107/plus/workflow-grounding/classified/native-chat-quote-bounded/quote-bounded07/assessment.json`；自有资源与设置已恢复。
 
 用户授权隔离库`xiaok_embedding_eval`/微云1454的2511–2514/2756–2759经临时撤权恢复后仍为active/customer_public。旧RAG10980/10982–10984及`repair1-saved09`的保存/引用/重进/撤权/503证据按原范围复用，不替本统一旅程判通过；基线`tmp/xiaok-fastgpt-rag-session-20261107/`不改写。预算报价线下，28条混合候选继续退役，主库376–405/410–411只读；候选未默认启用，未宣告生产或全V1完成。
 

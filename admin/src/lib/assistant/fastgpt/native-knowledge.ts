@@ -6,6 +6,8 @@ import { toolSchemaIssue } from '../agent/tool-protocol';
 import { synthesisModelMessages } from '../agent/synthesis';
 import { projectConsultationModelView } from '../agent/consultation-model-view';
 import { AiProviderError } from '@/lib/ai/provider-types';
+import type { NativeChatQuote } from './native-cites';
+import { strictSystemQuote } from './vendor/strict-quote';
 
 export const nativeKnowledgeProtocol = 'fastgpt-native-knowledge-v1';
 export const nativeKnowledgeReadNames = ['search_web', 'read_web', 'query_business', 'recall_history'] as const;
@@ -47,9 +49,14 @@ export function nativeKnowledgeModelMessages(messages: ModelMessage[], tools?: M
 }
 type NativeInput = { messages: ModelMessage[]; tools: ModelTool[]; ports: AgentRuntimePorts; resume?: AgentCheckpoint; question?: string;
   /** Native datasetSearch is an ordered workflow step, not an optional model tool. */
-  grounding?: { query: (selection?: string) => Promise<string>; sources: (quotes: unknown) => Promise<string>;
+  grounding?: { query: (selection?: string) => Promise<string>; sources: (quotes: unknown) => Promise<string | NativeChatQuote[]>;
     classifications?: Array<{ key: string; value: string }>;
-    classify?: (turn: number, messages: ModelMessage[]) => Promise<ModelTurnOutput> } };
+    classify?: (turn: number, messages: ModelMessage[]) => Promise<ModelTurnOutput>;
+    quoteAnswer?: { researchInstructions: string; enterpriseInstructions: string; needsWeb: () => boolean;
+      context: () => { quotes: NativeChatQuote[]; status?: string; enterprise: boolean } } } };
+const workflowTextHistory = (messages: ModelMessage[]) => messages.flatMap<{ role: 'assistant' | 'user'; content: string }>(m =>
+  m.role === 'assistant' ? [{ role: m.role, content: m.content }]
+    : m.role === 'user' ? [{ role: m.role, content: m.content.flatMap(p => p.type === 'text' ? [p.text] : []).join('\n') }] : []);
 type Call = { turn: number; index: number; name: string; args: string; pending?: Promise<Response>; result?: string };
 type Ticket = {
   input: NativeInput; expires: number; calls: Call[]; messages: ModelMessage[];
@@ -60,9 +67,11 @@ type Ticket = {
   toolQueue?: Promise<void>;
   knowledgeQuery?: Promise<string>;
   sourceHash?: string;
-  sourcePacket?: Promise<string>;
+  sourcePacket?: Promise<string | NativeChatQuote[]>;
   sourcesReady?: boolean;
   classification?: string;
+  webDone?: boolean;
+  answerReady?: boolean;
 };
 export type NativeKnowledgeConfig = {
   baseUrl: string; apiKey: string; appId: string; model: string; bridgeKey: string;
@@ -72,10 +81,8 @@ export type NativeKnowledgeConfig = {
   plainAnswers?: boolean; routePrefix?: '/unified';
 };
 
-/** FastGPT's maintained ToolCall node owns the entire tool/model loop. This
- * bridge only adapts transport to the application's existing guarded ports.
- * It does not run LangGraph, select queries, rewrite answers or retry a model.
- */
+/** FastGPT owns the workflow and model calls. The bridge scopes callbacks,
+ * supplies verified originals, and dispatches through existing guarded ports. */
 export class FastGPTNativeKnowledge {
   private tickets = new Map<string, Ticket>();
   constructor(private readonly config: NativeKnowledgeConfig) {
@@ -98,6 +105,7 @@ export class FastGPTNativeKnowledge {
     if (!ticket || ticket.expires < Date.now()) return Response.json({ error: 'not_found' }, { status: 404 });
     try {
       await ticket.input.ports.authorize();
+      const quoteAnswer = ticket.input.grounding?.quoteAnswer;
       const system = ticket.input.messages.flatMap(m => m.role === 'system' ? m.content : [])
         .filter(p => p.type === 'text').map(p => p.type === 'text' ? p.text : '').join('\n');
       if (url.pathname === '/native-input' && request.method === 'GET') {
@@ -128,7 +136,21 @@ export class FastGPTNativeKnowledge {
         const packet = await ticket.sourcePacket;
         await ticket.input.ports.authorize();
         ticket.sourcesReady = true;
+        if (quoteAnswer) return Response.json({ instructions: quoteAnswer.researchInstructions + '\n' + marker + id, webRequired: quoteAnswer.needsWeb() });
         return Response.json({ instructions: [system, packet, marker + id].filter(Boolean).join('\n') });
+      }
+      if (url.pathname === '/native-quotes' && request.method === 'GET' && quoteAnswer) {
+        if (!ticket.sourcesReady || ticket.failure || quoteAnswer.needsWeb() && !ticket.webDone) fail('context_changed');
+        const enterprise = await ticket.sourcePacket;
+        if (!Array.isArray(enterprise)) fail('context_changed');
+        const scope = quoteAnswer.context(), verified = [...enterprise, ...scope.quotes];
+        // Use the native referenced-history input. Earlier AI prose stays in
+        // the saved conversation, outside the enterprise fact view.
+        const history = scope.enterprise ? workflowTextHistory(ticket.input.messages).slice(0, -1)
+          .filter(m => m.role === 'user').map(m => ({ obj: 'Human', value: [{ text: { content: m.content } }] })) : 6;
+        ticket.answerReady = true;
+        return Response.json({ quotes: verified.length ? verified : null, history, quotePrompt: scope.enterprise ? strictSystemQuote : '',
+          instructions: [scope.enterprise ? quoteAnswer.enterpriseInstructions : system, scope.status, marker + id].filter(Boolean).join('\n') });
       }
       if (request.method !== 'POST' || !url.pathname.startsWith('/native-tool/')) return Response.json({ error: 'not_found' }, { status: 404 });
       const name = url.pathname.slice('/native-tool/'.length);
@@ -181,7 +203,16 @@ export class FastGPTNativeKnowledge {
       call.pending = this.config.plainAnswers ? (ticket.toolQueue || Promise.resolve()).then(execute) : execute();
       if (this.config.plainAnswers) ticket.toolQueue = call.pending.then(() => {}, () => {});
       }
-      return (await call.pending).clone();
+      const response = (await call.pending).clone();
+      if (quoteAnswer && response.ok && ticket.turn === agentModelLimits.maxModelTurns
+        && ticket.calls.filter(c => c.turn === ticket.turn - 1).every(c => ticket.calls.some(previous =>
+          previous.result !== undefined && previous.name === c.name && fingerprint(JSON.parse(previous.args)) === fingerprint(JSON.parse(c.args))))) {
+        // All reads in the last allowed research turn have a receipt. The
+        // native child stopTool ends its loop before another model dispatch.
+        ticket.webDone = true;
+        return Response.json({ ...await response.json(), researchDone: true });
+      }
+      return response;
     } catch (error) {
       ticket.failure ??= (error as { code?: string }).code || 'context_unavailable';
       return Response.json({ error: ticket.failure }, { status: 409 });
@@ -221,19 +252,32 @@ export class FastGPTNativeKnowledge {
       ticket = this.tickets.get(ids[0]);
       if (!ticket || ticket.expires < Date.now() || ticket.final) fail('context_changed', 409);
       if (ticket.failure) fail(ticket.failure, 502);
+      const quoteAnswer = ticket.input.grounding?.quoteAnswer;
       const classifying = !!ticket.input.grounding?.classifications && !ticket.classification && !ticket.sourcesReady;
       if (ticket.input.grounding && !ticket.sourcesReady && !classifying) fail('context_changed');
       if (classifying && (body.tools?.length || !ticket.input.grounding?.classify)) fail('context_changed');
       await ticket.input.ports.authorize();
-      if (ticket.busy || ticket.turn >= agentModelLimits.maxModelTurns) fail('agent_iteration_limit', 422);
+      // The bounded research loop keeps its turn budget. Native chatNode uses
+      // one separately metered call after the verified quote gate completes.
+      const maxTurns = agentModelLimits.maxModelTurns + (quoteAnswer && ticket.answerReady ? 1 : 0);
+      if (ticket.busy || ticket.turn >= maxTurns) fail('agent_iteration_limit', 422);
       ticket.busy = true;
       const turn = ticket.turn++;
-      const messages: ModelMessage[] = body.messages.map((m: { role: string; content?: string; tool_call_id?: string; tool_calls?: { id: string; function: { name: string; arguments: string } }[] }) => {
+      const messages: ModelMessage[] = body.messages.map((m: { role: string; content?: string | { type: string; text: string }[];
+        tool_call_id?: string; tool_calls?: { id: string; function: { name: string; arguments: string } }[] }) => {
+        // Native transport merges adjacent Human turns into text parts in every
+        // phase (classification, research and the referenced-history answer).
+        // Keep each original turn text verbatim; the transport shape adds no prose.
+        if (m.role === 'user' && Array.isArray(m.content)) {
+          if (!m.content.length || m.content.some(p => p?.type !== 'text' || typeof p.text !== 'string')) fail('invalid_message', 422);
+          return { role: 'user', content: m.content.map(p => ({ type: 'text', text: p.text })) };
+        }
         if (m.role === 'system' || m.role === 'user') {
           if (typeof m.content !== 'string') fail('invalid_message', 422);
           const text = m.role === 'system' ? m.content.split('\n').filter(line => !line.startsWith(marker)).join('\n') : m.content;
           return { role: m.role, content: [{ type: 'text', text }] };
         }
+        if (m.content != null && typeof m.content !== 'string') fail('invalid_message', 422);
         if (m.role === 'tool') return { role: 'tool', callId: m.tool_call_id!, content: m.content || '' };
         if (m.role !== 'assistant') fail('invalid_message', 422);
         return { role: 'assistant', content: m.content || '', ...(m.tool_calls?.length ? {
@@ -247,6 +291,9 @@ export class FastGPTNativeKnowledge {
       // supplies no file access; exclude that specific native capability before
       // dispatch. Unknown tools and any attempted file call remain forbidden.
       const transportTools = nativeTools.filter(t => t.name !== 'read_files');
+      const researching = !!quoteAnswer && !classifying && !ticket.answerReady;
+      if (researching && (!quoteAnswer.needsWeb() || ticket.webDone || !transportTools.length)) fail('context_changed');
+      if (quoteAnswer && ticket.answerReady && (nativeTools.length || messages.some(m => m.role === 'tool' || m.role === 'assistant' && m.toolCalls?.length))) fail('context_changed');
       const allowed = (name: string) => this.config.plainAnswers ? ticket!.input.tools.some(t => t.name === name) : names.has(name);
       if (transportTools.some(t => !allowed(t.name))) fail('assistant_capability_forbidden', 403);
       // The HTTP node's payload wrapper belongs only to FastGPT transport.
@@ -273,12 +320,13 @@ export class FastGPTNativeKnowledge {
         ticket.classification = selected.value;
       } else if (this.config.plainAnswers && !calls.length) {
         if (output.finishReason !== 'stop' || !output.text.trim()) fail('invalid_model_answer', 502);
-        ticket.final = output;
+        if (researching) ticket.webDone = true;
+        else ticket.final = output;
       }
       ticket.messages.push({ role: 'assistant', content: output.text,
         toolCalls: calls.map(c => ({ id: `${c.turn}:${c.index}`, name: c.name, arguments: c.args })) });
       await ticket.input.ports.checkpoint(this.state(ticket));
-      this.config.record({ kind: 'native_model', phase: classifying ? 'classification' : 'answer', turn, request: { messages: projected, tools }, output });
+      this.config.record({ kind: 'native_model', phase: classifying ? 'classification' : researching ? 'web_research' : 'answer', turn, request: { messages: projected, tools }, output });
       const result = { id: output.providerRequestId || randomUUID(), object: 'chat.completion', created: Math.floor(Date.now() / 1000), model: this.config.model,
         choices: [{ index: 0, message: { role: 'assistant', content: output.text || null,
           ...(output.toolCalls.length ? { tool_calls: output.toolCalls.map(c => ({ id: c.id, type: 'function', function: { name: c.name,
@@ -318,13 +366,11 @@ export class FastGPTNativeKnowledge {
     this.tickets.set(id, ticket);
     try {
       await input.ports.checkpoint(this.state(ticket));
-      const nativeHistory = input.messages.flatMap<{ role: 'assistant' | 'user'; content: string }>(m => m.role === 'assistant' ? [{ role: m.role, content: m.content }]
-        : m.role === 'user' ? [{ role: m.role, content: m.content.flatMap(p => p.type === 'text' ? [p.text] : []).join('\n') }] : []);
       const response = await fetch(this.config.baseUrl + '/api/v1/chat/completions', {
         method: 'POST', signal: AbortSignal.timeout(150000), headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + this.config.apiKey },
         body: JSON.stringify({ appId: this.config.appId, stream: false, detail: true,
           ...(this.config.plainAnswers ? { chatId: 'NO_RECORD_HISTORIES', retainDatasetCite: true } : {}),
-          variables: { workflowTicket: id }, messages: this.config.plainAnswers ? nativeHistory : [{ role: 'user', content: 'AUTO_EXECUTE' }] }),
+          variables: { workflowTicket: id }, messages: this.config.plainAnswers ? workflowTextHistory(input.messages) : [{ role: 'user', content: 'AUTO_EXECUTE' }] }),
       });
       const packet = await response.json();
       this.config.record({ kind: 'native_workflow', status: response.status, response: JSON.parse(JSON.stringify(packet).replaceAll(id, '[expired scoped ticket]')) });
@@ -332,6 +378,8 @@ export class FastGPTNativeKnowledge {
       // HTTP envelope. A definitive403 must not become an ambiguous model call.
       if (ticket.failureError) throw ticket.failureError;
       if (!response.ok || packet.error || ticket.failure || !ticket.final) fail(ticket.failure || 'fastgpt_workflow_unavailable', 502);
+      if (input.grounding?.quoteAnswer && (!ticket.answerReady || packet.choices?.[0]?.message?.content !== ticket.final.text
+        || packet.responseData?.filter((r: { moduleType: string }) => r.moduleType === 'chatNode').length !== 1)) fail('invalid_model_answer', 502);
       await input.ports.authorize();
       const retrieval = packet.responseData?.filter((r: { moduleType: string }) => r.moduleType === 'datasetSearchNode');
       const embeddingTokens = retrieval?.length === 1 && Number.isSafeInteger(retrieval[0].embeddingTokens) && retrieval[0].embeddingTokens >= 0

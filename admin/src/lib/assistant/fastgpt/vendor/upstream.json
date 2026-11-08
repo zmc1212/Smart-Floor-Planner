@@ -8,10 +8,17 @@
       "sha256": "b0979723da7b284530cd217eb3eab0c668fac3ccc9fd44b032c9268624eabd3f"
     },
     {
+      "path": "strict-quote.ts",
+      "upstream": "https://github.com/labring/FastGPT/blob/v4.17.4/packages/global/core/ai/prompt/AIChat.ts",
+      "selector": "Prompt_systemQuotePromptList / standard_strict / 4.9.7",
+      "sha256": "346cf1503849f96ac18ac42355f378618b684ba057f1df7a128ed80aca4e28a1",
+      "upstreamSha256": "3cd063ca6d089f6ed906a14de069f37b56bc8faf629c5a01584daefce9bf130d"
+    },
+    {
       "path": "LICENSE.FastGPT",
       "upstream": "https://github.com/labring/FastGPT/blob/v4.17.4/LICENSE",
       "sha256": "3a66bf692d2ffd2a691061e4c8591617bab33c2d1cb0de70e1e1faa13fd0543e"
     }
   ],
-  "purpose": "Unchanged native dataset ToolCall citation protocol; source identities, authorization and persistence remain original XiaoK services."
+  "purpose": "Native citation protocols and the unmodified strict system quote template. Source identities, authorization and persistence stay in XiaoK services."
 }

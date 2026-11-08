@@ -142,3 +142,31 @@ for (const failure of ['missing-source-step', 'foreign-source', 'revoked-after-s
     assert.equal(models, 0);
   } finally { globalThis.fetch = oldFetch; }
 });
+
+test('native chat quotes cannot publish the intermediate research answer', async () => {
+  const adapter = new FastGPTNativeKnowledge(config), oldFetch = globalThis.fetch;
+  let modelCalls = 0, quoteCalls = 0;
+  try {
+    globalThis.fetch = async (_url, options) => {
+      const key = JSON.parse(String(options?.body)).variables.workflowTicket;
+      await adapter.handle(request('/unified-input', key));
+      const sources = await (await adapter.handle(request('/unified-sources', key, []))).json();
+      const research = await adapter.handle(request('/unified-model/v1/chat/completions', config.bridgeKey, {
+        model: config.model, messages: [{ role: 'system', content: sources.instructions }, { role: 'user', content: '帮我查官网' }],
+        tools: tools.map(t => ({ type: 'function', function: t })),
+      }));
+      assert.equal(research.status, 200);
+      // The workflow must call the quote gate and then its native chatNode.
+      return Response.json({ choices: (await research.json()).choices });
+    };
+    await assert.rejects(adapter.run({ messages: [{ role: 'user', content: [{ type: 'text', text: '帮我查官网' }] }], tools,
+      grounding: { query: async () => '', sources: async () => [], quoteAnswer: {
+        needsWeb: () => true, researchInstructions: 'read', enterpriseInstructions: '',
+        context: () => { quoteCalls++; return { quotes: [], enterprise: false }; },
+      } },
+      ports: { authorize: async () => {}, checkpoint: async () => {}, tool: async () => { throw Error('No tools'); },
+        model: async () => { modelCalls++; return { text: '取证阶段文本', toolCalls: [], usage: null, finishReason: 'stop', providerRequestId: 'fixture' }; } } }));
+    assert.equal(modelCalls, 1);
+    assert.equal(quoteCalls, 0);
+  } finally { globalThis.fetch = oldFetch; }
+});

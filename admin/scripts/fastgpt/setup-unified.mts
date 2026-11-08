@@ -5,21 +5,23 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
 import { execFileSync, spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { unifiedWorkflow } from './unified-workflow.mjs';
+import { unifiedWorkflow, unifiedQuoteWorkflow } from './unified-workflow.mjs';
 const require = createRequire(import.meta.url); require('@next/env').loadEnvConfig(process.cwd(), true);
 const model = process.argv.includes('--plus') ? 'qwen3.7-plus' : 'qwen3.7-flash';
 const grounding = process.argv.includes('--workflow-grounding');
 const classified = process.argv.includes('--classified');
+const nativeQuote = process.argv.includes('--native-chat-quote');
 assert.ok(!classified || grounding);
+assert.ok(!nativeQuote || classified);
 assert.ok(!grounding || model === 'qwen3.7-plus', 'Mechanism comparison keeps the last configured chat model unchanged');
-const root = path.resolve('..'), out = path.join(root, 'tmp/xiaok-fastgpt-unified-20261107', ...(process.argv.includes('--plus') ? ['plus'] : []), ...(grounding ? ['workflow-grounding'] : []), ...(classified ? ['classified'] : []));
+const root = path.resolve('..'), out = path.join(root, 'tmp/xiaok-fastgpt-unified-20261107', ...(process.argv.includes('--plus') ? ['plus'] : []), ...(grounding ? ['workflow-grounding'] : []), ...(classified ? ['classified'] : []), ...(nativeQuote ? ['native-chat-quote-bounded'] : []));
 fs.mkdirSync(out, { recursive: true });
 const read = (p: string) => JSON.parse(fs.readFileSync(path.join(root, p), 'utf8'));
 const original = read(grounding ? 'tmp/xiaok-fastgpt-unified-20261107/plus/runtime.private.json' : 'tmp/xiaok-fastgpt-rag-session-20261107/runtime.private.json');
 const file = path.join(out, 'runtime.private.json'), state: any = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {
   ...original, auditFile: path.join(out, 'workflow-attempts.jsonl'), ragChannelId: grounding ? original.ragChannelId : undefined,
   ragModelId: grounding ? original.ragModelId : undefined, ragWorkflowHash: undefined, ragPublished: undefined,
-  rag: {...original.rag, model, mode: 'unified', ...(grounding ? { grounding: classified ? 'native-dataset-classified' : 'native-dataset' } : {}), appId: undefined,
+  rag: {...original.rag, model, mode: 'unified', ...(grounding ? { grounding: nativeQuote ? 'native-chat-quote' : classified ? 'native-dataset-classified' : 'native-dataset' } : {}), appId: undefined,
     bridgeKey: grounding ? original.rag.bridgeKey : randomBytes(32).toString('hex'), transportModel: 'sfp-unified-' + model.replaceAll('.', '')},
 };
 const save = () => { fs.writeFileSync(file, JSON.stringify(state, null, 2)); execFileSync('icacls.exe', [file, '/inheritance:r', '/grant:r', 'Administrator:F', 'SYSTEM:F'], { windowsHide: true, stdio: 'ignore' }); };
@@ -55,10 +57,14 @@ try {
       name: '小K统一会话·' + model + ' 原服务计量', isActive: true, config: { maxContext: 16000, maxResponse: 2048, quoteMaxToken: 8000,
         maxTemperature: 1, toolChoice: true, vision: false, responseFormatList: ['text'], defaultConfig: { enable_thinking: false } } },
   })).modelId; save(); }
-  const { unifiedTools, knowledgeQuestionClasses } = require(path.resolve('src/lib/assistant/fastgpt/unified-tools.ts'));
-  const datasetNode = grounding ? read('tmp/xiaok-fastgpt-rag-session-20261107/workflow.json').nodes.find((n: any) => n.flowNodeType === 'datasetSearchNode') : undefined;
+  const { unifiedTools, knowledgeQuestionClasses, quoteQuestionClasses } = require(path.resolve('src/lib/assistant/fastgpt/unified-tools.ts'));
+  const originalNodes = grounding ? read('tmp/xiaok-fastgpt-rag-session-20261107/workflow.json').nodes : [];
+  const datasetNode = originalNodes.find((n: any) => n.flowNodeType === 'datasetSearchNode');
   if (grounding) assert.ok(datasetNode);
-  const workflow = unifiedWorkflow(state.ragModelId, unifiedTools, datasetNode, classified ? knowledgeQuestionClasses : undefined);
+  const chatNode = originalNodes.find((n: any) => n.flowNodeType === 'chatNode');
+  if (nativeQuote) assert.ok(chatNode);
+  const workflow = nativeQuote ? unifiedQuoteWorkflow(state.ragModelId, unifiedTools, datasetNode, quoteQuestionClasses, chatNode)
+    : unifiedWorkflow(state.ragModelId, unifiedTools, datasetNode, classified ? knowledgeQuestionClasses : undefined);
   const hash = createHash('sha256').update(JSON.stringify(workflow)).digest('hex');
   const updating = !!state.ragWorkflowHash && state.ragWorkflowHash !== hash;
   assert.ok(!state.publicationPending, 'Inspect the prior unknown publication before another write');
@@ -89,17 +95,28 @@ try {
   if (classified) {
     const published = await api('/api/core/app/version/detail?appId=' + state.rag.appId + '&versionId=' + state.ragPublished);
     assert.equal(published.nodes.length, workflow.nodes.length);
-    for (const id of ['classify', 'query', 'enterprise', 'sources', 'dialogue']) {
+    const quoteNodes = ['web-route', 'quotes', 'answer', ...['search_web', 'read_web'].flatMap(id => [`${id}-budget`, `${id}-stop`, `${id}-result`])];
+    for (const id of ['classify', 'query', 'enterprise', 'sources', 'dialogue', ...(nativeQuote ? quoteNodes : [])]) {
       const expected = workflow.nodes.find((n: any) => n.nodeId === id)!;
       const actual = published.nodes.find((n: any) => n.nodeId === id); assert.ok(actual);
+      assert.equal(actual.flowNodeType, expected.flowNodeType);
       for (const input of expected.inputs) {
         const found = actual.inputs.find((i: any) => i.key === input.key); assert.ok(found);
         // Native detail rewriting clears the legacy vectorModel.model display
         // alias; immutable dataset/model IDs are the executed references.
         const value = (v: any) => input.key === 'datasets' ? v.map((d: any) => ({ datasetId: d.datasetId, modelId: d.vectorModel.modelId })) : v;
-        assert.deepEqual(value(found.value), value(input.value), `Published ${id}.${input.key} must match the requested graph`);
+        // The detail API can fill the default extension model for display even
+        // when the published workflow has query extension explicitly disabled.
+        const inactiveDefault = input.key === 'datasetSearchExtensionModelId' && input.value === undefined
+          && actual.inputs.find((i: any) => i.key === 'datasetSearchUsingExtensionQuery')?.value === false;
+        if (!inactiveDefault) assert.deepEqual(value(found.value), value(input.value), `Published ${id}.${input.key} must match the requested graph`);
         assert.equal(found.selectedType ?? found.renderTypeList[0], input.selectedType ?? input.renderTypeList[0]);
       }
+    }
+    if (nativeQuote) {
+      const handles = (edges: typeof workflow.edges) => edges.map(({ source, target, sourceHandle, targetHandle }) =>
+        [source, target, sourceHandle, targetHandle].join(':')).sort();
+      assert.deepEqual(handles(published.edges), handles(workflow.edges));
     }
     fs.writeFileSync(path.join(out, 'published-check.json'), JSON.stringify({ versionId: state.ragPublished,
       requestedWorkflowHash: hash, nodes: published.nodes.length, verifiedInputs: true, at: new Date().toISOString() }, null, 2));

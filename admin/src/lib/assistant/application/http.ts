@@ -159,6 +159,9 @@ export async function assistantHttp(request: Request, path: string[]) {
     } else fail('assistant_resource_not_found', 404);
     return NextResponse.json({ success: true, data, requestId }, { status, headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
+    // A non-AssistantError here is an unexpected infrastructure failure; the
+    // mapped 503 must keep its real cause in the server log for diagnosis.
+    if (!(error instanceof AssistantError)) console.error('[assistant] unexpected dispatch failure', requestId, error);
     const safe = error instanceof AssistantError ? error : new AssistantError('assistant_unavailable', 503);
     return NextResponse.json({ success: false, error: safe.code, code: safe.code, requestId }, { status: safe.status, headers: { 'Cache-Control': 'no-store' } });
   }

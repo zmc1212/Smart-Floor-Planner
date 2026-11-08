@@ -66,3 +66,55 @@ export function unifiedWorkflow(modelId, tools, datasetNode, classifications) {
   }
   return workflow;
 }
+
+/** Use the verified native chatNode template and its stock quote renderer.
+ * ToolCall is only a web reader and its intermediate text is not an answer. */
+export function unifiedQuoteWorkflow(modelId, tools, datasetNode, classifications, chatNode) {
+  const workflow = unifiedWorkflow(modelId, tools, datasetNode, classifications);
+  const get = id => workflow.nodes.find(n => n.nodeId === id);
+  const set = (node, key, value) => { node.inputs.find(i => i.key === key).value = value; };
+  const output = (key, valueType) => ({ id: key, key, label: key, valueType, type: 'static' });
+  const edge = (source, target, handle = 'right') => ({ source, target, sourceHandle: `${source}-source-${handle}`, targetHandle: `${target}-target-left` });
+  const condition = (nodeId, name, position, variable, branchId) => ({ nodeId, name, position, flowNodeType: 'ifElseNode',
+    inputs: [{ key: 'ifElseList', label: '', valueType: 'any', renderTypeList: ['hidden'], value: [
+      { branchId, condition: 'AND', list: [{ variable, condition: 'equalTo', value: true, valueType: 'input' }] },
+    ] }], outputs: [output('ifElseResult', 'string')] });
+  const sources = get('sources'), research = get('dialogue');
+  sources.outputs.push(output('webRequired', 'boolean'));
+  research.name = '原生联网取证';
+  set(research, 'isResponseAnswerText', false);
+  const route = condition('web-route', '按原生分类决定本轮联网', { x: 715, y: -150 }, ['sources', 'webRequired'], 'web');
+  const quotes = structuredClone(get('load'));
+  Object.assign(quotes, { nodeId: 'quotes', name: '原服务提供获权引用', position: { x: 1070, y: -150 },
+    outputs: [output('instructions', 'string'), output('quotes', 'datasetQuote'), output('history', 'chatHistory'), output('quotePrompt', 'string')] });
+  set(quotes, 'system_httpReqUrl', 'http://host.docker.internal:18310/unified-quotes');
+  const answer = structuredClone(chatNode);
+  Object.assign(answer, { nodeId: 'answer', name: '原生AI对话与引用', position: { x: 1290, y: -150 } });
+  set(answer, 'modelId', modelId);
+  set(answer, 'maxToken', 2048);
+  set(answer, 'userChatInput', ['start', 'userChatInput']);
+  set(answer, 'systemPrompt', ['quotes', 'instructions']);
+  set(answer, 'quoteQA', ['quotes', 'quotes']);
+  for (const key of ['history', 'quotePrompt']) Object.assign(answer.inputs.find(i => i.key === key), {
+    value: ['quotes', key], renderTypeList: ['reference'], selectedType: 'reference',
+  });
+  workflow.nodes.push(route, quotes, answer);
+  workflow.edges = workflow.edges.filter(e => !(e.source === 'sources' && e.target === 'dialogue'));
+  workflow.edges.push(edge('sources', 'web-route'), edge('web-route', 'dialogue', 'web'), edge('web-route', 'quotes', 'ELSE'),
+    edge('dialogue', 'quotes'), edge('quotes', 'answer'));
+  for (const id of ['search_web', 'read_web']) {
+    const tool = get(id), budget = `${id}-budget`, stop = `${id}-stop`, result = `${id}-result`, y = tool.position.y;
+    tool.outputs.push(output('researchDone', 'boolean'));
+    workflow.nodes.push(condition(budget, '取证轮次已用完', { x: 1100, y }, [id, 'researchDone'], 'stop'),
+      { nodeId: stop, name: '交接已读取的原文', flowNodeType: 'stopTool', position: { x: 1300, y: y - 75 }, inputs: [], outputs: [] },
+      // Native IfElse emits its branch label as the tool result. Restore the
+      // actual guarded response for the research model on the continue branch.
+      { nodeId: result, name: '返回原搜索或读取回执', flowNodeType: 'pluginOutput', position: { x: 1300, y: y + 75 },
+        inputs: [{ key: 'result', label: '', valueType: 'string', renderTypeList: ['reference'], selectedType: 'reference', value: [id, 'result'] }],
+        outputs: [] });
+    workflow.edges.push(edge(id, budget), edge(budget, stop, 'stop'), edge(budget, result, 'ELSE'));
+  }
+  workflow.name = '小K统一装修会话 · 原生引用范围';
+  workflow.intro = '隔离开发；按需检索企业或网页原文，复用原服务授权、保存和引用，原生AI对话按quoteQA作答。';
+  return workflow;
+}

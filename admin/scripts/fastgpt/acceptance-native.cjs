@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- Existing Stable DevTools CLI controller. */
 const fs=require('fs'),path=require('path'),http=require('http'),cp=require('child_process'),assert=require('assert/strict'),crypto=require('crypto');
-module.exports=async({root,output,actor,questions,stage,assistantHttp,onQueued,onTurnReviewed,onSwitch,onStageCorrection,expectedCitationPages,expectedWebDomains,onSourceRevoked,onSourceRestored,initialCitation,initialCitations,savedMessages})=>{
+module.exports=async({root,output,actor,questions,stage,assistantHttp,onQueued,onTurnReviewed,onSwitch,onStageCorrection,expectedCitationPages,expectedWebDomains,onSourceRevoked,onSourceRestored,initialCitation,initialCitations,savedMessages,priorFailedRunId})=>{
  const project=path.join(root,'miniprogram'),route='packages/assistant/chat/chat',cli=require(path.join(root,'admin/scripts/wechatide-native-client.ts')).wechatideNativeClient(project,output);
  const evidence={scope:questions.length?'Approved unified C01, original private stage feeds and one persistent knowledge conversation; real native inputs, writes and reentry, no per-Agent conversations':'Stage saved-body engineering regression, original private feeds/reentry/withdrawal and actual HTTP503 recovery; no knowledge model trial',checks:[],captures:[],requests:[]};
  const save=()=>fs.writeFileSync(path.join(output,'native.json'),JSON.stringify(evidence,null,2));
  const evaluate=async fn=>(await cli.call('automation_evaluate',{project,fnSource:fn})).result.result;
  const pause=ms=>new Promise(r=>setTimeout(r,ms));
- const wait=async(fn,label)=>{const until=Date.now()+150000;while(Date.now()<until){const result=await fn();if(result)return result;if(evidence.queueError)throw Error(evidence.queueError);await pause(400);}throw Error('Native timeout: '+label);};
+ const wait=async(fn,label,ms=150000)=>{const until=Date.now()+ms;while(Date.now()<until){const result=await fn();if(result)return result;if(evidence.queueError)throw Error(evidence.queueError);await pause(400);}throw Error('Native timeout: '+label);};
  const bootstrap='/identity/'+crypto.randomUUID();let used=false,installed=false,failOnce=false;
  const server=http.createServer(async(req,res)=>{
   try{
@@ -24,6 +24,18 @@ module.exports=async({root,output,actor,questions,stage,assistantHttp,onQueued,o
   }catch(error){evidence.serverError=String(error);save();if(!res.writableEnded){res.writeHead(503);res.end();}}
  });
  const capture=async name=>{assert.equal((await cli.pageStack()).at(-1).path,route);const file=path.join(output,name+'.png');await cli.screenshot({path:file});const b=fs.readFileSync(file);evidence.captures.push({file,route,logical:[390,844],encoded:[b.readUInt32BE(16),b.readUInt32BE(20)]});save();};
+ // A transient infrastructure 503 (quote-bounded03) shows the citation sheet's
+ // error state; retry the same tap with an unchanged availability assertion.
+ const openCitation=async(page,citationId,label)=>{
+  for(let attempt=0;attempt<3;attempt++){
+   if(attempt){await evaluate('function(){getCurrentPages().at(-1).closeSheet();}');await pause(900);}
+   const chip=await page.$('.citation-chip[data-id="'+citationId+'"]');assert.ok(chip,'citation chip '+citationId);
+   await chip.tap();
+   try{return await wait(async()=>{const v=await page.data();return v.sheet==='citation'&&!v.citationLoading&&v.citation?.available?v.citation:null;},label,50000);}
+   catch(error){const d=await page.data();if(attempt===2)throw error;
+    evidence.checks.push({citationRetry:attempt+1,citationId,transientState:{sheet:d.sheet,citationError:d.citationError,pageError:d.error}});save();}
+  }
+ };
  const enter=async bid=>{
   await cli.reLaunch('/'+route+'?followup=1');
   await wait(async()=>{const p=await cli.currentPage(),d=await p.data();return p.path===route&&!d.loading&&!d.fatal&&!d.followupListLoading?p:null;},'private entry');
@@ -51,32 +63,43 @@ module.exports=async({root,output,actor,questions,stage,assistantHttp,onQueued,o
    await capture('stage-'+item.projectId);page=await enter(item.bindingId);assert.equal((await wait(read,'same stage advice after reentry')).projects[0].stageNote,expected);
    evidence.checks.push({stageReportId:item.reportId,originalConversation:item.conversationId,inlineSavedAdvice:true,persistedReentry:true,passed:true});save();}
   let page=await enterChat();
-  if(savedMessages){evidence.scope='Original persisted native RAG replies: real reentry/citation taps, source withdrawal/restoration and HTTP503 recovery, without generating another answer';
+  if(savedMessages){if(!questions.length)evidence.scope='Original persisted native RAG replies: real reentry/citation taps, source withdrawal/restoration and HTTP503 recovery, without generating another answer';
    const checkSaved=async()=>{const d=await page.data();for(const original of savedMessages){const m=d.messages.find(m=>m.id===original.id);assert.ok(m?.available);assert.equal(m.content.blocks.filter(b=>b.type==='text').map(b=>b.text).join(''),original.text);}};
    await checkSaved();page=await enterChat();await checkSaved();await capture('knowledge-saved-readback');evidence.checks.push({persistedReentry:true,sameConversation:actor.cid,exactSavedProse:true,messageIds:savedMessages.map(m=>m.id),noModelReplay:true,passed:true});save();}
-  for(const retained of initialCitations||(initialCitation?[initialCitation]:[])){const chip=await page.$('.citation-chip[data-id="'+retained.id+'"]');assert.ok(chip);await chip.tap();const c=await wait(async()=>{const d=await page.data();return d.sheet==='citation'&&!d.citationLoading&&d.citation?.available?d.citation:null;},'retained original citation');if(retained.page)assert.ok(c.title.includes('第'+retained.page+'页'));if(retained.domain)assert.ok(new URL(c.sourceUrl).hostname.endsWith(retained.domain));assert.ok(c.quote.length>4);await capture('retained-original-citation-'+retained.id.replaceAll(':','_'));await evaluate('function(){getCurrentPages().at(-1).closeSheet();}');evidence.checks.push({reusedOriginalCitation:retained.id,actualTap:true,noModelReplay:true,passed:true});save();}
+  for(const retained of initialCitations||(initialCitation?[initialCitation]:[])){const c=await openCitation(page,retained.id,'retained original citation');if(retained.page)assert.ok(c.title.includes('第'+retained.page+'页'));if(retained.domain)assert.ok(new URL(c.sourceUrl).hostname.endsWith(retained.domain));assert.ok(c.quote.length>4);await capture('retained-original-citation-'+retained.id.replaceAll(':','_'));await evaluate('function(){getCurrentPages().at(-1).closeSheet();}');evidence.checks.push({reusedOriginalCitation:retained.id,actualTap:true,noModelReplay:true,passed:true});save();}
+  const savedTurns=[];
   for(let i=0;i<questions.length;i++){
    await wait(async()=>{const d=await page.data();return d.canSend&&!d.loading&&!d.busy&&!d.fatal&&!d.generating&&!d.pendingSend&&!d.pendingAction&&!d.readOnly&&!d.contextLoading&&!d.contextBusy&&!d.contextPending&&!d.speechBusy&&!d.reportQuestion?.busy&&!d.reportQuestion?.pending;},'enabled composer '+i);
    const before=await page.data(),count=(before.messages||[]).filter(m=>m.authorKind==='assistant'||m.role==='assistant').length;
+   const resend=priorFailedRunId&&i===0;
+   if(resend){
+    assert.equal(before.run?.id,priorFailedRunId);assert.equal(before.run?.status,'failed');
+    // A failed turn stays un-retryable while its usage reservation reconciles.
+    assert.equal(before.retryable,false);
+    await capture('knowledge-original-failed');
+   }
    const input=await page.$('.composer-input'),send=await page.$('.send-button');assert.ok(input&&send);await input.input(questions[i]);
    await wait(async()=>{const d=await page.data();return d.draft===questions[i]&&!d.contextLoading;},'visible native draft '+i);
    if(i===0)await capture('knowledge-input');await send.tap();
    await wait(async()=>{const d=await page.data();return !d.busy&&!d.generating&&!d.pendingSend&&!d.uncertainRun&&(d.messages||[]).some(m=>(m.content?.blocks||[]).some(b=>b.text===questions[i]))&&(d.messages||[]).filter(m=>m.authorKind==='assistant'||m.role==='assistant').length>count;},'real knowledge answer '+i);
     if(onTurnReviewed)await onTurnReviewed();
-   await capture('knowledge-turn-'+(i+1));evidence.checks.push({question:questions[i],sameConversation:actor.cid,realInputAndSend:true,passed:true});save();
+   savedTurns.push((await page.data()).messages.filter(m=>m.authorKind==='assistant'||m.role==='assistant').at(-1));
+   await capture('knowledge-turn-'+(i+1));evidence.checks.push({question:questions[i],sameConversation:actor.cid,
+    ...(resend?{resentAfter:priorFailedRunId,originalRetryUnavailable:true}:{}),realInputAndSend:true,passed:true});save();
    if((!expectedWebDomains&&i===3)||expectedWebDomains?.[i]||expectedCitationPages?.[i]){
     const d=await page.data(),answer=d.messages.filter(m=>m.authorKind==='assistant'||m.role==='assistant').at(-1);
     const official=answer?.citations?.find(c=>c.available&&String(c.sourceUrl||c.sourceLocation||'').includes('nipponpaint.com.cn'));
     const citationId=official?.id||answer?.citations?.find(c=>c.available)?.id;assert.ok(citationId,'Saved official answer must have a native citation entry');
-    const chip=await page.$('.citation-chip[data-id="'+citationId+'"]');assert.ok(chip);await chip.tap();
-    const citation=await wait(async()=>{const v=await page.data();return v.sheet==='citation'&&!v.citationLoading&&v.citation?.available?v.citation:null;},'original official citation');
+    const citation=await openCitation(page,citationId,'original official citation');
     if(expectedCitationPages?.[i]){assert.ok(citation.title.includes('第'+expectedCitationPages[i]+'页'));assert.equal(citation.isDraft,false);assert.ok(Number.isInteger(citation.locator.start));}
     else assert.ok(new URL(citation.sourceUrl).hostname.endsWith(expectedWebDomains?.[i]||'nipponpaint.com.cn'));assert.ok(citation.quote.length>4);await capture('knowledge-citation-'+(i+1));
     await evaluate('function(){getCurrentPages().at(-1).closeSheet();}');
     evidence.checks.push({officialCitation:{id:citation.id,sourceUrl:citation.sourceUrl,title:citation.title,sourceLocation:citation.sourceLocation,quote:citation.quote},actualTap:true,passed:true});save();
    }
   }
-  if(questions.length){page=await enterChat();await capture('knowledge-reentry');evidence.checks.push({persistedReentry:true,sameConversation:actor.cid,passed:true});}
+  if(questions.length){page=await enterChat();const d=await page.data();
+   for(const turn of savedTurns){const message=d.messages.find(m=>m.id===turn.id);assert.ok(message?.available);assert.deepEqual(message.content,turn.content);}
+   await capture('knowledge-reentry');evidence.checks.push({persistedReentry:true,sameConversation:actor.cid,exactSavedReplies:savedTurns.map(m=>m.id),passed:true});}
   if(onSourceRevoked){const affected=await onSourceRevoked();page=await enterChat();const d=await page.data();
    for(const id of affected.messageIds){const m=d.messages.find(m=>m.id===id);assert.ok(m);assert.equal(m.available,false);assert.ok(m.content.blocks.some(b=>b.type==='notice'&&b.code==='source_unavailable'));}
    await capture('knowledge-source-revoked');evidence.checks.push({sourceRevoked:true,savedMessagesUnavailable:affected.messageIds,passed:true});save();
