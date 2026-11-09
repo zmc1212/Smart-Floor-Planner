@@ -35,6 +35,7 @@ import {
   UsersRound,
   MessageSquareText,
   BrainCircuit,
+  LayoutTemplate,
 } from 'lucide-react';
 import { Button, Divider, Drawer, Dropdown, Select } from 'antd';
 import { cn } from '@/lib/utils';
@@ -87,6 +88,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
         { key: 'ai-models', permissionKey: 'ai-providers', label: '生图模型', icon: Image, href: '/ai-models' },
         { key: 'llm-settings', label: 'LLM大模型配置', icon: BrainCircuit, href: '/llm-settings' },
         { key: 'map-settings', label: '地图服务配置', icon: Map, href: '/map-settings' },
+        { key: 'portfolio-templates', label: '作品集模板', icon: LayoutTemplate, href: '/portfolio-templates' },
         { key: 'media-storage', label: '媒体存储', icon: HardDrive, href: '/media-storage' },
         { key: 'mini-program-code-settings', label: '小程序码环境', icon: SlidersHorizontal, href: '/mini-program-code-settings' },
         { key: 'sms-settings', label: '短信设置', icon: MessageSquareText, href: '/sms-settings' },
@@ -504,6 +506,7 @@ export default function Sidebar() {
     if (key === 'media-storage') return admin.role === 'super_admin' || admin.role === 'admin';
     if (key === 'sms-settings') return admin.role === 'super_admin' || admin.role === 'admin';
     if (key === 'llm-settings') return admin.role === 'super_admin' || admin.role === 'admin';
+    if (key === 'portfolio-templates') return admin.role === 'super_admin' || admin.role === 'admin';
     if (['ai-credit-prices', 'ai-presets', 'ai-providers'].includes(key) && (admin.role === 'super_admin' || admin.role === 'admin')) return true;
     if (admin.effectivePermissions?.includes(key)) return true;
     if (key === 'referrers' && hasReferrersMenuPermission(admin.effectivePermissions)) return true;

@@ -33,7 +33,9 @@ export function WorkEditor({ workId }: { workId: string }) {
     setLoading(true); setError('');
     try {
       const [next, staff] = await Promise.all([portfolioRequest<WorkDetail>('works/' + workId), portfolioRequest<{ items: Author[] }>('authors')]);
-      setDetail(next); setAuthors(staff.items); form.setFieldsValue({ ...next.head.content, rightsUntil: inputDate(next.head.content.rightsUntil) }); setUnsaved(false);
+      setDetail(next); setAuthors(staff.items); form.setFieldsValue({ ...next.head.content,
+        planComparison: next.head.content.planComparison || { originalAssetId: null, designAssetId: null, aligned: false, changes: [] },
+        rightsUntil: inputDate(next.head.content.rightsUntil) }); setUnsaved(false);
     } catch (e) { setError(errorText(e)); } finally { setLoading(false); }
   }, [form, workId]);
   useEffect(() => { void load(); }, [load]);
@@ -113,6 +115,38 @@ export function WorkEditor({ workId }: { workId: string }) {
           </Row>
           {!images.length && !editable && <Empty description="暂无图片" />}
           <Typography.Paragraph type="secondary" style={{ marginTop: 16 }}>最多20张，按当前顺序展示。效果图与实拍必须分开；AI生成图不得标为实拍。</Typography.Paragraph>
+        </Card>
+        <Card title="户型图与平面 CAD 方案" style={{ marginTop: 20 }}>
+          <Typography.Paragraph type="secondary">上传同一住宅、同一楼层的已获公开许可图纸预览（PNG/JPEG，4MB以内）。请移除业主姓名、门牌和私人批注；图纸与当前作品一起保存、审核和发布。这里展示预览，不编辑CAD源文件。</Typography.Paragraph>
+          <Row gutter={[16, 16]}>{([{ key: 'originalAssetId', label: '原始户型' }, { key: 'designAssetId', label: '平面 CAD 方案' }] as const).map(slot => {
+            const assetId = values?.planComparison?.[slot.key];
+            return <Col key={slot.key} xs={24} sm={12}><Typography.Title level={5}>{slot.label}</Typography.Title>
+              {assetId ? <><Image src={assetUrl(workId, assetId)} alt={slot.label} width="100%" style={{ height: 220, objectFit: 'contain' }} /><Button danger disabled={!editable || !!busy} onClick={() => {
+                setUnsaved(true); form.setFieldValue(['planComparison', slot.key], null); form.setFieldValue(['planComparison', 'aligned'], false); form.setFieldValue(['planComparison', 'changes'], []);
+              }}>移除图纸</Button></> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未提供" />}
+              {editable && <Upload accept="image/jpeg,image/png" showUploadList={false} disabled={!!busy} beforeUpload={async file => {
+                if (busy || !detail) return false;
+                if (file.size > 4 * 1024 * 1024 || !['image/png', 'image/jpeg'].includes(file.type)) { notify.error('上传失败', { description: '请选择4MB以内的PNG/JPEG图纸。' }); return false; }
+                setBusy('plan-upload');
+                try {
+                  const result = await mutations.current.write<{ assetId: string }>('works/' + workId + '/assets', { expectedVersion: detail.work.version, imageBase64: await imageFile(file) });
+                  const other = form.getFieldValue(['planComparison', slot.key === 'originalAssetId' ? 'designAssetId' : 'originalAssetId']);
+                  if (other === result.assetId) throw Error('请为原始户型和设计方案分别上传对应图纸。');
+                  form.setFieldValue(['planComparison', slot.key], result.assetId); form.setFieldValue(['planComparison', 'aligned'], false); setUnsaved(true);
+                  notify.success('图纸已处理', { description: '请保存草稿，并核对两图是否同一住宅、同一朝向。' });
+                } catch (e) { notify.error('图纸处理失败', { description: e instanceof Error ? e.message : errorText(e) }); } finally { setBusy(''); }
+                return false;
+              }}><Button icon={<PlusOutlined />} loading={busy === 'plan-upload'}>{assetId ? '替换图纸' : '上传图纸'}</Button></Upload>}
+            </Col>;
+          })}</Row>
+          <Form.Item name={['planComparison', 'aligned']} valuePropName="checked" style={{ marginTop: 16 }}><Checkbox disabled={!values?.planComparison?.originalAssetId || !values?.planComparison?.designAssetId}>已核对同一住宅、同一楼层、同一朝向和比例</Checkbox></Form.Item>
+          <Form.List name={['planComparison', 'changes']}>{(fields, { add, remove }) => <Space direction="vertical" style={{ width: '100%' }}>
+            {fields.map((field, index) => <Card key={field.key} size="small" title={'改造说明 ' + String(index + 1).padStart(2, '0')} extra={<Button danger size="small" onClick={() => remove(field.name)}>移除</Button>}>
+              <Form.Item name={[field.name, 'title']} label="标题" rules={[{ required: true, whitespace: true, max: 60 }]}><Input maxLength={60} /></Form.Item>
+              <Form.Item name={[field.name, 'text']} label="说明"><Input.TextArea maxLength={180} rows={2} /></Form.Item>
+            </Card>)}
+            {fields.length < 6 && <Button icon={<PlusOutlined />} disabled={!values?.planComparison?.originalAssetId || !values?.planComparison?.designAssetId} onClick={() => add({ title: '', text: '' })}>添加改造说明</Button>}
+          </Space>}</Form.List>
         </Card>
         <Card title="设计亮点与材料" style={{ marginTop: 20 }}>
           <Form.Item name="highlights" label="设计亮点（最多6条）" rules={[itemLength(60)]}><Select mode="tags" maxCount={6} tokenSeparators={[',', '，']} placeholder="输入亮点后回车，例如：无主灯照明" /></Form.Item>

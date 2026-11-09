@@ -395,7 +395,7 @@ export default function ReferrerNetworkOperationsPage() {
                   <Button href="/referrers">查看推荐人</Button>
                   <Button href="/appointment-settings">预约设置</Button>
                   <Button href="/lead-commissions">前往三方提成</Button>
-                  <Button href="/leads">前往线索转化</Button>
+                  <Button href="/leads">前往客户线索</Button>
                 </Space>
               </Flex>
               <div className="grid gap-3 py-4 lg:grid-cols-2">

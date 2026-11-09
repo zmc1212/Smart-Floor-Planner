@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import NextImage from 'next/image';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -42,8 +43,6 @@ import {
   AI_PAGE_IDLE_MS,
   AI_WORKBENCH_POLL_INTERVAL_MS,
 } from '@/lib/page-activity';
-import { ImageEditorDialog } from '@/components/ai-creation/image-editor-dialog';
-import { TemplateLibraryDialog } from '@/components/ai-creation/template-library-dialog';
 import type {
   CreationAsset,
   CreationBatch,
@@ -69,6 +68,15 @@ import {
 } from '@/lib/ai/prompt-template-reference';
 import { cn } from '@/lib/utils';
 import { ReportEntry } from '@/components/design-reports/report-entry';
+
+const ImageEditorDialog = dynamic(
+  () => import('@/components/ai-creation/image-editor-dialog').then((module) => module.ImageEditorDialog),
+  { ssr: false },
+);
+const TemplateLibraryDialog = dynamic(
+  () => import('@/components/ai-creation/template-library-dialog').then((module) => module.TemplateLibraryDialog),
+  { ssr: false },
+);
 
 type BootstrapData = {
   account: { balance: number; frozenBalance: number; availableBalance: number };

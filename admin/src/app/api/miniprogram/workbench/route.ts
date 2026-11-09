@@ -123,9 +123,13 @@ export async function GET(request: Request) {
       const appointments = new AppointmentRepository(transaction);
       const enterpriseId = parsePostgresId(context.enterpriseId!, 'enterprise id');
       const staffId = parsePostgresId(context.staff!._id, 'staff id');
-      const withdrawalNotices = (await new StaffNotificationRepository(transaction).list(staffId, true))
-        .filter((notice) => ['lead_referrer_withdrawn', 'lead_referrer_withdrawal_reverted'].includes(notice.notificationType))
-        .map((notice) => ({
+      const withdrawalNotices = (
+        await new StaffNotificationRepository(transaction).list(staffId, {
+          onlyUnread: true,
+          limit: 20,
+          types: ['lead_referrer_withdrawn', 'lead_referrer_withdrawal_reverted'],
+        })
+      ).map((notice) => ({
           id: notice.id.toString(),
           leadId: notice.leadId?.toString() || null,
           title: notice.notificationType === 'lead_referrer_withdrawal_reverted' ? '撤销已撤回' : '推广人已撤销',

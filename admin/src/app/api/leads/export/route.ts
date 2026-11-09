@@ -10,34 +10,16 @@ import {
 } from '@/lib/lead-export-csv';
 import { withTenantRoute } from '@/lib/tenant-route';
 
-const EXPORT_PAGE_SIZE = 100;
 const EXPORT_MAX_ROWS = 10000;
 
 async function listAllLeadsForExport(enterpriseId: bigint) {
   return withTenantTransaction(enterpriseId, async (transaction) => {
     const repository = new LeadRepository(transaction);
-    const firstPage = await repository.list({
-      archiveState: 'all',
-      page: 1,
-      limit: EXPORT_PAGE_SIZE,
-    });
-    if (firstPage.total > EXPORT_MAX_ROWS) {
+    const total = await repository.count({ archiveState: 'all' });
+    if (total > EXPORT_MAX_ROWS) {
       throw httpError(`导出上限为 ${EXPORT_MAX_ROWS} 条线索，请联系平台协助`, 413);
     }
-
-    const rows = [...firstPage.rows];
-    let page = 2;
-    while (rows.length < firstPage.total) {
-      const result = await repository.list({
-        archiveState: 'all',
-        page,
-        limit: EXPORT_PAGE_SIZE,
-      });
-      rows.push(...result.rows);
-      if (result.rows.length < EXPORT_PAGE_SIZE) break;
-      page += 1;
-    }
-    return rows;
+    return repository.listForExport(EXPORT_MAX_ROWS);
   });
 }
 

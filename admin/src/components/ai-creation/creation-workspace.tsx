@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import NextImage from 'next/image';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import {
   Bell,
@@ -53,8 +54,6 @@ import {
 } from '@/lib/ai/prompt-template-reference';
 import { pickDefaultCreationModel } from '@/lib/ai/workbench-studio';
 import { cn } from '@/lib/utils';
-import { ImageEditorDialog } from './image-editor-dialog';
-import { TemplateLibraryDialog } from './template-library-dialog';
 import type {
   CreationAsset,
   CreationBatch,
@@ -66,6 +65,15 @@ import type {
 } from './types';
 
 const { TextArea } = Input;
+
+const ImageEditorDialog = dynamic(
+  () => import('./image-editor-dialog').then((module) => module.ImageEditorDialog),
+  { ssr: false },
+);
+const TemplateLibraryDialog = dynamic(
+  () => import('./template-library-dialog').then((module) => module.TemplateLibraryDialog),
+  { ssr: false },
+);
 
 type BootstrapData = {
   account: { balance: number; frozenBalance: number; availableBalance: number };

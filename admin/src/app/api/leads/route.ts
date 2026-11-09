@@ -27,35 +27,15 @@ import {
   notifyEnterpriseAdminOfNewLead,
   notifyEligibleDesignersOfClaimWindow,
 } from '@/lib/wechat-notification';
-import { getSignedMiniAiAssetUrl } from '@/lib/ai/mini-ai-assets';
 import { normalizeLeadStatus } from '@/lib/lead-status';
 import {
   archivedLeadExistsError,
   canManageLeadArchive,
 } from '@/lib/lead-lifecycle';
 import { httpErrorStatus } from '@/lib/http-error';
-import { redactLeadConversionDetailsForConsumer } from '@/lib/lead-conversion';
 import { attachLeadAssignmentActions } from '@/lib/lead-assignment-actions';
 import { resolveStaffLeadListOptions } from '@/lib/lead-staff-visibility';
-
-export function leadDtoForMini(
-  request: Request,
-  lead: Parameters<typeof leadToDto>[0],
-  role?: string,
-  actorId?: bigint | null
-) {
-  const include = role === 'measurer';
-  const hasStaffContext = Boolean(role && role !== 'user');
-  const assetId = lead.assignedUser?.wechatQrAssetId;
-  const dto = leadToDto(lead, {
-    includeDesignerWechat: include,
-    designerWechatQrUrl: include && assetId && lead.enterpriseId
-      ? getSignedMiniAiAssetUrl({ request, assetId: assetId.toString(), enterpriseId: lead.enterpriseId.toString() })
-      : null,
-  });
-  const scoped = hasStaffContext ? dto : redactLeadConversionDetailsForConsumer(dto);
-  return attachLeadAssignmentActions(scoped, lead, role || '', actorId ?? null);
-}
+import { leadDtoForMini } from '@/lib/lead-mini-dto';
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Unknown error';

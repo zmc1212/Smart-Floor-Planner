@@ -6,8 +6,11 @@ import {
 } from '@/db/repositories';
 import { getSignedMiniAiAssetUrl } from '@/lib/ai/mini-ai-assets';
 import { getPostgresAssetIdFromImageUrl } from '@/lib/ai/postgres-media-assets';
-import { withAdminPostgresTransaction } from '@/lib/postgres-request-scope';
+import { withAdminPostgresTransaction, withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
 import { withTenantRoute } from '@/lib/tenant-route';
+import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
+import { getMiniProgramCapabilities } from '@/lib/miniprogram-bootstrap';
+import { httpErrorStatus } from '@/lib/http-error';
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Internal server error';
@@ -28,7 +31,11 @@ function serializeManagedImage(
     : imageUrl;
 }
 
-function serializeInspiration(inspiration: InspirationRecord, request: Request) {
+function serializeInspiration(
+  inspiration: InspirationRecord,
+  request: Request,
+  options: { includeLayoutData?: boolean } = {}
+) {
   const enterpriseId = inspiration.enterpriseId.toString();
   return {
     _id: inspiration.id.toString(),
@@ -37,7 +44,7 @@ function serializeInspiration(inspiration: InspirationRecord, request: Request) 
     renderingImage: serializeManagedImage(request, enterpriseId, inspiration.renderingImage),
     style: inspiration.style,
     roomType: inspiration.roomType,
-    layoutData: inspiration.layoutData,
+    layoutData: options.includeLayoutData ? inspiration.layoutData : undefined,
     isRecommended: inspiration.isRecommended,
     viewCount: Number(inspiration.viewCount),
     createdAt: inspiration.createdAt.toISOString(),
@@ -47,6 +54,29 @@ function serializeInspiration(inspiration: InspirationRecord, request: Request) 
 
 export async function GET(request: Request) {
   try {
+    if (request.headers.get('Authorization')?.startsWith('Bearer ')) {
+      const context = await resolveMiniProgramContext(request);
+      if (!context) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      const capabilities = getMiniProgramCapabilities({ mode: context.mode, staffRole: context.staff?.role || null, enterpriseId: context.enterpriseId });
+      if (!context.enterpriseId || !capabilities.includes('staff.design')) {
+        return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+      }
+      const { searchParams } = new URL(request.url);
+      const parsedLimit = parseInt(searchParams.get('limit') || '', 10);
+      const limit = Math.min(Math.max(Number.isFinite(parsedLimit) ? parsedLimit : 10, 1), 50);
+      const parsedPage = parseInt(searchParams.get('page') || '', 10);
+      const page = Math.max(Number.isFinite(parsedPage) ? parsedPage : 1, 1);
+      const inspirations = await withMiniProgramPostgresTransaction(context, transaction =>
+        new InspirationRepository(transaction).list({
+          style: searchParams.get('style') || undefined,
+          roomType: searchParams.get('roomType') || undefined,
+          isRecommended: searchParams.get('recommended') === 'true' ? true : undefined,
+          page,
+          limit,
+        })
+      );
+      return NextResponse.json({ success: true, data: inspirations.map(inspiration => serializeInspiration(inspiration, request)) });
+    }
     return await withTenantRoute(request, { requireEnterprise: true }, async (context) => {
       const { searchParams } = new URL(request.url);
       const limit = Math.min(parseInt(searchParams.get('limit') || '0', 10) || 0, 50);
@@ -65,7 +95,7 @@ export async function GET(request: Request) {
     });
   } catch (error: unknown) {
     console.error('Fetch inspirations error:', error);
-    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
+    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: httpErrorStatus(error, 500) });
   }
 }
 
@@ -93,7 +123,7 @@ export async function POST(request: Request) {
         })
       );
       return NextResponse.json(
-        { success: true, data: serializeInspiration(inspiration, request) },
+        { success: true, data: serializeInspiration(inspiration, request, { includeLayoutData: true }) },
         { status: 201 }
       );
     });

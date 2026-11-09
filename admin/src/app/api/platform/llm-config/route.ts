@@ -11,7 +11,9 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   return withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async () => {
-    return NextResponse.json({ success: true, data: await getPlatformLlmConfig() });
+    return NextResponse.json({ success: true, data: await getPlatformLlmConfig(
+      new URL(request.url).searchParams.get('purpose') || undefined
+    ) });
   });
 }
 

@@ -10,9 +10,10 @@ type Context = { params: Promise<{ path?: string[] }> };
 const fields: Record<string, string[]> = {
   create: ['kind', 'authorId', 'content'], save: ['expectedVersion', 'content'], upload: ['expectedVersion', 'imageBase64'],
   newDraft: ['expectedVersion'], submit: ['expectedVersion'], publish: ['expectedVersion'], return: ['expectedVersion', 'note'], withdraw: ['expectedVersion'],
-  saveProfile: ['expectedVersion', 'content'], bindCommunity: ['token', 'pageKey'], requestCommunity: ['content'],
+  saveProfile: ['expectedVersion', 'content', 'contact'], bindCommunity: ['token', 'pageKey'], requestCommunity: ['content'],
   reviewCommunity: ['approve', 'note', 'existingCommunityId'], savePortrait: ['imageBase64', 'consent'],
   createCopy: ['expectedVersion', 'instruction'], adoptCopy: ['expectedVersion', 'taskId'],
+  instantiateTemplate: ['authorId'],
 };
 async function handle(request: NextRequest, context: Context) {
   return withTenantRoute(request, { roles: [...PORTFOLIO_ROLES], requireEnterprise: true }, async actor => {
@@ -28,10 +29,17 @@ async function handle(request: NextRequest, context: Context) {
         if (p.length === 3 && p[2] === 'copy-drafts') action = method === 'GET' ? 'latestCopy' : method === 'POST' ? 'createCopy' : '';
         if (p.length === 3 && p[2] === 'adopt-copy' && method === 'POST') action = 'adoptCopy';
       } else if (p.length === 1 && p[0] === 'authors' && method === 'GET') action = 'authors';
+      else if (p[0] === 'templates') {
+        if (p.length === 1 && method === 'GET') action = 'templates';
+        if (p.length === 2 && method === 'GET') { action = 'templateDetail'; ids.templateId = p[1]; }
+        if (p.length === 3 && p[2] === 'instantiate' && method === 'POST') { action = 'instantiateTemplate'; ids.templateId = p[1]; }
+        if (p.length === 4 && p[2] === 'assets' && method === 'GET') { action = 'templateAsset'; ids.templateId = p[1]; ids.assetId = p[3]; }
+      }
       else if (p.length === 2 && p[0] === 'profiles') { action = method === 'GET' ? 'profile' : method === 'PUT' ? 'saveProfile' : ''; ids.authorId = p[1]; }
       else if (p.length === 3 && p[0] === 'profiles' && p[2] === 'portrait') {
         action = method === 'GET' ? 'portrait' : method === 'PUT' ? 'savePortrait' : method === 'DELETE' ? 'removePortrait' : ''; ids.authorId = p[1];
       }
+      else if (p.length === 3 && p[0] === 'profiles' && p[2] === 'contact-qr' && method === 'GET') { action = 'profileContactQr'; ids.authorId = p[1]; }
       else if (p[0] === 'communities') {
         if (p.length === 1 && method === 'GET') action = 'communities';
         if (p.length === 2 && p[1] === 'search' && method === 'GET') action = 'providerSearch';
@@ -43,12 +51,13 @@ async function handle(request: NextRequest, context: Context) {
       let body: Record<string, unknown> = {};
       if (method !== 'GET') {
         let size = 0; const chunks: Uint8Array[] = [];
-        if (request.body) for await (const chunk of request.body as unknown as AsyncIterable<Uint8Array>) { size += chunk.length; if (size > (['upload', 'savePortrait'].includes(action) ? 5650000 : 50000)) fail('invalid_portfolio', 413); chunks.push(chunk); }
+        if (request.body) for await (const chunk of request.body as unknown as AsyncIterable<Uint8Array>) { size += chunk.length; if (size > (['upload', 'savePortrait', 'saveProfile'].includes(action) ? 5650000 : 50000)) fail('invalid_portfolio', 413); chunks.push(chunk); }
         if (!chunks.length && action === 'removePortrait') body = {};
         else try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { fail('invalid_portfolio', 422); }
         if (!body || Array.isArray(body) || typeof body !== 'object' || Object.keys(body).some(k => !fields[action]?.includes(k))) fail('invalid_portfolio', 422);
       } else {
         const allowed = action === 'list' ? ['limit', 'beforeId', 'status', 'query', 'style', 'authorId', 'kind', 'communityId']
+          : action === 'templates' ? ['limit', 'query', 'style', 'layoutType']
           : action === 'providerSearch' ? ['cityCode', 'query', 'pageKey'] : action === 'communities' ? ['cityCode', 'query', 'communityId'] : [];
         for (const [name, value] of request.nextUrl.searchParams) { if (!allowed.includes(name)) fail('invalid_portfolio', 422); body[name] = name === 'limit' ? Number(value) : value; }
       }
@@ -57,7 +66,7 @@ async function handle(request: NextRequest, context: Context) {
       const result = action === 'latestCopy' ? await copy.latest(String(ids.workId))
         : action === 'createCopy' ? await copy.create(String(ids.workId), body, request.headers.get('idempotency-key') || '')
         : action === 'providerSearch' ? await service.searchProvider(body) : await service.execute(action, { ...body, ...ids }, request.headers.get('idempotency-key') || undefined);
-      if (action === 'asset' || action === 'portrait') return new NextResponse(Buffer.from(String((result as Record<string, unknown>).image_base64), 'base64'), { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' } });
+      if (['asset', 'portrait', 'profileContactQr', 'templateAsset'].includes(action)) return new NextResponse(Buffer.from(String((result as Record<string, unknown>).image_base64), 'base64'), { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' } });
       return NextResponse.json({ success: true, data: result }, { headers: { 'Cache-Control': 'no-store' } });
     } catch (error) {
       return NextResponse.json({ success: false, error: error instanceof AssistantError ? error.code : 'portfolio_unavailable' }, { status: error instanceof AssistantError ? error.status : 503, headers: { 'Cache-Control': 'no-store' } });

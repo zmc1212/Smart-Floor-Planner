@@ -316,7 +316,7 @@ async function authenticate(request: Request, log: MiniProgramRequestLog) {
       );
     }
     return NextResponse.json(
-      { success: false, error: message },
+      { success: false, error: '登录失败，请稍后重试' },
       { status: 500 }
     );
   }

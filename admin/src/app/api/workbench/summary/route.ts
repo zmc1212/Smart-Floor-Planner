@@ -9,8 +9,7 @@ import {
   withPromotionPostgresTransaction,
 } from '@/lib/postgres-request-scope';
 import {
-  listWorkbenchTodos,
-  type WorkbenchTodoItem,
+  loadWorkbenchTodos,
 } from '@/lib/postgres-workflow-automation';
 
 export const dynamic = 'force-dynamic';
@@ -61,73 +60,72 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
     const { identity } = scope;
+    const userId = parsePostgresId(identity.userId, 'userId');
     const actor = ['salesperson', 'measurer', 'designer'].includes(identity.role)
-      ? { id: parsePostgresId(identity.userId, 'userId'), role: identity.role }
+      ? { id: userId, role: identity.role }
       : undefined;
-    const records = await scope.execute((transaction) =>
-      new PromotionRecordRepository(transaction).list({ actor, limit: 200 })
-    );
-    const [commissions, todos, overdueTodos] = await Promise.all([
-      scope.execute((transaction) =>
-        new CommercialRepository(transaction).listCommissions({
-          promoterId: identity.role === 'salesperson'
-            ? parsePostgresId(identity.userId, 'userId')
-            : undefined,
-        })
-      ),
-      listWorkbenchTodos({
-        role: identity.role,
-        userId: identity.userId,
-        enterpriseId: identity.enterpriseId,
-        view: 'mine',
-      }),
-      listWorkbenchTodos({
-        role: identity.role,
-        userId: identity.userId,
-        enterpriseId: identity.enterpriseId,
-        view: 'overdue',
-      }),
-    ]);
+    const promoterId = identity.role === 'salesperson' ? userId : undefined;
+    const result = await scope.execute(async (transaction) => {
+      const promotions = new PromotionRecordRepository(transaction);
+      const commercial = new CommercialRepository(transaction);
+      const [records, latestRecords, latestCommissions, commissionSummary, todos] =
+        await Promise.all([
+          promotions.listForTodo({ actor, limit: 200 }),
+          promotions.list({ actor, limit: 5 }),
+          commercial.listCommissions({ promoterId, page: 1, limit: 5 }),
+          commercial.commissionSummary({
+            status: 'pending_settlement',
+            promoterId,
+          }),
+          loadWorkbenchTodos(transaction, {
+            role: identity.role,
+            userId: identity.userId,
+            view: 'mine',
+          }),
+        ]);
+      return {
+        records,
+        latestRecords: latestRecords.rows,
+        latestCommissions,
+        pendingCommission: commissionSummary.pending_settlement?.amount ?? 0,
+        todos,
+      };
+    });
+    const overdueTodos = result.todos.filter((todo) => todo.overdue);
 
-    const pendingAssignments = records.rows.filter(
+    const pendingAssignments = result.records.filter(
       (item) =>
         item.ownershipStatus === 'conflict_pending' ||
         (item.businessStage === 'measuring' && item.measureTaskStatus === 'unassigned') ||
         (item.measureTaskStatus === 'submitted' && item.designTaskStatus === 'unassigned')
     ).length;
-    const pendingCommission = commissions
-      .filter((item: { status?: string }) => item.status === 'pending_settlement')
-      .reduce(
-        (sum: number, item: { commissionAmount?: number | string }) =>
-          sum + Number(item.commissionAmount || 0),
-        0
-      );
+    const pendingCommission = result.pendingCommission;
 
     let cards: Array<{ key: string; label: string; value: number }>;
     if (identity.role === 'salesperson') {
       cards = [
-        { key: 'reported', label: '我的报备', value: records.rows.length },
-        { key: 'pendingTodo', label: '待跟进事项', value: todos.length },
+        { key: 'reported', label: '我的报备', value: result.records.length },
+        { key: 'pendingTodo', label: '待跟进事项', value: result.todos.length },
         { key: 'overdueFollowUps', label: '超时跟进', value: overdueTodos.length },
         { key: 'pendingCommission', label: '待结算提成', value: pendingCommission },
       ];
     } else if (identity.role === 'measurer') {
       cards = [
-        { key: 'mine', label: '我的任务', value: todos.length },
-        { key: 'assigned', label: '待接收任务', value: records.rows.filter((item) => item.measureTaskStatus === 'assigned').length },
-        { key: 'accepted', label: '量房进行中', value: records.rows.filter((item) => item.measureTaskStatus === 'accepted').length },
+        { key: 'mine', label: '我的任务', value: result.todos.length },
+        { key: 'assigned', label: '待接收任务', value: result.records.filter((item) => item.measureTaskStatus === 'assigned').length },
+        { key: 'accepted', label: '量房进行中', value: result.records.filter((item) => item.measureTaskStatus === 'accepted').length },
         { key: 'overdueMeasures', label: '超时量房', value: overdueTodos.length },
       ];
     } else if (identity.role === 'designer') {
       cards = [
-        { key: 'mine', label: '我的任务', value: todos.length },
-        { key: 'assigned', label: '待设计任务', value: records.rows.filter((item) => item.designTaskStatus === 'assigned').length },
-        { key: 'progress', label: '设计进行中', value: records.rows.filter((item) => item.designTaskStatus === 'in_progress').length },
+        { key: 'mine', label: '我的任务', value: result.todos.length },
+        { key: 'assigned', label: '待设计任务', value: result.records.filter((item) => item.designTaskStatus === 'assigned').length },
+        { key: 'progress', label: '设计进行中', value: result.records.filter((item) => item.designTaskStatus === 'in_progress').length },
         { key: 'overdueDesigns', label: '超时设计', value: overdueTodos.length },
       ];
     } else {
       cards = [
-        { key: 'records', label: '企业报备', value: records.rows.length },
+        { key: 'records', label: '企业报备', value: result.records.length },
         { key: 'pendingAssignments', label: '待分配任务', value: pendingAssignments },
         { key: 'overdue', label: '超时任务', value: overdueTodos.length },
         { key: 'pendingCommission', label: '待结算提成', value: pendingCommission },
@@ -139,9 +137,9 @@ export async function GET(request: Request) {
       data: {
         staffRole: identity.role,
         cards,
-        latestRecords: records.rows.slice(0, 5).map(promotionRecordToDto),
-        latestCommissions: commissions.slice(0, 5).map(commissionToDto),
-        latestTodos: (todos as WorkbenchTodoItem[]).slice(0, 5),
+        latestRecords: result.latestRecords.map(promotionRecordToDto),
+        latestCommissions: result.latestCommissions.map(commissionToDto),
+        latestTodos: result.todos.slice(0, 5),
       },
     });
   } catch (error: unknown) {

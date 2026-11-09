@@ -168,7 +168,7 @@ export async function GET(request: Request) {
     } });
     const staffId = parsePostgresId(staff._id, 'staff id');
     const month = shanghaiMonthRange();
-    const workbenchCards = await withMiniProgramPostgresTransaction(
+    const workbench = await withMiniProgramPostgresTransaction(
       context,
       async (transaction) => {
         const leads = new LeadRepository(transaction);
@@ -177,7 +177,13 @@ export async function GET(request: Request) {
         const staffLeadOptions = resolveStaffLeadListOptions(role, staffId);
         const staffPlanOptions =
           role === 'enterprise_admin' ? {} : { staffId };
-        const [customerCount, activePlans, monthlyCompleted, auditCount] =
+        const [
+          customerCount,
+          activePlans,
+          monthlyCompleted,
+          auditCount,
+          unreadNotificationCount,
+        ] =
           await Promise.all([
             leads.count(staffLeadOptions),
             floorPlans.count({
@@ -195,32 +201,32 @@ export async function GET(request: Request) {
             measurements.count(
               role === 'enterprise_admin' ? {} : { operatorId: staffId }
             ),
+            new StaffNotificationRepository(transaction).countUnread(staffId),
           ]);
 
         if (role === 'admin' || role === 'super_admin') {
           const enterpriseCount = (
             await new EnterpriseRepository(transaction).list()
           ).length;
-          return [
-            card('enterprises', '服务企业', enterpriseCount, '家', 'PostgreSQL 实时数据', 'home', 'green', 'promotion:admin'),
-            card('customers', '客户线索', customerCount, '位', '当前可见范围', 'user', 'purple', 'leads'),
-            card('activePlans', '量房草稿', activePlans, '单', '正式墙图草稿', 'edit', 'blue', 'measure'),
-            card('audits', '测量审计', auditCount, '次', '正式测量记录', 'deal', 'orange', 'measure'),
-          ];
+          return {
+            unreadNotificationCount,
+            cards: [
+              card('enterprises', '服务企业', enterpriseCount, '家', 'PostgreSQL 实时数据', 'home', 'green', 'promotion:admin'),
+              card('customers', '客户线索', customerCount, '位', '当前可见范围', 'user', 'purple', 'leads'),
+              card('activePlans', '量房草稿', activePlans, '单', '正式墙图草稿', 'edit', 'blue', 'measure'),
+              card('audits', '测量审计', auditCount, '次', '正式测量记录', 'deal', 'orange', 'measure'),
+            ],
+          };
         }
-        return [
-          card('customers', '服务客户', customerCount, '位', customerCount ? `+${customerCount}` : '暂无', 'user', 'purple', 'leads'),
-          card('activePlans', '进行中', activePlans, '单', activePlans ? '继续量房' : '暂无草稿', 'edit', 'blue', 'measure'),
-          card('monthlyCompleted', '本月完成', monthlyCompleted, '单', '按完成时间统计', 'deal', 'green', 'measure'),
-          card('audits', '测量记录', auditCount, '次', '正式测量审计', 'home', 'orange', 'measure'),
-        ];
-      }
-    );
-    const notificationMeta = await withMiniProgramPostgresTransaction(
-      context,
-      async (transaction) => {
-        const unreadNotificationCount = (await new StaffNotificationRepository(transaction).list(staffId, true)).length;
-        return { unreadNotificationCount };
+        return {
+          unreadNotificationCount,
+          cards: [
+            card('customers', '服务客户', customerCount, '位', customerCount ? `+${customerCount}` : '暂无', 'user', 'purple', 'leads'),
+            card('activePlans', '进行中', activePlans, '单', activePlans ? '继续量房' : '暂无草稿', 'edit', 'blue', 'measure'),
+            card('monthlyCompleted', '本月完成', monthlyCompleted, '单', '按完成时间统计', 'deal', 'green', 'measure'),
+            card('audits', '测量记录', auditCount, '次', '正式测量审计', 'home', 'orange', 'measure'),
+          ],
+        };
       }
     );
 
@@ -253,8 +259,8 @@ export async function GET(request: Request) {
           enterpriseId: staff.enterpriseId || context.enterpriseId || null,
         },
         actions,
-        workbenchCards,
-        unreadNotificationCount: notificationMeta.unreadNotificationCount,
+        workbenchCards: workbench.cards,
+        unreadNotificationCount: workbench.unreadNotificationCount,
         // Commercial workflow todos remain empty until that PostgreSQL domain switches.
         todos: [],
       },

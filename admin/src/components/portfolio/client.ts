@@ -2,15 +2,21 @@ import type { WorkContent, DesignerProfile } from '@/lib/portfolio/contracts';
 export type WorkRow = { id: string; kind: string; author_id: string | null; author_name: string; head_version_id: string; published_version_id: string | null; withdrawn: boolean; version: number; status: string; content: WorkContent; review_note: string; number: number; updated_at: string };
 export type WorkVersion = { id: string; number: number; status: string; content: WorkContent; review_note: string; published_at: string | null };
 export type WorkDetail = { work: WorkRow; head: WorkVersion; versions: WorkVersion[]; manager: boolean; assets: Array<{ id: string; content_hash: string }>; audits: Array<{ id: string; action: string; note: string; created_at: string }> };
-export type Author = { id: string; display_name: string; professional_title: string | null; professional_profile_locked: boolean; professionalTitle?: string | null; experienceLabel?: string; portrait_available?: boolean };
-export type Profile = { content: DesignerProfile; version: number };
+export type Author = { id: string; display_name: string; professional_title: string | null; professional_profile_locked: boolean; professionalTitle?: string | null; experienceLabel?: string; portrait_available?: boolean; enterprise_name?: string };
+export type ProfileContact = { wechatId: string; phone: string; publishWechat: boolean; publishPhone: boolean; allowInApp: boolean; qrAvailable: boolean };
+export type Profile = { content: DesignerProfile; version: number; contact?: ProfileContact };
 export type Community = { id: string; name: string; city_code: string; city_name: string; district: string; address: string; provider: string };
+export type TemplateRow = { id: string; key: string; title: string; description: string; primary_style: string; layout_types: string[]; rooms: string; area: number | null; city_name: string; district: string; status: string; scope: string; sort_order: number; cover_asset_id: string | null; asset_count: number };
+export type TemplateImage = { id: string; space: string; position: number; content_hash: string };
+export type TemplateDetail = { template: TemplateRow & { content: Partial<WorkContent> }; images: TemplateImage[] };
 export const statusLabels: Record<string, string> = { draft: '草稿', submitted: '待审核', returned: '已退回', published: '已发布', withdrawn: '已下架' };
 const errors: Record<string, string> = {
   invalid_portfolio: '请检查内容长度、必填项和图片分组后重试。', invalid_image_group: 'AI 图片只能归为效果图，样板间只能归为实拍图。',
   portfolio_not_ready: '请选择作品图片并设置封面后再提交。', portfolio_forbidden: '当前账号无此操作权限，请联系企业管理员。',
   portfolio_not_found: '作品不存在或当前账号无权访问。', portfolio_unavailable: '作品服务暂不可用，请稍后重试。',
   portfolio_author_unavailable: '作者不是本企业在职设计师，请核对员工状态。', portfolio_draft_required: '请先创建新草稿，待审核版本不能直接修改。',
+  portfolio_contact_invalid: '请核对微信号和电话号码。开启公开的渠道需要填写有效联系方式或上传微信二维码。',
+  portfolio_contact_consent_required: '请确认公开授权，再保存新的公开联系方式。',
   portfolio_rights_expired: '图片许可已过期，请更新有效授权后重新提交。', portfolio_reference_not_original: '企业授权参考不能展示为设计师原创作品，请取消「设计师主页」。',
   portfolio_asset_unavailable: '图片已失效或不属于本作品，请重新选择。', portfolio_asset_limit: '本作品上传图片已达上限，请新建作品或联系管理员整理。',
   portfolio_copy_unconfigured: '当前文案服务尚未配置，请联系管理员。', portfolio_copy_pending: '本作品有生成中或结果待核对的任务，请先读取原任务。',
@@ -26,6 +32,7 @@ const errors: Record<string, string> = {
   community_provider_denied: '地图供应商账号权限不可用，请由管理员核对；当前作品仍可保存。', community_provider_quota: '地图供应商配额已达上限，外部查询已暂停。可使用核验名录或暂不绑定。',
   community_rate_limited: '小区查询频率或当日用量已达上限，请稍后再试。', community_candidate_invalid: '小区候选已过期或不符合住宅区条件，请重新搜索点选。',
   community_candidate_changed: '供应商小区信息已变化，请重新搜索并确认具体分期。', Unauthorized: '登录已失效，请重新登录。', Forbidden: '当前账号无权访问。',
+  portfolio_template_not_found: '素材模板不存在或已下架。', portfolio_template_invalid: '素材模板数据不完整，请联系管理员重新导入。',
 };
 class PortfolioRequestError extends Error { constructor(readonly uncertain: boolean, message: string) { super(message); } }
 export async function portfolioRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -50,3 +57,4 @@ export class PortfolioMutations {
 }
 export function errorText(error: unknown) { return error instanceof Error ? error.message : '操作失败，请重试。'; }
 export function assetUrl(workId: string, assetId: string) { return `/api/portfolio/works/${workId}/assets/${assetId}`; }
+export function templateAssetUrl(templateId: string, assetId: string) { return `/api/portfolio/templates/${templateId}/assets/${assetId}`; }
