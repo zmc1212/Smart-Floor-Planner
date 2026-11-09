@@ -399,7 +399,7 @@ Mini40/40与隔离作品集服务回归56/56分别保留为工程证据。评测
 
 ## 当前手账聊天与显式户型范围（2026-10-30）
 
-**获批UI范围内为Implemented；Agent整体仍Limited。** 客户根入口 `pages/index/index` 默认小K，另保留服务／我的两个逻辑Tab；原五个注册Tab及专业角色导航沿既有权限。异步 `chat-panel` 与旧 `packages/assistant/chat/chat` 共用聊天定义和控制器，切Tab保留会话、草稿和户型选择。`pages/mine/mine`仅变更客户导航，其账号主体及专业工作台仍沿既有设计源。
+**获批UI范围内为Implemented；Agent整体仍Limited。** 客户根入口 `pages/index/index` 默认小K，另保留服务／我的两个逻辑Tab；原五个注册Tab及专业角色导航沿既有权限。异步 `chat-panel` 与旧 `packages/assistant/chat/chat` 共用聊天定义和控制器，切Tab保留会话、草稿和户型选择。组件重建或冷启动后恢复客户最近一段仍开放的会话：设备上只保存该会话ID，普通Tab入口经entry-context重新鉴权，不可访问或失效的ID静默回退默认入口；显式开启新对话和归档会清除，深链／关注入口不恢复。正文、entryToken及其他会话内容不落设备存储。此次修复不改变已批准的结构、样式、素材、路由、API或权限，针对答复期间偶发回到欢迎页的问题。原生验证（2026-11-09；Stable 2.02.2608080/基础库3.17.2、390×844；自动化端口9424；真实本地服务与用户645真实客户会话；零模型调用）：带已存ID重建恢复开放会话1515及两条已持久消息，而非欢迎页；失效ID回退默认欢迎入口并清除本机记录，无fatal或可见错误；显式新对话清除记录。新对话检查为组件方法调用，非可视控件点击。真机与生产行为仍未验证。证据：`tmp/xiaok-chat-resume-20261109/report.json`、`resume-1515.png`、`stale-fallback.png`。`pages/mine/mine`仅变更客户导航，其账号主体及专业工作台仍沿既有设计源。
 
 按用户2026-10-30指令，欢迎页旧房改造／装修风格／预算安排快捷选项现在点击即沿既有 `send()` 和 `POST /api/miniprogram/assistant/conversations/:id/messages` 发送问题；首页面板与旧聊天页共用同一处理。锁覆盖整个异步发送准备过程；加载、只读／未开放、执行中／结果未知及消息／操作／档案／语音待处理状态不覆盖草稿或另发消息。登录、档案校验、发送失败反馈与未知回执同键核对复用原控件；发送成功清空输入框并显示持久化消息，失败保留原恢复状态。手账设计源的结构、样式、素材、路由、API及权限保持不变。证据 `tmp/xiaok-quick-prompts-20261030/final-checks.json`：Mini 57/57；Stable native02确认首页真实点击、单条持久化写入、任务失败反馈与重进，定向native03为5/5，覆盖连接准备、旧聊天页快捷发送／同键恢复、旧房发送与其他客户拒绝。六张路由确认的390×844逻辑／348×752 PNG已审看。旧CDP连接失败和仅拦截HTTP200的测试注入失败分别保留；产品／配置绑定drift[]，自有测试数据／会话／传输已清理恢复。确定性发送检查新增模型调用0，不代表模型答复、真机或生产验收。
 
@@ -590,7 +590,7 @@ P2S 第一批 C01/C02/S01/U01 的聊天与接待主链路 **Implemented**，自�
 
 小K客户页已在 `packages/assistant/chat/chat` 完成代码接入（**Implemented**）；一期整体仍为 **Limited**，原生手工验收、业务知识质量验收及生产切换待完成。用户已明确批准以PPT第5页还原、第14页参考场景风格并补齐一期状态。客户 `pages/index/index` 的小K气泡现在携当前服务的 `leadId` 打开咨询，旁边的文字服务引导入口保留；专业角色首页保留既有外壳，并新增上文P2B员工咨询接管入口。新建assistant独立分包，使用原生WXML/Less/JS与独立生成插画。路由守卫采用 `customer.service`，后端仍要求有效微信customer身份（手机号非必需）、企业解析及当前会话参与者授权。
 
-页面接入 `/api/miniprogram/assistant` 的entry-context、会话创建/列表/详情/归档、历史/发送消息、run轮询/取消/重试和授权引用接口。覆盖欢迎/建议问题、历史及更早消息分页、排队/生成、停止/重试、依据不足、引用撤回、企业关闭/只读、已结束、额度/网络失败、登录失效及结果未知恢复。`latestRun`恢复服务端状态；未知写入结果沿用同一内存请求键和正文，未知费用run不可重试。切后台暂停轮询，身份变化/撤权隔离旧响应并清空敏感状态；正文与entryToken均不写客户端持久存储。entry-context改为不要求开关开启即可读配置，并返回 `canSend/maxMessageChars`，保证关闭企业仍可读授权历史；写入校验不放宽。此API契约不改变默认权限；当前开发schema/开关见上，生产未改。
+页面接入 `/api/miniprogram/assistant` 的entry-context、会话创建/列表/详情/归档、历史/发送消息、run轮询/取消/重试和授权引用接口。覆盖欢迎/建议问题、历史及更早消息分页、排队/生成、停止/重试、依据不足、引用撤回、企业关闭/只读、已结束、额度/网络失败、登录失效及结果未知恢复。`latestRun`恢复服务端状态；未知写入结果沿用同一内存请求键和正文，未知费用run不可重试。切后台暂停轮询，身份变化/撤权隔离旧响应并清空敏感状态；正文与entryToken均不写客户端持久存储，仅在本机记住客户最近一段仍开放会话的ID，普通Tab入口挂载时经entry-context重新鉴权恢复。entry-context改为不要求开关开启即可读配置，并返回 `canSend/maxMessageChars`，保证关闭企业仍可读授权历史；写入校验不放宽。此API契约不改变默认权限；当前开发schema/开关见上，生产未改。
 
 设计与逐元素标尺见[一期第2节](./xiaok-assistant-phase-1.zh-CN.md#1b-3-当前后台接入与小程序设计来源)和唯一双语还原台账。素材映射：主角继续使用ImageGen独立生成的`generated/xiaok-consultation.png`→`miniprogram/packages/assistant/assets/xiaok-consultation.png`（480×440/117,813字节）；新增`generated/xiaok-chat-avatar.png`→同运行目录`xiaok-chat-avatar.png`（256×256/49,659字节）、`generated/xiaok-chat-room.png`→`xiaok-chat-room.png`（780×380/51,118字节）。三个生成源均在`design-references/xiaok-assistant-phase1-ppt-v1/`，均为优化透明PNG；头像可见alpha边界x27–236/y11–253，运行68rpx图像内显示完整角色。6个本地Lucide1.8.0 PNG及现有独立品牌Logo继续复用，许可见`docs/icon-sources/assistant/README.md`。 语音/传图、户型理解、自动需求总结与人工接管仍不属于本期。
 

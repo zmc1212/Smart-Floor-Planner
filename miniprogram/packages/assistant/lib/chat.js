@@ -23,10 +23,12 @@ const initial = () => ({
 });
 
 class ChatController {
-  constructor({ emit, client = new AssistantClient(), identity = () => '', schedule = setTimeout, unschedule = clearTimeout, referenceImage = async value => value }) {
+  constructor({ emit, client = new AssistantClient(), identity = () => '', schedule = setTimeout, unschedule = clearTimeout, referenceImage = async value => value,
+    resumeConversationId = '', onResumeInvalid = null }) {
     this.emit = emit; this.client = client; this.identity = identity;
     this.schedule = schedule; this.unschedule = unschedule;
     this.referenceImage = referenceImage;
+    this.resumeConversationId = String(resumeConversationId || ''); this.onResumeInvalid = onResumeInvalid;
     this.state = initial(); this.epoch = 0; this.visible = false; this.ready = false;
   }
 
@@ -77,6 +79,23 @@ class ChatController {
   }
 
   async readEntry(epoch) {
+    try {
+      return await this.readEntryContext(epoch);
+    } catch (error) {
+      const code = error && (error.code || error.error);
+      if (code !== 'assistant_resource_not_found' || !this.resumeConversationId || !this.options
+        || String(this.options.conversationId || '') !== this.resumeConversationId) throw error;
+      // A remembered conversation can be archived or revoked on another
+      // device; fall back to the plain entry instead of blocking the chat.
+      const stale = this.resumeConversationId;
+      this.resumeConversationId = '';
+      delete this.options.conversationId;
+      if (this.onResumeInvalid) this.onResumeInvalid(stale);
+      return this.readEntryContext(epoch);
+    }
+  }
+
+  async readEntryContext(epoch) {
     const entry = await this.client.read('/entry-context', entryInput(this.options), {}, 'POST');
     if (!this.valid(epoch)) return null;
     this.entry = entry;

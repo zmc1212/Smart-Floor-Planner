@@ -1,4 +1,5 @@
 const { ChatController, initial } = require('../lib/chat');
+const chatResume = require('../lib/chat-resume');
 const { goToLogin } = require('../../../utils/session');
 const { MediaController } = require('../lib/media');
 const { ReferenceImage } = require('../lib/reference-image');
@@ -53,7 +54,9 @@ module.exports = () => ({
 	},
 
 	onLoad(options) {
+		const resumeConversationId = chatResume.resumeId(options);
 		this._options = options || {};
+		if (resumeConversationId && !this._options.conversationId) this._options.conversationId = resumeConversationId;
 		this._alive = true;
 		this.speechController = new SpeechController({ identity: sessionToken, emit: patch => { if (this._alive && this._shown) this.setData(patch); },
 			getDraft: () => this.data.draft || '', setDraft: text => this.controller.input(text), reload: () => this.controller.refresh() });
@@ -64,9 +67,15 @@ module.exports = () => ({
 		this._designerCardConversation = ''; this._designerCardKey = '';
 		this.controller = new ChatController({
 			identity: sessionToken,
+			resumeConversationId,
+			onResumeInvalid: id => chatResume.clear(id),
 			referenceImage: value => this.referenceImages.materialize(value),
 			emit: patch => {
 				if (!this._alive) return;
+				if (patch.conversation?.id) {
+					if (patch.conversation.status === 'open') chatResume.save(patch.conversation.id);
+					else chatResume.clear(patch.conversation.id);
+				}
 				if (patch.fatal || patch.needsLogin) this.speechController.hide();
 				const previous = this.data.messages;
 				this.setData(patch, () => {
@@ -492,6 +501,8 @@ module.exports = () => ({
 	newConversation() {
 		if (this.data.mediaBusy || this.data.mediaPending) return;
 		if (this.data.busy || this.data.pendingSend || this.data.pendingAction) return;
+		chatResume.clear();
+		delete this._options.conversationId;
 		this.followups.leave(); this.closeSheet(); const result = this.controller.newConversation();
 		return this.controller.visible ? result : this.controller.show(this._options);
 	},

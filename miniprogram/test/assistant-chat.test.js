@@ -464,6 +464,52 @@ test('new conversation remains new on foreground even when route originally targ
   assert.equal(f.controller.conversationId, '');
 });
 
+test('a fresh controller resumes the remembered open conversation instead of the welcome screen', async () => {
+  const f = fixture();
+  f.db.items = [{ id: '21', seq: '1', authorKind: 'user', available: true,
+    content: { version: 1, blocks: [{ type: 'text', text: '我家工地现在装修到什么阶段了' }] } }];
+  f.db.conversation.latestRun = { id: '41', status: 'queued', retryable: false, nextPollMs: 1500 };
+  const controller = new ChatController({ client: f.client, identity: () => 'customer-A', emit() {},
+    resumeConversationId: '11', schedule: () => 0, unschedule: () => {} });
+  await controller.show({ conversationId: '11' });
+  assert.deepEqual(f.calls.find(call => call.url === '/entry-context').body, { conversationId: '11' });
+  assert.equal(controller.conversationId, '11');
+  assert.equal(controller.state.messages.length, 1);
+  assert.equal(controller.state.run.status, 'queued');
+  assert.equal(controller.state.loading, false);
+});
+
+test('a remembered conversation that is no longer accessible falls back to the plain entry', async () => {
+  const f = fixture(); let invalid = '';
+  f.intercept(call => {
+    if (call.url === '/entry-context' && call.body.conversationId) throw { statusCode: 404, code: 'assistant_resource_not_found' };
+  });
+  const controller = new ChatController({ client: f.client, identity: () => 'customer-A', emit() {},
+    resumeConversationId: '999', onResumeInvalid: id => { invalid = id; } });
+  await controller.show({ conversationId: '999' });
+  assert.equal(invalid, '999');
+  assert.deepEqual(f.calls.filter(call => call.url === '/entry-context').map(call => call.body),
+    [{ conversationId: '999' }, {}]);
+  assert.equal(controller.state.fatal, false);
+  assert.equal(controller.state.error, '');
+  assert.equal(controller.state.conversation, null);
+  assert.equal(controller.state.loading, false);
+});
+
+test('resume storage records only the latest open conversation id for the plain entry', () => {
+  const previous = global.wx, values = new Map();
+  global.wx = { getStorageSync: key => values.get(key), setStorageSync: (key, value) => values.set(key, value), removeStorageSync: key => values.delete(key) };
+  try {
+    const resume = require('../packages/assistant/lib/chat-resume');
+    assert.equal(resume.resumeId({}), '');
+    resume.save('11'); assert.equal(resume.resumeId({}), '11');
+    assert.equal(resume.resumeId({ publicEnterpriseId: '1' }), '');
+    resume.clear('12'); assert.equal(resume.resumeId({}), '11');
+    resume.clear('11'); assert.equal(resume.resumeId({}), '');
+    resume.save('not-an-id'); assert.equal(resume.resumeId({}), '');
+  } finally { global.wx = previous; }
+});
+
 test('revocation fences a slower citation response from restoring previously authorized content', async () => {
   const f = fixture(); await f.controller.show({ conversationId: '11' });
   const gate = deferred();
