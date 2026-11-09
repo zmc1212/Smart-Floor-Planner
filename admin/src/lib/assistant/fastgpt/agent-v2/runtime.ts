@@ -1,14 +1,17 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { AssistantError, fail } from '../../contracts';
 import { AiProviderError } from '@/lib/ai/provider-types';
+import { parseBusinessQuery, type BusinessQuery } from '../../agent/business-tools';
 import type { AgentV2Configuration } from './config';
 
-export const agentV2ToolNames = ['search_enterprise'] as const;
+export const agentV2ToolNames = ['search_enterprise', 'query_business'] as const;
 export type AgentV2ToolName = typeof agentV2ToolNames[number];
-export type AgentV2ToolInput = { query: string };
+export type AgentV2ToolInput =
+  | { name: 'search_enterprise'; query: string }
+  | ({ name: 'query_business' } & BusinessQuery);
 export type AgentV2Ports = {
   authorize: () => Promise<void>;
-  tool: (name: AgentV2ToolName, input: AgentV2ToolInput, sequence: number) => Promise<Record<string, unknown>>;
+  tool: (input: AgentV2ToolInput, sequence: number) => Promise<Record<string, unknown>>;
 };
 export type AgentV2RunResult = { text: string; usage: { inputTokens: number; outputTokens: number } | null };
 type Ticket = { ports: AgentV2Ports; expires: number; calls: number; failure?: AssistantError | AiProviderError };
@@ -50,16 +53,32 @@ export class FastGPTAgentV2 {
       // The vendor tool template substitutes model arguments as raw text; a
       // form body keeps quotes/newlines out of JSON syntax.
       const form = (request.headers.get('content-type') || '').includes('application/x-www-form-urlencoded');
-      const query = form ? (() => { const parsed = new URLSearchParams(bytes);
-        return [...parsed.keys()].length === 1 && parsed.has('query') ? parsed.get('query') : undefined; })()
-        : (() => { let body: unknown; try { body = JSON.parse(bytes); } catch { fail('invalid_message', 422); }
-          return body && typeof body === 'object' && !Array.isArray(body) && Object.keys(body).length === 1
-            ? (body as { query?: unknown }).query : undefined; })();
-      if (typeof query !== 'string' || !query.trim() || Array.from(query).length > 1000) fail('invalid_message', 422);
+      const fields = (expected: readonly string[]) => {
+        if (form) {
+          const parsed = new URLSearchParams(bytes);
+          if ([...new Set(parsed.keys())].length !== expected.length || !expected.every(key => parsed.getAll(key).length === 1))
+            fail('invalid_message', 422);
+          return Object.fromEntries(expected.map(key => [key, parsed.get(key) ?? ''])) as Record<string, string>;
+        }
+        let body: unknown;
+        try { body = JSON.parse(bytes); } catch { fail('invalid_message', 422); }
+        if (!body || typeof body !== 'object' || Array.isArray(body)) fail('invalid_message', 422);
+        const keys = Object.keys(body);
+        if (keys.length !== expected.length || !expected.every(key =>
+          keys.includes(key) && typeof (body as Record<string, unknown>)[key] === 'string')) fail('invalid_message', 422);
+        return body as Record<string, string>;
+      };
+      const input: AgentV2ToolInput = name === 'search_enterprise'
+        ? (() => { const { query } = fields(['query']);
+          if (!query.trim() || Array.from(query).length > 1000) fail('invalid_message', 422);
+          return { name: 'search_enterprise' as const, query }; })()
+        : (() => { const requested = fields(['domain', 'leadId']);
+          return { name: 'query_business' as const, ...parseBusinessQuery({ domain: requested.domain, leadId: requested.leadId }) }; })();
       await ticket.ports.authorize();
-      const receipt = await ticket.ports.tool(name as AgentV2ToolName, { query }, ++ticket.calls);
+      const receipt = await ticket.ports.tool(input, ++ticket.calls);
       await ticket.ports.authorize();
-      this.config.record({ kind: 'agent_v2_tool', name, query, status: receipt.status,
+      this.config.record({ kind: 'agent_v2_tool', name, status: receipt.status,
+        ...(input.name === 'search_enterprise' ? { query: input.query } : { domain: input.domain, leadId: input.leadId }),
         sources: Array.isArray(receipt.cites) ? receipt.cites.length : 0 });
       return Response.json(receipt);
     } catch (error) {

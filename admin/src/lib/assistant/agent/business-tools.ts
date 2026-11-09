@@ -13,6 +13,7 @@ import { formalFloorplanText } from './formal-floorplan-context';
 import { materialSharingTools } from '@/lib/construction/material-sharing-contract';
 import { selectedFormalPlan } from '../media/floorplan-selection';
 import { reportBusinessAvailable, type ReportBusinessReference } from './report-context';
+import { appointmentDisplayText } from './appointment-display';
 
 export const businessToolDefinitions: ModelTool[] = [
   ...materialSharingTools,
@@ -81,8 +82,9 @@ export async function queryBusiness(tx: PostgresTransaction, actor: ActorContext
         const dto = appointmentToDto(a);
         const record = { id: dto.id, leadId: String(lead.id), version: dto.version, status: dto.status, timeRange: dto.timeRange };
         data.push(record);
-        const labels: Record<string, string> = { pending: '待确认', confirmed: '已确认', completed: '已完成', cancelled: '已取消', expired: '已过期' };
-        lines.push(`${label}：预约${dto.id}，${labels[dto.status] || dto.status}，时间${dto.timeRange}（版本${dto.version}）。`);
+        // The client body states project, state and local time; the exact id,
+        // version and range remain in `data` for authority and revalidation.
+        lines.push(appointmentDisplayText(String(lead.community_name || ''), dto.status, dto.timeRange));
       }
     } else if (query.domain === 'schemes') {
       const publications = await new CustomerProjectRepository(tx).listActivePublicationSummaries(BigInt(actor.enterpriseId), BigInt(String(lead.id)));

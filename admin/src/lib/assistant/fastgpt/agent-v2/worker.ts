@@ -3,15 +3,17 @@ import { withTenantTransaction } from '@/db/transaction';
 import type { Row } from '@/db/repositories/assistant-repository';
 import { AiProviderError } from '@/lib/ai/provider-types';
 import { AssistantError, fail, fingerprint, type Evidence, type MessageContent } from '../../contracts';
-import { knowledgeSynthesisSources } from '../../agent/synthesis';
+import { businessSynthesisSources, knowledgeSynthesisSources } from '../../agent/synthesis';
 import { synthesisContextAvailable } from '../../agent/synthesis-sources';
+import { queryBusiness, type BusinessQuery, type BusinessSnapshot } from '../../agent/business-tools';
+import { guardAnswerCommitments } from '../../agent/context';
 import { saveKnowledgeCitation } from '../../knowledge/save-citation';
 import { retrieveKnowledge } from '../../knowledge/retrieval';
 import { embeddingGateway } from '../../infrastructure/embedding-gateway';
 import { completeRun, failRun, heartbeat, markProviderStarted, runContext, type Lease } from '../../infrastructure/job-queue';
 import { fastGPTAgentV2Configuration, fastGPTAgentV2Protocol } from './config';
 import { fastGPTWorkflows } from '../runtime';
-import type { AgentV2ToolInput, AgentV2ToolName } from './runtime';
+import type { AgentV2ToolInput } from './runtime';
 import { nativeConversation } from '../rag-session';
 import { ragAnswerParts, type RagCitationSource } from '../native-rag';
 import { nativeCites } from '../native-cites';
@@ -80,8 +82,44 @@ export async function processAgentV2Answer(lease: Lease) {
       return { status: evidence.length ? 'ready' : 'empty', kind: 'enterprise',
         ...(evidence.length ? nativeCites(sources.map(s => ({ id: s.nativeId, sourceName: '企业工艺｜PPT原文', content: s.quote! }))) : {}) };
     };
-    const tool = async (name: AgentV2ToolName, input: AgentV2ToolInput, sequence: number) => {
-      if (name !== 'search_enterprise') fail('assistant_capability_forbidden', 403);
+    const delivered: BusinessSnapshot[] = [];
+    const businesses = new Map<string, Promise<Record<string, unknown>>>();
+    const business = async (query: BusinessQuery, sequence: number): Promise<Record<string, unknown>> => {
+      const key = query.domain + ':' + query.leadId;
+      let pending = businesses.get(key);
+      if (!pending) {
+        pending = (async () => {
+          await authorize();
+          const snapshot = await withTenantTransaction(lease.enterpriseId, async tx => {
+            const current = await runContext(tx, lease);
+            if (!await synthesisContextAvailable(tx, lease.actor, current.conversation, context)) fail('context_changed');
+            const entry = current.conversation.entry_snapshot as Row;
+            const boundLead = entry.kind === 'lead' ? String(entry.id) : '';
+            if (boundLead && query.leadId && query.leadId !== boundLead) fail('assistant_resource_not_found', 404);
+            const scoped: BusinessQuery = { ...query, leadId: boundLead || query.leadId };
+            const snapshot = await queryBusiness(tx, lease.actor, scoped, String(current.conversation.id));
+            if (scoped.domain === 'construction') for (const project of snapshot.data as Row[])
+              await tx.execute(sql`insert into app.construction_links(enterprise_id,project_id,conversation_id)
+                values(${lease.enterpriseId},${String(project.projectId)},${String(current.conversation.id)}) on conflict do nothing`);
+            await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint,input_summary)
+              values(${lease.enterpriseId},${lease.runId},${1400 + sequence},'agent_tool','query_business',1,'succeeded',
+                ${JSON.stringify(snapshot)}::jsonb,
+                ${JSON.stringify({ protocol: fastGPTAgentV2Protocol, tool: 'query_business', domain: scoped.domain,
+                  leadId: scoped.leadId, selected: snapshot.data.length })}::jsonb)`);
+            return snapshot;
+          });
+          delivered.push(snapshot);
+          // The synthesis guard revalidates every snapshot version before delivery.
+          context.snapshots.push(snapshot);
+          context.sources.push(...businessSynthesisSources('F1:' + lease.runId + ':' + sequence, snapshot));
+          return { status: snapshot.data.length ? 'ready' : 'empty', resultKey: snapshot.version, text: snapshot.displayText };
+        })();
+        businesses.set(key, pending);
+      }
+      return pending;
+    };
+    const tool = async (input: AgentV2ToolInput, sequence: number) => {
+      if (input.name === 'query_business') return business(input, sequence);
       let pending = searches.get(input.query);
       if (!pending) { pending = search(input.query, sequence); searches.set(input.query, pending); }
       return pending;
@@ -91,10 +129,15 @@ export async function processAgentV2Answer(lease: Lease) {
     timer = setInterval(() => { heartbeat(lease).catch(() => undefined); }, 30000);
     const result = await workflows.agentV2.run(messages, { authorize: guard, tool });
     await guard();
-    for (const key of ['knowledge', 'sources'] as const)
+    for (const key of ['knowledge', 'snapshots', 'sources'] as const)
       (context[key] as unknown[]) = [...new Map((context[key] as unknown[]).map(v => [fingerprint(v), v])).values()];
-    const parts = ragAnswerParts(result.text, [...catalog.values()]);
-    await completeRun(lease, { content: { version: 1, blocks: [{ type: 'text', text: result.text }] }, usage: result.usage }, async (tx, run, messageId) => {
+    // Business facts are delivered from the authorized snapshot, never from
+    // free-form prose; the model's draft stays in the audit step.
+    const businessText = delivered.map(s => s.displayText).join('\n');
+    const text = businessText || result.text;
+    if (!businessText) guardAnswerCommitments(text);
+    const parts = ragAnswerParts(text, [...catalog.values()]);
+    await completeRun(lease, { content: { version: 1, blocks: [{ type: 'text', text }] }, usage: result.usage }, async (tx, run, messageId) => {
       const state = await runContext(tx, lease);
       if (!await synthesisContextAvailable(tx, lease.actor, state.conversation, context)) fail('context_changed');
       const blocks: MessageContent['blocks'] = [], saved = new Map<string, string>();
