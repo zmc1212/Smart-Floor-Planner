@@ -170,6 +170,8 @@ test('manager publication exposes only this reviewed version and associated phot
   assert.equal(media.mime, 'image/jpeg');
   const snapshot = await withTenantTransaction(eids[0], tx => queryBusiness(tx, customer, { domain: 'construction', leadId: lid }));
   assert.match(snapshot.displayText, /底盒还没固定/);
+  assert.doesNotMatch(snapshot.displayText, new RegExp(`记录${rid}|版本\\d`));
+  assert.ok(((snapshot.data as Row[])[0].records as Row[]).some(r => String(r.id) === rid && Number(r.version) === Number(result.version)));
   const k = randomUUID(), body = { expectedVersion: (await record()).version, reason: '底盒位置需要重新核对' };
   await boss().mutate(pid, rid, 'withdraw', body, k); await boss().mutate(pid, rid, 'withdraw', body, k);
   assert.equal(await withTenantTransaction(eids[0], tx => businessSnapshotAvailable(tx, eids[0], snapshot)), false);

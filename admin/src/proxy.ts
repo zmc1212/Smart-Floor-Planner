@@ -229,6 +229,9 @@ export async function proxy(request: NextRequest) {
     if (pathname.startsWith('/map-settings') && role !== 'super_admin' && role !== 'admin') {
       return NextResponse.redirect(new URL('/', request.url));
     }
+    if ((pathname.startsWith('/portfolio-templates') || pathname.startsWith('/api/platform/portfolio-templates')) && role !== 'super_admin' && role !== 'admin') {
+      return pathname.startsWith('/api/') ? NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 }) : NextResponse.redirect(new URL('/', request.url));
+    }
 
     // Super admins have all permissions
     if (role === 'super_admin' || role === 'admin') {

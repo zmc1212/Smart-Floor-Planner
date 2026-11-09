@@ -16,6 +16,12 @@ import type { AiProviderRuntimeConfig } from '@/lib/ai/provider-types';
 import type { ModelTurnOutput } from '@/lib/assistant/contracts/model';
 
 const prefix = 'SYNTHETIC-D3-COPY-' + randomUUID(), tenants: string[] = [], designers: string[][] = [], managers: string[] = [], platform: string[] = [];
+const initialDailyLimits = process.env.ASSISTANT_DAILY_LIMITS_ENABLED;
+before(() => { process.env.ASSISTANT_DAILY_LIMITS_ENABLED = '1'; });
+after(() => {
+  if (initialDailyLimits === undefined) delete process.env.ASSISTANT_DAILY_LIMITS_ENABLED;
+  else process.env.ASSISTANT_DAILY_LIMITS_ENABLED = initialDailyLimits;
+});
 let runtime: AiProviderRuntimeConfig, generated = 0;
 const output: ModelTurnOutput = { text: JSON.stringify({ title: '原木客餐厅收纳参考', description: 'AI生成效果图展示客餐厅收纳思路。', shareText: '分享一份原木客餐厅收纳参考，欢迎聊聊家里的使用习惯。', checks: ['实施与材料待核对'] }), toolCalls: [], finishReason: 'stop', providerRequestId: 'synthetic-only', usage: { inputTokens: 50, outputTokens: 60 } };
 const ports: CopyPorts = { runtime: async () => runtime, generate: async () => { generated++; return structuredClone(output); } };
@@ -108,7 +114,18 @@ test('expired rights and shared daily budget refuse allocation before provider I
   await service().execute('save', { workId: wid, expectedVersion: 1, content: { ...(detail.head as Row).content as Row, rightsUntil: '2020-01-01T00:00:00.000Z' } }, randomUUID());
   await assert.rejects(copy().create(wid, { ...request, expectedVersion: 2 }, randomUUID()), /expired/);
   const next = await make(); await withTenantTransaction(tenants[0], tx => tx.execute(sql`update app.assistant_enterprise_settings set daily_requests=1 where enterprise_id=${tenants[0]}`));
-  try { await assert.rejects(copy().create(next, request, randomUUID()), /quota/); } finally { await withTenantTransaction(tenants[0], tx => tx.execute(sql`update app.assistant_enterprise_settings set daily_requests=100 where enterprise_id=${tenants[0]}`)); }
+  try {
+    await assert.rejects(copy().create(next, request, randomUUID()), /quota/);
+    delete process.env.ASSISTANT_DAILY_LIMITS_ENABLED;
+    const key = randomUUID(), count = generated;
+    const task = await copy().create(next, request, key);
+    assert.equal((await copy().create(next, request, key)).id, task.id);
+    assert.equal((await copy().latest(next)).task?.state, 'prepared');
+    assert.equal(generated, count, 'allocation never dispatches the provider');
+  } finally {
+    process.env.ASSISTANT_DAILY_LIMITS_ENABLED = '1';
+    await withTenantTransaction(tenants[0], tx => tx.execute(sql`update app.assistant_enterprise_settings set daily_requests=100 where enterprise_id=${tenants[0]}`));
+  }
 });
 test('unreconciled dispatched holds survive UTC rollover, including completed/failed/cancelled tasks', async () => {
   const before = await withTenantTransaction(tenants[0], tx => portfolioCopyBudget(tx, tenants[0]));

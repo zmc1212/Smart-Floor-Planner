@@ -9,6 +9,7 @@ export interface InspirationListOptions {
   style?: string;
   roomType?: string;
   isRecommended?: boolean;
+  page?: number;
   limit?: number;
 }
 
@@ -29,7 +30,10 @@ export class InspirationRepository {
       .where(filters.length > 0 ? and(...filters) : undefined)
       .orderBy(desc(inspirations.createdAt), desc(inspirations.id));
 
-    return options.limit ? query.limit(options.limit) : query;
+    if (!options.limit) return query;
+    const limit = Math.min(Math.max(1, options.limit), 50);
+    const page = Math.max(1, options.page ?? 1);
+    return query.offset((page - 1) * limit).limit(limit);
   }
 
   async create(input: NewInspiration) {

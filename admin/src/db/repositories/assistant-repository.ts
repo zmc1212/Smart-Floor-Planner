@@ -2,13 +2,14 @@ import { sql, type SQL } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
 import { fail, type ActorContext } from '@/lib/assistant/contracts';
 import { authorizeKnowledgeManager } from '@/lib/assistant/knowledge/manager';
+import { assistantDailyLimitsEnabled } from '@/lib/assistant/core/daily-limits';
 
 export type Row = Record<string, unknown>;
 type RowLock = 'update' | 'share';
 export function assistantWritesEnabled(settings: Row | undefined) {
   return Boolean(settings?.enabled && Number(settings.retention_days) >= 1
-    && Number(settings.daily_requests) >= 1 && Number(settings.daily_tokens) >= 1
-    && Number(settings.daily_cost_micros) >= 1);
+    && (!assistantDailyLimitsEnabled() || Number(settings.daily_requests) >= 1 && Number(settings.daily_tokens) >= 1
+      && Number(settings.daily_cost_micros) >= 1));
 }
 export async function rows<T = Row>(tx: PostgresTransaction, query: SQL): Promise<T[]> {
   return (await tx.execute(query)).rows as T[];

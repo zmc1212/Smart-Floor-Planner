@@ -16,6 +16,12 @@ import { claimJob,markProviderStarted,failRun } from '@/lib/assistant/infrastruc
 import type { ActorContext } from '@/lib/assistant/contracts';
 
 const prefix='usage-test-'+randomUUID(),tenants:string[]=[],admins:string[]=[],users:string[]=[];
+const initialDailyLimits = process.env.ASSISTANT_DAILY_LIMITS_ENABLED;
+before(() => { process.env.ASSISTANT_DAILY_LIMITS_ENABLED = '1'; });
+after(() => {
+  if (initialDailyLimits === undefined) delete process.env.ASSISTANT_DAILY_LIMITS_ENABLED;
+  else process.env.ASSISTANT_DAILY_LIMITS_ENABLED = initialDailyLimits;
+});
 let actor:ActorContext,reviewer:ActorContext,service:UsageService;
 before(async()=>{
   loadEnvConfig(process.cwd());const url=new URL(resolvePostgresRuntimeConfig().connectionString);
@@ -151,6 +157,30 @@ test('confirmed cost above reservation remains counted and blocks new spending',
   const chat=new ConversationService(actor),c=await chat.create(randomUUID());
   await assert.rejects(chat.send(String(c.id),randomUUID(),{version:1,blocks:[{type:'text',text:'budget guard'}]}),/quota_exceeded/);
   assert.ok(BigInt(String((await service.summary()).budget!.cost_micros))>BigInt(1000000000));
+});
+
+test('default unlimited daily usage accepts new questions without clearing unresolved holds and retains reentry/idempotency', async () => {
+  const original = await withTenantTransaction(tenants[0], tx => one(tx, sql`select daily_requests,daily_tokens,daily_cost_micros from app.assistant_enterprise_settings where enterprise_id=${tenants[0]}`));
+  const before = (await service.summary()).budget!;
+  const chat = new ConversationService(actor), c = await chat.create(randomUUID());
+  try {
+    await withTenantTransaction(tenants[0], tx => tx.execute(sql`update app.assistant_enterprise_settings set daily_requests=1,daily_tokens=1,daily_cost_micros=1 where enterprise_id=${tenants[0]}`));
+    delete process.env.ASSISTANT_DAILY_LIMITS_ENABLED;
+    const key = randomUUID(), message = { version: 1 as const, blocks: [{ type: 'text' as const, text: '我想了解水电施工时需要注意些什么。' }] };
+    const sent = await chat.send(String(c.id), key, message);
+    assert.equal(sent.status, 'queued');
+    assert.deepEqual(await chat.send(String(c.id), key, message), sent);
+    assert.equal((await new ConversationService(actor).run(String(sent.runId))).status, 'queued');
+    const summary = await service.summary();
+    assert.equal(summary.limits.enforced, false);
+    assert.equal(summary.budget!.pending_reviews, before.pending_reviews);
+    assert.ok(BigInt(String(summary.budget!.tokens)) > BigInt(summary.limits.tokens));
+    await chat.run(String(sent.runId), 'cancel', randomUUID());
+    assert.equal((await service.summary()).budget!.pending_reviews, before.pending_reviews);
+  } finally {
+    process.env.ASSISTANT_DAILY_LIMITS_ENABLED = '1';
+    await withTenantTransaction(tenants[0], tx => tx.execute(sql`update app.assistant_enterprise_settings set daily_requests=${Number(original!.daily_requests)},daily_tokens=${String(original!.daily_tokens)},daily_cost_micros=${String(original!.daily_cost_micros)} where enterprise_id=${tenants[0]}`));
+  }
 });
 test('HTTP enforces roles, strict input, no-store and server permission checks',async()=>{
   const token=async(role:string)=>new SignJWT({id:admins[0],enterpriseId:tenants[0],role}).setProtectedHeader({alg:'HS256'}).setExpirationTime('5m').sign(new TextEncoder().encode(process.env.JWT_SECRET!));

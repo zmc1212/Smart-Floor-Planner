@@ -87,9 +87,18 @@ test('actual SD ranges are clipped to calibrated ownership, capped at five minut
   rid=String(list.items[Math.min(1,list.items.length-1)].id);const reentry=await enter();assert.ok((await listSdRecordings(reentry.session,reentry.csrf,day,bid,undefined,upstream,clock)).items.some(r=>String(r.id)===rid));
   assert.equal((await withTenantTransaction('999999',tx=>rows(tx,sql`select id from app.construction_camera_sd_recordings where id=${rid}`))).length,0);
 });
+test('changed source identity or a clock jump cannot start an old cached SD index',async()=>{
+  const s=await enter(),beforeStarts=starts,day=new Date(Date.now()+28800000).toISOString().slice(0,10);
+  const changed=async()=>({source:new Date(),serialHash:'b'.repeat(64)});
+  await assert.rejects(startSdRecordingView(s.session,s.csrf,rid,upstream,changed),/unavailable/);
+  await assert.rejects(startSdRecordingView(s.session,s.csrf,rid,upstream,async()=>({source:new Date(Date.now()+20000),serialHash:'a'.repeat(64)})),/unavailable/);
+  assert.equal(starts,beforeStarts);
+  const list=await listSdRecordings(s.session,s.csrf,day,bid,undefined,upstream,changed);assert.equal(list.items.length,0);
+  await withTenantTransaction(eid,tx=>tx.execute(sql`delete from app.construction_camera_sd_windows where binding_id=${bid} and serial_hash=${'b'.repeat(64)}`));
+});
 test('overwritten SD index refuses start; shared viewers stop only after the final lease; generations revoke',async()=>{
-  const a=await enter(),b=await enter();missing=true;await assert.rejects(startSdRecordingView(a.session,a.csrf,rid,upstream),/unavailable/);missing=false;assert.equal(starts,0);
-  const first=await startSdRecordingView(a.session,a.csrf,rid,upstream),second=await startSdRecordingView(b.session,b.csrf,rid,upstream);assert.equal(starts,1);
+  const a=await enter(),b=await enter();missing=true;await assert.rejects(startSdRecordingView(a.session,a.csrf,rid,upstream,clock),/unavailable/);missing=false;assert.equal(starts,0);
+  const first=await startSdRecordingView(a.session,a.csrf,rid,upstream,clock),second=await startSdRecordingView(b.session,b.csrf,rid,upstream,clock);assert.equal(starts,1);
   const stream=await authorizeCameraMedia(a.session,first.generation);assert.equal((await authorizeCameraMedia(b.session,second.generation)).stream,stream.stream);
   await sessionHeartbeat(a.session,a.csrf,true,upstream);assert.equal(stops,0);await assert.rejects(authorizeCameraMedia(a.session,first.generation),/expired/);
   await assert.rejects(saveRecordingPolicy(owner,pid,{bindingId:bid,enabled:false,retentionDays:3,expectedVersion:1,recordingMode:'cloud'}),/busy/);
@@ -97,8 +106,8 @@ test('overwritten SD index refuses start; shared viewers stop only after the fin
 });
 test('unknown start is persisted, never replayed, and drained after the upstream startup window; unknown STOP is retried',async()=>{
   const s=await enter();startUnknown=true;const oldStarts=starts;
-  await assert.rejects(startSdRecordingView(s.session,s.csrf,rid,upstream),/unknown start/);
-  await assert.rejects(startSdRecordingView(s.session,s.csrf,rid,upstream),/busy/);assert.equal(starts,oldStarts+1);
+  await assert.rejects(startSdRecordingView(s.session,s.csrf,rid,upstream,clock),/unknown start/);
+  await assert.rejects(startSdRecordingView(s.session,s.csrf,rid,upstream,clock),/busy/);assert.equal(starts,oldStarts+1);
   await reconcileSdPlaybacks(upstream);assert.equal(streams.size,1);
   await withPlatformTransaction(tx=>tx.execute(sql`update app.construction_camera_sd_playbacks set created_at=now()-interval '46 seconds' where binding_id=${bid} and state='starting'`));
   stopFailure=true;await reconcileSdPlaybacks(upstream);assert.equal(streams.size,1);
@@ -106,7 +115,7 @@ test('unknown start is persisted, never replayed, and drained after the upstream
   startUnknown=false;stopFailure=false;await reconcileSdPlaybacks(upstream);assert.equal(streams.size,0);
 });
 test('membership revocation reaps the final SD viewer and stops only its owned stream',async()=>{
-  const s=await enter(),view=await startSdRecordingView(s.session,s.csrf,rid,upstream);
+  const s=await enter(),view=await startSdRecordingView(s.session,s.csrf,rid,upstream,clock);
   streams.add('foreign-playback');
   await withPlatformTransaction(tx=>tx.execute(sql`update app.construction_members set active=false where project_id=${pid} and admin_id=${member.adminId}`));
   await assert.rejects(authorizeCameraMedia(s.session,view.generation),/unavailable/);await reconcileSdPlaybacks(upstream);
@@ -126,6 +135,6 @@ test('moving a device rejects old SD indexes and never reassigns their source ow
   const s=await enter();const c=(await service().list(pid)).items[0];
   await service().bind(pid,{cameraId:cid,expectedVersion:Number(c.version),bind:false});
   const next=await service().bind(otherPid,{cameraId:cid,expectedVersion:Number(c.version)+1,bind:true});assert.notEqual(String(next.bindingId),bid);
-  await assert.rejects(startSdRecordingView(s.session,s.csrf,rid,upstream),/unavailable/);
+  await assert.rejects(startSdRecordingView(s.session,s.csrf,rid,upstream,clock),/unavailable/);
   const original=await withTenantTransaction(eid,tx=>one(tx,sql`select project_id,binding_id from app.construction_camera_sd_recordings where id=${rid}`));assert.equal(String(original!.project_id),pid);assert.equal(String(original!.binding_id),bid);
 });

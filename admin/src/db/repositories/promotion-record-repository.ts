@@ -243,6 +243,19 @@ export class PromotionRecordRepository {
     };
   }
 
+  async listForTodo(options: PromotionListOptions = {}) {
+    const limit = Math.min(Math.max(1, options.limit ?? 200), 200);
+    return this.transaction
+      .select()
+      .from(promotionEnterpriseRecords)
+      .where(this.buildFilters(options))
+      .orderBy(
+        desc(promotionEnterpriseRecords.createdAt),
+        desc(promotionEnterpriseRecords.id)
+      )
+      .limit(limit);
+  }
+
   async findById(id: bigint, actor?: PromotionActor) {
     const actorFilter = this.actorFilter(actor);
     const rows = await this.transaction

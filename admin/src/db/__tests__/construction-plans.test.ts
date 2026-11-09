@@ -94,6 +94,10 @@ test('exact approval is idempotent after a lost response, does not close issue o
   await decide(second,'preview');const p=await view(second),body={expectedRevision:p.revision},key=randomUUID();
   const result=await customer.decide(second,'approve',body,key);assert.equal(result.status,'approved');assert.deepEqual(await customer.decide(second,'approve',body,key),result);
   assert.equal((await view(second)).status,'approved');
+  const approvedRead=await withTenantTransaction(eids[0],tx=>queryNeedIssues(tx,privateChat.actor,cid));
+  assert.ok(approvedRead.data.some(p=>p.kind==='formal_plan'&&p.status==='approved'));
+  assert.match(approvedRead.displayText,/当前查询不包含工程验收、付款或结算凭据，不能据此确认这些状态/);
+  assert.doesNotMatch(approvedRead.displayText,/已付款|付款完成|验收通过/);
   const query=await command(designer,'书房资料在哪里？');
   const queryRow=((await boss.read(pid,undefined,100)).items as Row[]).find(i=>String((i.message as Row).id)===String(query.messageId))!;
   assert.match(String((queryRow.response as Row).text),/已同意这一版/);assert.match(String((queryRow.response as Row).text),/资料关联本身不改变决定/);
@@ -125,6 +129,7 @@ test('human reception defers the same publication and Worker delivery is durable
 test('Agent read model contains exact published version, impacts and customer state without granting approval',async()=>{
   const snapshot=await withTenantTransaction(eids[0],tx=>queryNeedIssues(tx,privateChat.actor,cid));
   assert.ok(snapshot.data.some(p=>p.kind==='formal_plan'&&p.sourceVersion));assert.match(snapshot.displayText,/500\.00元|\+500/);assert.match(snapshot.displayText,/不会自动落实或关闭事项/);
+  assert.match(snapshot.displayText,/当前查询不包含工程验收、付款或结算凭据/);
   await decide(third,'decline');assert.equal((await view(third)).status,'declined');
   const changed=await withTenantTransaction(eids[0],tx=>queryNeedIssues(tx,privateChat.actor,cid));assert.notEqual(changed.version,snapshot.version);assert.match(changed.displayText,/未同意这一版/);
 });
@@ -141,6 +146,7 @@ test('actual query_followups tool checkpoints formal versions into revocable con
   const step=await withTenantTransaction(eids[0],tx=>one(tx,sql`select source_refs from app.assistant_run_steps where enterprise_id=${eids[0]} and run_id=${String(sent.runId)} and kind='agent_construction_context'`));
   assert.ok(Array.isArray(step?.source_refs)&&(step.source_refs as string[]).length>0);
   assert.equal((await privateChat.messages(cid,undefined,100)).items.find(m=>m.id===planDerivedMessageId)!.available,true);
+  assert.match(JSON.stringify((await privateChat.messages(cid,undefined,100)).items.find(m=>m.id===planDerivedMessageId)!.content),/当前查询不包含工程验收、付款或结算凭据/);
 });
 test('owner/admin/super_admin issue formal versions in the selected tenant without employment or project membership',async()=>{
   for(const role of ['enterprise_admin','admin','super_admin']){

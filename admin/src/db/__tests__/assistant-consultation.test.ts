@@ -18,6 +18,12 @@ import type { ModelMessage, ModelTurnOutput } from '@/lib/assistant/contracts/mo
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 
 const prefix = 'synthetic-consultation-' + randomUUID();
+const initialDailyLimits = process.env.ASSISTANT_DAILY_LIMITS_ENABLED;
+before(() => { process.env.ASSISTANT_DAILY_LIMITS_ENABLED = '1'; });
+after(() => {
+  if (initialDailyLimits === undefined) delete process.env.ASSISTANT_DAILY_LIMITS_ENABLED;
+  else process.env.ASSISTANT_DAILY_LIMITS_ENABLED = initialDailyLimits;
+});
 const fixtures: Array<{ enterpriseId: string; userId: string; conversationId: string }> = [];
 const binding: ConsultationBinding = { profile: profile.id, stage: 'R1', budgetGroup: prefix,
   quota: { model: profile.model, quotaOnly: true, remainingTokens: 400000, observedTokensAtVerification: 0, verifiedAt: new Date().toISOString() } };
@@ -67,6 +73,10 @@ test('paid long trials share original cash holds across stages/groups, retain nu
     const q=await one(tx,sql`select reserved_tokens,reserved_cost_micros from app.assistant_quota_reservations
       where enterprise_id=${fixture.enterpriseId} and run_id=${String(next.runId)}`);
     assert.equal(Number(q!.reserved_tokens),0);assert.equal(Number(q!.reserved_cost_micros),0);
+    try {
+      delete process.env.ASSISTANT_DAILY_LIMITS_ENABLED;
+      assert.equal((await reserveConsultationDispatch(tx,input)).reservedRequestTokens,1000);
+    } finally { process.env.ASSISTANT_DAILY_LIMITS_ENABLED = '1'; }
     await tx.execute(sql`update app.assistant_jobs set status='cancelled' where enterprise_id=${fixture.enterpriseId} and run_id=${String(next.runId)}`);
     await tx.execute(sql`update app.assistant_runs set status='cancelled' where enterprise_id=${fixture.enterpriseId} and id=${String(next.runId)}`);
     await tx.execute(sql`update app.assistant_quota_reservations set status='released' where enterprise_id=${fixture.enterpriseId} and run_id=${String(next.runId)}`);
@@ -147,6 +157,10 @@ test('stage and enterprise caps deny the next reservation before a dispatch; mis
     await assert.rejects(reserveConsultationDispatch(tx,input),expectCode('assistant_quota_exceeded'));
     await tx.execute(sql`update app.assistant_enterprise_settings set daily_tokens=1000 where enterprise_id=${fixtures[0].enterpriseId}`);
     await assert.rejects(reserveConsultationDispatch(tx,{...input,estimatedRequestTokens:2000}),expectCode('assistant_quota_exceeded'));
+    try {
+      delete process.env.ASSISTANT_DAILY_LIMITS_ENABLED;
+      assert.equal((await reserveConsultationDispatch(tx,{...input,estimatedRequestTokens:2000})).reservedRequestTokens,2000);
+    } finally { process.env.ASSISTANT_DAILY_LIMITS_ENABLED = '1'; }
     await tx.execute(sql`update app.assistant_enterprise_settings set daily_tokens=1000000 where enterprise_id=${fixtures[0].enterpriseId}`);
     await tx.execute(sql`update app.assistant_quota_reservations set status='released' where enterprise_id=${fixtures[0].enterpriseId} and run_id=${String(sent.runId)}`);
     await assert.rejects(reserveConsultationDispatch(tx,{...input,estimatedRequestTokens:2000}),expectCode('assistant_quota_exceeded'));
@@ -276,11 +290,14 @@ test('missing observed usage preserves the reservation and stops the next call i
     assert.ok(Number(quota!.reserved_tokens)>8192);assert.equal(quota!.status,'reconciling');
     assert.equal(await settleConsultationDispatch(tx,fixtures[0].enterpriseId,String(sent.runId)),false);
   });
-  const next=await chat().send(fixtures[0].conversationId,randomUUID(),content('这是独立问题，请继续一般建议，不保存。'));
-  const nextLease=await claimJob();assert.ok(nextLease);await processAgentAnswer(nextLease,{model:async()=>{calls++;throw Error('Must not dispatch after unknown usage');}});
-  assert.equal(calls,1);assert.equal((await chat().run(String(next.runId))).status,'failed');
-  const guard=await withTenantTransaction(fixtures[0].enterpriseId,tx=>one(tx,sql`select input_summary from app.assistant_run_steps
-    where enterprise_id=${fixtures[0].enterpriseId} and run_id=${String(next.runId)} and kind='agent_budget_guard'`));
-  assert.equal((guard!.input_summary as {dispatched:boolean}).dispatched,false);
-  assert.ok((guard!.input_summary as {requestedTokens:number}).requestedTokens>8192);
+  const before = await withTenantTransaction(fixtures[0].enterpriseId,tx=>one(tx,sql`select count(*)::int n from app.assistant_runs where enterprise_id=${fixtures[0].enterpriseId} and conversation_id=${fixtures[0].conversationId}`));
+  try {
+    for (const enabled of ['1', '0']) {
+      process.env.ASSISTANT_DAILY_LIMITS_ENABLED = enabled;
+      await assert.rejects(chat().send(fixtures[0].conversationId,randomUUID(),content('这是独立问题，请继续一般建议，不保存。')),expectCode('provider_outcome_unknown'));
+    }
+  } finally { process.env.ASSISTANT_DAILY_LIMITS_ENABLED = '1'; }
+  assert.equal(calls,1);
+  const after = await withTenantTransaction(fixtures[0].enterpriseId,tx=>one(tx,sql`select count(*)::int n from app.assistant_runs where enterprise_id=${fixtures[0].enterpriseId} and conversation_id=${fixtures[0].conversationId}`));
+  assert.deepEqual(after,before,'unknown outcome blocks at admission without allocating another run');
 });

@@ -30,3 +30,32 @@ export const portfolioCommunityRequests = app.table('portfolio_community_request
   status: text('status').notNull(), communityId: ref('community_id'), reviewNote: text('review_note').notNull(), reviewedBy: ref('reviewed_by'),
 });
 export const portfolioProviderUsage = app.table('portfolio_provider_usage', { ...identity(), actorId: ref('actor_id').notNull(), pageKey: text('page_key').notNull(), providerKey: text('provider_key').notNull().default('amap'), failureCode: text('failure_code'), blockedUntil: time('blocked_until') });
+// 0102_portfolio_template_library: enterprise-scoped sample works; 0119 keeps this table tenant-only.
+export const portfolioTemplates = app.table('portfolio_templates', {
+  ...identity(), key: text('key').notNull(), title: text('title').notNull(), description: text('description').notNull().default(''),
+  primaryStyle: text('primary_style').notNull(), layoutTypes: jsonb('layout_types').notNull(), rooms: text('rooms').notNull().default(''),
+  area: integer('area'), cityCode: text('city_code').notNull(), cityName: text('city_name').notNull().default(''), district: text('district').notNull().default(''),
+  content: jsonb('content').notNull(), status: text('status').notNull().default('published'), sortOrder: integer('sort_order').notNull().default(0),
+  createdBy: ref('created_by').notNull(), updatedBy: ref('updated_by').notNull(), updatedAt: time('updated_at').notNull().defaultNow(),
+});
+export const portfolioTemplateAssets = app.table('portfolio_template_assets', {
+  ...identity(), templateId: ref('template_id').notNull(), imageBase64: text('image_base64').notNull(), contentHash: text('content_hash').notNull(),
+  space: text('space').notNull().default('其他'), position: integer('position').notNull().default(0),
+});
+// 0119_platform_portfolio_templates: platform-owned shared library, no tenant owner.
+export const platformPortfolioTemplates = app.table('platform_portfolio_templates', {
+  id: ref('id').primaryKey().generatedAlwaysAsIdentity(), key: text('key').notNull(), title: text('title').notNull(),
+  description: text('description').notNull().default(''), primaryStyle: text('primary_style').notNull(), layoutTypes: jsonb('layout_types').notNull(),
+  rooms: text('rooms').notNull().default(''), area: integer('area'), cityCode: text('city_code').notNull(), cityName: text('city_name').notNull().default(''),
+  district: text('district').notNull().default(''), content: jsonb('content').notNull(), status: text('status').notNull().default('published'),
+  sortOrder: integer('sort_order').notNull().default(0), version: integer('version').notNull().default(1),
+  createdBy: ref('created_by'), updatedBy: ref('updated_by'), createdAt: time('created_at').notNull().defaultNow(), updatedAt: time('updated_at').notNull().defaultNow(),
+});
+export const platformPortfolioTemplateAssets = app.table('platform_portfolio_template_assets', {
+  id: ref('id').primaryKey().generatedAlwaysAsIdentity(), templateId: ref('template_id').notNull(), imageBase64: text('image_base64').notNull(),
+  contentHash: text('content_hash').notNull(), space: text('space').notNull().default('其他'), position: integer('position').notNull().default(0), createdAt: time('created_at').notNull().defaultNow(),
+});
+export const platformPortfolioTemplateAudits = app.table('platform_portfolio_template_audits', {
+  id: ref('id').primaryKey().generatedAlwaysAsIdentity(), templateId: ref('template_id').notNull(), actorId: ref('actor_id'),
+  action: text('action').notNull(), note: text('note').notNull().default(''), createdAt: time('created_at').notNull().defaultNow(),
+});

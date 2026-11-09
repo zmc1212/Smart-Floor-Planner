@@ -393,6 +393,16 @@ export class LeadRepository {
     };
   }
 
+  async listForExport(maxRows: number) {
+    const rows = await this.transaction
+      .select()
+      .from(leads)
+      .where(this.buildFilters({ archiveState: 'all' }))
+      .orderBy(desc(leads.createdAt), desc(leads.id))
+      .limit(Math.max(1, maxRows));
+    return this.attachRelations(rows);
+  }
+
   async count(options: LeadListOptions = {}) {
     const rows = await this.transaction
       .select({ value: count() })
