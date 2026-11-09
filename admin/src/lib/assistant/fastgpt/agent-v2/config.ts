@@ -1,12 +1,13 @@
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import { fail } from '../../contracts';
+import { parseAgentV2Skills, type AgentV2SkillSelection } from './skills';
 
 export const fastGPTAgentV2Protocol = 'fastgpt-agent-v2-v1';
 export type AgentV2Runtime = 'fastgpt-agent-v2' | 'langgraph-v1';
 export type AgentV2Configuration = { protocol: typeof fastGPTAgentV2Protocol; enterpriseId: string;
   appId: string; model: string; bridgeKey: string; runtime?: AgentV2Runtime;
-  welcome?: string; presets?: string[]; suggestionAppId?: string };
+  welcome?: string; presets?: string[]; suggestionAppId?: string; skills?: AgentV2SkillSelection };
 
 const validCopy = (value: unknown) => typeof value === 'string' && value.trim() === value
   && Array.from(value).length >= 1 && Array.from(value).length <= 120;
@@ -27,6 +28,7 @@ export function parseAgentV2Configuration(value: unknown): AgentV2Configuration 
     || configuration.welcome !== undefined && !validCopy(configuration.welcome)
     || configuration.presets !== undefined && !validPresets(configuration.presets)
     || configuration.suggestionAppId !== undefined && !/^[a-f0-9]{24}$/.test(configuration.suggestionAppId)) fail('context_changed');
+  configuration.skills = parseAgentV2Skills(configuration.skills);
   return configuration;
 }
 export type AgentV2Presentation = { welcome: string | null; presets: string[] };

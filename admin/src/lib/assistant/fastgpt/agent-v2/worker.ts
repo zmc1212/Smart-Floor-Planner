@@ -174,7 +174,8 @@ export async function processAgentV2Answer(lease: Lease) {
       await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs,private_checkpoint,input_summary)
         values(${lease.enterpriseId},${lease.runId},1006,'agent_synthesis_context','succeeded',${JSON.stringify(context)}::jsonb,
           ${JSON.stringify({ protocol: fastGPTAgentV2Protocol, raw: result.text, citations: [...catalog.values()] })}::jsonb,
-          ${JSON.stringify({ protocol: fastGPTAgentV2Protocol, runtime: 'fastgpt-agent-v2' })}::jsonb)`);
+          ${JSON.stringify({ protocol: fastGPTAgentV2Protocol, runtime: 'fastgpt-agent-v2',
+            skills: bound.configuration.skills?.enabled ?? [], skillPack: bound.configuration.skills?.version ?? null })}::jsonb)`);
       if (suggestionsAttempted || suggestions.questions.length)
         await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,private_checkpoint,input_summary)
           values(${lease.enterpriseId},${lease.runId},1007,'agent_suggestions','succeeded',

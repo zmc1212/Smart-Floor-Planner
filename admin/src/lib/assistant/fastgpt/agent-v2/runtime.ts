@@ -4,6 +4,7 @@ import { AiProviderError } from '@/lib/ai/provider-types';
 import { parseBusinessQuery, type BusinessQuery } from '../../agent/business-tools';
 import type { AgentV2Configuration } from './config';
 import { suggestionPrompt } from './suggestions';
+import { agentV2SkillPrompt } from './skills';
 
 export const agentV2ToolNames = ['search_enterprise', 'query_business'] as const;
 export type AgentV2ToolName = typeof agentV2ToolNames[number];
@@ -116,14 +117,17 @@ export class FastGPTAgentV2 {
     const id = randomUUID() + randomUUID(), ticket: Ticket = { ports, expires: Date.now() + 180000, calls: 0 };
     this.tickets.set(id, ticket);
     try {
+      const skillPrompt = agentV2SkillPrompt(this.config.skills);
+      const outgoing = skillPrompt ? [{ role: 'system' as const, content: skillPrompt }, ...messages] : messages;
       const response = await fetch(this.config.baseUrl + '/api/v1/chat/completions', {
         method: 'POST', signal: AbortSignal.timeout(150000),
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + this.config.apiKey },
         body: JSON.stringify({ appId: this.config.appId, chatId: 'NO_RECORD_HISTORIES', stream: false, detail: true,
-          variables: { workflowTicket: id }, messages }),
+          variables: { workflowTicket: id }, messages: outgoing }),
       });
       const packet = await response.json() as Packet;
       this.config.record({ kind: 'agent_v2', status: response.status,
+        skills: this.config.skills?.enabled ?? [], skillPack: this.config.skills?.version ?? null,
         response: JSON.parse(JSON.stringify(packet).replaceAll(id, '[expired scoped ticket]')) });
       if (ticket.failure) throw ticket.failure;
       if (!response.ok || packet.error) fail('fastgpt_workflow_unavailable', 502);
