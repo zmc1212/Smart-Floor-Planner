@@ -13,7 +13,7 @@ import { fastGPTRagProtocol, type RagSource } from './rag-config';
 import { ragAnswerParts, ragHistoryText, type RagChatMessage, type RagCitationSource } from './native-rag';
 
 /** One authorized history projection for native dataset and ToolCall workflows. */
-export async function nativeConversation(lease: Lease, configured: RagSource[]) {
+export async function nativeConversation(lease: Lease, configured: RagSource[], protocol: string = fastGPTRagProtocol) {
     const context: SynthesisContext = { version: 1, knowledge: [], snapshots: [], sources: [], web: [], history: [], ancestors: [] };
     const citations: RagCitationSource[] = [];
     const messages = await withTenantTransaction(lease.enterpriseId, async tx => {
@@ -36,7 +36,7 @@ export async function nativeConversation(lease: Lease, configured: RagSource[]) 
           const original = prior.source_refs as SynthesisContext;
           if (!runKnowledgeEnabled(run.policy_snapshot as Row) && original.knowledge.length) continue;
           if (!await synthesisContextAvailable(tx, lease.actor, conversation, original)) continue;
-          if ((prior.input_summary as Row)?.protocol === fastGPTRagProtocol) {
+          if ((prior.input_summary as Row)?.protocol === protocol) {
             nativeOriginal = String((prior.private_checkpoint as Row).raw);
             const bindings = (prior.private_checkpoint as { citations?: RagCitationSource[] }).citations || configured;
             citations.push(...ragAnswerParts(nativeOriginal, bindings).flatMap(p => 'source' in p ? [p.source] : []));

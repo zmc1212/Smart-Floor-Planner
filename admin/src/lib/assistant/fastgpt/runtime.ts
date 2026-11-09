@@ -5,16 +5,20 @@ import {FastGPTReportWorkflow} from '@/lib/construction/fastgpt-report-workflow'
 import {FastGPTKnowledgeWorkflow} from './knowledge-workflow';
 import {FastGPTNativeKnowledge} from './native-knowledge';
 import {FastGPTNativeRag} from './native-rag';
+import {FastGPTAgentV2} from './agent-v2/runtime';
+import {parseAgentV2Configuration, type AgentV2Configuration} from './agent-v2/config';
 import type {RagConfiguration} from './rag-config';
 
 type Configuration={baseUrl:string;apiKey:string;knowledgeAppId:string;stageAppId:string;auditFile?:string;
-  nativeKnowledgeAppId?:string; nativeModel?:string; nativeTransportModel?:string; nativeBridgeKey?:string; rag?:RagConfiguration};
+  nativeKnowledgeAppId?:string; nativeModel?:string; nativeTransportModel?:string; nativeBridgeKey?:string; rag?:RagConfiguration;
+  agentV2?:AgentV2Configuration};
 class FastGPTWorkflows {
   readonly knowledge:FastGPTKnowledgeWorkflow;
   readonly stage:FastGPTReportWorkflow;
   readonly nativeKnowledge?:FastGPTNativeKnowledge;
   readonly rag?:FastGPTNativeRag;
   readonly unified?:FastGPTNativeKnowledge;
+  readonly agentV2?:FastGPTAgentV2;
   private server?:http.Server;
   private starting?:Promise<void>;
   constructor(configuration:Configuration) {
@@ -30,8 +34,11 @@ class FastGPTWorkflows {
     if(configuration.nativeKnowledgeAppId) this.nativeKnowledge=new FastGPTNativeKnowledge({
       ...configuration,appId:configuration.nativeKnowledgeAppId,model:configuration.nativeTransportModel!,bridgeKey:configuration.nativeBridgeKey!,
       record:value=>record('nativeKnowledge',value)});
+    if(configuration.agentV2) this.agentV2=new FastGPTAgentV2({...parseAgentV2Configuration(configuration.agentV2),
+      baseUrl:configuration.baseUrl,apiKey:configuration.apiKey,record:value=>record('agentV2',value)});
   }
   async handle(request:Request) {
+    if(new URL(request.url).pathname.startsWith('/agent-v2-')) return this.agentV2?.handle(request) ?? Response.json({error:'not_found'},{status:404});
     if(new URL(request.url).pathname.startsWith('/unified-')) return this.unified?.handle(request) ?? Response.json({error:'not_found'},{status:404});
     if(new URL(request.url).pathname.startsWith('/rag-')) return this.rag?.handle(request) ?? Response.json({error:'not_found'},{status:404});
     if(new URL(request.url).pathname.startsWith('/native-')) return this.nativeKnowledge?.handle(request) ?? Response.json({error:'not_found'},{status:404});

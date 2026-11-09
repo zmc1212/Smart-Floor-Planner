@@ -8,6 +8,7 @@ import { speechConfigurationHash } from '../speech/local';
 import { createPreviewPolicy, previewPolicy, projectMessage, citationProjection, webCitationProjection } from '../knowledge/sources';
 import { fastGPTPreviewConfiguration, fastGPTPreviewProtocol } from '../knowledge/fastgpt-retrieval';
 import { fastGPTRagConfiguration, fastGPTRagProtocol } from '../fastgpt/rag-config';
+import { fastGPTAgentV2Configuration, fastGPTAgentV2Protocol } from '../fastgpt/agent-v2/config';
 import { sourceExcerptProtocol } from '../agent/source-excerpts';
 import { sourceQuestionCoverageProtocol } from '../agent/source-question-coverage';
 import { naturalKnowledgeProtocol, naturalKnowledgeScheduleProtocol, knowledgeQuantityScopeProtocol, sourceBoundaryValidationProtocol } from '../agent/knowledge-explanation';
@@ -131,10 +132,15 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   const entry = c.entry_snapshot as Row;
   const rag = agent && purpose === 'reply' && trigger.kind === 'user_message' && c.purpose === 'customer_consultation'
     && actor.principal.kind === 'user' && entry.requirementReviewMode !== true ? fastGPTRagConfiguration(actor.enterpriseId) : undefined;
-  const ragTrigger = rag ? await one(tx, sql`select content from app.assistant_messages where enterprise_id=${actor.enterpriseId}
+  const agentV2 = agent && purpose === 'reply' && trigger.kind === 'user_message' && c.purpose === 'customer_consultation'
+    && actor.principal.kind === 'user' && entry.requirementReviewMode !== true ? fastGPTAgentV2Configuration(actor.enterpriseId) : undefined;
+  const triggerContent = rag || agentV2 ? await one(tx, sql`select content from app.assistant_messages where enterprise_id=${actor.enterpriseId}
     and conversation_id=${String(c.id)} and id=${messageId}`) : undefined;
-  const nativeRag = rag && (rag.configuration.mode === 'unified' || enterpriseKnowledgeEnabled(settings.agent_config))
-    && (ragTrigger?.content as MessageContent)?.blocks.every(b => b.type === 'text')
+  const agentRuntime = agentV2 && enterpriseKnowledgeEnabled(settings.agent_config)
+    && (triggerContent?.content as MessageContent)?.blocks.every(b => b.type === 'text')
+    ? { protocol: fastGPTAgentV2Protocol, binding: agentV2.binding } : undefined;
+  const nativeRag = !agentRuntime && rag && (rag.configuration.mode === 'unified' || enterpriseKnowledgeEnabled(settings.agent_config))
+    && (triggerContent?.content as MessageContent)?.blocks.every(b => b.type === 'text')
     ? { protocol: fastGPTRagProtocol, binding: rag.binding } : undefined;
   const reviewRuntime = agent && actor.principal.kind === 'user' && c.purpose === 'customer_consultation'
     && entry.agentReviewCandidate === true && entry.requirementReviewMode === true
@@ -171,6 +177,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
     ${retryOf || null},${json({ schemaVersion: 1, actor, maxTokens: agent?.consultation ? 8192 : 2048, policyVersion: settings.policy_version, agent,
       knowledgePolicy: c.purpose === 'knowledge_preview' ? { ...knowledgePolicy(settings.agent_config), enabled: true } : knowledgePolicy(settings.agent_config),
       ...(nativeRag ? { nativeRag } : {}),
+      ...(agentRuntime ? { agentRuntime } : {}),
       ...(staffPreview && agent ? { staffKnowledgePreview: fastGPTPreviewProtocol } : {}),
       ...(agent && actor.principal.kind === 'user' && c.purpose === 'customer_consultation' && purpose === 'reply'
         && !enterpriseKnowledgeEnabled(settings.agent_config) && !reviewRuntime && !agent.consultation && !agent.structuredFinal

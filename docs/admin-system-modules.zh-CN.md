@@ -32,6 +32,12 @@
 
 用户授权隔离库`xiaok_embedding_eval`/微云1454的2511–2514/2756–2759经临时撤权恢复后仍为active/customer_public。旧RAG10980/10982–10984及`repair1-saved09`的保存/引用/重进/撤权/503证据按原范围复用，不替本统一旅程判通过；基线`tmp/xiaok-fastgpt-rag-session-20261107/`不改写。预算报价线下，28条混合候选继续退役，主库376–405/410–411只读；候选未默认启用，未宣告生产或全V1完成。
 
+<!-- xiaok-fastgpt-agent-v2-f0 -->
+**FastGPT Agent V2编排运行时：F0 Limited，仅显式开发开关。** `admin/src/lib/assistant/fastgpt/agent-v2/`新增私有绑定、单运行工具桥和回答Worker；`fastgpt/runtime.ts`在既有18310回调桥提供`/agent-v2-tool/*`。仅当部署文件指向企业1454且未选择`langgraph-v1`时，文本`customer_consultation`回复才把`agentRuntime={protocol:'fastgpt-agent-v2-v1',binding:sha256(运行文件)}`写入策略快照，`processAnswer`据此分流Agent V2 Worker。FastGPT4.17.4只负责意图理解、工具选择与回答文本；检索、Evidence、租户/来源校验、引用保存、run/消息持久化、用量和重进仍由原服务完成。工具调用只带部署级桥密钥：未知密钥返回404，第二个并发运行返回`conversation_busy`，每次回调都重校验租户、身份、会话与来源可用性。`search_enterprise`沿原计量查询向量，只返回获权Evidence的ref/引文和`[id](CITE)`目录；缺失用量记unknown。未知引用ID使本轮失败；已知的派发前失败不锁死会话。
+
+f0-03：4个PPT工艺问成功，引用覆盖第17/18/19/21页，答案可保存/重进、引用可打开、他客/跨租户拒绝、发送幂等；无证据问题给出未找到且无引用；临时把文档2511改为内部可见后，4条依赖答案与引用全部不可用，恢复后重新可读；绑定不匹配的失败停在供应商开始前，重试成功。f0-08运行11090证明移除部署开关后内置运行时仍以`agentRuntime:null`正常回答。失败批次保留：f0-03回退11083 `model_unavailable`（旧驱动在进程内改写运行文件；产品侧配置漂移守卫按预期fail-closed），f0-04 FastGPT臂对`deepseek-v4.1-flash-1017`返回403 `AllocationQuota.FreeTierOnly`（外部账户配额），f0-05/06/07/09为内置`qwen3.7-plus/flash`触发既有内容校验拒绝。未切换默认Worker/配置/路由/schema/UI，无生产或真实客户写入。证据`tmp/xiaok-fastgpt-agentv2-f0-20261109/`；[F0–F3计划](xiaok-fastgpt-agent-v2-integration-plan.md)。
+<!-- /xiaok-fastgpt-agent-v2-f0 -->
+
 <!-- xiaok-fastgpt-capabilities -->
 **FastGPT阶段/知识工作流：Limited，保存I/O接口已收敛，库存OpenSERP官网产品原文已证，固定主干复验首个供应商403停止。** 显式开发候选沿C01原会话，由FastGPT v4.17.4单一ToolCall控制问答；原服务守获权工具、KnowledgeRetriever/Evidence、租户/来源、持久任务、网关计量及最终校验/保存。原生输入复用既有来源/引用目录与公开内容投影，保留完整原文和引用ID。提交/保存共同依据实时获权来源，调用或空检索不当证据；本地配置错误与供应商明确失败保留原异常处置语义。UI/API路由/schema、默认Worker、生产未切，企业知识关闭。
 
