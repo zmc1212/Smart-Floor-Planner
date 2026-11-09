@@ -9,6 +9,7 @@ import { fail, id, type ActorContext } from '../contracts';
 import { configuredGuidance, guidanceOpening, guidanceView } from '../requirements/guidance';
 import { readContentEntry, contentEntrySource, contentChannel, contentGreeting, type ContentEntry } from '../knowledge/content-entry';
 import { readPortfolioEntry, portfolioEntrySource, type PortfolioEntry } from '@/lib/portfolio/entry';
+import { fastGPTAgentV2Presentation } from '../fastgpt/agent-v2/config';
 
 export async function customerIdentity(request: Request) {
   const context = await resolveMiniProgramContext(request);
@@ -115,12 +116,14 @@ export async function entryContext(identity: Identity, body: Record<string, unkn
   });
   const guidance = configuredGuidance(settings?.guidance_config);
   const guidanceVersion = Number(settings?.version || 1);
+  const agentV2 = fastGPTAgentV2Presentation(enterpriseId);
   const entryToken = await new SignJWT({ enterpriseId, contextVersion: identity.contextVersion, basis, guidanceVersion }).setProtectedHeader({ alg: 'HS256' })
     .setSubject(identity.userId).setAudience('assistant-entry').setIssuedAt().setExpirationTime('15m').sign(entrySecret());
   return { entryToken, expiresIn: 900, enterprise: { id: enterpriseId, name: enterprise!.name, logo: enterprise!.logo }, capabilities: actor.capabilities, resumeConversationId,
     canSend: assistantWritesEnabled(settings), maxMessageChars: Number(settings?.max_message_chars) || 4000,
     guidanceOpening: contentEntry ? contentGreeting(basis.kind==='reference_content'?reference:null) : guidanceOpening(guidance),
     guidanceEnabled: contentEntry || portfolioEntry ? false : guidance.enabled, guidance: contentEntry || portfolioEntry ? null : guidanceView({ ...guidance, chatFirst: true }, []),
+    ...(agentV2 ? { ...(agentV2.welcome ? { welcome: agentV2.welcome } : {}), presetQuestions: agentV2.presets } : {}),
     ...(portfolioEntry ? { portfolio: portfolioEntry } : {}),
     ...(contentEntry&&reference&&basis.kind==='reference_content'?{referenceEntry:body.referenceEntry}:{}) };
 }

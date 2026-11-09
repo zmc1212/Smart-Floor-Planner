@@ -1,10 +1,10 @@
 # 小K FastGPT Agent V2 集成开发计划（专项提案）
 
-> 状态：F0/F1 已在开发环境实施并按 bounded 范围验收（2026-11-09）；F2–F3 未开工。
+> 状态：F0/F1/F2 已在开发环境实施并按 bounded 范围验收（2026-11-09）；F3 未开工。
 > 本文件不改变
 > [`docs/xiaok-renovation-agent-development-plan.md`](./xiaok-renovation-agent-development-plan.md)
 > 第 2 节的唯一执行入口，也不另立并行任务队列。当前交付与证据以该节为准；本文件
-> 只描述 F0 实现边界与 F1–F3 后续设计。
+> 只描述 F0–F2 实现边界与 F3 后续设计。
 
 ## 1. 结论与依据
 
@@ -80,20 +80,22 @@
 | 阶段 | 交付 | 完成条件 |
 | --- | --- | --- |
 | **F0（已完成）** | Gateway + `fastgpt-agent-v2` 运行时开关 + 知识检索工具 + `[id](CITE)` 引用 + 回答落库/重进 | 4 个 PPT 工艺问走真实服务；页码引用 4/4；撤权后无内容；无证据明确说未知；失败可重进；内置运行时仍可回退 |
-| **F1（已完成，当前交付）** | 业务工具 `query_business`（预约/方案/户型/施工）+ 动作/字段校验 | 第 5 问；跨租户/他客拒绝；归档 lead 排除；不泄露内部预约 ID/ISO 时间；无工具支撑的动作承诺为 0 |
-| F2 | 开场白 + 猜你想问 | 欢迎语/预设问题由配置提供；猜你想问按本轮回答生成并缓存，失败回退预设；不改变已批准欢迎页视觉，新增动态 chips 需设计批准 |
+| **F1（已完成）** | 业务工具 `query_business`（预约/方案/户型/施工）+ 动作/字段校验 | 第 5 问；跨租户/他客拒绝；归档 lead 排除；不泄露内部预约 ID/ISO 时间；无工具支撑的动作承诺为 0 |
+| **F2（已完成，当前交付）** | 开场白 + 猜你想问 | 欢迎语/预设问题由配置提供；猜你想问按本轮回答生成并缓存，失败回退预设；不改变已批准欢迎页视觉，新增动态 chips 需设计批准 |
 | F3 | 技能包 + 灰度 | 3–5 个 SOP 技能可版本化、可停用；不绕过工具权限；1454 显式启用，5 问 + 权限/撤回/失败矩阵通过；默认与生产不切换 |
 
 **F0 状态（2026-11-09）：实现完成，bounded 验收完成。** 4 个 PPT 工艺问在 f0-03 中通过真实服务保存并分别引用第17/18/19/21页；无证据问题无引用；文档2511撤权使依赖答案全部不可用、恢复后可读；绑定不匹配失败停在派发前、重试成功；f0-08运行11090证明移除开关后内置运行时以`agentRuntime:null`正常回答。保留失败：f0-03回退11083（旧驱动进程内改写运行文件，产品漂移守卫fail-closed）、f0-04 FastGPT臂403 `AllocationQuota.FreeTierOnly`（外部配额）、f0-05/06/07/09内置qwen内容校验拒绝。未因失败重采样或换模型；F1 开始前不重跑同一答案批次。
 
 **F1 状态（2026-11-09）：实现完成，bounded 验收完成。** `query_business` 已接入 `/agent-v2-tool/*` 与 Agent V2 工具回调：严格接收 `domain`/`leadId` 两字段，非法 domain 或多余/缺失/重复字段 422；绑定 lead 的会话拒绝查询其他 lead，归档/他客/跨租户记录统一 404；同一查询去重并记入独立 `agent_tool` 步骤。业务回答只交付授权快照的客户可读文本（项目、状态、北京时间），模型草稿仅留在 1006 审计，不泄露内部 ID、版本或 ISO 时间；无业务快照的自由文本继续复用既有承诺/价格守卫。f1-03（runs 11096–11106）以确定性模拟 FastGPT 传输经真实 18310 桥、真实服务/DB 和持久化验收：第 5 问 2 条预约且归档 1724/预约 254 不出现；空结果如实；归档/他客/跨租户/绑定 lead 均拒绝；非法字段 422；无工具承诺 `unsupported_model_commitment`；交付前快照变更 `context_changed`；知识搜索、引用、幂等、重进回归通过。f1-01/02 为驱动断言错误（UTC+8 预期换算、读错审计字段路径），原批保留。真实模型第 5 问仍待 FastGPT 渠道外部 `AllocationQuota.FreeTierOnly` 恢复，未重采样，不宣称该臂通过。
 
-**F0/F1 是已完成交付。** F2–F3 是顺序后继，不同时开工；每阶段完成后替换当前记录，不把内部补丁另立产品阶段。
+**F2 状态（2026-11-09）：实现完成，bounded 验收完成；仅配置/接口能力，无可见 UI 变更。** 绑定配置新增可选 `welcome`/`presets`/`suggestionAppId`，严格校验；`entry-context` 仅在配置存在时附加 `welcome`/`presetQuestions`，不暴露 appId、模型或桥密钥，配置损坏时降级不阻塞入口。回答完成后由独立无工具、同模型的 FastGPT 应用做一次受约束生成（输入仅本轮已交付文本，剥离 CITE 标记，不带历史/身份/内部 ID），严格解析 3–4 条；provider 失败或输出不合格回退配置预设，答案照常交付。建议存入 run step 1007 `agent_suggestions`（`questions`+`source`），经 `GET /api/miniprogram/assistant/conversations/:id/suggestions` 读取，按最新已交付答案缓存/失效，retention 脱敏会话仅返回预设；usage 单独记 `suggestion_tokens`（observed/unavailable），不混淆答案 `tokens`，未知建议用量不把 run 判成 provider 结果未知。f2-02（runs 11112–11116）以确定性模拟传输经真实桥/服务/DB 验收：入口欢迎语/3 条预设正确且无部署内部字段；搜索+引用回归；业务快照回答与基于交付文本的建议并存；provider 500 与短输出均回退预设且分别记 unknown/observed；同会话后续答案使缓存失效；失败运行不生成建议、接口如实返回预设；他客读取建议 404。f2-01 为驱动缺陷（越权检查用了过期用户上下文版本，401 `identity_context_invalid`；该批 F2 业务断言均已通过），修正驱动后另批 f2-02，原批保留。真实模型建议质量仍待 FastGPT 渠道外部 `AllocationQuota.FreeTierOnly` 恢复，未重采样。可见 chips 未实现，需先补设计源并获批。
+
+**F0/F1/F2 是已完成交付。** F3 是顺序后继，不同时开工；每阶段完成后替换当前记录，不把内部补丁另立产品阶段。
 
 ## 5. 开场白、猜你想问、关联技能
 
-- **开场白**：文案/预设问题作为配置（可来自 FastGPT 应用配置或本项目配置），由本项目 bootstrap 接口下发；继续使用已批准的笔记本欢迎页和 3 张话题卡，不新造布局。
-- **猜你想问**：补全接口不返回动态问题（本次 A/B 已确认），因此由 Gateway 在回答完成后用同一模型做一次受约束生成，输入仅本轮回答/已授权话题，输出 3–4 条，缓存并按会话失效；失败回退预设。若要在聊天气泡下新增动态 chips，属于可见 UI 变更，先走设计源检查和批准。
+- **开场白**：文案/预设问题随绑定运行时配置提供，由本项目 `entry-context` bootstrap 附加下发（`welcome`/`presetQuestions`，缺省不附加）；继续使用已批准的笔记本欢迎页和 3 张话题卡，不新造布局。F2 未改小程序欢迎页代码。
+- **猜你想问**：补全接口不返回动态问题（本次 A/B 已确认），因此由 Gateway 在回答完成后用独立无工具、同模型的 FastGPT 应用做一次受约束生成，输入仅本轮已交付文本（剥离 CITE、限长、不带历史/身份/内部 ID），输出 3–4 条并严格解析；失败回退配置预设且不影响答案交付。结果缓存于 run step 1007 `agent_suggestions`，按会话最新已交付答案读取/失效，`GET /api/miniprogram/assistant/conversations/:id/suggestions` 只返回 `conversationId`/`messageId`/`source`/`questions`；usage 记 `suggestion_tokens`。若要在聊天气泡下新增动态 chips，属于可见 UI 变更，先走设计源检查和批准（F2 未实现）。
 - **关联技能**：定义为“回答 SOP/工艺要点/话术”的版本化内容包，不是第二套工具或权限系统。候选：施工阶段提醒、验收要点、量房预约、风格推荐、公开工地、日周报追问。V1 不使用可联网/可读写文件的 sandbox；业务动作一律仍走 HTTP 工具。
 
 ## 6. 工具与知识迁移
@@ -137,5 +139,9 @@
 - F1 验收：`tmp/xiaok-fastgpt-agentv2-f1-20261109/`
   - f1-03 确定性模拟传输（runs 11096–11106）通过；f1-01/02 驱动断言错误保留
   - 真实模型第 5 问 pending 外部 `AllocationQuota.FreeTierOnly`，未重采样
+- F2 验收：`tmp/xiaok-fastgpt-agentv2-f2-20261109/`
+  - f2-02 确定性模拟传输（runs 11112–11116）通过；f2-01 驱动上下文版本缺陷保留
+  - 建议应用 `6af178bd093915ea6cf38c11`（无工具/无数据集）；绑定运行时 `runtime.private.json`，未改 F1 运行时
+  - 真实模型建议质量 pending 外部 `AllocationQuota.FreeTierOnly`，未重采样
 - 现有 FastGPT 边界：[unified-worker.ts](../admin/src/lib/assistant/fastgpt/unified-worker.ts)、[native-rag.ts](../admin/src/lib/assistant/fastgpt/native-rag.ts)、[runtime.ts](../admin/src/lib/assistant/fastgpt/runtime.ts)
-- 实现：[agent-v2/config.ts](../admin/src/lib/assistant/fastgpt/agent-v2/config.ts)、[agent-v2/runtime.ts](../admin/src/lib/assistant/fastgpt/agent-v2/runtime.ts)、[agent-v2/worker.ts](../admin/src/lib/assistant/fastgpt/agent-v2/worker.ts)、[agent-v2-acceptance.mts](../admin/scripts/fastgpt/agent-v2-acceptance.mts)、[agent-v2-business-acceptance.mts](../admin/scripts/fastgpt/agent-v2-business-acceptance.mts)
+- 实现：[agent-v2/config.ts](../admin/src/lib/assistant/fastgpt/agent-v2/config.ts)、[agent-v2/suggestions.ts](../admin/src/lib/assistant/fastgpt/agent-v2/suggestions.ts)、[agent-v2/runtime.ts](../admin/src/lib/assistant/fastgpt/agent-v2/runtime.ts)、[agent-v2/worker.ts](../admin/src/lib/assistant/fastgpt/agent-v2/worker.ts)、[agent-v2-acceptance.mts](../admin/scripts/fastgpt/agent-v2-acceptance.mts)、[agent-v2-business-acceptance.mts](../admin/scripts/fastgpt/agent-v2-business-acceptance.mts)、[agent-v2-suggestions-acceptance.mts](../admin/scripts/fastgpt/agent-v2-suggestions-acceptance.mts)

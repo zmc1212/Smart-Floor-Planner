@@ -3,6 +3,7 @@ import { AssistantError, fail } from '../../contracts';
 import { AiProviderError } from '@/lib/ai/provider-types';
 import { parseBusinessQuery, type BusinessQuery } from '../../agent/business-tools';
 import type { AgentV2Configuration } from './config';
+import { suggestionPrompt } from './suggestions';
 
 export const agentV2ToolNames = ['search_enterprise', 'query_business'] as const;
 export type AgentV2ToolName = typeof agentV2ToolNames[number];
@@ -13,9 +14,29 @@ export type AgentV2Ports = {
   authorize: () => Promise<void>;
   tool: (input: AgentV2ToolInput, sequence: number) => Promise<Record<string, unknown>>;
 };
-export type AgentV2RunResult = { text: string; usage: { inputTokens: number; outputTokens: number } | null };
+export type AgentV2Usage = { inputTokens: number; outputTokens: number };
+export type AgentV2RunResult = { text: string; usage: AgentV2Usage | null };
+export type AgentV2SuggestionResult = { text: string; usage: AgentV2Usage | null };
+type Packet = { choices?: Array<{ message?: { content?: unknown } }>; responseData?: unknown; error?: unknown };
 type Ticket = { ports: AgentV2Ports; expires: number; calls: number; failure?: AssistantError | AiProviderError };
 const toolPrefix = '/agent-v2-tool/';
+
+function messageText(content: unknown) {
+  return (typeof content === 'string' ? content : Array.isArray(content)
+    ? content.flatMap((block: { type?: unknown; text?: { content?: unknown } }) =>
+      block?.type === 'text' && typeof block.text?.content === 'string' ? [block.text.content] : []).join('\n')
+    : '').trim();
+}
+/** Top-level usage is a placeholder for Agent V2. Sum the agent node
+ * receipts; a partially reported run stays unknown instead of under-billing. */
+function agentUsage(packet: Packet): AgentV2Usage | null {
+  const nodes = Array.isArray(packet.responseData) ? packet.responseData.filter((node: { moduleType?: unknown }) => node?.moduleType === 'agent') : [];
+  const observed = nodes.length > 0 && nodes.every((node: { inputTokens?: unknown; outputTokens?: unknown }) =>
+    Number.isSafeInteger(node.inputTokens) && Number.isSafeInteger(node.outputTokens)
+    && Number(node.inputTokens) >= 0 && Number(node.outputTokens) >= 0);
+  return observed ? { inputTokens: nodes.reduce((sum: number, node: { inputTokens: number }) => sum + node.inputTokens, 0),
+    outputTokens: nodes.reduce((sum: number, node: { outputTokens: number }) => sum + node.outputTokens, 0) } : null;
+}
 
 /** FastGPT Agent V2 owns orchestration and the model call. Tool callbacks carry
  * only the deployment bridge key: 4.17.4 HTTP tool sets resolve static headers
@@ -101,27 +122,32 @@ export class FastGPTAgentV2 {
         body: JSON.stringify({ appId: this.config.appId, chatId: 'NO_RECORD_HISTORIES', stream: false, detail: true,
           variables: { workflowTicket: id }, messages }),
       });
-      const packet = await response.json();
+      const packet = await response.json() as Packet;
       this.config.record({ kind: 'agent_v2', status: response.status,
         response: JSON.parse(JSON.stringify(packet).replaceAll(id, '[expired scoped ticket]')) });
       if (ticket.failure) throw ticket.failure;
       if (!response.ok || packet.error) fail('fastgpt_workflow_unavailable', 502);
-      const content = packet.choices?.[0]?.message?.content;
-      const text = (typeof content === 'string' ? content : Array.isArray(content)
-        ? content.flatMap((block: { type?: unknown; text?: { content?: unknown } }) =>
-          block?.type === 'text' && typeof block.text?.content === 'string' ? [block.text.content] : []).join('\n')
-        : '').trim();
+      const text = messageText(packet.choices?.[0]?.message?.content);
       if (!text || text.length > 16000) fail('invalid_model_answer', 502);
-      // Top-level usage is a placeholder for Agent V2. Sum the agent node
-      // receipts; a partially reported run stays unknown instead of under-billing.
-      const nodes = Array.isArray(packet.responseData) ? packet.responseData.filter((node: { moduleType?: unknown }) => node?.moduleType === 'agent') : [];
-      const observed = nodes.length > 0 && nodes.every((node: { inputTokens?: unknown; outputTokens?: unknown }) =>
-        Number.isSafeInteger(node.inputTokens) && Number.isSafeInteger(node.outputTokens)
-        && Number(node.inputTokens) >= 0 && Number(node.outputTokens) >= 0);
-      const usage = observed ? { inputTokens: nodes.reduce((sum: number, node: { inputTokens: number }) => sum + node.inputTokens, 0),
-        outputTokens: nodes.reduce((sum: number, node: { outputTokens: number }) => sum + node.outputTokens, 0) } : null;
       await ports.authorize();
-      return { text, usage };
+      return { text, usage: agentUsage(packet) };
     } finally { this.tickets.delete(id); }
+  }
+  /** Constrained follow-up generation on the same model. The dedicated app
+   * carries no tools or datasets, so this call cannot change business facts. */
+  async suggest(answer: string): Promise<AgentV2SuggestionResult> {
+    if (!this.config.suggestionAppId) return { text: '', usage: null };
+    const response = await fetch(this.config.baseUrl + '/api/v1/chat/completions', {
+      method: 'POST', signal: AbortSignal.timeout(45000),
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + this.config.apiKey },
+      body: JSON.stringify({ appId: this.config.suggestionAppId, chatId: 'NO_RECORD_HISTORIES', stream: false, detail: true,
+        messages: [{ role: 'user', content: suggestionPrompt(answer) }] }),
+    });
+    const packet = await response.json() as Packet;
+    this.config.record({ kind: 'agent_v2_suggestions', status: response.status, response: packet });
+    if (!response.ok || packet.error) fail('fastgpt_workflow_unavailable', 502);
+    const text = messageText(packet.choices?.[0]?.message?.content);
+    if (!text || text.length > 2000) fail('invalid_model_answer', 502);
+    return { text, usage: agentUsage(packet) };
   }
 }

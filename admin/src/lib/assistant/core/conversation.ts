@@ -8,7 +8,8 @@ import { speechConfigurationHash } from '../speech/local';
 import { createPreviewPolicy, previewPolicy, projectMessage, citationProjection, webCitationProjection } from '../knowledge/sources';
 import { fastGPTPreviewConfiguration, fastGPTPreviewProtocol } from '../knowledge/fastgpt-retrieval';
 import { fastGPTRagConfiguration, fastGPTRagProtocol } from '../fastgpt/rag-config';
-import { fastGPTAgentV2Configuration, fastGPTAgentV2Protocol } from '../fastgpt/agent-v2/config';
+import { fastGPTAgentV2Configuration, fastGPTAgentV2Presentation, fastGPTAgentV2Protocol } from '../fastgpt/agent-v2/config';
+import { storedSuggestionQuestions } from '../fastgpt/agent-v2/suggestions';
 import { sourceExcerptProtocol } from '../agent/source-excerpts';
 import { sourceQuestionCoverageProtocol } from '../agent/source-question-coverage';
 import { naturalKnowledgeProtocol, naturalKnowledgeScheduleProtocol, knowledgeQuantityScopeProtocol, sourceBoundaryValidationProtocol } from '../agent/knowledge-explanation';
@@ -329,6 +330,25 @@ export class ConversationService {
       for(const message of result)items.push(await projectMessage(repo.tx,this.actor,c,message));
       return { items,
         nextCursor: result.length === limit ? String(result.at(-1)!.seq) : null };
+    });
+  }
+  suggestions(conversationId: string) {
+    return this.scoped(async repo => {
+      const c = await repo.conversation(conversationId);
+      const presets = fastGPTAgentV2Presentation(this.actor.enterpriseId)?.presets ?? [];
+      if ((c.entry_snapshot as Row)?.retentionRedacted)
+        return { conversationId, messageId: null, source: 'presets', questions: presets };
+      const latest = await one(repo.tx, sql`select m.id::text message_id,s.private_checkpoint
+        from app.assistant_messages m join app.assistant_runs r on r.enterprise_id=m.enterprise_id and r.id=m.run_id
+        left join app.assistant_run_steps s on s.enterprise_id=r.enterprise_id and s.run_id=r.id
+          and s.step_seq=1007 and s.kind='agent_suggestions' and s.status='succeeded'
+        where m.enterprise_id=${this.actor.enterpriseId} and m.conversation_id=${conversationId}
+          and m.author_kind='assistant' and r.status='succeeded'
+        order by m.seq desc limit 1`);
+      const checkpoint = latest?.private_checkpoint as Row | undefined;
+      const questions = storedSuggestionQuestions(checkpoint?.questions);
+      if (!latest || !questions.length) return { conversationId, messageId: null, source: 'presets', questions: presets };
+      return { conversationId, messageId: String(latest.message_id), source: checkpoint?.source === 'model' ? 'model' : 'presets', questions };
     });
   }
   constructionContact(conversationId: string, projectId: string, messageId: string) {
