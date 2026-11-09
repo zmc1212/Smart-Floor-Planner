@@ -4,7 +4,7 @@ import { one, type Row } from '@/db/repositories/assistant-repository';
 import { fail, id, safeText, type ActorContext } from '@/lib/assistant/contracts';
 import { readMemory } from '@/lib/assistant/agent/memory';
 import { CITY_OPTIONS } from './regions';
-import { LAYOUT_OPTIONS, STYLE_OPTIONS } from './options';
+import { DEFAULT_PORTFOLIO_AVATAR, LAYOUT_OPTIONS, STYLE_OPTIONS, type PortfolioDefaultAvatar } from './options';
 import { matchDesigners } from './designer-match';
 import { portfolioCandidates, type Candidate } from './public-query';
 import { recommendationRegion, type NearbyRegion } from '@/lib/assistant/location/region';
@@ -16,20 +16,37 @@ const negation = /不确定|没想好|不喜欢|不要|不考虑|不是|不在|�
 export type DesignerQuery = { cityCode: string; style: string; layout: string };
 export type DesignerCard = {
   authorId: string; authorName: string; professionalTitle: string | null; experienceLabel: string;
-  layoutSpecialties: string[]; portraitAvailable: boolean;
+  layoutSpecialties: string[]; portraitAvailable: boolean; defaultAvatar: PortfolioDefaultAvatar;
   work: {
     id: string; versionId: string; title: string; coverAssetId: string; primaryStyle: string; secondaryStyles: string[];
     layoutTypes: string[]; cityName: string; district: string; communityName: string; tourCount: number;
     area?: number | null; rooms?: string;
+    coverKind?: 'render' | 'photo'; coverShowroom?: boolean;
   };
   reason: string; match: string;
 };
 export type DesignerRecommendation = { items: DesignerCard[]; notice: string };
 
+/** A city the customer already stated in this conversation still applies to a
+ * later style request. The newest message that names a city decides; an
+ * ambiguous or negated mention asks for clarification instead of silently
+ * reaching back to an older city. */
+function earlierRegion(texts: string[]) {
+  for (const text of texts) {
+    if (!CITY_OPTIONS.some(city => text.includes(city.label.replace(/市$/, '')))) continue;
+    const plain = text.replace(/[？?]/g, '');
+    // The newest mention decides. A hypothetical, negated or unresolved city
+    // asks for clarification instead of falling back to an older statement.
+    if (/不在|不是|不确定|没定|假如|假设|如果|还没/.test(plain)) return null;
+    return recommendationRegion({}, '', plain);
+  }
+  return null;
+}
+
 /** Resolve the city from explicit housing context or verified device location.
  * Model arguments may only restate those grounded taxonomy values; unknown
  * style/layout does not prevent browsing designers in the resolved city. */
-export function resolveDesignerQuery(input: { memoryHousing?: string; memoryStyle?: string; triggerText?: string; input?: Row; location?: NearbyRegion | null }): DesignerQuery | null {
+export function resolveDesignerQuery(input: { memoryHousing?: string; memoryStyle?: string; triggerText?: string; input?: Row; location?: NearbyRegion | null; conversationTexts?: string[] }): DesignerQuery | null {
   let housing = input.memoryHousing || '', style = input.memoryStyle || '';
   if (negation.test(style) && STYLE_OPTIONS.some(s => s !== '其他' && style.includes(s))) return null;
   if (uncertain.test(housing)) housing = '';
@@ -40,7 +57,8 @@ export function resolveDesignerQuery(input: { memoryHousing?: string; memoryStyl
   const directions = [...STYLE_OPTIONS, ...LAYOUT_OPTIONS].filter(value => value !== '其他');
   if ((negation.test(trigger) && directions.some(value => trigger.includes(value)))
     || /(?:不想|不要|不用)(?:再)?(?:找|看|推荐)设计师/.test(trigger)) return null;
-  const region = recommendationRegion({ nearbyRegion: input.location }, input.memoryHousing, trigger);
+  const region = recommendationRegion({ nearbyRegion: input.location }, input.memoryHousing, trigger)
+    ?? earlierRegion(input.conversationTexts || []);
   const corpus = [housing, style, trigger, region?.cityName].filter(Boolean).join(' ');
   const modelQuery = typeof input.input?.query === 'string' ? input.input.query : '';
   const known = [...CITY_OPTIONS.map(option => option.label.replace(/市$/, '')), ...STYLE_OPTIONS.filter(option => option !== '其他'), ...LAYOUT_OPTIONS.filter(option => option !== '其他')];
@@ -56,16 +74,18 @@ function servesCity(candidate: Candidate, cityCode: string) {
 }
 
 function card(candidate: Candidate, reason: string, match: string): DesignerCard {
+  const cover = candidate.work.images.find(image => image.assetId === candidate.work.coverAssetId);
   return {
     authorId: candidate.work.authorId, authorName: candidate.work.authorName, professionalTitle: candidate.professional?.title ?? null,
     experienceLabel: candidate.professional?.experienceLabel ?? '', layoutSpecialties: candidate.profile.layoutSpecialties,
-    portraitAvailable: candidate.portraitAvailable,
+    portraitAvailable: candidate.portraitAvailable, defaultAvatar: candidate.profile.defaultAvatar ?? DEFAULT_PORTFOLIO_AVATAR,
     work: {
       id: candidate.work.id, versionId: candidate.work.versionId, title: candidate.work.title, coverAssetId: candidate.work.coverAssetId,
       primaryStyle: candidate.work.primaryStyle, secondaryStyles: candidate.work.secondaryStyles, layoutTypes: candidate.work.layoutTypes,
       cityName: candidate.work.cityName, district: candidate.work.district, communityName: candidate.work.community?.name || '',
       tourCount: candidate.content.tours.length,
       area: candidate.content.area, rooms: candidate.content.rooms,
+      coverKind: cover?.kind, coverShowroom: cover?.showroom === true,
     },
     reason, match,
   };

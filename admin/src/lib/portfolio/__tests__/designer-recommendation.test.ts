@@ -57,3 +57,14 @@ test('擅长户型来自设计师资料而非单件作品', () => {
   assert.equal(result[0].match, 'layout_style');
   assert.equal(result[0].reason, '擅长三居，服务杭州市，有公开作品');
 });
+
+test('后续按风格找作品时复用同一会话里已说过的城市', () => {
+  const earlier = ['我比较喜欢原木风，有没有合适的设计师作品可以看看？', '我们住在宜昌市西陵区，想看看附近已经公开的工地，能围观吗？'];
+  assert.deepEqual(resolveDesignerQuery({ triggerText: '我比较喜欢原木风，有没有合适的设计师作品可以看看？', conversationTexts: earlier }),
+    { cityCode: '420500', style: '原木风', layout: '' });
+  // 最新提到的城市如果是假设或否定，先澄清，不回到更早的城市。
+  assert.equal(resolveDesignerQuery({ triggerText: '我比较喜欢原木风，有没有合适的作品？',
+    conversationTexts: ['如果我人在北京朝阳区，那边有可以看的工地吗', ...earlier] }), null);
+  assert.deepEqual(resolveDesignerQuery({ triggerText: '我比较喜欢原木风，有没有合适的作品？', conversationTexts: ['我比较喜欢原木风'] }), null);
+  assert.equal(resolveDesignerQuery({ memoryHousing: '杭州', conversationTexts: earlier })?.cityCode, '330100');
+});

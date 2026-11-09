@@ -1,25 +1,32 @@
 import { NextResponse } from 'next/server';
 import { sql } from 'drizzle-orm';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
-import { AssistantRepository, one, type Row } from '@/db/repositories/assistant-repository';
+import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, id, key, requireCapability, type ActorContext } from '@/lib/assistant/contracts';
 import { appendMessage, idempotent } from '@/lib/assistant/core/conversation';
+import { discoveryRequest } from '@/lib/assistant/core/discovery';
 import { readMemory } from '@/lib/assistant/agent/memory';
 import { HandoffWorkflow } from '@/lib/assistant/handoff/workflow';
 import { createPortfolioEntry } from './entry';
 import { resolveDesignerQuery } from './designer-recommendation';
 import { nearbyRegion } from '@/lib/assistant/location/region';
-import { LAYOUT_OPTIONS, STYLE_OPTIONS } from './options';
+import { DEFAULT_PORTFOLIO_AVATAR, LAYOUT_OPTIONS, STYLE_OPTIONS, type PortfolioDefaultAvatar } from './options';
 import { cityCode, shortText } from './contracts';
 import { matchDesigners } from './designer-match';
-import { portfolioCandidates, type PublicWork } from './public-query';
+import { portfolioCandidates, type Candidate, type PublicWork } from './public-query';
+import { readPortfolioContact } from './public-contact';
 
 type RecommendationItem = {
   authorId: string; authorName: string; professionalTitle: string | null; experienceLabel: string;
-  layoutSpecialties: string[]; portraitAvailable: boolean; work: PublicWork; reason: string; match: string;
+  layoutSpecialties: string[]; portraitAvailable: boolean; defaultAvatar: PortfolioDefaultAvatar; work: PublicWork; reason: string; match: string;
 };
 type Preference = { operationId: string; workId: string; versionId: string; authorId: string; sentiment: string; sourceMessageId: string; supersedes: string | null; createdAt: string };
 const recommendationNotice = '作品仅供风格/户型与服务方向参考；同小区不代表同户型，不承诺可预约日期。';
+function authorCard(candidate: Candidate) {
+  return { id: candidate.work.authorId, name: candidate.work.authorName, title: candidate.professional?.title ?? '',
+    enterpriseName: candidate.enterpriseName, city: candidate.work.cityName, portraitAvailable: candidate.portraitAvailable,
+    defaultAvatar: candidate.profile.defaultAvatar ?? DEFAULT_PORTFOLIO_AVATAR };
+}
 /** All public projections recheck the live publication, author and rights.
  * No published DTO contains permission evidence, private owner details or internal source files.
  * The caller must already own this consultation; views never create leads or change attribution.
@@ -39,12 +46,18 @@ export class PortfolioCatalog {
     });
   }
   async recommend(input: Row = {}): Promise<{ items: RecommendationItem[]; notice: string; needContext?: boolean }> {
-    if (!Object.keys(input).length) {
-      const context = await this.authorized(async (_tx, c) => {
+    if (!Object.keys(input).length || input.replyId !== undefined) {
+      if (input.replyId !== undefined && Object.keys(input).length !== 1) fail('invalid_portfolio', 422);
+      const context = await this.authorized(async (tx, c) => {
+        const request = input.replyId === undefined ? null : await discoveryRequest(tx, this.actor.enterpriseId, c, id(input.replyId), 'works');
         const facts = readMemory(c.entry_snapshot).facts.filter(f => f.status === 'current');
         const housing = facts.filter(f => f.field === 'housing').map(f => f.value).join(' ');
         const styles = facts.filter(f => f.field === 'style').map(f => f.value).join(' ');
-        return resolveDesignerQuery({ memoryHousing: housing, memoryStyle: styles, location: nearbyRegion(c.entry_snapshot) });
+        const earlier = request ? await rows(tx, sql`select content from app.assistant_messages where enterprise_id=${this.actor.enterpriseId}
+          and conversation_id=${String(c.id)} and author_kind='user' and seq<=${request.seq} order by seq desc limit 10`) : [];
+        return resolveDesignerQuery({ memoryHousing: housing, memoryStyle: styles, location: nearbyRegion(c.entry_snapshot),
+          triggerText: request?.text.replace(/[？?]/g, ''),
+          conversationTexts: earlier.map(message => (message.content as { blocks?: Array<{ text?: string }> }).blocks?.map(block => block.text || '').join(' ') || '') });
       });
       if (!context) return { items: [], needContext: true, notice: '暂未获取到可用位置。可以允许定位后重试，或在对话里告诉我房屋所在城市；风格和户型可以慢慢聊。' };
       return this.recommend(context);
@@ -61,7 +74,8 @@ export class PortfolioCatalog {
       const items: RecommendationItem[] = matchDesigners(candidates, { community, style, layout }).map(({ candidate, reason, match }) => ({
         authorId: candidate.work.authorId, authorName: candidate.work.authorName, professionalTitle: candidate.professional?.title ?? null,
         experienceLabel: candidate.professional?.experienceLabel ?? '', layoutSpecialties: candidate.profile.layoutSpecialties,
-        portraitAvailable: candidate.portraitAvailable, work: candidate.work, reason, match,
+        portraitAvailable: candidate.portraitAvailable, defaultAvatar: candidate.profile.defaultAvatar ?? DEFAULT_PORTFOLIO_AVATAR,
+        work: candidate.work, reason, match,
       }));
       return { items, notice: recommendationNotice };
     });
@@ -76,9 +90,10 @@ export class PortfolioCatalog {
         const rank = (wid: string) => { const n = profile.featuredWorkIds.indexOf(wid); return n < 0 ? 10000 : n; };
         return rank(a.work.id) - rank(b.work.id);
       });
-      return { id: authorId, name: candidates[0].work.authorName, bio: profile.bio, cities: profile.cities, styles: profile.styles,
+      return { id: authorId, name: candidates[0].work.authorName, template: profile.template, bio: profile.bio, cities: profile.cities, styles: profile.styles,
         layoutSpecialties: profile.layoutSpecialties, professionalTitle: candidates[0].professional?.title ?? null,
         experienceLabel: candidates[0].professional?.experienceLabel ?? '', portraitAvailable: candidates[0].portraitAvailable,
+        authorCard: authorCard(candidates[0]), contact: (await readPortfolioContact(tx, this.actor.enterpriseId, authorId)).view,
         works: candidates.map(c => c.work) };
     });
   }
@@ -98,7 +113,27 @@ export class PortfolioCatalog {
       if (!candidate || (versionId && candidate.work.versionId !== versionId)) fail('portfolio_not_found', 404);
       const preferences = ((c.entry_snapshot as Row).portfolioPreferences || []) as Preference[];
       const current = preferences.filter(p => p.workId === workId && !preferences.some(n => n.supersedes === p.operationId)).at(-1);
-      return { ...candidate.work, preference: current?.versionId === candidate.work.versionId ? current.sentiment : null, preferenceVersion: preferences.length };
+      return { ...candidate.work, authorCard: authorCard(candidate), preference: current?.versionId === candidate.work.versionId ? current.sentiment : null, preferenceVersion: preferences.length };
+    });
+  }
+  private async contactCandidate(tx: PostgresTransaction, authorId: string, workId: string, versionId: string) {
+    const candidate = (await portfolioCandidates(tx, this.actor.enterpriseId, { authorId: id(authorId), workId: id(workId) }))[0];
+    if (!candidate || candidate.work.versionId !== id(versionId)) fail('portfolio_not_found', 404);
+    return candidate;
+  }
+  publicContact(authorId: string, workId: string, versionId: string) {
+    return this.authorized(async tx => {
+      const candidate = await this.contactCandidate(tx, authorId, workId, versionId);
+      const { view } = await readPortfolioContact(tx, this.actor.enterpriseId, authorId);
+      return { ...view, author: authorCard(candidate) };
+    });
+  }
+  contactQr(authorId: string, workId: string, versionId: string, revision: number) {
+    return this.authorized(async tx => {
+      await this.contactCandidate(tx, authorId, workId, versionId);
+      const { view, state } = await readPortfolioContact(tx, this.actor.enterpriseId, authorId);
+      if (view.revision !== revision || !view.qrAvailable) fail('portfolio_not_found', 404);
+      return Buffer.from(state.qrImageBase64, 'base64');
     });
   }
   preference(workId: string, input: Row, requestKey: string) {
@@ -142,6 +177,7 @@ export class PortfolioCatalog {
       portfolio: { workId, versionId: work.versionId, authorId: work.authorId }, guard: async (repo, c) => {
         const candidate = (await portfolioCandidates(repo.tx, this.actor.enterpriseId, { workId }))[0];
         if (!candidate || candidate.work.versionId !== input.versionId) fail('portfolio_not_found', 404);
+        if (!(await readPortfolioContact(repo.tx, this.actor.enterpriseId, work.authorId)).view.allowInApp) fail('portfolio_contact_disabled', 409);
         const owner = await one(repo.tx, sql`select assigned_to from app.leads where enterprise_id=${this.actor.enterpriseId}
           and customer_user_id=${this.actor.principal.kind === 'user' ? this.actor.principal.userId : ''} and assigned_to is not null
           and archived_at is null and status not in ('closed','converted') and assigned_to<>${work.authorId} limit 1 for share`);
@@ -155,7 +191,8 @@ export class PortfolioCatalog {
     id(workId); id(versionId); id(assetId);
     return this.authorized(async tx => {
       const candidate = (await portfolioCandidates(tx, this.actor.enterpriseId, { workId }))[0];
-      if (!candidate || candidate.work.versionId !== versionId || !candidate.work.images.some(i => i.assetId === assetId)) fail('portfolio_not_found', 404);
+      if (!candidate || candidate.work.versionId !== versionId || ![...candidate.work.images.map(image => image.assetId),
+        candidate.work.planComparison?.originalAssetId, candidate.work.planComparison?.designAssetId].includes(assetId)) fail('portfolio_not_found', 404);
       const asset = await one(tx, sql`select image_base64 from app.portfolio_assets where enterprise_id=${this.actor.enterpriseId} and work_id=${workId} and id=${assetId}`);
       if (!asset) fail('portfolio_not_found', 404);
       return Buffer.from(String(asset.image_base64), 'base64');
@@ -164,7 +201,9 @@ export class PortfolioCatalog {
 }
 export async function portfolioCatalogHttp(request: Request, actor: ActorContext, conversationId: string, path: string[]) {
   const params = new URL(request.url).searchParams, service = new PortfolioCatalog(actor, conversationId);
-  const allowed = path.join('/') === 'recommendations' ? ['cityCode', 'style', 'layout', 'communityId']
+  const allowed = path.join('/') === 'recommendations' ? ['cityCode', 'style', 'layout', 'communityId', 'replyId']
+    : path[0] === 'designers' && path.length === 3 && path[2] === 'contact' ? ['workId', 'versionId']
+    : path[0] === 'designers' && path.length === 3 && path[2] === 'contact-qr' ? ['workId', 'versionId', 'revision', 'format']
     : path[0] === 'designers' && path.length === 3 && path[2] === 'portrait' ? ['format']
     : path[0] === 'works' && path.length === 4 ? ['versionId', 'format'] : path[0] === 'works' ? ['versionId'] : [];
   if ([...params.keys()].some(k => !allowed.includes(k))) fail('invalid_portfolio', 422);
@@ -184,6 +223,14 @@ export async function portfolioCatalogHttp(request: Request, actor: ActorContext
   let data: unknown;
   if (path.join('/') === 'recommendations') data = await service.recommend(Object.fromEntries(params));
   else if (path.length === 2 && path[0] === 'designers') data = await service.designer(id(path[1]));
+  else if (path.length === 3 && path[0] === 'designers' && path[2] === 'contact') {
+    data = await service.publicContact(id(path[1]), id(params.get('workId')), id(params.get('versionId')));
+  }
+  else if (path.length === 3 && path[0] === 'designers' && path[2] === 'contact-qr') {
+    if (params.get('format') !== 'base64' || !/^[1-9]\d*$/.test(params.get('revision') || '')) fail('invalid_portfolio', 422);
+    const bytes = await service.contactQr(id(path[1]), id(params.get('workId')), id(params.get('versionId')), Number(params.get('revision')));
+    return NextResponse.json({ success: true, data: { mimeType: 'image/jpeg', imageBase64: bytes.toString('base64') } }, { headers: { 'Cache-Control': 'private, no-store' } });
+  }
   else if (path.length === 3 && path[0] === 'designers' && path[2] === 'portrait') {
     if (params.has('format') && params.get('format') !== 'base64') fail('invalid_portfolio', 422);
     const bytes = await service.portrait(id(path[1]));

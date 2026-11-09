@@ -9,6 +9,8 @@ import { publicAudit, publicEvent } from './public-service';
 import { publicCandidates, publicMaterial, publicMaterialDto, publishedPublicMaterial } from './public-read';
 import { readMemory } from '@/lib/assistant/agent/memory';
 import { recommendationRegion } from '@/lib/assistant/location/region';
+import { CITY_OPTIONS } from '@/lib/portfolio/regions';
+import { discoveryRequest } from '@/lib/assistant/core/discovery';
 
 export class PublicCustomerService {
   constructor(readonly actor: ActorContext, readonly conversationId: string) {
@@ -80,16 +82,23 @@ export class PublicCustomerService {
       return { data: media.data as Buffer, mimeType: String(media.mime_type) };
     });
   }
-  recommendations() {
+  recommendations(replyId?: string) {
     return this.scope(async (tx, c) => {
-      const messages = await rows(tx, sql`select content from app.assistant_messages where enterprise_id=${this.actor.enterpriseId} and conversation_id=${this.conversationId} and author_kind='user' order by seq desc limit 10`);
+      const request = replyId ? await discoveryRequest(tx, this.actor.enterpriseId, c, replyId, 'sites') : null;
+      const messages = await rows(tx, sql`select content from app.assistant_messages where enterprise_id=${this.actor.enterpriseId}
+        and conversation_id=${this.conversationId} and author_kind='user' ${request ? sql`and seq<=${request.seq}` : sql``}
+        order by seq desc limit 10`);
       const areas = await publicCandidates(tx, this.actor.enterpriseId);
       const memory = readMemory(c.entry_snapshot);
       const housing = memory.facts.filter(f => f.field === 'housing' && f.status === 'current').map(f => f.value).join(' ');
-      const latestText = messages[0] ? safeText(messages[0].content as Parameters<typeof safeText>[0]) : '';
+      const latestText = request ? request.text.replace(/[？?]/g, '') : messages[0] ? safeText(messages[0].content as Parameters<typeof safeText>[0]) : '';
       const region = recommendationRegion(c.entry_snapshot, housing, latestText);
       if (region) return { items: areas.filter(a => a.cityCode === region.cityCode && (!region.district || a.district === region.district)).slice(0, 3),
         enterpriseId: this.actor.enterpriseId, needRegion: false, region };
+      // A place named in the newest request decides. When it cannot be resolved
+      // (ambiguous, negated or unsupported), ask instead of reusing an older city.
+      if (CITY_OPTIONS.some(city => latestText.includes(city.label.replace(/市$/, ''))))
+        return { items: [], enterpriseId: this.actor.enterpriseId, needRegion: true };
       const texts = [...messages.map(m => ((m.content as { blocks: Array<{ text?: string }> }).blocks || []).map(b => b.text || '').join('\n')),
         ...(memory.facts || []).filter(f => f.field === 'housing' && f.status === 'current').map(f => f.value)];
       let matching: typeof areas = [];
