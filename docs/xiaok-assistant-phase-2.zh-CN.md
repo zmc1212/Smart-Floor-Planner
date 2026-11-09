@@ -1311,6 +1311,12 @@ CONSULT-02内下一独立范围：沿获权个人事实完成正常35/60轮、�
 
 本次有界改动参考[LangGraph工具配对/结构化响应实现](https://github.com/langchain-ai/langgraph/blob/main/libs/prebuilt/langgraph/prebuilt/chat_agent_executor.py)、其[Agent测试](https://github.com/langchain-ai/langgraph/blob/main/libs/prebuilt/tests/test_react_agent.py)及[LangChain结构化输出策略](https://github.com/langchain-ai/langchain/blob/master/libs/langchain_v1/langchain/agents/structured_output.py)，保留既有Graph和应用权限/检查点/计费边界，不增加生成调用或迁移框架。[Qwen XML/解析问题报告](https://github.com/QwenLM/Qwen3.8/issues/125)涉及其他部署配置，本批有效JSON调用未复现该问题，因此不加入供应商解析绕行。
 
+## 当前业务快照派生计数修复（2026-11-09）
+
+**当前有界修复资格；整体Limited。** 客户原话“我家工地在现在装修到什么阶段了”（conversation1471/run2449）曾以“这次回答没有完成”结束。首稿实质依据当前服务端施工快照，但派生列表计数“共有4个项目”未逐字出现在所引快照行中，既有逐段数字检查因此抛`unsupported_model_commitment`；对仅有业务快照来源的缺口，`synthesisRepairIssue`在既有唯一一次`synthesis-edit-v1`修复前直接抛错。现在仅当所有数字缺口段都引用当前业务快照来源（`kind='project'`且带`resultKey`）时，才允许这同一次哈希绑定修复。完整结构/引用/引文、正式承诺、范围/来源及修复后完整校验保持；未知引用、完成承诺及非快照来源仍拒绝。未改提示词、工具、轮次、模型、权限、租户、记忆、计费或UI。
+
+**已执行证据。** 保存的run-2449首稿现收到有界修复（`removeUnsupportedNumbers:["4"]`，沿用原citationId），修复稿通过全部原守卫；新增3项回归测试通过。同一自然问题经运行中服务的两次真实配置模型旅程（conversations1514/1515，runs2484/2485）均成功并交付依据“本人项目实际节点、已发布现场记录”的回答；两次均为首稿通过（`validationRepairs:0`），证明用户可见完成，但未实际触发派生计数修复轮；该路径由保存首稿回放证明，不由本次模型输出证明。4次observed文本调用/14164 tokens，费用null/unknown。原run2449及三次调用/11890 tokens/null费用保留为失败，conversation1471未被改动。修复/测试/夹具hash为`515743dfb3fbdff14d82b94edc2e3e4229ab4bfd871fa59564df5095a839e11b`、`f0434c0b43bc0b4f4aaec648d5028a7a71f65abb3ff0759bf653cbb30173aab2`、`d93f926ad5c23dbee12922a9428fdb64ad68eeb7e78e08f57226f1838a55437c`；无知识、摄取、Embedding、路由/API/schema、小程序结构/素材或还原台账改动。见`tmp/xiaok-business-numeric-repair-20261109/verification.json`。
+
 ## 历史v119：材料/建议数值引用的既有修复
 
 **历史v119：有界材料/建议数值引用修复；整体Limited。** 当前客户原话/正式主户型来源中的数值漏引可进入原有唯一一次绑定稿件hash的最终编辑修复：evidence段每个缺失数字均须存在于这些实际原文；advice中的无据量数可删除。该诊断前仍检查完整结构/引用和既有承诺守卫，最终数值/来源/范围校验保持严格。正文、引用和编辑均由模型选择，不增工具/轮次、不服务器填答案、不降级general绕过校验、不换模型或付费兜底。v118仅原文上下文保留。项目/历史来源沿既有“本轮依据”类别摘要及服务端精确原文绑定，不是知识文件引用行/弹层。未改解析/检索、路由/API/schema/权限、记忆/任务/用量及批准C01/C02/C05/U01标记/样式/素材/固定文案/导航/几何，无还原台账影响。

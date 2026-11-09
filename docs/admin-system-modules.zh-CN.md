@@ -762,3 +762,5 @@ AI 工作台参考图展示：`/ai-studio/scenarios` 在每轮生成结果旁渲
 - 真实 AI 大纲/单页建议复用 executePostgresAdviceGeneration、chat.general、text.design_advice 计费审计；按钮消耗读取既有定价。外部调用不占数据库事务。建议需主动采用并保存，模型失败不会覆盖草稿。本版 AI 不分析图片像素，不声称识别图片内容。
 - 设计依据：双语后台 UI 改造合同、既有 Ant Design/Admin Pro 控件，以及用户批准的章节/预览/编辑三栏结构。验证：本地迁移、七项聚焦合同/PostgreSQL 测试及生产构建通过；范围 lint 无错误（一个动态图片警告）。生成阅读器样例通过单活动页切换及 390px 无横向溢出检查；截图：tmp/design-report-reader-mobile.png。登录态 Chrome 视觉核验和真实上游 AI 调用仍待补。没有小程序源码/路由改动。
 - Limited：暂不支持说明文档上传/OCR、自由画布、生成图片、多主题、PDF/PPTX 导出、客户批注或小程序档案入口；首版使用已持久化项目图片和手工补充事实。
+
+2026-11-09，业务快照回答中仅有数值的`unsupported_model_commitment`，在所有受影响段都引用当前服务端快照（`kind='project'`且带`resultKey`）时，现进入既有唯一一次`synthesis-edit-v1`修复；结构/引用/引文、正式承诺、范围/来源及修复后完整校验不变。客户问题“我家工地在现在装修到什么阶段了”不再以“这次回答没有完成”结束：保存的run2449收到`removeUnsupportedNumbers:["4"]`后通过，两次真实配置模型旅程（runs2484/2485）均首稿通过。未知引用、完成承诺及非快照来源仍拒绝。证据：`tmp/xiaok-business-numeric-repair-20261109/verification.json`；无路由/API/权限/schema/UI改动。

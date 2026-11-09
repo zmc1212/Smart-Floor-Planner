@@ -651,8 +651,12 @@ export function synthesisRepairIssue(raw:string,sources:SynthesisSource[],contex
     // original single repair as a parsed file. This does not accept the draft:
     // syntax/citations/formal commitments have already been checked above.
     const webNumericRepair = !!context.generalKnowledge && quotesVerified && numericGaps.length > 0 && sources.some(s => s.kind === 'web');
-    if (materialNumericRepair || webNumericRepair) checkedSynthesis(raw, sources, context, []);
-    if(error.code==='unsupported_model_commitment'&&!hasFile&&!sources.some(s=>s.material?.ref.type==='formal_plan')&&!materialNumericRepair&&!webNumericRepair)throw error;
+    // Service-authored business snapshot: a derived count can be correct yet absent verbatim from its quoted lines.
+    const businessNumericRepair = error.code === 'unsupported_model_commitment' && quotesVerified && numericGaps.length > 0
+      && numericGaps.every(gap => value.segments[gap.segment - 1].citations.some(citation =>
+        sources.some(source => source.sourceId === citation.sourceId && source.kind === 'project' && !!source.resultKey)));
+    if (materialNumericRepair || webNumericRepair || businessNumericRepair) checkedSynthesis(raw, sources, context, []);
+    if(error.code==='unsupported_model_commitment'&&!hasFile&&!sources.some(s=>s.material?.ref.type==='formal_plan')&&!materialNumericRepair&&!webNumericRepair&&!businessNumericRepair)throw error;
     const missing=numericGaps.map(gap=>gap.segment);
     const numericTextPaths=numericGaps.map(gap=>({path:`segments[${gap.segment-1}].text`,removeUnsupportedNumbers:gap.unsupportedNumbers,
       permittedQuoteNumbers:[...new Set(value.segments[gap.segment-1].citations.flatMap(c=>typeof c.quote==='string'?groundedNumberTokens(c.quote):[]))],
@@ -676,7 +680,7 @@ export function synthesisRepairIssue(raw:string,sources:SynthesisSource[],contex
       const supported = new Set(groundedNumberTokens(quote));
       return absent.every(n => supported.has(n)) ? [{ segment, sourceId: source.sourceId, copyExactQuote: quote }] : [];
     });
-    if(missing.length&&!hasFile&&numericQuoteCorrections.length!==missing.length&&!materialNumericRepair&&!webNumericRepair)fail('unsupported_model_commitment',502);
+    if(missing.length&&!hasFile&&numericQuoteCorrections.length!==missing.length&&!materialNumericRepair&&!webNumericRepair&&!businessNumericRepair)fail('unsupported_model_commitment',502);
     if(error.code==='unsupported_model_commitment'&&!missing.length)throw error;
     const catalogAnswer = isCatalogSynthesisDraft(raw);
     if(catalogAnswer)return {code:error.code,feedback:'这是同轮唯一一次引用/依据修复，不调用业务工具、不新增来源或动作。引用仍只选已有citationOptions的citationId，不复制quote、不切换旧格式。核对以下正文路径和numericSourceCandidates，候选仅供定位，不证明任意主张。原文确实支持本段对象/单位时补引用保留正确数值，没有依据再删除；汉字量数不能绕过或换算：'+JSON.stringify(numericTextPaths)+'。所引用文件的可信名称/版号仅作元数据，不作为工程数值或采用依据；条件和一般建议身份保留。'+repairLayoutInstructions+'只返回final_response。'};
