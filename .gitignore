@@ -23,7 +23,8 @@ admin/.roomi-import/
 .agent_context/
 .multica/
 .tmp/
-.next-stale-admin-*/
+# admin QA 构建快照(.next-qa/.next-v*-*/等,均可再生)
+admin/.next-*/
 %SystemDrive%/
 /tmp-*.png
 com.zbj.zhouse_26.7.16.apk
@@ -45,3 +46,4 @@ customer-materials/
 # 视频工程与根目录设计稿
 /videos/
 /design-mockups/
+/docs/装修施工标准手册制度规范

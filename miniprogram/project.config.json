@@ -51,6 +51,10 @@
       {
         "type": "file",
         "value": "packages/assistant/assets/studio-serif.woff2.br"
+      },
+      {
+        "type": "file",
+        "value": "packages/construction/assets/notebook-font.woff2.br"
       }
     ]
   },

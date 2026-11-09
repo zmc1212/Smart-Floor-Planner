@@ -28,9 +28,61 @@ This repository contains the Smart Floor Planner product: a Next.js/Mongoose
 administration system and a native WeChat Mini Program for renovation leads,
 formal surveying, and AI-assisted design.
 
+## Stage Progression And Automated Testing
+
+- When an authorized test lacks data, create clearly labelled synthetic
+  enterprises, users, projects, records and media in the approved development
+  or isolated test database, then exercise real writes, reentry and permission
+  states. Do not test only an empty page or defer a check for missing data.
+  Keep fixture IDs and repeatable commands separate from real customer data;
+  this does not authorize production seeding.
+
+- For early XiaoK development, use the PPT scenarios assigned to the current
+  stage as the acceptance scope. Once those scenarios and relevant engineering
+  checks pass, continue the next authorized stage. Extra long-tail image,
+  language, benchmark, or product-comparison evaluations are follow-up work,
+  not additional progression gates. Preserve required tenant/permission/data
+  integrity checks and record uncovered checks honestly. This does not
+  declare the whole PPT implemented or authorize new designs or production.
+- Each user-facing stage must include a Mini Program entry, real service writes,
+  visible feedback, persisted reentry, permission/error handling, and test steps.
+  Backend-only milestones are internal progress, not completed stage deliveries;
+  never defer all client integration until the end of the roadmap.
+- After completing a stage's implementation, relevant automated checks, and
+  documentation, report the executed checks and results, then continue the next
+  authorized development stage without waiting for manual tests, screenshots,
+  human A10 review, or a confirmation reply.
+- The user's standing instruction is to use the verified stable WeChat DevTools
+  automation workflow for future Mini Program testing. Do not require fresh
+  task-specific automation approval, assign routine manual test checklists, or
+  ask the user to capture screenshots for acceptance. Manual review is optional
+  when the user chooses or explicitly requests it.
+- Report uncovered physical-device, BLE, real WeChat authorization, and other
+  simulator limitations as unverified/non-blocking for development; do not
+  convert them into required user hand-tests. Historical pending checks remain
+  unverified until actual evidence exists. Never treat silence or a basic
+  automation smoke test as passed business acceptance or release approval.
+- This policy supersedes earlier manual/screenshot requirements and DevTools
+  automation prohibitions in these instructions and planning documents.
+  Preserve approved designs, tenant/permission/data checks, and deployment
+  authorization boundaries. New design directions and production rollout
+  still follow their existing authorization requirements.
+
 ## Source Of Truth
 
 - Treat the current code, route handlers, schemas, and tests as authoritative.
+- XiaoK development has one execution plan:
+  `docs/xiaok-renovation-agent-development-plan.md`. Its section 2 is the only
+  current delivery record. The former roadmap, Agent/knowledge plans and old
+  handoffs are historical references, not task queues or testing gates.
+- User scope clarification,2026-11-05: XiaoK V1 includes natural renovation
+  dialogue (general knowledge, real web search and authorized enterprise knowledge),
+  stage-specific craft reminders, four-role daily/weekly reports compiled from
+  authorized progress records and manager/worker photos, nearby approved public
+  site live viewing, and public designer/work recommendations by stated style.
+  Daily/weekly share one reporting pipeline with different periods. Reuse current
+  services and evidence; do not expand into device commerce or a new recommendation
+  platform. This replaces the preceding three-feature reduction; follow the plan.
 - `docs/admin-system-modules.md` describes the current admin surface.
 - `docs/miniprogram-system-modules.md` describes the current Mini Program surface.
 - `docs/surveying-module/README.md` and `formal-surveying.md` describe the formal
@@ -41,6 +93,10 @@ formal surveying, and AI-assisted design.
 - `蓝牙命令列表V1.docx` is the vendor protocol reference for the supported BLE
   laser distance meter's commands, response frames, system information, and
   device-status fields.
+- `docs/remote-development.md` and `docs/remote-development.zh-CN.md` are the
+  canonical record for approved remote SSH access and deployment boundaries.
+  Remote tasks must read this pair first and ask only when the record is
+  missing or conflicts with current evidence.
 - Historical roadmaps, implementation plans, and old design notes are planning
   material, not proof that a feature is implemented.
 - Feature status uses `Implemented`, `Limited`, or `Placeholder`. A label, mock
@@ -70,6 +126,57 @@ This gate applies to every feature, bug fix, refactor, and UI/API change:
 This is a completion requirement, not optional follow-up work. Documentation is
 the durable project memory used by later AI sessions; code comments, a prompt,
 or a roadmap do not replace the current module inventory.
+
+## Development Plan Hygiene
+
+- Keep newly created or revised execution plans concise: one current delivery,
+  user outcome, bounded acceptance, next action and effective boundaries. Replace
+  current values; do not append dated patch, test, owner or handoff histories.
+- For XiaoK, keep the canonical plan within160 lines/8000 Unicode characters and
+  section2 within2400 characters and its nine defined fields. After editing it,
+  run `node scripts/check-xiaok-plan.mjs`; do not silently relax the limits.
+- Put raw attempts, hashes, usage and transcripts in their original evidence
+  locations. Current bilingual inventories/contracts describe current behavior
+  and limitations, with evidence links; do not copy debugging journals into them.
+  Preserve failures, unknowns, costs and approvals when compressing records.
+- Frozen history is for targeted lookup, never a default full read, second task
+  queue or source of renewed permission. Reuse the existing plan and contracts.
+  Do not proliferate successor plans or per-patch summary documents.
+- Documentation-only edits require document checks, not model calls or product
+  reacceptance. They neither change the development owner nor reopen stopped
+  batches, expand scope/costs, or authorize designs/publication/deployment.
+
+## Development Context And User Direction
+
+- User instruction, 2026-11-05: automatic context-capacity chat creation and
+  handoff are revoked. Continue in the current chat by default, including after
+  automatic compaction. Do not create, fork or transfer to a successor chat
+  unless the user explicitly requests that action. Earlier standing handoff
+  authorization and historical handoff notes no longer authorize a new chat.
+- Keep a concise checkpoint in the existing plan when needed: current user
+  decisions, source/workspace state, valid evidence, failures, unknown calls,
+  resources and the exact next action. A checkpoint is not a new plan, another
+  development stage or a reason to restart tests. Do not invent context limits.
+- After compaction or a user-requested new chat, read the latest user direction
+  before following a recorded next action. Correct a stale next action when it
+  conflicts with that direction; tactical debugging notes are not the goal.
+- XiaoK's current method constraint is: model understands and explains,
+  KnowledgeRetriever/Evidence supplies authorized enterprise material, and code
+  controls permissions, current sources, business actions and truthful receipts.
+  Prove accurate, natural answers on a small fixed set of real conversations
+  before expanding engineering regression. Necessary fast checks remain valid.
+- Do not default to new prompt clauses, keyword/regex rules, scheduler branches,
+  validators or larger test matrices for an ordinary answer-quality failure.
+  First show the concrete input/output and why the proposed rule is necessary
+  for an actual permission/fact/action boundary rather than a model-expression
+  task. Reuse existing framework/service capabilities and remove interference.
+- Two failed repair iterations for the same business expectation stop that
+  patch loop across compactions and chats. Retain original failures and examine
+  the shared mechanism; do not reset the count, rename the case, resample until
+  green or call internal test counts proof of user-facing quality.
+- Keep this method constraint in the sole plan's current record. Its checker
+  verifies that the constraint and no-automatic-handoff rule remain present;
+  passing that document check does not prove compliance or answer quality.
 
 ## Mandatory Design Approval Gate
 
@@ -111,6 +218,69 @@ or a roadmap do not replace the current module inventory.
 - A Mini Program visual-restoration handoff is incomplete until the English and
   Chinese restoration ledgers contain the final current row for every affected
   route.
+
+## Design Coverage And Canvas Discipline
+
+- **Complete state handling does not require a separate full-screen design for
+  every state.** Use three levels: main-screen designs for layout, typography,
+  spacing and visual language; key variants only when layout or available
+  actions materially change (such as human takeover or an editing sheet); and
+  shared component/state specifications for ordinary loading, sending,
+  failure, retry, empty states and copy variations.
+- Reuse the same approved component for the same interaction. A different
+  conversation topic, such as quotation versus schedule, is normally a copy
+  variant, not a new page, role, workflow or approval gate.
+- Do not make drawing every state or obtaining approval for every specimen a
+  prerequisite for development. Once the main designs, material variants and
+  reusable state rules are sufficiently defined and the user has explicitly
+  authorized implementation, proceed. Additional state images are supporting
+  examples, not separate implementation requirements.
+- Preserve functional completeness in a concise state table: trigger, visible
+  feedback, enabled actions, recovery/reentry and permission boundary. Shared
+  approved components plus their documented state rules count as a design
+  source under the UI Design Source Check; a missing standalone raster for an
+  ordinary state alone is not a blocker. Ask only when a genuinely new or
+  conflicting visual/interaction decision remains unresolved.
+- Before extending an existing PPT, screenshot or approved design, inspect its
+  original single-screen dimensions and logical viewport mapping. Keep that
+  canvas, aspect ratio, source-calibrated glyph/icon sizes, spacing and safe
+  areas consistent across related screens. For the current XiaoK PPT sources,
+  the single-screen canvas is 853x1844, mapped by width to the 390x844 Mini
+  Program baseline; the sub-pixel height rounding is not a layout change.
+- Multi-screen boards are presentation overviews only. Do not infer element
+  dimensions from differently scaled board panels or use them as the sole
+  implementation ruler. Retain correctly proportioned standalone main designs
+  and the common measurements. Do not stretch an image or shrink text to force
+  all content into one screen; reflow content or allow appropriate scrolling.
+- Check canvas and containers first, then visible typography and wrapping,
+  spacing, and artwork. Equal exported image dimensions alone do not establish
+  visual consistency. Keep design review distinct from runtime/native QA.
+- These rules apply to future design tasks and do not relax explicit design
+  approval, product implementation authorization, or production deployment
+  boundaries. Prefer updating existing design specifications over proliferating
+  parallel documents and state-image checklists.
+
+## Preferred Skill For UI Restoration
+
+- Use `draw-ui` as the first-choice skill for restoring approved interfaces
+  from PPTs, design images or screenshots, and for visual calibration of
+  existing Mini Program and Admin pages. Read its `SKILL.md`,
+  `references/calibration.md`, and the applicable implementation reference
+  before starting restoration work. Follow an explicit user choice of another
+  skill when provided.
+- Keep the approved design as the baseline. Apply draw-ui's measurement order:
+  viewport and containers, typography and wrapping, spacing, then artwork.
+  Distinguish visible glyph/stroke/alpha bounds from element or image boxes;
+  calibrate font hierarchy, icon optical size and illustration proportions,
+  rather than treating minimum font sizes or absence of overlap as fidelity.
+- Reuse the existing route element ledger and documentation for measurements
+  and verification; keep temporary calibration artifacts under `tmp/` or
+  `design-references/`. Do not create a parallel design authority.
+- This preference does not override project design approval, asset/no-slicing,
+  native-capsule, automated-QA or deployment rules. Browser fixtures are
+  supplemental diagnostics, not native Mini Program acceptance. Use the
+  authorized stable DevTools workflow for native QA; do not introduce an
+  HTML-first implementation gate through the skill.
 
 ## Mandatory UI Design Source Check
 
@@ -202,6 +372,145 @@ or a roadmap do not replace the current module inventory.
   accounting checks as engineering evidence, not proof of a successful real-user
   journey. Historical explicit-instruction trials remain historical evidence.
 
+### Agent Development: Reference Existing Implementations
+
+- Before extending or restructuring the XiaoK Agent, inspect relevant maintained
+  open-source Agent implementations, their tests and known provider issues.
+  Prefer existing framework capabilities and established message/tool protocols
+  over duplicating orchestration, multimodal handling or recovery machinery.
+- Compare the actual implementation with this project's tenant permissions,
+  source revocation, durable jobs, usage accounting and human handoff contract.
+  Preserve those boundaries when reusing or replacing components. A framework
+  migration or full rewrite needs a concrete advantage over a focused change.
+- Record relevant source links and adoption decisions in the existing bilingual
+  Agent contract when architecture changes. Distinguish provider-specific
+  workarounds from general practices; validate both with end-to-end regression
+  tests for the configured model, rather than inferring quality from examples.
+
+### Unified Agent And Knowledge Development And Automated Acceptance
+
+- The one active chat designated by the user owns the XiaoK renovation Agent
+  plan, including Agent and knowledge work, integration, fixes and acceptance.
+  Complete implementation, relevant tests, fixes, documentation and the local
+  stage commit in one continuous flow, then continue the next authorized stage.
+  Older chats do not resume competing work on a historical freeze-release or
+  resource-handoff message.
+- Routine work uses this single owner and the existing authorized development
+  environment. Do not create a separate development/testing chat, request a
+  user-approved workspace freeze, or require cross-chat lock handoffs as a
+  progression gate. This rule supersedes earlier routine freeze/coordination
+  requirements in planning documents; historical evidence remains intact.
+  Only a user-requested successor may replace this owner sequentially; context
+  capacity alone never authorizes another development or testing chat.
+- Keep responsibilities separate within that one plan and owner. The Agent
+  domain owns runtime, memory, tool orchestration, current-project composition,
+  model citation catalogs, final response validation and recovery. The
+  knowledge domain owns file parsing/chunking, indexing/retrieval,
+  publication, version/epoch/audience checks, original locators and knowledge
+  operations/UI. Retain `KnowledgeRetriever` / `Evidence`; do not add another
+  Agent, facts store, permission resolver or citation pipeline. Classify a
+  cross-domain defect using its concrete failing input/output, implement it
+  in its owning domain, then run combined regression. The same owner handles
+  legacy mixed files such as `knowledge/sources.ts` and `knowledge/batches.ts`;
+  directory location alone does not assign every responsibility.
+- Integrate one feature change at a time, preserve unrelated dirty changes,
+  and rerun affected compatibility, tenant and revocation checks on the combined
+  result. Bind evidence to the actual source/test/configuration version before
+  and after execution. Source drift invalidates that batch even if assertions
+  pass; retain it separately and rerun the affected checks on a stable version.
+  Preserve original failures, provider attempts, unknown outcomes and usage;
+  do not pool different versions or repaired responses into first-draft results.
+- Run Stable DevTools native acceptance serially with one controller in the
+  same workflow. Retain the existing acceptance lock, idle-queue guard and
+  verified window discipline. Acquire and release owned resources
+  programmatically in cleanup/finally paths. If a resource is busy, wait or do
+  independent offline work; do not seize another task's process or turn routine
+  contention into a user freeze/coordination approval request. These are resource
+  safeguards, not a requirement to stop all development or create a new chat.
+- If the user explicitly requests independent or parallel work, test a fixed
+  commit or a fully recorded source snapshot in a separate managed worktree.
+  Each concurrent service test needs its own test database, ports, Worker,
+  configuration, media/fixtures, outputs and provider-attempt records; a
+  worktree alone does not isolate shared resources. Until that isolation is
+  ready, the unified owner runs the work serially; building a CI/container
+  platform is not a prerequisite. Native tests still use one verified project
+  window/controller and never a temporary project copy.
+- Inspect attached worktrees before creating another; use `codex/` branches
+  from the required integration baseline. Worktrees do not copy uncommitted
+  changes. Do not silently omit required local dependencies, discard dirty
+  changes or commit unrelated work just to prepare a worktree. Independent
+  chats must not write the same Agent checkout/shared files concurrently.
+  Cross-chat messaging still requires direct human authorization; routine
+  progress must not depend on sending such messages.
+- User-facing stage acceptance still requires the real client/service writes,
+  feedback, reentry, permissions and failure/recovery checks defined above.
+  Pending, skipped and failed tests remain explicit. Tenant/source revocation,
+  durable-job/accounting boundaries, approved designs and production-deployment
+  authorization remain in force.
+
+### XiaoK Delivery Execution
+
+- A request to continue XiaoK resumes section 2 of
+  `docs/xiaok-renovation-agent-development-plan.md`, the sole execution plan
+  established on 2026-10-27. Read that record, the affected module inventory
+  and only the relevant code/contract/evidence. Do not resume the former
+  roadmap, Agent/knowledge queues, historical handoff instructions or full-suite
+  testing manuals. Preserve implementation facts, original failures, costs,
+  approved designs and deployment boundaries. New human instructions prevail.
+- Before implementation or testing, state the user action, verified gap,
+  completion checks and next delivery. Keep one current record: delivery ID,
+  user outcome/entry, reused foundation, actual status, bounded acceptance,
+  blockers with affected scope, evidence and next ID. Replace this record on
+  completion; do not append a new product stage for every patch.
+- If the current delivery is already evidenced complete, reuse it and advance.
+  If incomplete, implement the missing behavior before starting broad tests.
+  A passing error guard, commit, test count or repair checkpoint does not
+  complete the normal user journey.
+- Select tests from the current delivery's actual dependencies: affected fast
+  unit/client checks during edits, real services and affected compatibility
+  after integration, then required Stable native acceptance. New or materially
+  changed semantic core cases need at least two configured-model trials;
+  fix the trial scope before execution and retain every first-draft failure;
+  do not keep sampling until two passing outputs appear. Deterministic changes
+  do not require unrelated model calls. Preserve client
+  entry, real writes/readback, feedback, reentry, tenant/permission/source
+  revocation, idempotency, truthful receipts and failure recovery.
+- Before a repeat run, name the changed behavior, prior failure or unresolved
+  risk it will verify. Reuse valid evidence for unchanged scope/configuration;
+  neither a new chat, a documentation-only edit nor an internal version number
+  requires a new full suite. Bind dependencies, tests, drivers and configuration
+  before/after each run; drift within that scope invalidates it. An unrelated
+  change requires a recorded impact check, not automatic whole-product replay.
+  Never shrink a binding retroactively to make a failed/drifted batch pass.
+- After two repair iterations fail the same business expectation, stop that
+  patch/retest loop before a third. Record expected versus actual I/O, original
+  attempts, owning domain, a shared-cause hypothesis and a discriminating check
+  in the existing phase-two contract. Reuse saved traces first; new calls must
+  distinguish hypotheses. Another wording/regex/prompt variant is insufficient.
+  The count persists across chats, renamed cases and internal version changes.
+- A new mechanism-level change may reopen affected acceptance. Otherwise retain
+  the failure and move serially to the named independent authorized delivery,
+  recording why it does not depend on the defect. Safety/receipt/revocation
+  defects still block every affected path. Never weaken guards, drop original
+  required cases or call an incomplete feature complete to advance. If all
+  remaining deliveries share a proven blocker, report that concrete blocker
+  and the decision needed, rather than running an unbounded matrix.
+- Knowledge owns parsing/retrieval/publication/Evidence defects; Agent owns
+  consumption, orchestration and final-answer defects when Evidence is correct.
+  A knowledge "no change required" dependency is valid progress accounting.
+  Do not rebuild or retest ingestion because an Agent answer failed; record
+  the domain dependency in the single current delivery, without another plan.
+- Finish a delivery with scoped evidence, bilingual contracts/inventories and
+  the related local commit, then advance to its named successor without routine
+  confirmation. Report the newly usable action, limits and successor first.
+  Internal commits remain internal; record their real hashes in the next
+  necessary documentation update, not a mandatory commit-only/hash-only loop.
+- Carry delivery ID, remaining checks, failure-iteration count, evidence reuse
+  and next ID through a user-requested sequential owner handoff; preserve ownership,
+  resource locks, unknown outcomes/costs, approved designs and deployment limits.
+  These rules replace earlier routine all-stage test or independent-test-chat
+  instructions. They do not authorize new designs, paid fallback or production.
+
 ### Git
 
 Use a Conventional Commit English subject: `feat:`, `fix:`, `refactor:`,
@@ -210,6 +519,15 @@ staged change; split unrelated work.
 
 ### Repository Hygiene
 
+- `admin/.next` is regenerable, Git-ignored build output and must stay bounded.
+  `admin/scripts/prune-next-cache.mjs` is the only supported cleanup path:
+  every `dev`, `dev:webpack`, `dev:turbo`, and `build` script runs it through
+  its pre-hook, and it removes a cache only when it exceeds
+  `NEXT_DEV_CACHE_MAX_GB` (default 8GB, Turbopack dev) or
+  `NEXT_WEBPACK_MAX_GB` (default 6GB, webpack), or when run
+  explicitly as `npm run cache:prune`. Use `npm run cache:check` for a dry run.
+  Do not delete `.next` on every run or remove individual `.sst` cache segments;
+  keeping warm caches under these limits is what preserves local start speed.
 - `design-references/` is a git-ignored, recyclable working area. The durable
   set is the files referenced from repository documents (restoration ledger,
   icon-source license notes, module docs, brand guidelines, source comments);
@@ -227,6 +545,14 @@ staged change; split unrelated work.
 
 ### Admin UI And Feedback
 
+- **Administrator inheritance:** `admin` and `super_admin` inherit every
+  enterprise-owner (`enterprise_admin`) business-management permission. Do not
+  restrict an owner action to `role === 'enterprise_admin'`; use the shared
+  `isEnterpriseManagementRole` policy for role checks and test all three roles.
+  Platform administrators act within the explicitly selected enterprise; tenant,
+  source/participant, consent, lifecycle and sensitive-password checks still apply.
+  Do not require a platform administrator to become an enterprise employee or
+  project member to exercise owner management permissions.
 - Follow the existing Admin UI direction: Ant Design 5, Ant Design Pro
   (`PageContainer`/`ProTable` where appropriate), and shared `AdminAntdProvider`
   tokens. Reusable Admin controls belong under `admin/src/components/admin/*` or
@@ -258,6 +584,35 @@ staged change; split unrelated work.
   a success or failure notification.
 - Tenant-aware routes must use `withTenantRoute`, `withTenantContext`, or the
   corresponding shared resolver and must enforce the endpoint's role boundary.
+
+### XiaoK Construction Chat And PPT Fidelity
+
+- For S04, use the original XiaoK construction-chat screen on PPT pages 22
+  and 38 as the visual and interaction baseline. Original messages/photos,
+  XiaoK's draft, review/edit/publish actions and the composer belong to the
+  same conversation. Do not turn this into a standalone record form, dashboard
+  or a newly styled chat without the user's explicit request.
+- Preserve the source's canvas, hierarchy, typography, spacing, soft background,
+  XiaoK artwork, photo layout and chat-card proportions. Add project identity,
+  actual data and required states through that design's existing components.
+  Functional completeness is not permission to replace the PPT with generic
+  cards, heavier typography or extra explanatory UI. Earlier unaccepted S04
+  redraws are not design sources; V4 is supplemental and cannot override the PPT.
+- Each enterprise-scoped construction project has one independent shared XiaoK
+  conversation. Effective project members, including the construction manager,
+  workers and assigned designers, see the same messages, original attachments,
+  unpublished drafts and record versions. Do not create separate employee
+  conversations or copies of the same project record.
+- Keep different projects and the homeowner's private consultation separate.
+  Homeowners receive only records/materials explicitly published to their
+  authorized scope, not access to the internal project conversation. Shared
+  visibility does not grant everyone edit/publish rights: preserve author and
+  manager action boundaries, version/conflict checks and audit provenance.
+  Membership removal must revoke reads, media access, writes and later delivery.
+- These are the user-confirmed design/target-contract rules, not proof that P4A
+  is implemented or approved for deployment. Keep D4 in the sole XiaoK plan
+  and the existing design specification aligned; runtime inventories change
+  only with implementation.
 
 ### Mini Program Design And Navigation
 
@@ -351,8 +706,9 @@ staged change; split unrelated work.
   nested `flex: 1`/`flex-grow`, `height: 100%`, or viewport-derived
   `min-height` to distribute a Hero, illustration, repeated rows, or CTA across
   leftover height. Validate the vertical element ledger from
-  `miniprogram/DESIGN.md` at both `390x844` and a user-supplied tall-device
-  screenshot; a viewport-growing gap inside one semantic reading group is a
+  `miniprogram/DESIGN.md` at both `390x844` and a tall-device simulator viewport;
+  reuse user-supplied tall-device screenshots when available. A viewport-growing
+  gap inside one semantic reading group is a
   restoration failure, even when all elements remain visible.
 - At the `390x844` baseline, Mini Program typography floors are:
   - Page / nav titles: at least `32rpx` (`nav-title`, page H1).
@@ -379,8 +735,10 @@ staged change; split unrelated work.
   the page title, section or benefit labels, helper copy, CTA, icon container,
   and visible icon glyph in the route's element ledger. Bias to the measured
   source scale rather than a smaller "safe" size. Static tests, lack of overlap,
-  and compliance with minimum floors cannot close visual QA; the route remains
-  pending until the user's manual runtime screenshot confirms the optical scale.
+  and compliance with minimum floors cannot close visual QA; confirm the optical
+  scale against the approved source using route-verified native DevTools
+  captures, including the host layer when applicable. User screenshots are
+  optional supporting evidence, not an acceptance gate.
 - Use one coherent, locally stored, license-documented icon set for primary
   actions. Do not ship emoji, mixed Unicode symbols, or multi-stroke CSS-drawn
   icons as product icons; CSS is reserved for simple geometry such as status
@@ -415,15 +773,31 @@ staged change; split unrelated work.
 
 ### WeChat DevTools Window Discipline
 
-- **Manual screenshot QA is the project default.** Do not control, open, reopen,
-  replace, compile, navigate, or capture the WeChat DevTools project for Mini
-  Program visual QA unless the user explicitly requests DevTools automation in
-  that specific task. The user will manually capture runtime screenshots and
-  send them to Codex for review. For implementation handoff, complete code,
-  asset, documentation, and automated-test checks, then record runtime visual
-  QA as pending the user's screenshot. This rule overrides the automatic
-  no-automator replacement workflow below unless the user explicitly re-enables
-  DevTools automation for the current task.
+- **Stable DevTools automation is the project default.** The user has given
+  standing authorization for future Mini Program testing through this workflow;
+  no repeated task-specific approval or routine human hand-test is required.
+  The verified installation is Stable `2.02.2608080` at
+  `D:\微信开发工具\微信web开发者工具`, using official
+  `miniprogram-automator@0.13.0`, base library `3.17.2`, and logical viewport
+  `390x844`. Nightly `2.01.2512292` repeatedly timed out on `page.data()` and
+  `page.$$()`; do not switch back to it for tests. Revalidate equivalent
+  capabilities before adopting a different tool version.
+- Verify SDK connection, live `systemInfo`, nonempty `page.data()`, positive
+  element queries, real element taps/inputs, navigation, and screenshots as
+  relevant to each changed flow. Wait for asynchronous route/data updates;
+  restore temporary inputs/state. These checks are a baseline, not proof that
+  every business flow passed: also exercise the affected service writes,
+  persisted reentry, permissions, and failure/recovery paths with test data.
+  Record logical viewport and encoded screenshot dimensions separately because
+  simulator display scaling may produce a smaller PNG.
+- Keep the Mini Program
+  verification window on the secondary monitor. Confirm its placement before
+  visual interactions; do not cover the primary monitor or repeatedly steal
+  focus. Prefer the automation endpoint for compilation, navigation and page
+  inspection. If window placement cannot be verified, pause window interaction
+  and continue independent backend checks until the user confirms placement.
+  DevTools simulator evidence does not establish physical-device or real
+  WeChat-login acceptance; record those separately.
 - Reuse the user's currently open WeChat DevTools project window when that
   exact window already exposes a working `miniprogram-automator` WebSocket
   endpoint. The IDE HTTP service port recorded in `.ide`/`.cli` is not the

@@ -17,6 +17,11 @@ Read the repository-level `../AGENTS.md` first. The current admin feature map is
 
 ## Required Patterns
 
+- `admin` and `super_admin` inherit all `enterprise_admin` business-management
+  permissions within the selected enterprise. Use `isEnterpriseManagementRole`
+  from `src/lib/admin-user-roles.ts` for shared role gates; preserve tenant,
+  participant/source, consent, lifecycle and sensitive-password checks. Verify
+  owner, administrator and super-administrator behavior together.
 - Use `withTenantRoute`, `withTenantContext`, `resolveMiniProgramContext`, and the
   Mongoose tenant plugin instead of duplicating authentication or enterprise
   filtering logic.

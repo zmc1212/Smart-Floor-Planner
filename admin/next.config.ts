@@ -38,6 +38,12 @@ const nextConfig: NextConfig = {
   // An isolated validation server/build must not overwrite the active dev output.
   distDir: process.env.NEXT_DIST_DIR || '.next',
   output: 'standalone',
+  // Keep the same five recent entries, but avoid recompiling a route after
+  // a short pause while switching between the page and its API/editor.
+  onDemandEntries: {
+    maxInactiveAge: 5 * 60 * 1000,
+    pagesBufferLength: 5,
+  },
   // Keep Node-only media deps out of the bundler server graph. Pulling qiniu
   // into the graph also loads urllib → proxy-agent → vm2 and adds avoidable
   // compile/RSS cost in long `next dev` sessions.
@@ -86,7 +92,13 @@ const nextConfig: NextConfig = {
     '124.70.90.30:9966',
   ],
   experimental: {
-    optimizePackageImports: ['lucide-react', '@radix-ui/react-dialog', '@radix-ui/react-select', '@radix-ui/react-label', '@radix-ui/react-slot', 'date-fns'],
+    optimizePackageImports: [
+      'lucide-react', '@radix-ui/react-dialog', '@radix-ui/react-select',
+      '@radix-ui/react-label', '@radix-ui/react-slot', 'date-fns',
+      // Next already optimizes antd/icons; Pro's barrel otherwise traverses
+      // every Pro package when a page only needs PageContainer or ProTable.
+      ...(process.env.NODE_ENV === 'development' ? ['@ant-design/pro-components'] : []),
+    ],
     serverActions: {
       allowedOrigins: [
         ...localIps.map((ip) => (ip.includes(':') ? ip.replace('http://', '') : `${ip}:3002`)),

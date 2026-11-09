@@ -21,6 +21,12 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated camera builds, release artifacts and pinned vendor bundles.
+    ".next-camera/**",
+    ".next-camera-build/**",
+    "public/construction-camera/vendor/**",
+    "release/**",
+    "tmp/**",
   ]),
 ]);
 

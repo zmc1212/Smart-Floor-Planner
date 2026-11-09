@@ -1,0 +1,36 @@
+{
+  "scope": "Isolated stock Open WebUI comparison only; full business feasibility remains Limited",
+  "crawl4ai": "0.9.2",
+  "pypdf": "6.21.2",
+  "files": [
+    {
+      "path": "egress_broker.py",
+      "url": "https://raw.githubusercontent.com/unclecode/crawl4ai/v0.9.2/deploy/docker/egress_broker.py",
+      "sha256": "9884e0a4d972607e1cd20aa70bf5d8d86767fe3d61a53ebc6bd3776880c822cf"
+    },
+    {
+      "path": "egress_proxy.py",
+      "url": "https://raw.githubusercontent.com/unclecode/crawl4ai/v0.9.2/deploy/docker/egress_proxy.py",
+      "sha256": "2a3ddbef47289dcf4d093cb8f87cf142a6da81e9496b81e545d5e4346727d987"
+    },
+    {
+      "path": "LICENSE",
+      "url": "https://raw.githubusercontent.com/unclecode/crawl4ai/v0.9.2/LICENSE",
+      "sha256": "193fe32704bee15cd74f5153e569cdf830e26445e19798a55daee32da40758aa"
+    }
+  ],
+  "transport": {
+    "localReader": "127.0.0.1:18094",
+    "remoteReaderForward": "127.0.0.1:18096",
+    "trustedDockerRpc": "http://host.docker.internal:18096/read",
+    "logicalHostHeader": "127.0.0.1:18094",
+    "localPinningProxyForward": "127.0.0.1:18097",
+    "remotePinningProxy": "127.0.0.1:18097"
+  },
+  "workarounds": [
+    "SDK0.9.2 BrowserManager adds certificate-ignore flags regardless of ignore_https_errors; the tested instance launch guard removes them and enables Chromium sandbox. Invalid-certificate live regression is required.",
+    "Keep actual navigation links before mature body pruning; leave destructive overlay deletion off. Cookie selectors are extraction configuration, not CAPTCHA solving.",
+    "Run the unmodified upstream pinning proxy in the approved remote Docker network, outside local fake-IP DNS. Do not enable internal URLs or insecure TLS.",
+    "Original comparison UI/vector use an existing private DB address; start these before helper containers and verify the configured vector host before indexing. Do not change credentials or recreate original volumes."
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "id": "deepseek-v4.1-flash-1017",
+  "base_model_id": null,
+  "name": "deepseek-v4.1-flash-1017 · 隔离对照",
+  "params": {
+    "function_calling": "native",
+    "max_tokens": 8192,
+    "enable_thinking": false,
+    "system": "你是装修咨询助手。先满足用户实际问题，用现有资料给出具体、有条件的建议。清楚区分企业规则、本人项目记录、本轮原图、公开网页、一般经验。关键事实引用对应真实来源编号；图中尺寸和点位引用同名图片来源，不能引用企业或项目文字代替。图片来源的登记描述不含图中事实，必须读取实际像素。旧文字投影说未识读图片，只描述旧材料处理范围，不能据此忽略本轮独立上传的原图。资料未提供或状态未知，不能说尚未施工、没有图纸、已经验收或已满足安装。新草图不自动变成正式版本。本轮用户未授权保存或安排，不创建事项。需要外部核实时使用 search_web 找实际链接，再 fetch_url 阅读正文或跟随返回的实际链接。搜索摘要、网站导航、空页和抓取错误不能当厂家技术原文。不要编造 URL 路径，不重复相同查询/URL/内容；收到预算耗尽或无进展时结束搜索，利用已有依据回答并明确缺口。技术参数只能来自真正读到的原文，限定产品、系统和适用范围，不能自动认定本户满足。保持回答直接、有用，接续前文并随新资料修正。"
+  },
+  "meta": {
+    "profile_image_url": "/static/favicon.png",
+    "background_image_url": null,
+    "description": "测试专用：DeepSeek Flash 原版扩展修复对照",
+    "i18n": null,
+    "capabilities": {
+      "vision": true,
+      "file_context": true,
+      "web_search": true,
+      "image_generation": false,
+      "code_interpreter": false,
+      "builtin_tools": true,
+      "file_upload": true
+    },
+    "knowledge": null,
+    "voice": null,
+    "voice_avatar": null,
+    "builtinTools": {
+      "automations": false,
+      "calendar": false,
+      "channels": false,
+      "chats": false,
+      "code_interpreter": false,
+      "files": false,
+      "image_generation": false,
+      "knowledge": false,
+      "memory": false,
+      "notes": false,
+      "notifications": false,
+      "skills": false,
+      "subagents": false,
+      "tasks": false,
+      "time": false,
+      "user_input": false,
+      "web_search": true
+    },
+    "toolIds": [
+      "mature_public_web_research_transport"
+    ],
+    "filterIds": [
+      "mature_research_control"
+    ]
+  },
+  "is_active": true,
+  "access_grants": []
+}
