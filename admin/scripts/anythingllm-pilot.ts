@@ -19,7 +19,16 @@ import { fingerprint, type ActorContext } from '@/lib/assistant/contracts';
 import { AnythingLlmContextService, anythingLlmMessages, anythingLlmPrompt, anythingLlmToolPolicy, assertAnythingLlmAction, draftQuoteAllowed, type AnythingLlmContext } from '@/lib/assistant/integrations/anythingllm';
 import { HandoffService } from '@/lib/assistant/handoff/service';
 
+// Pilot reports merge heterogeneous upstream, model and service payloads.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = Record<string, any>;
+type ErrorCause = {
+  message?: unknown;
+  code?: unknown;
+  constraint?: unknown;
+  table?: unknown;
+  cause?: ErrorCause;
+};
 const root = path.resolve(process.cwd(), '..');
 const dir = path.join(root, 'tmp/anythingllm-pilot');
 const origin = 'http://127.0.0.1:18093';
@@ -562,7 +571,7 @@ async function live() {
     report.checks.externalHistoryRevocation = 'not_implemented; synthetic-only pilot';
   } catch (e) {
     report.error = String((e as Error).stack || e).replaceAll(env.DASHSCOPE_API_KEY, '[REDACTED]');
-    let cause: any = e; report.errorCauses = [];
+    let cause: ErrorCause | undefined = e as ErrorCause; report.errorCauses = [];
     for (let n = 0; cause && n < 4; n++, cause = cause.cause) report.errorCauses.push({message:String(cause.message).replaceAll(env.DASHSCOPE_API_KEY,'[REDACTED]'),code:cause.code,constraint:cause.constraint,table:cause.table});
     process.exitCode = 1;
   }

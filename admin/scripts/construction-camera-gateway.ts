@@ -16,6 +16,7 @@ import {authorizeRecordingMedia,reconcileRecordings,purgeCameraRecordings} from 
 import {refreshSdWindows,reconcileSdPlaybacks} from '../src/lib/construction/camera/sd';
 import {purgeCameraSnapshots} from '../src/lib/construction/camera/snapshot-retention';
 import {startStorageHealthSampler} from '../src/lib/construction/camera/storage';
+import {embeddedCameraHttp} from './construction-camera-embedded';
 
 loadEnvConfig(process.cwd(), process.env.NODE_ENV !== 'production');
 const origin = cameraPublicOrigin();
@@ -70,7 +71,18 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Cache-Control', 'no-store'); res.setHeader('Referrer-Policy', 'no-referrer'); res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
   try {
     const url = new URL(req.url || '/', origin);
-    if (url.origin !== origin || url.search) { res.writeHead(404).end(); return; }
+    if (url.origin !== origin) { res.writeHead(404).end(); return; }
+    if(process.env.CAMERA_EMBEDDED_TRIAL==='1'){
+      const response=await embeddedCameraHttp(req,url);
+      if(response){
+        for(const [key,value] of response.headers)res.setHeader(key,value);
+        const cookies=response.headers.getSetCookie();if(cookies.length)res.setHeader('Set-Cookie',cookies);
+        res.writeHead(response.status);
+        if(response.body)await pipeline(Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]),res);else res.end();
+        return;
+      }
+    }
+    if(url.search){res.writeHead(404).end();return;}
     if (url.pathname === '/camera-gateway-health') { res.writeHead(200, { 'Content-Type': 'application/json' }).end('{"service":"construction-camera-gateway"}'); return; }
     const recording=/^\/camera-recording\/([1-9]\d*)\/([1-9]\d{0,18})\.mp4$/.exec(url.pathname);
     if(recording){
@@ -130,6 +142,8 @@ const server = http.createServer(async (req, res) => {
       } finally { clearInterval(interval); clearTimeout(firstByteTimeout); abort.abort(); res.off('close', disconnect); }
       return;
     }
+    // Embedded trials expose only the handlers above and authenticated media.
+    if(process.env.CAMERA_EMBEDDED_TRIAL==='1'){res.writeHead(404).end();return;}
     // H5 assets/API only. This listener is not an alternate Admin entry point.
     if (!(/^\/construction-camera(?:\/|$)/.test(url.pathname) || /^\/api\/construction-camera(?:\/|$)/.test(url.pathname) || url.pathname.startsWith('/_next/'))) { res.writeHead(404).end(); return; }
     const upstreamUrl = new URL(url.pathname, appOrigin);

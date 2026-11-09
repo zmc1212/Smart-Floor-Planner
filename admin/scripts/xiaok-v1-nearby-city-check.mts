@@ -20,6 +20,7 @@ const {processAgentAnswer}=await imp('src/lib/assistant/agent/worker.ts');
 const {PublicMaterialService}=await imp('src/lib/construction/public-service.ts');
 const {PublicCustomerService}=await imp('src/lib/construction/public-customer.ts');
 const {PublicSiteCatalog}=await imp('src/lib/construction/public-read.ts');
+const {PortfolioCatalog}=await imp('src/lib/portfolio/catalog.ts');
 const {lockAssistantAcceptance}=await imp('scripts/assistant-acceptance-safety.mjs');
 const baseline=process.argv.includes('--expect-gap'),native=process.argv.includes('--native');
 const out=path.resolve(process.argv.find(a=>a.startsWith('--out='))?.slice(6)||'../tmp/v1-nearby-city-20261106/service01');fs.mkdirSync(out,{recursive:true});
@@ -74,12 +75,23 @@ try{
   state=await materials.mutate(pid,'publish',{versionId:state.versionId,expectedRevision:state.revision},randomUUID());f.state=state;
  }
  const a=actor(users[1]),service=new ConversationService(a),cid=String((await service.create(randomUUID())).id);viewer={actor:a,service,cid};chats.push(viewer);
- const ready=await service.send(cid,randomUUID(),{version:1,blocks:[{type:'text',text:report.question}]});
- const readyLease=await claimJob();assert.equal(readyLease.runId,ready.runId);
- await processAgentAnswer(readyLease,{model:async()=>({text:JSON.stringify({kind:'general',text:'合成测试：用于核对公开工地的城市筛选与重进。'}),
-  toolCalls:[],finishReason:'stop',usage:{inputTokens:0,outputTokens:0}})});
- assert.equal((await service.run(ready.runId)).status,'succeeded');
- report.uiReadyFixture={runId:ready.runId,completedThroughExistingWorker:true,engineeringModelFixture:true,providerCalls:0,notModelAcceptance:true};
+ const reply=async(text:string)=>{
+  const ready=await service.send(cid,randomUUID(),{version:1,blocks:[{type:'text',text}]});
+  assert.ok(ready.runId);
+  let readyLease=await claimJob();
+  for(let wait=0;!readyLease&&wait<10;wait++){
+   assert.equal((await service.run(ready.runId)).status,'queued');
+   await new Promise(resolve=>setTimeout(resolve,200));
+   readyLease=await claimJob();
+  }
+  assert.equal(readyLease?.runId,ready.runId);assert.ok(readyLease);
+  await processAgentAnswer(readyLease,{model:async()=>({text:JSON.stringify({kind:'general',text:'合成测试：用于核对聊天内公开推荐的触发与重进。'}),
+   toolCalls:[],finishReason:'stop',usage:{inputTokens:0,outputTokens:0}})});
+  const result=await service.run(ready.runId);assert.equal(result.status,'succeeded');assert.ok(result.outputMessageId);
+  return result.outputMessageId;
+ };
+ const replyId=await reply(report.question);
+ report.uiReadyFixture={replyId,completedThroughExistingWorker:true,engineeringModelFixture:true,providerCalls:0,notModelAcceptance:true};
  const before=await read((tx:any)=>one(tx,sql`select entry_snapshot from app.assistant_conversations where enterprise_id=1454 and id=${cid}`));
  const query=new PublicCustomerService(a,cid),result=await query.recommendations(),catalog=new PublicSiteCatalog(eid);
  const all=await catalog.list('','');assert.ok(projects.every(f=>all.items.some((s:any)=>s.id===f.siteId)));report.actual=result;save();
@@ -90,11 +102,28 @@ try{
   assert.deepEqual(await new PublicCustomerService(a,cid).recommendations(),result);
   const other=new PublicCustomerService(actor(users[2]),cid);await assert.rejects(other.recommendations());
   report.checks.push({currentOriginalCity:true,otherCityExcluded:true,noImplicitNeedWrite:true,persistedReentry:true,otherCustomerDenied:true});
+  const advance=async()=>{
+   const ordinary=await reply('我后来改到成都了，哑光瓷砖怎么保养？');
+   const works=await reply('想看看杭州做原木风的设计师作品。');
+   const both=await reply('附近工地和设计师作品都想看看。');
+   const messages=(await service.messages(cid)).items;
+   for(const [id,expected] of [[replyId,{sites:true,works:false}],[ordinary,undefined],[works,{sites:false,works:true}],[both,{sites:true,works:true}]] as const){
+    const message=messages.find((item:{id:string})=>item.id===id);assert.ok(message);assert.deepEqual(('discovery' in message)?message.discovery:undefined,expected);
+   }
+   assert.deepEqual(await query.recommendations(replyId),result);
+   await assert.rejects(other.recommendations(replyId));await assert.rejects(query.recommendations(ordinary));
+   const portfolio=new PortfolioCatalog(a,cid);
+   assert.notEqual((await portfolio.recommend({replyId:works})).needContext,true);
+   await assert.rejects(portfolio.recommend({replyId}));
+   await assert.rejects(new PortfolioCatalog(actor(users[2]),cid).recommend({replyId:works}));
+   report.checks.push({ordinaryHidden:true,requestedCategories:true,oldReplyUsesOriginalCity:true,scopedWorks:true,otherCustomerAndUnrelatedReplyDenied:true});save();
+   return {ordinary,works,both};
+  };
   if(native){const {SignJWT}=require('jose'),{assistantHttp}=await imp('src/lib/assistant/application/http.ts'),{publicCatalogHttp}=await imp('src/lib/construction/public-http.ts');
    const token=await new SignJWT({id:users[1],mode:'customer',role:'user',enterpriseId:eid,contextVersion:1,source:'password'}).setProtectedHeader({alg:'HS256'}).setSubject(users[1]).setIssuedAt().setAudience('miniprogram').setExpirationTime('1h').sign(new TextEncoder().encode(process.env.JWT_SECRET!));
-   report.native=await require(path.resolve('scripts/xiaok-v1-nearby-city-native.cjs'))({root,output:out,actor:{uid:users[1],token,cid,site:projects[0],otherSite:projects[1]},assistantHttp,publicCatalogHttp,withdraw:()=>withdraw(projects[0])});save();assert.equal(report.native.passed,true);}
-  else await withdraw(projects[0]);
-  assert.ok(!(await query.recommendations()).items.some((s:any)=>s.id===projects[0].siteId));await assert.rejects(catalog.detail(projects[0].siteId,projects[0].versionId));
+   report.native=await require(path.resolve('scripts/xiaok-v1-nearby-city-native.cjs'))({root,output:out,actor:{uid:users[1],token,cid,replyId,site:projects[0],otherSite:projects[1]},assistantHttp,publicCatalogHttp,advance,withdraw:()=>withdraw(projects[0])});save();assert.equal(report.native.passed,true);}
+  else { await advance(); await withdraw(projects[0]); }
+  assert.ok(!(await query.recommendations(replyId)).items.some((s:any)=>s.id===projects[0].siteId));await assert.rejects(catalog.detail(projects[0].siteId,projects[0].versionId));
   report.checks.push({withdrawnDetailAndListDenied:true});report.passed=true;
  }
 }catch(e){report.error=(e as Error).stack||String(e);process.exitCode=1;}

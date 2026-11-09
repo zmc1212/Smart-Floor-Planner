@@ -59,7 +59,7 @@ async function main() {
     const ownerToken = await token(manifest.ownerId), visitorToken = await token(manifest.visitorId);
     const adminToken = await new SignJWT({ id: manifest.adminId, role: 'enterprise_admin', enterpriseId: manifest.enterpriseId, permissions: ['construction-projects'] })
       .setProtectedHeader({ alg: 'HS256' }).setIssuedAt().setExpirationTime('20m').sign(new TextEncoder().encode(process.env.JWT_SECRET));
-    const request = async (url: string, auth = '', method = 'GET', body?: Row, key = randomUUID(), staff = false): Promise<Reply> => {
+    const request = async (url: string, auth = '', method = 'GET', body?: Row, key: string = randomUUID(), staff = false): Promise<Reply> => {
       const response = await fetch('http://localhost:3006' + url, { method, headers: { 'Content-Type': 'application/json',
         ...(auth ? { Authorization: 'Bearer ' + auth } : {}), ...(staff ? { Cookie: 'auth_token=' + adminToken } : {}), 'Idempotency-Key': key },
       ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(60000) });

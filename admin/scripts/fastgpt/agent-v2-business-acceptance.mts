@@ -77,6 +77,7 @@ const save = () => fs.writeFileSync(path.join(out, 'assessment.json'), JSON.stri
 type BridgeCall = { name: string; status: number; body: any };
 type Scenario = {
   name: string; question: string; note?: string; who?: any; expect: 'succeeded' | 'failed'; error?: string;
+  conversation?: { cid: string };
   steps: Array<{ name: string; fields: Record<string, string>; after?: (call: BridgeCall) => Promise<void> }>;
   final: (calls: BridgeCall[]) => string;
 };
@@ -134,7 +135,7 @@ async function execute(item: Scenario) {
   report.scenarios.push(record); save();
   transportCalls = []; transportRequest = null; active = item;
   try {
-    const sent = await send(item.question, item.who || actor);
+    const sent = await send(item.question, item.who || actor, item.conversation?.cid);
     record.conversationId = sent.cid; record.runId = sent.runId; record.clientMessageId = sent.clientMessageId;
     await processQueued(sent.runId);
     const trace = await readTrace(sent.runId);
@@ -237,6 +238,81 @@ try {
   assert.ok(reentry?.available); assert.equal(textOf(reentry.content), expectedAppointments);
   report.checks.push({ fifthQuestion: true, run: q5.record.runId, archivedExcluded: true, internalFieldsHidden: true,
     duplicateToolCallsDeduplicated: true, idempotentSend: true, persistedReentry: true, businessAnswerFromSnapshot: true });
+  save();
+
+  // A cited model answer may accompany the authorized snapshot; knowledge prose
+  // comes first and the business record stays verbatim beneath it.
+  const mixed = await execute({ name: 'mixed-composition', question: '我家水路开工要注意什么？另外帮我看下最近的量房预约。', expect: 'succeeded',
+    final: calls => {
+      const cites = Array.isArray(calls[0]?.body?.cites) ? calls[0].body.cites : [];
+      return cites.length ? `水路开槽前先确认走向和阀门位置，完成后按要求打压测试。[${cites[0].id}](CITE)` : '本次没有检索到可用原文。';
+    },
+    steps: [{ name: 'search_enterprise', fields: { query: '水路开槽 打压 施工要点' } },
+      { name: 'query_business', fields: { domain: 'appointments', leadId: '' } }] });
+  assert.equal(mixed.record.status, 'succeeded', mixed.record.error || 'composed delivery must succeed');
+  assert.equal(mixed.record.citations, 1, 'The model CITE must save a citation');
+  assert.deepEqual(mixed.trace.steps.find((step: any) => step.kind === 'agent_synthesis_context')?.private_checkpoint?.composition,
+    { snapshots: 1, modelCitations: 1, modelIncluded: true });
+  assert.ok(String(mixed.record.answer).startsWith('水路开槽前先确认走向'));
+  assert.ok(String(mixed.record.answer).includes('\n\n项目记录（授权快照，以此为准）\n' + expectedAppointments),
+    'The authorized snapshot must follow the cited model answer verbatim');
+  assert.ok(!/1724|254|8月30日|（1818）|\d{4}-\d{2}-\d{2}T|\[|版本/.test(String(mixed.record.answer)));
+  report.checks.push({ mixedCompositionDelivered: true, run: mixed.record.runId, citations: 1, snapshotAppended: true });
+  save();
+
+  // A follow-up may reuse a still-authorized citation from the previous answer
+  // even when this turn retrieves nothing; the prior catalog entry stays valid.
+  let priorCiteId = '';
+  const seed = await execute({ name: 'prior-citation-seed', question: '我家水路开工要注意什么？', expect: 'succeeded',
+    final: calls => {
+      const cites = Array.isArray(calls[0]?.body?.cites) ? calls[0].body.cites : [];
+      if (!cites.length) return '本次没有检索到可用原文。';
+      priorCiteId = String(cites[0].id);
+      return `水路开槽前先确认走向和阀门位置，完成后按要求打压测试。[${priorCiteId}](CITE)`;
+    },
+    steps: [{ name: 'search_enterprise', fields: { query: '水路开槽 打压 施工要点' } }] });
+  assert.equal(seed.record.status, 'succeeded', seed.record.error || 'seed answer must succeed');
+  assert.equal(seed.record.citations, 1);
+  assert.match(priorCiteId, /^K\d+$/);
+  const reused = await execute({ name: 'prior-citation-reuse', question: '那打压测试的时候我要盯哪些地方？', expect: 'succeeded',
+    conversation: { cid: seed.conversationId },
+    final: () => `打压测试要缓慢升压并保持规定时间，重点看接口和阀门是否渗漏。[${priorCiteId}](CITE)`, steps: [] });
+  assert.equal(reused.record.status, 'succeeded', reused.record.error || 'prior citation reuse must succeed');
+  assert.equal(reused.record.bridgeCalls.length, 0, 'The follow-up needs no new retrieval');
+  assert.equal(reused.record.citations, 1, 'The prior authorized citation stays valid');
+  assert.ok(String(reused.record.answer).includes('打压测试'));
+  report.checks.push({ priorCitationReused: true, seedRun: seed.record.runId, run: reused.record.runId });
+  save();
+
+  // Retrieval produced evidence in this turn but the draft has no CITE, and no
+  // authorized snapshot can stand in: fail closed rather than ship an uncited answer.
+  const uncited = await execute({ name: 'uncited-search', question: '我家水路开工要注意什么？', expect: 'failed', error: 'missing_citation',
+    final: () => '水路开槽前先确认走向和阀门位置，完成后按要求打压测试。',
+    steps: [{ name: 'search_enterprise', fields: { query: '水路开槽 打压 施工要点' } }] });
+  assert.equal(uncited.record.status, 'failed');
+  assert.equal(uncited.record.error, 'missing_citation');
+  assert.equal(uncited.record.messageId, null, 'An uncited evidence answer must deliver nothing');
+  assert.ok(uncited.record.bridgeCalls[0].body.cites?.length > 0, 'Evidence was actually retrieved');
+  assert.equal(uncited.record.citations, 0);
+  assert.equal(uncited.record.steps.some((step: any) => step.seq === 1007), false, 'A failed answer generates no follow-ups');
+  const uncitedSuggestions = await uncited.service.suggestions(uncited.conversationId);
+  assert.equal(uncitedSuggestions.messageId, null);
+  assert.equal(uncitedSuggestions.source, 'presets');
+  report.checks.push({ uncitedEvidenceFailsClosed: true, run: uncited.record.runId, delivered: false });
+  save();
+
+  // The same uncited draft cannot block an authorized business snapshot: the
+  // snapshot is delivered alone and the draft stays in the audit step.
+  const snapshotFallback = await execute({ name: 'uncited-with-business', question: '我家水路开工要注意什么？另外帮我看下最近的量房预约。',
+    expect: 'succeeded', final: () => '水路开槽前先确认走向和阀门位置，完成后按要求打压测试。',
+    steps: [{ name: 'search_enterprise', fields: { query: '水路开槽 打压 施工要点' } },
+      { name: 'query_business', fields: { domain: 'appointments', leadId: '' } }] });
+  assert.equal(snapshotFallback.record.status, 'succeeded', snapshotFallback.record.error || 'snapshot fallback must succeed');
+  assert.equal(snapshotFallback.record.answer, expectedAppointments);
+  assert.equal(snapshotFallback.record.citations, 0);
+  assert.deepEqual(snapshotFallback.trace.steps.find((step: any) => step.kind === 'agent_synthesis_context')?.private_checkpoint?.composition,
+    { snapshots: 1, modelCitations: 0, modelIncluded: false });
+  report.checks.push({ uncitedWithBusinessSnapshotOnly: true, run: snapshotFallback.record.runId });
   save();
 
   // An authorized empty result is a truthful no-record answer, not a failure.

@@ -10,6 +10,8 @@ const root=path.resolve('..'),output=process.env.CAMERA_TEST_OUTPUT?path.resolve
 const fixture=JSON.parse(fs.readFileSync(path.join(output,'fixture.private.json'),'utf8'));
 const database=JSON.parse(fs.readFileSync(path.join(root,'tmp/xiaok-vector/connection.private.json'),'utf8').replace(/^\uFEFF/,''));
 const project=path.join(root,'miniprogram'),nativeClient=wechatideNativeClient(project,output);
+const appOrigin=new URL(process.env.CAMERA_APP_ORIGIN||'http://localhost:3018');
+if(appOrigin.protocol!=='http:'||!['localhost','127.0.0.1'].includes(appOrigin.hostname)||!appOrigin.port||appOrigin.port==='3006'||appOrigin.pathname!=='/'||appOrigin.search||appOrigin.hash||appOrigin.username||appOrigin.password)throw Error('An isolated loopback camera app origin is required');
 const pwsh='C:/Users/Administrator/.cache/codex-runtimes/codex-primary-runtime/dependencies/native/powershell/pwsh.exe';
 const route='packages/construction/camera/camera',projects='packages/construction/projects/projects';
 let mp,release,installed=false,windowTitlePattern;const report={started:new Date().toISOString(),checks:[]};
@@ -59,11 +61,11 @@ try{
    return {project,windows:1,secondary:true,version,registeredAuthorization:true,versionRelation:status.versionRelation};
  });
  await step('fresh compile and live Stable baseline',async()=>{await compile();mp=currentClient();const info=await mp.systemInfo();await(await mp.currentPage()).data();assert.equal(info.windowWidth,390);assert.equal(info.windowHeight,844);assert.equal(info.SDKVersion,'3.17.2');return {logical:[390,844],SDKVersion:info.SDKVersion,freshCompile:true};});
- await mp.evaluate(f=>{const app=getApp();if(app.__qaCamera||app.__qaShared||app.__qaC05||app.__qaMaterials)throw Error('Other controller active');const saved={request:wx.request,get:wx.getStorageSync,set:wx.setStorageSync,remove:wx.removeStorageSync,token:app.globalData.token,bootstrap:app.globalData.bootstrap,hydrate:app.hydrateStoredSession,memory:new Map(),requests:[],rejectEntry:false};app.__qaCamera=saved;app.hydrateStoredSession=async()=>{};
+ await mp.evaluate(({fixture:f,appOrigin})=>{const app=getApp();if(app.__qaCamera||app.__qaShared||app.__qaC05||app.__qaMaterials)throw Error('Other controller active');const saved={request:wx.request,get:wx.getStorageSync,set:wx.setStorageSync,remove:wx.removeStorageSync,token:app.globalData.token,bootstrap:app.globalData.bootstrap,hydrate:app.hydrateStoredSession,memory:new Map(),requests:[],rejectEntry:false};app.__qaCamera=saved;app.hydrateStoredSession=async()=>{};
    app.globalData.token=f.miniToken;app.globalData.bootstrap={current:{mode:'staff',role:'enterprise_admin',capabilities:['construction.projects'],context:{enterpriseId:f.enterpriseId,staffId:f.ownerId,staffRole:'enterprise_admin'}}};saved.memory.set('token',f.miniToken);
    wx.getStorageSync=k=>saved.memory.has(k)?saved.memory.get(k):String(k).startsWith('construction:')?undefined:saved.get.call(wx,k);wx.setStorageSync=(k,v)=>saved.memory.set(k,v);wx.removeStorageSync=k=>saved.memory.delete(k);
-   wx.request=o=>{const raw=String(o.url),i=raw.indexOf('/api/'),p=i<0?'':raw.slice(i),base='/api/miniprogram/construction';const allowed=p===base+'/projects'||p===base+'/projects/'+f.projectId||p===base+'/video/projects/'+f.projectId+'/entry';if(!allowed){o.fail?.({errMsg:'Synthetic-only transport rejected request'});return{abort(){}};}const record={path:p,status:null};saved.requests.push(record);if(saved.rejectEntry&&p.endsWith('/entry')){o.success?.({statusCode:403,data:{success:false,error:'camera_forbidden'}});return{abort(){}};}const success=o.success;return saved.request.call(wx,{...o,url:'http://localhost:3018'+p,success(r){record.status=r.statusCode;success?.(r);}});};
- },fixture);installed=true;
+   wx.request=o=>{const raw=String(o.url),i=raw.indexOf('/api/'),p=i<0?'':raw.slice(i),base='/api/miniprogram/construction';const allowed=p===base+'/projects'||p===base+'/projects/'+f.projectId||p===base+'/video/projects/'+f.projectId+'/entry';if(!allowed){o.fail?.({errMsg:'Synthetic-only transport rejected request'});return{abort(){}};}const record={path:p,status:null};saved.requests.push(record);if(saved.rejectEntry&&p.endsWith('/entry')){o.success?.({statusCode:403,data:{success:false,error:'camera_forbidden'}});return{abort(){}};}const success=o.success;return saved.request.call(wx,{...o,url:appOrigin+p,success(r){record.status=r.statusCode;success?.(r);}});};
+ },{fixture,appOrigin:appOrigin.origin});installed=true;
  await step('native project control opens actual authorized WebView entry',async()=>{
    // Registered Stable navigation uses redirectTo for the existing subpackage;
    // reLaunch remains the normal main-package cleanup below.

@@ -8,6 +8,7 @@ import { compileModelRequest } from '@/lib/assistant/agent/model-request';
 import { agentToolsForMessage,agentToolsForTurn } from '@/lib/assistant/agent/worker';
 import { sourceExcerptInstructions,parseSourceExcerptAnswer } from '@/lib/assistant/agent/source-excerpts';
 import {answerExcerpts} from '@/lib/assistant/knowledge/answer';
+import { parseSourceQuestionAnswer, sourceQuestionCoverageProtocol, type SourceQuestionCoverage } from '@/lib/assistant/agent/source-question-coverage';
 import type { ModelMessage } from '@/lib/assistant/contracts/model';
 
 const directory=path.resolve('../tmp/v1-01-weiyun-jingyi/http-fixed-01');
@@ -63,4 +64,24 @@ if(process.argv.includes('--shared-coverage')){
     mechanismHypothesis:'The current selector has no semantic completeness check across the current question; source identity and literal rendering guards cannot establish that every requested facet was answered.',
     stopped:'Do not add another wording/regex variant or sample until two passes. Preserve D2 count2, original failed batches and all usage.'};
   fs.writeFileSync(path.join(target,'coverage-diagnosis.json'),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
+}
+
+if(process.argv.includes('--coverage-contract')){
+  const target=path.resolve('../tmp/v1-01-weiyun-jingyi/semantic-final-01'),saved=JSON.parse(fs.readFileSync(path.join(target,'run-1602.json'),'utf8'));
+  const evidence=saved.steps.find((s:{kind:string})=>s.kind==='retrieval').private_checkpoint as Evidence[];
+  const original=saved.steps.find((s:{kind:string;step_seq:number})=>s.kind==='agent_model'&&s.step_seq===1110).private_checkpoint.text;
+  const coverage:SourceQuestionCoverage={protocol:sourceQuestionCoverageProtocol,questions:['电视墙线管拐弯','穿线顺序']};
+  assert.throws(()=>parseSourceQuestionAnswer(original,evidence,coverage),/invalid_model_answer/);
+  const excerpts=answerExcerpts(evidence),bending=excerpts.find(e=>e.text.includes('线管弯头'))!,threading=excerpts.find(e=>e.text.includes('布管穿线'))!;
+  assert.ok(bending&&threading);
+  const accepted=parseSourceQuestionAnswer(JSON.stringify({kind:'knowledge',selections:[bending.selectionId,threading.selectionId],
+    coverage:{Q1:[bending.selectionId],Q2:[threading.selectionId]}}),evidence,coverage);
+  assert.equal(accepted.answer.answerKind,'grounded');assert.deepEqual(accepted.missing,[]);
+  assert.ok(accepted.answer.segments.some(s=>s.text.includes('布管穿线')));
+  const output=path.resolve('../tmp/v1-01-weiyun-jingyi/coverage-implementation/saved-1602-check.json');
+  assert.ok(!fs.existsSync(output),'Preserve original diagnostic attempts');
+  const result={originalRun:'1602',originalRetained:true,modelCalls:0,knowledgeChangeRequired:false,protocol:coverage.protocol,
+    oldDraftRejected:true,completeOriginalAccepted:true,selections:[bending.selectionId,threading.selectionId],
+    limitation:'Per-question semantic matching still requires the fixed configured-model trials; this check establishes protocol completeness, not semantic acceptance.'};
+  fs.writeFileSync(output,JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 }

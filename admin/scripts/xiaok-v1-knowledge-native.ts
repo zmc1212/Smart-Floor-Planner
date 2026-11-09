@@ -19,7 +19,7 @@ import { safeText, type ActorContext } from '@/lib/assistant/contracts';
 import { wechatideNativeClient } from './wechatide-native-client';
 import { lockAssistantAcceptance } from './assistant-acceptance-safety.mjs';
 import { reviewBudget, reviewTokens, type RetainedReviewHold } from './assistant-review-budget';
-import { knowledgeExplanationProtocol, naturalKnowledgeProtocol, knowledgeQuantityScopeProtocol } from '@/lib/assistant/agent/knowledge-explanation';
+import { knowledgeExplanationProtocol, naturalKnowledgeProtocol, knowledgeQuantityScopeProtocol, sourceBoundaryValidationProtocol } from '@/lib/assistant/agent/knowledge-explanation';
 import { getPlatformLlmOverrideRuntime } from '@/lib/platform-llm-config';
 import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
 import { processAssistantRun } from '@/lib/assistant/application/worker';
@@ -28,6 +28,10 @@ import { assertNaturalContinuationState, loadNaturalContinuation } from './xiaok
 
 type Row=Record<string,any>;
 const naturalAnswer=process.argv.includes('--natural-answer');
+const qualityProof=process.argv.includes('--quality-proof');
+const sourceBoundary=process.argv.includes('--source-boundary');
+assert.ok(!qualityProof||naturalAnswer,'The bounded proof uses the natural-answer mechanism');
+assert.ok(!sourceBoundary||naturalAnswer,'Server source validation is explicit and natural-answer only');
 const continuationLabel=process.argv.find(v=>v.startsWith('--continue-natural-batch='))?.slice('--continue-natural-batch='.length);
 assert.ok(!continuationLabel||naturalAnswer,'Continuation is specific to the saved natural-answer fixture');
 const continuation=continuationLabel?loadNaturalContinuation(path.resolve('..'),continuationLabel):undefined;
@@ -36,6 +40,7 @@ const staffQuestions=['微云内部的精艺工艺复核资料里，电视墙线
 const generalQuestion='卫生间做干湿分离有什么好处？';
 const webQuestion='帮我查一下网上关于卫生间通风的建议，告诉我出处。';
 const naturalScope={protocol:naturalKnowledgeProtocol,model:'qwen3.8-flash',provider:'Beijing DashScope',thinkingDisabled:true,
+  ...(sourceBoundary?{answerValidation:sourceBoundaryValidationProtocol,semanticJudge:false}:{}),
   enterpriseId:'1454',internalSource:'417/423',customerSources:['404/410','405/411'],reindex:false,
   journeys:{customer:customerQuestions,shared:staffQuestions,general:[generalQuestion],web:[webQuestion]},
   trialsPerJourney:2,rounds:['HTTP','Stable'],maxNewRuns:16,maxModelCalls:80,maxNewCostMicros:null,
@@ -45,6 +50,8 @@ const naturalScope={protocol:naturalKnowledgeProtocol,model:'qwen3.8-flash',prov
   priorStoppedBatch:'authorized-original-20261105-01/environment-recovered',priorRemainingTurns:10,
   retainedFailures:['2202','D2=2'],retainedUnknown:'3753',semanticAcceptance:'requires transcript review',
   reuse:'77 focused regressions, service03-citations, unchanged tenant/revocation/failure coverage',
+  ...(qualityProof?{journeys:{shared:staffQuestions},rounds:['HTTP','HTTP'],maxNewRuns:6,maxModelCalls:30,
+    purpose:'Two fixed real shared conversations verify correction/WHY after task-scoped model input and semantic responsibility separation; native/general/web remain unverified'}:{}),
   ...(continuation?{maxNewRuns:14,maxModelCalls:70,continuation:{label:continuation.label,conversationId:continuation.conversationId,
     savedRuns:['2203','2204'],remainingCustomerHttpTurns:[3],originalScopeHash:continuation.scopeHash,
     originalReportRemainsFailed:true,noKnownOrUnknownReplay:true}}:{})};
@@ -87,19 +94,19 @@ let explanationConfig: { before: Row; opted: Row } | undefined;
 let platformConfig: { before: Row; opted: Row } | undefined;
 const ownedChats: Array<{ service: ConversationService; id: string }> = [];
 const knowledge=new KnowledgeService({enterpriseId:eid,adminId:'16'});
-const httpComplete=process.argv.includes('--http-complete'),httpOnly=process.argv.includes('--http-only')||httpComplete,nativePair=process.argv.includes('--native-pair');
+const httpComplete=process.argv.includes('--http-complete'),httpOnly=process.argv.includes('--http-only')||httpComplete||qualityProof,nativePair=process.argv.includes('--native-pair');
 const naturalExplanation=naturalAnswer||process.argv.includes('--natural-explanation');
 const explanationProtocol=naturalAnswer?naturalKnowledgeProtocol:knowledgeExplanationProtocol;
 const frameDiscriminator=process.argv.includes('--frame-discriminator');
 const boundedBusinessBatch=process.argv.includes('--bounded-business-batch');
 const reusedInternalId=process.argv.find(v=>v.startsWith('--reuse-internal-source='))?.slice('--reuse-internal-source='.length);
 const authorizedModel=process.argv.find(v=>v.startsWith('--authorized-model='))?.slice(19);
-assert.ok(!reusedInternalId||/^\d+$/.test(reusedInternalId)&&boundedBusinessBatch&&naturalExplanation,'Published source reuse belongs to the authorized original closure scope');
+assert.ok(!reusedInternalId||/^\d+$/.test(reusedInternalId)&&(boundedBusinessBatch||qualityProof)&&naturalExplanation,'Published source reuse belongs to the authorized fixed development scope');
 assert.ok(!authorizedModel||authorizedModel==='qwen3.8-flash'&&!!reusedInternalId,'Only the currently approved model may replace the historical trial binding');
 assert.ok(!frameDiscriminator||(naturalExplanation&&httpOnly),'Frame diagnosis is one HTTP-only engineering probe, never native/business acceptance');
 assert.ok(!boundedBusinessBatch||(naturalExplanation&&!httpOnly&&!frameDiscriminator&&!nativePair),'Closure batch is the two original journeys, HTTP first and native second, with no reused trial');
 assert.ok(!naturalExplanation||!httpComplete,'New semantic mechanism requires two fresh fixed trials; do not reuse the old excerpt journey');
-assert.ok(!naturalAnswer||(boundedBusinessBatch&&reusedInternalId==='417'&&authorizedModel==='qwen3.8-flash'),
+assert.ok(!naturalAnswer||((boundedBusinessBatch||qualityProof)&&reusedInternalId==='417'&&authorizedModel==='qwen3.8-flash'),
   'The natural-answer batch uses its fixed source/model and two complete rounds');
 function assertBinding(){
   const binding=JSON.parse(fs.readFileSync(path.join(output,'binding.json'),'utf8')).before;
@@ -177,7 +184,9 @@ async function settle(turn:Row){if(!turn.runId)return;const trace=await snapshot
   if(report.calls.some((c:Row)=>c.runId===turn.runId&&c.status!=='succeeded'))throw Error('New unknown provider outcome; fixed batch stopped');
   assert.equal(trace.run?.status,'succeeded',`Run ${turn.runId}: ${trace.run?.status}/${trace.run?.error_code}`);
   if(naturalExplanation){assert.equal((trace.run?.policy_snapshot as Row)?.sourceAnswerMode,explanationProtocol);
-    if(turn.sourceKind!=='general')assert.ok(turn.semanticReviews.some((r:Row)=>r.status==='succeeded'),'A source-backed answer needs its durable semantic review');}
+    if(sourceBoundary){assert.equal((trace.run?.policy_snapshot as Row)?.knowledgeAnswerValidation,sourceBoundaryValidationProtocol);
+      assert.equal(turn.semanticReviews.length,0,'Ordinary source answers must not dispatch a second model to grade themselves');}
+    else if(turn.sourceKind!=='general')assert.ok(turn.semanticReviews.some((r:Row)=>r.status==='succeeded'),'A source-backed answer needs its durable semantic review');}
   if(naturalAnswer)assert.equal((trace.run?.policy_snapshot as Row)?.knowledgeQuantityScope,knowledgeQuantityScopeProtocol);
   if(turn.sourceKind==='general'){
     assert.equal(trace.steps.filter(s=>s.kind==='retrieval').length,0,'General knowledge should not force retrieval');
@@ -286,7 +295,8 @@ async function main(){
   if(naturalExplanation)await step('temporary development-only explanation strategy',async()=>withTenantTransaction(eid,async tx=>{
     const settings=await one(tx,sql`select agent_config from app.assistant_enterprise_settings where enterprise_id=${eid} for update`);
     const before=settings!.agent_config as Row;assert.equal(before.model,'qwen3.7-flash');assert.equal(before.knowledgeExplanation,undefined);
-    const opted={...before,...(authorizedModel?{model:authorizedModel}:{}),knowledgeExplanation:explanationProtocol};
+    const opted={...before,...(authorizedModel?{model:authorizedModel}:{}),knowledgeExplanation:explanationProtocol,
+      ...(sourceBoundary?{knowledgeAnswerValidation:sourceBoundaryValidationProtocol}:{})};
     await tx.execute(sql`update app.assistant_enterprise_settings set agent_config=${JSON.stringify(opted)}::jsonb,version=version+1,updated_at=now() where enterprise_id=${eid}`);
     explanationConfig={before,opted};report.strategyOptIn={protocol:explanationProtocol,modelChanged:!!authorizedModel,model:opted.model,restored:false};return report.strategyOptIn;
   }));
@@ -348,7 +358,8 @@ async function main(){
   const customerChecks=naturalExplanation?[[/基层|地基/,/管根/,/堵漏宝|附加层/],[/管根|水管根部/,/渗|漏|衔接|接缝|薄弱/],[/闭水/,/合格|通过/,/贴砖|铺砖/,/干透|实干|保护层/]]
     :[[/基层|地基/,/防水坝|管根|清理/],[/管根/,/堵漏宝/,/附加层/],[/闭水/,/合格/,/贴砖|铺砖/,/干透|保护层/]];
   const sharedChecks=[[/大弯/,/穿线/,/维修|抽线/],[/铺.*管|铺管|铺设线管/,/穿线/,/抽|维修/],[/抽线|抽动|维修/,/先穿线|后铺管|铺设|顺序/]];
-  const rounds=boundedBusinessBatch?[{round:1,native:false,kinds:['customer','shared']},{round:2,native:true,kinds:['customer','shared']}]
+  const rounds=qualityProof?[{round:1,native:false,kinds:['shared']},{round:2,native:false,kinds:['shared']}]
+    :boundedBusinessBatch?[{round:1,native:false,kinds:['customer','shared']},{round:2,native:true,kinds:['customer','shared']}]
     :httpComplete?[{round:1,native:false,kinds:['shared']},{round:2,native:false,kinds:['customer','shared']}]
     :httpOnly?[{round:1,native:false,kinds:['customer','shared']}]:nativePair?[{round:2,native:true,kinds:['customer','shared']}]
     :[{round:1,native:true,kinds:['customer','shared']},{round:2,native:false,kinds:['customer','shared']}];
@@ -382,7 +393,7 @@ async function main(){
         if(frameDiscriminator){report.protocolDiscriminator={decoded:true,runId:turn.runId,businessAcceptance:false};return;}}
       trial.passed=trial.turns.every((t:Row)=>t.passed);save();
     }
-    if(naturalAnswer)for(const sourceKind of ['general','web']){
+    if(naturalAnswer&&!qualityProof)for(const sourceKind of ['general','web']){
       const extra=await customerChat.create(randomUUID()),extraId=String(extra.id);ownedChats.push({service:customerChat,id:extraId});
       report.ownedConversationIds=ownedChats.map(c=>c.id);
       const turn:Row={kind:'customer',sourceKind,role:'customer',question:sourceKind==='general'?generalQuestion:webQuestion,
@@ -399,7 +410,7 @@ async function main(){
     if(!httpOnly){const page=await identity(worker,'packages/construction/chat/chat?projectId='+pid);await wait(async()=>JSON.stringify((await page.data()).items).includes('原回答不再沿用'),'withdrawn derived answer');
       return capture('withdrawn-source-reentry','packages/construction/chat/chat');}
     const read=await api('/miniprogram/construction/projects/'+pid+'/chat',worker.token);assert.match(JSON.stringify(read),/原回答不再沿用/);return {httpReentry:true,sourceRevoked:true};});
-  report.passed=report.trials.length===(naturalAnswer?8:httpComplete?3:httpOnly||nativePair?2:4)&&report.trials.every((t:Row)=>t.passed);report.budgetAfter=reviewBudget(root).usedMicros;
+  report.passed=report.trials.length===(qualityProof?2:naturalAnswer?8:httpComplete?3:httpOnly||nativePair?2:4)&&report.trials.every((t:Row)=>t.passed);report.budgetAfter=reviewBudget(root).usedMicros;
   if(naturalAnswer){report.semanticAcceptance='pending transcript review';report.newConservativeCostMicros=reviewTokens(report.calls)*naturalScope.conservativeMicrosPerToken;}
 }
 main().catch(error=>{report.error=(error as Error).stack||String(error);process.exitCode=1;console.error((error as Error).message);}).finally(async()=>{
