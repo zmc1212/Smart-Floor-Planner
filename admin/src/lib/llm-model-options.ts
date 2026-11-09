@@ -1,6 +1,24 @@
+import { getZhipuModelFree } from './ai/providers/zhipu';
+import { getQiniuModelFree } from './ai/providers/qiniu';
+
 export interface LlmModelOption {
   value: string;
   label: string;
+}
+
+export function resolveLlmModelFree(input: {
+  baseUrl: string;
+  model: string;
+  catalogFree?: boolean | null;
+  local?: boolean;
+}) {
+  if (typeof input.catalogFree === 'boolean') return input.catalogFree;
+  if (input.local) return true;
+  return getZhipuModelFree(input.baseUrl, input.model) ?? getQiniuModelFree(input.baseUrl, input.model);
+}
+
+export function llmModelPriceLabel(free: boolean | null) {
+  return free === true ? '免费' : free === false ? '付费' : '价格未知';
 }
 
 export function isShorterModelPrefix(candidate: string, target: string) {

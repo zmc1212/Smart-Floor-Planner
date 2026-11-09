@@ -42,6 +42,8 @@ import { syncConstructionReminders } from '@/lib/construction/reminders';
 import { currentConstructionContact } from '@/lib/construction/customer';
 import { runRetryAwaitingReconciliation, runUsageReconciled, unresolvedProviderOutcome } from './usage-review';
 import { portfolioCopyBudget } from './model-task-budget';
+import { discoveryReplies } from './discovery';
+import { assistantDailyLimitsEnabled } from './daily-limits';
 import { reportContext, reportContextView, selectedReport } from '@/lib/construction/report-reference';
 import type { ReportCompositionScope } from '@/lib/construction/report-composition';
 
@@ -170,8 +172,8 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
     from app.assistant_quota_reservations where enterprise_id=${actor.enterpriseId} and status!='released'
     and (budget_date=(now() at time zone 'UTC')::date or status in ('held','reconciling'))`))!;
   const copyBudget = await portfolioCopyBudget(tx, actor.enterpriseId);
-  if (Number(budget.requests) + Number(copyBudget.requests) + 1 > Number(settings.daily_requests) || BigInt(String(budget.tokens)) + BigInt(String(copyBudget.tokens)) + BigInt(tokenReservation) > BigInt(String(settings.daily_tokens))
-      || BigInt(String(budget.cost)) + BigInt(String(copyBudget.cost)) + BigInt(costReservation) > BigInt(String(settings.daily_cost_micros))) fail('assistant_quota_exceeded', 429);
+  if (assistantDailyLimitsEnabled() && (Number(budget.requests) + Number(copyBudget.requests) + 1 > Number(settings.daily_requests) || BigInt(String(budget.tokens)) + BigInt(String(copyBudget.tokens)) + BigInt(tokenReservation) > BigInt(String(settings.daily_tokens))
+      || BigInt(String(budget.cost)) + BigInt(String(copyBudget.cost)) + BigInt(costReservation) > BigInt(String(settings.daily_cost_micros)))) fail('assistant_quota_exceeded', 429);
   const r = (await one(tx, sql`insert into app.assistant_runs(enterprise_id,conversation_id,trigger_kind,trigger_message_id,trigger_event_id,trigger_schedule_key,purpose,retry_of_run_id,policy_snapshot,context_revision,knowledge_epoch)
     values(${actor.enterpriseId},${String(c.id)},${trigger.kind},${trigger.kind === 'user_message' ? trigger.messageId : null},
     ${trigger.kind === 'domain_event' ? trigger.eventId : null},${trigger.kind === 'scheduled_task' ? trigger.occurrenceKey : null},${purpose},
@@ -326,8 +328,15 @@ export class ConversationService {
       const result = await rows(repo.tx, sql`select id,seq,author_kind,content,answer_kind,created_at,purpose from app.assistant_messages
         where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and seq<${beforeSeq}
         and ${c.purpose === 'construction_followup' ? sql`purpose is distinct from 'construction.report.facts'` : sql`true`} order by seq desc limit ${limit}`);
+      const discovery = this.actor.principal.kind === 'user' && c.purpose === 'customer_consultation'
+        ? await discoveryReplies(repo.tx, this.actor.enterpriseId, conversationId,
+          result.filter(message => message.author_kind === 'assistant').map(message => String(message.id))) : null;
       const items=[];
-      for(const message of result)items.push(await projectMessage(repo.tx,this.actor,c,message));
+      for (const message of result) {
+        const projected = await projectMessage(repo.tx, this.actor, c, message);
+        const intent = projected.available && discovery?.get(projected.id)?.intent;
+        items.push(intent && (intent.sites || intent.works) ? { ...projected, discovery: intent } : projected);
+      }
       return { items,
         nextCursor: result.length === limit ? String(result.at(-1)!.seq) : null };
     });

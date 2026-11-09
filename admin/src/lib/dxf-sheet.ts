@@ -218,20 +218,6 @@ export function mapSheetPoint(x: number, y: number, fit: SheetFitTransform) {
   };
 }
 
-/** @deprecated Prefer getFixedSheetLayout + fitDrawingToSheet. */
-export function computeSheetLayout(drawing: Box) {
-  const sheet = getFixedSheetLayout();
-  const fit = fitDrawingToSheet(drawing, sheet);
-  return {
-    ...sheet,
-    width: drawing.maxX - drawing.minX,
-    height: drawing.maxY - drawing.minY,
-    span: Math.max(drawing.maxX - drawing.minX, drawing.maxY - drawing.minY),
-    centerShift: { x: fit.offsetX, y: fit.offsetY },
-    fit,
-  };
-}
-
 function addRoundedRectangle(
   dxf: DxfWriterType,
   left: number,

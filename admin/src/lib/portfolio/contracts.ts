@@ -1,8 +1,13 @@
 import { fail, id } from '@/lib/assistant/contracts';
-import { EMPTY_WORK, LAYOUT_OPTIONS, SPACE_OPTIONS, TOUR_HOSTS } from './options';
+import { EMPTY_WORK, LAYOUT_OPTIONS, PORTFOLIO_DEFAULT_AVATARS, SPACE_OPTIONS, TOUR_HOSTS, type PortfolioDefaultAvatar } from './options';
+import { DEFAULT_PORTFOLIO_TEMPLATE, PORTFOLIO_TEMPLATES, type PortfolioTemplate } from './templates';
 
 export const PORTFOLIO_ROLES = ['super_admin', 'admin', 'enterprise_admin', 'designer'] as const;
 export type WorkImage = { assetId: string; kind: 'render' | 'photo'; aiGenerated: boolean; showroom: boolean; caption: string; space: string };
+export type WorkPlanComparison = {
+  originalAssetId: string | null; designAssetId: string | null; aligned: boolean;
+  changes: Array<{ title: string; text: string }>;
+};
 export type WorkContent = {
   title: string; description: string; primaryStyle: string; secondaryStyles: string[];
   cityCode: string; cityName: string; district: string; communityId: string | null;
@@ -10,6 +15,7 @@ export type WorkContent = {
   rightsUntil: string | null; highlights: string[]; materials: string[]; palette: Array<{ name: string; hex: string }>;
   tours: Array<{ url: string; provider: string; title: string }>; images: WorkImage[]; coverAssetId: string | null;
   showOnProfile: boolean; recommendable: boolean;
+  planComparison?: WorkPlanComparison;
 };
 export { EMPTY_WORK } from './options';
 export function object(value: unknown, keys: readonly string[]) {
@@ -51,6 +57,23 @@ function optionList(value: unknown, options: readonly string[]) {
 function shortList(value: unknown, maxItems: number, maxLength: number) {
   if (!Array.isArray(value) || value.length > maxItems) fail('invalid_portfolio', 422);
   return value.map(item => shortText(item, maxLength, true));
+}
+export function planComparison(value: unknown): WorkPlanComparison {
+  const v = object(value ?? {}, ['originalAssetId', 'designAssetId', 'aligned', 'changes']);
+  const originalAssetId = v.originalAssetId == null ? null : id(v.originalAssetId);
+  const designAssetId = v.designAssetId == null ? null : id(v.designAssetId);
+  const aligned = v.aligned === undefined ? false : flag(v.aligned);
+  const changes = v.changes ?? [];
+  if (!Array.isArray(changes) || changes.length > 6 || (originalAssetId && originalAssetId === designAssetId)
+    || ((!originalAssetId || !designAssetId) && (aligned || changes.length))) fail('invalid_portfolio', 422);
+  return { originalAssetId, designAssetId, aligned, changes: changes.map(item => {
+    const change = object(item, ['title', 'text']);
+    return { title: shortText(change.title, 60, true), text: shortText(change.text ?? '', 180) };
+  }) };
+}
+export function workAssetIds(content: Pick<WorkContent, 'images' | 'planComparison'>) {
+  return [...new Set([...content.images.map(image => image.assetId),
+    content.planComparison?.originalAssetId, content.planComparison?.designAssetId].filter((asset): asset is string => Boolean(asset)))];
 }
 export function workContent(value: unknown, complete = false): WorkContent {
   const v = object(value, Object.keys(EMPTY_WORK));
@@ -104,16 +127,21 @@ export function workContent(value: unknown, complete = false): WorkContent {
     cityCode: code, cityName: shortText(data.cityName, 50, complete), district: shortText(data.district, 100),
     communityId: data.communityId == null ? null : id(data.communityId), area, rooms: shortText(data.rooms, 30), layoutTypes,
     authorRole: shortText(data.authorRole, 100, complete), source: shortText(data.source, 500, complete), authorization: shortText(data.authorization, 500, complete),
-    rightsUntil, highlights, materials, palette, tours, images, coverAssetId, showOnProfile: flag(data.showOnProfile), recommendable: flag(data.recommendable),
+    rightsUntil, highlights, materials, palette, tours, images, coverAssetId, planComparison: planComparison(data.planComparison),
+    showOnProfile: flag(data.showOnProfile), recommendable: flag(data.recommendable),
   };
 }
-export type DesignerProfile = { bio: string; cities: Array<{ code: string; name: string; districts: string[] }>; styles: string[]; layoutSpecialties: string[]; featuredWorkIds: string[] };
+export type DesignerProfile = { template: PortfolioTemplate; defaultAvatar?: PortfolioDefaultAvatar; bio: string; cities: Array<{ code: string; name: string; districts: string[] }>; styles: string[]; layoutSpecialties: string[]; featuredWorkIds: string[] };
 export function designerProfile(value: unknown): DesignerProfile {
-  const v = object(value, ['bio', 'cities', 'styles', 'layoutSpecialties', 'featuredWorkIds']);
+  const v = object(value, ['template', 'defaultAvatar', 'bio', 'cities', 'styles', 'layoutSpecialties', 'featuredWorkIds']);
+  const template = v.template === undefined ? DEFAULT_PORTFOLIO_TEMPLATE : v.template;
+  if (!PORTFOLIO_TEMPLATES.some(option => option.value === template)) fail('invalid_portfolio', 422);
+  const avatar = PORTFOLIO_DEFAULT_AVATARS.find(option => option.value === v.defaultAvatar);
+  if (v.defaultAvatar !== undefined && !avatar) fail('invalid_portfolio', 422);
   if (!Array.isArray(v.cities) || v.cities.length > 10 || !Array.isArray(v.styles) || v.styles.length > 8 || !Array.isArray(v.featuredWorkIds) || v.featuredWorkIds.length > 12) fail('invalid_portfolio', 422);
   const layoutSpecialties = optionList(v.layoutSpecialties ?? [], LAYOUT_OPTIONS);
   if (layoutSpecialties.length > 6) fail('invalid_portfolio', 422);
-  return { bio: shortText(v.bio, 500), cities: v.cities.map(item => {
+  return { template: template as PortfolioTemplate, ...(avatar ? { defaultAvatar: avatar.value } : {}), bio: shortText(v.bio, 500), cities: v.cities.map(item => {
     const c = object(item, ['code', 'name', 'districts']);
     if (!Array.isArray(c.districts) || c.districts.length > 30) fail('invalid_portfolio', 422);
     return { code: cityCode(c.code), name: shortText(c.name, 50, true), districts: c.districts.map(d => shortText(d, 50, true)) };

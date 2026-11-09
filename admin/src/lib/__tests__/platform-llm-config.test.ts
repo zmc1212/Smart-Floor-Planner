@@ -10,8 +10,12 @@ import {
   parseSiliconFlowPricingPage,
   mergeSiliconFlowModelPrices,
   PLATFORM_LLM_CHAT_TIMEOUT_MS,
+  normalizeStoredConfig,
+  selectLlmSavedConnection,
+  normalizeLlmPurpose,
+  isVisionModel,
 } from '../platform-llm-config';
-import { isShorterModelPrefix, shouldShowLlmModelOption } from '../llm-model-options';
+import { isShorterModelPrefix, llmModelPriceLabel, resolveLlmModelFree, shouldShowLlmModelOption } from '../llm-model-options';
 
 function source(path: string) {
   return readFileSync(new URL(path, import.meta.url), 'utf8');
@@ -40,11 +44,34 @@ test('LLM runtime keeps one OpenAI-compatible v1 path segment', () => {
   );
 });
 
-test('LLM override is limited to the general chat logical model', () => {
+test('model overrides cover chat and vision independently, keeping image routing unchanged', () => {
   assert.equal(isPlatformLlmOverrideModelKey('chat.general'), true);
-  assert.equal(isPlatformLlmOverrideModelKey('vision.reference_analysis'), false);
+  assert.equal(isPlatformLlmOverrideModelKey('vision.reference_analysis'), true);
   assert.equal(isPlatformLlmOverrideModelKey('image.generate.standard'), false);
   assert.equal(isPlatformLlmOverrideModelKey('image.edit.standard'), false);
+});
+
+test('saved credentials require an exact provider and normalized endpoint match', () => {
+  const first = normalizeStoredConfig({ providerKey: 'first', baseUrl: 'https://first.invalid/v1', apiKeyEncrypted: 'cipher-first' });
+  const second = normalizeStoredConfig({ providerKey: 'second', baseUrl: 'https://second.invalid/v1', apiKeyEncrypted: 'cipher-second' });
+  assert.equal(selectLlmSavedConnection(first, { second }, 'second', second.baseUrl), second);
+  assert.equal(selectLlmSavedConnection(first, { second }, 'first', first.baseUrl), first);
+  assert.equal(selectLlmSavedConnection(first, { second }, 'second', first.baseUrl), null);
+  assert.equal(selectLlmSavedConnection(first, { second }, 'unknown', first.baseUrl), null);
+  assert.equal(selectLlmSavedConnection(first, { second }, 'first', 'https://changed.invalid/v1'), null);
+});
+
+test('purpose parsing preserves legacy chat clients and rejects unknown scopes', () => {
+  assert.equal(normalizeLlmPurpose(), 'chat');
+  assert.equal(normalizeLlmPurpose('vision'), 'vision');
+  assert.throws(() => normalizeLlmPurpose('image'), /用途无效/);
+});
+
+test('vision catalog hints include common model families without treating pure text as visual', () => {
+  for (const id of ['Qwen/Qwen2.5-VL-7B-Instruct', 'Qwen/Qwen3-VL-8B-Instruct', 'zai-org/GLM-4.5V', 'gpt-4o', 'gemini-2.5-pro', 'llava']) {
+    assert.equal(isVisionModel(id), true, id);
+  }
+  for (const id of ['deepseek-chat', 'Qwen/Qwen2.5-7B-Instruct', 'deepseek-ai/DeepSeek-R1']) assert.equal(isVisionModel(id), false, id);
 });
 
 test('LLM override reserves a longer timeout for reasoning chat models', () => {
@@ -98,7 +125,7 @@ test('model catalog normalizes OpenAI rows and honors explicit free metadata', (
   const rows = parseLlmModelCatalog({
     data: [
       { id: 'paid-model', owned_by: 'vendor', free: false },
-      { id: 'free-model', display_name: 'Free Model', pricing: { input: '0' } },
+      { id: 'free-model', display_name: 'Free Model', pricing: { input: '0', output: '0.00' } },
       { id: 'free-model', display_name: 'duplicate' },
     ],
   });
@@ -109,6 +136,57 @@ test('model catalog normalizes OpenAI rows and honors explicit free metadata', (
   assert.deepEqual(parseLlmModelCatalog({ data: rows }, true), [
     { id: 'free-model', label: 'Free Model', free: true, ownedBy: null },
   ]);
+});
+
+test('catalog pricing never treats partial zero rates, free-looking names or positive-rate conflicts as free', () => {
+  const payload = { data: [
+    { id: 'zero-input-paid-output', pricing: { input: 0, output: '0.5' } },
+    { id: 'paid-input-zero-output', pricing: { input: '0.1', output: 0 } },
+    { id: 'conflicting-free-flag', free: true, pricing: { prompt: '0', completion: '0.01' } },
+    { id: 'explicit-paid', free: false, pricing: { input: 0, output: 0 } },
+    { id: 'partial-zero', pricing: { input: '0' } },
+    { id: 'name-free', display_name: '免费体验' },
+    { id: 'invalid-price', pricing: { input: '', output: null } },
+    { id: 'negative-price', pricing: { input: -1, output: 0 } },
+    { id: 'decimal-zero', pricing: { input: '0.00', output: '0e-8' } },
+    { id: 'alias-zero', pricing: { prompt: 'free', completion: '免费' } },
+    { id: 'explicit-free', free: true },
+  ] };
+  assert.deepEqual(Object.fromEntries(parseLlmModelCatalog(payload).map((item) => [item.id, item.free])), {
+    'zero-input-paid-output': false,
+    'paid-input-zero-output': false,
+    'conflicting-free-flag': false,
+    'explicit-paid': false,
+    'partial-zero': null,
+    'name-free': null,
+    'invalid-price': null,
+    'negative-price': null,
+    'decimal-zero': true,
+    'alias-zero': true,
+    'explicit-free': true,
+  });
+  assert.deepEqual(parseLlmModelCatalog(payload, true).map((item) => item.id), [
+    'alias-zero', 'decimal-zero', 'explicit-free',
+  ]);
+});
+
+test('model price labels use exact official Zhipu tariffs, preserve upstream flags and keep proxy prices unknown', () => {
+  const baseUrl = 'https://open.bigmodel.cn/api/paas/v4';
+  for (const [model, label] of [
+    ['glm-4.7-flash', '免费'], ['glm-4.6v-flash', '免费'],
+    ['glm-4.7', '付费'], ['glm-4.6v', '付费'], ['glm-5.3', '付费'],
+    ['glm-5.3-flash', '付费'], ['glm-4.7-flashx', '付费'],
+    ['glm-4.7-flash-new-alias', '价格未知'], ['toString', '价格未知'],
+  ]) {
+    assert.equal(llmModelPriceLabel(resolveLlmModelFree({ baseUrl, model })), label, model);
+  }
+  assert.equal(resolveLlmModelFree({ baseUrl, model: 'glm-4.7-flash', catalogFree: false }), false);
+  assert.equal(resolveLlmModelFree({ baseUrl, model: 'glm-4.7', catalogFree: true }), true);
+  assert.equal(resolveLlmModelFree({ baseUrl, model: '__proto__' }), null);
+  assert.equal(resolveLlmModelFree({ baseUrl, model: 'constructor' }), null);
+  assert.equal(resolveLlmModelFree({ baseUrl: 'https://proxy.invalid/api/paas/v4', model: 'glm-4.7-flash' }), null);
+  assert.equal(resolveLlmModelFree({ baseUrl: 'https://open.bigmodel.cn.invalid/api/paas/v4', model: 'glm-4.7-flash' }), null);
+  assert.equal(resolveLlmModelFree({ baseUrl: 'http://localhost:11434/v1', model: 'installed-local-model', local: true }), true);
 });
 
 test('LLM settings route, menu, permission, migration, and secret boundary stay connected', () => {

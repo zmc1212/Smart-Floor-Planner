@@ -1,4 +1,11 @@
 import type { WorkContent } from './contracts';
+export const PORTFOLIO_DEFAULT_AVATARS = [
+  { value: 'neutral', label: '通用头像', file: 'neutral.png' },
+  { value: 'male', label: '男设计师头像', file: 'male.png' },
+  { value: 'female', label: '女设计师头像', file: 'female.png' },
+] as const;
+export type PortfolioDefaultAvatar = (typeof PORTFOLIO_DEFAULT_AVATARS)[number]['value'];
+export const DEFAULT_PORTFOLIO_AVATAR = PORTFOLIO_DEFAULT_AVATARS[0].value;
 export const STYLE_OPTIONS = ['原木风', '现代简约', '奶油风', '侘寂风', '新中式', '北欧', '法式', '轻奢', '其他'];
 export const LAYOUT_OPTIONS = ['小户型', '两居', '三居', '四居及以上', '大平层', '复式/跃层', '别墅', '旧房改造', '精装改造', '毛坯新房', '局部改造', '其他'];
 export const SPACE_OPTIONS = ['客厅', '餐厅', '主卧', '次卧', '儿童房', '书房', '厨房', '卫生间', '阳台', '玄关', '其他'];
@@ -22,5 +29,6 @@ export const EMPTY_WORK: WorkContent = {
   title: '', description: '', primaryStyle: '', secondaryStyles: [], cityCode: '', cityName: '', district: '', communityId: null,
   area: null, rooms: '', layoutTypes: [], authorRole: '', source: '', authorization: '', rightsUntil: null,
   highlights: [], materials: [], palette: [], tours: [], images: [], coverAssetId: null,
+  planComparison: { originalAssetId: null, designAssetId: null, aligned: false, changes: [] },
   showOnProfile: true, recommendable: true,
 };

@@ -35,7 +35,8 @@ export function planCommand(raw: string): PlanCommand | null {
 export const planStatusLabels: Record<string, string> = { pending_customer: '待你决定', deferred: '稍后决定', approved: '已同意这一版', declined: '未同意这一版', changes_requested: '已要求修改', withdrawn: '已撤回' };
 export function planText(p: PlanView) {
   return `方案${p.id} · V${p.number} · ${p.roomName} · ${planStatusLabels[p.status] || p.status}\n${p.title}\n差异：${p.difference}\n费用变化：${p.costDeltaCents >= 0 ? '+' : ''}${(p.costDeltaCents / 100).toFixed(2)}元；工期变化：${p.scheduleDeltaDays >= 0 ? '+' : ''}${p.scheduleDeltaDays}天。`
-    + (p.reason ? `\n客户说明：${p.reason}` : '') + '\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。';
+    + (p.reason ? `\n客户说明：${p.reason}` : '') + '\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。'
+    + '\n当前查询不包含工程验收、付款或结算凭据，不能据此确认这些状态。';
 }
 function customerPlanDto(p: PlanView) {
   const { id, issueId, number, previousVersionId, roomName, title, difference, costDeltaCents, scheduleDeltaDays, mediaId, revision, status, previewed, reason, hash } = p;

@@ -9,6 +9,7 @@ import { bailianBinding, bailianStructuredOutput } from '@/lib/ai/providers/bail
 import type { AiProviderRuntimeConfig } from '@/lib/ai/provider-types';
 import type { ModelTurnInput, ModelTurnOutput } from '@/lib/assistant/contracts/model';
 import { portfolioCopyBudget } from '@/lib/assistant/core/model-task-budget';
+import { assistantDailyLimitsEnabled } from '@/lib/assistant/core/daily-limits';
 import { portfolioAccess, type PortfolioActor } from './service';
 import { object, shortText, workContent } from './contracts';
 import { copyFacts, copyInput, copySource, parseCopy, portfolioCopyProtocol } from './copy-contract';
@@ -81,9 +82,9 @@ export class PortfolioCopyService {
         from app.assistant_quota_reservations where enterprise_id=${this.actor.enterpriseId} and status!='released'
         and (budget_date=(now() at time zone 'UTC')::date or status in ('held','reconciling'))`))!;
       const tokens = 16000, cost = 1000000; // Existing conservative hold; not a price or invoice.
-      if (Number(held.requests) + Number(chat.requests) + 1 > Number(settings.daily_requests)
+      if (assistantDailyLimitsEnabled() && (Number(held.requests) + Number(chat.requests) + 1 > Number(settings.daily_requests)
         || BigInt(String(held.tokens)) + BigInt(String(chat.tokens)) + BigInt(tokens) > BigInt(String(settings.daily_tokens))
-        || BigInt(String(held.cost)) + BigInt(String(chat.cost)) + BigInt(cost) > BigInt(String(settings.daily_cost_micros))) fail('assistant_quota_exceeded', 429);
+        || BigInt(String(held.cost)) + BigInt(String(chat.cost)) + BigInt(cost) > BigInt(String(settings.daily_cost_micros)))) fail('assistant_quota_exceeded', 429);
       const request = { workId, workVersion: current.work.version, sourceHash: current.sourceHash, facts, instruction, policyVersion: settings.policy_version };
       const task = (await one(tx, sql`insert into app.assistant_model_tasks(enterprise_id,created_by,operation_key,kind,binding,request,request_hash,reserved_tokens,reserved_cost_micros)
         values(${this.actor.enterpriseId},${this.actor.adminId},${operationKey},'portfolio_copy',${JSON.stringify(bound)}::jsonb,${JSON.stringify(request)}::jsonb,${requestHash},${tokens},${cost}) returning *`))!;

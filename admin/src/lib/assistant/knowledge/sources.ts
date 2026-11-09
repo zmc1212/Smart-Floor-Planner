@@ -13,6 +13,7 @@ import { siteResultRecords } from '@/lib/construction/site-results';
 import type { FileLocator } from '../contracts/source-file';
 import { fileQuoteSpans } from './source-file';
 import { parseWebCitationId, webCitationForAnswer } from '../agent/web-evidence';
+import { designerMessageProjection } from '@/lib/portfolio/designer-recommendation';
 export type PreviewPolicy={audience:'customer_public'|'staff_internal'|'all';drafts:Array<{id:string;documentId:string;hash:string;editVersion:number}>};
 export function previewPolicy(c:Row):PreviewPolicy {
   const value=(c.entry_snapshot as {preview?:PreviewPolicy})?.preview;
@@ -132,6 +133,8 @@ export async function projectMessage(tx:PostgresTransaction,actor:ActorContext,c
   const planProjection = await planMessageProjection(tx, actor.enterpriseId, String(c.id), String(message.id));
   const available=speech?.revoked !== true && planProjection?.available !== false && publicProjection?.available !== false && !(message.answer_kind==='grounded' && !projected.length) && projected.every(x=>x.available)
     && await agentMessageAvailable(tx, actor.enterpriseId, String(c.id), String(message.id),actor);
+  const designerRecommendation = available && actor.principal.kind === 'user'
+    ? await designerMessageProjection(tx, actor, String(c.id), String(message.id)) : null;
   return {id:String(message.id),seq:String(message.seq),authorKind:message.author_kind,answerKind:message.answer_kind ?? null,available,
     content:available?message.content:{version:1,blocks:[{type:'notice',code:'source_unavailable',fallbackText:'这条回答所依据的资料已不可用，请重新提问。'}]},
     citations:projected,createdAt:message.created_at,constructionReminder: available && message.purpose === 'construction.stage',
@@ -143,5 +146,6 @@ export async function projectMessage(tx:PostgresTransaction,actor:ActorContext,c
     siteWatch: available && message.purpose === 'construction.watch' ? await siteWatchProjection(tx, actor.enterpriseId, String(c.id), String(message.id)) : null,
     ...(available && publicProjection?.available ? { publicConsent: publicProjection.publicConsent || null, publicContext: publicProjection.publicContext || null, publicReferences: publicProjection.publicReferences || [] } : {}),
     ...(available && actor.principal.kind === 'user' ? { constructionContacts: await constructionMessageActions(tx, actor, String(c.id), String(message.id)) } : {}),
+    ...(available ? { designerRecommendation } : {}),
     ...(media ? { mediaId: String(media.id), mediaAvailable: !!media.available } : {}) };
 }

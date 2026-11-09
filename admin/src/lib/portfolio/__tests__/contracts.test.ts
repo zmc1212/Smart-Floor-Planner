@@ -1,10 +1,23 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { EMPTY_WORK, cityCode, designerProfile, inCity, tourUrl, workContent } from '../contracts';
+import { EMPTY_WORK, cityCode, designerProfile, inCity, tourUrl, workContent, workAssetIds } from '../contracts';
 import { AmapCommunityProvider, candidateToken, communityPoi, providerConfig, readCandidate } from '../community-provider';
 
 const valid = { ...EMPTY_WORK, title: '原木生活', description: '客餐厅和收纳方向', primaryStyle: '原木风', cityCode: '330100', cityName: '杭州市', authorRole: '主创', source: '本人原创', authorization: '已授权本组图片的作品展示和推荐',
   images: [{ assetId: '1', kind: 'render', aiGenerated: true, showroom: false, caption: '' }], coverAssetId: '1' };
+test('plan comparison preserves legacy defaults and validates paired roles and annotation scope', () => {
+  assert.deepEqual(workContent({ title: '旧作品' }).planComparison, { originalAssetId: null, designAssetId: null, aligned: false, changes: [] });
+  const plans = { originalAssetId: '2', designAssetId: '3', aligned: true, changes: [{ title: '客餐连通', text: '设计师填写的说明' }] };
+  assert.deepEqual(workContent({ ...valid, planComparison: plans }, true).planComparison, plans);
+  assert.deepEqual(workAssetIds(workContent({ ...valid, planComparison: plans })), ['1', '2', '3']);
+  assert.equal(workContent({ ...valid, planComparison: { originalAssetId: '2' } }).planComparison?.designAssetId, null);
+  for (const planComparison of [
+    { ...plans, designAssetId: '2' }, { ...plans, originalAssetId: 'other' }, { ...plans, aligned: 'yes' },
+    { ...plans, designAssetId: null }, { ...plans, changes: Array(7).fill({ title: '太多', text: '' }) },
+    { ...plans, changes: [{ title: '', text: '' }] }, { ...plans, originalUrl: 'https://unapproved.example/' },
+  ]) assert.throws(() => workContent({ ...valid, planComparison }));
+});
+
 test('publication requires rights/cover; AI/photo roles and source metadata are validated without guessing', () => {
   assert.deepEqual(workContent(valid, true).images[0], { ...valid.images[0], space: '' });
   for (const content of [{ ...valid, authorization: '' }, { ...valid, images: [] }, { ...valid, coverAssetId: '2' }, { ...valid, secondaryStyles: ['原木风'] }, { ...valid, rightsUntil: '2020-01-01T00:00:00Z' }, { ...valid, images: [{ ...valid.images[0], kind: 'photo' }] }, { ...valid, images: [{ ...valid.images[0], showroom: true }] }, { ...valid, source: 'x\0' }, { ...valid, unexpected: true }]) assert.throws(() => workContent(content, true));
@@ -42,6 +55,13 @@ test('designer profile adds bounded layout specialties and still rejects unknown
   assert.deepEqual(designerProfile(profile).layoutSpecialties, []);
   assert.deepEqual(designerProfile({ ...profile, layoutSpecialties: ['三居', '大平层'] }).layoutSpecialties, ['三居', '大平层']);
   for (const value of [{ ...profile, layoutSpecialties: ['不存在'] }, { ...profile, layoutSpecialties: ['三居', '三居'] }, { ...profile, layoutSpecialties: Array(7).fill('三居') }, { ...profile, displayName: 'fake' }]) assert.throws(() => designerProfile(value));
+});
+
+test('profile templates default legacy records to the original gallery and reject unregistered values', () => {
+  const legacy = { bio: '真实自述', cities: [], styles: [], featuredWorkIds: [] };
+  assert.equal(designerProfile(legacy).template, 'gallery');
+  for (const template of ['gallery', 'notebook']) assert.equal(designerProfile({ ...legacy, template }).template, template);
+  for (const template of ['', null, 'other', {}, ['notebook']]) assert.throws(() => designerProfile({ ...legacy, template }));
 });
 test('city boundaries distinguish same-name cities, districts and municipalities', () => {
   assert.equal(cityCode('330100'), '330100'); assert.equal(cityCode('110000'), '110000');

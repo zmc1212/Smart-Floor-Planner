@@ -2,9 +2,10 @@ export const AI_CAPABILITIES = ['chat', 'vision', 'image.generate', 'image.edit'
 export type AiCapability = (typeof AI_CAPABILITIES)[number];
 
 export const PLATFORM_LLM_OVERRIDE_PROVIDER_KEY = 'llm-settings-override';
+export const PLATFORM_VLM_OVERRIDE_PROVIDER_KEY = 'vlm-settings-override';
 
 export function isPlatformLlmOverrideProvider(key: unknown) {
-  return key === PLATFORM_LLM_OVERRIDE_PROVIDER_KEY;
+  return key === PLATFORM_LLM_OVERRIDE_PROVIDER_KEY || key === PLATFORM_VLM_OVERRIDE_PROVIDER_KEY;
 }
 
 export const LOGICAL_MODEL_KEYS = [

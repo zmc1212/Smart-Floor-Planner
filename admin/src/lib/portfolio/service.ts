@@ -5,13 +5,14 @@ import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { AssistantError, fail, fingerprint, id, key, type ActorContext } from '@/lib/assistant/contracts';
 import { idempotent } from '@/lib/assistant/core/conversation';
 import { expected } from '@/lib/assistant/knowledge/service';
-import { EMPTY_WORK, cityCode, designerProfile, object, shortText, workContent, type WorkContent } from './contracts';
+import { EMPTY_WORK, cityCode, designerProfile, object, shortText, workContent, workAssetIds, type WorkContent } from './contracts';
 import { candidateToken, readCandidate, type CommunityPoi, type CommunityProviderConfig } from './community-provider';
 import { getCommunityRuntimeConfig } from '@/lib/map-services/config';
 import { createCommunityProvider, type CommunityProvider } from '@/lib/map-services/providers';
 import { publicProfessionalForRow } from './public-query';
 import { assertCopyCurrent, copyWork } from './copy-service';
 import { copySource, type PortfolioCopy } from './copy-contract';
+import { contactEditorView, saveContact, storedContact } from './public-contact';
 
 export type PortfolioActor = { enterpriseId: string; adminId: string };
 export async function portfolioAccess(tx: PostgresTransaction, actor: PortfolioActor) {
@@ -24,6 +25,11 @@ export async function portfolioAccess(tx: PostgresTransaction, actor: PortfolioA
 const workFields = sql`w.id,w.kind,w.author_id,w.head_version_id,w.published_version_id,w.withdrawn,w.version,w.updated_at`;
 function workDto(w: Row) { return { ...w, id: String(w.id), author_id: w.author_id == null ? null : String(w.author_id), head_version_id: String(w.head_version_id), published_version_id: w.published_version_id == null ? null : String(w.published_version_id) }; }
 function checkVersion(w: Row, value: unknown) { if (expected(value) !== Number(w.version)) fail('version_conflict'); }
+function templateRef(raw: unknown): { source: 'platform' | 'enterprise'; templateId: string } {
+  const match = /^(platform|enterprise)-([1-9]\d*)$/.exec(String(raw ?? ''));
+  if (!match) fail('portfolio_template_not_found', 404);
+  return { source: match[1] as 'platform' | 'enterprise', templateId: match[2] };
+}
 async function author(tx: PostgresTransaction, eid: string, aid: unknown) {
   const found = await one(tx, sql`select id,display_name,professional_profile_locked from app.admin_users where enterprise_id=${eid} and id=${id(aid)} and role='designer' and status='active' for share`);
   if (!found) fail('portfolio_author_unavailable', 422);
@@ -36,7 +42,7 @@ async function validateContent(tx: PostgresTransaction, eid: string, wid: string
     if (!c) fail('community_candidate_invalid', 422);
   }
   const assets = await rows(tx, sql`select id from app.portfolio_assets where enterprise_id=${eid} and work_id=${wid}`);
-  if (content.images.some(i => !assets.some(a => String(a.id) === i.assetId))) fail('portfolio_asset_unavailable', 422);
+  if (workAssetIds(content).some(assetId => !assets.some(a => String(a.id) === assetId))) fail('portfolio_asset_unavailable', 422);
 }
 async function prepareImage(raw: unknown) {
   if (typeof raw !== 'string' || raw.length > 5600000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(raw)) fail('invalid_portfolio_image', 422);
@@ -94,10 +100,10 @@ export class PortfolioService {
     }
     return withTenantTransaction(eid, async tx => {
       const manager = await portfolioAccess(tx, a);
-      const read = ['list', 'detail', 'asset', 'authors', 'profile', 'portrait', 'communities', 'communityRequests'].includes(action);
+      const read = ['list', 'detail', 'asset', 'authors', 'profile', 'profileContactQr', 'portrait', 'communities', 'communityRequests', 'templates', 'templateDetail', 'templateAsset'].includes(action);
       const run = async (): Promise<Row> => {
         if (action === 'authors') {
-          const items = await rows(tx, sql`select a.id,a.display_name,a.professional_title,a.professional_career_start_year,a.professional_title_visible,
+          const items = await rows(tx, sql`select a.id,a.display_name,a.professional_title,a.professional_career_start_year,a.professional_title_visible,e.name as enterprise_name,
             a.professional_title_admin_override,a.professional_profile_locked,a.professional_show_actual_service_count,
             e.professional_designer_title,e.professional_measurer_title,e.professional_default_experience_years,
             e.professional_service_threshold,e.professional_force_enterprise_profile,e.professional_title_visibility_policy,
@@ -130,19 +136,35 @@ export class PortfolioService {
               consent_at=excluded.consent_at,consent_by=excluded.consent_by,updated_at=now()`);
           return { updated: true };
         }
-        if (action === 'profile' || action === 'saveProfile') {
+        if (action === 'profile' || action === 'saveProfile' || action === 'profileContactQr') {
           if (!manager && input.authorId !== undefined && input.authorId !== a.adminId) fail('portfolio_forbidden', 403);
           const aid = manager ? id(input.authorId) : a.adminId; await author(tx, eid, aid);
           // Lock the logical profile even before its first row exists, so two
           // first saves cannot both accept expectedVersion=0 and overwrite.
           if (action === 'saveProfile') await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`portfolio-profile:${eid}:${aid}`},0))`);
-          const profile = await one(tx, sql`select content,version from app.portfolio_profiles where enterprise_id=${eid} and author_id=${aid} for update`);
-          if (action === 'profile') return profile || { content: { bio: '', cities: [], styles: [], featuredWorkIds: [] }, version: 0 };
+          const profile = await one(tx, sql`select content-'contact' as content,content->'contact' as contact,version
+            from app.portfolio_profiles where enterprise_id=${eid} and author_id=${aid} ${action === 'saveProfile' ? sql`for update` : sql`for share`}`);
+          const previous = storedContact(profile?.contact);
+          if (action === 'profileContactQr') {
+            if (!previous.qrImageBase64) fail('portfolio_not_found', 404);
+            return { image_base64: previous.qrImageBase64 };
+          }
+          if (action === 'profile') return { content: designerProfile(profile?.content || { bio: '', cities: [], styles: [], featuredWorkIds: [] }),
+            contact: contactEditorView(previous), version: profile?.version || 0 };
           if (input.expectedVersion !== Number(profile?.version || 0)) fail('version_conflict');
           const content = designerProfile(input.content);
+          // Older editors can save the rest of the profile without changing its display choices.
+          if (profile) {
+            const existing = designerProfile(profile.content);
+            if (!Object.hasOwn(input.content as object, 'template')) content.template = existing.template;
+            if (content.defaultAvatar === undefined && existing.defaultAvatar) content.defaultAvatar = existing.defaultAvatar;
+          }
           for (const wid of content.featuredWorkIds) if (!await one(tx, sql`select id from app.portfolio_works where enterprise_id=${eid} and id=${wid} and author_id=${aid} and kind='designer_work'`)) fail('portfolio_forbidden', 403);
-          return (await one(tx, sql`insert into app.portfolio_profiles(enterprise_id,author_id,content) values(${eid},${aid},${JSON.stringify(content)}::jsonb)
-            on conflict(enterprise_id,author_id) do update set content=excluded.content,version=app.portfolio_profiles.version+1,updated_at=now() returning content,version`))!;
+          const contact = input.contact === undefined ? previous : await saveContact(input.contact, previous, a.adminId, prepareImage);
+          const stored = { ...content, ...(profile?.contact || input.contact !== undefined ? { contact } : {}) };
+          const saved = (await one(tx, sql`insert into app.portfolio_profiles(enterprise_id,author_id,content) values(${eid},${aid},${JSON.stringify(stored)}::jsonb)
+            on conflict(enterprise_id,author_id) do update set content=excluded.content,version=app.portfolio_profiles.version+1,updated_at=now() returning version`))!;
+          return { content, contact: contactEditorView(contact), version: saved.version };
         }
         if (action === 'communities') {
           const code = cityCode(input.cityCode), query = shortText(input.query ?? '', 50), selected = input.communityId ? id(input.communityId) : null;
@@ -184,6 +206,85 @@ export class PortfolioService {
             on conflict(enterprise_id,provider,provider_poi_id) do update set provider_poi_id=excluded.provider_poi_id returning id,name,city_code,city_name,district,address,provider`))!;
           return c;
         }
+        if (action === 'templates') {
+          const limit = input.limit === undefined ? 50 : expected(input.limit); if (limit > 100) fail('invalid_portfolio', 422);
+          const query = shortText(input.query ?? '', 50), style = shortText(input.style ?? '', 30), layout = shortText(input.layoutType ?? '', 30);
+          const platform = await rows(tx, sql`select t.id,t.key,t.title,t.description,t.primary_style,t.layout_types,t.rooms,t.area,t.city_name,t.district,t.status,t.sort_order,
+              (select a.id from app.platform_portfolio_template_assets a where a.template_id=t.id order by a.position,a.id limit 1) as cover_asset_id,
+              (select count(*) from app.platform_portfolio_template_assets a where a.template_id=t.id) as asset_count
+            from app.platform_portfolio_templates t where t.status='published'
+              and (${style}='' or t.primary_style=${style})
+              and (${query}='' or strpos(t.title,${query})>0 or strpos(t.description,${query})>0)
+              and (${layout}='' or t.layout_types ? ${layout})
+            order by t.sort_order, t.id desc limit ${limit}`);
+          const local = await rows(tx, sql`select t.id,t.key,t.title,t.description,t.primary_style,t.layout_types,t.rooms,t.area,t.city_name,t.district,t.status,t.sort_order,
+              (select a.id from app.portfolio_template_assets a where a.enterprise_id=t.enterprise_id and a.template_id=t.id order by a.position,a.id limit 1) as cover_asset_id,
+              (select count(*) from app.portfolio_template_assets a where a.enterprise_id=t.enterprise_id and a.template_id=t.id) as asset_count
+            from app.portfolio_templates t where t.enterprise_id=${eid} and t.status='published'
+              and (${style}='' or t.primary_style=${style})
+              and (${query}='' or strpos(t.title,${query})>0 or strpos(t.description,${query})>0)
+              and (${layout}='' or t.layout_types ? ${layout})
+            order by t.sort_order, t.id desc limit ${limit}`);
+          const normalize = (item: Row, scope: 'platform' | 'enterprise') => ({ ...item, id: scope + '-' + String(item.id), scope,
+            cover_asset_id: item.cover_asset_id == null ? null : String(item.cover_asset_id), asset_count: Number(item.asset_count), sort_order: Number(item.sort_order) });
+          const items = [...platform.map(item => normalize(item, 'platform')), ...local.map(item => normalize(item, 'enterprise'))]
+            .sort((left, right) => (Number(left.sort_order) - Number(right.sort_order)) || (Number(String(right.id).split('-').pop()) - Number(String(left.id).split('-').pop())))
+            .slice(0, limit);
+          return { items };
+        }
+        if (action === 'templateDetail') {
+          const ref = templateRef(input.templateId);
+          const template = ref.source === 'platform'
+            ? await one(tx, sql`select * from app.platform_portfolio_templates where id=${ref.templateId} and status='published'`)
+            : await one(tx, sql`select * from app.portfolio_templates where enterprise_id=${eid} and id=${ref.templateId} and status='published'`);
+          if (!template) fail('portfolio_template_not_found', 404);
+          const images = ref.source === 'platform'
+            ? await rows(tx, sql`select id,space,position,content_hash from app.platform_portfolio_template_assets where template_id=${ref.templateId} order by position,id`)
+            : await rows(tx, sql`select id,space,position,content_hash from app.portfolio_template_assets where enterprise_id=${eid} and template_id=${ref.templateId} order by position,id`);
+          return { template: { ...template, id: String(input.templateId), scope: ref.source }, images: images.map(image => ({ ...image, id: String(image.id) })) };
+        }
+        if (action === 'templateAsset') {
+          const ref = templateRef(input.templateId);
+          const asset = ref.source === 'platform'
+            ? await one(tx, sql`select a.image_base64 from app.platform_portfolio_template_assets a
+                join app.platform_portfolio_templates t on t.id=a.template_id
+                where a.template_id=${ref.templateId} and a.id=${id(input.assetId)} and t.status='published'`)
+            : await one(tx, sql`select a.image_base64 from app.portfolio_template_assets a
+                join app.portfolio_templates t on t.enterprise_id=a.enterprise_id and t.id=a.template_id
+                where a.template_id=${ref.templateId} and a.id=${id(input.assetId)} and t.status='published' and t.enterprise_id=${eid}`);
+          if (!asset) fail('portfolio_template_not_found', 404); return asset;
+        }
+        if (action === 'instantiateTemplate') {
+          const ref = templateRef(input.templateId);
+          const template = ref.source === 'platform'
+            ? await one(tx, sql`select * from app.platform_portfolio_templates where id=${ref.templateId} and status='published'`)
+            : await one(tx, sql`select * from app.portfolio_templates where enterprise_id=${eid} and id=${ref.templateId} and status='published' for update`);
+          if (!template) fail('portfolio_template_not_found', 404);
+          if (!manager && input.authorId !== undefined && input.authorId !== a.adminId) fail('portfolio_forbidden', 403);
+          const aid = manager ? id(input.authorId) : a.adminId;
+          await author(tx, eid, aid);
+          const sources = ref.source === 'platform'
+            ? await rows(tx, sql`select image_base64,content_hash,space from app.platform_portfolio_template_assets where template_id=${ref.templateId} order by position,id`)
+            : await rows(tx, sql`select image_base64,content_hash,space from app.portfolio_template_assets where enterprise_id=${eid} and template_id=${ref.templateId} order by position,id`);
+          if (!sources.length) fail('portfolio_template_invalid', 422);
+          const base = workContent(template.content);
+          const w = (await one(tx, sql`insert into app.portfolio_works(enterprise_id,kind,author_id,created_by,updated_by) values(${eid},'designer_work',${aid},${a.adminId},${a.adminId}) returning *`))!;
+          const images: WorkContent['images'] = []; let coverAssetId = ''; const seen = new Set<string>();
+          for (const source of sources) {
+            if (seen.has(String(source.content_hash))) continue;
+            seen.add(String(source.content_hash));
+            const asset = (await one(tx, sql`insert into app.portfolio_assets(enterprise_id,work_id,image_base64,content_hash) values(${eid},${String(w.id)},${source.image_base64},${source.content_hash}) returning id`))!;
+            images.push({ assetId: String(asset.id), kind: 'render', aiGenerated: true, showroom: false, caption: `${String(template.title)}·${String(source.space)}效果图`.slice(0, 100), space: String(source.space) });
+            if (!coverAssetId) coverAssetId = String(asset.id);
+          }
+          const content = workContent({ ...base, images, coverAssetId });
+          if (Buffer.byteLength(JSON.stringify(content), 'utf8') > 24000) fail('invalid_portfolio', 422);
+          await validateContent(tx, eid, String(w.id), content);
+          const v = (await one(tx, sql`insert into app.portfolio_versions(enterprise_id,work_id,number,content) values(${eid},${String(w.id)},1,${JSON.stringify(content)}::jsonb) returning id`))!;
+          await tx.execute(sql`update app.portfolio_works set head_version_id=${String(v.id)} where enterprise_id=${eid} and id=${String(w.id)}`);
+          await tx.execute(sql`insert into app.portfolio_audits(enterprise_id,work_id,version_id,actor_id,action,note) values(${eid},${String(w.id)},${String(v.id)},${a.adminId},'instantiateTemplate',${'template:' + String(input.templateId)})`);
+          return { id: String(w.id), version: 1 };
+        }
         if (action === 'list') {
           const limit = input.limit === undefined ? 20 : expected(input.limit); if (limit > 100) fail('invalid_portfolio', 422);
           if (input.status && !['draft', 'submitted', 'returned', 'published', 'withdrawn'].includes(String(input.status))) fail('invalid_portfolio', 422);
@@ -209,7 +310,7 @@ export class PortfolioService {
           if (aid) await author(tx, eid, aid);
           const content = workContent(input.content ?? EMPTY_WORK);
           if (Buffer.byteLength(JSON.stringify(content), 'utf8') > 24000) fail('invalid_portfolio', 422);
-          if (content.images.length) fail('invalid_portfolio', 422);
+          if (workAssetIds(content).length) fail('invalid_portfolio', 422);
           const w = (await one(tx, sql`insert into app.portfolio_works(enterprise_id,kind,author_id,created_by,updated_by) values(${eid},${String(kind)},${aid},${a.adminId},${a.adminId}) returning *`))!;
           const v = (await one(tx, sql`insert into app.portfolio_versions(enterprise_id,work_id,number,content) values(${eid},${String(w.id)},1,${JSON.stringify(content)}::jsonb) returning id`))!;
           await tx.execute(sql`update app.portfolio_works set head_version_id=${String(v.id)} where enterprise_id=${eid} and id=${String(w.id)}`);
@@ -261,7 +362,10 @@ export class PortfolioService {
             where enterprise_id=${eid} and id=${String(task.id)}`);
         } else if (action === 'save') {
           if (!['draft', 'returned'].includes(String(v.status))) fail('portfolio_draft_required');
-          content = workContent(input.content); await validateContent(tx, eid, wid, content);
+          const incoming = workContent(input.content);
+          // Older editors must not erase a reviewed plan pair while editing unrelated fields.
+          if (!Object.hasOwn(input.content as object, 'planComparison')) incoming.planComparison = content.planComparison;
+          content = incoming; await validateContent(tx, eid, wid, content);
           await tx.execute(sql`update app.portfolio_versions set content=${JSON.stringify(content)}::jsonb,status='draft',review_note='' where enterprise_id=${eid} and id=${String(v.id)}`);
         } else if (action === 'submit' || action === 'publish') {
           if ((action === 'submit' && !['draft', 'returned'].includes(String(v.status))) || (action === 'publish' && (!manager || v.status !== 'submitted'))) fail('portfolio_forbidden', 403);

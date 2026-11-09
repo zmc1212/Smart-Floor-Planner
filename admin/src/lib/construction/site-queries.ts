@@ -10,7 +10,7 @@ import { readSiteActionResponse } from './site-actions';
 
 /** Conservative, bounded routing before any record/job is created. Ambiguity has no business side effect. */
 export function siteMessageIntent(raw: string, photoCount: number): 'report' | 'query' | 'request' | 'clarify' {
-  if (/(?:帮我|请|麻烦|给我)?(?:找(?:下|一下|出)?|查(?:下|一下|询|找)?|看看|看一下|调取|检索).*(?:图纸|需求|资料|原话|照片|记录|事项)|(?:图纸|需求|资料|记录|事项).*(?:在哪|哪里|有没有|进展|状态|谁|下文)|[？?]|(?:怎么|如何|是否|能否|能不能|在等谁|有没有下文)|(?:吗|么|呢)[。\s]*$/.test(raw)) return 'query';
+  if (/(?:帮我|请|麻烦|给我)?(?:找(?:下|一下|出)?|查(?:下|一下|询|找)?|看看|看一下|调取|检索).*(?:图纸|需求|资料|原话|照片|记录|事项)|(?:图纸|需求|资料|记录|事项).*(?:在哪|哪里|有没有|进展|状态|谁|下文)|[？?]|(?:怎么|什么|如何|是否|能否|能不能|在等谁|有没有下文)|(?:吗|么|呢)[。\s]*$/.test(raw)) return 'query';
   if (/(?:请|帮我|麻烦).*(?:跟进|处理|转交|取消)|(?:接手|转交|取消|回复|跟进)事项|(?:这件事|这条事项).*(?:我来|转交|取消|回复)/.test(raw)) return 'request';
   if (/^(?:收到|好的?|可以|谢谢|嗯|知道了)[。！!\s]*$/.test(raw)) return 'clarify';
   if (!raw && photoCount || /(?:今天|现场|已经|已完成|铺好|做好|装好|还没|尚未|未完成|未施工|等待.{0,20}核对|待(?:人工)?核对|待确认|待沟通|完成了|施工进展)/.test(raw)) return 'report';

@@ -140,37 +140,3 @@ export async function withPlatformB2BTenantContext<T>(
     () => handler(b2bContext)
   );
 }
-
-/**
- * Generates a MongoDB query filter based on the current user's role and enterprise.
- * @param context TenantContext
- * @param options optional overrides
- * @deprecated 使用 withTenantContext + multiTenantPlugin 替代此方法
- */
-export function getTenantFilter(context: TenantContext, options: {
-  enterpriseField?: string;
-  staffField?: string;
-} = {}) {
-  const { enterpriseField = 'enterpriseId', staffField = 'staffField' } = options;
-
-  // Super Admins & System Admins see everything
-  if (context.role === 'super_admin' || context.role === 'admin') {
-    return {};
-  }
-
-  // Enterprise Admins see everything in their company
-  if (context.role === 'enterprise_admin') {
-    return { [enterpriseField]: context.enterpriseId };
-  }
-
-  // Designers and Sales see only their own data
-  if (context.role === 'designer' || context.role === 'salesperson' || context.role === 'measurer') {
-    return {
-      [enterpriseField]: context.enterpriseId,
-      [staffField]: context.userId
-    };
-  }
-
-  // Fallback: No access
-  return { _id: null };
-}

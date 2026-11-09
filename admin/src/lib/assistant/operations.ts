@@ -6,6 +6,7 @@ import { withTenantTransaction, type PostgresTransaction } from '@/db/transactio
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, type ActorContext } from './contracts';
 import { usageWindow } from './core/usage';
+import { assistantDailyLimitsEnabled } from './core/daily-limits';
 import { EMBEDDING_PROFILE } from './infrastructure/embedding-gateway';
 import { workerTiming } from './infrastructure/job-queue';
 
@@ -335,7 +336,7 @@ export class OperationsService {
         count(*) filter(where status in ('succeeded','failed','cancelled','indeterminate'))::text terminal_runs,
         count(*) filter(where status='succeeded' and answer_kind='grounded')::text grounded_runs,
         count(*) filter(where status='succeeded' and answer_kind='insufficient_evidence')::text insufficient_runs,
-        count(*) filter(where status in ('succeeded','failed','cancelled','indeterminate') and error_code='invalid_model_citation')::text citation_failures
+        count(*) filter(where status in ('succeeded','failed','cancelled','indeterminate') and error_code in ('invalid_model_citation','missing_citation'))::text citation_failures
         from app.assistant_runs where enterprise_id=${eid}
         and created_at>=${window.from}::date::timestamp at time zone 'UTC'
         and created_at<${window.to}::date::timestamp at time zone 'UTC'`);
@@ -396,7 +397,7 @@ export class OperationsService {
         configuration: {
           enabled: Boolean(settings.enabled),
           retentionDays: bigintString(settings.retention_days),
-          limits: { requests: bigintString(settings.daily_requests), tokens: bigintString(settings.daily_tokens), costMicros: bigintString(settings.daily_cost_micros) },
+          limits: { enforced: assistantDailyLimitsEnabled(), requests: bigintString(settings.daily_requests), tokens: bigintString(settings.daily_tokens), costMicros: bigintString(settings.daily_cost_micros) },
           currency: String(settings.budget_currency),
         },
         queue: { ...queue, backlog: sumStrings([queue.queued, queue.running]) },
@@ -439,7 +440,7 @@ export class OperationsService {
           queue: 'Tenant-scoped queued/running assistant jobs; oldest age is measured from job creation.',
           latency: 'Total terminal run duration is measured from created_at to completed_at and includes queue wait; processing duration is started_at to completed_at. First-token latency is unavailable because the gateway is non-streaming.',
           insufficientEvidence: 'insufficient_evidence runs divided by succeeded runs with grounded or insufficient_evidence answer kinds.',
-          citationFailures: 'Runs that ended with invalid_model_citation; historical citation withdrawal is not counted as a provider failure.',
+          citationFailures: 'Runs that ended with invalid_model_citation or missing_citation; historical citation withdrawal is not counted as a provider failure.',
           unknownCosts: 'Tenant quota reservations in reconciling state; amounts remain reserved until reviewed.',
           worker: 'Heartbeat freshness is derived from the worker success file; it is not a live process or provider probe.',
           retrieval: 'Embedding retrieval reports configuration presence only; health remains unknown because this snapshot does not probe the provider.',

@@ -3,9 +3,14 @@ import type { ProviderHttpDiagnostic } from '../provider-types';
 
 const codes = new Set(['invalid_request_error', 'invalid_api_key', 'insufficient_quota', 'model_not_found',
   'unsupported_parameter', 'invalid_parameter', 'context_length_exceeded', 'rate_limit_exceeded',
-  'invalid_value', 'invalid_type', 'missing_required_parameter', 'invalid_function_parameters', 'tool_use_failed']);
+  'invalid_value', 'invalid_type', 'missing_required_parameter', 'invalid_function_parameters', 'tool_use_failed',
+  // Model Studio documents these stable codes separately from HTTP403. Keep
+  // them without storing provider prose, which may echo private input.
+  // https://help.aliyun.com/en/model-studio/error-code
+  'AccessDenied', 'access_denied', 'AccessDenied.Unpurchased', 'App.AccessDenied', 'Workspace.AccessDenied',
+  'Endpoint.AccessDenied', 'AllocationQuota.FreeTierOnly', 'Arrearage', 'InvalidApiKey']);
 const types = new Set(['invalid_request_error', 'authentication_error', 'permission_error', 'not_found_error',
-  'rate_limit_error', 'server_error', 'invalid_request', 'invalid_value', 'invalid_type']);
+  'rate_limit_error', 'server_error', 'invalid_request', 'invalid_value', 'invalid_type', 'access_denied']);
 const fields = new Set(['model', 'messages', 'role', 'content', 'tool_calls', 'tool_call_id', 'tools', 'type',
   'function', 'name', 'description', 'parameters', 'properties', 'required', 'additionalProperties', 'tool_choice',
   'parallel_tool_calls', 'max_tokens', 'temperature', 'response_format', 'json_schema', 'enable_thinking',

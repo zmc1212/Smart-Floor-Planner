@@ -8,6 +8,7 @@ import { consultationDispatchBudget, type ConsultationBinding } from './consulta
 import { consultationCashAuthorization, consultationLongProfile, consultationUnknownIsolation } from '../contracts/consultation';
 import { confirmedUsageReview, unresolvedProviderOutcome } from '../core/usage-review';
 import { matchesConsultationIsolation } from './consultation-isolation';
+import { assistantDailyLimitsEnabled } from '../core/daily-limits';
 
 /** UTF-8 byte ceiling plus explicit template/output reserve, not a tokenizer
  * accuracy claim. Unknown image token budgets cannot enter the text profile. */
@@ -46,8 +47,10 @@ export async function reserveConsultationDispatch(tx: PostgresTransaction, input
     coalesce(sum(case when status='settled' then coalesce(settled_cost_micros,reserved_cost_micros) else reserved_cost_micros end),0)::text cost
     from app.assistant_quota_reservations where enterprise_id=${input.enterpriseId} and status!='released'
     and (budget_date=(now() at time zone 'UTC')::date or status in ('held','reconciling'))`);
-  if (BigInt(String(daily?.tokens || 0)) - BigInt(String(own.reserved_tokens)) + next > BigInt(String(settings.daily_tokens))) fail('assistant_quota_exceeded', 429);
-  if (BigInt(String(daily?.cost || 0)) - BigInt(String(own.reserved_cost_micros)) + nextCost > BigInt(String(settings.daily_cost_micros))) fail('assistant_quota_exceeded', 429);
+  if (assistantDailyLimitsEnabled()) {
+    if (BigInt(String(daily?.tokens || 0)) - BigInt(String(own.reserved_tokens)) + next > BigInt(String(settings.daily_tokens))) fail('assistant_quota_exceeded', 429);
+    if (BigInt(String(daily?.cost || 0)) - BigInt(String(own.reserved_cost_micros)) + nextCost > BigInt(String(settings.daily_cost_micros))) fail('assistant_quota_exceeded', 429);
+  }
   const held = await one(tx, sql`update app.assistant_quota_reservations set reserved_tokens=${String(next)},
     reserved_cost_micros=${String(nextCost)},version=version+1,updated_at=now()
     where enterprise_id=${input.enterpriseId} and run_id=${input.runId} and status='held' returning id`);

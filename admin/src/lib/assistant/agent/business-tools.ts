@@ -72,7 +72,7 @@ export async function queryBusiness(tx: PostgresTransaction, actor: ActorContext
   if (query.leadId && !leads.length) fail('assistant_resource_not_found', 404);
   const data: unknown[] = [], lines: string[] = [];
   for (const lead of leads) {
-    const label = `${String(lead.community_name || '服务档案')}（${String(lead.id)}）`;
+    const label = String(lead.community_name || '服务档案');
     if (query.domain === 'construction') {
       const result = await constructionRead(tx, actor.enterpriseId, customerId, String(lead.id));
       data.push(...result.data); lines.push(...result.lines);
@@ -90,7 +90,7 @@ export async function queryBusiness(tx: PostgresTransaction, actor: ActorContext
       const publications = await new CustomerProjectRepository(tx).listActivePublicationSummaries(BigInt(actor.enterpriseId), BigInt(String(lead.id)));
       for (const { publication: p } of publications.slice(0, 10)) {
         data.push({ id: String(p.id), leadId: String(lead.id), title: p.schemeTitle, workflowId: String(p.workflowId), publishedAt: p.publishedAt });
-        lines.push(`${label}：已发布方案「${p.schemeTitle || '装修方案'}」（发布记录${String(p.id)}）。可在该档案的方案中查看；发布不代表客户批准。`);
+        lines.push(`${label}：已发布方案「${p.schemeTitle || '装修方案'}」。可在该档案的方案中查看；发布不代表客户批准。`);
       }
     } else if (lead.primary_floor_plan_id) {
       const plan = await one(tx, sql`select id,name,layout_data from app.floor_plans where enterprise_id=${actor.enterpriseId} and id=${String(lead.primary_floor_plan_id)} and status='completed'`);

@@ -47,6 +47,7 @@ export async function refreshSdWindow(tx: PostgresTransaction, b: Row, reader: S
       values(${eid},${String(b.project_id)},${bid},${sample.serialHash},${new Date(now)},${new Date(now)},${new Date(start)},${new Date(Math.max(start,end))},${low},${high})`);
   }
   await tx.execute(sql`update app.construction_camera_recording_policies set sd_checked_at=now(),sd_last_error=null where binding_id=${bid}`);
+  return { serialHash: sample.serialHash, clockMin: min, clockMax: max };
 }
 export async function refreshSdWindows(reader: SdClockReader = readSdClock) {
   const due = await withPlatformTransaction(tx => rows(tx, sql`select p.enterprise_id,p.project_id,p.binding_id from app.construction_camera_recording_policies p
@@ -73,9 +74,9 @@ export async function listSdRecordings(token: string, csrf: string | undefined, 
   if (!Number.isFinite(cursor) || cursor <= from.getTime() || cursor > to.getTime()) fail('camera_invalid_date',422);
   const context = await withTenantTransaction(eid, async tx => {
     const s = await cameraSession(tx,token,csrf), b = await sdBinding(tx,eid,s.pid,bid);
-    await refreshSdWindow(tx,b,reader);
+    const sample=await refreshSdWindow(tx,b,reader);
     const windows = await rows(tx,sql`select * from app.construction_camera_sd_windows where enterprise_id=${eid} and binding_id=${bid}
-      and business_from>=${b.sd_activated_at as Date} and source_to>source_from and source_from<${new Date(cursor)} and source_to>${from} order by source_to desc limit 1000`);
+      and business_from>=${b.sd_activated_at as Date} and serial_hash=${sample.serialHash} and source_to>source_from and source_from<${new Date(cursor)} and source_to>${from} order by source_to desc limit 1000`);
     const end = Math.min(cursor,...(windows.length ? [stamp(windows[0].source_to)] : [cursor]));
     const start = Math.max(from.getTime(),end-3600000);
     return { b, windows, pid:s.pid, start, end };
@@ -113,7 +114,7 @@ export async function listSdRecordings(token: string, csrf: string | undefined, 
     nextBefore:windows.some(w=>stamp(w.source_from)<start&&stamp(w.source_to)>from.getTime())?new Date(start).toISOString():null };
 }
 async function sdRecord(tx:PostgresTransaction,eid:string,pid:string,rid:string,fresh=false) {
-  const r = await one(tx,sql`select r.*,c.device_id,c.channel_id from app.construction_camera_sd_recordings r
+   const r = await one(tx,sql`select r.*,c.device_id,c.channel_id,w.serial_hash,w.clock_min_ms,w.clock_max_ms from app.construction_camera_sd_recordings r
     join app.construction_camera_sd_windows w on w.enterprise_id=r.enterprise_id and w.id=r.window_id
     join app.construction_camera_recording_policies p on p.enterprise_id=r.enterprise_id and p.binding_id=r.binding_id
     join app.construction_camera_bindings b on b.enterprise_id=r.enterprise_id and b.id=r.binding_id
@@ -123,9 +124,14 @@ async function sdRecord(tx:PostgresTransaction,eid:string,pid:string,rid:string,
     and r.started_at>=w.source_from and r.ended_at<=w.source_to ${fresh?sql`and r.expires_at>now()`:sql``} for share of b,c,p,r,w`);
   if (!r) fail('camera_recording_unavailable',404);return r;
 }
-export async function startSdRecordingView(token:string,csrf:string,recordingId:string,upstream=cameraWvp()) {
+export async function startSdRecordingView(token:string,csrf:string,recordingId:string,upstream=cameraWvp(),reader:SdClockReader=readSdClock) {
   const {eid,hash}=parseCameraToken(token),rid=id(recordingId);
-  const r = await withTenantTransaction(eid,async tx=>{const s=await cameraSession(tx,token,csrf);return sdRecord(tx,eid,s.pid,rid,true);});
+  const r = await withTenantTransaction(eid,async tx=>{
+    const s=await cameraSession(tx,token,csrf),record=await sdRecord(tx,eid,s.pid,rid,true);
+    const sample=await refreshSdWindow(tx,await sdBinding(tx,eid,s.pid,String(record.binding_id)),reader);
+    if(record.serial_hash!==sample.serialHash||Math.max(Number(record.clock_max_ms),sample.clockMax)-Math.min(Number(record.clock_min_ms),sample.clockMin)>10000)fail('camera_recording_unavailable',404);
+    return record;
+  });
   // A cached SD index can already have been overwritten. No start on an empty,
   // partial, failed or mismatched re-query, and never a second unknown start.
   const actual = await upstream.sdRecordings(String(r.device_id),String(r.channel_id),new Date(stamp(r.started_at)),new Date(stamp(r.ended_at)));

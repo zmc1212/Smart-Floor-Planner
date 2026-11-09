@@ -1,10 +1,10 @@
-import { createHash } from 'node:crypto';
 import { AiProviderError, type AiProviderRuntimeConfig, type ProviderResponseDiagnostic } from '../provider-types';
 import { agentModelLimits, reportFinalOutputTokenLimit, type ModelMessage, type ModelTurnInput, type ModelTurnOutput } from '@/lib/assistant/contracts/model';
 import { consultationProfile } from '@/lib/assistant/contracts/consultation';
 import { bearerHeaders, parseJson, providerFetch, providerUrl, asObject } from './http';
-import { thinkingBody } from './thinking';
+import { temperatureBody, thinkingBody } from './thinking';
 import { consultationFinalSchema } from './consultation-final-schema';
+import { createHash } from 'node:crypto';
 import { assertToolPairs, toolSchemaIssue } from '@/lib/assistant/agent/tool-protocol';
 import { bailianBinding, bailianExplicitCacheCapable, bailianFinalFormat } from './bailian-capabilities';
 import { cacheObservation, modelPrefixObservation } from './model-observation';
@@ -77,7 +77,7 @@ export function agentChatBody(input: ModelTurnInput, baseUrl = 'https://api.sili
   if (finalSchema?.type === 'json_object' && !JSON.stringify(messages).toLowerCase().includes('json')) throw Error('json_keyword_required');
   const formatBody: {response_format?: {type:string;json_schema?:unknown}} = finalSchema ? {response_format:finalSchema}
     : input.jsonOutput ? {response_format:{type:'json_object'}} : {};
-  return { model: input.model, messages, temperature: input.temperature ?? 0, max_tokens: input.maxTokens,
+  return { model: input.model, messages, ...temperatureBody(baseUrl, input.temperature ?? 0), max_tokens: input.maxTokens,
     ...formatBody,
     ...thinkingBody(baseUrl, input.enableThinking),
     ...(input.tools.length && !finalSchema ? { tools: input.tools.map(tool => ({ type: 'function', function: tool })),

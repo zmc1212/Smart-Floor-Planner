@@ -61,16 +61,19 @@ class FastGPTWorkflows {
   }
   async close(){if(this.server?.listening)await new Promise<void>((resolve,reject)=>this.server!.close(error=>error?reject(error):resolve()));}
 }
-let current:{file:string;hash:string;runtime:FastGPTWorkflows}|undefined;
+// Next dev re-evaluates route bundles on recompilation; keeping the bridge and
+// its active tool tickets module-local leaves a stale listener holding 18310.
+const cache=globalThis as typeof globalThis&{__xiaokFastGPTWorkflows?:{file:string;hash:string;runtime:FastGPTWorkflows}};
 /** Explicit development opt-in. No product route, session, scheduler or
  * default provider configuration is changed by importing this module. */
 export function fastGPTWorkflows():FastGPTWorkflows|undefined {
   const file=process.env.XIAOK_FASTGPT_WORKFLOWS_FILE;
   if(!file)return;
   const bytes=fs.readFileSync(file),hash=createHash('sha256').update(bytes).digest('hex');
+  const current=cache.__xiaokFastGPTWorkflows;
   if(current){if(current.file!==file||current.hash!==hash)throw Error('FastGPT workflow configuration changed during the Worker lifetime');return current.runtime;}
   const configuration=JSON.parse(bytes.toString('utf8')) as Configuration;
   if(!configuration.apiKey||![configuration.knowledgeAppId,configuration.stageAppId].every(id=>/^[a-f0-9]{24}$/.test(id)))throw Error('Invalid FastGPT workflow configuration');
-  const runtime=new FastGPTWorkflows(configuration);current={file,hash,runtime};return runtime;
+  const runtime=new FastGPTWorkflows(configuration);cache.__xiaokFastGPTWorkflows={file,hash,runtime};return runtime;
 }
-export async function closeFastGPTWorkflows(){const owned=current;current=undefined;await owned?.runtime.close();}
+export async function closeFastGPTWorkflows(){const owned=cache.__xiaokFastGPTWorkflows;cache.__xiaokFastGPTWorkflows=undefined;await owned?.runtime.close();}

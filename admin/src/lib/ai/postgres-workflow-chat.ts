@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { executeAgentChat, agentChatBody, agentChatRequestDiagnostic } from './providers/agent-chat';
 import { bailianBinding, bailianExplicitCacheCapable, bailianThinkingCapable } from './providers/bailian-capabilities';
+import { isQiniuConatusModel } from './providers/qiniu';
 import { consultationProfile } from '@/lib/assistant/contracts/consultation';
 import type { ModelTurnInput } from '@/lib/assistant/contracts/model';
 import type { AgentConfig } from '@/lib/assistant/agent/config';
@@ -54,6 +55,7 @@ export function assistantThinkingOverrideAllowed(runtime: Pick<AiProviderRuntime
   // only that binding and a model whose table documents thinking control pass.
   return runtime.adapterType === 'openai_compatible' && (preset === 'siliconflow'
     || preset === 'deepseek' && new URL(runtime.baseUrl).origin === 'https://api.deepseek.com' || consultationRuntime
+    || preset === 'qiniu' && isQiniuConatusModel(runtime.baseUrl, model)
     || preset === 'dashscope' && bailianBinding(runtime.baseUrl, model, false)?.region === 'cn-beijing'
       && bailianThinkingCapable(model));
 }
@@ -122,7 +124,7 @@ export async function executePostgresText(input: {
   }
   const capability = capabilityForLogicalModel(input.logicalModelKey);
   const llmOverride = isPlatformLlmOverrideModelKey(input.logicalModelKey)
-    ? await getPlatformLlmOverrideRuntime()
+    ? await getPlatformLlmOverrideRuntime(input.logicalModelKey === 'vision.reference_analysis' ? 'vision' : 'chat')
     : null;
   const runtimes = llmOverride
     ? [llmOverride]

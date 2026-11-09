@@ -6,7 +6,7 @@ import {
   publicProfessionalProfile,
   type PublicProfessionalProfile,
 } from '@/lib/professional-profile';
-import { designerProfile, workContent, type DesignerProfile, type WorkContent, type WorkImage } from './contracts';
+import { designerProfile, planComparison, workContent, type DesignerProfile, type WorkContent, type WorkImage, type WorkPlanComparison } from './contracts';
 
 export type PublicWork = {
   id: string; versionId: string; authorId: string; authorName: string; title: string; description: string;
@@ -15,10 +15,11 @@ export type PublicWork = {
   area: number | null; rooms: string; coverAssetId: string; images: WorkImage[];
   highlights: string[]; materials: string[]; palette: Array<{ name: string; hex: string }>;
   tours: Array<{ url: string; provider: string; title: string }>;
+  planComparison?: WorkPlanComparison;
 };
 export type Candidate = {
   work: PublicWork; content: WorkContent; profile: DesignerProfile;
-  professional: PublicProfessionalProfile | null; portraitAvailable: boolean;
+  professional: PublicProfessionalProfile | null; portraitAvailable: boolean; enterpriseName: string;
 };
 export type CandidateQuery = { workId?: string; authorId?: string; city?: string; style?: string; layout?: string; recommend?: boolean };
 
@@ -53,8 +54,8 @@ export function publicProfessionalForRow(row: Row): PublicProfessionalProfile | 
 /** Public portfolio reads recheck publication, author status, tenant scope and
  * the current rights window. No permission evidence or private fields leave this query. */
 export async function portfolioCandidates(tx: PostgresTransaction, enterpriseId: string, input: CandidateQuery = {}): Promise<Candidate[]> {
-  const candidates = await rows(tx, sql`select w.id,w.author_id,w.published_version_id,v.content,a.display_name,
-    ${professionalColumns},p.content as profile,c.id as community_id,c.name as community_name,
+  const candidates = await rows(tx, sql`select w.id,w.author_id,w.published_version_id,v.content,a.display_name,e.name as enterprise_name,
+    ${professionalColumns},p.content-'contact' as profile,c.id as community_id,c.name as community_name,
     (pt.id is not null) as portrait_available
     from app.portfolio_works w
     join app.enterprises e on e.id=w.enterprise_id
@@ -78,13 +79,14 @@ export async function portfolioCandidates(tx: PostgresTransaction, enterpriseId:
     const profile = designerProfile(row.profile || { bio: '', cities: [], styles: [], featuredWorkIds: [] });
     result.push({
       content, profile, professional: publicProfessionalForRow(row), portraitAvailable: Boolean(row.portrait_available),
+      enterpriseName: String(row.enterprise_name || ''),
       work: {
         id: String(row.id), versionId: String(row.published_version_id), authorId: String(row.author_id), authorName: String(row.display_name || '设计师'),
         title: content.title, description: content.description, primaryStyle: content.primaryStyle, secondaryStyles: content.secondaryStyles,
         layoutTypes: content.layoutTypes, authorRole: content.authorRole, cityCode: content.cityCode, cityName: content.cityName, district: content.district,
         area: content.area, rooms: content.rooms, community: row.community_id ? { id: String(row.community_id), name: String(row.community_name) } : null,
         images: content.images, coverAssetId: content.coverAssetId!, highlights: content.highlights, materials: content.materials,
-        palette: content.palette, tours: content.tours,
+        palette: content.palette, tours: content.tours, planComparison: planComparison(content.planComparison),
       },
     });
   }

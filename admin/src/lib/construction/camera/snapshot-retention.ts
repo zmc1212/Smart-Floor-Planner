@@ -10,6 +10,9 @@ export const snapshotRetentionJoins = sql`
   left join app.construction_camera_recording_policies p on p.enterprise_id=s.enterprise_id and p.project_id=s.project_id and p.binding_id=s.binding_id
   left join app.construction_camera_retention_defaults d on d.enterprise_id=s.enterprise_id`;
 export const retainedSnapshot = () => sql`s.state<>'expired' and coalesce(s.captured_at,s.created_at)>now()-${snapshotRetentionDays()}*interval '1 day'`;
+// 0115 requires one private author; 0117 scheduled public covers require neither.
+// Private viewing must also work without the optional public-preview migration.
+export const privateSnapshot = () => sql`(s.actor_id is not null or s.actor_user_id is not null)`;
 
 export async function purgeCameraSnapshots() {
   const candidates = await withPlatformTransaction(tx => rows(tx, sql`

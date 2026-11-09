@@ -288,7 +288,12 @@ export async function processReportComposition(lease: Lease, dependencies: {
         };
         const packet = reportModel ? await (async () => { await beforeProviderCall(); return { attemptId: null,
           agentOutput: await reportModel(bounded.messages, [tool], turn, {
-            authorize, validate: raw => { parseBody(raw); }, runId: lease.runId, enterpriseId: lease.enterpriseId,
+            // A workflow transport submits the raw final-channel selection like
+            // the local provider. Guidance-only runs select catalog items and the
+            // same projection below expands them before body parsing.
+            authorize, validate: raw => { parseBody(guidanceOnly
+              ? projectReportGuidanceOnly(raw, projects, choices, initial.preferOriginal, serverReminderWorkmanship) : raw); },
+            runId: lease.runId, enterpriseId: lease.enterpriseId,
           }) }; })()
           : await executePostgresText({ enterpriseId: BigInt(lease.enterpriseId), owner: { kind: 'assistant_run', runId: BigInt(lease.runId) },
             logicalModelKey: 'chat.general', messages: [], maxTokens: limits.maxOutputTokens,

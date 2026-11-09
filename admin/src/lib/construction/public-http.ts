@@ -30,7 +30,9 @@ export async function staffPublicHttp(request: Request, actor: ConstructionActor
 }
 export async function customerPublicHttp(request: Request, actor: ActorContext, cid: string, path: string[]) {
   const service = new PublicCustomerService(actor, cid), params = new URL(request.url).searchParams;
-  if (path.join('/') === 'recommendations' && request.method === 'GET' && !params.size) return publicJson(await service.recommendations());
+  if (path.join('/') === 'recommendations' && request.method === 'GET' && (!params.size || params.size === 1 && params.has('replyId'))) {
+    return publicJson(await service.recommendations(params.has('replyId') ? id(params.get('replyId')) : undefined));
+  }
   if (path.join('/') === 'detach' && request.method === 'POST' && !params.size) {
     if (Object.keys(await body(request)).length) fail('invalid_public_material', 422);
     return publicJson(await service.detach(key(request.headers.get('Idempotency-Key'))));

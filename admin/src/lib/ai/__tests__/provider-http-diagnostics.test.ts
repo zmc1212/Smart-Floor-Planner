@@ -40,6 +40,18 @@ test('untrusted fields, HTML, oversized bodies and secret-shaped traces retain n
   }
 });
 
+test('Bailian permission and quota codes survive nested and flat errors without retaining their prose', () => {
+  for (const code of ['access_denied', 'AccessDenied', 'AccessDenied.Unpurchased', 'App.AccessDenied',
+    'Workspace.AccessDenied', 'Endpoint.AccessDenied', 'AllocationQuota.FreeTierOnly', 'Arrearage', 'InvalidApiKey']) {
+    const error = { code, type: 'access_denied', message: 'synthetic-private-account-and-prompt sk-synthetic-secret' };
+    for (const payload of [error, { error }]) {
+      const body = JSON.stringify(payload), diagnostic = providerHttpDiagnostic(new Response(body, { status: 403 }), body);
+      assert.equal(diagnostic.providerCode, code); assert.equal(diagnostic.errorType, 'access_denied');
+      assert.doesNotMatch(JSON.stringify(diagnostic), /synthetic-private|sk-synthetic/);
+    }
+  }
+});
+
 test('provider categories remain bounded and do not turn a diagnosis into billing evidence', () => {
   for (const [message, reason] of [['This model does not support tools.', 'unsupported_tools'],
     ['Invalid function parameters schema', 'invalid_schema'], ['Maximum context length exceeded', 'context_limit'], ['unknown upstream error', 'unspecified']]) {

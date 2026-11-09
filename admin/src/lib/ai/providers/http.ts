@@ -1,8 +1,12 @@
-import { providerHttpDiagnostic } from './http-diagnostics';
 import { AiProviderError } from '@/lib/ai/provider-types';
+import { isZhipuOfficialBaseUrl } from './zhipu';
+import { providerHttpDiagnostic } from './http-diagnostics';
 
 export function providerUrl(baseUrl: string, path: string) {
-  return `${baseUrl.replace(/\/$/, '')}${path.startsWith('/') ? path : `/${path}`}`;
+  const root = baseUrl.replace(/\/$/, '');
+  const suffix = path.startsWith('/') ? path : `/${path}`;
+  // The official Zhipu compatibility root already carries its /v4 version.
+  return `${root}${isZhipuOfficialBaseUrl(root) ? suffix.replace(/^\/v1\//, '/') : suffix}`;
 }
 
 export async function providerFetch(

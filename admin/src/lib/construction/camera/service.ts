@@ -13,7 +13,7 @@ import {authorizeSdMedia,reconcileSdPlaybacks} from './sd';
 import {retentionDefault,nodeRetentionDays} from './retention-defaults';
 import { cameraAccess, cameraActorRef, isCameraCustomer, type CameraActor } from './access';
 import { currentCameraCustomerGrant } from './customer-grants';
-import { retainedSnapshot, snapshotRetentionJoins } from './snapshot-retention';
+import { privateSnapshot, retainedSnapshot, snapshotRetentionJoins } from './snapshot-retention';
 export { cameraAccess } from './access';
 
 export const digest = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -286,13 +286,13 @@ export async function cameraSnapshots(token: string, imageId?: string) {
     if (isCameraCustomer(s.actor) && !s.access.canCapture) fail('camera_forbidden', 403);
     if (imageId) {
       const image = await one(tx, sql`select s.data from app.construction_camera_snapshots s ${snapshotRetentionJoins}
-        where s.enterprise_id=${eid} and s.project_id=${s.pid} and s.id=${id(imageId)} and s.scheduled_live_version_id is null and s.state='ready' and ${retainedSnapshot()}`);
+        where s.enterprise_id=${eid} and s.project_id=${s.pid} and s.id=${id(imageId)} and ${privateSnapshot()} and s.state='ready' and ${retainedSnapshot()}`);
       if (!image) fail('camera_snapshot_unavailable', 404); return image;
     }
     return { items: await rows(tx, sql`select s.id,s.state,s.captured_at,s.created_at,c.name from app.construction_camera_snapshots s
       ${snapshotRetentionJoins}
       join app.construction_camera_bindings b on b.enterprise_id=s.enterprise_id and b.id=s.binding_id
       join app.construction_cameras c on c.enterprise_id=b.enterprise_id and c.id=b.camera_id
-      where s.enterprise_id=${eid} and s.project_id=${s.pid} and s.scheduled_live_version_id is null and ${retainedSnapshot()} order by s.id desc limit 30`) };
+      where s.enterprise_id=${eid} and s.project_id=${s.pid} and ${privateSnapshot()} and ${retainedSnapshot()} order by s.id desc limit 30`) };
   });
 }

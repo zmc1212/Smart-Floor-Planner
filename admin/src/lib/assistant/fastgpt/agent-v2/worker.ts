@@ -16,11 +16,31 @@ import { resolveSuggestions, type SuggestionResolution } from './suggestions';
 import { fastGPTWorkflows } from '../runtime';
 import type { AgentV2ToolInput, AgentV2Usage } from './runtime';
 import { nativeConversation } from '../rag-session';
-import { ragAnswerParts, type RagCitationSource } from '../native-rag';
+import { ragAnswerParts, type RagCitationSource, type RagPart } from '../native-rag';
 import { nativeCites } from '../native-cites';
 
 const citationId = (chunkId: string) => 'K' + chunkId;
 const quoteOf = (text: string) => Array.from(text).length > 600 ? Array.from(text).slice(0, 600).join('') : text;
+const snapshotHeading = '项目记录（授权快照，以此为准）';
+
+/** Authorized business snapshots stay authoritative. A cited model answer may
+ * accompany them; an uncited or rejected draft never replaces them. Knowledge
+ * evidence retrieved in this turn without any model CITE fails closed instead
+ * of shipping a source answer that carries no verifiable citation. */
+export function composeAgentV2Delivery(modelText: string, snapshotText: string, modelCitations: number, knowledgeRetrieved: boolean) {
+  if (!snapshotText) {
+    if (!modelCitations && knowledgeRetrieved) fail('missing_citation', 502);
+    guardAnswerCommitments(modelText);
+    return { text: modelText, modelIncluded: true };
+  }
+  if (!modelCitations || !modelText.trim()) return { text: snapshotText, modelIncluded: false };
+  try { guardAnswerCommitments(modelText); }
+  catch (error) {
+    if (!(error instanceof AssistantError) || error.code !== 'unsupported_model_commitment') throw error;
+    return { text: snapshotText, modelIncluded: false };
+  }
+  return { text: `${modelText}\n\n${snapshotHeading}\n${snapshotText}`, modelIncluded: true };
+}
 
 /** FastGPT Agent V2 orchestrates the conversation and model calls. XiaoK keeps
  * the authorized enterprise search behind the HTTP tool, CITE persistence,
@@ -42,8 +62,10 @@ export async function processAgentV2Answer(lease: Lease) {
     if (!workflows?.agentV2) fail('context_changed');
     await workflows.ready();
     if (workflows.agentV2.busy()) fail('conversation_busy');
-    const { context, messages } = await nativeConversation(lease, [], fastGPTAgentV2Protocol);
-    const catalog = new Map<string, RagCitationSource>();
+    const { context, messages, citations } = await nativeConversation(lease, [], fastGPTAgentV2Protocol);
+    // Prior answers keep their still-authorized sources citable, matching the
+    // unified worker; only this turn's retrieval sets knowledgeRetrieved.
+    const catalog = new Map<string, RagCitationSource>(citations.map(c => [c.nativeId, c]));
     const guard = async () => {
       await authorize();
       await withTenantTransaction(lease.enterpriseId, async tx => {
@@ -52,6 +74,7 @@ export async function processAgentV2Answer(lease: Lease) {
       });
     };
     const searches = new Map<string, Promise<Record<string, unknown>>>();
+    let knowledgeRetrieved = false;
     const search = async (query: string, sequence: number): Promise<Record<string, unknown>> => {
       const state = await authorize();
       const operation = 'agent-v2-query:' + lease.runId + ':' + sequence;
@@ -67,6 +90,7 @@ export async function processAgentV2Answer(lease: Lease) {
       } };
       const retrieved = await retrieveKnowledge(String(state.conversation.id), lease.actor, query, Number(state.run.knowledge_epoch), metered);
       const evidence = retrieved.evidence;
+      if (evidence.length) knowledgeRetrieved = true;
       const sources: RagCitationSource[] = evidence.map(e => ({ nativeId: citationId(e.ref.id), sourceId: citationId(e.ref.id),
         quote: quoteOf(e.text), evidence: e }));
       for (const s of sources) catalog.set(s.nativeId, s);
@@ -133,11 +157,14 @@ export async function processAgentV2Answer(lease: Lease) {
     await guard();
     for (const key of ['knowledge', 'snapshots', 'sources'] as const)
       (context[key] as unknown[]) = [...new Map((context[key] as unknown[]).map(v => [fingerprint(v), v])).values()];
-    // Business facts are delivered from the authorized snapshot, never from
-    // free-form prose; the model's draft stays in the audit step.
-    const businessText = delivered.map(s => s.displayText).join('\n');
-    const text = businessText || result.text;
-    if (!businessText) guardAnswerCommitments(text);
+    const snapshotText = delivered.map(s => s.displayText).join('\n');
+    let modelParts: RagPart[] | null = null;
+    if (result.text.trim()) {
+      try { modelParts = ragAnswerParts(result.text, [...catalog.values()]); }
+      catch (error) { if (!snapshotText) throw error; }
+    }
+    const modelCitations = modelParts?.filter(part => 'source' in part).length ?? 0;
+    const { text, modelIncluded } = composeAgentV2Delivery(result.text, snapshotText, modelCitations, knowledgeRetrieved);
     // Follow-up questions are ancillary: a provider or parsing failure keeps
     // the delivered answer and falls back to the configured presets.
     let suggestions: SuggestionResolution = resolveSuggestions(null, bound.configuration.presets ?? []);
@@ -157,6 +184,7 @@ export async function processAgentV2Answer(lease: Lease) {
         ${suggestionUsage ? suggestionUsage.inputTokens + suggestionUsage.outputTokens : null},${suggestionUsage ? 'observed' : 'unavailable'},
         ${suggestionUsage?.inputTokens ?? null},${suggestionUsage?.outputTokens ?? null}) on conflict do nothing`));
     const parts = ragAnswerParts(text, [...catalog.values()]);
+    const cited = [...catalog.values()].filter(c => parts.some(p => 'source' in p && p.source.nativeId === c.nativeId));
     await completeRun(lease, { content: { version: 1, blocks: [{ type: 'text', text }] }, usage: result.usage }, async (tx, run, messageId) => {
       const state = await runContext(tx, lease);
       if (!await synthesisContextAvailable(tx, lease.actor, state.conversation, context)) fail('context_changed');
@@ -173,7 +201,8 @@ export async function processAgentV2Answer(lease: Lease) {
       }
       await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs,private_checkpoint,input_summary)
         values(${lease.enterpriseId},${lease.runId},1006,'agent_synthesis_context','succeeded',${JSON.stringify(context)}::jsonb,
-          ${JSON.stringify({ protocol: fastGPTAgentV2Protocol, raw: result.text, citations: [...catalog.values()] })}::jsonb,
+          ${JSON.stringify({ protocol: fastGPTAgentV2Protocol, raw: result.text, citations: cited,
+            composition: { snapshots: delivered.length, modelCitations, modelIncluded } })}::jsonb,
           ${JSON.stringify({ protocol: fastGPTAgentV2Protocol, runtime: 'fastgpt-agent-v2',
             skills: bound.configuration.skills?.enabled ?? [], skillPack: bound.configuration.skills?.version ?? null })}::jsonb)`);
       if (suggestionsAttempted || suggestions.questions.length)

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { leadDtoForMini, POST as createLead } from '@/app/api/leads/route';
+import { POST as createLead } from '@/app/api/leads/route';
+import { leadDtoForMini } from '@/lib/lead-mini-dto';
 import {
   canMarkLeadConverted,
   canRevertLeadConversion,

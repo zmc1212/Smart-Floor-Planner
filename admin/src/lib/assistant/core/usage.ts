@@ -4,6 +4,7 @@ import { one, rows } from '@/db/repositories/assistant-repository';
 import { fail, id, type ActorContext } from '../contracts';
 import { idempotent } from './conversation';
 import { unresolvedProviderOutcome } from './usage-review';
+import { assistantDailyLimitsEnabled } from './daily-limits';
 
 export function usageWindow(from?:string|null,to?:string|null) {
   const end=to || new Date(Date.now()+86400000).toISOString().slice(0,10);
@@ -66,7 +67,7 @@ export class UsageService {
         from app.assistant_quota_reservations where enterprise_id=${eid} and status!='released'
         and (budget_date=(now() at time zone 'UTC')::date or status in ('held','reconciling'))`);
       return {window,timezone:'UTC',endExclusive:true,currency:settings.budget_currency,usage,runs,indexing,providers,costs,budget,
-        limits:{requests:String(settings.daily_requests),tokens:String(settings.daily_tokens),costMicros:String(settings.daily_cost_micros)},
+        limits:{enforced:assistantDailyLimitsEnabled(),requests:String(settings.daily_requests),tokens:String(settings.daily_tokens),costMicros:String(settings.daily_cost_micros)},
         definitions:{amounts:'Decimal integer strings; money in micro CNY. Null is unknown, not zero. Sums are known subtotals; inspect unknown counts.',tokens:'Text and query embedding records; indexing is separate. Missing input/output remains unknown. Pre-instrumentation query calls are not backfilled. Provider calls without usage remain visible in providers and unresolved quota.',costs:'Reviewed text-provider costs, attributed to original budget day. Local embedding infrastructure costs are not measured.',budget:'Text-token/provider-cost reservation accounting: current UTC day plus all unresolved holds from previous days. No customer billing.'}};
     });
   }

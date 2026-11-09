@@ -314,6 +314,36 @@ async function enterpriseConfigMap(
   return new Map(rows.map((row) => [row.id, row]));
 }
 
+export async function loadWorkbenchTodos(
+  transaction: PostgresTransaction,
+  input: {
+    role: string;
+    userId?: string | null;
+    view?: WorkbenchTodoView;
+  }
+) {
+  const actor =
+    input.userId && ['salesperson', 'measurer', 'designer'].includes(input.role)
+      ? { id: parsePostgresId(input.userId, 'userId'), role: input.role }
+      : undefined;
+  const rows = await new PromotionRecordRepository(transaction).listForTodo({
+    actor,
+    limit: 200,
+  });
+  const configs = await enterpriseConfigMap(transaction, rows);
+  return rows
+    .flatMap((record) =>
+      buildTodoItemsForRecord(record, input.role, record.enterpriseId ? configs.get(record.enterpriseId) : null)
+    )
+    .filter((todo) => matchesTodoView(todo, input.view || 'mine'))
+    .sort((a, b) => {
+      if (!a.dueAt && !b.dueAt) return 0;
+      if (!a.dueAt) return 1;
+      if (!b.dueAt) return -1;
+      return new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime();
+    });
+}
+
 export async function listWorkbenchTodos(input: {
   role: string;
   userId?: string | null;
@@ -321,25 +351,8 @@ export async function listWorkbenchTodos(input: {
   view?: WorkbenchTodoView;
 }) {
   const enterpriseId = input.enterpriseId ? parsePostgresId(input.enterpriseId, 'enterpriseId') : null;
-  const execute = async (transaction: PostgresTransaction) => {
-    const actor =
-      input.userId && ['salesperson', 'measurer', 'designer'].includes(input.role)
-        ? { id: parsePostgresId(input.userId, 'userId'), role: input.role }
-        : undefined;
-    const { rows } = await new PromotionRecordRepository(transaction).list({ actor, limit: 200 });
-    const configs = await enterpriseConfigMap(transaction, rows);
-    return rows
-      .flatMap((record) =>
-        buildTodoItemsForRecord(record, input.role, record.enterpriseId ? configs.get(record.enterpriseId) : null)
-      )
-      .filter((todo) => matchesTodoView(todo, input.view || 'mine'))
-      .sort((a, b) => {
-        if (!a.dueAt && !b.dueAt) return 0;
-        if (!a.dueAt) return 1;
-        if (!b.dueAt) return -1;
-        return new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime();
-      });
-  };
+  const execute = (transaction: PostgresTransaction) =>
+    loadWorkbenchTodos(transaction, input);
   return enterpriseId ? withTenantTransaction(enterpriseId, execute) : withPlatformTransaction(execute);
 }
 
