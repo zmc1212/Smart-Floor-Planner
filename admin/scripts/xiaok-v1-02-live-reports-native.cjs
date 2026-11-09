@@ -54,7 +54,10 @@ module.exports = async ctx => {
       const source = list[0]; if (!source) return { opened: false, count: list.length };
       page.openSheet('reportSource'); owner.readSource('__PROJECT__', source.sourceId);
       return { opened: true, count: list.length, sourceId: source.sourceId }; };
-    const opened = await evaluateSource(fn.toString().replace('__PROJECT__', projectId));
+    // The source function carries the project placeholder twice (lookup and
+    // readSource argument); a single replace left the second one literal so
+    // hasSource silently rejected the read (configured-weekly-stable-06/07).
+    const opened = await evaluateSource(fn.toString().replaceAll('__PROJECT__', projectId));
     report.workmanshipOpen = opened.result.result;
     assert.equal(report.workmanshipOpen.opened, true, 'the first authorized source read deterministically');
     return 'verified rendered control and deterministic first-source read';
