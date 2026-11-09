@@ -1,6 +1,7 @@
 const api = require('../../../utils/api');
 const { canAccessRoute } = require('../../../utils/identity-navigation');
 const { errorText } = require('../projects/projects-model');
+const { loadSiteFont } = require('../lib/site-font');
 const route = '/packages/construction/brief/brief';
 function identity() {
   const g = getApp().globalData || {}, c = g.bootstrap && g.bootstrap.current && g.bootstrap.current.context || {};
@@ -9,9 +10,10 @@ function identity() {
 Page({
   data: { navTop: 24, navHeight: 32, navRight: 96, loading: true, error: '', items: [], asOf: '' },
   onLoad() {
+    loadSiteFont();
     const w = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync(); let capsule;
     try { capsule = wx.getMenuButtonBoundingClientRect(); } catch { /* Native safe fallback. */ }
-    this.setData({ navTop: capsule && capsule.top || w.statusBarHeight || 24, navHeight: capsule && capsule.height || 32,
+    this.setData({ navTop: Math.max(w.statusBarHeight || 24, (capsule && capsule.top || 30) - 6), navHeight: capsule && capsule.height || 32,
       navRight: Math.max(96, w.windowWidth - (capsule && capsule.left || w.windowWidth - 94) + 10) });
   },
   async onShow() {

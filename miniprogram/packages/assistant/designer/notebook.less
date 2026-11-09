@@ -1,0 +1,117 @@
+/* Source: creative-b-mobile-long-final.png, 935×5049 → 390×2106.
+   All lettering, paper layers and controls are native; photography is live authorized media. */
+.studio-page.notebook-page {
+  --studio-paper: #f5f1e7;
+  --studio-ink: #143d31;
+  --studio-line: #c7cdbd;
+  position: relative;
+  padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
+  background-color: var(--studio-paper);
+  background-image: radial-gradient(ellipse at 30% 15%, rgba(255,255,255,.65), transparent 62%), repeating-linear-gradient(13deg, rgba(119,101,67,.025) 0, rgba(119,101,67,.025) 1px, transparent 1px, transparent 4px);
+}
+.notebook-page::before { content: ''; position: absolute; z-index: 1; left: 0; top: 0; bottom: 0; width: 29rpx; background: repeating-linear-gradient(90deg, rgba(255,255,255,.09) 0, rgba(255,255,255,.09) 1px, transparent 1px, transparent 3px), linear-gradient(90deg,#315c46,#6c8c6b 45%,#39634f 72%,#244c39 88%,#8a9a7e 95%,#dbd8c7); box-shadow: 3rpx 0 7rpx rgba(50,53,28,.12); pointer-events: none; }
+.notebook-page .studio-nav { padding-left: 48rpx; background: var(--studio-paper); }
+.notebook-page .studio-brand { font-size: 28rpx; font-weight: 400; letter-spacing: 1rpx; }
+.notebook-page .studio-content { padding: 0 32rpx 0 60rpx; }
+.notebook-serif { font-family: 'Studio Serif', 'Songti SC', STSong, SimSun, serif; font-weight: 900; }
+.notebook-masthead { position: relative; min-height: 208rpx; padding: 0 164rpx 32rpx 0; }
+.notebook-title { position: relative; z-index: 1; display: block; margin-left: -3rpx; font-size: 68rpx; letter-spacing: -3rpx; line-height: 1.3; white-space: nowrap; }
+.notebook-title-stroke { width: 92%; height: 8rpx; margin-top: -12rpx; margin-bottom: 24rpx; background: #9aa776; transform: rotate(-2deg); clip-path: polygon(0 80%,20% 0,40% 55%,60% 0,74% 60%,100% 20%,100% 50%,75% 100%,59% 45%,39% 100%,18% 45%,0 100%); }
+.notebook-byline { display: block; margin-right: -30rpx; font-size: 24rpx; line-height: 1.7; letter-spacing: 1rpx; }
+.notebook-tagline { display: block; margin: 12rpx -40rpx 0 0; color: #7c8073; font-size: 22rpx; line-height: 1.7; letter-spacing: 1rpx; }
+.notebook-portrait { position: absolute; right: 0; top: 14rpx; width: 142rpx; height: 166rpx; background: #e4dfd1; }
+.notebook-portrait > image, .notebook-about-portrait > image { display: block; width: 100%; height: 100%; }
+.notebook-feature { position: relative; margin-left: -22rpx; padding: 0 18rpx 32rpx; background: #f9f5e9; box-shadow: 0 2rpx 14rpx rgba(81,68,37,.15); border: 1rpx solid #e5dfcf; border-radius: 4rpx 6rpx 0 0; }
+.notebook-feature::after { content: ''; position: absolute; bottom: -8rpx; left: -1rpx; right: -1rpx; height: 12rpx; background: #f9f5e9; clip-path: polygon(0 0,100% 0,100% 40%,98% 80%,96% 48%,93% 100%,89% 55%,85% 80%,82% 35%,78% 85%,73% 50%,69% 100%,65% 45%,61% 80%,57% 40%,53% 100%,49% 60%,45% 90%,40% 45%,36% 80%,32% 35%,27% 100%,23% 50%,19% 90%,14% 45%,10% 80%,6% 35%,3% 100%,0 70%); }
+.notebook-feature-heading { position: relative; min-height: 106rpx; gap: 14rpx; align-items: baseline; padding-left: 164rpx; }
+.notebook-tab { display: inline-block; background: #27704f; color: #fff9e9; font-family: 'Studio Serif', 'Songti SC', SimSun, serif; font-size: 26rpx; font-weight: 900; line-height: 46rpx; padding: 0 22rpx; border-radius: 6rpx 4rpx 0 0; letter-spacing: 2rpx; }
+.notebook-feature-heading > .notebook-tab { position: absolute; top: -9rpx; left: 0; transform: rotate(-2deg); }
+.notebook-feature-number { flex: none; font-family: Georgia, 'Times New Roman', serif; font-size: 90rpx; line-height: 1.1; letter-spacing: -6rpx; }
+.notebook-feature-total { flex: none; color: #5c6559; font-family: Georgia,serif; font-size: 24rpx; }
+.notebook-handnote { min-width: 0; margin: 12rpx 0 0 22rpx; font-family: KaiTi, STKaiti, 'Kaiti SC', serif; font-size: 24rpx; line-height: 1.55; color: #737d67; transform: rotate(-5deg); align-self: center; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.notebook-photo-stack { position: relative; height: 472rpx; margin: 4rpx -2rpx 0; }
+.notebook-page .notebook-main-photo { display: block; width: 100%; height: 468rpx; padding: 14rpx; background: #fffbee; border-radius: 0; transform: rotate(2.2deg); box-shadow: 0 4rpx 10rpx rgba(78,64,36,.17); }
+.notebook-main-photo > image, .notebook-detail-photo > image { display: block; width: 100%; height: 100%; }
+.notebook-image-loading { display: flex; align-items: center; justify-content: center; height: 100%; background: #e9e4d5; color: #737b6b; font-size: 24rpx; }
+.notebook-page .notebook-detail-photo { position: absolute; z-index: 2; right: -2rpx; bottom: -164rpx; display: block; width: 264rpx; height: 326rpx; padding: 12rpx; border-radius: 0; background: #fffbee; transform: rotate(4deg); box-shadow: 0 4rpx 10rpx rgba(78,64,36,.2); }
+.notebook-feature-copy { position: relative; margin-top: 30rpx; }
+.notebook-feature-copy.has-detail { min-height: 170rpx; padding-right: 256rpx; }
+.notebook-page .notebook-feature-link { display: block; width: 100%; text-align: left; }
+.notebook-feature-title { display: block; font-size: 43rpx; letter-spacing: -1rpx; line-height: 1.3; overflow-wrap: anywhere; }
+.notebook-meta { display: block; margin-top: 10rpx; color: #7a7c6c; font-size: 22rpx; line-height: 1.6; }
+.notebook-design-note { display: block; margin-top: 18rpx; font-family: KaiTi,STKaiti,'Kaiti SC',serif; font-size: 24rpx; line-height: 1.6; color: #667359; text-decoration: underline; text-decoration-color: #a6b58b; text-underline-offset: 6rpx; }
+.notebook-page .notebook-tour { position: absolute; z-index: 3; left: 18rpx; bottom: 18rpx; gap: 8rpx; width: fit-content; min-height: 84rpx; padding: 0 16rpx; border-radius: 30rpx; color: #fff9e9; background: rgba(29,74,48,.9); font-size: 24rpx; }
+.notebook-tour > image { width: 28rpx; height: 28rpx; }
+.notebook-tour .chevron { width: 10rpx; height: 10rpx; margin-left: 4rpx; }
+.notebook-materials { position: relative; display: flex; align-items: flex-start; gap: 12rpx; min-height: 144rpx; padding: 16rpx 0 0 4rpx; }
+.notebook-swatches { display: flex; flex: 1; min-width: 0; flex-wrap: wrap; gap: 14rpx; }
+.notebook-swatch { width: 108rpx; text-align: center; }
+.notebook-color { height: 82rpx; border: 1rpx solid rgba(109,94,56,.12); background-image: repeating-linear-gradient(90deg,rgba(255,255,255,.1) 0,rgba(255,255,255,.1) 1px,transparent 1px,transparent 3px); }
+.notebook-swatch > text { display: block; margin-top: 8rpx; font-size: 22rpx; line-height: 1.6; color: #626951; }
+.notebook-material-labels { display: flex; flex: none; flex-direction: column; gap: 6rpx; width: 122rpx; margin-left: 124rpx; padding-top: 10rpx; font-family: KaiTi,STKaiti,serif; font-size: 22rpx; line-height: 1.6; color: #737b65; overflow-wrap: anywhere; }
+.notebook-feature-leaf { position: absolute; top: 16rpx; right: 130rpx; width: 108rpx; height: 164rpx; transform: rotate(-18deg); opacity: .8; }
+.notebook-image-kind { position: absolute; z-index: 2; top: 24rpx; right: 20rpx; padding: 4rpx 8rpx; color: #fff9e9; background: rgba(40,48,28,.54); font-size: 20rpx; line-height: 1.6; }
+.notebook-catalog { margin-top: 108rpx; }
+.notebook-catalog-title { position: relative; min-height: 132rpx; gap: 28rpx; align-items: center; }
+.notebook-section-title { position: relative; flex: none; font-size: 78rpx; line-height: 1.3; letter-spacing: -3rpx; }
+.notebook-section-title::after, .notebook-subtitle::after { content: ''; position: absolute; bottom: 0; left: 0; width: 100%; height: 6rpx; background: #9baa7c; transform: rotate(-3deg); clip-path: polygon(0 65%,24% 0,45% 70%,64% 10%,81% 65%,100% 25%,100% 60%,80% 100%,63% 50%,44% 100%,23% 45%,0 100%); }
+.notebook-catalog-note { margin: 32rpx 66rpx 0 0; font-family: KaiTi,STKaiti,serif; font-size: 24rpx; line-height: 1.55; color: #758069; transform: rotate(-7deg); }
+.notebook-catalog-note > text { display: block; white-space: nowrap; }
+.notebook-catalog-title > image { position: absolute; right: -8rpx; top: 0; width: 92rpx; height: 136rpx; transform: rotate(22deg); opacity: .8; }
+.notebook-filter-bar { position: sticky; z-index: 5; padding-bottom: 16rpx; background: var(--studio-paper); }
+.notebook-filter-heading { justify-content: space-between; min-height: 56rpx; font-size: 22rpx; color: #76806b; }
+.notebook-page .notebook-filter-heading .notebook-tab { display: flex; align-items: center; justify-content: center; min-width: 124rpx; min-height: 74rpx; padding: 0 20rpx; font-size: 26rpx; color: #fff9e9; background: #27704f; }
+.notebook-style-scroll { width: 100%; white-space: nowrap; }
+.notebook-style-row { display: inline-flex; gap: 18rpx; min-height: 86rpx; }
+.notebook-page .notebook-style { flex: none; display: flex; align-items: center; justify-content: center; min-width: 128rpx; min-height: 74rpx; padding: 8rpx 26rpx; margin: 6rpx 0; border-radius: 44rpx; font-size: 24rpx; line-height: 1.5; color: #485240; background: #ebe5d6; }
+.notebook-page .notebook-style.is-active { color: #fffcf1; background: #286b4d; }
+.notebook-filter-summary { justify-content: space-between; font-size: 22rpx; color: #747f68; }
+.notebook-page .notebook-filter-summary button { min-height: 74rpx; color: #315e44; font-size: 24rpx; }
+.notebook-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16rpx 14rpx; margin: 0 -4rpx; }
+.notebook-page .notebook-work-card { display: block; width: 100%; min-width: 0; padding: 10rpx; border-radius: 0; background: #fffbef; box-shadow: 0 3rpx 8rpx rgba(80,68,37,.14); text-align: left; }
+.notebook-card-photo { position: relative; height: 310rpx; overflow: hidden; background: #e9e4d5; }
+.notebook-card-photo > image { display: block; width: 100%; height: 100%; }
+.notebook-card-shade { position: absolute; inset: 0; background: linear-gradient(transparent 35%,rgba(27,25,15,.64)); }
+.notebook-card-copy { position: absolute; left: 12rpx; right: 10rpx; bottom: 12rpx; color: #fffcef; text-shadow: 0 1px 2px rgba(0,0,0,.4); }
+.notebook-card-number { display: block; font-family: Georgia,'Times New Roman',serif; font-size: 52rpx; line-height: 1; font-style: italic; }
+.notebook-card-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: 4rpx; font-size: 26rpx; line-height: 1.35; overflow-wrap: anywhere; }
+.notebook-card-meta { display: block; margin-top: 4rpx; font-size: 22rpx; line-height: 1.5; }
+.notebook-card-kind { position: absolute; right: 8rpx; top: 8rpx; max-width: 95%; padding: 3rpx 6rpx; font-size: 20rpx; line-height: 1.4; color: #fffcef; background: rgba(37,46,28,.52); }
+.notebook-page .notebook-more { margin-top: 30rpx; }
+.notebook-page .notebook-closing { position: relative; display: block; width: 100%; height: 410rpx; margin-top: 90rpx; overflow: visible; border-radius: 0; text-align: left; }
+.notebook-closing > image { width: 100%; height: 100%; display: block; }
+.notebook-closing > .notebook-tab { position: absolute; z-index: 2; left: 0; top: -12rpx; transform: rotate(-3deg); }
+.notebook-closing-shade { position: absolute; inset: 0; background: linear-gradient(transparent 30%,rgba(24,27,16,.58)); }
+.notebook-closing-copy { position: absolute; left: 20rpx; bottom: 20rpx; right: 18rpx; color: #fffcef; }
+.notebook-closing-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 85%; font-size: 48rpx; line-height: 1.2; }
+.notebook-closing .notebook-meta { color: #fffcef; }
+.notebook-closing-copy .notebook-card-kind { position: static; display: inline-block; margin-top: 6rpx; }
+.notebook-end-mark { justify-content: center; gap: 24rpx; margin: 34rpx 0 28rpx; color: #7c846d; font-family: KaiTi,STKaiti,serif; font-size: 24rpx; letter-spacing: 8rpx; }
+.notebook-end-mark > view { width: 36rpx; height: 1px; background: #8a947c; transform: rotate(-4deg) scaleY(.5); }
+.notebook-about { position: relative; margin-top: 12rpx; }
+.notebook-subtitle { position: relative; display: table; font-size: 48rpx; letter-spacing: -1rpx; line-height: 1.4; margin-bottom: 22rpx; }
+.notebook-about-leaf { position: absolute; right: -8rpx; top: -84rpx; width: 124rpx; height: 172rpx; transform: rotate(-18deg); opacity: .8; pointer-events: none; }
+.notebook-about-body { align-items: flex-start; gap: 24rpx; }
+.notebook-about-portrait { flex: none; width: 184rpx; height: 196rpx; margin-top: 4rpx; background: #e4dfd1; }
+.notebook-about-copy { min-width: 0; flex: 1; }
+.notebook-about-author { flex-wrap: wrap; gap: 8rpx 16rpx; font-size: 22rpx; line-height: 1.5; color: #717868; }
+.notebook-author { font-size: 30rpx; color: var(--studio-ink); }
+.notebook-bio { display: block; margin-top: 10rpx; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 24rpx; line-height: 1.7; color: #747c6d; }
+.notebook-specialties { display: flex; flex-wrap: wrap; gap: 8rpx 14rpx; margin-top: 10rpx; font-size: 22rpx; line-height: 1.6; color: #64765b; }
+.notebook-topics { margin-top: 36rpx; }
+.notebook-page .notebook-topic { display: flex; align-items: center; gap: 14rpx; width: 100%; min-height: 90rpx; margin-top: 12rpx; padding: 12rpx 16rpx; border: 1rpx solid #e3e1d3; border-radius: 12rpx; background: rgba(255,255,255,.57); text-align: left; }
+.notebook-topic-icon { flex: none; display: flex; justify-content: center; align-items: center; width: 62rpx; height: 62rpx; border-radius: 50%; background: #e0e6d7; }
+.notebook-topic:nth-of-type(3) .notebook-topic-icon { background: #e9e5d7; }
+.notebook-topic-icon > image { width: 38rpx; height: 38rpx; }
+.notebook-topic-label { flex: none; width: 180rpx; font-size: 27rpx; line-height: 1.5; color: var(--studio-ink); }
+.notebook-topic-helper { flex: 1; min-width: 0; border-left: 1rpx solid #c6cbbc; padding-left: 16rpx; color: #7b8276; font-size: 22rpx; line-height: 1.45; }
+.notebook-topic-helper > text { display: block; }
+.notebook-topic > .chevron { flex: none; width: 12rpx; height: 12rpx; color: #6b7d65; }
+.notebook-actions { gap: 16rpx; margin-top: 26rpx; }
+.studio-page.notebook-page .notebook-actions .studio-consult, .studio-page.notebook-page .notebook-actions .studio-contact { display: flex; flex: 1; justify-content: center; align-items: center; min-width: 0; height: 88rpx; min-height: 88rpx; padding: 0 12rpx; border-radius: 48rpx; font-size: 28rpx; font-weight: 600; line-height: 1.5; }
+.studio-page.notebook-page .notebook-actions .studio-consult { background: transparent; border: 1rpx solid #7e9581; color: var(--studio-ink); }
+.studio-page.notebook-page .notebook-actions .studio-contact { background: #145437; color: #fffcef; }
+.studio-page.notebook-page .notebook-actions .studio-contact[disabled] { background: #b5c0b4 !important; color: #f8f6ed !important; }
+.notebook-footer { display: block; margin-top: 14rpx; text-align: center; color: #7c8276; font-size: 22rpx; line-height: 1.6; }
+.notebook-service-note { display: block; margin-top: 8rpx; text-align: center; color: #7c8276; font-size: 22rpx; line-height: 1.6; }
+@media (max-width: 360px) { .notebook-title { font-size: 64rpx; } .notebook-topic-label { width: 172rpx; } }

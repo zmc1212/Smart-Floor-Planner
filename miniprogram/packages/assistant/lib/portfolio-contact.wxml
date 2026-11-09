@@ -1,0 +1,60 @@
+<template name="portfolio-contact-rows">
+  <view wx:if="{{publicContact.wechatId}}" class="portfolio-contact-row">
+    <image src="../assets/portfolio-contact-wechat.png" mode="aspectFit" aria-hidden="true" />
+    <view class="portfolio-contact-value"><text>工作微信</text><text user-select>{{publicContact.wechatId}}</text></view>
+    <button bindtap="copyPublicWechat" disabled="{{contactBusy}}"><text>复制微信号</text></button>
+  </view>
+  <view wx:if="{{publicContact.phone}}" class="portfolio-contact-row">
+    <image src="../assets/portfolio-contact-phone.png" mode="aspectFit" aria-hidden="true" />
+    <view class="portfolio-contact-value"><text>工作电话</text><text user-select>{{publicContact.phone}}</text></view>
+    <button bindtap="callPublicPhone" disabled="{{contactBusy}}"><text>拨打电话</text></button>
+  </view>
+</template>
+
+<template name="portfolio-contact-inline">
+  <view class="portfolio-contact-inline">
+    <view class="portfolio-contact-heading">
+      <text class="notebook-serif">联系方式</text>
+      <button wx:if="{{publicContact.qrAvailable}}" bindtap="openPublicContact" disabled="{{contactBusy}}">微信二维码 ↗</button>
+    </view>
+    <template is="portfolio-contact-rows" data="{{publicContact, contactBusy}}" />
+    <text wx:if="{{!publicContact.wechatId && !publicContact.phone && !publicContact.qrAvailable && !contactError}}" class="portfolio-contact-state">暂未公开联系方式</text>
+    <button wx:if="{{contactError && !contactSheetVisible}}" class="portfolio-contact-state" bindtap="openPublicContact">{{contactError}}　重试</button>
+  </view>
+</template>
+
+<template name="portfolio-contact-sheet">
+  <view wx:if="{{contactSheetVisible}}" class="portfolio-contact-overlay {{contactSheetOpen ? 'is-open' : ''}}">
+    <view class="portfolio-contact-mask" bindtap="closePublicContact" catchtouchmove="noop" />
+    <view class="portfolio-contact-sheet" role="dialog" aria-modal="true" aria-label="联系设计师">
+      <view class="portfolio-contact-grip" aria-hidden="true" />
+      <button class="portfolio-contact-close" bindtap="closePublicContact" aria-label="关闭联系面板"><image src="../assets/studio-close.png" /></button>
+      <scroll-view class="portfolio-contact-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+        <view class="portfolio-contact-head">
+          <view class="portfolio-contact-avatar">
+            <image wx:if="{{contactAuthor}}" src="{{portraitPath || contactAuthor.fallbackAvatar}}" mode="aspectFill" aria-hidden="true" />
+          </view>
+          <view class="portfolio-contact-person"><text class="notebook-serif">联系{{contactAuthor.name}}</text><text wx:if="{{contactAuthor.byline}}">{{contactAuthor.byline}}</text></view>
+        </view>
+        <text wx:if="{{contactBusy && !publicContact}}" class="portfolio-contact-state" role="status">正在读取公开联系方式…</text>
+        <block wx:if="{{publicContact}}">
+          <template is="portfolio-contact-rows" data="{{publicContact, contactBusy}}" />
+          <view wx:if="{{publicContact.qrAvailable}}" class="portfolio-contact-qr">
+            <button wx:if="{{contactQrPath}}" class="portfolio-contact-qr-image" bindtap="previewContactQr" disabled="{{contactBusy}}" aria-label="查看微信二维码"><image src="{{contactQrPath}}" mode="aspectFit" /></button>
+            <text wx:elif="{{contactBusy}}" class="portfolio-contact-state">正在读取二维码…</text>
+            <text wx:if="{{contactQrPath}}">微信二维码</text>
+            <button wx:if="{{contactQrPath}}" class="portfolio-contact-save" bindtap="saveContactQr" disabled="{{contactBusy}}"><text>保存二维码</text></button>
+          </view>
+          <text wx:if="{{!publicContact.wechatId && !publicContact.phone && !publicContact.qrAvailable}}" class="portfolio-contact-state">暂未公开联系方式</text>
+          <view wx:if="{{publicContact.wechatId || publicContact.qrAvailable}}" class="portfolio-contact-hint"><image src="../assets/notebook-sage.png" mode="aspectFit" aria-hidden="true" /><text>添加时可备注来自家客来</text></view>
+          <button wx:if="{{publicContact.allowInApp && !readOnly}}" class="portfolio-contact-station" bindtap="contact" loading="{{busy}}" disabled="{{busy || contactBusy || pendingAction}}"><text>暂时不方便？先站内咨询 ↗</text></button>
+        </block>
+        <view wx:if="{{contactError || error}}" class="portfolio-contact-feedback" role="alert">
+          <text>{{contactError || error}}</text>
+          <button wx:if="{{pendingAction}}" bindtap="retryWrite" disabled="{{busy}}">核对操作结果</button>
+          <button wx:elif="{{contactError}}" bindtap="openPublicContact" disabled="{{contactBusy}}">重试</button>
+        </view>
+      </scroll-view>
+    </view>
+  </view>
+</template>

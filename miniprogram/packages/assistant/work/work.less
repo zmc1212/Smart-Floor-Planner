@@ -1,1 +1,86 @@
-@import '../lib/portfolio.less';
+@import '../designer/designer.less'; /* Reuse the designer's contact panel and action styles. */
+/* Approved acquisition flow extends the v5 notebook work with an author card and a fixed action dock. */
+.work-notebook .portfolio-nav { position: relative; z-index: 2; border: 0; }
+.work-notebook .nav-title { font-size: 32rpx; font-weight: 400; }
+.work-notebook .work-content { padding-top: 16rpx; }
+.work-masthead { position: relative; padding-bottom: 40rpx; }
+.work-kicker { display: block; color: #6b8070; font-size: 24rpx; letter-spacing: 3rpx; line-height: 1.6; }
+.work-title { display: block; position: relative; z-index: 1; margin-top: 14rpx; font-size: 60rpx; line-height: 1.25; letter-spacing: -2rpx; overflow-wrap: anywhere; }
+.work-notebook .work-title-stroke { margin: -2rpx 0 8rpx 55%; width: 176rpx; }
+.work-meta { display: block; font-size: 25rpx; line-height: 1.7; letter-spacing: 1rpx; }
+.studio-page .work-author-card { display: flex; width: 100%; min-height: 130rpx; box-sizing: border-box; align-items: center; gap: 16rpx; margin: -8rpx 0 30rpx; padding: 12rpx 16rpx; background: #fbf7ed; border: 1rpx solid #e9e2d5; box-shadow: 0 5rpx 10rpx #8d784525; text-align: left; }
+.work-author-card .portfolio-contact-avatar { width: 106rpx; height: 106rpx; font-size: 36rpx; }
+.work-author-copy { flex: 1; min-width: 0; }
+.work-author-copy text { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.work-author-name { font-size: 34rpx; font-weight: 900; line-height: 1.35; }
+.work-author-byline { margin-top: 4rpx; color: #64796d; font-size: 22rpx; line-height: 1.45; }
+.work-author-entry { flex: none; padding: 10rpx 14rpx; color: #164d3c; border: 1rpx solid #718f7e; border-radius: 40rpx; font-size: 24rpx; white-space: nowrap; }
+.work-location { display: block; font-size: 22rpx; line-height: 1.6; color: #75806b; }
+.work-title-leaf { position: absolute; right: -16rpx; bottom: 0; width: 124rpx; height: 180rpx; opacity: .7; pointer-events: none; }
+.work-notebook .work-photo-sheet { padding: 0 14rpx 18rpx; }
+.work-gallery-heading { display: flex; align-items: center; justify-content: space-between; min-height: 70rpx; }
+.work-gallery-heading .notebook-tab { margin-top: -14rpx; transform: rotate(-1deg); }
+.work-notebook .work-tour { display: flex; align-items: center; gap: 10rpx; min-height: 86rpx; padding: 0 6rpx; color: var(--studio-ink); font-size: 24rpx; }
+.work-tour image { width: 30rpx; height: 30rpx; }
+.work-tour image { filter: brightness(0) saturate(100%) invert(20%) sepia(21%) saturate(1070%) hue-rotate(103deg) brightness(90%) contrast(92%); }
+.work-space-scroll { width: 100%; }
+.work-space-tabs { display: flex; align-items: center; min-height: 86rpx; gap: 26rpx; }
+.work-notebook .work-space-tab { flex: none; min-height: 86rpx; padding: 20rpx 8rpx; font-size: 26rpx; line-height: 44rpx; color: #676b60; border-radius: 0; }
+.work-space-tab.is-active { color: #143d31; font-weight: 600; text-decoration: underline; text-underline-offset: 12rpx; }
+.work-photo-group + .work-photo-group { margin-top: 26rpx; }
+.work-group-label { display: block; padding: 12rpx 8rpx; font-size: 24rpx; color: #697463; }
+.work-photo-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12rpx; }
+.work-photo { position: relative; min-width: 0; padding: 6rpx; background: #fffbee; box-shadow: 0 2rpx 5rpx #4e40251a; }
+.work-photo > image { display: block; width: 100%; height: 214rpx; }
+.work-photo-wide { grid-column: 1 / -1; }
+.work-photo-wide > image { height: 386rpx; }
+.work-photo-caption { position: absolute; left: 6rpx; right: 6rpx; top: 148rpx; min-height: 72rpx; display: flex; align-items: flex-end; gap: 12rpx; padding: 20rpx 12rpx 10rpx; box-sizing: border-box; color: #fff; background: linear-gradient(transparent,#0007); font-size: 22rpx; text-shadow: 0 1px 3px #0009; pointer-events: none; }
+.work-photo-caption > text:first-child { font-size: 26rpx; }
+.work-photo-wide .work-photo-caption { top: 320rpx; }
+.work-picture-note { display: block; padding: 12rpx 4rpx 4rpx; font-size: 22rpx; color: #6e7666; line-height: 1.6; }
+.work-image-empty { display: flex; align-items: center; justify-content: center; width: 100%; height: 214rpx; background: #e9e4d5; color: #737b6b; font-size: 24rpx; }
+.work-photo-wide .work-image-empty { height: 386rpx; }
+.work-plans-section,.work-notes-section,.work-materials-section,.work-preference-section { margin-top: 54rpx; }
+.work-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12rpx; }
+.work-section-title { display: block; font-size: 43rpx; line-height: 1.4; letter-spacing: -1rpx; }
+.work-notebook .work-section-stroke { width: 204rpx; margin: 0 0 20rpx; }
+.work-notebook .work-expand { display: flex; align-items: center; gap: 8rpx; min-height: 86rpx; padding: 0; font-size: 24rpx; white-space: nowrap; color: #143d31; }
+.work-outward-icon { position: relative; display: block; flex: none; width: 24rpx; height: 24rpx; border: 2rpx solid currentColor; border-top-color: transparent; border-right-color: transparent; box-sizing: border-box; }
+.work-outward-icon::before { content: ''; position: absolute; top: -2rpx; right: -2rpx; width: 14rpx; height: 14rpx; border-top: 2rpx solid currentColor; border-right: 2rpx solid currentColor; }
+.work-outward-icon::after { content: ''; position: absolute; top: 7rpx; right: -3rpx; width: 24rpx; height: 2rpx; background: currentColor; transform: rotate(-45deg); }
+.work-drawing-sheet { position: relative; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); padding: 20rpx 10rpx; gap: 12rpx; background: #f9f5e9; border: 1rpx solid #e5dfcf; box-shadow: 0 2rpx 10rpx #5144251c; }
+.work-drawing + .work-drawing { border-left: 1rpx dashed #d4d1c2; padding-left: 12rpx; }
+.work-drawing-single { grid-template-columns: minmax(0,1fr); }
+.work-drawing image,.work-drawing .work-image-empty { display: block; width: 100%; height: 256rpx; background: #fffdf5; }
+.work-drawing-single image { height: 400rpx; }
+.work-drawing-title { display: block; margin-top: 14rpx; text-align: center; font-size: 25rpx; line-height: 1.5; }
+.work-plan-note { display: block; margin-top: 20rpx; text-align: center; color: #707a68; font-size: 22rpx; line-height: 1.6; }
+.work-change-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 26rpx 20rpx; margin-top: 24rpx; }
+.work-change { display: flex; align-items: flex-start; gap: 12rpx; min-width: 0; }
+.work-change-number { flex: none; display: flex; align-items: center; justify-content: center; width: 42rpx; height: 42rpx; border-radius: 50%; color: #fffbee; background: #205843; font-family: Georgia,serif; font-size: 26rpx; }
+.work-change-title { display: block; font-size: 26rpx; line-height: 1.5; }
+.work-change-copy { display: block; margin-top: 8rpx; color: #737969; font-size: 22rpx; line-height: 1.7; }
+.work-body { display: block; color: #40574c; font-size: 27rpx; line-height: 1.8; white-space: pre-wrap; }
+.work-notes-section { position: relative; }
+.work-notes-section .work-section-title { padding-right: 124rpx; }
+.work-notes-leaf { position: absolute; right: -16rpx; top: -26rpx; width: 124rpx; height: 180rpx; opacity: .7; pointer-events: none; }
+.work-notes-section .work-body { padding-right: 100rpx; }
+.work-highlight { display: flex; gap: 12rpx; margin-top: 12rpx; font-size: 25rpx; line-height: 1.7; }
+.work-note-dot { flex: none; width: 7rpx; height: 7rpx; border-radius: 50%; background: #7b956e; margin-top: 17rpx; }
+.work-material-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 16rpx; margin-top: 18rpx; }
+.work-material { min-width: 0; font-size: 23rpx; line-height: 1.5; text-align: center; color: #3f564a; }
+.work-material > text { display: block; margin-top: 12rpx; overflow-wrap: anywhere; }
+.work-material-swatch,.work-material-paper { display: block; width: 100%; height: 100rpx; background: #e4decd; }
+.work-material-paper { background: repeating-linear-gradient(0deg,#e8e2d2 0,#e8e2d2 6rpx,#e3ddcd 6rpx,#e3ddcd 7rpx); }
+.work-preference-row { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12rpx; }
+.work-notebook .work-preference { display: flex; align-items: center; justify-content: flex-start; gap: 14rpx; min-height: 86rpx; padding: 12rpx 8rpx; font-size: 26rpx; color: #60695f; }
+.work-radio { flex: none; width: 30rpx; height: 30rpx; border: 2rpx solid currentColor; border-radius: 50%; padding: 5rpx; box-sizing: border-box; }
+.work-notebook .work-preference.is-selected { background: transparent; color: #145437; font-weight: 600; text-decoration: underline; text-underline-offset: 12rpx; }
+.work-preference.is-selected .work-radio::after { content: ''; display: block; width: 100%; height: 100%; border-radius: 50%; background: currentColor; }
+.work-preference-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8rpx; border-top: 1rpx solid #c7cdbd; margin-top: 12rpx; color: #72796c; font-size: 22rpx; line-height: 1.6; }
+.work-notebook .work-share { display: flex; align-items: center; gap: 8rpx; min-height: 86rpx; padding: 0; color: #143d31; font-size: 24rpx; }
+.studio-page.notebook-page.work-notebook { padding-bottom: calc(132rpx + env(safe-area-inset-bottom)); }
+.work-notebook .work-actions { position: fixed; z-index: 10; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: minmax(0,4fr) minmax(0,5fr); gap: 16rpx; margin: 0; padding: 14rpx 34rpx calc(14rpx + env(safe-area-inset-bottom)); background: #f9f6ed; border-top: 1rpx solid #ddd8ca; }
+.studio-page.notebook-page .work-actions .studio-consult, .studio-page.notebook-page .work-actions .studio-contact { border-radius: 8rpx; font-size: 26rpx; }
+.work-reference-note { display: block; margin-top: 12rpx; font-size: 22rpx; line-height: 1.6; text-align: center; color: #72796c; }
+@media (max-width: 360px) { .work-title { font-size: 54rpx; } .work-change-grid { grid-template-columns: minmax(0,1fr); } }

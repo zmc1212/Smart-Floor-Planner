@@ -1,0 +1,65 @@
+<import src="../lib/portfolio-contact.wxml" />
+<template name="designer-notebook">
+  <view class="notebook-masthead">
+    <text class="notebook-title notebook-serif">设计师作品集</text>
+    <view class="notebook-title-stroke" aria-hidden="true"></view>
+    <text class="notebook-byline">{{designer.name}}<text wx:if="{{designer.professionalLine}}"> / {{designer.professionalLine}}</text><text wx:if="{{designer.cityLabel}}"> / {{designer.cityLabel}}</text></text>
+    <text class="notebook-tagline">以自然为底色，让家成为日常的诗。</text>
+    <view class="notebook-portrait">
+      <image src="{{portraitPath || designer.authorCard.fallbackAvatar}}" mode="{{portraitPath ? 'aspectFill' : 'aspectFit'}}" aria-label="{{designer.name}}的头像" />
+    </view>
+  </view>
+  <view wx:if="{{featuredWork}}" class="notebook-feature">
+    <view class="notebook-feature-heading flex-row"><text class="notebook-tab">本期选作</text><text class="notebook-feature-number">01</text><text class="notebook-feature-total">/ {{totalWorks}}</text><text wx:if="{{featuredWork.notebookNote}}" class="notebook-handnote">{{featuredWork.notebookNote}}</text></view>
+    <view class="notebook-photo-stack {{featuredWork.detailAssetId ? 'has-detail' : ''}}">
+      <button class="notebook-main-photo" data-id="{{featuredWork.id}}" bindtap="openWork" aria-label="查看作品：{{featuredWork.title}}">
+        <image wx:if="{{images['i' + featuredWork.coverAssetId]}}" src="{{images['i' + featuredWork.coverAssetId]}}" mode="aspectFill" />
+        <view wx:else class="notebook-image-loading">图片加载中</view>
+      </button>
+      <button wx:if="{{featuredWork.detailAssetId}}" class="notebook-detail-photo" data-id="{{featuredWork.id}}" bindtap="openWork" aria-label="查看{{featuredWork.title}}的空间细节">
+        <image wx:if="{{images['i' + featuredWork.detailAssetId]}}" src="{{images['i' + featuredWork.detailAssetId]}}" mode="aspectFill" />
+        <view wx:else class="notebook-image-loading">图片加载中</view>
+      </button>
+      <text class="notebook-image-kind">{{featuredWork.coverLabel}}</text>
+      <button wx:if="{{featuredWork.tourCount}}" class="notebook-tour flex-row" bindtap="openStudioTour"><image src="../assets/tour-3d.png" /><text>3D空间</text><view class="chevron" /></button>
+    </view>
+    <view class="notebook-feature-copy {{featuredWork.detailAssetId ? 'has-detail' : ''}}">
+      <button data-id="{{featuredWork.id}}" bindtap="openWork" class="notebook-feature-link"><text class="notebook-feature-title notebook-serif">{{featuredWork.title}}</text><text wx:if="{{featuredWork.studioMeta}}" class="notebook-meta">{{featuredWork.studioMeta}}</text></button>
+      <text wx:if="{{featuredWork.notebookNote}}" class="notebook-design-note">{{featuredWork.notebookNote}}</text>
+    </view>
+    <view wx:if="{{featuredWork.palette.length || featuredWork.materials.length}}" class="notebook-materials">
+      <view class="notebook-swatches"><view wx:for="{{featuredWork.palette}}" wx:key="hex" class="notebook-swatch"><view class="notebook-color" style="background-color: {{item.hex}};"></view><text>{{item.name}}</text></view></view>
+      <view wx:if="{{featuredWork.materials.length}}" class="notebook-material-labels"><text wx:for="{{featuredWork.materials}}" wx:key="*this">{{item}}</text></view>
+      <image class="notebook-feature-leaf" src="../assets/notebook-sage.png" mode="aspectFit" aria-hidden="true" />
+    </view>
+  </view>
+  <view id="studio-catalog" class="notebook-catalog">
+    <view class="notebook-catalog-title flex-row"><text class="notebook-section-title notebook-serif">作品目录</text><text class="notebook-catalog-note">记录每一种<text>理想的生活方式。</text></text><image src="../assets/notebook-sage.png" mode="aspectFit" aria-hidden="true" /></view>
+    <view class="notebook-filter-bar" style="top: {{navigationBottom}}px;">
+      <view class="notebook-filter-heading flex-row"><button class="studio-open-filters notebook-tab" bindtap="showStudioFilters" aria-expanded="{{studioSheetVisible}}">筛选</button><text>{{studioCountLabel}}</text></view>
+      <scroll-view wx:if="{{totalWorks}}" class="notebook-style-scroll" scroll-x="true" enable-flex="true" show-scrollbar="{{false}}"><view class="notebook-style-row flex-row"><button wx:for="{{styleOptions}}" wx:key="key" class="notebook-style notebook-style-index-{{index}} {{studioFilters.style === item.key ? 'is-active' : ''}}" data-key="{{item.key}}" bindtap="setFilter" aria-pressed="{{studioFilters.style === item.key}}">{{item.label}}</button></view></scroll-view>
+      <view wx:if="{{studioFilters.layout !== 'all' || studioFilters.tourOnly}}" class="notebook-filter-summary flex-row"><text>{{studioFilters.layout !== 'all' ? studioFilters.layout : '户型不限'}}{{studioFilters.tourOnly ? ' · 有3D空间' : ''}}</text><button bindtap="clearFilter">清除筛选</button></view>
+    </view>
+    <view wx:if="{{!totalWorks}}" class="state-copy">暂无公开作品，可以先聊聊你的想法。</view>
+    <view wx:elif="{{hasStudioFilters && !catalogWorks.length}}" class="studio-empty-results">这个组合下暂无作品<button class="studio-clear-filters" bindtap="clearFilter">清除筛选，查看全部</button></view>
+    <view wx:else class="notebook-grid">
+      <button wx:for="{{catalogWorks}}" wx:key="id" wx:if="{{index < visibleCount}}" class="notebook-work-card" data-id="{{item.id}}" bindtap="openWork" aria-label="查看作品：{{item.title}}">
+        <view class="notebook-card-photo"><image wx:if="{{images['i' + item.coverAssetId]}}" src="{{images['i' + item.coverAssetId]}}" mode="aspectFill" /><view wx:else class="notebook-image-loading">图片加载中</view><view class="notebook-card-shade"></view><view class="notebook-card-copy"><text class="notebook-card-number">{{item.ordinal}}</text><text class="notebook-card-title notebook-serif">{{item.title}}</text><text wx:if="{{item.directoryMeta}}" class="notebook-card-meta">{{item.directoryMeta}}</text></view><text class="notebook-card-kind">{{item.coverLabel}}{{item.tourCount ? ' · 3D' : ''}}</text></view>
+      </button>
+    </view>
+    <button wx:if="{{remainingWorks}}" class="studio-more notebook-more" bindtap="moreWorks">继续查看（还剩{{remainingWorks}}套）<view class="chevron" /></button>
+    <button wx:if="{{imageError}}" class="state-copy studio-image-retry" bindtap="retryImages">{{imageError}}</button>
+  </view>
+  <button wx:if="{{closingWork}}" class="notebook-closing" data-id="{{closingWork.id}}" bindtap="openWork" aria-label="查看作品：{{closingWork.title}}"><image wx:if="{{images['i' + closingWork.coverAssetId]}}" src="{{images['i' + closingWork.coverAssetId]}}" mode="aspectFill" /><view wx:else class="notebook-image-loading">图片加载中</view><text class="notebook-tab">作品 {{closingWork.ordinal}}</text><view class="notebook-closing-shade"></view><view class="notebook-closing-copy"><text class="notebook-closing-title notebook-serif">{{closingWork.title}}</text><text class="notebook-meta">{{closingWork.studioMeta}}</text><text class="notebook-card-kind">{{closingWork.coverLabel}}</text></view></button>
+  <view class="notebook-end-mark flex-row"><view></view><text>{{remainingWorks ? '作品集 · 续' : '作品集 · 完'}}</text><view></view></view>
+  <view class="notebook-about"><text class="notebook-subtitle notebook-serif">关于设计师</text><image class="notebook-about-leaf" src="../assets/notebook-sage.png" mode="aspectFit" aria-hidden="true" /><view class="notebook-about-body flex-row"><view class="notebook-about-portrait"><image src="{{portraitPath || designer.authorCard.fallbackAvatar}}" mode="{{portraitPath ? 'aspectFill' : 'aspectFit'}}" aria-hidden="true" /></view><view class="notebook-about-copy"><view class="notebook-about-author flex-row"><text class="notebook-author notebook-serif">{{designer.name}}</text><text>{{designer.professionalLine}}<text wx:if="{{designer.cityLabel}}"> · {{designer.cityLabel}}</text></text></view><text wx:if="{{designer.bio}}" class="notebook-bio">{{designer.bio}}</text><view wx:if="{{designer.styles.length || designer.layoutSpecialties.length}}" class="notebook-specialties"><text wx:for="{{designer.styles}}" wx:key="*this">{{item}}</text><text wx:for="{{designer.layoutSpecialties}}" wx:key="*this">{{item}}</text></view></view></view></view>
+  <template is="portfolio-contact-inline" data="{{publicContact, contactBusy, contactError, contactSheetVisible}}" />
+  <view class="notebook-topics"><text class="notebook-subtitle notebook-serif">可以先聊这些</text>
+    <button class="notebook-topic flex-row" data-text="旧房改造有哪些需要先考虑？" bindtap="pickTopic"><view class="notebook-topic-icon"><image src="../assets/requirement-home.png" /></view><text class="notebook-topic-label notebook-serif">旧房怎么改</text><text class="notebook-topic-helper">老房翻新、户型优化、功能提升</text><view class="chevron" /></button>
+    <button class="notebook-topic flex-row" data-text="想聊聊适合我家的装修风格" bindtap="pickTopic"><view class="notebook-topic-icon"><image src="../assets/requirement-style.png" /></view><text class="notebook-topic-label notebook-serif">喜欢什么风格</text><text class="notebook-topic-helper">原木、奶油、现代简约…<text>帮你找到适合的风格方向</text></text><view class="chevron" /></button>
+    <button class="notebook-topic flex-row" data-text="想聊聊装修预算怎么安排" bindtap="pickTopic"><view class="notebook-topic-icon"><image src="../assets/requirement-budget.png" /></view><text class="notebook-topic-label notebook-serif">预算怎么安排</text><text class="notebook-topic-helper">不同预算的实现方式，<text>帮你合理规划每一笔花费</text></text><view class="chevron" /></button>
+  </view>
+  <view class="notebook-actions flex-row"><button class="studio-consult" bindtap="continueChat">和小K聊聊</button><button class="studio-contact" bindtap="openPublicContact" disabled="{{!featuredWork}}">联系设计师</button></view>
+  <view wx:if="{{error}}" class="notice notebook-contact-error" role="alert"><text>{{error}}</text><button wx:if="{{pendingAction}}" bindtap="retryWrite" disabled="{{busy}}">核对操作结果</button></view>
+  <text class="notebook-service-note">{{publicContact.channelLabel || '站内咨询'}}</text>
+</template>

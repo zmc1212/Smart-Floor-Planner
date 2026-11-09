@@ -1,0 +1,47 @@
+.studio-page .portfolio-nav-contact { flex: none; margin-left: auto; padding: 0; min-height: 88rpx; display: flex; align-items: center; color: #164d3c; font-size: 24rpx; white-space: nowrap; }
+.portfolio-nav-contact text { padding: 8rpx 16rpx; border: 1rpx solid #879e8a; border-radius: 50rpx; line-height: 1.4; }
+.portfolio-contact-inline { margin-top: 30rpx; padding-top: 18rpx; border-top: 1rpx solid #cbd3c2; color: #164d3c; }
+.portfolio-contact-heading { display: flex; align-items: center; justify-content: space-between; gap: 12rpx; }
+.portfolio-contact-heading > text { font-size: 38rpx; font-weight: 900; line-height: 1.4; }
+.studio-page .portfolio-contact-heading > button { min-height: 88rpx; padding: 0; color: #164d3c; font-size: 24rpx; white-space: nowrap; }
+.portfolio-contact-row { display: flex; align-items: center; gap: 16rpx; min-height: 104rpx; padding: 8rpx 0; box-sizing: border-box; border-bottom: 1rpx solid #cbd3c2; }
+.portfolio-contact-row:last-child { border-bottom: 0; }
+.portfolio-contact-row > image { flex: none; width: 40rpx; height: 40rpx; }
+.portfolio-contact-value { flex: 1; min-width: 0; }
+.portfolio-contact-value text { display: block; overflow-wrap: anywhere; font-size: 26rpx; line-height: 1.45; color: #164d3c; }
+.portfolio-contact-value text:first-child { color: #5b6b5f; font-size: 22rpx; }
+.studio-page .portfolio-contact-row > button { flex: none; display: flex; align-items: center; justify-content: center; min-height: 88rpx; padding: 0 12rpx; color: #164d3c; font-size: 24rpx; white-space: nowrap; }
+.portfolio-contact-inline .portfolio-contact-row > button { text-decoration: underline; text-underline-offset: 5rpx; }
+.portfolio-contact-overlay { position: fixed; inset: 0; z-index: 1100; }
+.portfolio-contact-mask { position: absolute; inset: 0; background: rgba(21,31,25,.52); opacity: 0; transition: opacity 240ms ease-out; }
+.portfolio-contact-overlay.is-open .portfolio-contact-mask { opacity: 1; }
+.portfolio-contact-sheet { position: absolute; right: 0; bottom: 0; left: 0; box-sizing: border-box; padding: 12rpx 36rpx calc(12rpx + env(safe-area-inset-bottom)); background: #f9f6ed; border-radius: 40rpx 40rpx 0 0; transform: translateY(100%); transition: transform 240ms ease-out; }
+.portfolio-contact-overlay.is-open .portfolio-contact-sheet { transform: translateY(0); }
+.portfolio-contact-grip { width: 78rpx; height: 7rpx; border-radius: 8rpx; margin: 5rpx auto 26rpx; background: #b8b9aa; }
+.studio-page .portfolio-contact-close { position: absolute; top: 14rpx; right: 16rpx; z-index: 1; width: 88rpx; min-height: 88rpx; padding: 0; display: flex; align-items: center; justify-content: center; }
+.portfolio-contact-close image { width: 30rpx; height: 30rpx; }
+.portfolio-contact-scroll { max-height: 76vh; }
+.portfolio-contact-head { display: flex; align-items: center; gap: 22rpx; min-height: 148rpx; padding: 4rpx 54rpx 20rpx 0; }
+.portfolio-contact-avatar { width: 144rpx; height: 144rpx; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #e4e7d5; color: #164d3c; font-size: 46rpx; }
+.portfolio-contact-avatar image { display: block; width: 100%; height: 100%; }
+.portfolio-contact-person { min-width: 0; }
+.portfolio-contact-person text { display: block; overflow-wrap: anywhere; color: #5b6b5f; font-size: 23rpx; line-height: 1.5; }
+.portfolio-contact-person text:first-child { color: #164d3c; font-size: 48rpx; line-height: 1.2; font-weight: 900; margin-bottom: 8rpx; }
+.portfolio-contact-sheet .portfolio-contact-row { min-height: 106rpx; padding: 8rpx 14rpx; margin-bottom: 16rpx; border: 1rpx solid #9bad98; border-radius: 24rpx; }
+.portfolio-contact-sheet .portfolio-contact-row > button { min-width: 154rpx; padding: 0; }
+.portfolio-contact-sheet .portfolio-contact-row > button > text { width: 100%; padding: 14rpx 0; border-radius: 48rpx; background: #0b503b; color: #fffdf3; line-height: 1.35; text-align: center; }
+.portfolio-contact-sheet .portfolio-contact-value { padding-left: 16rpx; border-left: 1rpx solid #9bad98; }
+.portfolio-contact-sheet .portfolio-contact-value text { color: #50695d; }
+.portfolio-contact-sheet .portfolio-contact-value text:first-child { color: #164d3c; font-size: 24rpx; }
+.portfolio-contact-state { display: block; padding: 18rpx 0; color: #657263; font-size: 24rpx; line-height: 1.5; }
+.studio-page button.portfolio-contact-state { min-height: 88rpx; text-align: left; }
+.portfolio-contact-qr { display: flex; flex-direction: column; align-items: center; color: #164d3c; font-size: 24rpx; padding-top: 5rpx; }
+.studio-page .portfolio-contact-qr-image { display: block; width: 184rpx; height: 184rpx; padding: 12rpx; box-sizing: border-box; margin-bottom: 6rpx; border-radius: 16rpx; background: #fff; }
+.portfolio-contact-qr-image image { width: 100%; height: 100%; }
+.studio-page .portfolio-contact-save { display: flex; align-items: center; justify-content: center; min-height: 88rpx; padding: 0; color: #164d3c; font-size: 24rpx; }
+.portfolio-contact-save text { box-sizing: border-box; min-width: 188rpx; padding: 9rpx 16rpx; border: 1rpx solid #b9c9b4; border-radius: 48rpx; text-align: center; }
+.portfolio-contact-hint { display: flex; align-items: center; justify-content: center; gap: 10rpx; color: #5b6b5f; font-size: 22rpx; line-height: 1.5; padding: 8rpx 0 12rpx; }
+.portfolio-contact-hint image { width: 36rpx; height: 42rpx; }
+.studio-page .portfolio-contact-station { display: flex; align-items: center; justify-content: center; min-height: 88rpx; width: 100%; padding: 0; border-top: 1rpx solid #d7ddcb; color: #164d3c; font-size: 24rpx; }
+.portfolio-contact-feedback { padding: 12rpx; color: #765c3b; background: #f1e7d6; font-size: 24rpx; line-height: 1.5; }
+.studio-page .portfolio-contact-feedback button { min-height: 88rpx; color: #164d3c; font-size: 24rpx; text-decoration: underline; }

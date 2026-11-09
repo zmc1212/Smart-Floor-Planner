@@ -1014,6 +1014,7 @@ Page({
 
   persistFormalDraft() {
     if (!this.draft) return false;
+    if (this.formalCloudLoadInFlight && !hasPersistedSurveyContent(this.draft)) return false;
     if (this.formalDraftRecovery && !hasPersistedSurveyContent(this.draft)) return false;
     try {
       const validation = surveyGraph.validateSurveyDraft(this.draft, { mode: 'full' });

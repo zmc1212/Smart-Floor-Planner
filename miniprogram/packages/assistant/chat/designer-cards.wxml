@@ -1,0 +1,35 @@
+<template name="portfolio-designer-cards">
+  <view class="designer-cards">
+    <view wx:for="{{recommendation.items}}" wx:for-item="card" wx:key="authorId" class="designer-card">
+      <button class="designer-card-head" data-id="{{card.authorId}}" data-work="{{card.work.id}}"
+        bindtap="openCardDesigner" disabled="{{blocked}}" aria-label="{{card.authorName}}的设计师主页">
+        <view class="designer-card-avatar">
+          <image src="{{portraits[card.authorId] || card.fallbackAvatar}}" mode="aspectFill" aria-hidden="true" />
+        </view>
+        <view class="designer-card-identity">
+          <text class="designer-card-name">{{card.authorName}}</text>
+          <text wx:if="{{card.byline}}" class="designer-card-title">{{card.byline}}</text>
+          <text wx:if="{{card.specialtyLine}}" class="designer-card-specialty">{{card.specialtyLine}}</text>
+        </view>
+      </button>
+      <view class="designer-card-work" data-work="{{card.work.id}}" data-version="{{card.work.versionId}}" bindtap="openCardWork">
+        <view class="designer-card-cover">
+          <image wx:if="{{images['i' + card.work.coverAssetId]}}" src="{{images['i' + card.work.coverAssetId]}}" mode="aspectFill" />
+          <text wx:if="{{card.work.coverLabel}}" class="designer-card-cover-label">{{card.work.coverLabel}}</text>
+        </view>
+        <view class="designer-card-copy">
+          <text class="designer-card-work-title"><text wx:for="{{card.work.titleParts}}" wx:for-item="part" wx:key="id" class="{{part.atomic ? 'work-title-atomic' : ''}}">{{part.text}}</text></text>
+          <text wx:if="{{card.work.areaLabel || card.work.rooms}}" class="work-layout">{{card.work.areaLabel}}{{card.work.areaLabel && card.work.rooms ? ' · ' : ''}}{{card.work.rooms}}</text>
+        </view>
+      </view>
+      <view class="designer-card-actions">
+        <button class="designer-card-link" data-id="{{card.authorId}}" data-work="{{card.work.id}}" bindtap="openCardDesigner" disabled="{{blocked}}">
+          <text>设计师主页 ↗</text>
+        </button>
+        <button class="work-open" data-work="{{card.work.id}}" data-version="{{card.work.versionId}}" bindtap="openCardWork" disabled="{{blocked}}">
+          <text>看这套作品 ↗</text>
+        </button>
+      </view>
+    </view>
+  </view>
+</template>

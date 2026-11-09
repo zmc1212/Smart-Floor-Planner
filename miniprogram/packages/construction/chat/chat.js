@@ -2,6 +2,7 @@ const { SiteClient, errorText } = require('./site-client');
 const { SiteCapture } = require('./site-capture');
 const { SpeechController } = require('../../../utils/speech');
 const { canAccessRoute } = require('../../../utils/identity-navigation');
+const { loadSiteFont } = require('../lib/site-font');
 const route = '/packages/construction/chat/chat';
 function identity() {
   const g = getApp().globalData || {}, context = g.bootstrap && g.bootstrap.current && g.bootstrap.current.context || {};
@@ -18,6 +19,7 @@ Page({
     captureText: '', capturePhotos: [], captureVoice: null, captureQueue: [], captureSaving: false, captureSending: false, captureError: '', textMode: false,
     quickChoice: {}, quickWorks: [], quickRooms: [], quickRoomIndex: 0, progressOptions: [{ id: 'done', label: '做完了' }, { id: 'partial', label: '做了一部分' }, { id: 'not_started', label: '还没做' }, { id: 'unsure', label: '说不准' }] },
   onLoad(options) {
+    loadSiteFont();
     this.speechController = new SpeechController({ identity: () => identity().token || '', emit: patch => { if (this._visible) this.setData(patch); },
       getDraft: () => this.data.draft || '', setDraft: value => this.client.input(value), reload: () => this.client.load(),
       captureAudio: result => this.capture.addFile(result.tempFilePath, 'voice', result.duration || 0) });

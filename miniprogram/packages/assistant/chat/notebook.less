@@ -61,21 +61,26 @@
   .featured-message > .avatar { display: none; }
   .notebook-reference-message { box-sizing: border-box; position: relative; max-width: 100%; width: 100%; padding: 80rpx 28rpx 28rpx; background: #fcf8ed; box-shadow: 0 5rpx 10rpx #8d78452b; border: 1rpx solid #fffdf5; border-radius: 2rpx; }
   .notebook-reference-message > .bubble { padding: 0 9rpx 27rpx; box-shadow: none; border: 0; border-bottom: 1rpx solid #a6b39b; border-radius: 0; background: none; }
-  .notebook-reference-message .designer-cards { margin: 22rpx 0 0; }
+  .notebook-reference-message .designer-cards { margin: 12rpx 0 0; padding: 0 14rpx; }
   .notebook-reference-message .designer-card { padding: 0; border: 0; border-radius: 0; background: transparent; }
-  .notebook-reference-message .designer-card-head { display: none; }
-  .notebook-reference-message .designer-card-reason, .notebook-reference-message .designer-card-meta, .notebook-reference-message .designer-card-notice { display: none; }
-  .notebook-reference-message .designer-card-work { align-items: flex-start; gap: 23rpx; padding: 0; margin: 0; border: 0; }
-  .notebook-reference-message .designer-card-cover { width: 350rpx; height: 256rpx; padding: 8rpx; box-sizing: border-box; border: 1rpx solid #ebe0c6; border-radius: 0; background: #fffbee; box-shadow: 0 6rpx 9rpx #8d784533; }
-  .notebook-reference-message .designer-card-work-title { font-family: 'Chat Serif','Songti SC',SimSun,serif; font-size: 43rpx; line-height: 1.2; font-weight: 900; }
-  .notebook-reference-message .designer-card-tags { display: block; }
-  .notebook-reference-message .designer-card-tag { display: inline; padding: 0; margin-right: 6rpx; color: #828477; border: 0; border-radius: 0; background: none; }
-  .notebook-reference-message .designer-card-arrow { display: none; }
-  .work-byline { display: block; font-size: 22rpx; color: #708773; margin-bottom: 12rpx; line-height: 1.5; }
+  .notebook-reference-message .designer-card + .designer-card { margin-top: 18rpx; padding-top: 24rpx; border-top: 1rpx solid #a9b69e; }
+  .notebook-reference-message .designer-card-head { display: flex; align-items: center; gap: 22rpx; width: 100%; padding: 8rpx 0 16rpx; text-align: left; }
+  .notebook-reference-message .designer-card-avatar { width: 112rpx; height: 112rpx; background: #e4e7d5; color: #164d3c; font-size: 40rpx; }
+  .notebook-reference-message .designer-card-name { color: #123d31; font-family: 'Chat Serif','Songti SC',SimSun,serif; font-size: 36rpx; font-weight: 900; }
+  .notebook-reference-message .designer-card-name, .notebook-reference-message .designer-card-title, .designer-card-specialty { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .designer-card-specialty { display: block; color: #64776a; font-size: 22rpx; line-height: 1.5; }
+  .notebook-reference-message .designer-card-work { align-items: center; gap: 26rpx; padding: 12rpx 0 0; margin: 0; border-top: 1rpx solid #a9b69e; }
+  .notebook-reference-message .designer-card-cover { width: 316rpx; height: 198rpx; padding: 6rpx; box-sizing: border-box; border: 1rpx solid #ebe0c6; border-radius: 0; background: #fffbee; box-shadow: 0 6rpx 9rpx #8d784533; }
+  .designer-card-cover-label { position: absolute; left: 7rpx; bottom: 7rpx; padding: 3rpx 12rpx; border-radius: 0 8rpx 0 0; background: #163c30db; color: #fffdf5; font-size: 20rpx; line-height: 1.45; }
+  .notebook-reference-message .designer-card-work-title { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font-family: 'Chat Serif','Songti SC',SimSun,serif; font-size: 36rpx; line-height: 1.3; font-weight: 900; }
+  .notebook-reference-message .work-title-atomic { display: inline-block; white-space: nowrap; }
   .work-layout { display: block; margin-top: 10rpx; color: #828477; font-size: 24rpx; line-height: 1.6; }
-  .work-layout + .designer-card-tags { display: none; }
-  .notebook-reference-message .work-open { display: flex; align-items: center; gap: 2rpx; margin-top: 16rpx; min-height: 84rpx; font-size: 26rpx; white-space: nowrap; }
-  .work-open image { width: 28rpx; height: 28rpx; }
+  .designer-card-actions { display: flex; align-items: center; gap: 26rpx; margin-top: 8rpx; }
+  .designer-card-actions button { display: flex; align-items: center; justify-content: center; min-height: 88rpx; padding: 0; white-space: nowrap; font-size: 26rpx; }
+  .notebook-reference-message .designer-card-actions .designer-card-link { flex: none; width: 316rpx; min-height: 88rpx; color: #fffdf5; }
+  .designer-card-link > text { display: block; width: 100%; padding: 14rpx 0; background: #064436; border-radius: 12rpx; line-height: 1.35; text-align: center; }
+  .designer-card-actions .work-open { flex: 1; min-width: 0; color: #164d3c; }
+  .designer-card-actions .work-open text { border-bottom: 2rpx solid #9cab94; padding: 4rpx 0; }
   .answer-label { position: absolute; top: -11rpx; left: 10rpx; display: flex; align-items: center; gap: 22rpx; font-size: 24rpx; color: #68806d; }
   .answer-label .fabric-label { transform: rotate(-6deg); font-size: 32rpx; line-height: 1.4; }
   .composer-dock { padding: 12rpx 28rpx 22rpx 50rpx; background: transparent; }

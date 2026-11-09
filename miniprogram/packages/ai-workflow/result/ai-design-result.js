@@ -106,7 +106,9 @@ Page({
     this.shouldRun = options.run === '1';
     this.setData({ id: options.id || '' });
     if (!options.id) {
+      this.setData({ loading: false });
       wx.showToast({ title: '任务参数错误', icon: 'none' });
+      this.browseRecipes();
       return;
     }
     this.loadTask();

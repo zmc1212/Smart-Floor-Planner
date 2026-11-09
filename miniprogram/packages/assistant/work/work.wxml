@@ -1,80 +1,37 @@
-<!-- D-02 (780x1688 -> 390x844): work detail with 3D entry, space filter, grouped galleries and design notes. -->
-<view class="portfolio-page">
-  <view class="portfolio-nav" style="padding-top: {{navigationTop}}px; padding-right: {{navigationRight}}px;"><view class="portfolio-nav-lane" style="min-height: {{navigationHeight}}px;"><button class="back" bindtap="back" aria-label="返回"><image src="../assets/arrow-left.png" /></button><text class="nav-title">作品详情</text></view></view>
-  <view class="portfolio-content">
+<import src="../lib/portfolio-contact.wxml" />
+<page-meta page-style="{{contactSheetVisible ? 'overflow:hidden;' : ''}}" />
+<!-- v5 approved notebook inner page. Native labels/layout, authorized independent media. -->
+<view class="portfolio-page studio-page notebook-page work-notebook">
+  <view class="portfolio-nav studio-nav" style="padding-top: {{navigationTop}}px; padding-right: {{navigationRight}}px;"><view class="portfolio-nav-lane" style="min-height: {{navigationHeight}}px;"><button class="back" bindtap="back" aria-label="返回"><image src="../assets/arrow-left.png"/></button><text class="nav-title">作品详情</text></view></view>
+  <view class="studio-content work-content">
     <text wx:if="{{loading}}" class="state-copy">正在读取作品…</text>
-    <view wx:if="{{error}}" class="notice" role="alert"><text>{{error}}</text><button wx:if="{{needsLogin}}" bindtap="login">去登录</button><button wx:elif="{{pendingAction}}" bindtap="retryWrite" disabled="{{busy}}">核对操作结果</button><button wx:else bindtap="retry">重新读取</button></view>
+    <view wx:if="{{error && (!work || !pendingAction)}}" class="notice" role="alert"><text>{{error}}</text><button wx:if="{{needsLogin}}" bindtap="login">去登录</button><button wx:elif="{{pendingAction}}" bindtap="retryWrite" disabled="{{busy}}">核对操作结果</button><button wx:else bindtap="retry">重新读取</button></view>
     <block wx:if="{{work && !unavailable}}">
-      <view class="work-intro">
-        <text class="designer-bio">{{work.authorName}} · {{work.authorRole}}</text>
-        <text class="detail-title">{{work.title}}</text>
-        <text class="work-metadata">{{work.metadata}}</text>
-        <text class="city-label">{{work.cityName}}{{work.district ? ' · ' + work.district : ''}}{{work.community ? ' · ' + work.community.name : ''}}</text>
-        <text class="detail-description">{{work.description}}</text>
-        <view wx:if="{{work.styleTags.length || work.layoutTypes.length}}" class="tag-row intro-tags">
-          <text wx:for="{{work.styleTags}}" wx:for-item="tag" wx:key="*this" class="work-tag style-tag">{{tag}}</text>
-          <text wx:for="{{work.layoutTypes}}" wx:for-item="tag" wx:key="*this" class="work-tag">{{tag}}</text>
-        </view>
+      <view class="work-masthead"><text class="work-kicker">住宅作品</text><text class="work-title notebook-serif">{{work.title}}</text><view class="notebook-title-stroke work-title-stroke" aria-hidden="true"></view><text class="work-meta">{{work.studioMeta}}</text><text wx:if="{{work.district || work.community}}" class="work-location">{{work.district}}{{work.community ? ' · ' + work.community.name : ''}}</text><image class="work-title-leaf" src="../assets/work-v5-sage.png" mode="aspectFit" aria-hidden="true"/></view>
+      <button class="work-author-card" bindtap="openDesigner" aria-label="{{work.authorCard.name}}的设计师主页"><view class="portfolio-contact-avatar"><image src="{{portraitPath || work.authorCard.fallbackAvatar}}" mode="aspectFill" aria-hidden="true"/></view><view class="work-author-copy"><text class="work-author-name notebook-serif">{{work.authorCard.name}}</text><text wx:if="{{work.authorCard.byline}}" class="work-author-byline">{{work.authorCard.byline}}</text></view><text class="work-author-entry">设计师主页 ↗</text></button>
+      <view class="notebook-feature work-photo-sheet">
+        <view class="work-gallery-heading"><text class="notebook-tab">全屋空间</text><button wx:if="{{work.tours.length}}" class="work-tour" bindtap="openTour"><image src="../assets/tour-3d.png"/><text>3D 空间</text><image src="../assets/studio-arrow-right.png"/></button></view>
+        <scroll-view wx:if="{{work.hasSpaceTags}}" class="work-space-scroll" scroll-x="true" enable-flex="true" show-scrollbar="{{false}}"><view class="work-space-tabs"><button class="work-space-tab {{spaceFilter === 'all' ? 'is-active' : ''}}" data-space="all" bindtap="setSpace">全部</button><button wx:for="{{work.spaceGroups}}" wx:key="key" class="work-space-tab {{spaceFilter === item.key ? 'is-active' : ''}}" data-space="{{item.key}}" bindtap="setSpace">{{item.label}}</button></view></scroll-view>
+        <view wx:if="{{work.renders.length}}" class="work-photo-group"><text wx:if="{{work.photos.length}}" class="work-group-label">效果图 · {{work.renders.length}}张</text><view class="work-photo-grid"><view wx:for="{{work.renders}}" wx:key="assetId" class="work-photo {{item.galleryWide ? 'work-photo-wide' : ''}}"><image wx:if="{{images['i' + item.assetId]}}" src="{{images['i' + item.assetId]}}" mode="aspectFill" data-id="{{item.assetId}}" bindtap="preview"/><text wx:else class="work-image-empty">图片加载中</text><view class="work-photo-caption"><text>{{item.space}}</text><text>{{item.label}}</text></view><text wx:if="{{item.caption}}" class="work-picture-note">{{item.caption}}</text></view></view></view>
+        <view wx:if="{{work.photos.length}}" class="work-photo-group"><text class="work-group-label">实拍图 · {{work.photos.length}}张</text><view class="work-photo-grid"><view wx:for="{{work.photos}}" wx:key="assetId" class="work-photo {{item.galleryWide ? 'work-photo-wide' : ''}}"><image wx:if="{{images['i' + item.assetId]}}" src="{{images['i' + item.assetId]}}" mode="aspectFill" data-id="{{item.assetId}}" bindtap="preview"/><text wx:else class="work-image-empty">图片加载中</text><view class="work-photo-caption"><text>{{item.space}}</text><text>{{item.label}}</text></view><text wx:if="{{item.caption}}" class="work-picture-note">{{item.caption}}</text></view></view></view>
+        <text wx:if="{{!work.renders.length && !work.photos.length}}" class="state-copy">这个空间下暂无图片，可以查看全部。</text>
       </view>
-      <button wx:if="{{work.tours.length}}" class="tour-card" bindtap="openTour" aria-label="查看3D空间">
-        <view class="tour-icon"><image src="../assets/tour-3d.png" /></view>
-        <view class="tour-copy"><text class="tour-title">3D 空间 · 在线看房</text><text class="tour-meta">{{work.tourCount}} 个空间 · {{work.tourProviderLabel}}</text></view>
-        <view wx:if="{{images['i' + work.coverAssetId]}}" class="tour-thumb"><image class="tour-thumb-image" src="{{images['i' + work.coverAssetId]}}" mode="aspectFill" /><view class="tour-play"><image src="../assets/tour-play.png" /></view></view>
-        <view class="tour-arrow"><view class="chevron" /></view>
-      </button>
-      <view wx:if="{{work.hasSpaceTags}}" class="space-filter">
-        <text class="space-filter-label">空间</text>
-        <scroll-view class="space-scroll" scroll-x="true" enable-flex="true" show-scrollbar="{{false}}">
-          <view class="space-chip-row">
-            <button class="filter-chip {{spaceFilter === 'all' ? 'is-active' : ''}}" data-space="all" bindtap="setSpace">全部 {{work.images.length}}</button>
-            <button wx:for="{{work.spaceGroups}}" wx:key="key" class="filter-chip {{spaceFilter === item.key ? 'is-active' : ''}}" data-space="{{item.key}}" bindtap="setSpace">{{item.label}} {{item.count}}</button>
-          </view>
-        </scroll-view>
-      </view>
-      <view wx:if="{{work.renders.length}}" class="gallery-section">
-        <view class="gallery-heading"><text class="section-title">效果图</text><text class="gallery-count">{{work.renders.length}} 张</text></view>
-        <view class="gallery-grid">
-          <view wx:for="{{work.renders}}" wx:key="assetId" class="gallery-item">
-            <view class="gallery-image">
-              <image wx:if="{{images['i' + item.assetId]}}" src="{{images['i' + item.assetId]}}" mode="aspectFill" data-id="{{item.assetId}}" bindtap="preview" />
-              <text wx:else class="image-loading">图片加载中</text>
-              <text wx:if="{{item.space}}" class="image-badge space-badge">{{item.space}}</text>
-              <text class="image-badge">{{item.label}}</text>
-            </view>
-            <text wx:if="{{item.caption}}" class="image-caption">{{item.caption}}</text>
-          </view>
-        </view>
-      </view>
-      <view wx:if="{{work.photos.length}}" class="gallery-section">
-        <view class="gallery-heading"><text class="section-title">实拍图</text><text class="gallery-count">{{work.photos.length}} 张</text></view>
-        <view class="gallery-grid">
-          <view wx:for="{{work.photos}}" wx:key="assetId" class="gallery-item">
-            <view class="gallery-image">
-              <image wx:if="{{images['i' + item.assetId]}}" src="{{images['i' + item.assetId]}}" mode="aspectFill" data-id="{{item.assetId}}" bindtap="preview" />
-              <text wx:else class="image-loading">图片加载中</text>
-              <text wx:if="{{item.space}}" class="image-badge space-badge">{{item.space}}</text>
-              <text class="image-badge">{{item.label}}</text>
-            </view>
-            <text wx:if="{{item.caption}}" class="image-caption">{{item.caption}}</text>
-          </view>
-        </view>
-      </view>
-      <view wx:if="{{work.hasSpaceTags && !work.renders.length && !work.photos.length}}" class="state-copy">这个空间下暂无图片，可以查看全部。</view>
       <button wx:if="{{imageError}}" class="state-copy" bindtap="retryImages">{{imageError}}</button>
-      <view wx:if="{{work.highlights.length || work.materials.length || work.palette.length}}" class="highlights-section">
-        <text class="section-title">设计亮点</text>
-        <view wx:if="{{work.highlights.length}}" class="highlight-list">
-          <view wx:for="{{work.highlights}}" wx:key="*this" class="highlight-item"><text class="highlight-dot" aria-hidden="true"></text><text class="highlight-copy">{{item}}</text></view>
-        </view>
-        <view wx:if="{{work.materials.length}}" class="material-row"><text class="highlight-label">材料</text><view class="chip-row"><text wx:for="{{work.materials}}" wx:key="*this" class="meta-chip material-chip">{{item}}</text></view></view>
-        <view wx:if="{{work.palette.length}}" class="material-row"><text class="highlight-label">配色</text><view class="palette-list"><view wx:for="{{work.palette}}" wx:key="hex" class="palette-item"><view class="palette-swatch" style="background: {{item.hex}};"></view><text class="palette-name">{{item.name}}</text></view></view></view>
+      <view wx:if="{{work.planDrawings.length}}" class="work-plans-section">
+        <view class="work-section-heading"><view><text class="work-section-title notebook-serif">户型对照</text><view class="notebook-title-stroke work-section-stroke" aria-hidden="true"></view></view><button class="work-expand" bindtap="previewPlans"><view class="work-outward-icon" aria-hidden="true"></view>放大对比</button></view>
+        <view class="work-drawing-sheet {{work.planDrawings.length === 1 ? 'work-drawing-single' : ''}}"><view wx:for="{{work.planDrawings}}" wx:key="assetId" class="work-drawing"><image wx:if="{{images['i' + item.assetId]}}" src="{{images['i' + item.assetId]}}" mode="aspectFit" data-id="{{item.assetId}}" data-kind="plan" bindtap="preview"/><text wx:else class="work-image-empty">图纸加载中</text><text class="work-drawing-title notebook-serif">{{item.label}}</text></view></view>
+        <text wx:if="{{work.planDrawings.length === 2}}" class="work-plan-note">{{work.plansAligned ? '同一户型 · 同向对照' : '图纸朝向未校准，可分别放大查看'}}</text>
+        <view wx:if="{{work.planChanges.length}}" class="work-change-grid"><view wx:for="{{work.planChanges}}" wx:key="ordinal" class="work-change"><text class="work-change-number">{{item.ordinal}}</text><view><text class="work-change-title notebook-serif">{{item.title}}</text><text wx:if="{{item.text}}" class="work-change-copy">{{item.text}}</text></view></view></view>
       </view>
-      <view class="preference-section"><text class="section-title">这个方向适合你吗？</text><view class="preference-row"><button class="preference-button {{work.preference === 'like' ? 'is-selected' : ''}}" data-sentiment="like" bindtap="preference" disabled="{{busy || readOnly || pendingAction}}">喜欢这个方向</button><button class="preference-button {{work.preference === 'dislike' ? 'is-selected' : ''}}" data-sentiment="dislike" bindtap="preference" disabled="{{busy || readOnly || pendingAction}}">不太适合</button></view><text class="action-helper">只记录本次咨询偏好，随时可以更正。</text></view>
+      <view wx:if="{{work.description || work.highlights.length}}" class="work-notes-section"><image class="work-notes-leaf" src="../assets/work-v5-sage.png" mode="aspectFit" aria-hidden="true"/><text class="work-section-title notebook-serif">设计手记</text><view class="notebook-title-stroke work-section-stroke" aria-hidden="true"></view><text wx:if="{{work.description}}" class="work-body">{{work.description}}</text><view wx:for="{{work.highlights}}" wx:key="*this" class="work-highlight"><text class="work-note-dot"></text><text>{{item}}</text></view></view>
+      <view wx:if="{{work.materialSamples.length}}" class="work-materials-section"><text class="work-section-title notebook-serif">材料与配色</text><view class="notebook-title-stroke work-section-stroke" aria-hidden="true"></view><view class="work-material-grid"><view wx:for="{{work.materialSamples}}" wx:key="key" class="work-material"><image wx:if="{{item.texture}}" class="work-material-swatch" src="{{item.texture}}" mode="aspectFill"/><view wx:elif="{{item.hex}}" class="work-material-swatch" style="background: {{item.hex}};"></view><view wx:else class="work-material-paper"></view><text>{{item.name || item.hex}}</text></view></view><text wx:if="{{work.materials.length}}" class="work-plan-note">材质纹理为示意</text></view>
+      <view class="work-preference-section"><text class="work-section-title notebook-serif">这个方向，适合你吗？</text><view class="notebook-title-stroke work-section-stroke" aria-hidden="true"></view><view class="work-preference-row"><button class="work-preference {{work.preference === 'like' ? 'is-selected' : ''}}" data-sentiment="like" bindtap="preference" disabled="{{busy || readOnly || pendingAction}}"><view class="work-radio"></view><text>喜欢这个方向</text></button><button class="work-preference {{work.preference === 'dislike' ? 'is-selected' : ''}}" data-sentiment="dislike" bindtap="preference" disabled="{{busy || readOnly || pendingAction}}"><view class="work-radio"></view><text>不太适合</text></button></view><view class="work-preference-meta"><text>只记录本次咨询偏好，可随时更正。</text><button wx:if="{{sharePath}}" class="work-share" open-type="share"><view class="work-outward-icon" aria-hidden="true"></view>分享设计室</button><button wx:else class="work-share" bindtap="retry" disabled="{{loading}}">重新准备分享</button></view></view>
+      <view wx:if="{{error && pendingAction}}" class="notice work-write-notice" role="alert"><text>{{error}}</text><button bindtap="retryWrite" disabled="{{busy}}">核对操作结果</button></view>
       <view wx:if="{{feedback}}" class="notice" role="status">{{feedback}}</view>
-      <text class="action-helper">作品供方向参考，同小区不代表同户型；实拍不表示当前可预约参观。</text>
-      <button class="primary-action" bindtap="continueChat">回原咨询继续聊</button><button class="secondary-action" bindtap="contact" disabled="{{busy || readOnly || pendingAction}}">申请联系{{work.authorName}}</button>
-      <button wx:if="{{sharePath}}" class="share-work" open-type="share">分享设计室</button><button wx:else class="share-work" bindtap="retry" disabled="{{loading}}">重新准备分享</button>
+      <text class="work-reference-note">作品供方向参考，同小区不代表同户型；实拍不表示当前可预约参观。</text>
     </block>
     <button wx:if="{{unavailable || (!loading && !work)}}" class="secondary-action" bindtap="continueChat">{{conversationId ? '回到原咨询' : '返回首页'}}</button>
   </view>
+  <view wx:if="{{work && !loading && !unavailable}}" class="notebook-actions work-actions"><button class="studio-consult" bindtap="openDesigner">设计师主页 ↗</button><button class="studio-contact" bindtap="openPublicContact">联系设计师</button></view>
+  <template is="portfolio-contact-sheet" data="{{contactSheetVisible, contactSheetOpen, contactAuthor, portraitPath, publicContact, contactBusy, contactQrPath, contactError, readOnly, pendingAction, busy, error}}" />
 </view>

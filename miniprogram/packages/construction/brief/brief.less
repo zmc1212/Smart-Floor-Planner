@@ -1,16 +1,17 @@
-@import '../projects/projects.less';
-.brief-context { margin: 8rpx 4rpx 30rpx; font-size: 24rpx; line-height: 1.5; color: #8392b4; }
-.brief-assistant { border-radius: 26rpx; background: #effaf5; padding: 22rpx 14rpx; }
-.brief-intro { align-items: flex-start; padding: 0 8rpx 24rpx; }
-.brief-intro image { width: 108rpx; height: 122rpx; }
-.intro-copy { display: block; margin-top: 14rpx; font-size: 28rpx; line-height: 1.6; }
-.brief-paper { padding: 24rpx 20rpx; background: #fff; border-radius: 24rpx; }
-.brief-title { display: flex; align-items: center; gap: 20rpx; }
-.brief-title image { width: 48rpx; height: 56rpx; }
-.brief-paper > .helper { margin-left: 68rpx; }
-.brief-project { border: 1rpx solid #e5eaf1; border-radius: 16rpx; padding: 20rpx 16rpx; margin-top: 18rpx; }
-.brief-summary { display: block; font-size: 26rpx; line-height: 1.6; margin-top: 14rpx; white-space: pre-wrap; overflow-wrap: anywhere; }
-.brief-originals { display: block; text-align: center; padding: 20rpx 8rpx; margin-top: 16rpx; color: #1358b1; font-size: 24rpx; background: #f5f8fb; border-radius: 12rpx; }
-.brief-actions { display: flex; gap: 12rpx; }
-.brief-actions button { flex: 1; font-size: 26rpx; line-height: 76rpx; margin-top: 16rpx; }
-.brief-note { display: block; color: #8392b4; font-size: 22rpx; line-height: 1.6; margin: 24rpx 12rpx 8rpx; }
+/* Approved shared brief: scoped project summaries and original record links. */
+@import '../notebook.less';
+.brief-context { margin:6px 0 20px; font-size:14px; line-height:1.6; color:#6e8175; }
+.brief-intro { display:flex; align-items:center; gap:12px; margin-bottom:18px; }
+.brief-intro image { width:54px; height:66px; flex:none; }
+.intro-copy { display:block; font-size:15px; line-height:1.7; margin-top:10px; }
+.brief-paper { background:#fbf7ed; padding:18px 16px; box-shadow:0 3px 6px #69552b24; border:1px solid #fffdf5; }
+.brief-title { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+.brief-title image { width:24px; height:24px; }
+.brief-project { padding:16px 0; border-bottom:1px solid #c3cfb6; }
+.project-heading { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+.project-name { flex:1; min-width:0; font:900 20px/1.5 'Site Serif','Songti SC',SimSun,serif; }
+.brief-summary { display:block; font-size:15px; line-height:1.7; white-space:pre-wrap; margin:8px 0; }
+.brief-originals { display:block; font-size:13px; text-align:center; color:#365c48; margin-top:16px; }
+.brief-note { display:block; font-size:13px; color:#6e8175; line-height:1.7; margin:16px 0; }
+.brief-actions { display:flex; gap:10px; }
+.brief-actions button { flex:1; font-size:15px; }

@@ -1,4 +1,5 @@
 const api = require('../../../utils/api');
+const { loadSiteFont } = require('../lib/site-font');
 const empty = () => ({ loading:true, detail:null, src:'', playerEpoch:0, state:'connecting', error:'', paused:false, navTop:47, navRight:100, navHeight:44 });
 const validId = v => /^[1-9]\d{0,18}$/.test(String(v||''));
 const withdrawn = error => [401,403,404].includes(error.statusCode) || error.code === 'public_live_unavailable';
@@ -12,6 +13,7 @@ function sourceUrl(url) {
 Page({
   data:empty(),
   onLoad(options) {
+    loadSiteFont();
     this.options=options||{};this.alive=true;this.epoch=0;
     const info=wx.getWindowInfo?wx.getWindowInfo():wx.getSystemInfoSync();let cap;try{cap=wx.getMenuButtonBoundingClientRect();}catch(_){}
     this.setData({navTop:Math.max(info.statusBarHeight||24,(cap?.top||47)-6),navRight:Math.max(96,info.windowWidth-(cap?.left||info.windowWidth-96)+10)});

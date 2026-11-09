@@ -48,8 +48,8 @@ module.exports = () => ({
 		],
 		mediaItems: [], mediaPaths: {}, mediaLoading: false, mediaBusy: false, mediaPending: false, mediaError: '', mediaKind: 0, mediaRoom: '',
 		formalPlans: [], formalRooms: [], formalIndex: 0, formalRoomIndex: 0, mediaPendingFormal: false,
-		portfolioItems: [], portfolioImages: {}, portfolioError: '', portfolioNotice: '', portfolioLoading: false,
-		latestDesignerMessageId: '', hasDesignerRecommendation: false,
+		portfolioReplyId: '', portfolioItems: [], portfolioImages: {}, portfolioError: '', portfolioNotice: '', portfolioLoading: false,
+		latestDesignerMessageId: '',
 		designerCardImages: {}, designerCardPortraits: {}, designerCardError: '',
 	},
 
@@ -83,7 +83,7 @@ module.exports = () => ({
 						if (this.liveConsent) this.liveConsent.clear();
 						if (this.floorplans) this.floorplans.clear();
 						this.siteRecords.clear();
-						this.recommendations.clear();
+						this.recommendations.clear(); this.setData({ portfolioReplyId: '' });
 						this.resetDesignerCards();
 						if (this.publicSites) this.publicSites.clear();
 						if (this.plans) this.plans.clear();
@@ -97,13 +97,12 @@ module.exports = () => ({
 						if (this._shown && this.plans) this.plans.load(this.controller.conversationId, patch.messages);
 						if (this._shown) this.loadDesignerCards(patch.messages);
 						this.loadMessageImages(patch.messages);
-						const key = (this.data.conversation?.id || '') + ':' + (patch.messages[patch.messages.length - 1]?.id || '');
-						if (this._shown && key !== this._portfolioKey) {
-							this._portfolioKey = key;
-							this.recommendations.load(patch.messages.length ? this.data.conversation?.id : null);
+						const replyId = this.data.portfolioReplyId;
+						if (replyId && !patch.messages.some(message => message.id === replyId && message.discovery?.works)) {
+							this.recommendations.clear(); this.setData({ portfolioReplyId: '' });
 						}
 					}
-					if (patch.conversation === null) { if (this.liveConsent) this.liveConsent.clear(); if (this.floorplans) this.floorplans.clear(); this._portfolioKey = ''; this.recommendations.clear(); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); }
+					if (patch.conversation === null) { if (this.liveConsent) this.liveConsent.clear(); if (this.floorplans) this.floorplans.clear(); this.recommendations.clear(); this.setData({ portfolioReplyId: '' }); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); }
 					if (patch.conversation?.id && this.floorplans && this._shown && this.floorplans.id !== String(patch.conversation.id)) this.floorplans.show(String(patch.conversation.id));
 					if (patch.conversation !== undefined && !this.data.followupActive) this.syncReportQuestion();
 					const next = patch.messages;
@@ -161,7 +160,6 @@ module.exports = () => ({
 		if (!this.location) this.location = new NearbyLocationController({ identity: sessionToken, client: this.controller.client });
 		if (!this.plans) this.plans = new PlanChatController({ identity: sessionToken, client: this.controller.client, emit: p => { if (this._alive && this._shown) this.setData(p); } });
 		if (!this.publicSites) this.publicSites = new PublicChatController({ identity: sessionToken, client: this.controller.client, emit: p => { if (this._alive && this._shown) { this.setData(p); if (p.publicDetail) this.liveConsent.entry(this.data.enterpriseId, p.publicDetail.id); else if (p.publicDetail === null) this.liveConsent.set({ publicLiveEntry: null }); } } });
-		this._portfolioKey = '';
 		this._shown = true;
 		const app = getApp();
 		if (app.globalData.sessionHydrationPromise) await app.globalData.sessionHydrationPromise;
@@ -530,20 +528,25 @@ module.exports = () => ({
 		if (result.changed) await this.controller.refresh();
 		return result;
 	},
-	async loadDesigners() {
-		if (this._locatingDesigners || this.data.busy || this.data.generating) return;
-		this._locatingDesigners = true; this.setData({ portfolioLoading: true });
+	async loadDesigners(event) {
+		const replyId = event.currentTarget.dataset.message, cid = this.controller.conversationId, session = sessionToken();
+		const valid = () => this._alive && this._shown && cid === this.controller.conversationId && session === sessionToken()
+			&& this.data.messages.some(message => message.id === replyId && message.discovery?.works);
+		if (!valid() || this._locatingDesigners || this.data.busy || this.data.generating) return;
+		this._locatingDesigners = true;
+		if (replyId !== this.data.portfolioReplyId) this.recommendations.clear();
+		this.setData({ portfolioReplyId: replyId, portfolioLoading: true });
 		try {
 			const location = await this.syncLocation(true);
-			if (!this._alive || !this._shown) return;
-			if (!location.blocked) await this.recommendations.load(this.data.conversation?.id, true);
-			if (location.notice && !this.data.portfolioItems.length) this.setData({ portfolioNotice: location.notice });
-		} finally { this._locatingDesigners = false; if (this._alive && this._shown) this.setData({ portfolioLoading: false }); }
+			if (!valid()) return;
+			if (!location.blocked) await this.recommendations.load(cid, true, replyId);
+			if (valid() && location.notice && !this.data.portfolioItems.length) this.setData({ portfolioNotice: location.notice });
+		} finally { this._locatingDesigners = false; if (valid()) this.setData({ portfolioLoading: false }); }
 	},
 	resetDesignerCards() {
 		if (this.designerCardMedia) this.designerCardMedia.clear();
 		this.designerCardMedia = null; this._designerCardConversation = ''; this._designerCardKey = '';
-		if (this._alive) this.setData({ latestDesignerMessageId: '', hasDesignerRecommendation: false, designerCardImages: {}, designerCardPortraits: {}, designerCardError: '' });
+		if (this._alive) this.setData({ latestDesignerMessageId: '', designerCardImages: {}, designerCardPortraits: {}, designerCardError: '' });
 	},
 	async loadDesignerCards(messages) {
 		if (!this._alive) return;
@@ -556,7 +559,7 @@ module.exports = () => ({
 			this.setData({ designerCardImages: {}, designerCardPortraits: {}, designerCardError: '' });
 		}
 		const key = latest ? String(latest.id) : '';
-		this.setData({ latestDesignerMessageId: key, hasDesignerRecommendation: !!latest });
+		this.setData({ latestDesignerMessageId: key });
 		if (key === this._designerCardKey) return;
 		this._designerCardKey = key;
 		if (!latest || !conversationId || !this.designerCardMedia) return;
@@ -599,16 +602,19 @@ module.exports = () => ({
 		if (!id || !/^[1-9]\d{0,18}$/.test(String(data.work)) || !/^[1-9]\d{0,18}$/.test(String(data.version))) return;
 		wx.navigateTo({ url: `/packages/assistant/work/work?conversationId=${encodeURIComponent(id)}&workId=${encodeURIComponent(data.work)}&versionId=${encodeURIComponent(data.version)}` });
 	},
-	async browseSites() {
+	async browseSites(event) {
 		if (this._browsingSites || this.data.publicLoading || this.data.publicBusy || this.data.loading || this.data.fatal || this.data.busy || this.data.generating || this.data.pendingSend || this.data.pendingAction || this.data.uncertainRun) return;
 		const cid = this.controller.conversationId, eid = this.data.enterpriseId, session = sessionToken();
-		if (!cid || !eid) return;
+		const replyId = event?.currentTarget?.dataset.message || this.data.publicReplyId;
+		const valid = () => this._alive && this._shown && cid === this.controller.conversationId && session === sessionToken()
+			&& this.data.messages.some(message => message.id === replyId && message.discovery?.sites);
+		if (!cid || !eid || !valid()) return;
 		this._browsingSites = true;
 		try {
 			const location = await this.syncLocation(true);
-			if (!this._alive || !this._shown || location.blocked || cid !== this.controller.conversationId || session !== sessionToken()) return;
-			await this.publicSites.browse(cid, eid, this.data.messages, location.notice);
-			if (this._alive && this._shown && cid === this.controller.conversationId && session === sessionToken()) this.scrollBottom();
+			if (!valid() || location.blocked) return;
+			await this.publicSites.browse(cid, eid, this.data.messages, location.notice, replyId);
+			if (valid() && replyId === this.data.messages.at(-1)?.id) this.scrollBottom();
 		} finally { this._browsingSites = false; }
 	},
 	openPublicSite(e) {

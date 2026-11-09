@@ -1,5 +1,7 @@
 const util = require('../../../utils/util.js');
 const api = require('../../../utils/api.js');
+const { canAccessRoute, navigateToRoleLanding } = require('../../../utils/identity-navigation.js');
+const { showAIDesignAccessDenied } = require('../../../utils/aiDesignAccess.js');
 
 Page({
   data: {
@@ -17,8 +19,18 @@ Page({
     currentCase: null
   },
 
-  onLoad: function () {
-    this.fetchCases();
+  onLoad: async function () {
+    this._inspirationAccessGranted = false;
+    const app = getApp();
+    if (app.globalData.sessionHydrationPromise) await app.globalData.sessionHydrationPromise;
+    const identity = app.globalData.bootstrap || app.globalData.userInfo;
+    if (!canAccessRoute('/packages/business/inspiration/inspiration', identity)) {
+      showAIDesignAccessDenied();
+      navigateToRoleLanding(identity && identity.current || identity);
+      return;
+    }
+    this._inspirationAccessGranted = true;
+    await this.fetchCases();
   },
 
   onShow: function () {
@@ -47,6 +59,7 @@ Page({
   },
 
   fetchCases: async function (isReplace = false) {
+    if (!this._inspirationAccessGranted) return;
     if (this.data.isLoading) return;
     this.setData({ isLoading: true });
 

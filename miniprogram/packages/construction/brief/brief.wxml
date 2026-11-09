@@ -1,21 +1,16 @@
 <!-- PPT20/25 proactive-service/boss.png, 853x1844. Live records replace illustrative photos and example claims. -->
 <view class="construction-page brief-page">
-  <image class="room-scene" src="../assets/xiaok-project-scene.png" mode="aspectFit" aria-hidden="true" />
-  <view class="nav" style="padding-top: {{navTop}}px; min-height: {{navHeight}}px; padding-right: {{navRight}}px;">
-    <view class="brand-home" bindtap="back" aria-role="button" aria-label="返回项目总览">
-      <view class="brand-mark"><image class="brand-logo" src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" /></view>
-      <view class="brand-copy"><view class="brand-row"><text class="brand-name">家客来</text><text class="role-tag">经营端</text></view><text class="identity-name">小K · 经营助手</text></view>
-    </view>
-  </view>
+  <view class="book-spine"><view wx:for="{{[0,1,2,3,4,5]}}" wx:key="*this" class="book-stitch" style="top:{{88 + item * 130}}px"/></view>
+  <view class="book-nav" style="padding-top:{{navTop}}px;padding-right:{{navRight}}px"><button class="book-back" bindtap="back" aria-label="返回"><image src="../assets/notebook/back.png"/></button><text class="book-nav-title">项目简报</text></view>
   <view class="content">
     <view class="brief-context">公司项目 / 今日简报</view>
     <view wx:if="{{loading}}" class="surface state">正在读取项目简报…</view>
     <view wx:elif="{{error}}" class="surface state"><text>{{error}}</text><button bindtap="load">重新读取</button></view>
     <view wx:elif="{{!items.length}}" class="surface state"><text>暂无有管理权限的工地</text><button bindtap="load">重新读取</button></view>
     <view wx:else class="brief-assistant">
-      <view class="brief-intro"><image src="../assets/xiaok-site-assistant.png" mode="aspectFit" /><view><text class="section-title">小K</text><text class="intro-copy">项目团队的新记录和还在等回复的事项，帮你整理好了。</text></view></view>
+      <view class="brief-intro"><image src="../assets/notebook/xiaok-chat.png" mode="aspectFit" /><view><text class="fabric">小K</text><text class="intro-copy">项目团队的新记录和还在等回复的事项，帮你整理好了。</text></view></view>
       <view class="brief-paper">
-        <view class="brief-title"><image src="../assets/file-text.png" mode="aspectFit" /><text class="section-title">今日项目简报</text></view>
+        <view class="brief-title"><image src="../assets/notebook/file.png" mode="aspectFit" /><text class="section-title">今日项目简报</text></view>
         <text class="helper">依据已上传记录 · {{asOf}}</text>
         <view wx:for="{{items}}" wx:key="projectId" wx:for-item="project" class="brief-project" data-project="{{project.projectId}}" data-issue="{{project.focusIssueId}}" bindtap="openProject" aria-role="button" aria-label="{{project.name + '，查看原记录和事项'}}">
           <view class="project-heading"><text class="project-name">{{project.name}}</text><text class="stage-tag">{{project.stageName}}</text><view class="chevron forward"></view></view>
@@ -28,7 +23,7 @@
         <text class="brief-originals">每条进展都可以查看原记录 ›</text>
       </view>
       <text class="brief-note">未回复不等于施工异常。未记录明确期限时，不推断逾期。</text>
-      <view class="brief-actions"><button bindtap="back">查看项目明细</button><button class="outline" bindtap="ask">追问小K</button></view>
+      <view class="brief-actions"><button class="primary" bindtap="back">查看项目明细</button><button class="outline" bindtap="ask">追问小K</button></view>
     </view>
   </view>
 </view>

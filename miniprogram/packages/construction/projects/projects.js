@@ -1,7 +1,10 @@
 const api = require('../../../utils/api.js');
 const { canAccessRoute } = require('../../../utils/identity-navigation.js');
 const { decorateProject, decorateDetail, errorText, roleLabels, operationKey } = require('./projects-model.js');
+const { decorate } = require('../chat/site-client');
+const { loadSiteFont } = require('../lib/site-font');
 const route = '/packages/construction/projects/projects';
+function unlinkPreview(path) { try { wx.getFileSystemManager().unlink({ filePath: path, fail() {} }); } catch (_) { /* Native temp file. */ } }
 function identity() {
   const g = getApp().globalData || {}, c = (g.bootstrap && g.bootstrap.current && g.bootstrap.current.context) || g.userInfo || {};
   return { key: [c.enterpriseId, c.staffId].filter(Boolean).join(':'), token: g.token || wx.getStorageSync('token'), bootstrap: g.bootstrap || g.userInfo,
@@ -11,14 +14,15 @@ function identity() {
 function navigationMetrics() {
   const info = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
   let capsule; try { capsule = wx.getMenuButtonBoundingClientRect(); } catch { /* Use the same safe fallback as onboarding. */ }
-  return { navTop: capsule && capsule.top || info.statusBarHeight || 24, navHeight: capsule && capsule.height || 32,
+  return { navTop: Math.max(info.statusBarHeight || 24, (capsule && capsule.top || 30) - 6), navHeight: capsule && capsule.height || 32,
     navRight: Math.max(96, info.windowWidth - (capsule && capsule.left || info.windowWidth - 94) + 10) };
 }
 Page({
   data: { navTop: 24, navHeight: 32, navRight: 96, name: '', loading: true, error: '', items: [], detail: null, projectId: '',
     pending: null, busy: false, sheet: '', staffOptions: [], roleOptions: [], selectedStaff: 0, selectedRole: 0, selectedStage: 0,
-    workLabel: '', note: '', sendReminder: false, selectedIds: [], primaryOptions: [], selectedPrimary: 0, assignmentOptions: [] },
-  onLoad() { this.setData(navigationMetrics()); },
+    workLabel: '', note: '', sendReminder: false, selectedIds: [], primaryOptions: [], selectedPrimary: 0, assignmentOptions: [],
+    sheetOpen: false, statusFilter: 'all', filteredItems: [], activeCount: 0, preview: null, previewPhotos: [], previewLoading: false, previewError: '' },
+  onLoad() { loadSiteFont(); this.setData(navigationMetrics()); },
   async onShow() {
     this._visible = true;
     this.setData({ busy: false });
@@ -27,17 +31,19 @@ Page({
     if (!this._visible) return;
     const current = identity();
     if (!current.key || !current.token || !canAccessRoute(route, current.bootstrap)) {
+      this.clearPreview();
       this._generation = (this._generation || 0) + 1; this._identityKey = null; this._token = null;
       this.setData({ loading: false, error: '请使用有工地权限的员工身份登录。', items: [], detail: null, pending: null, sheet: '' }); return;
     }
     if (current.key !== this._identityKey || current.token !== this._token) {
+      this.clearPreview();
       this._identityKey = current.key; this._token = current.token;
       this._storageKey = 'construction:pending:' + current.key;
       this.setData({ projectId: '', detail: null, items: [], sheet: '', name: current.name, portalLabel: current.portalLabel, pending: wx.getStorageSync(this._storageKey) || null });
     }
     await this.load();
   },
-  onHide() { this._visible = false; this._generation = (this._generation || 0) + 1; },
+  onHide() { this._visible = false; this._generation = (this._generation || 0) + 1; this.clearPreview(); clearTimeout(this._sheetTimer); this.setData({ sheet: '', sheetOpen: false }); },
   onUnload() { this.onHide(); },
   current(g) { const c = identity(); return this._visible && this._token === c.token && this._identityKey === c.key && canAccessRoute(route, c.bootstrap) && (g == null || g === this._generation); },
   async onPullDownRefresh() { try { await this.load(); } finally { wx.stopPullDownRefresh(); } },
@@ -49,37 +55,95 @@ Page({
       const response = await api.request('/miniprogram/construction/projects' + (pid ? '/' + pid : ''), 'GET');
       if (!this.current(g)) return;
       const data = response.data;
-      if (pid) this.setData({ detail: decorateDetail(data) });
-      else this.setData({ items: data.items.map(p => decorateProject(p, data.stages || [])), owner: data.owner, detail: null,
-        canBrief: data.owner || data.items.some(p => p.status !== 'archived') });
-    } catch (error) { if (this.current(g)) this.setData({ error: errorText(error), detail: null, items: [] }); }
+      if (pid) { this.setData({ detail: decorateDetail(data) }); void this.loadPreview(g); }
+      else { const items = data.items.map(p => decorateProject(p, data.stages || [])); this.clearPreview();
+        this.setData({ items, owner: data.owner, detail: null, activeCount: items.filter(p => p.status === 'active').length,
+          filteredItems: items.filter(p => this.data.statusFilter !== 'active' || p.status === 'active'),
+          canBrief: data.owner || data.items.some(p => p.status !== 'archived') }); }
+    } catch (error) { if (this.current(g)) { this.clearPreview(); this.setData({ error: errorText(error), detail: null, items: [], filteredItems: [] }); } }
     finally { if (this.current(g)) this.setData({ loading: false }); }
   },
-  openProject(e) { if (this.data.busy) return; this.setData({ projectId: String(e.currentTarget.dataset.id), detail: null }); this.load(); },
+  chooseStatus(e) { const statusFilter = e.currentTarget.dataset.status; if (!['all','active'].includes(statusFilter)) return;
+    this.setData({ statusFilter, filteredItems: this.data.items.filter(p => statusFilter !== 'active' || p.status === 'active') }); },
+  openProject(e) { if (this.data.busy || this.data.pending || !this.current()) return; this.clearPreview(); this.setData({ projectId: String(e.currentTarget.dataset.id), detail: null }); this.load(); },
+  openSiteCamera(e) { const p = this.data.items.find(p => p.id === String(e.currentTarget.dataset.id));
+    if (this.current() && !this.data.busy && !this.data.pending && p?.status === 'active') wx.navigateTo({ url: '/packages/construction/camera/camera?projectId=' + encodeURIComponent(p.id) }); },
+  openSiteChat(e) { const p = this.data.items.find(p => p.id === String(e.currentTarget.dataset.id));
+    if (this.current() && !this.data.busy && !this.data.pending && p && p.status !== 'archived') wx.navigateTo({ url: '/packages/construction/chat/chat?projectId=' + encodeURIComponent(p.id) }); },
+  releasePreviewPhotos() { (this._previewPaths || []).forEach(unlinkPreview); this._previewPaths = []; },
+  clearPreview() { clearTimeout(this._previewTimer); this._previewEpoch = (this._previewEpoch || 0) + 1; this.releasePreviewPhotos();
+    this.setData({ preview: null, previewPhotos: [], previewLoading: false, previewError: '' }); },
+  refreshPreview() { if (this.current()) return this.loadPreview(this._generation); },
+  async loadPreview(g) {
+    clearTimeout(this._previewTimer); const pid = this.data.projectId, epoch = this._previewEpoch = (this._previewEpoch || 0) + 1;
+    if (!pid || !this.current(g) || !this.data.detail || this.data.detail.project.status === 'archived') return;
+    const projectPath = '/miniprogram/construction/projects/' + encodeURIComponent(pid);
+    const valid = () => this.current(g) && epoch === this._previewEpoch && this.data.projectId === pid;
+    this.setData({ previewLoading: true, previewError: '' });
+    const paths = [];
+    try {
+      const response = await api.request(projectPath + '/chat?limit=30', 'GET', {}, { suppressUnauthorized: true });
+      if (!valid()) return;
+      const rows = (response.data.items || []).filter(i => i.record?.id);
+      const latest = rows.sort((a,b) => Date.parse(b.message.created_at) - Date.parse(a.message.created_at))[0];
+      const preview = latest ? decorate(latest) : null, previewPhotos = [];
+      for (const media of (preview?.record.media || []).slice(0,2)) {
+        if (!/^[1-9]\d*$/.test(String(media.id)) || typeof api.downloadFile !== 'function') continue;
+        const file = await api.downloadFile(projectPath + '/chat/media/' + media.id, { suppressUnauthorized: true });
+        paths.push(file.tempFilePath);
+        if (!valid()) { paths.forEach(unlinkPreview); return; }
+        previewPhotos.push({ id: String(media.id), path: file.tempFilePath });
+      }
+      this.releasePreviewPhotos(); this._previewPaths = paths;
+      this.setData({ preview, previewPhotos, previewLoading: false });
+      this._previewTimer = setTimeout(() => this.loadPreview(g), 15000); this._previewTimer?.unref?.();
+    } catch (error) {
+      paths.forEach(unlinkPreview);
+      if (!valid()) return;
+      this.releasePreviewPhotos();
+      const restricted = [401, 403, 404].includes(error.statusCode);
+      this.setData({ preview: null, previewPhotos: [], previewLoading: false, previewError: restricted ? '现场记录或照片暂不可用。' : errorText(error) });
+      if (!restricted) return;
+      // A missing photo or closed conversation does not determine access to the project itself.
+      this.setData({ loading: true, detail: null, sheet: '', sheetOpen: false });
+      try {
+        const response = await api.request(projectPath, 'GET', {}, { suppressUnauthorized: true });
+        if (valid()) this.setData({ detail: decorateDetail(response.data) });
+      } catch (detailError) {
+        if (valid()) this.setData({ items: [], filteredItems: [], error: errorText(detailError) });
+      } finally { if (valid()) this.setData({ loading: false }); }
+    }
+  },
+  previewPhoto(e) { if (this.current() && this.data.previewPhotos.some(p => p.path === e.currentTarget.dataset.path)) wx.previewImage({ current: e.currentTarget.dataset.path, urls: this.data.previewPhotos.map(p => p.path) }); },
+  openManagement() { if (this.data.detail?.manage && !this.data.busy && !this.data.pending) this.showSheet({ sheet: 'manage' }); },
+  openStageList() { if (this.data.detail && !this.data.busy) this.showSheet({ sheet: 'stages' }); },
+  openMembers() { if (this.data.detail && !this.data.busy) this.showSheet({ sheet: 'members' }); },
   back() {
-    if (this.data.projectId) { this.setData({ projectId: '', detail: null, sheet: '' }); this.load(); }
+    if (this.data.projectId) { this.clearPreview(); this.setData({ projectId: '', detail: null, sheet: '' }); this.load(); }
     else wx.switchTab({ url: '/pages/mine/mine' });
   },
   openMine() { wx.switchTab({ url: '/pages/mine/mine' }); },
   openBrief() { if (this.current() && this.data.canBrief && !this.data.pending) wx.navigateTo({ url: '/packages/assistant/chat/chat?followup=1' }); },
-  openChat() { if (this.data.detail && !this.data.busy && !this.data.pending) wx.navigateTo({ url: '/packages/construction/chat/chat?projectId=' + encodeURIComponent(this.data.detail.project.id) }); },
-  openCamera() { if (this.data.detail && !this.data.busy && !this.data.pending && this.data.detail.project.status === 'active') wx.navigateTo({ url: '/packages/construction/camera/camera?projectId=' + encodeURIComponent(this.data.detail.project.id) }); },
+  openChat() { const project = this.data.detail?.project;
+    if (this.current() && project && project.status !== 'archived' && !this.data.busy && !this.data.pending) wx.navigateTo({ url: '/packages/construction/chat/chat?projectId=' + encodeURIComponent(project.id) }); },
+  openCamera() { if (this.current() && this.data.detail && !this.data.busy && !this.data.pending && this.data.detail.project.status === 'active') wx.navigateTo({ url: '/packages/construction/camera/camera?projectId=' + encodeURIComponent(this.data.detail.project.id) }); },
   openIdentities() { wx.navigateTo({ url: '/packages/business/identity-switch/identity-switch' }); },
-  closeSheet() { if (!this.data.busy) this.setData({ sheet: '' }); },
+  showSheet(values) { clearTimeout(this._sheetTimer); const epoch = this._sheetEpoch = (this._sheetEpoch || 0) + 1; this.setData({ ...values, sheetOpen: false }); this._sheetTimer = setTimeout(() => { if (this._visible && epoch === this._sheetEpoch) this.setData({ sheetOpen: true }); }, 20); this._sheetTimer?.unref?.(); },
+  closeSheet() { if (this.data.busy) return; clearTimeout(this._sheetTimer); const epoch = this._sheetEpoch = (this._sheetEpoch || 0) + 1; this.setData({ sheetOpen: false }); this._sheetTimer = setTimeout(() => { if (epoch === this._sheetEpoch) this.setData({ sheet: '' }); }, 260); this._sheetTimer?.unref?.(); },
   openProgress() {
     const d = this.data.detail; if (!d || !d.manage || this.data.pending) return;
-    this.setData({ sheet: 'progress', selectedStage: Math.max(0, d.stages.findIndex(s => s.key === d.project.current_stage_key)), note: d.project.progress_note, sendReminder: false });
+    this.showSheet({ sheet: 'progress', selectedStage: Math.max(0, d.stages.findIndex(s => s.key === d.project.current_stage_key)), note: d.project.progress_note, sendReminder: false });
   },
   openMember() {
     const d = this.data.detail; if (!d || !d.manage || this.data.pending) return;
-    this.setData({ sheet: 'member', staffOptions: d.staff.map(s => ({ ...s, label: `${s.display_name || '员工'}${s.construction_trades.length ? ' · ' + s.construction_trades.join('/') : ''}` })),
+    this.showSheet({ sheet: 'member', staffOptions: d.staff.map(s => ({ ...s, label: `${s.display_name || '员工'}${s.construction_trades.length ? ' · ' + s.construction_trades.join('/') : ''}` })),
       roleOptions: (d.owner ? ['worker', 'designer', 'observer', 'manager'] : ['worker', 'designer', 'observer']).map(key => ({ key, label: roleLabels[key] })), selectedStaff: 0, selectedRole: 0, workLabel: '' });
   },
   openAssignment(e) {
     const d = this.data.detail, stageKey = e.currentTarget.dataset.key;
     if (!d || !d.manage || this.data.pending) return;
     const a = d.assignments.filter(a => a.stage_key === stageKey), ids = a.map(a => a.admin_id);
-    this.setData({ sheet: 'contact', stageKey, stageName: d.stages.find(s => s.key === stageKey).name,
+    this.showSheet({ sheet: 'contact', stageKey, stageName: d.stages.find(s => s.key === stageKey).name,
       assignmentOptions: d.members.filter(m => m.available).map(m => ({ ...m, selected: ids.includes(m.admin_id) })), selectedIds: ids });
     this.updatePrimaryOptions(ids, (a.find(a => a.is_primary) || {}).admin_id);
   },

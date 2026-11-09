@@ -52,7 +52,7 @@ Page({
     if (options && options.recovery === 'identity_context_invalid') {
       wx.showToast({ title: '身份已变更，请重新登录', icon: 'none' });
     }
-    if (options && options.mode === 'password') {
+    if ((options && options.mode === 'password') || api.getBaseUrls()[0].endsWith('/camera-test-api')) {
       this.setData({ loginType: 'password' });
     }
     const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];

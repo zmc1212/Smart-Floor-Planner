@@ -1,9 +1,11 @@
 const { PublicSitesController, initial } = require('./public-sites-model');
+const { loadSiteFont } = require('../lib/site-font');
 function identity() { return getApp().globalData.token || wx.getStorageSync('token') || ''; }
 function page(detail) {
   return {
     data: { ...initial(), navTop: 47, navHeight: 44, navRight: 100 },
     onLoad(options) {
+      loadSiteFont();
       this.options = options || {}; this.alive = true;
       this.controller = new PublicSitesController({ identity, emit: p => { if (this.alive) this.setData(p); } });
       const info = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();

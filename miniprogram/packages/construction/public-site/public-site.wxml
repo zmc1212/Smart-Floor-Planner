@@ -1,18 +1,16 @@
 <view class="live-notebook">
-  <view class="live-spine"><view wx:for="{{[0,1,2,3,4,5]}}" wx:key="*this" class="live-stitch" style="top:{{90 + item * 125}}px"/></view>
-  <view class="live-nav" style="padding-top:{{navTop}}px;padding-right:{{navRight}}px"><button class="live-history" bindtap="back" aria-label="返回"><view class="live-clock"/></button><text class="live-brand">小K</text><button class="live-designer" bindtap="designer">找设计师 ↗</button></view>
-  <view class="live-paper" style="top:{{navTop + navHeight + 6}}px"><view class="live-grip"/><button class="live-close" bindtap="back" aria-label="关闭公开工地">×</button>
-    <scroll-view scroll-y class="live-scroll"><view class="live-content"><text class="live-title">公开工地</text>
-      <text wx:if="{{loading && !site}}" class="live-copy">正在读取公开内容…</text>
-      <view wx:if="{{error || publicError}}" class="public-feedback" role="alert"><text>{{error || publicError}}</text><button class="live-link" bindtap="refresh">重新读取</button><button class="live-link" bindtap="back">返回工地列表</button></view>
-      <block wx:if="{{site && !unavailable}}"><text class="live-project">{{site.name}}<text wx:if="{{site.stageName}}"> · {{site.stageName}}</text></text><view class="public-detail-meta"><text>{{site.district}}</text><text class="live-fabric">业主授权公开</text></view>
-        <view class="public-photo-mat"><image wx:if="{{site.photos.length && publicPaths[site.photos[0].key]}}" src="{{publicPaths[site.photos[0].key]}}" mode="aspectFill" data-key="{{site.photos[0].key}}" bindtap="preview"/><view wx:else class="public-photo-empty">这一版没有公开现场照片。</view><view class="public-photo-tape"/></view>
-        <view wx:if="{{liveEntry}}" class="public-live-row"><text>● 直播可观看 · {{liveEntry.alias}}</text><button bindtap="watchLive">观看直播 ↗</button></view>
-        <view class="public-detail-tabs"><button class="{{tab === 'photos' ? 'is-active' : ''}}" data-tab="photos" bindtap="changeTab">现场进展</button><button class="{{tab === 'records' ? 'is-active' : ''}}" data-tab="records" bindtap="changeTab">小K服务记录</button></view>
-        <block wx:if="{{tab === 'records'}}"><text class="live-fabric public-record-label">小K服务记录</text><view wx:for="{{site.excerpts}}" wx:key="key" class="public-record"><text class="public-record-author">{{item.role}} <text>· {{item.dateLabel}}</text></text><text class="public-record-body" user-select>{{item.text}}</text></view></block>
-        <block wx:else><view wx:for="{{site.photos}}" wx:key="key" class="public-extra-photo"><image wx:if="{{publicPaths[item.key]}}" src="{{publicPaths[item.key]}}" mode="widthFix" data-key="{{item.key}}" bindtap="preview"/></view><text wx:if="{{!site.photos.length}}" class="live-helper">这一版没有公开现场照片。</text></block>
-        <text class="live-helper public-privacy">角色与时间已保留，私人信息已隐藏。</text><button class="live-primary" bindtap="consult">围观中有疑问？问小K</button><button class="live-link" bindtap="designer">找设计师聊 ↗</button>
-      </block>
-    </view></scroll-view>
+  <view class="book-spine"><view wx:for="{{[0,1,2,3,4,5]}}" wx:key="*this" class="book-stitch" style="top:{{88 + item * 130}}px"/></view>
+  <view class="book-nav" style="padding-top:{{navTop}}px;padding-right:{{navRight}}px"><button class="book-back" bindtap="back" aria-label="返回"><image src="../assets/notebook/back.png"/></button><text class="book-nav-title">公开工地</text></view>
+  <view class="content public-detail-content">
+    <text wx:if="{{loading && !site}}" class="state">正在读取公开内容…</text>
+    <view wx:if="{{error || publicError}}" class="state public-feedback" role="alert"><text>{{error || publicError}}</text><button class="outline" bindtap="refresh">重新读取</button><button class="book-link" bindtap="back">返回工地列表</button></view>
+    <block wx:if="{{site && !unavailable}}"><text class="page-title">{{site.name}}</text><view class="public-detail-meta"><text class="stage-tag">{{site.stageName}}</text><text class="helper">{{site.district}} · 业主授权公开</text></view>
+      <view class="public-photo-mat"><image wx:if="{{site.photos.length && publicPaths[site.photos[0].key]}}" src="{{publicPaths[site.photos[0].key]}}" mode="aspectFill" data-key="{{site.photos[0].key}}" bindtap="preview"/><view wx:else class="public-photo-empty">这一版没有公开现场照片。</view></view>
+      <button wx:if="{{liveEntry}}" class="primary public-live-row" bindtap="watchLive"><image class="book-icon" src="../assets/notebook/video-white.png"/><text>观看工地直播 · {{liveEntry.alias}}</text><text>›</text></button>
+      <view class="public-detail-tabs"><button class="{{tab === 'photos' ? 'fabric' : ''}}" data-tab="photos" bindtap="changeTab">现场进展</button><button class="{{tab === 'records' ? 'fabric' : ''}}" data-tab="records" bindtap="changeTab">小K服务记录</button></view>
+      <view class="paper"><block wx:if="{{tab === 'records'}}"><view wx:for="{{site.excerpts}}" wx:key="key" class="public-record"><text class="public-record-author">{{item.role}} <text>· {{item.dateLabel}}</text></text><text class="body-text public-record-body" user-select>{{item.text}}</text></view><text wx:if="{{!site.excerpts.length}}" class="helper">这一版没有公开服务记录。</text></block>
+      <block wx:else><view wx:for="{{site.photos}}" wx:key="key" class="public-extra-photo"><image wx:if="{{publicPaths[item.key]}}" src="{{publicPaths[item.key]}}" mode="widthFix" data-key="{{item.key}}" bindtap="preview"/></view><text wx:if="{{!site.photos.length}}" class="helper">这一版没有公开现场照片。</text></block></view>
+      <text class="helper public-privacy">角色与时间已保留，私人信息已隐藏。</text><button class="primary" bindtap="consult">围观中有疑问？问小K</button><button class="book-link" bindtap="designer">找设计师聊 ↗</button>
+    </block>
   </view>
 </view>

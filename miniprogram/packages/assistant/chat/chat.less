@@ -184,7 +184,8 @@ button:active { opacity: .72; }
 .site-record-photos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12rpx; margin-top: 16rpx; }
 .site-record-photos .message-photo { width: 100%; height: 180rpx; margin: 0; }
 
-@import './notebook.less';
+/* Refresh calibrated notebook titles, atomic area units and one-line author styles. */
+@import './notebook.less'; /* Includes the shared designer recommendation cards. */
 @import './public-live.less';
 @import './followup.less';
 @import './conversation-list.less';

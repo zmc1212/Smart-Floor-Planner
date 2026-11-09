@@ -1,4 +1,5 @@
 const api = require('./api.js');
+const { designerAvatarPath } = require('./designer-avatar');
 const PREFIX = '/miniprogram/assistant';
 const JOURNAL = 'assistant-pending-v1';
 function currentSession() {
@@ -92,6 +93,7 @@ const COPY = {
   portfolio_not_found: '作品或设计师当前不可用，可以返回原咨询看看其他方向。',
   portfolio_forbidden: '当前身份无法查看这份作品，请切换到业主身份。',
   portfolio_owner_conflict: '你已有服务负责人，当前服务人保持不变。可以回原咨询，请设计师协调本次意向。',
+  portfolio_contact_disabled: '这位设计师已关闭站内申请，可以查看当前公开的工作联系方式。',
   invalid_portfolio: '作品信息已变化，请刷新后再操作。',
   need_memory_limit: '这段咨询记录较多，可以回原咨询开启新对话后继续。',
   reference_unavailable: '这份参考案例已不可用，可以继续聊你的想法或换个方向。',
@@ -118,6 +120,7 @@ const COPY = {
   invalid_plan: '请核对方案版本和修改说明后重试。',
   model_unavailable: '小K暂时无法回答，请稍后再试。',
   retrieval_unavailable: '暂时无法读取装修资料，请稍后重试。',
+  missing_citation: '这次回答缺少可核对的资料来源，请重新发送问题。',
   knowledge_not_ready: '企业装修资料还在准备中，请稍后再来。',
   assistant_unavailable: '服务暂时不可用，请稍后重新连接。',
   requirements_empty: '先在对话中说说你的装修想法，再来整理需求摘要。',
@@ -222,14 +225,27 @@ function designerRecommendationForView(value) {
     const work = card && card.work;
     if (!card || !work || ![card.authorId, work.id, work.versionId, work.coverAssetId].every(id => PORTFOLIO_ID.test(String(id)))) return null;
     const authorName = portfolioText(card.authorName, 40) || '设计师';
+    const title = portfolioText(work.title, 60);
+    const cover = Array.isArray(work.images) ? work.images.find(image => image?.assetId === work.coverAssetId) : null;
+    const coverKind = work.coverKind || cover?.kind;
+    const professionalTitle = portfolioText(card.professionalTitle, 40);
+    const cityName = portfolioText(work.cityName, 20);
+    const layoutSpecialties = portfolioList(card.layoutSpecialties, 6, 20);
     return {
-      authorId: String(card.authorId), authorName, initial: authorName.slice(0, 1),
-      professionalTitle: portfolioText(card.professionalTitle, 40), experienceLabel: portfolioText(card.experienceLabel, 20),
-      layoutSpecialties: portfolioList(card.layoutSpecialties, 6, 20), portraitAvailable: card.portraitAvailable === true,
+      authorId: String(card.authorId), authorName, fallbackAvatar: designerAvatarPath(card.defaultAvatar),
+      professionalTitle, experienceLabel: portfolioText(card.experienceLabel, 20),
+      byline: [professionalTitle, cityName].filter(Boolean).join(' · '),
+      specialtyLine: [...new Set([portfolioText(work.primaryStyle, 20), ...layoutSpecialties].filter(Boolean))].slice(0, 3).join(' / '),
+      layoutSpecialties, portraitAvailable: card.portraitAvailable === true,
       work: {
-        id: String(work.id), versionId: String(work.versionId), title: portfolioText(work.title, 60), coverAssetId: String(work.coverAssetId),
+        id: String(work.id), versionId: String(work.versionId), title,
+        // Atomic area spans give the renderer a break before the quantity, never inside it.
+        titleParts: title.split(/(\d+(?:\.\d+)?㎡)/g).filter(Boolean)
+          .map((text, index) => ({ id: index, text, atomic: /^\d+(?:\.\d+)?㎡$/.test(text) })),
+        coverAssetId: String(work.coverAssetId),
+        coverLabel: coverKind === 'render' ? '效果图' : coverKind === 'photo' ? (work.coverShowroom || cover?.showroom) ? '样板间实拍' : '实拍图' : '',
         primaryStyle: portfolioText(work.primaryStyle, 20), secondaryStyles: portfolioList(work.secondaryStyles, 3, 20),
-        layoutTypes: portfolioList(work.layoutTypes, 3, 20), cityName: portfolioText(work.cityName, 20), district: portfolioText(work.district, 20),
+        layoutTypes: portfolioList(work.layoutTypes, 3, 20), cityName, district: portfolioText(work.district, 20),
         communityName: portfolioText(work.communityName, 60),
         areaLabel: typeof work.area === 'number' && Number.isFinite(work.area) && work.area > 0 ? work.area + '㎡' : '',
         rooms: portfolioText(work.rooms, 30),
