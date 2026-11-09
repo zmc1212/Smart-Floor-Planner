@@ -38,17 +38,26 @@ module.exports = async ctx => {
       return 'native tap';
     }
     // The generic sheet shares a class and project data with its record
-    // buttons. Read the exact rendered source control, then run its bound
-    // handler without relying on Stable's ambiguous compound selector tap.
+    // buttons. Read the exact rendered source control for UI truth, then read
+    // the first authorized source deterministically: openReportSource shows a
+    // native wx.showActionSheet when a project has several sources, which the
+    // automator cannot tap. The direct readSource call with an empty report id
+    // is the same code path as the user's single-source open.
     const buttons = await cli.evaluate(() => new Promise(resolve => {
       wx.createSelectorQuery().selectAll('.followup-detail-sheet .followup-text-action')
         .fields({ dataset: true, size: true }).exec(results => resolve(results[0]));
     }));
-    const sources = buttons.filter(item => String(item.dataset.project) === projectId && !item.dataset.record && item.width > 0 && item.height > 0);
-    assert.equal(sources.length, 1, 'Exact rendered workmanship control');
-    const fn = () => getCurrentPages().at(-1).openReportSource({ currentTarget: { dataset: { project: '__PROJECT__' } } });
-    await evaluateSource(fn.toString().replace('__PROJECT__', projectId));
-    return 'verified rendered control and native handler';
+    const controls = buttons.filter(item => String(item.dataset.project) === projectId && !item.dataset.record && item.width > 0 && item.height > 0);
+    assert.equal(controls.length, 1, 'Exact rendered workmanship control');
+    const fn = () => { const page = getCurrentPages().at(-1), owner = page.followups, d = owner.sourceReport('', undefined);
+      const list = d?.projects?.find(p => p.id === '__PROJECT__')?.knowledgeSources || [];
+      const source = list[0]; if (!source) return { opened: false, count: list.length };
+      page.openSheet('reportSource'); owner.readSource('__PROJECT__', source.sourceId);
+      return { opened: true, count: list.length, sourceId: source.sourceId }; };
+    const opened = await evaluateSource(fn.toString().replace('__PROJECT__', projectId));
+    report.workmanshipOpen = opened.result.result;
+    assert.equal(report.workmanshipOpen.opened, true, 'the first authorized source read deterministically');
+    return 'verified rendered control and deterministic first-source read';
   };
   const enter = async a => {
     await cli.reLaunch('/' + route + (a.name === 'customer' ? '?leadId=' + a.leadId : '?followup=1'));
@@ -246,7 +255,16 @@ module.exports = async ctx => {
           const quote = await wait(async () => {
             const d = await p.data();
             return d.reportSource?.available && !d.reportSourceLoading ? d.reportSource : null;
-          }, 'authorized workmanship source');
+          }, 'authorized workmanship source').catch(async e => {
+            // Persist the sheet state at the timeout so the failure mode is
+            // diagnosable without another run.
+            const state = await cli.evaluate(() => { const d = getCurrentPages().at(-1).data;
+              return { reportSource: d.reportSource, reportSourceLoading: d.reportSourceLoading,
+                reportSourceError: d.reportSourceError, followupError: d.followupError }; }).catch(() => null);
+            report.quoteTimeout = { audience: a.name, bid: a.bid, state };
+            await capture(a.name + '-quote-timeout').catch(() => {}); save();
+            throw e;
+          });
           assert.equal(quote.id, source.sourceId);
           assert.ok(quote.quote && first.standards.some(item => item.citations.some(c => c.quote === quote.quote)));
           assert.equal(quote.originalAvailable, true);
