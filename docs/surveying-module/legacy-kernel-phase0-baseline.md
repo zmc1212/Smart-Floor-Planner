@@ -216,6 +216,8 @@ npm run benchmark:survey-kernel
 Phase 0 完成时，旧实现的定向测量测试 477 项全部通过，新增 8 项基线合同测试全部通过，
 合并后的测量定向命令为 485/485 通过，H5 验证台为 55/55 通过。
 
+本次修复已核对 `91773e8c` 中既有新墙默认 `use: 'room-boundary'`：行为快照 123 处差异全部仅为该字段，未改变几何、session 或错误结果。Phase 4D/5 冻结提交函数仅显式补上该字段；语义比较器未忽略任何字段。结构快照只补录已有 `survey-closure-measured-face.test.js` 调用方，83 份镜像仍完全匹配。当前全量小程序 1875/1875、Phase 0/4D/5 专项 394/394、H5 55/55 通过；下方 14 项为 Phase 0 交付时的历史记录，已不代表当前失败状态。
+
 完整 `miniprogram` 回归发现 976 项，962 项通过，以下 14 项失败：
 
 1. `Mine hosts account settings inline and routes deep pages separately`；

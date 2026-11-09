@@ -2,6 +2,8 @@
 
 D2's current Agent material/business read view also includes only recorded wall `lengthMm`, floor `ceilingHeightMm` and opening dimensions for eligible closed rooms, through `agent/formal-floorplan-context.ts`. Coordinate/render bounds and default heights do not become measurements, missing records remain unknown, and a wall length does not establish room net size or a photo-to-wall mapping. No graph or legacy layout copy is written. The original layoutHash binds this added text; unchanged geometry/name retain the old material dependency version, while real graph changes revoke it. The deterministic Worker/source/tenant/version checks are in `tmp/xiaok-d2-context-20261027/services-schema-formal/report.json`; configured-model acceptance is tracked only in the development plan section2.
 
+XiaoK P2A.2 is a read-only consumer of the customer's own completed primary v4 plan on an active same-enterprise lead. It renders whole-plan/closed-room snapshots through the existing adapters, records source IDs/layoutHash and rechecks source ownership on private reads. Later edits do not replace an existing consultation snapshot. It never writes `FloorPlan.layoutData`, creates a legacy layout copy, or changes assignment/commission. See [phase two](../xiaok-assistant-phase-2.md) for APIs, consent, retention and tests. P2S staff review only associates this customer's completed primary plan/room identifiers within the current owner's existing lead scope, writing consultation-internal annotations; it updates neither snapshots nor formal graphs.
+
 D2 now shares strict `parseFormalSurveyLayout` source eligibility between private snapshot reads and Agent pixel/checkpoint restoration. Invalid/mixed legacy layouts fail both paths; valid later edits still retain immutable original pixels and layoutHash. Isolated source/auth/rendering checks3/3 pass with no model/native acceptance or graph/schema change; evidence and limitations remain in the existing phase-two contract.
 
 This file records the current version-4 surveying contract. Historical geometry
@@ -20,6 +22,14 @@ experiments and rollback narratives belong in Git history, not the live contract
 ```
 
 Coordinates, lengths, wall thickness, openings, and heights use millimetres.
+New measured walls explicitly store `use: 'room-boundary'` (the existing
+`91773e8c` behavior); old v4 walls may omit it. The regression baseline now
+records that field, and Phase 4D/5 frozen commit bodies include only this schema
+amendment while retaining their historical geometry. No comparator fields or
+validator checks are ignored. The 123 reviewed snapshot differences are all
+this default; the audit adds the existing measured-face test caller. Full Mini
+regression is 1875/1875 and H5 is 55/55. Independent/half-wall interaction and
+completion exemptions remain outside this repair.
 Door and window widths use the clear host interval described under Opening
 junction bounds; a free wall still has no fixed 60% cap.
 The graph is the only persisted editable geometry. Do not write `rooms`,
@@ -267,6 +277,13 @@ copy back to `layoutData`.
   back to POST or clear the existing ID. POST is used only when no ID exists.
 
 ## CAD/DXF export
+
+An empty initialization canvas is not persisted locally while its existing
+cloud graph is still loading. A hide/unload during loading must not create a
+newer empty backup that takes precedence over the saved graph on reentry.
+Real local geometry during loading and intentional clears after loading still
+persist normally; the storage envelope, full validation and v4 API writes are
+unchanged. The editor autosave behavior regression covers both sides.
 
 - `GET /api/floorplans/[id]/export/dxf` is the Admin-cookie download endpoint;
   `GET /api/miniprogram/floorplans/[id]/export/dxf` is the Bearer-JWT endpoint.

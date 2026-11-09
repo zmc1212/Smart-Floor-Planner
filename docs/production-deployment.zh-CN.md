@@ -2,6 +2,87 @@
 
 本文是 `admin/release.bat`、`admin/auto_deploy.sh` 和 `admin/deploy.sh` 的正式运维合同。发布脚本只做应用发布、迁移前备份和应用版本回滚；它不会自动把生产数据库恢复到旧备份，也不会逆向执行迁移。
 
+<!-- cloud-camera-cloud-mini-integration -->
+**私有SD时间接入：限定Implemented。** 新增sfp-wvp-sd-clock-20261106组件，复用原镜像/只读WVP日志，白名单/token私有配置位于/datas/sfp-wvp-sd-clock-20261106/；仅127.0.0.1:28083、UID10001/cap_drop/全只读挂载/无Docker socket、unless-stopped。经原WVP观察新DeviceStatus时间，原28容器、二进制/站点/配置保持。配置0400并私有备份；应用用CAMERA_SD_CLOCK_ORIGIN/TOKEN显式选择，不回退服务器时间。Mini仅列当前注册身份/时间可信窗口，缓存开播再核身份/时差。真实Mini宿主/H5 SD查询/播放/重进/故障重试/STOP通过，私有媒体/义务0；自有3417/3418/四端口转发/unit库/公钥已清理，保留副本/共享3017/D/SSH。新SQL/组件/站点备份与新SSH登录拒绝已验。[实证](../tmp/cloud-camera-mini-sd-20261106/assessment.json)。无正式业务/小程序发布，不冒称完整恢复/物理微信/PTZ/重连通过。
+<!-- /cloud-camera-cloud-mini-integration -->
+
+<!-- cloud-camera-phone-trial -->
+**微云手机体验版：Limited，云端接入/有界联调Implemented。** 用户11-06最终选择“体验版＋微云测试员工”，取代此前精艺企业3选择。AppID wxa7728432f59779d1、体验版本20261106-camera-sd-2；正式小程序1.5.0、Admin20260905-001和正式库保持。smartfloor.zlyun168.com既有request合法域名及WebView业务域名已回读，无域名配置变更；体验包urlCheck=true，无跨环境回退。
+
+部署源[camera-trial](../admin/deployment/camera-trial/)，目录/datas/sfp-camera-trial-20261106、Compose sfp-camera-trial。独立PG/网关不发布宿主端口，专网10.203.207.0/24；网关只监听10.203.207.2:33417，PG专网5432，WVP走原私网。网关UID1001/只读根/cap_drop/无Docker socket/768MiB，PG384MiB，两者unless-stopped；独立raw规则/systemd在Docker前保护私有端口。JWT与正式站独立，环境/导入/备份均为root私有。数据库由隔离schema快照恢复，迁移账本0，不伪填已执行迁移，不作正式库迁移基线或自动跑混合journal。仅复制微云一个合成工地及保留员工，正式57迁移/4企业/78用户/18员工/39线索未变，原29容器（28运行/1已停）ID/启动时间/全部挂载无漂移，原WVP网络/规则保持。
+
+Nginx只增加测试API/H5/媒体路径；原站有私有备份，nginx -t/平滑重载通过，主进程31981保持。回退只撤测试include并验证/重载、停止本Compose，保留测试数据，不覆盖正式库。已在线导出并校验本实例PGDMP/目录；不等于完整媒体灾备。专用SSH结束时撤销并验证；体验服务无本机/SSH转发依赖。公网1080p直播/SD和Stable真实员工入口/重进已验，真机解码/持续观看未验。[当前资源/备份/回滚实证](../tmp/cloud-camera-production-20261106/assessment.json)。
+
+体验版无参数登录现按 /camera-test-api 配置自动选用已有账号密码态，普通环境仍默认手机号；修正版 20261106-camera-sd-2 已上传，官方trial码直达 packages/business/login/login。首轮手机19:18的403原件保留；客户端24项、Stable390×844无mode参数默认表单/实际员工登录/视频入口/重进4项通过，零漂移并恢复会话。未改登录布局、文案、素材或服务端身份限制；修正版手机重试/解码仍未独立观察。[入口修复](../tmp/cloud-camera-production-20261106/login-entry-fix.json)。
+<!-- /cloud-camera-phone-trial -->
+
+## 独立 WVP 试部署包
+
+用户已授权在 `124.70.90.30` 独立新装 WVP/ZLM、MySQL、Redis、只读容量探针，
+通过后台 OpenSSH 操作；禁止 computer-use 占用桌面。原开发电脑制作的离线包保持，
+本范围不包含 Admin 发布、业务库迁移、小程序网关或现有项目升级。
+服务器为 CentOS7.9/x86_64、8核/32GB，预检可用内存约5.7GiB、数据盘约108.5GiB、
+系统盘约14.6GiB；Docker26.1.4/Compose2.27.1/Python3.6.8。公网带宽套餐未核。
+当前状态：**办公网接入及https://wvp.zlyun168.com正式HTTPS管理已验，含真实1920×1080 H264出画**；五服务健康，
+8项认证/容量检查、5项安装边界测试通过。[接入实证](../tmp/wvp-bundle-20261105-01/onboarding-verification.json)，
+[初始基础设施实证](../tmp/wvp-bundle-20261105-01/production-verification.json)。
+
+安装目录 `/datas/sfp-wvp-production-20261106/sfp-wvp-20261105-001-linux-amd64`，
+数据目录 `/datas/sfp-wvp-data`，Compose项目 `sfp-wvp-cloud`。
+管理/媒体/容量端口为回环 `28080/28081/28082`，SIP15060、RTP20000–20035；
+避开原FRP18080和旧ZLM30000–35000。MySQL/Redis不发布宿主端口，默认不启录。
+固定五镜像、随机凭据、归属/校验/端口/UID10001目录保护见
+[维护源码与操作指引](../admin/deployment/wvp/README.zh-CN.md)，
+[远端导出器](../admin/scripts/remote-dev/export-wvp-bundle.ps1)。
+成品SHA256 `8e506d8693ad897c480851f8868c286355ce5ac0e3ca0c43032424132f6414a5`，
+文件869MB；[隔离包验收](../tmp/wvp-bundle-20261105-01/verification.json)保留原失败与22表恢复实证。
+
+宿主独立适配 [host-network-guard.py](../admin/deployment/wvp/host-network-guard.py)
+不在001冻结归档内，单独部署于上述父目录。Docker26的回环端口限制由两条精确的
+raw/PREROUTING规则补充：保护该实例回环HTTP与独有子网私有端口；不清空旧规则。
+`sfp-wvp-cloud-network-guard.service`配置在Docker启动前恢复规则；重入无重复，原规则保持，重启实测未做。
+网络 `sfp-wvp-cloud_default` 的固定当前子网为 `192.168.80.0/20`；重建网络前须重核
+`network-guard.json`，不得套用旧子网。当前未升级/重启Docker、系统或旧业务。
+CentOS7已结束维护；这是一台旧宿主上的有限试部署，不作为长期生产维护达标证明。
+[CentOS](https://www.centos.org/centos-linux/)；[Docker回环限制](https://docs.docker.com/engine/network/port-publishing/)。
+
+用户已创建wvp-camera并仅关联124.70.90.30，保留default及办公/32规则。手工4G测试
+方案仅增加TCP15060/20000–20035临时来源规则，当前云规则/运营商出口未独立回读。
+摄像头 `192.168.10.100` 已切云端，设备/视频通道ID仍为
+34020000001320000005/34020000001320000006，TCP信令/TCP-PASSIVE媒体。
+固件将32位SIP密码截成31位，首写已回退；当前采用WVP原生单设备24位随机密码，
+全局凭据保持。初次办公验收曾关闭4G；用户现已自行启用并反馈4G直播可播，保留
+其当前设置，不据此宣称独立核验纯4G路由/公网出口。[用户反馈](../tmp/wvp-bundle-20261105-01/4g-live-user-report-20261106.json)。
+IP/DHCP/网关/端口均保持；网关MAC写入被固件忽略，不能认定它是原因。无重启/SD/PTZ动作。
+首次点播因ZLM端口池不足36而失败；备份后将运行配置20000–20009改为20000–20035，
+只重建本栈WVP/ZLM，001归档及固定镜像保持。维护源码已在Docker前拒绝更小端口池。
+实际RTP20032、收到1,441,792字节FLV并解码224帧1920×1080 H264；测试点播已停，
+媒体/RTP消失、录像关闭，设备仍在线。办公接入实证的驱动/配置/资源稳定，原23容器保持；
+后续HTTPS的Nginx工作进程平滑重载见下文。
+保留早期探测、密码、端口及未排序挂载断言失败与规范化回读，不重放原写入。
+独立4G重连/SD、微信、产品网关、多路及完整媒体灾备仍未验。[华为云路径](https://support.huaweicloud.com/usermanual-ecs/zh-cn_topic_0030878383.html)。
+原74h批次已于11-06 11:37因资源哈希漂移失败，
+18.09h/1086观测，不是此次主动切换中断；新只读检查为策略58/cloud/off/stopped、
+MP4=false、SD/观看/PTZ/写入义务0，无长测控制器，不续跑旧批。
+
+正式管理入口为 [https://wvp.zlyun168.com](https://wvp.zlyun168.com)，账号`admin`，
+沿用安装生成的WVP管理员密码。DNSPod的A解析指向124.70.90.30，复用原有效至
+2027-01-13的泛域名证书；[独立Nginx入口](../admin/deployment/wvp/nginx-public.conf)
+代理回环服务，媒体请求/WS握手复用原wvp_token/API鉴权，公网ZLM控制/Hook/文档拒绝。
+访问日志不含凭据查询参数。固定2.7.4的空TLS播放字段由代理归一，原生节点TLS手改值
+重启会重置。原11站点配置/其余27容器/Nginx主进程保持，仅本栈WVP重启与工作进程
+平滑重载属本次预期验证。正常公网DNS/TLS、原版登录/设备重进、真实1920×1080画布与
+WSS328消息/811829字节已验；上轮自有测试结束时媒体/读者0且录像关闭，当前用户观看
+未查询/停止。4G直播按用户反馈记录；WebRTC/RTSP/RTMP、独立4G重连/SD、小程序集成及完整媒体灾备未验。[域名实证](../tmp/wvp-bundle-20261105-01/public-management-verification.json)
+保留原黑屏/原生覆盖/驱动失败及最终源码哈希。域名接入后的SQL/配置/入口备份为
+`.state/backup-20261106T075146669182Z`，校验与密钥清理已证，不等于完整媒体灾备。
+
+也可在本机手动保持 `ssh -N -L 28080:127.0.0.1:28080 -L 28081:127.0.0.1:28081 root@124.70.90.30`，
+浏览器访问 `http://127.0.0.1:28080`；admin及SIP随机密码只存安装目录
+`.state/installation.private.json`，不贴聊天。临时受限公钥不支持转发。本次专用公钥已撤销并验证拒绝登录；其余SSH授权及Xshell会话保持。后续远程接入操作需用户重新添加专用公钥。
+停止用包内 `bash deploy.sh stop`，只停本实例并保留数据；备份用 `bash deploy.sh backup`，
+仅含MySQL与安装配置，不含录像/JWK/抓图，不等于完整灾备或跨版本覆盖恢复。
+
 ## 一次性服务器准备
 
 建议固定目录为 `/datas/smartfloor`：

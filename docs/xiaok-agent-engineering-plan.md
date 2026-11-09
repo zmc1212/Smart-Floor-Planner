@@ -1,5 +1,7 @@
 # XiaoK Agent Engineering Plan
 
+> **Historical plan; superseded on 2026-10-27.** Section 2 of the [single XiaoK Renovation Agent Development Plan](./xiaok-renovation-agent-development-plan.md) is the only execution entry. Current/next labels, stage ordering, stop notices, test matrices and automatic successor-chat requirements below no longer schedule work. Preserve historical implementation, failures, costs and technical decisions; do not maintain this plan's queue further.
+
 > **Current delivery status — 2026-10-27.** Later authorized OS-CONTRACT-10–12 candidate work supersedes the 2026-10-24 historical pause for that bounded scope. OS12 is completed with separate model, real-service and SDK evidence; OS11 raw reply-only semantics and the original CONSULT-02/R1-C remain Limited. Default rollout and production still require their own authorization. See the current record in section 1 and the bilingual phase-two contract.
 
 The unified development chat uses the Chinese [automation execution guide](./manuals/xiaok-stage-tests/automation.zh-CN.md) for both plans. One owner implements, fixes and performs automated acceptance, reporting client units, real services, Stable native automation and the configured real model separately. Routine work does not require an independent testing chat or user-approved freeze/handoff. The guide provides test methods, not proof of execution or success.

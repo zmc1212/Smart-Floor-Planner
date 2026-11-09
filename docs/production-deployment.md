@@ -5,6 +5,106 @@ This is the production operations contract for `admin/release.bat`,
 delivery, a verified pre-migration backup, and application-image rollback. It
 never automatically restores production data or runs a migration backwards.
 
+<!-- cloud-camera-cloud-mini-integration -->
+**Private SD clock integration — bounded Implemented.** One additional sfp-wvp-sd-clock-20261106 container uses the original image/read-only WVP logs and protected allowlist/token config under /datas/sfp-wvp-sd-clock-20261106/; only127.0.0.1:28083,UID10001/cap_drop/read-only mounts/no Docker socket, restart unless-stopped. It observes fresh DeviceStatus time through the original WVP; original28 containers/binaries/site/configuration remain unchanged. Config is0400 and backed up privately. CAMERA_SD_CLOCK_ORIGIN/TOKEN select it explicitly, without server-time fallback. Only current registration/calibrated windows enter Mini; cached starts recheck identity/skew. Real Mini-host/H5 SD query/play/reentry/outage-retry/STOP passed; private media/duties0. Own3417/3418/four forwards/unit DB/key removed; clone/shared3017/D/SSH preserved. Fresh SQL/clock/site backup and new-login denial pass. [Evidence](../tmp/cloud-camera-mini-sd-20261106/assessment.json). No formal business/Mini release or full restore/physical WeChat/PTZ/reconnect claim.
+<!-- /cloud-camera-cloud-mini-integration -->
+
+<!-- cloud-camera-phone-trial -->
+**Weiyun phone trial — Limited; cloud integration/bounded acceptance Implemented.** The final11-06 user choice is a trial with retained Weiyun test staff,superseding enterprise3. AppID wxa7728432f59779d1/trial20261106-camera-sd-2;formal Mini1.5.0,Admin20260905-001 and formal DB remain. Existing smartfloor.zlyun168.com request/WebView business domains were read back without configuration changes. The trial has urlCheck=true,no environment fallback.
+
+Source [camera-trial](../admin/deployment/camera-trial/),root/datas/sfp-camera-trial-20261106,Compose sfp-camera-trial. Independent PG/gateway publish no host ports;dedicated10.203.207.0/24,gateway binds only10.203.207.2:33417,PG private5432,WVP through its existing private network. Gateway UID1001/read-only root/cap_drop/no Docker socket/768MiB,PG384MiB,both unless-stopped;dedicated raw rules/systemd protect private ports before Docker. JWT is separate;environment/import/backups are root-private. This is an isolated schema-snapshot restoration,ledger0,without invented migration receipts;not a formal migration baseline or an automatic mixed-journal target. Only one synthetic Weiyun project/retained employees are copied. Formal57 migrations/4 enterprises/78 users/18 staff/39 leads remain;all original29 containers(28 running/1 exited),start times/full mounts and original WVP network/rules are unchanged.
+
+Only trial API/H5/media locations are added to the existing Nginx host,with private original-config backup,nginx -t/graceful reload and master31981 preserved. Rollback removes only the trial include after validation/reload and stops this Compose,preserving trial data;never restore over production. An online PGDMP/archive catalog is verified;not full media disaster recovery. Dedicated SSH is revoked/verified at completion;no local process/SSH forwarding dependency. Public1080p live/SD and Stable real-employee entry/reentry pass;physical WeChat decoding/sustained viewing remain unverified. [Resources/backup/rollback evidence](../tmp/cloud-camera-production-20261106/assessment.json).
+
+The trial now selects the existing password state from /camera-test-api without a mode query;ordinary environments keep phone default. Fix 20261106-camera-sd-2 is uploaded;an official trial code opens packages/business/login/login. Retain the original19:18 phone403. Client24 and Stable390×844 default-form/actual staff login/video entry/reentry4 pass,zero drift/restored session. No markup,copy,asset or server-identity change;physical phone retry/decoding remains unverified. [Entry fix](../tmp/cloud-camera-production-20261106/login-entry-fix.json).
+<!-- /cloud-camera-phone-trial -->
+
+## Standalone WVP trial bundle
+
+The user authorized a fresh WVP/ZLM/MySQL/Redis/read-only capacity stack on
+`124.70.90.30` through background OpenSSH, with no computer-use. The offline
+bundle was built on the approved development workstation. No Admin release,
+business migration, Mini gateway or existing-project upgrade is included.
+Target: CentOS7.9/x86_64,8 cores/32GB; initial available RAM5.7GiB,data108.5GiB,
+root14.6GiB; Docker26.1.4/Compose2.27.1/Python3.6.8. Bandwidth plan unknown.
+Current: **office enrollment and public HTTPS management at https://wvp.zlyun168.com verified,
+including actual1920×1080 H264 playback**;
+five services healthy,eight auth/capacity checks and five installer tests pass.
+[Onboarding evidence](../tmp/wvp-bundle-20261105-01/onboarding-verification.json);
+[initial infrastructure](../tmp/wvp-bundle-20261105-01/production-verification.json).
+
+Release: `/datas/sfp-wvp-production-20261106/sfp-wvp-20261105-001-linux-amd64`;
+data: `/datas/sfp-wvp-data`; project: `sfp-wvp-cloud`. Loopback HTTP/media/probe:
+28080/28081/28082; SIP15060,RTP20000–20035. Existing FRP18080 and native ZLM
+30000–35000 are preserved. Databases publish no host ports; recording stays off.
+[Maintained installer](../admin/deployment/wvp/README.md),
+[exporter](../admin/scripts/remote-dev/export-wvp-bundle.ps1): pinned five images,
+random credentials,ownership/checksum/port guards and UID10001 directories.
+Archive869MB,SHA256 `8e506d8693ad897c480851f8868c286355ce5ac0e3ca0c43032424132f6414a5`.
+[Bundle acceptance](../tmp/wvp-bundle-20261105-01/verification.json) retains
+original failures and isolated22-table restoration.
+
+The separate [host-network-guard.py](../admin/deployment/wvp/host-network-guard.py)
+is not in frozen release001. It lives in the release parent directory and adds
+two exact raw/PREROUTING rules protecting only this instance's loopback HTTP and
+private subnet ports. Reentry preserves original rules without duplicates.
+`sfp-wvp-cloud-network-guard.service` is configured before Docker at boot; reboot remains untested.
+Network `sfp-wvp-cloud_default` currently uses `192.168.80.0/20`; revalidate
+network-guard.json before network recreation. No daemon/OS/old-service restart
+or upgrade. CentOS7 is EOL; this bounded legacy-host trial is not a maintained
+production-host endorsement. [CentOS](https://www.centos.org/centos-linux/),
+[Docker loopback caveat](https://docs.docker.com/engine/network/port-publishing/).
+
+The user created wvp-camera,associated it only with124.70.90.30,retained default,
+and confirmed initial office/32 TCP15060/20000–20035. The manual4G test guide adds
+only those two TCP source rules temporarily; current cloud rules/egress are not re-read. The camera192.168.10.100 now registers with original device/channel
+IDs34020000001320000005/34020000001320000006,TCP/TCP-PASSIVE. Its firmware truncates
+32-character SIP passwords to31; the first write was rolled back. Native WVP
+per-device24-character random authentication now works,with global secrets unchanged.
+LTE was disabled for the initial office acceptance. The user now enabled it and
+reports live playback on built-in4G; preserve their settings,without independently
+asserting the route/public egress. [User report](../tmp/wvp-bundle-20261105-01/4g-live-user-report-20261106.json). IP/DHCP/gateway/ports remain unchanged; an attempted gateway
+MAC edit was ignored by firmware and is not a proven cause. No reboot/SD/PTZ action.
+The first playback failed ZLM's minimum36-port assertion. A backed-up runtime
+repair changed20000–20009→20000–20035 and recreated only this stack's WVP/ZLM;
+the frozen001 archive/images remain intact. Maintained installer validation now
+rejects smaller pools before Docker. Received RTP20032,1,441,792 FLV bytes and
+decoded224 H264 frames at1920×1080. Test playback stopped,media/RTP absent,
+recording off; device remains online. Before/after driver/config/resource binding
+is stable for office enrollment; original23 containers remain. The separate HTTPS
+Nginx worker reload is documented below. Preserve the original
+probe/password/port failures and unsorted-mount assertion with its canonical
+readback; never replay their writes. Independent4G reconnect/SD,WeChat,product
+gateway,multistream and full media recovery remain unverified. [Huawei instructions](https://support.huaweicloud.com/usermanual-ecs/zh-cn_topic_0030878383.html).
+The original74h run failed at11-06 11:37 Asia/Shanghai from resource-hash drift,
+18.09h/1086 observations,not this cutover. Fresh read:policy58/cloud/off/stopped,
+MP4=false,all SD/view/PTZ/writer obligations0,no controller; never resume it.
+
+Public management: [https://wvp.zlyun168.com](https://wvp.zlyun168.com),account `admin`,
+existing generated WVP administrator password. DNSPod A points to124.70.90.30;
+the existing wildcard certificate is valid through2027-01-13. The independent
+[Nginx host](../admin/deployment/wvp/nginx-public.conf) proxies loopback services,
+reuses native wvp_token/API authorization for media requests/WS handshakes and
+denies public ZLM control/hooks/docs. Access logs exclude credential query strings.
+Pinned2.7.4's null TLS StreamInfo fields are normalized by the proxy; native-node
+TLS overrides reset on startup. Existing11 site configs/27 other containers and
+Nginx master remain; own WVP restart/worker reload were intentional verification.
+Normal public DNS/TLS,stock login/device reentry and actual1920×1080 canvas/WSS
+328 messages/811829 bytes pass. Those owned tests ended with media/readers0 and
+recording off; current user viewing is not queried or stopped. 4G live is user-reported;
+WebRTC/RTSP/RTMP,4G reconnect/SD,Mini integration and full media recovery remain unverified. Current
+[public evidence](../tmp/wvp-bundle-20261105-01/public-management-verification.json)
+retains original black-player/native-reset/automation failures and final source hash.
+Post-domain SQL/config/ingress backup is `.state/backup-20261106T075146669182Z`;
+its checksum and key cleanup are verified. This is not full media disaster recovery.
+
+Optional operator tunnel: `ssh -N -L 28080:127.0.0.1:28080 -L 28081:127.0.0.1:28081 root@124.70.90.30`;
+open `http://127.0.0.1:28080`. Admin/SIP credentials remain only in the release's
+private `.state/installation.private.json`. The restricted deployment key cannot forward.
+The dedicated key was revoked and a new login was denied; other SSH authorization/Xshell sessions remain. Later remote onboarding requires the user to re-add the dedicated public key. `bash deploy.sh stop` stops
+only this stack and preserves data. `backup` covers MySQL/config only,not media,
+JWK or snapshots; no full disaster recovery or in-place version-upgrade claim.
+
 ## One-time server preparation
 
 Use a stable root such as `/datas/smartfloor`:

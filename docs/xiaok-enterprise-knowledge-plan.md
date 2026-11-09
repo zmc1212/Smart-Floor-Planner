@@ -1,5 +1,7 @@
 # XiaoK Enterprise Knowledge Plan
 
+> **Historical plan; superseded on 2026-10-27.** Section 2 of the [single XiaoK Renovation Agent Development Plan](./xiaok-renovation-agent-development-plan.md) is the only execution entry, including knowledge-domain work. Current/next labels, stage ordering, stop notices, test matrices and automatic successor-chat requirements below no longer schedule work. Preserve historical implementation, failures, costs and technical decisions; do not maintain this plan's queue further.
+
 > **Current dependency (2026-10-27): KDEP-OS-CONTRACT-12 needs no knowledge code change.** Candidate reception and stale requirement projection reuse current customer evidence, tenant/source/epoch/revocation and the existing KnowledgeRetriever/Evidence boundary. OS-CONTRACT-11 raw reply-only failures are Agent wording failures. See [phase two](./xiaok-assistant-phase-2.md); no default or production migration.
 
 > **Historical pause — 2026-10-24.** Later authorized bounded OS-CONTRACT-10–12 work supersedes this pause only for the candidate business-review scope. The original R0–R4/CONSULT-02 queue is not resumed by this dependency update; retain all old unknowns and source permissions.

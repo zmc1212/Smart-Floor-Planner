@@ -1,5 +1,7 @@
 # 推荐人网络与预约量房闭环开发计划
 
+小K P2C内容咨询补充：已发布授权案例的签名咨询入口可绑定经现有resolver校验的活动码/推广码，仅记录会话/人工接续的内容及渠道来源，并产生既有扫码审计；不创建线索、不获得手机号、不改变首次归属锁、派单、分佣或已退役获客流程。原匿名领取/手机号授权页面及其不展示企业身份的规则不变；品牌C01内容咨询不是领取建档流程。跨企业/停用渠道均拒绝或回到普通咨询，范围及限制见[小K二期](./xiaok-assistant-phase-2.zh-CN.md)。 作品集portfolioEntry另外保存公开作者/作品/版本内容来源，接收者建立或恢复本人咨询；原生转发固定品牌PNG，不携带原私聊或偏好截图。作者/作品意向在handoff.source.portfolio独立记录，不成为渠道受益人，也不改变上述建档、归属锁或派单规则。
+
 状态：`Phase 10 in progress / Phase 11 completed / Phase 16 implemented`
 
 本文是“推荐人多企业推广、客户授权建线索、自动派单、预约量房、AI 方案、签单和三方提成”破坏式改造的持续开发入口。当前代码、PostgreSQL schema、迁移和模块清单仍是已实现能力的依据；本文中的表、接口和路由在代码落地并通过测试前都只能标记为 `Planned`。
@@ -326,7 +328,7 @@ closed 为终止状态
 - `packages/enterprise/appointment-booking/appointment-booking`：客户在测量员已匹配后从「服务」首屏或项目册进入，负责设计师也可从无线索详情进入；双方填写上门地址、选择服务端实时计算的可用时段并创建首次预约，先提交成功的一方占用有效预约。若首次预约时地址未完整确认，后续由预约详情补录。
 - `packages/enterprise/measurer-calendar/measurer-calendar`：已确认的测量员日程，提供不可用时间编辑入口。
 - `packages/enterprise/measurer-unavailability/measurer-unavailability`：测量员仅维护本人不可用时段；使用原生日期/时段 picker、原因、保存和删除，API 仍在服务端强制角色和本人边界。
-- `packages/business/onboarding/onboarding`：员工/推荐人入驻码落地页；它在手机号授权前解析码类型，收集授权，员工只选择 `designer` 或 `measurer`，推荐人在手机号授权后必须填写真实姓名，再调用既有入驻接口并切换到返回身份上下文。
+- `packages/business/onboarding/onboarding`：共用员工/推荐人扫码入口。员工可选designer、measurer或construction_staff；施工身份在手机号授权后补姓名/工种，复用签名会话、单企业冲突/幂等入驻及批准的选项/姓名弹层。施工员工进入三端共用云工地，不参加设计/量房派单、获客、分佣或推广网络。推荐人实名及既有码范围/冲突规则保持，见总计划3.3。
 - `packages/business/identity-switch/identity-switch`：列出服务端活动身份上下文，交换签名上下文令牌，刷新完整会话，并重新进入所选客户/员工/推荐人界面。
 
 第 7 阶段商户路由 `/lead-commissions` 已按既有 Admin UI 方向实现 Ant Design/Admin Pro 规则卡（`Card`、`Segmented`、`InputNumber`、`Switch`）、`ProTable` 状态/角色/来源/日期台账筛选、真实关联报表列、带确认的批量标记已支付、按线索主行展开台账（子表三角色明细，默认展开）与待支付行「调整」弹窗（金额和/或受益人；受益人与原因选填）和 `Statistic` 金额汇总。它新增独立的 `lead-commissions` 导航与权限边界，不替换 `/acquisition-commissions`。其余功能型后台工作遵循双语 Admin UI 重构约定及既有 Ant Design/Admin Pro 路由模式。
