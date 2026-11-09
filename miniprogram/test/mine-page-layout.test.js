@@ -125,7 +125,7 @@ test('Mine account panel exposes the role-scoped referrer network entry', () => 
   assert.match(mineMarkup, /\{\{referrerNetworkEntryHelper\}\}/);
   assert.match(
     mineMarkup,
-    /template is="mineAccountPanel" data="\{\{showRoleGuideEntry, showRegistrationCodeEntry, showReferrerNetworkEntry, referrerNetworkEntryLabel, referrerNetworkEntryHelper, roleGuideHelper, updateStatusLabel\}\}"/
+    /template is="mineAccountPanel" data="\{\{activeRole, showRoleGuideEntry, showRegistrationCodeEntry, showReferrerNetworkEntry, referrerNetworkEntryLabel, referrerNetworkEntryHelper, roleGuideHelper, updateStatusLabel\}\}"/
   );
 });
 

@@ -1355,6 +1355,35 @@
         "unknownProperties": []
       },
       {
+        "file": "miniprogram/test/survey-closure-measured-face.test.js",
+        "classification": "test-only",
+        "binding": "direct-require",
+        "specifiers": [
+          "../packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "resolvedFiles": [
+          "miniprogram/packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "unresolved": false,
+        "exports": [
+          "buildSpaceRenderBoundaryPoints",
+          "commitPreviewLength",
+          "confirmClosure",
+          "createSurveyDraft",
+          "getActiveFloor",
+          "getCursorPlacementTarget",
+          "getNode",
+          "getWall",
+          "placeCursor",
+          "setThickness",
+          "snapCursorToWall",
+          "startPreview",
+          "startWallSnap",
+          "validateSurveyDraft"
+        ],
+        "unknownProperties": []
+      },
+      {
         "file": "miniprogram/test/survey-closure-scenario-matrix.test.js",
         "classification": "test-only",
         "binding": "direct-require",

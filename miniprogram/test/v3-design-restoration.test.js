@@ -22,12 +22,17 @@ function loadPageConfig(relativePath) {
   return pageConfig;
 }
 
-test('V3 page-role assets remain native artwork instead of flattened page screenshots', () => {
+test('current page-role assets remain native artwork instead of flattened page screenshots', () => {
   const aiHome = read('pages/ai-design/ai-design.wxml');
-  assert.match(aiHome, /class="create-scheme-hero"/);
-  assert.doesNotMatch(aiHome, /class="recipe-waterfall"/);
-  assert.match(aiHome, /\/images\/airy-v1\/xiao-k-designer-3d\.png/);
+  // unified-entry-v2 supersedes the former V3 entry; keep its live controls.
+  assert.match(aiHome, /class="project-hero"/);
+  assert.match(aiHome, /class="recipe-waterfall"/);
+  assert.match(aiHome, /bindtap="openRecentProjectStartNew"/);
+  assert.match(aiHome, /bindtap="openRecentProjectContinue"/);
+  assert.match(aiHome, /bindtap="openRecipeBinding"/);
+  assert.match(aiHome, /class="project-hero-mascot"[^>]*src="\/images\/airy-v1\/xiao-k-designer-3d\.png"/);
   assert.doesNotMatch(aiHome, /\/images\/page-ip-v3\/ai-home\.png/);
+  assert.doesNotMatch(aiHome, /src="[^"]*design-references/);
 
   const references = [
     ['pages/mine/mine.wxml', 'images/page-ip-v3/mine.png', '89504e470d0a1a0a'],

@@ -4,6 +4,23 @@ const { AssistantClient, entryInput, messagesForView } = require('../packages/as
 const { PublicChatController } = require('../packages/assistant/lib/public-sites');
 const { PublicSitesController } = require('../packages/construction/public-sites/public-sites-model');
 const { PublicMedia } = require('../utils/public-site-client');
+const discoveryReply = { id: '61', discovery: { sites: true, works: false } };
+
+test('ordinary replies never open discovery and a later topic leaves the list attached to the original reply', async () => {
+  const calls = [];
+  const controller = new PublicChatController({ emit() {}, identity: () => 'a', media: noMedia(), detailMedia: noMedia(),
+    client: { pending: new Map(), async read(path, query) { calls.push([path, query]); return { items: [material()] }; } } });
+  const ordinary = { id: '62' };
+  await controller.load('11', '1', [ordinary]);
+  assert.deepEqual(calls, []);
+  await controller.load('11', '1', [discoveryReply]);
+  await controller.load('11', '1', [discoveryReply, ordinary]);
+  assert.deepEqual(calls, Array(2).fill(['/conversations/11/public-sites/recommendations', { replyId: '61' }]));
+  assert.equal(controller.state.publicReplyId, '61');
+  await controller.load('11', '1', [ordinary]);
+  assert.equal(controller.state.publicReplyId, '');
+  assert.deepEqual(controller.state.publicItems, []);
+});
 const material = () => ({id:'21',versionId:'31',revision:1,status:'pending_owner',name:'春和苑',cityCode:'420500',district:'伍家岗区',stageName:'水电',photos:[],excerpts:[{role:'业主（匿名）',text:'预留洗碗机',date:'2026-10-17'}],excerptCount:1,canDecide:true,updatedAt:'2026-10-17'});
 const noMedia = () => ({clear(){},async load(){}});
 
@@ -12,15 +29,15 @@ test('chat browsing reads the full public catalog in the server-resolved region 
   const c = new PublicChatController({ emit(){}, identity:()=> 'a', media:noMedia(), detailMedia:noMedia(),
     client:new AssistantClient(async()=>({success:true,data:{items:[material()],region:{cityCode:'420500',district:'伍家岗区'}}})),
     catalog:{async read(eid,path,params){reads.push({eid,path,params});return {items:[material(),{...material(),id:'22'}]};}} });
-  await c.browse('11','1',[]);
+  await c.browse('11','1',[discoveryReply],'','61');
   assert.equal(c.cid,'11'); assert.equal(c.state.publicBrowsing,true); assert.equal(c.state.publicItems.length,2);
   assert.deepEqual(reads,[{eid:'1',path:'sites',params:{cityCode:'420500',district:'伍家岗区'}}]);
   assert.equal(c.state.publicLoading,false);
-  c.catalog.read=async()=>({items:[]}); await c.load('11','1',[]);
+  c.catalog.read=async()=>({items:[]}); await c.load('11','1',[discoveryReply]);
   assert.match(c.state.publicNotice,/暂时没有授权公开/);
-  c.catalog.read=async()=>{throw {statusCode:503};}; await c.load('11','1',[]);
+  c.catalog.read=async()=>{throw {statusCode:503};}; await c.load('11','1',[discoveryReply]);
   assert.deepEqual(c.state.publicItems,[]); assert.match(c.state.publicError,/重新读取/);
-  c.catalog.read=async()=>({items:[material()]}); await c.load('11','1',[]);
+  c.catalog.read=async()=>({items:[material()]}); await c.load('11','1',[discoveryReply]);
   assert.equal(c.state.publicError,''); assert.equal(c.state.publicItems.length,1);
 });
 
@@ -29,10 +46,10 @@ test('denied location falls back to public service areas and a hidden browsing r
   const c = new PublicChatController({ emit(){}, identity:()=> 'a', media:noMedia(), detailMedia:noMedia(),
     client:new AssistantClient(async()=>({success:true,data:{items:[],needRegion:true}})),
     catalog:{async read(eid,path,params){assert.deepEqual(params,{});return {items:[material()]};}} });
-  await c.browse('11','1',[],'定位未授权，可以告诉我房屋所在城市。');
+  await c.browse('11','1',[discoveryReply],'定位未授权，可以告诉我房屋所在城市。','61');
   assert.match(c.state.publicNotice,/定位未授权/);
   c.catalog.read=()=>new Promise(resolve=>{finish=resolve;});
-  const pending=c.load('11','1',[]); while(!finish) await new Promise(resolve=>setImmediate(resolve));
+  const pending=c.load('11','1',[discoveryReply]); while(!finish) await new Promise(resolve=>setImmediate(resolve));
   c.clear();finish({items:[material()]});await pending;
   assert.equal(c.state.publicBrowsing,false);assert.deepEqual(c.state.publicItems,[]);
 });
@@ -57,15 +74,16 @@ test('nearby entry and detail stay in the current chat and preserve an unfinishe
   global.wx={navigateTo(){throw Error('Public browsing must stay in the chat');}};
   try {
     const page=require('../packages/assistant/chat/chat-definition')();let finish;const calls=[];
-    Object.assign(page,{_alive:true,_shown:true,controller:{conversationId:'11'},data:{enterpriseId:'1',messages:[],draft:'原来的装修问题',canSend:true},
+    Object.assign(page,{_alive:true,_shown:true,controller:{conversationId:'11'},data:{enterpriseId:'1',messages:[discoveryReply],draft:'原来的装修问题',canSend:true},
       syncLocation:()=>new Promise(resolve=>{finish=resolve;}),scrollBottom(){},openSheet(sheet){this.data.sheet=sheet;},
       publicSites:{async browse(...args){calls.push(args);},async openDetail(...args){calls.push(args);}}});
-    const pending=page.browseSites();await page.browseSites();finish({notice:'定位未授权'});await pending;
-    assert.deepEqual(calls,[['11','1',[],'定位未授权']]);
+    const event={currentTarget:{dataset:{message:'61'}}};
+    const pending=page.browseSites(event);await page.browseSites(event);finish({notice:'定位未授权'});await pending;
+    assert.deepEqual(calls,[['11','1',[discoveryReply],'定位未授权','61']]);
     await page.openPublicSite({currentTarget:{dataset:{id:'21',version:'31'}}});
     assert.equal(page.data.sheet,'publicSite');assert.deepEqual(calls[1],['11','1','21','31']);
     assert.equal(page.data.draft,'原来的装修问题');assert.equal(page.controller.conversationId,'11');
-    const stale=page.browseSites();page.controller.conversationId='12';finish({});await stale;assert.equal(calls.length,2);
+    const stale=page.browseSites(event);page.controller.conversationId='12';finish({});await stale;assert.equal(calls.length,2);
   }finally{global.getApp=oldApp;global.wx=oldWx;}
 });
 

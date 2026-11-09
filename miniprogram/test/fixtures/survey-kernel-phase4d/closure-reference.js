@@ -1,5 +1,6 @@
 // Test-only frozen Phase 4C kernel (085c698b). Do not refresh with candidate code.
-// Only dependency paths and trailing whitespace are normalized; function logic is frozen.
+// Dependency paths are normalized. The only schema amendment is the explicit
+// wall-use default introduced by 91773e8c; geometry and closure logic stay frozen.
 const { deleteWall, deleteClosedSpace } = require('../../../packages/surveying/utils/survey/operations/wall-deletion.js');
 const { buildSpaceDimensionPlan, calculateSpaceAreaMm2 } = require('../../../packages/surveying/utils/survey/read-model/space-dimensions.js');
 const { buildSpaceInnerBoundaryPoints, buildSpaceRenderBoundaryPoints } = require('../../../packages/surveying/utils/survey/read-model/space-boundary.js');
@@ -3070,6 +3071,7 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
       startNodeId: anchor.id,
       endNodeId: endNode.id,
       mode: session.mode,
+      use: session.wallUse || 'room-boundary',
       lengthMm: Math.max(
         0,
         distanceMm(anchor, endNode) - measurementStartInsetMm + measurementStartExtensionMm - measurementEndInsetMm

@@ -12,13 +12,16 @@ function receipt(state, extra = {}) {
   return { conversationId: '11', mode: { waiting: 'handoff_requested', active: 'human', cancelled: 'ai', ended: 'ai' }[state],
     status: 'open', version: 3, handoff: { state, requestId: 'original-request', recipientId: '14' }, ...extra };
 }
-function fixture(write) {
+function fixture(write, readContact) {
   let identity = 'customer-a';
   const calls = [], view = {};
   const client = new AssistantClient(async (path, method, body, options) => {
     if (method === 'POST' && path.endsWith('/contact')) {
       calls.push({ path, method, body: structuredClone(body), key: options.headers['Idempotency-Key'] });
       return { success: true, data: await write(calls.length) };
+    }
+    if (method === 'GET' && path.endsWith('/conversations/11/portfolio/designers/14/contact') && readContact) {
+      return { success: true, data: await readContact(body) };
     }
     if (path.endsWith('/conversations/11')) return { success: true, data: { id: '11', status: 'open' } };
     if (path.endsWith('/works/12')) return { success: true, data: { ...detail } };
@@ -42,6 +45,32 @@ function workPage(f) {
   const methods = page('work');
   return { ...methods, data: f.view, controller: f.controller };
 }
+
+test('a dial action refreshes the current work contact and drops revoked or late numbers', async () => {
+  const calls = [], sources = [], oldWx = global.wx;
+  const original = { revision: 1, phone: '99900000000', author: { id: '14', name: '测试设计师' } };
+  let contact = original;
+  const f = fixture(async () => receipt('waiting'), source => { sources.push(source); return contact; });
+  global.wx = { makePhoneCall: options => calls.push(options.phoneNumber), showToast() {} };
+  try {
+    await f.show();
+    const p = workPage(f);
+    await p.callPublicPhone();
+    contact = { ...original, revision: 2, phone: '' };
+    await p.callPublicPhone();
+    assert.equal(f.view.publicContact.phone, '');
+
+    let resolve;
+    contact = new Promise(done => { resolve = done; });
+    const pending = p.callPublicPhone();
+    f.controller.hide(); resolve(original);
+    await pending;
+    assert.deepEqual(calls, [original.phone]);
+    assert.equal(f.view.publicContact, null);
+    assert.deepEqual(sources, Array.from({ length: 3 }, () => ({ workId: '12', versionId: '13' })));
+    assert.equal(f.calls.length, 0);
+  } finally { global.wx = oldWx; }
+});
 
 test('portfolio contact describes waiting and active receipts without claiming a new booking', async () => {
   for (const state of ['waiting', 'active']) {

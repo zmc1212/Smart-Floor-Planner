@@ -272,10 +272,10 @@ test('role shell staff Mine hides legacy workbench sections', () => {
   assert.match(mine, /wx:if="\{\{!isRoleShellMine\}\}" class="surface-section workbench-section"/);
   assert.match(mine, /wx:if="\{\{!isRoleShellMine\}\}" class="surface-section todo-section"/);
   assert.match(mine, /wx:if="\{\{canUseAIDesign && !isRoleShellMine\}\}" class="ai-banner"/);
-  assert.match(mineJs, /ROLE_SHELL_MINE_ROLES = \['designer', 'measurer', 'enterprise_admin', 'platform_admin'\]/);
+  assert.match(mineJs, /ROLE_SHELL_MINE_ROLES = \['designer', 'measurer', 'construction_staff', 'enterprise_admin', 'platform_admin'\]/);
   assert.match(
     mineJs,
-    /STAFF_MINE_ROLES = \['designer', 'measurer', 'enterprise_admin', 'salesperson', 'platform_admin'\]/
+    /STAFF_MINE_ROLES = \['designer', 'measurer', 'construction_staff', 'enterprise_admin', 'salesperson', 'platform_admin'\]/
   );
 });
 
@@ -309,7 +309,7 @@ test('salesperson uses promotion TabBar and staff Mine dashboard without role-wo
   assert.match(indexJs, /salesperson/);
   assert.match(indexJs, /reLaunch/);
   assert.match(indexJs, /promotion-records\/promotion-records/);
-  assert.match(mineJs, /STAFF_MINE_ROLES = \['designer', 'measurer', 'enterprise_admin', 'salesperson', 'platform_admin'\]/);
+  assert.match(mineJs, /STAFF_MINE_ROLES = \['designer', 'measurer', 'construction_staff', 'enterprise_admin', 'salesperson', 'platform_admin'\]/);
   assert.doesNotMatch(mineJs, /ROLE_SHELL_MINE_ROLES = \[[^\]]*salesperson/);
   assert.equal(promotionJson.usingComponents['custom-tab-bar'], '/custom-tab-bar/index');
   assert.match(promotionWxml, /<custom-tab-bar\s*\/>/);

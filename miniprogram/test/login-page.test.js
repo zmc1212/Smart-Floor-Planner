@@ -45,6 +45,36 @@ function createContext(definition, extraData = {}) {
   return context;
 }
 
+test('Camera trial cold entry opens employee credentials while normal login keeps phone authorization', () => {
+  const originalBaseUrls = api.getBaseUrls;
+  const originalWx = global.wx;
+  const originalPages = global.getCurrentPages;
+  const { resetWechatLoginCodeForTests } = require('../utils/wechat-phone-auth.js');
+  global.wx = { login({ success, complete }) { success?.({ code: 'entry-code' }); complete?.(); } };
+  global.getCurrentPages = () => [];
+  try {
+    const definition = loadPage();
+    for (const [base, options, expected] of [
+      ['https://smartfloor.zlyun168.com/camera-test-api', {}, 'password'],
+      ['https://smartfloor.zlyun168.com/camera-test-api', { mode: 'phone' }, 'password'],
+      ['https://smartfloor.zlyun168.com/api', {}, 'phone'],
+      ['http://192.168.10.32:3006/api', {}, 'phone'],
+      ['https://smartfloor.zlyun168.com/api', { mode: 'password' }, 'password'],
+    ]) {
+      resetWechatLoginCodeForTests();
+      api.getBaseUrls = () => [base];
+      const context = createContext(definition);
+      definition.onLoad.call(context, options);
+      assert.equal(context.data.loginType, expected, base);
+    }
+  } finally {
+    resetWechatLoginCodeForTests();
+    api.getBaseUrls = originalBaseUrls;
+    global.wx = originalWx;
+    global.getCurrentPages = originalPages;
+  }
+});
+
 test('Login page ships the approved Xiao K entry composition with live controls', () => {
   const wxml = fs.readFileSync(path.join(projectRoot, 'packages/business/login/login.wxml'), 'utf8');
   const less = fs.readFileSync(path.join(projectRoot, 'packages/business/login/login.less'), 'utf8');

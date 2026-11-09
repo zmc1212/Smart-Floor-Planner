@@ -42,7 +42,7 @@ test('platform device workbench lives in the platform subpackage and enrolls opt
   assert.match(js, /onCancelScan/);
   assert.match(js, /cancelBLEEnrollmentScan/);
   assert.match(js, /silent:\s*true/);
-  assert.match(js, /enterpriseId=\$\{encodeURIComponent\(listEnterpriseId\)\}/);
+  assert.match(js, /appendQuery\('\/miniprogram\/devices',\s*\{\s*enterpriseId: listEnterpriseId,\s*page,\s*limit: DEFAULT_PAGE_SIZE/);
   assert.match(js, /typeof requestedListEnterpriseId === 'string'/);
   assert.match(js, /ALL_ENTERPRISES_LABEL/);
   assert.match(js, /onListEnterpriseChange/);

@@ -45,7 +45,7 @@ test('Mine hosts account settings inline and routes deep pages separately', () =
   assert.ok(business.pages.includes('settings/settings'));
   assert.ok(business.pages.includes('account-security/account-security'));
   assert.ok(business.pages.includes('identity-switch/identity-switch'));
-  assert.deepEqual(guides.pages, ['referrer-guide/referrer-guide', 'enterprise-owner-guide/enterprise-owner-guide', 'designer-guide/designer-guide', 'measurer-guide/measurer-guide']);
+  assert.deepEqual(guides.pages, ['referrer-guide/referrer-guide', 'enterprise-owner-guide/enterprise-owner-guide', 'designer-guide/designer-guide', 'measurer-guide/measurer-guide', 'customer-guide/customer-guide']);
   assert.match(mineWxml, /account-section-title">账号[\s\S]*bindtap="onEditProfile"[\s\S]*编辑资料/);
   assert.doesNotMatch(mineWxml, /edit-profile-button|header-actions/);
   assert.doesNotMatch(mineWxml, /bindtap="onOpenSettings"/);
@@ -58,7 +58,7 @@ test('Mine hosts account settings inline and routes deep pages separately', () =
   assert.match(mineWxml, /bindtap="onOpenIdentitySwitch"/);
   assert.match(mineWxml, /当前身份/);
   assert.match(mineWxml, /在个人用户、员工和推荐人身份之间切换/);
-  assert.match(mineWxml, /template is="mineAccountPanel" data="\{\{showRoleGuideEntry, showRegistrationCodeEntry, showReferrerNetworkEntry, referrerNetworkEntryLabel, referrerNetworkEntryHelper, roleGuideHelper\}\}"/);
+  assert.match(mineWxml, /template is="mineAccountPanel" data="\{\{activeRole, showRoleGuideEntry, showRegistrationCodeEntry, showReferrerNetworkEntry, referrerNetworkEntryLabel, referrerNetworkEntryHelper, roleGuideHelper, updateStatusLabel\}\}"/);
   assert.match(mineWxml, /wx:if="\{\{showRoleGuideEntry\}\}"[\s\S]*bindtap="onOpenRoleGuide"/);
   assert.match(mineWxml, /角色使用引导/);
   assert.match(mineWxml, /roleGuideHelper/);
@@ -92,7 +92,18 @@ test('Account pages use the approved account-v1 scenes while keeping live contro
     assert.ok(fs.statSync(scenePath).size <= 200 * 1024, `${scene} must remain package-sized`);
     const bytes = fs.readFileSync(scenePath);
     assert.equal(bytes.toString('ascii', 1, 4), 'PNG');
-    assert.equal(bytes[25], 6, `${scene} must retain an RGBA alpha channel`);
+    assert.ok([3, 6].includes(bytes[25]), `${scene} must retain RGBA or indexed transparency`);
+    if (bytes[25] === 3) {
+      let hasTransparency = false;
+      for (let offset = 8; offset + 12 <= bytes.length;) {
+        const length = bytes.readUInt32BE(offset);
+        if (bytes.toString('ascii', offset + 4, offset + 8) === 'tRNS') {
+          hasTransparency = bytes.subarray(offset + 8, offset + 8 + length).some(alpha => alpha < 255);
+        }
+        offset += length + 12;
+      }
+      assert.ok(hasTransparency, `${scene} must retain a transparent palette entry`);
+    }
   }
 
   for (const { source, scene } of heroPages) {
@@ -112,7 +123,7 @@ test('Account pages use the approved account-v1 scenes while keeping live contro
   assert.match(mineWxml, /bindtap="onOpenSystemSettings"/);
   assert.match(mineWxml, /bindtap="onOpenIdentitySwitch"/);
   assert.doesNotMatch(mineWxml, /settings-guardian-scene-v3\.png/);
-  assert.match(heroPages[2].source, /bindtap="onChangePassword"/);
+  assert.match(heroPages[1].source, /bindtap="onChangePassword"/);
 });
 
 test('Identity switch uses server contexts and refreshes the signed session', () => {

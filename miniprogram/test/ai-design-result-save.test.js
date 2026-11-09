@@ -25,6 +25,24 @@ function createPage(definition) {
   };
 }
 
+test('a result deep link without a task ID exits loading and returns to the existing Design entry', () => {
+  const originalWx = global.wx;
+  const originalGetApp = global.getApp;
+  const destinations = [];
+  global.getApp = () => ({ globalData: { userInfo: { role: 'staff', enterpriseId: '1' } } });
+  global.wx = { showToast() {}, switchTab: options => destinations.push(options.url) };
+  try {
+    const page = createPage(loadPageDefinition());
+    page.data.task = null;
+    page.onLoad({});
+    assert.equal(page.data.loading, false);
+    assert.deepEqual(destinations, ['/pages/ai-design/ai-design']);
+  } finally {
+    global.wx = originalWx;
+    if (originalGetApp === undefined) delete global.getApp; else global.getApp = originalGetApp;
+  }
+});
+
 test('result saving waits for the album write and hides loading before success feedback', async () => {
   const originalWx = global.wx;
   const calls = [];

@@ -20,7 +20,7 @@ function fixture() {
 }
 test('portfolio detail loads current exact version, real grouped images and explicit preferences survive reentry/correction', async () => {
   const { controller: c, calls } = fixture(), options = { conversationId: '11', workId: '12', versionId: '13' };
-  await c.show(options, 'work'); assert.equal(c.state.work.renders[0].label, 'AI生成效果图'); assert.equal(c.state.work.photos[0].label, '样板间实拍');
+  await c.show(options, 'work'); assert.equal(c.state.work.renders[0].label, '效果图'); assert.equal(c.state.work.renders[0].aiGenerated, true); assert.equal(c.state.work.photos[0].label, '样板间实拍');
   assert.equal(c.state.work.preference, null); assert.ok(c.state.images.i15); assert.ok(!calls.some(x => x.slot));
   await c.write('like'); assert.equal(c.state.work.preference, 'like');
   c.hide(); assert.deepEqual(c.state.images, {}); await c.show(options, 'work'); assert.equal(c.state.work.preference, 'like');
@@ -125,9 +125,10 @@ test('work enrichment keeps bounded taxonomy, stable space groups, filtered tour
 
 test('designer view exposes real title, specialties and filterable published works without inventing values', () => {
   const second = { ...work(), id: '22', versionId: '23', coverAssetId: '25', primaryStyle: '奶油风', secondaryStyles: [], layoutTypes: ['两居'], tours: [{ url: 'http://unsafe' }], images: [{ assetId: '25', kind: 'render' }] };
-  const view = designerForView({ id: '14', name: '林知夏', bio: '本人资料', cities: [{ name: '杭州市' }, { name: '绍兴市' }], styles: ['原木风', '奶油风'], layoutSpecialties: ['三居', '旧房改造'], professionalTitle: '资深家装设计师', experienceLabel: '9年设计经验', portraitAvailable: true,
+  const view = designerForView({ id: '14', name: '林知夏', bio: '本人资料', cities: [{ name: '杭州市' }, { name: '绍兴市' }], styles: ['原木风', '奶油风'], layoutSpecialties: ['三居', '旧房改造'], professionalTitle: '资深家装设计师', experienceLabel: '9年设计经验', portraitAvailable: true, defaultAvatar: 'female',
     works: [{ ...work(), tours: [{ url: 'https://my.matterport.com/a', provider: 'Matterport' }], layoutTypes: ['三居'] }, second] });
-  assert.equal(view.initial, '林'); assert.equal(view.professionalLine, '资深家装设计师 · 9年设计经验');
+  assert.equal(view.authorCard.fallbackAvatar, '/packages/assistant/assets/designer-avatar-female.png');
+  assert.equal(view.professionalLine, '资深家装设计师 · 9年设计经验');
   assert.equal(view.cityLabel, '杭州市 / 绍兴市'); assert.equal(view.portraitAvailable, true);
   const options = filterOptionsFor(view.works);
   assert.deepEqual(options.map(option => option.key), ['all', 'style:原木风', 'style:奶油风', 'layout:三居', 'layout:两居', 'tour']);
@@ -177,17 +178,20 @@ test('chat shows only bounded, sanitized designer cards from the latest assistan
     reason: '同城风格', match: '三居 · 原木风', ...overrides });
   const message = (id, rec) => ({ id, seq: id, authorKind: 'assistant', content: { blocks: [{ type: 'text', text: '推荐' }] }, designerRecommendation: rec });
   const items = messagesForView([
-    message('1', { items: [card(), card({ authorId: '0' }), card({ authorName: '\u0001' })], notice: 'n'.repeat(300) }),
-    message('2', { items: [card({ authorId: '22', professionalTitle: '\u0001主创', portraitAvailable: 'yes' })] }),
+    message('1', { items: [card({ defaultAvatar: 'male' }), card({ authorId: '0' }), card({ authorName: '\u0001' })], notice: 'n'.repeat(300) }),
+    message('2', { items: [card({ authorId: '22', professionalTitle: '\u0001主创', portraitAvailable: 'yes', defaultAvatar: 'https://example.invalid/avatar' })] }),
     { id: '3', seq: '3', authorKind: 'user', content: { blocks: [{ type: 'text', text: '好' }] } },
     message('4', { items: [card({ authorId: '44', work: { ...card().work, id: '32', versionId: '33', coverAssetId: '35', tourCount: 99 } })], notice: '已按杭州三居筛选' }),
     { id: '5', seq: '5', authorKind: 'assistant', content: { blocks: [{ type: 'text', text: '补充' }] }, designerRecommendation: { items: [] } },
   ]);
   const first = items.find(item => item.id === '1').designerRecommendation;
   assert.equal(first.items.length, 2); assert.equal(first.notice.length, 200);
-  assert.equal(first.items[1].authorName, '设计师'); assert.equal(first.items[1].initial, '设');
+  assert.equal(first.items[1].authorName, '设计师');
+  assert.equal(first.items[0].fallbackAvatar, '/packages/assistant/assets/designer-avatar-male.png');
+  assert.equal(first.items[1].fallbackAvatar, '/packages/assistant/assets/designer-avatar-neutral.png');
   assert.equal(first.items[0].work.tourCount, 3); assert.equal(first.items[0].work.communityName, '云栖里');
   const stripped = items.find(item => item.id === '2').designerRecommendation.items[0];
+  assert.equal(stripped.fallbackAvatar, '/packages/assistant/assets/designer-avatar-neutral.png');
   assert.equal(stripped.professionalTitle, '主创'); assert.equal(stripped.portraitAvailable, false);
   assert.equal(items.find(item => item.id === '5').designerRecommendation, null);
   assert.equal(latestDesignerCard(items).id, '4');
@@ -207,4 +211,32 @@ test('malformed preference/create receipts retain their original operation inste
   assert.ok(client.pending.has(slot)); complete = true; await client.mutate(slot, '/ignored', {}); assert.equal(receipts[0], receipts[1]);
   complete = false; await assert.rejects(client.mutate('portfolio-create:signed', '/conversations', { entryToken: 'entry' }), e => e.code === 'invalid_response');
   assert.ok(client.pending.has('portfolio-create:signed'));
+});
+
+test('studio tour binds the displayed publication; multiple tours and detail retain the exact work and never put URLs in navigation', () => {
+  const oldWx = global.wx, navigation = [], sheets = [];
+  global.wx = { navigateTo: input => navigation.push(input.url), showActionSheet: input => sheets.push(input) };
+  try {
+    const first = workForView({ ...work(), tours: [{ url: 'https://kuula.co/share/one', title: '客厅' }, { url: 'https://kuula.co/share/two', title: '餐厅' }] });
+    const shown = workForView({ ...work(), id: '22', versionId: '23', tours: [{ url: 'https://kuula.co/share/selected', title: '全屋' }] });
+    const studio = page('designer'); studio.data = { loading: false, unavailable: false, conversationId: '11', featuredWork: shown, works: [shown, first] };
+    studio.openStudioTour();
+    assert.equal(navigation[0], '/packages/assistant/tour-view/tour-view?conversationId=11&workId=22&versionId=23&index=0');
+    studio.data.featuredWork = first; studio.openStudioTour(); assert.equal(sheets.length, 1);
+    sheets[0].success({ tapIndex: 1 }); assert.ok(navigation[1].endsWith('workId=12&versionId=13&index=1'));
+    const detail = page('work'); detail.data = { conversationId: '11', work: shown }; detail.openTour();
+    assert.equal(navigation[2], navigation[0]);
+    studio.data.unavailable = true; studio.openStudioTour(); assert.equal(navigation.length, 3);
+    assert.ok(!navigation.some(url => url.includes('kuula') || url.includes('https')));
+  } finally { global.wx = oldWx; }
+});
+
+test('studio never opens a filter sheet or navigates a hidden or revoked page', () => {
+  const studio = page('designer'); studio._alive = true; studio._shown = false;
+  studio.data.designer = { name: '设计师' }; studio.data.loading = false;
+  studio.showStudioFilters(); assert.equal(studio.data.studioSheetVisible, false);
+  studio.alignStudioCatalog();
+  studio._shown = true; studio.data.unavailable = true;
+  studio.showStudioFilters(); assert.equal(studio.data.studioSheetVisible, false);
+  studio.alignStudioCatalog();
 });

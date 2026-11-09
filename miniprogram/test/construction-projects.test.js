@@ -11,18 +11,21 @@ const source = fs.readFileSync(filename, 'utf8');
 function fixture(role = 'construction_staff', values = new Map()) {
   const app = { globalData: { token: 'session-a', bootstrap: { current: { role, capabilities: ['construction.projects','account'], context: { enterpriseId: '1', staffId: '2', staffRole: role, staffDisplayName: '项目员工' } } } } };
   let handler = async () => ({ success: true, data: { items: [], stages: [] } });
-  let definition; const calls = [], messages = [];
+  let definition; const calls = [], messages = [], unlinked = [];
+  let download = async () => { throw new Error('Unexpected media download'); };
   const wx = {
     getStorageSync: key => values.get(key), setStorageSync: (k,v) => values.set(k, JSON.parse(JSON.stringify(v))), removeStorageSync: k => values.delete(k),
     showToast: msg => messages.push(msg.title), getWindowInfo: () => ({ windowWidth: 390, statusBarHeight: 44 }),
     getMenuButtonBoundingClientRect: () => ({ left: 296, top: 48, height: 32 }),
     switchTab: options => messages.push(options.url), stopPullDownRefresh: () => messages.push('refresh-stopped'),
+    navigateTo: options => messages.push(options.url),
+    getFileSystemManager: () => ({ unlink: ({ filePath }) => unlinked.push(filePath) }),
   };
   const localRequire = createRequire(filename);
-  const api = { request: async (...args) => { calls.push(args); return handler(...args); } };
+  const api = { request: async (...args) => { calls.push(args); return handler(...args); }, downloadFile: (...args) => download(...args) };
   new Function('require','Page','getApp','wx', source)(name => name.includes('utils/api') ? api : localRequire(name), value => { definition = value; }, () => app, wx);
   function page() { return { ...definition, data: JSON.parse(JSON.stringify(definition.data)), setData(values) { Object.assign(this.data, values); } }; }
-  return { app, calls, messages, values, page, intercept: fn => { handler = fn; } };
+  return { app, calls, messages, values, page, unlinked, intercept: fn => { handler = fn; }, interceptDownload: fn => { download = fn; } };
 }
 
 test('designers, construction staff and enterprise owners share the cloud-site route while measurers remain outside', async () => {
@@ -37,6 +40,54 @@ test('designers, construction staff and enterprise owners share the cloud-site r
   assert.equal(getRoleLanding({ mode:'staff',staffRole:'construction_staff' }),route);
   const f = fixture(), p = f.page(); await p.onShow(); p.back(); assert.equal(f.messages.at(-1), '/pages/mine/mine');
   await p.onPullDownRefresh(); assert.equal(f.messages.at(-1), 'refresh-stopped');
+});
+
+test('project shortcuts use authorized rows and preserve inactive, pending and session boundaries', async () => {
+  const f=fixture(),p=f.page();await p.onShow();
+  p.setData({items:[{id:'1',status:'active'},{id:'2',status:'paused'},{id:'3',status:'archived'}]});
+  p.chooseStatus({currentTarget:{dataset:{status:'active'}}});assert.deepEqual(p.data.filteredItems.map(x=>x.id),['1']);
+  const event=id=>({currentTarget:{dataset:{id}}});
+  p.openSiteCamera(event('1'));assert.equal(f.messages.at(-1),'/packages/construction/camera/camera?projectId=1');
+  const count=f.messages.length;p.openSiteCamera(event('2'));p.openSiteChat(event('3'));p.openSiteChat(event('foreign'));assert.equal(f.messages.length,count);
+  p.setData({pending:{key:'pending'}});p.openSiteCamera(event('1'));assert.equal(f.messages.length,count);
+  p.setData({pending:null});p.onHide();p.openSiteChat(event('1'));assert.equal(f.messages.length,count);
+});
+
+test('overview never restores a late private record after hide and clears the whole preview on revoked read', async () => {
+  const f=fixture(),p=f.page();await p.onShow();p.setData({projectId:'9',detail:{project:{id:'9'}}});
+  let finish;f.intercept(()=>new Promise(resolve=>{finish=resolve;}));const reading=p.loadPreview(p._generation);p.onHide();
+  finish({data:{items:[{message:{id:'7',created_at:new Date().toISOString(),content:{blocks:[{type:'text',text:'private'}]}},record:{id:'8',data:{},status:'draft',media:[]}}]}});
+  await reading;assert.equal(p.data.preview,null);assert.deepEqual(p.data.previewPhotos,[]);
+  f.intercept(async()=>({data:{items:[],stages:[]}}));await p.onShow();p.setData({projectId:'9',detail:{project:{id:'9'}},preview:{text:'old private'}});
+  f.intercept(async()=>{throw {statusCode:403,error:'construction_forbidden'};});await p.loadPreview(p._generation);
+  assert.equal(p.data.preview,null);assert.equal(p.data.detail,null);assert.deepEqual(p.data.items,[]);
+});
+
+test('unavailable record media leaves an authorized project usable, while archived projects skip the chat read', async () => {
+  const f = fixture(), p = f.page(); await p.onShow();
+  const project = { id: '9', status: 'active', name: '可查看的工地' };
+  p.setData({ projectId: project.id, detail: { project } });
+  f.intercept(async url => ({ data: url.includes('/chat?') ? { items: [{
+    message: { id: '7', created_at: '2026-11-07T04:00:00Z', content: { blocks: [{ type: 'text', text: '客厅线管已敷设' }] } },
+    record: { id: '8', data: {}, status: 'draft', media: [{ id: '3' }, { id: '4' }] },
+  }] } : { project, stages: [] } }));
+  f.interceptDownload(async url => {
+    if (url.endsWith('/4')) throw { statusCode: 404 };
+    return { tempFilePath: 'wxfile://test/private-first-photo' };
+  });
+  await p.refreshPreview();
+  assert.equal(p.data.detail.project.id, project.id);
+  assert.equal(p.data.loading, false);
+  assert.equal(p.data.preview, null);
+  assert.deepEqual(p.data.previewPhotos, []);
+  assert.deepEqual(f.unlinked, ['wxfile://test/private-first-photo']);
+  assert.ok(p.data.previewError);
+  p.openCamera(); assert.match(f.messages.at(-1), /camera\?projectId=9$/);
+  p.setData({ detail: { project: { ...project, status: 'archived' } } });
+  const requests = f.calls.length, routes = f.messages.length;
+  await p.refreshPreview(); p.openChat();
+  assert.equal(f.calls.length, requests);
+  assert.equal(f.messages.length, routes);
 });
 
 test('unknown writes survive reentry and replay the same body/version/key, scoped to enterprise and employee', async () => {

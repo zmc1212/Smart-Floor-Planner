@@ -302,8 +302,8 @@ test('free design service resolves into phone authorization and renders truthful
   assert.match(wxml, /免费量房 · 免费设计/);
   assert.match(phoneAuthMarkup, /三项免费权益/);
   assert.match(phoneAuthMarkup, /装修问题找/);
-  assert.match(phoneAuthMarkup, /微信家装顾问，/);
-  assert.match(phoneAuthMarkup, /免费问清楚/);
+  assert.match(phoneAuthMarkup, /免费家装顾问/);
+  assert.match(phoneAuthMarkup, /把装修问题弄清楚/);
   assert.match(phoneAuthMarkup, /授权手机号，即可领取以下权益/);
   assert.match(phoneAuthMarkup, /免费效果图/);
   assert.match(phoneAuthMarkup, /出到客户满意为止/);

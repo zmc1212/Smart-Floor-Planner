@@ -25,8 +25,8 @@ test('the uploadable Brotli file preserves the entire approved font and excludes
   assert.ok(config.packOptions.include.some(rule => rule.type === 'file' && rule.value === fontPath),
     'the file API asset must be force-included even when unused-file pruning is enabled');
   assert.equal(font.subarray(0, 4).toString(), 'wOF2');
-  assert.equal(font.length, 696256);
-  assert.equal(crypto.createHash('sha256').update(font).digest('hex'), '79b60b72cddf95eaec6bec7fb3b6a519afba685b47c6ddd0cc01f1d452bc1325');
+  assert.equal(font.length, 459576);
+  assert.equal(crypto.createHash('sha256').update(font).digest('hex'), '202f926bd016f1ad9bde3418ca6ca57ed11cfd6bffa7b8275fc5224a8bc53638');
   assert.equal(isPackagedSource(fontPath), true);
   assert.equal(isPackagedSource('packages/assistant/assets/studio-serif-data.js'), false);
   assert.equal(isPackagedSource('project.config.json'), false);

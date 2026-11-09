@@ -2534,6 +2534,8 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
       startNodeId: anchor.id,
       endNodeId: endNode.id,
       mode: session.mode,
+      // Schema amendment from 91773e8c; retain all frozen geometric formulas.
+      use: session.wallUse || 'room-boundary',
       lengthMm: Math.max(
         0,
         distanceMm(anchor, endNode) - measurementStartInsetMm + measurementStartExtensionMm - measurementEndInsetMm

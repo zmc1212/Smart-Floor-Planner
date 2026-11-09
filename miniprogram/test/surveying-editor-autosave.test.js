@@ -2,6 +2,10 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
+const surveyGraph = require('../packages/surveying/utils/surveyWallGraph');
+const surveyLayout = require('../utils/surveyLayout');
+const draftStorage = require('../packages/surveying/utils/surveyDraftAutosave');
 
 const miniRoot = path.resolve(__dirname, '..');
 const editorScript = fs.readFileSync(
@@ -46,4 +50,42 @@ test('surveying editor keeps a newer local draft when the cloud copy is stale', 
   assert.match(editorScript, /loadFormalDraft\(leadId, serverDraft, draftKey\) \{[\s\S]*unwrapFormalDraftStorage/);
   assert.match(editorScript, /shouldKeepLocalSurveyDraft\(/);
   assert.match(editorScript, /if \(keepLocal\) this\.autosaveFormalFloorPlan\(\)/);
+});
+
+function localPersistence(storage) {
+  return vm.runInNewContext(`({${extractMethod(editorScript, 'persistFormalDraft')}}).persistFormalDraft`, {
+    surveyGraph, surveyLayout,
+    hasPersistedSurveyContent: draftStorage.hasPersistedSurveyContent,
+    wrapFormalDraftStorage: draftStorage.wrapFormalDraftStorage,
+    wx: { setStorageSync: (key, value) => storage.set(key, value) },
+  });
+}
+
+test('leaving during cloud load never replaces a saved wall graph with the initial empty canvas', () => {
+  const measured = require('./fixtures/survey-cad/scenarios').rectangle();
+  const previous = draftStorage.wrapFormalDraftStorage(measured, 1000);
+  const storage = new Map([['owned-plan', previous]]);
+  const page = { draft: surveyGraph.createSurveyDraft(), formalDraftKey: 'owned-plan',
+    data: { leadId: 'owned-lead' }, localDraftSavedAt: 1000, formalCloudLoadInFlight: true };
+  const persist = localPersistence(storage);
+  assert.equal(persist.call(page), false);
+  assert.equal(storage.get('owned-plan'), previous);
+  assert.equal(page.localDraftSavedAt, 1000);
+  page.draft = measured;
+  page.formalCloudLoadInFlight = false;
+  assert.equal(persist.call(page), true);
+  assert.equal(storage.get('owned-plan').draft.floors[0].walls.length, 4);
+});
+
+test('real edits during load and an intentional clear after load still persist', () => {
+  const storage = new Map();
+  const page = { draft: require('./fixtures/survey-cad/scenarios').rectangle(), formalDraftKey: 'owned-plan',
+    data: { leadId: 'owned-lead' }, formalCloudLoadInFlight: true };
+  const persist = localPersistence(storage);
+  assert.equal(persist.call(page), true);
+  assert.equal(storage.get('owned-plan').draft.floors[0].walls.length, 4);
+  page.formalCloudLoadInFlight = false;
+  page.draft = surveyGraph.createSurveyDraft();
+  assert.equal(persist.call(page), true);
+  assert.equal(storage.get('owned-plan').draft.floors[0].walls.length, 0);
 });

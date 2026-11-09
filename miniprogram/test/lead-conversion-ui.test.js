@@ -5,15 +5,15 @@ const test = require('node:test');
 
 const root = path.join(__dirname, '..');
 const detailJs = fs.readFileSync(
-  path.join(root, 'packages', 'business', 'lead-detail', 'lead-detail.js'),
+  path.join(root, 'packages', 'enterprise', 'lead-detail', 'lead-detail.js'),
   'utf8'
 );
 const detailWxml = fs.readFileSync(
-  path.join(root, 'packages', 'business', 'lead-detail', 'lead-detail.wxml'),
+  path.join(root, 'packages', 'enterprise', 'lead-detail', 'lead-detail.wxml'),
   'utf8'
 );
 const detailWxss = fs.readFileSync(
-  path.join(root, 'packages', 'business', 'lead-detail', 'lead-detail.less'),
+  path.join(root, 'packages', 'enterprise', 'lead-detail', 'lead-detail.less'),
   'utf8'
 );
 
@@ -35,7 +35,7 @@ test('conversion uses dedicated endpoints and preserves the business boundary co
 });
 
 test('conversion controls keep readable type and full mobile touch targets', () => {
-  assert.match(detailWxss, /\.conversion-primary-action\s*\{[^}]*height:\s*82rpx;/s);
+  assert.match(detailWxss, /\.conversion-primary-action\s*\{[^}]*height:\s*84rpx;/s);
   assert.match(detailWxss, /\.conversion-sheet-primary,[\s\S]*min-height:\s*88rpx;/);
   assert.match(detailWxss, /\.conversion-field-label\s*\{[^}]*font-size:\s*24rpx;/s);
   assert.match(detailWxss, /padding:\s*14rpx 28rpx calc\(28rpx \+ env\(safe-area-inset-bottom\)\)/);
