@@ -717,6 +717,13 @@
       "breakpoints": true
     },
     {
+      "idx": 102,
+      "version": "7",
+      "when": 1793606400000,
+      "tag": "0102_portfolio_template_library",
+      "breakpoints": true
+    },
+    {
       "idx": 103,
       "version": "7",
       "when": 1793692800000,
@@ -812,6 +819,20 @@
       "version": "7",
       "when": 1794729600000,
       "tag": "0117_construction_public_live_web_preview",
+      "breakpoints": true
+    },
+    {
+      "idx": 117,
+      "version": "7",
+      "when": 1794816000000,
+      "tag": "0118_portfolio_platform_templates",
+      "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1794902400000,
+      "tag": "0119_platform_portfolio_templates",
       "breakpoints": true
     }
   ]
