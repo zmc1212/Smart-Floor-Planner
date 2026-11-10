@@ -1,10 +1,13 @@
-# Native Workflow (B0-B3)
+# Native Workflow (B0-B4)
 
-Pure workflow core plus a B-owned draft/publish store for 家客来 native business
-orchestration. B0-B2 defines, validates, compiles and simulates workflows; B3
-adds drafts, immutable published versions and a simulation debugging surface.
-It does **not** connect a model, business database, queue, scheduler, existing
-Worker, business write path or message channel.
+Pure workflow core, a B-owned draft/publish store and a server-only B4 adapter
+for 家客来 native business orchestration. B0-B2 defines, validates, compiles and
+simulates workflows; B3 adds drafts, immutable published versions and a
+simulation debugging surface; B4 connects one published stage-reminder flow to
+the existing construction authorization, outbox save and in-app delivery
+services. The pure core still does not connect a model, database, queue,
+scheduler, Worker, business write path or message channel; only the separate
+`live/` adapter does, under host identity.
 
 Owner: B line (`codex/xiaok-native-workflow`). Shared migrations, dependencies,
 menus, the sole XiaoK plan and the bilingual module inventories' integration
@@ -19,8 +22,10 @@ wiring remain owned by the integration lead.
 - Never reads production keys, customer data or real receipts.
 - Simulated saves/deliveries are proposals with `simulated: true`; they must
   never be presented as generated, saved or sent to a customer.
-- Real capability adapters (authorized reads, model compose, persistence,
-  in-app outbox) are B4 work behind the same `PendingOperation` descriptions.
+- The B4 `live/` adapter executes `PendingOperation` descriptions against the
+  existing construction services. It is server-only and never imported by the
+  pure core. It has no model or embedding client; enterprise knowledge is
+  explicitly off in this round.
 
 ## Public API (`index.ts`)
 
@@ -192,12 +197,69 @@ simulate({
 - No drag canvas is added: no confirmed canvas design was found, so this round
   ships the main page, key states, structured definition editing and traces.
 
+## B4 live stage-reminder adapter
+
+`live/` is a server-only adapter; the pure core and `simulate` are unchanged.
+It executes one published `stage-reminder` revision for one explicit business
+event and never selects a definition from a draft.
+
+- `live/runner.ts` fixes `definitionId`, `revision`, `digest`, `nodeVersions`
+  and the trigger event before the first effect. Later draft edits or publishes
+  cannot change the compiled plan. Run state, trace and operation outcomes are
+  written to a B-owned run log (`admin/tmp/native-workflow-runs`, override
+  `NATIVE_WORKFLOW_RUN_DIR`); `--show-run` reads it back.
+- `live/construction-ports.ts` maps each `PendingOperation` to existing
+  services. Enterprise, admin, project and customer identity come from the
+  host; a definition cannot override them.
+  - `read.project_context`: `constructionAccess`, the project row, stage
+    settings and the open `customer_consultation` conversation. The event stage
+    must equal the project's current stage.
+  - `read.enterprise_craft`: deterministic `craftEnabled: false`; no knowledge
+    retrieval, model or embedding call exists in this branch.
+  - `save.stage_reminder`: `recordStageReminder` writes
+    `domain_event_outbox`. Idempotency is the existing business identity
+    (`construction_project` + progress revision + outbox unique key), not the
+    workflow revision or digest.
+  - `deliver.inapp`: `syncConstructionReminders` runs as the authorized
+    customer and appends the system message; the receipt comes from
+    `domain_event_deliveries` plus `assistant_messages`.
+- Known failures become `failed`; a save failure never reaches delivery; a
+  delivery failure keeps the saved outbox record and returns `delivered: false`;
+  an unknown outcome stops immediately with run status `unknown` and is never
+  retried automatically. A later manual retry reuses the business records.
+- Re-running the same business event reuses the same outbox and delivery
+  receipts; reminder, delivery and message counts do not increase.
+
+Development evidence (B-isolated database on port 55433, enterprise 1454
+labelled fixture; no A-line database/config is read):
+
+```powershell
+npx tsx scripts/native-workflow-live-fixture.ts --development
+npx tsx scripts/native-workflow-live.ts --development --ensure-published `
+  --admin-id 1454000001 --project-id 1454000004 `
+  --event-id b4-stage-20261111-0001 --stage-key plumbing --stage-label 水路
+npx tsx scripts/native-workflow-live.ts --development --show-run <runId>
+```
+
+The dev entry refuses `NODE_ENV=production` and port 5432. It supports
+`--close-conversation-after-save` and `--disable-admin-after-read` only to
+produce controlled delivery/save failures; both restore the fixture state.
+Recorded evidence: normal, duplicate, permission-denied, save-failure and
+delivery-failure runs executed against the isolated database; outbox,
+delivery and message counts were 1/1/1 for the normal event, unchanged for the
+duplicate, and assistant usage/provider attempts stayed 0. Version binding and
+unknown outcomes are covered by deterministic tests.
+
+Out of scope this round: daily/weekly real integration, the model compose
+branch, drag canvas, automatic scheduling, Worker changes, menus and shared
+migrations.
+
 ## Reproduce
 
 From `admin/` (no database, no Worker, no model):
 
 ```powershell
-npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts
+npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts
 npx tsx src/lib/native-workflow/playground/simulate.ts
 ```
 

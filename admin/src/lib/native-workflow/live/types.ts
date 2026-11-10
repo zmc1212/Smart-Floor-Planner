@@ -1,0 +1,93 @@
+import type { WorkflowIssue } from '../errors';
+import type {
+  PendingOperation,
+  TriggerEvent,
+  WorkflowRunState,
+  WorkflowTraceEntry,
+  WorkflowValue,
+} from '../types';
+
+/** Immutable version binding captured when a live run starts. */
+export interface LiveRunBinding {
+  readonly runId: string;
+  readonly definitionId: string;
+  readonly revision: number;
+  readonly digest: string;
+  readonly nodeVersions: Readonly<Record<string, string>>;
+  readonly event: TriggerEvent;
+}
+
+/** Host identity and business scope. A definition can never override these. */
+export interface LiveRunContext extends LiveRunBinding {
+  readonly enterpriseId: string;
+  readonly projectId: string;
+}
+
+export type LiveRunStatus = 'running' | 'waiting' | 'completed' | 'halted' | 'failed' | 'unknown';
+
+export type LiveOperationOutcome = 'succeeded' | 'failed' | 'unknown';
+
+export interface LiveOperationRecord {
+  readonly nodeId: string;
+  readonly capabilityRef: string;
+  readonly effect: PendingOperation['effect'];
+  readonly nodeVersion: string;
+  readonly idempotencyKey: string;
+  readonly startedAt: string;
+  readonly finishedAt: string;
+  readonly outcome: LiveOperationOutcome;
+  readonly outputs?: Readonly<Record<string, WorkflowValue>>;
+  readonly error?: WorkflowIssue;
+}
+
+/** Queryable, B-owned execution record. Business truth stays in the outbox. */
+export interface LiveRunRecord {
+  readonly binding: LiveRunBinding;
+  readonly enterpriseId: string;
+  readonly projectId: string;
+  readonly status: LiveRunStatus;
+  readonly state: WorkflowRunState;
+  readonly trace: readonly WorkflowTraceEntry[];
+  readonly operations: readonly LiveOperationRecord[];
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface LiveRunStore {
+  save(record: LiveRunRecord): Promise<void>;
+  get(runId: string): Promise<LiveRunRecord | null>;
+  list(limit?: number): Promise<LiveRunRecord[]>;
+}
+
+/**
+ * Host ports for live effects. Implementations must use existing business
+ * services and return their real records/receipts.
+ */
+export interface LiveOperationPorts {
+  execute(
+    operation: PendingOperation,
+    context: LiveRunContext,
+  ): Promise<Readonly<Record<string, WorkflowValue>>>;
+}
+
+/** A known business failure; the transaction has rolled back. */
+export class LiveOperationFailure extends Error {
+  readonly issue: WorkflowIssue;
+
+  constructor(issue: WorkflowIssue) {
+    super(issue.message);
+    this.name = 'LiveOperationFailure';
+    this.issue = issue;
+  }
+}
+
+/** The effect may have committed; never retry automatically. */
+export class LiveOperationUnknownError extends Error {
+  readonly issue: WorkflowIssue;
+
+  constructor(issue: WorkflowIssue) {
+    super(issue.message);
+    this.name = 'LiveOperationUnknownError';
+    this.issue = issue;
+  }
+}
