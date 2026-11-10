@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { composeNativeDelivery, nativeExecutorPrompt, xiaokNativeExecutorProtocol } from '../agent/native-executor';
+import { composeNativeDelivery, nativeExecutorPrompt, recoveredDialogueToolState, xiaokNativeExecutorProtocol } from '../agent/native-executor';
 import { nativeAgentRuntimeBinding } from '../fastgpt/agent-v2/config';
 import { recoverableUnavailableRead } from '../agent/runtime';
 import type { ModelTool, ModelTurnOutput } from '../contracts/model';
 
 type Code = { code?: string };
+const invalidCheckpoint = (error: Code) => error.code === 'invalid_agent_checkpoint';
 const readTools: ModelTool[] = [
   { name: 'query_business', description: '', parameters: {} },
   { name: 'final_response', description: '', parameters: {} },
@@ -69,4 +70,23 @@ test('the native binding only selects the langgraph-v1 executor switch', () => {
     if (previous !== undefined) process.env.XIAOK_FASTGPT_WORKFLOWS_FILE = previous;
   }
   assert.equal(xiaokNativeExecutorProtocol, 'xiaok-native-executor-v1');
+});
+
+test('recovered tool state reuses persisted receipts and allocates fresh sequences', () => {
+  const state = recoveredDialogueToolState(
+    [{ step_seq: 1301, input_summary: { query: '防水闭水试验', receipt: { status: 'ready', kind: 'enterprise', cites: [1] } } }],
+    [{ step_seq: 1402, input_summary: { key: 'construction:3132', receipt: { status: 'ready', text: '快照' } } }]);
+  assert.equal(state.nextSequence, 3);
+  assert.equal(state.searches.get('防水闭水试验')?.status, 'ready');
+  assert.equal(state.businesses.get('construction:3132')?.status, 'ready');
+  // Receipts recorded before the recovery format are not reconstructable:
+  // fail closed instead of re-dispatching a metered call.
+  assert.throws(() => recoveredDialogueToolState([{ step_seq: 1301, input_summary: { query: 'q' } }], []), invalidCheckpoint);
+  // Duplicate identities and unknown step ranges cannot be recovered either.
+  assert.throws(() => recoveredDialogueToolState([
+    { step_seq: 1301, input_summary: { query: 'q', receipt: { status: 'empty' } } },
+    { step_seq: 1302, input_summary: { query: 'q', receipt: { status: 'empty' } } }], []), invalidCheckpoint);
+  assert.throws(() => recoveredDialogueToolState([{ step_seq: 1501, input_summary: { query: 'q', receipt: {} } }], []), invalidCheckpoint);
+  // An empty run starts the shared counter from the beginning.
+  assert.equal(recoveredDialogueToolState([], []).nextSequence, 0);
 });

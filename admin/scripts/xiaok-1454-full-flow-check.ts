@@ -15,6 +15,7 @@ import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { closePostgresPool } from '@/lib/postgresql';
 import { ConstructionService } from '@/lib/construction/service';
 import { ConstructionReportService, reportPlanDto } from '@/lib/construction/report-service';
+import { fastGPTAgentV2Configuration, nativeAgentRuntimeBinding } from '@/lib/assistant/fastgpt/agent-v2/config';
 
 loadEnvConfig(process.cwd(), true);
 assert.ok(process.argv.includes('--development'));
@@ -38,7 +39,8 @@ const target = new URL(process.env.DATABASE_URL!);
 assert.ok(['127.0.0.1', 'localhost'].includes(target.hostname) && target.port === '5432' && target.pathname === '/smart_floor_planner');
 fs.mkdirSync(output, { recursive: true });
 const base = 'http://127.0.0.1:3006/api/miniprogram/assistant';
-const report: Row = { startedAt: new Date().toISOString(), enterpriseId: eid, scope: 'one customer/stage/four-role-report journey',
+type ReportRow = Row & { accounting: Row; chat?: Row; permissions?: Row; fastgptAudit?: Row; progressQuestion?: Row; reportQuestion?: Row };
+const report: ReportRow = { startedAt: new Date().toISOString(), enterpriseId: eid, scope: 'one customer/stage/four-role-report journey',
   checks: [], failures: [], accounting: {} };
 const save = () => fs.writeFileSync(path.join(output, 'report.json'), JSON.stringify(report, null, 2));
 const read = <T>(fn: Parameters<typeof withTenantTransaction<T>>[1]) => withTenantTransaction(eid, fn);
@@ -60,8 +62,10 @@ function binding() {
 const before = binding();
 report.bindingBefore = createHash('sha256').update(JSON.stringify(before)).digest('hex');
 
-// FastGPT audit ledger. The chat path must add zero records of any kind;
-// stage-report body records remain P3 scope and are reported, not asserted.
+// FastGPT audit ledger. Mode-aware: the native executor adds zero records of
+// any kind on the chat path (stage-report bodies stay the P3 exception); the
+// FastGPT V2 bridge records audited chat calls instead. The final step asserts
+// ledger validity and the matching criteria; a vacuous empty ledger never passes.
 const workflowsFile = process.env.XIAOK_FASTGPT_WORKFLOWS_FILE?.trim();
 const auditFile = workflowsFile ? (JSON.parse(fs.readFileSync(path.resolve(workflowsFile), 'utf8')).auditFile as string | undefined) : undefined;
 const auditLines = () => auditFile && fs.existsSync(auditFile)
@@ -176,17 +180,18 @@ async function main() {
     for (const [index, text] of questions.entries()) {
       const turn = await customerTurn(customer.token, cid, text);
       turns.push({ question: text, runId: String(turn.run.id), status: String(turn.run.status), errorCode: turn.run.error_code || null,
-        runtime: executorOf(turn.run) || null, answerText: turn.answerText.slice(0, 600), citations: turn.citations });
+        runtime: executorOf(turn.run) || null, binding: String(((turn.run.policy_snapshot as Row)?.agentRuntime as Row | undefined)?.binding || ''),
+        answerText: turn.answerText.slice(0, 600), citations: turn.citations });
       if (index === 0) assert.equal(String(turn.run.status), 'succeeded', 'First real answer must succeed: ' + String(turn.run.error_code || ''));
     }
     assert.ok(turns.length > 0 && turns.every(t => t.runtime === expectedExecutor),
       'Live service must select ' + expectedExecutor + ' for 1454, saw: ' + turns.map(t => t.runtime).join(','));
-    const listed = (await api(customer.token, '/conversations?limit=20', { entry: entry.entryToken })).data.data as Row;
-    assert.ok((listed.items || []).some((c: Row) => String(c.id) === cid), 'Conversation is listed on reentry');
+    const listed = (await api(customer.token, '/conversations?limit=20', { entry: String(entry.entryToken) })).data.data as Row;
+    assert.ok(((listed.items as Row[] | undefined) || []).some((c: Row) => String(c.id) === cid), 'Conversation is listed on reentry');
     const detail = (await api(customer.token, '/conversations/' + cid)).data.data as Row;
     assert.equal(String(detail.id), cid);
     report.chat = { conversationId: cid, entryTokenHash: createHash('sha256').update(String(entry.entryToken)).digest('hex'), turns, reentry: true };
-    return { conversationId: cid, turns: turns.map(t => ({ runId: t.runId, runtime: t.runtime, citations: t.citations.length })) };
+    return { conversationId: cid, turns: turns.map(t => ({ runId: t.runId, runtime: t.runtime, citations: (t.citations as Row[]).length })) };
   });
 
   await step('real stage progress produces four-role stage reports', async () => {
@@ -225,11 +230,11 @@ async function main() {
     const readers: Row[] = [{ kind: 'customer', binding: '422', token: customer.token, entry: entryToken }, { kind: 'boss', binding: '59', token: owner },
       { kind: 'designer', binding: '427', token: (await staffToken('5368')).token }, { kind: 'worker', binding: '429', token: (await staffToken('5370')).token }];
     for (const reader of readers) {
-      const listed = (await api(reader.token, `/followups/${reader.binding}/reports?projectId=${projectId}`, { entry: reader.entry })).data.data as Row;
-      const item = (listed.items || []).find((r: Row) => String(r.kind) === 'stage');
+      const listed = (await api(String(reader.token), `/followups/${reader.binding}/reports?projectId=${projectId}`, { entry: String(reader.entry ?? '') })).data.data as Row;
+      const item = ((listed.items as Row[] | undefined) || []).find((r: Row) => String(r.kind) === 'stage');
       assert.ok(item, 'Stage history missing for ' + reader.kind);
-      const detail = (await api(reader.token, `/followups/${reader.binding}/reports/${String(item.reportId)}?revision=${String(item.revision)}`, { entry: reader.entry })).data.data as Row;
-      assert.equal(detail.available, true); assert.ok((detail.facts?.projects || []).some((p: Row) => String(p.id) === projectId));
+      const detail = (await api(String(reader.token), `/followups/${reader.binding}/reports/${String(item.reportId)}?revision=${String(item.revision)}`, { entry: String(reader.entry ?? '') })).data.data as Row;
+      assert.equal(detail.available, true); assert.ok((((detail.facts as Row | undefined)?.projects as Row[] | undefined) || []).some((p: Row) => String(p.id) === projectId));
       // With the FastGPT deployment unavailable the stage body composition
       // fails recorded; P3 migrates that entry, so only up-mode demands a body.
       if (!stageFastgptDown) assert.ok(Array.isArray(detail.body) && detail.body.length > 0, 'Stage body composed for ' + reader.kind);
@@ -246,12 +251,13 @@ async function main() {
   });
 
   await step('own-project progress question in the same conversation', async () => {
-    const cid = String(report.chat.conversationId);
+    const cid = String(report.chat?.conversationId);
     const turn = await customerTurn(customer.token, cid, '我家现在施工到哪一步？最近做了什么？');
     assert.equal(String(turn.run.status), 'succeeded', 'Progress reply must succeed: ' + String(turn.run.error_code || ''));
     assert.equal(executorOf(turn.run), expectedExecutor, 'Progress reply must use ' + expectedExecutor);
     assert.match(turn.answerText, /软装/, 'The reply must name the real current stage from the authorized snapshot');
     report.progressQuestion = { question: '我家现在施工到哪一步？最近做了什么？', runId: String(turn.run.id),
+      binding: String(((turn.run.policy_snapshot as Row)?.agentRuntime as Row | undefined)?.binding || ''),
       answerText: turn.answerText.slice(0, 600), citations: turn.citations.length };
     return { runId: String(turn.run.id), citations: turn.citations.length };
   });
@@ -295,10 +301,10 @@ async function main() {
       const readers: Row[] = [{ kind: 'customer', binding: '422', token: customer.token, entry }, { kind: 'boss', binding: '59', token: owner },
         { kind: 'designer', binding: '427', token: (await staffToken('5368')).token }, { kind: 'worker', binding: '429', token: (await staffToken('5370')).token }];
       for (const reader of readers) {
-        const listed = (await api(reader.token, `/followups/${reader.binding}/reports?projectId=${projectId}&kind=daily`, { entry: reader.entry })).data.data as Row;
-        const item = (listed.items || []).find((r: Row) => String(r.kind) === 'daily');
+        const listed = (await api(String(reader.token), `/followups/${reader.binding}/reports?projectId=${projectId}&kind=daily`, { entry: String(reader.entry ?? '') })).data.data as Row;
+        const item = ((listed.items as Row[] | undefined) || []).find((r: Row) => String(r.kind) === 'daily');
         assert.ok(item, 'Daily history missing for ' + reader.kind);
-        const detail = (await api(reader.token, `/followups/${reader.binding}/reports/${String(item.reportId)}?revision=${String(item.revision)}`, { entry: reader.entry })).data.data as Row;
+        const detail = (await api(String(reader.token), `/followups/${reader.binding}/reports/${String(item.reportId)}?revision=${String(item.revision)}`, { entry: String(reader.entry ?? '') })).data.data as Row;
         assert.equal(detail.available, true); assert.ok(Array.isArray(detail.body) && detail.body.length > 0);
         views.push({ kind: reader.kind, binding: reader.binding, reportId: String(item.reportId), revision: Number(item.revision),
           contentStatus: detail.contentStatus, bodyParts: detail.body.length, deliveryState: detail.deliveryState, readAt: detail.readAt });
@@ -312,16 +318,16 @@ async function main() {
       assert.ok(reread.readAt, 'Customer acknowledgement persists');
       const month = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit' }).format(new Date());
       const history = (await api(customer.token, `/followups/422/reports?month=${month}&kind=daily&projectId=${projectId}`, { entry })).data.data as Row;
-      assert.ok((history.items || []).some((r: Row) => String(r.reportId) === String(customerItem.reportId)));
+      assert.ok(((history.items as Row[] | undefined) || []).some((r: Row) => String(r.reportId) === String(customerItem.reportId)));
       // Report references never enter the follow-up message list; reentry is the
       // destination list plus the private conversation projection.
       const destinations = (await api(customer.token, '/followups', { entry })).data.data as Row;
-      assert.ok((destinations.items || []).some((b: Row) => String(b.bindingId) === '422'), 'Follow-up destination listed on reentry');
+      assert.ok(((destinations.items as Row[] | undefined) || []).some((b: Row) => String(b.bindingId) === '422'), 'Follow-up destination listed on reentry');
       const conversation = (await api(customer.token, '/followups/422/conversation', { entry })).data.data as Row;
       assert.ok(conversation.id, 'Follow-up conversation readable on reentry');
       report.daily = { stagedVersion: Number(staged.version), nextDailyAt: staged.next_daily_at, original,
         reports: reports.map(r => ({ bindingId: String(r.binding_id), reportId: String(r.report_id), state: r.delivery_state,
-          bodyStatus: r.body_status || null, bodyError: r.body_error || null })), views, readAt: reread.readAt, historyItems: (history.items || []).length };
+          bodyStatus: r.body_status || null, bodyError: r.body_error || null })), views, readAt: reread.readAt, historyItems: ((history.items as Row[] | undefined) || []).length };
       return { stagedVersion: Number(staged.version), recipients: views.map(v => v.kind), readAt: reread.readAt };
     } finally {
       // Restore the user-requested plan even when the journey above failed.
@@ -336,7 +342,7 @@ async function main() {
   });
 
   await step('daily report records question without any business write', async () => {
-    const cid = String(report.chat.conversationId);
+    const cid = String(report.chat?.conversationId);
     const reportsBefore = Number((await tenantOne(sql`select count(*)::int n from app.construction_reports where enterprise_id=${eid}`))!.n);
     const turn = await customerTurn(customer.token, cid, '你发的日报里记的内容，和现场确认过的是一回事吗？');
     assert.equal(String(turn.run.status), 'succeeded', 'Report-question reply must succeed: ' + String(turn.run.error_code || ''));
@@ -348,6 +354,7 @@ async function main() {
       and purpose='construction.report.compose' and trigger_kind='user_message'`);
     assert.equal(composeRuns.length, 0, 'No report composition may originate from a chat message');
     report.reportQuestion = { question: '你发的日报里记的内容，和现场确认过的是一回事吗？', runId: String(turn.run.id),
+      binding: String(((turn.run.policy_snapshot as Row)?.agentRuntime as Row | undefined)?.binding || ''),
       answerText: turn.answerText.slice(0, 600), reportsDelta: reportsAfter - reportsBefore };
     return { runId: String(turn.run.id), reportsDelta: reportsAfter - reportsBefore };
   });
@@ -364,15 +371,16 @@ async function main() {
     await api((await staffToken('5370')).token, '/followups/plan', { expect: 403 });
     await api(customer.token, '/entry-context', { body: { leadId: '999999999' }, expect: 422 });
     const plan = (await api(owner, '/followups/plan')).data.data as Row;
-    assert.equal(plan.settings.enabled, true); assert.equal(plan.settings.dailyTime, '20:00');
-    assert.deepEqual(plan.settings.projectIds, []);
+    const planSettings = plan.settings as Row;
+    assert.equal(planSettings.enabled, true); assert.equal(planSettings.dailyTime, '20:00');
+    assert.deepEqual(planSettings.projectIds, []);
     report.permissions = { customerPlan: 403, designerPlan: 403, workerPlan: 403, foreignLead: 422,
-      restoredEnabled: plan.settings.enabled, dailyTime: plan.settings.dailyTime, projectIds: plan.settings.projectIds };
+      restoredEnabled: planSettings.enabled, dailyTime: planSettings.dailyTime, projectIds: planSettings.projectIds };
     return report.permissions;
   });
 
   await step('public site and portfolio recommendation read surfaces', async () => {
-    const cid = String(report.chat.conversationId);
+    const cid = String(report.chat?.conversationId);
     // Call both catalogs exactly as the Mini Program does: the site card sends its
     // discovery reply, the portfolio card sends no query and lets the service
     // resolve city/style from this conversation. A style without a city is not a
@@ -388,14 +396,41 @@ async function main() {
     return report.surfaces;
   });
 
-  await step('zero FastGPT calls outside the stage body scope', async () => {
-    const lines = auditLines().slice(auditBefore);
-    const kinds = lines.map(line => String((JSON.parse(line) as Row).kind));
-    const nonStage = [...new Set(kinds.filter(kind => kind !== 'stage'))];
-    assert.equal(nonStage.length, 0, 'Chat and auxiliary paths must not call FastGPT, saw: ' + nonStage.join(','));
-    report.fastgptAudit = { before: auditBefore, after: auditLines().length, nonStageKinds: nonStage,
-      stageRecords: kinds.filter(kind => kind === 'stage').length,
-      note: stageFastgptDown ? 'FastGPT deployment unreachable by configuration for this round' : 'FastGPT deployment reachable; stage bodies remain P3 scope' };
+  await step('fastgpt audit ledger validity and mode criteria', async () => {
+    // 审计证据本身必须有效:配置、文件、运行绑定缺一不可,否则不得判 PASS。
+    assert.ok(workflowsFile, 'FastGPT 审计未配置(XIAOK_FASTGPT_WORKFLOWS_FILE 缺失),不得判 PASS');
+    const auditPath = String((JSON.parse(fs.readFileSync(path.resolve(workflowsFile!), 'utf8')) as Row).auditFile || '');
+    assert.ok(auditPath.trim(), 'FastGPT 审计文件未配置(workflows.auditFile 为空),不得判 PASS');
+    assert.ok(fs.existsSync(auditPath), 'FastGPT 审计文件缺失(' + auditPath + '),不得判 PASS');
+    assert.equal(auditPath, auditFile, '审计文件在运行中途被更换,不得判 PASS');
+    // 运行服务必须与本脚本读取同一份配置:按模式解析期望绑定。
+    const expectedBinding = (() => {
+      try { return expectedExecutor === 'xiaok-native-executor-v1' ? nativeAgentRuntimeBinding(eid)?.binding : fastGPTAgentV2Configuration(eid)?.binding; }
+      catch { return undefined; }
+    })()?.trim();
+    assert.ok(expectedBinding, 'FastGPT 运行绑定未解析(executor 与 workflows 配置不一致),不得判 PASS');
+    const auditedTurns = [...(((report.chat as Row | undefined)?.turns as Row[] || [])), report.progressQuestion, report.reportQuestion]
+      .filter(Boolean) as Row[];
+    assert.ok(auditedTurns.length >= 3, '聊天轮记录缺失,绑定一致性断言不得空洞通过');
+    const mismatched = auditedTurns.filter(t => String(t.binding || '') !== expectedBinding);
+    assert.equal(mismatched.length, 0, '运行服务与审计配置不一致,不得判 PASS: '
+      + mismatched.map(t => String(t.binding || '') || '(missing)').join(','));
+    const delta = auditLines().slice(auditBefore);
+    const kinds: Row = {};
+    for (const line of delta) { const kind = String((JSON.parse(line) as Row).kind || ''); kinds[kind] = (Number(kinds[kind]) || 0) + 1; }
+    const seen = Object.keys(kinds);
+    if (expectedExecutor === 'xiaok-native-executor-v1') {
+      // 原生执行器:聊天路径零 FastGPT,仅阶段报告正文属 P3 例外。
+      const nonStage = seen.filter(kind => kind !== 'stage');
+      assert.equal(nonStage.length, 0, 'Chat and auxiliary paths must not call FastGPT, saw: ' + nonStage.join(','));
+    } else {
+      // 旧 FastGPT V2 模式:聊天本应通过被审计的桥调用,不做零调用断言,只拒绝未知 kind。
+      const unknown = seen.filter(kind => !['agentV2', 'stage', 'knowledge', 'unified', 'rag', 'nativeKnowledge'].includes(kind));
+      assert.equal(unknown.length, 0, 'Unknown FastGPT audit kinds, saw: ' + unknown.join(','));
+    }
+    report.fastgptAudit = { configured: true, auditFile: auditPath, before: auditBefore, after: auditLines().length, kinds,
+      expectedBinding, bindingMatchedTurns: auditedTurns.length - mismatched.length, totalTurns: auditedTurns.length, mode: expectedExecutor,
+      ...(stageFastgptDown ? { note: 'FastGPT deployment unreachable by configuration for this round' } : {}) };
     return report.fastgptAudit;
   });
 }

@@ -24,7 +24,8 @@ import { dialogueBusinessQuery, dialogueEnterpriseSearch, snapshotHeading, type 
  * the existing LangGraph runtime, model gateway and authorized tools; no
  * FastGPT app, bridge or callback participates in a native run. */
 export const xiaokNativeExecutorProtocol = 'xiaok-native-executor-v1';
-const promptVersion = 'xiaok-native-executor-prompt-v1';
+export const nativeExecutorPromptVersion = 'xiaok-native-executor-prompt-v1';
+const promptVersion = nativeExecutorPromptVersion;
 
 const enterpriseSearchTool: ModelTool = {
   name: 'search_enterprise',
@@ -64,8 +65,43 @@ export function composeNativeDelivery(modelText: string, snapshotText: string, m
   return { text: `${modelText}\n\n${snapshotHeading}\n${snapshotText}`, modelIncluded: true };
 }
 
+/** Stable per-run tool identity recovered from persisted steps. Identical
+ * re-issued calls reuse the persisted receipt; fresh calls continue past every
+ * recorded step sequence and never reuse an operation key or step_seq. Runs
+ * interrupted before receipts were recorded cannot be reconstructed, so they
+ * fail closed instead of re-dispatching a metered call. */
+export function recoveredDialogueToolState(searchSteps: Row[], businessSteps: Row[]): {
+  searches: Map<string, Record<string, unknown>>; businesses: Map<string, Record<string, unknown>>; nextSequence: number;
+} {
+  const searches = new Map<string, Record<string, unknown>>(), businesses = new Map<string, Record<string, unknown>>();
+  let nextSequence = 0;
+  const receipt = (value: unknown): Record<string, unknown> => {
+    if (!value || typeof value !== 'object' || Array.isArray(value) || typeof (value as Row).status !== 'string')
+      fail('invalid_agent_checkpoint', 409);
+    return value as Record<string, unknown>;
+  };
+  for (const step of [...searchSteps, ...businessSteps].sort((a, b) => Number(a.step_seq) - Number(b.step_seq))) {
+    const meta = (step.input_summary ?? null) as Row | null, seq = Number(step.step_seq);
+    if (seq >= 1300 && seq < 1400) {
+      const query = meta?.query;
+      if (typeof query !== 'string' || !query.trim() || searches.has(query)) fail('invalid_agent_checkpoint', 409);
+      searches.set(query, receipt(meta?.receipt));
+      nextSequence = Math.max(nextSequence, seq - 1300 + 1);
+    } else if (seq >= 1400 && seq < 1500) {
+      const key = meta?.key;
+      if (typeof key !== 'string' || !key || businesses.has(key)) fail('invalid_agent_checkpoint', 409);
+      businesses.set(key, receipt(meta?.receipt));
+      nextSequence = Math.max(nextSequence, seq - 1400 + 1);
+    } else fail('invalid_agent_checkpoint', 409);
+  }
+  return { searches, businesses, nextSequence };
+}
+
 export async function processNativeAgentAnswer(lease: Lease) {
   let timer: ReturnType<typeof setInterval> | undefined;
+  // Set when a guard meets a dispatched-but-unrecorded model step: the run
+  // must stay indeterminate instead of being labelled a known failure.
+  let outcomeUnknown = false;
   try {
     const bound = nativeAgentRuntimeBinding(lease.enterpriseId);
     if (!bound) fail('context_changed');
@@ -103,13 +139,20 @@ export async function processNativeAgentAnswer(lease: Lease) {
       await runContext(tx, lease);
       const checkpoint = await one(tx, sql`select private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
         and run_id=${lease.runId} and step_seq=1000 and kind='agent_checkpoint' and status='succeeded'`);
-      const searches = await rows(tx, sql`select step_seq,private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+      const searches = await rows(tx, sql`select step_seq,private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
         and run_id=${lease.runId} and step_seq>=1300 and step_seq<1400 and kind='retrieval' and status='succeeded' order by step_seq`);
-      const businesses = await rows(tx, sql`select step_seq,private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+      const businesses = await rows(tx, sql`select step_seq,private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
         and run_id=${lease.runId} and step_seq>=1400 and step_seq<1500 and kind='agent_tool' and capability_name='query_business' and status='succeeded' order by step_seq`);
-      return { checkpoint, searches, businesses };
+      // The last succeeded model dispatch witnesses the per-turn usage ledger
+      // at completeRun on a resumed run that never dispatches again.
+      const lastModel = await one(tx, sql`select provider_attempt_id from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+        and run_id=${lease.runId} and kind='agent_model' and status='succeeded' order by step_seq desc limit 1`);
+      return { checkpoint, searches, businesses, lastModel };
     });
     if (saved.checkpoint && (saved.checkpoint.input_summary as Row)?.promptVersion !== promptVersion) fail('context_changed');
+    if (saved.lastModel && !saved.lastModel.provider_attempt_id) fail('invalid_agent_checkpoint', 409);
+    let lastAttemptId: string | null = saved.lastModel?.provider_attempt_id ? String(saved.lastModel.provider_attempt_id) : null;
+    const toolState = recoveredDialogueToolState(saved.searches, saved.businesses);
     const resume = saved.checkpoint?.private_checkpoint as AgentCheckpoint | undefined;
     for (const step of saved.searches) {
       const evidence = step.private_checkpoint as Evidence[];
@@ -128,7 +171,8 @@ export async function processNativeAgentAnswer(lease: Lease) {
       context.snapshots.push(snapshot);
     }
     const rt: DialogueToolRuntime = { lease, protocol: xiaokNativeExecutorProtocol, authorize, context, catalog, messages,
-      markKnowledgeRetrieved: () => { knowledgeRetrieved = true; }, delivered };
+      markKnowledgeRetrieved: () => { knowledgeRetrieved = true; }, delivered,
+      recovered: { searches: toolState.searches, businesses: toolState.businesses } };
     const search = dialogueEnterpriseSearch(rt);
     const business = dialogueBusinessQuery(rt);
     const tools: ModelTool[] = [
@@ -150,7 +194,10 @@ export async function processNativeAgentAnswer(lease: Lease) {
       }
       return null;
     };
-    let sequence = 0;
+    // Fresh tool calls continue past every persisted step sequence; recovered
+    // queries/keys reuse their persisted receipt inside the shared factories
+    // and never reach this counter again.
+    let sequence = toolState.nextSequence;
     const toolPort = async (turn: number, index: number, name: string, args: string) => {
       if (name === 'search_enterprise') {
         const value = JSON.parse(args) as { query: string };
@@ -161,11 +208,25 @@ export async function processNativeAgentAnswer(lease: Lease) {
       }
       fail('assistant_capability_forbidden', 403);
     };
-    // The final dispatch's attempt id witnesses the per-turn usage ledger at
-    // completeRun; every turn already wrote its own row above.
-    let lastAttemptId: string | null = null;
     const model = async (turn: number, modelMessages: ModelMessage[], modelTools: ModelTool[]): Promise<ModelTurnOutput> => {
       const step = 1100 + turn * 10;
+      // A lost process may have persisted this dispatch before its graph
+      // checkpoint: the original output and attempt are reused and the
+      // provider is never re-called. A step without a persisted outcome stays
+      // unknown and is never replayed here.
+      const persisted = await withTenantTransaction(lease.enterpriseId, async tx => {
+        await runContext(tx, lease);
+        return await one(tx, sql`select status,provider_attempt_id,private_checkpoint from app.assistant_run_steps
+          where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${step} and kind='agent_model'`);
+      });
+      if (persisted) {
+        if (persisted.status !== 'succeeded' || !persisted.provider_attempt_id) { outcomeUnknown = true; fail('provider_outcome_unknown', 503); }
+        const output = persisted.private_checkpoint as ModelTurnOutput;
+        if (!output || typeof output !== 'object' || Array.isArray(output) || typeof output.text !== 'string' || !Array.isArray(output.toolCalls))
+          fail('invalid_agent_checkpoint', 409);
+        lastAttemptId = String(persisted.provider_attempt_id);
+        return output;
+      }
       await withTenantTransaction(lease.enterpriseId, async tx => {
         await runContext(tx, lease);
         await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
@@ -273,7 +334,8 @@ export async function processNativeAgentAnswer(lease: Lease) {
           where enterprise_id=${lease.enterpriseId} and id=${String(run.id)}`);
       });
   } catch (error) {
-    const known = error instanceof AssistantError || error instanceof AiProviderError && !['accepted', 'unknown'].includes(error.disposition);
+    const known = !outcomeUnknown && (error instanceof AssistantError
+      || error instanceof AiProviderError && !['accepted', 'unknown'].includes(error.disposition));
     await failRun(lease, error instanceof AssistantError || error instanceof AiProviderError ? error.code : 'native_executor_failed', known);
   } finally { if (timer) clearInterval(timer); }
 }

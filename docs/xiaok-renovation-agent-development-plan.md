@@ -22,15 +22,15 @@
 
 | 字段 | 当前记录 |
 | --- | --- |
-| 交付与负责人 | 小K原生执行链P0+P1（2026-11-10用户定向）：1454普通咨询脱离FastGPT编排，小K代码执行器复用现有LangGraph运行时、模型网关与业务工具完成两组四问；完成标准是业务独立运行而非代码无FastGPT字样。单一负责人，禁止自动新建或交接聊天，仅用户明确要求才新建/转移。方法约束：先验证真实回答，禁止补丁循环；模型解释、KnowledgeRetriever/Evidence供授权材料，代码守权限/来源/动作/回执；两轮失败停循环，不堆提示词或换模型。 |
-| 用户入口与结果 | 业主645同一会话四问由`xiaok-native-executor-v1`回答（runs2967/2968/2969/2982）：A1瓷砖排版引精艺p29、A2防水检查引精艺p30+水电留档p17（20mm/48小时等数字逐字有据）、B1软装阶段与书房记录带授权快照、B2说明记录与现场确认区别且零业务写入；引用可打开、重进保留。 |
-| 已证缺口 | 已修两个机制缺陷：`result.output.text`误用致indeterminate（run2965）；`completeRun` per_turn校验缺attemptId致context_changed（run2966）。模型未检索先编造CITE由首轮requireTool约束（V2必选工具的原生等价）。剩余：阶段报告正文仍依赖FastGPT stageAppId；开场/建议/欢迎语/员工预览入口未迁；服务器进程对配置副本的热更新不可靠。 |
-| 已完成 | 原生执行器上线（agent/native-executor.ts+dialogue-tools.ts共享工具+按协议分派+知识开关解耦）；full-flow脚本适配（显式执行器、零FastGPT断言、B组两问、questions-file）；round-03九项检查全过：四问成功、8次供应商尝试全为本地qwen3.7-flash、审计541→541行、代码结构不可达fastgpt网络层、A2数字逐字有据、B2 reportsDelta=0。 |
-| 下一动作 | P2：迁移search_web/read_web/recommend_designers/recommend_public_sites工具与需求历史回查到同一装配，补两会话并行与撤权恢复定向检查。 |
-| 必要验收 | round-03已证：四问成功且协议符合快照、引用可打开、快照与正文并存、每轮用量与检查点落库、旧V2桥31/31回归、未知协议403。待P2/P4补：并行会话不串线、撤权失效、FastGPT真停机（本轮配置模拟未作用于常驻server缓存，见证据边界1）、资源对比。 |
-| 失败与调用边界 | run2965 indeterminate与run2966 failed原样保留；已派发供应商不自动重试；turn4、2487/2488等历史失败保留不清零；仅1454开发库；无真实客户写入、外部消息或生产。 |
-| 环境与资源 | 远程开发库经SSH隧道5432（RLS表需租户上下文查询）；3006 dev server热更新；配置经`runtime:'langgraph-v1'`切换且验收后已恢复原字节（哈希一致）；阶段正文仍走FastGPT 18300（P3）。 |
-| 证据与后继 | tmp/xiaok-native-executor-20261110/{round-01..03/report.json,evidence-summary.md,questions.json,runtime.original-backup.json}；模块清单双语已更新。后继P2工具迁移，P3辅助入口，P4冷启动验证与资源对比，P5排空退出。 |
+| 交付与负责人 | 小K原生执行链P0+P1收尾修复（2026-11-11用户定向）：持久化恢复缺陷+full-flow审计空洞通过修复+定向验证补齐；完成后再进P2。单一负责人，禁止自动新建或交接聊天，仅用户明确要求才新建/转移。方法约束：先验证真实回答，禁止补丁循环；模型解释、KnowledgeRetriever/Evidence供授权材料，代码守权限/来源/动作/回执；两轮失败停循环，不堆提示词或换模型。 |
+| 用户入口与结果 | 业主645咨询四问由`xiaok-native-executor-v1`回答：round-03（runs2967/2968/2969/2982）通过且引用可打开、重进保留。本轮新增中断恢复能力：同会话恢复续答、恢复后不重复派发不重复计费。四问复核本轮2次首稿失败（见失败边界），round-03对修复前代码的通过状态仍成立。 |
+| 已证缺口 | dialogue-tools缺`Row`类型导入；恢复运行丢失attemptId致per_turn校验失败；模型步骤已成功+graph检查点缺失时重复派发；工具sequence重启致step_seq/operation_key冲突；full-flow审计在未配置/文件缺失/配置不一致时空洞PASS且V2模式误用零调用断言。以上均已修复并有定向证据。 |
+| 已完成 | 恢复修复：attemptId自最近成功模型步骤恢复；模型步骤复用原输出原attempt不重复派发；工具稳定标识+持久化receipt复用，新调用序号续接不复用；未知结局保持indeterminate不重放；旧中断运行fail-closed 409。审计口径模式感知（原生零FastGPT/V2已知kind；配置-文件-绑定三重门，缺失即FAIL）。定向验证脚本5/5（真实Worker认领+真实供应商）；单测7/7、V2桥回归33/33、验收脚本类型清零。 |
+| 下一动作 | P2：四工具（search_web/read_web/recommend_designers/recommend_public_sites）与需求历史回查迁入同一装配（阶段1共享模块在建），接线后跑V2桥兼容回归与两会话并行+撤权恢复定向检查。 |
+| 必要验收 | 定向验证5/5：A最终检查点已存提交前中断、B模型步骤已存检查点缺失、C工具回执已存后中断并真实续轮、D-A企业聊天占槽时B企业知识任务仍运行；全部消息不重复、成功步骤不重复调用、用量关联正确。待P2/P4补：FastGPT真停机完整旅程、资源对比。 |
+| 失败与调用边界 | 四问复核run3026/3027首稿丢K前缀invalid_model_citation，原样保留；区分性检查证明工具契约逐字节未变（同模型同消息格式），按两轮规则停止重跑、不改校验器；attempt-01..12夹具失败保留；run2965/2966等历史失败不清零；仅1454开发库；无真实客户写入、外部消息或生产。 |
+| 环境与资源 | 远程开发库经SSH隧道5432（RLS表需租户上下文查询）；3006 dev server热更新；执行器经`runtime:'langgraph-v1'`切换验证后已恢复原字节（哈希一致）；阶段正文仍走FastGPT 18300（P3）。 |
+| 证据与后继 | tmp/xiaok-native-executor-20261111-recovery/{evidence-summary.md,report.json,four-questions*/,attempt-01..12/}；round-03证据保留；模块清单双语已更新。后继：P2阶段2接线→P3辅助入口→P4冷启动验证与资源对比→P5排空退出。 |
 
 ## 3. 复用哪些成果
 
