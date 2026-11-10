@@ -7,7 +7,6 @@ import type {
   NodeType,
   ValueType,
   WorkflowDefinition,
-  WorkflowEdge,
   WorkflowInputRef,
   WorkflowInputSchema,
 } from './types';

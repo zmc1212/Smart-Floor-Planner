@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -24,6 +24,14 @@ function publishedVersion(definition: WorkflowDefinition): PublishedWorkflowVers
 
 function isOperationError(code: string) {
   return (error: unknown) => error instanceof WorkflowOperationError && error.code === code;
+}
+
+function titled(title: string, revision: number): WorkflowDefinition {
+  const definition = JSON.parse(JSON.stringify(createStageReminderDefinition())) as WorkflowDefinition;
+  const node = definition.nodes.find((candidate) => candidate.nodeId === 'compose-deterministic');
+  if (!node) throw new Error('missing compose node');
+  (node as { config?: Record<string, unknown> }).config = { ...(node.config ?? {}), title };
+  return { ...definition, revision };
 }
 
 async function exerciseStore(store: WorkflowDefinitionStore): Promise<void> {
@@ -91,6 +99,46 @@ test('file store persists drafts and published versions across instances', async
     assert.equal((await reopened.list())[0]?.latestPublishedRevision, 1);
     const files = await readFile(path.join(rootDir, 'stage-reminder.json'), 'utf8');
     assert.match(files, /"storeVersion": 1/);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('file store readers see a complete old or new record while saves are in flight', async () => {
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), 'native-workflow-concurrent-'));
+  try {
+    const store = createFileWorkflowStore({ rootDir });
+    const template = createStageReminderDefinition();
+    await store.create({ definition: template, now });
+
+    let expectedRevision = 1;
+    for (let index = 0; index < 8; index += 1) {
+      const save = store.saveDraft({
+        definitionId: 'stage-reminder',
+        definition: titled(`版本${index}`, index + 2),
+        expectedDraftRevision: expectedRevision,
+        now,
+      });
+      const reads = [
+        store.get('stage-reminder'),
+        store.get('stage-reminder'),
+        store.get('stage-reminder'),
+      ];
+      const [, ...records] = await Promise.all([save, ...reads]);
+      for (const record of records) {
+        assert.ok(record);
+        assert.equal(record.draft.definition.nodes.length, template.nodes.length);
+        assert.ok([expectedRevision, expectedRevision + 1].includes(record.draft.draftRevision));
+      }
+      expectedRevision += 1;
+      const final = await store.get('stage-reminder');
+      assert.equal(final?.draft.draftRevision, expectedRevision);
+      const compose = final?.draft.definition.nodes.find((node) => node.nodeId === 'compose-deterministic');
+      assert.equal((compose?.config as { title?: string } | undefined)?.title, `版本${index}`);
+    }
+
+    const entries = await readdir(rootDir);
+    assert.equal(entries.some((name) => name.endsWith('.tmp')), false);
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }

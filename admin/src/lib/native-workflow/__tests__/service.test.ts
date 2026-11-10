@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  createPeriodReportDefinition,
   createStageReminderDefinition,
   WorkflowDefinitionError,
   type JsonValue,
@@ -20,6 +21,13 @@ function setTitle(definition: WorkflowDefinition, title: string): WorkflowDefini
   const node = definition.nodes.find((candidate) => candidate.nodeId === 'compose-deterministic');
   assert.ok(node);
   (node as { config?: Record<string, JsonValue> }).config = { ...(node.config ?? {}), title };
+  return definition;
+}
+
+function setTemplate(definition: WorkflowDefinition, template: string): WorkflowDefinition {
+  const node = definition.nodes.find((candidate) => candidate.nodeId === 'compose-deterministic');
+  assert.ok(node);
+  (node as { config?: Record<string, JsonValue> }).config = { ...(node.config ?? {}), template };
   return definition;
 }
 
@@ -161,4 +169,66 @@ test('service rejects invalid drafts and unknown definitions', async () => {
   );
   const record = await service.getDefinition('period-report-daily');
   assert.equal(record.fixtureSets.length, 14);
+});
+
+test('a stale retry cannot overwrite the other editor change', async () => {
+  const service = createWorkflowService({ store: createMemoryWorkflowStore(), now: () => now });
+  await service.createFromTemplate('stage-reminder');
+
+  const pageA = setTitle(mutableTemplate(), 'A 页面标题');
+  await service.saveDraft({ definitionId: 'stage-reminder', definition: pageA, expectedDraftRevision: 1 });
+
+  const pageB = setTemplate(mutableTemplate(), '项目已进入{{stageLabel}}阶段（B 页面）');
+  await assert.rejects(
+    service.saveDraft({ definitionId: 'stage-reminder', definition: pageB, expectedDraftRevision: 1 }),
+    isOperationError('draft_conflict'),
+  );
+  await assert.rejects(
+    service.saveDraft({ definitionId: 'stage-reminder', definition: pageB, expectedDraftRevision: 1 }),
+    isOperationError('draft_conflict'),
+  );
+
+  const record = await service.getDefinition('stage-reminder');
+  const compose = record.record.draft.definition.nodes.find((node) => node.nodeId === 'compose-deterministic');
+  const config = compose?.config as { title?: string; template?: string };
+  assert.equal(config.title, 'A 页面标题');
+  assert.equal(config.template, '项目已进入{{stageLabel}}阶段，请按既定安排关注本阶段施工注意事项。');
+  assert.equal(record.record.draft.draftRevision, 2);
+});
+
+test('a published weekly revision keeps weekly fixtures after the draft becomes daily', async () => {
+  const service = createWorkflowService({ store: createMemoryWorkflowStore(), now: () => now });
+  await service.createFromTemplate('period-report-weekly');
+  const published = await service.publishDraft({ definitionId: 'period-report-weekly', expectedDraftRevision: 1 });
+
+  const saved = await service.saveDraft({
+    definitionId: 'period-report-weekly',
+    definition: createPeriodReportDefinition('daily'),
+    expectedDraftRevision: 1,
+  });
+  assert.equal(saved.draft.definition.inputSchema.periodKind, 'daily');
+
+  const weeklyRun = await service.simulate({
+    definitionId: 'period-report-weekly',
+    source: 'published',
+    revision: 1,
+    fixtureSetId: 'report-weekly-normal',
+  });
+  assert.equal(weeklyRun.simulation.runs[0]?.status, 'completed');
+  assert.equal(weeklyRun.simulation.digest, published.version.digest);
+  await assert.rejects(
+    service.simulate({
+      definitionId: 'period-report-weekly',
+      source: 'published',
+      revision: 1,
+      fixtureSetId: 'report-daily-normal',
+    }),
+    isOperationError('fixture_incompatible'),
+  );
+
+  const dailyRun = await service.simulate({
+    definitionId: 'period-report-weekly',
+    fixtureSetId: 'report-daily-normal',
+  });
+  assert.equal(dailyRun.simulation.runs[0]?.status, 'completed');
 });

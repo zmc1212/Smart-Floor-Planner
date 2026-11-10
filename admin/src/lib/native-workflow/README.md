@@ -164,16 +164,25 @@ simulate({
   `draft_conflict` (HTTP 409) with `currentDraftRevision`. Saves run
   `validateDefinition` and force the route `definitionId` plus the next
   `revision`.
+- The editor binds its text to `editingBaseRevision`. A 409 keeps the local
+  text and original base; it never silently rebases old text onto the remote
+  revision. The UI offers explicit "load latest" and "keep local content"
+  actions, and a save response only replaces the editor when its text has not
+  changed during the request.
 - Publishing re-runs `validateDefinition` and `compileDefinition`, then stores
   an append-only version with digest, normalized definition, node versions and
   timestamp. Re-publishing unchanged content returns the existing version;
   editing the draft is required before a new version is created.
 - Published versions are read-only. A simulation can run the current draft or a
   fixed published revision, so later edits never change an older trace.
+  Fixtures are filtered from the resolved source/revision definition schema,
+  including the history "simulate this version" action.
 - Storage defaults to a B-owned file store (`admin/tmp/native-workflow-store`,
-  override `NATIVE_WORKFLOW_STORE_DIR`). The store interface allows a Postgres
-  adapter later; the file adapter assumes a single admin process. No shared
-  migration is added here.
+  override `NATIVE_WORKFLOW_STORE_DIR`). Writes use a unique same-directory
+  temporary file, a complete write, then an atomic rename; failures keep the old
+  file, remove the temp file and preserve the existing per-file serial lock. The
+  store interface allows a Postgres adapter later; the file adapter assumes a
+  single admin process. No shared migration is added here.
 - Admin surface: `/native-workflow` (list/create) and
   `/native-workflow/[definitionId]` (draft JSON, versions, simulation trace).
   The page and `/api/native-workflow/**` require platform `super_admin`/`admin`.
@@ -188,7 +197,7 @@ simulate({
 From `admin/` (no database, no Worker, no model):
 
 ```powershell
-npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts
+npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts
 npx tsx src/lib/native-workflow/playground/simulate.ts
 ```
 

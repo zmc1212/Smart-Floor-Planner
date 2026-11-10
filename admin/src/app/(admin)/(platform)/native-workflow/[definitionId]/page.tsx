@@ -11,6 +11,7 @@ import {
   Descriptions,
   Empty,
   Input,
+  Popconfirm,
   Result,
   Segmented,
   Select,
@@ -22,6 +23,20 @@ import {
   Typography,
 } from 'antd';
 import type { SimulationResult, WorkflowTraceEntry } from '@/lib/native-workflow';
+import {
+  applySaveConflict,
+  applySaveSuccess,
+  createDraftEditorState,
+  isDraftDirty,
+  keepLocalAndRebase,
+  updateDraftText,
+  type DraftEditorState,
+} from '@/lib/native-workflow/admin-draft-state';
+import {
+  fixtureSetsForSchema,
+  resolveFixtureSetId,
+  selectedSimulationDefinition,
+} from '@/lib/native-workflow/admin-selection';
 import type { PublishedWorkflowVersion, WorkflowDefinitionRecord } from '@/lib/native-workflow/store/types';
 import type { WorkflowFixtureSetSummary } from '@/lib/native-workflow/fixtures/catalog';
 import { notify } from '@/components/admin/operation-feedback';
@@ -60,13 +75,6 @@ function formatJson(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
-function firstCompatibleFixture(detail: DetailResponse): WorkflowFixtureSetSummary | undefined {
-  const schema = detail.record.draft.definition.inputSchema;
-  return detail.fixtureSets.find(
-    (set) => set.eventType === schema.eventType && (set.periodKind ?? null) === (schema.periodKind ?? null),
-  );
-}
-
 export default function NativeWorkflowDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -76,11 +84,10 @@ export default function NativeWorkflowDetailPage() {
   const canManage = ['super_admin', 'admin'].includes(user?.role || '');
 
   const [detail, setDetail] = useState<DetailResponse | null>(null);
-  const [draftText, setDraftText] = useState('');
+  const [editor, setEditor] = useState<DraftEditorState | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [issues, setIssues] = useState<DefinitionIssue[]>([]);
-  const [conflict, setConflict] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [simulating, setSimulating] = useState(false);
@@ -89,8 +96,8 @@ export default function NativeWorkflowDetailPage() {
   const [simRevision, setSimRevision] = useState<number | undefined>(undefined);
   const [simulation, setSimulation] = useState<SimulationResponse | null>(null);
 
-  const load = useCallback(async (resetDraft = true) => {
-    if (!definitionId) return;
+  const load = useCallback(async (resetDraft = true): Promise<WorkflowDefinitionRecord | null> => {
+    if (!definitionId) return null;
     setLoading(true);
     setLoadError(null);
     try {
@@ -101,11 +108,14 @@ export default function NativeWorkflowDetailPage() {
       if (!response.ok || !result.success) throw new Error(result.message || result.error || '读取流程失败');
       const data = result.data as DetailResponse;
       setDetail(data);
-      if (resetDraft) setDraftText(formatJson(data.record.draft.definition));
-      setFixtureSetId((current) => current || firstCompatibleFixture(data)?.id || '');
+      if (resetDraft) {
+        setEditor(createDraftEditorState(formatJson(data.record.draft.definition), data.record.draft.draftRevision));
+      }
       setSimRevision((current) => current ?? data.record.versions[data.record.versions.length - 1]?.revision);
+      return data.record;
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : '读取流程失败');
+      return null;
     } finally {
       setLoading(false);
     }
@@ -115,53 +125,72 @@ export default function NativeWorkflowDetailPage() {
     void load();
   }, [load]);
 
-  const compatibleFixtures = useMemo(() => {
-    if (!detail) return [];
-    const schema = detail.record.draft.definition.inputSchema;
-    return detail.fixtureSets.filter(
-      (set) => set.eventType === schema.eventType && (set.periodKind ?? null) === (schema.periodKind ?? null),
-    );
-  }, [detail]);
+  const selectedSimulation = useMemo(
+    () => (detail ? selectedSimulationDefinition(detail.record, simSource, simRevision) : null),
+    [detail, simSource, simRevision],
+  );
 
-  const handleFailure = async (response: Response, body: Record<string, unknown>) => {
-    if (response.status === 409) {
-      setConflict(String(body.message || '草稿版本冲突，请刷新后重试'));
-      await load(false);
-      return;
-    }
-    if (Array.isArray(body.issues)) {
-      setIssues(body.issues as DefinitionIssue[]);
-      return;
-    }
-    notify.error(String(body.message || body.error || '操作失败'));
-  };
+  const compatibleFixtures = useMemo(
+    () => (detail && selectedSimulation ? fixtureSetsForSchema(selectedSimulation.definition.inputSchema, detail.fixtureSets) : []),
+    [detail, selectedSimulation],
+  );
+
+  useEffect(() => {
+    setFixtureSetId((current) => {
+      const next = resolveFixtureSetId(compatibleFixtures, current);
+      return next === current ? current : next;
+    });
+  }, [compatibleFixtures]);
+
+  useEffect(() => {
+    if (simSource !== 'published' || !detail) return;
+    const latest = detail.record.versions[detail.record.versions.length - 1];
+    if (!latest) return;
+    setSimRevision((current) => (current === undefined ? latest.revision : current));
+  }, [simSource, detail]);
 
   const saveDraft = async () => {
-    if (!detail) return;
+    if (!detail || !editor) return;
+    const submittedText = editor.text;
+    const expectedRevision = editor.baseRevision;
     let definition: unknown;
     try {
-      definition = JSON.parse(draftText);
+      definition = JSON.parse(submittedText);
     } catch {
       notify.error('草稿不是合法 JSON');
       return;
     }
     setSaving(true);
     setIssues([]);
-    setConflict(null);
     try {
       const response = await fetch(`/api/native-workflow/definitions/${encodeURIComponent(definitionId)}/draft`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ definition, expectedDraftRevision: detail.record.draft.draftRevision }),
+        body: JSON.stringify({ definition, expectedDraftRevision: expectedRevision }),
       });
       const body = await response.json();
       if (!response.ok || !body.success) {
-        await handleFailure(response, body);
+        if (response.status === 409) {
+          const latest = await load(false);
+          const remoteRevision =
+            Number((body.details as { currentDraftRevision?: number } | undefined)?.currentDraftRevision)
+            || latest?.draft.draftRevision
+            || editor.serverRevision;
+          setEditor((current) => (current ? applySaveConflict(current, remoteRevision) : current));
+          return;
+        }
+        if (Array.isArray(body.issues)) {
+          setIssues(body.issues as DefinitionIssue[]);
+          return;
+        }
+        notify.error(String(body.message || body.error || '保存草稿失败'));
         return;
       }
-      const record = body.data as WorkflowDefinitionRecord;
-      setDetail((current) => (current ? { ...current, record } : current));
-      setDraftText(formatJson(record.draft.definition));
+      const saved = body.data as WorkflowDefinitionRecord;
+      setDetail((current) => (current ? { ...current, record: saved } : current));
+      setEditor((current) =>
+        current ? applySaveSuccess(current, submittedText, formatJson(saved.draft.definition), saved.draft.draftRevision) : current,
+      );
       notify.success('草稿已保存');
     } catch (error) {
       notify.error(error instanceof Error ? error.message : '保存草稿失败');
@@ -174,7 +203,6 @@ export default function NativeWorkflowDetailPage() {
     if (!detail) return;
     setPublishing(true);
     setIssues([]);
-    setConflict(null);
     try {
       const response = await fetch(`/api/native-workflow/definitions/${encodeURIComponent(definitionId)}/publish`, {
         method: 'POST',
@@ -183,7 +211,16 @@ export default function NativeWorkflowDetailPage() {
       });
       const body = await response.json();
       if (!response.ok || !body.success) {
-        await handleFailure(response, body);
+        if (response.status === 409) {
+          notify.error('草稿已被其他操作更新，请先载入最新内容再发布');
+          await load(false);
+          return;
+        }
+        if (Array.isArray(body.issues)) {
+          setIssues(body.issues as DefinitionIssue[]);
+          return;
+        }
+        notify.error(String(body.message || body.error || '发布失败'));
         return;
       }
       const data = body.data as {
@@ -200,11 +237,28 @@ export default function NativeWorkflowDetailPage() {
     }
   };
 
+  const resolveConflictKeepLocal = () => {
+    setEditor((current) => {
+      if (!current || current.conflictRevision === null) return current;
+      return keepLocalAndRebase(current, current.conflictRevision);
+    });
+    notify.info('已基于远端最新草稿继续；下次保存会覆盖远端草稿');
+  };
+
   const runSimulation = async (source = simSource, revision = simRevision) => {
-    if (!fixtureSetId) {
-      notify.error('请选择模拟 fixture');
+    if (!detail) return;
+    const selected = selectedSimulationDefinition(detail.record, source, revision);
+    if (!selected) {
+      notify.error('未找到对应的发布版本');
       return;
     }
+    const compatible = fixtureSetsForSchema(selected.definition.inputSchema, detail.fixtureSets);
+    const fixtureId = resolveFixtureSetId(compatible, fixtureSetId);
+    if (!fixtureId) {
+      notify.error('该版本没有匹配的 fixture');
+      return;
+    }
+    if (fixtureId !== fixtureSetId) setFixtureSetId(fixtureId);
     setSimulating(true);
     setSimulation(null);
     try {
@@ -212,9 +266,9 @@ export default function NativeWorkflowDetailPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          fixtureSetId,
+          fixtureSetId: fixtureId,
           source,
-          revision: source === 'published' ? revision : undefined,
+          revision: source === 'published' ? selected.revision : undefined,
         }),
       });
       const body = await response.json();
@@ -257,7 +311,7 @@ export default function NativeWorkflowDetailPage() {
       </PageContainer>
     );
   }
-  if (!detail) return null;
+  if (!detail || !editor) return null;
 
   const { record } = detail;
   const latest = record.versions[record.versions.length - 1] ?? null;
@@ -268,6 +322,9 @@ export default function NativeWorkflowDetailPage() {
       : schema.periodKind === 'weekly'
         ? '周报计划'
         : '日报计划';
+  const serverDraftText = formatJson(record.draft.definition);
+  const dirty = isDraftDirty(editor, serverDraftText);
+  const hasConflict = editor.conflictRevision !== null;
 
   const draftTab = (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
@@ -275,19 +332,51 @@ export default function NativeWorkflowDetailPage() {
         title="草稿定义"
         extra={
           <Space wrap>
-            <Tag>r{record.draft.draftRevision}</Tag>
-            <Button onClick={() => setDraftText(formatJson(record.draft.definition))}>重置</Button>
-            <Button type="primary" loading={saving} onClick={() => void saveDraft()}>
+            <Tag>编辑基准 r{editor.baseRevision}</Tag>
+            <Tag>服务端 r{record.draft.draftRevision}</Tag>
+            <Button
+              onClick={() => setEditor(createDraftEditorState(serverDraftText, record.draft.draftRevision))}
+            >
+              重置
+            </Button>
+            <Button type="primary" loading={saving} disabled={hasConflict} onClick={() => void saveDraft()}>
               保存草稿
             </Button>
-            <Button loading={publishing} onClick={() => void publishDraft()}>
+            <Button loading={publishing} disabled={dirty || hasConflict} onClick={() => void publishDraft()}>
               发布版本
             </Button>
           </Space>
         }
       >
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          {conflict ? <Alert type="warning" showIcon message={conflict} /> : null}
+          {hasConflict ? (
+            <Alert
+              type="warning"
+              showIcon
+              message={`草稿已被其他操作更新到 r${editor.conflictRevision}；你的编辑仍基于 r${editor.baseRevision}`}
+              description="普通保存会继续冲突，不会把远端修订号静默绑定到本地旧全文。请选择载入最新内容，或明确保留本地内容继续。"
+              action={
+                <Space direction="vertical">
+                  <Button size="small" onClick={() => void load(true)}>
+                    载入最新内容
+                  </Button>
+                  <Popconfirm
+                    title="保存将覆盖远端最新草稿"
+                    okText="继续"
+                    cancelText="取消"
+                    onConfirm={resolveConflictKeepLocal}
+                  >
+                    <Button size="small" danger>
+                      保留本地内容并继续
+                    </Button>
+                  </Popconfirm>
+                </Space>
+              }
+            />
+          ) : null}
+          {dirty && !hasConflict ? (
+            <Alert type="info" showIcon message="编辑器内容尚未保存；发布前需要先保存草稿。" />
+          ) : null}
           {issues.length > 0 ? (
             <Alert
               type="error"
@@ -305,8 +394,8 @@ export default function NativeWorkflowDetailPage() {
             />
           ) : null}
           <Input.TextArea
-            value={draftText}
-            onChange={(event) => setDraftText(event.target.value)}
+            value={editor.text}
+            onChange={(event) => setEditor((current) => (current ? updateDraftText(current, event.target.value) : current))}
             autoSize={{ minRows: 18, maxRows: 34 }}
             spellCheck={false}
             style={{
@@ -316,7 +405,7 @@ export default function NativeWorkflowDetailPage() {
             }}
           />
           <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            保存使用 validateDefinition 与 expectedDraftRevision 乐观锁；发布会再次校验并 compileDefinition，生成不可变版本。修改已发布内容需先保存草稿再发布新版本。
+            保存使用 validateDefinition 与独立的 editingBaseRevision 乐观锁；保存成功后服务端返回内容不会覆盖请求期间继续输入的文字。发布会再次校验并 compileDefinition，生成不可变版本。
           </Typography.Paragraph>
         </Space>
       </Card>
@@ -392,10 +481,7 @@ export default function NativeWorkflowDetailPage() {
   );
 
   const simulationTab = (
-    <Card
-      title="模拟调试"
-      extra={<Tag color="blue">simulation</Tag>}
-    >
+    <Card title="模拟调试" extra={<Tag color="blue">simulation</Tag>}>
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <Space wrap>
           <Select
@@ -407,7 +493,10 @@ export default function NativeWorkflowDetailPage() {
           />
           <Segmented
             value={simSource}
-            onChange={(value) => setSimSource(value as 'draft' | 'published')}
+            onChange={(value) => {
+              setSimSource(value as 'draft' | 'published');
+              setSimulation(null);
+            }}
             options={[
               { label: '当前草稿', value: 'draft' },
               { label: '已发布版本', value: 'published' },
@@ -416,7 +505,10 @@ export default function NativeWorkflowDetailPage() {
           {simSource === 'published' ? (
             <Select
               value={simRevision}
-              onChange={setSimRevision}
+              onChange={(value) => {
+                setSimRevision(value);
+                setSimulation(null);
+              }}
               options={record.versions.map((version) => ({ value: version.revision, label: `v${version.revision}` }))}
               placeholder="选择版本"
               style={{ width: 120 }}
@@ -427,7 +519,7 @@ export default function NativeWorkflowDetailPage() {
           </Button>
         </Space>
         <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-          模拟只使用固定 fixture 注入节点结果，不调用真实模型、数据库、Worker 或消息投递；保存与投递回执均标记 simulated。模拟使用当前已保存草稿或选定发布版本，未保存的编辑不会参与。
+          模拟只使用固定 fixture 注入节点结果，不调用真实模型、数据库、Worker 或消息投递；保存与投递回执均标记 simulated。模拟使用当前已保存草稿或选定发布版本，未保存的编辑不会参与；fixture 按所选来源和 revision 的实际定义筛选。
         </Typography.Paragraph>
 
         {simulation ? (

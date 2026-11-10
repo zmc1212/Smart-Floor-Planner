@@ -6,7 +6,6 @@ import type {
   PendingOperation,
   RunStatus,
   TriggerEvent,
-  WorkflowRunState,
   WorkflowTraceEntry,
   WorkflowValue,
 } from './types';

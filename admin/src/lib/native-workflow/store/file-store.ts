@@ -1,4 +1,5 @@
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { WorkflowOperationError } from '../errors';
 import { validateDefinition } from '../validate';
@@ -83,9 +84,14 @@ async function writeRecord(rootDir: string, record: WorkflowDefinitionRecord): P
   const file = recordPath(rootDir, record.definitionId);
   await mkdir(rootDir, { recursive: true });
   const payload = { storeVersion: STORE_VERSION, ...record };
+  // Same-directory unique temp file + atomic rename: readers see either the
+  // complete old file or the complete new file, never a partial write.
+  const tempFile = `${file}.${process.pid}.${randomUUID()}.tmp`;
   try {
-    await writeFile(file, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+    await writeFile(tempFile, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+    await rename(tempFile, file);
   } catch {
+    await rm(tempFile, { force: true }).catch(() => undefined);
     throw new WorkflowOperationError('store_error', 500, `failed to write store file ${file}`);
   }
 }
