@@ -14,12 +14,14 @@ import { chatFirstProgress, defaultGuidance } from '../requirements/guidance';
 import { needsDesignerSuggestion, designerSuggestion } from '../handoff/intent';
 import { agentConfig } from '../agent/config';
 import { processAgentAnswer } from '../agent/worker';
+import { xiaokNativeExecutorProtocol, processNativeAgentAnswer } from '../agent/native-executor';
 import { nativeSearchDependency, selectedNativeSearch } from '../agent/native-search';
 import { reportCoordinationProtocol } from '../agent/report-question-plan';
 import { runKnowledgeEnabled } from '../knowledge-policy';
 import { fastGPTPreviewProtocol } from '../knowledge/fastgpt-retrieval';
 import { processNativeRagAnswer } from '../fastgpt/rag-worker';
 import { processAgentV2Answer } from '../fastgpt/agent-v2/worker';
+import { fastGPTAgentV2Protocol } from '../fastgpt/agent-v2/config';
 
 type Dependencies={retriever?:KnowledgeRetriever;model?:TextModelGateway};
 export async function processAnswer(lease:Lease,deps:Dependencies={}) {
@@ -28,7 +30,14 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
   try {
     const context=await withTenantTransaction(lease.enterpriseId,tx=>runContext(tx,lease));
     const policy = context.run.policy_snapshot as Row;
-    if (policy.agentRuntime) { await processAgentV2Answer(lease); return; }
+    // The run snapshot names its executor protocol; dispatch is exact and an
+    // unknown protocol fails closed instead of entering another orchestrator.
+    const agentRuntime = (policy.agentRuntime as Row | undefined)?.protocol !== undefined ? policy.agentRuntime as Row : undefined;
+    if (agentRuntime) {
+      if (agentRuntime.protocol === fastGPTAgentV2Protocol) { await processAgentV2Answer(lease); return; }
+      if (agentRuntime.protocol === xiaokNativeExecutorProtocol) { await processNativeAgentAnswer(lease); return; }
+      fail('assistant_capability_forbidden', 403);
+    }
     if (policy.nativeRag) { await processNativeRagAnswer(lease); return; }
     const agent = agentConfig(policy.agent);
     const privateStaffReport = policy.reportCoordination === reportCoordinationProtocol

@@ -26,6 +26,9 @@ const results:Row[]=[];
 let actor:ActorContext;
 before(async()=>{
   if(!enabled)return;
+  // This fixture deliberately overlaps three external model calls for one
+  // enterprise; keep the product's default per-enterprise slot at one.
+  process.env.ASSISTANT_ENTERPRISE_CONCURRENCY='3';
   loadEnvConfig(process.cwd());const url=new URL(resolvePostgresRuntimeConfig().connectionString);
   assert.ok(['localhost','127.0.0.1'].includes(url.hostname));assert.equal(url.port,'55432');assert.equal(url.pathname,'/xiaok_embedding_eval');
   await withPlatformTransaction(async tx=>{
@@ -61,6 +64,7 @@ after(async()=>{
       for(const eid of tenants){await deleteAssistantData(tx,BigInt(eid));await tx.execute(sql`delete from app.admin_users where enterprise_id=${eid}`);await tx.execute(sql`delete from app.enterprises where id=${eid}`);}
       for(const uid of users)await tx.execute(sql`delete from app.users where id=${uid}`);
     });await closePostgresPool();
+    delete process.env.ASSISTANT_ENTERPRISE_CONCURRENCY;
   }
 });
 test('60 Chinese questions through production retrieval, model, persistence and citation projection', {skip:!enabled},async()=>{

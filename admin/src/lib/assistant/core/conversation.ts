@@ -26,6 +26,8 @@ import { requestsDesigner } from '../handoff/intent';
 import { stageHandoffProposal } from '../handoff/proposal';
 import { currentHandoffOwner } from '../handoff/owner';
 import { agentConfig, type AgentConfig } from '../agent/config';
+import { xiaokNativeExecutorProtocol } from '../agent/native-executor';
+import { nativeAgentRuntimeBinding } from '../fastgpt/agent-v2/config';
 import { knowledgePolicy, enterpriseKnowledgeEnabled } from '../knowledge-policy';
 import { homeSourceBudgetProtocol } from '../agent/home-source-budget';
 import { homeSourceViewProtocol } from '../agent/home-source-view';
@@ -162,11 +164,20 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   const agentV2 = agent && (purpose === 'reply' && trigger.kind === 'user_message' || openingReady)
     && c.purpose === 'customer_consultation' && actor.principal.kind === 'user' && entry.requirementReviewMode !== true
     ? fastGPTAgentV2Configuration(actor.enterpriseId) : undefined;
-  const triggerContent = rag || agentV2 ? await one(tx, sql`select content from app.assistant_messages where enterprise_id=${actor.enterpriseId}
+  // The explicit per-enterprise executor switch (`runtime: 'langgraph-v1'`).
+  // Unlike the bridge selection it is decoupled from the knowledge switch:
+  // knowledge-off replies keep the same code executor, minus enterprise
+  // material, instead of falling back to another framework.
+  const nativeExecutor = !agentV2 && agent && purpose === 'reply' && trigger.kind === 'user_message'
+    && c.purpose === 'customer_consultation' && actor.principal.kind === 'user' && entry.requirementReviewMode !== true
+    ? nativeAgentRuntimeBinding(actor.enterpriseId) : undefined;
+  const triggerContent = rag || agentV2 || nativeExecutor ? await one(tx, sql`select content from app.assistant_messages where enterprise_id=${actor.enterpriseId}
     and conversation_id=${String(c.id)} and id=${messageId}`) : undefined;
-  const agentRuntime = agentV2 && (openingReady || enterpriseKnowledgeEnabled(settings.agent_config))
-    && (triggerContent?.content as MessageContent)?.blocks.every(b => b.type === 'text')
-    ? { protocol: fastGPTAgentV2Protocol, binding: agentV2.binding } : undefined;
+  const textOnlyTrigger = (triggerContent?.content as MessageContent)?.blocks.every(b => b.type === 'text');
+  const agentRuntime = agentV2 && (openingReady || enterpriseKnowledgeEnabled(settings.agent_config)) && textOnlyTrigger
+    ? { protocol: fastGPTAgentV2Protocol, binding: agentV2.binding }
+    : nativeExecutor && textOnlyTrigger
+      ? { protocol: xiaokNativeExecutorProtocol, binding: nativeExecutor.binding } : undefined;
   const nativeRag = !agentRuntime && rag && (rag.configuration.mode === 'unified' || enterpriseKnowledgeEnabled(settings.agent_config))
     && (triggerContent?.content as MessageContent)?.blocks.every(b => b.type === 'text')
     ? { protocol: fastGPTRagProtocol, binding: rag.binding } : undefined;
@@ -209,7 +220,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
       ...(agentRuntime ? { agentRuntime } : {}),
       ...(staffPreview && agent ? { staffKnowledgePreview: fastGPTPreviewProtocol } : {}),
       ...(agent && actor.principal.kind === 'user' && c.purpose === 'customer_consultation' && purpose === 'reply'
-        && !enterpriseKnowledgeEnabled(settings.agent_config) && !reviewRuntime && !agent.consultation && !agent.structuredFinal
+        && !agentRuntime && !enterpriseKnowledgeEnabled(settings.agent_config) && !reviewRuntime && !agent.consultation && !agent.structuredFinal
         && !agent.imageContext && !agent.knowledgeExplanation && !reportContext(c.entry_snapshot).selection
         ? { dialogueContext: minimalDialogueProtocol } : {}),
       ...(!report && reportContext(c.entry_snapshot).selection ? { reportContextVersion: reportContext(c.entry_snapshot).revision } : {}),

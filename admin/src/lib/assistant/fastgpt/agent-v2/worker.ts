@@ -3,14 +3,12 @@ import { withTenantTransaction } from '@/db/transaction';
 import type { Row } from '@/db/repositories/assistant-repository';
 import { AiProviderError } from '@/lib/ai/provider-types';
 import { AssistantError, fail, fingerprint, type Evidence, type MessageContent } from '../../contracts';
-import { businessSynthesisSources, knowledgeSynthesisSources } from '../../agent/synthesis';
 import { synthesisContextAvailable } from '../../agent/synthesis-sources';
-import { queryBusiness, type BusinessQuery, type BusinessSnapshot } from '../../agent/business-tools';
+import type { BusinessSnapshot } from '../../agent/business-tools';
 import { guardAnswerCommitments } from '../../agent/context';
+import { dialogueBusinessQuery, dialogueEnterpriseSearch, quoteOf, snapshotHeading, type DialogueToolRuntime } from '../../agent/dialogue-tools';
 import { saveKnowledgeCitation } from '../../knowledge/save-citation';
-import { retrieveKnowledge } from '../../knowledge/retrieval';
-import { embeddingGateway } from '../../infrastructure/embedding-gateway';
-import { completeRun, failRun, heartbeat, markProviderStarted, runContext, type Lease } from '../../infrastructure/job-queue';
+import { completeRun, enterpriseConcurrency, failRun, heartbeat, markProviderStarted, runContext, type Lease } from '../../infrastructure/job-queue';
 import { fastGPTAgentV2Configuration, fastGPTAgentV2Protocol } from './config';
 import { resolveSuggestions, type SuggestionResolution } from './suggestions';
 import { fastGPTWorkflows } from '../runtime';
@@ -29,10 +27,6 @@ import { publishedPublicMaterial, publicCandidates } from '@/lib/construction/pu
 import { readMemory } from '../../agent/memory';
 import { recommendationRegion } from '../../location/region';
 import type { PublicContent } from '@/lib/construction/public-contract';
-
-const citationId = (chunkId: string) => 'K' + chunkId;
-const quoteOf = (text: string) => Array.from(text).length > 600 ? Array.from(text).slice(0, 600).join('') : text;
-const snapshotHeading = '项目记录（授权快照，以此为准）';
 
 /** Server-authored list for the model to relay. It names only published sites
  * in the conversation's authorized region: no distance, no owner identity and
@@ -114,7 +108,7 @@ export async function processAgentV2Answer(lease: Lease) {
         return material.version.content as PublicContent;
       });
       await markProviderStarted(lease);
-      const result = await workflows.agentV2.intro(scene.appId, publicIntroFacts(content, scene.input),
+      const result = await workflows.agentV2.intro(lease.enterpriseId, scene.appId, publicIntroFacts(content, scene.input),
         publicIntroPrompt(scene.constraints.maxChars));
       if (scene.constraints.noCommitments) guardAnswerCommitments(result.text);
       const text = validatePublicIntro(result.text, scene.constraints);
@@ -130,7 +124,9 @@ export async function processAgentV2Answer(lease: Lease) {
       });
       return;
     }
-    if (workflows.agentV2.busy()) fail('conversation_busy');
+    // The queue owns the per-enterprise limit. This guard only keeps the
+    // default single-slot contract for callers outside the queue.
+    if (enterpriseConcurrency() === 1 && workflows.agentV2.busy(lease.enterpriseId)) fail('conversation_busy');
     const { context, messages, citations } = await nativeConversation(lease, [], fastGPTAgentV2Protocol);
     // Prior answers keep their still-authorized sources citable, matching the
     // unified worker; only this turn's retrieval sets knowledgeRetrieved.
@@ -142,80 +138,17 @@ export async function processAgentV2Answer(lease: Lease) {
         if (!await synthesisContextAvailable(tx, lease.actor, state.conversation, context)) fail('context_changed');
       });
     };
-    const searches = new Map<string, Promise<Record<string, unknown>>>();
     let knowledgeRetrieved = false;
+    const delivered: BusinessSnapshot[] = [];
+    // The six authorized tools are shared with the XiaoK native executor; this
+    // bridge only differs in its protocol tag and its authorize port.
+    const toolRuntime: DialogueToolRuntime = { lease, protocol: fastGPTAgentV2Protocol, authorize, context, catalog,
+      messages, markKnowledgeRetrieved: () => { knowledgeRetrieved = true; }, delivered };
+    const search = dialogueEnterpriseSearch(toolRuntime);
+    const business = dialogueBusinessQuery(toolRuntime);
     let webRetrieved = false, previousWeb: WebSearchSnapshot | undefined;
     const webReads = new Map<number, WebSearchSnapshot>();
     const webDeadline = Date.now() + 120000;
-    const search = async (query: string, sequence: number): Promise<Record<string, unknown>> => {
-      const state = await authorize();
-      const operation = 'agent-v2-query:' + lease.runId + ':' + sequence;
-      await withTenantTransaction(lease.enterpriseId, tx => tx.execute(sql`insert into app.assistant_usage_records
-        (enterprise_id,run_id,operation_key,category,measurement_kind) values(${lease.enterpriseId},${lease.runId},${operation},'query_embedding','unavailable')`));
-      const gateway = embeddingGateway();
-      const metered = { ...gateway, embed: async (...args: Parameters<typeof gateway.embed>) => {
-        const result = await gateway.embed(...args);
-        if (result.usage) await withTenantTransaction(lease.enterpriseId, tx => tx.execute(sql`update app.assistant_usage_records
-          set quantity=${result.usage!.inputTokens},input_tokens=${result.usage!.inputTokens},measurement_kind='observed',updated_at=now(),version=version+1
-          where enterprise_id=${lease.enterpriseId} and operation_key=${operation} and category='query_embedding'`));
-        return result;
-      } };
-      const retrieved = await retrieveKnowledge(String(state.conversation.id), lease.actor, query, Number(state.run.knowledge_epoch), metered);
-      const evidence = retrieved.evidence;
-      if (evidence.length) knowledgeRetrieved = true;
-      const sources: RagCitationSource[] = evidence.map(e => ({ nativeId: citationId(e.ref.id), sourceId: citationId(e.ref.id),
-        quote: quoteOf(e.text), evidence: e }));
-      for (const s of sources) catalog.set(s.nativeId, s);
-      context.knowledge.push(...evidence); context.sources.push(...knowledgeSynthesisSources(evidence));
-      await withTenantTransaction(lease.enterpriseId, async tx => {
-        const current = await runContext(tx, lease);
-        if (!await synthesisContextAvailable(tx, lease.actor, current.conversation, context)) fail('context_changed');
-        await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,source_refs,private_checkpoint,input_summary)
-          values(${lease.enterpriseId},${lease.runId},${1300 + sequence},'retrieval','knowledge.search.v1',1,'succeeded',
-            ${JSON.stringify(evidence.map(e => ({ ref: e.ref, hash: e.hash })))}::jsonb,${JSON.stringify(evidence)}::jsonb,
-            ${JSON.stringify({ protocol: fastGPTAgentV2Protocol, tool: 'search_enterprise', query,
-              candidates: retrieved.diagnostic.candidates.length, selected: evidence.length })}::jsonb)`);
-      });
-      return { status: evidence.length ? 'ready' : 'empty', kind: 'enterprise',
-        ...(evidence.length ? nativeCites(sources.map(s => ({ id: s.nativeId, sourceName: '企业工艺｜PPT原文', content: s.quote! }))) : {}) };
-    };
-    const delivered: BusinessSnapshot[] = [];
-    const businesses = new Map<string, Promise<Record<string, unknown>>>();
-    const business = async (query: BusinessQuery, sequence: number): Promise<Record<string, unknown>> => {
-      const key = query.domain + ':' + query.leadId;
-      let pending = businesses.get(key);
-      if (!pending) {
-        pending = (async () => {
-          await authorize();
-          const { snapshot, selected } = await withTenantTransaction(lease.enterpriseId, async tx => {
-            const current = await runContext(tx, lease);
-            if (!await synthesisContextAvailable(tx, lease.actor, current.conversation, context)) fail('context_changed');
-            const entry = current.conversation.entry_snapshot as Row;
-            const boundLead = entry.kind === 'lead' ? String(entry.id) : '';
-            if (boundLead && query.leadId && query.leadId !== boundLead) fail('assistant_resource_not_found', 404);
-            const scoped: BusinessQuery = { ...query, leadId: boundLead || query.leadId };
-            const snapshot = await queryBusiness(tx, lease.actor, scoped, String(current.conversation.id));
-            const selected = Array.isArray(snapshot.data) ? snapshot.data.length : 0;
-            if (scoped.domain === 'construction') for (const project of snapshot.data as Row[])
-              await tx.execute(sql`insert into app.construction_links(enterprise_id,project_id,conversation_id)
-                values(${lease.enterpriseId},${String(project.projectId)},${String(current.conversation.id)}) on conflict do nothing`);
-            await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint,input_summary)
-              values(${lease.enterpriseId},${lease.runId},${1400 + sequence},'agent_tool','query_business',1,'succeeded',
-                ${JSON.stringify(snapshot)}::jsonb,
-                ${JSON.stringify({ protocol: fastGPTAgentV2Protocol, tool: 'query_business', domain: scoped.domain,
-                  leadId: scoped.leadId, selected })}::jsonb)`);
-            return { snapshot, selected };
-          });
-          delivered.push(snapshot);
-          // The synthesis guard revalidates every snapshot version before delivery.
-          context.snapshots.push(snapshot);
-          context.sources.push(...businessSynthesisSources('F1:' + lease.runId + ':' + sequence, snapshot));
-          return { status: selected ? 'ready' : 'empty', resultKey: snapshot.version, text: snapshot.displayText };
-        })();
-        businesses.set(key, pending);
-      }
-      return pending;
-    };
     // Cards are a server projection of this step; the message body stays text
     // only, matching the local agent's kind:'designers' delivery. The credit
     // decision lives in recommendDesigners, not in the model's arguments.
@@ -312,14 +245,12 @@ export async function processAgentV2Answer(lease: Lease) {
       if (input.name === 'search_web' || input.name === 'read_web') return web(input, sequence);
       if (input.name === 'recommend_designers') return designers();
       if (input.name === 'recommend_public_sites') return publicSites();
-      let pending = searches.get(input.query);
-      if (!pending) { pending = search(input.query, sequence); searches.set(input.query, pending); }
-      return pending;
+      return search(input.query, sequence);
     };
     await heartbeat(lease);
     await markProviderStarted(lease);
     timer = setInterval(() => { heartbeat(lease).catch(() => undefined); }, 30000);
-    const result = await workflows.agentV2.run(messages, { authorize: guard, tool });
+    const result = await workflows.agentV2.run(lease.enterpriseId, messages, { authorize: guard, tool });
     await guard();
     for (const key of ['knowledge', 'snapshots', 'sources'] as const)
       (context[key] as unknown[]) = [...new Map((context[key] as unknown[]).map(v => [fingerprint(v), v])).values()];
@@ -340,7 +271,7 @@ export async function processAgentV2Answer(lease: Lease) {
     if (bound.configuration.suggestionAppId) {
       suggestionsAttempted = true;
       try {
-        const generated = await workflows.agentV2.suggest(text);
+        const generated = await workflows.agentV2.suggest(lease.enterpriseId, text);
         suggestionUsage = generated.usage;
         suggestions = resolveSuggestions(generated.text, bound.configuration.presets ?? []);
       } catch { /* presets remain the honest fallback */ }

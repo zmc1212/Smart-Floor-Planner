@@ -45,7 +45,9 @@ export const agentToolReplyProtocol = 'durable-tool-reply-v1';
 export const agentTurnScheduleProtocol = 'shared-auxiliary-final-repair-v2';
 // Only these application-owned reads may reuse a completed result. Writes and
 // newly introduced tools always execute through their existing durable ports.
-const readTools = new Set(['search_knowledge', 'search_web', 'read_web', 'recall_history', 'query_materials', 'query_business', 'query_followups', 'recommend_references', 'recommend_designers']);
+// search_enterprise/recommend_public_sites are the V2-surface names of the same
+// read family; both executors dispatch them through the same durable handlers.
+const readTools = new Set(['search_knowledge', 'search_web', 'read_web', 'recall_history', 'query_materials', 'query_business', 'query_followups', 'recommend_references', 'recommend_designers', 'search_enterprise', 'recommend_public_sites']);
 /** Only a pure read batch may receive one unavailable-tool diagnostic. It
  * grants no capability and never reaches an application tool dispatcher. */
 export function recoverableUnavailableRead(output: Pick<ModelTurnOutput, 'toolCalls'>, available: ModelTool[]) {

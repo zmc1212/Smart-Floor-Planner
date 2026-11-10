@@ -132,8 +132,9 @@ export async function processReportComposition(lease: Lease, dependencies: {
     });
     projects = initial.projects;
     const workflow = !dependencies.model && initial.scope.kind === 'stage' ? fastGPTWorkflows() : undefined;
-    if (workflow) await workflow.ready();
-    const reportModel = dependencies.model || workflow?.stage.model;
+    const stageWorkflow = workflow?.stage;
+    if (stageWorkflow) await workflow!.ready();
+    const reportModel = dependencies.model || stageWorkflow?.model;
     async function readWorkmanship(project: ProjectContext, sequence: number, query: string, stage?: ReportWorkmanshipStage) {
       const sourceRefs = stage ? { selection: project.selection, stage, query } : project.selection;
       const saved = await scoped(async tx => one(tx, sql`select * from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}

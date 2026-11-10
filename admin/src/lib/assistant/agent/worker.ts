@@ -1179,12 +1179,15 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               ...(initial.config.imageContext ? {imageContext:initial.config.imageContext} : {}) },
             beforeProviderCall,
           });
+          // A workflow file may exist for another capability only; then the
+          // answer path must stay on the configured model provider.
           const workflow = !injected && purpose === 'answer' && !consultation && !initial.mediaRefs.length ? fastGPTWorkflows() : undefined;
-          if (workflow) await workflow.ready();
+          const knowledge = workflow?.knowledge;
+          if (knowledge) await workflow!.ready();
           const output = injected ? await (async () => {
             await beforeProviderCall();
             return { agentOutput: await injected(modelMessages, tools, turn, dispatchTools), attemptId: null };
-          })() : workflow ? await workflow.knowledge.dispatch({ enterpriseId: lease.enterpriseId, runId: lease.runId,
+          })() : knowledge ? await knowledge.dispatch({ enterpriseId: lease.enterpriseId, runId: lease.runId,
             conversationId: String(initial.conversation.id), turn, question: reviewContext.currentQuestion,
             model: initial.config.model, toolNames: dispatchTools.map(tool => tool.name),
             requestHash: fingerprint({modelMessages,dispatchTools,limits,config:initial.config,...(dialogueFinalCarrier ? {outputMode:dialogueFinalCarrier} : {})}) }, {authorize}, async () => {

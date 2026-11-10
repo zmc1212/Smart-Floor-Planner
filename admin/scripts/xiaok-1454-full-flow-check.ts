@@ -22,6 +22,17 @@ const root = path.resolve('..'), eid = '1454', customerId = '645', ownerId = '28
 const output = path.resolve(process.argv.find(a => a.startsWith('--output='))?.slice(9) || '../tmp/xiaok-1454-full-flow-20261109/round-01');
 const stageTarget = process.argv.find(a => a.startsWith('--stage='))?.slice(8) || 'furnishing';
 const stageNote = process.argv.find(a => a.startsWith('--note='))?.slice(7) || '合成全流程测试：安装节点完成，进入软装';
+// The executor is explicit per round; the default preserves the historical
+// Agent V2 expectation until the FastGPT exit completes.
+const expectedExecutor = process.argv.find(a => a.startsWith('--executor='))?.slice(11) || 'fastgpt-agent-v2-v1';
+// Under an unavailable FastGPT deployment the stage-report bodies legitimately
+// fail (P3 migrates that entry); their rows and recorded errors stay required.
+const stageFastgptDown = process.argv.includes('--stage-fastgpt=down');
+// A questions file avoids Chinese argv mojibake on Windows shells.
+const questionsFile = process.argv.find(a => a.startsWith('--questions-file='))?.slice(17);
+const chatQuestions = questionsFile ? (JSON.parse(fs.readFileSync(path.resolve(questionsFile), 'utf8')).questions as string[])
+  : (process.argv.find(a => a.startsWith('--questions='))?.slice(12) || '')
+    .split('|').map(q => q.trim()).filter(Boolean);
 assert.ok(!fs.existsSync(path.join(output, 'report.json')), 'Retain the original round');
 const target = new URL(process.env.DATABASE_URL!);
 assert.ok(['127.0.0.1', 'localhost'].includes(target.hostname) && target.port === '5432' && target.pathname === '/smart_floor_planner');
@@ -39,12 +50,23 @@ const platformRows = (q: ReturnType<typeof sql>) => withPlatformTransaction(tx =
 function binding() {
   const files = execFileSync('rg', ['--files', 'admin/src', 'admin/scripts', 'miniprogram/packages/assistant'], { cwd: root, encoding: 'utf8' })
     .trim().split(/\r?\n/).map(p => p.replaceAll('\\', '/'));
-  files.push('admin/scripts/xiaok-1454-full-flow-check.ts', 'admin/.env.local',
-    path.relative(root, path.resolve(process.env.XIAOK_FASTGPT_WORKFLOWS_FILE || '')).replaceAll('\\', '/'));
+  files.push('admin/scripts/xiaok-1454-full-flow-check.ts', 'admin/.env.local');
+  // The workflows binding exists only when the deployment actually configures
+  // one; an unavailable FastGPT round must not read a directory placeholder.
+  if (process.env.XIAOK_FASTGPT_WORKFLOWS_FILE?.trim())
+    files.push(path.relative(root, path.resolve(process.env.XIAOK_FASTGPT_WORKFLOWS_FILE)).replaceAll('\\', '/'));
   return Object.fromEntries([...new Set(files)].sort().map(f => [f, createHash('sha256').update(fs.readFileSync(path.isAbsolute(f) ? f : path.join(root, f))).digest('hex')]));
 }
 const before = binding();
 report.bindingBefore = createHash('sha256').update(JSON.stringify(before)).digest('hex');
+
+// FastGPT audit ledger. The chat path must add zero records of any kind;
+// stage-report body records remain P3 scope and are reported, not asserted.
+const workflowsFile = process.env.XIAOK_FASTGPT_WORKFLOWS_FILE?.trim();
+const auditFile = workflowsFile ? (JSON.parse(fs.readFileSync(path.resolve(workflowsFile), 'utf8')).auditFile as string | undefined) : undefined;
+const auditLines = () => auditFile && fs.existsSync(auditFile)
+  ? fs.readFileSync(auditFile, 'utf8').trim().split(/\r?\n/).filter(Boolean) : [];
+const auditBefore = auditLines().length;
 
 async function step(name: string, fn: () => Promise<unknown>) {
   try { const data = await fn(); (report.checks as Row[]).push({ name, passed: true, data }); console.log(name + ': PASS'); return data; }
@@ -76,7 +98,37 @@ async function api(token: string, route: string, init: { method?: string; body?:
     route + ': ' + response.status + '/' + String(data.code || data.error || ''));
   return { status: response.status, data };
 }
+const tokenPrefix = (t: string) => createHash('sha256').update(t).digest('hex').slice(0, 12);
 const staffTokens = new Map<string, { token: string; role: string; binding?: string; audience?: string }>();
+
+/** One real customer turn through the live service: send, wait for the run,
+ * read the persisted answer and open every citation it carries. */
+async function customerTurn(token: string, cid: string, text: string) {
+  const clientMessageId = randomUUID();
+  await api(token, `/conversations/${cid}/messages`, { key: clientMessageId,
+    body: { clientMessageId, content: { version: 1, blocks: [{ type: 'text', text }] } }, expect: 202 });
+  const run = await waitFor('customer reply', async () => {
+    const r = await tenantOne(sql`select id,status,error_code,policy_snapshot,output_message_id from app.assistant_runs
+      where enterprise_id=${eid} and conversation_id=${cid} and purpose='reply' order by id desc limit 1`);
+    return r && !['queued', 'running'].includes(String(r.status)) ? r : undefined;
+  }, 360000, 2500);
+  const messages = (await api(token, `/conversations/${cid}/messages?limit=50`)).data.data as Row;
+  const items = (messages.items || []) as Row[];
+  // The public message DTO deliberately carries no run id; the run row names
+  // the output message that this HTTP readback must expose.
+  const answer = items.find(m => String(m.id) === String(run.output_message_id));
+  assert.ok(answer && String(answer.authorKind) === 'assistant', 'Assistant message persisted');
+  const citationRows = await tenantRows(sql`select id,source_kind,resource_type,resource_id from app.assistant_message_citations
+    where enterprise_id=${eid} and run_id=${String(run.id)} order by id`);
+  const citations: Row[] = [];
+  for (const citation of citationRows) {
+    const opened = (await api(token, '/citations/' + String(citation.id))).data.data as Row;
+    citations.push({ id: String(citation.id), sourceKind: String(citation.source_kind), title: String(opened.title || ''),
+      hasText: Boolean(opened.text || opened.content || opened.excerpt) });
+  }
+  return { run, answer, citations, answerText: String(((answer.content as Row)?.blocks as Row[] || []).map(b => b.text || '').join('')) };
+}
+const executorOf = (run: Row) => String(((run.policy_snapshot as Row)?.agentRuntime as Row | undefined)?.protocol || '');
 async function staffToken(adminId: string) {
   const cached = staffTokens.get(adminId); if (cached) return cached;
   const row = (await platformOne(sql`select a.id,a.user_id,a.role,a.status,a.must_change_password,u.context_version
@@ -86,7 +138,6 @@ async function staffToken(adminId: string) {
     staffId: String(row.id), enterpriseId: eid, contextVersion: Number(row.context_version), source: 'password' }), role: String(row.role) };
   staffTokens.set(adminId, value); return value;
 }
-const tokenPrefix = (t: string) => createHash('sha256').update(t).digest('hex').slice(0, 12);
 
 async function main() {
   assert.ok(process.env.JWT_SECRET);
@@ -121,37 +172,15 @@ async function main() {
     const created = (await api(customer.token, '/conversations', { body: { entryToken: entry.entryToken }, key: randomUUID() })).data.data as Row;
     const cid = String(created.id);
     const turns: Row[] = [];
-    const questions = ['我家正在改水电，打压试验要做到什么程度才算合格？', '打压的时候我在现场要看哪些数据？'];
+    const questions = chatQuestions.length ? chatQuestions : ['我家正在改水电，打压试验要做到什么程度才算合格？', '打压的时候我在现场要看哪些数据？'];
     for (const [index, text] of questions.entries()) {
-      const clientMessageId = randomUUID();
-      const sent = (await api(customer.token, `/conversations/${cid}/messages`, { key: clientMessageId,
-        body: { clientMessageId, content: { version: 1, blocks: [{ type: 'text', text }] } }, expect: 202 })).data.data as Row;
-      const run = await waitFor('customer reply ' + (index + 1), async () => {
-        const r = await tenantOne(sql`select id,status,error_code,policy_snapshot,output_message_id from app.assistant_runs
-          where enterprise_id=${eid} and conversation_id=${cid} and purpose='reply' order by id desc limit 1`);
-        return r && !['queued', 'running'].includes(String(r.status)) ? r : undefined;
-      }, 360000, 2500);
-      const messages = (await api(customer.token, `/conversations/${cid}/messages?limit=50`)).data.data as Row;
-      const items = (messages.items || []) as Row[];
-      // The public message DTO deliberately carries no run id; the run row names
-      // the output message that this HTTP readback must expose.
-      const answer = items.find(m => String(m.id) === String(run.output_message_id));
-      assert.ok(answer && String(answer.authorKind) === 'assistant', 'Assistant message persisted');
-      const citationRows = await tenantRows(sql`select id,source_kind,resource_type,resource_id from app.assistant_message_citations
-        where enterprise_id=${eid} and run_id=${String(run.id)} order by id`);
-      const citations: Row[] = [];
-      for (const citation of citationRows) {
-        const opened = (await api(customer.token, '/citations/' + String(citation.id))).data.data as Row;
-        citations.push({ id: String(citation.id), sourceKind: String(citation.source_kind), title: String(opened.title || ''),
-          hasText: Boolean(opened.text || opened.content || opened.excerpt) });
-      }
-      turns.push({ question: text, runId: String(run.id), status: String(run.status), errorCode: run.error_code || null,
-        runtime: ((run.policy_snapshot as Row)?.agentRuntime as Row)?.protocol || null,
-        answerText: String(((answer.content as Row)?.blocks as Row[] || []).map(b => b.text || '').join('')).slice(0, 400),
-        citations });
-      if (index === 0) assert.equal(String(run.status), 'succeeded', 'First real answer must succeed: ' + String(run.error_code || ''));
+      const turn = await customerTurn(customer.token, cid, text);
+      turns.push({ question: text, runId: String(turn.run.id), status: String(turn.run.status), errorCode: turn.run.error_code || null,
+        runtime: executorOf(turn.run) || null, answerText: turn.answerText.slice(0, 600), citations: turn.citations });
+      if (index === 0) assert.equal(String(turn.run.status), 'succeeded', 'First real answer must succeed: ' + String(turn.run.error_code || ''));
     }
-    assert.equal(turns.some(t => t.runtime === 'fastgpt-agent-v2-v1'), true, 'Live service must select Agent V2 for 1454');
+    assert.ok(turns.length > 0 && turns.every(t => t.runtime === expectedExecutor),
+      'Live service must select ' + expectedExecutor + ' for 1454, saw: ' + turns.map(t => t.runtime).join(','));
     const listed = (await api(customer.token, '/conversations?limit=20', { entry: entry.entryToken })).data.data as Row;
     assert.ok((listed.items || []).some((c: Row) => String(c.id) === cid), 'Conversation is listed on reentry');
     const detail = (await api(customer.token, '/conversations/' + cid)).data.data as Row;
@@ -201,9 +230,12 @@ async function main() {
       assert.ok(item, 'Stage history missing for ' + reader.kind);
       const detail = (await api(reader.token, `/followups/${reader.binding}/reports/${String(item.reportId)}?revision=${String(item.revision)}`, { entry: reader.entry })).data.data as Row;
       assert.equal(detail.available, true); assert.ok((detail.facts?.projects || []).some((p: Row) => String(p.id) === projectId));
-      assert.ok(Array.isArray(detail.body) && detail.body.length > 0, 'Stage body composed for ' + reader.kind);
+      // With the FastGPT deployment unavailable the stage body composition
+      // fails recorded; P3 migrates that entry, so only up-mode demands a body.
+      if (!stageFastgptDown) assert.ok(Array.isArray(detail.body) && detail.body.length > 0, 'Stage body composed for ' + reader.kind);
       views.push({ kind: reader.kind, binding: reader.binding, reportId: String(item.reportId), revision: Number(item.revision),
-        contentStatus: detail.contentStatus, bodyParts: detail.body.length, deliveryState: detail.deliveryState });
+        contentStatus: detail.contentStatus, bodyParts: Array.isArray(detail.body) ? detail.body.length : 0,
+        bodyStatus: detail.contentStatus || null, deliveryState: detail.deliveryState });
     }
     await api((await staffToken('5369')).token, `/followups/428/reports?projectId=${projectId}`, { expect: 404 });
     await api(customer.token, `/followups/420/reports?projectId=${projectId}`, { entry: entryToken, expect: 404 });
@@ -211,6 +243,17 @@ async function main() {
       reports: reports.map(r => ({ bindingId: String(r.binding_id), reportId: String(r.report_id), state: r.delivery_state,
         bodyStatus: r.body_status || null, bodyError: r.body_error || null })), views };
     return { eventId: String(event.id), recipients: views.map(v => v.kind) };
+  });
+
+  await step('own-project progress question in the same conversation', async () => {
+    const cid = String(report.chat.conversationId);
+    const turn = await customerTurn(customer.token, cid, '我家现在施工到哪一步？最近做了什么？');
+    assert.equal(String(turn.run.status), 'succeeded', 'Progress reply must succeed: ' + String(turn.run.error_code || ''));
+    assert.equal(executorOf(turn.run), expectedExecutor, 'Progress reply must use ' + expectedExecutor);
+    assert.match(turn.answerText, /软装/, 'The reply must name the real current stage from the authorized snapshot');
+    report.progressQuestion = { question: '我家现在施工到哪一步？最近做了什么？', runId: String(turn.run.id),
+      answerText: turn.answerText.slice(0, 600), citations: turn.citations.length };
+    return { runId: String(turn.run.id), citations: turn.citations.length };
   });
 
   await step('controlled daily through the live scheduler and four-role readback', async () => {
@@ -292,6 +335,23 @@ async function main() {
     }
   });
 
+  await step('daily report records question without any business write', async () => {
+    const cid = String(report.chat.conversationId);
+    const reportsBefore = Number((await tenantOne(sql`select count(*)::int n from app.construction_reports where enterprise_id=${eid}`))!.n);
+    const turn = await customerTurn(customer.token, cid, '你发的日报里记的内容，和现场确认过的是一回事吗？');
+    assert.equal(String(turn.run.status), 'succeeded', 'Report-question reply must succeed: ' + String(turn.run.error_code || ''));
+    assert.equal(executorOf(turn.run), expectedExecutor, 'Report-question reply must use ' + expectedExecutor);
+    assert.ok(turn.answerText.trim().length > 20, 'The reply must explain the record scopes instead of a fixed handoff script');
+    const reportsAfter = Number((await tenantOne(sql`select count(*)::int n from app.construction_reports where enterprise_id=${eid}`))!.n);
+    assert.equal(reportsAfter, reportsBefore, 'A chat question must not generate reports');
+    const composeRuns = await tenantRows(sql`select id from app.assistant_runs where enterprise_id=${eid}
+      and purpose='construction.report.compose' and trigger_kind='user_message'`);
+    assert.equal(composeRuns.length, 0, 'No report composition may originate from a chat message');
+    report.reportQuestion = { question: '你发的日报里记的内容，和现场确认过的是一回事吗？', runId: String(turn.run.id),
+      answerText: turn.answerText.slice(0, 600), reportsDelta: reportsAfter - reportsBefore };
+    return { runId: String(turn.run.id), reportsDelta: reportsAfter - reportsBefore };
+  });
+
   await step('permission boundaries and restored plan readback', async () => {
     const settings = reportPlanDto(await new ConstructionReportService({ enterpriseId: eid, adminId: ownerId }).settings() as Row, eid);
     assert.equal(settings.enabled, true);
@@ -326,6 +386,17 @@ async function main() {
     assert.ok(portfolio.needContext === true || portfolio.items.length > 0, 'Portfolio recommendations must answer or ask for context');
     report.surfaces = { publicSites: count(sites), portfolio: count(portfolio), portfolioNeedContext: portfolio.needContext === true };
     return report.surfaces;
+  });
+
+  await step('zero FastGPT calls outside the stage body scope', async () => {
+    const lines = auditLines().slice(auditBefore);
+    const kinds = lines.map(line => String((JSON.parse(line) as Row).kind));
+    const nonStage = [...new Set(kinds.filter(kind => kind !== 'stage'))];
+    assert.equal(nonStage.length, 0, 'Chat and auxiliary paths must not call FastGPT, saw: ' + nonStage.join(','));
+    report.fastgptAudit = { before: auditBefore, after: auditLines().length, nonStageKinds: nonStage,
+      stageRecords: kinds.filter(kind => kind === 'stage').length,
+      note: stageFastgptDown ? 'FastGPT deployment unreachable by configuration for this round' : 'FastGPT deployment reachable; stage bodies remain P3 scope' };
+    return report.fastgptAudit;
   });
 }
 main().catch(error => { report.error = (error as Error).message; })

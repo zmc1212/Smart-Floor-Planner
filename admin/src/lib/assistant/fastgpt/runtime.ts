@@ -6,15 +6,15 @@ import {FastGPTKnowledgeWorkflow} from './knowledge-workflow';
 import {FastGPTNativeKnowledge} from './native-knowledge';
 import {FastGPTNativeRag} from './native-rag';
 import {FastGPTAgentV2} from './agent-v2/runtime';
-import {parseAgentV2Configuration, type AgentV2Configuration} from './agent-v2/config';
+import {parseAgentV2Configurations, type AgentV2Configuration} from './agent-v2/config';
 import type {RagConfiguration} from './rag-config';
 
-type Configuration={baseUrl:string;apiKey:string;knowledgeAppId:string;stageAppId:string;auditFile?:string;
+type Configuration={baseUrl:string;apiKey:string;knowledgeAppId?:string;stageAppId?:string;auditFile?:string;
   nativeKnowledgeAppId?:string; nativeModel?:string; nativeTransportModel?:string; nativeBridgeKey?:string; rag?:RagConfiguration;
-  agentV2?:AgentV2Configuration};
+  agentV2?:AgentV2Configuration|AgentV2Configuration[]};
 class FastGPTWorkflows {
-  readonly knowledge:FastGPTKnowledgeWorkflow;
-  readonly stage:FastGPTReportWorkflow;
+  readonly knowledge?:FastGPTKnowledgeWorkflow;
+  readonly stage?:FastGPTReportWorkflow;
   readonly nativeKnowledge?:FastGPTNativeKnowledge;
   readonly rag?:FastGPTNativeRag;
   readonly unified?:FastGPTNativeKnowledge;
@@ -25,8 +25,9 @@ class FastGPTWorkflows {
     const record=(kind:string,value:unknown)=>{
       if(configuration.auditFile)fs.appendFileSync(configuration.auditFile,JSON.stringify({kind,at:new Date().toISOString(),value},(_key,v)=>typeof v==='bigint'?String(v):v)+'\n');
     };
-    this.knowledge=new FastGPTKnowledgeWorkflow({...configuration,appId:configuration.knowledgeAppId,record:value=>record('knowledge',value)});
-    this.stage=new FastGPTReportWorkflow({...configuration,appId:configuration.stageAppId,record:value=>record('stage',value)},['stage']);
+    const appId=(value?:string)=>typeof value==='string'&&/^[a-f0-9]{24}$/.test(value);
+    if(appId(configuration.knowledgeAppId)) this.knowledge=new FastGPTKnowledgeWorkflow({...configuration,appId:configuration.knowledgeAppId!,record:value=>record('knowledge',value)});
+    if(appId(configuration.stageAppId)) this.stage=new FastGPTReportWorkflow({...configuration,appId:configuration.stageAppId!,record:value=>record('stage',value)},['stage']);
     if(configuration.rag?.mode==='unified') this.unified=new FastGPTNativeKnowledge({baseUrl:configuration.baseUrl,apiKey:configuration.apiKey,
       appId:configuration.rag.appId,model:configuration.rag.transportModel,bridgeKey:configuration.rag.bridgeKey,
       plainAnswers:true,routePrefix:'/unified',record:value=>record('unified',value)});
@@ -34,15 +35,18 @@ class FastGPTWorkflows {
     if(configuration.nativeKnowledgeAppId) this.nativeKnowledge=new FastGPTNativeKnowledge({
       ...configuration,appId:configuration.nativeKnowledgeAppId,model:configuration.nativeTransportModel!,bridgeKey:configuration.nativeBridgeKey!,
       record:value=>record('nativeKnowledge',value)});
-    if(configuration.agentV2) this.agentV2=new FastGPTAgentV2({...parseAgentV2Configuration(configuration.agentV2),
-      baseUrl:configuration.baseUrl,apiKey:configuration.apiKey,record:value=>record('agentV2',value)});
+    const agentV2=parseAgentV2Configurations(configuration.agentV2).filter(item=>item.runtime!=='langgraph-v1');
+    if(agentV2.length) this.agentV2=new FastGPTAgentV2(agentV2.map(item=>({...item,baseUrl:configuration.baseUrl,
+      apiKey:configuration.apiKey,record:value=>record('agentV2',value)})));
   }
   async handle(request:Request) {
-    if(new URL(request.url).pathname.startsWith('/agent-v2-')) return this.agentV2?.handle(request) ?? Response.json({error:'not_found'},{status:404});
-    if(new URL(request.url).pathname.startsWith('/unified-')) return this.unified?.handle(request) ?? Response.json({error:'not_found'},{status:404});
-    if(new URL(request.url).pathname.startsWith('/rag-')) return this.rag?.handle(request) ?? Response.json({error:'not_found'},{status:404});
-    if(new URL(request.url).pathname.startsWith('/native-')) return this.nativeKnowledge?.handle(request) ?? Response.json({error:'not_found'},{status:404});
-    return new URL(request.url).pathname.startsWith('/knowledge-')?this.knowledge.handle(request):this.stage.handle(request);
+    const path=new URL(request.url).pathname;
+    if(path.startsWith('/agent-v2-')) return this.agentV2?.handle(request) ?? Response.json({error:'not_found'},{status:404});
+    if(path.startsWith('/unified-')) return this.unified?.handle(request) ?? Response.json({error:'not_found'},{status:404});
+    if(path.startsWith('/rag-')) return this.rag?.handle(request) ?? Response.json({error:'not_found'},{status:404});
+    if(path.startsWith('/native-')) return this.nativeKnowledge?.handle(request) ?? Response.json({error:'not_found'},{status:404});
+    return path.startsWith('/knowledge-')?this.knowledge?.handle(request) ?? Response.json({error:'not_found'},{status:404})
+      :this.stage?.handle(request) ?? Response.json({error:'not_found'},{status:404});
   }
   ready():Promise<void> {
     this.starting??=new Promise((resolve,reject)=>{
@@ -73,7 +77,10 @@ export function fastGPTWorkflows():FastGPTWorkflows|undefined {
   const current=cache.__xiaokFastGPTWorkflows;
   if(current){if(current.file!==file||current.hash!==hash)throw Error('FastGPT workflow configuration changed during the Worker lifetime');return current.runtime;}
   const configuration=JSON.parse(bytes.toString('utf8')) as Configuration;
-  if(!configuration.apiKey||![configuration.knowledgeAppId,configuration.stageAppId].every(id=>/^[a-f0-9]{24}$/.test(id)))throw Error('Invalid FastGPT workflow configuration');
+  const agentV2=Array.isArray(configuration.agentV2)?configuration.agentV2.length>0:Boolean(configuration.agentV2);
+  const capable=agentV2||Boolean(configuration.rag)||[configuration.knowledgeAppId,configuration.stageAppId,configuration.nativeKnowledgeAppId]
+    .some(id=>/^[a-f0-9]{24}$/.test(id??''));
+  if(!configuration.apiKey||!capable)throw Error('Invalid FastGPT workflow configuration');
   const runtime=new FastGPTWorkflows(configuration);cache.__xiaokFastGPTWorkflows={file,hash,runtime};return runtime;
 }
 export async function closeFastGPTWorkflows(){const owned=cache.__xiaokFastGPTWorkflows;cache.__xiaokFastGPTWorkflows=undefined;await owned?.runtime.close();}

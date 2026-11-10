@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { fastGPTAgentV2Presentation, parseAgentV2Configuration } from '../fastgpt/agent-v2/config';
+import { fastGPTAgentV2Configuration, fastGPTAgentV2Configurations, fastGPTAgentV2Presentation, parseAgentV2Configuration, parseAgentV2Configurations } from '../fastgpt/agent-v2/config';
 import { parseSuggestionQuestions, resolveSuggestions, storedSuggestionQuestions, suggestionPrompt } from '../fastgpt/agent-v2/suggestions';
 
 const base = {
@@ -54,6 +54,30 @@ test('the generation prompt carries only the bounded answer and removes citation
   assert.match(prompt, /^下面是本轮给客户的回答/);
   assert.equal(prompt.includes('[K11](CITE)'), false);
   assert.equal(Array.from(prompt).length < 4300, true);
+});
+
+test('several enterprises share one file, bind independently and switch independently', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-v2-enterprises-'));
+  const file = path.join(directory, 'runtime.json');
+  const previous = process.env.XIAOK_FASTGPT_WORKFLOWS_FILE;
+  const second = { ...base, enterpriseId: '2884', appId: 'b'.repeat(24), bridgeKey: 'c'.repeat(64) };
+  try {
+    process.env.XIAOK_FASTGPT_WORKFLOWS_FILE = file;
+    fs.writeFileSync(file, JSON.stringify({ agentV2: [{ ...base, welcome: '企业 A' }, second] }));
+    assert.deepEqual(fastGPTAgentV2Configurations().map(item => item.configuration.enterpriseId), ['1454', '2884']);
+    const first = fastGPTAgentV2Configuration('1454'), other = fastGPTAgentV2Configuration('2884');
+    assert.ok(first && other);
+    assert.notEqual(first.binding, other.binding);
+    fs.writeFileSync(file, JSON.stringify({ agentV2: [{ ...base, welcome: '企业 A' }, { ...second, runtime: 'langgraph-v1' }] }));
+    // Disabling one enterprise leaves the other's binding and runtime intact.
+    assert.equal(fastGPTAgentV2Configuration('2884'), undefined);
+    assert.equal(fastGPTAgentV2Configuration('1454')?.binding, first.binding);
+    assert.throws(() => parseAgentV2Configurations([base, { ...second, enterpriseId: '1454' }]), /context_changed/);
+  } finally {
+    if (previous === undefined) delete process.env.XIAOK_FASTGPT_WORKFLOWS_FILE;
+    else process.env.XIAOK_FASTGPT_WORKFLOWS_FILE = previous;
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test('bootstrap presentation comes from the enabled private runtime and stays additive', () => {

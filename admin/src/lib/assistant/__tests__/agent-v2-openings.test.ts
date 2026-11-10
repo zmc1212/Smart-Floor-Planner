@@ -16,15 +16,26 @@ const registry = () => ({ protocol: 'xiaok-openings-v1', enterpriseId: '1454', s
 
 test('a registered scene defaults to the strict opening constraints', () => {
   const parsed = parseOpenings(registry());
-  const scene = parsed.scenes['site.public'];
+  const scene = parsed.enterprises[0].scenes['site.public'];
   assert.equal(scene.appId, 'c'.repeat(24));
   assert.deepEqual(scene.constraints, constraints);
 });
 
 test('the shipped registry keeps the public site opening registered for enterprise 1454', () => {
   const shipped = parseOpenings(JSON.parse(readFileSync(join(process.cwd(), 'deployment/fastgpt/openings.1454.json'), 'utf8')));
-  assert.equal(shipped.enterpriseId, '1454');
-  assert.equal(shipped.scenes['site.public'].appId, '6af27edb3a245855a926e011');
+  assert.equal(shipped.enterprises[0].enterpriseId, '1454');
+  assert.equal(shipped.enterprises[0].scenes['site.public'].appId, '6af27edb3a245855a926e011');
+});
+
+test('several enterprises register their own scenes without sharing defaults', () => {
+  const parsed = parseOpenings({ protocol: 'xiaok-openings-v1', enterprises: [
+    { enterpriseId: '1454', scenes: registry().scenes }, { enterpriseId: '2884', scenes: { 'site.public': {
+      appId: 'd'.repeat(24), audience: 'customer', input: ['name', 'cityName'], constraints: { maxChars: 120 } } } },
+  ] });
+  assert.deepEqual(parsed.enterprises.map(enterprise => enterprise.enterpriseId), ['1454', '2884']);
+  assert.equal(parsed.enterprises[1].scenes['site.public'].constraints.maxChars, 120);
+  assert.throws(() => parseOpenings({ protocol: 'xiaok-openings-v1', enterprises: [
+    { enterpriseId: '1454', scenes: registry().scenes }, { enterpriseId: '1454', scenes: registry().scenes }] }), /context_changed/);
 });
 
 test('staff audiences and model-invented fields are rejected', () => {
@@ -57,9 +68,9 @@ test('opening text must stay inside every registered limit', () => {
 
 test('an opening call has no ticket, no history and no workflow variables', async () => {
   const bridgeKey = 'k'.repeat(32), appId = 'c'.repeat(24);
-  const gateway = new FastGPTAgentV2({ protocol: 'fastgpt-agent-v2-v1', enterpriseId: '1454',
+  const gateway = new FastGPTAgentV2([{ protocol: 'fastgpt-agent-v2-v1', enterpriseId: '1454',
     appId, model: 'labelled-model', bridgeKey, baseUrl: 'http://127.0.0.1:18300', apiKey: 'test-key',
-    record: () => undefined });
+    record: () => undefined }]);
   const original = globalThis.fetch;
   let reached: Record<string, unknown> | undefined;
   globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
@@ -72,7 +83,7 @@ test('an opening call has no ticket, no history and no workflow variables', asyn
       responseData: [{ moduleType: 'agent', inputTokens: 5, outputTokens: 6 }] });
   }) as typeof fetch;
   try {
-    const result = await gateway.intro(appId, '{"sourceRole":"published_site_snapshot","site":{"name":"城西新家"}}', '写开场白');
+    const result = await gateway.intro('1454', appId, '{"sourceRole":"published_site_snapshot","site":{"name":"城西新家"}}', '写开场白');
     assert.equal(result.text, '这是公开工地的开场白。');
     assert.deepEqual(result.usage, { inputTokens: 5, outputTokens: 6 });
   } finally { globalThis.fetch = original; }

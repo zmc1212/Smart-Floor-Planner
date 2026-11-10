@@ -8,13 +8,17 @@ import { nearbyPublicSitesReceipt, nearbyPublicSitesText, publicSitesDeliveryTex
 import { fail } from '../contracts';
 
 const bridgeKey = 'k'.repeat(32);
-const create = () => new FastGPTAgentV2({ protocol: 'fastgpt-agent-v2-v1', enterpriseId: '1454',
+const create = () => new FastGPTAgentV2([{ protocol: 'fastgpt-agent-v2-v1', enterpriseId: '1454',
   appId: 'a'.repeat(24), model: 'labelled-model', bridgeKey, baseUrl: 'http://127.0.0.1:18300',
-  apiKey: 'test-key', record: () => undefined });
+  apiKey: 'test-key', record: () => undefined }]);
 
-const call = (gateway: FastGPTAgentV2, name: string, body: string, options: { key?: string; form?: boolean } = {}) =>
+let activeTicket: string | null = null;
+
+const call = (gateway: FastGPTAgentV2, name: string, body: string,
+  options: { key?: string; form?: boolean; ticket?: string | null } = {}) =>
   gateway.handle(new Request('http://127.0.0.1:18300/agent-v2-tool/' + name, { method: 'POST',
     headers: { authorization: 'Bearer ' + (options.key ?? bridgeKey),
+      'x-sfp-run-ticket': ('ticket' in options ? options.ticket : activeTicket) ?? '',
       'content-type': options.form ? 'application/x-www-form-urlencoded' : 'application/json' }, body }));
 
 const packet = { choices: [{ message: { content: '好的' } }],
@@ -27,6 +31,7 @@ test('an unknown tool and a wrong bridge key look identical', async () => {
 });
 
 test('a tool call without an active run is refused', async () => {
+  activeTicket = null;
   const gateway = create();
   const response = await call(gateway, 'recommend_designers', '{}');
   assert.equal(response.status, 409);
@@ -36,7 +41,8 @@ test('a tool call without an active run is refused', async () => {
 test('recommend_designers takes no model arguments and returns its receipt', async () => {
   const gateway = create(), original = globalThis.fetch;
   let receipt: unknown;
-  globalThis.fetch = (async () => {
+  globalThis.fetch = (async (_url: unknown, options?: RequestInit) => {
+    activeTicket = JSON.parse(String(options?.body)).variables.workflowTicket;
     const response = await call(gateway, 'recommend_designers', '{}');
     assert.equal(response.status, 200);
     receipt = await response.json();
@@ -45,7 +51,7 @@ test('recommend_designers takes no model arguments and returns its receipt', asy
     return Response.json(packet);
   }) as typeof fetch;
   try {
-    const result = await gateway.run([{ role: 'user', content: '这个工地是谁设计的？' }], {
+    const result = await gateway.run('1454', [{ role: 'user', content: '这个工地是谁设计的？' }], {
       authorize: async () => undefined,
       tool: async input => {
         assert.equal(input.name, 'recommend_designers');
@@ -62,14 +68,15 @@ test('recommend_designers takes no model arguments and returns its receipt', asy
 
 test('a model-supplied argument is refused and poisons that run', async () => {
   const gateway = create(), original = globalThis.fetch;
-  globalThis.fetch = (async () => {
+  globalThis.fetch = (async (_url: unknown, options?: RequestInit) => {
+    activeTicket = JSON.parse(String(options?.body)).variables.workflowTicket;
     const response = await call(gateway, 'recommend_designers', '{"style":"北欧"}');
     assert.equal(response.status, 422);
     assert.deepEqual(await response.json(), { error: 'invalid_message' });
     return Response.json(packet);
   }) as typeof fetch;
   try {
-    await assert.rejects(gateway.run([{ role: 'user', content: '看看北欧风的设计师' }], {
+    await assert.rejects(gateway.run('1454', [{ role: 'user', content: '看看北欧风的设计师' }], {
       authorize: async () => undefined,
       tool: async () => ({ status: 'ready', text: '不应被调用。' }),
     }), /invalid_message/);
@@ -79,7 +86,8 @@ test('a model-supplied argument is refused and poisons that run', async () => {
 test('recommend_public_sites is a zero-argument tool and refuses a model-supplied place', async () => {
   const gateway = create(), original = globalThis.fetch;
   let receipt: unknown;
-  globalThis.fetch = (async () => {
+  globalThis.fetch = (async (_url: unknown, options?: RequestInit) => {
+    activeTicket = JSON.parse(String(options?.body)).variables.workflowTicket;
     const response = await call(gateway, 'recommend_public_sites', '{}');
     assert.equal(response.status, 200);
     receipt = await response.json();
@@ -87,7 +95,7 @@ test('recommend_public_sites is a zero-argument tool and refuses a model-supplie
     return Response.json(packet);
   }) as typeof fetch;
   try {
-    await assert.rejects(gateway.run([{ role: 'user', content: '周围有什么工地？' }], {
+    await assert.rejects(gateway.run('1454', [{ role: 'user', content: '周围有什么工地？' }], {
       authorize: async () => undefined,
       tool: async input => {
         assert.equal(input.name, 'recommend_public_sites');
@@ -97,6 +105,54 @@ test('recommend_public_sites is a zero-argument tool and refuses a model-supplie
   } finally { globalThis.fetch = original; }
   assert.deepEqual(receipt, { status: 'ready', text: '按你所在的位置（宜昌市·西陵区）找到1个已授权公开的工地。', tool: 'recommend_public_sites' });
   assert.equal((await call(gateway, 'recommend_public_sites', '{}')).status, 409);
+});
+
+test('two enterprises keep separate bridge keys, tickets and execution slots', async () => {
+  const keyA = 'k'.repeat(32), keyB = 'm'.repeat(32), appA = 'a'.repeat(24), appB = 'b'.repeat(24);
+  const gateway = new FastGPTAgentV2([
+    { protocol: 'fastgpt-agent-v2-v1', enterpriseId: '1454', appId: appA, model: 'labelled-model',
+      bridgeKey: keyA, baseUrl: 'http://127.0.0.1:18300', apiKey: 'test-key', record: () => undefined },
+    { protocol: 'fastgpt-agent-v2-v1', enterpriseId: '2884', appId: appB, model: 'labelled-model',
+      bridgeKey: keyB, baseUrl: 'http://127.0.0.1:18300', apiKey: 'test-key', record: () => undefined },
+  ]);
+  const original = globalThis.fetch;
+  let releaseA!: () => void;
+  const gateA = new Promise<void>(resolve => { releaseA = resolve; });
+  const seen: string[] = [];
+  globalThis.fetch = (async (_url: unknown, options?: RequestInit) => {
+    const body = JSON.parse(String(options?.body));
+    const enterprise = body.appId === appA ? '1454' : '2884';
+    const key = enterprise === '1454' ? keyA : keyB;
+    seen.push(enterprise);
+    // Each enterprise holds its own ticket and slot: enterprise A's long call
+    // does not make enterprise B busy.
+    assert.equal(gateway.busy(enterprise), true);
+    const own = await call(gateway, 'recommend_designers', '{}', { key, ticket: body.variables.workflowTicket });
+    assert.equal(own.status, 200);
+    const foreign = await call(gateway, 'recommend_designers', '{}',
+      { key: enterprise === '1454' ? keyB : keyA, ticket: body.variables.workflowTicket });
+    assert.equal(foreign.status, 404, 'a ticket from one enterprise cannot use another bridge key');
+    if (enterprise === '1454') await gateA;
+    else {
+      assert.equal(gateway.busy('1454'), true, 'enterprise B runs while A is still active');
+      releaseA();
+    }
+    return Response.json(packet);
+  }) as typeof fetch;
+  try {
+    const a = gateway.run('1454', [{ role: 'user', content: 'A' }], {
+      authorize: async () => undefined,
+      tool: async () => ({ status: 'ready', text: 'A' }),
+    });
+    const b = gateway.run('2884', [{ role: 'user', content: 'B' }], {
+      authorize: async () => undefined,
+      tool: async () => ({ status: 'ready', text: 'B' }),
+    });
+    await Promise.all([a, b]);
+  } finally { globalThis.fetch = original; }
+  assert.deepEqual(seen.sort(), ['1454', '2884']);
+  assert.equal(gateway.busy('1454'), false);
+  assert.equal(gateway.busy('2884'), false);
 });
 
 test('nearby public site text names only the authorized region and never claims distance', () => {
@@ -134,16 +190,48 @@ test('a ready nearby result keeps its model answer and distance boundary', () =>
 
 test('a failed tool poisons the run instead of returning partial data', async () => {
   const gateway = create(), original = globalThis.fetch;
-  globalThis.fetch = (async () => {
+  globalThis.fetch = (async (_url: unknown, options?: RequestInit) => {
+    activeTicket = JSON.parse(String(options?.body)).variables.workflowTicket;
     const response = await call(gateway, 'recommend_designers', '{}');
     assert.equal(response.status, 409);
     assert.deepEqual(await response.json(), { error: 'context_changed' });
     return Response.json({ choices: [{ message: { content: '好的' } }] });
   }) as typeof fetch;
   try {
-    await assert.rejects(gateway.run([{ role: 'user', content: '看看设计师' }], {
+    await assert.rejects(gateway.run('1454', [{ role: 'user', content: '看看设计师' }], {
       authorize: async () => undefined,
       tool: async () => { fail('context_changed'); },
     }), /context_changed/);
   } finally { globalThis.fetch = original; }
+});
+
+test('a late callback from a finished run cannot enter the next run', async () => {
+  activeTicket = null;
+  const gateway = create(), original = globalThis.fetch;
+  let firstTicket = '';
+  let toolCalls = 0;
+  globalThis.fetch = (async (_url: unknown, options?: RequestInit) => {
+    const body = JSON.parse(String(options?.body));
+    if (body.messages?.[0]?.content === 'A') {
+      firstTicket = body.variables.workflowTicket;
+      return Response.json(packet);
+    }
+    activeTicket = body.variables.workflowTicket;
+    // A has finished; B is the only active run. A's stale ticket must not
+    // resolve to B's ports.
+    assert.equal((await call(gateway, 'recommend_designers', '{}', { ticket: firstTicket })).status, 409);
+    assert.equal((await call(gateway, 'recommend_designers', '{}')).status, 200);
+    return Response.json(packet);
+  }) as typeof fetch;
+  try {
+    await gateway.run('1454', [{ role: 'user', content: 'A' }], {
+      authorize: async () => undefined,
+      tool: async () => { toolCalls += 1; return { status: 'ready', text: 'A' }; },
+    });
+    await gateway.run('1454', [{ role: 'user', content: 'B' }], {
+      authorize: async () => undefined,
+      tool: async () => { toolCalls += 1; return { status: 'ready', text: 'B' }; },
+    });
+  } finally { globalThis.fetch = original; activeTicket = null; }
+  assert.equal(toolCalls, 1, 'only B may call a tool');
 });
