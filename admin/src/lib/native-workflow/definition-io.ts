@@ -8,11 +8,14 @@ import { validateDefinition } from './validate';
  * for transport, SQL, code, secret and file-path content before validation.
  */
 export function parseDefinitionJson(text: string): WorkflowDefinition {
-  if (typeof text !== 'string' || text.trim() === '') {
-    throw new WorkflowDefinitionError([workflowIssue('invalid_json', '$', 'definition JSON must be a non-empty string')]);
+  if (typeof text !== 'string') {
+    throw new WorkflowDefinitionError([workflowIssue('invalid_json', '$', 'definition JSON must be a string')]);
   }
-  if (Buffer.byteLength(text, 'utf8') > WORKFLOW_BOUNDS.maxDefinitionBytes) {
-    throw new WorkflowDefinitionError([workflowIssue('definition_too_large', '$', 'definition exceeds the size bound')]);
+  if (new TextEncoder().encode(text).length > WORKFLOW_BOUNDS.maxImportTextBytes) {
+    throw new WorkflowDefinitionError([workflowIssue('definition_too_large', '$', 'import text exceeds the size bound')]);
+  }
+  if (text.trim() === '') {
+    throw new WorkflowDefinitionError([workflowIssue('invalid_json', '$', 'definition JSON must be a non-empty string')]);
   }
   let parsed: unknown;
   try {
@@ -25,8 +28,12 @@ export function parseDefinitionJson(text: string): WorkflowDefinition {
   return result.definition;
 }
 
+/**
+ * Canonical (minified) export. `validateDefinition` enforces the same canonical
+ * byte bound on import, so a successful export always re-imports.
+ */
 export function exportDefinitionJson(definition: WorkflowDefinition): string {
   const result = validateDefinition(definition);
   if (!result.ok) throw new WorkflowDefinitionError([...result.issues]);
-  return `${JSON.stringify(JSON.parse(canonicalJson(result.definition)), null, 2)}\n`;
+  return `${canonicalJson(result.definition)}\n`;
 }

@@ -13,7 +13,13 @@ export const WORKFLOW_BOUNDS = {
   maxNodes: 32,
   maxEdges: 64,
   maxInputsPerNode: 16,
+  /** Canonical JSON size of a validated definition, shared by import/export. */
   maxDefinitionBytes: 64 * 1024,
+  /** Raw import text cap; leaves room for whitespace around valid canonical JSON. */
+  maxImportTextBytes: 512 * 1024,
+  /** Import safety scan limits: prevent stack overflow and traversal abuse. */
+  maxScanDepth: 32,
+  maxScanNodes: 10_000,
   maxExecutionSteps: 64,
   maxConfigStringLength: 500,
 } as const;

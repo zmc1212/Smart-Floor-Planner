@@ -39,15 +39,25 @@ Supporting exports: `definitionDigest`, `capabilityCatalog`, `getCapability`,
   Inputs are references `{ nodeId, outputPath }`; there are no literal inputs.
 - Edge: `{ from, to, when? }`. `when` is only valid on `condition` edges and is
   unique per branch. Non-condition nodes have at most one outgoing edge.
-- Bounds: 32 nodes, 64 edges, 16 input mappings per node, 64 KB imported JSON,
-  64 execution steps.
+- Bounds: 32 nodes, 64 edges, 16 input mappings per node, 64 KB canonical
+  definition JSON (one rule shared by import and export), 512 KB raw import
+  text, scan depth 32, 10,000 scanned values, 64 execution steps.
 - Entry must be the only trigger, have one unconditional outgoing edge and no
   incoming edge. All nodes must be reachable. `save_result`/`deliver_inapp`
   nodes may be terminal; every save needs a path to a delivery node. Cycles,
   duplicate nodes/edges, unknown nodes/capabilities, missing outputs, type
   mismatches and forward references are rejected.
+- Input references reject self-references and non-mandatory sources. A source
+  must dominate the consumer (every path from the entry passes through it).
+  Common pre-branch sources are allowed; a source available on only one branch
+  after a merge is rejected with `input_not_mandatory`.
+- Capability names, input ports, output ports, required inputs and template
+  placeholders use own-property whitelists. Inherited names such as
+  `constructor` or `toString` are never treated as contract entries.
 - Imported JSON may not contain URLs, SQL, code/`require`/`import()`, secrets,
-  file paths, `${...}` expressions or unknown transport fields.
+  file paths, `${...}` expressions or unknown transport fields. The safety scan
+  is depth- and size-bounded and reports `scan_depth_exceeded`,
+  `scan_nodes_exceeded` or `cyclic_structure` instead of overflowing the stack.
 
 ## Six controlled node types
 
@@ -68,15 +78,27 @@ capability. A graph can never assert engineering acceptance.
 
 `createRunState(plan, { runId, mode })` creates `running`, and `advance`:
 
-1. `start` validates the trigger event against `inputSchema`, records the event
+1. Before handling any event, the state's `definitionId`, `revision` and
+   `digest` must match the compiled plan. Cross-version continuation throws
+   `run_definition_mismatch`; a published revision is never silently reused.
+2. `start` validates the trigger event against `inputSchema`, records the event
    ID, stores trigger outputs and pumps deterministic nodes until a host effect
    or a terminal state.
-2. `observation` matches the pending node, validates all declared output ports
+3. `observation` matches the pending node, validates all declared output ports
    and their types, stores only declared outputs, then pumps.
-3. `pending` contains at most one descriptive operation (`nodeVersion`,
+4. `pending` contains at most one descriptive operation (`nodeVersion`,
    resolved input, `simulation` marker, idempotency key). No effect is executed.
-4. Failures become `failed` with the original error; unmatched condition
-   branches become `halted`; terminal save/delivery becomes `completed`.
+5. Observation outputs, run state and pending inputs are deep-copied at their
+   boundaries; later edits to caller-owned JSON cannot mutate earlier snapshots.
+6. Save/delivery observations must confirm `saved`/`delivered` is `true` and
+   carry a receipt with a `receiptId`; simulation receipts must also be marked
+   `simulated: true`. `saved: false`, `delivered: false`, a missing/invalid
+   receipt or an unmarked simulation receipt fails the run with
+   `save_not_confirmed`, `delivery_not_confirmed`, `invalid_receipt` or
+   `receipt_not_simulated` and never completes it.
+7. Failures become `failed` with the original error; unmatched condition
+   branches become `halted`; a validated terminal save/delivery becomes
+   `completed`.
 
 Duplicate event IDs are ignored before any operation is produced. Terminal runs
 reject new events except a duplicate of the processed event.
@@ -97,10 +119,13 @@ simulate({
   produce no second run.
 - Failures are injected per node and surfaced with their own codes. A missing
   fixture fails with `fixture_missing`.
-- `save_result`/`deliver_inapp` fixtures must confirm the effect and provide a
-  `receiptId`; the simulator forces `simulated: true` and rejects receipts that
-  claim to be real (`fixture_receipt_not_simulated`).
+- Save/delivery fixtures follow the same core semantics: false confirmations
+  fail with `save_not_confirmed`/`delivery_not_confirmed`, invalid receipts fail
+  with `invalid_receipt`, and a fixture claiming a real receipt fails with
+  `receipt_not_simulated`. Valid receipts are stamped with `simulated: true`.
 - Every trace entry is marked `mode: 'simulation'`.
+- `dailyReportFixtures` keeps daily records inside the daily period and uses a
+  daily title; weekly fixtures keep raw records inside the weekly period.
 
 ## Templates
 
@@ -120,7 +145,7 @@ simulate({
 From `admin/` (no database, no Worker, no model):
 
 ```powershell
-npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts
+npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts
 npx tsx src/lib/native-workflow/playground/simulate.ts
 ```
 

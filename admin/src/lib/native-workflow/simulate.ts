@@ -1,7 +1,7 @@
 import { advance, createRunState, type WorkflowEvent } from './advance';
 import { compileDefinition } from './compile';
 import { WorkflowRuntimeError, workflowIssue, type WorkflowIssue } from './errors';
-import { isPlainObject } from './guards';
+import { cloneJsonValue, isPlainObject, ownValue } from './guards';
 import type {
   PendingOperation,
   RunStatus,
@@ -177,7 +177,7 @@ function observeWithFixture(
   fixtures: SimulationFixtures,
   at: string,
 ): { event: WorkflowEvent; fixture: FixtureLogEntry } {
-  const fixture = fixtures.nodes[operation.nodeId];
+  const fixture = ownValue(fixtures.nodes, operation.nodeId);
   if (!fixture) {
     return {
       event: {
@@ -213,34 +213,30 @@ function applySimulationReceipt(
   operation: PendingOperation,
   outputs: Readonly<Record<string, WorkflowValue>>,
 ): { ok: true; outputs: Record<string, WorkflowValue> } | { ok: false; issue: WorkflowIssue } {
-  if (operation.effect !== 'save' && operation.effect !== 'deliver') return { ok: true, outputs: { ...outputs } };
-  const confirmedKey = operation.effect === 'save' ? 'saved' : 'delivered';
+  if (operation.effect !== 'save' && operation.effect !== 'deliver') {
+    return { ok: true, outputs: cloneJsonValue({ ...outputs }) };
+  }
   const receiptKey = operation.effect === 'save' ? 'saveReceipt' : 'deliveryReceipt';
-  const path = `nodes.${operation.nodeId}.${receiptKey}`;
-  if (outputs[confirmedKey] !== true) {
-    return {
-      ok: false,
-      issue: workflowIssue(`fixture_${operation.effect}_not_confirmed`, path, 'simulation fixture did not confirm the effect'),
-    };
-  }
-  const receipt = outputs[receiptKey];
+  const receipt = ownValue(outputs, receiptKey);
   if (!isPlainObject(receipt)) {
+    // The core reports `invalid_receipt`; the simulator does not invent one.
+    return { ok: true, outputs: cloneJsonValue({ ...outputs }) };
+  }
+  if (ownValue(receipt, 'simulated') === false) {
     return {
       ok: false,
-      issue: workflowIssue('fixture_receipt_missing', path, 'simulation fixture needs a receipt object'),
+      issue: workflowIssue(
+        'receipt_not_simulated',
+        `nodes.${operation.nodeId}.${receiptKey}.simulated`,
+        'simulation fixtures may not carry real receipts',
+      ),
     };
   }
-  if (typeof receipt.receiptId !== 'string' || receipt.receiptId === '') {
-    return {
-      ok: false,
-      issue: workflowIssue('fixture_receipt_missing', `${path}.receiptId`, 'simulation receipt needs an id'),
-    };
-  }
-  if (receipt.simulated === false) {
-    return {
-      ok: false,
-      issue: workflowIssue('fixture_receipt_not_simulated', path, 'simulation fixtures may not carry real receipts'),
-    };
-  }
-  return { ok: true, outputs: { ...outputs, [receiptKey]: { ...receipt, simulated: true } } };
+  return {
+    ok: true,
+    outputs: {
+      ...cloneJsonValue({ ...outputs }),
+      [receiptKey]: { ...cloneJsonValue(receipt), simulated: true },
+    },
+  };
 }

@@ -1,5 +1,6 @@
+import { canonicalJson } from './canonical';
 import { workflowIssue, type WorkflowIssue } from './errors';
-import { isJsonScalar, isPlainObject } from './guards';
+import { hasOwn, isJsonScalar, isPlainObject } from './guards';
 import { getCapability, validateCapabilityConfig, type CapabilitySpec } from './registry';
 import {
   WORKFLOW_BOUNDS,
@@ -88,7 +89,32 @@ function checkKnownKeys(
   }
 }
 
-function scanForbidden(value: unknown, path: string, issues: WorkflowIssue[]): void {
+interface ScanContext {
+  count: number;
+  seen: WeakSet<object>;
+  stack: WeakSet<object>;
+  stopped: boolean;
+}
+
+function scanForbidden(
+  value: unknown,
+  path: string,
+  issues: WorkflowIssue[],
+  context: ScanContext,
+  depth: number,
+): void {
+  if (context.stopped) return;
+  context.count += 1;
+  if (context.count > WORKFLOW_BOUNDS.maxScanNodes) {
+    issues.push(workflowIssue('scan_nodes_exceeded', '$', 'imported definition exceeds the scan node limit'));
+    context.stopped = true;
+    return;
+  }
+  if (depth > WORKFLOW_BOUNDS.maxScanDepth) {
+    issues.push(workflowIssue('scan_depth_exceeded', path, 'imported definition is nested too deeply'));
+    context.stopped = true;
+    return;
+  }
   if (typeof value === 'string') {
     for (const pattern of forbiddenValuePatterns) {
       if (pattern.test(value)) {
@@ -100,18 +126,26 @@ function scanForbidden(value: unknown, path: string, issues: WorkflowIssue[]): v
     }
     return;
   }
-  if (Array.isArray(value)) {
-    value.forEach((item, index) => scanForbidden(item, `${path}[${index}]`, issues));
+  if (!Array.isArray(value) && !isPlainObject(value)) return;
+  const container: object = value;
+  if (context.stack.has(container)) {
+    issues.push(workflowIssue('cyclic_structure', path, 'imported definition contains a cyclic structure'));
     return;
   }
-  if (isPlainObject(value)) {
+  if (context.seen.has(container)) return;
+  context.seen.add(container);
+  context.stack.add(container);
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => scanForbidden(item, `${path}[${index}]`, issues, context, depth + 1));
+  } else {
     for (const [key, item] of Object.entries(value)) {
       if (forbiddenKeys.has(key.toLowerCase())) {
         issues.push(workflowIssue('forbidden_key', `${path}.${key}`, `field "${key}" is not allowed in imported definitions`));
       }
-      scanForbidden(item, `${path}.${key}`, issues);
+      scanForbidden(item, `${path}.${key}`, issues, context, depth + 1);
     }
   }
+  context.stack.delete(container);
 }
 
 function parseInputSchema(raw: unknown, path: string, issues: WorkflowIssue[]): WorkflowInputSchema | null {
@@ -206,7 +240,7 @@ function parseNode(raw: unknown, path: string, issues: WorkflowIssue[]): Workflo
     }
     for (const [name, value] of entries) {
       const inputPath = `${path}.inputs.${name}`;
-      if (spec && !(name in spec.inputs)) {
+      if (spec && !hasOwn(spec.inputs, name)) {
         issues.push(workflowIssue('unknown_input', inputPath, `input "${name}" is not defined by ${capabilityRef}`));
       }
       if (!isPlainObject(value)) {
@@ -222,7 +256,7 @@ function parseNode(raw: unknown, path: string, issues: WorkflowIssue[]): Workflo
     }
     if (spec) {
       for (const required of Object.keys(spec.inputs)) {
-        if (!(required in inputsRaw)) {
+        if (!hasOwn(inputsRaw, required)) {
           issues.push(workflowIssue('missing_input', `${path}.inputs.${required}`, `input "${required}" is required`));
         }
       }
@@ -285,7 +319,7 @@ export function validateDefinition(raw: unknown): ValidationResult {
     return { ok: false, issues: [workflowIssue('invalid_type', '$', 'definition must be an object')] };
   }
   checkKnownKeys(raw, ROOT_KEYS, '$', issues);
-  scanForbidden(raw, '$', issues);
+  scanForbidden(raw, '$', issues, { count: 0, seen: new WeakSet(), stack: new WeakSet(), stopped: false }, 0);
 
   if (raw.schemaVersion !== WORKFLOW_SCHEMA_VERSION) {
     issues.push(workflowIssue('unsupported_schema_version', '$.schemaVersion', `schemaVersion must be ${WORKFLOW_SCHEMA_VERSION}`));
@@ -494,8 +528,43 @@ export function validateDefinition(raw: unknown): ValidationResult {
     }
   }
 
-  // Input references: existence, port existence, type compatibility and
-  // upstream (ancestor) dependency.
+  // Dominators: a reference source is mandatory only when every path from the
+  // entry passes through it. This allows common pre-branch sources and rejects
+  // branch-only sources after a merge.
+  let dominators: Map<string, Set<string>> | null = null;
+  if (order.length === nodeMap.size) {
+    dominators = new Map<string, Set<string>>();
+    for (const nodeId of order) {
+      const predecessors = (incoming.get(nodeId) ?? []).map((edge) => edge.from);
+      if (predecessors.length === 0) {
+        dominators.set(nodeId, new Set([nodeId]));
+        continue;
+      }
+      let intersection: Set<string> | null = null;
+      for (const predecessor of predecessors) {
+        const predecessorDominators = dominators.get(predecessor);
+        if (!predecessorDominators) {
+          intersection = null;
+          break;
+        }
+        if (intersection === null) {
+          intersection = new Set(predecessorDominators);
+        } else {
+          const kept: string[] = [];
+          for (const id of intersection) {
+            if (predecessorDominators.has(id)) kept.push(id);
+          }
+          intersection = new Set(kept);
+        }
+      }
+      const nodeDominators = intersection ?? new Set<string>();
+      nodeDominators.add(nodeId);
+      dominators.set(nodeId, nodeDominators);
+    }
+  }
+
+  // Input references: existence, port existence, type compatibility, upstream
+  // dependency and mandatory-source (dominator) checks.
   for (const node of nodeMap.values()) {
     const path = nodePath.get(node.nodeId) ?? '$.nodes';
     const nodeSpec = getCapability(node.capabilityRef);
@@ -507,9 +576,13 @@ export function validateDefinition(raw: unknown): ValidationResult {
         issues.push(workflowIssue('unknown_input_node', inputPath, `node "${ref.nodeId}" does not exist`));
         continue;
       }
+      if (ref.nodeId === node.nodeId) {
+        issues.push(workflowIssue('self_input_reference', inputPath, 'a node may not read its own output'));
+        continue;
+      }
       const sourceSpec: CapabilitySpec | undefined = getCapability(source.capabilityRef);
       if (!sourceSpec) continue;
-      if (!(ref.outputPath in sourceSpec.outputs)) {
+      if (!hasOwn(sourceSpec.outputs, ref.outputPath)) {
         issues.push(
           workflowIssue('unknown_output_path', inputPath, `"${ref.nodeId}" has no output "${ref.outputPath}"`),
         );
@@ -526,21 +599,45 @@ export function validateDefinition(raw: unknown): ValidationResult {
       }
       if (!ancestors.has(ref.nodeId)) {
         issues.push(workflowIssue('input_not_upstream', inputPath, `"${ref.nodeId}" is not upstream of "${node.nodeId}"`));
+        continue;
+      }
+      if (dominators) {
+        const mandatory = dominators.get(node.nodeId);
+        if (!mandatory || !mandatory.has(ref.nodeId)) {
+          issues.push(
+            workflowIssue(
+              'input_not_mandatory',
+              inputPath,
+              `"${ref.nodeId}" is not on every path to "${node.nodeId}"`,
+            ),
+          );
+        }
       }
     }
   }
 
   if (issues.length > 0) return { ok: false, issues };
-  return {
-    ok: true,
-    definition: {
-      schemaVersion: WORKFLOW_SCHEMA_VERSION,
-      definitionId,
-      revision: revision as number,
-      entryNodeId,
-      inputSchema: inputSchema as WorkflowInputSchema,
-      nodes: [...nodeMap.values()],
-      edges,
-    },
+  const definition: WorkflowDefinition = {
+    schemaVersion: WORKFLOW_SCHEMA_VERSION,
+    definitionId,
+    revision: revision as number,
+    entryNodeId,
+    inputSchema: inputSchema as WorkflowInputSchema,
+    nodes: [...nodeMap.values()],
+    edges,
   };
+  const canonicalBytes = new TextEncoder().encode(canonicalJson(definition)).length;
+  if (canonicalBytes > WORKFLOW_BOUNDS.maxDefinitionBytes) {
+    return {
+      ok: false,
+      issues: [
+        workflowIssue(
+          'definition_too_large',
+          '$',
+          `canonical definition exceeds ${WORKFLOW_BOUNDS.maxDefinitionBytes} bytes`,
+        ),
+      ],
+    };
+  }
+  return { ok: true, definition };
 }

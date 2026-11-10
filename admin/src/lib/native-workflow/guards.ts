@@ -13,6 +13,27 @@ export function isJsonScalar(value: unknown): value is string | number | boolean
   );
 }
 
+/** Own-property checks only; inherited members such as `constructor` are not contract entries. */
+export function hasOwn(record: object | null | undefined, key: string): boolean {
+  return record !== null && record !== undefined && Object.prototype.hasOwnProperty.call(record, key);
+}
+
+export function ownValue<T>(record: Readonly<Record<string, T>> | undefined, key: string): T | undefined {
+  if (!record || !hasOwn(record, key)) return undefined;
+  return record[key];
+}
+
+/** JSON value copy used at observation, state and pending-operation boundaries. */
+export function cloneJsonValue<T>(value: T): T {
+  if (Array.isArray(value)) return value.map((item) => cloneJsonValue(item)) as unknown as T;
+  if (isPlainObject(value)) {
+    const result: Record<string, unknown> = {};
+    for (const key of Object.keys(value)) result[key] = cloneJsonValue(value[key]);
+    return result as T;
+  }
+  return value;
+}
+
 export function valueMatchesType(value: unknown, type: ValueType): boolean {
   switch (type) {
     case 'string':

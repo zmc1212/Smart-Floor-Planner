@@ -12,7 +12,12 @@ import {
   type SimulationResult,
 } from '../index';
 import { stageReminderFixtures, stageReminderScenario } from '../fixtures/stage-reminder';
-import { periodReportFixtures, weeklyReportScenario } from '../fixtures/period-report';
+import {
+  dailyReportFixtures,
+  dailyReportScenario,
+  periodReportFixtures,
+  weeklyReportScenario,
+} from '../fixtures/period-report';
 
 function failureVariant(base: SimulationFixtures, nodeId: string, code: string): SimulationFixtures {
   const nodes = structuredClone(base.nodes) as Record<string, SimulationFixtures['nodes'][string]>;
@@ -80,6 +85,11 @@ const scenarios = [
     definition: weeklyDefinition,
     scenario: weeklyReportScenario,
     fixtures: periodReportFixtures,
+  })),
+  summarise('daily report', simulate({
+    definition: createPeriodReportDefinition('daily'),
+    scenario: dailyReportScenario,
+    fixtures: dailyReportFixtures,
   })),
   summarise('weekly report (delivery failure fixture)', simulate({
     definition: weeklyDefinition,

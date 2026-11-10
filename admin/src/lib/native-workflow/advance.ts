@@ -1,6 +1,7 @@
 import type { CompiledNode, CompiledWorkflowPlan } from './compile';
 import { WorkflowRuntimeError, workflowIssue, type WorkflowIssue } from './errors';
-import { valueMatchesType } from './guards';
+import { cloneJsonValue, ownValue, valueMatchesType } from './guards';
+import { validateEffectReceipt } from './receipts';
 import {
   WORKFLOW_BOUNDS,
   type PendingOperation,
@@ -60,12 +61,17 @@ export function createRunState(
 
 function cloneState(state: WorkflowRunState): WorkflowRunState {
   const outputs: Record<string, Record<string, WorkflowValue>> = {};
-  for (const [nodeId, ports] of Object.entries(state.outputs)) outputs[nodeId] = { ...ports };
+  for (const [nodeId, ports] of Object.entries(state.outputs)) {
+    const owned: Record<string, WorkflowValue> = {};
+    for (const [port, value] of Object.entries(ports)) owned[port] = cloneJsonValue(value);
+    outputs[nodeId] = owned;
+  }
   return {
     ...state,
     visitedNodeIds: [...state.visitedNodeIds],
     processedEventIds: [...state.processedEventIds],
     outputs,
+    error: state.error ? { ...state.error } : null,
   };
 }
 
@@ -146,15 +152,15 @@ function resolveInputs(
 ): Record<string, WorkflowValue> {
   const resolved: Record<string, WorkflowValue> = {};
   for (const [name, ref] of Object.entries(node.inputs)) {
-    const ports = outputs[ref.nodeId];
-    const value = ports ? ports[ref.outputPath] : undefined;
+    const ports = ownValue(outputs, ref.nodeId);
+    const value = ports ? ownValue(ports, ref.outputPath) : undefined;
     if (value === undefined) {
       throw new WorkflowRuntimeError(
         'input_unresolved',
         `${node.nodeId}.${name} <- ${ref.nodeId}.${ref.outputPath} is not available`,
       );
     }
-    resolved[name] = value;
+    resolved[name] = cloneJsonValue(value);
   }
   return resolved;
 }
@@ -208,7 +214,7 @@ function validateObservation(
 ): { ok: true; outputs: Record<string, WorkflowValue> } | { ok: false; issue: WorkflowIssue } {
   const accepted: Record<string, WorkflowValue> = {};
   for (const [port, type] of Object.entries(node.outputTypes)) {
-    const value = outputs[port];
+    const value = ownValue(outputs, port);
     if (value === undefined) {
       return {
         ok: false,
@@ -227,6 +233,12 @@ function validateObservation(
 }
 
 export function advance(plan: CompiledWorkflowPlan, state: WorkflowRunState, event: WorkflowEvent): AdvanceResult {
+  if (state.definitionId !== plan.definitionId || state.revision !== plan.revision || state.digest !== plan.digest) {
+    throw new WorkflowRuntimeError(
+      'run_definition_mismatch',
+      `state ${state.definitionId}@${state.revision}#${state.digest.slice(0, 12)} does not match plan ${plan.definitionId}@${plan.revision}#${plan.digest.slice(0, 12)}`,
+    );
+  }
   const isStart = event.type === 'start';
   if (isStart && state.processedEventIds.includes(event.event.eventId)) {
     const duplicate = cloneState(state);
@@ -250,7 +262,7 @@ export function advance(plan: CompiledWorkflowPlan, state: WorkflowRunState, eve
       throw new WorkflowRuntimeError('run_already_started', 'run is not positioned at the entry node');
     }
     const payload = triggerPayload(plan, event.event);
-    const entry = plan.nodes[plan.entryNodeId];
+    const entry = ownValue(plan.nodes, plan.entryNodeId);
     if (!entry || entry.type !== 'trigger') {
       throw new WorkflowRuntimeError('invalid_plan', 'entry node is not a trigger');
     }
@@ -278,12 +290,12 @@ export function advance(plan: CompiledWorkflowPlan, state: WorkflowRunState, eve
       `expected ${next.pendingNodeId}, received ${event.nodeId}`,
     );
   }
-  const node = plan.nodes[event.nodeId];
+  const node = ownValue(plan.nodes, event.nodeId);
   if (!node) throw new WorkflowRuntimeError('invalid_plan', `unknown pending node ${event.nodeId}`);
 
   if (event.status === 'failed') {
     next.status = 'failed';
-    next.error = event.error;
+    next.error = { ...event.error };
     next.pendingNodeId = null;
     pushTrace(next, trace, event.at, 'node_failed', node.nodeId, node.type, {
       code: event.error.code,
@@ -297,9 +309,16 @@ export function advance(plan: CompiledWorkflowPlan, state: WorkflowRunState, eve
     failRun(next, trace, event.at, validated.issue, node.type);
     return { state: next, pending, trace };
   }
-  next.outputs[node.nodeId] = validated.outputs;
+  const ownedOutputs: Record<string, WorkflowValue> = {};
+  for (const [port, value] of Object.entries(validated.outputs)) ownedOutputs[port] = cloneJsonValue(value);
+  next.outputs[node.nodeId] = ownedOutputs;
   next.pendingNodeId = null;
   next.status = 'running';
+  const receiptIssue = validateEffectReceipt(node, ownedOutputs, next.mode);
+  if (receiptIssue) {
+    failRun(next, trace, event.at, receiptIssue, node.type);
+    return { state: next, pending, trace };
+  }
   pushTrace(next, trace, event.at, 'node_succeeded', node.nodeId, node.type, { effect: node.effect });
   pump(plan, next, node.nodeId, event.at, trace, pending);
   return { state: next, pending, trace };
@@ -324,7 +343,7 @@ function pump(
     state.stepCount += 1;
     state.currentNodeId = nextNodeId;
     state.visitedNodeIds.push(nextNodeId);
-    const node = plan.nodes[nextNodeId];
+    const node = ownValue(plan.nodes, nextNodeId);
     if (!node) {
       failRun(state, trace, at, workflowIssue('invalid_plan', '$', `unknown node ${nextNodeId}`));
       return;
@@ -389,14 +408,15 @@ function route(
   at: string,
   trace: WorkflowTraceEntry[],
 ): string | null {
-  const node = plan.nodes[completedNodeId];
+  const node = ownValue(plan.nodes, completedNodeId);
   if (!node) {
     failRun(state, trace, at, workflowIssue('invalid_plan', '$', `unknown node ${completedNodeId}`));
     return null;
   }
-  const edges = plan.outgoing[completedNodeId] ?? [];
+  const edges = ownValue(plan.outgoing, completedNodeId) ?? [];
   if (node.type === 'condition') {
-    const result = Boolean(state.outputs[completedNodeId]?.result);
+    const ports = ownValue(state.outputs, completedNodeId);
+    const result = Boolean(ports ? ownValue(ports, 'result') : undefined);
     const branch = result ? 'true' : 'false';
     const edge = edges.find((candidate) => candidate.when === branch);
     if (!edge) {

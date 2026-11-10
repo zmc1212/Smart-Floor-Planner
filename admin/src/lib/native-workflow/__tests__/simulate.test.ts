@@ -10,7 +10,7 @@ import {
   type SimulationRun,
 } from '../index';
 import { stageReminderFixtures, stageReminderScenario } from '../fixtures/stage-reminder';
-import { dailyReportScenario, periodReportFixtures, weeklyReportScenario } from '../fixtures/period-report';
+import { dailyReportFixtures, dailyReportScenario, periodReportFixtures, weeklyReportScenario } from '../fixtures/period-report';
 
 function mutableFixtures(base: SimulationFixtures): { nodes: Record<string, NodeFixture> } {
   return structuredClone(base) as { nodes: Record<string, NodeFixture> };
@@ -173,7 +173,7 @@ test('simulated receipts cannot claim real persistence or delivery', () => {
     fixtures: rejected,
   }));
   assert.equal(rejectedRun.status, 'failed');
-  assert.equal(rejectedRun.error?.code, 'fixture_receipt_not_simulated');
+  assert.equal(rejectedRun.error?.code, 'receipt_not_simulated');
 
   const unconfirmed = mutableFixtures(stageReminderFixtures);
   unconfirmed.nodes['deliver-model'] = {
@@ -186,7 +186,7 @@ test('simulated receipts cannot claim real persistence or delivery', () => {
     fixtures: unconfirmed,
   }));
   assert.equal(unconfirmedRun.status, 'failed');
-  assert.equal(unconfirmedRun.error?.code, 'fixture_deliver_not_confirmed');
+  assert.equal(unconfirmedRun.error?.code, 'delivery_not_confirmed');
 
   const unmarked = mutableFixtures(stageReminderFixtures);
   unmarked.nodes['save-model'] = {
@@ -206,7 +206,7 @@ test('daily and weekly share the period contract and reject mismatched events', 
   const daily = firstRun(simulate({
     definition: createPeriodReportDefinition('daily'),
     scenario: dailyReportScenario,
-    fixtures: periodReportFixtures,
+    fixtures: dailyReportFixtures,
   }));
   assert.equal(daily.status, 'completed');
   assert.equal(daily.outcome, 'delivered');
@@ -214,6 +214,14 @@ test('daily and weekly share the period contract and reject mismatched events', 
   assert.ok(dailyCompose);
   assert.equal(dailyCompose.input.periodKind, 'daily');
   assert.equal(dailyCompose.input.periodStart, '2026-11-10');
+  assert.equal(dailyCompose.input.periodEnd, '2026-11-10');
+  assert.equal(daily.outputs['compose-report']?.title, '施工日报（模拟）');
+  const dailyRecords = dailyCompose.input.records;
+  assert.ok(Array.isArray(dailyRecords));
+  for (const record of dailyRecords) {
+    assert.ok(record && typeof record === 'object' && !Array.isArray(record));
+    assert.equal((record as Record<string, unknown>).occurredAt, '2026-11-10');
+  }
 
   const weekly = firstRun(simulate({
     definition: createPeriodReportDefinition('weekly'),
@@ -222,13 +230,17 @@ test('daily and weekly share the period contract and reject mismatched events', 
   }));
   const weeklyCompose = weekly.proposedOperations.find((operation) => operation.nodeId === 'compose-report');
   assert.ok(weeklyCompose);
+  assert.equal(weekly.outputs['compose-report']?.title, '施工周报（模拟）');
   const records = weeklyCompose.input.records;
   assert.ok(Array.isArray(records));
   assert.equal(records.length, 2);
   for (const record of records) {
     assert.ok(record && typeof record === 'object' && !Array.isArray(record));
-    assert.equal((record as Record<string, unknown>).source, 'construction_record');
-    assert.equal(Object.hasOwn(record as Record<string, unknown>, 'generatedFromDailyReport'), false);
+    const value = record as Record<string, unknown>;
+    assert.equal(value.source, 'construction_record');
+    assert.equal(Object.hasOwn(value, 'generatedFromDailyReport'), false);
+    const occurredAt = String(value.occurredAt);
+    assert.ok(occurredAt >= '2026-11-03' && occurredAt <= '2026-11-09');
   }
 
   const mismatch = firstRun(simulate({

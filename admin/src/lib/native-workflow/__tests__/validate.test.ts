@@ -8,6 +8,7 @@ import {
   exportDefinitionJson,
   parseDefinitionJson,
   validateDefinition,
+  WORKFLOW_BOUNDS,
   WorkflowDefinitionError,
   type JsonValue,
   type WorkflowDefinition,
@@ -253,7 +254,7 @@ test('rejects unsafe config and unsafe imported JSON', () => {
     (error: unknown) => error instanceof WorkflowDefinitionError && error.issues.some((issue) => issue.code === 'invalid_json'),
   );
   assert.throws(
-    () => parseDefinitionJson('x'.repeat(70 * 1024)),
+    () => parseDefinitionJson('x'.repeat(WORKFLOW_BOUNDS.maxImportTextBytes + 1)),
     (error: unknown) =>
       error instanceof WorkflowDefinitionError && error.issues.some((issue) => issue.code === 'definition_too_large'),
   );

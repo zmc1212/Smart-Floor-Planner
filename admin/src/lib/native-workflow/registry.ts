@@ -1,5 +1,5 @@
 import { workflowIssue, type WorkflowIssue } from './errors';
-import { isJsonScalar } from './guards';
+import { hasOwn, isJsonScalar } from './guards';
 import { WORKFLOW_BOUNDS, type JsonValue, type NodeType, type ValueType } from './types';
 
 export type CapabilityEffect = 'none' | 'read' | 'compose' | 'save' | 'deliver';
@@ -177,7 +177,7 @@ export const capabilityCatalog: Readonly<Record<string, CapabilitySpec>> = {
 };
 
 export function getCapability(capabilityRef: string): CapabilitySpec | undefined {
-  return capabilityCatalog[capabilityRef];
+  return hasOwn(capabilityCatalog, capabilityRef) ? capabilityCatalog[capabilityRef] : undefined;
 }
 
 const booleanOps = new Set(['eq', 'ne']);
@@ -255,7 +255,7 @@ export function validateCapabilityConfig(
       }
       for (const match of template.matchAll(templatePlaceholder)) {
         const name = match[1] ?? '';
-        if (!(name in spec.inputs)) {
+        if (!hasOwn(spec.inputs, name)) {
           issues.push(workflowIssue('unknown_template_placeholder', `${path}.template`, `placeholder "${name}" is not an input`));
         }
       }
