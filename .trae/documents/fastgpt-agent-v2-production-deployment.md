@@ -1,192 +1,193 @@
-# FastGPT Agent V2 生产部署计划
+# FastGPT Agent V2 生产上线计划（按评审修订）
 
 ## Context
 
-目标：在生产服务器 `124.70.90.30` 上与 Admin 同机部署自托管 FastGPT，并把小K Agent V2 开放给全部企业。
+原计划方向保留：桥在 Admin、每企业独立 FastGPT 应用与 `bridgeKey`、只迁应用/工具/模型/配置、家客来继续掌握权限与知识来源、先灰度再扩到全部企业。
 
-当前状态：Agent V2 只连接开发隔离试点 `127.0.0.1:18300`，配置只接受一个企业，桥同时只允许一个活跃 run；生产发布脚本不启动 `assistant-worker`，FastGPT 的 9 个容器也从未在生产部署。用户已确认：**只迁移应用与配置，不迁移 Mongo/MinIO 历史数据；全部企业开放；知识开关全部打开。**
+但评审指出两处需要纠正的推断：
 
-## 已确认决策
+1. **不能把“当前工具模板使用静态请求头”当成“FastGPT 4.17.4 无法传每次请求的票据”。** 上游 Agent 工具执行会从工作流变量解析 `resolveReference`，HTTP 工具支持 `headerSecret`，凭据支持 `{ref: ...}`。应先用 `headerSecret.ref` 验证独立运行时请求头，再决定桥的设计。
+2. **多企业实例不等于生产并发。** `assistant-worker` 每次 `/jobs/run` 等待完成再等 2 秒，`processAssistantJob` 每次最多领取一个昂贵任务并等待；只启动一个 worker 仍会全局串行。
 
-| 项 | 决策 |
+因此本轮不直接上生产，先交付 **D0 范围/依赖基线 + D1 请求票据与隔离 + 生产依赖闭环**。D0/D1 不依赖生产 SSH。
+
+源码基线：`c190fd3`。工作区已有 `report-question-plan` 相关未提交修改，D0 盘点时保留，不覆盖。
+
+## 保留的安排
+
+| 安排 | 结论 |
 |---|---|
-| 部署位置 | 与 Admin 同机，生产服务器 `124.70.90.30` |
-| 数据范围 | 只迁 FastGPT 应用/工具集/模型/配置，不迁账号、会话、MinIO 文件 |
-| 企业范围 | 全部 active 企业 |
-| 多企业方式 | 每企业一套 FastGPT 应用 + 独立 `bridgeKey`，同一 `18310` 监听按 key 路由（逻辑多桥） |
-| 知识开关 | 全部企业打开 `enterpriseKnowledgeEnabled` |
-| 服务器权限 | 需要临时 SSH 授权 |
+| 桥运行在 Admin，`assistant-worker` 负责触发 | 保留；生产网络围绕实际执行进程配置 |
+| 每企业独立应用 + 独立 `bridgeKey` | 保留，作为配置隔离和按企业启停手段 |
+| 只迁应用、工具、模型、配置，不搬开发历史 | 保留 |
+| 家客来掌握权限、业务查询、知识来源、引用、任务状态 | 保留 |
+| 配置变化后重启 Admin | 保留；补在途任务处理 |
+| 先一家，再扩全部企业 | 保留；全企业开放是最终目标 |
 
-## 关键事实（先纠正两处）
+## 七个必须调整
 
-1. **桥在 Admin 容器，不在 assistant-worker。** `assistant-worker` 只是轮询 `http://admin:3005/api/internal/assistant/jobs/run` 的触发器；`processAgentV2Answer` 和 `FastGPTWorkflows` 都在 Next.js 进程内执行。因此 FastGPT 的回调地址是 `http://admin:18310`，不是 `assistant-worker:18310`。
-2. **FastGPT 本身不限制多企业。** 它按“应用”管理，不识别我们的 `enterpriseId`。单企业限制来自本项目：`config.ts` 只解析一个 `agentV2`，`FastGPTAgentV2` 实例只持有一个 `bridgeKey` 和一个 ticket 槽。多桥可行，不需要改 FastGPT。
+### 1. 请求票据与隔离（最高优先级）
 
-其他约束：
-- `fastGPTWorkflows()` 在运行期发现配置文件 hash 变化会直接抛错（`runtime.ts:74`），所以**任何配置写入都必须重启 Admin**；不能热改。
-- FastGPT 4.17.4 的 HTTP 工具节点只能带静态头，不能注入每次 run 的 token；因此回调归属只能靠每企业独立 `bridgeKey`。
-- 每个 `FastGPTAgentV2` 实例内部仍是单活跃 run；多企业并发靠多实例，单企业并发仍返回 `conversation_busy`。
+现状：`active()` 只接受唯一活跃 ticket；同一企业 A 的连接丢失释放 ticket 后，B 成为活跃 ticket，A 的迟到工具回调会被交给 B 的上下文。现有测试只覆盖“请求结束后没有新请求”的 409，没有覆盖“B 已开始”的窗口。
 
-## Phase 0：临时授权与只读盘点（阻塞项）
+方案：
 
-用户提供临时 SSH 访问（root 或具备 docker/psql 权限的部署账号），我会：
+- 静态 `Authorization` 只做企业路由；新增服务端生成的 run ticket，由 FastGPT 工作流变量注入第二个请求头（如 `X-SFP-Run-Ticket`）。
+- 桥按 ticket 查找对应 run，不再取“唯一活跃 ticket”；ticket 过期、取消、迟到一律拒绝。
+- 先做 spike：验证 `v4.17.4` 的 `headerSecret.ref` / `resolveReference` 在实际镜像、工具保存、发布、运行链路中可用；注意 `staticHeaders` 最后合并会覆盖同名动态头，不能直接复用 `Authorization`。
+- 若 spike 失败，停在 D1，不进入多企业；备选“每并发槽独立应用/工具集”成本高，需重新评估。
+- 测试：A 结束、B 活跃时，A 的迟到回调被拒绝，B 的工具调用次数不增加。
 
-1. 生成一次性 ed25519 密钥，只用于本次部署；公钥由用户临时加入 `authorized_keys`，部署完成后移除并验证失效。
-2. 只读盘点，不改任何东西：
+**spike 结果（2026-11-10，dev pilot 实测）：**
 
-```bash
-docker ps --format '{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'
-docker compose ls; docker network ls; docker version; uname -m
-docker inspect smart-floor-planner-admin --format '{{json .NetworkSettings.Networks}}'
-free -h; df -h /datas; nproc
-ss -lntp | grep -E ':(18300|18310|3005|5432)' || true
-docker exec smart-floor-planner-postgres psql -U sfp_owner -d smart_floor_planner -Atc \
- "select id,name,status from app.enterprises order by id"
-docker exec smart-floor-planner-postgres psql -U sfp_owner -d smart_floor_planner -Atc \
- "select enterprise_id,enabled,policy_version,active_index_profile_id,agent_config from app.assistant_enterprise_settings order by enterprise_id"
-docker exec smart-floor-planner-postgres psql -U sfp_owner -d smart_floor_planner -Atc \
- "select key,(llm_config is not null) from app.platform_configs"
-```
+- `headerSecret.ref: ['VARIABLE_NODE_ID','workflowTicket']` 在 4.17.4 的 HTTP 工具保存、发布、运行链路可用；发布后的工具集保留该引用，回调实际收到 `x-sfp-run-ticket`，同时 `staticHeaders` 的 `Authorization` 保持不变。
+- 前提：应用必须在 `chatConfig.variables` 声明 `workflowTicket`（`type: 'input'`, `required: true`）。FastGPT 的 `WorkflowVariableState.create` 只从 API `variables` 中读取已声明的变量；未声明时引用解析为 `undefined`，工具报 `Secret reference [...] resolved to undefined`，请求不会发出。
+- 动态头不能复用 `Authorization`：头合并顺序为 `customHeaders → headerSecret → staticHeaders`，静态头会覆盖同名动态头。
+- 新桥已按 ticket 精确路由；未带 ticket、过期或未知 ticket 返回 409 `context_unavailable`。真实模型冒烟在新桥下通过（run `11439`，2 条企业引用）。
+- 发布顺序固定为：**先发布工具集（含动态头）→ 再发布声明了 `workflowTicket` 的应用 → 最后部署要求 ticket 的新桥**。提前部署新桥会让所有旧工具回调变成 409。
 
-**退出标准**：冻结 active 企业 ID 清单；`/datas` 剩余 ≥ 30GB、可用内存 ≥ 8GB；`sfp-ai-net` 未被占用；18300/18310 未监听；DashScope profile 存在；确认 `assistant-worker` 当前是否运行；确认各企业知识索引 `active_index_profile_id` 是否已发布。
+**D2 结果（2026-11-10，dev pilot 真实队列实测）：**
 
-## Phase 1：代码改动
+- **多企业配置**：`agentV2` 支持单对象或数组；每家企业独立 `binding`（只哈希本企业配置），`runtime: 'langgraph-v1'` 只停该企业的 V2，不改 `assistant_enterprise_settings` 的知识开关或 `knowledge_epoch`。
+- **桥隔离**：一个桥注册多个企业 profile；`Authorization` 定位企业、`x-sfp-run-ticket` 定位 run，票不属于该企业直接用该企业的 key 也返回 404；`busy` 按企业统计，A 的慢请求不再占 B 的槽。
+- **调度**：`claimJob` 每企业只取最老任务，并在租约内检查该企业运行数；同企业不同会话继续排队，不直接失败。`processAssistantJob` 每次最多领 `ASSISTANT_WORKER_CONCURRENCY` 个任务（1–8，默认 1），每企业上限 `ASSISTANT_ENTERPRISE_CONCURRENCY`（1–4，默认 1）。
+- **派发顺序**：仍为“拿到租约 → 校验权限/配置 → `markProviderStarted` → 发起供应商请求”；槽位满时任务留在队列，不会先记供应商已开始。
+- **旧能力回退**：`knowledgeAppId`/`stageAppId` 可缺省；Agent 回答和阶段报告按能力显式选择执行器，未配置旧工作流时走原模型路径，不再因为存在 workflows 文件隐式接管。
+- **开场注册**：`openings` 支持 `enterprises` 数组，每家企业独立场景与 App。
 
-### 1. 多企业配置
-`admin/src/lib/assistant/fastgpt/agent-v2/config.ts`
-- `agentV2` 接受对象或数组，规范化为 `Map<enterpriseId, AgentV2Configuration>`；重复 enterpriseId、非法项一律 `context_changed`。
-- 新增 `parseAgentV2Configurations(value)`；`fastGPTAgentV2Configuration(enterpriseId)` 改为按企业查找。
-- **保留文件级 binding hash**（不改为条目级），避免改动 `policy_snapshot` 语义；配置变更统一重启 Admin。
-- `protocol` 保持 `fastgpt-agent-v2-v1`。
+验收证据（`tmp/xiaok-agentv2-d2-20261110/acceptance.json`）：
 
-### 2. 生产端点校验
-`admin/src/lib/assistant/fastgpt/agent-v2/runtime.ts:51-63`
-- 删除 `hostname ∈ {127.0.0.1, localhost}` 且 `port === 18300` 的硬校验。
-- 改为：必须是 `http|https`，无 userinfo/query/hash；`host:port` 必须命中 `XIAOK_FASTGPT_ENDPOINT_ALLOWLIST`（逗号分隔；默认 `127.0.0.1:18300`；生产加 `sfp-fastgpt-app:3000`）。
-- 保留 `bridgeKey.length >= 32`。
+| 观察项 | 结果 |
+|---|---|
+| 两企业真实队列并发 | run `11453` / `11454` 的供应商窗口 `15:19:24.204–15:19:30.201` 与 `15:19:24.275–15:19:30.232` 重叠 |
+| 企业资料不混用 | 甲企业引用「甲企业防水标准」48 小时，乙企业引用「乙企业防水标准」72 小时；两边 step/citation 都不含对方标题 |
+| 同企业不同会话排队 | 第二个会话在第一个运行期间保持 `queued`；此时 `claimJob()` 返回 `null`；槽位释放后 run `11455` 成功 |
+| 停用单个企业 V2 | 仅 B 的 `fastGPTAgentV2Configuration` 返回空；A 的 binding 不变；两家设置的 `agent_config`/`policy_version`/`knowledge_epoch` 未变 |
+| 清理 | 临时企业、用户、助手数据、队列均清零 |
 
-### 3. 逻辑多桥与监听地址
-`admin/src/lib/assistant/fastgpt/runtime.ts`
-- `Configuration.agentV2` 支持数组；构建 `FastGPTAgentV2[]`，并建立 `Map<sha256(bridgeKey), instance>`。
-- `handle()` 对 `/agent-v2-tool/*` 先按 `Authorization: Bearer <key>` 摘要路由；未知 key 返回 404，不再落到单个实例。
-- 监听地址读 `XIAOK_FASTGPT_BRIDGE_BIND`（默认 `127.0.0.1:18310`；生产 `0.0.0.0:18310`），不发布宿主端口。
-- `knowledgeAppId`/`stageAppId` 改为在存在 `agentV2` 时可缺省；缺省时 `/knowledge-*`、`/stage-*` 返回 404，避免伪造 appId。生产只建 Agent V2 应用。
+生产默认保持单并发；确认生产容量后显式设置 `ASSISTANT_WORKER_CONCURRENCY` 才会跨企业并行。dev pilot 只有一套已发布应用，验收让两家企业临时共用该应用；生产仍按“每企业独立应用 + 独立 bridgeKey”配置，桥和调度代码已按企业区分。
 
-### 4. 按企业执行
-`admin/src/lib/assistant/fastgpt/agent-v2/worker.ts:88-133`
-- 用 `workflows.agentV2For(lease.enterpriseId)` 取企业实例；删除第 133 行全局 `busy()`，由实例内 `run()` 的 `busy()` 负责。
-- 开场 `intro()` 与追问 `suggest()` 使用同一企业实例。
+**D2 状态：完成（dev pilot）。** 复跑：`cd admin && npx tsx scripts/fastgpt/agent-v2-multi-enterprise-acceptance.mts`（需要 5432/55432/18300/18310 与到 pilot 主机的 SSH 反向隧道，脚本自行清理临时企业、用户和队列）。
 
-### 5. 多企业开场注册表
-`admin/src/lib/assistant/fastgpt/agent-v2/openings.ts`
-- 保持 `xiaok-openings-v1`；解析器同时接受 `{enterpriseId,scenes}`（兼容 1454 旧文件）和 `{enterprises:{id:{scenes}}}`。
-- `openingScene(enterpriseId, scene)` 按企业查找；跨企业不可见。
+### 2. 生产依赖清单
 
-### 6. 生产 Compose 与网络
-`admin/docker-compose.yml`
-- 新增 external network `sfp-ai-net`，只让 `admin` 接入（alias 即 `admin`）。
-- `admin` 增加只读挂载 `${SFP_FASTGPT_CONFIG_DIR:-/datas/sfp-fastgpt-prod/config}:/config:ro`。
-- `assistant-worker` 保留 `assistant` profile；`deploy.sh` 用 `--profile assistant` 显式启动。
-- 新增一次性 `provision` 服务（`profiles:["provision"]`，接入默认网 + `sfp-ai-net`，挂载 `/config:rw`），运行 plain-node provisioning 脚本。
+FastGPT 九容器之外，还必须补齐：
 
-### 7. 发布与部署脚本
-- `admin/deploy.sh:65-84`：Compose 服务校验加入 `assistant-worker`（校验命令补 `--profile assistant`）。
-- `admin/deploy.sh:201-252`：`up -d --force-recreate admin lead-claim-worker assistant-worker`；增加 `wait_for_assistant_worker_health`；部署后校验 `/config/workflows.json`、`/config/openings.json` 在 admin 容器内可读。
-- `admin/release.ps1:121-169,214-262`：发布包纳入 `deployment/fastgpt/production.compose.yml`、`production/` 模板与 `scripts/fastgpt/agent-v2-provision-prod.mjs`；仍不打包任何密钥。
-- `admin/.env.example`：补 `XIAOK_FASTGPT_ENDPOINT_ALLOWLIST`、`XIAOK_FASTGPT_BRIDGE_BIND`、`SFP_FASTGPT_CONFIG_DIR`。
+| 能力 | 当前依赖 | 生产要求 |
+|---|---|---|
+| 企业检索 | `ASSISTANT_EMBEDDING_URL`、key、固定 Qwen3-Embedding-0.6B revision、1024 维 profile | 从 Admin 容器可访问，profile/revision/维度匹配，实测检索成功 |
+| 联网搜索 | `ASSISTANT_WEB_SEARCH_PROVIDER`、`ASSISTANT_WEB_SEARCH_URL` | 独立生产服务，不依赖 FastGPT 启动 |
+| 网页原文读取 | `ASSISTANT_PUBLIC_READER_URL`，当前硬编码 `http://127.0.0.1:18095` | Admin 容器内该地址指向容器自身；必须部署/接通受控 reader 并改端点 |
 
-### 8. 新增生产资产
-- `admin/deployment/fastgpt/production.compose.yml`：9 服务、Linux bind volumes、`mem_limit`、日志轮转、`app` 只发布 `127.0.0.1:18300:3000`、`app.networks=[default,sfp-ai-net]`、`CHECK_INTERNAL_IP=false`、`NO_PROXY` 含 `admin`。
-- `admin/deployment/fastgpt/production/secure-root.cjs`：由 `secure-pilot-root.cjs` 改名，保留“只替换厂商初始 123456”的逻辑，要求 64 位 hex `DEFAULT_ROOT_PSW`。
-- `admin/deployment/fastgpt/production/templates/agent-v2-app.json`：从 `tmp/agentv2-test-detail.json` 提取 `nodes/edges`，脱敏后入库。
-- `admin/scripts/fastgpt/agent-v2-provision-prod.mjs`：plain Node（无 tsx），登录 FastGPT 管理 API，按企业创建工具集/主应用/建议应用/开场应用并发布，写 `/config/workflows.json`、`/config/openings.json`（临时文件 + rename，`root:1001 0640`）；状态存 `/config/provision-state.private.json`。
+新增“工具生产依赖”交付项，从 Admin 容器内部跑通：
 
-### 9. 文档同步
-- `docs/xiaok-fastgpt-agent-layering.zh-CN.md`、`docs/remote-development.zh-CN.md` 的模块清单加入生产 FastGPT。
-- `docs/production-deployment.zh-CN.md` 增加 FastGPT 栈的目录、网络、启动、回滚顺序。
+> 企业检索 → 授权原文 → 引用落库；
+> 搜索 → 候选网页 → 读取原文 → 回答引用 → 小程序打开与重进。
 
-## Phase 2：测试
+### 3. 企业 readiness
 
-- 更新 `admin/src/lib/assistant/__tests__/agent-v2-gateway.test.ts`：allowlist 内 `127.0.0.1:18300` 继续通过；新增“allowlist 外拒绝”；新增“两个 bridgeKey 各自路由、互不占 busy”。
-- 新增 `admin/src/lib/assistant/__tests__/agent-v2-config.test.ts`：单对象/数组兼容、重复 ID 拒绝、未知企业返回 undefined、`langgraph-v1` 返回 undefined。
-- 更新 `admin/src/lib/assistant/__tests__/agent-v2-openings.test.ts`：多企业注册表、旧单企业格式兼容、跨企业不可见；移除对 dev appId 的硬断言（生产 appId 会重建）。
-- 更新 `admin/src/db/__tests__/assistant.test.ts`：两个企业同时投递均走 V2，不出现跨企业 `conversation_busy`；单企业第二个请求仍 `conversation_busy`。
-- 回归：`npm run test:ai`、`npm run test:assistant`、`npm run lint`、`npm run build`。
+“全部 active + 知识开关 true”不等于可用。`agentConfig()` 需要 `runtime/model/providerKey/probeVersion/imageInput/tools`；缺字段返回 `null`，V2 不会被选中；没有助手设置行的企业不会被批量 `UPDATE` 补齐。
 
-## Phase 3：生产 FastGPT 栈
+知识就绪不能只看 `active_index_profile_id`，还要检查：对客可见范围、当前发布版本、生效时间、索引 ready、内容 hash 与索引 profile 一致。
 
-1. 建目录：`/datas/sfp-fastgpt-prod/{config,secrets,volumes,backup}`；`docker network create sfp-ai-net`。
-2. 写 `/datas/sfp-fastgpt-prod/secrets.env`（0600）：全新 Mongo/vector/redis/MinIO/proxy-db/sandbox/plugin 密码，`ROOT_KEY`、`DEFAULT_ROOT_PSW`（64 hex）、`FILE_TOKEN_KEY`、`AES256_SECRET_KEY`、`INVOKE_TOKEN_SECRET`。
-3. `docker compose -f production.compose.yml --env-file secrets.env up -d`，等 9 个服务全部 healthy。
-4. 首次启动由 `secure-root.cjs` 把厂商默认密码替换为 `DEFAULT_ROOT_PSW`，不保留默认账号。
-5. 镜像全部使用 dev compose 已验证的阿里云地址；若生产拉取失败，从 dev 主机 `docker save` 后 `docker load`（同为 linux/amd64）。
-6. 资源上限：mongo 2g、vector 2g、redis 512m、minio 512m、aiproxy 512m、plugin 512m、code-sandbox 1g、app 2g；上线前确认 `free -h` 余量。
+逐企业检查表：
 
-## Phase 4：应用与配置迁移
+| 检查项 | 通过条件 |
+|---|---|
+| 企业状态 | active |
+| 助手配置 | 设置存在、已启用、必要配置可解析 |
+| 模型能力 | 当前绑定与能力记录有效 |
+| FastGPT 配置 | 企业、应用、工具集、key 对应正确 |
+| 企业知识 | 有当前有效、允许目标用户访问的内容 |
+| 索引与 Embedding | profile 匹配，实际检索成功 |
+| 回退能力 | 关闭 V2 后原有执行路径可用 |
+| 实际路由 | 测试 run 的策略快照确实记录 V2 |
 
-1. 从 dev 导出主应用/建议应用/开场应用详情，与 provisioning 脚本里的 prompt 比对；若存在手改，先合并进模板，避免丢失。
-2. 运行 `provision` 服务：
-   - 用生产 Admin 的 `platform_configs` + `AI_PROVIDER_KEY_ENCRYPTION_SECRET` 解出 DashScope key，创建 aiproxy 渠道与模型；
-   - 对每个 active 企业：创建工具集（`baseUrl=http://admin:18310`，独立 32 字节 `bridgeKey`）→ 发布工具集 → 主应用（6 个工具）→ 建议应用（无工具）→ 开场应用（无工具、无数据集、`history=0`）→ 发布；
-   - 发布顺序必须是“工具集先发布，再发布主应用”，否则运行期 `tool_not_exist`；
-   - 写入 `workflows.json`：`baseUrl=http://sfp-fastgpt-app:3000`、`apiKey`、`agentV2` 数组（每企业 `appId/model/bridgeKey/suggestionAppId/runtime`，开场 appId 写入 `openings.json`）。
-3. 不迁移 Mongo/MinIO/pgvector；生产 FastGPT 使用全新卷。`knowledgeAppId`/`stageAppId` 不写（已允许缺省）。
-4. 文件权限：`root:1001 0640`；Admin 以 uid 1001 运行，需在部署检查中验证可读。
+“SQL 已更新”不记为“企业已开通”；未就绪企业要有原因和补齐动作。
 
-## Phase 5：项目发布与全企业开通
+### 4. 真实并发与派发顺序
 
-1. 更新 `/datas/smartfloor/.env.production`：
-   ```
-   XIAOK_FASTGPT_WORKFLOWS_FILE=/config/workflows.json
-   XIAOK_OPENINGS_FILE=/config/openings.json
-   XIAOK_FASTGPT_ENDPOINT_ALLOWLIST=sfp-fastgpt-app:3000
-   XIAOK_FASTGPT_BRIDGE_BIND=0.0.0.0:18310
-   SFP_FASTGPT_CONFIG_DIR=/datas/sfp-fastgpt-prod/config
-   ```
-2. 构建新发布包并部署：`auto_deploy.sh deploy`，确认 `admin`、`lead-claim-worker`、`assistant-worker` 均 healthy。
-3. 从 FastGPT 容器验证回调：`docker exec sfp-fastgpt-prod-app-1 curl -s -o /dev/null -w '%{http_code}' http://admin:18310/agent-v2-tool/x` 应为 404/409，不是超时。
-4. 分批打开知识开关（先 1 家，再全部）：
-   ```sql
-   update app.assistant_enterprise_settings
-   set agent_config=jsonb_set(coalesce(agent_config,'{}'::jsonb),'{enterpriseKnowledgeEnabled}','true'::jsonb),
-       policy_version=policy_version+1, version=version+1, updated_at=now()
-   where enterprise_id = ANY($1);
-   ```
-   打开前确认该企业 `active_index_profile_id` 有已发布文档；没有索引的企业先补索引，否则 V2 回答会缺证据。
-5. 全部企业配置完成后，`workflows.json` 不再改动；如需改动，重启 Admin。
+- 复用现有 PostgreSQL 任务/租约；增加可配置全局并发上限、每企业并发限制与公平领取。
+- 同企业不同用户的正常请求优先排队，不直接失败；同一会话重复提交继续拒绝。
+- 派发顺序改为：**获得执行槽位 → 校验权限和配置 → `markProviderStarted` → 发起供应商请求**。不要先标记供应商已开始再 busy，否则会出现“没调模型却进入待对账”。
+- 并发验收必须经过真实队列入口，检查两个企业任务的执行时间确实重叠；测试里同时调两个实例不能证明生产调度已并发。
 
-## Phase 6：验收
+### 5. 旧工作流回退
 
-- FastGPT 9 服务 healthy；Admin/worker healthy；桥监听 0.0.0.0:18310。
-- 单企业：真实会话走 V2，工具回调成功，`[id](CITE)` 引用可打开，usage 记录 `agent-v2-*` 四类齐全。
-- 开场：`site.public` 场景返回受限字数文本，不调用工具。
-- 追问：建议应用生成 3 条，不带工具。
-- 并发：两个企业同时提问均成功；同一企业第二个请求返回 `conversation_busy`。
-- 隔离：用企业 A 的 key 调企业 B 的 appId 工具应 404/409，不返回 B 的数据。
-- 回归：关闭知识开关后，新 run 回退内置 LangGraph，不报错。
+`knowledgeAppId`/`stageAppId` 可缺省的同时，必须改旧调用方：
 
-## 回滚
+- `admin/src/lib/construction/report-body-worker.ts:134` 使用 `workflow.stage.model`；
+- `admin/src/lib/assistant/agent/worker.ts:1182` 调用 `workflow.knowledge.dispatch()`。
 
-1. **停新流量**：目标企业 `enterpriseKnowledgeEnabled=false` 并 bump `policy_version`，新 run 走内置运行时。
-2. **确定性回退**：`workflows.json` 中该企业 `runtime:"langgraph-v1"`，原子写文件，重启 Admin。
-3. **整栈回退**：`auto_deploy.sh rollback` 回上一镜像；FastGPT 栈可保留不动（不参与内置链路）。
-4. 已产生的消息、引用、usage 都在 PostgreSQL，不受 FastGPT 回滚影响；不反向迁移数据。
+按能力选择执行器：配置 V2 才启用 V2；配置 stage workflow 才用该工作流；未配置旧工作流时明确走原模型路径；不要因为“存在 workflows 配置文件”隐式接管其他能力。
 
-## 风险（高→低）
+本次 V2 范围：**客户文字咨询 + 指定公开工地开场**；不宣称四端、图片、语音和全部业务流程已迁移。
 
-1. **资源争抢/OOM**：9 个 FastGPT 容器与现有约 30 个容器同机；必须设 mem_limit、先测峰值。
-2. **跨企业串数据**：任何两个企业复用 bridgeKey 都会越权；provision 必须断言全局唯一，路由按 key 精确匹配。
-3. **配置热改 500**：`fastGPTWorkflows()` 检测到 hash 变化直接抛错；所有配置写入后必须重启 Admin。
-4. **文件权限**：`root:0600` 会导致 Admin 读不到，V2 静默关闭；必须 `root:1001 0640` 并在部署检查中验证。
-5. **工具集发布顺序**：先发工具集再发主应用，否则 `tool_not_exist`。
-6. **知识未就绪即全开**：检索为空或 `missing_citation`；按企业检查 `active_index_profile_id`。
-7. **生产端点/网络**：`CHECK_INTERNAL_IP=false` 接受私网回调；只把 FastGPT `app` 接入 `sfp-ai-net`，桥不发布宿主端口。
-8. **发布脚本漏改**：`assistant-worker` 不启动则所有助手任务不执行；新 compose 不进包则生产无文件。
+### 6. 回滚
 
-## 需要你提供/确认
+不要把 `enterpriseKnowledgeEnabled` 同时当作知识开关、V2 开关和紧急停流开关：`openingReady || enterpriseKnowledgeEnabled` 会让开场在知识关闭后仍走 V2；V2 配置读取发生在知识判断之前，配置损坏时关知识也绕不过读取错误。
 
-1. 临时 SSH 公钥授权（`124.70.90.30`，部署完成后移除）。
-2. 生产 active 企业清单以 Phase 0 查询结果为准；若有“暂不对客”的企业，请指出，否则按全部打开。
-3. 各企业知识库是否已完成审核并可对客；未就绪的企业先补索引再开开关。
-4. DashScope key 在生产 `platform_configs` 中可解密（需要 `AI_PROVIDER_KEY_ENCRYPTION_SECRET`）；若已轮换，请提供新 key。
-5. 是否允许运维通过 SSH 隧道访问 FastGPT 控制台（默认不开放公网端口）。
+拆成三个动作：
+
+1. **停新 V2 任务**：独立运行时开关，覆盖普通回复与开场。
+2. **处置已有任务**：排队、执行中、供应商结果未知分别处理。
+3. **恢复兼容版本**：镜像、Compose、配置版本、环境变量与 worker 一起恢复。
+
+旧任务保存了执行协议与 binding，改文件+重启不会转成 LangGraph；已派发但结果未知的请求不自动重放。`auto_deploy.sh rollback` 读外部运行环境，旧脚本未必管理新 assistant worker，必须演练。
+
+### 7. 操作顺序与容量
+
+- D0/D1 先做，不被 SSH 阻塞；生产盘点只阻塞需要服务器事实的步骤。
+- 容量预算包含 `proxy-db`；八项限额已合计约 9GiB，还要按实际峰值验证，不能只看 `free -h`。
+- 默认密码初始化由 `remote.ps1` 显式执行，挂载脚本不会自动执行；生产必须迁移该步骤。
+- 先构建、验包、加载包含新脚本的固定镜像，再执行 provision。
+- 健康检查增加桥就绪与真实工具探测；现有 `/api/health` 只查 PostgreSQL，worker 健康只看轮询。
+- 盘点生产镜像版本、迁移账本、待执行 SQL。
+- `workflows.json` 与 `openings.json` 按同一配置版本生成、校验、启用，避免组合不一致。
+
+## D0–D6 交付
+
+| 阶段 | 交付结果 | 主要工作 | 完成条件 |
+|---|---|---|---|
+| D0 范围与依赖基线 | 知道发布哪些路径、依赖哪些服务 | 固定源码版本；六工具依赖；旧工作流调用；企业 readiness 定义 | 清单与实际调用链一致；生产未知项列出 |
+| D1 请求票据与隔离 | 每个回调只能进入所属 run | 验证 `headerSecret.ref`；应用声明 `workflowTicket`；可信 ticket；过期/取消/迟到处理 | A 结束、B 活跃时 A 的旧回调被拒绝，不调用 B 工具 |
+| D2 多企业执行与切换 | 企业独立启停，任务正确排队并发 | 多企业配置；独立运行时开关；有界调度；派发计量顺序；旧能力显式回退 | 两企业真实队列并发；同企业不同会话排队；停 V2 不改知识策略 |
+| D3 生产服务与部署产物 | 干净环境可重复建立完整依赖 | FastGPT、Embedding、搜索、reader；端点/网络；模板；初始化；provision | 发布镜像内可执行；无开发路径/隧道；重复 provision 不产生重复应用 |
+| D4 发布与回滚演练 | 新版本失败后能恢复 | 配置版本切换；worker 生命周期；迁移差异；在途任务处理 | 新旧切换成功；无重复调用；未知结果保留；旧版本与数据库兼容 |
+| D5 单企业生产验证 | 一家企业完成真实客户链路 | 只读盘点后部署；readiness；问答、知识、联网、引用、重进 | 完整链路成功；日志、run、引用、用量可对应 |
+| D6 扩大到全部企业 | 所有目标企业逐一可用 | 先验证跨企业，再分批开通；统计失败原因；新企业初始化流程 | 每家都有可复核结果；未就绪企业不计完成 |
+
+## 下一轮具体交付
+
+**《Agent V2 请求隔离与生产依赖闭环》**
+
+1. D0：六工具依赖矩阵、旧工作流调用点、企业 readiness 定义。
+2. D1：`headerSecret.ref` spike；run ticket；桥按 ticket 路由；迟到/取消/过期测试。
+3. 生产依赖：Embedding、搜索、reader 的端点改造与容器内真实链路验证。
+4. 旧工作流：显式执行器选择，阶段报告/日周报不被隐式接管。
+5. 不接生产、不改企业知识开关；生产盘点另行穿插。
+
+## 验收场景
+
+| 场景 | 必须观察到的结果 |
+|---|---|
+| 两企业问各自施工标准 | 引用各自当前有效来源，不混用企业资料 |
+| 同企业不同用户，旧请求迟到 | 旧 ticket 被拒绝，新请求工具调用次数不增加 |
+| 两企业从真实队列同时提交 | 执行时间有重叠，长任务不堵另一企业 |
+| 同企业容量已满 | 新会话留在队列；未调用模型不标记供应商已开始 |
+| 知识未发布/索引失配/来源撤回 | 明确不可用，不返回其他企业材料，不编造企业规定 |
+| 真实联网问题 | 完成搜索、读页、原文引用和客户端打开 |
+| 关闭 V2 | 回复、开场均按预定路径处理，知识授权保持独立 |
+| 切换配置或回滚镜像 | 在途任务状态明确，worker 版本匹配，不重复发送供应商请求 |
+| 原有阶段提醒和日周报 | 本次配置变化没有破坏原执行路径 |
+| 客户退出后重新进入 | 已保存回答、引用和卡片仍能按当前权限读取 |
+
+体验预算：主调用 150 秒、追问建议 45 秒、worker HTTP 超时 180 秒；需统一预算或让建议生成不阻塞主回答交付。
+
+## 仍待生产核实
+
+- 服务器实际容量、现有容器峰值、`/datas` 余量。
+- 生产 active 企业、助手设置行、模型能力、知识发布/索引状态。
+- 生产镜像版本、迁移账本、本次待执行 SQL。
+- 报告追问已知未通过项是否纳入首批入口发布条件。
+- 临时 SSH 授权（不阻塞 D0/D1）。

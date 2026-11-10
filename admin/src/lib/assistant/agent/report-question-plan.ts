@@ -82,6 +82,11 @@ function alignQuestions(questions: string[], question: string): string[] {
     for (const sentence of overlapping) aligned.add(sentence);
   }
   const kept = [...aligned];
+  for (const [index, sentence] of groups.entries()) {
+    if (!/[？?]/.test(sentence)) continue;
+    if (kept.some(planned => planned.includes(sentence) || sentence.includes(planned))) continue;
+    kept.splice(Math.min(index, kept.length), 0, sentence);
+  }
   return kept.length > 6 ? [...kept.slice(0, 5), kept.slice(5).join('')] : kept;
 }
 

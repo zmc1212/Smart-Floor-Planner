@@ -70,6 +70,12 @@ test('missing, unknown and malformed new plans never fall back to sentence split
     assert.throws(() => readReportQuestionPlan(value, scope, true), /context_changed/);
 });
 
+test('an omitted question sentence is restored so no customer question loses its own answer', () => {
+  const two = '我家现在施工到哪一步了？最近工地上都做了些什么？';
+  const planned = createReportQuestionPlan({ questions: ['我家现在施工到哪一步了？'] }, { ...scope, question: two });
+  assert.deepEqual(planned.coverage.questions, ['我家现在施工到哪一步了？', '最近工地上都做了些什么？']);
+});
+
 test('a merged plan question is split at sentence boundaries so each clause keeps its own obligation', () => {
   assert.deepEqual(createReportQuestionPlan({ questions: [corrected] }, scope).coverage.questions, correctedSentences);
   assert.deepEqual(createReportQuestionPlan({ questions: correctedSentences }, scope).coverage.questions, correctedSentences);
