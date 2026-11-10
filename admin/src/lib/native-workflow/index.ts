@@ -1,7 +1,7 @@
 export { advance, createRunState, type AdvanceResult, type WorkflowEvent } from './advance';
 export { compileDefinition, definitionDigest, type CompiledNode, type CompiledWorkflowPlan } from './compile';
 export { exportDefinitionJson, parseDefinitionJson } from './definition-io';
-export { WorkflowDefinitionError, WorkflowRuntimeError, type WorkflowIssue } from './errors';
+export { WorkflowDefinitionError, WorkflowOperationError, WorkflowRuntimeError, type WorkflowIssue } from './errors';
 export { isPlainObject, valueMatchesType } from './guards';
 export { capabilityCatalog, getCapability, type CapabilityEffect, type CapabilitySpec } from './registry';
 export {

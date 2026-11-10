@@ -1,16 +1,21 @@
-# Native Workflow (B0-B2)
+# Native Workflow (B0-B3)
 
-Pure, simulation-only workflow core for 家客来 native business orchestration.
-B0-B2 defines, validates, compiles and simulates workflows. It does **not**
-connect a model, database, queue, scheduler, media store or message channel.
+Pure workflow core plus a B-owned draft/publish store for 家客来 native business
+orchestration. B0-B2 defines, validates, compiles and simulates workflows; B3
+adds drafts, immutable published versions and a simulation debugging surface.
+It does **not** connect a model, business database, queue, scheduler, existing
+Worker, business write path or message channel.
 
-Owner: B line (`codex/xiaok-native-workflow`). Shared files, the sole XiaoK plan
-and the bilingual module inventories remain owned by the integration lead.
+Owner: B line (`codex/xiaok-native-workflow`). Shared migrations, dependencies,
+menus, the sole XiaoK plan and the bilingual module inventories' integration
+wiring remain owned by the integration lead.
 
 ## Boundary
 
-- Imports only Node built-ins and local files in this directory.
-- Never starts jobs, timers, workers or network calls on import.
+- The pure core imports only Node built-ins and local files in this directory.
+- Importing the module never starts jobs, timers, workers or network calls.
+- B3 storage is a B-owned file store under `admin/tmp/native-workflow-store`
+  (override with `NATIVE_WORKFLOW_STORE_DIR`); it is not a shared migration.
 - Never reads production keys, customer data or real receipts.
 - Simulated saves/deliveries are proposals with `simulated: true`; they must
   never be presented as generated, saved or sent to a customer.
@@ -21,12 +26,20 @@ and the bilingual module inventories remain owned by the integration lead.
 
 | Function | Contract |
 | --- | --- |
-| `validateDefinition(raw)` | Structure, capability whitelist, references, type compatibility, upstream dependency, edge legality, cycle/bounds and import safety. |
+| `validateDefinition(raw)` | Structure, capability whitelist, references, dominance, type compatibility, edge legality, cycle/bounds and import safety. |
 | `compileDefinition(raw)` | Validates, then returns an immutable plan with digest, node versions, outgoing edges, topological order and bounds. |
-| `advance(plan, state, event)` | Pure transition. Accepts `start` or `observation`; returns a new state, trace entries and pending operation descriptions only. |
+| `advance(plan, state, event)` | Pure transition. Accepts `start` or `observation`; returns a new state, trace entries and pending operation descriptions only. Version-bound to the plan digest. |
 | `simulate({ definition, scenario, fixtures })` | Drives `advance` with fixture observations. Deterministic for the same definition/scenario/fixtures. |
-| `parseDefinitionJson` / `exportDefinitionJson` | Canonical import/export with size, forbidden-content and schema checks. |
-| `createStageReminderDefinition` / `createPeriodReportDefinition(kind)` | The two B2 templates. |
+| `parseDefinitionJson` / `exportDefinitionJson` | Canonical import/export with one shared size rule, forbidden-content and schema checks. |
+| `createStageReminderDefinition` / `createPeriodReportDefinition(kind)` | The two templates. |
+
+B3 exports:
+
+| Module | Contract |
+| --- | --- |
+| `createWorkflowService({ store, now? })` | Template drafts, optimistic draft saves, validate/compile publishing, fixed-revision simulation and fixture compatibility. |
+| `createFileWorkflowStore({ rootDir })` / `createMemoryWorkflowStore()` | Store interface implementations with atomic draft conflicts and append-only versions. |
+| `fixtureSets` / `fixtureSetSummaries` | Built-in normal and failure fixtures for both templates. |
 
 Supporting exports: `definitionDigest`, `capabilityCatalog`, `getCapability`,
 `createRunState`, `WORKFLOW_BOUNDS`.
@@ -90,6 +103,9 @@ capability. A graph can never assert engineering acceptance.
    resolved input, `simulation` marker, idempotency key). No effect is executed.
 5. Observation outputs, run state and pending inputs are deep-copied at their
    boundaries; later edits to caller-owned JSON cannot mutate earlier snapshots.
+   Observation values must be finite JSON (no cycles, `Date`, functions or
+   non-finite numbers); violations fail with `invalid_observation` before any
+   deep clone runs.
 6. Save/delivery observations must confirm `saved`/`delivered` is `true` and
    carry a receipt with a `receiptId`; simulation receipts must also be marked
    `simulated: true`. `saved: false`, `delivered: false`, a missing/invalid
@@ -140,12 +156,39 @@ simulate({
    expressed by compose output; zero receivers saves the report but stops
    before delivery.
 
+## B3 drafts, published versions and debugging
+
+- `createWorkflowService` creates drafts from `stage-reminder`,
+  `period-report-daily` and `period-report-weekly`.
+- Draft saves require `expectedDraftRevision`; stale writes return
+  `draft_conflict` (HTTP 409) with `currentDraftRevision`. Saves run
+  `validateDefinition` and force the route `definitionId` plus the next
+  `revision`.
+- Publishing re-runs `validateDefinition` and `compileDefinition`, then stores
+  an append-only version with digest, normalized definition, node versions and
+  timestamp. Re-publishing unchanged content returns the existing version;
+  editing the draft is required before a new version is created.
+- Published versions are read-only. A simulation can run the current draft or a
+  fixed published revision, so later edits never change an older trace.
+- Storage defaults to a B-owned file store (`admin/tmp/native-workflow-store`,
+  override `NATIVE_WORKFLOW_STORE_DIR`). The store interface allows a Postgres
+  adapter later; the file adapter assumes a single admin process. No shared
+  migration is added here.
+- Admin surface: `/native-workflow` (list/create) and
+  `/native-workflow/[definitionId]` (draft JSON, versions, simulation trace).
+  The page and `/api/native-workflow/**` require platform `super_admin`/`admin`.
+  Menus are not modified in this round.
+- Fixtures cover normal, knowledge-off, duplicate-event, read-denied,
+  compose/save/delivery failures, material withdrawal and no-receiver cases.
+- No drag canvas is added: no confirmed canvas design was found, so this round
+  ships the main page, key states, structured definition editing and traces.
+
 ## Reproduce
 
 From `admin/` (no database, no Worker, no model):
 
 ```powershell
-npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts
+npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts
 npx tsx src/lib/native-workflow/playground/simulate.ts
 ```
 

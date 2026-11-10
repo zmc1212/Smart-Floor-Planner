@@ -363,6 +363,33 @@ test('exported definitions always re-import under one canonical size rule', () =
   );
 });
 
+test('cyclic or non-JSON observation values fail with invalid_observation', () => {
+  const started = startStage();
+  const withReceivers = (receivers: unknown): Record<string, WorkflowValue> => ({
+    ...fixtureOutputs('read-context'),
+    receivers: receivers as WorkflowValue,
+  });
+
+  const cyclicReceivers: Record<string, unknown> = { scope: 'project_members', roles: [] };
+  cyclicReceivers.self = cyclicReceivers;
+
+  let deep: Record<string, unknown> = { value: 'leaf' };
+  for (let index = 0; index < 40; index += 1) deep = { child: deep };
+
+  const invalidReceivers = [
+    cyclicReceivers,
+    { scope: 'project_members', roles: [], capturedAt: new Date('2026-11-11T00:00:00.000Z') },
+    { scope: 'project_members', roles: [], callback: () => undefined },
+    deep,
+  ];
+  for (const receivers of invalidReceivers) {
+    const result = advance(started.plan, started.result.state, observation('read-context', withReceivers(receivers)));
+    assert.equal(result.state.status, 'failed');
+    assert.equal(result.state.error?.code, 'invalid_observation');
+    assert.equal(result.pending.length, 0);
+  }
+});
+
 test('import scan bounds depth, total traversal and cyclic structures', () => {
   const deepRoot = draft(createStageReminderDefinition()) as unknown as Record<string, unknown>;
   let deep: Record<string, unknown> = {};

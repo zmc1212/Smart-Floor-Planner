@@ -30,3 +30,18 @@ export class WorkflowRuntimeError extends Error {
     this.code = code;
   }
 }
+
+/** Raised by the B3 store/service layer; status maps to HTTP for the API. */
+export class WorkflowOperationError extends Error {
+  readonly code: string;
+  readonly status: number;
+  readonly details?: unknown;
+
+  constructor(code: string, status: number, message: string, details?: unknown) {
+    super(message);
+    this.name = 'WorkflowOperationError';
+    this.code = code;
+    this.status = status;
+    this.details = details;
+  }
+}

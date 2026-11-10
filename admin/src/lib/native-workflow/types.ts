@@ -20,6 +20,9 @@ export const WORKFLOW_BOUNDS = {
   /** Import safety scan limits: prevent stack overflow and traversal abuse. */
   maxScanDepth: 32,
   maxScanNodes: 10_000,
+  /** Observation JSON limits: reject cyclic, deep or non-JSON values. */
+  maxObservationDepth: 32,
+  maxObservationNodes: 10_000,
   maxExecutionSteps: 64,
   maxConfigStringLength: 500,
 } as const;

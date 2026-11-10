@@ -1,6 +1,6 @@
 import type { CompiledNode, CompiledWorkflowPlan } from './compile';
 import { WorkflowRuntimeError, workflowIssue, type WorkflowIssue } from './errors';
-import { cloneJsonValue, ownValue, valueMatchesType } from './guards';
+import { cloneJsonValue, inspectJsonValue, ownValue, valueMatchesType } from './guards';
 import { validateEffectReceipt } from './receipts';
 import {
   WORKFLOW_BOUNDS,
@@ -225,6 +225,20 @@ function validateObservation(
       return {
         ok: false,
         issue: workflowIssue('invalid_observation', `nodes.${node.nodeId}.${port}`, `observation output is not ${type}`),
+      };
+    }
+    const inspection = inspectJsonValue(value, {
+      maxDepth: WORKFLOW_BOUNDS.maxObservationDepth,
+      maxNodes: WORKFLOW_BOUNDS.maxObservationNodes,
+    });
+    if (!inspection.ok) {
+      return {
+        ok: false,
+        issue: workflowIssue(
+          'invalid_observation',
+          `nodes.${node.nodeId}.${port}`,
+          `observation output is not supported JSON (${inspection.reason} at ${inspection.path})`,
+        ),
       };
     }
     accepted[port] = value;
