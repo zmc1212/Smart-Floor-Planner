@@ -103,14 +103,25 @@ export function webReceipt(snapshot: WebSearchSnapshot, sources: SynthesisSource
   };
 }
 
+/** One shared web dispatch. External I/O never runs inside the transaction that
+ * owns the receipt: the stable operation identity and the pending dispatch
+ * state commit first, the provider call happens after that commit, and a
+ * separate transaction re-authorizes before the receipt closes the operation.
+ * A process lost between commit and receipt leaves an open dispatch marker that
+ * recovery keeps indeterminate — no new sequence, no provider re-dispatch. */
 async function runWeb(rt: WebToolRuntime, input: WebToolInput, sequence: number, webDeadlineAt: number): Promise<WebToolReceipt> {
   const { lease } = rt;
   await rt.authorize();
   const stepSeq = webStepSeq(sequence);
   const reading = input.name === 'read_web';
-  const candidateId = input.name === 'read_web' ? parsePublicRead(input).candidateId : undefined;
+  // The factory input carries the discriminating `name`; the strict parser
+  // accepts only the agreed parameter object.
+  const candidateId = input.name === 'read_web' ? parsePublicRead({ candidateId: input.candidateId }).candidateId : undefined;
   const requestedQuery = input.name === 'search_web' ? input.query : undefined;
-  return await withTenantTransaction(lease.enterpriseId, async tx => {
+  // Phase 1: authorization, stable identity resolution and the pending dispatch
+  // marker commit before any external I/O. A completed receipt at this exact
+  // step is reused verbatim instead of dispatching again.
+  const prepared = await withTenantTransaction(lease.enterpriseId, async tx => {
     const current = await runContext(tx, lease);
     if (!await synthesisContextAvailable(tx, lease.actor, current.conversation, rt.context)) fail('context_changed');
     // Prior snapshots of this same run are the only candidate store; the DB
@@ -135,30 +146,71 @@ async function runWeb(rt: WebToolRuntime, input: WebToolInput, sequence: number,
       where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${stepSeq}`);
     if (cached && cached.status !== 'succeeded') fail('provider_outcome_unknown');
     if (cached && (cached.input_summary as Row)?.queryHash !== queryHash) fail('context_changed');
-    const snapshot = cached ? cached.private_checkpoint as WebSearchSnapshot
-      : await searchPublicResearch(query, undefined, undefined, previous?.research, webDeadlineAt,
-        { runId: lease.runId, sequence: stepSeq, explicitSelection: true, ...(reading ? { selected: resolved!.selected, alternatives: resolved!.origin.candidates }
-          : { discoverOnly: true, searchHint: discovery?.searchHint }) });
-    if (!validWebSnapshot(snapshot, query)) fail('context_changed');
+    if (!cached) {
+      // Any open web dispatch on this run blocks a new one: a recovered run
+      // must never re-send the provider call under a fresh sequence number
+      // (the native executor's open-operations guard enforces the same rule
+      // before the graph starts; this keeps the shared factory safe for the
+      // bridge surface on its own). Serial tool execution is the caller
+      // contract, so an open marker here always means a lost process.
+      const closed = new Set((await rows(tx, sql`select step_seq from app.assistant_run_steps
+        where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and kind='retrieval'
+          and capability_name in ('web.search.v1','web.read.v1') and status='succeeded'
+          and step_seq >= ${webStepBase} and step_seq <= ${webStepCeiling}`)).map(row => Number(row.step_seq)));
+      const usage = await rows(tx, sql`select operation_key from app.assistant_usage_records
+        where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}
+          and category in ('web_search','web_read')`);
+      const open = usage.some(record => {
+        const key = String(record.operation_key), seq = Number(key.slice(key.lastIndexOf(':') + 1));
+        return !Number.isInteger(seq) || !closed.has(seq);
+      });
+      if (open) fail('provider_outcome_unknown', 503);
+      await tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,operation_key,category,quantity,measurement_kind)
+        values(${lease.enterpriseId},${lease.runId},${'agent-web:' + lease.runId + ':' + stepSeq},${reading ? 'web_read' : 'web_search'},null,'unavailable')
+        on conflict do nothing`);
+    }
+    return { query, candidateId, queryHash, discovery, previous, resolved,
+      cached: cached as { status: string; private_checkpoint: unknown; input_summary: unknown } | null };
+  });
+  if (prepared.cached) {
+    const snapshot = prepared.cached.private_checkpoint as WebSearchSnapshot;
     const evidence = webEvidence(snapshot, lease.runId, stepSeq), sources = webSynthesisSources(evidence);
     if (evidence.length) rt.markWebRetrieved();
     const cites = webCitations(rt.catalog, sources);
-    const receipt = ((cached?.input_summary as Row | undefined)?.receipt as WebToolReceipt | undefined)
-      ?? webReceipt(snapshot, sources, cites);
-    if (!cached) {
-      await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint,source_refs,input_summary)
-        values(${lease.enterpriseId},${lease.runId},${stepSeq},'retrieval',${reading ? 'web.read.v1' : 'web.search.v1'},1,'succeeded',
-          ${JSON.stringify(snapshot)}::jsonb,${JSON.stringify(evidence.map(e => ({ ref: e.ref, hash: e.hash })))}::jsonb,
-          ${JSON.stringify({ protocol: rt.protocol, tool: reading ? 'read_web' : 'search_web', stepSeq, query, queryHash,
-            ...(reading ? { candidateId } : discovery?.searchHint ? { searchHint: discovery.searchHint } : {}), receipt })}::jsonb)`);
-      await tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,operation_key,category,quantity,measurement_kind)
-        values(${lease.enterpriseId},${lease.runId},${'agent-web:' + lease.runId + ':' + stepSeq},${reading ? 'web_read' : 'web_search'},1,'observed')
-        on conflict do nothing`);
-    }
     (rt.context.web ??= []).push(...evidence);
     rt.context.sources.push(...sources);
-    return receipt;
+    return ((prepared.cached.input_summary as Row | undefined)?.receipt as WebToolReceipt | undefined)
+      ?? webReceipt(snapshot, sources, cites);
+  }
+  // Phase 2: the dispatch marker has committed; now the external I/O runs
+  // outside any transaction.
+  const snapshot = await searchPublicResearch(prepared.query, undefined, undefined, prepared.previous?.research, webDeadlineAt,
+    { runId: lease.runId, sequence: stepSeq, explicitSelection: true, ...(reading
+      ? { selected: prepared.resolved!.selected, alternatives: prepared.resolved!.origin.candidates }
+      : { discoverOnly: true, searchHint: prepared.discovery?.searchHint }) });
+  if (!validWebSnapshot(snapshot, prepared.query)) fail('context_changed');
+  const evidence = webEvidence(snapshot, lease.runId, stepSeq), sources = webSynthesisSources(evidence);
+  if (evidence.length) rt.markWebRetrieved();
+  const cites = webCitations(rt.catalog, sources);
+  const receipt = webReceipt(snapshot, sources, cites);
+  // Phase 3: re-verify authorization on the post-I/O state, persist the
+  // receipt with the step and close the pending dispatch marker.
+  await withTenantTransaction(lease.enterpriseId, async tx => {
+    const current = await runContext(tx, lease);
+    if (!await synthesisContextAvailable(tx, lease.actor, current.conversation, rt.context)) fail('context_changed');
+    await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint,source_refs,input_summary)
+      values(${lease.enterpriseId},${lease.runId},${stepSeq},'retrieval',${reading ? 'web.read.v1' : 'web.search.v1'},1,'succeeded',
+        ${JSON.stringify(snapshot)}::jsonb,${JSON.stringify(evidence.map(e => ({ ref: e.ref, hash: e.hash })))}::jsonb,
+        ${JSON.stringify({ protocol: rt.protocol, tool: reading ? 'read_web' : 'search_web', stepSeq, query: prepared.query,
+          ...(reading ? {} : { rawQuery: requestedQuery }), queryHash: prepared.queryHash,
+          ...(reading ? { candidateId: prepared.candidateId } : prepared.discovery?.searchHint ? { searchHint: prepared.discovery.searchHint } : {}), receipt })}::jsonb)`);
+    await tx.execute(sql`update app.assistant_usage_records set quantity=1,measurement_kind='observed',updated_at=now(),version=version+1
+      where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}
+        and operation_key=${'agent-web:' + lease.runId + ':' + stepSeq} and measurement_kind='unavailable'`);
   });
+  (rt.context.web ??= []).push(...evidence);
+  rt.context.sources.push(...sources);
+  return receipt;
 }
 
 /** One dispatcher for both web tool names, matching the bridge's `web` port;

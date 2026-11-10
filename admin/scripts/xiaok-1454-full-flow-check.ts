@@ -16,6 +16,8 @@ import { closePostgresPool } from '@/lib/postgresql';
 import { ConstructionService } from '@/lib/construction/service';
 import { ConstructionReportService, reportPlanDto } from '@/lib/construction/report-service';
 import { fastGPTAgentV2Configuration, nativeAgentRuntimeBinding } from '@/lib/assistant/fastgpt/agent-v2/config';
+import { KnowledgeService } from '@/lib/assistant/knowledge/service';
+import { claimKnowledgeJob, runKnowledgeJob, type KnowledgeLease } from '@/lib/assistant/knowledge/index-worker';
 
 loadEnvConfig(process.cwd(), true);
 assert.ok(process.argv.includes('--development'));
@@ -89,12 +91,12 @@ async function waitFor<T>(label: string, fn: () => Promise<T | undefined | false
 }
 const jwt = (payload: Row) => new SignJWT({ ...payload }).setProtectedHeader({ alg: 'HS256' }).setSubject(String(payload.sub))
   .setIssuedAt().setAudience('miniprogram').setExpirationTime('2h').sign(new TextEncoder().encode(process.env.JWT_SECRET!));
-async function api(token: string, route: string, init: { method?: string; body?: Row; entry?: string; key?: string; expect?: number | number[] } = {}) {
+async function api(token: string, route: string, init: { method?: string; body?: Row; entry?: string; key?: string; expect?: number | number[]; host?: string } = {}) {
   const headers: Record<string, string> = { Authorization: 'Bearer ' + token };
   if (init.entry) headers['X-Assistant-Entry'] = init.entry;
   if (init.body !== undefined) headers['Content-Type'] = 'application/json';
   if (init.key) headers['Idempotency-Key'] = init.key;
-  const response = await fetch(base + route, { method: init.method || (init.body !== undefined ? 'POST' : 'GET'), headers,
+  const response = await fetch((init.host || base) + route, { method: init.method || (init.body !== undefined ? 'POST' : 'GET'), headers,
     body: init.body !== undefined ? JSON.stringify(init.body) : undefined, signal: AbortSignal.timeout(60000) });
   const data = await response.json().catch(() => ({})) as Row;
   const expected = init.expect ?? 200;
@@ -246,7 +248,7 @@ async function main() {
     await api(customer.token, `/followups/420/reports?projectId=${projectId}`, { entry: entryToken, expect: 404 });
     report.stage = { eventId: String(event.id), progressed: { version: progressed.version, reminderRecorded: progressed.reminderRecorded },
       reports: reports.map(r => ({ bindingId: String(r.binding_id), reportId: String(r.report_id), state: r.delivery_state,
-        bodyStatus: r.body_status || null, bodyError: r.body_error || null })), views };
+        bodyRunId: r.body_run_id ? String(r.body_run_id) : null, bodyStatus: r.body_status || null, bodyError: r.body_error || null })), views };
     return { eventId: String(event.id), recipients: views.map(v => v.kind) };
   });
 
@@ -327,7 +329,7 @@ async function main() {
       assert.ok(conversation.id, 'Follow-up conversation readable on reentry');
       report.daily = { stagedVersion: Number(staged.version), nextDailyAt: staged.next_daily_at, original,
         reports: reports.map(r => ({ bindingId: String(r.binding_id), reportId: String(r.report_id), state: r.delivery_state,
-          bodyStatus: r.body_status || null, bodyError: r.body_error || null })), views, readAt: reread.readAt, historyItems: ((history.items as Row[] | undefined) || []).length };
+          bodyRunId: r.body_run_id ? String(r.body_run_id) : null, bodyStatus: r.body_status || null, bodyError: r.body_error || null })), views, readAt: reread.readAt, historyItems: ((history.items as Row[] | undefined) || []).length };
       return { stagedVersion: Number(staged.version), recipients: views.map(v => v.kind), readAt: reread.readAt };
     } finally {
       // Restore the user-requested plan even when the journey above failed.
@@ -343,20 +345,24 @@ async function main() {
 
   await step('daily report records question without any business write', async () => {
     const cid = String(report.chat?.conversationId);
-    const reportsBefore = Number((await tenantOne(sql`select count(*)::int n from app.construction_reports where enterprise_id=${eid}`))!.n);
+    // The zero-write window opens with this step: an enterprise-wide before/after
+    // count would blame unrelated concurrent report writes on this chat turn,
+    // so only rows created inside the window may fail the assertion.
+    const stepStartedAt = new Date().toISOString();
     const turn = await customerTurn(customer.token, cid, '你发的日报里记的内容，和现场确认过的是一回事吗？');
     assert.equal(String(turn.run.status), 'succeeded', 'Report-question reply must succeed: ' + String(turn.run.error_code || ''));
     assert.equal(executorOf(turn.run), expectedExecutor, 'Report-question reply must use ' + expectedExecutor);
     assert.ok(turn.answerText.trim().length > 20, 'The reply must explain the record scopes instead of a fixed handoff script');
-    const reportsAfter = Number((await tenantOne(sql`select count(*)::int n from app.construction_reports where enterprise_id=${eid}`))!.n);
-    assert.equal(reportsAfter, reportsBefore, 'A chat question must not generate reports');
+    const reportsAfter = Number((await tenantOne(sql`select count(*)::int n from app.construction_reports
+      where enterprise_id=${eid} and created_at >= ${stepStartedAt}::timestamptz`))!.n);
+    assert.equal(reportsAfter, 0, 'A chat question must not create reports inside the step window');
     const composeRuns = await tenantRows(sql`select id from app.assistant_runs where enterprise_id=${eid}
       and purpose='construction.report.compose' and trigger_kind='user_message'`);
     assert.equal(composeRuns.length, 0, 'No report composition may originate from a chat message');
-    report.reportQuestion = { question: '你发的日报里记的内容，和现场确认过的是一回事吗？', runId: String(turn.run.id),
+    report.reportQuestion = { question: '你发的日报里记的内容，和现场确认过的是一回事吗？', stepStartedAt, runId: String(turn.run.id),
       binding: String(((turn.run.policy_snapshot as Row)?.agentRuntime as Row | undefined)?.binding || ''),
-      answerText: turn.answerText.slice(0, 600), reportsDelta: reportsAfter - reportsBefore };
-    return { runId: String(turn.run.id), reportsDelta: reportsAfter - reportsBefore };
+      answerText: turn.answerText.slice(0, 600), reportsAfter };
+    return { runId: String(turn.run.id), stepStartedAt, reportsAfter };
   });
 
   await step('permission boundaries and restored plan readback', async () => {
@@ -415,21 +421,95 @@ async function main() {
     const mismatched = auditedTurns.filter(t => String(t.binding || '') !== expectedBinding);
     assert.equal(mismatched.length, 0, '运行服务与审计配置不一致,不得判 PASS: '
       + mismatched.map(t => String(t.binding || '') || '(missing)').join(','));
-    const delta = auditLines().slice(auditBefore);
+    // 事件-运行关联基线:本轮已知的全部 runId(聊天/追问轮 + 阶段与日报正文 run)。
+    const stepReports = (key: 'stage' | 'daily') => ((((report as Row)[key] as Row | undefined)?.reports as Row[] | undefined) || []);
+    const knownBodyRunIds = new Set([...stepReports('stage'), ...stepReports('daily')]
+      .map(r => String(r.bodyRunId || '')).filter(Boolean));
+    const knownRunIds = new Set([...auditedTurns.map(t => String(t.runId || '')).filter(Boolean), ...knownBodyRunIds]);
+    // delta 只取本轮窗口内的审计行;每行形如 {kind,at,value},value 携带 runId/chatId。
+    const parseAuditLine = (line: string) => {
+      const parsed = JSON.parse(line) as Row;
+      return { kind: String(parsed.kind || ''), value: (parsed.value ?? {}) as Row };
+    };
+    const delta = auditLines().slice(auditBefore).map(parseAuditLine);
     const kinds: Row = {};
-    for (const line of delta) { const kind = String((JSON.parse(line) as Row).kind || ''); kinds[kind] = (Number(kinds[kind]) || 0) + 1; }
+    for (const entry of delta) kinds[entry.kind] = (Number(kinds[entry.kind]) || 0) + 1;
     const seen = Object.keys(kinds);
+    // 关联判定:记录直接携带的 runId,或 chatId 内嵌的 runId(stage 记录的
+    // chatId 形如 xiaok-report-{runId}-{uuid},knowledge 记录形如
+    // xiaok-knowledge-{runId}-{turn}-{uuid}),落入本轮已知 runId 集合即关联。
+    const correlatedRunIds: string[] = [];
+    const correlate = (entry: { kind: string; value: Row }) => {
+      const embedded = (/^xiaok-[a-z]+-(\d+)-/.exec(String(entry.value.chatId || '')) || [])[1] || '';
+      const runId = [String(entry.value.runId || ''), embedded].find(id => id && knownRunIds.has(id)) || '';
+      if (runId && !correlatedRunIds.includes(runId)) correlatedRunIds.push(runId);
+      return runId;
+    };
+    // 预览正控探针:delta 完全无法关联到本轮运行时(如 --stage-fastgpt=down 轮),
+    // 用一条合成知识草稿走真实预览问答,证明审计文件写入通道真实有效。探针
+    // 记录是来源验证正控,不是聊天路径事件,不计入零非 stage 断言(该断言已在
+    // 探针开始前闭合),探针后只断言探针自身的 knowledge 记录存在。
+    const runAuditProbe = async (): Promise<Row> => {
+      const probeLinesBefore = auditLines().length;
+      const knowledge = new KnowledgeService({ enterpriseId: eid, adminId: ownerId });
+      const created = await knowledge.execute('create', { title: '[synthetic-fullflow] 审计探针',
+        sourceType: 'manual_text', audience: 'customer_public', body: '全流程审计探针合成条款' }, randomUUID());
+      const documentId = String((created.document as Row).id), versionId = String((created.draft as Row).id);
+      const queued = await knowledge.execute('index', { documentId, versionId, expectedVersion: 1, expectedEditVersion: 1 }, randomUUID());
+      // claimKnowledgeJob 扫描的是全平台队列;验收轮前置已断言队列空闲,若领到
+      // 非目标任务属于环境漂移:不代跑、不 failRun,直接失败终止本轮,宁败不破。
+      const deadline = Date.now() + 60000;
+      let lease: KnowledgeLease | undefined;
+      while (!lease) {
+        const claimed = await claimKnowledgeJob();
+        if (claimed && String(claimed.jobId) === String(queued.jobId)) lease = claimed;
+        else if (claimed) throw new Error('Knowledge queue drifted during acceptance: claimed foreign job '
+          + String(claimed.jobId) + ' instead of ' + String(queued.jobId));
+        else if (Date.now() > deadline) throw new Error('Probe knowledge index job was not claimable within 60s');
+        else await new Promise(r => setTimeout(r, 1000));
+      }
+      await runKnowledgeJob(lease);
+      const indexed = await tenantOne(sql`select index_status from app.assistant_knowledge_versions
+        where enterprise_id=${eid} and id=${versionId}`);
+      assert.equal(String(indexed!.index_status), 'ready', 'Probe draft must reach index_status=ready');
+      const previewHost = 'http://127.0.0.1:3006/api/assistant';
+      const conversation = (((await api(owner, '/preview/conversations', { key: randomUUID(), host: previewHost,
+        body: { audience: 'customer_public', draftVersionIds: [versionId] } })).data.data || {}) as Row);
+      const conversationId = String(conversation.id || '');
+      assert.ok(conversationId, 'Preview probe conversation must be created');
+      const clientMessageId = randomUUID();
+      const sent = await api(owner, '/preview/conversations/' + conversationId + '/messages', { key: clientMessageId, host: previewHost,
+        body: { clientMessageId, content: { version: 1, blocks: [{ type: 'text', text: '全流程审计探针：这条合成条款写了什么内容？' }] } }, expect: 202 });
+      const probeRunId = String(((sent.data.data || {}) as Row).runId || '');
+      assert.ok(probeRunId, 'Preview probe must queue a real run');
+      const probeRun = await waitFor('audit probe run', async () => {
+        const r = await tenantOne(sql`select id,status,error_code from app.assistant_runs
+          where enterprise_id=${eid} and id=${probeRunId}`);
+        return r && !['queued', 'running'].includes(String(r.status)) ? r : undefined;
+      }, 360000, 2500);
+      assert.equal(String(probeRun.status), 'succeeded', 'Audit probe run must succeed: ' + String(probeRun.error_code || ''));
+      const probeRecorded = auditLines().slice(probeLinesBefore).map(parseAuditLine)
+        .some(record => record.kind === 'knowledge' && String(record.value.runId || '') === probeRunId);
+      assert.ok(probeRecorded, 'The probe must append a knowledge audit record bound to the probe run');
+      return { runId: probeRunId, conversationId, versionId };
+    };
+    let probe: Row | undefined;
     if (expectedExecutor === 'xiaok-native-executor-v1') {
       // 原生执行器:聊天路径零 FastGPT,仅阶段报告正文属 P3 例外。
       const nonStage = seen.filter(kind => kind !== 'stage');
       assert.equal(nonStage.length, 0, 'Chat and auxiliary paths must not call FastGPT, saw: ' + nonStage.join(','));
+      // 零调用结论还需要已验证的审计来源:delta 里至少一条记录关联到本轮
+      // runId(stage 记录关联本轮正文 run 时同时是 ledger 活性正控);否则探针。
+      if (!delta.some(entry => correlate(entry))) probe = await runAuditProbe();
     } else {
       // 旧 FastGPT V2 模式:聊天本应通过被审计的桥调用,不做零调用断言,只拒绝未知 kind。
       const unknown = seen.filter(kind => !['agentV2', 'stage', 'knowledge', 'unified', 'rag', 'nativeKnowledge'].includes(kind));
       assert.equal(unknown.length, 0, 'Unknown FastGPT audit kinds, saw: ' + unknown.join(','));
+      assert.ok(delta.some(entry => correlate(entry)), 'FastGPT 审计事件未能关联到本轮运行,不得判 PASS');
     }
     report.fastgptAudit = { configured: true, auditFile: auditPath, before: auditBefore, after: auditLines().length, kinds,
       expectedBinding, bindingMatchedTurns: auditedTurns.length - mismatched.length, totalTurns: auditedTurns.length, mode: expectedExecutor,
+      sourceVerified: true, correlatedRunIds, ...(probe ? { probe } : {}),
       ...(stageFastgptDown ? { note: 'FastGPT deployment unreachable by configuration for this round' } : {}) };
     return report.fastgptAudit;
   });
@@ -445,6 +525,16 @@ main().catch(error => { report.error = (error as Error).message; })
         providerMax: String((await withPlatformTransaction(tx => one(tx, sql`select coalesce(max(id),0) id from app.ai_provider_attempts`)))!.id),
         knowledgeMax: String((await withPlatformTransaction(tx => one(tx, sql`select coalesce(max(id),0) id from app.assistant_knowledge_attempts`)))!.id) };
     } catch (error) { report.finalizeError = (error as Error).message; }
-    finally { save(); await closePostgresPool(); console.log(JSON.stringify({ passed: (report.checks as Row[]).every(c => c.passed),
-      checks: (report.checks as Row[]).length, error: report.error || null, drift: report.drift || [], restored: report.restored || null })); }
+    finally {
+      save(); await closePostgresPool();
+      const checks = (report.checks as Row[]);
+      // One unified final success condition: every step passed, the main flow
+      // and both restoration paths finished clean, no source drift, and the
+      // check set is nonempty (an empty check set is never a pass).
+      const passed = checks.length > 0 && checks.every(c => c.passed)
+        && !report.error && !((report.drift as string[]) || []).length && !report.finalizeError && !report.restoreError;
+      if (!passed) process.exitCode = 1;
+      console.log(JSON.stringify({ passed, checks: checks.length, error: report.error || null,
+        drift: report.drift || [], restored: report.restored || null }));
+    }
   });

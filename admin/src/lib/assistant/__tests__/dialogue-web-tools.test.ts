@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { fingerprint } from '../contracts';
 import { assertModelTurnBand, dialogueWebResearch, maxModelTurns, modelStepBase, modelStepStride,
   resolveWebCandidate, validWebSnapshot, webCandidateInstructions, webCitations, webCitedInstructions,
-  webReceipt, webStepBase, webStepCeiling, webStepSeq, type WebToolRuntime } from '../agent/dialogue-web-tools';
+  webReceipt, webStepBase, webStepCeiling, webStepSeq, type WebToolInput, type WebToolRuntime } from '../agent/dialogue-web-tools';
+import { parsePublicRead } from '../agent/public-research';
 import { webEvidence, webSynthesisSources } from '../agent/web-evidence';
 import type { WebSearchSnapshot } from '../agent/web';
 
@@ -23,6 +24,18 @@ const snapshotAt = (stepSeq: number, candidateIds: string[], pages: ReturnType<t
   snapshot: { version: 1, provider: 'test', query: { query: '地暖 安装手册', domains: [] },
     status: pages.length ? 'ready' : 'empty', pages, failures: [], retrievedAt,
     candidates: candidateIds.map((id, index) => ({ id, url: `https://example.com/c/${index}`, title: '候选', parent: null, depth: 0 })) },
+});
+
+test('factory inputs pass the agreed parameter object to the strict read parser', () => {
+  // The shared factory strips the discriminating `name` before parsing: the
+  // strict parser accepts exactly one `candidateId` key. Passing the full
+  // WebToolInput would fail closed on every surface, so this contract is
+  // pinned here (the live W3 recovery scenario drives the real dispatcher).
+  const read: WebToolInput = { name: 'read_web', candidateId: 'P5:1200:0' };
+  assert.equal(parsePublicRead({ candidateId: read.candidateId }).candidateId, 'P5:1200:0');
+  assert.throws(() => parsePublicRead(read), (error: { code?: string }) => error.code === 'invalid_web_candidate');
+  assert.throws(() => parsePublicRead({ candidateId: 'https://example.com' }),
+    (error: { code?: string }) => error.code === 'invalid_web_candidate');
 });
 
 test('web steps occupy 1200+sequence and stop at the 12xx ceiling', () => {

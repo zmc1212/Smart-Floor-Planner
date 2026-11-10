@@ -27,7 +27,7 @@ import { parseWebQuery, webSearchTool, type WebSearchSnapshot } from './web';
 import { parsePublicRead, publicResearchTools, readWebTool } from './public-research';
 import { historyRefsAvailable, historySynthesisSources, historyTool, parseHistoryQuery,
   type HistoryRef, type HistorySnapshot } from './history';
-import { webEvidence, webSynthesisSources } from './web-evidence';
+import { webAnswerQuoteSpans, webEvidence, webSynthesisSources } from './web-evidence';
 
 /** The XiaoK-owned executor for V2-surface customer consultations. It reuses
  * the existing LangGraph runtime, model gateway and authorized tools; no
@@ -125,11 +125,15 @@ export function recoveredDialogueToolState(searchSteps: Row[], businessSteps: Ro
       businesses.set(key, receipt(meta?.receipt));
       nextSequence = Math.max(nextSequence, seq - 1400 + 1);
     } else if (seq >= 1200 && seq < 1300 && (capability === 'web.search.v1' || capability === 'web.read.v1')) {
-      // Identity is the model's own argument: the public query text for a
-      // search, the candidate id for a read. The shared factories add a second
-      // safety net through their persisted-step queryHash replay.
+      // Identity is the model's own argument: the raw public query text for a
+      // search, the candidate id for a read. The factory persists `rawQuery`
+      // beside the normalized WebQuery it dispatched, so recovery keys receipts
+      // exactly like the executor's fresh-call lookup ('search:' + raw string).
+      // The shared factories add a second safety net through their persisted
+      // queryHash replay. Receipts written before rawQuery existed fail closed
+      // instead of guessing an identity.
       const readId = meta?.tool === 'read_web' ? text(meta?.candidateId) : null;
-      const searchQuery = meta?.tool === 'search_web' ? text(meta?.query) : null;
+      const searchQuery = meta?.tool === 'search_web' ? text(meta?.rawQuery) : null;
       const identity = readId ? 'read:' + readId : searchQuery ? 'search:' + searchQuery : null;
       if (!identity || webs.has(identity)) fail('invalid_agent_checkpoint', 409);
       webs.set(identity, receipt(meta?.receipt));
@@ -188,11 +192,17 @@ export async function processNativeAgentAnswer(lease: Lease) {
     const knowledgeEnabled = runKnowledgeEnabled(initial.run.policy_snapshot as Row);
     const { context, messages, citations } = await nativeConversation(lease, [], xiaokNativeExecutorProtocol);
     const catalog = new Map<string, RagCitationSource>(citations.map(c => [c.nativeId, c]));
+    const historyRefs = new Map<string, HistoryRef>();
     const guard = async () => {
       await authorize();
       await withTenantTransaction(lease.enterpriseId, async tx => {
         const state = await runContext(tx, lease);
         if (!await synthesisContextAvailable(tx, lease.actor, state.conversation, context)) fail('context_changed');
+        // Recalled customer originals carry their own ref set (recovered
+        // snapshots plus every fresh recall): a session version bump or an
+        // unavailable original blocks the next model call exactly like the
+        // synthesis-context check blocks retrieved evidence.
+        if (historyRefs.size && !await historyRefsAvailable(tx, lease.enterpriseId, String(state.conversation.id), [...historyRefs.values()])) fail('context_changed');
       });
     };
     let knowledgeRetrieved = false, webRetrieved = false;
@@ -208,19 +218,21 @@ export async function processNativeAgentAnswer(lease: Lease) {
         and run_id=${lease.runId} and step_seq>=1300 and step_seq<1400 and kind='retrieval' and status='succeeded' order by step_seq`);
       const businesses = await rows(tx, sql`select step_seq,private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
         and run_id=${lease.runId} and step_seq>=1400 and step_seq<1500 and kind='agent_tool' and capability_name='query_business' and status='succeeded' order by step_seq`);
-      const webs = await rows(tx, sql`select step_seq,private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+      const webs = await rows(tx, sql`select step_seq,capability_name,private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
         and run_id=${lease.runId} and step_seq>=1200 and step_seq<1300 and kind='retrieval'
         and capability_name in ('web.search.v1','web.read.v1') and status='succeeded' order by step_seq`);
-      const historySteps = await rows(tx, sql`select step_seq,private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+      const historySteps = await rows(tx, sql`select step_seq,capability_name,private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
         and run_id=${lease.runId} and step_seq>=1500 and step_seq<1600 and kind='agent_tool' and capability_name='recall_history' and status='succeeded' order by step_seq`);
       // A persisted recall only replays while every original is still
       // authorized; otherwise the resumed run fails closed like a fresh one.
-      const histories: Array<{ stepSeq: number; snapshot: HistorySnapshot }> = [];
+      // The raw rows stay the recovery input: recoveredDialogueToolState reads
+      // the same DB shape the factories persist, never a reshaped copy.
+      const histories: Row[] = [];
       for (const step of historySteps) {
         const snapshot = step.private_checkpoint as HistorySnapshot;
-        if (!snapshot || typeof snapshot !== 'object' || !Array.isArray(snapshot.sources)) continue;
-        if (!await historyRefsAvailable(tx, lease.enterpriseId, conversationId, snapshot.sources)) fail('context_changed');
-        histories.push({ stepSeq: Number(step.step_seq), snapshot });
+        if (snapshot && typeof snapshot === 'object' && Array.isArray(snapshot.sources)
+          && !await historyRefsAvailable(tx, lease.enterpriseId, conversationId, snapshot.sources)) fail('context_changed');
+        histories.push(step);
       }
       const fixed = await rows(tx, sql`select step_seq,kind,input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
         and run_id=${lease.runId} and step_seq in (2000,2010) and kind in ('agent_designer_result','agent_public_sites') and status='succeeded' order by step_seq`);
@@ -288,8 +300,9 @@ export async function processNativeAgentAnswer(lease: Lease) {
       (context.web ??= []).push(...evidence);
       context.sources.push(...sources);
     }
-    const historyRefs = new Map<string, HistoryRef>();
-    for (const { snapshot } of saved.histories) {
+    for (const step of saved.histories) {
+      const snapshot = step.private_checkpoint as HistorySnapshot;
+      if (!snapshot || typeof snapshot !== 'object' || !Array.isArray(snapshot.sources)) continue;
       (context.history ??= []).push(snapshot);
       context.sources.push(...historySynthesisSources(snapshot));
       for (const { messageId, hash, memoryVersion } of snapshot.sources)
@@ -390,7 +403,15 @@ export async function processNativeAgentAnswer(lease: Lease) {
         const { query } = JSON.parse(args) as { query: string };
         const recoveredHistory = toolState.histories.get(query);
         if (recoveredHistory) return { content: JSON.stringify(recoveredHistory) };
-        return { content: JSON.stringify(await recall(JSON.parse(args), ++sequence, saved.triggerSeq)) };
+        const receipt = await recall(JSON.parse(args), ++sequence, saved.triggerSeq);
+        // A fresh recall joins the same chain as the recovered ones: its
+        // snapshot and H-sources enter the synthesis context, so the guard
+        // before every later model call, the final commit and the persisted
+        // step-1006 source set all revalidate this recall's originals.
+        (context.history ??= []).push({ query: receipt.query, beforeSeq: receipt.beforeSeq,
+          sources: receipt.sources, hasMore: receipt.hasMore, oversized: receipt.oversized });
+        context.sources.push(...receipt.synthesisSources);
+        return { content: JSON.stringify(receipt) };
       }
       fail('assistant_capability_forbidden', 403);
     };
@@ -505,25 +526,45 @@ export async function processNativeAgentAnswer(lease: Lease) {
     const suggestions: SuggestionResolution = resolveSuggestions(null, bound.configuration.presets ?? []);
     const parts = ragAnswerParts(text, [...catalog.values()]);
     const cited = [...catalog.values()].filter(c => parts.some(p => 'source' in p && p.source.nativeId === c.nativeId));
+    // The persisted answer owns the web citation spans (same protocol as the
+    // FastGPT V2 worker): segments carry every selected quote, so the
+    // `w:{runId}:{index}` citation ids stay openable on reentry.
+    const segments: Array<{ basis: 'advice' | 'evidence'; text: string; citations: Array<{ sourceId: string; quote: string }> }> = [];
+    for (const p of parts) {
+      if ('text' in p) { segments.push({ basis: 'advice', text: p.text, citations: [] }); continue; }
+      const segment = segments.at(-1); if (!segment) fail('invalid_model_answer', 502);
+      segment.basis = 'evidence';
+      segment.citations.push({ sourceId: p.source.sourceId || 'K' + p.source.evidence.ref.id, quote: p.source.quote || p.source.evidence.text });
+    }
     await completeRun(lease, { content: { version: 1, blocks: [{ type: 'text', text }] }, usage: null,
       attemptId: lastAttemptId ?? undefined, usageMode: 'per_turn' },
       async (tx, run, messageId) => {
         const state = await runContext(tx, lease);
         if (!await synthesisContextAvailable(tx, lease.actor, state.conversation, context)) fail('context_changed');
+        // Recalled originals revalidate one last time beside the other
+        // consulted sources before the answer commits.
+        if (historyRefs.size && !await historyRefsAvailable(tx, lease.enterpriseId, String(state.conversation.id), [...historyRefs.values()])) fail('context_changed');
         const blocks: MessageContent['blocks'] = [], savedCitations = new Map<string, string>();
         for (const p of parts) {
           if ('text' in p) { blocks.push({ type: 'text', text: p.text }); continue; }
           const e: Evidence = p.source.evidence;
           let citation = savedCitations.get(p.source.nativeId);
           if (!citation) {
-            citation = await saveKnowledgeCitation(tx, lease.actor, state.conversation, lease.runId, messageId, e, p.source.quote || e.text);
+            if (e.ref.type === 'web_page') {
+              const webSources = context.sources.filter(s => s.kind === 'web');
+              const index = webSources.findIndex(s => s.sourceId === p.source.sourceId);
+              const span = index >= 0 && index <= 31
+                ? webAnswerQuoteSpans({ kind: 'synthesis', segments }, webSources[index]).find(s => s.selectedQuotes.includes(p.source.quote!)) : undefined;
+              if (!span) fail('invalid_model_citation', 502);
+              citation = `w:${lease.runId}:${index}` + (span.part === undefined ? '' : ':' + span.part);
+            } else citation = await saveKnowledgeCitation(tx, lease.actor, state.conversation, lease.runId, messageId, e, p.source.quote || e.text);
             savedCitations.set(p.source.nativeId, citation);
           }
-          blocks.push({ type: 'citation', citationId: citation, fallbackText: '知识来源' });
+          blocks.push({ type: 'citation', citationId: citation, fallbackText: e.ref.type === 'web_page' ? '网页来源' : '知识来源' });
         }
         await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs,private_checkpoint,input_summary)
           values(${lease.enterpriseId},${lease.runId},1006,'agent_synthesis_context','succeeded',${JSON.stringify(context)}::jsonb,
-            ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, kind: 'synthesis', segments: [], raw: finalText,
+            ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, kind: 'synthesis', segments, raw: finalText,
               citations: cited, composition: { snapshots: delivered.length, modelCitations, modelIncluded: composed.modelIncluded } })}::jsonb,
             ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, runtime: 'xiaok-native-executor' })}::jsonb)`);
         if (suggestions.questions.length)

@@ -112,7 +112,7 @@ test('recovery covers the 1200 web band by the model\'s own call arguments', () 
     documents: [], instructions: 'i' };
   const readReceipt = { status: 'ready', failures: [], documents: [{ title: 't', url: 'https://example.com', text: '原文' }], instructions: 'i' };
   const state = recoveredDialogueToolState([], [], [
-    { step_seq: 1200, capability_name: 'web.search.v1', input_summary: { tool: 'search_web', query: '地暖 安装手册', queryHash: 'q1', receipt: searchReceipt } },
+    { step_seq: 1200, capability_name: 'web.search.v1', input_summary: { tool: 'search_web', rawQuery: '地暖 安装手册', queryHash: 'q1', receipt: searchReceipt } },
     { step_seq: 1201, capability_name: 'web.read.v1', input_summary: { tool: 'read_web', candidateId: 'P5:1200:0', queryHash: 'q2', receipt: readReceipt } },
   ]);
   assert.deepEqual(state.webs.get('search:地暖 安装手册'), searchReceipt);
@@ -123,12 +123,17 @@ test('recovery covers the 1200 web band by the model\'s own call arguments', () 
   // A step without its receipt, an unknown tool tag or a duplicate identity
   // fails closed exactly like the 1300/1400 bands.
   assert.throws(() => recoveredDialogueToolState([], [], [
-    { step_seq: 1200, capability_name: 'web.search.v1', input_summary: { tool: 'search_web', query: 'q' } }]), invalidCheckpoint);
+    { step_seq: 1200, capability_name: 'web.search.v1', input_summary: { tool: 'search_web' } }]), invalidCheckpoint);
   assert.throws(() => recoveredDialogueToolState([], [], [
-    { step_seq: 1200, capability_name: 'web.search.v1', input_summary: { tool: 'other', query: 'q', receipt: searchReceipt } }]), invalidCheckpoint);
+    { step_seq: 1200, capability_name: 'web.search.v1', input_summary: { tool: 'other', rawQuery: 'q', receipt: searchReceipt } }]), invalidCheckpoint);
   assert.throws(() => recoveredDialogueToolState([], [], [
-    { step_seq: 1200, capability_name: 'web.search.v1', input_summary: { tool: 'search_web', query: 'q', receipt: searchReceipt } },
-    { step_seq: 1201, capability_name: 'web.search.v1', input_summary: { tool: 'search_web', query: 'q', receipt: searchReceipt } }]), invalidCheckpoint);
+    { step_seq: 1200, capability_name: 'web.search.v1', input_summary: { tool: 'search_web', rawQuery: 'q', receipt: searchReceipt } },
+    { step_seq: 1201, capability_name: 'web.search.v1', input_summary: { tool: 'search_web', rawQuery: 'q', receipt: searchReceipt } }]), invalidCheckpoint);
+  // Receipts written before rawQuery existed cannot reconstruct the model's own
+  // argument: fail closed instead of guessing from the normalized WebQuery.
+  assert.throws(() => recoveredDialogueToolState([], [], [
+    { step_seq: 1200, capability_name: 'web.search.v1',
+      input_summary: { tool: 'search_web', query: { query: 'q', domains: [] }, queryHash: 'q', receipt: searchReceipt } }]), invalidCheckpoint);
 });
 
 test('recovery covers recall_history steps and the fixed 2000/2010 receipts', () => {

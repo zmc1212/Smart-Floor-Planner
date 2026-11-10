@@ -48,18 +48,31 @@ export function historyReceipt(snapshot: HistorySnapshot, current: ReturnType<ty
     instructions: historyRecallInstructions(snapshot), exhausted: snapshot.sources.length === 0 };
 }
 
+export const historyStepBase = 1500;
+export const historyStepCeiling = 1599;
+/** `1500 + sequence`, mirroring the other tool bands (1200 web / 1300 search /
+ * 1400 business): the caller passes its own shared tool-call sequence and the
+ * factory owns the band, so recovery reads the 1500 segment it persists. */
+export function historyStepSeq(sequence: number) {
+  const stepSeq = historyStepBase + sequence;
+  if (!Number.isSafeInteger(sequence) || sequence < 0 || stepSeq > historyStepCeiling) fail('agent_turn_limit', 422);
+  return stepSeq;
+}
+
 /** `recall_history`: one persisted step per call. `sequence` is the caller's
- * own tool-call step id (unified executor: 1200+turn*10+index); `beforeSeq`
- * comes from the trigger message's seq, never from the model. */
+ * shared tool-call counter (unified executor bands land this factory's steps at
+ * 1500+sequence); `beforeSeq` comes from the trigger message's seq, never from
+ * the model. */
 export function dialogueHistoryRecall(rt: HistoryToolRuntime) {
   return (input: unknown, sequence: number, beforeSeq: string): Promise<HistoryReceipt> => (async () => {
     await rt.authorize();
     const query = parseHistoryQuery(input);
     if (!/^[1-9]\d{0,18}$/.test(beforeSeq)) fail('invalid_message', 422);
+    const stepSeq = historyStepSeq(sequence);
     const { receipt } = await withTenantTransaction(rt.lease.enterpriseId, async tx => {
       const current = await runContext(tx, rt.lease);
       const cached = await one(tx, sql`select private_checkpoint,input_summary from app.assistant_run_steps
-        where enterprise_id=${rt.lease.enterpriseId} and run_id=${rt.lease.runId} and step_seq=${sequence}`);
+        where enterprise_id=${rt.lease.enterpriseId} and run_id=${rt.lease.runId} and step_seq=${stepSeq}`);
       const snapshot = cached ? cached.private_checkpoint as HistorySnapshot
         : await recallHistory(tx, rt.lease.actor, current.conversation, beforeSeq, query);
       // A cached checkpoint is only reusable if it answers this exact query at
@@ -70,7 +83,7 @@ export function dialogueHistoryRecall(rt: HistoryToolRuntime) {
       const receipt = ((cached?.input_summary as Row | undefined)?.receipt as HistoryReceipt | undefined)
         ?? historyReceipt(snapshot, need);
       if (!cached) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint,source_refs,input_summary)
-        values(${rt.lease.enterpriseId},${rt.lease.runId},${sequence},'agent_tool','recall_history',1,'succeeded',${JSON.stringify(snapshot)}::jsonb,
+        values(${rt.lease.enterpriseId},${rt.lease.runId},${stepSeq},'agent_tool','recall_history',1,'succeeded',${JSON.stringify(snapshot)}::jsonb,
           ${JSON.stringify(snapshot.sources.map(({ messageId, hash, memoryVersion }) => ({ messageId, hash, memoryVersion })))}::jsonb,
           ${JSON.stringify({ protocol: rt.protocol, tool: 'recall_history', query, beforeSeq, count: snapshot.sources.length,
             hasMore: snapshot.hasMore, oversized: snapshot.oversized, receipt })}::jsonb)`);

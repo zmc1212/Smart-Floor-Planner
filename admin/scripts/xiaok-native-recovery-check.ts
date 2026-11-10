@@ -14,8 +14,10 @@ import { sql } from 'drizzle-orm';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { closePostgresPool } from '@/lib/postgresql';
-import { claimJob, enterpriseConcurrency, processAssistantJob, type Lease } from '@/lib/assistant/infrastructure/job-queue';
-import { processNativeAgentAnswer, nativeExecutorPromptVersion, xiaokNativeExecutorProtocol } from '@/lib/assistant/agent/native-executor';
+import { claimJob, enterpriseConcurrency, processAssistantJob, runContext, type Lease } from '@/lib/assistant/infrastructure/job-queue';
+import { processNativeAgentAnswer, nativeExecutorPromptVersion, recoveredDialogueToolState,
+  xiaokNativeExecutorProtocol } from '@/lib/assistant/agent/native-executor';
+import { dialogueWebResearch, type WebToolRuntime } from '@/lib/assistant/agent/dialogue-web-tools';
 import { nativeAgentRuntimeBinding } from '@/lib/assistant/fastgpt/agent-v2/config';
 import { knowledgePolicy } from '@/lib/assistant/knowledge-policy';
 import { appendMessage } from '@/lib/assistant/core/conversation';
@@ -24,6 +26,10 @@ import { claimKnowledgeJob, runKnowledgeJob } from '@/lib/assistant/knowledge/in
 import type { ModelTurnOutput } from '@/lib/assistant/contracts/model';
 
 loadEnvConfig(process.cwd(), true);
+// dev.mjs injects the same default for Next and the resident Worker; this
+// standalone harness mirrors it so the shared web dispatch is testable.
+// Explicit configuration always wins.
+process.env.ASSISTANT_PUBLIC_READER_URL ||= 'http://127.0.0.1:18095';
 assert.ok(process.argv.includes('--development'));
 const root = path.resolve('..'), eid = '1454';
 const output = path.resolve(process.argv.find(a => a.startsWith('--output='))?.slice(9) || '../tmp/xiaok-native-executor-20261111-recovery');
@@ -69,6 +75,9 @@ async function seedInterruptedRun(label: string, spec: {
   searches?: Array<{ sequence: number; query: string; receipt: Row; evidence: Row[];
     /** Dispatch marker only: the usage row exists but no receipt step was saved. */
     dispatchedOnly?: boolean; usageObserved?: boolean }>;
+  /** Web dispatch fixtures written exactly like the shared web factory:
+   * a usage dispatch marker plus (unless dispatchedOnly) a succeeded step. */
+  webs?: Array<{ stepSeq: number; reading?: boolean; dispatchedOnly?: boolean }>;
   checkpoint?: Row;
 }) {
   return read(async tx => {
@@ -125,6 +134,16 @@ async function seedInterruptedRun(label: string, spec: {
           ${JSON.stringify(item.evidence.map(e => ({ ref: (e as Row).ref, hash: (e as Row).hash })))}::jsonb,${JSON.stringify(item.evidence)}::jsonb,
           ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, tool: 'search_enterprise', query: item.query, candidates: 0,
             selected: item.evidence.length, receipt: item.receipt })}::jsonb)`);
+    }
+    for (const item of spec.webs ?? []) {
+      await tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,operation_key,category,quantity,measurement_kind)
+        values(${eid},${runId},${'agent-web:' + runId + ':' + item.stepSeq},${item.reading ? 'web_read' : 'web_search'},
+        ${item.dispatchedOnly === false ? sql`1,'observed'` : sql`null,'unavailable'`})`);
+      if (item.dispatchedOnly !== false) continue;
+      await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint,input_summary)
+        values(${eid},${runId},${item.stepSeq},'retrieval',${item.reading ? 'web.read.v1' : 'web.search.v1'},1,'succeeded','{}'::jsonb,
+          ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, tool: item.reading ? 'read_web' : 'search_web',
+            stepSeq: item.stepSeq, receipt: { status: 'empty', failures: [], documents: [], instructions: '' } })}::jsonb)`);
     }
     if (spec.checkpoint) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary,private_checkpoint)
       values(${eid},${runId},1000,'agent_checkpoint','succeeded',${JSON.stringify({ promptVersion: nativeExecutorPromptVersion,
@@ -208,6 +227,12 @@ async function main() {
   report.accounting.providerMaxBefore = await attemptsMax();
 
   await step('preflight: idle assistant queue and active native binding', async () => {
+    // Stale decoy fixtures from an earlier failed attempt are our own labelled
+    // rows: release them first, then require a genuinely idle queue.
+    await withPlatformTransaction(tx => tx.execute(sql`update app.assistant_jobs j set status='failed',last_error='recovery_check_synthetic_cleanup',version=version+1
+      from app.enterprises e where e.id=j.enterprise_id and e.name like '[synthetic-recovery-decoy]%' and j.status in ('queued','running')`));
+    await withPlatformTransaction(tx => tx.execute(sql`update app.assistant_runs r set status='failed',error_code='recovery_check_synthetic_cleanup',completed_at=now(),version=version+1
+      from app.enterprises e where e.id=r.enterprise_id and e.name like '[synthetic-recovery-decoy]%' and r.status in ('queued','running')`));
     const queue = await platformOne(sql`select count(*)::int n from app.assistant_jobs where status in ('queued','running')`);
     assert.equal(queue!.n, 0, 'No recovery check may start on an active queue');
     return { queue: queue!.n, binding: bound!.binding };
@@ -220,16 +245,20 @@ async function main() {
     // unrelated tasks even when they sit in the same global scan.
     const decoy = await withPlatformTransaction(async tx => {
       const existing = await one(tx, sql`select e.id from app.enterprises e where e.name like '[synthetic-recovery-decoy]%' order by id desc limit 1`);
-      if (existing) return String(existing.id);
-      const code = 'recovery-decoy-' + randomUUID().slice(0, 8);
-      const enterprise = (await one(tx, sql`insert into app.enterprises(name,code,status) values('[synthetic-recovery-decoy] ' || ${code},${code},'active') returning id`))!;
+      const enterpriseId = existing ? String(existing.id)
+        : String((await one(tx, sql`insert into app.enterprises(name,code,status) values('[synthetic-recovery-decoy] ' || ${'recovery-decoy-' + randomUUID().slice(0, 8)},${'recovery-decoy-' + randomUUID().slice(0, 8)},'active') returning id`))!.id);
+      // Every round plants its own fresh decoy job so the untouched assertion
+      // always reads this round's row, never a leftover from a prior attempt.
       const conversation = (await one(tx, sql`insert into app.assistant_conversations(enterprise_id,purpose,status,mode,title,entry_snapshot,policy_version,context_revision,last_seq)
-        values(${String(enterprise.id)},'customer_consultation','open','ai','[synthetic-recovery-decoy] conversation','{}'::jsonb,1,1,0) returning id`))!;
-      const run = (await one(tx, sql`insert into app.assistant_runs(enterprise_id,conversation_id,trigger_kind,purpose,status,policy_snapshot,context_revision,knowledge_epoch)
-        values(${String(enterprise.id)},${String(conversation.id)},'scheduled_task','reply','queued','{"schemaVersion":1,"actor":{"principal":{"kind":"user"},"capabilities":[]}}'::jsonb,1,1) returning id`))!;
-      await tx.execute(sql`insert into app.assistant_jobs(enterprise_id,kind,run_id,dedupe_key,payload_version,status,attempts,available_at)
-        values(${String(enterprise.id)},'chat_turn',${String(run.id)},${'recovery-decoy:' + randomUUID()},1,'queued',0,now())`);
-      return String(enterprise.id);
+        values(${enterpriseId},'customer_consultation','open','ai','[synthetic-recovery-decoy] conversation','{}'::jsonb,1,1,0) returning id`))!;
+      const run = (await one(tx, sql`insert into app.assistant_runs(enterprise_id,conversation_id,trigger_kind,trigger_schedule_key,purpose,status,policy_snapshot,context_revision,knowledge_epoch)
+        values(${enterpriseId},${String(conversation.id)},'scheduled_task','recovery-decoy','reply','queued','{"schemaVersion":1,"actor":{"principal":{"kind":"user"},"capabilities":[]}}'::jsonb,1,1) returning id`))!;
+      const job = (await one(tx, sql`insert into app.assistant_jobs(enterprise_id,kind,run_id,dedupe_key,payload_version,status,attempts,available_at)
+        values(${enterpriseId},'chat_turn',${String(run.id)},${'recovery-decoy:' + randomUUID()},1,'queued',0,now()) returning id`))!;
+      // Precise this-round fixture ids: the finally cleanup and every audit
+      // read key on these exact rows, never on a name-pattern sweep alone.
+      report.decoy = { enterpriseId, conversationId: String(conversation.id), runId: String(run.id), jobId: String(job.id) };
+      return enterpriseId;
     });
     report.decoyEnterprise = decoy;
     return { decoy };
@@ -328,22 +357,137 @@ async function main() {
   });
 
   await step('W1: interrupted before any dispatch resumes with exactly one real execution', async () => {
-    const q1 = '恢复检查W1：调用前中断的检索';
-    const output: ModelTurnOutput = { text: '', toolCalls: [{ id: 'recovery-w1-1', name: 'search_enterprise', arguments: JSON.stringify({ query: q1 }) }],
+    // The pre-dispatch tool call is query_business on purpose: its receipt has
+    // no cites array and the snapshot delivery path accepts an uncited model
+    // draft, so the scenario tests recovery itself instead of the model's
+    // citation expression (search dispatch recovery is owned by C/E/F; the two
+    // retained citation-flake failures document the residual model risk).
+    const q1 = '我家现在施工到哪一步？最近做了什么？';
+    const output: ModelTurnOutput = { text: '', toolCalls: [{ id: 'recovery-w1-1', name: 'query_business', arguments: JSON.stringify({ domain: 'construction', leadId: '3132' }) }],
       finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 9, outputTokens: 3 } };
     const seeded = await seedInterruptedRun('W1-pre-dispatch', { question: q1, turns: [{ turn: 0, output }] });
     const lease = await claimUntil(seeded.runId);
     await processNativeAgentAnswer(lease);
     const state = await runState(seeded.runId, seeded.conversationId);
     assert.equal(String((state.run as Row).status), 'succeeded', 'W1 must complete: ' + String((state.run as Row).error_code || ''));
-    assert.equal((state.attempts as Row[]).length, 2, 'W1 holds exactly the synthetic turn-0 attempt and one real turn-1 attempt');
+    const attempts = state.attempts as Row[];
+    // Two attempts when the first final draft passes validation; three when the
+    // new validateFinal one-shot repair turn corrects a citation-expression slip.
+    assert.ok([2, 3].includes(attempts.length), 'W1 holds the synthetic attempt plus one or two real model attempts');
+    assert.equal(String(attempts[0].remote_task_id), 'xiaok-recovery-synthetic', 'W1 keeps the synthetic attempt first');
+    assert.ok(attempts.every(a => String(a.status) === 'succeeded'), 'W1 attempts all known-succeeded');
+    const repairTurn = attempts.length === 3;
+    const expectedUsage = ['agent:' + seeded.runId + ':0', 'agent:' + seeded.runId + ':1'];
+    if (repairTurn) expectedUsage.push('agent:' + seeded.runId + ':2');
     const usage = state.usage as Row[];
-    assert.deepEqual(usage.map(u => String(u.operation_key)).sort(),
-      ['agent:' + seeded.runId + ':0', 'agent:' + seeded.runId + ':1', 'agent-v2-query:' + seeded.runId + ':1'].sort(), 'W1 usage keys');
-    assert.equal(stepKinds(state, 'retrieval').length, 1, 'W1 executes the search exactly once');
-    (report.scenarios as Row).W1 = { runId: seeded.runId, attempts: (state.attempts as Row[]).length,
-      usageKeys: usage.map(u => String(u.operation_key)) };
+    assert.deepEqual(usage.map(u => String(u.operation_key)).sort(), expectedUsage.sort(), 'W1 usage keys');
+    assert.equal(stepKinds(state, 'retrieval').length, 0, 'W1 dispatches no enterprise search');
+    assert.equal(stepKinds(state, 'agent_tool').length, 1, 'W1 executes the business snapshot exactly once');
+    (report.scenarios as Row).W1 = { runId: seeded.runId, attempts: attempts.length,
+      repairTurn, usageKeys: usage.map(u => String(u.operation_key)) };
     return (report.scenarios as Row).W1;
+  });
+
+  // Web dispatch interruption, both recovery layers: the executor's
+  // open-operations guard keeps the whole run indeterminate before any graph
+  // step, and the shared factory refuses any new dispatch (same or fresh
+  // sequence) while an open web marker exists — no re-send under a new number.
+  await step('W2: web dispatch marker without receipt stays indeterminate and is never re-dispatched', async () => {
+    const question = '恢复检查W2：网页检索已派发但回执未保存';
+    const output: ModelTurnOutput = { text: '', toolCalls: [{ id: 'recovery-w2-1', name: 'search_web',
+      arguments: JSON.stringify({ query: '闭水试验 蓄水深度 公开标准', domains: [] }) }],
+      finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 9, outputTokens: 3 } };
+    const seeded = await seedInterruptedRun('W2-web-dispatch-no-receipt', { question, turns: [{ turn: 0, output }],
+      webs: [{ stepSeq: 1200 }] });
+    const lease = await claimUntil(seeded.runId);
+    await processNativeAgentAnswer(lease);
+    const state = await assertIndeterminate('W2', seeded, {
+      usageKeys: ['agent:' + seeded.runId + ':0', 'agent-web:' + seeded.runId + ':1200'].sort(), retrievalSteps: 0 });
+    (report.scenarios as Row).W2 = { runId: seeded.runId, openOperation: 'agent-web:' + seeded.runId + ':1200',
+      attempts: (state.attempts as Row[]).length };
+    // The factory-level guard (shared with the FastGPT V2 bridge, which has no
+    // executor-level open-operations pass): the same sequence and a fresh
+    // sequence both refuse while the 1200 marker has no receipt. Nothing new is
+    // written and no provider is called.
+    const factorySeeded = await seedInterruptedRun('W2-web-factory-guard', { question, turns: [], webs: [{ stepSeq: 1200 }] });
+    const factoryLease = await claimUntil(factorySeeded.runId);
+    const authorize = () => withTenantTransaction(eid, tx => runContext(tx, factoryLease));
+    const rt: WebToolRuntime = { lease: factoryLease, protocol: xiaokNativeExecutorProtocol, authorize,
+      context: { version: 1, knowledge: [], snapshots: [], sources: [] }, catalog: new Map(),
+      messages: [{ role: 'user', content: question }], markWebRetrieved: () => {}, webDeadlineAt: Date.now() + 120000 };
+    const web = dialogueWebResearch(rt);
+    await assert.rejects(() => web({ name: 'search_web', query: '闭水试验 蓄水深度 公开标准' }, 0),
+      (error: { code?: string }) => error.code === 'provider_outcome_unknown', 'Same-sequence dispatch must refuse on the open marker');
+    await assert.rejects(() => web({ name: 'search_web', query: '闭水试验 蓄水深度 公开标准' }, 1),
+      (error: { code?: string }) => error.code === 'provider_outcome_unknown', 'A fresh sequence must never re-send while an open marker exists');
+    const factoryState = await runState(factorySeeded.runId, factorySeeded.conversationId);
+    assert.deepEqual((factoryState.usage as Row[]).map(u => String(u.operation_key)).sort(),
+      ['agent-web:' + factorySeeded.runId + ':1200'], 'Factory refusals leave the ledger untouched');
+    assert.equal((factoryState.steps as Row[]).filter(s => String(s.kind) === 'retrieval').length, 0,
+      'Factory refusals persist no receipt step');
+    (report.scenarios as Row).W2factory = { runId: factorySeeded.runId, refusedSequences: [0, 1],
+      usageKeys: (factoryState.usage as Row[]).map(u => String(u.operation_key)) };
+    // Release both labelled fixtures so no queued/running row survives.
+    for (const runId of [seeded.runId, factorySeeded.runId]) {
+      await read(tx => tx.execute(sql`update app.assistant_jobs set status='failed',last_error='recovery_check_synthetic_cleanup',lease_token=null,lease_expires_at=null,version=version+1
+        where enterprise_id=${eid} and run_id=${runId} and status in ('queued','running')`));
+      await read(tx => tx.execute(sql`update app.assistant_runs set status='failed',error_code='recovery_check_synthetic_cleanup',completed_at=now(),version=version+1
+        where enterprise_id=${eid} and id=${runId} and status in ('queued','running')`));
+    }
+    return (report.scenarios as Row).W2;
+  });
+
+  await step('W3: shared web dispatcher search→read→receipt reuse→real recovery projection', async () => {
+    // The factory is driven exactly the way both surfaces call it: the bridge
+    // passes the parsed {name, query|candidateId} object, the native executor
+    // passes the same shape. Real provider search, real reader, real DB steps.
+    const question = '帮我联网查一下公开资料里地暖保温板的出厂检验项目';
+    const seeded = await seedInterruptedRun('W3-web-dispatcher', { question, turns: [] });
+    const lease = await claimUntil(seeded.runId);
+    const authorize = () => withTenantTransaction(eid, tx => runContext(tx, lease));
+    const rt: WebToolRuntime = { lease, protocol: xiaokNativeExecutorProtocol, authorize,
+      context: { version: 1, knowledge: [], snapshots: [], sources: [] }, catalog: new Map(),
+      messages: [{ role: 'user', content: question }], markWebRetrieved: () => {}, webDeadlineAt: Date.now() + 120000 };
+    const web = dialogueWebResearch(rt);
+    const modelQuery = '地暖 保温板 出厂检验';
+    const search = await web({ name: 'search_web', query: modelQuery }, 0);
+    assert.ok(Array.isArray(search.candidates) && search.candidates.length > 0,
+      'search_web must return real candidates, saw: ' + JSON.stringify(search.failures || []));
+    const candidateId = String(search.candidates![0].id);
+    assert.match(candidateId, new RegExp('^P' + seeded.runId + ':1200:\\d+$'), 'Candidate id must follow the citation contract');
+    const readReceipt = await web({ name: 'read_web', candidateId }, 1);
+    assert.ok(Array.isArray(readReceipt.failures), 'read_web must return an honest receipt');
+    assert.ok(Array.isArray(readReceipt.documents), 'read_web receipt carries the document list');
+    // Identical re-issue at the same sequence reuses the persisted receipt with
+    // no second provider dispatch and no second usage row.
+    const again = await web({ name: 'search_web', query: modelQuery }, 0);
+    assert.deepEqual(again, search, 'Completed operations reuse the original receipt verbatim');
+    const midState = await runState(seeded.runId, seeded.conversationId);
+    assert.deepEqual((midState.usage as Row[]).map(u => String(u.operation_key)).sort(),
+      ['agent-web:' + seeded.runId + ':1200', 'agent-web:' + seeded.runId + ':1201'].sort(), 'Web usage ledger holds exactly the two dispatches');
+    // Recovery uses the real factory-written rows through the executor's own
+    // projection SQL, never hand-built objects.
+    const webRows = await tenantRows(sql`select step_seq,capability_name,private_checkpoint,input_summary from app.assistant_run_steps
+      where enterprise_id=${eid} and run_id=${seeded.runId} and step_seq>=1200 and step_seq<1300 and kind='retrieval'
+      and capability_name in ('web.search.v1','web.read.v1') and status='succeeded' order by step_seq`);
+    assert.equal(webRows.length, 2, 'Both web steps persisted');
+    const toolState = recoveredDialogueToolState([], [], webRows as Row[], [], []);
+    assert.deepEqual(toolState.webs.get('search:' + modelQuery), search, 'Recovered search identity is the model raw query');
+    assert.deepEqual(toolState.webs.get('read:' + candidateId), readReceipt, 'Recovered read identity is the candidate id');
+    assert.equal(toolState.nextSequence, 2, 'Fresh calls continue past both persisted web steps');
+    const persistedSearch = (webRows as Row[]).find(r => Number(r.step_seq) === 1200)!;
+    assert.equal(String((persistedSearch.input_summary as Row).rawQuery), modelQuery,
+      'The step persists the raw model query beside the normalized WebQuery');
+    (report.scenarios as Row).W3 = { runId: seeded.runId, question, modelQuery, candidateId,
+      searchStatus: String(search.status), searchCandidates: (search.candidates as Row[] | undefined)?.length ?? 0,
+      readStatus: String(readReceipt.status), readDocuments: readReceipt.documents.length, readFailures: readReceipt.failures,
+      webSteps: webRows.map(r => Number(r.step_seq)), usageKeys: (midState.usage as Row[]).map(u => String(u.operation_key)) };
+    // Release the labelled fixture: the harness owns this run end to end.
+    await read(tx => tx.execute(sql`update app.assistant_jobs set status='failed',last_error='recovery_check_synthetic_cleanup',lease_token=null,lease_expires_at=null,version=version+1
+      where enterprise_id=${eid} and run_id=${seeded.runId} and status in ('queued','running')`));
+    await read(tx => tx.execute(sql`update app.assistant_runs set status='failed',error_code='recovery_check_synthetic_cleanup',completed_at=now(),version=version+1
+      where enterprise_id=${eid} and id=${seeded.runId}`));
+    return (report.scenarios as Row).W3;
   });
 
   await step('D: A-enterprise chat slot busy, B-enterprise knowledge task still runs', async () => {
@@ -411,20 +555,30 @@ async function main() {
     await withTenantTransaction(control, tx => tx.execute(sql`update app.assistant_enterprise_settings set enabled=true,version=version+1 where enterprise_id=${control}`));
     const queued = await knowledge.execute('index', fixture, randomUUID());
     // The knowledge task must advance through the unified scheduler while A's
-    // chat slots are full: processAssistantJob is the real Worker entry.
-    const scheduled = await processAssistantJob();
-    assert.equal(scheduled.claimed, true, 'The unified scheduler must advance B knowledge while A chat is blocked');
-    const jobState = await knowledge.execute('job', { jobId: String(queued.jobId) } as never) as Row;
-    assert.equal(String(jobState.status), 'succeeded', 'B knowledge indexing must succeed through the unified scheduler while A is busy');
+    // chat slots are full. processAssistantJob is the real Worker entry; the
+    // resident dev-server Worker ticks the same entry, so loop until B's job is
+    // terminal and record whether this harness's own call did the advancement.
+    // The script contains no direct claimKnowledgeJob/runKnowledgeJob path.
+    let claimedByScript = false, jobStatus = '';
+    for (let index = 0; index < 30; index++) {
+      const scheduled = await processAssistantJob();
+      if (scheduled.claimed) claimedByScript = true;
+      const state = await knowledge.execute('job', { jobId: String(queued.jobId) } as never) as Row;
+      jobStatus = String(state.status);
+      if (!['queued', 'running'].includes(jobStatus)) break;
+      await sleep(1000);
+    }
+    assert.equal(jobStatus, 'succeeded', 'B knowledge indexing must succeed through the unified scheduler while A is busy: ' + jobStatus);
     const busyStates = await tenantRows(sql`select j.status,j.lease_token is not null leased from app.assistant_jobs j
       where j.enterprise_id=${eid} and j.run_id in (${sql.join(busyRunIds.map(id => sql`${id}`), sql`, `)}) order by j.id`);
     assert.ok((busyStates as Row[]).every(j => String(j.status) === 'running' && j.leased), 'A busy chat jobs stay running and untouched');
     const queuedState = await tenantOne(sql`select status from app.assistant_jobs j where j.enterprise_id=${eid} and j.run_id=${queuedRunId}`);
     assert.equal(String(queuedState!.status), 'queued', 'A queued chat job keeps waiting for its own enterprise slot');
     // The unrelated decoy task was eligible in the same global scan the whole
-    // time; the harness neither claims nor fails it.
+    // time; the harness neither claims nor fails it. The read keys on this
+    // round's precise decoy job id, never on a name-pattern scan.
     const decoyState = await withPlatformTransaction(tx => one(tx, sql`select j.status,j.attempts from app.assistant_jobs j
-      where j.enterprise_id=${String(report.decoyEnterprise)} and j.kind='chat_turn' order by j.id desc limit 1`));
+      where j.id=${String((report.decoy as Row).jobId)}`));
     assert.equal(String(decoyState!.status), 'queued', 'The unrelated decoy job stays queued');
     assert.equal(Number(decoyState!.attempts), 0, 'The unrelated decoy job is never claimed by this harness');
     // Hygiene: release the labelled occupancy fixtures so they never run.
@@ -433,11 +587,11 @@ async function main() {
     await read(tx => tx.execute(sql`update app.assistant_runs set status='failed',error_code='recovery_check_synthetic_cleanup',completed_at=now(),version=version+1
       where enterprise_id=${eid} and id in (${sql.join([...busyRunIds, queuedRunId].map(id => sql`${id}`), sql`, `)})`));
     await withPlatformTransaction(tx => tx.execute(sql`update app.assistant_jobs set status='failed',last_error='recovery_check_synthetic_cleanup',version=version+1
-      where enterprise_id=${String(report.decoyEnterprise)} and kind='chat_turn' and status='queued'`));
+      where enterprise_id=${String(report.decoyEnterprise)} and id=${String((report.decoy as Row).jobId)} and status='queued'`));
     await withPlatformTransaction(tx => tx.execute(sql`update app.assistant_runs set status='failed',error_code='recovery_check_synthetic_cleanup',completed_at=now(),version=version+1
-      where enterprise_id=${String(report.decoyEnterprise)} and status='queued'`));
+      where enterprise_id=${String(report.decoyEnterprise)} and id=${String((report.decoy as Row).runId)} and status='queued'`));
     (report.scenarios as Row).D = { slots, controlEnterprise: control, knowledgeJobId: String(queued.jobId),
-      knowledgeJob: String(jobState.status), busyRuns: busyRunIds, queuedRunId };
+      knowledgeJob: jobStatus, claimedByScript, busyRuns: busyRunIds, queuedRunId };
     return (report.scenarios as Row).D;
   });
 
@@ -456,6 +610,10 @@ main().catch(error => { report.error = (error as Error).message; })
           where enterprise_id=${eid} and status='running' and id in (select run_id from app.assistant_jobs
             where enterprise_id=${eid} and last_error='recovery_check_synthetic_cleanup' and run_id is not null)`);
       });
+      await withPlatformTransaction(tx => tx.execute(sql`update app.assistant_jobs j set status='failed',last_error='recovery_check_synthetic_cleanup',version=version+1
+        from app.enterprises e where e.id=j.enterprise_id and e.name like '[synthetic-recovery-decoy]%' and j.status in ('queued','running')`));
+      await withPlatformTransaction(tx => tx.execute(sql`update app.assistant_runs r set status='failed',error_code='recovery_check_synthetic_cleanup',completed_at=now(),version=version+1
+        from app.enterprises e where e.id=r.enterprise_id and e.name like '[synthetic-recovery-decoy]%' and r.status in ('queued','running')`));
       const after = binding(), changed = Object.keys({ ...before, ...after }).filter(f => before[f] !== after[f]);
       report.drift = changed; report.bindingAfter = createHash('sha256').update(JSON.stringify(after)).digest('hex');
       if (changed.length) (report.failures as Row[]).push({ name: 'source drift', files: changed });

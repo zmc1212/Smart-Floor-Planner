@@ -165,14 +165,14 @@ async function main() {
     // own retrieval only, and every B citation traces to B's own run steps.
     assert.match(viewA.answerText, /项目记录（授权快照，以此为准）/, 'Session A carries its own snapshot section');
     const bRetrieval = (viewB.steps as Row[]).filter(s => String(s.kind) === 'retrieval' && Number(s.step_seq) >= 1300 && Number(s.step_seq) < 1400);
-    const bEvidenceRefs = new Set(bRetrieval.flatMap(s => ((s.source_refs as Row[] | undefined) || []).map(ref => String(ref.ref?.id ?? ref.id))));
+    const bEvidenceRefs = new Set(bRetrieval.flatMap(s => ((s.source_refs as Row[] | undefined) || []).map(ref => String((ref.ref as Row | undefined)?.id ?? ref.id))));
     for (const citation of viewB.citations as Row[]) {
       assert.equal(citation.source_kind, 'knowledge', 'Session B citations must be knowledge citations');
       assert.ok(bEvidenceRefs.has(String(citation.resource_id)), 'Session B citation must come from session B retrieval only');
     }
     for (const citation of (viewA.citations as Row[]) || []) {
       const aRetrieval = (viewA.steps as Row[]).filter(s => String(s.kind) === 'retrieval' && Number(s.step_seq) >= 1300 && Number(s.step_seq) < 1400);
-      const aEvidenceRefs = new Set(aRetrieval.flatMap(s => ((s.source_refs as Row[] | undefined) || []).map(ref => String(ref.ref?.id ?? ref.id))));
+      const aEvidenceRefs = new Set(aRetrieval.flatMap(s => ((s.source_refs as Row[] | undefined) || []).map(ref => String((ref.ref as Row | undefined)?.id ?? ref.id))));
       assert.ok(aEvidenceRefs.has(String(citation.resource_id)), 'Session A citation must come from session A retrieval only');
     }
     const counts = await tenantRows(sql`select conversation_id,count(*)::int n from app.assistant_messages
@@ -190,8 +190,9 @@ async function main() {
     // Deterministic retrieval-level assertions: the synthetic clause is the only
     // match for its unique marker, so each turn's retrieval steps show whether
     // the source is authorized. Citations stay model-dependent and are recorded.
-    const chunkIds = new Set(((await tenantRows(sql`select id::text from app.assistant_knowledge_chunks
-      where enterprise_id=${eid} and document_id=${documentId}`)) as Row[]).map(c => String(c.id)));
+    const chunkIds = new Set(((await withPlatformTransaction(tx => rows(tx, sql`select c.id::text from app.assistant_knowledge_chunks c
+      join app.assistant_knowledge_versions v on v.enterprise_id=c.enterprise_id and v.id=c.document_version_id
+      where c.enterprise_id=${eid} and v.document_id=${documentId}`))) as Row[]).map(c => String(c.id)));
     assert.ok(chunkIds.size > 0, 'Synthetic chunks indexed');
     const hitsIn = async (runId: string) => {
       const steps = (await tenantRows(sql`select source_refs from app.assistant_run_steps
@@ -209,7 +210,8 @@ async function main() {
     const firstHits = await hitsIn(String(first.id));
     assert.ok(firstHits.length > 0, 'The published synthetic source must appear in retrieval before revocation');
     const firstCited = await citationOf(String(first.id));
-    await knowledge.execute('retire', { documentId, expectedVersion: 1 }, randomUUID());
+    const detailBefore = await knowledge.execute('detail', { documentId } as never) as Row;
+    await knowledge.execute('retire', { documentId, expectedVersion: Number((detailBefore.document as Row).version) }, randomUUID());
     await sendTurn(customer.token, cid, '再确认一下，闭水试验到底要蓄水多久？');
     const second = await waitRun(cid);
     assert.equal(String(second.status), 'succeeded', 'Revoked-source follow-up must still succeed: ' + String(second.error_code || ''));
