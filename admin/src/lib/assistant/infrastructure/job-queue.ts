@@ -53,11 +53,16 @@ const boundedConcurrency = (value: string | undefined, max: number) => {
 };
 export const workerConcurrency = () => boundedConcurrency(process.env.ASSISTANT_WORKER_CONCURRENCY, 8);
 export const enterpriseConcurrency = () => boundedConcurrency(process.env.ASSISTANT_ENTERPRISE_CONCURRENCY, 4);
-export async function claimJob(): Promise<Lease | null> {
+export async function claimJob(scope?: { enterpriseId: string; runId?: string }): Promise<Lease | null> {
+  // The optional scope narrows candidacy to one enterprise/run for drivers that
+  // own exactly that fixture (acceptance harnesses); production callers never
+  // pass it, so the global oldest-eligible scan stays unchanged.
   const candidates = await withPlatformTransaction(tx => rows(tx, sql`select enterprise_id,id from (
     select enterprise_id,id,available_at,row_number() over (partition by enterprise_id order by available_at,id) rn
     from app.assistant_jobs where kind='chat_turn'
       and ((status='queued' and available_at<=now()) or (status='running' and lease_expires_at<=now()))
+      ${scope?.runId ? sql`and enterprise_id=${scope.enterpriseId} and run_id=${scope.runId}`
+        : scope ? sql`and enterprise_id=${scope.enterpriseId}` : sql``}
   ) candidate where rn=1 order by available_at,id limit 50`));
   for (const candidate of candidates) {
     const lease = await withTenantTransaction(String(candidate.enterprise_id), async tx => {
@@ -242,7 +247,12 @@ export async function processAssistantJob(processRun: (lease: Lease) => Promise<
     const rejected=results.find((result):result is PromiseRejectedResult=>result.status==='rejected');
     if(rejected)throw rejected.reason;
   }
-  const knowledgeClaimed=['knowledge_index','knowledge_parse'].includes(String(next?.kind))?await processKnowledgeJob():false;
+  // Head-of-line fallback: when the oldest eligible job is a chat turn but no
+  // chat lease could be claimed (its enterprise slots are full), a runnable
+  // knowledge job of another enterprise must still advance instead of waiting
+  // behind the blocked chat head.
+  const knowledgeClaimed=['knowledge_index','knowledge_parse'].includes(String(next?.kind))||!leases.length
+    ?await processKnowledgeJob():false;
   await deliverMetrics();
   return { claimed: leases.length>0 || knowledgeClaimed };
 }

@@ -28,7 +28,9 @@ export type AgentV2Usage = { inputTokens: number; outputTokens: number };
 export type AgentV2RunResult = { text: string; usage: AgentV2Usage | null };
 export type AgentV2SuggestionResult = { text: string; usage: AgentV2Usage | null };
 type Packet = { choices?: Array<{ message?: { content?: unknown } }>; responseData?: unknown; error?: unknown };
-type Ticket = { enterpriseId: string; ports: AgentV2Ports; expires: number; calls: number; failure?: AssistantError | AiProviderError };
+type Ticket = { enterpriseId: string; ports: AgentV2Ports; expires: number; calls: number; failure?: AssistantError | AiProviderError;
+  /** Audit-only correlation to the owning assistant run; never sent to the vendor. */
+  auditRunId?: string };
 type AgentV2Profile = AgentV2Configuration & { baseUrl: string; apiKey: string; record: (value: unknown) => void };
 const toolPrefix = '/agent-v2-tool/';
 /** The run ticket is injected by the FastGPT HTTP tool from the workflow variable
@@ -148,6 +150,7 @@ export class FastGPTAgentV2 {
       const receipt = await ticket.ports.tool(input, ++ticket.calls);
       await ticket.ports.authorize();
       profile.record({ enterpriseId: profile.enterpriseId, kind: 'agent_v2_tool', name, status: receipt.status,
+        ...(ticket.auditRunId ? { runId: ticket.auditRunId } : {}),
         ...(input.name === 'search_enterprise' || input.name === 'search_web' ? { query: input.query }
           : input.name === 'read_web' ? { candidateId: input.candidateId }
           : input.name === 'recommend_designers' || input.name === 'recommend_public_sites' ? {} : { domain: input.domain, leadId: input.leadId }),
@@ -157,14 +160,15 @@ export class FastGPTAgentV2 {
       const known = error instanceof AssistantError || error instanceof AiProviderError;
       if (known) ticket.failure ??= error as AssistantError | AiProviderError;
       const code = known ? (error as AssistantError | AiProviderError).code : 'internal_error';
-      profile.record({ enterpriseId: profile.enterpriseId, kind: 'agent_v2_tool_failure', name, code });
+      profile.record({ enterpriseId: profile.enterpriseId, kind: 'agent_v2_tool_failure', name, code, ...(ticket.auditRunId ? { runId: ticket.auditRunId } : {}) });
       return Response.json({ error: code }, { status: error instanceof AssistantError ? error.status : 502 });
     }
   }
-  async run(enterpriseId: string, messages: Array<{ role: 'user' | 'assistant'; content: string }>, ports: AgentV2Ports): Promise<AgentV2RunResult> {
+  async run(enterpriseId: string, messages: Array<{ role: 'user' | 'assistant'; content: string }>, ports: AgentV2Ports,
+    audit?: { runId: string }): Promise<AgentV2RunResult> {
     const profile = this.profile(enterpriseId);
     await ports.authorize();
-    const id = randomUUID() + randomUUID(), ticket: Ticket = { enterpriseId, ports, expires: Date.now() + 180000, calls: 0 };
+    const id = randomUUID() + randomUUID(), ticket: Ticket = { enterpriseId, ports, expires: Date.now() + 180000, calls: 0, auditRunId: audit?.runId };
     this.tickets.set(id, ticket);
     try {
       const skillPrompt = agentV2SkillPrompt(profile.skills);
@@ -177,6 +181,7 @@ export class FastGPTAgentV2 {
       });
       const packet = await response.json() as Packet;
       profile.record({ enterpriseId, kind: 'agent_v2', status: response.status,
+        ...(audit?.runId ? { runId: audit.runId } : {}),
         skills: profile.skills?.enabled ?? [], skillPack: profile.skills?.version ?? null,
         response: JSON.parse(JSON.stringify(packet).replaceAll(id, '[expired scoped ticket]')) });
       if (ticket.failure) throw ticket.failure;
@@ -207,7 +212,7 @@ export class FastGPTAgentV2 {
   }
   /** Constrained follow-up generation on the same model. The dedicated app
    * carries no tools or datasets, so this call cannot change business facts. */
-  async suggest(enterpriseId: string, answer: string): Promise<AgentV2SuggestionResult> {
+  async suggest(enterpriseId: string, answer: string, audit?: { runId: string }): Promise<AgentV2SuggestionResult> {
     const profile = this.profile(enterpriseId);
     if (!profile.suggestionAppId) return { text: '', usage: null };
     const response = await fetch(profile.baseUrl + '/api/v1/chat/completions', {
@@ -217,7 +222,8 @@ export class FastGPTAgentV2 {
         messages: [{ role: 'user', content: suggestionPrompt(answer) }] }),
     });
     const packet = await response.json() as Packet;
-    profile.record({ enterpriseId, kind: 'agent_v2_suggestions', status: response.status, response: packet });
+    profile.record({ enterpriseId, kind: 'agent_v2_suggestions', status: response.status, response: packet,
+      ...(audit?.runId ? { runId: audit.runId } : {}) });
     if (!response.ok || packet.error) fail('fastgpt_workflow_unavailable', 502);
     const text = messageText(packet.choices?.[0]?.message?.content);
     if (!text || text.length > 2000) fail('invalid_model_answer', 502);

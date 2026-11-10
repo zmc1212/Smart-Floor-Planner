@@ -19,6 +19,15 @@ import { guardAnswerCommitments } from './context';
 import { runRenovationAgent, type AgentCheckpoint } from './runtime';
 import { synthesisContextAvailable } from './synthesis-sources';
 import { dialogueBusinessQuery, dialogueEnterpriseSearch, snapshotHeading, type DialogueToolRuntime } from './dialogue-tools';
+import { assertModelTurnBand, dialogueWebResearch, webCitations, type WebToolRuntime } from './dialogue-web-tools';
+import { dialogueDesignerRecommendation, dialoguePublicSitesRecommendation, publicSitesDelivery,
+  type RecommendToolRuntime, type ToolReceipt } from './dialogue-recommend-tools';
+import { dialogueHistoryRecall, type HistoryToolRuntime } from './dialogue-history-tools';
+import { parseWebQuery, webSearchTool, type WebSearchSnapshot } from './web';
+import { parsePublicRead, publicResearchTools, readWebTool } from './public-research';
+import { historyRefsAvailable, historySynthesisSources, historyTool, parseHistoryQuery,
+  type HistoryRef, type HistorySnapshot } from './history';
+import { webEvidence, webSynthesisSources } from './web-evidence';
 
 /** The XiaoK-owned executor for V2-surface customer consultations. It reuses
  * the existing LangGraph runtime, model gateway and authorized tools; no
@@ -31,6 +40,20 @@ const enterpriseSearchTool: ModelTool = {
   name: 'search_enterprise',
   description: '检索本企业有效装修工艺与做法资料（获权范围）。query用客户问题的专业关键词；返回原文摘录与cites，最终回答须用[id](CITE)标注；未命中如实说明。',
   parameters: { type: 'object', properties: { query: { type: 'string', maxLength: 1000 } }, required: ['query'], additionalProperties: false },
+};
+
+// V2 zero-argument contract: no model-supplied filters. The designer credit and
+// the conversation's authorized region/stated direction decide the result, so a
+// model guess can never become a recommendation condition.
+const designerRecommendationTool: ModelTool = {
+  name: 'recommend_designers',
+  description: '浏览本企业公开设计师作品。无需参数；服务端依据已获权的工地署名、房屋城市与客户明确的方向决定结果。返回状态与说明，作品卡片随回复展示；不编造设计师、作品或可预约时间。',
+  parameters: { type: 'object', properties: {}, required: [], additionalProperties: false },
+};
+const publicSitesRecommendationTool: ModelTool = {
+  name: 'recommend_public_sites',
+  description: '查看附近已获权公开的工地。无需参数；服务端依据已授权定位或明确的房屋城市/区县筛选。返回附近公开工地与说明；未获权定位时如实请客户授权定位或补充所在城市，不猜位置。',
+  parameters: { type: 'object', properties: {}, required: [], additionalProperties: false },
 };
 
 export function nativeExecutorPrompt(knowledgeEnabled: boolean) {
@@ -69,32 +92,73 @@ export function composeNativeDelivery(modelText: string, snapshotText: string, m
  * re-issued calls reuse the persisted receipt; fresh calls continue past every
  * recorded step sequence and never reuse an operation key or step_seq. Runs
  * interrupted before receipts were recorded cannot be reconstructed, so they
- * fail closed instead of re-dispatching a metered call. */
-export function recoveredDialogueToolState(searchSteps: Row[], businessSteps: Row[]): {
-  searches: Map<string, Record<string, unknown>>; businesses: Map<string, Record<string, unknown>>; nextSequence: number;
+ * fail closed instead of re-dispatching a metered call. Bands: 1100 model,
+ * 1200 web, 1300 enterprise search, 1400 business, 1500 recall_history,
+ * fixed 2000 designers / 2010 public sites. */
+export function recoveredDialogueToolState(searchSteps: Row[], businessSteps: Row[], webSteps: Row[] = [],
+  historySteps: Row[] = [], fixedSteps: Row[] = []): {
+  searches: Map<string, Record<string, unknown>>; businesses: Map<string, Record<string, unknown>>;
+  webs: Map<string, Record<string, unknown>>; histories: Map<string, Record<string, unknown>>;
+  designers?: Record<string, unknown>; publicSites?: Record<string, unknown>; nextSequence: number;
 } {
   const searches = new Map<string, Record<string, unknown>>(), businesses = new Map<string, Record<string, unknown>>();
+  const webs = new Map<string, Record<string, unknown>>(), histories = new Map<string, Record<string, unknown>>();
+  let designers: Record<string, unknown> | undefined, publicSites: Record<string, unknown> | undefined;
   let nextSequence = 0;
   const receipt = (value: unknown): Record<string, unknown> => {
     if (!value || typeof value !== 'object' || Array.isArray(value) || typeof (value as Row).status !== 'string')
       fail('invalid_agent_checkpoint', 409);
     return value as Record<string, unknown>;
   };
-  for (const step of [...searchSteps, ...businessSteps].sort((a, b) => Number(a.step_seq) - Number(b.step_seq))) {
+  const text = (value: unknown) => typeof value === 'string' && value.trim() ? value : null;
+  for (const step of [...searchSteps, ...businessSteps, ...webSteps, ...historySteps].sort((a, b) => Number(a.step_seq) - Number(b.step_seq))) {
     const meta = (step.input_summary ?? null) as Row | null, seq = Number(step.step_seq);
+    const capability = String(step.capability_name ?? '');
     if (seq >= 1300 && seq < 1400) {
-      const query = meta?.query;
-      if (typeof query !== 'string' || !query.trim() || searches.has(query)) fail('invalid_agent_checkpoint', 409);
+      const query = text(meta?.query);
+      if (!query || searches.has(query)) fail('invalid_agent_checkpoint', 409);
       searches.set(query, receipt(meta?.receipt));
       nextSequence = Math.max(nextSequence, seq - 1300 + 1);
     } else if (seq >= 1400 && seq < 1500) {
-      const key = meta?.key;
-      if (typeof key !== 'string' || !key || businesses.has(key)) fail('invalid_agent_checkpoint', 409);
+      const key = text(meta?.key);
+      if (!key || businesses.has(key)) fail('invalid_agent_checkpoint', 409);
       businesses.set(key, receipt(meta?.receipt));
       nextSequence = Math.max(nextSequence, seq - 1400 + 1);
+    } else if (seq >= 1200 && seq < 1300 && (capability === 'web.search.v1' || capability === 'web.read.v1')) {
+      // Identity is the model's own argument: the public query text for a
+      // search, the candidate id for a read. The shared factories add a second
+      // safety net through their persisted-step queryHash replay.
+      const readId = meta?.tool === 'read_web' ? text(meta?.candidateId) : null;
+      const searchQuery = meta?.tool === 'search_web' ? text(meta?.query) : null;
+      const identity = readId ? 'read:' + readId : searchQuery ? 'search:' + searchQuery : null;
+      if (!identity || webs.has(identity)) fail('invalid_agent_checkpoint', 409);
+      webs.set(identity, receipt(meta?.receipt));
+      nextSequence = Math.max(nextSequence, seq - 1200 + 1);
+    } else if (seq >= 1500 && seq < 1600 && capability === 'recall_history') {
+      const query = text(meta?.query);
+      if (!query || histories.has(query)) fail('invalid_agent_checkpoint', 409);
+      const value = meta?.receipt;
+      if (!value || typeof value !== 'object' || Array.isArray(value)
+        || typeof (value as HistorySnapshot).query !== 'string' || !Array.isArray((value as HistorySnapshot).sources))
+        fail('invalid_agent_checkpoint', 409);
+      histories.set(query, value as Record<string, unknown>);
+      nextSequence = Math.max(nextSequence, seq - 1500 + 1);
     } else fail('invalid_agent_checkpoint', 409);
   }
-  return { searches, businesses, nextSequence };
+  for (const step of fixedSteps) {
+    const meta = (step.input_summary ?? null) as Row | null, seq = Number(step.step_seq);
+    // The projection (designerMessageProjection) and core/discovery read these
+    // fixed steps straight from the DB; recovery only re-serves their receipts
+    // and never rewrites or re-dispatches them.
+    if (seq === 2000 && step.kind === 'agent_designer_result') {
+      if (designers) fail('invalid_agent_checkpoint', 409);
+      designers = receipt(meta?.receipt);
+    } else if (seq === 2010 && step.kind === 'agent_public_sites') {
+      if (publicSites) fail('invalid_agent_checkpoint', 409);
+      publicSites = receipt(meta?.receipt);
+    } else fail('invalid_agent_checkpoint', 409);
+  }
+  return { searches, businesses, webs, histories, ...(designers ? { designers } : {}), ...(publicSites ? { publicSites } : {}), nextSequence };
 }
 
 export async function processNativeAgentAnswer(lease: Lease) {
@@ -131,28 +195,68 @@ export async function processNativeAgentAnswer(lease: Lease) {
         if (!await synthesisContextAvailable(tx, lease.actor, state.conversation, context)) fail('context_changed');
       });
     };
-    let knowledgeRetrieved = false;
+    let knowledgeRetrieved = false, webRetrieved = false;
     const delivered: BusinessSnapshot[] = [];
     // A resumed run replays its durable retrieval and snapshot steps so the
     // final turn keeps the same citation and composition rules after a restart.
     const saved = await withTenantTransaction(lease.enterpriseId, async tx => {
-      await runContext(tx, lease);
+      const { conversation } = await runContext(tx, lease);
+      const conversationId = String(conversation.id);
       const checkpoint = await one(tx, sql`select private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
         and run_id=${lease.runId} and step_seq=1000 and kind='agent_checkpoint' and status='succeeded'`);
       const searches = await rows(tx, sql`select step_seq,private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
         and run_id=${lease.runId} and step_seq>=1300 and step_seq<1400 and kind='retrieval' and status='succeeded' order by step_seq`);
       const businesses = await rows(tx, sql`select step_seq,private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
         and run_id=${lease.runId} and step_seq>=1400 and step_seq<1500 and kind='agent_tool' and capability_name='query_business' and status='succeeded' order by step_seq`);
+      const webs = await rows(tx, sql`select step_seq,private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+        and run_id=${lease.runId} and step_seq>=1200 and step_seq<1300 and kind='retrieval'
+        and capability_name in ('web.search.v1','web.read.v1') and status='succeeded' order by step_seq`);
+      const historySteps = await rows(tx, sql`select step_seq,private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+        and run_id=${lease.runId} and step_seq>=1500 and step_seq<1600 and kind='agent_tool' and capability_name='recall_history' and status='succeeded' order by step_seq`);
+      // A persisted recall only replays while every original is still
+      // authorized; otherwise the resumed run fails closed like a fresh one.
+      const histories: Array<{ stepSeq: number; snapshot: HistorySnapshot }> = [];
+      for (const step of historySteps) {
+        const snapshot = step.private_checkpoint as HistorySnapshot;
+        if (!snapshot || typeof snapshot !== 'object' || !Array.isArray(snapshot.sources)) continue;
+        if (!await historyRefsAvailable(tx, lease.enterpriseId, conversationId, snapshot.sources)) fail('context_changed');
+        histories.push({ stepSeq: Number(step.step_seq), snapshot });
+      }
+      const fixed = await rows(tx, sql`select step_seq,kind,input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+        and run_id=${lease.runId} and step_seq in (2000,2010) and kind in ('agent_designer_result','agent_public_sites') and status='succeeded' order by step_seq`);
+      // recall_history is scoped to the customer's own originals before the
+      // trigger message; the run's real trigger seq is the only honest cutoff.
+      const trigger = await one(tx, sql`select m.seq::text as seq from app.assistant_runs r join app.assistant_messages m
+        on m.enterprise_id=r.enterprise_id and m.conversation_id=r.conversation_id and m.id=r.trigger_message_id
+        where r.enterprise_id=${lease.enterpriseId} and r.id=${lease.runId}`);
       // The last succeeded model dispatch witnesses the per-turn usage ledger
       // at completeRun on a resumed run that never dispatches again.
       const lastModel = await one(tx, sql`select provider_attempt_id from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
         and run_id=${lease.runId} and kind='agent_model' and status='succeeded' order by step_seq desc limit 1`);
-      return { checkpoint, searches, businesses, lastModel };
+      // Dispatch markers without a persisted receipt are open operations: the
+      // metered provider I/O behind them has an unknown outcome and must never
+      // be replayed. The usage row is the dispatch marker (written before I/O);
+      // quantity alone cannot close it — only the succeeded receipt step can.
+      const openOperations = await rows(tx, sql`select category,operation_key from app.assistant_usage_records
+        where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}
+        and category in ('query_embedding','web_search','web_read')`);
+      const searchSeqs = new Set(searches.map(step => Number(step.step_seq)));
+      const webSeqs = new Set(webs.map(step => Number(step.step_seq)));
+      const open: string[] = [];
+      for (const record of openOperations) {
+        const key = String(record.operation_key), suffix = key.slice(key.lastIndexOf(':') + 1), seq = Number(suffix);
+        if (!Number.isInteger(seq)) { open.push(key); continue; }
+        if (record.category === 'query_embedding' && !searchSeqs.has(1300 + seq)) open.push(key);
+        if ((record.category === 'web_search' || record.category === 'web_read') && !webSeqs.has(seq)) open.push(key);
+      }
+      return { checkpoint, searches, businesses, webs, histories, fixed, openOperations: open,
+        triggerSeq: trigger?.seq ? String(trigger.seq) : null, lastModel };
     });
+    if (saved.openOperations.length) { outcomeUnknown = true; fail('provider_outcome_unknown', 503); }
     if (saved.checkpoint && (saved.checkpoint.input_summary as Row)?.promptVersion !== promptVersion) fail('context_changed');
     if (saved.lastModel && !saved.lastModel.provider_attempt_id) fail('invalid_agent_checkpoint', 409);
     let lastAttemptId: string | null = saved.lastModel?.provider_attempt_id ? String(saved.lastModel.provider_attempt_id) : null;
-    const toolState = recoveredDialogueToolState(saved.searches, saved.businesses);
+    const toolState = recoveredDialogueToolState(saved.searches, saved.businesses, saved.webs, saved.histories, saved.fixed);
     const resume = saved.checkpoint?.private_checkpoint as AgentCheckpoint | undefined;
     for (const step of saved.searches) {
       const evidence = step.private_checkpoint as Evidence[];
@@ -170,14 +274,51 @@ export async function processNativeAgentAnswer(lease: Lease) {
       delivered.push(snapshot);
       context.snapshots.push(snapshot);
     }
+    // Persisted web originals re-enter the citation catalog and synthesis
+    // context so a resumed run keeps the same CITE and composition rules; the
+    // fixed 2000/2010 receipts are re-served as-is (never rewritten).
+    for (const step of saved.webs) {
+      const snapshot = step.private_checkpoint as WebSearchSnapshot;
+      if (!snapshot || typeof snapshot !== 'object' || snapshot.version !== 1) continue;
+      const evidence = webEvidence(snapshot, lease.runId, Number(step.step_seq));
+      if (!evidence.length) continue;
+      webRetrieved = true;
+      const sources = webSynthesisSources(evidence);
+      webCitations(catalog, sources);
+      (context.web ??= []).push(...evidence);
+      context.sources.push(...sources);
+    }
+    const historyRefs = new Map<string, HistoryRef>();
+    for (const { snapshot } of saved.histories) {
+      (context.history ??= []).push(snapshot);
+      context.sources.push(...historySynthesisSources(snapshot));
+      for (const { messageId, hash, memoryVersion } of snapshot.sources)
+        historyRefs.set(String(messageId), { messageId: String(messageId), hash: String(hash), memoryVersion: Number(memoryVersion) });
+    }
     const rt: DialogueToolRuntime = { lease, protocol: xiaokNativeExecutorProtocol, authorize, context, catalog, messages,
       markKnowledgeRetrieved: () => { knowledgeRetrieved = true; }, delivered,
       recovered: { searches: toolState.searches, businesses: toolState.businesses } };
     const search = dialogueEnterpriseSearch(rt);
     const business = dialogueBusinessQuery(rt);
+    // Web evidence flags the missing-citation guard through markWebRetrieved;
+    // the 120s research deadline mirrors the V2 bridge's per-process budget.
+    const webRt: WebToolRuntime = { lease, protocol: xiaokNativeExecutorProtocol, authorize, context, catalog, messages,
+      markWebRetrieved: () => { webRetrieved = true; }, webDeadlineAt: Date.now() + 120000 };
+    const web = dialogueWebResearch(webRt);
+    const recommendRt: RecommendToolRuntime = { lease, protocol: xiaokNativeExecutorProtocol, authorize, context, messages };
+    const designers = dialogueDesignerRecommendation(recommendRt);
+    const sites = dialoguePublicSitesRecommendation(recommendRt);
+    const historyRt: HistoryToolRuntime = { lease, protocol: xiaokNativeExecutorProtocol, authorize, historyRefs };
+    const recall = dialogueHistoryRecall(historyRt);
+    // Web, designer, public-site and history tools are not knowledge-gated:
+    // they read authorized non-enterprise sources, exactly like the V2 bridge.
+    // recall_history additionally requires the run's real trigger seq.
     const tools: ModelTool[] = [
       ...(knowledgeEnabled ? [enterpriseSearchTool] : []),
       ...businessToolDefinitions.filter(tool => tool.name === 'query_business'),
+      ...publicResearchTools([webSearchTool], true, true),
+      designerRecommendationTool, publicSitesRecommendationTool,
+      ...(saved.triggerSeq ? [historyTool] : []),
     ];
     const validateTool = (name: string, args: string): { code: string; feedback: string } | null => {
       if (name === 'search_enterprise') {
@@ -192,11 +333,32 @@ export async function processNativeAgentAnswer(lease: Lease) {
         try { parseBusinessQuery(JSON.parse(args)); }
         catch { return { code: 'invalid_tool_input', feedback: 'query_business需要{"domain":"appointments|schemes|floorplans|construction","leadId":"..."}；leadId为空字符串表示列本人档案。' }; }
       }
+      if (name === 'search_web') {
+        try { parseWebQuery(JSON.parse(args)); }
+        catch { return { code: 'invalid_tool_input', feedback: 'search_web需要{"query":"公共术语/产品型号"}；不传客户姓名、电话、地址、项目编号或私聊原话，不编造返回内容。' }; }
+      }
+      if (name === 'read_web') {
+        try { parsePublicRead(JSON.parse(args)); }
+        catch { return { code: 'invalid_tool_input', feedback: 'read_web需要{"candidateId":"P..."}；只能传本轮search_web/read_web返回的实际候选id，不是引用id。' }; }
+      }
+      if (name === 'recall_history') {
+        try { parseHistoryQuery(JSON.parse(args)); }
+        catch { return { code: 'invalid_tool_input', feedback: 'recall_history需要{"query":"客户已明确的房间/对象/关键词"}，2到80字；只回读客户原话，不是当前事实。' }; }
+      }
+      if (name === 'recommend_designers' || name === 'recommend_public_sites') {
+        try {
+          const value = JSON.parse(args) as unknown;
+          if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value as object).length)
+            throw new Error('arguments');
+        } catch { return { code: 'invalid_tool_input', feedback: name === 'recommend_designers'
+          ? 'recommend_designers无需参数；仅提交{}，结果由服务端按已获权条件决定。'
+          : 'recommend_public_sites无需参数；仅提交{}，结果由服务端按已获权定位/城市决定。' }; }
+      }
       return null;
     };
-    // Fresh tool calls continue past every persisted step sequence; recovered
-    // queries/keys reuse their persisted receipt inside the shared factories
-    // and never reach this counter again.
+    // Fresh tool calls continue past every persisted step sequence in every
+    // band (1200 web / 1300 search / 1400 business / 1500 history); recovered
+    // identities reuse their persisted receipt and never reach this counter.
     let sequence = toolState.nextSequence;
     const toolPort = async (turn: number, index: number, name: string, args: string) => {
       if (name === 'search_enterprise') {
@@ -206,10 +368,35 @@ export async function processNativeAgentAnswer(lease: Lease) {
       if (name === 'query_business') {
         return { content: JSON.stringify(await business(parseBusinessQuery(JSON.parse(args)), ++sequence)) };
       }
+      if (name === 'search_web' || name === 'read_web') {
+        const parsed = JSON.parse(args) as { query?: string; candidateId?: string };
+        const recoveredWeb = toolState.webs.get((name === 'search_web' ? 'search:' : 'read:')
+          + String(name === 'search_web' ? parsed.query : parsed.candidateId));
+        if (recoveredWeb) return { content: JSON.stringify(recoveredWeb) };
+        const input = name === 'search_web' ? { name: 'search_web' as const, query: String(parsed.query) }
+          : { name: 'read_web' as const, candidateId: String(parsed.candidateId) };
+        return { content: JSON.stringify(await web(input, ++sequence)) };
+      }
+      if (name === 'recommend_designers') {
+        if (toolState.designers) return { content: JSON.stringify(toolState.designers) };
+        return { content: JSON.stringify(await designers()) };
+      }
+      if (name === 'recommend_public_sites') {
+        if (toolState.publicSites) return { content: JSON.stringify(toolState.publicSites) };
+        return { content: JSON.stringify(await sites.call()) };
+      }
+      if (name === 'recall_history') {
+        if (!saved.triggerSeq) fail('assistant_capability_forbidden', 403);
+        const { query } = JSON.parse(args) as { query: string };
+        const recoveredHistory = toolState.histories.get(query);
+        if (recoveredHistory) return { content: JSON.stringify(recoveredHistory) };
+        return { content: JSON.stringify(await recall(JSON.parse(args), ++sequence, saved.triggerSeq)) };
+      }
       fail('assistant_capability_forbidden', 403);
     };
     const model = async (turn: number, modelMessages: ModelMessage[], modelTools: ModelTool[]): Promise<ModelTurnOutput> => {
-      const step = 1100 + turn * 10;
+      // Turn 9 is the last whose ten tool slots stay below the 1200 web band.
+      const step = assertModelTurnBand(turn);
       // A lost process may have persisted this dispatch before its graph
       // checkpoint: the original output and attempt are reused and the
       // provider is never re-called. A step without a persisted outcome stays
@@ -274,6 +461,19 @@ export async function processNativeAgentAnswer(lease: Lease) {
     const result = await runRenovationAgent({
       messages: [systemMessage, ...history], tools, resume,
       ports: { authorize: guard, model, tool: toolPort, validateTool,
+        // The saved 3026/3027 first drafts emitted citation ids without their
+        // literal prefix. Validation moves into the graph's validate node so the
+        // existing one-shot repair turn lets the model correct its own citation
+        // expression against the same strict catalog; unknown ids still fail
+        // closed exactly as before, and the repair never reveals the fix.
+        validateFinal: async (text: string) => {
+          try { ragAnswerParts(text, [...catalog.values()]); return null; }
+          catch (error) {
+            if (!(error instanceof AssistantError) || error.code !== 'invalid_model_citation') throw error;
+            return { code: 'invalid_model_citation',
+              feedback: '最终回答未通过引用校验：每个[id](CITE)标记的id必须与本轮工具返回的cites[].id逐字符一致，不得改写、缩写或编造。请重新提交最终回答，只引用仍有效来源的原始id；无法核实的部分如实说明，不新增引用。' };
+          }
+        },
         checkpoint: state => withTenantTransaction(lease.enterpriseId, async tx => {
           await runContext(tx, lease);
           await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary,private_checkpoint)
@@ -295,7 +495,10 @@ export async function processNativeAgentAnswer(lease: Lease) {
       catch (error) { if (!snapshotText) throw error; }
     }
     const modelCitations = modelParts?.filter(part => 'source' in part).length ?? 0;
-    const composed = composeNativeDelivery(finalText, snapshotText, modelCitations, knowledgeRetrieved);
+    // A located-but-empty nearby result is delivered from the server receipt;
+    // need_region never overrides the model draft (same rule as the bridge).
+    const composed = publicSitesDelivery(
+      composeNativeDelivery(finalText, snapshotText, modelCitations, knowledgeRetrieved, webRetrieved), sites.outcome());
     const text = composed.text;
     // Follow-up questions stay preset-only until the dedicated suggestion
     // generation migrates off its FastGPT app (no model call, no usage row).

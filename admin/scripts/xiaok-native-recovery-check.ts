@@ -14,7 +14,7 @@ import { sql } from 'drizzle-orm';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { closePostgresPool } from '@/lib/postgresql';
-import { claimJob, enterpriseConcurrency, failRun, type Lease } from '@/lib/assistant/infrastructure/job-queue';
+import { claimJob, enterpriseConcurrency, processAssistantJob, type Lease } from '@/lib/assistant/infrastructure/job-queue';
 import { processNativeAgentAnswer, nativeExecutorPromptVersion, xiaokNativeExecutorProtocol } from '@/lib/assistant/agent/native-executor';
 import { nativeAgentRuntimeBinding } from '@/lib/assistant/fastgpt/agent-v2/config';
 import { knowledgePolicy } from '@/lib/assistant/knowledge-policy';
@@ -66,7 +66,9 @@ const attemptsMax = async () => String((await platformOne(sql`select coalesce(ma
 async function seedInterruptedRun(label: string, spec: {
   question: string;
   turns: Array<{ turn: number; output: ModelTurnOutput; usage?: { inputTokens: number; outputTokens: number } }>;
-  searches?: Array<{ sequence: number; query: string; receipt: Row; evidence: Row[] }>;
+  searches?: Array<{ sequence: number; query: string; receipt: Row; evidence: Row[];
+    /** Dispatch marker only: the usage row exists but no receipt step was saved. */
+    dispatchedOnly?: boolean; usageObserved?: boolean }>;
   checkpoint?: Row;
 }) {
   return read(async tx => {
@@ -115,7 +117,9 @@ async function seedInterruptedRun(label: string, spec: {
     }
     for (const item of spec.searches ?? []) {
       await tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,operation_key,category,quantity,measurement_kind,input_tokens)
-        values(${eid},${runId},${'agent-v2-query:' + runId + ':' + item.sequence},'query_embedding',12,'observed',12)`);
+        values(${eid},${runId},${'agent-v2-query:' + runId + ':' + item.sequence},'query_embedding',
+        ${item.usageObserved === false ? sql`null,'unavailable',null` : sql`12,'observed',12`})`);
+      if (item.dispatchedOnly) continue;
       await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,source_refs,private_checkpoint,input_summary)
         values(${eid},${runId},${1300 + item.sequence},'retrieval','knowledge.search.v1',1,'succeeded',
           ${JSON.stringify(item.evidence.map(e => ({ ref: (e as Row).ref, hash: (e as Row).hash })))}::jsonb,${JSON.stringify(item.evidence)}::jsonb,
@@ -131,13 +135,13 @@ async function seedInterruptedRun(label: string, spec: {
   });
 }
 
-/** Claim through the real Worker path. Only labelled fixtures exist after the
- * idle-queue preflight; an unexpected claim is failed recorded, never replayed. */
+/** Claim through the real Worker claim path, scoped to this run's fixture job
+ * so no unrelated enterprise or session can ever be claimed or failed here. */
 async function claimUntil(runId: string): Promise<Lease> {
   for (let index = 0; index < 12; index++) {
-    const lease = await claimJob();
+    const lease = await claimJob({ enterpriseId: eid, runId });
     if (lease && String(lease.runId) === runId) return lease;
-    if (lease) await failRun(lease, 'recovery_check_unexpected_job', true);
+    if (lease) throw new Error('scoped claim returned an unexpected lease for run ' + String(lease.runId));
     await sleep(1200);
   }
   throw new Error('claim timeout for run ' + runId);
@@ -155,18 +159,31 @@ async function runState(runId: string, conversationId: string) {
   return { run: run!, attempts, usage, steps, messages };
 }
 
+async function assertIndeterminate(label: string, seeded: Awaited<ReturnType<typeof seedInterruptedRun>>, expect: {
+  usageKeys: string[]; retrievalSteps: number }) {
+  const state = await runState(seeded.runId, seeded.conversationId);
+  const run = state.run as Row;
+  assert.equal(String(run.status), 'indeterminate', label + ' must stay indeterminate, saw ' + String(run.status) + '/' + String(run.error_code || ''));
+  assert.equal(String(run.error_code), 'provider_outcome_unknown', label + ' error code');
+  const attempts = state.attempts as Row[];
+  assert.equal(attempts.length, seeded.attemptIds.length, label + ' must not add any provider attempt');
+  assert.deepEqual((state.usage as Row[]).map(u => String(u.operation_key)).sort(), expect.usageKeys, label + ' usage rows unchanged');
+  assert.equal(stepKinds(state, 'retrieval').length, expect.retrievalSteps, label + ' no receipt step may appear');
+  return state;
+}
+
 const stepKinds = (state: ReturnType<typeof runState> extends Promise<infer T> ? T : never, kind: string) =>
   (state.steps as Row[]).filter(s => String(s.kind) === kind);
 
 async function assertCompleted(label: string, seeded: Awaited<ReturnType<typeof seedInterruptedRun>>, expect: {
-  minAttempts: number; usageKeys: string[]; textMatch: RegExp; modelStepCount: number; checkpoint: boolean }) {
+  attempts: number; usageKeys: string[]; textMatch: RegExp; modelStepCount: number; checkpoint: boolean }) {
   const state = await runState(seeded.runId, seeded.conversationId);
   const run = state.run as Row;
   assert.equal(String(run.status), 'succeeded', label + ' run must succeed: ' + String(run.error_code || ''));
   assert.equal((state.messages as Row[]).length, 2, label + ' must persist exactly one trigger and one assistant message');
   assert.equal(String((state.messages as Row[]).at(-1)!.id), String(run.output_message_id), label + ' output message linkage');
   const attempts = state.attempts as Row[];
-  assert.ok(attempts.length >= expect.minAttempts, label + ' provider attempts');
+  assert.equal(attempts.length, expect.attempts, label + ' must hold the exact provider attempt count (no hidden re-dispatch)');
   assert.ok(attempts.every(a => String(a.status) === 'succeeded'), label + ' attempts must all be known-succeeded');
   const synthetic = attempts.filter(a => String(a.remote_task_id) === 'xiaok-recovery-synthetic');
   assert.equal(synthetic.length, seeded.attemptIds.length, label + ' synthetic attempt rows preserved');
@@ -196,6 +213,28 @@ async function main() {
     return { queue: queue!.n, binding: bound!.binding };
   });
 
+  await step('decoy probe: an unrelated eligible job stays untouched for the whole run', async () => {
+    // A labelled enterprise without assistant settings can never be claimed by
+    // any Worker (the claim's settings lock returns null), so an eligible decoy
+    // job there is the deterministic witness that this harness never touches
+    // unrelated tasks even when they sit in the same global scan.
+    const decoy = await withPlatformTransaction(async tx => {
+      const existing = await one(tx, sql`select e.id from app.enterprises e where e.name like '[synthetic-recovery-decoy]%' order by id desc limit 1`);
+      if (existing) return String(existing.id);
+      const code = 'recovery-decoy-' + randomUUID().slice(0, 8);
+      const enterprise = (await one(tx, sql`insert into app.enterprises(name,code,status) values('[synthetic-recovery-decoy] ' || ${code},${code},'active') returning id`))!;
+      const conversation = (await one(tx, sql`insert into app.assistant_conversations(enterprise_id,purpose,status,mode,title,entry_snapshot,policy_version,context_revision,last_seq)
+        values(${String(enterprise.id)},'customer_consultation','open','ai','[synthetic-recovery-decoy] conversation','{}'::jsonb,1,1,0) returning id`))!;
+      const run = (await one(tx, sql`insert into app.assistant_runs(enterprise_id,conversation_id,trigger_kind,purpose,status,policy_snapshot,context_revision,knowledge_epoch)
+        values(${String(enterprise.id)},${String(conversation.id)},'scheduled_task','reply','queued','{"schemaVersion":1,"actor":{"principal":{"kind":"user"},"capabilities":[]}}'::jsonb,1,1) returning id`))!;
+      await tx.execute(sql`insert into app.assistant_jobs(enterprise_id,kind,run_id,dedupe_key,payload_version,status,attempts,available_at)
+        values(${String(enterprise.id)},'chat_turn',${String(run.id)},${'recovery-decoy:' + randomUUID()},1,'queued',0,now())`);
+      return String(enterprise.id);
+    });
+    report.decoyEnterprise = decoy;
+    return { decoy };
+  });
+
   await step('A: final-answer checkpoint persisted, interrupted before commit', async () => {
     const question = '客厅地砖还没铺，铺贴前师傅一般会先做什么？';
     const output: ModelTurnOutput = { text: '铺贴前一般会先检查基层平整度和空鼓情况，再弹线预排确认排版方向，之后才正式上砖。',
@@ -205,7 +244,7 @@ async function main() {
       checkpoint: { version: 1, turn: 0, messages: [], output } });
     const lease = await claimUntil(seeded.runId);
     await processNativeAgentAnswer(lease);
-    const result = await assertCompleted('A', seeded, { minAttempts: 1, usageKeys: ['agent:' + seeded.runId + ':0'],
+    const result = await assertCompleted('A', seeded, { attempts: 1, usageKeys: ['agent:' + seeded.runId + ':0'],
       textMatch: /弹线预排/, modelStepCount: 1, checkpoint: true });
     (report.scenarios as Row).A = { runId: seeded.runId, conversationId: seeded.conversationId, attemptIds: seeded.attemptIds,
       status: String((result.state.run as Row).status), messageCount: (result.state.messages as Row[]).length,
@@ -220,7 +259,7 @@ async function main() {
     const seeded = await seedInterruptedRun('B-model-no-checkpoint', { question, turns: [{ turn: 0, output }] });
     const lease = await claimUntil(seeded.runId);
     await processNativeAgentAnswer(lease);
-    const result = await assertCompleted('B', seeded, { minAttempts: 1, usageKeys: ['agent:' + seeded.runId + ':0'],
+    const result = await assertCompleted('B', seeded, { attempts: 1, usageKeys: ['agent:' + seeded.runId + ':0'],
       textMatch: /闭水试验/, modelStepCount: 1, checkpoint: true });
     (report.scenarios as Row).B = { runId: seeded.runId, conversationId: seeded.conversationId, attemptIds: seeded.attemptIds,
       status: String((result.state.run as Row).status), messageCount: (result.state.messages as Row[]).length,
@@ -260,6 +299,51 @@ async function main() {
       status: String(run.status), modelSteps: models.length, retrievalSteps: retrievals.map(s => Number(s.step_seq)),
       freshSearches: fresh.length, usageKeys: usage.map(u => String(u.operation_key)) };
     return (report.scenarios as Row).C;
+  });
+
+  await step('E: dispatch marker without receipt stays indeterminate and is never re-dispatched', async () => {
+    const q1 = '恢复检查E：已派发但回执未保存的检索';
+    const output: ModelTurnOutput = { text: '', toolCalls: [{ id: 'recovery-e-1', name: 'search_enterprise', arguments: JSON.stringify({ query: q1 }) }],
+      finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 9, outputTokens: 3 } };
+    const seeded = await seedInterruptedRun('E-dispatch-no-receipt', { question: q1, turns: [{ turn: 0, output }],
+      searches: [{ sequence: 1, query: q1, receipt: {}, evidence: [], dispatchedOnly: true, usageObserved: false }] });
+    const lease = await claimUntil(seeded.runId);
+    await processNativeAgentAnswer(lease);
+    await assertIndeterminate('E', seeded, { usageKeys: ['agent:' + seeded.runId + ':0', 'agent-v2-query:' + seeded.runId + ':1'].sort(), retrievalSteps: 0 });
+    (report.scenarios as Row).E = { runId: seeded.runId, openOperation: 'agent-v2-query:' + seeded.runId + ':1' };
+    return (report.scenarios as Row).E;
+  });
+
+  await step('F: observed usage without receipt stays indeterminate and is never re-dispatched', async () => {
+    const q1 = '恢复检查F：用量已保存但回执未保存的检索';
+    const output: ModelTurnOutput = { text: '', toolCalls: [{ id: 'recovery-f-1', name: 'search_enterprise', arguments: JSON.stringify({ query: q1 }) }],
+      finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 9, outputTokens: 3 } };
+    const seeded = await seedInterruptedRun('F-usage-no-receipt', { question: q1, turns: [{ turn: 0, output }],
+      searches: [{ sequence: 1, query: q1, receipt: {}, evidence: [], dispatchedOnly: true, usageObserved: true }] });
+    const lease = await claimUntil(seeded.runId);
+    await processNativeAgentAnswer(lease);
+    await assertIndeterminate('F', seeded, { usageKeys: ['agent:' + seeded.runId + ':0', 'agent-v2-query:' + seeded.runId + ':1'].sort(), retrievalSteps: 0 });
+    (report.scenarios as Row).F = { runId: seeded.runId, openOperation: 'agent-v2-query:' + seeded.runId + ':1' };
+    return (report.scenarios as Row).F;
+  });
+
+  await step('W1: interrupted before any dispatch resumes with exactly one real execution', async () => {
+    const q1 = '恢复检查W1：调用前中断的检索';
+    const output: ModelTurnOutput = { text: '', toolCalls: [{ id: 'recovery-w1-1', name: 'search_enterprise', arguments: JSON.stringify({ query: q1 }) }],
+      finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 9, outputTokens: 3 } };
+    const seeded = await seedInterruptedRun('W1-pre-dispatch', { question: q1, turns: [{ turn: 0, output }] });
+    const lease = await claimUntil(seeded.runId);
+    await processNativeAgentAnswer(lease);
+    const state = await runState(seeded.runId, seeded.conversationId);
+    assert.equal(String((state.run as Row).status), 'succeeded', 'W1 must complete: ' + String((state.run as Row).error_code || ''));
+    assert.equal((state.attempts as Row[]).length, 2, 'W1 holds exactly the synthetic turn-0 attempt and one real turn-1 attempt');
+    const usage = state.usage as Row[];
+    assert.deepEqual(usage.map(u => String(u.operation_key)).sort(),
+      ['agent:' + seeded.runId + ':0', 'agent:' + seeded.runId + ':1', 'agent-v2-query:' + seeded.runId + ':1'].sort(), 'W1 usage keys');
+    assert.equal(stepKinds(state, 'retrieval').length, 1, 'W1 executes the search exactly once');
+    (report.scenarios as Row).W1 = { runId: seeded.runId, attempts: (state.attempts as Row[]).length,
+      usageKeys: usage.map(u => String(u.operation_key)) };
+    return (report.scenarios as Row).W1;
   });
 
   await step('D: A-enterprise chat slot busy, B-enterprise knowledge task still runs', async () => {
@@ -326,21 +410,32 @@ async function main() {
     const fixture = { documentId: String((created.document as Row).id), versionId: String((created.draft as Row).id), expectedVersion: 1, expectedEditVersion: 1 };
     await withTenantTransaction(control, tx => tx.execute(sql`update app.assistant_enterprise_settings set enabled=true,version=version+1 where enterprise_id=${control}`));
     const queued = await knowledge.execute('index', fixture, randomUUID());
-    const claimed = await claimKnowledgeJob();
-    assert.ok(claimed && String(claimed.jobId) === String(queued.jobId), 'B knowledge job must be claimable while A chat occupies its slot');
-    await runKnowledgeJob(claimed);
+    // The knowledge task must advance through the unified scheduler while A's
+    // chat slots are full: processAssistantJob is the real Worker entry.
+    const scheduled = await processAssistantJob();
+    assert.equal(scheduled.claimed, true, 'The unified scheduler must advance B knowledge while A chat is blocked');
     const jobState = await knowledge.execute('job', { jobId: String(queued.jobId) } as never) as Row;
-    assert.equal(String(jobState.status), 'succeeded', 'B knowledge indexing must succeed while A is busy');
+    assert.equal(String(jobState.status), 'succeeded', 'B knowledge indexing must succeed through the unified scheduler while A is busy');
     const busyStates = await tenantRows(sql`select j.status,j.lease_token is not null leased from app.assistant_jobs j
       where j.enterprise_id=${eid} and j.run_id in (${sql.join(busyRunIds.map(id => sql`${id}`), sql`, `)}) order by j.id`);
     assert.ok((busyStates as Row[]).every(j => String(j.status) === 'running' && j.leased), 'A busy chat jobs stay running and untouched');
     const queuedState = await tenantOne(sql`select status from app.assistant_jobs j where j.enterprise_id=${eid} and j.run_id=${queuedRunId}`);
     assert.equal(String(queuedState!.status), 'queued', 'A queued chat job keeps waiting for its own enterprise slot');
+    // The unrelated decoy task was eligible in the same global scan the whole
+    // time; the harness neither claims nor fails it.
+    const decoyState = await withPlatformTransaction(tx => one(tx, sql`select j.status,j.attempts from app.assistant_jobs j
+      where j.enterprise_id=${String(report.decoyEnterprise)} and j.kind='chat_turn' order by j.id desc limit 1`));
+    assert.equal(String(decoyState!.status), 'queued', 'The unrelated decoy job stays queued');
+    assert.equal(Number(decoyState!.attempts), 0, 'The unrelated decoy job is never claimed by this harness');
     // Hygiene: release the labelled occupancy fixtures so they never run.
     await read(tx => tx.execute(sql`update app.assistant_jobs set status='failed',last_error='recovery_check_synthetic_cleanup',lease_token=null,lease_expires_at=null,version=version+1
       where enterprise_id=${eid} and run_id in (${sql.join([...busyRunIds, queuedRunId].map(id => sql`${id}`), sql`, `)})`));
     await read(tx => tx.execute(sql`update app.assistant_runs set status='failed',error_code='recovery_check_synthetic_cleanup',completed_at=now(),version=version+1
       where enterprise_id=${eid} and id in (${sql.join([...busyRunIds, queuedRunId].map(id => sql`${id}`), sql`, `)})`));
+    await withPlatformTransaction(tx => tx.execute(sql`update app.assistant_jobs set status='failed',last_error='recovery_check_synthetic_cleanup',version=version+1
+      where enterprise_id=${String(report.decoyEnterprise)} and kind='chat_turn' and status='queued'`));
+    await withPlatformTransaction(tx => tx.execute(sql`update app.assistant_runs set status='failed',error_code='recovery_check_synthetic_cleanup',completed_at=now(),version=version+1
+      where enterprise_id=${String(report.decoyEnterprise)} and status='queued'`));
     (report.scenarios as Row).D = { slots, controlEnterprise: control, knowledgeJobId: String(queued.jobId),
       knowledgeJob: String(jobState.status), busyRuns: busyRunIds, queuedRunId };
     return (report.scenarios as Row).D;
@@ -367,6 +462,9 @@ main().catch(error => { report.error = (error as Error).message; })
       report.finishedAt = new Date().toISOString();
     } catch (error) { report.finalizeError = (error as Error).message; }
     finally { save(); await closePostgresPool();
-      console.log(JSON.stringify({ passed: (report.checks as Row[]).every(c => c.passed), checks: (report.checks as Row[]).length,
-        error: report.error || null, drift: report.drift || [] })); }
+      const checks = (report.checks as Row[]);
+      const passed = checks.length > 0 && checks.every(c => c.passed) && !report.error
+        && !((report.drift as string[] | undefined) || []).length && !report.finalizeError;
+      if (!passed) process.exitCode = 1;
+      console.log(JSON.stringify({ passed, checks: checks.length, error: report.error || null, drift: report.drift || [] })); }
   });
