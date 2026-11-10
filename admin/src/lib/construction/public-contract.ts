@@ -5,15 +5,18 @@ import { cityNameFor, districtOptions } from '@/lib/portfolio/regions';
 export type PublicMask = { x: number; y: number; width: number; height: number };
 export type PublicSourceInput = { kind: 'site_record' | 'consultation_message'; id: string; sourceHash: string; text: string };
 export type PublicPhotoInput = { recordId: string; mediaId: string; masks: PublicMask[] };
-export type PublicMaterialInput = { name: string; cityCode: string; cityName: string; district: string; sources: PublicSourceInput[]; photos: PublicPhotoInput[] };
+export type PublicMaterialInput = { name: string; cityCode: string; cityName: string; district: string; sources: PublicSourceInput[]; photos: PublicPhotoInput[]; designerId?: string };
 export type PublicContent = { name: string; cityCode: string; cityName: string; district: string; stageName: string;
-  excerpts: Array<{ role: string; text: string; date: string }>; sourceCount: number; photoCount: number };
+  excerpts: Array<{ role: string; text: string; date: string }>; sourceCount: number; photoCount: number;
+  /** Optional enterprise-chosen public credit. The name is snapshotted so a
+   * revoked or renamed staff record cannot silently rewrite published material. */
+  designerId?: string; designerName?: string };
 export function noPublicPii(value: string) {
   if (/1[3-9]\d{9}|[\w.+-]+@[\w.-]+\.[a-z]{2,}|\d{1,4}\s*(?:栋|幢|单元|号楼|室)/i.test(value)) fail('public_material_sensitive', 422);
   return value;
 }
 export function publicMaterialInput(value: unknown): PublicMaterialInput {
-  const v = object(value, ['name', 'cityCode', 'district', 'sources', 'photos']);
+  const v = object(value, ['name', 'cityCode', 'district', 'sources', 'photos', 'designerId']);
   const name = noPublicPii(text(v.name, 80)), cityCode = text(v.cityCode, 6), cityName = cityNameFor(cityCode), district = text(v.district, 50);
   if (!cityName || !districtOptions(cityCode).some(d => d.value === district)) fail('invalid_public_material', 422);
   if (!Array.isArray(v.sources) || !v.sources.length || v.sources.length > 8 || !Array.isArray(v.photos) || v.photos.length > 4) fail('invalid_public_material', 422);
@@ -37,7 +40,8 @@ export function publicMaterialInput(value: unknown): PublicMaterialInput {
     return { recordId, mediaId: id(p.mediaId), masks };
   });
   if (new Set(photos.map(p => p.mediaId)).size !== photos.length) fail('invalid_public_material', 422);
-  return { name, cityCode, cityName, district, sources, photos };
+  const designerId = v.designerId === undefined || v.designerId === null || v.designerId === '' ? undefined : id(v.designerId);
+  return { name, cityCode, cityName, district, sources, photos, ...(designerId ? { designerId } : {}) };
 }
 /** Quotes may be clipped or masked; invented words cannot become a speaker's quote. */
 export function excerptOf(original: string, excerpt: string) {

@@ -30,6 +30,7 @@ export async function publicMaterialDto(tx: PostgresTransaction, site: Row, vers
   const media = await rows(tx, sql`select id::text,width,height from app.construction_public_media where enterprise_id=${String(site.enterprise_id)} and site_id=${String(site.id)} and version_id=${String(version.id)} order by position`);
   return { id: String(site.id), versionId: String(version.id), revision: Number(site.revision), status: String(site.status), statusLabel: publicStatusLabels[String(site.status)] || '当前不可用',
     name: content.name, cityCode: content.cityCode, cityName: content.cityName, district: content.district, stageName: content.stageName,
+    designer: content.designerId ? { id: content.designerId, name: content.designerName || '' } : null,
     excerpts: content.excerpts, photos: media as Array<{ id: string; width: number; height: number }>,
     updatedAt: new Date(String(site.updated_at)).toISOString() };
 }

@@ -8,6 +8,9 @@ const site = /工地|施工现场|施工实况|施工直播|在建项目/;
 const work = /设计师|设计工作室|设计室|作品/;
 const ownSite = /(?:我家|自家|自己家|我的|自己的|本项目|这个项目)(?:的)?(?:工地|施工现场|施工直播)/;
 const siteInformation = /(?:工地|施工现场)(?:的)?(?:装修|贴砖|铺砖|防水|施工|验收|保洁)*(?:规范|标准|要求|做法|方法|费用|报价|工具|合同)/;
+/** "周围有什么工地" asks for a list without a browse verb. The place
+ * qualifier keeps ordinary craft talk about sites out. */
+const nearbyListing = /(?:附近|周围|周边|这边|本地|同城)[^，,。；;！？!?\n]{0,10}(?:有没有|有什么|有哪些|哪些|哪个|哪儿有|哪里有|几个)[^，,。；;！？!?\n]{0,6}(?:工地|施工现场|施工实况|在建项目)/;
 
 /** Presentation only. Read a direct browsing request from the customer's turn. */
 export function discoveryIntent(text: string) {
@@ -17,6 +20,7 @@ export function discoveryIntent(text: string) {
     const clause = segment.trim();
     if (/不想|不要|不用|不需要|先不|别(?:看|推荐)|假如|假设|如果/.test(clause)) continue;
     if (/怎么|怎样|如何|为什么|要不要|该不该|多少钱|什么标准/.test(clause)) continue;
+    if (nearbyListing.test(clause) && !ownSite.test(clause) && !siteInformation.test(clause)) sites = true;
     const action = browsing.exec(clause) || /有没有|有没|哪里有|哪儿有/.exec(clause);
     if (!action) continue;
     const target = clause.slice(action.index + action[0].length).trim();
@@ -31,7 +35,9 @@ export function discoveryIntent(text: string) {
 /** Use the persisted run link, including for a reply whose request is on another history page. */
 export async function discoveryReplies(tx: PostgresTransaction, enterpriseId: string, conversationId: string, replyIds: string[]) {
   if (!replyIds.length) return new Map<string, { seq: string; text: string; intent: ReturnType<typeof discoveryIntent> }>();
-  const requests = await rows(tx, sql`select r.output_message_id::text as reply_id, original.seq::text, original.content
+  const requests = await rows(tx, sql`select r.output_message_id::text as reply_id, original.seq::text, original.content,
+    exists(select 1 from app.assistant_run_steps s where s.enterprise_id=r.enterprise_id and s.run_id=r.id
+      and s.kind='agent_public_sites' and s.status='succeeded') as public_sites
     from app.assistant_runs r join app.assistant_messages original on original.enterprise_id=r.enterprise_id
       and original.conversation_id=r.conversation_id and original.id=r.trigger_message_id and original.author_kind='user'
     where r.enterprise_id=${enterpriseId} and r.conversation_id=${conversationId} and r.status='succeeded'
@@ -41,7 +47,11 @@ export async function discoveryReplies(tx: PostgresTransaction, enterpriseId: st
         and a.message_id=original.id and a.deleted_at is not null)`);
   return new Map(requests.map(request => {
     const text = safeText(request.content as Parameters<typeof safeText>[0]);
-    return [String(request.reply_id), { seq: String(request.seq), text, intent: discoveryIntent(text) }] as const;
+    const intent = discoveryIntent(text);
+    // A delivered public-site result is itself a browsing answer, even when the
+    // customer's wording was not caught by the presentation matcher.
+    return [String(request.reply_id), { seq: String(request.seq), text,
+      intent: request.public_sites === true ? { ...intent, sites: true } : intent }] as const;
   }));
 }
 

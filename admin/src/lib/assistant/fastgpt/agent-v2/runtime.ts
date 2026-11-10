@@ -6,11 +6,20 @@ import type { AgentV2Configuration } from './config';
 import { suggestionPrompt } from './suggestions';
 import { agentV2SkillPrompt } from './skills';
 
-export const agentV2ToolNames = ['search_enterprise', 'query_business'] as const;
+export const agentV2ToolNames = ['search_enterprise', 'query_business', 'search_web', 'read_web', 'recommend_designers', 'recommend_public_sites'] as const;
 export type AgentV2ToolName = typeof agentV2ToolNames[number];
 export type AgentV2ToolInput =
   | { name: 'search_enterprise'; query: string }
-  | ({ name: 'query_business' } & BusinessQuery);
+  | ({ name: 'query_business' } & BusinessQuery)
+  | { name: 'search_web'; query: string }
+  | { name: 'read_web'; candidateId: string }
+  /** No model-supplied filters: the site credit and the conversation's own
+   * stated city/style decide the result, so the model cannot turn a guess into
+   * a recommendation condition. */
+  | { name: 'recommend_designers' }
+  /** Same zero-argument contract: the conversation's authorized region and the
+   * published catalog decide the result, never a model-supplied place. */
+  | { name: 'recommend_public_sites' };
 export type AgentV2Ports = {
   authorize: () => Promise<void>;
   tool: (input: AgentV2ToolInput, sequence: number) => Promise<Record<string, unknown>>;
@@ -76,6 +85,7 @@ export class FastGPTAgentV2 {
       // form body keeps quotes/newlines out of JSON syntax.
       const form = (request.headers.get('content-type') || '').includes('application/x-www-form-urlencoded');
       const fields = (expected: readonly string[]) => {
+        if (!form && !bytes.trim() && !expected.length) return {} as Record<string, string>;
         if (form) {
           const parsed = new URLSearchParams(bytes);
           if ([...new Set(parsed.keys())].length !== expected.length || !expected.every(key => parsed.getAll(key).length === 1))
@@ -94,15 +104,25 @@ export class FastGPTAgentV2 {
         ? (() => { const { query } = fields(['query']);
           if (!query.trim() || Array.from(query).length > 1000) fail('invalid_message', 422);
           return { name: 'search_enterprise' as const, query }; })()
-        : (() => { const requested = fields(['domain', 'leadId']);
-          return { name: 'query_business' as const, ...parseBusinessQuery({ domain: requested.domain, leadId: requested.leadId }) }; })();
+        : name === 'query_business' ? (() => { const requested = fields(['domain', 'leadId']);
+          return { name: 'query_business' as const, ...parseBusinessQuery({ domain: requested.domain, leadId: requested.leadId }) }; })()
+        : name === 'search_web' ? (() => { const { query } = fields(['query']);
+          if (!query.trim() || Array.from(query).length > 240) fail('invalid_message', 422);
+          return { name: 'search_web' as const, query }; })()
+        : name === 'read_web' ? (() => { const { candidateId } = fields(['candidateId']);
+          if (!/^P[1-9]\d{0,18}:12\d{2}:\d{1,3}$/.test(candidateId)) fail('invalid_message', 422);
+          return { name: 'read_web' as const, candidateId }; })()
+        : name === 'recommend_designers' ? (() => { fields([]); return { name: 'recommend_designers' as const }; })()
+        : (() => { fields([]); return { name: 'recommend_public_sites' as const }; })();
       await ticket.ports.authorize();
       const receipt = await ticket.ports.tool(input, ++ticket.calls);
       await ticket.ports.authorize();
       this.config.record({ kind: 'agent_v2_tool', name, status: receipt.status,
-        ...(input.name === 'search_enterprise' ? { query: input.query } : { domain: input.domain, leadId: input.leadId }),
+        ...(input.name === 'search_enterprise' || input.name === 'search_web' ? { query: input.query }
+          : input.name === 'read_web' ? { candidateId: input.candidateId }
+          : input.name === 'recommend_designers' || input.name === 'recommend_public_sites' ? {} : { domain: input.domain, leadId: input.leadId }),
         sources: Array.isArray(receipt.cites) ? receipt.cites.length : 0 });
-      return Response.json(receipt);
+      return Response.json({ ...receipt, tool: name });
     } catch (error) {
       const known = error instanceof AssistantError || error instanceof AiProviderError;
       if (known) ticket.failure ??= error as AssistantError | AiProviderError;
@@ -136,6 +156,23 @@ export class FastGPTAgentV2 {
       await ports.authorize();
       return { text, usage: agentUsage(packet) };
     } finally { this.tickets.delete(id); }
+  }
+  /** A one-shot opening for one registered scene. No run ticket exists, so a
+   * tool callback from this app can only receive 409; the app must stay
+   * tool-free, and the scene registry already limits what it receives. */
+  async intro(appId: string, facts: string, instructions: string): Promise<AgentV2RunResult> {
+    const response = await fetch(this.config.baseUrl + '/api/v1/chat/completions', {
+      method: 'POST', signal: AbortSignal.timeout(45000),
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + this.config.apiKey },
+      body: JSON.stringify({ appId, chatId: 'NO_RECORD_HISTORIES', stream: false, detail: true,
+        messages: [{ role: 'user', content: instructions + '\n\n公开快照（JSON）：\n' + facts }] }),
+    });
+    const packet = await response.json() as Packet;
+    this.config.record({ kind: 'agent_v2_intro', status: response.status, response: packet });
+    if (!response.ok || packet.error) fail('fastgpt_workflow_unavailable', 502);
+    const text = messageText(packet.choices?.[0]?.message?.content);
+    if (!text || text.length > 2000) fail('invalid_model_answer', 502);
+    return { text, usage: agentUsage(packet) };
   }
   /** Constrained follow-up generation on the same model. The dedicated app
    * carries no tools or datasets, so this call cannot change business facts. */

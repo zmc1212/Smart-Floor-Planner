@@ -1,8 +1,8 @@
 import { sql } from 'drizzle-orm';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
-import { fail, id, key, requireCapability, safeText, type ActorContext } from '@/lib/assistant/contracts';
-import { appendMessage, cancelRuns, idempotent } from '@/lib/assistant/core/conversation';
+import { fail, id, key, requireCapability, safeText, AssistantError, type ActorContext } from '@/lib/assistant/contracts';
+import { appendMessage, cancelQueuedRun, cancelRuns, idempotent, newRun } from '@/lib/assistant/core/conversation';
 import { object } from './contracts';
 import { publicRevision, type PublicContent } from './public-contract';
 import { publicAudit, publicEvent } from './public-service';
@@ -11,6 +11,51 @@ import { readMemory } from '@/lib/assistant/agent/memory';
 import { recommendationRegion } from '@/lib/assistant/location/region';
 import { CITY_OPTIONS } from '@/lib/portfolio/regions';
 import { discoveryRequest } from '@/lib/assistant/core/discovery';
+
+type PublicIntroMarker = { siteId: string; versionId: string; attempts: number; runId?: string };
+/** One model opening per visited site version and consultation. It is an ordinary
+ * customer reply run, so existing admission, quota, retry and failure semantics
+ * apply unchanged; the client already follows the conversation's latest run. */
+async function schedulePublicIntro(tx: PostgresTransaction, actor: ActorContext, cid: string, siteId: string, versionId: string) {
+  const c = await one(tx, sql`select * from app.assistant_conversations where enterprise_id=${actor.enterpriseId} and id=${cid} for update`);
+  if (!c || c.status !== 'open' || c.mode !== 'ai') return 'unavailable' as const;
+  const markers = ((c.entry_snapshot as Row).publicIntros || []) as PublicIntroMarker[];
+  // Leaving one site for another retires its pending opening; the visited site
+  // keeps its own queued/answered opening instead of generating another.
+  for (const other of markers) if (other.runId && (String(other.siteId) !== siteId || String(other.versionId) !== versionId))
+    await cancelQueuedRun(tx, actor.enterpriseId, String(other.runId));
+  const current = markers.find(m => String(m.siteId) === siteId && String(m.versionId) === versionId);
+  if (current?.runId) {
+    const previous = await one(tx, sql`select status from app.assistant_runs where enterprise_id=${actor.enterpriseId} and id=${String(current.runId)}`);
+    if (!previous || ['queued','running','succeeded'].includes(String(previous.status))) return 'existing' as const;
+    // One failed generation may be retried on a later entry; never loop on it.
+    if (Number(current.attempts) >= 2) return 'unavailable' as const;
+  }
+  const notice = await one(tx, sql`select id from app.assistant_messages where enterprise_id=${actor.enterpriseId} and conversation_id=${cid}
+    and purpose='construction.public.context' order by seq desc limit 1`);
+  if (!notice) return 'unavailable' as const;
+  // Someone who already spoke in this consultation does not need an opening.
+  if (await one(tx, sql`select id from app.assistant_messages where enterprise_id=${actor.enterpriseId} and conversation_id=${cid}
+    and author_kind in ('user','admin') limit 1`)) return 'unavailable' as const;
+  const settings = (await one(tx, sql`select * from app.assistant_enterprise_settings where enterprise_id=${actor.enterpriseId}`))!;
+  await tx.execute(sql`savepoint public_intro_admission`);
+  let runId: string;
+  try {
+    const run = await newRun(tx, actor, c, settings, String(notice.id), undefined, { kind: 'user_message', messageId: String(notice.id) }, 'public.site.intro');
+    runId = run.runId;
+    await tx.execute(sql`release savepoint public_intro_admission`);
+  } catch (error) {
+    await tx.execute(sql`rollback to savepoint public_intro_admission`);
+    await tx.execute(sql`release savepoint public_intro_admission`);
+    if (!(error instanceof AssistantError) || !['assistant_quota_exceeded','conversation_busy','assistant_disabled','provider_outcome_unknown','context_changed'].includes(error.code)) throw error;
+    return 'unavailable' as const;
+  }
+  const next = [...markers.filter(m => String(m.siteId) !== siteId || String(m.versionId) !== versionId),
+    { siteId, versionId, attempts: Number(current?.attempts || 0) + 1, runId }];
+  await tx.execute(sql`update app.assistant_conversations set entry_snapshot=jsonb_set(entry_snapshot,'{publicIntros}',${JSON.stringify(next)}::jsonb)
+    where enterprise_id=${actor.enterpriseId} and id=${cid}`);
+  return 'queued' as const;
+}
 
 export class PublicCustomerService {
   constructor(readonly actor: ActorContext, readonly conversationId: string) {
@@ -122,7 +167,7 @@ export class PublicCustomerService {
       const refs = ((c.entry_snapshot as Row).publicSiteContexts || []) as Array<{ siteId: string; versionId: string }>;
       const ref = { siteId, versionId: String(input.versionId) };
       if (refs.length >= 100 && !refs.some(r => r.siteId === siteId && r.versionId === ref.versionId)) fail('need_memory_limit', 422);
-      await cancelRuns(tx, this.actor, this.conversationId);
+      await cancelRuns(tx, this.actor, this.conversationId, undefined, false, 'public.site.intro');
       await tx.execute(sql`update app.assistant_conversations set entry_snapshot=jsonb_set(jsonb_set(entry_snapshot,'{activePublicSite}',${JSON.stringify(ref)}::jsonb),
         '{publicSiteContexts}',${JSON.stringify([...refs.filter(r => r.siteId !== siteId || r.versionId !== ref.versionId), ref])}::jsonb),context_revision=context_revision+1,version=version+1
         where enterprise_id=${this.actor.enterpriseId} and id=${this.conversationId}`);
@@ -131,7 +176,8 @@ export class PublicCustomerService {
       const content = material.version.content as PublicContent;
       await appendMessage(tx, this.actor, this.conversationId, { author: 'system', eventId: String(event.id), purpose: 'construction.public.context',
         content: { version: 1, blocks: [{ type: 'text', text: `正在围观：${content.name}。这是你的咨询，不会加入业主原会话。` }] } });
-      return { id: siteId, versionId: ref.versionId, conversationId: this.conversationId };
+      const intro = await schedulePublicIntro(tx, this.actor, this.conversationId, siteId, ref.versionId);
+      return { id: siteId, versionId: ref.versionId, conversationId: this.conversationId, intro };
     }), true);
   }
   detach(requestKey: string) {

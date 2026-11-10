@@ -9,6 +9,7 @@ import { createPreviewPolicy, previewPolicy, projectMessage, citationProjection,
 import { fastGPTPreviewConfiguration, fastGPTPreviewProtocol } from '../knowledge/fastgpt-retrieval';
 import { fastGPTRagConfiguration, fastGPTRagProtocol } from '../fastgpt/rag-config';
 import { fastGPTAgentV2Configuration, fastGPTAgentV2Presentation, fastGPTAgentV2Protocol } from '../fastgpt/agent-v2/config';
+import { openingScene, sceneForOpeningPurpose } from '../fastgpt/agent-v2/openings';
 import { storedSuggestionQuestions } from '../fastgpt/agent-v2/suggestions';
 import { sourceExcerptProtocol } from '../agent/source-excerpts';
 import { sourceQuestionCoverageProtocol } from '../agent/source-question-coverage';
@@ -118,6 +119,25 @@ export async function terminalEvent(tx: PostgresTransaction, enterpriseId: strin
   await tx.execute(sql`insert into app.domain_event_deliveries(enterprise_id,event_id,consumer_key)
     values(${enterpriseId},${String(event!.id)},'assistant.run.metrics.v1') on conflict do nothing`);
 }
+/** A visitor's own question replaces a site opening that has not started yet. The
+ * opening is a convenience for someone browsing in silence, never a blocker, and
+ * a cancelled opening is not regenerated for the same site version. */
+export async function cancelQueuedRun(tx: PostgresTransaction, enterpriseId: string, runId: string) {
+  const cancelled = await rows(tx, sql`update app.assistant_runs set status='cancelled',completed_at=now(),updated_at=now(),version=version+1
+    where enterprise_id=${enterpriseId} and id=${runId} and purpose='public.site.intro' and status='queued' returning id`);
+  for (const run of cancelled) {
+    await tx.execute(sql`update app.assistant_jobs set status='cancelled',lease_token=null,updated_at=now(),version=version+1
+      where enterprise_id=${enterpriseId} and run_id=${String(run.id)}`);
+    await tx.execute(sql`update app.assistant_quota_reservations set status='released',updated_at=now(),version=version+1
+      where enterprise_id=${enterpriseId} and run_id=${String(run.id)}`);
+    await terminalEvent(tx, enterpriseId, String(run.id), 'cancelled');
+  }
+}
+async function cancelQueuedPublicIntro(tx: PostgresTransaction, enterpriseId: string, conversationId: string) {
+  const queued = await rows(tx, sql`select id from app.assistant_runs where enterprise_id=${enterpriseId} and conversation_id=${conversationId}
+    and purpose='public.site.intro' and status='queued'`);
+  for (const run of queued) await cancelQueuedRun(tx, enterpriseId, String(run.id));
+}
 export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Row, settings: Row, messageId: string | null, retryOf?: string, trigger: RunTrigger = { kind: 'user_message', messageId: messageId! }, purpose = 'reply', reportComposition?: ReportCompositionScope) {
   const speech = purpose === 'speech.transcribe', speechBinding = speech ? speechConfigurationHash() : null;
   const report = purpose === 'construction.report.compose' && trigger.kind === 'scheduled_task' && !!reportComposition
@@ -135,17 +155,22 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   const entry = c.entry_snapshot as Row;
   const rag = agent && purpose === 'reply' && trigger.kind === 'user_message' && c.purpose === 'customer_consultation'
     && actor.principal.kind === 'user' && entry.requirementReviewMode !== true ? fastGPTRagConfiguration(actor.enterpriseId) : undefined;
-  const agentV2 = agent && purpose === 'reply' && trigger.kind === 'user_message' && c.purpose === 'customer_consultation'
-    && actor.principal.kind === 'user' && entry.requirementReviewMode !== true ? fastGPTAgentV2Configuration(actor.enterpriseId) : undefined;
+  const openingSceneKey = purpose === 'public.site.intro' ? sceneForOpeningPurpose(purpose) : undefined;
+  const openingReady = !!openingSceneKey && !!openingScene(actor.enterpriseId, openingSceneKey);
+  // A registered opening scene belongs to its own FastGPT app; without a
+  // registry entry the existing local opening path stays in charge.
+  const agentV2 = agent && (purpose === 'reply' && trigger.kind === 'user_message' || openingReady)
+    && c.purpose === 'customer_consultation' && actor.principal.kind === 'user' && entry.requirementReviewMode !== true
+    ? fastGPTAgentV2Configuration(actor.enterpriseId) : undefined;
   const triggerContent = rag || agentV2 ? await one(tx, sql`select content from app.assistant_messages where enterprise_id=${actor.enterpriseId}
     and conversation_id=${String(c.id)} and id=${messageId}`) : undefined;
-  const agentRuntime = agentV2 && enterpriseKnowledgeEnabled(settings.agent_config)
+  const agentRuntime = agentV2 && (openingReady || enterpriseKnowledgeEnabled(settings.agent_config))
     && (triggerContent?.content as MessageContent)?.blocks.every(b => b.type === 'text')
     ? { protocol: fastGPTAgentV2Protocol, binding: agentV2.binding } : undefined;
   const nativeRag = !agentRuntime && rag && (rag.configuration.mode === 'unified' || enterpriseKnowledgeEnabled(settings.agent_config))
     && (triggerContent?.content as MessageContent)?.blocks.every(b => b.type === 'text')
     ? { protocol: fastGPTRagProtocol, binding: rag.binding } : undefined;
-  const reviewRuntime = agent && actor.principal.kind === 'user' && c.purpose === 'customer_consultation'
+  const reviewRuntime = agent && purpose === 'reply' && actor.principal.kind === 'user' && c.purpose === 'customer_consultation'
     && entry.agentReviewCandidate === true && entry.requirementReviewMode === true
     && entry.requirementWorkflow === 'langgraph' ? boundReviewProtocol(entry, actor.enterpriseId) : null;
   // The snapshot and quota are bound together; old image runs never gain an
@@ -157,6 +182,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   if (!Number.isInteger(rate) || rate < 1 || rate > 1000) fail('assistant_disabled', 403);
   const recent = await one(tx, sql`select count(*) as n from app.assistant_runs where enterprise_id=${actor.enterpriseId} and created_at>now()-interval '1 minute'`);
   if (Number(recent!.n) >= rate) fail('assistant_quota_exceeded', 429);
+  if (purpose === 'reply' && actor.principal.kind === 'user') await cancelQueuedPublicIntro(tx, actor.enterpriseId, String(c.id));
   if (!report && purpose !== 'site.record' && await one(tx, sql`select id from app.assistant_runs where enterprise_id=${actor.enterpriseId} and conversation_id=${String(c.id)} and status in ('queued','running') and purpose not in ('construction.report.facts','construction.report.compose')`)) fail('conversation_busy');
   // Match C01's existing unknown-result state at the service boundary too.
   // A distinct question is not permission to bypass an unresolved dispatch;
@@ -225,10 +251,11 @@ export function startInternalRun(actor: ActorContext, conversationId: string, tr
       newRun(tx, actor, c, settings!, trigger.kind === 'user_message' ? trigger.messageId : null, undefined, trigger, purpose));
   });
 }
-export async function cancelRuns(tx: PostgresTransaction, actor: ActorContext, conversationId: string, runId?: string, keepReports = false) {
+export async function cancelRuns(tx: PostgresTransaction, actor: ActorContext, conversationId: string, runId?: string, keepReports = false, keepPurpose?: string) {
   const cancelled = await rows(tx, sql`update app.assistant_runs set status='cancelled',completed_at=now(),updated_at=now(),version=version+1
     where enterprise_id=${actor.enterpriseId} and conversation_id=${conversationId} and status in ('queued','running')
     ${keepReports ? sql`and purpose not in ('construction.report.facts','construction.report.compose')` : sql``}
+    ${keepPurpose ? sql`and purpose<>${keepPurpose}` : sql``}
     ${runId ? sql`and id=${runId}` : sql``} returning id,purpose,policy_snapshot`);
   for (const r of cancelled) {
     const job = await one(tx, sql`update app.assistant_jobs set status='cancelled',lease_token=null,updated_at=now(),version=version+1
@@ -426,6 +453,9 @@ export class ConversationService {
         if (reference.selection ? safe.reportContextVersion !== reference.revision || !await selectedReport(repo.tx, this.actor, c)
           : safe.reportContextVersion !== undefined || c.purpose === 'construction_followup') fail('context_changed');
         if (reference.selection && !agentConfig(settings!.agent_config)) fail('assistant_disabled', 403);
+        // A still-queued site opening yields to the visitor's own first question;
+        // it is a greeting, never a reason to reject the person who spoke.
+        if (this.actor.principal.kind === 'user') await cancelQueuedPublicIntro(repo.tx, this.actor.enterpriseId, conversationId);
         // Operational commands may finish during a run. Other busy sends roll back every write above.
         if (await one(repo.tx, sql`select id from app.assistant_runs where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and status in ('queued','running')`)) fail('conversation_busy');
         const old = intercepted ? undefined : await one(repo.tx, sql`select * from app.assistant_messages where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId}

@@ -168,7 +168,7 @@ try {
     assert.equal(String(record.answer).includes('(CITE)'), false, 'Delivered text never exposes CITE markers');
     assert.equal(leakMarker.test(String(record.answer)), false, 'Delivered text must not expose internal fields');
     assert.equal(commitmentMarker.test(String(record.answer)), false, 'A delivered answer must not promise an action');
-    assert.ok(['fastgpt-agent-v2'], [devRuntime.agentV2.runtime]);
+    assert.equal(devRuntime.agentV2.runtime, 'fastgpt-agent-v2', 'The bound agent runtime is Agent V2');
 
     if (turn.kind === 'appointments') {
       assert.ok(record.composition?.snapshots >= 1, 'The appointment turn must deliver the authorized snapshot');

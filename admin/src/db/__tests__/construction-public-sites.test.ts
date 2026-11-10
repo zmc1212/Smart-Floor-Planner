@@ -225,6 +225,42 @@ test('revoked public sources cannot be recovered through old preview or approval
   assert.deepEqual(await decisions.decide(siteId, 'withdraw', withdrawalInput, withdrawalKey), withdrawn);
 });
 
+test('a visited site opens one real intro run and a public credit must be an eligible project designer', async () => {
+  const projectId = String((await owner.execute('create', { leadId: lid, name: '隔离测试 · 围观开场', managerId: aids[0], rooms: [] }, randomUUID())).id);
+  const recordId = String((await shared.send(projectId, { text: '测试原文：泥木阶段柜体已放样，施工进展正常。', mediaIds: [] }, randomUUID())).recordId);
+  const edited = await shared.mutate(projectId, recordId, 'edit', { expectedVersion: 1, data: { title: '开场测试', roomId: null, completed: '柜体已放样', pending: '', coordination: '', note: '' } }, randomUUID());
+  await shared.mutate(projectId, recordId, 'publish', { expectedVersion: edited.version, audience: 'customer' }, randomUUID());
+  const view = await materials.read(projectId), source = (view.sourceItems as Row[]).find(s => s.id === recordId)!;
+  // No project designer has a published, recommendable work yet, so the picker
+  // stays empty and a credit attempt is rejected instead of leaking an internal
+  // assignment as public information.
+  assert.deepEqual(view.designers, []);
+  const base = { name: '隔离开场 · 泥木', cityCode: '420500', district: '伍家岗区',
+    sources: [{ kind: source.kind, id: source.id, sourceHash: source.sourceHash, text: source.text }], photos: [] };
+  await assert.rejects(materials.save(projectId, { expectedRevision: 0, material: { ...base, designerId: designer } }, randomUUID()), /invalid_public_material/);
+  let saved: Row = await materials.save(projectId, { expectedRevision: 0, material: base }, randomUUID());
+  const siteId = String(saved.id), versionId = String(saved.versionId);
+  saved = await materials.mutate(projectId, 'submit', { versionId, expectedRevision: saved.revision }, randomUUID());
+  saved = await decisions.decide(siteId, 'preview', { versionId, expectedRevision: saved.revision }, randomUUID());
+  saved = await decisions.decide(siteId, 'approve', { versionId, expectedRevision: saved.revision }, randomUUID());
+  await materials.mutate(projectId, 'publish', { versionId, expectedRevision: saved.revision }, randomUUID());
+  assert.equal((await catalog.detail(siteId, versionId)).designer, null);
+
+  const introCid = String((await new ConversationService(visitor).create(randomUUID())).id), service = new PublicCustomerService(visitor, introCid);
+  const first = await service.context(siteId, { versionId }, randomUUID());
+  assert.equal(first.intro, 'queued');
+  assert.equal((await service.context(siteId, { versionId }, randomUUID())).intro, 'existing');
+  const runs = await withTenantTransaction(eids[0], tx => rows(tx, sql`select r.id,r.purpose,r.trigger_kind,m.purpose as trigger_purpose,m.author_kind
+    from app.assistant_runs r join app.assistant_messages m on m.enterprise_id=r.enterprise_id and m.id=r.trigger_message_id
+    where r.enterprise_id=${eids[0]} and r.conversation_id=${introCid} and r.purpose='public.site.intro'`));
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0].trigger_kind, 'user_message');
+  assert.equal(runs[0].trigger_purpose, 'construction.public.context');
+  assert.equal(runs[0].author_kind, 'system');
+  const fabricated = await withTenantTransaction(eids[0], tx => one(tx, sql`select count(*) n from app.assistant_messages where enterprise_id=${eids[0]} and conversation_id=${introCid} and author_kind='user'`));
+  assert.equal(Number(fabricated!.n), 0);
+});
+
 test('new tables enforce RLS, stale identities cannot decide, and tenant cleanup removes the whole public projection', async () => {
   const tables = ['construction_public_sites','construction_public_versions','construction_public_sources','construction_public_media','construction_public_audits'];
   const policies = await withPlatformTransaction(tx => rows(tx, sql`select relrowsecurity,relforcerowsecurity from pg_class where relnamespace='app'::regnamespace and relname in (${sql.join(tables.map(t => sql`${t}`), sql`,`)})`));

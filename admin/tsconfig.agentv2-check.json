@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "next-env.d.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "scripts/fastgpt/agent-v2-*.mts",
+    "scripts/wechatide-native-client.ts",
+    "scripts/xiaok-v101-native-journey.ts"
+  ],
+  "exclude": ["node_modules", ".next*"]
+}

@@ -8,6 +8,8 @@ import { DEFAULT_PORTFOLIO_AVATAR, LAYOUT_OPTIONS, STYLE_OPTIONS, type Portfolio
 import { matchDesigners } from './designer-match';
 import { portfolioCandidates, type Candidate } from './public-query';
 import { recommendationRegion, type NearbyRegion } from '@/lib/assistant/location/region';
+import { publishedPublicMaterial } from '@/lib/construction/public-read';
+import type { PublicContent } from '@/lib/construction/public-contract';
 
 export const designerNotice = '作品仅供风格/户型与服务方向参考；同小区不代表同户型，不承诺可预约日期。';
 const uncertain = /[？?]|不确定|没想好|不喜欢|不要|不考虑|不是|不在|不做|不想/;
@@ -73,6 +75,17 @@ function servesCity(candidate: Candidate, cityCode: string) {
   return candidate.profile.cities.some(place => place.code === cityCode && (!place.districts.length || place.districts.includes(candidate.work.district)));
 }
 
+/** The enterprise-chosen public credit on the site this consultation is viewing. */
+export async function publicSiteDesignerCredit(tx: PostgresTransaction, enterpriseId: string, conversation: Row) {
+  const ref = (conversation.entry_snapshot as Row | null)?.activePublicSite as { siteId?: string; versionId?: string } | undefined;
+  if (!ref?.siteId || !ref?.versionId) return null;
+  const material = await publishedPublicMaterial(tx, enterpriseId, String(ref.siteId), String(ref.versionId));
+  const content = material?.version.content as PublicContent | undefined;
+  return content?.designerId
+    ? { designerId: String(content.designerId), designerName: String(content.designerName || ''), cityCode: String(content.cityCode) }
+    : null;
+}
+
 function card(candidate: Candidate, reason: string, match: string): DesignerCard {
   const cover = candidate.work.images.find(image => image.assetId === candidate.work.coverAssetId);
   return {
@@ -122,6 +135,16 @@ async function designerRequestContext(tx: PostgresTransaction, actor: ActorConte
 export async function recommendDesigners(tx: PostgresTransaction, actor: ActorContext, conversation: Row, input: Row = {},
   context?: { triggerMessageId: string }): Promise<{ items: DesignerCard[]; notice: string; needContext?: boolean; cityCode?: string; style?: string; layout?: string; requestMessageIds?: string[] }> {
   const request = await designerRequestContext(tx, actor, conversation, input, context);
+  // A published site credit is authoritative for “who designed this site”. It
+  // still resolves through live portfolio publication: a withdrawn work, an
+  // inactive author or a revoked site version falls back to normal discovery.
+  const credit = await publicSiteDesignerCredit(tx, actor.enterpriseId, conversation);
+  if (credit) {
+    const owned = (await portfolioCandidates(tx, actor.enterpriseId,
+      { authorId: credit.designerId, city: credit.cityCode, recommend: true })).slice(0, 1);
+    if (owned.length) return { items: owned.map(candidate => card(candidate, '本工地公开署名的设计师', '公开署名')),
+      notice: designerNotice, cityCode: credit.cityCode, style: '', layout: '', requestMessageIds: request.requestMessageIds };
+  }
   const facts = readMemory(conversation.entry_snapshot).facts.filter(fact => fact.status === 'current');
   const query = resolveDesignerQuery({
     memoryHousing: facts.filter(fact => fact.field === 'housing').map(fact => fact.value).join(' '),

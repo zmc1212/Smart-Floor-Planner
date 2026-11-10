@@ -866,3 +866,17 @@ run the narrowest relevant tests (`cd miniprogram && npm test`, or the applicabl
   records. Do not make internal terms such as points, frozen balance, task state,
   provider state, or template count the primary sales message; retain them only
   when explaining purchase, operating conditions, or verified product limits.
+
+## FastGPT 隔离开发实例凭据（开发用，勿提交明文）
+
+- 小K Agent V2 使用的 FastGPT 隔离开发实例（`http://127.0.0.1:18300`，企业 1454）
+  管理账号为 `root`。口令由用户在 2026-11-10 口头提供，明文保存在已被
+  `.gitignore` 排除的 `tmp/fastgpt-admin.private.json`，请从该文件读取，不要写进
+  受版本管理的文档或提交记录。
+- 刷新会话：先 `GET /api/support/user/account/preLogin?username=root` 取 `code`，
+  再 `POST /api/support/user/account/loginByPassword`，`password` 传
+  `sha256(明文)`，从响应 `Set-Cookie` 取 `fastgpt_token` 写回
+  `tmp/xiaok-fastgpt-rag-session-20261107/runtime.private.json` 的
+  `managementCookie`；之后才能运行 `admin/scripts/fastgpt/agent-v2-provision.mts --apply`
+  更新并发布 Agent V2 工具集。
+- 口令仅限本地开发环境使用；生产部署、跨环境复用或对外共享仍需用户明确授权。

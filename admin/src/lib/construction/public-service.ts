@@ -11,6 +11,7 @@ import { object, text, type ConstructionActor } from './contracts';
 import { excerptOf, publicMaterialInput, publicRevision, type PublicContent, type PublicPhotoInput } from './public-contract';
 import { availableStaffSources, materialSource, privateSourceAccess, type PublicSource } from './public-sources';
 import { publicMaterial, publicMaterialDto } from './public-read';
+import { portfolioCandidates } from '@/lib/portfolio/public-query';
 import { currentStage, readStageSettings } from './stages-store';
 
 export async function publicAudit(tx: PostgresTransaction, site: Row, versionId: string, actor: unknown, action: string, reason = '') {
@@ -56,6 +57,14 @@ export class PublicMaterialService {
     return this.scope(pid, false, async (tx, project, permission) => {
       const eid = this.actor.enterpriseId;
       const sourceItems = permission.write ? await availableStaffSources(tx, this.actor, project, permission.manage) : [];
+      // Only a project designer with a currently published, recommendable work
+      // can be credited; the picker and the save check use the same evidence.
+      const designers: Array<{ id: string; name: string }> = [];
+      if (permission.write) for (const member of await rows(tx, sql`select a.id::text,a.display_name from app.construction_members m
+        join app.admin_users a on a.enterprise_id=m.enterprise_id and a.id=m.admin_id and a.status='active' and a.role='designer'
+        where m.enterprise_id=${eid} and m.project_id=${pid} and m.active and m.role='designer' order by a.display_name`))
+        if ((await portfolioCandidates(tx, eid, { authorId: String(member.id), recommend: true })).length)
+          designers.push({ id: String(member.id), name: String(member.display_name) });
       const site = await one(tx, sql`select * from app.construction_public_sites where enterprise_id=${eid} and project_id=${pid} for update`);
       let material = null;
       if (site) {
@@ -75,7 +84,7 @@ export class PublicMaterialService {
           }
         }
       }
-      return siteDto({ ...permission, revision: Number(site?.revision || 0), material, sourceItems,
+      return siteDto({ ...permission, revision: Number(site?.revision || 0), material, sourceItems, designers,
         unavailable: !!site && !material, projectName: project.name,
         audits: site && (permission.manage || String(site.prepared_by) === this.actor.adminId) ? await rows(tx, sql`select action,reason,created_at from app.construction_public_audits where enterprise_id=${eid} and site_id=${String(site.id)} order by id desc limit 30`) : [] }) as Row;
     });
@@ -100,9 +109,22 @@ export class PublicMaterialService {
         }
         const photos = [];
         for (const photo of draft.photos) photos.push(await preparedPhoto(tx, eid, pid, photo));
+        // A public credit must be this site's own designer and must already have a
+        // published, recommendable work. Internal assignment alone never becomes
+        // public information, and the displayed name is captured now.
+        let credit: Pick<PublicContent, 'designerId' | 'designerName'> = {};
+        if (draft.designerId) {
+          const member = await one(tx, sql`select a.id,a.display_name from app.construction_members m
+            join app.admin_users a on a.enterprise_id=m.enterprise_id and a.id=m.admin_id and a.status='active' and a.role='designer'
+            where m.enterprise_id=${eid} and m.project_id=${pid} and m.admin_id=${draft.designerId} and m.active and m.role='designer'`);
+          if (!member) fail('invalid_public_material', 422);
+          if (!(await portfolioCandidates(tx, eid, { authorId: draft.designerId, recommend: true })).length) fail('invalid_public_material', 422);
+          credit = { designerId: String(member.id), designerName: String(member.display_name) };
+        }
         const settings = await readStageSettings(tx, eid);
         const content: PublicContent = { name: draft.name, cityCode: draft.cityCode, cityName: draft.cityName, district: draft.district,
           stageName: currentStage(project, settings.stages)?.name || '现场记录', sourceCount: sources.length, photoCount: photos.length,
+          ...credit,
           excerpts: sources.map((source, i) => ({ role: source.role, text: draft.sources[i].text, date: source.date })) };
         if (!site) site = (await one(tx, sql`insert into app.construction_public_sites(enterprise_id,project_id,prepared_by,customer_id) values(${eid},${pid},${aid},${String(project.customer_user_id)}) returning *`))!;
         const ordinal = Number((await one(tx, sql`select coalesce(max(ordinal),0)+1 as n from app.construction_public_versions where enterprise_id=${eid} and site_id=${String(site.id)}`))!.n);

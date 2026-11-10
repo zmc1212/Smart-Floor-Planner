@@ -13,6 +13,8 @@ test('discovery requires a current request to browse, rather than a related subj
     '我比较喜欢原木风。',
     '设计师推荐我看看哑光砖。',
     '先不看工地和设计师作品了。',
+    '附近工地的防水怎么做？',
+    '附近工地的验收标准是什么？',
     '朋友问我“想看看附近工地吗”，我在想瓷砖怎么选。',
   ]) assert.deepEqual(discoveryIntent(text), none, text);
 });
@@ -23,6 +25,9 @@ test('discovery selects just the requested category, including requests for both
   const both = { sites: true, works: true };
   const cases = [
     ['附近有没有正在贴砖的工地可以看看？', sites],
+    ['周围有什么工地？', sites],
+    ['我家附近有哪些公开工地？', sites],
+    ['附近哪个工地正在施工？', sites],
     ['我家在杭州，想看看附近已经公开的工地。', sites],
     ['想看看做原木风的设计师作品。', works],
     ['不想看工地，想看看几套原木风作品。', works],
