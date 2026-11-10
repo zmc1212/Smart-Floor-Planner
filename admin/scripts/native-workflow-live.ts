@@ -1,14 +1,20 @@
 /** Development-only B4 entry for one published stage-reminder flow.
  *
- * It binds one published revision and one explicit business event, then runs
- * the real construction authorization, outbox save and in-app delivery
- * services. It never calls a model, embedding or enterprise-knowledge
+ * It binds one published revision and one fixed server-side business event,
+ * then runs the real construction authorization, outbox save and scoped in-app
+ * delivery services. It never calls a model, embedding or enterprise-knowledge
  * retrieval, and it does not modify the Worker or global scheduling.
+ *
+ * Required environment:
+ *   B4_LIVE_APP_DATABASE_URL=postgresql://sfp_app:...@127.0.0.1:55433/smart_floor_planner
  *
  * Usage (from admin/):
  *   npx tsx scripts/native-workflow-live.ts --development --ensure-published \
  *     --admin-id 1454000001 --project-id 1454000004 \
  *     --event-id b4-stage-20261111-0001 --stage-key plumbing --stage-label 水路
+ *
+ * Optional `--outbox-event-id <id>` replays one existing stage event instead
+ * of deriving the event from the project's current progress revision.
  */
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
@@ -19,15 +25,16 @@ import { withTenantTransaction } from '@/db/transaction';
 import type { ConstructionActor } from '@/lib/construction/contracts';
 import { createFileWorkflowStore, resolveNativeWorkflowStoreDir } from '@/lib/native-workflow/store/file-store';
 import { createWorkflowService } from '@/lib/native-workflow/service';
+import { resolveStageReminderBusinessEvent } from '@/lib/native-workflow/live/business-event';
 import { createConstructionStageReminderPorts } from '@/lib/native-workflow/live/construction-ports';
+import { describeB4DatabaseTarget, resolveB4DatabaseTarget } from '@/lib/native-workflow/live/dev-config';
 import { runPublishedLive } from '@/lib/native-workflow/live/runner';
 import { createFileWorkflowRunStore } from '@/lib/native-workflow/live/run-store';
-import type { LiveOperationPorts, LiveRunRecord } from '@/lib/native-workflow/live/types';
+import type { LiveBusinessEvent, LiveOperationPorts, LiveRunRecord } from '@/lib/native-workflow/live/types';
 import type { PendingOperation, TriggerEvent } from '@/lib/native-workflow/types';
 
 loadEnvConfig(process.cwd());
 
-const DEFAULT_DATABASE_URL = 'postgresql://sfp_app:sfp_app_local_only@127.0.0.1:55433/smart_floor_planner';
 const DEFAULT_ENTERPRISE_ID = '1454';
 
 function fail(message: string): never {
@@ -54,19 +61,6 @@ function positiveId(name: string, value: string): string {
   return value;
 }
 
-const development = process.argv.includes('--development') || process.env.B4_LIVE_DEVELOPMENT === '1';
-if (!development) fail('Refusing to run: pass --development or set B4_LIVE_DEVELOPMENT=1.');
-if (process.env.NODE_ENV === 'production') fail('Refusing to run with NODE_ENV=production.');
-
-const databaseUrl = process.env.B4_LIVE_DATABASE_URL || process.env.DATABASE_URL || DEFAULT_DATABASE_URL;
-try {
-  const target = new URL(databaseUrl);
-  if (target.port === '5432') fail('Refusing to touch port 5432; use the isolated B database.');
-  process.env.DATABASE_URL = databaseUrl;
-} catch {
-  fail('Refusing to run: database URL is invalid.');
-}
-
 const showRun = option('--show-run');
 const executing = !showRun;
 const enterpriseId = positiveId('--enterprise-id', option('--enterprise-id') ?? DEFAULT_ENTERPRISE_ID);
@@ -79,6 +73,10 @@ const stageLabel = option('--stage-label') ?? stageKey;
 const occurredAt = option('--occurred-at') ?? new Date().toISOString();
 const definitionId = option('--definition-id') ?? 'stage-reminder';
 const requestedRevision = option('--revision');
+const outboxEventId = option('--outbox-event-id');
+if (executing && outboxEventId !== undefined && !/^[1-9]\d{0,18}$/.test(outboxEventId)) {
+  fail('--outbox-event-id must be a positive integer id');
+}
 const ensurePublished = process.argv.includes('--ensure-published');
 const closeAfterSave = process.argv.includes('--close-conversation-after-save');
 const disableAdminAfterRead = process.argv.includes('--disable-admin-after-read');
@@ -193,13 +191,31 @@ async function main() {
     console.log(JSON.stringify({ success: true, run: record }, null, 2));
     return;
   }
+
+  const database = resolveB4DatabaseTarget({ purpose: 'app' });
+  process.env.DATABASE_URL = database.url;
   const version = await resolvePublished();
   const actor: ConstructionActor = { enterpriseId, adminId };
+
+  // An existing runId is never re-resolved against current business state:
+  // return or reject its original binding. A new run fixes the server event now.
+  const existingRun = await runStore.get(runId);
+  let businessEvent: LiveBusinessEvent;
+  if (existingRun) {
+    businessEvent = existingRun.binding.businessEvent;
+  } else {
+    businessEvent = await resolveStageReminderBusinessEvent({
+      actor,
+      projectId,
+      stageKey,
+      outboxEventId: outboxEventId ?? null,
+    });
+  }
   const event: TriggerEvent = {
     eventId,
     eventType: 'stage_changed',
     occurredAt,
-    stageKey,
+    stageKey: businessEvent.stageKey,
     stageLabel,
   };
 
@@ -239,6 +255,7 @@ async function main() {
       enterpriseId,
       projectId,
       event,
+      businessEvent,
       ports,
       store: runStore,
       runId,
@@ -268,6 +285,8 @@ async function main() {
       success: false,
       runId,
       error: runnerError instanceof Error ? runnerError.message : String(runnerError),
+      database: describeB4DatabaseTarget(database),
+      businessEvent,
       conversationClosedForFailureTest: closed,
       conversationRestored: restored,
       restoreError,
@@ -282,8 +301,11 @@ async function main() {
   console.log(JSON.stringify({
     success: record.status === 'completed',
     runId,
+    runReused: Boolean(existingRun),
     status: record.status,
+    database: describeB4DatabaseTarget(database),
     binding: record.binding,
+    businessEvent,
     operations: record.operations.map((operation) => ({
       nodeId: operation.nodeId,
       capabilityRef: operation.capabilityRef,

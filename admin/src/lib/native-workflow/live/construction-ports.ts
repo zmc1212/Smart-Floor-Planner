@@ -3,8 +3,9 @@ import { withTenantTransaction, type PostgresTransaction } from '@/db/transactio
 import { one, type Row } from '@/db/repositories/assistant-repository';
 import { AssistantError, type ActorContext } from '@/lib/assistant/contracts';
 import type { ConstructionActor } from '@/lib/construction/contracts';
-import { recordStageReminder, syncConstructionReminders } from '@/lib/construction/reminders';
+import { deliverStageReminderToConversation, recordStageReminder } from '@/lib/construction/reminders';
 import { constructionAccess } from '@/lib/construction/service';
+import { currentStageEvent } from '@/lib/construction/stage-events';
 import { readStageSettings } from '@/lib/construction/stages-store';
 import { workflowIssue } from '../errors';
 import { isPlainObject } from '../guards';
@@ -15,15 +16,16 @@ import {
   type LiveOperationPorts,
   type LiveRunContext,
 } from './types';
+import { assertProjectWrite, projectAccess, writeProjectAccess } from './project-access';
 
 /**
  * B4 live adapter for the stage-reminder template.
  *
- * It reuses the existing construction authorization, outbox save and in-app
- * delivery services. The enterprise/user/project identity comes from the host
- * (this adapter's options and the run context), never from the definition.
- * Enterprise knowledge is explicitly off in this round: no retrieval, model or
- * embedding call exists in this file.
+ * It reuses the existing construction authorization, outbox save and scoped
+ * in-app delivery services. The enterprise/user/project identity and the
+ * original business event/progress revision come from the host run binding,
+ * never from the definition. Enterprise knowledge is explicitly off in this
+ * round: no retrieval, model or embedding call exists in this file.
  */
 export interface ConstructionStageReminderPortOptions {
   readonly actor: ConstructionActor;
@@ -34,6 +36,7 @@ interface SavedReminder {
   readonly eventId: string;
   readonly projectId: string;
   readonly stageKey: string;
+  readonly progressRevision: number;
   readonly body: string;
 }
 
@@ -61,41 +64,6 @@ function failure(code: string, message: string, path = '$'): LiveOperationFailur
 
 type LockMode = 'share' | 'update';
 
-async function projectAccess(
-  tx: PostgresTransaction,
-  actor: ConstructionActor,
-  projectId: string,
-  lock: LockMode,
-  owner: boolean,
-): Promise<{ owner: boolean; project: Row }> {
-  const lockSql = lock === 'update' ? sql`for update` : sql`for share`;
-  const project = await one(
-    tx,
-    sql`select * from app.construction_projects
-      where enterprise_id=${actor.enterpriseId} and id=${projectId} ${lockSql}`,
-  );
-  if (!project) throw new AssistantError('construction_not_found', 404);
-  if (!owner) {
-    const member = await one(
-      tx,
-      sql`select role from app.construction_members
-        where enterprise_id=${actor.enterpriseId} and project_id=${projectId}
-        and admin_id=${actor.adminId} and active ${lockSql}`,
-    );
-    if (!member) throw new AssistantError('construction_not_found', 404);
-  }
-  return { owner, project };
-}
-
-async function authorizeProject(
-  tx: PostgresTransaction,
-  actor: ConstructionActor,
-  projectId: string,
-  lock: LockMode,
-): Promise<{ owner: boolean; project: Row }> {
-  return projectAccess(tx, actor, projectId, lock, await constructionAccess(tx, actor));
-}
-
 function openCustomerConversation(
   tx: PostgresTransaction,
   enterpriseId: string,
@@ -120,12 +88,14 @@ function openCustomerConversation(
 }
 
 async function readProjectContext(
-  operation: PendingOperation,
+  _operation: PendingOperation,
   context: LiveRunContext,
   actor: ConstructionActor,
 ): Promise<Record<string, WorkflowValue>> {
-  const eventStageKey = context.event.stageKey;
-  if (!eventStageKey) throw new AssistantError('event_mismatch', 400);
+  const binding = context.businessEvent;
+  if (!binding || binding.stageKey !== context.event.stageKey) {
+    throw new AssistantError('stage_event_conflict', 409);
+  }
   return withTenantTransaction(actor.enterpriseId, async (tx) => {
     // Match the existing service lock order: conversation, then project.
     const owner = await constructionAccess(tx, actor);
@@ -135,12 +105,13 @@ async function readProjectContext(
       context.projectId,
       'share',
     );
-    const { project } = await projectAccess(tx, actor, context.projectId, 'share', owner);
+    const access = await projectAccess(tx, actor, context.projectId, 'share', owner);
+    const project = access.project;
     const settings = await readStageSettings(tx, actor.enterpriseId);
-    const stage = settings.stages.find((candidate) => candidate.key === eventStageKey);
+    const stage = settings.stages.find((candidate) => candidate.key === binding.stageKey);
     if (!stage) {
       return {
-        stageKey: eventStageKey,
+        stageKey: binding.stageKey,
         stageLabel: '',
         stageKnown: false,
         subscribed: false,
@@ -148,10 +119,18 @@ async function readProjectContext(
         receiverCount: 0,
       };
     }
-    if (String(project.current_stage_key) !== stage.key) {
-      throw new AssistantError('stage_event_mismatch', 409);
+    if (String(project.current_stage_key) !== binding.stageKey) {
+      throw new AssistantError('stage_event_invalidated', 409);
     }
     if (project.status !== 'active') throw new AssistantError('construction_project_inactive', 409);
+    if (binding.source === 'outbox') {
+      if (!binding.outboxEventId) throw new AssistantError('stage_event_invalid', 409);
+      if (!await currentStageEvent(tx, actor.enterpriseId, binding.outboxEventId, true)) {
+        throw new AssistantError('stage_event_invalidated', 409);
+      }
+    } else if (Number(project.progress_revision) !== binding.progressRevision) {
+      throw new AssistantError('stage_event_invalidated', 409);
+    }
 
     const assistant = await one(
       tx,
@@ -173,7 +152,7 @@ async function readProjectContext(
         }
       : { scope: 'none' };
     return {
-      stageKey: stage.key,
+      stageKey: binding.stageKey,
       stageLabel: stage.name,
       stageKnown: true,
       subscribed,
@@ -183,6 +162,51 @@ async function readProjectContext(
   });
 }
 
+function saveReceipt(saved: SavedReminder, reused: boolean): Record<string, WorkflowValue> {
+  return {
+    saved: true,
+    saveReceipt: {
+      receiptId: saved.eventId,
+      simulated: false,
+      source: 'domain_event_outbox',
+      eventId: saved.eventId,
+      projectId: saved.projectId,
+      stageKey: saved.stageKey,
+      progressRevision: saved.progressRevision,
+      reused,
+    },
+  };
+}
+
+async function reuseFromOutbox(
+  tx: PostgresTransaction,
+  enterpriseId: string,
+  context: LiveRunContext,
+  event: Row,
+): Promise<{ saved: SavedReminder; reused: true }> {
+  const binding = context.businessEvent;
+  const payload = event.payload as Row;
+  if (String(payload.stageKey) !== binding.stageKey) {
+    throw new AssistantError('stage_event_conflict', 409);
+  }
+  if (Number(event.aggregate_version) !== binding.progressRevision) {
+    throw new AssistantError('stage_event_conflict', 409);
+  }
+  if (!await currentStageEvent(tx, enterpriseId, String(event.id), true)) {
+    throw new AssistantError('stage_event_invalidated', 409);
+  }
+  return {
+    saved: {
+      eventId: String(event.id),
+      projectId: context.projectId,
+      stageKey: binding.stageKey,
+      progressRevision: binding.progressRevision,
+      body: typeof payload.text === 'string' ? payload.text : '',
+    },
+    reused: true,
+  };
+}
+
 async function saveStageReminder(
   operation: PendingOperation,
   context: LiveRunContext,
@@ -190,88 +214,73 @@ async function saveStageReminder(
   onSaved: (saved: SavedReminder) => void,
 ): Promise<Record<string, WorkflowValue>> {
   const body = String(operation.input.body ?? '');
-  const eventStageKey = context.event.stageKey;
-  if (!eventStageKey) throw failure('event_mismatch', 'stage event needs a stageKey');
+  const binding = context.businessEvent;
+  if (!binding) throw failure('stage_event_invalid', 'run has no fixed business event');
   if (!body.trim() || Array.from(body).length > 4_000) {
     throw failure('invalid_reminder_content', 'reminder body must be non-empty and bounded', `nodes.${operation.nodeId}.body`);
   }
   return withTenantTransaction(actor.enterpriseId, async (tx) => {
-    const { project } = await authorizeProject(tx, actor, context.projectId, 'update');
+    const access = await writeProjectAccess(tx, actor, context.projectId, 'update');
+    const project = access.project;
     if (project.status !== 'active') throw new AssistantError('construction_project_inactive', 409);
-    if (String(project.current_stage_key) !== eventStageKey) {
-      throw new AssistantError('stage_event_mismatch', 409);
+    if (String(project.current_stage_key) !== binding.stageKey) {
+      throw new AssistantError('stage_event_invalidated', 409);
     }
     const settings = await readStageSettings(tx, actor.enterpriseId);
-    const stage = settings.stages.find((candidate) => candidate.key === eventStageKey);
+    const stage = settings.stages.find((candidate) => candidate.key === binding.stageKey);
     if (!stage) throw new AssistantError('construction_stage_unavailable', 422);
 
-    // This is the existing business identity of a stage event: one project
-    // progress revision may produce at most one outbox reminder, independent
-    // of workflow revision or digest. The project row lock serializes with the
-    // existing progress action, so check-then-insert is safe.
-    const progressRevision = Number(project.progress_revision);
+    if (binding.source === 'outbox' && binding.outboxEventId) {
+      const event = await one(
+        tx,
+        sql`select * from app.domain_event_outbox
+          where enterprise_id=${actor.enterpriseId} and id=${binding.outboxEventId}
+            and type='construction.stage.updated.v1'
+            and aggregate_type='construction_project' and aggregate_id=${context.projectId}`,
+      );
+      if (!event) throw new AssistantError('stage_event_not_found', 404);
+      const reused = await reuseFromOutbox(tx, actor.enterpriseId, context, event);
+      onSaved(reused.saved);
+      return saveReceipt(reused.saved, true);
+    }
+
     const existing = await one(
       tx,
-      sql`select id, payload from app.domain_event_outbox
+      sql`select * from app.domain_event_outbox
         where enterprise_id=${actor.enterpriseId}
           and type='construction.stage.updated.v1'
           and aggregate_type='construction_project'
           and aggregate_id=${context.projectId}
-          and aggregate_version=${progressRevision}
+          and aggregate_version=${binding.progressRevision}
         limit 1`,
     );
     if (existing) {
-      const payload = existing.payload as Row;
-      if (String(payload.stageKey) !== eventStageKey) {
-        throw new AssistantError('stage_event_conflict', 409);
-      }
-      const saved: SavedReminder = {
-        eventId: String(existing.id),
-        projectId: context.projectId,
-        stageKey: eventStageKey,
-        body,
-      };
-      onSaved(saved);
-      return {
-        saved: true,
-        saveReceipt: {
-          receiptId: saved.eventId,
-          simulated: false,
-          source: 'domain_event_outbox',
-          eventId: saved.eventId,
-          projectId: saved.projectId,
-          stageKey: saved.stageKey,
-          reused: true,
-        },
-      };
+      const reused = await reuseFromOutbox(tx, actor.enterpriseId, context, existing);
+      onSaved(reused.saved);
+      return saveReceipt(reused.saved, true);
     }
 
+    // No event exists yet. Only the revision fixed at run start may create it;
+    // a later note/stage update must not turn the old event into a new one.
+    if (Number(project.progress_revision) !== binding.progressRevision) {
+      throw new AssistantError('stage_event_invalidated', 409);
+    }
     const outbox = await recordStageReminder(
       tx,
       actorContext(actor),
       project,
-      settings.version,
+      binding.settingsVersion,
       body,
     );
     const saved: SavedReminder = {
       eventId: String(outbox.id),
       projectId: context.projectId,
-      stageKey: eventStageKey,
+      stageKey: binding.stageKey,
+      progressRevision: binding.progressRevision,
       body,
     };
     onSaved(saved);
-    return {
-      saved: true,
-      saveReceipt: {
-        receiptId: saved.eventId,
-        simulated: false,
-        source: 'domain_event_outbox',
-        eventId: saved.eventId,
-        projectId: saved.projectId,
-        stageKey: saved.stageKey,
-        reused: false,
-      },
-    };
+    return saveReceipt(saved, false);
   });
 }
 
@@ -281,15 +290,23 @@ async function deliverInApp(
   actor: ConstructionActor,
   saved: SavedReminder | null,
 ): Promise<Record<string, WorkflowValue>> {
+  const binding = context.businessEvent;
+  if (!binding) throw failure('stage_event_invalid', 'run has no fixed business event');
   if (!saved) throw failure('save_receipt_missing', 'delivery requires a confirmed save receipt');
+  if (
+    saved.projectId !== context.projectId
+    || saved.stageKey !== binding.stageKey
+    || saved.progressRevision !== binding.progressRevision
+  ) {
+    throw failure('stage_event_binding_mismatch', 'save receipt does not match the fixed business event');
+  }
   const receivers = operation.input.receivers;
   if (!isPlainObject(receivers)) {
     throw failure('receiver_scope_mismatch', 'delivery receivers must be the host read object');
   }
   return withTenantTransaction(actor.enterpriseId, async (tx) => {
-    // Re-check the requesting admin; revocation between read and delivery must
-    // still deny the effect. Conversation first, then project, matching the
-    // existing progress/chat lock order.
+    // Re-check the requesting admin; a manager demoted after read must not
+    // deliver. Conversation first, then project, matching the existing lock order.
     const owner = await constructionAccess(tx, actor);
     const conversation = await openCustomerConversation(
       tx,
@@ -297,7 +314,9 @@ async function deliverInApp(
       context.projectId,
       'update',
     );
-    const { project } = await projectAccess(tx, actor, context.projectId, 'update', owner);
+    const access = await projectAccess(tx, actor, context.projectId, 'update', owner);
+    assertProjectWrite(access);
+    const project = access.project;
     if (!project.customer_access || project.status !== 'active') {
       return {
         delivered: false,
@@ -305,10 +324,7 @@ async function deliverInApp(
       };
     }
     if (String(project.current_stage_key) !== saved.stageKey) {
-      return {
-        delivered: false,
-        deliveryReceipt: { receiptId: '', simulated: false, status: 'stage_superseded' },
-      };
+      throw failure('stage_event_invalidated', 'the project has moved to another stage');
     }
     if (!conversation) {
       return {
@@ -324,57 +340,61 @@ async function deliverInApp(
     ) {
       throw failure('receiver_scope_mismatch', 'delivery receivers do not match the authorized project');
     }
-    const customerUserId = String(conversation.customer_user_id);
-    await syncConstructionReminders(tx, customerActor(actor.enterpriseId, customerUserId), conversation);
 
-    const delivery = await one(
+    const stageEvent = await one(
       tx,
-      sql`select id, status, last_error from app.domain_event_deliveries
-        where enterprise_id=${actor.enterpriseId} and event_id=${saved.eventId}
-          and consumer_key=${`construction:user:${customerUserId}`}`,
+      sql`select * from app.domain_event_outbox
+        where enterprise_id=${actor.enterpriseId} and id=${saved.eventId}
+          and type='construction.stage.updated.v1'
+          and aggregate_type='construction_project' and aggregate_id=${context.projectId}`,
     );
-    if (!delivery || delivery.status !== 'delivered') {
+    if (!stageEvent) throw failure('stage_event_not_found', 'the saved stage event no longer exists');
+    if (!await currentStageEvent(tx, actor.enterpriseId, saved.eventId, true)) {
+      throw failure('stage_event_invalidated', 'the saved stage event is no longer current');
+    }
+
+    const customerUserId = String(conversation.customer_user_id);
+    const settings = await readStageSettings(tx, actor.enterpriseId);
+    const result = await deliverStageReminderToConversation(
+      tx,
+      customerActor(actor.enterpriseId, customerUserId),
+      project,
+      stageEvent,
+      conversation,
+      settings,
+    );
+    if (result.reason === 'stage_event_invalid') {
+      throw failure('stage_event_invalidated', 'the saved stage event is no longer current');
+    }
+    if (result.reason === 'conversation_invalid') {
       return {
         delivered: false,
-        deliveryReceipt: {
-          receiptId: delivery ? String(delivery.id) : '',
-          simulated: false,
-          source: 'domain_event_deliveries',
-          eventId: saved.eventId,
-          status: delivery ? String(delivery.status) : 'missing',
-          error: delivery?.last_error ? String(delivery.last_error).slice(0, 200) : null,
-        },
+        deliveryReceipt: { receiptId: '', simulated: false, status: 'conversation_invalid' },
       };
     }
-    const message = await one(
-      tx,
-      sql`select id from app.assistant_messages
-        where enterprise_id=${actor.enterpriseId} and conversation_id=${String(conversation.id)}
-          and source_event_id=${saved.eventId} and purpose='construction.stage'
-        limit 1`,
-    );
-    if (!message) {
+    if (!result.delivered || !result.deliveryId || !result.messageId) {
       return {
         delivered: false,
         deliveryReceipt: {
-          receiptId: String(delivery.id),
+          receiptId: result.deliveryId ?? '',
           simulated: false,
           source: 'domain_event_deliveries',
           eventId: saved.eventId,
-          status: 'message_missing',
+          status: result.reason ?? 'delivery_not_confirmed',
         },
       };
     }
     return {
       delivered: true,
       deliveryReceipt: {
-        receiptId: String(delivery.id),
+        receiptId: result.deliveryId,
         simulated: false,
         source: 'domain_event_deliveries',
         eventId: saved.eventId,
-        messageId: String(message.id),
+        messageId: result.messageId,
         conversationId: String(conversation.id),
         status: 'delivered',
+        progressRevision: saved.progressRevision,
       },
     };
   });

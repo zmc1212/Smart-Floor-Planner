@@ -200,55 +200,88 @@ simulate({
 ## B4 live stage-reminder adapter
 
 `live/` is a server-only adapter; the pure core and `simulate` are unchanged.
-It executes one published `stage-reminder` revision for one explicit business
-event and never selects a definition from a draft.
+It executes one published `stage-reminder` revision for one fixed server-side
+business event and never selects a definition from a draft.
 
-- `live/runner.ts` fixes `definitionId`, `revision`, `digest`, `nodeVersions`
-  and the trigger event before the first effect. Later draft edits or publishes
-  cannot change the compiled plan. Run state, trace and operation outcomes are
-  written to a B-owned run log (`admin/tmp/native-workflow-runs`, override
-  `NATIVE_WORKFLOW_RUN_DIR`); `--show-run` reads it back.
+- B isolation is explicit: `B4_LIVE_APP_DATABASE_URL` and
+  `B4_LIVE_FIXTURE_DATABASE_URL` are required and validated against the exact
+  host (`127.0.0.1`/`localhost`), port `55433`, database
+  `smart_floor_planner` and role (`sfp_app`/`sfp_owner`). There is no
+  `DATABASE_URL` fallback or default. The fixture performs a read-only
+  ownership preflight before touching its fixed IDs; it never overwrites a
+  non-fixture enterprise, account, project or conversation.
+- `live/runner.ts` fixes `definitionId`, `revision`, `digest`, `nodeVersions`,
+  the trigger event and the business event before the first effect. Later
+  draft edits or publishes cannot change the compiled plan. `runId` uses
+  exclusive `create`/`update`: an existing runId returns its original record or
+  rejects a different enterprise/project/event/revision; unknown and failure
+  evidence is preserved and never re-executed automatically.
+- `live/business-event.ts` resolves and fixes the server event before the run:
+  an existing `outboxEventId` when selected, otherwise the project's current
+  progress revision plus stage settings. Save and delivery always use that
+  fixed progress revision and settings version. A note-only change or a
+  workflow-version change reuses the original outbox event; an invalidated
+  event stops with `stage_event_invalidated` instead of creating a reminder at
+  the current revision.
 - `live/construction-ports.ts` maps each `PendingOperation` to existing
   services. Enterprise, admin, project and customer identity come from the
   host; a definition cannot override them.
   - `read.project_context`: `constructionAccess`, the project row, stage
-    settings and the open `customer_consultation` conversation. The event stage
-    must equal the project's current stage.
+    settings and the open `customer_consultation` conversation. Any active
+    member may read; the event stage must equal the project's current stage.
   - `read.enterprise_craft`: deterministic `craftEnabled: false`; no knowledge
     retrieval, model or embedding call exists in this branch.
-  - `save.stage_reminder`: `recordStageReminder` writes
-    `domain_event_outbox`. Idempotency is the existing business identity
-    (`construction_project` + progress revision + outbox unique key), not the
-    workflow revision or digest.
-  - `deliver.inapp`: `syncConstructionReminders` runs as the authorized
-    customer and appends the system message; the receipt comes from
-    `domain_event_deliveries` plus `assistant_messages`.
-- Known failures become `failed`; a save failure never reaches delivery; a
-  delivery failure keeps the saved outbox record and returns `delivered: false`;
-  an unknown outcome stops immediately with run status `unknown` and is never
-  retried automatically. A later manual retry reuses the business records.
+  - `save.stage_reminder`: requires the owner or an active manager
+    (re-checked under the project lock), then reuses or creates the fixed
+    `domain_event_outbox` event. A worker/observer, or a manager demoted after
+    read, is rejected.
+  - `deliver.inapp`: requires the owner or an active manager again, then calls
+    the scoped `deliverStageReminderToConversation` for exactly one
+    project/event/conversation. The aggregate `syncConstructionReminders`
+    entry keeps its original responsibility for other callers.
+- Receipts are validated before the operation outcome is written:
+  `saved:false`, `delivered:false` or an invalid receipt marks that operation
+  `failed` while preserving its outputs and error. Live mode requires
+  `simulated:false`; simulation mode requires `simulated:true`; a simulated
+  receipt in live mode fails with `receipt_simulated_in_live`.
 - Re-running the same business event reuses the same outbox and delivery
   receipts; reminder, delivery and message counts do not increase.
 
-Development evidence (B-isolated database on port 55433, enterprise 1454
-labelled fixture; no A-line database/config is read):
+Development evidence (B-isolated PostgreSQL 17 + pgvector on
+`127.0.0.1:55433`, enterprise 1454 labelled fixture; no A-line
+database/config is read):
 
 ```powershell
+$env:B4_LIVE_APP_DATABASE_URL='postgresql://sfp_app:...@127.0.0.1:55433/smart_floor_planner'
+$env:B4_LIVE_FIXTURE_DATABASE_URL='postgresql://sfp_owner:...@127.0.0.1:55433/smart_floor_planner'
 npx tsx scripts/native-workflow-live-fixture.ts --development
 npx tsx scripts/native-workflow-live.ts --development --ensure-published `
   --admin-id 1454000001 --project-id 1454000004 `
-  --event-id b4-stage-20261111-0001 --stage-key plumbing --stage-label 水路
-npx tsx scripts/native-workflow-live.ts --development --show-run <runId>
+  --event-id b4-stage-20261111-0001 --stage-key plumbing --stage-label 水路 `
+  --run-id b4-1-normal-001
+npx tsx scripts/native-workflow-live.ts --show-run b4-1-normal-001
 ```
 
-The dev entry refuses `NODE_ENV=production` and port 5432. It supports
-`--close-conversation-after-save` and `--disable-admin-after-read` only to
-produce controlled delivery/save failures; both restore the fixture state.
-Recorded evidence: normal, duplicate, permission-denied, save-failure and
-delivery-failure runs executed against the isolated database; outbox,
-delivery and message counts were 1/1/1 for the normal event, unchanged for the
-duplicate, and assistant usage/provider attempts stayed 0. Version binding and
-unknown outcomes are covered by deterministic tests.
+The dev entry refuses `NODE_ENV=production` and missing/wrong B targets before
+connecting. It supports `--close-conversation-after-save` and
+`--disable-admin-after-read` only for controlled delivery/save failures; both
+restore the fixture state. The fixture seeds owner/manager/worker/observer test
+accounts.
+
+Recorded evidence: the normal run completed with real outbox/delivery/message
+receipts; the same runId returned the original record without re-calling ports;
+worker/observer saves and a demoted manager were rejected with
+`construction_forbidden`; save failure stopped before delivery; delivery
+failure kept the saved event. The main fixture counts stayed 2/2/2 after the
+idempotent replays, and assistant usage/provider attempts stayed 0. The
+real-adapter integration suite (dedicated project `1454900004` and control
+`1454900014`) covers worker/observer denial, manager allow/demotion, note-only
+replay at 1/1/1, scoped delivery with the control event at 0/0, and zero model
+usage.
+
+The sole XiaoK plan is intentionally not edited in this B branch; the
+integration lead should merge the current B4.1 status into A's latest plan
+without replacing A's newer progress, failures or unknown records.
 
 Out of scope this round: daily/weekly real integration, the model compose
 branch, drag canvas, automatic scheduling, Worker changes, menus and shared
@@ -259,8 +292,16 @@ migrations.
 From `admin/` (no database, no Worker, no model):
 
 ```powershell
-npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts
+npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts
 npx tsx src/lib/native-workflow/playground/simulate.ts
+```
+
+The real-construction-adapter suite is separate and skips without the B URLs:
+
+```powershell
+$env:B4_LIVE_APP_DATABASE_URL='postgresql://sfp_app:...@127.0.0.1:55433/smart_floor_planner'
+$env:B4_LIVE_FIXTURE_DATABASE_URL='postgresql://sfp_owner:...@127.0.0.1:55433/smart_floor_planner'
+npx tsx --test src/lib/native-workflow/__tests__/live-integration.test.ts
 ```
 
 Fixtures are synthetic and contain no real customer data.

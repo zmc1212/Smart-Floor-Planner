@@ -4,10 +4,10 @@
  * isolated B database (port 55433) so `constructionAccess`,
  * `recordStageReminder` and `syncConstructionReminders` can run unchanged.
  *
- * Connection (first non-empty wins):
- *   B4_FIXTURE_DATABASE_URL
- *   DATABASE_URL
- *   postgresql://sfp_owner:sfp_owner_local_only@127.0.0.1:55433/smart_floor_planner
+ * Connection (explicit, no fallback):
+ *   B4_LIVE_FIXTURE_DATABASE_URL, which must be exactly
+ *   sfp_owner@127.0.0.1:55433/smart_floor_planner
+ * There is no default URL and no DATABASE_URL fallback.
  *
  * Usage: npx tsx scripts/native-workflow-live-fixture.ts --development
  */
@@ -15,8 +15,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { hash } from 'bcryptjs';
 import pg from 'pg';
+import type { PoolClient } from 'pg';
+import { describeB4DatabaseTarget, resolveB4DatabaseTarget } from '@/lib/native-workflow/live/dev-config';
 
-const DEFAULT_DATABASE_URL = 'postgresql://sfp_owner:sfp_owner_local_only@127.0.0.1:55433/smart_floor_planner';
 const DEFAULT_ENTERPRISE_ID = 1454n;
 const PREFIX = '[B4]';
 
@@ -33,23 +34,23 @@ function option(name: string) {
   return value;
 }
 
-const development = process.argv.includes('--development') || process.env.B4_LIVE_DEVELOPMENT === '1';
-if (!development) fail('Refusing to run: pass --development or set B4_LIVE_DEVELOPMENT=1.');
-if (process.env.NODE_ENV === 'production') fail('Refusing to run with NODE_ENV=production.');
+function resolveFixtureTarget() {
+  try {
+    return resolveB4DatabaseTarget({ purpose: 'fixture' });
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : String(error));
+  }
+}
+
+const target = resolveFixtureTarget();
 
 const enterpriseOption = option('--enterprise-id');
 if (enterpriseOption !== undefined && !/^[1-9]\d*$/.test(enterpriseOption)) fail('--enterprise-id must be a positive integer.');
 const enterpriseId = enterpriseOption === undefined ? DEFAULT_ENTERPRISE_ID : BigInt(enterpriseOption);
 if (enterpriseOption === undefined && enterpriseId !== DEFAULT_ENTERPRISE_ID) fail('Refusing any enterprise other than 1454 without --enterprise-id.');
 
-const databaseUrl = process.env.B4_FIXTURE_DATABASE_URL || process.env.DATABASE_URL || DEFAULT_DATABASE_URL;
-let target: URL;
-try {
-  target = new URL(databaseUrl);
-} catch {
-  fail('Refusing to run: database URL is invalid.');
-}
-if (target.port === '5432') fail('Refusing to touch port 5432; use the isolated B database on port 55433.');
+const connectionString = target.url;
+console.log(`Fixture database: ${describeB4DatabaseTarget(target)}`);
 
 const idBase = enterpriseId * 1_000_000n;
 const adminId = idBase + 1n;
@@ -58,6 +59,15 @@ const leadId = idBase + 3n;
 const projectId = idBase + 4n;
 const conversationId = idBase + 5n;
 const participantId = idBase + 6n;
+const managerAdminId = idBase + 7n;
+const workerAdminId = idBase + 8n;
+const observerAdminId = idBase + 9n;
+
+const staffAdmins: Array<{ id: bigint; username: string; displayName: string; memberRole: 'manager' | 'worker' | 'observer' }> = [
+  { id: managerAdminId, username: `b4-live-manager-${enterpriseId}`, displayName: `${PREFIX} 项目经理`, memberRole: 'manager' },
+  { id: workerAdminId, username: `b4-live-worker-${enterpriseId}`, displayName: `${PREFIX} 施工工人`, memberRole: 'worker' },
+  { id: observerAdminId, username: `b4-live-observer-${enterpriseId}`, displayName: `${PREFIX} 观察员`, memberRole: 'observer' },
+];
 
 const defaultStages = [
   ['preparation', '前期'], ['design', '设计'], ['demolition', '拆改'], ['utilities', '水电'],
@@ -74,14 +84,143 @@ const stages = [...defaultStages, {
 
 const entrySnapshot = { kind: 'lead', id: String(leadId), label: `${PREFIX} 水路阶段提醒测试会话` };
 const grantBasis = { kind: 'self', contextVersion: 1 };
-const connectionString = databaseUrl;
 const outFile = path.resolve(__dirname, '../tmp/b4-live/fixture.json');
+
+type FixtureRow = Record<string, unknown>;
+
+interface FixtureRowCheck {
+  table: string;
+  id: bigint;
+  marker: string;
+  sql: string;
+  params: unknown[];
+  matches: (row: FixtureRow) => boolean;
+  actual: (row: FixtureRow) => string;
+}
+
+function snapshotOf(value: unknown): FixtureRow | null {
+  if (typeof value === 'string') {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      return parsed !== null && typeof parsed === 'object' ? parsed as FixtureRow : null;
+    } catch {
+      return null;
+    }
+  }
+  return value !== null && typeof value === 'object' ? value as FixtureRow : null;
+}
+
+function fixtureRowChecks(): FixtureRowCheck[] {
+  const adminChecks = (id: bigint): FixtureRowCheck => ({
+    table: 'app.admin_users',
+    id,
+    marker: `enterprise_id=${enterpriseId} and username like 'b4-live-%'`,
+    sql: 'select enterprise_id, username from app.admin_users where id=$1::bigint',
+    params: [String(id)],
+    matches: (row) => String(row.enterprise_id) === String(enterpriseId)
+      && String(row.username ?? '').startsWith('b4-live-'),
+    actual: (row) => `enterprise_id=${String(row.enterprise_id)} username=${JSON.stringify(row.username)}`,
+  });
+
+  return [
+    {
+      table: 'app.enterprises',
+      id: enterpriseId,
+      marker: `code='B4-LIVE-${enterpriseId}' and name like '${PREFIX}%'`,
+      sql: 'select code, name from app.enterprises where id=$1::bigint',
+      params: [String(enterpriseId)],
+      matches: (row) => row.code === `B4-LIVE-${enterpriseId}`
+        && String(row.name ?? '').startsWith(PREFIX),
+      actual: (row) => `code=${JSON.stringify(row.code)} name=${JSON.stringify(row.name)}`,
+    },
+    adminChecks(adminId),
+    {
+      table: 'app.users',
+      id: customerUserId,
+      marker: `enterprise_id=${enterpriseId} and username like 'b4-live-customer-%'`,
+      sql: 'select enterprise_id, username from app.users where id=$1::bigint',
+      params: [String(customerUserId)],
+      matches: (row) => String(row.enterprise_id) === String(enterpriseId)
+        && String(row.username ?? '').startsWith('b4-live-customer-'),
+      actual: (row) => `enterprise_id=${String(row.enterprise_id)} username=${JSON.stringify(row.username)}`,
+    },
+    {
+      table: 'app.leads',
+      id: leadId,
+      marker: `enterprise_id=${enterpriseId} and source='b4-live' and name like '${PREFIX}%'`,
+      sql: 'select enterprise_id, source, name from app.leads where id=$1::bigint',
+      params: [String(leadId)],
+      matches: (row) => String(row.enterprise_id) === String(enterpriseId)
+        && row.source === 'b4-live'
+        && String(row.name ?? '').startsWith(PREFIX),
+      actual: (row) => `enterprise_id=${String(row.enterprise_id)} source=${JSON.stringify(row.source)} name=${JSON.stringify(row.name)}`,
+    },
+    {
+      table: 'app.construction_projects',
+      id: projectId,
+      marker: `enterprise_id=${enterpriseId} and lead_id=${leadId} and name like '${PREFIX}%'`,
+      sql: 'select enterprise_id, lead_id, name from app.construction_projects where id=$1::bigint',
+      params: [String(projectId)],
+      matches: (row) => String(row.enterprise_id) === String(enterpriseId)
+        && String(row.lead_id) === String(leadId)
+        && String(row.name ?? '').startsWith(PREFIX),
+      actual: (row) => `enterprise_id=${String(row.enterprise_id)} lead_id=${String(row.lead_id)} name=${JSON.stringify(row.name)}`,
+    },
+    {
+      table: 'app.assistant_conversations',
+      id: conversationId,
+      marker: `enterprise_id=${enterpriseId} and title like '${PREFIX}%' and entry_snapshot kind=lead id=${leadId}`,
+      sql: 'select enterprise_id, title, entry_snapshot from app.assistant_conversations where id=$1::bigint',
+      params: [String(conversationId)],
+      matches: (row) => {
+        const snapshot = snapshotOf(row.entry_snapshot);
+        return String(row.enterprise_id) === String(enterpriseId)
+          && String(row.title ?? '').startsWith(PREFIX)
+          && snapshot?.kind === 'lead'
+          && String(snapshot?.id) === String(leadId);
+      },
+      actual: (row) => {
+        const snapshot = snapshotOf(row.entry_snapshot);
+        return `enterprise_id=${String(row.enterprise_id)} title=${JSON.stringify(row.title)} entry_snapshot.kind=${JSON.stringify(snapshot?.kind)} entry_snapshot.id=${JSON.stringify(snapshot?.id)}`;
+      },
+    },
+    {
+      table: 'app.assistant_participants',
+      id: participantId,
+      marker: `conversation_id=${conversationId} and user_id=${customerUserId}`,
+      sql: 'select conversation_id, user_id from app.assistant_participants where id=$1::bigint',
+      params: [String(participantId)],
+      matches: (row) => String(row.conversation_id) === String(conversationId)
+        && String(row.user_id) === String(customerUserId),
+      actual: (row) => `conversation_id=${String(row.conversation_id)} user_id=${String(row.user_id)}`,
+    },
+    ...staffAdmins.map((staff) => adminChecks(staff.id)),
+  ];
+}
+
+// Read-only: any existing fixed-ID row must already belong to this fixture.
+// Missing rows are fine because this run will create them.
+async function preflightFixtureOwnership(client: PoolClient): Promise<void> {
+  for (const check of fixtureRowChecks()) {
+    const result = await client.query(check.sql, check.params);
+    for (const row of result.rows as FixtureRow[]) {
+      if (!check.matches(row)) {
+        throw new Error(
+          `Fixture ownership conflict: table=${check.table} id=${String(check.id)} `
+          + `reason=expected ${check.marker}; found ${check.actual(row)}. No rows were written.`,
+        );
+      }
+    }
+  }
+}
 
 async function main() {
 const pool = new pg.Pool({ connectionString, max: 1 });
 const client = await pool.connect();
 
 try {
+  await preflightFixtureOwnership(client);
+
   await client.query('begin');
 
   await client.query(
@@ -152,6 +291,25 @@ try {
     [String(projectId), String(enterpriseId), String(leadId), `${PREFIX} 水路阶段测试项目`, progressRevision],
   );
 
+  for (const staff of staffAdmins) {
+    await client.query(
+      `insert into app.admin_users(id,enterprise_id,username,password_hash,display_name,role,status,must_change_password)
+       overriding system value
+       values($1::bigint,$2::bigint,$3,$4,$5,'construction_staff','active',false)
+       on conflict(id) do update set enterprise_id=excluded.enterprise_id,username=excluded.username,
+         password_hash=excluded.password_hash,display_name=excluded.display_name,
+         role=excluded.role,status='active',must_change_password=false,updated_at=now()`,
+      [String(staff.id), String(enterpriseId), staff.username, passwordHash, staff.displayName],
+    );
+    await client.query(
+      `insert into app.construction_members(enterprise_id,project_id,admin_id,role,active,work_label)
+       values($1::bigint,$2::bigint,$3::bigint,$4,true,$5)
+       on conflict(enterprise_id,project_id,admin_id) do update set role=excluded.role,active=true,
+         work_label=excluded.work_label`,
+      [String(enterpriseId), String(projectId), String(staff.id), staff.memberRole, `${PREFIX} 权限验证`],
+    );
+  }
+
   await client.query(
     `insert into app.construction_stage_settings(enterprise_id,stages,version)
      values($1::bigint,$2::jsonb,1)
@@ -186,6 +344,9 @@ try {
   const sequences: Array<[string, bigint]> = [
     ['app.enterprises', enterpriseId],
     ['app.admin_users', adminId],
+    ['app.admin_users', managerAdminId],
+    ['app.admin_users', workerAdminId],
+    ['app.admin_users', observerAdminId],
     ['app.users', customerUserId],
     ['app.leads', leadId],
     ['app.construction_projects', projectId],
@@ -236,9 +397,24 @@ try {
   if (accessRole !== 'owner') throw new Error(`construction_actor_access returned ${String(accessRole)} instead of owner`);
   if (!projectIds.includes(String(projectId))) throw new Error('syncConstructionReminders conversation join did not return the fixture project');
 
+  for (const staff of staffAdmins) {
+    const member = await client.query(
+      `select role, active from app.construction_members
+       where enterprise_id=$1::bigint and project_id=$2::bigint and admin_id=$3::bigint`,
+      [String(enterpriseId), String(projectId), String(staff.id)],
+    );
+    const row = member.rows[0];
+    if (row?.role !== staff.memberRole || row?.active !== true) {
+      throw new Error(`construction_members fixture check failed for admin ${String(staff.id)}: expected role ${staff.memberRole} and active=true`);
+    }
+  }
+
   const result = {
     enterpriseId: String(enterpriseId),
     adminId: String(adminId),
+    managerAdminId: String(managerAdminId),
+    workerAdminId: String(workerAdminId),
+    observerAdminId: String(observerAdminId),
     customerUserId: String(customerUserId),
     leadId: String(leadId),
     projectId: String(projectId),

@@ -1,8 +1,10 @@
+import { constants } from 'node:fs';
+import { copyFile, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { WorkflowOperationError } from '../errors';
-import type { LiveRunRecord, LiveRunStore } from './types';
+import { assertSameLiveRunIdentity } from './binding';
+import type { LiveRunCreateResult, LiveRunRecord, LiveRunStore } from './types';
 
 const runIdPattern = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/;
 const STORE_VERSION = 1;
@@ -24,6 +26,10 @@ function runPath(rootDir: string, runId: string): string {
 
 function clone(record: LiveRunRecord): LiveRunRecord {
   return structuredClone(record);
+}
+
+function serialize(record: LiveRunRecord): string {
+  return `${JSON.stringify({ storeVersion: STORE_VERSION, record }, null, 2)}\n`;
 }
 
 function parseRecord(text: string, file: string): LiveRunRecord {
@@ -59,10 +65,9 @@ async function readRecord(rootDir: string, runId: string): Promise<LiveRunRecord
 async function writeRecord(rootDir: string, record: LiveRunRecord): Promise<void> {
   const file = runPath(rootDir, record.binding.runId);
   await mkdir(path.dirname(file), { recursive: true });
-  const payload = { storeVersion: STORE_VERSION, record };
   const tempFile = `${file}.${process.pid}.${randomUUID()}.tmp`;
   try {
-    await writeFile(tempFile, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+    await writeFile(tempFile, serialize(record), 'utf8');
     await rename(tempFile, file);
   } catch {
     await rm(tempFile, { force: true }).catch(() => undefined);
@@ -70,12 +75,50 @@ async function writeRecord(rootDir: string, record: LiveRunRecord): Promise<void
   }
 }
 
+function runNotFound(runId: string): WorkflowOperationError {
+  return new WorkflowOperationError('run_not_found', 404, `run ${runId} was not found`);
+}
+
 export function createFileWorkflowRunStore(options: { readonly rootDir: string }): LiveRunStore {
   const rootDir = path.resolve(options.rootDir);
 
   return {
-    async save(record): Promise<void> {
-      await withLock(runPath(rootDir, record.binding.runId), () => writeRecord(rootDir, clone(record)));
+    async create(record): Promise<LiveRunCreateResult> {
+      const file = runPath(rootDir, record.binding.runId);
+      return withLock(file, async () => {
+        await mkdir(path.dirname(file), { recursive: true });
+        const tempFile = `${file}.${process.pid}.${randomUUID()}.tmp`;
+        try {
+          await writeFile(tempFile, serialize(record), 'utf8');
+          try {
+            // COPYFILE_EXCL fails with EEXIST instead of overwriting an existing run.
+            await copyFile(tempFile, file, constants.COPYFILE_EXCL);
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+            const existing = await readRecord(rootDir, record.binding.runId);
+            if (!existing) throw error;
+            return { created: false, record: clone(existing) } satisfies LiveRunCreateResult;
+          }
+          return { created: true, record: clone(record) } satisfies LiveRunCreateResult;
+        } catch (error) {
+          if (error instanceof WorkflowOperationError) throw error;
+          throw new WorkflowOperationError('run_store_error', 500, `failed to create run file ${file}`);
+        } finally {
+          await rm(tempFile, { force: true }).catch(() => undefined);
+        }
+      });
+    },
+
+    async update(record): Promise<LiveRunRecord> {
+      const file = runPath(rootDir, record.binding.runId);
+      return withLock(file, async () => {
+        const existing = await readRecord(rootDir, record.binding.runId);
+        if (!existing) throw runNotFound(record.binding.runId);
+        assertSameLiveRunIdentity(existing, record);
+        const next: LiveRunRecord = { ...clone(record), createdAt: existing.createdAt };
+        await writeRecord(rootDir, next);
+        return clone(next);
+      });
     },
 
     async get(runId): Promise<LiveRunRecord | null> {
@@ -104,8 +147,20 @@ export function createFileWorkflowRunStore(options: { readonly rootDir: string }
 export function createMemoryWorkflowRunStore(): LiveRunStore {
   const records = new Map<string, LiveRunRecord>();
   return {
-    async save(record) {
-      records.set(record.binding.runId, clone(record));
+    async create(record) {
+      const existing = records.get(record.binding.runId);
+      if (existing) return { created: false, record: clone(existing) };
+      const stored = clone(record);
+      records.set(record.binding.runId, stored);
+      return { created: true, record: clone(stored) };
+    },
+    async update(record) {
+      const existing = records.get(record.binding.runId);
+      if (!existing) throw runNotFound(record.binding.runId);
+      assertSameLiveRunIdentity(existing, record);
+      const next: LiveRunRecord = { ...clone(record), createdAt: existing.createdAt };
+      records.set(record.binding.runId, next);
+      return clone(next);
     },
     async get(runId) {
       const record = records.get(runId);

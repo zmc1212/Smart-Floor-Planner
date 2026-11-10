@@ -4,6 +4,9 @@ export const CONSTRUCTION_MENU = 'construction-projects';
 export const projectStatuses = ['active', 'paused', 'archived'] as const;
 export const memberRoles = ['manager', 'designer', 'worker', 'observer'] as const;
 export type ConstructionActor = { enterpriseId: string; adminId: string; miniProgramUserId?: string; miniProgramContextVersion?: number };
+export function canManageConstructionProject(owner: boolean, memberRole: string | null | undefined): boolean {
+  return owner || memberRole === 'manager';
+}
 export function tradesInput(value: unknown) {
   if (!Array.isArray(value) || !value.length || value.length > 10) fail('invalid_construction_trades', 422);
   const trades = value.map(v => text(v, 30));

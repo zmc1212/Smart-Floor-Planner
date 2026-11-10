@@ -3,15 +3,23 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { createStageReminderDefinition, type JsonValue, type WorkflowDefinition, type WorkflowValue } from '../index';
+import {
+  createStageReminderDefinition,
+  WorkflowOperationError,
+  type JsonValue,
+  type WorkflowDefinition,
+  type WorkflowValue,
+} from '../index';
 import { createFileWorkflowRunStore, createMemoryWorkflowRunStore } from '../live/run-store';
 import { runPublishedLive } from '../live/runner';
 import {
   LiveOperationFailure,
   LiveOperationUnknownError,
+  type LiveBusinessEvent,
   type LiveOperationPorts,
   type LiveRunContext,
   type LiveRunRecord,
+  type LiveRunStore,
 } from '../live/types';
 import { createWorkflowService } from '../service';
 import { createMemoryWorkflowStore } from '../store/memory-store';
@@ -24,6 +32,13 @@ const event = {
   occurredAt: '2026-11-11T11:58:00.000Z',
   stageKey: 'plumbing',
   stageLabel: '水路',
+};
+const businessEvent: LiveBusinessEvent = {
+  outboxEventId: null,
+  progressRevision: 1,
+  stageKey: 'plumbing',
+  settingsVersion: 1,
+  source: 'current_project_revision',
 };
 
 function mutableTemplate(): WorkflowDefinition {
@@ -62,6 +77,8 @@ function makeWorld(overrides: {
   failDelivery?: boolean;
   denyRead?: boolean;
   unknownSave?: boolean;
+  simulatedSave?: boolean;
+  missingSimulatedSave?: boolean;
 } = {}): World {
   const world: World = {
     calls: [],
@@ -108,6 +125,17 @@ function makeWorld(overrides: {
             path: 'nodes.save-deterministic',
             message: 'commit outcome unknown',
           });
+        }
+        if (overrides.simulatedSave) {
+          world.saves += 1;
+          return {
+            saved: true,
+            saveReceipt: { receiptId: `simulated-${world.saves}`, simulated: true },
+          };
+        }
+        if (overrides.missingSimulatedSave) {
+          world.saves += 1;
+          return { saved: true, saveReceipt: { receiptId: `outbox-${world.saves}` } };
         }
         const businessKey = context.event.eventId;
         const existing = world.saveReceipts.get(businessKey);
@@ -161,14 +189,16 @@ async function run(
   world: World,
   runId = 'run-1',
   eventOverride = event,
+  options: { readonly store?: LiveRunStore; readonly projectId?: string } = {},
 ) {
   return runPublishedLive({
     published: version,
     enterpriseId: '1454',
-    projectId: 'project-1',
+    projectId: options.projectId ?? 'project-1',
     event: eventOverride,
+    businessEvent,
     ports: world.ports,
-    store: createMemoryWorkflowRunStore(),
+    store: options.store ?? createMemoryWorkflowRunStore(),
     runId,
     now: () => now,
   });
@@ -190,6 +220,7 @@ test('live run completes the deterministic knowledge-off path with real receipts
   assert.equal(world.calls.includes('compose.stage_reminder_model'), false);
   assert.equal(record.binding.revision, 1);
   assert.equal(record.binding.digest, version.digest);
+  assert.deepEqual(record.binding.businessEvent, businessEvent);
   assert.equal(world.saves, 1);
   assert.equal(world.deliveries, 1);
   assert.equal(record.operations.find((operation) => operation.effect === 'save')?.outcome, 'succeeded');
@@ -206,7 +237,10 @@ test('save failure stops before delivery and preserves the failed run', async ()
   assert.equal(world.saves, 1);
   assert.equal(world.deliveries, 0);
   assert.equal(world.calls.includes('deliver.inapp'), false);
-  assert.equal(record.operations.find((operation) => operation.effect === 'save')?.outcome, 'succeeded');
+  const failed = record.operations.find((operation) => operation.effect === 'save');
+  assert.equal(failed?.outcome, 'failed');
+  assert.equal(failed?.error?.code, 'save_not_confirmed');
+  assert.equal(failed?.outputs?.saved, false);
 });
 
 test('delivery failure keeps the saved outbox record and does not claim delivery', async () => {
@@ -222,8 +256,38 @@ test('delivery failure keeps the saved outbox record and does not claim delivery
   const saved = record.operations.find((operation) => operation.effect === 'save');
   assert.equal((saved?.outputs?.saveReceipt as { receiptId?: string }).receiptId, 'outbox-1');
   const failed = record.operations.find((operation) => operation.effect === 'deliver');
-  assert.equal(failed?.outcome, 'succeeded');
+  assert.equal(failed?.outcome, 'failed');
+  assert.equal(failed?.error?.code, 'delivery_not_confirmed');
+  assert.equal(failed?.outputs?.delivered, false);
   assert.equal((failed?.outputs?.deliveryReceipt as { status?: string }).status, 'failed');
+});
+
+test('a simulated receipt can never complete a live run', async () => {
+  const { version } = await publishFirst();
+  const world = makeWorld({ simulatedSave: true });
+  const record = await run(version, world, 'run-simulated-receipt');
+
+  assert.equal(record.status, 'failed');
+  assert.equal(record.state.error?.code, 'receipt_simulated_in_live');
+  const failed = record.operations.find((operation) => operation.effect === 'save');
+  assert.equal(failed?.outcome, 'failed');
+  assert.equal(failed?.error?.code, 'receipt_simulated_in_live');
+  assert.equal(failed?.outputs?.saved, true);
+  assert.equal((failed?.outputs?.saveReceipt as { simulated?: boolean }).simulated, true);
+  assert.equal(world.deliveries, 0);
+});
+
+test('a live receipt without simulated:false is rejected', async () => {
+  const { version } = await publishFirst();
+  const world = makeWorld({ missingSimulatedSave: true });
+  const record = await run(version, world, 'run-missing-simulated');
+
+  assert.equal(record.status, 'failed');
+  assert.equal(record.state.error?.code, 'receipt_not_live');
+  const failed = record.operations.find((operation) => operation.effect === 'save');
+  assert.equal(failed?.outcome, 'failed');
+  assert.equal(failed?.error?.code, 'receipt_not_live');
+  assert.equal(failed?.outputs?.saved, true);
 });
 
 test('permission denial fails the run before any business write', async () => {
@@ -246,6 +310,7 @@ test('an unknown outcome stops immediately and is never retried', async () => {
     enterpriseId: '1454',
     projectId: 'project-1',
     event,
+    businessEvent,
     ports: world.ports,
     store,
     runId: 'run-unknown',
@@ -295,6 +360,72 @@ test('the same business event does not create a second save or delivery', async 
   assert.equal((secondSave?.outputs?.saveReceipt as { reused?: boolean }).reused, true);
 });
 
+test('replaying the same runId and binding returns the original record without calling ports', async () => {
+  const { version } = await publishFirst();
+  const world = makeWorld();
+  const store = createMemoryWorkflowRunStore();
+  const first = await run(version, world, 'run-replay-1', event, { store });
+  const callsAfterFirst = world.calls.length;
+
+  const second = await run(version, world, 'run-replay-1', event, { store });
+
+  assert.equal(first.status, 'completed');
+  assert.equal(second.status, 'completed');
+  assert.deepEqual(second, first);
+  assert.equal(world.calls.length, callsAfterFirst);
+  assert.equal(world.saves, 1);
+  assert.equal(world.deliveries, 1);
+});
+
+test('a runId cannot be rebound to a different event, project or published revision', async () => {
+  const { service, version: first } = await publishFirst();
+  const store = createMemoryWorkflowRunStore();
+  const world = makeWorld();
+  const original = await run(first, world, 'run-conflict-1', event, { store });
+  const conflict = (error: unknown) =>
+    error instanceof WorkflowOperationError && error.code === 'run_binding_conflict';
+
+  await assert.rejects(
+    () => run(first, world, 'run-conflict-1', { ...event, eventId: 'b4-evt-stage-0002' }, { store }),
+    conflict,
+  );
+  await assert.rejects(
+    () => run(first, world, 'run-conflict-1', event, { store, projectId: 'project-2' }),
+    conflict,
+  );
+
+  const edited = setTemplate(mutableTemplate(), '第二版：{{stageLabel}}');
+  await service.saveDraft({ definitionId: 'stage-reminder', definition: edited, expectedDraftRevision: 1 });
+  const second = await service.publishDraft({ definitionId: 'stage-reminder', expectedDraftRevision: 2 });
+  await assert.rejects(
+    () => run(second.version, world, 'run-conflict-1', event, { store }),
+    conflict,
+  );
+
+  assert.deepEqual(await store.get('run-conflict-1'), original);
+  assert.equal(world.calls.filter((call) => call === 'save.stage_reminder').length, 1);
+});
+
+test('an unknown run is never re-executed or rebound', async () => {
+  const { version } = await publishFirst();
+  const store = createMemoryWorkflowRunStore();
+  const world = makeWorld({ unknownSave: true });
+  const first = await run(version, world, 'run-unknown-replay', event, { store });
+  assert.equal(first.status, 'unknown');
+  const callsAfterFirst = world.calls.length;
+
+  const replayed = await run(version, world, 'run-unknown-replay', event, { store });
+
+  assert.equal(replayed.status, 'unknown');
+  assert.deepEqual(replayed.state, first.state);
+  assert.equal(world.calls.length, callsAfterFirst);
+
+  await assert.rejects(
+    () => run(version, world, 'run-unknown-replay', { ...event, eventId: 'b4-evt-stage-0002' }, { store }),
+    (error: unknown) => error instanceof WorkflowOperationError && error.code === 'run_binding_conflict',
+  );
+});
+
 test('file run store persists the version binding and lists records', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'native-workflow-runs-'));
   try {
@@ -307,6 +438,7 @@ test('file run store persists the version binding and lists records', async () =
         digest: 'a'.repeat(64),
         nodeVersions: { 'trigger-1': 'trigger@1/trigger.stage_changed' },
         event,
+        businessEvent,
       },
       enterpriseId: '1454',
       projectId: 'project-1',
@@ -333,10 +465,23 @@ test('file run store persists the version binding and lists records', async () =
       createdAt: now,
       updatedAt: now,
     };
-    await store.save(record);
+    const first = await store.create(record);
+    assert.equal(first.created, true);
+    assert.equal(first.record.createdAt, now);
+
+    const duplicate = await store.create({ ...record, status: 'failed' });
+    assert.equal(duplicate.created, false);
+    assert.equal(duplicate.record.status, 'completed');
+
+    const updated = await store.update({ ...record, status: 'halted', updatedAt: '2026-11-11T12:05:00.000Z' });
+    assert.equal(updated.status, 'halted');
+    assert.equal(updated.createdAt, now);
+
     const stored = await store.get('run-file-1');
     assert.equal(stored?.binding.digest, 'a'.repeat(64));
     assert.equal(stored?.binding.revision, 1);
+    assert.equal(stored?.binding.businessEvent.progressRevision, 1);
+    assert.equal(stored?.status, 'halted');
     assert.equal((await store.list()).some((candidate) => candidate.binding.runId === 'run-file-1'), true);
   } finally {
     await rm(dir, { recursive: true, force: true });

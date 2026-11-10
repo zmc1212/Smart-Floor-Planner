@@ -3,7 +3,7 @@ import { withTenantTransaction, type PostgresTransaction } from '@/db/transactio
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, id, key, type ActorContext } from '@/lib/assistant/contracts';
 import { idempotent } from '@/lib/assistant/core/conversation';
-import { choice, memberRoles, object, projectStatuses, text, version, type ConstructionActor } from './contracts';
+import { canManageConstructionProject, choice, memberRoles, object, projectStatuses, text, version, type ConstructionActor } from './contracts';
 import { assignmentInput, defaultConstructionStages, stageKey, stageReminder, stagesInput, type ConstructionStage } from './stages';
 import { currentStage } from './stages-store';
 import { recordStageReminder, syncConstructionReminders } from './reminders';
@@ -124,7 +124,7 @@ export class ConstructionService {
         member = await one(tx, sql`select role from app.construction_members where enterprise_id=${eid} and project_id=${pid} and admin_id=${a.adminId} and active for share`);
         if (!member) fail('construction_not_found', 404);
       }
-      const manage = owner || member?.role === 'manager';
+      const manage = canManageConstructionProject(owner, typeof member?.role === 'string' ? member.role : null);
       if (action === 'detail') return dto({ project: { id: p.id, name: p.name, lead_id: owner ? p.lead_id : undefined, status: p.status,
         customer_access: p.customer_access, version: p.version, current_stage_key: p.current_stage_key, progress_note: p.progress_note }, manage, owner, stages, settingsVersion: settings.version,
         myRole: member?.role || (owner ? 'owner' : null),

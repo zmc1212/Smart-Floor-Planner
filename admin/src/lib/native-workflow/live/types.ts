@@ -7,7 +7,16 @@ import type {
   WorkflowValue,
 } from '../types';
 
-/** Immutable version binding captured when a live run starts. */
+/** The fixed server-side stage event identity used by save/delivery/retry. */
+export interface LiveBusinessEvent {
+  readonly outboxEventId: string | null;
+  readonly progressRevision: number;
+  readonly stageKey: string;
+  readonly settingsVersion: number;
+  readonly source: 'outbox' | 'current_project_revision';
+}
+
+/** Immutable version and business-event binding captured when a run starts. */
 export interface LiveRunBinding {
   readonly runId: string;
   readonly definitionId: string;
@@ -15,6 +24,7 @@ export interface LiveRunBinding {
   readonly digest: string;
   readonly nodeVersions: Readonly<Record<string, string>>;
   readonly event: TriggerEvent;
+  readonly businessEvent: LiveBusinessEvent;
 }
 
 /** Host identity and business scope. A definition can never override these. */
@@ -53,8 +63,16 @@ export interface LiveRunRecord {
   readonly updatedAt: string;
 }
 
+export interface LiveRunCreateResult {
+  readonly created: boolean;
+  readonly record: LiveRunRecord;
+}
+
 export interface LiveRunStore {
-  save(record: LiveRunRecord): Promise<void>;
+  /** Exclusive first write. An existing runId returns the original record. */
+  create(record: LiveRunRecord): Promise<LiveRunCreateResult>;
+  /** Checkpoint update; must reject a different event/project/revision. */
+  update(record: LiveRunRecord): Promise<LiveRunRecord>;
   get(runId: string): Promise<LiveRunRecord | null>;
   list(limit?: number): Promise<LiveRunRecord[]>;
 }

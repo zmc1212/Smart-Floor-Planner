@@ -32,11 +32,29 @@ export function validateEffectReceipt(
   if (typeof receiptId !== 'string' || receiptId === '') {
     return workflowIssue('invalid_receipt', `${path}.${receiptPort}.receiptId`, 'receipt needs a non-empty id');
   }
-  if (mode === 'simulation' && ownValue(receipt, 'simulated') !== true) {
+  const simulated = ownValue(receipt, 'simulated');
+  if (mode === 'simulation') {
+    if (simulated !== true) {
+      return workflowIssue(
+        'receipt_not_simulated',
+        `${path}.${receiptPort}.simulated`,
+        'simulation receipts must be marked simulated',
+      );
+    }
+    return null;
+  }
+  if (simulated === true) {
     return workflowIssue(
-      'receipt_not_simulated',
+      'receipt_simulated_in_live',
       `${path}.${receiptPort}.simulated`,
-      'simulation receipts must be marked simulated',
+      'a live receipt must never be marked simulated',
+    );
+  }
+  if (simulated !== false) {
+    return workflowIssue(
+      'receipt_not_live',
+      `${path}.${receiptPort}.simulated`,
+      'a live receipt must be marked simulated:false',
     );
   }
   return null;

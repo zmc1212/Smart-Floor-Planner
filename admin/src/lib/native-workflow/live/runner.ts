@@ -1,6 +1,7 @@
 import { advance, createRunState, type WorkflowEvent } from '../advance';
 import { compileDefinition } from '../compile';
 import { WorkflowOperationError, workflowIssue, type WorkflowIssue } from '../errors';
+import { validateEffectReceipt } from '../receipts';
 import type { PublishedWorkflowVersion } from '../store/types';
 import type {
   TriggerEvent,
@@ -8,9 +9,11 @@ import type {
   WorkflowTraceEntry,
   WorkflowValue,
 } from '../types';
+import { assertSameLiveRunIdentity } from './binding';
 import {
   LiveOperationFailure,
   LiveOperationUnknownError,
+  type LiveBusinessEvent,
   type LiveOperationPorts,
   type LiveOperationRecord,
   type LiveRunBinding,
@@ -25,6 +28,7 @@ export interface LiveRunInput {
   readonly enterpriseId: string;
   readonly projectId: string;
   readonly event: TriggerEvent;
+  readonly businessEvent: LiveBusinessEvent;
   readonly ports: LiveOperationPorts;
   readonly store: LiveRunStore;
   readonly runId: string;
@@ -105,6 +109,7 @@ export async function runPublishedLive(input: LiveRunInput): Promise<LiveRunReco
     digest: plan.digest,
     nodeVersions,
     event,
+    businessEvent: structuredClone(input.businessEvent),
   };
   const context: LiveRunContext = {
     ...binding,
@@ -114,120 +119,147 @@ export async function runPublishedLive(input: LiveRunInput): Promise<LiveRunReco
   let state = createRunState(plan, { runId: input.runId, mode: 'live' });
   const trace: WorkflowTraceEntry[] = [];
   const operations: LiveOperationRecord[] = [];
-  const createdAt = now();
   let unknown = false;
 
-  const persist = async (): Promise<LiveRunRecord> => {
-    const record: LiveRunRecord = {
-      binding,
-      enterpriseId: input.enterpriseId,
-      projectId: input.projectId,
-      status: statusOf(state, unknown),
-      state: structuredClone(state),
-      trace: cloneTrace(trace),
-      operations: cloneOperations(operations),
-      createdAt,
-      updatedAt: now(),
-    };
-    await input.store.save(record);
-    return record;
-  };
+  const snapshot = (createdAt: string): LiveRunRecord => ({
+    binding,
+    enterpriseId: input.enterpriseId,
+    projectId: input.projectId,
+    status: statusOf(state, unknown),
+    state: structuredClone(state),
+    trace: cloneTrace(trace),
+    operations: cloneOperations(operations),
+    createdAt,
+    updatedAt: now(),
+  });
 
-  const started: WorkflowEvent = { type: 'start', at: now(), event };
-  let result = advance(plan, state, started);
-  state = result.state;
-  trace.push(...cloneTrace(result.trace));
-  await persist();
+  // The first write is exclusive: a replay of the same runId must observe the
+  // original record instead of starting a second execution.
+  const initial: LiveRunRecord = { ...snapshot(now()), status: 'running' };
+  const created = await input.store.create(initial);
+  if (!created.created) {
+    assertSameLiveRunIdentity(created.record, initial);
+    return created.record;
+  }
+  const createdAt = created.record.createdAt;
 
-  while (state.status === 'waiting') {
-    const pending = result.pending[0];
-    if (!pending) {
-      unknown = true;
-      state.error = workflowIssue('live_runner_stalled', '$', 'run is waiting without a pending operation');
-      break;
-    }
-    const startedAt = now();
-    let outputs: Readonly<Record<string, WorkflowValue>> | null = null;
-    let failure: WorkflowIssue | null = null;
-    let unknownIssue: WorkflowIssue | null = null;
-    try {
-      outputs = await input.ports.execute(pending, context);
-    } catch (error) {
-      if (error instanceof LiveOperationFailure) {
-        failure = error.issue;
-      } else if (error instanceof LiveOperationUnknownError) {
-        unknownIssue = error.issue;
-      } else {
-        unknownIssue = workflowIssue(
-          'live_operation_unknown',
-          `nodes.${pending.nodeId}`,
-          error instanceof Error ? error.message.slice(0, 300) : 'operation outcome is unknown',
-        );
-      }
-    }
-    const finishedAt = now();
-    if (unknownIssue) {
-      unknown = true;
-      state.error = unknownIssue;
-      operations.push({
-        nodeId: pending.nodeId,
-        capabilityRef: pending.capabilityRef,
-        effect: pending.effect,
-        nodeVersion: pending.nodeVersion,
-        idempotencyKey: pending.idempotencyKey,
-        startedAt,
-        finishedAt,
-        outcome: 'unknown',
-        error: unknownIssue,
-      });
-      break;
-    }
-    if (failure) {
-      operations.push({
-        nodeId: pending.nodeId,
-        capabilityRef: pending.capabilityRef,
-        effect: pending.effect,
-        nodeVersion: pending.nodeVersion,
-        idempotencyKey: pending.idempotencyKey,
-        startedAt,
-        finishedAt,
-        outcome: 'failed',
-        error: failure,
-      });
-    } else {
-      operations.push({
-        nodeId: pending.nodeId,
-        capabilityRef: pending.capabilityRef,
-        effect: pending.effect,
-        nodeVersion: pending.nodeVersion,
-        idempotencyKey: pending.idempotencyKey,
-        startedAt,
-        finishedAt,
-        outcome: 'succeeded',
-        outputs: structuredClone(outputs ?? {}),
-      });
-    }
+  const persist = async (): Promise<LiveRunRecord> => input.store.update(snapshot(createdAt));
 
-    const observation: WorkflowEvent = failure
-      ? { type: 'observation', at: finishedAt, nodeId: pending.nodeId, status: 'failed', error: failure }
-      : {
-          type: 'observation',
-          at: finishedAt,
-          nodeId: pending.nodeId,
-          status: 'succeeded',
-          outputs: structuredClone(outputs ?? {}),
-        };
-    result = advance(plan, state, observation);
+  try {
+    const started: WorkflowEvent = { type: 'start', at: now(), event };
+    let result = advance(plan, state, started);
     state = result.state;
     trace.push(...cloneTrace(result.trace));
     await persist();
-  }
 
-  if (state.status === 'running') {
+    while (state.status === 'waiting') {
+      const pending = result.pending[0];
+      if (!pending) {
+        unknown = true;
+        state.error = workflowIssue('live_runner_stalled', '$', 'run is waiting without a pending operation');
+        break;
+      }
+      const startedAt = now();
+      let outputs: Readonly<Record<string, WorkflowValue>> | null = null;
+      let failure: WorkflowIssue | null = null;
+      let unknownIssue: WorkflowIssue | null = null;
+      try {
+        outputs = await input.ports.execute(pending, context);
+      } catch (error) {
+        if (error instanceof LiveOperationFailure) {
+          failure = error.issue;
+        } else if (error instanceof LiveOperationUnknownError) {
+          unknownIssue = error.issue;
+        } else {
+          unknownIssue = workflowIssue(
+            'live_operation_unknown',
+            `nodes.${pending.nodeId}`,
+            error instanceof Error ? error.message.slice(0, 300) : 'operation outcome is unknown',
+          );
+        }
+      }
+      const finishedAt = now();
+      if (unknownIssue) {
+        unknown = true;
+        state.error = unknownIssue;
+        operations.push({
+          nodeId: pending.nodeId,
+          capabilityRef: pending.capabilityRef,
+          effect: pending.effect,
+          nodeVersion: pending.nodeVersion,
+          idempotencyKey: pending.idempotencyKey,
+          startedAt,
+          finishedAt,
+          outcome: 'unknown',
+          error: unknownIssue,
+        });
+        break;
+      }
+      if (!failure && outputs) {
+        const node = plan.nodes[pending.nodeId];
+        // A returned result is only a success when its receipt is real.
+        if (node) failure = validateEffectReceipt(node, outputs, 'live');
+      }
+      if (failure) {
+        operations.push({
+          nodeId: pending.nodeId,
+          capabilityRef: pending.capabilityRef,
+          effect: pending.effect,
+          nodeVersion: pending.nodeVersion,
+          idempotencyKey: pending.idempotencyKey,
+          startedAt,
+          finishedAt,
+          outcome: 'failed',
+          ...(outputs ? { outputs: structuredClone(outputs) } : {}),
+          error: failure,
+        });
+      } else {
+        operations.push({
+          nodeId: pending.nodeId,
+          capabilityRef: pending.capabilityRef,
+          effect: pending.effect,
+          nodeVersion: pending.nodeVersion,
+          idempotencyKey: pending.idempotencyKey,
+          startedAt,
+          finishedAt,
+          outcome: 'succeeded',
+          outputs: structuredClone(outputs ?? {}),
+        });
+      }
+
+      const observation: WorkflowEvent = failure
+        ? { type: 'observation', at: finishedAt, nodeId: pending.nodeId, status: 'failed', error: failure }
+        : {
+            type: 'observation',
+            at: finishedAt,
+            nodeId: pending.nodeId,
+            status: 'succeeded',
+            outputs: structuredClone(outputs ?? {}),
+          };
+      result = advance(plan, state, observation);
+      state = result.state;
+      trace.push(...cloneTrace(result.trace));
+      await persist();
+    }
+
+    if (state.status === 'running') {
+      unknown = true;
+      state.error = state.error ?? workflowIssue('live_runner_stalled', '$', 'run ended without a terminal state');
+    }
+    return await persist();
+  } catch (error) {
+    // The run already exists. A crash here can only be recorded conservatively;
+    // nothing is re-executed and no port is called again.
     unknown = true;
-    state.error = state.error ?? workflowIssue('live_runner_stalled', '$', 'run ended without a terminal state');
+    state.status = 'failed';
+    state.pendingNodeId = null;
+    state.error = workflowIssue(
+      'live_runner_error',
+      '$',
+      error instanceof Error ? error.message.slice(0, 300) : 'live run failed unexpectedly',
+    );
+    return persist();
   }
-  return persist();
 }
 
 function publishedRevision(definitionRevision: number, publishedRevision: number): number {
