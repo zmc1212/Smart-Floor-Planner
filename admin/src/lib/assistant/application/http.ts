@@ -136,7 +136,11 @@ export async function assistantHttp(request: Request, path: string[]) {
       else if (path[2] === 'handoff' && method === 'GET') data = await new HandoffWorkflow(actor).customerRead(target);
       else if (path[2] === 'handoff' && method === 'POST') data = await new HandoffWorkflow(actor).customerWrite(target,requestKey(),body);
       else if (path[2] === 'requirements' && method === 'POST') data = await new RequirementWorkflow(actor).write(target, requestKey(), body);
-      else if (path[2] === 'messages' && method === 'GET') data = await service.messages(target, cursor('beforeSeq'), limit);
+      else if (path[2] === 'messages' && method === 'GET') {
+        const after = cursor('afterSeq');
+        if (after !== undefined && params.has('beforeSeq')) fail('invalid_message', 422);
+        data = after !== undefined ? await service.messageDelta(target, after, limit) : await service.messages(target, cursor('beforeSeq'), limit);
+      }
       else if (path[2] === 'suggestions' && method === 'GET') data = await service.suggestions(target);
       else if (path[2] === 'construction-contact' && method === 'GET') {
         if ([...params.keys()].some(k => !['projectId', 'messageId'].includes(k))) fail('invalid_message', 422);

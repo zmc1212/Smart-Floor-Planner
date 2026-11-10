@@ -126,6 +126,9 @@ export function reportNativeRuntimeBudget(input: { summaries: number; perception
   if (primaryModelTurns < 1) fail('assistant_quota_exceeded', 429);
   if (input.resume && (input.resume.turnSchedule !== agentTurnScheduleProtocol
     || input.resume.primaryModelTurns !== primaryModelTurns)) fail('invalid_agent_checkpoint', 409);
+  // Primary turns, the one bounded structural/reference redraft and the
+  // mandatory semantic review are the complete schedule; nothing else may add
+  // a dispatch to a report answer.
   return { primaryModelTurns, reservedValidationRepairs: 1 as const, auxiliaryCalls,
-    maxScheduledCalls: agentModelLimits.maxModelTurns, sourceReadSchedule: reportNativeFinalProtocol };
+    maxScheduledCalls: primaryModelTurns + 2, sourceReadSchedule: reportNativeFinalProtocol };
 }

@@ -3,58 +3,58 @@
   "packOptions": {
     "ignore": [
       {
-        "type": "folder",
-        "value": "test"
+        "value": "test",
+        "type": "folder"
       },
       {
-        "type": "folder",
-        "value": "dev-log"
+        "value": "dev-log",
+        "type": "folder"
       },
       {
-        "type": "folder",
-        "value": "tmp"
+        "value": "tmp",
+        "type": "folder"
       },
       {
-        "type": "folder",
-        "value": ".impeccable"
+        "value": ".impeccable",
+        "type": "folder"
       },
       {
-        "type": "folder",
-        "value": "scripts"
+        "value": "scripts",
+        "type": "folder"
       },
       {
-        "type": "folder",
-        "value": "node_modules"
+        "value": "node_modules",
+        "type": "folder"
       },
       {
-        "type": "file",
-        "value": "DESIGN.md"
+        "value": "DESIGN.md",
+        "type": "file"
       },
       {
-        "type": "file",
-        "value": "design-tokens.json"
+        "value": "design-tokens.json",
+        "type": "file"
       },
       {
-        "type": "file",
-        "value": "project.config.json"
+        "value": "project.config.json",
+        "type": "file"
       },
       {
-        "type": "file",
-        "value": "project.private.config.json"
+        "value": "project.private.config.json",
+        "type": "file"
       },
       {
-        "type": "file",
-        "value": "packages/assistant/assets/studio-serif-data.js"
+        "value": "packages/assistant/assets/studio-serif-data.js",
+        "type": "file"
       }
     ],
     "include": [
       {
-        "type": "file",
-        "value": "packages/assistant/assets/studio-serif.woff2.br"
+        "value": "packages/assistant/assets/studio-serif.woff2.br",
+        "type": "file"
       },
       {
-        "type": "file",
-        "value": "packages/construction/assets/notebook-font.woff2.br"
+        "value": "packages/construction/assets/notebook-font.woff2.br",
+        "type": "file"
       }
     ]
   },
@@ -98,7 +98,11 @@
     ],
     "swc": false,
     "disableSWC": true,
-    "ignoreUploadUnusedFiles": true
+    "ignoreUploadUnusedFiles": true,
+    "minifyWXSS": true,
+    "lessSetting": {
+      "commonUseFilePath": "app.less"
+    }
   },
   "compileType": "miniprogram",
   "libVersion": "3.15.1",

@@ -1,40 +1,7 @@
 {
-  "libVersion": "3.15.1",
-  "projectname": "miniprogram",
-  "condition": {
-    "miniprogram": {
-      "list": [
-        {
-          "name": "packages/business/free-design-service/free-design-service",
-          "pathName": "packages/business/free-design-service/free-design-service",
-          "query": "",
-          "scene": null,
-          "launchMode": "default"
-        },
-        {
-          "name": "packages/business/onboarding/onboarding",
-          "pathName": "packages/business/onboarding/onboarding",
-          "query": "",
-          "launchMode": "default",
-          "scene": null
-        },
-        {
-          "name": "packages/business/onboarding-debug/onboarding-debug",
-          "pathName": "packages/business/onboarding-debug/onboarding-debug",
-          "query": "",
-          "launchMode": "default",
-          "scene": null
-        },
-        {
-          "name": "packages/surveying/editor/surveying-editor",
-          "pathName": "packages/surveying/editor/surveying-editor",
-          "query": "",
-          "launchMode": "default",
-          "scene": null
-        }
-      ]
-    }
-  },
+  "libVersion": "3.17.2",
+  "projectname": "%E5%AE%B6%E5%AE%A2%E6%9D%A5",
+  "condition": {},
   "setting": {
     "urlCheck": false,
     "coverView": true,

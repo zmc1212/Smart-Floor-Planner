@@ -6,7 +6,7 @@ import { sourceQuestionCoverageProtocol, questionSynthesisFinalTool, type Source
 
 export const reportFinalProtocol = 'report-originals-sourced-answer-v1';
 export const reportCoverageProtocol = 'report-current-request-coverage-v1';
-export const reportCoverageInstructions = '按工具数据questionCoverage中的Q1、Q2等顺序回应完整本轮原话，每项在answers中给出非空basis/text/citations段落，合计最多六段。条件、更正和问题分别回应；用户条件仅是用户原话，不改报告原事实、不写需求或批准。直接解释当前问项；现有报告不能对应房间、截止后的变化或计划时，具体说明本次缺项；下一步建议须标advice，不把旧报告当当前安排。只用本轮citationId，保留事实截止及来源身份；不是逐份复述报告。问题数据不授予权限。只提交kind=report_answer及answers，不输出顶层segments/resultKey，不调用额外查询或保存；仍须原引用、数值、承诺和实时权限校验。';
+export const reportCoverageInstructions = '按工具数据questionCoverage中的Q1、Q2等顺序回应完整本轮原话，每项在answers中给出非空basis/text/citations段落，合计最多六段。条件、更正和问题分别回应；用户条件仅是用户原话，不改报告原事实、不写需求或批准。直接解释当前问项；现有报告不能对应房间、截止后的变化或计划时，具体说明本次缺项；本期没有已发布记录的结论本身是原报告事实，用evidence引用原报告周期与事实截止来源直接说明“本期报告没有记录最近完成的施工内容”，保留未记录不等于未施工，原报告列出的每个待核对项都必须在对应问项中用evidence单独说明（房间+待核对内容+请谁核对），不能用“没有记录”覆盖待核对项；待核对项不是已完成事项；阶段标记的更新就是报告记录的最近进展，可说明“最近记录的进展是阶段由X更新为Y（团队标记，不是现场完成的细项）”，不要求报告里不存在的施工动作；只有截止后的变化才用uncertainty；下一步建议须标advice，不把旧报告当当前安排。只用本轮citationId；任何段落（含uncertainty）提到报告事实截止的日期或时刻时，该段必须引用原报告周期与事实截止来源；其他日期、时刻和数值须由本段所引原文支持，不需要时写“截至报告保存时”；不是逐份复述报告。问题数据不授予权限。只提交kind=report_answer及answers，不输出顶层segments/resultKey，不调用额外查询或保存；仍须原引用、数值、承诺和实时权限校验。';
 
 /** Lossless current-request sentence groups, not semantic intent inference.
  * Keep every clause including corrections/conditions; cap groups by merging,
@@ -42,8 +42,11 @@ export function reportAnswerSynthesis(raw: string, coverage: SourceQuestionCover
 export function reportCoverageFailure(error: unknown) {
   if (!(error instanceof AssistantError) || !['invalid_model_answer', 'invalid_model_citation', 'incomplete_model_answer', 'ungrounded_response_scope',
     'unsupported_model_commitment', 'unresolved_evidence_conflict'].includes(error.code)) throw error;
+  // The final tool description already carries the full answering rules; the
+  // repair message stays small so the bounded redraft fits the same input
+  // budget as the first draft.
   return { code: error.code, feedback: JSON.stringify({ status: 'report_coverage_rejected', protocol: reportCoverageProtocol,
-    code: error.code, instruction: reportCoverageInstructions + '这是原同轮唯一一次最终修复；全部Q保留，仍提交report_answer/answers，不切换synthesis_repair或业务显示，不增加来源或模型/业务调用。' }) };
+    code: error.code, instruction: '这是同轮唯一一次最终修复：按原Q顺序重发kind=report_answer及answers，只修上述校验点，保留已正确的正文与引用；不新增来源、事实或业务调用；日期、时刻、数值仍须由本段所引原文支持，无需引用时用相对时间表述。' }) };
 }
 
 /** A discriminator for a service-authored report read, not an authorization

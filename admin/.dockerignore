@@ -1,5 +1,6 @@
 node_modules
 .next
+.next-qa
 .postgres-backups
 .roomi-import
 uploads

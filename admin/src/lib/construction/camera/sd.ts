@@ -33,6 +33,15 @@ export async function refreshSdWindow(tx: PostgresTransaction, b: Row, reader: S
   const min = now - sample.source.getTime() - elapsed - 3000, max = now - sample.source.getTime() + 2000;
   if (elapsed > 15000 || !Number.isFinite(min) || min < -60000 || max > 60000) fail('camera_sd_clock_unavailable', 503);
   const eid = String(b.enterprise_id), bid = String(b.id);
+  // One-time, per-binding merge of pre-v2 registration windows. The stable
+  // identity excludes registerTimeStamp, so earlier verified windows keep
+  // applying after a re-registration. The advisory lock above serializes this
+  // with gateway/list refreshes; checked_at is preserved so a real gap still
+  // opens a new window instead of claiming unverified footage.
+  const stable = sample.identityVersion === 2;
+  if (stable) await tx.execute(sql`update app.construction_camera_sd_windows
+    set serial_hash=${sample.serialHash}, identity_version=1
+    where enterprise_id=${eid} and binding_id=${bid} and identity_version=0 and business_from>=${b.sd_activated_at as Date}`);
   const old = await one(tx, sql`select * from app.construction_camera_sd_windows where enterprise_id=${eid} and binding_id=${bid} and business_from>=${b.sd_activated_at as Date} order by id desc limit 1 for update`);
   const continuing = old && old.serial_hash === sample.serialHash && now - stamp(old.checked_at) <= 120000
     && Math.max(Number(old.clock_max_ms), max) - Math.min(Number(old.clock_min_ms), min) <= 10000;
@@ -43,8 +52,8 @@ export async function refreshSdWindow(tx: PostgresTransaction, b: Row, reader: S
     await tx.execute(sql`update app.construction_camera_sd_windows set source_from=${new Date(start)},source_to=${new Date(Math.max(start,end))},checked_at=${new Date(now)},clock_min_ms=${low},clock_max_ms=${high} where id=${String(old.id)}`);
   } else {
     const start = Math.ceil((Math.max(now, stamp(b.started_at), stamp(b.sd_activated_at)) - low) / 1000) * 1000;
-    await tx.execute(sql`insert into app.construction_camera_sd_windows(enterprise_id,project_id,binding_id,serial_hash,business_from,checked_at,source_from,source_to,clock_min_ms,clock_max_ms)
-      values(${eid},${String(b.project_id)},${bid},${sample.serialHash},${new Date(now)},${new Date(now)},${new Date(start)},${new Date(Math.max(start,end))},${low},${high})`);
+    await tx.execute(sql`insert into app.construction_camera_sd_windows(enterprise_id,project_id,binding_id,serial_hash,identity_version,business_from,checked_at,source_from,source_to,clock_min_ms,clock_max_ms)
+      values(${eid},${String(b.project_id)},${bid},${sample.serialHash},${stable ? 1 : 0},${new Date(now)},${new Date(now)},${new Date(start)},${new Date(Math.max(start,end))},${low},${high})`);
   }
   await tx.execute(sql`update app.construction_camera_recording_policies set sd_checked_at=now(),sd_last_error=null where binding_id=${bid}`);
   return { serialHash: sample.serialHash, clockMin: min, clockMax: max };
@@ -127,8 +136,12 @@ async function sdRecord(tx:PostgresTransaction,eid:string,pid:string,rid:string,
 export async function startSdRecordingView(token:string,csrf:string,recordingId:string,upstream=cameraWvp(),reader:SdClockReader=readSdClock) {
   const {eid,hash}=parseCameraToken(token),rid=id(recordingId);
   const r = await withTenantTransaction(eid,async tx=>{
-    const s=await cameraSession(tx,token,csrf),record=await sdRecord(tx,eid,s.pid,rid,true);
-    const sample=await refreshSdWindow(tx,await sdBinding(tx,eid,s.pid,String(record.binding_id)),reader);
+    const s=await cameraSession(tx,token,csrf),initial=await sdRecord(tx,eid,s.pid,rid,true);
+    const sample=await refreshSdWindow(tx,await sdBinding(tx,eid,s.pid,String(initial.binding_id)),reader);
+    // The refresh may have rebased this window to the stable identity. Re-read
+    // the record so a legacy cached index is compared with its new hash rather
+    // than the pre-rebase snapshot.
+    const record=await sdRecord(tx,eid,s.pid,rid,true);
     if(record.serial_hash!==sample.serialHash||Math.max(Number(record.clock_max_ms),sample.clockMax)-Math.min(Number(record.clock_min_ms),sample.clockMin)>10000)fail('camera_recording_unavailable',404);
     return record;
   });

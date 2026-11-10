@@ -1,0 +1,24 @@
+name: XiaoK plan hygiene
+
+on:
+  pull_request:
+    paths:
+      - 'docs/xiaok-renovation-agent-development-plan.md'
+      - 'scripts/check-xiaok-plan.mjs'
+      - '.github/workflows/xiaok-plan-hygiene.yml'
+  push:
+    paths:
+      - 'docs/xiaok-renovation-agent-development-plan.md'
+      - 'scripts/check-xiaok-plan.mjs'
+      - '.github/workflows/xiaok-plan-hygiene.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check-plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: node scripts/check-xiaok-plan.mjs --self-test
+      - run: node scripts/check-xiaok-plan.mjs

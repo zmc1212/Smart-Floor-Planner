@@ -1,7 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- One fixed natural conversation over three known gaps. */
 /** Verifies the three unresolved Agent V2 gaps in one real conversation:
  *  real web search with checkable sources, nearby public sites, designer works.
- *  The customer speaks naturally; tools and expectations stay in code. */
+ *  The customer speaks naturally; tools and expectations stay in code.
+ *  Optional --conversation=<id> reuses an already located customer chat; the
+ *  script never creates a synthetic location or refreshes an expired one. */
 import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -14,6 +16,15 @@ require('@next/env').loadEnvConfig(process.cwd(), true);
 
 const label = process.argv.find(x => x.startsWith('--label='))?.slice(8) || 'probe-01';
 assert.match(label, /^[a-z0-9-]+$/);
+const cliValue = (name: string) => {
+  const prefix = `--${name}=`;
+  const inline = process.argv.find(x => x.startsWith(prefix));
+  if (inline) return inline.slice(prefix.length);
+  const index = process.argv.indexOf(`--${name}`);
+  return index >= 0 ? process.argv[index + 1] : undefined;
+};
+const reuseConversationId = cliValue('conversation');
+if (reuseConversationId) assert.match(reuseConversationId, /^[1-9]\d*$/, '--conversation must be a positive conversation id');
 const out = path.resolve('../tmp/xiaok-agentv2-web-recommend-20261110/' + label);
 assert.ok(!fs.existsSync(path.join(out, 'assessment.json')), 'Preserve every original batch');
 fs.mkdirSync(out, { recursive: true });
@@ -26,8 +37,23 @@ assert.equal(devRuntime.baseUrl, 'http://127.0.0.1:18300');
 assert.equal(devRuntime.agentV2.runtime, 'fastgpt-agent-v2');
 const model = devRuntime.agentV2.model;
 
+// The reader URL is a fixed private loopback contract, not user input. A
+// standalone probe process has no dev.mjs environment, so default it here and
+// fail at startup instead of producing a whole invalid turn with
+// web_reader_unconfigured.
+const publicReaderUrl = 'http://127.0.0.1:18095';
+if (!process.env.ASSISTANT_PUBLIC_READER_URL) process.env.ASSISTANT_PUBLIC_READER_URL = publicReaderUrl;
+assert.equal(process.env.ASSISTANT_PUBLIC_READER_URL, publicReaderUrl,
+  'ASSISTANT_PUBLIC_READER_URL must be the fixed private reader http://127.0.0.1:18095');
+
 const originalDatabase = process.env.DATABASE_URL;
-process.env.DATABASE_URL = JSON.parse(fs.readFileSync(path.resolve('../tmp/xiaok-vector/connection.private.json'), 'utf8')).DATABASE_URL;
+assert.ok(originalDatabase, 'DATABASE_URL must be configured for the development database');
+const vectorDatabase = JSON.parse(fs.readFileSync(path.resolve('../tmp/xiaok-vector/connection.private.json'), 'utf8')).DATABASE_URL;
+// Acceptance is fixed to the isolated database by lockAssistantAcceptance. A
+// reused conversation must therefore live there; the main development chat is
+// never silently substituted or copied.
+process.env.DATABASE_URL = vectorDatabase;
+const databaseName = (url: string | undefined) => { try { return url ? new URL(url).pathname.replace(/^\//, '') : null; } catch { return null; } };
 process.env.ASSISTANT_TEXT_MODEL = model;
 process.env.ASSISTANT_TEXT_DISABLE_THINKING = '1';
 
@@ -35,6 +61,8 @@ const { sql } = require('drizzle-orm');
 const { withTenantTransaction, withPlatformTransaction } = require(path.resolve('src/db/transaction.ts'));
 const { one, rows } = require(path.resolve('src/db/repositories/assistant-repository.ts'));
 const { ConversationService } = require(path.resolve('src/lib/assistant/core/conversation.ts'));
+const { nearbyRegion } = require(path.resolve('src/lib/assistant/location/region.ts'));
+const { designerMessageProjection } = require(path.resolve('src/lib/portfolio/designer-recommendation.ts'));
 const { claimJob } = require(path.resolve('src/lib/assistant/infrastructure/job-queue.ts'));
 const { processAssistantRun } = require(path.resolve('src/lib/assistant/application/worker.ts'));
 const { fastGPTWorkflows, closeFastGPTWorkflows } = require(path.resolve('src/lib/assistant/fastgpt/runtime.ts'));
@@ -57,6 +85,8 @@ const turns = [
 
 const report: any = { status: 'preparing', label, model, appId: devRuntime.agentV2.appId,
   protocol: devRuntime.agentV2.protocol, transport: 'real-fastgpt-agent-v2',
+  database: databaseName(process.env.DATABASE_URL),
+  databaseScope: 'isolated-evaluation (required by acceptance lock)',
   scope: 'Three fixed natural questions in one customer chat over the known gaps: real web search with checkable sources, '
     + 'nearby authorized public sites, and designer works by stated style. No resampling, no matrix expansion.',
   source: { commit: (() => { try { return require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(); } catch { return null; } })(),
@@ -85,6 +115,20 @@ const readTrace = (runId: string) => tenant(async (tx: any) => ({
     from app.assistant_usage_records where enterprise_id=1454 and run_id=${runId}`),
 }));
 
+async function assertPublicReader() {
+  let response: Response;
+  try {
+    response = await fetch(publicReaderUrl + '/health', { redirect: 'error', signal: AbortSignal.timeout(5000) });
+  } catch (error) {
+    throw Error(`Public reader health check failed at ${publicReaderUrl}: ${(error as Error).message}`);
+  }
+  assert.equal(response.status, 200, `Public reader /health must return 200 at ${publicReaderUrl}`);
+  const health: any = await response.json().catch(() => null);
+  assert.ok(health && typeof health.parser === 'string' && health.parser.length > 0,
+    'Public reader /health must report its parser');
+  report.checks.push({ publicReader: { url: publicReaderUrl, status: response.status, parser: health.parser } });
+}
+
 async function processQueued(runId: string) {
   // The standing Worker may claim the run first; either path is a real dispatch.
   const status = async () => (await tenant((tx: any) => one(tx, sql`select status from app.assistant_runs where enterprise_id=1454 and id=${runId}`)))?.status;
@@ -100,6 +144,7 @@ async function processQueued(runId: string) {
 
 let release: any, settingsBefore: any, platformBefore: any, reverse: any;
 try {
+  await assertPublicReader();
   release = await lockAssistantAcceptance(process.env.DATABASE_URL, { waitForLock: true });
   settingsBefore = await tenant((tx: any) => one(tx, sql`select enabled,agent_config from app.assistant_enterprise_settings where enterprise_id=1454`));
   platformBefore = await platform((tx: any) => one(tx, sql`select llm_config from app.platform_configs where key='default'`));
@@ -127,7 +172,28 @@ try {
   report.status = 'running'; save();
 
   const service = new ConversationService(actor);
-  const conversationId = String((await service.create(randomUUID())).id);
+  let conversationId: string;
+  if (reuseConversationId) {
+    const existing: any = await tenant((tx: any) => one(tx, sql`
+      select id::text,status,purpose,entry_snapshot,version,context_revision
+      from app.assistant_conversations where enterprise_id=1454 and id=${reuseConversationId}`));
+    assert.ok(existing, `Conversation ${reuseConversationId} must exist in enterprise 1454`);
+    assert.equal(existing.status, 'open', 'The reused conversation must be open');
+    assert.equal(existing.purpose, 'customer_consultation', 'The reused conversation must be a customer consultation');
+    assert.equal(existing.entry_snapshot?.kind, 'lead', 'The reused conversation must be bound to the customer lead');
+    assert.equal(String(existing.entry_snapshot?.id), '3132', 'The reused conversation must belong to lead 3132');
+    const active = await tenant((tx: any) => rows(tx, sql`
+      select id::text,status from app.assistant_runs where enterprise_id=1454
+        and conversation_id=${reuseConversationId} and status in ('queued','running')`));
+    assert.equal(active.length, 0, 'The reused conversation must have no active run before the probe');
+    const location = nearbyRegion(existing.entry_snapshot);
+    assert.ok(location, 'The reused conversation must have a fresh authorized location (<30 minutes); refresh it before rerunning');
+    report.reusedConversation = { id: String(existing.id), version: existing.version,
+      contextRevision: existing.context_revision, entry: existing.entry_snapshot, location };
+    conversationId = String(existing.id);
+  } else {
+    conversationId = String((await service.create(randomUUID())).id);
+  }
   report.conversationId = conversationId;
 
   for (const turn of turns) {
@@ -174,15 +240,25 @@ try {
       assert.ok(record.steps.some((step: any) => step.kind === 'agent_public_sites'), 'The nearby turn must resolve authorized public sites');
     }
     if (turn.kind === 'designer') {
-      assert.ok(record.steps.some((step: any) => step.kind === 'agent_designer_result')
-        || /城市|风格|方向|哪/.test(String(record.answer)), 'The style turn must recommend or ask one necessary question');
+      const designerStep = record.steps.find((step: any) => step.kind === 'agent_designer_result' && step.seq === 2000);
+      assert.ok(designerStep, 'The style turn must persist agent_designer_result at step_seq 2000; a follow-up question is not a pass');
+      const projection = await tenant((tx: any) => designerMessageProjection(tx, {
+        enterpriseId: '1454', principal: { kind: 'user', userId: '645' }, contextVersion: 1, capabilities: [],
+      }, conversationId, record.messageId));
+      record.designerProjection = projection ? { count: projection.items.length,
+        items: projection.items.map((item: any) => ({ workId: item.work?.id, versionId: item.work?.versionId, authorId: item.authorId,
+          authorName: item.authorName, title: item.work?.title })) } : null;
+      save();
+      assert.ok(projection?.items.length, 'The style turn must project at least one live designer card from the saved step');
     }
     record.state = 'passed'; save();
   }
 
   const reentry = (await service.messages(conversationId)).items;
-  assert.ok(reentry.filter((m: any) => m.authorKind === 'assistant' && m.available).length >= turns.length,
-    'Every delivered answer stays readable on reentry');
+  for (const turn of report.turns) {
+    assert.ok(reentry.some((m: any) => m.id === turn.messageId && m.available),
+      `${turn.name} must stay readable on reentry`);
+  }
   report.checks.push({ reentry: reentry.length, totals: report.turns.map((turn: any) => ({ name: turn.name,
     web: turn.webSteps, citations: turn.citations.length, steps: turn.steps.map((step: any) => step.kind) })) });
   report.status = 'passed'; save();

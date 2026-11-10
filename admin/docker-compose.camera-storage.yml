@@ -27,3 +27,9 @@ volumes:
   media:
     external: true
     name: ${CAMERA_MEDIA_VOLUME:?Existing ZLM media volume required}
+networks:
+  default:
+    ipam:
+      config:
+        # Keep Docker Desktop routes outside the physical camera LAN.
+        - subnet: ${CAMERA_STORAGE_DOCKER_SUBNET:-172.16.82.0/24}

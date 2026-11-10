@@ -9,14 +9,58 @@ function historyForView(items) {
     return { ...item, createdLabel, createdDateLabel: Number.isNaN(time.getTime()) ? '' : createdLabel.split(' ')[0] };
   });
 }
+const WINDOW = 30;
+const MAX_BACKLOG = 200;
+const FULL_SYNC_MS = 60000;
+const DELTA_PAGES = 3;
+// `seq` is a bigint rendered as a decimal string; Number arithmetic would lose
+// precision above Number.MAX_SAFE_INTEGER.
+function seqOrder(left, right) {
+  const a = String(left || '0'), b = String(right || '0');
+  return a.length - b.length || (a < b ? -1 : a > b ? 1 : 0);
+}
+function previousSeq(value) {
+  const digits = String(value).split('');
+  for (let index = digits.length - 1; index >= 0; index -= 1) {
+    if (digits[index] !== '0') { digits[index] = String(Number(digits[index]) - 1); break; }
+    digits[index] = '9';
+  }
+  return digits.join('').replace(/^0+(?=\d)/, '');
+}
+function withinBacklog(from, to, max) {
+  let current = String(to);
+  for (let step = 0; step <= max; step += 1) {
+    if (current === String(from)) return true;
+    current = previousSeq(current);
+  }
+  return false;
+}
+function mergeMessages(window, incoming) {
+  const merged = new Map();
+  for (const item of window || []) merged.set(String(item.id), item);
+  for (const item of incoming || []) if (!merged.has(String(item.id))) merged.set(String(item.id), item);
+  return [...merged.values()].sort((left, right) => seqOrder(left.seq, right.seq));
+}
+// A pure append reaches the view through `messages[n]` paths so the runtime
+// never serializes the whole list again. Anything else ships the full array.
+function appendPatch(patch, previousLength) {
+  const from = patch.messagesAppendFrom;
+  const fallback = { ...patch };
+  delete fallback.messagesAppendFrom;
+  if (typeof from !== 'number' || from !== previousLength || !Array.isArray(patch.messages) || from > patch.messages.length) return fallback;
+  const next = { ...fallback };
+  delete next.messages;
+  for (let index = from; index < patch.messages.length; index += 1) next[`messages[${index}]`] = patch.messages[index];
+  return next;
+}
 const initial = () => ({
   loading: true, busy: false, error: '', fatal: false, needsLogin: false,
   enterpriseId: '', enterpriseName: '', canSend: false, maxChars: 4000,
   shareReferenceEntry: '',
   welcomeText: WELCOME, guidanceEnabled: false, guidance: null, selectedOptions: [], selectedOptionMap: {},
-  conversation: null, readOnly: false, messages: [], messageCursor: null, run: null,
+  conversation: null, readOnly: false, messages: [], messageCursor: null, run: null, sending: false,
   history: [], historyCursor: null, historyLoading: false, historyError: '',
-  draft: '', pendingText: '', pendingSend: false, pendingAction: '',
+  draft: '', pendingText: '', pendingSend: false, pendingAction: '', handoffBusy: false,
   runLabel: '', retryable: false, generating: false, uncertainRun: false,
   citation: null, citationLoading: false, citationError: '',
   contactLoading: false,
@@ -30,7 +74,10 @@ class ChatController {
     this.referenceImage = referenceImage;
     this.resumeConversationId = String(resumeConversationId || ''); this.onResumeInvalid = onResumeInvalid;
     this.state = initial(); this.epoch = 0; this.visible = false; this.ready = false;
+    this.latestSeq = ''; this.seqConversationId = ''; this.rawMessages = null; this.lastFullSyncAt = 0; this.seqSupported = false;
   }
+
+  resetWindow() { this.latestSeq = ''; this.seqConversationId = ''; this.rawMessages = null; this.lastFullSyncAt = 0; this.seqSupported = false; }
 
   set(patch) { Object.assign(this.state, patch); this.emit(patch); }
   valid(epoch) { return this.epoch === epoch && this.session === this.identity(); }
@@ -39,7 +86,7 @@ class ChatController {
   clear() {
     this.operationalDraft = null;
     this.dispose(); this.client.pending.clear(); this.entry = null; this.entryExpiry = 0;
-    this.ready = false;
+    this.ready = false; this.resetWindow();
     this.conversationId = ''; this.startedNew = false; this.set(initial());
   }
 
@@ -119,14 +166,20 @@ class ChatController {
     }
   }
 
-  refresh({ forceEntry = true, background = false } = {}) {
+  refresh({ forceEntry = true, background } = {}) {
     if (!this.visible || this.state.busy) return Promise.resolve();
     if (this.refreshFlight && this.valid(this.refreshEpoch)) return this.refreshFlight;
     const epoch = ++this.epoch;
     this.refreshEpoch = epoch;
     this.unschedule(this.timer);
-    this.set({ loading: !background, error: '', fatal: false, contactLoading: false });
-    const flight = this.refreshState(epoch, forceEntry, background).finally(() => {
+    // A re-sync of a conversation that is already on screen (page re-entry,
+    // location or media refresh) must not blank the rendered history. Only the
+    // first read of a view shows the loader.
+    const silent = background === undefined
+      ? this.ready || !!this.state.conversation || this.state.messages.length > 0
+      : background;
+    this.set({ loading: !silent, error: '', fatal: false, contactLoading: false });
+    const flight = this.refreshState(epoch, forceEntry, !!background).finally(() => {
       if (this.refreshFlight === flight) this.refreshFlight = null;
     });
     this.refreshFlight = flight;
@@ -158,7 +211,7 @@ class ChatController {
       this.epoch += 1;
       this.unschedule(this.timer); this.client.pending.clear();
       this.entry = null; this.entryExpiry = 0; this.conversationId = '';
-      this.ready = false;
+      this.ready = false; this.resetWindow();
       this.set({ ...initial(), loading: false });
     }
     this.set({ loading: false, error: errorCopy(error), fatal: fatal || denied, needsLogin: error.statusCode === 401,
@@ -177,10 +230,20 @@ class ChatController {
 
   async snapshot(id, epoch, background = false) {
     const ticket = this.snapshotTicket = (this.snapshotTicket || 0) + 1;
-    const [conversation, messages] = await Promise.all([
-      this.client.read(`/conversations/${id}`),
-      this.client.read(`/conversations/${id}/messages`, { limit: 30 }),
-    ]);
+    // A conversation this view has never synced has no cursor to seek from, so
+    // its full window is known upfront and still loads alongside the metadata.
+    // A server that did not report `lastSeq` cannot answer a delta either.
+    const full = this.seqConversationId === id && this.latestSeq && this.seqSupported
+      ? null
+      : this.client.read(`/conversations/${id}/messages`, { limit: WINDOW });
+    // A stale or backgrounded snapshot can discard this read before awaiting it.
+    if (full) full.catch(() => {});
+    const conversation = await this.client.read(`/conversations/${id}`);
+    if (!this.valid(epoch) || ticket !== this.snapshotTicket) return;
+    if (background && (!this.visible || this.state.busy || this.state.pendingSend || this.state.pendingAction)) {
+      this.scheduleConversation(id, epoch); return;
+    }
+    const window = await this.readWindow(id, conversation, full);
     if (!this.valid(epoch) || ticket !== this.snapshotTicket) return;
     if (background && (!this.visible || this.state.busy || this.state.pendingSend || this.state.pendingAction)) {
       this.scheduleConversation(id, epoch); return;
@@ -190,13 +253,86 @@ class ChatController {
     const pendingMessage = this.client.pending.get('send:' + id), pendingHandoff = this.client.pending.get('handoff:' + id);
     if (pendingMessage) this.set({ pendingSend: true, pendingText: pendingMessage.body.content.blocks[0].text, draft: pendingMessage.body.content.blocks[0].text });
     if (pendingHandoff) this.set({ pendingAction: 'handoff:' + pendingHandoff.body.action });
-    this.set({ conversation, readOnly: conversation.status !== 'open' || !['ai', 'human', 'handoff_requested'].includes(conversation.mode), messages: messagesForView(messages.items), messageCursor: messages.nextCursor });
+    this.set({ conversation, readOnly: conversation.status !== 'open' || !['ai', 'human', 'handoff_requested'].includes(conversation.mode) });
+    if (window) this.applyWindow(window);
     this.set({ welcomeText: conversation.guidanceOpening || WELCOME, guidanceEnabled: !!conversation.guidanceEnabled, guidance: conversation.guidance || null,
       ...(!sameQuestion ? { selectedOptions: [], selectedOptionMap: {} } : {}) });
     this.applyRun(conversation.mode === 'ai' ? conversation.latestRun : null);
     if (this.visible && conversation.status === 'open' && (['handoff_requested', 'human'].includes(conversation.mode) || !this.state.run || this.state.run.status === 'succeeded')) {
       this.scheduleConversation(id, epoch, conversation.mode === 'ai' ? 7000 : 3000);
     }
+  }
+
+  // Reads the authoritative conversation metadata, then only the messages that
+  // this view does not already render. Returns null when the rendered window is
+  // still current, so an idle poll never rewrites the message list.
+  async readWindow(id, conversation, full) {
+    const latest = conversation.lastSeq === undefined || conversation.lastSeq === null ? '' : String(conversation.lastSeq);
+    this.seqSupported = latest !== '';
+    const synced = this.seqConversationId === id ? this.latestSeq : '';
+    // Withdrawn sources and media never advance a sequence, so the window is
+    // reprojected in full at a bounded interval even while nothing is appended.
+    const stale = Date.now() - this.lastFullSyncAt >= FULL_SYNC_MS;
+    if (latest && synced && latest === synced && !stale) return null;
+    if (!stale && latest && synced && withinBacklog(synced, latest, MAX_BACKLOG)) {
+      const delta = await this.readDelta(id, synced);
+      if (delta) return delta;
+    }
+    const data = await (full || this.client.read(`/conversations/${id}/messages`, { limit: WINDOW }));
+    const items = data.items || [];
+    this.rawMessages = items; this.seqConversationId = id; this.lastFullSyncAt = Date.now();
+    this.latestSeq = data.latestSeq !== undefined
+      ? String(data.latestSeq)
+      : items.reduce((newest, item) => seqOrder(item.seq, newest) > 0 ? String(item.seq) : newest, latest);
+    return { messages: messagesForView(items), messageCursor: data.nextCursor };
+  }
+
+  async readDelta(id, cursor) {
+    let after = cursor, incoming = [], latestSeq = cursor, drained = false;
+    for (let page = 0; page < DELTA_PAGES; page += 1) {
+      const data = await this.client.read(`/conversations/${id}/messages`, { limit: WINDOW, afterSeq: after });
+      // Only the delta contract echoes a usable cursor. A reset or an older
+      // server response falls back to the authoritative full window.
+      if (data.reset === true || data.afterCursor === undefined || data.afterCursor === null) return null;
+      const items = data.items || [];
+      // These fields decide which earlier bubble owns the latest decision card;
+      // reprojecting the whole window is the only stable answer.
+      if (items.some(item => item.planDecision || item.publicConsent)) return null;
+      incoming = incoming.concat(items);
+      after = String(data.afterCursor);
+      if (data.latestSeq !== undefined && seqOrder(data.latestSeq, latestSeq) > 0) latestSeq = String(data.latestSeq);
+      if (!data.hasMore) { drained = true; break; }
+    }
+    // Filtered sequences can advance last_seq without a visible message; keep
+    // the cursor and skip the redraw until something is rendered.
+    this.seqConversationId = id;
+    this.latestSeq = drained && seqOrder(latestSeq, after) > 0 ? latestSeq : after;
+    if (!incoming.length) return null;
+    const raw = mergeMessages(this.rawMessages || [], incoming);
+    this.rawMessages = raw;
+    return { messages: this.windowView(raw), messageCursor: this.state.messageCursor, appended: incoming.length };
+  }
+
+  // A delta that only grew the tail keeps the rendered prefix untouched and
+  // ships as `messages[n]` paths; any other window replaces the array whole.
+  applyWindow(window) {
+    const appended = window.appended || 0;
+    const from = window.messages.length - appended;
+    const pureAppend = appended > 0 && from === this.state.messages.length;
+    Object.assign(this.state, { messages: window.messages, messageCursor: window.messageCursor });
+    this.emit(pureAppend ? { messages: window.messages, messageCursor: window.messageCursor, messagesAppendFrom: from } : { messages: window.messages, messageCursor: window.messageCursor });
+  }
+
+  // Rebuild the rendered list from the merged window while keeping earlier
+  // pages the customer already pulled above it.
+  windowView(raw) {
+    const view = messagesForView(raw);
+    const cutoff = raw.length ? String(raw[0].seq || '0') : '';
+    if (!cutoff) return view;
+    const rendered = new Set(raw.map(item => String(item.id)));
+    return this.state.messages
+      .filter(item => !rendered.has(String(item.id)) && seqOrder(item.seq, cutoff) < 0)
+      .concat(view);
   }
 
   applyRun(run) {
@@ -248,25 +384,41 @@ class ChatController {
   }
 
   async handoff(action = 'request') {
-    if (this.state.busy || this.state.pendingSend || (this.state.pendingAction && this.state.pendingAction !== 'handoff:' + action)) return;
-    const id = this.conversationId || await this.handoffConversation();
-    if (!id) return;
-    const epoch = ++this.epoch;
-    this.unschedule(this.timer);
-    this.set({ busy: true, error: '' });
+    if (this.state.busy || this.state.pendingSend || (this.state.pendingAction && this.state.pendingAction !== 'handoff:' + action)) return false;
+    this.set({ handoffBusy: true });
     try {
-      const body = { action };
-      if (this.state.conversation && this.state.conversation.reviewWorkflow === 'langgraph') {
-        body.expectedVersion = this.state.conversation.version;
-        if (action === 'request') Object.assign(body, { consent: true, mediaConsent: true, contactConsent: false, phone: '' });
-      }
-      await this.client.mutate('handoff:' + id, `/conversations/${id}/handoff`, body);
-      this.setIf(epoch, { pendingAction: '' });
-      await this.snapshot(id, epoch);
-    } catch (error) {
-      this.setIf(epoch, { pendingAction: uncertain(error) ? 'handoff:' + action : '' });
-      this.fail(error, epoch);
-    } finally { this.setIf(epoch, { busy: false }); }
+      const id = this.conversationId || await this.handoffConversation();
+      if (!id) return false;
+      const epoch = ++this.epoch;
+      this.unschedule(this.timer);
+      this.set({ busy: true, error: '' });
+      try {
+        const body = { action };
+        if (this.state.conversation && this.state.conversation.reviewWorkflow === 'langgraph') {
+          body.expectedVersion = this.state.conversation.version;
+          if (action === 'request') Object.assign(body, { consent: true, mediaConsent: true, contactConsent: false, phone: '' });
+        }
+        const receipt = await this.client.mutate('handoff:' + id, `/conversations/${id}/handoff`, body);
+        if (!this.valid(epoch)) return false;
+        this.set({ pendingAction: '' });
+        // The write receipt already carries the committed mode. For a new
+        // reception request, apply it before the message snapshot so the
+        // reception label flips on commit instead of waiting for two more
+        // reads. Cancel/end keep the banner until the snapshot lands, so the
+        // banner removal and the closing system message render together.
+        if (action === 'request' && receipt && receipt.mode && this.state.conversation) {
+          this.set({ conversation: { ...this.state.conversation, mode: receipt.mode,
+            status: receipt.status || this.state.conversation.status,
+            version: typeof receipt.version === 'number' ? receipt.version : this.state.conversation.version } });
+        }
+        await this.snapshot(id, epoch);
+        return this.valid(epoch);
+      } catch (error) {
+        this.setIf(epoch, { pendingAction: uncertain(error) ? 'handoff:' + action : '' });
+        this.fail(error, epoch);
+        return false;
+      } finally { this.setIf(epoch, { busy: false }); }
+    } finally { this.set({ handoffBusy: false }); }
   }
 
   chooseOption(key, text) {
@@ -299,7 +451,12 @@ class ChatController {
     if (!text || text.length > s.maxChars) return;
     const epoch = this.epoch;
     let committed = false;
-    this.set({ busy: true, error: '', pendingText: text });
+    // `sending` keeps the approved conversation view (optimistic message and
+    // run state) in place until the authoritative projection of this send is
+    // applied. `messages` and `pendingText` are both transiently empty between
+    // the accepted write and that read, which must not re-render the welcome
+    // screen the customer already left.
+    this.set({ busy: true, error: '', pendingText: text, sending: true });
     try {
       if (!this.conversationId) {
         const entry = await this.ensureEntry();
@@ -327,7 +484,7 @@ class ChatController {
         this.fail(error, epoch);
         if (!committed && uncertain(error)) this.set({ error: '发送结果尚未确认。点“确认发送结果”会核对同一条消息，不会重复提交。' });
       }
-    } finally { this.setIf(epoch, { busy: false }); }
+    } finally { this.setIf(epoch, { busy: false, sending: false }); }
   }
 
   async selectConversation(id) {
@@ -335,6 +492,7 @@ class ChatController {
     this.unschedule(this.timer);
     const epoch = ++this.epoch;
     this.conversationId = id;
+    this.resetWindow();
     this.set({ loading: true, messages: [], conversation: null, run: null, draft: '', error: '', fatal: false, citation: null, shareReferenceEntry: '' });
     try { await this.snapshot(id, epoch); this.setIf(epoch, { loading: false }); }
     catch (error) { this.fail(error, epoch, true); }
@@ -344,6 +502,7 @@ class ChatController {
     if (this.state.busy || this.state.pendingSend || this.state.pendingAction) return;
     this.unschedule(this.timer); this.epoch += 1; this.conversationId = '';
     this.startedNew = true;
+    this.resetWindow();
     // Preserve the validated enterprise when arriving from an old conversation.
     this.set({ conversation: null, readOnly: false, messages: [], messageCursor: null, draft: '', pendingText: '', loading: false, error: '', fatal: false });
     this.set({ welcomeText: this.entry && this.entry.guidanceOpening || WELCOME, guidanceEnabled: !!(this.entry && this.entry.guidanceEnabled), guidance: this.entry && this.entry.guidance || null });
@@ -455,4 +614,4 @@ class ChatController {
   }
 }
 
-module.exports = { ChatController, initial };
+module.exports = { ChatController, initial, appendPatch };

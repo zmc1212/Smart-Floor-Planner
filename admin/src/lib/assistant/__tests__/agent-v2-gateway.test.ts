@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 // gateway class first would evaluate read-tool-input before business-tools.
 import '../fastgpt/agent-v2/worker';
 import { FastGPTAgentV2 } from '../fastgpt/agent-v2/runtime';
-import { nearbyPublicSitesText } from '../fastgpt/agent-v2/worker';
+import { nearbyPublicSitesReceipt, nearbyPublicSitesText, publicSitesDeliveryText } from '../fastgpt/agent-v2/worker';
 import { fail } from '../contracts';
 
 const bridgeKey = 'k'.repeat(32);
@@ -109,6 +109,27 @@ test('nearby public site text names only the authorized region and never claims 
   const empty = nearbyPublicSitesText({ cityName: '宜昌市', district: '' }, []);
   assert.match(empty, /暂时没有已授权公开的工地/);
   assert.match(empty, /不代表这一片没有在施工的工地/);
+});
+
+test('a located empty nearby result is delivered verbatim and never asks for a city', () => {
+  const receipt = nearbyPublicSitesReceipt({ cityName: '宜昌市', district: '西陵区' }, []);
+  assert.equal(receipt.status, 'empty');
+  assert.match(receipt.text, /宜昌市·西陵区/);
+  assert.match(receipt.text, /暂时没有已授权公开的工地/);
+  assert.doesNotMatch(receipt.text, /需要.*(?:城市|区县)|请.*(?:城市|区县)|补充.*(?:城市|区县)/);
+  const contradictory = '我这边需要先知道您所在的城市或区县，才能为您查找附近公开的工地。';
+  assert.equal(publicSitesDeliveryText(contradictory, receipt), receipt.text,
+    'an empty located result must not be preceded by a request for that location');
+});
+
+test('a ready nearby result keeps its model answer and distance boundary', () => {
+  const receipt = nearbyPublicSitesReceipt({ cityName: '宜昌市', district: '西陵区' },
+    [{ name: '春和苑', stageName: '水电' }]);
+  assert.equal(receipt.status, 'ready');
+  assert.match(receipt.text, /找到 1 个已授权公开的工地/);
+  const modelText = '按你所在的宜昌市西陵区，这次找到 1 个已公开的工地。这里只按城市和区县筛选，没有精确距离。';
+  assert.equal(publicSitesDeliveryText(modelText, receipt), modelText,
+    'only an empty located result is replaced; a ready answer keeps the model wording');
 });
 
 test('a failed tool poisons the run instead of returning partial data', async () => {

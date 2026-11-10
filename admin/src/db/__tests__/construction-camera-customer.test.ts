@@ -36,7 +36,7 @@ class Upstream extends WvpClient {
   async stopSdPlayback(_d: string, _c: string, stream: string) { stops++; streams.delete(stream); }
   async mediaExists(s: { app: string; stream: string }) { return streams.has(s.stream); }
 }
-const upstream = new Upstream(), service = () => new CameraService(owner, upstream);
+const upstream = new Upstream(), service = () => new CameraService(owner, upstream), sdClock = async () => ({ source: new Date(), serialHash: 'b'.repeat(64), identityVersion: 2 });
 async function grant(enabled: boolean, captureEnabled = false, ptzEnabled = false) {
   const current = (await service().list(pid)).customerGrant!;
   return saveCameraCustomerGrant(owner, pid, { userId: identity.userId, expectedVersion: current.version, enabled, captureEnabled, ptzEnabled });
@@ -191,14 +191,14 @@ test('SD revocation preserves another authorized viewer, then stops the final ow
       values(${eid},${pid},${bid},${'b'.repeat(64)},now()-interval '18 minutes',now(),date_trunc('second',now()-interval '18 minutes'),date_trunc('second',now()-interval '30 seconds'),-3000,3000)`);
   });
   const customer = await enter(), day = new Date(Date.now() + 28800000).toISOString().slice(0, 10);
-  const list = await listSdRecordings(customer.session, customer.csrf, day, bid, undefined, upstream, async () => ({ source: new Date(), serialHash: 'b'.repeat(64) }));
+  const list = await listSdRecordings(customer.session, customer.csrf, day, bid, undefined, upstream, sdClock);
   assert.ok(list.items.length); const rid = String(list.items[0].id);
   const entry = await service().entry(pid), staff = await exchangeCameraEntry(entry.url.split('#entry=')[1]);
-  const first = await startSdRecordingView(customer.session, customer.csrf, rid, upstream);
-  await startSdRecordingView(staff.session, staff.csrf, rid, upstream); await grant(false); await reconcileSdPlaybacks(upstream);
+  const first = await startSdRecordingView(customer.session, customer.csrf, rid, upstream, sdClock);
+  await startSdRecordingView(staff.session, staff.csrf, rid, upstream, sdClock); await grant(false); await reconcileSdPlaybacks(upstream);
   await assert.rejects(authorizeCameraMedia(customer.session, first.generation), /unavailable/); assert.equal(streams.size, 1); assert.equal(stops, 0);
   await sessionHeartbeat(staff.session, staff.csrf, true, upstream); assert.equal(streams.size, 0); assert.equal(stops, 1);
-  await grant(true); const only = await enter(); await startSdRecordingView(only.session, only.csrf, rid, upstream);
+  await grant(true); const only = await enter(); await startSdRecordingView(only.session, only.csrf, rid, upstream, sdClock);
   streams.add('foreign-stream'); await grant(false); await reconcileSdPlaybacks(upstream);
   assert.deepEqual([...streams], ['foreign-stream']); assert.equal(stops, 2); streams.clear(); await grant(true);
 });

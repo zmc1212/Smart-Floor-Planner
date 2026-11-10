@@ -250,6 +250,80 @@ test('HTTP no-phone WeChat identity can create/send/poll; unauthorized and forbi
   assert.equal((await assistantHttp(new Request('http://localhost'), ['conversations'])).status, 401);
   await service.run(run.runId, 'cancel', 'http-cancel');
 });
+test('message delta reads only newer messages in ascending order with stable cursors and reset', async () => {
+  const c = await conversation();
+  for (const [requestKey, text] of [['delta-a', '第一问'], ['delta-b', '第二问'], ['delta-c', '第三问']] as const) {
+    const sent = await service.send(c, requestKey, content(text));
+    await service.run(String(sent.runId), 'cancel', 'cancel-' + requestKey);
+  }
+  const detail = await service.detail(c);
+  const all = await service.messages(c);
+  assert.equal(all.items.length, 3);
+  const seqs = all.items.map(item => String(item.seq)).sort((left, right) => Number(left) - Number(right));
+  assert.equal(detail.lastSeq, seqs[2]);
+
+  const delta = await service.messageDelta(c, seqs[0], 20);
+  assert.deepEqual(delta.items.map(item => String(item.seq)), seqs.slice(1));
+  assert.equal(delta.afterCursor, seqs[2]);
+  assert.equal(delta.latestSeq, seqs[2]);
+  assert.equal(delta.hasMore, false);
+  assert.equal(delta.reset, false);
+  assert.equal(delta.nextCursor, null);
+
+  const boundary = await service.messageDelta(c, seqs[2], 20);
+  assert.deepEqual(boundary.items, []);
+  assert.equal(boundary.afterCursor, seqs[2]);
+  assert.equal(boundary.hasMore, false);
+  assert.equal(boundary.reset, false);
+
+  const paged = await service.messageDelta(c, seqs[0], 1);
+  assert.deepEqual(paged.items.map(item => String(item.seq)), [seqs[1]]);
+  assert.equal(paged.hasMore, true);
+  assert.equal(paged.afterCursor, seqs[1]);
+
+  const ahead = await service.messageDelta(c, '9223372036854775807', 20);
+  assert.deepEqual(ahead.items, []);
+  assert.equal(ahead.reset, true);
+  assert.equal(ahead.afterCursor, '9223372036854775807');
+  await assert.rejects(new ConversationService(b).messageDelta(c, '0', 20), /assistant_resource_not_found/);
+});
+test('HTTP message delta rejects conflicting or invalid cursors and keeps the full read contract', async () => {
+  const token = await signMiniProgramToken({ sub: userIds[0], id: userIds[0], contextVersion: 1, mode: 'customer', role: 'user', source: 'wechat' });
+  const entry = await entryContext({ userId: userIds[0], contextVersion: 1, enterpriseId: a.enterpriseId }, {});
+  const call = (method: string, path: string[], body?: unknown, requestKey?: string, query = '') => assistantHttp(new Request('http://localhost/api/miniprogram/assistant/' + path.join('/') + query, {
+    method, headers: { Authorization: 'Bearer ' + token, ...(requestKey ? { 'Idempotency-Key': requestKey } : {}) },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  }), path);
+  const created = await call('POST', ['conversations'], { entryToken: entry.entryToken }, 'delta-http-create');
+  assert.equal(created.status, 200);
+  const c = (await created.json()).data.id;
+  const sent = await call('POST', ['conversations', c, 'messages'], { clientMessageId: 'delta-http-send', content: content('增量接口问题') }, 'delta-http-send');
+  assert.equal(sent.status, 202);
+  await service.run((await sent.json()).data.runId, 'cancel', 'delta-http-cancel');
+
+  const full = await call('GET', ['conversations', c, 'messages']);
+  const fullBody = await full.json();
+  assert.equal(full.status, 200);
+  assert.equal(fullBody.data.items.length, 1);
+  assert.equal(fullBody.data.latestSeq, String(fullBody.data.items[0].seq));
+  assert.equal(fullBody.data.afterCursor, null);
+  assert.equal(fullBody.data.hasMore, false);
+  assert.equal(fullBody.data.reset, false);
+  const seq = String(fullBody.data.items[0].seq);
+
+  assert.equal((await call('GET', ['conversations', c, 'messages'], undefined, undefined, '?afterSeq=' + seq + '&beforeSeq=' + seq)).status, 422);
+  assert.equal((await call('GET', ['conversations', c, 'messages'], undefined, undefined, '?afterSeq=0')).status, 422);
+  assert.equal((await call('GET', ['conversations', c, 'messages'], undefined, undefined, '?afterSeq=abc')).status, 422);
+  assert.equal((await call('GET', ['conversations', c, 'messages'], undefined, undefined, '?afterSeq=' + seq + '&limit=101')).status, 422);
+
+  const empty = await (await call('GET', ['conversations', c, 'messages'], undefined, undefined, '?afterSeq=' + seq)).json();
+  assert.deepEqual(empty.data.items, []);
+  assert.equal(empty.data.afterCursor, seq);
+  assert.equal(empty.data.latestSeq, seq);
+  assert.equal(empty.data.hasMore, false);
+  assert.equal(empty.data.reset, false);
+  assert.equal(empty.data.nextCursor, null);
+});
 test('E06 summary adapter reuses run and final appender without a trigger user message', async () => {
   const c = await conversation();
   const actor = { ...a, capabilities: [...a.capabilities, 'assistant.run.internal'] };

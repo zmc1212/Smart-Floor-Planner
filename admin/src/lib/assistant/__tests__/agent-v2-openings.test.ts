@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 // Same load order as production; see agent-v2-gateway.test.ts.
 import '../fastgpt/agent-v2/worker';
 import { FastGPTAgentV2 } from '../fastgpt/agent-v2/runtime';
@@ -17,6 +19,12 @@ test('a registered scene defaults to the strict opening constraints', () => {
   const scene = parsed.scenes['site.public'];
   assert.equal(scene.appId, 'c'.repeat(24));
   assert.deepEqual(scene.constraints, constraints);
+});
+
+test('the shipped registry keeps the public site opening registered for enterprise 1454', () => {
+  const shipped = parseOpenings(JSON.parse(readFileSync(join(process.cwd(), 'deployment/fastgpt/openings.1454.json'), 'utf8')));
+  assert.equal(shipped.enterpriseId, '1454');
+  assert.equal(shipped.scenes['site.public'].appId, '6af27edb3a245855a926e011');
 });
 
 test('staff audiences and model-invented fields are rejected', () => {

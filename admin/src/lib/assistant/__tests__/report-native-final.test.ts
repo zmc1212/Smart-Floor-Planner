@@ -43,9 +43,9 @@ test('new private selected report runs bind native final without changing enterp
   assert.equal(config.structuredFinal, undefined); assert.equal(config.imageInput, true); assert.equal(config.imageContext, undefined);
 });
 
-test('report schedule reserves one final repair inside four calls, deducts auxiliary calls and refuses changed checkpoints/budgets', () => {
+test('report schedule reserves one final repair and the semantic review inside five calls, deducts auxiliary calls and refuses changed checkpoints/budgets', () => {
   const budget = reportNativeRuntimeBudget({ summaries: 0, perceptions: 0 });
-  assert.equal(budget.primaryModelTurns, 3); assert.equal(budget.reservedValidationRepairs, 1); assert.equal(budget.maxScheduledCalls, 4);
+  assert.equal(budget.primaryModelTurns, 3); assert.equal(budget.reservedValidationRepairs, 1); assert.equal(budget.maxScheduledCalls, 5);
   assert.equal(reportNativeRuntimeBudget({ summaries: 1, perceptions: 1 }).primaryModelTurns, 1);
   assert.throws(() => reportNativeRuntimeBudget({ summaries: 2, perceptions: 0 }), /quota/);
   assert.throws(() => reportNativeRuntimeBudget({ summaries: 0, perceptions: 0,

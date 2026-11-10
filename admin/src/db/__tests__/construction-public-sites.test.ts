@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { before, after, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { SignJWT } from 'jose';
 import { sql } from 'drizzle-orm';
 import sharp from 'sharp';
@@ -21,8 +25,10 @@ import { deleteConstructionData } from '@/db/repositories/construction-cleanup';
 import { deleteAssistantData } from '@/db/repositories/assistant-cleanup';
 import { POST as adminPost, GET as adminGet } from '@/app/api/construction/[[...path]]/route';
 import type { ActorContext } from '@/lib/assistant/contracts';
-import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
+import { claimJob, failRun } from '@/lib/assistant/infrastructure/job-queue';
+import { processAnswer } from '@/lib/assistant/infrastructure/answer-worker';
 import { processAgentAnswer } from '@/lib/assistant/agent/worker';
+import { closeFastGPTWorkflows } from '@/lib/assistant/fastgpt/runtime';
 import { entryContext } from '@/lib/assistant/application/auth';
 import { getPlatformLlmRuntimeConfig, savePlatformLlmConfig } from '@/lib/platform-llm-config';
 import { LocationService } from '@/lib/assistant/location/service';
@@ -259,6 +265,83 @@ test('a visited site opens one real intro run and a public credit must be an eli
   assert.equal(runs[0].author_kind, 'system');
   const fabricated = await withTenantTransaction(eids[0], tx => one(tx, sql`select count(*) n from app.assistant_messages where enterprise_id=${eids[0]} and conversation_id=${introCid} and author_kind='user'`));
   assert.equal(Number(fabricated!.n), 0);
+});
+test('a registered opening scene routes the intro run through Agent V2 and delivers the opening message', async () => {
+  const projectId = String((await owner.execute('create', { leadId: lid, name: '端到端开场 · 泥木', managerId: aids[0], rooms: [] }, randomUUID())).id);
+  const recordId = String((await shared.send(projectId, { text: '端到端开场原文：泥木阶段柜体已放样，施工进展正常。', mediaIds: [] }, randomUUID())).recordId);
+  const edited = await shared.mutate(projectId, recordId, 'edit', { expectedVersion: 1, data: { title: '端到端开场', roomId: null, completed: '柜体已放样', pending: '', coordination: '', note: '' } }, randomUUID());
+  await shared.mutate(projectId, recordId, 'publish', { expectedVersion: edited.version, audience: 'customer' }, randomUUID());
+  const view = await materials.read(projectId), source = (view.sourceItems as Row[]).find(s => s.id === recordId)!;
+  const base = { name: '端到端开场 · 泥木', cityCode: '420500', district: '伍家岗区',
+    sources: [{ kind: source.kind, id: source.id, sourceHash: source.sourceHash, text: source.text }], photos: [] };
+  let saved: Row = await materials.save(projectId, { expectedRevision: 0, material: base }, randomUUID());
+  const siteId = String(saved.id), versionId = String(saved.versionId);
+  saved = await materials.mutate(projectId, 'submit', { versionId, expectedRevision: saved.revision }, randomUUID());
+  saved = await decisions.decide(siteId, 'preview', { versionId, expectedRevision: saved.revision }, randomUUID());
+  saved = await decisions.decide(siteId, 'approve', { versionId, expectedRevision: saved.revision }, randomUUID());
+  await materials.mutate(projectId, 'publish', { versionId, expectedRevision: saved.revision }, randomUUID());
+
+  // Both registry files are real inputs of the production path: the opening
+  // scene decides Agent V2 routing and the workflows file binds the runtime.
+  const appId = 'd'.repeat(24), bridgeKey = 'b'.repeat(32), dir = mkdtempSync(join(tmpdir(), 'xiaok-opening-'));
+  const openingsFile = join(dir, 'openings.json'), workflowsFile = join(dir, 'workflows.json');
+  writeFileSync(openingsFile, JSON.stringify({ protocol: 'xiaok-openings-v1', enterpriseId: eids[0], scenes: {
+    'site.public': { appId, audience: 'customer', input: ['name', 'cityName', 'district', 'stageName', 'excerpts', 'photoCount'],
+      constraints: { maxChars: 140 } } } }));
+  writeFileSync(workflowsFile, JSON.stringify({ baseUrl: 'http://127.0.0.1:18300', apiKey: 'test-key',
+    knowledgeAppId: 'a'.repeat(24), stageAppId: 'a'.repeat(24),
+    agentV2: { protocol: 'fastgpt-agent-v2-v1', enterpriseId: eids[0], appId, model: 'opening-model', bridgeKey } }));
+  const previous = { openings: process.env.XIAOK_OPENINGS_FILE, workflows: process.env.XIAOK_FASTGPT_WORKFLOWS_FILE };
+  // A runtime cached from the developer's own workflow file must not survive
+  // the switch to this test's file; the bridge caches by path and hash.
+  await closeFastGPTWorkflows();
+  process.env.XIAOK_OPENINGS_FILE = openingsFile; process.env.XIAOK_FASTGPT_WORKFLOWS_FILE = workflowsFile;
+  const originalFetch = globalThis.fetch;
+  try {
+    const introCid = String((await new ConversationService(visitor).create(randomUUID())).id);
+    const first = await new PublicCustomerService(visitor, introCid).context(siteId, { versionId }, randomUUID());
+    assert.equal(first.intro, 'queued');
+    const run = (await withTenantTransaction(eids[0], tx => one(tx, sql`select id,policy_snapshot from app.assistant_runs
+      where enterprise_id=${eids[0]} and conversation_id=${introCid} and purpose='public.site.intro'`)))!;
+    assert.equal(((run.policy_snapshot as Row).agentRuntime as Row).protocol, 'fastgpt-agent-v2-v1');
+
+    // The Agent V2 bridge always listens on 18310; a running dev server owns
+    // that port, so the delivery half only runs when the port is free.
+    const bridgeFree = await new Promise<boolean>(resolve => {
+      const probe = createServer();
+      probe.once('error', () => resolve(false));
+      probe.once('listening', () => probe.close(() => resolve(true)));
+      probe.listen(18310, '127.0.0.1');
+    });
+    if (!bridgeFree) {
+      console.warn('skipped intro delivery: 127.0.0.1:18310 is held by another process (dev server)');
+      return;
+    }
+
+    // Older queued intro runs (other conversations) are retired, never mixed
+    // into the opening this test is asserting.
+    let lease = await claimJob();
+    while (lease && lease.runId !== String(run.id)) { await failRun(lease, 'context_changed', true); lease = await claimJob(); }
+    assert.equal(lease?.runId, String(run.id));
+    const opening = '这是城西一套正在做泥木阶段的公开工地，能看到当前阶段和已公开的服务记录。想了解这个阶段的施工，或想认识设计师，都可以直接问我。';
+    let request: Row | undefined;
+    globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
+      request = JSON.parse(String(init?.body)) as Row;
+      return Response.json({ choices: [{ message: { content: opening } }],
+        responseData: [{ moduleType: 'agent', inputTokens: 5, outputTokens: 6 }] });
+    }) as typeof fetch;
+    await processAnswer(lease!);
+    const finished = await new ConversationService(visitor).run(String(run.id));
+    assert.equal(finished.status, 'succeeded', JSON.stringify(finished));
+    assert.equal(request?.appId, appId);
+    const messages = (await new ConversationService(visitor).messages(introCid)).items as Row[];
+    assert.ok(messages.some(m => m.authorKind === 'assistant' && JSON.stringify(m).includes(opening)));
+  } finally {
+    globalThis.fetch = originalFetch;
+    await closeFastGPTWorkflows();
+    if (previous.openings === undefined) delete process.env.XIAOK_OPENINGS_FILE; else process.env.XIAOK_OPENINGS_FILE = previous.openings;
+    if (previous.workflows === undefined) delete process.env.XIAOK_FASTGPT_WORKFLOWS_FILE; else process.env.XIAOK_FASTGPT_WORKFLOWS_FILE = previous.workflows;
+  }
 });
 
 test('new tables enforce RLS, stale identities cannot decide, and tenant cleanup removes the whole public projection', async () => {

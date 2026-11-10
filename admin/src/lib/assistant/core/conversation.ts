@@ -72,7 +72,7 @@ export function conversationDto(c: Row, requirementProposalPending = false) {
   const guidance = conversationGuidance(c.entry_snapshot);
   const entry = c.entry_snapshot as Row;
 
-  return { id: String(c.id), purpose: c.purpose, status: c.status, mode: c.mode, title: c.title, version: c.version, contextRevision: c.context_revision, createdAt: c.created_at,
+  return { id: String(c.id), purpose: c.purpose, status: c.status, mode: c.mode, title: c.title, version: c.version, contextRevision: c.context_revision, lastSeq: String(c.last_seq), createdAt: c.created_at,
     ...(entry?.requirementReviewMode===true && entry?.requirementWorkflow==='langgraph' ? {reviewWorkflow:'langgraph'} : {}),
     requirementProposalPending,
     guidanceEnabled: !!guidance, guidanceOpening: guidance ? guidanceOpening(guidance) : null,
@@ -348,13 +348,23 @@ export class ConversationService {
         ...(preview ? { previewScope: { audience: preview.audience, draftVersionIds: preview.drafts.map(draft => draft.id) } } : {}) };
     });
   }
-  messages(conversationId: string, beforeSeq = '9223372036854775807', limit = 20) {
+  private readMessages(conversationId: string, cursor: { beforeSeq?: string; afterSeq?: string; limit: number }) {
     return this.scoped(async repo => {
       const c=await repo.conversation(conversationId);
       await syncConstructionReminders(repo.tx, this.actor, c);
-      const result = await rows(repo.tx, sql`select id,seq,author_kind,content,answer_kind,created_at,purpose from app.assistant_messages
-        where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and seq<${beforeSeq}
-        and ${c.purpose === 'construction_followup' ? sql`purpose is distinct from 'construction.report.facts'` : sql`true`} order by seq desc limit ${limit}`);
+      const latest = String((await one(repo.tx, sql`select last_seq from app.assistant_conversations
+        where enterprise_id=${this.actor.enterpriseId} and id=${conversationId}`))!.last_seq);
+      const after = cursor.afterSeq;
+      if (after !== undefined && BigInt(after) > BigInt(latest))
+        return { items: [], nextCursor: null, afterCursor: after, latestSeq: latest, hasMore: false, reset: true };
+      const purpose = c.purpose === 'construction_followup' ? sql`purpose is distinct from 'construction.report.facts'` : sql`true`;
+      const result = after !== undefined
+        ? await rows(repo.tx, sql`select id,seq,author_kind,content,answer_kind,created_at,purpose from app.assistant_messages
+          where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and seq>${after}
+          and ${purpose} order by seq asc limit ${cursor.limit}`)
+        : await rows(repo.tx, sql`select id,seq,author_kind,content,answer_kind,created_at,purpose from app.assistant_messages
+          where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and seq<${cursor.beforeSeq}
+          and ${purpose} order by seq desc limit ${cursor.limit}`);
       const discovery = this.actor.principal.kind === 'user' && c.purpose === 'customer_consultation'
         ? await discoveryReplies(repo.tx, this.actor.enterpriseId, conversationId,
           result.filter(message => message.author_kind === 'assistant').map(message => String(message.id))) : null;
@@ -364,9 +374,18 @@ export class ConversationService {
         const intent = projected.available && discovery?.get(projected.id)?.intent;
         items.push(intent && (intent.sites || intent.works) ? { ...projected, discovery: intent } : projected);
       }
-      return { items,
-        nextCursor: result.length === limit ? String(result.at(-1)!.seq) : null };
+      const newest = after !== undefined ? String(result.at(-1)?.seq ?? after) : String(result[0]?.seq ?? latest);
+      const latestSeq = String(BigInt(latest) > BigInt(newest) ? BigInt(latest) : BigInt(newest));
+      if (after !== undefined) return { items, nextCursor: null, afterCursor: newest, latestSeq, hasMore: result.length === cursor.limit, reset: false };
+      return { items, nextCursor: result.length === cursor.limit ? String(result.at(-1)!.seq) : null,
+        afterCursor: null, latestSeq, hasMore: false, reset: false };
     });
+  }
+  messages(conversationId: string, beforeSeq = '9223372036854775807', limit = 20) {
+    return this.readMessages(conversationId, { beforeSeq, limit });
+  }
+  messageDelta(conversationId: string, afterSeq: string, limit = 20) {
+    return this.readMessages(conversationId, { afterSeq, limit });
   }
   suggestions(conversationId: string) {
     return this.scoped(async repo => {

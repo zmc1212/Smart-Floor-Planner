@@ -17,6 +17,14 @@ const answer = '师傅会先排版，再铺贴。[' + source.nativeId + '](CITE)
 const request = (path: string, key: string, body: unknown) => new Request('http://fixture' + path,
   { method: 'POST', headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
+test('stray malformed CITE tokens are removed instead of leaking into prose', () => {
+  const answer = '限值相当于E0级[A](CITE)(B)(CITE)。';
+  const parts = ragAnswerParts(answer, [{ nativeId: 'A' }, { nativeId: 'B' }] as any);
+  assert.equal(parts.filter(p => 'text' in p).map(p => 'text' in p && p.text).join(''), '限值相当于E0级。');
+  assert.deepEqual(parts.filter(p => 'source' in p).map(p => 'source' in p && p.source.nativeId), ['A']);
+  assert.equal(parts.filter(p => 'text' in p).some(p => 'text' in p && p.text.includes('(CITE)')), false);
+});
+
 test('only native selected CITE IDs are mapped, prose is unchanged and unused candidates are not citations', () => {
   const parts = ragAnswerParts(answer, [source, other]);
   assert.deepEqual(parts.filter(p => 'source' in p).map(p => 'source' in p && p.source.nativeId), [source.nativeId]);

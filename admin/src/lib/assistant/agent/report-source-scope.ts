@@ -63,6 +63,7 @@ export function scopedReportSynthesisSources(resultKey: string, snapshot: Busine
     reportScope: { ...common, kind, ...item, room: room ? { status: 'recorded', name: room } : { status: 'unspecified' } },
   });
   const roomText = (room: string) => room ? `原记录明确房间：${room}。` : '原记录未注明房间，不能据此确定对应哪个房间。';
+  const latestStage = project.stageEvents?.at(-1);
   const sources = [source('metadata', '原报告周期与事实截止',
     `报告所选项目：${project.name}。报告周期：${reportLocalTime(selection.periodStart)}至${reportLocalTime(selection.periodEnd)}；事实截止：${reportLocalTime(selection.cutoffAt)}。\n`
     + '这是原报告的统计范围，不是当前施工状态、完成期限或安装排期。截止后变化须另查当前原服务。用户后续补充是用户原话，不是团队核对、工程决定或原报告更改。'
@@ -70,7 +71,13 @@ export function scopedReportSynthesisSources(resultKey: string, snapshot: Busine
     + (project.recordsTruncated || project.issuesTruncated || project.arrangementsTruncated || project.publishedRecordItemsTruncated
       ? '\n本次原报告的部分记录有截断，未列出不表示现实不存在。' : ''), 'metadata'),
   source('stage', '原报告保存时的团队阶段标记',
-    `报告保存时团队标记阶段：${project.stageKey || '尚未标记'}。这不是当前施工状态或验收结论。`, 'stage')];
+    `报告保存时团队标记阶段：${project.stageName || project.stageKey || '尚未标记'}`
+    + (latestStage ? `（${reportLocalTime(latestStage.at)} 更新）` : '') + '。这不是当前施工状态或验收结论。', 'stage')];
+  for (const [index, event] of (project.stageEvents || []).entries()) sources.push(source(`stage:${event.id}:${event.revision}`, '报告周期内的团队阶段标记',
+    '报告周期内团队标记阶段：' + (project.stageEvents || []).slice(0, index + 1)
+      .map(step => `${reportLocalTime(step.at)}，${step.name || step.stageKey}`).join('；')
+    + '。这是报告周期内的阶段记录，不是当前施工状态、完成期限或验收结论。',
+    'stage', '', { itemId: event.id, itemVersion: event.revision }));
   for (const record of project.records) sources.push(source(`record:${record.id}:${record.version}`, '报告中的已发布现场原记录',
     `团队核对发布的原记录${record.id}（版本${record.version}，${record.publishedAt}）：\n${roomText(record.room)}\n`
     + siteRecordText(record.data as SiteDraft, record.room), 'record', record.room,

@@ -11,6 +11,17 @@ export function groundedNumberTokens(text: string): string[] {
     /^[1-9]\d{0,2}(?:,\d{3})+(?:\.\d+)?$/.test(token)
       ? [token.replaceAll(',', '')] : token.match(/\d+(?:\.\d+)?/g) || []);
 }
+
+/** A calendar day written "9日" and stored "09" is one integer, not an
+ * invented quantity: natural Chinese dates drop the leading zero. Only plain
+ * integers are compared by value; every decimal keeps its printed precision. */
+export function printedNumberSupported(token: string, supported: Set<string>): boolean {
+  if (supported.has(token)) return true;
+  if (!/^\d+$/.test(token)) return false;
+  const value = BigInt(token);
+  for (const candidate of supported) if (/^\d+$/.test(candidate) && BigInt(candidate) === value) return true;
+  return false;
+}
 // Ambiguous "1. ℃"/"1. 米" is kept as a numerical claim. Markup cannot
 // turn a quantity into an ordinal. Quantities in item bodies remain untouched.
 const startsWithUnit = /^(?:℃|°[CF]?|[%‰㎡㎥²³]|(?:mm|cm|km|kg|ml|mpa|kpa|kw|m|h|s|l|v|w)(?:\b|$)|毫米|厘米|千米|平方米|立方米|千克|毫升|兆帕|千瓦|小时|分钟|秒|天|周|个月|年|度|元|万元|遍|次|米|吨|克|升)/iu;

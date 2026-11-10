@@ -20,6 +20,26 @@ export const reportFollowupTool: ModelTool = {
 export type ReportBusinessReference = { selection: ReportReference } & ({ userId: string } | { principal: ActorContext['principal'] });
 export const reportContextStep = 740;
 
+/** A frozen report can answer a site question only when it actually retained
+ * customer-visible site facts. A stage label alone is not progress. */
+export function reportSiteAnswerable(project: ReportProject | undefined) {
+  return !!project && Boolean(project.records?.length || project.stageEvents?.length
+    || project.publishedRecordItems?.length || project.issues?.length || project.arrangements?.length);
+}
+
+export function reportSnapshotSiteAnswerable(snapshot: BusinessSnapshot | null | undefined) {
+  if (!snapshot?.reportReference) return false;
+  const projects = snapshot.data as ReportProject[] | undefined;
+  return !!Array.isArray(projects) && projects.length === 1 && reportSiteAnswerable(projects[0]);
+}
+
+/** Labels only; report facts keep their original English stage keys. */
+async function reportStageNames(tx: PostgresTransaction, enterpriseId: string) {
+  const row = await one(tx, sql`select stages from app.construction_stage_settings where enterprise_id=${enterpriseId}`);
+  const stages = Array.isArray(row?.stages) ? row!.stages as Row[] : [];
+  return new Map(stages.map(stage => [String(stage.key), String(stage.name)]));
+}
+
 /** Applies to the existing conversation history query as alias m. The client
  * can still read older turns through its authorized message history. */
 export function reportSelectionHistory(version: number | undefined) {
@@ -34,15 +54,15 @@ export function reportFactText(selection: ReportReference, project: ReportProjec
   const stages = scheduledCoverage && selection.kind === 'weekly'
     ? project.stageEvents.filter(event => Date.parse(event.at) >= Date.parse(selection.periodStart) && Date.parse(event.at) < Date.parse(selection.cutoffAt))
       .filter((event, index, events) => event.stageKey !== events[index - 1]?.stageKey)
-    : [];
+    : selection.kind === 'daily' ? project.stageEvents || [] : [];
   const limits = scheduledCoverage ? [
     project.recordsTruncated && '施工记录', project.stageEventsTruncated && '阶段记录',
     project.publishedRecordItemsTruncated && '已发布待核对项', project.issuesTruncated && '事项',
     project.arrangementsTruncated && '已确认安排',
   ].filter(Boolean) : [];
   return `报告所选项目：${project.name}。报告周期：${reportLocalTime(selection.periodStart)}至${reportLocalTime(selection.periodEnd)}；事实截止：${reportLocalTime(selection.cutoffAt)}。\n`
-    + `报告保存时团队标记阶段：${project.stageKey || '尚未标记'}。这不是当前施工状态或验收结论。\n`
-    + (stages.length ? stages.map(event => `报告周期内团队标记阶段：${reportLocalTime(event.at)}，${event.stageKey}。\n`).join('') : '')
+    + `报告保存时团队标记阶段：${project.stageName || project.stageKey || '尚未标记'}。这不是当前施工状态或验收结论。\n`
+    + (stages.length ? stages.map(event => `报告周期内团队标记阶段：${reportLocalTime(event.at)}，${event.name || event.stageKey}。\n`).join('') : '')
     + project.records.map(r => `团队核对发布的原记录${r.id}（版本${r.version}，${r.publishedAt}）：\n${siteRecordText(r.data as SiteDraft, r.room)}`).join('\n')
     + (!project.records.length ? '\n本期无可见的已发布记录，未记录不等于未施工。' : '')
     + (project.publishedRecordItems?.length ? '\n原记录中的待核对项：\n' + project.publishedRecordItems.map(r => [r.pending, r.coordination].filter(Boolean).join('\n')).join('\n') : '')
@@ -71,14 +91,18 @@ export async function boundReportContext(tx: PostgresTransaction, actor: ActorCo
   const grounding = boundReportAnswerGrounding(policy.reportAnswerGrounding, policy.reportNativeFinal === reportNativeFinalProtocol);
   const sourceProjection = boundReportSourceProjection(policy.reportSourceProjection, grounding);
   const questionPlanning = boundReportQuestionPlanning(policy.reportQuestionPlanning, grounding && sourceProjection);
+  const stageNames = await reportStageNames(tx, actor.enterpriseId);
+  const displayedProject: ReportProject = { ...resolved.project,
+    stageName: resolved.project.stageKey ? stageNames.get(resolved.project.stageKey) ?? null : null,
+    stageEvents: (resolved.project.stageEvents || []).map(event => ({ ...event, name: stageNames.get(event.stageKey) ?? null })) };
   const snapshot: BusinessSnapshot = { query: { domain: 'construction', leadId: resolved.leadId },
     ...(actor.principal.kind === 'user' ? { customerId: actor.principal.userId } : {}),
     leadIds: [resolved.leadId], version: resolved.selection.factsHash, queriedAt: resolved.selection.cutoffAt,
     reportReference: { selection: resolved.selection, principal: actor.principal },
     ...(grounding ? { reportAnswerGrounding: reportAnswerGroundingProtocol } : {}),
     ...(sourceProjection ? { reportSourceProjection: reportSourceProjectionProtocol } : {}),
-    data: [{ ...resolved.project, projectId: resolved.project.id, leadId: resolved.leadId }],
-    displayText: reportFactText(resolved.selection, resolved.project) };
+    data: [{ ...displayedProject, projectId: displayedProject.id, leadId: resolved.leadId }],
+    displayText: reportFactText(resolved.selection, displayedProject) };
   const saved = previous?.private_checkpoint as { resultKey: string; snapshot: BusinessSnapshot } | undefined;
   if (saved && fingerprint(saved) !== fingerprint({ resultKey, snapshot })) fail('context_changed');
   if (!saved) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint,input_summary)

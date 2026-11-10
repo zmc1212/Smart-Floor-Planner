@@ -1,0 +1,13 @@
+{
+  "release": "sfp-wvp-20261105-001",
+  "platform": "linux/amd64",
+  "wvpUser": {"uid": 10001, "gid": 10001},
+  "scope": "Fresh standalone WVP trial; no Smart Floor Planner application or existing business data",
+  "images": {
+    "wvp": "sha256:6cc61556ab529dae30c1ca4cdbaf839bfcb455e19a136a6efb382459e0e8ebc7",
+    "zlm": "sha256:780be13e87ab7aff8aee80491677a3d309cda339d1e2263f584fc1df9d95e84e",
+    "mysql": "sha256:3c9d9bb546ac621d649058907d46f07c5377d2d4c5053eb10ed2083345c37dd5",
+    "redis": "sha256:f84b0c4678011602b9b98c227a4dcd5468bf8b088b02fdd4165cb7758bad8058",
+    "storage": "sha256:a2ef621798e628d774e83363328386b525bf469291acec8b9683d34e3bfaa1d7"
+  }
+}

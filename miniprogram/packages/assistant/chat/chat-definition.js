@@ -1,4 +1,4 @@
-const { ChatController, initial } = require('../lib/chat');
+const { ChatController, initial, appendPatch } = require('../lib/chat');
 const chatResume = require('../lib/chat-resume');
 const { goToLogin } = require('../../../utils/session');
 const { MediaController } = require('../lib/media');
@@ -78,7 +78,7 @@ module.exports = () => ({
 				}
 				if (patch.fatal || patch.needsLogin) this.speechController.hide();
 				const previous = this.data.messages;
-				this.setData(patch, () => {
+				this.setData(appendPatch(patch, previous.length), () => {
 					if (patch.fatal || patch.needsLogin) {
 						if (this.liveConsent) this.liveConsent.clear();
 						if (this.floorplans) this.floorplans.clear();
@@ -106,7 +106,7 @@ module.exports = () => ({
 					if (patch.conversation?.id && this.floorplans && this._shown && this.floorplans.id !== String(patch.conversation.id)) this.floorplans.show(String(patch.conversation.id));
 					if (patch.conversation !== undefined && !this.data.followupActive) this.syncReportQuestion();
 					const next = patch.messages;
-					if (next && next.length && (!previous.length || next[next.length - 1].id !== previous[previous.length - 1].id)) {
+					if (next && next.length && (!previous.length || next[next.length - 1].id !== previous[previous.length - 1].id) && !this._holdAutoScroll) {
 						this.scrollBottom();
 					}
 				});
@@ -331,6 +331,27 @@ module.exports = () => ({
 	scrollBottom() {
 		this.setData({ scrollTarget: '' }, () => this.setData({ scrollTarget: 'conversation-end' }));
 	},
+	scrollBottomSettled(attempt = 0) {
+		if (!this._alive || !this._shown) { this._holdAutoScroll = false; return; }
+		// Wait for the closing system message to finish layout before the single
+		// jump; scrolling in the message-update callback stops at the old height.
+		setTimeout(() => {
+			if (!this._alive || !this._shown) { this._holdAutoScroll = false; return; }
+			this.scrollBottom();
+			if (attempt >= 2) { this._holdAutoScroll = false; return; }
+			setTimeout(() => {
+				if (!this._alive || !this._shown) { this._holdAutoScroll = false; return; }
+				const query = wx.createSelectorQuery();
+				query.select('.conversation-scroll').boundingClientRect();
+				query.select('#conversation-end').boundingClientRect();
+				query.exec(([view, end]) => {
+					if (!this._alive || !this._shown) { this._holdAutoScroll = false; return; }
+					if (!view || !end || end.top > view.bottom + 2) this.scrollBottomSettled(attempt + 1);
+					else this._holdAutoScroll = false;
+				});
+			}, 150);
+		}, 100);
+	},
 	openSheet(sheet) {
 		wx.hideKeyboard(); clearTimeout(this._sheetTimer);
 		this.setData({ sheet, sheetOpen: false, keyboardHeight: 0, inputFocused: false }, () => {
@@ -466,7 +487,13 @@ module.exports = () => ({
 		wx.navigateTo({ url: '/packages/assistant/requirements/requirements?conversationId=' + encodeURIComponent(this.data.conversation.id) });
 	},
 	async openHandoff() {
-		if (this.data.conversation && ['human', 'handoff_requested'].includes(this.data.conversation.mode)) return;
+		const conversation = this.data.conversation;
+		if (conversation && ['human', 'handoff_requested'].includes(conversation.mode)) {
+			this.setData({ scrollTarget: '' }, () => {
+				if (this._alive && this._shown) this.setData({ scrollTarget: 'handoff-state' });
+			});
+			return;
+		}
 		return this.controller.handoff();
 	},
 	async contactKeeper(event) {
@@ -480,7 +507,16 @@ module.exports = () => ({
 	endHandoff() {
 		const waiting = this.data.conversation?.mode === 'handoff_requested';
 		wx.showModal({ title: waiting ? '取消等待？' : '结束接续？', content: '结束后设计师将无法继续查看本次咨询，小K恢复回复。',
-			success: result => { if (result.confirm && this._alive) this.controller.handoff(waiting ? 'cancel' : 'end'); } });
+			success: async result => {
+				if (!result.confirm || !this._alive) return;
+				// Hold the message-driven auto scroll: it fires before the closing
+				// system message has its final height and would stop halfway.
+				this._holdAutoScroll = true;
+				await this.controller.handoff(waiting ? 'cancel' : 'end');
+				if (!this._alive || !this._shown) { this._holdAutoScroll = false; return; }
+				if (this.data.conversation?.mode === 'ai') this.scrollBottomSettled();
+				else this._holdAutoScroll = false;
+			} });
 	},
 	async voiceInput() {
 		if (this.data.fatal || this.data.readOnly || this.data.busy || this.data.pendingSend || this.data.pendingAction || this.data.generating) return;

@@ -46,7 +46,7 @@ export function reportQuestionPlanningTool(base: ModelTool, enabled: boolean): M
   if (base.name !== 'query_followups') fail('invalid_agent_tools', 500);
   return { ...base, parameters: {
     type: 'object', properties: { questions: { ...structuredClone(sourceQuestionPlanSchema),
-      description: '按顺序列出本轮真正要回答的各个独立问项，分别保留原因、核对步骤等并列追问。将最新更正、对象和条件写入它们所修正的问项；单纯的澄清陈述无需单列。用户口述仍是用户原话。此计划固定本轮逐Q作答范围，不授予权限或确认事实。',
+      description: '按顺序列出本轮真正要回答的各个独立问项，分别保留原因、核对步骤等并列追问。每个问项必须落在当前原话的同一句内，不能把两个句子合成一个问项；必要时可在句内再细分。将最新更正、对象和条件写入它们所修正的问项；单纯的澄清陈述无需单列。用户口述仍是用户原话。此计划固定本轮逐Q作答范围，不授予权限或确认事实。',
     } }, required: ['questions'], additionalProperties: false,
   } };
 }
@@ -61,10 +61,35 @@ function assertScope(scope: ReportQuestionPlanScope) {
 /** Called inside the authenticated read's existing transaction. The service
  * supplies every identity/hash; the model supplies questions only. This helper
  * neither resolves permission nor turns planned text into project evidence. */
+/** A plan may split one sentence further, but never merge separate sentences
+ * into one question. A merged question asks the reviewer for one completeness
+ * verdict over clauses the report can answer differently (a stage marker that
+ * exists and an action record that does not), so it cannot pass structurally. */
+/** A planned question may stay inside one sentence or be narrowed further, but
+ * it never merges separate sentences: one merged question would force a single
+ * completeness verdict over clauses the report can answer differently. The
+ * split stays lossless (every original sentence keeps its own question), so the
+ * final schema requires each sentence to be answered on its own. */
+function alignQuestions(questions: string[], question: string): string[] {
+  const groups = [...new Intl.Segmenter('zh-CN', { granularity: 'sentence' }).segment(question)].map(part => part.segment).filter(part => part.trim());
+  let cursor = 0;
+  const bounds = groups.map(group => { const start = question.indexOf(group, cursor); cursor = start + group.length; return [start, start + group.length] as const; });
+  const aligned = new Set<string>();
+  for (const planned of questions) {
+    const at = question.indexOf(planned);
+    const overlapping = at < 0 ? [] : groups.filter((_, index) => at < bounds[index][1] && at + planned.length > bounds[index][0]);
+    if (overlapping.length <= 1) { aligned.add(planned); continue; }
+    for (const sentence of overlapping) aligned.add(sentence);
+  }
+  const kept = [...aligned];
+  return kept.length > 6 ? [...kept.slice(0, 5), kept.slice(5).join('')] : kept;
+}
+
 export function createReportQuestionPlan(input: Record<string, unknown>, scope: ReportQuestionPlanScope): ReportQuestionPlan {
   assertScope(scope);
   if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length !== 1 || !Object.hasOwn(input, 'questions')) fail('invalid_message', 422);
-  const coverage = parsePlannedSourceQuestions(input);
+  const parsed = parsePlannedSourceQuestions(input);
+  const coverage = { ...parsed, questions: alignQuestions(parsed.questions, scope.question) };
   return { protocol: reportQuestionPlanningProtocol, enterpriseId: scope.enterpriseId, runId: scope.runId, messageId: scope.messageId,
     questionHash: fingerprint(scope.question), reportReferenceHash: fingerprint(scope.selection),
     coverage: { ...coverage, questions: [...coverage.questions] } };

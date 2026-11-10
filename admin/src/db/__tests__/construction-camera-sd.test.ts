@@ -73,6 +73,36 @@ test('SD owner configuration is durable/idempotent; members and cloud-upload int
   await reconcileRecordings(upstream);assert.equal((await policy())!.state,'stopped');
   assert.equal((await service().list(pid)).items[0].recording_mode,'sd');assert.equal(starts,0);
 });
+test('legacy registration windows are rebased once to the stable identity without widening history',async()=>{
+  const stable=async()=>({source:new Date(),serialHash:'c'.repeat(64),identityVersion:2});
+  const at=(minutes:number)=>new Date(Date.now()-minutes*60000);
+  await withPlatformTransaction(async tx=>{
+    await tx.execute(sql`update app.construction_camera_bindings set started_at=now()-interval '4 days' where id=${bid}`);
+    await tx.execute(sql`update app.construction_camera_recording_policies set sd_activated_at=now()-interval '3 days' where binding_id=${bid}`);
+    await tx.execute(sql`delete from app.construction_camera_sd_windows where binding_id=${bid}`);
+  });
+  const ids=await withTenantTransaction(eid,async tx=>{
+    const insert=async(hash:string,businessFrom:Date,checkedAt:Date,sourceTo:Date)=>String((await one(tx,sql`insert into app.construction_camera_sd_windows(enterprise_id,project_id,binding_id,serial_hash,identity_version,business_from,checked_at,source_from,source_to,clock_min_ms,clock_max_ms)
+      values(${eid},${pid},${bid},${hash},0,${businessFrom},${checkedAt},${businessFrom},${sourceTo},-3000,3000) returning id`))!.id);
+    return {
+      historical:await insert('a'.repeat(64),at(2880),at(2879),at(2820)),
+      current:await insert('a'.repeat(64),at(18),at(0.5),at(0.5)),
+      before:await insert('d'.repeat(64),at(5760),at(5759),at(5700)),
+    };
+  });
+  const b=await withTenantTransaction(eid,tx=>one(tx,sql`select b.*,p.sd_activated_at,c.device_id,c.channel_id from app.construction_camera_bindings b join app.construction_cameras c on c.id=b.camera_id join app.construction_camera_recording_policies p on p.binding_id=b.id where b.id=${bid}`));
+  await withTenantTransaction(eid,tx=>refreshSdWindow(tx,b!,stable));
+  const after=await withTenantTransaction(eid,tx=>rows(tx,sql`select * from app.construction_camera_sd_windows where binding_id=${bid} order by id`));
+  assert.equal(after.length,3);
+  for(const id of [ids.historical,ids.current]){const row=after.find(r=>String(r.id)===id)!;assert.equal(row.serial_hash,'c'.repeat(64));assert.equal(Number(row.identity_version),1);}
+  const untouched=after.find(r=>String(r.id)===ids.before)!;assert.equal(untouched.serial_hash,'d'.repeat(64));assert.equal(Number(untouched.identity_version),0);
+  await withTenantTransaction(eid,tx=>refreshSdWindow(tx,b!,stable));
+  assert.equal((await withTenantTransaction(eid,tx=>rows(tx,sql`select id from app.construction_camera_sd_windows where binding_id=${bid}`))).length,3);
+  await withTenantTransaction(eid,tx=>refreshSdWindow(tx,b!,async()=>({source:new Date(Date.now()+20000),serialHash:'c'.repeat(64),identityVersion:2})));
+  const newest=await withTenantTransaction(eid,tx=>one(tx,sql`select * from app.construction_camera_sd_windows where binding_id=${bid} order by id desc limit 1`));
+  assert.notEqual(String(newest!.id),ids.current);assert.equal(Number(newest!.identity_version),1);assert.equal(newest!.serial_hash,'c'.repeat(64));
+  await withPlatformTransaction(tx=>tx.execute(sql`delete from app.construction_camera_sd_windows where binding_id=${bid}`));
+});
 test('initial clock sample never adopts pre-binding footage; unavailable time never produces an empty-success query',async()=>{
   const s=await enter(),day=new Date(Date.now()+28800000).toISOString().slice(0,10);
   const initial=await listSdRecordings(s.session,s.csrf,day,bid,undefined,upstream,clock);assert.equal(initial.items.length,0);
@@ -83,6 +113,7 @@ test('actual SD ranges are clipped to calibrated ownership, capped at five minut
   const s=await enter(),day=new Date(Date.now()+28800000).toISOString().slice(0,10);
   const list=await listSdRecordings(s.session,s.csrf,day,bid,undefined,upstream,clock);assert.ok(list.items.length>=1);
   const w=await withTenantTransaction(eid,tx=>one(tx,sql`select * from app.construction_camera_sd_windows where binding_id=${bid} order by id desc limit 1`));
+  assert.equal(Number(w!.identity_version),0);
   for(const r of list.items){assert.ok(new Date(r.started_at as string)>=new Date(w!.source_from as string));assert.ok(new Date(r.ended_at as string).getTime()-new Date(r.started_at as string).getTime()<=300000);}
   rid=String(list.items[Math.min(1,list.items.length-1)].id);const reentry=await enter();assert.ok((await listSdRecordings(reentry.session,reentry.csrf,day,bid,undefined,upstream,clock)).items.some(r=>String(r.id)===rid));
   assert.equal((await withTenantTransaction('999999',tx=>rows(tx,sql`select id from app.construction_camera_sd_recordings where id=${rid}`))).length,0);
@@ -137,4 +168,27 @@ test('moving a device rejects old SD indexes and never reassigns their source ow
   const next=await service().bind(otherPid,{cameraId:cid,expectedVersion:Number(c.version)+1,bind:true});assert.notEqual(String(next.bindingId),bid);
   await assert.rejects(startSdRecordingView(s.session,s.csrf,rid,upstream,clock),/unavailable/);
   const original=await withTenantTransaction(eid,tx=>one(tx,sql`select project_id,binding_id from app.construction_camera_sd_recordings where id=${rid}`));assert.equal(String(original!.project_id),pid);assert.equal(String(original!.binding_id),bid);
+});
+test('a legacy cached window starts after the stable identity rebase',async()=>{
+  const nextRow=await withTenantTransaction(eid,tx=>one(tx,sql`select id from app.construction_camera_bindings where project_id=${otherPid} and camera_id=${cid} and ended_at is null`));
+  const nextBid=String(nextRow!.id);
+  await withPlatformTransaction(async tx=>{
+    await tx.execute(sql`insert into app.construction_members(enterprise_id,project_id,admin_id,role) values(${eid},${otherPid},${member.adminId},'worker')`);
+    await tx.execute(sql`update app.construction_camera_bindings set started_at=now()-interval '20 minutes' where id=${nextBid}`);
+  });
+  await saveRecordingPolicy(owner,otherPid,{bindingId:nextBid,enabled:false,retentionDays:3,expectedVersion:0,recordingMode:'sd'});
+  await reconcileRecordings(upstream);
+  await withPlatformTransaction(tx=>tx.execute(sql`update app.construction_camera_recording_policies set sd_activated_at=now()-interval '19 minutes' where binding_id=${nextBid}`));
+  const base=Date.now();
+  const at=(minutes:number)=>new Date(Math.floor((base-minutes*60000)/1000)*1000);
+  const windowRow=await withTenantTransaction(eid,tx=>one(tx,sql`insert into app.construction_camera_sd_windows(enterprise_id,project_id,binding_id,serial_hash,identity_version,business_from,checked_at,source_from,source_to,clock_min_ms,clock_max_ms)
+    values(${eid},${otherPid},${nextBid},${'e'.repeat(64)},0,${at(18)},${at(0.5)},${at(18)},${at(0.5)},-3000,3000) returning id`));
+  const legacyWindow=String(windowRow!.id);
+  const recordingRow=await withTenantTransaction(eid,tx=>one(tx,sql`insert into app.construction_camera_sd_recordings(enterprise_id,project_id,binding_id,window_id,started_at,ended_at,expires_at)
+    values(${eid},${otherPid},${nextBid},${legacyWindow},${at(10)},${at(5)},now()+interval '2 minutes') returning id`));
+  const legacyRid=String(recordingRow!.id);
+  const s=await enter(member,otherPid);
+  const view=await startSdRecordingView(s.session,s.csrf,legacyRid,upstream,async()=>({source:new Date(),serialHash:'f'.repeat(64),identityVersion:2}));
+  assert.ok(view.generation);assert.equal(streams.size,1);
+  await sessionHeartbeat(s.session,s.csrf,true,upstream);assert.equal(streams.size,0);
 });

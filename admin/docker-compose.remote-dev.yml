@@ -1,0 +1,47 @@
+name: sfp-remote-dev
+
+# Run from admin/ with a generated password kept outside Git:
+# docker compose --env-file .env.remote-dev -f docker-compose.remote-dev.yml up -d
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.2-pg17@sha256:feb68f4f15446397d8cac7f4fe48fe4586de83160d1fc48b46283312d1a33966
+    container_name: sfp-remote-dev-postgres
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:15432:5432"
+    environment:
+      POSTGRES_USER: sfp_owner
+      POSTGRES_DB: smart_floor_planner
+      POSTGRES_PASSWORD: ${SFP_DEV_POSTGRES_PASSWORD:?SFP_DEV_POSTGRES_PASSWORD must be set}
+    volumes:
+      - sfp_remote_dev_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Restore xiaok_embedding_restore explicitly after this isolated eval DB is ready.
+  vector-eval:
+    image: pgvector/pgvector:0.8.2-pg17@sha256:feb68f4f15446397d8cac7f4fe48fe4586de83160d1fc48b46283312d1a33966
+    container_name: sfp-remote-dev-vector
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:15433:5432"
+    environment:
+      POSTGRES_USER: vector_probe_owner
+      POSTGRES_DB: xiaok_embedding_eval
+      POSTGRES_PASSWORD: ${SFP_DEV_VECTOR_PASSWORD:?SFP_DEV_VECTOR_PASSWORD must be set}
+    volumes:
+      - sfp_remote_dev_vector_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  sfp_remote_dev_postgres_data:
+    name: sfp_remote_dev_postgres_data
+  sfp_remote_dev_vector_data:
+    name: sfp_remote_dev_vector_data

@@ -115,6 +115,12 @@ function promptPage(f) {
   });
   return page;
 }
+const message = (id, seq, text, extra = {}) => ({
+  id, seq, authorKind: 'user', available: true,
+  content: { version: 1, blocks: [{ type: 'text', text }] }, ...extra,
+});
+const messageReads = f => f.calls.filter(call => call.url.endsWith('/messages') && call.method === 'GET');
+const { appendPatch } = require('../packages/assistant/lib/chat');
 const promptEvent = text => ({ currentTarget: { dataset: { text } } });
 
 test('each welcome topic sends its text immediately through the existing chat flow', async () => {
@@ -145,6 +151,33 @@ test('a second topic tap during asynchronous send preparation cannot replace or 
   location.resolve({}); await first;
   assert.equal(f.calls.filter(call => call.method === 'POST' && call.url.endsWith('/messages')).length, 1);
   assert.equal(page.data.messages[0].blocks[0].text, text);
+});
+
+test('the welcome screen stays away while an accepted send is being projected', async () => {
+  const f = fixture(); await f.controller.show({});
+  const page = promptPage(f), text = page.data.topics[0].text, projected = deferred(), projecting = deferred();
+  page.controller.input(text);
+  const welcome = () => !page.data.reportQuestion.selected && !page.data.sending && !page.data.messages.length
+    && !page.data.pendingText && !page.data.loading && (!page.data.fatal || page.data.needsLogin);
+  let observed = null;
+  f.intercept(call => {
+    if (call.method !== 'GET' || !call.url.endsWith('/messages')) return;
+    // The accepted write has cleared the optimistic bubble, but its projection
+    // has not arrived: the customer must keep seeing the conversation, never
+    // the welcome page they already left.
+    observed = { pendingText: page.data.pendingText, welcome: welcome() };
+    projecting.resolve();
+    return projected.promise.then(() => ({ success: true, data: { items: f.db.items, nextCursor: null } }));
+  });
+  const pending = page.send();
+  await projecting.promise;
+  projected.resolve();
+  await pending;
+  assert.deepEqual(observed, { pendingText: '', welcome: false });
+  assert.equal(page.data.messages.length, 1);
+  assert.equal(page.data.messages[0].blocks[0].text, text);
+  assert.equal(page.data.sending, false);
+  assert.equal(welcome(), false);
 });
 
 test('welcome shortcuts preserve blocked drafts and use the existing login action', async () => {
@@ -342,6 +375,159 @@ test('backgrounding pauses polls while a pending send still settles once before 
   assert.equal(f.controller.state.run.id, '41');
   assert.equal(f.timers.size, 1);
   f.controller.hide(); assert.equal(f.timers.size, 0);
+});
+
+test('re-entering an on-screen conversation re-syncs without blanking the rendered history', async () => {
+  const f = fixture();
+  f.db.items = [{ id: '21', seq: '1', authorKind: 'user', content: { version: 1, blocks: [{ type: 'text', text: '旧问题' }] }, available: true }];
+  await f.controller.show({ conversationId: '11' });
+  assert.equal(f.controller.state.messages.length, 1);
+  f.controller.hide(); await f.controller.show({ conversationId: '11' });
+  assert.equal(f.controller.state.loading, false);
+  assert.equal(f.controller.state.messages.length, 1);
+  // The page re-checks location after onShow; that silent re-sync used to set
+  // loading=true and hide every message behind the "正在读取…" state.
+  const loads = [];
+  f.controller.emit = patch => { if (patch.loading !== undefined) loads.push(patch.loading); };
+  await f.controller.refresh();
+  assert.equal(f.controller.state.loading, false);
+  assert.equal(f.controller.state.messages.length, 1);
+  assert.deepEqual(loads.filter(Boolean), []);
+  f.controller.dispose();
+});
+
+test('an idle re-sync reads only conversation metadata once its sequence is current', async () => {
+  const f = fixture();
+  f.db.items = [message('21', '1', '旧问题')];
+  f.db.conversation.lastSeq = '1';
+  await f.controller.show({ conversationId: '11' });
+  assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21']);
+  assert.equal(messageReads(f).length, 1);
+  const patches = [];
+  f.controller.emit = patch => { if ('messages' in patch) patches.push(patch.messages); };
+  await f.controller.refresh();
+  assert.equal(messageReads(f).length, 1);
+  assert.deepEqual(patches, []);
+  assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21']);
+  f.controller.dispose();
+});
+
+test('only newer messages are fetched, paged through a burst and merged in order', async () => {
+  const f = fixture();
+  f.db.items = [message('21', '1', '旧问题'), message('22', '2', '旧回答')];
+  f.db.messageCursor = '1';
+  f.db.conversation.lastSeq = '2';
+  await f.controller.show({ conversationId: '11' });
+  assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21', '22']);
+  const after = [];
+  f.intercept(call => {
+    if (!call.url.endsWith('/messages') || call.method !== 'GET' || !call.body.afterSeq) return;
+    after.push(call.body.afterSeq);
+    return call.body.afterSeq === '2'
+      ? { success: true, data: { items: [message('23', '3', '新回答')], nextCursor: null, afterCursor: '3', latestSeq: '4', hasMore: true, reset: false } }
+      : { success: true, data: { items: [message('24', '4', '补充回答')], nextCursor: null, afterCursor: '4', latestSeq: '4', hasMore: false, reset: false } };
+  });
+  f.db.conversation.lastSeq = '4';
+  const emitted = [];
+  f.controller.emit = patch => { if ('messages' in patch) emitted.push(patch); };
+  await f.controller.refresh();
+  assert.deepEqual(after, ['2', '3']);
+  assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21', '22', '23', '24']);
+  assert.equal(f.controller.state.messageCursor, '1');
+  assert.equal(f.controller.latestSeq, '4');
+  // The merged list reaches the view as a pure tail append.
+  assert.equal(emitted.length, 1);
+  assert.equal(emitted[0].messagesAppendFrom, 2);
+  assert.deepEqual(appendPatch(emitted[0], 2), {
+    messageCursor: '1',
+    'messages[2]': f.controller.state.messages[2],
+    'messages[3]': f.controller.state.messages[3],
+  });
+  f.controller.dispose();
+});
+
+test('a reset cursor reloads the authoritative window; stale or oversized cursors do too', async () => {
+  const f = fixture();
+  f.db.items = [message('21', '1', '旧问题')];
+  f.db.conversation.lastSeq = '1';
+  await f.controller.show({ conversationId: '11' });
+  f.db.items = [message('31', '9', '保留期后的窗口')];
+  f.db.conversation.lastSeq = '9';
+  f.intercept(call => {
+    if (!call.url.endsWith('/messages') || call.method !== 'GET' || !call.body.afterSeq) return;
+    return { success: true, data: { items: [], nextCursor: null, afterCursor: call.body.afterSeq, latestSeq: '9', hasMore: false, reset: true } };
+  });
+  await f.controller.refresh();
+  assert.deepEqual(f.controller.state.messages.map(item => item.id), ['31']);
+  assert.equal(f.controller.latestSeq, '9');
+  assert.equal(messageReads(f).filter(call => call.body.afterSeq).length, 1);
+  assert.equal(messageReads(f).filter(call => !call.body.afterSeq).length, 2);
+  // A full-window refresh is due every minute even when the sequence matches.
+  f.controller.lastFullSyncAt = Date.now() - 61000;
+  await f.controller.refresh();
+  assert.equal(messageReads(f).filter(call => !call.body.afterSeq).length, 3);
+  // A cursor far behind the conversation is read as a window, not 200 pages.
+  f.db.items = [message('41', '400', '大间隔后的窗口')];
+  f.db.conversation.lastSeq = '400';
+  f.controller.lastFullSyncAt = Date.now();
+  await f.controller.refresh();
+  assert.equal(messageReads(f).filter(call => call.body.afterSeq).length, 1);
+  assert.deepEqual(f.controller.state.messages.map(item => item.id), ['41']);
+  f.controller.dispose();
+});
+
+test('a delta carrying a plan decision falls back to the full window', async () => {
+  const f = fixture();
+  f.db.items = [message('21', '1', '旧问题')];
+  f.db.conversation.lastSeq = '1';
+  await f.controller.show({ conversationId: '11' });
+  f.db.items = [message('21', '1', '旧问题'), message('22', '2', '方案说明', { planDecision: { id: '7' } })];
+  f.db.conversation.lastSeq = '2';
+  f.intercept(call => {
+    if (!call.url.endsWith('/messages') || call.method !== 'GET' || !call.body.afterSeq) return;
+    return { success: true, data: { items: [message('22', '2', '方案说明', { planDecision: { id: '7' } })], nextCursor: null, afterCursor: '2', latestSeq: '2', hasMore: false, reset: false } };
+  });
+  await f.controller.refresh();
+  assert.equal(messageReads(f).filter(call => call.body.afterSeq).length, 1);
+  assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21', '22']);
+  assert.deepEqual(f.controller.state.messages[1].planDecision, { id: '7' });
+  f.controller.dispose();
+});
+
+test('appendPatch ships a pure tail append as message paths and anything else as the full array', () => {
+  const previous = [{ id: '1' }, { id: '2' }];
+  const messages = [{ id: '1' }, { id: '2' }, { id: '3' }, { id: '4' }];
+  const patch = appendPatch({ messages, messagesAppendFrom: 2 }, previous.length);
+  assert.deepEqual(Object.keys(patch).sort(), ['messages[2]', 'messages[3]']);
+  assert.deepEqual(patch['messages[2]'], { id: '3' });
+  assert.deepEqual(patch['messages[3]'], { id: '4' });
+  // A mismatched anchor falls back to the whole list without the hint.
+  const replaced = appendPatch({ messages, messagesAppendFrom: 1 }, previous.length);
+  assert.deepEqual(replaced, { messages });
+  // No hint at all ships the array untouched.
+  assert.deepEqual(appendPatch({ messages, other: 1 }, previous.length), { messages, other: 1 });
+});
+
+test('an incremental append keeps earlier pages the customer already pulled in', async () => {
+  const f = fixture();
+  f.db.items = [message('22', '2', '第三旧'), message('23', '3', '第二旧'), message('24', '4', '最新')];
+  f.db.messageCursor = '2';
+  f.db.conversation.lastSeq = '4';
+  await f.controller.show({ conversationId: '11' });
+  f.intercept(call => {
+    if (!call.url.endsWith('/messages') || call.method !== 'GET') return;
+    if (call.body.beforeSeq === '2') return { success: true, data: { items: [message('21', '1', '最早')], nextCursor: null } };
+  });
+  await f.controller.olderMessages();
+  assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21', '22', '23', '24']);
+  f.intercept(call => {
+    if (!call.url.endsWith('/messages') || call.method !== 'GET') return;
+    if (call.body.afterSeq === '4') return { success: true, data: { items: [message('25', '5', '更新的回答')], nextCursor: null, afterCursor: '5', latestSeq: '5', hasMore: false, reset: false } };
+  });
+  f.db.conversation.lastSeq = '5';
+  await f.controller.refresh();
+  assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21', '22', '23', '24', '25']);
+  f.controller.dispose();
 });
 
 test('unknown-cost runs never expose retry or auto-resubmit', async () => {

@@ -111,7 +111,18 @@ const followupChatMethods = {
     if (!c || chat.state.busy || chat.state.pendingSend || chat.state.pendingAction) return;
     const waiting = c.mode === 'handoff_requested', cid = chat.cid;
     wx.showModal({ title: waiting ? '取消等待？' : '结束接续？', content: '结束后设计师将无法继续查看本次咨询，小K恢复回复。',
-      success: r => { if (r.confirm && this._alive && chat.visible && chat.cid === cid) chat.handoff(waiting ? 'cancel' : 'end'); } });
+      success: async r => {
+        if (!r.confirm || !this._alive || !chat.visible || chat.cid !== cid) return;
+        await chat.handoff(waiting ? 'cancel' : 'end');
+        if (this._alive && chat.visible && chat.cid === cid && chat.state.conversation?.mode === 'ai') {
+          setTimeout(() => {
+            if (!this._alive || !chat.visible || chat.cid !== cid) return;
+            this.setData({ followupScrollTarget: '' }, () => {
+              if (this._alive && chat.visible && chat.cid === cid) this.setData({ followupScrollTarget: 'followup-conversation-end' });
+            });
+          }, 100);
+        }
+      } });
   },
   pickFollowupImage() {
     const chat = this.followupChatController, session = chat.session, cid = chat.cid;

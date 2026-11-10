@@ -7,9 +7,9 @@ import { businessSynthesisSources, focusedSynthesisMessages, parseSynthesis } fr
 import { reportFactText } from '../agent/report-context';
 import { sourceCitationCatalog, modelCitationCatalog } from '../agent/citation-catalog';
 import { boundReportAnswerGrounding, reportAnswerGroundingProtocol } from '../agent/report-source-scope';
-import { prepareReportAnswerReview, assertReportAnswerReview, reportAnswerValidationFailure } from '../agent/report-answer-review';
+import { prepareReportAnswerReview, assertReportAnswerReview, reportAnswerValidationFailure, reportCitationFailure, reportCitationIds, reportCitationOnlySchemaFailure, reportNumericFailure, reportAbsentQuestionCompleteness } from '../agent/report-answer-review';
 import { runRenovationAgent } from '../agent/runtime';
-import { reportAnswerFinalTool } from '../agent/report-final';
+import { reportAnswerFinalTool, reportQuestionCoverage } from '../agent/report-final';
 import { finalTool } from '../agent/worker';
 import { explicitNativeObjectRoot, nativeFinalDefinition } from '../agent/native-final';
 import { toolSchemaIssue } from '../agent/tool-protocol';
@@ -139,18 +139,71 @@ test('semantic rejection, stale draft/source binding and incomplete verdict stop
   assert.equal(draft.raw, raw);
 });
 
-test('new grounded validation failures stop before a redraft can consume the mandatory review slot; legacy repair stays bounded', async () => {
-  const failure = { code: 'unsupported_model_commitment', feedback: '已有报告日期缺本段正确引用。' };
-  for (const grounded of [true, false]) {
-    let calls = 0, validations = 0, writes = 0;
-    const operation = runRenovationAgent({ messages: [], tools: [], ports: {
-      authorize: async () => {}, checkpoint: async () => {},
-      tool: async () => { writes++; return { content: '{}' }; },
-      model: async () => { calls++; return { ...response(), text: raw }; },
-      validateFinal: async () => ++validations === 1 ? reportAnswerValidationFailure(failure, grounded) : null,
-    } });
-    if (grounded) await assert.rejects(operation, /unsupported_model_commitment/);
-    else await operation;
-    assert.equal(calls, grounded ? 1 : 2); assert.equal(writes, 0);
+test('an uncited date is named by its own segment and numbers so the bounded repair can fix it', () => {
+  const broken = JSON.stringify({ kind: 'report_answer', answers: { Q1: [
+    { basis: 'uncertainty', text: '报告事实截止于2026-11-01 20:00:00。', citations: [] }] } });
+  const failure = reportNumericFailure(broken, sources)!;
+  const feedback = JSON.parse(failure.feedback);
+  assert.equal(failure.code, 'unsupported_model_commitment');
+  assert.deepEqual(feedback.gaps, [{ question: 'Q1', position: 1, numbers: ['2026', '11', '01', '20', '00'] }]);
+  const cited = JSON.stringify({ kind: 'report_answer', answers: { Q1: [
+    { basis: 'evidence', text: '报告事实截止于2026-11-01 20:00:00。', citations: [citation(metadata)] }] } });
+  assert.equal(reportNumericFailure(cited, sources), null);
+});
+
+test('a report with no published record is complete once the answer cites its period source and every pending item', () => {
+  const empty = { ...project, records: [], publishedRecordItems: [{ recordId: '221', recordVersion: 3, room: '书房',
+    pending: '窗边书桌插座位置待核对', coordination: '请测试设计师核对点位示意与使用需求', sourceHash: 'pending-hash' }] } as unknown as ReportProject;
+  const scoped = businessSynthesisSources('saved:1:0', { ...snapshot, data: [empty] });
+  const period = scoped.find(source => source.reportScope?.kind === 'metadata')!;
+  const stage = scoped.find(source => source.reportScope?.kind === 'stage')!;
+  const pending = scoped.find(source => source.reportScope?.kind === 'published_pending')!;
+  const coverage = reportQuestionCoverage('我家现在施工到哪一步了？最近工地上都做了些什么？');
+  const covered = { Q1: [{ basis: 'evidence', text: '本期报告没有记录最近完成的施工内容。', citations: [citation(period)] },
+    { basis: 'evidence', text: '阶段标记为软装，书房窗边书桌插座位置待核对。', citations: [citation(stage), citation(pending)] }] };
+  assert.deepEqual(reportAbsentQuestionCompleteness(scoped, coverage, covered), { Q1: true });
+  assert.deepEqual(reportAbsentQuestionCompleteness(scoped, coverage, { Q1: [covered.Q1[0]] }), {});
+});
+
+test('the report reviewer rejects a demand for facts the report never had, and keeps its verdict bounded', () => {
+  const draft = prepareReportAnswerReview(raw, sources, { currentQuestion: question });
+  const first = draft.reviewMessages[0];
+  assert.ok(first.role === 'system' && first.content[0].type === 'text');
+  assert.match(first.content[0].text, /不得因缺少来源中不存在的施工动作判false/);
+  assert.match(first.content[0].text, /reason不超过八十字/);
+});
+
+test('a mistyped citation identifier is named with its exact options and is the only schema defect treated as repairable', async () => {
+  const ids = sources.flatMap(sourceCitationCatalog).map(option => option.citationId);
+  const tool = explicitNativeObjectRoot(nativeFinalDefinition(reportAnswerFinalTool(finalTool, question, ids)));
+  assert.deepEqual(reportCitationIds(tool), ids);
+  assert.equal(await reportCitationOnlySchemaFailure(raw, tool), false);
+  const broken = raw.replace(/("citationId":\s*")[^"]+/, '$1Cnotacatalog');
+  assert.equal(await reportCitationOnlySchemaFailure(broken, tool), true);
+  assert.equal(await reportCitationOnlySchemaFailure(raw.replace('"kind":"report_answer"', '"kind":"other"'), tool), false);
+  const failure = reportCitationFailure(broken, sources)!;
+  const feedback = JSON.parse(failure.feedback);
+  assert.equal(failure.code, 'invalid_model_citation');
+  assert.deepEqual(feedback.invalidCitationIds, ['Cnotacatalog']);
+  assert.ok(feedback.citationOptions.flatMap((source: { options: Array<{ citationId: string }> }) => source.options)
+    .every((option: { citationId: string }) => ids.includes(option.citationId)));
+  assert.equal(reportCitationFailure(raw, sources), null);
+});
+
+test('a grounded structural/numeric failure spends the one bounded redraft, while a semantic rejection still stops before rewriting', async () => {
+  for (const [failure, redraft] of [[{ code: 'unsupported_model_commitment', feedback: '已有报告日期缺本段正确引用。' }, true],
+    [{ code: 'ungrounded_response_scope', feedback: '语义复核拒绝。' }, false]] as const) {
+    for (const grounded of [true, false]) {
+      let calls = 0, validations = 0, writes = 0;
+      const operation = runRenovationAgent({ messages: [], tools: [], ports: {
+        authorize: async () => {}, checkpoint: async () => {},
+        tool: async () => { writes++; return { content: '{}' }; },
+        model: async () => { calls++; return { ...response(), text: raw }; },
+        validateFinal: async () => ++validations === 1 ? reportAnswerValidationFailure(failure, grounded) : null,
+      } });
+      if (grounded && !redraft) await assert.rejects(operation, new RegExp(failure.code));
+      else await operation;
+      assert.equal(calls, grounded && !redraft ? 1 : 2); assert.equal(validations, grounded && !redraft ? 1 : 2); assert.equal(writes, 0);
+    }
   }
 });

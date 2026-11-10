@@ -3,7 +3,13 @@ import { test } from 'node:test';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { developmentWorkerEnvironment, superviseDevelopment } from '../dev.mjs';
+import { developmentEnvironment, developmentWorkerEnvironment, superviseDevelopment } from '../dev.mjs';
+
+test('development binds the local reader endpoint without overriding explicit configuration', () => {
+  assert.equal(developmentEnvironment({}).ASSISTANT_PUBLIC_READER_URL, 'http://127.0.0.1:18095');
+  assert.equal(developmentEnvironment({ ASSISTANT_PUBLIC_READER_URL: ' http://127.0.0.1:19999 ' }).ASSISTANT_PUBLIC_READER_URL,
+    'http://127.0.0.1:19999');
+});
 
 test('worker follows the actual Next port and preserves an explicit endpoint', () => {
   const env = { CRON_SECRET: 'synthetic-test-only' };

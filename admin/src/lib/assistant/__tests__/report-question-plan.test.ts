@@ -13,6 +13,7 @@ import { runRenovationAgent, type AgentCheckpoint } from '../agent/runtime';
 
 const first = '我看了这份日报，照明回路现在定下来了吗？我接下来该确认什么？';
 const corrected = '刚才说错了，我问的是客厅，不是卧室。要是周五要装灯，现在还缺哪一步？';
+const correctedSentences = ['刚才说错了，我问的是客厅，不是卧室。', '要是周五要装灯，现在还缺哪一步？'];
 const scope: ReportQuestionPlanScope = { enterpriseId: '1454', runId: '15', messageId: '50', question: corrected,
   selection: { bindingId: '1', reportId: '1', revision: 1, projectId: '2', conversationId: '7', kind: 'daily',
     periodStart: '2026-11-03T16:00:00.000Z', periodEnd: '2026-11-03T19:13:14.815Z', cutoffAt: '2026-11-03T19:13:14.815Z', factsHash: 'frozen-facts' } };
@@ -24,7 +25,7 @@ test('only explicit grounded admission enables plans; an old run/tool has no sil
   assert.throws(() => boundReportQuestionPlanning(reportQuestionPlanningProtocol, false), /context_changed/);
   assert.equal(reportQuestionPlanningTool(reportFollowupTool, false), reportFollowupTool);
   assert.equal(readReportQuestionPlan(undefined, scope, false), undefined);
-  assert.throws(() => readReportQuestionPlan(createReportQuestionPlan({ questions: [corrected] }, scope), scope, false), /context_changed/);
+  assert.throws(() => readReportQuestionPlan(createReportQuestionPlan({ questions: correctedSentences }, scope), scope, false), /context_changed/);
 });
 
 test('report history scopes apply only to newly bound runs and the exact accepted original selection', () => {
@@ -45,16 +46,16 @@ test('one original read accepts only question-plan data; provider cannot choose 
 });
 
 test('plan survives serialization for the same immutable request/reference without changing the question', () => {
-  const questions = [corrected], plan = createReportQuestionPlan({ questions }, scope), saved = JSON.parse(JSON.stringify(plan));
+  const questions = [...correctedSentences], plan = createReportQuestionPlan({ questions }, scope), saved = JSON.parse(JSON.stringify(plan));
   questions[0] = '外部修改不能重写已绑定计划';
-  assert.deepEqual(readReportQuestionPlan(saved, scope, true)?.questions, [corrected]);
+  assert.deepEqual(readReportQuestionPlan(saved, scope, true)?.questions, correctedSentences);
   const read = readReportQuestionPlan(saved, scope, true)!; read.questions[0] = '返回对象也不是可写持久状态';
-  assert.deepEqual(readReportQuestionPlan(saved, scope, true)?.questions, [corrected]);
+  assert.deepEqual(readReportQuestionPlan(saved, scope, true)?.questions, correctedSentences);
   assert.equal(scope.question, corrected);
 });
 
 test('tenant/run/message/original/reference changes revoke the saved plan', () => {
-  const plan = createReportQuestionPlan({ questions: [corrected] }, scope);
+  const plan = createReportQuestionPlan({ questions: correctedSentences }, scope);
   for (const changed of [{ ...scope, enterpriseId: '1455' }, { ...scope, runId: '16' }, { ...scope, messageId: '51' },
     { ...scope, question: corrected + '新的更正' }, { ...scope, selection: { ...scope.selection, revision: 2 } },
     { ...scope, selection: { ...scope.selection, projectId: '3' } }, { ...scope, selection: { ...scope.selection, factsHash: 'changed' } }])
@@ -62,11 +63,18 @@ test('tenant/run/message/original/reference changes revoke the saved plan', () =
 });
 
 test('missing, unknown and malformed new plans never fall back to sentence splitting', () => {
-  const plan = createReportQuestionPlan({ questions: [corrected] }, scope);
+  const plan = createReportQuestionPlan({ questions: correctedSentences }, scope);
   for (const value of [undefined, null, {}, { ...plan, protocol: 'unknown' }, { ...plan, extra: true },
-    { ...plan, coverage: { protocol: 'unknown', questions: [corrected] } },
+    { ...plan, coverage: { protocol: 'unknown', questions: correctedSentences } },
     { ...plan, coverage: { protocol: 'source-question-coverage-v1', questions: [] } }])
     assert.throws(() => readReportQuestionPlan(value, scope, true), /context_changed/);
+});
+
+test('a merged plan question is split at sentence boundaries so each clause keeps its own obligation', () => {
+  assert.deepEqual(createReportQuestionPlan({ questions: [corrected] }, scope).coverage.questions, correctedSentences);
+  assert.deepEqual(createReportQuestionPlan({ questions: correctedSentences }, scope).coverage.questions, correctedSentences);
+  const narrowed = createReportQuestionPlan({ questions: [correctedSentences[1]] }, scope).coverage.questions;
+  assert.deepEqual(narrowed, [correctedSentences[1]]);
 });
 
 test('two real questions retain two obligations while a planned correction stays attached to its question', () => {
@@ -74,15 +82,16 @@ test('two real questions retain two obligations while a planned correction stays
   assert.equal(firstCoverage.questions.length, 2);
   const missingSecond = JSON.stringify({ kind: 'report_answer', answers: { Q1: [{ basis: 'uncertainty', text: '本次仍待核对。', citations: [] }] } });
   assert.throws(() => reportAnswerSynthesis(missingSecond, firstCoverage), /incomplete_model_answer/);
-  const planned = readReportQuestionPlan(createReportQuestionPlan({ questions: [corrected] }, scope), scope, true)!;
-  assert.deepEqual(planned.questions, [corrected]);
+  const planned = readReportQuestionPlan(createReportQuestionPlan({ questions: correctedSentences }, scope), scope, true)!;
+  assert.deepEqual(planned.questions, correctedSentences);
   assert.equal(reportQuestionCoverage(corrected).questions.length, 2, 'Legacy sentence grouping remains available only through its old path');
 });
 
 test('the paired report read, focused input and final schema use the same planned questions', () => {
-  const planned = readReportQuestionPlan(createReportQuestionPlan({ questions: [corrected] }, scope), scope, true)!;
+  const single = [correctedSentences[1]];
+  const planned = readReportQuestionPlan(createReportQuestionPlan({ questions: single }, scope), scope, true)!;
   const current: ModelMessage = { role: 'user', content: [{ type: 'text', text: JSON.stringify({ sourceMessageId: scope.messageId, text: corrected }) }] };
-  const read: ModelMessage = { role: 'assistant', content: '', toolCalls: [{ name: 'query_followups', id: 'read', arguments: JSON.stringify({ questions: [corrected] }) }] };
+  const read: ModelMessage = { role: 'assistant', content: '', toolCalls: [{ name: 'query_followups', id: 'read', arguments: JSON.stringify({ questions: single }) }] };
   const packet = { query: { domain: 'construction' }, reportReference: { selection: scope.selection }, synthesisSources: [] };
   const messages = (questionCoverage?: unknown): ModelMessage[] => [current, read, { role: 'tool', callId: 'read', content: JSON.stringify({ ...packet, questionCoverage }) }];
   const view = focusedSynthesisMessages(messages(planned), scope.messageId, planned);
@@ -103,7 +112,7 @@ test('the paired report read, focused input and final schema use the same planne
 });
 
 test('the reviewer sees the full original independently of the plan and still rejects incomplete or mis-scoped advice', () => {
-  const coverage = readReportQuestionPlan(createReportQuestionPlan({ questions: ['灯要怎么装？'] }, scope), scope, true)!;
+  const coverage = readReportQuestionPlan(createReportQuestionPlan({ questions: [correctedSentences[1]] }, scope), scope, true)!;
   const sources: SynthesisSource[] = [{ sourceId: 'report', kind: 'project', title: '报告', text: '房间未记录。',
     reportScope: { protocol: reportAnswerGroundingProtocol } as SynthesisSource['reportScope'] }];
   const raw = JSON.stringify({ kind: 'report_answer', answers: { Q1: [{ basis: 'advice', text: '建议联系团队。', citations: [] }] } });
@@ -112,7 +121,7 @@ test('the reviewer sees the full original independently of the plan and still re
   assert.ok(message.role === 'user' && message.content[0].type === 'text');
   const input = JSON.parse(message.content[0].text);
   assert.equal(input.currentQuestion, corrected);
-  assert.deepEqual(input.questions, { Q1: '灯要怎么装？' });
+  assert.deepEqual(input.questions, { Q1: correctedSentences[1] });
   assert.throws(() => assertReportAnswerReview(draft, { text: JSON.stringify({ questionsComplete: false,
     checks: { Q1: { complete: false, supported: true, conditionsPreserved: false, reason: '遗漏客厅更正和周五条件。' } } }),
     toolCalls: [], usage: null, finishReason: 'stop', providerRequestId: null }, draft.binding), /ungrounded_response_scope/);
@@ -125,7 +134,7 @@ test('planned reads enter the existing final-only stage, including resume, after
   assert.throws(() => boundReportReadCompletion(reportReadCompletionProtocol, false), /context_changed/);
   assert.throws(() => boundReportReadCompletion('unknown', true), /context_changed/);
   const current: ModelMessage = { role: 'user', content: [{ type: 'text', text: JSON.stringify({ sourceMessageId: scope.messageId, text: first }) }] };
-  const questions = ['照明回路是否已定下来？', '接下来该确认什么？'];
+  const questions = ['照明回路现在定下来了吗？', '我接下来该确认什么？'];
   const packet = JSON.stringify({ query: { domain: 'construction' }, reportReference: { selection: scope.selection }, synthesisSources: [],
     questionCoverage: createReportQuestionPlan({ questions }, { ...scope, question: first }).coverage });
   const call = { name: 'query_followups', id: 'read', arguments: JSON.stringify({ questions }) };

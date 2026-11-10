@@ -1,0 +1,67 @@
+spring:
+  application:
+    name: wvp
+  threads:
+    virtual:
+      enabled: true
+  mvc:
+    async:
+      request-timeout: 30000
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 100MB
+  data:
+    redis:
+      host: redis
+      port: 6379
+      database: 0
+      password: ${REDIS_PASSWORD}
+      timeout: 10000
+  datasource:
+    type: com.zaxxer.hikari.HikariDataSource
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://mysql:3306/wvp?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowMultiQueries=true&allowPublicKeyRetrieval=true
+    username: wvp
+    password: ${MYSQL_PASSWORD}
+server:
+  port: 18080
+  ssl:
+    enabled: false
+sip:
+  ip: 0.0.0.0
+  show-ip: ${PUBLIC_IP}
+  port: ${SIP_PORT}
+  domain: ${SIP_DOMAIN}
+  id: ${SIP_SERVER_ID}
+  password: ${SIP_PASSWORD}
+  alarm: true
+media:
+  id: wvp-zlm-01
+  ip: zlm
+  hook-ip: wvp
+  sdp-ip: ${PUBLIC_IP}
+  # Management playback is reached through an SSH tunnel, not a public media URL.
+  stream-ip: 127.0.0.1
+  http-port: ${MEDIA_HTTP_PORT}
+  secret: ${ZLM_SECRET}
+  auto-config: true
+  rtp:
+    enable: true
+    port-range: ${RTP_MIN},${RTP_MAX}
+    send-port-range: 30100,30199
+  record-path: /opt/media/www/record
+  record-day: 7
+user-settings:
+  server-id: '000001'
+  interface-authentication: true
+  push-authority: true
+  auto-apply-play: true
+  stream-on-demand: true
+  record-sip: false
+  record-push-live: false
+  play-timeout: 30000
+  record-info-timeout: 30000
+logging:
+  file:
+    name: /opt/wvp/logs/wvp.log

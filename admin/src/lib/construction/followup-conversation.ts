@@ -18,7 +18,7 @@ export async function followupConversationHttp(request: Request, path: string[],
   if (path[1] !== 'conversation' || resource && !['messages','handoff','media','report-context','report-topic','runs','citations'].includes(resource)
     || path.length > 3 && !['media','runs','citations'].includes(resource)
     || path.length > 4 && resource !== 'runs') fail('assistant_resource_not_found', 404);
-  if ([...query.keys()].some(k => !['beforeSeq','limit'].includes(k) || resource !== 'messages' || query.getAll(k).length !== 1)) fail('invalid_message', 422);
+  if ([...query.keys()].some(k => !['afterSeq','beforeSeq','limit'].includes(k) || resource !== 'messages' || query.getAll(k).length !== 1)) fail('invalid_message', 422);
   const context = await new FollowupService(actor).context(path[0]);
   const customer = actor.principal.kind === 'user';
   if (customer ? context.audience !== 'customer' : !['worker','designer','boss'].includes(context.audience)) fail('assistant_capability_forbidden', 403);
@@ -66,9 +66,11 @@ export async function followupConversationHttp(request: Request, path: string[],
   if (request.method === 'GET') {
     if (!resource) return service.detail(cid);
     if (resource === 'handoff') return new HandoffWorkflow(customerActor).customerRead(cid);
-    const before = query.get('beforeSeq') || '9223372036854775807', limit = Number(query.get('limit') || 30);
+    const after = query.get('afterSeq'), before = query.get('beforeSeq') || '9223372036854775807', limit = Number(query.get('limit') || 30);
+    if (after !== null && query.has('beforeSeq')) fail('invalid_message', 422);
+    if (after !== null && (!/^[1-9]\d{0,18}$/.test(after) || BigInt(after) > 9223372036854775807n)) fail('invalid_message', 422);
     if (!/^[1-9]\d{0,18}$/.test(before) || !Number.isInteger(limit) || limit < 1 || limit > 50) fail('invalid_message', 422);
-    return service.messages(cid, before, limit);
+    return after !== null ? service.messageDelta(cid, after, limit) : service.messages(cid, before, limit);
   }
   if (request.method !== 'POST' || !resource || query.size) fail('assistant_resource_not_found', 404);
   const requestKey = key(request.headers.get('Idempotency-Key')), raw = await request.text();

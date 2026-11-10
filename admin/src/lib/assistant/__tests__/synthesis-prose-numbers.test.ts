@@ -63,6 +63,17 @@ test('run10419 bold labels in a consecutive inline list leave item claims and th
     assert.throws(()=>parseSynthesis(reply(invalid),[]),/unsupported_model_commitment/,invalid);
 });
 
+test('a natural Chinese date is the same recorded day as the source "09", while another day stays unsupported',()=>{
+  const source={sourceId:'K1',kind:'knowledge' as const,title:'日报阶段原文',text:'报告周期内团队标记阶段：2026-11-09 22:32:10，安装；2026-11-09 22:48:24，软装。'};
+  const check=(text:string)=>parseSynthesis(JSON.stringify({kind:'synthesis',segments:[{
+    basis:'evidence',text,citations:[{sourceId:'K1',quote:'2026-11-09 22:32:10，安装'}],
+  }]}),[source]);
+  assert.equal(check('团队在2026年11月9日22:32标记了安装阶段。').segments[0].text,'团队在2026年11月9日22:32标记了安装阶段。');
+  assert.equal(check('团队在11月9日标记了安装阶段。').segments[0].text,'团队在11月9日标记了安装阶段。');
+  for(const text of ['团队在11月15日标记了安装阶段。','团队在2026年11月9日22:33标记了安装阶段。'])
+    assert.throws(()=>check(text),/unsupported_model_commitment/,text);
+});
+
 test('Unicode sentence boundaries and CommonMark item structure distinguish inline question ordinals from quantities',()=>{
   for(const text of ['建议先问：1. 回路设计是否确定？2. 何时能够核对？3. 有更新安排吗？仍须团队确认。',
     '😀核对： 1) 位置正确吗？ 2) 条件是否适用？',

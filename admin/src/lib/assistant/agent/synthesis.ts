@@ -12,7 +12,7 @@ import { withSynthesisRepairProtocol, synthesisRepairBase, finalAnswerRepairBase
 import { formalBusinessResultKeys } from './formal-business-repair';
 import { originalAnswerOnly, independentAdviceRequested } from './read-tool-input';
 import { numericCitationCandidates } from './citation-coverage';
-import { groundedNumberTokens } from './prose-number-view';
+import { groundedNumberTokens, printedNumberSupported } from './prose-number-view';
 import { publicPdfSource } from './source-document';
 import { isReportAnswerSnapshot, reportQuestionCoverage } from './report-final';
 import { scopedReportSynthesisSources, type ReportSourceScope } from './report-source-scope';
@@ -549,7 +549,7 @@ export function synthesisRepairIssue(raw:string,sources:SynthesisSource[],contex
     const numericGaps=value.segments.flatMap((s,i)=>{
       const quoted=(s.citations||[]).map(c=>c.quote).join('\n'),numbers=new Set(groundedNumberTokens(quoted));
       const claimText=engineeringClaimText(s.text,sources.filter(source=>s.citations.some(c=>c.sourceId===source.sourceId)),s.citations.length,s.citations);
-      const unsupportedNumbers=[...new Set([...(groundedNumberTokens(claimText)).filter(n=>!numbers.has(n)),
+      const unsupportedNumbers=[...new Set([...(groundedNumberTokens(claimText)).filter(n=>!printedNumberSupported(n,numbers)),
         ...unsupportedWordQuantities(claimText, quoted)])];
       return unsupportedNumbers.length?[{segment:i+1,unsupportedNumbers}]:[];
     });
@@ -783,7 +783,7 @@ function checkedSynthesis(raw: string, sources: SynthesisSource[], context: Synt
     const numericText = citedClock ? claimText.replace(/24\s*小时制/g, '') : claimText;
     try {
       const generalAdvice = context.generalKnowledge && s.basis === 'advice' && !s.citations.length;
-      if (!generalAdvice && (groundedNumberTokens(numericText)).some(n => !numbers.has(n))) fail('unsupported_model_commitment', 502);
+      if (!generalAdvice && (groundedNumberTokens(numericText)).some(n => !printedNumberSupported(n, numbers))) fail('unsupported_model_commitment', 502);
       const missing = generalAdvice ? [] : unsupportedWordQuantities(numericText, cited.join('\n'));
       const passes = pending ? new Set(coatingPassQuantities(numericText)) : new Set<string>();
       if (missing.some(quantity => !passes.has(quantity))) fail('unsupported_model_commitment', 502);

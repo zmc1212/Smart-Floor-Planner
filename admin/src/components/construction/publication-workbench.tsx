@@ -10,8 +10,9 @@ import { PublicLiveWorkbench } from './public-live-workbench';
 
 type Source = PublicSourceInput & { role: string; date: string; media: Array<{id:string;width:number;height:number}> };
 type Material = { id:string;versionId:string;revision:number;status:string;statusLabel:string;name:string;cityCode:string;district:string;stageName:string;reason:string;
+  designer:{id:string;name:string}|null;
   sources:PublicSourceInput[];draftPhotos:PublicPhotoInput[];photos:Array<{id:string}>;excerpts:Array<{role:string;text:string;date:string}> };
-type View = { owner:boolean;manage:boolean;write:boolean;revision:number;unavailable:boolean;projectName:string;material:Material|null;sourceItems:Source[];audits:Array<{action:string;reason:string;created_at:string}> };
+type View = { owner:boolean;manage:boolean;write:boolean;revision:number;unavailable:boolean;projectName:string;material:Material|null;sourceItems:Source[];designers:Array<{id:string;name:string}>;audits:Array<{action:string;reason:string;created_at:string}> };
 type Draft = Omit<PublicMaterialInput,'cityName'>;
 type Pending = { key:string;path:string;body:unknown;label:string };
 const blank = (): Draft => ({name:'',cityCode:'',district:'',sources:[],photos:[]});
@@ -30,7 +31,7 @@ export function PublicationWorkbench({projectId,identity}:{projectId:string;iden
     const g=++generation.current; setLoading(true); setError('');
     try { const next=await constructionRequest<View>(base); if(!alive.current||g!==generation.current)return;
       setView(next);
-      if(replace){setDraft(next.material?{name:next.material.name,cityCode:next.material.cityCode,district:next.material.district,sources:next.material.sources,photos:next.material.draftPhotos.map(p=>({recordId:p.recordId,mediaId:p.mediaId,masks:p.masks}))}:blank());setRevision(next.revision);setDirty(false);setChecked(false);}
+      if(replace){setDraft(next.material?{name:next.material.name,cityCode:next.material.cityCode,district:next.material.district,sources:next.material.sources,photos:next.material.draftPhotos.map(p=>({recordId:p.recordId,mediaId:p.mediaId,masks:p.masks})),...(next.material.designer?{designerId:next.material.designer.id}:{})}:blank());setRevision(next.revision);setDirty(false);setChecked(false);}
     } catch(e){if(alive.current&&g===generation.current){setError(errorText(e));setView(null);
       if(e instanceof ConstructionRequestError&&[401,403,404].includes(e.statusCode||0)){setDraft(blank());setRevision(0);setDirty(false);setChecked(false);setMasking(null);setAnchor(null);setPending(null);sessionStorage.removeItem(storageKey);}
     }}
@@ -87,13 +88,17 @@ export function PublicationWorkbench({projectId,identity}:{projectId:string;iden
       {draft.sources.filter(s=>!view?.sourceItems.some(a=>sourceKey(a)===sourceKey(s))).map(s=><Card size="small" key={sourceKey(s)} style={{marginBottom:12}}><Typography.Text type="secondary">已保存节选 · 原始来源当前不向你开放</Typography.Text><Typography.Paragraph style={{whiteSpace:'pre-wrap'}}>{s.text}</Typography.Paragraph><Button disabled={disabled} onClick={()=>edit({sources:draft.sources.filter(a=>sourceKey(a)!==sourceKey(s)),photos:draft.photos.filter(p=>p.recordId!==s.id)})}>移除此节选</Button></Card>)}
       <Typography.Text>公开片区</Typography.Text><Space wrap style={{display:'flex',margin:'8px 0 16px'}}><Select style={{width:200}} showSearch optionFilterProp="label" placeholder="城市" options={CITY_OPTIONS} value={draft.cityCode||undefined} disabled={disabled} onChange={cityCode=>edit({cityCode,district:''})}/><Select style={{width:180}} placeholder="区县" options={districtOptions(draft.cityCode)} value={draft.district||undefined} disabled={disabled} onChange={district=>edit({district})}/></Space>
       <Typography.Text>公开名称</Typography.Text><Input maxLength={80} value={draft.name} disabled={disabled} placeholder="不含姓名、电话、门牌" onChange={e=>edit({name:e.target.value})} style={{margin:'8px 0 16px'}}/>
+      <Typography.Text>公开设计师署名（选填）</Typography.Text>
+      <Typography.Paragraph type="secondary" style={{margin:'4px 0 8px'}}>只列出本工地有效设计师且已有可推荐公开作品；访客询问设计师时优先展示此人，未设置则按风格/城市推荐。</Typography.Paragraph>
+      <Select allowClear style={{width:'100%',marginBottom:16}} placeholder="不署名" disabled={disabled} value={draft.designerId||undefined}
+        options={(view?.designers||[]).map(d=>({value:d.id,label:d.name}))} onChange={value=>edit({designerId:value||undefined})}/>
       <Alert type="warning" showIcon message="请逐张检查人物、门牌和联系方式，完成遮挡；文字中也需隐藏私人信息。"/>
       <Checkbox style={{marginTop:16}} checked={checked} disabled={busy||!!pending} onChange={e=>setChecked(e.target.checked)}>已核对全部节选与照片的公开范围和脱敏结果</Checkbox>
     </Card></Col><Col xs={24} lg={11}><Space direction="vertical" size={16} style={{width:'100%'}}><Card title="访客会看到" size="small" extra={<Tag color="green">预览</Tag>}>
       <Typography.Title level={5} style={{marginTop:0}}>{draft.name||'待填写公开名称'}{material?.stageName?' · '+material.stageName:''}</Typography.Title><Typography.Paragraph type="secondary">{draft.district||'待选择公开片区'}</Typography.Paragraph>
       {draft.sources.map(s=><Typography.Paragraph key={sourceKey(s)} style={{whiteSpace:'pre-wrap'}}>{view?.sourceItems.find(a=>sourceKey(a)===sourceKey(s))?.role||material?.excerpts[draft.sources.indexOf(s)]?.role}：{s.text}</Typography.Paragraph>)}
       <Row gutter={[8,8]}>{draft.photos.map((p,i)=><Col span={12} key={p.mediaId}>{dirty?maskedPhoto(p,photoUrl(p)):<img src={preparedUrl(i)} alt="独立脱敏后的公开照片" style={{width:'100%',borderRadius:8}}/>}</Col>)}</Row>
-      <Typography.Paragraph type="secondary" style={{marginTop:12}}>现场照片 {draft.photos.length} 张 · 服务节选 {draft.sources.length} 条</Typography.Paragraph><Alert type="warning" showIcon message="不包含业主姓名、电话、门牌或完整私聊"/>
+      <Typography.Paragraph type="secondary" style={{marginTop:12}}>现场照片 {draft.photos.length} 张 · 服务节选 {draft.sources.length} 条{draft.designerId?' · 公开署名设计师 '+(view?.designers.find(d=>d.id===draft.designerId)?.name||''):''}</Typography.Paragraph><Alert type="warning" showIcon message="不包含业主姓名、电话、门牌或完整私聊"/>
     </Card><Card title="授权与审核状态" size="small"><Tag color={material?.status==='published'?'green':'default'}>{material?.statusLabel||'尚未保存草稿'}</Tag><Typography.Paragraph style={{marginTop:12}}>业主明确同意这一版后，仍需企业审核才能公开。保存新版本会撤销旧版公开与授权。</Typography.Paragraph>{material?.reason&&<Typography.Paragraph>原因：{material.reason}</Typography.Paragraph>}
       <Space direction="vertical">{view?.audits.slice(0,5).map((a,i)=><Typography.Text type="secondary" key={i}>{auditNames[a.action]||'材料状态更新'} · {new Date(a.created_at).toLocaleString('zh-CN')}{a.reason?' · '+a.reason:''}</Typography.Text>)}</Space>
     </Card></Space></Col></Row>

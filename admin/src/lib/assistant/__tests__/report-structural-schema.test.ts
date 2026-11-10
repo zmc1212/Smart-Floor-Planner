@@ -41,7 +41,7 @@ test('only an explicit newly bound report schema changes quantity ownership; old
   assert.throws(() => boundReportFinalSchema(reportStructuralFinalSchema, true, undefined), /context_changed/);
   assert.deepEqual(nativeFinalDefinition(finalTool, { reportNumberValidation: 'synthesis' }), nativeFinalDefinition(finalTool));
   assert.deepEqual(reportNativeRuntimeBudget({ summaries: 0, perceptions: 0 }), {
-    primaryModelTurns: 3, reservedValidationRepairs: 1, auxiliaryCalls: 0, maxScheduledCalls: 4, sourceReadSchedule: 'report-native-final-v1',
+    primaryModelTurns: 3, reservedValidationRepairs: 1, auxiliaryCalls: 0, maxScheduledCalls: 5, sourceReadSchedule: 'report-native-final-v1',
   });
 });
 

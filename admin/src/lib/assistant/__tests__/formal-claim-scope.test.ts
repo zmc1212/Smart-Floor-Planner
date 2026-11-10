@@ -13,5 +13,10 @@ test('the actual sourced denial keeps its original wording and cannot become a c
 test('denial projection does not hide a later positive, double negation, an unknown subject or a second predicate', () => {
   for (const text of [original + '但方案已批准。', original + '已联系师傅。', '不代表方案、费用已批准，但已经验收。',
     '并非不代表方案、费用已批准。', '不是不代表方案、费用已批准。', '不代表方案、费用已批准以及已联系师傅。',
-    '不代表方案、费用、承重已批准。', '不代表方案、费用已批准并已付款。']) assert.throws(() => parse(text), /unsupported_model_commitment/, text);
+    '不代表方案、费用、承重已批准。', '不代表方案、费用已批准并已付款。', '也不代表已经预约或联系过，但已经付款。',
+    '已经预约或联系过了。']) assert.throws(() => parse(text), /unsupported_model_commitment/, text);
+});
+test('a negated disclaimer with 也 and an or-list stays a disclaimer', () => {
+  const text = '这些只是已公开的作品展示，不代表他们已经与您匹配，也不代表已经预约或联系过；最终效果还要看您的户型和实际施工条件。';
+  assert.equal(parse(text), text);
 });

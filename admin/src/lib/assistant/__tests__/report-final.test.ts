@@ -4,7 +4,7 @@ import type { ModelMessage } from '../contracts/model';
 import type { BusinessSnapshot } from '../agent/business-tools';
 import type { ReportProject } from '@/lib/construction/report-scope';
 import { isReportAnswerSnapshot, reportFinalResponseIssue } from '../agent/report-final';
-import { reportFactText } from '../agent/report-context';
+import { reportFactText, reportSiteAnswerable } from '../agent/report-context';
 import { finalToolForMessages, constructionReadOnlyTools } from '../agent/worker';
 import { businessSynthesisSources, focusedSynthesisMessages, parseSynthesis } from '../agent/synthesis';
 import { modelCitationCatalog, sourceCitationCatalog } from '../agent/citation-catalog';
@@ -87,4 +87,22 @@ test('report cutoff is genuinely converted from UTC to Shanghai while frozen ide
   assert.doesNotMatch(text, /12:00:00\.000Z（Asia\/Shanghai）/);
   assert.equal(snapshot.queriedAt, '2026-11-01T12:00:00.000Z');
   assert.equal(JSON.stringify(selection), before);
+});
+
+test('a daily report exposes in-period stage changes and is answerable from its originals', () => {
+  const original = JSON.stringify(selection);
+  const withStages = { ...project, stageName: '软装', stageEvents: [
+    { id: '6601', revision: 2, stageKey: 'installation', name: '安装', at: '2026-11-09T14:32:10.947Z' },
+    { id: '6602', revision: 3, stageKey: 'furnishing', name: '软装', at: '2026-11-09T14:48:24.288Z' }] } as unknown as ReportProject;
+  const text = reportFactText(selection, withStages);
+  assert.match(text, /报告保存时团队标记阶段：软装/);
+  assert.match(text, /报告周期内团队标记阶段：2026-11-09 22:32:10（Asia\/Shanghai，UTC\+08:00），安装/);
+  assert.equal(JSON.stringify(selection), original);
+  const staged = businessSynthesisSources('trial:stage', { ...snapshot, reportAnswerGrounding: 'report-answer-grounding-v1',
+    data: [withStages], displayText: text });
+  const event = staged.filter(source => source.reportScope?.kind === 'stage' && source.reportScope.itemId === '6601');
+  assert.equal(event.length, 1);
+  assert.match(event[0].text, /安装/);
+  assert.equal(reportSiteAnswerable(project), false);
+  assert.equal(reportSiteAnswerable(withStages), true);
 });

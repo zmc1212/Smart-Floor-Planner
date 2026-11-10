@@ -4,7 +4,7 @@ import { promisify } from 'node:util';
 import { fail } from '@/lib/assistant/contracts';
 import { gbId } from './wvp';
 
-export type SdClockSource = { source: Date; serialHash: string };
+export type SdClockSource = { source: Date; serialHash: string; identityVersion?: number };
 export type SdClockReader = (device: string, channel: string) => Promise<SdClockSource>;
 export async function readSipSdClock(device: string, channel: string, transport: typeof fetch = fetch): Promise<SdClockSource> {
   const origin = new URL(process.env.CAMERA_SD_CLOCK_ORIGIN || '');
@@ -15,7 +15,8 @@ export async function readSipSdClock(device: string, channel: string, transport:
   const text = await response.text(); if (text.length > 4096) fail('camera_sd_clock_unavailable', 503);
   const data = JSON.parse(text), source = new Date(data.source), observed = Date.parse(data.observedAt);
   if (!Number.isFinite(source.getTime()) || !Number.isFinite(observed) || Math.abs(Date.now() - observed) > 15000 || data.identityKind !== 'gb28181-registration' || typeof data.serialHash !== 'string' || !/^[a-f0-9]{64}$/.test(data.serialHash)) fail('camera_sd_clock_unavailable', 503);
-  return { source, serialHash: data.serialHash };
+  if (data.identityVersion !== undefined && data.identityVersion !== 2) fail('camera_sd_clock_unavailable', 503);
+  return { source, serialHash: data.serialHash, identityVersion: data.identityVersion === 2 ? 2 : undefined };
 }
 export const readSdClock: SdClockReader = async (device, channel) => {
   if (process.env.CAMERA_SD_CLOCK_ORIGIN) {

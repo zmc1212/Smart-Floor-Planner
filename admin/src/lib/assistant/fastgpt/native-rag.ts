@@ -44,7 +44,10 @@ export function ragAnswerParts(text: string, sources: RagCitationSource[]): RagP
       if (!source) fail('invalid_model_citation', 502);
       if (!selected.includes(source)) selected.push(source);
       return '';
-    });
+    }).replace(/\([^()]{1,128}\)\(CITE\)/g, '').replace(/\(CITE\)/g, '');
+    // A model occasionally emits a stray duplicate such as
+    // `[A](CITE)(B)(CITE)`. The bare token is protocol noise, not prose or a
+    // second citation; never deliver it to the customer.
     if (prose) parts.push({ text: prose });
     parts.push(...selected.map(source => ({ source })));
   }
