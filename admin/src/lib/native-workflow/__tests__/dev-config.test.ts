@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  assertB4ConnectionIdentity,
   assertB4DevelopmentEntry,
   B4ConfigError,
   describeB4DatabaseTarget,
@@ -219,4 +220,64 @@ test('describes a target without leaking the password', () => {
   assert.equal(described, 'purpose=fixture host=127.0.0.1:55433 database=smart_floor_planner username=sfp_owner');
   assert.equal(described.includes('sfp_owner_local_only'), false);
   assert.equal(described.includes('@'), false);
+});
+
+test('a valid target carries no query string or fragment', () => {
+  const target = resolveB4DatabaseTarget({ purpose: 'fixture', argv: DEVELOPMENT, env: fixtureEnv() });
+  const parsed = new URL(target.url);
+  assert.equal(parsed.search, '');
+  assert.equal(parsed.hash, '');
+  assert.equal(target.url, FIXTURE_URL);
+});
+
+test('rejects any query string, including overrides and duplicates', () => {
+  for (const query of ['?host=evil.example', '?port=5432', '?user=sfp_owner', '?host=a&host=b', '?h%6fst=evil']) {
+    assert.equal(
+      codeOf(() => resolveB4DatabaseTarget({
+        purpose: 'app',
+        argv: DEVELOPMENT,
+        env: appEnv({ B4_LIVE_APP_DATABASE_URL: `${APP_URL}${query}` }),
+      })),
+      'B4_LIVE_APP_DATABASE_URL.query',
+      `query ${query} must be rejected`,
+    );
+  }
+  assert.equal(
+    codeOf(() => resolveB4DatabaseTarget({
+      purpose: 'fixture',
+      argv: DEVELOPMENT,
+      env: fixtureEnv({ B4_LIVE_FIXTURE_DATABASE_URL: `${FIXTURE_URL}?user=sfp_app` }),
+    })),
+    'B4_LIVE_FIXTURE_DATABASE_URL.query',
+  );
+});
+
+test('rejects a URL fragment', () => {
+  assert.equal(
+    codeOf(() => resolveB4DatabaseTarget({
+      purpose: 'app',
+      argv: DEVELOPMENT,
+      env: appEnv({ B4_LIVE_APP_DATABASE_URL: `${APP_URL}#hash` }),
+    })),
+    'B4_LIVE_APP_DATABASE_URL.hash',
+  );
+});
+
+test('connection identity must match the verified target', () => {
+  const target = resolveB4DatabaseTarget({ purpose: 'fixture', argv: DEVELOPMENT, env: fixtureEnv() });
+  assert.doesNotThrow(() => assertB4ConnectionIdentity(target, {
+    database: 'smart_floor_planner',
+    username: 'sfp_owner',
+  }));
+
+  for (const actual of [
+    { database: 'postgres', username: 'sfp_owner' },
+    { database: 'smart_floor_planner', username: 'sfp_app' },
+  ]) {
+    assert.throws(
+      () => assertB4ConnectionIdentity(target, actual),
+      (error: unknown) => error instanceof B4ConfigError && error.code === 'b4_database_identity_mismatch',
+      `identity ${JSON.stringify(actual)} must be rejected`,
+    );
+  }
 });

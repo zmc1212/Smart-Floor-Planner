@@ -27,7 +27,11 @@ import { createFileWorkflowStore, resolveNativeWorkflowStoreDir } from '@/lib/na
 import { createWorkflowService } from '@/lib/native-workflow/service';
 import { resolveStageReminderBusinessEvent } from '@/lib/native-workflow/live/business-event';
 import { createConstructionStageReminderPorts } from '@/lib/native-workflow/live/construction-ports';
-import { describeB4DatabaseTarget, resolveB4DatabaseTarget } from '@/lib/native-workflow/live/dev-config';
+import {
+  assertB4ConnectionIdentity,
+  describeB4DatabaseTarget,
+  resolveB4DatabaseTarget,
+} from '@/lib/native-workflow/live/dev-config';
 import { runPublishedLive } from '@/lib/native-workflow/live/runner';
 import { createFileWorkflowRunStore } from '@/lib/native-workflow/live/run-store';
 import type { LiveBusinessEvent, LiveOperationPorts, LiveRunRecord } from '@/lib/native-workflow/live/types';
@@ -194,6 +198,14 @@ async function main() {
 
   const database = resolveB4DatabaseTarget({ purpose: 'app' });
   process.env.DATABASE_URL = database.url;
+  const connected = await withTenantTransaction(enterpriseId, async (tx) => one(
+    tx,
+    sql`select current_database() as database, current_user as username`,
+  ));
+  assertB4ConnectionIdentity(database, {
+    database: String(connected?.database ?? ''),
+    username: String(connected?.username ?? ''),
+  });
   const version = await resolvePublished();
   const actor: ConstructionActor = { enterpriseId, adminId };
 
@@ -208,6 +220,7 @@ async function main() {
       actor,
       projectId,
       stageKey,
+      sourceEventKey: eventId,
       outboxEventId: outboxEventId ?? null,
     });
   }

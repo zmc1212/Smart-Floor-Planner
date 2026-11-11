@@ -189,11 +189,22 @@ async function reuseFromOutbox(
   if (String(payload.stageKey) !== binding.stageKey) {
     throw new AssistantError('stage_event_conflict', 409);
   }
+  const sourceEventKey = context.event.eventId;
+  const existingSourceKey = typeof payload.sourceEventKey === 'string' ? payload.sourceEventKey : null;
+  if (existingSourceKey && existingSourceKey !== sourceEventKey) {
+    throw new AssistantError('stage_event_conflict', 409);
+  }
   if (Number(event.aggregate_version) !== binding.progressRevision) {
     throw new AssistantError('stage_event_conflict', 409);
   }
   if (!await currentStageEvent(tx, enterpriseId, String(event.id), true)) {
     throw new AssistantError('stage_event_invalidated', 409);
+  }
+  if (!existingSourceKey) {
+    // Backfill the stable cross-run anchor for events created before B4.2.
+    await tx.execute(sql`update app.domain_event_outbox
+      set payload = payload || jsonb_build_object('sourceEventKey', ${sourceEventKey}::text)
+      where enterprise_id=${enterpriseId} and id=${String(event.id)}`);
   }
   return {
     saved: {
@@ -271,6 +282,7 @@ async function saveStageReminder(
       project,
       binding.settingsVersion,
       body,
+      { sourceEventKey: context.event.eventId },
     );
     const saved: SavedReminder = {
       eventId: String(outbox.id),

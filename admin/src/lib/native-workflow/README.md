@@ -206,23 +206,29 @@ business event and never selects a definition from a draft.
 - B isolation is explicit: `B4_LIVE_APP_DATABASE_URL` and
   `B4_LIVE_FIXTURE_DATABASE_URL` are required and validated against the exact
   host (`127.0.0.1`/`localhost`), port `55433`, database
-  `smart_floor_planner` and role (`sfp_app`/`sfp_owner`). There is no
-  `DATABASE_URL` fallback or default. The fixture performs a read-only
-  ownership preflight before touching its fixed IDs; it never overwrites a
-  non-fixture enterprise, account, project or conversation.
+  `smart_floor_planner` and role (`sfp_app`/`sfp_owner`). Query strings and
+  fragments are rejected outright, so `?host=`, `?port=`, `?user=` and
+  duplicate/encoded parameters cannot override the verified target. There is
+  no `DATABASE_URL` fallback or default. After connecting, the live entry and
+  fixture compare `current_database()`/`current_user` with the verified
+  target. The fixture performs a read-only ownership preflight before any
+  write; the integration suite uses the same resolver and marker-based
+  ownership preflight, and its `after` hook deletes nothing when the preflight
+  failed.
 - `live/runner.ts` fixes `definitionId`, `revision`, `digest`, `nodeVersions`,
   the trigger event and the business event before the first effect. Later
   draft edits or publishes cannot change the compiled plan. `runId` uses
   exclusive `create`/`update`: an existing runId returns its original record or
   rejects a different enterprise/project/event/revision; unknown and failure
   evidence is preserved and never re-executed automatically.
-- `live/business-event.ts` resolves and fixes the server event before the run:
-  an existing `outboxEventId` when selected, otherwise the project's current
-  progress revision plus stage settings. Save and delivery always use that
-  fixed progress revision and settings version. A note-only change or a
-  workflow-version change reuses the original outbox event; an invalidated
-  event stops with `stage_event_invalidated` instead of creating a reminder at
-  the current revision.
+- `live/business-event.ts` fixes a stable cross-run anchor. The outbox payload
+  stores `sourceEventKey` (the trigger event id); resolution looks up that key
+  before the project's current progress revision. The same event with a new
+  runId, a new published revision, or a note-only progress change therefore
+  reuses the original outbox/progressRevision/settingsVersion. Events created
+  before B4.2 are backfilled with the key when reused. An invalidated event
+  stops with `stage_event_invalidated`; it is never silently reinterpreted as
+  the current revision. `--outbox-event-id` remains an explicit override.
 - `live/construction-ports.ts` maps each `PendingOperation` to existing
   services. Enterprise, admin, project and customer identity come from the
   host; a definition cannot override them.
@@ -238,7 +244,13 @@ business event and never selects a definition from a draft.
   - `deliver.inapp`: requires the owner or an active manager again, then calls
     the scoped `deliverStageReminderToConversation` for exactly one
     project/event/conversation. The aggregate `syncConstructionReminders`
-    entry keeps its original responsibility for other callers.
+    entry keeps its original responsibility for other callers. Delivery
+    re-checks assistant enabled, the event settingsVersion against the current
+    stage settings, project/customer access, current event/stage and the
+    conversation before writing; failures keep the saved outbox and add no
+    delivery/message. An already delivered stage notice does not resend the
+    stage message, but still backfills `appendStageFollowUp` and
+    `construction_links` under their independent idempotency.
 - Receipts are validated before the operation outcome is written:
   `saved:false`, `delivered:false` or an invalid receipt marks that operation
   `failed` while preserving its outputs and error. Live mode requires
@@ -268,19 +280,27 @@ connecting. It supports `--close-conversation-after-save` and
 restore the fixture state. The fixture seeds owner/manager/worker/observer test
 accounts.
 
-Recorded evidence: the normal run completed with real outbox/delivery/message
-receipts; the same runId returned the original record without re-calling ports;
-worker/observer saves and a demoted manager were rejected with
-`construction_forbidden`; save failure stopped before delivery; delivery
-failure kept the saved event. The main fixture counts stayed 2/2/2 after the
-idempotent replays, and assistant usage/provider attempts stayed 0. The
-real-adapter integration suite (dedicated project `1454900004` and control
-`1454900014`) covers worker/observer denial, manager allow/demotion, note-only
-replay at 1/1/1, scoped delivery with the control event at 0/0, and zero model
-usage.
+Recorded B4.2 evidence: the default entry `b4-2-default-001` completed with
+outbox `46` at progress revision 2, delivery `63` and message `35`; the main
+fixture counts were 3/3/3 and assistant usage/provider attempts stayed 0.
+Re-running the same event id with a new runId (`b4-2-default-002`) resolved
+outbox `46` by `sourceEventKey`, reused the save and delivery receipts and kept
+the counts at 3/3/3. The real-adapter suite (11 tests, dedicated target
+`1454900004` and control `1454900014`) also covers worker/observer denial,
+manager allow/demotion, a note-only revision resolving the original source
+event across runs at 1/1/1, assistant-disabled and settings-version-mismatch
+delivery re-checks with the outbox retained, generic-scope follow-up skipping,
+lead-bound follow-up/link backfill without a second stage message, control
+event isolation at 0/0, ownership preflight/cleanup and zero model usage.
+
+Checks: the original 77 non-database tests are retained and pass; the current
+native-workflow non-database suite is 90 tests, the shared construction suite
+is 89 tests, and the real-adapter suite is 11 tests. Scoped ESLint passes; the
+repository still has its pre-existing full-lint/type/build failures outside
+this module.
 
 The sole XiaoK plan is intentionally not edited in this B branch; the
-integration lead should merge the current B4.1 status into A's latest plan
+integration lead should merge the current B4.2 status into A's latest plan
 without replacing A's newer progress, failures or unknown records.
 
 Out of scope this round: daily/weekly real integration, the model compose
@@ -292,13 +312,20 @@ migrations.
 From `admin/` (no database, no Worker, no model):
 
 ```powershell
-npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts
+npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts
 npx tsx src/lib/native-workflow/playground/simulate.ts
+```
+
+The shared construction-service suite is also non-database:
+
+```powershell
+npx tsx --test src/lib/construction/__tests__/*.test.ts
 ```
 
 The real-construction-adapter suite is separate and skips without the B URLs:
 
 ```powershell
+$env:B4_LIVE_DEVELOPMENT='1'
 $env:B4_LIVE_APP_DATABASE_URL='postgresql://sfp_app:...@127.0.0.1:55433/smart_floor_planner'
 $env:B4_LIVE_FIXTURE_DATABASE_URL='postgresql://sfp_owner:...@127.0.0.1:55433/smart_floor_planner'
 npx tsx --test src/lib/native-workflow/__tests__/live-integration.test.ts

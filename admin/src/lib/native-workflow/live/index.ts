@@ -17,12 +17,20 @@ export {
 } from './project-access';
 export {
   B4ConfigError,
+  assertB4ConnectionIdentity,
   describeB4DatabaseTarget,
   resolveB4DatabaseTarget,
   resolveB4LiveDatabaseTarget,
   type B4LiveDatabasePurpose,
   type B4LiveDatabaseTarget,
 } from './dev-config';
+export {
+  INTEGRATION_MARKER,
+  assertFixtureRowsOwned,
+  canCleanupFixtureRows,
+  runOwnedCleanup,
+  type FixtureRowOwnership,
+} from './fixture-ownership';
 export { runPublishedLive, type LiveRunInput } from './runner';
 export {
   createFileWorkflowRunStore,

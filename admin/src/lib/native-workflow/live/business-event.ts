@@ -12,6 +12,8 @@ export interface ResolveStageReminderBusinessEventInput {
   readonly actor: ConstructionActor;
   readonly projectId: string;
   readonly stageKey: string;
+  /** Stable business event key, independent of runId and published revision. */
+  readonly sourceEventKey: string;
   /** Existing outbox event selected by the operator, if any. */
   readonly outboxEventId?: string | null;
 }
@@ -59,7 +61,40 @@ export async function resolveStageReminderBusinessEvent(
           `stage event ${input.outboxEventId} was not found for project ${input.projectId}`,
         );
       }
-      return fromOutbox(tx, actor.enterpriseId, project, event, input.stageKey, settings.version);
+      return fromOutbox(
+        tx,
+        actor.enterpriseId,
+        project,
+        event,
+        input.stageKey,
+        settings.version,
+        input.sourceEventKey,
+      );
+    }
+
+    // The stable source-event key is the cross-run anchor. It is independent
+    // of runId and workflow revision; a note-only progress change must still
+    // find the original outbox event instead of the current revision.
+    const bySourceKey = await one(
+      tx,
+      sql`select * from app.domain_event_outbox
+        where enterprise_id=${actor.enterpriseId}
+          and type='construction.stage.updated.v1'
+          and aggregate_type='construction_project'
+          and aggregate_id=${input.projectId}
+          and payload->>'sourceEventKey'=${input.sourceEventKey}
+        order by id limit 1`,
+    );
+    if (bySourceKey) {
+      return fromOutbox(
+        tx,
+        actor.enterpriseId,
+        project,
+        bySourceKey,
+        input.stageKey,
+        settings.version,
+        input.sourceEventKey,
+      );
     }
 
     const progressRevision = Number(project.progress_revision);
@@ -77,7 +112,15 @@ export async function resolveStageReminderBusinessEvent(
         limit 1`,
     );
     if (existing) {
-      return fromOutbox(tx, actor.enterpriseId, project, existing, input.stageKey, settings.version);
+      return fromOutbox(
+        tx,
+        actor.enterpriseId,
+        project,
+        existing,
+        input.stageKey,
+        settings.version,
+        input.sourceEventKey,
+      );
     }
     return {
       outboxEventId: null,
@@ -96,6 +139,7 @@ async function fromOutbox(
   event: Row,
   stageKey: string,
   currentSettingsVersion: number,
+  sourceEventKey: string,
 ): Promise<LiveBusinessEvent> {
   const payload = event.payload as Row;
   if (String(payload.stageKey) !== stageKey) {
@@ -103,6 +147,13 @@ async function fromOutbox(
       'stage_event_conflict',
       409,
       `stage event ${String(event.id)} belongs to ${String(payload.stageKey)}, not ${stageKey}`,
+    );
+  }
+  if (typeof payload.sourceEventKey === 'string' && payload.sourceEventKey !== sourceEventKey) {
+    throw new WorkflowOperationError(
+      'stage_event_conflict',
+      409,
+      `stage event ${String(event.id)} is already bound to source event ${payload.sourceEventKey}`,
     );
   }
   const progressRevision = Number(event.aggregate_version);

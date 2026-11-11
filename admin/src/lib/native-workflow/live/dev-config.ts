@@ -105,6 +105,21 @@ export function resolveB4DatabaseTarget(options: {
     );
   }
 
+  // No whitelist: any extra connection parameter or fragment is rejected, so
+  // the exact URL handed to pg cannot silently override host/port/user/db.
+  if (parsed.search !== '') {
+    throw new B4ConfigError(
+      `${envKey}.query`,
+      `${envKey} must not contain a query string (got ${parsed.search}).`,
+    );
+  }
+  if (parsed.hash !== '') {
+    throw new B4ConfigError(
+      `${envKey}.hash`,
+      `${envKey} must not contain a URL fragment (got ${parsed.hash}).`,
+    );
+  }
+
   const host = parsed.hostname;
   if (host !== '127.0.0.1' && host !== 'localhost') {
     throw new B4ConfigError(
@@ -166,6 +181,25 @@ export function resolveB4LiveDatabaseTarget(options: {
     env: options.env,
     argv: options.argv,
   });
+}
+
+/**
+ * Runtime identity check: the verified target, the logged target and the
+ * connection pg actually opened must agree. Host and port are guaranteed by
+ * rejecting query parameters and passing `target.url` to pg unchanged, so the
+ * server-side `current_database()` / `current_user` are the remaining proof.
+ */
+export function assertB4ConnectionIdentity(
+  target: B4LiveDatabaseTarget,
+  actual: { database: string; username: string },
+): void {
+  if (actual.database !== target.database || actual.username !== target.username) {
+    throw new B4ConfigError(
+      'b4_database_identity_mismatch',
+      `Connected identity does not match the verified target: expected database=${target.database} username=${target.username}, `
+        + `got database=${actual.database || '(missing)'} username=${actual.username || '(missing)'}.`,
+    );
+  }
 }
 
 /** Password-free description for logs: host:port/database/purpose/username. */

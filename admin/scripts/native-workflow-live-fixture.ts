@@ -16,7 +16,11 @@ import path from 'node:path';
 import { hash } from 'bcryptjs';
 import pg from 'pg';
 import type { PoolClient } from 'pg';
-import { describeB4DatabaseTarget, resolveB4DatabaseTarget } from '@/lib/native-workflow/live/dev-config';
+import {
+  assertB4ConnectionIdentity,
+  describeB4DatabaseTarget,
+  resolveB4DatabaseTarget,
+} from '@/lib/native-workflow/live/dev-config';
 
 const DEFAULT_ENTERPRISE_ID = 1454n;
 const PREFIX = '[B4]';
@@ -219,6 +223,16 @@ const pool = new pg.Pool({ connectionString, max: 1 });
 const client = await pool.connect();
 
 try {
+  // Prove the connection pg opened is the verified target before any read that
+  // could lead to a write. The URL was already rejected if it carried any
+  // query parameter or fragment, and it is passed to pg unchanged.
+  const identity = await client.query<{ database: string; username: string }>(
+    'select current_database() as database, current_user as username',
+  );
+  const connected = identity.rows[0];
+  if (!connected) throw new Error('PostgreSQL did not return the connection identity.');
+  assertB4ConnectionIdentity(target, connected);
+
   await preflightFixtureOwnership(client);
 
   await client.query('begin');
