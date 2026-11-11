@@ -9,8 +9,21 @@ import type { HistorySnapshot } from '../agent/history';
 import { projectMessage } from '../knowledge/sources';
 import { runKnowledgeEnabled } from '../knowledge-policy';
 import { runContext, type Lease } from '../infrastructure/job-queue';
+import { publicContextAvailable } from '@/lib/construction/public-projections';
 import { fastGPTRagProtocol, type RagSource } from './rag-config';
 import { ragAnswerParts, ragHistoryText, type RagChatMessage, type RagCitationSource } from './native-rag';
+
+/** A public-site conversation may only reuse assistant answers that were
+ * produced for the same selected site/version and whose published material is
+ * still available. Answers from before the public context was wired (or from
+ * a replaced/withdrawn version) are not history for this site. */
+export function nativePublicSiteHistoryAllowed(
+  active: { siteId: string; versionId: string } | undefined,
+  saved: { siteId?: string; versionId?: string; contentHash?: string } | undefined,
+  available: boolean) {
+  if (!active) return true;
+  return !!saved && saved.siteId === active.siteId && saved.versionId === active.versionId && available;
+}
 
 /** Read one persisted synthesis step for the next turn's history. A
  * snapshot-only delivery (`composition.modelIncluded === false`) never
@@ -41,6 +54,8 @@ export async function nativeConversation(lease: Lease, configured: RagSource[], 
         where m.enterprise_id=${lease.enterpriseId} and m.conversation_id=${String(conversation.id)} and trigger.id=${String(run.trigger_message_id)}
           and m.seq<=trigger.seq and m.author_kind in ('user','assistant') order by m.seq desc limit 7`);
       if (!originals.length || String(originals[0].id) !== String(run.trigger_message_id)) fail('context_changed');
+      const activePublicSite = (conversation.entry_snapshot as Row).activePublicSite as
+        { siteId: string; versionId: string } | undefined;
       const result: RagChatMessage[] = [], history: HistorySnapshot['sources'] = [];
       for (const m of originals.reverse()) {
         const projected = await projectMessage(tx, lease.actor, conversation, m);
@@ -52,6 +67,14 @@ export async function nativeConversation(lease: Lease, configured: RagSource[], 
           // Do not import unbound historical generated prose into a new answer.
           if (!prior) continue;
           const original = prior.source_refs as SynthesisContext;
+          if (activePublicSite) {
+            const saved = (prior.private_checkpoint as Row).publicSite as
+              { siteId?: string; versionId?: string; contentHash?: string } | undefined;
+            const available = saved?.siteId && saved.versionId
+              ? await publicContextAvailable(tx, lease.enterpriseId, { siteId: saved.siteId, versionId: saved.versionId,
+                ...(saved.contentHash ? { contentHash: saved.contentHash } : {}) }) : false;
+            if (!nativePublicSiteHistoryAllowed(activePublicSite, saved, available)) continue;
+          }
           if (!runKnowledgeEnabled(run.policy_snapshot as Row) && original.knowledge.length) continue;
           if (!await synthesisContextAvailable(tx, lease.actor, conversation, original)) continue;
           if ((prior.input_summary as Row)?.protocol === protocol) {

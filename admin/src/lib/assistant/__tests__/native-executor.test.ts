@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { composeNativeDelivery, nativeCitationFeedback, nativeExecutorPrompt, recoveredDialogueToolState,
-  synthesisHistoryFields, xiaokNativeExecutorProtocol } from '../agent/native-executor';
+  nativeOwnProjectIntent, nativePublicSiteSelection, nativePublicSiteWithdrawnText, synthesisHistoryFields,
+  xiaokNativeExecutorProtocol } from '../agent/native-executor';
 import { nativeAgentRuntimeBinding } from '../fastgpt/agent-v2/config';
-import { nativeHistoryCheckpoint } from '../fastgpt/rag-session';
+import { nativeHistoryCheckpoint, nativePublicSiteHistoryAllowed } from '../fastgpt/rag-session';
 import { recoverableUnavailableRead, runRenovationAgent, type AgentRuntimePorts } from '../agent/runtime';
 import { modelBusinessReceipt } from '../agent/dialogue-tools';
 import { webCitations } from '../agent/dialogue-web-tools';
@@ -378,6 +379,42 @@ test('a normally delivered current-run citation remains usable as next-turn hist
   assert.equal(read.citations[0].nativeId, 'K2511');
   assert.equal(read.citations[0].origin, 'history');
   assert.equal(ragHistoryText(deliveredContent(composed.text), read.original), draft);
+});
+
+test('an active public site reaches ordinary replies while withdrawn material is not replayed', () => {
+  const ref = { siteId: '11', versionId: '38' };
+  const content = { name: '合成手测公开样板工地·西陵区', cityName: '宜昌市', district: '西陵区',
+    stageName: '水电', excerpts: [{ role: '施工经理', dateLabel: '11月11日', text: '书房线管布置完成' }],
+    photos: [{ key: 'p1' }] } as unknown as import('@/lib/construction/public-contract').PublicContent;
+  const selected = nativePublicSiteSelection(ref, { ...ref, contentHash: 'hash-38', content });
+  assert.ok(selected);
+  assert.deepEqual(selected!.ref, { ...ref, contentHash: 'hash-38' });
+  assert.match(selected!.text, /合成手测公开样板工地/);
+  assert.match(selected!.text, /水电/);
+  assert.match(selected!.text, /这个工地\/这里/);
+  assert.match(selected!.text, /不是客户本人的项目/);
+  assert.match(selected!.text, /query_business/);
+  assert.match(selected!.text, /我家\/本人项目/);
+  // No selection keeps the own-project path exactly as before.
+  assert.equal(nativePublicSiteSelection(null, { ...ref, contentHash: 'hash-38', content }), null);
+  // A withdrawn version must not replay the old public material.
+  const withdrawn = nativePublicSiteSelection(ref, null);
+  assert.ok(withdrawn);
+  assert.equal(withdrawn!.ref, null);
+  assert.equal(withdrawn!.text, nativePublicSiteWithdrawnText);
+  assert.doesNotMatch(withdrawn!.text, /合成手测公开样板工地/);
+  // Only an explicit own-home/project question reopens the own-project tool.
+  assert.equal(nativeOwnProjectIntent('这个工地现在施工到哪个阶段？'), false);
+  assert.equal(nativeOwnProjectIntent('这个工地呢？'), false);
+  assert.equal(nativeOwnProjectIntent('我家现在施工到哪一步？'), true);
+  assert.equal(nativeOwnProjectIntent('本人项目的进度怎么样？'), true);
+  // Public-site history is only reusable for the same still-published version.
+  const active = { siteId: '11', versionId: '38' };
+  assert.equal(nativePublicSiteHistoryAllowed(undefined, undefined, false), true);
+  assert.equal(nativePublicSiteHistoryAllowed(active, { siteId: '11', versionId: '38', contentHash: 'h' }, true), true);
+  assert.equal(nativePublicSiteHistoryAllowed(active, undefined, false), false);
+  assert.equal(nativePublicSiteHistoryAllowed(active, { siteId: '11', versionId: '39', contentHash: 'h' }, true), false);
+  assert.equal(nativePublicSiteHistoryAllowed(active, { siteId: '11', versionId: '38', contentHash: 'h' }, false), false);
 });
 
 test('the model sees only status/text for business snapshots, while recovery keeps the full resultKey', () => {
