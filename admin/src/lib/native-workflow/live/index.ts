@@ -37,6 +37,34 @@ export {
   createMemoryWorkflowRunStore,
 } from './run-store';
 export {
+  BATCH_RECEIVER_ORDER,
+  runPeriodReportBatch,
+  type PeriodReportBatchDelivery,
+  type PeriodReportBatchDependencies,
+  type PeriodReportBatchEntry,
+  type PeriodReportBatchEntryState,
+  type PeriodReportBatchInput,
+  type PeriodReportBatchManifest,
+  type PeriodReportBatchObservation,
+  type PeriodReportBatchReceipt,
+  type PeriodReportBatchReceiver,
+  type PeriodReportBatchReceiverKind,
+  type PeriodReportBatchResult,
+  type PeriodReportBatchState,
+} from './period-report-batch';
+export {
+  createFilePeriodReportBatchStore,
+  createMemoryPeriodReportBatchStore,
+  resolveNativeWorkflowBatchDir,
+  type PeriodReportBatchStore,
+} from './period-report-batch-store';
+export {
+  assertPeriodReportBatchExecutor,
+  assertPeriodReportBatchPlan,
+  type PeriodReportBatchPlanEvidence,
+  type PeriodReportBatchPreflightInput,
+} from './period-report-batch-preflight';
+export {
   LiveOperationFailure,
   LiveOperationUnknownError,
   type LiveBusinessEvent,

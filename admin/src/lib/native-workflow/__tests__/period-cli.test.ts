@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   addCalendarDays,
+  parseBatchReceiverTargets,
   parseBossIdArg,
   parseDesignerIdArg,
   parsePeriodKind,
@@ -354,5 +355,54 @@ test('boss receiver requires --boss-id and never accepts staff id flags', () => 
   assert.equal(
     codeOf(() => parseReceiverArg(['--boss-id', '1454000013'])),
     'boss_id_forbidden',
+  );
+});
+
+test('the joint entry fixes customer, worker, designer and boss in that order', () => {
+  assert.deepEqual(
+    parseBatchReceiverTargets([
+      '--worker-id', '1454000008',
+      '--designer-id', '1454000011',
+      '--boss-id', '1454000013',
+    ]),
+    [
+      { kind: 'customer' },
+      { kind: 'worker', adminId: '1454000008' },
+      { kind: 'designer', adminId: '1454000011' },
+      { kind: 'boss', adminId: '1454000013' },
+    ],
+  );
+  // Inline values are accepted like the single-receiver flags.
+  assert.deepEqual(
+    parseBatchReceiverTargets([
+      '--worker-id=1454000008',
+      '--designer-id=1454000011',
+      '--boss-id=1454000013',
+    ]).map((receiver) => receiver.kind),
+    ['customer', 'worker', 'designer', 'boss'],
+  );
+});
+
+test('the joint entry rejects a missing/invalid admin id or a receiver-kind override', () => {
+  const base = ['--worker-id', '1454000008', '--designer-id', '1454000011', '--boss-id', '1454000013'];
+  assert.equal(
+    codeOf(() => parseBatchReceiverTargets(base.filter((value) => value !== '--worker-id' && value !== '1454000008'))),
+    'worker_id_missing',
+  );
+  assert.equal(
+    codeOf(() => parseBatchReceiverTargets([
+      '--worker-id', '1454000008', '--designer-id', '', '--boss-id', '1454000013',
+    ])),
+    'designer_id_invalid',
+  );
+  assert.equal(
+    codeOf(() => parseBatchReceiverTargets([
+      '--worker-id', '1454000008', '--designer-id', '1454000011', '--boss-id', '',
+    ])),
+    'boss_id_invalid',
+  );
+  assert.equal(
+    codeOf(() => parseBatchReceiverTargets([...base, '--receiver-kind', 'boss'])),
+    'receiver_kind_forbidden',
   );
 });

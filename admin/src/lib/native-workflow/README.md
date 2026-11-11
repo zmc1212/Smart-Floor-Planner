@@ -1328,12 +1328,139 @@ update/read-back failure, successful restore, failed restore, and stale
 read-back mismatch. No database or model call was made for this closeout;
 report `11`/r1 and all existing evidence remain unchanged.
 
+## B5.8 one-project four-receiver joint weekly report
+
+The B5.8 host entry runs one project, one finished week and exactly four
+host-fixed receivers in one action: the project customer plus one worker, one
+designer and one enterprise boss. It is a thin coordinator
+(`live/period-report-batch.ts`) around the existing single-receiver entry and
+ports; it does not compose a shared body, copy a report, discover receivers,
+change the Worker, add a queue or add a shared migration.
+
+- Receiver identity is explicit. The customer is the existing project customer
+  binding (`ensureFollowupBinding` is never auto-discovered here); the worker,
+  designer and boss are host admin ids. `live/period-cli.ts`
+  `parseBatchReceiverTargets()` requires all three admin id flags, rejects
+  `--receiver-kind`, and runs before the database target is resolved. Export
+  discovery (`discoverFollowups`) is never called by this path, so the
+  management executor and any other enterprise owner cannot create extra
+  bindings. The boss receiver must differ from the management executor.
+- One action fixes the enterprise, one project, the period, one selected
+  published revision/digest/node versions and one event before any sub-run.
+  The coordinator checks the trusted period end, the shared published target
+  and (for a new request) the executor write permission plus the single report
+  plan before the first business write. The plan must be enabled, stage off,
+  both legacy schedules parked, `project_ids=[projectId]` and the same
+  `audiences` row must allow all four receivers. The batch never rewrites the
+  plan between receivers.
+- `live/period-report-batch-store.ts` persists the B-owned host manifest under
+  `NATIVE_WORKFLOW_BATCH_DIR` (default `admin/tmp/native-workflow-batches`) with
+  the same same-directory temporary file, atomic rename and serial lock as the
+  run store. It records the request identity, four reserved sub-runIds and the
+  latest entry observations. `create` is exclusive; `update` rejects a
+  different enterprise/project/period/target/revision with
+  `period_report_batch_conflict` (409).
+- Each receiver calls `runPeriodReportEntry()` with its own
+  `createPeriodReportPorts({ actor, receiver })`, the same selected published
+  object and event, and a deterministic sub-runId
+  `<requestId>-<receiver>`. The existing binding, conversation generation,
+  kind/period, frozen single-project facts scope and `enqueueReport` dedupe
+  remain the business idempotency; the four reports/messages/read receipts are
+  independent and the customer facts never contain internal records.
+- Dispatch continues when a receiver already has a real save receipt and the
+  raw run is only `delivery_not_confirmed`; that is asynchronous progress and
+  is never rewritten as delivered. A receiver-unavailable error keeps its
+  reason and does not borrow another binding. A blocking failure or unknown
+  stops later receivers, keeps earlier receipts and marks unexecuted entries
+  `not_started`. The batch status is `completed` only when all four observed
+  business states are `completed`.
+- Status observation reuses `readPeriodReportRunStatus()`. It never executes
+  ports, re-enqueues, composes or delivers. A repeated request id only
+  authorizes and observes the existing manifest; a new request id for the same
+  period/targets reuses the existing reports/deliveries without new tasks,
+  messages or provider calls.
+- CLI: `scripts/native-workflow-period-report-batch.ts`. One call:
+
+```powershell
+npx tsx scripts/native-workflow-period-report-batch.ts --development --ensure-published `
+  --admin-id 1454000001 --project-id 1454000004 `
+  --worker-id 1454000008 --designer-id 1454000011 --boss-id 1454000013 `
+  --period-kind weekly --period-start 2026-10-19 --period-end 2026-10-26 `
+  --request-id b5-8-joint-<stamp>
+```
+
+  `--show-batch <requestId>` reads the manifest only. The acceptance driver is
+  `scripts/native-workflow-joint-report-acceptance.ts`; it creates two marked
+  raw records (customer-visible and internal) only when the fixed week is
+  fresh, reads the original XiaoK entry for all four roles, records each role's
+  own delivery read receipt and proves re-entry, same-request observation and
+  new-request reuse. `--resume <acceptanceId>` continues a partially completed
+  acceptance without changing the fixed week or creating a second round.
+
+Offline tests: `period-report-batch.test.ts` covers the pre-write period,
+published-target and preflight rejections; one version/event for four
+receivers; distinct runIds/receipts; queued first receiver not stopping
+dispatch; unavailable/failed/unknown not masked as success; same-request
+observation; conflict on project/period/target/version changes; new-request
+reuse; receiver-shape rejection; read-only observation and the file store's
+exclusive/identity behaviour.
+
+Recorded B evidence (2026-11-11, isolated B database, week 2026-10-19 →
+2026-10-26, enterprise `1454`, project `1454000004`): the week had no report for
+any of the four targets before the action. One host call created report `12`
+(customer), `13` (worker), `14` (designer) and `15` (boss), all revision `1`,
+facts runs `22`-`25`, body runs `26`-`29`, messages `129`-`132` on bindings
+`1`-`4` and conversations `1454000007`-`1454000010`. All four receipts share
+`report_key` `7c5c5344…`; the binding and
+`policy_snapshot.scope.project_ids=['1454000004']` keep them independent. The
+two marked records are record `6` (customer-visible, photo `6`) and record `7`
+(internal, photo `7`). The existing facts service's expected set is `[6]` for
+all four receivers: record `7` is worker-authored and the pre-existing audit-125
+revocation rule excludes it from every non-customer facts set. The frozen facts
+match that oracle, the customer cannot read record `7` directly (403/404), and
+this is the existing rule, not a B5.8 receiver failure.
+
+Counters moved reports/jobs/runs/attempts/usage/deliveries/messages
+`11/21/21/8/8/11/11` → `15/29/29/12/12/15/15`. Each body run (`26`-`29`) has one
+succeeded accepted `llm-settings-override` attempt (attempts `9`-`12`) with
+observed usage `1112+76`, `1092+83`, `1093+78` and `1092+69` tokens; zero
+FastGPT. The same request id re-entry returned all four `completed` with
+refreshed delivery receipts `129`-`132` and no second round; a new request for
+the same period/targets reused the same reports/versions/facts runs/deliveries
+with `reused:true` and no new rows or model calls; repeated observation left
+every counter unchanged. Each role's original XiaoK API read returned its own
+binding/report/record/photo, acknowledgements wrote `read_at`
+`17:54:40.816Z` (customer), `17:54:41.510Z` (worker), `17:54:41.998Z`
+(designer) and `17:54:42.142Z` (boss), repeat acknowledgements did not rewrite
+them, exit/re-entry returned the same report/records/photo, and every role got
+403/404 on the other receivers' binding/report/record. Restoration reported
+worker, customer_access, report_plan and agent_settings restored; the four
+reports and two marked records are retained. The acceptance's first pass stopped
+after the one host call on a driver event-id assertion; it was continued with
+`--resume <acceptanceId>` on the same fixed week, without changing the period,
+creating a second batch round or re-sampling model calls. The first-attempt
+verification is `verification.first-attempt.json`. Evidence:
+`admin/tmp/b5-8-period-report-runs/b5-8-joint-20261111174324393/verification.json`.
+
+Native Stable DevTools evidence (main-workspace `miniprogram` checkout, same
+appId, no window replaced; runtime-only API rewrite to `127.0.0.1:3018`):
+20/20 checks. The customer opened the private followup through the original
+lead chat, saw the weekly card `10月19日 · 施工周报` (period
+`10月19日 00:00—10月26日 00:00`, delivered, `readAt`
+`17:54:40.816767Z`), opened report `12`/r1, the composed body, record `6` v3
+and photo `6` (path key `6_3_6`), and re-entry returned the same card. Worker
+`13`/r1 (`readAt 17:54:41.510458Z`), designer `14`/r1 (`17:54:41.99844Z`) and
+boss `15`/r1 (`17:54:42.142301Z`) each opened their own card, detail, record
+`6`/photo `6` and the same read state after re-entry. The 16 screenshots and
+`native-joint.json` are under `.../native-ui/`. The native window introduced no
+report/message/job/run/attempt/usage row and did not rewrite any `readAt`.
+
 ## Reproduce
 
 From `admin/` (no database, no Worker, no model):
 
 ```powershell
-npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts src/lib/native-workflow/__tests__/acceptance-store.test.ts src/lib/native-workflow/__tests__/acceptance-conversation.test.ts src/lib/native-workflow/__tests__/acceptance-state.test.ts src/lib/native-workflow/__tests__/acceptance-provider.test.ts src/lib/native-workflow/__tests__/period-report-ports.test.ts src/lib/native-workflow/__tests__/report-model-evidence.test.ts src/lib/native-workflow/__tests__/period-report-status.test.ts src/lib/native-workflow/__tests__/period-report-status-reentry.test.ts src/lib/native-workflow/__tests__/admin-run-status.test.ts src/lib/native-workflow/__tests__/period-report-status-route.test.ts src/lib/native-workflow/__tests__/period-report-status-route-guards.test.ts src/lib/native-workflow/__tests__/period-event-weekly.test.ts src/lib/native-workflow/__tests__/period-cli.test.ts src/lib/native-workflow/__tests__/staff-receiver.test.ts src/lib/native-workflow/__tests__/boss-receiver.test.ts src/lib/native-workflow/__tests__/worker-fixture.test.ts src/lib/native-workflow/__tests__/period-report-entry.test.ts
+npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts src/lib/native-workflow/__tests__/acceptance-store.test.ts src/lib/native-workflow/__tests__/acceptance-conversation.test.ts src/lib/native-workflow/__tests__/acceptance-state.test.ts src/lib/native-workflow/__tests__/acceptance-provider.test.ts src/lib/native-workflow/__tests__/period-report-ports.test.ts src/lib/native-workflow/__tests__/report-model-evidence.test.ts src/lib/native-workflow/__tests__/period-report-status.test.ts src/lib/native-workflow/__tests__/period-report-status-reentry.test.ts src/lib/native-workflow/__tests__/admin-run-status.test.ts src/lib/native-workflow/__tests__/period-report-status-route.test.ts src/lib/native-workflow/__tests__/period-report-status-route-guards.test.ts src/lib/native-workflow/__tests__/period-event-weekly.test.ts src/lib/native-workflow/__tests__/period-cli.test.ts src/lib/native-workflow/__tests__/staff-receiver.test.ts src/lib/native-workflow/__tests__/boss-receiver.test.ts src/lib/native-workflow/__tests__/worker-fixture.test.ts src/lib/native-workflow/__tests__/period-report-entry.test.ts src/lib/native-workflow/__tests__/period-report-batch.test.ts
 npx tsx src/lib/native-workflow/playground/simulate.ts
 ```
 

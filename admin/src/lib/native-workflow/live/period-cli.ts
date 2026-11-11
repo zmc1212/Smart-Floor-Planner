@@ -243,6 +243,46 @@ export function parseReceiverArg(argv: readonly string[]): LivePeriodReceiver {
   return { kind, adminId };
 }
 
+function requiredAdminId(argv: readonly string[], role: AdminReceiverKind): string {
+  const flag = RECEIVER_ID_FLAG[role];
+  const prefix = RECEIVER_ID_PREFIX[role];
+  const option = readCliOption(argv, flag);
+  if (!option.present) {
+    throw new PeriodCliError(
+      `${prefix}_missing`,
+      `${flag} is required for the joint four-receiver entry`,
+    );
+  }
+  if (option.value === undefined || !/^[1-9]\d{0,18}$/.test(option.value)) {
+    throw new PeriodCliError(
+      `${prefix}_invalid`,
+      `${flag} must be a positive integer admin id`,
+    );
+  }
+  return option.value;
+}
+
+/**
+ * Resolve the joint entry's four host-fixed receivers: the project customer
+ * (resolved later by the existing customer binding) plus the worker, designer
+ * and enterprise boss admin ids. There is no `--receiver-kind` in this mode:
+ * the host always fixes exactly these four, and every admin id flag is required.
+ */
+export function parseBatchReceiverTargets(argv: readonly string[]): LivePeriodReceiver[] {
+  if (readCliOption(argv, '--receiver-kind').present) {
+    throw new PeriodCliError(
+      'receiver_kind_forbidden',
+      '--receiver-kind is not valid for the joint entry; it always fixes customer, worker, designer and boss',
+    );
+  }
+  return [
+    { kind: 'customer' },
+    { kind: 'worker', adminId: requiredAdminId(argv, 'worker') },
+    { kind: 'designer', adminId: requiredAdminId(argv, 'designer') },
+    { kind: 'boss', adminId: requiredAdminId(argv, 'boss') },
+  ];
+}
+
 export interface CliPeriodInput {
   readonly kind: PeriodCliKind;
   readonly periodStart: string;
