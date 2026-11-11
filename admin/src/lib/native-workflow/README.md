@@ -802,15 +802,22 @@ Mini Program source change is added.
   `--worker-id`. Pure argument checks (`receiver_kind_missing`,
   `receiver_kind_invalid`, `worker_id_missing`, `worker_id_invalid`,
   `worker_id_forbidden`) run before the database target is resolved or any
-  connection is opened. After connecting, `worker_receiver_unavailable` checks
-  the worker account, project membership and current staff followup access
-  before the first business write. Management-executor authorization, the
-  ended-period check and the published definition/execution-target checks also
-  run before that first business write. `ensureFollowupBinding()` is the last
-  step inside that transaction, after those read-only checks. `--admin-id`
-  stays the management executor, the worker is only the receiver, and evidence
-  queries use the receipt reportId/binding so they never pick up the
-  same-period customer report.
+  connection is opened. After connecting, the shared entry
+  (`live/period-report-entry.ts`) runs the load-bearing order: trusted
+  ended-period check → resolve the selected published revision → shared
+  published-target precheck → management-executor authorization → worker
+  account/member/staff-access checks → `ensureFollowupBinding` → the live
+  runner with the same selected revision and event. The precheck is
+  `live/published-target.ts` (`resolvePublishedTarget`): compiled
+  definitionId/revision/digest, recorded `nodeVersions`, `eventType` and
+  `periodKind`. The runner calls the same function before its first effect, so
+  the CLI and the runner cannot drift, and a valid executor plus a valid worker
+  without a binding is rejected on a `weekly` event + daily template before
+  any conversation/binding/participant or enqueue. `ensureFollowupBinding()` is
+  the last step inside that transaction, after those read-only checks.
+  `--admin-id` stays the management executor, the worker is only the receiver,
+  and evidence queries use the receipt reportId/binding so they never pick up
+  the same-period customer report.
 
 Recorded B evidence (2026-11-11, isolated B database, week 2026-10-26 →
 2026-11-02): enterprise `1454`, project `1454000004`, worker admin/base user
@@ -934,8 +941,29 @@ were rejected with `construction_forbidden`, and the unfinished week
 `4/2/3` and reports/jobs/runs/attempts/usage/messages/deliveries stayed
 `8/15/15/5/5/22/8`; no enqueue ran.
 
-Tests: the documented offline command now lists 25 files and runs 279 tests,
-all 279 pass with 0 fail. The focused four-file command (worker-receiver,
+Published-target precheck closeout (2026-11-11, offline): the runner's
+published-revision and event checks moved unchanged into
+`live/published-target.ts` and the CLI now calls that shared function inside
+`live/period-report-entry.ts` before `prepareWorkerPeriodReport`. The order is
+trusted ended period → select published revision → precheck (compiled
+definitionId/revision/digest, `nodeVersions`, `eventType`, `periodKind`) →
+management authorization → worker checks → `ensureFollowupBinding` → runner,
+with the same selected revision/event reaching both the precheck and the run.
+New `period-report-entry.test.ts` (5/5) drives that real entry: a valid manager
+with a valid worker that has no binding plus `weekly` event on the daily
+template is rejected (`live_event_type_unsupported`) with 0 transactions, 0
+authorization/binding queries, 0 writes to
+conversations/bindings/participants, 0 report/job/usage/attempt queries, 0 port
+calls and 0 run records; a tampered digest and tampered `nodeVersions` are
+rejected (`published_version_invalid`) with the same zero-write assertions; the
+matching weekly template/event passes the precheck, keeps the project lock →
+staff checks → binding order, and the runner binds the same revision, digest and
+event; an unfinished week is rejected before `loadPublished` is called. No live
+model call, report or message was created this round.
+
+Tests: the documented offline command now lists 26 files and runs 284 tests,
+all 284 pass with 0 fail; the new `period-report-entry.test.ts` is 5/5. The
+focused four-file command (worker-receiver,
 worker-fixture, period-report ports, period CLI) is 52/52; the new
 `worker-receiver.test.ts` is 4/4 and `worker-fixture.test.ts` is 5/5.
 `period-report-ports.test.ts` is 28/28,
@@ -956,7 +984,7 @@ migrations remain out of scope.
 From `admin/` (no database, no Worker, no model):
 
 ```powershell
-npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts src/lib/native-workflow/__tests__/acceptance-store.test.ts src/lib/native-workflow/__tests__/acceptance-conversation.test.ts src/lib/native-workflow/__tests__/acceptance-state.test.ts src/lib/native-workflow/__tests__/period-report-ports.test.ts src/lib/native-workflow/__tests__/report-model-evidence.test.ts src/lib/native-workflow/__tests__/period-report-status.test.ts src/lib/native-workflow/__tests__/period-report-status-reentry.test.ts src/lib/native-workflow/__tests__/admin-run-status.test.ts src/lib/native-workflow/__tests__/period-report-status-route.test.ts src/lib/native-workflow/__tests__/period-report-status-route-guards.test.ts src/lib/native-workflow/__tests__/period-event-weekly.test.ts src/lib/native-workflow/__tests__/period-cli.test.ts src/lib/native-workflow/__tests__/worker-receiver.test.ts src/lib/native-workflow/__tests__/worker-fixture.test.ts
+npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts src/lib/native-workflow/__tests__/acceptance-store.test.ts src/lib/native-workflow/__tests__/acceptance-conversation.test.ts src/lib/native-workflow/__tests__/acceptance-state.test.ts src/lib/native-workflow/__tests__/period-report-ports.test.ts src/lib/native-workflow/__tests__/report-model-evidence.test.ts src/lib/native-workflow/__tests__/period-report-status.test.ts src/lib/native-workflow/__tests__/period-report-status-reentry.test.ts src/lib/native-workflow/__tests__/admin-run-status.test.ts src/lib/native-workflow/__tests__/period-report-status-route.test.ts src/lib/native-workflow/__tests__/period-report-status-route-guards.test.ts src/lib/native-workflow/__tests__/period-event-weekly.test.ts src/lib/native-workflow/__tests__/period-cli.test.ts src/lib/native-workflow/__tests__/worker-receiver.test.ts src/lib/native-workflow/__tests__/worker-fixture.test.ts src/lib/native-workflow/__tests__/period-report-entry.test.ts
 npx tsx src/lib/native-workflow/playground/simulate.ts
 ```
 

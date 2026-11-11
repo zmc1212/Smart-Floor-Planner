@@ -1,5 +1,4 @@
 import { advance, createRunState, type WorkflowEvent } from '../advance';
-import { compileDefinition } from '../compile';
 import { WorkflowOperationError, workflowIssue, type WorkflowIssue } from '../errors';
 import { validateEffectReceipt } from '../receipts';
 import type { PublishedWorkflowVersion } from '../store/types';
@@ -10,6 +9,7 @@ import type {
   WorkflowValue,
 } from '../types';
 import { assertSameLiveRunIdentity } from './binding';
+import { resolvePublishedTarget } from './published-target';
 import {
   LiveOperationFailure,
   LiveOperationUnknownError,
@@ -35,39 +35,6 @@ export interface LiveRunInput {
   readonly now?: () => string;
 }
 
-function boundPlan(published: PublishedWorkflowVersion) {
-  const definition = structuredClone(published.definition);
-  const plan = compileDefinition(definition);
-  if (
-    plan.definitionId !== definition.definitionId
-    || plan.revision !== published.revision
-    || plan.digest !== published.digest
-  ) {
-    throw new WorkflowOperationError(
-      'published_version_invalid',
-      409,
-      `published ${definition.definitionId}@${published.revision} does not match its compiled digest`,
-    );
-  }
-  const nodeVersions = Object.fromEntries(
-    Object.values(plan.nodes).map((node) => [node.nodeId, node.nodeVersion]),
-  );
-  const recorded = published.nodeVersions;
-  const recordedIds = Object.keys(recorded).sort();
-  const planIds = Object.keys(nodeVersions).sort();
-  if (
-    recordedIds.length !== planIds.length
-    || recordedIds.some((nodeId, index) => nodeId !== planIds[index] || recorded[nodeId] !== nodeVersions[nodeId])
-  ) {
-    throw new WorkflowOperationError(
-      'published_version_invalid',
-      409,
-      `published ${definition.definitionId}@${published.revision} node versions do not match its definition`,
-    );
-  }
-  return { definition, plan, nodeVersions };
-}
-
 function statusOf(state: WorkflowRunState, unknown: boolean): LiveRunStatus {
   if (unknown) return 'unknown';
   if (state.status === 'running' || state.status === 'waiting') return 'unknown';
@@ -88,31 +55,10 @@ function cloneOperations(operations: readonly LiveOperationRecord[]): LiveOperat
  * change this run. Unknown outcomes stop immediately and are never retried.
  */
 export async function runPublishedLive(input: LiveRunInput): Promise<LiveRunRecord> {
-  const { definition, plan, nodeVersions } = boundPlan(input.published);
-  if (definition.inputSchema.eventType !== input.event.eventType) {
-    throw new WorkflowOperationError(
-      'live_event_type_unsupported',
-      400,
-      `published ${definition.definitionId} accepts ${definition.inputSchema.eventType}, not ${input.event.eventType}`,
-    );
-  }
-  if (definition.inputSchema.eventType !== 'stage_changed' && definition.inputSchema.eventType !== 'period_report') {
-    throw new WorkflowOperationError(
-      'live_event_type_unsupported',
-      400,
-      `the B live adapter does not execute ${definition.inputSchema.eventType} definitions`,
-    );
-  }
-  if (
-    definition.inputSchema.eventType === 'period_report'
-    && definition.inputSchema.periodKind !== input.event.periodKind
-  ) {
-    throw new WorkflowOperationError(
-      'live_event_type_unsupported',
-      400,
-      `published ${definition.definitionId} accepts ${definition.inputSchema.periodKind ?? '(unspecified)'} periods, not ${input.event.periodKind ?? '(unspecified)'}`,
-    );
-  }
+  // Same shared check the CLI runs before the first business write. A run that
+  // reaches this function again proves the selected version and event still
+  // match; no second rule set is maintained here.
+  const { definition, plan, nodeVersions } = resolvePublishedTarget(input.published, input.event);
 
   const now = input.now ?? (() => new Date().toISOString());
   const event = structuredClone(input.event);

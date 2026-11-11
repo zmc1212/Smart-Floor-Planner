@@ -36,14 +36,9 @@ import {
   describeB4DatabaseTarget,
   resolveB4DatabaseTarget,
 } from '@/lib/native-workflow/live/dev-config';
-import { runPublishedLive } from '@/lib/native-workflow/live/runner';
 import { createFileWorkflowRunStore } from '@/lib/native-workflow/live/run-store';
 import { createPeriodReportPorts } from '@/lib/native-workflow/live/period-report-ports';
-import { parseFixedPeriod } from '@/lib/native-workflow/live/period-event';
-import {
-  prepareWorkerPeriodReport,
-  type WorkerReceiverEvidence,
-} from '@/lib/native-workflow/live/worker-receiver';
+import { runPeriodReportEntry } from '@/lib/native-workflow/live/period-report-entry';
 import {
   parsePeriodKind,
   parseReceiverArg,
@@ -114,7 +109,6 @@ if (executing) {
     failCli(error);
   }
 }
-const workerId = receiver.kind === 'worker' ? receiver.adminId : undefined;
 
 interface CliTarget {
   readonly kind: PeriodCliKind;
@@ -289,67 +283,41 @@ async function main() {
     periodStart: bound.periodStart,
     periodEnd: bound.periodEnd,
   };
+  const ports = createPeriodReportPorts({ actor, receiver });
 
-  // Both receivers must pass the trusted-clock period-end check before the
-  // published definition/target is resolved, and long before anything writes.
-  let period = parseFixedPeriod(event);
-
-  const version = await resolvePublished(bound.definitionId);
-
-  // The worker receiver is authorized and bound last: management access,
-  // staff availability, then the enterprise-scoped binding create. A rejected
-  // executor leaves no conversation/binding/participant behind.
-  let worker: WorkerReceiverEvidence | null = null;
-  if (receiver.kind === 'worker' && workerId) {
-    try {
-      const prepared = await prepareWorkerPeriodReport({
-        enterpriseId,
-        actor,
-        projectId,
-        workerId,
-        event,
+  // Shared ordering: trusted period end, published target precheck (compiled
+  // revision/digest, node versions, event type and period kind), then the
+  // worker authorization/binding, then the same selected version and event in
+  // the runner. A rejected target never reaches the first business write.
+  let entry: Awaited<ReturnType<typeof runPeriodReportEntry>>;
+  try {
+    entry = await runPeriodReportEntry({
+      loadPublished: () => resolvePublished(bound.definitionId),
+      enterpriseId,
+      projectId,
+      actor,
+      event,
+      receiver,
+      ports,
+      store: runStore,
+      runId,
+    });
+  } catch (error) {
+    if (error instanceof WorkflowOperationError && error.code === 'worker_receiver_unavailable') {
+      failJson({
+        code: error.code,
+        error: error.message,
+        ...(error.details && typeof error.details === 'object'
+          ? error.details as Record<string, unknown>
+          : {}),
       });
-      period = prepared.period;
-      worker = prepared.worker;
-    } catch (error) {
-      if (error instanceof WorkflowOperationError && error.code === 'worker_receiver_unavailable') {
-        failJson({
-          code: error.code,
-          error: error.message,
-          ...(error.details && typeof error.details === 'object'
-            ? error.details as Record<string, unknown>
-            : {}),
-        });
-      }
-      throw error;
     }
+    throw error;
   }
 
-  const businessEvent: LiveBusinessEvent = {
-    outboxEventId: null,
-    progressRevision: 0,
-    stageKey: '',
-    settingsVersion: 0,
-    source: 'current_project_revision',
-    periodKind: period.kind,
-    periodStart: period.periodStart,
-    periodEnd: period.periodEnd,
-    ...(receiver.kind === 'worker' ? { receiver } : {}),
-  };
-
-  const ports = createPeriodReportPorts({ actor, receiver });
-  const record = await runPublishedLive({
-    published: version,
-    enterpriseId,
-    projectId,
-    event,
-    businessEvent,
-    ports,
-    store: runStore,
-    runId,
-  });
+  const record = entry.record;
   const saveReceipt = receiptOf(record, 'saveReceipt');
-  const business = await evidence(projectId, businessEvent, saveReceipt);
+  const business = await evidence(projectId, entry.businessEvent, saveReceipt);
   console.log(JSON.stringify({
     success: record.status === 'completed',
     runId,
@@ -358,9 +326,9 @@ async function main() {
     receiver: receiver.kind === 'worker'
       ? { kind: 'worker', adminId: receiver.adminId }
       : { kind: 'customer' },
-    worker,
+    worker: entry.worker,
     binding: record.binding,
-    businessEvent,
+    businessEvent: entry.businessEvent,
     operations: record.operations.map((operation) => ({
       nodeId: operation.nodeId,
       capabilityRef: operation.capabilityRef,
