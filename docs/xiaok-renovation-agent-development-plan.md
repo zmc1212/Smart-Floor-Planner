@@ -22,15 +22,15 @@
 
 | 字段 | 当前记录 |
 | --- | --- |
-| 交付与负责人 | 有限修复轮（2026-11-11用户定向）：修复引用来源/工具回执契约与发布构建阻塞，完成原定必要验收。单一负责人，禁止自动新建或交接聊天。方法约束：先验证真实回答，禁止补丁循环；两轮同类失败停循环，不堆提示词或换模型。 |
-| 用户入口与结果 | 同会话已有历史引用后再问本人项目进度：业务resultKey/版本hash不得作为CITE id；模型只见业务文本/状态，引用修复按实际marker与来源集合反馈；合法引用保留，非法标记删除或改正；最终交付不再因业务快照存在而吞掉引用错误。stage正文成功非空、native零FastGPT记录（含stage）保持。 |
-| 已证缺口 | 无已知代码缺口；真实微信客户端、Stable HLS、生产部署未验；975/973/2为既有记录，未重跑。 |
-| 已完成 | 业务快照投影（模型侧仅status/text，resultKey留持久回执）；catalog标记history/current/recovered；修复反馈按实际`[id](CITE)`校验；最终ragAnswerParts失败不再回退吞错；run3566根因修复后run3583 succeeded、2次模型调用、无CITE标记；stage event7598六份报告522–527 succeeded/delivered、读者正文非空；full-flow batch fix2 10/10、audit553→553；tsc0、完整`npm run build`退出0、lint 0 error；项目内类型错误正面修复，tsconfig仅排除git-ignored的`tmp`第三方副本。 |
-| 下一动作 | 本轮范围完成，进入交付验收；无新增P3入口。真实微信/HLS/生产另行验收；仅明确可复现新故障才建修复任务。 |
-| 必要验收 | native-executor 17/17；`npx tsc --noEmit -p tsconfig.json` 0；完整`npm run build`退出0（tmp/build-final.log）；lint 0 error/59既有warning；full-flow `full-flow-fix2` 10/10：customer两轮引用、stage六报告、本人项目进度run3583、daily6报告/4视图、权限、公开读面、最终审计；probe run3568 551→553，round553→553 kinds{}；旧W1 run3474/run3413证据保留且未与stage审计混用；975/973/2按既有记录。 |
-| 失败与调用边界 | run3413、run3566原失败保留；run3567因18300隧道断开indeterminate（基础设施，恢复隧道后run3568成功）；真实微信/HLS/生产未验；未知不重放；仅1454开发库；无真实客户写入或外部消息；975/973/2按既有记录。 |
-| 环境与资源 | 远程5432；18300 FastGPT隧道已恢复；完整build前停止3006 dev server与Worker（release `.next`保留）；真实模型用于full-flow；Stable HLS、真机/真实微信、生产未验。 |
-| 证据与后继 | `tmp/xiaok-stage-fullflow-20261111/full-flow-fix2/report.json`（10/10、stage7598、run3583、audit553→553）；`.../audit-probe-fix2.json`（run3568）；`tmp/build-final.log`；`tmp/tsc-fix-round.log`；`tmp/lint-final2.log`；旧`tmp/xiaok-native-recovery-w1-20261111/report.json`与`tmp/xiaok-w1-run3413-20261111/run3413.json`；无泛化下一P3入口。 |
+| 交付与负责人 | 定向引用门禁补丁（2026-11-11用户定向）：统一graph校验与最终交付的引用评估，处理旧checkpoint工具回执投影，恢复两处测试保护。单一负责人，禁止自动新建或交接聊天。方法约束：先验证真实回答，禁止补丁循环；两轮同类失败停循环，不堆提示词或换模型。 |
+| 用户入口与结果 | 历史引用可保留但不能满足本run的current/recovered引用要求；首稿漏全部本轮引用进入唯一一次修复；修复后仍不满足按原规则（无快照missing_citation，有快照只交快照）；纯业务快照无CITE仍可交付；旧checkpoint的query_business工具消息按调用身份投影，不重派。 |
+| 已证缺口 | 引用门禁代码缺口已关闭（定向32/32）；真实knowledge固定旅程被retrieval_unavailable阻断，未验；真实微信客户端、Stable HLS、生产部署未验；975/973/2为既有记录，未重跑。 |
+| 已完成 | 新增native-citation-gate（assessNativeCitations/门禁/缺本轮引用反馈）；validateFinal与最终交付共用；runCitations排除history；旧checkpoint的query_business工具消息按调用身份投影；恢复credit-price完整fixture与incremental数组断言；定向32/32、tsc0、lint0、完整build退出0；复用fix2 10/10与run3583，不重跑stage/daily。 |
+| 下一动作 | 本轮范围完成，进入交付验收；无新增P3入口。知识检索/真实微信/HLS/生产另行验收；仅明确可复现新故障才建修复任务。 |
+| 必要验收 | 定向回归32/32（history-only一次修复、修复后降级、recovered同规则、纯业务快照无CITE、旧checkpoint不重派、恢复两测试）；tsc0；lint0 error/60 warning；完整build退出0（tmp/build-final2.log）；fix2 full-flow10/10与run3583复用；live knowledge固定旅程run3597 retrieval_unavailable未验；975/973/2按既有。 |
+| 失败与调用边界 | run3413/run3566原失败保留；run3567因18300隧道断开indeterminate；run3597 live knowledge检索retrieval_unavailable（开发知识检索，不是引用门禁失败，未重试）；旧checkpoint按投影策略；真实微信/HLS/生产未验；仅1454开发库；975/973/2按既有。 |
+| 环境与资源 | 远程5432/55432、18089、18300隧道可用；complete build前停止3006/Worker（release `.next`保留）；survey manifest构建后恢复原工作副本；真实模型/检索失败如实标未验。 |
+| 证据与后继 | `tmp/xiaok-stage-fullflow-20261111/full-flow-fix2/report.json`（复用10/10）；`.../citation-gate-live2/report.json`（run3597 retrieval_unavailable，未验）；`tmp/build-final2.log`；`tmp/tsc-gate.log`；`tmp/lint-gate.log`；旧W1/3413路径；无泛化下一P3入口。 |
 
 ## 3. 复用哪些成果
 

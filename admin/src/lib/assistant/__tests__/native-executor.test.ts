@@ -19,7 +19,6 @@ const readTools: ModelTool[] = [
 
 test('knowledge retrieval without a model citation fails closed', () => {
   assert.throws(() => composeNativeDelivery('先排版再铺贴。', '', 0, true), (error: Code) => error.code === 'missing_citation');
-  assert.throws(() => composeNativeDelivery('先排版再铺贴。', '', 0, false, true), (error: Code) => error.code === 'missing_citation');
   // The same text with its citation marker present is deliverable.
   assert.equal(composeNativeDelivery('先排版再铺贴[15](CITE)。', '', 1, true).modelIncluded, true);
 });

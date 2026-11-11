@@ -657,11 +657,13 @@ async function main() {
       const envelope = await response.json() as Row;
       const body = (envelope.data || {}) as Row;
       assert.equal(body.reset, true, 'A cursor beyond last_seq must return reset');
-      assert.equal(Array.isArray(body.items) ? body.items.length : 0, 0);
+      const items = body.items;
+      assert.ok(Array.isArray(items), 'items 必须是数组');
+      assert.equal(items.length, 0);
       assert.equal(String(body.latestSeq), '875');
       assert.equal(String(body.afterCursor), '900', 'Reset echoes the requested cursor');
       save();
-      return { status: response.status, reset: body.reset, items: Array.isArray(body.items) ? body.items.length : 0, latestSeq: String(body.latestSeq), afterCursor: String(body.afterCursor) };
+      return { status: response.status, reset: body.reset, items: items.length, latestSeq: String(body.latestSeq), afterCursor: String(body.afterCursor) };
     });
 
     await step('retention shrink keeps the client on a full window', async () => {

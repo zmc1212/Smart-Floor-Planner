@@ -11,6 +11,8 @@ import { runKnowledgeEnabled } from '../knowledge-policy';
 import { saveKnowledgeCitation } from '../knowledge/save-citation';
 import { nativeConversation } from '../fastgpt/rag-session';
 import { ragAnswerParts, type RagCitationSource } from '../fastgpt/native-rag';
+import { assessNativeCitations, nativeCitationFeedback, nativeCitationGate } from './native-citation-gate';
+import { projectLegacyBusinessToolMessages } from './native-checkpoint-projection';
 import { nativeAgentRuntimeBinding } from '../fastgpt/agent-v2/config';
 import { resolveSuggestions, resumeSuggestionGeneration, suggestionGenerationStep, suggestionPrompt,
   type SuggestionResolution } from '../fastgpt/agent-v2/suggestions';
@@ -34,6 +36,9 @@ import type { PublicContent } from '@/lib/construction/public-contract';
 import { defaultPublicIntroConstraints, defaultPublicIntroInput, publicIntroFacts, publicIntroPrompt,
   validatePublicIntro } from '@/lib/construction/public-intro';
 import { openingScene, sceneForOpeningPurpose } from '../fastgpt/agent-v2/openings';
+
+// Existing imports of the moved helpers keep resolving through the executor.
+export { nativeCitationFeedback, scanNativeCitationMarkers } from './native-citation-gate';
 
 /** The XiaoK-owned executor for V2-surface customer consultations. It reuses
  * the existing LangGraph runtime, model gateway and authorized tools; no
@@ -74,54 +79,19 @@ export function nativeExecutorPrompt(knowledgeEnabled: boolean) {
   ].join('\n');
 }
 
-/** Repair feedback is derived from the draft's actual `[id](CITE)` markers and
- * the catalog, never from `catalog.size`: the catalog also holds conversation
- * history, this run's fresh sources and this run's recovered sources, so its
- * size says nothing about which ids were issued now. Marker ids are trimmed
- * exactly like ragAnswerParts; every other character stays significant. */
-export function scanNativeCitationMarkers(draft: string, catalog: Iterable<RagCitationSource>) {
-  const issued = new Set([...catalog].map(source => source.nativeId));
-  const valid = new Set<string>(), invalid = new Set<string>();
-  for (const match of draft.matchAll(/\[([^\]]+)\]\(CITE\)/g)) {
-    const citation = match[1].trim();
-    (issued.has(citation) ? valid : invalid).add(citation);
-  }
-  return { valid: [...valid], invalid: [...invalid] };
-}
-
-/** One-shot repair guidance for a draft that failed citation validation. A
- * business resultKey / snapshot version hash is never a citation id: it is
- * reported as invalid and never accepted or auto-replaced. When this run did
- * return knowledge or web sources, deleting every marker is explicitly not an
- * acceptable repair; when nothing was retrieved, removing them is the only
- * honest answer. Validation itself stays strict and fail-closed. */
-export function nativeCitationFeedback(draft: string, catalog: Iterable<RagCitationSource>) {
-  const sources = [...catalog];
-  const runSources = sources.filter(source => source.origin === 'current' || source.origin === 'recovered');
-  const { valid, invalid } = scanNativeCitationMarkers(draft, sources);
-  const invalidText = invalid.join('、');
-  if (valid.length) {
-    return `最终回答未通过引用校验：已合法引用的 id（${valid.join('、')}）必须保留；${invalidText} 不是本轮任何工具返回的 cites[].id，业务 resultKey、版本号或内部 hash 不是引用 id。请删除或改正这些非法标记，不得自动替换或改写合法 id。请重新提交最终回答；无法核实的部分如实说明。`;
-  }
-  if (runSources.length) {
-    return `最终回答未通过引用校验：本轮工具已返回可引用来源，但草稿没有有效引用。`
-      + (invalidText ? `${invalidText} 不是引用 id（业务 resultKey、版本号或内部 hash 不是引用 id）；` : '')
-      + '必须用本轮工具返回的 cites[].id 中真实有效的 id 引用对应内容，不得删除全部 CITE 标记来绕过引用要求。请重新提交最终回答；无法核实的部分如实说明。';
-  }
-  return '最终回答未通过引用校验：本轮工具没有返回任何可引用来源（cites 为空），回答中不得出现任何 CITE 引用标记或占位符；业务 resultKey、版本号或内部 hash 不是引用 id。请删除全部 CITE 标记后重新提交；无法核实的内容如实说明。';
-}
-
 /** Business snapshots stay authoritative server data. A valid uncited model
  * explanation now accompanies them instead of being discarded (the FastGPT V2
  * discard rule retires with that bridge). Retrieved knowledge/web evidence
- * still fails closed without a model citation. */
-export function composeNativeDelivery(modelText: string, snapshotText: string, modelCitations: number, knowledgeRetrieved: boolean, webRetrieved = false) {
+ * still fails closed without a model citation from this run; history citations
+ * never count as fresh evidence. */
+export function composeNativeDelivery(modelText: string, snapshotText: string, runCitations: number,
+  requiresRunCitation: boolean) {
   if (!snapshotText) {
-    if (!modelCitations && (knowledgeRetrieved || webRetrieved)) fail('missing_citation', 502);
+    if (!runCitations && requiresRunCitation) fail('missing_citation', 502);
     guardAnswerCommitments(modelText);
     return { text: modelText, modelIncluded: true };
   }
-  if (!modelCitations && (knowledgeRetrieved || webRetrieved)) return { text: snapshotText, modelIncluded: false };
+  if (!runCitations && requiresRunCitation) return { text: snapshotText, modelIncluded: false };
   if (!modelText.trim()) return { text: snapshotText, modelIncluded: false };
   try { guardAnswerCommitments(modelText); }
   catch (error) {
@@ -647,8 +617,17 @@ export async function processNativeAgentAnswer(lease: Lease) {
     const systemMessage: ModelMessage = { role: 'system', content: [{ type: 'text', text: nativeExecutorPrompt(knowledgeEnabled) }] };
     const history: ModelMessage[] = messages.map(m => m.role === 'user'
       ? { role: 'user', content: [{ type: 'text', text: m.content }] } : { role: 'assistant', content: m.content });
+    // The one-shot repair covers both invalid ids and a draft that ignores this
+    // run's sources: once it was issued (or a previous process already spent it)
+    // the gate stays silent, so delivery can fall back to the authoritative
+    // snapshot instead of failing the run without a second chance.
+    let citationRepairIssued = resume?.validationRepairs === 1;
+    // Old checkpoints already contain the full query_business receipt in their
+    // tool messages. Project that model-visible copy exactly like the current
+    // tool port; the persisted receipt and all bookkeeping stay untouched.
+    const agentResume = resume && { ...resume, messages: projectLegacyBusinessToolMessages(resume.messages) };
     const result = await runRenovationAgent({
-      messages: [systemMessage, ...history], tools, resume,
+      messages: [systemMessage, ...history], tools, resume: agentResume,
       ports: { authorize: guard, model, tool: toolPort, validateTool,
         // The saved 3026/3027 first drafts emitted citation ids without their
         // literal prefix. Validation moves into the graph's validate node so the
@@ -656,11 +635,9 @@ export async function processNativeAgentAnswer(lease: Lease) {
         // expression against the same strict catalog; unknown ids still fail
         // closed exactly as before, and the repair never reveals the fix.
         validateFinal: async (text: string) => {
-          try { ragAnswerParts(text, [...catalog.values()]); return null; }
-          catch (error) {
-            if (!(error instanceof AssistantError) || error.code !== 'invalid_model_citation') throw error;
-            return { code: 'invalid_model_citation', feedback: nativeCitationFeedback(text, catalog.values()) };
-          }
+          const { issue } = nativeCitationGate(text, catalog.values(), citationRepairIssued);
+          if (issue) citationRepairIssued = true;
+          return issue;
         },
         checkpoint: state => withTenantTransaction(lease.enterpriseId, async tx => {
           await runContext(tx, lease);
@@ -677,15 +654,17 @@ export async function processNativeAgentAnswer(lease: Lease) {
     for (const key of ['knowledge', 'snapshots', 'sources'] as const)
       (context[key] as unknown[]) = [...new Map((context[key] as unknown[]).map(v => [fingerprint(v), v])).values()];
     const snapshotText = delivered.map(s => s.displayText).join('\n');
-    // Citation parsing is not optional for a snapshot answer: a draft that
-    // failed the runtime's one-shot repair must fail the run, never be re-judged
-    // successful just because an authoritative snapshot section exists.
-    const modelParts = ragAnswerParts(finalText, [...catalog.values()]);
-    const modelCitations = modelParts.filter(part => 'source' in part).length;
+    // Delivery re-runs the same assessment as the gate. Invalid ids stay
+    // fail-closed, and only this run's current/recovered citations count toward
+    // the model section: a history citation can accompany an answer, but it can
+    // never satisfy this run's retrieval-citation requirement.
+    const finalAssessment = assessNativeCitations(finalText, catalog.values());
+    if (finalAssessment.invalid.length) fail('invalid_model_citation', 502);
+    const runCitations = finalAssessment.runCitations;
     // A located-but-empty nearby result is delivered from the server receipt;
     // need_region never overrides the model draft (same rule as the bridge).
     const composed = publicSitesDelivery(
-      composeNativeDelivery(finalText, snapshotText, modelCitations, knowledgeRetrieved, webRetrieved), sites.outcome());
+      composeNativeDelivery(finalText, snapshotText, runCitations, finalAssessment.runSources > 0), sites.outcome());
     const text = composed.text;
     // Follow-up questions are ancillary: a failed, unknown or invalid
     // generation keeps the delivered answer and falls back to the configured
@@ -820,7 +799,9 @@ export async function processNativeAgentAnswer(lease: Lease) {
         await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs,private_checkpoint,input_summary)
           values(${lease.enterpriseId},${lease.runId},1006,'agent_synthesis_context','succeeded',${JSON.stringify(context)}::jsonb,
             ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, kind: 'synthesis', segments, raw: finalText,
-              citations: cited, composition: { snapshots: delivered.length, modelCitations, modelIncluded: composed.modelIncluded } })}::jsonb,
+              citations: cited, composition: { snapshots: delivered.length, runCitations,
+                runSources: finalAssessment.runSources, knowledgeRetrieved, webRetrieved,
+                modelIncluded: composed.modelIncluded } })}::jsonb,
             ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, runtime: 'xiaok-native-executor' })}::jsonb)`);
         if (suggestions.questions.length)
           await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,private_checkpoint,input_summary)
