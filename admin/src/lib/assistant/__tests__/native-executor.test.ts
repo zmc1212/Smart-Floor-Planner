@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { composeNativeDelivery, nativeExecutorPrompt, recoveredDialogueToolState, xiaokNativeExecutorProtocol } from '../agent/native-executor';
+import { composeNativeDelivery, nativeCitationFeedback, nativeExecutorPrompt, recoveredDialogueToolState, xiaokNativeExecutorProtocol } from '../agent/native-executor';
 import { nativeAgentRuntimeBinding } from '../fastgpt/agent-v2/config';
 import { recoverableUnavailableRead } from '../agent/runtime';
 import { ragAnswerParts } from '../fastgpt/native-rag';
@@ -43,7 +43,8 @@ test('a commitment-violating draft falls back to the snapshot section only', () 
 
 test('the executor prompt keeps knowledge discipline without the knowledge switch', () => {
   assert.match(nativeExecutorPrompt(true), /search_enterprise/);
-  assert.match(nativeExecutorPrompt(true), /\[id\]\(CITE\)/);
+  assert.doesNotMatch(nativeExecutorPrompt(true), /\[id\]\(CITE\)/);
+  assert.match(nativeExecutorPrompt(true), /本轮没有任何cites时不得输出任何 CITE 引用标记/);
   const off = nativeExecutorPrompt(false);
   assert.doesNotMatch(off, /search_enterprise检索获权资料/);
   assert.match(off, /不声称检索过企业资料/);
@@ -71,6 +72,20 @@ test('the native binding only selects the langgraph-v1 executor switch', () => {
     if (previous !== undefined) process.env.XIAOK_FASTGPT_WORKFLOWS_FILE = previous;
   }
   assert.equal(xiaokNativeExecutorProtocol, 'xiaok-native-executor-v1');
+});
+
+test('the saved 3413 first draft reproduces: with no cites the repair must ask for marker removal', () => {
+  // run3413 answered a business-snapshot question, retrieved no knowledge, and
+  // copied the prompt's literal placeholder marker four times. The old repair
+  // asked it to "reuse the original id", so it repeated the identical draft and
+  // the run failed closed. Feedback now follows the empty catalog; validation
+  // itself still rejects every marker because there is nothing to cite.
+  assert.doesNotMatch(nativeCitationFeedback(0), /\[id\]\(CITE\)/);
+  assert.match(nativeCitationFeedback(0), /没有返回任何可引用来源/);
+  assert.match(nativeCitationFeedback(0), /删除全部 CITE 标记/);
+  assert.match(nativeCitationFeedback(1), /逐字符一致/);
+  assert.throws(() => ragAnswerParts('记录显示当前在软装阶段[id](CITE)。', []),
+    (error: Code) => error.code === 'invalid_model_citation');
 });
 
 test('the saved 3026/3027 first drafts reproduce: a prefix-stripped citation id fails closed at parse', () => {

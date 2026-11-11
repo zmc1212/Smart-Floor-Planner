@@ -32,10 +32,13 @@ export function confirmedUsageReview(observedTokens?: SQL) {
 /** Missing usage can mean no row at all (transport failed before insertion).
  * This predicate also protects immutable known subtotals during later review.
  * A null quantity with an attempt that explicitly failed without acceptance is
- * a known failure, not an unknown provider outcome. */
+ * a known failure, not an unknown provider outcome. A created attempt was
+ * dispatched but never finalized, so it is an unknown outcome too; created
+ * rows default accepted=false and must not be confused with that definite
+ * failed+accepted=false rejection. */
 export function unresolvedProviderOutcome() {
   return sql`(r.status='indeterminate' or r.error_code in ('provider_outcome_unknown','provider_usage_unknown')
-    or exists(select 1 from app.ai_provider_attempts a where a.enterprise_id=r.enterprise_id and a.assistant_run_id=r.id and a.status='unknown')
+    or exists(select 1 from app.ai_provider_attempts a where a.enterprise_id=r.enterprise_id and a.assistant_run_id=r.id and a.status in ('unknown','created'))
     or exists(select 1 from app.assistant_usage_records u
       left join app.ai_provider_attempts a on a.enterprise_id=u.enterprise_id and a.id=u.provider_attempt_id
       where u.enterprise_id=r.enterprise_id and u.run_id=r.id

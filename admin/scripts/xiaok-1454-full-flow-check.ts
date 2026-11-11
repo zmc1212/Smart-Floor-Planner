@@ -16,8 +16,10 @@ import { closePostgresPool } from '@/lib/postgresql';
 import { ConstructionService } from '@/lib/construction/service';
 import { ConstructionReportService, reportPlanDto } from '@/lib/construction/report-service';
 import { fastGPTAgentV2Configuration, nativeAgentRuntimeBinding } from '@/lib/assistant/fastgpt/agent-v2/config';
-import { auditDeployment, auditKindCounts, auditNonStageKinds, auditPrefixHash, auditWindowEntries,
+import { auditDeployment, auditKindCounts, auditPrefixHash, auditWindowEntries,
   openAuditWindow, readableAuditError } from '@/lib/assistant/fastgpt/agent-v2/audit-window';
+import { isNativeExecutor, nativeAuditKindViolations, stageBodyToleratedByLegacyFlag, stageBodyViolations,
+  stageFastgptDownNote } from '@/lib/assistant/fastgpt/agent-v2/native-acceptance';
 
 loadEnvConfig(process.cwd(), true);
 assert.ok(process.argv.includes('--development'));
@@ -34,8 +36,8 @@ const expectedExecutor = process.argv.find(a => a.startsWith('--executor='))?.sl
 // a receipt and keeps its historical command line.
 assert.ok(batchId || expectedExecutor !== 'xiaok-native-executor-v1',
   'Acceptance batch id required for the native executor: pass --batch=<id> (or XIAOK_AUDIT_BATCH)');
-// Stage report bodies now compose natively; this legacy flag remains only for
-// historical rounds and no longer explains a body failure via FastGPT outage.
+// Stage report bodies compose natively, so this legacy flag is honored only in
+// FastGPT V2 rounds; a native round must fail on a failed or empty stage body.
 const stageFastgptDown = process.argv.includes('--stage-fastgpt=down');
 // A questions file avoids Chinese argv mojibake on Windows shells.
 const questionsFile = process.argv.find(a => a.startsWith('--questions-file='))?.slice(17);
@@ -72,8 +74,8 @@ const before = binding();
 report.bindingBefore = createHash('sha256').update(JSON.stringify(before)).digest('hex');
 
 // FastGPT audit ledger. Mode-aware: the native executor adds zero records of
-// any kind on the chat path (stage-report bodies stay the P3 exception); the
-// FastGPT V2 bridge records audited chat calls instead. In native mode this
+// any kind (chat and stage-report bodies both run natively); the FastGPT V2
+// bridge records audited chat calls instead. In native mode this
 // round's window opens only after the batch probe receipt is verified; an
 // unverified, truncated or rebuilt ledger never reads as zero calls.
 const workflowsFile = process.env.XIAOK_FASTGPT_WORKFLOWS_FILE?.trim();
@@ -283,12 +285,22 @@ async function main() {
       assert.ok(item, 'Stage history missing for ' + reader.kind);
       const detail = (await api(String(reader.token), `/followups/${reader.binding}/reports/${String(item.reportId)}?revision=${String(item.revision)}`, { entry: String(reader.entry ?? '') })).data.data as Row;
       assert.equal(detail.available, true); assert.ok((((detail.facts as Row | undefined)?.projects as Row[] | undefined) || []).some((p: Row) => String(p.id) === projectId));
-      // Stage bodies compose natively; this legacy flag only tolerates a
-      // deliberately skipped body in historical rounds.
-      if (!stageFastgptDown) assert.ok(Array.isArray(detail.body) && detail.body.length > 0, 'Stage body composed for ' + reader.kind);
+      // Legacy V2 rounds tolerated a deliberately skipped body behind the flag;
+      // native rounds are judged below over every report run and reader view.
+      if (!isNativeExecutor(expectedExecutor) && !stageBodyToleratedByLegacyFlag(expectedExecutor, stageFastgptDown))
+        assert.ok(Array.isArray(detail.body) && detail.body.length > 0, 'Stage body composed for ' + reader.kind);
       views.push({ kind: reader.kind, binding: reader.binding, reportId: String(item.reportId), revision: Number(item.revision),
         contentStatus: detail.contentStatus, bodyParts: Array.isArray(detail.body) ? detail.body.length : 0,
         bodyStatus: detail.contentStatus || null, deliveryState: detail.deliveryState });
+    }
+    // A native stage body has no FastGPT fallback: every report run must be
+    // succeeded without an error code, and every reader must receive a body.
+    if (isNativeExecutor(expectedExecutor)) {
+      const violations = stageBodyViolations({
+        reports: reports.map(r => ({ bindingId: String(r.binding_id), reportId: String(r.report_id),
+          bodyStatus: r.body_status, bodyError: r.body_error })),
+        readers: views.map(v => ({ kind: String(v.kind), binding: String(v.binding), bodyParts: Number(v.bodyParts) })) });
+      assert.equal(violations.length, 0, 'Native stage bodies must compose successfully: ' + violations.join('; '));
     }
     await api((await staffToken('5369')).token, `/followups/428/reports?projectId=${projectId}`, { expect: 404 });
     await api(customer.token, `/followups/420/reports?projectId=${projectId}`, { entry: entryToken, expect: 404 });
@@ -491,10 +503,11 @@ async function main() {
       return runId;
     };
     if (expectedExecutor === 'xiaok-native-executor-v1') {
-      // 原生执行器:聊天路径零 FastGPT,仅阶段报告正文属 P3 例外。本轮的
-      // 审计来源正控已在开场步骤按同一批次回执和实际日志位置建立。
-      const nonStage = auditNonStageKinds(kinds);
-      assert.equal(nonStage.length, 0, 'Chat and auxiliary paths must not call FastGPT, saw: ' + nonStage.join(','));
+      // 原生执行器:聊天与阶段正文都走原生模型,原 P3 阶段例外已撤销。本轮的
+      // 审计来源正控已在开场步骤按同一批次回执和实际日志位置建立,因此本轮窗口
+      // 内出现任何 kind(含 stage)都说明仍有 FastGPT 调用。
+      const violations = nativeAuditKindViolations(kinds);
+      assert.equal(violations.length, 0, 'Chat, stage-report and auxiliary paths must not call FastGPT, saw: ' + violations.join(','));
       assert.ok(report.probe, '本轮审计来源正控缺失,零调用结论不得成立');
     } else {
       // 旧 FastGPT V2 模式:聊天本应通过被审计的桥调用,不做零调用断言,只拒绝未知 kind。
@@ -503,10 +516,13 @@ async function main() {
       assert.ok(delta.some(entry => correlate(entry)), 'FastGPT 审计事件未能关联到本轮运行,不得判 PASS');
     }
     if (report.auditWindow) (report.auditWindow as Row).end = auditLines().length;
+    // The outage note belongs to a legacy FastGPT round only; a native round
+    // must never explain a stage-body defect as an unreachable deployment.
+    const legacyNote = stageFastgptDownNote(expectedExecutor, stageFastgptDown);
     report.fastgptAudit = { configured: true, auditFile: auditPath, batchId, roundWindow: { start: auditBefore, end: auditLines().length, kinds },
       expectedBinding, bindingMatchedTurns: auditedTurns.length - mismatched.length, totalTurns: auditedTurns.length, mode: expectedExecutor,
       sourceVerified: true, correlatedRunIds, ...(report.probe ? { probe: report.probe } : {}),
-      ...(stageFastgptDown ? { note: 'FastGPT deployment unreachable by configuration for this round' } : {}) };
+      ...(legacyNote ? { note: legacyNote } : {}) };
     return report.fastgptAudit;
   });
 }

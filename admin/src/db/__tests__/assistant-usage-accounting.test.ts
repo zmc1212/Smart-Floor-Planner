@@ -50,11 +50,12 @@ after(async () => {
 type AttemptSeed = { key: string; status: string; accepted: boolean };
 type UsageSeed = { attempt: string | null; operation: string; category: string; quantity: number | null; observed: boolean };
 type Scenario = { runId: string; reservationId: string; version: number };
+type SeedOptions = { runStatus?: string; jobStatus?: string };
 
-// Only terminal runs are inserted, with no job row, so a resident Worker can
-// never claim these synthetic records. Reconciliation's in-flight guard reads
-// the run status and assistant_jobs, both of which stay terminal/absent.
-async function seed(attempts: AttemptSeed[], usages: UsageSeed[]): Promise<Scenario> {
+// Only terminal runs are inserted so a resident Worker can never claim these
+// synthetic records. Reconciliation's in-flight guard reads the run status and
+// assistant_jobs; job rows are optional and terminal when seeded.
+async function seed(attempts: AttemptSeed[], usages: UsageSeed[], options: SeedOptions = {}): Promise<Scenario> {
   const eid = tenants[0];
   return withPlatformTransaction(async tx => {
     const conversation = (await one(tx, sql`insert into app.assistant_conversations(enterprise_id,purpose,entry_snapshot,policy_version)
@@ -62,8 +63,12 @@ async function seed(attempts: AttemptSeed[], usages: UsageSeed[]): Promise<Scena
     const message = (await one(tx, sql`insert into app.assistant_messages(enterprise_id,conversation_id,seq,author_kind,user_id,content,purpose)
       values(${eid},${String(conversation.id)},1,'user',${users[0]},${JSON.stringify({ version: 1, blocks: [{ type: 'text', text: '合成用量核对问题' }] })}::jsonb,'reply') returning id`))!;
     const run = (await one(tx, sql`insert into app.assistant_runs(enterprise_id,conversation_id,trigger_kind,trigger_message_id,purpose,status,policy_snapshot,context_revision,knowledge_epoch,started_at,completed_at)
-      values(${eid},${String(conversation.id)},'user_message',${String(message.id)},'reply','succeeded','{}'::jsonb,1,1,now(),now()) returning id`))!;
+      values(${eid},${String(conversation.id)},'user_message',${String(message.id)},'reply',${options.runStatus ?? 'succeeded'},'{}'::jsonb,1,1,now(),now()) returning id`))!;
     const runId = String(run.id);
+    if (options.jobStatus) {
+      await tx.execute(sql`insert into app.assistant_jobs(enterprise_id,kind,run_id,dedupe_key,status)
+        values(${eid},'chat_turn',${runId},${prefix + ':job:' + runId},${options.jobStatus})`);
+    }
     const reservation = (await one(tx, sql`insert into app.assistant_quota_reservations(enterprise_id,run_id,operation_key,reserved_tokens,reserved_cost_micros,status)
       values(${eid},${runId},${'run:' + runId},2000000,1000000,'reconciling') returning id::text,version`))!;
     const attemptIds = new Map<string, string>();
@@ -158,4 +163,25 @@ test('a null native suggestion whose attempt explicitly failed without acceptanc
   await assert.rejects(service.reconcile(scenario.reservationId, reviewBody(scenario.version, '1301'), randomUUID()), /usage_observed_tokens_conflict/);
   await service.reconcile(scenario.reservationId, reviewBody(scenario.version, '1000'), randomUUID());
   assert.equal(await reconciled(scenario.runId), true);
+});
+
+test('a cancelled run with a created attempt and no usage row is unknown and accepts externally evidenced tokens', async () => {
+  const scenario = await seed([
+    { key: 'answer', status: 'created', accepted: false },
+  ], [], { runStatus: 'cancelled', jobStatus: 'cancelled' });
+  assert.equal(await unknown(scenario.runId), true);
+  assert.equal(await observed(scenario.runId), '0');
+  assert.equal(await reconciled(scenario.runId), false);
+  await service.reconcile(scenario.reservationId, reviewBody(scenario.version, '800'), randomUUID());
+  assert.equal(await reconciled(scenario.runId), true);
+  assert.equal(await confirmed(scenario.reservationId), true);
+});
+
+test('a failed attempt without acceptance and no usage row remains a definite known failure', async () => {
+  const scenario = await seed([
+    { key: 'answer', status: 'failed', accepted: false },
+  ], [], { runStatus: 'failed' });
+  assert.equal(await unknown(scenario.runId), false);
+  assert.equal(await observed(scenario.runId), '0');
+  await assert.rejects(service.reconcile(scenario.reservationId, reviewBody(scenario.version, '800'), randomUUID()), /usage_observed_tokens_conflict/);
 });

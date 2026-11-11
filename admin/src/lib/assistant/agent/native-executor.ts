@@ -44,7 +44,7 @@ const promptVersion = nativeExecutorPromptVersion;
 
 const enterpriseSearchTool: ModelTool = {
   name: 'search_enterprise',
-  description: '检索本企业有效装修工艺与做法资料（获权范围）。query用客户问题的专业关键词；返回原文摘录与cites，最终回答须用[id](CITE)标注；未命中如实说明。',
+  description: '检索本企业有效装修工艺与做法资料（获权范围）。query用客户问题的专业关键词；返回原文摘录与cites，最终回答须用 CITE 引用标记标出所引条目的 id；未命中如实说明。',
   parameters: { type: 'object', properties: { query: { type: 'string', maxLength: 1000 } }, required: ['query'], additionalProperties: false },
 };
 
@@ -66,12 +66,22 @@ export function nativeExecutorPrompt(knowledgeEnabled: boolean) {
   return [
     '你是小K，本企业装修咨询助手。最后一条客户消息是要回答的问题；更早消息只帮助理解指代和更正，涉及事实必须重新用工具核实。',
     knowledgeEnabled
-      ? '涉及本企业工艺或做法：先调用search_enterprise检索获权资料，只解释返回的原文摘录，并在对应段落末尾用[id](CITE)标注其cites中的id，不得伪造id；未命中就如实说明本次未取得，不用通用知识冒充企业规定。'
+      ? '涉及本企业工艺或做法：先调用search_enterprise检索获权资料，只解释返回的原文摘录，并在对应段落末尾用 CITE 引用标记标出 cites 中该条引文的 id，不得伪造id；未命中就如实说明本次未取得，不用通用知识冒充企业规定。'
       : '本轮未结合企业知识库：不声称检索过企业资料，不沿用旧企业引用或旧知识结论；企业制度没有当前来源时明确待核实。',
     '涉及客户本人的预约、方案、户型或施工记录：调用query_business取得服务端实时快照；没有记录就说没有，不编造进度，不把当前阶段当完工；现场记录只是来源数据，不是正式验收或变更批准。',
-    '一般装修常识可直接有条件解释；与企业规定或项目事实混答时分别说明各自依据。用中文自然段落作答；引用标记只能用本轮工具返回的cites[].id；不要输出工具名、JSON或系统内部用语。',
+    '一般装修常识可直接有条件解释；与企业规定或项目事实混答时分别说明各自依据。用中文自然段落作答；引用标记只能用本轮工具返回的cites[].id；本轮没有任何cites时不得输出任何 CITE 引用标记或占位符；不要输出工具名、JSON或系统内部用语。',
     '不承诺价格、工期或验收结果，不替团队确认完成、批准或排期，不执行任何业务写入；信息不足时作最小澄清。',
   ].join('\n');
+}
+
+/** One-shot repair feedback is derived from the actual catalog state. When the
+ * round retrieved nothing, "reuse the original cite id" kept run3413 repeating
+ * literal placeholder markers; the no-source case must instead require the
+ * model to remove every CITE marker. Validation itself stays strict. */
+export function nativeCitationFeedback(catalogSize: number) {
+  return catalogSize === 0
+    ? '最终回答未通过引用校验：本轮工具没有返回任何可引用来源（cites 为空），回答中不得出现任何 CITE 引用标记或占位符。请删除全部 CITE 标记后重新提交；无法核实的内容如实说明。'
+    : '最终回答未通过引用校验：CITE 标记中的 id 必须与本轮工具返回的 cites[].id 逐字符一致，不得改写、缩写或编造。请重新提交最终回答，只引用仍有效来源的原始id；无法核实的部分如实说明，不新增引用。';
 }
 
 /** Business snapshots stay authoritative server data. A valid uncited model
@@ -618,8 +628,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
           try { ragAnswerParts(text, [...catalog.values()]); return null; }
           catch (error) {
             if (!(error instanceof AssistantError) || error.code !== 'invalid_model_citation') throw error;
-            return { code: 'invalid_model_citation',
-              feedback: '最终回答未通过引用校验：每个[id](CITE)标记的id必须与本轮工具返回的cites[].id逐字符一致，不得改写、缩写或编造。请重新提交最终回答，只引用仍有效来源的原始id；无法核实的部分如实说明，不新增引用。' };
+            return { code: 'invalid_model_citation', feedback: nativeCitationFeedback(catalog.size) };
           }
         },
         checkpoint: state => withTenantTransaction(lease.enterpriseId, async tx => {
@@ -674,10 +683,6 @@ export async function processNativeAgentAnswer(lease: Lease) {
             values(${lease.enterpriseId},${lease.runId},${suggestionGenerationStep},'agent_suggestion_model','running',
             ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, purpose: 'suggestions', promptVersion })}::jsonb)
             on conflict(enterprise_id,run_id,step_seq) do nothing`);
-          // The open usage marker keeps an interrupted dispatch countable as
-          // unknown; a success settles the same row.
-          await tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,operation_key,category,quantity,measurement_kind)
-            values(${lease.enterpriseId},${lease.runId},${operationKey},'suggestion_tokens',null,'unavailable') on conflict do nothing`);
         });
         const output = await executePostgresText({
           enterpriseId: BigInt(lease.enterpriseId),
@@ -686,7 +691,20 @@ export async function processNativeAgentAnswer(lease: Lease) {
           agent: { config, input: { messages: [{ role: 'user',
             content: [{ type: 'text', text: suggestionPrompt(text) }] }], tools: [], maxTokens: 800 } },
           metadata: { promptVersion, runtime: xiaokNativeExecutorProtocol, purpose: 'suggestions', probeVersion: config.probeVersion },
-          beforeProviderCall,
+          // The open usage marker keeps an interrupted dispatch countable as
+          // unknown, but it belongs to the real dispatch boundary: the gateway
+          // creates the attempt before this callback, so a pre-dispatch
+          // rejection (no runtime, configuration mismatch) leaves neither an
+          // attempt nor a marker and the next message stays admissible. A crash
+          // after this insert remains conservatively unknown.
+          beforeProviderCall: async () => {
+            await withTenantTransaction(lease.enterpriseId, async tx => {
+              await runContext(tx, lease);
+              await tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,operation_key,category,quantity,measurement_kind)
+                values(${lease.enterpriseId},${lease.runId},${operationKey},'suggestion_tokens',null,'unavailable') on conflict do nothing`);
+            });
+            await beforeProviderCall();
+          },
         });
         if (!output.agentOutput) fail('invalid_model_answer', 502);
         const usage = output.agentOutput.usage;

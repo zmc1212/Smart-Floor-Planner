@@ -8,8 +8,11 @@ import { one } from '@/db/repositories/assistant-repository';
 import { deleteAssistantData } from '@/db/repositories/assistant-cleanup';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 import { backfillSuggestionProviderAttempt, persistSuggestionUsage } from '@/lib/assistant/agent/native-executor';
+import { executePostgresText } from '@/lib/ai/postgres-workflow-chat';
+import { unresolvedProviderOutcome } from '@/lib/assistant/core/usage-review';
 import { resumeSuggestionGeneration, suggestionGenerationStep } from '@/lib/assistant/fastgpt/agent-v2/suggestions';
-import { failRun, type Lease } from '@/lib/assistant/infrastructure/job-queue';
+import { failRun, markProviderStarted, runContext, type Lease } from '@/lib/assistant/infrastructure/job-queue';
+import type { AgentConfig } from '@/lib/assistant/agent/config';
 import type { ActorContext } from '@/lib/assistant/contracts';
 
 // Synthetic protocol/accounting fixtures only: no provider adapter or model call.
@@ -86,6 +89,50 @@ async function suggestionAttempt(f: Fixture, runId: string, status: string, acce
     values(${f.enterpriseId},${runId},${f.providerConfigId},'synthetic','openai_compatible','chat','chat.general',
     'synthetic-chat',${status},${accepted},${JSON.stringify({ purpose: 'suggestions' })}::jsonb) returning id`))!.id));
 }
+
+/** A lease whose run context really passes authorization: if the composed
+ * dispatch hook were ever invoked, runContext would succeed and the marker
+ * would be written. Its absence therefore proves the gateway rejected before
+ * dispatch, not that the hook failed on its own. */
+async function dispatchableRun(f: Fixture) {
+  const label = prefix + '-dispatch-' + randomUUID(), token = prefix + '-lease-' + randomUUID();
+  const ids = await withPlatformTransaction(async tx => {
+    const conversationId = String((await one(tx, sql`insert into app.assistant_conversations(
+      enterprise_id,purpose,status,mode,entry_snapshot,policy_version)
+      values(${f.enterpriseId},'customer_consultation','open','ai','{}'::jsonb,1) returning id`))!.id);
+    const runId = String((await one(tx, sql`insert into app.assistant_runs(enterprise_id,conversation_id,trigger_kind,
+      trigger_schedule_key,purpose,status,policy_snapshot,context_revision,knowledge_epoch)
+      values(${f.enterpriseId},${conversationId},'scheduled_task',${label},'reply','running',
+      ${JSON.stringify({ policyVersion: 1,
+        knowledgePolicy: { protocol: 'enterprise-knowledge-policy-v1', enabled: false } })}::jsonb,1,1)
+      returning id`))!.id);
+    const jobId = String((await one(tx, sql`insert into app.assistant_jobs(enterprise_id,kind,run_id,dedupe_key,status,
+      attempts,lease_token,lease_expires_at,heartbeat_at)
+      values(${f.enterpriseId},'chat_turn',${runId},${label + '-job'},'running',1,${token},now()+interval '10 minutes',now())
+      returning id`))!.id);
+    return { runId, jobId };
+  });
+  const actor: ActorContext = { enterpriseId: f.enterpriseId, principal: { kind: 'user', userId: f.userId },
+    contextVersion: 1, capabilities: ['assistant.chat.self'] };
+  const lease: Lease = { enterpriseId: f.enterpriseId, jobId: ids.jobId, runId: ids.runId, token, actor };
+  return { ...ids, lease, operationKey: 'native-suggest:' + ids.runId };
+}
+
+/** The production order: the open usage marker first, then the shared
+ * provider-start marker. */
+async function suggestionDispatchHook(lease: Lease, operationKey: string, beforeProviderCall: () => Promise<void>) {
+  await withTenantTransaction(lease.enterpriseId, async tx => {
+    await runContext(tx, lease);
+    await tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,operation_key,category,quantity,measurement_kind)
+      values(${lease.enterpriseId},${lease.runId},${operationKey},'suggestion_tokens',null,'unavailable') on conflict do nothing`);
+  });
+  await beforeProviderCall();
+}
+
+/** A capability binding no configured runtime can match, so the gateway rejects
+ * before creating an attempt and before any provider I/O. */
+const unboundConfig: AgentConfig = { runtime: 'langgraph-v1', model: 'synthetic-suggestion-model',
+  providerKey: 'synthetic-unbound-' + randomUUID(), imageInput: false, tools: false, probeVersion: 'synthetic-probe' };
 
 async function openSuggestionStep(f: Fixture, runId: string, operationKey: string) {
   await withTenantTransaction(f.enterpriseId, async tx => {
@@ -176,4 +223,57 @@ test('an unknown suggestion outcome is recovered as unknown and failRun keeps th
     from app.assistant_run_steps where enterprise_id=${f.enterpriseId} and run_id=${claim.runId}
       and step_seq=${suggestionGenerationStep}`));
   assert.equal((kept!.input_summary as { code?: string }).code, 'provider_outcome_unknown');
+});
+
+test('a gateway rejection before dispatch leaves no attempt and no suggestion usage marker', async () => {
+  const f = await fixture(), claim = await dispatchableRun(f);
+  let failure: unknown;
+  // The real gateway rejects on the unbound capability before it creates the
+  // provider attempt, so the composed dispatch hook (and any network call) is
+  // never reached.
+  await assert.rejects(executePostgresText({
+    enterpriseId: BigInt(f.enterpriseId),
+    owner: { kind: 'assistant_run', runId: BigInt(claim.runId) },
+    logicalModelKey: 'chat.general', messages: [], maxTokens: 800,
+    agent: { config: unboundConfig, input: { messages: [{ role: 'user',
+      content: [{ type: 'text', text: 'synthetic suggestion input' }] }], tools: [], maxTokens: 800 } },
+    metadata: { purpose: 'suggestions' },
+    beforeProviderCall: () => suggestionDispatchHook(claim.lease, claim.operationKey, () => markProviderStarted(claim.lease)),
+  }), (error: unknown) => { failure = error; return true; });
+  assert.ok(failure instanceof Error);
+  const attempts = await withPlatformTransaction(tx => one(tx, sql`select count(*)::int n from app.ai_provider_attempts
+    where enterprise_id=${f.enterpriseId} and assistant_run_id=${claim.runId}`));
+  assert.equal(attempts!.n, 0);
+  const usage = await withTenantTransaction(f.enterpriseId, tx => one(tx, sql`select count(*)::int n
+    from app.assistant_usage_records where enterprise_id=${f.enterpriseId} and run_id=${claim.runId}
+      and category='suggestion_tokens'`));
+  assert.equal(usage!.n, 0);
+  // No provider-start marker either: dispatch never started.
+  const job = await withTenantTransaction(f.enterpriseId, tx => one(tx, sql`select provider_started_at
+    from app.assistant_jobs where enterprise_id=${f.enterpriseId} and id=${claim.jobId}`));
+  assert.equal(job!.provider_started_at, null);
+});
+
+test('a failed post-dispatch suggestion step without a marker is not an unknown provider outcome', async () => {
+  const f = await fixture(), claim = await runningRun(f, true);
+  // Durable state after the fix: the answer run succeeded and the suggestion
+  // step recorded a known failure, while no usage marker (and no attempt) was
+  // written because the gateway rejected before dispatch.
+  await withTenantTransaction(f.enterpriseId, async tx => {
+    await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
+      values(${f.enterpriseId},${claim.runId},${suggestionGenerationStep},'agent_suggestion_model','failed',
+      ${JSON.stringify({ protocol: 'xiaok-native-executor-v1', purpose: 'suggestions', code: 'suggestion_generation_failed' })}::jsonb)`);
+    await tx.execute(sql`update app.assistant_runs set status='succeeded',completed_at=now()
+      where enterprise_id=${f.enterpriseId} and id=${claim.runId}`);
+  });
+  const unresolved = await withTenantTransaction(f.enterpriseId, tx => one(tx, sql`select coalesce(${unresolvedProviderOutcome()},false) unresolved
+    from app.assistant_runs r where r.enterprise_id=${f.enterpriseId} and r.id=${claim.runId}`));
+  assert.equal(unresolved!.unresolved, false);
+
+  // Contrast: the pre-fix leftover NULL marker is still an unknown outcome.
+  const legacy = await runningRun(f, true);
+  await openSuggestionStep(f, legacy.runId, legacy.operationKey);
+  const stillUnknown = await withTenantTransaction(f.enterpriseId, tx => one(tx, sql`select coalesce(${unresolvedProviderOutcome()},false) unresolved
+    from app.assistant_runs r where r.enterprise_id=${f.enterpriseId} and r.id=${legacy.runId}`));
+  assert.equal(stillUnknown!.unresolved, true);
 });
