@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { AssistantError } from '@/lib/assistant/contracts';
 import { getTenantContext } from '@/lib/auth';
 import { readPeriodReportRunStatus } from '@/lib/native-workflow/live/period-report-status';
 import { requirePlatformAdmin, workflowApiError } from '@/lib/native-workflow/server';
@@ -36,6 +37,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ runI
     });
     return NextResponse.json({ success: true, data: observation });
   } catch (error) {
+    // The reader surfaces the construction report service's authorization
+    // errors unchanged (403/404). They must not degrade into a 500 native
+    // workflow error, which would hide a real access decision.
+    if (error instanceof AssistantError) {
+      return NextResponse.json(
+        { success: false, error: error.code, message: error.code },
+        { status: error.status },
+      );
+    }
     return workflowApiError(error);
   }
 }

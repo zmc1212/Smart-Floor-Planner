@@ -594,16 +594,56 @@ model calls. API authorization rejects unauthenticated (401), enterprise-admin
 (403) and wrong-tenant (403) callers; the platform admin read succeeds. The
 Admin page check passed 6/6 and refresh/re-entry 5/5. Evidence:
 `admin/tmp/b5-3-live/verification.json`, `failed-run.json`,
-`readonly-verification.json` and `dev.log`. `npm run build` still stops at the
-pre-existing `scripts/fastgpt/setup-unified.mts:113` type error, which is
-byte-identical to the baseline; all changed files have zero type errors.
+`readonly-verification.json` and `dev.log`.
+
+B5.3 closeout:
+
+- Status reads authorize before returning any trace. The run record's own
+  enterprise/project identity is the only scope source; a run without a project
+  scope fails with `run_scope_unavailable` (404). Complete bindings, runs
+  without a successful save receipt and old receipts without `bindingId` all
+  run the same `readProjectAccess(..., 'share')` check inside the tenant
+  transaction. The reader rethrows `AssistantError` 403/404 unchanged, and the
+  status route maps them to the same HTTP status instead of a 500
+  `native_workflow_error`. Authorized viewers still read unbound diagnostics.
+- Facts/body ready with a `muted`/`revoked` delivery is the terminal `stopped`
+  state (`processing:false`, `completed:false`, reasons `delivery_muted` /
+  `delivery_revoked`). A still-queued/running/waiting facts or body keeps
+  `processing` even when delivery is muted/revoked; a failed step keeps
+  `failed`; `pending`/`held` delivery stays `processing`; `delivered` still
+  completes. Facts, body, the original delivery state and the immutable raw
+  trace remain in the response.
+- Deleting a follow-up and explicitly resuming it reuses the same binding row
+  with a new conversation. The reader compares the current
+  `binding.conversation_id` with the save receipt's conversationId and reports
+  `access_revoked` / `binding_generation_changed` (overall `unavailable`)
+  instead of projecting the old report as available/completed. The old run,
+  report identity, receipt, message and raw trace are never rebound to the new
+  conversation.
+- The Admin live tab is a controlled tab. It reads only while visible; leaving
+  stops the timer, invalidates in-flight responses and clears loading; returning
+  re-reads a cut-short cycle (a denial or transient failure stays stopped with a
+  working manual re-read). HTTP 401/403/404 clears the restricted
+  observation/binding/progress/raw; a transient failure keeps the last snapshot
+  and shows both the last `observedAt` and the failure time.
+- Tests: the native-workflow offline suite is 217 passing with 3 database-gated
+  route cases; with `B4_LIVE_APP_DATABASE_URL` all 220 pass, including the real
+  route/default-reader bound, unbound and old-receipt paths and a 403 after the
+  controlled platform admin is disabled. The closeout real run is 14/14:
+  muted/revoked/pending mappings, the resumed-generation `unavailable`, the
+  three denied paths, restored reads and unchanged
+  report/job/run/attempt/usage/message/delivery counters. Evidence:
+  `admin/tmp/b5-3-closeout/verification.json`. `npm run build` still stops at
+  the pre-existing `scripts/fastgpt/setup-unified.mts:113` type error, which is
+  byte-identical to the baseline; Turbopack reports "Compiled successfully"
+  before that type check, and all changed files have zero type errors.
 
 ## Reproduce
 
 From `admin/` (no database, no Worker, no model):
 
 ```powershell
-npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts src/lib/native-workflow/__tests__/acceptance-store.test.ts src/lib/native-workflow/__tests__/acceptance-conversation.test.ts src/lib/native-workflow/__tests__/acceptance-state.test.ts src/lib/native-workflow/__tests__/period-report-ports.test.ts src/lib/native-workflow/__tests__/report-model-evidence.test.ts src/lib/native-workflow/__tests__/period-report-status.test.ts src/lib/native-workflow/__tests__/period-report-status-reentry.test.ts src/lib/native-workflow/__tests__/admin-run-status.test.ts
+npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts src/lib/native-workflow/__tests__/acceptance-store.test.ts src/lib/native-workflow/__tests__/acceptance-conversation.test.ts src/lib/native-workflow/__tests__/acceptance-state.test.ts src/lib/native-workflow/__tests__/period-report-ports.test.ts src/lib/native-workflow/__tests__/report-model-evidence.test.ts src/lib/native-workflow/__tests__/period-report-status.test.ts src/lib/native-workflow/__tests__/period-report-status-reentry.test.ts src/lib/native-workflow/__tests__/admin-run-status.test.ts src/lib/native-workflow/__tests__/period-report-status-route.test.ts
 npx tsx src/lib/native-workflow/playground/simulate.ts
 ```
 

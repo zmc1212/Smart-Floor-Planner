@@ -3,6 +3,7 @@ import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { AssistantError } from '@/lib/assistant/contracts';
 import { WorkflowOperationError } from '../errors';
 import {
   extractPeriodReportRunBinding,
@@ -419,6 +420,129 @@ test('facts ready, body ready and a confirmed delivery complete the run', () => 
   assert.equal(progress.processing, false);
 });
 
+test('a muted delivery with ready facts and body stops the run without completing', () => {
+  const progress = map({
+    delivery: {
+      state: 'muted',
+      message_id: '8101',
+      delivered_at: '2026-11-11T02:20:00.000Z',
+      read_at: null,
+    },
+  });
+  assert.equal(progress.facts.state, 'ready');
+  assert.equal(progress.body.state, 'ready');
+  assert.equal(progress.delivery.state, 'muted');
+  assert.equal(progress.overall, 'stopped');
+  assert.equal(progress.completed, false);
+  assert.equal(progress.processing, false);
+  assert.ok(progress.reasons.includes('delivery_muted'));
+});
+
+test('a revoked delivery with ready facts and body stops the run without completing', () => {
+  const progress = map({
+    delivery: {
+      state: 'revoked',
+      message_id: '8101',
+      delivered_at: '2026-11-11T02:20:00.000Z',
+      read_at: null,
+    },
+  });
+  assert.equal(progress.facts.state, 'ready');
+  assert.equal(progress.body.state, 'ready');
+  assert.equal(progress.delivery.state, 'revoked');
+  assert.equal(progress.overall, 'stopped');
+  assert.equal(progress.completed, false);
+  assert.equal(progress.processing, false);
+  assert.ok(progress.reasons.includes('delivery_revoked'));
+});
+
+test('a pending delivery with ready facts and body stays processing', () => {
+  const progress = map({
+    delivery: {
+      state: 'pending',
+      message_id: null,
+      delivered_at: null,
+      read_at: null,
+    },
+  });
+  assert.equal(progress.facts.state, 'ready');
+  assert.equal(progress.body.state, 'ready');
+  assert.equal(progress.delivery.state, 'waiting');
+  assert.equal(progress.overall, 'processing');
+  assert.equal(progress.completed, false);
+});
+
+test('a muted delivery while facts or body is still working stays processing', () => {
+  const mutedDelivery = {
+    state: 'muted',
+    message_id: '8101',
+    delivered_at: '2026-11-11T02:20:00.000Z',
+    read_at: null,
+  };
+
+  // Facts still running: content generation is the active work.
+  const factsRunning = map({
+    version: {
+      revision: 1,
+      status: 'facts_running',
+      generated_at: null,
+      body_present: false,
+      knowledge_status: 'not_generated',
+      body_run_id: null,
+      body_error_code: null,
+      body_attempts: 0,
+    },
+    factsRun: { id: '8001', status: 'running', error_code: null },
+    factsJob: { jobId: '9101', status: 'running', attempts: 1, providerStartedAt: '2026-11-11T02:00:00.000Z' },
+    bodyRun: null,
+    bodyJob: null,
+    delivery: mutedDelivery,
+  });
+  assert.equal(factsRunning.facts.state, 'running');
+  assert.equal(factsRunning.delivery.state, 'muted');
+  assert.equal(factsRunning.overall, 'processing');
+  assert.equal(factsRunning.completed, false);
+  assert.equal(factsRunning.processing, true);
+
+  // Body still waiting for a run.
+  const bodyWaiting = map({
+    version: {
+      revision: 1,
+      status: 'facts_ready',
+      generated_at: '2026-11-11T02:00:00.000Z',
+      body_present: false,
+      knowledge_status: 'not_generated',
+      body_run_id: null,
+      body_error_code: null,
+      body_attempts: 0,
+    },
+    bodyRun: null,
+    bodyJob: null,
+    delivery: mutedDelivery,
+  });
+  assert.equal(bodyWaiting.body.state, 'waiting');
+  assert.equal(bodyWaiting.overall, 'processing');
+
+  // Body queued.
+  const bodyQueued = map({
+    version: {
+      revision: 1,
+      status: 'facts_ready',
+      generated_at: '2026-11-11T02:00:00.000Z',
+      body_present: false,
+      knowledge_status: 'queued',
+      body_run_id: '8002',
+      body_error_code: null,
+      body_attempts: 1,
+    },
+    bodyRun: { id: '8002', status: 'queued', error_code: null },
+    bodyJob: { jobId: '9102', status: 'queued', attempts: 1, providerStartedAt: null },
+    delivery: mutedDelivery,
+  });
+  assert.equal(bodyQueued.body.state, 'queued');
+  assert.equal(bodyQueued.overall, 'processing');
+});
+
 test('a failed body run fails the run without claiming completion', () => {
   const progress = map({
     version: {
@@ -708,10 +832,18 @@ test('an unconfirmed save returns an unbound observation without querying busine
     await store.create(makeRecord({ runId, saveReceipt: null }));
 
     let loads = 0;
+    const authorizations: Array<{ enterpriseId: string; adminId: string; projectId: string }> = [];
     const observation = await readPeriodReportRunStatus({
       runId,
       viewer: { enterpriseId: ENTERPRISE, adminId: ADMIN },
       runStore: store,
+      authorizeUnbound: async (scope) => {
+        authorizations.push({
+          enterpriseId: scope.enterpriseId,
+          adminId: scope.adminId,
+          projectId: scope.projectId,
+        });
+      },
       loadSnapshot: async () => {
         loads += 1;
         return snapshot();
@@ -719,12 +851,53 @@ test('an unconfirmed save returns an unbound observation without querying busine
       now: () => new Date(NOW),
     });
 
+    // The unbound path must be authorized before returning, but it still reads
+    // no report/version/delivery rows.
+    assert.deepEqual(authorizations, [{
+      enterpriseId: ENTERPRISE,
+      adminId: ADMIN,
+      projectId: PROJECT,
+    }]);
     assert.equal(loads, 0);
     assert.equal(observation.bound, false);
     assert.equal(observation.binding, null);
     assert.equal(observation.progress, null);
     assert.ok(observation.reasons.includes('save_receipt_missing'));
     assert.equal(observation.raw.status, 'completed');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('an unbound authorization failure is rethrown unchanged instead of read_error', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'period-report-status-unbound-403-'));
+  const runId = 'run-period-unbound-403';
+  try {
+    const store = createFileWorkflowRunStore({ rootDir: dir });
+    await store.create(makeRecord({ runId, saveReceipt: null }));
+
+    const forbidden = new AssistantError('construction_project_forbidden', 403);
+    let loads = 0;
+    await assert.rejects(
+      () => readPeriodReportRunStatus({
+        runId,
+        viewer: { enterpriseId: ENTERPRISE, adminId: ADMIN },
+        runStore: store,
+        authorizeUnbound: async () => {
+          throw forbidden;
+        },
+        loadSnapshot: async () => {
+          loads += 1;
+          return snapshot();
+        },
+        now: () => new Date(NOW),
+      }),
+      (error: unknown) => error === forbidden
+        && error instanceof AssistantError
+        && error.code === 'construction_project_forbidden'
+        && error.status === 403,
+    );
+    assert.equal(loads, 0);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

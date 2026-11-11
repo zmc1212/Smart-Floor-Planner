@@ -38,13 +38,14 @@ import {
   selectedSimulationDefinition,
 } from '@/lib/native-workflow/admin-selection';
 import {
+  createPeriodRunStatusController,
   formatPeriodRunState,
-  isPeriodRunTerminal,
-  mergePeriodRunObservation,
-  nextPeriodRunPollDelay,
+  INITIAL_PERIOD_RUN_STATUS_STATE,
   PERIOD_RUN_POLL_INTERVAL_MS,
   PERIOD_RUN_POLL_MAX_READS,
-  type PeriodRunStatusState,
+  type PeriodRunObservationResult,
+  type PeriodRunStatusController,
+  type PeriodRunStatusControllerState,
 } from '@/lib/native-workflow/admin-run-status';
 import type { PeriodReportRunObservation } from '@/lib/native-workflow/live/period-report-status';
 import type { PublishedWorkflowVersion, WorkflowDefinitionRecord } from '@/lib/native-workflow/store/types';
@@ -98,6 +99,7 @@ const STATE_LABELS: Readonly<Record<string, string>> = {
   access_revoked: '权限已撤销',
   source_unavailable: '数据源不可用',
   completed: '已完成',
+  stopped: '已停止投递',
   halted: '已停止',
   failed: '失败',
   unknown: '未知',
@@ -112,7 +114,7 @@ function stateLabel(value: string | null | undefined): string {
 const GREEN_STATES = new Set(['ready', 'succeeded', 'delivered', 'available', 'completed']);
 const RED_STATES = new Set(['failed', 'access_revoked']);
 const BLUE_STATES = new Set(['running', 'processing']);
-const ORANGE_STATES = new Set(['unknown', 'unavailable', 'revoked', 'muted', 'halted', 'source_unavailable']);
+const ORANGE_STATES = new Set(['unknown', 'unavailable', 'revoked', 'muted', 'halted', 'stopped', 'source_unavailable']);
 
 function stateColor(value: string | null | undefined): string {
   if (!value) return 'default';
@@ -162,92 +164,80 @@ function NativeWorkflowDetailPageInner() {
   const pathname = usePathname();
   const urlRunId = (searchParams?.get('runId') ?? '').trim();
   const [runIdInput, setRunIdInput] = useState(urlRunId);
-  const [runStatus, setRunStatus] = useState<PeriodRunStatusState>({ observation: null, error: null });
-  const [statusLoading, setStatusLoading] = useState(false);
-  const [pollReads, setPollReads] = useState(0);
-  const [pollHalt, setPollHalt] = useState<'idle' | 'terminal' | 'limit' | 'error' | 'stopped'>('idle');
-  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pollGeneration = useRef(0);
-  const activeRunId = useRef('');
+  const [activeTab, setActiveTab] = useState('draft');
+  const [runStatus, setRunStatus] = useState<PeriodRunStatusControllerState>(INITIAL_PERIOD_RUN_STATUS_STATE);
+  const runController = useRef<PeriodRunStatusController | null>(null);
 
-  const stopPolling = useCallback(() => {
-    pollGeneration.current += 1;
-    if (pollTimer.current) {
-      clearTimeout(pollTimer.current);
-      pollTimer.current = null;
-    }
-  }, []);
-
-  const loadRunStatus = useCallback(async (runId: string, reads: number, generation: number) => {
-    if (reads <= 1) setStatusLoading(true);
+  const fetchRunObservation = useCallback(async (runId: string): Promise<PeriodRunObservationResult> => {
     try {
       const response = await fetch(
         `/api/native-workflow/runs/${encodeURIComponent(runId)}/period-report-status`,
         { cache: 'no-store' },
       );
-      const result = await response.json();
-      if (pollGeneration.current !== generation) return;
-      if (!response.ok || !result.success) {
-        throw new Error(String(result.message || result.error || '读取运行状态失败'));
+      let body: {
+        success?: boolean;
+        data?: PeriodReportRunObservation;
+        message?: string;
+        error?: string;
+      } | null = null;
+      try {
+        body = await response.json();
+      } catch {
+        body = null;
       }
-      const observation = result.data as PeriodReportRunObservation;
-      setRunStatus((previous) => mergePeriodRunObservation(previous, { observation }));
-      setPollReads(reads);
-      if (nextPeriodRunPollDelay(observation, reads) === null) {
-        const capped =
-          observation.bound && observation.progress?.processing === true && reads >= PERIOD_RUN_POLL_MAX_READS;
-        setPollHalt(capped ? 'limit' : isPeriodRunTerminal(observation) ? 'terminal' : 'stopped');
-        return;
+      if (!response.ok || !body?.success || !body.data) {
+        return {
+          ok: false,
+          status: response.status,
+          message: String(body?.message || body?.error || `读取运行状态失败（HTTP ${response.status}）`),
+        };
       }
-      pollTimer.current = setTimeout(() => {
-        pollTimer.current = null;
-        void loadRunStatus(runId, reads + 1, generation);
-      }, PERIOD_RUN_POLL_INTERVAL_MS);
+      return { ok: true, observation: body.data };
     } catch (error) {
-      if (pollGeneration.current !== generation) return;
-      setRunStatus((previous) =>
-        mergePeriodRunObservation(previous, {
-          error: error instanceof Error ? error.message : '读取运行状态失败',
-        }),
-      );
-      setPollHalt('error');
-    } finally {
-      if (pollGeneration.current === generation && reads <= 1) setStatusLoading(false);
+      return {
+        ok: false,
+        status: null,
+        message: error instanceof Error ? error.message : '读取运行状态失败',
+      };
     }
   }, []);
 
-  const startReading = useCallback((rawRunId: string) => {
-    const runId = rawRunId.trim();
-    if (!runId) return;
-    const previousRunId = activeRunId.current;
-    stopPolling();
-    const generation = pollGeneration.current;
-    activeRunId.current = runId;
-    if (previousRunId !== runId) setRunStatus({ observation: null, error: null });
-    setPollReads(0);
-    setPollHalt('idle');
-    void loadRunStatus(runId, 1, generation);
-  }, [loadRunStatus, stopPolling]);
-
   useEffect(() => {
-    if (!urlRunId || urlRunId === activeRunId.current) return;
-    setRunIdInput(urlRunId);
-    startReading(urlRunId);
-  }, [urlRunId, startReading]);
-
-  useEffect(() => {
+    const controller = createPeriodRunStatusController({
+      fetchObservation: (runId) => fetchRunObservation(runId),
+      onChange: setRunStatus,
+    });
+    runController.current = controller;
     return () => {
-      stopPolling();
+      controller.dispose();
+      if (runController.current === controller) runController.current = null;
     };
-  }, [stopPolling]);
+  }, [fetchRunObservation]);
+
+  useEffect(() => {
+    const controller = runController.current;
+    if (!controller) return;
+    // A runId in the URL always owns the input, but it is only read while the
+    // live tab is visible.
+    if (urlRunId) setRunIdInput(urlRunId);
+    if (activeTab !== 'live') {
+      // Leaving the tab stops the timer and invalidates in-flight responses.
+      controller.deactivate();
+      return;
+    }
+    if (urlRunId && controller.getState().runId !== urlRunId) {
+      controller.start(urlRunId);
+      return;
+    }
+    // Returning only resumes a read that was cut short; a denial or a
+    // transient failure stays stopped until the admin asks again.
+    controller.activate();
+  }, [activeTab, urlRunId]);
 
   const submitRunId = () => {
     const runId = runIdInput.trim();
-    if (!runId) {
-      notify.error('请输入要跟踪的 runId');
-      return;
-    }
-    startReading(runId);
+    if (!runId) return;
+    if (activeTab === 'live') runController.current?.start(runId);
     const next = new URLSearchParams(searchParams?.toString() ?? '');
     if (next.get('runId') === runId) return;
     next.set('runId', runId);
@@ -834,13 +824,13 @@ function NativeWorkflowDetailPageInner() {
               allowClear
               style={{ width: 420 }}
             />
-            <Button type="primary" loading={statusLoading} onClick={submitRunId}>
+            <Button type="primary" loading={runStatus.loading} onClick={submitRunId}>
               读取状态
             </Button>
-            {progressProcessing && pollHalt === 'idle' && !runStatus.error ? (
-              <Tag color="blue">自动轮询中 · 已读取 {pollReads} 次</Tag>
+            {progressProcessing && runStatus.halt === 'idle' && !runStatus.error ? (
+              <Tag color="blue">自动轮询中 · 已读取 {runStatus.reads} 次</Tag>
             ) : null}
-            {pollHalt === 'limit' ? <Tag color="orange">已达自动轮询上限</Tag> : null}
+            {runStatus.halt === 'limit' ? <Tag color="orange">已达自动轮询上限</Tag> : null}
           </Space>
           <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
             runId 会写入地址栏查询参数，刷新或重新进入页面时自动读取同一个运行。授权仍由平台管理员角色、宿主企业和项目业务权限决定，页面不会自行放行。
@@ -848,20 +838,29 @@ function NativeWorkflowDetailPageInner() {
         </Space>
       </Card>
 
-      {runStatus.error ? (
+      {runStatus.error?.kind === 'restricted' ? (
         <Alert
           type="error"
           showIcon
-          message={`读取运行状态失败：${runStatus.error}`}
-          description={
-            observation
-              ? `已保留 ${observation.observedAt} 的最后一次可信状态；自动轮询已停止，可手动重试。`
-              : '自动轮询已停止，可手动重试；尚未获得可信状态。'
-          }
+          message={`权限失效或运行不可访问，已清除旧状态：${runStatus.error.message}`}
+          description={`本次读取失败时间 ${runStatus.error.at}${
+            runStatus.error.status ? `（HTTP ${runStatus.error.status}）` : ''
+          }。上一次成功读取的绑定、进度与原始轨迹已同时清除，不再展示受限旧投影；自动轮询已停止，确认权限后可点击“读取状态”重新读取。`}
         />
       ) : null}
 
-      {pollHalt === 'limit' ? (
+      {runStatus.error?.kind === 'transient' ? (
+        <Alert
+          type="error"
+          showIcon
+          message={`读取运行状态失败，已保留上次快照：${runStatus.error.message}`}
+          description={`上次成功读取时间 ${observation?.observedAt ?? '无'}；本次读取失败时间 ${runStatus.error.at}${
+            runStatus.error.status ? `（HTTP ${runStatus.error.status}）` : ''
+          }。自动轮询已停止，可点击“读取状态”手动重试。`}
+        />
+      ) : null}
+
+      {runStatus.halt === 'limit' ? (
         <Alert
           type="warning"
           showIcon
@@ -870,16 +869,16 @@ function NativeWorkflowDetailPageInner() {
         />
       ) : null}
 
-      {pollHalt === 'stopped' && observation && !runStatus.error ? (
+      {runStatus.halt === 'terminal' && observation && !runStatus.error ? (
         <Alert
           type="info"
           showIcon
           message="自动轮询已停止"
-          description="当前运行不处于处理中，或已切换页签；状态不会自动刷新，可手动重新读取。"
+          description="当前运行已到达终态或无需继续自动读取；可手动重新读取。"
         />
       ) : null}
 
-      {!observation && !statusLoading && !runStatus.error ? (
+      {!observation && !runStatus.loading && !runStatus.error ? (
         <Card>
           <Empty description="尚未读取真实运行状态" />
         </Card>
@@ -892,7 +891,7 @@ function NativeWorkflowDetailPageInner() {
             title={
               <Space wrap>
                 <Tag color="green">真实运行</Tag>
-                <Typography.Text code>{observation.binding?.runId ?? activeRunId.current}</Typography.Text>
+                <Typography.Text code>{observation.binding?.runId ?? runStatus.runId}</Typography.Text>
                 <Tag color={stateColor(observation.raw.status)}>{stateLabel(observation.raw.status)}</Tag>
                 {progress ? <Tag color={stateColor(progress.overall)}>{formatPeriodRunState(progress)}</Tag> : null}
                 {binding?.savedReused ? <Tag color="blue">复用已保存报告</Tag> : null}
@@ -1163,11 +1162,8 @@ function NativeWorkflowDetailPageInner() {
           description="未找到已确认的拖拽画布设计，本轮提供结构化定义 JSON、版本管理和模拟轨迹；不新增自创画布。"
         />
         <Tabs
-          onChange={(key) => {
-            if (key === 'live') return;
-            stopPolling();
-            setPollHalt((current) => (progress?.processing && current === 'idle' ? 'stopped' : current));
-          }}
+          activeKey={activeTab}
+          onChange={setActiveTab}
           items={[
             { key: 'draft', label: '草稿与发布', children: draftTab },
             { key: 'versions', label: `已发布版本（${record.versions.length}）`, children: versionsTab },

@@ -44,6 +44,8 @@ export type PeriodOverallState =
   | 'queued'
   | 'processing'
   | 'completed'
+  /** Facts and body are ready, but delivery is muted/revoked: no more work. */
+  | 'stopped'
   | 'failed'
   | 'unknown'
   | 'unavailable';
@@ -229,6 +231,16 @@ export interface PeriodReportStatusReaderOptions {
     transaction: import('@/db/transaction').PostgresTransaction,
     binding: PeriodRunBindingView,
   ) => Promise<PeriodReportBusinessSnapshot>;
+  /**
+   * Offline seam for the unbound path only. Production omits it and the reader
+   * runs the real project authorization; tests may inject it because they have
+   * no tenant transaction. It is never an authorization proof for the route.
+   */
+  readonly authorizeUnbound?: (scope: {
+    readonly enterpriseId: string;
+    readonly adminId: string;
+    readonly projectId: string;
+  }) => Promise<void>;
   readonly now?: () => Date;
 }
 
@@ -558,6 +570,12 @@ function mapAvailability(
   if (record.audience !== 'customer') {
     return { state: 'access_revoked', reason: 'audience_not_customer' };
   }
+  // Deleting a follow-up and explicitly resuming it reuses the same binding row
+  // with a new conversation. The save receipt still points at the old
+  // generation, so the old report must not be projected as available again.
+  if (record.conversation_id !== binding.conversationId) {
+    return { state: 'access_revoked', reason: 'binding_generation_changed' };
+  }
   const conversation = snapshot.conversation;
   if (!conversation) return { state: 'access_revoked', reason: 'conversation_missing' };
   if (conversation.retention_redacted) {
@@ -695,11 +713,17 @@ export function mapPeriodReportRunStatus(input: {
   if (body.state === 'failed') reasons.push('body_failed');
   if (body.state === 'unknown') reasons.push('body_unknown');
   if (delivery.state === 'unknown') reasons.push('delivery_unknown');
+  if (delivery.state === 'muted') reasons.push('delivery_muted');
+  if (delivery.state === 'revoked') reasons.push('delivery_revoked');
   if (availability.state !== 'available') {
     reasons.push(availability.state);
     reasons.push(availability.reason);
   }
 
+  // Availability dominates: an old report whose destination generation moved
+  // stays unavailable even when its historical delivery evidence says
+  // "delivered". A confirmed failure is never hidden by a stopped delivery.
+  const contentReady = facts.state === 'ready' && body.state === 'ready';
   let overall: PeriodOverallState;
   if (availability.state === 'access_revoked' || availability.state === 'source_unavailable') {
     overall = 'unavailable';
@@ -712,23 +736,18 @@ export function mapPeriodReportRunStatus(input: {
     || availability.state === 'unknown'
   ) {
     overall = 'unknown';
-  } else if (
-    facts.state === 'ready'
-    && body.state === 'ready'
-    && delivery.state === 'delivered'
-  ) {
-    overall = 'completed';
-  } else if (
-    facts.state === 'running'
-    || facts.state === 'queued'
-    || body.state === 'running'
-    || body.state === 'queued'
-    || body.state === 'waiting'
-    || delivery.state === 'waiting'
-  ) {
+  } else if (!contentReady) {
+    // Facts or body are still queued/running/waiting. Content generation is the
+    // active work, so a muted/revoked delivery cannot stop the observation yet.
     overall = 'processing';
+  } else if (delivery.state === 'delivered') {
+    overall = 'completed';
+  } else if (delivery.state === 'muted' || delivery.state === 'revoked') {
+    // Facts and body are ready and nothing will be delivered or retried.
+    overall = 'stopped';
   } else {
-    overall = 'queued';
+    // Content is ready; only a pending/held delivery is still outstanding.
+    overall = 'processing';
   }
 
   return {
@@ -958,13 +977,29 @@ async function readSnapshotRows(
   }
 }
 
+/** Any active project member may read; platform admins keep constructionAccess. */
+async function assertProjectRead(
+  enterpriseId: string,
+  adminId: string,
+  projectId: string,
+): Promise<void> {
+  await withTenantTransaction(enterpriseId, async (tx) => {
+    await readProjectAccess(
+      tx,
+      { enterpriseId, adminId },
+      projectId,
+      'share',
+    );
+  });
+}
+
 async function accessAndSnapshot(
   binding: PeriodRunBindingView,
   viewerAdminId: string,
 ): Promise<PeriodReportBusinessSnapshot> {
   return withTenantTransaction(binding.enterpriseId, async (tx) => {
-    // Any active project member may read; platform admins keep the existing
-    // constructionAccess rule. This check runs before any status query.
+    // The authorization and the status queries share one transaction, so a
+    // membership change cannot slip between the check and the read.
     await readProjectAccess(
       tx,
       { enterpriseId: binding.enterpriseId, adminId: viewerAdminId },
@@ -999,10 +1034,31 @@ export async function readPeriodReportRunStatus(
       `run ${options.runId} belongs to another enterprise`,
     );
   }
+  // The run record's own project identity is the only source for the business
+  // authorization; it is never taken from the request or the receipt. A run
+  // without it cannot prove any project scope and is not readable.
+  if (!nonEmptyString(record.projectId)) {
+    throw new WorkflowOperationError(
+      'run_scope_unavailable',
+      404,
+      `run ${options.runId} has no project scope to authorize`,
+    );
+  }
   const observedAt = now().toISOString();
   const raw = buildRawRunView(record);
 
   if (!extracted.ok || !extracted.binding) {
+    // Even an unbound run exposes its trace, so the current viewer must pass
+    // the same project authorization before any trace is returned.
+    if (options.authorizeUnbound) {
+      await options.authorizeUnbound({
+        enterpriseId: record.enterpriseId,
+        adminId: options.viewer.adminId,
+        projectId: record.projectId,
+      });
+    } else {
+      await assertProjectRead(record.enterpriseId, options.viewer.adminId, record.projectId);
+    }
     return {
       contract: PERIOD_REPORT_STATUS_CONTRACT,
       observedAt,

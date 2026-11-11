@@ -210,6 +210,21 @@ function readySnapshot(): PeriodReportBusinessSnapshot {
   };
 }
 
+/** The same binding row after delete + self-resume: a new conversation generation. */
+function resumedBindingSnapshot(): PeriodReportBusinessSnapshot {
+  const base = readySnapshot();
+  assert.ok(base.binding);
+  return {
+    ...base,
+    // The live binding row has been re-pointed at a newer conversation.
+    binding: {
+      ...base.binding,
+      conversation_id: '1454000099',
+      status: 'enabled',
+    },
+  };
+}
+
 function readErrorSnapshot(): PeriodReportBusinessSnapshot {
   return {
     ...readySnapshot(),
@@ -443,6 +458,80 @@ test('a newly published definition revision never rewrites an old run binding', 
     // The definition store has indeed moved on to a second revision.
     const latest = await service.getDefinition('period-report-daily');
     assert.equal(latest.record.versions[latest.record.versions.length - 1]?.revision, 2);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a follow-up resumed with a new conversation keeps an old report unavailable, never completed', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'b5-3-status-resume-generation-'));
+  try {
+    const runStore = createFileWorkflowRunStore({ rootDir: path.join(root, 'runs-store') });
+    await runStore.create(baseRecord({ digest: 'digest-v1', nodeVersions: { 'trigger-1': 'v1' } }));
+    const before = await snapshotFiles(path.join(root, 'runs-store'));
+
+    let snapshotCalls = 0;
+    const options = {
+      runId: RUN_ID,
+      viewer: { enterpriseId: ENTERPRISE_ID, adminId: '1454000001' },
+      runStore,
+      // Follow-up was deleted and resumed by the customer: the binding row now
+      // points at conversation 1454000099 while the run receipt still names
+      // 1454000007. The old report rows still exist and look delivered.
+      loadSnapshot: async () => {
+        snapshotCalls += 1;
+        return resumedBindingSnapshot();
+      },
+      now: () => NOW,
+    };
+
+    const first = await readPeriodReportRunStatus(options);
+    const second = await readPeriodReportRunStatus(options);
+    const after = await snapshotFiles(path.join(root, 'runs-store'));
+
+    assert.equal(snapshotCalls, 2);
+    assert.equal(first.bound, true);
+    assert.ok(first.binding);
+    assert.ok(first.progress);
+    assert.ok(second.binding);
+    assert.ok(second.progress);
+
+    // The view never rebinds to the newly resumed conversation.
+    assert.equal(first.binding.conversationId, '1454000007');
+    assert.equal(first.binding.bindingId, '1');
+    assert.equal(first.binding.reportId, '4');
+    assert.equal(first.binding.reportRevision, 1);
+    assert.equal(first.binding.factsRunId, '7');
+
+    // A generation change revokes access; the historical delivery evidence is
+    // not enough to call the old report completed or available.
+    assert.deepEqual(first.progress.availability, {
+      state: 'access_revoked',
+      reason: 'binding_generation_changed',
+    });
+    assert.equal(first.progress.overall, 'unavailable');
+    assert.equal(first.progress.completed, false);
+    assert.equal(first.progress.processing, false);
+    assert.ok(first.progress.reasons.includes('access_revoked'));
+    assert.ok(first.progress.reasons.includes('binding_generation_changed'));
+
+    // The old receipt and message rows still exist, so delivery evidence is
+    // preserved as-is; only availability decides the overall state.
+    assert.equal(first.progress.delivery.deliveryState, 'delivered');
+    assert.equal(first.progress.facts.runId, '7');
+    assert.equal(first.progress.body.runId, '8');
+
+    // The immutable raw trace is unchanged.
+    assert.equal(first.raw.status, 'failed');
+    assert.equal(first.raw.operations.length, 2);
+    assert.equal(first.raw.operations[1]?.outcome, 'failed');
+    assert.equal(first.raw.operations[1]?.errorCode, 'delivery_not_confirmed');
+    assert.deepEqual(second.raw, first.raw);
+    assert.deepEqual(second.progress, first.progress);
+    assert.deepEqual(second.binding, first.binding);
+
+    // Reading status never writes a run record.
+    assert.deepEqual(after, before);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
