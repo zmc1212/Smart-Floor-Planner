@@ -11,8 +11,23 @@ import type { LivePeriodReceiver } from './types';
 export const PERIOD_CLI_KINDS = ['daily', 'weekly'] as const;
 export type PeriodCliKind = (typeof PERIOD_CLI_KINDS)[number];
 
-export const PERIOD_RECEIVER_KINDS = ['customer', 'worker', 'designer'] as const;
+export const PERIOD_RECEIVER_KINDS = ['customer', 'worker', 'designer', 'boss'] as const;
 export type PeriodReceiverKind = (typeof PERIOD_RECEIVER_KINDS)[number];
+
+type AdminReceiverKind = 'worker' | 'designer' | 'boss';
+type ReceiverIdFlag = '--worker-id' | '--designer-id' | '--boss-id';
+
+const RECEIVER_ID_FLAG: Readonly<Record<AdminReceiverKind, ReceiverIdFlag>> = {
+  worker: '--worker-id',
+  designer: '--designer-id',
+  boss: '--boss-id',
+};
+
+const RECEIVER_ID_PREFIX: Readonly<Record<AdminReceiverKind, string>> = {
+  worker: 'worker_id',
+  designer: 'designer_id',
+  boss: 'boss_id',
+};
 
 export const PERIOD_DEFINITION_ID: Readonly<Record<PeriodCliKind, string>> = {
   daily: 'period-report-daily',
@@ -128,35 +143,36 @@ export function parseReceiverKindArg(argv: readonly string[]): PeriodReceiverKin
   if (option.value === undefined) {
     throw new PeriodCliError(
       'receiver_kind_missing',
-      '--receiver-kind requires a value (customer, worker or designer)',
+      '--receiver-kind requires a value (customer, worker, designer or boss)',
     );
   }
   if (!(PERIOD_RECEIVER_KINDS as readonly string[]).includes(option.value)) {
     throw new PeriodCliError(
       'receiver_kind_invalid',
-      '--receiver-kind must be customer, worker or designer',
+      '--receiver-kind must be customer, worker, designer or boss',
     );
   }
   return option.value as PeriodReceiverKind;
 }
 
 /**
- * Resolve the receiver id flag for one staff receiver. A worker receiver uses
- * `--worker-id`, a designer receiver uses `--designer-id`; either flag is
- * rejected for a customer receiver or for the other staff kind.
+ * Resolve one admin receiver id flag. A worker receiver uses `--worker-id`, a
+ * designer receiver uses `--designer-id` and a boss receiver uses `--boss-id`;
+ * every other flag is rejected for the selected kind (and for the customer).
  */
-export function parseStaffIdArg(
+export function parseReceiverIdArg(
   argv: readonly string[],
   kind: PeriodReceiverKind,
-  flag: '--worker-id' | '--designer-id',
+  role: AdminReceiverKind,
 ): string | undefined {
-  const prefix = flag === '--worker-id' ? 'worker' : 'designer';
+  const flag = RECEIVER_ID_FLAG[role];
+  const prefix = RECEIVER_ID_PREFIX[role];
   const option = readCliOption(argv, flag);
-  const expected = kind === 'worker' ? '--worker-id' : kind === 'designer' ? '--designer-id' : null;
+  const expected = kind === role ? flag : null;
   if (flag !== expected) {
     if (option.present) {
       throw new PeriodCliError(
-        `${prefix}_id_forbidden`,
+        `${prefix}_forbidden`,
         `${flag} is not valid for a ${kind} receiver`,
       );
     }
@@ -164,13 +180,13 @@ export function parseStaffIdArg(
   }
   if (!option.present) {
     throw new PeriodCliError(
-      `${prefix}_id_missing`,
+      `${prefix}_missing`,
       `${flag} is required for a ${kind} receiver`,
     );
   }
   if (option.value === undefined || !/^[1-9]\d{0,18}$/.test(option.value)) {
     throw new PeriodCliError(
-      `${prefix}_id_invalid`,
+      `${prefix}_invalid`,
       `${flag} must be a positive integer admin id`,
     );
   }
@@ -185,7 +201,7 @@ export function parseWorkerIdArg(
   argv: readonly string[],
   kind: PeriodReceiverKind,
 ): string | undefined {
-  return parseStaffIdArg(argv, kind, '--worker-id');
+  return parseReceiverIdArg(argv, kind, 'worker');
 }
 
 /**
@@ -196,26 +212,35 @@ export function parseDesignerIdArg(
   argv: readonly string[],
   kind: PeriodReceiverKind,
 ): string | undefined {
-  return parseStaffIdArg(argv, kind, '--designer-id');
+  return parseReceiverIdArg(argv, kind, 'designer');
+}
+
+/**
+ * Resolve `--boss-id` against the selected receiver kind. A boss receiver
+ * requires one positive admin id; any other receiver must not carry one.
+ */
+export function parseBossIdArg(
+  argv: readonly string[],
+  kind: PeriodReceiverKind,
+): string | undefined {
+  return parseReceiverIdArg(argv, kind, 'boss');
 }
 
 /** Host-owned receiver identity assembled from the validated CLI flags. */
 export function parseReceiverArg(argv: readonly string[]): LivePeriodReceiver {
   const kind = parseReceiverKindArg(argv);
-  if (kind === 'worker') {
-    const adminId = parseWorkerIdArg(argv, kind);
-    // A worker receiver must not smuggle the other staff id flag.
-    parseDesignerIdArg(argv, kind);
-    return { kind, adminId };
-  }
-  if (kind === 'designer') {
-    const adminId = parseDesignerIdArg(argv, kind);
+  if (kind === 'customer') {
     parseWorkerIdArg(argv, kind);
-    return { kind, adminId };
+    parseDesignerIdArg(argv, kind);
+    parseBossIdArg(argv, kind);
+    return { kind: 'customer' };
   }
-  parseWorkerIdArg(argv, kind);
-  parseDesignerIdArg(argv, kind);
-  return { kind: 'customer' };
+  const adminId = parseReceiverIdArg(argv, kind, kind);
+  // A receiver must never smuggle another role's admin id flag.
+  for (const other of ['worker', 'designer', 'boss'] as const) {
+    if (other !== kind) parseReceiverIdArg(argv, kind, other);
+  }
+  return { kind, adminId };
 }
 
 export interface CliPeriodInput {

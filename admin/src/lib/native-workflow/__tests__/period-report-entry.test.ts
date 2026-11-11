@@ -58,6 +58,24 @@ const workerBindingRow = {
   conversation_id: '7002',
   principal_key: `admin:${WORKER_ADMIN}`,
 };
+const BOSS_ADMIN = '1454000013';
+const bossAdminRow = {
+  id: BOSS_ADMIN,
+  role: 'enterprise_admin',
+  status: 'active',
+  must_change_password: false,
+};
+const bossBindingRow = {
+  id: '9004',
+  audience: 'boss',
+  admin_id: BOSS_ADMIN,
+  user_id: null,
+  project_id: null,
+  scope_key: 'enterprise',
+  status: 'enabled',
+  conversation_id: '7004',
+  principal_key: `admin:${BOSS_ADMIN}`,
+};
 const DESIGNER_ADMIN = '1454000011';
 const designerAdminRow = {
   id: DESIGNER_ADMIN,
@@ -132,6 +150,7 @@ function fakeTransaction(transactions: { count: number }, tx: PostgresTransactio
 function responder(overrides: {
   admin?: unknown[];
   member?: unknown[];
+  access?: unknown[];
   binding?: unknown[];
 } = {}): Responder {
   return (query) => {
@@ -146,7 +165,9 @@ function responder(overrides: {
     if (text.includes('select role,active from app.construction_members')) {
       return overrides.member ?? [workerMemberRow];
     }
-    if (text.includes('construction_followup_staff_access')) return [{ role: 'worker' }];
+    if (text.includes('construction_followup_staff_access')) {
+      return overrides.access ?? [{ role: 'worker' }];
+    }
     if (text.includes('pg_advisory_xact_lock')) return [];
     // No staff binding exists yet: the real ensureFollowupBinding creates it.
     if (text.includes('select * from app.construction_followup_bindings')) return [];
@@ -266,6 +287,10 @@ function entryDependencies(state: EntryHarness, now: Date = AFTER_PERIOD) {
   return {
     now: () => now,
     staff: {
+      transaction: fakeTransaction(state.transactions, state.database.tx),
+      now: () => now,
+    },
+    boss: {
       transaction: fakeTransaction(state.transactions, state.database.tx),
       now: () => now,
     },
@@ -471,6 +496,107 @@ test('a designer receiver with a non-designer admin role is rejected before the 
   }
   assert.deepEqual(state.ports.calls, []);
   assert.equal(state.runs.creates(), 0);
+});
+
+function bossHarness(overrides: Parameters<typeof responder>[0] = {}): EntryHarness {
+  return {
+    database: fakeDatabase(responder({
+      admin: [bossAdminRow],
+      access: [{ role: 'owner' }],
+      binding: [bossBindingRow],
+      ...overrides,
+    })),
+    transactions: { count: 0 },
+    ports: stoppingPorts(),
+    runs: countingRunStore(),
+    loads: { count: 0 },
+  };
+}
+
+function bossEntryInput(
+  state: EntryHarness,
+  published: PublishedWorkflowVersion,
+) {
+  return {
+    ...entryInput(state, published),
+    receiver: { kind: 'boss', adminId: BOSS_ADMIN } as const,
+  };
+}
+
+test('a boss receiver binds the enterprise boss binding and reaches the runner', async () => {
+  const state = bossHarness();
+  const weekly = await publish('weekly');
+
+  const entry = await runPeriodReportEntry(
+    bossEntryInput(state, weekly),
+    entryDependencies(state),
+  );
+
+  assert.equal(state.transactions.count, 1);
+  // A boss is the enterprise owner: no receiver membership query may run. The
+  // executor's own manager lookup is unrelated.
+  assert.equal(
+    state.database.calls.filter((call) =>
+      /select role,active from app\.construction_members/.test(call.text)).length,
+    0,
+  );
+  const bindingInsert = state.database.calls.findIndex((call) =>
+    /insert into app\.construction_followup_bindings/.test(call.text));
+  assert.ok(bindingInsert >= 0);
+  assert.match(
+    state.database.calls[bindingInsert]!.params.join(' '),
+    /admin:1454000013.*boss/u,
+  );
+  assert.equal(entry.staff, null);
+  assert.equal(entry.boss?.receiverKind, 'boss');
+  assert.equal(entry.boss?.adminId, BOSS_ADMIN);
+  assert.equal(entry.boss?.accessRole, 'owner');
+  assert.equal(entry.boss?.memberRequired, false);
+  assert.equal(entry.boss?.bindingId, '9004');
+  assert.equal(entry.boss?.conversationId, '7004');
+  assert.deepEqual(entry.businessEvent.receiver, {
+    kind: 'boss',
+    adminId: BOSS_ADMIN,
+  });
+  assert.equal(entry.record.binding.definitionId, 'period-report-weekly');
+  assert.equal(state.runs.creates(), 1);
+});
+
+test('a boss receiver without the enterprise owner role is rejected before the binding write', async () => {
+  const state = bossHarness({ access: [{ role: 'member' }] });
+  const weekly = await publish('weekly');
+
+  await assert.rejects(
+    () => runPeriodReportEntry(bossEntryInput(state, weekly), entryDependencies(state)),
+    (error: unknown) => error instanceof WorkflowOperationError
+      && error.code === 'boss_receiver_unavailable',
+  );
+
+  assert.equal(state.transactions.count, 1);
+  assert.equal(writesTo(state.database.calls, 'construction_followup_bindings').length, 0);
+  assert.equal(writesTo(state.database.calls, 'assistant_conversations').length, 0);
+  assert.equal(writesTo(state.database.calls, 'assistant_participants').length, 0);
+  for (const table of ENQUEUE_TABLES) {
+    assert.equal(queriesOn(state.database.calls, table).length, 0, `${table} must not be touched`);
+  }
+  assert.deepEqual(state.ports.calls, []);
+  assert.equal(state.runs.creates(), 0);
+});
+
+test('a boss receiver with a worker admin role is rejected', async () => {
+  const state = bossHarness({
+    admin: [workerAdminRow],
+    access: [{ role: 'member' }],
+  });
+  const weekly = await publish('weekly');
+
+  await assert.rejects(
+    () => runPeriodReportEntry(bossEntryInput(state, weekly), entryDependencies(state)),
+    (error: unknown) => error instanceof WorkflowOperationError
+      && error.code === 'boss_receiver_unavailable',
+  );
+  assert.equal(writesTo(state.database.calls, 'construction_followup_bindings').length, 0);
+  assert.deepEqual(state.ports.calls, []);
 });
 
 test('an unknown receiver kind is rejected before the period or published target', async () => {

@@ -1277,6 +1277,222 @@ test('a customer delivery receiver object cannot deliver a designer scope', asyn
   );
 });
 
+const BOSS_ADMIN = '1454000013';
+const bossReceiver: LivePeriodReceiver = { kind: 'boss', adminId: BOSS_ADMIN };
+
+function bossScope(overrides: Partial<PeriodReportScope> = {}): PeriodReportScope {
+  const period = parseFixedDailyPeriod(event, AFTER_PERIOD);
+  return scope({
+    bindingId: '9004',
+    conversationId: '7004',
+    receiverKind: 'boss',
+    receiverAdminId: BOSS_ADMIN,
+    receiverUserId: null,
+    bindingAudience: 'boss',
+    reportKey: periodReportKey(period, { id: '7004' }),
+    ...overrides,
+  });
+}
+
+const bossSettings = {
+  ...workerSettings,
+  audiences: ['boss'],
+};
+
+const bossBindingRow = {
+  id: '9004',
+  audience: 'boss',
+  admin_id: BOSS_ADMIN,
+  user_id: null,
+  project_id: null,
+  scope_key: 'enterprise',
+  status: 'enabled',
+  conversation_id: '7004',
+};
+
+function bossResponder(overrides: {
+  admin?: unknown[];
+  access?: unknown[];
+  followup?: unknown[];
+  binding?: unknown[];
+  member?: unknown[];
+} = {}) {
+  return (query: RecordedQuery): unknown[] | undefined => {
+    if (query.text.includes('construction_report_settings')) return [bossSettings];
+    if (query.text.includes('construction_followup_bindings')) {
+      return overrides.binding ?? [bossBindingRow];
+    }
+    if (query.text.includes('assistant_followup_conversation_access')) {
+      return overrides.followup ?? [{ allowed: true }];
+    }
+    if (query.text.includes('assistant_conversations')) return [{ id: '7004', entry_snapshot: {} }];
+    if (query.text.includes('construction_members')) return overrides.member ?? [];
+    if (query.text.includes('construction_followup_staff_access')) {
+      return overrides.access ?? [{ role: 'owner' }];
+    }
+    if (query.text.includes('admin_users')) {
+      return overrides.admin ?? [{ id: BOSS_ADMIN, role: 'enterprise_admin' }];
+    }
+    return undefined;
+  };
+}
+
+function bossPorts(respond: (query: RecordedQuery) => unknown[] | undefined) {
+  const database = fakeDatabase(respond);
+  const store = createPeriodReportStore({
+    transaction: fakeTransaction({ count: 0 }, database.tx),
+    authorizeWrite: async () => ({ owner: true, memberRole: null, project: workerProjectRow }),
+  });
+  return {
+    ports: createPeriodReportPorts({
+      actor,
+      store,
+      receiver: bossReceiver,
+      now: () => AFTER_PERIOD,
+    }),
+    database,
+  };
+}
+
+test('boss receiver resolves the enterprise boss binding without membership or customer_access', async () => {
+  const { ports, database } = bossPorts(bossResponder());
+  const result = await ports.execute(
+    operation('read.receiver_scope'),
+    contextWithReceiver(bossReceiver),
+  );
+
+  assert.equal(result.receiverCount, 1);
+  assert.deepEqual(result.receivers, {
+    scope: 'enterprise_boss',
+    projectId: '1455',
+    bindingId: '9004',
+    conversationId: '7004',
+    bossAdminId: BOSS_ADMIN,
+    audience: 'boss',
+  });
+  // The boss is the enterprise owner: no project membership and no customer link.
+  assert.equal(
+    database.calls.filter((call) => /app\.construction_members\b/.test(call.text)).length,
+    0,
+  );
+  const bindingQuery = database.calls.find((call) => call.text.includes('construction_followup_bindings'));
+  assert.ok(bindingQuery);
+  assert.match(bindingQuery.text, /audience=\$3/);
+  assert.match(bindingQuery.text, /project_id is null/);
+  assert.match(bindingQuery.text, /scope_key='enterprise'/);
+  assert.ok(bindingQuery.params.includes(`admin:${BOSS_ADMIN}`));
+  assert.ok(bindingQuery.params.includes('boss'));
+  const adminQuery = database.calls.find((call) => call.text.includes('admin_users'));
+  assert.ok(adminQuery);
+  assert.match(adminQuery.text, /status='active'/);
+  assert.match(adminQuery.text, /must_change_password=false/);
+  // The owner check uses the existing followup access function.
+  assert.ok(database.calls.some((call) => call.text.includes('construction_followup_staff_access')));
+});
+
+test('a boss receiver without the enterprise owner role is unavailable', async () => {
+  const { ports } = bossPorts(bossResponder({ access: [{ role: 'member' }] }));
+  await assert.rejects(
+    () => ports.execute(operation('save.period_report'), contextWithReceiver(bossReceiver)),
+    isFailure('period_report_receiver_unavailable'),
+  );
+
+  const receivers = await ports.execute(
+    operation('read.receiver_scope'),
+    contextWithReceiver(bossReceiver),
+  );
+  assert.equal(receivers.receiverCount, 0);
+  assert.equal(
+    (receivers.receivers as Record<string, unknown>).status,
+    'boss_unavailable',
+  );
+});
+
+test('a boss report saves and delivers through the enterprise boss scope', async () => {
+  const { state, store } = fakeStore({
+    scope: bossScope(),
+    queued: storedReport(bossScope()),
+    delivery: {
+      state: 'delivered',
+      messageId: '8104',
+      conversationId: '7004',
+      deliveredAt: '2026-11-11T02:05:00.000Z',
+      messagePurpose: 'construction.report.facts',
+    },
+  });
+  const ports = createPeriodReportPorts({ actor, store, receiver: bossReceiver });
+
+  const saved = await ports.execute(
+    operation('save.period_report'),
+    contextWithReceiver(bossReceiver),
+  );
+  assert.equal(saved.saved, true);
+  const receipt = saved.saveReceipt as Record<string, unknown>;
+  assert.equal(receipt.receiverKind, 'boss');
+  assert.equal(receipt.receiverAdminId, BOSS_ADMIN);
+  assert.deepEqual(receipt.projectScope, ['1455']);
+  assert.deepEqual(state.scopeReceivers, [bossReceiver]);
+  assert.deepEqual(state.enqueueReceivers, [bossReceiver]);
+
+  const receivers = await ports.execute(
+    operation('read.receiver_scope'),
+    contextWithReceiver(bossReceiver),
+  );
+  assert.deepEqual(receivers.receivers, {
+    scope: 'enterprise_boss',
+    projectId: '1455',
+    bindingId: '9004',
+    conversationId: '7004',
+    bossAdminId: BOSS_ADMIN,
+    audience: 'boss',
+  });
+
+  const delivered = await ports.execute(
+    operation('deliver.inapp', { receivers: receivers.receivers as WorkflowValue }),
+    contextWithReceiver(bossReceiver),
+  );
+  assert.equal(delivered.delivered, true);
+  const delivery = delivered.deliveryReceipt as Record<string, unknown>;
+  assert.equal(delivery.status, 'delivered');
+  assert.match(String(delivery.receiptId), /^report-delivery:5001:1:9004$/);
+});
+
+test('a staff or customer delivery receiver object cannot deliver a boss scope', async () => {
+  const { store } = fakeStore({
+    scope: bossScope(),
+    queued: storedReport(bossScope()),
+  });
+  const ports = createPeriodReportPorts({ actor, store, receiver: bossReceiver });
+  await ports.execute(operation('save.period_report'), contextWithReceiver(bossReceiver));
+
+  for (const receivers of [
+    {
+      scope: 'enterprise_designer',
+      projectId: '1455',
+      bindingId: '9004',
+      conversationId: '7004',
+      designerAdminId: BOSS_ADMIN,
+      audience: 'designer',
+    },
+    {
+      scope: 'project_customer',
+      projectId: '1455',
+      bindingId: '9004',
+      conversationId: '7004',
+      customerUserId: '1454000002',
+      audience: 'customer',
+    },
+  ]) {
+    await assert.rejects(
+      () => ports.execute(
+        operation('deliver.inapp', { receivers }),
+        contextWithReceiver(bossReceiver),
+      ),
+      isFailure('receiver_scope_mismatch'),
+    );
+  }
+});
+
 test('an unknown host receiver kind is rejected instead of falling back to the owner', async () => {
   const { store } = fakeStore();
   const ports = createPeriodReportPorts({

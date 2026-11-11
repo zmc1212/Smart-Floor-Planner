@@ -1468,3 +1468,166 @@ test('the reader carries the designer receiver through to the observation bindin
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+// ---------------------------------------------------------------------------
+// B5.7 boss (enterprise owner) receiver
+// ---------------------------------------------------------------------------
+
+const BOSS_ADMIN = '1454000013';
+
+function bossReceipt(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return receipt({
+    receiverKind: 'boss',
+    receiverAdminId: BOSS_ADMIN,
+    projectScope: [PROJECT],
+    ...overrides,
+  });
+}
+
+function bossRecord(options: RecordOptions = {}): LiveRunRecord {
+  return makeRecord({ ...options, saveReceipt: options.saveReceipt ?? bossReceipt() });
+}
+
+function bossBinding(
+  overrides: Partial<NonNullable<PeriodReportBusinessSnapshot['binding']>> = {},
+): NonNullable<PeriodReportBusinessSnapshot['binding']> {
+  return {
+    id: '9001',
+    project_id: null,
+    admin_id: BOSS_ADMIN,
+    conversation_id: '7001',
+    audience: 'boss',
+    status: 'enabled',
+    user_id: null,
+    ...overrides,
+  };
+}
+
+function bossSnapshot(overrides: SnapshotOptions = {}): PeriodReportBusinessSnapshot {
+  const base = snapshot();
+  const current = base.project!;
+  return {
+    ...base,
+    binding: bossBinding(),
+    // A boss receiver never depends on the customer link.
+    project: { ...current, customer_access: false },
+    ...overrides,
+  };
+}
+
+function mapBoss(
+  snapshotOverrides: SnapshotOptions = {},
+  record: LiveRunRecord = bossRecord(),
+) {
+  return mapPeriodReportRunStatus({
+    record,
+    binding: bindingView(record),
+    snapshot: bossSnapshot(snapshotOverrides),
+    observedAt: OBSERVED_AT,
+  });
+}
+
+test('extract keeps a boss receipt only with one admin and exactly the run project', () => {
+  const boss = extractPeriodReportRunBinding(bossRecord());
+  assert.equal(boss.ok, true);
+  assert.deepEqual(boss.reasons, []);
+  assert.equal(boss.binding?.receiverKind, 'boss');
+  assert.equal(boss.binding?.receiverAdminId, BOSS_ADMIN);
+  assert.deepEqual(boss.binding?.projectScope, [PROJECT]);
+
+  for (const projectScope of [[], [PROJECT, '1456'], ['1456']]) {
+    const missing = extractPeriodReportRunBinding(
+      makeRecord({ saveReceipt: bossReceipt({ projectScope }) }),
+    );
+    assert.equal(missing.ok, false);
+    assert.ok(missing.reasons.includes('project_scope_mismatch'));
+  }
+  const noAdmin = extractPeriodReportRunBinding(
+    makeRecord({ saveReceipt: bossReceipt({ receiverAdminId: '' }) }),
+  );
+  assert.equal(noAdmin.ok, false);
+  assert.ok(noAdmin.reasons.includes('receiver_binding_missing'));
+});
+
+test('a boss receiver is available even when the customer link is revoked', () => {
+  const progress = mapBoss({ project: { ...snapshot().project!, customer_access: false } });
+  assert.equal(progress.overall, 'completed');
+  assert.deepEqual(progress.availability, { state: 'available', reason: 'available' });
+  assert.equal(progress.reasons.includes('customer_access_revoked'), false);
+});
+
+test('a revoked boss account is access_revoked with an owner reason, not a membership reason', () => {
+  const progress = mapBoss({ followup_available: false });
+  assert.equal(progress.overall, 'unavailable');
+  assert.deepEqual(progress.availability, {
+    state: 'access_revoked',
+    reason: 'boss_access_revoked',
+  });
+  assert.ok(progress.reasons.includes('boss_access_revoked'));
+  assert.equal(progress.reasons.includes('boss_membership_revoked'), false);
+});
+
+test('a boss binding that does not prove the receipt receiver is never available', () => {
+  const wrongAudience = mapBoss({ binding: bossBinding({ audience: 'worker' }) });
+  assert.deepEqual(wrongAudience.availability, {
+    state: 'access_revoked',
+    reason: 'boss_binding_mismatch',
+  });
+  assert.equal(wrongAudience.overall, 'unavailable');
+
+  const projectScoped = mapBoss({ binding: bossBinding({ project_id: PROJECT }) });
+  assert.deepEqual(projectScoped.availability, {
+    state: 'access_revoked',
+    reason: 'boss_binding_mismatch',
+  });
+  assert.equal(projectScoped.overall, 'unavailable');
+
+  const wrongAdmin = mapBoss({ binding: bossBinding({ admin_id: '9999' }) });
+  assert.equal(wrongAdmin.overall, 'unknown');
+  assert.equal(wrongAdmin.completed, false);
+  assert.ok(wrongAdmin.reasons.includes('boss_binding_mismatch'));
+});
+
+test('a boss facts scope that is not exactly the run project stays unknown', () => {
+  for (const projectIds of [[], [PROJECT, '1456'], ['1456']] as const) {
+    const progress = mapBoss({ factsRun: workerFactsRun(projectIds) });
+    assert.equal(progress.overall, 'unknown');
+    assert.ok(progress.reasons.includes('report_scope_mismatch'));
+  }
+});
+
+test('the reader carries the boss receiver through to the observation binding', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'period-report-status-boss-'));
+  const runId = 'run-period-boss';
+  try {
+    const store = createFileWorkflowRunStore({ rootDir: dir });
+    await store.create(bossRecord({ runId }));
+
+    const loaded: PeriodRunBindingView[] = [];
+    const observation = await readPeriodReportRunStatus({
+      runId,
+      viewer: { enterpriseId: ENTERPRISE, adminId: ADMIN },
+      runStore: store,
+      loadSnapshot: async (_transaction, binding) => {
+        loaded.push(binding);
+        return bossSnapshot();
+      },
+      now: () => new Date(NOW),
+    });
+
+    assert.equal(loaded[0]?.receiverKind, 'boss');
+    assert.equal(loaded[0]?.receiverAdminId, BOSS_ADMIN);
+    assert.deepEqual(loaded[0]?.projectScope, [PROJECT]);
+    assert.equal(observation.bound, true);
+    assert.equal(observation.binding?.receiverKind, 'boss');
+    assert.equal(observation.binding?.receiverAdminId, BOSS_ADMIN);
+    assert.deepEqual(observation.binding?.projectScope, [PROJECT]);
+    assert.equal(observation.progress?.overall, 'completed');
+    assert.deepEqual(observation.progress?.availability, {
+      state: 'available',
+      reason: 'available',
+    });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

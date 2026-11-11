@@ -20,6 +20,10 @@
  *     --admin-id 1454000001 --project-id 1454000004 `
  *     --receiver-kind worker --worker-id 1454000008 `
  *     --period-kind weekly --period-start 2026-10-26 --period-end 2026-11-02
+ *   npx tsx scripts/native-workflow-period-report.ts --development --ensure-published `
+ *     --admin-id 1454000001 --project-id 1454000004 `
+ *     --receiver-kind boss --boss-id 1454000013 `
+ *     --period-kind weekly --period-start 2026-10-26 --period-end 2026-11-02
  */
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
@@ -305,7 +309,9 @@ async function main() {
     });
   } catch (error) {
     if (error instanceof WorkflowOperationError
-      && (error.code === 'worker_receiver_unavailable' || error.code === 'designer_receiver_unavailable')) {
+      && (error.code === 'worker_receiver_unavailable'
+        || error.code === 'designer_receiver_unavailable'
+        || error.code === 'boss_receiver_unavailable')) {
       failJson({
         code: error.code,
         error: error.message,

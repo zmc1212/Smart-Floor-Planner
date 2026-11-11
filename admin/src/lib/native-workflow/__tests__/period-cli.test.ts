@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   addCalendarDays,
+  parseBossIdArg,
   parseDesignerIdArg,
   parsePeriodKind,
   parsePeriodKindArg,
@@ -77,7 +78,8 @@ test('receiver kind defaults to customer and accepts worker', () => {
     'receiver_kind_missing',
   );
   assert.equal(codeOf(() => parseReceiverKindArg(['--receiver-kind='])), 'receiver_kind_missing');
-  assert.equal(codeOf(() => parseReceiverKindArg(['--receiver-kind', 'boss'])), 'receiver_kind_invalid');
+  assert.equal(parseReceiverKindArg(['--receiver-kind', 'boss']), 'boss');
+  assert.equal(codeOf(() => parseReceiverKindArg(['--receiver-kind', 'service'])), 'receiver_kind_invalid');
 });
 
 test('worker receiver requires a positive admin id', () => {
@@ -293,5 +295,64 @@ test('an unknown receiver kind is rejected before any database work', () => {
   assert.equal(
     codeOf(() => parseReceiverArg(['--receiver-kind', 'service'])),
     'receiver_kind_invalid',
+  );
+});
+
+test('boss receiver requires --boss-id and never accepts staff id flags', () => {
+  assert.deepEqual(
+    parseReceiverArg(['--receiver-kind', 'boss', '--boss-id', '1454000013']),
+    { kind: 'boss', adminId: '1454000013' },
+  );
+  assert.deepEqual(
+    parseReceiverArg(['--receiver-kind=boss', '--boss-id=1454000013']),
+    { kind: 'boss', adminId: '1454000013' },
+  );
+  assert.equal(
+    codeOf(() => parseBossIdArg(['--receiver-kind', 'boss'], 'boss')),
+    'boss_id_missing',
+  );
+  assert.equal(
+    codeOf(() => parseBossIdArg(['--boss-id='], 'boss')),
+    'boss_id_invalid',
+  );
+  for (const argv of [
+    ['--boss-id', 'abc'],
+    ['--boss-id', '0'],
+    ['--boss-id', '-1'],
+  ]) {
+    assert.equal(codeOf(() => parseBossIdArg(argv, 'boss')), 'boss_id_invalid');
+  }
+  assert.equal(
+    codeOf(() => parseReceiverArg(['--receiver-kind', 'boss', '--worker-id', '1454000008'])),
+    'boss_id_missing',
+  );
+  assert.equal(
+    codeOf(() => parseReceiverArg([
+      '--receiver-kind', 'boss', '--boss-id', '1454000013', '--worker-id', '1454000008',
+    ])),
+    'worker_id_forbidden',
+  );
+  assert.equal(
+    codeOf(() => parseReceiverArg([
+      '--receiver-kind', 'boss', '--boss-id', '1454000013', '--designer-id', '1454000011',
+    ])),
+    'designer_id_forbidden',
+  );
+  // Worker/designer/customer receivers must reject --boss-id.
+  assert.equal(
+    codeOf(() => parseReceiverArg([
+      '--receiver-kind', 'worker', '--worker-id', '1454000008', '--boss-id', '1454000013',
+    ])),
+    'boss_id_forbidden',
+  );
+  assert.equal(
+    codeOf(() => parseReceiverArg([
+      '--receiver-kind', 'designer', '--designer-id', '1454000011', '--boss-id', '1454000013',
+    ])),
+    'boss_id_forbidden',
+  );
+  assert.equal(
+    codeOf(() => parseReceiverArg(['--boss-id', '1454000013'])),
+    'boss_id_forbidden',
   );
 });

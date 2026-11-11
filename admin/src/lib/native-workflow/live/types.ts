@@ -9,8 +9,8 @@ import type {
 
 /** Host-selected report receiver. The definition can never choose or widen it. */
 export interface LivePeriodReceiver {
-  readonly kind: 'customer' | 'worker' | 'designer';
-  /** Required for a worker/designer receiver; absent for the owner/customer receiver. */
+  readonly kind: 'customer' | 'worker' | 'designer' | 'boss';
+  /** Required for a worker/designer/boss receiver; absent for the owner/customer receiver. */
   readonly adminId?: string;
 }
 

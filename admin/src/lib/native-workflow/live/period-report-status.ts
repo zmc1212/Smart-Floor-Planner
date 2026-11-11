@@ -34,7 +34,7 @@ export const PERIOD_REPORT_STATUS_CONTRACT = 'period-report-run-status-v1';
 export type PeriodKind = 'daily' | 'weekly';
 
 /** Host-selected receiver that the save receipt must confirm. */
-export type PeriodReceiverKind = 'customer' | 'worker' | 'designer';
+export type PeriodReceiverKind = 'customer' | 'worker' | 'designer' | 'boss';
 
 export type PeriodStepState = 'queued' | 'running' | 'ready' | 'failed' | 'unknown';
 
@@ -311,7 +311,9 @@ function receiptProjectScope(value: unknown): readonly string[] | null {
 
 function periodReceiverKind(value: unknown): PeriodReceiverKind | null {
   if (value === undefined) return 'customer';
-  return value === 'customer' || value === 'worker' || value === 'designer' ? value : null;
+  return value === 'customer' || value === 'worker' || value === 'designer' || value === 'boss'
+    ? value
+    : null;
 }
 
 function iso(value: unknown): string | null {
@@ -684,12 +686,16 @@ function mapAvailability(
   const project = snapshot.project;
   if (!project) return { state: 'access_revoked', reason: 'project_missing' };
   if (staff) {
-    // Membership revocation drops the conversation access check; a staff
-    // receiver is never granted access through the customer link.
+    // Membership/owner revocation drops the conversation access check; a staff
+    // or boss receiver is never granted access through the customer link.
     if (snapshot.followup_available !== true) {
       return {
         state: 'access_revoked',
-        reason: `${binding.receiverKind}_membership_revoked`,
+        reason: binding.receiverKind === 'boss'
+          // A boss is the enterprise owner, not a project member: never report
+          // the revoked account as a membership revocation.
+          ? 'boss_access_revoked'
+          : `${binding.receiverKind}_membership_revoked`,
       };
     }
   } else {

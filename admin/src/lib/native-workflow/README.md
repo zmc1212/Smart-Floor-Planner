@@ -1167,12 +1167,139 @@ reclassified it. The current read-back confirms the current rows only and does
 not prove the audit table was never different at earlier times; the worker's
 "complete continuous lifecycle not verified" limitation still stands.
 
+## B5.7 single-project boss weekly report
+
+The same weekly adapter now serves the enterprise boss. A boss report stays one
+project, one boss and one finished Shanghai week; no scheduler, Worker, message
+channel, Mini Program source or shared migration is added.
+
+- Receiver/scope contract: `PeriodReportScope.receiverKind` is
+  `customer`/`worker`/`designer`/`boss`. The boss is the existing enterprise
+  owner contract, not a project staff member: `live/boss-receiver.ts` requires a
+  same-enterprise active admin account without a required password change whose
+  `construction_followup_staff_access` role is `owner`. It deliberately does
+  not query `construction_members` and never reads `customer_access`. A
+  `construction_staff`/designer account, a disabled account or a different
+  enterprise is rejected with `boss_receiver_unavailable` before the binding
+  write. `--admin-id` stays the management executor; receiving a report grants
+  no management permission.
+- Binding: the boss uses the shared enterprise-scoped binding
+  (`principal_key=admin:<id>`, `audience=boss`, `project_id NULL`,
+  `scope_key=enterprise`). The customer keeps binding `1`, the worker binding
+  `2` and the designer binding `3`; the boss binding is `4` in the B fixture.
+- Facts/isolation: the plan must still be exactly `project_ids=[projectId]`
+  and the facts run freezes that single project. A boss may own multiple
+  enterprise projects under the existing read rule, but this B run, its facts
+  snapshot, receipt and source reads are limited to the one target project.
+  Reuse requires binding + conversation generation + kind/period +
+  `policy_snapshot.scope.project_ids`; a `report_key` shared with the customer/
+  worker/designer reports never selects another role's report.
+- CLI: `--receiver-kind boss` and `--boss-id`; a worker/designer receiver
+  rejects `--boss-id`, and a boss receiver rejects `--worker-id`/
+  `--designer-id` (`boss_id_forbidden`, `worker_id_forbidden`,
+  `designer_id_forbidden`). Unknown receiver types and valueless flags are
+  rejected before the database target is resolved.
+- Ports/status: `read.receiver_scope` returns `enterprise_boss` with
+  `bossAdminId`; the save receipt records `receiverKind=boss`,
+  `receiverAdminId` and `projectScope=[projectId]`; `deliver.inapp` matches that
+  exact object. The status reader reports `receiverKind=boss`, requires exactly
+  one frozen project, uses the boss binding plus current owner access as its
+  proof (no `customer_access`), and reports a revoked account as
+  `unavailable`/`access_revoked`/`boss_access_revoked` rather than a project
+  membership revocation. The Admin live tab shows `boss <id>`.
+
+Recorded B evidence (2026-11-11, isolated B database, week 2026-10-26 →
+2026-11-02, enterprise `1454`, project `1454000004`): the boss fixture seeded
+marked `enterprise_admin` `1454000013` (`b5-7-boss-1454`, base user
+`1454000013` `b5-7-boss-user-1454`) deliberately without a project member row.
+Fresh generation created report `11`/revision `1`/facts run `20`/body run `21`/
+message `126` at conversation `1454000010`, delivery `delivered`. Its
+`report_key` equals customer report `7`, worker report `8` and designer report
+`10` because the existing formula has no projectId; binding `4` plus
+`policy_snapshot.scope.project_ids=['1454000004']` keep them distinct. Facts
+records are `[2,3]`, both version `3`; record `2` carries photo media `2`.
+Fresh counters moved reports/deliveries/messages `10/10/10`→`11/11/11` and
+jobs/runs `19/19`→`21/21`, attempts/usage `7/7`→`8/8`. The body used exactly
+one succeeded `llm-settings-override` attempt (`accepted:true`), observed
+`1179` input + `1881` output tokens, zero FastGPT. The same-period replay with
+a new workflow runId reused report `11`/r1/facts run `20` and the same delivery
+with every counter unchanged.
+
+The boss staff token lists only binding `4` (`企业工地简报`) and opens report
+`11` (`composed`/`delivered`) with project `1454000004`, records `2`/`3` and the
+record `2` photo. Its first acknowledge wrote `read_at=16:19:11.757Z`; a repeat
+acknowledge returned the same timestamp instead of rewriting it. Exit/re-entry
+returned the same report/record/photo. The customer, worker, designer and an
+unrelated account do not list binding `4` and get 403/404 on the report/record;
+a cross-enterprise boss token and a status read for another enterprise are
+rejected. `customer_access=false` did not gate the boss detail/status and was
+restored and read back. A `construction_staff` account and a non-owner account
+used as the boss receiver are rejected with `boss_receiver_unavailable`; an
+observer executor is `construction_forbidden`; an unfinished week and a weekly
+event on the daily template are rejected before business writes with unchanged
+counters.
+
+Real account loss used the existing staff account contract
+(`AdminUserRepository.update`, the repository behind `PUT /api/staff/[id]`),
+not a member or customer_access toggle: `admin_users.status='disabled'` at
+`16:25:29.581Z` wrote no construction audit and left the management executor
+active. The boss list returned 401 and detail/record/media 401; the status
+reader returned `unavailable`/`access_revoked`/`boss_access_revoked`. The native
+entry showed no boss binding, report, detail or original after entry and
+re-entry. Restoring `status='active'` at `16:26:40.383Z` kept the same
+binding/conversation generation and source, so the same account read report
+`11` and its original again, and the status reader returned
+`available`/`completed`. The whole journey added no report, delivery, message,
+job, run or model call (`8/8/21/21/11/11/11` before and after).
+
+Native evidence (main-workspace `miniprogram` checkout, same appId, runtime-only
+API rewrite to the worktree B server on `127.0.0.1:3018`): positive 4/4 — the
+staff entry auto-opened binding `4` (`企业工地简报`), the `企业周报` card
+`10月26日—11月1日`, the detail (`10月26日 · 施工周报`, records `2`/`3` and the
+record `2` original with media `2`) and the same card after exit/re-entry;
+negative 2/2 — after the account was disabled the entry listed no binding/
+report and kept detail/original cleared after re-entry; restored native 1/1 —
+the same card returned after the account was restored.
+
+The main acceptance `verification.json` ended with 52/54 checks passing. Its only
+two failures are driver-side false negatives: duplicate `--period-start/
+--period-end` flags made the "unfinished week" case reuse the fixed week, and
+the "wrong template" case asked for a daily revision `1` that did not exist.
+Both were preserved. `negative-continuation.json` re-ran only those two
+corrected cases on the same report/store: `period_not_ended` and
+`live_event_type_unsupported` both exited `1` with every business counter
+unchanged (`3/3`).
+
+Evidence: `admin/tmp/b5-7-period-report-runs/b5-7-boss-20261111161739690/`
+(`verification.json`, `negative-continuation.json`, `native-ui/native-boss-
+positive.json`, `native-boss-negative.json`, `native-boss-restored.json` and
+seven screenshots). The fixture script is
+`admin/scripts/native-workflow-boss-fixture.ts` and the driver is
+`admin/scripts/native-workflow-boss-report-acceptance.ts`.
+
+Tests: the documented offline command now lists 28 files and runs 330 tests,
+all 330 pass with 0 fail. `boss-receiver.test.ts` is 6/6 (owner access, missing/
+disabled/non-owner rejection and no member/customer_access read),
+`period-cli.test.ts` is 18/18 (including `--boss-id` and cross-flag rejection),
+`period-report-ports.test.ts` is 38/38 (boss scope/save/delivery and cross-scope
+delivery rejection), `period-report-entry.test.ts` is 10/10 (boss binding and
+non-owner rejection before writes), and the status suite covers boss receipts/
+bindings/availability plus the explicit `boss_access_revoked` reason.
+`npm run build` still prints "Compiled successfully" and then exits 1 at the
+pre-existing `scripts/fastgpt/setup-unified.mts:113:75` type error.
+
+Scope stays one project/one boss; boss multi-project aggregation, scheduling
+expansion and new UI capabilities remain out of scope. The worker's complete
+continuous lifecycle and the designer revocation-window native UI remain
+unverified and are not replaced by this boss evidence. B5.5/B5.6 reports,
+audits and their acceptance limits are unchanged.
+
 ## Reproduce
 
 From `admin/` (no database, no Worker, no model):
 
 ```powershell
-npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts src/lib/native-workflow/__tests__/acceptance-store.test.ts src/lib/native-workflow/__tests__/acceptance-conversation.test.ts src/lib/native-workflow/__tests__/acceptance-state.test.ts src/lib/native-workflow/__tests__/acceptance-provider.test.ts src/lib/native-workflow/__tests__/period-report-ports.test.ts src/lib/native-workflow/__tests__/report-model-evidence.test.ts src/lib/native-workflow/__tests__/period-report-status.test.ts src/lib/native-workflow/__tests__/period-report-status-reentry.test.ts src/lib/native-workflow/__tests__/admin-run-status.test.ts src/lib/native-workflow/__tests__/period-report-status-route.test.ts src/lib/native-workflow/__tests__/period-report-status-route-guards.test.ts src/lib/native-workflow/__tests__/period-event-weekly.test.ts src/lib/native-workflow/__tests__/period-cli.test.ts src/lib/native-workflow/__tests__/staff-receiver.test.ts src/lib/native-workflow/__tests__/worker-fixture.test.ts src/lib/native-workflow/__tests__/period-report-entry.test.ts
+npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts src/lib/native-workflow/__tests__/acceptance-store.test.ts src/lib/native-workflow/__tests__/acceptance-conversation.test.ts src/lib/native-workflow/__tests__/acceptance-state.test.ts src/lib/native-workflow/__tests__/acceptance-provider.test.ts src/lib/native-workflow/__tests__/period-report-ports.test.ts src/lib/native-workflow/__tests__/report-model-evidence.test.ts src/lib/native-workflow/__tests__/period-report-status.test.ts src/lib/native-workflow/__tests__/period-report-status-reentry.test.ts src/lib/native-workflow/__tests__/admin-run-status.test.ts src/lib/native-workflow/__tests__/period-report-status-route.test.ts src/lib/native-workflow/__tests__/period-report-status-route-guards.test.ts src/lib/native-workflow/__tests__/period-event-weekly.test.ts src/lib/native-workflow/__tests__/period-cli.test.ts src/lib/native-workflow/__tests__/staff-receiver.test.ts src/lib/native-workflow/__tests__/boss-receiver.test.ts src/lib/native-workflow/__tests__/worker-fixture.test.ts src/lib/native-workflow/__tests__/period-report-entry.test.ts
 npx tsx src/lib/native-workflow/playground/simulate.ts
 ```
 

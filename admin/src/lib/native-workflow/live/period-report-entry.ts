@@ -5,8 +5,8 @@
  *   2. published definition resolution (the selected revision),
  *   3. shared published-target check (compile/digest/nodeVersions/eventType/
  *      periodKind) before any business write,
- *   4. management authorization, staff receiver checks (worker or designer)
- *      and the enterprise-scoped binding,
+ *   4. management authorization, staff receiver checks (worker or designer) or
+ *      the boss owner check, and the enterprise-scoped binding,
  *   5. the live runner with that same selected version and event.
  *
  * A rejected target therefore cannot reach `ensureFollowupBinding`, the run
@@ -27,6 +27,11 @@ import type {
   LiveRunRecord,
   LiveRunStore,
 } from './types';
+import {
+  prepareBossPeriodReport,
+  type BossReceiverDependencies,
+  type BossReceiverEvidence,
+} from './boss-receiver';
 import {
   prepareStaffPeriodReport,
   type StaffReceiverDependencies,
@@ -51,16 +56,18 @@ export interface PeriodReportEntryDependencies {
   /** Trusted server clock; tests pin it. */
   readonly now?: () => Date;
   readonly staff?: StaffReceiverDependencies;
+  readonly boss?: BossReceiverDependencies;
 }
 
 export interface PeriodReportEntryResult {
   readonly period: FixedPeriod;
   readonly staff: StaffReceiverEvidence | null;
+  readonly boss: BossReceiverEvidence | null;
   readonly businessEvent: LiveBusinessEvent;
   readonly record: LiveRunRecord;
 }
 
-const RECEIVER_KINDS: ReadonlySet<string> = new Set(['customer', 'worker', 'designer']);
+const RECEIVER_KINDS: ReadonlySet<string> = new Set(['customer', 'worker', 'designer', 'boss']);
 
 /** An unknown host receiver kind must never fall back to the owner path. */
 function assertKnownReceiver(receiver: LivePeriodReceiver): void {
@@ -112,6 +119,7 @@ export async function runPeriodReportEntry(
   // target, executor or receiver leaves no conversation/binding/participant
   // behind.
   let staff: StaffReceiverEvidence | null = null;
+  let boss: BossReceiverEvidence | null = null;
   const kind = staffKind(input.receiver);
   if (kind) {
     if (!input.receiver.adminId) {
@@ -131,6 +139,25 @@ export async function runPeriodReportEntry(
     }, dependencies.staff);
     period = prepared.period;
     staff = prepared.staff;
+  } else if (input.receiver.kind === 'boss') {
+    if (!input.receiver.adminId) {
+      throw new WorkflowOperationError(
+        'boss_receiver_unavailable',
+        422,
+        'a boss receiver requires an admin id',
+      );
+    }
+    // The boss is the existing enterprise owner, not a project staff member:
+    // this branch never reads construction_members or customer_access.
+    const prepared = await prepareBossPeriodReport({
+      enterpriseId: input.enterpriseId,
+      actor: input.actor,
+      projectId: input.projectId,
+      adminId: input.receiver.adminId,
+      event: input.event,
+    }, dependencies.boss);
+    period = prepared.period;
+    boss = prepared.boss;
   }
 
   const businessEvent = periodReportBusinessEvent(period, input.receiver);
@@ -145,5 +172,5 @@ export async function runPeriodReportEntry(
     runId: input.runId,
   });
 
-  return { period, staff, businessEvent, record };
+  return { period, staff, boss, businessEvent, record };
 }

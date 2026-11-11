@@ -35,11 +35,12 @@ import {
  * queue or message: `save.period_report` only enqueues the real report task,
  * and `deliver.inapp` only reads the receipt written by the existing Worker.
  *
- * Single-project, owner (customer) perspective. The existing
- * `construction_report_settings` plan stays enabled so its Worker processes the
- * queued facts/body/delivery, but the legacy scheduler times are parked and
- * stage reports are off. A still-due legacy schedule or a disabled plan refuses
- * the period instead of creating a second path or an unprocessable task.
+ * Single-project, one host-selected receiver (customer/worker/designer/boss).
+ * The existing `construction_report_settings` plan stays enabled so its Worker
+ * processes the queued facts/body/delivery, but the legacy scheduler times are
+ * parked and stage reports are off. A still-due legacy schedule or a disabled
+ * plan refuses the period instead of creating a second path or an unprocessable
+ * task.
  */
 export interface PeriodReportPortOptions {
   readonly actor: ConstructionActor;
@@ -58,8 +59,11 @@ export type PeriodReceiverStatus =
   | 'customer_access_revoked'
   | 'worker_unavailable'
   | 'designer_unavailable'
+  | 'boss_unavailable'
   | 'conversation_unavailable'
   | 'audience_disabled';
+
+export type PeriodReceiverKind = 'customer' | 'worker' | 'designer' | 'boss';
 
 export interface PeriodReportScope {
   readonly enterpriseId: string;
@@ -67,10 +71,10 @@ export interface PeriodReportScope {
   readonly projectName: string;
   readonly bindingId: string | null;
   readonly conversationId: string | null;
-  readonly receiverKind: 'customer' | 'worker' | 'designer';
+  readonly receiverKind: PeriodReceiverKind;
   readonly receiverAdminId: string | null;
   readonly receiverUserId: string | null;
-  readonly bindingAudience: 'customer' | 'worker' | 'designer';
+  readonly bindingAudience: PeriodReceiverKind;
   readonly reportKey: string;
   /** The plan is enabled so the existing Worker may process the queued task. */
   readonly legacyPlanEnabled: boolean;
@@ -204,12 +208,12 @@ function legacyScheduleDue(settings: Row): boolean {
 function assertConfiguredProject(
   settings: Row,
   projectId: string,
-  receiverKind: 'customer' | 'worker' | 'designer',
+  receiverKind: PeriodReceiverKind,
 ): void {
   const configured = configuredProjectIds(settings);
   if (receiverKind !== 'customer') {
-    // A staff receiver is single-project by contract: a broader or empty plan
-    // would let another project's period slip into this run.
+    // A staff/boss receiver is single-project by contract: a broader or empty
+    // plan would let another project's period slip into this run.
     if (configured.length !== 1 || configured[0] !== projectId) {
       fail('period_report_project_scope_mismatch', 409);
     }
@@ -229,7 +233,7 @@ function receiverAdminId(receiver: LivePeriodReceiver): string | null {
   return receiver.kind === 'customer' ? null : receiver.adminId ?? null;
 }
 
-const KNOWN_RECEIVER_KINDS: ReadonlySet<string> = new Set(['customer', 'worker', 'designer']);
+const KNOWN_RECEIVER_KINDS: ReadonlySet<string> = new Set(['customer', 'worker', 'designer', 'boss']);
 
 async function customerBinding(
   tx: PostgresTransaction,
@@ -246,11 +250,11 @@ async function customerBinding(
   );
 }
 
-async function staffBinding(
+async function enterpriseBinding(
   tx: PostgresTransaction,
   enterpriseId: string,
   adminId: string,
-  audience: 'worker' | 'designer',
+  audience: 'worker' | 'designer' | 'boss',
   mode: LockMode,
 ): Promise<Row | undefined> {
   const principal = `admin:${adminId}`;
@@ -276,7 +280,33 @@ async function receiverBinding(
   }
   const adminId = receiverAdminId(receiver);
   if (!adminId) return undefined;
-  return staffBinding(tx, enterpriseId, adminId, receiver.kind, mode);
+  return enterpriseBinding(tx, enterpriseId, adminId, receiver.kind, mode);
+}
+
+/**
+ * The existing enterprise owner policy for a boss receiver.
+ *
+ * A boss follows the same `construction_followup_staff_access` contract as the
+ * followup read path: the account must be active in this enterprise and the
+ * access role must be `owner`. It deliberately does not require a project
+ * member row and never reads `customer_access`.
+ */
+async function bossAvailable(
+  tx: PostgresTransaction,
+  enterpriseId: string,
+  adminId: string,
+): Promise<boolean> {
+  const admin = await one(
+    tx,
+    sql`select id from app.admin_users
+      where enterprise_id=${enterpriseId} and id=${adminId} and status='active'
+        and must_change_password=false for share`,
+  );
+  if (!admin) return false;
+  return String((await one(
+    tx,
+    sql`select app.construction_followup_staff_access(${adminId}::bigint,${enterpriseId}::bigint) as role`,
+  ))?.role) === 'owner';
 }
 
 /** The existing enterprise staff policy plus the fixed project membership. */
@@ -306,6 +336,18 @@ async function staffAvailable(
     tx,
     sql`select app.construction_followup_staff_access(${adminId}::bigint,${enterpriseId}::bigint) as role`,
   ))?.role);
+}
+
+/** The receiver's current account/owner rule; boss never uses the staff checks. */
+async function receiverAccountAvailable(
+  tx: PostgresTransaction,
+  enterpriseId: string,
+  adminId: string,
+  receiverKind: Exclude<PeriodReceiverKind, 'customer'>,
+  projectId: string,
+): Promise<boolean> {
+  if (receiverKind === 'boss') return bossAvailable(tx, enterpriseId, adminId);
+  return staffAvailable(tx, enterpriseId, adminId, projectId, receiverKind);
 }
 
 /** Re-resolve exactly the binding this receiver was authorized against. */
@@ -346,12 +388,12 @@ async function receiverBindingAvailable(
   if (scope.receiverKind === 'customer') return true;
   const adminId = scope.receiverAdminId;
   return Boolean(adminId)
-    && staffAvailable(
+    && receiverAccountAvailable(
       tx,
       scope.enterpriseId,
       adminId!,
-      scope.projectId,
       scope.receiverKind,
+      scope.projectId,
     );
 }
 
@@ -360,7 +402,7 @@ interface ReportExpectation {
   readonly start: Date;
   readonly end: Date;
   readonly projectId: string;
-  readonly receiverKind: 'customer' | 'worker' | 'designer';
+  readonly receiverKind: PeriodReceiverKind;
 }
 
 function sameInstant(value: unknown, expected: Date): boolean {
@@ -481,7 +523,10 @@ async function loadScopeInTransaction(
     receiverStatus = 'customer_access_revoked';
   } else if (receiver.kind !== 'customer') {
     const adminId = receiverAdminId(receiver);
-    if (!adminId || !await staffAvailable(tx, actor.enterpriseId, adminId, projectId, receiver.kind)) {
+    if (
+      !adminId
+      || !await receiverAccountAvailable(tx, actor.enterpriseId, adminId, receiver.kind, projectId)
+    ) {
       receiverStatus = `${receiver.kind}_unavailable`;
     } else if (!audienceEnabled) receiverStatus = 'audience_disabled';
     else if (!await followupAvailable(tx, actor.enterpriseId, binding)) {
@@ -499,12 +544,14 @@ async function loadScopeInTransaction(
       })
     : '';
 
-  const bindingAudience: 'customer' | 'worker' | 'designer' =
+  const bindingAudience: PeriodReceiverKind =
     String(binding?.audience) === 'worker'
       ? 'worker'
       : String(binding?.audience) === 'designer'
         ? 'designer'
-        : receiver.kind;
+        : String(binding?.audience) === 'boss'
+          ? 'boss'
+          : receiver.kind;
 
   return {
     enterpriseId: actor.enterpriseId,
@@ -556,7 +603,10 @@ async function queueInTransaction(
   if (!reportAudienceEnabled(settings, binding)) fail('period_report_audience_disabled', 409);
   if (receiver.kind !== 'customer') {
     const adminId = receiverAdminId(receiver);
-    if (!adminId || !await staffAvailable(tx, actor.enterpriseId, adminId, projectId, receiver.kind)) {
+    if (
+      !adminId
+      || !await receiverAccountAvailable(tx, actor.enterpriseId, adminId, receiver.kind, projectId)
+    ) {
       fail('period_report_receiver_unavailable', 409);
     }
   }
@@ -832,6 +882,9 @@ function receiversMatchScope(
   if (scope.receiverKind === 'designer') {
     return same('scope', 'enterprise_designer') && same('designerAdminId', scope.receiverAdminId);
   }
+  if (scope.receiverKind === 'boss') {
+    return same('scope', 'enterprise_boss') && same('bossAdminId', scope.receiverAdminId);
+  }
   return same('scope', 'project_customer') && same('customerUserId', scope.receiverUserId);
 }
 
@@ -1009,14 +1062,23 @@ export function createPeriodReportPorts(options: PeriodReportPortOptions): LiveO
                       designerAdminId: scope.receiverAdminId,
                       audience: 'designer',
                     }
-                  : {
-                      scope: 'project_customer',
-                      projectId: context.projectId,
-                      bindingId: scope.bindingId,
-                      conversationId: scope.conversationId,
-                      customerUserId: scope.receiverUserId,
-                      audience: 'customer',
-                    },
+                  : scope.receiverKind === 'boss'
+                    ? {
+                        scope: 'enterprise_boss',
+                        projectId: context.projectId,
+                        bindingId: scope.bindingId,
+                        conversationId: scope.conversationId,
+                        bossAdminId: scope.receiverAdminId,
+                        audience: 'boss',
+                      }
+                    : {
+                        scope: 'project_customer',
+                        projectId: context.projectId,
+                        bindingId: scope.bindingId,
+                        conversationId: scope.conversationId,
+                        customerUserId: scope.receiverUserId,
+                        audience: 'customer',
+                      },
               receiverCount: 1,
             };
             return available;
