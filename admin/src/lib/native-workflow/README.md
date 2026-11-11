@@ -228,7 +228,14 @@ business event and never selects a definition from a draft.
   reuses the original outbox/progressRevision/settingsVersion. Events created
   before B4.2 are backfilled with the key when reused. An invalidated event
   stops with `stage_event_invalidated`; it is never silently reinterpreted as
-  the current revision. `--outbox-event-id` remains an explicit override.
+  the current revision. `--outbox-event-id` remains an explicit override but
+  cannot override an existing key binding to another outbox event.
+- `save.stage_reminder` performs the single binding point after the project
+  write lock: it queries `payload->>'sourceEventKey'` before any reuse,
+  backfill or insert. A matching outbox/revision/stage is reused; an
+  inconsistent binding is rejected with `stage_event_conflict`. This also
+  covers two default entries that resolve an older event before either saves;
+  the second save cannot create another outbox for the same key.
 - `live/construction-ports.ts` maps each `PendingOperation` to existing
   services. Enterprise, admin, project and customer identity come from the
   host; a definition cannot override them.
@@ -250,7 +257,12 @@ business event and never selects a definition from a draft.
     conversation before writing; failures keep the saved outbox and add no
     delivery/message. An already delivered stage notice does not resend the
     stage message, but still backfills `appendStageFollowUp` and
-    `construction_links` under their independent idempotency.
+    `construction_links` under their independent idempotency. When the notice
+    lives in an older conversation, the receipt reports the real message
+    conversation and its active participant, plus `requestedConversationId`
+    and `reusedConversation`; if that evidence cannot be confirmed, delivery
+    returns an unconfirmed status instead of claiming the requested
+    conversation.
 - Receipts are validated before the operation outcome is written:
   `saved:false`, `delivered:false` or an invalid receipt marks that operation
   `failed` while preserving its outputs and error. Live mode requires
@@ -280,27 +292,30 @@ connecting. It supports `--close-conversation-after-save` and
 restore the fixture state. The fixture seeds owner/manager/worker/observer test
 accounts.
 
-Recorded B4.2 evidence: the default entry `b4-2-default-001` completed with
-outbox `46` at progress revision 2, delivery `63` and message `35`; the main
-fixture counts were 3/3/3 and assistant usage/provider attempts stayed 0.
-Re-running the same event id with a new runId (`b4-2-default-002`) resolved
-outbox `46` by `sourceEventKey`, reused the save and delivery receipts and kept
-the counts at 3/3/3. The real-adapter suite (11 tests, dedicated target
-`1454900004` and control `1454900014`) also covers worker/observer denial,
-manager allow/demotion, a note-only revision resolving the original source
-event across runs at 1/1/1, assistant-disabled and settings-version-mismatch
-delivery re-checks with the outbox retained, generic-scope follow-up skipping,
-lead-bound follow-up/link backfill without a second stage message, control
-event isolation at 0/0, ownership preflight/cleanup and zero model usage.
+Recorded B4.3 evidence: the explicit outbox override cannot rebind an existing
+key (`event1=126` stayed the only binding after an `event2=127` request was
+rejected with `stage_event_conflict`). In the interleaved note-only case the
+second save was rejected and the project kept exactly one outbox for that key.
+The cross-conversation receipt test delivered in generic conversation C1
+(`1454900001`, message `78`), later requested C2 (`1454900053`), and returned
+the real C1 message/conversation and customer `1454000002` with
+`requestedConversationId=C2` and `reusedConversation=true`, without a second
+stage message. The shared fixture preflight verifies enterprise code/name,
+all four `b4-live-*` admin usernames, the customer username, the main project
+name and conversation title before any reset/write; dedicated rows are cleaned
+only after marker ownership, and a failed preflight performs zero deletes.
 
 Checks: the original 77 non-database tests are retained and pass; the current
 native-workflow non-database suite is 90 tests, the shared construction suite
-is 89 tests, and the real-adapter suite is 11 tests. Scoped ESLint passes; the
-repository still has its pre-existing full-lint/type/build failures outside
+is 89 tests, the real-adapter suite is 14 tests, and the offline entry guards
+are 6 tests. `live-integration.test.ts` no longer sets the opt-in itself:
+missing `B4_LIVE_DEVELOPMENT`, `B4_LIVE_DEVELOPMENT=0` and
+`NODE_ENV=production` all reject before any connection. Scoped ESLint passes;
+the repository still has its pre-existing full-lint/type/build failures outside
 this module.
 
 The sole XiaoK plan is intentionally not edited in this B branch; the
-integration lead should merge the current B4.2 status into A's latest plan
+integration lead should merge the current B4.3 status into A's latest plan
 without replacing A's newer progress, failures or unknown records.
 
 Out of scope this round: daily/weekly real integration, the model compose
@@ -329,7 +344,13 @@ $env:B4_LIVE_DEVELOPMENT='1'
 $env:B4_LIVE_APP_DATABASE_URL='postgresql://sfp_app:...@127.0.0.1:55433/smart_floor_planner'
 $env:B4_LIVE_FIXTURE_DATABASE_URL='postgresql://sfp_owner:...@127.0.0.1:55433/smart_floor_planner'
 npx tsx --test src/lib/native-workflow/__tests__/live-integration.test.ts
+npx tsx --test src/lib/native-workflow/__tests__/live-integration-guards.test.ts
 ```
+
+The integration suite deliberately does not set `B4_LIVE_DEVELOPMENT` itself;
+missing/zero opt-in or production must fail before any connection. The guard
+suite uses fake clients to prove that contract and the shared-fixture preflight
+without opening a database connection.
 
 Fixtures are synthetic and contain no real customer data.
 

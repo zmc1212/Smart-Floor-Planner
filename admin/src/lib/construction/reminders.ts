@@ -24,6 +24,10 @@ export interface StageReminderDeliveryResult {
   delivered: boolean;
   deliveryId: string | null;
   messageId: string | null;
+  /** The conversation that actually holds the delivered stage message. */
+  messageConversationId?: string | null;
+  /** The recipient confirmed through that conversation's active participant. */
+  messageUserId?: string | null;
   reason?: 'customer_access_revoked' | 'project_inactive' | 'assistant_disabled' | 'settings_version_mismatch'
     | 'stage_event_invalid' | 'conversation_invalid' | 'delivery_in_progress' | 'delivery_already_claimed';
 }
@@ -77,10 +81,25 @@ export async function deliverStageReminderToConversation(tx: PostgresTransaction
     // Follow-up and the construction link keep their own independent idempotency.
     await appendStageFollowUp(tx, actor, conversation, fresh, stage, stageEvent, settings.version);
     await tx.execute(sql`insert into app.construction_links(enterprise_id,project_id,conversation_id) values(${eid},${pid},${cid}) on conflict do nothing`);
-    const message = await one(tx, sql`select id from app.assistant_messages
-      where enterprise_id=${eid} and source_event_id=${String(stageEvent.id)} and purpose='construction.stage' order by id limit 1`);
-    return message
-      ? { delivered: true, deliveryId: String(existing.id), messageId: String(message.id) }
+    // The original notice may live in another conversation. Return that real
+    // conversation and its active participant as the recipient evidence; do
+    // not claim the currently requested conversation. If the relation cannot
+    // be confirmed, report an unconfirmed delivery instead of fabricating one.
+    const message = await one(tx, sql`select m.id,m.conversation_id,ap.user_id
+      from app.assistant_messages m
+      join app.assistant_participants ap on ap.enterprise_id=m.enterprise_id
+        and ap.conversation_id=m.conversation_id and ap.status='active' and ap.user_id=${uid}
+      where m.enterprise_id=${eid} and m.source_event_id=${String(stageEvent.id)}
+        and m.purpose='construction.stage'
+      order by m.id limit 1`);
+    return message && message.conversation_id != null && message.user_id != null
+      ? {
+          delivered: true,
+          deliveryId: String(existing.id),
+          messageId: String(message.id),
+          messageConversationId: String(message.conversation_id),
+          messageUserId: String(message.user_id),
+        }
       : { delivered: false, deliveryId: String(existing.id), messageId: null, reason: 'delivery_already_claimed' };
   }
   let messageId: string | null = null;
@@ -92,7 +111,13 @@ export async function deliverStageReminderToConversation(tx: PostgresTransaction
   await appendStageFollowUp(tx, actor, conversation, fresh, stage, stageEvent, settings.version);
   await tx.execute(sql`insert into app.construction_links(enterprise_id,project_id,conversation_id) values(${eid},${pid},${cid}) on conflict do nothing`);
   await tx.execute(sql`update app.domain_event_deliveries set status='delivered',updated_at=now() where enterprise_id=${eid} and id=${String(delivery.id)}`);
-  return { delivered: true, deliveryId: String(delivery.id), messageId };
+  return {
+    delivered: true,
+    deliveryId: String(delivery.id),
+    messageId,
+    messageConversationId: messageId ? cid : null,
+    messageUserId: messageId ? uid : null,
+  };
 }
 
 /** The caller holds the conversation lock. The shared project lock serializes progress/revocation. */

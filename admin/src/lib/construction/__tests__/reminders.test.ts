@@ -43,7 +43,9 @@ function deliveryTx(options: {
     if (text.includes('from app.domain_event_outbox e join app.construction_projects')) return stageEvent;
     if (text.includes('aggregate_version>')) return undefined;
     if (text.includes('from app.assistant_conversations')) return { status: 'open', mode: 'ai', purpose: 'customer_consultation' };
-    if (text.includes('from app.assistant_messages')) return options.message === undefined ? { id: '700' } : options.message;
+    if (text.includes('from app.assistant_messages')) {
+      return options.message === undefined ? { id: '700', conversation_id: '77', user_id: '5' } : options.message;
+    }
     if (text.includes('insert into app.construction_links') || text.includes('update app.domain_event_deliveries')) return undefined;
     throw new Error('unexpected query: ' + query.sql);
   });
@@ -98,12 +100,17 @@ test('delivery re-checks project access, assistant settings and the saved settin
 test('an already delivered notice keeps follow-up and link behaviour without a second stage message', async () => {
   const delivered = deliveryTx({ existing: 'delivered' });
   assert.deepEqual(await deliverStageReminderToConversation(delivered.tx, actor, project, stageEvent, conversation, settings),
-    { delivered: true, deliveryId: '900', messageId: '700' });
+    { delivered: true, deliveryId: '900', messageId: '700', messageConversationId: '77', messageUserId: '5' });
   assert.ok(!delivered.queries.some(query => query.sql.includes('insert into app.assistant_messages')));
   assert.ok(delivered.queries.some(query => query.sql.includes('insert into app.construction_links')));
   const lookup = delivered.queries.find(query => query.sql.includes('from app.assistant_messages'));
   assert.ok(lookup);
-  assert.ok(!lookup.sql.includes('conversation_id'));
+  assert.ok(lookup.sql.includes('conversation_id'));
+  assert.ok(lookup.sql.includes('app.assistant_participants'));
+
+  const unconfirmed = deliveryTx({ existing: 'delivered', message: null });
+  assert.deepEqual(await deliverStageReminderToConversation(unconfirmed.tx, actor, project, stageEvent, conversation, settings),
+    { delivered: false, deliveryId: '900', messageId: null, reason: 'delivery_already_claimed' });
 
   for (const [status, reason] of [['processing', 'delivery_in_progress'], ['pending', 'delivery_already_claimed']] as const) {
     const claimed = deliveryTx({ existing: status });
@@ -118,7 +125,13 @@ test('a newly claimed notice writes the link before marking the delivery complet
   const claimed = deliveryTx({});
   const result = await deliverStageReminderToConversation(claimed.tx, actor, project, stageEvent, conversation,
     { stages: [{ ...stage, visitReminder: false }], version: 3 });
-  assert.deepEqual(result, { delivered: true, deliveryId: '900', messageId: null });
+  assert.deepEqual(result, {
+    delivered: true,
+    deliveryId: '900',
+    messageId: null,
+    messageConversationId: null,
+    messageUserId: null,
+  });
   const link = claimed.queries.findIndex(query => query.sql.includes('insert into app.construction_links'));
   const complete = claimed.queries.findIndex(query => query.sql.includes("set status='delivered'"));
   assert.ok(link >= 0 && complete > link);

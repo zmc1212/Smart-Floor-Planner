@@ -11,6 +11,7 @@ import { deliverStageReminderToConversation } from '@/lib/construction/reminders
 import { readStageSettings } from '@/lib/construction/stages-store';
 import { closePostgresPool, getPostgresPool } from '@/lib/postgresql';
 import { compileDefinition, type CompiledWorkflowPlan } from '../compile';
+import { WorkflowOperationError } from '../errors';
 import { resolveStageReminderBusinessEvent } from '../live/business-event';
 import { createConstructionStageReminderPorts } from '../live/construction-ports';
 import {
@@ -22,6 +23,7 @@ import {
   INTEGRATION_MARKER,
   assertFixtureRowsOwned,
   runOwnedCleanup,
+  runSharedFixturePreflight,
   type FixtureRowOwnership,
 } from '../live/fixture-ownership';
 import {
@@ -41,15 +43,15 @@ const SKIP = HAS_B4_URLS
   ? false
   : 'set B4_LIVE_APP_DATABASE_URL and B4_LIVE_FIXTURE_DATABASE_URL to run the live integration test';
 
-if (HAS_B4_URLS) process.env.B4_LIVE_DEVELOPMENT = process.env.B4_LIVE_DEVELOPMENT ?? '1';
-
 // Both URLs go through the shared resolver; DATABASE_URL is written from the
-// resolved app target and is never read back as the source of truth.
+// resolved app target and is never read back as the source of truth. The real
+// environment and argv are used so the operator must opt in explicitly with
+// B4_LIVE_DEVELOPMENT=1; this suite never sets the opt-in itself.
 const appTarget: B4LiveDatabaseTarget | null = HAS_B4_URLS
-  ? resolveB4DatabaseTarget({ purpose: 'app', argv: ['--development'] })
+  ? resolveB4DatabaseTarget({ purpose: 'app' })
   : null;
 const fixtureTarget: B4LiveDatabaseTarget | null = HAS_B4_URLS
-  ? resolveB4DatabaseTarget({ purpose: 'fixture', argv: ['--development'] })
+  ? resolveB4DatabaseTarget({ purpose: 'fixture' })
   : null;
 
 const ENTERPRISE_ID = '1454';
@@ -66,12 +68,38 @@ const STAGE_LABEL = '水路';
 const TARGET = { lead: '1454900003', project: '1454900004', conversation: '1454900005', participant: '1454900006' };
 const CONTROL = { lead: '1454900013', project: '1454900014', conversation: '1454900015', participant: '1454900016' };
 const CROSS = { lead: '1454900019', project: '1454900020', conversation: '1454900021', participant: '1454900022' };
+const REGRESSION_A = { lead: '1454900031', project: '1454900032', conversation: '1454900033', participant: '1454900034' };
+const REGRESSION_B = { lead: '1454900041', project: '1454900042', conversation: '1454900043', participant: '1454900044' };
+const CROSS_CONVERSATION = { lead: '1454900051', project: '1454900052', conversation: '1454900053', participant: '1454900054' };
 const GENERIC = { conversation: '1454900001', participant: '1454900002' };
 
-const LEAD_IDS = [TARGET.lead, CONTROL.lead, CROSS.lead];
-const PROJECT_IDS = [TARGET.project, CONTROL.project, CROSS.project];
-const CONVERSATION_IDS = [GENERIC.conversation, TARGET.conversation, CONTROL.conversation, CROSS.conversation];
-const PARTICIPANT_IDS = [GENERIC.participant, TARGET.participant, CONTROL.participant, CROSS.participant];
+const LEAD_IDS = [TARGET.lead, CONTROL.lead, CROSS.lead, REGRESSION_A.lead, REGRESSION_B.lead, CROSS_CONVERSATION.lead];
+const PROJECT_IDS = [
+  TARGET.project,
+  CONTROL.project,
+  CROSS.project,
+  REGRESSION_A.project,
+  REGRESSION_B.project,
+  CROSS_CONVERSATION.project,
+];
+const CONVERSATION_IDS = [
+  GENERIC.conversation,
+  TARGET.conversation,
+  CONTROL.conversation,
+  CROSS.conversation,
+  REGRESSION_A.conversation,
+  REGRESSION_B.conversation,
+  CROSS_CONVERSATION.conversation,
+];
+const PARTICIPANT_IDS = [
+  GENERIC.participant,
+  TARGET.participant,
+  CONTROL.participant,
+  CROSS.participant,
+  REGRESSION_A.participant,
+  REGRESSION_B.participant,
+  CROSS_CONVERSATION.participant,
+];
 
 const integrationActor: ConstructionActor = { enterpriseId: ENTERPRISE_ID, adminId: MANAGER_ADMIN_ID };
 
@@ -506,6 +534,35 @@ async function insertControlEvent(client: PoolClient): Promise<string> {
   return result.rows[0].id;
 }
 
+function stagePayload(projectId: string, text: string, sourceEventKey?: string): Record<string, unknown> {
+  return {
+    projectId,
+    stageKey: STAGE_KEY,
+    settingsVersion: 1,
+    text,
+    ...(sourceEventKey === undefined ? {} : { sourceEventKey }),
+  };
+}
+
+async function insertStageEvent(projectId: string, aggregateVersion: number, payload: Record<string, unknown>): Promise<string> {
+  const result = await ownerPool().query<{ id: string }>(
+    `insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,
+       actor_ref,correlation_id,payload)
+     values($1::bigint,'construction.stage.updated.v1','construction_project',$2,$3,
+       $4::jsonb,$2,$5::jsonb)
+     returning id`,
+    [
+      ENTERPRISE_ID,
+      projectId,
+      aggregateVersion,
+      JSON.stringify({ kind: 'admin', id: MANAGER_ADMIN_ID }),
+      JSON.stringify(payload),
+    ],
+  );
+  assert.ok(result.rows[0]?.id, 'stage event was not inserted');
+  return String(result.rows[0].id);
+}
+
 async function controlEventId(): Promise<string> {
   const result = await ownerPool().query<{ id: string }>(
     `select id from app.domain_event_outbox
@@ -610,34 +667,24 @@ describe('B4 live construction stage-reminder adapter', { skip: SKIP }, () => {
       );
       assertB4ConnectionIdentity(app, appIdentity.rows[0]);
 
-      // The shared fixture must be present before any dedicated rows are written.
+      // The shared fixture must keep its documented markers before any reset,
+      // delete, insert or enterprise-level settings change below.
+      await runSharedFixturePreflight(client, 'live-integration shared fixture');
+
       const fixtureRow = await client.query<{
-        enterprise: string | null;
-        customer: string | null;
-        manager: string | null;
-        worker: string | null;
-        observer: string | null;
         settings_version: number | null;
         plumbing: { visitReminder?: boolean } | null;
         assistant_enabled: boolean | null;
       }>(
         `select
-           (select id::text from app.enterprises where id=$1::bigint and status='active') as enterprise,
-           (select id::text from app.users where enterprise_id=$1::bigint and id=$2::bigint) as customer,
-           (select id::text from app.admin_users where enterprise_id=$1::bigint and id=$3::bigint and status='active' and must_change_password=false) as manager,
-           (select id::text from app.admin_users where enterprise_id=$1::bigint and id=$4::bigint and status='active' and must_change_password=false) as worker,
-           (select id::text from app.admin_users where enterprise_id=$1::bigint and id=$5::bigint and status='active' and must_change_password=false) as observer,
            (select version from app.construction_stage_settings where enterprise_id=$1::bigint) as settings_version,
            (select s from app.construction_stage_settings x, jsonb_array_elements(x.stages) s
-             where x.enterprise_id=$1::bigint and s->>'key'=$6 limit 1) as plumbing,
+             where x.enterprise_id=$1::bigint and s->>'key'=$2 limit 1) as plumbing,
            (select enabled from app.assistant_enterprise_settings where enterprise_id=$1::bigint) as assistant_enabled`,
-        [ENTERPRISE_ID, CUSTOMER_USER_ID, MANAGER_ADMIN_ID, WORKER_ADMIN_ID, OBSERVER_ADMIN_ID, STAGE_KEY],
+        [ENTERPRISE_ID, STAGE_KEY],
       );
       const row = fixtureRow.rows[0];
-      assert.ok(row, 'shared B4 live fixture is missing');
-      assert.ok(row.enterprise, 'fixture enterprise 1454 is missing or inactive');
-      assert.ok(row.customer, 'fixture customer 1454000002 is missing');
-      assert.ok(row.manager && row.worker && row.observer, 'fixture staff admins are missing');
+      assert.ok(row, 'shared B4 live fixture settings are missing');
       assert.equal(Number(row.settings_version), 1, 'fixture stage settings version should be 1');
       assert.equal(row.plumbing?.visitReminder, true, 'plumbing stage must enable visitReminder');
       assert.equal(row.assistant_enabled, true, 'assistant enterprise settings must be enabled');
@@ -655,6 +702,9 @@ describe('B4 live construction stage-reminder adapter', { skip: SKIP }, () => {
         await insertProjectRows(client, TARGET, '目标');
         await insertProjectRows(client, CONTROL, '控制');
         await insertProjectRows(client, CROSS, '跨运行');
+        await insertProjectRows(client, REGRESSION_A, '回归A');
+        await insertProjectRows(client, REGRESSION_B, '回归B');
+        await insertProjectRows(client, CROSS_CONVERSATION, '跨会话');
         await insertGenericConversation(client);
         await insertControlEvent(client);
         await client.query('commit');
@@ -1189,5 +1239,264 @@ describe('B4 live construction stage-reminder adapter', { skip: SKIP }, () => {
     } finally {
       await restoreStageSettings();
     }
+  });
+
+  it('rejects an explicit outbox event that would rebind an existing source event key', async () => {
+    const sourceEventKey = 'regression-a-key';
+    const event1 = await insertStageEvent(
+      REGRESSION_A.project,
+      0,
+      stagePayload(REGRESSION_A.project, '回归A 事件一', sourceEventKey),
+    );
+    const event2 = await insertStageEvent(
+      REGRESSION_A.project,
+      1,
+      stagePayload(REGRESSION_A.project, '回归A 事件二'),
+    );
+    const before = await ownerPool().query<{ payload: Record<string, unknown> }>(
+      'select payload from app.domain_event_outbox where enterprise_id=$1::bigint and id=$2::bigint',
+      [ENTERPRISE_ID, event1],
+    );
+
+    await assert.rejects(
+      () => resolveStageReminderBusinessEvent({
+        actor: integrationActor,
+        projectId: REGRESSION_A.project,
+        stageKey: STAGE_KEY,
+        sourceEventKey,
+        outboxEventId: event2,
+      }),
+      (error: unknown) => error instanceof WorkflowOperationError
+        && error.code === 'stage_event_conflict',
+      'an explicit event must not rebind an existing source event key',
+    );
+
+    const after = await ownerPool().query<{ id: string; payload: Record<string, unknown> }>(
+      `select id, payload from app.domain_event_outbox
+       where enterprise_id=$1::bigint and aggregate_id=$2 order by aggregate_version`,
+      [ENTERPRISE_ID, REGRESSION_A.project],
+    );
+    assert.equal(after.rows.length, 2, 'the rejected resolve must not create an outbox row');
+    assert.equal(String(after.rows[0].id), event1);
+    assert.deepEqual(after.rows[0].payload, before.rows[0]?.payload, 'event1 payload must not be rewritten');
+    assert.equal(after.rows[0].payload.sourceEventKey, sourceEventKey);
+    assert.equal(after.rows[1].payload.sourceEventKey, undefined, 'event2 must not be bound');
+    assert.equal(
+      await countRows(
+        `select count(*)::text as count from app.domain_event_outbox
+         where enterprise_id=$1::bigint and aggregate_id=$2 and payload->>'sourceEventKey'=$3`,
+        [ENTERPRISE_ID, REGRESSION_A.project, sourceEventKey],
+      ),
+      1,
+      'the source event key must stay bound to exactly one outbox event',
+    );
+  });
+
+  it('an interleaved note-only revision cannot create a second outbox for one source key', async () => {
+    const sourceEventKey = 'regression-b-key';
+    const original = await insertStageEvent(
+      REGRESSION_B.project,
+      0,
+      stagePayload(REGRESSION_B.project, '回归B 原始事件'),
+    );
+    await ownerPool().query(
+      `insert into app.construction_audits(enterprise_id,project_id,actor_ref,action,snapshot,created_at)
+       values($1::bigint,$2::bigint,$3::jsonb,'progress',$4::jsonb,
+         (select created_at from app.domain_event_outbox where enterprise_id=$1::bigint and id=$5::bigint))`,
+      [
+        ENTERPRISE_ID,
+        REGRESSION_B.project,
+        JSON.stringify({ kind: 'admin', id: MANAGER_ADMIN_ID }),
+        JSON.stringify({ stageKey: STAGE_KEY, expectedVersion: 1, sendReminder: false, note: '回归原备注' }),
+        original,
+      ],
+    );
+    await ownerPool().query(
+      `update app.construction_projects
+       set version=2, progress_note='回归原备注', progress_revision=0, updated_at=now()
+       where enterprise_id=$1::bigint and id=$2::bigint`,
+      [ENTERPRISE_ID, REGRESSION_B.project],
+    );
+
+    const bindingA = await resolveStageReminderBusinessEvent({
+      actor: integrationActor,
+      projectId: REGRESSION_B.project,
+      stageKey: STAGE_KEY,
+      sourceEventKey,
+    });
+    assert.equal(bindingA.source, 'outbox');
+    assert.equal(bindingA.outboxEventId, original);
+    assert.equal(bindingA.progressRevision, 0);
+
+    // A note-only progress change increments the revision but keeps the stage.
+    await ownerPool().query(
+      `insert into app.construction_audits(enterprise_id,project_id,actor_ref,action,snapshot)
+       values($1::bigint,$2::bigint,$3::jsonb,'progress',$4::jsonb)`,
+      [
+        ENTERPRISE_ID,
+        REGRESSION_B.project,
+        JSON.stringify({ kind: 'admin', id: MANAGER_ADMIN_ID }),
+        JSON.stringify({ stageKey: STAGE_KEY, expectedVersion: 2, sendReminder: false, note: '回归备注变化' }),
+      ],
+    );
+    await ownerPool().query(
+      `update app.construction_projects
+       set version=3, progress_note='回归备注变化', progress_revision=1, updated_at=now()
+       where enterprise_id=$1::bigint and id=$2::bigint`,
+      [ENTERPRISE_ID, REGRESSION_B.project],
+    );
+
+    const bindingB = await resolveStageReminderBusinessEvent({
+      actor: integrationActor,
+      projectId: REGRESSION_B.project,
+      stageKey: STAGE_KEY,
+      sourceEventKey,
+    });
+    assert.equal(bindingB.source, 'current_project_revision');
+    assert.equal(bindingB.outboxEventId, null);
+    assert.equal(bindingB.progressRevision, 1);
+
+    const trigger: TriggerEvent = {
+      eventId: sourceEventKey,
+      eventType: 'stage_changed',
+      occurredAt: '2026-11-11T16:00:00.000Z',
+      stageKey: STAGE_KEY,
+      stageLabel: STAGE_LABEL,
+    };
+    const portsA = portsFor(MANAGER_ADMIN_ID);
+    const savedA = await saveReminder(
+      portsA,
+      contextFor(REGRESSION_B.project, bindingA, 'run-regression-b-a', trigger),
+      composedBody,
+    );
+    assert.equal(savedA.saved, true);
+    const receiptA = savedA.saveReceipt as Record<string, unknown>;
+    assert.equal(receiptA.eventId, original);
+    assert.equal(receiptA.reused, true);
+    assert.equal(receiptA.progressRevision, 0);
+
+    const portsB = portsFor(MANAGER_ADMIN_ID);
+    await assert.rejects(
+      () => saveReminder(
+        portsB,
+        contextFor(REGRESSION_B.project, bindingB, 'run-regression-b-b', trigger),
+        composedBody,
+      ),
+      (error: unknown) => error instanceof LiveOperationFailure
+        && error.issue.code === 'stage_event_conflict',
+      'a later revision must reuse the bound event or reject, never create a second one',
+    );
+
+    assert.equal(await projectOutboxCount(REGRESSION_B.project), 1, 'no second outbox row may be created');
+    assert.equal(
+      await countRows(
+        `select count(*)::text as count from app.domain_event_outbox
+         where enterprise_id=$1::bigint and aggregate_id=$2 and payload->>'sourceEventKey'=$3`,
+        [ENTERPRISE_ID, REGRESSION_B.project, sourceEventKey],
+      ),
+      1,
+      'the source event key must stay bound to exactly one outbox event',
+    );
+    const bound = await ownerPool().query<{ id: string; payload: Record<string, unknown> }>(
+      'select id, payload from app.domain_event_outbox where enterprise_id=$1::bigint and id=$2::bigint',
+      [ENTERPRISE_ID, original],
+    );
+    assert.equal(String(bound.rows[0]?.id), original);
+    assert.equal(bound.rows[0]?.payload.sourceEventKey, sourceEventKey, 'save A must backfill the original event');
+  });
+
+  it('delivery receipt reports the real message conversation across conversations', async () => {
+    const project = await ownerPool().query<{ progress_revision: number }>(
+      'select progress_revision from app.construction_projects where enterprise_id=$1::bigint and id=$2::bigint',
+      [ENTERPRISE_ID, CROSS_CONVERSATION.project],
+    );
+    const revision = Number(project.rows[0]?.progress_revision);
+    assert.ok(Number.isSafeInteger(revision) && revision >= 0, 'the cross-conversation project revision is missing');
+
+    const sourceEventKey = 'cross-conversation-key';
+    const eventId = await insertStageEvent(
+      CROSS_CONVERSATION.project,
+      revision,
+      stagePayload(CROSS_CONVERSATION.project, '跨会话阶段提醒', sourceEventKey),
+    );
+
+    // Deliver the new stage notice in the generic conversation C1 first; its
+    // active participant is the customer.
+    const c1Delivery = await deliverDirect(CROSS_CONVERSATION.project, eventId, GENERIC.conversation);
+    assert.equal(c1Delivery.delivered, true);
+    assert.equal(await stageMessageCount(GENERIC.conversation, eventId), 1);
+
+    const evidence = await ownerPool().query<{ id: string; conversation_id: string; user_id: string }>(
+      `select m.id::text as id, m.conversation_id::text as conversation_id, ap.user_id::text as user_id
+       from app.assistant_messages m
+       join app.assistant_participants ap on ap.enterprise_id=m.enterprise_id
+         and ap.conversation_id=m.conversation_id and ap.status='active'
+       where m.enterprise_id=$1::bigint and m.conversation_id=$2::bigint
+         and m.purpose='construction.stage' and m.source_event_id=$3::bigint`,
+      [ENTERPRISE_ID, GENERIC.conversation, eventId],
+    );
+    const c1Message = evidence.rows[0];
+    assert.ok(c1Message, 'the generic conversation must hold the stage notice');
+    assert.equal(c1Message.conversation_id, GENERIC.conversation);
+    assert.equal(c1Message.user_id, CUSTOMER_USER_ID);
+
+    const crossConversationEvent: TriggerEvent = {
+      eventId: sourceEventKey,
+      eventType: 'stage_changed',
+      occurredAt: '2026-11-11T17:00:00.000Z',
+      stageKey: STAGE_KEY,
+      stageLabel: STAGE_LABEL,
+    };
+    const binding = await resolveStageReminderBusinessEvent({
+      actor: integrationActor,
+      projectId: CROSS_CONVERSATION.project,
+      stageKey: STAGE_KEY,
+      sourceEventKey,
+    });
+    assert.equal(binding.outboxEventId, eventId);
+    assert.equal(binding.progressRevision, revision);
+
+    const ports = portsFor(MANAGER_ADMIN_ID);
+    const context = contextFor(CROSS_CONVERSATION.project, binding, 'run-cross-conversation', crossConversationEvent);
+    const read = await readContext(ports, context);
+    const receivers = read.receivers as Record<string, string>;
+    assert.equal(receivers.conversationId, CROSS_CONVERSATION.conversation, 'the ports must request the lead-bound C2');
+
+    const countsBefore = {
+      outbox: await projectOutboxCount(CROSS_CONVERSATION.project),
+      deliveries: await projectDeliveryCount(CROSS_CONVERSATION.project),
+      generic: await stageMessageCount(GENERIC.conversation, eventId),
+      target: await stageMessageCount(CROSS_CONVERSATION.conversation, eventId),
+    };
+    const saved = await saveReminder(ports, context, composedBody);
+    assert.equal(saved.saved, true);
+    const saveReceipt = saved.saveReceipt as Record<string, unknown>;
+    assert.equal(saveReceipt.eventId, eventId);
+    assert.equal(saveReceipt.reused, true);
+
+    const delivered = await deliverReminder(ports, context, read.receivers as WorkflowValue, composedBody);
+    assert.equal(delivered.delivered, true);
+    const receipt = delivered.deliveryReceipt as Record<string, unknown>;
+    assert.equal(receipt.status, 'delivered');
+    assert.equal(receipt.eventId, eventId);
+    assert.equal(receipt.progressRevision, revision);
+    assert.equal(receipt.messageId, c1Message.id, 'the receipt must point at the real C1 message');
+    assert.equal(receipt.conversationId, GENERIC.conversation, 'the receipt must report the real C1 conversation');
+    assert.equal(
+      receipt.requestedConversationId,
+      CROSS_CONVERSATION.conversation,
+      'the requested C2 must be reported separately',
+    );
+    assert.equal(receipt.recipientUserId, CUSTOMER_USER_ID);
+    assert.equal(receipt.reusedConversation, true);
+
+    assert.equal(await stageMessageCount(CROSS_CONVERSATION.conversation, eventId), 0, 'no stage notice may be added to C2');
+    const countsAfter = {
+      outbox: await projectOutboxCount(CROSS_CONVERSATION.project),
+      deliveries: await projectDeliveryCount(CROSS_CONVERSATION.project),
+      generic: await stageMessageCount(GENERIC.conversation, eventId),
+      target: await stageMessageCount(CROSS_CONVERSATION.conversation, eventId),
+    };
+    assert.deepEqual(countsAfter, countsBefore, 'a cross-conversation receipt must not add outbox/delivery/stage rows');
   });
 });

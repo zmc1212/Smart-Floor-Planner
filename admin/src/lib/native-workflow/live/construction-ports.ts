@@ -241,6 +241,35 @@ async function saveStageReminder(
     const stage = settings.stages.find((candidate) => candidate.key === binding.stageKey);
     if (!stage) throw new AssistantError('construction_stage_unavailable', 422);
 
+    // The project write lock makes this the single binding point. A source
+    // event key may map to exactly one outbox event; an explicit outbox or an
+    // interleaved resolver may not rebind it to another revision or event.
+    const sourceEventKey = context.event.eventId;
+    const bound = await one(
+      tx,
+      sql`select * from app.domain_event_outbox
+        where enterprise_id=${actor.enterpriseId}
+          and type='construction.stage.updated.v1'
+          and aggregate_type='construction_project'
+          and aggregate_id=${context.projectId}
+          and payload->>'sourceEventKey'=${sourceEventKey}
+        order by id limit 1`,
+    );
+    if (bound) {
+      const boundPayload = bound.payload as Row;
+      const sameOutbox = binding.source === 'outbox' && binding.outboxEventId
+        ? String(bound.id) === binding.outboxEventId
+        : true;
+      if (!sameOutbox
+        || Number(bound.aggregate_version) !== binding.progressRevision
+        || String(boundPayload.stageKey) !== binding.stageKey) {
+        throw new AssistantError('stage_event_conflict', 409);
+      }
+      const reused = await reuseFromOutbox(tx, actor.enterpriseId, context, bound);
+      onSaved(reused.saved);
+      return saveReceipt(reused.saved, true);
+    }
+
     if (binding.source === 'outbox' && binding.outboxEventId) {
       const event = await one(
         tx,
@@ -396,6 +425,21 @@ async function deliverInApp(
         },
       };
     }
+    const requestedConversationId = String(conversation.id);
+    const actualConversationId = result.messageConversationId;
+    const recipientUserId = result.messageUserId;
+    if (!actualConversationId || !recipientUserId || recipientUserId !== customerUserId) {
+      return {
+        delivered: false,
+        deliveryReceipt: {
+          receiptId: result.deliveryId,
+          simulated: false,
+          source: 'domain_event_deliveries',
+          eventId: saved.eventId,
+          status: 'delivery_receipt_unconfirmed',
+        },
+      };
+    }
     return {
       delivered: true,
       deliveryReceipt: {
@@ -404,7 +448,10 @@ async function deliverInApp(
         source: 'domain_event_deliveries',
         eventId: saved.eventId,
         messageId: result.messageId,
-        conversationId: String(conversation.id),
+        conversationId: actualConversationId,
+        requestedConversationId,
+        recipientUserId,
+        reusedConversation: actualConversationId !== requestedConversationId,
         status: 'delivered',
         progressRevision: saved.progressRevision,
       },

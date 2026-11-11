@@ -46,7 +46,30 @@ export async function resolveStageReminderBusinessEvent(
       throw new WorkflowOperationError('construction_stage_unavailable', 422, `stage ${input.stageKey} is not configured`);
     }
 
+    // The stable source-event key is the cross-run anchor. It is independent
+    // of runId and workflow revision; a note-only progress change must still
+    // find the original outbox event instead of the current revision.
+    const bySourceKey = await one(
+      tx,
+      sql`select * from app.domain_event_outbox
+        where enterprise_id=${actor.enterpriseId}
+          and type='construction.stage.updated.v1'
+          and aggregate_type='construction_project'
+          and aggregate_id=${input.projectId}
+          and payload->>'sourceEventKey'=${input.sourceEventKey}
+        order by id limit 1`,
+    );
+
     if (input.outboxEventId) {
+      // The explicit event selects a target, but it may never override an
+      // existing source-event key binding to another outbox event.
+      if (bySourceKey && String(bySourceKey.id) !== input.outboxEventId) {
+        throw new WorkflowOperationError(
+          'stage_event_conflict',
+          409,
+          `source event ${input.sourceEventKey} is already bound to outbox event ${String(bySourceKey.id)}`,
+        );
+      }
       const event = await one(
         tx,
         sql`select * from app.domain_event_outbox
@@ -72,19 +95,6 @@ export async function resolveStageReminderBusinessEvent(
       );
     }
 
-    // The stable source-event key is the cross-run anchor. It is independent
-    // of runId and workflow revision; a note-only progress change must still
-    // find the original outbox event instead of the current revision.
-    const bySourceKey = await one(
-      tx,
-      sql`select * from app.domain_event_outbox
-        where enterprise_id=${actor.enterpriseId}
-          and type='construction.stage.updated.v1'
-          and aggregate_type='construction_project'
-          and aggregate_id=${input.projectId}
-          and payload->>'sourceEventKey'=${input.sourceEventKey}
-        order by id limit 1`,
-    );
     if (bySourceKey) {
       return fromOutbox(
         tx,
