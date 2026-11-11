@@ -730,8 +730,8 @@ describe('B4 live construction stage-reminder adapter', { skip: SKIP }, () => {
     plan = compileDefinition(published.definition);
     const compose = published.definition.nodes.find((node) => node.nodeId === 'compose-deterministic');
     const template = String(compose?.config?.template ?? '');
-    assert.ok(template.includes('{{stageLabel}}'), 'deterministic compose template is missing the stage label');
-    composedBody = template.replace('{{stageLabel}}', STAGE_LABEL);
+    assert.ok(template.includes('{{stageLabel}}'), 'deterministic compose template is missing the host text port');
+    composedBody = '「目标」当前施工已进入水路阶段。\n到现场重点看：打压记录。';
     usageBefore = await usageSnapshot();
   });
 

@@ -203,6 +203,10 @@ simulate({
 It executes one published `stage-reminder` revision for one fixed server-side
 business event and never selects a definition from a draft.
 
+The deterministic compose keeps its single `{{stageLabel}}` placeholder, but its
+input is now wired to the host `reminderText`, so the emitted body is the
+authoritative business-event text rather than a fixed label.
+
 - B isolation is explicit: `B4_LIVE_APP_DATABASE_URL` and
   `B4_LIVE_FIXTURE_DATABASE_URL` are required and validated against the exact
   host (`127.0.0.1`/`localhost`), port `55433`, database
@@ -318,9 +322,58 @@ The sole XiaoK plan is intentionally not edited in this B branch; the
 integration lead should merge the current B4.3 status into A's latest plan
 without replacing A's newer progress, failures or unknown records.
 
-Out of scope this round: daily/weekly real integration, the model compose
-branch, drag canvas, automatic scheduling, Worker changes, menus and shared
+Out of scope this round: the formal engineering-acceptance event, the model
+compose branch, daily/weekly real integration, the native WeChat Mini Program
+UI, drag canvas, automatic scheduling, Worker changes, menus and shared
 migrations.
+
+## B5.1 customer stage-reminder loop
+
+The fixed published `stage-reminder` revision 2 (digest
+`599ef7aeaca389bd82e243d5e68d6c4d9173e54783dc261d84a4fa95cbb2eff8`) was run
+through the existing `scripts/native-workflow-live.ts` dev entry with
+`--revision 2` against the B-isolated PostgreSQL on `127.0.0.1:55433`
+(enterprise 1454 labelled fixture). The reminder body stays authoritative to
+the host: an existing outbox event reuses `payload.text`, while a new event
+composes `stageReminder(project.name, stage, progress_note)` from the
+construction domain, so the message carries the project name, stage name, the
+stage visit reason, watch points and the manager's `现场补充：...` note.
+Enterprise knowledge stays off and no craft citation is invented.
+
+- The original XiaoK customer entry was exercised with a real mini-program JWT
+  and the real `assistantHttp` handler: `POST /entry-context` with `leadId`,
+  `GET /conversations` with `X-Assistant-Entry`, `GET /conversations/{id}`,
+  `GET /conversations/{id}/messages` and its `?afterSeq=` delta. The same
+  `messageId` came back with `constructionReminder: true`, `citations: []` and
+  the real body. A fresh session/token, simulating app exit and re-entry,
+  restored the same message from the server; full and delta reads added no
+  message.
+- A duplicate business event (new `runId`, same `sourceEventKey`) reused outbox
+  `161`, delivery `191` and message `98`; the stage-message count stayed 8.
+- Requesting a temporary generic conversation C2 (`1454900001`) left the
+  receipt on the real C1 (`1454000005`) with `requestedConversationId=C2`,
+  `reusedConversation=true` and `messageId=98`; no stage message moved to C2.
+- Revoking the customer participant removed the conversation from history and
+  made `GET /conversations/{id}` return 404. Revoking `customer_access` made
+  the reminder `available:false` with a `notice` block instead of a success
+  state, and a synthetic newer stage event made the old notice unavailable.
+  All revocations were restored in `finally`.
+- The labelled fixture seeds `construction_report_settings` for enterprise 1454
+  with `enabled=false` and `stage_enabled=false`. Acceptance asserted no
+  assistant job/run, `ai_provider_attempts`, `assistant_usage_records`,
+  `assistant_knowledge_attempts`, construction reports/report deliveries or
+  `construction.report.%` outbox events; FastGPT, model and embedding calls
+  were zero. The disabled report plan covers only the labelled B tenant;
+  A/production configuration is untouched.
+- Evidence: `admin/tmp/b5-1-user-loop/b5-1-user-loop-20261111030033505/verification.json`
+  from `admin/scripts/native-workflow-stage-reminder-user-loop.ts`; the fixture
+  script is `admin/scripts/native-workflow-live-fixture.ts`. 12/12 checks
+  passed.
+
+Limitations: no formal engineering-acceptance event exists and the system never
+asserts "验收通过"; there is no model compose branch and no daily/weekly real
+integration. The native WeChat Mini Program UI itself was not run in this B
+acceptance; the exact client API path was exercised instead.
 
 ## Reproduce
 
@@ -351,6 +404,15 @@ The integration suite deliberately does not set `B4_LIVE_DEVELOPMENT` itself;
 missing/zero opt-in or production must fail before any connection. The guard
 suite uses fake clients to prove that contract and the shared-fixture preflight
 without opening a database connection.
+
+The customer stage-reminder loop runs against the same B-isolated database:
+
+```powershell
+$env:B4_LIVE_APP_DATABASE_URL='postgresql://sfp_app:...@127.0.0.1:55433/smart_floor_planner'
+$env:B4_LIVE_FIXTURE_DATABASE_URL='postgresql://sfp_owner:...@127.0.0.1:55433/smart_floor_planner'
+npx tsx scripts/native-workflow-live-fixture.ts --development
+npx tsx scripts/native-workflow-stage-reminder-user-loop.ts --development
+```
 
 Fixtures are synthetic and contain no real customer data.
 

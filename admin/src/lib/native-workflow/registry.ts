@@ -59,6 +59,7 @@ export const capabilityCatalog: Readonly<Record<string, CapabilitySpec>> = {
       subscribed: 'boolean',
       receivers: 'object',
       receiverCount: 'number',
+      reminderText: 'string',
     },
     configKeys: [],
   },

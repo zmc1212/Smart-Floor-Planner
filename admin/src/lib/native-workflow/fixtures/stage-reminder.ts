@@ -26,6 +26,7 @@ export const stageReminderFixtures: SimulationFixtures = {
         subscribed: true,
         receivers: { scope: 'project_members', roles: ['owner', 'manager', 'worker'] },
         receiverCount: 3,
+        reminderText: '「模拟项目」当前施工已进入水电施工阶段。\n到现场重点看：线管固定、打压记录。',
       },
     },
     'read-craft': {

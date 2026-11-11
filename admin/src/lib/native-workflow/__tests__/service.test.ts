@@ -192,7 +192,7 @@ test('a stale retry cannot overwrite the other editor change', async () => {
   const compose = record.record.draft.definition.nodes.find((node) => node.nodeId === 'compose-deterministic');
   const config = compose?.config as { title?: string; template?: string };
   assert.equal(config.title, 'A 页面标题');
-  assert.equal(config.template, '项目已进入{{stageLabel}}阶段，请按既定安排关注本阶段施工注意事项。');
+  assert.equal(config.template, '{{stageLabel}}');
   assert.equal(record.record.draft.draftRevision, 2);
 });
 

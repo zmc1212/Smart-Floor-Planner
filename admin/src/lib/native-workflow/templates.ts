@@ -68,9 +68,13 @@ export function createStageReminderDefinition(): WorkflowDefinition {
       capabilityRef: 'compose.stage_reminder_deterministic',
       config: {
         title: '阶段提醒',
-        template: '项目已进入{{stageLabel}}阶段，请按既定安排关注本阶段施工注意事项。',
+        // The deterministic text port carries the authoritative reminder body
+        // supplied by the host: the exact stored business-event text, or the
+        // configured project/stage reason and watch points for a new event.
+        // The graph never invents a construction fact of its own.
+        template: '{{stageLabel}}',
       },
-      inputs: { stageLabel: ref('read-context', 'stageLabel') },
+      inputs: { stageLabel: ref('read-context', 'reminderText') },
     },
     {
       nodeId: 'compose-model',

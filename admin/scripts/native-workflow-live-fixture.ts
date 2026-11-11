@@ -66,6 +66,7 @@ const participantId = idBase + 6n;
 const managerAdminId = idBase + 7n;
 const workerAdminId = idBase + 8n;
 const observerAdminId = idBase + 9n;
+const customerOpenid = `b4-live-openid-${enterpriseId}`;
 
 const staffAdmins: Array<{ id: bigint; username: string; displayName: string; memberRole: 'manager' | 'worker' | 'observer' }> = [
   { id: managerAdminId, username: `b4-live-manager-${enterpriseId}`, displayName: `${PREFIX} 项目经理`, memberRole: 'manager' },
@@ -147,6 +148,25 @@ function fixtureRowChecks(): FixtureRowCheck[] {
       matches: (row) => String(row.enterprise_id) === String(enterpriseId)
         && String(row.username ?? '').startsWith('b4-live-customer-'),
       actual: (row) => `enterprise_id=${String(row.enterprise_id)} username=${JSON.stringify(row.username)}`,
+    },
+    {
+      table: 'app.wechat_identities',
+      id: customerUserId,
+      marker: `user_id=${customerUserId} and openid='${customerOpenid}'`,
+      sql: 'select user_id, openid from app.wechat_identities where user_id=$1::bigint',
+      params: [String(customerUserId)],
+      matches: (row) => String(row.user_id) === String(customerUserId) && row.openid === customerOpenid,
+      actual: (row) => `user_id=${String(row.user_id)} openid=${JSON.stringify(row.openid)}`,
+    },
+    {
+      table: 'app.construction_report_settings',
+      id: enterpriseId,
+      marker: 'enabled=false and stage_enabled=false',
+      sql: 'select enterprise_id, enabled, stage_enabled from app.construction_report_settings where enterprise_id=$1::bigint',
+      params: [String(enterpriseId)],
+      matches: (row) => String(row.enterprise_id) === String(enterpriseId)
+        && row.enabled === false && row.stage_enabled === false,
+      actual: (row) => `enterprise_id=${String(row.enterprise_id)} enabled=${String(row.enabled)} stage_enabled=${String(row.stage_enabled)}`,
     },
     {
       table: 'app.leads',
@@ -338,6 +358,25 @@ try {
     [String(enterpriseId)],
   );
 
+  // The original XiaoK entry authenticates as a customer and needs a stable
+  // synthetic WeChat identity for this labelled user.
+  await client.query(
+    `insert into app.wechat_identities(user_id,openid)
+     values($1::bigint,$2)
+     on conflict(user_id) do update set openid=excluded.openid,updated_at=now()`,
+    [String(customerUserId), customerOpenid],
+  );
+
+  // The legacy report scheduler consumes construction.stage.updated.v1. B5.1
+  // keeps the labelled test tenant explicitly off so no stage report/compose
+  // job can be enqueued even if an old Worker is started against this database.
+  await client.query(
+    `insert into app.construction_report_settings(enterprise_id,enabled,stage_enabled,stage_cursor,next_daily_at,next_weekly_at)
+     values($1::bigint,false,false,0,'2099-01-01T00:00:00Z','2099-01-01T00:00:00Z')
+     on conflict(enterprise_id) do nothing`,
+    [String(enterpriseId)],
+  );
+
   await client.query(
     `insert into app.assistant_conversations(id,enterprise_id,purpose,status,mode,title,entry_snapshot,policy_version,context_revision,last_seq)
      overriding system value
@@ -430,12 +469,14 @@ try {
     workerAdminId: String(workerAdminId),
     observerAdminId: String(observerAdminId),
     customerUserId: String(customerUserId),
+    customerOpenid,
     leadId: String(leadId),
     projectId: String(projectId),
     conversationId: String(conversationId),
     stageKey: 'plumbing',
     constructionActorAccess: accessRole,
     conversationProjectIds: projectIds,
+    reportPlanEnabled: false,
   };
 
   fs.mkdirSync(path.dirname(outFile), { recursive: true });

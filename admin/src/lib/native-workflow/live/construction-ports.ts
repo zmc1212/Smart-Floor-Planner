@@ -7,6 +7,7 @@ import { deliverStageReminderToConversation, recordStageReminder } from '@/lib/c
 import { constructionAccess } from '@/lib/construction/service';
 import { currentStageEvent } from '@/lib/construction/stage-events';
 import { readStageSettings } from '@/lib/construction/stages-store';
+import { stageReminder } from '@/lib/construction/stages';
 import { workflowIssue } from '../errors';
 import { isPlainObject } from '../guards';
 import type { PendingOperation, WorkflowValue } from '../types';
@@ -117,6 +118,7 @@ async function readProjectContext(
         subscribed: false,
         receivers: { scope: 'none' },
         receiverCount: 0,
+        reminderText: '',
       };
     }
     if (String(project.current_stage_key) !== binding.stageKey) {
@@ -151,6 +153,18 @@ async function readProjectContext(
           customerUserId: String(conversation!.customer_user_id),
         }
       : { scope: 'none' };
+    // The reminder body belongs to the real business event: reuse the exact
+    // text already stored by the construction service, or compose the same
+    // project/stage/reason/watch-point text it would write for a new event.
+    // Enterprise knowledge stays off, so no craft citation is invented here.
+    const bound = binding.source === 'outbox' && binding.outboxEventId
+      ? await one(tx, sql`select payload from app.domain_event_outbox
+          where enterprise_id=${actor.enterpriseId} and id=${binding.outboxEventId}`)
+      : undefined;
+    const boundText = (bound?.payload as Row | undefined)?.text;
+    const reminderText = typeof boundText === 'string' && boundText.trim()
+      ? boundText
+      : stageReminder(String(project.name), stage, String(project.progress_note ?? ''));
     return {
       stageKey: binding.stageKey,
       stageLabel: stage.name,
@@ -158,6 +172,7 @@ async function readProjectContext(
       subscribed,
       receivers,
       receiverCount: subscribed ? 1 : 0,
+      reminderText,
     };
   });
 }

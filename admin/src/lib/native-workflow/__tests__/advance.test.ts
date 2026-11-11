@@ -94,7 +94,7 @@ test('knowledge disabled keeps the deterministic branch with no compose operatio
   assert.equal(result.pending[0]?.nodeId, 'save-deterministic');
   assert.equal(result.pending.some((operation) => operation.effect === 'compose'), false);
   assert.ok(result.trace.some((entry) => entry.kind === 'branch_selected' && entry.detail?.result === false));
-  assert.equal(result.state.outputs['compose-deterministic']?.body, '项目已进入水电施工阶段，请按既定安排关注本阶段施工注意事项。');
+  assert.equal(result.state.outputs['compose-deterministic']?.body, '「模拟项目」当前施工已进入水电施工阶段。\n到现场重点看：线管固定、打压记录。');
 
   result = advance(plan, result.state, observation('save-deterministic', fixtureOutputs('save-deterministic')));
   assert.equal(result.pending[0]?.nodeId, 'deliver-deterministic');

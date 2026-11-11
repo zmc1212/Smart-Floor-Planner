@@ -112,6 +112,7 @@ function makeWorld(overrides: {
             customerUserId: 'customer-1',
           },
           receiverCount: 1,
+          reminderText: '项目已进入水路阶段，请按既定安排关注本阶段施工注意事项。',
         };
       }
       if (operation.capabilityRef === 'read.enterprise_craft') {

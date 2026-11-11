@@ -241,7 +241,7 @@ test('rejects unsafe config and unsafe imported JSON', () => {
   );
 
   const sqlJson = JSON.stringify(createStageReminderDefinition()).replace(
-    '项目已进入{{stageLabel}}阶段，请按既定安排关注本阶段施工注意事项。',
+    '{{stageLabel}}',
     'select * from users',
   );
   assert.throws(
