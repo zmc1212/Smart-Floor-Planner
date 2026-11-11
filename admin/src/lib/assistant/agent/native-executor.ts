@@ -21,10 +21,10 @@ import { synthesisContextAvailable } from './synthesis-sources';
 import { dialogueBusinessQuery, dialogueEnterpriseSearch, snapshotHeading, type DialogueToolRuntime } from './dialogue-tools';
 import { assertModelTurnBand, dialogueWebResearch, webCitations, type WebToolRuntime } from './dialogue-web-tools';
 import { dialogueDesignerRecommendation, dialoguePublicSitesRecommendation, publicSitesDelivery,
-  type RecommendToolRuntime, type ToolReceipt } from './dialogue-recommend-tools';
+  type RecommendToolRuntime } from './dialogue-recommend-tools';
 import { dialogueHistoryRecall, type HistoryToolRuntime } from './dialogue-history-tools';
 import { parseWebQuery, webSearchTool, type WebSearchSnapshot } from './web';
-import { parsePublicRead, publicResearchTools, readWebTool } from './public-research';
+import { parsePublicRead, publicResearchTools } from './public-research';
 import { historyRefsAvailable, historySynthesisSources, historyTool, parseHistoryQuery,
   type HistoryRef, type HistorySnapshot } from './history';
 import { webAnswerQuoteSpans, webEvidence, webSynthesisSources } from './web-evidence';
@@ -318,7 +318,8 @@ export async function processNativeAgentAnswer(lease: Lease) {
     const webRt: WebToolRuntime = { lease, protocol: xiaokNativeExecutorProtocol, authorize, context, catalog, messages,
       markWebRetrieved: () => { webRetrieved = true; }, webDeadlineAt: Date.now() + 120000 };
     const web = dialogueWebResearch(webRt);
-    const recommendRt: RecommendToolRuntime = { lease, protocol: xiaokNativeExecutorProtocol, authorize, context, messages };
+    const recommendRt: RecommendToolRuntime = { lease, protocol: xiaokNativeExecutorProtocol, authorize, context, messages,
+      recovered: { designers: toolState.designers, publicSites: toolState.publicSites } };
     const designers = dialogueDesignerRecommendation(recommendRt);
     const sites = dialoguePublicSitesRecommendation(recommendRt);
     const historyRt: HistoryToolRuntime = { lease, protocol: xiaokNativeExecutorProtocol, authorize, historyRefs };
@@ -390,14 +391,8 @@ export async function processNativeAgentAnswer(lease: Lease) {
           : { name: 'read_web' as const, candidateId: String(parsed.candidateId) };
         return { content: JSON.stringify(await web(input, ++sequence)) };
       }
-      if (name === 'recommend_designers') {
-        if (toolState.designers) return { content: JSON.stringify(toolState.designers) };
-        return { content: JSON.stringify(await designers()) };
-      }
-      if (name === 'recommend_public_sites') {
-        if (toolState.publicSites) return { content: JSON.stringify(toolState.publicSites) };
-        return { content: JSON.stringify(await sites.call()) };
-      }
+      if (name === 'recommend_designers') return { content: JSON.stringify(await designers()) };
+      if (name === 'recommend_public_sites') return { content: JSON.stringify(await sites.call()) };
       if (name === 'recall_history') {
         if (!saved.triggerSeq) fail('assistant_capability_forbidden', 403);
         const { query } = JSON.parse(args) as { query: string };

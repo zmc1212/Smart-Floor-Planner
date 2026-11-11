@@ -16,8 +16,6 @@ import { closePostgresPool } from '@/lib/postgresql';
 import { ConstructionService } from '@/lib/construction/service';
 import { ConstructionReportService, reportPlanDto } from '@/lib/construction/report-service';
 import { fastGPTAgentV2Configuration, nativeAgentRuntimeBinding } from '@/lib/assistant/fastgpt/agent-v2/config';
-import { KnowledgeService } from '@/lib/assistant/knowledge/service';
-import { claimKnowledgeJob, runKnowledgeJob, type KnowledgeLease } from '@/lib/assistant/knowledge/index-worker';
 
 loadEnvConfig(process.cwd(), true);
 assert.ok(process.argv.includes('--development'));

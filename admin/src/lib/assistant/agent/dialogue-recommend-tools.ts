@@ -27,6 +27,12 @@ export type RecommendToolRuntime = {
   authorize: () => Promise<Awaited<ReturnType<typeof runContext>>>;
   context: SynthesisContext;
   messages: RagChatMessage[];
+  /** Persisted fixed-step receipts re-served after a restart. The public-site
+   * factory rebuilds its delivery outcome from the receipt at creation, so a
+   * resumed run that never calls the tool again still replaces a contradictory
+   * model draft (a saved "no authorized site here" must not become a request
+   * for the customer's city). */
+  recovered?: { designers?: ToolReceipt; publicSites?: ToolReceipt };
 };
 
 /** Server-authored list for the model to relay. It names only published sites
@@ -87,7 +93,8 @@ export function designerRecommendationReceipt(count: number, needContext: boolea
  * persisted step 2000 is replayed verbatim across processes. Without items no
  * step is written — step 2000/kind is designerMessageProjection's contract. */
 export function dialogueDesignerRecommendation(rt: RecommendToolRuntime) {
-  let memo: Promise<ToolReceipt> | undefined;
+  let memo: Promise<ToolReceipt> | undefined = rt.recovered?.designers
+    ? Promise.resolve(rt.recovered.designers) : undefined;
   return (): Promise<ToolReceipt> => memo ??= (async () => {
     await rt.authorize();
     const { receipt } = await withTenantTransaction(rt.lease.enterpriseId, async tx => {
@@ -128,8 +135,11 @@ export function dialogueDesignerRecommendation(rt: RecommendToolRuntime) {
  * message; a located result owns step 2010 (core/discovery.ts depends on the
  * kind), `need_region` asks honestly and writes nothing. */
 export function dialoguePublicSitesRecommendation(rt: RecommendToolRuntime) {
-  let memo: Promise<ToolReceipt> | undefined;
-  let outcome: PublicSitesOutcome | undefined;
+  let memo: Promise<ToolReceipt> | undefined = rt.recovered?.publicSites
+    ? Promise.resolve(rt.recovered.publicSites) : undefined;
+  // Restore the delivery state before any call: a recovered empty receipt is
+  // authoritative even when the resumed graph goes straight to the final answer.
+  let outcome: PublicSitesOutcome | undefined = publicSitesOutcomeOf(rt.recovered?.publicSites);
   const call = (): Promise<ToolReceipt> => memo ??= (async () => {
     await rt.authorize();
     const receipt = await withTenantTransaction(rt.lease.enterpriseId, async tx => {

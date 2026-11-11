@@ -22,15 +22,15 @@
 
 | 字段 | 当前记录 |
 | --- | --- |
-| 交付与负责人 | 小K原生执行链P0+P1收尾修复（2026-11-11用户定向）：持久化恢复缺陷+full-flow审计空洞通过修复+定向验证补齐；完成后再进P2。单一负责人，禁止自动新建或交接聊天，仅用户明确要求才新建/转移。方法约束：先验证真实回答，禁止补丁循环；模型解释、KnowledgeRetriever/Evidence供授权材料，代码守权限/来源/动作/回执；两轮失败停循环，不堆提示词或换模型。 |
-| 用户入口与结果 | 业主645咨询四问由`xiaok-native-executor-v1`回答：round-03（runs2967/2968/2969/2982）通过且引用可打开、重进保留。本轮新增中断恢复能力：同会话恢复续答、恢复后不重复派发不重复计费。四问复核本轮2次首稿失败（见失败边界），round-03对修复前代码的通过状态仍成立。 |
-| 已证缺口 | dialogue-tools缺`Row`类型导入；恢复运行丢失attemptId致per_turn校验失败；模型步骤已成功+graph检查点缺失时重复派发；工具sequence重启致step_seq/operation_key冲突；full-flow审计在未配置/文件缺失/配置不一致时空洞PASS且V2模式误用零调用断言。以上均已修复并有定向证据。 |
-| 已完成 | 恢复修复：attemptId自最近成功模型步骤恢复；模型步骤复用原输出原attempt不重复派发；工具稳定标识+持久化receipt复用，新调用序号续接不复用；未知结局保持indeterminate不重放；旧中断运行fail-closed 409。审计口径模式感知（原生零FastGPT/V2已知kind；配置-文件-绑定三重门，缺失即FAIL）。定向验证脚本5/5（真实Worker认领+真实供应商）；单测7/7、V2桥回归33/33、验收脚本类型清零。 |
-| 下一动作 | P2：四工具（search_web/read_web/recommend_designers/recommend_public_sites）与需求历史回查迁入同一装配（阶段1共享模块在建），接线后跑V2桥兼容回归与两会话并行+撤权恢复定向检查。 |
-| 必要验收 | 定向验证5/5：A最终检查点已存提交前中断、B模型步骤已存检查点缺失、C工具回执已存后中断并真实续轮、D-A企业聊天占槽时B企业知识任务仍运行；全部消息不重复、成功步骤不重复调用、用量关联正确。待P2/P4补：FastGPT真停机完整旅程、资源对比。 |
-| 失败与调用边界 | 四问复核run3026/3027首稿丢K前缀invalid_model_citation，原样保留；区分性检查证明工具契约逐字节未变（同模型同消息格式），按两轮规则停止重跑、不改校验器；attempt-01..12夹具失败保留；run2965/2966等历史失败不清零；仅1454开发库；无真实客户写入、外部消息或生产。 |
-| 环境与资源 | 远程开发库经SSH隧道5432（RLS表需租户上下文查询）；3006 dev server热更新；执行器经`runtime:'langgraph-v1'`切换验证后已恢复原字节（哈希一致）；阶段正文仍走FastGPT 18300（P3）。 |
-| 证据与后继 | tmp/xiaok-native-executor-20261111-recovery/{evidence-summary.md,report.json,four-questions*/,attempt-01..12/}；round-03证据保留；模块清单双语已更新。后继：P2阶段2接线→P3辅助入口→P4冷启动验证与资源对比→P5排空退出。 |
+| 交付与负责人 | 小K原生执行链P2公开工地/网页链路5组复审修复（2026-11-11用户定向）：同一V2 ticket网页工具串行、公开工地回执恢复交付、recovery夹具真实认领、联网验收完整链路、知识认领隔离。单一负责人，禁止自动新建或交接聊天，仅用户明确要求才新建/转移。方法约束：先验证真实回答，禁止补丁循环；模型解释、KnowledgeRetriever/Evidence供授权材料，代码守权限/来源/动作/回执；两轮失败停循环，不堆提示词或换模型。 |
+| 用户入口与结果 | 业主645四问由`xiaok-native-executor-v1`回答；联网轮须真实搜索→读页→答案带可打开网页引用；已知定位的公开工地空结果恢复后仍直接交付该确定结果，不再询问城市。 |
+| 已证缺口 | 同一ticket重叠网页回调被未闭合标记误判；恢复2010回执未重建delivery outcome；W2 factory/W3用伪造租约绕过生产认领；联网验收search-only可空洞通过；旧审计探针全局claim/预览凭据（HEAD已改V2回执探针，认证问题不再存在）。 |
+| 已完成 | V2 ticket级串行（授权/序号/执行/后置复验）；2010回执创建即恢复outcome并缓存复用；W2 factory/W3/H改真实claimJob并新增S；联网轮只认完整链路；知识claim scope+竞争任务；单测30/30、定向类型0、lint0错误。 |
+| 下一动作 | 复审本轮diff与计划检查后聚焦提交；四问联网完整链路若再次出现模型格式失败，按两轮规则停止重采样并保留原失败。 |
+| 必要验收 | recovery r15 13/13（含W2 factory/W3/S/H/D竞争任务）；four-questions-r3 5/5（readSteps=1、readPages=1、两条可打开w:引用）；首败r12–r14、four-questions-r2保留；未跑full-flow不作通过。 |
+| 失败与调用边界 | r12 worker抢先认领W2夹具、r13 ledger期望、r14 S字段断言、four-questions-r2 web run missing_citation+源码drift均原样保留；不重放unknown provider；仅1454开发库；无真实客户写入、外部消息或生产。 |
+| 环境与资源 | 远程开发库经SSH隧道5432；3006 dev server热更新与常驻Worker；外部搜索/读页按测试需要，失败如实标未验。 |
+| 证据与后继 | `tmp/xiaok-native-executor-20261111-webrec/r15/`、`four-questions-r3/`；模块清单双语已更新；后继按P2剩余入口迁移。 |
 
 ## 3. 复用哪些成果
 

@@ -235,3 +235,99 @@ test('a late callback from a finished run cannot enter the next run', async () =
   } finally { globalThis.fetch = original; activeTicket = null; }
   assert.equal(toolCalls, 1, 'only B may call a tool');
 });
+
+test('overlapping callbacks on one ticket are serialized in arrival order', async () => {
+  const gateway = create(), original = globalThis.fetch;
+  let active = 0, maxActive = 0;
+  const entered: number[] = [];
+  let releaseFirst!: () => void;
+  const firstGate = new Promise<void>(resolve => { releaseFirst = resolve; });
+  globalThis.fetch = (async (_url: unknown, options?: RequestInit) => {
+    const ticket = JSON.parse(String(options?.body)).variables.workflowTicket;
+    // Two normal FastGPT web tool callbacks overlap. The shared web factory
+    // treats an open dispatch marker as unknown, so the gateway must not let
+    // the second one enter while the first still holds the ticket.
+    const first = call(gateway, 'search_enterprise', '{"query":"闭水试验"}', { ticket });
+    const second = call(gateway, 'search_enterprise', '{"query":"蓄水深度"}', { ticket });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    releaseFirst();
+    const responses = await Promise.all([first, second]);
+    assert.equal(responses[0].status, 200);
+    assert.equal(responses[1].status, 200);
+    return Response.json(packet);
+  }) as typeof fetch;
+  try {
+    await gateway.run('1454', [{ role: 'user', content: '并发工具' }], {
+      authorize: async () => undefined,
+      tool: async (_input, sequence) => {
+        active += 1; maxActive = Math.max(maxActive, active); entered.push(sequence);
+        if (sequence === 1) await firstGate;
+        active -= 1;
+        return { status: 'ready', quotes: [] };
+      },
+    });
+  } finally { globalThis.fetch = original; }
+  assert.deepEqual(entered, [1, 2], 'Call numbers are allocated only after the previous callback settles');
+  assert.equal(maxActive, 1, 'One ticket never executes two tool calls at once');
+});
+
+test('different tickets execute tool callbacks concurrently', async () => {
+  const keyA = 'k'.repeat(32), keyB = 'm'.repeat(32), appA = 'a'.repeat(24), appB = 'b'.repeat(24);
+  const gateway = new FastGPTAgentV2([
+    { protocol: 'fastgpt-agent-v2-v1', enterpriseId: '1454', appId: appA, model: 'labelled-model',
+      bridgeKey: keyA, baseUrl: 'http://127.0.0.1:18300', apiKey: 'test-key', record: () => undefined },
+    { protocol: 'fastgpt-agent-v2-v1', enterpriseId: '2884', appId: appB, model: 'labelled-model',
+      bridgeKey: keyB, baseUrl: 'http://127.0.0.1:18300', apiKey: 'test-key', record: () => undefined },
+  ]);
+  const original = globalThis.fetch;
+  let arrived = 0, maxActive = 0, active = 0, released = false;
+  let release!: () => void;
+  const barrier = new Promise<void>(resolve => { release = resolve; });
+  const tool = async () => {
+    active += 1; maxActive = Math.max(maxActive, active); arrived += 1;
+    if (arrived === 2) { released = true; release(); }
+    await Promise.race([barrier, new Promise((_, reject) => setTimeout(() => reject(new Error('tickets were serialized globally')), 2000))]);
+    active -= 1;
+    return { status: 'ready', text: 'ok' };
+  };
+  globalThis.fetch = (async (_url: unknown, options?: RequestInit) => {
+    const body = JSON.parse(String(options?.body));
+    const enterprise = body.appId === appA ? '1454' : '2884';
+    const key = enterprise === '1454' ? keyA : keyB;
+    const response = await call(gateway, 'recommend_designers', '{}', { key, ticket: body.variables.workflowTicket });
+    assert.equal(response.status, 200);
+    return Response.json(packet);
+  }) as typeof fetch;
+  try {
+    await Promise.all([
+      gateway.run('1454', [{ role: 'user', content: 'A' }], { authorize: async () => undefined, tool }),
+      gateway.run('2884', [{ role: 'user', content: 'B' }], { authorize: async () => undefined, tool }),
+    ]);
+  } finally { globalThis.fetch = original; }
+  assert.equal(released, true, 'Both tickets reached their tool call at the same time');
+  assert.equal(maxActive, 2, 'Different tickets must not share one serialization queue');
+});
+
+test('a failed callback blocks its queued sibling without calling the tool', async () => {
+  const gateway = create(), original = globalThis.fetch;
+  let toolCalls = 0;
+  globalThis.fetch = (async (_url: unknown, options?: RequestInit) => {
+    const ticket = JSON.parse(String(options?.body)).variables.workflowTicket;
+    const first = call(gateway, 'search_enterprise', '{"query":"A"}', { ticket });
+    const second = call(gateway, 'search_enterprise', '{"query":"B"}', { ticket });
+    const [firstResponse, secondResponse] = await Promise.all([first, second]);
+    assert.equal(firstResponse.status, 409);
+    assert.deepEqual(await firstResponse.json(), { error: 'context_changed' });
+    assert.equal(secondResponse.status, 409);
+    assert.deepEqual(await secondResponse.json(), { error: 'context_changed' },
+      'The queued sibling observes the earlier callback failure instead of executing');
+    return Response.json(packet);
+  }) as typeof fetch;
+  try {
+    await assert.rejects(gateway.run('1454', [{ role: 'user', content: '失败' }], {
+      authorize: async () => undefined,
+      tool: async () => { toolCalls += 1; fail('context_changed'); },
+    }), /context_changed/);
+  } finally { globalThis.fetch = original; }
+  assert.equal(toolCalls, 1, 'The queued callback must never reach the tool port');
+});

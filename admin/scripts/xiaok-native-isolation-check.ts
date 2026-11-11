@@ -140,7 +140,7 @@ async function main() {
     const documentId = String((created.document as Row).id);
     const fixture = { documentId, versionId: String((created.draft as Row).id), expectedVersion: 1, expectedEditVersion: 1 };
     const queued = await knowledge.execute('index', fixture, randomUUID());
-    const lease = await claimKnowledgeJob();
+    const lease = await claimKnowledgeJob({ enterpriseId: eid, jobId: String(queued.jobId) });
     assert.ok(lease && String(lease.jobId) === String(queued.jobId), 'Synthetic document index job claimable');
     await runKnowledgeJob(lease!);
     const jobState = await knowledge.execute('job', { jobId: String(queued.jobId) } as never) as Row;

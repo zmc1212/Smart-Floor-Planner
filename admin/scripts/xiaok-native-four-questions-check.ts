@@ -17,13 +17,11 @@ import { sql } from 'drizzle-orm';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { closePostgresPool } from '@/lib/postgresql';
-import { KnowledgeService } from '@/lib/assistant/knowledge/service';
-import { claimKnowledgeJob, runKnowledgeJob, type KnowledgeLease } from '@/lib/assistant/knowledge/index-worker';
 import { nativeAgentRuntimeBinding } from '@/lib/assistant/fastgpt/agent-v2/config';
 
 loadEnvConfig(process.cwd(), true);
 assert.ok(process.argv.includes('--development'));
-const root = path.resolve('..'), eid = '1454', customerId = '645', leadId = '3132', projectId = '237', ownerId = '2853';
+const root = path.resolve('..'), eid = '1454', customerId = '645', leadId = '3132';
 const questionsFile = path.resolve(root, 'tmp/xiaok-native-executor-20261110/questions.json');
 const output = path.resolve(process.argv.find(a => a.startsWith('--output='))?.slice(9) || '../tmp/xiaok-native-executor-20261111-recovery/four-questions');
 assert.ok(!fs.existsSync(path.join(output, 'report.json')), 'Retain the original round');
@@ -31,7 +29,6 @@ const target = new URL(process.env.DATABASE_URL!);
 assert.ok(['127.0.0.1', 'localhost'].includes(target.hostname) && target.port === '5432' && target.pathname === '/smart_floor_planner');
 fs.mkdirSync(output, { recursive: true });
 const base = 'http://127.0.0.1:3006/api/miniprogram/assistant';
-const previewBase = 'http://127.0.0.1:3006/api/assistant/preview';
 const report: Row & { accounting: Row } = { startedAt: new Date().toISOString(), enterpriseId: eid,
   scope: 'two four-question groups re-verified on the native executor', checks: [], failures: [], accounting: {} };
 const save = () => fs.writeFileSync(path.join(output, 'report.json'), JSON.stringify(report, null, 2));
@@ -76,12 +73,12 @@ async function waitFor<T>(label: string, fn: () => Promise<T | undefined | false
 }
 const jwt = (payload: Row) => new SignJWT({ ...payload }).setProtectedHeader({ alg: 'HS256' }).setSubject(String(payload.sub))
   .setIssuedAt().setAudience('miniprogram').setExpirationTime('2h').sign(new TextEncoder().encode(process.env.JWT_SECRET!));
-async function api(token: string, route: string, init: { method?: string; body?: Row; entry?: string; key?: string; expect?: number | number[]; base?: string } = {}) {
+async function api(token: string, route: string, init: { method?: string; body?: Row; entry?: string; key?: string; expect?: number | number[] } = {}) {
   const headers: Record<string, string> = { Authorization: 'Bearer ' + token };
   if (init.entry) headers['X-Assistant-Entry'] = init.entry;
   if (init.body !== undefined) headers['Content-Type'] = 'application/json';
   if (init.key) headers['Idempotency-Key'] = init.key;
-  const response = await fetch((init.base || base) + route, { method: init.method || (init.body !== undefined ? 'POST' : 'GET'), headers,
+  const response = await fetch(base + route, { method: init.method || (init.body !== undefined ? 'POST' : 'GET'), headers,
     body: init.body !== undefined ? JSON.stringify(init.body) : undefined, signal: AbortSignal.timeout(60000) });
   const data = await response.json().catch(() => ({})) as Row;
   const expected = init.expect ?? 200;
@@ -248,29 +245,42 @@ async function main() {
         and capability_name in ('web.search.v1','web.read.v1') and status='succeeded' order by step_seq`);
     assert.ok(webSteps.some(s => String(s.capability_name) === 'web.search.v1'),
       'The web turn must dispatch through the shared search factory, saw: ' + webSteps.map(s => String(s.capability_name)).join(','));
-    // Fail-closed composition: once an original page was retrieved, the answer
-    // must have registered a `w:` citation and every one must open with its quote.
-    const readPages = await tenantOne(sql`select coalesce(sum(jsonb_array_length(private_checkpoint->'pages')),0)::int n
-      from app.assistant_run_steps where enterprise_id=${eid} and run_id=${String(turn.run.id)}
+    // Fail-closed composition: this acceptance covers the COMPLETE web path —
+    // a successful search, at least one read original, a registered `w:`
+    // citation in the delivered answer and an openable citation carrying its
+    // original quote. A search-only / unreadable-page result is recorded as a
+    // degraded outcome and must NOT be counted as the complete path passing.
+    const readPages = await tenantOne(sql`select coalesce(sum(jsonb_array_length(private_checkpoint->'pages')),0)::int n,
+      count(*)::int steps from app.assistant_run_steps where enterprise_id=${eid} and run_id=${String(turn.run.id)}
         and capability_name='web.read.v1' and status='succeeded'`);
+    const readStepCount = Number(readPages!.steps), pageCount = Number(readPages!.n);
+    const completePathCovered = readStepCount > 0 && pageCount > 0;
     const webTurn: Row = { group: 'C', question, runId: String(turn.run.id), status: String(turn.run.status),
       errorCode: turn.run.error_code || null, runtime: executorOf(turn.run), binding: bindingOf(turn.run),
       webSteps: webSteps.map(s => ({ stepSeq: Number(s.step_seq), capability: String(s.capability_name) })),
-      readPages: Number(readPages!.n), webCitations: turn.webCitations,
+      readSteps: readStepCount, readPages: pageCount, completePathCovered, webCitations: turn.webCitations,
       answerText: turn.answerText.slice(0, 600),
       providerAttempts: (turn.attempts as Row[]).map(a => ({ id: String(a.id), remoteModel: String(a.remote_model), status: String(a.status) })) };
-    if (Number(readPages!.n) > 0) {
-      assert.ok(webTurn.webCitations && (webTurn.webCitations as Row[]).length > 0,
-        'Retrieved web originals require a registered w: citation in the delivered answer');
-      for (const citation of webTurn.webCitations as Row[]) {
-        assert.equal(citation.available, true, 'Web citation must open: ' + String(citation.citationId));
-        assert.equal(citation.hasQuote, true, 'Web citation must carry its original quote: ' + String(citation.citationId));
-      }
-    }
     ((report.chat as Row).turns as Row[]).push(webTurn);
     report.webTurn = webTurn;
-    return { runId: String(turn.run.id), webSteps: webTurn.webSteps, readPages: webTurn.readPages,
-      webCitations: (webTurn.webCitations as Row[] | undefined)?.length ?? 0 };
+    if (!completePathCovered) {
+      // Degraded path: the answer may honestly say the page was not obtained,
+      // but it may never fabricate a web citation, and this round does not
+      // count the complete link as covered.
+      assert.equal((webTurn.webCitations as Row[]).length, 0,
+        'A search-only turn must not carry a web citation');
+      assert.ok(String(webTurn.answerText).trim().length > 10, 'A degraded answer must still explain the outcome');
+      assert.fail('Complete web path not covered: readSteps=' + readStepCount + ', readPages=' + pageCount
+        + '; search-only results are recorded as degraded, not complete');
+    }
+    assert.ok((webTurn.webCitations as Row[]).length > 0,
+      'Retrieved web originals require a registered w: citation in the delivered answer');
+    for (const citation of webTurn.webCitations as Row[]) {
+      assert.equal(citation.available, true, 'Web citation must open: ' + String(citation.citationId));
+      assert.equal(citation.hasQuote, true, 'Web citation must carry its original quote: ' + String(citation.citationId));
+    }
+    return { runId: String(turn.run.id), webSteps: webTurn.webSteps, readSteps: readStepCount, readPages: pageCount,
+      completePathCovered, webCitations: (webTurn.webCitations as Row[] | undefined)?.length ?? 0 };
   });
 
   await step('native-mode FastGPT audit criteria', async () => {
