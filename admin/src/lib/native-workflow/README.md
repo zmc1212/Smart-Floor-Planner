@@ -763,8 +763,8 @@ through its own `option()` helper and is unchanged. Targeted test:
 `npx tsx --test src/lib/native-workflow/__tests__/period-cli.test.ts` → 11/11
 pass.
 
-Tests: the documented offline native-workflow command (the 23-file list below)
-runs 270 tests, all 270 pass with 0 fail; the weekly additions cover the
+Tests: at B5.4 time the documented offline native-workflow command (the list
+below, now 25 files) ran 270 tests, all 270 passed with 0 fail; the weekly additions cover the
 Monday-to-Monday conversion, partial/cross-week/non-Monday rejection,
 trusted-now ended checks, daily compatibility, weekly port
 enqueue/idempotency, weekly status kind/boundary checks and the CLI window
@@ -799,12 +799,18 @@ Mini Program source change is added.
   marked fixture through `ensureFollowupBinding`. There is no project-scoped
   worker binding; the customer keeps binding `1`.
 - CLI: `--receiver-kind customer|worker` (default `customer`) and
-  `--worker-id`. Validation runs before the database target/connection with
-  `receiver_kind_missing`, `receiver_kind_invalid`, `worker_id_missing`,
-  `worker_id_invalid`, `worker_id_forbidden` and
-  `worker_receiver_unavailable`. `--admin-id` stays the management executor, the
-  worker is only the receiver, and evidence queries use the receipt
-  reportId/binding so they never pick up the same-period customer report.
+  `--worker-id`. Pure argument checks (`receiver_kind_missing`,
+  `receiver_kind_invalid`, `worker_id_missing`, `worker_id_invalid`,
+  `worker_id_forbidden`) run before the database target is resolved or any
+  connection is opened. After connecting, `worker_receiver_unavailable` checks
+  the worker account, project membership and current staff followup access
+  before the first business write. Management-executor authorization, the
+  ended-period check and the published definition/execution-target checks also
+  run before that first business write. `ensureFollowupBinding()` is the last
+  step inside that transaction, after those read-only checks. `--admin-id`
+  stays the management executor, the worker is only the receiver, and evidence
+  queries use the receipt reportId/binding so they never pick up the
+  same-period customer report.
 
 Recorded B evidence (2026-11-11, isolated B database, week 2026-10-26 →
 2026-11-02): enterprise `1454`, project `1454000004`, worker admin/base user
@@ -815,8 +821,9 @@ generation created report `8`/revision `1`/facts run `14`/body run `15`/message
 the existing formula has no projectId; binding `2` and
 `policy_snapshot.scope.project_ids=['1454000004']` keep them distinct. Facts
 records are `[2,4,3]`: customer records `2` and `3` plus the marked internal
-record `4` `[B5.5] 内部巡检记录` (worker author, owner approver, photo media `3`,
-16804-byte JPEG) aligned to 2026-10-28 inside the week. Counters moved
+record `4` `[B5.5] 内部巡检记录` (worker author; edited and published by the
+management executor with management permission (owner/manager); photo media
+`3`, 16804-byte JPEG) aligned to 2026-10-28 inside the week. Counters moved
 reports/versions/jobs/runs/attempts/usage/report messages/deliveries
 `7/7/13/13/4/4/7/7` → `8/8/15/15/5/5/8/8`; the same-period replay with a new
 workflow runId reused report `8`/r1/facts run `14` and the same delivery with
@@ -828,7 +835,9 @@ Staff read and native UI: the staff token (base user `1454000008`, mode
 `staff`, `staffId` `1454000008`, `construction_staff`) lists binding `2` and
 report `8`, opens the weekly detail (`composed`/`delivered`) with record `4` and
 its photo, and re-enters the same report `8`/r1. Stable DevTools passed 8/8
-checks: the staff entry auto-opens the worker binding and the weekly card
+checks under temporarily rebuilt readable conditions (audit `125` was
+snapshotted, temporarily removed, then re-inserted and read back): the staff
+entry auto-opens the worker binding and the weekly card
 `10月26日 · 施工周报` (period `10月26日 00:00—11月2日 00:00`); the detail shows
 report `8`/r1 `本周记录` with records `2`/`4`/`3` and their original links;
 record `4` v3 + photo, record `2` v3 + photo, record `3` v3 without photo;
@@ -852,14 +861,38 @@ the real delivery read receipt (`read_at` null → `2026-11-11T13:33:20.385Z`).
   stays `completed` while `customer_access=false`, becomes `unavailable` after
   revocation and stays `unavailable` (`source_unavailable`) after restoration.
   The Admin page adds a `接收人` item while keeping `业务周期`/`业务日期`.
-- Evidence ordering: the acceptance driver executed the real member revocation
-  before the separate native UI phase. To verify the required pre-revocation
-  native ordering without a second model generation, the single real revocation
-  audit row `125` was snapshotted, temporarily removed, the staff UI was driven,
-  and the exact row was re-inserted and read back; the report then returned to
-  `available:false`/`source_unavailable`. Audits `125`/`126` remain in the
-  database. This is a controlled temporary audit suspension with exact
-  restoration, not a normal user operation.
+- B5.5 evidence is classified; it is not one normally executed, continuous
+  lifecycle.
+  - (i) Existing fresh/replay/model evidence: the fresh run created report
+    `8`/revision `1`/facts run `14`/body run `15`; the new-runId replay reused
+    the same report/facts run/delivery with every counter unchanged; the body
+    used one succeeded `llm-settings-override` attempt.
+  - (ii) Existing API evidence of real member revocation and restoration: audit
+    `125` (`active=false`) hid binding `2` and made detail/record/media 404;
+    audit `126` restored the member, while the old weekly report stayed
+    `available:false`/`source_unavailable` and did not resurrect (customer
+    report `7` stayed available).
+  - (iii) Positive native UI display evidence with a temporary condition: the
+    previously reported native 8/8 is positive display evidence under
+    temporarily rebuilt readable conditions. Audit `125` was snapshotted,
+    temporarily removed, the staff UI driven, and the exact row re-inserted and
+    read back; the report then returned to
+    `available:false`/`source_unavailable`. This is a controlled temporary
+    audit suspension with exact restoration, not a normal user operation.
+  - (iv) Native unavailable-state evidence with audits `125`/`126` left intact
+    is recorded in the closeout paragraph below: the staff entry, list refresh
+    and exit/re-entry stayed on the unavailable card, the detail controller
+    returned only `available:false`, record/media stayed `404`, and no report,
+    task, model call or counter changed.
+- The minimal later acceptance boundary is fixed only as an order: positive
+  API/native UI/re-entry → real revocation → negative API/native UI → restore
+  member → old report still unavailable. This round fixes only that order and
+  does not re-run fresh model generation. Operationally,
+  `native-workflow-worker-report-acceptance.ts --hold-after-positive` writes a
+  checkpoint after the positive API reads and waits up to 30 minutes for
+  `<outputDir>/positive-ui-done`; create that marker after the positive native
+  UI/re-entry pass so the same in-memory run continues into the real revocation
+  without a second generation.
 - Environment: the already-open Stable DevTools window is the main-workspace
   checkout `G:\workspace\向总\Smart-Floor-Planner\miniprogram` of the same app
   (appId `wxa7728432f59779d1`), not this worktree path; no window was closed,
@@ -872,10 +905,44 @@ the real delivery read receipt (`read_at` null → `2026-11-11T13:33:20.385Z`).
   (fresh/replay/model/API/permissions) and `.../native-ui/native-worker.json`
   plus 5 screenshots in the same folder.
 
-Tests: the same documented 23-file offline command runs 270 tests, all 270 pass
-with 0 fail; `period-report-ports.test.ts` is 28/28,
+<!-- B5.5-CLOSEOUT-EVIDENCE -->
+B5.5 closeout evidence with audits `125`/`126` untouched (2026-11-11): the
+staff entry was freshly compiled (Stable `2.02.2608080`, base `3.17.2`,
+`390x844`, automator port `9420`) and opened against the worktree B API on
+`127.0.0.1:3018`; only the Mini Program's external API origin was rewritten in
+memory and restored afterwards. The entry auto-opened binding `2`; report `8`
+appeared only as the unavailable card `这份简报已不可用` /
+`来源或权限已变化` (`available:false`, no projects), and both an explicit list
+refresh and exit/re-entry returned the same card. Entering through the existing
+detail controller returned only `available:false` with no body, projects,
+original records or photo paths; record `4` and media `3` stayed `404`. The
+independent construction project entry still returned `200` under the active
+worker's own permission, so this is not a blanket record lockout. Before and
+after the check, `assistant_conversations`/`construction_followup_bindings`/
+`assistant_participants` stayed `4/2/3`, reports/versions/jobs/runs/attempts/
+usage/report messages/deliveries stayed `8/8/15/15/5/5/8/8`, delivery `read_at`
+stayed `2026-11-11T13:33:20.385056+00:00`, audit `125` (`active=false`) and
+`126` (`active=true`) stayed present, and the worker member stayed active. No
+report, task, model call or message was created. Evidence:
+`admin/tmp/b5-5-closeout/native-unavailable.json` (9/9 checks) plus
+`unavailable-card.png`, `unavailable-detail.png` and `unavailable-reentry.png`.
+
+Real CLI ordering check on the same B database (no worker binding was deleted):
+an observer executor (`1454000009`) and an unavailable executor (`1454099999`)
+were rejected with `construction_forbidden`, and the unfinished week
+`2026-11-09` → `2026-11-16` with `period_not_ended`. The three tables stayed
+`4/2/3` and reports/jobs/runs/attempts/usage/messages/deliveries stayed
+`8/15/15/5/5/22/8`; no enqueue ran.
+
+Tests: the documented offline command now lists 25 files and runs 279 tests,
+all 279 pass with 0 fail. The focused four-file command (worker-receiver,
+worker-fixture, period-report ports, period CLI) is 52/52; the new
+`worker-receiver.test.ts` is 4/4 and `worker-fixture.test.ts` is 5/5.
+`period-report-ports.test.ts` is 28/28,
 `period-report-status(-reentry).test.ts` 45/45, `period-cli.test.ts` 15/15, and
 `live-integration` plus guards 6/6 with the B live case skipped without URLs.
+The Mini Program `assistant-followups.test.js` is 26/26 including the new
+"later unavailable read clears the loaded body, projects and original" case.
 The 4 strict-opt-in live route cases were not run this round. `npm run build`
 still prints "Compiled successfully" and then exits 1 at the pre-existing
 `scripts/fastgpt/setup-unified.mts:113:75` type error; this is not a full build
@@ -889,7 +956,7 @@ migrations remain out of scope.
 From `admin/` (no database, no Worker, no model):
 
 ```powershell
-npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts src/lib/native-workflow/__tests__/acceptance-store.test.ts src/lib/native-workflow/__tests__/acceptance-conversation.test.ts src/lib/native-workflow/__tests__/acceptance-state.test.ts src/lib/native-workflow/__tests__/period-report-ports.test.ts src/lib/native-workflow/__tests__/report-model-evidence.test.ts src/lib/native-workflow/__tests__/period-report-status.test.ts src/lib/native-workflow/__tests__/period-report-status-reentry.test.ts src/lib/native-workflow/__tests__/admin-run-status.test.ts src/lib/native-workflow/__tests__/period-report-status-route.test.ts src/lib/native-workflow/__tests__/period-report-status-route-guards.test.ts src/lib/native-workflow/__tests__/period-event-weekly.test.ts src/lib/native-workflow/__tests__/period-cli.test.ts
+npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts src/lib/native-workflow/__tests__/acceptance-store.test.ts src/lib/native-workflow/__tests__/acceptance-conversation.test.ts src/lib/native-workflow/__tests__/acceptance-state.test.ts src/lib/native-workflow/__tests__/period-report-ports.test.ts src/lib/native-workflow/__tests__/report-model-evidence.test.ts src/lib/native-workflow/__tests__/period-report-status.test.ts src/lib/native-workflow/__tests__/period-report-status-reentry.test.ts src/lib/native-workflow/__tests__/admin-run-status.test.ts src/lib/native-workflow/__tests__/period-report-status-route.test.ts src/lib/native-workflow/__tests__/period-report-status-route-guards.test.ts src/lib/native-workflow/__tests__/period-event-weekly.test.ts src/lib/native-workflow/__tests__/period-cli.test.ts src/lib/native-workflow/__tests__/worker-receiver.test.ts src/lib/native-workflow/__tests__/worker-fixture.test.ts
 npx tsx src/lib/native-workflow/playground/simulate.ts
 ```
 

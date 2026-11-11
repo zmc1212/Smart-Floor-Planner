@@ -22,6 +22,10 @@ import {
   describeB4DatabaseTarget,
   resolveB4DatabaseTarget,
 } from '@/lib/native-workflow/live/dev-config';
+import {
+  parseContextVersion,
+  prepareWorkerUser,
+} from '@/lib/native-workflow/live/worker-fixture';
 
 const ENTERPRISE_ID = '1454';
 const PROJECT_ID = '1454000004';
@@ -128,6 +132,7 @@ async function main(): Promise<void> {
     }
 
     let linkChange = 'unchanged';
+    let preparedContextVersion: number | null = null;
     await client.query('begin');
     try {
       // Lock the admin row so a concurrent foreign link cannot appear between
@@ -141,14 +146,14 @@ async function main(): Promise<void> {
         fail(`admin_users.user_id became foreign (${locked.user_id}); rolled back without changes`);
       }
 
-      await client.query(
-        `insert into app.users(id,enterprise_id,username,nickname,role,phone,context_version)
-         overriding system value
-         values($1::bigint,$2::bigint,$3,$4,'user',$5,1)
-         on conflict(id) do update set enterprise_id=excluded.enterprise_id,username=excluded.username,
-           nickname=excluded.nickname,role='user',phone=excluded.phone,context_version=1,updated_at=now()`,
-        [WORKER_USER_ID, ENTERPRISE_ID, WORKER_USERNAME, WORKER_NICKNAME, WORKER_PHONE],
-      );
+      const prepared = await prepareWorkerUser(client, {
+        userId: WORKER_USER_ID,
+        enterpriseId: ENTERPRISE_ID,
+        username: WORKER_USERNAME,
+        nickname: WORKER_NICKNAME,
+        phone: WORKER_PHONE,
+      });
+      preparedContextVersion = prepared.contextVersion;
 
       if (locked.user_id === null) {
         await client.query(
@@ -188,14 +193,23 @@ async function main(): Promise<void> {
       [ENTERPRISE_ID, `admin:${WORKER_ADMIN_ID}`],
     )).rows;
 
+    if (preparedContextVersion === null) {
+      fail('base user was not prepared before the fixture read-back');
+    }
     if (!user
       || String(user.id) !== WORKER_USER_ID
       || user.username !== WORKER_USERNAME
       || user.nickname !== WORKER_NICKNAME
       || user.role !== 'user'
-      || rowText(user.phone) !== WORKER_PHONE
-      || Number(user.context_version) !== 1) {
+      || rowText(user.phone) !== WORKER_PHONE) {
       fail('base user read-back mismatch after the fixture write');
+    }
+    const readBackContextVersion = parseContextVersion(
+      user.context_version,
+      `app.users ${WORKER_USER_ID} context_version after the fixture write`,
+    );
+    if (readBackContextVersion !== preparedContextVersion) {
+      fail('base user context_version read-back mismatch after the fixture write');
     }
     if (!linkedAdmin || linkedAdmin.user_id !== WORKER_USER_ID) {
       fail('admin_users.user_id read-back mismatch after the fixture write');
@@ -227,7 +241,7 @@ async function main(): Promise<void> {
         nickname: user.nickname,
         role: user.role,
         phone: rowText(user.phone),
-        contextVersion: Number(user.context_version),
+        contextVersion: readBackContextVersion,
       },
       workerMember: {
         enterpriseId: rowText(member.enterprise_id),

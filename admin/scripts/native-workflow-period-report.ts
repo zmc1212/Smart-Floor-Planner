@@ -28,7 +28,7 @@ import { sql } from 'drizzle-orm';
 import { one } from '@/db/repositories/assistant-repository';
 import { withTenantTransaction } from '@/db/transaction';
 import type { ConstructionActor } from '@/lib/construction/contracts';
-import { ensureFollowupBinding } from '@/lib/construction/report-store';
+import { WorkflowOperationError } from '@/lib/native-workflow/errors';
 import { createFileWorkflowStore, resolveNativeWorkflowStoreDir } from '@/lib/native-workflow/store/file-store';
 import { createWorkflowService, type NativeWorkflowTemplateId } from '@/lib/native-workflow/service';
 import {
@@ -40,6 +40,10 @@ import { runPublishedLive } from '@/lib/native-workflow/live/runner';
 import { createFileWorkflowRunStore } from '@/lib/native-workflow/live/run-store';
 import { createPeriodReportPorts } from '@/lib/native-workflow/live/period-report-ports';
 import { parseFixedPeriod } from '@/lib/native-workflow/live/period-event';
+import {
+  prepareWorkerPeriodReport,
+  type WorkerReceiverEvidence,
+} from '@/lib/native-workflow/live/worker-receiver';
 import {
   parsePeriodKind,
   parseReceiverArg,
@@ -254,68 +258,6 @@ async function evidence(
   });
 }
 
-/**
- * Validate the host-selected worker receiver with read-only queries, then
- * ensure the existing enterprise-scoped staff followup binding. The worker is
- * the receiver; `--admin-id` remains the management executor.
- */
-async function prepareWorkerReceiver(workerId: string, projectId: string): Promise<Record<string, unknown>> {
-  return withTenantTransaction(enterpriseId, async (tx) => {
-    const admin = await one(tx, sql`select id,role,status,must_change_password
-      from app.admin_users where enterprise_id=${enterpriseId} and id=${workerId} for share`);
-    if (!admin) {
-      failJson({ code: 'worker_receiver_unavailable', error: `worker admin ${workerId} was not found in enterprise ${enterpriseId}` });
-    }
-    if (String(admin.status) !== 'active' || String(admin.role) !== 'construction_staff' || admin.must_change_password !== false) {
-      failJson({
-        code: 'worker_receiver_unavailable',
-        error: `worker admin ${workerId} must be an active construction_staff account without a required password change`,
-        admin: {
-          status: admin.status,
-          role: admin.role,
-          mustChangePassword: admin.must_change_password,
-        },
-      });
-    }
-    const member = await one(tx, sql`select role,active from app.construction_members
-      where enterprise_id=${enterpriseId} and project_id=${projectId} and admin_id=${workerId} for share`);
-    if (!member || member.active !== true || String(member.role) === 'observer') {
-      failJson({
-        code: 'worker_receiver_unavailable',
-        error: `worker admin ${workerId} needs an active non-observer member row on project ${projectId}`,
-        member: member ?? null,
-      });
-    }
-    const access = await one(tx, sql`select app.construction_followup_staff_access(
-      ${workerId}::bigint,${enterpriseId}::bigint) as role`);
-    if (!access?.role) {
-      failJson({
-        code: 'worker_receiver_unavailable',
-        error: `worker admin ${workerId} has no current staff followup access in enterprise ${enterpriseId}`,
-      });
-    }
-    // Only the existing enterprise-scoped worker binding is allowed. A
-    // project-scoped worker binding would violate the binding contract.
-    const binding = await ensureFollowupBinding(tx, enterpriseId, {
-      kind: 'admin',
-      id: workerId,
-      audience: 'worker',
-    });
-    return {
-      adminId: workerId,
-      adminRole: String(admin.role),
-      memberRole: String(member.role),
-      accessRole: String(access.role),
-      bindingId: String(binding.id),
-      conversationId: String(binding.conversation_id),
-      principalKey: String(binding.principal_key),
-      scopeKey: String(binding.scope_key),
-      projectId: binding.project_id === null ? null : String(binding.project_id),
-      status: String(binding.status),
-    };
-  });
-}
-
 async function main() {
   if (showRun) {
     const record = await runStore.get(showRun);
@@ -338,13 +280,6 @@ async function main() {
   const bound = target;
   if (!bound) failJson({ error: 'a period target is required' });
 
-  // The worker receiver is validated and bound with read-only/staff-binding
-  // queries before the published run can enqueue anything.
-  const worker = receiver.kind === 'worker' && workerId
-    ? await prepareWorkerReceiver(workerId, projectId)
-    : null;
-
-  const version = await resolvePublished(bound.definitionId);
   const actor: ConstructionActor = { enterpriseId, adminId };
   const event: TriggerEvent = {
     eventId: bound.eventId,
@@ -354,7 +289,42 @@ async function main() {
     periodStart: bound.periodStart,
     periodEnd: bound.periodEnd,
   };
-  const period = parseFixedPeriod(event);
+
+  // Both receivers must pass the trusted-clock period-end check before the
+  // published definition/target is resolved, and long before anything writes.
+  let period = parseFixedPeriod(event);
+
+  const version = await resolvePublished(bound.definitionId);
+
+  // The worker receiver is authorized and bound last: management access,
+  // staff availability, then the enterprise-scoped binding create. A rejected
+  // executor leaves no conversation/binding/participant behind.
+  let worker: WorkerReceiverEvidence | null = null;
+  if (receiver.kind === 'worker' && workerId) {
+    try {
+      const prepared = await prepareWorkerPeriodReport({
+        enterpriseId,
+        actor,
+        projectId,
+        workerId,
+        event,
+      });
+      period = prepared.period;
+      worker = prepared.worker;
+    } catch (error) {
+      if (error instanceof WorkflowOperationError && error.code === 'worker_receiver_unavailable') {
+        failJson({
+          code: error.code,
+          error: error.message,
+          ...(error.details && typeof error.details === 'object'
+            ? error.details as Record<string, unknown>
+            : {}),
+        });
+      }
+      throw error;
+    }
+  }
+
   const businessEvent: LiveBusinessEvent = {
     outboxEventId: null,
     progressRevision: 0,
@@ -407,8 +377,10 @@ async function main() {
 }
 
 main().catch((error) => {
+  const code = error instanceof WorkflowOperationError ? error.code : undefined;
   console.error(JSON.stringify({
     success: false,
+    ...(code ? { code } : {}),
     error: error instanceof Error ? error.message : String(error),
   }));
   process.exitCode = 1;

@@ -18,6 +18,11 @@
  *   $env:CRON_SECRET='<development worker secret>'
  *   npx tsx scripts/native-workflow-worker-report-acceptance.ts --development
  *
+ * Stage boundary for future runs: add `--hold-after-positive` to stop after the
+ * positive API reads. The process waits for `<outputDir>/positive-ui-done` so
+ * the positive native UI/re-entry pass finishes before the real member
+ * revocation. That marker is not used by the current recorded evidence.
+ *
  * MAIN_LIVE_DATABASE_URL is only needed when B has no enabled
  * `llm-settings-override` provider and platform LLM override yet.
  *
@@ -38,6 +43,7 @@ import {
 } from '@/lib/native-workflow/live/dev-config';
 import { parseFixedPeriod } from '@/lib/native-workflow/live/period-event';
 import { addCalendarDays, resolveCliPeriod, type PeriodCliKind } from '@/lib/native-workflow/live/period-cli';
+import { parseContextVersion } from '@/lib/native-workflow/live/worker-fixture';
 import {
   agentSettingsSnapshot,
   reportPlanSnapshot,
@@ -115,6 +121,8 @@ let fixtureUrl = '';
 let mainUrl = '';
 let appPool: pg.Pool | null = null;
 let fixturePool: pg.Pool | null = null;
+/** Explicit stage boundary: finish positive native UI before real revocation. */
+const holdAfterPositive = process.argv.includes('--hold-after-positive');
 
 interface InternalRecordResult {
   recordId: string;
@@ -132,6 +140,8 @@ interface AcceptanceState {
   memberActiveBefore: boolean | null;
   memberActiveChanged: boolean;
   fixtureReady: boolean;
+  /** Current legitimate base-user identity version, read back from the DB. */
+  workerContextVersion: number;
   workerServer: http.Server | null;
   workerProcess: ChildProcess | null;
   record: InternalRecordResult | null;
@@ -155,6 +165,7 @@ const state: AcceptanceState = {
   memberActiveBefore: null,
   memberActiveChanged: false,
   fixtureReady: false,
+  workerContextVersion: 0,
   workerServer: null,
   workerProcess: null,
   record: null,
@@ -180,6 +191,13 @@ const evidence: Record<string, unknown> = {
   workerAdminId: WORKER_ADMIN_ID,
   workerUserId: WORKER_USER_ID,
   paths: { outputDir, storeDir, runDir },
+  phaseOrder: [
+    'positive-api-ui-reentry',
+    'member-revoke',
+    'negative-api-native-ui',
+    'member-restore',
+    'historical-unavailable',
+  ],
   checks: [],
   failures: [],
   providerCalls: {},
@@ -384,9 +402,19 @@ async function preflight(pool: pg.Pool): Promise<void> {
   const workerUserRow = workerUser.rows[0];
   if (!workerUserRow
     || workerUserRow.username !== WORKER_USERNAME
-    || workerUserRow.role !== 'user'
-    || Number(workerUserRow.context_version) !== 1) {
+    || workerUserRow.role !== 'user') {
     fail('fixture worker base user mismatch; run the B5.5 worker fixture first');
+  }
+  try {
+    // The base user may legitimately be at any positive identity version; the
+    // acceptance issues its token with the version it just read back instead of
+    // forcing or rolling the fixture user back to 1.
+    state.workerContextVersion = parseContextVersion(
+      workerUserRow.context_version,
+      'worker base user context_version',
+    );
+  } catch (error) {
+    fail(messageOf(error));
   }
 
   const member = await pool.query(
@@ -959,11 +987,11 @@ interface CustomerReportState {
 
 async function workerSession(): Promise<ApiSession> {
   const { signMiniProgramToken } = await import('@/lib/miniprogram-jwt');
-  const contextVersion = Number((await fixture().query(
+  const contextVersion = parseContextVersion((await fixture().query(
     'select context_version from app.users where id=$1::bigint',
     [WORKER_USER_ID],
-  )).rows[0]?.context_version);
-  if (contextVersion !== 1) fail('the worker base user context_version must be 1');
+  )).rows[0]?.context_version, 'worker base user context_version');
+  state.workerContextVersion = contextVersion;
   const token = await signMiniProgramToken({
     sub: WORKER_USER_ID,
     id: WORKER_USER_ID,
@@ -1120,6 +1148,43 @@ async function readWorkerStatus(runId: string): Promise<Record<string, unknown>>
     runId,
     viewer: { enterpriseId: ENTERPRISE_ID, adminId: EXECUTOR_ADMIN_ID },
   }) as unknown as Record<string, unknown>;
+}
+
+/**
+ * Minimum stage boundary for a future acceptance run.
+ *
+ * Positive API/native UI/re-entry finishes first; the process then waits for
+ * `outputDir/positive-ui-done` before the real member revocation. It keeps the
+ * existing in-memory snapshots, report/version and counters, so no second
+ * generation or replay is needed to reach the negative phase.
+ */
+async function holdForPositiveUi(): Promise<void> {
+  const marker = path.join(outputDir, 'positive-ui-done');
+  fs.rmSync(marker, { force: true });
+  const checkpoint = {
+    stage: 'positive-complete',
+    marker,
+    reportId: state.result.reportId,
+    revision: state.result.revision,
+    bindingId: state.result.bindingId,
+    conversationId: state.result.conversationId,
+    recordId: state.record?.recordId ?? null,
+    mediaId: state.record?.mediaId ?? null,
+    waitingFor: 'native positive UI refresh/enter/exit/re-enter',
+    startedAt: new Date().toISOString(),
+  };
+  evidence.checkpoint = checkpoint;
+  save();
+  console.log(JSON.stringify({ paused: true, checkpoint }, null, 2));
+  const deadline = Date.now() + 30 * 60_000;
+  while (!fs.existsSync(marker)) {
+    if (Date.now() > deadline) {
+      fail('the positive native UI checkpoint was not released within 30 minutes');
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  evidence.checkpoint = { ...checkpoint, releasedAt: new Date().toISOString() };
+  save();
 }
 
 async function runAcceptance(): Promise<void> {
@@ -1598,6 +1663,11 @@ async function runAcceptance(): Promise<void> {
   check('customer_access restored after the worker read', true, {
     customerAccess: customerAccessBack.customer_access,
   });
+
+  // Stage boundary: the positive API/native UI pass must complete before the
+  // real member revocation starts. The driver keeps its snapshots and waits for
+  // the operator marker instead of replaying or regenerating the report.
+  if (holdAfterPositive) await holdForPositiveUi();
 
   // Member revocation through the existing construction service. The revoke
   // audit is what keeps the saved worker report historically unavailable.

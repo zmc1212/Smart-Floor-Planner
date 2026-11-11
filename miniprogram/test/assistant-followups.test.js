@@ -247,6 +247,28 @@ test('live source withdrawal replaces content instead of returning cached names 
   await f.controller.sync(); assert.equal(f.controller.state.followupDetail.available, false);
   assert.ok(!JSON.stringify(f.controller.state.followupDetail).includes('底盒位置')); f.controller.hide();
 });
+test('a later unavailable detail read clears the loaded body, projects and open original', async () => {
+  const f = fixture();
+  f.report.contentStatus = 'composed';
+  f.report.body = [{ projectId: '248', standards: [{ key: 's1', text: '已加载的正文依据' }],
+    guidance: [{ key: 'g1', text: '已加载的正文建议' }], knowledgeSources: [] }];
+  f.intercept(c => c.path.endsWith('/records/12')
+    ? { id: '12', projectId: '248', version: 3, data: { completed: '原记录正文' }, media: [{ id: '61' }] } : undefined);
+  await f.controller.show(); await f.controller.select('27'); await f.controller.readReport('98', 1);
+  await f.controller.original('248', '12');
+  assert.equal(f.controller.state.followupDetail.projects[0].standards[0].text, '已加载的正文依据');
+  assert.equal(f.controller.state.followupDetail.projects[0].pending.at(-1).text, '已加载的正文建议');
+  assert.equal(f.controller.state.followupOriginal.id, '12');
+  f.intercept(c => c.path === '/followups/27/reports/98' ? { reportId: '98', revision: 1, available: false, facts: null } : undefined);
+  await f.controller.sync();
+  const { sourceContext, ...detail } = f.controller.state.followupDetail;
+  assert.equal(detail.available, false); assert.equal(detail.title, '这份简报已不可用');
+  assert.equal(detail.projects, undefined); assert.equal(detail.facts, undefined); assert.equal(detail.body, undefined);
+  assert.equal(f.controller.state.followupOriginal, null);
+  assert.ok(!JSON.stringify(detail).includes('合成测试·我家装修'));
+  assert.ok(!JSON.stringify(detail).includes('已加载的正文'));
+  assert.ok(!JSON.stringify(detail).includes('原记录正文')); f.controller.hide();
+});
 
 test('withdrawing one project clears its open original while the other report project stays readable', async () => {
   const f = fixture(); f.context.audience = 'boss';
