@@ -1044,13 +1044,51 @@ The body used exactly one succeeded `llm-settings-override` attempt
 The same-period replay with a new workflow runId reused report `10`/r1/facts run
 `18` and the same delivery with every counter unchanged.
 
+Report `9` attribution (read-only reconciliation, 2026-11-11): the increment
+from the B5.5 endpoint `reports/jobs/runs/attempts/usage` `8/15/15/5/5` to the
+pre-report-10 baseline `9/17/17/6/6` is report `9`, created by the preceding
+designer acceptance run `b5-6-designer-20261111151357297` (started
+`15:13:57.297Z`). Report `9` is `weekly` on binding `3`, designer
+`1454000011`, conversation `1454000009`, period `2026-11-02 -> 2026-11-09`
+(Shanghai), revision `1`, facts run `16`, body run `17`, delivery message `124`
+(`delivered` at `15:14:01.247Z`, read at `15:15:07.859Z`), facts records
+`[5,1]`, and one succeeded accepted `llm-settings-override` attempt `6` with
+observed usage `6` (`1192` input + `1425` output tokens). That run's own
+verification ended with failed checks: the facts job was already `succeeded`
+when the acceptance expected `queued` before starting its own Worker, and two
+negative assertions did not accept the CLI's stderr rejection envelope even
+though both calls exited `1` with `designer_receiver_unavailable`. The later
+journey re-ran the same negatives successfully. Report `9` is not a version or
+predecessor of report `10`: its week and `report_key` differ. Report `10` was
+used for B5.6 because the fixed week is `2026-10-26 -> 2026-11-02`; its
+`report_key` `24f5c6a8...` matches customer report `7`/worker report `8`, and
+its facts `[2,3]` are the fixed week's records.
+
+The report-10 acceptance `verification.json` itself ended `success:false` at
+`15:19:12.338Z` on the old assertion "the designer report facts do not contain
+the internal designer record": the driver had selected worker-authored record
+`4`, which the existing audit-125 rule excludes from designer facts. This is a
+driver selection/assertion failure, not a designer receiver block; the report
+`10` rows were real and delivered. The journey continuation re-read the same
+report with executor-authored record `2`.
+
+Provider preflight: all three B5.6 runs recorded `provider.copied:false`,
+`platformCopied:false` and `reused:true`. No MAIN fallback ran and no provider
+or platform row was written. The driver now only reads the B
+`llm-settings-override` provider and platform override, and fails with a clear
+error before binding/plan/agent mutation or report enqueue when either is
+missing or disabled; the separate B environment step owns provider/platform
+initialization.
+
 Journey (the same report, `journey.json`, 20/20 checks): the designer staff token
 lists binding `3`, opens the weekly detail (`composed`/`delivered`) with records
-`2`/`3`, opens the record `2` photo (media `2`) and record `3`, and writes a real
-read receipt (`read_at` `2026-11-11T15:28:01.585Z`). Exit/re-entry returns the
-same report/records/photo. The customer list contains only binding `1` and the
-worker list only binding `2`; both get 403/404 on the designer report and record,
-and a cross-enterprise designer token/status read is rejected (403/401).
+`2`/`3`, opens the record `2` photo (media `2`) and record `3`, and observes the
+real read receipt already written at `2026-11-11T15:28:01.585Z` (its
+acknowledge call returns the same `read_at`; the receipt predates the journey
+start). Exit/re-entry returns the same report/records/photo. The customer list
+contains only binding `1` and the worker list only binding `2`; both get 403/404
+on the designer report and record, and a cross-enterprise designer token/status
+read is rejected (403/401).
 `customer_access=false` does not block the designer detail/status; it was
 restored and read back. A designer without project membership and a
 `construction_staff` account used as the designer receiver are rejected with
@@ -1074,12 +1112,29 @@ appId, no window replaced; runtime-only API rewrite to the worktree B server on
 detail showed report `10`/r1 `composed` with records `2`/`3`; both originals
 opened by real taps (record `2` v3 with media `2`, path key `2_3_2`; record `3`
 v3 without a photo); opening the detail acknowledged the delivery; exit/re-entry
-returned the same card and read state (positive 7/7, screenshots). After the real
-revocation (audits `127`/`128` untouched) the entry, an explicit refresh and
-exit/re-entry showed the report only as an unavailable card, the detail stayed
-closed and no record/photo returned (negative 4/4). The designer first-entry
-guide was skipped by its normal `跳过` action before the chat route; that is a
-user action, not a data/audit change.
+returned the same card and read state (positive 7/7, screenshots). The designer
+first-entry guide was skipped by its normal `跳过` action before the chat route;
+that is a user action, not a data/audit change.
+
+Actual timeline of the report-10 evidence (from `journey.json`, the two native
+JSON files and audits `127`/`128`): the journey started at `15:30:19.858Z`;
+its positive hold opened at `15:32:03.350Z`; native positive 7/7 ran
+`15:32:10.113Z`–`15:33:02.660Z` and released the marker at `15:33:02.916Z`;
+audit `127` (`active=false`) was written at `15:33:02.936Z`; the negative API
+reads ran at `15:33:03.044Z` (binding hidden, detail/record `404`, status
+`unavailable`/`designer_membership_revoked`); the negative-UI hold opened at
+`15:33:03.062Z` and was released at `15:33:19.179Z`; audit `128`
+(`active=true`) restored the member at `15:33:19.191Z`; the journey read the
+post-restore historical state at `15:33:19.240Z` and finished at
+`15:33:19.325Z`. The native unavailable-state automation
+(`native-designer-negative.json`) started at `15:33:47.528Z`, i.e. after the
+restore. It showed the report only as an unavailable card, kept the detail
+closed and returned no record/photo (negative 4/4), but it proves the
+post-restore historical unavailability (`source_unavailable`), not the
+revoked-member native state. No native artifact exists inside the
+`15:33:03Z`–`15:33:19Z` revocation window, so the revocation-phase native UI
+remains unverified (Limited); the two `designer-revoked-*.png` screenshots
+belong to the post-restore phase.
 
 Evidence:
 `admin/tmp/b5-6-period-report-runs/b5-6-designer-20261111151733062/verification.json`
@@ -1090,8 +1145,10 @@ Evidence:
 `admin/scripts/native-workflow-designer-report-acceptance.ts` and
 `admin/tmp/b5-6-designer-journey.ts`.
 
-Tests: the documented offline command now lists 26 files and runs 304 tests,
-all 304 pass with 0 fail. `staff-receiver.test.ts` is 7/7 (workers, designers,
+Tests: the documented offline command now lists 27 files and runs 310 tests,
+all 310 pass with 0 fail. The new `acceptance-provider.test.ts` is 6/6 (missing
+or disabled B provider/platform fails before any copy or enqueue, and an
+enabled pair is reused). `staff-receiver.test.ts` is 7/7 (workers, designers,
 role/membership rejection and no-write assertions), `period-cli.test.ts` is
 17/17 (including `--designer-id` and unknown receiver kinds),
 `period-report-ports.test.ts` is 34/34 (designer scope/save/delivery and
@@ -1102,8 +1159,12 @@ reason. `npm run build` still prints "Compiled successfully" and then exits 1 at
 the pre-existing `scripts/fastgpt/setup-unified.mts:113:75` type error; the
 generated `source-manifest.json` change was reverted. Scope stays one
 project/one designer; boss and multi-project receivers, the scheduler, canvas,
-Worker changes and shared migrations remain out of scope. B5.5 worker evidence
-is unchanged and is not replaced by this designer evidence; the worker's
+Worker changes and shared migrations remain out of scope. B5.5 worker report
+`8`, audits `125`/`126` and their acceptance limits are unchanged and are not
+replaced by this designer evidence. The worker positive native 8/8 was obtained
+under a temporarily suspended audit `125`; this round neither re-ran nor
+reclassified it. The current read-back confirms the current rows only and does
+not prove the audit table was never different at earlier times; the worker's
 "complete continuous lifecycle not verified" limitation still stands.
 
 ## Reproduce
@@ -1111,7 +1172,7 @@ is unchanged and is not replaced by this designer evidence; the worker's
 From `admin/` (no database, no Worker, no model):
 
 ```powershell
-npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts src/lib/native-workflow/__tests__/acceptance-store.test.ts src/lib/native-workflow/__tests__/acceptance-conversation.test.ts src/lib/native-workflow/__tests__/acceptance-state.test.ts src/lib/native-workflow/__tests__/period-report-ports.test.ts src/lib/native-workflow/__tests__/report-model-evidence.test.ts src/lib/native-workflow/__tests__/period-report-status.test.ts src/lib/native-workflow/__tests__/period-report-status-reentry.test.ts src/lib/native-workflow/__tests__/admin-run-status.test.ts src/lib/native-workflow/__tests__/period-report-status-route.test.ts src/lib/native-workflow/__tests__/period-report-status-route-guards.test.ts src/lib/native-workflow/__tests__/period-event-weekly.test.ts src/lib/native-workflow/__tests__/period-cli.test.ts src/lib/native-workflow/__tests__/staff-receiver.test.ts src/lib/native-workflow/__tests__/worker-fixture.test.ts src/lib/native-workflow/__tests__/period-report-entry.test.ts
+npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts src/lib/native-workflow/__tests__/acceptance-store.test.ts src/lib/native-workflow/__tests__/acceptance-conversation.test.ts src/lib/native-workflow/__tests__/acceptance-state.test.ts src/lib/native-workflow/__tests__/acceptance-provider.test.ts src/lib/native-workflow/__tests__/period-report-ports.test.ts src/lib/native-workflow/__tests__/report-model-evidence.test.ts src/lib/native-workflow/__tests__/period-report-status.test.ts src/lib/native-workflow/__tests__/period-report-status-reentry.test.ts src/lib/native-workflow/__tests__/admin-run-status.test.ts src/lib/native-workflow/__tests__/period-report-status-route.test.ts src/lib/native-workflow/__tests__/period-report-status-route-guards.test.ts src/lib/native-workflow/__tests__/period-event-weekly.test.ts src/lib/native-workflow/__tests__/period-cli.test.ts src/lib/native-workflow/__tests__/staff-receiver.test.ts src/lib/native-workflow/__tests__/worker-fixture.test.ts src/lib/native-workflow/__tests__/period-report-entry.test.ts
 npx tsx src/lib/native-workflow/playground/simulate.ts
 ```
 

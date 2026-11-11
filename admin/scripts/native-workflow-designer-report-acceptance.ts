@@ -2,7 +2,7 @@
  *
  * Scope: one authorized B enterprise, one synthetic project, one designer
  * receiver (`admin_users` 1454000011) and one finished Shanghai week
- * 2026-11-02 -> 2026-11-09 with authorized raw construction records/photos.
+ * 2026-10-26 -> 2026-11-02 with authorized raw construction records/photos.
  * The period task is created by the B native workflow through the existing
  * report lifecycle; the real assistant Worker endpoint claims and processes it.
  * No model call is made by this process and no new message channel, table or
@@ -17,10 +17,13 @@
  *
  * Stage boundary: add `--hold-after-positive` to stop after the positive API
  * reads. The process waits for `<outputDir>/positive-ui-done` so the positive
- * native UI/re-entry pass finishes before the real member revocation.
+ * native UI/re-entry pass finishes before the real member revocation. Without
+ * this flag the native UI phases are not part of this run and must be evidenced
+ * separately; the evidence records that mode as `stagedNativeUi`.
  *
- * MAIN_LIVE_DATABASE_URL is only needed when B has no enabled
- * `llm-settings-override` provider and platform LLM override yet.
+ * The B `llm-settings-override` provider and platform LLM override must already
+ * be configured by the separate B environment setup. This driver only reads
+ * and reuses them; it never copies MAIN configuration.
  *
  * Evidence: tmp/b5-6-period-report-runs/<acceptanceId>/verification.json
  */
@@ -37,6 +40,11 @@ import {
   describeB4DatabaseTarget,
   resolveB4DatabaseTarget,
 } from '@/lib/native-workflow/live/dev-config';
+import {
+  evaluateAcceptanceProviderReadiness,
+  type AcceptancePlatformConfig,
+  type AcceptanceProviderRow,
+} from '@/lib/native-workflow/live/acceptance-provider';
 import { parseFixedPeriod } from '@/lib/native-workflow/live/period-event';
 import { resolveCliPeriod, type PeriodCliKind } from '@/lib/native-workflow/live/period-cli';
 import { parseContextVersion } from '@/lib/native-workflow/live/worker-fixture';
@@ -116,7 +124,6 @@ const runDir = path.resolve('tmp/b5-6-acceptance-runs', acceptanceId);
 
 let appUrl = '';
 let fixtureUrl = '';
-let mainUrl = '';
 let appPool: pg.Pool | null = null;
 let fixturePool: pg.Pool | null = null;
 /** Explicit stage boundary: finish positive native UI before real revocation. */
@@ -187,13 +194,17 @@ const evidence: Record<string, unknown> = {
   designerAdminId: DESIGNER_ADMIN_ID,
   designerUserId: DESIGNER_USER_ID,
   paths: { outputDir, storeDir, runDir },
-  phaseOrder: [
+  // Planned order only. Completion is recorded by the actual checks and by the
+  // separate journey/native evidence files; this array is never proof that a
+  // phase ran.
+  plannedPhaseOrder: [
     'positive-api-ui-reentry',
     'member-revoke',
     'negative-api-native-ui',
     'member-restore',
     'historical-unavailable',
   ],
+  stagedNativeUi: holdAfterPositive,
   checks: [],
   failures: [],
   providerCalls: {},
@@ -293,14 +304,15 @@ function assertCalendarDate(value: string): void {
 async function bootstrap(): Promise<void> {
   if (!process.argv.includes('--development')) fail('--development is required');
   if (process.env.NODE_ENV === 'production') fail('refusing to run in production');
-  if (!process.env.JWT_SECRET) fail('JWT_SECRET is required so copied provider credentials can be decrypted');
+  if (!process.env.JWT_SECRET) fail('JWT_SECRET is required so the B provider credentials can be decrypted');
   if (!process.env.CRON_SECRET) fail('CRON_SECRET is required for the real Worker endpoint');
-  mainUrl = process.env.MAIN_LIVE_DATABASE_URL?.trim() ?? '';
 
   assertCalendarDate(PERIOD_START);
   assertCalendarDate(PERIOD_END);
   const resolved = resolveCliPeriod({ kind: PERIOD_KIND, periodStart: PERIOD_START, periodEnd: PERIOD_END });
-  if (resolved.periodEnd !== PERIOD_END) fail('the fixed B5.6 week must be 2026-11-02 -> 2026-11-09');
+  if (resolved.periodEnd !== PERIOD_END) {
+    fail(`the fixed B5.6 week must be ${PERIOD_START} -> ${PERIOD_END}`);
+  }
   const event: TriggerEvent = {
     eventId: `${SCOPE}-${PERIOD_KIND}-${PERIOD_START}`,
     eventType: 'period_report',
@@ -509,81 +521,38 @@ async function preflight(pool: pg.Pool): Promise<void> {
 }
 
 async function ensureProvider(owner: pg.Pool): Promise<Record<string, unknown>> {
-  // A B tenant that already has an enabled development provider does not need
-  // the main database at all; only a missing/incomplete B setup copies from MAIN.
+  // Read-only reuse: the B provider/platform are initialized by the separate B
+  // environment setup step. This driver never copies MAIN configuration and
+  // never inserts or updates provider/platform rows. Missing or disabled
+  // configuration fails before any binding/plan/agent mutation or enqueue.
   const current = (await owner.query(
     "select id,key,enabled,adapter_type,base_url,api_key_masked from app.ai_provider_configs where key='llm-settings-override'",
-  )).rows[0];
+  )).rows[0] as AcceptanceProviderRow | undefined;
   const currentPlatform = (await owner.query(
     "select llm_config from app.platform_configs where key='default'",
-  )).rows[0]?.llm_config;
-  if (current?.enabled === true && currentPlatform?.enabled) {
-    return {
-      copied: false,
-      platformCopied: false,
-      reused: true,
-      provider: {
-        key: current.key,
-        adapter_type: current.adapter_type,
-        base_url: current.base_url,
-        api_key_masked: current.api_key_masked,
-      },
-      platform: {
-        enabled: currentPlatform.enabled,
-        providerKey: currentPlatform.providerKey,
-        model: currentPlatform.model,
-        apiKeyMasked: currentPlatform.apiKeyMasked,
-      },
-    };
-  }
-
-  const sourceUrl = mainUrl;
-  if (!sourceUrl) {
-    fail('MAIN_LIVE_DATABASE_URL is required because B has no enabled llm-settings-override provider/platform override');
-  }
-  const source = new pg.Pool({ connectionString: sourceUrl, max: 1 });
-  try {
-    const row = (await source.query(
-      `select key,name,adapter_type,base_url,api_key_encrypted,api_key_masked,credentials_encrypted,credentials_masked,
-        adapter_config,capabilities,model_mappings,priority,timeout_ms,enabled,cost_rules,operational_state
-       from app.ai_provider_configs where key='llm-settings-override'`,
-    )).rows[0];
-    if (!row) fail('the development chat provider was not found in MAIN_LIVE_DATABASE_URL');
-    const platform = (await source.query(
-      "select llm_config from app.platform_configs where key='default'",
-    )).rows[0]?.llm_config;
-    if (!platform?.enabled) fail('the development platform LLM override is not enabled');
-
-    if (!current) {
-      await owner.query(
-        `insert into app.ai_provider_configs(key,name,adapter_type,base_url,api_key_encrypted,api_key_masked,
-           credentials_encrypted,credentials_masked,adapter_config,capabilities,model_mappings,priority,timeout_ms,enabled,cost_rules,operational_state)
-         values($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb,$10,$11::jsonb,$12,$13,$14,$15::jsonb,$16::jsonb)`,
-        [row.key, row.name, row.adapter_type, row.base_url, row.api_key_encrypted, row.api_key_masked,
-          JSON.stringify(row.credentials_encrypted), JSON.stringify(row.credentials_masked), JSON.stringify(row.adapter_config),
-          row.capabilities, JSON.stringify(row.model_mappings), row.priority, row.timeout_ms, row.enabled,
-          JSON.stringify(row.cost_rules), JSON.stringify(row.operational_state)],
-      );
-    } else if (current.enabled !== true) {
-      fail('the B provider llm-settings-override exists but is disabled; remove or enable it before re-running');
-    }
-    if (!currentPlatform?.enabled) {
-      await owner.query(
-        `insert into app.platform_configs(key,llm_config) values('default',$1::jsonb)
-         on conflict(key) do update set llm_config=excluded.llm_config, updated_at=now()`,
-        [JSON.stringify(platform)],
-      );
-    }
-    return {
-      copied: !current,
-      platformCopied: !currentPlatform?.enabled,
-      reused: false,
-      provider: { key: row.key, adapter_type: row.adapter_type, base_url: row.base_url, api_key_masked: row.api_key_masked },
-      platform: { enabled: platform.enabled, providerKey: platform.providerKey, model: platform.model, apiKeyMasked: platform.apiKeyMasked },
-    };
-  } finally {
-    await source.end().catch(() => undefined);
-  }
+  )).rows[0]?.llm_config as AcceptancePlatformConfig | undefined;
+  const readiness = evaluateAcceptanceProviderReadiness({
+    provider: current ?? null,
+    platform: currentPlatform ?? null,
+  });
+  if (!readiness.ok) fail(readiness.error);
+  return {
+    copied: false,
+    platformCopied: false,
+    reused: true,
+    provider: {
+      key: readiness.provider.key,
+      adapter_type: readiness.provider.adapter_type,
+      base_url: readiness.provider.base_url,
+      api_key_masked: readiness.provider.api_key_masked,
+    },
+    platform: {
+      enabled: readiness.platform.enabled,
+      providerKey: readiness.platform.providerKey,
+      model: readiness.platform.model,
+      apiKeyMasked: readiness.platform.apiKeyMasked,
+    },
+  };
 }
 
 async function ensureAgentConfig(owner: pg.Pool): Promise<Record<string, unknown>> {
@@ -1229,17 +1198,19 @@ async function runAcceptance(): Promise<void> {
     customerReport: evidence.customerReport,
   });
 
+  const provider = await ensureProvider(pool);
+  evidence.provider = provider;
+  check('the B provider and platform are preconfigured and reused without a MAIN copy', true, provider);
+
   const binding = await ensureDesignerBinding();
   evidence.designerBinding = binding;
   check('enterprise-scoped designer binding ensured through the report service', true, binding);
 
   if (await hasDesignerReportForPeriod()) {
-    fail('fresh B5.6 acceptance requires a week without an existing designer report; 2026-10-26 already has one');
+    fail(`fresh B5.6 acceptance requires a week without an existing designer report; ${PERIOD_START} already has one`);
   }
   check('fresh designer period has no report yet', true, { periodStart: PERIOD_START, periodEnd: PERIOD_END });
 
-  const provider = await ensureProvider(pool);
-  evidence.provider = provider;
   const agentConfig = await ensureAgentConfig(pool);
   evidence.agentConfig = agentConfig;
 
