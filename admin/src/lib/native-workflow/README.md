@@ -310,7 +310,8 @@ name and conversation title before any reset/write; dedicated rows are cleaned
 only after marker ownership, and a failed preflight performs zero deletes.
 
 Checks: the original 77 non-database tests are retained and pass; the current
-native-workflow non-database suite is 90 tests, the shared construction suite
+native-workflow non-database suite is 96 tests (90 existing plus 6 new
+acceptance-store/acceptance-conversation tests), the shared construction suite
 is 89 tests, the real-adapter suite is 14 tests, and the offline entry guards
 are 6 tests. `live-integration.test.ts` no longer sets the opt-in itself:
 missing `B4_LIVE_DEVELOPMENT`, `B4_LIVE_DEVELOPMENT=0` and
@@ -323,57 +324,87 @@ integration lead should merge the current B4.3 status into A's latest plan
 without replacing A's newer progress, failures or unknown records.
 
 Out of scope this round: the formal engineering-acceptance event, the model
-compose branch, daily/weekly real integration, the native WeChat Mini Program
-UI, drag canvas, automatic scheduling, Worker changes, menus and shared
-migrations.
+compose branch, daily/weekly real integration, drag canvas, automatic
+scheduling, Worker changes, menus and shared migrations. B5.1 exercises the
+native Mini Program UI only for the customer stage-reminder loop above.
 
 ## B5.1 customer stage-reminder loop
 
-The fixed published `stage-reminder` revision 2 (digest
-`599ef7aeaca389bd82e243d5e68d6c4d9173e54783dc261d84a4fa95cbb2eff8`) was run
-through the existing `scripts/native-workflow-live.ts` dev entry with
-`--revision 2` against the B-isolated PostgreSQL on `127.0.0.1:55433`
-(enterprise 1454 labelled fixture). The reminder body stays authoritative to
-the host: an existing outbox event reuses `payload.text`, while a new event
-composes `stageReminder(project.name, stage, progress_note)` from the
-construction domain, so the message carries the project name, stage name, the
-stage visit reason, watch points and the manager's `现场补充：...` note.
-Enterprise knowledge stays off and no craft citation is invented.
+The acceptance publishes the current template into a dedicated per-run store
+(`admin/tmp/b5-1-acceptance-store/<runId>`) and runs it through the existing
+`scripts/native-workflow-live.ts` entry with `--revision 1` against the
+B-isolated PostgreSQL on `127.0.0.1:55433` (enterprise 1454 labelled fixture).
+The normal B management store (`admin/tmp/native-workflow-store`) is never
+opened: its published revision 2 (digest
+`599ef7aeaca389bd82e243d5e68d6c4d9173e54783dc261d84a4fa95cbb2eff8`) and any
+unpublished draft remain byte-identical, verified by a SHA-256/byte snapshot
+before and after. The dedicated store's fixed revision is 1 with digest
+`ab9813cbb6e6aac5c1572c67e975e45248f7411f0cb5f4d0f6243ee05ea78251`. The
+reminder body stays authoritative to the host: an existing outbox event reuses
+`payload.text`, while a new event composes
+`stageReminder(project.name, stage, progress_note)` from the construction
+domain, so the message carries the project name, stage name, the stage visit
+reason, watch points and the manager's `现场补充：...` note. Enterprise
+knowledge stays off and no craft citation is invented.
 
 - The original XiaoK customer entry was exercised with a real mini-program JWT
-  and the real `assistantHttp` handler: `POST /entry-context` with `leadId`,
-  `GET /conversations` with `X-Assistant-Entry`, `GET /conversations/{id}`,
-  `GET /conversations/{id}/messages` and its `?afterSeq=` delta. The same
-  `messageId` came back with `constructionReminder: true`, `citations: []` and
-  the real body. A fresh session/token, simulating app exit and re-entry,
-  restored the same message from the server; full and delta reads added no
-  message.
-- A duplicate business event (new `runId`, same `sourceEventKey`) reused outbox
-  `161`, delivery `191` and message `98`; the stage-message count stayed 8.
-- Requesting a temporary generic conversation C2 (`1454900001`) left the
-  receipt on the real C1 (`1454000005`) with `requestedConversationId=C2`,
-  `reusedConversation=true` and `messageId=98`; no stage message moved to C2.
+  and the real `assistantHttp` handler: `POST /entry-context` with a
+  conversation or lead, `GET /conversations` with `X-Assistant-Entry`,
+  `GET /conversations/{id}`, `GET /conversations/{id}/messages` and its
+  `?afterSeq=` delta. The same `messageId` came back with
+  `constructionReminder: true`, `citations: []` and the real body. A fresh
+  session/token, simulating app exit and re-entry, restored the same message
+  from the server; full and delta reads added no message.
+- The Stable DevTools native run (2.02.2608080, base library 3.17.2,
+  390x844) opened the original chat route
+  `/packages/assistant/chat/chat?conversationId=1454000005` and rendered the
+  persisted reminder `105` with the real project/stage/reason/watch-points and
+  `现场补充` text. It then re-read on real hide/show after `customer_access`
+  revocation and source invalidation, restored the available projection after
+  each restoration, found the real conversation in the authorized history
+  sheet, and removed the usable reminder after participant revocation before
+  re-entering it after restoration. 9/9 native checks passed; the temporary
+  local API switch used for the isolated B server was restored after the run.
+- A duplicate business event (new `runId`, same `sourceEventKey`) reused the
+  same outbox, delivery and message; the stage-message count stayed unchanged.
+- Requesting a temporary per-run generic conversation left the receipt on the
+  real conversation with `requestedConversationId` set to the temporary id,
+  `reusedConversation=true` and the same `messageId`; no stage message moved.
+  The temporary conversation and participant are created in one transaction
+  that refuses occupied ids and never reactivates an existing participant;
+  cleanup deletes only rows still carrying the run marker. A crashed run may
+  leave rows behind, but a later run uses different ids and never reuses them.
 - Revoking the customer participant removed the conversation from history and
   made `GET /conversations/{id}` return 404. Revoking `customer_access` made
   the reminder `available:false` with a `notice` block instead of a success
   state, and a synthetic newer stage event made the old notice unavailable.
   All revocations were restored in `finally`.
+- A real foreground resume now forces one full message-window re-read even
+  when `lastSeq` did not change and the 60-second sync window is still fresh;
+  it also supersedes an in-flight idle refresh. Idle polls keep their delta
+  path, and pending sends/actions are not cleared or resent. The focused chat
+  suite is 57/57.
 - The labelled fixture seeds `construction_report_settings` for enterprise 1454
-  with `enabled=false` and `stage_enabled=false`. Acceptance asserted no
-  assistant job/run, `ai_provider_attempts`, `assistant_usage_records`,
-  `assistant_knowledge_attempts`, construction reports/report deliveries or
-  `construction.report.%` outbox events; FastGPT, model and embedding calls
-  were zero. The disabled report plan covers only the labelled B tenant;
-  A/production configuration is untouched.
-- Evidence: `admin/tmp/b5-1-user-loop/b5-1-user-loop-20261111030033505/verification.json`
-  from `admin/scripts/native-workflow-stage-reminder-user-loop.ts`; the fixture
-  script is `admin/scripts/native-workflow-live-fixture.ts`. 12/12 checks
-  passed.
+  with `enabled=false` and `stage_enabled=false`. Acceptance and the native run
+  observed no assistant job/run, `ai_provider_attempts`,
+  `assistant_usage_records`, `assistant_knowledge_attempts`, construction
+  reports/report deliveries or `construction.report.%` outbox events; FastGPT,
+  model and embedding calls were zero. The disabled report plan covers only the
+  labelled B tenant; A/production configuration is untouched.
+- Evidence: `admin/tmp/b5-1-acceptance-runs/b5-1-user-loop-20261111033109058/verification.json`
+  for the isolated-store run (12/12 checks, normal-store snapshots identical,
+  cleanup `{conversations:1,participants:1,links:1,skipped:0}`), and
+  `admin/tmp/b5-1-devtools/native-verification.json` plus
+  `admin/tmp/b5-1-devtools/chat-reminder.png` for the 9/9 native run. The
+  fixture script is `admin/scripts/native-workflow-live-fixture.ts`.
 
 Limitations: no formal engineering-acceptance event exists and the system never
 asserts "验收通过"; there is no model compose branch and no daily/weekly real
-integration. The native WeChat Mini Program UI itself was not run in this B
-acceptance; the exact client API path was exercised instead.
+integration. The native B run required a temporary local API switch in the B
+worktree (reverted) and the B project window; the A/production API base and
+configuration were not changed. The full Mini Program suite remains 2218/2221
+with three pre-existing survey-runtime audit failures unrelated to this chat
+change.
 
 ## Reproduce
 

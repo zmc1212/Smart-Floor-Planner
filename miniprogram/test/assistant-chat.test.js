@@ -862,6 +862,86 @@ test('warm foreground reprojects withdrawn content and identity changes never re
   assert.equal(f.calls.filter(call => call.url === '/entry-context').length, 2);
 });
 
+test('a resume within the sync window forcibly reprojects a stage reminder the server revoked', async () => {
+  const f = fixture();
+  f.db.items = [{ id: '21', seq: '1', authorKind: 'system', available: true, constructionReminder: true,
+    content: { version: 1, blocks: [{ type: 'text', text: '当前进入水电阶段，先核对插座位置。' }] } }];
+  f.db.conversation.lastSeq = '1';
+  await f.controller.show({ conversationId: '11' });
+  assert.equal(f.controller.state.messages[0].available, true);
+  assert.equal(f.controller.state.messages[0].blocks[0].text, '当前进入水电阶段，先核对插座位置。');
+  f.controller.hide();
+  // Revoking access reprojects the message without advancing lastSeq; only a
+  // real resume inside the 60s sync window can observe the new projection.
+  f.db.items[0] = { ...f.db.items[0], available: false,
+    content: { version: 1, blocks: [{ type: 'notice', fallbackText: '工地资料已不可用' }] } };
+  f.controller.lastFullSyncAt = Date.now() - 5000;
+  const before = messageReads(f).length;
+  await f.controller.show({ conversationId: '11' });
+  const resumeReads = messageReads(f).slice(before);
+  assert.deepEqual(resumeReads.map(call => call.url), ['/conversations/11/messages']);
+  assert.equal(resumeReads[0].body.afterSeq, undefined);
+  assert.equal(resumeReads[0].body.limit, 30);
+  assert.equal(f.controller.state.messages[0].available, false);
+  assert.equal(f.controller.state.messages[0].blocks[0].text, '工地资料已不可用');
+  // Resuming is read-only: no message is resent and no run is created.
+  assert.equal(f.calls.filter(call => call.url.endsWith('/messages') && call.method === 'POST').length, 0);
+  assert.equal(f.calls.filter(call => call.url.startsWith('/runs')).length, 0);
+  // An idle poll keeps the delta path and never forces a full window read.
+  f.db.conversation.lastSeq = '2';
+  f.db.items.push(message('22', '2', '最新回复'));
+  f.intercept(call => {
+    if (call.url.endsWith('/messages') && call.method === 'GET' && call.body.afterSeq) {
+      return { success: true, data: { items: [message('22', '2', '最新回复')], nextCursor: null, afterCursor: '2', latestSeq: '2', hasMore: false, reset: false } };
+    }
+  });
+  const pollReads = messageReads(f).length;
+  await [...f.timers.values()][0]();
+  assert.deepEqual(messageReads(f).slice(pollReads).map(call => [call.url, call.body.afterSeq]), [['/conversations/11/messages', '1']]);
+  assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21', '22']);
+  f.controller.dispose();
+});
+
+test('a resume supersedes an in-flight idle refresh with a full reprojection', async () => {
+  const f = fixture();
+  f.db.items = [{ id: '21', seq: '1', authorKind: 'system', available: true, constructionReminder: true,
+    content: { version: 1, blocks: [{ type: 'text', text: '当前进入水电阶段，先核对插座位置。' }] } }];
+  f.db.conversation.lastSeq = '1';
+  await f.controller.show({ conversationId: '11' });
+  // Force the next idle refresh to take the full path and hold its read.
+  f.controller.lastFullSyncAt = 0;
+  const gate = deferred();
+  let held = false;
+  f.intercept(call => {
+    if (!held && call.url.endsWith('/messages') && call.method === 'GET'
+      && call.body && call.body.limit === 30 && call.body.afterSeq === undefined) {
+      held = true;
+      return gate.promise;
+    }
+  });
+  const poll = [...f.timers.values()][0];
+  const idle = poll();
+  for (let tick = 0; tick < 10 && !held; tick += 1) await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(held, true);
+  // The server revokes the projection without advancing lastSeq.
+  f.controller.hide();
+  f.db.items[0] = { ...f.db.items[0], available: false,
+    content: { version: 1, blocks: [{ type: 'notice', fallbackText: '工地资料已不可用' }] } };
+  const before = messageReads(f).length;
+  const showing = f.controller.show({ conversationId: '11' });
+  gate.resolve({ success: true, data: { items: [{ id: '21', seq: '1', authorKind: 'system', available: true,
+    constructionReminder: true, content: { version: 1, blocks: [{ type: 'text', text: '旧投影' }] } }], nextCursor: null } });
+  await showing;
+  await idle.catch(() => {});
+  const resumeReads = messageReads(f).slice(before);
+  assert.deepEqual(resumeReads.map(call => call.url), ['/conversations/11/messages']);
+  assert.equal(resumeReads[0].body.afterSeq, undefined);
+  assert.equal(resumeReads[0].body.limit, 30);
+  assert.equal(f.controller.state.messages[0].available, false);
+  assert.equal(f.controller.state.messages[0].blocks[0].text, '工地资料已不可用');
+  f.controller.dispose();
+});
+
 test('stop and archive use explicit writes, keep messages and block further sends in the archived chat', async () => {
   const f = fixture(); await f.controller.show({}); f.controller.input('问题'); await f.controller.send();
   await f.controller.action('cancel'); assert.equal(f.controller.state.run.status, 'cancelled');

@@ -12,6 +12,7 @@
  */
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import pg from 'pg';
@@ -19,6 +20,11 @@ import { sql } from 'drizzle-orm';
 import { one, type Row } from '@/db/repositories/assistant-repository';
 import { withTenantTransaction } from '@/db/transaction';
 import { closePostgresPool } from '@/lib/postgresql';
+import { publishAcceptanceDefinition } from '@/lib/native-workflow/live/acceptance-store';
+import {
+  cleanupAcceptanceConversation,
+  createAcceptanceConversation,
+} from '@/lib/native-workflow/live/acceptance-conversation';
 import {
   assertB4ConnectionIdentity,
   describeB4DatabaseTarget,
@@ -34,8 +40,6 @@ const CONVERSATION_ID = '1454000005';
 const CUSTOMER_OPENID = `b4-live-openid-${ENTERPRISE_ID}`;
 const STAGE_KEY = 'plumbing';
 const STAGE_LABEL = '水路';
-const CROSS_CONVERSATION_ID = '1454900001';
-const CROSS_PARTICIPANT_ID = '1454900002';
 
 function fail(message: string): never {
   console.error(JSON.stringify({ success: false, error: message }));
@@ -50,13 +54,43 @@ const fixtureTarget = resolveB4DatabaseTarget({ purpose: 'fixture' });
 const runStamp = new Date().toISOString().replace(/[-:.TZ]/gu, '').slice(0, 17);
 const runId = `b5-1-user-loop-${runStamp}`;
 const eventId = `b5-1-event-${runStamp}`;
-const outputDir = path.resolve('tmp/b5-1-user-loop', runId);
+// The acceptance owns two dedicated, per-run directories. Both are placed in
+// the environment before any store module is imported or any CLI is spawned,
+// so neither the parent nor a subprocess can read the normal B store.
+const acceptanceStoreDir = path.resolve('tmp/b5-1-acceptance-store', runId);
+const acceptanceRunDir = path.resolve('tmp/b5-1-acceptance-runs', runId);
+process.env.NATIVE_WORKFLOW_STORE_DIR = acceptanceStoreDir;
+process.env.NATIVE_WORKFLOW_RUN_DIR = acceptanceRunDir;
+const outputDir = acceptanceRunDir;
 const verificationFile = path.join(outputDir, 'verification.json');
+const normalStoreFile = path.resolve('tmp/native-workflow-store/stage-reminder.json');
+// Per-run ids above the shared fixture conversation (1454000005) and strictly
+// below the integration suite range (1454900003+). The runner clock keeps them
+// distinct per millisecond; an occupied id aborts instead of being reused.
+const runNumber = Number(runStamp.slice(-6)) % 100_000;
+const crossConversationId = String(1454800000 + runNumber);
+const crossParticipantId = String(1454800001 + runNumber);
+for (const id of [crossConversationId, crossParticipantId]) {
+  assert.ok(
+    Number(id) > Number(CONVERSATION_ID) && Number(id) < 1454900003,
+    `acceptance id ${id} must sit between the shared fixture and the integration suite`,
+  );
+}
 
+function snapshotFile(file: string): Row {
+  if (!fs.existsSync(file)) return { exists: false, bytes: 0, sha256: null };
+  const bytes = fs.readFileSync(file);
+  return { exists: true, bytes: bytes.byteLength, sha256: createHash('sha256').update(bytes).digest('hex') };
+}
+
+const normalStoreBefore = snapshotFile(normalStoreFile);
 const evidence: Row = {
   startedAt: new Date().toISOString(),
   runId,
   eventId,
+  acceptancePaths: { storeDir: acceptanceStoreDir, runDir: acceptanceRunDir },
+  acceptanceIds: { conversationId: crossConversationId, participantId: crossParticipantId },
+  normalStore: { file: normalStoreFile, before: normalStoreBefore },
   database: { app: describeB4DatabaseTarget(appTarget), fixture: describeB4DatabaseTarget(fixtureTarget) },
   checks: [],
   failures: [],
@@ -160,7 +194,13 @@ async function bumpSyntheticProgress(pool: pg.Pool, note: string): Promise<Row> 
 function runCli(args: string[]): Row {
   const output = execFileSync(
     process.execPath,
-    [path.resolve('node_modules/tsx/dist/cli.mjs'), 'scripts/native-workflow-live.ts', '--development', ...args],
+    [
+      path.resolve('node_modules/tsx/dist/cli.mjs'),
+      'scripts/native-workflow-live.ts',
+      '--development',
+      '--ensure-published',
+      ...args,
+    ],
     {
       cwd: process.cwd(),
       encoding: 'utf8',
@@ -168,6 +208,8 @@ function runCli(args: string[]): Row {
         ...process.env,
         B4_LIVE_APP_DATABASE_URL: appTarget.url,
         B4_LIVE_FIXTURE_DATABASE_URL: fixtureTarget.url,
+        NATIVE_WORKFLOW_STORE_DIR: acceptanceStoreDir,
+        NATIVE_WORKFLOW_RUN_DIR: acceptanceRunDir,
       },
       timeout: 180_000,
     },
@@ -187,6 +229,27 @@ async function main(): Promise<void> {
   let participantRevoked = false;
   let customerAccessRevoked = false;
   let sourceEventId: string | null = null;
+
+  /** Remove only this run's marker-matching temporary rows. */
+  async function cleanupAcceptanceRows(): Promise<{ result: Row; error: string | null }> {
+    if (!crossConversationCreated) return { result: { ran: false }, error: null };
+    try {
+      const client = await pool.connect();
+      try {
+        const result = await cleanupAcceptanceConversation(client, {
+          enterpriseId: ENTERPRISE_ID,
+          conversationId: crossConversationId,
+          participantId: crossParticipantId,
+        });
+        crossConversationCreated = false;
+        return { result: { ran: true, ...result }, error: null };
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      return { result: { ran: false }, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
 
   try {
     await step('preflight', async () => {
@@ -216,34 +279,22 @@ async function main(): Promise<void> {
       check('preflight', true, { reportPlan: reportPlan.rows[0], queuedJobs: 0 });
     });
 
-    // The B store is B-owned. Publish the current deterministic template so the
-    // run is bound to one fixed definitionId/revision/digest before any effect.
+    // Publish only inside the dedicated per-run store. A fresh store starts
+    // empty, so this creates the template and publishes revision 1; the normal
+    // B management store is never opened by this acceptance.
     let published: Row;
     await step('publish fixed revision', async () => {
-      const { createFileWorkflowStore, resolveNativeWorkflowStoreDir } = await import('@/lib/native-workflow/store/file-store');
-      const { createWorkflowService } = await import('@/lib/native-workflow/service');
-      const { createStageReminderDefinition } = await import('@/lib/native-workflow/templates');
-      const store = createFileWorkflowStore({ rootDir: resolveNativeWorkflowStoreDir() });
-      const service = createWorkflowService({ store });
-      let record = await store.get('stage-reminder');
-      if (!record) {
-        record = await service.createFromTemplate('stage-reminder');
-      }
-      const saved = await service.saveDraft({
+      const publication = await publishAcceptanceDefinition({
+        storeDir: acceptanceStoreDir,
         definitionId: 'stage-reminder',
-        definition: createStageReminderDefinition(),
-        expectedDraftRevision: record.draft.draftRevision,
-      });
-      const result = await service.publishDraft({
-        definitionId: 'stage-reminder',
-        expectedDraftRevision: saved.draft.draftRevision,
       });
       published = {
-        definitionId: result.version.definition.definitionId,
-        revision: result.version.revision,
-        digest: result.version.digest,
-        created: result.created,
-        template: result.version.definition.nodes.find((node) => node.nodeId === 'compose-deterministic')?.config,
+        definitionId: publication.definitionId,
+        revision: publication.revision,
+        digest: publication.digest,
+        created: publication.created,
+        storeDir: acceptanceStoreDir,
+        template: publication.version.definition.nodes.find((node) => node.nodeId === 'compose-deterministic')?.config,
       };
       evidence.published = published;
       check('publish fixed revision', true, published);
@@ -473,24 +524,21 @@ async function main(): Promise<void> {
     });
 
     await step('cross-conversation keeps the real conversation', async () => {
-      const existing = await pool.query('select title from app.assistant_conversations where id=$1::bigint', [CROSS_CONVERSATION_ID]);
-      if (existing.rows[0]) {
-        if (!String(existing.rows[0].title).startsWith('[B5.1]')) fail('cross-conversation id is owned by another row');
-      } else {
-        await pool.query(
-          `insert into app.assistant_conversations(id,enterprise_id,purpose,status,mode,title,entry_snapshot,policy_version,context_revision,last_seq)
-           overriding system value
-           values($1::bigint,$2::bigint,'customer_consultation','open','ai',$3,$4::jsonb,1,1,0)`,
-          [CROSS_CONVERSATION_ID, ENTERPRISE_ID, '[B5.1] 跨会话验证', JSON.stringify({ kind: 'lead', id: LEAD_ID })],
-        );
-        await pool.query(
-          `insert into app.assistant_participants(id,enterprise_id,conversation_id,principal_kind,user_id,admin_id,participant_role,grant_basis,status)
-           overriding system value
-           values($1::bigint,$2::bigint,$3::bigint,'user',$4::bigint,null,'owner',$5::jsonb,'active')
-           on conflict(id) do update set status='active',revoked_at=null,updated_at=now()`,
-          [CROSS_PARTICIPANT_ID, ENTERPRISE_ID, CROSS_CONVERSATION_ID, CUSTOMER_USER_ID, JSON.stringify({ kind: 'self', contextVersion: 1 })],
-        );
+      // One transaction: an occupied id refuses before any write, and a failed
+      // participant insert leaves no conversation behind.
+      const client = await pool.connect();
+      try {
+        const created = await createAcceptanceConversation(client, {
+          enterpriseId: ENTERPRISE_ID,
+          conversationId: crossConversationId,
+          participantId: crossParticipantId,
+          customerUserId: CUSTOMER_USER_ID,
+          leadId: LEAD_ID,
+        });
         crossConversationCreated = true;
+        evidence.acceptanceIds = { ...(evidence.acceptanceIds as Row), ...created };
+      } finally {
+        client.release();
       }
       const beforeCount = await counter(pool, 'app.assistant_messages', `conversation_id=${CONVERSATION_ID} and purpose='construction.stage'`);
       const crossRunId = `${runId}-cross`;
@@ -506,11 +554,11 @@ async function main(): Promise<void> {
       assert.equal(cross.status, 'completed');
       const receipt = cross.deliveryReceipt as Row;
       assert.equal(String(receipt.conversationId), realConversationId);
-      assert.equal(String(receipt.requestedConversationId), CROSS_CONVERSATION_ID);
+      assert.equal(String(receipt.requestedConversationId), crossConversationId);
       assert.equal(receipt.reusedConversation, true);
       assert.equal(String(receipt.messageId), messageId);
       const crossSession = await session();
-      const crossMessages = await readMessagesWithQuery(crossSession.token, CROSS_CONVERSATION_ID, '?limit=100');
+      const crossMessages = await readMessagesWithQuery(crossSession.token, crossConversationId, '?limit=100');
       assert.equal(crossMessages.status, 200);
       assert.equal(((crossMessages.body.data as Row).items as Row[]).some((item) => item.constructionReminder), false);
       const realMessages = await readMessagesWithQuery(crossSession.token, realConversationId, '?limit=100');
@@ -629,8 +677,25 @@ async function main(): Promise<void> {
       });
     });
 
+    // Cleanup runs before success is decided: a run that leaves temporary rows
+    // behind is not a success, even when every check passed.
+    const cleanup = await cleanupAcceptanceRows();
+    evidence.cleanup = cleanup.result;
+    if (cleanup.error) evidence.cleanupError = cleanup.error;
+
+    // The normal B management store must be byte-identical before and after.
+    const normalStoreAfter = snapshotFile(normalStoreFile);
+    evidence.normalStore = { ...(evidence.normalStore as Row), after: normalStoreAfter };
+    const normalStoreUnchanged = JSON.stringify(normalStoreBefore) === JSON.stringify(normalStoreAfter);
+    evidence.normalStoreUnchanged = normalStoreUnchanged;
+    if (!normalStoreUnchanged) {
+      (evidence.failures as Row[]).push({
+        name: 'normal store untouched', before: normalStoreBefore, after: normalStoreAfter,
+      });
+    }
+
     evidence.finishedAt = new Date().toISOString();
-    evidence.success = (evidence.failures as Row[]).length === 0;
+    evidence.success = (evidence.failures as Row[]).length === 0 && !cleanup.error;
     save();
     console.log(JSON.stringify({
       success: evidence.success,
@@ -641,6 +706,11 @@ async function main(): Promise<void> {
       messageId,
       outboxEventId,
       conversationId: realConversationId,
+      acceptancePaths: evidence.acceptancePaths,
+      acceptanceIds: evidence.acceptanceIds,
+      normalStore: evidence.normalStore,
+      cleanup: evidence.cleanup,
+      cleanupError: evidence.cleanupError ?? null,
       verificationFile,
       checks: (evidence.checks as Row[]).map((entry) => ({ name: entry.name, passed: entry.passed })),
       countsBefore: evidence.countsBefore,
@@ -664,19 +734,16 @@ async function main(): Promise<void> {
     if (sourceEventId) {
       await pool.query('delete from app.domain_event_outbox where id=$1::bigint', [sourceEventId]).catch(() => undefined);
     }
+    // Crash-safety net for a failure before the explicit cleanup above. The
+    // helper still deletes only rows that carry this run's marker.
     if (crossConversationCreated) {
-      await pool.query(
-        'delete from app.construction_links where enterprise_id=$1::bigint and conversation_id=$2::bigint',
-        [ENTERPRISE_ID, CROSS_CONVERSATION_ID],
-      ).catch(() => undefined);
-      await pool.query(
-        'delete from app.assistant_participants where enterprise_id=$1::bigint and conversation_id=$2::bigint',
-        [ENTERPRISE_ID, CROSS_CONVERSATION_ID],
-      ).catch(() => undefined);
-      await pool.query(
-        'delete from app.assistant_conversations where enterprise_id=$1::bigint and id=$2::bigint and title like \'[B5.1]%\'',
-        [ENTERPRISE_ID, CROSS_CONVERSATION_ID],
-      ).catch(() => undefined);
+      const safety = await cleanupAcceptanceRows();
+      evidence.cleanup = safety.result;
+      if (safety.error) {
+        evidence.cleanupError = safety.error;
+        evidence.success = false;
+      }
+      save();
     }
     await pool.end().catch(() => undefined);
     await closePostgresPool().catch(() => undefined);
