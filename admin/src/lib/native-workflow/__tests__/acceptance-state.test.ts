@@ -1,13 +1,16 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  accountStatusRestorationStep,
   agentSettingsSnapshot,
+  applyAccountStatus,
   reportPlanSnapshot,
   restoreAgentSettings,
   restoreReportPlan,
   runRestorations,
   verifyAgentSettings,
   verifyReportPlan,
+  type AccountStatusPort,
   type Queryable,
 } from '../live/acceptance-state';
 
@@ -222,4 +225,116 @@ test('verifyAgentSettings re-reads the config and the enabled flag', async () =>
   const mismatches = await verifyAgentSettings(mismatching, '1454', snapshot);
   assert.ok(mismatches.some((entry) => entry.startsWith('agent_config')));
   assert.ok(mismatches.some((entry) => entry.startsWith('enabled')));
+});
+
+test('a committed account update whose read-back fails is still restored', async () => {
+  let status = 'active';
+  let failReadBack = true;
+  const port: AccountStatusPort = {
+    async setStatus(next) {
+      status = next;
+    },
+    async readStatus() {
+      if (failReadBack) throw new Error('read-back failed');
+      return { status };
+    },
+  };
+  const responsibility = { before: 'active', changed: false };
+
+  await assert.rejects(
+    () => applyAccountStatus(responsibility, 'disabled', port),
+    /read-back failed/u,
+  );
+  // The update committed before the independent read-back failed, so the
+  // responsibility must already be registered for the finally path.
+  assert.equal(status, 'disabled');
+  assert.equal(responsibility.changed, true);
+
+  failReadBack = false;
+  let laterCleanupRan = false;
+  const outcomes = await runRestorations([
+    accountStatusRestorationStep(responsibility, port, 'boss_account'),
+    {
+      name: 'later',
+      run: async () => {
+        laterCleanupRan = true;
+      },
+    },
+  ]);
+
+  assert.equal(status, 'active');
+  assert.equal(responsibility.changed, false);
+  assert.equal(outcomes[0].name, 'boss_account');
+  assert.equal(outcomes[0].restored, true);
+  assert.equal(laterCleanupRan, true);
+});
+
+test('a successful restore clears the responsibility only after the read-back', async () => {
+  let status = 'disabled';
+  const port: AccountStatusPort = {
+    async setStatus(next) {
+      status = next;
+    },
+    async readStatus() {
+      return { status };
+    },
+  };
+  const responsibility = { before: 'active', changed: true };
+
+  const readBack = await applyAccountStatus(responsibility, 'active', port);
+  assert.deepEqual(readBack, { status: 'active' });
+  assert.equal(status, 'active');
+  assert.equal(responsibility.changed, false);
+});
+
+test('a failed account restore keeps its error and continues later cleanup', async () => {
+  const port: AccountStatusPort = {
+    async setStatus() {
+      throw new Error('restore failed');
+    },
+    async readStatus() {
+      return { status: 'disabled' };
+    },
+  };
+  const responsibility = { before: 'active', changed: true };
+  let laterCleanupRan = false;
+
+  const outcomes = await runRestorations([
+    accountStatusRestorationStep(responsibility, port, 'boss_account'),
+    {
+      name: 'later',
+      run: async () => {
+        laterCleanupRan = true;
+      },
+    },
+  ]);
+
+  assert.equal(outcomes[0].restored, false);
+  assert.equal(outcomes[0].error, 'restore failed');
+  assert.equal(responsibility.changed, true);
+  assert.equal(laterCleanupRan, true);
+  assert.ok(outcomes.some((outcome) => !outcome.restored));
+});
+
+test('a restore read-back mismatch keeps the responsibility registered', async () => {
+  let status = 'disabled';
+  const port: AccountStatusPort = {
+    async setStatus(next) {
+      status = next;
+    },
+    async readStatus() {
+      // A stale read must not be treated as a confirmed restore.
+      return { status: 'disabled' };
+    },
+  };
+  const responsibility = { before: 'active', changed: true };
+
+  const outcomes = await runRestorations([
+    accountStatusRestorationStep(responsibility, port),
+  ]);
+
+  assert.equal(status, 'active');
+  assert.equal(responsibility.changed, true);
+  assert.equal(outcomes[0].restored, false);
+  assert.deepEqual(outcomes[0].mismatches, ['status is disabled']);
 });

@@ -1176,8 +1176,8 @@ channel, Mini Program source or shared migration is added.
 - Receiver/scope contract: `PeriodReportScope.receiverKind` is
   `customer`/`worker`/`designer`/`boss`. The boss is the existing enterprise
   owner contract, not a project staff member: `live/boss-receiver.ts` requires a
-  same-enterprise active admin account without a required password change whose
-  `construction_followup_staff_access` role is `owner`. It deliberately does
+  same-enterprise active `enterprise_admin` account without a required password
+  change whose `construction_followup_staff_access` role is `owner`. It deliberately does
   not query `construction_members` and never reads `customer_access`. A
   `construction_staff`/designer account, a disabled account or a different
   enterprise is rejected with `boss_receiver_unavailable` before the binding
@@ -1277,14 +1277,15 @@ seven screenshots). The fixture script is
 `admin/scripts/native-workflow-boss-fixture.ts` and the driver is
 `admin/scripts/native-workflow-boss-report-acceptance.ts`.
 
-Tests: the documented offline command now lists 28 files and runs 330 tests,
-all 330 pass with 0 fail. `boss-receiver.test.ts` is 6/6 (owner access, missing/
-disabled/non-owner rejection and no member/customer_access read),
+Tests: the documented offline command now lists 28 files and runs 338 tests,
+all 338 pass with 0 fail. `boss-receiver.test.ts` is 7/7 (owner access, missing/
+disabled/non-owner/platform-role rejection and no member/customer_access read),
 `period-cli.test.ts` is 18/18 (including `--boss-id` and cross-flag rejection),
-`period-report-ports.test.ts` is 38/38 (boss scope/save/delivery and cross-scope
-delivery rejection), `period-report-entry.test.ts` is 10/10 (boss binding and
-non-owner rejection before writes), and the status suite covers boss receipts/
-bindings/availability plus the explicit `boss_access_revoked` reason.
+`period-report-ports.test.ts` is 40/40 (boss scope/save/delivery, platform-role
+rejection and cross-scope delivery rejection), `period-report-entry.test.ts` is
+11/11 (boss binding, platform-role and non-owner rejection before writes), and
+the status suite covers boss receipts/bindings/availability plus the explicit
+`boss_access_revoked` reason.
 `npm run build` still prints "Compiled successfully" and then exits 1 at the
 pre-existing `scripts/fastgpt/setup-unified.mts:113:75` type error.
 
@@ -1293,6 +1294,39 @@ expansion and new UI capabilities remain out of scope. The worker's complete
 continuous lifecycle and the designer revocation-window native UI remain
 unverified and are not replaced by this boss evidence. B5.5/B5.6 reports,
 audits and their acceptance limits are unchanged.
+
+### B5.7 closeout: boss identity scope and account restore
+
+The native boss receiver is now limited to the enterprise's own active
+`enterprise_admin`, not any active account whose
+`construction_followup_staff_access` returns `owner`. Platform `admin` and
+`super_admin` accounts may still be owners under the shared permission
+function, but they may only join a follow-up themselves; the native boss path
+rejects them with `boss_receiver_unavailable` before `ensureFollowupBinding()`
+or any enqueue. `period-report-ports.ts` repeats the same `enterprise_admin`
+identity check (SQL predicate plus an explicit role check) in both the scope
+read and the write transaction, so a direct ports/store call cannot bind or
+queue a platform owner account. The shared owner permission function, the
+existing platform self-join service and the existing platform report read/
+restore semantics are unchanged.
+
+The acceptance account-status flow now registers the restoration
+responsibility before the mutation attempt. `live/acceptance-state.ts` exposes
+`applyAccountStatus()` and `accountStatusRestorationStep()` for the real driver:
+a committed `status='disabled'` whose independent read-back fails is still
+restored in `finally`, and the responsibility is cleared only after a
+confirmed read-back of the original status. A failed restore remains an error
+in the `runRestorations` outcome, does not stop later cleanup steps, and makes
+the run non-successful. The driver uses the captured `bossStatusBefore` via the
+responsibility object rather than setting a late boolean flag.
+
+Offline tests are 338/338 across the documented 28 files. The new cases cover
+`admin`/`super_admin` rejection with owner access, no conversation/binding/
+participant writes, no live run or port execution from the entry, the ports
+store-enqueue boundary, and the account restore control flow with committed-
+update/read-back failure, successful restore, failed restore, and stale
+read-back mismatch. No database or model call was made for this closeout;
+report `11`/r1 and all existing evidence remain unchanged.
 
 ## Reproduce
 

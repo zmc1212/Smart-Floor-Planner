@@ -583,6 +583,29 @@ test('a boss receiver without the enterprise owner role is rejected before the b
   assert.equal(state.runs.creates(), 0);
 });
 
+test('a platform admin boss receiver is rejected before run creation or ports', async () => {
+  for (const role of ['admin', 'super_admin']) {
+    const state = bossHarness({
+      admin: [{ ...bossAdminRow, role }],
+      access: [{ role: 'owner' }],
+    });
+    const weekly = await publish('weekly');
+
+    await assert.rejects(
+      () => runPeriodReportEntry(bossEntryInput(state, weekly), entryDependencies(state)),
+      (error: unknown) => error instanceof WorkflowOperationError
+        && error.code === 'boss_receiver_unavailable',
+    );
+
+    assert.equal(state.transactions.count, 1);
+    assert.equal(writesTo(state.database.calls, 'construction_followup_bindings').length, 0);
+    assert.equal(writesTo(state.database.calls, 'assistant_conversations').length, 0);
+    assert.equal(writesTo(state.database.calls, 'assistant_participants').length, 0);
+    assert.deepEqual(state.ports.calls, []);
+    assert.equal(state.runs.creates(), 0);
+  }
+});
+
 test('a boss receiver with a worker admin role is rejected', async () => {
   const state = bossHarness({
     admin: [workerAdminRow],

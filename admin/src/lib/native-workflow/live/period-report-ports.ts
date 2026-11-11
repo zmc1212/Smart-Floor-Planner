@@ -287,9 +287,11 @@ async function receiverBinding(
  * The existing enterprise owner policy for a boss receiver.
  *
  * A boss follows the same `construction_followup_staff_access` contract as the
- * followup read path: the account must be active in this enterprise and the
- * access role must be `owner`. It deliberately does not require a project
- * member row and never reads `customer_access`.
+ * followup read path: the account must be the enterprise's own active
+ * `enterprise_admin` and the access role must be `owner`. It deliberately does
+ * not require a project member row and never reads `customer_access`. Platform
+ * `admin`/`super_admin` accounts can also be owners, but they may only join a
+ * follow-up themselves; a host-selected boss run must not bind them.
  */
 async function bossAvailable(
   tx: PostgresTransaction,
@@ -298,11 +300,13 @@ async function bossAvailable(
 ): Promise<boolean> {
   const admin = await one(
     tx,
-    sql`select id from app.admin_users
+    sql`select id,role from app.admin_users
       where enterprise_id=${enterpriseId} and id=${adminId} and status='active'
-        and must_change_password=false for share`,
+        and role='enterprise_admin' and must_change_password=false for share`,
   );
-  if (!admin) return false;
+  // Keep the identity check explicit in addition to the SQL predicate, so a
+  // caller cannot treat a platform owner account as this host-selected boss.
+  if (!admin || String(admin.role) !== 'enterprise_admin') return false;
   return String((await one(
     tx,
     sql`select app.construction_followup_staff_access(${adminId}::bigint,${enterpriseId}::bigint) as role`,

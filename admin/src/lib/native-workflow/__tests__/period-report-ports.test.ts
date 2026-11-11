@@ -1408,6 +1408,65 @@ test('a boss receiver without the enterprise owner role is unavailable', async (
   );
 });
 
+test('platform admin and super_admin boss receivers are rejected by the ports enqueue check', async () => {
+  for (const role of ['admin', 'super_admin']) {
+    const { ports, database } = bossPorts(bossResponder({
+      admin: [{ id: BOSS_ADMIN, role }],
+      // The permission function alone would return owner for these accounts.
+      access: [{ role: 'owner' }],
+    }));
+    await assert.rejects(
+      () => ports.execute(operation('save.period_report'), contextWithReceiver(bossReceiver)),
+      isFailure('period_report_receiver_unavailable'),
+    );
+
+    const receivers = await ports.execute(
+      operation('read.receiver_scope'),
+      contextWithReceiver(bossReceiver),
+    );
+    assert.equal(receivers.receiverCount, 0);
+    assert.equal(
+      (receivers.receivers as Record<string, unknown>).status,
+      'boss_unavailable',
+    );
+
+    const adminQuery = database.calls.find((call) => call.text.includes('admin_users'));
+    assert.ok(adminQuery);
+    assert.match(adminQuery.text, /role='enterprise_admin'/);
+  }
+});
+
+test('a direct store enqueue cannot bind a platform admin boss receiver', async () => {
+  for (const role of ['admin', 'super_admin']) {
+    const period = parseFixedDailyPeriod(event, AFTER_PERIOD);
+    const database = fakeDatabase(bossResponder({
+      admin: [{ id: BOSS_ADMIN, role }],
+      access: [{ role: 'owner' }],
+    }));
+    let enqueueCalls = 0;
+    const store = createPeriodReportStore({
+      transaction: fakeTransaction({ count: 0 }, database.tx),
+      authorizeWrite: async () => ({ owner: true, memberRole: null, project: workerProjectRow }),
+      enqueueReport: async () => {
+        enqueueCalls += 1;
+        return null;
+      },
+    });
+
+    await assert.rejects(
+      () => store.enqueue({
+        actor,
+        projectId: '1455',
+        period,
+        receiver: bossReceiver,
+      }),
+      (error: unknown) => error instanceof AssistantError
+        && error.code === 'period_report_receiver_unavailable',
+    );
+    assert.equal(enqueueCalls, 0);
+  }
+});
+
 test('a boss report saves and delivers through the enterprise boss scope', async () => {
   const { state, store } = fakeStore({
     scope: bossScope(),

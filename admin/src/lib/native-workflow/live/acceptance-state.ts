@@ -202,6 +202,77 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** A mutable restoration responsibility for one external account status. */
+export interface AccountStatusResponsibility {
+  /** Original status captured before any mutation; null means "not captured". */
+  before: string | null;
+  /** True from the moment a mutation is attempted until a confirmed restore. */
+  changed: boolean;
+}
+
+/** The real account-status operations; tests inject offline doubles. */
+export interface AccountStatusPort {
+  setStatus(status: string): Promise<unknown>;
+  readStatus(): Promise<{ status: string }>;
+}
+
+/**
+ * Attempt one account-status change.
+ *
+ * Responsibility is registered before `setStatus` runs, so a committed update
+ * whose independent read-back fails is still restored by the caller's finally
+ * path. A successful restore back to `before` only clears the responsibility
+ * after the read-back confirms the original status.
+ */
+export async function applyAccountStatus(
+  responsibility: AccountStatusResponsibility,
+  target: string,
+  port: AccountStatusPort,
+): Promise<{ status: string }> {
+  if (responsibility.before === null) {
+    throw new Error('the account status before the change was not captured');
+  }
+  responsibility.changed = true;
+  await port.setStatus(target);
+  const readBack = await port.readStatus();
+  if (readBack.status !== target) {
+    throw new Error(
+      `the account status change did not take effect (expected ${target}, got ${readBack.status})`,
+    );
+  }
+  // A successful restore is only complete once the read-back confirms it.
+  if (target === responsibility.before) responsibility.changed = false;
+  return readBack;
+}
+
+/**
+ * Restoration step for an account status responsibility. The flag is cleared
+ * only by a successful read-back of the original status; a failed update, a
+ * failed read-back or a mismatched status keeps the responsibility registered.
+ */
+export function accountStatusRestorationStep(
+  responsibility: AccountStatusResponsibility,
+  port: AccountStatusPort,
+  name = 'account_status',
+): RestorationStep {
+  return {
+    name,
+    run: async () => {
+      if (!responsibility.changed || responsibility.before === null) return;
+      await port.setStatus(responsibility.before);
+    },
+    verify: async () => {
+      if (responsibility.before === null) return [];
+      const current = await port.readStatus();
+      if (current.status !== responsibility.before) {
+        return [`status is ${current.status}`];
+      }
+      responsibility.changed = false;
+      return [];
+    },
+  };
+}
+
 /**
  * Run each restoration step in order. A failing step never stops the following
  * steps; its error and any post-restore mismatches are recorded instead.

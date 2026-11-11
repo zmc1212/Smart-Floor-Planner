@@ -1,9 +1,12 @@
 /** Enterprise boss (owner) receiver preparation for one period report.
  *
  * The boss is the existing enterprise owner contract, not a project staff
- * member: the receiver must be an active admin account of the same enterprise
- * whose `construction_followup_staff_access` role is `owner`. There is no
- * `construction_members` requirement and `customer_access` is never read here.
+ * member: the receiver must be the enterprise's own active `enterprise_admin`
+ * account whose `construction_followup_staff_access` role is `owner`. Platform
+ * `admin`/`super_admin` accounts may also be owners, but they may only join a
+ * follow-up themselves, so this host path rejects them before any binding.
+ * There is no `construction_members` requirement and `customer_access` is
+ * never read here.
  *
  * Order is load-bearing and matches the staff path:
  *   1. trusted-clock period-end check (no database work),
@@ -102,6 +105,22 @@ export async function prepareBossPeriodReport(
     if (String(admin.status) !== 'active' || admin.must_change_password !== false) {
       bossUnavailable(
         `boss admin ${adminId} must be an active account without a required password change`,
+        {
+          admin: {
+            status: admin.status,
+            role: admin.role,
+            mustChangePassword: admin.must_change_password,
+          },
+        },
+      );
+    }
+    // The native boss receiver is limited to the enterprise's own owner
+    // account. `construction_actor_access` also returns owner for platform
+    // `admin`/`super_admin` accounts, but those accounts may only join a
+    // follow-up themselves; this host path must never create one for them.
+    if (String(admin.role) !== 'enterprise_admin') {
+      bossUnavailable(
+        `boss admin ${adminId} must be an enterprise_admin account; ${String(admin.role)} is not allowed for the native boss receiver`,
         {
           admin: {
             status: admin.status,

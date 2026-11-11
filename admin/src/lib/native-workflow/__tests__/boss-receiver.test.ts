@@ -304,6 +304,31 @@ test('a non-owner account is rejected before the boss binding write', async () =
   assert.equal(queriesOn(database.calls, 'assistant_conversations').length, 0);
 });
 
+test('platform admin and super_admin roles are rejected even with owner access', async () => {
+  for (const role of ['admin', 'super_admin']) {
+    const database = fakeDatabase(responder({
+      admin: [{ ...bossAdminRow, role }],
+      // The permission function alone would return owner for these accounts.
+      access: [{ role: 'owner' }],
+    }));
+    const transactions = { count: 0 };
+    const transaction = fakeTransaction(transactions, database.tx);
+
+    await assert.rejects(
+      () => prepareBossPeriodReport(bossInput(), { transaction, now: () => AFTER_PERIOD }),
+      (error: unknown) => error instanceof WorkflowOperationError
+        && error.code === 'boss_receiver_unavailable',
+    );
+
+    rejectedBossWrite(database.calls, transactions);
+    // The role check happens before the owner lookup and before any binding.
+    assert.equal(queriesOn(database.calls, 'construction_followup_staff_access').length, 0);
+    assert.equal(queriesOn(database.calls, 'assistant_conversations').length, 0);
+    assert.equal(queriesOn(database.calls, 'construction_followup_bindings').length, 0);
+    assert.equal(queriesOn(database.calls, 'assistant_participants').length, 0);
+  }
+});
+
 test('a missing boss account is rejected before the binding write', async () => {
   const database = fakeDatabase(responder({ admin: [] }));
   const transactions = { count: 0 };

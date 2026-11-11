@@ -49,13 +49,17 @@ import { parseFixedPeriod } from '@/lib/native-workflow/live/period-event';
 import { resolveCliPeriod, type PeriodCliKind } from '@/lib/native-workflow/live/period-cli';
 import { parseContextVersion } from '@/lib/native-workflow/live/worker-fixture';
 import {
+  accountStatusRestorationStep,
   agentSettingsSnapshot,
+  applyAccountStatus,
   reportPlanSnapshot,
   restoreAgentSettings,
   restoreReportPlan,
   runRestorations,
   verifyAgentSettings,
   verifyReportPlan,
+  type AccountStatusPort,
+  type AccountStatusResponsibility,
   type AgentSettingsSnapshot,
   type ReportPlanSnapshot,
   type RestorationOutcome,
@@ -146,8 +150,7 @@ interface AcceptanceState {
   reportPlanBefore: ReportPlanSnapshot | null;
   customerAccessBefore: boolean | null;
   customerAccessChanged: boolean;
-  bossStatusBefore: string | null;
-  bossStatusChanged: boolean;
+  bossStatus: AccountStatusResponsibility;
   fixtureReady: boolean;
   bossContextVersion: number;
   workerServer: http.Server | null;
@@ -170,8 +173,7 @@ const state: AcceptanceState = {
   reportPlanBefore: null,
   customerAccessBefore: null,
   customerAccessChanged: false,
-  bossStatusBefore: null,
-  bossStatusChanged: false,
+  bossStatus: { before: null, changed: false },
   fixtureReady: false,
   bossContextVersion: 0,
   workerServer: null,
@@ -420,7 +422,7 @@ async function preflight(pool: pg.Pool): Promise<void> {
   if (bossRow.user_id !== BOSS_USER_ID) {
     fail(`fixture boss admin must link base user ${BOSS_USER_ID}; run the B5.7 boss fixture first`);
   }
-  state.bossStatusBefore = String(bossRow.status);
+  state.bossStatus.before = String(bossRow.status);
 
   const bossUser = await pool.query(
     'select username, role, context_version from app.users where id=$1::bigint',
@@ -1160,6 +1162,19 @@ async function setBossAdminStatus(status: 'active' | 'disabled'): Promise<Record
   }
   return readBack;
 }
+
+const bossStatusPort: AccountStatusPort = {
+  async setStatus(status) {
+    if (status !== 'active' && status !== 'disabled') {
+      fail(`unsupported boss account status ${status}`);
+    }
+    await setBossAdminStatus(status);
+  },
+  async readStatus() {
+    const row = await bossAdminStatus();
+    return { status: String(row.status) };
+  },
+};
 
 async function constructionAuditCount(): Promise<number> {
   return counter(fixture(), 'app.construction_audits', `enterprise_id=${ENTERPRISE_ID}::bigint`);
@@ -1917,10 +1932,12 @@ async function runAcceptance(): Promise<void> {
   // Real account loss through the existing staff account contract. The
   // management executor stays active; no customer_access/member toggle is used.
   const auditsBefore = await constructionAuditCount();
-  const disabled = await setBossAdminStatus('disabled');
-  state.bossStatusChanged = true;
+  // The responsibility is registered before the mutation attempt, so an update
+  // that commits but fails its own read-back is still restored in finally.
+  const disabledReadBack = await applyAccountStatus(state.bossStatus, 'disabled', bossStatusPort);
   evidence.bossDisabled = {
-    admin: disabled,
+    admin: await bossAdminStatus(),
+    statusReadBack: disabledReadBack,
     at: new Date().toISOString(),
     auditsBefore,
     contract: 'PUT /api/staff/[id] status=disabled (AdminUserRepository.update)',
@@ -1970,10 +1987,10 @@ async function runAcceptance(): Promise<void> {
   // Restore the same account and the same conversation/source. The existing
   // read rules apply: a restored ordinary account may read the old report again
   // because neither its generation nor its source was revoked.
-  const restored = await setBossAdminStatus('active');
-  state.bossStatusChanged = false;
+  const restoredReadBack = await applyAccountStatus(state.bossStatus, 'active', bossStatusPort);
   evidence.bossRestored = {
-    admin: restored,
+    admin: await bossAdminStatus(),
+    statusReadBack: restoredReadBack,
     at: new Date().toISOString(),
     contract: 'PUT /api/staff/[id] status=active (AdminUserRepository.update)',
   };
@@ -2073,21 +2090,10 @@ async function finalize(fatal: unknown): Promise<void> {
           : [`customer_access is ${String(row.customer_access)}`];
       },
     });
-    steps.push({
-      name: 'boss_account',
-      run: async () => {
-        if (!state.bossStatusChanged || state.bossStatusBefore === null) return;
-        await setBossAdminStatus(state.bossStatusBefore === 'disabled' ? 'disabled' : 'active');
-        state.bossStatusChanged = false;
-      },
-      verify: async () => {
-        if (state.bossStatusBefore === null) return [];
-        const current = await bossAdminStatus();
-        return current.status === state.bossStatusBefore
-          ? []
-          : [`status is ${String(current.status)}`];
-      },
-    });
+    // The helper clears the responsibility only after a confirmed read-back of
+    // the original status; a failed update/read-back keeps it registered and
+    // the outcome reports the failure without stopping the later steps.
+    steps.push(accountStatusRestorationStep(state.bossStatus, bossStatusPort, 'boss_account'));
   }
 
   if (state.reportPlanBefore && fixturePool) {
