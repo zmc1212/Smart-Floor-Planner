@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fastGPTAgentV2Configuration, fastGPTAgentV2Configurations, fastGPTAgentV2Presentation, parseAgentV2Configuration, parseAgentV2Configurations } from '../fastgpt/agent-v2/config';
-import { parseSuggestionQuestions, resolveSuggestions, storedSuggestionQuestions, suggestionPrompt } from '../fastgpt/agent-v2/suggestions';
+import { parseSuggestionQuestions, resolveSuggestions, resumeSuggestionGeneration, storedSuggestionQuestions, suggestionPrompt } from '../fastgpt/agent-v2/suggestions';
 
 const base = {
   protocol: 'fastgpt-agent-v2-v1' as const, enterpriseId: '1454', appId: '6af16527093915ea6cf38496',
@@ -47,6 +47,17 @@ test('stored questions are revalidated before readback and bounded to four', () 
     ['一条？', '三条？', '四条？', '五条？']);
   assert.deepEqual(storedSuggestionQuestions(['长'.repeat(41), 3, null]), []);
   assert.deepEqual(storedSuggestionQuestions('not-an-array'), []);
+});
+
+test('a resumed suggestion dispatch reuses its persisted output and never replays unknown calls', () => {
+  assert.deepEqual(resumeSuggestionGeneration(undefined), { action: 'dispatch' });
+  assert.deepEqual(resumeSuggestionGeneration({ status: 'succeeded', private_checkpoint: { text: '水路先做什么？\n防水怎么验收？\n地砖怎么排版？' } }),
+    { action: 'reuse', text: '水路先做什么？\n防水怎么验收？\n地砖怎么排版？' });
+  // Dispatched without a persisted outcome: the presets stand and the provider
+  // is not called a second time.
+  assert.deepEqual(resumeSuggestionGeneration({ status: 'running' }), { action: 'skip' });
+  assert.deepEqual(resumeSuggestionGeneration({ status: 'failed', private_checkpoint: null }), { action: 'skip' });
+  assert.deepEqual(resumeSuggestionGeneration({ status: 'succeeded', private_checkpoint: { text: 3 } }), { action: 'skip' });
 });
 
 test('the generation prompt carries only the bounded answer and removes citation markers', () => {

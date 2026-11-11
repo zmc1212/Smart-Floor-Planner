@@ -54,7 +54,7 @@ test('history before the round window is never attributed to this round', () => 
   assert.equal(opened.windowStart, history.length);
   assert.equal(opened.probeRunId, '9001');
   assert.equal(opened.modeTransition, 'fastgpt-agent-v2 -> xiaok-native-executor-v1');
-  const entries = auditWindowEntries(history, opened.windowStart);
+  const entries = auditWindowEntries(history, opened);
   assert.deepEqual(entries, []);
   assert.deepEqual(auditKindCounts(entries), {});
   assert.deepEqual(auditNonStageKinds(auditKindCounts(entries)), []);
@@ -65,9 +65,28 @@ test('a new agentV2 record after the round window is rejected by the zero-call r
   const value = receipt(history);
   const opened = openAuditWindow({ receipt: value, expected, lines: probeLedger(history) });
   const lines = [...probeLedger(history), line('agentV2', '9101')];
-  const kinds = auditKindCounts(auditWindowEntries(lines, opened.windowStart));
+  const kinds = auditKindCounts(auditWindowEntries(lines, opened));
   assert.deepEqual(kinds, { agentV2: 1 });
   assert.deepEqual(auditNonStageKinds(kinds), ['agentV2']);
+});
+
+test('a same-length replacement after the window opened is a rewritten ledger', () => {
+  const history = [line('stage', '7001')];
+  const opened = openAuditWindow({ receipt: receipt(history), expected, lines: probeLedger(history) });
+  assert.equal(opened.windowStart, 2);
+  const replaced = [line('stage', '7009'), line('agentV2', '9100')];
+  assert.equal(replaced.length, opened.windowStart, 'replacement keeps the original length');
+  codeOf(() => auditWindowEntries(replaced, opened), 'ledger_rewritten');
+});
+
+test('a log shortened and regrown to the same length is still a rewritten ledger', () => {
+  const history = [line('stage', '7001')];
+  const opened = openAuditWindow({ receipt: receipt(history), expected, lines: probeLedger(history) });
+  const shortened = probeLedger(history).slice(0, opened.windowStart - 1);
+  codeOf(() => auditWindowEntries(shortened, opened), 'ledger_truncated');
+  const regrown = [...shortened, line('agentV2', '9102')];
+  assert.equal(regrown.length, opened.windowStart, 'regrowth restores the original length');
+  codeOf(() => auditWindowEntries(regrown, opened), 'ledger_rewritten');
 });
 
 test('a valid receipt with a continuous log and only stage records passes the round window', () => {
@@ -75,7 +94,7 @@ test('a valid receipt with a continuous log and only stage records passes the ro
   const value = receipt(history);
   const opened = openAuditWindow({ receipt: value, expected, lines: probeLedger(history) });
   const lines = [...probeLedger(history), line('stage', '7002')];
-  const kinds = auditKindCounts(auditWindowEntries(lines, opened.windowStart));
+  const kinds = auditKindCounts(auditWindowEntries(lines, opened));
   assert.deepEqual(kinds, { stage: 1 });
   assert.deepEqual(auditNonStageKinds(kinds), []);
   assert.equal(opened.probeWindow.after, 2);

@@ -41,3 +41,16 @@ export function resolveSuggestions(generated: string | null, configured: string[
     ? { questions, source: 'model' }
     : { questions: configured.slice(0, suggestionLimit), source: 'presets' };
 }
+
+/** The suggestion dispatch marker lives outside the model-turn band. A marker
+ * without a persisted success means the provider outcome is unknown: the
+ * delivered answer keeps its presets and the call is never replayed. */
+export const suggestionGenerationStep = 1014;
+
+export function resumeSuggestionGeneration(step: { status?: unknown; private_checkpoint?: unknown } | undefined):
+  { action: 'dispatch' } | { action: 'reuse'; text: string } | { action: 'skip' } {
+  if (!step) return { action: 'dispatch' };
+  const text = (step.private_checkpoint as { text?: unknown } | null | undefined)?.text;
+  if (step.status === 'succeeded' && typeof text === 'string') return { action: 'reuse', text };
+  return { action: 'skip' };
+}

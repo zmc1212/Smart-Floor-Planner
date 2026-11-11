@@ -22,15 +22,15 @@
 
 | 字段 | 当前记录 |
 | --- | --- |
-| 交付与负责人 | P2公开工地开场原生迁移（2026-11-11用户定向）：公开工地开场接入原生执行链，重试保留原run purpose。单一负责人，禁止自动新建或交接聊天，仅用户明确要求才新建/转移。方法约束：先验证真实回答，禁止补丁循环；模型解释、KnowledgeRetriever/Evidence供授权材料，代码守权限/来源/动作/回执；两轮失败停循环，不堆提示词或换模型。 |
-| 用户入口与结果 | 业主从公开工地开场进入小K，由`xiaok-native-executor-v1`原生回答；只读已发布公开材料，重复进入返回existing，追问建议仍用预设。 |
-| 已证缺口 | 开场原先只走本地开场路径，无原生派发、无模型用量与步骤记录；开场重试会被记成reply。 |
-| 已完成 | `conversation.ts`在native绑定下为`public.site.intro`设置`agentRuntime: xiaok-native-executor-v1`；`native-executor.ts`的`processNativeAgentAnswer`新增intro分支；`public-intro.ts`新增`defaultPublicIntroInput/defaultPublicIntroConstraints`（无注册FastGPT scene时使用）。只读`publishedPublicMaterial`；模型调用前与`completeRun`事务内复验`activePublicSite`与公开状态；记录provider attempt、`native-intro:{runId}`的`intro_tokens`用量、`run:`用量和步骤1006 `agent_intro`；未知派发保持indeterminate不重放；重复进入existing。 |
-| 下一动作 | 按计划继续P3剩余入口（追问建议仍预设，后续单独迁移）。 |
-| 必要验收 | live run 3328 succeeded，executor `xiaok-native-executor-v1`，conversation 2230，site 11/version 38，开场86字，step1006 `agent_intro`，usage 316输入/49输出 observed，attempt 4970 succeeded；重复attach返回existing；重进读到assistant消息14583；pending_owner工地与旧版本均`public_site_unavailable` 404；合成未知派发run3330为indeterminate/provider_outcome_unknown且无输出消息；定向测试`native-public-intro.test.ts` 9/9 + `agent-v2-openings.test.ts` 7/7共16/16；lint 0错误；定向tsc仅有仓库既有`report-context.ts`错误。 |
-| 失败与调用边界 | 保留既有失败（r12–r14、four-questions-r2、run3276 missing_citation、isolation-r5 ECONNREFUSED、run3274配置热变更）；full-flow未执行，不作通过；不重放unknown provider；仅1454开发库；无真实客户写入、外部消息或生产。 |
-| 环境与资源 | 远程开发库经SSH隧道5432；3006 dev server与常驻Worker；外部搜索/读页按测试需要，失败如实标未验；Stable HLS、真机/真实微信、生产未验。 |
-| 证据与后继 | `tmp/xiaok-native-public-intro-20261111/report.json`；模块清单双语已更新；后继按P3剩余入口迁移。 |
+| 交付与负责人 | P3追问建议原生迁移+公开工地收尾（2026-11-11用户定向）：追问建议接入原生模型生成；补齐开场派发前授权复验、显式重试标记一致性、审计窗口收尾连续性。单一负责人，禁止自动新建或交接聊天，仅用户明确要求才新建/转移。方法约束：先验证真实回答，禁止补丁循环；模型解释、KnowledgeRetriever/Evidence供授权材料，代码守权限/来源/动作/回执；两轮失败停循环，不堆提示词或换模型。 |
+| 用户入口与结果 | 业主咨询回答后，追问建议由原生模型按本轮获权正文生成并沿用原展示；公开工地开场在派发前复验当前工地版本与公开材料，重试成功后重进返回existing；审计零调用结论在收尾时复验窗口前缀。 |
+| 已证缺口 | 追问建议原为预设且零模型调用；开场派发前只标记provider start、不复验工地/材料；显式重试未同步publicIntros导致重进重复开场；审计收尾只查长度。 |
+| 已完成 | native-executor答复后按`suggestionPrompt`生成3-4问，步骤1014派发标记+provider attempt、`suggestion_tokens`用量，1007保存并按source=model/generated标记；失败、非法或unknown回退预设且不重发；`markProviderStarted`新增同事务guard，intro派发前复验activePublicSite与publishedPublicMaterial；retry同事务改指marker并attempts+1，切工地拒绝；`auditWindowEntries`要求开窗prefixHash并在收尾前复验。 |
+| 下一动作 | 继续P3剩余入口迁移（日报/模型整理等），不扩推荐平台。 |
+| 必要验收 | live run3378 succeeded，建议attempt4980 qwen3.7-flash 276/25 observed，三条问题重进复用；开场live run3379成功且重复attach existing；切换工地派发前guard拒绝（无模型派发，集成路径仅一条failed attempt）、run failed；派发后撤回无消息且365 tokens保留；失败原run→live重试run3382成功→重进existing且run数保持2；定向public-intro-retry 3/3、DB 2/2、suggestions 8/8、audit-window 9/9、assistant派发前守卫1/1；lint见模块清单。 |
+| 失败与调用边界 | 保留r12–r14、four-questions-r2、run3276、isolation-r5、run3274；full-flow/真机/生产未验；未知provider不重放；仅1454开发库；无真实客户写入或外部消息。既有`report-context.ts`类型错误如实保留，不计本轮新缺陷。 |
+| 环境与资源 | 远程开发库经SSH隧道5432；3006 dev server与常驻Worker；外部搜索/读页按需，失败如实标未验；Stable HLS、真机/真实微信、生产未验。 |
+| 证据与后继 | `tmp/xiaok-p3-suggestions-20261111/report.json`；`tmp/xiaok-public-intro-guard-20261111/report.json`；`tmp/xiaok-public-intro-commit-20261111/report.json`；`tmp/xiaok-public-intro-retry-live-20261111/report.json`；模块清单双语已更新；后继按P3剩余入口。 |
 
 ## 3. 复用哪些成果
 

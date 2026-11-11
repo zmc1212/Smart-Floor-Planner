@@ -61,6 +61,9 @@ const auditLines = () => auditFile && fs.existsSync(auditFile)
 // Assertion window into the shared audit ledger. It opens only after this
 // round's probe receipt is verified against the actual live log position.
 let auditBefore = 0;
+// Prefix identity captured when the window opened; a same-length replacement or
+// a shortened-then-regrown ledger must fail instead of reading as zero calls.
+let auditWindowPrefix = '';
 
 async function step(name: string, fn: () => Promise<unknown>) {
   try { const data = await fn(); (report.checks as Row[]).push({ name, passed: true, data }); console.log(name + ': PASS'); return data; }
@@ -179,6 +182,7 @@ async function main() {
         roundMode: 'xiaok-native-executor-v1' }, lines: auditLines() });
     } catch (error) { assert.fail(readableAuditError(error)); }
     auditBefore = opened.windowStart;
+    auditWindowPrefix = opened.windowPrefixHash;
     report.probe = { probeRunId: opened.probeRunId, batchId: opened.batchId, probeMode: opened.probeMode,
       probeBinding: opened.probeBinding, verifiedAt: opened.verifiedAt, probeWindow: opened.probeWindow,
       roundWindowStart: opened.windowStart, modeTransition: opened.modeTransition };
@@ -303,7 +307,7 @@ async function main() {
     // round, and a shortened/rebuilt ledger fails instead of reading as zero
     // calls.
     let entries: ReturnType<typeof auditWindowEntries>;
-    try { entries = auditWindowEntries(auditLines(), auditBefore); }
+    try { entries = auditWindowEntries(auditLines(), { windowStart: auditBefore, windowPrefixHash: auditWindowPrefix }); }
     catch (error) { assert.fail(readableAuditError(error)); }
     const kinds = auditKindCounts(entries);
     const nonStage = auditNonStageKinds(kinds);

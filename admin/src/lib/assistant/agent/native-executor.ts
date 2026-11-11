@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { withTenantTransaction } from '@/db/transaction';
+import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { AiProviderError } from '@/lib/ai/provider-types';
 import { executePostgresText } from '@/lib/ai/postgres-workflow-chat';
@@ -12,7 +12,8 @@ import { saveKnowledgeCitation } from '../knowledge/save-citation';
 import { nativeConversation } from '../fastgpt/rag-session';
 import { ragAnswerParts, type RagCitationSource, type RagPart } from '../fastgpt/native-rag';
 import { nativeAgentRuntimeBinding } from '../fastgpt/agent-v2/config';
-import { resolveSuggestions, type SuggestionResolution } from '../fastgpt/agent-v2/suggestions';
+import { resolveSuggestions, resumeSuggestionGeneration, suggestionGenerationStep, suggestionPrompt,
+  type SuggestionResolution } from '../fastgpt/agent-v2/suggestions';
 import { agentCapabilityFingerprint, agentConfig } from './config';
 import { businessToolDefinitions, parseBusinessQuery, type BusinessSnapshot } from './business-tools';
 import { guardAnswerCommitments } from './context';
@@ -170,6 +171,28 @@ export function recoveredDialogueToolState(searchSteps: Row[], businessSteps: Ro
   return { searches, businesses, webs, histories, ...(designers ? { designers } : {}), ...(publicSites ? { publicSites } : {}), nextSequence };
 }
 
+/** The pre-dispatch authorization for a public-site opening. It runs in the
+ * same transaction as the provider-start marker: a site switched or withdrawn
+ * after the first read blocks the model call, while the final commit keeps its
+ * own re-check. */
+export async function authorizePublicIntroDispatch(tx: PostgresTransaction, enterpriseId: string,
+  conversation: Row, ref: { siteId: string; versionId: string }) {
+  const current = (conversation.entry_snapshot as Row).activePublicSite as
+    { siteId: string; versionId: string } | undefined;
+  if (!current || String(current.siteId) !== String(ref.siteId) || String(current.versionId) !== String(ref.versionId))
+    fail('context_changed');
+  if (!await publishedPublicMaterial(tx, enterpriseId, String(ref.siteId), String(ref.versionId)))
+    fail('public_site_unavailable', 404);
+}
+
+/** The commit-time counterpart: the model may have run, but the opening is
+ * only persisted while the same selection and published material still hold.
+ * Throwing here rolls the message append back with the rest of the commit. */
+export async function assertPublicIntroCommit(tx: PostgresTransaction, lease: Lease, ref: { siteId: string; versionId: string }) {
+  const state = await runContext(tx, lease);
+  await authorizePublicIntroDispatch(tx, lease.enterpriseId, state.conversation, ref);
+}
+
 export async function processNativeAgentAnswer(lease: Lease) {
   let timer: ReturnType<typeof setInterval> | undefined;
   // Set when a guard meets a dispatched-but-unrecorded model step: the run
@@ -227,7 +250,13 @@ export async function processNativeAgentAnswer(lease: Lease) {
         beforeProviderCall: async () => {
           if (!needProviderMark) return;
           needProviderMark = false;
-          await markProviderStarted(lease);
+          // The first read is not the dispatch authorization. Immediately
+          // before the provider call (same transaction as the start marker) the
+          // selected site/version, its published state and the run/user
+          // authorization are checked again, so leaving the site or withdrawing
+          // it in between produces no model call.
+          await markProviderStarted(lease, [], (tx, conversation) =>
+            authorizePublicIntroDispatch(tx, lease.enterpriseId, conversation, ref));
         },
       });
       if (!output.agentOutput) fail('invalid_model_answer', 502);
@@ -244,13 +273,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
         // The site may be withdrawn, replaced or left while the model ran.
         // Both the active selection and the published material must still be
         // the same at commit time, so a stale opening is never delivered.
-        const state = await runContext(tx, lease);
-        const current = (state.conversation.entry_snapshot as Row).activePublicSite as
-          { siteId: string; versionId: string } | undefined;
-        if (!current || String(current.siteId) !== String(ref.siteId) || String(current.versionId) !== String(ref.versionId))
-          fail('context_changed');
-        if (!await publishedPublicMaterial(tx, lease.enterpriseId, String(ref.siteId), String(ref.versionId)))
-          fail('public_site_unavailable', 404);
+        await assertPublicIntroCommit(tx, lease, ref);
         await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
           values(${lease.enterpriseId},${lease.runId},1006,'agent_intro','succeeded',
           ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, scene: scene?.key ?? sceneKey,
@@ -587,9 +610,82 @@ export async function processNativeAgentAnswer(lease: Lease) {
     const composed = publicSitesDelivery(
       composeNativeDelivery(finalText, snapshotText, modelCitations, knowledgeRetrieved, webRetrieved), sites.outcome());
     const text = composed.text;
-    // Follow-up questions stay preset-only until the dedicated suggestion
-    // generation migrates off its FastGPT app (no model call, no usage row).
-    const suggestions: SuggestionResolution = resolveSuggestions(null, bound.configuration.presets ?? []);
+    // Follow-up questions are ancillary: a failed, unknown or invalid
+    // generation keeps the delivered answer and falls back to the configured
+    // presets. The 1014 dispatch marker (outside the model-turn band) makes an
+    // interrupted call observable without ever replaying a metered dispatch.
+    const presets = bound.configuration.presets ?? [];
+    let suggestions: SuggestionResolution = resolveSuggestions(null, presets);
+    const suggestionStep = await withTenantTransaction(lease.enterpriseId, async tx => {
+      await runContext(tx, lease);
+      return await one(tx, sql`select status,private_checkpoint from app.assistant_run_steps
+        where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${suggestionGenerationStep}
+          and kind='agent_suggestion_model'`);
+    });
+    const resumedSuggestions = resumeSuggestionGeneration(suggestionStep ?? undefined);
+    if (resumedSuggestions.action === 'reuse') suggestions = resolveSuggestions(resumedSuggestions.text, presets);
+    else if (resumedSuggestions.action === 'dispatch') {
+      const operationKey = 'native-suggest:' + lease.runId;
+      try {
+        // Authorization precedes the dispatch marker, so a rejected guard does
+        // not leave a usage row for a call that never happened.
+        await guard();
+        await withTenantTransaction(lease.enterpriseId, async tx => {
+          await runContext(tx, lease);
+          await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
+            values(${lease.enterpriseId},${lease.runId},${suggestionGenerationStep},'agent_suggestion_model','running',
+            ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, purpose: 'suggestions', promptVersion })}::jsonb)
+            on conflict(enterprise_id,run_id,step_seq) do nothing`);
+          // The open usage marker keeps an interrupted dispatch countable as
+          // unknown; a success settles the same row.
+          await tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,operation_key,category,quantity,measurement_kind)
+            values(${lease.enterpriseId},${lease.runId},${operationKey},'suggestion_tokens',null,'unavailable') on conflict do nothing`);
+        });
+        const output = await executePostgresText({
+          enterpriseId: BigInt(lease.enterpriseId),
+          owner: { kind: 'assistant_run', runId: BigInt(lease.runId) },
+          logicalModelKey: 'chat.general', messages: [], maxTokens: 800,
+          agent: { config, input: { messages: [{ role: 'user',
+            content: [{ type: 'text', text: suggestionPrompt(text) }] }], tools: [], maxTokens: 800 } },
+          metadata: { promptVersion, runtime: xiaokNativeExecutorProtocol, purpose: 'suggestions', probeVersion: config.probeVersion },
+          beforeProviderCall,
+        });
+        if (!output.agentOutput) fail('invalid_model_answer', 502);
+        const usage = output.agentOutput.usage;
+        const generated = output.agentOutput.text;
+        await withTenantTransaction(lease.enterpriseId, async tx => {
+          await runContext(tx, lease);
+          await tx.execute(sql`update app.assistant_run_steps set status='succeeded',provider_attempt_id=${String(output.attemptId)},
+            private_checkpoint=${JSON.stringify({ text: generated })}::jsonb
+            where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${suggestionGenerationStep}`);
+          await tx.execute(sql`update app.assistant_usage_records set provider_attempt_id=${String(output.attemptId)},
+            quantity=${usage ? usage.inputTokens + usage.outputTokens : null},measurement_kind=${usage ? 'observed' : 'unavailable'},
+            input_tokens=${usage?.inputTokens ?? null},output_tokens=${usage?.outputTokens ?? null}
+            where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and operation_key=${operationKey}`);
+        });
+        suggestions = resolveSuggestions(generated, presets);
+      } catch (error) {
+        // An unknown acceptance must stay visible even if the run later fails
+        // for another reason; the answer itself already stands on its own.
+        const unknown = error instanceof AiProviderError && ['accepted', 'unknown'].includes(error.disposition);
+        if (unknown) outcomeUnknown = true;
+        await withTenantTransaction(lease.enterpriseId, tx => tx.execute(sql`update app.assistant_run_steps set status='failed',
+          input_summary=${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, purpose: 'suggestions', promptVersion,
+            code: unknown ? 'provider_outcome_unknown' : error instanceof AssistantError ? error.code : 'suggestion_generation_failed' })}::jsonb
+          where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${suggestionGenerationStep}
+            and status='running'`)).catch(() => undefined);
+      }
+    } else if (suggestionStep && String(suggestionStep.status) === 'running') {
+      // An earlier process dispatched this suggestion call without persisting
+      // its receipt. It is never replayed, and a later commit failure must not
+      // hide the unknown provider outcome.
+      outcomeUnknown = true;
+      await withTenantTransaction(lease.enterpriseId, tx => tx.execute(sql`update app.assistant_run_steps set status='failed',
+        input_summary=${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, purpose: 'suggestions', promptVersion,
+          code: 'provider_outcome_unknown' })}::jsonb
+        where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${suggestionGenerationStep}
+          and status='running'`)).catch(() => undefined);
+    }
     const parts = ragAnswerParts(text, [...catalog.values()]);
     const cited = [...catalog.values()].filter(c => parts.some(p => 'source' in p && p.source.nativeId === c.nativeId));
     // The persisted answer owns the web citation spans (same protocol as the
@@ -637,7 +733,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
           await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,private_checkpoint,input_summary)
             values(${lease.enterpriseId},${lease.runId},1007,'agent_suggestions','succeeded',
               ${JSON.stringify({ questions: suggestions.questions, source: suggestions.source })}::jsonb,
-              ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, runtime: 'xiaok-native-executor', generated: false })}::jsonb)`);
+              ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, runtime: 'xiaok-native-executor', generated: suggestions.source === 'model' })}::jsonb)`);
         await tx.execute(sql`update app.assistant_messages set content=${JSON.stringify({ version: 1, blocks })}::jsonb,
           answer_kind=${savedCitations.size ? 'grounded' : null} where enterprise_id=${lease.enterpriseId} and id=${messageId}`);
         await tx.execute(sql`update app.assistant_runs set answer_kind=${savedCitations.size ? 'grounded' : null}

@@ -13,6 +13,14 @@ import { CITY_OPTIONS } from '@/lib/portfolio/regions';
 import { discoveryRequest } from '@/lib/assistant/core/discovery';
 
 type PublicIntroMarker = { siteId: string; versionId: string; attempts: number; runId?: string };
+export type PublicIntroEntryDecision = 'existing' | 'new' | 'unavailable';
+/** A marker and its previous run decide whether an entry reuses the opening,
+ * retries it once, or stops; the caller handles a missing marker or run id. */
+export function publicIntroEntryDecision(marker: { attempts?: number } | undefined, previousStatus: string | undefined): PublicIntroEntryDecision {
+  if (previousStatus === undefined || ['queued', 'running', 'succeeded'].includes(previousStatus)) return 'existing';
+  // One failed generation may be retried on a later entry; never loop on it.
+  return Number(marker?.attempts) >= 2 ? 'unavailable' : 'new';
+}
 /** One model opening per visited site version and consultation. It is an ordinary
  * customer reply run, so existing admission, quota, retry and failure semantics
  * apply unchanged; the client already follows the conversation's latest run. */
@@ -27,9 +35,8 @@ async function schedulePublicIntro(tx: PostgresTransaction, actor: ActorContext,
   const current = markers.find(m => String(m.siteId) === siteId && String(m.versionId) === versionId);
   if (current?.runId) {
     const previous = await one(tx, sql`select status from app.assistant_runs where enterprise_id=${actor.enterpriseId} and id=${String(current.runId)}`);
-    if (!previous || ['queued','running','succeeded'].includes(String(previous.status))) return 'existing' as const;
-    // One failed generation may be retried on a later entry; never loop on it.
-    if (Number(current.attempts) >= 2) return 'unavailable' as const;
+    const decision = publicIntroEntryDecision(current, previous ? String(previous.status) : undefined);
+    if (decision !== 'new') return decision;
   }
   const notice = await one(tx, sql`select id from app.assistant_messages where enterprise_id=${actor.enterpriseId} and conversation_id=${cid}
     and purpose='construction.public.context' order by seq desc limit 1`);

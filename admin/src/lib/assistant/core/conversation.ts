@@ -561,13 +561,36 @@ export class ConversationService {
         // model response followed by retrieval failure keeps its original cost
         // hold while the explicit retry receives a separate budget reservation.
         if (r.awaiting_reconciliation) fail('context_changed');
+        const publicIntro = String(r.purpose) === 'public.site.intro';
+        // A successful retry is the opening for the same visited site version, so
+        // its marker must follow the new run. The marker stays bound to the site
+        // it was created for: a visitor who moved on is not retrying this opening.
+        const snapshot = publicIntro ? await one(repo.tx, sql`select entry_snapshot from app.assistant_conversations
+          where enterprise_id=${this.actor.enterpriseId} and id=${String(c.id)} for update`) : undefined;
+        const entry = (snapshot?.entry_snapshot || {}) as Row;
+        const markers = (entry.publicIntros || []) as Array<Row & { siteId?: string; versionId?: string; attempts?: number; runId?: string }>;
+        const marker = publicIntro ? markers.find(m => String(m.runId) === String(r.id)) : undefined;
+        const active = entry.activePublicSite as Row | undefined;
+        // Without the original marker the retry cannot prove which site version
+        // it belongs to, so it must not generate an opening for the currently
+        // selected site instead.
+        if (publicIntro && !marker) fail('context_changed');
+        if (marker && (!active || String(active.siteId) !== String(marker.siteId) || String(active.versionId) !== String(marker.versionId)))
+          fail('context_changed');
         // A retry keeps the public-site opening purpose. Reusing the default
         // 'reply' would turn a failed opening into a normal answer run whose
         // system trigger has no conversational counterpart; other purposes
         // keep their historical reply retry path.
-        return newRun(repo.tx, this.actor, c, settings!, String(r.trigger_message_id), runId,
+        const retried = await newRun(repo.tx, this.actor, c, settings!, String(r.trigger_message_id), runId,
           { kind: 'user_message', messageId: String(r.trigger_message_id) },
-          String(r.purpose) === 'public.site.intro' ? 'public.site.intro' : 'reply');
+          publicIntro ? 'public.site.intro' : 'reply');
+        if (marker) {
+          const next = markers.map(m => String(m.runId) === String(r.id)
+            ? { ...m, runId: retried.runId, attempts: Number(m.attempts || 0) + 1 } : m);
+          await repo.tx.execute(sql`update app.assistant_conversations set entry_snapshot=jsonb_set(entry_snapshot,'{publicIntros}',${json(next)}::jsonb)
+            where enterprise_id=${this.actor.enterpriseId} and id=${String(c.id)}`);
+        }
+        return retried;
       });
     }, action === 'retry');
   }

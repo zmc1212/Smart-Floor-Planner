@@ -16,8 +16,8 @@ import { closePostgresPool } from '@/lib/postgresql';
 import { ConstructionService } from '@/lib/construction/service';
 import { ConstructionReportService, reportPlanDto } from '@/lib/construction/report-service';
 import { fastGPTAgentV2Configuration, nativeAgentRuntimeBinding } from '@/lib/assistant/fastgpt/agent-v2/config';
-import { auditDeployment, auditKindCounts, auditNonStageKinds, auditWindowEntries, openAuditWindow,
-  readableAuditError } from '@/lib/assistant/fastgpt/agent-v2/audit-window';
+import { auditDeployment, auditKindCounts, auditNonStageKinds, auditPrefixHash, auditWindowEntries,
+  openAuditWindow, readableAuditError } from '@/lib/assistant/fastgpt/agent-v2/audit-window';
 
 loadEnvConfig(process.cwd(), true);
 assert.ok(process.argv.includes('--development'));
@@ -83,6 +83,9 @@ const auditFile = deployment?.auditFile;
 const auditLines = () => auditFile && fs.existsSync(auditFile)
   ? fs.readFileSync(auditFile, 'utf8').trim().split(/\r?\n/).filter(Boolean) : [];
 let auditBefore = 0;
+// Prefix identity captured when the window opened; the round fails closed if
+// the earlier ledger is replaced or rebuilt, even at the same length.
+let auditWindowPrefix = '';
 
 async function step(name: string, fn: () => Promise<unknown>) {
   try { const data = await fn(); (report.checks as Row[]).push({ name, passed: true, data }); console.log(name + ': PASS'); return data; }
@@ -201,13 +204,16 @@ async function main() {
           roundMode: 'xiaok-native-executor-v1' }, lines: auditLines() });
       } catch (error) { assert.fail(readableAuditError(error)); }
       auditBefore = opened.windowStart;
+      auditWindowPrefix = opened.windowPrefixHash;
       report.probe = { probeRunId: opened.probeRunId, batchId: opened.batchId, probeMode: opened.probeMode,
         probeBinding: opened.probeBinding, verifiedAt: opened.verifiedAt, probeWindow: opened.probeWindow,
         roundWindowStart: opened.windowStart, modeTransition: opened.modeTransition };
       report.auditWindow = { batchId, mode: 'xiaok-native-executor-v1', start: auditBefore, end: null };
       return report.probe;
     }
-    auditBefore = auditLines().length;
+    const ledger = auditLines();
+    auditBefore = ledger.length;
+    auditWindowPrefix = auditPrefixHash(ledger, auditBefore);
     report.auditWindow = { batchId, mode: expectedExecutor, start: auditBefore, end: null };
     return report.auditWindow;
   });
@@ -470,7 +476,7 @@ async function main() {
     // 窗口起点在本轮任何被测请求之前由已验证的批次探针回执打开;窗口内日志被
     // 缩短或重建时 auditWindowEntries 明确失败,不按零调用判通过。
     let delta: ReturnType<typeof auditWindowEntries>;
-    try { delta = auditWindowEntries(auditLines(), auditBefore); }
+    try { delta = auditWindowEntries(auditLines(), { windowStart: auditBefore, windowPrefixHash: auditWindowPrefix }); }
     catch (error) { assert.fail(readableAuditError(error)); }
     const kinds = auditKindCounts(delta);
     const seen = Object.keys(kinds);

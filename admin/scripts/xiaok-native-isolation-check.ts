@@ -17,7 +17,8 @@ import { KnowledgeService } from '@/lib/assistant/knowledge/service';
 import { claimKnowledgeJob, runKnowledgeJob } from '@/lib/assistant/knowledge/index-worker';
 import { retrieveKnowledge } from '@/lib/assistant/knowledge/retrieval';
 import { nativeAgentRuntimeBinding } from '@/lib/assistant/fastgpt/agent-v2/config';
-import { auditKindCounts, auditNonStageKinds, auditWindowEntries, readableAuditError } from '@/lib/assistant/fastgpt/agent-v2/audit-window';
+import { auditKindCounts, auditNonStageKinds, auditPrefixHash, auditWindowEntries,
+  readableAuditError } from '@/lib/assistant/fastgpt/agent-v2/audit-window';
 
 loadEnvConfig(process.cwd(), true);
 assert.ok(process.argv.includes('--development'));
@@ -49,7 +50,11 @@ const workflowsFile = process.env.XIAOK_FASTGPT_WORKFLOWS_FILE?.trim();
 const auditFile = workflowsFile ? (JSON.parse(fs.readFileSync(path.resolve(workflowsFile), 'utf8')).auditFile as string | undefined) : undefined;
 const auditLines = () => auditFile && fs.existsSync(auditFile)
   ? fs.readFileSync(auditFile, 'utf8').trim().split(/\r?\n/).filter(Boolean) : [];
-const auditBefore = auditLines().length;
+// Prefix identity captured when the window opened; a same-length replacement or
+// a shortened-then-regrown ledger must fail instead of reading as zero calls.
+const auditBaseline = auditLines();
+const auditBefore = auditBaseline.length;
+const auditWindowPrefix = auditPrefixHash(auditBaseline, auditBefore);
 
 async function step(name: string, fn: () => Promise<unknown>) {
   try { const data = await fn(); (report.checks as Row[]).push({ name, passed: true, data }); console.log(name + ': PASS'); return data; }
@@ -246,7 +251,7 @@ async function main() {
     assert.ok(workflowsFile, 'FastGPT 审计未配置,不得判 PASS');
     assert.ok(auditFile && fs.existsSync(auditFile), 'FastGPT 审计文件缺失,不得判 PASS');
     let entries: ReturnType<typeof auditWindowEntries>;
-    try { entries = auditWindowEntries(auditLines(), auditBefore); }
+    try { entries = auditWindowEntries(auditLines(), { windowStart: auditBefore, windowPrefixHash: auditWindowPrefix }); }
     catch (error) { assert.fail(readableAuditError(error)); }
     const kinds = auditKindCounts(entries);
     const nonStage = auditNonStageKinds(kinds);

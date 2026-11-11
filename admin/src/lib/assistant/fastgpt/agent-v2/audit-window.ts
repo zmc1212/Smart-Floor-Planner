@@ -11,7 +11,10 @@
  *    rewritten, so an invalid audit source fails closed instead of looking
  *    like zero calls;
  *  - every judged record comes from the window opened immediately before the
- *    round's own requests, so earlier records can never be attributed to it.
+ *    round's own requests, so earlier records can never be attributed to it;
+ *  - closing the window re-verifies the prefix identity captured at open, so a
+ *    same-length replacement, or a log shortened and regrown to the same
+ *    length, still fails closed instead of reading as zero calls.
  */
 import { createHash } from 'node:crypto';
 import path from 'node:path';
@@ -30,6 +33,12 @@ export type AuditProbeReceipt = {
   probe: { mode: string; binding: string; verifiedAt: string };
   window: { before: number; after: number; prefixHash: string };
 };
+
+/** Identity captured when the round window opens. `windowStart` alone cannot
+ * distinguish an append-only ledger from one replaced by different content of
+ * the same length, or shortened and regrown; `windowPrefixHash` re-verifies the
+ * prefix the window was actually opened on. */
+export type AuditWindowHandle = { windowStart: number; windowPrefixHash: string };
 
 export type AuditRecord = { kind: string; value: Record<string, unknown> };
 export type AuditWindowEntry = AuditRecord & { index: number; runId: string };
@@ -115,14 +124,19 @@ export function openAuditWindow(input: {
   return { probeRunId: String(value.probeRunId), batchId: String(value.batchId), probeMode: String(value.probe.mode),
     probeBinding: String(value.probe.binding), verifiedAt: String(value.probe.verifiedAt),
     probeWindow: { before, after }, windowStart: lines.length, ledgerLength: lines.length,
+    windowPrefixHash: auditPrefixHash(lines, lines.length),
     modeTransition: String(value.probe.mode) + ' -> ' + expected.roundMode };
 }
 
-/** Records added at/after `windowStart`. A log shorter than the opened window
- * is an invalid audit source, never an empty (zero-call) result. */
-export function auditWindowEntries(lines: string[], windowStart: number): AuditWindowEntry[] {
+/** Records added at/after the opened window. A log shorter than the opened
+ * window, or whose prefix no longer matches the identity captured at open, is
+ * an invalid audit source, never an empty (zero-call) result. */
+export function auditWindowEntries(lines: string[], window: AuditWindowHandle): AuditWindowEntry[] {
+  const windowStart = window.windowStart;
   if (windowStart < 0 || lines.length < windowStart) throw new AuditSourceError('ledger_truncated',
     '审计来源失效:本轮窗口起点' + windowStart + '超出当前日志长度' + lines.length);
+  if (auditPrefixHash(lines, windowStart) !== window.windowPrefixHash) throw new AuditSourceError('ledger_rewritten',
+    '审计来源失效:开窗后的日志前缀已被替换或重建(含同长度替换),不得按零调用判通过');
   return lines.slice(windowStart).map((line, offset) => {
     const record = recordOf(line, windowStart + offset);
     return { ...record, index: windowStart + offset, runId: runIdOf(record) };

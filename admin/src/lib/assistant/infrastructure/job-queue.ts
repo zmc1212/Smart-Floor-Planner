@@ -135,12 +135,16 @@ export async function heartbeat(lease: Lease) {
       where enterprise_id=${lease.enterpriseId} and id=${lease.jobId}`);
   });
 }
-/** Commit this marker BEFORE any provider I/O; recovery must never assume an unrecorded acceptance was free. */
-export async function markProviderStarted(lease: Lease,evidence:Evidence[]=[]) {
+/** Commit this marker BEFORE any provider I/O; recovery must never assume an unrecorded acceptance was free.
+ * The optional guard re-verifies the caller's own pre-dispatch conditions in
+ * the same transaction, so rejecting there also prevents the dispatch. */
+export async function markProviderStarted(lease: Lease,evidence:Evidence[]=[],
+  guard?:(tx:PostgresTransaction,conversation:Row)=>Promise<void>) {
   return withTenantTransaction(lease.enterpriseId, async tx => {
     const { run, job } = await live(tx, lease); const c=await authorized(new AssistantRepository(tx, lease.actor), run);
     for(const e of evidence) if(!await resolveEvidence(tx,lease.actor,c,e))fail('context_changed');
     if (job.provider_started_at) fail('context_changed');
+    await guard?.(tx,c);
     await tx.execute(sql`update app.assistant_jobs set provider_started_at=now(),version=version+1,updated_at=now() where enterprise_id=${lease.enterpriseId} and id=${lease.jobId}`);
   });
 }
