@@ -44,6 +44,8 @@ export interface PeriodReportPortOptions {
   readonly actor: ConstructionActor;
   /** Test/CLI seam; defaults to the real tenant-transaction store. */
   readonly store?: PeriodReportStore;
+  /** Test seam for the trusted clock; defaults to `new Date()` per execute. */
+  readonly now?: () => Date;
 }
 
 export type PeriodReceiverStatus =
@@ -142,6 +144,21 @@ export interface PeriodReportStore {
   ): Promise<PeriodDeliveryRecord | null>;
 }
 
+/** Offline seams for the default store; production uses the real implementations. */
+export interface PeriodReportStoreDependencies {
+  readonly transaction?: <T>(
+    enterpriseId: bigint | number | string,
+    callback: (tx: PostgresTransaction) => Promise<T>,
+  ) => Promise<T>;
+  readonly authorizeWrite?: (
+    tx: PostgresTransaction,
+    actor: ConstructionActor,
+    projectId: string,
+    lock: 'share' | 'update',
+  ) => Promise<unknown>;
+  readonly enqueueReport?: typeof enqueueReport;
+}
+
 type LockMode = 'share' | 'update';
 
 function lockClause(mode: LockMode): SQL {
@@ -238,11 +255,12 @@ async function loadScopeInTransaction(
   projectId: string,
   period: FixedPeriod,
   write: boolean,
+  authorizeWrite: typeof writeProjectAccess,
 ): Promise<PeriodReportScope> {
   // B reports are a management path: every capability, including reads, uses
   // the existing construction owner/manager rule. Tenant scope is fixed by the
   // host run, never by the definition.
-  const access = await writeProjectAccess(tx, actor, projectId, write ? 'update' : 'share');
+  const access = await authorizeWrite(tx, actor, projectId, write ? 'update' : 'share');
   const project = access.project;
   const settings = await one(
     tx,
@@ -303,7 +321,13 @@ async function queueInTransaction(
   actor: ConstructionActor,
   projectId: string,
   period: FixedPeriod,
+  authorizeWrite: typeof writeProjectAccess,
+  enqueue: typeof enqueueReport,
 ): Promise<StoredPeriodReport | null> {
+  // Re-authorize at the top of the write transaction, with the same project →
+  // settings → binding → conversation lock order as the scope read. A manager
+  // revoked between the scope check and this transaction must not enqueue.
+  await authorizeWrite(tx, actor, projectId, 'update');
   const settings = await one(
     tx,
     sql`select * from app.construction_report_settings
@@ -334,7 +358,7 @@ async function queueInTransaction(
     followupGeneration: (conversation.entry_snapshot as Row | null)?.followupGeneration,
   });
 
-  const enqueued = await enqueueReport(
+  const enqueued = await enqueue(
     tx,
     actor.enterpriseId,
     binding,
@@ -507,15 +531,20 @@ async function readDeliveryInTransaction(
 }
 
 /** Default store: every method uses the existing tenant transaction scope. */
-export function createPeriodReportStore(): PeriodReportStore {
+export function createPeriodReportStore(
+  dependencies: PeriodReportStoreDependencies = {},
+): PeriodReportStore {
+  const transaction = dependencies.transaction ?? withTenantTransaction;
+  const authorizeWrite = (dependencies.authorizeWrite ?? writeProjectAccess) as typeof writeProjectAccess;
+  const enqueue = dependencies.enqueueReport ?? enqueueReport;
   return {
     loadScope: ({ actor, projectId, period, write }) =>
-      withTenantTransaction(actor.enterpriseId, (tx) =>
-        loadScopeInTransaction(tx, actor, projectId, period, write),
+      transaction(actor.enterpriseId, (tx) =>
+        loadScopeInTransaction(tx, actor, projectId, period, write, authorizeWrite),
       ),
     findReport: (scope) =>
       scope.bindingId && scope.conversationId
-        ? withTenantTransaction(scope.enterpriseId, (tx) =>
+        ? transaction(scope.enterpriseId, (tx) =>
             findReportInTransaction(
               tx,
               scope.enterpriseId,
@@ -526,19 +555,19 @@ export function createPeriodReportStore(): PeriodReportStore {
           )
         : Promise.resolve(null),
     enqueue: ({ actor, projectId, period }) =>
-      withTenantTransaction(actor.enterpriseId, (tx) =>
-        queueInTransaction(tx, actor, projectId, period),
+      transaction(actor.enterpriseId, (tx) =>
+        queueInTransaction(tx, actor, projectId, period, authorizeWrite, enqueue),
       ),
     readRecords: (scope, period) =>
-      withTenantTransaction(scope.enterpriseId, (tx) =>
+      transaction(scope.enterpriseId, (tx) =>
         readRecordsInTransaction(tx, scope, period),
       ),
     readPhotos: (scope, records) =>
-      withTenantTransaction(scope.enterpriseId, (tx) =>
+      transaction(scope.enterpriseId, (tx) =>
         readPhotosInTransaction(tx, scope, records),
       ),
     readDelivery: (scope, reportId, revision) =>
-      withTenantTransaction(scope.enterpriseId, (tx) =>
+      transaction(scope.enterpriseId, (tx) =>
         readDeliveryInTransaction(tx, scope, reportId, revision),
       ),
   };
@@ -617,13 +646,14 @@ function composePeriodReport(
 
 export function createPeriodReportPorts(options: PeriodReportPortOptions): LiveOperationPorts {
   const store = options.store ?? createPeriodReportStore();
+  const now = options.now ?? (() => new Date());
   const saved = new Map<string, StoredPeriodReport>();
   const records = new Map<string, PeriodRecordRead>();
 
   return {
     async execute(operation, context) {
       try {
-        const period = parseFixedDailyPeriod(context.event);
+        const period = parseFixedDailyPeriod(context.event, now());
         switch (operation.capabilityRef) {
           case 'read.period_records': {
             assertOperationPeriodMatches(operation.input, period);

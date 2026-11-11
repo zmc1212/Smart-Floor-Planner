@@ -411,9 +411,10 @@ verified in Stable DevTools after the client session was refreshed on
 2026-11-11. Weekly reports, a general scheduler, drag canvas,
 Worker/menu/shared-migration changes remain out of scope. The native B run used a
 temporary local API switch in the B worktree (reverted); A/production
-configuration was not changed. Counts: 120 non-database backend tests
-(native-workflow including 15 period-report port and 7 acceptance-conversation
-tests, plus 6 offline guards) and 59 focused chat. The full Mini Program suite
+configuration was not changed. Counts: 158 non-database native-workflow tests
+(including 20 period-report port, 8 acceptance-state, 31 model-evidence and 7
+acceptance-conversation tests), 89 shared construction tests, 6 offline guards
+and 59 focused chat. The full Mini Program suite
 remains 2218/2221 with three pre-existing survey-runtime audit failures
 unrelated to this chat change.
 
@@ -454,6 +455,34 @@ new workflow runId. It then reads the report through the original XiaoK
 `followups → reports → record → media` API, checks re-entry, duplicate counts
 and access/photo revocation, and restores the plan/agent configuration.
 
+B5.2 closeout rules:
+
+- `save.period_report` re-authorizes the project inside the same write
+  transaction, with the same project → settings → binding → conversation lock
+  order as the scope read, so a membership or customer revocation between the
+  read and the write cannot enqueue a report.
+- `parseFixedDailyPeriod` only accepts a Shanghai calendar day that has already
+  ended; an ongoing or future day fails with `period_not_ended`.
+- The workflow CLI resolves each app/fixture target with
+  `resolveB4DatabaseTarget` and verifies the connected `current_database()` /
+  `current_user` against that target before any workflow work, so a fixture
+  pointed at the wrong database or role never runs.
+- The acceptance restores the captured report plan and agent configuration on
+  the failure path as well as on success (`finally`), not only on a clean run.
+- The offline contract `live/report-model-evidence.ts` binds model evidence to
+  reportId/revision/factsRunId/bodyRunId. Every succeeded `agent_model` step of
+  the body run must reference a provider attempt that belongs to the same body
+  run, is `succeeded` and `accepted:true`; each such attempt must own a
+  `usage.provider_attempt_id` row with category `tokens`, measurement `observed`
+  and both token counts. Failed, unaccepted, other-run, FastGPT and
+  unknown/unavailable-measurement rows fail even when another row looks usable.
+- Fresh generation and replay are evaluated separately. Fresh requires
+  `reused:false`, receipts matching the model-evidence binding, every period
+  counter strictly increased and succeeded facts/body jobs with at least one
+  attempt. Replay requires `reused:true`, the same report/version/facts run and
+  delivery receipt, and every counter unchanged; it never describes a reused
+  success as a new model call.
+
 Recorded B evidence (2026-11-11, isolated database 55433, enterprise `1454`,
 project `1454000004`, Shanghai day 2026-11-05): report `3`, revision `1`, facts
 run `5`, body run `6`, delivery message `114` at conversation `1454000007`
@@ -471,6 +500,34 @@ XiaoK read returns `contentStatus:'composed'`, generation `ready` and delivery
 `delivered`; re-entry returns the same report/record/photo (14823 bytes,
 sha256 `1cc96be8…`); customer-access revocation yields `available:false` /
 `source_unavailable`; photo withdrawal returns 404.
+
+B5.2 closeout rerun (2026-11-11, same isolated database, Shanghai day
+2026-11-06 chosen because no report existed for that binding/day): the first
+workflow run created report `4`/revision `1`/facts run `7` with
+`reused:false`. The facts job was `queued` with zero attempts before the real
+Worker started and `succeeded` with one attempt afterwards; the body job `8`
+was also `succeeded` with one attempt. Report `4` is `facts_ready`/`ready`;
+body run `8` has one succeeded `agent_model` step (1100) bound to provider
+attempt `2` (`llm-settings-override`, `qwen3.7-flash`, `succeeded`,
+`accepted:true`) with observed usage `2` (`tokens`, `1108` input + `1427`
+output) and zero FastGPT attempts. The fresh contract observed every counter
+increase (reports/deliveries/report messages `3→4`, jobs/runs `6→8`,
+attempts/usage `1→2`). A new workflow runId replayed the same day with
+`reused:true`, the same report `4`/revision `1`/facts run `7`, the same
+`report-delivery:4:1:1` receipt (message `115`, conversation `1454000007`), and
+every counter unchanged; original XiaoK reads, re-entry and access/photo
+revocation added no rows or model calls. Restoration reported `worker`,
+`media`, `customer_access`, `report_plan` and `agent_settings` all restored; an
+independent read confirmed `enabled=false`/`stage_enabled=false`/parked
+schedules/empty project filter, `agent_config={runtime:'extractive-v1'}` with
+`enabled=true`, restored customer access and an undeleted photo. 23/23 checks,
+exit 0. Evidence:
+`admin/tmp/b5-2-period-report-runs/b5-2-daily-20261111071054743/verification.json`.
+A failure-path run against an already-generated period (2026-11-05) rejected
+the reused report before the Worker started, exited `1`, and still reported
+`worker`/`media`/`customer_access`/`report_plan`/`agent_settings` restored with
+every counter unchanged; evidence
+`admin/tmp/b5-2-period-report-runs/b5-2-daily-20261111071518877/verification.json`.
 
 Native Stable DevTools evidence (2026-11-11, 2.02.2608080, 390×844): the
 customer entered the original XiaoK chat through the lead entry, opened the

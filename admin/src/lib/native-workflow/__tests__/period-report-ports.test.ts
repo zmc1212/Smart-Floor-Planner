@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import type { PostgresTransaction } from '@/db/transaction';
 import { AssistantError, fingerprint } from '@/lib/assistant/contracts';
 import type { ConstructionActor } from '@/lib/construction/contracts';
 import type { PendingOperation, TriggerEvent, WorkflowValue } from '../types';
@@ -10,11 +11,13 @@ import {
 } from '../live/period-event';
 import {
   createPeriodReportPorts,
+  createPeriodReportStore,
   type PeriodDeliveryRecord,
   type PeriodRecordRead,
   type PeriodReportPhoto,
   type PeriodReportScope,
   type PeriodReportStore,
+  type PeriodReportStoreDependencies,
   type StoredPeriodReport,
 } from '../live/period-report-ports';
 import {
@@ -33,6 +36,9 @@ const event: TriggerEvent = {
 };
 
 const actor: ConstructionActor = { enterpriseId: '1454', adminId: '1454000007' };
+
+/** Trusted clock after the fixed 2026-11-10 Shanghai day has ended. */
+const AFTER_PERIOD = new Date('2026-11-11T02:00:00.000Z');
 
 function context(runId = 'b5-run-1', revision = 1): LiveRunContext {
   return {
@@ -87,7 +93,7 @@ function operation(
 }
 
 function scope(overrides: Partial<PeriodReportScope> = {}): PeriodReportScope {
-  const period = parseFixedDailyPeriod(event);
+  const period = parseFixedDailyPeriod(event, AFTER_PERIOD);
   return {
     enterpriseId: actor.enterpriseId,
     projectId: '1455',
@@ -190,7 +196,7 @@ function isFailure(code: string) {
 }
 
 test('daily period is one fixed Shanghai day and rejects spans or other kinds', () => {
-  const period = parseFixedDailyPeriod(event);
+  const period = parseFixedDailyPeriod(event, AFTER_PERIOD);
   assert.equal(period.kind, 'daily');
   assert.equal(period.start.toISOString(), '2026-11-09T16:00:00.000Z');
   assert.equal(period.end.toISOString(), '2026-11-10T16:00:00.000Z');
@@ -212,7 +218,7 @@ test('daily period is one fixed Shanghai day and rejects spans or other kinds', 
 });
 
 test('report_key matches enqueueReport and is independent of run identity', () => {
-  const period = parseFixedDailyPeriod(event);
+  const period = parseFixedDailyPeriod(event, AFTER_PERIOD);
   const expected = fingerprint({
     kind: 'daily',
     start: period.start.toISOString(),
@@ -233,7 +239,7 @@ test('report_key matches enqueueReport and is independent of run identity', () =
     ...event,
     periodStart: '2026-11-11',
     periodEnd: '2026-11-11',
-  });
+  }, new Date('2026-11-12T00:00:00.000Z'));
   assert.notEqual(periodReportKey(nextDay, null), expected);
 });
 
@@ -590,4 +596,159 @@ test('delivery only reports a real, matching worker receipt', async () => {
     ),
     isFailure('receiver_scope_mismatch'),
   );
+});
+
+function isPeriodNotEnded(error: unknown): boolean {
+  return (error as { code?: string }).code === 'period_not_ended';
+}
+
+/** Fake tenant transaction: records calls and forwards the same tx object. */
+function fakeTransaction(transactions: { count: number }, tx: PostgresTransaction) {
+  return <T>(
+    _enterpriseId: bigint | number | string,
+    callback: (transaction: PostgresTransaction) => Promise<T>,
+  ): Promise<T> => {
+    transactions.count += 1;
+    return callback(tx);
+  };
+}
+
+test('a daily period may only run after its Shanghai day has ended', () => {
+  // end = 2026-11-10T16:00:00.000Z; the boundary itself is inclusive.
+  assert.throws(
+    () => parseFixedDailyPeriod(event, new Date('2026-11-10T15:59:59.999Z')),
+    isPeriodNotEnded,
+  );
+  assert.doesNotThrow(
+    () => parseFixedDailyPeriod(event, new Date('2026-11-10T16:00:00.000Z')),
+  );
+  assert.doesNotThrow(
+    () => parseFixedDailyPeriod(event, new Date('2026-11-10T16:00:00.001Z')),
+  );
+
+  assert.throws(
+    () => parseFixedDailyPeriod(
+      { ...event, periodStart: '2026-11-12', periodEnd: '2026-11-12' },
+      new Date('2026-11-11T00:00:00.000Z'),
+    ),
+    isPeriodNotEnded,
+  );
+
+  // occurredAt is only the schedule stamp; a forged one cannot end the day.
+  assert.throws(
+    () => parseFixedDailyPeriod(
+      { ...event, occurredAt: '2026-11-20T00:00:00.000Z' },
+      new Date('2026-11-10T15:00:00.000Z'),
+    ),
+    isPeriodNotEnded,
+  );
+  assert.throws(
+    () => parseFixedDailyPeriod(
+      { ...event, occurredAt: '2020-01-01T00:00:00.000Z' },
+      new Date('2026-11-10T15:00:00.000Z'),
+    ),
+    isPeriodNotEnded,
+  );
+});
+
+test('save refuses a period that has not ended in the trusted clock', async () => {
+  const { state, store } = fakeStore();
+  const ports = createPeriodReportPorts({
+    actor,
+    store,
+    now: () => new Date('2026-11-10T15:00:00.000Z'),
+  });
+
+  await assert.rejects(
+    () => ports.execute(operation('save.period_report'), context()),
+    isFailure('period_not_ended'),
+  );
+  assert.equal(state.enqueueCalls.length, 0);
+});
+
+test('the write transaction re-checks management access before enqueueing', async () => {
+  const period = parseFixedDailyPeriod(event, AFTER_PERIOD);
+  const tx = {} as PostgresTransaction;
+  const transactions = { count: 0 };
+  let enqueueCalls = 0;
+  const authorizeCalls: Array<[PostgresTransaction, ConstructionActor, string, string]> = [];
+  const store = createPeriodReportStore({
+    transaction: fakeTransaction(transactions, tx),
+    authorizeWrite: async (receivedTx, receivedActor, projectId, lock) => {
+      authorizeCalls.push([receivedTx, receivedActor, projectId, lock]);
+      throw new AssistantError('construction_forbidden', 403);
+    },
+    enqueueReport: async () => {
+      enqueueCalls += 1;
+      return null;
+    },
+  });
+
+  await assert.rejects(
+    () => store.enqueue({ actor, projectId: '1455', period }),
+    (error: unknown) => error instanceof AssistantError
+      && error.code === 'construction_forbidden',
+  );
+  assert.equal(transactions.count, 1);
+  assert.equal(authorizeCalls.length, 1);
+  const [receivedTx, receivedActor, projectId, lock] = authorizeCalls[0]!;
+  assert.equal(receivedTx, tx);
+  assert.deepEqual(receivedActor, actor);
+  assert.equal(projectId, '1455');
+  assert.equal(lock, 'update');
+  assert.equal(enqueueCalls, 0);
+});
+
+test('a manager revoked between scope and enqueue fails inside the second transaction', async () => {
+  const fake = fakeStore();
+  const tx = {} as PostgresTransaction;
+  const transactions = { count: 0 };
+  let enqueueCalls = 0;
+  const transaction: PeriodReportStoreDependencies['transaction'] =
+    fakeTransaction(transactions, tx);
+  const defaults = createPeriodReportStore({
+    transaction,
+    authorizeWrite: async () => {
+      throw new AssistantError('construction_forbidden', 403);
+    },
+    enqueueReport: async () => {
+      enqueueCalls += 1;
+      return null;
+    },
+  });
+  const store: PeriodReportStore = { ...fake.store, enqueue: defaults.enqueue };
+  const ports = createPeriodReportPorts({ actor, store, now: () => AFTER_PERIOD });
+
+  await assert.rejects(
+    () => ports.execute(operation('save.period_report'), context()),
+    isFailure('construction_forbidden'),
+  );
+  // The scope read already succeeded; only the enqueue transaction ran and it
+  // refreshed the management check before touching any report row.
+  assert.equal(transactions.count, 1);
+  assert.equal(enqueueCalls, 0);
+});
+
+test('a caller without management access never reaches the enqueue', async () => {
+  const tx = {} as PostgresTransaction;
+  const transactions = { count: 0 };
+  let enqueueCalls = 0;
+  const store = createPeriodReportStore({
+    transaction: fakeTransaction(transactions, tx),
+    authorizeWrite: async () => {
+      throw new AssistantError('construction_forbidden', 403);
+    },
+    enqueueReport: async () => {
+      enqueueCalls += 1;
+      return null;
+    },
+  });
+  const ports = createPeriodReportPorts({ actor, store, now: () => AFTER_PERIOD });
+
+  await assert.rejects(
+    () => ports.execute(operation('save.period_report'), context()),
+    isFailure('construction_forbidden'),
+  );
+  assert.equal(transactions.count, 1);
+  assert.equal(enqueueCalls, 0);
 });

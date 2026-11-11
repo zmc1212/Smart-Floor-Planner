@@ -55,8 +55,12 @@ function calendarDate(value: unknown): { year: number; month: number; day: numbe
 /**
  * Parse the fixed daily event. Only one partial day is allowed; a period span
  * with different start/end dates is rejected instead of being silently widened.
+ *
+ * `now` is the trusted server clock (or a test seam). A period may only run
+ * after its Shanghai day has ended; `occurredAt` is the schedule stamp and
+ * never decides whether the day is over.
  */
-export function parseFixedDailyPeriod(event: TriggerEvent): FixedPeriod {
+export function parseFixedDailyPeriod(event: TriggerEvent, now: Date = new Date()): FixedPeriod {
   if (event.eventType !== 'period_report') {
     throw new WorkflowOperationError(
       'period_event_invalid',
@@ -95,6 +99,13 @@ export function parseFixedDailyPeriod(event: TriggerEvent): FixedPeriod {
     Date.UTC(startDate.year, startDate.month - 1, startDate.day) - SHANGHAI_OFFSET_MS,
   );
   const end = new Date(start.getTime() + DAY_MS);
+  if (end.getTime() > now.getTime()) {
+    throw new WorkflowOperationError(
+      'period_not_ended',
+      409,
+      'the daily period has not ended in the Shanghai timezone yet',
+    );
+  }
   return {
     kind: PERIOD_KIND,
     periodStart: event.periodStart!,
