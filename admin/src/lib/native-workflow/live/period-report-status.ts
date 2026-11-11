@@ -33,6 +33,9 @@ export const PERIOD_REPORT_STATUS_CONTRACT = 'period-report-run-status-v1';
 /** Period kinds the B-line report adapter can bind. */
 export type PeriodKind = 'daily' | 'weekly';
 
+/** Host-selected receiver that the save receipt must confirm. */
+export type PeriodReceiverKind = 'customer' | 'worker';
+
 export type PeriodStepState = 'queued' | 'running' | 'ready' | 'failed' | 'unknown';
 
 export type PeriodDeliveryState = 'waiting' | 'delivered' | 'revoked' | 'muted' | 'unknown';
@@ -72,6 +75,12 @@ export interface PeriodRunBindingView {
   readonly bindingId: string;
   readonly conversationId: string;
   readonly savedReused: boolean;
+  /** Absent on old customer receipts; absent means the project owner. */
+  readonly receiverKind?: PeriodReceiverKind;
+  /** Enterprise worker admin id; null for the owner/customer receiver. */
+  readonly receiverAdminId?: string | null;
+  /** Enterprise-scoped worker receipts freeze exactly the run project. */
+  readonly projectScope?: readonly string[] | null;
 }
 
 export interface PeriodJobView {
@@ -179,6 +188,8 @@ export interface PeriodReportBusinessSnapshot {
     readonly id: string;
     readonly status: string;
     readonly error_code: string | null;
+    /** Frozen facts scope from `policy_snapshot.scope.project_ids`; null if absent. */
+    readonly project_ids: readonly string[] | null;
   } | null;
   readonly factsJob: PeriodJobView | null;
   readonly bodyRun: {
@@ -201,7 +212,9 @@ export interface PeriodReportBusinessSnapshot {
   } | null;
   readonly binding: {
     readonly id: string;
-    readonly project_id: string;
+    /** NULL for the enterprise-scoped worker binding, never the string "null". */
+    readonly project_id: string | null;
+    readonly admin_id: string | null;
     readonly conversation_id: string;
     readonly audience: string;
     readonly status: string;
@@ -274,6 +287,31 @@ function uniqueReasons(reasons: readonly string[]): string[] {
 
 function text(value: unknown): string | null {
   return value === null || value === undefined ? null : String(value);
+}
+
+/** A nullable bigint id: NULL must stay null instead of becoming "null". */
+function nullableId(value: unknown): string | null {
+  return value === null || value === undefined ? null : String(value);
+}
+
+/** The frozen facts scope written by the existing report enqueue. */
+function factsProjectIds(policySnapshot: unknown): readonly string[] | null {
+  if (!isPlainObject(policySnapshot)) return null;
+  const scope = policySnapshot.scope;
+  if (!isPlainObject(scope)) return null;
+  const projectIds = scope.project_ids;
+  if (!Array.isArray(projectIds)) return null;
+  return projectIds.map((projectId) => String(projectId));
+}
+
+function receiptProjectScope(value: unknown): readonly string[] | null {
+  if (!Array.isArray(value)) return null;
+  return value.map((projectId) => String(projectId));
+}
+
+function periodReceiverKind(value: unknown): PeriodReceiverKind | null {
+  if (value === undefined) return 'customer';
+  return value === 'customer' || value === 'worker' ? value : null;
 }
 
 function iso(value: unknown): string | null {
@@ -408,6 +446,26 @@ export function extractPeriodReportRunBinding(record: LiveRunRecord): {
   if (!nonEmptyString(receipt.bindingId)) reasons.push('binding_id_missing');
   if (!nonEmptyString(receipt.conversationId)) reasons.push('conversation_id_missing');
   if (typeof receipt.reused !== 'boolean') reasons.push('save_receipt_invalid');
+  // Old customer receipts predate the receiver fields: absent kind means the
+  // project owner. A worker receipt must name its enterprise admin and freeze
+  // exactly the single project this run was authorized for.
+  const receiverKind = periodReceiverKind(receipt.receiverKind);
+  const receiverAdminId = nonEmptyString(receipt.receiverAdminId)
+    ? String(receipt.receiverAdminId)
+    : null;
+  const projectScope = receiptProjectScope(receipt.projectScope);
+  if (receiverKind === null) {
+    reasons.push('receiver_binding_missing');
+  } else if (receiverKind === 'worker') {
+    if (receiverAdminId === null) reasons.push('receiver_binding_missing');
+    if (
+      projectScope === null
+      || projectScope.length !== 1
+      || projectScope[0] !== record.projectId
+    ) {
+      reasons.push('project_scope_mismatch');
+    }
+  }
   if (reasons.length) {
     return { ok: false, reasons: uniqueReasons(reasons), binding: null };
   }
@@ -435,6 +493,9 @@ export function extractPeriodReportRunBinding(record: LiveRunRecord): {
       bindingId: String(receipt.bindingId),
       conversationId: String(receipt.conversationId),
       savedReused: receipt.reused === true,
+      receiverKind: receiverKind ?? 'customer',
+      receiverAdminId: receiverKind === 'worker' ? receiverAdminId : null,
+      projectScope,
     },
   };
 }
@@ -590,7 +651,19 @@ function mapAvailability(
   const record = snapshot.binding;
   if (!record) return { state: 'access_revoked', reason: 'binding_missing' };
   if (record.status !== 'enabled') return { state: 'access_revoked', reason: 'binding_disabled' };
-  if (record.audience !== 'customer') {
+  const worker = binding.receiverKind === 'worker';
+  if (worker) {
+    // A worker receiver is an enterprise-scoped binding: no project column and
+    // exactly the admin frozen in the save receipt.
+    if (
+      record.audience !== 'worker'
+      || record.admin_id === null
+      || record.admin_id !== (binding.receiverAdminId ?? null)
+      || record.project_id !== null
+    ) {
+      return { state: 'access_revoked', reason: 'worker_binding_mismatch' };
+    }
+  } else if (record.audience !== 'customer') {
     return { state: 'access_revoked', reason: 'audience_not_customer' };
   }
   // Deleting a follow-up and explicitly resuming it reuses the same binding row
@@ -606,11 +679,19 @@ function mapAvailability(
   }
   const project = snapshot.project;
   if (!project) return { state: 'access_revoked', reason: 'project_missing' };
-  if (project.customer_access !== true) {
-    return { state: 'access_revoked', reason: 'customer_access_revoked' };
-  }
-  if (snapshot.followup_available !== true) {
-    return { state: 'access_revoked', reason: 'followup_unavailable' };
+  if (worker) {
+    // Membership revocation drops the conversation access check; a worker is
+    // never granted access through the customer link.
+    if (snapshot.followup_available !== true) {
+      return { state: 'access_revoked', reason: 'worker_membership_revoked' };
+    }
+  } else {
+    if (project.customer_access !== true) {
+      return { state: 'access_revoked', reason: 'customer_access_revoked' };
+    }
+    if (snapshot.followup_available !== true) {
+      return { state: 'access_revoked', reason: 'followup_unavailable' };
+    }
   }
   if (
     factsReady
@@ -662,6 +743,22 @@ function bindingMismatchReasons(
   }
   if (snapshot.factsRun && snapshot.factsRun.id !== binding.factsRunId) {
     reasons.push('facts_binding_mismatch');
+  }
+  if (binding.receiverKind === 'worker') {
+    // The worker binding and the frozen facts scope must prove the same single
+    // project as the run; an old customer receipt never carries this check.
+    if (
+      snapshot.binding
+      && snapshot.binding.admin_id !== (binding.receiverAdminId ?? null)
+    ) {
+      reasons.push('worker_binding_mismatch');
+    }
+    if (snapshot.factsRun) {
+      const scope = snapshot.factsRun.project_ids;
+      if (scope === null || scope.length !== 1 || scope[0] !== binding.projectId) {
+        reasons.push('report_scope_mismatch');
+      }
+    }
   }
   return uniqueReasons(reasons);
 }
@@ -844,7 +941,7 @@ async function readSnapshotRows(
 
     const factsRunRow = await one(
       tx,
-      sql`select id,status,error_code from app.assistant_runs
+      sql`select id,status,error_code,policy_snapshot from app.assistant_runs
         where enterprise_id=${binding.enterpriseId} and id=${String(versionRow.run_id)}
         limit 1`,
     );
@@ -940,6 +1037,7 @@ async function readSnapshotRows(
             id: String(factsRunRow.id),
             status: String(factsRunRow.status),
             error_code: text(factsRunRow.error_code),
+            project_ids: factsProjectIds(factsRunRow.policy_snapshot),
           }
         : null,
       factsJob: factsJobRow ? jobView(factsJobRow) : null,
@@ -970,7 +1068,8 @@ async function readSnapshotRows(
       binding: bindingRow
         ? {
             id: String(bindingRow.id),
-            project_id: String(bindingRow.project_id),
+            project_id: nullableId(bindingRow.project_id),
+            admin_id: nullableId(bindingRow.admin_id),
             conversation_id: String(bindingRow.conversation_id),
             audience: String(bindingRow.audience),
             status: String(bindingRow.status),

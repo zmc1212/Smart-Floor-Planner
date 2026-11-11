@@ -23,6 +23,7 @@ import type { TriggerEvent } from '../types';
 const ENTERPRISE = '1454';
 const PROJECT = '1455';
 const ADMIN = '1454000007';
+const WORKER_ADMIN = '1454000011';
 const PERIOD_START = '2026-11-10';
 const PERIOD_END = '2026-11-10';
 /** Exclusive Shanghai midnight after 2026-11-10. */
@@ -209,7 +210,7 @@ function snapshot(overrides: SnapshotOptions = {}): PeriodReportBusinessSnapshot
       body_error_code: null,
       body_attempts: 0,
     },
-    factsRun: { id: '8001', status: 'succeeded', error_code: null },
+    factsRun: { id: '8001', status: 'succeeded', error_code: null, project_ids: [PROJECT] },
     factsJob: {
       jobId: '9101',
       status: 'succeeded',
@@ -238,6 +239,7 @@ function snapshot(overrides: SnapshotOptions = {}): PeriodReportBusinessSnapshot
     binding: {
       id: '9001',
       project_id: PROJECT,
+      admin_id: null,
       conversation_id: '7001',
       audience: 'customer',
       status: 'enabled',
@@ -301,6 +303,67 @@ function mapWeekly(
   });
 }
 
+/** The B5.5 worker receipt: enterprise-scoped, single project, named admin. */
+function workerReceipt(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return receipt({
+    receiverKind: 'worker',
+    receiverAdminId: WORKER_ADMIN,
+    projectScope: [PROJECT],
+    ...overrides,
+  });
+}
+
+function workerRecord(options: RecordOptions = {}): LiveRunRecord {
+  return makeRecord({ ...options, saveReceipt: options.saveReceipt ?? workerReceipt() });
+}
+
+/** The worker binding row is enterprise-scoped: project_id is SQL NULL. */
+function workerBinding(
+  overrides: Partial<NonNullable<PeriodReportBusinessSnapshot['binding']>> = {},
+): NonNullable<PeriodReportBusinessSnapshot['binding']> {
+  return {
+    id: '9001',
+    project_id: null,
+    admin_id: WORKER_ADMIN,
+    conversation_id: '7001',
+    audience: 'worker',
+    status: 'enabled',
+    user_id: null,
+    ...overrides,
+  };
+}
+
+/** A worker facts run freezes exactly the run project through narrowed settings. */
+function workerFactsRun(
+  projectIds: readonly string[] | null = [PROJECT],
+): NonNullable<PeriodReportBusinessSnapshot['factsRun']> {
+  return { id: '8001', status: 'succeeded', error_code: null, project_ids: projectIds };
+}
+
+function workerSnapshot(overrides: SnapshotOptions = {}): PeriodReportBusinessSnapshot {
+  const base = snapshot();
+  const current = base.project!;
+  return {
+    ...base,
+    binding: workerBinding(),
+    // A worker receiver never depends on the customer link.
+    project: { ...current, customer_access: false },
+    ...overrides,
+  };
+}
+
+function mapWorker(
+  snapshotOverrides: SnapshotOptions = {},
+  record: LiveRunRecord = workerRecord(),
+) {
+  return mapPeriodReportRunStatus({
+    record,
+    binding: bindingView(record),
+    snapshot: workerSnapshot(snapshotOverrides),
+    observedAt: OBSERVED_AT,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // extract
 // ---------------------------------------------------------------------------
@@ -327,6 +390,9 @@ test('extract reads the last successful save receipt as the run binding', () => 
     bindingId: '9001',
     conversationId: '7001',
     savedReused: false,
+    receiverKind: 'customer',
+    receiverAdminId: null,
+    projectScope: null,
   });
 });
 
@@ -426,6 +492,47 @@ test('extract rejects a mismatched or unsupported period kind as unbound', () =>
   assert.equal(unsupported.ok, false);
   assert.equal(unsupported.binding, null);
   assert.ok(unsupported.reasons.includes('period_kind_unsupported'));
+});
+
+test('extract treats an absent receiver receipt as the project customer', () => {
+  const extracted = extractPeriodReportRunBinding(makeRecord());
+  assert.equal(extracted.ok, true);
+  assert.deepEqual(extracted.reasons, []);
+  assert.equal(extracted.binding?.receiverKind, 'customer');
+  assert.equal(extracted.binding?.receiverAdminId, null);
+  assert.equal(extracted.binding?.projectScope, null);
+});
+
+test('extract keeps a worker receipt only with one admin and exactly the run project', () => {
+  const worker = extractPeriodReportRunBinding(workerRecord());
+  assert.equal(worker.ok, true);
+  assert.deepEqual(worker.reasons, []);
+  assert.equal(worker.binding?.receiverKind, 'worker');
+  assert.equal(worker.binding?.receiverAdminId, WORKER_ADMIN);
+  assert.deepEqual(worker.binding?.projectScope, [PROJECT]);
+
+  const noAdmin = extractPeriodReportRunBinding(
+    makeRecord({ saveReceipt: workerReceipt({ receiverAdminId: '' }) }),
+  );
+  assert.equal(noAdmin.ok, false);
+  assert.equal(noAdmin.binding, null);
+  assert.ok(noAdmin.reasons.includes('receiver_binding_missing'));
+
+  for (const projectScope of [undefined, [], [PROJECT, '9999'], ['9999']]) {
+    const invalidScope = extractPeriodReportRunBinding(
+      makeRecord({ saveReceipt: workerReceipt({ projectScope }) }),
+    );
+    assert.equal(invalidScope.ok, false);
+    assert.equal(invalidScope.binding, null);
+    assert.ok(invalidScope.reasons.includes('project_scope_mismatch'));
+  }
+
+  const unknownKind = extractPeriodReportRunBinding(
+    makeRecord({ saveReceipt: receipt({ receiverKind: 'service' }) }),
+  );
+  assert.equal(unknownKind.ok, false);
+  assert.equal(unknownKind.binding, null);
+  assert.ok(unknownKind.reasons.includes('receiver_binding_missing'));
 });
 
 // ---------------------------------------------------------------------------
@@ -619,7 +726,7 @@ test('a muted delivery while facts or body is still working stays processing', (
       body_error_code: null,
       body_attempts: 0,
     },
-    factsRun: { id: '8001', status: 'running', error_code: null },
+    factsRun: { id: '8001', status: 'running', error_code: null, project_ids: [PROJECT] },
     factsJob: { jobId: '9101', status: 'running', attempts: 1, providerStartedAt: '2026-11-11T02:00:00.000Z' },
     bodyRun: null,
     bodyJob: null,
@@ -766,6 +873,110 @@ test('facts ready with no still-valid source project is source_unavailable', () 
   assert.equal(foreign.overall, 'unavailable');
 });
 
+test('a worker receiver is available even when the customer link is revoked', () => {
+  const progress = mapWorker();
+  assert.equal(progress.facts.state, 'ready');
+  assert.equal(progress.body.state, 'ready');
+  assert.equal(progress.delivery.state, 'delivered');
+  assert.deepEqual(progress.availability, { state: 'available', reason: 'available' });
+  assert.equal(progress.overall, 'completed');
+  assert.equal(progress.completed, true);
+  // The worker branch must not apply the customer-only checks.
+  assert.equal(progress.reasons.includes('customer_access_revoked'), false);
+  assert.equal(progress.reasons.includes('audience_not_customer'), false);
+  assert.equal(progress.reasons.includes('worker_membership_revoked'), false);
+});
+
+test('a worker without an active membership is access_revoked, never unknown', () => {
+  const progress = mapWorker({ followup_available: false });
+  assert.deepEqual(progress.availability, {
+    state: 'access_revoked',
+    reason: 'worker_membership_revoked',
+  });
+  assert.equal(progress.overall, 'unavailable');
+  assert.equal(progress.completed, false);
+  assert.ok(progress.reasons.includes('worker_membership_revoked'));
+
+  const stopped = mapWorker({ binding: workerBinding({ status: 'stopped' }) });
+  assert.deepEqual(stopped.availability, {
+    state: 'access_revoked',
+    reason: 'binding_disabled',
+  });
+  assert.equal(stopped.overall, 'unavailable');
+});
+
+test('a restored worker membership still cannot resurrect facts dropped by revalidation', () => {
+  // Membership is active again, but the record-level access revocation already
+  // removed the project from the revalidated facts scope.
+  const progress = mapWorker({ source_project_ids: [] });
+  assert.deepEqual(progress.availability, {
+    state: 'source_unavailable',
+    reason: 'source_project_revoked',
+  });
+  assert.equal(progress.overall, 'unavailable');
+  assert.equal(progress.completed, false);
+});
+
+test('a worker facts scope that is not exactly the run project stays unknown', () => {
+  for (const projectIds of [null, [], ['9999'], [PROJECT, '9999']]) {
+    const progress = mapWorker({ factsRun: workerFactsRun(projectIds) });
+    assert.equal(progress.overall, 'unknown', String(projectIds));
+    assert.equal(progress.completed, false);
+    assert.equal(progress.processing, false);
+    assert.ok(progress.reasons.includes('report_scope_mismatch'));
+    assert.equal(progress.availability.reason, 'binding_mismatch');
+  }
+});
+
+test('a worker binding that does not prove the receipt receiver is never available', () => {
+  const wrongAudience = mapWorker({ binding: workerBinding({ audience: 'customer' }) });
+  assert.deepEqual(wrongAudience.availability, {
+    state: 'access_revoked',
+    reason: 'worker_binding_mismatch',
+  });
+  assert.equal(wrongAudience.overall, 'unavailable');
+
+  const projectScoped = mapWorker({ binding: workerBinding({ project_id: PROJECT }) });
+  assert.deepEqual(projectScoped.availability, {
+    state: 'access_revoked',
+    reason: 'worker_binding_mismatch',
+  });
+  assert.equal(projectScoped.overall, 'unavailable');
+
+  const wrongAdmin = mapWorker({ binding: workerBinding({ admin_id: '9999' }) });
+  assert.equal(wrongAdmin.overall, 'unknown');
+  assert.equal(wrongAdmin.completed, false);
+  assert.ok(wrongAdmin.reasons.includes('worker_binding_mismatch'));
+});
+
+test('old customer observations keep their reasons and need no worker scope check', () => {
+  const progress = map();
+  assert.equal(progress.overall, 'completed');
+  for (const reason of [
+    'receiver_binding_missing',
+    'project_scope_mismatch',
+    'report_scope_mismatch',
+    'worker_binding_mismatch',
+    'worker_membership_revoked',
+  ]) {
+    assert.equal(progress.reasons.includes(reason), false, reason);
+  }
+
+  // A legacy customer facts run may have no policy scope at all.
+  const legacyScope = map({
+    factsRun: { id: '8001', status: 'succeeded', error_code: null, project_ids: null },
+  });
+  assert.equal(legacyScope.overall, 'completed');
+  assert.deepEqual(legacyScope.availability, { state: 'available', reason: 'available' });
+  assert.equal(legacyScope.reasons.includes('report_scope_mismatch'), false);
+
+  const revoked = map({ project: { ...snapshot().project!, customer_access: false } });
+  assert.deepEqual(revoked.availability, {
+    state: 'access_revoked',
+    reason: 'customer_access_revoked',
+  });
+});
+
 test('report, version and facts rows that do not match the binding stay unknown', () => {
   const cases: Array<{ overrides: SnapshotOptions; reason: string }> = [
     { overrides: { report: { ...snapshot().report!, id: '9999' } }, reason: 'report_binding_mismatch' },
@@ -779,7 +990,7 @@ test('report, version and facts rows that do not match the binding stay unknown'
       reason: 'version_binding_mismatch',
     },
     {
-      overrides: { factsRun: { id: '9999', status: 'succeeded', error_code: null } },
+      overrides: { factsRun: { id: '9999', status: 'succeeded', error_code: null, project_ids: [PROJECT] } },
       reason: 'facts_binding_mismatch',
     },
   ];
@@ -861,6 +1072,42 @@ test('the reader is repeatable and never rewrites the run file', async () => {
     assert.equal(raw.raw.updatedAt, record.updatedAt);
     assert.equal(raw.raw.operations[0]?.capabilityRef, 'save.period_report');
     assert.equal(raw.raw.operations[0]?.outcome, 'succeeded');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('the reader carries the worker receiver through to the observation binding', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'period-report-status-worker-'));
+  const runId = 'run-period-worker';
+  try {
+    const store = createFileWorkflowRunStore({ rootDir: dir });
+    await store.create(workerRecord({ runId }));
+
+    const loaded: PeriodRunBindingView[] = [];
+    const observation = await readPeriodReportRunStatus({
+      runId,
+      viewer: { enterpriseId: ENTERPRISE, adminId: ADMIN },
+      runStore: store,
+      loadSnapshot: async (_transaction, binding) => {
+        loaded.push(binding);
+        return workerSnapshot();
+      },
+      now: () => new Date(NOW),
+    });
+
+    assert.equal(loaded[0]?.receiverKind, 'worker');
+    assert.equal(loaded[0]?.receiverAdminId, WORKER_ADMIN);
+    assert.deepEqual(loaded[0]?.projectScope, [PROJECT]);
+    assert.equal(observation.bound, true);
+    assert.equal(observation.binding?.receiverKind, 'worker');
+    assert.equal(observation.binding?.receiverAdminId, WORKER_ADMIN);
+    assert.deepEqual(observation.binding?.projectScope, [PROJECT]);
+    assert.equal(observation.progress?.overall, 'completed');
+    assert.deepEqual(observation.progress?.availability, {
+      state: 'available',
+      reason: 'available',
+    });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

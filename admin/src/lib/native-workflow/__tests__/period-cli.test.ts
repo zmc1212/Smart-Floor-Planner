@@ -4,6 +4,9 @@ import {
   addCalendarDays,
   parsePeriodKind,
   parsePeriodKindArg,
+  parseReceiverArg,
+  parseReceiverKindArg,
+  parseWorkerIdArg,
   PERIOD_DEFINITION_ID,
   readCliOption,
   resolveCliPeriod,
@@ -61,6 +64,80 @@ test('a valueless period kind is rejected before it could default to daily', () 
     assert.equal((error as { code?: string }).code, 'period_kind_missing');
     assert.match((error as Error).message, /--period-kind requires a value/u);
   }
+});
+
+test('receiver kind defaults to customer and accepts worker', () => {
+  assert.equal(parseReceiverKindArg([]), 'customer');
+  assert.equal(parseReceiverKindArg(['--development', '--period-start', '2026-10-26']), 'customer');
+  assert.equal(parseReceiverKindArg(['--receiver-kind', 'customer']), 'customer');
+  assert.equal(parseReceiverKindArg(['--receiver-kind=worker']), 'worker');
+  assert.equal(
+    codeOf(() => parseReceiverKindArg(['--receiver-kind', '--worker-id', '1454000008'])),
+    'receiver_kind_missing',
+  );
+  assert.equal(codeOf(() => parseReceiverKindArg(['--receiver-kind='])), 'receiver_kind_missing');
+  assert.equal(codeOf(() => parseReceiverKindArg(['--receiver-kind', 'boss'])), 'receiver_kind_invalid');
+});
+
+test('worker receiver requires a positive admin id', () => {
+  assert.deepEqual(parseReceiverArg(['--receiver-kind', 'worker', '--worker-id', '1454000008']), {
+    kind: 'worker',
+    adminId: '1454000008',
+  });
+  assert.deepEqual(parseReceiverArg(['--receiver-kind=worker', '--worker-id=1454000008']), {
+    kind: 'worker',
+    adminId: '1454000008',
+  });
+  assert.deepEqual(parseReceiverArg(['--receiver-kind', 'customer']), { kind: 'customer' });
+  assert.deepEqual(parseReceiverArg([]), { kind: 'customer' });
+
+  assert.equal(
+    codeOf(() => parseWorkerIdArg(['--receiver-kind', 'worker'], 'worker')),
+    'worker_id_missing',
+  );
+  assert.equal(
+    codeOf(() => parseWorkerIdArg(['--receiver-kind=worker'], 'worker')),
+    'worker_id_missing',
+  );
+  for (const argv of [
+    ['--worker-id'],
+    ['--worker-id='],
+    ['--worker-id', '--period-start'],
+    ['--worker-id', 'abc'],
+    ['--worker-id', '0'],
+    ['--worker-id', '-1'],
+    ['--worker-id', '1.5'],
+  ]) {
+    assert.equal(
+      codeOf(() => parseWorkerIdArg(argv, 'worker')),
+      'worker_id_invalid',
+      `expected worker_id_invalid for ${JSON.stringify(argv)}`,
+    );
+  }
+});
+
+test('a customer receiver rejects --worker-id', () => {
+  assert.equal(
+    codeOf(() => parseWorkerIdArg(['--worker-id', '1454000008'], 'customer')),
+    'worker_id_forbidden',
+  );
+  assert.equal(
+    codeOf(() => parseReceiverArg(['--worker-id', '1454000008'])),
+    'worker_id_forbidden',
+  );
+});
+
+test('receiver flags stay independent from the period kind', () => {
+  assert.equal(parsePeriodKindArg(['--receiver-kind', 'customer', '--period-kind', 'weekly']), 'weekly');
+  assert.equal(parsePeriodKindArg(['--receiver-kind', 'worker', '--period-kind', 'daily']), 'daily');
+  assert.deepEqual(
+    parseReceiverArg(['--period-kind', 'weekly', '--receiver-kind', 'worker', '--worker-id', '1454000008']),
+    { kind: 'worker', adminId: '1454000008' },
+  );
+  assert.equal(
+    resolveCliPeriod({ kind: 'weekly', periodStart: '2026-10-26' }).periodEnd,
+    '2026-11-02',
+  );
 });
 
 test('readCliOption distinguishes an absent option from a valueless one', () => {

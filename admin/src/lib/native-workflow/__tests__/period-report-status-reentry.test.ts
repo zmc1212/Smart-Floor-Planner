@@ -163,7 +163,7 @@ function readySnapshot(): PeriodReportBusinessSnapshot {
       body_error_code: null,
       body_attempts: 1,
     },
-    factsRun: { id: '7', status: 'succeeded', error_code: null },
+    factsRun: { id: '7', status: 'succeeded', error_code: null, project_ids: [PROJECT_ID] },
     factsJob: {
       jobId: '21',
       status: 'succeeded',
@@ -192,6 +192,7 @@ function readySnapshot(): PeriodReportBusinessSnapshot {
     binding: {
       id: '1',
       project_id: PROJECT_ID,
+      admin_id: null,
       conversation_id: '1454000007',
       audience: 'customer',
       status: 'enabled',
@@ -366,6 +367,10 @@ test('re-entry reads the same binding and business progress without rewriting th
     assert.equal(first.binding.bindingId, '1');
     assert.equal(first.binding.conversationId, '1454000007');
     assert.equal(first.binding.savedReused, false);
+    // An old customer save receipt without receiver fields stays the owner.
+    assert.equal(first.binding.receiverKind, 'customer');
+    assert.equal(first.binding.receiverAdminId, null);
+    assert.equal(first.binding.projectScope, null);
 
     // Current business progress is read from the snapshot, not the raw trace.
     assert.equal(first.progress.facts.state, 'ready');

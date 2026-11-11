@@ -37,7 +37,9 @@ export function sameLiveBinding(left: LiveRunBinding, right: LiveRunBinding): bo
     && left.businessEvent.source === right.businessEvent.source
     && left.businessEvent.periodKind === right.businessEvent.periodKind
     && left.businessEvent.periodStart === right.businessEvent.periodStart
-    && left.businessEvent.periodEnd === right.businessEvent.periodEnd;
+    && left.businessEvent.periodEnd === right.businessEvent.periodEnd
+    && (left.businessEvent.receiver?.kind ?? 'customer') === (right.businessEvent.receiver?.kind ?? 'customer')
+    && (left.businessEvent.receiver?.adminId ?? '') === (right.businessEvent.receiver?.adminId ?? '');
 }
 
 export function sameLiveRunIdentity(left: LiveRunRecord, right: LiveRunRecord): boolean {

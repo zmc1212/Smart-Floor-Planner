@@ -16,6 +16,10 @@
  *     --period-start 2026-11-10 --run-id b5-2-daily-001
  *   npx tsx scripts/native-workflow-period-report.ts --development --ensure-published `
  *     --period-kind weekly --period-start 2026-11-02 --run-id b5-4-weekly-001
+ *   npx tsx scripts/native-workflow-period-report.ts --development --ensure-published `
+ *     --admin-id 1454000001 --project-id 1454000004 `
+ *     --receiver-kind worker --worker-id 1454000008 `
+ *     --period-kind weekly --period-start 2026-10-26 --period-end 2026-11-02
  */
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
@@ -24,6 +28,7 @@ import { sql } from 'drizzle-orm';
 import { one } from '@/db/repositories/assistant-repository';
 import { withTenantTransaction } from '@/db/transaction';
 import type { ConstructionActor } from '@/lib/construction/contracts';
+import { ensureFollowupBinding } from '@/lib/construction/report-store';
 import { createFileWorkflowStore, resolveNativeWorkflowStoreDir } from '@/lib/native-workflow/store/file-store';
 import { createWorkflowService, type NativeWorkflowTemplateId } from '@/lib/native-workflow/service';
 import {
@@ -37,10 +42,12 @@ import { createPeriodReportPorts } from '@/lib/native-workflow/live/period-repor
 import { parseFixedPeriod } from '@/lib/native-workflow/live/period-event';
 import {
   parsePeriodKind,
+  parseReceiverArg,
+  PeriodCliError,
   resolveCliPeriod,
   type PeriodCliKind,
 } from '@/lib/native-workflow/live/period-cli';
-import type { LiveBusinessEvent, LiveRunRecord } from '@/lib/native-workflow/live/types';
+import type { LiveBusinessEvent, LivePeriodReceiver, LiveRunRecord } from '@/lib/native-workflow/live/types';
 import type { TriggerEvent } from '@/lib/native-workflow/types';
 
 loadEnvConfig(process.cwd());
@@ -50,6 +57,11 @@ const DEFAULT_ENTERPRISE_ID = '1454';
 function failJson(payload: Record<string, unknown>, exitCode = 1): never {
   console.error(JSON.stringify({ success: false, ...payload }, null, 2));
   process.exit(exitCode);
+}
+
+function failCli(error: unknown): never {
+  if (error instanceof PeriodCliError) failJson({ code: error.code, error: error.message });
+  failJson({ error: error instanceof Error ? error.message : String(error) });
 }
 
 function option(name: string): string | undefined {
@@ -87,6 +99,19 @@ const enterpriseId = positiveId('--enterprise-id', option('--enterprise-id') ?? 
 const adminId = executing ? positiveId('--admin-id', required('--admin-id')) : '';
 const projectId = executing ? positiveId('--project-id', required('--project-id')) : '';
 
+// Receiver flags are validated before any database target or connection. The
+// existing daily/customer commands stay unchanged because an absent receiver
+// kind still means the owner/customer receiver.
+let receiver: LivePeriodReceiver = { kind: 'customer' };
+if (executing) {
+  try {
+    receiver = parseReceiverArg(process.argv);
+  } catch (error) {
+    failCli(error);
+  }
+}
+const workerId = receiver.kind === 'worker' ? receiver.adminId : undefined;
+
 interface CliTarget {
   readonly kind: PeriodCliKind;
   readonly periodStart: string;
@@ -112,7 +137,7 @@ function resolveTarget(): CliTarget {
       definitionId: option('--definition-id') ?? resolved.definitionId,
     };
   } catch (error) {
-    failJson({ error: error instanceof Error ? error.message : String(error) });
+    failCli(error);
   }
 }
 
@@ -126,10 +151,12 @@ const definitionStore = createFileWorkflowStore({ rootDir: resolveNativeWorkflow
 const workflowService = createWorkflowService({ store: definitionStore });
 const runStore = createFileWorkflowRunStore({ rootDir: resolveRunDir() });
 
-function receiptOf(record: LiveRunRecord, port: 'saveReceipt' | 'deliveryReceipt') {
+function receiptOf(record: LiveRunRecord, port: 'saveReceipt' | 'deliveryReceipt'): Record<string, unknown> | null {
   for (const operation of [...record.operations].reverse()) {
     const value = operation.outputs?.[port];
-    if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return value as Record<string, unknown>;
+    }
   }
   return null;
 }
@@ -160,15 +187,43 @@ async function resolvePublished(definitionId: string) {
   return version;
 }
 
-async function evidence(projectId: string, businessEvent: LiveBusinessEvent) {
+async function evidence(
+  projectId: string,
+  businessEvent: LiveBusinessEvent,
+  receipt: Record<string, unknown> | null,
+) {
   const kind = businessEvent.periodKind;
+  // The receipt is the authoritative identity of the report this run saved.
+  // Kind + period alone would also match the customer report for the period.
+  const reportId = typeof receipt?.reportId === 'string' ? receipt.reportId : '';
+  const receiptBindingId = typeof receipt?.bindingId === 'string' ? receipt.bindingId : '';
+  const workerAdminId = businessEvent.receiver?.kind === 'worker'
+    ? businessEvent.receiver.adminId
+    : undefined;
   return withTenantTransaction(enterpriseId, async (tx) => {
+    // Without a receipt the worker binding can still be resolved from the
+    // host-owned principal, so the evidence never falls back to the customer.
+    const workerBinding = !receiptBindingId && workerAdminId
+      ? await one(tx, sql`select id from app.construction_followup_bindings
+          where enterprise_id=${enterpriseId} and principal_key=${`admin:${workerAdminId}`}
+            and audience='worker' and project_id is null and scope_key='enterprise'
+          order by id limit 1`)
+      : undefined;
+    const bindingId = receiptBindingId || (workerBinding ? String(workerBinding.id) : '');
+    const bindingFilter = bindingId ? sql`and binding_id=${bindingId}` : sql``;
     const reports = await one(tx, sql`select count(*)::int as count from app.construction_reports
       where enterprise_id=${enterpriseId} and kind=${kind}
-        and period_start=${`${businessEvent.periodStart}T00:00:00+08:00`}::timestamptz`);
-    const report = await one(tx, sql`select id,latest_revision,report_key,period_start,period_end
-      from app.construction_reports where enterprise_id=${enterpriseId} and kind=${kind}
-      and period_start=${`${businessEvent.periodStart}T00:00:00+08:00`}::timestamptz order by id limit 1`);
+        and period_start=${`${businessEvent.periodStart}T00:00:00+08:00`}::timestamptz ${bindingFilter}`);
+    const report = reportId
+      ? await one(tx, sql`select id,latest_revision,report_key,binding_id,kind,period_start,period_end
+          from app.construction_reports
+          where enterprise_id=${enterpriseId} and id=${reportId} ${bindingFilter} limit 1`)
+      : businessEvent.receiver?.kind === 'worker'
+        ? undefined
+        : await one(tx, sql`select id,latest_revision,report_key,binding_id,kind,period_start,period_end
+            from app.construction_reports where enterprise_id=${enterpriseId} and kind=${kind}
+            and period_start=${`${businessEvent.periodStart}T00:00:00+08:00`}::timestamptz ${bindingFilter}
+            order by id limit 1`);
     const version = report
       ? await one(tx, sql`select revision,run_id,status,body_run_id from app.construction_report_versions
           where enterprise_id=${enterpriseId} and report_id=${String(report.id)}
@@ -199,6 +254,68 @@ async function evidence(projectId: string, businessEvent: LiveBusinessEvent) {
   });
 }
 
+/**
+ * Validate the host-selected worker receiver with read-only queries, then
+ * ensure the existing enterprise-scoped staff followup binding. The worker is
+ * the receiver; `--admin-id` remains the management executor.
+ */
+async function prepareWorkerReceiver(workerId: string, projectId: string): Promise<Record<string, unknown>> {
+  return withTenantTransaction(enterpriseId, async (tx) => {
+    const admin = await one(tx, sql`select id,role,status,must_change_password
+      from app.admin_users where enterprise_id=${enterpriseId} and id=${workerId} for share`);
+    if (!admin) {
+      failJson({ code: 'worker_receiver_unavailable', error: `worker admin ${workerId} was not found in enterprise ${enterpriseId}` });
+    }
+    if (String(admin.status) !== 'active' || String(admin.role) !== 'construction_staff' || admin.must_change_password !== false) {
+      failJson({
+        code: 'worker_receiver_unavailable',
+        error: `worker admin ${workerId} must be an active construction_staff account without a required password change`,
+        admin: {
+          status: admin.status,
+          role: admin.role,
+          mustChangePassword: admin.must_change_password,
+        },
+      });
+    }
+    const member = await one(tx, sql`select role,active from app.construction_members
+      where enterprise_id=${enterpriseId} and project_id=${projectId} and admin_id=${workerId} for share`);
+    if (!member || member.active !== true || String(member.role) === 'observer') {
+      failJson({
+        code: 'worker_receiver_unavailable',
+        error: `worker admin ${workerId} needs an active non-observer member row on project ${projectId}`,
+        member: member ?? null,
+      });
+    }
+    const access = await one(tx, sql`select app.construction_followup_staff_access(
+      ${workerId}::bigint,${enterpriseId}::bigint) as role`);
+    if (!access?.role) {
+      failJson({
+        code: 'worker_receiver_unavailable',
+        error: `worker admin ${workerId} has no current staff followup access in enterprise ${enterpriseId}`,
+      });
+    }
+    // Only the existing enterprise-scoped worker binding is allowed. A
+    // project-scoped worker binding would violate the binding contract.
+    const binding = await ensureFollowupBinding(tx, enterpriseId, {
+      kind: 'admin',
+      id: workerId,
+      audience: 'worker',
+    });
+    return {
+      adminId: workerId,
+      adminRole: String(admin.role),
+      memberRole: String(member.role),
+      accessRole: String(access.role),
+      bindingId: String(binding.id),
+      conversationId: String(binding.conversation_id),
+      principalKey: String(binding.principal_key),
+      scopeKey: String(binding.scope_key),
+      projectId: binding.project_id === null ? null : String(binding.project_id),
+      status: String(binding.status),
+    };
+  });
+}
+
 async function main() {
   if (showRun) {
     const record = await runStore.get(showRun);
@@ -221,6 +338,12 @@ async function main() {
   const bound = target;
   if (!bound) failJson({ error: 'a period target is required' });
 
+  // The worker receiver is validated and bound with read-only/staff-binding
+  // queries before the published run can enqueue anything.
+  const worker = receiver.kind === 'worker' && workerId
+    ? await prepareWorkerReceiver(workerId, projectId)
+    : null;
+
   const version = await resolvePublished(bound.definitionId);
   const actor: ConstructionActor = { enterpriseId, adminId };
   const event: TriggerEvent = {
@@ -241,9 +364,10 @@ async function main() {
     periodKind: period.kind,
     periodStart: period.periodStart,
     periodEnd: period.periodEnd,
+    ...(receiver.kind === 'worker' ? { receiver } : {}),
   };
 
-  const ports = createPeriodReportPorts({ actor });
+  const ports = createPeriodReportPorts({ actor, receiver });
   const record = await runPublishedLive({
     published: version,
     enterpriseId,
@@ -254,12 +378,17 @@ async function main() {
     store: runStore,
     runId,
   });
-  const business = await evidence(projectId, businessEvent);
+  const saveReceipt = receiptOf(record, 'saveReceipt');
+  const business = await evidence(projectId, businessEvent, saveReceipt);
   console.log(JSON.stringify({
     success: record.status === 'completed',
     runId,
     status: record.status,
     database: describeB4DatabaseTarget(database),
+    receiver: receiver.kind === 'worker'
+      ? { kind: 'worker', adminId: receiver.adminId }
+      : { kind: 'customer' },
+    worker,
     binding: record.binding,
     businessEvent,
     operations: record.operations.map((operation) => ({
@@ -269,7 +398,7 @@ async function main() {
       outcome: operation.outcome,
       error: operation.error ?? null,
     })),
-    saveReceipt: receiptOf(record, 'saveReceipt'),
+    saveReceipt,
     deliveryReceipt: receiptOf(record, 'deliveryReceipt'),
     error: record.state.error,
     business,

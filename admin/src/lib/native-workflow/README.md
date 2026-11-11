@@ -764,7 +764,7 @@ through its own `option()` helper and is unchanged. Targeted test:
 pass.
 
 Tests: the documented offline native-workflow command (the 23-file list below)
-runs 250 tests, all 250 pass with 0 fail; the weekly additions cover the
+runs 270 tests, all 270 pass with 0 fail; the weekly additions cover the
 Monday-to-Monday conversion, partial/cross-week/non-Monday rejection,
 trusted-now ended checks, daily compatibility, weekly port
 enqueue/idempotency, weekly status kind/boundary checks and the CLI window
@@ -778,6 +778,111 @@ pre-existing `scripts/fastgpt/setup-unified.mts:113:75` TypeScript error
 (`Property 'selectedType' does not exist…`); this is not a full build pass, and
 the generated `admin/src/lib/survey-runtime/source-manifest.json` change was
 reverted.
+
+## B5.5 single-project worker weekly report
+
+The same weekly adapter now serves a second receiver. A worker report stays one
+project, one worker, one weekly window; no scheduler, Worker, message channel or
+Mini Program source change is added.
+
+- Receiver/scope contract: `PeriodReportScope` carries `receiverKind`
+  (`customer`/`worker`), `receiverAdminId`, `receiverUserId` and
+  `bindingAudience`. Worker reads reuse the existing non-customer facts branch
+  and deliberately do not check `customer_access`; a worker report requires the
+  plan's `project_ids` to be exactly `[projectId]`. An existing worker report is
+  reused only when binding, conversation generation, kind/period and
+  `policy_snapshot.scope.project_ids` all match, otherwise the run fails with
+  `period_report_scope_conflict` or `period_report_generation_conflict`.
+- Worker binding identity: the receiver is binding `2`, enterprise-scoped
+  (`principal_key=admin:1454000008`, `audience=worker`, `project_id NULL`,
+  `scope_key=enterprise`, conversation `1454000008`), created by the persistent
+  marked fixture through `ensureFollowupBinding`. There is no project-scoped
+  worker binding; the customer keeps binding `1`.
+- CLI: `--receiver-kind customer|worker` (default `customer`) and
+  `--worker-id`. Validation runs before the database target/connection with
+  `receiver_kind_missing`, `receiver_kind_invalid`, `worker_id_missing`,
+  `worker_id_invalid`, `worker_id_forbidden` and
+  `worker_receiver_unavailable`. `--admin-id` stays the management executor, the
+  worker is only the receiver, and evidence queries use the receipt
+  reportId/binding so they never pick up the same-period customer report.
+
+Recorded B evidence (2026-11-11, isolated B database, week 2026-10-26 →
+2026-11-02): enterprise `1454`, project `1454000004`, worker admin/base user
+`1454000008` (`b4-live-worker-1454`, `construction_staff`, linked to base user
+`b5-5-worker-user-1454`) with an active `worker` project member role. Fresh
+generation created report `8`/revision `1`/facts run `14`/body run `15`/message
+`122`, delivery `delivered`. Its `report_key` equals customer report `7` because
+the existing formula has no projectId; binding `2` and
+`policy_snapshot.scope.project_ids=['1454000004']` keep them distinct. Facts
+records are `[2,4,3]`: customer records `2` and `3` plus the marked internal
+record `4` `[B5.5] 内部巡检记录` (worker author, owner approver, photo media `3`,
+16804-byte JPEG) aligned to 2026-10-28 inside the week. Counters moved
+reports/versions/jobs/runs/attempts/usage/report messages/deliveries
+`7/7/13/13/4/4/7/7` → `8/8/15/15/5/5/8/8`; the same-period replay with a new
+workflow runId reused report `8`/r1/facts run `14` and the same delivery with
+every counter unchanged. The body used exactly one succeeded
+`llm-settings-override` attempt (`accepted:true`), observed `1291` input +
+`1398` output tokens, zero FastGPT.
+
+Staff read and native UI: the staff token (base user `1454000008`, mode
+`staff`, `staffId` `1454000008`, `construction_staff`) lists binding `2` and
+report `8`, opens the weekly detail (`composed`/`delivered`) with record `4` and
+its photo, and re-enters the same report `8`/r1. Stable DevTools passed 8/8
+checks: the staff entry auto-opens the worker binding and the weekly card
+`10月26日 · 施工周报` (period `10月26日 00:00—11月2日 00:00`); the detail shows
+report `8`/r1 `本周记录` with records `2`/`4`/`3` and their original links;
+record `4` v3 + photo, record `2` v3 + photo, record `3` v3 without photo;
+exit/re-entry returns the same report `8`/r1. Opening the report acknowledged
+the real delivery read receipt (`read_at` null → `2026-11-11T13:33:20.385Z`).
+
+- Customer isolation: the customer list contains only binding `1`, never worker
+  binding `2`; the customer cannot read the worker report or the internal record
+  (403/404), and no customer weekly report was generated for the fixed period.
+  Customer report `7` stays available.
+- `customer_access=false` does not gate the worker: the worker detail and the
+  status observation still read. The switch was restored and read back.
+- Member revocation: `ConstructionService.execute('member', …)` wrote real audit
+  `125` (adminId `1454000008`, `active=false`); the worker list hid binding `2`
+  and detail/record/media returned 404. Restoring `active=true` wrote audit
+  `126`. The old worker report stays historically unavailable (`200
+  available:false` / `source_unavailable`) and does not resurrect under
+  `siteAccessRevoked`; customer report `7` remains available.
+- Status reader: the bound worker receiver (`receiverKind=worker`, admin
+  `1454000008`) reports `projectScope=[1454000004]` and overall `completed`; it
+  stays `completed` while `customer_access=false`, becomes `unavailable` after
+  revocation and stays `unavailable` (`source_unavailable`) after restoration.
+  The Admin page adds a `接收人` item while keeping `业务周期`/`业务日期`.
+- Evidence ordering: the acceptance driver executed the real member revocation
+  before the separate native UI phase. To verify the required pre-revocation
+  native ordering without a second model generation, the single real revocation
+  audit row `125` was snapshotted, temporarily removed, the staff UI was driven,
+  and the exact row was re-inserted and read back; the report then returned to
+  `available:false`/`source_unavailable`. Audits `125`/`126` remain in the
+  database. This is a controlled temporary audit suspension with exact
+  restoration, not a normal user operation.
+- Environment: the already-open Stable DevTools window is the main-workspace
+  checkout `G:\workspace\向总\Smart-Floor-Planner\miniprogram` of the same app
+  (appId `wxa7728432f59779d1`), not this worktree path; no window was closed,
+  opened or replaced. Worker followup/report UI files are byte-identical between
+  the two branch tips; the only Mini Program difference is
+  `packages/assistant/lib/chat.js` (ordinary chat sync) plus a deleted test file.
+  The B API server was the worktree admin on `http://127.0.0.1:3018` against B
+  database `127.0.0.1:55433/smart_floor_planner`.
+- Evidence: `admin/tmp/b5-5-period-report-runs/b5-5-worker-20261111132739076/verification.json`
+  (fresh/replay/model/API/permissions) and `.../native-ui/native-worker.json`
+  plus 5 screenshots in the same folder.
+
+Tests: the same documented 23-file offline command runs 270 tests, all 270 pass
+with 0 fail; `period-report-ports.test.ts` is 28/28,
+`period-report-status(-reentry).test.ts` 45/45, `period-cli.test.ts` 15/15, and
+`live-integration` plus guards 6/6 with the B live case skipped without URLs.
+The 4 strict-opt-in live route cases were not run this round. `npm run build`
+still prints "Compiled successfully" and then exits 1 at the pre-existing
+`scripts/fastgpt/setup-unified.mts:113:75` type error; this is not a full build
+pass, and the generated `admin/src/lib/survey-runtime/source-manifest.json`
+change was reverted. Scope stays one project/one worker; boss, designer and
+multi-project receivers, the scheduler, canvas, Worker changes and shared
+migrations remain out of scope.
 
 ## Reproduce
 

@@ -942,6 +942,13 @@ function NativeWorkflowDetailPageInner() {
                     },
                     { key: 'facts', label: '事实运行', children: <Typography.Text code>{binding.factsRunId}</Typography.Text> },
                     { key: 'binding', label: '保存绑定', children: <Typography.Text code>{binding.bindingId}</Typography.Text> },
+                    {
+                      key: 'receiver',
+                      label: '接收人',
+                      children: binding.receiverKind === 'worker'
+                        ? `worker ${binding.receiverAdminId ?? ''}`.trim()
+                        : '业主',
+                    },
                     { key: 'conversation', label: '会话', children: <Typography.Text code>{binding.conversationId}</Typography.Text> },
                     { key: 'savedReused', label: '保存方式', children: binding.savedReused ? '复用已保存任务' : '新建保存任务' },
                   ]}

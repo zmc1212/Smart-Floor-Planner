@@ -24,6 +24,7 @@ import {
 import {
   LiveOperationFailure,
   LiveOperationUnknownError,
+  type LivePeriodReceiver,
   type LiveRunContext,
 } from '../live/types';
 
@@ -37,6 +38,8 @@ const event: TriggerEvent = {
 };
 
 const actor: ConstructionActor = { enterpriseId: '1454', adminId: '1454000007' };
+const WORKER_ADMIN = '1454000008';
+const workerReceiver: LivePeriodReceiver = { kind: 'worker', adminId: WORKER_ADMIN };
 
 /** Trusted clock after the fixed 2026-11-10 Shanghai day has ended. */
 const AFTER_PERIOD = new Date('2026-11-11T02:00:00.000Z');
@@ -76,6 +79,14 @@ function context(runId = 'b5-run-1', revision = 1): LiveRunContext {
     },
     enterpriseId: actor.enterpriseId,
     projectId: '1455',
+  };
+}
+
+function contextWithReceiver(receiver: LivePeriodReceiver, runId = 'b5-run-1'): LiveRunContext {
+  const base = context(runId);
+  return {
+    ...base,
+    businessEvent: { ...base.businessEvent, receiver },
   };
 }
 
@@ -119,7 +130,10 @@ function scope(overrides: Partial<PeriodReportScope> = {}): PeriodReportScope {
     projectName: '测试项目',
     bindingId: '9001',
     conversationId: '7001',
-    customerUserId: '1454000002',
+    receiverKind: 'customer',
+    receiverAdminId: null,
+    receiverUserId: '1454000002',
+    bindingAudience: 'customer',
     reportKey: periodReportKey(period, { id: '7001' }),
     legacyPlanEnabled: true,
     legacyScheduleDue: false,
@@ -128,6 +142,20 @@ function scope(overrides: Partial<PeriodReportScope> = {}): PeriodReportScope {
     receiverStatus: 'available',
     ...overrides,
   };
+}
+
+function workerScope(overrides: Partial<PeriodReportScope> = {}): PeriodReportScope {
+  const period = parseFixedDailyPeriod(event, AFTER_PERIOD);
+  return scope({
+    bindingId: '9002',
+    conversationId: '7002',
+    receiverKind: 'worker',
+    receiverAdminId: WORKER_ADMIN,
+    receiverUserId: null,
+    bindingAudience: 'worker',
+    reportKey: periodReportKey(period, { id: '7002' }),
+    ...overrides,
+  });
 }
 
 function storedReport(current: PeriodReportScope, reused = false): StoredPeriodReport {
@@ -162,6 +190,8 @@ interface FakeState {
   enqueueError: Error | null;
   enqueueCalls: FixedPeriod[];
   enqueueProjects: string[];
+  scopeReceivers: LivePeriodReceiver[];
+  enqueueReceivers: LivePeriodReceiver[];
   findCalls: number;
   recordCalls: number;
   photoCalls: number;
@@ -181,6 +211,8 @@ function fakeStore(initial: Partial<FakeState> = {}) {
     enqueueError: null,
     enqueueCalls: [],
     enqueueProjects: [],
+    scopeReceivers: [],
+    enqueueReceivers: [],
     findCalls: 0,
     recordCalls: 0,
     photoCalls: 0,
@@ -188,7 +220,8 @@ function fakeStore(initial: Partial<FakeState> = {}) {
     ...initial,
   };
   const store: PeriodReportStore = {
-    async loadScope() {
+    async loadScope({ receiver }) {
+      state.scopeReceivers.push(receiver);
       return state.scope;
     },
     async findReport() {
@@ -197,9 +230,10 @@ function fakeStore(initial: Partial<FakeState> = {}) {
       // re-read after `enqueue` returned null.
       return state.findCalls === 1 ? state.existing : (state.raced ?? state.existing);
     },
-    async enqueue({ projectId, period }) {
+    async enqueue({ projectId, period, receiver }) {
       state.enqueueCalls.push(period);
       state.enqueueProjects.push(projectId);
+      state.enqueueReceivers.push(receiver);
       if (state.enqueueError) throw state.enqueueError;
       return state.queued;
     },
@@ -284,7 +318,12 @@ test('save enqueues the real lifecycle record with a live receipt', async () => 
   assert.equal(receipt.runId, '8001');
   assert.equal(receipt.reportKey, state.scope.reportKey);
   assert.equal(receipt.reused, false);
+  assert.equal(receipt.receiverKind, 'customer');
+  assert.equal(receipt.receiverAdminId, null);
+  assert.deepEqual(receipt.projectScope, ['1455']);
   assert.match(String(receipt.receiptId), /^report:5001:1$/);
+  assert.deepEqual(state.scopeReceivers, [{ kind: 'customer' }]);
+  assert.deepEqual(state.enqueueReceivers, [{ kind: 'customer' }]);
   assert.equal(state.enqueueCalls.length, 1);
   assert.equal(state.enqueueProjects[0], '1455');
   assert.equal(state.enqueueCalls[0]!.start.toISOString(), '2026-11-09T16:00:00.000Z');
@@ -727,6 +766,315 @@ test('delivery only reports a real, matching worker receipt', async () => {
   );
 });
 
+interface RecordedQuery {
+  readonly text: string;
+  readonly params: readonly unknown[];
+}
+
+/** Offline tenant transaction: records SQL text/params and returns canned rows. */
+function fakeDatabase(respond: (query: RecordedQuery) => unknown[] | undefined) {
+  const calls: RecordedQuery[] = [];
+  const tx = {
+    execute(query: { queryChunks?: unknown[] }) {
+      let text = '';
+      const params: unknown[] = [];
+      for (const chunk of query.queryChunks ?? []) {
+        if (typeof chunk === 'string') {
+          text += `$${params.length + 1}`;
+          params.push(chunk);
+        } else if (Array.isArray((chunk as { value?: unknown[] })?.value)) {
+          text += (chunk as { value: string[] }).value.join('');
+        } else {
+          text += '?';
+        }
+      }
+      const call: RecordedQuery = { text, params };
+      calls.push(call);
+      return Promise.resolve({ rows: respond(call) ?? [] });
+    },
+  } as unknown as PostgresTransaction;
+  return { tx, calls };
+}
+
+const workerProjectRow = {
+  id: '1455',
+  name: '测试项目',
+  status: 'active',
+  current_stage_key: 'in_progress',
+  customer_access: false,
+};
+
+const workerSettings = {
+  enabled: true,
+  audiences: ['worker'],
+  project_ids: ['1455'],
+  stage_enabled: false,
+  next_daily_at: '2999-01-01T00:00:00.000Z',
+  next_weekly_at: '2999-01-01T00:00:00.000Z',
+  version: 1,
+};
+
+const workerBindingRow = {
+  id: '9002',
+  audience: 'worker',
+  admin_id: WORKER_ADMIN,
+  user_id: null,
+  project_id: null,
+  scope_key: 'enterprise',
+  status: 'enabled',
+  conversation_id: '7002',
+};
+
+function workerResponder(overrides: {
+  admin?: unknown[];
+  member?: unknown[];
+  access?: unknown[];
+  followup?: unknown[];
+} = {}) {
+  return (query: RecordedQuery): unknown[] | undefined => {
+    if (query.text.includes('construction_report_settings')) return [workerSettings];
+    if (query.text.includes('construction_followup_bindings')) return [workerBindingRow];
+    if (query.text.includes('assistant_followup_conversation_access')) {
+      return overrides.followup ?? [{ allowed: true }];
+    }
+    if (query.text.includes('assistant_conversations')) return [{ id: '7002', entry_snapshot: {} }];
+    if (query.text.includes('construction_members')) return overrides.member ?? [{ role: 'worker' }];
+    if (query.text.includes('construction_followup_staff_access')) {
+      return overrides.access ?? [{ role: 'worker' }];
+    }
+    if (query.text.includes('admin_users')) return overrides.admin ?? [{ id: WORKER_ADMIN }];
+    return undefined;
+  };
+}
+
+function workerPorts(respond: (query: RecordedQuery) => unknown[] | undefined) {
+  const database = fakeDatabase(respond);
+  const store = createPeriodReportStore({
+    transaction: fakeTransaction({ count: 0 }, database.tx),
+    authorizeWrite: async () => ({ owner: true, memberRole: null, project: workerProjectRow }),
+  });
+  return {
+    ports: createPeriodReportPorts({
+      actor,
+      store,
+      receiver: workerReceiver,
+      now: () => AFTER_PERIOD,
+    }),
+    database,
+  };
+}
+
+test('worker receiver resolves the enterprise staff binding without customer_access', async () => {
+  const { ports, database } = workerPorts(workerResponder());
+  const result = await ports.execute(
+    operation('read.receiver_scope'),
+    contextWithReceiver(workerReceiver),
+  );
+
+  assert.equal(result.receiverCount, 1);
+  assert.deepEqual(result.receivers, {
+    scope: 'enterprise_worker',
+    projectId: '1455',
+    bindingId: '9002',
+    conversationId: '7002',
+    workerAdminId: WORKER_ADMIN,
+    audience: 'worker',
+  });
+  // The project keeps customer_access=false; a worker receiver never reads it.
+  const bindingQuery = database.calls.find((call) => call.text.includes('construction_followup_bindings'));
+  assert.ok(bindingQuery);
+  assert.match(bindingQuery.text, /audience='worker'/);
+  assert.match(bindingQuery.text, /project_id is null/);
+  assert.match(bindingQuery.text, /scope_key='enterprise'/);
+  assert.ok(bindingQuery.params.includes(`admin:${WORKER_ADMIN}`));
+  const adminQuery = database.calls.find((call) => call.text.includes('admin_users'));
+  assert.ok(adminQuery);
+  assert.match(adminQuery.text, /role='construction_staff'/);
+  assert.match(adminQuery.text, /must_change_password=false/);
+});
+
+test('a worker without the fixed-project membership is receiver unavailable', async () => {
+  // The SQL predicate already excludes observers; no row means no membership.
+  const { ports } = workerPorts(workerResponder({ member: [] }));
+  await assert.rejects(
+    () => ports.execute(operation('save.period_report'), contextWithReceiver(workerReceiver)),
+    isFailure('period_report_receiver_unavailable'),
+  );
+
+  const receivers = await ports.execute(
+    operation('read.receiver_scope'),
+    contextWithReceiver(workerReceiver),
+  );
+  assert.equal(receivers.receiverCount, 0);
+  assert.equal(
+    (receivers.receivers as Record<string, unknown>).status,
+    'worker_unavailable',
+  );
+});
+
+test('a worker plan must be exactly the fixed project', async () => {
+  const period = parseFixedDailyPeriod(event, AFTER_PERIOD);
+  for (const projectIds of [['1455', '1456'], []]) {
+    const database = fakeDatabase((query) =>
+      query.text.includes('construction_report_settings')
+        ? [{ ...workerSettings, project_ids: projectIds }]
+        : undefined);
+    const store = createPeriodReportStore({
+      transaction: fakeTransaction({ count: 0 }, database.tx),
+      authorizeWrite: async () => ({ owner: true, memberRole: null, project: workerProjectRow }),
+    });
+    await assert.rejects(
+      () => store.loadScope({
+        actor,
+        projectId: '1455',
+        period,
+        write: false,
+        receiver: workerReceiver,
+      }),
+      (error: unknown) => error instanceof AssistantError
+        && error.code === 'period_report_project_scope_mismatch',
+    );
+  }
+});
+
+test('an existing worker report must match the fixed project scope and generation', async () => {
+  const period = parseFixedDailyPeriod(event, AFTER_PERIOD);
+  const report = workerScope();
+  const reportRow = {
+    id: '5001',
+    binding_id: '9002',
+    kind: 'daily',
+    period_start: period.start,
+    period_end: period.end,
+    latest_revision: 1,
+  };
+  const storeFor = (projectIds: string[], conversationId = '7002') => {
+    const database = fakeDatabase((query) => {
+      if (query.text.includes('construction_report_versions')) {
+        return [{
+          revision: 1,
+          run_id: '8001',
+          conversation_id: conversationId,
+          policy_snapshot: { scope: { project_ids: projectIds } },
+        }];
+      }
+      if (query.text.includes('construction_reports')) return [reportRow];
+      return undefined;
+    });
+    return createPeriodReportStore({
+      transaction: fakeTransaction({ count: 0 }, database.tx),
+    });
+  };
+
+  await assert.rejects(
+    () => storeFor(['9999']).findReport(report, period),
+    (error: unknown) => error instanceof AssistantError
+      && error.code === 'period_report_scope_conflict',
+  );
+  await assert.rejects(
+    () => storeFor(['1455'], '7999').findReport(report, period),
+    (error: unknown) => error instanceof AssistantError
+      && error.code === 'period_report_generation_conflict',
+  );
+
+  const reused = await storeFor(['1455']).findReport(report, period);
+  assert.equal(reused?.reused, true);
+  assert.equal(reused?.reportId, '5001');
+  assert.equal(reused?.conversationId, '7002');
+});
+
+test('a host receiver that diverges from the fixed run event is rejected', async () => {
+  const { store } = fakeStore();
+  const ports = createPeriodReportPorts({ actor, store, receiver: workerReceiver });
+  await assert.rejects(
+    () => ports.execute(
+      operation('read.receiver_scope'),
+      contextWithReceiver({ kind: 'customer' }),
+    ),
+    isFailure('receiver_binding_mismatch'),
+  );
+
+  // An absent business-event receiver keeps the legacy customer default.
+  const customer = createPeriodReportPorts({ actor, store });
+  const result = await customer.execute(operation('read.receiver_scope'), context());
+  assert.equal(result.receiverCount, 1);
+});
+
+test('a worker report saves and delivers through the enterprise worker scope', async () => {
+  const { state, store } = fakeStore({
+    scope: workerScope(),
+    queued: storedReport(workerScope()),
+    delivery: {
+      state: 'delivered',
+      messageId: '8101',
+      conversationId: '7002',
+      deliveredAt: '2026-11-11T02:05:00.000Z',
+      messagePurpose: 'construction.report.facts',
+    },
+  });
+  const ports = createPeriodReportPorts({ actor, store, receiver: workerReceiver });
+
+  const saved = await ports.execute(
+    operation('save.period_report'),
+    contextWithReceiver(workerReceiver),
+  );
+  assert.equal(saved.saved, true);
+  const receipt = saved.saveReceipt as Record<string, unknown>;
+  assert.equal(receipt.receiverKind, 'worker');
+  assert.equal(receipt.receiverAdminId, WORKER_ADMIN);
+  assert.deepEqual(receipt.projectScope, ['1455']);
+  assert.deepEqual(state.scopeReceivers, [workerReceiver]);
+  assert.deepEqual(state.enqueueReceivers, [workerReceiver]);
+
+  const receivers = await ports.execute(
+    operation('read.receiver_scope'),
+    contextWithReceiver(workerReceiver),
+  );
+  assert.deepEqual(receivers.receivers, {
+    scope: 'enterprise_worker',
+    projectId: '1455',
+    bindingId: '9002',
+    conversationId: '7002',
+    workerAdminId: WORKER_ADMIN,
+    audience: 'worker',
+  });
+
+  const delivered = await ports.execute(
+    operation('deliver.inapp', { receivers: receivers.receivers as WorkflowValue }),
+    contextWithReceiver(workerReceiver),
+  );
+  assert.equal(delivered.delivered, true);
+  const delivery = delivered.deliveryReceipt as Record<string, unknown>;
+  assert.equal(delivery.status, 'delivered');
+  assert.match(String(delivery.receiptId), /^report-delivery:5001:1:9002$/);
+});
+
+test('a customer delivery receiver object cannot deliver a worker scope', async () => {
+  const { store } = fakeStore({
+    scope: workerScope(),
+    queued: storedReport(workerScope()),
+  });
+  const ports = createPeriodReportPorts({ actor, store, receiver: workerReceiver });
+  await ports.execute(operation('save.period_report'), contextWithReceiver(workerReceiver));
+
+  await assert.rejects(
+    () => ports.execute(
+      operation('deliver.inapp', {
+        receivers: {
+          scope: 'project_customer',
+          projectId: '1455',
+          bindingId: '9002',
+          conversationId: '7002',
+          customerUserId: '1454000002',
+          audience: 'customer',
+        },
+      }),
+      contextWithReceiver(workerReceiver),
+    ),
+    isFailure('receiver_scope_mismatch'),
+  );
+});
+
 function isPeriodNotEnded(error: unknown): boolean {
   return (error as { code?: string }).code === 'period_not_ended';
 }
@@ -814,7 +1162,7 @@ test('the write transaction re-checks management access before enqueueing', asyn
   });
 
   await assert.rejects(
-    () => store.enqueue({ actor, projectId: '1455', period }),
+    () => store.enqueue({ actor, projectId: '1455', period, receiver: { kind: 'customer' } }),
     (error: unknown) => error instanceof AssistantError
       && error.code === 'construction_forbidden',
   );

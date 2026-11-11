@@ -24,6 +24,7 @@ import {
   LiveOperationFailure,
   LiveOperationUnknownError,
   type LiveOperationPorts,
+  type LivePeriodReceiver,
 } from './types';
 
 /**
@@ -42,6 +43,8 @@ import {
  */
 export interface PeriodReportPortOptions {
   readonly actor: ConstructionActor;
+  /** Host-selected receiver; absent keeps the legacy project customer. */
+  readonly receiver?: LivePeriodReceiver;
   /** Test/CLI seam; defaults to the real tenant-transaction store. */
   readonly store?: PeriodReportStore;
   /** Test seam for the trusted clock; defaults to `new Date()` per execute. */
@@ -53,6 +56,7 @@ export type PeriodReceiverStatus =
   | 'binding_missing'
   | 'project_inactive'
   | 'customer_access_revoked'
+  | 'worker_unavailable'
   | 'conversation_unavailable'
   | 'audience_disabled';
 
@@ -62,7 +66,10 @@ export interface PeriodReportScope {
   readonly projectName: string;
   readonly bindingId: string | null;
   readonly conversationId: string | null;
-  readonly customerUserId: string | null;
+  readonly receiverKind: 'customer' | 'worker';
+  readonly receiverAdminId: string | null;
+  readonly receiverUserId: string | null;
+  readonly bindingAudience: 'customer' | 'worker';
   readonly reportKey: string;
   /** The plan is enabled so the existing Worker may process the queued task. */
   readonly legacyPlanEnabled: boolean;
@@ -125,12 +132,14 @@ export interface PeriodReportStore {
     readonly projectId: string;
     readonly period: FixedPeriod;
     readonly write: boolean;
+    readonly receiver: LivePeriodReceiver;
   }): Promise<PeriodReportScope>;
   findReport(scope: PeriodReportScope, period: FixedPeriod): Promise<StoredPeriodReport | null>;
   enqueue(input: {
     readonly actor: ConstructionActor;
     readonly projectId: string;
     readonly period: FixedPeriod;
+    readonly receiver: LivePeriodReceiver;
   }): Promise<StoredPeriodReport | null>;
   readRecords(scope: PeriodReportScope, period: FixedPeriod): Promise<PeriodRecordRead>;
   readPhotos(
@@ -191,8 +200,20 @@ function legacyScheduleDue(settings: Row): boolean {
   return false;
 }
 
-function assertConfiguredProject(settings: Row, projectId: string): void {
+function assertConfiguredProject(
+  settings: Row,
+  projectId: string,
+  receiverKind: 'customer' | 'worker',
+): void {
   const configured = configuredProjectIds(settings);
+  if (receiverKind === 'worker') {
+    // The worker receiver is single-project by contract: a broader or empty
+    // plan would let another project's period slip into this run.
+    if (configured.length !== 1 || configured[0] !== projectId) {
+      fail('period_report_project_scope_mismatch', 409);
+    }
+    return;
+  }
   if (configured.length && !configured.includes(projectId)) {
     fail('period_report_project_out_of_scope', 409);
   }
@@ -201,6 +222,10 @@ function assertConfiguredProject(settings: Row, projectId: string): void {
 function narrowedSettings(settings: Row, projectId: string): Row {
   // A single-project B run must not inherit a broader enterprise filter.
   return { ...settings, project_ids: [projectId] };
+}
+
+function receiverAdminId(receiver: LivePeriodReceiver): string | null {
+  return receiver.kind === 'worker' && receiver.adminId ? receiver.adminId : null;
 }
 
 async function customerBinding(
@@ -218,26 +243,172 @@ async function customerBinding(
   );
 }
 
+async function workerBinding(
+  tx: PostgresTransaction,
+  enterpriseId: string,
+  adminId: string,
+  mode: LockMode,
+): Promise<Row | undefined> {
+  const principal = `admin:${adminId}`;
+  return one(
+    tx,
+    sql`select b.* from app.construction_followup_bindings b
+      where b.enterprise_id=${enterpriseId} and b.principal_key=${principal}
+        and b.audience='worker' and b.project_id is null and b.scope_key='enterprise'
+        and b.status='enabled'
+      order by b.id limit 1 ${lockClause(mode)}`,
+  );
+}
+
+async function receiverBinding(
+  tx: PostgresTransaction,
+  enterpriseId: string,
+  projectId: string,
+  receiver: LivePeriodReceiver,
+  mode: LockMode,
+): Promise<Row | undefined> {
+  if (receiver.kind !== 'worker') {
+    return customerBinding(tx, enterpriseId, projectId, mode);
+  }
+  const adminId = receiverAdminId(receiver);
+  if (!adminId) return undefined;
+  return workerBinding(tx, enterpriseId, adminId, mode);
+}
+
+/** The existing enterprise staff policy plus the fixed project membership. */
+async function workerAvailable(
+  tx: PostgresTransaction,
+  enterpriseId: string,
+  adminId: string,
+  projectId: string,
+): Promise<boolean> {
+  const admin = await one(
+    tx,
+    sql`select id from app.admin_users
+      where enterprise_id=${enterpriseId} and id=${adminId} and status='active'
+        and role='construction_staff' and must_change_password=false for share`,
+  );
+  if (!admin) return false;
+  const member = await one(
+    tx,
+    sql`select role from app.construction_members
+      where enterprise_id=${enterpriseId} and project_id=${projectId} and admin_id=${adminId}
+        and active and role<>'observer' for share`,
+  );
+  if (!member) return false;
+  return Boolean((await one(
+    tx,
+    sql`select app.construction_followup_staff_access(${adminId}::bigint,${enterpriseId}::bigint) as role`,
+  ))?.role);
+}
+
+/** Re-resolve exactly the binding this receiver was authorized against. */
+async function receiverBindingById(
+  tx: PostgresTransaction,
+  scope: PeriodReportScope,
+  mode: LockMode,
+): Promise<Row | undefined> {
+  if (!scope.bindingId) return undefined;
+  if (scope.receiverKind === 'worker') {
+    const adminId = scope.receiverAdminId;
+    if (!adminId) return undefined;
+    const principal = `admin:${adminId}`;
+    return one(
+      tx,
+      sql`select * from app.construction_followup_bindings
+        where enterprise_id=${scope.enterpriseId} and id=${scope.bindingId}
+          and principal_key=${principal} and audience='worker'
+          and project_id is null and scope_key='enterprise' and status='enabled'
+        ${lockClause(mode)}`,
+    );
+  }
+  return one(
+    tx,
+    sql`select * from app.construction_followup_bindings
+      where enterprise_id=${scope.enterpriseId} and id=${scope.bindingId}
+        and project_id=${scope.projectId} and audience='customer' and status='enabled'
+      ${lockClause(mode)}`,
+  );
+}
+
+async function receiverBindingAvailable(
+  tx: PostgresTransaction,
+  scope: PeriodReportScope,
+  binding: Row,
+): Promise<boolean> {
+  if (!await followupAvailable(tx, scope.enterpriseId, binding)) return false;
+  if (scope.receiverKind !== 'worker') return true;
+  const adminId = scope.receiverAdminId;
+  return Boolean(adminId)
+    && workerAvailable(tx, scope.enterpriseId, adminId!, scope.projectId);
+}
+
+interface ReportExpectation {
+  readonly kind: FixedPeriod['kind'];
+  readonly start: Date;
+  readonly end: Date;
+  readonly projectId: string;
+  readonly worker: boolean;
+}
+
+function sameInstant(value: unknown, expected: Date): boolean {
+  const at = value instanceof Date ? value : new Date(String(value));
+  return Number.isFinite(at.getTime()) && at.getTime() === expected.getTime();
+}
+
+function snapshotProjectIds(snapshot: unknown): string[] {
+  const policy = snapshot as Row | null;
+  const scope = policy?.scope as Row | null | undefined;
+  const ids = scope?.project_ids;
+  return Array.isArray(ids) ? ids.map((projectId) => String(projectId)) : [];
+}
+
 async function findReportInTransaction(
   tx: PostgresTransaction,
   enterpriseId: string,
   bindingId: string,
   reportKey: string,
   conversationId: string,
+  expected: ReportExpectation,
 ): Promise<StoredPeriodReport | null> {
   const report = await one(
     tx,
-    sql`select id,latest_revision from app.construction_reports
+    sql`select id,binding_id,kind,period_start,period_end,latest_revision
+      from app.construction_reports
       where enterprise_id=${enterpriseId} and binding_id=${bindingId} and report_key=${reportKey}
       order by id limit 1`,
   );
   if (!report) return null;
   const version = await one(
     tx,
-    sql`select revision,run_id from app.construction_report_versions
-      where enterprise_id=${enterpriseId} and report_id=${String(report.id)}
-        and revision=${Number(report.latest_revision)}`,
+    sql`select v.revision,v.run_id,run.conversation_id,run.policy_snapshot
+      from app.construction_report_versions v
+      join app.assistant_runs run
+        on run.enterprise_id=v.enterprise_id and run.id=v.run_id
+      where v.enterprise_id=${enterpriseId} and v.report_id=${String(report.id)}
+        and v.revision=${Number(report.latest_revision)}`,
   );
+  if (expected.worker) {
+    // A worker run is a single-project receiver: never inherit another
+    // project's or another conversation generation's same-period report.
+    if (String(report.binding_id) !== bindingId) {
+      fail('period_report_scope_conflict', 409);
+    }
+    if (!version) fail('period_report_scope_conflict', 409);
+    if (String(version.conversation_id) !== conversationId) {
+      fail('period_report_generation_conflict', 409);
+    }
+    const projectIds = snapshotProjectIds(version.policy_snapshot);
+    if (
+      String(report.kind) !== expected.kind
+      || !sameInstant(report.period_start, expected.start)
+      || !sameInstant(report.period_end, expected.end)
+      || projectIds.length !== 1
+      || projectIds[0] !== expected.projectId
+    ) {
+      fail('period_report_scope_conflict', 409);
+    }
+  }
   if (!version) return null;
   return {
     reportId: String(report.id),
@@ -256,6 +427,7 @@ async function loadScopeInTransaction(
   period: FixedPeriod,
   write: boolean,
   authorizeWrite: typeof writeProjectAccess,
+  receiver: LivePeriodReceiver,
 ): Promise<PeriodReportScope> {
   // B reports are a management path: every capability, including reads, uses
   // the existing construction owner/manager rule. Tenant scope is fixed by the
@@ -268,9 +440,15 @@ async function loadScopeInTransaction(
       where enterprise_id=${actor.enterpriseId} ${lockClause(write ? 'update' : 'share')}`,
   );
   if (!settings) fail('period_report_plan_missing', 422);
-  assertConfiguredProject(settings, projectId);
+  assertConfiguredProject(settings, projectId, receiver.kind);
 
-  const binding = await customerBinding(tx, actor.enterpriseId, projectId, write ? 'update' : 'share');
+  const binding = await receiverBinding(
+    tx,
+    actor.enterpriseId,
+    projectId,
+    receiver,
+    write ? 'update' : 'share',
+  );
   const conversation = binding
     ? await one(
         tx,
@@ -287,8 +465,17 @@ async function loadScopeInTransaction(
     String(project.status) !== 'active'
     || ['completion', 'move_in'].includes(String(project.current_stage_key ?? ''))
   ) receiverStatus = 'project_inactive';
-  else if (!project.customer_access) receiverStatus = 'customer_access_revoked';
-  else if (!audienceEnabled) receiverStatus = 'audience_disabled';
+  else if (receiver.kind === 'customer' && !project.customer_access) {
+    receiverStatus = 'customer_access_revoked';
+  } else if (receiver.kind === 'worker') {
+    const adminId = receiverAdminId(receiver);
+    if (!adminId || !await workerAvailable(tx, actor.enterpriseId, adminId, projectId)) {
+      receiverStatus = 'worker_unavailable';
+    } else if (!audienceEnabled) receiverStatus = 'audience_disabled';
+    else if (!await followupAvailable(tx, actor.enterpriseId, binding)) {
+      receiverStatus = 'conversation_unavailable';
+    }
+  } else if (!audienceEnabled) receiverStatus = 'audience_disabled';
   else if (!await followupAvailable(tx, actor.enterpriseId, binding)) {
     receiverStatus = 'conversation_unavailable';
   }
@@ -300,13 +487,20 @@ async function loadScopeInTransaction(
       })
     : '';
 
+  const bindingAudience: 'customer' | 'worker' = String(binding?.audience) === 'worker'
+    ? 'worker'
+    : receiver.kind;
+
   return {
     enterpriseId: actor.enterpriseId,
     projectId,
     projectName: String(project.name ?? ''),
     bindingId: binding ? String(binding.id) : null,
     conversationId: conversation ? String(conversation.id) : null,
-    customerUserId: binding?.user_id ? String(binding.user_id) : null,
+    receiverKind: receiver.kind,
+    receiverAdminId: receiver.kind === 'worker' ? receiverAdminId(receiver) : null,
+    receiverUserId: binding?.user_id ? String(binding.user_id) : null,
+    bindingAudience,
     reportKey,
     legacyPlanEnabled: settings.enabled === true,
     legacyScheduleDue: legacyScheduleDue(settings),
@@ -323,6 +517,7 @@ async function queueInTransaction(
   period: FixedPeriod,
   authorizeWrite: typeof writeProjectAccess,
   enqueue: typeof enqueueReport,
+  receiver: LivePeriodReceiver,
 ): Promise<StoredPeriodReport | null> {
   // Re-authorize at the top of the write transaction, with the same project →
   // settings → binding → conversation lock order as the scope read. A manager
@@ -339,11 +534,17 @@ async function queueInTransaction(
   // an unprocessable task for the existing Worker.
   if (settings.enabled !== true) fail('period_report_plan_disabled', 422);
   if (legacyScheduleDue(settings)) fail('period_report_legacy_scheduler_due', 409);
-  assertConfiguredProject(settings, projectId);
+  assertConfiguredProject(settings, projectId, receiver.kind);
 
-  const binding = await customerBinding(tx, actor.enterpriseId, projectId, 'update');
+  const binding = await receiverBinding(tx, actor.enterpriseId, projectId, receiver, 'update');
   if (!binding) fail('period_report_receiver_unavailable', 409);
   if (!reportAudienceEnabled(settings, binding)) fail('period_report_audience_disabled', 409);
+  if (receiver.kind === 'worker') {
+    const adminId = receiverAdminId(receiver);
+    if (!adminId || !await workerAvailable(tx, actor.enterpriseId, adminId, projectId)) {
+      fail('period_report_receiver_unavailable', 409);
+    }
+  }
   if (!await followupAvailable(tx, actor.enterpriseId, binding)) {
     fail('period_report_receiver_unavailable', 409);
   }
@@ -387,6 +588,13 @@ async function queueInTransaction(
     String(binding.id),
     reportKey,
     String(conversation.id),
+    {
+      kind: period.kind,
+      start: period.start,
+      end: period.end,
+      projectId,
+      worker: receiver.kind === 'worker',
+    },
   );
 }
 
@@ -421,13 +629,8 @@ async function readRecordsInTransaction(
   period: FixedPeriod,
 ): Promise<PeriodRecordRead> {
   if (!scope.bindingId) return { records: [], truncated: false };
-  const binding = await one(
-    tx,
-    sql`select * from app.construction_followup_bindings
-      where enterprise_id=${scope.enterpriseId} and id=${scope.bindingId}
-        and project_id=${scope.projectId} and audience='customer' and status='enabled' for share`,
-  );
-  if (!binding || !await followupAvailable(tx, scope.enterpriseId, binding)) {
+  const binding = await receiverBindingById(tx, scope, 'share');
+  if (!binding || !await receiverBindingAvailable(tx, scope, binding)) {
     return { records: [], truncated: false };
   }
   const settings = await one(
@@ -463,13 +666,8 @@ async function readPhotosInTransaction(
   records: readonly PeriodReportRecord[],
 ): Promise<readonly PeriodReportPhoto[]> {
   if (!scope.bindingId || !records.length) return [];
-  const binding = await one(
-    tx,
-    sql`select * from app.construction_followup_bindings
-      where enterprise_id=${scope.enterpriseId} and id=${scope.bindingId}
-        and project_id=${scope.projectId} and audience='customer' and status='enabled' for share`,
-  );
-  if (!binding || !await followupAvailable(tx, scope.enterpriseId, binding)) return [];
+  const binding = await receiverBindingById(tx, scope, 'share');
+  if (!binding || !await receiverBindingAvailable(tx, scope, binding)) return [];
 
   const recordIds = [...new Set(records.map((record) => record.recordId))];
   const versions = new Map(records.map((record) => [record.recordId, record.version]));
@@ -507,6 +705,8 @@ async function readDeliveryInTransaction(
   revision: number,
 ): Promise<PeriodDeliveryRecord | null> {
   if (!scope.bindingId) return null;
+  const binding = await receiverBindingById(tx, scope, 'share');
+  if (!binding || !await receiverBindingAvailable(tx, scope, binding)) return null;
   const delivery = await one(
     tx,
     sql`select d.state,d.message_id,d.delivered_at,
@@ -538,11 +738,11 @@ export function createPeriodReportStore(
   const authorizeWrite = (dependencies.authorizeWrite ?? writeProjectAccess) as typeof writeProjectAccess;
   const enqueue = dependencies.enqueueReport ?? enqueueReport;
   return {
-    loadScope: ({ actor, projectId, period, write }) =>
+    loadScope: ({ actor, projectId, period, write, receiver }) =>
       transaction(actor.enterpriseId, (tx) =>
-        loadScopeInTransaction(tx, actor, projectId, period, write, authorizeWrite),
+        loadScopeInTransaction(tx, actor, projectId, period, write, authorizeWrite, receiver),
       ),
-    findReport: (scope) =>
+    findReport: (scope, period) =>
       scope.bindingId && scope.conversationId
         ? transaction(scope.enterpriseId, (tx) =>
             findReportInTransaction(
@@ -551,12 +751,19 @@ export function createPeriodReportStore(
               scope.bindingId!,
               scope.reportKey,
               scope.conversationId!,
+              {
+                kind: period.kind,
+                start: period.start,
+                end: period.end,
+                projectId: scope.projectId,
+                worker: scope.receiverKind === 'worker',
+              },
             ),
           )
         : Promise.resolve(null),
-    enqueue: ({ actor, projectId, period }) =>
+    enqueue: ({ actor, projectId, period, receiver }) =>
       transaction(actor.enterpriseId, (tx) =>
-        queueInTransaction(tx, actor, projectId, period, authorizeWrite, enqueue),
+        queueInTransaction(tx, actor, projectId, period, authorizeWrite, enqueue, receiver),
       ),
     readRecords: (scope, period) =>
       transaction(scope.enterpriseId, (tx) =>
@@ -578,7 +785,7 @@ function failure(operation: PendingOperation, code: string, message: string): Li
 }
 
 function scopeKey(scope: PeriodReportScope): string {
-  return `${scope.enterpriseId}:${scope.projectId}:${scope.reportKey}`;
+  return `${scope.enterpriseId}:${scope.receiverKind}:${scope.receiverAdminId ?? ''}:${scope.projectId}:${scope.reportKey}`;
 }
 
 function receiverFailure(operation: PendingOperation, status: PeriodReceiverStatus): LiveOperationFailure {
@@ -591,7 +798,7 @@ function receiverFailure(operation: PendingOperation, status: PeriodReceiverStat
   );
 }
 
-function saveReceipt(report: StoredPeriodReport, bindingId: string): Record<string, WorkflowValue> {
+function saveReceipt(report: StoredPeriodReport, scope: PeriodReportScope): Record<string, WorkflowValue> {
   return {
     saved: true,
     saveReceipt: {
@@ -602,9 +809,12 @@ function saveReceipt(report: StoredPeriodReport, bindingId: string): Record<stri
       revision: report.revision,
       runId: report.runId,
       reportKey: report.reportKey,
-      bindingId,
+      bindingId: String(scope.bindingId),
       conversationId: report.conversationId,
       reused: report.reused,
+      receiverKind: scope.receiverKind,
+      receiverAdminId: scope.receiverAdminId,
+      projectScope: [scope.projectId],
     },
   };
 }
@@ -651,12 +861,25 @@ function composePeriodReport(
 export function createPeriodReportPorts(options: PeriodReportPortOptions): LiveOperationPorts {
   const store = options.store ?? createPeriodReportStore();
   const now = options.now ?? (() => new Date());
+  const receiver: LivePeriodReceiver = options.receiver ?? { kind: 'customer' };
   const saved = new Map<string, StoredPeriodReport>();
   const records = new Map<string, PeriodRecordRead>();
 
   return {
     async execute(operation, context) {
       try {
+        const bound = context.businessEvent.receiver;
+        if (
+          bound
+          && (bound.kind !== receiver.kind
+            || (bound.adminId ?? '') !== (receiver.adminId ?? ''))
+        ) {
+          throw failure(
+            operation,
+            'receiver_binding_mismatch',
+            'the host receiver does not match the run business event receiver',
+          );
+        }
         const period = parseFixedPeriod(context.event, now());
         switch (operation.capabilityRef) {
           case 'read.period_records': {
@@ -665,6 +888,7 @@ export function createPeriodReportPorts(options: PeriodReportPortOptions): LiveO
               actor: options.actor,
               projectId: context.projectId,
               period,
+              receiver,
               write: false,
             });
             if (!scope.bindingId) {
@@ -684,6 +908,7 @@ export function createPeriodReportPorts(options: PeriodReportPortOptions): LiveO
               actor: options.actor,
               projectId: context.projectId,
               period,
+              receiver,
               write: false,
             });
             if (!scope.bindingId) return { photos: [], photoCount: 0 };
@@ -705,6 +930,7 @@ export function createPeriodReportPorts(options: PeriodReportPortOptions): LiveO
               actor: options.actor,
               projectId: context.projectId,
               period,
+              receiver,
               write: false,
             });
             if (!scope.receiverAvailable) {
@@ -719,14 +945,23 @@ export function createPeriodReportPorts(options: PeriodReportPortOptions): LiveO
               return unavailable;
             }
             const available: Record<string, WorkflowValue> = {
-              receivers: {
-                scope: 'project_customer',
-                projectId: context.projectId,
-                bindingId: scope.bindingId,
-                conversationId: scope.conversationId,
-                customerUserId: scope.customerUserId,
-                audience: 'customer',
-              },
+              receivers: scope.receiverKind === 'worker'
+                ? {
+                    scope: 'enterprise_worker',
+                    projectId: context.projectId,
+                    bindingId: scope.bindingId,
+                    conversationId: scope.conversationId,
+                    workerAdminId: scope.receiverAdminId,
+                    audience: 'worker',
+                  }
+                : {
+                    scope: 'project_customer',
+                    projectId: context.projectId,
+                    bindingId: scope.bindingId,
+                    conversationId: scope.conversationId,
+                    customerUserId: scope.receiverUserId,
+                    audience: 'customer',
+                  },
               receiverCount: 1,
             };
             return available;
@@ -740,6 +975,7 @@ export function createPeriodReportPorts(options: PeriodReportPortOptions): LiveO
               actor: options.actor,
               projectId: context.projectId,
               period,
+              receiver,
               write: true,
             });
             if (!scope.legacyPlanEnabled) {
@@ -761,12 +997,13 @@ export function createPeriodReportPorts(options: PeriodReportPortOptions): LiveO
             const existing = await store.findReport(scope, period);
             if (existing) {
               saved.set(scopeKey(scope), existing);
-              return saveReceipt(existing, String(scope.bindingId));
+              return saveReceipt(existing, scope);
             }
             const enqueued = await store.enqueue({
               actor: options.actor,
               projectId: context.projectId,
               period,
+              receiver,
             });
             if (!enqueued) {
               const raced = await store.findReport(scope, period);
@@ -778,18 +1015,19 @@ export function createPeriodReportPorts(options: PeriodReportPortOptions): LiveO
                 );
               }
               saved.set(scopeKey(scope), raced);
-              return saveReceipt(raced, String(scope.bindingId));
+              return saveReceipt(raced, scope);
             }
             // `store.enqueue` already reports whether it created the report or
             // found the durable row after an insert conflict; never rewrite that.
             saved.set(scopeKey(scope), enqueued);
-            return saveReceipt(enqueued, String(scope.bindingId));
+            return saveReceipt(enqueued, scope);
           }
           case 'deliver.inapp': {
             const scope = await store.loadScope({
               actor: options.actor,
               projectId: context.projectId,
               period,
+              receiver,
               write: true,
             });
             if (!scope.legacyPlanEnabled) {
@@ -818,16 +1056,24 @@ export function createPeriodReportPorts(options: PeriodReportPortOptions): LiveO
               );
             }
             if (
-              String(receivers.scope ?? '') !== 'project_customer'
-              || String(receivers.projectId ?? '') !== context.projectId
-              || String(receivers.bindingId ?? '') !== String(scope.bindingId ?? '')
-              || String(receivers.conversationId ?? '') !== String(scope.conversationId ?? '')
-              || String(receivers.customerUserId ?? '') !== String(scope.customerUserId ?? '')
+              scope.receiverKind === 'worker'
+                ? String(receivers.scope ?? '') !== 'enterprise_worker'
+                  || String(receivers.projectId ?? '') !== context.projectId
+                  || String(receivers.bindingId ?? '') !== String(scope.bindingId ?? '')
+                  || String(receivers.conversationId ?? '') !== String(scope.conversationId ?? '')
+                  || String(receivers.workerAdminId ?? '') !== String(scope.receiverAdminId ?? '')
+                : String(receivers.scope ?? '') !== 'project_customer'
+                  || String(receivers.projectId ?? '') !== context.projectId
+                  || String(receivers.bindingId ?? '') !== String(scope.bindingId ?? '')
+                  || String(receivers.conversationId ?? '') !== String(scope.conversationId ?? '')
+                  || String(receivers.customerUserId ?? '') !== String(scope.receiverUserId ?? '')
             ) {
               throw failure(
                 operation,
                 'receiver_scope_mismatch',
-                'delivery receivers do not match the authorized project customer',
+                scope.receiverKind === 'worker'
+                  ? 'delivery receivers do not match the authorized project worker'
+                  : 'delivery receivers do not match the authorized project customer',
               );
             }
             const key = scopeKey(scope);

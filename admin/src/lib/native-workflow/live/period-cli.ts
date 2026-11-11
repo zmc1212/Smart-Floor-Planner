@@ -6,8 +6,13 @@
  * Keeping the arithmetic here makes the CLI rules testable without a database.
  */
 
+import type { LivePeriodReceiver } from './types';
+
 export const PERIOD_CLI_KINDS = ['daily', 'weekly'] as const;
 export type PeriodCliKind = (typeof PERIOD_CLI_KINDS)[number];
+
+export const PERIOD_RECEIVER_KINDS = ['customer', 'worker'] as const;
+export type PeriodReceiverKind = (typeof PERIOD_RECEIVER_KINDS)[number];
 
 export const PERIOD_DEFINITION_ID: Readonly<Record<PeriodCliKind, string>> = {
   daily: 'period-report-daily',
@@ -110,6 +115,56 @@ export function parsePeriodKindArg(argv: readonly string[]): PeriodCliKind {
     throw new PeriodCliError('period_kind_invalid', '--period-kind must be daily or weekly');
   }
   return option.value as PeriodCliKind;
+}
+
+/**
+ * Resolve `--receiver-kind` for the CLI entry points. Only an absent flag
+ * defaults to the existing owner/customer receiver; a provided flag without a
+ * value and an unknown value are rejected before the caller touches a database.
+ */
+export function parseReceiverKindArg(argv: readonly string[]): PeriodReceiverKind {
+  const option = readCliOption(argv, '--receiver-kind');
+  if (!option.present) return 'customer';
+  if (option.value === undefined) {
+    throw new PeriodCliError('receiver_kind_missing', '--receiver-kind requires a value (customer or worker)');
+  }
+  if (!(PERIOD_RECEIVER_KINDS as readonly string[]).includes(option.value)) {
+    throw new PeriodCliError('receiver_kind_invalid', '--receiver-kind must be customer or worker');
+  }
+  return option.value as PeriodReceiverKind;
+}
+
+/**
+ * Resolve `--worker-id` against the selected receiver kind. A worker receiver
+ * requires one positive admin id; a customer receiver must not carry one.
+ */
+export function parseWorkerIdArg(
+  argv: readonly string[],
+  kind: PeriodReceiverKind,
+): string | undefined {
+  const option = readCliOption(argv, '--worker-id');
+  if (kind === 'customer') {
+    if (option.present) {
+      throw new PeriodCliError('worker_id_forbidden', '--worker-id is only valid for a worker receiver');
+    }
+    return undefined;
+  }
+  if (!option.present) {
+    throw new PeriodCliError('worker_id_missing', '--worker-id is required for a worker receiver');
+  }
+  if (option.value === undefined || !/^[1-9]\d{0,18}$/.test(option.value)) {
+    throw new PeriodCliError('worker_id_invalid', '--worker-id must be a positive integer admin id');
+  }
+  return option.value;
+}
+
+/** Host-owned receiver identity assembled from the validated CLI flags. */
+export function parseReceiverArg(argv: readonly string[]): LivePeriodReceiver {
+  const kind = parseReceiverKindArg(argv);
+  const workerId = parseWorkerIdArg(argv, kind);
+  return kind === 'worker'
+    ? { kind: 'worker', adminId: workerId }
+    : { kind: 'customer' };
 }
 
 export interface CliPeriodInput {

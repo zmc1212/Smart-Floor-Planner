@@ -7,11 +7,19 @@ import type {
   WorkflowValue,
 } from '../types';
 
+/** Host-selected report receiver. The definition can never choose or widen it. */
+export interface LivePeriodReceiver {
+  readonly kind: 'customer' | 'worker';
+  /** Required for a worker receiver; absent for the owner/customer receiver. */
+  readonly adminId?: string;
+}
+
 /** The fixed server-side business event identity used by save/delivery/retry.
  *
  * Stage reminders bind the construction stage event. Period reports have no
  * outbox stage event: their fixed identity is the business period itself, so
  * the stage fields carry neutral values and the period fields are authoritative.
+ * `receiver` is host-owned and optional for old customer runs (absent = owner).
  */
 export interface LiveBusinessEvent {
   readonly outboxEventId: string | null;
@@ -22,6 +30,7 @@ export interface LiveBusinessEvent {
   readonly periodKind?: 'daily' | 'weekly';
   readonly periodStart?: string;
   readonly periodEnd?: string;
+  readonly receiver?: LivePeriodReceiver;
 }
 
 /** Immutable version and business-event binding captured when a run starts. */
