@@ -7,13 +7,21 @@ import type {
   WorkflowValue,
 } from '../types';
 
-/** The fixed server-side stage event identity used by save/delivery/retry. */
+/** The fixed server-side business event identity used by save/delivery/retry.
+ *
+ * Stage reminders bind the construction stage event. Period reports have no
+ * outbox stage event: their fixed identity is the business period itself, so
+ * the stage fields carry neutral values and the period fields are authoritative.
+ */
 export interface LiveBusinessEvent {
   readonly outboxEventId: string | null;
   readonly progressRevision: number;
   readonly stageKey: string;
   readonly settingsVersion: number;
   readonly source: 'outbox' | 'current_project_revision';
+  readonly periodKind?: 'daily';
+  readonly periodStart?: string;
+  readonly periodEnd?: string;
 }
 
 /** Immutable version and business-event binding captured when a run starts. */

@@ -34,7 +34,10 @@ export function sameLiveBinding(left: LiveRunBinding, right: LiveRunBinding): bo
     && left.businessEvent.progressRevision === right.businessEvent.progressRevision
     && left.businessEvent.stageKey === right.businessEvent.stageKey
     && left.businessEvent.settingsVersion === right.businessEvent.settingsVersion
-    && left.businessEvent.source === right.businessEvent.source;
+    && left.businessEvent.source === right.businessEvent.source
+    && left.businessEvent.periodKind === right.businessEvent.periodKind
+    && left.businessEvent.periodStart === right.businessEvent.periodStart
+    && left.businessEvent.periodEnd === right.businessEvent.periodEnd;
 }
 
 export function sameLiveRunIdentity(left: LiveRunRecord, right: LiveRunRecord): boolean {

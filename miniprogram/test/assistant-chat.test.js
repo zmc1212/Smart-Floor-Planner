@@ -1005,6 +1005,148 @@ test('a pending phone lookup never returns a number after hiding or changing the
   assert.equal(await lookup, null); assert.equal(f.timers.size, 0);
 });
 
+test('a snapshot that finishes after a newer one cannot seed the cache or the next delta', async () => {
+  const f = fixture();
+  f.db.items = [message('21', '2', '旧正文')];
+  f.db.messageCursor = '2';
+  f.db.conversation.lastSeq = '2';
+  await f.controller.show({ conversationId: '11' });
+  assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21']);
+  const page = promptPage(f);
+  const texts = () => page.data.messages.flatMap(item => item.blocks.map(block => block.text));
+
+  // The idle full refresh is due; its window read is still in flight when the
+  // page hides.
+  f.controller.lastFullSyncAt = Date.now() - 61000;
+  const late = deferred();
+  let held = false;
+  f.intercept(call => {
+    if (!held && call.url.endsWith('/messages') && call.method === 'GET'
+      && call.body.afterSeq === undefined && call.body.beforeSeq === undefined) {
+      held = true;
+      return late.promise;
+    }
+  });
+  const idle = f.controller.refresh();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(held, true);
+  f.controller.hide();
+
+  // Foregrounding resumes: access to the cited source was revoked and a newer
+  // answer exists. This newer snapshot must win even though the older read
+  // returns last.
+  f.db.items = [
+    { id: '21', seq: '2', authorKind: 'system', available: false,
+      content: { version: 1, blocks: [{ type: 'notice', fallbackText: '工地资料已不可用' }] } },
+    message('23', '5', '新回答'),
+  ];
+  f.db.conversation.lastSeq = '5';
+  await f.controller.show({ conversationId: '11' });
+  assert.deepEqual(page.data.messages.map(item => item.id), ['21', '23']);
+  assert.deepEqual(texts(), ['工地资料已不可用', '新回答']);
+  assert.equal(f.controller.latestSeq, '5');
+
+  // Any write from the older response would replace this impossible stamp.
+  f.controller.lastFullSyncAt = -987654;
+  late.resolve({ success: true, data: { items: [message('21', '2', '旧正文')], nextCursor: '2' } });
+  await idle;
+
+  // a. the rendered projection is still the newer one
+  assert.deepEqual(page.data.messages.map(item => item.id), ['21', '23']);
+  assert.deepEqual(texts(), ['工地资料已不可用', '新回答']);
+  // b. the discarded response never became the merge baseline
+  assert.deepEqual(f.controller.rawMessages.map(item => item.id), ['21', '23']);
+  assert.equal(f.controller.rawMessages[0].available, false);
+  assert.equal(f.controller.latestSeq, '5');
+  assert.equal(f.controller.seqConversationId, '11');
+  assert.equal(f.controller.lastFullSyncAt, -987654);
+
+  // c. the next delta seeks from the committed cursor, not from the stale one
+  f.controller.lastFullSyncAt = Date.now();
+  f.db.conversation.lastSeq = '7';
+  const cursors = [];
+  f.intercept(call => {
+    if (call.url.endsWith('/messages') && call.method === 'GET' && call.body.afterSeq) {
+      cursors.push(call.body.afterSeq);
+      return { success: true, data: { items: [message('25', '7', '更新的回答')], nextCursor: null, afterCursor: '7', latestSeq: '7', hasMore: false, reset: false } };
+    }
+  });
+  await f.controller.refresh();
+  assert.deepEqual(cursors, ['5']);
+  assert.deepEqual(page.data.messages.map(item => item.id), ['21', '23', '25']);
+  assert.deepEqual(texts(), ['工地资料已不可用', '新回答', '更新的回答']);
+  assert.equal(f.controller.latestSeq, '7');
+
+  // d. earlier history is prepended without resurrecting the stale body
+  const before = [];
+  f.intercept(call => {
+    if (call.url.endsWith('/messages') && call.method === 'GET' && call.body.beforeSeq) {
+      before.push(call.body.beforeSeq);
+      return { success: true, data: { items: [message('19', '1', '最早的消息')], nextCursor: null } };
+    }
+  });
+  await f.controller.olderMessages();
+  assert.deepEqual(before, ['2']);
+  assert.deepEqual(page.data.messages.map(item => item.id), ['19', '21', '23', '25']);
+  assert.deepEqual(page.data.messages.map(item => String(item.seq)), ['1', '2', '5', '7']);
+  assert.deepEqual(texts(), ['最早的消息', '工地资料已不可用', '新回答', '更新的回答']);
+  assert.equal(f.controller.state.messageCursor, null);
+  f.controller.dispose();
+});
+
+test('a delta that finishes after a newer snapshot cannot merge into the committed window', async () => {
+  const f = fixture();
+  f.db.items = [message('21', '2', '旧问题')];
+  f.db.messageCursor = '2';
+  f.db.conversation.lastSeq = '2';
+  await f.controller.show({ conversationId: '11' });
+  const page = promptPage(f);
+
+  f.db.conversation.lastSeq = '4';
+  const late = deferred();
+  let pages = 0, held = false;
+  f.intercept(call => {
+    if (call.url.endsWith('/messages') && call.method === 'GET' && call.body.afterSeq) {
+      pages += 1;
+      if (pages === 1) { held = true; return late.promise; }
+      return { success: true, data: { items: [], nextCursor: null, afterCursor: '3', latestSeq: '3', hasMore: false, reset: false } };
+    }
+  });
+  const idle = f.controller.refresh();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(held, true);
+  f.controller.hide();
+
+  f.db.items = [message('21', '2', '旧问题'), message('24', '4', '新回答')];
+  await f.controller.show({ conversationId: '11' });
+  assert.deepEqual(page.data.messages.map(item => item.id), ['21', '24']);
+  assert.equal(f.controller.latestSeq, '4');
+
+  // The older delta returns one page that would have merged an obsolete answer.
+  late.resolve({ success: true, data: { items: [message('23', '3', '旧回答')], nextCursor: null, afterCursor: '3', latestSeq: '3', hasMore: true, reset: false } });
+  await idle;
+  assert.deepEqual(page.data.messages.map(item => item.id), ['21', '24']);
+  assert.deepEqual(f.controller.rawMessages.map(item => item.id), ['21', '24']);
+  assert.equal(f.controller.latestSeq, '4');
+  assert.equal(f.controller.seqConversationId, '11');
+
+  const cursors = [];
+  f.db.conversation.lastSeq = '6';
+  f.intercept(call => {
+    if (call.url.endsWith('/messages') && call.method === 'GET' && call.body.afterSeq) {
+      cursors.push(call.body.afterSeq);
+      return { success: true, data: { items: [message('26', '6', '更新的回答')], nextCursor: null, afterCursor: '6', latestSeq: '6', hasMore: false, reset: false } };
+    }
+  });
+  await f.controller.refresh();
+  assert.deepEqual(cursors, ['4']);
+  assert.deepEqual(page.data.messages.map(item => item.id), ['21', '24', '26']);
+  assert.ok(!page.data.messages.some(item => item.blocks.some(block => block.text === '旧回答')));
+  f.controller.dispose();
+});
+
 test('idle reminder polling preserves in-progress multiple choices and skips pending writes', async () => {
   const f = fixture();
   f.db.conversation.guidanceEnabled = true;

@@ -682,6 +682,18 @@ async function main(): Promise<void> {
     const cleanup = await cleanupAcceptanceRows();
     evidence.cleanup = cleanup.result;
     if (cleanup.error) evidence.cleanupError = cleanup.error;
+    if (cleanup.error) {
+      (evidence.failures as Row[]).push({ name: 'cleanup acceptance rows', error: cleanup.error });
+    } else if (
+      cleanup.result.ran === true
+      && (cleanup.result.completed !== true || Number(cleanup.result.skipped ?? 0) > 0)
+    ) {
+      (evidence.failures as Row[]).push({
+        name: 'cleanup acceptance rows',
+        reason: cleanup.result.reason ?? 'cleanup did not confirm ownership of every temporary row',
+        result: cleanup.result,
+      });
+    }
 
     // The normal B management store must be byte-identical before and after.
     const normalStoreAfter = snapshotFile(normalStoreFile);
@@ -741,6 +753,17 @@ async function main(): Promise<void> {
       evidence.cleanup = safety.result;
       if (safety.error) {
         evidence.cleanupError = safety.error;
+        (evidence.failures as Row[]).push({ name: 'cleanup acceptance rows', error: safety.error });
+        evidence.success = false;
+      } else if (
+        safety.result.completed !== true
+        || Number(safety.result.skipped ?? 0) > 0
+      ) {
+        (evidence.failures as Row[]).push({
+          name: 'cleanup acceptance rows',
+          reason: safety.result.reason ?? 'cleanup did not confirm ownership of every temporary row',
+          result: safety.result,
+        });
         evidence.success = false;
       }
       save();

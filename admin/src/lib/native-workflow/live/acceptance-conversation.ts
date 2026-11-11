@@ -44,6 +44,10 @@ export interface CleanupAcceptanceConversationResult {
   readonly participants: number;
   readonly links: number;
   readonly skipped: number;
+  /** True only when every owned row was confirmed and removed in one commit. */
+  readonly completed: boolean;
+  /** Why the cleanup was incomplete; absent when `completed` is true. */
+  readonly reason?: string;
 }
 
 function occupied(
@@ -125,9 +129,15 @@ export async function createAcceptanceConversation(
 }
 
 /**
- * Delete only rows that still match both the fixed ids and the acceptance
- * marker. A row whose marker was replaced by another owner is left untouched
- * and reported as `skipped`.
+ * Delete the temporary rows only when the fixed conversation and participant
+ * ids, their enterprise, and this exact acceptance marker are all confirmed
+ * under a row lock in one transaction. If anything is missing or owned by
+ * another marker, no row is deleted: links, participant and conversation stay
+ * byte-for-byte as they were and the result reports `completed: false`.
+ *
+ * The conversation is locked before the participant and `construction_links`
+ * because both child tables reference it; locking parents first keeps the
+ * lock order consistent with the foreign-key dependency.
  */
 export async function cleanupAcceptanceConversation(
   client: AcceptanceQueryClient,
@@ -135,65 +145,94 @@ export async function cleanupAcceptanceConversation(
 ): Promise<CleanupAcceptanceConversationResult> {
   await client.query('begin');
   try {
-    let skipped = 0;
-
+    const conversation = await client.query(
+      `select id, title, entry_snapshot->>'acceptance' as acceptance
+         from app.assistant_conversations
+        where enterprise_id=$1::bigint and id=$2::bigint
+        for update`,
+      [input.enterpriseId, input.conversationId],
+    );
     const participant = await client.query(
       `select id, conversation_id, grant_basis->>'acceptance' as acceptance
-         from app.assistant_participants where enterprise_id=$1::bigint and id=$2::bigint`,
+         from app.assistant_participants
+        where enterprise_id=$1::bigint and id=$2::bigint
+        for update`,
       [input.enterpriseId, input.participantId],
     );
-    let participants = 0;
+    await client.query(
+      `select project_id from app.construction_links
+        where enterprise_id=$1::bigint and conversation_id=$2::bigint
+        for update`,
+      [input.enterpriseId, input.conversationId],
+    );
+
+    const problems: string[] = [];
+    const conversationRow = conversation.rows[0];
+    if (!conversationRow) {
+      problems.push('conversation missing');
+    } else if (
+      String(conversationRow.id) !== input.conversationId
+      || conversationRow.acceptance !== ACCEPTANCE_MARKER
+    ) {
+      problems.push('conversation marker changed');
+    }
     const participantRow = participant.rows[0];
-    if (participantRow) {
-      if (
-        String(participantRow.conversation_id) === input.conversationId
-        && participantRow.acceptance === ACCEPTANCE_MARKER
-      ) {
-        const deleted = await client.query(
-          `delete from app.assistant_participants
-            where enterprise_id=$1::bigint and id=$2::bigint and conversation_id=$3::bigint
-              and grant_basis->>'acceptance'=$4
-            returning id`,
-          [input.enterpriseId, input.participantId, input.conversationId, ACCEPTANCE_MARKER],
-        );
-        participants = deleted.rows.length;
-        if (participants === 0) skipped += 1;
-      } else {
-        skipped += 1;
-      }
+    if (!participantRow) {
+      problems.push('participant missing');
+    } else if (
+      String(participantRow.conversation_id) !== input.conversationId
+      || participantRow.acceptance !== ACCEPTANCE_MARKER
+    ) {
+      problems.push('participant marker changed');
     }
 
-    const links = await client.query(
+    if (problems.length > 0) {
+      await client.query('commit');
+      return {
+        conversations: 0,
+        participants: 0,
+        links: 0,
+        skipped: problems.length,
+        completed: false,
+        reason: problems.join('; '),
+      };
+    }
+
+    const deletedLinks = await client.query(
       `delete from app.construction_links
         where enterprise_id=$1::bigint and conversation_id=$2::bigint
         returning project_id`,
       [input.enterpriseId, input.conversationId],
     );
-
-    const conversation = await client.query(
-      `select id, title, entry_snapshot->>'acceptance' as acceptance
-         from app.assistant_conversations where enterprise_id=$1::bigint and id=$2::bigint`,
-      [input.enterpriseId, input.conversationId],
+    const deletedParticipant = await client.query(
+      `delete from app.assistant_participants
+        where enterprise_id=$1::bigint and id=$2::bigint and conversation_id=$3::bigint
+          and grant_basis->>'acceptance'=$4
+        returning id`,
+      [input.enterpriseId, input.participantId, input.conversationId, ACCEPTANCE_MARKER],
     );
-    let conversations = 0;
-    const conversationRow = conversation.rows[0];
-    if (conversationRow) {
-      if (conversationRow.acceptance === ACCEPTANCE_MARKER) {
-        const deleted = await client.query(
-          `delete from app.assistant_conversations
-            where enterprise_id=$1::bigint and id=$2::bigint and entry_snapshot->>'acceptance'=$3
-            returning id`,
-          [input.enterpriseId, input.conversationId, ACCEPTANCE_MARKER],
-        );
-        conversations = deleted.rows.length;
-        if (conversations === 0) skipped += 1;
-      } else {
-        skipped += 1;
-      }
+    const deletedConversation = await client.query(
+      `delete from app.assistant_conversations
+        where enterprise_id=$1::bigint and id=$2::bigint and entry_snapshot->>'acceptance'=$3
+        returning id`,
+      [input.enterpriseId, input.conversationId, ACCEPTANCE_MARKER],
+    );
+
+    // The rows were lock-confirmed above, so a missing delete would mean the
+    // assumption is broken: roll the whole transaction back and leave the
+    // original rows in place instead of reporting a partial cleanup.
+    if (deletedParticipant.rows.length !== 1 || deletedConversation.rows.length !== 1) {
+      throw new Error('acceptance cleanup could not confirm every owned row; transaction rolled back');
     }
 
     await client.query('commit');
-    return { conversations, participants, links: links.rows.length, skipped };
+    return {
+      conversations: deletedConversation.rows.length,
+      participants: deletedParticipant.rows.length,
+      links: deletedLinks.rows.length,
+      skipped: 0,
+      completed: true,
+    };
   } catch (error) {
     await rollback(client);
     throw error;

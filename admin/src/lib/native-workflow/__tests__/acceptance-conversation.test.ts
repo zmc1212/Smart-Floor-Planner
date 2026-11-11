@@ -27,10 +27,17 @@ function snapshotOf(state: FakeState): FakeState {
   };
 }
 
-/** Transactional fake: records SQL, keeps rows in memory, restores on rollback. */
+/** Transactional fake: records SQL, keeps rows in memory, restores on rollback.
+ *
+ * It also records the order of `for update` locks and enforces the real
+ * foreign keys around the temporary rows: a participant cannot exist without
+ * its conversation, a conversation cannot be deleted while a participant
+ * references it, and deleting a conversation cascades its construction_links.
+ */
 class FakeClient implements AcceptanceQueryClient {
   state: FakeState = freshState();
   readonly queries: string[] = [];
+  readonly locks: string[] = [];
   failWhen: ((sql: string) => boolean) | null = null;
   private snapshot: FakeState | null = null;
 
@@ -73,6 +80,7 @@ class FakeClient implements AcceptanceQueryClient {
       return { rows: row ? [{ id: row.id, conversation_id: row.conversation_id }] : [] };
     }
     if (sql.startsWith("select id, conversation_id, grant_basis->>'acceptance' as acceptance")) {
+      this.locks.push('assistant_participants');
       const [enterpriseId, id] = args;
       const row = this.state.participants.get(id!);
       if (!row || String(row.enterprise_id) !== enterpriseId) return { rows: [] };
@@ -85,6 +93,7 @@ class FakeClient implements AcceptanceQueryClient {
       };
     }
     if (sql.startsWith("select id, title, entry_snapshot->>'acceptance' as acceptance")) {
+      this.locks.push('assistant_conversations');
       const [enterpriseId, id] = args;
       const row = this.state.conversations.get(id!);
       if (!row || String(row.enterprise_id) !== enterpriseId) return { rows: [] };
@@ -94,6 +103,17 @@ class FakeClient implements AcceptanceQueryClient {
           title: row.title,
           acceptance: (row.entry_snapshot as AcceptanceRow | undefined)?.acceptance,
         }],
+      };
+    }
+    if (sql.startsWith('select project_id from app.construction_links')) {
+      this.locks.push('construction_links');
+      const [enterpriseId, conversationId] = args;
+      return {
+        rows: this.state.links
+          .filter((row) => (
+            String(row.enterprise_id) === enterpriseId && String(row.conversation_id) === conversationId
+          ))
+          .map((row) => ({ project_id: row.project_id })),
       };
     }
     if (sql.startsWith('insert into app.assistant_conversations')) {
@@ -108,6 +128,9 @@ class FakeClient implements AcceptanceQueryClient {
     }
     if (sql.startsWith('insert into app.assistant_participants')) {
       const [id, enterpriseId, conversationId, userId, grantBasis] = args;
+      if (!this.state.conversations.has(conversationId!)) {
+        throw new Error('participant insert violates its conversation foreign key');
+      }
       this.state.participants.set(id!, {
         id,
         enterprise_id: enterpriseId,
@@ -147,7 +170,16 @@ class FakeClient implements AcceptanceQueryClient {
       const row = this.state.conversations.get(id!);
       const acceptance = (row?.entry_snapshot as AcceptanceRow | undefined)?.acceptance;
       if (!row || String(row.enterprise_id) !== enterpriseId || acceptance !== marker) return { rows: [] };
+      if ([...this.state.participants.values()].some(
+        (participant) => String(participant.conversation_id) === id && String(participant.enterprise_id) === enterpriseId,
+      )) {
+        throw new Error('conversation delete violates its participant foreign key');
+      }
       this.state.conversations.delete(id!);
+      // construction_links references the conversation with ON DELETE CASCADE.
+      this.state.links = this.state.links.filter((link) => (
+        String(link.enterprise_id) !== enterpriseId || String(link.conversation_id) !== id
+      ));
       return { rows: [{ id: row.id }] };
     }
     throw new Error(`fake client cannot execute: ${sql}`);
@@ -265,21 +297,32 @@ test('the normal path commits both rows and cleanup deletes only marker rows', a
     conversationId: INPUT.conversationId,
     participantId: INPUT.participantId,
   });
-  assert.deepEqual(cleaned, { conversations: 1, participants: 1, links: 1, skipped: 0 });
+  assert.deepEqual(cleaned, { conversations: 1, participants: 1, links: 1, skipped: 0, completed: true });
   assert.equal(client.state.conversations.has(INPUT.conversationId), false);
   assert.equal(client.state.participants.has(INPUT.participantId), false);
   assert.equal(client.state.links.length, 0);
   assert.equal(client.state.conversations.has('1454877777'), true);
   assert.equal(client.state.participants.get('1454877778')?.status, 'active');
+  assert.deepEqual(
+    client.locks.slice(-3),
+    ['assistant_conversations', 'assistant_participants', 'construction_links'],
+    'the conversation must be locked before its child rows',
+  );
 });
 
-test('cleanup reports skipped instead of deleting a row whose marker changed', async () => {
+test('a changed participant marker leaves the conversation and links untouched', async () => {
   const client = new FakeClient();
   await createAcceptanceConversation(client, INPUT);
+  client.state.links.push({
+    enterprise_id: '1454',
+    project_id: '1454000004',
+    conversation_id: INPUT.conversationId,
+  });
   client.state.participants.set(INPUT.participantId, {
     ...client.state.participants.get(INPUT.participantId),
     grant_basis: { kind: 'self', acceptance: 'other-owner' },
   });
+  const queriesBefore = client.queries.length;
 
   const cleaned = await cleanupAcceptanceConversation(client, {
     enterpriseId: INPUT.enterpriseId,
@@ -288,6 +331,91 @@ test('cleanup reports skipped instead of deleting a row whose marker changed', a
   });
   assert.equal(cleaned.participants, 0);
   assert.equal(cleaned.skipped, 1);
-  assert.equal(cleaned.conversations, 1);
+  assert.equal(cleaned.conversations, 0);
+  assert.equal(cleaned.links, 0);
+  assert.equal(cleaned.completed, false);
+  assert.match(String(cleaned.reason), /participant marker changed/u);
   assert.equal(client.state.participants.has(INPUT.participantId), true);
+  assert.equal(client.state.conversations.has(INPUT.conversationId), true);
+  assert.equal(client.state.links.length, 1);
+  assert.deepEqual(writeSql(client.queries.slice(queriesBefore)), []);
+});
+
+test('cleanup deletes nothing and reports incomplete when both markers changed', async () => {
+  const client = new FakeClient();
+  await createAcceptanceConversation(client, INPUT);
+  client.state.links.push({
+    enterprise_id: '1454',
+    project_id: '1454000004',
+    conversation_id: INPUT.conversationId,
+  });
+  client.state.participants.set(INPUT.participantId, {
+    ...client.state.participants.get(INPUT.participantId),
+    grant_basis: { kind: 'self', acceptance: 'other-owner' },
+  });
+  client.state.conversations.set(INPUT.conversationId, {
+    ...client.state.conversations.get(INPUT.conversationId),
+    entry_snapshot: { kind: 'lead', id: INPUT.leadId, acceptance: 'other-owner' },
+  });
+  const before = snapshotOf(client.state);
+  const queriesBefore = client.queries.length;
+
+  const cleaned = await cleanupAcceptanceConversation(client, {
+    enterpriseId: INPUT.enterpriseId,
+    conversationId: INPUT.conversationId,
+    participantId: INPUT.participantId,
+  });
+
+  assert.equal(cleaned.conversations, 0);
+  assert.equal(cleaned.participants, 0);
+  assert.equal(cleaned.links, 0);
+  assert.equal(cleaned.skipped, 2);
+  assert.equal(cleaned.completed, false);
+  assert.match(String(cleaned.reason), /conversation marker changed/u);
+  assert.match(String(cleaned.reason), /participant marker changed/u);
+
+  // "All or nothing": every row is byte-for-byte identical to the snapshot and
+  // the transaction issued no insert/update/delete at all.
+  assert.deepEqual(client.state, before);
+  assert.equal(client.state.conversations.has(INPUT.conversationId), true);
+  assert.equal(client.state.participants.has(INPUT.participantId), true);
+  assert.equal(client.state.links.length, 1);
+  assert.deepEqual(
+    writeSql(client.queries.slice(queriesBefore)),
+    [],
+    'an unconfirmed ownership must not delete any row',
+  );
+  assert.deepEqual(
+    client.locks,
+    ['assistant_conversations', 'assistant_participants', 'construction_links'],
+    'both ownership rows and the links must be locked before deciding to delete',
+  );
+});
+
+test('a missing participant leaves every row untouched and reports incomplete', async () => {
+  const client = new FakeClient();
+  await createAcceptanceConversation(client, INPUT);
+  client.state.links.push({
+    enterprise_id: '1454',
+    project_id: '1454000004',
+    conversation_id: INPUT.conversationId,
+  });
+  client.state.participants.delete(INPUT.participantId);
+  const before = snapshotOf(client.state);
+  const queriesBefore = client.queries.length;
+
+  const cleaned = await cleanupAcceptanceConversation(client, {
+    enterpriseId: INPUT.enterpriseId,
+    conversationId: INPUT.conversationId,
+    participantId: INPUT.participantId,
+  });
+
+  assert.equal(cleaned.conversations, 0);
+  assert.equal(cleaned.participants, 0);
+  assert.equal(cleaned.links, 0);
+  assert.equal(cleaned.skipped, 1);
+  assert.equal(cleaned.completed, false);
+  assert.match(String(cleaned.reason), /participant missing/u);
+  assert.deepEqual(client.state, before);
+  assert.deepEqual(writeSql(client.queries.slice(queriesBefore)), []);
 });

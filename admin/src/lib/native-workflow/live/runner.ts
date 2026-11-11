@@ -89,15 +89,29 @@ function cloneOperations(operations: readonly LiveOperationRecord[]): LiveOperat
  */
 export async function runPublishedLive(input: LiveRunInput): Promise<LiveRunRecord> {
   const { definition, plan, nodeVersions } = boundPlan(input.published);
-  if (definition.inputSchema.eventType !== 'stage_changed') {
+  if (definition.inputSchema.eventType !== input.event.eventType) {
     throw new WorkflowOperationError(
       'live_event_type_unsupported',
       400,
-      'the B4 live adapter only executes published stage_changed definitions',
+      `published ${definition.definitionId} accepts ${definition.inputSchema.eventType}, not ${input.event.eventType}`,
     );
   }
-  if (input.event.eventType !== 'stage_changed') {
-    throw new WorkflowOperationError('live_event_type_unsupported', 400, 'event must be stage_changed');
+  if (definition.inputSchema.eventType !== 'stage_changed' && definition.inputSchema.eventType !== 'period_report') {
+    throw new WorkflowOperationError(
+      'live_event_type_unsupported',
+      400,
+      `the B live adapter does not execute ${definition.inputSchema.eventType} definitions`,
+    );
+  }
+  if (
+    definition.inputSchema.eventType === 'period_report'
+    && definition.inputSchema.periodKind !== input.event.periodKind
+  ) {
+    throw new WorkflowOperationError(
+      'live_event_type_unsupported',
+      400,
+      `published ${definition.definitionId} accepts ${definition.inputSchema.periodKind ?? '(unspecified)'} periods, not ${input.event.periodKind ?? '(unspecified)'}`,
+    );
   }
 
   const now = input.now ?? (() => new Date().toISOString());

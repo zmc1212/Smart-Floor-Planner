@@ -266,7 +266,7 @@ class ChatController {
     if (pendingMessage) this.set({ pendingSend: true, pendingText: pendingMessage.body.content.blocks[0].text, draft: pendingMessage.body.content.blocks[0].text });
     if (pendingHandoff) this.set({ pendingAction: 'handoff:' + pendingHandoff.body.action });
     this.set({ conversation, readOnly: conversation.status !== 'open' || !['ai', 'human', 'handoff_requested'].includes(conversation.mode) });
-    if (window) this.applyWindow(window);
+    if (window) this.commitWindow(window);
     this.set({ welcomeText: conversation.guidanceOpening || WELCOME, guidanceEnabled: !!conversation.guidanceEnabled, guidance: conversation.guidance || null,
       ...(!sameQuestion ? { selectedOptions: [], selectedOptionMap: {} } : {}) });
     this.applyRun(conversation.mode === 'ai' ? conversation.latestRun : null);
@@ -277,10 +277,14 @@ class ChatController {
 
   // Reads the authoritative conversation metadata, then only the messages that
   // this view does not already render. Returns null when the rendered window is
-  // still current, so an idle poll never rewrites the message list.
+  // still current, so an idle poll never rewrites the message list. Otherwise it
+  // returns `{ view, cache }` without touching any internal state: a read can
+  // finish after a newer snapshot (or after the conversation lost access), and
+  // its projection must never become the baseline a later delta merges into.
+  // `commitWindow` performs that write only while the request is still current.
   async readWindow(id, conversation, full, resume = false) {
     const latest = conversation.lastSeq === undefined || conversation.lastSeq === null ? '' : String(conversation.lastSeq);
-    this.seqSupported = latest !== '';
+    const seqSupported = latest !== '';
     const synced = this.seqConversationId === id ? this.latestSeq : '';
     // Withdrawn sources and media never advance a sequence, so the window is
     // reprojected in full at a bounded interval even while nothing is appended.
@@ -297,13 +301,17 @@ class ChatController {
     }
     const data = await (full || this.client.read(`/conversations/${id}/messages`, { limit: WINDOW }));
     const items = data.items || [];
-    this.rawMessages = items; this.seqConversationId = id; this.lastFullSyncAt = Date.now();
-    this.latestSeq = data.latestSeq !== undefined
+    const latestSeq = data.latestSeq !== undefined
       ? String(data.latestSeq)
       : items.reduce((newest, item) => seqOrder(item.seq, newest) > 0 ? String(item.seq) : newest, latest);
-    return { messages: messagesForView(items), messageCursor: data.nextCursor };
+    return {
+      view: { messages: messagesForView(items), messageCursor: data.nextCursor },
+      cache: { rawMessages: items, seqConversationId: id, lastFullSyncAt: Date.now(), latestSeq, seqSupported },
+    };
   }
 
+  // Every page of a burst is read before anything is returned, so a discarded
+  // delta leaves no partially merged cursor behind.
   async readDelta(id, cursor) {
     let after = cursor, incoming = [], latestSeq = cursor, drained = false;
     for (let page = 0; page < DELTA_PAGES; page += 1) {
@@ -320,14 +328,21 @@ class ChatController {
       if (data.latestSeq !== undefined && seqOrder(data.latestSeq, latestSeq) > 0) latestSeq = String(data.latestSeq);
       if (!data.hasMore) { drained = true; break; }
     }
-    // Filtered sequences can advance last_seq without a visible message; keep
-    // the cursor and skip the redraw until something is rendered.
-    this.seqConversationId = id;
-    this.latestSeq = drained && seqOrder(latestSeq, after) > 0 ? latestSeq : after;
+    // Filtered sequences can advance last_seq without a visible message; the
+    // window read below then advances the cursor without a redraw.
     if (!incoming.length) return null;
     const raw = mergeMessages(this.rawMessages || [], incoming);
-    this.rawMessages = raw;
-    return { messages: this.windowView(raw), messageCursor: this.state.messageCursor, appended: incoming.length };
+    return {
+      view: { messages: this.windowView(raw), messageCursor: this.state.messageCursor, appended: incoming.length },
+      cache: { rawMessages: raw, seqConversationId: id, latestSeq: drained && seqOrder(latestSeq, after) > 0 ? latestSeq : after },
+    };
+  }
+
+  // The single write point for a read result. Callers must have re-checked the
+  // epoch, conversation and snapshot ticket first.
+  commitWindow(window) {
+    Object.assign(this, window.cache);
+    if (window.view) this.applyWindow(window.view);
   }
 
   // A delta that only grew the tail keeps the rendered prefix untouched and

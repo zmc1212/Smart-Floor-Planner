@@ -399,19 +399,75 @@ knowledge stays off and no craft citation is invented.
   fixture script is `admin/scripts/native-workflow-live-fixture.ts`.
 
 Limitations: no formal engineering-acceptance event exists and the system never
-asserts "验收通过"; there is no model compose branch and no daily/weekly real
-integration. The native B run required a temporary local API switch in the B
-worktree (reverted) and the B project window; the A/production API base and
-configuration were not changed. The full Mini Program suite remains 2218/2221
-with three pre-existing survey-runtime audit failures unrelated to this chat
-change.
+asserts "验收通过". The B5.1 closeout covers only the chat cache commit order
+(old full/delta responses can no longer seed the internal cache after their
+epoch/ticket is invalid) and acceptance cleanup ownership (one transaction
+locks the conversation, participant and `construction_links`; any mismatch
+leaves all three untouched and fails the run). B5.2 connects the daily
+period-intake, real Worker facts/delivery, original XiaoK report/record/photo
+read, re-entry, dedupe and revocation chain, but the model body is blocked by a
+missing decryptable provider credential in the isolated B environment, so the
+current report remains `facts_only`. Weekly reports, a general scheduler, drag
+canvas, Worker/menu/shared-migration changes remain out of scope. The native B
+run used a temporary local API switch in the B worktree (reverted); A/production
+configuration was not changed. Counts: 110 non-database native-workflow tests
+(including 12 period-report port tests), 6 offline guards, 6
+acceptance-conversation and 59 focused chat. The full Mini Program suite remains
+2218/2221 with three pre-existing survey-runtime audit failures unrelated to
+this chat change.
+
+## B5.2 daily period report
+
+`period-event.ts` fixes one Shanghai calendar day from the run event and rejects
+spans and weekly events. `period-report-ports.ts` implements the daily live
+capabilities against the existing construction services:
+
+- `read.period_records`, `read.authorized_photos` and `read.receiver_scope`
+  reuse `collectReportFacts`, the customer binding, published customer records,
+  attachments/media and the existing owner/manager project authorization.
+- `save.period_report` calls the real `enqueueReport`: it creates or reuses the
+  existing `construction_reports` / `construction_report_versions` /
+  `assistant_runs` / `assistant_jobs` rows and returns the real
+  reportId/revision/runId. The business key is the existing `report_key`
+  (`kind + start + end + stage event + conversation generation`), never a
+  workflow runId or published revision.
+- `deliver.inapp` only reads `construction_report_deliveries` and
+  `assistant_messages`; it never appends a second message. A pending delivery
+  returns `delivered:false` and the run fails truthfully.
+- Single-path guard: the report plan must be `enabled=true` because the
+  existing Worker refuses to process facts/body/delivery otherwise, but both
+  next-run timestamps must be parked and `stage_enabled=false`. A due legacy
+  schedule refuses the B period with
+  `period_report_legacy_scheduler_due`; a disabled plan refuses with
+  `period_report_plan_disabled`.
+
+`runPublishedLive` now accepts `period_report` definitions (and still binds one
+published revision/digest and one event). `scripts/native-workflow-period-report.ts`
+runs one period through a published definition. The acceptance entry
+`scripts/native-workflow-period-report-acceptance.ts` prepares one synthetic
+published record/photo through `SiteChatService`, creates the customer binding
+through `ensureFollowupBinding`, parks the legacy schedule, runs the workflow,
+then starts the real assistant Worker HTTP loop against the real internal
+endpoint (claim + Lease; no fabricated lease) and replays the same period with a
+new workflow runId. It then reads the report through the original XiaoK
+`followups → reports → record → media` API, checks re-entry, duplicate counts
+and access/photo revocation, and restores the plan/agent configuration.
+
+Recorded B evidence (2026-11-04, isolated database 55433): report `2`,
+revision `1`, facts run `3`, delivery message `113`; the report facts contain
+the synthetic record, the original record/photo are readable, re-entry returns
+the same report, and a repeat workflow run adds no report/delivery/message/job/
+run. The native body run returned `model_unavailable` before dispatch because
+the B environment has no decryptable provider credential; no provider attempt,
+usage or FastGPT call exists, so the report currently stays `facts_only`. This
+is an environment blocker, not a simulated success.
 
 ## Reproduce
 
 From `admin/` (no database, no Worker, no model):
 
 ```powershell
-npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts
+npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts src/lib/native-workflow/__tests__/acceptance-store.test.ts src/lib/native-workflow/__tests__/acceptance-conversation.test.ts src/lib/native-workflow/__tests__/period-report-ports.test.ts
 npx tsx src/lib/native-workflow/playground/simulate.ts
 ```
 
