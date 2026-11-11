@@ -833,7 +833,7 @@ function NativeWorkflowDetailPageInner() {
             {runStatus.halt === 'limit' ? <Tag color="orange">已达自动轮询上限</Tag> : null}
           </Space>
           <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            runId 会写入地址栏查询参数，刷新或重新进入页面时自动读取同一个运行。授权仍由平台管理员角色、宿主企业和项目业务权限决定，页面不会自行放行。
+            runId 会写入地址栏查询参数；打开真实运行页签后继续读取同一个运行。授权仍由平台管理员角色、宿主企业和项目业务权限决定，页面不会自行放行。
           </Typography.Paragraph>
         </Space>
       </Card>

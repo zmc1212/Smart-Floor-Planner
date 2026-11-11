@@ -564,8 +564,9 @@ never starts, resumes or re-executes it.
 - Clients may use bounded polling: the Admin helper polls a processing run at
   most every 3 seconds, stops after 100 reads, and stops on an unbound run or a
   terminal overall state (`completed`/`failed`/`unknown`/`unavailable`).
-  Refreshing or re-entering the same `runId` returns the same binding and the
-  same current business progress, and reading does not rewrite the run record.
+  Refreshing or re-entering the page keeps the `runId` in the query string, and
+  opening the live tab reads the same binding and current business progress
+  again; reading does not rewrite the run record.
 - The run record freezes `definitionId`/revision/digest and the saved
   reportId/revision/factsRunId. A later published revision never rewrites an old
   run's binding or report identity.
@@ -626,26 +627,56 @@ B5.3 closeout:
   working manual re-read). HTTP 401/403/404 clears the restricted
   observation/binding/progress/raw; a transient failure keeps the last snapshot
   and shows both the last `observedAt` and the failure time.
-- Tests: the native-workflow offline suite is 217 passing with 3 database-gated
-  route cases; with `B4_LIVE_APP_DATABASE_URL` all 220 pass, including the real
-  route/default-reader bound, unbound and old-receipt paths and a 403 after the
-  controlled platform admin is disabled. The closeout real run is 14/14:
-  muted/revoked/pending mappings, the resumed-generation `unavailable`, the
-  three denied paths, restored reads and unchanged
-  report/job/run/attempt/usage/message/delivery counters. Evidence:
+- Tests: the native-workflow offline suite is 235 passing with 4 skipped live
+  cases; the database cases for the status route live in the independent
+  strict-opt-in file `period-report-status-route.live.test.ts` (4 cases), not in
+  the offline file. That file skips as a whole without the opt-in and a skip is
+  not counted as a pass; with `B4_LIVE_DEVELOPMENT=1` and the B URLs all 239
+  pass, including the real route/default-reader bound, unbound and old-receipt
+  paths and a 403 after the controlled platform admin is disabled. The new
+  offline guards cover the gate, fixture ownership and restore-failure paths.
+  The closeout real run is 14/14: muted/revoked/pending mappings, the
+  resumed-generation `unavailable`, the three denied paths, restored reads and
+  unchanged report/job/run/attempt/usage/message/delivery counters. Evidence:
   `admin/tmp/b5-3-closeout/verification.json`. `npm run build` still stops at
   the pre-existing `scripts/fastgpt/setup-unified.mts:113` type error, which is
   byte-identical to the baseline; Turbopack reports "Compiled successfully"
   before that type check, and all changed files have zero type errors.
+
+Database-gated status-route cases are isolated from the offline entry:
+
+```powershell
+$env:B4_LIVE_DEVELOPMENT='1'
+$env:B4_LIVE_APP_DATABASE_URL='postgresql://sfp_app:...@127.0.0.1:55433/smart_floor_planner'
+$env:B4_LIVE_FIXTURE_DATABASE_URL='postgresql://sfp_owner:...@127.0.0.1:55433/smart_floor_planner'
+npx tsx --test src/lib/native-workflow/__tests__/period-report-status-route.live.test.ts
+```
+
+Without `B4_LIVE_DEVELOPMENT=1` the whole live file is skipped and never
+connects. Once opted in, `production`, a missing B target and any wrong
+host/port/database/role are rejected by the shared resolver before a connection
+is opened; after connecting, `assertB4ConnectionIdentity` re-checks
+`current_database()`/`current_user`. The one temporary disable uses the fixed
+admin `1454000010` only when its enterprise, username, platform role and
+`[B5.3]` marker all match the fixture; `withControlledStatusRouteAdminDisabled`
+restores the row in `finally` and reads it back, and a restore or verification
+failure fails the run.
 
 ## Reproduce
 
 From `admin/` (no database, no Worker, no model):
 
 ```powershell
-npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts src/lib/native-workflow/__tests__/acceptance-store.test.ts src/lib/native-workflow/__tests__/acceptance-conversation.test.ts src/lib/native-workflow/__tests__/acceptance-state.test.ts src/lib/native-workflow/__tests__/period-report-ports.test.ts src/lib/native-workflow/__tests__/report-model-evidence.test.ts src/lib/native-workflow/__tests__/period-report-status.test.ts src/lib/native-workflow/__tests__/period-report-status-reentry.test.ts src/lib/native-workflow/__tests__/admin-run-status.test.ts src/lib/native-workflow/__tests__/period-report-status-route.test.ts
+npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts src/lib/native-workflow/__tests__/acceptance-store.test.ts src/lib/native-workflow/__tests__/acceptance-conversation.test.ts src/lib/native-workflow/__tests__/acceptance-state.test.ts src/lib/native-workflow/__tests__/period-report-ports.test.ts src/lib/native-workflow/__tests__/report-model-evidence.test.ts src/lib/native-workflow/__tests__/period-report-status.test.ts src/lib/native-workflow/__tests__/period-report-status-reentry.test.ts src/lib/native-workflow/__tests__/admin-run-status.test.ts src/lib/native-workflow/__tests__/period-report-status-route.test.ts src/lib/native-workflow/__tests__/period-report-status-route-guards.test.ts
 npx tsx src/lib/native-workflow/playground/simulate.ts
 ```
+
+This offline command includes `period-report-status-route.test.ts` and its
+`period-report-status-route-guards.test.ts` companion; the database cases live
+in `period-report-status-route.live.test.ts` and are never part of this entry.
+Even a leftover `B4_LIVE_APP_DATABASE_URL` cannot open a connection here because
+the live file is not listed and its gate is disabled without
+`B4_LIVE_DEVELOPMENT=1`.
 
 The shared construction-service suite is also non-database:
 
