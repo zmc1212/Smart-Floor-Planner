@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { composeNativeDelivery, nativeCitationFeedback, nativeExecutorPrompt, recoveredDialogueToolState,
-  nativeOwnProjectIntent, nativePublicSiteSelection, nativePublicSiteWithdrawnText, synthesisHistoryFields,
-  xiaokNativeExecutorProtocol } from '../agent/native-executor';
+import { composeNativeDelivery, explicitPublicSiteReference, nativeCitationFeedback, nativeExecutorPrompt, nativeReplySiteText, recoveredDialogueToolState,
+  nativePublicSiteSelection, nativePublicSiteWithdrawnText, resumeUsedPublicSite, samePublicRef,
+  stripUnboundCitationPlaceholders, synthesisHistoryFields, xiaokNativeExecutorProtocol } from '../agent/native-executor';
 import { nativeAgentRuntimeBinding } from '../fastgpt/agent-v2/config';
 import { nativeHistoryCheckpoint, nativePublicSiteHistoryAllowed } from '../fastgpt/rag-session';
 import { recoverableUnavailableRead, runRenovationAgent, type AgentRuntimePorts } from '../agent/runtime';
@@ -394,7 +394,11 @@ test('an active public site reaches ordinary replies while withdrawn material is
   assert.match(selected!.text, /这个工地\/这里/);
   assert.match(selected!.text, /不是客户本人的项目/);
   assert.match(selected!.text, /query_business/);
-  assert.match(selected!.text, /我家\/本人项目/);
+  assert.match(selected!.text, /客户询问自己的预约、方案或施工进度时/);
+  // The CITE prohibition is scoped to the public snapshot: actual knowledge
+  // and web citations still follow the normal gate.
+  assert.match(selected!.text, /不得为公开工地内容编造 CITE/);
+  assert.match(selected!.text, /仍按各自 cites\[\]\.id 正常引用/);
   // No selection keeps the own-project path exactly as before.
   assert.equal(nativePublicSiteSelection(null, { ...ref, contentHash: 'hash-38', content }), null);
   // A withdrawn version must not replay the old public material.
@@ -403,11 +407,38 @@ test('an active public site reaches ordinary replies while withdrawn material is
   assert.equal(withdrawn!.ref, null);
   assert.equal(withdrawn!.text, nativePublicSiteWithdrawnText);
   assert.doesNotMatch(withdrawn!.text, /合成手测公开样板工地/);
-  // Only an explicit own-home/project question reopens the own-project tool.
-  assert.equal(nativeOwnProjectIntent('这个工地现在施工到哪个阶段？'), false);
-  assert.equal(nativeOwnProjectIntent('这个工地呢？'), false);
-  assert.equal(nativeOwnProjectIntent('我家现在施工到哪一步？'), true);
-  assert.equal(nativeOwnProjectIntent('本人项目的进度怎么样？'), true);
+  // The business tool stays reachable: the decision comes from the whole
+  // conversation, never from a single-sentence keyword list.
+  assert.match(nativeExecutorPrompt(false), /调用query_business/);
+  assert.equal(samePublicRef({ siteId: '11', versionId: '38' }, { siteId: '11', versionId: '38' }), true);
+  assert.equal(samePublicRef({ siteId: '11', versionId: '39' }, { siteId: '11', versionId: '38' }), false);
+  assert.equal(samePublicRef(null, null), true);
+  assert.equal(samePublicRef({ siteId: '11', versionId: '38' }, null), false);
+  // An old checkpoint without a 1003 dependency record is refused only when
+  // its saved messages prove it consumed public material.
+  const checkpoint = (text: string) => ({ version: 1 as const, turn: 1,
+    messages: [{ role: 'system' as const, content: [{ type: 'text' as const, text }] }], output: null });
+  assert.equal(resumeUsedPublicSite(checkpoint('当前会话已选中公开工地，以下为服务端已发布资料：')), true);
+  assert.equal(resumeUsedPublicSite(checkpoint('你是小K，本企业装修咨询助手。')), false);
+  // A public-only answer has no citable id; remove only the non-protocol
+  // placeholder, never a valid knowledge/web citation marker.
+  assert.equal(stripUnboundCitationPlaceholders('线管已经铺好 [CITE 1]。'), '线管已经铺好。');
+  assert.equal(stripUnboundCitationPlaceholders('做法见 [15](CITE)。'), '做法见 [15](CITE)。');
+  // Current-object resolution: only explicit public-site wording keeps the
+  // public snapshot in an ambiguous follow-up after an own-business answer.
+  assert.equal(explicitPublicSiteReference('这个公开工地的项目进度如何？'), true);
+  assert.equal(explicitPublicSiteReference('不是我家，我问这个公开工地。'), true);
+  assert.equal(explicitPublicSiteReference('这个工地呢？'), true);
+  assert.equal(explicitPublicSiteReference('那水电都完成了吗？'), false);
+  assert.equal(explicitPublicSiteReference('我的量房预约什么时候？'), false);
+  const suppressed = nativeReplySiteText({ publicSiteText: '公开工地快照', businessContextActive: true, includePublicSite: false });
+  assert.deepEqual(suppressed.map(part => part.text), ['本轮没有明确指向公开工地，此前的客户本人授权业务资料仍作为当前业务对象；按客户本人业务回答，公开工地仍保持选中，'
+    + '但本轮不作为回答对象。不得用公开工地资料替代客户本人的预约、方案、户型或施工记录查询；'
+    + '客户追问施工阶段、水电、泥木等本人项目现场进展时，调用 query_business 的 construction 域查询本人获权施工记录；'
+    + '量房预约只是预约，不是施工进度。']);
+  const explicit = nativeReplySiteText({ publicSiteText: '公开工地快照', businessContextActive: true, includePublicSite: true });
+  assert.equal(explicit.length, 2);
+  assert.equal(explicit[0].text, '公开工地快照');
   // Public-site history is only reusable for the same still-published version.
   const active = { siteId: '11', versionId: '38' };
   assert.equal(nativePublicSiteHistoryAllowed(undefined, undefined, false), true);

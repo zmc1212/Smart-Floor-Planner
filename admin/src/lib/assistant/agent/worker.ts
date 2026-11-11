@@ -5,6 +5,7 @@ import { withTenantTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { executePostgresText } from '@/lib/ai/postgres-workflow-chat';
 import { fastGPTWorkflows } from '../fastgpt/runtime';
+import { fastGPTKnowledgeNotDispatched } from '../fastgpt/knowledge-workflow';
 import { nativeKnowledgeProtocol } from '../fastgpt/native-knowledge';
 import { fastGPTPreviewConfiguration, fastGPTPreviewProtocol } from '../knowledge/fastgpt-retrieval';
 import { recordAgentModelUsage } from '../core/model-usage';
@@ -1184,10 +1185,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           const workflow = !injected && purpose === 'answer' && !consultation && !initial.mediaRefs.length ? fastGPTWorkflows() : undefined;
           const knowledge = workflow?.knowledge;
           if (knowledge) await workflow!.ready();
-          const output = injected ? await (async () => {
-            await beforeProviderCall();
-            return { agentOutput: await injected(modelMessages, tools, turn, dispatchTools), attemptId: null };
-          })() : knowledge ? await knowledge.dispatch({ enterpriseId: lease.enterpriseId, runId: lease.runId,
+          const dispatchKnowledge = () => knowledge!.dispatch({ enterpriseId: lease.enterpriseId, runId: lease.runId,
             conversationId: String(initial.conversation.id), turn, question: reviewContext.currentQuestion,
             model: initial.config.model, toolNames: dispatchTools.map(tool => tool.name),
             requestHash: fingerprint({modelMessages,dispatchTools,limits,config:initial.config,...(dialogueFinalCarrier ? {outputMode:dialogueFinalCarrier} : {})}) }, {authorize}, async () => {
@@ -1199,7 +1197,25 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                 return true;
               });
               return packet;
-            }) : await executeProvider();
+            });
+          const output = injected ? await (async () => {
+            await beforeProviderCall();
+            return { agentOutput: await injected(modelMessages, tools, turn, dispatchTools), attemptId: null };
+          })() : knowledge ? await dispatchKnowledge().catch(async error => {
+            // The optional FastGPT workflow never reached its model port (for
+            // example the isolated service is down). Answer through the same
+            // configured provider path and its existing guards instead of
+            // turning an unavailable optional platform into a failed answer.
+            if (!fastGPTKnowledgeNotDispatched(error)) throw error;
+            await authorize();
+            await scoped(async tx => {
+              await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
+                values(${lease.enterpriseId},${lease.runId},1015,'agent_workflow_fallback','succeeded',
+                  ${JSON.stringify({ protocol: 'fastgpt-knowledge-workflow-fallback-v1', reason: 'not_dispatched' })}::jsonb)
+                on conflict do nothing`);
+            });
+            return executeProvider();
+          }) : await executeProvider();
           outcomeKnown = true;
           if (!output.agentOutput) fail('invalid_model_answer', 502);
           // Record billing evidence even if the customer has just revoked the lease.

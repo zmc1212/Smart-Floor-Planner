@@ -7,6 +7,24 @@ import { publicMaterial, publicMaterialDto, publishedPublicMaterial } from './pu
 import { publicStatusLabels, type PublicContent } from './public-contract';
 
 export type PublicContextRef = { siteId: string; versionId: string };
+async function persistedPublicRefs(tx: PostgresTransaction, eid: string, cid: string, mid: string) {
+  const steps = await rows(tx, sql`select s.kind,s.source_refs,s.private_checkpoint from app.assistant_run_steps s
+    join app.assistant_messages m on m.enterprise_id=s.enterprise_id and m.run_id=s.run_id
+    where m.enterprise_id=${eid} and m.conversation_id=${cid} and m.id=${mid} and s.status='succeeded'
+      and (s.kind='agent_public_context' or (s.step_seq=1006 and s.kind='agent_synthesis_context'))`);
+  const refs = new Map<string, PublicContextRef & { contentHash?: string }>();
+  for (const step of steps) {
+    // 1003 stores the dependency array; the legacy 1006 source_refs column is a
+    // whole synthesis context object and must never be iterated as refs.
+    if (Array.isArray(step.source_refs)) for (const ref of step.source_refs as (PublicContextRef & { contentHash?: string })[]) {
+      if (ref?.siteId && ref.versionId) refs.set(ref.siteId + ':' + ref.versionId, ref);
+    }
+    const legacy = (step.private_checkpoint as Row | null)?.publicSite as
+      (PublicContextRef & { contentHash?: string }) | undefined;
+    if (legacy?.siteId && legacy.versionId) refs.set(legacy.siteId + ':' + legacy.versionId, legacy);
+  }
+  return [...refs.values()];
+}
 export async function publicContextSnapshot(tx: PostgresTransaction, eid: string, ref: PublicContextRef) {
   const m = await publishedPublicMaterial(tx, eid, ref.siteId, ref.versionId);
   return m ? { ...ref, contentHash: String(m.version.content_hash), content: m.version.content as PublicContent } : null;
@@ -19,13 +37,12 @@ export async function publicMessageProjection(tx: PostgresTransaction, actor: Ac
   const event = await one(tx, sql`select e.type,e.payload from app.assistant_messages m join app.domain_event_outbox e on e.enterprise_id=m.enterprise_id and e.id=m.source_event_id
     where m.enterprise_id=${actor.enterpriseId} and m.conversation_id=${String(c.id)} and m.id=${messageId} and m.purpose in ('construction.public.consent','construction.public.context')`);
   if (!event) {
-    const refs = await one(tx, sql`select s.source_refs from app.assistant_run_steps s join app.assistant_messages m on m.enterprise_id=s.enterprise_id and m.run_id=s.run_id
-      where m.enterprise_id=${actor.enterpriseId} and m.conversation_id=${String(c.id)} and m.id=${messageId} and s.kind='agent_public_context'`);
-    if (!refs) return null;
+    const refs = await persistedPublicRefs(tx, actor.enterpriseId, String(c.id), messageId);
+    if (!refs.length) return null;
     const references = [];
-    for (const ref of (refs.source_refs || []) as PublicContextRef[]) {
+    for (const ref of refs) {
       const material = await publishedPublicMaterial(tx, actor.enterpriseId, ref.siteId, ref.versionId);
-      if (!material) return { available: false };
+      if (!material || (ref.contentHash && material.version.content_hash !== ref.contentHash)) return { available: false };
       references.push(await publicMaterialDto(tx, material.site, material.version));
     }
     return { available: true, publicReferences: references };
@@ -51,9 +68,7 @@ export async function publicMessageAvailable(tx: PostgresTransaction, eid: strin
   const m = await one(tx, sql`select m.purpose,e.payload from app.assistant_messages m left join app.domain_event_outbox e on e.enterprise_id=m.enterprise_id and e.id=m.source_event_id
     where m.enterprise_id=${eid} and m.conversation_id=${cid} and m.id=${mid}`);
   if (m?.purpose === 'construction.public.context') return publicContextAvailable(tx, eid, m.payload as PublicContextRef);
-  const dependency = await one(tx, sql`select s.source_refs from app.assistant_run_steps s join app.assistant_messages m on m.enterprise_id=s.enterprise_id and m.run_id=s.run_id
-    where m.enterprise_id=${eid} and m.conversation_id=${cid} and m.id=${mid} and s.kind='agent_public_context'`);
-  for (const ref of (dependency?.source_refs || []) as PublicContextRef[]) if (!await publicContextAvailable(tx, eid, ref)) return false;
+  for (const ref of await persistedPublicRefs(tx, eid, cid, mid)) if (!await publicContextAvailable(tx, eid, ref)) return false;
   return true;
 }
 /** Necessary decision cards are service events, including while a real person is serving the owner. */

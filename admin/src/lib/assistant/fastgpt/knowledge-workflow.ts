@@ -10,6 +10,14 @@ export type KnowledgeDispatch = {
 type Guard = {authorize:()=>Promise<unknown>};
 type Ticket = {input:KnowledgeDispatch; guard:Guard; invoke:()=>Promise<KnowledgePacket>;
   expires:number; pending?:Promise<KnowledgePacket>; result?:KnowledgePacket; receipt?:string; accepted?:boolean; failed?:boolean};
+const notDispatched = Symbol('fastgpt-knowledge-not-dispatched');
+
+/** True only when the FastGPT platform never reached the model port. A failed
+ * fetch, startup error or pre-model platform rejection is then safe to answer
+ * through the configured provider; an accepted-but-ambiguous model call is not. */
+export function fastGPTKnowledgeNotDispatched(error: unknown) {
+  return !!error && typeof error === 'object' && (error as Record<symbol, unknown>)[notDispatched] === true;
+}
 
 /** FastGPT organizes one knowledge-model turn. The existing Agent owns the
  * messages, tools, memory, source checks and final answer. No alternate tool
@@ -68,6 +76,11 @@ export class FastGPTKnowledgeWorkflow {
       // copied out of a platform response. Provider observations stay intact.
       return ticket.result as T;
     }catch(error){
+      // No ticket invocation means the model port was never reached: the
+      // optional FastGPT workflow is unavailable, not an ambiguous provider
+      // outcome. The caller may fall back to the configured provider.
+      if (!ticket.pending && !ticket.result && error && typeof error === 'object')
+        Object.defineProperty(error, notDispatched, { value: true });
       this.config.record({runId:input.runId,turn:input.turn,chatId,platformOutcome:'unavailable',
         modelOutcome:ticket.result?'returned':ticket.pending?'unavailable':'not_dispatched',
         error:String(error).replaceAll(id,'[expired scoped ticket]').replaceAll(this.config.apiKey,'[redacted]')});

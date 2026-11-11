@@ -22,15 +22,15 @@
 
 | 字段 | 当前记录 |
 | --- | --- |
-| 交付与负责人 | 小K公开工地追问定向修复轮（2026-11-11用户定向）：企业1454、合成客户645、真实Stable UI。单一负责人；方法约束：先验证真实回答，禁止补丁循环；保留原失败，不循环换问法/模型。 |
-| 用户入口与结果 | 公开工地追问已修复并真实复验回答site11；联网run3614取得网页原文与3条`w:`引用；报告追问仍`model_unavailable`未修复；第1-4项沿用原通过证据。 |
-| 已证缺口 | 报告追问run3609/3616在provider派发前失败且无attempt，未定位具体异常栈，保留阻塞；公开工地回答仍可能出现非协议`[CITE n]`占位（已补禁止提示，未再跑模型复验）。 |
-| 已完成 | 普通问答注入`activePublicSite`(siteId/versionId/contentHash)并在每次模型调用前与提交事务复验；公开会话默认移除`query_business`，仅“我家/本人项目”保留；历史只复用匹配当前工地版本且仍可用的回答；恢复18090搜索隧道并补`ASSISTANT_PUBLIC_READER_URL`，run3614真实网页引用通过。 |
-| 下一动作 | 本轮结束；报告追问阻塞保留，不自动重试、不新增P3。 |
-| 必要验收 | 公开工地run3612真实UI对象/事实正确（水电、线管完成、插座待核对），不再混入本人项目；联网run3614 `webRetrieved`且`runCitations>0`；报告run3609/3616仍失败；真实微信/HLS/生产未验。 |
-| 失败与调用边界 | run3606 `web_search_unavailable`保留（隧道缺失）；run3608上下文丢失已修复；run3609/3616 `model_unavailable`无provider attempt保留；run3597/run3600嵌入30s超时原失败保留。 |
-| 环境与资源 | `.env.local`补`ASSISTANT_PUBLIC_READER_URL=http://127.0.0.1:18095`（未提交）；恢复18090隧道；DB隧道挂起后恢复；`source-manifest.json`保留未提交；合成JWT非真实微信。 |
-| 证据与后继 | `tmp/xiaok-agent-ui-20261111/public-site-after-fix.json`、`web-after-fix.json`、`report-read-report.json`、`run3614.ts`输出；定向34/34、tsc0、lint0错误/60警告、完整build退出0；无泛化下一P3。 |
+| 交付与负责人 | 小K公开来源生命周期与报告追问收尾（2026-11-11用户定向）：企业1454、合成客户645、真实Stable UI。单一负责人；方法约束：先验证真实回答，禁止补丁循环；保留原失败与用量，不循环换问法/模型。 |
+| 用户入口与结果 | 公开来源依赖已持久化并用于恢复/派发/提交/消息读面；本人预约与“那水电”追问按本人业务调用`query_business`；公开快照无CITE id；报告追问可选FastGPT工作流不可达时回退配置供应商。 |
+| 已证缺口 | 原报告run3609/3616异常为FastGPT知识工作流连接18300 `fetch failed`（零attempt）；run3632在应用schema分支失败；混合知识run3742/3743两次未触发检索；报告UI消息POST受DB隧道间歇503阻塞。 |
+| 已完成 | 步骤1003持久化当前+继承公开来源，兼容1006 `publicSite`；撤回/版本不符/依赖不可证实时fail-closed；本人业务对象解析与公开快照抑制；无人证据时移除`[CITE n]`；报告未触达模型端口时回退并记1015；run3632离线确认schema拒绝分支。 |
+| 下一动作 | 本轮结束；报告UI复验等待DB隧道稳定后再做，不自动重试或新增P3。 |
+| 必要验收 | 离线定向45/45、tsc0、完整build0；真实UI公开run3737、本人预约run3739、本人追问run3741、混合知识run3742/3743（未检索）；报告后端run3669含1015回退；真实微信/HLS/生产未验。 |
+| 失败与调用边界 | run3609/3616原失败保留；run3632 `native_schema_unverified`保留；run3664/3665/3667/3668诊断调用与run3669回退证据保留；run3742/3743混合未检索保留；报告UI 503（DB超时）保留；未重放未知供应商请求。 |
+| 环境与资源 | DB隧道间歇挂起并多次重启；DevTools登录过期后已由用户扫码恢复；FastGPT 18300未运行；`source-manifest.json`未提交；合成JWT非真实微信。 |
+| 证据与后继 | `tmp/xiaok-agent-ui-20261111/ui-final-*.png/json`、`report-followup-provider-diagnosis.txt`、`report-3632-diagnosis.txt`、`public-business-continuation.json`；定向测试与build；无泛化下一P3。 |
 
 ## 3. 复用哪些成果
 
