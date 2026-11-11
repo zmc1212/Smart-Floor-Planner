@@ -709,19 +709,75 @@ opened the same workflow `runId`, showed `已完成`, `业务周期 2026-10-26 ~
 2026-11-02`, report `7`/r1 and delivery `已投递`, while the raw card kept
 `failed`/`delivery_not_confirmed`. Restoration reported worker, media,
 customer_access, report_plan and agent_settings all restored. Evidence:
-`admin/tmp/b5-4-period-report-runs/b5-4-weekly-20261111095128486/verification.json`.
+`admin/tmp/b5-4-period-report-runs/b5-4-weekly-20261111095128486/verification.json`
+(generation/replay) and
+`admin/tmp/b5-4-period-report-runs/b5-4-weekly-20261111095128486/native-ui/native-ui.json`
+with 9 screenshots in the same folder (native UI).
 
-Tests: the native-workflow offline suite is now 257 tests (253 pass, 4
-strict-opt-in live cases skipped); the weekly additions cover the Monday-to-
-Monday conversion, partial/cross-week/non-Monday rejection, trusted-now ended
-checks, daily compatibility, weekly port enqueue/idempotency, weekly status
-kind/boundary checks and the CLI window rules. `npm run build` still reports
-"Compiled successfully" and then stops at the pre-existing
-`scripts/fastgpt/setup-unified.mts:113` type error, which is byte-identical to
-the baseline. The Stable DevTools native weekly UI read was attempted but the
-already-open simulator session was unhealthy (identity recovery/validation
-state), so the native UI path remains unverified this round; the original XiaoK
-API entry/list/detail/record/media/re-entry path is verified above.
+Stable DevTools native acceptance passed all 19 checks: the original XiaoK
+customer entry (leadId `1454000003`) opened the history binding `1`
+`[B4] 水路阶段测试项目` with the weekly card `10月26日 · 施工周报`, period
+`10月26日 00:00—11月2日 00:00`. The 简报记录 sheet defaults to the current
+Shanghai month `2026-11`, which hides the report; selecting `2026年10月` plus
+the `周报` filter lists `10月26日—11月1日 · 施工周报` — the month rule is the
+saved period start in Shanghai (October), not delivery time. The detail showed
+report `7` / revision `1`, kind `weekly`, `contentStatus: composed`, delivery
+`delivered`, `本周记录` with both records' completed values, and
+`查看原记录 2` / `查看原记录 3`. Both originals opened through real UI taps:
+record `2` version `3` `[B5.4] 水电线管敷设` with photo media `2` (path key
+`2_3_2`, 15157-byte JPEG), and record `3` version `3`
+`[B5.4] 底盒固定与回路核对` with no photo. Exit and re-entry read the same
+report `7` / revision `1`, the same period and the same two records.
+Customer-access revocation returned API `404 assistant_resource_not_found`
+with no binding/report in native history; restoration returned the same binding
+and re-read report `7`/r1 composed. Photo withdrawal returned report-detail API
+`200` with `available:false`, the media endpoint `404`, and the native sheet
+showed `这份简报已不可用` / `来源或权限已变化，这份简报当前不可查看。` with no
+retained projects or original (the existing source rule invalidates the saved
+section when attached media is withdrawn); restoring the photo re-read the
+card/detail and the photo path. Counters stayed
+reports/jobs/runs/attempts/usage/messages/deliveries `7/13/13/4/4/7/7` with
+zero new model calls; the only write was the legitimate delivery read receipt
+(`read_at` null → `2026-11-11T11:48:26.875Z`).
+
+Environment note: the already-open Stable DevTools window is the main-workspace
+checkout `G:\workspace\向总\Smart-Floor-Planner\miniprogram` of the same Mini
+Program (appId `wxa7728432f59779d1`), not this worktree path. No window was
+closed, opened or replaced. The report/followup UI files driven here are
+byte-identical between the two branch tips; the only Mini Program difference is
+`packages/assistant/lib/chat.js` (ordinary chat message sync) plus a deleted
+test file. This is an environment note, not a failure of the report path.
+
+`--period-kind` missing-value fix: the acceptance driver previously used a
+helper that returned `undefined` both when the flag was absent and when it was
+present without a value, silently defaulting to `daily`. The new pure helpers
+in `live/period-cli.ts` make `readCliOption(argv, name)` distinguish the two
+cases; `parsePeriodKindArg(argv)` returns `daily` only when the flag is absent,
+throws `period_kind_missing` (`--period-kind requires a value (daily or
+weekly)`) for a bare `--period-kind` or `--period-kind=`, and
+`period_kind_invalid` for unknown values. The acceptance entry parses this at
+module load and fails in `bootstrap()` before `resolveB4DatabaseTarget`, the
+`pg.Pool` or any fixture mutation; the other CLI
+(`scripts/native-workflow-period-report.ts`) already rejected a missing value
+through its own `option()` helper and is unchanged. Targeted test:
+`npx tsx --test src/lib/native-workflow/__tests__/period-cli.test.ts` → 11/11
+pass.
+
+Tests: the documented offline native-workflow command (the 23-file list below)
+runs 250 tests, all 250 pass with 0 fail; the weekly additions cover the
+Monday-to-Monday conversion, partial/cross-week/non-Monday rejection,
+trusted-now ended checks, daily compatibility, weekly port
+enqueue/idempotency, weekly status kind/boundary checks and the CLI window
+rules. `npx tsx --test
+src/lib/native-workflow/__tests__/live-integration.test.ts
+src/lib/native-workflow/__tests__/live-integration-guards.test.ts` is 6/6; its
+B live case skips without the B URLs, and the 4 strict-opt-in live route cases
+remain skipped/unchanged without `B4_LIVE_DEVELOPMENT=1` (they did not run this
+round). `npm run build` prints "Compiled successfully" and then exits 1 at the
+pre-existing `scripts/fastgpt/setup-unified.mts:113:75` TypeScript error
+(`Property 'selectedType' does not exist…`); this is not a full build pass, and
+the generated `admin/src/lib/survey-runtime/source-manifest.json` change was
+reverted.
 
 ## Reproduce
 

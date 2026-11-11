@@ -3,7 +3,9 @@ import { test } from 'node:test';
 import {
   addCalendarDays,
   parsePeriodKind,
+  parsePeriodKindArg,
   PERIOD_DEFINITION_ID,
+  readCliOption,
   resolveCliPeriod,
 } from '../live/period-cli';
 
@@ -24,6 +26,56 @@ test('period kind defaults to daily and accepts weekly', () => {
   for (const kind of invalid) {
     assert.equal(codeOf(() => parsePeriodKind(kind)), 'period_kind_invalid');
   }
+});
+
+test('period kind argument separates absent from valueless and invalid', () => {
+  assert.equal(parsePeriodKindArg([]), 'daily');
+  assert.equal(parsePeriodKindArg(['--development', '--period-start', '2026-10-26']), 'daily');
+  assert.equal(parsePeriodKindArg(['--period-kind', 'daily']), 'daily');
+  assert.equal(parsePeriodKindArg(['--period-kind', 'weekly']), 'weekly');
+  assert.equal(
+    codeOf(() => parsePeriodKindArg(['--development', '--period-start', '2026-10-26', '--period-kind'])),
+    'period_kind_missing',
+  );
+  assert.equal(
+    codeOf(() => parsePeriodKindArg(['--period-kind', '--period-start', '2026-10-26'])),
+    'period_kind_missing',
+  );
+  // An inline empty value is also "present without a value", never daily.
+  assert.equal(codeOf(() => parsePeriodKindArg(['--period-kind='])), 'period_kind_missing');
+  assert.equal(
+    codeOf(() => parsePeriodKindArg(['--period-kind', 'monthly'])),
+    'period_kind_invalid',
+  );
+  assert.equal(
+    codeOf(() => parsePeriodKindArg(['--period-kind', 'Daily'])),
+    'period_kind_invalid',
+  );
+});
+
+test('a valueless period kind is rejected before it could default to daily', () => {
+  try {
+    parsePeriodKindArg(['--period-kind']);
+    assert.fail('a valueless --period-kind must throw');
+  } catch (error) {
+    assert.equal((error as { code?: string }).code, 'period_kind_missing');
+    assert.match((error as Error).message, /--period-kind requires a value/u);
+  }
+});
+
+test('readCliOption distinguishes an absent option from a valueless one', () => {
+  assert.deepEqual(readCliOption([], '--period-kind'), { present: false });
+  assert.deepEqual(readCliOption(['--period-kind', 'weekly'], '--period-kind'), {
+    present: true,
+    value: 'weekly',
+  });
+  assert.deepEqual(readCliOption(['--period-kind'], '--period-kind'), { present: true });
+  assert.deepEqual(readCliOption(['--period-kind', '--development'], '--period-kind'), { present: true });
+  assert.deepEqual(readCliOption(['--period-kind='], '--period-kind'), { present: true });
+  assert.deepEqual(readCliOption(['--period-kind=daily'], '--period-kind'), {
+    present: true,
+    value: 'daily',
+  });
 });
 
 test('daily keeps the original single-day command', () => {

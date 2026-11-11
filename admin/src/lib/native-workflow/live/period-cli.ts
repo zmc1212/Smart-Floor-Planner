@@ -68,6 +68,50 @@ export function parsePeriodKind(value: string | undefined): PeriodCliKind {
   throw new PeriodCliError('period_kind_invalid', 'period kind must be daily or weekly');
 }
 
+export interface CliOption {
+  /** True when the option name appears in argv at all. */
+  readonly present: boolean;
+  /** The option value; undefined when the option was provided without one. */
+  readonly value?: string;
+}
+
+/**
+ * Separate "--period-kind is absent" from "--period-kind has no value".
+ * Both `--name` and `--name=value` spellings are accepted; an empty value and a
+ * following `--flag` both count as "present but valueless" so an explicitly
+ * provided flag can never silently fall back to a default.
+ */
+export function readCliOption(argv: readonly string[], name: string): CliOption {
+  const index = argv.indexOf(name);
+  if (index >= 0) {
+    const value = argv[index + 1];
+    if (value === undefined || value === '' || value.startsWith('--')) return { present: true };
+    return { present: true, value };
+  }
+  const prefix = `${name}=`;
+  const inline = argv.find((entry) => entry.startsWith(prefix));
+  if (inline === undefined) return { present: false };
+  const value = inline.slice(prefix.length);
+  return value === '' ? { present: true } : { present: true, value };
+}
+
+/**
+ * Resolve `--period-kind` for the CLI entry points. Only an absent flag
+ * defaults to daily; a provided flag without a value and an unknown value are
+ * rejected before the caller touches a database.
+ */
+export function parsePeriodKindArg(argv: readonly string[]): PeriodCliKind {
+  const option = readCliOption(argv, '--period-kind');
+  if (!option.present) return 'daily';
+  if (option.value === undefined) {
+    throw new PeriodCliError('period_kind_missing', '--period-kind requires a value (daily or weekly)');
+  }
+  if (!(PERIOD_CLI_KINDS as readonly string[]).includes(option.value)) {
+    throw new PeriodCliError('period_kind_invalid', '--period-kind must be daily or weekly');
+  }
+  return option.value as PeriodCliKind;
+}
+
 export interface CliPeriodInput {
   readonly kind: PeriodCliKind;
   readonly periodStart: string;

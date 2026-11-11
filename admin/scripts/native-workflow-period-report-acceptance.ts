@@ -37,6 +37,7 @@ import {
 import { parseFixedPeriod } from '@/lib/native-workflow/live/period-event';
 import {
   addCalendarDays,
+  parsePeriodKindArg,
   resolveCliPeriod,
   type PeriodCliKind,
 } from '@/lib/native-workflow/live/period-cli';
@@ -82,10 +83,19 @@ function argvValue(name: string): string | undefined {
   return value && !value.startsWith('--') ? value : undefined;
 }
 
-const rawPeriodKind = argvValue('--period-kind');
-const periodKindInvalid = rawPeriodKind !== undefined && rawPeriodKind !== 'daily' && rawPeriodKind !== 'weekly';
-const periodKind: PeriodCliKind = rawPeriodKind === 'weekly' ? 'weekly' : 'daily';
-const scope = periodKind === 'weekly' ? 'b5-4' : 'b5-2';
+// An explicitly provided `--period-kind` without a value (or with an unknown
+// value) must fail before any database target is resolved or a pool is
+// created; only an absent flag defaults to daily.
+let periodKind: PeriodCliKind = 'daily';
+let periodKindFailure = '';
+try {
+  periodKind = parsePeriodKindArg(process.argv);
+} catch (error) {
+  periodKindFailure = error instanceof Error ? error.message : String(error);
+}
+// An explicit but valueless/invalid --period-kind is a B5.4 acceptance failure,
+// not a daily run; keep its evidence under the B5.4 scope.
+const scope = periodKind === 'weekly' || periodKindFailure ? 'b5-4' : 'b5-2';
 const FIXED_LABEL = periodKind === 'weekly' ? '[B5.4]' : '[B5.2]';
 
 /** Every acceptance failure must unwind through the shared finally block. */
@@ -266,7 +276,7 @@ function assertCalendarDate(value: string): void {
 async function bootstrap(): Promise<void> {
   if (!process.argv.includes('--development')) fail('--development is required');
   if (process.env.NODE_ENV === 'production') fail('refusing to run in production');
-  if (periodKindInvalid) fail('--period-kind must be daily or weekly');
+  if (periodKindFailure) fail(periodKindFailure);
 
   const requestedPeriod = argvValue('--period-start') ?? (periodKind === 'weekly' ? '' : '2026-11-03');
   if (!requestedPeriod) {
