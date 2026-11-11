@@ -43,6 +43,21 @@ export function nativeHistoryCheckpoint(checkpoint: Row | null | undefined, conf
     ? [{ ...p.source, origin: 'history' as const }] : []) };
 }
 
+/** The immediately preceding answer decides the current object of an
+ * ambiguous follow-up. `source_refs.snapshots` is the cumulative synthesis
+ * context: it also carries business snapshots inherited only for source
+ * auditing (and re-saved by later answers), so its length can never name the
+ * current topic. The run's own record is the composition count of the business
+ * snapshots it actually delivered, or a business tool call made by that run.
+ * A legacy row with neither stays out of the business thread; query_business
+ * remains callable and the model can re-read the records when the customer
+ * actually asks about them. */
+export function priorAnswerBusinessObject(input: { checkpoint: Row | null | undefined; ownBusinessTool: boolean }) {
+  if (input.ownBusinessTool) return true;
+  const delivered = (input.checkpoint?.composition as Row | null | undefined)?.snapshots;
+  return typeof delivered === 'number' && delivered > 0;
+}
+
 /** One authorized history projection for native dataset and ToolCall workflows. */
 export async function nativeConversation(lease: Lease, configured: RagSource[], protocol: string = fastGPTRagProtocol) {
     const context: SynthesisContext = { version: 1, knowledge: [], snapshots: [], sources: [], web: [], history: [], ancestors: [] };
@@ -100,9 +115,11 @@ export async function nativeConversation(lease: Lease, configured: RagSource[], 
           const original = prior.source_refs as SynthesisContext;
           if (!runKnowledgeEnabled(run.policy_snapshot as Row) && original.knowledge.length) continue;
           if (!await synthesisContextAvailable(tx, lease.actor, conversation, original)) continue;
-          businessContextActive = !!await one(tx, sql`select id from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
-            and run_id=${String(m.run_id)} and kind='agent_tool' and capability_name='query_business' and status='succeeded' limit 1`)
-            || (original.snapshots?.length || 0) > 0;
+          businessContextActive = priorAnswerBusinessObject({
+            checkpoint: prior.private_checkpoint as Row,
+            ownBusinessTool: !!await one(tx, sql`select id from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+              and run_id=${String(m.run_id)} and kind='agent_tool' and capability_name='query_business' and status='succeeded' limit 1`),
+          });
           for (const ref of savedRefs.values()) inheritedPublicRefs.set(ref.siteId + ':' + ref.versionId, ref);
           if ((prior.input_summary as Row)?.protocol === protocol) {
             const historyCheckpoint = nativeHistoryCheckpoint(prior.private_checkpoint as Row, configured);

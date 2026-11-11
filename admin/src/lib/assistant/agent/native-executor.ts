@@ -27,6 +27,7 @@ import { dialogueDesignerRecommendation, dialoguePublicSitesRecommendation, publ
   type RecommendToolRuntime } from './dialogue-recommend-tools';
 import { dialogueHistoryRecall, type HistoryToolRuntime } from './dialogue-history-tools';
 import { parseWebQuery, webSearchTool, type WebSearchSnapshot } from './web';
+import { bindReadToolInput, readToolContext, readToolsForContext, type ReadToolContext } from './read-tool-input';
 import { parsePublicRead, publicResearchTools } from './public-research';
 import { historyRefsAvailable, historySynthesisSources, historyTool, parseHistoryQuery,
   type HistoryRef, type HistorySnapshot } from './history';
@@ -146,6 +147,20 @@ export function nativePublicSiteSelection(active: PublicContextRef | null | unde
 export function samePublicRef(a: PublicContextRef | null | undefined, b: PublicContextRef | null | undefined) {
   if (!a || !b) return !a && !b;
   return String(a.siteId) === String(b.siteId) && String(a.versionId) === String(b.versionId);
+}
+
+/** Bind the conversation's authorized lead with the established read-tool
+ * contract. A model-selected identity is rejected; a persisted legacy call
+ * that used the documented empty `leadId` ("list my profiles") is replayed
+ * under the same server binding instead of failing a resumable run. */
+export function bindBoundBusinessRead(name: string, input: unknown, readContext: ReadToolContext | undefined) {
+  if (readContext?.leadId && input && typeof input === 'object' && !Array.isArray(input)
+    && Object.hasOwn(input, 'leadId') && (input as Row).leadId === '') {
+    const rest = { ...(input as Row) };
+    delete rest.leadId;
+    return bindReadToolInput(name, rest, readContext);
+  }
+  return bindReadToolInput(name, input, readContext);
 }
 
 /** A public-site answer has no CITE id for the snapshot. The model may still
@@ -270,21 +285,28 @@ export function recoveredDialogueToolState(searchSteps: Row[], businessSteps: Ro
  * after the first read blocks the model call, while the final commit keeps its
  * own re-check. */
 export async function authorizePublicIntroDispatch(tx: PostgresTransaction, enterpriseId: string,
-  conversation: Row, ref: { siteId: string; versionId: string }) {
+  conversation: Row, ref: { siteId: string; versionId: string; contentHash?: string }) {
   const current = (conversation.entry_snapshot as Row).activePublicSite as
     { siteId: string; versionId: string } | undefined;
   if (!current || String(current.siteId) !== String(ref.siteId) || String(current.versionId) !== String(ref.versionId))
     fail('context_changed');
-  if (!await publishedPublicMaterial(tx, enterpriseId, String(ref.siteId), String(ref.versionId)))
+  const material = await publishedPublicMaterial(tx, enterpriseId, String(ref.siteId), String(ref.versionId));
+  if (!material || (ref.contentHash && String(material.version.content_hash) !== ref.contentHash))
     fail('public_site_unavailable', 404);
 }
 
 /** The commit-time counterpart: the model may have run, but the opening is
- * only persisted while the same selection and published material still hold.
- * Throwing here rolls the message append back with the rest of the commit. */
-export async function assertPublicIntroCommit(tx: PostgresTransaction, lease: Lease, ref: { siteId: string; versionId: string }) {
+ * only persisted while the same selection and the same published version the
+ * model actually read still hold. Throwing here rolls the message append back
+ * with the rest of the commit. */
+export async function assertPublicIntroCommit(tx: PostgresTransaction, lease: Lease,
+  ref: { siteId: string; versionId: string; contentHash?: string }) {
   const state = await runContext(tx, lease);
   await authorizePublicIntroDispatch(tx, lease.enterpriseId, state.conversation, ref);
+  if (ref.contentHash) {
+    const material = await publishedPublicMaterial(tx, lease.enterpriseId, String(ref.siteId), String(ref.versionId));
+    if (!material || String(material.version.content_hash) !== ref.contentHash) fail('public_site_unavailable', 404);
+  }
 }
 
 /** Persist the suggestion dispatch's measured usage without any lease,
@@ -365,6 +387,11 @@ export async function processNativeAgentAnswer(lease: Lease) {
       const config = agentConfig((initial.run.policy_snapshot as Row).agent);
       if (!config) fail('context_changed');
       const content = material.version.content as PublicContent;
+      // The opening consumes a published version exactly like a reply. Record
+      // that version (with its content hash) as the run's public dependency so
+      // a later read can revalidate it under the same withdrawal rules.
+      const introRef = { siteId: String(ref.siteId), versionId: String(ref.versionId),
+        contentHash: String(material.version.content_hash) };
       const messages: ModelMessage[] = [
         { role: 'system', content: [{ type: 'text', text: publicIntroPrompt(constraints.maxChars) }] },
         { role: 'user', content: [{ type: 'text', text: publicIntroFacts(content, input) }] },
@@ -388,7 +415,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
           // authorization are checked again, so leaving the site or withdrawing
           // it in between produces no model call.
           await markProviderStarted(lease, [], (tx, conversation) =>
-            authorizePublicIntroDispatch(tx, lease.enterpriseId, conversation, ref));
+            authorizePublicIntroDispatch(tx, lease.enterpriseId, conversation, introRef));
         },
       });
       if (!output.agentOutput) fail('invalid_model_answer', 502);
@@ -403,18 +430,31 @@ export async function processNativeAgentAnswer(lease: Lease) {
       await completeRun(lease, { content: { version: 1, blocks: [{ type: 'text', text }] }, usage: usage ?? null,
         attemptId: String(output.attemptId) }, async tx => {
         // The site may be withdrawn, replaced or left while the model ran.
-        // Both the active selection and the published material must still be
-        // the same at commit time, so a stale opening is never delivered.
-        await assertPublicIntroCommit(tx, lease, ref);
+        // Both the active selection and the published version the model read
+        // must still be the same at commit time, so a stale opening is never
+        // delivered.
+        await assertPublicIntroCommit(tx, lease, introRef);
+        // The same dependency record an ordinary reply writes before dispatch.
+        // A later read of this saved opening revalidates it through the shared
+        // message projection instead of replaying withdrawn material.
+        await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs,input_summary)
+          values(${lease.enterpriseId},${lease.runId},1003,'agent_public_context','succeeded',
+          ${JSON.stringify([introRef])}::jsonb,
+          ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, purpose: 'public.site.intro',
+            current: { siteId: introRef.siteId, versionId: introRef.versionId } })}::jsonb)`);
         await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
           values(${lease.enterpriseId},${lease.runId},1006,'agent_intro','succeeded',
           ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, scene: scene?.key ?? sceneKey,
-            chars: Array.from(text).length })}::jsonb)`);
+            chars: Array.from(text).length, publicSite: introRef })}::jsonb)`);
       });
       return;
     }
     const config = agentConfig((initial.run.policy_snapshot as Row).agent);
     if (!config) fail('context_changed');
+    // The conversation entry already names the customer's authorized lead. The
+    // established read-tool contract binds that identity server-side instead of
+    // asking the model to know or guess a housing id; reuse it unchanged.
+    const readContext = readToolContext(initial.conversation.entry_snapshot as Record<string, unknown>);
     const knowledgeEnabled = runKnowledgeEnabled(initial.run.policy_snapshot as Row);
     const { context, messages, citations, publicRefs: inheritedPublicRefs, businessContextActive } =
       await nativeConversation(lease, [], xiaokNativeExecutorProtocol);
@@ -508,6 +548,12 @@ export async function processNativeAgentAnswer(lease: Lease) {
       // at completeRun on a resumed run that never dispatches again.
       const lastModel = await one(tx, sql`select provider_attempt_id from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
         and run_id=${lease.runId} and kind='agent_model' and status='succeeded' order by step_seq desc limit 1`);
+      // Any model dispatch of this run, settled or not. A run interrupted at
+      // the provider has model output that may already depend on public
+      // material; only the 1003 record can prove which versions were supplied.
+      const modelSteps = await rows(tx, sql`select step_seq,status,provider_attempt_id from app.assistant_run_steps
+        where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and kind='agent_model'
+          and step_seq>=1100 and step_seq<1200 order by step_seq`);
       // Dispatch markers without a persisted receipt are open operations: the
       // metered provider I/O behind them has an unknown outcome and must never
       // be replayed. The usage row is the dispatch marker (written before I/O);
@@ -525,11 +571,24 @@ export async function processNativeAgentAnswer(lease: Lease) {
         if ((record.category === 'web_search' || record.category === 'web_read') && !webSeqs.has(seq)) open.push(key);
       }
       return { checkpoint, publicContext, searches, businesses, webs, histories, fixed, openOperations: open,
-        triggerSeq: trigger?.seq ? String(trigger.seq) : null, lastModel };
+        triggerSeq: trigger?.seq ? String(trigger.seq) : null, lastModel, modelSteps };
     });
     if (saved.openOperations.length) { outcomeUnknown = true; fail('provider_outcome_unknown', 503); }
     if (saved.checkpoint && (saved.checkpoint.input_summary as Row)?.promptVersion !== promptVersion) fail('context_changed');
     if (saved.lastModel && !saved.lastModel.provider_attempt_id) fail('invalid_agent_checkpoint', 409);
+    // A missing checkpoint is not the only interrupted state: a process may
+    // have saved a model result (1100) with its attempt and usage, then died
+    // before writing 1000/1003. Without the dependency record this run cannot
+    // prove which public versions that output consumed, and today's empty
+    // selection proves nothing about the historical call. Refuse delivery and
+    // keep the original attempt, output and usage untouched — never re-call the
+    // model to paper over the gap. A model step with an unsettled outcome stays
+    // unknown rather than being relabelled a known failure.
+    if (!saved.publicContext && saved.modelSteps.length) {
+      const unsettled = saved.modelSteps.some(step => String(step.status) !== 'succeeded' || !step.provider_attempt_id);
+      if (unsettled) outcomeUnknown = true;
+      fail(unsettled ? 'provider_outcome_unknown' : 'context_changed', unsettled ? 503 : 409);
+    }
     // A resumed checkpoint may not replay model output produced from a public
     // source that has since been withdrawn, replaced or deselected. The
     // persisted 1003 record is the proof of what that process actually used;
@@ -625,7 +684,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
     // recall_history additionally requires the run's real trigger seq.
     const tools: ModelTool[] = [
       ...(knowledgeEnabled ? [enterpriseSearchTool] : []),
-      ...businessToolDefinitions.filter(tool => tool.name === 'query_business'),
+      ...readToolsForContext(businessToolDefinitions.filter(tool => tool.name === 'query_business'), readContext),
       ...publicResearchTools([webSearchTool], true, true),
       designerRecommendationTool, publicSitesRecommendationTool,
       ...(saved.triggerSeq ? [historyTool] : []),
@@ -640,8 +699,10 @@ export async function processNativeAgentAnswer(lease: Lease) {
         } catch { return { code: 'invalid_tool_input', feedback: 'search_enterprise参数不是合法JSON对象；仅提交{"query":"..."}。' }; }
       }
       if (name === 'query_business') {
-        try { parseBusinessQuery(JSON.parse(args)); }
-        catch { return { code: 'invalid_tool_input', feedback: 'query_business需要{"domain":"appointments|schemes|floorplans|construction","leadId":"..."}；leadId为空字符串表示列本人档案。' }; }
+        try { parseBusinessQuery(bindBoundBusinessRead(name, JSON.parse(args), readContext)); }
+        catch { return { code: 'invalid_tool_input', feedback: readContext?.leadId
+          ? 'query_business需要{"domain":"appointments|schemes|floorplans|construction"}；房屋身份由服务端从当前咨询注入，不要传leadId或其他身份字段。'
+          : 'query_business需要{"domain":"appointments|schemes|floorplans|construction","leadId":"..."}；leadId为空字符串表示列本人档案。' }; }
       }
       if (name === 'search_web') {
         try { parseWebQuery(JSON.parse(args)); }
@@ -679,7 +740,8 @@ export async function processNativeAgentAnswer(lease: Lease) {
         // Only status/text reach the model. The resultKey stays in the
         // persisted receipt and the recovery map for server-side version
         // revalidation; it is never a citation id.
-        return { content: JSON.stringify(modelBusinessReceipt(await business(parseBusinessQuery(JSON.parse(args)), ++sequence))) };
+        const query = parseBusinessQuery(bindBoundBusinessRead(name, JSON.parse(args), readContext));
+        return { content: JSON.stringify(modelBusinessReceipt(await business(query, ++sequence))) };
       }
       if (name === 'search_web' || name === 'read_web') {
         const parsed = JSON.parse(args) as { query?: string; candidateId?: string };

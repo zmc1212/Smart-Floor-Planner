@@ -7,6 +7,25 @@ import { publicMaterial, publicMaterialDto, publishedPublicMaterial } from './pu
 import { publicStatusLabels, type PublicContent } from './public-contract';
 
 export type PublicContextRef = { siteId: string; versionId: string };
+/** A `public.site.intro` run has no synthesis step. The version its opening
+ * actually consumed is proven by the run's own trigger: the customer's
+ * public-context notice event. The conversation's current selection is never
+ * substituted, because the visitor may have moved to another site since. */
+async function introSourceRef(tx: PostgresTransaction, eid: string, cid: string, mid: string) {
+  const run = await one(tx, sql`select r.purpose,r.trigger_message_id from app.assistant_messages m
+    join app.assistant_runs r on r.enterprise_id=m.enterprise_id and r.id=m.run_id
+    where m.enterprise_id=${eid} and m.conversation_id=${cid} and m.id=${mid}`);
+  if (!run || String(run.purpose) !== 'public.site.intro') return { intro: false, ref: null };
+  const event = await one(tx, sql`select e.payload from app.assistant_messages tm
+    join app.domain_event_outbox e on e.enterprise_id=tm.enterprise_id and e.id=tm.source_event_id
+    where tm.enterprise_id=${eid} and tm.conversation_id=${cid} and tm.id=${String(run.trigger_message_id)}
+      and tm.purpose='construction.public.context' and e.type='construction.public.context.v1'`);
+  const payload = (event?.payload || null) as { siteId?: unknown; versionId?: unknown } | null;
+  const ref = payload && typeof payload.siteId === 'string' && payload.siteId
+    && typeof payload.versionId === 'string' && payload.versionId
+    ? { siteId: payload.siteId, versionId: payload.versionId } : null;
+  return { intro: true, ref };
+}
 async function persistedPublicRefs(tx: PostgresTransaction, eid: string, cid: string, mid: string) {
   const steps = await rows(tx, sql`select s.kind,s.source_refs,s.private_checkpoint from app.assistant_run_steps s
     join app.assistant_messages m on m.enterprise_id=s.enterprise_id and m.run_id=s.run_id
@@ -38,6 +57,18 @@ export async function publicMessageProjection(tx: PostgresTransaction, actor: Ac
     where m.enterprise_id=${actor.enterpriseId} and m.conversation_id=${String(c.id)} and m.id=${messageId} and m.purpose in ('construction.public.consent','construction.public.context')`);
   if (!event) {
     const refs = await persistedPublicRefs(tx, actor.enterpriseId, String(c.id), messageId);
+    const intro = await introSourceRef(tx, actor.enterpriseId, String(c.id), messageId);
+    if (intro.intro) {
+      // The opening carries no citation chip: the public-context notice above
+      // it already owns that entry. Its dependency still decides availability:
+      // the persisted 1003 record when present, otherwise the version named by
+      // this run's own trigger event. Never the conversation's current choice.
+      const proof = refs.length ? refs : intro.ref ? [intro.ref] : [];
+      if (!proof.length) return { available: false };
+      for (const ref of proof)
+        if (!await publicContextAvailable(tx, actor.enterpriseId, ref)) return { available: false };
+      return null;
+    }
     if (!refs.length) return null;
     const references = [];
     for (const ref of refs) {
@@ -68,8 +99,16 @@ export async function publicMessageAvailable(tx: PostgresTransaction, eid: strin
   const m = await one(tx, sql`select m.purpose,e.payload from app.assistant_messages m left join app.domain_event_outbox e on e.enterprise_id=m.enterprise_id and e.id=m.source_event_id
     where m.enterprise_id=${eid} and m.conversation_id=${cid} and m.id=${mid}`);
   if (m?.purpose === 'construction.public.context') return publicContextAvailable(tx, eid, m.payload as PublicContextRef);
-  for (const ref of await persistedPublicRefs(tx, eid, cid, mid)) if (!await publicContextAvailable(tx, eid, ref)) return false;
-  return true;
+  const refs = await persistedPublicRefs(tx, eid, cid, mid);
+  if (refs.length) {
+    for (const ref of refs) if (!await publicContextAvailable(tx, eid, ref)) return false;
+    return true;
+  }
+  // An opening without the dependency record is available only while the
+  // version named by its own trigger event is still published.
+  const intro = await introSourceRef(tx, eid, cid, mid);
+  if (!intro.intro) return true;
+  return !!intro.ref && await publicContextAvailable(tx, eid, intro.ref);
 }
 /** Necessary decision cards are service events, including while a real person is serving the owner. */
 export async function syncPublicConsents(tx: PostgresTransaction, actor: ActorContext, c: Row) {

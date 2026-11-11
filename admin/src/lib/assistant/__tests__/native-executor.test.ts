@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { composeNativeDelivery, explicitPublicSiteReference, nativeCitationFeedback, nativeExecutorPrompt, nativeReplySiteText, recoveredDialogueToolState,
-  nativePublicSiteSelection, nativePublicSiteWithdrawnText, resumeUsedPublicSite, samePublicRef,
+  nativePublicSiteSelection, nativePublicSiteWithdrawnText, resumeUsedPublicSite, samePublicRef, bindBoundBusinessRead,
   stripUnboundCitationPlaceholders, synthesisHistoryFields, xiaokNativeExecutorProtocol } from '../agent/native-executor';
 import { nativeAgentRuntimeBinding } from '../fastgpt/agent-v2/config';
-import { nativeHistoryCheckpoint, nativePublicSiteHistoryAllowed } from '../fastgpt/rag-session';
+import { nativeHistoryCheckpoint, nativePublicSiteHistoryAllowed, priorAnswerBusinessObject } from '../fastgpt/rag-session';
 import { recoverableUnavailableRead, runRenovationAgent, type AgentRuntimePorts } from '../agent/runtime';
 import { modelBusinessReceipt } from '../agent/dialogue-tools';
 import { webCitations } from '../agent/dialogue-web-tools';
@@ -446,6 +446,40 @@ test('an active public site reaches ordinary replies while withdrawn material is
   assert.equal(nativePublicSiteHistoryAllowed(active, undefined, false), false);
   assert.equal(nativePublicSiteHistoryAllowed(active, { siteId: '11', versionId: '39', contentHash: 'h' }, true), false);
   assert.equal(nativePublicSiteHistoryAllowed(active, { siteId: '11', versionId: '38', contentHash: 'h' }, false), false);
+});
+
+test('the preceding answer names the current object, never its inherited audit snapshots', () => {
+  const row = (value: Record<string, unknown>) => value as never;
+  // A public-site answer re-saves inherited business snapshots in source_refs
+  // for source auditing, but its own composition delivered none: an ambiguous
+  // follow-up still belongs to the public site.
+  assert.equal(priorAnswerBusinessObject({ checkpoint: row({ composition: { snapshots: 0 },
+    source_refs: { snapshots: [{ query: 'appointments:' }] } }), ownBusinessTool: false }), false);
+  // The answer that actually delivered business material owns the next topic.
+  assert.equal(priorAnswerBusinessObject({ checkpoint: row({ composition: { snapshots: 2 } }), ownBusinessTool: false }), true);
+  // A business tool call in that same turn is equally honest.
+  assert.equal(priorAnswerBusinessObject({ checkpoint: row({ composition: { snapshots: 0 } }), ownBusinessTool: true }), true);
+  // A legacy row without the composition record cannot claim a business topic;
+  // query_business stays callable and the model can re-read the records.
+  assert.equal(priorAnswerBusinessObject({ checkpoint: row({ raw: '旧回答' }), ownBusinessTool: false }), false);
+  assert.equal(priorAnswerBusinessObject({ checkpoint: null, ownBusinessTool: false }), false);
+});
+
+test('the conversation lead is bound server-side, while a model-selected identity is rejected', () => {
+  const context = { protocol: 'conversation-read-v1', leadId: '3134' } as const;
+  // The model omits the identity: the authorized lead is injected.
+  assert.deepEqual(bindBoundBusinessRead('query_business', { domain: 'construction' }, context),
+    { domain: 'construction', leadId: '3134' });
+  // A persisted legacy call with the documented empty leadId is replayed under
+  // the same server binding instead of failing a resumable run.
+  assert.deepEqual(bindBoundBusinessRead('query_business', { domain: 'appointments', leadId: '' }, context),
+    { domain: 'appointments', leadId: '3134' });
+  // A model-selected identity is never coerced.
+  assert.throws(() => bindBoundBusinessRead('query_business', { domain: 'construction', leadId: '9999' }, context),
+    /invalid_message/);
+  // No bound lead (generic entry) keeps the original contract.
+  assert.deepEqual(bindBoundBusinessRead('query_business', { domain: 'schemes', leadId: '' },
+    { protocol: 'conversation-read-v1', leadId: null } as const), { domain: 'schemes', leadId: '' });
 });
 
 test('the model sees only status/text for business snapshots, while recovery keeps the full resultKey', () => {

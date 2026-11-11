@@ -10,14 +10,16 @@ import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { deleteAssistantData } from '@/db/repositories/assistant-cleanup';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
-import { ConversationService, appendMessage } from '@/lib/assistant/core/conversation';
+import { ConversationService, appendMessage, newRun } from '@/lib/assistant/core/conversation';
 import { claimJob, completeRun, markProviderStarted, type Lease } from '@/lib/assistant/infrastructure/job-queue';
 import { processNativeAgentAnswer, xiaokNativeExecutorProtocol,
   nativeExecutorPromptVersion } from '@/lib/assistant/agent/native-executor';
 import { nativeConversation } from '@/lib/assistant/fastgpt/rag-session';
+import { queryBusiness } from '@/lib/assistant/agent/business-tools';
 import { publicMessageAvailable, publicMessageProjection } from '@/lib/construction/public-projections';
 import { publishedPublicMaterial } from '@/lib/construction/public-read';
 import { fingerprint, safeText, type ActorContext, type MessageContent } from '@/lib/assistant/contracts';
+import { getPlatformLlmRuntimeConfig } from '@/lib/platform-llm-config';
 
 const prefix = 'public-lifecycle-' + process.pid + '-' + Date.now();
 let enterpriseId = '', adminId = '', userId = '', providerConfigId = '', workflowDir = '';
@@ -26,21 +28,31 @@ let actor: ActorContext, service: ConversationService;
 before(async () => {
   loadEnvConfig(process.cwd());
   assert.ok(['127.0.0.1', 'localhost'].includes(new URL(resolvePostgresRuntimeConfig().connectionString).hostname));
+  // The agent path uses the saved platform LLM override when it is enabled.
+  // The synthetic capability probe must describe the same model or the real
+  // binding check would reject every dispatch. No configuration is changed.
+  const platform = await getPlatformLlmRuntimeConfig().catch(() => null);
+  const agent = platform?.enabled
+    ? { runtime: 'langgraph-v1', model: platform.model, providerKey: platform.providerKey,
+      imageInput: false, tools: true, probeVersion: 'synthetic-lifecycle-v1' }
+    : { runtime: 'langgraph-v1', model: 'synthetic-lifecycle-model', providerKey: 'synthetic',
+      imageInput: false, tools: true, probeVersion: 'synthetic-lifecycle-v1' };
   await withPlatformTransaction(async tx => {
     const enterprise = (await one(tx, sql`insert into app.enterprises(name,code,status)
       values(${prefix},${prefix},'active') returning id`))!;
     enterpriseId = String(enterprise.id);
     await tx.execute(sql`insert into app.assistant_enterprise_settings(enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days,agent_config)
-      values(${enterpriseId},true,1000,12000000,1000000000,90,
-      ${JSON.stringify({ runtime: 'langgraph-v1', model: 'synthetic-lifecycle-model', providerKey: 'synthetic',
-        imageInput: false, tools: true, probeVersion: 'synthetic-lifecycle-v1' })}::jsonb)`);
+      values(${enterpriseId},true,1000,12000000,1000000000,90,${JSON.stringify(agent)}::jsonb)`);
     const admin = (await one(tx, sql`insert into app.admin_users(enterprise_id,username,password_hash,role,status,menu_permissions,must_change_password)
       values(${enterpriseId},${prefix},'test-only','enterprise_admin','active',ARRAY[]::text[],false) returning id`))!;
     adminId = String(admin.id);
     const user = (await one(tx, sql`insert into app.users(nickname,context_version) values(${prefix},1) returning id`))!;
     userId = String(user.id);
-    const provider = (await one(tx, sql`insert into app.ai_provider_configs(key,name,adapter_type,base_url,api_key_encrypted,api_key_masked)
-      values(${prefix},${prefix},'openai_compatible','http://127.0.0.1:1','test-only','test-only') returning id`))!;
+    const provider = (await one(tx, sql`insert into app.ai_provider_configs(key,name,adapter_type,base_url,api_key_encrypted,api_key_masked,
+      enabled,capabilities,model_mappings,adapter_config,priority)
+      values(${prefix},${prefix},'openai_compatible','http://127.0.0.1:1','test-only','test-only',
+      true,ARRAY['chat'],${JSON.stringify({ 'chat.general': 'synthetic-lifecycle-model' })}::jsonb,
+      ${JSON.stringify({ providerPreset: 'synthetic' })}::jsonb,0) returning id`))!;
     providerConfigId = String(provider.id);
   });
   actor = { enterpriseId, principal: { kind: 'user', userId }, contextVersion: 1, capabilities: ['assistant.chat.self'] };
@@ -173,6 +185,159 @@ async function assistantMessages(conversationId: string) {
     where enterprise_id=${enterpriseId} and conversation_id=${conversationId} and author_kind='assistant' order by seq`));
 }
 
+/** The public-context notice the opening run is triggered by. Its domain event
+ * is the version proof an opening saved before the dependency record can use. */
+async function publicNotice(conversationId: string, site: { siteId: string; versionId: string }) {
+  return withTenantTransaction(enterpriseId, async tx => {
+    const conversation = (await one(tx, sql`select version from app.assistant_conversations
+      where enterprise_id=${enterpriseId} and id=${conversationId}`))!;
+    const event = (await one(tx, sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,
+      aggregate_version,actor_ref,correlation_id,payload)
+      values(${enterpriseId},'construction.public.context.v1','assistant_conversation',${conversationId},
+      ${Number(conversation.version) + 1},${JSON.stringify({ kind: 'user', userId })}::jsonb,${conversationId},
+      ${JSON.stringify(site)}::jsonb) returning id`))!;
+    const message = await appendMessage(tx, actor, conversationId, { author: 'system', eventId: String(event.id),
+      purpose: 'construction.public.context', content: { version: 1, blocks: [{ type: 'text', text: '正在围观：测试公开工地。' }] } });
+    return String(message.id);
+  });
+}
+
+async function introRun(conversationId: string, triggerId: string) {
+  return withTenantTransaction(enterpriseId, async tx => {
+    const conversation = (await one(tx, sql`select * from app.assistant_conversations
+      where enterprise_id=${enterpriseId} and id=${conversationId} for update`))!;
+    const settings = (await one(tx, sql`select * from app.assistant_enterprise_settings
+      where enterprise_id=${enterpriseId}`))!;
+    const run = await newRun(tx, actor, conversation, settings, triggerId, undefined,
+      { kind: 'user_message', messageId: triggerId }, 'public.site.intro');
+    return String(run.runId);
+  });
+}
+
+/** A legacy opening whose run predates the dependency record: only the 1006
+ * intro step exists. `dependency` writes what the current executor records. */
+async function seedIntroAnswer(conversationId: string, triggerId: string, text: string,
+  dependency: { siteId: string; versionId: string; contentHash: string } | null) {
+  return withTenantTransaction(enterpriseId, async tx => {
+    const settings = (await one(tx, sql`select * from app.assistant_enterprise_settings
+      where enterprise_id=${enterpriseId}`))!;
+    const run = (await one(tx, sql`insert into app.assistant_runs(enterprise_id,conversation_id,trigger_kind,
+      trigger_message_id,purpose,status,policy_snapshot,context_revision,knowledge_epoch)
+      values(${enterpriseId},${conversationId},'user_message',${triggerId},'public.site.intro','succeeded',
+      ${JSON.stringify({ schemaVersion: 1, actor, maxTokens: 8192, policyVersion: Number(settings.policy_version) })}::jsonb,
+      1,${Number(settings.knowledge_epoch)}) returning id`))!;
+    const message = await appendMessage(tx, actor, conversationId, { author: 'assistant', runId: String(run.id),
+      content: { version: 1, blocks: [{ type: 'text', text }] } });
+    if (dependency)
+      await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs,input_summary)
+        values(${enterpriseId},${String(run.id)},1003,'agent_public_context','succeeded',
+        ${JSON.stringify([dependency])}::jsonb,${JSON.stringify({ protocol: xiaokNativeExecutorProtocol,
+          purpose: 'public.site.intro', current: { siteId: dependency.siteId, versionId: dependency.versionId } })}::jsonb)`);
+    await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
+      values(${enterpriseId},${String(run.id)},1006,'agent_intro','succeeded',
+      ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, scene: 'site.public',
+        chars: Array.from(text).length, ...(dependency ? { publicSite: dependency } : {}) })}::jsonb)`);
+    return String(message.id);
+  });
+}
+
+/** A model result persisted with its attempt and usage, but no checkpoint and
+ * no public dependency record: the interrupted state from the review. */
+async function seedModelWithoutCheckpoint(lease: Lease) {
+  const answer = { text: '公开工地目前处于水电阶段，现场记录提到线管已铺好、底盒待固定。', toolCalls: [],
+    finishReason: 'stop', providerRequestId: null, usage: null };
+  await withTenantTransaction(enterpriseId, async tx => {
+    const attempt = (await one(tx, sql`insert into app.ai_provider_attempts(enterprise_id,assistant_run_id,provider_config_id,
+      provider_key,adapter_type,capability,logical_model_key,remote_model,status,accepted,metadata)
+      values(${enterpriseId},${lease.runId},${providerConfigId},'synthetic','openai_compatible','chat','chat.general',
+      'synthetic-lifecycle-model','succeeded',true,'{}'::jsonb) returning id`))!;
+    await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,provider_attempt_id,private_checkpoint,input_summary)
+      values(${enterpriseId},${lease.runId},1100,'agent_model','succeeded',${String(attempt.id)},
+      ${JSON.stringify(answer)}::jsonb,${JSON.stringify({ turn: 0, purpose: 'answer', promptVersion: nativeExecutorPromptVersion })}::jsonb)`);
+    await tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,provider_attempt_id,operation_key,category,quantity,measurement_kind)
+      values(${enterpriseId},${lease.runId},${String(attempt.id)},${'agent:' + lease.runId + ':0'},'tokens',100,'observed')`);
+  });
+  return answer;
+}
+
+/** One earlier answer exactly as the native executor saves it: an assistant
+ * message, its 1006 synthesis context (which may carry snapshots inherited
+ * only for source auditing), the run's own delivered-snapshot count and — for
+ * public-site answers — the 1003 dependency record. */
+async function seedPriorAnswer(conversationId: string, spec: {
+  question: string; text: string; publicRef: { siteId: string; versionId: string; contentHash: string } | null;
+  snapshots: Row[]; deliveredSnapshots: number; ownBusinessTool: boolean;
+}) {
+  return withTenantTransaction(enterpriseId, async tx => {
+    const question = await appendMessage(tx, actor, conversationId, { author: 'user', clientMessageId: randomUUID(),
+      content: { version: 1, blocks: [{ type: 'text', text: spec.question }] } });
+    const settings = (await one(tx, sql`select * from app.assistant_enterprise_settings
+      where enterprise_id=${enterpriseId}`))!;
+    const run = (await one(tx, sql`insert into app.assistant_runs(enterprise_id,conversation_id,trigger_kind,
+      trigger_message_id,purpose,status,policy_snapshot,context_revision,knowledge_epoch)
+      values(${enterpriseId},${conversationId},'user_message',${String(question.id)},'reply','succeeded',
+      ${JSON.stringify({ schemaVersion: 1, actor, maxTokens: 8192, policyVersion: Number(settings.policy_version) })}::jsonb,
+      1,${Number(settings.knowledge_epoch)}) returning id`))!;
+    const answer = await appendMessage(tx, actor, conversationId, { author: 'assistant', runId: String(run.id),
+      content: { version: 1, blocks: [{ type: 'text', text: spec.text }] } });
+    await tx.execute(sql`update app.assistant_runs set output_message_id=${String(answer.id)}
+      where enterprise_id=${enterpriseId} and id=${String(run.id)}`);
+    if (spec.publicRef)
+      await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs,input_summary)
+        values(${enterpriseId},${String(run.id)},1003,'agent_public_context','succeeded',
+        ${JSON.stringify([spec.publicRef])}::jsonb,${JSON.stringify({ protocol: xiaokNativeExecutorProtocol,
+          current: { siteId: spec.publicRef.siteId, versionId: spec.publicRef.versionId } })}::jsonb)`);
+    if (spec.ownBusinessTool)
+      await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,status,input_summary)
+        values(${enterpriseId},${String(run.id)},1400,'agent_tool','query_business','succeeded',
+        ${JSON.stringify({ key: 'appointments:', receipt: { status: 'ready', text: spec.text } })}::jsonb)`);
+    const source = { version: 1, knowledge: [], snapshots: spec.snapshots, sources: [], web: [], history: [], ancestors: [] };
+    await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs,private_checkpoint,input_summary)
+      values(${enterpriseId},${String(run.id)},1006,'agent_synthesis_context','succeeded',${JSON.stringify(source)}::jsonb,
+      ${JSON.stringify({ kind: 'synthesis', raw: spec.text, citations: [],
+        composition: { snapshots: spec.deliveredSnapshots, modelIncluded: true } })}::jsonb,
+      ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol })}::jsonb)`);
+  });
+}
+
+test('a public-site answer owns the next follow-up even after an earlier business answer', async () => {
+  const site = await publishedSite(prefix + '-topic');
+  const snapshot = await withTenantTransaction(enterpriseId, tx =>
+    queryBusiness(tx, actor, { domain: 'appointments', leadId: '' }));
+  const publicRef = { siteId: site.siteId, versionId: site.versionId, contentHash: site.contentHash };
+  // The appointment answer delivered the customer's own business material.
+  await seedPriorAnswer(site.conversationId, { question: '我的量房预约是什么时候？', text: '您的量房预约在明天上午。',
+    publicRef, snapshots: [snapshot as unknown as Row], deliveredSnapshots: 1, ownBusinessTool: true });
+  // The explicit public-site answer inherited that snapshot for source
+  // auditing but delivered none of its own.
+  await seedPriorAnswer(site.conversationId, { question: '回到这个公开工地，它现在做到哪一步？', text: '公开工地目前在做水电阶段。',
+    publicRef, snapshots: [snapshot as unknown as Row], deliveredSnapshots: 0, ownBusinessTool: false });
+  const { lease } = await pending(site.conversationId, '那底盒呢？');
+  try {
+    const assembled = await nativeConversation(lease, [], xiaokNativeExecutorProtocol);
+    assert.equal(assembled.businessContextActive, false,
+      'The inherited appointment snapshot must not turn the public follow-up into the customer business topic');
+    assert.ok(assembled.messages.some(message => message.role === 'assistant' && /水电阶段/.test(message.content)));
+  } finally { await service.run(lease.runId, 'cancel', randomUUID()).catch(() => undefined); }
+});
+
+test('an own-business answer still owns an ambiguous follow-up after a public-site answer', async () => {
+  const site = await publishedSite(prefix + '-topic-business');
+  const snapshot = await withTenantTransaction(enterpriseId, tx =>
+    queryBusiness(tx, actor, { domain: 'construction', leadId: '' }));
+  const publicRef = { siteId: site.siteId, versionId: site.versionId, contentHash: site.contentHash };
+  await seedPriorAnswer(site.conversationId, { question: '这个工地现在做到哪一步？', text: '公开工地目前在做水电阶段。',
+    publicRef, snapshots: [], deliveredSnapshots: 0, ownBusinessTool: false });
+  await seedPriorAnswer(site.conversationId, { question: '我家施工记录里水电做到哪一步了？', text: '您家施工记录显示水电已完工。',
+    publicRef, snapshots: [snapshot as unknown as Row], deliveredSnapshots: 1, ownBusinessTool: true });
+  const { lease } = await pending(site.conversationId, '那水电呢？');
+  try {
+    const assembled = await nativeConversation(lease, [], xiaokNativeExecutorProtocol);
+    assert.equal(assembled.businessContextActive, true,
+      'The answer that actually delivered the customer records owns the ambiguous follow-up');
+  } finally { await service.run(lease.runId, 'cancel', randomUUID()).catch(() => undefined); }
+});
+
 test('a committed public-site answer becomes unavailable after the source is withdrawn', async () => {
   const site = await publishedSite(prefix + '-read');
   const { lease } = await pending(site.conversationId, '这个工地现在做到哪一步了？');
@@ -217,6 +382,112 @@ test('a saved model result is not committed after withdrawal, and the model is n
   assert.equal((await assistantMessages(site.conversationId)).length, 0);
 });
 
+test('a saved public opening keeps its own dependency and disappears after withdrawal', async () => {
+  const site = await publishedSite(prefix + '-intro');
+  const notice = await publicNotice(site.conversationId, site);
+  const runId = await introRun(site.conversationId, notice);
+  const lease = await claimJob({ enterpriseId, runId });
+  assert.ok(lease);
+  const opening = '这是西陵区一套正在做水电阶段的公开工地，当前有业主授权的公开服务记录，想了解这个阶段的施工，可以直接问我。';
+  const originalFetch = globalThis.fetch, originalModel = process.env.ASSISTANT_TEXT_MODEL,
+    originalThinking = process.env.ASSISTANT_TEXT_DISABLE_THINKING;
+  try {
+    // The real binding check compares against these deployment switches; this
+    // synthetic transport keeps its own probe and never contacts a provider.
+    delete process.env.ASSISTANT_TEXT_MODEL;
+    delete process.env.ASSISTANT_TEXT_DISABLE_THINKING;
+    globalThis.fetch = (async () => Response.json({ choices: [{ message: { content: opening }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 5, completion_tokens: 6 } })) as typeof fetch;
+    await processNativeAgentAnswer(lease as Lease);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalModel === undefined) delete process.env.ASSISTANT_TEXT_MODEL; else process.env.ASSISTANT_TEXT_MODEL = originalModel;
+    if (originalThinking === undefined) delete process.env.ASSISTANT_TEXT_DISABLE_THINKING;
+    else process.env.ASSISTANT_TEXT_DISABLE_THINKING = originalThinking;
+  }
+  const run = await service.run(runId);
+  assert.equal(run.status, 'succeeded', String(run.errorCode ?? ''));
+  const dependency = await withTenantTransaction(enterpriseId, tx => one(tx, sql`select source_refs
+    from app.assistant_run_steps where enterprise_id=${enterpriseId} and run_id=${runId}
+      and step_seq=1003 and kind='agent_public_context' and status='succeeded'`));
+  assert.ok(dependency, 'The opening must persist the version it actually consumed');
+  const refs = dependency!.source_refs as Row[];
+  assert.deepEqual(refs.map(ref => ref.siteId + ':' + ref.versionId), [site.siteId + ':' + site.versionId]);
+  assert.equal(String(refs[0].contentHash), site.contentHash);
+  const stored = await assistantMessages(site.conversationId);
+  assert.equal(stored.length, 1);
+  const introId = String(stored[0].id);
+  const before = (await service.messages(site.conversationId)).items.find(item => String(item.id) === introId)!;
+  assert.equal(before.available, true);
+  assert.match(JSON.stringify(before.content), /西陵区/);
+  // The opening does not add a second public chip: its notice already owns it.
+  assert.equal(before.publicReferences ?? null, null);
+  await withdrawn(site);
+  const after = (await service.messages(site.conversationId)).items.find(item => String(item.id) === introId)!;
+  assert.equal(after.available, false, 'A withdrawn source must invalidate the saved opening');
+  assert.equal(JSON.stringify(after.content).includes('source_unavailable'), true);
+  assert.equal(JSON.stringify(after.content).includes('西陵区'), false);
+});
+
+test('a legacy opening proves its source only through its own trigger event', async () => {
+  const site = await publishedSite(prefix + '-legacy-intro');
+  const notice = await publicNotice(site.conversationId, site);
+  const legacy = await seedIntroAnswer(site.conversationId, notice, '旧开场正文：这个工地正在做水电。', null);
+  const before = (await service.messages(site.conversationId)).items.find(item => String(item.id) === legacy)!;
+  assert.equal(before.available, true);
+  await withdrawn(site);
+  const after = (await service.messages(site.conversationId)).items.find(item => String(item.id) === legacy)!;
+  assert.equal(after.available, false);
+  assert.equal(JSON.stringify(after.content).includes('旧开场正文'), false);
+
+  // No reliable association (its trigger is an ordinary message, not the
+  // public-context notice) means the opening can never be shown, even while
+  // the conversation still selects a published site.
+  const other = await publishedSite(prefix + '-unproven-intro');
+  const plain = await withTenantTransaction(enterpriseId, tx => appendMessage(tx, actor, other.conversationId, {
+    author: 'user', clientMessageId: randomUUID(), content: { version: 1, blocks: [{ type: 'text', text: '随便问一句' }] } }));
+  const unproven = await seedIntroAnswer(other.conversationId, String(plain.id), '无法证明来源的开场正文。', null);
+  const item = (await service.messages(other.conversationId)).items.find(message => String(message.id) === unproven)!;
+  assert.equal(item.available, false);
+  assert.equal(JSON.stringify(item.content).includes('无法证明来源'), false);
+});
+
+test('a saved model result without a checkpoint or dependency record is never delivered', async () => {
+  const site = await publishedSite(prefix + '-no-checkpoint');
+  const { lease } = await pending(site.conversationId, '这个公开工地的水电阶段怎么样？');
+  await markProviderStarted(lease);
+  await seedModelWithoutCheckpoint(lease);
+  const attemptsBefore = await providerAttempts(lease.runId);
+  assert.equal(attemptsBefore, 1);
+  await withdrawn(site);
+  await processNativeAgentAnswer(lease);
+  assert.equal(await providerAttempts(lease.runId), attemptsBefore, 'No model dispatch may be added to cover the gap');
+  const run = await service.run(lease.runId);
+  assert.equal(run.status, 'failed');
+  assert.equal(run.errorCode, 'context_changed');
+  assert.equal((await assistantMessages(site.conversationId)).length, 0);
+  const usage = await withTenantTransaction(enterpriseId, tx => rows(tx, sql`select quantity,measurement_kind
+    from app.assistant_usage_records where enterprise_id=${enterpriseId} and run_id=${lease.runId}`));
+  assert.equal(usage.length, 1, 'The original per-turn usage row is preserved');
+  assert.equal(String(usage[0].measurement_kind), 'observed');
+});
+
+test('an empty current selection never proves a saved model result had no public dependency', async () => {
+  const site = await publishedSite(prefix + '-unprovable');
+  const { lease } = await pending(site.conversationId, '这个公开工地的底盒固定了吗？');
+  await markProviderStarted(lease);
+  await seedModelWithoutCheckpoint(lease);
+  await withTenantTransaction(enterpriseId, tx => tx.execute(sql`update app.assistant_conversations
+    set entry_snapshot=entry_snapshot-'activePublicSite',context_revision=context_revision+1,version=version+1
+    where enterprise_id=${enterpriseId} and id=${site.conversationId}`));
+  const attemptsBefore = await providerAttempts(lease.runId);
+  await processNativeAgentAnswer(lease);
+  assert.equal(await providerAttempts(lease.runId), attemptsBefore);
+  const run = await service.run(lease.runId);
+  assert.equal(run.status, 'failed');
+  assert.equal(run.errorCode, 'context_changed');
+  assert.equal((await assistantMessages(site.conversationId)).length, 0);
+});
 test('a follow-up inherits the original public dependency and drops the answer once withdrawn', async () => {
   const site = await publishedSite(prefix + '-followup');
   const first = await pending(site.conversationId, '这个工地现在做到哪一步了？');

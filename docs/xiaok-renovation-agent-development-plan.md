@@ -22,15 +22,15 @@
 
 | 字段 | 当前记录 |
 | --- | --- |
-| 交付与负责人 | 小K公开来源生命周期与报告追问收尾（2026-11-11用户定向）：企业1454、合成客户645、真实Stable UI。单一负责人；方法约束：先验证真实回答，禁止补丁循环；保留原失败与用量，不循环换问法/模型。 |
-| 用户入口与结果 | 公开来源依赖已持久化并用于恢复/派发/提交/消息读面；本人预约与“那水电”追问按本人业务调用`query_business`；公开快照无CITE id；报告追问可选FastGPT工作流不可达时回退配置供应商。 |
-| 已证缺口 | 原报告run3609/3616异常为FastGPT知识工作流连接18300 `fetch failed`（零attempt）；run3632在应用schema分支失败；混合知识run3742/3743两次未触发检索；报告UI消息POST受DB隧道间歇503阻塞。 |
-| 已完成 | 步骤1003持久化当前+继承公开来源，兼容1006 `publicSite`；撤回/版本不符/依赖不可证实时fail-closed；本人业务对象解析与公开快照抑制；无人证据时移除`[CITE n]`；报告未触达模型端口时回退并记1015；run3632离线确认schema拒绝分支。 |
-| 下一动作 | 本轮结束；报告UI复验等待DB隧道稳定后再做，不自动重试或新增P3。 |
-| 必要验收 | 离线定向45/45、tsc0、完整build0；真实UI公开run3737、本人预约run3739、本人追问run3741、混合知识run3742/3743（未检索）；报告后端run3669含1015回退；真实微信/HLS/生产未验。 |
-| 失败与调用边界 | run3609/3616原失败保留；run3632 `native_schema_unverified`保留；run3664/3665/3667/3668诊断调用与run3669回退证据保留；run3742/3743混合未检索保留；报告UI 503（DB超时）保留；未重放未知供应商请求。 |
-| 环境与资源 | DB隧道间歇挂起并多次重启；DevTools登录过期后已由用户扫码恢复；FastGPT 18300未运行；`source-manifest.json`未提交；合成JWT非真实微信。 |
-| 证据与后继 | `tmp/xiaok-agent-ui-20261111/ui-final-*.png/json`、`report-followup-provider-diagnosis.txt`、`report-3632-diagnosis.txt`、`public-business-continuation.json`；定向测试与build；无泛化下一P3。 |
+| 交付与负责人 | 小K公开来源生命周期与追问对象收口（2026-11-11用户定向）：企业1454、合成客户645/3880、真实模型与Stable。单一负责人；方法约束：先验证真实回答，禁止补丁循环；保留原失败与用量，不循环换问法/模型。 |
+| 用户入口与结果 | 公开开场与普通回复共用1003来源依赖，撤回后旧开场不可读；有模型结果但缺1003的中断任务拒绝交付；追问对象由上一轮自身交付的业务快照决定，公开工地与本人业务可来回切换；`query_business`由服务端绑定会话房屋身份。 |
+| 已证缺口 | 旧开场只写1006无依赖；1100已成功且无1000/1003时当前空来源被当成未用公开资料；继承业务快照被当当前话题；报告回退与迟到ticket回调竞态可撞23505。 |
+| 已完成 | 开场提交写1003并复验版本/hash；旧开场仅由自身触发事件证明来源，否则不可用；无1003且有模型步骤拒绝交付（未知结局保持unknown）；追问对象改用当轮`composition.snapshots`或本轮`query_business`；`readToolsForContext`/`bindReadToolInput`复用到原生执行器；票据dispatch结束即关闭，迟到回调在授权后与invoke前复核身份，只有未启动模型才回退记1015。 |
+| 下一动作 | 本轮结束；真实小程序UI对开场撤回与两方向追问的复验待DB隧道/Stable窗口稳定后再做，不自动重试或新增P3。 |
+| 必要验收 | 离线定向37/37（native-executor24、knowledge-workflow5、native-public-intro8）；DB`assistant-public-lifecycle`9/9（真实库写入/读回，合成HTTP边界）；tsc0；完整build0；真实模型两方向各三轮runs3827–3832全部成功。 |
+| 失败与调用边界 | 首稿B2未调用`query_business`（run3825）保留于`report-attempt-01.json`；run3609/3616/3632、run3664–3669、run3742/3743原失败保留；报告UI 503（DB超时）保留；未重放未知供应商请求。 |
+| 环境与资源 | DB隧道间歇挂起；FastGPT 18300未运行；合成客户3880/站点11版本38/标记预约为本轮真实对话夹具；`source-manifest.json`未提交；合成JWT非真实微信。 |
+| 证据与后继 | `tmp/xiaok-public-topic-20261111/report.json`（两方向runs3827–3832、attempt/用量）、`report-attempt-01.json`（首稿失败）；`admin/src/db/__tests__/assistant-public-lifecycle.test.ts`；计划检查`node scripts/check-xiaok-plan.mjs`；无泛化下一P3。 |
 
 ## 3. 复用哪些成果
 
