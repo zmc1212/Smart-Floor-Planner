@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   addCalendarDays,
+  parseDesignerIdArg,
   parsePeriodKind,
   parsePeriodKindArg,
   parseReceiverArg,
@@ -235,5 +236,62 @@ test('invalid calendar dates are rejected for both kinds', () => {
   assert.equal(
     codeOf(() => resolveCliPeriod({ kind: 'daily', periodStart: '2026-1-03' })),
     'periodStart_invalid',
+  );
+});
+
+test('designer receiver requires --designer-id and never accepts --worker-id', () => {
+  assert.deepEqual(
+    parseReceiverArg(['--receiver-kind', 'designer', '--designer-id', '1454000011']),
+    { kind: 'designer', adminId: '1454000011' },
+  );
+  assert.deepEqual(
+    parseReceiverArg(['--receiver-kind=designer', '--designer-id=1454000011']),
+    { kind: 'designer', adminId: '1454000011' },
+  );
+  assert.equal(parseReceiverKindArg(['--receiver-kind', 'designer']), 'designer');
+  assert.equal(
+    codeOf(() => parseDesignerIdArg(['--receiver-kind', 'designer'], 'designer')),
+    'designer_id_missing',
+  );
+  assert.equal(
+    codeOf(() => parseDesignerIdArg(['--designer-id='], 'designer')),
+    'designer_id_invalid',
+  );
+  for (const argv of [
+    ['--designer-id', 'abc'],
+    ['--designer-id', '0'],
+    ['--designer-id', '-1'],
+  ]) {
+    assert.equal(codeOf(() => parseDesignerIdArg(argv, 'designer')), 'designer_id_invalid');
+  }
+  // A designer receiver must carry its own id flag, not the worker flag.
+  assert.equal(
+    codeOf(() => parseReceiverArg(['--receiver-kind', 'designer', '--worker-id', '1454000008'])),
+    'designer_id_missing',
+  );
+  assert.equal(
+    codeOf(() => parseReceiverArg([
+      '--receiver-kind', 'designer', '--designer-id', '1454000011', '--worker-id', '1454000008',
+    ])),
+    'worker_id_forbidden',
+  );
+  // A worker receiver must not smuggle a designer id either.
+  assert.equal(
+    codeOf(() => parseReceiverArg([
+      '--receiver-kind', 'worker', '--worker-id', '1454000008', '--designer-id', '1454000011',
+    ])),
+    'designer_id_forbidden',
+  );
+  // A customer receiver rejects both staff ids.
+  assert.equal(
+    codeOf(() => parseReceiverArg(['--designer-id', '1454000011'])),
+    'designer_id_forbidden',
+  );
+});
+
+test('an unknown receiver kind is rejected before any database work', () => {
+  assert.equal(
+    codeOf(() => parseReceiverArg(['--receiver-kind', 'service'])),
+    'receiver_kind_invalid',
   );
 });

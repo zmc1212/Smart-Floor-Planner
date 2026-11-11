@@ -947,7 +947,9 @@ function NativeWorkflowDetailPageInner() {
                       label: '接收人',
                       children: binding.receiverKind === 'worker'
                         ? `worker ${binding.receiverAdminId ?? ''}`.trim()
-                        : '业主',
+                        : binding.receiverKind === 'designer'
+                          ? `designer ${binding.receiverAdminId ?? ''}`.trim()
+                          : '业主',
                     },
                     { key: 'conversation', label: '会话', children: <Typography.Text code>{binding.conversationId}</Typography.Text> },
                     { key: 'savedReused', label: '保存方式', children: binding.savedReused ? '复用已保存任务' : '新建保存任务' },

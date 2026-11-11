@@ -1297,3 +1297,174 @@ test('a missing run is a 404 run_not_found', async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+// ---------------------------------------------------------------------------
+// B5.6 designer receiver
+// ---------------------------------------------------------------------------
+
+const DESIGNER_ADMIN = '1454000012';
+
+function designerReceipt(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return receipt({
+    receiverKind: 'designer',
+    receiverAdminId: DESIGNER_ADMIN,
+    projectScope: [PROJECT],
+    ...overrides,
+  });
+}
+
+function designerRecord(options: RecordOptions = {}): LiveRunRecord {
+  return makeRecord({ ...options, saveReceipt: options.saveReceipt ?? designerReceipt() });
+}
+
+function designerBinding(
+  overrides: Partial<NonNullable<PeriodReportBusinessSnapshot['binding']>> = {},
+): NonNullable<PeriodReportBusinessSnapshot['binding']> {
+  return {
+    id: '9001',
+    project_id: null,
+    admin_id: DESIGNER_ADMIN,
+    conversation_id: '7001',
+    audience: 'designer',
+    status: 'enabled',
+    user_id: null,
+    ...overrides,
+  };
+}
+
+function designerSnapshot(overrides: SnapshotOptions = {}): PeriodReportBusinessSnapshot {
+  const base = snapshot();
+  const current = base.project!;
+  return {
+    ...base,
+    binding: designerBinding(),
+    // A designer receiver never depends on the customer link.
+    project: { ...current, customer_access: false },
+    ...overrides,
+  };
+}
+
+function mapDesigner(
+  snapshotOverrides: SnapshotOptions = {},
+  record: LiveRunRecord = designerRecord(),
+) {
+  return mapPeriodReportRunStatus({
+    record,
+    binding: bindingView(record),
+    snapshot: designerSnapshot(snapshotOverrides),
+    observedAt: OBSERVED_AT,
+  });
+}
+
+test('extract keeps a designer receipt only with one admin and exactly the run project', () => {
+  const designer = extractPeriodReportRunBinding(designerRecord());
+  assert.equal(designer.ok, true);
+  assert.deepEqual(designer.reasons, []);
+  assert.equal(designer.binding?.receiverKind, 'designer');
+  assert.equal(designer.binding?.receiverAdminId, DESIGNER_ADMIN);
+  assert.deepEqual(designer.binding?.projectScope, [PROJECT]);
+
+  for (const projectScope of [[], [PROJECT, '1456'], ['1456']]) {
+    const missing = extractPeriodReportRunBinding(
+      makeRecord({ saveReceipt: designerReceipt({ projectScope }) }),
+    );
+    assert.equal(missing.ok, false);
+    assert.ok(missing.reasons.includes('project_scope_mismatch'));
+  }
+  const noAdmin = extractPeriodReportRunBinding(
+    makeRecord({ saveReceipt: designerReceipt({ receiverAdminId: '' }) }),
+  );
+  assert.equal(noAdmin.ok, false);
+  assert.ok(noAdmin.reasons.includes('receiver_binding_missing'));
+});
+
+test('an unknown receiver type is explicitly rejected, never read as the owner', () => {
+  const unknown = extractPeriodReportRunBinding(
+    makeRecord({ saveReceipt: receipt({ receiverKind: 'service', receiverAdminId: '1' }) }),
+  );
+  assert.equal(unknown.ok, false);
+  assert.ok(unknown.reasons.includes('receiver_kind_unsupported'));
+  assert.ok(unknown.reasons.includes('receiver_binding_missing'));
+});
+
+test('a designer receiver is available even when the customer link is revoked', () => {
+  const progress = mapDesigner({ project: { ...snapshot().project!, customer_access: false } });
+  assert.equal(progress.overall, 'completed');
+  assert.deepEqual(progress.availability, { state: 'available', reason: 'available' });
+  assert.equal(progress.reasons.includes('customer_access_revoked'), false);
+});
+
+test('a designer without an active membership is access_revoked with a designer reason', () => {
+  const progress = mapDesigner({ followup_available: false });
+  assert.equal(progress.overall, 'unavailable');
+  assert.deepEqual(progress.availability, {
+    state: 'access_revoked',
+    reason: 'designer_membership_revoked',
+  });
+  assert.ok(progress.reasons.includes('designer_membership_revoked'));
+});
+
+test('a designer binding that does not prove the receipt receiver is never available', () => {
+  const wrongAudience = mapDesigner({ binding: designerBinding({ audience: 'worker' }) });
+  assert.deepEqual(wrongAudience.availability, {
+    state: 'access_revoked',
+    reason: 'designer_binding_mismatch',
+  });
+  assert.equal(wrongAudience.overall, 'unavailable');
+
+  const projectScoped = mapDesigner({ binding: designerBinding({ project_id: PROJECT }) });
+  assert.deepEqual(projectScoped.availability, {
+    state: 'access_revoked',
+    reason: 'designer_binding_mismatch',
+  });
+  assert.equal(projectScoped.overall, 'unavailable');
+
+  const wrongAdmin = mapDesigner({ binding: designerBinding({ admin_id: '9999' }) });
+  assert.equal(wrongAdmin.overall, 'unknown');
+  assert.equal(wrongAdmin.completed, false);
+  assert.ok(wrongAdmin.reasons.includes('designer_binding_mismatch'));
+});
+
+test('a designer facts scope that is not exactly the run project stays unknown', () => {
+  for (const projectIds of [[], [PROJECT, '1456'], ['1456']] as const) {
+    const progress = mapDesigner({ factsRun: workerFactsRun(projectIds) });
+    assert.equal(progress.overall, 'unknown');
+    assert.ok(progress.reasons.includes('report_scope_mismatch'));
+  }
+});
+
+test('the reader carries the designer receiver through to the observation binding', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'period-report-status-designer-'));
+  const runId = 'run-period-designer';
+  try {
+    const store = createFileWorkflowRunStore({ rootDir: dir });
+    await store.create(designerRecord({ runId }));
+
+    const loaded: PeriodRunBindingView[] = [];
+    const observation = await readPeriodReportRunStatus({
+      runId,
+      viewer: { enterpriseId: ENTERPRISE, adminId: ADMIN },
+      runStore: store,
+      loadSnapshot: async (_transaction, binding) => {
+        loaded.push(binding);
+        return designerSnapshot();
+      },
+      now: () => new Date(NOW),
+    });
+
+    assert.equal(loaded[0]?.receiverKind, 'designer');
+    assert.equal(loaded[0]?.receiverAdminId, DESIGNER_ADMIN);
+    assert.deepEqual(loaded[0]?.projectScope, [PROJECT]);
+    assert.equal(observation.bound, true);
+    assert.equal(observation.binding?.receiverKind, 'designer');
+    assert.equal(observation.binding?.receiverAdminId, DESIGNER_ADMIN);
+    assert.deepEqual(observation.binding?.projectScope, [PROJECT]);
+    assert.equal(observation.progress?.overall, 'completed');
+    assert.deepEqual(observation.progress?.availability, {
+      state: 'available',
+      reason: 'available',
+    });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

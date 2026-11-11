@@ -57,6 +57,7 @@ export type PeriodReceiverStatus =
   | 'project_inactive'
   | 'customer_access_revoked'
   | 'worker_unavailable'
+  | 'designer_unavailable'
   | 'conversation_unavailable'
   | 'audience_disabled';
 
@@ -66,10 +67,10 @@ export interface PeriodReportScope {
   readonly projectName: string;
   readonly bindingId: string | null;
   readonly conversationId: string | null;
-  readonly receiverKind: 'customer' | 'worker';
+  readonly receiverKind: 'customer' | 'worker' | 'designer';
   readonly receiverAdminId: string | null;
   readonly receiverUserId: string | null;
-  readonly bindingAudience: 'customer' | 'worker';
+  readonly bindingAudience: 'customer' | 'worker' | 'designer';
   readonly reportKey: string;
   /** The plan is enabled so the existing Worker may process the queued task. */
   readonly legacyPlanEnabled: boolean;
@@ -203,12 +204,12 @@ function legacyScheduleDue(settings: Row): boolean {
 function assertConfiguredProject(
   settings: Row,
   projectId: string,
-  receiverKind: 'customer' | 'worker',
+  receiverKind: 'customer' | 'worker' | 'designer',
 ): void {
   const configured = configuredProjectIds(settings);
-  if (receiverKind === 'worker') {
-    // The worker receiver is single-project by contract: a broader or empty
-    // plan would let another project's period slip into this run.
+  if (receiverKind !== 'customer') {
+    // A staff receiver is single-project by contract: a broader or empty plan
+    // would let another project's period slip into this run.
     if (configured.length !== 1 || configured[0] !== projectId) {
       fail('period_report_project_scope_mismatch', 409);
     }
@@ -225,8 +226,10 @@ function narrowedSettings(settings: Row, projectId: string): Row {
 }
 
 function receiverAdminId(receiver: LivePeriodReceiver): string | null {
-  return receiver.kind === 'worker' && receiver.adminId ? receiver.adminId : null;
+  return receiver.kind === 'customer' ? null : receiver.adminId ?? null;
 }
+
+const KNOWN_RECEIVER_KINDS: ReadonlySet<string> = new Set(['customer', 'worker', 'designer']);
 
 async function customerBinding(
   tx: PostgresTransaction,
@@ -243,10 +246,11 @@ async function customerBinding(
   );
 }
 
-async function workerBinding(
+async function staffBinding(
   tx: PostgresTransaction,
   enterpriseId: string,
   adminId: string,
+  audience: 'worker' | 'designer',
   mode: LockMode,
 ): Promise<Row | undefined> {
   const principal = `admin:${adminId}`;
@@ -254,7 +258,7 @@ async function workerBinding(
     tx,
     sql`select b.* from app.construction_followup_bindings b
       where b.enterprise_id=${enterpriseId} and b.principal_key=${principal}
-        and b.audience='worker' and b.project_id is null and b.scope_key='enterprise'
+        and b.audience=${audience} and b.project_id is null and b.scope_key='enterprise'
         and b.status='enabled'
       order by b.id limit 1 ${lockClause(mode)}`,
   );
@@ -267,26 +271,28 @@ async function receiverBinding(
   receiver: LivePeriodReceiver,
   mode: LockMode,
 ): Promise<Row | undefined> {
-  if (receiver.kind !== 'worker') {
+  if (receiver.kind === 'customer') {
     return customerBinding(tx, enterpriseId, projectId, mode);
   }
   const adminId = receiverAdminId(receiver);
   if (!adminId) return undefined;
-  return workerBinding(tx, enterpriseId, adminId, mode);
+  return staffBinding(tx, enterpriseId, adminId, receiver.kind, mode);
 }
 
 /** The existing enterprise staff policy plus the fixed project membership. */
-async function workerAvailable(
+async function staffAvailable(
   tx: PostgresTransaction,
   enterpriseId: string,
   adminId: string,
   projectId: string,
+  role: 'worker' | 'designer',
 ): Promise<boolean> {
+  const adminRole = role === 'designer' ? 'designer' : 'construction_staff';
   const admin = await one(
     tx,
     sql`select id from app.admin_users
       where enterprise_id=${enterpriseId} and id=${adminId} and status='active'
-        and role='construction_staff' and must_change_password=false for share`,
+        and role=${adminRole} and must_change_password=false for share`,
   );
   if (!admin) return false;
   const member = await one(
@@ -309,7 +315,7 @@ async function receiverBindingById(
   mode: LockMode,
 ): Promise<Row | undefined> {
   if (!scope.bindingId) return undefined;
-  if (scope.receiverKind === 'worker') {
+  if (scope.receiverKind !== 'customer') {
     const adminId = scope.receiverAdminId;
     if (!adminId) return undefined;
     const principal = `admin:${adminId}`;
@@ -317,7 +323,7 @@ async function receiverBindingById(
       tx,
       sql`select * from app.construction_followup_bindings
         where enterprise_id=${scope.enterpriseId} and id=${scope.bindingId}
-          and principal_key=${principal} and audience='worker'
+          and principal_key=${principal} and audience=${scope.receiverKind}
           and project_id is null and scope_key='enterprise' and status='enabled'
         ${lockClause(mode)}`,
     );
@@ -337,10 +343,16 @@ async function receiverBindingAvailable(
   binding: Row,
 ): Promise<boolean> {
   if (!await followupAvailable(tx, scope.enterpriseId, binding)) return false;
-  if (scope.receiverKind !== 'worker') return true;
+  if (scope.receiverKind === 'customer') return true;
   const adminId = scope.receiverAdminId;
   return Boolean(adminId)
-    && workerAvailable(tx, scope.enterpriseId, adminId!, scope.projectId);
+    && staffAvailable(
+      tx,
+      scope.enterpriseId,
+      adminId!,
+      scope.projectId,
+      scope.receiverKind,
+    );
 }
 
 interface ReportExpectation {
@@ -348,7 +360,7 @@ interface ReportExpectation {
   readonly start: Date;
   readonly end: Date;
   readonly projectId: string;
-  readonly worker: boolean;
+  readonly receiverKind: 'customer' | 'worker' | 'designer';
 }
 
 function sameInstant(value: unknown, expected: Date): boolean {
@@ -388,8 +400,8 @@ async function findReportInTransaction(
       where v.enterprise_id=${enterpriseId} and v.report_id=${String(report.id)}
         and v.revision=${Number(report.latest_revision)}`,
   );
-  if (expected.worker) {
-    // A worker run is a single-project receiver: never inherit another
+  if (expected.receiverKind !== 'customer') {
+    // A staff run is a single-project receiver: never inherit another
     // project's or another conversation generation's same-period report.
     if (String(report.binding_id) !== bindingId) {
       fail('period_report_scope_conflict', 409);
@@ -467,10 +479,10 @@ async function loadScopeInTransaction(
   ) receiverStatus = 'project_inactive';
   else if (receiver.kind === 'customer' && !project.customer_access) {
     receiverStatus = 'customer_access_revoked';
-  } else if (receiver.kind === 'worker') {
+  } else if (receiver.kind !== 'customer') {
     const adminId = receiverAdminId(receiver);
-    if (!adminId || !await workerAvailable(tx, actor.enterpriseId, adminId, projectId)) {
-      receiverStatus = 'worker_unavailable';
+    if (!adminId || !await staffAvailable(tx, actor.enterpriseId, adminId, projectId, receiver.kind)) {
+      receiverStatus = `${receiver.kind}_unavailable`;
     } else if (!audienceEnabled) receiverStatus = 'audience_disabled';
     else if (!await followupAvailable(tx, actor.enterpriseId, binding)) {
       receiverStatus = 'conversation_unavailable';
@@ -487,9 +499,12 @@ async function loadScopeInTransaction(
       })
     : '';
 
-  const bindingAudience: 'customer' | 'worker' = String(binding?.audience) === 'worker'
-    ? 'worker'
-    : receiver.kind;
+  const bindingAudience: 'customer' | 'worker' | 'designer' =
+    String(binding?.audience) === 'worker'
+      ? 'worker'
+      : String(binding?.audience) === 'designer'
+        ? 'designer'
+        : receiver.kind;
 
   return {
     enterpriseId: actor.enterpriseId,
@@ -498,7 +513,7 @@ async function loadScopeInTransaction(
     bindingId: binding ? String(binding.id) : null,
     conversationId: conversation ? String(conversation.id) : null,
     receiverKind: receiver.kind,
-    receiverAdminId: receiver.kind === 'worker' ? receiverAdminId(receiver) : null,
+    receiverAdminId: receiver.kind === 'customer' ? null : receiverAdminId(receiver),
     receiverUserId: binding?.user_id ? String(binding.user_id) : null,
     bindingAudience,
     reportKey,
@@ -539,9 +554,9 @@ async function queueInTransaction(
   const binding = await receiverBinding(tx, actor.enterpriseId, projectId, receiver, 'update');
   if (!binding) fail('period_report_receiver_unavailable', 409);
   if (!reportAudienceEnabled(settings, binding)) fail('period_report_audience_disabled', 409);
-  if (receiver.kind === 'worker') {
+  if (receiver.kind !== 'customer') {
     const adminId = receiverAdminId(receiver);
-    if (!adminId || !await workerAvailable(tx, actor.enterpriseId, adminId, projectId)) {
+    if (!adminId || !await staffAvailable(tx, actor.enterpriseId, adminId, projectId, receiver.kind)) {
       fail('period_report_receiver_unavailable', 409);
     }
   }
@@ -593,7 +608,7 @@ async function queueInTransaction(
       start: period.start,
       end: period.end,
       projectId,
-      worker: receiver.kind === 'worker',
+      receiverKind: receiver.kind,
     },
   );
 }
@@ -756,7 +771,7 @@ export function createPeriodReportStore(
                 start: period.start,
                 end: period.end,
                 projectId: scope.projectId,
-                worker: scope.receiverKind === 'worker',
+                receiverKind: scope.receiverKind,
               },
             ),
           )
@@ -796,6 +811,28 @@ function receiverFailure(operation: PendingOperation, status: PeriodReceiverStat
       : 'period_report_receiver_unavailable',
     `period report receiver is ${status}`,
   );
+}
+
+/** The host read object must describe exactly the authorized receiver. */
+function receiversMatchScope(
+  receivers: Readonly<Record<string, unknown>>,
+  scope: PeriodReportScope,
+  projectId: string,
+): boolean {
+  const same = (field: string, expected: string | null) =>
+    String(receivers[field] ?? '') === String(expected ?? '');
+  if (!same('projectId', projectId)
+    || !same('bindingId', scope.bindingId)
+    || !same('conversationId', scope.conversationId)) {
+    return false;
+  }
+  if (scope.receiverKind === 'worker') {
+    return same('scope', 'enterprise_worker') && same('workerAdminId', scope.receiverAdminId);
+  }
+  if (scope.receiverKind === 'designer') {
+    return same('scope', 'enterprise_designer') && same('designerAdminId', scope.receiverAdminId);
+  }
+  return same('scope', 'project_customer') && same('customerUserId', scope.receiverUserId);
 }
 
 function saveReceipt(report: StoredPeriodReport, scope: PeriodReportScope): Record<string, WorkflowValue> {
@@ -868,6 +905,15 @@ export function createPeriodReportPorts(options: PeriodReportPortOptions): LiveO
   return {
     async execute(operation, context) {
       try {
+        // An unknown host receiver must be rejected explicitly; it must never
+        // silently fall through to the project owner path.
+        if (!KNOWN_RECEIVER_KINDS.has(receiver.kind)) {
+          throw failure(
+            operation,
+            'receiver_kind_invalid',
+            `receiver kind ${JSON.stringify(receiver.kind)} is not supported`,
+          );
+        }
         const bound = context.businessEvent.receiver;
         if (
           bound
@@ -954,14 +1000,23 @@ export function createPeriodReportPorts(options: PeriodReportPortOptions): LiveO
                     workerAdminId: scope.receiverAdminId,
                     audience: 'worker',
                   }
-                : {
-                    scope: 'project_customer',
-                    projectId: context.projectId,
-                    bindingId: scope.bindingId,
-                    conversationId: scope.conversationId,
-                    customerUserId: scope.receiverUserId,
-                    audience: 'customer',
-                  },
+                : scope.receiverKind === 'designer'
+                  ? {
+                      scope: 'enterprise_designer',
+                      projectId: context.projectId,
+                      bindingId: scope.bindingId,
+                      conversationId: scope.conversationId,
+                      designerAdminId: scope.receiverAdminId,
+                      audience: 'designer',
+                    }
+                  : {
+                      scope: 'project_customer',
+                      projectId: context.projectId,
+                      bindingId: scope.bindingId,
+                      conversationId: scope.conversationId,
+                      customerUserId: scope.receiverUserId,
+                      audience: 'customer',
+                    },
               receiverCount: 1,
             };
             return available;
@@ -1056,24 +1111,12 @@ export function createPeriodReportPorts(options: PeriodReportPortOptions): LiveO
               );
             }
             if (
-              scope.receiverKind === 'worker'
-                ? String(receivers.scope ?? '') !== 'enterprise_worker'
-                  || String(receivers.projectId ?? '') !== context.projectId
-                  || String(receivers.bindingId ?? '') !== String(scope.bindingId ?? '')
-                  || String(receivers.conversationId ?? '') !== String(scope.conversationId ?? '')
-                  || String(receivers.workerAdminId ?? '') !== String(scope.receiverAdminId ?? '')
-                : String(receivers.scope ?? '') !== 'project_customer'
-                  || String(receivers.projectId ?? '') !== context.projectId
-                  || String(receivers.bindingId ?? '') !== String(scope.bindingId ?? '')
-                  || String(receivers.conversationId ?? '') !== String(scope.conversationId ?? '')
-                  || String(receivers.customerUserId ?? '') !== String(scope.receiverUserId ?? '')
+              !receiversMatchScope(receivers, scope, context.projectId)
             ) {
               throw failure(
                 operation,
                 'receiver_scope_mismatch',
-                scope.receiverKind === 'worker'
-                  ? 'delivery receivers do not match the authorized project worker'
-                  : 'delivery receivers do not match the authorized project customer',
+                `delivery receivers do not match the authorized ${scope.receiverKind} receiver`,
               );
             }
             const key = scopeKey(scope);

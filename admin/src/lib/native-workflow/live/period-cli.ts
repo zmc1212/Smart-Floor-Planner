@@ -11,7 +11,7 @@ import type { LivePeriodReceiver } from './types';
 export const PERIOD_CLI_KINDS = ['daily', 'weekly'] as const;
 export type PeriodCliKind = (typeof PERIOD_CLI_KINDS)[number];
 
-export const PERIOD_RECEIVER_KINDS = ['customer', 'worker'] as const;
+export const PERIOD_RECEIVER_KINDS = ['customer', 'worker', 'designer'] as const;
 export type PeriodReceiverKind = (typeof PERIOD_RECEIVER_KINDS)[number];
 
 export const PERIOD_DEFINITION_ID: Readonly<Record<PeriodCliKind, string>> = {
@@ -126,45 +126,96 @@ export function parseReceiverKindArg(argv: readonly string[]): PeriodReceiverKin
   const option = readCliOption(argv, '--receiver-kind');
   if (!option.present) return 'customer';
   if (option.value === undefined) {
-    throw new PeriodCliError('receiver_kind_missing', '--receiver-kind requires a value (customer or worker)');
+    throw new PeriodCliError(
+      'receiver_kind_missing',
+      '--receiver-kind requires a value (customer, worker or designer)',
+    );
   }
   if (!(PERIOD_RECEIVER_KINDS as readonly string[]).includes(option.value)) {
-    throw new PeriodCliError('receiver_kind_invalid', '--receiver-kind must be customer or worker');
+    throw new PeriodCliError(
+      'receiver_kind_invalid',
+      '--receiver-kind must be customer, worker or designer',
+    );
   }
   return option.value as PeriodReceiverKind;
 }
 
 /**
+ * Resolve the receiver id flag for one staff receiver. A worker receiver uses
+ * `--worker-id`, a designer receiver uses `--designer-id`; either flag is
+ * rejected for a customer receiver or for the other staff kind.
+ */
+export function parseStaffIdArg(
+  argv: readonly string[],
+  kind: PeriodReceiverKind,
+  flag: '--worker-id' | '--designer-id',
+): string | undefined {
+  const prefix = flag === '--worker-id' ? 'worker' : 'designer';
+  const option = readCliOption(argv, flag);
+  const expected = kind === 'worker' ? '--worker-id' : kind === 'designer' ? '--designer-id' : null;
+  if (flag !== expected) {
+    if (option.present) {
+      throw new PeriodCliError(
+        `${prefix}_id_forbidden`,
+        `${flag} is not valid for a ${kind} receiver`,
+      );
+    }
+    return undefined;
+  }
+  if (!option.present) {
+    throw new PeriodCliError(
+      `${prefix}_id_missing`,
+      `${flag} is required for a ${kind} receiver`,
+    );
+  }
+  if (option.value === undefined || !/^[1-9]\d{0,18}$/.test(option.value)) {
+    throw new PeriodCliError(
+      `${prefix}_id_invalid`,
+      `${flag} must be a positive integer admin id`,
+    );
+  }
+  return option.value;
+}
+
+/**
  * Resolve `--worker-id` against the selected receiver kind. A worker receiver
- * requires one positive admin id; a customer receiver must not carry one.
+ * requires one positive admin id; any other receiver must not carry one.
  */
 export function parseWorkerIdArg(
   argv: readonly string[],
   kind: PeriodReceiverKind,
 ): string | undefined {
-  const option = readCliOption(argv, '--worker-id');
-  if (kind === 'customer') {
-    if (option.present) {
-      throw new PeriodCliError('worker_id_forbidden', '--worker-id is only valid for a worker receiver');
-    }
-    return undefined;
-  }
-  if (!option.present) {
-    throw new PeriodCliError('worker_id_missing', '--worker-id is required for a worker receiver');
-  }
-  if (option.value === undefined || !/^[1-9]\d{0,18}$/.test(option.value)) {
-    throw new PeriodCliError('worker_id_invalid', '--worker-id must be a positive integer admin id');
-  }
-  return option.value;
+  return parseStaffIdArg(argv, kind, '--worker-id');
+}
+
+/**
+ * Resolve `--designer-id` against the selected receiver kind. A designer
+ * receiver requires one positive admin id; any other receiver must not carry one.
+ */
+export function parseDesignerIdArg(
+  argv: readonly string[],
+  kind: PeriodReceiverKind,
+): string | undefined {
+  return parseStaffIdArg(argv, kind, '--designer-id');
 }
 
 /** Host-owned receiver identity assembled from the validated CLI flags. */
 export function parseReceiverArg(argv: readonly string[]): LivePeriodReceiver {
   const kind = parseReceiverKindArg(argv);
-  const workerId = parseWorkerIdArg(argv, kind);
-  return kind === 'worker'
-    ? { kind: 'worker', adminId: workerId }
-    : { kind: 'customer' };
+  if (kind === 'worker') {
+    const adminId = parseWorkerIdArg(argv, kind);
+    // A worker receiver must not smuggle the other staff id flag.
+    parseDesignerIdArg(argv, kind);
+    return { kind, adminId };
+  }
+  if (kind === 'designer') {
+    const adminId = parseDesignerIdArg(argv, kind);
+    parseWorkerIdArg(argv, kind);
+    return { kind, adminId };
+  }
+  parseWorkerIdArg(argv, kind);
+  parseDesignerIdArg(argv, kind);
+  return { kind: 'customer' };
 }
 
 export interface CliPeriodInput {

@@ -8,8 +8,17 @@ import type { TriggerEvent } from '../types';
 import { parseFixedPeriod, type FixedPeriod } from './period-event';
 import { writeProjectAccess, type ProjectAccess, type ProjectLock } from './project-access';
 
-/** Host-owned worker receiver evidence returned to the CLI. */
-export interface WorkerReceiverEvidence {
+/** Staff receivers reuse one enterprise-scoped binding and one project scope. */
+export type StaffReceiverKind = 'worker' | 'designer';
+
+const ADMIN_ROLE: Readonly<Record<StaffReceiverKind, string>> = {
+  worker: 'construction_staff',
+  designer: 'designer',
+};
+
+/** Host-owned staff receiver evidence returned to the CLI. */
+export interface StaffReceiverEvidence {
+  readonly receiverKind: StaffReceiverKind;
   readonly adminId: string;
   readonly adminRole: string;
   readonly memberRole: string;
@@ -22,21 +31,22 @@ export interface WorkerReceiverEvidence {
   readonly status: string;
 }
 
-export interface PrepareWorkerPeriodReportOptions {
+export interface PrepareStaffPeriodReportOptions {
   readonly enterpriseId: string;
   readonly actor: ConstructionActor;
   readonly projectId: string;
-  readonly workerId: string;
+  readonly receiverKind: StaffReceiverKind;
+  readonly adminId: string;
   readonly event: TriggerEvent;
 }
 
-export interface PrepareWorkerPeriodReportResult {
+export interface PrepareStaffPeriodReportResult {
   readonly period: FixedPeriod;
-  readonly worker: WorkerReceiverEvidence;
+  readonly staff: StaffReceiverEvidence;
 }
 
 /** Offline seams; production always uses the real authorization/binding code. */
-export interface WorkerReceiverDependencies {
+export interface StaffReceiverDependencies {
   /** Test seam for the trusted clock; defaults to `new Date()` per prepare. */
   readonly now?: () => Date;
   readonly transaction?: <T>(
@@ -52,49 +62,58 @@ export interface WorkerReceiverDependencies {
   readonly ensureBinding?: typeof ensureFollowupBinding;
 }
 
-function workerUnavailable(message: string, details: Record<string, unknown> = {}): never {
-  throw new WorkflowOperationError('worker_receiver_unavailable', 422, message, details);
+function receiverUnavailable(
+  kind: StaffReceiverKind,
+  message: string,
+  details: Record<string, unknown> = {},
+): never {
+  throw new WorkflowOperationError(`${kind}_receiver_unavailable`, 422, message, details);
 }
 
 /**
  * Validate the fixed period, then authorize the management executor before the
- * worker receiver can create anything.
+ * staff receiver can create anything.
  *
  * Order is load-bearing:
  *   1. trusted-clock period-end check (no database work),
  *   2. tenant transaction,
  *   3. real project write authorization (project row lock first),
  *   4. existing staff admin/member/followup-access checks,
- *   5. the shared enterprise-scoped worker binding last.
+ *   5. the shared enterprise-scoped staff binding last.
  *
- * A rejected actor or an ended-period violation therefore cannot leave a
- * conversation/binding/participant behind.
+ * A rejected actor, a wrong staff role or an ended-period violation therefore
+ * cannot leave a conversation/binding/participant behind.
  */
-export async function prepareWorkerPeriodReport(
-  options: PrepareWorkerPeriodReportOptions,
-  dependencies: WorkerReceiverDependencies = {},
-): Promise<PrepareWorkerPeriodReportResult> {
+export async function prepareStaffPeriodReport(
+  options: PrepareStaffPeriodReportOptions,
+  dependencies: StaffReceiverDependencies = {},
+): Promise<PrepareStaffPeriodReportResult> {
   const now = dependencies.now ?? (() => new Date());
   const period = parseFixedPeriod(options.event, now());
 
   const transaction = dependencies.transaction ?? withTenantTransaction;
   const authorizeWrite = dependencies.authorizeWrite ?? writeProjectAccess;
   const ensureBinding = dependencies.ensureBinding ?? ensureFollowupBinding;
-  const { enterpriseId, actor, projectId, workerId } = options;
+  const { enterpriseId, actor, projectId, adminId, receiverKind } = options;
+  const expectedRole = ADMIN_ROLE[receiverKind];
 
-  const worker = await transaction(enterpriseId, async (tx) => {
+  const staff = await transaction(enterpriseId, async (tx) => {
     // The executor's management access is re-checked first; this locks the
     // project row before any staff query or binding write.
     await authorizeWrite(tx, actor, projectId, 'update');
 
     const admin = await one(tx, sql`select id,role,status,must_change_password
-      from app.admin_users where enterprise_id=${enterpriseId} and id=${workerId} for share`);
+      from app.admin_users where enterprise_id=${enterpriseId} and id=${adminId} for share`);
     if (!admin) {
-      workerUnavailable(`worker admin ${workerId} was not found in enterprise ${enterpriseId}`);
+      receiverUnavailable(
+        receiverKind,
+        `${receiverKind} admin ${adminId} was not found in enterprise ${enterpriseId}`,
+      );
     }
-    if (String(admin.status) !== 'active' || String(admin.role) !== 'construction_staff' || admin.must_change_password !== false) {
-      workerUnavailable(
-        `worker admin ${workerId} must be an active construction_staff account without a required password change`,
+    if (String(admin.status) !== 'active' || String(admin.role) !== expectedRole || admin.must_change_password !== false) {
+      receiverUnavailable(
+        receiverKind,
+        `${receiverKind} admin ${adminId} must be an active ${expectedRole} account without a required password change`,
         {
           admin: {
             status: admin.status,
@@ -106,29 +125,34 @@ export async function prepareWorkerPeriodReport(
     }
 
     const member = await one(tx, sql`select role,active from app.construction_members
-      where enterprise_id=${enterpriseId} and project_id=${projectId} and admin_id=${workerId} for share`);
+      where enterprise_id=${enterpriseId} and project_id=${projectId} and admin_id=${adminId} for share`);
     if (!member || member.active !== true || String(member.role) === 'observer') {
-      workerUnavailable(
-        `worker admin ${workerId} needs an active non-observer member row on project ${projectId}`,
+      receiverUnavailable(
+        receiverKind,
+        `${receiverKind} admin ${adminId} needs an active non-observer member row on project ${projectId}`,
         { member: member ?? null },
       );
     }
 
     const access = await one(tx, sql`select app.construction_followup_staff_access(
-      ${workerId}::bigint,${enterpriseId}::bigint) as role`);
+      ${adminId}::bigint,${enterpriseId}::bigint) as role`);
     if (!access?.role) {
-      workerUnavailable(`worker admin ${workerId} has no current staff followup access in enterprise ${enterpriseId}`);
+      receiverUnavailable(
+        receiverKind,
+        `${receiverKind} admin ${adminId} has no current staff followup access in enterprise ${enterpriseId}`,
+      );
     }
 
-    // Only the existing enterprise-scoped worker binding is allowed. A
-    // project-scoped worker binding would violate the binding contract.
+    // Only the existing enterprise-scoped staff binding is allowed. A
+    // project-scoped staff binding would violate the binding contract.
     const binding: Row = await ensureBinding(tx, enterpriseId, {
       kind: 'admin',
-      id: workerId,
-      audience: 'worker',
+      id: adminId,
+      audience: receiverKind,
     });
     return {
-      adminId: workerId,
+      receiverKind,
+      adminId,
       adminRole: String(admin.role),
       memberRole: String(member.role),
       accessRole: String(access.role),
@@ -141,5 +165,5 @@ export async function prepareWorkerPeriodReport(
     };
   });
 
-  return { period, worker };
+  return { period, staff };
 }

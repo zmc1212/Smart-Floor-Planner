@@ -5,8 +5,8 @@
  *   2. published definition resolution (the selected revision),
  *   3. shared published-target check (compile/digest/nodeVersions/eventType/
  *      periodKind) before any business write,
- *   4. management authorization, worker checks and the enterprise-scoped
- *      worker binding,
+ *   4. management authorization, staff receiver checks (worker or designer)
+ *      and the enterprise-scoped binding,
  *   5. the live runner with that same selected version and event.
  *
  * A rejected target therefore cannot reach `ensureFollowupBinding`, the run
@@ -14,6 +14,7 @@
  */
 
 import type { ConstructionActor } from '@/lib/construction/contracts';
+import { WorkflowOperationError } from '../errors';
 import type { PublishedWorkflowVersion } from '../store/types';
 import type { TriggerEvent } from '../types';
 import { parseFixedPeriod, type FixedPeriod } from './period-event';
@@ -27,10 +28,11 @@ import type {
   LiveRunStore,
 } from './types';
 import {
-  prepareWorkerPeriodReport,
-  type WorkerReceiverDependencies,
-  type WorkerReceiverEvidence,
-} from './worker-receiver';
+  prepareStaffPeriodReport,
+  type StaffReceiverDependencies,
+  type StaffReceiverEvidence,
+  type StaffReceiverKind,
+} from './staff-receiver';
 
 export interface PeriodReportEntryInput {
   /** Resolves the one published revision this run is allowed to execute. */
@@ -48,14 +50,31 @@ export interface PeriodReportEntryInput {
 export interface PeriodReportEntryDependencies {
   /** Trusted server clock; tests pin it. */
   readonly now?: () => Date;
-  readonly worker?: WorkerReceiverDependencies;
+  readonly staff?: StaffReceiverDependencies;
 }
 
 export interface PeriodReportEntryResult {
   readonly period: FixedPeriod;
-  readonly worker: WorkerReceiverEvidence | null;
+  readonly staff: StaffReceiverEvidence | null;
   readonly businessEvent: LiveBusinessEvent;
   readonly record: LiveRunRecord;
+}
+
+const RECEIVER_KINDS: ReadonlySet<string> = new Set(['customer', 'worker', 'designer']);
+
+/** An unknown host receiver kind must never fall back to the owner path. */
+function assertKnownReceiver(receiver: LivePeriodReceiver): void {
+  if (!RECEIVER_KINDS.has(receiver.kind)) {
+    throw new WorkflowOperationError(
+      'receiver_kind_invalid',
+      422,
+      `receiver kind ${JSON.stringify(receiver.kind)} is not supported`,
+    );
+  }
+}
+
+function staffKind(receiver: LivePeriodReceiver): StaffReceiverKind | null {
+  return receiver.kind === 'worker' || receiver.kind === 'designer' ? receiver.kind : null;
 }
 
 function periodReportBusinessEvent(
@@ -71,7 +90,7 @@ function periodReportBusinessEvent(
     periodKind: period.kind,
     periodStart: period.periodStart,
     periodEnd: period.periodEnd,
-    ...(receiver.kind === 'worker' ? { receiver } : {}),
+    ...(receiver.kind !== 'customer' ? { receiver } : {}),
   };
 }
 
@@ -80,27 +99,38 @@ export async function runPeriodReportEntry(
   dependencies: PeriodReportEntryDependencies = {},
 ): Promise<PeriodReportEntryResult> {
   const now = dependencies.now ?? (() => new Date());
-  // Both receivers must pass the trusted-clock period-end check before the
+  assertKnownReceiver(input.receiver);
+  // Every receiver must pass the trusted-clock period-end check before the
   // published definition/target is resolved.
   let period = parseFixedPeriod(input.event, now());
 
   const published = await input.loadPublished();
   resolvePublishedTarget(published, input.event);
 
-  // The worker receiver is authorized and bound last: management access,
-  // staff availability, then the enterprise-scoped binding create. A rejected
-  // target or executor leaves no conversation/binding/participant behind.
-  let worker: WorkerReceiverEvidence | null = null;
-  if (input.receiver.kind === 'worker' && input.receiver.adminId) {
-    const prepared = await prepareWorkerPeriodReport({
+  // The staff receiver is authorized and bound last: management access, staff
+  // availability, then the enterprise-scoped binding create. A rejected
+  // target, executor or receiver leaves no conversation/binding/participant
+  // behind.
+  let staff: StaffReceiverEvidence | null = null;
+  const kind = staffKind(input.receiver);
+  if (kind) {
+    if (!input.receiver.adminId) {
+      throw new WorkflowOperationError(
+        `${kind}_receiver_unavailable`,
+        422,
+        `a ${kind} receiver requires an admin id`,
+      );
+    }
+    const prepared = await prepareStaffPeriodReport({
       enterpriseId: input.enterpriseId,
       actor: input.actor,
       projectId: input.projectId,
-      workerId: input.receiver.adminId,
+      receiverKind: kind,
+      adminId: input.receiver.adminId,
       event: input.event,
-    }, dependencies.worker);
+    }, dependencies.staff);
     period = prepared.period;
-    worker = prepared.worker;
+    staff = prepared.staff;
   }
 
   const businessEvent = periodReportBusinessEvent(period, input.receiver);
@@ -115,5 +145,5 @@ export async function runPeriodReportEntry(
     runId: input.runId,
   });
 
-  return { period, worker, businessEvent, record };
+  return { period, staff, businessEvent, record };
 }

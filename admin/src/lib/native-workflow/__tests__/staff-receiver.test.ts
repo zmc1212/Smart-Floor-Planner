@@ -5,11 +5,12 @@ import { AssistantError } from '@/lib/assistant/contracts';
 import type { ConstructionActor } from '@/lib/construction/contracts';
 import { WorkflowOperationError } from '../errors';
 import type { TriggerEvent } from '../types';
-import { prepareWorkerPeriodReport } from '../live/worker-receiver';
+import { prepareStaffPeriodReport } from '../live/staff-receiver';
 
 const ENTERPRISE_ID = '1454';
 const ACTOR_ADMIN = '1454000007';
 const WORKER_ADMIN = '1454000008';
+const DESIGNER_ADMIN = '1454000011';
 const PROJECT_ID = '1455';
 
 const actor: ConstructionActor = { enterpriseId: ENTERPRISE_ID, adminId: ACTOR_ADMIN };
@@ -58,6 +59,24 @@ const workerBindingRow = {
   status: 'enabled',
   conversation_id: '7002',
   principal_key: `admin:${WORKER_ADMIN}`,
+};
+const designerAdminRow = {
+  id: DESIGNER_ADMIN,
+  role: 'designer',
+  status: 'active',
+  must_change_password: false,
+};
+const designerMemberRow = { role: 'designer', active: true };
+const designerBindingRow = {
+  id: '9003',
+  audience: 'designer',
+  admin_id: DESIGNER_ADMIN,
+  user_id: null,
+  project_id: null,
+  scope_key: 'enterprise',
+  status: 'enabled',
+  conversation_id: '7003',
+  principal_key: `admin:${DESIGNER_ADMIN}`,
 };
 
 interface RecordedQuery {
@@ -114,6 +133,9 @@ function fakeTransaction(transactions: { count: number }, tx: PostgresTransactio
 function responder(overrides: {
   actorAccess?: unknown[];
   actorMember?: unknown[];
+  admin?: unknown[];
+  member?: unknown[];
+  binding?: unknown[];
 } = {}): Responder {
   return (query) => {
     const text = query.text;
@@ -125,14 +147,20 @@ function responder(overrides: {
     if (text.includes('select role from app.construction_members')) {
       return overrides.actorMember ?? [{ role: 'manager' }];
     }
-    if (text.includes('select id,role,status,must_change_password')) return [workerAdminRow];
-    if (text.includes('select role,active from app.construction_members')) return [workerMemberRow];
+    if (text.includes('select id,role,status,must_change_password')) {
+      return overrides.admin ?? [workerAdminRow];
+    }
+    if (text.includes('select role,active from app.construction_members')) {
+      return overrides.member ?? [workerMemberRow];
+    }
     if (text.includes('construction_followup_staff_access')) return [{ role: 'worker' }];
     if (text.includes('pg_advisory_xact_lock')) return [];
-    // No worker binding exists yet: the real ensureFollowupBinding creates it.
+    // No staff binding exists yet: the real ensureFollowupBinding creates it.
     if (text.includes('select * from app.construction_followup_bindings')) return [];
     if (text.includes('insert into app.assistant_conversations')) return [{ id: '7002' }];
-    if (text.includes('insert into app.construction_followup_bindings')) return [workerBindingRow];
+    if (text.includes('insert into app.construction_followup_bindings')) {
+      return overrides.binding ?? [workerBindingRow];
+    }
     if (text.includes('insert into app.assistant_participants')) return [];
     return undefined;
   };
@@ -160,7 +188,7 @@ function queriesOn(calls: readonly RecordedQuery[], table: string): RecordedQuer
   return calls.filter((call) => new RegExp(`app\\.${table}\\b`, 'i').test(call.text));
 }
 
-function rejectedWorkerWrite(
+function rejectedStaffWrite(
   calls: readonly RecordedQuery[],
   transactions: { count: number },
 ): void {
@@ -178,6 +206,28 @@ function isAssistantForbidden(error: unknown): boolean {
   return error instanceof AssistantError && error.code === 'construction_forbidden';
 }
 
+function workerInput() {
+  return {
+    enterpriseId: ENTERPRISE_ID,
+    actor,
+    projectId: PROJECT_ID,
+    receiverKind: 'worker' as const,
+    adminId: WORKER_ADMIN,
+    event,
+  };
+}
+
+function designerInput(eventValue: TriggerEvent = event) {
+  return {
+    enterpriseId: ENTERPRISE_ID,
+    actor,
+    projectId: PROJECT_ID,
+    receiverKind: 'designer' as const,
+    adminId: DESIGNER_ADMIN,
+    event: eventValue,
+  };
+}
+
 test('an observer executor is rejected before any worker binding write', async () => {
   const database = fakeDatabase(responder({
     actorAccess: [{ role: 'observer' }],
@@ -187,13 +237,7 @@ test('an observer executor is rejected before any worker binding write', async (
   const transaction = fakeTransaction(transactions, database.tx);
 
   await assert.rejects(
-    () => prepareWorkerPeriodReport({
-      enterpriseId: ENTERPRISE_ID,
-      actor,
-      projectId: PROJECT_ID,
-      workerId: WORKER_ADMIN,
-      event,
-    }, { transaction, now: () => AFTER_PERIOD }),
+    () => prepareStaffPeriodReport(workerInput(), { transaction, now: () => AFTER_PERIOD }),
     isAssistantForbidden,
   );
 
@@ -203,7 +247,7 @@ test('an observer executor is rejected before any worker binding write', async (
     queriesOn(database.calls, 'construction_projects')[0]!.text,
     /for update/,
   );
-  rejectedWorkerWrite(database.calls, transactions);
+  rejectedStaffWrite(database.calls, transactions);
 });
 
 test('an unavailable executor is rejected with no worker binding write', async () => {
@@ -212,17 +256,11 @@ test('an unavailable executor is rejected with no worker binding write', async (
   const transaction = fakeTransaction(transactions, database.tx);
 
   await assert.rejects(
-    () => prepareWorkerPeriodReport({
-      enterpriseId: ENTERPRISE_ID,
-      actor,
-      projectId: PROJECT_ID,
-      workerId: WORKER_ADMIN,
-      event,
-    }, { transaction, now: () => AFTER_PERIOD }),
+    () => prepareStaffPeriodReport(workerInput(), { transaction, now: () => AFTER_PERIOD }),
     isAssistantForbidden,
   );
 
-  rejectedWorkerWrite(database.calls, transactions);
+  rejectedStaffWrite(database.calls, transactions);
   // The enterprise was active, so the failure is the actor's access row.
   assert.ok(queriesOn(database.calls, 'enterprises').length >= 1);
   assert.ok(queriesOn(database.calls, 'construction_actor_access').length >= 1);
@@ -235,13 +273,10 @@ test('a period that has not ended fails before the transaction opens', async () 
   const transaction = fakeTransaction(transactions, database.tx);
 
   await assert.rejects(
-    () => prepareWorkerPeriodReport({
-      enterpriseId: ENTERPRISE_ID,
-      actor,
-      projectId: PROJECT_ID,
-      workerId: WORKER_ADMIN,
-      event: weeklyEvent,
-    }, { transaction, now: () => new Date(WEEKLY_END.getTime() - 1) }),
+    () => prepareStaffPeriodReport(
+      { ...workerInput(), event: weeklyEvent },
+      { transaction, now: () => new Date(WEEKLY_END.getTime() - 1) },
+    ),
     (error: unknown) => error instanceof WorkflowOperationError && error.code === 'period_not_ended',
   );
 
@@ -254,18 +289,16 @@ test('a successful prepare creates the enterprise worker binding after the proje
   const transactions = { count: 0 };
   const transaction = fakeTransaction(transactions, database.tx);
 
-  const result = await prepareWorkerPeriodReport({
-    enterpriseId: ENTERPRISE_ID,
-    actor,
-    projectId: PROJECT_ID,
-    workerId: WORKER_ADMIN,
-    event,
-  }, { transaction, now: () => AFTER_PERIOD });
+  const result = await prepareStaffPeriodReport(workerInput(), {
+    transaction,
+    now: () => AFTER_PERIOD,
+  });
 
   assert.equal(result.period.kind, 'daily');
   assert.equal(result.period.start.toISOString(), '2026-11-09T16:00:00.000Z');
   assert.equal(result.period.end.toISOString(), '2026-11-10T16:00:00.000Z');
-  assert.deepEqual(result.worker, {
+  assert.deepEqual(result.staff, {
+    receiverKind: 'worker',
     adminId: WORKER_ADMIN,
     adminRole: 'construction_staff',
     memberRole: 'worker',
@@ -307,4 +340,74 @@ test('a successful prepare creates the enterprise worker binding after the proje
   assert.ok(workerMemberCheck < bindingInsert);
   assert.ok(database.calls.indexOf(conversationInserts[0]!) > projectLock);
   assert.ok(database.calls.indexOf(participantInserts[0]!) > bindingInsert);
+});
+
+test('a successful prepare creates the enterprise designer binding after the project lock', async () => {
+  const database = fakeDatabase(responder({
+    admin: [designerAdminRow],
+    member: [designerMemberRow],
+    binding: [designerBindingRow],
+  }));
+  const transactions = { count: 0 };
+  const transaction = fakeTransaction(transactions, database.tx);
+
+  const result = await prepareStaffPeriodReport(designerInput(), {
+    transaction,
+    now: () => AFTER_PERIOD,
+  });
+
+  assert.deepEqual(result.staff, {
+    receiverKind: 'designer',
+    adminId: DESIGNER_ADMIN,
+    adminRole: 'designer',
+    memberRole: 'designer',
+    accessRole: 'worker',
+    bindingId: '9003',
+    conversationId: '7003',
+    principalKey: `admin:${DESIGNER_ADMIN}`,
+    scopeKey: 'enterprise',
+    projectId: null,
+    status: 'enabled',
+  });
+
+  const bindingInsert = database.calls.findIndex((call) =>
+    /insert into app\.construction_followup_bindings/.test(call.text));
+  assert.ok(bindingInsert >= 0);
+  // The binding is enterprise-scoped and carries the designer audience.
+  assert.match(database.calls[bindingInsert]!.params.join(' '), /admin:1454000011.*designer/u);
+  for (const table of FORBIDDEN_TABLES) {
+    assert.equal(queriesOn(database.calls, table).length, 0, `${table} must not be touched`);
+  }
+});
+
+test('a designer receiver needs an active designer admin, never a worker account', async () => {
+  const database = fakeDatabase(responder({ admin: [workerAdminRow] }));
+  const transactions = { count: 0 };
+  const transaction = fakeTransaction(transactions, database.tx);
+
+  await assert.rejects(
+    () => prepareStaffPeriodReport(designerInput(), { transaction, now: () => AFTER_PERIOD }),
+    (error: unknown) => error instanceof WorkflowOperationError
+      && error.code === 'designer_receiver_unavailable',
+  );
+
+  rejectedStaffWrite(database.calls, transactions);
+  assert.equal(queriesOn(database.calls, 'assistant_conversations').length, 0);
+});
+
+test('a designer without a project member row is rejected before the binding write', async () => {
+  const database = fakeDatabase(responder({
+    admin: [designerAdminRow],
+    member: [],
+  }));
+  const transactions = { count: 0 };
+  const transaction = fakeTransaction(transactions, database.tx);
+
+  await assert.rejects(
+    () => prepareStaffPeriodReport(designerInput(), { transaction, now: () => AFTER_PERIOD }),
+    (error: unknown) => error instanceof WorkflowOperationError
+      && error.code === 'designer_receiver_unavailable',
+  );
+
+  rejectedStaffWrite(database.calls, transactions);
 });

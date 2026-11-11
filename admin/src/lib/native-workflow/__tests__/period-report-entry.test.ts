@@ -58,6 +58,25 @@ const workerBindingRow = {
   conversation_id: '7002',
   principal_key: `admin:${WORKER_ADMIN}`,
 };
+const DESIGNER_ADMIN = '1454000011';
+const designerAdminRow = {
+  id: DESIGNER_ADMIN,
+  role: 'designer',
+  status: 'active',
+  must_change_password: false,
+};
+const designerMemberRow = { role: 'designer', active: true };
+const designerBindingRow = {
+  id: '9003',
+  audience: 'designer',
+  admin_id: DESIGNER_ADMIN,
+  user_id: null,
+  project_id: null,
+  scope_key: 'enterprise',
+  status: 'enabled',
+  conversation_id: '7003',
+  principal_key: `admin:${DESIGNER_ADMIN}`,
+};
 
 interface RecordedQuery {
   readonly text: string;
@@ -110,21 +129,31 @@ function fakeTransaction(transactions: { count: number }, tx: PostgresTransactio
 }
 
 /** Real authorization/binding SQL, with only the database boundary faked. */
-function responder(): Responder {
+function responder(overrides: {
+  admin?: unknown[];
+  member?: unknown[];
+  binding?: unknown[];
+} = {}): Responder {
   return (query) => {
     const text = query.text;
     if (text.includes('from app.enterprises')) return [enterpriseRow];
     if (text.includes('construction_actor_access')) return [{ role: 'manager' }];
     if (text.includes('from app.construction_projects')) return [projectRow];
     if (text.includes('select role from app.construction_members')) return [{ role: 'manager' }];
-    if (text.includes('select id,role,status,must_change_password')) return [workerAdminRow];
-    if (text.includes('select role,active from app.construction_members')) return [workerMemberRow];
+    if (text.includes('select id,role,status,must_change_password')) {
+      return overrides.admin ?? [workerAdminRow];
+    }
+    if (text.includes('select role,active from app.construction_members')) {
+      return overrides.member ?? [workerMemberRow];
+    }
     if (text.includes('construction_followup_staff_access')) return [{ role: 'worker' }];
     if (text.includes('pg_advisory_xact_lock')) return [];
-    // No worker binding exists yet: the real ensureFollowupBinding creates it.
+    // No staff binding exists yet: the real ensureFollowupBinding creates it.
     if (text.includes('select * from app.construction_followup_bindings')) return [];
     if (text.includes('insert into app.assistant_conversations')) return [{ id: '7002' }];
-    if (text.includes('insert into app.construction_followup_bindings')) return [workerBindingRow];
+    if (text.includes('insert into app.construction_followup_bindings')) {
+      return overrides.binding ?? [workerBindingRow];
+    }
     if (text.includes('insert into app.assistant_participants')) return [];
     return undefined;
   };
@@ -236,7 +265,7 @@ function entryInput(
 function entryDependencies(state: EntryHarness, now: Date = AFTER_PERIOD) {
   return {
     now: () => now,
-    worker: {
+    staff: {
       transaction: fakeTransaction(state.transactions, state.database.tx),
       now: () => now,
     },
@@ -326,7 +355,8 @@ test('a matching weekly template and event proceeds through authorization, bindi
     assert.equal(queriesOn(state.database.calls, table).length, 0, `${table} must not be touched`);
   }
 
-  assert.equal(entry.worker?.bindingId, '9002');
+  assert.equal(entry.staff?.bindingId, '9002');
+  assert.equal(entry.staff?.receiverKind, 'worker');
   assert.equal(entry.period.kind, 'weekly');
   assert.equal(entry.period.periodStart, '2026-10-26');
   assert.equal(entry.period.periodEnd, '2026-11-02');
@@ -363,6 +393,97 @@ test('an unfinished period is rejected before the published target is loaded', a
     ),
     (error: unknown) => error instanceof WorkflowOperationError
       && error.code === 'period_not_ended',
+  );
+
+  assert.equal(state.loads.count, 0);
+  assertRejectedBeforeAnyBusinessWrite(state);
+});
+
+function designerHarness(overrides: Parameters<typeof responder>[0] = {}): EntryHarness {
+  return {
+    database: fakeDatabase(responder({
+      admin: [designerAdminRow],
+      member: [designerMemberRow],
+      binding: [designerBindingRow],
+      ...overrides,
+    })),
+    transactions: { count: 0 },
+    ports: stoppingPorts(),
+    runs: countingRunStore(),
+    loads: { count: 0 },
+  };
+}
+
+function designerEntryInput(
+  state: EntryHarness,
+  published: PublishedWorkflowVersion,
+) {
+  return {
+    ...entryInput(state, published),
+    receiver: { kind: 'designer', adminId: DESIGNER_ADMIN } as const,
+  };
+}
+
+test('a designer receiver binds the enterprise designer binding and reaches the runner', async () => {
+  const state = designerHarness();
+  const weekly = await publish('weekly');
+
+  const entry = await runPeriodReportEntry(
+    designerEntryInput(state, weekly),
+    entryDependencies(state),
+  );
+
+  assert.equal(state.transactions.count, 1);
+  const bindingInsert = state.database.calls.findIndex((call) =>
+    /insert into app\.construction_followup_bindings/.test(call.text));
+  assert.ok(bindingInsert >= 0);
+  assert.match(
+    state.database.calls[bindingInsert]!.params.join(' '),
+    /admin:1454000011.*designer/u,
+  );
+  assert.equal(entry.staff?.receiverKind, 'designer');
+  assert.equal(entry.staff?.bindingId, '9003');
+  assert.equal(entry.staff?.conversationId, '7003');
+  assert.deepEqual(entry.businessEvent.receiver, {
+    kind: 'designer',
+    adminId: DESIGNER_ADMIN,
+  });
+  assert.equal(entry.record.binding.definitionId, 'period-report-weekly');
+  assert.equal(state.runs.creates(), 1);
+});
+
+test('a designer receiver with a non-designer admin role is rejected before the binding write', async () => {
+  const state = designerHarness({ admin: [workerAdminRow] });
+  const weekly = await publish('weekly');
+
+  await assert.rejects(
+    () => runPeriodReportEntry(designerEntryInput(state, weekly), entryDependencies(state)),
+    (error: unknown) => error instanceof WorkflowOperationError
+      && error.code === 'designer_receiver_unavailable',
+  );
+
+  assert.equal(state.transactions.count, 1);
+  assert.equal(writesTo(state.database.calls, 'construction_followup_bindings').length, 0);
+  assert.equal(writesTo(state.database.calls, 'assistant_conversations').length, 0);
+  assert.equal(writesTo(state.database.calls, 'assistant_participants').length, 0);
+  for (const table of ENQUEUE_TABLES) {
+    assert.equal(queriesOn(state.database.calls, table).length, 0, `${table} must not be touched`);
+  }
+  assert.deepEqual(state.ports.calls, []);
+  assert.equal(state.runs.creates(), 0);
+});
+
+test('an unknown receiver kind is rejected before the period or published target', async () => {
+  const state = harness();
+  const weekly = await publish('weekly');
+
+  await assert.rejects(
+    () => runPeriodReportEntry({
+      ...entryInput(state, weekly),
+      receiver: { kind: 'service' } as unknown as { kind: 'customer' },
+    }, entryDependencies(state)),
+    (error: unknown) => error instanceof WorkflowOperationError
+      && error.code === 'receiver_kind_invalid',
   );
 
   assert.equal(state.loads.count, 0);

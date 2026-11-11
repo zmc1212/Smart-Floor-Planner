@@ -34,7 +34,7 @@ export const PERIOD_REPORT_STATUS_CONTRACT = 'period-report-run-status-v1';
 export type PeriodKind = 'daily' | 'weekly';
 
 /** Host-selected receiver that the save receipt must confirm. */
-export type PeriodReceiverKind = 'customer' | 'worker';
+export type PeriodReceiverKind = 'customer' | 'worker' | 'designer';
 
 export type PeriodStepState = 'queued' | 'running' | 'ready' | 'failed' | 'unknown';
 
@@ -311,7 +311,7 @@ function receiptProjectScope(value: unknown): readonly string[] | null {
 
 function periodReceiverKind(value: unknown): PeriodReceiverKind | null {
   if (value === undefined) return 'customer';
-  return value === 'customer' || value === 'worker' ? value : null;
+  return value === 'customer' || value === 'worker' || value === 'designer' ? value : null;
 }
 
 function iso(value: unknown): string | null {
@@ -455,8 +455,9 @@ export function extractPeriodReportRunBinding(record: LiveRunRecord): {
     : null;
   const projectScope = receiptProjectScope(receipt.projectScope);
   if (receiverKind === null) {
+    reasons.push('receiver_kind_unsupported');
     reasons.push('receiver_binding_missing');
-  } else if (receiverKind === 'worker') {
+  } else if (receiverKind !== 'customer') {
     if (receiverAdminId === null) reasons.push('receiver_binding_missing');
     if (
       projectScope === null
@@ -494,7 +495,7 @@ export function extractPeriodReportRunBinding(record: LiveRunRecord): {
       conversationId: String(receipt.conversationId),
       savedReused: receipt.reused === true,
       receiverKind: receiverKind ?? 'customer',
-      receiverAdminId: receiverKind === 'worker' ? receiverAdminId : null,
+      receiverAdminId: receiverKind === 'customer' ? null : receiverAdminId,
       projectScope,
     },
   };
@@ -651,17 +652,20 @@ function mapAvailability(
   const record = snapshot.binding;
   if (!record) return { state: 'access_revoked', reason: 'binding_missing' };
   if (record.status !== 'enabled') return { state: 'access_revoked', reason: 'binding_disabled' };
-  const worker = binding.receiverKind === 'worker';
-  if (worker) {
-    // A worker receiver is an enterprise-scoped binding: no project column and
+  const staff = binding.receiverKind !== 'customer';
+  if (staff) {
+    // A staff receiver is an enterprise-scoped binding: no project column and
     // exactly the admin frozen in the save receipt.
     if (
-      record.audience !== 'worker'
+      record.audience !== binding.receiverKind
       || record.admin_id === null
       || record.admin_id !== (binding.receiverAdminId ?? null)
       || record.project_id !== null
     ) {
-      return { state: 'access_revoked', reason: 'worker_binding_mismatch' };
+      return {
+        state: 'access_revoked',
+        reason: `${binding.receiverKind}_binding_mismatch`,
+      };
     }
   } else if (record.audience !== 'customer') {
     return { state: 'access_revoked', reason: 'audience_not_customer' };
@@ -679,11 +683,14 @@ function mapAvailability(
   }
   const project = snapshot.project;
   if (!project) return { state: 'access_revoked', reason: 'project_missing' };
-  if (worker) {
-    // Membership revocation drops the conversation access check; a worker is
-    // never granted access through the customer link.
+  if (staff) {
+    // Membership revocation drops the conversation access check; a staff
+    // receiver is never granted access through the customer link.
     if (snapshot.followup_available !== true) {
-      return { state: 'access_revoked', reason: 'worker_membership_revoked' };
+      return {
+        state: 'access_revoked',
+        reason: `${binding.receiverKind}_membership_revoked`,
+      };
     }
   } else {
     if (project.customer_access !== true) {
@@ -744,14 +751,14 @@ function bindingMismatchReasons(
   if (snapshot.factsRun && snapshot.factsRun.id !== binding.factsRunId) {
     reasons.push('facts_binding_mismatch');
   }
-  if (binding.receiverKind === 'worker') {
-    // The worker binding and the frozen facts scope must prove the same single
+  if (binding.receiverKind !== 'customer') {
+    // The staff binding and the frozen facts scope must prove the same single
     // project as the run; an old customer receipt never carries this check.
     if (
       snapshot.binding
       && snapshot.binding.admin_id !== (binding.receiverAdminId ?? null)
     ) {
-      reasons.push('worker_binding_mismatch');
+      reasons.push(`${binding.receiverKind}_binding_mismatch`);
     }
     if (snapshot.factsRun) {
       const scope = snapshot.factsRun.project_ids;

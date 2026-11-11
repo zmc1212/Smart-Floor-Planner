@@ -195,19 +195,20 @@ async function evidence(
   // Kind + period alone would also match the customer report for the period.
   const reportId = typeof receipt?.reportId === 'string' ? receipt.reportId : '';
   const receiptBindingId = typeof receipt?.bindingId === 'string' ? receipt.bindingId : '';
-  const workerAdminId = businessEvent.receiver?.kind === 'worker'
+  const workerAdminId = businessEvent.receiver && businessEvent.receiver.kind !== 'customer'
     ? businessEvent.receiver.adminId
     : undefined;
+  const receiverAudience = businessEvent.receiver?.kind;
   return withTenantTransaction(enterpriseId, async (tx) => {
-    // Without a receipt the worker binding can still be resolved from the
+    // Without a receipt the staff binding can still be resolved from the
     // host-owned principal, so the evidence never falls back to the customer.
-    const workerBinding = !receiptBindingId && workerAdminId
+    const staffBinding = !receiptBindingId && workerAdminId && receiverAudience
       ? await one(tx, sql`select id from app.construction_followup_bindings
           where enterprise_id=${enterpriseId} and principal_key=${`admin:${workerAdminId}`}
-            and audience='worker' and project_id is null and scope_key='enterprise'
+            and audience=${receiverAudience} and project_id is null and scope_key='enterprise'
           order by id limit 1`)
       : undefined;
-    const bindingId = receiptBindingId || (workerBinding ? String(workerBinding.id) : '');
+    const bindingId = receiptBindingId || (staffBinding ? String(staffBinding.id) : '');
     const bindingFilter = bindingId ? sql`and binding_id=${bindingId}` : sql``;
     const reports = await one(tx, sql`select count(*)::int as count from app.construction_reports
       where enterprise_id=${enterpriseId} and kind=${kind}
@@ -216,7 +217,7 @@ async function evidence(
       ? await one(tx, sql`select id,latest_revision,report_key,binding_id,kind,period_start,period_end
           from app.construction_reports
           where enterprise_id=${enterpriseId} and id=${reportId} ${bindingFilter} limit 1`)
-      : businessEvent.receiver?.kind === 'worker'
+      : businessEvent.receiver && businessEvent.receiver.kind !== 'customer'
         ? undefined
         : await one(tx, sql`select id,latest_revision,report_key,binding_id,kind,period_start,period_end
             from app.construction_reports where enterprise_id=${enterpriseId} and kind=${kind}
@@ -303,7 +304,8 @@ async function main() {
       runId,
     });
   } catch (error) {
-    if (error instanceof WorkflowOperationError && error.code === 'worker_receiver_unavailable') {
+    if (error instanceof WorkflowOperationError
+      && (error.code === 'worker_receiver_unavailable' || error.code === 'designer_receiver_unavailable')) {
       failJson({
         code: error.code,
         error: error.message,
@@ -323,10 +325,10 @@ async function main() {
     runId,
     status: record.status,
     database: describeB4DatabaseTarget(database),
-    receiver: receiver.kind === 'worker'
-      ? { kind: 'worker', adminId: receiver.adminId }
-      : { kind: 'customer' },
-    worker: entry.worker,
+    receiver: receiver.kind === 'customer'
+      ? { kind: 'customer' }
+      : { kind: receiver.kind, adminId: receiver.adminId },
+    staff: entry.staff,
     binding: record.binding,
     businessEvent: entry.businessEvent,
     operations: record.operations.map((operation) => ({

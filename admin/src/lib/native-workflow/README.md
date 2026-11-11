@@ -975,16 +975,143 @@ The 4 strict-opt-in live route cases were not run this round. `npm run build`
 still prints "Compiled successfully" and then exits 1 at the pre-existing
 `scripts/fastgpt/setup-unified.mts:113:75` type error; this is not a full build
 pass, and the generated `admin/src/lib/survey-runtime/source-manifest.json`
-change was reverted. Scope stays one project/one worker; boss, designer and
-multi-project receivers, the scheduler, canvas, Worker changes and shared
-migrations remain out of scope.
+change was reverted. Scope stays one project/one worker; boss and multi-project
+receivers, the scheduler, canvas, Worker changes and shared migrations remain out
+of scope.
+
+## B5.6 single-project designer weekly report
+
+The same weekly adapter now serves a designer receiver. A designer report stays
+one project, one designer, one weekly window; no scheduler, Worker, message
+channel, Mini Program source or shared migration is added.
+
+- Receiver/scope contract: `PeriodReportScope.receiverKind` is
+  `customer`/`worker`/`designer`. `live/staff-receiver.ts` is the shared
+  worker/designer preparation (it replaces the worker-only helper) and keeps the
+  load-bearing order: trusted ended period → selected published version →
+  `resolvePublishedTarget` → management-executor `update` authorization →
+  active staff account check → active non-observer project membership →
+  `construction_followup_staff_access` → `ensureFollowupBinding()` last. A
+  designer requires an active `designer` admin without a required password
+  change (a `construction_staff` account is rejected), and `--admin-id` stays
+  the management executor: receiving a report grants no management permission.
+- Binding: the designer is an existing enterprise-scoped binding
+  (`principal_key=admin:<id>`, `audience=designer`, `project_id NULL`,
+  `scope_key=enterprise`). There is no project-scoped designer binding; the
+  customer keeps binding `1` and the worker keeps binding `2`.
+- Facts: designer reads reuse the non-customer facts branch and deliberately do
+  not check `customer_access`. Records/photos come from the fixed project's
+  authorized published records through membership, not from the customer link
+  or another role's report. The plan must still be exactly
+  `project_ids=[projectId]`; a broader or empty plan fails with
+  `period_report_project_scope_mismatch`.
+- Reuse/isolation: an existing report is reused only when binding, conversation
+  generation, kind/period and `policy_snapshot.scope.project_ids` all match;
+  otherwise the run fails with `period_report_scope_conflict` or
+  `period_report_generation_conflict`. `report_key` alone never selects a
+  customer or worker report.
+- CLI: `--receiver-kind designer` and `--designer-id`; a worker receiver rejects
+  `--designer-id` and a designer receiver rejects `--worker-id`. The pure
+  `receiver_kind_missing`/`receiver_kind_invalid`/`designer_id_missing`/
+  `designer_id_invalid`/`designer_id_forbidden`/`worker_id_forbidden` checks run
+  before the database target is resolved.
+- Ports/status: `read.receiver_scope` returns `enterprise_designer` with
+  `designerAdminId`; the save receipt records `receiverKind=designer`,
+  `receiverAdminId` and `projectScope=[projectId]`; `deliver.inapp` matches that
+  exact object. The status reader reports `receiverKind=designer`, requires
+  exactly one frozen project, uses the designer binding plus current membership
+  as its access proof (no `customer_access`), and rejects an unknown receiver
+  type with `receiver_kind_unsupported` (receipt) or `receiver_kind_invalid`
+  (ports) instead of falling back to the owner. The Admin live tab shows
+  `designer <id>` as the receiver.
+
+Recorded B evidence (2026-11-11, isolated B database, week 2026-10-26 →
+2026-11-02, enterprise `1454`, project `1454000004`): the designer fixture
+seeded marked designer `1454000011` (`b5-6-designer-1454`, base user
+`1454000011` `b5-6-designer-user-1454`, active `designer` member) and marked
+outsider `1454000012` without project membership. Fresh generation created
+report `10`/revision `1`/facts run `18`/body run `19`/message `125` at
+conversation `1454000009` (`seq 2`), delivery `delivered`; its `report_key`
+equals customer report `7` and worker report `8` because the existing formula
+has no projectId, and binding `3` plus
+`policy_snapshot.scope.project_ids=['1454000004']` keep them distinct. Facts
+records are `[2,3]`: record `4` (worker author) is excluded by the existing
+revocation rule, so a new designer report never resurrects a worker record
+invalidated by audit `125`. Fresh counters moved reports/deliveries/messages
+`9/9/9`→`10/10/10` and jobs/runs `17/17`→`19/19`, attempts/usage `6/6`→`7/7`.
+The body used exactly one succeeded `llm-settings-override` attempt
+(`accepted:true`), observed `1180` input + `2051` output tokens, zero FastGPT.
+The same-period replay with a new workflow runId reused report `10`/r1/facts run
+`18` and the same delivery with every counter unchanged.
+
+Journey (the same report, `journey.json`, 20/20 checks): the designer staff token
+lists binding `3`, opens the weekly detail (`composed`/`delivered`) with records
+`2`/`3`, opens the record `2` photo (media `2`) and record `3`, and writes a real
+read receipt (`read_at` `2026-11-11T15:28:01.585Z`). Exit/re-entry returns the
+same report/records/photo. The customer list contains only binding `1` and the
+worker list only binding `2`; both get 403/404 on the designer report and record,
+and a cross-enterprise designer token/status read is rejected (403/401).
+`customer_access=false` does not block the designer detail/status; it was
+restored and read back. A designer without project membership and a
+`construction_staff` account used as the designer receiver are rejected with
+`designer_receiver_unavailable`; an observer executor is rejected with
+`construction_forbidden`; the unfinished week `2026-11-09`→`2026-11-16` and a
+weekly event on the daily template are rejected before business writes; all
+negative cases left every counter unchanged. A real
+`ConstructionService.execute('member', …)` revocation wrote audit `127`
+(`active=false`): the list hid binding `3`, detail/record/media returned
+404/403, and the status reader reported `unavailable`/`access_revoked`/
+`designer_membership_revoked`. Restoration wrote audit `128` (`active=true`); the
+old report stays `unavailable`/`source_unavailable`/`source_project_revoked`
+under the existing historical rule, while customer report `7` stays available.
+The whole journey added no report, delivery, message, job, run or model call
+(`7/7/19/19/10/10/10` before and after).
+
+Stable DevTools native evidence (main-workspace `miniprogram` checkout, same
+appId, no window replaced; runtime-only API rewrite to the worktree B server on
+`127.0.0.1:3018`): the designer entry auto-opened binding `3` and the weekly card
+`10月26日 · 施工周报` (period `10月26日 00:00—11月2日 00:00`, `delivered`);
+detail showed report `10`/r1 `composed` with records `2`/`3`; both originals
+opened by real taps (record `2` v3 with media `2`, path key `2_3_2`; record `3`
+v3 without a photo); opening the detail acknowledged the delivery; exit/re-entry
+returned the same card and read state (positive 7/7, screenshots). After the real
+revocation (audits `127`/`128` untouched) the entry, an explicit refresh and
+exit/re-entry showed the report only as an unavailable card, the detail stayed
+closed and no record/photo returned (negative 4/4). The designer first-entry
+guide was skipped by its normal `跳过` action before the chat route; that is a
+user action, not a data/audit change.
+
+Evidence:
+`admin/tmp/b5-6-period-report-runs/b5-6-designer-20261111151733062/verification.json`
+(fresh/replay/model), `journey.json` (API/isolation/revocation/restoration) and
+`native-ui/native-designer-positive.json`, `native-designer-negative.json` plus
+7 screenshots. The fixture script is
+`admin/scripts/native-workflow-designer-fixture.ts` and the drivers are
+`admin/scripts/native-workflow-designer-report-acceptance.ts` and
+`admin/tmp/b5-6-designer-journey.ts`.
+
+Tests: the documented offline command now lists 26 files and runs 304 tests,
+all 304 pass with 0 fail. `staff-receiver.test.ts` is 7/7 (workers, designers,
+role/membership rejection and no-write assertions), `period-cli.test.ts` is
+17/17 (including `--designer-id` and unknown receiver kinds),
+`period-report-ports.test.ts` is 34/34 (designer scope/save/delivery and
+single-project reuse), `period-report-entry.test.ts` is 7/7 (designer binding
+and unknown receiver rejection before writes), and the status suite covers
+designer receipts/bindings/availability plus the explicit unknown-receiver
+reason. `npm run build` still prints "Compiled successfully" and then exits 1 at
+the pre-existing `scripts/fastgpt/setup-unified.mts:113:75` type error; the
+generated `source-manifest.json` change was reverted. Scope stays one
+project/one designer; boss and multi-project receivers, the scheduler, canvas,
+Worker changes and shared migrations remain out of scope. B5.5 worker evidence
+is unchanged and is not replaced by this designer evidence; the worker's
+"complete continuous lifecycle not verified" limitation still stands.
 
 ## Reproduce
 
 From `admin/` (no database, no Worker, no model):
 
 ```powershell
-npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts src/lib/native-workflow/__tests__/acceptance-store.test.ts src/lib/native-workflow/__tests__/acceptance-conversation.test.ts src/lib/native-workflow/__tests__/acceptance-state.test.ts src/lib/native-workflow/__tests__/period-report-ports.test.ts src/lib/native-workflow/__tests__/report-model-evidence.test.ts src/lib/native-workflow/__tests__/period-report-status.test.ts src/lib/native-workflow/__tests__/period-report-status-reentry.test.ts src/lib/native-workflow/__tests__/admin-run-status.test.ts src/lib/native-workflow/__tests__/period-report-status-route.test.ts src/lib/native-workflow/__tests__/period-report-status-route-guards.test.ts src/lib/native-workflow/__tests__/period-event-weekly.test.ts src/lib/native-workflow/__tests__/period-cli.test.ts src/lib/native-workflow/__tests__/worker-receiver.test.ts src/lib/native-workflow/__tests__/worker-fixture.test.ts src/lib/native-workflow/__tests__/period-report-entry.test.ts
+npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts src/lib/native-workflow/__tests__/acceptance-store.test.ts src/lib/native-workflow/__tests__/acceptance-conversation.test.ts src/lib/native-workflow/__tests__/acceptance-state.test.ts src/lib/native-workflow/__tests__/period-report-ports.test.ts src/lib/native-workflow/__tests__/report-model-evidence.test.ts src/lib/native-workflow/__tests__/period-report-status.test.ts src/lib/native-workflow/__tests__/period-report-status-reentry.test.ts src/lib/native-workflow/__tests__/admin-run-status.test.ts src/lib/native-workflow/__tests__/period-report-status-route.test.ts src/lib/native-workflow/__tests__/period-report-status-route-guards.test.ts src/lib/native-workflow/__tests__/period-event-weekly.test.ts src/lib/native-workflow/__tests__/period-cli.test.ts src/lib/native-workflow/__tests__/staff-receiver.test.ts src/lib/native-workflow/__tests__/worker-fixture.test.ts src/lib/native-workflow/__tests__/period-report-entry.test.ts
 npx tsx src/lib/native-workflow/playground/simulate.ts
 ```
 

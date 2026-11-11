@@ -883,13 +883,15 @@ test('worker receiver resolves the enterprise staff binding without customer_acc
   // The project keeps customer_access=false; a worker receiver never reads it.
   const bindingQuery = database.calls.find((call) => call.text.includes('construction_followup_bindings'));
   assert.ok(bindingQuery);
-  assert.match(bindingQuery.text, /audience='worker'/);
+  assert.match(bindingQuery.text, /audience=\$3/);
   assert.match(bindingQuery.text, /project_id is null/);
   assert.match(bindingQuery.text, /scope_key='enterprise'/);
   assert.ok(bindingQuery.params.includes(`admin:${WORKER_ADMIN}`));
+  assert.ok(bindingQuery.params.includes('worker'));
   const adminQuery = database.calls.find((call) => call.text.includes('admin_users'));
   assert.ok(adminQuery);
-  assert.match(adminQuery.text, /role='construction_staff'/);
+  assert.match(adminQuery.text, /role=\$3/);
+  assert.ok(adminQuery.params.includes('construction_staff'));
   assert.match(adminQuery.text, /must_change_password=false/);
 });
 
@@ -1072,6 +1074,219 @@ test('a customer delivery receiver object cannot deliver a worker scope', async 
       contextWithReceiver(workerReceiver),
     ),
     isFailure('receiver_scope_mismatch'),
+  );
+});
+
+const DESIGNER_ADMIN = '1454000011';
+const designerReceiver: LivePeriodReceiver = { kind: 'designer', adminId: DESIGNER_ADMIN };
+
+function designerScope(overrides: Partial<PeriodReportScope> = {}): PeriodReportScope {
+  const period = parseFixedDailyPeriod(event, AFTER_PERIOD);
+  return scope({
+    bindingId: '9003',
+    conversationId: '7003',
+    receiverKind: 'designer',
+    receiverAdminId: DESIGNER_ADMIN,
+    receiverUserId: null,
+    bindingAudience: 'designer',
+    reportKey: periodReportKey(period, { id: '7003' }),
+    ...overrides,
+  });
+}
+
+const designerSettings = {
+  ...workerSettings,
+  audiences: ['designer'],
+};
+
+const designerBindingRow = {
+  id: '9003',
+  audience: 'designer',
+  admin_id: DESIGNER_ADMIN,
+  user_id: null,
+  project_id: null,
+  scope_key: 'enterprise',
+  status: 'enabled',
+  conversation_id: '7003',
+};
+
+function designerResponder(overrides: {
+  admin?: unknown[];
+  member?: unknown[];
+  access?: unknown[];
+  followup?: unknown[];
+  binding?: unknown[];
+} = {}) {
+  return (query: RecordedQuery): unknown[] | undefined => {
+    if (query.text.includes('construction_report_settings')) return [designerSettings];
+    if (query.text.includes('construction_followup_bindings')) {
+      return overrides.binding ?? [designerBindingRow];
+    }
+    if (query.text.includes('assistant_followup_conversation_access')) {
+      return overrides.followup ?? [{ allowed: true }];
+    }
+    if (query.text.includes('assistant_conversations')) return [{ id: '7003', entry_snapshot: {} }];
+    if (query.text.includes('construction_members')) return overrides.member ?? [{ role: 'designer' }];
+    if (query.text.includes('construction_followup_staff_access')) {
+      return overrides.access ?? [{ role: 'worker' }];
+    }
+    if (query.text.includes('admin_users')) return overrides.admin ?? [{ id: DESIGNER_ADMIN }];
+    return undefined;
+  };
+}
+
+function designerPorts(respond: (query: RecordedQuery) => unknown[] | undefined) {
+  const database = fakeDatabase(respond);
+  const store = createPeriodReportStore({
+    transaction: fakeTransaction({ count: 0 }, database.tx),
+    authorizeWrite: async () => ({ owner: true, memberRole: null, project: workerProjectRow }),
+  });
+  return {
+    ports: createPeriodReportPorts({
+      actor,
+      store,
+      receiver: designerReceiver,
+      now: () => AFTER_PERIOD,
+    }),
+    database,
+  };
+}
+
+test('designer receiver resolves the enterprise designer binding without customer_access', async () => {
+  const { ports, database } = designerPorts(designerResponder());
+  const result = await ports.execute(
+    operation('read.receiver_scope'),
+    contextWithReceiver(designerReceiver),
+  );
+
+  assert.equal(result.receiverCount, 1);
+  assert.deepEqual(result.receivers, {
+    scope: 'enterprise_designer',
+    projectId: '1455',
+    bindingId: '9003',
+    conversationId: '7003',
+    designerAdminId: DESIGNER_ADMIN,
+    audience: 'designer',
+  });
+  // The project keeps customer_access=false; a designer receiver never reads it.
+  const bindingQuery = database.calls.find((call) => call.text.includes('construction_followup_bindings'));
+  assert.ok(bindingQuery);
+  assert.match(bindingQuery.text, /audience=\$3/);
+  assert.match(bindingQuery.text, /project_id is null/);
+  assert.match(bindingQuery.text, /scope_key='enterprise'/);
+  assert.ok(bindingQuery.params.includes(`admin:${DESIGNER_ADMIN}`));
+  assert.ok(bindingQuery.params.includes('designer'));
+  const adminQuery = database.calls.find((call) => call.text.includes('admin_users'));
+  assert.ok(adminQuery);
+  assert.match(adminQuery.text, /role=\$3/);
+  assert.ok(adminQuery.params.includes('designer'));
+  assert.match(adminQuery.text, /must_change_password=false/);
+});
+
+test('a designer report saves and delivers through the enterprise designer scope', async () => {
+  const { state, store } = fakeStore({
+    scope: designerScope(),
+    queued: storedReport(designerScope()),
+    delivery: {
+      state: 'delivered',
+      messageId: '8103',
+      conversationId: '7003',
+      deliveredAt: '2026-11-11T02:05:00.000Z',
+      messagePurpose: 'construction.report.facts',
+    },
+  });
+  const ports = createPeriodReportPorts({ actor, store, receiver: designerReceiver });
+
+  const saved = await ports.execute(
+    operation('save.period_report'),
+    contextWithReceiver(designerReceiver),
+  );
+  assert.equal(saved.saved, true);
+  const receipt = saved.saveReceipt as Record<string, unknown>;
+  assert.equal(receipt.receiverKind, 'designer');
+  assert.equal(receipt.receiverAdminId, DESIGNER_ADMIN);
+  assert.deepEqual(receipt.projectScope, ['1455']);
+  assert.deepEqual(state.scopeReceivers, [designerReceiver]);
+  assert.deepEqual(state.enqueueReceivers, [designerReceiver]);
+
+  const receivers = await ports.execute(
+    operation('read.receiver_scope'),
+    contextWithReceiver(designerReceiver),
+  );
+  assert.deepEqual(receivers.receivers, {
+    scope: 'enterprise_designer',
+    projectId: '1455',
+    bindingId: '9003',
+    conversationId: '7003',
+    designerAdminId: DESIGNER_ADMIN,
+    audience: 'designer',
+  });
+
+  const delivered = await ports.execute(
+    operation('deliver.inapp', { receivers: receivers.receivers as WorkflowValue }),
+    contextWithReceiver(designerReceiver),
+  );
+  assert.equal(delivered.delivered, true);
+  const delivery = delivered.deliveryReceipt as Record<string, unknown>;
+  assert.equal(delivery.status, 'delivered');
+  assert.match(String(delivery.receiptId), /^report-delivery:5001:1:9003$/);
+});
+
+test('a designer receiver without an active designer account is unavailable', async () => {
+  // The admin query returns no row for a role mismatch (worker account).
+  const { ports } = designerPorts(designerResponder({ admin: [] }));
+  await assert.rejects(
+    () => ports.execute(operation('save.period_report'), contextWithReceiver(designerReceiver)),
+    isFailure('period_report_receiver_unavailable'),
+  );
+
+  const receivers = await ports.execute(
+    operation('read.receiver_scope'),
+    contextWithReceiver(designerReceiver),
+  );
+  assert.equal(receivers.receiverCount, 0);
+  assert.equal(
+    (receivers.receivers as Record<string, unknown>).status,
+    'designer_unavailable',
+  );
+});
+
+test('a customer delivery receiver object cannot deliver a designer scope', async () => {
+  const { store } = fakeStore({
+    scope: designerScope(),
+    queued: storedReport(designerScope()),
+  });
+  const ports = createPeriodReportPorts({ actor, store, receiver: designerReceiver });
+  await ports.execute(operation('save.period_report'), contextWithReceiver(designerReceiver));
+
+  await assert.rejects(
+    () => ports.execute(
+      operation('deliver.inapp', {
+        receivers: {
+          scope: 'enterprise_worker',
+          projectId: '1455',
+          bindingId: '9003',
+          conversationId: '7003',
+          workerAdminId: DESIGNER_ADMIN,
+          audience: 'worker',
+        },
+      }),
+      contextWithReceiver(designerReceiver),
+    ),
+    isFailure('receiver_scope_mismatch'),
+  );
+});
+
+test('an unknown host receiver kind is rejected instead of falling back to the owner', async () => {
+  const { store } = fakeStore();
+  const ports = createPeriodReportPorts({
+    actor,
+    store,
+    receiver: { kind: 'service' } as unknown as LivePeriodReceiver,
+  });
+  await assert.rejects(
+    () => ports.execute(operation('read.receiver_scope'), context()),
+    isFailure('receiver_kind_invalid'),
   );
 });
 
