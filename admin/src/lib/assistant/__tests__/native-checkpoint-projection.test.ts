@@ -16,6 +16,24 @@ const businessAssistant: ModelMessage = { role: 'assistant', content: '',
   toolCalls: [{ id: 'call-business', name: 'query_business', arguments: '{"domain":"project"}' }] };
 const businessTool: ModelMessage = { role: 'tool', callId: 'call-business', content: JSON.stringify(businessReceipt) };
 
+test('a call id reused by a later non-business tool keeps that receipt verbatim', () => {
+  // Batch 1 used call-business for query_business and was consumed. Batch 2
+  // reuses the same id for search_enterprise; its resultKey-bearing receipt is
+  // not a business receipt and must reach the model exactly as saved.
+  const reusedAssistant: ModelMessage = { role: 'assistant', content: '',
+    toolCalls: [{ id: 'call-business', name: 'search_enterprise', arguments: '{"query":"防水"}' }] };
+  const reusedTool: ModelMessage = { role: 'tool', callId: 'call-business',
+    content: JSON.stringify({ ...businessReceipt, kind: 'enterprise', cites: [] }) };
+  const messages: ModelMessage[] = [userMessage, businessAssistant, businessTool, reusedAssistant, reusedTool];
+  const projected = projectLegacyBusinessToolMessages(messages);
+  assert.equal(projected.length, messages.length);
+  const first = projected[2]; assert.equal(first.role, 'tool');
+  if (first.role === 'tool') assert.deepEqual(JSON.parse(first.content), { status: businessReceipt.status, text: businessReceipt.text });
+  assert.equal(projected[4], reusedTool);
+  if (reusedTool.role === 'tool') assert.equal(reusedTool.content.includes('resultKey'), true);
+  assert.equal(JSON.stringify(messages).includes('resultKey'), true);
+});
+
 test('legacy query_business tool messages are projected to status/text without touching other messages', () => {
   const messages: ModelMessage[] = [userMessage, businessAssistant, businessTool];
   const before = JSON.stringify(messages);

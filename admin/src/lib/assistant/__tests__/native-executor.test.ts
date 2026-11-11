@@ -1,13 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { composeNativeDelivery, nativeCitationFeedback, nativeExecutorPrompt, recoveredDialogueToolState, xiaokNativeExecutorProtocol } from '../agent/native-executor';
+import { composeNativeDelivery, nativeCitationFeedback, nativeExecutorPrompt, recoveredDialogueToolState,
+  synthesisHistoryFields, xiaokNativeExecutorProtocol } from '../agent/native-executor';
 import { nativeAgentRuntimeBinding } from '../fastgpt/agent-v2/config';
+import { nativeHistoryCheckpoint } from '../fastgpt/rag-session';
 import { recoverableUnavailableRead, runRenovationAgent, type AgentRuntimePorts } from '../agent/runtime';
 import { modelBusinessReceipt } from '../agent/dialogue-tools';
 import { webCitations } from '../agent/dialogue-web-tools';
 import { webSynthesisSources } from '../agent/web-evidence';
-import { AssistantError, type Evidence } from '../contracts';
-import { ragAnswerParts, type RagCitationSource } from '../fastgpt/native-rag';
+import { AssistantError, type Evidence, type MessageContent } from '../contracts';
+import { ragAnswerParts, ragHistoryText, type RagCitationSource } from '../fastgpt/native-rag';
 import type { ModelTool, ModelTurnOutput } from '../contracts/model';
 
 type Code = { code?: string };
@@ -308,6 +310,74 @@ test('current-run sources: deleting every marker cannot bypass the missing-citat
   assert.throws(() => composeNativeDelivery(result.output!.text, '', 0, true),
     (error: Code) => error.code === 'missing_citation');
   assert.equal(composeNativeDelivery(result.output!.text, '项目记录快照内容', 0, true).modelIncluded, false);
+});
+
+/** The exact save shape of step 1006 (executor) read on the next turn
+ * (rag-session). Both helpers are the production sides of that seam. */
+function synthesisCheckpoint(modelText: string, deliveredText: string, modelIncluded: boolean,
+  citations: RagCitationSource[] = []) {
+  return { kind: 'synthesis', ...synthesisHistoryFields(modelIncluded, modelText, deliveredText),
+    citations, composition: { modelIncluded } };
+}
+const deliveredContent = (text: string): MessageContent => ({ version: 1, blocks: [{ type: 'text', text }] });
+const nextHistory = (checkpoint: ReturnType<typeof synthesisCheckpoint>, content: MessageContent) => {
+  const read = nativeHistoryCheckpoint(checkpoint, []);
+  return { text: ragHistoryText(content, read.original), citations: read.citations, original: read.original };
+};
+
+test('snapshot downgrade with a legal history CITE becomes the delivered history, not the dropped draft', () => {
+  const draft = '卫生间墙面先清理浮灰再涂刷界面剂[K7](CITE)。';
+  const composed = composeNativeDelivery(draft, '项目记录快照内容', 0, true);
+  assert.equal(composed.modelIncluded, false);
+  const checkpoint = synthesisCheckpoint(draft, composed.text, composed.modelIncluded);
+  // Save side: history raw and delivery agree; the dropped draft stays for audit.
+  assert.equal(checkpoint.raw, composed.text);
+  assert.equal(checkpoint.discarded, draft);
+  // Next-turn read side: no discarded prose, no marker re-parsed against an
+  // empty binding set (that combination threw invalid_model_citation).
+  const next = nextHistory(checkpoint, deliveredContent(composed.text));
+  assert.equal(next.original, undefined);
+  assert.deepEqual(next.citations, []);
+  assert.equal(next.text, composed.text);
+  assert.equal(next.text.includes('K7'), false);
+  assert.equal(next.text.includes('先清理浮灰'), false);
+});
+
+test('a legacy modelIncluded=false row never re-parses its discarded draft as history', () => {
+  // Rows saved before this rule keep the dropped K7 draft in `raw` and an empty
+  // `citations` array. The reader must ignore `raw` for them.
+  const legacy = { kind: 'synthesis', raw: '卫生间墙面先清理浮灰[K7](CITE)。', citations: [],
+    composition: { modelIncluded: false } };
+  const next = nextHistory(legacy, deliveredContent('项目记录快照内容'));
+  assert.equal(next.original, undefined);
+  assert.deepEqual(next.citations, []);
+  assert.equal(next.text, '项目记录快照内容');
+});
+
+test('a downgraded draft without any CITE is not replayed as history either', () => {
+  const draft = '您家的项目记录显示当前在施工阶段。';
+  const composed = composeNativeDelivery(draft, '项目记录快照内容', 0, true);
+  assert.equal(composed.modelIncluded, false);
+  const next = nextHistory(synthesisCheckpoint(draft, composed.text, composed.modelIncluded),
+    deliveredContent(composed.text));
+  assert.equal(next.text, '项目记录快照内容');
+  assert.equal(next.text.includes('施工阶段。'), false);
+});
+
+test('a normally delivered current-run citation remains usable as next-turn history', () => {
+  const source = knowledgeSource('2511', 'current');
+  const draft = '基层处理按企业工艺执行[K2511](CITE)。';
+  const composed = composeNativeDelivery(draft, '', 1, true);
+  assert.equal(composed.modelIncluded, true);
+  const checkpoint = synthesisCheckpoint(draft, composed.text, composed.modelIncluded, [source]);
+  assert.equal(checkpoint.raw, draft);
+  assert.equal(checkpoint.discarded, undefined);
+  const read = nativeHistoryCheckpoint(checkpoint, []);
+  assert.equal(read.original, draft);
+  assert.equal(read.citations.length, 1);
+  assert.equal(read.citations[0].nativeId, 'K2511');
+  assert.equal(read.citations[0].origin, 'history');
+  assert.equal(ragHistoryText(deliveredContent(composed.text), read.original), draft);
 });
 
 test('the model sees only status/text for business snapshots, while recovery keeps the full resultKey', () => {

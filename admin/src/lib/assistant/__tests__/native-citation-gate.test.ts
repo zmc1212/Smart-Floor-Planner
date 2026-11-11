@@ -2,8 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { assessNativeCitations, nativeCitationFeedback, nativeCitationGate } from '../agent/native-citation-gate';
 import { composeNativeDelivery, scanNativeCitationMarkers } from '../agent/native-executor';
+import { webCitations } from '../agent/dialogue-web-tools';
+import { webEvidence, webSynthesisSources } from '../agent/web-evidence';
 import { runRenovationAgent, type AgentRuntimePorts } from '../agent/runtime';
+import { fingerprint } from '../contracts';
 import type { RagCitationSource } from '../fastgpt/native-rag';
+import type { WebSearchSnapshot } from '../agent/web';
 import type { ModelTurnOutput } from '../contracts/model';
 
 type Code = { code?: string };
@@ -144,4 +148,70 @@ test('legacy catalog entries without an origin count as history, not as this run
   assert.equal(nativeCitationGate('墙面基层先清理浮灰[K2828](CITE)。', [legacy], false).issue, null);
   assert.deepEqual(scanNativeCitationMarkers('墙面基层先清理浮灰[K2828](CITE)。', [legacy]),
     { valid: ['K2828'], invalid: [] });
+});
+
+/** The real web factory chain for one read page: evidence -> synthesis source
+ * -> deterministic citation catalog. No hand-built catalog entry. */
+function webRead(text: string, origin: 'current' | 'recovered') {
+  const retrievedAt = '2026-11-11T00:00:00.000Z', url = 'https://example.com/manual', title = 'Installation manual';
+  const page = { url, title, text, retrievedAt, parser: 'public-html-text-v1' as const,
+    textBytes: Buffer.byteLength(text), hash: fingerprint({ url, title, text, retrievedAt }) };
+  const snapshot: WebSearchSnapshot = { version: 1, provider: 'test', query: { query: 'installation manual', domains: [] },
+    status: 'ready', pages: [page], failures: [], retrievedAt, candidates: [] };
+  const evidence = webEvidence(snapshot, '5', 1200), sources = webSynthesisSources(evidence);
+  const catalog = new Map<string, RagCitationSource>(), cites = webCitations(catalog, sources, origin);
+  return { evidence, sources, catalog, cites };
+}
+
+test('a web original with no citable clause still requires a this-run citation after the page was read', () => {
+  // Far beyond 400 Latin characters, periods only: no separator the catalog
+  // splits on, so every clause exceeds the quotation bound.
+  const text = ('The installation manual requires the pressure test to be held for thirty minutes at one and a half times '
+    + 'the working pressure before any backfill is allowed and the result must be recorded by the site team. ').repeat(5).trim();
+  assert.ok(text.length > 400 && !/[\n。！？；;]/u.test(text));
+  for (const origin of ['current', 'recovered'] as const) {
+    const { evidence, sources, catalog, cites } = webRead(text, origin);
+    assert.equal(evidence.length, 1);
+    assert.equal(sources.length, 1);
+    assert.equal(catalog.size, 0);
+    assert.equal(cites.length, 0);
+    // Evidence was handed to the model even though no id exists.
+    const draft = '打压试验需按读取到的安装手册执行，具体以现场记录为准。';
+    const assessment = assessNativeCitations(draft, catalog.values(), true);
+    assert.equal(assessment.runEvidence, true);
+    assert.equal(assessment.runSources, 0);
+    assert.equal(assessment.runCitations, 0);
+    // No repair can ask for an id that was never issued.
+    assert.equal(nativeCitationGate(draft, catalog.values(), false, true).issue, null);
+    // Delivery fails closed without a snapshot, or uses the snapshot only.
+    assert.throws(() => composeNativeDelivery(draft, '', 0, true),
+      (error: Code) => error.code === 'missing_citation');
+    assert.equal(composeNativeDelivery(draft, '项目记录快照内容', 0, true).modelIncluded, false);
+    // History citations remain legal markers but still cannot satisfy the run.
+    const history = knowledgeSource('7', 'history');
+    const historyDraft = '墙面基层处理见历史记录[K7](CITE)。';
+    const gate = nativeCitationGate(historyDraft, [history], false, true);
+    assert.equal(gate.issue, null);
+    assert.equal(gate.assessment.runEvidence, true);
+    assert.equal(gate.assessment.runCitations, 0);
+  }
+});
+
+test('a short web page still issues a real id, repairs a missing citation and delivers cited prose', () => {
+  const text = '地暖盘管间距应为200毫米，回填前须完成打压试验。';
+  const { catalog, cites } = webRead(text, 'current');
+  assert.equal(cites.length, 1);
+  const id = cites[0].id;
+  assert.equal(catalog.get(id)?.origin, 'current');
+  const uncited = '地暖盘管间距应按原文执行。';
+  const issue = nativeCitationGate(uncited, catalog.values(), false, true).issue;
+  assert.equal(issue?.code, 'missing_citation');
+  assert.match(issue!.feedback, new RegExp(id));
+  const cited = `地暖盘管间距按原文执行[${id}](CITE)。`;
+  const pass = nativeCitationGate(cited, catalog.values(), false, true);
+  assert.equal(pass.issue, null);
+  assert.equal(pass.assessment.runCitations, 1);
+  assert.equal(composeNativeDelivery(cited, '', pass.assessment.runCitations, true).modelIncluded, true);
+  // With no evidence at all the same uncited draft stays a pure business answer.
+  assert.equal(composeNativeDelivery(uncited, '项目记录快照内容', 0, false).modelIncluded, true);
 });

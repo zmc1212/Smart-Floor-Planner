@@ -12,6 +12,24 @@ import { runContext, type Lease } from '../infrastructure/job-queue';
 import { fastGPTRagProtocol, type RagSource } from './rag-config';
 import { ragAnswerParts, ragHistoryText, type RagChatMessage, type RagCitationSource } from './native-rag';
 
+/** Read one persisted synthesis step for the next turn's history. A
+ * snapshot-only delivery (`composition.modelIncluded === false`) never
+ * contributed model prose: its `raw` was — and on legacy rows still is — the
+ * discarded draft, kept only for audit. History must use the delivered message
+ * content instead, so no discarded draft is replayed and its markers are never
+ * re-parsed against an empty binding set. Normal deliveries keep using the
+ * model original and its saved citations. */
+export function nativeHistoryCheckpoint(checkpoint: Row | null | undefined, configured: RagCitationSource[]):
+  { original?: string; citations: RagCitationSource[] } {
+  const composition = checkpoint?.composition as Row | null | undefined;
+  if (!checkpoint || checkpoint.kind !== 'synthesis' || composition?.modelIncluded === false
+    || typeof checkpoint.raw !== 'string') return { citations: [] as RagCitationSource[] };
+  const original = checkpoint.raw;
+  const bindings = (checkpoint.citations as RagCitationSource[] | undefined) || configured;
+  return { original, citations: ragAnswerParts(original, bindings).flatMap(p => 'source' in p
+    ? [{ ...p.source, origin: 'history' as const }] : []) };
+}
+
 /** One authorized history projection for native dataset and ToolCall workflows. */
 export async function nativeConversation(lease: Lease, configured: RagSource[], protocol: string = fastGPTRagProtocol) {
     const context: SynthesisContext = { version: 1, knowledge: [], snapshots: [], sources: [], web: [], history: [], ancestors: [] };
@@ -37,10 +55,9 @@ export async function nativeConversation(lease: Lease, configured: RagSource[], 
           if (!runKnowledgeEnabled(run.policy_snapshot as Row) && original.knowledge.length) continue;
           if (!await synthesisContextAvailable(tx, lease.actor, conversation, original)) continue;
           if ((prior.input_summary as Row)?.protocol === protocol) {
-            nativeOriginal = String((prior.private_checkpoint as Row).raw);
-            const bindings = (prior.private_checkpoint as { citations?: RagCitationSource[] }).citations || configured;
-            citations.push(...ragAnswerParts(nativeOriginal, bindings).flatMap(p => 'source' in p
-              ? [{ ...p.source, origin: 'history' as const }] : []));
+            const historyCheckpoint = nativeHistoryCheckpoint(prior.private_checkpoint as Row, configured);
+            nativeOriginal = historyCheckpoint.original;
+            citations.push(...historyCheckpoint.citations);
           }
           for (const key of ['knowledge','snapshots','sources','web','history','ancestors'] as const)
             (context[key] as unknown[]).push(...(original[key] || []));

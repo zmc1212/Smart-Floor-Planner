@@ -34,6 +34,10 @@ export type NativeCitationAssessment = {
   runCitations: number;
   /** Current/recovered sources the catalog holds for this run. */
   runSources: number;
+  /** This run handed a knowledge or web original to the model. It is distinct
+   * from `runSources`: a long web original without a complete citable clause
+   * reaches the model while the catalog stays empty. */
+  runEvidence: boolean;
   /** Parsed parts; absent while invalid ids exist (they must stay visible). */
   parts?: RagPart[];
 };
@@ -41,12 +45,13 @@ export type NativeCitationAssessment = {
 /** One shared assessment of a final draft against the run's catalog. Invalid
  * ids are reported, never swallowed; a clean draft is parsed exactly like the
  * persisted answer path so validation and delivery judge the same text. */
-export function assessNativeCitations(draft: string, catalog: Iterable<RagCitationSource>): NativeCitationAssessment {
+export function assessNativeCitations(draft: string, catalog: Iterable<RagCitationSource>,
+  runEvidence = false): NativeCitationAssessment {
   const sources = [...catalog];
   const { history, run, invalid } = classifyNativeMarkers(draft, sources);
   const runSources = sources.filter(source => source.origin === 'current' || source.origin === 'recovered').length;
   const assessment: NativeCitationAssessment = {
-    validHistory: history, validRun: run, invalid, runCitations: run.length, runSources,
+    validHistory: history, validRun: run, invalid, runCitations: run.length, runSources, runEvidence,
   };
   return invalid.length ? assessment : { ...assessment, parts: ragAnswerParts(draft, sources) };
 }
@@ -97,11 +102,13 @@ export type NativeCitationIssue = { code: 'invalid_model_citation' | 'missing_ci
  * Invalid ids are always fail-closed. A draft that ignores this run's sources
  * gets at most one repair (the graph's existing one-shot turn); once that
  * repair was issued the gate stays silent so delivery applies its own rule
- * (snapshot-only or missing_citation) instead of failing without a fallback. */
+ * (snapshot-only or missing_citation) instead of failing without a fallback.
+ * Evidence without any issued id never earns a repair: there is no real id the
+ * model could cite, so delivery alone rejects or downgrades that draft. */
 export function nativeCitationGate(draft: string, catalog: Iterable<RagCitationSource>,
-  repairIssued: boolean): { assessment: NativeCitationAssessment; issue: NativeCitationIssue | null } {
+  repairIssued: boolean, runEvidence = false): { assessment: NativeCitationAssessment; issue: NativeCitationIssue | null } {
   const sources = [...catalog];
-  const assessment = assessNativeCitations(draft, sources);
+  const assessment = assessNativeCitations(draft, sources, runEvidence);
   if (assessment.invalid.length)
     return { assessment, issue: { code: 'invalid_model_citation', feedback: nativeCitationFeedback(draft, sources) } };
   if (!repairIssued && assessment.runSources > 0 && assessment.runCitations === 0)

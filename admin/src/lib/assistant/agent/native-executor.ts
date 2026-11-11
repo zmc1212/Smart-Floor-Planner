@@ -101,6 +101,14 @@ export function composeNativeDelivery(modelText: string, snapshotText: string, r
   return { text: `${modelText}\n\n${snapshotHeading}\n${snapshotText}`, modelIncluded: true };
 }
 
+/** The history-rebuild original must say exactly what was delivered. A
+ * snapshot-only delivery never contributed the model prose, so that draft is
+ * kept solely as audit evidence (`discarded`) and `raw` becomes the delivered
+ * text. Normal deliveries keep the model text as the history original. */
+export function synthesisHistoryFields(modelIncluded: boolean, modelText: string, deliveredText: string) {
+  return modelIncluded ? { raw: modelText } : { raw: deliveredText, discarded: modelText };
+}
+
 /** Stable per-run tool identity recovered from persisted steps. Identical
  * re-issued calls reuse the persisted receipt; fresh calls continue past every
  * recorded step sequence and never reuse an operation key or step_seq. Runs
@@ -635,7 +643,8 @@ export async function processNativeAgentAnswer(lease: Lease) {
         // expression against the same strict catalog; unknown ids still fail
         // closed exactly as before, and the repair never reveals the fix.
         validateFinal: async (text: string) => {
-          const { issue } = nativeCitationGate(text, catalog.values(), citationRepairIssued);
+          const { issue } = nativeCitationGate(text, catalog.values(), citationRepairIssued,
+            knowledgeRetrieved || webRetrieved);
           if (issue) citationRepairIssued = true;
           return issue;
         },
@@ -654,17 +663,22 @@ export async function processNativeAgentAnswer(lease: Lease) {
     for (const key of ['knowledge', 'snapshots', 'sources'] as const)
       (context[key] as unknown[]) = [...new Map((context[key] as unknown[]).map(v => [fingerprint(v), v])).values()];
     const snapshotText = delivered.map(s => s.displayText).join('\n');
+    // The citation requirement follows evidence this run actually handed to
+    // the model. A long web original may leave the catalog empty (no complete
+    // citable clause) while the model still read it; that draft is not an
+    // uncited business answer and must be rejected or snapshot-downgraded.
+    const evidenceProvided = knowledgeRetrieved || webRetrieved;
     // Delivery re-runs the same assessment as the gate. Invalid ids stay
     // fail-closed, and only this run's current/recovered citations count toward
     // the model section: a history citation can accompany an answer, but it can
     // never satisfy this run's retrieval-citation requirement.
-    const finalAssessment = assessNativeCitations(finalText, catalog.values());
+    const finalAssessment = assessNativeCitations(finalText, catalog.values(), evidenceProvided);
     if (finalAssessment.invalid.length) fail('invalid_model_citation', 502);
     const runCitations = finalAssessment.runCitations;
     // A located-but-empty nearby result is delivered from the server receipt;
     // need_region never overrides the model draft (same rule as the bridge).
     const composed = publicSitesDelivery(
-      composeNativeDelivery(finalText, snapshotText, runCitations, finalAssessment.runSources > 0), sites.outcome());
+      composeNativeDelivery(finalText, snapshotText, runCitations, evidenceProvided), sites.outcome());
     const text = composed.text;
     // Follow-up questions are ancillary: a failed, unknown or invalid
     // generation keeps the delivered answer and falls back to the configured
@@ -798,9 +812,10 @@ export async function processNativeAgentAnswer(lease: Lease) {
         }
         await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs,private_checkpoint,input_summary)
           values(${lease.enterpriseId},${lease.runId},1006,'agent_synthesis_context','succeeded',${JSON.stringify(context)}::jsonb,
-            ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, kind: 'synthesis', segments, raw: finalText,
+            ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, kind: 'synthesis', segments,
+              ...synthesisHistoryFields(composed.modelIncluded, finalText, text),
               citations: cited, composition: { snapshots: delivered.length, runCitations,
-                runSources: finalAssessment.runSources, knowledgeRetrieved, webRetrieved,
+                runSources: finalAssessment.runSources, runEvidence: evidenceProvided, knowledgeRetrieved, webRetrieved,
                 modelIncluded: composed.modelIncluded } })}::jsonb,
             ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, runtime: 'xiaok-native-executor' })}::jsonb)`);
         if (suggestions.questions.length)

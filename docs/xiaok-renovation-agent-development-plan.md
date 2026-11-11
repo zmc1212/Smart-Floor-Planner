@@ -22,15 +22,15 @@
 
 | 字段 | 当前记录 |
 | --- | --- |
-| 交付与负责人 | 定向引用门禁补丁（2026-11-11用户定向）：统一graph校验与最终交付的引用评估，处理旧checkpoint工具回执投影，恢复两处测试保护。单一负责人，禁止自动新建或交接聊天。方法约束：先验证真实回答，禁止补丁循环；两轮同类失败停循环，不堆提示词或换模型。 |
-| 用户入口与结果 | 历史引用可保留但不能满足本run的current/recovered引用要求；首稿漏全部本轮引用进入唯一一次修复；修复后仍不满足按原规则（无快照missing_citation，有快照只交快照）；纯业务快照无CITE仍可交付；旧checkpoint的query_business工具消息按调用身份投影，不重派。 |
-| 已证缺口 | 引用门禁代码缺口已关闭（定向32/32）；真实knowledge固定旅程被retrieval_unavailable阻断，未验；真实微信客户端、Stable HLS、生产部署未验；975/973/2为既有记录，未重跑。 |
-| 已完成 | 新增native-citation-gate（assessNativeCitations/门禁/缺本轮引用反馈）；validateFinal与最终交付共用；runCitations排除history；旧checkpoint的query_business工具消息按调用身份投影；恢复credit-price完整fixture与incremental数组断言；定向32/32、tsc0、lint0、完整build退出0；复用fix2 10/10与run3583，不重跑stage/daily。 |
-| 下一动作 | 本轮范围完成，进入交付验收；无新增P3入口。知识检索/真实微信/HLS/生产另行验收；仅明确可复现新故障才建修复任务。 |
-| 必要验收 | 定向回归32/32（history-only一次修复、修复后降级、recovered同规则、纯业务快照无CITE、旧checkpoint不重派、恢复两测试）；tsc0；lint0 error/60 warning；完整build退出0（tmp/build-final2.log）；fix2 full-flow10/10与run3583复用；live knowledge固定旅程run3597 retrieval_unavailable未验；975/973/2按既有。 |
-| 失败与调用边界 | run3413/run3566原失败保留；run3567因18300隧道断开indeterminate；run3597 live knowledge检索retrieval_unavailable（开发知识检索，不是引用门禁失败，未重试）；旧checkpoint按投影策略；真实微信/HLS/生产未验；仅1454开发库；975/973/2按既有。 |
-| 环境与资源 | 远程5432/55432、18089、18300隧道可用；complete build前停止3006/Worker（release `.next`保留）；survey manifest构建后恢复原工作副本；真实模型/检索失败如实标未验。 |
-| 证据与后继 | `tmp/xiaok-stage-fullflow-20261111/full-flow-fix2/report.json`（复用10/10）；`.../citation-gate-live2/report.json`（run3597 retrieval_unavailable，未验）；`tmp/build-final2.log`；`tmp/tsc-gate.log`；`tmp/lint-gate.log`；旧W1/3413路径；无泛化下一P3入口。 |
+| 交付与负责人 | 公共站点生命周期收尾轮（2026-11-11用户定向）：快照降级历史一致性、网页原文空引用目录、旧checkpoint跨批次callId、run3597检索失败定位。单一负责人；方法约束：先验证真实回答，禁止补丁循环；两轮同类失败停循环。 |
+| 用户入口与结果 | 快照降级轮下一轮历史正常且不回放丢弃草稿；网页已读但cites为空时不再无引用交付（无快照missing_citation，有快照只交快照）；历史引用仍可保留但不满足本run；纯业务无CITE仍可交付；复用callId的非业务回执原样保留。 |
+| 已证缺口 | 三项代码缺口本轮关闭（定向33/33）；run3597为嵌入HTTP边界超时，服务契约与向量合法且无并发run；真实微信、Stable HLS、生产部署未验；975/973/2为既有记录。 |
+| 已完成 | `nativeHistoryCheckpoint`按`modelIncluded=false`回退交付正文，`raw`存交付文本、`discarded`留审计；`runEvidence`与`runSources`分离并接入gate/delivery；checkpoint投影按批维护callId→tool；新增保存→下一轮读取、网页空目录fresh/recovered、callId复用用例；定向33/33、tsc0、lint0 error/60 warning、完整build退出0；固定knowledge旅程run3598/3599两轮成功。 |
+| 下一动作 | 本轮清单完成并交付；无新增P3入口。 |
+| 必要验收 | 定向33/33；tsc0；lint0 error/60 warning；完整build退出0；固定knowledge旅程run3598（runSources5/runCitations1）与run3599（5/2，历史含首轮原文与K2826）两轮成功；fix2 10/10与run3583复用；975/973/2按既有。 |
+| 失败与调用边界 | run3413/run3566原失败保留；run3567 indeterminate；run3597原失败保留（`retrieval_unavailable`，未重放；同类原因本轮未再出现）；真实微信/HLS/生产未验；仅1454开发库。 |
+| 环境与资源 | 远程5432/55432、18089、18300；完整build前停止3006/Worker；`source-manifest.json`原工作区改动保留、不提交；构建后已恢复工作副本（哈希一致）。 |
+| 证据与后继 | `tmp/xiaok-stage-fullflow-20261111/citation-gate-run3597-original/report.json`（原失败）；`.../citation-gate-lifecycle/journey-report.json`（run3598/3599两轮）；`tmp/build-lifecycle.log`；`tmp/lint-lifecycle.log`；旧W1/3413路径；无泛化下一P3入口。 |
 
 ## 3. 复用哪些成果
 
