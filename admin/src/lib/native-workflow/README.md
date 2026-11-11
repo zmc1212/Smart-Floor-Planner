@@ -404,17 +404,18 @@ asserts "验收通过". The B5.1 closeout covers only the chat cache commit orde
 epoch/ticket is invalid) and acceptance cleanup ownership (one transaction
 locks the conversation, participant and `construction_links`; any mismatch
 leaves all three untouched and fails the run). B5.2 connects the daily
-period-intake, real Worker facts/delivery, original XiaoK report/record/photo
-read, re-entry, dedupe and revocation chain, but the model body is blocked by a
-missing decryptable provider credential in the isolated B environment, so the
-current report remains `facts_only`. Weekly reports, a general scheduler, drag
-canvas, Worker/menu/shared-migration changes remain out of scope. The native B
-run used a temporary local API switch in the B worktree (reverted); A/production
-configuration was not changed. Counts: 110 non-database native-workflow tests
-(including 12 period-report port tests), 6 offline guards, 6
-acceptance-conversation and 59 focused chat. The full Mini Program suite remains
-2218/2221 with three pre-existing survey-runtime audit failures unrelated to
-this chat change.
+period-intake, real Worker facts, native model body, in-app delivery, original
+XiaoK report/record/photo read, re-entry, dedupe and revocation chain. The
+native Mini Program card/detail/original-record/re-entry/revocation flow was
+verified in Stable DevTools after the client session was refreshed on
+2026-11-11. Weekly reports, a general scheduler, drag canvas,
+Worker/menu/shared-migration changes remain out of scope. The native B run used a
+temporary local API switch in the B worktree (reverted); A/production
+configuration was not changed. Counts: 120 non-database backend tests
+(native-workflow including 15 period-report port and 7 acceptance-conversation
+tests, plus 6 offline guards) and 59 focused chat. The full Mini Program suite
+remains 2218/2221 with three pre-existing survey-runtime audit failures
+unrelated to this chat change.
 
 ## B5.2 daily period report
 
@@ -453,14 +454,38 @@ new workflow runId. It then reads the report through the original XiaoK
 `followups → reports → record → media` API, checks re-entry, duplicate counts
 and access/photo revocation, and restores the plan/agent configuration.
 
-Recorded B evidence (2026-11-04, isolated database 55433): report `2`,
-revision `1`, facts run `3`, delivery message `113`; the report facts contain
-the synthetic record, the original record/photo are readable, re-entry returns
-the same report, and a repeat workflow run adds no report/delivery/message/job/
-run. The native body run returned `model_unavailable` before dispatch because
-the B environment has no decryptable provider credential; no provider attempt,
-usage or FastGPT call exists, so the report currently stays `facts_only`. This
-is an environment blocker, not a simulated success.
+Recorded B evidence (2026-11-11, isolated database 55433, enterprise `1454`,
+project `1454000004`, Shanghai day 2026-11-05): report `3`, revision `1`, facts
+run `5`, body run `6`, delivery message `114` at conversation `1454000007`
+(`seq 3`); `report_key` matches the `enqueueReport` formula. The real Worker
+claimed the facts job with a Lease (no fabricated lease). The native body ran
+through the `llm-settings-override` platform provider (`qwen3.7-flash`) with one
+`succeeded` attempt (`accepted:true`), observed usage `1105` input + `1737`
+output tokens, and zero FastGPT attempts. The first period run truthfully ends
+`delivery_not_confirmed` because the report task is still queued when the run
+reaches `deliver.inapp`; after the Worker delivered, the replayed period run
+(a new workflow runId) returns `completed`, reuses the same `report:3:1` save
+receipt and reads the real `report-delivery:3:1:1` receipt. Repeat execution
+added no report/delivery/message/job/run. 19/19 handler checks: the original
+XiaoK read returns `contentStatus:'composed'`, generation `ready` and delivery
+`delivered`; re-entry returns the same report/record/photo (14823 bytes,
+sha256 `1cc96be8…`); customer-access revocation yields `available:false` /
+`source_unavailable`; photo withdrawal returns 404.
+
+Native Stable DevTools evidence (2026-11-11, 2.02.2608080, 390×844): the
+customer entered the original XiaoK chat through the lead entry, opened the
+authorized history, selected the synthetic binding and saw the owner daily card
+"11月5日我家进展" with the real published highlights. "查看完整日报" opened
+"11月5日施工日报" with the model body under "工艺关注"
+(`通用建议（模型知识）…`), the real progress/pending from the record, and a
+working "查看原记录" sheet with the authorized photo. Opening the detail
+acknowledged the real delivery (`read_at`). Exit/re-entry reopened the same
+report `3`/revision `1` with the same body and read state. Access revocation
+removed the report from the authorized history (API 404
+`assistant_resource_not_found`) and restoration returned it. During the whole
+native window no report/delivery/message/job/run/provider attempt/usage row was
+added. Evidence: `admin/tmp/b5-2-period-report-runs/b5-2-daily-20261111055019510/verification.json`
+and `admin/tmp/b5-2-devtools/native-daily.json`.
 
 ## Reproduce
 

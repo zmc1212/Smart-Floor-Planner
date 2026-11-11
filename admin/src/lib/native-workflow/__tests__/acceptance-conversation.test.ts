@@ -39,6 +39,8 @@ class FakeClient implements AcceptanceQueryClient {
   readonly queries: string[] = [];
   readonly locks: string[] = [];
   failWhen: ((sql: string) => boolean) | null = null;
+  /** Simulate a delete that silently matches no row, as if ownership broke. */
+  dropConversationDelete = false;
   private snapshot: FakeState | null = null;
 
   async query(text: string, values: unknown[] = []): Promise<{ rows: AcceptanceRow[] }> {
@@ -166,6 +168,7 @@ class FakeClient implements AcceptanceQueryClient {
       return { rows: removed.map((row) => ({ project_id: row.project_id })) };
     }
     if (sql.startsWith('delete from app.assistant_conversations')) {
+      if (this.dropConversationDelete) return { rows: [] };
       const [enterpriseId, id, marker] = args;
       const row = this.state.conversations.get(id!);
       const acceptance = (row?.entry_snapshot as AcceptanceRow | undefined)?.acceptance;
@@ -377,8 +380,26 @@ test('cleanup deletes nothing and reports incomplete when both markers changed',
   // "All or nothing": every row is byte-for-byte identical to the snapshot and
   // the transaction issued no insert/update/delete at all.
   assert.deepEqual(client.state, before);
-  assert.equal(client.state.conversations.has(INPUT.conversationId), true);
-  assert.equal(client.state.participants.has(INPUT.participantId), true);
+  assert.deepEqual(client.state.conversations.get(INPUT.conversationId), {
+    id: INPUT.conversationId,
+    enterprise_id: '1454',
+    title: '[B5.1] 跨会话验证',
+    entry_snapshot: { kind: 'lead', id: INPUT.leadId, acceptance: 'other-owner' },
+  });
+  assert.deepEqual(client.state.participants.get(INPUT.participantId), {
+    id: INPUT.participantId,
+    enterprise_id: '1454',
+    conversation_id: INPUT.conversationId,
+    user_id: INPUT.customerUserId,
+    participant_role: 'owner',
+    grant_basis: { kind: 'self', acceptance: 'other-owner' },
+    status: 'active',
+  });
+  assert.deepEqual(client.state.links, [{
+    enterprise_id: '1454',
+    project_id: '1454000004',
+    conversation_id: INPUT.conversationId,
+  }]);
   assert.equal(client.state.links.length, 1);
   assert.deepEqual(
     writeSql(client.queries.slice(queriesBefore)),
@@ -390,6 +411,44 @@ test('cleanup deletes nothing and reports incomplete when both markers changed',
     ['assistant_conversations', 'assistant_participants', 'construction_links'],
     'both ownership rows and the links must be locked before deciding to delete',
   );
+});
+
+test('an unconfirmed conversation delete rolls every already-deleted row back', async () => {
+  const client = new FakeClient();
+  await createAcceptanceConversation(client, INPUT);
+  client.state.links.push({
+    enterprise_id: '1454',
+    project_id: '1454000004',
+    conversation_id: INPUT.conversationId,
+  });
+  const before = snapshotOf(client.state);
+  const queriesBefore = client.queries.length;
+  // The ownership checks pass, so links and the participant are deleted first;
+  // the conversation delete then reports no row and the whole transaction must
+  // be rolled back instead of committing a partial cleanup.
+  client.dropConversationDelete = true;
+
+  await assert.rejects(
+    cleanupAcceptanceConversation(client, {
+      enterpriseId: INPUT.enterpriseId,
+      conversationId: INPUT.conversationId,
+      participantId: INPUT.participantId,
+    }),
+    /could not confirm every owned row/u,
+  );
+
+  const issued = client.queries.slice(queriesBefore);
+  assert.ok(issued.includes('rollback'), 'a missed delete must roll the transaction back');
+  assert.deepEqual(
+    issued.filter((sql) => sql === 'commit'),
+    [],
+    'a failed cleanup must not commit',
+  );
+  assert.ok(issued.some((sql) => sql.startsWith('delete from app.assistant_participants')));
+  assert.deepEqual(client.state, before, 'the deleted links and participant must be restored');
+  assert.equal(client.state.conversations.has(INPUT.conversationId), true);
+  assert.equal(client.state.participants.has(INPUT.participantId), true);
+  assert.equal(client.state.links.length, 1);
 });
 
 test('a missing participant leaves every row untouched and reports incomplete', async () => {

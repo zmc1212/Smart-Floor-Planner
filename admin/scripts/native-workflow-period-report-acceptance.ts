@@ -840,7 +840,7 @@ async function main(): Promise<void> {
       generationState: revoked.generationState,
     };
     check('customer-access revocation invalidates the report projection', revoked.available === false
-      || revoked.contentStatus !== 'composed', evidence.accessRevoked as Record<string, unknown>);
+      && revoked.state === 'source_unavailable', evidence.accessRevoked as Record<string, unknown>);
     await pool.query(
       'update app.construction_projects set customer_access=true, version=version+1, updated_at=now() where enterprise_id=$1::bigint and id=$2::bigint',
       [ENTERPRISE_ID, PROJECT_ID],

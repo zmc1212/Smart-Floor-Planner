@@ -939,6 +939,25 @@ test('a resume supersedes an in-flight idle refresh with a full reprojection', a
   assert.equal(resumeReads[0].body.limit, 30);
   assert.equal(f.controller.state.messages[0].available, false);
   assert.equal(f.controller.state.messages[0].blocks[0].text, '工地资料已不可用');
+  // The idle read that lost the race never seeded the cache the next delta
+  // merges into, and the next delta still seeks from the committed cursor.
+  assert.deepEqual(f.controller.rawMessages.map(item => item.id), ['21']);
+  assert.equal(f.controller.rawMessages[0].available, false);
+  assert.equal(f.controller.latestSeq, '1');
+  assert.equal(f.controller.seqConversationId, '11');
+  f.db.conversation.lastSeq = '2';
+  f.db.items.push(message('22', '2', '新回复'));
+  const cursors = [];
+  f.intercept(call => {
+    if (call.url.endsWith('/messages') && call.method === 'GET' && call.body.afterSeq) {
+      cursors.push(call.body.afterSeq);
+      return { success: true, data: { items: [message('22', '2', '新回复')], nextCursor: null, afterCursor: '2', latestSeq: '2', hasMore: false, reset: false } };
+    }
+  });
+  await f.controller.refresh();
+  assert.deepEqual(cursors, ['1']);
+  assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21', '22']);
+  assert.deepEqual(f.controller.rawMessages.map(item => item.id), ['21', '22']);
   f.controller.dispose();
 });
 
@@ -1047,9 +1066,10 @@ test('a snapshot that finishes after a newer one cannot seed the cache or the ne
   assert.deepEqual(texts(), ['工地资料已不可用', '新回答']);
   assert.equal(f.controller.latestSeq, '5');
 
-  // Any write from the older response would replace this impossible stamp.
+  // Any write from the older response would replace this impossible stamp, the
+  // committed cursor or the newer baseline.
   f.controller.lastFullSyncAt = -987654;
-  late.resolve({ success: true, data: { items: [message('21', '2', '旧正文')], nextCursor: '2' } });
+  late.resolve({ success: true, data: { items: [message('21', '2', '旧正文')], nextCursor: '1' } });
   await idle;
 
   // a. the rendered projection is still the newer one
@@ -1060,7 +1080,11 @@ test('a snapshot that finishes after a newer one cannot seed the cache or the ne
   assert.equal(f.controller.rawMessages[0].available, false);
   assert.equal(f.controller.latestSeq, '5');
   assert.equal(f.controller.seqConversationId, '11');
+  assert.equal(f.controller.seqSupported, true);
   assert.equal(f.controller.lastFullSyncAt, -987654);
+  // Its older pagination cursor must not overwrite the committed one either.
+  assert.equal(f.controller.state.messageCursor, '2');
+  assert.equal(page.data.messageCursor, '2');
 
   // c. the next delta seeks from the committed cursor, not from the stale one
   f.controller.lastFullSyncAt = Date.now();
@@ -1125,14 +1149,20 @@ test('a delta that finishes after a newer snapshot cannot merge into the committ
   assert.equal(f.controller.latestSeq, '4');
 
   // The older delta returns one page that would have merged an obsolete answer.
+  f.controller.lastFullSyncAt = -987654;
   late.resolve({ success: true, data: { items: [message('23', '3', '旧回答')], nextCursor: null, afterCursor: '3', latestSeq: '3', hasMore: true, reset: false } });
   await idle;
   assert.deepEqual(page.data.messages.map(item => item.id), ['21', '24']);
+  assert.deepEqual(page.data.messages.map(item => item.blocks[0].text), ['旧问题', '新回答']);
   assert.deepEqual(f.controller.rawMessages.map(item => item.id), ['21', '24']);
+  assert.deepEqual(f.controller.rawMessages.map(item => item.content.blocks[0].text), ['旧问题', '新回答']);
   assert.equal(f.controller.latestSeq, '4');
   assert.equal(f.controller.seqConversationId, '11');
+  assert.equal(f.controller.state.messageCursor, '2');
+  assert.equal(f.controller.lastFullSyncAt, -987654);
 
   const cursors = [];
+  f.controller.lastFullSyncAt = Date.now();
   f.db.conversation.lastSeq = '6';
   f.intercept(call => {
     if (call.url.endsWith('/messages') && call.method === 'GET' && call.body.afterSeq) {
@@ -1143,6 +1173,22 @@ test('a delta that finishes after a newer snapshot cannot merge into the committ
   await f.controller.refresh();
   assert.deepEqual(cursors, ['4']);
   assert.deepEqual(page.data.messages.map(item => item.id), ['21', '24', '26']);
+  assert.ok(!page.data.messages.some(item => item.blocks.some(block => block.text === '旧回答')));
+
+  // Pulling earlier history must not revive the answer the discarded delta
+  // carried, nor reorder the messages the newer snapshot committed.
+  const before = [];
+  f.intercept(call => {
+    if (call.url.endsWith('/messages') && call.method === 'GET' && call.body.beforeSeq) {
+      before.push(call.body.beforeSeq);
+      return { success: true, data: { items: [message('19', '1', '更早的问题')], nextCursor: null } };
+    }
+  });
+  await f.controller.olderMessages();
+  assert.deepEqual(before, ['2']);
+  assert.deepEqual(page.data.messages.map(item => item.id), ['19', '21', '24', '26']);
+  assert.deepEqual(page.data.messages.map(item => String(item.seq)), ['1', '2', '4', '6']);
+  assert.deepEqual(page.data.messages.map(item => item.blocks[0].text), ['更早的问题', '旧问题', '新回答', '更新的回答']);
   assert.ok(!page.data.messages.some(item => item.blocks.some(block => block.text === '旧回答')));
   f.controller.dispose();
 });

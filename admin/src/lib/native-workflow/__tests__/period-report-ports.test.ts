@@ -119,6 +119,8 @@ function storedReport(current: PeriodReportScope, reused = false): StoredPeriodR
 interface FakeState {
   scope: PeriodReportScope;
   existing: StoredPeriodReport | null;
+  /** Durable row observed by the post-conflict re-read inside the same save. */
+  raced: StoredPeriodReport | null;
   queued: StoredPeriodReport | null;
   records: PeriodRecordRead;
   photos: readonly PeriodReportPhoto[];
@@ -137,6 +139,7 @@ function fakeStore(initial: Partial<FakeState> = {}) {
   const state: FakeState = {
     scope: base,
     existing: null,
+    raced: null,
     queued: storedReport(base),
     records: { records: [], truncated: false },
     photos: [],
@@ -156,7 +159,9 @@ function fakeStore(initial: Partial<FakeState> = {}) {
     },
     async findReport() {
       state.findCalls += 1;
-      return state.existing;
+      // The first read is the pre-check; a later read is the post-conflict
+      // re-read after `enqueue` returned null.
+      return state.findCalls === 1 ? state.existing : (state.raced ?? state.existing);
     },
     async enqueue({ projectId, period }) {
       state.enqueueCalls.push(period);
@@ -272,6 +277,70 @@ test('a repeated run for the same day reuses the same report/version/run', async
   assert.equal(a.reportKey, b.reportKey);
   assert.equal(a.reused, false);
   assert.equal(b.reused, true);
+});
+
+test('a concurrent enqueue conflict keeps the real reuse flag and row identity', async () => {
+  const { state, store } = fakeStore();
+  // The durable insert lost the race, so the store returns the existing row
+  // already marked reused. The adapter must not relabel it as a new report.
+  state.queued = storedReport(state.scope, true);
+  const ports = createPeriodReportPorts({ actor, store });
+  const result = await ports.execute(operation('save.period_report'), context('b5-run-race', 3));
+
+  assert.equal(result.saved, true);
+  const receipt = result.saveReceipt as Record<string, unknown>;
+  assert.equal(receipt.simulated, false);
+  assert.equal(receipt.reused, true);
+  assert.equal(receipt.reportId, '5001');
+  assert.equal(receipt.revision, 1);
+  assert.equal(receipt.runId, '8001');
+  assert.match(String(receipt.receiptId), /^report:5001:1$/);
+  assert.equal(state.enqueueCalls.length, 1);
+});
+
+test('an enqueue conflict finds the raced row, otherwise fails without inventing success', async () => {
+  const raced = fakeStore();
+  raced.state.queued = null;
+  raced.state.raced = storedReport(raced.state.scope, true);
+  const racedPorts = createPeriodReportPorts({ actor, store: raced.store });
+  const result = await racedPorts.execute(operation('save.period_report'), context('b5-run-race-a', 1));
+  assert.equal(result.saved, true);
+  assert.equal((result.saveReceipt as Record<string, unknown>).reused, true);
+  assert.equal(raced.state.findCalls, 2);
+  assert.equal(raced.state.enqueueCalls.length, 1);
+
+  const lost = fakeStore();
+  lost.state.queued = null;
+  const lostPorts = createPeriodReportPorts({ actor, store: lost.store });
+  await assert.rejects(
+    () => lostPorts.execute(operation('save.period_report'), context('b5-run-race-b', 1)),
+    isFailure('period_report_not_queued'),
+  );
+  assert.equal(lost.state.enqueueCalls.length, 1);
+});
+
+test('delivery cannot claim success for a disabled plan or a missing receiver', async () => {
+  const disabled = fakeStore({
+    scope: scope({ legacyPlanEnabled: false, legacyScheduleDue: false }),
+  });
+  const disabledPorts = createPeriodReportPorts({ actor, store: disabled.store });
+  await assert.rejects(
+    () => disabledPorts.execute(operation('deliver.inapp', { receivers: {} }), context()),
+    isFailure('period_report_plan_disabled'),
+  );
+  assert.equal(disabled.state.deliveryCalls, 0);
+
+  const revoked = fakeStore({
+    scope: scope({ receiverAvailable: false, receiverStatus: 'customer_access_revoked' }),
+  });
+  const revokedPorts = createPeriodReportPorts({ actor, store: revoked.store });
+  const result = await revokedPorts.execute(operation('deliver.inapp', { receivers: {} }), context());
+  assert.equal(result.delivered, false);
+  const receipt = result.deliveryReceipt as Record<string, unknown>;
+  assert.equal(receipt.simulated, false);
+  assert.equal(receipt.status, 'customer_access_revoked');
+  assert.equal(receipt.receiptId, '');
+  assert.equal(revoked.state.deliveryCalls, 0);
 });
 
 test('a still-due legacy schedule refuses the B period before any enqueue', async () => {

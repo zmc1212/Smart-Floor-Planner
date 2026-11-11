@@ -116,6 +116,13 @@ async function step<T>(name: string, action: () => Promise<T>): Promise<T> {
   }
 }
 
+/** A cleanup that ran must confirm every owned row; `ran: false` means there was
+ * nothing to remove because this run never created the temporary rows. */
+function cleanupIncomplete(result: Row): boolean {
+  return result.ran === true
+    && (result.completed !== true || Number(result.skipped ?? 0) > 0);
+}
+
 function ownerPool(): pg.Pool {
   return new pg.Pool({ connectionString: fixtureTarget.url, max: 2 });
 }
@@ -684,10 +691,7 @@ async function main(): Promise<void> {
     if (cleanup.error) evidence.cleanupError = cleanup.error;
     if (cleanup.error) {
       (evidence.failures as Row[]).push({ name: 'cleanup acceptance rows', error: cleanup.error });
-    } else if (
-      cleanup.result.ran === true
-      && (cleanup.result.completed !== true || Number(cleanup.result.skipped ?? 0) > 0)
-    ) {
+    } else if (cleanupIncomplete(cleanup.result)) {
       (evidence.failures as Row[]).push({
         name: 'cleanup acceptance rows',
         reason: cleanup.result.reason ?? 'cleanup did not confirm ownership of every temporary row',
@@ -754,18 +758,17 @@ async function main(): Promise<void> {
       if (safety.error) {
         evidence.cleanupError = safety.error;
         (evidence.failures as Row[]).push({ name: 'cleanup acceptance rows', error: safety.error });
-        evidence.success = false;
-      } else if (
-        safety.result.completed !== true
-        || Number(safety.result.skipped ?? 0) > 0
-      ) {
+      } else if (cleanupIncomplete(safety.result)) {
         (evidence.failures as Row[]).push({
           name: 'cleanup acceptance rows',
           reason: safety.result.reason ?? 'cleanup did not confirm ownership of every temporary row',
           result: safety.result,
         });
-        evidence.success = false;
       }
+      // Only a run that never reached its own finalization needs this net, so
+      // it can never report overall success even when the retry cleaned up.
+      evidence.success = false;
+      if (!process.exitCode) process.exitCode = 2;
       save();
     }
     await pool.end().catch(() => undefined);

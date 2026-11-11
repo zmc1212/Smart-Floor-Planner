@@ -137,7 +137,10 @@ export async function createAcceptanceConversation(
  *
  * The conversation is locked before the participant and `construction_links`
  * because both child tables reference it; locking parents first keeps the
- * lock order consistent with the foreign-key dependency.
+ * lock order consistent with the foreign-key dependency. It is also what makes
+ * the child set stable: inserting a participant or link needs a `KEY SHARE`
+ * lock on the conversation row, which `FOR UPDATE` blocks, so no child can be
+ * added between the lock and the delete.
  */
 export async function cleanupAcceptanceConversation(
   client: AcceptanceQueryClient,
@@ -159,7 +162,7 @@ export async function cleanupAcceptanceConversation(
         for update`,
       [input.enterpriseId, input.participantId],
     );
-    await client.query(
+    const lockedLinks = await client.query(
       `select project_id from app.construction_links
         where enterprise_id=$1::bigint and conversation_id=$2::bigint
         for update`,
@@ -218,10 +221,15 @@ export async function cleanupAcceptanceConversation(
       [input.enterpriseId, input.conversationId, ACCEPTANCE_MARKER],
     );
 
-    // The rows were lock-confirmed above, so a missing delete would mean the
-    // assumption is broken: roll the whole transaction back and leave the
-    // original rows in place instead of reporting a partial cleanup.
-    if (deletedParticipant.rows.length !== 1 || deletedConversation.rows.length !== 1) {
+    // The rows were lock-confirmed above, so a delete that misses a row (or a
+    // link set that changed after the lock) would mean the assumption is
+    // broken: roll the whole transaction back and leave the original rows in
+    // place instead of reporting a partial cleanup.
+    if (
+      deletedParticipant.rows.length !== 1
+      || deletedConversation.rows.length !== 1
+      || deletedLinks.rows.length !== lockedLinks.rows.length
+    ) {
       throw new Error('acceptance cleanup could not confirm every owned row; transaction rolled back');
     }
 

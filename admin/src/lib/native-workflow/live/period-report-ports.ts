@@ -746,9 +746,10 @@ export function createPeriodReportPorts(options: PeriodReportPortOptions): LiveO
               saved.set(scopeKey(scope), raced);
               return saveReceipt(raced);
             }
-            const report: StoredPeriodReport = { ...enqueued, reused: false };
-            saved.set(scopeKey(scope), report);
-            return saveReceipt(report);
+            // `store.enqueue` already reports whether it created the report or
+            // found the durable row after an insert conflict; never rewrite that.
+            saved.set(scopeKey(scope), enqueued);
+            return saveReceipt(enqueued);
           }
           case 'deliver.inapp': {
             const scope = await store.loadScope({
