@@ -167,8 +167,12 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   // The explicit per-enterprise executor switch (`runtime: 'langgraph-v1'`).
   // Unlike the bridge selection it is decoupled from the knowledge switch:
   // knowledge-off replies keep the same code executor, minus enterprise
-  // material, instead of falling back to another framework.
-  const nativeExecutor = !agentV2 && agent && purpose === 'reply' && trigger.kind === 'user_message'
+  // material, instead of falling back to another framework. The public-site
+  // opening is a one-shot system event on the same customer consultation, so
+  // it follows the same native switch; a V2 opening scene still wins while the
+  // V2 bridge is the bound runtime.
+  const nativeExecutor = !agentV2 && agent && (purpose === 'reply' || purpose === 'public.site.intro')
+    && trigger.kind === 'user_message'
     && c.purpose === 'customer_consultation' && actor.principal.kind === 'user' && entry.requirementReviewMode !== true
     ? nativeAgentRuntimeBinding(actor.enterpriseId) : undefined;
   const triggerContent = rag || agentV2 || nativeExecutor ? await one(tx, sql`select content from app.assistant_messages where enterprise_id=${actor.enterpriseId}
@@ -557,7 +561,13 @@ export class ConversationService {
         // model response followed by retrieval failure keeps its original cost
         // hold while the explicit retry receives a separate budget reservation.
         if (r.awaiting_reconciliation) fail('context_changed');
-        return newRun(repo.tx, this.actor, c, settings!, String(r.trigger_message_id), runId);
+        // A retry keeps the public-site opening purpose. Reusing the default
+        // 'reply' would turn a failed opening into a normal answer run whose
+        // system trigger has no conversational counterpart; other purposes
+        // keep their historical reply retry path.
+        return newRun(repo.tx, this.actor, c, settings!, String(r.trigger_message_id), runId,
+          { kind: 'user_message', messageId: String(r.trigger_message_id) },
+          String(r.purpose) === 'public.site.intro' ? 'public.site.intro' : 'reply');
       });
     }, action === 'retry');
   }

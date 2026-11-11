@@ -28,6 +28,11 @@ import { parsePublicRead, publicResearchTools } from './public-research';
 import { historyRefsAvailable, historySynthesisSources, historyTool, parseHistoryQuery,
   type HistoryRef, type HistorySnapshot } from './history';
 import { webAnswerQuoteSpans, webEvidence, webSynthesisSources } from './web-evidence';
+import { publishedPublicMaterial } from '@/lib/construction/public-read';
+import type { PublicContent } from '@/lib/construction/public-contract';
+import { defaultPublicIntroConstraints, defaultPublicIntroInput, publicIntroFacts, publicIntroPrompt,
+  validatePublicIntro } from '@/lib/construction/public-intro';
+import { openingScene, sceneForOpeningPurpose } from '../fastgpt/agent-v2/openings';
 
 /** The XiaoK-owned executor for V2-surface customer consultations. It reuses
  * the existing LangGraph runtime, model gateway and authorized tools; no
@@ -180,13 +185,79 @@ export async function processNativeAgentAnswer(lease: Lease) {
       if (!runtime || runtime.protocol !== xiaokNativeExecutorProtocol || runtime.binding !== bound.binding
         || nativeAgentRuntimeBinding(lease.enterpriseId)?.binding !== bound.binding
         || lease.actor.principal.kind !== 'user' || state.conversation.purpose !== 'customer_consultation'
-        || String(state.run.purpose) !== 'reply') fail('context_changed');
+        || !['reply', 'public.site.intro'].includes(String(state.run.purpose))) fail('context_changed');
       const config = agentConfig(policy.agent);
       const current = await one(tx, sql`select agent_config from app.assistant_enterprise_settings where enterprise_id=${lease.enterpriseId}`);
       if (!config || agentCapabilityFingerprint(config) !== agentCapabilityFingerprint(agentConfig(current?.agent_config))) fail('context_changed');
       return state;
     });
     const initial = await authorize();
+    // A public-site opening is a one-shot system event on the customer's own
+    // consultation, not a question and not a tool turn. It keeps the same
+    // published-material, provider-attempt, usage and recovery contracts as a
+    // reply, but never reads conversation history or offers tools.
+    if (String(initial.run.purpose) === 'public.site.intro') {
+      const ref = (initial.conversation.entry_snapshot as Row).activePublicSite as
+        { siteId: string; versionId: string } | undefined;
+      if (!ref) fail('context_changed');
+      const material = await withTenantTransaction(lease.enterpriseId, tx =>
+        publishedPublicMaterial(tx, lease.enterpriseId, String(ref.siteId), String(ref.versionId)));
+      if (!material) fail('public_site_unavailable', 404);
+      const sceneKey = sceneForOpeningPurpose('public.site.intro')!;
+      const scene = openingScene(lease.enterpriseId, sceneKey);
+      const input = scene?.input ?? defaultPublicIntroInput;
+      const constraints = scene?.constraints ?? defaultPublicIntroConstraints;
+      const config = agentConfig((initial.run.policy_snapshot as Row).agent);
+      if (!config) fail('context_changed');
+      const content = material.version.content as PublicContent;
+      const messages: ModelMessage[] = [
+        { role: 'system', content: [{ type: 'text', text: publicIntroPrompt(constraints.maxChars) }] },
+        { role: 'user', content: [{ type: 'text', text: publicIntroFacts(content, input) }] },
+      ];
+      let needProviderMark = !initial.job.provider_started_at;
+      await heartbeat(lease);
+      timer = setInterval(() => { heartbeat(lease).catch(() => undefined); }, 30000);
+      const output = await executePostgresText({
+        enterpriseId: BigInt(lease.enterpriseId),
+        owner: { kind: 'assistant_run', runId: BigInt(lease.runId) },
+        logicalModelKey: 'chat.general', messages: [], maxTokens: agentModelLimits.maxOutputTokens,
+        agent: { config, input: { messages, tools: [], maxTokens: agentModelLimits.maxOutputTokens } },
+        metadata: { promptVersion, runtime: xiaokNativeExecutorProtocol, purpose: 'public_intro',
+          scene: scene?.key ?? sceneKey, probeVersion: config.probeVersion },
+        beforeProviderCall: async () => {
+          if (!needProviderMark) return;
+          needProviderMark = false;
+          await markProviderStarted(lease);
+        },
+      });
+      if (!output.agentOutput) fail('invalid_model_answer', 502);
+      if (constraints.noCommitments) guardAnswerCommitments(output.agentOutput.text);
+      const text = validatePublicIntro(output.agentOutput.text, constraints);
+      const usage = output.agentOutput.usage;
+      await withTenantTransaction(lease.enterpriseId, tx => tx.execute(sql`insert into app.assistant_usage_records
+        (enterprise_id,run_id,provider_attempt_id,operation_key,category,quantity,measurement_kind,input_tokens,output_tokens)
+        values(${lease.enterpriseId},${lease.runId},${String(output.attemptId)},${'native-intro:' + lease.runId},'intro_tokens',
+        ${usage ? usage.inputTokens + usage.outputTokens : null},${usage ? 'observed' : 'unavailable'},
+        ${usage?.inputTokens ?? null},${usage?.outputTokens ?? null}) on conflict do nothing`));
+      await completeRun(lease, { content: { version: 1, blocks: [{ type: 'text', text }] }, usage: usage ?? null,
+        attemptId: String(output.attemptId) }, async tx => {
+        // The site may be withdrawn, replaced or left while the model ran.
+        // Both the active selection and the published material must still be
+        // the same at commit time, so a stale opening is never delivered.
+        const state = await runContext(tx, lease);
+        const current = (state.conversation.entry_snapshot as Row).activePublicSite as
+          { siteId: string; versionId: string } | undefined;
+        if (!current || String(current.siteId) !== String(ref.siteId) || String(current.versionId) !== String(ref.versionId))
+          fail('context_changed');
+        if (!await publishedPublicMaterial(tx, lease.enterpriseId, String(ref.siteId), String(ref.versionId)))
+          fail('public_site_unavailable', 404);
+        await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
+          values(${lease.enterpriseId},${lease.runId},1006,'agent_intro','succeeded',
+          ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, scene: scene?.key ?? sceneKey,
+            chars: Array.from(text).length })}::jsonb)`);
+      });
+      return;
+    }
     const config = agentConfig((initial.run.policy_snapshot as Row).agent);
     if (!config) fail('context_changed');
     const knowledgeEnabled = runKnowledgeEnabled(initial.run.policy_snapshot as Row);

@@ -22,15 +22,15 @@
 
 | 字段 | 当前记录 |
 | --- | --- |
-| 交付与负责人 | 小K原生执行链P2复审补缺（2026-11-11用户定向）：审计正控回执与本轮窗口关联、真正可认领竞争任务的限定范围认领隔离。单一负责人，禁止自动新建或交接聊天，仅用户明确要求才新建/转移。方法约束：先验证真实回答，禁止补丁循环；模型解释、KnowledgeRetriever/Evidence供授权材料，代码守权限/来源/动作/回执；两轮失败停循环，不堆提示词或换模型。 |
-| 用户入口与结果 | 业主645四问由`xiaok-native-executor-v1`回答；联网轮须真实搜索→读页→答案带可打开网页引用；已知定位的公开工地空结果恢复后仍直接交付该确定结果，不再询问城市。 |
-| 已证缺口 | 旧回执只比对路径与历史probeRunId即接受为同窗口正控，回执水位可越过缩短日志；四问直接用回执after当本轮before；D的竞争任务被推迟10分钟，未证明可认领竞争任务不被误领；workflows配置变更加进程启动哈希保护，切换模式必须重启dev栈（本轮实测）。 |
-| 已完成 | 新增`agent-v2/audit-window.ts`：批次+部署指纹+V2→native模式+日志前缀锚点；本轮窗口在正控后按实际日志位置开启，截断/替换/越界明确失败；四问/full-flow/isolation复用同一校验并删除previewRunId旧字段。recovery新增D2：两任务真实可认领、竞争排序在前、实际`claimKnowledgeJob({enterpriseId,jobId})`只领探针且竞争row四字段不变；D保留跨企业调度。保留V2 ticket串行、2010回执恢复、历史来源复验、网页完整链路与unknown保护。 |
-| 下一动作 | 复审本轮diff后聚焦提交；按唯一计划继续下一项入口迁移。 |
-| 必要验收 | audit-window单测7/7；four-questions-r4b 5/5（probe3275、批次关联、roundWindow 548→548、readSteps=1/readPages=1/两条可打开w:引用）；recovery r16 14/14（D2 claimable2、竞争order0/探针order1、竞争不变）；isolation r5b 5/5；首败four-questions-r4 run3276 missing_citation、isolation-r5 ECONNREFUSED、probe首跑run3274配置热变更保留；full-flow未执行，不作通过。 |
-| 失败与调用边界 | 保留r12–r14、four-questions-r2及本轮首败；不重放unknown provider；仅1454开发库；无真实客户写入、外部消息或生产。 |
-| 环境与资源 | 远程开发库经SSH隧道5432；3006 dev server与常驻Worker；V2探针与native轮之间需重启dev栈重载workflows配置；外部搜索/读页按测试需要，失败如实标未验。 |
-| 证据与后继 | `tmp/xiaok-native-executor-20261111-webrec/four-questions-r4/`（probe与首败）、`four-questions-r4b/`、`r16/`、`tmp/xiaok-native-executor-p2-isolation-r5b/`；模块清单双语已更新；后继按P2剩余入口迁移。 |
+| 交付与负责人 | P2公开工地开场原生迁移（2026-11-11用户定向）：公开工地开场接入原生执行链，重试保留原run purpose。单一负责人，禁止自动新建或交接聊天，仅用户明确要求才新建/转移。方法约束：先验证真实回答，禁止补丁循环；模型解释、KnowledgeRetriever/Evidence供授权材料，代码守权限/来源/动作/回执；两轮失败停循环，不堆提示词或换模型。 |
+| 用户入口与结果 | 业主从公开工地开场进入小K，由`xiaok-native-executor-v1`原生回答；只读已发布公开材料，重复进入返回existing，追问建议仍用预设。 |
+| 已证缺口 | 开场原先只走本地开场路径，无原生派发、无模型用量与步骤记录；开场重试会被记成reply。 |
+| 已完成 | `conversation.ts`在native绑定下为`public.site.intro`设置`agentRuntime: xiaok-native-executor-v1`；`native-executor.ts`的`processNativeAgentAnswer`新增intro分支；`public-intro.ts`新增`defaultPublicIntroInput/defaultPublicIntroConstraints`（无注册FastGPT scene时使用）。只读`publishedPublicMaterial`；模型调用前与`completeRun`事务内复验`activePublicSite`与公开状态；记录provider attempt、`native-intro:{runId}`的`intro_tokens`用量、`run:`用量和步骤1006 `agent_intro`；未知派发保持indeterminate不重放；重复进入existing。 |
+| 下一动作 | 按计划继续P3剩余入口（追问建议仍预设，后续单独迁移）。 |
+| 必要验收 | live run 3328 succeeded，executor `xiaok-native-executor-v1`，conversation 2230，site 11/version 38，开场86字，step1006 `agent_intro`，usage 316输入/49输出 observed，attempt 4970 succeeded；重复attach返回existing；重进读到assistant消息14583；pending_owner工地与旧版本均`public_site_unavailable` 404；合成未知派发run3330为indeterminate/provider_outcome_unknown且无输出消息；定向测试`native-public-intro.test.ts` 9/9 + `agent-v2-openings.test.ts` 7/7共16/16；lint 0错误；定向tsc仅有仓库既有`report-context.ts`错误。 |
+| 失败与调用边界 | 保留既有失败（r12–r14、four-questions-r2、run3276 missing_citation、isolation-r5 ECONNREFUSED、run3274配置热变更）；full-flow未执行，不作通过；不重放unknown provider；仅1454开发库；无真实客户写入、外部消息或生产。 |
+| 环境与资源 | 远程开发库经SSH隧道5432；3006 dev server与常驻Worker；外部搜索/读页按测试需要，失败如实标未验；Stable HLS、真机/真实微信、生产未验。 |
+| 证据与后继 | `tmp/xiaok-native-public-intro-20261111/report.json`；模块清单双语已更新；后继按P3剩余入口迁移。 |
 
 ## 3. 复用哪些成果
 
