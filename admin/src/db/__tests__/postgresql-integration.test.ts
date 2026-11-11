@@ -3284,6 +3284,7 @@ test('PostgreSQL workbench permits another round while a previous round is activ
         status: 'completed',
         completedAt: new Date(),
       });
+      assert.ok(plan, 'concurrent round floor plan created');
       const lead = await new LeadRepository(transaction).create({
         enterpriseId: enterpriseAId,
         assignedTo: promotionDesignerAId,
@@ -3410,6 +3411,7 @@ test('PostgreSQL workbench floor-plan preview renders the bound survey control P
         status: 'completed',
         completedAt: new Date(),
       });
+      assert.ok(plan, 'workbench floor plan created');
       const leadRepository = new LeadRepository(transaction);
       const lead = await leadRepository.create({
         enterpriseId: enterpriseAId,

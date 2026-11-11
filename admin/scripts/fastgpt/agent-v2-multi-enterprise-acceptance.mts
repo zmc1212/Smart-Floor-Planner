@@ -85,8 +85,10 @@ async function trace(runId: string) {
 }
 
 try {
-  release = await lockAssistantAcceptance(process.env.DATABASE_URL, { waitForLock: true });
-  report.database = new URL(process.env.DATABASE_URL).pathname;
+  const databaseUrl = process.env.DATABASE_URL;
+  assert.ok(databaseUrl, 'DATABASE_URL must be configured');
+  release = await lockAssistantAcceptance(databaseUrl, { waitForLock: true });
+  report.database = new URL(databaseUrl).pathname;
 
   await platform(async (tx: any) => {
     for (let index = 0; index < 2; index += 1) {

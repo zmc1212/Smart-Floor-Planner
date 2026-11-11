@@ -335,16 +335,18 @@ test('resolveMiniProgramCodeEnvironment respects explicit, env var, and NODE_ENV
     assert.equal(resolveMiniProgramCodeEnvironment('release'), 'release');
 
     delete process.env.WECHAT_MINIPROGRAM_CODE_ENV;
-    process.env.NODE_ENV = 'production';
+    const env = process.env as Record<string, string | undefined>;
+    env.NODE_ENV = 'production';
     assert.equal(resolveMiniProgramCodeEnvironment(), 'release');
 
-    process.env.NODE_ENV = 'development';
+    env.NODE_ENV = 'development';
     assert.equal(resolveMiniProgramCodeEnvironment(), 'develop');
   } finally {
     if (previousCodeEnv === undefined) delete process.env.WECHAT_MINIPROGRAM_CODE_ENV;
     else process.env.WECHAT_MINIPROGRAM_CODE_ENV = previousCodeEnv;
-    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
-    else process.env.NODE_ENV = previousNodeEnv;
+    const env = process.env as Record<string, string | undefined>;
+    if (previousNodeEnv === undefined) delete env.NODE_ENV;
+    else env.NODE_ENV = previousNodeEnv;
   }
 });
 

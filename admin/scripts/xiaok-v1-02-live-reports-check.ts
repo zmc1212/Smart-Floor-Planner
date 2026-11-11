@@ -238,9 +238,9 @@ async function main() {
         where enterprise_id=${eid} and kind='daily' and ${JSON.stringify(scheduledIds)}::jsonb ? binding_id::text`));
       assert.equal(after!.n, scheduled.length, 'a second tick does not duplicate the period');
       const settings = await read(tx => one(tx, sql`select next_daily_at, daily_time from app.construction_report_settings where enterprise_id=${eid}`));
-      assert.ok(new Date(String(settings.next_daily_at)) > new Date(Date.now() + 3600 * 1000), 'next_daily_at moved past the staged occurrence');
+      assert.ok(new Date(String(settings!.next_daily_at)) > new Date(Date.now() + 3600 * 1000), 'next_daily_at moved past the staged occurrence');
       log.scheduled = { reports: scheduled.map(r => ({ reportId: r.report_id, bindingId: r.binding_id, reportKey: r.report_key,
-        periodEnd: r.period_end, cutoff: r.cutoff_at, scheduledAt: r.scheduled_at })), nextDailyAt: settings.next_daily_at, dailyTime: settings.daily_time };
+        periodEnd: r.period_end, cutoff: r.cutoff_at, scheduledAt: r.scheduled_at })), nextDailyAt: settings!.next_daily_at, dailyTime: settings!.daily_time };
       save();
       return { reports: scheduled.length };
     });

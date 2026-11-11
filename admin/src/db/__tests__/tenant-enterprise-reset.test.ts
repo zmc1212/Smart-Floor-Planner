@@ -234,18 +234,19 @@ after(async () => {
 });
 
 test('isTenantEnterpriseResetAllowed rejects production without explicit switch', () => {
-  const previousNodeEnv = process.env.NODE_ENV;
-  const previousAllow = process.env.ALLOW_TENANT_ENTERPRISE_RESET;
+  const env = process.env as Record<string, string | undefined>;
+  const previousNodeEnv = env.NODE_ENV;
+  const previousAllow = env.ALLOW_TENANT_ENTERPRISE_RESET;
   try {
-    process.env.NODE_ENV = 'production';
+    env.NODE_ENV = 'production';
     delete process.env.ALLOW_TENANT_ENTERPRISE_RESET;
     assert.equal(isTenantEnterpriseResetAllowed(), false);
     process.env.ALLOW_TENANT_ENTERPRISE_RESET = 'true';
     assert.equal(isTenantEnterpriseResetAllowed(), true);
   } finally {
-    process.env.NODE_ENV = previousNodeEnv;
-    if (previousAllow === undefined) delete process.env.ALLOW_TENANT_ENTERPRISE_RESET;
-    else process.env.ALLOW_TENANT_ENTERPRISE_RESET = previousAllow;
+    if (previousNodeEnv === undefined) delete env.NODE_ENV; else env.NODE_ENV = previousNodeEnv;
+    if (previousAllow === undefined) delete env.ALLOW_TENANT_ENTERPRISE_RESET;
+    else env.ALLOW_TENANT_ENTERPRISE_RESET = previousAllow;
   }
 });
 

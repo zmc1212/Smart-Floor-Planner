@@ -39,7 +39,8 @@ export async function nativeConversation(lease: Lease, configured: RagSource[], 
           if ((prior.input_summary as Row)?.protocol === protocol) {
             nativeOriginal = String((prior.private_checkpoint as Row).raw);
             const bindings = (prior.private_checkpoint as { citations?: RagCitationSource[] }).citations || configured;
-            citations.push(...ragAnswerParts(nativeOriginal, bindings).flatMap(p => 'source' in p ? [p.source] : []));
+            citations.push(...ragAnswerParts(nativeOriginal, bindings).flatMap(p => 'source' in p
+              ? [{ ...p.source, origin: 'history' as const }] : []));
           }
           for (const key of ['knowledge','snapshots','sources','web','history','ancestors'] as const)
             (context[key] as unknown[]).push(...(original[key] || []));

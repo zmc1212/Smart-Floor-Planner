@@ -134,7 +134,7 @@ test('staff role mapping does not collapse designer and measurer capabilities', 
 test('referrer network capability is limited to enterprise staff roles', () => {
   const contexts = {
     customer,
-    referrer: { ...customer, mode: 'referrer' as const, referrerMembershipId: '31' },
+    referrer: { ...customer, mode: 'referrer' as const, referrerMembershipId: 31n },
     designer: { ...customer, mode: 'staff' as const, staffRole: 'designer' as const, enterpriseId: 7n },
     measurer: { ...customer, mode: 'staff' as const, staffRole: 'measurer' as const, enterpriseId: 7n },
     salesperson: { ...customer, mode: 'staff' as const, staffRole: 'salesperson' as const, enterpriseId: 7n },

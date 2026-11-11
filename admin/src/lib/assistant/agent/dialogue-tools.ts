@@ -37,6 +37,14 @@ export const citationId = (chunkId: string) => 'K' + chunkId;
 export const quoteOf = (text: string) => Array.from(text).length > 600 ? Array.from(text).slice(0, 600).join('') : text;
 export const snapshotHeading = '项目记录（授权快照，以此为准）';
 
+/** The model-visible projection of a `query_business` receipt. `resultKey` is
+ * the snapshot version hash the server revalidates against; it is never a
+ * citation id, so it must not reach the model. The persisted step receipt and
+ * the recovery path keep the full receipt for server-side version checks. */
+export function modelBusinessReceipt(receipt: DialogueToolReceipt) {
+  return { status: receipt.status, text: receipt.text };
+}
+
 /** `search_enterprise`: metered authorized enterprise-knowledge retrieval.
  * Duplicates of one in-flight query share the same promise; recovered queries
  * keep their persisted receipt instead of dispatching again. */
@@ -65,7 +73,7 @@ export function dialogueEnterpriseSearch(rt: DialogueToolRuntime) {
       const evidence = retrieved.evidence;
       if (evidence.length) rt.markKnowledgeRetrieved();
       const sources: RagCitationSource[] = evidence.map(e => ({ nativeId: citationId(e.ref.id), sourceId: citationId(e.ref.id),
-        quote: quoteOf(e.text), evidence: e }));
+        quote: quoteOf(e.text), evidence: e, origin: 'current' as const }));
       for (const s of sources) rt.catalog.set(s.nativeId, s);
       rt.context.knowledge.push(...evidence); rt.context.sources.push(...knowledgeSynthesisSources(evidence));
       // The receipt is persisted with the step so an interrupted run can reuse

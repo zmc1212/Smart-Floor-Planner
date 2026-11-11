@@ -110,7 +110,7 @@ try {
         const inactiveDefault = input.key === 'datasetSearchExtensionModelId' && input.value === undefined
           && actual.inputs.find((i: any) => i.key === 'datasetSearchUsingExtensionQuery')?.value === false;
         if (!inactiveDefault) assert.deepEqual(value(found.value), value(input.value), `Published ${id}.${input.key} must match the requested graph`);
-        assert.equal(found.selectedType ?? found.renderTypeList[0], input.selectedType ?? input.renderTypeList[0]);
+        assert.equal((found as { selectedType?: unknown }).selectedType ?? found.renderTypeList[0], (input as { selectedType?: unknown }).selectedType ?? input.renderTypeList[0]);
       }
     }
     if (nativeQuote) {

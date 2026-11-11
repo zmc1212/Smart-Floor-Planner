@@ -10,7 +10,7 @@ import { completeRun, failRun, heartbeat, markProviderStarted, runContext, type 
 import { runKnowledgeEnabled } from '../knowledge-policy';
 import { saveKnowledgeCitation } from '../knowledge/save-citation';
 import { nativeConversation } from '../fastgpt/rag-session';
-import { ragAnswerParts, type RagCitationSource, type RagPart } from '../fastgpt/native-rag';
+import { ragAnswerParts, type RagCitationSource } from '../fastgpt/native-rag';
 import { nativeAgentRuntimeBinding } from '../fastgpt/agent-v2/config';
 import { resolveSuggestions, resumeSuggestionGeneration, suggestionGenerationStep, suggestionPrompt,
   type SuggestionResolution } from '../fastgpt/agent-v2/suggestions';
@@ -19,7 +19,7 @@ import { businessToolDefinitions, parseBusinessQuery, type BusinessSnapshot } fr
 import { guardAnswerCommitments } from './context';
 import { runRenovationAgent, type AgentCheckpoint } from './runtime';
 import { synthesisContextAvailable } from './synthesis-sources';
-import { dialogueBusinessQuery, dialogueEnterpriseSearch, snapshotHeading, type DialogueToolRuntime } from './dialogue-tools';
+import { dialogueBusinessQuery, dialogueEnterpriseSearch, modelBusinessReceipt, snapshotHeading, type DialogueToolRuntime } from './dialogue-tools';
 import { assertModelTurnBand, dialogueWebResearch, webCitations, type WebToolRuntime } from './dialogue-web-tools';
 import { dialogueDesignerRecommendation, dialoguePublicSitesRecommendation, publicSitesDelivery,
   type RecommendToolRuntime } from './dialogue-recommend-tools';
@@ -74,14 +74,41 @@ export function nativeExecutorPrompt(knowledgeEnabled: boolean) {
   ].join('\n');
 }
 
-/** One-shot repair feedback is derived from the actual catalog state. When the
- * round retrieved nothing, "reuse the original cite id" kept run3413 repeating
- * literal placeholder markers; the no-source case must instead require the
- * model to remove every CITE marker. Validation itself stays strict. */
-export function nativeCitationFeedback(catalogSize: number) {
-  return catalogSize === 0
-    ? '最终回答未通过引用校验：本轮工具没有返回任何可引用来源（cites 为空），回答中不得出现任何 CITE 引用标记或占位符。请删除全部 CITE 标记后重新提交；无法核实的内容如实说明。'
-    : '最终回答未通过引用校验：CITE 标记中的 id 必须与本轮工具返回的 cites[].id 逐字符一致，不得改写、缩写或编造。请重新提交最终回答，只引用仍有效来源的原始id；无法核实的部分如实说明，不新增引用。';
+/** Repair feedback is derived from the draft's actual `[id](CITE)` markers and
+ * the catalog, never from `catalog.size`: the catalog also holds conversation
+ * history, this run's fresh sources and this run's recovered sources, so its
+ * size says nothing about which ids were issued now. Marker ids are trimmed
+ * exactly like ragAnswerParts; every other character stays significant. */
+export function scanNativeCitationMarkers(draft: string, catalog: Iterable<RagCitationSource>) {
+  const issued = new Set([...catalog].map(source => source.nativeId));
+  const valid = new Set<string>(), invalid = new Set<string>();
+  for (const match of draft.matchAll(/\[([^\]]+)\]\(CITE\)/g)) {
+    const citation = match[1].trim();
+    (issued.has(citation) ? valid : invalid).add(citation);
+  }
+  return { valid: [...valid], invalid: [...invalid] };
+}
+
+/** One-shot repair guidance for a draft that failed citation validation. A
+ * business resultKey / snapshot version hash is never a citation id: it is
+ * reported as invalid and never accepted or auto-replaced. When this run did
+ * return knowledge or web sources, deleting every marker is explicitly not an
+ * acceptable repair; when nothing was retrieved, removing them is the only
+ * honest answer. Validation itself stays strict and fail-closed. */
+export function nativeCitationFeedback(draft: string, catalog: Iterable<RagCitationSource>) {
+  const sources = [...catalog];
+  const runSources = sources.filter(source => source.origin === 'current' || source.origin === 'recovered');
+  const { valid, invalid } = scanNativeCitationMarkers(draft, sources);
+  const invalidText = invalid.join('、');
+  if (valid.length) {
+    return `最终回答未通过引用校验：已合法引用的 id（${valid.join('、')}）必须保留；${invalidText} 不是本轮任何工具返回的 cites[].id，业务 resultKey、版本号或内部 hash 不是引用 id。请删除或改正这些非法标记，不得自动替换或改写合法 id。请重新提交最终回答；无法核实的部分如实说明。`;
+  }
+  if (runSources.length) {
+    return `最终回答未通过引用校验：本轮工具已返回可引用来源，但草稿没有有效引用。`
+      + (invalidText ? `${invalidText} 不是引用 id（业务 resultKey、版本号或内部 hash 不是引用 id）；` : '')
+      + '必须用本轮工具返回的 cites[].id 中真实有效的 id 引用对应内容，不得删除全部 CITE 标记来绕过引用要求。请重新提交最终回答；无法核实的部分如实说明。';
+  }
+  return '最终回答未通过引用校验：本轮工具没有返回任何可引用来源（cites 为空），回答中不得出现任何 CITE 引用标记或占位符；业务 resultKey、版本号或内部 hash 不是引用 id。请删除全部 CITE 标记后重新提交；无法核实的内容如实说明。';
 }
 
 /** Business snapshots stay authoritative server data. A valid uncited model
@@ -418,7 +445,8 @@ export async function processNativeAgentAnswer(lease: Lease) {
       knowledgeRetrieved = true;
       for (const e of evidence) {
         catalog.set('K' + e.ref.id, { nativeId: 'K' + e.ref.id, sourceId: 'K' + e.ref.id,
-          quote: Array.from(e.text).length > 600 ? Array.from(e.text).slice(0, 600).join('') : e.text, evidence: e });
+          quote: Array.from(e.text).length > 600 ? Array.from(e.text).slice(0, 600).join('') : e.text, evidence: e,
+          origin: 'recovered' as const });
         context.knowledge.push(e);
       }
     }
@@ -438,7 +466,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
       if (!evidence.length) continue;
       webRetrieved = true;
       const sources = webSynthesisSources(evidence);
-      webCitations(catalog, sources);
+      webCitations(catalog, sources, 'recovered');
       (context.web ??= []).push(...evidence);
       context.sources.push(...sources);
     }
@@ -522,7 +550,10 @@ export async function processNativeAgentAnswer(lease: Lease) {
         return { content: JSON.stringify(await search(value.query, ++sequence)) };
       }
       if (name === 'query_business') {
-        return { content: JSON.stringify(await business(parseBusinessQuery(JSON.parse(args)), ++sequence)) };
+        // Only status/text reach the model. The resultKey stays in the
+        // persisted receipt and the recovery map for server-side version
+        // revalidation; it is never a citation id.
+        return { content: JSON.stringify(modelBusinessReceipt(await business(parseBusinessQuery(JSON.parse(args)), ++sequence))) };
       }
       if (name === 'search_web' || name === 'read_web') {
         const parsed = JSON.parse(args) as { query?: string; candidateId?: string };
@@ -628,7 +659,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
           try { ragAnswerParts(text, [...catalog.values()]); return null; }
           catch (error) {
             if (!(error instanceof AssistantError) || error.code !== 'invalid_model_citation') throw error;
-            return { code: 'invalid_model_citation', feedback: nativeCitationFeedback(catalog.size) };
+            return { code: 'invalid_model_citation', feedback: nativeCitationFeedback(text, catalog.values()) };
           }
         },
         checkpoint: state => withTenantTransaction(lease.enterpriseId, async tx => {
@@ -646,12 +677,11 @@ export async function processNativeAgentAnswer(lease: Lease) {
     for (const key of ['knowledge', 'snapshots', 'sources'] as const)
       (context[key] as unknown[]) = [...new Map((context[key] as unknown[]).map(v => [fingerprint(v), v])).values()];
     const snapshotText = delivered.map(s => s.displayText).join('\n');
-    let modelParts: RagPart[] | null = null;
-    if (finalText.trim()) {
-      try { modelParts = ragAnswerParts(finalText, [...catalog.values()]); }
-      catch (error) { if (!snapshotText) throw error; }
-    }
-    const modelCitations = modelParts?.filter(part => 'source' in part).length ?? 0;
+    // Citation parsing is not optional for a snapshot answer: a draft that
+    // failed the runtime's one-shot repair must fail the run, never be re-judged
+    // successful just because an authoritative snapshot section exists.
+    const modelParts = ragAnswerParts(finalText, [...catalog.values()]);
+    const modelCitations = modelParts.filter(part => 'source' in part).length;
     // A located-but-empty nearby result is delivered from the server receipt;
     // need_region never overrides the model draft (same rule as the bridge).
     const composed = publicSitesDelivery(

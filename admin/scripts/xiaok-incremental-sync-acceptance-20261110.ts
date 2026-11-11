@@ -199,8 +199,9 @@ const INSTALL_PAGE = `() => {
 
 
 const ASSISTANT = '/api/miniprogram/assistant';
-const isConversation = (r: Row, cid: string) => r.method === 'GET' && r.url.endsWith(ASSISTANT + '/conversations/' + cid);
-const isMessages = (r: Row, cid: string) => r.method === 'GET' && r.url.includes(ASSISTANT + '/conversations/' + cid + '/messages');
+type RequestLog = { method?: unknown; url?: unknown; afterSeq?: unknown; at?: unknown };
+const isConversation = (r: RequestLog, cid: string) => r.method === 'GET' && String(r.url).endsWith(ASSISTANT + '/conversations/' + cid);
+const isMessages = (r: RequestLog, cid: string) => r.method === 'GET' && String(r.url).includes(ASSISTANT + '/conversations/' + cid + '/messages');
 const measure = async () => {
   await evaluate(MEASURE);
   await delay(500);
@@ -216,7 +217,7 @@ async function ensureFreshFullWindow(label: string) {
   const age = Number(state.now) - last;
   if (last && age <= 45000) return { age, waited: false };
   await evaluate(RESET);
-  await waitState(label, s => (s.requests as Row[]).some(r => isMessages(r, fixtureId) && r.afterSeq === null), 90000, 700, pollRescue());
+  await waitState(label, s => ((s.requests as RequestLog[]) || []).some(r => isMessages(r, fixtureId) && r.afterSeq === null), 90000, 700, pollRescue());
   return { age, waited: true };
 }
 
@@ -249,7 +250,7 @@ const conversationRow = async () => (await tenantOne(sql`select id,last_seq,(sel
   from app.assistant_conversations c where c.enterprise_id=${eid} and c.id=${Number(fixtureId)}`))!;
 
 async function cleanup() {
-  const result: Row = { steps: [] };
+  const result: Row & { steps: Row[] } = { steps: [] };
   const attempt = async (name: string, fn: () => Promise<unknown>) => {
     try { result.steps.push({ name, ok: true, data: await fn() }); }
     catch (e) { result.steps.push({ name, ok: false, error: (e as Error).message }); }
@@ -477,12 +478,12 @@ async function main() {
       const atStart = await evaluate<Row>(PAGE);
       await delay(15500);
       const now = await evaluate<Row>(PAGE);
-      const requests = now.requests as Row[];
+      const requests = now.requests as RequestLog[];
       const conversationReads = requests.filter(r => isConversation(r, fixtureId));
       const messageReads = requests.filter(r => isMessages(r, fixtureId));
       const times = conversationReads.map(r => Number(r.at));
       const gaps = times.slice(1).map((at, index) => at - times[index]);
-      assert.equal(atStart.controller && atStart.controller.timer, true,
+      assert.equal(atStart.controller && (atStart.controller as Row).timer, true,
         'The poll timer must be armed while the chat is visible: ' + JSON.stringify(atStart.controller));
       assert.ok(conversationReads.length >= 2 && conversationReads.length <= 3,
         'A 15.5 s idle window holds two or three 7 s ticks, got ' + conversationReads.length + ' controller=' + JSON.stringify(now.controller));
@@ -656,11 +657,11 @@ async function main() {
       const envelope = await response.json() as Row;
       const body = (envelope.data || {}) as Row;
       assert.equal(body.reset, true, 'A cursor beyond last_seq must return reset');
-      assert.equal((body.items || []).length, 0);
+      assert.equal(Array.isArray(body.items) ? body.items.length : 0, 0);
       assert.equal(String(body.latestSeq), '875');
       assert.equal(String(body.afterCursor), '900', 'Reset echoes the requested cursor');
       save();
-      return { status: response.status, reset: body.reset, items: (body.items || []).length, latestSeq: String(body.latestSeq), afterCursor: String(body.afterCursor) };
+      return { status: response.status, reset: body.reset, items: Array.isArray(body.items) ? body.items.length : 0, latestSeq: String(body.latestSeq), afterCursor: String(body.afterCursor) };
     });
 
     await step('retention shrink keeps the client on a full window', async () => {

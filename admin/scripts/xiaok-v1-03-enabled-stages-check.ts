@@ -57,13 +57,18 @@ async function step(name: string, fn: () => Promise<unknown>) {
 }
 const resync = () => read(async tx => {
   const conversation = await one(tx, sql`select * from app.assistant_conversations where enterprise_id=${eid} and id=${cid}`);
-  await syncConstructionReminders(tx, actorOf(uid), conversation);
+  await syncConstructionReminders(tx, actorOf(uid), conversation!);
 });
+/** Stage reminders persist as assistant messages linked to their domain event. */
+const stageMessages = () => read(tx => rows(tx, sql`select m.id::text id,m.source_event_id::text event_id,m.content,e.payload
+  from app.assistant_messages m join app.domain_event_outbox e on e.enterprise_id=m.enterprise_id and e.id=m.source_event_id
+  where m.enterprise_id=${eid} and m.conversation_id=${cid} and m.purpose='construction.stage' order by m.seq`));
+const textOf = (message: Row) => ((message.content as Row)?.blocks as Row[] | undefined || []).map(b => String(b.text || '')).join('');
 
 async function main() {
   release = await lockAssistantAcceptance(target, { waitForLock: true });
   assert.equal((await withPlatformTransaction(tx => one(tx, sql`select count(*)::int n from app.assistant_jobs where status in ('queued','running')`)))!.n, 0);
-  attemptsBefore = (await withPlatformTransaction(tx => one(tx, sql`select coalesce(max(id),0)::text id from app.ai_provider_attempts`)))!.id;
+  attemptsBefore = String((await withPlatformTransaction(tx => one(tx, sql`select coalesce(max(id),0)::text id from app.ai_provider_attempts`)))!.id);
 
   await step('temporary assistant enablement with knowledge off is recorded for restore', async () => {
     settingsBefore = await read(tx => one(tx, sql`select enabled,agent_config,version,policy_version from app.assistant_enterprise_settings where enterprise_id=${eid}`));
@@ -85,7 +90,7 @@ async function main() {
       assert.ok(admins.every(a => String(a.username).startsWith('synthetic-report-composition-')));
       reactivated = admins.filter(a => a.status !== 'active').map(a => String(a.id));
       for (const id of reactivated) await tx.execute(sql`update app.admin_users set status='active' where id=${id}`);
-      const user = (await one(tx, sql`insert into app.users(nickname,context_version) values('合成测试·启用阶段旅程',1) returning id`)!);
+      const user = (await one(tx, sql`insert into app.users(nickname,context_version) values('合成测试·启用阶段旅程',1) returning id`))!;
       uid = String(user.id);
       await tx.execute(sql`insert into app.wechat_identities(user_id,openid) values(${uid},${'synthetic-enabled-stages-' + randomUUID()})`);
     });

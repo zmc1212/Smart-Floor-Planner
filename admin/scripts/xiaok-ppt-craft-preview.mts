@@ -5,6 +5,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '../src/db/transaction';
+import type { Row } from '../src/db/repositories/assistant-repository';
 import { lockAssistantAcceptance } from './assistant-acceptance-safety.mjs';
 
 const require = createRequire(path.resolve('package.json'));
@@ -57,7 +58,7 @@ fs.mkdirSync(out, { recursive: true });
 const reportPath = path.join(out, 'preparation.json');
 const save = () => fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
 assert.ok(!fs.existsSync(reportPath), 'Read the retained preparation before another attempt');
-const settings = () => tenant(tx => one(tx, sql`select enabled,agent_config,active_index_profile_id
+const settings = () => tenant<Row>(tx => one(tx, sql`select enabled,agent_config,active_index_profile_id
   from app.assistant_enterprise_settings where enterprise_id=${enterpriseId}`));
 let release: Awaited<ReturnType<typeof lockAssistantAcceptance>> | undefined;
 let restoreEnabled = false;
@@ -67,7 +68,7 @@ try {
   const before = await settings();
   assert.equal(before.enabled, false);
   assert.ok(before.active_index_profile_id);
-  const publishedStaff = await tenant(tx => rows(tx, sql`select id from app.assistant_knowledge_documents
+  const publishedStaff = await tenant<Row[]>(tx => rows(tx, sql`select id from app.assistant_knowledge_documents
     where enterprise_id=${enterpriseId} and status='active' and audience='staff_internal' and published_version_id is not null`));
   assert.equal(publishedStaff.length, 0, 'The staff preview must have only the selected PPT drafts');
 
@@ -110,7 +111,7 @@ try {
 
   for (const source of fixture.drafts) {
     await release.assertHeld();
-    const existing = await tenant(tx => rows(tx, sql`select id from app.assistant_knowledge_documents
+    const existing = await tenant<Row[]>(tx => rows(tx, sql`select id from app.assistant_knowledge_documents
       where enterprise_id=${enterpriseId} and category=${category} and title=${source.title}`));
     assert.ok(existing.length <= 1);
     const detail = existing.length

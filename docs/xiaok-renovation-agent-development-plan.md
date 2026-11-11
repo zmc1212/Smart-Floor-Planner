@@ -22,15 +22,15 @@
 
 | 字段 | 当前记录 |
 | --- | --- |
-| 交付与负责人 | P3最终收尾与有限验收（2026-11-11用户定向）：关闭建议明确未派发与created attempt两个用量边界，收紧stage原生验收，按run3413原trace归因后最小修复引用提示。单一负责人，禁止自动新建或交接聊天，仅用户明确要求才新建/转移。方法约束：先验证真实回答，禁止补丁循环；模型解释、KnowledgeRetriever/Evidence供授权材料，代码守权限/来源/动作/回执；两轮失败停循环，不堆提示词或换模型。 |
-| 用户入口与结果 | 建议前置拒绝不再留unknown标记、下一条消息可继续；取消/Worker中断的created调用保持unknown，可按外部证据确认更高总量；原生阶段报告正文必须成功且非空，native批次零FastGPT记录（含stage）；引用修复按真实cites状态反馈，校验不放宽。 |
-| 已证缺口 | 无已知代码缺口；stage full-flow、真机/真实微信、生产未验。 |
-| 已完成 | 建议usage marker移入`beforeProviderCall`派发边界；`unresolvedProviderOutcome`将created attempt判unknown；full-flow原生校验要求零FastGPT含stage且阶段正文成功非空（脚本离线反例通过），down flag仅旧V2；run3413归因空catalog+占位符`[id](CITE)`四次、一次修复复读；提示词去占位符、修复反馈按catalog空/非空分支；live W1 run3474 succeeded、repairTurn=false、正文真实1次（总2 attempt含种子）+建议1 attempt succeeded；本轮交付完成，真机/真实微信/生产另行保留。 |
-| 下一动作 | 最终收尾清单：①核对W1 run3474与代表旅程证据；②更新双语清单与本节；③运行`node scripts/check-xiaok-plan.mjs`；④提交并核对SHA。无新增P3入口；若后续live仍invalid_model_citation则停同类提示词/正则调整，按trace报告阻塞。 |
-| 必要验收 | 新定向：suggestion-usage 5/5、usage-accounting 6/6、native-acceptance 8/8、audit-window 9/9、native-executor含3413离线用例通过；lint 0 error；live W1 run3474正文真实1次（总2attempt含种子）、建议1attempt succeeded、repairTurn false、validationRepairs0；stage既有证据run3423–3428六份正文、audit548→548；全量assistant 975项973通过，2项既有/环境失败与改动路径无关（need-write-intent既有断言、assistant.test.ts受常驻Worker/共享库干扰）。既有usage/46单测证据复用不重跑。 |
-| 失败与调用边界 | W1 run3413原失败保留为证据，run3474为修复后结果；stage full-flow、真机/真实微信/生产未验；未知不重放；仅1454开发库；无真实客户写入或外部消息；既有`report-context.ts`类型错误不计本轮新缺陷。 |
-| 环境与资源 | 远程库经SSH隧道5432；隔离评测库55432本轮凭据不可用，DB定向测试在5432合成夹具串行执行；3006 dev server与常驻Worker；真实模型按需，失败如实标未验；Stable HLS、真机/真实微信、生产未验。 |
-| 证据与后继 | `tmp/xiaok-native-recovery-w1-20261111/report.json`（live run3474）；`tmp/xiaok-w1-run3413-20261111/run3413.json`（原run3413离线回读）；`tmp/xiaok-stage-native-20261111/report.json`；模块清单双语已更新；无泛化下一P3入口。 |
+| 交付与负责人 | 有限修复轮（2026-11-11用户定向）：修复引用来源/工具回执契约与发布构建阻塞，完成原定必要验收。单一负责人，禁止自动新建或交接聊天。方法约束：先验证真实回答，禁止补丁循环；两轮同类失败停循环，不堆提示词或换模型。 |
+| 用户入口与结果 | 同会话已有历史引用后再问本人项目进度：业务resultKey/版本hash不得作为CITE id；模型只见业务文本/状态，引用修复按实际marker与来源集合反馈；合法引用保留，非法标记删除或改正；最终交付不再因业务快照存在而吞掉引用错误。stage正文成功非空、native零FastGPT记录（含stage）保持。 |
+| 已证缺口 | 无已知代码缺口；真实微信客户端、Stable HLS、生产部署未验；975/973/2为既有记录，未重跑。 |
+| 已完成 | 业务快照投影（模型侧仅status/text，resultKey留持久回执）；catalog标记history/current/recovered；修复反馈按实际`[id](CITE)`校验；最终ragAnswerParts失败不再回退吞错；run3566根因修复后run3583 succeeded、2次模型调用、无CITE标记；stage event7598六份报告522–527 succeeded/delivered、读者正文非空；full-flow batch fix2 10/10、audit553→553；tsc0、完整`npm run build`退出0、lint 0 error；项目内类型错误正面修复，tsconfig仅排除git-ignored的`tmp`第三方副本。 |
+| 下一动作 | 本轮范围完成，进入交付验收；无新增P3入口。真实微信/HLS/生产另行验收；仅明确可复现新故障才建修复任务。 |
+| 必要验收 | native-executor 17/17；`npx tsc --noEmit -p tsconfig.json` 0；完整`npm run build`退出0（tmp/build-final.log）；lint 0 error/59既有warning；full-flow `full-flow-fix2` 10/10：customer两轮引用、stage六报告、本人项目进度run3583、daily6报告/4视图、权限、公开读面、最终审计；probe run3568 551→553，round553→553 kinds{}；旧W1 run3474/run3413证据保留且未与stage审计混用；975/973/2按既有记录。 |
+| 失败与调用边界 | run3413、run3566原失败保留；run3567因18300隧道断开indeterminate（基础设施，恢复隧道后run3568成功）；真实微信/HLS/生产未验；未知不重放；仅1454开发库；无真实客户写入或外部消息；975/973/2按既有记录。 |
+| 环境与资源 | 远程5432；18300 FastGPT隧道已恢复；完整build前停止3006 dev server与Worker（release `.next`保留）；真实模型用于full-flow；Stable HLS、真机/真实微信、生产未验。 |
+| 证据与后继 | `tmp/xiaok-stage-fullflow-20261111/full-flow-fix2/report.json`（10/10、stage7598、run3583、audit553→553）；`.../audit-probe-fix2.json`（run3568）；`tmp/build-final.log`；`tmp/tsc-fix-round.log`；`tmp/lint-final2.log`；旧`tmp/xiaok-native-recovery-w1-20261111/report.json`与`tmp/xiaok-w1-run3413-20261111/run3413.json`；无泛化下一P3入口。 |
 
 ## 3. 复用哪些成果
 

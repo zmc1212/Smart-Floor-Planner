@@ -95,11 +95,7 @@ test('invalid database sessions are cleared before returning to login', async ()
   );
   assert.match(homePage, /redirect\(['"]\/api\/auth\/logout['"]\)/);
 
-  const response = await clearInvalidSession(
-    new Request('http://localhost:3006/api/auth/logout', {
-      headers: { cookie: 'auth_token=stale-token' },
-    })
-  );
+  const response = await clearInvalidSession();
 
   assert.equal(response.status, 303);
   assert.equal(response.headers.get('location'), '/login');

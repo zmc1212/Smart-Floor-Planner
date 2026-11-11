@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { before, after, test } from 'node:test';
 import { loadEnvConfig } from '@next/env';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:http';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -375,7 +375,7 @@ test('independent worker script calls authenticated handler, persists health and
   try {
     for (let restart = 0; restart < 2; restart++) {
       const started = Date.now();
-      const worker = spawn(process.execPath, ['scripts/assistant-worker.mjs'], { cwd: process.cwd(), stdio: 'ignore',
+      const worker: ChildProcess = spawn(process.execPath, ['scripts/assistant-worker.mjs'], { cwd: process.cwd(), stdio: 'ignore',
         env: { ...process.env, ASSISTANT_WORKER_ENDPOINT: 'http://127.0.0.1:' + address.port + '/api/internal/assistant/jobs/run', ASSISTANT_WORKER_HEALTH_FILE: health } });
       try {
         let healthy = false;

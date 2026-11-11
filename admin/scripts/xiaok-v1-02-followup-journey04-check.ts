@@ -55,7 +55,7 @@ if (configured) assert.ok(nativeScript, 'Bind the planned native journey scope b
 const log: Row = { startedAt: new Date().toISOString(), owner: process.env.CODEX_THREAD_ID,
   scope: 'V1-02 follow-up04 complete natural journeys on retained labelled customer61/worker63 frozen originals in isolated55434; current coordination admission only',
   mechanism: 'report-coordination-referral-v1 is bound with reportNativeFinal on every new private selected-report reply; site questions persist the exact application-owned referral after the authorized frozen read; corrections stay the user\'s own words through report-selection-history-v1; no model-authored report-fact prose, no plain-admission per-Q resampling, no knowledge-pipeline rebuild (eval DB has no knowledge tables; the knowledge branch reuses existing authorized-retrieval evidence).',
-  fixedScope: { roles: ['customer', 'worker'], serviceJourneysPerRole: 2, turnsPerJourney: 2, maxServiceRuns: 8, nativeJourneys: 2, maxNativeRuns: 4,
+  fixedScope: { roles: ['customer', 'worker'], serviceJourneysPerRole: 2, turnsPerJourney: 2, maxServiceRuns: 8, nativeJourneyCount: 2, maxNativeRuns: 4,
     stop: 'First failed/unknown expectation, source/configuration drift or unavailable original; no sampling retries',
     serviceJourneys: [
       { role: 'customer', turns: ['我先更正一下，之前我说的开关问题是客厅的，不是卧室。现在客厅的照明回路定下来了吗？', '那这件事接下来我该找谁确认？'] },
@@ -284,7 +284,7 @@ async function signIdentities() {
 async function main() {
   release = await lockAssistantAcceptance(JSON.parse(fs.readFileSync(path.join(root, 'tmp/xiaok-vector/connection.private.json'), 'utf8')).DATABASE_URL);
   await idle();
-  runtimeStage = await stageOwnedRuntime({ configured, ownerId: fixture.ownerId, onBaseline: state => { runtimeStage = state; } });
+  runtimeStage = await stageOwnedRuntime({ configured, ownerId: fixture.ownerId, onBaseline: (state: NonNullable<typeof runtimeStage>) => { runtimeStage = state; } });
   log.runtimeStage = runtimeStage.evidence;
   quotaBaseline = String((await read(tx => one(tx, sql`select coalesce(max(id),0)::text id from app.assistant_quota_reservations where enterprise_id=${eid}`)))!.id);
   log.accountingBefore = await accounting(); log.configBefore = await config();

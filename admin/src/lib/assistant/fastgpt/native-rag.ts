@@ -25,7 +25,12 @@ export function ragSources(quotes: unknown, configured: RagSource[]): RagSource[
     seen.add(source.nativeId); return source;
   });
 }
-export type RagCitationSource = Pick<RagSource, 'nativeId' | 'evidence'> & { sourceId?: string; quote?: string };
+/** Where a catalog entry came from. Only `current`/`recovered` sources were
+ * returned inside this run; `history` sources are conversation history that
+ * stays citable, but cannot satisfy this run's retrieval-citation rules. */
+export type RagCitationOrigin = 'history' | 'current' | 'recovered';
+export type RagCitationSource = Pick<RagSource, 'nativeId' | 'evidence'>
+  & { sourceId?: string; quote?: string; origin?: RagCitationOrigin };
 export type RagPart = { text: string } | { source: RagCitationSource };
 /** Citation chips/notices are UI projections, never assistant history. Native
  * originals retain their own CITE protocol so the model sees the actual reply. */

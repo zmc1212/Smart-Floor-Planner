@@ -28,7 +28,24 @@ fs.mkdirSync(output, { recursive: true });
 const project = path.join(root, 'miniprogram');
 const mp = wechatideNativeClient(project, output);
 const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
-const report: Row = { startedAt: new Date().toISOString(), enterpriseId: eid, scope: 'customer journey: renovation chat, own site, designers, live daily report', checks: [], failures: [], turns: [] };
+type RoundReport = Row & { checks: Row[]; failures: Row[]; turns: Row[]; passed?: boolean; error?: string; drift?: string[]; cleanupError?: string };
+type PageMessage = { id: string; isUser: boolean; text: string;
+  citations: Array<{ id: string; title: string; sourceKind: string }>;
+  designer: { items: Array<{ authorId: string; authorName: string; workTitle: string; style: string; specialty: string }> } | null };
+type FollowupChat = { messages: PageMessage[]; generating: boolean; busy: boolean; reception: boolean };
+type DetailProject = { id: string; name: string; stage: string; progress: string[] };
+type PageState = {
+  route: string | null; loading: boolean; needsLogin: boolean; busy: boolean; generating: boolean; error: string;
+  followupActive: boolean; conversation: { id: string; status: unknown } | null;
+  messages: PageMessage[];
+  followupBindings: Array<{ id: string; title: string; audience: string }>;
+  followupReports: Array<{ reportId: string; revision: number; kind: string; available: boolean; ready: boolean; readAt: unknown; title: string }>;
+  reportQuestion: { selected: boolean; title: string; busy: boolean; pending: boolean; error: string };
+  followupDetail: { reportId: string; available: boolean; ready: boolean; readAt: unknown; projects: DetailProject[] } | null;
+  followupHistoryItems: Array<{ reportId: string; kind: string; readAt: unknown; title: string }>;
+  followupChat: FollowupChat | null;
+};
+const report: RoundReport = { startedAt: new Date().toISOString(), enterpriseId: eid, scope: 'customer journey: renovation chat, own site, designers, live daily report', checks: [], failures: [], turns: [] };
 const save = () => fs.writeFileSync(path.join(output, 'report.json'), JSON.stringify(report, null, 2));
 const tenantOne = (q: ReturnType<typeof sql>) => withTenantTransaction(eid, tx => one(tx, q));
 const tenantRows = (q: ReturnType<typeof sql>) => withTenantTransaction(eid, tx => rows(tx, q));
@@ -65,7 +82,7 @@ const evaluate = async <T>(source: string, ...args: unknown[]): Promise<T> => {
   const r = await mp.call('automation_evaluate', { project, fnSource: source, args });
   return r.result.result as T;
 };
-const pageData = () => evaluate<Row>(`() => {
+const pageData = () => evaluate<PageState>(`() => {
   const p = getCurrentPages().at(-1); if (!p) return { route: null };
   const d = p.data; const text = m => String(m.text || ((m.blocks || []).map(b => b.text || '').join('')));
   return { route: p.route, loading: !!d.loading, needsLogin: !!d.needsLogin, busy: !!d.busy, generating: !!d.generating,
@@ -94,7 +111,7 @@ async function sendTurn(text: string, label: string, followup = false) {
   const start = await pageData();
   assert.equal(start.route, 'packages/assistant/chat/chat', 'Chat route must be active');
   assert.ok(!start.needsLogin, 'Customer session must be accepted: ' + start.error);
-  const count = followup ? start.followupChat.messages.length : start.messages.length;
+  const count = followup ? start.followupChat!.messages.length : start.messages.length;
   await mp.call('automation_element_action', { project, selector: 'textarea.composer-input', action: 'input', value: text });
   await delay(400);
   await mp.call('automation_element_action', { project, selector: '.send-button', action: 'tap' });
@@ -107,8 +124,8 @@ async function sendTurn(text: string, label: string, followup = false) {
     if (now.error && !state.generating && size === count) throw new Error('Send error: ' + now.error);
     return size >= count + 2 && !state.generating && !state.busy ? now : undefined;
   }, 420000);
-  const state = followup ? done.followupChat : done;
-  const user = state.messages.at(-2), reply = state.messages.at(-1)!;
+  const state = (followup ? done.followupChat : done)!;
+  const user = state.messages.at(-2)!, reply = state.messages.at(-1)!;
   assert.ok(user.isUser || user.text.includes(text.slice(0, 4)), 'Customer message rendered');
   assert.ok(!reply.isUser && reply.text.trim().length > 30, 'Assistant reply rendered');
   const shot = path.join(output, 'turn-' + label + '.png');
@@ -211,7 +228,7 @@ async function main() {
         if (now.followupActive && now.followupReports.length) return now;
         return undefined;
       }, 90000);
-      const daily = thread.followupReports.find((r: Row) => r.kind === 'daily' && r.ready && r.available !== false);
+      const daily = thread.followupReports.find(r => r.kind === 'daily' && r.ready && r.available !== false);
       assert.ok(daily, 'A ready daily report exists for the customer');
       await evaluate(`(f) => { const p = getCurrentPages().at(-1);
         p.readFollowupReport({ currentTarget: { dataset: { report: f.report, revision: f.revision } } }); return true; }`,
@@ -221,9 +238,9 @@ async function main() {
         return now.followupDetail && now.followupDetail.ready ? now.followupDetail : undefined;
       }, 90000);
       assert.equal(detail.available, true, 'Customer daily detail available');
-      assert.ok(detail.projects.some((p: Row) => String(p.id) === projectId), 'Customer daily detail carries the bound project');
+      assert.ok(detail.projects.some(p => String(p.id) === projectId), 'Customer daily detail carries the bound project');
       report.dailyDetailBeforeQuestion = { reportId: String(daily.reportId), revision: Number(daily.revision),
-        projects: detail.projects.map((p: Row) => ({ id: String(p.id), stage: p.stage, progressLines: p.progress.length })) };
+        projects: detail.projects.map(p => ({ id: String(p.id), stage: p.stage, progressLines: p.progress.length })) };
       await evaluate(`(f) => { const p = getCurrentPages().at(-1);
         p.askFollowupReport({ currentTarget: { dataset: { report: f.report, revision: f.revision } } }); return true; }`,
         { report: String(daily.reportId), revision: Number(daily.revision) });
@@ -247,7 +264,7 @@ async function main() {
         protocol: ((run!.policy_snapshot as Row)?.agentRuntime as Row)?.protocol || null,
         question: '我家现在施工到哪一步了？最近工地上都做了些什么？', answer: reply.text,
         reportId: String(daily.reportId), revision: Number(daily.revision),
-        detailProgress: detail.projects.flatMap((p: Row) => p.progress).slice(0, 6),
+        detailProgress: detail.projects.flatMap(p => p.progress).slice(0, 6),
         stageKey: String(stage!.current_stage_key), projectVersion: Number(stage!.version) };
       (report.turns as Row[]).push(turn);
       report.ownSite = { reportId: turn.reportId, revision: turn.revision, progressLines: turn.detailProgress };
@@ -323,7 +340,7 @@ async function main() {
       }
       const thread = await waitFor('daily card in follow-up', async () => {
         const now = await pageData();
-        const item = now.followupReports.find((r: Row) => r.reportId === daily.reportId && r.ready);
+        const item = now.followupReports.find(r => r.reportId === daily.reportId && r.ready);
         return now.followupActive && item ? item : undefined;
       }, 120000);
       assert.equal(thread.kind, 'daily', 'Daily card kind');
@@ -336,7 +353,7 @@ async function main() {
         return now.followupDetail && now.followupDetail.ready ? now.followupDetail : undefined;
       }, 90000);
       assert.equal(detail.available, true, 'Daily detail available');
-      assert.ok(detail.projects.some((p: Row) => String(p.id) === projectId && p.progress.length > 0), 'Daily detail carries real progress lines');
+      assert.ok(detail.projects.some(p => String(p.id) === projectId && p.progress.length > 0), 'Daily detail carries real progress lines');
       await mp.screenshot({ path: path.join(output, 'daily-detail.png') });
       const ack = await waitFor('acknowledgement persisted', async () => {
         const r = await tenantOne(sql`select read_at from app.construction_report_deliveries
@@ -347,12 +364,12 @@ async function main() {
       await evaluate(`() => { const p = getCurrentPages().at(-1); p.followupHistory(); return true; }`);
       const history = await waitFor('history shows read', async () => {
         const now = await pageData();
-        const item = now.followupHistoryItems.find((i: Row) => i.reportId === String(daily.reportId));
+        const item = now.followupHistoryItems.find(i => i.reportId === String(daily.reportId));
         return item && item.readAt ? item : undefined;
       }, 90000);
       await mp.screenshot({ path: path.join(output, 'daily-history.png') });
-      report.dailyRead = { readAt: ack!.read_at, historyReadAt: history.readAt, progressLines: detail.projects.find((p: Row) => String(p.id) === projectId)?.progress };
-      return { readAt: ack!.read_at, progressLines: (report.dailyRead as Row).progressLines?.length };
+      report.dailyRead = { readAt: ack!.read_at, historyReadAt: history.readAt, progressLines: detail.projects.find(p => String(p.id) === projectId)?.progress };
+      return { readAt: ack!.read_at, progressLines: Array.isArray((report.dailyRead as Row).progressLines) ? ((report.dailyRead as Row).progressLines as Row[]).length : undefined };
     });
 
     await step('reentry keeps the daily report and its read state', async () => {
@@ -367,7 +384,7 @@ async function main() {
       await evaluate(`(id) => { const p = getCurrentPages().at(-1); p.selectFollowup({ currentTarget: { dataset: { id } } }); return true; }`, bindingId);
       const thread = await waitFor('reentry daily card', async () => {
         const now = await pageData();
-        const item = now.followupReports.find((r: Row) => r.reportId === String(daily.reportId));
+        const item = now.followupReports.find(r => r.reportId === String(daily.reportId));
         return now.followupActive && item ? item : undefined;
       }, 120000);
       assert.equal(thread.kind, 'daily'); assert.ok(thread.readAt, 'Read state visible after reentry');
@@ -377,7 +394,7 @@ async function main() {
 
     report.passed = true;
   } catch (e) {
-    report.passed = false; report.error = (e as Error).message; process.exitCode = 1; console.error(e.message);
+    report.passed = false; report.error = (e as Error).message; process.exitCode = 1; console.error((e as Error).message);
     try { report.lastState = await pageData(); } catch { /* keep the error only */ }
   } finally {
     try {

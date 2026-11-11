@@ -184,7 +184,7 @@ test('buildLeadsExportCsv forces phone and datetime cells as spreadsheet text', 
         createdAt: new Date(),
         updatedAt: new Date(),
       },
-    } as Parameters<typeof leadRecordToExportRow>[0],
+    } as unknown as Parameters<typeof leadRecordToExportRow>[0],
   ]);
 
   assert.match(csv, /,\t18712345678,/);
@@ -246,7 +246,7 @@ test('leadRecordToExportRow maps core business fields', () => {
       createdAt: new Date(),
       updatedAt: new Date(),
     },
-  } as Parameters<typeof leadRecordToExportRow>[0]);
+  } as unknown as Parameters<typeof leadRecordToExportRow>[0]);
 
   assert.equal(row[0], '张三');
   assert.equal(row[1], '13800138000');

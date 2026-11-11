@@ -336,10 +336,14 @@ test('same-day customer cutoff still blocks last-minute changes while staff can 
     const wait = slot.startAt.getTime() - now;
     return wait > 0 && wait <= CUTOFF_MS;
   });
+  if (!insideCutoff) {
+    t.skip('当天已没有处于客户改期截止窗口内的时段');
+    return;
+  }
   const later = available.find((slot) => (
     slot.startAt.getTime() - now > CUTOFF_MS && !overlaps(slot, insideCutoff)
   ));
-  if (!insideCutoff || !later) {
+  if (!later) {
     t.skip('当天已没有处于客户改期截止窗口内的时段');
     return;
   }

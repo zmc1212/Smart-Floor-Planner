@@ -22,7 +22,10 @@ const base = 'http://127.0.0.1:3006/api/miniprogram/assistant';
 const project = path.join(root, 'miniprogram');
 const mp = wechatideNativeClient(project, output);
 const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
-const report: Row = { startedAt: new Date().toISOString(), checks: [], failures: [] };
+const report: Report = { startedAt: new Date().toISOString(), checks: [], failures: [] };
+type Report = Row & { checks: Row[]; failures: Row[]; passed?: boolean; error?: string; cleanupError?: string };
+type PageState = { route: string | null; loading: boolean; followupActive: boolean; followupBindings: string[];
+  followupReports: Array<{ reportId: string; kind: string; ready: boolean; readAt: unknown; title: string }> };
 const save = () => fs.writeFileSync(path.join(output, 'report.json'), JSON.stringify(report, null, 2));
 const platformOne = (q: ReturnType<typeof sql>) => withPlatformTransaction(tx => one(tx, q));
 async function waitFor<T>(label: string, fn: () => Promise<T | undefined | false>, timeoutMs: number, intervalMs = 2500) {
@@ -43,7 +46,7 @@ async function api(token: string, route: string, init: { method?: string; body?:
   return data.data as Row;
 }
 const evaluate = async <T>(source: string, ...args: unknown[]): Promise<T> => (await mp.call('automation_evaluate', { project, fnSource: source, args })).result.result as T;
-const page = () => evaluate<Row>(`() => { const p = getCurrentPages().at(-1); if (!p) return { route: null }; const d = p.data;
+const page = () => evaluate<PageState>(`() => { const p = getCurrentPages().at(-1); if (!p) return { route: null }; const d = p.data;
   return { route: p.route, loading: !!d.loading, followupActive: !!d.followupActive,
     followupBindings: (d.followupBindings || []).map(b => String(b.bindingId)),
     followupReports: (d.followupReports || []).map(r => ({ reportId: String(r.reportId), kind: r.kind, ready: !!r.ready, readAt: r.readAt || null, title: r.cardTitle || r.title || '' })) }; }`);

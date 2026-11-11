@@ -82,7 +82,7 @@ test('Conatus Agent preserves image input, tool receipts, forced final and actua
   try {
     const output = await executeAgentChat(runtime, { model: QINIU_CONATUS_MODEL, enableThinking: false, maxTokens: 128,
       messages: [
-        { role: 'user', content: [{ type: 'text', text: '看看这张图里的插座位置。' }, { type: 'image', mimeType: 'image/png', data: 'YWJj' }] },
+        { role: 'user', content: [{ type: 'text', text: '看看这张图里的插座位置。' }, { type: 'image', mediaId: 'synthetic-media', hash: 'synthetic-hash', mimeType: 'image/png', data: 'YWJj' }] },
         { role: 'assistant', content: '', toolCalls: [{ id: 'synthetic-read', name: 'read_project', arguments: '{}' }] },
         { role: 'tool', callId: 'synthetic-read', content: '{"status":"read"}' },
       ], tools: [{ name: 'final_response', description: 'Final answer', parameters: { type: 'object' } }], requireTool: true });

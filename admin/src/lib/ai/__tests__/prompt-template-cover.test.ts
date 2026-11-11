@@ -68,7 +68,7 @@ test('clone cover bytes prefer the stored object and fall back to the imported s
         throw new Error('ENOENT');
       },
     }),
-    fetchImpl: async () => new Response(remote, { status: 200, headers: { 'Content-Type': 'image/jpeg' } }),
+    fetchImpl: async () => new Response(new Uint8Array(remote), { status: 200, headers: { 'Content-Type': 'image/jpeg' } }),
   });
   assert.equal(fromSource.equals(remote), true);
 });

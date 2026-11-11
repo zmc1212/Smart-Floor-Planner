@@ -10,7 +10,7 @@ async function main() {
   const limit = Number(process.env.DUMP_LIMIT || 4000);
   const all = await withTenantTransaction(eid, tx => rows(tx, sql`select step_seq,kind,status,input_summary,private_checkpoint
     from app.assistant_run_steps where enterprise_id=${eid} and run_id=${runId} order by step_seq`));
-  for (const step of all as Array<Record<string, any>>) {
+  for (const step of all as Array<Record<string, unknown>>) {
     if (seqs.length && !seqs.includes(String(step.step_seq))) continue;
     console.log(`=== ${step.step_seq} ${step.kind} ${step.status}`);
     console.log('summary', JSON.stringify(step.input_summary));

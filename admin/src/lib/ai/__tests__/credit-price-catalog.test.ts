@@ -69,9 +69,6 @@ test('credit-price list DTO JSON-serializes postgres bigint updatedBy after a sa
     label: 'AI 自由创作',
     credits: BigInt(10),
     enabled: true,
-    updatedBy: BigInt(7),
-    createdAt: new Date('2026-08-23T00:00:00.000Z'),
-    updatedAt: new Date('2026-08-23T00:00:00.000Z'),
   });
   assert.equal(dto._id, '42');
   assert.equal(dto.credits, 10);

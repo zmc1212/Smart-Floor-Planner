@@ -81,10 +81,13 @@ export function validWebSnapshot(snapshot: WebSearchSnapshot, query: WebQuery) {
   return snapshot.version === 1 && fingerprint(snapshot.query) === fingerprint(query);
 }
 
-/** Register the deterministic quote catalog for CITE and build the wire cites. */
-export function webCitations(catalog: Map<string, RagCitationSource>, sources: SynthesisSource[]) {
+/** Register the deterministic quote catalog for CITE and build the wire cites.
+ * `origin` distinguishes this run's fresh reads from replays of already
+ * persisted snapshots; both stay citable, while conversation history does not. */
+export function webCitations(catalog: Map<string, RagCitationSource>, sources: SynthesisSource[],
+  origin: 'current' | 'recovered' = 'current') {
   return sources.flatMap(s => sourceCitationCatalog(s).map(c => {
-    catalog.set(c.citationId, { nativeId: c.citationId, sourceId: c.sourceId, quote: c.quote, evidence: s.evidence! });
+    catalog.set(c.citationId, { nativeId: c.citationId, sourceId: c.sourceId, quote: c.quote, evidence: s.evidence!, origin });
     return { id: c.citationId, sourceName: s.title + '\n' + s.web!.url, updateTime: s.web!.retrievedAt, content: c.quote };
   }));
 }
@@ -176,7 +179,7 @@ async function runWeb(rt: WebToolRuntime, input: WebToolInput, sequence: number,
     const snapshot = prepared.cached.private_checkpoint as WebSearchSnapshot;
     const evidence = webEvidence(snapshot, lease.runId, stepSeq), sources = webSynthesisSources(evidence);
     if (evidence.length) rt.markWebRetrieved();
-    const cites = webCitations(rt.catalog, sources);
+    const cites = webCitations(rt.catalog, sources, 'recovered');
     (rt.context.web ??= []).push(...evidence);
     rt.context.sources.push(...sources);
     return ((prepared.cached.input_summary as Row | undefined)?.receipt as WebToolReceipt | undefined)

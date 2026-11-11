@@ -22,7 +22,11 @@ const target = new URL(process.env.DATABASE_URL!);
 assert.ok(['127.0.0.1', 'localhost'].includes(target.hostname) && target.port === '5432' && target.pathname === '/smart_floor_planner', 'Development database only');
 fs.mkdirSync(output, { recursive: true });
 const project = path.join(root, 'miniprogram');
-const report: Row = { startedAt: new Date().toISOString(), enterpriseId: eid, scope: 'V1-01 native: knowledge on, correction, web search, knowledge off', checks: [], failures: [], turns: [] };
+type Report = Row & { checks: Row[]; failures: Row[]; turns: Row[]; passed?: boolean; error?: string; drift?: string[]; cleanupError?: string };
+type PageMessage = { id: string; isUser: boolean; text: string; citations: Array<{ title: string; sourceKind: string }> };
+type PageState = { route: string | null; loading: boolean; error: string; needsLogin: boolean; busy: boolean; generating: boolean;
+  canSend: boolean; conversation: { id: string; status: unknown } | null; messages: PageMessage[] };
+const report: Report = { startedAt: new Date().toISOString(), enterpriseId: eid, scope: 'V1-01 native: knowledge on, correction, web search, knowledge off', checks: [], failures: [], turns: [] };
 const save = () => fs.writeFileSync(path.join(output, 'report.json'), JSON.stringify(report, null, 2));
 const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
 const mp = wechatideNativeClient(project, output);
@@ -39,13 +43,13 @@ const bind = () => Object.fromEntries([...new Set([
 const before = bind();
 report.bindingBefore = createHash('sha256').update(JSON.stringify(before)).digest('hex');
 
-async function step(name: string, fn: () => Promise<unknown>) {
+async function step<T>(name: string, fn: () => Promise<T>): Promise<T> {
   try {
     const data = await fn();
-    (report.checks as Row[]).push({ name, passed: true, data }); console.log(name + ': PASS'); save(); return data;
+    report.checks.push({ name, passed: true, data }); console.log(name + ': PASS'); save(); return data;
   } catch (e) {
-    (report.checks as Row[]).push({ name, passed: false, error: (e as Error).message });
-    (report.failures as Row[]).push({ name, error: (e as Error).stack || (e as Error).message }); save(); throw e;
+    report.checks.push({ name, passed: false, error: (e as Error).message });
+    report.failures.push({ name, error: (e as Error).stack || (e as Error).message }); save(); throw e;
   }
 }
 async function waitFor<T>(label: string, fn: () => Promise<T | undefined | false>, timeoutMs: number, intervalMs = 2000) {
@@ -61,7 +65,7 @@ const evaluate = async <T>(source: string, ...args: unknown[]): Promise<T> => {
   const r = await mp.call('automation_evaluate', { project, fnSource: source, args });
   return r.result.result as T;
 };
-const pageData = () => evaluate<Row>(`() => {
+const pageData = () => evaluate<PageState>(`() => {
   const p = getCurrentPages().at(-1); if (!p) return { route: null };
   return { route: p.route, loading: !!p.data.loading, error: p.data.error || '', needsLogin: !!p.data.needsLogin,
     busy: !!p.data.busy, generating: !!p.data.generating, canSend: p.data.canSend !== false,
@@ -190,7 +194,7 @@ async function main() {
   });
   report.passed = true;
   } catch (e) {
-  report.passed = false; report.error = (e as Error).message; process.exitCode = 1; console.error(e.message);
+  report.passed = false; report.error = (e as Error).message; process.exitCode = 1; console.error((e as Error).message);
   try { report.lastState = await pageData(); } catch { /* keep the error only */ }
 } finally {
   try { await setKnowledge(originalConfig ? (originalConfig.agent_config as Row)?.enterpriseKnowledgeEnabled === true : true); report.knowledgeRestored = true; }
