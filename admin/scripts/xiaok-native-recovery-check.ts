@@ -15,9 +15,13 @@ import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { closePostgresPool } from '@/lib/postgresql';
 import { claimJob, enterpriseConcurrency, processAssistantJob, runContext, type Lease } from '@/lib/assistant/infrastructure/job-queue';
-import { processNativeAgentAnswer, nativeExecutorPromptVersion, recoveredDialogueToolState,
+import { nativeExecutorPromptVersion, recoveredDialogueToolState,
   xiaokNativeExecutorProtocol } from '@/lib/assistant/agent/native-executor';
 import { dialogueWebResearch, type WebToolRuntime } from '@/lib/assistant/agent/dialogue-web-tools';
+import { dialogueHistoryRecall, type HistoryToolRuntime } from '@/lib/assistant/agent/dialogue-history-tools';
+import { historyRefsAvailable, type HistoryRef } from '@/lib/assistant/agent/history';
+import { synthesisContextAvailable } from '@/lib/assistant/agent/synthesis-sources';
+import type { SynthesisContext } from '@/lib/assistant/agent/synthesis';
 import { nativeAgentRuntimeBinding } from '@/lib/assistant/fastgpt/agent-v2/config';
 import { knowledgePolicy } from '@/lib/assistant/knowledge-policy';
 import { appendMessage } from '@/lib/assistant/core/conversation';
@@ -78,7 +82,15 @@ async function seedInterruptedRun(label: string, spec: {
   /** Web dispatch fixtures written exactly like the shared web factory:
    * a usage dispatch marker plus (unless dispatchedOnly) a succeeded step. */
   webs?: Array<{ stepSeq: number; reading?: boolean; dispatchedOnly?: boolean }>;
+  /** Customer originals recorded BEFORE the trigger message so a real
+   * recall_history can read them through the run's real trigger seq. */
+  olderMessages?: string[];
   checkpoint?: Row;
+  /** Factory-driven scenarios (W2 factory guard, W3 dispatcher) pre-own a
+   * long-lived lease so the resident Worker can never claim or process the
+   * fixture; only executor-recovery scenarios seed the lost-lease claimable
+   * state and resume through the real claim path. */
+  providerStarted?: boolean;
 }) {
   return read(async tx => {
     const template = await one(tx, sql`select policy_snapshot from app.assistant_runs where enterprise_id=${eid} and id=2967`);
@@ -99,6 +111,9 @@ async function seedInterruptedRun(label: string, spec: {
     await tx.execute(sql`insert into app.assistant_participants(enterprise_id,conversation_id,principal_kind,user_id,admin_id,participant_role,grant_basis,status)
       select ${eid},${conversationId},principal_kind,user_id,admin_id,participant_role,grant_basis,status from app.assistant_participants
       where conversation_id=(select conversation_id from app.assistant_runs where enterprise_id=${eid} and id=2967)`);
+    for (const text of spec.olderMessages ?? [])
+      await appendMessage(tx, actor as never, conversationId,
+        { author: 'user', content: { version: 1, blocks: [{ type: 'text', text }] }, clientMessageId: 'recovery-old-' + randomUUID() });
     const message = await appendMessage(tx, actor as never, conversationId,
       { author: 'user', content: { version: 1, blocks: [{ type: 'text', text: spec.question }] }, clientMessageId: 'recovery-' + randomUUID() });
     const policySnapshot = { schemaVersion: 1, actor, maxTokens: 8192, policyVersion: Number(settings.policy_version),
@@ -136,34 +151,58 @@ async function seedInterruptedRun(label: string, spec: {
             selected: item.evidence.length, receipt: item.receipt })}::jsonb)`);
     }
     for (const item of spec.webs ?? []) {
+      // Marker only, exactly like a lost process leaves behind: the usage row
+      // exists with measurement_kind='unavailable' and no receipt step.
       await tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,operation_key,category,quantity,measurement_kind)
-        values(${eid},${runId},${'agent-web:' + runId + ':' + item.stepSeq},${item.reading ? 'web_read' : 'web_search'},
-        ${item.dispatchedOnly === false ? sql`1,'observed'` : sql`null,'unavailable'`})`);
-      if (item.dispatchedOnly !== false) continue;
-      await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint,input_summary)
-        values(${eid},${runId},${item.stepSeq},'retrieval',${item.reading ? 'web.read.v1' : 'web.search.v1'},1,'succeeded','{}'::jsonb,
-          ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, tool: item.reading ? 'read_web' : 'search_web',
-            stepSeq: item.stepSeq, receipt: { status: 'empty', failures: [], documents: [], instructions: '' } })}::jsonb)`);
+        values(${eid},${runId},${'agent-web:' + runId + ':' + item.stepSeq},${item.reading ? 'web_read' : 'web_search'},null,'unavailable')`);
     }
+
     if (spec.checkpoint) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary,private_checkpoint)
       values(${eid},${runId},1000,'agent_checkpoint','succeeded',${JSON.stringify({ promptVersion: nativeExecutorPromptVersion,
         protocol: xiaokNativeExecutorProtocol })}::jsonb,${JSON.stringify(spec.checkpoint)}::jsonb)`);
-    await tx.execute(sql`insert into app.assistant_jobs(enterprise_id,kind,run_id,dedupe_key,payload_version,status,attempts,available_at,lease_token,lease_expires_at,heartbeat_at,provider_started_at)
-      values(${eid},'chat_turn',${runId},${'recovery:' + randomUUID()},1,'running',1,now(),${randomUUID()},now() - interval '60 seconds',now() - interval '60 seconds',now())`);
-    return { conversationId, runId, attemptIds, binding: bound.binding };
+    let direct: Lease | undefined;
+    if (spec.providerStarted === false) {
+      // Race-free scaffolding: the lease belongs to this harness from birth
+      // (300s future expiry), so no outside claimer can take the fixture and
+      // the factory calls run against a lease the DB itself witnesses.
+      const token = randomUUID();
+      const job = (await one(tx, sql`insert into app.assistant_jobs(enterprise_id,kind,run_id,dedupe_key,payload_version,status,attempts,available_at,lease_token,lease_expires_at,heartbeat_at)
+        values(${eid},'chat_turn',${runId},${'recovery:' + randomUUID()},1,'running',1,now(),${token},now() + interval '300 seconds',now()) returning id`))!;
+      // The claim path flips the run to running with the lease; the pre-owned
+      // lease mirrors that state so live() witnesses the same pair.
+      await tx.execute(sql`update app.assistant_runs set status='running',started_at=coalesce(started_at,now()),version=version+1
+        where enterprise_id=${eid} and id=${runId}`);
+      direct = { enterpriseId: eid, jobId: String(job.id), runId, token, actor: actor as never };
+    } else {
+      // Lost-process state without racing the resident Worker: the job stays
+      // invisible to every global scan (availability 55s out) until claimUntil
+      // flips it and claims within the same few milliseconds. The claim path
+      // itself — scoped claimJob with the settings lock — stays the real one.
+      // provider_started_at is part of the lost-process truth: the dead
+      // process had already dispatched the model, so failRun must classify
+      // unknown outcomes as indeterminate exactly as it would after a real
+      // crash. The queued status keeps the fixture unclaimable by scans.
+      await tx.execute(sql`insert into app.assistant_jobs(enterprise_id,kind,run_id,dedupe_key,payload_version,status,attempts,available_at,provider_started_at)
+        values(${eid},'chat_turn',${runId},${'recovery:' + randomUUID()},1,'queued',0,now(),now())`);
+    }
+    return { conversationId, runId, attemptIds, binding: bound.binding, triggerSeq: String(message.seq),
+      ...(direct ? { directLease: direct } : {}) };
   });
 }
 
-/** Claim through the real Worker claim path, scoped to this run's fixture job
- * so no unrelated enterprise or session can ever be claimed or failed here. */
-async function claimUntil(runId: string): Promise<Lease> {
-  for (let index = 0; index < 12; index++) {
-    const lease = await claimJob({ enterpriseId: eid, runId });
-    if (lease && String(lease.runId) === runId) return lease;
-    if (lease) throw new Error('scoped claim returned an unexpected lease for run ' + String(lease.runId));
-    await sleep(1200);
+/** Executor-recovery fixtures are processed by the resident Worker itself
+ * (dev.mjs assistant-worker → the internal jobs endpoint → processAssistantJob
+ * → the real claim path). The scenario seeds a claimable job and waits for the
+ * run to reach its terminal state, then asserts outcomes from durable rows —
+ * no script-side claim races the poller and the recovery code under test is
+ * exactly the production claim path. */
+async function waitForRunTerminal(runId: string, label: string) {
+  for (let index = 0; index < 60; index++) {
+    const run = await tenantOne(sql`select id,status,error_code from app.assistant_runs where enterprise_id=${eid} and id=${runId}`);
+    if (run && !['queued', 'running'].includes(String(run.status))) return run!;
+    await sleep(2000);
   }
-  throw new Error('claim timeout for run ' + runId);
+  throw new Error(label + ' run never reached a terminal state: ' + runId);
 }
 
 async function runState(runId: string, conversationId: string) {
@@ -271,8 +310,7 @@ async function main() {
     const seeded = await seedInterruptedRun('A-final-checkpoint', { question,
       turns: [{ turn: 0, output }],
       checkpoint: { version: 1, turn: 0, messages: [], output } });
-    const lease = await claimUntil(seeded.runId);
-    await processNativeAgentAnswer(lease);
+    await waitForRunTerminal(seeded.runId, 'recovery');
     const result = await assertCompleted('A', seeded, { attempts: 1, usageKeys: ['agent:' + seeded.runId + ':0'],
       textMatch: /弹线预排/, modelStepCount: 1, checkpoint: true });
     (report.scenarios as Row).A = { runId: seeded.runId, conversationId: seeded.conversationId, attemptIds: seeded.attemptIds,
@@ -286,8 +324,7 @@ async function main() {
     const output: ModelTurnOutput = { text: '防水层完工后通常要做闭水试验，蓄水和观察时长以企业工艺标准与现场通知为准。',
       toolCalls: [], finishReason: 'stop', providerRequestId: null, usage: { inputTokens: 13, outputTokens: 9 } };
     const seeded = await seedInterruptedRun('B-model-no-checkpoint', { question, turns: [{ turn: 0, output }] });
-    const lease = await claimUntil(seeded.runId);
-    await processNativeAgentAnswer(lease);
+    await waitForRunTerminal(seeded.runId, 'recovery');
     const result = await assertCompleted('B', seeded, { attempts: 1, usageKeys: ['agent:' + seeded.runId + ':0'],
       textMatch: /闭水试验/, modelStepCount: 1, checkpoint: true });
     (report.scenarios as Row).B = { runId: seeded.runId, conversationId: seeded.conversationId, attemptIds: seeded.attemptIds,
@@ -303,8 +340,7 @@ async function main() {
     const seeded = await seedInterruptedRun('C-tool-then-continue', { question: q1 + '？',
       turns: [{ turn: 0, output }],
       searches: [{ sequence: 1, query: q1, receipt: { status: 'empty', kind: 'enterprise' }, evidence: [] }] });
-    const lease = await claimUntil(seeded.runId);
-    await processNativeAgentAnswer(lease);
+    await waitForRunTerminal(seeded.runId, 'recovery');
     const state = await runState(seeded.runId, seeded.conversationId);
     const run = state.run as Row;
     assert.equal(String(run.status), 'succeeded', 'C run must succeed: ' + String(run.error_code || ''));
@@ -336,8 +372,7 @@ async function main() {
       finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 9, outputTokens: 3 } };
     const seeded = await seedInterruptedRun('E-dispatch-no-receipt', { question: q1, turns: [{ turn: 0, output }],
       searches: [{ sequence: 1, query: q1, receipt: {}, evidence: [], dispatchedOnly: true, usageObserved: false }] });
-    const lease = await claimUntil(seeded.runId);
-    await processNativeAgentAnswer(lease);
+    await waitForRunTerminal(seeded.runId, 'recovery');
     await assertIndeterminate('E', seeded, { usageKeys: ['agent:' + seeded.runId + ':0', 'agent-v2-query:' + seeded.runId + ':1'].sort(), retrievalSteps: 0 });
     (report.scenarios as Row).E = { runId: seeded.runId, openOperation: 'agent-v2-query:' + seeded.runId + ':1' };
     return (report.scenarios as Row).E;
@@ -349,8 +384,7 @@ async function main() {
       finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 9, outputTokens: 3 } };
     const seeded = await seedInterruptedRun('F-usage-no-receipt', { question: q1, turns: [{ turn: 0, output }],
       searches: [{ sequence: 1, query: q1, receipt: {}, evidence: [], dispatchedOnly: true, usageObserved: true }] });
-    const lease = await claimUntil(seeded.runId);
-    await processNativeAgentAnswer(lease);
+    await waitForRunTerminal(seeded.runId, 'recovery');
     await assertIndeterminate('F', seeded, { usageKeys: ['agent:' + seeded.runId + ':0', 'agent-v2-query:' + seeded.runId + ':1'].sort(), retrievalSteps: 0 });
     (report.scenarios as Row).F = { runId: seeded.runId, openOperation: 'agent-v2-query:' + seeded.runId + ':1' };
     return (report.scenarios as Row).F;
@@ -366,8 +400,7 @@ async function main() {
     const output: ModelTurnOutput = { text: '', toolCalls: [{ id: 'recovery-w1-1', name: 'query_business', arguments: JSON.stringify({ domain: 'construction', leadId: '3132' }) }],
       finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 9, outputTokens: 3 } };
     const seeded = await seedInterruptedRun('W1-pre-dispatch', { question: q1, turns: [{ turn: 0, output }] });
-    const lease = await claimUntil(seeded.runId);
-    await processNativeAgentAnswer(lease);
+    await waitForRunTerminal(seeded.runId, 'recovery');
     const state = await runState(seeded.runId, seeded.conversationId);
     assert.equal(String((state.run as Row).status), 'succeeded', 'W1 must complete: ' + String((state.run as Row).error_code || ''));
     const attempts = state.attempts as Row[];
@@ -399,8 +432,7 @@ async function main() {
       finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 9, outputTokens: 3 } };
     const seeded = await seedInterruptedRun('W2-web-dispatch-no-receipt', { question, turns: [{ turn: 0, output }],
       webs: [{ stepSeq: 1200 }] });
-    const lease = await claimUntil(seeded.runId);
-    await processNativeAgentAnswer(lease);
+    await waitForRunTerminal(seeded.runId, 'recovery');
     const state = await assertIndeterminate('W2', seeded, {
       usageKeys: ['agent:' + seeded.runId + ':0', 'agent-web:' + seeded.runId + ':1200'].sort(), retrievalSteps: 0 });
     (report.scenarios as Row).W2 = { runId: seeded.runId, openOperation: 'agent-web:' + seeded.runId + ':1200',
@@ -409,8 +441,8 @@ async function main() {
     // executor-level open-operations pass): the same sequence and a fresh
     // sequence both refuse while the 1200 marker has no receipt. Nothing new is
     // written and no provider is called.
-    const factorySeeded = await seedInterruptedRun('W2-web-factory-guard', { question, turns: [], webs: [{ stepSeq: 1200 }] });
-    const factoryLease = await claimUntil(factorySeeded.runId);
+    const factorySeeded = await seedInterruptedRun('W2-web-factory-guard', { question, turns: [], webs: [{ stepSeq: 1200 }], providerStarted: false });
+    const factoryLease = factorySeeded.directLease!;
     const authorize = () => withTenantTransaction(eid, tx => runContext(tx, factoryLease));
     const rt: WebToolRuntime = { lease: factoryLease, protocol: xiaokNativeExecutorProtocol, authorize,
       context: { version: 1, knowledge: [], snapshots: [], sources: [] }, catalog: new Map(),
@@ -442,8 +474,8 @@ async function main() {
     // passes the parsed {name, query|candidateId} object, the native executor
     // passes the same shape. Real provider search, real reader, real DB steps.
     const question = '帮我联网查一下公开资料里地暖保温板的出厂检验项目';
-    const seeded = await seedInterruptedRun('W3-web-dispatcher', { question, turns: [] });
-    const lease = await claimUntil(seeded.runId);
+    const seeded = await seedInterruptedRun('W3-web-dispatcher', { question, turns: [], providerStarted: false });
+    const lease = seeded.directLease!;
     const authorize = () => withTenantTransaction(eid, tx => runContext(tx, lease));
     const rt: WebToolRuntime = { lease, protocol: xiaokNativeExecutorProtocol, authorize,
       context: { version: 1, knowledge: [], snapshots: [], sources: [] }, catalog: new Map(),
@@ -488,6 +520,62 @@ async function main() {
     await read(tx => tx.execute(sql`update app.assistant_runs set status='failed',error_code='recovery_check_synthetic_cleanup',completed_at=now(),version=version+1
       where enterprise_id=${eid} and id=${seeded.runId}`));
     return (report.scenarios as Row).W3;
+  });
+
+  // Recalled customer originals revalidate through the same mechanisms the
+  // executor guard and the final commit call. H drives the real shared
+  // recall factory, invalidates the source through the real session-version
+  // entry (the exact state change a memory write produces), and requires both
+  // the later factory dispatch and the delivery-side availability check to
+  // refuse. The independent-source entry class (construction-notice
+  // withdrawal blocking a need source) is covered by the requirement-flow
+  // evidence and is not re-exercised here.
+  await step('H: recalled history source invalidation blocks later recall and delivery', async () => {
+    const question = 'H场景：我之前对书桌说过什么要求？';
+    const seeded = await seedInterruptedRun('H-history-invalidation', { question, turns: [],
+      olderMessages: ['书房需要一张靠窗的书桌，抽屉要带锁。'], providerStarted: false });
+    const lease = seeded.directLease!;
+    const authorize = () => withTenantTransaction(eid, tx => runContext(tx, lease));
+    const historyRefs = new Map<string, HistoryRef>();
+    const rt: HistoryToolRuntime = { lease, protocol: xiaokNativeExecutorProtocol, authorize, historyRefs };
+    const recall = dialogueHistoryRecall(rt);
+    const receipt = await recall({ query: '书桌' }, 0, seeded.triggerSeq!);
+    assert.ok(receipt.sources.length > 0, 'The old customer original must be recalled');
+    assert.ok(receipt.sources.some(s => String(s.text).includes('书桌')), 'The recalled source is the customer original');
+    const steps = await tenantRows(sql`select step_seq,capability_name,status from app.assistant_run_steps
+      where enterprise_id=${eid} and run_id=${seeded.runId} and step_seq>=1500 and step_seq<1600 and status='succeeded'`);
+    assert.equal(steps.length, 1, 'recall_history persisted exactly one 1500-band step');
+    // Real invalidation entry (session version change): bump the conversation's
+    // agent memory version the way every real memory write does. The template
+    // carries no agentMemory, so read the current version (readMemory's
+    // fallback is 0) and write the complete object back like the write path.
+    const memoryBefore = Number(((await tenantOne(sql`select entry_snapshot->'agentMemory' mem
+      from app.assistant_conversations where enterprise_id=${eid} and id=${seeded.conversationId}`))!.mem as Row | undefined)?.version ?? 0);
+    await read(tx => tx.execute(sql`update app.assistant_conversations
+      set entry_snapshot=jsonb_set(entry_snapshot,'{agentMemory}',${JSON.stringify({ version: memoryBefore + 1, facts: [] })}::jsonb,true),
+      version=version+1,updated_at=now()
+      where enterprise_id=${eid} and id=${seeded.conversationId}`));
+    assert.equal(await withTenantTransaction(eid, tx =>
+      historyRefsAvailable(tx, eid, seeded.conversationId, [...historyRefs.values()])), false,
+      'historyRefsAvailable must refuse after the memory version bumped');
+    await assert.rejects(() => recall({ query: '书桌' }, 1, seeded.triggerSeq!),
+      (error: { code?: string }) => error.code === 'context_changed',
+      'A later recall dispatch through the shared factory must be blocked');
+    const conversation = await withTenantTransaction(eid, tx => runContext(tx, lease));
+    const context: SynthesisContext = { version: 1, knowledge: [], snapshots: [], sources: [],
+      history: [{ query: receipt.query, beforeSeq: receipt.beforeSeq, sources: receipt.sources,
+        hasMore: receipt.hasMore, oversized: receipt.oversized }] };
+    assert.equal(await withTenantTransaction(eid, tx =>
+      synthesisContextAvailable(tx, lease.actor, conversation.conversation, context)), false,
+      'synthesisContextAvailable must refuse the invalidated history snapshot');
+    (report.scenarios as Row).H = { runId: seeded.runId, conversationId: seeded.conversationId,
+      oldSourceMessageId: String(receipt.sources[0].messageId), recalledSources: receipt.sources.length,
+      entry: 'agentMemory.version bump', blocked: true };
+    await read(tx => tx.execute(sql`update app.assistant_jobs set status='failed',last_error='recovery_check_synthetic_cleanup',lease_token=null,lease_expires_at=null,version=version+1
+      where enterprise_id=${eid} and run_id=${seeded.runId} and status in ('queued','running')`));
+    await read(tx => tx.execute(sql`update app.assistant_runs set status='failed',error_code='recovery_check_synthetic_cleanup',completed_at=now(),version=version+1
+      where enterprise_id=${eid} and id=${seeded.runId}`));
+    return (report.scenarios as Row).H;
   });
 
   await step('D: A-enterprise chat slot busy, B-enterprise knowledge task still runs', async () => {
@@ -605,7 +693,8 @@ main().catch(error => { report.error = (error as Error).message; })
       // resident Worker never inherits a synthetic job.
       await withTenantTransaction(eid, async tx => {
         await tx.execute(sql`update app.assistant_jobs set status='failed',last_error='recovery_check_synthetic_cleanup',lease_token=null,lease_expires_at=null,version=version+1
-          where enterprise_id=${eid} and (dedupe_key like 'recovery-busy:%' or dedupe_key like 'recovery-queued:%') and status in ('queued','running')`);
+          where enterprise_id=${eid} and (dedupe_key like 'recovery:%' or dedupe_key like 'recovery-busy:%' or dedupe_key like 'recovery-queued:%')
+          and status in ('queued','running')`);
         await tx.execute(sql`update app.assistant_runs set status='failed',error_code='recovery_check_synthetic_cleanup',completed_at=now(),version=version+1
           where enterprise_id=${eid} and status='running' and id in (select run_id from app.assistant_jobs
             where enterprise_id=${eid} and last_error='recovery_check_synthetic_cleanup' and run_id is not null)`);

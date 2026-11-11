@@ -15,6 +15,7 @@ import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { closePostgresPool } from '@/lib/postgresql';
 import { KnowledgeService } from '@/lib/assistant/knowledge/service';
 import { claimKnowledgeJob, runKnowledgeJob } from '@/lib/assistant/knowledge/index-worker';
+import { retrieveKnowledge } from '@/lib/assistant/knowledge/retrieval';
 import { nativeAgentRuntimeBinding } from '@/lib/assistant/fastgpt/agent-v2/config';
 
 loadEnvConfig(process.cwd(), true);
@@ -127,9 +128,15 @@ async function main() {
 
   await step('synthetic knowledge document published for the revocation journey', async () => {
     const knowledge = new KnowledgeService({ enterpriseId: eid, adminId: ownerId });
+    // A round-unique clause number makes this round's chunk the only lexical
+    // match for its own marker query; earlier rounds' twin documents compete
+    // with identical embeddings and must never decide this assertion.
+    const clauseMarker = 'ISO' + randomUUID().slice(0, 8).toUpperCase();
+    report.revocation = report.revocation || {};
+    (report.revocation as Row).clauseMarker = clauseMarker;
     const created = await knowledge.execute('create', { title: '[synthetic-isolation] 闭水试验蓄水要求',
       sourceType: 'manual_text', audience: 'customer_public',
-      body: '合成隔离检查专用标准：闭水试验蓄水深度不少于20毫米，蓄水48小时后观察楼下顶板无渗漏，方可进入下一道工序。本条为隔离检查合成条款。' }, randomUUID());
+      body: `合成隔离检查专用标准：闭水试验蓄水深度不少于20毫米，蓄水48小时后观察楼下顶板无渗漏，方可进入下一道工序。本条为隔离检查合成条款，条款编号${clauseMarker}。` }, randomUUID());
     const documentId = String((created.document as Row).id);
     const fixture = { documentId, versionId: String((created.draft as Row).id), expectedVersion: 1, expectedEditVersion: 1 };
     const queued = await knowledge.execute('index', fixture, randomUUID());
@@ -187,46 +194,50 @@ async function main() {
   await step('revoked source leaves retrieval until republished', async () => {
     const documentId = String((report.revocation as Row).documentId);
     const knowledge = new KnowledgeService({ enterpriseId: eid, adminId: ownerId });
-    // Deterministic retrieval-level assertions: the synthetic clause is the only
-    // match for its unique marker, so each turn's retrieval steps show whether
-    // the source is authorized. Citations stay model-dependent and are recorded.
+    // Deterministic retrieval-layer assertions drive the REAL retrieval function
+    // with the customer principal and the current knowledge epoch: the model's
+    // tool choice (requireTool accepts any tool) must not decide whether the
+    // revocation semantics are observable. Chat turns stay as journey evidence;
+    // their citations are model-dependent and only recorded.
     const chunkIds = new Set(((await withPlatformTransaction(tx => rows(tx, sql`select c.id::text from app.assistant_knowledge_chunks c
       join app.assistant_knowledge_versions v on v.enterprise_id=c.enterprise_id and v.id=c.document_version_id
       where c.enterprise_id=${eid} and v.document_id=${documentId}`))) as Row[]).map(c => String(c.id)));
     assert.ok(chunkIds.size > 0, 'Synthetic chunks indexed');
-    const hitsIn = async (runId: string) => {
-      const steps = (await tenantRows(sql`select source_refs from app.assistant_run_steps
-        where enterprise_id=${eid} and run_id=${runId} and kind='retrieval' and step_seq>=1300 and step_seq<1400 and status='succeeded'`)) as Row[];
-      const refs = new Set(steps.flatMap(s => ((s.source_refs as Row[] | undefined) || []).map(ref => String((ref.ref as Row | undefined)?.id ?? ref.id))));
-      return [...chunkIds].filter(id => refs.has(id));
+    const actor = (await tenantOne(sql`select policy_snapshot->'actor' as actor from app.assistant_runs
+      where enterprise_id=${eid} and id=${String((report.isolation as Row).runA)}`))!.actor;
+    const markerQuery = `条款编号${String((report.revocation as Row).clauseMarker)} 闭水试验 蓄水深度 蓄水时间`;
+    const reachable = async () => {
+      const epoch = Number((await tenantOne(sql`select knowledge_epoch from app.assistant_enterprise_settings where enterprise_id=${eid}`))!.knowledge_epoch);
+      const result = await retrieveKnowledge(cid, actor as never, markerQuery, epoch);
+      return result.evidence.filter(e => chunkIds.has(String(e.ref.id))).length;
     };
     const citationOf = async (runId: string) => (await tenantRows(sql`select document_id from app.assistant_message_citations
       where enterprise_id=${eid} and run_id=${runId}`) as Row[]).some(c => String(c.document_id) === documentId);
     const entry = String(((await api(customer.token, '/entry-context', { body: { leadId } })).data.data as Row).entryToken);
     const cid = String(((await api(customer.token, '/conversations', { body: { entryToken: entry }, key: randomUUID() })).data.data as Row).id);
-    await sendTurn(customer.token, cid, '合成标准里闭水试验的蓄水深度和时间有什么要求？');
+    await sendTurn(customer.token, cid, '合成隔离检查专用标准里，闭水试验的蓄水深度和时间有什么要求？');
     const first = await waitRun(cid);
     assert.equal(String(first.status), 'succeeded', 'Pre-revocation turn must succeed: ' + String(first.error_code || ''));
-    const firstHits = await hitsIn(String(first.id));
-    assert.ok(firstHits.length > 0, 'The published synthetic source must appear in retrieval before revocation');
+    const firstHits = await reachable();
+    assert.ok(firstHits > 0, 'The published synthetic source must be retrievable before revocation');
     const firstCited = await citationOf(String(first.id));
-    const detailBefore = await knowledge.execute('detail', { documentId } as never) as Row;
-    await knowledge.execute('retire', { documentId, expectedVersion: Number((detailBefore.document as Row).version) }, randomUUID());
+    const docVersion = async () => Number((await tenantOne(sql`select version from app.assistant_knowledge_documents
+      where enterprise_id=${eid} and id=${documentId}`))!.version);
+    await knowledge.execute('retire', { documentId, expectedVersion: await docVersion() }, randomUUID());
     await sendTurn(customer.token, cid, '再确认一下，闭水试验到底要蓄水多久？');
     const second = await waitRun(cid);
     assert.equal(String(second.status), 'succeeded', 'Revoked-source follow-up must still succeed: ' + String(second.error_code || ''));
-    assert.equal((await hitsIn(String(second.id))).length, 0, 'A revoked source must not re-enter retrieval');
+    assert.equal(await reachable(), 0, 'A revoked source must not re-enter retrieval');
     const secondCited = await citationOf(String(second.id));
     assert.equal(secondCited, false, 'A revoked source must not be cited again');
-    const detailAfter = await knowledge.execute('detail', { documentId } as never) as Row;
     await knowledge.execute('publish', { documentId, versionId: String((report.revocation as Row).versionId),
-      expectedVersion: Number((detailAfter.document as Row).version) } as never, randomUUID());
-    await sendTurn(customer.token, cid, '好的，那按合成标准闭水试验要做多久？');
+      expectedVersion: await docVersion(), expectedEditVersion: 1 } as never, randomUUID());
+    await sendTurn(customer.token, cid, '好的，那按合成隔离检查专用标准，闭水试验要做多久？');
     const third = await waitRun(cid);
     assert.equal(String(third.status), 'succeeded', 'Restored-source follow-up must succeed: ' + String(third.error_code || ''));
-    assert.ok((await hitsIn(String(third.id))).length > 0, 'The republished source re-enters retrieval');
+    assert.ok((await reachable()) > 0, 'The republished source re-enters retrieval');
     (report.revocation as Row).journey = { conversationId: cid, firstRun: String(first.id), secondRun: String(second.id),
-      thirdRun: String(third.id), firstHits: firstHits.length, firstCited, secondCited, thirdCited: await citationOf(String(third.id)) };
+      thirdRun: String(third.id), firstHits, firstCited, secondCited, thirdCited: await citationOf(String(third.id)) };
     return (report.revocation as Row).journey;
   });
 

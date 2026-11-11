@@ -40,7 +40,12 @@ export function ragAnswerParts(text: string, sources: RagCitationSource[]): RagP
   for (const paragraph of text.match(/[^]+?(?:\n\n|$)/g) || []) {
     const selected: RagCitationSource[] = [];
     const prose = paragraph.replace(/\[([^\]]+)\]\(CITE\)/g, (_match, id: string) => {
-      const source = sources.find(s => s.nativeId === id);
+      // Whitespace inside the brackets is tokenizer noise, not a different
+      // reference: the retained repaired drafts emit `[ K2841](CITE)` for the
+      // issued K2841. The resolved id must still match an issued source
+      // character-for-character after trimming; anything else stays
+      // invalid_model_citation.
+      const source = sources.find(s => s.nativeId === id.trim());
       if (!source) fail('invalid_model_citation', 502);
       if (!selected.includes(source)) selected.push(source);
       return '';

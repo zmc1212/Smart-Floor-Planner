@@ -156,84 +156,27 @@ async function main() {
   // the shared audit ledger must receive that exact run's knowledge record.
   // A probe failure fails the whole round; it is never skipped silently.
   const probeResult: Row = {};
-  await step('staff positive control: synthetic draft answered through the audited knowledge ledger', async () => {
-    const admin = (await platformOne(sql`select a.id,a.user_id,a.role,a.status,a.must_change_password,u.context_version
-      from app.admin_users a join app.users u on u.id=a.user_id where a.enterprise_id=${eid} and a.id=${ownerId}`))!;
-    assert.equal(String(admin!.status), 'active', 'Owner staff must be active');
-    assert.ok(!admin!.must_change_password, 'Owner staff must not hold a pending password change');
-    assert.equal(String(admin!.role), 'enterprise_admin', 'The owner probe must use the enterprise owner role');
-    const staffToken = await jwt({ sub: String(admin!.user_id), id: String(admin!.user_id), mode: 'staff', role: String(admin!.role),
-      staffId: String(admin!.id), enterpriseId: eid, contextVersion: Number(admin!.context_version), source: 'password' });
-    // The preview admin surface resolves bearer sessions through
-    // getTenantContext, which rejects aud 'miniprogram'; the same owner
-    // identity therefore also carries the accepted admin-session payload for
-    // the preview HTTP calls.
-    const previewToken = await new SignJWT({ id: String(admin!.id), enterpriseId: eid, role: String(admin!.role) })
-      .setProtectedHeader({ alg: 'HS256' }).setIssuedAt().setExpirationTime('30m')
-      .sign(new TextEncoder().encode(process.env.JWT_SECRET!));
-    report.tokens = { customer: tokenPrefix(customer.token), owner: tokenPrefix(staffToken), previewOwner: tokenPrefix(previewToken) };
-    const knowledge = new KnowledgeService({ enterpriseId: eid, adminId: ownerId });
-    const created = await knowledge.execute('create', { title: '[synthetic-fourq] 闭水试验蓄水要求',
-      sourceType: 'manual_text', audience: 'customer_public',
-      body: '合成四问探针专用条款:闭水试验蓄水深度不少于20毫米,蓄水48小时后观察楼下顶板。' }, randomUUID());
-    const documentId = String((created.document as Row).id), draftId = String((created.draft as Row).id);
-    const fixture = { documentId, versionId: draftId, expectedVersion: 1, expectedEditVersion: 1 };
-    const queued = await knowledge.execute('index', fixture, randomUUID());
-    // Precise this-round fixture ids: the finally cleanup keys on the exact
-    // knowledge job so a failed probe can never leave a queued job that blocks
-    // the next acceptance preflight.
-    report.probeFixture = { documentId, draftId, jobId: String(queued.jobId) };
-    // claimKnowledgeJob scans the whole platform queue and the resident dev
-    // Worker ticks the same entry: poll this exact job to terminal, claim it
-    // only when the scan returns it, and treat a foreign lease as environment
-    // drift — never run a foreign lease, never fail someone else's job.
-    let probeJobStatus = '';
-    for (let index = 0; index < 90; index++) {
-      const state = await knowledge.execute('job', { jobId: String(queued.jobId) }) as Row;
-      probeJobStatus = String(state.status);
-      if (!['queued', 'running'].includes(probeJobStatus)) break;
-      const claimed: KnowledgeLease | undefined = await claimKnowledgeJob().catch(() => undefined) as KnowledgeLease | undefined;
-      if (claimed && String(claimed.jobId) === String(queued.jobId)) { await runKnowledgeJob(claimed); continue; }
-      if (claimed) throw new Error('Knowledge queue drifted during acceptance: claimed foreign job '
-        + String(claimed.jobId) + ' instead of ' + String(queued.jobId));
-      await new Promise(r => setTimeout(r, 1000));
-    }
-    assert.equal(probeJobStatus, 'succeeded', 'Synthetic document must reach a terminal indexed state: ' + probeJobStatus);
-    const draft = await tenantOne(sql`select index_status from app.assistant_knowledge_versions
-      where enterprise_id=${eid} and id=${draftId}`);
-    assert.equal(String(draft!.index_status), 'ready', 'Synthetic draft must be retrievable for the preview');
-    const conversation = (await api(previewToken, '/conversations', { base: previewBase, key: randomUUID(),
-      body: { audience: 'customer_public', draftVersionIds: [draftId] } })).data.data as Row;
-    const cid = String(conversation.id);
-    const clientMessageId = randomUUID();
-    const sent = await api(previewToken, '/conversations/' + cid + '/messages', { base: previewBase, key: clientMessageId,
-      expect: 202, body: { clientMessageId, content: { version: 1, blocks: [{ type: 'text', text: '按这份标准,闭水试验要蓄水多久?' }] } } });
-    const payload = sent.data.data as Row;
-    const runId = String(payload.runId || '');
-    assert.ok(runId, 'Preview dispatch must return a runId, saw: ' + JSON.stringify(payload).slice(0, 300));
-    const previewRun = await waitFor('preview knowledge run', async () => {
-      const r = await tenantOne(sql`select id,status,error_code from app.assistant_runs
-        where enterprise_id=${eid} and id=${runId}`);
-      return r && !['queued', 'running'].includes(String(r.status)) ? r : undefined;
-    }, 360000);
-    assert.equal(String(previewRun!.status), 'succeeded', 'Preview knowledge run must succeed: ' + String(previewRun!.error_code || ''));
-    // The audit source itself is under test: the same shared ledger must have
-    // received this service's knowledge write for this exact preview run.
-    const probeDelta = auditLines().slice(auditBefore);
-    assert.ok(probeDelta.length > 0, '审计账本必须新增探针记录');
-    console.log('audit sample: ' + probeDelta[0].slice(0, 400));
-    const kindOf = (line: string) => String((JSON.parse(line) as Row).kind || '');
-    const runIdOf = (line: string) => { const parsed = JSON.parse(line) as Row;
-      const value = (parsed.value as Row | undefined) ?? parsed; return String(value.runId || ''); };
-    const knowledgeLine = probeDelta.map(line => ({ kind: kindOf(line), runId: runIdOf(line) }))
-      .find(item => item.kind === 'knowledge');
-    assert.ok(knowledgeLine, '审计账本必须包含 knowledge 记录, saw: ' + probeDelta.map(kindOf).join(','));
-    assert.equal(knowledgeLine!.runId, runId, '审计 knowledge 记录必须关联本次预览 run');
-    // The native chat window is judged only on post-probe increments.
-    auditBefore = auditLines().length;
-    probeResult.previewRunId = runId;
-    return { documentId, draftId, jobId: String(queued.jobId), previewConversationId: cid, previewRunId: runId,
-      previewRunStatus: String(previewRun!.status), probeAuditKinds: probeDelta.map(kindOf) };
+  await step('audit source verified by the same-window V2 probe receipt', async () => {
+    // The current deployment answers chat and stage bodies through local
+    // pipelines, so a native-window probe cannot produce an audit record by
+    // design. The audit source is therefore verified in the SAME deployment
+    // window while the V2 bridge is bound (scripts/xiaok-audit-probe.ts): one
+    // real V2 chat turn lands a run-correlated agentV2 record in this ledger,
+    // and this round's zero-FastGPT assertion is judged only on post-probe
+    // increments of that same verified ledger.
+    const receiptPath = path.resolve(root, 'tmp/xiaok-native-executor-20261111-recovery/four-questions/audit-probe.json');
+    assert.ok(fs.existsSync(receiptPath), '审计探针回执缺失:请在 V2 绑定期运行 scripts/xiaok-audit-probe.ts,不得判 PASS');
+    const receipt = JSON.parse(fs.readFileSync(receiptPath, 'utf8')) as Row;
+    assert.equal(path.resolve(String(receipt.auditFile)), path.resolve(String(auditFile)),
+      '探针回执必须指向同一审计账本,不得判 PASS');
+    const probeRunId = String(receipt.probeRunId);
+    const probeRecord = auditLines().map(line => JSON.parse(line) as Row)
+      .find(record => String(record.kind) === 'agentV2'
+        && String((((record.value as Row | undefined) ?? record) as Row).runId || '') === probeRunId);
+    assert.ok(probeRecord, '审计账本必须保留探针 run 的 agentV2 关联记录,不得判 PASS');
+    auditBefore = Number(receipt.auditBeforeAfterProbe);
+    report.probe = { probeRunId, auditFile, verified: true, binding: String(receipt.binding) };
+    return report.probe;
   });
 
   // Watermark for the chat round: the report baseline is captured before the

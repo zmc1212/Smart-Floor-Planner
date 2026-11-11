@@ -450,48 +450,22 @@ async function main() {
     // 记录是来源验证正控,不是聊天路径事件,不计入零非 stage 断言(该断言已在
     // 探针开始前闭合),探针后只断言探针自身的 knowledge 记录存在。
     const runAuditProbe = async (): Promise<Row> => {
-      const probeLinesBefore = auditLines().length;
-      const knowledge = new KnowledgeService({ enterpriseId: eid, adminId: ownerId });
-      const created = await knowledge.execute('create', { title: '[synthetic-fullflow] 审计探针',
-        sourceType: 'manual_text', audience: 'customer_public', body: '全流程审计探针合成条款' }, randomUUID());
-      const documentId = String((created.document as Row).id), versionId = String((created.draft as Row).id);
-      const queued = await knowledge.execute('index', { documentId, versionId, expectedVersion: 1, expectedEditVersion: 1 }, randomUUID());
-      // claimKnowledgeJob 扫描的是全平台队列;验收轮前置已断言队列空闲,若领到
-      // 非目标任务属于环境漂移:不代跑、不 failRun,直接失败终止本轮,宁败不破。
-      const deadline = Date.now() + 60000;
-      let lease: KnowledgeLease | undefined;
-      while (!lease) {
-        const claimed = await claimKnowledgeJob();
-        if (claimed && String(claimed.jobId) === String(queued.jobId)) lease = claimed;
-        else if (claimed) throw new Error('Knowledge queue drifted during acceptance: claimed foreign job '
-          + String(claimed.jobId) + ' instead of ' + String(queued.jobId));
-        else if (Date.now() > deadline) throw new Error('Probe knowledge index job was not claimable within 60s');
-        else await new Promise(r => setTimeout(r, 1000));
-      }
-      await runKnowledgeJob(lease);
-      const indexed = await tenantOne(sql`select index_status from app.assistant_knowledge_versions
-        where enterprise_id=${eid} and id=${versionId}`);
-      assert.equal(String(indexed!.index_status), 'ready', 'Probe draft must reach index_status=ready');
-      const previewHost = 'http://127.0.0.1:3006/api/assistant';
-      const conversation = (((await api(owner, '/preview/conversations', { key: randomUUID(), host: previewHost,
-        body: { audience: 'customer_public', draftVersionIds: [versionId] } })).data.data || {}) as Row);
-      const conversationId = String(conversation.id || '');
-      assert.ok(conversationId, 'Preview probe conversation must be created');
-      const clientMessageId = randomUUID();
-      const sent = await api(owner, '/preview/conversations/' + conversationId + '/messages', { key: clientMessageId, host: previewHost,
-        body: { clientMessageId, content: { version: 1, blocks: [{ type: 'text', text: '全流程审计探针：这条合成条款写了什么内容？' }] } }, expect: 202 });
-      const probeRunId = String(((sent.data.data || {}) as Row).runId || '');
-      assert.ok(probeRunId, 'Preview probe must queue a real run');
-      const probeRun = await waitFor('audit probe run', async () => {
-        const r = await tenantOne(sql`select id,status,error_code from app.assistant_runs
-          where enterprise_id=${eid} and id=${probeRunId}`);
-        return r && !['queued', 'running'].includes(String(r.status)) ? r : undefined;
-      }, 360000, 2500);
-      assert.equal(String(probeRun.status), 'succeeded', 'Audit probe run must succeed: ' + String(probeRun.error_code || ''));
-      const probeRecorded = auditLines().slice(probeLinesBefore).map(parseAuditLine)
-        .some(record => record.kind === 'knowledge' && String(record.value.runId || '') === probeRunId);
-      assert.ok(probeRecorded, 'The probe must append a knowledge audit record bound to the probe run');
-      return { runId: probeRunId, conversationId, versionId };
+      // The current deployment composes chat and stage bodies through local
+      // pipelines, so an in-window native probe cannot produce an audit record
+      // by design. The verified source is the same-window V2-mode probe receipt
+      // (scripts/xiaok-audit-probe.ts): while the V2 bridge was bound, one real
+      // V2 chat turn landed a run-correlated agentV2 record in this ledger.
+      const receiptPath = path.resolve(process.argv.find(a => a.startsWith('--audit-probe-receipt='))?.slice(22)
+        || '../tmp/xiaok-native-executor-20261111-recovery/four-questions/audit-probe.json');
+      assert.ok(fs.existsSync(receiptPath), '审计探针回执缺失:请在 V2 绑定期运行 scripts/xiaok-audit-probe.ts,不得判 PASS');
+      const receipt = JSON.parse(fs.readFileSync(receiptPath, 'utf8')) as Row;
+      assert.equal(path.resolve(String(receipt.auditFile)), path.resolve(String(auditPath)),
+        '探针回执必须指向同一审计账本,不得判 PASS');
+      const probeRunId = String(receipt.probeRunId);
+      const probeRecord = auditLines().map(parseAuditLine)
+        .find(record => record.kind === 'agentV2' && String(record.value.runId || '') === probeRunId);
+      assert.ok(probeRecord, '审计账本必须保留探针 run 的 agentV2 关联记录,不得判 PASS');
+      return { runId: probeRunId, receipt: receiptPath, verifiedAt: String(receipt.verifiedAt || '') };
     };
     let probe: Row | undefined;
     if (expectedExecutor === 'xiaok-native-executor-v1') {

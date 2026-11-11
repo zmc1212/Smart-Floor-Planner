@@ -71,6 +71,14 @@ export function dialogueHistoryRecall(rt: HistoryToolRuntime) {
     const stepSeq = historyStepSeq(sequence);
     const { receipt } = await withTenantTransaction(rt.lease.enterpriseId, async tx => {
       const current = await runContext(tx, rt.lease);
+      // A later recall dispatch revalidates the originals this run has already
+      // registered: once a session version bump or a withdrawn original
+      // invalidates that chain, a new query must not silently swap in fresh
+      // refs. The executor guard enforces the same rule before every model
+      // call; this keeps the shared factory safe on its own (the V2 bridge has
+      // no executor-level pass).
+      if (rt.historyRefs.size && !await historyRefsAvailable(tx, rt.lease.enterpriseId,
+        String(current.conversation.id), [...rt.historyRefs.values()])) fail('context_changed');
       const cached = await one(tx, sql`select private_checkpoint,input_summary from app.assistant_run_steps
         where enterprise_id=${rt.lease.enterpriseId} and run_id=${rt.lease.runId} and step_seq=${stepSeq}`);
       const snapshot = cached ? cached.private_checkpoint as HistorySnapshot

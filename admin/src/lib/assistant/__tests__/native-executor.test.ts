@@ -83,6 +83,12 @@ test('the saved 3026/3027 first drafts reproduce: a prefix-stripped citation id 
   assert.throws(() => ragAnswerParts('铺贴要求横平竖直[2828](CITE)。', catalog),
     (error: Code) => error.code === 'invalid_model_citation');
   assert.doesNotThrow(() => ragAnswerParts('铺贴要求横平竖直[K2828](CITE)。', catalog));
+  // The repaired drafts of today's journeys emit tokenizer noise inside the
+  // brackets: the same issued id with a leading space resolves, an unknown id
+  // with trailing whitespace still fails closed.
+  assert.doesNotThrow(() => ragAnswerParts('蓄水深度不低于20毫米[ K2828](CITE)。', catalog));
+  assert.throws(() => ragAnswerParts('铺贴要求横平竖直[K9999 ](CITE)。', catalog),
+    (error: Code) => error.code === 'invalid_model_citation');
   // An id that was never issued still fails closed after the repair turn.
   assert.throws(() => ragAnswerParts('铺贴要求横平竖直[K9999](CITE)。', catalog),
     (error: Code) => error.code === 'invalid_model_citation');
