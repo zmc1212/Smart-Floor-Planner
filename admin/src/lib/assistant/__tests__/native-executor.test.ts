@@ -7,6 +7,8 @@ import { nativeAgentRuntimeBinding } from '../fastgpt/agent-v2/config';
 import { nativeHistoryCheckpoint, nativePublicSiteHistoryAllowed, priorAnswerBusinessObject } from '../fastgpt/rag-session';
 import { recoverableUnavailableRead, runRenovationAgent, type AgentRuntimePorts } from '../agent/runtime';
 import { modelBusinessReceipt } from '../agent/dialogue-tools';
+import { parseBusinessQuery } from '../agent/business-tools';
+import { bindReadToolInput, readToolsForContext } from '../agent/read-tool-input';
 import { webCitations } from '../agent/dialogue-web-tools';
 import { webSynthesisSources } from '../agent/web-evidence';
 import { AssistantError, type Evidence, type MessageContent } from '../contracts';
@@ -494,6 +496,114 @@ test('the read-identity contract is decided from durable records, not from a mis
   assert.equal(nativeReadContract(entry, { checkpoint: checkpoint({}) }), undefined);
   // A non-lead conversation never binds an identity.
   assert.deepEqual(nativeReadContract({ kind: 'general' }, {}), { protocol: 'conversation-read-v1', leadId: null });
+});
+
+test('the read contract follows the model result this resume actually reuses', () => {
+  const entry = { kind: 'lead', id: '3134' } as const;
+  const call = (argumentsText: string, id = 'call-biz') => ({ id, name: 'query_business', arguments: argumentsText });
+  const output = (...calls: Array<{ id: string; name: string; arguments: string }>) => ({ text: '', toolCalls: calls,
+    finishReason: 'tool_calls', providerRequestId: null, usage: null }) as never;
+  // The after-tools checkpoint: one rejected no-leadId call is the only saved
+  // business call, and the corrected model result for the next turn is already
+  // persisted while the checkpoint has not caught up.
+  const afterTools = { version: 1 as const, turn: 1, output: null, validationRepairs: 0, argumentFailures: 1,
+    messages: [
+      { role: 'user' as const, content: [{ type: 'text' as const, text: '我的量房预约' }] },
+      { role: 'assistant' as const, content: '', toolCalls: [call('{"domain":"appointments"}', 'call-biz-bad')] },
+      { role: 'tool' as const, callId: 'call-biz-bad', content: 'query_business需要leadId。' },
+    ] } as never;
+  // A rejected call never proves the server-bound contract: no server read
+  // happened, so the original contract stays.
+  assert.equal(nativeReadContract(entry, { checkpoint: afterTools }), undefined);
+  // The saved explicit correction is the result this resume will reuse.
+  assert.equal(nativeReadContract(entry, { checkpoint: afterTools,
+    reused: output(call('{"domain":"appointments","leadId":"3134"}')) }), undefined);
+  // A 2504d8cf no-leadId result ahead of an old checkpoint keeps the
+  // server-bound contract even though the history has no business call.
+  const stale = { version: 1 as const, turn: 1, output: null, validationRepairs: 0, argumentFailures: 0,
+    messages: [{ role: 'user' as const, content: [{ type: 'text' as const, text: '我的量房预约' }] }] } as never;
+  assert.deepEqual(nativeReadContract(entry, { checkpoint: stale,
+    reused: output(call('{"domain":"appointments"}')) }), { protocol: 'conversation-read-v1', leadId: '3134' });
+  // A settled result that already ran keeps deciding the contract the same way.
+  const executed = { version: 1 as const, turn: 2, output: null, validationRepairs: 0, argumentFailures: 0,
+    messages: [
+      { role: 'user' as const, content: [{ type: 'text' as const, text: '我的量房预约' }] },
+      { role: 'assistant' as const, content: '', toolCalls: [call('{"domain":"appointments"}', 'call-ok')] },
+      { role: 'tool' as const, callId: 'call-ok', content: JSON.stringify({ status: 'ready', text: '您的量房预约已确认。' }) },
+    ] } as never;
+  assert.deepEqual(nativeReadContract(entry, { checkpoint: executed }),
+    { protocol: 'conversation-read-v1', leadId: '3134' }, 'An executed no-leadId call proves the bound contract');
+  assert.equal(nativeReadContract(entry, { checkpoint: executed,
+    reused: output(call('{"domain":"appointments","leadId":"3134"}')) }), undefined,
+    'The result for the resume turn outranks an earlier executed call');
+  // A checkpoint output still in hand is what the resume executes, so it wins
+  // over a persisted step of the same turn.
+  const pendingExplicit = { ...(executed as Record<string, unknown>),
+    output: output(call('{"domain":"appointments","leadId":"3134"}')) } as never;
+  assert.equal(nativeReadContract(entry, { checkpoint: pendingExplicit }), undefined);
+  // The marker stays authoritative over the reused result; drift is rejected.
+  assert.deepEqual(nativeReadContract(entry, { summary: { readContext: { protocol: 'conversation-read-v1', leadId: '3134' } },
+    checkpoint: stale }), { protocol: 'conversation-read-v1', leadId: '3134' });
+  assert.throws(() => nativeReadContract(entry, { summary: { readContext: { protocol: 'conversation-read-v1', leadId: '9999' } },
+    checkpoint: stale }), /context_changed/);
+});
+
+test('a resume behind its saved model result validates and dispatches on the same contract', async () => {
+  const entry = { kind: 'lead', id: '3134' } as const;
+  const business: ModelTool = { name: 'query_business', description: '',
+    parameters: { type: 'object', properties: { domain: { type: 'string' }, leadId: { type: 'string' } },
+      required: ['domain'], additionalProperties: false } };
+  const run = async (saved: ModelTurnOutput, checkpoint: never) => {
+    const context = nativeReadContract(entry, { checkpoint, reused: saved });
+    const dispatched: string[] = [];
+    const states: Array<{ argumentFailures: number }> = [];
+    const result = await runRenovationAgent({
+      messages: [{ role: 'user', content: [{ type: 'text', text: '我的量房预约' }] }],
+      tools: readToolsForContext([business], context), resume: checkpoint,
+      ports: {
+        authorize: async () => {},
+        // The saved result is replayed for its own turn; the runtime then asks
+        // for the follow-up answer, which is a normal dispatch.
+        model: async turn => (turn === 1 ? saved : { text: '您的量房预约已确认。', toolCalls: [],
+          finishReason: 'stop', providerRequestId: null, usage: null }),
+        validateTool: (name, args) => {
+          try { parseBusinessQuery(bindReadToolInput(name, JSON.parse(args), context)); return null; }
+          catch { return { code: 'invalid_tool_input', feedback: '参数有误。' }; }
+        },
+        tool: async (_turn, _index, name, args) => {
+          dispatched.push(JSON.stringify(parseBusinessQuery(bindReadToolInput(name, JSON.parse(args), context))));
+          return { content: JSON.stringify({ status: 'ready', text: '您的量房预约已确认。' }) };
+        },
+        checkpoint: async state => { states.push({ argumentFailures: state.argumentFailures ?? 0 }); },
+        validateFinal: async () => null,
+      },
+    });
+    return { context, result, dispatched, states };
+  };
+  const savedExplicit = { text: '', toolCalls: [{ id: 'call-biz', name: 'query_business',
+    arguments: '{"domain":"appointments","leadId":"3134"}' }], finishReason: 'tool_calls', providerRequestId: null, usage: null };
+  const afterTools = { version: 1 as const, turn: 1, output: null, validationRepairs: 0, argumentFailures: 1,
+    messages: [
+      { role: 'user' as const, content: [{ type: 'text' as const, text: '我的量房预约' }] },
+      { role: 'assistant' as const, content: '', toolCalls: [{ id: 'call-bad', name: 'query_business',
+        arguments: '{"domain":"appointments"}' }] },
+      { role: 'tool' as const, callId: 'call-bad', content: 'query_business需要leadId。' },
+    ] } as never;
+  const explicit = await run(savedExplicit, afterTools);
+  assert.equal(explicit.context, undefined, 'The saved correction keeps the original contract');
+  assert.deepEqual(explicit.dispatched, ['{"domain":"appointments","leadId":"3134"}'], 'The pending read executes once');
+  assert.equal(explicit.states.at(-1)?.argumentFailures, 1, 'The valid saved call spends no correction');
+  assert.equal(explicit.result.output?.text, '您的量房预约已确认。');
+  const savedBound = { text: '', toolCalls: [{ id: 'call-biz', name: 'query_business',
+    arguments: '{"domain":"appointments"}' }], finishReason: 'tool_calls', providerRequestId: null, usage: null };
+  const stale = { version: 1 as const, turn: 1, output: null, validationRepairs: 0, argumentFailures: 0,
+    messages: [{ role: 'user' as const, content: [{ type: 'text' as const, text: '我的量房预约' }] }] } as never;
+  const bound = await run(savedBound, stale);
+  assert.deepEqual(bound.context, { protocol: 'conversation-read-v1', leadId: '3134' });
+  assert.deepEqual(bound.dispatched, ['{"domain":"appointments","leadId":"3134"}'],
+    'The server binds the identity the saved call omitted');
+  assert.equal(bound.states.at(-1)?.argumentFailures, 0);
+  assert.equal(bound.result.output?.text, '您的量房预约已确认。');
 });
 
 test('the model sees only status/text for business snapshots, while recovery keeps the full resultKey', () => {

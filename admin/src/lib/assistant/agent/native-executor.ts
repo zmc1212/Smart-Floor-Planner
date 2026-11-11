@@ -22,7 +22,8 @@ import { guardAnswerCommitments } from './context';
 import { runRenovationAgent, type AgentCheckpoint } from './runtime';
 import { synthesisContextAvailable } from './synthesis-sources';
 import { dialogueBusinessQuery, dialogueEnterpriseSearch, modelBusinessReceipt, snapshotHeading, type DialogueToolRuntime } from './dialogue-tools';
-import { assertModelTurnBand, dialogueWebResearch, webCitations, type WebToolRuntime } from './dialogue-web-tools';
+import { assertModelTurnBand, modelStepBase, modelStepStride, maxModelTurns, dialogueWebResearch, webCitations,
+  type WebToolRuntime } from './dialogue-web-tools';
 import { dialogueDesignerRecommendation, dialoguePublicSitesRecommendation, publicSitesDelivery,
   type RecommendToolRuntime } from './dialogue-recommend-tools';
 import { dialogueHistoryRecall, type HistoryToolRuntime } from './dialogue-history-tools';
@@ -151,24 +152,81 @@ export function samePublicRef(a: PublicContextRef | null | undefined, b: PublicC
 
 /** Decide the read-identity contract from durable records. A new run binds the
  * conversation lead. A resumed run keeps the contract its saved calls were
- * produced under: the step-1000 `readContext` marker when present, otherwise
- * the shape of the persisted `query_business` arguments — an explicit
- * `leadId` (including the documented empty one) belongs to the original
- * contract, while an argument without `leadId` proves the server-bound
- * contract introduced by 2504d8cf. A pre-marker checkpoint with no business
- * call keeps the original contract instead of guessing from the absent marker. */
+ * produced under, decided from the strongest evidence this resume will really
+ * use: the step-1000 `readContext` marker, the checkpoint's own pending output,
+ * the successful `agent_model` result already persisted for the resume turn
+ * (a lost process may die after saving it but before updating the checkpoint),
+ * and finally the business calls the checkpoint history actually executed. An
+ * explicit `leadId` (including the documented empty one) belongs to the
+ * original contract, while an argument without `leadId` proves the server-bound
+ * contract introduced by 2504d8cf. Calls rejected for argument errors never
+ * executed a server read, so they never prove the new contract. A marker-free
+ * checkpoint with no such evidence keeps the original contract. */
 export function nativeReadContract(entry: Record<string, unknown>, saved: {
-  summary?: Row | null; checkpoint?: AgentCheckpoint | null;
+  summary?: Row | null; checkpoint?: AgentCheckpoint | null; reused?: ModelTurnOutput | null;
 }): ReadToolContext | undefined {
   if (saved.summary && Object.hasOwn(saved.summary, 'readContext'))
     return readToolContext(entry, saved.summary);
-  if (!saved.checkpoint) return readToolContext(entry);
-  const pending = (saved.checkpoint.output?.toolCalls || []).filter(call => call.name === 'query_business');
-  const persisted = [...saved.checkpoint.messages].reverse()
-    .flatMap(message => message.role === 'assistant' ? (message.toolCalls || []) : [])
-    .filter(call => call.name === 'query_business');
-  const calls = pending.length ? pending : persisted.slice(0, 1);
+  if (!saved.checkpoint) {
+    const reused = businessCalls(saved.reused);
+    return reused.length ? contractFromCalls(entry, reused) : readToolContext(entry);
+  }
+  const pending = businessCalls(saved.checkpoint.output);
+  const reused = businessCalls(saved.reused);
+  const calls = pending.length ? pending : reused.length ? reused : executedBusinessCalls(saved.checkpoint.messages);
   if (!calls.length) return undefined;
+  return contractFromCalls(entry, calls);
+}
+
+function businessCalls(output?: ModelTurnOutput | null) {
+  return (output?.toolCalls || []).filter(call => call.name === 'query_business');
+}
+
+/** Only a settled result proves what the next provider response will replay.
+ * A running, failed or malformed step is left to the model port's existing
+ * unknown/invalid-checkpoint handling and never decides the contract. */
+function settledModelOutput(row: Row | null | undefined): ModelTurnOutput | null {
+  if (!row || String(row.status) !== 'succeeded' || !row.provider_attempt_id) return null;
+  const output = row.private_checkpoint as ModelTurnOutput;
+  return output && typeof output === 'object' && !Array.isArray(output)
+    && typeof output.text === 'string' && Array.isArray(output.toolCalls) ? output : null;
+}
+
+/** A rejected batch is recorded with its own failure reply; it never reached
+ * the server, so it cannot prove how the saved arguments were produced. A
+ * later batch may reuse a call id, so replies bind within their own batch. */
+function executedBusinessCalls(messages: readonly ModelMessage[]) {
+  const executed: Array<{ id: string; name: string; arguments: string }> = [];
+  const pending = new Map<string, { id: string; name: string; arguments: string }>();
+  for (const message of messages) {
+    if (message.role === 'assistant') {
+      pending.clear();
+      for (const call of message.toolCalls || [])
+        if (call.name === 'query_business') pending.set(call.id, call);
+      continue;
+    }
+    if (message.role !== 'tool') continue;
+    const call = pending.get(message.callId);
+    if (!call) continue;
+    pending.delete(message.callId);
+    if (!executedBusinessReply(message.content)) continue;
+    executed.push(call);
+  }
+  return executed;
+}
+
+function executedBusinessReply(content: string) {
+  try {
+    const value = JSON.parse(content) as Row;
+    return !!value && typeof value === 'object' && !Array.isArray(value)
+      && typeof value.status === 'string' && !['invalid_arguments', 'not_dispatched'].includes(value.status);
+  } catch { return false; }
+}
+
+/** An argument without `leadId` is the only proof of the server-bound
+ * contract; any explicit identity or unparseable argument keeps the original
+ * contract, which never strips a model-selected identity. */
+function contractFromCalls(entry: Record<string, unknown>, calls: Array<{ arguments: string }>) {
   const serverBound = calls.every(call => {
     try {
       const value = JSON.parse(call.arguments) as Row;
@@ -565,6 +623,15 @@ export async function processNativeAgentAnswer(lease: Lease) {
       const modelSteps = await rows(tx, sql`select step_seq,status,provider_attempt_id from app.assistant_run_steps
         where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and kind='agent_model'
           and step_seq>=1100 and step_seq<1200 order by step_seq`);
+      // A lost process may persist the next turn's model result and die before
+      // updating the checkpoint. That exact step is what the model port will
+      // reuse, so its arguments (not stale history) decide the read contract.
+      const resumeTurn = Number((checkpoint?.private_checkpoint as Row | undefined)?.turn ?? 0);
+      const reusedModel = Number.isSafeInteger(resumeTurn) && resumeTurn >= 0 && resumeTurn <= maxModelTurns
+        ? await one(tx, sql`select status,provider_attempt_id,private_checkpoint from app.assistant_run_steps
+            where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}
+              and step_seq=${modelStepBase + resumeTurn * modelStepStride} and kind='agent_model'`)
+        : null;
       // Dispatch markers without a persisted receipt are open operations: the
       // metered provider I/O behind them has an unknown outcome and must never
       // be replayed. The usage row is the dispatch marker (written before I/O);
@@ -582,7 +649,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
         if ((record.category === 'web_search' || record.category === 'web_read') && !webSeqs.has(seq)) open.push(key);
       }
       return { checkpoint, publicContext, searches, businesses, webs, histories, fixed, openOperations: open,
-        triggerSeq: trigger?.seq ? String(trigger.seq) : null, lastModel, modelSteps };
+        triggerSeq: trigger?.seq ? String(trigger.seq) : null, lastModel, modelSteps, reusedModel };
     });
     if (saved.openOperations.length) { outcomeUnknown = true; fail('provider_outcome_unknown', 503); }
     if (saved.checkpoint && (saved.checkpoint.input_summary as Row)?.promptVersion !== promptVersion) fail('context_changed');
@@ -637,9 +704,12 @@ export async function processNativeAgentAnswer(lease: Lease) {
     const resume = saved.checkpoint?.private_checkpoint as AgentCheckpoint | undefined;
     // The persisted checkpoint decides the read-identity contract: a resumed
     // run keeps the contract its saved tool calls were produced under, while a
-    // new run binds the conversation's authorized lead server-side.
+    // new run binds the conversation's authorized lead server-side. A result
+    // already saved for the resume turn counts as that run's own call because
+    // the model port replays it verbatim instead of dispatching again.
     const readContext = nativeReadContract(initial.conversation.entry_snapshot as Record<string, unknown>,
-      { summary: saved.checkpoint?.input_summary as Row | null | undefined, checkpoint: resume });
+      { summary: saved.checkpoint?.input_summary as Row | null | undefined, checkpoint: resume,
+        reused: settledModelOutput(saved.reusedModel) });
     for (const step of saved.searches) {
       const evidence = step.private_checkpoint as Evidence[];
       if (!Array.isArray(evidence) || !evidence.length) continue;

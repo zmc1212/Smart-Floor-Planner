@@ -22,15 +22,15 @@
 
 | 字段 | 当前记录 |
 | --- | --- |
-| 交付与负责人 | 小K旧任务恢复契约修复（2026-11-12用户定向）：企业1454、确定性恢复夹具。单一负责人；方法约束：先验证真实回答，禁止补丁循环；保留原失败与用量，不循环换问法/模型。 |
-| 用户入口与结果 | 旧运行（显式同绑定leadId、旧空leadId、2504d8cf无leadId）均能复用已落库业务回执继续交付；新运行的房屋身份仍由服务端绑定；不匹配身份、撤权、来源失效、缺1003及未知结局仍拒绝。 |
-| 已证缺口 | 2504d8cf对旧持久化`{"domain":"appointments","leadId":"3134"}`先于回执复用在`validateTool`以`invalid_tool_input`终止（argumentFailures已为1）；2504d8cf无leadId的新参数同样需要可恢复。 |
-| 已完成 | `nativeReadContract`按1000检查点`readContext`标记，否则按持久化`query_business`参数形状判定契约：显式/空leadId=原契约，无leadId=服务端绑定契约；校验与工具端口共用该契约；新运行在1000检查点持久化`readContext`并校验entry漂移；旧运行不写该标记；移除上一轮对空leadId的全局重绑定，新契约仍拒绝模型自传身份。 |
-| 下一动作 | 本轮结束；真实小程序UI复验仍待DB隧道/Stable窗口稳定后再做，不自动重试或新增P3。 |
-| 必要验收 | 离线37/37（native-executor24、knowledge-workflow5、native-public-intro8）；DB`assistant-public-lifecycle`13/13（含4个恢复用例）；tsc0；完整build0；本轮不新增真实模型调用。 |
-| 失败与调用边界 | 首跑DB连接超时（环境）保留；B2 run3825首稿失败保留；run3609/3616/3632、run3664–3669、run3742/3743及报告UI 503保留；已成功模型步骤/attempt/usage/unknown不重放。 |
-| 环境与资源 | DB隧道间歇超时（本轮首跑即遇）；FastGPT 18300未运行；`source-manifest.json`未提交；合成JWT非真实微信。 |
-| 证据与后继 | `admin/src/db/__tests__/assistant-public-lifecycle.test.ts`新增4个恢复用例及既有9例；`tmp/xiaok-public-topic-20261111/`上一轮证据保留；计划检查`node scripts/check-xiaok-plan.mjs`；无泛化下一P3。 |
+| 交付与负责人 | 小K旧任务恢复合同P2收尾（2026-11-12用户定向）：检查点滞后于已成功`agent_model`结果时，按本次恢复实际复用的结果选择读身份合同；企业1454确定性夹具；单一负责人；方法约束：先验证真实回答，禁止补丁循环；保留原失败与用量。 |
+| 用户入口与结果 | 旧式显式/空`leadId`纠错与服务端绑定无`leadId`两种滞后状态均复用原模型结果继续交付；尚未执行的业务读取只执行一次，已有回执按原key复用；标记/身份不符、来源撤回、缺1003及unknown仍拒绝且不重派供应商。 |
+| 已证缺口 | `nativeReadContract`只读1000 output与历史消息：漏掉恢复turn已落库的模型结果，并把被参数拒绝的旧无`leadId`调用误当绑定证明；旧式纠错因`argumentFailures=1`以`invalid_tool_input`终止，2504无`leadId`被改判原式后重问。 |
+| 已完成 | 契约证据按1000`readContext`标记、检查点pending输出、恢复turn对应`1100+turn*10`成功模型步骤、有非失败回执的已执行历史调用排序；被拒调用不作证明；定义/校验/绑定/业务端口/复用输出共用同一契约；恢复后的绑定契约持久化标记（原式不写）。 |
+| 下一动作 | 本轮结束；真实小程序UI复验待DB隧道/Stable窗口稳定后按原计划处理；不自动重试或新增P3。 |
+| 必要验收 | 离线40/40（native-executor26、knowledge-workflow5、native-public-intro9）；DB`assistant-public-lifecycle`15/15（含2个检查点滞后用例，真实库写入/读回）；tsc0；lint0错误；完整build0；真实模型调用0，合成续答单独计数。 |
+| 失败与调用边界 | 本轮首两次DB健康检查connect timeout（环境）保留，后经单次有界套件运行完成、未循环重连；B2 run3825、run3609/3616/3632、run3664–3669、run3742/3743、报告UI 503保留；已成功模型步骤/attempt/usage/unknown不重放。 |
+| 环境与资源 | DB隧道曾超时、单次有界运行后恢复；FastGPT 18300未运行；`source-manifest.json`范围外改动保留；合成JWT非真实微信。 |
+| 证据与后继 | 滞后用例在`admin/src/db/__tests__/assistant-public-lifecycle.test.ts`（15/15）；离线新增合同判定与`runRenovationAgent`恢复用例；`tmp/`既有证据保留；计划检查`node scripts/check-xiaok-plan.mjs`；无泛化P3。 |
 
 ## 3. 复用哪些成果
 
