@@ -53,11 +53,15 @@ test('a resumed suggestion dispatch reuses its persisted output and never replay
   assert.deepEqual(resumeSuggestionGeneration(undefined), { action: 'dispatch' });
   assert.deepEqual(resumeSuggestionGeneration({ status: 'succeeded', private_checkpoint: { text: '水路先做什么？\n防水怎么验收？\n地砖怎么排版？' } }),
     { action: 'reuse', text: '水路先做什么？\n防水怎么验收？\n地砖怎么排版？' });
-  // Dispatched without a persisted outcome: the presets stand and the provider
-  // is not called a second time.
-  assert.deepEqual(resumeSuggestionGeneration({ status: 'running' }), { action: 'skip' });
-  assert.deepEqual(resumeSuggestionGeneration({ status: 'failed', private_checkpoint: null }), { action: 'skip' });
-  assert.deepEqual(resumeSuggestionGeneration({ status: 'succeeded', private_checkpoint: { text: 3 } }), { action: 'skip' });
+  // Dispatched without a persisted outcome: the presets stand, the provider is
+  // not called a second time and the unknown outcome stays visible.
+  assert.deepEqual(resumeSuggestionGeneration({ status: 'running' }), { action: 'skip', unknown: true });
+  assert.deepEqual(resumeSuggestionGeneration({ status: 'failed', private_checkpoint: null }), { action: 'skip', unknown: false });
+  assert.deepEqual(resumeSuggestionGeneration({ status: 'failed',
+    input_summary: { code: 'provider_outcome_unknown' } }), { action: 'skip', unknown: true });
+  assert.deepEqual(resumeSuggestionGeneration({ status: 'failed', input_summary: { code: 'assistant_disabled' } }),
+    { action: 'skip', unknown: false });
+  assert.deepEqual(resumeSuggestionGeneration({ status: 'succeeded', private_checkpoint: { text: 3 } }), { action: 'skip', unknown: false });
 });
 
 test('the generation prompt carries only the bounded answer and removes citation markers', () => {

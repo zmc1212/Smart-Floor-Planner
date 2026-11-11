@@ -1,10 +1,28 @@
 import { sql, type SQL } from 'drizzle-orm';
 
+/** Observed metered tokens for one run, counting each actual provider
+ * operation once. The public opening writes intro_tokens and completeRun
+ * writes the same provider call as run:{runId} tokens; both are one call.
+ * Other calls dedupe by provider attempt, and unattributed rows stay separate. */
+export function observedTokenTotal(enterpriseId: SQL, runId: SQL): SQL {
+  return sql`(select coalesce(sum(quantity),0) from (
+    select distinct on (op) quantity from (
+      select case
+        when category='intro_tokens' or (category='tokens' and operation_key like 'run:%') then 'run-call'
+        when provider_attempt_id is not null then 'attempt:'||provider_attempt_id
+        else 'row:'||id
+      end as op, id, quantity
+      from app.assistant_usage_records
+      where enterprise_id=${enterpriseId} and run_id=${runId}
+        and measurement_kind='observed' and category in ('tokens','suggestion_tokens','intro_tokens')
+    ) normalized order by op, id
+  ) deduped)`;
+}
+
 /** Read-only verification of the existing reservation alias q. A settled label
  * alone is not reconciliation. Original usage/attempt/run records stay intact. */
 export function confirmedUsageReview(observedTokens?: SQL) {
-  const observed = observedTokens ?? sql`(select coalesce(sum(quantity),0) from app.assistant_usage_records
-    where enterprise_id=q.enterprise_id and run_id=q.run_id and category='tokens' and measurement_kind='observed')`;
+  const observed = observedTokens ?? observedTokenTotal(sql`q.enterprise_id`, sql`q.run_id`);
   return sql`(q.status='settled' and q.settled_tokens is not null and q.settled_cost_micros is not null
     and q.settled_tokens>=${observed} and exists(select 1 from app.assistant_cost_reviews review
       where review.enterprise_id=q.enterprise_id and review.reservation_id=q.id and review.currency='CNY'
@@ -12,12 +30,17 @@ export function confirmedUsageReview(observedTokens?: SQL) {
 }
 
 /** Missing usage can mean no row at all (transport failed before insertion).
- * This predicate also protects immutable known subtotals during later review. */
+ * This predicate also protects immutable known subtotals during later review.
+ * A null quantity with an attempt that explicitly failed without acceptance is
+ * a known failure, not an unknown provider outcome. */
 export function unresolvedProviderOutcome() {
   return sql`(r.status='indeterminate' or r.error_code in ('provider_outcome_unknown','provider_usage_unknown')
     or exists(select 1 from app.ai_provider_attempts a where a.enterprise_id=r.enterprise_id and a.assistant_run_id=r.id and a.status='unknown')
-    or exists(select 1 from app.assistant_usage_records u where u.enterprise_id=r.enterprise_id and u.run_id=r.id
-      and u.category='tokens' and u.quantity is null))`;
+    or exists(select 1 from app.assistant_usage_records u
+      left join app.ai_provider_attempts a on a.enterprise_id=u.enterprise_id and a.id=u.provider_attempt_id
+      where u.enterprise_id=r.enterprise_id and u.run_id=r.id
+        and u.category in ('tokens','suggestion_tokens','intro_tokens') and u.quantity is null
+        and (u.provider_attempt_id is null or a.status is distinct from 'failed' or a.accepted is distinct from false)))`;
 }
 
 export function runUsageReconciled() {

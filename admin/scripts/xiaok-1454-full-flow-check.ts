@@ -34,8 +34,8 @@ const expectedExecutor = process.argv.find(a => a.startsWith('--executor='))?.sl
 // a receipt and keeps its historical command line.
 assert.ok(batchId || expectedExecutor !== 'xiaok-native-executor-v1',
   'Acceptance batch id required for the native executor: pass --batch=<id> (or XIAOK_AUDIT_BATCH)');
-// Under an unavailable FastGPT deployment the stage-report bodies legitimately
-// fail (P3 migrates that entry); their rows and recorded errors stay required.
+// Stage report bodies now compose natively; this legacy flag remains only for
+// historical rounds and no longer explains a body failure via FastGPT outage.
 const stageFastgptDown = process.argv.includes('--stage-fastgpt=down');
 // A questions file avoids Chinese argv mojibake on Windows shells.
 const questionsFile = process.argv.find(a => a.startsWith('--questions-file='))?.slice(17);
@@ -283,8 +283,8 @@ async function main() {
       assert.ok(item, 'Stage history missing for ' + reader.kind);
       const detail = (await api(String(reader.token), `/followups/${reader.binding}/reports/${String(item.reportId)}?revision=${String(item.revision)}`, { entry: String(reader.entry ?? '') })).data.data as Row;
       assert.equal(detail.available, true); assert.ok((((detail.facts as Row | undefined)?.projects as Row[] | undefined) || []).some((p: Row) => String(p.id) === projectId));
-      // With the FastGPT deployment unavailable the stage body composition
-      // fails recorded; P3 migrates that entry, so only up-mode demands a body.
+      // Stage bodies compose natively; this legacy flag only tolerates a
+      // deliberately skipped body in historical rounds.
       if (!stageFastgptDown) assert.ok(Array.isArray(detail.body) && detail.body.length > 0, 'Stage body composed for ' + reader.kind);
       views.push({ kind: reader.kind, binding: reader.binding, reportId: String(item.reportId), revision: Number(item.revision),
         contentStatus: detail.contentStatus, bodyParts: Array.isArray(detail.body) ? detail.body.length : 0,

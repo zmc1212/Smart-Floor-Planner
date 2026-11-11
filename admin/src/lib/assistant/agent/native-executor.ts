@@ -193,6 +193,44 @@ export async function assertPublicIntroCommit(tx: PostgresTransaction, lease: Le
   await authorizePublicIntroDispatch(tx, lease.enterpriseId, state.conversation, ref);
 }
 
+/** Persist the suggestion dispatch's measured usage without any lease,
+ * authorization or run-context check: a cancelled, expired or re-authorized
+ * run must never roll back tokens the provider already billed. Idempotent per
+ * operation key, and an observed measurement is never downgraded or
+ * overwritten by a later write. */
+export async function persistSuggestionUsage(enterpriseId: string, runId: string, operationKey: string,
+  attemptId: string, usage: { inputTokens: number; outputTokens: number } | null) {
+  await withTenantTransaction(enterpriseId, tx => tx.execute(sql`insert into app.assistant_usage_records
+    (enterprise_id,run_id,provider_attempt_id,operation_key,category,quantity,measurement_kind,input_tokens,output_tokens)
+    values(${enterpriseId},${runId},${attemptId},${operationKey},'suggestion_tokens',
+    ${usage ? usage.inputTokens + usage.outputTokens : null},${usage ? 'observed' : 'unavailable'},
+    ${usage?.inputTokens ?? null},${usage?.outputTokens ?? null})
+    on conflict (enterprise_id,operation_key,category) do update set
+      provider_attempt_id=excluded.provider_attempt_id,quantity=excluded.quantity,
+      measurement_kind=excluded.measurement_kind,input_tokens=excluded.input_tokens,
+      output_tokens=excluded.output_tokens,updated_at=now(),version=app.assistant_usage_records.version+1
+    where app.assistant_usage_records.measurement_kind is distinct from 'observed'`));
+}
+
+/** Attach the dispatch's provider attempt to its usage row for reconciliation
+ * without changing the unknown measurement. The attempt row itself carries
+ * accepted/status, which distinguishes a definite failure from an unknown
+ * outcome. A guard that failed before dispatch has neither row, so the update
+ * naturally matches nothing. */
+export async function backfillSuggestionProviderAttempt(enterpriseId: string, runId: string, operationKey: string) {
+  return withTenantTransaction(enterpriseId, async tx => {
+    const attempt = await one(tx, sql`select id from app.ai_provider_attempts
+      where enterprise_id=${enterpriseId} and assistant_run_id=${runId}
+        and metadata->>'purpose'='suggestions' order by id desc limit 1`);
+    if (!attempt) return null;
+    await tx.execute(sql`update app.assistant_usage_records set provider_attempt_id=${String(attempt.id)},
+      updated_at=now(),version=version+1
+      where enterprise_id=${enterpriseId} and run_id=${runId} and operation_key=${operationKey}
+        and category='suggestion_tokens' and provider_attempt_id is null`);
+    return String(attempt.id);
+  });
+}
+
 export async function processNativeAgentAnswer(lease: Lease) {
   let timer: ReturnType<typeof setInterval> | undefined;
   // Set when a guard meets a dispatched-but-unrecorded model step: the run
@@ -618,7 +656,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
     let suggestions: SuggestionResolution = resolveSuggestions(null, presets);
     const suggestionStep = await withTenantTransaction(lease.enterpriseId, async tx => {
       await runContext(tx, lease);
-      return await one(tx, sql`select status,private_checkpoint from app.assistant_run_steps
+      return await one(tx, sql`select status,private_checkpoint,input_summary from app.assistant_run_steps
         where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${suggestionGenerationStep}
           and kind='agent_suggestion_model'`);
     });
@@ -653,15 +691,15 @@ export async function processNativeAgentAnswer(lease: Lease) {
         if (!output.agentOutput) fail('invalid_model_answer', 502);
         const usage = output.agentOutput.usage;
         const generated = output.agentOutput.text;
+        // Billed usage is persisted before any run-context check: cancellation
+        // or a changed authorization may still reject delivery, but it must not
+        // roll back tokens the provider already returned.
+        await persistSuggestionUsage(lease.enterpriseId, lease.runId, operationKey, String(output.attemptId), usage ?? null);
         await withTenantTransaction(lease.enterpriseId, async tx => {
           await runContext(tx, lease);
           await tx.execute(sql`update app.assistant_run_steps set status='succeeded',provider_attempt_id=${String(output.attemptId)},
             private_checkpoint=${JSON.stringify({ text: generated })}::jsonb
             where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${suggestionGenerationStep}`);
-          await tx.execute(sql`update app.assistant_usage_records set provider_attempt_id=${String(output.attemptId)},
-            quantity=${usage ? usage.inputTokens + usage.outputTokens : null},measurement_kind=${usage ? 'observed' : 'unavailable'},
-            input_tokens=${usage?.inputTokens ?? null},output_tokens=${usage?.outputTokens ?? null}
-            where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and operation_key=${operationKey}`);
         });
         suggestions = resolveSuggestions(generated, presets);
       } catch (error) {
@@ -669,22 +707,29 @@ export async function processNativeAgentAnswer(lease: Lease) {
         // for another reason; the answer itself already stands on its own.
         const unknown = error instanceof AiProviderError && ['accepted', 'unknown'].includes(error.disposition);
         if (unknown) outcomeUnknown = true;
+        // Attach the attempt for reconciliation (a negative result distinguishes
+        // a definite failure from an unknown one) without converting the
+        // unknown measurement into an observed one.
+        await backfillSuggestionProviderAttempt(lease.enterpriseId, lease.runId, operationKey).catch(() => undefined);
+        const code = unknown ? 'provider_outcome_unknown'
+          : error instanceof AssistantError || error instanceof AiProviderError ? error.code : 'suggestion_generation_failed';
         await withTenantTransaction(lease.enterpriseId, tx => tx.execute(sql`update app.assistant_run_steps set status='failed',
-          input_summary=${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, purpose: 'suggestions', promptVersion,
-            code: unknown ? 'provider_outcome_unknown' : error instanceof AssistantError ? error.code : 'suggestion_generation_failed' })}::jsonb
+          input_summary=${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, purpose: 'suggestions', promptVersion, code })}::jsonb
           where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${suggestionGenerationStep}
             and status='running'`)).catch(() => undefined);
       }
-    } else if (suggestionStep && String(suggestionStep.status) === 'running') {
+    } else if (resumedSuggestions.unknown) {
       // An earlier process dispatched this suggestion call without persisting
-      // its receipt. It is never replayed, and a later commit failure must not
-      // hide the unknown provider outcome.
+      // its receipt (or recorded an unknown outcome). It is never replayed, and
+      // a later commit failure must not hide the unknown provider outcome. A
+      // failed+unknown step keeps its original reason unchanged.
       outcomeUnknown = true;
-      await withTenantTransaction(lease.enterpriseId, tx => tx.execute(sql`update app.assistant_run_steps set status='failed',
-        input_summary=${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, purpose: 'suggestions', promptVersion,
-          code: 'provider_outcome_unknown' })}::jsonb
-        where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${suggestionGenerationStep}
-          and status='running'`)).catch(() => undefined);
+      if (String(suggestionStep?.status) === 'running')
+        await withTenantTransaction(lease.enterpriseId, tx => tx.execute(sql`update app.assistant_run_steps set status='failed',
+          input_summary=${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, purpose: 'suggestions', promptVersion,
+            code: 'provider_outcome_unknown' })}::jsonb
+          where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${suggestionGenerationStep}
+            and status='running'`)).catch(() => undefined);
     }
     const parts = ragAnswerParts(text, [...catalog.values()]);
     const cited = [...catalog.values()].filter(c => parts.some(p => 'source' in p && p.source.nativeId === c.nativeId));

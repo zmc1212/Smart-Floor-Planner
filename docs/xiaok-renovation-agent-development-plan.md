@@ -22,15 +22,15 @@
 
 | 字段 | 当前记录 |
 | --- | --- |
-| 交付与负责人 | P3追问建议原生迁移+公开工地收尾（2026-11-11用户定向）：追问建议接入原生模型生成；补齐开场派发前授权复验、显式重试标记一致性、审计窗口收尾连续性。单一负责人，禁止自动新建或交接聊天，仅用户明确要求才新建/转移。方法约束：先验证真实回答，禁止补丁循环；模型解释、KnowledgeRetriever/Evidence供授权材料，代码守权限/来源/动作/回执；两轮失败停循环，不堆提示词或换模型。 |
-| 用户入口与结果 | 业主咨询回答后，追问建议由原生模型按本轮获权正文生成并沿用原展示；公开工地开场在派发前复验当前工地版本与公开材料，重试成功后重进返回existing；审计零调用结论在收尾时复验窗口前缀。 |
-| 已证缺口 | 追问建议原为预设且零模型调用；开场派发前只标记provider start、不复验工地/材料；显式重试未同步publicIntros导致重进重复开场；审计收尾只查长度。 |
-| 已完成 | native-executor答复后按`suggestionPrompt`生成3-4问，步骤1014派发标记+provider attempt、`suggestion_tokens`用量，1007保存并按source=model/generated标记；失败、非法或unknown回退预设且不重发；`markProviderStarted`新增同事务guard，intro派发前复验activePublicSite与publishedPublicMaterial；retry同事务改指marker并attempts+1，切工地拒绝；`auditWindowEntries`要求开窗prefixHash并在收尾前复验。 |
-| 下一动作 | 继续P3剩余入口迁移（日报/模型整理等），不扩推荐平台。 |
-| 必要验收 | live run3378 succeeded，建议attempt4980 qwen3.7-flash 276/25 observed，三条问题重进复用；开场live run3379成功且重复attach existing；切换工地派发前guard拒绝（无模型派发，集成路径仅一条failed attempt）、run failed；派发后撤回无消息且365 tokens保留；失败原run→live重试run3382成功→重进existing且run数保持2；定向public-intro-retry 3/3、DB 2/2、suggestions 8/8、audit-window 9/9、assistant派发前守卫1/1；lint见模块清单。 |
-| 失败与调用边界 | 保留r12–r14、four-questions-r2、run3276、isolation-r5、run3274；full-flow/真机/生产未验；未知provider不重放；仅1454开发库；无真实客户写入或外部消息。既有`report-context.ts`类型错误如实保留，不计本轮新缺陷。 |
-| 环境与资源 | 远程开发库经SSH隧道5432；3006 dev server与常驻Worker；外部搜索/读页按需，失败如实标未验；Stable HLS、真机/真实微信、生产未验。 |
-| 证据与后继 | `tmp/xiaok-p3-suggestions-20261111/report.json`；`tmp/xiaok-public-intro-guard-20261111/report.json`；`tmp/xiaok-public-intro-commit-20261111/report.json`；`tmp/xiaok-public-intro-retry-live-20261111/report.json`；模块清单双语已更新；后继按P3剩余入口。 |
+| 交付与负责人 | P3建议计量/unknown恢复+阶段报告原生迁移（2026-11-11用户定向）：统一已观测/未知/对账口径，建议用量租约无关幂等保存并保留unknown，恢复脚本区分正文与建议；阶段报告正文迁出FastGPT stage分支。单一负责人，禁止自动新建或交接聊天，仅用户明确要求才新建/转移。方法约束：先验证真实回答，禁止补丁循环；模型解释、KnowledgeRetriever/Evidence供授权材料，代码守权限/来源/动作/回执；两轮失败停循环，不堆提示词或换模型。 |
+| 用户入口与结果 | 建议与正文用量一起进入对账，未知不记零、不重放；暂停或取消不会丢失已返回用量；阶段报告正文由原生模型生成并按原四角色保存投递，不再依赖FastGPT stage应用。 |
+| 已证缺口 | `suggestion_tokens`未入reconcile/confirmedUsageReview；建议返回后先runContext导致用量回滚；failed+unknown恢复未置outcomeUnknown；W1/S按总attempts误判；阶段正文仍走stage workflow且无provider attempt。 |
+| 已完成 | `observedTokenTotal`按provider operation去重（intro_tokens与run:合并）并统一reconcile/confirmed/unknown；`persistSuggestionUsage`租约无关幂等、observed不被覆盖，失败/unknown回填attempt；`resumeSuggestionGeneration`识别failed+unknown；`report-body-worker`不再选择stage workflow；recovery脚本区分正文/建议并新增SU，保留`--only`定向复测。 |
+| 下一动作 | 按当前调用链继续P3下一实际入口；不再笼统迁移日报/周报。 |
+| 必要验收 | 新定向15/15（建议3+对账4+单测8）；既有usage 11/11（隔离库）；46/46单测；live S/SU通过（S正文1+建议1，SU unknown不重放）；A/B/C带native-suggest；W1 run3413 invalid_model_citation保留；stage事件7461六份正文run3423–3428、attempt5025–5030、observed833–837、audit548→548；真实P3 run3378 body5365+建议301=5666，开场365去重。 |
+| 失败与调用边界 | W1 run3413 invalid_model_citation保留；full-flow/真机/生产未验；未知不重放；仅1454开发库；无真实客户写入或外部消息；既有`report-context.ts`类型错误不计本轮新缺陷。 |
+| 环境与资源 | 远程库经SSH隧道5432，隔离评测库55432用于既有usage测试；3006 dev server与常驻Worker；真实模型按需，失败如实标未验；Stable HLS、真机/真实微信、生产未验。 |
+| 证据与后继 | `tmp/xiaok-native-recovery-suggestions-20261111/report.json`；`tmp/xiaok-native-recovery-suggestions-s-su-20261111/report.json`；`tmp/xiaok-stage-native-20261111/report.json`；`tmp/xiaok-p3-suggestions-20261111/accounting.json`；模块清单双语已更新；后继按调用链清点。 |
 
 ## 3. 复用哪些成果
 

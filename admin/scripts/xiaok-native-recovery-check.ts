@@ -25,6 +25,7 @@ import { historyRefsAvailable, type HistoryRef } from '@/lib/assistant/agent/his
 import { synthesisContextAvailable } from '@/lib/assistant/agent/synthesis-sources';
 import type { SynthesisContext } from '@/lib/assistant/agent/synthesis';
 import { nativeAgentRuntimeBinding } from '@/lib/assistant/fastgpt/agent-v2/config';
+import { suggestionGenerationStep } from '@/lib/assistant/fastgpt/agent-v2/suggestions';
 import { knowledgePolicy } from '@/lib/assistant/knowledge-policy';
 import { appendMessage } from '@/lib/assistant/core/conversation';
 import { KnowledgeService } from '@/lib/assistant/knowledge/service';
@@ -75,8 +76,19 @@ function binding() {
 }
 const before = binding();
 report.bindingBefore = createHash('sha256').update(JSON.stringify(before)).digest('hex');
+// Targeted retests may select named scenarios, but the queue/decoy guards and
+// every assertion of an executed scenario stay mandatory. A default full run
+// (no --only) still executes the complete matrix, including W1.
+const only = (process.argv.find(a => a.startsWith('--only='))?.slice(7) || '').split(',')
+  .map(value => value.trim()).filter(Boolean);
+if (only.length) report.only = only;
+const alwaysRun = (name: string) => name.startsWith('preflight:') || name.startsWith('decoy probe:');
 
 async function step(name: string, fn: () => Promise<unknown>) {
+  if (only.length && !alwaysRun(name) && !only.some(prefix => name.startsWith(prefix))) {
+    console.log(name + ': SKIP (--only)');
+    return undefined;
+  }
   try { const data = await fn(); (report.checks as Row[]).push({ name, passed: true, data }); console.log(name + ': PASS'); return data; }
   catch (e) { const message = (e as Error).message + ((e as Row).cause ? ' | cause: ' + String((e as Row).cause) : '');
     (report.checks as Row[]).push({ name, passed: false, error: message });
@@ -108,6 +120,10 @@ async function seedInterruptedRun(label: string, spec: {
    * resident Worker resumes; `recoverable`/`new` seed a state this harness
    * claims through the real claimJob path for a factory-driven scenario. */
   claim?: 'worker' | 'recoverable' | 'new';
+  /** A suggestion dispatch whose provider outcome was never persisted: the 1014
+   * step, its usage marker and one unknown attempt are durable truth, so a
+   * resumed run must neither replay the call nor rewrite the marker. */
+  suggestionUnknown?: boolean;
 }) {
   return read(async tx => {
     const template = await one(tx, sql`select policy_snapshot from app.assistant_runs where enterprise_id=${eid} and id=2967`);
@@ -142,8 +158,11 @@ async function seedInterruptedRun(label: string, spec: {
     const provider = (await one(tx, sql`select provider_config_id,provider_key,adapter_type,remote_model from app.ai_provider_attempts
       where enterprise_id=${eid} order by id desc limit 1`))!;
     const attemptIds: string[] = [];
+    const bodyUsageKeys: string[] = [];
+    let suggestionAttemptId: string | undefined;
     for (const item of spec.turns) {
       const usage = item.output.usage ?? { inputTokens: 11, outputTokens: 7 };
+      bodyUsageKeys.push('agent:' + runId + ':' + item.turn);
       const attempt = (await one(tx, sql`insert into app.ai_provider_attempts(enterprise_id,assistant_run_id,provider_config_id,provider_key,adapter_type,capability,
         logical_model_key,remote_model,remote_task_id,status,accepted)
         values(${eid},${runId},${String(provider.provider_config_id)},${String(provider.provider_key)},${String(provider.adapter_type)},'chat','chat.general',
@@ -183,6 +202,22 @@ async function seedInterruptedRun(label: string, spec: {
         ${JSON.stringify({ region: spec.publicSites.region, count: spec.publicSites.count ?? 0 })}::jsonb,
         ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, tool: 'recommend_public_sites',
           count: spec.publicSites.count ?? 0, receipt: spec.publicSites.receipt })}::jsonb)`);
+    if (spec.suggestionUnknown) {
+      // Lost-process truth for the ancillary call: the provider was dispatched
+      // but its outcome never settled. The usage marker stays unknown, the 1014
+      // step records the unknown code, and recovery must not replay the call.
+      const suggestionAttempt = (await one(tx, sql`insert into app.ai_provider_attempts(enterprise_id,assistant_run_id,provider_config_id,provider_key,adapter_type,capability,
+        logical_model_key,remote_model,remote_task_id,status,accepted,metadata)
+        values(${eid},${runId},${String(provider.provider_config_id)},${String(provider.provider_key)},${String(provider.adapter_type)},'chat','chat.general',
+        ${String(provider.remote_model)},'xiaok-recovery-suggestion-unknown','unknown',true,
+        ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, purpose: 'suggestions' })}::jsonb) returning id`))!;
+      suggestionAttemptId = String(suggestionAttempt.id);
+      await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,provider_attempt_id,private_checkpoint,input_summary)
+        values(${eid},${runId},${suggestionGenerationStep},'agent_suggestion_model','failed',${suggestionAttemptId},null,
+        ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, purpose: 'suggestions', code: 'provider_outcome_unknown' })}::jsonb)`);
+      await tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,operation_key,category,quantity,measurement_kind)
+        values(${eid},${runId},${'native-suggest:' + runId},'suggestion_tokens',null,'unavailable')`);
+    }
     if (spec.claim === 'recoverable') {
       // Lost-process truth: the dead process had already dispatched the model,
       // so the provider marker is set and a succeeded model step exists. The
@@ -206,7 +241,8 @@ async function seedInterruptedRun(label: string, spec: {
       await tx.execute(sql`insert into app.assistant_jobs(enterprise_id,kind,run_id,dedupe_key,payload_version,status,attempts,available_at,provider_started_at)
         values(${eid},'chat_turn',${runId},${'recovery:' + randomUUID()},1,'queued',0,now(),now())`);
     }
-    return { conversationId, runId, attemptIds, binding: bound.binding, triggerSeq: String(message.seq) };
+    return { conversationId, runId, attemptIds, bodyUsageKeys, suggestionAttemptId,
+      binding: bound.binding, triggerSeq: String(message.seq) };
   });
 }
 
@@ -253,10 +289,10 @@ async function claimSeeded(runId: string) {
 async function runState(runId: string, conversationId: string) {
   const [run, attempts, usage, steps, messages] = await Promise.all([
     tenantOne(sql`select id,status,error_code,output_message_id,answer_kind from app.assistant_runs where enterprise_id=${eid} and id=${runId}`),
-    withPlatformTransaction(tx => rows(tx, sql`select id,status,remote_model,remote_task_id from app.ai_provider_attempts where assistant_run_id=${runId} order by id`)),
+    withPlatformTransaction(tx => rows(tx, sql`select id,status,remote_model,remote_task_id,metadata from app.ai_provider_attempts where assistant_run_id=${runId} order by id`)),
     tenantRows(sql`select operation_key,provider_attempt_id,category,quantity,measurement_kind from app.assistant_usage_records
       where enterprise_id=${eid} and run_id=${runId} order by operation_key`),
-    tenantRows(sql`select step_seq,kind,capability_name,status,provider_attempt_id from app.assistant_run_steps
+    tenantRows(sql`select step_seq,kind,capability_name,status,provider_attempt_id,input_summary from app.assistant_run_steps
       where enterprise_id=${eid} and run_id=${runId} order by step_seq,kind`),
     tenantRows(sql`select id,seq,author_kind from app.assistant_messages where enterprise_id=${eid} and conversation_id=${conversationId} order by seq`)]);
   return { run: run!, attempts, usage, steps, messages };
@@ -277,6 +313,55 @@ async function assertIndeterminate(label: string, seeded: Awaited<ReturnType<typ
 
 const stepKinds = (state: ReturnType<typeof runState> extends Promise<infer T> ? T : never, kind: string) =>
   (state.steps as Row[]).filter(s => String(s.kind) === kind);
+type RunState = ReturnType<typeof runState> extends Promise<infer T> ? T : never;
+const suggestionKey = (runId: string) => 'native-suggest:' + runId;
+const modelTurnOf = (stepSeq: number) => Math.round((Number(stepSeq) - 1100) / 10);
+const isSuggestionAttempt = (attempt: Row) => String(attempt.remote_task_id ?? '') === 'xiaok-recovery-suggestion-unknown'
+  || String((attempt.metadata as Row | undefined)?.purpose ?? '') === 'suggestions';
+
+/** The suggestion call is its own durable lane: one 1014 marker outside the
+ * model-turn band, one usage operation and at most one provider attempt. It is
+ * never counted as a body attempt and never replayed */
+function suggestionView(state: RunState, runId: string) {
+  const marker = (state.steps as Row[]).filter(s => String(s.kind) === 'agent_suggestion_model'
+    && Number(s.step_seq) === suggestionGenerationStep);
+  const usage = (state.usage as Row[]).filter(u => String(u.operation_key) === suggestionKey(runId));
+  const ids = new Set<string>();
+  for (const step of marker) if (step.provider_attempt_id) ids.add(String(step.provider_attempt_id));
+  for (const attempt of state.attempts as Row[]) if (isSuggestionAttempt(attempt)) ids.add(String(attempt.id));
+  return { marker, usage, ids, attempts: (state.attempts as Row[]).filter(a => ids.has(String(a.id))) };
+}
+
+function assertSuggestion(label: string, state: RunState, runId: string, dispatched: boolean) {
+  const view = suggestionView(state, runId);
+  assert.ok(view.marker.length <= 1, label + ' must never dispatch suggestions twice');
+  assert.ok(view.usage.length <= 1, label + ' must never write a second suggestion usage row');
+  if (dispatched) {
+    assert.equal(view.marker.length, 1, label + ' must persist exactly one 1014 suggestion marker');
+    assert.equal(view.usage.length, 1, label + ' must persist exactly one suggestion usage row');
+  } else if (!view.marker.length) {
+    assert.equal(view.usage.length, 0, label + ' has no suggestion usage without a marker');
+    assert.equal(view.attempts.length, 0, label + ' has no suggestion attempt without a marker');
+    return view;
+  }
+  const step = view.marker[0], usage = view.usage[0];
+  assert.equal(String(usage.category), 'suggestion_tokens', label + ' suggestion usage category');
+  if (String(step.status) === 'succeeded') {
+    assert.equal(view.attempts.length, 1, label + ' suggestion success references exactly one provider attempt');
+    assert.ok(step.provider_attempt_id, label + ' suggestion success keeps its provider attempt id');
+    assert.equal(String(usage.measurement_kind), 'observed', label + ' suggestion usage is observed on success');
+    assert.ok(usage.quantity !== null, label + ' suggestion usage quantity is observed on success');
+    assert.equal(String(usage.provider_attempt_id), String(step.provider_attempt_id), label + ' usage and step share the attempt');
+    assert.equal(String(view.attempts[0].id), String(step.provider_attempt_id), label + ' the attempt row is the step attempt');
+  } else {
+    assert.equal(String(step.status), 'failed', label + ' suggestion step status');
+    assert.ok(String((step.input_summary as Row | undefined)?.code ?? ''), label + ' failed suggestion records a code');
+    assert.equal(usage.quantity, null, label + ' failed suggestion usage stays unknown');
+    assert.equal(String(usage.measurement_kind), 'unavailable', label + ' failed suggestion usage stays unavailable');
+    assert.ok(view.attempts.length <= 1, label + ' failed suggestion dispatch stays at most one attempt');
+  }
+  return view;
+}
 
 async function assertCompleted(label: string, seeded: Awaited<ReturnType<typeof seedInterruptedRun>>, expect: {
   attempts: number; usageKeys: string[]; textMatch: RegExp; modelStepCount: number; checkpoint: boolean }) {
@@ -286,14 +371,18 @@ async function assertCompleted(label: string, seeded: Awaited<ReturnType<typeof 
   assert.equal((state.messages as Row[]).length, 2, label + ' must persist exactly one trigger and one assistant message');
   assert.equal(String((state.messages as Row[]).at(-1)!.id), String(run.output_message_id), label + ' output message linkage');
   const attempts = state.attempts as Row[];
-  assert.equal(attempts.length, expect.attempts, label + ' must hold the exact provider attempt count (no hidden re-dispatch)');
-  assert.ok(attempts.every(a => String(a.status) === 'succeeded'), label + ' attempts must all be known-succeeded');
   const synthetic = attempts.filter(a => String(a.remote_task_id) === 'xiaok-recovery-synthetic');
   assert.equal(synthetic.length, seeded.attemptIds.length, label + ' synthetic attempt rows preserved');
-  const usage = state.usage as Row[];
-  assert.deepEqual(usage.map(u => String(u.operation_key)).sort(), expect.usageKeys, label + ' per-turn usage keys');
+  const suggestion = assertSuggestion(label, state, seeded.runId, true);
+  const bodyAttempts = attempts.filter(a => !suggestion.ids.has(String(a.id)));
+  assert.equal(bodyAttempts.length, expect.attempts, label + ' must hold the exact body provider attempt count (no hidden re-dispatch)');
+  assert.ok(bodyAttempts.every(a => String(a.status) === 'succeeded'), label + ' body attempts must all be known-succeeded');
+  assert.equal(attempts.length, bodyAttempts.length + suggestion.attempts.length, label + ' total attempts are body plus suggestions');
+  const bodyUsage = (state.usage as Row[]).filter(u => String(u.operation_key) !== suggestionKey(seeded.runId));
+  assert.deepEqual(bodyUsage.map(u => String(u.operation_key)).sort(), expect.usageKeys, label + ' body per-turn usage keys');
   const models = stepKinds(state, 'agent_model');
   assert.equal(models.length, expect.modelStepCount, label + ' agent_model step count (no duplicate dispatch)');
+  assert.equal(new Set(models.map(step => String(step.provider_attempt_id))).size, models.length, label + ' model steps keep unique attempts');
   for (const [index, attemptId] of seeded.attemptIds.entries())
     assert.equal(String(models[index].provider_attempt_id), attemptId, label + ' model step ' + index + ' keeps the original attempt');
   assert.ok(stepKinds(state, 'agent_checkpoint').length === (expect.checkpoint ? 1 : 1), label + ' checkpoint step present');
@@ -301,7 +390,7 @@ async function assertCompleted(label: string, seeded: Awaited<ReturnType<typeof 
   const answer = await tenantOne(sql`select content from app.assistant_messages where enterprise_id=${eid} and id=${String(run.output_message_id)}`);
   const text = ((answer!.content as Row).blocks as Row[]).map(b => String(b.text || '')).join('');
   assert.match(text, expect.textMatch, label + ' delivered text');
-  return { state, text };
+  return { state, text, suggestion };
 }
 
 async function main() {
@@ -449,20 +538,45 @@ async function main() {
     const state = await runState(seeded.runId, seeded.conversationId);
     assert.equal(String((state.run as Row).status), 'succeeded', 'W1 must complete: ' + String((state.run as Row).error_code || ''));
     const attempts = state.attempts as Row[];
-    // Two attempts when the first final draft passes validation; three when the
-    // new validateFinal one-shot repair turn corrects a citation-expression slip.
-    assert.ok([2, 3].includes(attempts.length), 'W1 holds the synthetic attempt plus one or two real model attempts');
-    assert.equal(String(attempts[0].remote_task_id), 'xiaok-recovery-synthetic', 'W1 keeps the synthetic attempt first');
-    assert.ok(attempts.every(a => String(a.status) === 'succeeded'), 'W1 attempts all known-succeeded');
-    const repairTurn = attempts.length === 3;
-    const expectedUsage = ['agent:' + seeded.runId + ':0', 'agent:' + seeded.runId + ':1'];
-    if (repairTurn) expectedUsage.push('agent:' + seeded.runId + ':2');
-    const usage = state.usage as Row[];
-    assert.deepEqual(usage.map(u => String(u.operation_key)).sort(), expectedUsage.sort(), 'W1 usage keys');
+    const seededIds = new Set(seeded.attemptIds.map(String));
+    // Body attempts are the seeded synthetic rows plus the real dispatches that
+    // the agent_model steps reference. The suggestion call is a separate lane
+    // below and must never inflate the body count.
+    const synthetic = attempts.filter(a => String(a.remote_task_id) === 'xiaok-recovery-synthetic');
+    assert.equal(synthetic.length, seeded.attemptIds.length, 'W1 keeps exactly the seeded synthetic attempts');
+    assert.deepEqual(synthetic.map(a => String(a.id)).sort(), [...seededIds].sort(), 'W1 synthetic attempt ids are unchanged');
+    assert.ok(synthetic.every(a => String(a.status) === 'succeeded'), 'W1 synthetic attempts stay known-succeeded');
+    const models = stepKinds(state, 'agent_model');
+    assert.equal(new Set(models.map(step => String(step.provider_attempt_id))).size, models.length,
+      'W1 each model step owns a unique provider attempt');
+    const realModels = models.filter(step => !seededIds.has(String(step.provider_attempt_id)));
+    assert.ok([1, 2].includes(realModels.length),
+      'W1 adds one real body attempt, or the unique validateFinal repair turn as the second');
+    const realIds = new Set(realModels.map(step => String(step.provider_attempt_id)));
+    const suggestion = assertSuggestion('W1', state, seeded.runId, true);
+    const bodyAttempts = attempts.filter(a => !suggestion.ids.has(String(a.id)));
+    assert.equal(bodyAttempts.length, seeded.attemptIds.length + realIds.size,
+      'W1 body attempts are exactly the synthetic seed plus the real model attempts');
+    assert.ok(bodyAttempts.every(a => String(a.status) === 'succeeded'), 'W1 body attempts all known-succeeded');
+    const bodyUsage = (state.usage as Row[]).filter(u => String(u.operation_key) !== suggestionKey(seeded.runId));
+    const realBodyUsageKeys = realModels.map(step => 'agent:' + seeded.runId + ':' + modelTurnOf(Number(step.step_seq)));
+    assert.deepEqual(bodyUsage.map(u => String(u.operation_key)).sort(),
+      [...seeded.bodyUsageKeys, ...realBodyUsageKeys].sort(), 'W1 body usage keys match the seeded and real turns');
+    assert.equal(bodyUsage.length, seeded.bodyUsageKeys.length + realModels.length, 'W1 body usage has one row per body turn');
+    for (const step of realModels) {
+      const key = 'agent:' + seeded.runId + ':' + modelTurnOf(Number(step.step_seq));
+      const row = bodyUsage.find(u => String(u.operation_key) === key);
+      assert.ok(row, 'W1 body usage row exists for ' + key);
+      assert.equal(String(row!.provider_attempt_id), String(step.provider_attempt_id), 'W1 body usage links to its model attempt');
+    }
+    assert.equal(attempts.length, bodyAttempts.length + suggestion.attempts.length,
+      'W1 total attempts are exactly body plus the single suggestion dispatch');
     assert.equal(stepKinds(state, 'retrieval').length, 0, 'W1 dispatches no enterprise search');
     assert.equal(stepKinds(state, 'agent_tool').length, 1, 'W1 executes the business snapshot exactly once');
     (report.scenarios as Row).W1 = { runId: seeded.runId, attempts: attempts.length,
-      repairTurn, usageKeys: usage.map(u => String(u.operation_key)) };
+      bodyAttempts: bodyAttempts.length, bodyRealAttempts: realIds.size, repairTurn: realIds.size === 2,
+      suggestionAttempts: suggestion.attempts.length, suggestionStatus: String(suggestion.marker[0].status),
+      bodyUsageKeys: bodyUsage.map(u => String(u.operation_key)), suggestionUsageKeys: suggestion.usage.map(u => String(u.operation_key)) };
     return (report.scenarios as Row).W1;
   });
 
@@ -604,13 +718,85 @@ async function main() {
     const text = (((answer!.content as Row).blocks as Row[]) || []).map(block => String(block.text || '')).join('');
     assert.equal(text, receipt.text, 'The persisted empty result replaces the contradictory model draft');
     assert.doesNotMatch(text, /需要.*城市|城市.*区县/, 'A saved located result must not ask for a city');
-    assert.equal((state.attempts as Row[]).length, 1, 'S resumes from the checkpoint without a new provider call');
+    // The checkpoint restores the body without a second body dispatch; only the
+    // ancillary suggestion call may run once at 1014.
+    const suggestion = assertSuggestion('S', state, seeded.runId, true);
+    const attempts = state.attempts as Row[];
+    const bodyAttempts = attempts.filter(a => !suggestion.ids.has(String(a.id)));
+    assert.equal(bodyAttempts.length, 1, 'S resumes from the checkpoint without a new body provider call');
+    assert.deepEqual(bodyAttempts.map(a => String(a.id)), seeded.attemptIds.map(String),
+      'S keeps the seeded body attempt and adds no body attempt');
+    assert.ok(bodyAttempts.every(a => String(a.status) === 'succeeded'), 'S body attempt stays known-succeeded');
+    const models = stepKinds(state, 'agent_model');
+    assert.equal(models.length, 1, 'S keeps the single seeded agent_model step');
+    assert.equal(String(models[0].provider_attempt_id), seeded.attemptIds[0], 'S body model step keeps its attempt');
+    const bodyUsage = (state.usage as Row[]).filter(u => String(u.operation_key) !== suggestionKey(seeded.runId));
+    assert.deepEqual(bodyUsage.map(u => String(u.operation_key)).sort(), seeded.bodyUsageKeys.sort(),
+      'S body usage keys stay exactly the seeded turn');
+    assert.equal(attempts.length, bodyAttempts.length + suggestion.attempts.length,
+      'S total attempts are the body attempt plus the one suggestion dispatch');
     const fixed = (state.steps as Row[]).filter(step => Number(step.step_seq) === 2010);
     assert.equal(fixed.length, 1, 'The fixed 2010 receipt is re-served, never duplicated');
     assert.equal(String(fixed[0].kind), 'agent_public_sites');
     (report.scenarios as Row).S = { runId: seeded.runId, conversationId: seeded.conversationId,
-      delivered: text, region, receiptStatus: String(receipt.status), attempts: (state.attempts as Row[]).length };
+      delivered: text, region, receiptStatus: String(receipt.status), attempts: attempts.length,
+      bodyAttempts: bodyAttempts.length, bodyUsageKeys: bodyUsage.map(u => String(u.operation_key)),
+      suggestionAttempts: suggestion.attempts.length, suggestionStatus: String(suggestion.marker[0].status),
+      suggestionUsageKeys: suggestion.usage.map(u => String(u.operation_key)) };
     return (report.scenarios as Row).S;
+  });
+
+  // A persisted suggestion dispatch whose provider outcome is unknown is a
+  // terminal audit fact: recovery delivers the already-restored body answer,
+  // leaves the 1014 marker/usage/attempt untouched and never sends the call
+  // again. Presets remain the fallback and do not alter the body text.
+  await step('SU: persisted suggestion unknown is not replayed', async () => {
+    const question = '厨房台面石英石接缝发黑怎么处理？';
+    const answer = '接缝发黑多与胶体老化和油污渗入有关，可先清理并保持干燥，再由师傅评估是否需要重新打胶，具体以现场情况为准。';
+    const output: ModelTurnOutput = { text: answer, toolCalls: [], finishReason: 'stop', providerRequestId: null,
+      usage: { inputTokens: 12, outputTokens: 8 } };
+    const seeded = await seedInterruptedRun('SU-suggestion-unknown', { question, turns: [{ turn: 0, output }],
+      checkpoint: { version: 1, turn: 1,
+        messages: [{ role: 'user', content: question }, { role: 'assistant', content: answer }],
+        output, validationRepairs: 0, argumentFailures: 0, exhaustedTools: [], readReceipts: [] },
+      suggestionUnknown: true });
+    await waitForRunTerminal(seeded.runId, 'recovery');
+    const state = await runState(seeded.runId, seeded.conversationId);
+    const run = state.run as Row;
+    assert.equal(String(run.status), 'succeeded', 'SU delivers the body answer despite the unknown suggestion: ' + String(run.error_code || ''));
+    const models = stepKinds(state, 'agent_model');
+    assert.equal(models.length, 1, 'SU checkpoint resume keeps the single seeded body model step');
+    const attempts = state.attempts as Row[];
+    assert.equal(attempts.length, seeded.attemptIds.length + 1,
+      'SU adds no provider attempt: the seeded suggestion attempt stays the only one');
+    assert.ok(attempts.some(a => String(a.id) === String(seeded.suggestionAttemptId)),
+      'SU keeps the seeded unknown suggestion attempt');
+    const bodyAttempts = attempts.filter(a => String(a.id) !== String(seeded.suggestionAttemptId));
+    assert.equal(bodyAttempts.length, seeded.attemptIds.length, 'SU body attempts are unchanged');
+    assert.ok(bodyAttempts.every(a => String(a.status) === 'succeeded'), 'SU body attempts stay known-succeeded');
+    const marker = (state.steps as Row[]).filter(step => Number(step.step_seq) === suggestionGenerationStep);
+    assert.equal(marker.length, 1, 'SU keeps exactly one 1014 marker');
+    assert.equal(String(marker[0].kind), 'agent_suggestion_model');
+    assert.equal(String(marker[0].status), 'failed', 'SU never rewrites the unknown marker into a success');
+    assert.equal(String((marker[0].input_summary as Row | undefined)?.code), 'provider_outcome_unknown',
+      'SU keeps the unknown code');
+    const suggestionUsage = (state.usage as Row[]).filter(u => String(u.operation_key) === suggestionKey(seeded.runId));
+    assert.equal(suggestionUsage.length, 1, 'SU keeps exactly one suggestion usage row');
+    assert.equal(suggestionUsage[0].quantity, null, 'SU leaves the unknown suggestion usage null');
+    assert.equal(String(suggestionUsage[0].measurement_kind), 'unavailable', 'SU leaves the unknown suggestion usage unavailable');
+    const bodyUsage = (state.usage as Row[]).filter(u => String(u.operation_key) !== suggestionKey(seeded.runId));
+    assert.deepEqual(bodyUsage.map(u => String(u.operation_key)).sort(), seeded.bodyUsageKeys.sort(),
+      'SU body usage keys are unchanged');
+    const message = await tenantOne(sql`select content from app.assistant_messages where enterprise_id=${eid} and id=${String(run.output_message_id)}`);
+    const text = (((message!.content as Row).blocks as Row[]) || []).map(block => String(block.text || '')).join('');
+    assert.equal(text, answer, 'SU delivers the restored body answer, not a suggestion preset');
+    (report.scenarios as Row).SU = { runId: seeded.runId, conversationId: seeded.conversationId,
+      status: String(run.status), bodyModelSteps: models.length, attempts: attempts.length,
+      suggestionStatus: String(marker[0].status), suggestionCode: String((marker[0].input_summary as Row | undefined)?.code),
+      suggestionAttemptId: seeded.suggestionAttemptId,
+      suggestionUsage: { quantity: suggestionUsage[0].quantity, measurementKind: String(suggestionUsage[0].measurement_kind) },
+      bodyUsageKeys: bodyUsage.map(u => String(u.operation_key)) };
+    return (report.scenarios as Row).SU;
   });
 
   // Recalled customer originals revalidate through the same mechanisms the

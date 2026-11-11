@@ -47,10 +47,17 @@ export function resolveSuggestions(generated: string | null, configured: string[
  * delivered answer keeps its presets and the call is never replayed. */
 export const suggestionGenerationStep = 1014;
 
-export function resumeSuggestionGeneration(step: { status?: unknown; private_checkpoint?: unknown } | undefined):
-  { action: 'dispatch' } | { action: 'reuse'; text: string } | { action: 'skip' } {
+export function resumeSuggestionGeneration(step: { status?: unknown; private_checkpoint?: unknown;
+  input_summary?: unknown } | undefined):
+  { action: 'dispatch' } | { action: 'reuse'; text: string } | { action: 'skip'; unknown: boolean } {
   if (!step) return { action: 'dispatch' };
   const text = (step.private_checkpoint as { text?: unknown } | null | undefined)?.text;
   if (step.status === 'succeeded' && typeof text === 'string') return { action: 'reuse', text };
-  return { action: 'skip' };
+  // A still-running dispatch, or a failure explicitly recorded as an unknown
+  // provider outcome, must keep the run indeterminate. A known failure is
+  // skipped without claiming an unknown bill.
+  const unknown = step.status === 'running'
+    || (step.status === 'failed'
+      && (step.input_summary as { code?: unknown } | null | undefined)?.code === 'provider_outcome_unknown');
+  return { action: 'skip', unknown };
 }

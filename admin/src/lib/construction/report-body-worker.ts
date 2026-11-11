@@ -30,7 +30,6 @@ import { currentReportStageEvent } from './stage-events';
 import { runKnowledgeEnabled } from '@/lib/assistant/knowledge-policy';
 import { generalReportMessages, generalReportTool, parseGeneralReport } from './report-general-advice';
 import type { ReportWorkflowGuard } from './fastgpt-report-workflow';
-import { fastGPTWorkflows } from '@/lib/assistant/fastgpt/runtime';
 
 type ProjectContext = Pick<ComposedProject, 'projectId' | 'selection' | 'context' | 'weekWorkmanship'> & { guidanceItems?: string[] };
 function selectedConversation(c: Row, selection: ReportReference): Row {
@@ -131,10 +130,11 @@ export async function processReportComposition(lease: Lease, dependencies: {
           factsGeneratedAt: context.report.generated_at, projectsTruncated: (context.report.facts as ReportFacts).projectsTruncated } };
     });
     projects = initial.projects;
-    const workflow = !dependencies.model && initial.scope.kind === 'stage' ? fastGPTWorkflows() : undefined;
-    const stageWorkflow = workflow?.stage;
-    if (stageWorkflow) await workflow!.ready();
-    const reportModel = dependencies.model || stageWorkflow?.model;
+    // Stage and periodic report bodies share the same native model path. The
+    // former FastGPT stage workflow is no longer selected: the existing report
+    // messages, final tool, validation, provider attempts, usage and recovery
+    // contracts stay exactly as the daily/weekly path already runs them.
+    const reportModel = dependencies.model;
     async function readWorkmanship(project: ProjectContext, sequence: number, query: string, stage?: ReportWorkmanshipStage) {
       const sourceRefs = stage ? { selection: project.selection, stage, query } : project.selection;
       const saved = await scoped(async tx => one(tx, sql`select * from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
