@@ -1402,8 +1402,55 @@ published-target and preflight rejections; one version/event for four
 receivers; distinct runIds/receipts; queued first receiver not stopping
 dispatch; unavailable/failed/unknown not masked as success; same-request
 observation; conflict on project/period/target/version changes; new-request
-reuse; receiver-shape rejection; read-only observation and the file store's
-exclusive/identity behaviour.
+reuse; receiver-shape rejection; read-only observation, the file store's
+exclusive/identity behaviour and the crash-recovery cases described below.
+
+B5.8 closeout (crash recovery and idempotent re-entry): the coordinator no
+longer trusts the manifest's `executed` flag. Every re-entry first reads the
+real run store by the four reserved sub-runIds, so a crash between the run's
+exclusive create and the manifest write can no longer skip a real sub-run or
+leave a request stuck at `not_started`. An existing run is classified from its
+immutable trace and is never re-created, re-enqueued, re-composed, re-delivered
+or sent to the provider again; the manifest entry is rebuilt from that trace and
+then observed through `readPeriodReportRunStatus()`:
+
+- no record: dispatch only when the manifest entry is still `not_started` with
+  no reason, i.e. it provably never started;
+- `running`: the record was created but no port began (the runner's first write
+  precedes the start event). It stays `unknown` with reason
+  `run_created_not_executed` and blocks later receivers; it is never retried;
+- in-flight `unknown` (including any unknown operation): stays `unknown`;
+- a real save receipt: `completed`, or `processing`/`delivery_pending` while
+  delivery is still outstanding, which keeps waiting read-only;
+- `failed`: stays `failed` and blocks later receivers;
+- a manifest entry that recorded execution but whose trace vanished, or an
+  entry that failed before a run existed, is never re-dispatched;
+- an existing run whose enterprise/project/event/target/receiver differs from
+  the manifest is `period_report_batch_conflict` (409), never adopted.
+
+One minimal cross-process execution lease was added to the existing batch store
+(`requests/<requestId>.lease.json`, exclusive create plus expiry; the in-memory
+store mirrors it). Only the lease owner recovers, dispatches and writes; a
+concurrent call returns the stored manifest with `observedOnly:true` and starts
+nothing. A crashed owner's lease is taken over only after ten minutes; until
+then calls stay read-only, and `release` never frees another owner's lease. The
+manifest identity (requestId, four sub-runIds, receivers, project, period,
+published revision/digest/node versions) is still immutable, so a changed
+identity still returns `period_report_batch_conflict`.
+
+The batch tests now cover a sub-run created before the manifest update; a
+recovered save with a pending delivery; a created-but-unexecuted run; recovered
+failed and unknown runs; a truly missing receiver; repeat re-entry; two
+concurrent recoveries (exactly one dispatcher); a conflicting identity on a
+crashed manifest; and the file store's cross-instance lease/TTL. Every case
+asserts synthetic coordinator counters (run creates, enqueue/save, delivery and
+message counts; facts jobs, body jobs, provider attempts and usage stay 0 in the
+offline fakes) instead of only a final state string. No real database or native
+mini-program run was repeated this round: the four-receiver evidence below
+(reports `12`-`15`, facts runs `22`-`25`, body runs `26`-`29`, messages
+`129`-`132`, bindings `1`-`4`) was not regenerated, and the historical Limited
+items (the worker's full continuous lifecycle and the designer's native UI
+during the revocation window) remain unverified.
 
 Recorded B evidence (2026-11-11, isolated B database, week 2026-10-19 →
 2026-10-26, enterprise `1454`, project `1454000004`): the week had no report for

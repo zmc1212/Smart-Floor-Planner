@@ -18,6 +18,7 @@
  * conversation, facts, report/version/body, message and read receipt.
  */
 
+import { randomUUID } from 'node:crypto';
 import type { ConstructionActor } from '@/lib/construction/contracts';
 import { isPlainObject } from '../guards';
 import { WorkflowOperationError } from '../errors';
@@ -201,6 +202,9 @@ const RECEIVER_UNAVAILABLE_CODES: ReadonlySet<string> = new Set([
   'period_report_receiver_unavailable',
 ]);
 
+/** A crashed coordinator's lease is taken over only after this window. */
+const BATCH_LEASE_TTL_MS = 10 * 60_000;
+
 function fail(code: string, status: number, message: string, details?: unknown): never {
   throw new WorkflowOperationError(code, status, message, details);
 }
@@ -307,6 +311,8 @@ function assertSameBatchIdentity(
   if (existing.projectId !== expected.projectId) mismatches.push('projectId');
   if (existing.actorAdminId !== expected.actorAdminId) mismatches.push('actorAdminId');
   if (existing.event.eventType !== expected.event.eventType) mismatches.push('eventType');
+  if (existing.event.eventId !== expected.event.eventId) mismatches.push('eventId');
+  if (existing.event.occurredAt !== expected.event.occurredAt) mismatches.push('occurredAt');
   if (existing.event.periodKind !== expected.event.periodKind) mismatches.push('periodKind');
   if (existing.event.periodStart !== expected.event.periodStart) mismatches.push('periodStart');
   if (existing.event.periodEnd !== expected.event.periodEnd) mismatches.push('periodEnd');
@@ -434,6 +440,19 @@ function classifyRunRecord(record: LiveRunRecord): RecordClassification {
       deliveryReceipt,
     };
   }
+  if (record.status === 'running') {
+    // The runner's exclusive first write persists before any port runs, so a
+    // record still marked `running` proves the sub-run exists but never began.
+    // Re-entry must not re-create or re-execute it (the runner would only
+    // return this same record), and guessing success or failure would lie.
+    return {
+      state: 'unknown',
+      reason: 'run_created_not_executed',
+      errorCode: null,
+      saveReceipt,
+      deliveryReceipt,
+    };
+  }
   const failed = record.operations.filter((operation) => operation.outcome === 'failed');
   if (saveReceipt) {
     const blocking = failed.filter((operation) =>
@@ -493,6 +512,61 @@ function classifyEntryError(error: unknown): ErrorClassification {
     reason: error instanceof Error ? error.message.slice(0, 300) : 'live_operation_unknown',
     errorCode: null,
   };
+}
+
+/**
+ * A reserved sub-runId may only recover the run this request reserved. A record
+ * with another enterprise/project/event/target/receiver is a conflict, never a
+ * recoverable sub-run, so a stray file cannot be adopted into this batch.
+ */
+function assertRecoverableRun(
+  record: LiveRunRecord,
+  manifest: PeriodReportBatchManifest,
+  entry: PeriodReportBatchEntry,
+): void {
+  const mismatches: string[] = [];
+  if (record.binding.runId !== entry.runId) mismatches.push('runId');
+  if (record.enterpriseId !== manifest.enterpriseId) mismatches.push('enterpriseId');
+  if (record.projectId !== manifest.projectId) mismatches.push('projectId');
+  if (record.binding.definitionId !== manifest.published.definitionId) {
+    mismatches.push('definitionId');
+  }
+  if (record.binding.revision !== manifest.published.revision) {
+    mismatches.push('definitionRevision');
+  }
+  if (record.binding.digest !== manifest.published.digest) mismatches.push('digest');
+  if (!sameNodeVersions(record.binding.nodeVersions, manifest.published.nodeVersions)) {
+    mismatches.push('nodeVersions');
+  }
+  const event = record.binding.event;
+  if (event.eventId !== manifest.event.eventId) mismatches.push('eventId');
+  if (event.eventType !== manifest.event.eventType) mismatches.push('eventType');
+  if (event.occurredAt !== manifest.event.occurredAt) mismatches.push('occurredAt');
+  if (event.periodKind !== manifest.event.periodKind) mismatches.push('periodKind');
+  if (event.periodStart !== manifest.event.periodStart) mismatches.push('periodStart');
+  if (event.periodEnd !== manifest.event.periodEnd) mismatches.push('periodEnd');
+  const business = record.binding.businessEvent;
+  if (
+    business.periodKind !== manifest.event.periodKind
+    || business.periodStart !== manifest.event.periodStart
+    || business.periodEnd !== manifest.event.periodEnd
+  ) {
+    mismatches.push('businessEvent');
+  }
+  const receiver = business.receiver;
+  if (entry.kind === 'customer') {
+    if (receiver !== undefined) mismatches.push('receiver');
+  } else if (receiver?.kind !== entry.kind || (receiver.adminId ?? null) !== entry.adminId) {
+    mismatches.push('receiver');
+  }
+  if (mismatches.length) {
+    fail(
+      'period_report_batch_conflict',
+      409,
+      `run ${entry.runId} is already bound to a different ${mismatches.join(', ')}`,
+      { requestId: manifest.requestId, runId: entry.runId, mismatches },
+    );
+  }
 }
 
 function observationSummary(observation: PeriodReportRunObservation): PeriodReportBatchObservation {
@@ -674,9 +748,10 @@ async function observeEntries(
  * Run or observe one host-fixed four-receiver period report action.
  *
  * A brand-new request preflights the executor/plan, creates the host manifest
- * and executes the receivers in the fixed order. A repeated request only
- * authorizes, observes and returns the existing manifest: no second report,
- * task, message or provider call is started.
+ * and executes the receivers in the fixed order. A repeated request authorizes
+ * the executor, recovers every sub-run that exists in the real run store and
+ * only dispatches receivers that provably never started: no second report,
+ * task, message or provider call is started for an existing sub-run.
  */
 export async function runPeriodReportBatch(
   input: PeriodReportBatchInput,
@@ -722,91 +797,184 @@ export async function runPeriodReportBatch(
   }));
   const runReceiver = dependencies.runReceiver ?? runPeriodReportEntry;
 
+  let manifest: PeriodReportBatchManifest;
+  let created = false;
+  let preflight: PeriodReportBatchPlanEvidence | null = null;
   const existing = await input.batchStore.get(input.requestId);
   if (existing) {
     assertSameBatchIdentity(existing, expectedIdentity);
     await authorize(preflightInput);
+    manifest = existing;
+  } else {
+    preflight = await (dependencies.preflight ?? assertPeriodReportBatchPlan)(preflightInput);
+    const createdAt = now().toISOString();
+    const initial: PeriodReportBatchManifest = {
+      manifestVersion: 1,
+      requestId: input.requestId,
+      enterpriseId: input.enterpriseId,
+      projectId: input.projectId,
+      actorAdminId: input.actor.adminId,
+      event: structuredClone(input.event),
+      period: {
+        kind: period.kind,
+        periodStart: period.periodStart,
+        periodEnd: period.periodEnd,
+      },
+      published: publishedIdentity,
+      receivers: receivers.map((receiver) => ({
+        kind: receiver.kind,
+        adminId: receiver.adminId,
+        runId: subRunId(input.requestId, receiver.kind),
+      })),
+      createdAt,
+      updatedAt: createdAt,
+      status: 'running',
+      entries: receivers.map((receiver) =>
+        initialEntry(receiver, subRunId(input.requestId, receiver.kind), createdAt)),
+      reasons: [],
+    };
+    const first = await input.batchStore.create(initial);
+    if (!first.created) {
+      assertSameBatchIdentity(first.manifest, expectedIdentity);
+      await authorize(preflightInput);
+      manifest = first.manifest;
+      preflight = null;
+    } else {
+      manifest = first.manifest;
+      created = true;
+    }
+  }
+
+  // Only one host process may recover or dispatch this request. A stale lease
+  // from a crashed process is taken over after its TTL; until then a concurrent
+  // caller returns the manifest as stored and starts nothing.
+  const leaseOwner = `${process.pid}:${randomUUID()}`;
+  const leased = await input.batchStore.acquire(input.requestId, {
+    owner: leaseOwner,
+    now,
+    ttlMs: BATCH_LEASE_TTL_MS,
+  });
+  if (!leased) {
+    return { manifest, created, observedOnly: true, preflight };
+  }
+
+  try {
+    const advanced = await advanceBatch({
+      manifest,
+      input,
+      receivers,
+      published,
+      now,
+      runReceiver,
+    });
     const observed = await observeEntries(
-      existing,
+      advanced.manifest,
       observe,
       { enterpriseId: input.enterpriseId, adminId: input.actor.adminId },
       now,
       input.batchStore,
     );
-    return { manifest: observed, created: false, observedOnly: true, preflight: null };
+    return {
+      manifest: observed,
+      created,
+      observedOnly: !created && !advanced.dispatched,
+      preflight,
+    };
+  } finally {
+    // The TTL is the fallback if this release cannot run; hiding a release
+    // error must not turn an already committed recovery into a failed request.
+    await input.batchStore.release(input.requestId, leaseOwner).catch(() => undefined);
   }
+}
 
-  const preflight = await (dependencies.preflight ?? assertPeriodReportBatchPlan)(
-    preflightInput,
-  );
-  const createdAt = now().toISOString();
-  const initial: PeriodReportBatchManifest = {
-    manifestVersion: 1,
-    requestId: input.requestId,
-    enterpriseId: input.enterpriseId,
-    projectId: input.projectId,
-    actorAdminId: input.actor.adminId,
-    event: structuredClone(input.event),
-    period: {
-      kind: period.kind,
-      periodStart: period.periodStart,
-      periodEnd: period.periodEnd,
-    },
-    published: publishedIdentity,
-    receivers: receivers.map((receiver) => ({
-      kind: receiver.kind,
-      adminId: receiver.adminId,
-      runId: subRunId(input.requestId, receiver.kind),
-    })),
-    createdAt,
-    updatedAt: createdAt,
-    status: 'running',
-    entries: receivers.map((receiver) =>
-      initialEntry(receiver, subRunId(input.requestId, receiver.kind), createdAt)),
-    reasons: [],
-  };
+interface AdvanceBatchInput {
+  readonly manifest: PeriodReportBatchManifest;
+  readonly input: PeriodReportBatchInput;
+  readonly receivers: readonly PeriodReportBatchReceiverIdentity[];
+  readonly published: PublishedWorkflowVersion;
+  readonly now: () => Date;
+  readonly runReceiver: (input: PeriodReportEntryInput) => Promise<PeriodReportEntryResult>;
+}
 
-  const created = await input.batchStore.create(initial);
-  if (!created.created) {
-    assertSameBatchIdentity(created.manifest, expectedIdentity);
-    await authorize(preflightInput);
-    const observed = await observeEntries(
-      created.manifest,
-      observe,
-      { enterpriseId: input.enterpriseId, adminId: input.actor.adminId },
-      now,
-      input.batchStore,
-    );
-    return { manifest: observed, created: false, observedOnly: true, preflight: null };
-  }
-
-  let current = created.manifest;
+/**
+ * Reconcile one manifest with the real run store, then dispatch only receivers
+ * whose reserved sub-run provably never started.
+ *
+ * The manifest's `executed` flag is not evidence: a crash between the run's
+ * exclusive create and the manifest write leaves it false while the sub-run
+ * exists. Every reserved runId is therefore looked up first. An existing run is
+ * classified from its immutable trace (never re-created, re-enqueued, re-composed
+ * or re-delivered), `running` stays unresolved, and `failed`/`unknown` stay
+ * blocking. A receiver is dispatched only when its run is absent and this same
+ * manifest never recorded a previous attempt for it.
+ */
+async function advanceBatch(input: AdvanceBatchInput): Promise<{
+  manifest: PeriodReportBatchManifest;
+  dispatched: boolean;
+}> {
+  let current = input.manifest;
   let blocked = false;
-  for (let index = 0; index < receivers.length; index += 1) {
-    const at = now().toISOString();
+  let dispatched = false;
+  for (let index = 0; index < input.receivers.length; index += 1) {
+    const at = input.now().toISOString();
+    const entry = current.entries[index];
     if (blocked) {
-      current = withEntry(current, index, {
-        ...current.entries[index],
-        state: 'not_started',
-        reason: 'batch_blocked',
-        updatedAt: at,
-      }, at);
-      current = await input.batchStore.update(current);
+      if (!entry.executed && entry.state === 'not_started' && entry.reason !== 'batch_blocked') {
+        current = await input.input.batchStore.update(withEntry(current, index, {
+          ...entry,
+          reason: 'batch_blocked',
+          updatedAt: at,
+        }, at));
+      }
       continue;
     }
-    const receiver = liveReceiver(receivers[index]);
-    const entry = current.entries[index];
+    const record = await input.input.runStore.get(entry.runId);
+    if (record) {
+      assertRecoverableRun(record, current, entry);
+      const classification = classifyRunRecord(record);
+      const recovered: PeriodReportBatchEntry = {
+        ...entry,
+        executed: true,
+        state: classification.state,
+        reason: classification.reason,
+        errorCode: classification.errorCode,
+        // The run trace owns a receipt it actually produced; a receipt already
+        // recorded in the manifest is never dropped by an interrupted trace.
+        saveReceipt: classification.saveReceipt ?? entry.saveReceipt,
+        deliveryReceipt: classification.deliveryReceipt ?? entry.deliveryReceipt,
+        updatedAt: at,
+      };
+      current = await input.input.batchStore.update(withEntry(current, index, recovered, at));
+      if (recovered.state === 'failed' || recovered.state === 'unknown') blocked = true;
+      continue;
+    }
+    if (entry.executed) {
+      // The manifest recorded execution but the trace vanished. Re-dispatching
+      // could duplicate an effect whose outcome can no longer be read.
+      if (entry.state === 'failed' || entry.state === 'unknown') blocked = true;
+      continue;
+    }
+    if (entry.state !== 'not_started' || entry.reason !== null) {
+      // A previous attempt failed before it created a run (an unavailable
+      // staff/boss receiver, for example). That persisted attempt blocks a
+      // second dispatch; it is not a missing receiver.
+      if (entry.state === 'failed' || entry.state === 'unknown') blocked = true;
+      continue;
+    }
+
+    const receiver = liveReceiver(input.receivers[index]);
     let next: PeriodReportBatchEntry;
+    dispatched = true;
     try {
-      const result = await runReceiver({
-        loadPublished: async () => published,
-        enterpriseId: input.enterpriseId,
-        projectId: input.projectId,
-        actor: input.actor,
-        event: input.event,
+      const result = await input.runReceiver({
+        loadPublished: async () => input.published,
+        enterpriseId: input.input.enterpriseId,
+        projectId: input.input.projectId,
+        actor: input.input.actor,
+        event: input.input.event,
         receiver,
-        ports: input.portsFor(receiver),
-        store: input.runStore,
+        ports: input.input.portsFor(receiver),
+        store: input.input.runStore,
         runId: entry.runId,
       });
       const classification = classifyRunRecord(result.record);
@@ -833,16 +1001,7 @@ export async function runPeriodReportBatch(
       };
       if (classification.state === 'failed' || classification.state === 'unknown') blocked = true;
     }
-    current = withEntry(current, index, next, at);
-    current = await input.batchStore.update(current);
+    current = await input.input.batchStore.update(withEntry(current, index, next, at));
   }
-
-  const observed = await observeEntries(
-    current,
-    observe,
-    { enterpriseId: input.enterpriseId, adminId: input.actor.adminId },
-    now,
-    input.batchStore,
-  );
-  return { manifest: observed, created: true, observedOnly: false, preflight };
+  return { manifest: current, dispatched };
 }

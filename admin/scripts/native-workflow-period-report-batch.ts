@@ -7,10 +7,12 @@
  * entry and ports, so each keeps its own binding/conversation, facts, report,
  * body, delivery and read receipt.
  *
- * The first call creates the B-owned host manifest and the four sub-runs. A
- * repeated `--request-id` only authorizes and observes the existing manifest:
- * it never starts a second round. A new request id for the same period reuses
- * the existing business reports/deliveries without new tasks or model calls.
+ * The first call creates the B-owned host manifest and dispatches the four
+ * sub-runs. A repeated `--request-id` authorizes the executor, recovers every
+ * sub-run that already exists in the run store without re-creating, re-enqueuing
+ * or re-generating it, and dispatches only receivers that provably never started.
+ * A new request id for the same period reuses the existing business
+ * reports/deliveries without new tasks or model calls.
  *
  * Required environment:
  *   B4_LIVE_APP_DATABASE_URL=postgresql://sfp_app:...@127.0.0.1:55433/smart_floor_planner

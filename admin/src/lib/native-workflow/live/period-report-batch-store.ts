@@ -8,6 +8,13 @@
  * Persistence follows the B run-store convention: a unique same-directory
  * temporary file, a complete write, then an atomic rename; `create` is
  * exclusive via COPYFILE_EXCL and `update` refuses a different identity.
+ *
+ * `acquire`/`release` add the minimal cross-process execution lease the batch
+ * coordinator needs: only one host process may recover or dispatch the
+ * receivers of one request. The in-process lock alone cannot see a second
+ * process, so the lease is a same-directory exclusive file with an expiry. A
+ * crashed coordinator leaves a stale lease that a later call may take over
+ * only after its TTL; until then concurrent calls stay read-only.
  */
 
 import { constants } from 'node:fs';
@@ -24,6 +31,13 @@ const REQUEST_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/;
 const STORE_VERSION = 1;
 const locks = new Map<string, Promise<unknown>>();
 
+export interface PeriodReportBatchLeaseOptions {
+  /** Unique owner of this dispatch attempt (process + call). */
+  readonly owner: string;
+  readonly now: () => Date;
+  readonly ttlMs: number;
+}
+
 export interface PeriodReportBatchStore {
   /** Exclusive first write. An existing requestId returns the original manifest. */
   create(
@@ -32,6 +46,13 @@ export interface PeriodReportBatchStore {
   /** Update observation/entry state; the immutable identity may not change. */
   update(manifest: PeriodReportBatchManifest): Promise<PeriodReportBatchManifest>;
   get(requestId: string): Promise<PeriodReportBatchManifest | null>;
+  /**
+   * Take the one execution lease for this request. False means another
+   * coordinator owns recovery/dispatch; that caller must not write or dispatch.
+   */
+  acquire(requestId: string, options: PeriodReportBatchLeaseOptions): Promise<boolean>;
+  /** Release only a lease still owned by this call; a stale takeover is kept. */
+  release(requestId: string, owner: string): Promise<void>;
 }
 
 /** The B-owned batch manifest root. Server reads and the CLI share it. */
@@ -60,6 +81,39 @@ function withLock<T>(key: string, task: () => Promise<T>): Promise<T> {
 function batchPath(rootDir: string, requestId: string): string {
   assertBatchRequestId(requestId);
   return path.join(rootDir, 'requests', `${requestId}.json`);
+}
+
+function leasePath(rootDir: string, requestId: string): string {
+  assertBatchRequestId(requestId);
+  return path.join(rootDir, 'requests', `${requestId}.lease.json`);
+}
+
+interface StoredLease {
+  readonly owner: string;
+  readonly expiresAt: number;
+}
+
+async function readLease(file: string): Promise<StoredLease | null> {
+  let text: string;
+  try {
+    text = await readFile(file, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw new WorkflowOperationError(
+      'period_report_batch_store_error',
+      500,
+      `failed to read the batch lease ${file}`,
+    );
+  }
+  try {
+    const raw = JSON.parse(text) as Record<string, unknown>;
+    if (typeof raw.owner !== 'string' || typeof raw.expiresAt !== 'number') return null;
+    return { owner: raw.owner, expiresAt: raw.expiresAt };
+  } catch {
+    // A torn or foreign lease file is treated as stale; the exclusive create
+    // below still decides the single winner.
+    return null;
+  }
 }
 
 function clone(manifest: PeriodReportBatchManifest): PeriodReportBatchManifest {
@@ -174,6 +228,8 @@ function assertSameManifestIdentity(
   if (existing.projectId !== candidate.projectId) mismatches.push('projectId');
   if (existing.actorAdminId !== candidate.actorAdminId) mismatches.push('actorAdminId');
   if (existing.event.eventType !== candidate.event.eventType) mismatches.push('eventType');
+  if (existing.event.eventId !== candidate.event.eventId) mismatches.push('eventId');
+  if (existing.event.occurredAt !== candidate.event.occurredAt) mismatches.push('occurredAt');
   if (existing.event.periodKind !== candidate.event.periodKind) mismatches.push('periodKind');
   if (existing.event.periodStart !== candidate.event.periodStart) mismatches.push('periodStart');
   if (existing.event.periodEnd !== candidate.event.periodEnd) mismatches.push('periodEnd');
@@ -264,11 +320,53 @@ export function createFilePeriodReportBatchStore(options: {
       const manifest = await readManifest(rootDir, requestId);
       return manifest ? clone(manifest) : null;
     },
+
+    async acquire(requestId, options) {
+      const file = leasePath(rootDir, requestId);
+      return withLock(file, async () => {
+        const nowMs = options.now().getTime();
+        await mkdir(path.dirname(file), { recursive: true });
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          try {
+            await writeFile(file, `${JSON.stringify({
+              owner: options.owner,
+              acquiredAt: new Date(nowMs).toISOString(),
+              expiresAt: nowMs + options.ttlMs,
+            }, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
+            return true;
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+              throw new WorkflowOperationError(
+                'period_report_batch_store_error',
+                500,
+                `failed to acquire the batch lease for ${requestId}`,
+              );
+            }
+            const held = await readLease(file);
+            if (held && held.expiresAt > nowMs) return false;
+            // Only a missing, corrupt or expired lease is removed. The next
+            // exclusive create is what actually decides the single winner.
+            await rm(file, { force: true });
+          }
+        }
+        return false;
+      });
+    },
+
+    async release(requestId, owner) {
+      const file = leasePath(rootDir, requestId);
+      await withLock(file, async () => {
+        const held = await readLease(file);
+        if (held && held.owner !== owner) return;
+        await rm(file, { force: true });
+      });
+    },
   };
 }
 
 export function createMemoryPeriodReportBatchStore(): PeriodReportBatchStore {
   const manifests = new Map<string, PeriodReportBatchManifest>();
+  const leases = new Map<string, StoredLease>();
   return {
     async create(manifest) {
       assertBatchRequestId(manifest.requestId);
@@ -300,6 +398,20 @@ export function createMemoryPeriodReportBatchStore(): PeriodReportBatchStore {
     async get(requestId) {
       const manifest = manifests.get(requestId);
       return manifest ? clone(manifest) : null;
+    },
+
+    async acquire(requestId, options) {
+      const nowMs = options.now().getTime();
+      const held = leases.get(requestId);
+      if (held && held.expiresAt > nowMs && held.owner !== options.owner) return false;
+      leases.set(requestId, { owner: options.owner, expiresAt: nowMs + options.ttlMs });
+      return true;
+    },
+
+    async release(requestId, owner) {
+      const held = leases.get(requestId);
+      if (held && held.owner !== owner) return;
+      leases.delete(requestId);
     },
   };
 }

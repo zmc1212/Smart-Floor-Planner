@@ -78,6 +78,38 @@ type Behavior =
   | 'read_failed'
   | 'unknown';
 
+/**
+ * Synthetic side-effect counters.
+ *
+ * The offline ports record what the coordinator asked for; they never call a
+ * provider, enqueue a real job or write a database row. `factsJobs`,
+ * `bodyJobs`, `providerAttempts` and `usageRows` therefore stay 0 here and must
+ * never be reported as real business/model evidence.
+ */
+interface SyntheticCounters {
+  readonly portCalls: string[];
+  savedReports: number;
+  deliveryCalls: number;
+  deliveredMessages: number;
+  readonly factsJobs: number;
+  readonly bodyJobs: number;
+  readonly providerAttempts: number;
+  readonly usageRows: number;
+}
+
+function syntheticCounters(): SyntheticCounters {
+  return {
+    portCalls: [],
+    savedReports: 0,
+    deliveryCalls: 0,
+    deliveredMessages: 0,
+    factsJobs: 0,
+    bodyJobs: 0,
+    providerAttempts: 0,
+    usageRows: 0,
+  };
+}
+
 const planEvidence: PeriodReportBatchPlanEvidence = {
   enabled: true,
   stageEnabled: false,
@@ -104,10 +136,12 @@ async function publishWeekly(): Promise<PublishedWorkflowVersion> {
 function fakePorts(
   receiver: LivePeriodReceiver,
   behavior: Behavior,
+  counters: SyntheticCounters = syntheticCounters(),
 ): LiveOperationPorts {
   const binding = RECEIVER_BINDING[receiver.kind]!;
   return {
     async execute(operation): Promise<Readonly<Record<string, WorkflowValue>>> {
+      counters.portCalls.push(`${receiver.kind}:${operation.capabilityRef}`);
       switch (operation.capabilityRef) {
         case 'read.period_records':
           if (behavior === 'read_failed') {
@@ -162,6 +196,7 @@ function fakePorts(
               message: 'the test lost the enqueue outcome',
             });
           }
+          counters.savedReports += 1;
           return {
             saved: true,
             saveReceipt: {
@@ -181,7 +216,9 @@ function fakePorts(
             },
           };
         case 'deliver.inapp':
+          counters.deliveryCalls += 1;
           if (behavior === 'delivered') {
+            counters.deliveredMessages += 1;
             return {
               delivered: true,
               deliveryReceipt: {
@@ -228,6 +265,9 @@ interface Harness {
   readonly authorizeCalls: number[];
   readonly dependencies: PeriodReportBatchDependencies;
   readonly store: ReturnType<typeof createMemoryPeriodReportBatchStore>;
+  readonly counters: SyntheticCounters;
+  /** Real (in-memory) run-store create attempts and created records. */
+  readonly runCreates: { attempts: number; created: number };
 }
 
 async function harness(options: {
@@ -237,13 +277,29 @@ async function harness(options: {
 } = {}): Promise<Harness> {
   const published = await publishWeekly();
   const store = createMemoryPeriodReportBatchStore();
-  const runStore = createMemoryWorkflowRunStore();
+  const memoryRuns = createMemoryWorkflowRunStore();
+  const runCreates = { attempts: 0, created: 0 };
+  // The coordinator and the receiver share this wrapper, so a repeated
+  // dispatch of one reserved runId is visible even when the real store would
+  // have refused it.
+  const runStore = {
+    async create(record: Parameters<typeof memoryRuns.create>[0]) {
+      runCreates.attempts += 1;
+      const result = await memoryRuns.create(record);
+      if (result.created) runCreates.created += 1;
+      return result;
+    },
+    update: (record: Parameters<typeof memoryRuns.update>[0]) => memoryRuns.update(record),
+    get: (runId: string) => memoryRuns.get(runId),
+    list: (limit?: number) => memoryRuns.list(limit),
+  };
   const receiverCalls: PeriodReportEntryInput[] = [];
   const observeCalls: string[] = [];
   const preflightCalls = [0];
   const authorizeCalls = [0];
   const behaviors = options.behaviors ?? {};
   const overall = options.overall ?? (() => 'completed' as const);
+  const counters = syntheticCounters();
 
   const runReceiver = async (input: PeriodReportEntryInput) => {
     receiverCalls.push(input);
@@ -264,7 +320,7 @@ async function harness(options: {
         periodEnd: '2026-10-26',
         ...(input.receiver.kind === 'customer' ? {} : { receiver: input.receiver }),
       },
-      ports: fakePorts(input.receiver, behaviors[input.receiver.kind] ?? 'delivered'),
+      ports: fakePorts(input.receiver, behaviors[input.receiver.kind] ?? 'delivered', counters),
       store: input.store,
       runId: input.runId,
       now: () => '2026-11-12T03:00:00.000Z',
@@ -292,7 +348,14 @@ async function harness(options: {
     const kind = input.runId.split('-').pop()!;
     const state = overall(kind);
     const binding = RECEIVER_BINDING[kind]!;
-    if (behaviors[kind] === 'save_unavailable' || behaviors[kind] === 'read_failed') {
+    // Derive `bound` from the real run trace like the production reader: a run
+    // without a confirmed save operation has no business binding to observe.
+    const record = await memoryRuns.get(input.runId);
+    const saved = record?.operations.some((operation) =>
+      operation.capabilityRef === 'save.period_report'
+      && operation.outcome === 'succeeded'
+      && operation.outputs?.saved === true) ?? false;
+    if (!saved) {
       return {
         contract: 'period-report-run-status-v1',
         observedAt: '2026-11-12T04:00:00.000Z',
@@ -300,10 +363,10 @@ async function harness(options: {
         binding: null,
         progress: null,
         raw: {
-          status: 'failed',
-          errorCode: null,
-          errorMessage: null,
-          updatedAt: '2026-11-12T03:00:00.000Z',
+          status: record?.status ?? 'unknown',
+          errorCode: record?.state.error?.code ?? null,
+          errorMessage: record?.state.error?.message ?? null,
+          updatedAt: record?.updatedAt ?? '2026-11-12T03:00:00.000Z',
           operations: [],
         },
         reasons: ['save_not_succeeded'],
@@ -386,6 +449,8 @@ async function harness(options: {
     authorizeCalls,
     dependencies,
     store,
+    counters,
+    runCreates,
     input: {
       requestId: REQUEST_ID,
       enterpriseId: ENTERPRISE_ID,
@@ -394,7 +459,7 @@ async function harness(options: {
       event: weeklyEvent,
       receivers,
       loadPublished: async () => published,
-      portsFor: (receiver) => fakePorts(receiver, behaviors[receiver.kind] ?? 'delivered'),
+      portsFor: (receiver) => fakePorts(receiver, behaviors[receiver.kind] ?? 'delivered', counters),
       runStore,
       batchStore: store,
     },
@@ -405,6 +470,101 @@ function entryOf(manifest: PeriodReportBatchManifest, kind: string) {
   const entry = manifest.entries.find((candidate) => candidate.kind === kind);
   assert.ok(entry, `the ${kind} entry is missing`);
   return entry;
+}
+
+function receiverOf(kind: string): LivePeriodReceiver {
+  if (kind === 'customer') return { kind: 'customer' };
+  const adminId = kind === 'worker'
+    ? WORKER_ADMIN
+    : kind === 'designer'
+      ? DESIGNER_ADMIN
+      : BOSS_ADMIN;
+  return { kind: kind as 'worker' | 'designer' | 'boss', adminId };
+}
+
+function batchBusinessEvent(kind: string) {
+  return {
+    outboxEventId: null,
+    progressRevision: 0,
+    stageKey: '',
+    settingsVersion: 0,
+    source: 'current_project_revision' as const,
+    periodKind: 'weekly' as const,
+    periodStart: '2026-10-19',
+    periodEnd: '2026-10-26',
+    ...(kind === 'customer' ? {} : { receiver: receiverOf(kind) }),
+  };
+}
+
+/** The real persisted shape a crash leaves after `create` but before any dispatch. */
+async function crashedManifest(state: Harness): Promise<PeriodReportBatchManifest> {
+  const createdAt = NOW.toISOString();
+  const manifest: PeriodReportBatchManifest = {
+    manifestVersion: 1,
+    requestId: REQUEST_ID,
+    enterpriseId: ENTERPRISE_ID,
+    projectId: PROJECT_ID,
+    actorAdminId: EXECUTOR_ADMIN,
+    event: structuredClone(weeklyEvent),
+    period: { kind: 'weekly', periodStart: '2026-10-19', periodEnd: '2026-10-26' },
+    published: {
+      definitionId: state.published.definition.definitionId,
+      revision: state.published.revision,
+      digest: state.published.digest,
+      nodeVersions: state.published.nodeVersions,
+    },
+    receivers: [
+      { kind: 'customer', adminId: null, runId: `${REQUEST_ID}-customer` },
+      { kind: 'worker', adminId: WORKER_ADMIN, runId: `${REQUEST_ID}-worker` },
+      { kind: 'designer', adminId: DESIGNER_ADMIN, runId: `${REQUEST_ID}-designer` },
+      { kind: 'boss', adminId: BOSS_ADMIN, runId: `${REQUEST_ID}-boss` },
+    ],
+    createdAt,
+    updatedAt: createdAt,
+    status: 'running',
+    entries: (['customer', 'worker', 'designer', 'boss'] as const).map((kind) => ({
+      kind,
+      adminId: kind === 'customer'
+        ? null
+        : kind === 'worker'
+          ? WORKER_ADMIN
+          : kind === 'designer'
+            ? DESIGNER_ADMIN
+            : BOSS_ADMIN,
+      runId: `${REQUEST_ID}-${kind}`,
+      executed: false,
+      state: 'not_started' as const,
+      reason: null,
+      errorCode: null,
+      saveReceipt: null,
+      deliveryReceipt: null,
+      observation: null,
+      updatedAt: createdAt,
+    })),
+    reasons: [],
+  };
+  const created = await state.store.create(manifest);
+  assert.equal(created.created, true);
+  return created.manifest;
+}
+
+/** Create the real sub-run the crashed coordinator left behind. */
+async function persistedSubRun(
+  state: Harness,
+  kind: string,
+  behavior: Behavior,
+) {
+  return runPublishedLive({
+    published: state.published,
+    enterpriseId: ENTERPRISE_ID,
+    projectId: PROJECT_ID,
+    event: weeklyEvent,
+    businessEvent: batchBusinessEvent(kind),
+    ports: fakePorts(receiverOf(kind), behavior, state.counters),
+    store: state.input.runStore,
+    runId: `${REQUEST_ID}-${kind}`,
+    now: () => '2026-11-12T03:00:00.000Z',
+  });
 }
 
 test('an unfinished week is rejected before the published target, preflight or manifest', async () => {
@@ -616,6 +776,8 @@ test('the same request with a different project, period, receiver or version con
   const conflicts: PeriodReportBatchInput[] = [
     { ...state.input, projectId: '1454000099' },
     { ...state.input, event: { ...weeklyEvent, periodStart: '2026-10-26', periodEnd: '2026-11-02' } },
+    { ...state.input, event: { ...weeklyEvent, eventId: 'b5-period-weekly-other' } },
+    { ...state.input, event: { ...weeklyEvent, occurredAt: '2026-10-26T11:00:00.000Z' } },
     {
       ...state.input,
       receivers: [
@@ -729,6 +891,228 @@ test('a later completed observation refreshes a pending delivery receipt', async
   assert.equal(customer.deliveryReceipt?.delivered, true);
   assert.equal(customer.deliveryReceipt?.messageId, 'customer-message');
   assert.equal(second.manifest.status, 'completed');
+});
+
+test('a sub-run created before the manifest update is recovered, not skipped', async () => {
+  const state = await harness();
+  await crashedManifest(state);
+  const customerRecord = await persistedSubRun(state, 'customer', 'delivered');
+  assert.equal(customerRecord.status, 'completed');
+
+  const result = await runPeriodReportBatch(state.input, state.dependencies);
+
+  assert.equal(result.created, false);
+  assert.equal(result.observedOnly, false);
+  assert.deepEqual(
+    state.receiverCalls.map((call) => call.receiver.kind),
+    ['worker', 'designer', 'boss'],
+    'the persisted customer run is never dispatched again',
+  );
+  const customer = entryOf(result.manifest, 'customer');
+  assert.equal(customer.executed, true);
+  assert.equal(customer.state, 'completed');
+  assert.equal(customer.reason, null);
+  assert.equal(customer.saveReceipt?.reportId, 'customer-report');
+  assert.equal(customer.runId, `${REQUEST_ID}-customer`);
+  assert.equal(result.manifest.status, 'completed');
+  // One persisted customer run plus exactly one run for each remaining receiver.
+  assert.deepEqual(state.runCreates, { attempts: 4, created: 4 });
+  assert.equal(state.counters.savedReports, 4);
+  assert.equal(state.counters.deliveryCalls, 4);
+  assert.equal(state.counters.deliveredMessages, 4);
+  // The fake ports never call a provider or create facts/body jobs: all of the
+  // above are synthetic coordinator counters, not real business/model rows.
+  assert.equal(state.counters.providerAttempts, 0);
+  assert.equal(state.counters.usageRows, 0);
+  assert.equal(state.counters.factsJobs, 0);
+  assert.equal(state.counters.bodyJobs, 0);
+});
+
+test('a recovered save with a pending delivery is observed and never regenerated', async () => {
+  const state = await harness({
+    overall: (kind) => (kind === 'customer' ? 'processing' : 'completed'),
+  });
+  await crashedManifest(state);
+  await persistedSubRun(state, 'customer', 'pending');
+  const savedAfterCrash = state.counters.savedReports;
+  const deliveriesAfterCrash = state.counters.deliveryCalls;
+
+  const result = await runPeriodReportBatch(state.input, state.dependencies);
+
+  const customer = entryOf(result.manifest, 'customer');
+  assert.equal(customer.state, 'processing');
+  assert.equal(customer.reason, 'delivery_pending');
+  assert.equal(customer.saveReceipt?.reportId, 'customer-report');
+  assert.equal(customer.deliveryReceipt?.delivered, false);
+  assert.deepEqual(
+    state.receiverCalls.map((call) => call.receiver.kind),
+    ['worker', 'designer', 'boss'],
+  );
+  assert.equal(state.counters.savedReports, savedAfterCrash + 3, 'only the other three enqueue');
+  assert.equal(state.counters.deliveryCalls, deliveriesAfterCrash + 3);
+
+  const replay = await runPeriodReportBatch(state.input, state.dependencies);
+  assert.equal(state.receiverCalls.length, 3);
+  assert.equal(state.counters.savedReports, savedAfterCrash + 3);
+  assert.equal(state.counters.deliveryCalls, deliveriesAfterCrash + 3);
+  const replayedCustomer = entryOf(replay.manifest, 'customer');
+  assert.equal(replayedCustomer.state, 'processing');
+  assert.equal(replayedCustomer.reason, 'delivery_pending');
+  assert.equal(replayedCustomer.deliveryReceipt?.delivered, false);
+});
+
+test('a sub-run created but never executed stays unresolved and is not re-run', async () => {
+  const state = await harness();
+  await crashedManifest(state);
+  const completed = await persistedSubRun(state, 'customer', 'delivered');
+  const running = await state.input.runStore.update({
+    ...completed,
+    status: 'running',
+    operations: [],
+    trace: [],
+    updatedAt: NOW.toISOString(),
+  });
+  assert.equal(running.status, 'running');
+  const createsAfterPrepare = { ...state.runCreates };
+
+  const result = await runPeriodReportBatch(state.input, state.dependencies);
+
+  assert.equal(state.receiverCalls.length, 0, 'a created-but-unstarted run is not dispatched');
+  assert.deepEqual(state.runCreates, createsAfterPrepare, 'no second run create attempt');
+  const customer = entryOf(result.manifest, 'customer');
+  assert.equal(customer.executed, true);
+  assert.equal(customer.state, 'unknown');
+  assert.equal(customer.reason, 'run_created_not_executed');
+  assert.equal(customer.saveReceipt, null);
+  assert.equal(entryOf(result.manifest, 'worker').state, 'not_started');
+  assert.equal(entryOf(result.manifest, 'worker').reason, 'batch_blocked');
+  assert.equal(result.manifest.status, 'unknown');
+});
+
+test('a recovered failed sub-run keeps its failure and blocks later receivers', async () => {
+  const state = await harness();
+  await crashedManifest(state);
+  await persistedSubRun(state, 'customer', 'read_failed');
+
+  const result = await runPeriodReportBatch(state.input, state.dependencies);
+
+  const customer = entryOf(result.manifest, 'customer');
+  assert.equal(customer.state, 'failed');
+  assert.equal(customer.reason, 'construction_forbidden');
+  assert.equal(customer.errorCode, 'construction_forbidden');
+  assert.equal(state.receiverCalls.length, 0);
+  assert.equal(entryOf(result.manifest, 'worker').reason, 'batch_blocked');
+  assert.equal(result.manifest.status, 'failed');
+});
+
+test('a recovered unknown sub-run stays unknown and is never dispatched again', async () => {
+  const state = await harness();
+  await crashedManifest(state);
+  await persistedSubRun(state, 'customer', 'unknown');
+
+  const result = await runPeriodReportBatch(state.input, state.dependencies);
+
+  const customer = entryOf(result.manifest, 'customer');
+  assert.equal(customer.state, 'unknown');
+  assert.equal(customer.reason, 'live_operation_unknown');
+  assert.equal(state.receiverCalls.length, 0);
+  assert.equal(result.manifest.status, 'unknown');
+
+  const replay = await runPeriodReportBatch(state.input, state.dependencies);
+  assert.equal(entryOf(replay.manifest, 'customer').state, 'unknown');
+  assert.equal(state.receiverCalls.length, 0);
+});
+
+test('a crashed manifest with no persisted sub-runs dispatches each receiver once', async () => {
+  const state = await harness();
+  await crashedManifest(state);
+
+  const result = await runPeriodReportBatch(state.input, state.dependencies);
+
+  assert.equal(result.created, false);
+  assert.equal(result.observedOnly, false);
+  assert.deepEqual(
+    state.receiverCalls.map((call) => call.receiver.kind),
+    ['customer', 'worker', 'designer', 'boss'],
+  );
+  assert.deepEqual(state.runCreates, { attempts: 4, created: 4 });
+  assert.equal(state.counters.savedReports, 4);
+  assert.equal(result.manifest.status, 'completed');
+
+  const replay = await runPeriodReportBatch(state.input, state.dependencies);
+  assert.equal(replay.created, false);
+  assert.equal(replay.observedOnly, true);
+  assert.equal(state.receiverCalls.length, 4, 'a recovered request never opens a second round');
+  assert.deepEqual(state.runCreates, { attempts: 4, created: 4 });
+  assert.equal(state.counters.savedReports, 4);
+});
+
+test('two concurrent recoveries of one request dispatch only one coordinator', async () => {
+  const state = await harness();
+  await crashedManifest(state);
+
+  const [first, second] = await Promise.all([
+    runPeriodReportBatch(state.input, state.dependencies),
+    runPeriodReportBatch(state.input, state.dependencies),
+  ]);
+
+  assert.deepEqual(
+    [first.observedOnly, second.observedOnly].sort(),
+    [false, true],
+    'exactly one call owns recovery and dispatch',
+  );
+  assert.equal(state.receiverCalls.length, 4);
+  assert.deepEqual(state.runCreates, { attempts: 4, created: 4 });
+  assert.equal(state.counters.savedReports, 4);
+  assert.equal(state.counters.deliveryCalls, 4);
+  const stored = await state.store.get(REQUEST_ID);
+  assert.ok(stored);
+  assert.equal(stored.entries.every((entry) => entry.executed), true);
+  assert.equal(stored.status, 'completed');
+});
+
+test('a crashed manifest still rejects a different request identity before recovery', async () => {
+  const state = await harness();
+  await crashedManifest(state);
+
+  await assert.rejects(
+    () => runPeriodReportBatch({ ...state.input, projectId: '1454000099' }, state.dependencies),
+    (error: unknown) => error instanceof WorkflowOperationError
+      && error.code === 'period_report_batch_conflict',
+  );
+  assert.equal(state.receiverCalls.length, 0);
+  assert.deepEqual(state.runCreates, { attempts: 0, created: 0 });
+});
+
+test('the file batch store grants one execution lease across instances until it expires', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'native-batch-lease-'));
+  try {
+    const first = createFilePeriodReportBatchStore({ rootDir: root });
+    const second = createFilePeriodReportBatchStore({ rootDir: root });
+    const at = new Date('2026-11-12T02:00:00.000Z');
+    const lease = (owner: string, now: Date) => ({ owner, now: () => now, ttlMs: 60_000 });
+
+    assert.equal(await first.acquire(REQUEST_ID, lease('a', at)), true);
+    assert.equal(await second.acquire(REQUEST_ID, lease('b', at)), false);
+    // Another owner cannot free a live lease.
+    await second.release(REQUEST_ID, 'b');
+    assert.equal(await second.acquire(REQUEST_ID, lease('b', at)), false);
+    await first.release(REQUEST_ID, 'a');
+    assert.equal(await second.acquire(REQUEST_ID, lease('b', at)), true);
+    await second.release(REQUEST_ID, 'b');
+    // A crashed owner is taken over only after the TTL.
+    assert.equal(await first.acquire(REQUEST_ID, lease('a', at)), true);
+    assert.equal(
+      await second.acquire(REQUEST_ID, lease('b', new Date(at.getTime() + 59_000))),
+      false,
+    );
+    assert.equal(
+      await second.acquire(REQUEST_ID, lease('b', new Date(at.getTime() + 61_000))),
+      true,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test('the file batch store is exclusive and refuses a different identity', async () => {
