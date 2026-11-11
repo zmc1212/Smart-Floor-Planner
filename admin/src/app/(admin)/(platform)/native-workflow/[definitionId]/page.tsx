@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { PageContainer } from '@ant-design/pro-components';
 import {
   Alert,
@@ -37,6 +37,16 @@ import {
   resolveFixtureSetId,
   selectedSimulationDefinition,
 } from '@/lib/native-workflow/admin-selection';
+import {
+  formatPeriodRunState,
+  isPeriodRunTerminal,
+  mergePeriodRunObservation,
+  nextPeriodRunPollDelay,
+  PERIOD_RUN_POLL_INTERVAL_MS,
+  PERIOD_RUN_POLL_MAX_READS,
+  type PeriodRunStatusState,
+} from '@/lib/native-workflow/admin-run-status';
+import type { PeriodReportRunObservation } from '@/lib/native-workflow/live/period-report-status';
 import type { PublishedWorkflowVersion, WorkflowDefinitionRecord } from '@/lib/native-workflow/store/types';
 import type { WorkflowFixtureSetSummary } from '@/lib/native-workflow/fixtures/catalog';
 import { notify } from '@/components/admin/operation-feedback';
@@ -75,7 +85,59 @@ function formatJson(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
+const STATE_LABELS: Readonly<Record<string, string>> = {
+  queued: '排队中',
+  waiting: '等待中',
+  running: '处理中',
+  ready: '就绪',
+  succeeded: '成功',
+  delivered: '已投递',
+  revoked: '已撤回',
+  muted: '已静音',
+  available: '可用',
+  access_revoked: '权限已撤销',
+  source_unavailable: '数据源不可用',
+  completed: '已完成',
+  halted: '已停止',
+  failed: '失败',
+  unknown: '未知',
+  unavailable: '不可用',
+};
+
+function stateLabel(value: string | null | undefined): string {
+  if (!value) return '未知';
+  return STATE_LABELS[value] ?? value;
+}
+
+const GREEN_STATES = new Set(['ready', 'succeeded', 'delivered', 'available', 'completed']);
+const RED_STATES = new Set(['failed', 'access_revoked']);
+const BLUE_STATES = new Set(['running', 'processing']);
+const ORANGE_STATES = new Set(['unknown', 'unavailable', 'revoked', 'muted', 'halted', 'source_unavailable']);
+
+function stateColor(value: string | null | undefined): string {
+  if (!value) return 'default';
+  if (GREEN_STATES.has(value)) return 'green';
+  if (RED_STATES.has(value)) return 'red';
+  if (BLUE_STATES.has(value)) return 'blue';
+  if (ORANGE_STATES.has(value)) return 'orange';
+  return 'default';
+}
+
 export default function NativeWorkflowDetailPage() {
+  return (
+    <Suspense
+      fallback={
+        <PageContainer header={{ title: '原生编排调试' }}>
+          <Spin />
+        </PageContainer>
+      }
+    >
+      <NativeWorkflowDetailPageInner />
+    </Suspense>
+  );
+}
+
+function NativeWorkflowDetailPageInner() {
   const router = useRouter();
   const params = useParams();
   const rawId = params?.definitionId;
@@ -95,6 +157,102 @@ export default function NativeWorkflowDetailPage() {
   const [simSource, setSimSource] = useState<'draft' | 'published'>('draft');
   const [simRevision, setSimRevision] = useState<number | undefined>(undefined);
   const [simulation, setSimulation] = useState<SimulationResponse | null>(null);
+
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const urlRunId = (searchParams?.get('runId') ?? '').trim();
+  const [runIdInput, setRunIdInput] = useState(urlRunId);
+  const [runStatus, setRunStatus] = useState<PeriodRunStatusState>({ observation: null, error: null });
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [pollReads, setPollReads] = useState(0);
+  const [pollHalt, setPollHalt] = useState<'idle' | 'terminal' | 'limit' | 'error' | 'stopped'>('idle');
+  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollGeneration = useRef(0);
+  const activeRunId = useRef('');
+
+  const stopPolling = useCallback(() => {
+    pollGeneration.current += 1;
+    if (pollTimer.current) {
+      clearTimeout(pollTimer.current);
+      pollTimer.current = null;
+    }
+  }, []);
+
+  const loadRunStatus = useCallback(async (runId: string, reads: number, generation: number) => {
+    if (reads <= 1) setStatusLoading(true);
+    try {
+      const response = await fetch(
+        `/api/native-workflow/runs/${encodeURIComponent(runId)}/period-report-status`,
+        { cache: 'no-store' },
+      );
+      const result = await response.json();
+      if (pollGeneration.current !== generation) return;
+      if (!response.ok || !result.success) {
+        throw new Error(String(result.message || result.error || '读取运行状态失败'));
+      }
+      const observation = result.data as PeriodReportRunObservation;
+      setRunStatus((previous) => mergePeriodRunObservation(previous, { observation }));
+      setPollReads(reads);
+      if (nextPeriodRunPollDelay(observation, reads) === null) {
+        const capped =
+          observation.bound && observation.progress?.processing === true && reads >= PERIOD_RUN_POLL_MAX_READS;
+        setPollHalt(capped ? 'limit' : isPeriodRunTerminal(observation) ? 'terminal' : 'stopped');
+        return;
+      }
+      pollTimer.current = setTimeout(() => {
+        pollTimer.current = null;
+        void loadRunStatus(runId, reads + 1, generation);
+      }, PERIOD_RUN_POLL_INTERVAL_MS);
+    } catch (error) {
+      if (pollGeneration.current !== generation) return;
+      setRunStatus((previous) =>
+        mergePeriodRunObservation(previous, {
+          error: error instanceof Error ? error.message : '读取运行状态失败',
+        }),
+      );
+      setPollHalt('error');
+    } finally {
+      if (pollGeneration.current === generation && reads <= 1) setStatusLoading(false);
+    }
+  }, []);
+
+  const startReading = useCallback((rawRunId: string) => {
+    const runId = rawRunId.trim();
+    if (!runId) return;
+    const previousRunId = activeRunId.current;
+    stopPolling();
+    const generation = pollGeneration.current;
+    activeRunId.current = runId;
+    if (previousRunId !== runId) setRunStatus({ observation: null, error: null });
+    setPollReads(0);
+    setPollHalt('idle');
+    void loadRunStatus(runId, 1, generation);
+  }, [loadRunStatus, stopPolling]);
+
+  useEffect(() => {
+    if (!urlRunId || urlRunId === activeRunId.current) return;
+    setRunIdInput(urlRunId);
+    startReading(urlRunId);
+  }, [urlRunId, startReading]);
+
+  useEffect(() => {
+    return () => {
+      stopPolling();
+    };
+  }, [stopPolling]);
+
+  const submitRunId = () => {
+    const runId = runIdInput.trim();
+    if (!runId) {
+      notify.error('请输入要跟踪的 runId');
+      return;
+    }
+    startReading(runId);
+    const next = new URLSearchParams(searchParams?.toString() ?? '');
+    if (next.get('runId') === runId) return;
+    next.set('runId', runId);
+    router.replace(`${pathname}?${next.toString()}`);
+  };
 
   const load = useCallback(async (resetDraft = true): Promise<WorkflowDefinitionRecord | null> => {
     if (!definitionId) return null;
@@ -325,6 +483,11 @@ export default function NativeWorkflowDetailPage() {
   const serverDraftText = formatJson(record.draft.definition);
   const dirty = isDraftDirty(editor, serverDraftText);
   const hasConflict = editor.conflictRevision !== null;
+  const observation = runStatus.observation;
+  const binding = observation?.binding ?? null;
+  const progress = observation?.progress ?? null;
+  const raw = observation?.raw ?? null;
+  const progressProcessing = progress?.processing === true;
 
   const draftTab = (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
@@ -652,6 +815,332 @@ export default function NativeWorkflowDetailPage() {
     </Card>
   );
 
+  const liveTab = (
+    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      <Alert
+        type="info"
+        showIcon
+        message="真实运行状态（只读）"
+        description={`仅读取已保存的运行记录与业务进度，不触发工作流执行、模型调用或消息投递。运行处理中时每 ${PERIOD_RUN_POLL_INTERVAL_MS / 1000} 秒自动读取一次，最多 ${PERIOD_RUN_POLL_MAX_READS} 次；模拟调试结果与这里分开显示。`}
+      />
+      <Card title="按 runId 读取真实运行状态">
+        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <Space wrap>
+            <Input
+              value={runIdInput}
+              onChange={(event) => setRunIdInput(event.target.value)}
+              onPressEnter={submitRunId}
+              placeholder="输入 workflow runId"
+              allowClear
+              style={{ width: 420 }}
+            />
+            <Button type="primary" loading={statusLoading} onClick={submitRunId}>
+              读取状态
+            </Button>
+            {progressProcessing && pollHalt === 'idle' && !runStatus.error ? (
+              <Tag color="blue">自动轮询中 · 已读取 {pollReads} 次</Tag>
+            ) : null}
+            {pollHalt === 'limit' ? <Tag color="orange">已达自动轮询上限</Tag> : null}
+          </Space>
+          <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+            runId 会写入地址栏查询参数，刷新或重新进入页面时自动读取同一个运行。授权仍由平台管理员角色、宿主企业和项目业务权限决定，页面不会自行放行。
+          </Typography.Paragraph>
+        </Space>
+      </Card>
+
+      {runStatus.error ? (
+        <Alert
+          type="error"
+          showIcon
+          message={`读取运行状态失败：${runStatus.error}`}
+          description={
+            observation
+              ? `已保留 ${observation.observedAt} 的最后一次可信状态；自动轮询已停止，可手动重试。`
+              : '自动轮询已停止，可手动重试；尚未获得可信状态。'
+          }
+        />
+      ) : null}
+
+      {pollHalt === 'limit' ? (
+        <Alert
+          type="warning"
+          showIcon
+          message="自动轮询达到次数上限"
+          description={`已连续读取 ${PERIOD_RUN_POLL_MAX_READS} 次，为免页面长期占用已停止自动刷新；可手动点击“读取状态”继续。`}
+        />
+      ) : null}
+
+      {pollHalt === 'stopped' && observation && !runStatus.error ? (
+        <Alert
+          type="info"
+          showIcon
+          message="自动轮询已停止"
+          description="当前运行不处于处理中，或已切换页签；状态不会自动刷新，可手动重新读取。"
+        />
+      ) : null}
+
+      {!observation && !statusLoading && !runStatus.error ? (
+        <Card>
+          <Empty description="尚未读取真实运行状态" />
+        </Card>
+      ) : null}
+
+      {observation ? (
+        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <Card
+            size="small"
+            title={
+              <Space wrap>
+                <Tag color="green">真实运行</Tag>
+                <Typography.Text code>{observation.binding?.runId ?? activeRunId.current}</Typography.Text>
+                <Tag color={stateColor(observation.raw.status)}>{stateLabel(observation.raw.status)}</Tag>
+                {progress ? <Tag color={stateColor(progress.overall)}>{formatPeriodRunState(progress)}</Tag> : null}
+                {binding?.savedReused ? <Tag color="blue">复用已保存报告</Tag> : null}
+              </Space>
+            }
+            extra={<Typography.Text type="secondary">最近读取 {observation.observedAt}</Typography.Text>}
+          >
+            {!observation.bound || !binding ? (
+              <Alert
+                type="warning"
+                showIcon
+                message="未确认保存真实报告任务，无法跟踪"
+                description={
+                  observation.reasons.length > 0 ? (
+                    <ul style={{ margin: 0, paddingLeft: 20 }}>
+                      {observation.reasons.map((reason) => (
+                        <li key={reason}>{reason}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    '运行记录中没有已确认的保存回执，因此不展示处理中或成功状态。'
+                  )
+                }
+              />
+            ) : (
+              <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                <Descriptions
+                  size="small"
+                  column={3}
+                  items={[
+                    { key: 'project', label: '项目', children: `${binding.projectName}（${binding.projectId}）` },
+                    { key: 'period', label: '业务日期', children: `${binding.periodStart} ~ ${binding.periodEnd}` },
+                    {
+                      key: 'definition',
+                      label: '定义版本',
+                      children: `${binding.definitionId} · v${binding.definitionRevision} · ${binding.digest.slice(0, 16)}…`,
+                    },
+                    {
+                      key: 'report',
+                      label: '报告',
+                      children: `${binding.reportId} · r${binding.reportRevision} · ${binding.reportKey}`,
+                    },
+                    { key: 'facts', label: '事实运行', children: <Typography.Text code>{binding.factsRunId}</Typography.Text> },
+                    { key: 'binding', label: '保存绑定', children: <Typography.Text code>{binding.bindingId}</Typography.Text> },
+                    { key: 'conversation', label: '会话', children: <Typography.Text code>{binding.conversationId}</Typography.Text> },
+                    { key: 'savedReused', label: '保存方式', children: binding.savedReused ? '复用已保存任务' : '新建保存任务' },
+                  ]}
+                />
+
+                {progress ? (
+                  <>
+                    <Descriptions
+                      size="small"
+                      column={3}
+                      items={[
+                        {
+                          key: 'overall',
+                          label: '总体状态',
+                          children: <Tag color={stateColor(progress.overall)}>{formatPeriodRunState(progress)}</Tag>,
+                        },
+                        {
+                          key: 'facts',
+                          label: '事实状态',
+                          children: <Tag color={stateColor(progress.facts.state)}>{stateLabel(progress.facts.state)}</Tag>,
+                        },
+                        {
+                          key: 'body',
+                          label: '正文状态',
+                          children: <Tag color={stateColor(progress.body.state)}>{stateLabel(progress.body.state)}</Tag>,
+                        },
+                        {
+                          key: 'delivery',
+                          label: '投递状态',
+                          children: <Tag color={stateColor(progress.delivery.state)}>{stateLabel(progress.delivery.state)}</Tag>,
+                        },
+                        {
+                          key: 'availability',
+                          label: '可用性状态',
+                          children: <Tag color={stateColor(progress.availability.state)}>{stateLabel(progress.availability.state)}</Tag>,
+                        },
+                        { key: 'observedAt', label: '最近一次状态读取', children: observation.observedAt },
+                      ]}
+                    />
+                    {progress.reasons.length > 0 ? (
+                      <Alert
+                        type="warning"
+                        showIcon
+                        message="失败 / 未知 / 不可用原因"
+                        description={
+                          <ul style={{ margin: 0, paddingLeft: 20 }}>
+                            {progress.reasons.map((reason) => (
+                              <li key={reason}>{reason}</li>
+                            ))}
+                          </ul>
+                        }
+                      />
+                    ) : null}
+                    {progress.availability.state !== 'available' && progress.availability.reason ? (
+                      <Alert type="warning" showIcon message="可用性原因" description={progress.availability.reason} />
+                    ) : null}
+                    <Descriptions
+                      size="small"
+                      column={2}
+                      title="排查引用"
+                      items={[
+                        {
+                          key: 'factsRun',
+                          label: '事实运行',
+                          children: `${progress.facts.runId} · ${stateLabel(progress.facts.runStatus)}${
+                            progress.facts.errorCode ? ` · ${progress.facts.errorCode}` : ''
+                          }`,
+                        },
+                        {
+                          key: 'factsJob',
+                          label: '事实任务',
+                          children: progress.facts.job.jobId
+                            ? `${progress.facts.job.jobId} · ${stateLabel(progress.facts.job.status)} · 尝试 ${progress.facts.job.attempts} 次`
+                            : '未创建任务',
+                        },
+                        {
+                          key: 'bodyRun',
+                          label: '正文运行',
+                          children: progress.body.runId
+                            ? `${progress.body.runId} · ${stateLabel(progress.body.runStatus)}${
+                                progress.body.errorCode ? ` · ${progress.body.errorCode}` : ''
+                              }`
+                            : '未创建',
+                        },
+                        {
+                          key: 'bodyJob',
+                          label: '正文任务',
+                          children: progress.body.job.jobId
+                            ? `${progress.body.job.jobId} · ${stateLabel(progress.body.job.status)} · 尝试 ${progress.body.job.attempts} 次`
+                            : '未创建任务',
+                        },
+                        {
+                          key: 'message',
+                          label: '消息 ID',
+                          children: progress.delivery.messageId ? (
+                            <Typography.Text code>{progress.delivery.messageId}</Typography.Text>
+                          ) : (
+                            '无'
+                          ),
+                        },
+                        {
+                          key: 'deliveryConversation',
+                          label: '投递会话',
+                          children: progress.delivery.conversationId ? (
+                            <Typography.Text code>{progress.delivery.conversationId}</Typography.Text>
+                          ) : (
+                            '无'
+                          ),
+                        },
+                        { key: 'deliveredAt', label: '投递时间', children: progress.delivery.deliveredAt ?? '无' },
+                        { key: 'readAt', label: '已读时间', children: progress.delivery.readAt ?? '无' },
+                      ]}
+                    />
+                  </>
+                ) : (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    message="暂无可读取的业务进度"
+                    description="已绑定运行记录，但当前没有可用的业务进度视图。"
+                  />
+                )}
+              </Space>
+            )}
+          </Card>
+
+          <Card
+            size="small"
+            title={
+              <Space>
+                <Tag>raw</Tag>
+                工作流原始执行轨迹
+              </Space>
+            }
+            extra={raw ? <Typography.Text type="secondary">更新于 {raw.updatedAt}</Typography.Text> : null}
+          >
+            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+              <Alert
+                type="info"
+                showIcon
+                message="原始轨迹可能与当前业务进度不同"
+                description="这里保留工作流运行记录最后一次写入的原始状态与操作结果，不会因后续业务处理而改写；例如原始投递可能为 delivery_not_confirmed，但业务最终已 delivered。原始失败不会被隐藏或改写。"
+              />
+              {raw ? (
+                <>
+                  <Descriptions
+                    size="small"
+                    column={3}
+                    items={[
+                      {
+                        key: 'status',
+                        label: '原始状态',
+                        children: <Tag color={stateColor(raw.status)}>{stateLabel(raw.status)}</Tag>,
+                      },
+                      { key: 'errorCode', label: '原始错误码', children: raw.errorCode ?? '无' },
+                      { key: 'errorMessage', label: '原始错误信息', children: raw.errorMessage ?? '无' },
+                    ]}
+                  />
+                  {raw.operations.length > 0 ? (
+                    <Table
+                      size="small"
+                      rowKey={(operation) => `${operation.nodeId}:${operation.capabilityRef}`}
+                      pagination={false}
+                      scroll={{ x: 900 }}
+                      dataSource={[...raw.operations]}
+                      columns={[
+                        {
+                          title: '节点',
+                          dataIndex: 'nodeId',
+                          width: 180,
+                          render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
+                        },
+                        { title: '能力', dataIndex: 'capabilityRef', width: 240 },
+                        {
+                          title: '结果',
+                          dataIndex: 'outcome',
+                          width: 110,
+                          render: (value: string) => <Tag color={stateColor(value)}>{stateLabel(value)}</Tag>,
+                        },
+                        {
+                          title: '错误码',
+                          dataIndex: 'errorCode',
+                          width: 200,
+                          render: (value: string | null) => value ?? '-',
+                        },
+                        {
+                          title: '错误信息',
+                          dataIndex: 'errorMessage',
+                          render: (value: string | null) => value ?? '-',
+                        },
+                      ]}
+                    />
+                  ) : (
+                    <Empty description="无操作记录" />
+                  )}
+                </>
+              ) : null}
+            </Space>
+          </Card>
+        </Space>
+      ) : null}
+    </Space>
+  );
+
   return (
     <PageContainer
       header={{
@@ -674,10 +1163,16 @@ export default function NativeWorkflowDetailPage() {
           description="未找到已确认的拖拽画布设计，本轮提供结构化定义 JSON、版本管理和模拟轨迹；不新增自创画布。"
         />
         <Tabs
+          onChange={(key) => {
+            if (key === 'live') return;
+            stopPolling();
+            setPollHalt((current) => (progress?.processing && current === 'idle' ? 'stopped' : current));
+          }}
           items={[
             { key: 'draft', label: '草稿与发布', children: draftTab },
             { key: 'versions', label: `已发布版本（${record.versions.length}）`, children: versionsTab },
             { key: 'simulation', label: '模拟调试', children: simulationTab },
+            { key: 'live', label: '真实运行', children: liveTab },
           ]}
         />
       </Space>

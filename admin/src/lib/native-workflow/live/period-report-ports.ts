@@ -591,7 +591,7 @@ function receiverFailure(operation: PendingOperation, status: PeriodReceiverStat
   );
 }
 
-function saveReceipt(report: StoredPeriodReport): Record<string, WorkflowValue> {
+function saveReceipt(report: StoredPeriodReport, bindingId: string): Record<string, WorkflowValue> {
   return {
     saved: true,
     saveReceipt: {
@@ -602,6 +602,7 @@ function saveReceipt(report: StoredPeriodReport): Record<string, WorkflowValue> 
       revision: report.revision,
       runId: report.runId,
       reportKey: report.reportKey,
+      bindingId,
       conversationId: report.conversationId,
       reused: report.reused,
     },
@@ -757,7 +758,7 @@ export function createPeriodReportPorts(options: PeriodReportPortOptions): LiveO
             const existing = await store.findReport(scope, period);
             if (existing) {
               saved.set(scopeKey(scope), existing);
-              return saveReceipt(existing);
+              return saveReceipt(existing, String(scope.bindingId));
             }
             const enqueued = await store.enqueue({
               actor: options.actor,
@@ -774,12 +775,12 @@ export function createPeriodReportPorts(options: PeriodReportPortOptions): LiveO
                 );
               }
               saved.set(scopeKey(scope), raced);
-              return saveReceipt(raced);
+              return saveReceipt(raced, String(scope.bindingId));
             }
             // `store.enqueue` already reports whether it created the report or
             // found the durable row after an insert conflict; never rewrite that.
             saved.set(scopeKey(scope), enqueued);
-            return saveReceipt(enqueued);
+            return saveReceipt(enqueued, String(scope.bindingId));
           }
           case 'deliver.inapp': {
             const scope = await store.loadScope({

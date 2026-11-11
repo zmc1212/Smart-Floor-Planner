@@ -411,10 +411,11 @@ verified in Stable DevTools after the client session was refreshed on
 2026-11-11. Weekly reports, a general scheduler, drag canvas,
 Worker/menu/shared-migration changes remain out of scope. The native B run used a
 temporary local API switch in the B worktree (reverted); A/production
-configuration was not changed. Counts: 158 non-database native-workflow tests
-(including 20 period-report port, 8 acceptance-state, 31 model-evidence and 7
-acceptance-conversation tests), 89 shared construction tests, 6 offline guards
-and 59 focused chat. The full Mini Program suite
+configuration was not changed. Counts: 192 non-database native-workflow tests
+(including 20 period-report port, 8 acceptance-state, 31 model-evidence, 23
+status-reader, 3 status-reentry, 8 admin-run-status and 7 acceptance-conversation
+tests), 89 shared construction tests, 6 offline guards and 59 focused chat. The
+full Mini Program suite
 remains 2218/2221 with three pre-existing survey-runtime audit failures
 unrelated to this chat change.
 
@@ -544,12 +545,65 @@ native window no report/delivery/message/job/run/provider attempt/usage row was
 added. Evidence: `admin/tmp/b5-2-period-report-runs/b5-2-daily-20261111055019510/verification.json`
 and `admin/tmp/b5-2-devtools/native-daily.json`.
 
+## B5.3 period-report run status
+
+`live/period-report-status.ts` freezes the read-only status contract for one
+existing period-report workflow `runId`. The status read observes one run; it
+never starts, resumes or re-executes it.
+
+- The immutable workflow trace is kept separate from current business progress.
+  The raw run may truthfully record `delivery_not_confirmed` while the
+  asynchronous report task is still queued; progress reads the current
+  `construction_reports` / `construction_report_versions` rows, the facts and
+  body runs/jobs and the delivery receipt, and reports facts, body, delivery and
+  availability independently.
+- Status reads are side-effect free. They read the B-owned run record and one
+  business snapshot only: no port execution, report enqueue, model compose,
+  in-app delivery or automatic retry. A read error or an indeterminate step
+  stays `unknown`; reading again does not retry or write.
+- Clients may use bounded polling: the Admin helper polls a processing run at
+  most every 3 seconds, stops after 100 reads, and stops on an unbound run or a
+  terminal overall state (`completed`/`failed`/`unknown`/`unavailable`).
+  Refreshing or re-entering the same `runId` returns the same binding and the
+  same current business progress, and reading does not rewrite the run record.
+- The run record freezes `definitionId`/revision/digest and the saved
+  reportId/revision/factsRunId. A later published revision never rewrites an old
+  run's binding or report identity.
+- `runId`, `reportId` and `projectId` are not authorization proof: platform
+  role, host enterprise, project business permission and current source
+  availability jointly decide what may be read.
+
+Recorded B5.3 evidence (2026-11-11, isolated B database, Shanghai day
+2026-11-08): run `b5-3-status-002` created report `6`/revision `1`/facts run
+`10`/body run `11`/message `117`. Before the Worker started the same run was
+`processing` with facts `queued`; the observed sequence then moved through
+facts `ready` + body `queued` + delivery `delivered`, body `running`, and finally
+`completed` with body `ready` and delivery `delivered`. The raw trace stayed
+`failed`/`delivery_not_confirmed` throughout and was displayed separately.
+Counters moved from reports/jobs/runs/attempts/usage/messages/deliveries
+`5/9/9/2/2/5/5` to `6/11/11/3/3/6/6`; five repeated status reads left every
+counter unchanged. Customer-access revocation produced
+`unavailable`/`access_revoked`, record withdrawal produced
+`unavailable`/`source_unavailable`, and publishing definition revision `2` left
+the old run on revision `1` with the same digest and report `6`. A separate real
+run `b5-3-status-001` (report `5`, period 2026-11-07) had its facts card
+delivered while body admission failed with `assistant_capability_forbidden`;
+the status correctly reported overall `failed` and body `failed`, not
+processing. Read-only re-entry repeated both outcomes with zero new rows or
+model calls. API authorization rejects unauthenticated (401), enterprise-admin
+(403) and wrong-tenant (403) callers; the platform admin read succeeds. The
+Admin page check passed 6/6 and refresh/re-entry 5/5. Evidence:
+`admin/tmp/b5-3-live/verification.json`, `failed-run.json`,
+`readonly-verification.json` and `dev.log`. `npm run build` still stops at the
+pre-existing `scripts/fastgpt/setup-unified.mts:113` type error, which is
+byte-identical to the baseline; all changed files have zero type errors.
+
 ## Reproduce
 
 From `admin/` (no database, no Worker, no model):
 
 ```powershell
-npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts src/lib/native-workflow/__tests__/acceptance-store.test.ts src/lib/native-workflow/__tests__/acceptance-conversation.test.ts src/lib/native-workflow/__tests__/period-report-ports.test.ts
+npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts src/lib/native-workflow/__tests__/acceptance-store.test.ts src/lib/native-workflow/__tests__/acceptance-conversation.test.ts src/lib/native-workflow/__tests__/acceptance-state.test.ts src/lib/native-workflow/__tests__/period-report-ports.test.ts src/lib/native-workflow/__tests__/report-model-evidence.test.ts src/lib/native-workflow/__tests__/period-report-status.test.ts src/lib/native-workflow/__tests__/period-report-status-reentry.test.ts src/lib/native-workflow/__tests__/admin-run-status.test.ts
 npx tsx src/lib/native-workflow/playground/simulate.ts
 ```
 
