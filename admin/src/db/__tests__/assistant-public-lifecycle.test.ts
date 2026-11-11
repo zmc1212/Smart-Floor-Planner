@@ -122,7 +122,8 @@ async function publishedSite(label: string) {
   });
   assert.ok(await withTenantTransaction(enterpriseId, tx => publishedPublicMaterial(tx, enterpriseId,
     String(site.id), String(version.id))), 'public fixture must satisfy the published source predicate');
-  return { conversationId, siteId: String(site.id), versionId: String(version.id), contentHash };
+  return { conversationId, siteId: String(site.id), versionId: String(version.id), contentHash,
+    leadId: String(lead.id) };
 }
 
 async function withdrawn(site: { siteId: string }) {
@@ -238,6 +239,57 @@ async function seedIntroAnswer(conversationId: string, triggerId: string, text: 
       ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, scene: 'site.public',
         chars: Array.from(text).length, ...(dependency ? { publicSite: dependency } : {}) })}::jsonb)`);
     return String(message.id);
+  });
+}
+
+/** The reported interrupted state: a legacy run saved its model tool call and
+ * success receipt, then died before the next checkpoint. The previous
+ * parameter-correction pair stays in the checkpoint history, so a second
+ * validation issue would terminate the run. */
+async function seedCheckpointedBusinessResume(lease: Lease,
+  site: { siteId: string; versionId: string; contentHash: string },
+  spec: { arguments: string; receiptKey: string; receiptLeadId: string }) {
+  await withTenantTransaction(enterpriseId, async tx => {
+    await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs,input_summary)
+      values(${enterpriseId},${lease.runId},1003,'agent_public_context','succeeded',
+      ${JSON.stringify([{ siteId: site.siteId, versionId: site.versionId, contentHash: site.contentHash }])}::jsonb,
+      ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, current: { siteId: site.siteId, versionId: site.versionId } })}::jsonb)`);
+    const attempt = (await one(tx, sql`insert into app.ai_provider_attempts(enterprise_id,assistant_run_id,provider_config_id,
+      provider_key,adapter_type,capability,logical_model_key,remote_model,status,accepted,metadata)
+      values(${enterpriseId},${lease.runId},${providerConfigId},'synthetic','openai_compatible','chat','chat.general',
+      'synthetic-lifecycle-model','succeeded',true,'{}'::jsonb) returning id`))!;
+    await tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,provider_attempt_id,operation_key,category,quantity,measurement_kind)
+      values(${enterpriseId},${lease.runId},${String(attempt.id)},${'agent:' + lease.runId + ':1'},'tokens',100,'observed')`);
+    const call = (argumentsText: string, id = 'call-biz') => ({ id, name: 'query_business', arguments: argumentsText });
+    const output = { text: '', toolCalls: [call(spec.arguments)], finishReason: 'tool_calls',
+      providerRequestId: null, usage: { inputTokens: 10, outputTokens: 4 } };
+    await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,provider_attempt_id,private_checkpoint,input_summary)
+      values(${enterpriseId},${lease.runId},1110,'agent_model','succeeded',${String(attempt.id)},
+      ${JSON.stringify(output)}::jsonb,${JSON.stringify({ turn: 1, purpose: 'answer', promptVersion: nativeExecutorPromptVersion })}::jsonb)`);
+    const checkpoint = {
+      version: 1, turn: 1, output, validationRepairs: 0, argumentFailures: 1, exhaustedTools: [], readReceipts: [],
+      messages: [
+        { role: 'user', content: [{ type: 'text', text: '我的量房预约是什么时候？' }] },
+        { role: 'assistant', content: '', toolCalls: [call('{"domain":"appointments"}', 'call-biz-bad')] },
+        { role: 'tool', callId: 'call-biz-bad', content: 'query_business需要leadId。' },
+      ],
+    };
+    await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary,private_checkpoint)
+      values(${enterpriseId},${lease.runId},1000,'agent_checkpoint','succeeded',
+      ${JSON.stringify({ promptVersion: nativeExecutorPromptVersion, protocol: xiaokNativeExecutorProtocol })}::jsonb,
+      ${JSON.stringify(checkpoint)}::jsonb)`);
+    await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,input_summary,private_checkpoint)
+      values(${enterpriseId},${lease.runId},1401,'agent_tool','query_business',1,'succeeded',
+      ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, tool: 'query_business', key: spec.receiptKey,
+        domain: 'appointments', leadId: spec.receiptLeadId, selected: 1,
+        receipt: { status: 'ready', resultKey: 'receipt-v1', text: '您的量房预约已确认，安排在两天后上午。' } })}::jsonb,
+      ${JSON.stringify({})}::jsonb)`);
+    // Suggestions were already produced before the interruption; reusing them
+    // keeps this fixture from dispatching an unrelated provider call.
+    await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,private_checkpoint,input_summary)
+      values(${enterpriseId},${lease.runId},1014,'agent_suggestion_model','succeeded',
+      ${JSON.stringify({ text: '量房要准备什么\n可以改时间吗\n附近还有什么工地' })}::jsonb,
+      ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, purpose: 'suggestions', promptVersion: nativeExecutorPromptVersion })}::jsonb)`);
   });
 }
 
@@ -488,6 +540,125 @@ test('an empty current selection never proves a saved model result had no public
   assert.equal(run.errorCode, 'context_changed');
   assert.equal((await assistantMessages(site.conversationId)).length, 0);
 });
+/** The resumed run only needs its follow-up answer from the model; the tool is
+ * served from the persisted receipt. This synthetic HTTP boundary keeps the
+ * deterministic recovery check free of real model calls. */
+async function resumeWithSyntheticModel(lease: Lease, text: string) {
+  const originalFetch = globalThis.fetch, originalModel = process.env.ASSISTANT_TEXT_MODEL,
+    originalThinking = process.env.ASSISTANT_TEXT_DISABLE_THINKING;
+  try {
+    delete process.env.ASSISTANT_TEXT_MODEL;
+    delete process.env.ASSISTANT_TEXT_DISABLE_THINKING;
+    globalThis.fetch = (async () => Response.json({ choices: [{ message: { content: text }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 5, completion_tokens: 6 } })) as typeof fetch;
+    await processNativeAgentAnswer(lease);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalModel === undefined) delete process.env.ASSISTANT_TEXT_MODEL; else process.env.ASSISTANT_TEXT_MODEL = originalModel;
+    if (originalThinking === undefined) delete process.env.ASSISTANT_TEXT_DISABLE_THINKING;
+    else process.env.ASSISTANT_TEXT_DISABLE_THINKING = originalThinking;
+  }
+}
+
+async function resumeState(runId: string) {
+  return {
+    steps: await withTenantTransaction(enterpriseId, tx => rows(tx, sql`select step_seq,kind,capability_name,status,
+      provider_attempt_id,private_checkpoint from app.assistant_run_steps
+      where enterprise_id=${enterpriseId} and run_id=${runId} order by step_seq,kind`)),
+    attempts: await withPlatformTransaction(tx => rows(tx, sql`select id,metadata from app.ai_provider_attempts
+      where assistant_run_id=${runId} order by id`)),
+  };
+}
+
+test('a legacy explicit same-lead business call resumes without a second correction and reuses its receipt', async () => {
+  const site = await publishedSite(prefix + '-resume-legacy-explicit');
+  const { lease } = await pending(site.conversationId, '我的量房预约是什么时候？');
+  await markProviderStarted(lease);
+  await seedCheckpointedBusinessResume(lease, site, { arguments: JSON.stringify({ domain: 'appointments', leadId: site.leadId }),
+    receiptKey: 'appointments:' + site.leadId, receiptLeadId: site.leadId });
+  const seededAttempt = await withTenantTransaction(enterpriseId, tx => one(tx, sql`select provider_attempt_id
+    from app.assistant_run_steps where enterprise_id=${enterpriseId} and run_id=${lease.runId}
+      and step_seq=1110 and kind='agent_model'`));
+  await resumeWithSyntheticModel(lease, '您的量房预约已确认，安排在两天后上午。');
+  const run = await service.run(lease.runId);
+  assert.equal(run.status, 'succeeded', String(run.errorCode ?? ''));
+  const state = await resumeState(lease.runId);
+  const business = state.steps.filter(step => String(step.kind) === 'agent_tool'
+    && String(step.capability_name) === 'query_business');
+  assert.deepEqual(business.map(step => Number(step.step_seq)), [1401], 'The saved receipt is reused, not re-read');
+  const models = state.steps.filter(step => String(step.kind) === 'agent_model');
+  assert.deepEqual(models.map(step => Number(step.step_seq)), [1110, 1120], 'The saved model result is not replayed');
+  assert.equal(String(models[0].provider_attempt_id), String(seededAttempt!.provider_attempt_id));
+  assert.equal(state.attempts.length, 2, 'Only the follow-up turn adds one provider attempt');
+  const checkpoint = await withTenantTransaction(enterpriseId, tx => one(tx, sql`select private_checkpoint
+    from app.assistant_run_steps where enterprise_id=${enterpriseId} and run_id=${lease.runId}
+      and step_seq=1000 and kind='agent_checkpoint'`));
+  assert.equal(Number((checkpoint!.private_checkpoint as Row).argumentFailures), 1, 'No second parameter correction');
+  const messages = await assistantMessages(site.conversationId);
+  assert.equal(messages.length, 1);
+  assert.match(JSON.stringify(messages[0].content), /量房预约已确认/);
+});
+
+test('a 2504d8cf call without leadId resumes under the server-bound contract', async () => {
+  const site = await publishedSite(prefix + '-resume-bound');
+  const { lease } = await pending(site.conversationId, '我的量房预约是什么时候？');
+  await markProviderStarted(lease);
+  await seedCheckpointedBusinessResume(lease, site, { arguments: JSON.stringify({ domain: 'appointments' }),
+    receiptKey: 'appointments:' + site.leadId, receiptLeadId: site.leadId });
+  await resumeWithSyntheticModel(lease, '您的量房预约已确认，安排在两天后上午。');
+  const run = await service.run(lease.runId);
+  assert.equal(run.status, 'succeeded', String(run.errorCode ?? ''));
+  const state = await resumeState(lease.runId);
+  const business = state.steps.filter(step => String(step.kind) === 'agent_tool'
+    && String(step.capability_name) === 'query_business');
+  assert.deepEqual(business.map(step => Number(step.step_seq)), [1401], 'The persisted receipt is reused under the bound identity');
+  assert.equal(state.attempts.length, 2);
+  const checkpoint = await withTenantTransaction(enterpriseId, tx => one(tx, sql`select input_summary,private_checkpoint
+    from app.assistant_run_steps where enterprise_id=${enterpriseId} and run_id=${lease.runId}
+      and step_seq=1000 and kind='agent_checkpoint'`));
+  assert.equal(Number((checkpoint!.private_checkpoint as Row).argumentFailures), 1);
+  const savedRead = ((checkpoint!.input_summary as Row).readContext || {}) as Row;
+  assert.equal(String(savedRead.leadId ?? ''), site.leadId,
+    'The resumed server-bound run persists its contract for the next recovery');
+});
+
+test('an old empty leadId keeps its original scope during recovery', async () => {
+  const site = await publishedSite(prefix + '-resume-legacy-empty');
+  const { lease } = await pending(site.conversationId, '我的量房预约是什么时候？');
+  await markProviderStarted(lease);
+  await seedCheckpointedBusinessResume(lease, site, { arguments: JSON.stringify({ domain: 'appointments', leadId: '' }),
+    receiptKey: 'appointments:', receiptLeadId: site.leadId });
+  await resumeWithSyntheticModel(lease, '您的量房预约已确认，安排在两天后上午。');
+  const run = await service.run(lease.runId);
+  assert.equal(run.status, 'succeeded', String(run.errorCode ?? ''));
+  const state = await resumeState(lease.runId);
+  const business = state.steps.filter(step => String(step.kind) === 'agent_tool'
+    && String(step.capability_name) === 'query_business');
+  assert.deepEqual(business.map(step => Number(step.step_seq)), [1401]);
+  const checkpoint = await withTenantTransaction(enterpriseId, tx => one(tx, sql`select private_checkpoint
+    from app.assistant_run_steps where enterprise_id=${enterpriseId} and run_id=${lease.runId}
+      and step_seq=1000 and kind='agent_checkpoint'`));
+  const toolTexts = ((checkpoint!.private_checkpoint as Row).messages as Row[])
+    .filter(message => String(message.role) === 'tool').map(message => String(message.content));
+  assert.ok(toolTexts.some(text => text.includes('您的量房预约已确认')),
+    'The original empty-identity receipt remains the reused one');
+});
+
+test('a mismatched persisted lead identity still fails closed on recovery', async () => {
+  const site = await publishedSite(prefix + '-resume-mismatch');
+  const { lease } = await pending(site.conversationId, '这个工地的预约是什么时候？');
+  await markProviderStarted(lease);
+  await seedCheckpointedBusinessResume(lease, site, { arguments: JSON.stringify({ domain: 'appointments', leadId: '999999' }),
+    receiptKey: 'appointments:other', receiptLeadId: 'other' });
+  const attemptsBefore = await providerAttempts(lease.runId);
+  await resumeWithSyntheticModel(lease, '不应交付的回答。');
+  assert.equal(await providerAttempts(lease.runId), attemptsBefore, 'No model dispatch follows a rejected identity');
+  const run = await service.run(lease.runId);
+  assert.equal(run.status, 'failed');
+  assert.equal(run.errorCode, 'assistant_resource_not_found');
+  assert.equal((await assistantMessages(site.conversationId)).length, 0);
+});
+
 test('a follow-up inherits the original public dependency and drops the answer once withdrawn', async () => {
   const site = await publishedSite(prefix + '-followup');
   const first = await pending(site.conversationId, '这个工地现在做到哪一步了？');

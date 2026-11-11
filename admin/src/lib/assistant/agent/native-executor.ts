@@ -149,18 +149,33 @@ export function samePublicRef(a: PublicContextRef | null | undefined, b: PublicC
   return String(a.siteId) === String(b.siteId) && String(a.versionId) === String(b.versionId);
 }
 
-/** Bind the conversation's authorized lead with the established read-tool
- * contract. A model-selected identity is rejected; a persisted legacy call
- * that used the documented empty `leadId` ("list my profiles") is replayed
- * under the same server binding instead of failing a resumable run. */
-export function bindBoundBusinessRead(name: string, input: unknown, readContext: ReadToolContext | undefined) {
-  if (readContext?.leadId && input && typeof input === 'object' && !Array.isArray(input)
-    && Object.hasOwn(input, 'leadId') && (input as Row).leadId === '') {
-    const rest = { ...(input as Row) };
-    delete rest.leadId;
-    return bindReadToolInput(name, rest, readContext);
-  }
-  return bindReadToolInput(name, input, readContext);
+/** Decide the read-identity contract from durable records. A new run binds the
+ * conversation lead. A resumed run keeps the contract its saved calls were
+ * produced under: the step-1000 `readContext` marker when present, otherwise
+ * the shape of the persisted `query_business` arguments — an explicit
+ * `leadId` (including the documented empty one) belongs to the original
+ * contract, while an argument without `leadId` proves the server-bound
+ * contract introduced by 2504d8cf. A pre-marker checkpoint with no business
+ * call keeps the original contract instead of guessing from the absent marker. */
+export function nativeReadContract(entry: Record<string, unknown>, saved: {
+  summary?: Row | null; checkpoint?: AgentCheckpoint | null;
+}): ReadToolContext | undefined {
+  if (saved.summary && Object.hasOwn(saved.summary, 'readContext'))
+    return readToolContext(entry, saved.summary);
+  if (!saved.checkpoint) return readToolContext(entry);
+  const pending = (saved.checkpoint.output?.toolCalls || []).filter(call => call.name === 'query_business');
+  const persisted = [...saved.checkpoint.messages].reverse()
+    .flatMap(message => message.role === 'assistant' ? (message.toolCalls || []) : [])
+    .filter(call => call.name === 'query_business');
+  const calls = pending.length ? pending : persisted.slice(0, 1);
+  if (!calls.length) return undefined;
+  const serverBound = calls.every(call => {
+    try {
+      const value = JSON.parse(call.arguments) as Row;
+      return !!value && typeof value === 'object' && !Array.isArray(value) && !Object.hasOwn(value, 'leadId');
+    } catch { return false; }
+  });
+  return serverBound ? readToolContext(entry) : undefined;
 }
 
 /** A public-site answer has no CITE id for the snapshot. The model may still
@@ -451,10 +466,6 @@ export async function processNativeAgentAnswer(lease: Lease) {
     }
     const config = agentConfig((initial.run.policy_snapshot as Row).agent);
     if (!config) fail('context_changed');
-    // The conversation entry already names the customer's authorized lead. The
-    // established read-tool contract binds that identity server-side instead of
-    // asking the model to know or guess a housing id; reuse it unchanged.
-    const readContext = readToolContext(initial.conversation.entry_snapshot as Record<string, unknown>);
     const knowledgeEnabled = runKnowledgeEnabled(initial.run.policy_snapshot as Row);
     const { context, messages, citations, publicRefs: inheritedPublicRefs, businessContextActive } =
       await nativeConversation(lease, [], xiaokNativeExecutorProtocol);
@@ -624,6 +635,11 @@ export async function processNativeAgentAnswer(lease: Lease) {
     let lastAttemptId: string | null = saved.lastModel?.provider_attempt_id ? String(saved.lastModel.provider_attempt_id) : null;
     const toolState = recoveredDialogueToolState(saved.searches, saved.businesses, saved.webs, saved.histories, saved.fixed);
     const resume = saved.checkpoint?.private_checkpoint as AgentCheckpoint | undefined;
+    // The persisted checkpoint decides the read-identity contract: a resumed
+    // run keeps the contract its saved tool calls were produced under, while a
+    // new run binds the conversation's authorized lead server-side.
+    const readContext = nativeReadContract(initial.conversation.entry_snapshot as Record<string, unknown>,
+      { summary: saved.checkpoint?.input_summary as Row | null | undefined, checkpoint: resume });
     for (const step of saved.searches) {
       const evidence = step.private_checkpoint as Evidence[];
       if (!Array.isArray(evidence) || !evidence.length) continue;
@@ -699,7 +715,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
         } catch { return { code: 'invalid_tool_input', feedback: 'search_enterprise参数不是合法JSON对象；仅提交{"query":"..."}。' }; }
       }
       if (name === 'query_business') {
-        try { parseBusinessQuery(bindBoundBusinessRead(name, JSON.parse(args), readContext)); }
+        try { parseBusinessQuery(bindReadToolInput(name, JSON.parse(args), readContext)); }
         catch { return { code: 'invalid_tool_input', feedback: readContext?.leadId
           ? 'query_business需要{"domain":"appointments|schemes|floorplans|construction"}；房屋身份由服务端从当前咨询注入，不要传leadId或其他身份字段。'
           : 'query_business需要{"domain":"appointments|schemes|floorplans|construction","leadId":"..."}；leadId为空字符串表示列本人档案。' }; }
@@ -740,7 +756,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
         // Only status/text reach the model. The resultKey stays in the
         // persisted receipt and the recovery map for server-side version
         // revalidation; it is never a citation id.
-        const query = parseBusinessQuery(bindBoundBusinessRead(name, JSON.parse(args), readContext));
+        const query = parseBusinessQuery(bindReadToolInput(name, JSON.parse(args), readContext));
         return { content: JSON.stringify(modelBusinessReceipt(await business(query, ++sequence))) };
       }
       if (name === 'search_web' || name === 'read_web') {
@@ -864,8 +880,9 @@ export async function processNativeAgentAnswer(lease: Lease) {
           await runContext(tx, lease);
           await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary,private_checkpoint)
             values(${lease.enterpriseId},${lease.runId},1000,'agent_checkpoint','succeeded',
-            ${JSON.stringify({ promptVersion, protocol: xiaokNativeExecutorProtocol })}::jsonb,${JSON.stringify(state)}::jsonb)
-            on conflict(enterprise_id,run_id,step_seq) do update set private_checkpoint=excluded.private_checkpoint,updated_at=now(),version=app.assistant_run_steps.version+1`);
+            ${JSON.stringify({ promptVersion, protocol: xiaokNativeExecutorProtocol, ...(readContext ? { readContext } : {}) })}::jsonb,${JSON.stringify(state)}::jsonb)
+            on conflict(enterprise_id,run_id,step_seq) do update set input_summary=excluded.input_summary,
+            private_checkpoint=excluded.private_checkpoint,updated_at=now(),version=app.assistant_run_steps.version+1`);
         }) },
     });
     await guard();

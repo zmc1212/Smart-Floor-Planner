@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { composeNativeDelivery, explicitPublicSiteReference, nativeCitationFeedback, nativeExecutorPrompt, nativeReplySiteText, recoveredDialogueToolState,
-  nativePublicSiteSelection, nativePublicSiteWithdrawnText, resumeUsedPublicSite, samePublicRef, bindBoundBusinessRead,
+  nativePublicSiteSelection, nativePublicSiteWithdrawnText, resumeUsedPublicSite, samePublicRef, nativeReadContract,
   stripUnboundCitationPlaceholders, synthesisHistoryFields, xiaokNativeExecutorProtocol } from '../agent/native-executor';
 import { nativeAgentRuntimeBinding } from '../fastgpt/agent-v2/config';
 import { nativeHistoryCheckpoint, nativePublicSiteHistoryAllowed, priorAnswerBusinessObject } from '../fastgpt/rag-session';
@@ -465,21 +465,35 @@ test('the preceding answer names the current object, never its inherited audit s
   assert.equal(priorAnswerBusinessObject({ checkpoint: null, ownBusinessTool: false }), false);
 });
 
-test('the conversation lead is bound server-side, while a model-selected identity is rejected', () => {
-  const context = { protocol: 'conversation-read-v1', leadId: '3134' } as const;
-  // The model omits the identity: the authorized lead is injected.
-  assert.deepEqual(bindBoundBusinessRead('query_business', { domain: 'construction' }, context),
-    { domain: 'construction', leadId: '3134' });
-  // A persisted legacy call with the documented empty leadId is replayed under
-  // the same server binding instead of failing a resumable run.
-  assert.deepEqual(bindBoundBusinessRead('query_business', { domain: 'appointments', leadId: '' }, context),
-    { domain: 'appointments', leadId: '3134' });
-  // A model-selected identity is never coerced.
-  assert.throws(() => bindBoundBusinessRead('query_business', { domain: 'construction', leadId: '9999' }, context),
-    /invalid_message/);
-  // No bound lead (generic entry) keeps the original contract.
-  assert.deepEqual(bindBoundBusinessRead('query_business', { domain: 'schemes', leadId: '' },
-    { protocol: 'conversation-read-v1', leadId: null } as const), { domain: 'schemes', leadId: '' });
+test('the read-identity contract is decided from durable records, not from a missing marker alone', () => {
+  const entry = { kind: 'lead', id: '3134' } as const;
+  const call = (argumentsText: string) => ({ id: 'call-biz', name: 'query_business', arguments: argumentsText });
+  const checkpoint = (input: Record<string, unknown>) => ({ version: 1 as const, turn: 1,
+    messages: [{ role: 'user' as const, content: [{ type: 'text' as const, text: '我的预约' }] }],
+    output: { text: '', toolCalls: [], finishReason: 'stop', providerRequestId: null, usage: null }, ...input }) as never;
+  // A new run binds the conversation's authorized lead.
+  assert.deepEqual(nativeReadContract(entry, {}), { protocol: 'conversation-read-v1', leadId: '3134' });
+  // The current marker is authoritative and drift is rejected.
+  assert.deepEqual(nativeReadContract(entry, { summary: { readContext: { protocol: 'conversation-read-v1', leadId: '3134' } } }),
+    { protocol: 'conversation-read-v1', leadId: '3134' });
+  assert.throws(() => nativeReadContract(entry, { summary: { readContext: { protocol: 'conversation-read-v1', leadId: '9999' } } }),
+    /context_changed/);
+  // An old persisted explicit leadId belongs to the original contract: the
+  // executor must not rebind it before validating the saved call.
+  assert.equal(nativeReadContract(entry, { checkpoint: checkpoint({ output: { text: '',
+    toolCalls: [call('{"domain":"appointments","leadId":"3134"}')], finishReason: 'tool_calls', providerRequestId: null, usage: null } }) }), undefined);
+  // The documented old empty leadId keeps its original contract as well.
+  assert.equal(nativeReadContract(entry, { checkpoint: checkpoint({ output: { text: '',
+    toolCalls: [call('{"domain":"appointments","leadId":""}')], finishReason: 'tool_calls', providerRequestId: null, usage: null } }) }), undefined);
+  // A 2504d8cf call without leadId proves the server-bound contract.
+  assert.deepEqual(nativeReadContract(entry, { checkpoint: checkpoint({ output: { text: '',
+    toolCalls: [call('{"domain":"appointments"}')], finishReason: 'tool_calls', providerRequestId: null, usage: null } }) }),
+    { protocol: 'conversation-read-v1', leadId: '3134' });
+  // A checkpoint with no business call keeps the original contract rather than
+  // guessing from the absent marker.
+  assert.equal(nativeReadContract(entry, { checkpoint: checkpoint({}) }), undefined);
+  // A non-lead conversation never binds an identity.
+  assert.deepEqual(nativeReadContract({ kind: 'general' }, {}), { protocol: 'conversation-read-v1', leadId: null });
 });
 
 test('the model sees only status/text for business snapshots, while recovery keeps the full resultKey', () => {
