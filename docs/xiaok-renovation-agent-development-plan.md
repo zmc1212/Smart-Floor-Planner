@@ -22,15 +22,15 @@
 
 | 字段 | 当前记录 |
 | --- | --- |
-| 交付与负责人 | 公共站点生命周期收尾轮（2026-11-11用户定向）：快照降级历史一致性、网页原文空引用目录、旧checkpoint跨批次callId、run3597检索失败定位。单一负责人；方法约束：先验证真实回答，禁止补丁循环；两轮同类失败停循环。 |
-| 用户入口与结果 | 快照降级轮下一轮历史正常且不回放丢弃草稿；网页已读但cites为空时不再无引用交付（无快照missing_citation，有快照只交快照）；历史引用仍可保留但不满足本run；纯业务无CITE仍可交付；复用callId的非业务回执原样保留。 |
-| 已证缺口 | 三项代码缺口本轮关闭（定向33/33）；run3597为嵌入HTTP边界超时，服务契约与向量合法且无并发run；真实微信、Stable HLS、生产部署未验；975/973/2为既有记录。 |
-| 已完成 | `nativeHistoryCheckpoint`按`modelIncluded=false`回退交付正文，`raw`存交付文本、`discarded`留审计；`runEvidence`与`runSources`分离并接入gate/delivery；checkpoint投影按批维护callId→tool；新增保存→下一轮读取、网页空目录fresh/recovered、callId复用用例；定向33/33、tsc0、lint0 error/60 warning、完整build退出0；固定knowledge旅程run3598/3599两轮成功。 |
-| 下一动作 | 本轮清单完成并交付；无新增P3入口。 |
-| 必要验收 | 定向33/33；tsc0；lint0 error/60 warning；完整build退出0；固定knowledge旅程run3598（runSources5/runCitations1）与run3599（5/2，历史含首轮原文与K2826）两轮成功；fix2 10/10与run3583复用；975/973/2按既有。 |
-| 失败与调用边界 | run3413/run3566原失败保留；run3567 indeterminate；run3597原失败保留（`retrieval_unavailable`，未重放；同类原因本轮未再出现）；真实微信/HLS/生产未验；仅1454开发库。 |
-| 环境与资源 | 远程5432/55432、18089、18300；完整build前停止3006/Worker；`source-manifest.json`原工作区改动保留、不提交；构建后已恢复工作副本（哈希一致）。 |
-| 证据与后继 | `tmp/xiaok-stage-fullflow-20261111/citation-gate-run3597-original/report.json`（原失败）；`.../citation-gate-lifecycle/journey-report.json`（run3598/3599两轮）；`tmp/build-lifecycle.log`；`tmp/lint-lifecycle.log`；旧W1/3413路径；无泛化下一P3入口。 |
+| 交付与负责人 | 小K真实小程序界面验收（2026-11-11用户定向）：Stable DevTools、企业1454、合成客户645。单一负责人；方法约束：先验证真实回答，禁止补丁循环；两轮同类失败停循环。 |
+| 用户入口与结果 | 入口/知识/项目/引用重进通过；联网未取得网页；公开工地追问串到本人项目；报告追问在模型派发前失败。生产未验项保留。 |
+| 已证缺口 | 公开工地上下文在追问轮丢失（run3608回答本人四个项目，非site11）；联网run3606无web引用；报告run3609 model_unavailable无attempt；run3600嵌入30s超时原失败保留。 |
+| 已完成 | 真实UI：小K入口/我的对话/新对话；Q1/Q2知识（run3601/3602，引用1021-1025）；Q3/Q4项目（run3603/3604，与DB四项目阶段一致）；引用打开/重进/Q5（run3605）；公开工地详情/两标签/开场2444；日报选择528；截图与runId见证据。 |
+| 下一动作 | 本轮固定清单结束；记录公开工地上下文缺陷与联网未取得，不自动修复、不新增P3。 |
+| 必要验收 | 通过1-4；失败5联网、6公开工地追问；阻塞7报告追问。run3600环境失败保留；真实微信/HLS/生产未验。 |
+| 失败与调用边界 | run3597/run3600 retrieval_unavailable（嵌入30s，未重放）；run3606 web未取得；run3608公开工地上下文错位；run3609 model_unavailable无provider attempt；合成JWT非真实微信。 |
+| 环境与资源 | 3006/Worker/DB/嵌入已恢复；Stable CLI token过期后重新cli auto+编译；DB隧道两次挂起已恢复；source-manifest.json保留未提交。 |
+| 证据与后继 | `tmp/xiaok-agent-ui-20261111/ui-acceptance-report.json`、`journey-final-report.json`、`public-site-report.json`、`report-read-report.json`及截图；计划检查通过；无泛化下一P3入口。 |
 
 ## 3. 复用哪些成果
 
