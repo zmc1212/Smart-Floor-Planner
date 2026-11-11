@@ -16,16 +16,24 @@ import { closePostgresPool } from '@/lib/postgresql';
 import { ConstructionService } from '@/lib/construction/service';
 import { ConstructionReportService, reportPlanDto } from '@/lib/construction/report-service';
 import { fastGPTAgentV2Configuration, nativeAgentRuntimeBinding } from '@/lib/assistant/fastgpt/agent-v2/config';
+import { auditDeployment, auditKindCounts, auditNonStageKinds, auditWindowEntries, openAuditWindow,
+  readableAuditError } from '@/lib/assistant/fastgpt/agent-v2/audit-window';
 
 loadEnvConfig(process.cwd(), true);
 assert.ok(process.argv.includes('--development'));
 const root = path.resolve('..'), eid = '1454', customerId = '645', ownerId = '2853', projectId = '237', leadId = '3132';
+const batchId = String(process.argv.find(a => a.startsWith('--batch='))?.slice(8) || process.env.XIAOK_AUDIT_BATCH || '').trim();
 const output = path.resolve(process.argv.find(a => a.startsWith('--output='))?.slice(9) || '../tmp/xiaok-1454-full-flow-20261109/round-01');
 const stageTarget = process.argv.find(a => a.startsWith('--stage='))?.slice(8) || 'furnishing';
 const stageNote = process.argv.find(a => a.startsWith('--note='))?.slice(7) || '合成全流程测试：安装节点完成，进入软装';
 // The executor is explicit per round; the default preserves the historical
 // Agent V2 expectation until the FastGPT exit completes.
 const expectedExecutor = process.argv.find(a => a.startsWith('--executor='))?.slice(11) || 'fastgpt-agent-v2-v1';
+// A native round claims its zero-FastGPT window from a batch-bound V2 probe
+// receipt, so the batch id is mandatory there; the legacy V2 mode does not use
+// a receipt and keeps its historical command line.
+assert.ok(batchId || expectedExecutor !== 'xiaok-native-executor-v1',
+  'Acceptance batch id required for the native executor: pass --batch=<id> (or XIAOK_AUDIT_BATCH)');
 // Under an unavailable FastGPT deployment the stage-report bodies legitimately
 // fail (P3 migrates that entry); their rows and recorded errors stay required.
 const stageFastgptDown = process.argv.includes('--stage-fastgpt=down');
@@ -39,7 +47,8 @@ const target = new URL(process.env.DATABASE_URL!);
 assert.ok(['127.0.0.1', 'localhost'].includes(target.hostname) && target.port === '5432' && target.pathname === '/smart_floor_planner');
 fs.mkdirSync(output, { recursive: true });
 const base = 'http://127.0.0.1:3006/api/miniprogram/assistant';
-type ReportRow = Row & { accounting: Row; chat?: Row; permissions?: Row; fastgptAudit?: Row; progressQuestion?: Row; reportQuestion?: Row };
+type ReportRow = Row & { accounting: Row; chat?: Row; permissions?: Row; fastgptAudit?: Row; progressQuestion?: Row;
+  reportQuestion?: Row; probe?: Row; auditWindow?: Row };
 const report: ReportRow = { startedAt: new Date().toISOString(), enterpriseId: eid, scope: 'one customer/stage/four-role-report journey',
   checks: [], failures: [], accounting: {} };
 const save = () => fs.writeFileSync(path.join(output, 'report.json'), JSON.stringify(report, null, 2));
@@ -64,13 +73,16 @@ report.bindingBefore = createHash('sha256').update(JSON.stringify(before)).diges
 
 // FastGPT audit ledger. Mode-aware: the native executor adds zero records of
 // any kind on the chat path (stage-report bodies stay the P3 exception); the
-// FastGPT V2 bridge records audited chat calls instead. The final step asserts
-// ledger validity and the matching criteria; a vacuous empty ledger never passes.
+// FastGPT V2 bridge records audited chat calls instead. In native mode this
+// round's window opens only after the batch probe receipt is verified; an
+// unverified, truncated or rebuilt ledger never reads as zero calls.
 const workflowsFile = process.env.XIAOK_FASTGPT_WORKFLOWS_FILE?.trim();
-const auditFile = workflowsFile ? (JSON.parse(fs.readFileSync(path.resolve(workflowsFile), 'utf8')).auditFile as string | undefined) : undefined;
+const workflows = workflowsFile ? JSON.parse(fs.readFileSync(path.resolve(workflowsFile), 'utf8')) as Row : undefined;
+const deployment = workflowsFile ? auditDeployment(path.resolve(workflowsFile), workflows as Row, base) : undefined;
+const auditFile = deployment?.auditFile;
 const auditLines = () => auditFile && fs.existsSync(auditFile)
   ? fs.readFileSync(auditFile, 'utf8').trim().split(/\r?\n/).filter(Boolean) : [];
-const auditBefore = auditLines().length;
+let auditBefore = 0;
 
 async function step(name: string, fn: () => Promise<unknown>) {
   try { const data = await fn(); (report.checks as Row[]).push({ name, passed: true, data }); console.log(name + ': PASS'); return data; }
@@ -168,6 +180,36 @@ async function main() {
       providerMax: String((await platformOne(sql`select coalesce(max(id),0) id from app.ai_provider_attempts`))!.id),
       knowledgeMax: String((await platformOne(sql`select coalesce(max(id),0) id from app.assistant_knowledge_attempts`))!.id) };
     return { project, settings, bindings: bindings.map(b => ({ id: String(b.id), audience: String(b.audience), status: String(b.status) })) };
+  });
+
+  // This round's audit window opens BEFORE any customer turn. In native mode
+  // the batch probe receipt must first prove the ledger receives this
+  // deployment's own FastGPT writes; in V2 mode the live ledger position alone
+  // is the baseline and delta correlation proves activity.
+  await step('audit window opened for this round', async () => {
+    assert.ok(workflowsFile && deployment && auditFile, 'FastGPT 审计未配置,不得判 PASS');
+    assert.ok(fs.existsSync(auditFile), 'FastGPT 审计文件缺失,不得判 PASS');
+    if (expectedExecutor === 'xiaok-native-executor-v1') {
+      const receiptPath = path.resolve(process.argv.find(a => a.startsWith('--audit-probe-receipt='))?.slice(22)
+        || '../tmp/xiaok-native-executor-20261111-recovery/four-questions/audit-probe.json');
+      assert.ok(fs.existsSync(receiptPath), '审计探针回执缺失:请在 V2 绑定期以同一批次运行 scripts/xiaok-audit-probe.ts,不得判 PASS');
+      const receipt = JSON.parse(fs.readFileSync(receiptPath, 'utf8')) as Row;
+      let opened: ReturnType<typeof openAuditWindow>;
+      try {
+        opened = openAuditWindow({ receipt, expected: { batchId, workflowsFile: deployment.workflowsFile,
+          auditFile: deployment.auditFile, serviceBase: base, deploymentFingerprint: deployment.fingerprint,
+          roundMode: 'xiaok-native-executor-v1' }, lines: auditLines() });
+      } catch (error) { assert.fail(readableAuditError(error)); }
+      auditBefore = opened.windowStart;
+      report.probe = { probeRunId: opened.probeRunId, batchId: opened.batchId, probeMode: opened.probeMode,
+        probeBinding: opened.probeBinding, verifiedAt: opened.verifiedAt, probeWindow: opened.probeWindow,
+        roundWindowStart: opened.windowStart, modeTransition: opened.modeTransition };
+      report.auditWindow = { batchId, mode: 'xiaok-native-executor-v1', start: auditBefore, end: null };
+      return report.probe;
+    }
+    auditBefore = auditLines().length;
+    report.auditWindow = { batchId, mode: expectedExecutor, start: auditBefore, end: null };
+    return report.auditWindow;
   });
 
   await step('customer entry and two natural turns with citation readback', async () => {
@@ -425,63 +467,39 @@ async function main() {
       .map(r => String(r.bodyRunId || '')).filter(Boolean));
     const knownRunIds = new Set([...auditedTurns.map(t => String(t.runId || '')).filter(Boolean), ...knownBodyRunIds]);
     // delta 只取本轮窗口内的审计行;每行形如 {kind,at,value},value 携带 runId/chatId。
-    const parseAuditLine = (line: string) => {
-      const parsed = JSON.parse(line) as Row;
-      return { kind: String(parsed.kind || ''), value: (parsed.value ?? {}) as Row };
-    };
-    const delta = auditLines().slice(auditBefore).map(parseAuditLine);
-    const kinds: Row = {};
-    for (const entry of delta) kinds[entry.kind] = (Number(kinds[entry.kind]) || 0) + 1;
+    // 窗口起点在本轮任何被测请求之前由已验证的批次探针回执打开;窗口内日志被
+    // 缩短或重建时 auditWindowEntries 明确失败,不按零调用判通过。
+    let delta: ReturnType<typeof auditWindowEntries>;
+    try { delta = auditWindowEntries(auditLines(), auditBefore); }
+    catch (error) { assert.fail(readableAuditError(error)); }
+    const kinds = auditKindCounts(delta);
     const seen = Object.keys(kinds);
     // 关联判定:记录直接携带的 runId,或 chatId 内嵌的 runId(stage 记录的
     // chatId 形如 xiaok-report-{runId}-{uuid},knowledge 记录形如
     // xiaok-knowledge-{runId}-{turn}-{uuid}),落入本轮已知 runId 集合即关联。
     const correlatedRunIds: string[] = [];
-    const correlate = (entry: { kind: string; value: Row }) => {
+    const correlate = (entry: ReturnType<typeof auditWindowEntries>[number]) => {
       const embedded = (/^xiaok-[a-z]+-(\d+)-/.exec(String(entry.value.chatId || '')) || [])[1] || '';
-      const runId = [String(entry.value.runId || ''), embedded].find(id => id && knownRunIds.has(id)) || '';
+      const runId = [entry.runId, embedded].find(id => id && knownRunIds.has(id)) || '';
       if (runId && !correlatedRunIds.includes(runId)) correlatedRunIds.push(runId);
       return runId;
     };
-    // 预览正控探针:delta 完全无法关联到本轮运行时(如 --stage-fastgpt=down 轮),
-    // 用一条合成知识草稿走真实预览问答,证明审计文件写入通道真实有效。探针
-    // 记录是来源验证正控,不是聊天路径事件,不计入零非 stage 断言(该断言已在
-    // 探针开始前闭合),探针后只断言探针自身的 knowledge 记录存在。
-    const runAuditProbe = async (): Promise<Row> => {
-      // The current deployment composes chat and stage bodies through local
-      // pipelines, so an in-window native probe cannot produce an audit record
-      // by design. The verified source is the same-window V2-mode probe receipt
-      // (scripts/xiaok-audit-probe.ts): while the V2 bridge was bound, one real
-      // V2 chat turn landed a run-correlated agentV2 record in this ledger.
-      const receiptPath = path.resolve(process.argv.find(a => a.startsWith('--audit-probe-receipt='))?.slice(22)
-        || '../tmp/xiaok-native-executor-20261111-recovery/four-questions/audit-probe.json');
-      assert.ok(fs.existsSync(receiptPath), '审计探针回执缺失:请在 V2 绑定期运行 scripts/xiaok-audit-probe.ts,不得判 PASS');
-      const receipt = JSON.parse(fs.readFileSync(receiptPath, 'utf8')) as Row;
-      assert.equal(path.resolve(String(receipt.auditFile)), path.resolve(String(auditPath)),
-        '探针回执必须指向同一审计账本,不得判 PASS');
-      const probeRunId = String(receipt.probeRunId);
-      const probeRecord = auditLines().map(parseAuditLine)
-        .find(record => record.kind === 'agentV2' && String(record.value.runId || '') === probeRunId);
-      assert.ok(probeRecord, '审计账本必须保留探针 run 的 agentV2 关联记录,不得判 PASS');
-      return { runId: probeRunId, receipt: receiptPath, verifiedAt: String(receipt.verifiedAt || '') };
-    };
-    let probe: Row | undefined;
     if (expectedExecutor === 'xiaok-native-executor-v1') {
-      // 原生执行器:聊天路径零 FastGPT,仅阶段报告正文属 P3 例外。
-      const nonStage = seen.filter(kind => kind !== 'stage');
+      // 原生执行器:聊天路径零 FastGPT,仅阶段报告正文属 P3 例外。本轮的
+      // 审计来源正控已在开场步骤按同一批次回执和实际日志位置建立。
+      const nonStage = auditNonStageKinds(kinds);
       assert.equal(nonStage.length, 0, 'Chat and auxiliary paths must not call FastGPT, saw: ' + nonStage.join(','));
-      // 零调用结论还需要已验证的审计来源:delta 里至少一条记录关联到本轮
-      // runId(stage 记录关联本轮正文 run 时同时是 ledger 活性正控);否则探针。
-      if (!delta.some(entry => correlate(entry))) probe = await runAuditProbe();
+      assert.ok(report.probe, '本轮审计来源正控缺失,零调用结论不得成立');
     } else {
       // 旧 FastGPT V2 模式:聊天本应通过被审计的桥调用,不做零调用断言,只拒绝未知 kind。
       const unknown = seen.filter(kind => !['agentV2', 'stage', 'knowledge', 'unified', 'rag', 'nativeKnowledge'].includes(kind));
       assert.equal(unknown.length, 0, 'Unknown FastGPT audit kinds, saw: ' + unknown.join(','));
       assert.ok(delta.some(entry => correlate(entry)), 'FastGPT 审计事件未能关联到本轮运行,不得判 PASS');
     }
-    report.fastgptAudit = { configured: true, auditFile: auditPath, before: auditBefore, after: auditLines().length, kinds,
+    if (report.auditWindow) (report.auditWindow as Row).end = auditLines().length;
+    report.fastgptAudit = { configured: true, auditFile: auditPath, batchId, roundWindow: { start: auditBefore, end: auditLines().length, kinds },
       expectedBinding, bindingMatchedTurns: auditedTurns.length - mismatched.length, totalTurns: auditedTurns.length, mode: expectedExecutor,
-      sourceVerified: true, correlatedRunIds, ...(probe ? { probe } : {}),
+      sourceVerified: true, correlatedRunIds, ...(report.probe ? { probe: report.probe } : {}),
       ...(stageFastgptDown ? { note: 'FastGPT deployment unreachable by configuration for this round' } : {}) };
     return report.fastgptAudit;
   });

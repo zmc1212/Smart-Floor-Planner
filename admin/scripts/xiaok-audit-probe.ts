@@ -1,8 +1,11 @@
 /** FastGPT audit-source positive control: while the deployment binds the V2
  * bridge, one real customer chat turn must land a run-correlated 'agentV2'
- * record in the configured audit ledger. The receipt (run id + ledger size)
- * is written for the same-window native rounds, whose zero-FastGPT assertion
- * then rests on a verified source instead of an uncorrelated empty log. */
+ * record in the configured audit ledger. The receipt is bound to the
+ * acceptance batch and to this deployment/audit source, and anchors the
+ * ledger prefix it saw, so a native round can prove - against the same
+ * ledger - that the log was neither shortened nor rebuilt before opening its
+ * own window. A historical receipt can never serve as another round's
+ * positive control. */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -14,9 +17,12 @@ import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction
 import { one, type Row } from '@/db/repositories/assistant-repository';
 import { closePostgresPool } from '@/lib/postgresql';
 import { fastGPTAgentV2Configuration } from '@/lib/assistant/fastgpt/agent-v2/config';
+import { auditDeployment, auditPrefixHash, auditProbeMode, auditProbeSchemaVersion } from '@/lib/assistant/fastgpt/agent-v2/audit-window';
 
 loadEnvConfig(process.cwd(), true);
 assert.ok(process.argv.includes('--development'));
+const batchId = String(process.argv.find(a => a.startsWith('--batch='))?.slice(8) || process.env.XIAOK_AUDIT_BATCH || '').trim();
+assert.ok(batchId, 'Acceptance batch id required: pass --batch=<id> (or XIAOK_AUDIT_BATCH) so the receipt belongs to this round');
 const eid = '1454', customerId = '645', leadId = '3132';
 const receiptPath = path.resolve(process.argv.find(a => a.startsWith('--receipt='))?.slice(10)
   || '../tmp/xiaok-native-executor-20261111-recovery/four-questions/audit-probe.json');
@@ -24,7 +30,10 @@ const target = new URL(process.env.DATABASE_URL!);
 assert.ok(['127.0.0.1', 'localhost'].includes(target.hostname) && target.port === '5432' && target.pathname === '/smart_floor_planner');
 const base = 'http://127.0.0.1:3006/api/miniprogram/assistant';
 const workflowsFile = process.env.XIAOK_FASTGPT_WORKFLOWS_FILE?.trim();
-const auditFile = workflowsFile ? (JSON.parse(fs.readFileSync(path.resolve(workflowsFile), 'utf8')).auditFile as string) : '';
+assert.ok(workflowsFile, 'XIAOK_FASTGPT_WORKFLOWS_FILE is required for the audit-source probe');
+const workflows = JSON.parse(fs.readFileSync(path.resolve(workflowsFile), 'utf8')) as Record<string, unknown>;
+const deployment = auditDeployment(path.resolve(workflowsFile), workflows, base);
+const auditFile = deployment.auditFile;
 const auditLines = () => fs.existsSync(auditFile) ? fs.readFileSync(auditFile, 'utf8').trim().split(/\r?\n/).filter(Boolean) : [];
 const auditBefore = auditLines().length;
 
@@ -78,11 +87,15 @@ async function main() {
     return undefined;
   })();
   assert.ok(correlated, 'The audit ledger must gain an agentV2 record correlated to the probe run ' + runId);
-  const receipt = { probeRunId: runId, conversationId: cid, auditFile, auditBeforeAfterProbe: auditLines().length,
-    binding: bound.binding, verifiedAt: new Date().toISOString() };
+  const ledger = auditLines(), after = ledger.length;
+  const verifiedAt = new Date().toISOString();
+  const receipt = { schemaVersion: auditProbeSchemaVersion, batchId, probeRunId: runId, conversationId: cid,
+    auditFile, deployment: { ...deployment },
+    probe: { mode: auditProbeMode, binding: bound.binding, verifiedAt },
+    window: { before: auditBefore, after, prefixHash: auditPrefixHash(ledger, after) } };
   fs.mkdirSync(path.dirname(receiptPath), { recursive: true });
   fs.writeFileSync(receiptPath, JSON.stringify(receipt, null, 2));
-  console.log(JSON.stringify({ passed: true, probeRunId: runId, auditLines: auditLines().length }));
+  console.log(JSON.stringify({ passed: true, batchId, probeRunId: runId, auditLines: after, receipt: receiptPath }));
   await closePostgresPool();
 }
 main().catch(async error => {

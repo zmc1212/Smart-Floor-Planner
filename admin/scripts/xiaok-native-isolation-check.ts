@@ -17,6 +17,7 @@ import { KnowledgeService } from '@/lib/assistant/knowledge/service';
 import { claimKnowledgeJob, runKnowledgeJob } from '@/lib/assistant/knowledge/index-worker';
 import { retrieveKnowledge } from '@/lib/assistant/knowledge/retrieval';
 import { nativeAgentRuntimeBinding } from '@/lib/assistant/fastgpt/agent-v2/config';
+import { auditKindCounts, auditNonStageKinds, auditWindowEntries, readableAuditError } from '@/lib/assistant/fastgpt/agent-v2/audit-window';
 
 loadEnvConfig(process.cwd(), true);
 assert.ok(process.argv.includes('--development'));
@@ -244,12 +245,14 @@ async function main() {
   await step('native-mode FastGPT audit criteria', async () => {
     assert.ok(workflowsFile, 'FastGPT 审计未配置,不得判 PASS');
     assert.ok(auditFile && fs.existsSync(auditFile), 'FastGPT 审计文件缺失,不得判 PASS');
-    const delta = auditLines().slice(auditBefore);
-    const kinds: Row = {};
-    for (const line of delta) { const kind = String((JSON.parse(line) as Row).kind || ''); kinds[kind] = (Number(kinds[kind]) || 0) + 1; }
-    const nonStage = Object.keys(kinds).filter(kind => kind !== 'stage');
+    let entries: ReturnType<typeof auditWindowEntries>;
+    try { entries = auditWindowEntries(auditLines(), auditBefore); }
+    catch (error) { assert.fail(readableAuditError(error)); }
+    const kinds = auditKindCounts(entries);
+    const nonStage = auditNonStageKinds(kinds);
     assert.equal(nonStage.length, 0, 'Chat path must not call FastGPT, saw: ' + nonStage.join(','));
-    report.fastgptAudit = { configured: true, auditFile, before: auditBefore, after: auditLines().length, kinds, mode: 'xiaok-native-executor-v1' };
+    report.fastgptAudit = { configured: true, auditFile, roundWindow: { start: auditBefore, end: auditLines().length, kinds },
+      mode: 'xiaok-native-executor-v1' };
     return report.fastgptAudit;
   });
 

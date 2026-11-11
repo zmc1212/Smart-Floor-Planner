@@ -6,6 +6,7 @@
  * provider call and never injects answers into a live journey. */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -27,6 +28,7 @@ import { nativeAgentRuntimeBinding } from '@/lib/assistant/fastgpt/agent-v2/conf
 import { knowledgePolicy } from '@/lib/assistant/knowledge-policy';
 import { appendMessage } from '@/lib/assistant/core/conversation';
 import { KnowledgeService } from '@/lib/assistant/knowledge/service';
+import { claimKnowledgeJob } from '@/lib/assistant/knowledge/index-worker';
 import type { ModelTurnOutput } from '@/lib/assistant/contracts/model';
 
 loadEnvConfig(process.cwd(), true);
@@ -49,6 +51,19 @@ const tenantOne = (q: ReturnType<typeof sql>) => read(tx => one(tx, q));
 const tenantRows = (q: ReturnType<typeof sql>) => read(tx => rows(tx, q));
 const platformOne = (q: ReturnType<typeof sql>) => withPlatformTransaction(tx => one(tx, q));
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+/** True once the resident Worker has completed another poll after this call.
+ * Used to place short fixture windows inside its ~2s idle gap. */
+async function waitForWorkerTick(timeoutMs = 7000) {
+  const healthFile = process.env.ASSISTANT_WORKER_HEALTH_FILE || path.join(os.tmpdir(), 'assistant-worker-health.json');
+  const heartbeat = () => { try { return Number(JSON.parse(fs.readFileSync(healthFile, 'utf8')).lastSuccessAt) || 0; } catch { return 0; } };
+  const initial = heartbeat();
+  if (!initial) return false;
+  for (let index = 0; index < timeoutMs / 100; index++) {
+    await sleep(100);
+    if (heartbeat() > initial) return true;
+  }
+  return false;
+}
 
 function binding() {
   const files = execFileSync('rg', ['--files', 'admin/src', 'admin/scripts'], { cwd: root, encoding: 'utf8' })
@@ -718,19 +733,6 @@ async function main() {
     const fixture = { documentId: String((created.document as Row).id), versionId: String((created.draft as Row).id), expectedVersion: 1, expectedEditVersion: 1 };
     await withTenantTransaction(control, tx => tx.execute(sql`update app.assistant_enterprise_settings set enabled=true,version=version+1 where enterprise_id=${control}`));
     const queued = await knowledge.execute('index', fixture, randomUUID());
-    // Competing claimable knowledge task: a normal queued index job held just
-    // outside this probe window. Running D must not change its status, attempts
-    // or lease — the unified scheduler may advance only its own target.
-    const competitorDoc = await knowledge.execute('create', { title: '[synthetic-recovery-competitor] 闭水试验竞争任务',
-      sourceType: 'manual_text', audience: 'customer_public',
-      body: '合成竞争任务条款：本任务只用于验证探针不认领其他知识任务，不进入任何回答。' }, randomUUID());
-    const competitor = await knowledge.execute('index', { documentId: String((competitorDoc.document as Row).id),
-      versionId: String((competitorDoc.draft as Row).id), expectedVersion: 1, expectedEditVersion: 1 }, randomUUID());
-    await withTenantTransaction(control, tx => tx.execute(sql`update app.assistant_jobs set available_at=now() + interval '10 minutes',version=version+1
-      where enterprise_id=${control} and id=${String(competitor.jobId)}`));
-    report.competitor = { enterpriseId: control, jobId: String(competitor.jobId) };
-    const competitorBefore = await withPlatformTransaction(tx => one(tx, sql`select status,attempts,lease_token,lease_expires_at
-      from app.assistant_jobs where id=${String(competitor.jobId)}`));
     // The knowledge task must advance through the unified scheduler while A's
     // chat slots are full. processAssistantJob is the real Worker entry; the
     // resident dev-server Worker ticks the same entry, so loop until B's job is
@@ -758,19 +760,6 @@ async function main() {
       where j.id=${String((report.decoy as Row).jobId)}`));
     assert.equal(String(decoyState!.status), 'queued', 'The unrelated decoy job stays queued');
     assert.equal(Number(decoyState!.attempts), 0, 'The unrelated decoy job is never claimed by this harness');
-    const competitorAfter = await withPlatformTransaction(tx => one(tx, sql`select status,attempts,lease_token,lease_expires_at
-      from app.assistant_jobs where id=${String(competitor.jobId)}`));
-    assert.equal(String(competitorAfter!.status), 'queued', 'The competing knowledge task stays queued');
-    assert.equal(Number(competitorAfter!.attempts), 0, 'The competing knowledge task is never claimed');
-    assert.equal(competitorAfter!.lease_token, null, 'The competing knowledge task keeps no lease');
-    assert.equal(competitorAfter!.lease_expires_at, null, 'The competing knowledge task lease is untouched');
-    assert.deepEqual({ status: competitorAfter!.status, attempts: competitorAfter!.attempts,
-      lease_token: competitorAfter!.lease_token, lease_expires_at: competitorAfter!.lease_expires_at },
-      { status: competitorBefore!.status, attempts: competitorBefore!.attempts,
-        lease_token: competitorBefore!.lease_token, lease_expires_at: competitorBefore!.lease_expires_at },
-      'The competing knowledge task row is byte-for-byte unchanged');
-    await withPlatformTransaction(tx => tx.execute(sql`update app.assistant_jobs set status='failed',last_error='recovery_check_synthetic_cleanup',version=version+1
-      where id=${String(competitor.jobId)} and status='queued'`));
     // Hygiene: release the labelled occupancy fixtures so they never run.
     await read(tx => tx.execute(sql`update app.assistant_jobs set status='failed',last_error='recovery_check_synthetic_cleanup',lease_token=null,lease_expires_at=null,version=version+1
       where enterprise_id=${eid} and run_id in (${sql.join([...busyRunIds, queuedRunId].map(id => sql`${id}`), sql`, `)})`));
@@ -781,9 +770,95 @@ async function main() {
     await withPlatformTransaction(tx => tx.execute(sql`update app.assistant_runs set status='failed',error_code='recovery_check_synthetic_cleanup',completed_at=now(),version=version+1
       where enterprise_id=${String(report.decoyEnterprise)} and id=${String((report.decoy as Row).runId)} and status='queued'`));
     (report.scenarios as Row).D = { slots, controlEnterprise: control, knowledgeJobId: String(queued.jobId),
-      knowledgeJob: jobStatus, claimedByScript, busyRuns: busyRunIds, queuedRunId,
-      competitor: { jobId: String(competitor.jobId), before: competitorBefore, after: competitorAfter } };
+      knowledgeJob: jobStatus, claimedByScript, busyRuns: busyRunIds, queuedRunId };
     return (report.scenarios as Row).D;
+  });
+
+  // Bounded scoped-claim isolation: both jobs are genuinely claimable when the
+  // claim runs. The competitor is ordered first, so an unscoped claim would
+  // take it; the real `claimKnowledgeJob({ enterpriseId, jobId })` must take
+  // only the probe and leave the competitor's status/attempts/lease untouched.
+  // The future available_at only hides the pair from the resident Worker while
+  // they are created; both are flipped into the live window immediately before
+  // the claim, never left outside candidacy.
+  await step('D2: scoped knowledge claim leaves an earlier claimable competitor untouched', async () => {
+    const control = String(((report.scenarios as Row).D as Row).controlEnterprise);
+    const adminId = await withTenantTransaction(control, async tx => String((await one(tx, sql`select id from app.admin_users where enterprise_id=${control}
+      and status='active' and app.assistant_knowledge_admin_is_current(id,${control}::bigint) order by id limit 1`))!.id));
+    const knowledge = new KnowledgeService({ enterpriseId: control, adminId });
+    const createIndexJob = async (title: string, body: string) => {
+      const created = await knowledge.execute('create', { title, sourceType: 'manual_text', audience: 'customer_public', body }, randomUUID());
+      const job = await knowledge.execute('index', { documentId: String((created.document as Row).id),
+        versionId: String((created.draft as Row).id), expectedVersion: 1, expectedEditVersion: 1 }, randomUUID());
+      return String(job.jobId);
+    };
+    // Exact ids as soon as each fixture exists: both the step and the main
+    // finalizer clean only these rows, never a name-pattern sweep.
+    const fixtureIds: string[] = [];
+    report.d2Fixtures = { jobIds: fixtureIds };
+    const stage = (ids: string[]) => withPlatformTransaction(tx => tx.execute(sql`update app.assistant_jobs
+      set available_at=now() + interval '5 minutes',version=version+1
+      where id in (${sql.join(ids.map(id => sql`${id}`), sql`, `)})`));
+    try {
+      // Start inside a fresh Worker gap so both jobs exist and are staged
+      // before the next poll can see them.
+      const fixtureQuietWindow = await waitForWorkerTick();
+      const competitorJobId = await createIndexJob('[synthetic-recovery-competitor] 闭水试验竞争任务',
+        '合成竞争任务条款：本任务只用于验证限定范围认领不领取其他可认领知识任务，不进入任何回答。');
+      fixtureIds.push(competitorJobId);
+      await stage([competitorJobId]);
+      const probeJobId = await createIndexJob('[synthetic-recovery-claim] 限定范围认领探针',
+        '合成探针条款：本任务只用于限定范围认领隔离验证，不进入任何回答。');
+      fixtureIds.push(probeJobId);
+      await stage([probeJobId]);
+      const fields = sql`status,attempts,lease_token,lease_expires_at`;
+      const competitorBefore = await withPlatformTransaction(tx => one(tx, sql`select ${fields}
+        from app.assistant_jobs where id=${competitorJobId}`));
+      // Wait for a fresh Worker tick so the next claim happens inside the ~2s
+      // quiet window instead of racing the resident poll.
+      const workerQuietWindow = await waitForWorkerTick();
+      // Live window: both jobs satisfy the production claim predicate, and the
+      // competitor sorts earlier by available_at.
+      await withPlatformTransaction(tx => tx.execute(sql`update app.assistant_jobs set
+        available_at=case when id=${competitorJobId} then now() - interval '1 second' else now() end,version=version+1
+        where id in (${sql.join(fixtureIds.map(id => sql`${id}`), sql`, `)})`));
+      const candidates = await withPlatformTransaction(tx => rows(tx, sql`select id from app.assistant_jobs
+        where kind in ('knowledge_index','knowledge_parse')
+          and ((status='queued' and available_at<=now()) or (status='running' and lease_expires_at<=now()))
+        order by available_at,id limit 50`));
+      const order = (candidates as Row[]).map(candidate => String(candidate.id));
+      const competitorOrder = order.indexOf(competitorJobId), probeOrder = order.indexOf(probeJobId);
+      assert.ok(competitorOrder >= 0 && probeOrder >= 0, 'Both jobs must be claimable in the live window');
+      assert.ok(competitorOrder < probeOrder, 'The competitor must sort before the probe so an unscoped claim would meet it first');
+      const claimable = await withPlatformTransaction(tx => one(tx, sql`select count(*)::int n from app.assistant_jobs
+        where id in (${sql.join(fixtureIds.map(id => sql`${id}`), sql`, `)}) and status='queued' and available_at<=now()`));
+      assert.equal(Number(claimable!.n), 2, 'Both jobs must satisfy the real claim predicate before the scoped claim');
+      const lease = await claimKnowledgeJob({ enterpriseId: control, jobId: probeJobId });
+      assert.ok(lease && String(lease.jobId) === probeJobId, 'The scoped claim must take the probe job');
+      const competitorAfter = await withPlatformTransaction(tx => one(tx, sql`select ${fields}
+        from app.assistant_jobs where id=${competitorJobId}`));
+      assert.deepEqual({ status: competitorAfter!.status, attempts: competitorAfter!.attempts,
+        lease_token: competitorAfter!.lease_token, lease_expires_at: competitorAfter!.lease_expires_at },
+        { status: competitorBefore!.status, attempts: competitorBefore!.attempts,
+          lease_token: competitorBefore!.lease_token, lease_expires_at: competitorBefore!.lease_expires_at },
+        'The genuinely claimable competitor job row is unchanged by the scoped claim');
+      const probeAfter = await withPlatformTransaction(tx => one(tx, sql`select status,attempts,lease_token
+        from app.assistant_jobs where id=${probeJobId}`));
+      assert.equal(String(probeAfter!.status), 'running', 'The probe job is claimed through the production path');
+      assert.equal(Number(probeAfter!.attempts), 1, 'The probe claim increments exactly one attempt');
+      assert.equal(String(probeAfter!.lease_token), String(lease!.token), 'The probe lease is the production token');
+      (report.scenarios as Row).D2 = { controlEnterprise: control, probeJobId, competitorJobId, fixtureQuietWindow, workerQuietWindow,
+        competitorOrder, probeOrder, claimable: Number(claimable!.n), leasedProbe: String(lease!.jobId),
+        competitorBefore, competitorAfter,
+        probeAfter: { status: String(probeAfter!.status), attempts: Number(probeAfter!.attempts) } };
+      return (report.scenarios as Row).D2;
+    } finally {
+      // Only this round's exact fixture ids are released; the competitor's
+      // unchanged state was asserted before this cleanup ran.
+      if (fixtureIds.length) await withPlatformTransaction(tx => tx.execute(sql`update app.assistant_jobs
+        set status='failed',last_error='recovery_check_synthetic_cleanup',lease_token=null,lease_expires_at=null,version=version+1
+        where id in (${sql.join(fixtureIds.map(id => sql`${id}`), sql`, `)}) and status in ('queued','running')`));
+    }
   });
 
   report.accounting.providerMaxAfter = await attemptsMax();
@@ -806,10 +881,10 @@ main().catch(error => { report.error = (error as Error).message; })
         from app.enterprises e where e.id=j.enterprise_id and e.name like '[synthetic-recovery-decoy]%' and j.status in ('queued','running')`));
       await withPlatformTransaction(tx => tx.execute(sql`update app.assistant_runs r set status='failed',error_code='recovery_check_synthetic_cleanup',completed_at=now(),version=version+1
         from app.enterprises e where e.id=r.enterprise_id and e.name like '[synthetic-recovery-decoy]%' and r.status in ('queued','running')`));
-      const competitor = report.competitor as Row | undefined;
-      if (competitor?.jobId) await withPlatformTransaction(tx => tx.execute(sql`update app.assistant_jobs
+      const d2JobIds = (((report.d2Fixtures as Row | undefined)?.jobIds as string[] | undefined) || []);
+      if (d2JobIds.length) await withPlatformTransaction(tx => tx.execute(sql`update app.assistant_jobs
         set status='failed',last_error='recovery_check_synthetic_cleanup',lease_token=null,lease_expires_at=null,version=version+1
-        where id=${String(competitor.jobId)} and status in ('queued','running')`));
+        where id in (${sql.join(d2JobIds.map(id => sql`${id}`), sql`, `)}) and status in ('queued','running')`));
       const after = binding(), changed = Object.keys({ ...before, ...after }).filter(f => before[f] !== after[f]);
       report.drift = changed; report.bindingAfter = createHash('sha256').update(JSON.stringify(after)).digest('hex');
       if (changed.length) (report.failures as Row[]).push({ name: 'source drift', files: changed });

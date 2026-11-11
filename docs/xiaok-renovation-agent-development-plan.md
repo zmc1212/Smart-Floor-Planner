@@ -22,15 +22,15 @@
 
 | 字段 | 当前记录 |
 | --- | --- |
-| 交付与负责人 | 小K原生执行链P2公开工地/网页链路5组复审修复（2026-11-11用户定向）：同一V2 ticket网页工具串行、公开工地回执恢复交付、recovery夹具真实认领、联网验收完整链路、知识认领隔离。单一负责人，禁止自动新建或交接聊天，仅用户明确要求才新建/转移。方法约束：先验证真实回答，禁止补丁循环；模型解释、KnowledgeRetriever/Evidence供授权材料，代码守权限/来源/动作/回执；两轮失败停循环，不堆提示词或换模型。 |
+| 交付与负责人 | 小K原生执行链P2复审补缺（2026-11-11用户定向）：审计正控回执与本轮窗口关联、真正可认领竞争任务的限定范围认领隔离。单一负责人，禁止自动新建或交接聊天，仅用户明确要求才新建/转移。方法约束：先验证真实回答，禁止补丁循环；模型解释、KnowledgeRetriever/Evidence供授权材料，代码守权限/来源/动作/回执；两轮失败停循环，不堆提示词或换模型。 |
 | 用户入口与结果 | 业主645四问由`xiaok-native-executor-v1`回答；联网轮须真实搜索→读页→答案带可打开网页引用；已知定位的公开工地空结果恢复后仍直接交付该确定结果，不再询问城市。 |
-| 已证缺口 | 同一ticket重叠网页回调被未闭合标记误判；恢复2010回执未重建delivery outcome；W2 factory/W3用伪造租约绕过生产认领；联网验收search-only可空洞通过；旧审计探针全局claim/预览凭据（HEAD已改V2回执探针，认证问题不再存在）。 |
-| 已完成 | V2 ticket级串行（授权/序号/执行/后置复验）；2010回执创建即恢复outcome并缓存复用；W2 factory/W3/H改真实claimJob并新增S；联网轮只认完整链路；知识claim scope+竞争任务；单测30/30、定向类型0、lint0错误。 |
-| 下一动作 | 复审本轮diff与计划检查后聚焦提交；四问联网完整链路若再次出现模型格式失败，按两轮规则停止重采样并保留原失败。 |
-| 必要验收 | recovery r15 13/13（含W2 factory/W3/S/H/D竞争任务）；four-questions-r3 5/5（readSteps=1、readPages=1、两条可打开w:引用）；首败r12–r14、four-questions-r2保留；未跑full-flow不作通过。 |
-| 失败与调用边界 | r12 worker抢先认领W2夹具、r13 ledger期望、r14 S字段断言、four-questions-r2 web run missing_citation+源码drift均原样保留；不重放unknown provider；仅1454开发库；无真实客户写入、外部消息或生产。 |
-| 环境与资源 | 远程开发库经SSH隧道5432；3006 dev server热更新与常驻Worker；外部搜索/读页按测试需要，失败如实标未验。 |
-| 证据与后继 | `tmp/xiaok-native-executor-20261111-webrec/r15/`、`four-questions-r3/`；模块清单双语已更新；后继按P2剩余入口迁移。 |
+| 已证缺口 | 旧回执只比对路径与历史probeRunId即接受为同窗口正控，回执水位可越过缩短日志；四问直接用回执after当本轮before；D的竞争任务被推迟10分钟，未证明可认领竞争任务不被误领；workflows配置变更加进程启动哈希保护，切换模式必须重启dev栈（本轮实测）。 |
+| 已完成 | 新增`agent-v2/audit-window.ts`：批次+部署指纹+V2→native模式+日志前缀锚点；本轮窗口在正控后按实际日志位置开启，截断/替换/越界明确失败；四问/full-flow/isolation复用同一校验并删除previewRunId旧字段。recovery新增D2：两任务真实可认领、竞争排序在前、实际`claimKnowledgeJob({enterpriseId,jobId})`只领探针且竞争row四字段不变；D保留跨企业调度。保留V2 ticket串行、2010回执恢复、历史来源复验、网页完整链路与unknown保护。 |
+| 下一动作 | 复审本轮diff后聚焦提交；按唯一计划继续下一项入口迁移。 |
+| 必要验收 | audit-window单测7/7；four-questions-r4b 5/5（probe3275、批次关联、roundWindow 548→548、readSteps=1/readPages=1/两条可打开w:引用）；recovery r16 14/14（D2 claimable2、竞争order0/探针order1、竞争不变）；isolation r5b 5/5；首败four-questions-r4 run3276 missing_citation、isolation-r5 ECONNREFUSED、probe首跑run3274配置热变更保留；full-flow未执行，不作通过。 |
+| 失败与调用边界 | 保留r12–r14、four-questions-r2及本轮首败；不重放unknown provider；仅1454开发库；无真实客户写入、外部消息或生产。 |
+| 环境与资源 | 远程开发库经SSH隧道5432；3006 dev server与常驻Worker；V2探针与native轮之间需重启dev栈重载workflows配置；外部搜索/读页按测试需要，失败如实标未验。 |
+| 证据与后继 | `tmp/xiaok-native-executor-20261111-webrec/four-questions-r4/`（probe与首败）、`four-questions-r4b/`、`r16/`、`tmp/xiaok-native-executor-p2-isolation-r5b/`；模块清单双语已更新；后继按P2剩余入口迁移。 |
 
 ## 3. 复用哪些成果
 
