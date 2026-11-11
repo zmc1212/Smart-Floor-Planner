@@ -28,7 +28,8 @@ import { dialogueDesignerRecommendation, dialoguePublicSitesRecommendation, publ
   type RecommendToolRuntime } from './dialogue-recommend-tools';
 import { dialogueHistoryRecall, type HistoryToolRuntime } from './dialogue-history-tools';
 import { parseWebQuery, webSearchTool, type WebSearchSnapshot } from './web';
-import { bindReadToolInput, readToolContext, readToolsForContext, type ReadToolContext } from './read-tool-input';
+import { bindReadToolInput, readToolContext, readToolContextProtocol, readToolsForContext,
+  type ReadToolContext } from './read-tool-input';
 import { parsePublicRead, publicResearchTools } from './public-research';
 import { historyRefsAvailable, historySynthesisSources, historyTool, parseHistoryQuery,
   type HistoryRef, type HistorySnapshot } from './history';
@@ -236,6 +237,45 @@ function contractFromCalls(entry: Record<string, unknown>, calls: Array<{ argume
   return serverBound ? readToolContext(entry) : undefined;
 }
 
+/** The run's read contract is fixed before the first model dispatch. Recovery
+ * must not re-decide it from model output: a model that emits an identity the
+ * current contract forbids would otherwise rewrite the server-side contract
+ * that is supposed to reject it. */
+export const nativeRunReadContractProtocol = 'xiaok-run-read-contract-v1';
+export const runReadContractStep = 1002;
+export const runReadContractKind = 'agent_read_contract';
+export type NativeRunReadContract = { protocol: typeof nativeRunReadContractProtocol; version: 1;
+  mode: 'server-bound' | 'original'; leadId: string | null };
+
+/** The contract a run started by this executor is fixed to: the authorized
+ * conversation entry decides the server-bound identity before any dispatch. */
+export function nativeRunReadContract(entry: Record<string, unknown>): NativeRunReadContract {
+  return runReadContractRecord(readToolContext(entry));
+}
+
+/** Project a decided contract onto its durable record. The original contract
+ * has no server identity, so it records the mode instead of guessing one. */
+export function runReadContractRecord(context: ReadToolContext | undefined): NativeRunReadContract {
+  return { protocol: nativeRunReadContractProtocol, version: 1,
+    mode: context ? 'server-bound' : 'original', leadId: context?.leadId ?? null };
+}
+
+/** A recorded contract is authoritative. A malformed record, a protocol
+ * mismatch or identity drift against the current entry fails closed instead of
+ * re-deciding from model output. Historical runs without a record keep the
+ * legacy inference limited to them. */
+export function restoreRunReadContract(entry: Record<string, unknown>,
+  saved: Row | null | undefined): ReadToolContext | undefined {
+  if (!saved || typeof saved !== 'object' || Array.isArray(saved)
+    || Object.keys(saved).some(key => !['protocol', 'version', 'mode', 'leadId'].includes(key))
+    || saved.protocol !== nativeRunReadContractProtocol || saved.version !== 1
+    || (saved.mode !== 'server-bound' && saved.mode !== 'original')
+    || (saved.mode === 'server-bound' ? saved.leadId !== null && typeof saved.leadId !== 'string' : saved.leadId !== null))
+    fail('invalid_agent_checkpoint', 409);
+  if (saved.mode === 'original') return undefined;
+  return readToolContext(entry, { readContext: { protocol: readToolContextProtocol, leadId: saved.leadId as string | null } });
+}
+
 /** A public-site answer has no CITE id for the snapshot. The model may still
  * emit a non-protocol placeholder; with no knowledge/web evidence this run has
  * nothing to bind it to, so remove the artifact before delivery. Valid
@@ -420,6 +460,24 @@ export async function backfillSuggestionProviderAttempt(enterpriseId: string, ru
   });
 }
 
+/** Record the run's fixed contract before any model or tool dispatch. If the
+ * row cannot be saved — or an unrelated row already occupies the step — the
+ * run fails before the provider is reached. Checkpoint updates write 1000 only,
+ * so they can never overwrite or drop this record. */
+async function establishRunReadContract(lease: Lease, record: NativeRunReadContract) {
+  await withTenantTransaction(lease.enterpriseId, async tx => {
+    await runContext(tx, lease);
+    await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
+      values(${lease.enterpriseId},${lease.runId},${runReadContractStep},${runReadContractKind},'succeeded',
+      ${JSON.stringify(record)}::jsonb)
+      on conflict(enterprise_id,run_id,step_seq) do nothing`);
+    const saved = await one(tx, sql`select kind,status,input_summary from app.assistant_run_steps
+      where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${runReadContractStep}`);
+    if (!saved || String(saved.kind) !== runReadContractKind || String(saved.status) !== 'succeeded'
+      || fingerprint(saved.input_summary) !== fingerprint(record)) fail('context_changed', 409);
+  });
+}
+
 export async function processNativeAgentAnswer(lease: Lease) {
   let timer: ReturnType<typeof setInterval> | undefined;
   // Set when a guard meets a dispatched-but-unrecorded model step: the run
@@ -581,6 +639,11 @@ export async function processNativeAgentAnswer(lease: Lease) {
       const conversationId = String(conversation.id);
       const checkpoint = await one(tx, sql`select private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
         and run_id=${lease.runId} and step_seq=1000 and kind='agent_checkpoint' and status='succeeded'`);
+      // The run's read contract is recorded before its first model dispatch.
+      // A record (even one occupying the step with another kind) is read here
+      // so a broken record fails closed instead of being silently replaced.
+      const readContract = await one(tx, sql`select kind,status,input_summary from app.assistant_run_steps
+        where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${runReadContractStep}`);
       // 1003 is the run's public-source dependency record: written before the
       // first model dispatch, so a resumed checkpoint can prove exactly which
       // published versions its saved model messages were built from.
@@ -648,7 +711,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
         if (record.category === 'query_embedding' && !searchSeqs.has(1300 + seq)) open.push(key);
         if ((record.category === 'web_search' || record.category === 'web_read') && !webSeqs.has(seq)) open.push(key);
       }
-      return { checkpoint, publicContext, searches, businesses, webs, histories, fixed, openOperations: open,
+      return { checkpoint, readContract, publicContext, searches, businesses, webs, histories, fixed, openOperations: open,
         triggerSeq: trigger?.seq ? String(trigger.seq) : null, lastModel, modelSteps, reusedModel };
     });
     if (saved.openOperations.length) { outcomeUnknown = true; fail('provider_outcome_unknown', 503); }
@@ -702,14 +765,23 @@ export async function processNativeAgentAnswer(lease: Lease) {
     let lastAttemptId: string | null = saved.lastModel?.provider_attempt_id ? String(saved.lastModel.provider_attempt_id) : null;
     const toolState = recoveredDialogueToolState(saved.searches, saved.businesses, saved.webs, saved.histories, saved.fixed);
     const resume = saved.checkpoint?.private_checkpoint as AgentCheckpoint | undefined;
-    // The persisted checkpoint decides the read-identity contract: a resumed
-    // run keeps the contract its saved tool calls were produced under, while a
-    // new run binds the conversation's authorized lead server-side. A result
-    // already saved for the resume turn counts as that run's own call because
-    // the model port replays it verbatim instead of dispatching again.
-    const readContext = nativeReadContract(initial.conversation.entry_snapshot as Record<string, unknown>,
-      { summary: saved.checkpoint?.input_summary as Row | null | undefined, checkpoint: resume,
+    const entrySnapshot = initial.conversation.entry_snapshot as Record<string, unknown>;
+    // The recorded contract is authoritative: a run started by this executor
+    // never lets an interrupted model result (or stale history) re-decide the
+    // identity contract. Only historical runs without the record use the
+    // legacy inference, and that result is recorded right away so the next
+    // recovery cannot guess again.
+    let readContext: ReadToolContext | undefined;
+    if (saved.readContract) {
+      if (String(saved.readContract.kind) !== runReadContractKind) fail('context_changed', 409);
+      if (String(saved.readContract.status) !== 'succeeded') fail('invalid_agent_checkpoint', 409);
+      readContext = restoreRunReadContract(entrySnapshot, saved.readContract.input_summary as Row);
+    } else {
+      readContext = nativeReadContract(entrySnapshot, {
+        summary: saved.checkpoint?.input_summary as Row | null | undefined, checkpoint: resume,
         reused: settledModelOutput(saved.reusedModel) });
+      await establishRunReadContract(lease, runReadContractRecord(readContext));
+    }
     for (const step of saved.searches) {
       const evidence = step.private_checkpoint as Evidence[];
       if (!Array.isArray(evidence) || !evidence.length) continue;

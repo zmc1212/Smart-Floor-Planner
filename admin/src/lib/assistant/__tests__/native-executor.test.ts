@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { composeNativeDelivery, explicitPublicSiteReference, nativeCitationFeedback, nativeExecutorPrompt, nativeReplySiteText, recoveredDialogueToolState,
   nativePublicSiteSelection, nativePublicSiteWithdrawnText, resumeUsedPublicSite, samePublicRef, nativeReadContract,
+  nativeRunReadContract, restoreRunReadContract, runReadContractRecord,
   stripUnboundCitationPlaceholders, synthesisHistoryFields, xiaokNativeExecutorProtocol } from '../agent/native-executor';
 import { nativeAgentRuntimeBinding } from '../fastgpt/agent-v2/config';
 import { nativeHistoryCheckpoint, nativePublicSiteHistoryAllowed, priorAnswerBusinessObject } from '../fastgpt/rag-session';
@@ -546,6 +547,33 @@ test('the read contract follows the model result this resume actually reuses', (
     checkpoint: stale }), { protocol: 'conversation-read-v1', leadId: '3134' });
   assert.throws(() => nativeReadContract(entry, { summary: { readContext: { protocol: 'conversation-read-v1', leadId: '9999' } },
     checkpoint: stale }), /context_changed/);
+});
+
+test('a run contract recorded before dispatch survives recovery and rejects drifting identities', () => {
+  const entry = { kind: 'lead', id: '3134' } as const;
+  // A new run fixes the server-bound contract before any model output exists.
+  const record = nativeRunReadContract(entry);
+  assert.deepEqual(record, { protocol: 'xiaok-run-read-contract-v1', version: 1,
+    mode: 'server-bound', leadId: '3134' });
+  assert.deepEqual(restoreRunReadContract(entry, record), { protocol: 'conversation-read-v1', leadId: '3134' });
+  // The legacy inference would flip to the original contract when a model
+  // result emits an identity; the recorded contract never re-decides.
+  const illegal = { text: '', toolCalls: [{ id: 'call-biz', name: 'query_business',
+    arguments: '{"domain":"appointments","leadId":"3134"}' }], finishReason: 'tool_calls', providerRequestId: null, usage: null };
+  assert.equal(nativeReadContract(entry, { reused: illegal }), undefined);
+  assert.deepEqual(restoreRunReadContract(entry, record), { protocol: 'conversation-read-v1', leadId: '3134' },
+    'The fixed contract rejects the identity the resumed result tried to introduce');
+  // Identity or protocol drift and malformed records fail closed.
+  assert.throws(() => restoreRunReadContract({ kind: 'lead', id: '9999' }, record), /context_changed/);
+  assert.throws(() => restoreRunReadContract({ kind: 'general' }, record), /context_changed/);
+  assert.throws(() => restoreRunReadContract(entry, { ...record, leadId: null }), /context_changed/);
+  assert.throws(() => restoreRunReadContract(entry, { ...record, protocol: 'other' }), /invalid_agent_checkpoint/);
+  assert.throws(() => restoreRunReadContract(entry, { ...record, mode: 'other' }), /invalid_agent_checkpoint/);
+  assert.throws(() => restoreRunReadContract(entry, { ...record, extra: 1 }), /invalid_agent_checkpoint/);
+  // A historical original contract records that mode and stays original.
+  assert.deepEqual(runReadContractRecord(undefined), { protocol: 'xiaok-run-read-contract-v1', version: 1,
+    mode: 'original', leadId: null });
+  assert.equal(restoreRunReadContract(entry, runReadContractRecord(undefined)), undefined);
 });
 
 test('a resume behind its saved model result validates and dispatches on the same contract', async () => {

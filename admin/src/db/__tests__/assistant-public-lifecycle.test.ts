@@ -12,7 +12,7 @@ import { deleteAssistantData } from '@/db/repositories/assistant-cleanup';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 import { ConversationService, appendMessage, newRun } from '@/lib/assistant/core/conversation';
 import { claimJob, completeRun, markProviderStarted, type Lease } from '@/lib/assistant/infrastructure/job-queue';
-import { processNativeAgentAnswer, nativeReadContract, xiaokNativeExecutorProtocol,
+import { processNativeAgentAnswer, nativeReadContract, nativeRunReadContract, xiaokNativeExecutorProtocol,
   nativeExecutorPromptVersion } from '@/lib/assistant/agent/native-executor';
 import { nativeConversation } from '@/lib/assistant/fastgpt/rag-session';
 import { queryBusiness } from '@/lib/assistant/agent/business-tools';
@@ -335,6 +335,41 @@ async function seedModelAheadOfCheckpoint(lease: Lease,
   });
 }
 
+/** A run started by the current executor records its read contract before the
+ * first model dispatch. This fixture reproduces the interruption after that
+ * record and the first model result, but before the first checkpoint: the
+ * model emitted an explicit identity the recorded contract forbids. */
+async function seedContractAheadOfCheckpoint(lease: Lease,
+  site: { siteId: string; versionId: string; contentHash: string; leadId: string }) {
+  await withTenantTransaction(enterpriseId, async tx => {
+    await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
+      values(${enterpriseId},${lease.runId},1002,'agent_read_contract','succeeded',
+      ${JSON.stringify(nativeRunReadContract({ kind: 'lead', id: site.leadId }))}::jsonb)`);
+    await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs,input_summary)
+      values(${enterpriseId},${lease.runId},1003,'agent_public_context','succeeded',
+      ${JSON.stringify([{ siteId: site.siteId, versionId: site.versionId, contentHash: site.contentHash }])}::jsonb,
+      ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, current: { siteId: site.siteId, versionId: site.versionId } })}::jsonb)`);
+    const attempt = (await one(tx, sql`insert into app.ai_provider_attempts(enterprise_id,assistant_run_id,provider_config_id,
+      provider_key,adapter_type,capability,logical_model_key,remote_model,status,accepted,metadata)
+      values(${enterpriseId},${lease.runId},${providerConfigId},'synthetic','openai_compatible','chat','chat.general',
+      'synthetic-lifecycle-model','succeeded',true,'{}'::jsonb) returning id`))!;
+    await tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,provider_attempt_id,operation_key,category,quantity,measurement_kind)
+      values(${enterpriseId},${lease.runId},${String(attempt.id)},${'agent:' + lease.runId + ':0'},'tokens',100,'observed')`);
+    const output = { text: '', toolCalls: [{ id: 'call-biz', name: 'query_business',
+      arguments: JSON.stringify({ domain: 'appointments', leadId: site.leadId }) }],
+      finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 10, outputTokens: 4 } };
+    await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,provider_attempt_id,private_checkpoint,input_summary)
+      values(${enterpriseId},${lease.runId},1100,'agent_model','succeeded',${String(attempt.id)},
+      ${JSON.stringify(output)}::jsonb,${JSON.stringify({ turn: 0, purpose: 'answer', promptVersion: nativeExecutorPromptVersion })}::jsonb)`);
+    // Suggestions were already produced before the interruption; reusing them
+    // keeps this fixture from dispatching an unrelated provider call.
+    await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,private_checkpoint,input_summary)
+      values(${enterpriseId},${lease.runId},1014,'agent_suggestion_model','succeeded',
+      ${JSON.stringify({ text: '量房要准备什么\n可以改时间吗\n附近还有什么工地' })}::jsonb,
+      ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, purpose: 'suggestions', promptVersion: nativeExecutorPromptVersion })}::jsonb)`);
+  });
+}
+
 /** A model result persisted with its attempt and usage, but no checkpoint and
  * no public dependency record: the interrupted state from the review. */
 async function seedModelWithoutCheckpoint(lease: Lease) {
@@ -602,6 +637,26 @@ async function resumeWithSyntheticModel(lease: Lease, text: string) {
   }
 }
 
+/** Serve the executor's provider calls from a deterministic sequence. The
+ * synthetic HTTP boundary is counted separately from real supplier usage. */
+async function withSyntheticTurns<T>(replies: Array<() => Response | Promise<Response>>,
+  body: (count: () => number) => Promise<T>): Promise<T> {
+  const originalFetch = globalThis.fetch, originalModel = process.env.ASSISTANT_TEXT_MODEL,
+    originalThinking = process.env.ASSISTANT_TEXT_DISABLE_THINKING;
+  let count = 0;
+  try {
+    delete process.env.ASSISTANT_TEXT_MODEL;
+    delete process.env.ASSISTANT_TEXT_DISABLE_THINKING;
+    globalThis.fetch = (async () => replies[Math.min(count++, replies.length - 1)]()) as typeof fetch;
+    return await body(() => count);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalModel === undefined) delete process.env.ASSISTANT_TEXT_MODEL; else process.env.ASSISTANT_TEXT_MODEL = originalModel;
+    if (originalThinking === undefined) delete process.env.ASSISTANT_TEXT_DISABLE_THINKING;
+    else process.env.ASSISTANT_TEXT_DISABLE_THINKING = originalThinking;
+  }
+}
+
 async function resumeState(runId: string) {
   return {
     steps: await withTenantTransaction(enterpriseId, tx => rows(tx, sql`select step_seq,kind,capability_name,status,
@@ -802,6 +857,113 @@ test('a no-leadId model result saved ahead of an old checkpoint resumes under th
   const messages = await assistantMessages(site.conversationId);
   assert.equal(messages.length, 1);
   assert.match(JSON.stringify(messages[0].content), /量房预约已确认/);
+});
+
+test('the run contract is recorded before the first dispatch and rejects an identity it forbids', async () => {
+  const site = await publishedSite(prefix + '-contract-dispatch');
+  const { lease } = await pending(site.conversationId, '我的量房预约是什么时候？');
+  const seenAtDispatch: Array<Row | null | undefined> = [];
+  const dispatched = await withSyntheticTurns([
+    async () => {
+      // The model port is already waiting on the provider here: the contract
+      // must be durable before this request exists.
+      seenAtDispatch.push(await withTenantTransaction(enterpriseId, tx => one(tx, sql`select input_summary
+        from app.assistant_run_steps where enterprise_id=${enterpriseId} and run_id=${lease.runId}
+          and step_seq=1002 and kind='agent_read_contract'`)));
+      return Response.json({ choices: [{ finish_reason: 'tool_calls', message: { content: null, tool_calls: [
+        { id: 'call-biz', type: 'function', function: { name: 'query_business',
+          arguments: JSON.stringify({ domain: 'appointments', leadId: site.leadId }) } }] } }],
+        usage: { prompt_tokens: 5, completion_tokens: 6 } });
+    },
+    () => Response.json({ choices: [{ finish_reason: 'stop', message: { content: '您的量房预约已确认，安排在两天后上午。' } }],
+      usage: { prompt_tokens: 5, completion_tokens: 6 } }),
+  ], async count => { await processNativeAgentAnswer(lease); return count(); });
+  assert.equal(dispatched >= 2, true, 'The first saved result and the follow-up answer both dispatch');
+  const run = await service.run(lease.runId);
+  assert.equal(run.status, 'succeeded', String(run.errorCode ?? ''));
+  assert.equal(seenAtDispatch.length, 1, 'The first provider call sees exactly one recorded contract');
+  assert.deepEqual(seenAtDispatch[0]!.input_summary as Row, nativeRunReadContract({ kind: 'lead', id: site.leadId }));
+  const state = await resumeState(lease.runId);
+  const models = state.steps.filter(step => String(step.kind) === 'agent_model');
+  assert.deepEqual(models.map(step => Number(step.step_seq)), [1100, 1110]);
+  assert.equal(state.steps.filter(step => String(step.kind) === 'agent_tool'
+    && String(step.capability_name) === 'query_business').length, 0,
+    'The identity the contract forbids is never dispatched');
+  const checkpoint = await readCheckpoint(lease.runId);
+  assert.equal(Number((checkpoint.checkpoint as Row).argumentFailures), 1);
+  assert.ok(((checkpoint.checkpoint as Row).messages as Row[]).some(message => String(message.role) === 'tool'
+    && String(message.content).includes('不要传leadId')), 'The bound contract rejects the explicit identity');
+  assert.equal(String(((checkpoint.summary as Row).readContext as Row).leadId), site.leadId);
+});
+
+test('a contract recorded before dispatch keeps the bound identity after the first result is interrupted', async () => {
+  const site = await publishedSite(prefix + '-contract-interrupted');
+  const { lease } = await pending(site.conversationId, '我的量房预约是什么时候？');
+  await markProviderStarted(lease);
+  await seedContractAheadOfCheckpoint(lease, site);
+  const seeded = (await withTenantTransaction(enterpriseId, tx => one(tx, sql`select provider_attempt_id,private_checkpoint
+    from app.assistant_run_steps where enterprise_id=${enterpriseId} and run_id=${lease.runId}
+      and step_seq=1100 and kind='agent_model'`)))!;
+  const attemptsBefore = await providerAttempts(lease.runId);
+  assert.equal(attemptsBefore, 1);
+  assert.ok(!await withTenantTransaction(enterpriseId, tx => one(tx, sql`select step_seq
+    from app.assistant_run_steps where enterprise_id=${enterpriseId} and run_id=${lease.runId} and step_seq=1000`)),
+    'The first checkpoint was never written');
+  await resumeWithSyntheticModel(lease, '您的量房预约已确认，安排在两天后上午。');
+  const run = await service.run(lease.runId);
+  assert.equal(run.status, 'succeeded', String(run.errorCode ?? ''));
+  const state = await resumeState(lease.runId);
+  assert.equal(state.steps.filter(step => String(step.kind) === 'agent_tool'
+    && String(step.capability_name) === 'query_business').length, 0,
+    'The resumed run applies the same rejection instead of executing the explicit identity');
+  const models = state.steps.filter(step => String(step.kind) === 'agent_model');
+  assert.deepEqual(models.map(step => Number(step.step_seq)), [1100, 1110],
+    'The saved result is replayed and only the correction turn dispatches');
+  assert.equal(String(models[0].provider_attempt_id), String(seeded.provider_attempt_id));
+  assert.deepEqual(models[0].private_checkpoint, seeded.private_checkpoint, 'The original result is not replayed');
+  assert.equal(state.attempts.length, 2, 'The synthetic correction turn is counted separately');
+  const usage = await withTenantTransaction(enterpriseId, tx => rows(tx, sql`select provider_attempt_id,quantity,measurement_kind
+    from app.assistant_usage_records where enterprise_id=${enterpriseId} and run_id=${lease.runId} order by id`));
+  assert.equal(usage.length, 2);
+  const seededUsage = usage.find(row => String(row.provider_attempt_id) === String(seeded.provider_attempt_id))!;
+  assert.equal(Number(seededUsage.quantity), 100);
+  assert.equal(String(seededUsage.measurement_kind), 'observed', 'The original usage is neither rewritten nor replayed');
+  const checkpoint = await readCheckpoint(lease.runId);
+  assert.equal(Number((checkpoint.checkpoint as Row).argumentFailures), 1,
+    'The same single correction as an uninterrupted run');
+  assert.ok(((checkpoint.checkpoint as Row).messages as Row[]).some(message => String(message.role) === 'tool'
+    && String(message.content).includes('不要传leadId')), 'The bound contract rejects the explicit identity');
+  assert.equal(String(((checkpoint.summary as Row).readContext as Row).leadId), site.leadId,
+    'The checkpoint keeps the contract that was recorded before dispatch');
+  const contract = (await withTenantTransaction(enterpriseId, tx => one(tx, sql`select input_summary
+    from app.assistant_run_steps where enterprise_id=${enterpriseId} and run_id=${lease.runId}
+      and step_seq=1002 and kind='agent_read_contract'`)))!;
+  assert.deepEqual(contract.input_summary as Row, nativeRunReadContract({ kind: 'lead', id: site.leadId }),
+    'No recovery rewrites the recorded contract');
+});
+
+test('a run that cannot record its contract never dispatches the model', async () => {
+  const site = await publishedSite(prefix + '-contract-blocked');
+  const { lease } = await pending(site.conversationId, '我的量房预约是什么时候？');
+  // An unrelated row occupies the contract step: the run cannot save its fixed
+  // contract, so the provider must never be reached.
+  await withTenantTransaction(enterpriseId, tx => tx.execute(sql`insert into app.assistant_run_steps(
+    enterprise_id,run_id,step_seq,kind,status,input_summary,private_checkpoint)
+    values(${enterpriseId},${lease.runId},1002,'agent_checkpoint','succeeded','{}'::jsonb,'{}'::jsonb)`));
+  const dispatched = await withSyntheticTurns([
+    () => Response.json({ choices: [{ finish_reason: 'stop', message: { content: '不应派发。' } }],
+      usage: { prompt_tokens: 1, completion_tokens: 1 } }),
+  ], async count => { await processNativeAgentAnswer(lease); return count(); });
+  assert.equal(dispatched, 0, 'No provider request follows a contract that cannot be recorded');
+  assert.equal(await providerAttempts(lease.runId), 0);
+  const run = await service.run(lease.runId);
+  assert.equal(run.status, 'failed');
+  assert.equal(run.errorCode, 'context_changed');
+  const models = await withTenantTransaction(enterpriseId, tx => rows(tx, sql`select step_seq
+    from app.assistant_run_steps where enterprise_id=${enterpriseId} and run_id=${lease.runId}
+      and kind='agent_model'`));
+  assert.equal(models.length, 0);
+  assert.equal((await assistantMessages(site.conversationId)).length, 0);
 });
 
 test('a follow-up inherits the original public dependency and drops the answer once withdrawn', async () => {
