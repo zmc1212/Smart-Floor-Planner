@@ -1,20 +1,25 @@
-/** B5.2 acceptance: one real daily report for one synthetic project.
+/** B5.4 acceptance: one real daily or weekly report for one synthetic project.
  *
  * Scope: one authorized B enterprise, one synthetic project, owner (customer)
- * perspective, one fixed historical Shanghai day, raw published construction
- * records and their authorized photo, read through the original XiaoK report
- * API. The period task is created by the B native workflow, then claimed and
- * processed by the real assistant Worker endpoint (claim + Lease), not by a
- * fabricated lease. The existing report lifecycle remains the only writer of
- * report/version/run/delivery/message.
+ * perspective, one fixed historical Shanghai day or Monday-to-Monday week, raw
+ * published construction records and their authorized photo, read through the
+ * original XiaoK report API. A weekly run creates two controlled raw records on
+ * two different days of the week. The period task is created by the B native
+ * workflow, then claimed and processed by the real assistant Worker endpoint
+ * (claim + Lease), not by a fabricated lease. The existing report lifecycle
+ * remains the only writer of report/version/run/delivery/message.
  *
  * Usage (from admin/):
  *   $env:B4_LIVE_APP_DATABASE_URL='postgresql://sfp_app:...@127.0.0.1:55433/smart_floor_planner'
  *   $env:B4_LIVE_FIXTURE_DATABASE_URL='postgresql://sfp_owner:...@127.0.0.1:55433/smart_floor_planner'
- *   $env:MAIN_LIVE_DATABASE_URL='postgresql://sfp_app:...@127.0.0.1:5432/smart_floor_planner'
  *   $env:JWT_SECRET='<development signing secret>'
  *   $env:CRON_SECRET='<development worker secret>'
  *   npx tsx scripts/native-workflow-period-report-acceptance.ts --development --period-start 2026-11-03
+ *   npx tsx scripts/native-workflow-period-report-acceptance.ts --development `
+ *     --period-kind weekly --period-start 2026-11-02
+ *
+ * MAIN_LIVE_DATABASE_URL is only needed when B has no enabled
+ * `llm-settings-override` provider and platform LLM override yet.
  */
 import assert from 'node:assert/strict';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
@@ -29,7 +34,12 @@ import {
   describeB4DatabaseTarget,
   resolveB4DatabaseTarget,
 } from '@/lib/native-workflow/live/dev-config';
-import { parseFixedDailyPeriod } from '@/lib/native-workflow/live/period-event';
+import { parseFixedPeriod } from '@/lib/native-workflow/live/period-event';
+import {
+  addCalendarDays,
+  resolveCliPeriod,
+  type PeriodCliKind,
+} from '@/lib/native-workflow/live/period-cli';
 import {
   agentSettingsSnapshot,
   reportPlanSnapshot,
@@ -64,7 +74,19 @@ const LEAD_ID = '1454000003';
 const PROJECT_ID = '1454000004';
 const CONVERSATION_ID = '1454000005';
 const CUSTOMER_OPENID = `b4-live-openid-${ENTERPRISE_ID}`;
-const FIXED_LABEL = '[B5.2]';
+
+function argvValue(name: string): string | undefined {
+  const index = process.argv.indexOf(name);
+  if (index < 0) return undefined;
+  const value = process.argv[index + 1];
+  return value && !value.startsWith('--') ? value : undefined;
+}
+
+const rawPeriodKind = argvValue('--period-kind');
+const periodKindInvalid = rawPeriodKind !== undefined && rawPeriodKind !== 'daily' && rawPeriodKind !== 'weekly';
+const periodKind: PeriodCliKind = rawPeriodKind === 'weekly' ? 'weekly' : 'daily';
+const scope = periodKind === 'weekly' ? 'b5-4' : 'b5-2';
+const FIXED_LABEL = periodKind === 'weekly' ? '[B5.4]' : '[B5.2]';
 
 /** Every acceptance failure must unwind through the shared finally block. */
 class AcceptanceFailure extends Error {
@@ -87,17 +109,28 @@ function detailOf(error: unknown): string {
 }
 
 const runStamp = new Date().toISOString().replace(/[-:.TZ]/gu, '').slice(0, 17);
-const acceptanceId = `b5-2-daily-${runStamp}`;
-const outputDir = path.resolve('tmp/b5-2-period-report-runs', acceptanceId);
-const storeDir = path.resolve('tmp/b5-2-acceptance-store', acceptanceId);
-const runDir = path.resolve('tmp/b5-2-acceptance-runs', acceptanceId);
+const acceptanceId = `${scope}-${periodKind}-${runStamp}`;
+const outputDir = path.resolve(`tmp/${scope}-period-report-runs`, acceptanceId);
+const storeDir = path.resolve(`tmp/${scope}-acceptance-store`, acceptanceId);
+const runDir = path.resolve(`tmp/${scope}-acceptance-runs`, acceptanceId);
 
 let periodStart = '';
+let periodEnd = '';
 let appUrl = '';
 let fixtureUrl = '';
 let mainUrl = '';
 let appPool: pg.Pool | null = null;
 let fixturePool: pg.Pool | null = null;
+
+interface SyntheticRecordResult {
+  key: string;
+  recordId: string;
+  mediaId: string;
+  version: number;
+  reused: boolean;
+  /** Shanghai calendar day this record is published into. */
+  day: string;
+}
 
 interface AcceptanceRunState {
   agentBefore: AgentSettingsSnapshot | null;
@@ -105,6 +138,7 @@ interface AcceptanceRunState {
   customerAccessRevoked: boolean;
   mediaDeleted: boolean;
   savedRecordId: string;
+  savedRecordIds: string[];
   savedMediaId: string;
   savedMediaBytes: Buffer | null;
   fixtureReady: boolean;
@@ -128,6 +162,7 @@ const state: AcceptanceRunState = {
   customerAccessRevoked: false,
   mediaDeleted: false,
   savedRecordId: '',
+  savedRecordIds: [],
   savedMediaId: '',
   savedMediaBytes: null,
   fixtureReady: false,
@@ -148,7 +183,9 @@ const state: AcceptanceRunState = {
 const evidence: Record<string, unknown> = {
   startedAt: new Date().toISOString(),
   acceptanceId,
+  periodKind,
   periodStart,
+  periodEnd,
   paths: { outputDir, storeDir, runDir },
   checks: [],
   failures: [],
@@ -223,41 +260,58 @@ function assertCalendarDate(value: string): void {
 }
 
 /**
- * Validate the CLI, the fixed day and both database identities before any
+ * Validate the CLI, the fixed period and both database identities before any
  * provider, agent, fixture or report-plan mutation.
  */
 async function bootstrap(): Promise<void> {
   if (!process.argv.includes('--development')) fail('--development is required');
   if (process.env.NODE_ENV === 'production') fail('refusing to run in production');
+  if (periodKindInvalid) fail('--period-kind must be daily or weekly');
 
-  const periodIndex = process.argv.indexOf('--period-start');
-  const requestedPeriod = periodIndex > 0 ? process.argv[periodIndex + 1] : '2026-11-03';
-  if (!requestedPeriod || !/^\d{4}-\d{2}-\d{2}$/u.test(requestedPeriod)) {
+  const requestedPeriod = argvValue('--period-start') ?? (periodKind === 'weekly' ? '' : '2026-11-03');
+  if (!requestedPeriod) {
+    fail('--period-start is required for weekly acceptance (the Monday of a finished week)');
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(requestedPeriod)) {
     fail('--period-start must be YYYY-MM-DD');
   }
   assertCalendarDate(requestedPeriod);
+
+  let requestedEnd: string | undefined;
+  try {
+    requestedEnd = argvValue('--period-end');
+    if (requestedEnd !== undefined) {
+      assertCalendarDate(requestedEnd);
+      resolveCliPeriod({ kind: periodKind, periodStart: requestedPeriod, periodEnd: requestedEnd });
+    } else {
+      requestedEnd = resolveCliPeriod({ kind: periodKind, periodStart: requestedPeriod }).periodEnd;
+    }
+  } catch (error) {
+    fail(`--period-start/--period-end do not describe a complete ${periodKind} period: ${messageOf(error)}`);
+  }
   const event: TriggerEvent = {
-    eventId: `b5-2-daily-${requestedPeriod}`,
+    eventId: `${scope}-${periodKind}-${requestedPeriod}`,
     eventType: 'period_report',
-    // The caller cannot forge "now": the fixed-day check inside
-    // parseFixedDailyPeriod uses its own default clock.
+    // The caller cannot forge "now": the finished-period check inside
+    // parseFixedPeriod uses its own default clock.
     occurredAt: new Date().toISOString(),
-    periodKind: 'daily',
+    periodKind,
     periodStart: requestedPeriod,
-    periodEnd: requestedPeriod,
+    periodEnd: requestedEnd ?? requestedPeriod,
   };
   try {
-    parseFixedDailyPeriod(event);
+    parseFixedPeriod(event);
   } catch (error) {
-    fail(`--period-start must be a finished Shanghai calendar day: ${messageOf(error)}`);
+    fail(`the requested ${periodKind} period must already be finished in Shanghai: ${messageOf(error)}`);
   }
   periodStart = requestedPeriod;
+  periodEnd = requestedEnd ?? requestedPeriod;
   evidence.periodStart = periodStart;
+  evidence.periodEnd = periodEnd;
 
   if (!process.env.JWT_SECRET) fail('JWT_SECRET is required so copied provider credentials can be decrypted');
   if (!process.env.CRON_SECRET) fail('CRON_SECRET is required for the real Worker endpoint');
   mainUrl = process.env.MAIN_LIVE_DATABASE_URL?.trim() ?? '';
-  if (!mainUrl) fail('MAIN_LIVE_DATABASE_URL is required to copy the development chat provider into B');
 
   const appTarget = resolveB4DatabaseTarget({ purpose: 'app' });
   const fixtureTarget = resolveB4DatabaseTarget({ purpose: 'fixture' });
@@ -334,8 +388,38 @@ async function preflight(pool: pg.Pool): Promise<void> {
 }
 
 async function ensureProvider(owner: pg.Pool): Promise<Record<string, unknown>> {
+  // A B tenant that already has an enabled development provider does not need
+  // the main database at all; only a missing/incomplete B setup copies from MAIN.
+  const current = (await owner.query(
+    "select id,key,enabled,adapter_type,base_url,api_key_masked from app.ai_provider_configs where key='llm-settings-override'",
+  )).rows[0];
+  const currentPlatform = (await owner.query(
+    "select llm_config from app.platform_configs where key='default'",
+  )).rows[0]?.llm_config;
+  if (current?.enabled === true && currentPlatform?.enabled) {
+    return {
+      copied: false,
+      platformCopied: false,
+      reused: true,
+      provider: {
+        key: current.key,
+        adapter_type: current.adapter_type,
+        base_url: current.base_url,
+        api_key_masked: current.api_key_masked,
+      },
+      platform: {
+        enabled: currentPlatform.enabled,
+        providerKey: currentPlatform.providerKey,
+        model: currentPlatform.model,
+        apiKeyMasked: currentPlatform.apiKeyMasked,
+      },
+    };
+  }
+
   const sourceUrl = mainUrl;
-  if (!sourceUrl) fail('MAIN_LIVE_DATABASE_URL is required to copy the development chat provider into B');
+  if (!sourceUrl) {
+    fail('MAIN_LIVE_DATABASE_URL is required because B has no enabled llm-settings-override provider/platform override');
+  }
   const source = new pg.Pool({ connectionString: sourceUrl, max: 1 });
   try {
     const row = (await source.query(
@@ -349,9 +433,6 @@ async function ensureProvider(owner: pg.Pool): Promise<Record<string, unknown>> 
     )).rows[0]?.llm_config;
     if (!platform?.enabled) fail('the development platform LLM override is not enabled');
 
-    const current = (await owner.query(
-      "select id,key,enabled,adapter_type,base_url,api_key_masked from app.ai_provider_configs where key='llm-settings-override'",
-    )).rows[0];
     if (!current) {
       await owner.query(
         `insert into app.ai_provider_configs(key,name,adapter_type,base_url,api_key_encrypted,api_key_masked,
@@ -362,10 +443,9 @@ async function ensureProvider(owner: pg.Pool): Promise<Record<string, unknown>> 
           row.capabilities, JSON.stringify(row.model_mappings), row.priority, row.timeout_ms, row.enabled,
           JSON.stringify(row.cost_rules), JSON.stringify(row.operational_state)],
       );
+    } else if (current.enabled !== true) {
+      fail('the B provider llm-settings-override exists but is disabled; remove or enable it before re-running');
     }
-    const currentPlatform = (await owner.query(
-      "select llm_config from app.platform_configs where key='default'",
-    )).rows[0]?.llm_config;
     if (!currentPlatform?.enabled) {
       await owner.query(
         `insert into app.platform_configs(key,llm_config) values('default',$1::jsonb)
@@ -376,6 +456,7 @@ async function ensureProvider(owner: pg.Pool): Promise<Record<string, unknown>> 
     return {
       copied: !current,
       platformCopied: !currentPlatform?.enabled,
+      reused: false,
       provider: { key: row.key, adapter_type: row.adapter_type, base_url: row.base_url, api_key_masked: row.api_key_masked },
       platform: { enabled: platform.enabled, providerKey: platform.providerKey, model: platform.model, apiKeyMasked: platform.apiKeyMasked },
     };
@@ -396,7 +477,7 @@ async function ensureAgentConfig(owner: pg.Pool): Promise<Record<string, unknown
     model: 'qwen3.7-flash',
     imageInput: false,
     tools: true,
-    probeVersion: 'b5-2-daily-acceptance',
+    probeVersion: `${scope}-${periodKind}-acceptance`,
   };
   // Snapshot before the update so a later failure still restores the original
   // agent_config (null stays null) and enabled flag (false stays false).
@@ -409,96 +490,157 @@ async function ensureAgentConfig(owner: pg.Pool): Promise<Record<string, unknown
   return { before: state.agentBefore, during: config };
 }
 
-async function ensureSyntheticRecord(): Promise<Record<string, unknown>> {
+interface SyntheticRecordSpec {
+  readonly key: 'primary' | 'secondary';
+  readonly title: string;
+  readonly text: string;
+  readonly draft: { completed: string; pending: string; coordination: string; note: string };
+  readonly withPhoto: boolean;
+  readonly dayOffset: number;
+}
+
+/** Weekly needs two records on different days; daily stays one record. */
+function syntheticRecordSpecs(): SyntheticRecordSpec[] {
+  const primary: SyntheticRecordSpec = {
+    key: 'primary',
+    title: `${FIXED_LABEL} 水电线管敷设`,
+    text: `${FIXED_LABEL} 水电线管敷设完成，底盒待固定，等设计师核对点位。`,
+    draft: {
+      completed: '线管敷设完成，线盒位置已标记',
+      pending: '底盒未固定，等待设计师核对接线点位',
+      coordination: '本周内完成底盒固定与回路核对',
+      note: '仅为功能验收的合成记录，不代表验收或正式批准',
+    },
+    withPhoto: true,
+    dayOffset: periodKind === 'weekly' ? 2 : 0,
+  };
+  if (periodKind === 'daily') return [primary];
+  return [primary, {
+    key: 'secondary',
+    title: `${FIXED_LABEL} 底盒固定与回路核对`,
+    text: `${FIXED_LABEL} 底盒固定完成，回路逐路核对，面板待安装。`,
+    draft: {
+      completed: '底盒已固定，回路逐路核对完成',
+      pending: '面板未安装',
+      coordination: '等待面板到货后统一安装',
+      note: '仅为功能验收的合成记录，不代表验收或正式批准',
+    },
+    withPhoto: false,
+    dayOffset: 4,
+  }];
+}
+
+async function ensureSyntheticRecords(): Promise<SyntheticRecordResult[]> {
   const { withTenantTransaction } = await import('@/db/transaction');
   const { one } = await import('@/db/repositories/assistant-repository');
   const { sql } = await import('drizzle-orm');
   const { SiteChatService } = await import('@/lib/construction/site-chat');
   const { default: sharp } = await import('sharp');
 
-  const existing = await withTenantTransaction(ENTERPRISE_ID, (tx) => one(
-    tx,
-    sql`select id,version,published_version,audience,published_customer_id,status,published_at
-      from app.construction_site_records
-      where enterprise_id=${ENTERPRISE_ID} and project_id=${PROJECT_ID}
-        and data->>'title' like ${`${FIXED_LABEL}%`}
-      order by id limit 1`,
-  ));
-  if (existing && existing.status === 'published' && existing.audience === 'customer'
-    && String(existing.published_customer_id) === CUSTOMER_USER_ID) {
-    const media = await withTenantTransaction(ENTERPRISE_ID, (tx) => one(
-      tx,
-      sql`select a.media_id from app.construction_site_attachments a
-        join app.construction_site_media m on m.enterprise_id=a.enterprise_id and m.project_id=a.project_id and m.id=a.media_id
-        where a.enterprise_id=${ENTERPRISE_ID} and a.project_id=${PROJECT_ID} and a.record_id=${String(existing.id)}
-          and m.deleted_at is null order by a.position limit 1`,
-    ));
-    return {
-      reused: true,
-      recordId: String(existing.id),
-      mediaId: media?.media_id ? String(media.media_id) : '',
-      version: Number(existing.published_version ?? existing.version),
-    };
-  }
-
   const actor = { enterpriseId: ENTERPRISE_ID, adminId: ADMIN_ID };
   const site = new SiteChatService(actor);
-  const svg = Buffer.from(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480">
-      <rect width="640" height="480" fill="#d9d2c3"/>
-      <path d="M90 0v330h470M130 0v290h430" stroke="#bf543e" stroke-width="14" fill="none"/>
-      <rect y="390" width="640" height="90" fill="#ffffff"/>
-      <text x="28" y="445" font-size="26" fill="#1e4c41">TEST DATA B5.2 - NOT A REAL SITE</text>
-    </svg>`,
-  );
-  const bytes = await sharp(svg).png().toBuffer();
-  const media = await site.upload(PROJECT_ID, `b5-2-media-${runStamp}`, bytes);
-  const sent = await site.send(PROJECT_ID, {
-    text: `${FIXED_LABEL} 水电线管敷设完成，底盒待固定，等设计师核对点位。`,
-    mediaIds: [media.id],
-    capture: { kind: 'quick', workId: 'conduit', roomId: null, location: 'whole', progress: 'done' },
-  }, `b5-2-send-${runStamp}`);
-  if (!sent.recordId) fail('the construction service did not create the synthetic record');
-  const current = await withTenantTransaction(ENTERPRISE_ID, (tx) => one(
-    tx,
-    sql`select version,status from app.construction_site_records
-      where enterprise_id=${ENTERPRISE_ID} and project_id=${PROJECT_ID} and id=${String(sent.recordId)}`,
-  ));
-  const edited = await site.mutate(PROJECT_ID, String(sent.recordId), 'edit', {
-    expectedVersion: Number(current!.version),
-    data: {
-      title: `${FIXED_LABEL} 水电线管敷设`,
-      roomId: null,
-      completed: '线管敷设完成，线盒位置已标记',
-      pending: '底盒未固定，等待设计师核对接线点位',
-      coordination: '本周内完成底盒固定与回路核对',
-      note: '仅为功能验收的合成记录，不代表验收或正式批准',
-    },
-  }, `b5-2-edit-${runStamp}`);
-  const published = await site.mutate(PROJECT_ID, String(sent.recordId), 'publish', {
-    expectedVersion: Number(edited.version),
-    audience: 'customer',
-  }, `b5-2-publish-${runStamp}`);
-  return {
-    reused: false,
-    recordId: String(sent.recordId),
-    mediaId: String(media.id),
-    version: Number(published.version),
-    status: published.status,
-    mediaBytes: bytes.byteLength,
-  };
+  const results: SyntheticRecordResult[] = [];
+
+  for (const spec of syntheticRecordSpecs()) {
+    const day = addCalendarDays(periodStart, spec.dayOffset);
+    const existing = await withTenantTransaction(ENTERPRISE_ID, (tx) => one(
+      tx,
+      sql`select id,version,published_version,audience,published_customer_id,status,published_at
+        from app.construction_site_records
+        where enterprise_id=${ENTERPRISE_ID} and project_id=${PROJECT_ID}
+          and data->>'title'=${spec.title}
+        order by id limit 1`,
+    ));
+    if (existing && existing.status === 'published' && existing.audience === 'customer'
+      && String(existing.published_customer_id) === CUSTOMER_USER_ID) {
+      const media = spec.withPhoto
+        ? await withTenantTransaction(ENTERPRISE_ID, (tx) => one(
+            tx,
+            sql`select a.media_id from app.construction_site_attachments a
+              join app.construction_site_media m on m.enterprise_id=a.enterprise_id and m.project_id=a.project_id and m.id=a.media_id
+              where a.enterprise_id=${ENTERPRISE_ID} and a.project_id=${PROJECT_ID} and a.record_id=${String(existing.id)}
+                and m.deleted_at is null order by a.position limit 1`,
+          ))
+        : undefined;
+      if (!spec.withPhoto || media?.media_id) {
+        results.push({
+          key: spec.key,
+          recordId: String(existing.id),
+          mediaId: media?.media_id ? String(media.media_id) : '',
+          version: Number(existing.published_version ?? existing.version),
+          reused: true,
+          day,
+        });
+        continue;
+      }
+    }
+
+    let mediaId = '';
+    if (spec.withPhoto) {
+      const svg = Buffer.from(
+        `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480">
+          <rect width="640" height="480" fill="#d9d2c3"/>
+          <path d="M90 0v330h470M130 0v290h430" stroke="#bf543e" stroke-width="14" fill="none"/>
+          <rect y="390" width="640" height="90" fill="#ffffff"/>
+          <text x="28" y="445" font-size="26" fill="#1e4c41">TEST DATA ${FIXED_LABEL} - NOT A REAL SITE</text>
+        </svg>`,
+      );
+      const bytes = await sharp(svg).png().toBuffer();
+      const media = await site.upload(PROJECT_ID, `${scope}-${spec.key}-media-${runStamp}`, bytes);
+      mediaId = String(media.id);
+    }
+    const sent = await site.send(PROJECT_ID, {
+      text: spec.text,
+      mediaIds: mediaId ? [mediaId] : [],
+      capture: { kind: 'quick', workId: 'conduit', roomId: null, location: 'whole', progress: 'done' },
+    }, `${scope}-${spec.key}-send-${runStamp}`);
+    if (!sent.recordId) fail(`the construction service did not create the ${spec.key} synthetic record`);
+    const current = await withTenantTransaction(ENTERPRISE_ID, (tx) => one(
+      tx,
+      sql`select version,status from app.construction_site_records
+        where enterprise_id=${ENTERPRISE_ID} and project_id=${PROJECT_ID} and id=${String(sent.recordId)}`,
+    ));
+    const edited = await site.mutate(PROJECT_ID, String(sent.recordId), 'edit', {
+      expectedVersion: Number(current!.version),
+      data: { title: spec.title, roomId: null, ...spec.draft },
+    }, `${scope}-${spec.key}-edit-${runStamp}`);
+    const published = await site.mutate(PROJECT_ID, String(sent.recordId), 'publish', {
+      expectedVersion: Number(edited.version),
+      audience: 'customer',
+    }, `${scope}-${spec.key}-publish-${runStamp}`);
+    results.push({
+      key: spec.key,
+      recordId: String(sent.recordId),
+      mediaId,
+      version: Number(published.version),
+      reused: false,
+      day,
+    });
+  }
+  return results;
 }
 
-async function alignRecordToPeriod(owner: pg.Pool): Promise<void> {
-  const at = `${periodStart}T04:00:00.000Z`;
-  await owner.query(
-    `update app.construction_site_records
-        set published_at=$1::timestamptz, updated_at=now()
-      where enterprise_id=$2::bigint and project_id=$3::bigint
-        and data->>'title' like $4
-        and status='published' and audience='customer' and published_customer_id=$5::bigint`,
-    [at, ENTERPRISE_ID, PROJECT_ID, `${FIXED_LABEL}%`, CUSTOMER_USER_ID],
-  );
+/**
+ * Align each controlled record to its own day inside the period. Titles are
+ * never used to collapse both weekly records onto the same date.
+ */
+async function alignRecordsToPeriod(
+  owner: pg.Pool,
+  records: readonly SyntheticRecordResult[],
+): Promise<Array<{ recordId: string; day: string; publishedAt: string }>> {
+  const aligned: Array<{ recordId: string; day: string; publishedAt: string }> = [];
+  for (const record of records) {
+    const at = `${record.day}T04:00:00.000Z`;
+    await owner.query(
+      `update app.construction_site_records
+          set published_at=$1::timestamptz, updated_at=now()
+        where enterprise_id=$2::bigint and project_id=$3::bigint and id=$4::bigint
+          and status='published' and audience='customer' and published_customer_id=$5::bigint`,
+      [at, ENTERPRISE_ID, PROJECT_ID, record.recordId, CUSTOMER_USER_ID],
+    );
+    aligned.push({ recordId: record.recordId, day: record.day, publishedAt: at });
+  }
+  return aligned;
 }
 
 async function ensureFollowupBinding(): Promise<Record<string, unknown>> {
@@ -553,7 +695,9 @@ function runWorkflowCli(runId: string): { payload: Record<string, unknown> | nul
       '--ensure-published',
       '--admin-id', ADMIN_ID,
       '--project-id', PROJECT_ID,
+      '--period-kind', periodKind,
       '--period-start', periodStart,
+      '--period-end', periodEnd,
       '--run-id', runId,
     ],
     {
@@ -717,12 +861,22 @@ async function runAcceptance(): Promise<void> {
   const agentConfig = await ensureAgentConfig(pool);
   evidence.agentConfig = agentConfig;
 
-  const record = await ensureSyntheticRecord();
-  state.savedRecordId = String(record.recordId);
-  state.savedMediaId = String(record.mediaId ?? '');
-  evidence.syntheticRecord = record;
-  await alignRecordToPeriod(pool);
-  check('synthetic published record and authorized photo', true, record);
+  const records = await ensureSyntheticRecords();
+  const primary = records[0];
+  if (!primary) fail('no synthetic record was prepared');
+  state.savedRecordId = primary.recordId;
+  state.savedRecordIds = records.map((record) => record.recordId);
+  state.savedMediaId = primary.mediaId;
+  const aligned = await alignRecordsToPeriod(pool, records);
+  evidence.syntheticRecords = records;
+  evidence.alignedRecords = aligned;
+  check(
+    periodKind === 'weekly' ? 'two synthetic published records on two days' : 'synthetic published record and authorized photo',
+    periodKind === 'weekly'
+      ? records.length === 2 && new Set(records.map((record) => record.day)).size === 2
+      : records.length === 1 && Boolean(primary.mediaId),
+    { records, aligned },
+  );
 
   const binding = await ensureFollowupBinding();
   evidence.binding = binding;
@@ -939,7 +1093,7 @@ async function runAcceptance(): Promise<void> {
     attempts: scopedAttempts,
     usage: scopedUsage,
   });
-  check('zero FastGPT attempts in the daily report chain', fastgptAttempts.length === 0, {
+  check(`zero FastGPT attempts in the ${periodKind} report chain`, fastgptAttempts.length === 0, {
     fastgptAttempts,
   });
   const fresh = evaluateFreshGeneration({
@@ -1053,13 +1207,13 @@ async function runAcceptance(): Promise<void> {
     const items = ((followups.body.data as Record<string, unknown>).items ?? []) as Array<Record<string, unknown>>;
     const own = items.find((item) => String(item.bindingId) === String(binding.bindingId));
     assert.ok(own, 'the customer binding is missing from the original followup list');
-    const list = await apiRequest(current.token, ['followups', String(binding.bindingId), 'reports'], '?kind=daily', {
+    const list = await apiRequest(current.token, ['followups', String(binding.bindingId), 'reports'], `?kind=${periodKind}`, {
       headers: entryHeaders,
     });
     assert.equal(list.status, 200, `report list failed: ${JSON.stringify(list.body)}`);
     const reports = ((list.body.data as Record<string, unknown>).items ?? []) as Array<Record<string, unknown>>;
     const listed = reports.find((item) => String(item.reportId) === reportId);
-    assert.ok(listed, 'the saved daily report is missing from the original report list');
+    assert.ok(listed, `the saved ${periodKind} report is missing from the original report list`);
     const detail = await apiRequest(current.token, ['followups', String(binding.bindingId), 'reports', reportId], `?revision=${revision}`, {
       headers: entryHeaders,
     });
@@ -1069,8 +1223,13 @@ async function runAcceptance(): Promise<void> {
     const projects = (facts?.projects ?? []) as Array<Record<string, unknown>>;
     const project = projects.find((item) => String(item.id) === PROJECT_ID);
     assert.ok(project, 'the report facts do not contain the synthetic project');
-    const records = (project.records ?? []) as Array<Record<string, unknown>>;
-    assert.ok(records.some((item) => String(item.id) === state.savedRecordId), 'the report facts do not contain the published record');
+    const factsRecords = (project.records ?? []) as Array<Record<string, unknown>>;
+    for (const recordId of state.savedRecordIds) {
+      assert.ok(
+        factsRecords.some((item) => String(item.id) === recordId),
+        `the report facts do not contain the published ${periodKind} record ${recordId}`,
+      );
+    }
     const body = (data.body ?? []) as Array<Record<string, unknown>>;
     const record = await apiRequest(
       current.token,
@@ -1101,7 +1260,8 @@ async function runAcceptance(): Promise<void> {
         deliveryState: data.deliveryState,
         generationState: data.generationState,
         bodyProjects: body.map((item) => String(item.projectId)),
-        records: records.map((item) => String(item.id)),
+        records: factsRecords.map((item) => String(item.id)),
+        recordCount: factsRecords.length,
       },
       record: {
         id: String(recordData.id),
@@ -1124,7 +1284,7 @@ async function runAcceptance(): Promise<void> {
       headers: entryHeaders,
     });
     assert.equal(followups.status, 200, `followups failed: ${JSON.stringify(followups.body)}`);
-    const list = await apiRequest(current.token, ['followups', String(binding.bindingId), 'reports'], '?kind=daily', {
+    const list = await apiRequest(current.token, ['followups', String(binding.bindingId), 'reports'], `?kind=${periodKind}`, {
       headers: entryHeaders,
     });
     if (list.status === 404) {
@@ -1151,6 +1311,7 @@ async function runAcceptance(): Promise<void> {
     firstRead.detail.available === true
     && (firstRead.detail.contentStatus === 'composed' || firstRead.detail.contentStatus === 'facts_only')
     && firstRead.detail.deliveryState === 'delivered'
+    && firstRead.detail.recordCount >= state.savedRecordIds.length
     && firstRead.record.mediaIds.includes(state.savedMediaId)
     && firstRead.photo.bytes > 0,
   ), firstRead);
@@ -1371,7 +1532,10 @@ async function main(): Promise<void> {
     console.log(JSON.stringify({
       success: evidence.success,
       acceptanceId,
+      periodKind,
       periodStart,
+      periodEnd,
+      recordIds: state.savedRecordIds,
       reportId: state.result.reportId,
       revision: state.result.revision,
       factsRunId: state.result.factsRunId,

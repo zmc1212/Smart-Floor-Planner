@@ -19,7 +19,7 @@ export interface LiveBusinessEvent {
   readonly stageKey: string;
   readonly settingsVersion: number;
   readonly source: 'outbox' | 'current_project_revision';
-  readonly periodKind?: 'daily';
+  readonly periodKind?: 'daily' | 'weekly';
   readonly periodStart?: string;
   readonly periodEnd?: string;
 }

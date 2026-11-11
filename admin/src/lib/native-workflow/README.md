@@ -662,12 +662,73 @@ admin `1454000010` only when its enterprise, username, platform role and
 restores the row in `finally` and reads it back, and a restore or verification
 failure fails the run.
 
+## B5.4 single-project weekly period report
+
+The B5.2 daily adapter and B5.3 status reader now accept `weekly` without a new
+workflow, scheduler, Worker, message channel or dedupe rule.
+
+- Period contract: a weekly event uses `periodStart` = a Shanghai Monday and
+  `periodEnd` = the next Monday (exclusive), exactly seven calendar days later.
+  `parseFixedPeriod` maps them to Shanghai midnights: start = `periodStart`
+  midnight, end/cutoff = `periodEnd` midnight, right-open. Both dates must be
+  Mondays, the week must be complete, and `end <= now` is checked with the
+  trusted server clock; `occurredAt` is only the schedule stamp. The daily rule
+  (`periodStart === periodEnd`, next-midnight end) and
+  `parseFixedDailyPeriod` stay unchanged.
+- The published definition's `inputSchema.periodKind`, the event kind and the
+  business event kind must agree. `periodReportKey` keeps the existing
+  `kind + start + end + event + conversation generation` formula, so a daily and
+  weekly window with overlapping dates never share a report. Facts still come
+  from the week's authorized raw published records/photos; model dailies are
+  never used as weekly facts. The deterministic compose heading is
+  `施工周报 · <start> ~ <end>` for weekly.
+- Status observation accepts both kinds, checks the report kind against the
+  fixed binding, and converts the stored boundaries kind-aware (daily: next
+  midnight; weekly: the Monday midnight). The Admin page shows `业务周期` for
+  weekly and keeps the B5.3 stopped/authorization/generation/lifecycle behavior.
+- CLI: `--period-kind weekly` selects `period-report-weekly` and derives
+  `periodEnd` as `periodStart + 7` when omitted; the original daily command is
+  unchanged. The acceptance driver accepts the same flag, creates two `[B5.4]`
+  raw records on two dates inside the week (one authorized photo), keeps the
+  fresh/replay/model-evidence checks, and reuses an already-enabled B provider
+  instead of requiring the main database.
+
+Recorded B evidence (2026-11-11, isolated B database, week 2026-10-26 →
+2026-11-02): report `7`/revision `1`/facts run `12`/body run `13`/message `120`,
+delivery `delivered`, two controlled records `2` and `3` (photos on `2`). Fresh
+generation moved counters from reports/jobs/runs/attempts/usage/messages/
+deliveries `6/11/11/3/3/6/6` to `7/13/13/4/4/7/7`; the same-period replay with a
+new workflow runId reused report `7`, revision `1`, facts run `12` and the same
+delivery receipt with every counter unchanged. The body used one succeeded
+`llm-settings-override` attempt (`accepted:true`) with observed `1217` input +
+`769` output tokens and zero FastGPT attempts. The original XiaoK entry listed
+the weekly report (`?kind=weekly`), opened both raw records and the authorized
+photo, returned the same report/record/photo after exit and re-entry, and
+invalidated/restored under customer-access and photo revocation. The Admin page
+opened the same workflow `runId`, showed `已完成`, `业务周期 2026-10-26 ~
+2026-11-02`, report `7`/r1 and delivery `已投递`, while the raw card kept
+`failed`/`delivery_not_confirmed`. Restoration reported worker, media,
+customer_access, report_plan and agent_settings all restored. Evidence:
+`admin/tmp/b5-4-period-report-runs/b5-4-weekly-20261111095128486/verification.json`.
+
+Tests: the native-workflow offline suite is now 257 tests (253 pass, 4
+strict-opt-in live cases skipped); the weekly additions cover the Monday-to-
+Monday conversion, partial/cross-week/non-Monday rejection, trusted-now ended
+checks, daily compatibility, weekly port enqueue/idempotency, weekly status
+kind/boundary checks and the CLI window rules. `npm run build` still reports
+"Compiled successfully" and then stops at the pre-existing
+`scripts/fastgpt/setup-unified.mts:113` type error, which is byte-identical to
+the baseline. The Stable DevTools native weekly UI read was attempted but the
+already-open simulator session was unhealthy (identity recovery/validation
+state), so the native UI path remains unverified this round; the original XiaoK
+API entry/list/detail/record/media/re-entry path is verified above.
+
 ## Reproduce
 
 From `admin/` (no database, no Worker, no model):
 
 ```powershell
-npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts src/lib/native-workflow/__tests__/acceptance-store.test.ts src/lib/native-workflow/__tests__/acceptance-conversation.test.ts src/lib/native-workflow/__tests__/acceptance-state.test.ts src/lib/native-workflow/__tests__/period-report-ports.test.ts src/lib/native-workflow/__tests__/report-model-evidence.test.ts src/lib/native-workflow/__tests__/period-report-status.test.ts src/lib/native-workflow/__tests__/period-report-status-reentry.test.ts src/lib/native-workflow/__tests__/admin-run-status.test.ts src/lib/native-workflow/__tests__/period-report-status-route.test.ts src/lib/native-workflow/__tests__/period-report-status-route-guards.test.ts
+npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts src/lib/native-workflow/__tests__/acceptance-store.test.ts src/lib/native-workflow/__tests__/acceptance-conversation.test.ts src/lib/native-workflow/__tests__/acceptance-state.test.ts src/lib/native-workflow/__tests__/period-report-ports.test.ts src/lib/native-workflow/__tests__/report-model-evidence.test.ts src/lib/native-workflow/__tests__/period-report-status.test.ts src/lib/native-workflow/__tests__/period-report-status-reentry.test.ts src/lib/native-workflow/__tests__/admin-run-status.test.ts src/lib/native-workflow/__tests__/period-report-status-route.test.ts src/lib/native-workflow/__tests__/period-report-status-route-guards.test.ts src/lib/native-workflow/__tests__/period-event-weekly.test.ts src/lib/native-workflow/__tests__/period-cli.test.ts
 npx tsx src/lib/native-workflow/playground/simulate.ts
 ```
 

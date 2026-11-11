@@ -3,19 +3,24 @@ import { WorkflowOperationError } from '../errors';
 import type { TriggerEvent, WorkflowValue } from '../types';
 
 /**
- * B5 period contract: one fixed daily period derived from the run event.
+ * B5 period contract: one fixed daily or weekly period derived from the run
+ * event.
  *
  * The period is business data, never a workflow-run identity. `report_key`
  * follows the existing `enqueueReport` formula exactly (kind + start + end +
  * stage event + conversation generation), so a new runId or a new published
- * definition revision can never create a second report for the same day.
+ * definition revision can never create a second report for the same period.
+ * A daily and a weekly period never share a key even when their dates overlap,
+ * because `kind` is part of the formula.
  */
 export const PERIOD_KIND = 'daily' as const;
-export type PeriodKind = typeof PERIOD_KIND;
+export const PERIOD_KINDS = ['daily', 'weekly'] as const;
+export type PeriodKind = (typeof PERIOD_KINDS)[number];
 
 const DAY_MS = 86_400_000;
 const SHANGHAI_OFFSET_MS = 8 * 3_600_000;
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+const MONDAY = 1;
 
 export interface FixedPeriod {
   readonly kind: PeriodKind;
@@ -33,7 +38,13 @@ export interface PeriodConversationGeneration {
   readonly followupGeneration?: unknown;
 }
 
-function calendarDate(value: unknown): { year: number; month: number; day: number } | null {
+interface CalendarDate {
+  readonly year: number;
+  readonly month: number;
+  readonly day: number;
+}
+
+function calendarDate(value: unknown): CalendarDate | null {
   if (typeof value !== 'string') return null;
   const match = DATE_PATTERN.exec(value);
   if (!match) return null;
@@ -52,15 +63,21 @@ function calendarDate(value: unknown): { year: number; month: number; day: numbe
   return { year, month, day };
 }
 
-/**
- * Parse the fixed daily event. Only one partial day is allowed; a period span
- * with different start/end dates is rejected instead of being silently widened.
- *
- * `now` is the trusted server clock (or a test seam). A period may only run
- * after its Shanghai day has ended; `occurredAt` is the schedule stamp and
- * never decides whether the day is over.
- */
-export function parseFixedDailyPeriod(event: TriggerEvent, now: Date = new Date()): FixedPeriod {
+/** Shanghai midnight for a calendar date. Shanghai has no DST. */
+function shanghaiMidnight(date: CalendarDate): Date {
+  return new Date(Date.UTC(date.year, date.month - 1, date.day) - SHANGHAI_OFFSET_MS);
+}
+
+/** Shanghai-local weekday of a calendar date, 0 = Sunday. */
+function shanghaiWeekday(date: CalendarDate): number {
+  return new Date(Date.UTC(date.year, date.month - 1, date.day)).getUTCDay();
+}
+
+function calendarDayNumber(date: CalendarDate): number {
+  return Date.UTC(date.year, date.month - 1, date.day) / DAY_MS;
+}
+
+function assertPeriodEvent(event: TriggerEvent): void {
   if (event.eventType !== 'period_report') {
     throw new WorkflowOperationError(
       'period_event_invalid',
@@ -68,13 +85,9 @@ export function parseFixedDailyPeriod(event: TriggerEvent, now: Date = new Date(
       'the period report adapter only executes period_report events',
     );
   }
-  if (event.periodKind !== PERIOD_KIND) {
-    throw new WorkflowOperationError(
-      'period_kind_unsupported',
-      409,
-      `the B-line period adapter only supports ${PERIOD_KIND} reports`,
-    );
-  }
+}
+
+function eventDates(event: TriggerEvent): { startDate: CalendarDate; endDate: CalendarDate } {
   const startDate = calendarDate(event.periodStart);
   const endDate = calendarDate(event.periodEnd);
   if (!startDate || !endDate) {
@@ -84,6 +97,33 @@ export function parseFixedDailyPeriod(event: TriggerEvent, now: Date = new Date(
       'periodStart and periodEnd must be YYYY-MM-DD calendar dates',
     );
   }
+  return { startDate, endDate };
+}
+
+function eventScheduleStamp(event: TriggerEvent): Date {
+  const occurredAt = new Date(String(event.occurredAt));
+  if (!Number.isFinite(occurredAt.getTime())) {
+    throw new WorkflowOperationError('period_event_invalid', 409, 'period event occurredAt is invalid');
+  }
+  return occurredAt;
+}
+
+function assertEnded(end: Date, now: Date, label: string): void {
+  if (end.getTime() > now.getTime()) {
+    throw new WorkflowOperationError(
+      'period_not_ended',
+      409,
+      `the ${label} period has not ended in the Shanghai timezone yet`,
+    );
+  }
+}
+
+/**
+ * A daily period is one Shanghai calendar day. Both dates must be the same
+ * day; a span is rejected instead of being silently widened.
+ */
+function parseDailyEvent(event: TriggerEvent, now: Date): FixedPeriod {
+  const { startDate } = eventDates(event);
   if (event.periodStart !== event.periodEnd) {
     throw new WorkflowOperationError(
       'period_event_invalid',
@@ -91,23 +131,12 @@ export function parseFixedDailyPeriod(event: TriggerEvent, now: Date = new Date(
       'a daily period must start and end on the same calendar day',
     );
   }
-  const occurredAt = new Date(String(event.occurredAt));
-  if (!Number.isFinite(occurredAt.getTime())) {
-    throw new WorkflowOperationError('period_event_invalid', 409, 'period event occurredAt is invalid');
-  }
-  const start = new Date(
-    Date.UTC(startDate.year, startDate.month - 1, startDate.day) - SHANGHAI_OFFSET_MS,
-  );
+  const occurredAt = eventScheduleStamp(event);
+  const start = shanghaiMidnight(startDate);
   const end = new Date(start.getTime() + DAY_MS);
-  if (end.getTime() > now.getTime()) {
-    throw new WorkflowOperationError(
-      'period_not_ended',
-      409,
-      'the daily period has not ended in the Shanghai timezone yet',
-    );
-  }
+  assertEnded(end, now, 'daily');
   return {
-    kind: PERIOD_KIND,
+    kind: 'daily',
     periodStart: event.periodStart!,
     periodEnd: event.periodEnd!,
     start,
@@ -117,7 +146,86 @@ export function parseFixedDailyPeriod(event: TriggerEvent, now: Date = new Date(
   };
 }
 
-/** The fixed event is authoritative; a definition may not read another day. */
+/**
+ * A weekly period is a complete Monday-to-Monday Shanghai week, right-open.
+ * Both dates must be Mondays and the end must be exactly seven days after the
+ * start, so a partial week, a cross-week span or a non-Monday anchor is
+ * rejected rather than silently normalized.
+ */
+function parseWeeklyEvent(event: TriggerEvent, now: Date): FixedPeriod {
+  const { startDate, endDate } = eventDates(event);
+  if (shanghaiWeekday(startDate) !== MONDAY) {
+    throw new WorkflowOperationError(
+      'period_event_invalid',
+      409,
+      'a weekly period must start on a Monday in the Shanghai timezone',
+    );
+  }
+  if (shanghaiWeekday(endDate) !== MONDAY) {
+    throw new WorkflowOperationError(
+      'period_event_invalid',
+      409,
+      'a weekly period must end on a Monday in the Shanghai timezone',
+    );
+  }
+  if (calendarDayNumber(endDate) - calendarDayNumber(startDate) !== 7) {
+    throw new WorkflowOperationError(
+      'period_event_invalid',
+      409,
+      'a weekly period must span exactly seven days from Monday to Monday',
+    );
+  }
+  const occurredAt = eventScheduleStamp(event);
+  const start = shanghaiMidnight(startDate);
+  const end = shanghaiMidnight(endDate);
+  assertEnded(end, now, 'weekly');
+  return {
+    kind: 'weekly',
+    periodStart: event.periodStart!,
+    periodEnd: event.periodEnd!,
+    start,
+    end,
+    cutoff: end,
+    scheduledAt: occurredAt,
+  };
+}
+
+/**
+ * Parse the fixed period event, dispatching on `periodKind`.
+ *
+ * `now` is the trusted server clock (or a test seam). A period may only run
+ * after its Shanghai window has ended; `occurredAt` is the schedule stamp and
+ * never decides whether the period is over.
+ */
+export function parseFixedPeriod(event: TriggerEvent, now: Date = new Date()): FixedPeriod {
+  assertPeriodEvent(event);
+  if (event.periodKind === 'daily') return parseDailyEvent(event, now);
+  if (event.periodKind === 'weekly') return parseWeeklyEvent(event, now);
+  throw new WorkflowOperationError(
+    'period_kind_unsupported',
+    409,
+    'the B-line period adapter only supports daily or weekly reports',
+  );
+}
+
+/**
+ * Daily-only compatibility wrapper. A weekly event is still rejected with
+ * `period_kind_unsupported` so callers that have not adopted
+ * `parseFixedPeriod` cannot silently run a weekly period.
+ */
+export function parseFixedDailyPeriod(event: TriggerEvent, now: Date = new Date()): FixedPeriod {
+  assertPeriodEvent(event);
+  if (event.periodKind !== PERIOD_KIND) {
+    throw new WorkflowOperationError(
+      'period_kind_unsupported',
+      409,
+      `the B-line period adapter only supports ${PERIOD_KIND} reports`,
+    );
+  }
+  return parseDailyEvent(event, now);
+}
+
+/** The fixed event is authoritative; a definition may not read another period. */
 export function assertOperationPeriodMatches(
   input: Readonly<Record<string, WorkflowValue>>,
   period: FixedPeriod,
@@ -136,8 +244,8 @@ export function assertOperationPeriodMatches(
 }
 
 /**
- * Same formula as `enqueueReport` in construction/report-store.ts. The daily
- * kind has no stage event, so `event` is always null; conversationId is only
+ * Same formula as `enqueueReport` in construction/report-store.ts. The period
+ * has no stage event, so `event` is always null; conversationId is only
  * included after a retained self-resume starts a new generation.
  */
 export function periodReportKey(

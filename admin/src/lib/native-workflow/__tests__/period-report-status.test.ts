@@ -27,6 +27,12 @@ const PERIOD_START = '2026-11-10';
 const PERIOD_END = '2026-11-10';
 /** Exclusive Shanghai midnight after 2026-11-10. */
 const PERIOD_END_INSTANT = '2026-11-10T16:00:00.000Z';
+const WEEKLY_START = '2026-11-02';
+const WEEKLY_END = '2026-11-09';
+/** Shanghai midnight of the Monday that starts the week. */
+const WEEKLY_START_INSTANT = '2026-11-01T16:00:00.000Z';
+/** Shanghai midnight of the next Monday: exclusive end, also the cutoff. */
+const WEEKLY_END_INSTANT = '2026-11-08T16:00:00.000Z';
 const NOW = '2026-11-11T03:00:00.000Z';
 const OBSERVED_AT = '2026-11-11T03:00:00.000Z';
 const DIGEST = 'a'.repeat(64);
@@ -50,6 +56,33 @@ const businessEvent: LiveBusinessEvent = {
   periodStart: PERIOD_START,
   periodEnd: PERIOD_END,
 };
+
+function weeklyEvent(): TriggerEvent {
+  return {
+    ...event,
+    eventId: 'b5-weekly-20261102',
+    periodKind: 'weekly',
+    periodStart: WEEKLY_START,
+    periodEnd: WEEKLY_END,
+  };
+}
+
+function weeklyBusinessEvent(): LiveBusinessEvent {
+  return {
+    ...businessEvent,
+    periodKind: 'weekly',
+    periodStart: WEEKLY_START,
+    periodEnd: WEEKLY_END,
+  } as unknown as LiveBusinessEvent;
+}
+
+function makeWeeklyRecord(options: RecordOptions = {}): LiveRunRecord {
+  return makeRecord({
+    ...options,
+    event: weeklyEvent(),
+    businessEvent: weeklyBusinessEvent(),
+  });
+}
 
 function receipt(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -225,6 +258,25 @@ function snapshot(overrides: SnapshotOptions = {}): PeriodReportBusinessSnapshot
   };
 }
 
+function weeklyReport(
+  overrides: Partial<NonNullable<PeriodReportBusinessSnapshot['report']>> = {},
+): NonNullable<PeriodReportBusinessSnapshot['report']> {
+  return {
+    id: '5001',
+    binding_id: '9001',
+    report_key: 'report-key',
+    kind: 'weekly',
+    period_start: WEEKLY_START_INSTANT,
+    period_end: WEEKLY_END_INSTANT,
+    latest_revision: 1,
+    ...overrides,
+  };
+}
+
+function weeklySnapshot(overrides: SnapshotOptions = {}): PeriodReportBusinessSnapshot {
+  return { ...snapshot(), report: weeklyReport(), ...overrides };
+}
+
 function map(
   snapshotOverrides: SnapshotOptions = {},
   record: LiveRunRecord = makeRecord(),
@@ -233,6 +285,18 @@ function map(
     record,
     binding: bindingView(record),
     snapshot: snapshot(snapshotOverrides),
+    observedAt: OBSERVED_AT,
+  });
+}
+
+function mapWeekly(
+  snapshotOverrides: SnapshotOptions = {},
+  record: LiveRunRecord = makeWeeklyRecord(),
+) {
+  return mapPeriodReportRunStatus({
+    record,
+    binding: bindingView(record),
+    snapshot: weeklySnapshot(snapshotOverrides),
     observedAt: OBSERVED_AT,
   });
 }
@@ -337,6 +401,33 @@ test('extract rejects a non-daily period and a non-period event', () => {
   assert.ok(stageEvent.reasons.includes('period_event_mismatch'));
 });
 
+test('extract binds a weekly run whose event and business period agree', () => {
+  const extracted = extractPeriodReportRunBinding(makeWeeklyRecord());
+  assert.equal(extracted.ok, true);
+  assert.deepEqual(extracted.reasons, []);
+  assert.equal(extracted.binding?.periodKind, 'weekly');
+  assert.equal(extracted.binding?.periodStart, WEEKLY_START);
+  assert.equal(extracted.binding?.periodEnd, WEEKLY_END);
+});
+
+test('extract rejects a mismatched or unsupported period kind as unbound', () => {
+  const mismatch = extractPeriodReportRunBinding(makeRecord({
+    event: { ...event, periodKind: 'daily', periodStart: WEEKLY_START, periodEnd: WEEKLY_END },
+    businessEvent: weeklyBusinessEvent(),
+  }));
+  assert.equal(mismatch.ok, false);
+  assert.equal(mismatch.binding, null);
+  assert.ok(mismatch.reasons.includes('period_event_mismatch'));
+  assert.equal(mismatch.reasons.includes('period_kind_unsupported'), false);
+
+  const unsupported = extractPeriodReportRunBinding(makeRecord({
+    businessEvent: { ...businessEvent, periodKind: 'monthly' } as unknown as LiveBusinessEvent,
+  }));
+  assert.equal(unsupported.ok, false);
+  assert.equal(unsupported.binding, null);
+  assert.ok(unsupported.reasons.includes('period_kind_unsupported'));
+});
+
 // ---------------------------------------------------------------------------
 // mapping
 // ---------------------------------------------------------------------------
@@ -418,6 +509,42 @@ test('facts ready, body ready and a confirmed delivery complete the run', () => 
   assert.equal(progress.overall, 'completed');
   assert.equal(progress.completed, true);
   assert.equal(progress.processing, false);
+});
+
+test('a weekly run with a weekly report completes with the same progress mapping', () => {
+  const progress = mapWeekly();
+  assert.equal(progress.facts.state, 'ready');
+  assert.equal(progress.body.state, 'ready');
+  assert.equal(progress.delivery.state, 'delivered');
+  assert.equal(progress.availability.state, 'available');
+  assert.equal(progress.overall, 'completed');
+  assert.equal(progress.completed, true);
+  assert.equal(progress.processing, false);
+});
+
+test('a weekly binding never accepts a daily report kind or daily period boundaries', () => {
+  const dailyKind = mapWeekly({ report: weeklyReport({ kind: 'daily' }) });
+  assert.equal(dailyKind.overall, 'unknown');
+  assert.equal(dailyKind.completed, false);
+  assert.equal(dailyKind.processing, false);
+  assert.ok(dailyKind.reasons.includes('report_binding_mismatch'));
+  assert.ok(dailyKind.reasons.includes('report_kind_mismatch'));
+
+  // A daily report end is the next Shanghai midnight after periodEnd; a
+  // weekly report end must be the Shanghai midnight of periodEnd itself.
+  const dailyEnd = mapWeekly({
+    report: weeklyReport({ period_end: '2026-11-09T16:00:00.000Z' }),
+  });
+  assert.equal(dailyEnd.overall, 'unknown');
+  assert.equal(dailyEnd.completed, false);
+  assert.ok(dailyEnd.reasons.includes('report_binding_mismatch'));
+
+  const wrongStart = mapWeekly({
+    report: weeklyReport({ period_start: '2026-11-02T16:00:00.000Z' }),
+  });
+  assert.equal(wrongStart.overall, 'unknown');
+  assert.equal(wrongStart.completed, false);
+  assert.ok(wrongStart.reasons.includes('report_binding_mismatch'));
 });
 
 test('a muted delivery with ready facts and body stops the run without completing', () => {

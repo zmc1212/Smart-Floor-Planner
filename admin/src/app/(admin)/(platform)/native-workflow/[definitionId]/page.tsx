@@ -923,7 +923,13 @@ function NativeWorkflowDetailPageInner() {
                   column={3}
                   items={[
                     { key: 'project', label: '项目', children: `${binding.projectName}（${binding.projectId}）` },
-                    { key: 'period', label: '业务日期', children: `${binding.periodStart} ~ ${binding.periodEnd}` },
+                    {
+                      key: 'period',
+                      label: binding.periodKind === 'weekly' ? '业务周期' : '业务日期',
+                      children: binding.periodKind === 'weekly'
+                        ? `${binding.periodStart} ~ ${binding.periodEnd}（上海时间，不含结束日）`
+                        : `${binding.periodStart} ~ ${binding.periodEnd}`,
+                    },
                     {
                       key: 'definition',
                       label: '定义版本',

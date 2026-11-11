@@ -16,7 +16,7 @@ import type { PendingOperation, WorkflowValue } from '../types';
 import { writeProjectAccess } from './project-access';
 import {
   assertOperationPeriodMatches,
-  parseFixedDailyPeriod,
+  parseFixedPeriod,
   periodReportKey,
   type FixedPeriod,
 } from './period-event';
@@ -638,8 +638,11 @@ function composePeriodReport(
   // This is a deterministic facts heading, not the report body. The existing
   // report-body Worker composes and stores the delivered body separately.
   const count = `本期按原始施工记录整理 ${records.length} 条进展、获权照片 ${photos.length} 张。`;
+  const title = period.kind === 'weekly'
+    ? `施工周报 · ${period.periodStart} ~ ${period.periodEnd}`
+    : `施工日报 · ${period.periodStart}`;
   return {
-    title: `施工日报 · ${period.periodStart}`,
+    title,
     body: records.length || photos.length ? count : '本期没有新的已发布施工记录或获权照片。',
     missingItems: [],
   };
@@ -654,7 +657,7 @@ export function createPeriodReportPorts(options: PeriodReportPortOptions): LiveO
   return {
     async execute(operation, context) {
       try {
-        const period = parseFixedDailyPeriod(context.event, now());
+        const period = parseFixedPeriod(context.event, now());
         switch (operation.capabilityRef) {
           case 'read.period_records': {
             assertOperationPeriodMatches(operation.input, period);

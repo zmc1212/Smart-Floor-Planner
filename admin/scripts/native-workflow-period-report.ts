@@ -1,10 +1,11 @@
-/** Development-only B5.2 entry for one published daily period report.
+/** Development-only B5.4 entry for one published daily or weekly period report.
  *
- * It binds one published revision and one fixed business day, then reuses the
- * existing report lifecycle: `save.period_report` calls the real
- * `enqueueReport` (report/version/run/job), and `deliver.inapp` only reads the
- * receipt written by the existing Worker. No model, FastGPT or embedding call
- * happens in this process; a real Worker must process the queued run.
+ * It binds one published revision and one fixed period (a Shanghai day or a
+ * Monday-to-Monday week), then reuses the existing report lifecycle:
+ * `save.period_report` calls the real `enqueueReport` (report/version/run/job),
+ * and `deliver.inapp` only reads the receipt written by the existing Worker. No
+ * model, FastGPT or embedding call happens in this process; a real Worker must
+ * process the queued run.
  *
  * Required environment:
  *   B4_LIVE_APP_DATABASE_URL=postgresql://sfp_app:...@127.0.0.1:55433/smart_floor_planner
@@ -13,6 +14,8 @@
  *   npx tsx scripts/native-workflow-period-report.ts --development --ensure-published `
  *     --admin-id 1454000001 --project-id 1454000004 `
  *     --period-start 2026-11-10 --run-id b5-2-daily-001
+ *   npx tsx scripts/native-workflow-period-report.ts --development --ensure-published `
+ *     --period-kind weekly --period-start 2026-11-02 --run-id b5-4-weekly-001
  */
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
@@ -31,7 +34,12 @@ import {
 import { runPublishedLive } from '@/lib/native-workflow/live/runner';
 import { createFileWorkflowRunStore } from '@/lib/native-workflow/live/run-store';
 import { createPeriodReportPorts } from '@/lib/native-workflow/live/period-report-ports';
-import { parseFixedDailyPeriod } from '@/lib/native-workflow/live/period-event';
+import { parseFixedPeriod } from '@/lib/native-workflow/live/period-event';
+import {
+  parsePeriodKind,
+  resolveCliPeriod,
+  type PeriodCliKind,
+} from '@/lib/native-workflow/live/period-cli';
 import type { LiveBusinessEvent, LiveRunRecord } from '@/lib/native-workflow/live/types';
 import type { TriggerEvent } from '@/lib/native-workflow/types';
 
@@ -78,11 +86,38 @@ const executing = !showRun;
 const enterpriseId = positiveId('--enterprise-id', option('--enterprise-id') ?? DEFAULT_ENTERPRISE_ID);
 const adminId = executing ? positiveId('--admin-id', required('--admin-id')) : '';
 const projectId = executing ? positiveId('--project-id', required('--project-id')) : '';
-const periodStart = executing ? dateOnly('--period-start', required('--period-start')) : '';
-const periodEnd = executing ? dateOnly('--period-end', option('--period-end') ?? periodStart) : '';
-const occurredAt = option('--occurred-at') ?? `${periodStart}T10:00:00.000Z`;
-const eventId = option('--event-id') ?? `b5-period-daily-${periodStart}`;
-const definitionId = option('--definition-id') ?? 'period-report-daily';
+
+interface CliTarget {
+  readonly kind: PeriodCliKind;
+  readonly periodStart: string;
+  readonly periodEnd: string;
+  readonly eventId: string;
+  readonly definitionId: string;
+}
+
+function resolveTarget(): CliTarget {
+  const start = dateOnly('--period-start', required('--period-start'));
+  const end = option('--period-end');
+  try {
+    const resolved = resolveCliPeriod({
+      kind: parsePeriodKind(option('--period-kind')),
+      periodStart: start,
+      ...(end === undefined ? {} : { periodEnd: dateOnly('--period-end', end) }),
+    });
+    return {
+      kind: resolved.kind,
+      periodStart: resolved.periodStart,
+      periodEnd: resolved.periodEnd,
+      eventId: option('--event-id') ?? resolved.eventId,
+      definitionId: option('--definition-id') ?? resolved.definitionId,
+    };
+  } catch (error) {
+    failJson({ error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
+const target: CliTarget | null = executing ? resolveTarget() : null;
+const occurredAt = target ? option('--occurred-at') ?? `${target.periodStart}T10:00:00.000Z` : '';
 const requestedRevision = option('--revision');
 const runId = option('--run-id') ?? `native-period-${Date.now()}-${randomUUID().slice(0, 8)}`;
 const ensurePublished = process.argv.includes('--ensure-published');
@@ -99,7 +134,7 @@ function receiptOf(record: LiveRunRecord, port: 'saveReceipt' | 'deliveryReceipt
   return null;
 }
 
-async function resolvePublished() {
+async function resolvePublished(definitionId: string) {
   let record = await definitionStore.get(definitionId);
   if (!record) {
     if (!ensurePublished) failJson({ error: `definition ${definitionId} was not found; pass --ensure-published` });
@@ -126,12 +161,13 @@ async function resolvePublished() {
 }
 
 async function evidence(projectId: string, businessEvent: LiveBusinessEvent) {
+  const kind = businessEvent.periodKind;
   return withTenantTransaction(enterpriseId, async (tx) => {
     const reports = await one(tx, sql`select count(*)::int as count from app.construction_reports
-      where enterprise_id=${enterpriseId} and kind='daily'
+      where enterprise_id=${enterpriseId} and kind=${kind}
         and period_start=${`${businessEvent.periodStart}T00:00:00+08:00`}::timestamptz`);
     const report = await one(tx, sql`select id,latest_revision,report_key,period_start,period_end
-      from app.construction_reports where enterprise_id=${enterpriseId} and kind='daily'
+      from app.construction_reports where enterprise_id=${enterpriseId} and kind=${kind}
       and period_start=${`${businessEvent.periodStart}T00:00:00+08:00`}::timestamptz order by id limit 1`);
     const version = report
       ? await one(tx, sql`select revision,run_id,status,body_run_id from app.construction_report_versions
@@ -150,7 +186,8 @@ async function evidence(projectId: string, businessEvent: LiveBusinessEvent) {
     const attempts = await one(tx, sql`select count(*)::int as count from app.ai_provider_attempts
       where enterprise_id=${enterpriseId}`);
     return {
-      dailyReports: Number(reports?.count ?? 0),
+      periodKind: kind,
+      reportCount: Number(reports?.count ?? 0),
       report: report ?? null,
       version: version ?? null,
       delivery: delivery ?? null,
@@ -181,17 +218,20 @@ async function main() {
     username: String(connected?.username ?? ''),
   });
 
-  const version = await resolvePublished();
+  const bound = target;
+  if (!bound) failJson({ error: 'a period target is required' });
+
+  const version = await resolvePublished(bound.definitionId);
   const actor: ConstructionActor = { enterpriseId, adminId };
   const event: TriggerEvent = {
-    eventId,
+    eventId: bound.eventId,
     eventType: 'period_report',
     occurredAt,
-    periodKind: 'daily',
-    periodStart,
-    periodEnd,
+    periodKind: bound.kind,
+    periodStart: bound.periodStart,
+    periodEnd: bound.periodEnd,
   };
-  const period = parseFixedDailyPeriod(event);
+  const period = parseFixedPeriod(event);
   const businessEvent: LiveBusinessEvent = {
     outboxEventId: null,
     progressRevision: 0,

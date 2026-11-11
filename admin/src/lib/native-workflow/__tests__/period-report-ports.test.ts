@@ -6,6 +6,7 @@ import type { ConstructionActor } from '@/lib/construction/contracts';
 import type { PendingOperation, TriggerEvent, WorkflowValue } from '../types';
 import {
   parseFixedDailyPeriod,
+  parseFixedPeriod,
   periodReportKey,
   type FixedPeriod,
 } from '../live/period-event';
@@ -39,6 +40,24 @@ const actor: ConstructionActor = { enterpriseId: '1454', adminId: '1454000007' }
 
 /** Trusted clock after the fixed 2026-11-10 Shanghai day has ended. */
 const AFTER_PERIOD = new Date('2026-11-11T02:00:00.000Z');
+
+/** Complete Shanghai week: Monday 2026-11-02 to Monday 2026-11-09, right-open. */
+const weeklyEvent: TriggerEvent = {
+  eventId: 'b5-weekly-20261109',
+  eventType: 'period_report',
+  occurredAt: '2026-11-09T02:00:00.000Z',
+  periodKind: 'weekly',
+  periodStart: '2026-11-02',
+  periodEnd: '2026-11-09',
+};
+
+/** Exclusive end of the 2026-11-02..2026-11-09 Shanghai week. */
+const WEEKLY_END = new Date('2026-11-08T16:00:00.000Z');
+const WEEKLY_INPUT = {
+  periodKind: 'weekly',
+  periodStart: '2026-11-02',
+  periodEnd: '2026-11-09',
+};
 
 function context(runId = 'b5-run-1', revision = 1): LiveRunContext {
   return {
@@ -120,6 +139,15 @@ function storedReport(current: PeriodReportScope, reused = false): StoredPeriodR
     reportKey: current.reportKey,
     reused,
   };
+}
+
+function weeklyContext(runId = 'b5-run-weekly', revision = 1): LiveRunContext {
+  return { ...context(runId, revision), event: weeklyEvent };
+}
+
+function weeklyScope(): PeriodReportScope {
+  const period = parseFixedPeriod(weeklyEvent, WEEKLY_END);
+  return scope({ reportKey: periodReportKey(period, { id: '7001' }) });
 }
 
 interface FakeState {
@@ -514,6 +542,107 @@ test('records, photos and receiver scope come from the authorized reads', async 
   assert.equal(composed.title, '施工日报 · 2026-11-10');
   assert.match(String(composed.body), /1 条进展、获权照片 1 张/);
   assert.deepEqual(composed.missingItems, []);
+});
+
+test('a weekly period completes the existing read/compose/save/deliver flow', async () => {
+  const record = {
+    projectId: '1455',
+    recordId: '6201',
+    version: 3,
+    source: 'construction_record' as const,
+    occurredAt: '2026-11-05T06:00:00.000Z',
+    room: '客厅',
+    title: '墙面开槽',
+    completed: '开槽完成',
+    pending: '',
+    coordination: '',
+    note: '',
+  };
+  const photo = {
+    projectId: '1455',
+    recordId: '6201',
+    version: 3,
+    photoId: '7201',
+    width: 1080,
+    height: 1440,
+  };
+  const { state, store } = fakeStore({
+    scope: weeklyScope(),
+    queued: storedReport(weeklyScope()),
+    records: { records: [record], truncated: false },
+    photos: [photo],
+    delivery: {
+      state: 'delivered',
+      messageId: '8101',
+      conversationId: '7001',
+      deliveredAt: '2026-11-09T16:05:00.000Z',
+      messagePurpose: 'construction.report.facts',
+    },
+  });
+  const ports = createPeriodReportPorts({ actor, store, now: () => WEEKLY_END });
+
+  const read = await ports.execute(operation('read.period_records', WEEKLY_INPUT), weeklyContext());
+  assert.equal(read.recordCount, 1);
+  assert.equal(read.hasRecords, true);
+
+  const photos = await ports.execute(
+    operation('read.authorized_photos', WEEKLY_INPUT),
+    weeklyContext(),
+  );
+  assert.equal(photos.photoCount, 1);
+
+  const receivers = await ports.execute(operation('read.receiver_scope'), weeklyContext());
+  assert.equal(receivers.receiverCount, 1);
+
+  const composed = await ports.execute(
+    operation('compose.period_report', {
+      ...WEEKLY_INPUT,
+      records: read.records as WorkflowValue,
+      photos: photos.photos as WorkflowValue,
+      recordCount: 1,
+      photoCount: 1,
+    }),
+    weeklyContext(),
+  );
+  assert.equal(composed.title, '施工周报 · 2026-11-02 ~ 2026-11-09');
+  assert.match(String(composed.body), /1 条进展、获权照片 1 张/);
+
+  const saved = await ports.execute(operation('save.period_report'), weeklyContext());
+  assert.equal(saved.saved, true);
+  const savedReceipt = saved.saveReceipt as Record<string, unknown>;
+  assert.equal(savedReceipt.simulated, false);
+  assert.equal(savedReceipt.reportKey, state.scope.reportKey);
+  assert.equal(savedReceipt.reused, false);
+  assert.equal(state.enqueueCalls.length, 1);
+  assert.equal(state.enqueueProjects[0], '1455');
+  const period = state.enqueueCalls[0]!;
+  assert.equal(period.kind, 'weekly');
+  assert.equal(period.start.toISOString(), '2026-11-01T16:00:00.000Z');
+  assert.equal(period.end.toISOString(), '2026-11-08T16:00:00.000Z');
+  assert.equal(period.cutoff.toISOString(), period.end.toISOString());
+  assert.equal(period.scheduledAt.toISOString(), weeklyEvent.occurredAt);
+
+  // A repeated run for the same week reuses the durable report; no second task.
+  state.existing = storedReport(weeklyScope(), true);
+  state.queued = null;
+  const repeated = await ports.execute(
+    operation('save.period_report'),
+    weeklyContext('b5-run-weekly-b', 2),
+  );
+  const repeatedReceipt = repeated.saveReceipt as Record<string, unknown>;
+  assert.equal(repeatedReceipt.reused, true);
+  assert.equal(repeatedReceipt.reportKey, savedReceipt.reportKey);
+  assert.equal(state.enqueueCalls.length, 1);
+
+  const delivered = await ports.execute(
+    operation('deliver.inapp', { receivers: receivers.receivers as WorkflowValue }),
+    weeklyContext(),
+  );
+  assert.equal(delivered.delivered, true);
+  const deliveryReceipt = delivered.deliveryReceipt as Record<string, unknown>;
+  assert.equal(deliveryReceipt.status, 'delivered');
+  assert.equal(deliveryReceipt.messageId, '8101');
+  assert.equal(deliveryReceipt.reportId, '5001');
 });
 
 test('delivery only reports a real, matching worker receipt', async () => {

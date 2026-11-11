@@ -147,7 +147,8 @@ function readySnapshot(): PeriodReportBusinessSnapshot {
       binding_id: '1',
       report_key: 'k',
       kind: 'daily',
-      period_start: PERIOD_START,
+      // Shanghai midnight of PERIOD_START, stored as UTC.
+      period_start: '2026-11-05T16:00:00.000Z',
       // Period end is exclusive: the next Shanghai midnight in UTC.
       period_end: '2026-11-06T16:00:00.000Z',
       latest_revision: 1,

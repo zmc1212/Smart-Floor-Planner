@@ -10,7 +10,7 @@ export const weeklyReportScenario: SimulationScenario = {
       eventType: 'period_report',
       occurredAt: '2026-11-11T09:28:00.000Z',
       periodKind: 'weekly',
-      periodStart: '2026-11-03',
+      periodStart: '2026-11-02',
       periodEnd: '2026-11-09',
     },
   ],

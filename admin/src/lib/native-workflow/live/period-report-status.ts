@@ -30,6 +30,9 @@ import type { LiveRunRecord, LiveRunStatus } from './types';
 
 export const PERIOD_REPORT_STATUS_CONTRACT = 'period-report-run-status-v1';
 
+/** Period kinds the B-line report adapter can bind. */
+export type PeriodKind = 'daily' | 'weekly';
+
 export type PeriodStepState = 'queued' | 'running' | 'ready' | 'failed' | 'unknown';
 
 export type PeriodDeliveryState = 'waiting' | 'delivered' | 'revoked' | 'muted' | 'unknown';
@@ -59,7 +62,7 @@ export interface PeriodRunBindingView {
   readonly definitionId: string;
   readonly definitionRevision: number;
   readonly digest: string;
-  readonly periodKind: 'daily';
+  readonly periodKind: PeriodKind;
   readonly periodStart: string;
   readonly periodEnd: string;
   readonly reportId: string;
@@ -318,16 +321,29 @@ function emptySnapshot(readError: string | null): PeriodReportBusinessSnapshot {
   };
 }
 
-/** The fixed daily period end is exclusive: next Shanghai midnight. */
-function periodEndInstant(periodEnd: string): number | null {
-  if (!CALENDAR_DAY.test(periodEnd)) return null;
-  const [year, month, day] = periodEnd.split('-').map(Number);
-  const start = Date.UTC(year, month - 1, day) - SHANGHAI_OFFSET_MS;
-  return start + DAY_MS;
+function supportedPeriodKind(value: unknown): value is PeriodKind {
+  return value === 'daily' || value === 'weekly';
 }
 
-function periodEndMatches(value: string, periodEnd: string): boolean {
-  const expected = periodEndInstant(periodEnd);
+/** Shanghai midnight of a YYYY-MM-DD calendar date, in epoch milliseconds. */
+function shanghaiMidnight(day: string): number | null {
+  if (!CALENDAR_DAY.test(day)) return null;
+  const [year, month, date] = day.split('-').map(Number);
+  return Date.UTC(year, month - 1, date) - SHANGHAI_OFFSET_MS;
+}
+
+/**
+ * The stored report boundary for a period: the Shanghai midnight of
+ * `periodEnd`. A daily period end is exclusive (next midnight); a weekly
+ * period end already names the exclusive next Monday.
+ */
+function periodEndInstant(periodEnd: string, kind: PeriodKind): number | null {
+  const midnight = shanghaiMidnight(periodEnd);
+  if (midnight === null) return null;
+  return kind === 'weekly' ? midnight : midnight + DAY_MS;
+}
+
+function instantMatches(value: string, expected: number | null): boolean {
   if (expected === null) return false;
   const actual = new Date(value).getTime();
   return Number.isFinite(actual) && actual === expected;
@@ -355,7 +371,13 @@ export function extractPeriodReportRunBinding(record: LiveRunRecord): {
   if (!nonEmptyString(record.binding.digest)) reasons.push('digest_missing');
 
   if (event.eventType !== 'period_report') reasons.push('period_event_mismatch');
-  if (business.periodKind !== 'daily') reasons.push('period_kind_unsupported');
+  const eventKind = event.periodKind;
+  const confirmedKind = supportedPeriodKind(business.periodKind) ? business.periodKind : null;
+  if (confirmedKind === null || !supportedPeriodKind(eventKind)) {
+    reasons.push('period_kind_unsupported');
+  } else if (eventKind !== confirmedKind) {
+    reasons.push('period_event_mismatch');
+  }
   if (
     !nonEmptyString(event.periodStart)
     || !nonEmptyString(event.periodEnd)
@@ -402,7 +424,8 @@ export function extractPeriodReportRunBinding(record: LiveRunRecord): {
       definitionId: record.binding.definitionId,
       definitionRevision: record.binding.revision,
       digest: record.binding.digest,
-      periodKind: 'daily',
+      // The confirmed business event owns the kind; the event must agree.
+      periodKind: confirmedKind ?? 'daily',
       periodStart: event.periodStart!,
       periodEnd: event.periodEnd!,
       reportId: String(receipt.reportId),
@@ -615,11 +638,15 @@ function bindingMismatchReasons(
       reasons.push('report_binding_mismatch');
       reasons.push('report_key_mismatch');
     }
-    if (report.kind !== 'daily') {
+    if (report.kind !== binding.periodKind) {
       reasons.push('report_binding_mismatch');
       reasons.push('report_kind_mismatch');
     }
-    if (!periodEndMatches(report.period_end, binding.periodEnd)) {
+    if (!instantMatches(report.period_start, shanghaiMidnight(binding.periodStart))) {
+      reasons.push('report_binding_mismatch');
+      reasons.push('report_period_mismatch');
+    }
+    if (!instantMatches(report.period_end, periodEndInstant(binding.periodEnd, binding.periodKind))) {
       reasons.push('report_binding_mismatch');
       reasons.push('report_period_mismatch');
     }
