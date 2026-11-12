@@ -11,6 +11,7 @@ export const assistantKnowledgeIndexProfiles=app.table('assistant_knowledge_inde
 export const assistantKnowledgeDocuments=app.table('assistant_knowledge_documents',{
   ...identity(),title:text('title').notNull(),category:text('category').notNull(),sourceType:text('source_type').notNull(),audience:text('audience').notNull(),
   status:text('status').notNull(),publishedVersionId:ref('published_version_id'),version:integer('version').notNull(),
+  scope:text('scope').notNull().default('enterprise'),projectId:ref('project_id'),
   createdBy:ref('created_by').notNull(),updatedBy:ref('updated_by').notNull(),updatedAt:time('updated_at').notNull(),
 });
 const privateBytes=customType<{data:Buffer}>({dataType:()=> 'bytea'});
@@ -28,13 +29,25 @@ export const assistantKnowledgeVersions=app.table('assistant_knowledge_versions'
 export const assistantKnowledgeChunks=app.table('assistant_knowledge_chunks',{
   ...identity(),documentVersionId:ref('document_version_id').notNull(),indexProfileId:ref('index_profile_id').notNull(),ordinal:integer('ordinal').notNull(),
   text:text('text').notNull(),textHash:text('text_hash').notNull(),contentHash:text('content_hash').notNull(),locator:jsonb('locator').notNull(),
-  terms:text('terms').array().notNull(),embedding:vector('embedding',{dimensions:1024}).notNull(),
+  terms:text('terms').array().notNull(),embedding:vector('embedding',{dimensions:1024}),
 });
 export const assistantKnowledgeAttempts=app.table('assistant_knowledge_attempts',{
   id:ref('id').primaryKey().generatedAlwaysAsIdentity(),enterpriseId:ref('enterprise_id').notNull(),jobId:ref('job_id').notNull(),
   leaseToken:text('lease_token').notNull(),operation:text('operation').notNull(),batchOrdinal:integer('batch_ordinal').notNull(),
   profileKey:text('profile_key').notNull(),modelRevision:text('model_revision').notNull(),status:text('status').notNull(),inputTokens:ref('input_tokens'),
-  errorCode:text('error_code'),startedAt:time('started_at').notNull(),completedAt:time('completed_at'),
+  errorCode:text('error_code'),providerRequestId:text('provider_request_id'),startedAt:time('started_at').notNull(),completedAt:time('completed_at'),
+});
+export const assistantManagedKnowledgeLibraries=app.table('assistant_managed_knowledge_libraries',{
+  enterpriseId:ref('enterprise_id').primaryKey(),indexProfileId:ref('index_profile_id').notNull(),workspaceId:text('workspace_id').notNull(),
+  indexName:text('index_name').notNull(),indexId:text('index_id'),provisionJobId:ref('provision_job_id'),createdAt:time('created_at').notNull().defaultNow(),
+});
+export const assistantManagedKnowledgeImports=app.table('assistant_managed_knowledge_imports',{
+  enterpriseId:ref('enterprise_id').notNull(),jobId:ref('job_id').notNull(),versionId:ref('version_id').notNull(),
+  editVersion:integer('edit_version').notNull(),contentHash:text('content_hash').notNull(),workspaceId:text('workspace_id').notNull(),versionTag:text('version_tag').notNull(),
+  fileId:text('file_id'),indexDocumentId:text('index_document_id'),ingestionId:text('ingestion_id'),createdIndex:boolean('created_index').notNull().default(false),
+  ready:boolean('ready').notNull().default(false),createdAt:time('created_at').notNull().defaultNow(),revokedAt:time('revoked_at'),removedAt:time('removed_at'),
+  cleanupAfter:time('cleanup_after').notNull().defaultNow(),cleanupAttempts:integer('cleanup_attempts').notNull().default(0),
+  cleanupError:text('cleanup_error'),cleanupRequestId:text('cleanup_request_id'),indexedRequestId:text('indexed_request_id'),
 });
 export const assistantMessageCitations=app.table('assistant_message_citations',{
   ...identity(),conversationId:ref('conversation_id').notNull(),messageId:ref('message_id').notNull(),runId:ref('run_id').notNull(),

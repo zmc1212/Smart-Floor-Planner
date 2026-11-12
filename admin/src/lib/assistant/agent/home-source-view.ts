@@ -1,5 +1,6 @@
 import type { ModelMessage } from '../contracts/model';
 import { originalMessageId } from './context-budget';
+import { isKnowledgeTool } from '../knowledge/rag-tools';
 
 export const homeSourceViewProtocol = 'explicit-home-read-view-v1';
 export type HomeSourceView = { conversationId: string; leadId: string };
@@ -23,7 +24,7 @@ export function projectHomeSourceView(messages: ModelMessage[], triggerId: strin
     if (message.role !== 'tool') return message;
     const name = calls.get(message.callId);
     calls.delete(message.callId);
-    if (name !== 'query_materials' && name !== 'search_knowledge') return message;
+    if (name !== 'query_materials' && name !== 'search_knowledge' && !(name && isKnowledgeTool(name))) return message;
     if (name === 'query_materials') explicit = false;
     try {
       const packet = JSON.parse(message.content);

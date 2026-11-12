@@ -15,7 +15,12 @@ export type InvocationOwner = { kind: 'generation'; generationId: bigint }
 export type RunTrigger = { kind: 'user_message'; messageId: string }
   | { kind: 'domain_event'; eventId: string } | { kind: 'scheduled_task'; occurrenceKey: string };
 export type ResourceRef = { type: string; id: string; version?: string };
-export type Evidence = { ref: ResourceRef; text: string; hash: string; similarity?:number; professional?: ProfessionalEvidence; reportStage?: ReportWorkmanshipStage; file?: import('./source-file').FileLocator; web?: import('./web-source').WebSourceLocator };
+export type KnowledgeProvenance = {
+  enterpriseName: string; documentId: string; title: string; versionId: string; versionNumber: number;
+  scope: 'enterprise' | 'project'; projectId: string | null; category: string; sourceType: string;
+  effectiveFrom: string; effectiveTo: string | null; published: boolean;
+};
+export type Evidence = { knowledge?: KnowledgeProvenance; ref: ResourceRef; text: string; hash: string; similarity?:number; professional?: ProfessionalEvidence; reportStage?: ReportWorkmanshipStage; file?: import('./source-file').FileLocator; web?: import('./web-source').WebSourceLocator };
 export interface ContextProvider {
   authorize(actor: ActorContext, ref: ResourceRef): Promise<boolean>;
   resolve(actor: ActorContext, ref: ResourceRef): Promise<Evidence[]>;
@@ -25,7 +30,7 @@ export interface KnowledgeRetriever {
 }
 export interface EmbeddingGateway {
   readonly profile: { model: string; revision: string; dimensions: number };
-  embed(texts: string[], kind: 'query' | 'document'): Promise<{
+  embed(texts: string[], kind: 'query' | 'document', signal?: AbortSignal): Promise<{
     vectors: number[][]; usage: { inputTokens: number } | null;
   }>;
 }

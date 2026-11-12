@@ -8,6 +8,8 @@ import { AssistantError, fail, id, type ActorContext } from '../contracts';
 import { cancelRuns, idempotent } from '../core/conversation';
 import { agentPromptVersion } from '../agent/context';
 import { knowledgeManager, expected, text, type KnowledgeActor } from './service';
+import { knowledgeProviderMode } from './bailian-provider';
+import { managedLibrary } from './managed-store';
 
 type Dependencies = {
   allocate: (tx: PostgresTransaction, c: Row, settings: Row) => Promise<string>;
@@ -53,14 +55,18 @@ export class KnowledgeBatches {
       where i.enterprise_id=${this.manager.enterpriseId} and i.batch_id=${String(batchId)} order by i.ordinal`);
   }
   private async configuration(tx: PostgresTransaction, s: Row) {
-    const p = await one(tx, sql`select configuration from app.assistant_knowledge_index_profiles
-      where enterprise_id=${this.manager.enterpriseId} and id=${s.active_index_profile_id ?? null} and status='active'`);
+    const library = knowledgeProviderMode() === 'bailian' ? await managedLibrary(tx, this.manager.enterpriseId) : null;
+    const p = await one(tx, sql`select id,configuration from app.assistant_knowledge_index_profiles
+      where enterprise_id=${this.manager.enterpriseId} and id=${library?.index_profile_id ?? s.active_index_profile_id ?? null} and status='active'`);
     if (!p) fail('knowledge_not_ready');
-    return { profileHash: hash(p.configuration), agentConfigurationHash: hash(s.agent_config ?? null), ...await modelConfiguration() };
+    return { indexProfileId: String(p.id), profileHash: hash(p.configuration), agentConfigurationHash: hash(s.agent_config ?? null), ...await modelConfiguration() };
   }
   private async current(tx: PostgresTransaction, b: Row, s: Row, items: Row[]) {
-    if (Number(b.knowledge_epoch) !== Number(s.knowledge_epoch) || String(b.index_profile_id) !== String(s.active_index_profile_id)) return false;
-    try{if (hash(b.configuration) !== hash(await this.configuration(tx,s))) return false;}
+    if (Number(b.knowledge_epoch) !== Number(s.knowledge_epoch)) return false;
+    try{
+      const { indexProfileId, ...configuration } = await this.configuration(tx,s);
+      if (String(b.index_profile_id) !== indexProfileId || hash(b.configuration) !== hash(configuration)) return false;
+    }
     catch(error){if(error instanceof AssistantError&&error.code==='knowledge_not_ready')return false;throw error;}
     for (const e of items) if (!await this.deps.current(tx,e,s)) return false;
     const models = (b.configuration as Awaited<ReturnType<KnowledgeBatches['configuration']>>).models;
@@ -81,10 +87,10 @@ export class KnowledgeBatches {
       if (concurrency > 3) fail('invalid_message',422);
       const n = await one(tx,sql`select count(*)::int n from app.assistant_knowledge_evaluations where enterprise_id=${this.manager.enterpriseId}`);
       if (Number(n!.n)+targets.length > 2000) fail('knowledge_evaluation_limit',422);
-      const configuration = await this.configuration(tx,s);
+      const { indexProfileId, ...configuration } = await this.configuration(tx,s);
       const batch = await one(tx,sql`insert into app.assistant_knowledge_batches(enterprise_id,created_by,title,concurrency,configuration,knowledge_epoch,index_profile_id)
         values(${this.manager.enterpriseId},${this.manager.adminId},${text(input.title,120)},${concurrency},${json(configuration)}::jsonb,
-        ${Number(s.knowledge_epoch)},${s.active_index_profile_id}) returning id`);
+        ${Number(s.knowledge_epoch)},${indexProfileId}) returning id`);
       // Stable lock order also prevents two overlapping batches from deadlocking on cases.
       const cases = new Map<string,Row>();
       for (const t of [...targets].sort((a,b)=>BigInt(a.id)<BigInt(b.id)?-1:1)) {

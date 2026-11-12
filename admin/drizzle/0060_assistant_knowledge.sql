@@ -1,5 +1,14 @@
--- Requires the validated PG17/pgvector image. Explicit migration only; never install at app startup.
-CREATE EXTENSION IF NOT EXISTS vector;
+-- Preserve pgvector for local search when installed. Fresh managed deployments can use stock PostgreSQL.
+DO $$ BEGIN
+ IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name='vector') THEN
+  BEGIN
+   CREATE EXTENSION IF NOT EXISTS vector;
+  EXCEPTION WHEN insufficient_privilege THEN
+   -- A managed-only database does not need extension creation rights.
+   NULL;
+  END;
+ END IF;
+END $$;
 --> statement-breakpoint
 CREATE TABLE app.assistant_knowledge_index_profiles (
  id bigint PRIMARY KEY GENERATED ALWAYS AS IDENTITY, enterprise_id bigint NOT NULL REFERENCES app.enterprises(id),
@@ -36,11 +45,17 @@ CREATE TABLE app.assistant_knowledge_chunks (
  id bigint PRIMARY KEY GENERATED ALWAYS AS IDENTITY, enterprise_id bigint NOT NULL REFERENCES app.enterprises(id),
  document_version_id bigint NOT NULL, index_profile_id bigint NOT NULL, ordinal integer NOT NULL CHECK(ordinal>=0),
  text text NOT NULL, text_hash text NOT NULL, content_hash text NOT NULL, locator jsonb NOT NULL,
- terms text[] NOT NULL, embedding vector(1024) NOT NULL, created_at timestamptz NOT NULL DEFAULT now(),
+ terms text[] NOT NULL, embedding text, created_at timestamptz NOT NULL DEFAULT now(),
  UNIQUE(enterprise_id,id), UNIQUE(enterprise_id,document_version_id,index_profile_id,ordinal),
  FOREIGN KEY(enterprise_id,document_version_id) REFERENCES app.assistant_knowledge_versions(enterprise_id,id),
  FOREIGN KEY(enterprise_id,index_profile_id) REFERENCES app.assistant_knowledge_index_profiles(enterprise_id,id)
 );
+DO $$ BEGIN
+ IF EXISTS (SELECT 1 FROM pg_extension WHERE extname='vector') THEN
+  ALTER TABLE app.assistant_knowledge_chunks ALTER COLUMN embedding TYPE vector(1024) USING embedding::vector(1024);
+  ALTER TABLE app.assistant_knowledge_chunks ALTER COLUMN embedding SET NOT NULL;
+ END IF;
+END $$;
 ALTER TABLE app.assistant_enterprise_settings ADD COLUMN active_index_profile_id bigint;
 ALTER TABLE app.assistant_enterprise_settings ADD FOREIGN KEY(enterprise_id,active_index_profile_id) REFERENCES app.assistant_knowledge_index_profiles(enterprise_id,id);
 ALTER TABLE app.assistant_jobs DROP CONSTRAINT assistant_jobs_kind_check;

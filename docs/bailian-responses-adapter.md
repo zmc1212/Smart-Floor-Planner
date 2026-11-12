@@ -396,3 +396,34 @@ node --env-file=.env.local --import tsx scripts/xiaok-r3-web-acceptance.ts --liv
 | 真实联调 `live-03` | 普通问答 2/2，搜索 0 次。四类专业问题各跑两次，8/8 取得实际搜索结果并回传模型，6/8 读取并保存公开原文，8 份终稿均因 `unsupported_model_commitment` 被拦截，专业回答验收未通过 |
 
 `live-01` 的设计师与市场题各保存一份带第三方网页链接的答复。设计师答复缺厂家原文并含未证量数；市场题证明第三方网页原文与引用可落库。`live-02` 保留 Responses 单独终稿的实际数组类型错误。三个批次的源码绑定前后一致，证据分别保留。`live-03` 记录 36 次模型调用，观测 116384 输入和 23397 输出 tokens。原生设备、四角色入口及真实新闻源未验。
+
+## 12. R4 企业知识库
+
+百炼北京业务空间为每个企业创建独立托管知识库，使用内置向量存储和 `text-embedding-v4`。导入沿上传租约、OSS PUT、文件注册、解析状态、显式单文件索引、任务状态和切片读取。应用通过 `Retrieve` 获取向量与关键词召回，由原小 K Agent 组织回答。托管接口的混合分数默认阈值为 0.12，可按调用调整。已有中文词法支持关键词模式，重排序可在已授权候选上接入。纯向量模式由显式本地 Provider 提供。[RAG API 概览](https://help.aliyun.com/zh/model-studio/rag-api-overview) · [创建知识库](https://help.aliyun.com/zh/model-studio/rag-api-create-index) · [切片列表](https://help.aliyun.com/zh/model-studio/rag-api-list-chunks) · [直接检索](https://help.aliyun.com/zh/model-studio/rag/channels)
+
+- `ASSISTANT_KNOWLEDGE_PROVIDER=bailian` 是默认模式。Admin API 和知识任务 Worker 使用相同的 `ASSISTANT_BAILIAN_RAG_WORKSPACE_ID`、`ASSISTANT_BAILIAN_RAG_API_KEY`、`ASSISTANT_BAILIAN_RAG_CATEGORY_ID` 和 `ASSISTANT_BAILIAN_RAG_EMBEDDING_MODEL`。数据类目默认 `default`，模型默认 `text-embedding-v4`，也可在创建新索引前配置 `qwen3.7-text-embedding`。现有索引的工作空间及向量模型固定。`local` 兼容已有 Embedding Gateway 与 pgvector；现存本地版本可走兼容模式，托管模式的混合检索以托管发布版本为范围。迁移 `0121`、`0122` 增加项目作用域和企业/版本托管映射。历史 `0060` 的新库执行允许纯 PostgreSQL，已执行的库由增量迁移保留现有向量列。[百炼鉴权](https://help.aliyun.com/zh/model-studio/rag-api-authentication)
+- 原件及管理授权在应用内保存。导入接受文字 PDF、DOCX、TXT、Markdown、XLSX。保留章节、原段或行、表格坐标和可读图文定位。扫描页通过 OCR 导入接口进入人工审阅，旧 DOC 先转换。含排除块的文件仅发送审阅通过的文本；整件下载仍按原有权限检查。切片引用使用匹配的完整本地原条款和经核验的页码。索引完成后校验工作空间、索引、文档与原片段哈希。无法对齐的文档保留为未就绪。
+- 管理员先索引草稿，再发布或切换有效版本。重索引从复制草稿开始。企业隔离由复合外键、强制 RLS 和独立百炼索引共同实施。项目范围、角色、受众、分类、版本与有效期先在服务端筛出允许的版本标签，检索回包再对照实时授权、标签、映射和原片段哈希。撤回和版本替换在本地事务更新知识 epoch，Worker 后续删除已绑定的百炼索引文档及数据中心文件。应用保留版本历史、原件和请求回执。未知写入结果进入待核对状态。[SearchFilters](https://help.aliyun.com/zh/model-studio/how-to-use-search-filters) · [删除文档](https://help.aliyun.com/zh/model-studio/rag-api-delete-document)
+- 四个 R2 只读工具 `knowledge_search`、`knowledge_get_document`、`knowledge_get_source`、`knowledge_search_by_category` 使用统一 Evidence 权限校验。企业条款、项目实际记录和公开网页保留各自来源；企业标准冲突要呈现不同依据及适用范围，缺少证据时报告未检索到对应标准。托管请求用量和账单缺失时保留未知值。
+
+### 验证入口
+
+在 `admin` 使用已迁移的独立环回数据库 `xiaok_r4_acceptance`。环境变量 `XIAOK_R4_DATABASE_URL` 指向该数据库应用角色连接，夹具包含合成微云 1454、对照租户及已核验的 PPT 工艺摘录。
+
+```powershell
+node --env-file=.env.local --import tsx scripts/xiaok-r4-rag-acceptance.ts --label=mock-review
+node --env-file=.env.local --import tsx scripts/xiaok-r4-rag-acceptance.ts --live --label=live-review
+node --env-file=.env.local --import tsx scripts/xiaok-r4-bailian-embedding.ts
+```
+
+同步 Embedding 独立测量使用 6 条中文查询、8 条材料和 3 轮重复。`qwen3.7-text-embedding-flash` Top‑1 18/18，单次请求中位 221 ms，1500 输入 tokens，按北京公开单价估算 ¥0.0001875。`text-embedding-v4` Top‑1 18/18，中位 205 ms，927 tokens，估算 ¥0.0004635。`qwen3.7-text-embedding` 首次请求返回 `AllocationQuota.FreeTierOnly`，停止该模型后续轮次。托管建库默认采用官方接口示例所列的 V4。托管工作空间及专用 API Key 缺失，真实预检在请求前返回 `bailian_knowledge_not_configured`。实际结算金额待账单核对。原始测试回执在 `admin/tmp/r4/`。[向量同步接口和北京计价](https://help.aliyun.com/zh/model-studio/text-embedding-synchronous-api)
+
+
+| 范围 | 执行结果 |
+|---|---|
+| 百炼 RAG Mock 与真实 PostgreSQL 17 | 12/12，含六个 PPT 问答场景、权限变更时正在执行的检索、跨租户回包、PDF 第 2 页、发布替换和云端删除回读。数据库未安装 pgvector |
+| R1–R4 定向 | 128/128。R1 另有 3 次真实 Responses/函数回传成功，R3 的真实 SearXNG 搜索返回 3 条结果。联网正文保存与重开由 RAG Mock 回归覆盖 |
+| 本地兼容 Provider | 真实开发 Embedding Gateway 与隔离 pgvector 9/9。Assistant 隔离数据库回归按测试额度配置运行 22/22 |
+| AI 与 Assistant 单元 | 1139/1140，既有书桌收纳意图用例失败 |
+| 类型与构建 | tsc 与基线均有 290 项诊断，差集为零。Webpack 生产编译通过，整包在既有 `scripts/fastgpt/setup-unified.mts:113` 类型错误处停止 |
+| 真实托管 RAG | 北京业务空间及托管 API Key 缺失，上传、索引、Retrieve 和多轮模型联调待完成 |

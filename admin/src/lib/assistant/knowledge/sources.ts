@@ -12,6 +12,8 @@ import { planMessageProjection } from '@/lib/construction/site-plans';
 import { siteResultRecords } from '@/lib/construction/site-results';
 import type { FileLocator } from '../contracts/source-file';
 import { fileQuoteSpans } from './source-file';
+import { knowledgeProvenance, knowledgeRowAllowed } from './provenance';
+import { sourceIndexReady } from './managed-store';
 import { parseWebCitationId, webCitationForAnswer } from '../agent/web-evidence';
 import { designerMessageProjection } from '@/lib/portfolio/designer-recommendation';
 export type PreviewPolicy={audience:'customer_public'|'staff_internal'|'all';drafts:Array<{id:string;documentId:string;hash:string;editVersion:number}>};
@@ -28,44 +30,52 @@ export async function createPreviewPolicy(tx:PostgresTransaction,enterpriseId:st
     const v=await one(tx,sql`select v.*,d.audience from app.assistant_knowledge_versions v join app.assistant_knowledge_documents d on d.enterprise_id=v.enterprise_id and d.id=v.document_id
       join app.assistant_enterprise_settings s on s.enterprise_id=v.enterprise_id
       where v.enterprise_id=${enterpriseId} and v.id=${id(value)} and v.published_at is null and d.status<>'retired'
-      and v.index_status='ready' and v.indexed_hash=v.content_hash and v.index_profile_id=s.active_index_profile_id
-      and v.effective_from<=now() and (v.effective_to is null or v.effective_to>now())`);
+      and v.index_status='ready' and v.indexed_hash=v.content_hash and ${sourceIndexReady}
+      and v.effective_from<=now() and (v.effective_to is null or v.effective_to>now()) and d.scope='enterprise'`);
     if(!v || (audience!=='all' && v.audience!==audience) || drafts.some(d=>d.documentId===String(v.document_id))) fail('knowledge_not_ready');
     drafts.push({id:String(v.id),documentId:String(v.document_id),hash:String(v.content_hash),editVersion:Number(v.edit_version)});
   }
   return {audience:audience as PreviewPolicy['audience'],drafts};
 }
 /** The same predicate protects candidates, final commits and later citation reads. */
-export function sourceScope(actor:ActorContext,c:Row,historical=false) {
-  const published=historical?sql`v.published_at is not null`:sql`v.published_at is not null and d.published_version_id=v.id`;
-  if(actor.principal.kind==='user') return sql`d.status='active' and d.audience='customer_public' and ${published}`;
+export function sourceScope(actor:ActorContext,c:Row,historical=false,projectId?:string) {
+  const published = sql`v.published_at is not null and (d.published_version_id=v.id
+    or (${historical} and d.scope='enterprise'))`;
+  const scope = sql`(d.scope='enterprise' or (d.scope='project' and d.project_id=${projectId ?? null}
+    and exists(select 1 from app.construction_projects kp where kp.enterprise_id=d.enterprise_id
+      and kp.id=d.project_id and kp.status='active')))`;
+  if(actor.principal.kind==='user') return sql`${scope} and d.status='active' and d.audience='customer_public' and ${published}`;
   // A project conversation is not an owner-private draft preview. Its live
   // membership is checked by AssistantRepository before retrieval or replay.
   if(c.purpose==='project_collaboration' && actor.capabilities.includes('assistant.project.shared')
     || c.purpose==='construction_followup' && actor.capabilities.includes('assistant.followup.self'))
-    return sql`d.status='active' and d.audience in ('customer_public','staff_internal') and ${published}`;
+    return sql`${scope} and d.status='active' and d.audience in ('customer_public','staff_internal') and ${published}`;
   const policy=previewPolicy(c);
   const selected=policy.drafts.length?sql`(${sql.join(policy.drafts.map(p=>sql`(v.id=${p.id} and v.content_hash=${p.hash} and v.edit_version=${p.editVersion})`),sql` or `)})`:sql`false`;
   const excluded=policy.drafts.length?sql`and d.id not in (${sql.join(policy.drafts.map(p=>sql`${p.documentId}`),sql`,`)})`:sql``;
-  return sql`d.status<>'retired' and ${policy.audience==='all'?sql`true`:sql`d.audience=${policy.audience}`}
+  return sql`d.scope='enterprise' and d.status<>'retired' and ${policy.audience==='all'?sql`true`:sql`d.audience=${policy.audience}`}
     and (${selected} or (d.status='active' and ${published} ${excluded}))`;
 }
 export const sourceReady=sql`v.index_status='ready' and v.indexed_hash=v.content_hash and c.content_hash=v.content_hash
-  and c.index_profile_id=v.index_profile_id and c.index_profile_id=s.active_index_profile_id
+  and c.index_profile_id=v.index_profile_id and ${sourceIndexReady}
   and ip.status='active' and v.effective_from<=now() and (v.effective_to is null or v.effective_to>now())`;
 export async function resolveEvidence(tx:PostgresTransaction,actor:ActorContext,conversation:Row,evidence:Evidence,historical=false) {
   if(evidence.ref.type!=='knowledge_chunk') return undefined;
-  const row=await one(tx,sql`select c.*,d.id as document_id,d.title,d.source_type,d.published_version_id,v.published_at,v.version_number,v.edit_version,v.professional
+  const stageContext = evidence.reportStage ? await reportStageKnowledgeContext(tx,actor,conversation,evidence.reportStage) : undefined;
+  if (evidence.reportStage && !stageContext) return undefined;
+  const context = stageContext ?? await knowledgeContext(tx,actor,conversation);
+  const row=await one(tx,sql`select c.*,d.id as document_id,d.title,d.source_type,d.scope,d.project_id,d.category,d.published_version_id,
+    v.published_at,v.version_number,v.edit_version,v.professional,v.effective_from,v.effective_to,e.name as enterprise_name
     from app.assistant_knowledge_chunks c join app.assistant_knowledge_versions v on v.enterprise_id=c.enterprise_id and v.id=c.document_version_id
     join app.assistant_knowledge_documents d on d.enterprise_id=v.enterprise_id and d.id=v.document_id
+    join app.enterprises e on e.id=d.enterprise_id
     join app.assistant_enterprise_settings s on s.enterprise_id=c.enterprise_id
     join app.assistant_knowledge_index_profiles ip on ip.enterprise_id=c.enterprise_id and ip.id=c.index_profile_id
     where c.enterprise_id=${actor.enterpriseId} and c.id=${id(evidence.ref.id)} and v.id=${id(evidence.ref.version)}
-    and c.text_hash=${evidence.hash} and ${sourceReady} and ${sourceScope(actor,conversation,historical)}`);
-  const stageContext = row && evidence.reportStage ? await reportStageKnowledgeContext(tx,actor,conversation,evidence.reportStage) : undefined;
-  if (evidence.reportStage && !stageContext) return undefined;
+    and c.text_hash=${evidence.hash} and ${sourceReady} and ${sourceScope(actor,conversation,historical,context.projectId)}`);
+  if (row && !knowledgeRowAllowed(row)) return undefined;
   if (row && evidence.professional && (fingerprint(evidence.professional.entry)!==fingerprint(row.professional)
-    || evidence.professional.contentHash!==row.content_hash || fingerprint(evidence.professional.context)!==fingerprint(stageContext ?? await knowledgeContext(tx,actor,conversation)))) return undefined;
+    || evidence.professional.contentHash!==row.content_hash || fingerprint(evidence.professional.context)!==fingerprint(context))) return undefined;
   if(row && evidence.file && fingerprint(evidence.file)!==fingerprint((row.locator as {file?:FileLocator})?.file))return undefined;
   return row;
 }
@@ -77,7 +87,7 @@ export async function validatePreviewSnapshot(tx:PostgresTransaction,actor:Actor
     const v=await one(tx,sql`select v.id from app.assistant_knowledge_versions v join app.assistant_knowledge_documents d on d.enterprise_id=v.enterprise_id and d.id=v.document_id
       join app.assistant_enterprise_settings s on s.enterprise_id=v.enterprise_id where v.enterprise_id=${actor.enterpriseId} and v.id=${d.id}
       and v.content_hash=${d.hash} and v.edit_version=${d.editVersion} and v.index_status='ready' and v.indexed_hash=v.content_hash
-      and v.index_profile_id=s.active_index_profile_id and d.status<>'retired' and v.effective_from<=now() and (v.effective_to is null or v.effective_to>now())`);
+      and ${sourceIndexReady} and d.scope='enterprise' and d.status<>'retired' and v.effective_from<=now() and (v.effective_to is null or v.effective_to>now())`);
     if(!v) fail('context_changed');
   }
 }
@@ -93,6 +103,7 @@ export async function citationProjection(tx:PostgresTransaction,actor:ActorConte
   if(!source) return unavailable;
   const file=(source.locator as {file?:FileLocator})?.file;
   return {id:String(citation.id),available:true,title:source.title,version:String(citation.document_version_id),versionNumber:Number(source.version_number),
+    knowledge:knowledgeProvenance(source),chapter:file?.section ?? [],page:file?.page ?? null,
     referenceCase:source.source_type==='reference_case',
     quote:source.text?String(citation.quote_snapshot):'',locator:citation.locator,isDraft:citation.is_draft,
     ...(file?{sourceLocation:`${file.name} · ${file.label}`,sourceFile:file,quoteSpans:fileQuoteSpans(String(source.text),String(citation.quote_snapshot),Number((source.locator as Row).start))}:{}),

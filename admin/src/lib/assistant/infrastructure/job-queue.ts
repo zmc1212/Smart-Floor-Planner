@@ -6,6 +6,7 @@ import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assi
 import { AssistantError, fail, fingerprint, type ActorContext, type MessageContent, type Evidence } from '../contracts';
 import { appendMessage, terminalEvent } from '../core/conversation';
 import { processKnowledgeJob } from '../knowledge/index-worker';
+import { processManagedKnowledgeCleanup } from '../knowledge/managed-cleanup';
 import { processAnswer } from './answer-worker';
 import { resolveEvidence, validatePreviewSnapshot, previewPolicy } from '../knowledge/sources';
 import { parseAnswer, safeInsufficientContent, type GroundedAnswer } from '../knowledge/answer';
@@ -215,8 +216,9 @@ export async function processAssistantJob(processRun: (lease: Lease) => Promise<
   const lease=next?.kind==='chat_turn'?await claimJob():null;
   if(lease) await processRun(lease);
   const knowledgeClaimed=['knowledge_index','knowledge_parse'].includes(String(next?.kind))?await processKnowledgeJob():false;
+  const cleanupClaimed = !next && await processManagedKnowledgeCleanup();
   await deliverMetrics();
-  return { claimed: Boolean(lease) || knowledgeClaimed };
+  return { claimed: Boolean(lease) || knowledgeClaimed || cleanupClaimed };
 }
 /** Trusted configured interview copy is not a knowledge answer or provider invocation. */
 export async function completeGuidance(lease: Lease, text: string) {

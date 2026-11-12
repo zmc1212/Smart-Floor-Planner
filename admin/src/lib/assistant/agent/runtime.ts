@@ -5,6 +5,7 @@ import { finalAnswerRepairControl, finalAnswerRepairBase, type FinalAnswerRepair
 import { assertToolPairs, toolSchemaIssue } from './tool-protocol';
 import {finishContextTool,contextReady,nativeFinalProtocol} from './native-final';
 import { webToolNames } from '../web-search/contract';
+import { knowledgeToolNames } from '../knowledge/rag-tools';
 
 type ReadReceipt = { name: string; argumentsHash: string; messageIndex: number };
 export type AgentCheckpoint = { version: 1; turn: number; messages: ModelMessage[]; output: ModelTurnOutput | null; validationRepairs?:number; argumentFailures?: number; exhaustedTools?: string[]; readReceipts?: ReadReceipt[]; finalFromTools?: boolean; turnSchedule?: typeof agentTurnScheduleProtocol; primaryModelTurns?: number; nativeFinalization?:typeof nativeFinalProtocol; finalizing?:boolean; nativeWorkflow?: 'fastgpt-native-knowledge-v1' };
@@ -46,7 +47,7 @@ export const agentToolReplyProtocol = 'durable-tool-reply-v1';
 export const agentTurnScheduleProtocol = 'shared-auxiliary-final-repair-v2';
 // Only these application-owned reads may reuse a completed result. Writes and
 // newly introduced tools always execute through their existing durable ports.
-const readTools = new Set(['search_knowledge', 'search_web', 'read_web', ...webToolNames, 'recall_history', 'query_materials', 'query_business', 'query_followups', 'recommend_references', 'recommend_designers']);
+const readTools = new Set(['search_knowledge', ...knowledgeToolNames, 'search_web', 'read_web', ...webToolNames, 'recall_history', 'query_materials', 'query_business', 'query_followups', 'recommend_references', 'recommend_designers']);
 /** Only a pure read batch may receive one unavailable-tool diagnostic. It
  * grants no capability and never reaches an application tool dispatcher. */
 export function recoverableUnavailableRead(output: Pick<ModelTurnOutput, 'toolCalls'>, available: ModelTool[]) {

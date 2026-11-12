@@ -7,10 +7,10 @@ import { publishedSiteRecord, siteRecordProjection } from './site-publications';
 import { siteRecordText, type SiteDraft } from './site-contract';
 import { currentStageEvent } from './stage-events';
 
-export async function customerProjects(tx: PostgresTransaction, eid: string, uid: string, leadId = '') {
+export async function customerProjects(tx: PostgresTransaction, eid: string, uid: string, leadId = '', lock = false) {
   return rows(tx, sql`select p.* from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
     where p.enterprise_id=${eid} and p.customer_access and l.customer_user_id=${uid} and l.archived_at is null
-    ${leadId ? sql`and l.id=${id(leadId)}` : sql``} order by p.id limit 30`);
+    ${leadId ? sql`and l.id=${id(leadId)}` : sql``} order by p.id limit 30 ${lock ? sql`for share of p,l` : sql``}`);
 }
 export async function constructionRead(tx: PostgresTransaction, eid: string, uid: string, leadId: string) {
   const projects = await customerProjects(tx, eid, uid, leadId), settings = await readStageSettings(tx, eid), data: Row[] = [], lines: string[] = [];

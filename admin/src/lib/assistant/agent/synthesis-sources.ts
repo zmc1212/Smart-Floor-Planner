@@ -85,7 +85,7 @@ export async function currentSynthesisContext(tx: PostgresTransaction, actor: Ac
       const bound = ['synthesis.bound_materials.v1','synthesis.bound_construction.v1','synthesis.bound_followups.v1'].includes(String(step.capability_name))
         ? step.private_checkpoint as { resultKey: string; snapshot: BusinessSnapshot } : null;
       const snapshot = bound ? bound.snapshot : step.private_checkpoint as BusinessSnapshot;
-      if (!await businessSnapshotAvailable(tx, actor.enterpriseId, snapshot)) fail('context_changed');
+      if (!await businessSnapshotAvailable(tx, actor.enterpriseId, snapshot, actor)) fail('context_changed');
       context.snapshots.push(snapshot);
       const seq = Number(step.step_seq) - 1200;
       context.sources.push(...businessSynthesisSources(bound?.resultKey || `${runId}:${Math.floor(seq / 10)}:${seq % 10}`, snapshot));
@@ -106,7 +106,7 @@ export async function synthesisContextAvailable(tx: PostgresTransaction, actor: 
   for (const e of context.knowledge) if (!await resolveEvidence(tx, actor, conversation, e)) return false;
   for (const e of context.web || []) if (!await resolveWebEvidence(tx, actor, conversation, e)) return false;
   for (const snapshot of context.snapshots) {
-    try { if (!await businessSnapshotAvailable(tx, actor.enterpriseId, snapshot)) return false; } catch { return false; }
+    try { if (!await businessSnapshotAvailable(tx, actor.enterpriseId, snapshot, actor)) return false; } catch { return false; }
   }
   return true;
 }

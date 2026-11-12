@@ -680,6 +680,8 @@ P2S 第一批 C01/C02/S01/U01 的聊天与接待主链路 **Implemented**，自�
 
 1B知识后端 **Implemented**，第一期整体仍为 **Limited**：`/api/assistant/knowledge/documents`及`[id]`提供列表/创建/详情/元数据更新，`[id]/versions`复制草稿，`[id]/versions/[versionId]`编辑，`index`/`publish`执行索引/发布，`[id]/retire`撤回，`/api/assistant/knowledge/jobs/[jobId]`查询任务。写请求要求Idempotency-Key和对应expectedVersion/expectedEditVersion。仅本企业有效enterprise_admin且数据库menu_permissions显式含assistant-knowledge可访问；平台无例外，权限在索引执行前后复查。本批不新增菜单或默认授权。0060新增5张知识表（文档/版本/片段/profile/调用审计），强制RLS及复合FK；知识任务带租约/hash/edit_version保护，发布撤回提升epoch并写outbox；reset/purge已纳入。
 
+百炼 Responses 分支的 R4 将企业及项目知识检索接入现有小 K 会话。业主可查有权项目的当前对客版本，设计师、施工人员和老板在共享项目会话按实时成员及角色权限检索。重开引用复验权限、发布状态、有效期和原文。既有引用响应包含企业、文档、版本、章节、经核验的页码和逐字摘录；联网资料保留公开来源身份及链接，规范冲突和企业依据缺失明确说明。共享项目会话支持对照企业资料、当前获权进度和已发布记录。托管服务验收仍为 **Limited**，待真实工作空间联调。[R4 集成契约](./bailian-responses-adapter.md#12-r4-企业知识库)
+
 1B知识回答、结构化引用/失效校验、无依据处理及本人预览后端 **Implemented**。同一ConversationService/JobQueue在授权检索后调用现有文本模型；每段回答必须引用本次证据及逐字摘录，最终提交复查权限、epoch、hash/profile和有效期。无候选/低相关或模型明确无依据时保存固定insufficient_evidence notice；检索故障、非法引用或畸形输出不会冒充有效回答。0061新增强制RLS引用表及消息/run answer_kind；引用与最终消息、终态同事务落库，reset/purge已包含引用。后续读取会隐藏已撤回/受限/过期/draft编辑失效来源及整条依赖回答，仍获授权的旧发布版本标记historical。
 
 FAQ回答整理 **Implemented**，使用`extractive-selection-v3-faq`：问题标题仅作匹配上下文，不作为答案候选；不超过400字符的短答案保留完整条件。优先选择一条直接、完整的答案，仅补充尚未覆盖的必要信息，相同正文确定性去重。展示只去除FAQ的问答外壳，引用快照仍是连续原文；最终校验不允许新增解释或删掉答案的限制条件。已保存的旧消息不回写。开发环境企业1454/客户645/线索1818复测截图中的水电开工问题，返回一段正文和一个可用引用；conversation109/run80只有一条用户消息和一条助手消息，重新读取历史内容一致。证据：`tmp/xiaok-vector/faq-answer-live.json`；回归覆盖位于`answer-selection.test.ts`和`assistant-answers.test.ts`。路由、API、权限、小程序结构/样式/素材及已批准PPT设计不变。

@@ -11,6 +11,7 @@ export type SynthesisReviewContext = { currentQuestion?: string; currentOriginal
   /** Bound only by the knowledge-off ordinary-dialogue run policy. Uncited
    * advice is model knowledge, not an assertion from an enterprise/site source. */
   generalKnowledge?: boolean;
+  enterpriseKnowledgeAuthority?: boolean;
   /** Server-owned stage label after currentReportStageEvent authorization.
    * Historical reports and ordinary chat must not bind this current fact. */
   currentProjectStage?: string;

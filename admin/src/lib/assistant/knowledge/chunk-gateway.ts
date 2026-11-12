@@ -1,8 +1,9 @@
 import { fail } from '../contracts';
-import { EMBEDDING_PROFILE } from '../infrastructure/embedding-gateway';
+import { EMBEDDING_PROFILE, configuredEmbeddingProfile } from '../infrastructure/embedding-gateway';
 export type Chunk = { text: string; start: number; end: number; tokens: number };
 /** Offsets are Unicode code points, not JavaScript UTF-16 code units. */
 export async function chunkDocument(text: string): Promise<Chunk[]> {
+  if ('provider' in configuredEmbeddingProfile()) return chunkWholeParagraphs(text);
   const endpoint = new URL(process.env.ASSISTANT_EMBEDDING_URL || 'http://invalid');
   const key = process.env.ASSISTANT_EMBEDDING_API_KEY;
   if (!key || endpoint.username || endpoint.password || endpoint.search || endpoint.hash ||
@@ -20,4 +21,25 @@ export async function chunkDocument(text: string): Promise<Chunk[]> {
   }
   if (covered!==points.length) fail('retrieval_unavailable',503);
   return result.chunks;
+}
+/** A conservative byte ceiling for compatible embedding endpoints without the
+ * local tokenizer. Overlap copies a whole short paragraph with exact offsets. */
+function chunkWholeParagraphs(text: string): Chunk[] {
+  const limit = 512, overlap = 64, chunks: Chunk[] = [];
+  const paragraphs = text.match(/[\s\S]+?(?:\r?\n[ \t]*\r?\n|$)/gu) ?? [];
+  let start = 0, offset = 0, current = '', previous = '';
+  for (const paragraph of paragraphs) {
+    if (Buffer.byteLength(paragraph) > limit) fail('knowledge_file_block_limit', 422);
+    if (Buffer.byteLength(current + paragraph) > limit) {
+      chunks.push({ text: current, start, end: offset, tokens: Buffer.byteLength(current) });
+      current = Buffer.byteLength(previous) <= overlap && Buffer.byteLength(previous + paragraph) <= limit ? previous : '';
+      start = offset - Array.from(current).length;
+    }
+    current += paragraph;
+    offset += Array.from(paragraph).length;
+    previous = paragraph;
+  }
+  if (current) chunks.push({ text: current, start, end: offset, tokens: Buffer.byteLength(current) });
+  if (!chunks.length || chunks.length > 128) fail('knowledge_file_block_limit', 422);
+  return chunks;
 }

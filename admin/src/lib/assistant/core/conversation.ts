@@ -27,6 +27,7 @@ import { stageHandoffProposal } from '../handoff/proposal';
 import { currentHandoffOwner } from '../handoff/owner';
 import { agentConfig, type AgentConfig } from '../agent/config';
 import { knowledgePolicy, enterpriseKnowledgeEnabled } from '../knowledge-policy';
+import { knowledgeToolProtocol } from '../knowledge/rag-tools';
 import { homeSourceBudgetProtocol } from '../agent/home-source-budget';
 import { homeSourceViewProtocol } from '../agent/home-source-view';
 import { ownerArchiveReadProtocol, ownerQuestionScopeProtocol } from '../agent/owner-question-scope';
@@ -221,6 +222,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
         reportReadCompletion: reportReadCompletionProtocol, reportHistoryScope: reportHistoryScopeProtocol, reportCoordination: reportCoordinationProtocol } : {}),
       ...(agent && (enterpriseKnowledgeEnabled(settings.agent_config) || c.purpose === 'knowledge_preview') && !agent.structuredFinal && ['reply','site.question'].includes(purpose)
         ? { sourceAnswerMode: agent.knowledgeExplanation || sourceExcerptProtocol,
+          ...(agent.tools && !agentRuntime && !nativeRag && !agent.consultation ? { knowledgeTools: knowledgeToolProtocol } : {}),
           ...(agent.knowledgeExplanation === naturalKnowledgeProtocol ? { knowledgeQuantityScope: knowledgeQuantityScopeProtocol,
           ...(agent.knowledgeAnswerValidation === sourceBoundaryValidationProtocol && (staffPreview || ['customer_consultation','project_collaboration'].includes(String(c.purpose)))
               ? { knowledgeAnswerValidation: sourceBoundaryValidationProtocol } : {}),

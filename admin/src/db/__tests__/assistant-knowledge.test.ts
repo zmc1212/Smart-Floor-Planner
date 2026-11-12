@@ -25,11 +25,13 @@ before(async()=>{
   const url=new URL(resolvePostgresRuntimeConfig().connectionString);
   assert.ok(['127.0.0.1','localhost'].includes(url.hostname));
   assert.equal(url.pathname,'/xiaok_embedding_eval','Knowledge acceptance must use the isolated vector clone');
+  process.env.ASSISTANT_KNOWLEDGE_PROVIDER = 'local';
   await withPlatformTransaction(async tx=>{
     for(let i=0;i<2;i++) {
       const t=(await one(tx,sql`insert into app.enterprises(name,code,status) values(${prefix+i},${prefix+i},'active') returning id`))!;
       const eid=String(t.id);tenants.push(eid);
-      await tx.execute(sql`insert into app.assistant_enterprise_settings(enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days) values(${eid},true,100,1200000,100000000,90)`);
+      await tx.execute(sql`insert into app.assistant_enterprise_settings(enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days,agent_config)
+        values(${eid},true,100,1200000,100000000,90,'{"enterpriseKnowledgeEnabled":true}'::jsonb)`);
       const admin=(await one(tx,sql`insert into app.admin_users(enterprise_id,username,password_hash,role,status,menu_permissions,must_change_password)
         values(${eid},${prefix+i},'test-only','enterprise_admin','active',ARRAY['assistant-knowledge'],false) returning id`))!;
       admins.push(String(admin.id));services.push(new KnowledgeService({enterpriseId:eid,adminId:String(admin.id)}));

@@ -5,6 +5,7 @@ import { one, type Row } from '@/db/repositories/assistant-repository';
 import { fail, id } from '../contracts';
 import { ReferrerNetworkRepository } from '@/db/repositories/referrer-network-repository';
 import { sourceReady } from './sources';
+import { knowledgeTextAllowed } from './provenance';
 
 function secret() { if (!process.env.JWT_SECRET) fail('assistant_unavailable',503); return new TextEncoder().encode(process.env.JWT_SECRET); }
 /** Share tokens contain only published source identifiers, never a customer or conversation. */
@@ -37,13 +38,14 @@ export async function readContentEntry(token:unknown):Promise<ContentEntry> {
 export function contentGreeting(source:Row|null|undefined) {return source?`你是从「${String(source.title)}」进来的。${String(source.body)}\n仅供方向参考，可以直接说想法，也可以随时找设计师。`:'这个案例分享已失效，你仍可在这里继续装修咨询，或找设计师。';}
 export async function contentEntrySource(tx:PostgresTransaction, entry:ContentEntry) {
   if(entry.expired)return null;
-  return one(tx,sql`select d.title,d.id as document_id,d.status,d.audience,v.id as document_version_id,v.body,v.effective_from,v.effective_to,c.id as chunk_id,c.text_hash
+  const source = await one(tx,sql`select d.title,d.id as document_id,d.status,d.audience,v.id as document_version_id,v.body,v.effective_from,v.effective_to,c.id as chunk_id,c.text_hash
     from app.assistant_knowledge_documents d join app.assistant_knowledge_versions v on v.enterprise_id=d.enterprise_id and v.document_id=d.id
     join app.assistant_knowledge_chunks c on c.enterprise_id=v.enterprise_id and c.document_version_id=v.id and c.ordinal=0
     join app.assistant_enterprise_settings s on s.enterprise_id=d.enterprise_id
     join app.assistant_knowledge_index_profiles ip on ip.enterprise_id=c.enterprise_id and ip.id=c.index_profile_id
     where d.enterprise_id=${entry.enterpriseId} and d.id=${entry.documentId} and v.id=${entry.versionId} and d.published_version_id=v.id
-    and d.source_type='reference_case' and d.audience='customer_public' and d.status='active' and v.published_at is not null
+    and d.scope='enterprise' and d.source_type='reference_case' and d.audience='customer_public' and d.status='active' and v.published_at is not null
     and v.content_hash=${entry.hash} and v.reference_case is not null and v.index_status='ready' and v.indexed_hash=v.content_hash
     and ${sourceReady}`);
+  return source && knowledgeTextAllowed(source.title, source.body) ? source : null;
 }

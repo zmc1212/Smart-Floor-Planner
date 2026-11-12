@@ -87,7 +87,7 @@ export async function agentMessageAvailable(tx: PostgresTransaction, enterpriseI
   const tool = await one(tx, sql`select s.private_checkpoint from app.assistant_run_steps s join app.assistant_messages m on m.enterprise_id=s.enterprise_id and m.run_id=s.run_id
     where m.enterprise_id=${enterpriseId} and m.conversation_id=${conversationId} and m.id=${messageId} and s.kind='agent_business_result'`);
   if (tool?.private_checkpoint) {
-    try { if (!await businessSnapshotAvailable(tx, enterpriseId, tool.private_checkpoint as BusinessSnapshot)) return false; }
+    try { if (!await businessSnapshotAvailable(tx, enterpriseId, tool.private_checkpoint as BusinessSnapshot, reader)) return false; }
     catch { return false; }
   }
   return true;

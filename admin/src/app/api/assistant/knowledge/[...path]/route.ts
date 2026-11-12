@@ -6,12 +6,12 @@ import { readOriginal } from '@/lib/assistant/knowledge/file-service';
 export const runtime='nodejs';
 type Context={params:Promise<{path:string[]}>};
 const fields:Record<string,string[]>={
-  create:['title','category','sourceType','audience','body','faq','effectiveFrom','effectiveTo','referenceCase','professional'],
+  create:['title','category','sourceType','audience','body','faq','effectiveFrom','effectiveTo','referenceCase','professional','projectId'],
   metadata:['expectedVersion','title','category','audience'], newVersion:['expectedVersion','fromVersionId'],
   edit:['expectedEditVersion','body','faq','effectiveFrom','effectiveTo','referenceCase','professional'], index:['expectedEditVersion'],
   publish:['expectedVersion','expectedEditVersion'],retire:['expectedVersion'],
   share:['expectedVersion','entryCode'],
-  createFile:['title','category','audience','fileName','fileBase64','authorization'],
+  createFile:['title','category','audience','fileName','fileBase64','authorization','projectId','effectiveFrom','effectiveTo'],
   replaceFile:['expectedEditVersion','fileName','fileBase64','authorization'],parse:['expectedEditVersion'],cancelParse:['expectedEditVersion'],
   reviewFile:['expectedEditVersion','acknowledgeWarnings','excludedBlockIds'],
 };
@@ -52,9 +52,11 @@ async function handle(request:NextRequest,context:Context) {
         if(!body || Array.isArray(body) || typeof body!=='object' || Object.keys(body).some(k=>!fields[action]?.includes(k))) fail('invalid_message',422);
       } else if(action==='list') {
         const params=request.nextUrl.searchParams;
-        if([...params.keys()].some(k=>!['limit','beforeId'].includes(k))) fail('invalid_message',422);
+        if([...params.keys()].some(k=>!['limit','beforeId','projectId','category'].includes(k))) fail('invalid_message',422);
         if(params.has('limit')) body.limit=Number(params.get('limit'));
         if(params.has('beforeId')) body.beforeId=params.get('beforeId');
+        if(params.has('projectId')) body.projectId=params.get('projectId');
+        if(params.has('category')) body.category=params.get('category');
       }
       const result=await new KnowledgeService({enterpriseId:actor.enterpriseId!,adminId:actor.userId}).execute(action,{...body,...ids},request.headers.get('idempotency-key') ?? undefined);
       return NextResponse.json({success:true,data:result},{headers:{'Cache-Control':'no-store'}});

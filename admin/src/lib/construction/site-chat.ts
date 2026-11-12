@@ -16,7 +16,8 @@ import { confirmSiteAction, invalidateSiteAction, requestSiteAction, siteActionW
 import { siteActionAcknowledgement, siteActionConfirmation, siteActionInterpretationRequested } from './site-action-contract';
 import { bindSpeechToMessage } from '@/lib/assistant/speech/link';
 import { siteKnowledgeQuestion, siteKnowledgeResponse } from './site-knowledge';
-import { citationProjection } from '@/lib/assistant/knowledge/sources';
+import { citationProjection, webCitationProjection } from '@/lib/assistant/knowledge/sources';
+import { parseWebCitationId } from '@/lib/assistant/agent/web-evidence';
 import { captureInput, capturedRecord, saveSiteCapture, scheduleCapturedRecord, siteQuickWorks } from './site-capture';
 
 export function siteActor(a: ConstructionActor): ActorContext {
@@ -152,8 +153,10 @@ export class SiteChatService {
     return this.scope(projectId, false, tx => sharedMaterialMedia(tx, this.staff.enterpriseId, projectId, grantId, mediaId));
   }
   citation(projectId:string,citationId:string) {
-    id(citationId);
+    const web = parseWebCitationId(citationId);
+    if (!web) id(citationId);
     return this.scope(projectId,false,async(tx,c)=>{
+      if (web) return webCitationProjection(tx,this.actor,c,citationId);
       const citation=await one(tx,sql`select * from app.assistant_message_citations where enterprise_id=${this.staff.enterpriseId}
         and conversation_id=${String(c.id)} and id=${citationId}`);
       if(!citation)fail('assistant_resource_not_found',404);

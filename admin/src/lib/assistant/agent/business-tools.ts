@@ -14,6 +14,7 @@ import { materialSharingTools } from '@/lib/construction/material-sharing-contra
 import { selectedFormalPlan } from '../media/floorplan-selection';
 import { reportBusinessAvailable, type ReportBusinessReference } from './report-context';
 import { appointmentDisplayText } from './appointment-display';
+import { sharedSiteProgress, type SharedSiteProgressSnapshot } from './shared-site-progress';
 
 export const businessToolDefinitions: ModelTool[] = [
   ...materialSharingTools,
@@ -44,7 +45,7 @@ export function parseDesignerQuery(raw: unknown): DesignerQuery {
   return { query: value.query.trim() };
 }
 export type BusinessQuery = { domain: 'appointments' | 'schemes' | 'floorplans' | 'construction'; leadId: string };
-export type BusinessSnapshot = { query: BusinessQuery; customerId?: string; leadIds: string[]; version: string; displayText: string; data: unknown[]; queriedAt: string; contextConversationId?: string; reportReference?: ReportBusinessReference; reportAnswerGrounding?: 'report-answer-grounding-v1'; reportSourceProjection?: 'report-parent-context-v1' } | MaterialSnapshot | NeedIssueSnapshot;
+export type BusinessSnapshot = { query: BusinessQuery; customerId?: string; leadIds: string[]; version: string; displayText: string; data: unknown[]; queriedAt: string; contextConversationId?: string; reportReference?: ReportBusinessReference; reportAnswerGrounding?: 'report-answer-grounding-v1'; reportSourceProjection?: 'report-parent-context-v1' } | MaterialSnapshot | NeedIssueSnapshot | SharedSiteProgressSnapshot;
 export function parseBusinessQuery(raw: unknown): BusinessQuery {
   const value = raw as BusinessQuery;
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(k => !['domain','leadId'].includes(k))
@@ -106,7 +107,12 @@ export async function queryBusiness(tx: PostgresTransaction, actor: ActorContext
   return { query, customerId, leadIds: leads.map(l => String(l.id)), version: fingerprint(data), data,
     displayText: lines.length ? lines.join('\n') : `目前没有查到你在本企业的${name}记录。`, queriedAt: new Date().toISOString() };
 }
-export async function businessSnapshotAvailable(tx: PostgresTransaction, enterpriseId: string, snapshot: BusinessSnapshot) {
+export async function businessSnapshotAvailable(tx: PostgresTransaction, enterpriseId: string, snapshot: BusinessSnapshot, actor?: ActorContext) {
+  if ('sharedSite' in snapshot) {
+    if (!actor || actor.enterpriseId !== enterpriseId) return false;
+    const current = await sharedSiteProgress(tx, actor, snapshot.contextConversationId, snapshot.sharedSite.room);
+    return current.sharedSite.projectId === snapshot.sharedSite.projectId && current.version === snapshot.version;
+  }
   if ('reportReference' in snapshot && snapshot.reportReference) return reportBusinessAvailable(tx, enterpriseId, snapshot.reportReference);
   if (snapshot.query.domain === 'materials') return materialSnapshotAvailable(tx, enterpriseId, snapshot as MaterialSnapshot);
   if (snapshot.query.domain === 'followups') return needIssueSnapshotAvailable(tx, enterpriseId, snapshot as NeedIssueSnapshot);

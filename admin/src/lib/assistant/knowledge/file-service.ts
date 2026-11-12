@@ -11,6 +11,7 @@ import { id } from '../contracts';
 import type { ActorContext, Evidence } from '../contracts';
 import { resolveEvidence } from './sources';
 import { createHash } from 'node:crypto';
+import { assertKnowledgeText } from './provenance';
 
 export function originalFileAllowed(file: SourceFile | null, locator: FileLocator) {
   return file?.version === 1 && file.assetId === locator.assetId && file.hash === locator.sourceHash
@@ -39,8 +40,8 @@ export function readOriginal(actor: KnowledgeActor, documentId: string, versionI
     const file=await one(tx,sql`select a.name,a.format,a.data,a.source_hash from app.assistant_knowledge_assets a
       join app.assistant_knowledge_versions v on v.enterprise_id=a.enterprise_id and v.document_id=a.document_id and v.source_asset_id=a.id
       join app.assistant_knowledge_documents d on d.enterprise_id=v.enterprise_id and d.id=v.document_id
-      where a.enterprise_id=${actor.enterpriseId} and d.id=${id(documentId)} and v.id=${id(versionId)} and d.status<>'retired'`);
-    if(!file) fail('assistant_resource_not_found',404);
+      where a.enterprise_id=${actor.enterpriseId} and d.id=${id(documentId)} and v.id=${id(versionId)}`);
+    if(!file || createHash('sha256').update(file.data as Buffer).digest('hex') !== file.source_hash) fail('assistant_resource_not_found',404);
     return file;
   });
 }
@@ -72,6 +73,7 @@ export async function reviewFile(tx: PostgresTransaction, actor: KnowledgeActor,
   const file: SourceFile = { ...original, review: { adminId: actor.adminId, at: new Date().toISOString(), excluded: [...input.excludedBlockIds] as string[] } };
   if (!file.parsed!.blocks.some(b => !file.review!.excluded.includes(b.id) && b.kind !== 'heading')) fail('knowledge_file_review_required', 422);
   const c = fileContent(file);
+  assertKnowledgeText(file.name, c.rendered);
   return (await one(tx, sql`update app.assistant_knowledge_versions set source_file=${JSON.stringify(file)}::jsonb,body=${c.body},content_hash=${c.hash},edit_version=edit_version+1,
     index_status='pending',indexed_hash=null,chunk_count=0,updated_at=now() where enterprise_id=${actor.enterpriseId} and id=${String(v.id)} returning *`))!;
 }

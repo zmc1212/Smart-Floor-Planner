@@ -171,8 +171,7 @@ export function auditAnswerCitations(answer: string, sources: WebEvidenceSource[
 }
 
 /**
- * Boundary claims that public web search cannot support. Enterprise knowledge
- * is not wired in R3, so any claimed internal-standard lookup is a defect.
+ * Boundary claims that public web search alone cannot support.
  */
 export function webAnswerBoundaryIssues(answer: string, sourceCount: number): string[] {
   const issues = new Set<string>();
