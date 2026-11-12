@@ -7,7 +7,7 @@ import { normalizeImage } from '@/lib/assistant/media/service';
 import { constructionAccess } from './service';
 import { object, text, version, type ConstructionActor } from './contracts';
 import { siteDraft } from './site-contract';
-import { appendSiteResponse, querySiteIssues, querySiteMaterials, resolveSiteIssueQuery, resolveSiteQuery, sharedMediaUsed, siteMessageIntent, siteResponse } from './site-queries';
+import { appendSiteResponse, querySiteIssues, querySiteMaterials, querySiteSchedule, resolveScheduleQuery, resolveSiteIssueQuery, resolveSiteQuery, sharedMediaUsed, siteMessageIntent, siteResponse } from './site-queries';
 import { handleSiteIssue, parseSiteVersions, projectSiteIssues, siteIssueCommand } from './site-issues';
 import { sharedMaterialMedia, sharedMaterials } from './site-materials';
 import { handlePlan, planCommand, projectPlans, readPlan } from './site-plans';
@@ -220,11 +220,14 @@ export class SiteChatService {
         const issueText = issueQueryScope ? await querySiteIssues(tx, eid, projectId, issueQueryScope, await projectSiteIssues(tx, eid, projectId)) : '';
         const snapshot = intent === 'query' && (!issueQuery || /图纸|需求|资料|原话|照片|记录/.test(raw))
           ? await querySiteMaterials(tx, eid, projectId, issueQueryScope || await resolveSiteQuery(tx, eid, projectId, raw)) : null;
-        const queryText = [...new Set([issueText, snapshot?.text].filter(Boolean))].join('\n\n');
+        const scheduleQuery = intent === 'query' && /落后|延期|逾期|拖期|进度|计划节点/.test(raw)
+          ? await querySiteSchedule(tx, eid, projectId, await resolveScheduleQuery(tx, eid, projectId, raw)) : null;
+        const queryText = [...new Set([issueText, snapshot?.text, scheduleQuery?.text].filter(Boolean))].join('\n\n');
         await appendSiteResponse(tx, this.actor, String(c.id), projectId, String(message.id), mediaIds, intent,
           plan?.text || resolution?.text || issue?.text || queryText || (intent === 'request' ? '请先查对应现场记录，再说“跟进记录编号”。已有事项可以说“接手事项编号”“转交事项编号给姓名”或“回复事项编号：处理结果”；取消或恢复请说明原因。有权管理人员可明确回传本次状态，回复不等于已解决。' : '原话已保留在本项目。需要查资料时请说明房间；现场进展可直接发文字或照片。'),
           plan ? { planId: plan.id } : resolution ? { issueId: resolution.issueId, revision: resolution.revision, lifecycleId: resolution.lifecycleId } : issue ? { issueId: issue.issueId, revision: issue.revision } : {
             ...(issueQueryScope ? { issueQuery: true, issueQueryId: issueQueryScope.issueId, issueQueryScope } : {}),
+            ...(scheduleQuery ? { schedule: scheduleQuery.query, scheduleVersion: scheduleQuery.version } : {}),
             ...(snapshot ? { query: snapshot.query, version: snapshot.version, queriedAt: snapshot.queriedAt,
             sources: snapshot.sources.map(source => ({ ref: source.ref, hash: source.hash, sourceMessageId: source.sourceMessageId,
               roomId: source.roomId, mediaIds: source.mediaIds, audience: source.audience, basis: source.basis })) } : {}) });

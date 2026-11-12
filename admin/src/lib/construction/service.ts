@@ -8,8 +8,9 @@ import { assignmentInput, defaultConstructionStages, stageKey, stageReminder, st
 import { currentStage } from './stages-store';
 import { recordStageReminder, syncConstructionReminders } from './reminders';
 import { constructionBrief } from './brief';
-import { projectSiteIssues } from './site-issues';
+import { groupProjectIssues, projectSiteIssues } from './site-issues';
 import { projectPlans } from './site-plans';
+import { publishSchedule, readSchedule } from './site-schedule';
 
 export async function constructionAccess(tx: PostgresTransaction, actor: ConstructionActor) {
   id(actor.enterpriseId); id(actor.adminId);
@@ -26,6 +27,7 @@ const fields: Record<string, string[]> = {
   member: ['projectId', 'expectedVersion', 'adminId', 'role', 'active', 'workLabel'], room: ['projectId', 'expectedVersion', 'roomId', 'name'],
   contact: ['projectId', 'expectedVersion', 'stageKey', 'staffIds', 'primaryStaffId'],
   progress: ['projectId', 'expectedVersion', 'stageKey', 'note', 'sendReminder'],
+  schedule: ['projectId'], saveSchedule: ['projectId', 'expectedVersion', 'title', 'note', 'nodes'],
 };
 const actorContext = (a: ConstructionActor): ActorContext => ({ enterpriseId: a.enterpriseId, principal: { kind: 'admin', adminId: a.adminId }, contextVersion: 1, capabilities: [] });
 const dto = (value: unknown): unknown => typeof value === 'bigint' ? String(value) : value instanceof Date ? value.toISOString()
@@ -53,7 +55,7 @@ export class ConstructionService {
     object(input, fields[action]);
     return withTenantTransaction(this.actor.enterpriseId, async tx => {
       const a = this.actor, eid = a.enterpriseId, owner = await constructionAccess(tx, a);
-      const read = ['list', 'brief', 'options', 'lead', 'detail', 'stages'].includes(action);
+      const read = ['list', 'brief', 'options', 'lead', 'detail', 'stages', 'schedule'].includes(action);
       if (!read) { key(requestKey); await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`construction:${eid}:${a.adminId}:${requestKey}`},0))`); }
       await tx.execute(sql`insert into app.construction_stage_settings(enterprise_id,stages) values(${eid},${JSON.stringify(defaultConstructionStages)}::jsonb) on conflict do nothing`);
       const settings = (await one(tx, sql`select * from app.construction_stage_settings where enterprise_id=${eid} ${action === 'saveStages' ? sql`for update` : sql`for share`}`))!;
@@ -127,12 +129,24 @@ export class ConstructionService {
         if (!member) fail('construction_not_found', 404);
       }
       const manage = owner || member?.role === 'manager';
-      if (action === 'detail') return dto({ project: { id: p.id, name: p.name, lead_id: owner ? p.lead_id : undefined, status: p.status,
+      if (action === 'schedule') return dto(await readSchedule(tx, eid, pid, p, stages)) as Row;
+      if (action === 'saveSchedule') {
+        if (!manage) fail('construction_forbidden', 403);
+        return idempotent(tx, actorContext(a), 'construction:schedule:' + pid, requestKey!, input,
+          async () => publishSchedule(tx, actorContext(a), pid, input));
+      }
+      if (action === 'detail') {
+        const issues = await projectSiteIssues(tx, eid, pid);
+        return dto({ project: { id: p.id, name: p.name, lead_id: owner ? p.lead_id : undefined, status: p.status,
         customer_access: p.customer_access, version: p.version, current_stage_key: p.current_stage_key, progress_note: p.progress_note }, manage, owner, stages, settingsVersion: settings.version,
         myRole: member?.role || (owner ? 'owner' : null),
-        issues: (await projectSiteIssues(tx, eid, pid)).slice(0, 20).map(issue => ({ issueId: issue.issueId, revision: issue.revision,
-          roomId: issue.roomId, roomName: issue.roomName, status: issue.status, ownerId: issue.ownerId, ownerName: issue.ownerName,
-          sourceKind: issue.sourceKind || 'record', sourceAvailable: issue.sourceAvailable, text: issue.text })),
+        issues: issues.slice(0, 20).map(issue => ({ issueId: issue.issueId, revision: issue.revision,
+          roomId: issue.roomId, roomName: issue.roomName, status: issue.status, classification: issue.classification,
+          classificationLabel: issue.classificationLabel, confirmed: issue.confirmed, ownerId: issue.ownerId, ownerName: issue.ownerName,
+          sourceKind: issue.sourceKind || 'record', sourceAvailable: issue.sourceAvailable, designRelated: issue.designRelated,
+          mine: issue.ownerId === a.adminId, text: issue.text })),
+        issueGroups: groupProjectIssues(issues, a.adminId),
+        progress: await readSchedule(tx, eid, pid, p, stages),
         plans: (await projectPlans(tx, eid, pid)).slice(0, 20).map(plan => ({ id: plan.id, available: plan.available, status: plan.status,
           ...('issueId' in plan ? { issueId: plan.issueId, roomName: plan.roomName, number: plan.number, title: plan.title,
             difference: plan.difference, costDeltaCents: plan.costDeltaCents, scheduleDeltaDays: plan.scheduleDeltaDays } : {}) })),
@@ -142,6 +156,7 @@ export class ConstructionService {
         rooms: await rows(tx, sql`select id,name from app.construction_rooms where enterprise_id=${eid} and project_id=${pid} order by id`),
         audits: await rows(tx, sql`select action,created_at from app.construction_audits where enterprise_id=${eid} and project_id=${pid} order by id desc limit 30`),
       }) as Row;
+      }
       if (!manage) fail('construction_forbidden', 403);
       return idempotent(tx, actorContext(a), 'construction:' + action + ':' + pid, requestKey!, input, async () => {
         if (version(input.expectedVersion) !== Number(p.version)) fail('version_conflict');

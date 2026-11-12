@@ -10,6 +10,9 @@ import { siteActionAcknowledgement } from './site-action-contract';
 export function siteKnowledgeQuestion(raw: string, intent: string, photoCount: number) {
   if (photoCount || !['query','clarify'].includes(intent) || siteActionAcknowledgement(raw)) return false;
   if(/图纸|需求|原话|照片|记录|事项|这件事|在等谁/.test(raw))return false;
+  // Project progress questions are answered from the plan/evidence projection,
+  // never with general enterprise craft knowledge.
+  if(/落后|延期|逾期|拖期|(?:进度|计划|节点).*(?:怎么样|如何|到哪|正常|提前)/.test(raw))return false;
   if(intent==='clarify' && /跟进|处理|转交|接手|负责|回传|回复|发布|方案|落实|关闭|解决|记下|关联/.test(raw))return false;
   return /企业|公司|工艺|标准|规范|手册/.test(raw) || !/资料/.test(raw);
 }

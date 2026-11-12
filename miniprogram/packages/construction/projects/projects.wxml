@@ -9,7 +9,31 @@
     <block wx:elif="{{detail}}">
       <view class="detail-heading"><view class="detail-title"><text class="page-title">{{detail.project.name}}</text><text class="stage-tag">{{detail.project.statusLabel}}</text></view><view class="detail-subtitle"><text class="helper">当前身份：{{detail.roleLabel}}</text><button wx:if="{{detail.manage}}" class="book-link management-entry" bindtap="openManagement" disabled="{{busy || pending}}">工地管理 ↗</button></view></view>
       <view class="paper progress-paper"><text class="fabric">当前阶段</text><text class="stage-name">{{detail.project.stageName}}</text><text wx:if="{{detail.project.progress_note}}" class="body-text">{{detail.project.progress_note}}</text><view wx:if="{{detail.manage}}" class="progress-tools"><button class="outline" disabled="{{busy || pending || detail.project.status !== 'active'}}" bindtap="openProgress">更新阶段</button></view></view>
-      <view wx:if="{{detail.issueCount}}" class="paper issue-paper">
+      <view wx:if="{{detail.progress}}" class="paper schedule-paper">
+        <view class="section-heading"><text class="fabric">计划进度 · V{{detail.progress.version}}</text><text class="tone-label tone-{{detail.progress.overall.color}}">{{detail.progress.overall.label}}</text></view>
+        <text class="helper">提前 {{detail.progress.counts.green}} · 正常 {{detail.progress.counts.yellow}} · 落后 {{detail.progress.counts.red}} · 待核实 {{detail.progress.counts.gray}}</text>
+        <view wx:for="{{detail.progress.nodes}}" wx:key="key" class="issue-row" data-key="{{item.key}}">
+          <view class="issue-head"><text class="label">{{item.title}}</text><text class="tone-label tone-{{item.color}}">{{item.label}}</text></view>
+          <text class="helper">计划 {{item.dateText}}</text>
+          <text class="helper">{{item.reason}}</text>
+        </view>
+        <text wx:if="{{!detail.progress.nodes.length}}" class="helper">{{detail.progress.text}}</text>
+        <view wx:if="{{detail.progress.gapTexts.length}}" class="gap-note"><text class="helper">资料缺口 · 不计为施工质量问题</text><text wx:for="{{detail.progress.gapTexts}}" wx:key="*this" class="helper">· {{item}}</text></view>
+        <text class="helper">颜色只来自有效计划版本与现场证据；无新记录不会自动判定为正常，单个房间完成也不代表整屋完成。</text>
+      </view>
+      <view wx:if="{{detail.issueSections.length}}" class="paper issue-paper">
+        <view class="section-heading"><text class="fabric">问题与整改 · {{detail.issueCount}}</text><text class="helper">待核实 → 整改 → 复核 → 已修正</text></view>
+        <block wx:for="{{detail.issueSections}}" wx:key="key" wx:for-item="section">
+          <text class="group-label">{{section.label}} · {{section.count}}</text>
+          <view wx:for="{{section.items}}" wx:key="issueId" class="issue-row" data-id="{{item.issueId}}" bindtap="openIssue" aria-role="button" aria-label="{{item.roomName + '，' + item.classificationLabel}}">
+            <view class="issue-head"><text class="label">{{item.roomName || '全屋'}} · {{item.classificationLabel}}</text><text class="helper">{{item.ownerText}}</text></view>
+            <text class="helper">{{item.text}}</text>
+            <view class="issue-tags"><text wx:if="{{item.designText}}" class="tag">{{item.designText}}</text><text wx:if="{{item.mineText}}" class="tag">{{item.mineText}}</text><text wx:if="{{!item.sourceAvailable}}" class="tag">原材料已变化</text></view>
+          </view>
+        </block>
+        <text class="helper">点开事项可查看原始记录、处理前后证据与复核结果。资料缺失、AI识别错误、房间归属错误和重复记录不计为施工质量问题。</text>
+      </view>
+      <view wx:elif="{{detail.issueCount}}" class="paper issue-paper">
         <view class="section-heading"><text class="fabric">待处理事项 · {{detail.issueCount}}</text><text class="helper">来自业主需求与现场记录</text></view>
         <view wx:for="{{detail.pendingIssues}}" wx:key="issueId" class="issue-row" data-id="{{item.issueId}}" bindtap="openIssue" aria-role="button" aria-label="{{item.roomName + '，' + item.statusLabel}}">
           <view class="issue-head"><text class="label">{{item.roomName || '全屋'}} · {{item.sourceLabel}}</text><text class="issue-status">{{item.statusLabel}}</text></view>
