@@ -2085,28 +2085,54 @@ export async function runScheduledPeriodReportDispatch(
     : 'claim' as const;
   const summaries: ScheduledEnterpriseSummary[] = [];
   for (const enterpriseId of enterpriseIds) {
-    const control = await dependencies.store.control(enterpriseId);
-    const result = await runEnterprise(enterpriseId, period, context, ownership);
-    const prior = mode === 'tick'
-      ? await continuePriorRuns(enterpriseId, period, context)
-      : { work: { dispatched: [], observed: [] }, runs: [] };
-    const run = result.run;
-    summaries.push({
-      enterpriseId,
-      runId: scheduleRunId(enterpriseId, period.periodStart),
-      status: run?.status ?? 'missing',
-      paused: control.paused,
-      busy: result.busy,
-      gate: result.gate,
-      counts: run?.counts ?? emptyCounts(),
-      dispatchedProjects: [...result.work.dispatched, ...prior.work.dispatched],
-      observedProjects: [...result.work.observed, ...prior.work.observed],
-      recoveredRuns: prior.runs,
-      skipReasons: run?.lastError
-        ? [run.lastError.code]
-        : run?.queue.flatMap((plan) => plan.skipReasons).filter((reason, index, all) => all.indexOf(reason) === index).slice(0, 20) ?? [],
-      error: result.error ?? run?.lastError ?? null,
-    });
+    // One enterprise's store, database or discovery failure must never stop the
+    // other allow-listed tenants in the same tick. The failed tenant is reported
+    // with its own code and keeps any run file it had already written.
+    try {
+      const control = await dependencies.store.control(enterpriseId);
+      const result = await runEnterprise(enterpriseId, period, context, ownership);
+      const prior = mode === 'tick'
+        ? await continuePriorRuns(enterpriseId, period, context)
+        : { work: { dispatched: [], observed: [] }, runs: [] };
+      const run = result.run;
+      summaries.push({
+        enterpriseId,
+        runId: scheduleRunId(enterpriseId, period.periodStart),
+        status: run?.status ?? 'missing',
+        paused: control.paused,
+        busy: result.busy,
+        gate: result.gate,
+        counts: run?.counts ?? emptyCounts(),
+        dispatchedProjects: [...result.work.dispatched, ...prior.work.dispatched],
+        observedProjects: [...result.work.observed, ...prior.work.observed],
+        recoveredRuns: prior.runs,
+        skipReasons: run?.lastError
+          ? [run.lastError.code]
+          : run?.queue.flatMap((plan) => plan.skipReasons).filter((reason, index, all) => all.indexOf(reason) === index).slice(0, 20) ?? [],
+        error: result.error ?? run?.lastError ?? null,
+      });
+    } catch (error) {
+      const code = error instanceof WorkflowOperationError || error instanceof AssistantError
+        ? error.code
+        : 'period_report_schedule_tick_failed';
+      summaries.push({
+        enterpriseId,
+        runId: scheduleRunId(enterpriseId, period.periodStart),
+        status: 'failed',
+        paused: false,
+        busy: false,
+        gate: null,
+        counts: emptyCounts(),
+        dispatchedProjects: [],
+        observedProjects: [],
+        recoveredRuns: [],
+        skipReasons: [code],
+        error: {
+          code,
+          message: (error instanceof Error ? error.message : code).slice(0, 300),
+        },
+      });
+    }
   }
   return {
     enabled: true,

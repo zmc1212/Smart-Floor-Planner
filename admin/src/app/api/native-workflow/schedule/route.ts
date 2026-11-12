@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server';
 import { getTenantContext } from '@/lib/auth';
+import { WorkflowOperationError } from '@/lib/native-workflow/errors';
 import { requirePlatformAdmin, workflowApiError } from '@/lib/native-workflow/server';
 import {
   readScheduledPeriodReportDispatch,
   setScheduledPeriodReportPaused,
 } from '@/lib/native-workflow/live/period-report-schedule';
+import {
+  readWeeklyScheduleSettings,
+  type WeeklyScheduleSettingsSnapshot,
+} from '@/lib/native-workflow/live/period-report-schedule-ports';
 import {
   createFilePeriodReportScheduleStore,
   resolveNativeWorkflowScheduleDir,
@@ -63,7 +68,18 @@ export async function GET(request: Request) {
         ? { periodStart: url.searchParams.get('periodStart')! }
         : {}),
     });
-    return NextResponse.json({ success: true, data: result });
+    // The stored weekly slot is read without a lock or claim, so the operations
+    // view can show the next execution time even before this cycle dispatches.
+    let settings: WeeklyScheduleSettingsSnapshot | null = null;
+    let settingsError: string | null = null;
+    try {
+      settings = await readWeeklyScheduleSettings({ enterpriseId: context.enterpriseId! });
+    } catch (error) {
+      settingsError = error instanceof WorkflowOperationError
+        ? error.code
+        : 'weekly_settings_unavailable';
+    }
+    return NextResponse.json({ success: true, data: { ...result, settings, settingsError } });
   } catch (error) {
     return workflowApiError(error);
   }

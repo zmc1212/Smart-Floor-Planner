@@ -702,6 +702,50 @@ async function claimWeeklySchedule(input: {
   });
 }
 
+export interface WeeklyScheduleSettingsSnapshot {
+  readonly settingsEnabled: boolean;
+  readonly stageEnabled: boolean | null;
+  readonly weeklyDay: number | null;
+  readonly weeklyTime: string | null;
+  readonly nextWeeklyAt: string | null;
+  readonly audiences: readonly string[];
+}
+
+/**
+ * Read-only operations view of the tenant's stored weekly schedule.
+ *
+ * It never locks, claims, advances `next_weekly_at` or dispatches. The admin API
+ * uses it to show the current slot and next execution time for the tenant in
+ * scope; a missing settings row returns null instead of inventing defaults.
+ */
+export async function readWeeklyScheduleSettings(input: {
+  readonly enterpriseId: string;
+}): Promise<WeeklyScheduleSettingsSnapshot | null> {
+  const enterpriseId = assertId(input.enterpriseId, 'enterprise id');
+  return withTenantTransaction(enterpriseId, async (tx) => {
+    const settings = await one(
+      tx,
+      sql`select enabled,stage_enabled,weekly_day,weekly_time,next_weekly_at,audiences
+        from app.construction_report_settings where enterprise_id=${enterpriseId}`,
+    );
+    if (!settings) return null;
+    return {
+      settingsEnabled: settings.enabled === true,
+      stageEnabled: settings.stage_enabled === null || settings.stage_enabled === undefined
+        ? null
+        : settings.stage_enabled === true,
+      weeklyDay: settings.weekly_day === null || settings.weekly_day === undefined
+        ? null
+        : Number(settings.weekly_day),
+      weeklyTime: settings.weekly_time === null || settings.weekly_time === undefined
+        ? null
+        : String(settings.weekly_time),
+      nextWeeklyAt: endOfDay(settings.next_weekly_at),
+      audiences: configuredAudiences(settings.audiences) ?? [],
+    };
+  });
+}
+
 async function ensureCustomerBinding(input: {
   readonly enterpriseId: string;
   readonly projectId: string;

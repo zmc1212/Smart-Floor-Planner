@@ -2051,12 +2051,98 @@ citations, and report/version/delivery/message/readAt/audit counts and digests
 are unchanged. Evidence:
 `admin/tmp/b5-9-5-round2-20261112-1753/{state-before.json,citations.json,role-availability.json}`.
 
+## B5.10 multi-tenant production-readiness review
+
+This round audits the B5.9 scheduler; it does not enable production. Automatic
+scheduling stays off (`NATIVE_WORKFLOW_SCHEDULE_ENABLED=0`) and the enterprise
+allowlist is unchanged.
+
+Tenant isolation (code review + tests):
+
+- one run id is `schedule-<enterprise>-weekly-<periodStart>`; control is
+  `control/<enterpriseId>.json` and the issue ledger is
+  `ledger/<enterpriseId>/<projectId>.json`, so two tenants never share a run,
+  lease, control file or ledger;
+- every discovery, weekly claim, receiver/binding lookup, status read and issue
+  read runs inside `withTenantTransaction(enterpriseId, ...)` with an explicit
+  `enterprise_id=` predicate; there is no cross-tenant query path;
+- the admin `GET /api/native-workflow/schedule` takes the enterprise from the
+  session/tenant selector, never from the query string, and
+  `readScheduledPeriodReportDispatch()` returns `403
+  period_report_schedule_forbidden` when a supplied `runId` belongs to another
+  enterprise; `POST` pause/resume is tenant-scoped in the same way;
+- `NATIVE_WORKFLOW_SCHEDULE_ENTERPRISE_IDS` is parsed strictly (positive
+  integers only); an empty or entirely invalid allowlist returns
+  `no_enterprise_scope` before any store, database or dispatch work, and the
+  tick is additionally capped at 20 enterprises.
+
+Concurrency and resources:
+
+- the tick processes allow-listed enterprises sequentially inside the existing
+  assistant-worker request; no second Worker, queue or timer exists;
+- each run has an exclusive lease file with a 10-minute default TTL while the
+  whole tick is bounded to 90 seconds (`NATIVE_WORKFLOW_SCHEDULE_MAX_RUN_MS`),
+  and the reused B5.8 batch store keeps its own cross-process lease; a
+  concurrent dispatcher observes the lease and skips instead of duplicating;
+- run updates use same-directory temporary files plus atomic rename, and
+  run/entry/reminder/ledger arrays are bounded (200/50/20/50), so a long-lived
+  period file cannot grow without limit;
+- the scheduler uses the existing PostgreSQL pool (default 10 connections) and
+  holds at most one tenant transaction at a time.
+
+Failure isolation (fixed this round): a thrown store/database/discovery/claim
+error for one enterprise used to abort the whole tick. `runScheduledPeriodReportDispatch()`
+now catches it per enterprise, reports that tenant as `status: failed` with the
+error code and an empty work set, and continues with the next allow-listed
+tenant. Pausing one tenant already short-circuits only that tenant. The existing
+per-project isolation, "unknown never replayed", queued≠delivered and
+delivered≠read contracts are unchanged.
+
+Operations API: `GET /api/native-workflow/schedule` now also returns
+`settings` from the tenant's `construction_report_settings` row
+(`settingsEnabled`, `stageEnabled`, `weeklyDay`, `weeklyTime`, `nextWeeklyAt`,
+`audiences`) through a new read-only `readWeeklyScheduleSettings()` that never
+locks, claims or advances the slot; a read failure is reported as
+`settingsError` without failing the run summary. The same response still
+contains `control`, the run with every project entry/receiver/issue state and
+`counts`, so last execution time (`run.updatedAt`), project/四端 status, failed
+and unknown states are queryable.
+
+Tests: the offline suite passes 416/416, including three new scheduler tests —
+one enterprise failure does not stop the next tenant, a paused tenant does not
+block another tenant, and two allow-listed tenants produce independent runs and
+request ids — plus a new runtime test file proving that a disabled flag or an
+empty/invalid allowlist performs no store or database work.
+
+Cost observation (B isolated database, observed values only):
+
+- one project-period creates four body calls (customer, worker, designer,
+  boss). Observed in the four-receiver batch: 1167/61, 1201/72, 1199/84 and
+  1192/785 input/output tokens; facts runs used no model tokens;
+- contract-mandated revisions of one report cost one body call each: four
+  revisions used 1092 input tokens with 71/60/69/83 output tokens;
+- storage observed for one enterprise/project/period: run file 7.3 KB, control
+  178 B, ledger 186 B; the baseline had 18 reports, 23 versions, 23 deliveries
+  and 48 runs.
+- Prediction (not observed): weekly body calls ≈ 4 × dispatched projects;
+  peak per tick ≈ 4 × `NATIVE_WORKFLOW_SCHEDULE_MAX_PROJECTS` (default 5) per
+  enterprise, serialized across enterprises. No token price or wall-clock
+  duration is inferred from this data.
+
+Bounded B acceptance: the deterministic multi-tenant tests above are the
+acceptance for this round. A second live enterprise was not created because the
+B fixtures only define the marked enterprise `1454`; adding another tenant is a
+fixture-authoring decision, not something this review may do silently. The
+remaining production risks are the shared-filesystem schedule store (single
+host; a multi-host deployment needs a shared volume or a database-backed store)
+and the still-unapproved enterprise allowlist expansion.
+
 ## Reproduce
 
 From `admin/` (no database, no Worker, no model):
 
 ```powershell
-npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts src/lib/native-workflow/__tests__/acceptance-store.test.ts src/lib/native-workflow/__tests__/acceptance-conversation.test.ts src/lib/native-workflow/__tests__/acceptance-state.test.ts src/lib/native-workflow/__tests__/acceptance-provider.test.ts src/lib/native-workflow/__tests__/period-report-ports.test.ts src/lib/native-workflow/__tests__/report-model-evidence.test.ts src/lib/native-workflow/__tests__/period-report-status.test.ts src/lib/native-workflow/__tests__/period-report-status-reentry.test.ts src/lib/native-workflow/__tests__/admin-run-status.test.ts src/lib/native-workflow/__tests__/period-report-status-route.test.ts src/lib/native-workflow/__tests__/period-report-status-route-guards.test.ts src/lib/native-workflow/__tests__/period-event-weekly.test.ts src/lib/native-workflow/__tests__/period-cli.test.ts src/lib/native-workflow/__tests__/staff-receiver.test.ts src/lib/native-workflow/__tests__/boss-receiver.test.ts src/lib/native-workflow/__tests__/worker-fixture.test.ts src/lib/native-workflow/__tests__/period-report-entry.test.ts src/lib/native-workflow/__tests__/period-report-batch.test.ts src/lib/native-workflow/__tests__/period-report-schedule.test.ts src/lib/native-workflow/__tests__/period-report-schedule-store.test.ts src/lib/native-workflow/__tests__/period-report-schedule-ports.test.ts
+npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts src/lib/native-workflow/__tests__/acceptance-store.test.ts src/lib/native-workflow/__tests__/acceptance-conversation.test.ts src/lib/native-workflow/__tests__/acceptance-state.test.ts src/lib/native-workflow/__tests__/acceptance-provider.test.ts src/lib/native-workflow/__tests__/period-report-ports.test.ts src/lib/native-workflow/__tests__/report-model-evidence.test.ts src/lib/native-workflow/__tests__/period-report-status.test.ts src/lib/native-workflow/__tests__/period-report-status-reentry.test.ts src/lib/native-workflow/__tests__/admin-run-status.test.ts src/lib/native-workflow/__tests__/period-report-status-route.test.ts src/lib/native-workflow/__tests__/period-report-status-route-guards.test.ts src/lib/native-workflow/__tests__/period-event-weekly.test.ts src/lib/native-workflow/__tests__/period-cli.test.ts src/lib/native-workflow/__tests__/staff-receiver.test.ts src/lib/native-workflow/__tests__/boss-receiver.test.ts src/lib/native-workflow/__tests__/worker-fixture.test.ts src/lib/native-workflow/__tests__/period-report-entry.test.ts src/lib/native-workflow/__tests__/period-report-batch.test.ts src/lib/native-workflow/__tests__/period-report-schedule.test.ts src/lib/native-workflow/__tests__/period-report-schedule-store.test.ts src/lib/native-workflow/__tests__/period-report-schedule-ports.test.ts src/lib/native-workflow/__tests__/period-report-schedule-runtime.test.ts
 npx tsx --test src/lib/construction/__tests__/report-citations.test.ts src/lib/construction/__tests__/report-composition.test.ts
 npx tsx src/lib/native-workflow/playground/simulate.ts
 ```

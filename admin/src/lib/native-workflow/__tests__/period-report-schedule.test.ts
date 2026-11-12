@@ -686,6 +686,67 @@ test('dispatches one project with four independent receivers and a deterministic
   assert.equal(summary.enterprises[0]!.gate?.claimed, true);
 });
 
+test('one enterprise failure never stops the next allow-listed enterprise', async () => {
+  const harness = await makeHarness();
+  const failing = '999';
+  const store = {
+    ...harness.store,
+    control: async (enterpriseId: string) => {
+      if (enterpriseId === failing) {
+        throw new WorkflowOperationError(
+          'period_report_schedule_store_error',
+          500,
+          'simulated tenant store failure',
+        );
+      }
+      return harness.store.control(enterpriseId);
+    },
+  };
+  const summary = await runScheduledPeriodReportDispatch(
+    options({ enterpriseIds: [failing, ENTERPRISE_ID] }),
+    { ...harness.deps, store },
+  );
+  assert.equal(summary.enabled, true);
+  assert.equal(summary.enterprises.length, 2);
+  const failed = summary.enterprises[0]!;
+  assert.equal(failed.enterpriseId, failing);
+  assert.equal(failed.status, 'failed');
+  assert.equal(failed.error?.code, 'period_report_schedule_store_error');
+  assert.deepEqual(failed.dispatchedProjects, []);
+  assert.deepEqual(failed.recoveredRuns, []);
+  const healthy = summary.enterprises[1]!;
+  assert.equal(healthy.enterpriseId, ENTERPRISE_ID);
+  assert.equal(healthy.error, null);
+  assert.equal(healthy.counts.completed, 1);
+  assert.deepEqual(harness.batchRequests, [
+    `schedule-${ENTERPRISE_ID}-${PROJECT_A}-weekly-2026-11-02`,
+  ]);
+});
+
+test('two allow-listed enterprises get independent runs, requests and summaries', async () => {
+  const harness = await makeHarness();
+  const second = '1455';
+  const summary = await runScheduledPeriodReportDispatch(
+    options({ enterpriseIds: [ENTERPRISE_ID, second] }),
+    harness.deps,
+  );
+  assert.equal(summary.enterprises.length, 2);
+  assert.deepEqual(harness.batchRequests.slice().sort(), [
+    `schedule-${ENTERPRISE_ID}-${PROJECT_A}-weekly-2026-11-02`,
+    `schedule-${second}-${PROJECT_A}-weekly-2026-11-02`,
+  ].sort());
+  const firstRun = await harness.store.get(`schedule-${ENTERPRISE_ID}-weekly-2026-11-02`);
+  const secondRun = await harness.store.get(`schedule-${second}-weekly-2026-11-02`);
+  assert.ok(firstRun);
+  assert.ok(secondRun);
+  assert.notEqual(firstRun!.runId, secondRun!.runId);
+  assert.deepEqual(summary.enterprises.map((entry) => entry.enterpriseId), [ENTERPRISE_ID, second]);
+  for (const entry of summary.enterprises) {
+    assert.equal(entry.counts.completed, 1);
+    assert.equal(entry.error, null);
+  }
+});
+
 test('a repeated tick does not create a second batch or model-visible work', async () => {
   const harness = await makeHarness();
   await runScheduledPeriodReportDispatch(options(), harness.deps);
@@ -793,6 +854,33 @@ test('a concurrent dispatcher sees the run lease and does not duplicate work', a
   const summary = await runScheduledPeriodReportDispatch(options(), harness.deps);
   assert.equal(summary.enterprises[0]!.busy, true);
   assert.equal(harness.batchRequests.length, 0);
+});
+
+test('a paused enterprise never blocks another enterprise in the same tick', async () => {
+  const harness = await makeHarness();
+  const pausedId = '998';
+  await setScheduledPeriodReportPaused({
+    enterpriseId: pausedId,
+    paused: true,
+    updatedBy: 'ops',
+    reason: 'review',
+    store: harness.store,
+  });
+  const summary = await runScheduledPeriodReportDispatch(
+    options({ enterpriseIds: [pausedId, ENTERPRISE_ID] }),
+    harness.deps,
+  );
+  const paused = summary.enterprises[0]!;
+  assert.equal(paused.enterpriseId, pausedId);
+  assert.equal(paused.paused, true);
+  assert.equal(paused.status, 'missing');
+  assert.deepEqual(paused.dispatchedProjects, []);
+  const healthy = summary.enterprises[1]!;
+  assert.equal(healthy.enterpriseId, ENTERPRISE_ID);
+  assert.equal(healthy.counts.completed, 1);
+  assert.deepEqual(harness.batchRequests, [
+    `schedule-${ENTERPRISE_ID}-${PROJECT_A}-weekly-2026-11-02`,
+  ]);
 });
 
 test('pause stops dispatch and resume continues it', async () => {
