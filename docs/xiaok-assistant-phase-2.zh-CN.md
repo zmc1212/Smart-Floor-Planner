@@ -4,6 +4,23 @@
 **R3 网页来源（Limited）。** 合资格的原生会话由现有 LangGraph Worker 经 R2 工具注册表派发。独立搜索服务提供公开候选，受保护的读页服务将原文交给现有 Evidence 和引用链。百炼 Responses 承载检索工具调用与回传，终稿轮使用既有结构化通道。[协议、配置与验证](bailian-responses-adapter.md#11-r3-应用联网搜索)。
 <!-- /xiaok-r3-web-contract -->
 
+## R5 长期记忆与持续委托
+
+**状态 Limited。** 原 LangGraph Agent 由 `MemoryService` 装载有界的相关记忆，沿 R2 工具注册、执行和 run 审计。沟通偏好与私人备注保存本人原话、哈希、作用域、修订和当前/候选/冲突状态。房间需求沿 `record_need` 写入，项目房间、阶段、正式户型标识及已授权的方案决定从原业务服务读取。私人记忆不进入项目共享上下文和公开联网工具。更正核对当前版本或沿原需求流程执行。作废和删除退出召回，删除会清除记忆值，原对话按既有保留政策管理。
+
+`DelegationService` 保存项目、业主、原咨询及原话、目标、房间和事项、完成条件、状态、负责人、等待对象、下一步、期限、授权、证据和版本。每次读取或处理复验本人项目、成员权限、来源版本和共享授权。业主沿原小程序输入框查看、暂停、继续或取消，目标不唯一时先澄清。团队只能读取业主已明确授权的资料范围。
+
+- 现场上报及版本变更、需求、共享/方案、事项回复/整改/复核、已保存的联网原文和到期沿现有 Outbox 入队。Worker 复验获权原件并经 R2 读取和审计，事务提交处理回执、状态和原咨询消息。事件及任务/事件唯一键、租户级事务锁、到期重试和五次失败死信支持重放和重启。人工继续入队新一轮核对。
+- 房间进度依据对应房间及工种当前对客发布的记录和照片。设计师答复须由当前获权角色提交并由负责人回传原咨询。带原事项关联的已发布整改照片进入待复核。正式方案变更、同意和问题解决仍由原业务服务处理。
+- 首次到期写站内提醒，仍逾期且有当前项目授权时向负责人站内升级。排队、消息已持久化、明确已读及业务确认分别留痕。团队仍可在 AI 不可用时用原业务入口人工处理。
+- 应用迁移 `0123` 后使用 `NATIVE_WORKFLOW_DELEGATION_ENABLED=1` 和明确的 `NATIVE_WORKFLOW_DELEGATION_ENTERPRISE_IDS` 白名单。业主端 `GET|POST|PATCH /api/miniprogram/assistant/conversations/:id/long-term` 分别读取、从本人原话人工写入、确认站内已读。写入校验版本和幂等键。沿用原页面布局和站内投递。
+
+真实 PostgreSQL 与替身模型通过10组业务及生命周期检查。R1–R4 定向136项、托管 RAG 替身12项通过。Stable 在390×844的原 C01 完成查看、暂停与持久重进。百炼 `qwen3.7-flash` 固定两组通过，Responses 保存工具与结构化召回为 run96–99。真实托管知识库仍缺工作空间及专用凭据，应用联网服务本轮不可用。实际语音、真机与生产未验。
+
+验收采用环回隔离库 `xiaok_r5_acceptance` 和明确标记的合成微云1454。将 `XIAOK_R5_DATABASE_URL` 指向隔离应用角色，在 `admin` 执行 `node --env-file=.env.local --import tsx scripts/xiaok-r5-acceptance.ts --label=<label>`。真实模型固定对话加 `--live`，原始失败与供应商尝试分别保存在 `admin/tmp/r5/`。
+
+沿用 LangGraph 对会话历史和跨线程记忆的区分。写入依赖当前应用授权、PostgreSQL Outbox 和业务回执，工具调用及回传沿百炼 Responses 协议。[LangGraph 记忆](https://docs.langchain.com/oss/javascript/langgraph/add-memory) · [LangGraph 持久化](https://docs.langchain.com/oss/javascript/langgraph/persistence) · [百炼 Responses 协议](https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-responses)
+
 <!-- site-capture-current -->
 ## 现场上报与送达合同
 

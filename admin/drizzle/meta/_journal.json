@@ -855,6 +855,13 @@
       "when": 1795161600000,
       "tag": "0122_assistant_managed_knowledge",
       "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1795248000000,
+      "tag": "0123_assistant_long_term_delegation",
+      "breakpoints": true
     }
   ]
 }

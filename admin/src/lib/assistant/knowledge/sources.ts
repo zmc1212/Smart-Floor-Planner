@@ -119,6 +119,8 @@ export async function webCitationProjection(tx: PostgresTransaction, actor: Acto
   return await webCitationForAnswer(tx, actor, c, citationId) || { id: citationId, available: false, reason: 'source_unavailable' };
 }
 export async function projectMessage(tx:PostgresTransaction,actor:ActorContext,c:Row,message:Row) {
+  const delegationAvailable = message.purpose !== 'construction.delegation'
+    || await (await import('@/lib/native-workflow/live/delegation-chat')).delegationNoticeAvailable(tx, actor, c, String(message.id));
   // Revoking an original also hides pre-revocation AI prose after it. This
   // conservative fence covers unstructured replies without inventing citations;
   // future turns can answer again from the remaining live sources.
@@ -142,7 +144,7 @@ export async function projectMessage(tx:PostgresTransaction,actor:ActorContext,c
   for (const citationId of webIds) projected.push(await webCitationProjection(tx, actor, c, citationId));
   const publicProjection = await publicMessageProjection(tx, actor, c, String(message.id));
   const planProjection = await planMessageProjection(tx, actor.enterpriseId, String(c.id), String(message.id));
-  const available=speech?.revoked !== true && planProjection?.available !== false && publicProjection?.available !== false && !(message.answer_kind==='grounded' && !projected.length) && projected.every(x=>x.available)
+  const available=delegationAvailable && speech?.revoked !== true && planProjection?.available !== false && publicProjection?.available !== false && !(message.answer_kind==='grounded' && !projected.length) && projected.every(x=>x.available)
     && await agentMessageAvailable(tx, actor.enterpriseId, String(c.id), String(message.id),actor);
   const designerRecommendation = available && actor.principal.kind === 'user'
     ? await designerMessageProjection(tx, actor, String(c.id), String(message.id)) : null;

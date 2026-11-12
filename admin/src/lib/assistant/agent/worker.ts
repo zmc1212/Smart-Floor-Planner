@@ -24,6 +24,7 @@ import { conversationImageProtocol, conversationImageInstructions, conversationI
 import { factFields, needWriteFeedback, needOriginalQuotes, hasExplicitNeedCorrection, assertRecordedReply, needReplyFeedback, onlyChatHistoryRequested, currentBudgetRecallRequested, currentBudgetRecallFeedback, needReconfirmationFeedback, needDeskPositionFeedback, currentNeedView, unavailableDeskReply, explicitNeedRecordOnly, explicitNeedWriteStatement, recordedNeedReceipt, parseNeedWrites } from './memory';
 import { availableNeedMemory, needMemoryNoticeRefs, unavailableNeedMessageIds, needContextStep, needSourceRefs, needRunSourcesAvailable } from './memory-sources';
 import { persistNeedWrites } from './memory-store';
+import { agentLongTermContext, agentLongTermToolResult, isLongTermTool, longTermOperationIds, longTermPreferenceReceipt, longTermRunAvailable, longTermTools } from '../memory/agent';
 import { isNeedInquiry, needWriteProhibition } from './need-write-intent';
 import { buildAgentContext, parseAgentReply, agentPromptVersion, ownerNoArchivePolicy } from './context';
 import { knowledgeTools, runKnowledgeEnabled, generalKnowledgeInstructions } from '../knowledge-policy';
@@ -511,6 +512,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       if (readContext) readToolContext(context.conversation.entry_snapshot as Row, { readContext });
       await validateConstructionSources(tx, String(context.conversation.id));
       if (!await needRunSourcesAvailable(tx, lease.enterpriseId, String(context.conversation.id), lease.runId)) fail('context_changed');
+      if ((context.run.policy_snapshot as Row).longTermMemory
+        && !await longTermRunAvailable(tx, lease.actor, lease.enterpriseId, context.conversation, lease.runId, true)) fail('context_changed');
       return fn(tx, context);
     });
   try {
@@ -537,7 +540,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       const config = agentConfig((context.run.policy_snapshot as Row).agent);
       const current = await one(tx, sql`select agent_config from app.assistant_enterprise_settings where enterprise_id=${lease.enterpriseId}`);
       if (!config || agentCapabilityFingerprint(config) !== agentCapabilityFingerprint(agentConfig(current?.agent_config))) fail('context_changed');
-      const trigger = await one(tx, sql`select id,seq,content,purpose from app.assistant_messages where enterprise_id=${lease.enterpriseId}
+      const trigger = await one(tx, sql`select id,seq,content,purpose,author_kind from app.assistant_messages where enterprise_id=${lease.enterpriseId}
         and conversation_id=${String(context.conversation.id)} and id=${String(context.run.trigger_message_id)}`);
       if (!trigger) fail('context_changed');
       const policy = context.run.policy_snapshot as Row;
@@ -673,6 +676,11 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       // The oldest row of a bounded DB window can be the tail of a prior turn.
       while (turns.length > 1 && turns[0].role !== 'user') turns.shift();
       const messages = buildAgentContext(turns, memory, knowledgeEnabled, minimalDialogue, difyDialogue);
+      const question = safeText(trigger.content as Parameters<typeof safeText>[0]);
+      const r5 = (context.run.policy_snapshot as Row).longTermMemory && trigger.author_kind === 'user'
+        && !currentMessageOnlyRequested(question) && !independentAdviceRequested(question)
+        ? await agentLongTermContext(tx, lease.actor, context.conversation, lease.runId, question) : null;
+      if (r5?.context && messages[0]?.role === 'system') messages[0].content.push({ type: 'text', text: r5.context });
       const report = await boundReportContext(tx, lease.actor, context.conversation, lease.runId);
       reportSource = report?.snapshot || null;
       const coordinationReferral = reportCoordination && !reportSnapshotSiteAnswerable(report?.snapshot);
@@ -819,7 +827,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       const consultationDeadlineAt = config.consultation ? Date.now() + consultationAcceptanceProfile.runTimeoutMs - Math.max(0, Number(clock!.elapsed_ms)) : undefined;
       const priorUserText = turns.filter(turn => turn.role === 'user' && String(turn.id) !== String(trigger.id)).slice(-6).map(turn => turn.text).join(' ');
       const designerFollowup = designerClarificationFollowup(priorUserText, safeText(trigger.content as Parameters<typeof safeText>[0]));
-      return { ...context, knowledgeEnabled, minimalDialogue, difyDialogue, dialogueProtocol, shared, staffFollowup, staffPreview, config, trigger, messages, mediaRefs: [...dependencies.values()], currentImageUpload, referenceEvidence, resume, savedSummary, consultationDeadlineAt, designerFollowup, reportHistoryVersion };
+      return { ...context, knowledgeEnabled, minimalDialogue, difyDialogue, dialogueProtocol, shared, staffFollowup, staffPreview, config, trigger, messages, r5, mediaRefs: [...dependencies.values()], currentImageUpload, referenceEvidence, resume, savedSummary, consultationDeadlineAt, designerFollowup, reportHistoryVersion };
     });
     const reviewContext = { ...(initial.minimalDialogue ? { generalKnowledge: true } : {}), currentQuestion: safeText(initial.trigger.content as Parameters<typeof safeText>[0]),
       currentOriginal: { messageId: String(initial.trigger.id), hash: fingerprint(initial.trigger.content) } };
@@ -973,11 +981,17 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         initial.designerFollowup, ((initial.conversation.entry_snapshot as Row).materialShareProposal as Row | undefined)?.status === 'pending'), readContext), publicResearch, initial.minimalDialogue), initial.knowledgeEnabled));
       // fitAgentContext appends the final tool. An empty candidate list gives the
       // provider exactly one final_response and a named tool_choice.
-      return registerReads(review ? reviewMode !== 'propose' ? []
+      const offered = registerReads(review ? reviewMode !== 'propose' ? []
         : designerOnly ? reviewDefinitions.filter(tool => tool.name === 'propose_designer_reception')
         : [...base.filter(tool => !['record_need', 'request_designer'].includes(tool.name)), ...reviewDefinitions]
         : ownerScopeIdentity ? base.filter(tool => ownerReadToolAllowed(tool.name, archiveAllowed))
           .map(tool => ownerQuestionMaterialTool(tool, archiveAllowed)) : base);
+      if (!initial.r5 || review || nativeWorkflow || !initial.config.tools) return offered;
+      // The bounded memory snapshot already supplies this answer. Keep the
+      // verified final-only carrier for the structured reply.
+      if (initial.r5.preferenceRecall) return [];
+      const tools = initial.r5.private ? offered.filter(tool => !isWebTool(tool.name) && !['search_web','read_web'].includes(tool.name)) : offered;
+      return [...tools, ...longTermTools(initial.r5.scope, reviewContext.currentQuestion)];
     };
     const reviewReceipt = async (marker: ReviewMarker) => {
       if (marker.name === 'propose_requirement_changes' && marker.effect === 'proposal') {
@@ -1077,6 +1091,12 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                 }
               }
               const definitions=agentToolsForTurn(question,current,available,triggerId,{ ...sourceMode, reportPlan });
+              // The provider supports a required function when only that tool
+              // is offered. Standalone preference updates have no other work.
+              const preferenceWrite = turn === 0 && purpose === 'answer' && initial.r5?.preferenceOnly
+                && !nativeFinalization && !review && !ownerReads?.ownerScope && !sourceMode.requiredKnowledge
+                ? definitions.find(tool => tool.name === 'manage_long_term_memory') : undefined;
+              if (preferenceWrite) return [preferenceWrite];
               const webFetch = definitions.find(tool => tool.name === 'web_fetch');
               if (webFetch && webOriginalPending(current)) return [webFetch];
               return !nativeFinalization||purpose!=='answer'?definitions:available.length
@@ -1197,7 +1217,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           const executeProvider = () => executePostgresText({ enterpriseId: BigInt(lease.enterpriseId), owner: { kind: 'assistant_run', runId: BigInt(lease.runId) },
             logicalModelKey: 'chat.general', messages: [], maxTokens: limits.maxOutputTokens,
             agent: { config: initial.config, input: { messages: modelMessages, tools: dispatchTools, maxTokens: limits.maxOutputTokens, requireTool: purpose !== 'vision',
-              ...(applicationWebProvider ? { applicationWebSearch: true } : {}),
+              ...(applicationWebProvider || initial.r5?.private || dispatchTools.some(tool => isLongTermTool(tool.name))
+                ? { applicationWebSearch: true } : {}),
               ...finalAllocation,
               ...(nativeFinalization&&purpose==='answer'&&!tools.length?{outputMode:finalOutputMode}:{}),
               ...(dialogueFinalCarrier ? { outputMode: dialogueFinalCarrier } : {}),
@@ -1431,6 +1452,10 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             while (i >= 0 && state.messages[i].role === 'tool') i--;
             const request = state.messages[i];
             const call = request?.role === 'assistant' && request.toolCalls?.length === 1 ? request.toolCalls[0] : null;
+            if (initial.r5 && call?.name === 'manage_long_term_memory' && call.id === last.callId) {
+              const receipt = await scoped(tx => longTermPreferenceReceipt(tx, lease.enterpriseId, lease.runId, reviewContext.currentQuestion));
+              if (receipt) return JSON.stringify({ kind: 'general', text: receipt });
+            }
             if (call && call.id === last.callId && ['prepare_material_share', 'revoke_material_share'].includes(call.name)) {
               const receipt = await scoped(tx => one(tx, sql`select private_checkpoint from app.assistant_run_steps
                 where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${1200 + (state.turn - 1) * 10}
@@ -1704,7 +1729,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             const issue = await scoped(async (tx, context) => {
               const memory = await availableNeedMemory(tx, lease.enterpriseId, String(context.conversation.id), context.conversation.entry_snapshot);
               const preferences = ((context.conversation.entry_snapshot as Row)?.referencePreferences || []) as ReferencePreference[];
-              const found = needReplyFeedback(text, memory, lease.runId, question, preferences.map(p => p.operationId));
+              const found = needReplyFeedback(text, memory, lease.runId, question, [...preferences.map(p => p.operationId),
+                ...(initial.r5 ? await longTermOperationIds(tx, lease.enterpriseId, lease.runId) : [])]);
               if (found) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
                 values(${lease.enterpriseId},${lease.runId},${1300+turn},'agent_validation','failed',
                   ${JSON.stringify({ code: found.code, scope: 'current_need_receipt_and_question', noBusinessTools: true })}::jsonb) on conflict do nothing`);
@@ -1769,6 +1795,12 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             if (scope === 'site' || scope === 'knowledge_and_site' && !ownerKnowledgeTools.has(name)) fail('assistant_capability_forbidden', 403);
           }
           const sequence = 1200 + turn * 10 + index, resultKey = `${lease.runId}:${turn}:${index}`;
+          if (isLongTermTool(name)) {
+            if (!initial.r5 || !callId || !longTermTools(initial.r5.scope, reviewContext.currentQuestion).some(tool => tool.name === name))
+              fail('assistant_capability_forbidden', 403);
+            return scoped((tx, context) => agentLongTermToolResult(tx, lease.actor, context.conversation, initial.trigger,
+              lease.runId, sequence, { id: callId, name, arguments: args }));
+          }
           if (webTool) {
             if (!applicationWeb || !r3Active || !callId) fail('assistant_capability_forbidden', 403);
             return applicationWeb.execute({ id: callId, name, arguments: args }, turn, sequence);
@@ -2276,7 +2308,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         const preferences = ((context.conversation.entry_snapshot as Row)?.referencePreferences || []) as ReferencePreference[];
         const memory = await availableNeedMemory(tx, lease.enterpriseId, String(context.conversation.id), context.conversation.entry_snapshot);
         assertRecordedReply(answer.segments.map(s => s.text).join('\n'), memory, lease.runId,
-          preferences.map(p => p.operationId), safeText(initial.trigger.content as Parameters<typeof safeText>[0]));
+          [...preferences.map(p => p.operationId), ...(initial.r5 ? await longTermOperationIds(tx, lease.enterpriseId, lease.runId) : [])],
+          safeText(initial.trigger.content as Parameters<typeof safeText>[0]));
         // Persist the full consulted set, including conflict candidates and missing-data snapshots.
         await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs,private_checkpoint,input_summary)
           values(${lease.enterpriseId},${lease.runId},1006,'agent_synthesis_context','succeeded',${JSON.stringify(evidence)}::jsonb,${JSON.stringify(answer)}::jsonb,
@@ -2430,7 +2463,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       if (!business) {
         const preferences = ((context.conversation.entry_snapshot as Row)?.referencePreferences || []) as ReferencePreference[];
         const memory = await availableNeedMemory(tx, lease.enterpriseId, String(context.conversation.id), context.conversation.entry_snapshot);
-        assertRecordedReply(text, memory, lease.runId, preferences.map(p => p.operationId), safeText(initial.trigger.content as Parameters<typeof safeText>[0]));
+        assertRecordedReply(text, memory, lease.runId, [...preferences.map(p => p.operationId),
+          ...(initial.r5 ? await longTermOperationIds(tx, lease.enterpriseId, lease.runId) : [])],
+          safeText(initial.trigger.content as Parameters<typeof safeText>[0]));
       }
       for (const ref of initial.mediaRefs) if (!await resolveAgentMedia(tx, lease.enterpriseId, String(initial.conversation.id), ref)) fail('context_changed');
       for (const ref of initial.referenceEvidence) if (!await resolveEvidence(tx, lease.actor, context.conversation, ref, true)) fail('context_changed');

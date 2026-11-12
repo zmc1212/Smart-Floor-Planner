@@ -4,6 +4,10 @@ import { AssistantRepository, one, type Row } from '@/db/repositories/assistant-
 import { recordNeedIssueSupplement } from '@/lib/construction/need-issues';
 import { fail, fingerprint, safeText, type ActorContext } from '../contracts';
 import { saveAutomaticRequirements } from '../requirements/automatic';
+import { MemoryService } from '../memory/long-term';
+import { privateMemoryScope } from '../memory/scope';
+import { appendDelegationEvent } from '@/lib/native-workflow/live/delegation-store';
+import { delegationOwnerInput } from '@/lib/native-workflow/live/delegation-state';
 import { applyNeedDelta, compactNeedMemory, needMemoryPolicy, parseNeedDelta, parseNeedWrites, readMemory, uncoveredNeedStatements, NeedWriteIncompleteError, type NeedFact } from './memory';
 
 type NeedReceipt = { status: 'saved'; memoryVersion: number; conversationVersion: number; formalApproval: false;
@@ -65,6 +69,13 @@ export async function persistNeedWrites(tx: PostgresTransaction, actor: ActorCon
       where enterprise_id=${actor.enterpriseId} and id=${String(conversation.id)}`);
     for (const fact of changedFacts) await recordNeedIssueSupplement(tx, actor, conversation, fact);
     await saveAutomaticRequirements(repository, String(conversation.id));
+    const scope = await privateMemoryScope(tx, actor, conversation);
+    if (scope && changedFacts.length) {
+      await new MemoryService(tx, scope).rememberNeeds(operation.sourceMessageId, changedFacts);
+      if (scope.projectId) await appendDelegationEvent(tx, scope.enterpriseId, delegationOwnerInput, operation.sourceMessageId, 2,
+        { projectId: scope.projectId, conversationId: scope.conversationId, ownerId: scope.ownerId, messageId: operation.sourceMessageId,
+          memoryChanged: true }, actor.principal);
+    }
   }
   const checkpoint: NeedCheckpoint = { policy: needMemoryPolicy.version, receipt, archivedFacts: compacted.archivedFacts };
   await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,input_summary,private_checkpoint,source_refs)

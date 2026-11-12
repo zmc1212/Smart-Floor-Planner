@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { delegationStaffResponse, staffDelegationPurpose, syncDelegationStaffNotices } from '@/lib/native-workflow/live/delegation-staff';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { AssistantRepository, assistantWritesEnabled, one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, fingerprint, id, key, type ActorContext } from '@/lib/assistant/contracts';
@@ -82,11 +83,12 @@ export class SiteChatService {
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) fail('invalid_construction', 422);
     return this.scope(projectId, false, async (tx, c, p, permission) => {
       const eid = this.staff.enterpriseId;
+      await syncDelegationStaffNotices(tx, this.actor, c, projectId, permission.manage);
       const issues = await projectSiteIssues(tx, eid, projectId);
       const plans = await projectPlans(tx, eid, projectId);
-      const pageMessages = await rows(tx, sql`select m.id,m.seq,m.client_message_id,m.author_kind,m.admin_id,m.content,m.created_at,a.display_name
+      const pageMessages = await rows(tx, sql`select m.id,m.seq,m.client_message_id,m.author_kind,m.admin_id,m.content,m.created_at,m.purpose,a.display_name
         from app.assistant_messages m left join app.admin_users a on a.id=m.admin_id
-        where m.enterprise_id=${eid} and m.conversation_id=${String(c.id)} and m.seq<${beforeSeq} and m.author_kind='admin' order by m.seq desc limit ${limit}`);
+        where m.enterprise_id=${eid} and m.conversation_id=${String(c.id)} and m.seq<${beforeSeq} and (m.author_kind='admin' or m.purpose=${staffDelegationPurpose}) order by m.seq desc limit ${limit}`);
       // Pending work remains discoverable even after the original leaves recent history.
       const pendingMessages = await rows(tx, sql`select m.id,m.seq,m.client_message_id,m.author_kind,m.admin_id,m.content,m.created_at,a.display_name
         from app.construction_site_records r join app.assistant_messages m on m.enterprise_id=r.enterprise_id and m.id=r.source_message_id
@@ -99,6 +101,11 @@ export class SiteChatService {
         .sort((a, b) => BigInt(String(a.seq)) < BigInt(String(b.seq)) ? -1 : 1);
       const items: { message: Row; record: Row | null; response?: Row; issue?: unknown }[] = [];
       for (const message of messages) {
+        if (message.purpose === staffDelegationPurpose) {
+          const notice = await delegationStaffResponse(tx, this.actor, projectId, message, permission.manage);
+          if (notice) items.push(notice);
+          continue;
+        }
         const record = await one(tx, sql`select r.*,coalesce(a.display_name,'项目管理人员') as approved_name,q.status as run_status,q.error_code,
           (select child.id from app.construction_site_records child where child.enterprise_id=r.enterprise_id and child.project_id=r.project_id and child.resubmission_of_id=r.id) as resubmitted_record_id,
           coalesce(q.policy_snapshot->'agent'->>'imageInput','false')='true' as image_input,

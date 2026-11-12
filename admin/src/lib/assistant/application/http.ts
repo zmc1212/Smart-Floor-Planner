@@ -20,6 +20,7 @@ import { LocationService } from '../location/service';
 import { FloorplanContextService } from '../media/floorplan-context';
 import { ReportContextService } from '@/lib/construction/report-context';
 import { followupHttp } from '@/lib/construction/followup-http';
+import { longTermHttp } from '../memory/http';
 
 function only(body: Record<string, unknown>, allowed: string[]) {
   if (Object.keys(body).some(k => !allowed.includes(k))) fail('invalid_message', 422);
@@ -132,7 +133,9 @@ export async function assistantHttp(request: Request, path: string[]) {
         only(body, ['action', 'expectedVersion']);
         if (body.action !== 'archive' || !Number.isInteger(body.expectedVersion) || Number(body.expectedVersion) < 1) fail('invalid_message', 422);
         data = await service.archive(target, Number(body.expectedVersion), requestKey());
-      } else if (path[2] === 'requirements' && method === 'GET') data = await new RequirementWorkflow(actor).read(target);
+      } else if (path[2] === 'long-term' && ['GET','POST','PATCH'].includes(method))
+        data = await longTermHttp(actor, target, method, params, body, method === 'GET' ? undefined : requestKey());
+      else if (path[2] === 'requirements' && method === 'GET') data = await new RequirementWorkflow(actor).read(target);
       else if (path[2] === 'handoff' && method === 'GET') data = await new HandoffWorkflow(actor).customerRead(target);
       else if (path[2] === 'handoff' && method === 'POST') data = await new HandoffWorkflow(actor).customerWrite(target,requestKey(),body);
       else if (path[2] === 'requirements' && method === 'POST') data = await new RequirementWorkflow(actor).write(target, requestKey(), body);

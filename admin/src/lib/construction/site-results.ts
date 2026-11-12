@@ -15,7 +15,7 @@ export type CustomerMaterialReview = { id: string; version: string; messageId: s
   issueId: string; issueRevision: number; needGrantId: string; drawingGrantId: string; materialVersion: string; text: string };
 
 /** The recipient is the original opt-in consultation, never the latest or another customer thread. */
-async function validResult(tx: PostgresTransaction, eid: string, cid: string, event: Row) {
+export async function validResult(tx: PostgresTransaction, eid: string, cid: string, event: Row) {
   const p = event.payload as Row;
   if (p.conversationId !== cid) return false;
   const need = await sharedMaterial(tx, eid, String(p.projectId), String(p.needGrantId));

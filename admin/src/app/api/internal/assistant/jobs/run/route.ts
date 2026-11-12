@@ -5,6 +5,7 @@ import { processAssistantJob } from '@/lib/assistant/infrastructure/job-queue';
 import { processAssistantRun } from '@/lib/assistant/application/worker';
 import { deliverSiteNotifications } from '@/lib/construction/site-publications';
 import { deliverPublicConsents } from '@/lib/construction/public-projections';
+import { runDelegationTick } from '@/lib/native-workflow/live/delegation-worker';
 import { workerRuntimeSnapshot } from '@/lib/assistant/operations';
 import { advanceKnowledgeBatches } from '@/lib/assistant/knowledge/batch-worker';
 import { processPortfolioCopy } from '@/lib/portfolio/copy-service';
@@ -44,8 +45,9 @@ export async function POST(request: Request) {
     const knowledgeBatchChecks=await advanceKnowledgeBatches();
     const constructionReportChecks = await advanceConstructionReports();
     const data = await processAssistantJob(processAssistantRun), inAppDeliveries = await deliverSiteNotifications() + await deliverPublicConsents() + await deliverConstructionReports();
+    const delegation = await runDelegationTick();
     const portfolioCopyClaimed = data.claimed ? false : await processPortfolioCopy();
-    return NextResponse.json({ success: true, data: { ...data, claimed: data.claimed || portfolioCopyClaimed || inAppDeliveries > 0, portfolioCopyClaimed, inAppDeliveries, knowledgeBatchChecks, constructionReportChecks, nativeWorkflowSchedule }, requestId });
+    return NextResponse.json({ success: true, data: { ...data, claimed: data.claimed || portfolioCopyClaimed || inAppDeliveries > 0, portfolioCopyClaimed, inAppDeliveries, delegation, knowledgeBatchChecks, constructionReportChecks, nativeWorkflowSchedule }, requestId });
   } catch {
     return NextResponse.json({ success: false, code: 'assistant_unavailable', requestId }, { status: 503 });
   }
