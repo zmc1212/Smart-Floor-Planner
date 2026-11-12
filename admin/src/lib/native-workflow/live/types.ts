@@ -116,6 +116,19 @@ export class LiveOperationFailure extends Error {
   }
 }
 
+/** The effect provably did not leave the process, so a bounded retry is safe.
+ * A durable operation adapter retries this class; the plain runner still
+ * treats it conservatively as an unknown outcome. */
+export class LiveOperationTransientError extends Error {
+  readonly issue: WorkflowIssue;
+
+  constructor(issue: WorkflowIssue) {
+    super(issue.message);
+    this.name = 'LiveOperationTransientError';
+    this.issue = issue;
+  }
+}
+
 /** The effect may have committed; never retry automatically. */
 export class LiveOperationUnknownError extends Error {
   readonly issue: WorkflowIssue;

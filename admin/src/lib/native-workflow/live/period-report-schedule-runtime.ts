@@ -15,11 +15,15 @@
  *   NATIVE_WORKFLOW_SCHEDULE_READ_OBSERVE_MINUTES=360
  *   NATIVE_WORKFLOW_SCHEDULE_RECHECK_LIMIT=3
  *   NATIVE_WORKFLOW_SCHEDULE_MAX_RUN_MS=90000
+ *   NATIVE_WORKFLOW_TASK_RECOVERY_ENABLED=1   (durable task recovery)
+ *   NATIVE_WORKFLOW_TASK_DIR=<optional task store root>
  */
 
 import { WorkflowOperationError } from '../errors';
 import { createFileWorkflowStore, resolveNativeWorkflowStoreDir } from '../store/file-store';
 import type { PublishedWorkflowVersion } from '../store/types';
+import { createDurableTaskRuntime } from './durable-task-runtime';
+import { createFileDurableTaskStore, resolveNativeWorkflowTaskDir } from './durable-task-store';
 import { createFilePeriodReportBatchStore, resolveNativeWorkflowBatchDir } from './period-report-batch-store';
 import { createDatabasePeriodReportScheduleEnvironment } from './period-report-schedule-ports';
 import { createFilePeriodReportScheduleStore, resolveNativeWorkflowScheduleDir } from './period-report-schedule-store';
@@ -52,6 +56,39 @@ function positiveInteger(value: string | undefined): number | undefined {
 function minutes(value: string | undefined, fallback: number): number {
   const parsed = positiveInteger(value);
   return parsed === undefined ? fallback : parsed * 60_000;
+}
+
+function durableTaskRecoveryEnabled(env: NodeJS.ProcessEnv): boolean {
+  const value = env.NATIVE_WORKFLOW_TASK_RECOVERY_ENABLED?.trim().toLowerCase();
+  return value === '1' || value === 'true';
+}
+
+/** Reuses the existing worker tick; it starts no timer and no second Worker.
+ * Recovery is opt-in and tenant-scoped, and one tenant's failure only records
+ * that tenant's own error. */
+async function recoverDurableTasks(enterpriseIds: readonly string[]): Promise<void> {
+  const store = createFileDurableTaskStore({ rootDir: resolveNativeWorkflowTaskDir() });
+  const runtime = createDurableTaskRuntime({ store });
+  const summaries = await runtime.recoverAll(enterpriseIds);
+  for (const summary of summaries) {
+    try {
+      console.info(JSON.stringify({
+        event: 'durable_task_recovery',
+        tenantId: summary.enterpriseId,
+        scanned: summary.scanned,
+        reclaimed: summary.reclaimed,
+        retried: summary.retried,
+        queued: summary.queued,
+        expired: summary.expired,
+        failed: summary.failed,
+        waiting: summary.waiting,
+        skipped: summary.skipped,
+        errors: summary.errors.map((error) => error.code),
+      }));
+    } catch {
+      // Logging must never fail the tick.
+    }
+  }
 }
 
 export async function loadNativeWorkflowPublished(
@@ -93,8 +130,14 @@ export async function runNativeWorkflowScheduleTick(
   readonly enabled: false;
   readonly reason: string;
 }> {
-  if (!enabled(env)) return { enabled: false, reason: 'disabled' };
   const enterpriseIds = configuredEnterpriseIds(env);
+  // Recovery is independent of automatic scheduling: an environment may keep
+  // NATIVE_WORKFLOW_SCHEDULE_ENABLED=0 while still recovering its own durable
+  // tasks for the explicit allowlist.
+  if (durableTaskRecoveryEnabled(env) && enterpriseIds.length) {
+    await recoverDurableTasks(enterpriseIds).catch(() => undefined);
+  }
+  if (!enabled(env)) return { enabled: false, reason: 'disabled' };
   if (!enterpriseIds.length) return { enabled: false, reason: 'no_enterprise_scope' };
 
   const runStore = createFileWorkflowRunStore({ rootDir: resolveNativeWorkflowRunDir() });
