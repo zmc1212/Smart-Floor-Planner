@@ -90,12 +90,10 @@ export function bailianResponsesBody(input: ModelTurnInput, options: BailianResp
   if (instructions.length) body.instructions = instructions.join('\n\n');
   if (typeof input.temperature === 'number') body.temperature = input.temperature;
   if (input.enableThinking === true) body.enable_thinking = true;
-  if (input.jsonOutput) body.text = { format: { type: 'json_object' } };
-  if (input.requireTool) body.tool_choice = 'required';
   if (tools.length) {
     body.tools = tools;
     body.parallel_tool_calls = false;
-    if (!input.requireTool) body.tool_choice = 'auto';
+    body.tool_choice = 'auto';
   }
   if (options.stream) body.stream = true;
   return body;
@@ -324,7 +322,7 @@ export async function readBailianResponsesStream(response: Response): Promise<Re
   return { object: 'response', status: 'completed', id: requestId, output: order.map(id => items.get(id)) };
 }
 
-export function bailianResponsesStreamingEnabled(env: NodeJS.ProcessEnv = process.env) {
+export function bailianResponsesStreamingEnabled(env: Record<string, string | undefined> = process.env) {
   return env.ASSISTANT_RESPONSES_STREAM === '1';
 }
 

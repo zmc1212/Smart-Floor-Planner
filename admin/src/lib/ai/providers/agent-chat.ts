@@ -204,7 +204,7 @@ export function completeJsonBeforeExtraBrace(raw: string): string | null {
 export function responsesWireSelected(
   runtime: { baseUrl: string; adapterType: string },
   input: ModelTurnInput,
-  env: NodeJS.ProcessEnv = process.env,
+  env: Record<string, string | undefined> = process.env,
 ) {
   return bailianResponsesApplies(input) && bailianResponsesEnabled(runtime, input.model, env);
 }

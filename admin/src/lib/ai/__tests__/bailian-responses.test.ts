@@ -96,6 +96,8 @@ test('deployment opt-in is explicit and default off', () => {
     ['web_search', 'web_extractor']);
   assert.equal(responsesWireSelected(runtime, userTurn(), { ASSISTANT_RESPONSES_API: '1' }), true);
   assert.equal(responsesWireSelected(runtime, userTurn({ outputMode: 'function_call' }), { ASSISTANT_RESPONSES_API: '1' }), false);
+  assert.equal(responsesWireSelected(runtime, userTurn({ requireTool: true }), { ASSISTANT_RESPONSES_API: '1' }), false);
+  assert.equal(responsesWireSelected(runtime, userTurn({ jsonOutput: true }), { ASSISTANT_RESPONSES_API: '1' }), false);
 });
 
 test('request body uses Responses items, not Chat Completions messages', () => {

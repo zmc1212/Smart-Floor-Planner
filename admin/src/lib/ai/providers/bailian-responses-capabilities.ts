@@ -153,7 +153,7 @@ export function planBailianResponsesTools(
 export function bailianResponsesEnabled(
   runtime: { baseUrl: string; adapterType: string },
   model: string,
-  env: NodeJS.ProcessEnv = process.env,
+  env: Record<string, string | undefined> = process.env,
 ) {
   if (env.ASSISTANT_RESPONSES_API !== '1') return false;
   if (runtime.adapterType !== 'openai_compatible') return false;
@@ -161,15 +161,16 @@ export function bailianResponsesEnabled(
   return !!binding && bailianResponsesModelProfile(binding.model).responses !== 'unsupported';
 }
 
-export function requestedNativeTools(env: NodeJS.ProcessEnv = process.env): NativeToolName[] {
+export function requestedNativeTools(env: Record<string, string | undefined> = process.env): NativeToolName[] {
   const raw = env.ASSISTANT_NATIVE_TOOLS?.trim();
   if (!raw) return [];
   const allowed: NativeToolName[] = ['web_search', 'web_extractor', 'code_interpreter'];
   return [...new Set(raw.split(',').map(item => item.trim()).filter((item): item is NativeToolName => allowed.includes(item as NativeToolName)))];
 }
 
-/** Report-final channels and consultation profiles are Chat Completions
- * contracts. They are never reinterpreted on the Responses wire. */
+/** Report-final, forced-final, JSON-only and consultation turns are Chat
+ * Completions contracts. They are never reinterpreted on the Responses wire. */
 export function bailianResponsesApplies(input: ModelTurnInput) {
-  return input.profile === undefined && input.reportFinalOutputTokens === undefined && input.outputMode === undefined;
+  return input.profile === undefined && input.reportFinalOutputTokens === undefined
+    && input.outputMode === undefined && input.requireTool !== true && input.jsonOutput !== true;
 }
