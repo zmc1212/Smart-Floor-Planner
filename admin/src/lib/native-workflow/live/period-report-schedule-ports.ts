@@ -44,6 +44,7 @@ import {
 import {
   runPeriodReportBatch,
 } from './period-report-batch';
+import { runPeriodReportEntry } from './period-report-entry';
 import { createPeriodReportPorts } from './period-report-ports';
 import { readPeriodReportRunStatus } from './period-report-status';
 import { writeProjectAccess } from './project-access';
@@ -1053,6 +1054,29 @@ export function createDatabasePeriodReportScheduleEnvironment(
       authorize: assertPeriodReportBatchExecutor,
       now,
     }),
+    recoverReceiver: async (input) => {
+      const published = await options.loadPublished({
+        definitionId: input.published.definitionId,
+        revision: input.published.revision,
+      });
+      return runPeriodReportEntry({
+        loadPublished: async () => published,
+        enterpriseId: input.enterpriseId,
+        projectId: input.projectId,
+        actor: input.actor,
+        event: input.event,
+        receiver: input.receiver,
+        ports: createPeriodReportPorts({
+          actor: input.actor,
+          receiver: input.receiver,
+          projectScope: 'plan',
+          legacy: 'weekly_claimed',
+          now,
+        }),
+        store: options.runStore,
+        runId: input.runId,
+      }, { now });
+    },
     portsFor: (receiver: LivePeriodReceiver, context) => createPeriodReportPorts({
       actor: context.actor,
       receiver,

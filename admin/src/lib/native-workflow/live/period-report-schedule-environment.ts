@@ -9,6 +9,7 @@
 
 import type { ConstructionActor } from '@/lib/construction/contracts';
 import type { PublishedWorkflowVersion } from '../store/types';
+import type { TriggerEvent } from '../types';
 import type { FixedPeriod } from './period-event';
 import type {
   PeriodReportBatchInput,
@@ -16,7 +17,11 @@ import type {
 } from './period-report-batch';
 import type { PeriodReportRunObservation } from './period-report-status';
 import type { ScheduledProjectPlan } from './period-report-schedule-types';
-import type { LiveOperationPorts, LivePeriodReceiver } from './types';
+import type {
+  LiveOperationPorts,
+  LivePeriodReceiver,
+  LiveRunRecord,
+} from './types';
 
 export interface ScheduleIssueSnapshot {
   readonly issueId: string;
@@ -101,6 +106,27 @@ export interface PeriodReportScheduleEnvironment {
     readonly customerUserId: string;
   }): Promise<ScheduleCustomerBindingResult>;
   runBatch(input: PeriodReportBatchInput): Promise<PeriodReportBatchResult>;
+  /**
+   * Re-run exactly one receiver under a deterministic recovery run id.
+   *
+   * It is only called after the saved report was observed as source-revoked
+   * and the current receiver authorization was re-established. The adapter
+   * must use the same published revision, event, receiver and business ports
+   * as the original batch. A repeated call with the same run id must return the
+   * original run record instead of executing a second time.
+   */
+  recoverReceiver(input: {
+    readonly enterpriseId: string;
+    readonly projectId: string;
+    readonly actor: ConstructionActor;
+    readonly event: TriggerEvent;
+    readonly receiver: LivePeriodReceiver;
+    readonly runId: string;
+    readonly published: {
+      readonly definitionId: string;
+      readonly revision: number;
+    };
+  }): Promise<{ readonly record: LiveRunRecord }>;
   portsFor(
     receiver: LivePeriodReceiver,
     context: {

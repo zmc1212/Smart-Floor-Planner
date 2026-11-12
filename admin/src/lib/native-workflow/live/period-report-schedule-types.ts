@@ -68,6 +68,25 @@ export interface ScheduledReceiverView {
   readonly deliveredAt: string | null;
   readonly readAt: string | null;
   readonly observedAt: string | null;
+  /**
+   * Present only after a historical report was invalidated by a formal source
+   * revocation and a distinct recovery run created the current report. The
+   * old report/message/read receipt is kept here for audit and never projected
+   * as the current delivery.
+   */
+  readonly superseded?: ScheduledSupersededReceiver | null;
+}
+
+export interface ScheduledSupersededReceiver {
+  readonly runId: string;
+  readonly reportId: string | null;
+  readonly revision: number | null;
+  readonly reason: string | null;
+  readonly deliveryState: string | null;
+  readonly messageId: string | null;
+  readonly deliveredAt: string | null;
+  readonly readAt: string | null;
+  readonly replacedAt: string;
 }
 
 export type ScheduledProjectState =

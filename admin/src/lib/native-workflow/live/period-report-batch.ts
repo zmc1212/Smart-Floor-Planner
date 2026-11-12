@@ -91,6 +91,12 @@ export interface PeriodReportBatchReceipt {
   readonly bindingId: string;
   readonly conversationId: string;
   readonly reused: boolean;
+  /** The save produced a new revision because the historical source was
+   * formally revoked; the superseded revision is kept for audit only. */
+  readonly regenerated?: boolean;
+  readonly supersededReportId?: string | null;
+  readonly supersededRevision?: number | null;
+  readonly supersededReason?: string | null;
 }
 
 export interface PeriodReportBatchDelivery {
@@ -386,6 +392,20 @@ function saveReceiptOf(record: LiveRunRecord): PeriodReportBatchReceipt | null {
     bindingId: String(receipt.bindingId),
     conversationId: String(receipt.conversationId),
     reused: receipt.reused === true,
+    ...(receipt.regenerated === true
+      ? {
+          regenerated: true,
+          supersededReportId: nonEmptyString(receipt.supersededReportId)
+            ? String(receipt.supersededReportId)
+            : null,
+          supersededRevision: typeof receipt.supersededRevision === 'number'
+            ? Number(receipt.supersededRevision)
+            : null,
+          supersededReason: nonEmptyString(receipt.supersededReason)
+            ? String(receipt.supersededReason)
+            : null,
+        }
+      : {}),
   };
 }
 

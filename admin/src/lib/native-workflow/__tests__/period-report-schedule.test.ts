@@ -51,6 +51,7 @@ type Behavior =
   | 'failed'
   | 'unknown'
   | 'unavailable'
+  | 'source_unavailable'
   | 'crash';
 
 interface Harness {
@@ -61,6 +62,7 @@ interface Harness {
   readonly published: PublishedWorkflowVersion;
   readonly batchRequests: string[];
   readonly runReceiverCalls: string[];
+  readonly recoveryRequests: string[];
   readonly reminders: Array<{ issueId: string; targetKind: string; adminId: string }>;
   plans: ScheduledProjectPlan[];
   issues: Array<{
@@ -73,6 +75,8 @@ interface Harness {
     updatedAt: string;
   }>;
   behaviors: Map<string, Behavior>;
+  receiverBehaviors: Map<string, Behavior>;
+  recoveryBehavior: Behavior;
   readAt: Map<string, string | null>;
   clock: Date;
   claimRequests: Array<{ enterpriseId: string; periodStart: string; periodEnd: string }>;
@@ -81,6 +85,7 @@ interface Harness {
   customerAvailable: boolean;
   setClock(date: Date): void;
   setBehavior(projectId: string, behavior: Behavior): void;
+  setReceiverBehavior(kind: string, behavior: Behavior): void;
   setReadAt(runId: string, readAt: string | null): void;
   setClaim(claim: ScheduleWeeklyClaim): void;
   setCustomerAvailable(available: boolean): void;
@@ -236,7 +241,9 @@ function recordFor(
   if (behavior !== 'failed' && behavior !== 'unknown' && behavior !== 'crash') {
     operations.push(saveOperation(input, at));
   }
-  if (behavior === 'completed') operations.push(deliveryOperation(input, at));
+  if (behavior === 'completed' || behavior === 'source_unavailable') {
+    operations.push(deliveryOperation(input, at));
+  }
   if (behavior === 'pending') operations.push(pendingDeliveryOperation(input, at));
   if (behavior === 'failed') {
     operations.push({
@@ -276,9 +283,7 @@ function recordFor(
     ? 'unknown'
     : behavior === 'failed'
       ? 'failed'
-      : behavior === 'crash'
-        ? 'running'
-        : 'completed';
+      : 'completed';
   const recordStatus: LiveRunStatus = behavior === 'crash' ? 'running' : status;
   return {
     binding: {
@@ -327,9 +332,11 @@ function observationFor(
     ? 'completed'
     : behavior === 'pending'
       ? 'processing'
-      : behavior === 'failed'
-        ? 'failed'
-        : 'unknown';
+      : behavior === 'source_unavailable'
+        ? 'unavailable'
+        : behavior === 'failed'
+          ? 'failed'
+          : 'unknown';
   return {
     contract: 'period-report-run-status-v1',
     observedAt: at,
@@ -358,25 +365,31 @@ function observationFor(
         job: { jobId: null, status: null, attempts: 0, providerStartedAt: null },
       },
       delivery: {
-        state: behavior === 'completed'
+        state: behavior === 'completed' || behavior === 'source_unavailable'
           ? 'delivered'
           : behavior === 'pending'
             ? 'waiting'
             : 'unknown',
-        deliveryState: behavior === 'completed'
+        deliveryState: behavior === 'completed' || behavior === 'source_unavailable'
           ? 'delivered'
           : behavior === 'pending'
             ? 'pending'
             : null,
-        messageId: behavior === 'completed' ? `message-${runId.split('-').at(-1)}` : null,
-        conversationId: behavior === 'completed'
+        messageId: behavior === 'completed' || behavior === 'source_unavailable'
+          ? `message-${runId.split('-').at(-1)}`
+          : null,
+        conversationId: behavior === 'completed' || behavior === 'source_unavailable'
           ? `conversation-${runId.split('-').at(-1)}`
           : null,
-        deliveredAt: behavior === 'completed' ? at : null,
+        deliveredAt: behavior === 'completed' || behavior === 'source_unavailable' ? at : null,
         readAt,
       },
-      availability: { state: 'available', reason: 'available' },
-      reasons: [],
+      availability: behavior === 'source_unavailable'
+        ? { state: 'source_unavailable', reason: 'source_project_revoked' }
+        : { state: 'available', reason: 'available' },
+      reasons: behavior === 'source_unavailable'
+        ? ['source_unavailable', 'source_project_revoked']
+        : [],
     },
     raw: {
       status: behavior === 'unknown' ? 'unknown' : behavior === 'failed' ? 'failed' : 'completed',
@@ -399,8 +412,10 @@ async function makeHarness(options?: {
   const published = await publishWeekly();
   const batchRequests: string[] = [];
   const runReceiverCalls: string[] = [];
+  const recoveryRequests: string[] = [];
   const reminders: Array<{ issueId: string; targetKind: string; adminId: string }> = [];
   const behaviors = new Map<string, Behavior>();
+  const receiverBehaviors = new Map<string, Behavior>();
   const readAt = new Map<string, string | null>();
   const harness: Harness = {
     store,
@@ -409,10 +424,13 @@ async function makeHarness(options?: {
     published,
     batchRequests,
     runReceiverCalls,
+    recoveryRequests,
     reminders,
     plans: options?.plans ?? [plan(PROJECT_A)],
     issues: [],
     behaviors,
+    receiverBehaviors,
+    recoveryBehavior: 'completed',
     readAt,
     clock: new Date(NOW),
     claimRequests: [],
@@ -424,6 +442,9 @@ async function makeHarness(options?: {
     },
     setBehavior(projectId, behavior) {
       behaviors.set(projectId, behavior);
+    },
+    setReceiverBehavior(kind, behavior) {
+      receiverBehaviors.set(kind, behavior);
     },
     setReadAt(runId, value) {
       readAt.set(runId, value);
@@ -446,9 +467,21 @@ async function makeHarness(options?: {
     behaviors.set(candidate.projectId, options?.behavior ?? 'completed');
   }
 
+  const behaviorForRun = (runId: string): Behavior => {
+    const kind = ['customer', 'worker', 'designer', 'boss']
+      .find((candidate) => runId.includes(`-${candidate}`));
+    if (kind && runId.endsWith(`-${kind}-recovery`)) return harness.recoveryBehavior;
+    if (kind && receiverBehaviors.has(kind)) return receiverBehaviors.get(kind)!;
+    return behaviors.get(
+      [...behaviors.keys()].find((projectId) => runId.includes(projectId)) ?? '',
+    ) ?? 'completed';
+  };
+
   const runReceiver = async (input: PeriodReportEntryInput) => {
     runReceiverCalls.push(`${input.projectId}:${input.receiver.kind}`);
-    const behavior = behaviors.get(input.projectId) ?? 'completed';
+    const behavior = receiverBehaviors.get(input.receiver.kind)
+      ?? behaviors.get(input.projectId)
+      ?? 'completed';
     if (behavior === 'unavailable') {
       throw new WorkflowOperationError(
         `${input.receiver.kind}_receiver_unavailable`,
@@ -511,17 +544,13 @@ async function makeHarness(options?: {
         }),
         authorize: async () => undefined,
         runReceiver,
-        observe: async ({ runId }) => {
-          const behavior = behaviors.get(
-            [...behaviors.keys()].find((projectId) => runId.includes(projectId)) ?? '',
-          ) ?? 'completed';
-          return observationFor(
+        observe: async ({ runId }) =>
+          observationFor(
             runId,
-            behavior,
+            behaviorForRun(runId),
             harness.clock.toISOString(),
             readAt.get(runId) ?? null,
-          );
-        },
+          ),
       });
       if (harness.failAfterBatchOnce) {
         harness.failAfterBatchOnce = false;
@@ -535,20 +564,33 @@ async function makeHarness(options?: {
       }
       return result;
     },
+    recoverReceiver: async (input) => {
+      recoveryRequests.push(input.runId);
+      const entryInput: PeriodReportEntryInput = {
+        loadPublished: async () => published,
+        enterpriseId: input.enterpriseId,
+        projectId: input.projectId,
+        actor: input.actor,
+        event: input.event,
+        receiver: input.receiver,
+        ports: { execute: async () => ({}) },
+        store: runStore,
+        runId: input.runId,
+      };
+      const record = recordFor(entryInput, published, harness.recoveryBehavior, harness.clock);
+      const created = await runStore.create(record);
+      return { record: created.record };
+    },
     portsFor: () => ({
       execute: async () => ({}),
     }),
-    observeStatus: async ({ runId }) => {
-      const behavior = behaviors.get(
-        [...behaviors.keys()].find((projectId) => runId.includes(projectId)) ?? '',
-      ) ?? 'completed';
-      return observationFor(
+    observeStatus: async ({ runId }) =>
+      observationFor(
         runId,
-        behavior,
+        behaviorForRun(runId),
         harness.clock.toISOString(),
         readAt.get(runId) ?? null,
-      );
-    },
+      ),
     loadIssues: async () => harness.issues,
     sendReminder: async (input) => {
       reminders.push({
@@ -1120,6 +1162,62 @@ test('a frozen batch keeps its reports when the customer permission is revoked a
   assert.deepEqual(entry.receivers.map((receiver) => receiver.reportId), receiptIds);
   assert.equal(harness.batchRequests.length, 2);
   assert.equal(harness.runReceiverCalls.length, 4);
+});
+
+test('a source-revoked designer report is replaced by one recovery run, never counted as delivered', async () => {
+  const harness = await makeHarness();
+  harness.setReceiverBehavior('designer', 'source_unavailable');
+  harness.recoveryBehavior = 'pending';
+  await runScheduledPeriodReportDispatch(options(), harness.deps);
+
+  let entry = await entryOf(harness, PROJECT_A);
+  assert.equal(entry.state, 'needs_attention');
+  const oldDesigner = entry.receivers.find((receiver) => receiver.kind === 'designer')!;
+  assert.equal(oldDesigner.state, 'unavailable');
+  assert.equal(oldDesigner.reason, 'source_project_revoked');
+  assert.equal(oldDesigner.deliveryState, 'delivered');
+  assert.ok(oldDesigner.reportId);
+
+  // The next due observation replaces the revoked report under a deterministic
+  // recovery run id.
+  harness.setClock(new Date('2026-11-12T02:20:00.000Z'));
+  await runScheduledPeriodReportDispatch(options(), harness.deps);
+  entry = await entryOf(harness, PROJECT_A);
+  assert.equal(harness.recoveryRequests.length, 1);
+  assert.equal(
+    harness.recoveryRequests[0],
+    `${entry.requestId}-designer-recovery`,
+  );
+  let designer = entry.receivers.find((receiver) => receiver.kind === 'designer')!;
+  assert.equal(entry.state, 'waiting_delivery');
+  assert.equal(designer.state, 'processing');
+  assert.equal(designer.reportId, `report-${harness.recoveryRequests[0]}`);
+  assert.equal(designer.superseded?.reportId, oldDesigner.reportId);
+  assert.equal(designer.superseded?.revision, oldDesigner.revision);
+  assert.equal(designer.superseded?.readAt, null);
+  assert.notEqual(designer.reportId, oldDesigner.reportId);
+  assert.notEqual(designer.runId, oldDesigner.runId);
+
+  // The recovery run completes; the project is completed only from the active
+  // views, not from the old manifest's delivered receipt.
+  harness.recoveryBehavior = 'completed';
+  harness.setClock(new Date('2026-11-12T02:40:00.000Z'));
+  await runScheduledPeriodReportDispatch(options(), harness.deps);
+  entry = await entryOf(harness, PROJECT_A);
+  assert.equal(entry.state, 'completed');
+  designer = entry.receivers.find((receiver) => receiver.kind === 'designer')!;
+  assert.equal(designer.state, 'completed');
+  assert.equal(designer.reportId, `report-${harness.recoveryRequests[0]}`);
+  assert.equal(designer.superseded?.reportId, oldDesigner.reportId);
+  assert.equal(designer.readAt, null);
+  assert.equal(harness.recoveryRequests.length, 1);
+
+  // A later tick observes again but never creates another recovery or revision.
+  harness.setClock(new Date('2026-11-12T08:20:00.000Z'));
+  await runScheduledPeriodReportDispatch(options(), harness.deps);
+  entry = await entryOf(harness, PROJECT_A);
+  assert.equal(harness.recoveryRequests.length, 1);
+  assert.equal(entry.state, 'completed');
 });
 
 test('a frozen batch keeps its original receivers when identities change', async () => {

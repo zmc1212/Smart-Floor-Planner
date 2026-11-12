@@ -6,10 +6,13 @@ import type { ConstructionActor } from '@/lib/construction/contracts';
 import {
   collectReportFacts,
   followupAvailable,
+  followupProjects,
+  projectReportFacts,
   reportAudienceEnabled,
+  type ReportFacts,
   type ReportProject,
 } from '@/lib/construction/report-scope';
-import { enqueueReport } from '@/lib/construction/report-store';
+import { enqueueReport, enqueueReportCorrection } from '@/lib/construction/report-store';
 import { WorkflowOperationError, workflowIssue } from '../errors';
 import { isPlainObject } from '../guards';
 import type { PendingOperation, WorkflowValue } from '../types';
@@ -105,6 +108,20 @@ export interface StoredPeriodReport {
   readonly conversationId: string;
   readonly reportKey: string;
   readonly reused: boolean;
+  /** A historical report whose saved source was revoked was replaced by a new
+   * immutable revision of the same report. Old facts/body/delivery/read state
+   * stay untouched; only the new revision is current. */
+  readonly regenerated?: boolean;
+  readonly supersededReportId?: string;
+  readonly supersededRevision?: number;
+  readonly supersededReason?: string;
+}
+
+/** Reuse is a source-availability decision, never just a report-key hit. */
+export interface ReportReuseDecision {
+  readonly availability: 'available' | 'source_unavailable' | 'access_revoked';
+  readonly reason: string;
+  readonly report: StoredPeriodReport;
 }
 
 export interface PeriodReportRecord {
@@ -153,6 +170,21 @@ export interface PeriodReportStore {
     readonly receiver: LivePeriodReceiver;
   }): Promise<PeriodReportScope>;
   findReport(scope: PeriodReportScope, period: FixedPeriod): Promise<StoredPeriodReport | null>;
+  /** The save path's reuse gate: it must revalidate the saved source, not only
+   * the deterministic report key, before reporting a historical report as
+   * current. */
+  reuseReport(
+    scope: PeriodReportScope,
+    period: FixedPeriod,
+  ): Promise<ReportReuseDecision | null>;
+  /** Replace a source-revoked historical report with a new immutable revision
+   * of the same report, re-collected from currently authorized originals. */
+  regenerate(input: {
+    readonly actor: ConstructionActor;
+    readonly projectId: string;
+    readonly period: FixedPeriod;
+    readonly receiver: LivePeriodReceiver;
+  }): Promise<StoredPeriodReport | null>;
   enqueue(input: {
     readonly actor: ConstructionActor;
     readonly projectId: string;
@@ -184,6 +216,7 @@ export interface PeriodReportStoreDependencies {
     lock: 'share' | 'update',
   ) => Promise<unknown>;
   readonly enqueueReport?: typeof enqueueReport;
+  readonly enqueueReportCorrection?: typeof enqueueReportCorrection;
 }
 
 type LockMode = 'share' | 'update';
@@ -435,6 +468,7 @@ interface ReportExpectation {
   readonly end: Date;
   readonly projectId: string;
   readonly receiverKind: PeriodReceiverKind;
+  readonly receiverAdminId?: string | null;
 }
 
 function sameInstant(value: unknown, expected: Date): boolean {
@@ -449,14 +483,14 @@ function snapshotProjectIds(snapshot: unknown): string[] {
   return Array.isArray(ids) ? ids.map((projectId) => String(projectId)) : [];
 }
 
-async function findReportInTransaction(
+async function loadReportRowsInTransaction(
   tx: PostgresTransaction,
   enterpriseId: string,
   bindingId: string,
   reportKey: string,
   conversationId: string,
   expected: ReportExpectation,
-): Promise<StoredPeriodReport | null> {
+): Promise<{ readonly report: Row; readonly version: Row | null } | null> {
   const report = await one(
     tx,
     sql`select id,binding_id,kind,period_start,period_end,latest_revision
@@ -467,7 +501,7 @@ async function findReportInTransaction(
   if (!report) return null;
   const version = await one(
     tx,
-    sql`select v.revision,v.run_id,run.conversation_id,run.policy_snapshot
+    sql`select v.revision,v.run_id,v.status,v.facts,v.generated_at,run.conversation_id,run.policy_snapshot
       from app.construction_report_versions v
       join app.assistant_runs run
         on run.enterprise_id=v.enterprise_id and run.id=v.run_id
@@ -495,14 +529,179 @@ async function findReportInTransaction(
       fail('period_report_scope_conflict', 409);
     }
   }
-  if (!version) return null;
+  return { report, version: version ?? null };
+}
+
+async function findReportInTransaction(
+  tx: PostgresTransaction,
+  enterpriseId: string,
+  bindingId: string,
+  reportKey: string,
+  conversationId: string,
+  expected: ReportExpectation,
+): Promise<StoredPeriodReport | null> {
+  const rows = await loadReportRowsInTransaction(
+    tx,
+    enterpriseId,
+    bindingId,
+    reportKey,
+    conversationId,
+    expected,
+  );
+  if (!rows?.version) return null;
   return {
-    reportId: String(report.id),
-    revision: Number(version.revision),
-    runId: String(version.run_id),
+    reportId: String(rows.report.id),
+    revision: Number(rows.version.revision),
+    runId: String(rows.version.run_id),
     conversationId,
     reportKey,
     reused: true,
+  };
+}
+
+/**
+ * Why a historical report may not be current any more.
+ *
+ * `projectReportFacts` revalidates the saved facts against the current project
+ * membership and the original publication versions. It is the same rule the
+ * read path and the delivery Worker use: a membership removal after the report
+ * was generated invalidates that saved section forever, even if the member is
+ * later re-added. A new report version must be generated from current
+ * authorized records instead of resurrecting the old facts.
+ */
+async function storedReportAvailability(
+  tx: PostgresTransaction,
+  enterpriseId: string,
+  binding: Row,
+  conversationId: string,
+  version: Row,
+  expected: ReportExpectation,
+): Promise<{ readonly availability: ReportReuseDecision['availability']; readonly reason: string }> {
+  if (String(binding.status) !== 'enabled') {
+    return { availability: 'access_revoked', reason: 'binding_disabled' };
+  }
+  if (String(binding.conversation_id) !== conversationId) {
+    return { availability: 'access_revoked', reason: 'binding_generation_changed' };
+  }
+  if (expected.receiverKind === 'customer') {
+    if (String(binding.audience) !== 'customer' || String(binding.project_id ?? '') !== expected.projectId) {
+      return { availability: 'access_revoked', reason: 'customer_binding_mismatch' };
+    }
+  } else if (
+    String(binding.audience) !== expected.receiverKind
+    || String(binding.admin_id ?? '') !== String(expected.receiverAdminId ?? '')
+    || binding.project_id !== null
+  ) {
+    return { availability: 'access_revoked', reason: `${expected.receiverKind}_binding_mismatch` };
+  }
+  const current = await followupProjects(tx, enterpriseId, binding, false, [expected.projectId]);
+  if (!current.length) {
+    return { availability: 'access_revoked', reason: 'project_access_revoked' };
+  }
+  // A report that has not collected facts yet is an in-flight task, never a
+  // revoked source. Reuse it so a second run cannot enqueue a duplicate.
+  if (String(version.status) !== 'facts_ready' || !version.facts) {
+    return { availability: 'available', reason: 'facts_pending' };
+  }
+  const generatedAt = version.generated_at instanceof Date
+    ? version.generated_at
+    : new Date(String(version.generated_at));
+  if (!Number.isFinite(generatedAt.getTime())) {
+    return { availability: 'source_unavailable', reason: 'source_generated_at_missing' };
+  }
+  const scoped = await projectReportFacts(
+    tx,
+    enterpriseId,
+    binding,
+    version.facts as ReportFacts,
+    generatedAt,
+  );
+  if (scoped.projects.some((project) => project.id === expected.projectId)) {
+    return { availability: 'available', reason: 'available' };
+  }
+  return { availability: 'source_unavailable', reason: 'source_project_revoked' };
+}
+
+async function evaluateReportReuseInTransaction(
+  tx: PostgresTransaction,
+  scope: Pick<
+    PeriodReportScope,
+    'enterpriseId' | 'projectId' | 'bindingId' | 'conversationId'
+    | 'receiverKind' | 'receiverAdminId' | 'reportKey'
+  >,
+  period: FixedPeriod,
+): Promise<ReportReuseDecision | null> {
+  if (!scope.bindingId || !scope.conversationId) return null;
+  const expected: ReportExpectation = {
+    kind: period.kind,
+    start: period.start,
+    end: period.end,
+    projectId: scope.projectId,
+    receiverKind: scope.receiverKind,
+    receiverAdminId: scope.receiverAdminId,
+  };
+  const rows = await loadReportRowsInTransaction(
+    tx,
+    scope.enterpriseId,
+    scope.bindingId,
+    scope.reportKey,
+    scope.conversationId,
+    expected,
+  );
+  if (!rows) return null;
+  const binding = await one(
+    tx,
+    sql`select * from app.construction_followup_bindings
+      where enterprise_id=${scope.enterpriseId} and id=${scope.bindingId} for share`,
+  );
+  if (!binding) {
+    return {
+      availability: 'access_revoked',
+      reason: 'binding_missing',
+      report: {
+        reportId: String(rows.report.id),
+        revision: rows.version ? Number(rows.version.revision) : 0,
+        runId: rows.version ? String(rows.version.run_id) : '',
+        conversationId: scope.conversationId,
+        reportKey: scope.reportKey,
+        reused: true,
+      },
+    };
+  }
+  // `loadReportRowsInTransaction` already required the latest version for a
+  // staff receiver; a customer report without a version is not a current one.
+  if (!rows.version) {
+    return {
+      availability: 'source_unavailable',
+      reason: 'report_version_missing',
+      report: {
+        reportId: String(rows.report.id),
+        revision: 0,
+        runId: '',
+        conversationId: scope.conversationId,
+        reportKey: scope.reportKey,
+        reused: true,
+      },
+    };
+  }
+  const availability = await storedReportAvailability(
+    tx,
+    scope.enterpriseId,
+    binding,
+    scope.conversationId,
+    rows.version,
+    expected,
+  );
+  return {
+    ...availability,
+    report: {
+      reportId: String(rows.report.id),
+      revision: Number(rows.version.revision),
+      runId: String(rows.version.run_id),
+      conversationId: scope.conversationId,
+      reportKey: scope.reportKey,
+      reused: true,
+    },
   };
 }
 
@@ -699,6 +898,105 @@ async function queueInTransaction(
   );
 }
 
+/**
+ * Add a new immutable revision to the same report when its saved source was
+ * formally revoked. The old revision, delivery, read receipt and audit stay
+ * untouched; the new revision is queued through the existing report lifecycle
+ * and collects current authorized records again.
+ */
+async function regenerateReportInTransaction(
+  tx: PostgresTransaction,
+  actor: ConstructionActor,
+  projectId: string,
+  period: FixedPeriod,
+  authorizeWrite: typeof writeProjectAccess,
+  enqueueCorrection: typeof enqueueReportCorrection,
+  receiver: LivePeriodReceiver,
+  projectScope: 'single' | 'plan',
+  legacyMode: 'parked' | 'weekly_claimed',
+): Promise<StoredPeriodReport | null> {
+  await authorizeWrite(tx, actor, projectId, 'update');
+  const settings = await one(
+    tx,
+    sql`select * from app.construction_report_settings
+      where enterprise_id=${actor.enterpriseId} for update`,
+  );
+  if (!settings) fail('period_report_plan_missing', 422);
+  if (settings.enabled !== true) fail('period_report_plan_disabled', 422);
+  if (legacyScheduleDue(settings, legacyMode)) fail('period_report_legacy_scheduler_due', 409);
+  assertConfiguredProject(settings, projectId, receiver.kind, projectScope);
+
+  const binding = await receiverBinding(tx, actor.enterpriseId, projectId, receiver, 'update');
+  if (!binding) fail('period_report_receiver_unavailable', 409);
+  if (!reportAudienceEnabled(settings, binding)) fail('period_report_audience_disabled', 409);
+  if (receiver.kind !== 'customer') {
+    const adminId = receiverAdminId(receiver);
+    if (
+      !adminId
+      || !await receiverAccountAvailable(tx, actor.enterpriseId, adminId, receiver.kind, projectId)
+    ) {
+      fail('period_report_receiver_unavailable', 409);
+    }
+  }
+  if (!await followupAvailable(tx, actor.enterpriseId, binding)) {
+    fail('period_report_receiver_unavailable', 409);
+  }
+  const conversation = await one(
+    tx,
+    sql`select * from app.assistant_conversations
+      where enterprise_id=${actor.enterpriseId} and id=${String(binding.conversation_id)} for update`,
+  );
+  if (!conversation) fail('period_report_receiver_unavailable', 409);
+  const reportKey = periodReportKey(period, {
+    id: String(conversation.id),
+    followupGeneration: (conversation.entry_snapshot as Row | null)?.followupGeneration,
+  });
+  const report = await one(
+    tx,
+    sql`select * from app.construction_reports
+      where enterprise_id=${actor.enterpriseId} and binding_id=${String(binding.id)}
+        and report_key=${reportKey} for update`,
+  );
+  if (!report) return null;
+
+  // Re-evaluate inside the write transaction. Another runner may already have
+  // created the new revision; that report is returned as reusable instead of
+  // adding a second revision.
+  const decision = await evaluateReportReuseInTransaction(tx, {
+    enterpriseId: actor.enterpriseId,
+    projectId,
+    bindingId: String(binding.id),
+    conversationId: String(conversation.id),
+    receiverKind: receiver.kind,
+    receiverAdminId: receiverAdminId(receiver),
+    reportKey,
+  }, period);
+  if (!decision) return null;
+  if (decision.availability === 'available') return decision.report;
+  if (decision.availability !== 'source_unavailable') return null;
+
+  const corrected = await enqueueCorrection(
+    tx,
+    actor.enterpriseId,
+    report,
+    settings,
+    period.end,
+  );
+  if (!corrected) return null;
+  return {
+    reportId: corrected.reportId,
+    revision: corrected.revision,
+    runId: corrected.runId,
+    conversationId: corrected.conversationId,
+    reportKey,
+    reused: false,
+    regenerated: true,
+    supersededReportId: decision.report.reportId,
+    supersededRevision: decision.report.revision,
+    supersededReason: decision.reason,
+  };
+}
+
 function reportField(data: Row, key: string, max = 500): string {
   const value = data[key];
   return typeof value === 'string' ? value.slice(0, max) : '';
@@ -842,6 +1140,7 @@ export function createPeriodReportStore(
   const transaction = dependencies.transaction ?? withTenantTransaction;
   const authorizeWrite = (dependencies.authorizeWrite ?? writeProjectAccess) as typeof writeProjectAccess;
   const enqueue = dependencies.enqueueReport ?? enqueueReport;
+  const enqueueCorrection = dependencies.enqueueReportCorrection ?? enqueueReportCorrection;
   const projectScope = options.projectScope ?? 'single';
   const legacyMode = options.legacy ?? 'parked';
   return {
@@ -878,6 +1177,26 @@ export function createPeriodReportStore(
             ),
           )
         : Promise.resolve(null),
+    reuseReport: (scope, period) =>
+      scope.bindingId && scope.conversationId
+        ? transaction(scope.enterpriseId, (tx) =>
+            evaluateReportReuseInTransaction(tx, scope, period),
+          )
+        : Promise.resolve(null),
+    regenerate: ({ actor, projectId, period, receiver }) =>
+      transaction(actor.enterpriseId, (tx) =>
+        regenerateReportInTransaction(
+          tx,
+          actor,
+          projectId,
+          period,
+          authorizeWrite,
+          enqueueCorrection,
+          receiver,
+          projectScope,
+          legacyMode,
+        ),
+      ),
     enqueue: ({ actor, projectId, period, receiver }) =>
       transaction(actor.enterpriseId, (tx) =>
         queueInTransaction(
@@ -964,6 +1283,14 @@ function saveReceipt(report: StoredPeriodReport, scope: PeriodReportScope): Reco
       bindingId: String(scope.bindingId),
       conversationId: report.conversationId,
       reused: report.reused,
+      ...(report.regenerated
+        ? {
+            regenerated: true,
+            supersededReportId: report.supersededReportId ?? null,
+            supersededRevision: report.supersededRevision ?? null,
+            supersededReason: report.supersededReason ?? null,
+          }
+        : {}),
       receiverKind: scope.receiverKind,
       receiverAdminId: scope.receiverAdminId,
       projectScope: [scope.projectId],
@@ -1176,10 +1503,38 @@ export function createPeriodReportPorts(options: PeriodReportPortOptions): LiveO
             }
             if (!scope.receiverAvailable) throw receiverFailure(operation, scope.receiverStatus);
 
-            const existing = await store.findReport(scope, period);
-            if (existing) {
-              saved.set(scopeKey(scope), existing);
-              return saveReceipt(existing, scope);
+            // A report key match alone is not reuse: the saved source,
+            // current receiver identity and binding generation must still be
+            // valid. A formally revoked source is replaced by a new immutable
+            // revision, never resurrected.
+            const reuse = await store.reuseReport(scope, period);
+            if (reuse?.availability === 'available') {
+              saved.set(scopeKey(scope), reuse.report);
+              return saveReceipt(reuse.report, scope);
+            }
+            if (reuse?.availability === 'source_unavailable') {
+              const regenerated = await store.regenerate({
+                actor: options.actor,
+                projectId: context.projectId,
+                period,
+                receiver,
+              });
+              if (regenerated) {
+                saved.set(scopeKey(scope), regenerated);
+                return saveReceipt(regenerated, scope);
+              }
+              throw failure(
+                operation,
+                'period_report_source_unavailable',
+                `the saved report source is ${reuse.reason} and a new revision could not be created`,
+              );
+            }
+            if (reuse?.availability === 'access_revoked') {
+              throw failure(
+                operation,
+                'period_report_receiver_unavailable',
+                `the saved report receiver is no longer available: ${reuse.reason}`,
+              );
             }
             const enqueued = await store.enqueue({
               actor: options.actor,
@@ -1188,16 +1543,28 @@ export function createPeriodReportPorts(options: PeriodReportPortOptions): LiveO
               receiver,
             });
             if (!enqueued) {
-              const raced = await store.findReport(scope, period);
-              if (!raced) {
-                throw failure(
-                  operation,
-                  'period_report_not_queued',
-                  'the existing report lifecycle did not queue this period',
-                );
+              const raced = await store.reuseReport(scope, period);
+              if (raced?.availability === 'available') {
+                saved.set(scopeKey(scope), raced.report);
+                return saveReceipt(raced.report, scope);
               }
-              saved.set(scopeKey(scope), raced);
-              return saveReceipt(raced, scope);
+              if (raced?.availability === 'source_unavailable') {
+                const regenerated = await store.regenerate({
+                  actor: options.actor,
+                  projectId: context.projectId,
+                  period,
+                  receiver,
+                });
+                if (regenerated) {
+                  saved.set(scopeKey(scope), regenerated);
+                  return saveReceipt(regenerated, scope);
+                }
+              }
+              throw failure(
+                operation,
+                'period_report_not_queued',
+                'the existing report lifecycle did not queue this period',
+              );
             }
             // `store.enqueue` already reports whether it created the report or
             // found the durable row after an insert conflict; never rewrite that.

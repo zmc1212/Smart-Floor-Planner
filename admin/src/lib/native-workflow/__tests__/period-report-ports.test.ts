@@ -19,6 +19,7 @@ import {
   type PeriodReportScope,
   type PeriodReportStore,
   type PeriodReportStoreDependencies,
+  type ReportReuseDecision,
   type StoredPeriodReport,
 } from '../live/period-report-ports';
 import {
@@ -184,6 +185,9 @@ interface FakeState {
   /** Durable row observed by the post-conflict re-read inside the same save. */
   raced: StoredPeriodReport | null;
   queued: StoredPeriodReport | null;
+  reuse: ReportReuseDecision | null;
+  reuseRaced: ReportReuseDecision | null;
+  regenerated: StoredPeriodReport | null;
   records: PeriodRecordRead;
   photos: readonly PeriodReportPhoto[];
   delivery: PeriodDeliveryRecord | null;
@@ -192,6 +196,7 @@ interface FakeState {
   enqueueProjects: string[];
   scopeReceivers: LivePeriodReceiver[];
   enqueueReceivers: LivePeriodReceiver[];
+  regenerateCalls: number;
   findCalls: number;
   recordCalls: number;
   photoCalls: number;
@@ -205,6 +210,9 @@ function fakeStore(initial: Partial<FakeState> = {}) {
     existing: null,
     raced: null,
     queued: storedReport(base),
+    reuse: null,
+    reuseRaced: null,
+    regenerated: null,
     records: { records: [], truncated: false },
     photos: [],
     delivery: null,
@@ -213,6 +221,7 @@ function fakeStore(initial: Partial<FakeState> = {}) {
     enqueueProjects: [],
     scopeReceivers: [],
     enqueueReceivers: [],
+    regenerateCalls: 0,
     findCalls: 0,
     recordCalls: 0,
     photoCalls: 0,
@@ -226,9 +235,22 @@ function fakeStore(initial: Partial<FakeState> = {}) {
     },
     async findReport() {
       state.findCalls += 1;
+      return state.existing;
+    },
+    async reuseReport() {
+      state.findCalls += 1;
       // The first read is the pre-check; a later read is the post-conflict
       // re-read after `enqueue` returned null.
-      return state.findCalls === 1 ? state.existing : (state.raced ?? state.existing);
+      const configured = state.findCalls === 1 ? state.reuse : (state.reuseRaced ?? state.reuse);
+      if (configured) return configured;
+      const report = state.findCalls === 1 ? state.existing : (state.raced ?? state.existing);
+      return report
+        ? { availability: 'available' as const, reason: 'available', report }
+        : null;
+    },
+    async regenerate() {
+      state.regenerateCalls += 1;
+      return state.regenerated;
     },
     async enqueue({ projectId, period, receiver }) {
       state.enqueueCalls.push(period);
@@ -350,6 +372,58 @@ test('a repeated run for the same day reuses the same report/version/run', async
   assert.equal(a.reportKey, b.reportKey);
   assert.equal(a.reused, false);
   assert.equal(b.reused, true);
+});
+
+test('a source-revoked saved report is replaced by a new revision, never reused', async () => {
+  const { state, store } = fakeStore();
+  state.reuse = {
+    availability: 'source_unavailable',
+    reason: 'source_project_revoked',
+    report: storedReport(state.scope, true),
+  };
+  state.regenerated = {
+    reportId: '5001',
+    revision: 2,
+    runId: '8002',
+    conversationId: state.scope.conversationId!,
+    reportKey: state.scope.reportKey,
+    reused: false,
+    regenerated: true,
+    supersededReportId: '5001',
+    supersededRevision: 1,
+    supersededReason: 'source_project_revoked',
+  };
+  const ports = createPeriodReportPorts({ actor, store });
+  const result = await ports.execute(operation('save.period_report'), context('b5-run-recover', 2));
+
+  assert.equal(result.saved, true);
+  const receipt = result.saveReceipt as Record<string, unknown>;
+  assert.equal(receipt.receiptId, 'report:5001:2');
+  assert.equal(receipt.revision, 2);
+  assert.equal(receipt.runId, '8002');
+  assert.equal(receipt.reused, false);
+  assert.equal(receipt.regenerated, true);
+  assert.equal(receipt.supersededReportId, '5001');
+  assert.equal(receipt.supersededRevision, 1);
+  assert.equal(receipt.supersededReason, 'source_project_revoked');
+  assert.equal(state.regenerateCalls, 1);
+  assert.equal(state.enqueueCalls.length, 0);
+});
+
+test('a saved report whose receiver access was revoked is neither reused nor regenerated', async () => {
+  const { state, store } = fakeStore();
+  state.reuse = {
+    availability: 'access_revoked',
+    reason: 'designer_binding_mismatch',
+    report: storedReport(state.scope, true),
+  };
+  const ports = createPeriodReportPorts({ actor, store });
+  await assert.rejects(
+    () => ports.execute(operation('save.period_report'), context('b5-run-revoked', 1)),
+    isFailure('period_report_receiver_unavailable'),
+  );
+  assert.equal(state.regenerateCalls, 0);
+  assert.equal(state.enqueueCalls.length, 0);
 });
 
 test('a concurrent enqueue conflict keeps the real reuse flag and row identity', async () => {

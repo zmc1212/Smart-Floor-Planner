@@ -20,10 +20,12 @@
 import { randomUUID } from 'node:crypto';
 import { AssistantError } from '@/lib/assistant/contracts';
 import { WorkflowOperationError } from '../errors';
+import { isPlainObject } from '../guards';
 import type { PublishedWorkflowVersion } from '../store/types';
 import type { TriggerEvent } from '../types';
 import { parseFixedPeriod } from './period-event';
 import type {
+  PeriodReportBatchEntryState,
   PeriodReportBatchInput,
   PeriodReportBatchManifest,
 } from './period-report-batch';
@@ -54,7 +56,7 @@ import type {
 } from './period-report-schedule-environment';
 import type { PeriodReportScheduleStore } from './period-report-schedule-store';
 import type { PeriodReportRunObservation } from './period-report-status';
-import type { LiveRunStore } from './types';
+import type { LiveRunRecord, LiveRunStore } from './types';
 
 const DAY_MS = 86_400_000;
 const SHANGHAI_OFFSET_MS = 8 * 3_600_000;
@@ -615,6 +617,11 @@ function receiverViews(
   const old = new Map(previous.map((receiver) => [receiver.kind, receiver]));
   return manifest.entries.map((entry) => {
     const prior = old.get(entry.kind);
+    // A recovered receiver has left the original manifest entry behind. Its
+    // active run/report must never be replaced by the frozen old receipt that
+    // the manifest still carries for audit.
+    if (prior?.superseded && prior.runId !== entry.runId) return { ...prior, adminId: entry.adminId };
+    const generated = entry.saveReceipt?.regenerated === true;
     return {
       kind: entry.kind,
       adminId: entry.adminId,
@@ -636,6 +643,23 @@ function receiverViews(
       deliveredAt: prior?.deliveredAt ?? null,
       readAt: prior?.readAt ?? null,
       observedAt: entry.observation?.observedAt ?? prior?.observedAt ?? null,
+      ...(generated
+        ? {
+            superseded: {
+              runId: entry.runId,
+              reportId: entry.saveReceipt?.supersededReportId ?? prior?.reportId ?? null,
+              revision: entry.saveReceipt?.supersededRevision ?? prior?.revision ?? null,
+              reason: entry.saveReceipt?.supersededReason ?? 'source_unavailable',
+              deliveryState: prior?.deliveryState ?? null,
+              messageId: prior?.messageId ?? null,
+              deliveredAt: prior?.deliveredAt ?? null,
+              readAt: prior?.readAt ?? null,
+              replacedAt: entry.observation?.observedAt ?? entry.updatedAt,
+            },
+          }
+        : prior?.superseded
+          ? { superseded: prior.superseded }
+          : {}),
     };
   });
 }
@@ -644,16 +668,46 @@ function projectStateFromManifest(
   manifest: PeriodReportBatchManifest,
   receivers: readonly ScheduledReceiverView[],
 ): ScheduledProjectEntry['state'] {
+  // Once a receiver's invalid historical report has been replaced by a
+  // recovery run, the old manifest is historical evidence only. The current
+  // project state is derived from the active receiver views so the old
+  // source-revoked report can never be counted as delivered/completed.
+  if (receivers.some((receiver) => receiver.superseded)) {
+    if (receivers.some((receiver) => receiver.state === 'failed')) return 'failed';
+    if (receivers.some((receiver) => receiver.state === 'unknown')) return 'unknown';
+    if (receivers.some((receiver) =>
+      receiver.state === 'unavailable' || receiver.state === 'stopped')) {
+      return 'needs_attention';
+    }
+    if (receivers.every((receiver) => receiver.state === 'completed')) return 'completed';
+    if (receivers.some((receiver) =>
+      !!receiver.reportId && receiver.deliveryState !== 'delivered')) {
+      return 'waiting_delivery';
+    }
+    return 'processing';
+  }
   if (manifest.status === 'completed') return 'completed';
   if (manifest.status === 'failed') return 'failed';
   if (manifest.status === 'unknown') return 'unknown';
-  if (manifest.status === 'partial') return 'partial';
+  if (manifest.status === 'partial') return 'needs_attention';
   const waiting = receivers.some((receiver) =>
     !!receiver.reportId
     && receiver.deliveryState !== 'delivered'
     && receiver.state !== 'failed'
     && receiver.state !== 'unknown');
   return waiting ? 'waiting_delivery' : 'processing';
+}
+
+function stateFromObservation(
+  progress: PeriodReportRunObservation['progress'],
+): PeriodReportBatchEntryState {
+  if (!progress) return 'unknown';
+  if (progress.overall === 'completed') return 'completed';
+  if (progress.overall === 'stopped') return 'stopped';
+  if (progress.overall === 'unavailable') return 'unavailable';
+  if (progress.overall === 'failed') return 'failed';
+  if (progress.overall === 'processing') return 'processing';
+  return 'unknown';
 }
 
 function manifestReason(
@@ -894,8 +948,34 @@ async function observeReceipts(
       });
       if (observation.bound && observation.progress) {
         const delivery = observation.progress.delivery;
+        const binding = observation.binding;
+        const recovered = !!receiver.superseded;
         receivers.push({
           ...receiver,
+          ...(recovered
+            ? {
+                state: stateFromObservation(observation.progress),
+                reason: observation.progress.overall === 'completed'
+                  || observation.progress.overall === 'processing'
+                  ? null
+                  : observation.progress.availability.reason
+                    ?? observation.progress.reasons[0]
+                    ?? observation.progress.overall,
+                errorCode: observation.progress.overall === 'failed'
+                  ? observation.progress.reasons[0] ?? null
+                  : null,
+                ...(binding
+                  ? {
+                      reportId: binding.reportId,
+                      revision: binding.reportRevision,
+                      factsRunId: binding.factsRunId,
+                      reportKey: binding.reportKey,
+                      bindingId: binding.bindingId,
+                      conversationId: binding.conversationId,
+                    }
+                  : {}),
+              }
+            : {}),
           deliveryState: delivery.deliveryState ?? receiver.deliveryState,
           messageId: delivery.messageId ?? receiver.messageId,
           deliveryConversationId: delivery.conversationId ?? receiver.deliveryConversationId,
@@ -926,11 +1006,20 @@ function applyManifest(
 ): ScheduledProjectEntry {
   const receivers = receiverViews(manifest, entry.receivers);
   const state = projectStateFromManifest(manifest, receivers);
+  const activeIssue = receivers.find((receiver) =>
+    receiver.state === 'unavailable'
+    || receiver.state === 'stopped'
+    || receiver.state === 'failed'
+    || receiver.state === 'unknown');
   return {
     ...entry,
     state,
-    reason: manifestReason(manifest) ?? entry.reason,
-    errorCode: manifestErrorCode(manifest) ?? entry.errorCode,
+    reason: state === 'completed'
+      ? null
+      : activeIssue
+        ? `${activeIssue.kind}:${activeIssue.reason ?? activeIssue.state}`
+        : manifestReason(manifest) ?? entry.reason,
+    errorCode: activeIssue?.errorCode ?? manifestErrorCode(manifest) ?? entry.errorCode,
     batchStatus: manifest.status,
     receivers,
     observedAt: at,
@@ -1075,6 +1164,7 @@ async function dispatchProject(
     const result = await context.environment.runBatch(input);
     next = applyManifest(entry, result.manifest, context.environment.now().toISOString());
     next = await observeReceipts(next, current.enterpriseId, context);
+    next = applyObservedState(next, result.manifest);
     next = await sendReminders(next, effectivePlan, current, context);
     next = withObservationSchedule(next, current.period, context.environment.now(), context);
     work.dispatched.push(effectivePlan.projectId);
@@ -1108,6 +1198,192 @@ async function dispatchProject(
     `${next.state}${next.reason ? `:${next.reason}` : ''}`,
   );
   return context.store.update(withEntry(current, audited));
+}
+
+function applyObservedState(
+  entry: ScheduledProjectEntry,
+  manifest: PeriodReportBatchManifest,
+): ScheduledProjectEntry {
+  if (!entry.receivers.some((receiver) => receiver.superseded)) return entry;
+  const state = projectStateFromManifest(manifest, entry.receivers);
+  const activeIssue = entry.receivers.find((receiver) =>
+    receiver.state === 'unavailable'
+    || receiver.state === 'stopped'
+    || receiver.state === 'failed'
+    || receiver.state === 'unknown');
+  return {
+    ...entry,
+    state,
+    reason: state === 'completed'
+      ? null
+      : activeIssue
+        ? `${activeIssue.kind}:${activeIssue.reason ?? activeIssue.state}`
+        : entry.reason,
+    errorCode: activeIssue?.errorCode ?? entry.errorCode,
+  };
+}
+
+function schedulerEvent(period: ScheduledPeriod): TriggerEvent {
+  return {
+    eventId: scheduleEventId(period.periodStart),
+    eventType: 'period_report',
+    occurredAt: period.endAt,
+    periodKind: 'weekly',
+    periodStart: period.periodStart,
+    periodEnd: period.periodEnd,
+  };
+}
+
+/**
+ * The save receipt a recovery run actually produced. A trace without a
+ * confirmed save is never treated as a replacement report.
+ */
+function savedReportReceipt(record: LiveRunRecord): {
+  readonly reportId: string;
+  readonly revision: number;
+  readonly runId: string;
+  readonly reportKey: string;
+  readonly bindingId: string;
+  readonly conversationId: string;
+} | null {
+  const operation = [...record.operations]
+    .reverse()
+    .find((candidate) => candidate.capabilityRef === 'save.period_report');
+  const receipt = operation?.outputs?.saveReceipt;
+  if (
+    operation?.outcome !== 'succeeded'
+    || operation.outputs?.saved !== true
+    || !isPlainObject(receipt)
+    || typeof receipt.reportId !== 'string'
+    || typeof receipt.revision !== 'number'
+    || typeof receipt.runId !== 'string'
+    || typeof receipt.reportKey !== 'string'
+    || typeof receipt.bindingId !== 'string'
+    || typeof receipt.conversationId !== 'string'
+  ) {
+    return null;
+  }
+  return {
+    reportId: receipt.reportId,
+    revision: Number(receipt.revision),
+    runId: receipt.runId,
+    reportKey: receipt.reportKey,
+    bindingId: receipt.bindingId,
+    conversationId: receipt.conversationId,
+  };
+}
+
+function isSourceRevoked(receiver: ScheduledReceiverView): boolean {
+  return receiver.state === 'unavailable'
+    && !!receiver.reportId
+    && !!receiver.reason
+    && (receiver.reason === 'source_unavailable' || receiver.reason.startsWith('source_'));
+}
+
+/**
+ * Replace one source-revoked historical report with a new immutable revision
+ * under a deterministic recovery run id.
+ *
+ * The frozen batch manifest stays untouched as historical evidence. The
+ * receiver view records the old report, message and read receipt under
+ * `superseded`, and only the recovery run/report is observed afterwards.
+ */
+async function recoverInvalidReport(
+  run: PeriodReportScheduleRun,
+  entry: ScheduledProjectEntry,
+  context: DispatchContext,
+): Promise<ScheduledProjectEntry | null> {
+  if (!recoveryWindowOpen(run.period, context.environment.now())) return null;
+  if (!entry.batchStatus || !entry.plan.executorAdminId || !run.published) return null;
+  const candidate = entry.receivers.find((receiver) =>
+    isSourceRevoked(receiver) && !receiver.superseded);
+  if (!candidate) return null;
+  if (candidate.kind !== 'customer' && !candidate.adminId) return null;
+  const now = context.environment.now().toISOString();
+  const recoveryRunId = `${entry.requestId}-${candidate.kind}-recovery`;
+  try {
+    const result = await context.environment.recoverReceiver({
+      enterpriseId: run.enterpriseId,
+      projectId: entry.plan.projectId,
+      actor: { enterpriseId: run.enterpriseId, adminId: entry.plan.executorAdminId },
+      event: schedulerEvent(run.period),
+      receiver: candidate.kind === 'customer'
+        ? { kind: 'customer' }
+        : { kind: candidate.kind, adminId: candidate.adminId! },
+      runId: recoveryRunId,
+      published: {
+        definitionId: run.published.definitionId,
+        revision: run.published.revision,
+      },
+    });
+    const receipt = savedReportReceipt(result.record);
+    const replacement: ScheduledReceiverView = {
+      kind: candidate.kind,
+      adminId: candidate.adminId,
+      runId: recoveryRunId,
+      state: receipt ? 'processing' : result.record.status === 'failed' ? 'failed' : 'unknown',
+      reason: receipt ? null : result.record.state.error?.code ?? 'recovery_save_missing',
+      errorCode: receipt ? null : result.record.state.error?.code ?? null,
+      reportId: receipt?.reportId ?? null,
+      revision: receipt?.revision ?? null,
+      factsRunId: receipt?.runId ?? null,
+      reportKey: receipt?.reportKey ?? null,
+      bindingId: receipt?.bindingId ?? null,
+      conversationId: receipt?.conversationId ?? null,
+      deliveryState: null,
+      messageId: null,
+      deliveryConversationId: null,
+      deliveredAt: null,
+      readAt: null,
+      observedAt: now,
+      superseded: {
+        runId: candidate.runId,
+        reportId: candidate.reportId,
+        revision: candidate.revision,
+        reason: candidate.reason,
+        deliveryState: candidate.deliveryState,
+        messageId: candidate.messageId,
+        deliveredAt: candidate.deliveredAt,
+        readAt: candidate.readAt,
+        replacedAt: now,
+      },
+    };
+    const replaced: ScheduledProjectEntry = {
+      ...entry,
+      receivers: entry.receivers.map((receiver) =>
+        receiver.kind === candidate.kind ? replacement : receiver),
+      state: receipt ? 'waiting_delivery' : 'processing',
+      reason: null,
+      errorCode: null,
+      observedAt: now,
+      updatedAt: now,
+    };
+    const observed = await observeReceipts(replaced, run.enterpriseId, context);
+    return withProjectAudit(
+      observed,
+      now,
+      'receiver_report_recovered',
+      candidate.reason ?? undefined,
+      `${candidate.kind}:${candidate.reportId}:${candidate.revision}`
+        + `->${receipt ? `${receipt.reportId}:${receipt.revision}` : 'pending'}`,
+    );
+  } catch (error) {
+    const classified = classifyError(error);
+    return withProjectAudit(
+      {
+        ...entry,
+        state: 'needs_attention',
+        reason: `${candidate.kind}:${classified.reason}`,
+        errorCode: classified.code,
+        observedAt: now,
+        updatedAt: now,
+      },
+      now,
+      'receiver_recovery_failed',
+      classified.code,
+      `${candidate.kind}: ${classified.reason}`,
+    );
+  }
 }
 
 async function observeProject(
@@ -1150,6 +1426,8 @@ async function observeProject(
       context.environment.now().toISOString(),
     );
     next = await observeReceipts(next, run.enterpriseId, context);
+    next = applyObservedState(next, result.manifest);
+    next = await recoverInvalidReport(run, next, context) ?? next;
     next = withObservationSchedule(next, run.period, context.environment.now(), context);
     work.observed.push(projectId);
     const at = context.environment.now().toISOString();

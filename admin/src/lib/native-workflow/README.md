@@ -1743,6 +1743,105 @@ explicit `NATIVE_WORKFLOW_SCHEDULE_ENTERPRISE_IDS` allowlist). Because the
 designer end is not currently viewable, this round does not recommend enabling
 production scheduling.
 
+## B5.9.3 invalid historical report recovery
+
+B5.9.2 correctly marked the designer report `9` as
+`unavailable/source_project_revoked`, but the scheduler still reused it. The
+root cause was in the save port: `findReportInTransaction()` treated a report
+key + binding + conversation hit as reusable and never revalidated the saved
+facts. The read path and delivery Worker already used
+`projectReportFacts()`; the save path did not. Audit `127` deactivated designer
+`1454000011` after report `9` was generated (`2026-11-11T15:14:01Z`), audit
+`128` restored membership at `15:33:19Z`, and the existing contract
+intentionally does not resurrect facts invalidated by a formal removal. The
+old report therefore stayed unavailable while the scheduler kept its old
+receipt.
+
+The fix separates reuse from generation:
+
+- `save.period_report` now calls `store.reuseReport()`. It revalidates the
+  current receiver identity, binding status, conversation generation, report
+  key, latest revision, single-project policy scope and the saved facts through
+  `projectReportFacts()`. A still-valid report is reused with no new work.
+- `access_revoked` (disabled binding, changed generation, lost membership or
+  account) is refused. It is not regenerated because the current receiver has
+  no safe destination.
+- `source_unavailable` (a formal historical revocation or withdrawn original)
+  is replaced through the existing correction contract:
+  `store.regenerate()` calls `enqueueReportCorrection()` and adds a new
+  immutable revision to the **same report**, reusing the same binding and
+  conversation. The new facts run re-collects current authorized records and
+  photos; it never copies the old facts, body or citations. The old revision,
+  body, delivery, message, `readAt` and audits are not changed.
+- The save receipt includes `regenerated`, `supersededReportId`,
+  `supersededRevision` and `supersededReason`. The old report id is kept for
+  audit; the current `reportId`/`revision` points at the new revision.
+- `period-report-schedule.ts` records the old receiver under
+  `receivers[].superseded` (run, report, revision, reason, delivery, message,
+  `deliveredAt`, `readAt`, `replacedAt`) and starts exactly one recovery run
+  with the deterministic id
+  `schedule-<enterprise>-<project>-weekly-<period>-<kind>-recovery`. The frozen
+  batch manifest stays untouched as historical evidence. A recovered receiver
+  is observed through its recovery run; the project state is derived from the
+  active receiver views, so the old `delivered` receipt can never make the
+  project completed. A second recovery is not started after one has been
+  recorded, and the same recovery run id is returned by the run store on a
+  replay.
+- A source-revoked receiver without a safe current contract, or a recovery that
+  still ends `source_unavailable`, becomes `needs_attention` instead of
+  `processing`, `delivered` or `completed`. No authorization is widened to make
+  the recovery pass.
+
+Offline coverage: `period-report-ports.test.ts` adds a source-revoked reuse
+that must create a new revision and an access-revoked reuse that must not
+regenerate; `period-report-schedule.test.ts` adds a source-revoked designer
+that gets one recovery run, keeps the old report/revision/read receipt under
+`superseded`, and is never counted delivered from the old manifest. The
+existing offline suite remains 413 pass / 4 skipped (417 total).
+
+B5.9.3 real B-isolated acceptance (2026-11-12, enterprise `1454`, project
+`1454000004`, period `2026-11-02`→`2026-11-09`):
+
+- before any write, report `9` was `latest_revision=1`, version `1` was
+  `facts_ready` with facts run `16`/body run `17`, delivery was
+  `delivered`/message `124`, `readAt=2026-11-11T15:15:07.859Z`; audits `127`
+  (`active=false`) and `128` (`active=true`) were present;
+- the scheduler reuse decision returned `source_unavailable`; the save path
+  created revision `2` on the same report `9` with facts run `39` and body run
+  `40`. No second report row, conversation or binding was created. The next
+  Worker tick produced facts `39` (`succeeded`), body `40` (`succeeded`) and
+  delivery/message `136`; only one model call was made (usage `1192` input +
+  `785` output tokens, provider attempt `16`, run `40`);
+- the old revision `1` remains `available:false` / `state:source_unavailable`;
+  its delivery, message `124`, `readAt` and audits `127`/`128` are unchanged;
+- the designer read API and the original XiaoK DevTools entry opened report `9`
+  revision `2` (`contentStatus=composed`, `deliveryState=delivered`), listed
+  originals `5` and `1`, opened record `1` with photo `1`, acknowledged
+  revision `2` (`readAt=2026-11-12T07:01:17.097Z`), and returned the same
+  revision after exit/re-entry;
+- customer report `16`, worker `17` and boss `18` remain unchanged and
+  delivered; the customer facts still exclude internal record `5`; customer,
+  worker, designer and boss cross-private reads all return
+  `assistant_resource_not_found` (customer uses the same binding authorization
+  through the real service);
+- a repeated tick after completion observed nothing, dispatched nothing and
+  added `0` reports/versions/deliveries/messages/runs/jobs/usage rows
+  (`18/19/19/36/40/40/16`, last audit `128` unchanged).
+
+Evidence:
+`admin/tmp/b5-9-3-20261112-145547-attempt2/{baseline.json,counts-before-replay.json,counts-after-replay.json,api-read.json,four-ends.json,customer-four-end.json,native-ui/designer-ui.json,verification.json}`.
+The isolated host stores are the copies under the same directory (`schedules`,
+`batches`, `runs`); the normal B stores and the original B5.9.2 artifacts are
+not overwritten. Production scheduling remains off
+(`NATIVE_WORKFLOW_SCHEDULE_ENABLED=0`).
+
+Remaining limits: the old report row's latest revision is now the new valid
+revision (the old revision remains individually unavailable by the existing
+read contract); the designer body is model-composed and its citations are
+empty in this run, so the UI shows the authorized originals derived from facts.
+The worker's continuous lifecycle and a production-sized multi-enterprise
+dispatch remain unverified.
+
 ## Reproduce
 
 From `admin/` (no database, no Worker, no model):
