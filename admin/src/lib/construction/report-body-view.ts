@@ -4,6 +4,7 @@ import type { ActorContext, Evidence } from '@/lib/assistant/contracts';
 import { synthesisContextAvailable } from '@/lib/assistant/agent/synthesis-sources';
 import { reportContextProtocol } from './report-reference';
 import { reportCompositionProtocol, reportSectionKinds, type ReportBody } from './report-composition';
+import { attachReportProjectCitations, noVerifiedCitationText, rejectedCitationText, serverSectionText, verifyReportCitation } from './report-citations';
 import type { ReportFacts } from './report-scope';
 import { citationProjection } from '@/lib/assistant/knowledge/sources';
 import { evidenceOriginal } from '@/lib/assistant/knowledge/file-service';
@@ -22,18 +23,36 @@ export async function reportBodyView(tx: PostgresTransaction, actor: ActorContex
   if (body?.protocol !== reportCompositionProtocol || !Array.isArray(body.projects)) return [];
   const result = [];
   for (const p of body.projects) {
-    if (!facts.projects.some(f => f.id === p.projectId)) continue;
+    const factsProject = facts.projects.find(f => f.id === p.projectId);
+    if (!factsProject) continue;
     const c = projectConversation(conversation, p.selection);
     if (!await synthesisContextAvailable(tx, actor, c, p.context)) continue;
-    const sections = Object.fromEntries(reportSectionKinds.filter(kind => kind !== 'standards').map(kind => [kind, p.sections[kind].segments.map((s, i) => {
-      const citations = s.citations.map(citation => {
-        const source = p.context.sources.find(source => source.sourceId === citation.sourceId)!;
-        return { sourceId: source.sourceId, title: source.title, quote: citation.quote, location: source.evidence?.file || null };
-      });
-      const labels = [...new Set(citations.map(c => c.location ? `${c.title} · ${c.location.label}` : c.title))];
-      return { key: `${kind}:${i}`, basis: s.basis, text: (s.basis === 'advice' ? '建议：' : s.basis === 'uncertainty' ? '待核实：' : '')
-        + s.text + (labels.length ? '\n来源：' + labels.join('；') : ''), citations };
-    })]));
+    const project = { projectId: p.projectId, selection: p.selection, context: p.context, facts: factsProject };
+    // Older knowledge-off bodies stored no citations. Fill only the exact
+    // server-written sentences from the current facts; never rewrite prose.
+    const bodyProject = { ...p, sections: Object.fromEntries(reportSectionKinds.map(kind => [kind, {
+      kind: p.sections[kind].kind, segments: p.sections[kind].segments.map(segment => ({ ...segment, citations: [...segment.citations] })),
+    }])) } as ReportBody['projects'][number];
+    attachReportProjectCitations(bodyProject, project);
+    const sections = Object.fromEntries(reportSectionKinds.filter(kind => kind !== 'standards').map(kind => [kind,
+      bodyProject.sections[kind].segments.map((s, i) => {
+        const citations = s.citations.flatMap(citation => {
+          const original = verifyReportCitation(project, citation);
+          if (original === undefined) return [];
+          const source = p.context.sources.find(candidate => candidate.sourceId === citation.sourceId)!;
+          return [{ sourceId: source.sourceId, title: source.title, quote: citation.quote,
+            location: source.evidence?.file || null, original }];
+        });
+        const rejected = citations.length !== s.citations.length;
+        const noSource = !citations.length && s.text === serverSectionText[kind as keyof typeof serverSectionText];
+        const labels = [...new Set(citations.map(citation => citation.original?.kind === 'record'
+          ? `${citation.title} · 记录${citation.original.id}（版本${citation.original.version}）`
+          : citation.location ? `${citation.title} · ${citation.location.label}` : citation.title))];
+        return { key: `${kind}:${i}`, basis: s.basis, citationStatus: rejected ? 'rejected' : citations.length ? 'verified' : 'none',
+          text: (s.basis === 'advice' ? '建议：' : s.basis === 'uncertainty' ? '待核实：' : '')
+            + s.text + (labels.length ? '\n来源：' + labels.join('；') : '')
+            + (rejected ? '\n' + rejectedCitationText : noSource ? '\n' + noVerifiedCitationText : ''), citations };
+      })]));
     const originals = new Map<string, ReportOriginal>();
     for (const segment of p.sections.standards.segments) for (const citation of segment.citations) {
       const source = p.context.sources.find(s => s.sourceId === citation.sourceId && s.kind === 'knowledge' && s.evidence);

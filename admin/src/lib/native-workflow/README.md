@@ -1837,10 +1837,100 @@ not overwritten. Production scheduling remains off
 
 Remaining limits: the old report row's latest revision is now the new valid
 revision (the old revision remains individually unavailable by the existing
-read contract); the designer body is model-composed and its citations are
-empty in this run, so the UI shows the authorized originals derived from facts.
-The worker's continuous lifecycle and a production-sized multi-enterprise
-dispatch remain unverified.
+read contract); the body stored by this run had empty citations because
+enterprise knowledge was off (addressed in B5.9.4 below). The worker's
+continuous lifecycle and a production-sized multi-enterprise dispatch remain
+unverified.
+
+## B5.9.4 report citations and four-recipient native close-out
+
+The four current reports stored `citations: []` because enterprise knowledge
+was off, not because persistence lost them. With `knowledgePolicy.enabled=false`
+the body is composed by `parseGeneralReport()`: progress, pending and
+arrangements are written by the service itself, standards are model advice, and
+every segment is created with a hard-coded empty citation list. The
+general-advice prompt and tool never offer a citation catalog, so no citation
+was requested from the model and none could be dropped on save.
+
+`report-citations.ts` adds a server-owned, deterministic citation projection:
+
+- only the exact service sentences (`进展以本份报告的原记录为准。`,
+  `待核对项以本份报告的原记录为准。`, `安排以本份报告中已确认的原记录为准。`)
+  may receive a server-derived citation; model prose is never retroactively
+  labelled as supported by a record it did not cite;
+- quotes are exact spans of the saved project source (`本次完成：…`,
+  `尚未完成：…`, `待沟通：…`, published pending items and
+  `安排<id>（版本<v>）：…`); no URL or free-form source is generated;
+- `verifyReportCitation()` requires the source to belong to the same project
+  body, the quote to exist in that saved source, and any scoped source to match
+  the report/revision/project/facts hash plus the current facts record,
+  published pending item, issue or arrangement (id, version and hash).
+  Unknown record ids, cross-project sources, stale versions and revoked
+  originals are rejected;
+- customer facts contain only that customer's published records and pending
+  items, so a customer citation can never resolve the internal record `5`;
+- `attachReportFactCitations()` and `assertReportBodyCitations()` run in
+  `processReportComposition()` before the body row is written. A
+  model-generated citation that cannot be verified rejects the body instead of
+  being stored;
+- `reportBodyView()` applies the same projection to older bodies at read time
+  and re-verifies every citation against the current facts and authorization.
+  Invalid citations are hidden (`citationStatus: 'rejected'`); a service
+  sentence with no valid original is marked
+  `（本段没有可核验的原记录引用）` instead of inventing a source. Advice
+  segments stay uncited and keep the existing model-knowledge label.
+
+`scripts/report-citations-backfill.ts` is the one-off, model-free backfill for
+already delivered reports. It revalidates facts through `projectReportFacts()`,
+fills only empty citation arrays on the service sentences, verifies every span,
+and leaves prose, facts, runs, messages, deliveries, `readAt` and history
+untouched. Revision `9:1` was not modified.
+
+B5.9.4 real B-isolated acceptance (2026-11-12, enterprise `1454`, project
+`1454000004`, period `2026-11-02`→`2026-11-09`):
+
+- backfill: report `9:2` received 6 citations, customer `16:1` 5, worker `17:1`
+  6 and boss `18:1` 6. `9:1` kept its byte-identical body and zero citations;
+  customer `16` cites only record `1` and published pending record `3`; designer
+  `9:2`, worker and boss cite records `1` and `5` at version `3`;
+- DB 43/43: every citation is an exact span of the saved source and resolves to
+  the current facts original; deliveries/messages/audits `127`/`128` are
+  unchanged; the three newly opened reports carry their own later `readAt`
+  while `9:1`/`9:2` keep `15:15:07Z`/`07:01:17Z`; photos belong to the cited
+  published record version;
+- four-end HTTP 41/41: current binding/report/revision, verified citations,
+  originals and photos for all four recipients, customer internal record
+  denied, designer `r1` unavailable, cross-private reads denied;
+- designer API 16/16: original XiaoK entry, revision 2, originals `1`/`5`,
+  photos, `r1` unavailable, read receipt on revision 2, re-entry;
+- native UI 37/37 on one Stable DevTools window: customer `16`, worker `17`,
+  designer `9/r2` and boss `18` each show the correct title/period/project,
+  complete body, authorized originals and photo, a `readAt` on the current
+  revision, stable content through a full 7-second refresh, and the same
+  revision after exit/re-entry; no other recipient binding or report appears;
+  designer never shows revision `1`;
+- revocation regression 6/6 inside rollback-only transactions: deactivating the
+  current designer member drops the `r2` facts; withdrawing cited record `5`
+  drops the `r2` facts and its citations stop resolving; after rollback `r2` is
+  valid again, `r1` stays unavailable because audit `127` is after its
+  `generatedAt`, audits `127`/`128` are unchanged and no regression audit row
+  was written;
+- a repeated scheduler tick observed the completed dispatch, dispatched
+  nothing, and kept counts `18/19/19/36/40/40/16` with last audit `128`. B5.9.4
+  made no model call (0 attempts, 0 tokens).
+
+Evidence:
+`admin/tmp/b5-9-4-20261112-153826/{baseline.json,backfill-dry-run.json,backfill-apply.json,citations-final.json,four-ends.json,designer-api.json,native-ui/four-role-ui.json,revocation.json,after-tick.json,final.json,verification.json}`.
+The `schedules`, `batches` and `runs` stores under the same directory are
+isolated copies; earlier evidence and the normal B stores are not overwritten.
+
+Remaining limits: the worker's continuous lifecycle and a production-sized
+multi-enterprise dispatch remain unverified. In the automated native run the
+worker and boss original link was below the viewport, so the same page handler
+was invoked directly after the tap produced no state change; the customer and
+designer taps opened the record through the rendered link, and every role's
+record/photo endpoints were exercised over HTTP. Production scheduling remains
+off (`NATIVE_WORKFLOW_SCHEDULE_ENABLED=0`).
 
 ## Reproduce
 
@@ -1848,6 +1938,7 @@ From `admin/` (no database, no Worker, no model):
 
 ```powershell
 npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts src/lib/native-workflow/__tests__/acceptance-store.test.ts src/lib/native-workflow/__tests__/acceptance-conversation.test.ts src/lib/native-workflow/__tests__/acceptance-state.test.ts src/lib/native-workflow/__tests__/acceptance-provider.test.ts src/lib/native-workflow/__tests__/period-report-ports.test.ts src/lib/native-workflow/__tests__/report-model-evidence.test.ts src/lib/native-workflow/__tests__/period-report-status.test.ts src/lib/native-workflow/__tests__/period-report-status-reentry.test.ts src/lib/native-workflow/__tests__/admin-run-status.test.ts src/lib/native-workflow/__tests__/period-report-status-route.test.ts src/lib/native-workflow/__tests__/period-report-status-route-guards.test.ts src/lib/native-workflow/__tests__/period-event-weekly.test.ts src/lib/native-workflow/__tests__/period-cli.test.ts src/lib/native-workflow/__tests__/staff-receiver.test.ts src/lib/native-workflow/__tests__/boss-receiver.test.ts src/lib/native-workflow/__tests__/worker-fixture.test.ts src/lib/native-workflow/__tests__/period-report-entry.test.ts src/lib/native-workflow/__tests__/period-report-batch.test.ts src/lib/native-workflow/__tests__/period-report-schedule.test.ts src/lib/native-workflow/__tests__/period-report-schedule-store.test.ts src/lib/native-workflow/__tests__/period-report-schedule-ports.test.ts
+npx tsx --test src/lib/construction/__tests__/report-citations.test.ts src/lib/construction/__tests__/report-composition.test.ts
 npx tsx src/lib/native-workflow/playground/simulate.ts
 ```
 
