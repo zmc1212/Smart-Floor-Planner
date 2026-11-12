@@ -9,7 +9,7 @@ import { siteRecordProjection, siteBusinessRecords } from '@/lib/construction/si
 import { siteWatchProjection } from '@/lib/construction/site-watches';
 import { publicMessageProjection } from '@/lib/construction/public-projections';
 import { planMessageProjection } from '@/lib/construction/site-plans';
-import { siteResultRecords } from '@/lib/construction/site-results';
+import { siteResultProjection } from '@/lib/construction/site-results';
 import type { FileLocator } from '../contracts/source-file';
 import { fileQuoteSpans } from './source-file';
 import { parseWebCitationId, webCitationForAnswer } from '../agent/web-evidence';
@@ -142,8 +142,11 @@ export async function projectMessage(tx:PostgresTransaction,actor:ActorContext,c
   for (const citationId of webIds) projected.push(await webCitationProjection(tx, actor, c, citationId));
   const publicProjection = await publicMessageProjection(tx, actor, c, String(message.id));
   const planProjection = await planMessageProjection(tx, actor.enterpriseId, String(c.id), String(message.id));
-  const available=speech?.revoked !== true && planProjection?.available !== false && publicProjection?.available !== false && !(message.answer_kind==='grounded' && !projected.length) && projected.every(x=>x.available)
+  const sourceAvailable=speech?.revoked !== true && planProjection?.available !== false && publicProjection?.available !== false && !(message.answer_kind==='grounded' && !projected.length) && projected.every(x=>x.available)
     && await agentMessageAvailable(tx, actor.enterpriseId, String(c.id), String(message.id),actor);
+  const siteResult = sourceAvailable && message.purpose === 'construction.result'
+    ? await siteResultProjection(tx, actor.enterpriseId, String(c.id), String(message.id)) : null;
+  const available = sourceAvailable && siteResult?.available !== false;
   // Only a public-source denial names its reason; other blocks keep the generic
   // fallback. The client renders fallbackText, so no client change is needed.
   const publicReason = publicProjection && publicProjection.available === false ? publicProjection.reason : undefined;
@@ -157,8 +160,9 @@ export async function projectMessage(tx:PostgresTransaction,actor:ActorContext,c
     constructionFollowUp: available && message.purpose === 'construction.followup',
     planDecision: available && planProjection?.available ? planProjection.planDecision : null,
     siteRecord: available && message.purpose === 'construction.record' ? await siteRecordProjection(tx, actor.enterpriseId, String(c.id), String(message.id)) : null,
-    siteRecords: available && message.purpose === 'construction.result' ? await siteResultRecords(tx, actor.enterpriseId, String(c.id), String(message.id))
+    siteRecords: siteResult?.available ? siteResult.records
       : available && message.author_kind === 'assistant' ? await siteBusinessRecords(tx, actor.enterpriseId, String(c.id), String(message.id)) : [],
+    ...(siteResult?.available && siteResult.closure ? { constructionClosure: siteResult.closure } : {}),
     siteWatch: available && message.purpose === 'construction.watch' ? await siteWatchProjection(tx, actor.enterpriseId, String(c.id), String(message.id)) : null,
     ...(available && publicProjection?.available && !publicProjection.opening ? { publicConsent: publicProjection.publicConsent || null, publicContext: publicProjection.publicContext || null, publicReferences: publicProjection.publicReferences || [] } : {}),
     ...(available && actor.principal.kind === 'user' ? { constructionContacts: await constructionMessageActions(tx, actor, String(c.id), String(message.id)) } : {}),

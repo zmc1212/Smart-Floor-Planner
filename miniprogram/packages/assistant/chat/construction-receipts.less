@@ -1,0 +1,207 @@
+/* Approved notebook receipt v002, scaled by width from 853×1844 to 390×844. */
+.notebook-chat {
+  .construction-paper-message {
+    display: block;
+    margin-left: 8rpx;
+    margin-bottom: 44rpx;
+  }
+
+  .construction-paper {
+    position: relative;
+    box-sizing: border-box;
+    color: var(--ink);
+    background: #fcf8ed;
+    background-image: repeating-linear-gradient(155deg, #96865805 0, #96865805 1rpx, transparent 1rpx, transparent 14rpx);
+    border: 1rpx solid #fffdf7;
+    box-shadow: 3rpx 5rpx 0 #f2ecdc, 0 6rpx 13rpx #8d784533;
+    text-align: left;
+    word-break: break-word;
+  }
+
+  .construction-paper::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    bottom: -5rpx;
+    left: 0;
+    height: 8rpx;
+    background: #fcf8ed;
+    clip-path: polygon(0 0,100% 0,100% 47%,96% 81%,92% 52%,88% 78%,83% 52%,78% 92%,72% 62%,67% 91%,60% 50%,55% 74%,49% 50%,42% 86%,38% 59%,31% 82%,26% 53%,20% 86%,14% 50%,9% 80%,4% 55%,0 89%);
+    pointer-events: none;
+  }
+
+  .approved-plan-paper { padding: 14rpx; }
+
+  .approved-plan-page {
+    padding: 20rpx 32rpx 8rpx;
+    background: #e5e8d8;
+    background-image: repeating-linear-gradient(145deg, #90a17c0d 0, #90a17c0d 1rpx, transparent 1rpx, transparent 16rpx);
+    border: 1rpx solid #f0f1e6;
+    box-shadow: 0 4rpx 7rpx #76754a29;
+  }
+
+  .approved-plan-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16rpx;
+  }
+
+  .approved-plan-title {
+    min-width: 0;
+    padding-top: 6rpx;
+    font-size: 34rpx;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  .approved-plan-status {
+    display: flex;
+    align-items: center;
+    flex: none;
+    gap: 4rpx;
+    padding: 7rpx 12rpx;
+    border: 1rpx dashed #bfccad;
+    background: #5b7a60;
+    box-shadow: 0 3rpx 6rpx #4f604334;
+    color: #fffdf0;
+    font-size: 24rpx;
+    line-height: 1.4;
+    transform: rotate(-2deg);
+  }
+
+  .approved-plan-status image { width: 29rpx; height: 29rpx; }
+  .approved-plan-version, .approved-plan-copy, .approved-plan-impact { display: block; line-height: 1.5; }
+  .approved-plan-version { margin-top: 3rpx; font-size: 25rpx; }
+  .approved-plan-copy { margin-top: 7rpx; font-size: 27rpx; white-space: pre-wrap; }
+  .approved-plan-impact { margin-top: 2rpx; font-size: 24rpx; }
+
+  .approved-plan-action, .approved-plan-drawing {
+    width: 100%;
+    margin: 12rpx 0 0;
+    border-top: 1rpx solid #9bae99;
+  }
+
+  .approved-plan-action {
+    display: flex;
+    align-items: center;
+    gap: 15rpx;
+    min-height: 44px;
+    padding: 0;
+    color: #164b3b;
+    font-size: 27rpx;
+    font-weight: 600;
+    line-height: 1.4;
+    text-align: left;
+  }
+
+  .approved-plan-action[disabled] { opacity: .58; }
+  .approved-plan-icon { flex: none; width: 56rpx; height: 56rpx; }
+  .approved-plan-action-copy {
+    display: flex;
+    align-items: center;
+    gap: 4rpx;
+    padding-left: 16rpx;
+    border-left: 1rpx solid #9bae99;
+  }
+  .approved-plan-action-copy text { text-decoration: underline; text-underline-offset: 4rpx; }
+  .approved-plan-action-copy image { flex: none; width: 25rpx; height: 25rpx; }
+  .approved-plan-drawing { padding-top: 12rpx; }
+  .approved-plan-drawing image { display: block; width: 100%; height: 320rpx; }
+
+  .construction-closure-paper { padding: 58rpx 40rpx 32rpx; }
+  .construction-closure-paper .construction-closure-tag {
+    position: absolute;
+    top: -18rpx;
+    left: 4rpx;
+    font-size: 28rpx;
+    line-height: 1.55;
+    transform: rotate(-6deg);
+  }
+  .construction-closure-title {
+    display: block;
+    font-family: 'Chat Serif','Songti SC',SimSun,serif;
+    font-size: 40rpx;
+    font-weight: 900;
+    line-height: 1.3;
+  }
+  .construction-closure-state {
+    display: flex;
+    align-items: center;
+    gap: 12rpx;
+    margin-top: 5rpx;
+    font-size: 28rpx;
+    font-weight: 700;
+    line-height: 1.4;
+  }
+  .construction-closure-check {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34rpx;
+    height: 34rpx;
+    border-radius: 50%;
+    background: var(--ink);
+  }
+  .construction-closure-check image { width: 23rpx; height: 23rpx; }
+  .construction-closure-result {
+    margin: 22rpx 0 24rpx;
+    padding: 14rpx 18rpx;
+    border-radius: 10rpx;
+    background: #e8eadd;
+  }
+  .construction-closure-label {
+    display: block;
+    font-size: 28rpx;
+    font-weight: 700;
+    line-height: 1.4;
+  }
+  .construction-closure-excerpt {
+    display: block;
+    margin-top: 4rpx;
+    font-size: 28rpx;
+    line-height: 1.5;
+    white-space: pre-wrap;
+  }
+  .construction-closure-evidence { display: flex; align-items: flex-start; gap: 24rpx; margin-top: 16rpx; }
+  .construction-closure-photos { flex: none; width: 55%; }
+  .construction-closure-photo-frame {
+    position: relative;
+    box-sizing: border-box;
+    display: flex;
+    aspect-ratio: 1.6;
+    padding: 7rpx;
+    background: #fffcf4;
+    box-shadow: 0 5rpx 9rpx #8d784530;
+  }
+  .construction-closure-photo-frame + .construction-closure-photo-frame { margin-top: 14rpx; }
+  .construction-closure-photo-frame .photo-tape { top: -9rpx; left: 42%; transform: rotate(-4deg); pointer-events: none; }
+  .construction-closure-photo {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border-radius: 0;
+  }
+  .construction-closure-photo image { display: block; width: 100%; height: 100%; }
+  .construction-closure-photo-feedback {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 8rpx;
+    color: #586e64;
+    background: #eeeadf;
+    font-size: 23rpx;
+    line-height: 1.45;
+  }
+  .construction-closure-references { flex: 1; min-width: 0; padding-top: 8rpx; }
+  .construction-closure-references text { display: block; font-size: 24rpx; line-height: 1.5; }
+  .construction-closure-references text + text { margin-top: 7rpx; }
+  .construction-paper-note { color: #526d65; font-size: 22rpx; line-height: 1.5; }
+  .construction-closure-foot {
+    display: block;
+    margin-top: 22rpx;
+    padding-top: 13rpx;
+    border-top: 1rpx solid #91a88f;
+  }
+}

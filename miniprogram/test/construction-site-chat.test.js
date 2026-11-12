@@ -165,9 +165,18 @@ test('formal processing carries its independent revision, preserves a lost close
 test('formal result reuses the approved original-photo component and revocation removes every cached file', async () => {
   const removed = []; global.wx = { getFileSystemManager: () => ({ unlink: ({ filePath }) => removed.push(filePath) }) };
   const c = new SiteRecordMedia({ identity: () => 'customer-a', emit() {}, download: async () => ({ tempFilePath: '/returned-proof.png' }) });
-  const messages = messagesForView([{ id: '99', authorKind: 'system', available: true, content: { blocks: [{ type: 'text', text: '已正式关闭；不代表验收付款。' }] }, siteRecords: [{ available: true, id: '10', version: 3, assets: ['6'] }] }]);
+  const closure = { title: '书房门套收口修补', excerpt: '书房门套收口完成并复核。', planNumber: 1, recordVersion: 3 };
+  const message = { id: '99', authorKind: 'system', available: true, constructionClosure: closure,
+    content: { blocks: [{ type: 'text', text: '已正式关闭；不代表验收付款。' }] },
+    siteRecords: [{ available: true, id: '10', version: 3, assets: ['6'] }] };
+  const messages = messagesForView([message]);
+  assert.deepEqual(messages[0].constructionClosure, closure);
+  assert.equal(messagesForView([{ ...message, constructionClosure: undefined }])[0].constructionClosure, null);
+  assert.equal(messagesForView([{ ...message, authorKind: 'assistant' }])[0].constructionClosure, null);
   assert.equal(messages[0].siteRecordList[0].id, '10'); await c.load('44', messages); assert.equal(Object.keys(c.paths).length, 1);
-  await c.load('44', messagesForView([{ id: '99', available: false, siteRecords: [{ available: true, id: '10', version: 3, assets: ['6'] }], content: { blocks: [] } }]));
+  const revoked = messagesForView([{ ...message, available: false }]);
+  assert.equal(revoked[0].constructionClosure, null);
+  await c.load('44', revoked);
   assert.deepEqual(c.paths, {}); assert.ok(removed.includes('/returned-proof.png'));
   assert.match(errorText({error:'approved_plan_required'}), /客户同意/); assert.match(errorText({error:'site_reopen_required'}), /重新处理/);
 });

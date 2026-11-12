@@ -266,6 +266,14 @@ function latestDesignerCard(items) {
   return latest && latest.designerRecommendation && latest.designerRecommendation.items.length ? latest : null;
 }
 
+function constructionClosureForView(item) {
+  if (item.available === false || item.authorKind !== 'system' || !item.constructionClosure) return null;
+  const { title, excerpt, planNumber, recordVersion } = item.constructionClosure;
+  return typeof title === 'string' && title.trim() && typeof excerpt === 'string' && excerpt.trim()
+    && Number.isSafeInteger(planNumber) && planNumber > 0 && Number.isSafeInteger(recordVersion) && recordVersion > 0
+    ? { title, excerpt, planNumber, recordVersion } : null;
+}
+
 function messagesForView(items) {
   const latestPlan = new Map();
   for (const m of items || []) if (m.planDecision && m.available !== false) {
@@ -283,6 +291,7 @@ function messagesForView(items) {
   return (items || []).map(item => ({
     ...item,
     isUser: item.authorKind === 'user',
+    constructionClosure: constructionClosureForView(item),
     planDecision: item.available !== false && item.planDecision && latestPlan.get(item.planDecision.id) === item ? item.planDecision : null,
     publicConsent: item.available !== false && item.publicConsent && latestPublic.get(item.publicConsent.id + '_' + item.publicConsent.versionId) === item && /^[1-9]\d*$/.test(String(item.publicConsent.id)) && /^[1-9]\d*$/.test(String(item.publicConsent.versionId)) && Array.isArray(item.publicConsent.photos) && Array.isArray(item.publicConsent.excerpts) ? item.publicConsent : null,
     publicContext: item.available !== false && item.publicContext && /^[1-9]\d*$/.test(String(item.publicContext.id)) && /^[1-9]\d*$/.test(String(item.publicContext.versionId)) ? item.publicContext : null,

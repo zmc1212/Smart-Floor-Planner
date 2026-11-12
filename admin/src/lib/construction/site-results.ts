@@ -3,8 +3,9 @@ import { withPlatformTransaction, withTenantTransaction, type PostgresTransactio
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { appendMessage } from '@/lib/assistant/core/conversation';
 import type { ActorContext } from '@/lib/assistant/contracts';
-import { currentRecord, readSiteIssue } from './site-issues';
+import { currentRecord, readSiteIssue, readSiteIssueBase } from './site-issues';
 import { sharedMaterial, sharedMaterials } from './site-materials';
+import { readPlan } from './site-plans';
 import { readSiteResolution } from './site-resolution';
 import { fingerprint } from '@/lib/assistant/contracts';
 import { siteAccessRevoked } from './site-access';
@@ -15,29 +16,31 @@ export type CustomerMaterialReview = { id: string; version: string; messageId: s
   issueId: string; issueRevision: number; needGrantId: string; drawingGrantId: string; materialVersion: string; text: string };
 
 /** The recipient is the original opt-in consultation, never the latest or another customer thread. */
-async function validResult(tx: PostgresTransaction, eid: string, cid: string, event: Row) {
+async function authorizedResult(tx: PostgresTransaction, eid: string, cid: string, event: Row) {
   const p = event.payload as Row;
-  if (p.conversationId !== cid) return false;
-  const need = await sharedMaterial(tx, eid, String(p.projectId), String(p.needGrantId));
-  if (!need || need.conversationId !== cid || need.customerId !== p.customerId) return false;
-  const issue = await readSiteIssue(tx, eid, String(p.projectId), String(p.issueId));
-  if (!issue || !issue.sourceAvailable) return false;
+  if (p.conversationId !== cid) return null;
+  const projectId = String(p.projectId), issueId = String(p.issueId);
+  const need = await sharedMaterial(tx, eid, projectId, String(p.needGrantId));
+  if (!need || need.conversationId !== cid || need.customerId !== p.customerId) return null;
+  const issue = await (p.lifecycleId ? readSiteIssueBase : readSiteIssue)(tx, eid, projectId, issueId);
+  if (!issue?.sourceAvailable) return null;
+  const resolution = p.lifecycleId ? await readSiteResolution(tx, eid, projectId, issueId, issue) : null;
   if (p.lifecycleId) {
-    const resolution = await readSiteResolution(tx, eid, String(p.projectId), String(p.issueId));
     if (!resolution?.available || resolution.id !== p.lifecycleId || resolution.revision !== p.revision || resolution.state !== p.state
-      || resolution.planId !== p.planId || resolution.evidenceId !== p.evidenceId || issue.revision !== p.issueRevision) return false;
+      || resolution.planId !== p.planId || resolution.evidenceId !== p.evidenceId || issue.revision !== p.issueRevision) return null;
   } else if (issue.status !== (p.state || 'awaiting_review') || issue.revision !== p.revision
-    || (p.state ? issue.ownerId !== p.ownerId || issue.ownerName !== p.ownerName : !issue.ownerId)) return false;
-  const materials = await sharedMaterials(tx, eid, String(p.projectId), need.roomId);
-  if (materials.version !== p.materialVersion || issue.materialVersion !== p.materialVersion) return false;
+    || (p.state ? issue.ownerId !== p.ownerId || issue.ownerName !== p.ownerName : !issue.ownerId)) return null;
+  const materials = await sharedMaterials(tx, eid, projectId, need.roomId);
+  if (materials.version !== p.materialVersion || issue.materialVersion !== p.materialVersion) return null;
   const publisher = (event.actor_ref as Row)?.adminId;
-  if (typeof publisher !== 'string') return false;
+  if (typeof publisher !== 'string') return null;
   const permission = await one(tx, sql`select app.construction_actor_access(${publisher}::bigint,${eid}::bigint) as role,
-    exists(select 1 from app.construction_members where enterprise_id=${eid} and project_id=${String(p.projectId)}
+    exists(select 1 from app.construction_members where enterprise_id=${eid} and project_id=${projectId}
       and admin_id=${publisher} and active and role='manager') as manager`);
-  if (!(permission?.role === 'owner' || (permission?.role === 'member' && permission.manager === true))) return false;
-  return !await siteAccessRevoked(tx, eid, String(p.projectId),
-    [publisher, issue.ownerId].filter(Boolean) as string[], event.created_at as Date, { managers: [publisher] });
+  if (!(permission?.role === 'owner' || (permission?.role === 'member' && permission.manager === true))) return null;
+  if (await siteAccessRevoked(tx, eid, projectId, [publisher, issue.ownerId].filter(Boolean) as string[],
+    event.created_at as Date, { managers: [publisher] })) return null;
+  return { resolution };
 }
 
 async function resultText(tx: PostgresTransaction, eid: string, p: Row) {
@@ -57,14 +60,30 @@ async function resultText(tx: PostgresTransaction, eid: string, p: Row) {
     + '\n解决与关闭由有权人员分别确认；不代表工程验收通过、付款或结算。';
 }
 
-/** A manager's exact result grants selected originals only to the original consultation. */
-export async function siteResultRecords(tx: PostgresTransaction, eid: string, cid: string, mid: string) {
-  const event = await one(tx, sql`select e.* from app.assistant_messages m join app.domain_event_outbox e on e.enterprise_id=m.enterprise_id and e.id=m.source_event_id
+function resultEventForMessage(tx: PostgresTransaction, eid: string, cid: string, mid: string) {
+  return one(tx, sql`select e.* from app.assistant_messages m join app.domain_event_outbox e on e.enterprise_id=m.enterprise_id and e.id=m.source_event_id
     where m.enterprise_id=${eid} and m.conversation_id=${cid} and m.id=${mid} and m.purpose='construction.result' and e.type=${resultType}`);
-  if (!event || (event.payload as Row).shareOriginals !== true || !await validResult(tx, eid, cid, event)) return [];
-  const p = event.payload as Row, resolution = (await readSiteResolution(tx, eid, String(p.projectId), String(p.issueId)))!;
-  const e = resolution.evidence!;
-  return [{ available: true, id: e.recordId, version: e.recordVersion, assets: e.media.map(m => m.id) }];
+}
+
+/** Rebuild the closure card from its original authorized event, including messages written before the card existed. */
+export async function siteResultProjection(tx: PostgresTransaction, eid: string, cid: string, mid: string) {
+  const event = await resultEventForMessage(tx, eid, cid, mid);
+  if (!event) return null;
+  const p = event.payload as Row;
+  if (!p.lifecycleId) return null;
+  const authorized = await authorizedResult(tx, eid, cid, event);
+  const resolution = authorized?.resolution;
+  if (!resolution?.evidence) return { available: false as const };
+  const proof = resolution.evidence;
+  const records = p.shareOriginals === true
+    ? [{ available: true, id: proof.recordId, version: proof.recordVersion, assets: proof.media.map(media => media.id) }]
+    : [];
+  if (resolution.state !== 'closed') return { available: true as const, records, closure: null };
+  const plan = await readPlan(tx, eid, proof.planId);
+  if (!plan || plan.status !== 'approved' || plan.hash !== proof.planHash) return { available: false as const };
+  return { available: true as const, records, closure: {
+    title: plan.title, excerpt: String(p.text), planNumber: plan.number, recordVersion: proof.recordVersion,
+  } };
 }
 export async function returnedEvidenceRecord(tx: PostgresTransaction, eid: string, uid: string, cid: string, recordId: string, version: number) {
   const events = await rows(tx, sql`select e.*,m.id as result_message_id from app.domain_event_outbox e join app.assistant_messages m
@@ -72,18 +91,17 @@ export async function returnedEvidenceRecord(tx: PostgresTransaction, eid: strin
     where e.enterprise_id=${eid} and e.type=${resultType} and e.payload->>'customerId'=${uid} and e.payload->>'conversationId'=${cid}
       and e.payload->>'shareOriginals'='true' order by e.id desc limit 30`);
   for (const event of events) {
-    if (!await validResult(tx, eid, cid, event)) continue;
-    const p = event.payload as Row, resolution = (await readSiteResolution(tx, eid, String(p.projectId), String(p.issueId)))!;
-    if (resolution.evidence?.recordId === recordId && resolution.evidence.recordVersion === version)
-      return (await currentRecord(tx, eid, String(p.projectId), recordId))?.row || null;
+    const authorized = await authorizedResult(tx, eid, cid, event);
+    const proof = authorized?.resolution?.evidence;
+    if (proof?.recordId === recordId && proof.recordVersion === version)
+      return (await currentRecord(tx, eid, proof.projectId, recordId))?.row || null;
   }
   return null;
 }
 
 export async function siteResultAvailable(tx: PostgresTransaction, eid: string, cid: string, mid: string) {
-  const event = await one(tx, sql`select e.* from app.assistant_messages m join app.domain_event_outbox e on e.enterprise_id=m.enterprise_id and e.id=m.source_event_id
-    where m.enterprise_id=${eid} and m.conversation_id=${cid} and m.id=${mid} and m.purpose='construction.result' and e.type=${resultType}`);
-  return !event || await validResult(tx, eid, cid, event);
+  const event = await resultEventForMessage(tx, eid, cid, mid);
+  return !event || !!await authorizedResult(tx, eid, cid, event);
 }
 
 async function latestCustomerResults(tx: PostgresTransaction, eid: string, uid: string, cid: string) {
@@ -101,7 +119,7 @@ export async function customerMaterialReviews(tx: PostgresTransaction, eid: stri
   for (const event of await latestCustomerResults(tx, eid, uid, cid)) {
     const p = event.payload as Row;
     if (p.lifecycleId || p.state && p.state !== 'awaiting_review' || typeof p.drawingGrantId !== 'string'
-      || !await validResult(tx, eid, cid, event)) continue;
+      || !await authorizedResult(tx, eid, cid, event)) continue;
     const drawing = await sharedMaterial(tx, eid, String(p.projectId), p.drawingGrantId);
     const issue = await readSiteIssue(tx, eid, String(p.projectId), String(p.issueId));
     if (!drawing || drawing.kind !== 'drawing' || drawing.customerId !== uid || drawing.conversationId !== cid
@@ -120,7 +138,7 @@ export async function customerSiteResults(tx: PostgresTransaction, eid: string, 
   const events = await latestCustomerResults(tx, eid, uid, cid);
   const projected = [];
   for (const e of events) {
-    const p = e.payload as Row, available = await validResult(tx, eid, cid, e);
+    const p = e.payload as Row, available = await authorizedResult(tx, eid, cid, e);
     const status: ReturnedState = available ? (p.state || 'awaiting_review') as ReturnedState : 'invalidated';
     const waitingFor = !available ? 'unassigned' as const : status === 'closed' || status === 'cancelled' ? 'none' as const
       : p.waitingFor === 'unassigned' ? 'unassigned' as const : 'team' as const;
@@ -150,7 +168,7 @@ export async function syncSiteResults(tx: PostgresTransaction, actor: ActorConte
     order by e.id limit 20`);
   let delivered = 0;
   for (const event of events) {
-    if (!await validResult(tx, eid, cid, event)) {
+    if (!await authorizedResult(tx, eid, cid, event)) {
       await tx.execute(sql`insert into app.domain_event_deliveries(enterprise_id,event_id,consumer_key,status,last_error)
         values(${eid},${String(event.id)},${'construction:result:' + cid},'dead','source_or_permission_changed')
         on conflict(enterprise_id,event_id,consumer_key) do nothing`);
