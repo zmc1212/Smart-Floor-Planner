@@ -23,6 +23,7 @@ import type { PublishedWorkflowVersion } from '../store/types';
 import { createFilePeriodReportBatchStore, resolveNativeWorkflowBatchDir } from './period-report-batch-store';
 import { createDatabasePeriodReportScheduleEnvironment } from './period-report-schedule-ports';
 import { createFilePeriodReportScheduleStore, resolveNativeWorkflowScheduleDir } from './period-report-schedule-store';
+import { scheduleTickLogPayload } from './period-report-schedule-observability';
 import { runScheduledPeriodReportDispatch } from './period-report-schedule';
 import { createFileWorkflowRunStore } from './run-store';
 import { resolveNativeWorkflowRunDir } from './run-dir';
@@ -106,7 +107,7 @@ export async function runNativeWorkflowScheduleTick(
     runStore,
     now: () => new Date(),
   });
-  return runScheduledPeriodReportDispatch({
+  const summary = await runScheduledPeriodReportDispatch({
     enterpriseIds,
     mode: 'tick',
     maxProjectsPerRound: positiveInteger(env.NATIVE_WORKFLOW_SCHEDULE_MAX_PROJECTS) ?? 5,
@@ -121,4 +122,22 @@ export async function runNativeWorkflowScheduleTick(
     runStore,
     environment,
   });
+  // One redacted structured line per tick: tenant/schedule/job ids, instants,
+  // worker, state and error codes only. Project names, issue text and model
+  // output are never included.
+  try {
+    console.info(JSON.stringify(scheduleTickLogPayload({
+      enabled: summary.enabled,
+      startedAt: summary.startedAt,
+      finishedAt: summary.finishedAt,
+      periodStart: summary.period.periodStart,
+      periodEnd: summary.period.periodEnd,
+      enterprises: summary.enterprises,
+      runs: summary.runs,
+      traces: summary.traces,
+    })));
+  } catch {
+    // Logging must never fail the scheduler tick.
+  }
+  return summary;
 }

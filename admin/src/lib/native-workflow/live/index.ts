@@ -64,17 +64,26 @@ export {
   type DatabaseScheduleEnvironmentOptions,
 } from './period-report-schedule-ports';
 export {
+  cancelScheduledPeriodReport,
   readScheduledPeriodReportDispatch,
   resolveEndedShanghaiWeek,
   resolveScheduledPeriod,
   runScheduledPeriodReportDispatch,
   setScheduledPeriodReportPaused,
+  type CancelScheduledPeriodResult,
   type ScheduledEnterpriseSummary,
   type ScheduledPeriodReportDispatchDependencies,
   type ScheduledPeriodReportDispatchOptions,
   type ScheduledPeriodReportDispatchReadResult,
   type ScheduledPeriodReportDispatchSummary,
 } from './period-report-schedule';
+export {
+  buildScheduledJobTraces,
+  buildScheduledRunTrace,
+  scheduleTickLogPayload,
+  type ScheduledJobTrace,
+  type ScheduledRunTrace,
+} from './period-report-schedule-observability';
 export {
   createFilePeriodReportScheduleStore,
   createMemoryPeriodReportScheduleStore,

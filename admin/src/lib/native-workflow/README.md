@@ -1640,13 +1640,61 @@ queue or timer:
     never acquires a lease.
   - `POST /api/native-workflow/schedule` with `{action:'pause'|'resume'}` sets
     the tenant pause flag; the scheduler re-reads it before each project.
+    `{action:'cancel', periodStart?}` cancels one finished week for that tenant
+    only (default: the latest finished Shanghai week); it is terminal for that
+    period and never touches other weeks or tenants.
   - `scripts/native-workflow-period-report-schedule.ts` is the one-shot CLI
-    (`--show-latest`, `--show-run`, `--list`, `--pause`, `--resume`, `--mode`,
-    `--period-start`, `--ensure-published`). It rejects an unended/future week
-    before publishing, resolving the DB target or connecting.
+    (`--show-latest`, `--show-run`, `--list`, `--pause`, `--resume`, `--cancel`,
+    `--mode`, `--period-start`, `--ensure-published`). It rejects an
+    unended/future week before publishing, resolving the DB target or
+    connecting.
 - No database migration is required. The only business settings write is the
   existing `next_weekly_at` claim. The schedule/control/ledger files are B host
   state, not shared tables.
+
+### B5.6 multi-tenant reliability and recovery
+
+B5.6 hardens the same scheduler; it adds no second queue, timer, Worker,
+migration or business table.
+
+- **Tenant isolation.** Every control, cancellation, lease, run file and trace
+  is keyed by the allow-listed enterprise. `pause`/`cancel` for one tenant never
+  changes another tenant's control or run, and one tenant's store, claim,
+  discovery, batch or observation failure is caught per tenant in the tick loop
+  and reported as that tenant's own error. A record loaded by a deterministic
+  run id whose `enterpriseId` does not match the tick is refused with
+  `period_report_schedule_forbidden` and is never advanced or rewritten.
+- **Weekly lifecycle.** `cancelled` and `expired` are explicit terminal run
+  states. Cancellation is checked before the weekly claim and again before each
+  project dispatch, so a cancelled period neither claims `next_weekly_at` nor
+  creates a batch, and an in-flight tick stops the remaining projects. A run
+  with unfinished work whose 7-day recovery/read window has closed is finalized
+  as `expired` instead of staying `dispatching`/`observing` forever; no active
+  state is polled past that window. Cross-week, cross-month and year-boundary
+  weeks stay Monday-to-Monday Shanghai time (UTC+8, no DST), and a new week
+  always gets a new run id and request ids, so the previous week's run file
+  keeps its claim, period, receivers and requests.
+- **Idempotency and concurrency.** The project/period job id is the existing
+  deterministic batch request id; the run id is the deterministic
+  enterprise/period id. The cross-process lease with a TTL admits only one
+  tick per run; a crashed owner's lease is taken over after the TTL and the
+  batch is resumed, not duplicated. `dispatchAttempts` counts real dispatch
+  calls while `recheckCount` counts bounded discovery retries, and a frozen
+  manifest is re-observed instead of re-executed. `failed`/`unknown` projects
+  are never auto-replayed.
+- **Failure recovery.** Recheck errors are classified: transient permission or
+  database conflicts keep the bounded attention retry, while permanent codes
+  (`published_changed`, `construction_not_found`, conflicting/receiver-invalid
+  identities) stop the project on the first failure. Every failure keeps its
+  original receiver/batch/issue evidence and an audit entry; cancellation and
+  expiry also keep the already reported evidence.
+- **Observability.** `live/period-report-schedule-observability.ts` derives one
+  redacted run trace and one job trace per project/period (`tenantId`,
+  `scheduleId`, `jobId`, period, `plannedAt`, `dispatchedAt`, `observedAt`,
+  `workerId`, state, `attempts`, `retryCount`, `failureCode`). The runtime emits
+  one bounded JSON line per tick and the tick summary, the read API/CLI and the
+  run `audit` carry the same identities. Project names, issue text, receiver
+  admin ids and model output are never included.
 
 Offline tests: `period-report-schedule.test.ts` covers Shanghai week
 resolution, unended-period rejection, project selection/skip reasons, missing/
@@ -1660,7 +1708,14 @@ weekly time, an already-consumed slot, a claimed run surviving a moved
 mapping; `period-report-schedule-store.test.ts` covers exclusive
 create/identity, concurrent adoption, immutable claim receipts, control/ledger
 and the lease TTL; `period-report-schedule-ports.test.ts` covers plan scope,
-`weekly_claimed` legacy handling and the weekly claim boundary. The documented
+`weekly_claimed` legacy handling and the weekly claim boundary. B5.6 adds
+multi-tenant concurrent dispatch, one-tenant batch failure isolation, a
+same-window concurrent trigger, crashed-lease takeover after TTL, crash retry
+over a frozen batch, cross-month/year weeks, cancellation, permanent-error
+stop, window expiry, previous-week preservation, a foreign-tenant run refusal,
+and redacted trace fields; `period-report-schedule-store.test.ts` also covers
+per-tenant cancellation across pause/resume and a legacy control file without
+the field. The documented
 offline command remains 404/404 (B5.9.2 fixed a live-only SQL shape bug and
 extended the acceptance driver without adding offline cases).
 

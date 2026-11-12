@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -213,8 +213,7 @@ test('file schedule lease expires only after its TTL and never releases another 
   }
 });
 
-test('memory schedule store mirrors identity, control, ledger and lease semantics', async () => {
-  const store = createMemoryPeriodReportScheduleStore();
+test('memory schedule store mirrors identity, control, ledger and lease semantics', async () => {  const store = createMemoryPeriodReportScheduleStore();
   const run = runFixture();
   assert.equal((await store.create(run)).created, true);
   await assert.rejects(
@@ -237,4 +236,100 @@ test('memory schedule store mirrors identity, control, ledger and lease semantic
   const listed = await store.list({ enterpriseId: ENTERPRISE_ID });
   assert.equal(listed.length, 1);
   assert.equal((await store.list({ enterpriseId: '9999' })).length, 0);
+});
+
+test('period cancellation is per tenant and survives pause/resume and reload', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'sfp-schedule-'));
+  try {
+    // A control file written before cancellation existed loads with an empty,
+    // bounded list instead of failing.
+    const legacyRoot = path.join(root, 'legacy');
+    await mkdir(path.join(legacyRoot, 'control'), { recursive: true });
+    await writeFile(
+      path.join(legacyRoot, 'control', `${ENTERPRISE_ID}.json`),
+      JSON.stringify({
+        storeVersion: 1,
+        value: {
+          enterpriseId: ENTERPRISE_ID,
+          paused: false,
+          updatedAt: '2026-11-12T02:00:00.000Z',
+          updatedBy: null,
+          reason: null,
+        },
+      }),
+      'utf8',
+    );
+    const legacy = createFilePeriodReportScheduleStore({ rootDir: legacyRoot });
+    assert.deepEqual((await legacy.control(ENTERPRISE_ID)).cancelledPeriods, []);
+
+    const store = createFilePeriodReportScheduleStore({ rootDir: root });
+    const first = await store.cancelPeriod(ENTERPRISE_ID, '2026-11-02', {
+      cancelled: true,
+      updatedBy: 'tester',
+      reason: 'week off',
+      now: () => new Date('2026-11-12T03:00:00.000Z'),
+    });
+    assert.deepEqual(first.cancelledPeriods, ['2026-11-02']);
+    assert.equal(first.reason, 'week off');
+
+    // A pause/resume never clears the cancellation history.
+    const paused = await store.setControl(ENTERPRISE_ID, {
+      paused: true,
+      updatedBy: 'tester',
+      reason: 'hold',
+      now: () => new Date('2026-11-12T03:05:00.000Z'),
+    });
+    assert.deepEqual(paused.cancelledPeriods, ['2026-11-02']);
+    const resumed = await store.setControl(ENTERPRISE_ID, {
+      paused: false,
+      updatedBy: 'tester',
+      reason: null,
+      now: () => new Date('2026-11-12T03:10:00.000Z'),
+    });
+    assert.deepEqual(resumed.cancelledPeriods, ['2026-11-02']);
+
+    // Another tenant keeps its own empty history.
+    assert.deepEqual((await store.control('9999')).cancelledPeriods, []);
+
+    // Re-reading from disk keeps the same bounded history, sorted.
+    const reloaded = await store.cancelPeriod(ENTERPRISE_ID, '2026-11-09', {
+      cancelled: true,
+      updatedBy: 'tester',
+      reason: null,
+      now: () => new Date('2026-11-12T03:20:00.000Z'),
+    });
+    assert.deepEqual(reloaded.cancelledPeriods, ['2026-11-02', '2026-11-09']);
+    await store.cancelPeriod(ENTERPRISE_ID, '2026-11-02', {
+      cancelled: false,
+      updatedBy: 'tester',
+      reason: null,
+      now: () => new Date('2026-11-12T03:30:00.000Z'),
+    });
+    assert.deepEqual(
+      (await createFilePeriodReportScheduleStore({ rootDir: root }).control(ENTERPRISE_ID))
+        .cancelledPeriods,
+      ['2026-11-09'],
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('memory schedule store scopes cancellation per tenant', async () => {
+  const store = createMemoryPeriodReportScheduleStore();
+  const cancelled = await store.cancelPeriod(ENTERPRISE_ID, '2026-11-02', {
+    cancelled: true,
+    updatedBy: 'tester',
+    reason: null,
+    now: () => new Date('2026-11-12T03:00:00.000Z'),
+  });
+  assert.deepEqual(cancelled.cancelledPeriods, ['2026-11-02']);
+  await store.setControl(ENTERPRISE_ID, {
+    paused: true,
+    updatedBy: 'tester',
+    reason: null,
+    now: () => new Date('2026-11-12T03:01:00.000Z'),
+  });
+  assert.deepEqual((await store.control(ENTERPRISE_ID)).cancelledPeriods, ['2026-11-02']);
+  assert.deepEqual((await store.control('9999')).cancelledPeriods, []);
 });

@@ -54,6 +54,12 @@ import type {
   ScheduleIssueSnapshot,
   ScheduleWeeklyClaim,
 } from './period-report-schedule-environment';
+import {
+  buildScheduledJobTraces,
+  buildScheduledRunTrace,
+  type ScheduledJobTrace,
+  type ScheduledRunTrace,
+} from './period-report-schedule-observability';
 import type { PeriodReportScheduleStore } from './period-report-schedule-store';
 import type { PeriodReportRunObservation } from './period-report-status';
 import type { LiveRunRecord, LiveRunStore } from './types';
@@ -90,6 +96,21 @@ const RETRYABLE_SKIP_REASONS: ReadonlySet<string> = new Set([
   'customer_missing',
   'customer_access_revoked',
 ]);
+/**
+ * Errors that a re-read of current business state can never fix. They stop the
+ * project on the first failure instead of burning the bounded recheck budget.
+ */
+const PERMANENT_FAILURE_CODES: ReadonlySet<string> = new Set([
+  'period_report_schedule_receivers_invalid',
+  'period_report_schedule_run_invalid',
+  'period_report_schedule_conflict',
+  'period_report_batch_conflict',
+  'published_changed',
+  'construction_not_found',
+  'run_scope_unavailable',
+]);
+/** Planning window: no dispatch/observation survives past this instant. */
+const SCHEDULE_WINDOW_MS = PRE_DISPATCH_RECOVERY_WINDOW_MS;
 
 export interface ScheduledPeriodReportDispatchOptions {
   /** Explicit enterprise allowlist. Empty means nothing is dispatched. */
@@ -154,6 +175,10 @@ export interface ScheduledPeriodReportDispatchSummary {
   readonly startedAt: string;
   readonly finishedAt: string;
   readonly enterprises: readonly ScheduledEnterpriseSummary[];
+  /** Redacted run-level traces for operations; never tenant business content. */
+  readonly runs: readonly ScheduledRunTrace[];
+  /** Redacted per-project/period job traces (bounded). */
+  readonly traces: readonly ScheduledJobTrace[];
   readonly totals: ScheduledCounts;
 }
 
@@ -161,6 +186,8 @@ export interface ScheduledPeriodReportDispatchReadResult {
   readonly control: PeriodReportScheduleControl;
   readonly run: PeriodReportScheduleRun | null;
   readonly counts: ScheduledCounts;
+  readonly runTrace: ScheduledRunTrace | null;
+  readonly traces: readonly ScheduledJobTrace[];
 }
 
 interface DispatchContext extends ScheduledPeriodReportDispatchDependencies {
@@ -330,6 +357,7 @@ function claimRecordOf(
     claimedAt: at,
     previousNextWeeklyAt: claim.previousNextWeeklyAt,
     nextWeeklyAt: claim.nextWeeklyAt,
+    dueAt: claim.dueAt,
   };
 }
 
@@ -357,8 +385,71 @@ function planWithFrozenReceivers(
 }
 
 function recoveryWindowOpen(period: ScheduledPeriod, now: Date): boolean {
-  return now.getTime()
-    <= new Date(period.endAt).getTime() + PRE_DISPATCH_RECOVERY_WINDOW_MS;
+  return now.getTime() <= new Date(period.endAt).getTime() + PRE_DISPATCH_RECOVERY_WINDOW_MS;
+}
+
+/**
+ * Cross-tenant guard for a record loaded by its deterministic id. A run file
+ * that somehow carries another enterprise must never be advanced, cancelled or
+ * observed by this tenant.
+ */
+function assertRunTenant(
+  run: PeriodReportScheduleRun | null,
+  enterpriseId: string,
+): PeriodReportScheduleRun | null {
+  if (run && run.enterpriseId !== enterpriseId) {
+    fail(
+      'period_report_schedule_forbidden',
+      403,
+      'the schedule run belongs to another enterprise',
+      { runId: run.runId },
+    );
+  }
+  return run;
+}
+
+function periodIsCancelled(
+  control: PeriodReportScheduleControl,
+  periodStart: string,
+): boolean {
+  return (control.cancelledPeriods ?? []).includes(periodStart);
+}
+
+/**
+ * Terminal cancellation of one run. The evidence already written (batches,
+ * receivers, deliveries, reads, issue ledger) is preserved; only the schedule
+ * stops. A cancelled run is never resumed: a new week gets a new run id.
+ */
+function cancelledRun(
+  run: PeriodReportScheduleRun,
+  at: string,
+  reason: string | null,
+): PeriodReportScheduleRun {
+  const projects = Object.fromEntries(
+    Object.entries(run.projects).map(([projectId, entry]) => [
+      projectId,
+      { ...entry, nextObservationAt: null },
+    ]),
+  );
+  return withAudit({
+    ...run,
+    status: 'cancelled',
+    cancelledAt: at,
+    cancelReason: reason,
+    projects,
+  }, auditEntry(at, 'run_cancelled', undefined, reason ?? 'tenant_cancelled'));
+}
+
+async function cancelRun(
+  run: PeriodReportScheduleRun,
+  context: DispatchContext,
+  reason: string | null,
+): Promise<PeriodReportScheduleRun> {
+  if (run.status === 'cancelled') return run;
+  const at = context.environment.now().toISOString();
+  return context.store.update(
+    finalizeRun(cancelledRun(run, at, reason), context.environment.now()),
+  );
 }
 
 function withProjectAudit(
@@ -463,6 +554,7 @@ function initialEntry(
     observedAt: null,
     nextObservationAt: null,
     recheckCount: 0,
+    dispatchAttempts: 0,
     updatedAt: at,
     audit: [],
   };
@@ -486,6 +578,7 @@ function mergeEntry(
       : next.carryOverIssueIds,
     reminders: previous.reminders,
     recheckCount: previous.recheckCount,
+    dispatchAttempts: previous.dispatchAttempts ?? next.dispatchAttempts ?? 0,
     audit: previous.audit,
   };
 }
@@ -570,15 +663,22 @@ interface ErrorClassification {
 
 function classifyError(error: unknown): ErrorClassification {
   if (error instanceof WorkflowOperationError) {
+    if (PERMANENT_FAILURE_CODES.has(error.code)) {
+      // Re-reading current state cannot resolve a frozen/conflicting identity.
+      // Record the failure and stop this project instead of retrying.
+      return {
+        state: 'failed',
+        code: error.code,
+        reason: `${error.code}: ${error.message}`.slice(0, 300),
+      };
+    }
     if (
       error.code === 'construction_forbidden'
-      || error.code === 'construction_not_found'
       || error.code === 'run_enterprise_forbidden'
-      || error.code === 'run_scope_unavailable'
-      || error.code === 'period_report_batch_conflict'
       || error.code === 'published_unavailable'
-      || error.code === 'published_changed'
     ) {
+      // Permission or a temporarily unavailable published target can be
+      // restored; the bounded recheck may try again.
       return { state: 'needs_attention', code: error.code, reason: error.code };
     }
     return {
@@ -740,11 +840,14 @@ function withObservationSchedule(
   },
 ): ScheduledProjectEntry {
   const nowMs = now.getTime();
+  // No active state is polled past the bounded read/recovery window. A run
+  // that still has unfinished work at that instant is finalized as `expired`.
+  const windowOpen = nowMs <= new Date(period.endAt).getTime() + SCHEDULE_WINDOW_MS;
   let next: string | null = null;
   if (entry.state === 'processing' || entry.state === 'waiting_delivery') {
-    next = new Date(nowMs + options.observeIntervalMs).toISOString();
+    next = windowOpen ? new Date(nowMs + options.observeIntervalMs).toISOString() : null;
   } else if (entry.state === 'dispatching') {
-    next = new Date(nowMs + options.observeIntervalMs).toISOString();
+    next = windowOpen ? new Date(nowMs + options.observeIntervalMs).toISOString() : null;
   } else if (entry.state === 'completed' || entry.state === 'partial') {
     const windowEnd = new Date(period.endAt).getTime() + READ_OBSERVATION_WINDOW_MS;
     if (hasUnread(entry.receivers) && nowMs < windowEnd) {
@@ -1139,19 +1242,24 @@ async function dispatchProject(
     updatedAt: now,
   });
 
-  const entry = mergeEntry(previous, {
-    ...initialEntry(
-      effectivePlan,
-      requestId,
-      scheduleEventId(run.period.periodStart),
-      now,
-    ),
-    state: 'dispatching',
-    issues: targeted,
-    carryOverIssueIds: carryOverIds(targeted, run.period.periodStart),
-    dispatchedAt: now,
-    nextObservationAt: new Date(context.now.getTime() + context.observeIntervalMs).toISOString(),
-  });
+  const entry = {
+    ...mergeEntry(previous, {
+      ...initialEntry(
+        effectivePlan,
+        requestId,
+        scheduleEventId(run.period.periodStart),
+        now,
+      ),
+      state: 'dispatching',
+      issues: targeted,
+      carryOverIssueIds: carryOverIds(targeted, run.period.periodStart),
+      dispatchedAt: now,
+      nextObservationAt: new Date(context.now.getTime() + context.observeIntervalMs).toISOString(),
+    }),
+    // A dispatch attempt is counted even when the batch later fails; a retry
+    // that merely observes the frozen manifest does not increment it.
+    dispatchAttempts: (previous?.dispatchAttempts ?? 0) + 1,
+  };
   let current = withEntry(
     withAudit(run, auditEntry(now, 'project_dispatched', undefined, effectivePlan.projectId)),
     withProjectAudit(entry, now, 'project_dispatched'),
@@ -1574,12 +1682,18 @@ async function recheckProject(
     ));
   } catch (error) {
     const classified = classifyError(error);
+    // A permanent/unknown recheck failure is terminal for this project: the
+    // entry stops being rescheduled instead of retrying until the window ends.
     const next = withProjectAudit(
       {
         ...entry,
+        state: classified.state === 'needs_attention' ? entry.state : classified.state,
         recheckCount: entry.recheckCount + 1,
         reason: classified.reason,
         errorCode: classified.code,
+        nextObservationAt: classified.state === 'needs_attention'
+          ? entry.nextObservationAt
+          : null,
       },
       now,
       'project_recheck_failed',
@@ -1593,6 +1707,9 @@ async function recheckProject(
 }
 
 function runStatus(run: PeriodReportScheduleRun): ScheduledRunStatus {
+  // Cancellation and expiry are explicit terminal states; a later tick must
+  // not recompute them back into an active status.
+  if (run.status === 'cancelled' || run.status === 'expired') return run.status;
   if (run.lastError) return 'failed';
   const plans = run.queue;
   if (plans.length === 0) return run.lastError ? 'failed' : 'completed';
@@ -1629,17 +1746,34 @@ function finalizeRun(
   run: PeriodReportScheduleRun,
   now: Date,
 ): PeriodReportScheduleRun {
-  const status = runStatus(run);
+  const computed = runStatus(run);
+  // Unfinished dispatch/observation past the bounded window is reported as an
+  // explicit `expired` run instead of a permanently "dispatching" record.
+  const expired = !recoveryWindowOpen(run.period, now)
+    && (computed === 'dispatching' || computed === 'observing');
+  const status: ScheduledRunStatus = expired ? 'expired' : computed;
   const counts = countProjects(run.queue, run.projects);
   const entries = Object.values(run.projects);
   const observing = entries.some((entry) => !!entry.nextObservationAt);
-  const terminal = status === 'completed' || status === 'partial' || status === 'failed';
+  const terminal = status === 'completed'
+    || status === 'partial'
+    || status === 'failed'
+    || status === 'cancelled'
+    || status === 'expired';
+  const next = expired && run.status !== 'expired'
+    ? withAudit(run, auditEntry(
+      now.toISOString(),
+      'run_expired',
+      undefined,
+      'the weekly recovery/read window closed with unfinished work',
+    ))
+    : run;
   return {
-    ...run,
+    ...next,
     status,
     counts,
     updatedAt: now.toISOString(),
-    finishedAt: terminal && !observing ? run.finishedAt ?? now.toISOString() : null,
+    finishedAt: terminal && !observing ? next.finishedAt ?? now.toISOString() : null,
   };
 }
 
@@ -1650,6 +1784,12 @@ async function advanceRun(
 ): Promise<PeriodReportScheduleRun> {
   let run = input;
   const nowMs = () => context.environment.now().getTime();
+  // A tenant cancellation is re-read before observation and again before every
+  // dispatch, so a cancel issued mid-tick stops the remaining projects.
+  const initialControl = await context.store.control(run.enterpriseId);
+  if (periodIsCancelled(initialControl, run.period.periodStart)) {
+    return cancelRun(run, context, initialControl.reason);
+  }
   const due = run.queue
     .map((plan) => run.projects[plan.projectId])
     .filter((entry): entry is ScheduledProjectEntry =>
@@ -1707,6 +1847,9 @@ async function advanceRun(
         break;
       }
       const control = await context.store.control(run.enterpriseId);
+      if (periodIsCancelled(control, run.period.periodStart)) {
+        return cancelRun(run, context, control.reason);
+      }
       if (control.paused) {
         run = withAudit(run, auditEntry(context.environment.now().toISOString(), 'dispatch_paused'));
         break;
@@ -1804,6 +1947,8 @@ async function createRun(
 }
 
 function runHasWork(run: PeriodReportScheduleRun, nowMs: number): boolean {
+  // Cancellation/expiry are terminal for all discovery, dispatch and polling.
+  if (run.status === 'cancelled' || run.status === 'expired') return false;
   // A configuration failure is terminal for this period; a later tick must not
   // hammer the same disabled/missing plan. The next period creates a new run.
   if (run.status === 'failed' && run.lastError) return false;
@@ -1838,6 +1983,7 @@ interface EnterpriseRunResult {
  */
 async function continueRun(
   run: PeriodReportScheduleRun,
+  enterpriseId: string,
   context: DispatchContext,
   work: EnterpriseWork,
   gate: ScheduledScheduleGate | null,
@@ -1845,6 +1991,8 @@ async function continueRun(
   if (!runHasWork(run, context.environment.now().getTime())) {
     return { run, busy: false, work, gate, error: run.lastError ?? null };
   }
+  const scoped = assertRunTenant(run, enterpriseId);
+  if (!scoped) return { run: null, busy: false, work, gate, error: null };
   const owner = `${process.pid}:${randomUUID()}`;
   const acquired = await context.store.acquire(run.runId, {
     owner,
@@ -1861,7 +2009,9 @@ async function continueRun(
     };
   }
   try {
-    const advanced = await advanceRun(run, context, work);
+    // The lease owner is the worker identity recorded on the run and in the
+    // redacted traces. A crash leaves it behind; the next owner replaces it.
+    const advanced = await advanceRun({ ...scoped, workerId: owner }, context, work);
     return {
       run: advanced,
       busy: false,
@@ -1894,23 +2044,35 @@ async function runEnterprise(
   const control = await context.store.control(enterpriseId);
   const work: EnterpriseWork = { dispatched: [], observed: [] };
   const runId = scheduleRunId(enterpriseId, period.periodStart);
-  if (control.paused) {
+  if (periodIsCancelled(control, period.periodStart)) {
+    // Cancellation is checked before the weekly claim, so a cancelled period
+    // never moves next_weekly_at and never creates a new batch.
+    const existing = assertRunTenant(await context.store.get(runId), enterpriseId);
     return {
-      run: await context.store.get(runId),
+      run: existing ? await cancelRun(existing, context, control.reason) : null,
       busy: false,
       work,
       gate: null,
       error: null,
     };
   }
-  let run = await context.store.get(runId);
+  if (control.paused) {
+    return {
+      run: assertRunTenant(await context.store.get(runId), enterpriseId),
+      busy: false,
+      work,
+      gate: null,
+      error: null,
+    };
+  }
+  let run = assertRunTenant(await context.store.get(runId), enterpriseId);
   let gate: ScheduledScheduleGate | null = null;
 
   if (context.mode === 'observe') {
     if (!run || run.status === 'failed') {
       return { run, busy: false, work, gate: null, error: run?.lastError ?? null };
     }
-    return continueRun(run, context, work, null);
+    return continueRun(run, enterpriseId, context, work, null);
   }
 
   if (ownership === 'replay') {
@@ -1982,7 +2144,7 @@ async function runEnterprise(
   }
 
   if (!run) return { run: null, busy: false, work, gate, error: null };
-  return continueRun(run, context, work, gate);
+  return continueRun(run, enterpriseId, context, work, gate);
 }
 
 /**
@@ -2000,9 +2162,11 @@ async function continuePriorRuns(
 ): Promise<{ work: EnterpriseWork; runs: string[] }> {
   const work: EnterpriseWork = { dispatched: [], observed: [] };
   if (context.mode !== 'tick') return { work, runs: [] };
-  const prior = (await context.store.list({ enterpriseId, limit: 10 }))
+  const prior = (await context.store.list({ enterpriseId, limit: 20 }))
     .filter((run) =>
       run.period.periodStart < period.periodStart
+      && run.status !== 'cancelled'
+      && run.status !== 'expired'
       && ((run.weeklyClaim ?? null) !== null || hasDispatchEvidence(run)))
     .slice(0, MAX_PRIOR_RUNS_PER_TICK);
   const runs: string[] = [];
@@ -2010,7 +2174,7 @@ async function continuePriorRuns(
     if (context.environment.now().getTime() > context.deadline) break;
     const current = await context.store.get(candidate.runId);
     if (!current || !runHasWork(current, context.environment.now().getTime())) continue;
-    const result = await continueRun(current, context, work, null);
+    const result = await continueRun(current, enterpriseId, context, work, null);
     if (!result.busy) runs.push(candidate.runId);
   }
   return { work, runs };
@@ -2046,6 +2210,8 @@ export async function runScheduledPeriodReportDispatch(
       startedAt,
       finishedAt: dependencies.environment.now().toISOString(),
       enterprises: [],
+      runs: [],
+      traces: [],
       totals: emptyCounts(),
     };
   }
@@ -2084,6 +2250,8 @@ export async function runScheduledPeriodReportDispatch(
     ? 'replay' as const
     : 'claim' as const;
   const summaries: ScheduledEnterpriseSummary[] = [];
+  const runs: ScheduledRunTrace[] = [];
+  const traces: ScheduledJobTrace[] = [];
   for (const enterpriseId of enterpriseIds) {
     // One enterprise's store, database or discovery failure must never stop the
     // other allow-listed tenants in the same tick. The failed tenant is reported
@@ -2095,6 +2263,10 @@ export async function runScheduledPeriodReportDispatch(
         ? await continuePriorRuns(enterpriseId, period, context)
         : { work: { dispatched: [], observed: [] }, runs: [] };
       const run = result.run;
+      if (run) {
+        runs.push(buildScheduledRunTrace(run));
+        traces.push(...buildScheduledJobTraces(run, { limit: 50 }));
+      }
       summaries.push({
         enterpriseId,
         runId: scheduleRunId(enterpriseId, period.periodStart),
@@ -2140,6 +2312,8 @@ export async function runScheduledPeriodReportDispatch(
     startedAt,
     finishedAt: dependencies.environment.now().toISOString(),
     enterprises: summaries,
+    runs: runs.slice(0, 40),
+    traces: traces.slice(0, 200),
     totals: totalsOf(summaries),
   };
 }
@@ -2172,6 +2346,8 @@ export async function readScheduledPeriodReportDispatch(input: {
     control,
     run,
     counts: run?.counts ?? emptyCounts(),
+    runTrace: run ? buildScheduledRunTrace(run) : null,
+    traces: run ? buildScheduledJobTraces(run) : [],
   };
 }
 
@@ -2194,4 +2370,53 @@ export async function setScheduledPeriodReportPaused(input: {
     reason: input.reason,
     now: input.now ?? (() => new Date()),
   });
+}
+
+export interface CancelScheduledPeriodResult {
+  readonly control: PeriodReportScheduleControl;
+  readonly run: PeriodReportScheduleRun | null;
+}
+
+/**
+ * Tenant-scoped cancellation of one weekly period.
+ *
+ * Cancellation is terminal for that period: the scheduler neither claims the
+ * slot nor dispatches/observes that week again, and an existing run is marked
+ * `cancelled` while all reported evidence is preserved. Other weeks and other
+ * tenants are unaffected.
+ */
+export async function cancelScheduledPeriodReport(input: {
+  readonly enterpriseId: string;
+  readonly periodStart: string;
+  readonly cancelled?: boolean;
+  readonly updatedBy: string | null;
+  readonly reason: string | null;
+  readonly store: PeriodReportScheduleStore;
+  readonly now?: () => Date;
+}): Promise<CancelScheduledPeriodResult> {
+  const enterpriseId = String(input.enterpriseId);
+  if (!positiveId(enterpriseId)) {
+    fail('period_report_schedule_enterprise_invalid', 422, 'enterprise id is invalid');
+  }
+  if (!calendarDate(input.periodStart)) {
+    fail('period_report_schedule_period_invalid', 422, 'periodStart must be a real calendar date');
+  }
+  const now = input.now ?? (() => new Date());
+  const cancelled = input.cancelled ?? true;
+  const control = await input.store.cancelPeriod(enterpriseId, input.periodStart, {
+    cancelled,
+    updatedBy: input.updatedBy,
+    reason: input.reason,
+    now,
+  });
+  const run = assertRunTenant(
+    await input.store.get(scheduleRunId(enterpriseId, input.periodStart)),
+    enterpriseId,
+  );
+  if (!run || !cancelled || run.status === 'cancelled') return { control, run };
+  const at = now().toISOString();
+  return {
+    control,
+    run: await input.store.update(finalizeRun(cancelledRun(run, at, input.reason), now())),
+  };
 }

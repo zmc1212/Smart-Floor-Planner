@@ -3,7 +3,9 @@ import { getTenantContext } from '@/lib/auth';
 import { WorkflowOperationError } from '@/lib/native-workflow/errors';
 import { requirePlatformAdmin, workflowApiError } from '@/lib/native-workflow/server';
 import {
+  cancelScheduledPeriodReport,
   readScheduledPeriodReportDispatch,
+  resolveEndedShanghaiWeek,
   setScheduledPeriodReportPaused,
 } from '@/lib/native-workflow/live/period-report-schedule';
 import {
@@ -103,7 +105,7 @@ export async function POST(request: Request) {
     !body
     || typeof body !== 'object'
     || Array.isArray(body)
-    || !['pause', 'resume'].includes(String((body as Record<string, unknown>).action))
+    || !['pause', 'resume', 'cancel'].includes(String((body as Record<string, unknown>).action))
   ) {
     return NextResponse.json(
       { success: false, error: 'invalid_schedule_control' },
@@ -112,10 +114,36 @@ export async function POST(request: Request) {
   }
   const input = body as Record<string, unknown>;
   const reason = typeof input.reason === 'string' ? input.reason.slice(0, 300) : null;
+  const action = String(input.action);
+  if (action === 'cancel') {
+    const requested = input.periodStart;
+    if (requested !== undefined && (
+      typeof requested !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(requested)
+    )) {
+      return NextResponse.json(
+        { success: false, error: 'invalid_schedule_period' },
+        { status: 422 },
+      );
+    }
+    try {
+      const result = await cancelScheduledPeriodReport({
+        enterpriseId: context.enterpriseId!,
+        periodStart: typeof requested === 'string'
+          ? requested
+          : resolveEndedShanghaiWeek(new Date()).periodStart,
+        updatedBy: context.userId,
+        reason,
+        store: store(),
+      });
+      return NextResponse.json({ success: true, data: result });
+    } catch (error) {
+      return workflowApiError(error);
+    }
+  }
   try {
     const control = await setScheduledPeriodReportPaused({
       enterpriseId: context.enterpriseId!,
-      paused: input.action === 'pause',
+      paused: action === 'pause',
       updatedBy: context.userId,
       reason,
       store: store(),
