@@ -15,6 +15,17 @@ Owner: B line (`codex/xiaok-native-workflow`). Shared migrations, dependencies,
 menus, the sole XiaoK plan and the bilingual module inventories' integration
 wiring remain owned by the integration lead.
 
+Parallel-branch boundary: the Responses API task
+(`codex/xiaok-bailian-responses-api`) owns the public adapter layer for Bailian
+Responses API, native web search, web extractor and code interpreter. B line
+never adds a Responses provider adapter and never edits that layer. Both lines
+meet only at the existing provider-neutral contract in
+`src/lib/assistant/contracts/model.ts` (`AgentModelGateway`,
+`ModelTurnInput`/`ModelTurnOutput`) and at `src/lib/ai/providers/*`; those files
+and the Chat Completions gateway stay untouched here. Any new model capability
+B line needs must first be proposed as a contract change and accepted by the
+Responses task owner; B5 report and draft turns currently need none.
+
 ## Boundary
 
 - The pure core imports only Node built-ins and local files in this directory.
