@@ -1,13 +1,15 @@
-# Native Workflow (B0-B4)
+# Native Workflow (B0-B5)
 
-Pure workflow core, a B-owned draft/publish store and a server-only B4 adapter
-for 家客来 native business orchestration. B0-B2 defines, validates, compiles and
-simulates workflows; B3 adds drafts, immutable published versions and a
-simulation debugging surface; B4 connects one published stage-reminder flow to
-the existing construction authorization, outbox save and in-app delivery
-services. The pure core still does not connect a model, database, queue,
-scheduler, Worker, business write path or message channel; only the separate
-`live/` adapter does, under host identity.
+Pure workflow core, a B-owned draft/publish store, a server-only B4 adapter for
+家客来 native business orchestration, and the B5 period-report chain. B0-B2
+defines, validates, compiles and simulates workflows; B3 adds drafts, immutable
+published versions and a simulation debugging surface; B4 connects one published
+stage-reminder flow to the existing construction authorization, outbox save and
+in-app delivery services; B5 adds the daily/weekly single-receiver chain, the
+one-project four-receiver batch, and the B5.9 bounded weekly scheduler that runs
+inside the existing assistant-worker tick. The pure core still does not connect
+a model, database, queue, scheduler, Worker, business write path or message
+channel; only the separate `live/` adapter does, under host identity.
 
 Owner: B line (`codex/xiaok-native-workflow`). Shared migrations, dependencies,
 menus, the sole XiaoK plan and the bilingual module inventories' integration
@@ -1502,12 +1504,160 @@ boss `15`/r1 (`17:54:42.142301Z`) each opened their own card, detail, record
 `native-joint.json` are under `.../native-ui/`. The native window introduced no
 report/message/job/run/attempt/usage row and did not rewrite any `readAt`.
 
+## B5.9 scheduled four-receiver weekly report and follow-up
+
+B5.9 upgrades the B5.8 four-receiver batch from a manual CLI action to a
+bounded weekly scheduler. It does not create a second report engine, Worker,
+queue or timer:
+
+- `live/period-report-schedule.ts` is the unified entry
+  `runScheduledPeriodReportDispatch()`. It resolves the latest finished
+  Shanghai Monday-to-Monday week (right-open end, trusted server clock), creates
+  or reuses one schedule run per enterprise, discovers eligible projects,
+  dispatches one project at a time through the existing
+  `runPeriodReportBatch()`, and observes the existing report/body/delivery/read
+  state through `readPeriodReportRunStatus()`. The `periodStart` option is an
+  explicit acceptance/replay override; the scheduler never picks a future week.
+- The scheduler runs inside the existing assistant-worker endpoint
+  (`/api/internal/assistant/jobs/run`) before `advanceConstructionReports()`.
+  It is loaded only when `NATIVE_WORKFLOW_SCHEDULE_ENABLED=1` and at least one
+  id in `NATIVE_WORKFLOW_SCHEDULE_ENTERPRISE_IDS` is set. A schedule failure is
+  isolated and never blocks the existing assistant/report jobs. No new Worker,
+  interval or cron system exists.
+- Discovery reuses the existing rules instead of inventing status fields:
+  enterprise `active`, assistant enabled, `construction_report_settings.enabled`,
+  `stage_enabled=false`, the configured `audiences` include all four, project
+  `active`, stage not `completion`/`move_in`, lead not archived, the existing
+  `project_ids`/`stage_keys` filters, and at least one real period signal:
+  a published site record, a stage event, or an open `construction.site.issue.*`
+  item. Archived/paused/terminal projects are excluded and counted. Candidate
+  and per-enterprise limits reuse the existing 20-project discovery bound; the
+  scheduler processes at most 5 projects per round by default
+  (`NATIVE_WORKFLOW_SCHEDULE_MAX_PROJECTS`).
+- Receivers are resolved from the current server contracts:
+  - customer: the lead's current `customer_user_id` plus `customer_access`,
+    through the existing `ensureFollowupBinding` customer rule;
+  - worker: active `construction_staff` with an active non-observer project
+    member row and current `construction_followup_staff_access`;
+  - designer: active `designer` with the same membership/follow-up checks;
+  - boss: active `enterprise_admin` with the current owner follow-up role; no
+    project member row is required;
+  - executor: a real owner/manager project writer, deliberately separate from
+    the boss receiver.
+  Existing enabled enterprise-scoped bindings disambiguate multiple staff or
+  owner candidates. A missing, duplicate, ambiguous or revoked receiver is
+  recorded with its specific reason; the scheduler never borrows another
+  binding or widens authorization. A retryable pre-dispatch gap is rechecked a
+  bounded number of times; a fix before any batch exists dispatches under the
+  same deterministic request id.
+- One project + one period has one deterministic request id
+  (`schedule-<enterprise>-<project>-weekly-<periodStart>`) and one batch
+  manifest. The B5.8 batch store, its cross-process lease, deterministic
+  sub-runIds, real run-store recovery, published-target precheck and four
+  independent ports are reused unchanged. A repeated tick reuses the existing
+  request; a completed batch never creates a second report, task, message or
+  provider call; `failed` keeps its reason; `unknown` is never re-dispatched;
+  a blocking failure stops only that project, not other projects.
+- The weekly slot is claimed on the existing
+  `construction_report_settings.next_weekly_at` using the existing
+  `nextReportAt`/`latestReportPeriod` formula. `nextWeeklyClaimAt()` advances
+  past the next legacy occurrence that would still process the same week, so
+  the old weekly scheduler cannot create a parallel/empty weekly report after
+  the B scheduler takes the week. A due daily schedule remains independent and
+  is allowed in `weekly_claimed` mode; stage reports must stay off.
+- `live/period-report-schedule-store.ts` is host schedule state under
+  `NATIVE_WORKFLOW_SCHEDULE_DIR` (default
+  `admin/tmp/native-workflow-schedules`): one run per enterprise/period,
+  `control/<enterpriseId>.json` for pause/resume, and
+  `ledger/<enterpriseId>/<projectId>.json` for existing issue references. The
+  same-directory temporary file, atomic rename and serial-lock convention as
+  the run/batch stores is used; `create` is exclusive and `update` refuses a
+  different enterprise/period/published identity. A concurrent creator's
+  `startedAt`/published revision is adopted, not treated as a conflict.
+- Continuous follow-up separates business states that must never be conflated:
+  - facts/body/delivery progress comes from the existing status reader; an
+    honest `delivery_not_confirmed` stays processing and is never rewritten as
+    delivered;
+  - delivered vs read vs unread is recorded per receiver; `readAt` is read-only
+    and never overwritten; unread is not a rejection or a business exception;
+    a completed report keeps a bounded 7-day read-observation window;
+  - existing `construction.site.issue.opened/progress/lifecycle` events are
+    projected into the ledger by their original issue id (record id, status,
+    owner, last result, first/last period and the period list). The next week
+    links the same item instead of creating a duplicate; closed/cancelled/
+    resolved items are not carried as open;
+  - reminders reuse the existing in-app message channel and a
+    `construction.report.followup.v1` outbox row as the idempotency key. Only
+    currently authorized existing enterprise-scoped worker/designer/boss
+    bindings receive them; the customer, SMS, email and external WeChat are
+    never used. `awaiting_review` goes to the designer, `implemented`/`resolved`
+    and unassigned/invalidated/carried-over items go to the boss, and an
+    assigned worker/designer owner receives it when that receiver is available.
+    Reminder text references the real issue/record/state only and never creates
+    a confirmed construction defect from model prose.
+- Run records expose the enterprise, project, period, four receivers,
+  published revision, batch request id, per-receiver report id/facts run id,
+  delivery/message id, current state, last observation, failure reason and the
+  next allowed observation/retry time. Counts separate due/completed/
+  processing/waiting-delivery/needs-attention/skipped/failed/unknown. The run
+  record is not a replacement for `construction_reports` or the real receipts.
+- Operations:
+  - `GET /api/native-workflow/schedule` (tenant-scoped, platform admin) returns
+    the latest/selected run, control state and counts; it is read-only and
+    never acquires a lease.
+  - `POST /api/native-workflow/schedule` with `{action:'pause'|'resume'}` sets
+    the tenant pause flag; the scheduler re-reads it before each project.
+  - `scripts/native-workflow-period-report-schedule.ts` is the one-shot CLI
+    (`--show-latest`, `--show-run`, `--list`, `--pause`, `--resume`, `--mode`,
+    `--period-start`, `--ensure-published`). It rejects an unended/future week
+    before publishing, resolving the DB target or connecting.
+- No database migration is required. The only business settings write is the
+  existing `next_weekly_at` claim. The schedule/control/ledger files are B host
+  state, not shared tables.
+
+Offline tests: `period-report-schedule.test.ts` covers Shanghai week
+resolution, unended-period rejection, project selection/skip reasons, missing/
+ambiguous receivers, recheck recovery, multi-project request isolation, one
+failure not stopping another project, repeated ticks, unknown/delivery waiting,
+delivered vs read, cross-week issue carry-over, closed issues, pause/resume,
+bounded rounds and the read-only query; `period-report-schedule-store.test.ts`
+covers exclusive create/identity, concurrent adoption, control/ledger and the
+lease TTL; `period-report-schedule-ports.test.ts` covers plan scope,
+`weekly_claimed` legacy handling and the weekly claim boundary. The documented
+offline command is 388/388 (the new files add 23 cases).
+
+B5.9 evidence status: no live B run was executed this round. Docker Desktop
+cannot be started from the current non-elevated session (`com.docker.service`
+access denied), so the isolated `127.0.0.1:55433` database is unreachable. The
+existing B5.8 four-receiver evidence (reports `12`-`15`, facts runs `22`-`25`,
+body runs `26`-`29`, messages `129`-`132`, read receipts `17:54:40`-`17:54:42`)
+is not regenerated and remains the live four-end evidence. A bounded acceptance
+driver is prepared:
+
+```powershell
+$env:B4_LIVE_APP_DATABASE_URL='postgresql://sfp_app:...@127.0.0.1:55433/smart_floor_planner'
+npx tsx scripts/native-workflow-schedule-acceptance.ts --development `
+  --enterprise-id 1454 --project-id 1454000004 `
+  --worker-id 1454000008 --designer-id 1454000011 --boss-id 1454000013 `
+  --customer-user-id 1454000002 --period-start 2026-10-19 --wait-worker
+```
+
+It reuses the existing published weekly definition and the B5.8 week/reports
+(zero new model calls), verifies scheduler discovery, one unique batch request,
+four receipts/deliveries/messages, delivered/read state, a repeated run with
+unchanged report/job/message/delivery counters, and restores the report plan in
+`finally`. It was not run because the B environment is unavailable; this round
+therefore reports zero real model calls. Historical limitations remain: the
+worker's full continuous lifecycle and the designer's native UI inside the
+revocation window are still unverified, and older failures/unknowns are not
+overwritten.
+
 ## Reproduce
 
 From `admin/` (no database, no Worker, no model):
 
 ```powershell
-npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts src/lib/native-workflow/__tests__/acceptance-store.test.ts src/lib/native-workflow/__tests__/acceptance-conversation.test.ts src/lib/native-workflow/__tests__/acceptance-state.test.ts src/lib/native-workflow/__tests__/acceptance-provider.test.ts src/lib/native-workflow/__tests__/period-report-ports.test.ts src/lib/native-workflow/__tests__/report-model-evidence.test.ts src/lib/native-workflow/__tests__/period-report-status.test.ts src/lib/native-workflow/__tests__/period-report-status-reentry.test.ts src/lib/native-workflow/__tests__/admin-run-status.test.ts src/lib/native-workflow/__tests__/period-report-status-route.test.ts src/lib/native-workflow/__tests__/period-report-status-route-guards.test.ts src/lib/native-workflow/__tests__/period-event-weekly.test.ts src/lib/native-workflow/__tests__/period-cli.test.ts src/lib/native-workflow/__tests__/staff-receiver.test.ts src/lib/native-workflow/__tests__/boss-receiver.test.ts src/lib/native-workflow/__tests__/worker-fixture.test.ts src/lib/native-workflow/__tests__/period-report-entry.test.ts src/lib/native-workflow/__tests__/period-report-batch.test.ts
+npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts src/lib/native-workflow/__tests__/acceptance-store.test.ts src/lib/native-workflow/__tests__/acceptance-conversation.test.ts src/lib/native-workflow/__tests__/acceptance-state.test.ts src/lib/native-workflow/__tests__/acceptance-provider.test.ts src/lib/native-workflow/__tests__/period-report-ports.test.ts src/lib/native-workflow/__tests__/report-model-evidence.test.ts src/lib/native-workflow/__tests__/period-report-status.test.ts src/lib/native-workflow/__tests__/period-report-status-reentry.test.ts src/lib/native-workflow/__tests__/admin-run-status.test.ts src/lib/native-workflow/__tests__/period-report-status-route.test.ts src/lib/native-workflow/__tests__/period-report-status-route-guards.test.ts src/lib/native-workflow/__tests__/period-event-weekly.test.ts src/lib/native-workflow/__tests__/period-cli.test.ts src/lib/native-workflow/__tests__/staff-receiver.test.ts src/lib/native-workflow/__tests__/boss-receiver.test.ts src/lib/native-workflow/__tests__/worker-fixture.test.ts src/lib/native-workflow/__tests__/period-report-entry.test.ts src/lib/native-workflow/__tests__/period-report-batch.test.ts src/lib/native-workflow/__tests__/period-report-schedule.test.ts src/lib/native-workflow/__tests__/period-report-schedule-store.test.ts src/lib/native-workflow/__tests__/period-report-schedule-ports.test.ts
 npx tsx src/lib/native-workflow/playground/simulate.ts
 ```
 

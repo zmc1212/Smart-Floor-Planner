@@ -50,6 +50,19 @@ export interface PeriodReportPortOptions {
   readonly store?: PeriodReportStore;
   /** Test seam for the trusted clock; defaults to `new Date()` per execute. */
   readonly now?: () => Date;
+  /**
+   * The B5.8 CLI runs exactly one project and requires `project_ids=[project]`.
+   * The B5.9 weekly scheduler dispatches one project out of an enterprise plan:
+   * it keeps the report facts narrowed to that project, but accepts an empty or
+   * multi-project plan filter. Defaults to `single` so B5.8 is unchanged.
+   */
+  readonly projectScope?: 'single' | 'plan';
+  /**
+   * `parked` keeps both legacy schedules in the future (B5.8 CLI). The weekly
+   * scheduler claims the weekly slot and allows a due daily schedule, because
+   * the legacy daily report is a different period/kind and remains independent.
+   */
+  readonly legacy?: 'parked' | 'weekly_claimed';
 }
 
 export type PeriodReceiverStatus =
@@ -193,11 +206,17 @@ function configuredProjectIds(settings: Row): string[] {
  * the future and stage reports must be off. A due timestamp or an enabled
  * stage path refuses the B run before it can create a second report.
  */
-function legacyScheduleDue(settings: Row): boolean {
+export function legacyScheduleDue(
+  settings: Row,
+  mode: 'parked' | 'weekly_claimed' = 'parked',
+): boolean {
   if (settings.enabled !== true) return false;
   if (settings.stage_enabled !== false) return true;
   const now = Date.now();
-  for (const field of ['next_daily_at', 'next_weekly_at'] as const) {
+  const fields = mode === 'weekly_claimed'
+    ? (['next_weekly_at'] as const)
+    : (['next_daily_at', 'next_weekly_at'] as const);
+  for (const field of fields) {
     const value = settings[field];
     const at = value === null || value === undefined ? Number.NaN : new Date(String(value)).getTime();
     if (!Number.isFinite(at) || at <= now) return true;
@@ -205,12 +224,21 @@ function legacyScheduleDue(settings: Row): boolean {
   return false;
 }
 
-function assertConfiguredProject(
+export function assertConfiguredProject(
   settings: Row,
   projectId: string,
   receiverKind: PeriodReceiverKind,
+  scope: 'single' | 'plan' = 'single',
 ): void {
   const configured = configuredProjectIds(settings);
+  if (scope === 'plan') {
+    // The scheduled dispatcher narrows the facts to this project, so an
+    // enterprise-wide or multi-project plan is valid as long as it contains it.
+    if (configured.length && !configured.includes(projectId)) {
+      fail('period_report_project_out_of_scope', 409);
+    }
+    return;
+  }
   if (receiverKind !== 'customer') {
     // A staff/boss receiver is single-project by contract: a broader or empty
     // plan would let another project's period slip into this run.
@@ -486,6 +514,8 @@ async function loadScopeInTransaction(
   write: boolean,
   authorizeWrite: typeof writeProjectAccess,
   receiver: LivePeriodReceiver,
+  projectScope: 'single' | 'plan',
+  legacyMode: 'parked' | 'weekly_claimed',
 ): Promise<PeriodReportScope> {
   // B reports are a management path: every capability, including reads, uses
   // the existing construction owner/manager rule. Tenant scope is fixed by the
@@ -498,7 +528,7 @@ async function loadScopeInTransaction(
       where enterprise_id=${actor.enterpriseId} ${lockClause(write ? 'update' : 'share')}`,
   );
   if (!settings) fail('period_report_plan_missing', 422);
-  assertConfiguredProject(settings, projectId, receiver.kind);
+  assertConfiguredProject(settings, projectId, receiver.kind, projectScope);
 
   const binding = await receiverBinding(
     tx,
@@ -569,7 +599,7 @@ async function loadScopeInTransaction(
     bindingAudience,
     reportKey,
     legacyPlanEnabled: settings.enabled === true,
-    legacyScheduleDue: legacyScheduleDue(settings),
+    legacyScheduleDue: legacyScheduleDue(settings, legacyMode),
     audienceEnabled,
     receiverAvailable: receiverStatus === 'available',
     receiverStatus,
@@ -584,6 +614,8 @@ async function queueInTransaction(
   authorizeWrite: typeof writeProjectAccess,
   enqueue: typeof enqueueReport,
   receiver: LivePeriodReceiver,
+  projectScope: 'single' | 'plan',
+  legacyMode: 'parked' | 'weekly_claimed',
 ): Promise<StoredPeriodReport | null> {
   // Re-authorize at the top of the write transaction, with the same project →
   // settings → binding → conversation lock order as the scope read. A manager
@@ -599,8 +631,8 @@ async function queueInTransaction(
   // create a parallel report for this period, and a disabled plan would leave
   // an unprocessable task for the existing Worker.
   if (settings.enabled !== true) fail('period_report_plan_disabled', 422);
-  if (legacyScheduleDue(settings)) fail('period_report_legacy_scheduler_due', 409);
-  assertConfiguredProject(settings, projectId, receiver.kind);
+  if (legacyScheduleDue(settings, legacyMode)) fail('period_report_legacy_scheduler_due', 409);
+  assertConfiguredProject(settings, projectId, receiver.kind, projectScope);
 
   const binding = await receiverBinding(tx, actor.enterpriseId, projectId, receiver, 'update');
   if (!binding) fail('period_report_receiver_unavailable', 409);
@@ -802,14 +834,30 @@ async function readDeliveryInTransaction(
 /** Default store: every method uses the existing tenant transaction scope. */
 export function createPeriodReportStore(
   dependencies: PeriodReportStoreDependencies = {},
+  options: {
+    readonly projectScope?: 'single' | 'plan';
+    readonly legacy?: 'parked' | 'weekly_claimed';
+  } = {},
 ): PeriodReportStore {
   const transaction = dependencies.transaction ?? withTenantTransaction;
   const authorizeWrite = (dependencies.authorizeWrite ?? writeProjectAccess) as typeof writeProjectAccess;
   const enqueue = dependencies.enqueueReport ?? enqueueReport;
+  const projectScope = options.projectScope ?? 'single';
+  const legacyMode = options.legacy ?? 'parked';
   return {
     loadScope: ({ actor, projectId, period, write, receiver }) =>
       transaction(actor.enterpriseId, (tx) =>
-        loadScopeInTransaction(tx, actor, projectId, period, write, authorizeWrite, receiver),
+        loadScopeInTransaction(
+          tx,
+          actor,
+          projectId,
+          period,
+          write,
+          authorizeWrite,
+          receiver,
+          projectScope,
+          legacyMode,
+        ),
       ),
     findReport: (scope, period) =>
       scope.bindingId && scope.conversationId
@@ -832,7 +880,17 @@ export function createPeriodReportStore(
         : Promise.resolve(null),
     enqueue: ({ actor, projectId, period, receiver }) =>
       transaction(actor.enterpriseId, (tx) =>
-        queueInTransaction(tx, actor, projectId, period, authorizeWrite, enqueue, receiver),
+        queueInTransaction(
+          tx,
+          actor,
+          projectId,
+          period,
+          authorizeWrite,
+          enqueue,
+          receiver,
+          projectScope,
+          legacyMode,
+        ),
       ),
     readRecords: (scope, period) =>
       transaction(scope.enterpriseId, (tx) =>
@@ -953,7 +1011,10 @@ function composePeriodReport(
 }
 
 export function createPeriodReportPorts(options: PeriodReportPortOptions): LiveOperationPorts {
-  const store = options.store ?? createPeriodReportStore();
+  const store = options.store ?? createPeriodReportStore({}, {
+    projectScope: options.projectScope,
+    legacy: options.legacy,
+  });
   const now = options.now ?? (() => new Date());
   const receiver: LivePeriodReceiver = options.receiver ?? { kind: 'customer' };
   const saved = new Map<string, StoredPeriodReport>();

@@ -59,6 +59,65 @@ export {
   type PeriodReportBatchStore,
 } from './period-report-batch-store';
 export {
+  createDatabasePeriodReportScheduleEnvironment,
+  createScheduledPeriodReportPreflight,
+  type DatabaseScheduleEnvironmentOptions,
+} from './period-report-schedule-ports';
+export {
+  readScheduledPeriodReportDispatch,
+  resolveEndedShanghaiWeek,
+  resolveScheduledPeriod,
+  runScheduledPeriodReportDispatch,
+  setScheduledPeriodReportPaused,
+  type ScheduledEnterpriseSummary,
+  type ScheduledPeriodReportDispatchDependencies,
+  type ScheduledPeriodReportDispatchOptions,
+  type ScheduledPeriodReportDispatchReadResult,
+  type ScheduledPeriodReportDispatchSummary,
+} from './period-report-schedule';
+export {
+  createFilePeriodReportScheduleStore,
+  createMemoryPeriodReportScheduleStore,
+  resolveNativeWorkflowScheduleDir,
+  type PeriodReportScheduleLeaseOptions,
+  type PeriodReportScheduleListOptions,
+  type PeriodReportScheduleStore,
+} from './period-report-schedule-store';
+export type {
+  PeriodReportScheduleEnvironment,
+  ScheduleCustomerBindingResult,
+  ScheduleDiscoveryResult,
+  ScheduleIssueSnapshot,
+  ScheduleReminderInput,
+  ScheduleReminderResult,
+  ScheduleWeeklyClaim,
+} from './period-report-schedule-environment';
+export {
+  SCHEDULE_LEDGER_VERSION,
+  SCHEDULE_RUN_VERSION,
+  countProjects,
+  emptyCounts,
+  scheduleEventId,
+  scheduleRequestId,
+  scheduleRunId,
+  type PeriodReportScheduleControl,
+  type PeriodReportScheduleLedger,
+  type PeriodReportScheduleRun,
+  type ScheduledActivityEvidence,
+  type ScheduledAuditEntry,
+  type ScheduledCounts,
+  type ScheduledIssueItem,
+  type ScheduledPeriod,
+  type ScheduledProjectEntry,
+  type ScheduledProjectPlan,
+  type ScheduledProjectState,
+  type ScheduledReceiverKind,
+  type ScheduledReceiverView,
+  type ScheduledReminderRecord,
+  type ScheduledReminderTarget,
+  type ScheduledRunStatus,
+} from './period-report-schedule-types';
+export {
   assertPeriodReportBatchExecutor,
   assertPeriodReportBatchPlan,
   type PeriodReportBatchPlanEvidence,
