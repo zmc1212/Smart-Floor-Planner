@@ -31,7 +31,11 @@ import { readSiteIssue } from '@/lib/construction/site-issues';
 import { WorkflowOperationError } from '../errors';
 import type { PublishedWorkflowVersion } from '../store/types';
 import type { FixedPeriod } from './period-event';
-import { nextWeeklyClaimAt } from './period-report-schedule-calendar';
+import {
+  nextWeeklyClaimAt,
+  parseWeeklyExecutionConfig,
+  weeklyExecutionAt,
+} from './period-report-schedule-calendar';
 import {
   assertPeriodReportBatchExecutor,
   type PeriodReportBatchPlanEvidence,
@@ -499,6 +503,38 @@ async function discoverProjects(input: {
   });
 }
 
+function weeklyClaimResult(input: {
+  readonly claimed: boolean;
+  readonly due: boolean;
+  readonly alreadyConsumed: boolean;
+  readonly dueAt: Date | null;
+  readonly previous: Date | null;
+  readonly nextWeeklyAt: Date | null;
+  readonly reason: string | null;
+}): ScheduleWeeklyClaim {
+  return {
+    claimed: input.claimed,
+    due: input.due,
+    alreadyConsumed: input.alreadyConsumed,
+    dueAt: input.dueAt ? input.dueAt.toISOString() : null,
+    previousNextWeeklyAt: input.previous ? input.previous.toISOString() : null,
+    nextWeeklyAt: input.nextWeeklyAt ? input.nextWeeklyAt.toISOString() : null,
+    reason: input.reason,
+  };
+}
+
+/**
+ * Atomically claim the enterprise's weekly execution slot for one period.
+ *
+ * A complete Monday-to-Monday week ending at `period.end` is only executable
+ * after the configured `weekly_day`/`weekly_time` instant. The stored
+ * `next_weekly_at` is the second half of the business contract: if it is still
+ * in the future, the legacy weekly worker (or an earlier B tick) already
+ * consumed this cycle, so generation must not start again.
+ *
+ * The row lock plus the conditional update make the claim exactly-once even
+ * with concurrent Worker ticks.
+ */
 async function claimWeeklySchedule(input: {
   readonly enterpriseId: string;
   readonly period: FixedPeriod;
@@ -512,63 +548,153 @@ async function claimWeeklySchedule(input: {
         where enterprise_id=${enterpriseId} for update`,
     );
     if (!settings) {
-      return {
+      return weeklyClaimResult({
         claimed: false,
-        previousNextWeeklyAt: null,
+        due: false,
+        alreadyConsumed: false,
+        dueAt: null,
+        previous: null,
         nextWeeklyAt: null,
         reason: 'plan_missing',
-      };
-    }
-    if (settings.enabled !== true) {
-      return {
-        claimed: false,
-        previousNextWeeklyAt: endOfDay(settings.next_weekly_at),
-        nextWeeklyAt: endOfDay(settings.next_weekly_at),
-        reason: 'plan_disabled',
-      };
-    }
-    if (settings.stage_enabled !== false) {
-      return {
-        claimed: false,
-        previousNextWeeklyAt: endOfDay(settings.next_weekly_at),
-        nextWeeklyAt: endOfDay(settings.next_weekly_at),
-        reason: 'legacy_stage_enabled',
-      };
+      });
     }
     const previous = new Date(String(settings.next_weekly_at));
-    if (!Number.isFinite(previous.getTime())) {
-      return {
+    const previousValid = Number.isFinite(previous.getTime());
+    const stored = previousValid ? previous : null;
+    if (settings.enabled !== true) {
+      return weeklyClaimResult({
         claimed: false,
-        previousNextWeeklyAt: null,
+        due: false,
+        alreadyConsumed: false,
+        dueAt: null,
+        previous: stored,
+        nextWeeklyAt: stored,
+        reason: 'plan_disabled',
+      });
+    }
+    if (settings.stage_enabled !== false) {
+      return weeklyClaimResult({
+        claimed: false,
+        due: false,
+        alreadyConsumed: false,
+        dueAt: null,
+        previous: stored,
+        nextWeeklyAt: stored,
+        reason: 'legacy_stage_enabled',
+      });
+    }
+    // Use the same default as the legacy scheduler only for a missing day;
+    // a corrupt time blocks instead of being silently normalized.
+    const config = parseWeeklyExecutionConfig(
+      settings.weekly_day ?? 1,
+      settings.weekly_time,
+    );
+    if (!config) {
+      return weeklyClaimResult({
+        claimed: false,
+        due: false,
+        alreadyConsumed: false,
+        dueAt: null,
+        previous: stored,
+        nextWeeklyAt: stored,
+        reason: 'weekly_schedule_invalid',
+      });
+    }
+    const dueAt = weeklyExecutionAt({
+      periodEnd: input.period.end,
+      weeklyDay: config.weeklyDay,
+      weeklyTime: config.weeklyTime,
+    });
+    if (input.now.getTime() < dueAt.getTime()) {
+      return weeklyClaimResult({
+        claimed: false,
+        due: false,
+        alreadyConsumed: false,
+        dueAt,
+        previous: stored,
+        nextWeeklyAt: stored,
+        reason: null,
+      });
+    }
+    if (!previousValid) {
+      return weeklyClaimResult({
+        claimed: false,
+        due: true,
+        alreadyConsumed: false,
+        dueAt,
+        previous: null,
         nextWeeklyAt: null,
         reason: 'weekly_schedule_missing',
-      };
+      });
     }
     if (previous.getTime() > input.now.getTime()) {
-      return {
+      // The configured execution instant passed, but the stored slot is
+      // already in the next cycle: the legacy path or an earlier B tick owns
+      // this week. Starting here would create a duplicate weekly report.
+      return weeklyClaimResult({
         claimed: false,
-        previousNextWeeklyAt: previous.toISOString(),
-        nextWeeklyAt: previous.toISOString(),
+        due: true,
+        alreadyConsumed: true,
+        dueAt,
+        previous,
+        nextWeeklyAt: previous,
         reason: null,
-      };
+      });
     }
     const next = nextWeeklyClaimAt({
       now: input.now,
-      weeklyTime: String(settings.weekly_time ?? '08:00'),
-      weeklyDay: Number(settings.weekly_day ?? 1),
+      weeklyTime: config.weeklyTime,
+      weeklyDay: config.weeklyDay,
       periodStart: input.period.start,
     });
-    await tx.execute(
+    if (next.getTime() <= input.now.getTime()) {
+      return weeklyClaimResult({
+        claimed: false,
+        due: true,
+        alreadyConsumed: false,
+        dueAt,
+        previous,
+        nextWeeklyAt: next,
+        reason: 'weekly_schedule_invalid',
+      });
+    }
+    const updated = await one(
+      tx,
       sql`update app.construction_report_settings
         set next_weekly_at=${next},version=version+1,updated_at=now()
-        where enterprise_id=${enterpriseId}`,
+        where enterprise_id=${enterpriseId}
+          and enabled=true and stage_enabled=false and next_weekly_at<=${input.now}
+        returning next_weekly_at`,
     );
-    return {
+    if (!updated) {
+      // Defensive: the row lock already serializes claimants, but never report
+      // a claim this transaction did not really write.
+      const latest = await one(
+        tx,
+        sql`select next_weekly_at from app.construction_report_settings
+          where enterprise_id=${enterpriseId}`,
+      );
+      return weeklyClaimResult({
+        claimed: false,
+        due: true,
+        alreadyConsumed: true,
+        dueAt,
+        previous,
+        nextWeeklyAt: endOfDay(latest?.next_weekly_at)
+          ? new Date(String(latest!.next_weekly_at))
+          : previous,
+        reason: null,
+      });
+    }
+    return weeklyClaimResult({
       claimed: true,
-      previousNextWeeklyAt: previous.toISOString(),
-      nextWeeklyAt: next.toISOString(),
+      due: true,
+      alreadyConsumed: false,
+      dueAt,
+      previous,
+      nextWeeklyAt: next,
       reason: null,
-    };
+    });
   });
 }
 

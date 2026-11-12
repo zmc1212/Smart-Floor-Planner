@@ -10,7 +10,11 @@ import {
   setScheduledPeriodReportPaused,
   type ScheduledPeriodReportDispatchDependencies,
 } from '../live/period-report-schedule';
-import type { PeriodReportScheduleEnvironment } from '../live/period-report-schedule-environment';
+import type {
+  PeriodReportScheduleEnvironment,
+  ScheduleWeeklyClaim,
+} from '../live/period-report-schedule-environment';
+import { weeklyExecutionAt } from '../live/period-report-schedule-calendar';
 import { createMemoryPeriodReportScheduleStore } from '../live/period-report-schedule-store';
 import type {
   ScheduledIssueItem,
@@ -71,10 +75,29 @@ interface Harness {
   behaviors: Map<string, Behavior>;
   readAt: Map<string, string | null>;
   clock: Date;
+  claimRequests: Array<{ enterpriseId: string; periodStart: string; periodEnd: string }>;
+  claimResult: ScheduleWeeklyClaim;
+  failAfterBatchOnce: boolean;
+  customerAvailable: boolean;
   setClock(date: Date): void;
   setBehavior(projectId: string, behavior: Behavior): void;
   setReadAt(runId: string, readAt: string | null): void;
+  setClaim(claim: ScheduleWeeklyClaim): void;
+  setCustomerAvailable(available: boolean): void;
   publish(): { definitionId: string; revision: number };
+}
+
+function claimedWeekly(overrides: Partial<ScheduleWeeklyClaim> = {}): ScheduleWeeklyClaim {
+  return {
+    claimed: true,
+    due: true,
+    alreadyConsumed: false,
+    dueAt: '2026-11-09T00:00:00.000Z',
+    previousNextWeeklyAt: '2026-11-02T00:00:00.000Z',
+    nextWeeklyAt: '2026-11-16T00:00:00.000Z',
+    reason: null,
+    ...overrides,
+  };
 }
 
 function plan(projectId: string, overrides: Partial<ScheduledProjectPlan> = {}): ScheduledProjectPlan {
@@ -392,6 +415,10 @@ async function makeHarness(options?: {
     behaviors,
     readAt,
     clock: new Date(NOW),
+    claimRequests: [],
+    claimResult: claimedWeekly(),
+    failAfterBatchOnce: false,
+    customerAvailable: true,
     setClock(date) {
       harness.clock = new Date(date);
     },
@@ -400,6 +427,12 @@ async function makeHarness(options?: {
     },
     setReadAt(runId, value) {
       readAt.set(runId, value);
+    },
+    setClaim(claim) {
+      harness.claimResult = claim;
+    },
+    setCustomerAvailable(available) {
+      harness.customerAvailable = available;
     },
     publish() {
       return {
@@ -442,21 +475,30 @@ async function makeHarness(options?: {
       projects: harness.plans,
       excludedProjects: 0,
     }),
-    claimWeeklySchedule: async () => ({
-      claimed: true,
-      previousNextWeeklyAt: '2026-11-02T00:00:00.000Z',
-      nextWeeklyAt: '2026-11-16T00:00:00.000Z',
-      reason: null,
-    }),
-    ensureCustomerBinding: async () => ({
-      available: true,
-      reason: null,
-      bindingId: 'binding-customer',
-      conversationId: 'conversation-customer',
-    }),
+    claimWeeklySchedule: async (input) => {
+      harness.claimRequests.push({
+        enterpriseId: input.enterpriseId,
+        periodStart: input.period.periodStart,
+        periodEnd: input.period.periodEnd,
+      });
+      return harness.claimResult;
+    },
+    ensureCustomerBinding: async () => harness.customerAvailable
+      ? {
+          available: true,
+          reason: null,
+          bindingId: 'binding-customer',
+          conversationId: 'conversation-customer',
+        }
+      : {
+          available: false,
+          reason: 'customer_access_revoked',
+          bindingId: null,
+          conversationId: null,
+        },
     runBatch: async (input) => {
       batchRequests.push(input.requestId);
-      return runPeriodReportBatch(input, {
+      const result = await runPeriodReportBatch(input, {
         now: () => new Date(harness.clock),
         preflight: async () => ({
           enabled: true,
@@ -481,6 +523,17 @@ async function makeHarness(options?: {
           );
         },
       });
+      if (harness.failAfterBatchOnce) {
+        harness.failAfterBatchOnce = false;
+        // Simulate a host crash after the manifest/sub-runs were committed but
+        // before the schedule entry recorded the batch.
+        throw new WorkflowOperationError(
+          'construction_forbidden',
+          403,
+          'simulated host interruption after the batch manifest',
+        );
+      }
+      return result;
     },
     portsFor: () => ({
       execute: async () => ({}),
@@ -536,6 +589,10 @@ function entryOf(harness: Harness, projectId: string) {
     });
 }
 
+function runOf(harness: Harness, periodStart = '2026-11-02') {
+  return harness.store.get(`schedule-${ENTERPRISE_ID}-weekly-${periodStart}`);
+}
+
 test('resolves the last ended Shanghai Monday-to-Monday week', () => {
   const monday = resolveEndedShanghaiWeek(new Date('2026-11-08T16:00:00.000Z'));
   assert.equal(monday.periodStart, '2026-11-02');
@@ -581,6 +638,10 @@ test('dispatches one project with four independent receivers and a deterministic
   assert.equal(entry.receivers.every((receiver) => !!receiver.reportId), true);
   assert.equal(entry.receivers.every((receiver) => receiver.deliveryState === 'delivered'), true);
   assert.equal(summary.enterprises[0]!.counts.completed, 1);
+  const run = await runOf(harness);
+  assert.ok(run?.weeklyClaim);
+  assert.equal(run!.weeklyClaim!.periodStart, '2026-11-02');
+  assert.equal(summary.enterprises[0]!.gate?.claimed, true);
 });
 
 test('a repeated tick does not create a second batch or model-visible work', async () => {
@@ -814,4 +875,281 @@ test('the read-only query never dispatches or changes the schedule', async () =>
     (error: unknown) => error instanceof WorkflowOperationError
       && error.code === 'period_report_schedule_forbidden',
   );
+});
+
+test('the weekly execution instant follows weekly_day and weekly_time', () => {
+  // Monday 2026-11-09 00:00 Shanghai = end of the 2026-11-02..11-09 week.
+  const periodEnd = new Date('2026-11-08T16:00:00.000Z');
+  assert.equal(
+    weeklyExecutionAt({ periodEnd, weeklyDay: 1, weeklyTime: '00:00' }).toISOString(),
+    '2026-11-08T16:00:00.000Z',
+  );
+  assert.equal(
+    weeklyExecutionAt({ periodEnd, weeklyDay: 1, weeklyTime: '08:00' }).toISOString(),
+    '2026-11-09T00:00:00.000Z',
+  );
+  // Wednesday and Sunday are real later execution days, not "already ended".
+  assert.equal(
+    weeklyExecutionAt({ periodEnd, weeklyDay: 3, weeklyTime: '08:00' }).toISOString(),
+    '2026-11-11T00:00:00.000Z',
+  );
+  assert.equal(
+    weeklyExecutionAt({ periodEnd, weeklyDay: 7, weeklyTime: '08:00' }).toISOString(),
+    '2026-11-15T00:00:00.000Z',
+  );
+});
+
+test('a finished week before the configured weekly time creates no run or batch', async () => {
+  const harness = await makeHarness();
+  // Thursday 10:00 Shanghai, but the enterprise executes on Thursday 12:00.
+  harness.setClaim(claimedWeekly({
+    claimed: false,
+    due: false,
+    alreadyConsumed: false,
+    dueAt: '2026-11-12T04:00:00.000Z',
+    previousNextWeeklyAt: '2026-11-12T04:00:00.000Z',
+    nextWeeklyAt: '2026-11-12T04:00:00.000Z',
+  }));
+  const summary = await runScheduledPeriodReportDispatch(options(), harness.deps);
+  assert.equal(harness.claimRequests.length, 1);
+  assert.equal(harness.claimRequests[0]!.periodStart, '2026-11-02');
+  assert.equal(harness.batchRequests.length, 0);
+  assert.equal(await runOf(harness), null);
+  assert.equal(summary.enterprises[0]!.gate?.due, false);
+  assert.equal(summary.enterprises[0]!.gate?.claimed, false);
+  assert.equal(summary.enterprises[0]!.status, 'missing');
+});
+
+test('Monday 00:00 is the execution boundary for a 00:00 weekly time', async () => {
+  const harness = await makeHarness();
+  harness.setClock(new Date('2026-11-08T16:00:00.000Z'));
+  const summary = await runScheduledPeriodReportDispatch(options(), harness.deps);
+  assert.equal(summary.period.periodStart, '2026-11-02');
+  assert.equal(summary.period.periodEnd, '2026-11-09');
+  assert.equal(summary.enterprises[0]!.gate?.claimed, true);
+  assert.equal(harness.batchRequests.length, 1);
+});
+
+test('a due slot that was already consumed never starts a second generation', async () => {
+  const harness = await makeHarness();
+  harness.setClaim(claimedWeekly({
+    claimed: false,
+    due: true,
+    alreadyConsumed: true,
+    dueAt: '2026-11-09T00:00:00.000Z',
+    previousNextWeeklyAt: '2026-11-16T00:00:00.000Z',
+    nextWeeklyAt: '2026-11-16T00:00:00.000Z',
+  }));
+  const summary = await runScheduledPeriodReportDispatch(options(), harness.deps);
+  assert.equal(harness.batchRequests.length, 0);
+  assert.equal(await runOf(harness), null);
+  assert.equal(summary.enterprises[0]!.gate?.alreadyConsumed, true);
+});
+
+test('a claimed run keeps recovering and observing after next_weekly_at moved', async () => {
+  const harness = await makeHarness({
+    plans: [plan(PROJECT_A), plan(PROJECT_B)],
+  });
+  await runScheduledPeriodReportDispatch(options({ maxProjectsPerRound: 1 }), harness.deps);
+  assert.deepEqual(harness.batchRequests, [
+    `schedule-${ENTERPRISE_ID}-${PROJECT_A}-weekly-2026-11-02`,
+  ]);
+  let run = await runOf(harness);
+  assert.ok(run?.weeklyClaim);
+
+  // The claim already moved next_weekly_at into the next week. A later tick
+  // must still dispatch the remaining project from the claimed run.
+  harness.setClock(new Date('2026-11-12T02:20:00.000Z'));
+  harness.setClaim(claimedWeekly({
+    claimed: false,
+    due: true,
+    alreadyConsumed: true,
+    previousNextWeeklyAt: '2026-11-16T00:00:00.000Z',
+    nextWeeklyAt: '2026-11-16T00:00:00.000Z',
+  }));
+  await runScheduledPeriodReportDispatch(options({ maxProjectsPerRound: 1 }), harness.deps);
+  assert.equal(harness.batchRequests.length, 2);
+  run = await runOf(harness);
+  assert.equal(run!.projects[PROJECT_B]!.state, 'completed');
+
+  // Read receipts keep being observed for the claimed run.
+  for (const entry of Object.values(run!.projects)) {
+    for (const receiver of entry.receivers) {
+      harness.setReadAt(receiver.runId, '2026-11-12T09:00:00.000Z');
+    }
+  }
+  harness.setClock(new Date('2026-11-12T13:00:00.000Z'));
+  const third = await runScheduledPeriodReportDispatch(
+    options({ maxProjectsPerRound: 2 }),
+    harness.deps,
+  );
+  assert.deepEqual([...third.enterprises[0]!.observedProjects].sort(), [PROJECT_A, PROJECT_B]);
+  run = await runOf(harness);
+  assert.equal(
+    Object.values(run!.projects).every((entry) =>
+      entry.receivers.every((receiver) => receiver.readAt === '2026-11-12T09:00:00.000Z')),
+    true,
+  );
+});
+
+test('an explicit old-period replay never claims or moves the current weekly slot', async () => {
+  const harness = await makeHarness();
+  const summary = await runScheduledPeriodReportDispatch(
+    options({ periodStart: '2026-10-26' }),
+    harness.deps,
+  );
+  assert.equal(harness.claimRequests.length, 0);
+  assert.equal(summary.enterprises[0]!.gate, null);
+  assert.equal(harness.batchRequests.length, 1);
+  const run = await runOf(harness, '2026-10-26');
+  assert.ok(run);
+  assert.equal(run!.weeklyClaim, null);
+  assert.equal(
+    run!.audit.some((entry) => entry.action === 'replay_without_claim'),
+    true,
+  );
+});
+
+test('a claim configuration failure blocks the run without a batch', async () => {
+  const harness = await makeHarness();
+  harness.setClaim(claimedWeekly({
+    claimed: false,
+    due: false,
+    reason: 'plan_disabled',
+  }));
+  const summary = await runScheduledPeriodReportDispatch(options(), harness.deps);
+  assert.equal(harness.batchRequests.length, 0);
+  assert.equal(await runOf(harness), null);
+  assert.equal(summary.enterprises[0]!.error?.code, 'plan_disabled');
+  assert.equal(summary.enterprises[0]!.gate?.reason, 'plan_disabled');
+});
+
+test('a missing receiver recovers after the fast recheck budget', async () => {
+  const harness = await makeHarness({
+    plans: [plan(PROJECT_A, { workerAdminId: null, skipReasons: ['worker_missing'] })],
+  });
+  await runScheduledPeriodReportDispatch(
+    options({ recheckLimit: 1, recheckIntervalMs: 60_000 }),
+    harness.deps,
+  );
+  assert.equal(harness.batchRequests.length, 0);
+  let entry = await entryOf(harness, PROJECT_A);
+  assert.equal(entry.state, 'needs_attention');
+  assert.equal(entry.recheckCount, 0);
+
+  harness.setClock(new Date('2026-11-12T02:02:00.000Z'));
+  await runScheduledPeriodReportDispatch(
+    options({ recheckLimit: 1, recheckIntervalMs: 60_000 }),
+    harness.deps,
+  );
+  entry = await entryOf(harness, PROJECT_A);
+  assert.equal(entry.state, 'needs_attention');
+  assert.equal(entry.recheckCount, 1);
+  assert.ok(new Date(entry.nextObservationAt!).getTime() > harness.clock.getTime());
+
+  // A real database fix after the fast budget is still discoverable.
+  harness.plans = [plan(PROJECT_A)];
+  harness.setClock(new Date('2026-11-12T08:03:00.000Z'));
+  await runScheduledPeriodReportDispatch(
+    options({ recheckLimit: 1, recheckIntervalMs: 60_000 }),
+    harness.deps,
+  );
+  entry = await entryOf(harness, PROJECT_A);
+  assert.equal(entry.state, 'completed');
+  assert.equal(harness.batchRequests.length, 1);
+});
+
+for (const recovery of [
+  {
+    name: 'worker_missing',
+    before: plan(PROJECT_A, { workerAdminId: null, skipReasons: ['worker_missing'] }),
+  },
+  {
+    name: 'designer_missing',
+    before: plan(PROJECT_A, { designerAdminId: null, skipReasons: ['designer_missing'] }),
+  },
+  {
+    name: 'boss_missing',
+    before: plan(PROJECT_A, { bossAdminId: null, skipReasons: ['boss_missing'] }),
+  },
+  {
+    name: 'executor_missing',
+    before: plan(PROJECT_A, { executorAdminId: null, skipReasons: ['executor_missing'] }),
+  },
+  {
+    name: 'customer_access_revoked',
+    before: plan(PROJECT_A, { customerAccess: false, skipReasons: ['customer_access_revoked'] }),
+  },
+] as const) {
+  test(`a pre-dispatch ${recovery.name} recovers from current business permissions`, async () => {
+    const harness = await makeHarness({ plans: [recovery.before] });
+    await runScheduledPeriodReportDispatch(options(), harness.deps);
+    assert.equal(harness.batchRequests.length, 0);
+    assert.equal((await entryOf(harness, PROJECT_A))!.state, 'needs_attention');
+    harness.plans = [plan(PROJECT_A)];
+    harness.setClock(new Date('2026-11-12T02:20:00.000Z'));
+    await runScheduledPeriodReportDispatch(options(), harness.deps);
+    const entry = await entryOf(harness, PROJECT_A);
+    assert.equal(entry.state, 'completed');
+    assert.equal(harness.batchRequests.length, 1);
+  });
+}
+
+test('a frozen batch keeps its reports when the customer permission is revoked and restored', async () => {
+  const harness = await makeHarness();
+  await runScheduledPeriodReportDispatch(options(), harness.deps);
+  const first = await entryOf(harness, PROJECT_A);
+  assert.equal(first.state, 'completed');
+  assert.equal(first.receivers.length, 4);
+  const receiptIds = first.receivers.map((receiver) => receiver.reportId);
+
+  harness.setCustomerAvailable(false);
+  harness.setClock(new Date('2026-11-12T09:00:00.000Z'));
+  await runScheduledPeriodReportDispatch(options(), harness.deps);
+  let entry = await entryOf(harness, PROJECT_A);
+  assert.equal(entry.state, 'needs_attention');
+  assert.equal(entry.reason, 'customer_access_revoked');
+  assert.deepEqual(entry.receivers.map((receiver) => receiver.reportId), receiptIds);
+  assert.equal(harness.batchRequests.length, 1);
+
+  harness.setCustomerAvailable(true);
+  harness.setClock(new Date('2026-11-12T09:20:00.000Z'));
+  await runScheduledPeriodReportDispatch(options(), harness.deps);
+  entry = await entryOf(harness, PROJECT_A);
+  assert.equal(entry.state, 'completed');
+  assert.deepEqual(entry.receivers.map((receiver) => receiver.reportId), receiptIds);
+  assert.equal(harness.batchRequests.length, 2);
+  assert.equal(harness.runReceiverCalls.length, 4);
+});
+
+test('a frozen batch keeps its original receivers when identities change', async () => {
+  const harness = await makeHarness();
+  harness.failAfterBatchOnce = true;
+  await runScheduledPeriodReportDispatch(options(), harness.deps);
+  assert.equal(harness.batchRequests.length, 1);
+  const run = await runOf(harness);
+  let entry = run!.projects[PROJECT_A]!;
+  assert.equal(entry.state, 'needs_attention');
+  assert.equal(entry.plan.workerAdminId, WORKER);
+
+  // Both the database and the local plan now offer a different worker. The
+  // existing manifest must keep the original receiver and must not be rewritten.
+  harness.plans = [plan(PROJECT_A, { workerAdminId: '1454000099' })];
+  await harness.store.update({
+    ...run!,
+    projects: {
+      ...run!.projects,
+      [PROJECT_A]: {
+        ...entry,
+        plan: plan(PROJECT_A, { workerAdminId: '1454000099' }),
+      },
+    },
+  });
+  harness.setClock(new Date('2026-11-12T02:20:00.000Z'));
+  await runScheduledPeriodReportDispatch(options(), harness.deps);
+  entry = (await entryOf(harness, PROJECT_A))!;
+  assert.equal(entry.plan.workerAdminId, WORKER);
+  assert.equal(entry.state, 'completed');
+  assert.equal(harness.runReceiverCalls.length, 4);
+  assert.equal(harness.batchRequests.length, 2);
 });

@@ -1547,9 +1547,14 @@ queue or timer:
   Existing enabled enterprise-scoped bindings disambiguate multiple staff or
   owner candidates. A missing, duplicate, ambiguous or revoked receiver is
   recorded with its specific reason; the scheduler never borrows another
-  binding or widens authorization. A retryable pre-dispatch gap is rechecked a
-  bounded number of times; a fix before any batch exists dispatches under the
-  same deterministic request id.
+  binding or widens authorization. A retryable pre-dispatch gap re-reads the
+  current account/member/project/source permission on every recheck: first at
+  the fast interval (three rounds by default), then at a slow six-hour
+  interval, bounded to seven days after the period end. A fix before any batch
+  manifest exists dispatches under the same deterministic request id.
+  Once a manifest exists the receiver ids, project, period and published
+  revision are frozen: a later identity change is refused under the original
+  batch contract instead of replacing the receiver.
 - One project + one period has one deterministic request id
   (`schedule-<enterprise>-<project>-weekly-<periodStart>`) and one batch
   manifest. The B5.8 batch store, its cross-process lease, deterministic
@@ -1558,13 +1563,30 @@ queue or timer:
   request; a completed batch never creates a second report, task, message or
   provider call; `failed` keeps its reason; `unknown` is never re-dispatched;
   a blocking failure stops only that project, not other projects.
-- The weekly slot is claimed on the existing
-  `construction_report_settings.next_weekly_at` using the existing
-  `nextReportAt`/`latestReportPeriod` formula. `nextWeeklyClaimAt()` advances
-  past the next legacy occurrence that would still process the same week, so
-  the old weekly scheduler cannot create a parallel/empty weekly report after
-  the B scheduler takes the week. A due daily schedule remains independent and
-  is allowed in `weekly_claimed` mode; stage reports must stay off.
+- The weekly execution gate has two independent halves (B5.9.1):
+  - the latest finished Shanghai Monday-to-Monday week is mapped with
+    `weeklyExecutionAt()` to the first configured `weekly_day`/`weekly_time`
+    instant at or after its Monday 00:00 end. An ended week alone is not an
+    execution time; before that instant the tick only performs read-only
+    observation and creates no run, batch or business row;
+  - the existing `construction_report_settings.next_weekly_at` must also be
+    due. If the configured instant passed but the stored slot is already in
+    the future, the legacy weekly worker or an earlier B tick consumed this
+    cycle and B must not generate a second time.
+  Only after both checks does one conditional `UPDATE ... WHERE
+  next_weekly_at <= now` claim the enterprise slot. The settings row lock plus
+  that condition make the claim exactly-once across concurrent Worker ticks.
+  `nextWeeklyClaimAt()` advances past the next legacy occurrence that would
+  still process the same week, so the old weekly scheduler cannot create a
+  parallel/empty weekly report after B takes the week. A due daily schedule
+  remains independent and is allowed in `weekly_claimed` mode; stage reports
+  must stay off.
+- The claim receipt (`weeklyClaim`) is stored once in the host run record and
+  is immutable. A run that already owns its claim continues dispatch,
+  reclaim and observation even after `next_weekly_at` moved to the next week;
+  a bounded pass also continues older claimed runs with pending work. An
+  explicit old-period replay never claims and never writes the current
+  `next_weekly_at`.
 - `live/period-report-schedule-store.ts` is host schedule state under
   `NATIVE_WORKFLOW_SCHEDULE_DIR` (default
   `admin/tmp/native-workflow-schedules`): one run per enterprise/period,
@@ -1617,40 +1639,53 @@ queue or timer:
 
 Offline tests: `period-report-schedule.test.ts` covers Shanghai week
 resolution, unended-period rejection, project selection/skip reasons, missing/
-ambiguous receivers, recheck recovery, multi-project request isolation, one
-failure not stopping another project, repeated ticks, unknown/delivery waiting,
-delivered vs read, cross-week issue carry-over, closed issues, pause/resume,
-bounded rounds and the read-only query; `period-report-schedule-store.test.ts`
-covers exclusive create/identity, concurrent adoption, control/ledger and the
-lease TTL; `period-report-schedule-ports.test.ts` covers plan scope,
+ambiguous receivers, recheck recovery after the fast budget, frozen-batch
+recovery, multi-project request isolation, one failure not stopping another
+project, repeated ticks, unknown/delivery waiting, delivered vs read,
+cross-week issue carry-over, closed issues, pause/resume, bounded rounds, the
+read-only query, the Monday 00:00 boundary, before/at/after the configured
+weekly time, an already-consumed slot, a claimed run surviving a moved
+`next_weekly_at`, a replay that never claims, and the `weekly_day` execution
+mapping; `period-report-schedule-store.test.ts` covers exclusive
+create/identity, concurrent adoption, immutable claim receipts, control/ledger
+and the lease TTL; `period-report-schedule-ports.test.ts` covers plan scope,
 `weekly_claimed` legacy handling and the weekly claim boundary. The documented
-offline command is 388/388 (the new files add 23 cases).
+offline command is 404/404 (B5.9.1 adds sixteen cases).
 
-B5.9 evidence status: no live B run was executed this round. Docker Desktop
-cannot be started from the current non-elevated session (`com.docker.service`
-access denied), so the isolated `127.0.0.1:55433` database is unreachable. The
-existing B5.8 four-receiver evidence (reports `12`-`15`, facts runs `22`-`25`,
-body runs `26`-`29`, messages `129`-`132`, read receipts `17:54:40`-`17:54:42`)
-is not regenerated and remains the live four-end evidence. A bounded acceptance
-driver is prepared:
+B5.9.1 evidence status: offline regression is 404/404, lint and the changed-file
+type check pass (the repository-wide `tsc` still has older errors in unrelated
+scripts). The real B-isolated acceptance is blocked: Docker Desktop cannot
+start from the current non-elevated session (`Start-Service`
+`com.docker.service` is denied and `docker version` reports “Docker Desktop is
+unable to start”), while the stale `127.0.0.1:55433` forward accepts TCP but the
+database handshake times out. No live scheduler tick, Worker task, model call,
+report, job, attempt, usage, delivery or message was created in this round; no
+`queued` state is reported as delivered or read. The B5.8 four-receiver
+evidence (reports `12`-`15`, facts runs `22`-`25`, body runs `26`-`29`,
+messages `129`-`132`, read receipts `17:54:40`-`17:54:42`) remains the live
+four-end evidence and is not regenerated. A bounded acceptance driver now
+covers the time gate itself:
 
 ```powershell
 $env:B4_LIVE_APP_DATABASE_URL='postgresql://sfp_app:...@127.0.0.1:55433/smart_floor_planner'
 npx tsx scripts/native-workflow-schedule-acceptance.ts --development `
   --enterprise-id 1454 --project-id 1454000004 `
   --worker-id 1454000008 --designer-id 1454000011 --boss-id 1454000013 `
-  --customer-user-id 1454000002 --period-start 2026-10-19 --wait-worker
+  --customer-user-id 1454000002 --wait-worker
 ```
 
-It reuses the existing published weekly definition and the B5.8 week/reports
-(zero new model calls), verifies scheduler discovery, one unique batch request,
-four receipts/deliveries/messages, delivered/read state, a repeated run with
-unchanged report/job/message/delivery counters, and restores the report plan in
-`finally`. It was not run because the B environment is unavailable; this round
-therefore reports zero real model calls. Historical limitations remain: the
-worker's full continuous lifecycle and the designer's native UI inside the
-revocation window are still unverified, and older failures/unknowns are not
-overwritten.
+It temporarily configures `weekly_day`/`weekly_time`/`next_weekly_at` and
+verifies: before the configured time no run/batch/business row; a paused due
+tick claims nothing; the due tick claims once and creates one project batch with
+four receivers; a repeated tick adds no business row; pause/resume; a read-only
+old-period replay never moves the current weekly slot; and the report plan is
+restored and read back in `finally`. It never falls back to the general
+database. Production automatic scheduling remains off:
+`NATIVE_WORKFLOW_SCHEDULE_ENABLED=0` and an explicit
+`NATIVE_WORKFLOW_SCHEDULE_ENTERPRISE_IDS` allowlist are required. Historical
+limitations remain: the worker's full continuous lifecycle and the designer's
+native UI inside the revocation window are still unverified, and older
+failures/unknowns are not overwritten.
 
 ## Reproduce
 

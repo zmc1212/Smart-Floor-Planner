@@ -30,6 +30,7 @@ function runFixture(periodStart = '2026-11-02'): PeriodReportScheduleRun {
       startAt: '2026-11-01T16:00:00.000Z',
       endAt: '2026-11-08T16:00:00.000Z',
     },
+    weeklyClaim: null,
     published: {
       definitionId: 'period-report-weekly',
       revision: 1,
@@ -109,6 +110,43 @@ test('file schedule store is exclusive and refuses a different identity', async 
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test('the weekly claim receipt is immutable once recorded', async () => {
+  const store = createMemoryPeriodReportScheduleStore();
+  const base = runFixture();
+  const claim = {
+    periodStart: base.period.periodStart,
+    claimedAt: '2026-11-11T16:00:00.000Z',
+    previousNextWeeklyAt: '2026-11-08T16:00:00.000Z',
+    nextWeeklyAt: '2026-11-15T16:00:00.000Z',
+  };
+  const created = await store.create({ ...base, weeklyClaim: claim });
+  assert.deepEqual(created.run.weeklyClaim, claim);
+  await assert.rejects(
+    () => store.update({ ...created.run, weeklyClaim: null }),
+    (error: unknown) => error instanceof WorkflowOperationError
+      && error.code === 'period_report_schedule_conflict',
+  );
+  await assert.rejects(
+    () => store.update({
+      ...created.run,
+      weeklyClaim: { ...claim, nextWeeklyAt: '2026-11-22T16:00:00.000Z' },
+    }),
+    (error: unknown) => error instanceof WorkflowOperationError
+      && error.code === 'period_report_schedule_conflict',
+  );
+  const updated = await store.update({ ...created.run, status: 'observing' });
+  assert.deepEqual(updated.weeklyClaim, claim);
+  // A claim always belongs to the run's own period.
+  await assert.rejects(
+    () => store.update({
+      ...created.run,
+      weeklyClaim: { ...claim, periodStart: '2026-10-26' },
+    }),
+    (error: unknown) => error instanceof WorkflowOperationError
+      && error.code === 'period_report_schedule_conflict',
+  );
 });
 
 test('file schedule store persists control and issue ledger', async () => {

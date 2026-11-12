@@ -274,9 +274,11 @@ async function main(): Promise<void> {
     revision: published.revision,
     ...summary,
   }, null, 2));
+  // A configured-time wait (`gate.due === false` without a reason) is a
+  // normal no-op; a blocked plan/schedule is a real failure.
   process.exitCode = !summary.enabled || enterprise?.busy
     ? 2
-    : enterprise?.status === 'failed'
+    : enterprise?.gate?.reason || enterprise?.status === 'failed'
       ? 1
       : enterprise?.status === 'partial' || enterprise?.status === 'dispatching'
         ? 2

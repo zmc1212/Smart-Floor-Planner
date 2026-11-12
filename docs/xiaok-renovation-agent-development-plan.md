@@ -25,12 +25,12 @@
 | 交付与负责人 | 微云1454一整轮用户旅程：客户自然咨询（Agent V2引用）→真实阶段进展→阶段/日报生成→四端读取、已阅与重进；复用既有服务，不新增产品能力。单一负责人，禁止自动新建或交接聊天，仅用户明确要求才新建/转移。方法约束：先验证真实回答，禁止补丁循环；模型解释、KnowledgeRetriever/Evidence供授权材料，代码守权限/来源/动作/回执；两轮失败停循环，不堆提示词或换模型。 |
 | 用户入口与结果 | 业主645从lead3132进入小K，回答保存可重进；项目237阶段推进后，客户、设计师、工人、老板收到各自获权的阶段与日报，能打开、已阅、重进；非管理者与无成员关系者不可见。 |
 | 已证缺口 | 2026-11-10客户问“施工到哪一步”时旧路径只回固定核实话术；报告域已修并可落库，但语义复核对“本期无记录”的完整度判定不一致（2827通过，2826/2829/2830判不完整）；2831修复轮输入超限、2832缺项陈述、2833–2835问项合并，两轮后停止。真机/生产未验。 |
-| 已完成 | 2026-11-10客户整轮问答、引用、风格推荐、日报生成与四端读取/已阅/重进沿用round-07证据。B4阶段提醒真实闭环已完成：已发布版本绑定→授权读项目→知识关闭确定性提醒→recordStageReminder保存→syncConstructionReminders站内投递；正常/重复/权限/保存失败/投递失败在B隔离库实跑，58项定向测试通过；B5.x 四端日/周报与 B5.8 联合已接；B5.9 自动调度离线完成（388项通过），B隔离真实验收待执行。 |
-| 下一动作 | 恢复 B 隔离库后运行 `admin/scripts/native-workflow-schedule-acceptance.ts`，验证自动发现、四端投递/已读与重复调度不增行业务行；不扩到生产全量，按真实结果定下一阶段。 |
+| 已完成 | 2026-11-10客户整轮问答、引用、风格推荐、日报生成与四端读取/已阅/重进沿用round-07证据。B4阶段提醒真实闭环已完成：已发布版本绑定→授权读项目→知识关闭确定性提醒→recordStageReminder保存→syncConstructionReminders站内投递；正常/重复/权限/保存失败/投递失败在B隔离库实跑，58项定向测试通过；B5.x 四端日/周报与 B5.8 联合已接；B5.9 自动调度离线完成；B5.9.1 已补 weekly_day/weekly_time/next_weekly_at 双重时间门禁、原子领取、已领取批次恢复、旧周期回放不移动当前调度和批次冻结恢复，离线404项通过。B隔离真实验收因Docker服务不可用未执行。 |
+| 下一动作 | 恢复 B 隔离库后运行 `admin/scripts/native-workflow-schedule-acceptance.ts`（新增未到配置时间、暂停、到期领取、重复tick、暂停恢复、旧周期回放只读检查），验证四端投递/已读与重复调度不增行业务行；不扩到生产全量，生产自动调度保持关闭，按真实结果定下一阶段。 |
 | 必要验收 | 网关：无票据409、错key/未知工具404、未声明参数422并毒化该run；真实模型回答与引用可打开；Agent V2联网有可核查来源；同一会话重进保留；阶段/日报按绑定向四端投递且无越权项目；客户已阅、历史筛选与重进；非管理者403；停用/撤权仍阻断；同一工地版本只生成一次开场白；失败原样保留不重采。 |
 | 失败与调用边界 | 已派发供应商不自动重试；turn4、2487/2488等历史失败保留；仅1454开发库；无真实客户写入、外部消息或生产；所有新失败与unknown保留。 |
 | 环境与资源 | smart_floor_planner与3006；Worker约2秒tick；FastGPT Agent V2绑定与反向隧道PID14780；阶段报告走FastGPT stageAppId，日报走1454模型；B4实跑用B隔离库55433与独立文件存储/运行日志。 |
-| 证据与后继 | tmp/xiaok-1454-customer-test-20261110/{round-01..06,focus-01,designer-01,daily-01,daily-02}；报告复测 tmp/xiaok-ownsite-fix-20261110/{diagnose-01,live-27xx,live-2823..2835,ownsite-fix-03..26}（失败原样保留：2828 worker停机、2829/2830复核不完整）；旧证据 tmp/xiaok-1454-full-flow-20261109、xiaok-1454-discovery-20261109、xiaok-v101-native-20261110、xiaok-agentv2-web-recommend-20261110、xiaok-nearby-public-live-20261110；B5.9 离线 388/388 与调度/存储/端口新用例见 `admin/src/lib/native-workflow/README.md`；B 验收驱动 `admin/scripts/native-workflow-schedule-acceptance.ts` 待 B 环境恢复后运行。 |
+| 证据与后继 | tmp/xiaok-1454-customer-test-20261110/{round-01..06,focus-01,designer-01,daily-01,daily-02}；报告复测 tmp/xiaok-ownsite-fix-20261110/{diagnose-01,live-27xx,live-2823..2835,ownsite-fix-03..26}（失败原样保留：2828 worker停机、2829/2830复核不完整）；旧证据 tmp/xiaok-1454-full-flow-20261109、xiaok-1454-discovery-20261109、xiaok-v101-native-20261110、xiaok-agentv2-web-recommend-20261110、xiaok-nearby-public-live-20261110；B5.9.1 离线 404/404 与时间门禁/恢复/冻结新用例见 `admin/src/lib/native-workflow/README.md`；本轮未新增真实报告、任务、尝试、用量、投递或消息，未把 queued 记为 delivered/read；B 验收驱动 `admin/scripts/native-workflow-schedule-acceptance.ts` 待 B 环境恢复后运行，生产自动调度保持 `NATIVE_WORKFLOW_SCHEDULE_ENABLED=0`。 |
 
 ## 3. 复用哪些成果
 

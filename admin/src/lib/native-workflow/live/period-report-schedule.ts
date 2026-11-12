@@ -45,10 +45,12 @@ import {
   type ScheduledReceiverView,
   type ScheduledReminderRecord,
   type ScheduledRunStatus,
+  type ScheduledWeeklyClaimRecord,
 } from './period-report-schedule-types';
 import type {
   PeriodReportScheduleEnvironment,
   ScheduleIssueSnapshot,
+  ScheduleWeeklyClaim,
 } from './period-report-schedule-environment';
 import type { PeriodReportScheduleStore } from './period-report-schedule-store';
 import type { PeriodReportRunObservation } from './period-report-status';
@@ -64,6 +66,11 @@ const DEFAULT_READ_OBSERVE_INTERVAL_MS = 6 * 3_600_000;
 const DEFAULT_MAX_RUN_MS = 90_000;
 const DEFAULT_LEASE_TTL_MS = 10 * 60_000;
 const DEFAULT_RECHECK_LIMIT = 3;
+/** Pre-dispatch receiver/project recovery is bounded to the read window. */
+const PRE_DISPATCH_RECOVERY_WINDOW_MS = 7 * DAY_MS;
+/** After the fast rechecks, a still-missing receiver is retried slowly. */
+const DEFAULT_ATTENTION_RECHECK_INTERVAL_MS = 6 * 3_600_000;
+const MAX_PRIOR_RUNS_PER_TICK = 2;
 const TERMINAL_ISSUE_STATES: ReadonlySet<string> = new Set([
   'cancelled',
   'resolved',
@@ -106,15 +113,35 @@ export interface ScheduledPeriodReportDispatchDependencies {
   readonly environment: PeriodReportScheduleEnvironment;
 }
 
+/**
+ * The weekly time gate as read/claimed in this tick.
+ *
+ * `due` is the enterprise's configured `weekly_day`/`weekly_time` instant for
+ * the resolved week; `claimed` is true only for the one call that atomically
+ * advanced `next_weekly_at`. `alreadyConsumed` means the due slot was already
+ * taken (by the legacy weekly path or an earlier B tick).
+ */
+export interface ScheduledScheduleGate {
+  readonly due: boolean;
+  readonly claimed: boolean;
+  readonly alreadyConsumed: boolean;
+  readonly dueAt: string | null;
+  readonly nextWeeklyAt: string | null;
+  readonly reason: string | null;
+}
+
 export interface ScheduledEnterpriseSummary {
   readonly enterpriseId: string;
   readonly runId: string;
   readonly status: ScheduledRunStatus | 'missing';
   readonly paused: boolean;
   readonly busy: boolean;
+  readonly gate: ScheduledScheduleGate | null;
   readonly counts: ScheduledCounts;
   readonly dispatchedProjects: readonly string[];
   readonly observedProjects: readonly string[];
+  /** Older claimed runs continued this tick (bounded). */
+  readonly recoveredRuns: readonly string[];
   readonly skipReasons: readonly string[];
   readonly error: { readonly code: string; readonly message: string } | null;
 }
@@ -280,6 +307,58 @@ function withAudit(
   };
 }
 
+function gateOf(claim: ScheduleWeeklyClaim): ScheduledScheduleGate {
+  return {
+    due: claim.due,
+    claimed: claim.claimed,
+    alreadyConsumed: claim.alreadyConsumed,
+    dueAt: claim.dueAt,
+    nextWeeklyAt: claim.nextWeeklyAt,
+    reason: claim.reason,
+  };
+}
+
+function claimRecordOf(
+  period: ScheduledPeriod,
+  claim: ScheduleWeeklyClaim,
+  at: string,
+): ScheduledWeeklyClaimRecord {
+  return {
+    periodStart: period.periodStart,
+    claimedAt: at,
+    previousNextWeeklyAt: claim.previousNextWeeklyAt,
+    nextWeeklyAt: claim.nextWeeklyAt,
+  };
+}
+
+function hasDispatchEvidence(run: PeriodReportScheduleRun): boolean {
+  return Object.values(run.projects).some((entry) =>
+    !!entry.dispatchedAt || !!entry.batchStatus || entry.receivers.length > 0);
+}
+
+/**
+ * A batch manifest freezes the four receiver ids. Once it exists, a later
+ * recovery must reuse those ids instead of resolving receivers again.
+ */
+function planWithFrozenReceivers(
+  plan: ScheduledProjectPlan,
+  manifest: PeriodReportBatchManifest,
+): ScheduledProjectPlan {
+  const byKind = new Map(manifest.receivers.map((receiver) => [receiver.kind, receiver.adminId]));
+  return {
+    ...plan,
+    workerAdminId: byKind.get('worker') ?? plan.workerAdminId,
+    designerAdminId: byKind.get('designer') ?? plan.designerAdminId,
+    bossAdminId: byKind.get('boss') ?? plan.bossAdminId,
+    executorAdminId: manifest.actorAdminId,
+  };
+}
+
+function recoveryWindowOpen(period: ScheduledPeriod, now: Date): boolean {
+  return now.getTime()
+    <= new Date(period.endAt).getTime() + PRE_DISPATCH_RECOVERY_WINDOW_MS;
+}
+
 function withProjectAudit(
   entry: ScheduledProjectEntry,
   at: string,
@@ -394,6 +473,11 @@ function mergeEntry(
   if (!previous) return next;
   return {
     ...next,
+    // A failed recovery must never erase the frozen batch evidence a previous
+    // tick already observed. A real re-read can only add to it.
+    receivers: previous.receivers.length ? previous.receivers : next.receivers,
+    batchStatus: previous.batchStatus ?? next.batchStatus,
+    dispatchedAt: previous.dispatchedAt ?? next.dispatchedAt,
     issues: previous.issues.length ? previous.issues : next.issues,
     carryOverIssueIds: previous.carryOverIssueIds.length
       ? previous.carryOverIssueIds
@@ -612,12 +696,17 @@ function withObservationSchedule(
     if (hasUnread(entry.receivers) && nowMs < windowEnd) {
       next = new Date(nowMs + options.readObservationIntervalMs).toISOString();
     }
-  } else if (
-    entry.state === 'needs_attention'
-    && !entry.batchStatus
-    && entry.recheckCount < options.recheckLimit
-  ) {
-    next = new Date(nowMs + options.recheckIntervalMs).toISOString();
+  } else if (entry.state === 'needs_attention' && recoveryWindowOpen(period, now)) {
+    // Fast bounded rechecks first; after that a real receiver/permission fix
+    // must still be discoverable, but at a slower cadence instead of never.
+    // A frozen batch keeps being observed so a restored account/customer
+    // permission can resume its original, unchanged receivers.
+    const interval = entry.batchStatus
+      ? options.observeIntervalMs
+      : entry.recheckCount < options.recheckLimit
+        ? options.recheckIntervalMs
+        : Math.max(options.recheckIntervalMs, DEFAULT_ATTENTION_RECHECK_INTERVAL_MS);
+    next = new Date(nowMs + interval).toISOString();
   }
   return {
     ...entry,
@@ -676,6 +765,44 @@ async function markSkippedOrNeedsAttention(
     withEntry(run, audited),
     auditEntry(now, retryable ? 'project_needs_attention' : 'project_skipped',
       plan.skipReasons[0], `${plan.projectId}: ${plan.skipReasons.join(',')}`),
+  ));
+}
+
+/**
+ * Freeze-preserving attention state for an existing batch.
+ *
+ * The receiver/batch evidence already recorded must survive a customer or
+ * receiver identity change; only the attention reason is new.
+ */
+async function markFrozenNeedsAttention(
+  run: PeriodReportScheduleRun,
+  plan: ScheduledProjectPlan,
+  codes: readonly string[],
+  context: DispatchContext,
+): Promise<PeriodReportScheduleRun> {
+  const nowDate = context.environment.now();
+  const now = nowDate.toISOString();
+  const previous = run.projects[plan.projectId];
+  const base = previous
+    ? { ...previous, plan }
+    : { ...entryFromPlan(plan, run, now), plan };
+  const next = withObservationSchedule({
+    ...base,
+    state: 'needs_attention',
+    reason: [...new Set(codes)].join(',') || null,
+    errorCode: null,
+    observedAt: now,
+  }, run.period, nowDate, context);
+  const audited = withProjectAudit(
+    next,
+    now,
+    'project_needs_attention',
+    codes[0],
+    [...new Set(codes)].join(','),
+  );
+  return context.store.update(withAudit(
+    withEntry(run, audited),
+    auditEntry(now, 'project_needs_attention', codes[0], `${plan.projectId}: ${codes.join(',')}`),
   ));
 }
 
@@ -860,43 +987,62 @@ async function dispatchProject(
 ): Promise<PeriodReportScheduleRun> {
   const now = context.environment.now().toISOString();
   const previous = run.projects[plan.projectId];
+  const requestId = scheduleRequestId(run.enterpriseId, plan.projectId, run.period.periodStart);
+  // Once a batch manifest exists its receivers, project, period and published
+  // revision are frozen. Recovery reuses those ids and never re-resolves them,
+  // even when the database now offers a different worker/designer/boss.
+  const manifest = await context.batchStore.get(requestId);
+  const effectivePlan = manifest ? planWithFrozenReceivers(plan, manifest) : plan;
+
   if (
-    !plan.executorAdminId
-    || !plan.workerAdminId
-    || !plan.designerAdminId
-    || !plan.bossAdminId
-    || !plan.customerUserId
-    || plan.skipReasons.length
+    !effectivePlan.executorAdminId
+    || !effectivePlan.workerAdminId
+    || !effectivePlan.designerAdminId
+    || !effectivePlan.bossAdminId
+    || !effectivePlan.customerUserId
+    || (!manifest && effectivePlan.skipReasons.length)
   ) {
-    return markSkippedOrNeedsAttention(run, plan, context);
+    const reasons = manifest && !effectivePlan.customerUserId
+      ? [...new Set([...effectivePlan.skipReasons, 'customer_missing'])]
+      : [...new Set(effectivePlan.skipReasons)];
+    const codes = reasons.length ? reasons : ['receiver_incomplete'];
+    return manifest
+      ? markFrozenNeedsAttention(run, effectivePlan, codes, context)
+      : markSkippedOrNeedsAttention(
+        run,
+        { ...effectivePlan, skipReasons: codes },
+        context,
+      );
   }
 
+  // The customer receiver is identity-less in the host manifest; re-read the
+  // current lead/customer binding before any recovery so a changed or revoked
+  // customer is refused instead of silently replaced.
   const customer = await context.environment.ensureCustomerBinding({
     enterpriseId: run.enterpriseId,
-    projectId: plan.projectId,
-    customerUserId: plan.customerUserId,
+    projectId: effectivePlan.projectId,
+    customerUserId: effectivePlan.customerUserId,
   });
   if (!customer.available) {
-    const failedPlan: ScheduledProjectPlan = {
-      ...plan,
-      skipReasons: [
-        ...plan.skipReasons,
-        customer.reason ?? 'customer_receiver_unavailable',
-      ],
-    };
-    return markSkippedOrNeedsAttention(run, failedPlan, context);
+    const reason = customer.reason ?? 'customer_receiver_unavailable';
+    return manifest
+      ? markFrozenNeedsAttention(run, effectivePlan, [reason], context)
+      : markSkippedOrNeedsAttention(run, {
+        ...effectivePlan,
+        skipReasons: [...effectivePlan.skipReasons, reason],
+      }, context);
   }
 
   const issues = await context.environment.loadIssues({
     enterpriseId: run.enterpriseId,
-    projectId: plan.projectId,
+    projectId: effectivePlan.projectId,
     period: fixedPeriodOf(run.period, context.now),
   });
-  const ledger = await context.store.ledger(run.enterpriseId, plan.projectId);
+  const ledger = await context.store.ledger(run.enterpriseId, effectivePlan.projectId);
   const merged = mergeLedger(ledger.items, issues, run.period.periodStart, now);
   const targeted = merged.map((issue) => ({
     ...issue,
-    targetKind: chooseReminderTarget(issue, plan)?.kind ?? issue.targetKind ?? null,
+    targetKind: chooseReminderTarget(issue, effectivePlan)?.kind ?? issue.targetKind ?? null,
   }));
   await context.store.saveLedger({
     ...ledger,
@@ -906,8 +1052,8 @@ async function dispatchProject(
 
   const entry = mergeEntry(previous, {
     ...initialEntry(
-      plan,
-      scheduleRequestId(run.enterpriseId, plan.projectId, run.period.periodStart),
+      effectivePlan,
+      requestId,
       scheduleEventId(run.period.periodStart),
       now,
     ),
@@ -918,20 +1064,20 @@ async function dispatchProject(
     nextObservationAt: new Date(context.now.getTime() + context.observeIntervalMs).toISOString(),
   });
   let current = withEntry(
-    withAudit(run, auditEntry(now, 'project_dispatched', undefined, plan.projectId)),
+    withAudit(run, auditEntry(now, 'project_dispatched', undefined, effectivePlan.projectId)),
     withProjectAudit(entry, now, 'project_dispatched'),
   );
   current = await context.store.update(current);
 
   let next: ScheduledProjectEntry;
   try {
-    const input = await buildBatchInput(current, plan, context);
+    const input = await buildBatchInput(current, effectivePlan, context);
     const result = await context.environment.runBatch(input);
     next = applyManifest(entry, result.manifest, context.environment.now().toISOString());
     next = await observeReceipts(next, current.enterpriseId, context);
-    next = await sendReminders(next, plan, current, context);
+    next = await sendReminders(next, effectivePlan, current, context);
     next = withObservationSchedule(next, current.period, context.environment.now(), context);
-    work.dispatched.push(plan.projectId);
+    work.dispatched.push(effectivePlan.projectId);
   } catch (error) {
     const classified = classifyError(error);
     const at = context.environment.now().toISOString();
@@ -948,9 +1094,9 @@ async function dispatchProject(
       classified.code,
       classified.reason,
     );
-    recovered = await sendReminders(recovered, plan, current, context);
+    recovered = await sendReminders(recovered, effectivePlan, current, context);
     next = recovered;
-    work.dispatched.push(plan.projectId);
+    work.dispatched.push(effectivePlan.projectId);
   }
 
   const at = context.environment.now().toISOString();
@@ -972,12 +1118,37 @@ async function observeProject(
 ): Promise<PeriodReportScheduleRun> {
   const entry = run.projects[projectId];
   if (!entry || (!entry.batchStatus && !entry.dispatchedAt)) return run;
-  const plan = entry.plan;
+  const manifest = await context.batchStore.get(entry.requestId);
+  const plan = manifest ? planWithFrozenReceivers(entry.plan, manifest) : entry.plan;
   if (!plan.executorAdminId) return run;
+  if (manifest && !plan.customerUserId) {
+    return markFrozenNeedsAttention(run, plan, ['customer_missing'], context);
+  }
+  if (manifest) {
+    // A never-started customer sub-run must not be dispatched to a changed or
+    // revoked customer after the manifest froze the original receiver set.
+    const customer = await context.environment.ensureCustomerBinding({
+      enterpriseId: run.enterpriseId,
+      projectId: plan.projectId,
+      customerUserId: plan.customerUserId!,
+    });
+    if (!customer.available) {
+      return markFrozenNeedsAttention(
+        run,
+        plan,
+        [customer.reason ?? 'customer_receiver_unavailable'],
+        context,
+      );
+    }
+  }
   try {
     const input = await buildBatchInput(run, plan, context);
     const result = await context.environment.runBatch(input);
-    let next = applyManifest(entry, result.manifest, context.environment.now().toISOString());
+    let next = applyManifest(
+      { ...entry, plan },
+      result.manifest,
+      context.environment.now().toISOString(),
+    );
     next = await observeReceipts(next, run.enterpriseId, context);
     next = withObservationSchedule(next, run.period, context.environment.now(), context);
     work.observed.push(projectId);
@@ -998,7 +1169,7 @@ async function observeProject(
   } catch (error) {
     const classified = classifyError(error);
     const at = context.environment.now().toISOString();
-    const next = withProjectAudit(
+    const next = withObservationSchedule(withProjectAudit(
       {
         ...entry,
         // A later observation cannot deny evidence a delivered report already
@@ -1012,7 +1183,7 @@ async function observeProject(
       'project_observation_failed',
       classified.code,
       classified.reason,
-    );
+    ), run.period, context.environment.now(), context);
     work.observed.push(projectId);
     return context.store.update(withEntry(
       withAudit(run, auditEntry(at, 'project_observation_failed', classified.code, `${projectId}: ${classified.reason}`)),
@@ -1027,6 +1198,35 @@ async function recheckProject(
   context: DispatchContext,
 ): Promise<PeriodReportScheduleRun> {
   const now = context.environment.now().toISOString();
+  // A manifest is the freeze point: receivers, project, period, executor and
+  // published revision can no longer be re-determined. Resume the existing
+  // batch with its original identities instead of discovering new ones.
+  const manifest = await context.batchStore.get(entry.requestId);
+  if (manifest) {
+    const plan = planWithFrozenReceivers(entry.plan, manifest);
+    const next = withProjectAudit(
+      {
+        ...entry,
+        plan,
+        state: 'dispatching',
+        reason: null,
+        errorCode: null,
+        recheckCount: entry.recheckCount + 1,
+        nextObservationAt: now,
+      },
+      now,
+      'project_rechecked',
+      undefined,
+      'batch_frozen_resume',
+    );
+    return context.store.update(withEntry(
+      withAudit(
+        run,
+        auditEntry(now, 'project_rechecked', undefined, `${entry.plan.projectId}: batch_frozen_resume`),
+      ),
+      next,
+    ));
+  }
   try {
     const discovery = await context.environment.discover({
       enterpriseId: run.enterpriseId,
@@ -1188,45 +1388,18 @@ async function advanceRun(
   }
 
   if (context.mode === 'tick') {
-    // The scheduler owns this enterprise's weekly slot once it is enabled for
-    // the latest ended week. Claiming even when every project is skipped keeps
-    // the legacy weekly path from creating a parallel/empty weekly report.
-    // A replay of an older period never moves the current schedule.
-    const latestPeriod = resolveEndedShanghaiWeek(context.environment.now());
-    if (run.period.periodStart === latestPeriod.periodStart) {
-      const claim = await context.environment.claimWeeklySchedule({
-        enterpriseId: run.enterpriseId,
-        period: fixedPeriodOf(run.period, context.now),
-      });
-      if (claim.reason) {
-        run = withAudit(run, auditEntry(
-          context.environment.now().toISOString(),
-          'weekly_claim_failed',
-          claim.reason,
-        ));
-        run = {
-          ...run,
-          lastError: { code: claim.reason, message: claim.reason },
-        };
-        return context.store.update(finalizeRun(run, context.environment.now()));
-      }
-      if (claim.claimed) {
-        run = withAudit(run, auditEntry(
-          context.environment.now().toISOString(),
-          'weekly_schedule_claimed',
-          undefined,
-          `${claim.previousNextWeeklyAt ?? ''}->${claim.nextWeeklyAt ?? ''}`,
-        ));
-      }
-    }
-
+    // The weekly slot is claimed once by `runEnterprise` before this run is
+    // created. This function only recovers/observes what that claim produced,
+    // so a `next_weekly_at` that already moved to the next week never stops an
+    // in-flight batch.
+    const recoveryOpen = recoveryWindowOpen(run.period, context.environment.now());
     const rechecks = run.queue
       .map((plan) => run.projects[plan.projectId])
       .filter((entry): entry is ScheduledProjectEntry =>
         !!entry
         && entry.state === 'needs_attention'
         && !entry.batchStatus
-        && entry.recheckCount < context.recheckLimit
+        && recoveryOpen
         && !!entry.nextObservationAt
         && new Date(entry.nextObservationAt).getTime() <= nowMs())
       .slice(0, context.maxProjectsPerRound);
@@ -1244,6 +1417,7 @@ async function advanceRun(
       if (entry.state === 'queued' || entry.state === 'dispatching') return true;
       return entry.state === 'needs_attention'
         && !entry.batchStatus
+        && recoveryOpen
         && !!entry.nextObservationAt
         && new Date(entry.nextObservationAt).getTime() <= nowMs();
     });
@@ -1260,11 +1434,9 @@ async function advanceRun(
         break;
       }
       const effectivePlan = run.projects[plan.projectId]?.plan ?? plan;
-      if (effectivePlan.skipReasons.length) {
-        run = await markSkippedOrNeedsAttention(run, effectivePlan, context);
-      } else {
-        run = await dispatchProject(run, effectivePlan, context, work);
-      }
+      // `dispatchProject` clamps a manifest-frozen batch and skips a fresh plan
+      // with missing receivers; it never substitutes a new receiver.
+      run = await dispatchProject(run, effectivePlan, context, work);
       dispatched += 1;
     }
   }
@@ -1276,6 +1448,10 @@ async function createRun(
   enterpriseId: string,
   period: ScheduledPeriod,
   context: DispatchContext,
+  ownership: {
+    readonly claim: ScheduledWeeklyClaimRecord | null;
+    readonly replay: boolean;
+  },
 ): Promise<PeriodReportScheduleRun> {
   const now = context.environment.now().toISOString();
   let published: PublishedWorkflowVersion | null = null;
@@ -1300,6 +1476,7 @@ async function createRun(
     runId: scheduleRunId(enterpriseId, period.periodStart),
     enterpriseId,
     period,
+    weeklyClaim: ownership.claim,
     published: published ? publishedIdentity(published) : null,
     status: skipReasons.length ? 'failed' : 'discovered',
     queue: discovery.projects,
@@ -1317,34 +1494,50 @@ async function createRun(
     audit: [
       auditEntry(now, 'run_created', undefined,
         `projects=${discovery.projects.length};excluded=${discovery.excludedProjects}`),
+      ...(ownership.replay
+        ? [auditEntry(now, 'replay_without_claim', undefined,
+          'an explicit old-period replay never moves the current weekly slot')]
+        : []),
+      ...(ownership.claim
+        ? [auditEntry(now, 'weekly_schedule_claimed', undefined,
+          `${ownership.claim.previousNextWeeklyAt ?? ''}->${ownership.claim.nextWeeklyAt ?? ''}`)]
+        : []),
       ...(skipReasons.length
         ? [auditEntry(now, 'discovery_skipped', skipReasons[0], skipReasons.join(','))]
         : []),
     ],
   };
   const created = await context.store.create(run);
-  if (created.created) {
-    return created.run;
+  if (!created.created && ownership.claim && !created.run.weeklyClaim) {
+    // A concurrent creator wrote the run before this tick recorded the claim.
+    // The claim is immutable, so attach the atomically won receipt once.
+    return context.store.update({
+      ...created.run,
+      weeklyClaim: ownership.claim,
+      audit: [
+        ...created.run.audit,
+        auditEntry(now, 'weekly_schedule_claimed', undefined,
+          `${ownership.claim.previousNextWeeklyAt ?? ''}->${ownership.claim.nextWeeklyAt ?? ''}`),
+      ].slice(-200),
+      updatedAt: now,
+    });
   }
   return created.run;
 }
 
-function runHasWork(
-  run: PeriodReportScheduleRun,
-  nowMs: number,
-  recheckLimit: number,
-): boolean {
+function runHasWork(run: PeriodReportScheduleRun, nowMs: number): boolean {
   // A configuration failure is terminal for this period; a later tick must not
   // hammer the same disabled/missing plan. The next period creates a new run.
   if (run.status === 'failed' && run.lastError) return false;
   if (run.queue.length === 0) return run.status === 'discovered';
+  const recoveryOpen = recoveryWindowOpen(run.period, new Date(nowMs));
   const pending = run.queue.some((plan) => {
     const entry = run.projects[plan.projectId];
     if (!entry) return true;
     if (entry.state === 'queued' || entry.state === 'dispatching') return true;
     return entry.state === 'needs_attention'
       && !entry.batchStatus
-      && entry.recheckCount < recheckLimit
+      && recoveryOpen
       && (!entry.nextObservationAt || new Date(entry.nextObservationAt).getTime() <= nowMs);
   });
   if (pending) return true;
@@ -1353,28 +1546,26 @@ function runHasWork(
     && new Date(entry.nextObservationAt).getTime() <= nowMs);
 }
 
-async function runEnterprise(
-  enterpriseId: string,
-  period: ScheduledPeriod,
+interface EnterpriseRunResult {
+  readonly run: PeriodReportScheduleRun | null;
+  readonly busy: boolean;
+  readonly work: EnterpriseWork;
+  readonly gate: ScheduledScheduleGate | null;
+  readonly error: { readonly code: string; readonly message: string } | null;
+}
+
+/**
+ * Continue one existing run under its lease. No claim and no receiver
+ * discovery happen here; the run already owns its period.
+ */
+async function continueRun(
+  run: PeriodReportScheduleRun,
   context: DispatchContext,
-): Promise<{ run: PeriodReportScheduleRun | null; busy: boolean; work: EnterpriseWork }> {
-  const control = await context.store.control(enterpriseId);
-  const work: EnterpriseWork = { dispatched: [], observed: [] };
-  if (control.paused) {
-    return { run: await context.store.get(scheduleRunId(enterpriseId, period.periodStart)), busy: false, work };
-  }
-  let run = await context.store.get(scheduleRunId(enterpriseId, period.periodStart));
-  if (context.mode === 'observe' && !run) {
-    return { run: null, busy: false, work };
-  }
-  if (!run) {
-    run = await createRun(enterpriseId, period, context);
-  }
-  if (context.mode === 'observe' && run.status === 'failed') {
-    return { run, busy: false, work };
-  }
-  if (!runHasWork(run, context.environment.now().getTime(), context.recheckLimit)) {
-    return { run, busy: false, work };
+  work: EnterpriseWork,
+  gate: ScheduledScheduleGate | null,
+): Promise<EnterpriseRunResult> {
+  if (!runHasWork(run, context.environment.now().getTime())) {
+    return { run, busy: false, work, gate, error: run.lastError ?? null };
   }
   const owner = `${process.pid}:${randomUUID()}`;
   const acquired = await context.store.acquire(run.runId, {
@@ -1383,14 +1574,168 @@ async function runEnterprise(
     ttlMs: context.leaseTtlMs,
   });
   if (!acquired) {
-    return { run: await context.store.get(run.runId), busy: true, work };
+    return {
+      run: await context.store.get(run.runId),
+      busy: true,
+      work,
+      gate,
+      error: null,
+    };
   }
   try {
-    run = await advanceRun(run, context, work);
-    return { run, busy: false, work };
+    const advanced = await advanceRun(run, context, work);
+    return {
+      run: advanced,
+      busy: false,
+      work,
+      gate,
+      error: advanced.lastError ?? null,
+    };
   } finally {
     await context.store.release(run.runId, owner).catch(() => undefined);
   }
+}
+
+/**
+ * The weekly slot is claimed before the first run/report exists.
+ *
+ *   - a not-yet-due slot creates no run and dispatches nothing;
+ *   - the due slot is claimed atomically once (the legacy weekly path then
+ *     sees `next_weekly_at` in the future and cannot generate the same week);
+ *   - a run that already recorded its claim always continues recovery and
+ *     observation, even after `next_weekly_at` moved to the next week;
+ *   - an explicit old-period replay never claims and never moves the current
+ *     weekly slot.
+ */
+async function runEnterprise(
+  enterpriseId: string,
+  period: ScheduledPeriod,
+  context: DispatchContext,
+  ownership: 'claim' | 'replay',
+): Promise<EnterpriseRunResult> {
+  const control = await context.store.control(enterpriseId);
+  const work: EnterpriseWork = { dispatched: [], observed: [] };
+  const runId = scheduleRunId(enterpriseId, period.periodStart);
+  if (control.paused) {
+    return {
+      run: await context.store.get(runId),
+      busy: false,
+      work,
+      gate: null,
+      error: null,
+    };
+  }
+  let run = await context.store.get(runId);
+  let gate: ScheduledScheduleGate | null = null;
+
+  if (context.mode === 'observe') {
+    if (!run || run.status === 'failed') {
+      return { run, busy: false, work, gate: null, error: run?.lastError ?? null };
+    }
+    return continueRun(run, context, work, null);
+  }
+
+  if (ownership === 'replay') {
+    if (!run) {
+      run = await createRun(enterpriseId, period, context, { claim: null, replay: true });
+    }
+  } else if (run && (run.weeklyClaim ?? null)) {
+    // Already claimed: keep recovering/observing regardless of the slot now.
+  } else if (run && hasDispatchEvidence(run)) {
+    // A B5.9 run that dispatched before the claim receipt existed. Adopt it
+    // instead of claiming a second time or losing its in-flight batch.
+    const at = context.environment.now().toISOString();
+    run = await context.store.update(withAudit({
+      ...run,
+      weeklyClaim: {
+        periodStart: run.period.periodStart,
+        claimedAt: run.startedAt,
+        previousNextWeeklyAt: null,
+        nextWeeklyAt: null,
+      },
+    }, auditEntry(at, 'weekly_claim_adopted', undefined, 'legacy dispatch evidence')));
+  } else {
+    const claim = await context.environment.claimWeeklySchedule({
+      enterpriseId,
+      period: fixedPeriodOf(period, context.now),
+    });
+    gate = gateOf(claim);
+    const at = context.environment.now().toISOString();
+    if (claim.reason) {
+      if (run) {
+        run = await context.store.update(withAudit({
+          ...run,
+          lastError: { code: claim.reason, message: claim.reason },
+        }, auditEntry(at, 'weekly_claim_failed', claim.reason)));
+      }
+      return { run, busy: false, work, gate, error: { code: claim.reason, message: claim.reason } };
+    }
+    if (!claim.claimed) {
+      // Either the configured weekday/time has not arrived for this week, or
+      // the due slot was already consumed. Only existing read-only observation
+      // is allowed; no run is created for a first report.
+      if (run) {
+        run = await context.store.update(withAudit(
+          run,
+          auditEntry(
+            at,
+            claim.due ? 'weekly_slot_already_consumed' : 'weekly_time_not_reached',
+            undefined,
+            `dueAt=${claim.dueAt ?? ''};next=${claim.nextWeeklyAt ?? ''}`,
+          ),
+        ));
+      }
+      return { run, busy: false, work, gate, error: null };
+    }
+    const record = claimRecordOf(period, claim, at);
+    if (!run) {
+      run = await createRun(enterpriseId, period, context, { claim: record, replay: false });
+    } else {
+      run = await context.store.update(withAudit({
+        ...run,
+        weeklyClaim: record,
+      }, auditEntry(
+        at,
+        'weekly_schedule_claimed',
+        undefined,
+        `${record.previousNextWeeklyAt ?? ''}->${record.nextWeeklyAt ?? ''}`,
+      )));
+    }
+  }
+
+  if (!run) return { run: null, busy: false, work, gate, error: null };
+  return continueRun(run, context, work, gate);
+}
+
+/**
+ * Continue already-claimed older runs, bounded per tick.
+ *
+ * `maxProjectsPerRound` can defer projects past the next Monday; those
+ * batches were claimed under their own period and must still be recovered and
+ * observed. This path never claims and never touches the current
+ * `next_weekly_at`.
+ */
+async function continuePriorRuns(
+  enterpriseId: string,
+  period: ScheduledPeriod,
+  context: DispatchContext,
+): Promise<{ work: EnterpriseWork; runs: string[] }> {
+  const work: EnterpriseWork = { dispatched: [], observed: [] };
+  if (context.mode !== 'tick') return { work, runs: [] };
+  const prior = (await context.store.list({ enterpriseId, limit: 10 }))
+    .filter((run) =>
+      run.period.periodStart < period.periodStart
+      && ((run.weeklyClaim ?? null) !== null || hasDispatchEvidence(run)))
+    .slice(0, MAX_PRIOR_RUNS_PER_TICK);
+  const runs: string[] = [];
+  for (const candidate of prior) {
+    if (context.environment.now().getTime() > context.deadline) break;
+    const current = await context.store.get(candidate.runId);
+    if (!current || !runHasWork(current, context.environment.now().getTime())) continue;
+    const result = await continueRun(current, context, work, null);
+    if (!result.busy) runs.push(candidate.runId);
+  }
+  return { work, runs };
 }
 
 function totalsOf(
@@ -1455,10 +1800,18 @@ export async function runScheduledPeriodReportDispatch(
     mode,
     issuedBy: options.issuedBy ?? 'scheduler',
   };
+  const latest = resolveEndedShanghaiWeek(dependencies.environment.now());
+  const ownership = options.periodStart !== undefined
+    && period.periodStart !== latest.periodStart
+    ? 'replay' as const
+    : 'claim' as const;
   const summaries: ScheduledEnterpriseSummary[] = [];
   for (const enterpriseId of enterpriseIds) {
     const control = await dependencies.store.control(enterpriseId);
-    const result = await runEnterprise(enterpriseId, period, context);
+    const result = await runEnterprise(enterpriseId, period, context, ownership);
+    const prior = mode === 'tick'
+      ? await continuePriorRuns(enterpriseId, period, context)
+      : { work: { dispatched: [], observed: [] }, runs: [] };
     const run = result.run;
     summaries.push({
       enterpriseId,
@@ -1466,13 +1819,15 @@ export async function runScheduledPeriodReportDispatch(
       status: run?.status ?? 'missing',
       paused: control.paused,
       busy: result.busy,
+      gate: result.gate,
       counts: run?.counts ?? emptyCounts(),
-      dispatchedProjects: result.work.dispatched,
-      observedProjects: result.work.observed,
+      dispatchedProjects: [...result.work.dispatched, ...prior.work.dispatched],
+      observedProjects: [...result.work.observed, ...prior.work.observed],
+      recoveredRuns: prior.runs,
       skipReasons: run?.lastError
         ? [run.lastError.code]
         : run?.queue.flatMap((plan) => plan.skipReasons).filter((reason, index, all) => all.indexOf(reason) === index).slice(0, 20) ?? [],
-      error: run?.lastError ?? null,
+      error: result.error ?? run?.lastError ?? null,
     });
   }
   return {

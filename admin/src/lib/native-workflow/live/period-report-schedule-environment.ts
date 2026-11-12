@@ -54,9 +54,17 @@ export interface ScheduleDiscoveryResult {
 }
 
 export interface ScheduleWeeklyClaim {
+  /** True only when this call atomically advanced `next_weekly_at`. */
   readonly claimed: boolean;
+  /** The enterprise's configured execution time for this period has arrived. */
+  readonly due: boolean;
+  /** Due, but the stored weekly slot was already consumed (legacy or B). */
+  readonly alreadyConsumed: boolean;
+  /** First `weekly_day`/`weekly_time` instant at or after the period end. */
+  readonly dueAt: string | null;
   readonly previousNextWeeklyAt: string | null;
   readonly nextWeeklyAt: string | null;
+  /** A blocking plan/schedule configuration error; never a time wait. */
   readonly reason: string | null;
 }
 

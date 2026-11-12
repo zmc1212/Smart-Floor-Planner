@@ -246,6 +246,21 @@ function assertSameRunIdentity(
   ) {
     mismatches.push('published');
   }
+  const existingClaim = existing.weeklyClaim ?? null;
+  const candidateClaim = candidate.weeklyClaim ?? null;
+  if (existingClaim) {
+    if (
+      !candidateClaim
+      || candidateClaim.periodStart !== existingClaim.periodStart
+      || candidateClaim.claimedAt !== existingClaim.claimedAt
+      || candidateClaim.previousNextWeeklyAt !== existingClaim.previousNextWeeklyAt
+      || candidateClaim.nextWeeklyAt !== existingClaim.nextWeeklyAt
+    ) {
+      mismatches.push('weeklyClaim');
+    }
+  } else if (candidateClaim && candidateClaim.periodStart !== existing.period.periodStart) {
+    mismatches.push('weeklyClaim');
+  }
   if (mismatches.length) {
     throw new WorkflowOperationError(
       'period_report_schedule_conflict',

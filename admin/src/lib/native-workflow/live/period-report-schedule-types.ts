@@ -158,11 +158,27 @@ export type ScheduledRunStatus =
   | 'failed'
   | 'paused';
 
+/**
+ * Proof that this enterprise/period was claimed before the first report.
+ *
+ * It is written once, immediately after the atomic `next_weekly_at` update,
+ * and is immutable afterwards. A later tick must keep recovering and observing
+ * this run even though `next_weekly_at` has already moved to the next week.
+ */
+export interface ScheduledWeeklyClaimRecord {
+  readonly periodStart: string;
+  readonly claimedAt: string;
+  readonly previousNextWeeklyAt: string | null;
+  readonly nextWeeklyAt: string | null;
+}
+
 export interface PeriodReportScheduleRun {
   readonly runVersion: typeof SCHEDULE_RUN_VERSION;
   readonly runId: string;
   readonly enterpriseId: string;
   readonly period: ScheduledPeriod;
+  /** null only for an explicit old-period replay, which never claims. */
+  readonly weeklyClaim: ScheduledWeeklyClaimRecord | null;
   readonly published: {
     readonly definitionId: string;
     readonly revision: number;
