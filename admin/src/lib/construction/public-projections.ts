@@ -3,7 +3,7 @@ import { withPlatformTransaction, withTenantTransaction, type PostgresTransactio
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { appendMessage } from '@/lib/assistant/core/conversation';
 import type { ActorContext } from '@/lib/assistant/contracts';
-import { publicMaterial, publicMaterialDto, publishedPublicMaterial } from './public-read';
+import { publicMaterial, publicMaterialDto, publishedPublicMaterial, publishedPublicMaterialStatus, type PublicMaterialFailure } from './public-read';
 import { publicStatusLabels, type PublicContent } from './public-contract';
 
 export type PublicContextRef = { siteId: string; versionId: string };
@@ -48,9 +48,16 @@ export async function publicContextSnapshot(tx: PostgresTransaction, eid: string
   const m = await publishedPublicMaterial(tx, eid, ref.siteId, ref.versionId);
   return m ? { ...ref, contentHash: String(m.version.content_hash), content: m.version.content as PublicContent } : null;
 }
+export async function publicContextStatus(tx: PostgresTransaction, eid: string, ref: PublicContextRef & { contentHash?: string }) {
+  const status = await publishedPublicMaterialStatus(tx, eid, String(ref.siteId), String(ref.versionId));
+  if (!status.material) return { available: false as const, reason: status.reason };
+  // The version the answer actually consumed must still be the same content.
+  if (ref.contentHash && String(status.material.version.content_hash) !== ref.contentHash)
+    return { available: false as const, reason: 'source_changed' as PublicMaterialFailure };
+  return { available: true as const };
+}
 export async function publicContextAvailable(tx: PostgresTransaction, eid: string, ref: PublicContextRef & { contentHash?: string }) {
-  const m = await publishedPublicMaterial(tx, eid, ref.siteId, ref.versionId);
-  return !!m && (!ref.contentHash || m.version.content_hash === ref.contentHash);
+  return (await publicContextStatus(tx, eid, ref)).available;
 }
 export async function publicMessageProjection(tx: PostgresTransaction, actor: ActorContext, c: Row, messageId: string) {
   const event = await one(tx, sql`select e.type,e.payload from app.assistant_messages m join app.domain_event_outbox e on e.enterprise_id=m.enterprise_id and e.id=m.source_event_id
@@ -64,33 +71,44 @@ export async function publicMessageProjection(tx: PostgresTransaction, actor: Ac
       // the persisted 1003 record when present, otherwise the version named by
       // this run's own trigger event. Never the conversation's current choice.
       const proof = refs.length ? refs : intro.ref ? [intro.ref] : [];
-      if (!proof.length) return { available: false };
-      for (const ref of proof)
-        if (!await publicContextAvailable(tx, actor.enterpriseId, ref)) return { available: false };
+      if (!proof.length) return { available: false as const, reason: 'source_changed' as PublicMaterialFailure };
+      for (const ref of proof) {
+        const status = await publicContextStatus(tx, actor.enterpriseId, ref);
+        if (!status.available) return status;
+      }
       return null;
     }
     if (!refs.length) return null;
     const references = [];
     for (const ref of refs) {
-      const material = await publishedPublicMaterial(tx, actor.enterpriseId, ref.siteId, ref.versionId);
-      if (!material || (ref.contentHash && material.version.content_hash !== ref.contentHash)) return { available: false };
-      references.push(await publicMaterialDto(tx, material.site, material.version));
+      const status = await publishedPublicMaterialStatus(tx, actor.enterpriseId, ref.siteId, ref.versionId);
+      if (!status.material) return { available: false as const, reason: status.reason };
+      if (ref.contentHash && String(status.material.version.content_hash) !== ref.contentHash)
+        return { available: false as const, reason: 'source_changed' as PublicMaterialFailure };
+      references.push(await publicMaterialDto(tx, status.material.site, status.material.version));
     }
-    return { available: true, publicReferences: references };
+    return { available: true as const, publicReferences: references };
   }
   const ref = event.payload as PublicContextRef & { customerId?: string };
   if (event.type === 'construction.public.context.v1') {
-    const material = await publishedPublicMaterial(tx, actor.enterpriseId, ref.siteId, ref.versionId);
-    return material ? { available: true, publicContext: await publicMaterialDto(tx, material.site, material.version) } : { available: false };
+    const status = await publishedPublicMaterialStatus(tx, actor.enterpriseId, ref.siteId, ref.versionId);
+    if (!status.material) return { available: false as const, reason: status.reason };
+    return { available: true as const, publicContext: await publicMaterialDto(tx, status.material.site, status.material.version) };
   }
   const owner = await one(tx, sql`select user_id::text from app.assistant_participants where enterprise_id=${actor.enterpriseId} and conversation_id=${String(c.id)} and status='active' and user_id is not null order by id limit 1`);
-  if (!owner || String(owner.user_id) !== ref.customerId) return { available: false };
+  if (!owner || String(owner.user_id) !== ref.customerId) return { available: false as const, reason: 'source_forbidden' as PublicMaterialFailure };
   const material = await publicMaterial(tx, actor.enterpriseId, ref.siteId, ref.versionId);
-  if (!material || String(material.site.customer_id) !== ref.customerId) return { available: false };
+  if (!material || String(material.site.customer_id) !== ref.customerId) {
+    if (!material) {
+      const status = await publishedPublicMaterialStatus(tx, actor.enterpriseId, ref.siteId, ref.versionId);
+      return { available: false as const, reason: status.material ? 'source_changed' : status.reason };
+    }
+    return { available: false as const, reason: 'source_forbidden' as PublicMaterialFailure };
+  }
   const content = material.version.content as PublicContent;
   const ownAction = actor.principal.kind === 'user' && actor.principal.userId === ref.customerId;
   const dto = await publicMaterialDto(tx, material.site, material.version);
-  return { available: true, publicConsent: { ...dto, excerpts: content.excerpts.slice(0, 1), excerptCount: content.excerpts.length,
+  return { available: true as const, publicConsent: { ...dto, excerpts: content.excerpts.slice(0, 1), excerptCount: content.excerpts.length,
     canDecide: ownAction && material.site.status === 'pending_owner' && c.status === 'open',
     canWithdraw: ownAction && ['pending_owner','owner_approved','published','rejected'].includes(String(material.site.status)) && c.status === 'open',
     reason: String(material.site.reason || '') } };

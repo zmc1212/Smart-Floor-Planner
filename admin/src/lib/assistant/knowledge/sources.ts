@@ -107,6 +107,17 @@ export async function webCitationProjection(tx: PostgresTransaction, actor: Acto
     return { id: citationId, available: false, reason: 'source_unavailable' };
   return await webCitationForAnswer(tx, actor, c, citationId) || { id: citationId, available: false, reason: 'source_unavailable' };
 }
+/** Explain why a saved answer can no longer be replayed. A retryable store
+ * failure is not described as deleted content, and a lost grant is not
+ * described as a changed version. */
+export function unavailableNoticeText(reason?: string) {
+  if (reason === 'source_changed') return '这条回答所依据的公开资料已更新，请重新查看最新版本。';
+  if (reason === 'source_missing') return '这条回答所依据的原始记录已不存在，无法继续查看。';
+  if (reason === 'source_forbidden') return '你已无权查看这条回答所依据的资料。';
+  if (reason === 'source_withdrawn') return '这条回答所依据的公开内容已撤回，无法继续查看。';
+  if (reason === 'source_unreadable') return '资料暂时无法读取，请稍后重试。';
+  return '这条回答所依据的资料已不可用，请重新提问。';
+}
 export async function projectMessage(tx:PostgresTransaction,actor:ActorContext,c:Row,message:Row) {
   // Revoking an original also hides pre-revocation AI prose after it. This
   // conservative fence covers unstructured replies without inventing citations;
@@ -133,10 +144,14 @@ export async function projectMessage(tx:PostgresTransaction,actor:ActorContext,c
   const planProjection = await planMessageProjection(tx, actor.enterpriseId, String(c.id), String(message.id));
   const available=speech?.revoked !== true && planProjection?.available !== false && publicProjection?.available !== false && !(message.answer_kind==='grounded' && !projected.length) && projected.every(x=>x.available)
     && await agentMessageAvailable(tx, actor.enterpriseId, String(c.id), String(message.id),actor);
+  // Only a public-source denial names its reason; other blocks keep the generic
+  // fallback. The client renders fallbackText, so no client change is needed.
+  const publicReason = publicProjection && publicProjection.available === false ? publicProjection.reason : undefined;
   const designerRecommendation = available && actor.principal.kind === 'user'
     ? await designerMessageProjection(tx, actor, String(c.id), String(message.id)) : null;
   return {id:String(message.id),seq:String(message.seq),authorKind:message.author_kind,answerKind:message.answer_kind ?? null,available,
-    content:available?message.content:{version:1,blocks:[{type:'notice',code:'source_unavailable',fallbackText:'这条回答所依据的资料已不可用，请重新提问。'}]},
+    content:available?message.content:{version:1,blocks:[{type:'notice',code:'source_unavailable',
+      ...(publicReason?{reason:publicReason}:{}),fallbackText:unavailableNoticeText(publicReason)}]},
     citations:projected,createdAt:message.created_at,constructionReminder: available && message.purpose === 'construction.stage',
     constructionFollowUp: available && message.purpose === 'construction.followup',
     planDecision: available && planProjection?.available ? planProjection.planDecision : null,

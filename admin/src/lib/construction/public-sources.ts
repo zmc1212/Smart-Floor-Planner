@@ -59,23 +59,70 @@ export async function availableStaffSources(tx: PostgresTransaction, actor: Cons
   }
   return result;
 }
-/** Same predicate is used before consent, publication, generation commit, search and every media GET. */
-export async function publicSourcesAvailable(tx: PostgresTransaction, site: Row, version: Row) {
-  const content = version.content as { sourceCount?: number; photoCount?: number };
-  const refs = await rows(tx, sql`select * from app.construction_public_sources where enterprise_id=${String(site.enterprise_id)} and site_id=${String(site.id)} and version_id=${String(version.id)} order by position`);
-  if (!refs.length || refs.length !== content.sourceCount) return false;
-  for (const ref of refs) {
-    const sourceId = ref.kind === 'site_record' ? ref.record_id : ref.message_id;
-    if (!sourceId) return false;
-    const current = await materialSource(tx, site, String(ref.kind), String(sourceId));
-    if (!current || current.sourceHash !== ref.source_hash || (ref.kind === 'site_record' && current.version !== ref.record_version)
-      || (ref.kind === 'consultation_message' && current.conversationId !== String(ref.conversation_id))) return false;
+/** Why a published version can no longer be read. A transient read error is
+ * never reported as "this source does not exist": `source_unreadable` is a
+ * retryable infrastructure state, `source_forbidden` means the viewer/original
+ * lost access, `source_changed` means the version/source no longer qualifies
+ * (edited, re-published, withdrawn, replaced) and `source_missing` means the
+ * original record was deleted. */
+export type PublicSourceFailure = 'source_changed' | 'source_missing' | 'source_forbidden' | 'source_unreadable';
+export type PublicSourceStatus = { ok: true } | { ok: false; reason: PublicSourceFailure };
+const sourceFailure = (reason: PublicSourceFailure): PublicSourceStatus => ({ ok: false, reason });
+/** Classify one reference whose material lookup returned nothing. The original
+ * row still decides deletion, while an existing row that no longer satisfies
+ * the publication predicate is a changed source, not a missing one. */
+async function missingSourceReason(tx: PostgresTransaction, site: Row, kind: string, sourceId: string): Promise<PublicSourceFailure> {
+  const eid = String(site.enterprise_id), pid = String(site.project_id), uid = String(site.customer_user_id || '');
+  if (kind === 'site_record') {
+    const record = await one(tx, sql`select id,published_customer_id from app.construction_site_records
+      where enterprise_id=${eid} and project_id=${pid} and id=${sourceId}`);
+    if (!record) return 'source_missing';
+    return record.published_customer_id && String(record.published_customer_id) !== uid ? 'source_forbidden' : 'source_changed';
   }
-  const media = await rows(tx, sql`select m.source_record_id,m.source_media_id,m.source_hash as expected_hash,original.source_hash,original.deleted_at from app.construction_public_media m
-    left join app.construction_site_media original on original.enterprise_id=m.enterprise_id and original.project_id=m.project_id and original.id=m.source_media_id
-    where m.enterprise_id=${String(site.enterprise_id)} and m.site_id=${String(site.id)} and m.version_id=${String(version.id)}`);
-  if (media.length !== content.photoCount) return false;
-  for (const photo of media) if (!photo.source_record_id || !photo.source_media_id || !photo.source_hash || photo.source_hash !== photo.expected_hash || photo.deleted_at
-    || !refs.some(r => r.kind === 'site_record' && String(r.record_id) === String(photo.source_record_id))) return false;
-  return true;
+  if (kind !== 'consultation_message') return 'source_missing';
+  const message = await one(tx, sql`select m.id,c.status,c.purpose,c.entry_snapshot from app.assistant_messages m
+    left join app.assistant_conversations c on c.enterprise_id=m.enterprise_id and c.id=m.conversation_id
+    where m.enterprise_id=${eid} and m.id=${sourceId}`);
+  if (!message) return 'source_missing';
+  // The original message still exists, but the consultation that authorised the
+  // private excerpt is closed, repurposed or redacted: the viewer lost access.
+  if (!message.status || String(message.status) !== 'open' || String(message.purpose) !== 'customer_consultation'
+    || String((message.entry_snapshot as Row | null)?.retentionRedacted || 'false') === 'true') return 'source_forbidden';
+  return 'source_changed';
+}
+/** Same predicate is used before consent, publication, generation commit, search and every media GET.
+ * Callers that need to explain an unavailable version use this status so a
+ * network/read failure is never presented as withdrawn content. */
+export async function publicSourceStatus(tx: PostgresTransaction, site: Row, version: Row): Promise<PublicSourceStatus> {
+  try {
+    const content = version.content as { sourceCount?: number; photoCount?: number };
+    const refs = await rows(tx, sql`select * from app.construction_public_sources where enterprise_id=${String(site.enterprise_id)} and site_id=${String(site.id)} and version_id=${String(version.id)} order by position`);
+    if (!refs.length || refs.length !== content.sourceCount) return sourceFailure('source_changed');
+    for (const ref of refs) {
+      const sourceId = ref.kind === 'site_record' ? ref.record_id : ref.message_id;
+      if (!sourceId) return sourceFailure('source_changed');
+      let current: PublicSource | null;
+      try { current = await materialSource(tx, site, String(ref.kind), String(sourceId)); }
+      catch { return sourceFailure('source_unreadable'); }
+      if (!current) return sourceFailure(await missingSourceReason(tx, site, String(ref.kind), String(sourceId)));
+      if (current.sourceHash !== ref.source_hash || (ref.kind === 'site_record' && current.version !== ref.record_version)
+        || (ref.kind === 'consultation_message' && current.conversationId !== String(ref.conversation_id))) return sourceFailure('source_changed');
+    }
+    const media = await rows(tx, sql`select m.source_record_id,m.source_media_id,m.source_hash as expected_hash,original.source_hash,original.deleted_at from app.construction_public_media m
+      left join app.construction_site_media original on original.enterprise_id=m.enterprise_id and original.project_id=m.project_id and original.id=m.source_media_id
+      where m.enterprise_id=${String(site.enterprise_id)} and m.site_id=${String(site.id)} and m.version_id=${String(version.id)}`);
+    if (media.length !== content.photoCount) return sourceFailure('source_changed');
+    for (const photo of media) {
+      if (!photo.source_record_id || !photo.source_media_id || !photo.expected_hash) return sourceFailure('source_changed');
+      // The left join supplies the original media hash; a missing original was
+      // deleted, while a deleted/replaced one is a changed source.
+      if (!photo.source_hash) return sourceFailure('source_missing');
+      if (photo.deleted_at || photo.expected_hash !== photo.source_hash) return sourceFailure('source_changed');
+      if (!refs.some(r => r.kind === 'site_record' && String(r.record_id) === String(photo.source_record_id))) return sourceFailure('source_changed');
+    }
+    return { ok: true };
+  } catch { return sourceFailure('source_unreadable'); }
+}
+export async function publicSourcesAvailable(tx: PostgresTransaction, site: Row, version: Row) {
+  return (await publicSourceStatus(tx, site, version)).ok;
 }

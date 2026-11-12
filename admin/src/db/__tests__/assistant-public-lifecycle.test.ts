@@ -131,10 +131,53 @@ async function withdrawn(site: { siteId: string }) {
     revision=revision+1,updated_at=now() where enterprise_id=${enterpriseId} and id=${site.siteId}`));
 }
 
+/** A real re-save: a new current version copies the same sources forward, so
+ * every earlier version (and any answer bound to it) is no longer current. */
+async function republished(site: { siteId: string; versionId: string }) {
+  await withTenantTransaction(enterpriseId, async tx => {
+    const current = (await one(tx, sql`select * from app.construction_public_versions
+      where enterprise_id=${enterpriseId} and site_id=${site.siteId} and id=${site.versionId}`))!;
+    const next = (await one(tx, sql`insert into app.construction_public_versions(enterprise_id,project_id,site_id,ordinal,content,content_hash,prepared_by)
+      values(${enterpriseId},${String(current.project_id)},${site.siteId},${Number(current.ordinal) + 1},
+      ${JSON.stringify(current.content)}::jsonb,${String(current.content_hash)},${adminId}) returning id`))!;
+    await tx.execute(sql`insert into app.construction_public_sources(enterprise_id,project_id,site_id,version_id,position,kind,conversation_id,message_id,source_hash)
+      select enterprise_id,project_id,site_id,${String(next.id)},position,kind,conversation_id,message_id,source_hash
+      from app.construction_public_sources where enterprise_id=${enterpriseId} and site_id=${site.siteId} and version_id=${site.versionId}`);
+    await tx.execute(sql`update app.construction_public_sites set current_version_id=${String(next.id)},consented_version_id=${String(next.id)},
+      revision=revision+1,updated_at=now() where enterprise_id=${enterpriseId} and id=${site.siteId}`);
+  });
+}
+
+/** The customer loses access to the project the public site belongs to. */
+async function accessRevoked(site: { siteId: string }) {
+  await withTenantTransaction(enterpriseId, tx => tx.execute(sql`update app.construction_projects set customer_access=false
+    where enterprise_id=${enterpriseId} and id=(select project_id from app.construction_public_sites
+      where enterprise_id=${enterpriseId} and id=${site.siteId})`));
+}
+
 async function pending(conversationId: string, text: string) {
   const run = await service.send(conversationId, randomUUID(), { version: 1, blocks: [{ type: 'text', text }] });
   assert.ok(run.runId);
   const lease = await claimJob({ enterpriseId, runId: String(run.runId) });
+  assert.ok(lease);
+  return { runId: String(run.runId), lease: lease as Lease };
+}
+
+/** Earlier cases may leave an unexpired lease on a run they no longer drive.
+ * The enterprise slot is shared, so expire those stale leases before claiming
+ * this case's own scoped run; the claim itself stays narrowed to that run. */
+async function pendingFresh(conversationId: string, text: string) {
+  await withTenantTransaction(enterpriseId, tx => tx.execute(sql`update app.assistant_jobs set lease_expires_at=now()
+    where enterprise_id=${enterpriseId} and status='running' and lease_expires_at>now()`));
+  const run = await service.send(conversationId, randomUUID(), { version: 1, blocks: [{ type: 'text', text }] });
+  assert.ok(run.runId);
+  let lease = await claimJob({ enterpriseId, runId: String(run.runId) });
+  // A slot released by the previous case may become visible a moment later;
+  // wait for this exact run instead of claiming an unrelated queued job.
+  for (let attempt = 0; !lease && attempt < 40; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 250));
+    lease = await claimJob({ enterpriseId, runId: String(run.runId) });
+  }
   assert.ok(lease);
   return { runId: String(run.runId), lease: lease as Lease };
 }
@@ -395,7 +438,7 @@ async function seedModelWithoutCheckpoint(lease: Lease) {
  * public-site answers — the 1003 dependency record. */
 async function seedPriorAnswer(conversationId: string, spec: {
   question: string; text: string; publicRef: { siteId: string; versionId: string; contentHash: string } | null;
-  snapshots: Row[]; deliveredSnapshots: number; ownBusinessTool: boolean;
+  snapshots: Row[]; deliveredSnapshots: number; ownBusinessTool: boolean; emptyPublicDependency?: boolean;
 }) {
   return withTenantTransaction(enterpriseId, async tx => {
     const question = await appendMessage(tx, actor, conversationId, { author: 'user', clientMessageId: randomUUID(),
@@ -416,6 +459,12 @@ async function seedPriorAnswer(conversationId: string, spec: {
         values(${enterpriseId},${String(run.id)},1003,'agent_public_context','succeeded',
         ${JSON.stringify([spec.publicRef])}::jsonb,${JSON.stringify({ protocol: xiaokNativeExecutorProtocol,
           current: { siteId: spec.publicRef.siteId, versionId: spec.publicRef.versionId } })}::jsonb)`);
+    else if (spec.emptyPublicDependency)
+      // The current executor always records the dependency row: an empty array
+      // proves this answer used no public source at all.
+      await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs,input_summary)
+        values(${enterpriseId},${String(run.id)},1003,'agent_public_context','succeeded',
+        '[]'::jsonb,${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, current: null })}::jsonb)`);
     if (spec.ownBusinessTool)
       await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,status,input_summary)
         values(${enterpriseId},${String(run.id)},1400,'agent_tool','query_business','succeeded',
@@ -996,4 +1045,97 @@ test('a follow-up inherits the original public dependency and drops the answer o
   assert.equal(await withTenantTransaction(enterpriseId, tx => publicMessageAvailable(tx, enterpriseId,
     site.conversationId, String(firstAnswer.id))), false);
   assert.equal(await providerAttempts(followUp.runId), 0);
+});
+
+test('a re-saved source version makes the earlier answer unusable and names the version change', async () => {
+  const site = await publishedSite(prefix + '-version');
+  const { lease } = await pendingFresh(site.conversationId, '这个工地现在做到哪一步了？');
+  await markProviderStarted(lease);
+  await seedResume(lease, site, '这个工地现在做到哪一步了？');
+  await processNativeAgentAnswer(lease);
+  assert.equal((await service.run(lease.runId)).status, 'succeeded');
+  const answer = (await assistantMessages(site.conversationId))[0];
+  const before = await withTenantTransaction(enterpriseId, tx => publicMessageProjection(tx, actor,
+    { id: site.conversationId } as Row, String(answer.id)));
+  assert.equal(before?.available, true);
+  // Re-saving publishes a new current version; the old one must not be treated
+  // as the current valid copy of the same site.
+  await republished(site);
+  const after = await withTenantTransaction(enterpriseId, tx => publicMessageProjection(tx, actor,
+    { id: site.conversationId } as Row, String(answer.id)));
+  assert.equal(after?.available, false);
+  assert.equal(after?.reason, 'source_changed');
+  const message = (await service.messages(site.conversationId)).items.find(item => item.authorKind === 'assistant')!;
+  assert.equal(message.available, false);
+  assert.match(JSON.stringify(message.content), /公开资料已更新/);
+});
+
+test('a withdrawn site names the withdrawal instead of a retryable failure', async () => {
+  const site = await publishedSite(prefix + '-withdrawn-reason');
+  const { lease } = await pendingFresh(site.conversationId, '这个工地现在做到哪一步了？');
+  await markProviderStarted(lease);
+  await seedResume(lease, site, '这个工地现在做到哪一步了？');
+  await processNativeAgentAnswer(lease);
+  assert.equal((await service.run(lease.runId)).status, 'succeeded');
+  const answer = (await assistantMessages(site.conversationId))[0];
+  await withdrawn(site);
+  const projected = await withTenantTransaction(enterpriseId, tx => publicMessageProjection(tx, actor,
+    { id: site.conversationId } as Row, String(answer.id)));
+  assert.equal(projected?.available, false);
+  assert.equal(projected?.reason, 'source_withdrawn');
+  const message = (await service.messages(site.conversationId)).items.find(item => item.authorKind === 'assistant')!;
+  assert.match(JSON.stringify(message.content), /已撤回/);
+});
+
+test('losing project access hides the answer as a permission failure, not as deleted content', async () => {
+  const site = await publishedSite(prefix + '-revoked');
+  const { lease } = await pendingFresh(site.conversationId, '这个工地现在做到哪一步了？');
+  await markProviderStarted(lease);
+  await seedResume(lease, site, '这个工地现在做到哪一步了？');
+  await processNativeAgentAnswer(lease);
+  assert.equal((await service.run(lease.runId)).status, 'succeeded');
+  const answer = (await assistantMessages(site.conversationId))[0];
+  assert.equal(await withTenantTransaction(enterpriseId, tx => publicMessageAvailable(tx, enterpriseId,
+    site.conversationId, String(answer.id))), true);
+  await accessRevoked(site);
+  const projected = await withTenantTransaction(enterpriseId, tx => publicMessageProjection(tx, actor,
+    { id: site.conversationId } as Row, String(answer.id)));
+  assert.equal(projected?.available, false);
+  assert.equal(projected?.reason, 'source_forbidden');
+  assert.equal(await withTenantTransaction(enterpriseId, tx => publicMessageAvailable(tx, enterpriseId,
+    site.conversationId, String(answer.id))), false);
+});
+
+test('an own-business answer stays valid history while a public site is merely selected', async () => {
+  const site = await publishedSite(prefix + '-own');
+  // Recorded with an empty dependency row, exactly like the current executor:
+  // this answer consumed no public source, so it is about the customer's own
+  // material and must remain usable while the site stays selected.
+  await seedPriorAnswer(site.conversationId, { question: '我的量房预约是什么时候？', text: '您的量房预约在明天上午。',
+    publicRef: null, emptyPublicDependency: true, snapshots: [], deliveredSnapshots: 0, ownBusinessTool: true });
+  const { lease } = await pendingFresh(site.conversationId, '那我要准备什么？');
+  try {
+    const assembled = await nativeConversation(lease, []);
+    assert.ok(assembled.messages.some(message => message.role === 'assistant' && /量房预约/.test(message.content)));
+    assert.equal(assembled.businessContextActive, true);
+  } finally { await service.run(lease.runId, 'cancel', randomUUID()).catch(() => undefined); }
+});
+
+test('a selected site never reuses an answer produced for another site', async () => {
+  const site = await publishedSite(prefix + '-cross-a');
+  const other = await publishedSite(prefix + '-cross-b');
+  await seedPriorAnswer(site.conversationId, { question: '这个工地现在做到哪一步了？', text: 'A 工地正在做水电阶段。',
+    publicRef: { siteId: site.siteId, versionId: site.versionId, contentHash: site.contentHash },
+    snapshots: [], deliveredSnapshots: 0, ownBusinessTool: false });
+  // The visitor moves to another public site in the same consultation.
+  await withTenantTransaction(enterpriseId, tx => tx.execute(sql`update app.assistant_conversations
+    set entry_snapshot=jsonb_set(entry_snapshot,'{activePublicSite}',
+      ${JSON.stringify({ siteId: other.siteId, versionId: other.versionId })}::jsonb)
+    where enterprise_id=${enterpriseId} and id=${site.conversationId}`));
+  const { lease } = await pendingFresh(site.conversationId, '那它现在到哪一步了？');
+  try {
+    const assembled = await nativeConversation(lease, []);
+    assert.equal(assembled.messages.some(message => message.role === 'assistant' && /A 工地/.test(message.content)), false);
+    assert.deepEqual(assembled.publicRefs, []);
+  } finally { await service.run(lease.runId, 'cancel', randomUUID()).catch(() => undefined); }
 });

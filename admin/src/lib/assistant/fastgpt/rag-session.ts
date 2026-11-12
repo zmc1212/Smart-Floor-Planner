@@ -101,7 +101,11 @@ export async function nativeConversation(lease: Lease, configured: RagSource[], 
               (PublicContextRef & { contentHash?: string }) | undefined;
             if (legacy?.siteId && legacy.versionId) savedRefs.set(legacy.siteId + ':' + legacy.versionId, legacy);
           }
-          if (activePublicSite) {
+          // An answer that consumed no public source (its own 1003 record is
+          // empty) is provably about the customer's own material and stays
+          // valid history while a site is merely selected. Only answers tied to
+          // another site/version are excluded from this object's thread.
+          if (activePublicSite && savedRefs.size) {
             const same = [...savedRefs.values()].find(ref => String(ref.siteId) === String(activePublicSite.siteId)
               && String(ref.versionId) === String(activePublicSite.versionId));
             if (!same) continue;
