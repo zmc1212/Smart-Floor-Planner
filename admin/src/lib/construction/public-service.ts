@@ -183,9 +183,13 @@ export class PublicMaterialService {
       const site = await one(tx, sql`select * from app.construction_public_sites where enterprise_id=${eid} and project_id=${pid} for update`);
       if (!site || (!permission.manage && String(site.prepared_by) !== aid)) fail('construction_forbidden', 403);
       if (['publish','reject'].includes(action) && !permission.owner) fail('construction_forbidden', 403);
+      if (String(site.current_version_id) !== input.versionId) fail('version_conflict');
+      if (action !== 'withdraw') {
+        if (!await publicMaterial(tx, eid, String(site.id), String(input.versionId))) fail('public_source_unavailable');
+        if (site.status === 'withdrawn') fail('public_state_conflict');
+      }
       return idempotent(tx, siteActor(this.actor), 'public:' + action + ':' + pid, requestKey, input, async () => {
-        if (Number(site.revision) !== revision || String(site.current_version_id) !== input.versionId) fail('version_conflict');
-        if (action !== 'withdraw' && !await publicMaterial(tx, eid, String(site.id), String(input.versionId))) fail('public_source_unavailable');
+        if (Number(site.revision) !== revision) fail('version_conflict');
         if (action === 'submit' && site.status !== 'draft') fail('public_state_conflict');
         if (['publish','reject'].includes(action) && (site.status !== 'owner_approved' || String(site.consented_version_id) !== String(site.current_version_id) || String(site.consented_by) !== String(site.customer_id))) fail('public_consent_required');
         if (action === 'submit') {

@@ -622,6 +622,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
         if (!samePublicRef(expectedActive, active ?? null)) fail('context_changed');
         for (const ref of runPublicRefs.values())
           if (!await publicContextAvailable(tx, lease.enterpriseId, ref)) fail('context_changed');
+        await sites.revalidate(tx);
         // Recalled customer originals carry their own ref set (recovered
         // snapshots plus every fresh recall): a session version bump or an
         // unavailable original blocks the next model call exactly like the
@@ -1183,6 +1184,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
         if (!samePublicRef(expectedActive, active ?? null)) fail('context_changed');
         for (const ref of runPublicRefs.values())
           if (!await publicContextAvailable(tx, lease.enterpriseId, ref)) fail('context_changed');
+        await sites.revalidate(tx);
         // Recalled originals revalidate one last time beside the other
         // consulted sources before the answer commits.
         if (historyRefs.size && !await historyRefsAvailable(tx, lease.enterpriseId, String(state.conversation.id), [...historyRefs.values()])) fail('context_changed');

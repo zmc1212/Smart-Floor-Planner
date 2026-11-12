@@ -7,7 +7,8 @@ import type { ModelMessage } from '../contracts/model';
 import type { SynthesisContext } from './synthesis';
 import { synthesisContextAvailable } from './synthesis-sources';
 import { enterpriseKnowledgeEnabled } from '../knowledge-policy';
-import { publicMessageAvailable } from '@/lib/construction/public-projections';
+import { publicContextStatus, publicMessageAvailable, type PublicContextRef } from '@/lib/construction/public-projections';
+import { publicHistoryScope } from './history';
 
 export type AncestorSourceRef = { runId: string; messageId: string; contentHash: string; contextHash: string };
 export const ancestorSourcesProtocol = 'authorized-ancestor-sources-v1';
@@ -43,18 +44,25 @@ export async function restoreAncestorSources(tx: PostgresTransaction, actor: Act
       and kind='agent_source_context' and capability_name='source.restore.v1' and status='succeeded'`);
   const settings = await one(tx, sql`select agent_config from app.assistant_enterprise_settings where enterprise_id=${actor.enterpriseId} for share`);
   const allowKnowledge = conversation.purpose === 'knowledge_preview' || enterpriseKnowledgeEnabled(settings?.agent_config);
+  const active = (conversation.entry_snapshot as Row).activePublicSite as PublicContextRef | undefined;
+  const selectionAvailable = !!active && (await publicContextStatus(tx, actor.enterpriseId, active)).available;
+  const scope = publicHistoryScope(conversation, selectionAvailable, 'assistant');
   if (saved) {
     const context = saved.private_checkpoint as SynthesisContext;
     if (!!(saved.input_summary as Row)?.publicOnly !== !!options.publicOnly
       || options.publicOnly && context.sources.length > 0 && !publicOnlySynthesisContext(context)) fail('context_changed');
     if (!allowKnowledge && context.knowledge.length) fail('context_changed');
+    if (context.ancestors?.length && await one(tx, sql`select m.id from app.assistant_messages m
+      where m.enterprise_id=${actor.enterpriseId} and m.conversation_id=${String(conversation.id)}
+        and m.id=any(${`{${context.ancestors.map(ref => ref.messageId).join(',')}}`}::bigint[]) and (${scope}) is not true limit 1`))
+      fail('context_changed');
     return context;
   }
   const candidates = await rows(tx, sql`select r.id run_id,m.id message_id,m.content,s.source_refs,s.private_checkpoint answer
     from app.assistant_runs r join app.assistant_messages m on m.enterprise_id=r.enterprise_id and m.id=r.output_message_id
     join app.assistant_run_steps s on s.enterprise_id=r.enterprise_id and s.run_id=r.id
     where r.enterprise_id=${actor.enterpriseId} and r.conversation_id=${String(conversation.id)}
-      and r.status='succeeded' and m.seq<${beforeSeq} and m.author_kind='assistant'
+      and r.status='succeeded' and m.seq<${beforeSeq} and m.author_kind='assistant' and ${scope}
       and s.kind='agent_synthesis_context' and s.status='succeeded' order by m.seq desc limit 2`);
   const result: SynthesisContext = { version: 1, knowledge: [], snapshots: [], sources: [], web: [], history: [], ancestors: [] };
   for (const candidate of candidates) {
@@ -97,7 +105,7 @@ export async function ancestorSourcesAvailable(tx: PostgresTransaction, actor: A
     if (!ref || !/^[1-9]\d{0,18}$/.test(ref.runId) || !/^[1-9]\d{0,18}$/.test(ref.messageId)) return false;
     const saved = await one(tx, sql`select m.content,s.source_refs,
       (s.private_checkpoint->'publicSite' is not null or exists(select 1 from app.assistant_run_steps p
-        where p.enterprise_id=r.enterprise_id and p.run_id=r.id and p.kind='agent_public_context'
+        where p.enterprise_id=r.enterprise_id and p.run_id=r.id and p.kind in ('agent_public_context','agent_public_sites')
           and p.status='succeeded' and jsonb_typeof(p.source_refs)='array' and p.source_refs<>'[]'::jsonb)) as public_bound
       from app.assistant_runs r
       join app.assistant_messages m on m.enterprise_id=r.enterprise_id and m.id=r.output_message_id

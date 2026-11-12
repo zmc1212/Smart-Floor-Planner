@@ -80,7 +80,7 @@ export class PublicCustomerService {
       join app.construction_projects p on p.enterprise_id=s.enterprise_id and p.id=s.project_id
       join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
       where s.enterprise_id=${this.actor.enterpriseId} and s.id=${siteId} and s.customer_id=${this.actor.principal.kind === 'user' ? this.actor.principal.userId : ''}
-        and l.customer_user_id=s.customer_id for update of s`);
+        and l.customer_user_id=s.customer_id for update of s for share of p,l`);
     const entry = c.entry_snapshot as Row;
     if (!site || String(site.current_version_id) !== versionId || (entry.kind === 'lead' && String(entry.id) !== String(site.lead_id))) fail('public_consent_unavailable', 404);
     return site;
@@ -105,6 +105,7 @@ export class PublicCustomerService {
       const needsMaterial = action === 'preview' || action === 'approve';
       const material = needsMaterial ? await publicMaterial(tx, this.actor.enterpriseId, siteId, String(input.versionId)) : null;
       if (needsMaterial && !material) fail('public_source_unavailable');
+      if (needsMaterial && site.status === 'withdrawn') fail('public_state_conflict');
       return idempotent(tx, this.actor, 'public:owner:' + action + ':' + siteId, requestKey, input, async () => {
         if (Number(site.revision) !== revision) fail('version_conflict');
         if (c.status !== 'open') fail('conversation_read_only');

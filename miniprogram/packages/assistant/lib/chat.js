@@ -12,6 +12,7 @@ function historyForView(items) {
 const WINDOW = 30;
 const MAX_BACKLOG = 200;
 const FULL_SYNC_MS = 60000;
+const PUBLIC_SYNC_MS = 7000;
 const DELTA_PAGES = 3;
 function hasPublicSource(message) {
   return message.publicSourceBound || message.publicContext || message.publicConsent || message.publicReferences?.length;
@@ -80,7 +81,8 @@ class ChatController {
     this.latestSeq = ''; this.seqConversationId = ''; this.rawMessages = null; this.lastFullSyncAt = 0; this.seqSupported = false;
   }
 
-  resetWindow() { this.latestSeq = ''; this.seqConversationId = ''; this.rawMessages = null; this.lastFullSyncAt = 0; this.seqSupported = false; }
+  resetWindow() { this.latestSeq = ''; this.seqConversationId = ''; this.rawMessages = null; this.lastFullSyncAt = 0; this.seqSupported = false; this.olderFloor = ''; }
+  hasPublicWindow() { return this.rawMessages?.some(hasPublicSource) || this.state.messages.some(hasPublicSource); }
 
   set(patch) { Object.assign(this.state, patch); this.emit(patch); }
   valid(epoch) { return this.epoch === epoch && this.session === this.identity(); }
@@ -114,7 +116,7 @@ class ChatController {
     // synced. An empty welcome screen needs no request until its entry expires.
     if (this.ready && !this.state.fatal && !this.state.error && !target && this.entry && Date.now() < this.entryExpiry) return;
     // A source may be revoked while hidden, without appending a message.
-    if (this.state.messages.some(hasPublicSource)) {
+    if (this.hasPublicWindow()) {
       this.lastFullSyncAt = 0;
       this.set({ messages: this.state.messages.filter(message => !hasPublicSource(message) || message.available === false) });
     }
@@ -207,7 +209,10 @@ class ChatController {
       this.setIf(epoch, { loading: false, error: this.state.pendingSend
         ? '发送结果尚未确认，请确认同一条消息的发送结果。'
         : this.state.pendingAction ? '操作结果尚未确认，请核对同一次操作。' : '' });
-    } catch (error) { this.fail(error, epoch, !background); }
+    } catch (error) {
+      if (background && this.conversationId) this.syncFailure(error, this.conversationId, epoch);
+      else this.fail(error, epoch, !background);
+    }
   }
 
   setIf(epoch, patch) { if (this.valid(epoch)) this.set(patch); }
@@ -221,7 +226,7 @@ class ChatController {
       this.entry = null; this.entryExpiry = 0; this.conversationId = '';
       this.ready = false; this.resetWindow();
       this.set({ ...initial(), loading: false });
-    } else if (uncertain(error) && this.state.messages.some(hasPublicSource)) {
+    } else if ((uncertain(error) || [403, 404].includes(error.statusCode)) && this.hasPublicWindow()) {
       this.lastFullSyncAt = 0;
       this.citationRequest = (this.citationRequest || 0) + 1;
       this.set({ messages: this.state.messages.filter(message => !hasPublicSource(message) || message.available === false),
@@ -237,7 +242,7 @@ class ChatController {
     this.timer = this.schedule(() => {
       if (!this.visible || !this.valid(epoch) || this.conversationId !== id) return;
       if (this.state.busy || this.state.pendingSend || this.state.pendingAction) return this.scheduleConversation(id, epoch, delay);
-      return this.snapshot(id, epoch, true).catch(error => this.fail(error, epoch));
+      return this.snapshot(id, epoch, true).catch(error => this.syncFailure(error, id, epoch));
     }, delay);
   }
 
@@ -272,8 +277,10 @@ class ChatController {
     this.set({ welcomeText: conversation.guidanceOpening || WELCOME, guidanceEnabled: !!conversation.guidanceEnabled, guidance: conversation.guidance || null,
       ...(!sameQuestion ? { selectedOptions: [], selectedOptionMap: {} } : {}) });
     this.applyRun(conversation.mode === 'ai' ? conversation.latestRun : null);
-    if (this.visible && conversation.status === 'open' && (['handoff_requested', 'human'].includes(conversation.mode) || !this.state.run || this.state.run.status === 'succeeded')) {
-      this.scheduleConversation(id, epoch, conversation.mode === 'ai' ? 7000 : 3000);
+    const hasPublic = this.hasPublicWindow();
+    if (this.visible && !this.state.generating && (hasPublic || conversation.status === 'open'
+      && (['handoff_requested', 'human'].includes(conversation.mode) || !this.state.run || this.state.run.status === 'succeeded'))) {
+      this.scheduleConversation(id, epoch, conversation.mode === 'ai' ? PUBLIC_SYNC_MS : 3000);
     }
   }
 
@@ -286,21 +293,36 @@ class ChatController {
     const synced = this.seqConversationId === id ? this.latestSeq : '';
     // Withdrawn sources and media never advance a sequence, so the window is
     // reprojected in full at a bounded interval even while nothing is appended.
-    const stale = Date.now() - this.lastFullSyncAt >= FULL_SYNC_MS;
+    const publicWindow = this.hasPublicWindow();
+    const stale = Date.now() - this.lastFullSyncAt >= (publicWindow ? PUBLIC_SYNC_MS : FULL_SYNC_MS);
     if (latest && synced && latest === synced && !stale) return null;
-    if (!stale && latest && synced && withinBacklog(synced, latest, MAX_BACKLOG)) {
+    // The empty window starts at 0. The delta endpoint takes a positive cursor.
+    if (!stale && latest && seqOrder(synced, '0') > 0 && withinBacklog(synced, latest, MAX_BACKLOG)) {
       const delta = await this.readDelta(id, synced, current);
       if (!current()) return null;
       if (delta) return delta;
     }
     const data = await (full || this.client.read(`/conversations/${id}/messages`, { limit: WINDOW }));
     if (!current()) return null;
-    const items = data.items || [];
+    let items = data.items || [], cursor = data.nextCursor;
+    // Reproject the older pages already opened in a public conversation too.
+    // An unchanged tail does not prove a public source in an older page is live.
+    const floor = publicWindow && this.seqConversationId === id ? this.olderFloor : '';
+    while (floor && cursor && seqOrder(cursor, floor) > 0) {
+      const older = await this.client.read(`/conversations/${id}/messages`, { limit: WINDOW, beforeSeq: cursor });
+      if (!current()) return null;
+      items = items.concat(older.items || []);
+      if (older.nextCursor && seqOrder(older.nextCursor, cursor) >= 0) break;
+      cursor = older.nextCursor;
+    }
+    const unchanged = this.lastFullSyncAt > 0 && this.seqConversationId === id && this.state.messageCursor === cursor
+      && JSON.stringify(this.rawMessages) === JSON.stringify(items);
     this.rawMessages = items; this.seqConversationId = id; this.lastFullSyncAt = Date.now();
+    this.olderFloor = floor;
     this.latestSeq = data.latestSeq !== undefined
       ? String(data.latestSeq)
       : items.reduce((newest, item) => seqOrder(item.seq, newest) > 0 ? String(item.seq) : newest, latest);
-    return { messages: messagesForView(items), messageCursor: data.nextCursor };
+    return unchanged ? null : { messages: messagesForView(items), messageCursor: cursor };
   }
 
   async readDelta(id, cursor, current) {
@@ -336,8 +358,13 @@ class ChatController {
     const appended = window.appended || 0;
     const from = window.messages.length - appended;
     const pureAppend = appended > 0 && from === this.state.messages.length;
-    Object.assign(this.state, { messages: window.messages, messageCursor: window.messageCursor });
-    this.emit(pureAppend ? { messages: window.messages, messageCursor: window.messageCursor, messagesAppendFrom: from } : { messages: window.messages, messageCursor: window.messageCursor });
+    const owner = this.citationMessageId && window.messages.find(message => message.id === this.citationMessageId);
+    const revokedCitation = owner && owner.available === false;
+    if (revokedCitation) this.citationRequest = (this.citationRequest || 0) + 1;
+    const patch = { messages: window.messages, messageCursor: window.messageCursor,
+      ...(revokedCitation ? { citation: null, citationLoading: false } : {}) };
+    Object.assign(this.state, patch);
+    this.emit(pureAppend ? { ...patch, messagesAppendFrom: from } : patch);
   }
 
   // Rebuild the rendered list from the merged window while keeping earlier
@@ -371,9 +398,14 @@ class ChatController {
       const run = await this.client.read(`/runs/${id}`);
       if (!this.valid(epoch) || id !== this.state.run.id) return;
       this.set({ error: '' });
-      if (ACTIVE.includes(run.status)) this.applyRun(run);
+      if (ACTIVE.includes(run.status) && (!this.hasPublicWindow() || Date.now() - this.lastFullSyncAt < PUBLIC_SYNC_MS)) this.applyRun(run);
       else await this.snapshot(this.conversationId, epoch);
-    } catch (error) { this.fail(error, epoch); }
+    } catch (error) { this.syncFailure(error, this.conversationId, epoch); }
+  }
+
+  syncFailure(error, id, epoch) {
+    this.fail(error, epoch);
+    if (!this.state.fatal && this.hasPublicWindow()) this.scheduleConversation(id, epoch);
   }
 
   input(value) {
@@ -549,7 +581,10 @@ class ChatController {
       const result = await this.client.read(`/conversations/${this.conversationId}/messages`, { limit: 30, beforeSeq: this.state.messageCursor });
       if (!this.valid(epoch)) return;
       const ids = new Set(this.state.messages.map(item => item.id));
-      this.set({ messages: messagesForView(result.items.filter(item => !ids.has(item.id))).concat(this.state.messages), messageCursor: result.nextCursor });
+      const older = messagesForView(result.items.filter(item => !ids.has(item.id)));
+      if (older.length) this.olderFloor = older[0].seq;
+      this.set({ messages: older.concat(this.state.messages), messageCursor: result.nextCursor });
+      if (!this.state.generating && older.some(hasPublicSource)) this.scheduleConversation(this.conversationId, epoch);
     } catch (error) { this.fail(error, epoch); }
     finally { this.setIf(epoch, { busy: false }); }
   }
@@ -587,6 +622,7 @@ class ChatController {
 
   async openCitation(id) {
     const epoch = this.epoch;
+    this.citationMessageId = this.state.messages.find(message => message.citations?.some(citation => citation.id === String(id)))?.id;
     this.citationRequest = (this.citationRequest || 0) + 1;
     const request = this.citationRequest;
     this.set({ citation: null, citationLoading: true, citationError: '' });
@@ -596,7 +632,10 @@ class ChatController {
       const citation = await this.referenceImage(data);
       if (!this.valid(epoch) || request !== this.citationRequest) return;
       this.set({ citation });
-      if (!citation.available) await this.snapshot(this.conversationId, epoch);
+      if (!citation.available) {
+        this.lastFullSyncAt = 0;
+        await this.snapshot(this.conversationId, epoch);
+      }
     } catch (error) {
       if (error.statusCode === 401 || error.statusCode === 403 || error.statusCode === 404) this.fail(error, epoch);
       else if (request === this.citationRequest) this.setIf(epoch, { citationError: errorCopy(error) });

@@ -198,7 +198,8 @@ try {
   reverse = spawn('ssh', [...sshArgs, '-o', 'ExitOnForwardFailure=yes', '-N', '-R', '127.0.0.1:18310:127.0.0.1:18310', 'Administrator@192.168.10.54'], { windowsHide: true, stdio: 'ignore' });
   await new Promise(r => setTimeout(r, 900));
   process.env.ASSISTANT_WEB_SEARCH_PROVIDER='openserp';process.env.ASSISTANT_WEB_SEARCH_URL='http://127.0.0.1:18098';process.env.ASSISTANT_OPENSERP_ENGINES='baidu';process.env.ASSISTANT_PUBLIC_READER_URL='http://127.0.0.1:18095';
-  research=await (await import('../../../tmp/fastgpt-native-qa-20261106/resources.mjs')).openResearchResources(out);
+  const researchDriver = new URL('../../../tmp/fastgpt-native-qa-20261106/resources.mjs', import.meta.url);
+  research=await (await import(researchDriver.href)).openResearchResources(out);
   search=spawn('powershell.exe',['-NoProfile','-File',path.resolve('scripts/assistant-search/openserp.ps1'),'-Executable',path.join(root,'tmp/fastgpt-native-qa-20261107/blocker-repair01/openserp/openserp.exe')],{windowsHide:true,stdio:['ignore',fs.openSync(path.join(out,'search.stdout.log'),'w'),fs.openSync(path.join(out,'search.stderr.log'),'w')]});
   await new Promise(r=>setTimeout(r,1500));assert.equal(search.exitCode,null);
 

@@ -21,6 +21,7 @@ export type AgentV2ToolInput =
    * published catalog decide the result, never a model-supplied place. */
   | { name: 'recommend_public_sites' };
 export type AgentV2Ports = {
+  systemContext?: string;
   authorize: () => Promise<void>;
   tool: (input: AgentV2ToolInput, sequence: number) => Promise<Record<string, unknown>>;
 };
@@ -197,8 +198,8 @@ export class FastGPTAgentV2 {
     const id = randomUUID() + randomUUID(), ticket: Ticket = { enterpriseId, ports, expires: Date.now() + 180000, calls: 0, auditRunId: audit?.runId };
     this.tickets.set(id, ticket);
     try {
-      const skillPrompt = agentV2SkillPrompt(profile.skills);
-      const outgoing = skillPrompt ? [{ role: 'system' as const, content: skillPrompt }, ...messages] : messages;
+      const system = [agentV2SkillPrompt(profile.skills), ports.systemContext].filter(Boolean).join('\n\n');
+      const outgoing = system ? [{ role: 'system' as const, content: system }, ...messages] : messages;
       const response = await fetch(profile.baseUrl + '/api/v1/chat/completions', {
         method: 'POST', signal: AbortSignal.timeout(150000),
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + profile.apiKey },

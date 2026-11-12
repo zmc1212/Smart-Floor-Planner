@@ -50,9 +50,9 @@ export function parseHistoryQuery(input: unknown): string {
   return query.trim();
 }
 
-/** Predicate for earlier user originals (alias m). Admission records the exact
+/** Predicate for earlier turns (alias m). Admission records the exact
  * selection; older native runs can prove it with their own dependency step. */
-export function publicHistoryScope(conversation: Row, selectionAvailable: boolean) {
+export function publicHistoryScope(conversation: Row, selectionAvailable: boolean, author: 'user' | 'assistant' = 'user') {
   const entry = conversation.entry_snapshot as Row;
   const active = entry.activePublicSite as PublicContextRef | undefined;
   if (!active && !(Array.isArray(entry.publicSiteContexts) && entry.publicSiteContexts.length)) return sql`true`;
@@ -61,8 +61,9 @@ export function publicHistoryScope(conversation: Row, selectionAvailable: boolea
       then r.policy_snapshot->'publicSiteSelection' else s.input_summary->'current' end
     from app.assistant_runs r left join app.assistant_run_steps s on s.enterprise_id=r.enterprise_id and s.run_id=r.id
       and s.step_seq=1003 and s.kind='agent_public_context' and s.status='succeeded'
-    where r.enterprise_id=m.enterprise_id and r.conversation_id=m.conversation_id and r.trigger_message_id=m.id
-      and r.purpose='reply' and r.retry_of_run_id is null order by r.id limit 1)=${JSON.stringify(active ?? null)}::jsonb`;
+    where r.enterprise_id=m.enterprise_id and r.conversation_id=m.conversation_id and r.purpose='reply'
+      and ${author === 'user' ? sql`r.trigger_message_id=m.id and r.retry_of_run_id is null` : sql`r.id=m.run_id`}
+    order by r.id limit 1)=${JSON.stringify(active ?? null)}::jsonb`;
 }
 
 /** Small literal candidate set, never a cross-consultation or project search.

@@ -412,6 +412,22 @@ test('an idle re-sync reads only conversation metadata once its sequence is curr
   f.controller.dispose();
 });
 
+test('a public site attached to an empty conversation loads its first message without a zero cursor', async () => {
+  const f = fixture();
+  f.db.conversation.lastSeq = '0';
+  await f.controller.show({ conversationId: '11' });
+  assert.equal(f.controller.latestSeq, '0');
+  const context = { id: '61', versionId: '62', name: '公开工地' };
+  f.db.conversation.lastSeq = '1';
+  f.db.items = [message('21', '1', '正在围观', { publicContext: context })];
+  f.intercept(call => call.body.afterSeq === '0' ? { success: false, error: 'invalid_message' } : undefined);
+  await f.controller.refresh();
+  assert.deepEqual(messageReads(f).map(call => call.body), [{ limit: 30 }, { limit: 30 }]);
+  assert.equal(f.controller.state.messages[0].publicContext.versionId, context.versionId);
+  assert.equal(f.controller.state.error, '');
+  f.controller.dispose();
+});
+
 test('only newer messages are fetched, paged through a burst and merged in order', async () => {
   const f = fixture();
   f.db.items = [message('21', '1', '旧问题'), message('22', '2', '旧回答')];
@@ -880,6 +896,60 @@ test('public history is removed from the cached view on network failure and rest
   await f.controller.refresh();
   assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21', '22']);
   assert.equal(f.controller.state.error, '');
+});
+
+test('visible public history rechecks older pages after a failed turn without losing the loaded history', async () => {
+  const f = fixture();
+  const original = { ...message('21', '1', '此前的公开节选'), publicSourceBound: true };
+  f.db.items = [message('22', '2', '较新的原话')];
+  f.db.messageCursor = '2';
+  f.db.conversation.lastSeq = '2';
+  f.db.conversation.latestRun = { id: '41', status: 'failed', retryable: true };
+  let older = original;
+  f.intercept(call => call.body.beforeSeq === '2' ? { success: true, data: { items: [older], nextCursor: null } } : undefined);
+  await f.controller.show({ conversationId: '11' });
+  await f.controller.olderMessages();
+  assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21', '22']);
+  older = { ...original, available: false, content: { blocks: [{ type: 'notice', fallbackText: '公开内容已撤回' }] } };
+  f.controller.lastFullSyncAt = Date.now() - 7100;
+  const timer = [...f.timers.values()].at(-1);
+  assert.ok(timer, 'loading a public history page keeps its sources under revalidation');
+  await timer();
+  assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21', '22']);
+  assert.equal(f.controller.state.messages[0].available, false);
+  assert.match(f.controller.state.messages[0].blocks[0].text, /已撤回/);
+  assert.equal(f.controller.state.retryable, true);
+  f.controller.dispose();
+});
+
+test('a source rejection refreshes public answer text even if the server sequence is unchanged', async () => {
+  const f = fixture();
+  f.db.conversation.lastSeq = '1';
+  f.db.items = [{ ...message('21', '1', '旧公开答复'), publicSourceBound: true, citations: [f.db.citation] }];
+  await f.controller.show({ conversationId: '11' });
+  f.db.items[0] = { ...f.db.items[0], available: false, citations: [], content: { blocks: [{ type: 'notice', fallbackText: '已撤回' }] } };
+  f.db.citation = { id: '31', available: false };
+  await f.controller.openCitation('31');
+  assert.equal(f.controller.state.messages[0].available, false);
+  assert.equal(f.controller.state.citation, null);
+  assert.equal(messageReads(f).length, 2);
+  f.controller.dispose();
+});
+
+test('polling an active public reply refreshes an unchanged window when permission is revoked', async () => {
+  const f = fixture();
+  f.db.conversation.lastSeq = '1';
+  f.db.conversation.latestRun = { id: '41', status: 'running', nextPollMs: 1500, retryable: false };
+  f.db.items = [{ ...message('21', '1', '获权节选'), publicSourceBound: true }];
+  await f.controller.show({ conversationId: '11' });
+  f.db.items[0] = { ...f.db.items[0], available: false, content: { blocks: [{ type: 'notice', fallbackText: '你已无权查看' }] } };
+  f.controller.lastFullSyncAt = Date.now() - 7100;
+  await f.controller.poll();
+  assert.equal(f.controller.state.generating, true);
+  assert.equal(f.controller.state.messages[0].available, false);
+  assert.match(f.controller.state.messages[0].blocks[0].text, /已无权/);
+  assert.equal(messageReads(f).length, 2);
+  f.controller.dispose();
 });
 
 test('stop and archive use explicit writes, keep messages and block further sends in the archived chat', async () => {

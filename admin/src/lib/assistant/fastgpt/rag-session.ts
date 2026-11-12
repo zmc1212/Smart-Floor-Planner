@@ -14,6 +14,9 @@ import { samePublicRef } from '@/lib/construction/public-contract';
 import { fastGPTRagProtocol, type RagSource } from './rag-config';
 import { ragAnswerParts, ragHistoryText, type RagChatMessage, type RagCitationSource } from './native-rag';
 
+const historyBytes = 16000;
+const historyAncestors = 32;
+
 /** Read one persisted synthesis step for the next turn's history. A
  * snapshot-only delivery (`composition.modelIncluded === false`) never
  * contributed model prose: its `raw` was — and on legacy rows still is — the
@@ -67,12 +70,15 @@ export async function nativeConversation(lease: Lease, configured: RagSource[], 
         order by m.seq desc limit 7`);
       if (!originals.length || String(originals[0].id) !== String(run.trigger_message_id)) fail('context_changed');
       const result: RagChatMessage[] = [], history: HistorySnapshot['sources'] = [];
-      for (const m of originals.reverse()) {
-        if (m.author_kind === 'assistant') businessContextActive = false;
+      let keptAssistant = false;
+      for (const m of originals) {
         const projected = await projectMessage(tx, lease.actor, conversation, m);
         if (!projected.available) continue;
+        const role = m.author_kind === 'assistant' ? 'assistant' : 'user';
+        const turn = (original?: string): RagChatMessage => ({ role, content: ragHistoryText(projected.content as MessageContent, original) });
+        const fits = (candidate: RagChatMessage) => candidate.content.trim() && Buffer.byteLength(JSON.stringify([...result, candidate])) <= historyBytes;
         let nativeOriginal: string | undefined;
-        if (m.author_kind === 'assistant') {
+        if (role === 'assistant') {
           // The immediately preceding assistant turn defines the active
           // topic. A skipped/unavailable answer is not a topic.
           const prior = await one(tx, sql`select s.source_refs,s.private_checkpoint,s.input_summary,
@@ -88,41 +94,53 @@ export async function nativeConversation(lease: Lease, configured: RagSource[], 
           // Every public source the prior answer consumed (persisted 1003, plus
           // the earlier 1006.publicSite form) becomes a dependency of this turn
           // too. Its material must still be the same published version.
-          const savedRefs = await publicMessageRefs(tx, lease.enterpriseId, String(conversation.id), String(m.id));
+          const savedRefs = (await publicMessageRefs(tx, lease.enterpriseId, String(conversation.id), String(m.id)))
+            .filter(ref => !ref.recommendation);
           if (savedRefs.some(ref => !samePublicRef(ref, active))) continue;
           if (prior.selection_recorded && !samePublicRef(prior.public_selection as PublicContextRef | null, active)) continue;
           if (hasPublicHistory && !prior.selection_recorded && !savedRefs.length) continue;
           const original = prior.source_refs as SynthesisContext;
           if (!runKnowledgeEnabled(run.policy_snapshot as Row) && original.knowledge.length) continue;
+          const ancestors = [...(original.ancestors || []), { runId: String(m.run_id), messageId: String(m.id),
+            contentHash: fingerprint(m.content), contextHash: fingerprint(original) }];
+          // Keep the newest eligible turn that fits with its entire evidence
+          // chain. Older prose remains readable through the history API.
+          if (new Set([...context.ancestors!, ...ancestors].map(ref => ref.messageId)).size > historyAncestors) continue;
           if (!await synthesisContextAvailable(tx, lease.actor, conversation, original)) continue;
-          businessContextActive = priorAnswerBusinessObject({
-            checkpoint: prior.private_checkpoint as Row,
-            ownBusinessTool: !!await one(tx, sql`select id from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
-              and run_id=${String(m.run_id)} and kind='agent_tool' and capability_name='query_business' and status='succeeded' limit 1`),
-          });
-          for (const ref of savedRefs) inheritedPublicRefs.set(ref.siteId + ':' + ref.versionId, ref);
-          if ((prior.input_summary as Row)?.protocol === protocol) {
-            const historyCheckpoint = nativeHistoryCheckpoint(prior.private_checkpoint as Row, configured);
-            nativeOriginal = historyCheckpoint.original;
-            citations.push(...historyCheckpoint.citations);
+          const historyCheckpoint = (prior.input_summary as Row)?.protocol === protocol
+            ? nativeHistoryCheckpoint(prior.private_checkpoint as Row, configured) : null;
+          nativeOriginal = historyCheckpoint?.original;
+          if (!fits(turn(nativeOriginal))) continue;
+          if (!keptAssistant) {
+            businessContextActive = priorAnswerBusinessObject({
+              checkpoint: prior.private_checkpoint as Row,
+              ownBusinessTool: !!await one(tx, sql`select id from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+                and run_id=${String(m.run_id)} and kind='agent_tool' and capability_name='query_business' and status='succeeded' limit 1`),
+            });
+            keptAssistant = true;
           }
-          for (const key of ['knowledge','snapshots','sources','web','history','ancestors'] as const)
+          for (const ref of savedRefs) inheritedPublicRefs.set(ref.siteId + ':' + ref.versionId, ref);
+          citations.push(...(historyCheckpoint?.citations || []));
+          for (const key of ['knowledge','snapshots','sources','web','history'] as const)
             (context[key] as unknown[]).push(...(original[key] || []));
-          context.ancestors!.push({ runId: String(m.run_id), messageId: String(m.id), contentHash: fingerprint(m.content), contextHash: fingerprint(original) });
+          context.ancestors!.push(...ancestors);
         } else {
+          if (!fits(turn())) {
+            if (m.id === originals[0].id) fail('invalid_message', 422);
+            continue;
+          }
           history.push({ messageId: String(m.id), hash: fingerprint(m.content), memoryVersion: readMemory(conversation.entry_snapshot).version,
             text: safeText(projected.content as MessageContent), seq: String(m.seq) });
         }
-        const text = ragHistoryText(projected.content as MessageContent, nativeOriginal);
-        if (text.trim()) result.push({ role: m.author_kind === 'assistant' ? 'assistant' : 'user', content: text });
+        result.push(turn(nativeOriginal));
       }
-      if (result.at(-1)?.role !== 'user' || Buffer.byteLength(JSON.stringify(result)) > 16000) fail('invalid_message', 422);
-      context.history!.push({ query: '本轮获权会话历史', beforeSeq: String(BigInt(String(originals.at(-1)!.seq)) + BigInt(1)),
-        sources: history, hasMore: false, oversized: false });
+      if (history[0]?.messageId !== String(run.trigger_message_id)) fail('invalid_message', 422);
+      context.history!.push({ query: '本轮获权会话历史', beforeSeq: String(BigInt(String(originals[0].seq)) + BigInt(1)),
+        sources: history.reverse(), hasMore: false, oversized: false });
       for (const key of ['knowledge','snapshots','sources','web','history','ancestors'] as const)
         (context[key] as unknown[]) = [...new Map((context[key] as unknown[]).map(value => [fingerprint(value), value])).values()];
-      if (context.ancestors!.length > 32 || !await synthesisContextAvailable(tx, lease.actor, conversation, context)) fail('context_changed');
-      return { messages: result, publicSite: { active, source: selected?.source ?? null, reason: selected?.reason } };
+      if (!await synthesisContextAvailable(tx, lease.actor, conversation, context)) fail('context_changed');
+      return { messages: result.reverse(), publicSite: { active, source: selected?.source ?? null, reason: selected?.reason } };
     });
   return { context, messages, citations, publicRefs: [...inheritedPublicRefs.values()], businessContextActive, publicSite };
 }

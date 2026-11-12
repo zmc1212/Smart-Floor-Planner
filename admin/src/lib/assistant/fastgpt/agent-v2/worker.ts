@@ -1,12 +1,13 @@
 import { sql } from 'drizzle-orm';
-import { withTenantTransaction } from '@/db/transaction';
+import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import type { Row } from '@/db/repositories/assistant-repository';
 import { AiProviderError } from '@/lib/ai/provider-types';
 import { AssistantError, fail, fingerprint, type Evidence, type MessageContent } from '../../contracts';
 import { synthesisContextAvailable } from '../../agent/synthesis-sources';
 import type { BusinessSnapshot } from '../../agent/business-tools';
 import { guardAnswerCommitments } from '../../agent/context';
-import { assertPublicIntroCommit, authorizePublicIntroDispatch } from '../../agent/native-executor';
+import { assertPublicIntroCommit, authorizePublicIntroDispatch, explicitPublicSiteReference,
+  nativePublicSiteSelection, nativeReplySiteText } from '../../agent/native-executor';
 import { dialogueBusinessQuery, dialogueEnterpriseSearch, quoteOf, snapshotHeading, type DialogueToolRuntime } from '../../agent/dialogue-tools';
 import { dialogueWebResearch, type WebToolRuntime } from '../../agent/dialogue-web-tools';
 import { dialogueDesignerRecommendation, dialoguePublicSitesRecommendation, publicSitesDelivery,
@@ -23,7 +24,8 @@ import { webAnswerQuoteSpans } from '../../agent/web-evidence';
 import { openingScene, sceneForOpeningPurpose } from './openings';
 import { publicIntroFacts, publicIntroPrompt, validatePublicIntro } from '@/lib/construction/public-intro';
 import { publishedPublicMaterial } from '@/lib/construction/public-read';
-import type { PublicContent } from '@/lib/construction/public-contract';
+import { samePublicRef, type PublicContent, type PublicContextRef } from '@/lib/construction/public-contract';
+import { publicContextAvailable } from '@/lib/construction/public-projections';
 
 // The public-site wordings moved to the shared recommendation module; the
 // gateway contract still exposes them from here.
@@ -105,15 +107,27 @@ export async function processAgentV2Answer(lease: Lease) {
     // The queue owns the per-enterprise limit. This guard only keeps the
     // default single-slot contract for callers outside the queue.
     if (enterpriseConcurrency() === 1 && workflows.agentV2.busy(lease.enterpriseId)) fail('conversation_busy');
-    const { context, messages, citations } = await nativeConversation(lease, [], fastGPTAgentV2Protocol);
+    const { context, messages, citations, publicRefs, businessContextActive, publicSite } = await nativeConversation(lease, [], fastGPTAgentV2Protocol);
+    if (publicSite.reason === 'source_unreadable') fail('public_source_unreadable', 503);
+    const includePublicSite = !businessContextActive || explicitPublicSiteReference(messages.at(-1)?.content || '');
+    const selected = includePublicSite ? nativePublicSiteSelection(publicSite.active, publicSite.source, publicSite.reason) : null;
+    const publicSystemContext = nativeReplySiteText({ publicSiteText: selected?.text,
+      businessContextActive: businessContextActive && !!publicSite.active, includePublicSite }).map(item => item.text).join('\n');
+    const dependencies = selected?.ref ? [...publicRefs.filter(ref => !samePublicRef(ref, selected.ref)), selected.ref] : publicRefs;
     // Prior answers keep their still-authorized sources citable, matching the
     // unified worker; only this turn's retrieval sets knowledgeRetrieved.
     const catalog = new Map<string, RagCitationSource>(citations.map(c => [c.nativeId, c]));
+    const verifyContext = async (tx: PostgresTransaction, conversation: Row) => {
+      const active = (conversation.entry_snapshot as Row).activePublicSite as PublicContextRef | undefined;
+      if (!samePublicRef(publicSite.active, active) || !await synthesisContextAvailable(tx, lease.actor, conversation, context)) fail('context_changed');
+      for (const ref of dependencies) if (!await publicContextAvailable(tx, lease.enterpriseId, ref)) fail('context_changed');
+      await sites.revalidate(tx);
+    };
     const guard = async () => {
       await authorize();
       await withTenantTransaction(lease.enterpriseId, async tx => {
         const state = await runContext(tx, lease);
-        if (!await synthesisContextAvailable(tx, lease.actor, state.conversation, context)) fail('context_changed');
+        await verifyContext(tx, state.conversation);
       });
     };
     let knowledgeRetrieved = false;
@@ -142,9 +156,14 @@ export async function processAgentV2Answer(lease: Lease) {
       return search(input.query, sequence);
     };
     await heartbeat(lease);
-    await markProviderStarted(lease);
+    await markProviderStarted(lease, [], async (tx, conversation) => {
+      await verifyContext(tx, conversation);
+      if (dependencies.length) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs,input_summary)
+        values(${lease.enterpriseId},${lease.runId},1003,'agent_public_context','succeeded',${JSON.stringify(dependencies)}::jsonb,
+          ${JSON.stringify({ protocol: fastGPTAgentV2Protocol, current: publicSite.active })}::jsonb)`);
+    });
     timer = setInterval(() => { heartbeat(lease).catch(() => undefined); }, 30000);
-    const result = await workflows.agentV2.run(lease.enterpriseId, messages, { authorize: guard, tool }, { runId: lease.runId });
+    const result = await workflows.agentV2.run(lease.enterpriseId, messages, { authorize: guard, tool, systemContext: publicSystemContext }, { runId: lease.runId });
     await guard();
     for (const key of ['knowledge', 'snapshots', 'sources'] as const)
       (context[key] as unknown[]) = [...new Map((context[key] as unknown[]).map(v => [fingerprint(v), v])).values()];
@@ -163,6 +182,7 @@ export async function processAgentV2Answer(lease: Lease) {
     let suggestions: SuggestionResolution = resolveSuggestions(null, bound.configuration.presets ?? []);
     let suggestionsAttempted = false, suggestionUsage: AgentV2Usage | null = null;
     if (bound.configuration.suggestionAppId) {
+      await guard();
       suggestionsAttempted = true;
       try {
         const generated = await workflows.agentV2.suggest(lease.enterpriseId, text, { runId: lease.runId });
@@ -187,7 +207,7 @@ export async function processAgentV2Answer(lease: Lease) {
     }
     await completeRun(lease, { content: { version: 1, blocks: [{ type: 'text', text }] }, usage: result.usage }, async (tx, run, messageId) => {
       const state = await runContext(tx, lease);
-      if (!await synthesisContextAvailable(tx, lease.actor, state.conversation, context)) fail('context_changed');
+      await verifyContext(tx, state.conversation);
       const blocks: MessageContent['blocks'] = [], saved = new Map<string, string>();
       for (const p of parts) {
         if ('text' in p) { blocks.push({ type: 'text', text: p.text }); continue; }

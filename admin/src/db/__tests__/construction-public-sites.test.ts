@@ -217,7 +217,11 @@ test('revoked public sources cannot be recovered through old preview or approval
   result = await decisions.decide(siteId, 'preview', previewInput, previewKey);
   const approveInput = { versionId, expectedRevision: result.revision }, approveKey = randomUUID();
   result = await decisions.decide(siteId, 'approve', approveInput, approveKey);
+  const publishInput = { versionId, expectedRevision: result.revision }, publishKey = randomUUID();
+  result = await materials.mutate(projectId, 'publish', publishInput, publishKey);
+  assert.deepEqual(await materials.mutate(projectId, 'publish', publishInput, publishKey), result);
   await shared.mutate(projectId, recordId, 'withdraw', { expectedVersion: record.version, reason: '测试来源撤回' }, randomUUID());
+  await assert.rejects(materials.mutate(projectId, 'publish', publishInput, publishKey), /public_source_unavailable/);
   assert.equal((await decisions.consent(siteId, versionId)).available, false);
   const replays = await Promise.allSettled([
     decisions.decide(siteId, 'preview', previewInput, previewKey),
@@ -334,6 +338,51 @@ test('a registered opening scene routes the intro run through Agent V2 and deliv
     assert.ok(requests.some(request => request.appId === appId));
     const messages = (await new ConversationService(visitor).messages(introCid)).items as Row[];
     assert.ok(messages.some(m => m.authorKind === 'assistant' && JSON.stringify(m).includes(opening)));
+
+    const chat = new ConversationService(visitor);
+    const agent = await withTenantTransaction(eids[0], async tx => {
+      const settings = (await one(tx, sql`select agent_config from app.assistant_enterprise_settings where enterprise_id=${eids[0]} for update`))!;
+      await tx.execute(sql`update app.assistant_enterprise_settings set agent_config=jsonb_set(agent_config,'{enterpriseKnowledgeEnabled}','true')
+        where enterprise_id=${eids[0]}`);
+      return settings.agent_config;
+    });
+    try {
+      const answer = '公开记录显示柜体已放样，可以接着了解接下来的施工。';
+      let withdrawDuringReply = false;
+      globalThis.fetch = (async (url: unknown, init?: RequestInit) => {
+        assert.match(String(url), /\/api\/v1\/chat\/completions$/);
+        const wire = JSON.parse(String(init?.body)) as Row;
+        const context = (wire.messages as Row[]).find(message => message.role === 'system');
+        assert.match(String(context?.content), /柜体已放样/);
+        assert.doesNotMatch(JSON.stringify(wire.messages), /私有业主姓名|13980001234/);
+        if (withdrawDuringReply) {
+          const publication = await materials.read(projectId);
+          await materials.mutate(projectId, 'withdraw', { versionId, expectedRevision: publication.revision, reason: '隔离验收撤回' }, randomUUID());
+        }
+        return Response.json({ choices: [{ message: { content: answer } }],
+          responseData: [{ moduleType: 'agent', inputTokens: 5, outputTokens: 6 }] });
+      }) as typeof fetch;
+      const send = async (text: string) => {
+        const sent = await chat.send(introCid, randomUUID(), { version: 1, blocks: [{ type: 'text', text }] });
+        const job = await claimJob({ enterpriseId: eids[0], runId: String(sent.runId) });
+        assert.ok(job);
+        await processAnswer(job);
+        return chat.run(String(sent.runId));
+      };
+      const reply = await send('柜体目前进展到哪一步了？');
+      assert.equal(reply.status, 'succeeded', JSON.stringify(reply));
+      const readReply = async () => (await chat.messages(introCid)).items.find(message => message.id === reply.outputMessageId)!;
+      assert.deepEqual((await readReply()).publicReferences?.map(ref => ref.versionId), [versionId]);
+      withdrawDuringReply = true;
+      const denied = await send('那下一步还要做什么？');
+      assert.equal(denied.status, 'failed', JSON.stringify(denied));
+      assert.equal(denied.outputMessageId, null);
+      assert.equal((await readReply()).available, false);
+      assert.match(JSON.stringify((await readReply()).content), /source_withdrawn/);
+    } finally {
+      await withTenantTransaction(eids[0], tx => tx.execute(sql`update app.assistant_enterprise_settings
+        set agent_config=${JSON.stringify(agent)}::jsonb where enterprise_id=${eids[0]}`));
+    }
   } finally {
     globalThis.fetch = originalFetch;
     await closeFastGPTWorkflows();

@@ -554,7 +554,29 @@ P4B当前复核：施工61通过/3跳过/0失败、小程序1943/1943、最终�
 
 **P4B公开工地限定闭环 Implemented，整体 Limited。** 用户“确认”批准C03/C05/S07后落地。C01原咨询新增真实片区推荐/浏览入口及具体版本预览决定卡；新原生路由 `packages/construction/public-sites/public-sites`、`packages/construction/public-site/public-site` 可匿名围观照片/服务节选并返回本人私聊。后台 `/construction-projects` 原Drawer新增第三个“公开材料”Tab，合法来源选择/原文脱敏/不透明照片遮挡/完整预览/保存/送业主/审核公开/退回/下架均真实写入。cookie所选企业 `/api/construction/projects/:id/public-materials/*`、本人bearer `/api/miniprogram/assistant/conversations/:cid/public-sites/*`、匿名 `/api/public/construction/:enterpriseId/*` 由同一版本与实时源权限约束，匿名不泄露私有ID/原图；no-store媒体独立副本。0084新增 `construction_public_sites/versions/sources/media/audits`，施工20表强制RLS及企业清理覆盖。业主看全并明确同意精确版本后，enterprise_admin/admin/super_admin再审核；普通成员和管理者不因此获得原私聊权限，平台管理无需入职/项目成员，不能代业主同意。新版本/撤回/源失效收紧列表、详情、媒体、Agent回答及接续引用；现有LangGraph/Worker/用量不变，step1003保存只读公开依赖，prompt v15。
 
-**公开工地咨询生命周期。** 挂载工地在返回幂等回执前复核当前公开版本。重复进入同一版本保留上下文版本及待执行的开场任务。切走后核对旧选择的回执会返回冲突。回复任务在入队时保存所选工地和版本，重试在创建新任务前复核原选择。原生问答及历史回读只复用该选择下的客户原话，旧任务有步骤 `1003` 的选择记录时沿用其证明。历史回答、引用和建议重验当前发布版本、来源哈希与权限。撤回、换版和失权各自投影对应提示，材料暂时不可读返回可重试的 `503`。原生及已注册的 FastGPT 开场在派发和交付前复核版本。上述检查复用现有路由、公开材料表、任务策略 JSON、企业范围和同意流程。 隔离库回归 41/41 通过。企业 1454 的真实 HTTP 验证了发布、同键进入、换版、撤回和第二名访客读取被拒绝（404）。任务 12273 记录受控检索失败，同键重试保留原触发消息并创建一次新任务。开场和回答任务 12268–12272、12274 在派发前返回 `assistant_model_configuration_invalid`，企业能力探针绑定百炼 `qwen3.7-flash`，平台生效覆盖为 DeepSeek。供应商调用 0 次。见[HTTP 与 Worker 证据](../tmp/public-site-nplus2-20261112/http-live-02/report.json)。
+**公开工地咨询生命周期。** 原发布、访客上下文、消息和任务 API 以企业、访客、工地及当前版本为访问边界。重试保留原问题和原选择。原生、旧执行器和 FastGPT V2 回复按记录的工地版本限定历史。配置数据集 RAG 的选中工地回复沿原支持工地的 Agent 执行。撤回、换版、失权与暂时读失败沿各自的反馈。
+
+#### 公开工地生命周期 RC 验收
+
+产品基线为《家客来_小K_功能清单与四端UI基线_V3.docx》（封面 V3.2），采用已批准的 C01 手账及 C03 公开工地状态。
+
+| 功能 | 当前状态与实测依据 |
+| --- | --- |
+| 建档、业主同意、企业发布、匿名详情和脱敏照片 | 已实现且通过 PostgreSQL 回归。覆盖三类管理角色、精确版本同意、并发编辑及原件拒绝。 |
+| 首次进入、访客和项目隔离、追问及历史 | 已实现且通过生产 HTTP 和隔离 PostgreSQL。覆盖开场幂等、重进、跨企业及跨访客拒绝、切换后排除其他工地回合。 |
+| 来源更新、撤回、失权及恢复、回执与重试 | 已实现且测试通过。覆盖旧链接和历史正文失效、执行中撤回、同版恢复权限、旧版确认拒绝、并发同键和供应商未知结局。 |
+| AI 工具权限 | 已实现且测试通过。选中工地只采用授权的精确版本，附近发现及私有资料沿各自服务端权限。工具回执复用及回答提交时核验来源。 |
+| 长会话及并发读取 | 已实现有界模型输入及原话分页，实测至少 65 条历史和 8 并发。发布规模及数小时连续会话待验。 |
+| 供应商和原生环境 | 受生效的 DeepSeek 测试覆盖配置、下列原生验收结果及真实微信登录和真机机位播放未验限制。 |
+| 页面一直开启时收起已显示内容 | 受刷新间隔限制。服务端下次请求即复验，C01 前台重进及 7 秒轮询复验，C03 沿原 15 秒轮询。服务端主动推送撤回尚未实现。 |
+
+**已修复缺陷。** 步骤 `2010` 推荐回执在复用、模型使用和提交时重验当前授权及版本，历史正文、引用和建议按结果收起。FastGPT V2 派发前装配公开材料并写入步骤 `1003`。旧执行器排除其他工地历史，长输入保留近期获权回合及完整证据。业主同意和企业发布回执在重放前核验当前来源。客户端重查已加载的公开历史页，引用拒绝时即使序号不变也重读。Stable 复现空会话挂载时 `afterSeq=0` 返回 422，现改用完整消息窗口读取首条工地提示。
+
+**构建与回归。** 本地 PostgreSQL 集成 44/44。原生夹具执行后，追加的合并源树 PostgreSQL 重跑停在队列空闲预检，未运行新断言。最终镜像另有 HTTP 与原生证据。Admin 单元 1087/1088，小程序 2227/2228。独立建议工具断言和量房治理基线失败均在 `d09cdcc0` 复现。类型检查通过，Lint 0 错误、61 条警告。Linux Turbopack 和 Windows Webpack 生产构建均生成 114/114 个页面。Windows 默认 Turbopack 创建 junction 失败。Git 现锁定量房来源和镜像的 LF，生成清单以提交字节为准。洁净 Admin-only Alpine Dockerfile 校验 83 份量房镜像文件并成功导出本地镜像。 见[镜像构建](../tmp/public-site-nplus3-20261112/docker-production-build-02.log)与[集成重跑预检](../tmp/public-site-nplus3-20261112/db-local-05.log)。
+
+**HTTP 性能与真实 UI。** 本机 PostgreSQL 和生产 HTTP 进程测得首次详情 19 ms，成功挂载及同键重放 32–86 ms，两个互不重叠的 30 条历史分页为 568/633 ms。8 个并发精确版本请求均返回 200，耗时 32–40 ms。实模回答任务耗时 3210–4345 ms。这组样本仅覆盖本机负载。Stable DevTools 基础库 3.17.2 的原生视口为 390×844。留存 13 张已核对路由的 PNG。精确项目 CLI 搭配最终 Docker 镜像实测 8/8 通过。公开详情和实际进入咨询已通过。真实输入及打开精确版本来源片通过。连续追问和历史重进通过。工地切换通过。更新版本及可见重试通过。聊天已实测失权及撤回提示。部分实模回答在气泡中显示原始 Markdown 符号，列为普通 UI 瑕疵。精确路径 CLI 使用含独立 C01 提交 ec2d65bc 的实际工作区。真实微信登录和真机播放未验。 最终镜像独立回读 7/7，包含权限、历史可见性及旧版精确链接。见[生产 HTTP 证据](../tmp/public-site-nplus3-20261112/http-live-08.json)、[镜像回读](../tmp/public-site-nplus3-20261112/docker-http-readback.json)和[Stable 证据](../tmp/public-site-nplus3-20261112/native-live-14.json)。
+
+**依赖与发布状态。** Next.js `16.4.6`、sharp `0.35.5` 及兼容的 `vm2`、`proxy-addr` 锁定版本将生产审计从 43 项降至 37 项，Critical 从 3 项降至 0 项，仍有 17 项 High，其中 Ant Design Pro、shadcn、proxy-agent 路径需兼容性复验。隔离开发企业 1454 的能力探针是百炼 `qwen3.7-flash`，生效平台覆盖是 DeepSeek `deepseek-flash`。先前对齐配置的 DeepSeek 实际请求返回 HTTP 402，未写入回答。百炼隔离 HTTP 旅程 11/11，校验 4 份回答正文。6 次任务成功，注入的检索失败未写回答，同键重试恢复。任务回执错误为 retrieval_unavailable。 目标模型配置、High 依赖审计仍阻断 RC。 见[集成证据](../tmp/public-site-nplus3-20261112/db-local-04.log)、[DeepSeek 回执](../tmp/public-site-nplus3-20261112/http-live-06.json)与[生产依赖审计](../tmp/public-site-nplus3-20261112/candidate-production-audit-03.json)。
 
 当前设计来源、API/数据/角色/状态/手测完整合同见[总计划3.7](./xiaok-assistant-roadmap.zh-CN.md#37-p4b-公开工地具体授权与审核限定闭环)。ImageGen独立透明PNG `miniprogram/packages/construction/assets/xiaok-public-sites.png` 为420×282、36,161字节，源映射见本批批准说明，无整页切片。公开专项9/9注入及9/9真实DeepSeek、客户端6/6、原聊天27/27和离线原生编译通过；隔离生产构建通过。实际模板浏览器诊断仅作辅助；原生390×844/高屏/胶囊/键盘及认证后台手测待测、非阻塞。无距离/实时定位、自动人物识别脱敏、直播/视频/外部推送；不授权生产发布。
 

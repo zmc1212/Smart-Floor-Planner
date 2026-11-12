@@ -11,12 +11,14 @@ import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { deleteAssistantData } from '@/db/repositories/assistant-cleanup';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 import { ConversationService, appendMessage, newRun } from '@/lib/assistant/core/conversation';
-import { claimJob, failRun, markProviderStarted, type Lease } from '@/lib/assistant/infrastructure/job-queue';
+import { claimJob, completeRun, failRun, markProviderStarted, runContext, type Lease } from '@/lib/assistant/infrastructure/job-queue';
 import { processNativeAgentAnswer, nativeReadContract, nativeRunReadContract, xiaokNativeExecutorProtocol,
   nativeExecutorPromptVersion } from '@/lib/assistant/agent/native-executor';
 import { nativeConversation } from '@/lib/assistant/fastgpt/rag-session';
 import { queryBusiness } from '@/lib/assistant/agent/business-tools';
 import { recallHistory } from '@/lib/assistant/agent/history';
+import { dialoguePublicSitesRecommendation } from '@/lib/assistant/agent/dialogue-recommend-tools';
+import { processAgentAnswer } from '@/lib/assistant/agent/worker';
 import { PublicCustomerService } from '@/lib/construction/public-customer';
 import { publicMessageAvailable, publicMessageProjection } from '@/lib/construction/public-projections';
 import { publishedPublicMaterial } from '@/lib/construction/public-read';
@@ -89,7 +91,7 @@ after(async () => {
 /** One published site whose only public source is an owner message in a real
  * consultation conversation. This exercises the same material predicate the
  * customer read surface and the executor use. */
-async function publishedSite(label: string, sourceText = '水电线管已经铺好，底盒还没固定。') {
+async function publishedSite(label: string, sourceText = '水电线管已经铺好，底盒还没固定。', cityCode = '420502') {
   const lead = (await withTenantTransaction(enterpriseId, tx => one(tx, sql`insert into app.leads(enterprise_id,name,phone,source,status,customer_user_id)
     values(${enterpriseId},${label},'13800000000','test','new',${userId}) returning id`)))!;
   const project = (await withTenantTransaction(enterpriseId, tx => one(tx, sql`insert into app.construction_projects(enterprise_id,lead_id,name)
@@ -98,7 +100,7 @@ async function publishedSite(label: string, sourceText = '水电线管已经铺�
   const conversationId = String(conversation.id);
   const source = await withTenantTransaction(enterpriseId, tx => appendMessage(tx, actor, conversationId, {
     author: 'user', clientMessageId: randomUUID(), content: { version: 1, blocks: [{ type: 'text', text: sourceText }] } }));
-  const content = { name: label, cityCode: '420502', cityName: '宜昌市', district: '西陵区', stageName: '水电',
+  const content = { name: label, cityCode, cityName: '宜昌市', district: '西陵区', stageName: '水电',
     sourceCount: 1, photoCount: 0, excerpts: [{ role: '业主（匿名）', text: sourceText,
       date: new Date().toISOString() }] };
   const contentHash = fingerprint(content);
@@ -1272,4 +1274,84 @@ test('temporary project access denial hides historical prose and restores the sa
   assert.equal(reopened.available, true);
   assert.equal(reopened.publicReferences?.[0].versionId, site.versionId);
   assert.deepEqual(reopened.content, (await assistantMessages(site.conversationId))[0].content);
+});
+
+test('a nearby-sites receipt is reused once while live and cannot replay or render after withdrawal', async () => {
+  const site = await publishedSite(prefix + '-nearby-withdrawal', '现场已完成给水管标记。', '420500');
+  const cid = String((await service.create(randomUUID())).id);
+  const question = '宜昌西陵区附近有哪些工地？';
+  const factory = (lease: Lease) => dialoguePublicSitesRecommendation({ lease, protocol: xiaokNativeExecutorProtocol,
+    authorize: () => withTenantTransaction(enterpriseId, tx => runContext(tx, lease)),
+    context: { version: 1, knowledge: [], snapshots: [], sources: [] }, messages: [{ role: 'user', content: question }] });
+  const first = await pendingFresh(cid, question);
+  const tool = factory(first.lease);
+  const receipts = await Promise.all([tool.call(), tool.call()]);
+  assert.deepEqual(receipts[0], receipts[1]);
+  assert.equal(receipts[0].status, 'ready');
+  assert.ok(String(receipts[0].text).includes('-nearby-withdrawal'));
+  const persisted = await withTenantTransaction(enterpriseId, tx => rows(tx, sql`select source_refs from app.assistant_run_steps
+    where enterprise_id=${enterpriseId} and run_id=${first.runId} and kind='agent_public_sites'`));
+  assert.deepEqual(persisted.map(row => row.source_refs), [[{ siteId: site.siteId, versionId: site.versionId }]]);
+  await completeRun(first.lease, { content: { version: 1, blocks: [{ type: 'text', text: String(receipts[0].text) }] },
+    usage: { inputTokens: 10, outputTokens: 6 } }, tool.revalidate);
+  const outputId = (await service.run(first.runId)).outputMessageId;
+  const read = async () => (await service.messages(cid)).items.find(item => item.id === outputId)!;
+  assert.equal((await read()).available, true);
+  assert.deepEqual((await read()).publicReferences, []);
+
+  const next = await pendingFresh(cid, '我还想看看宜昌西陵区的工地。');
+  const current = factory(next.lease);
+  assert.equal((await current.call()).status, 'ready');
+  await withdrawn(site);
+  await assert.rejects(current.call(), /context_changed/);
+  await assert.rejects(factory(next.lease).call(), /context_changed/);
+  await assert.rejects(withTenantTransaction(enterpriseId, current.revalidate), /context_changed/);
+  await failRun(next.lease, 'context_changed', true);
+  assert.equal((await service.run(next.runId)).outputMessageId, null);
+  assert.equal((await read()).available, false);
+  assert.match(JSON.stringify((await read()).content), /source_withdrawn/);
+  assert.doesNotMatch(JSON.stringify((await read()).content), /nearby-withdrawal/);
+});
+
+test('legacy executor only sends same-site turns to the model after a project switch', async () => {
+  const a = await publishedSite(prefix + '-legacy-a', '客厅预留旧蓝色底盒。');
+  const b = await publishedSite(prefix + '-legacy-b', '当前工地的给水管已定位。');
+  const ref = (site: typeof a) => ({ siteId: site.siteId, versionId: site.versionId, contentHash: site.contentHash });
+  await seedPriorAnswer(a.conversationId, { question: '旧蓝色底盒是不是已经到了？', text: '旧蓝色底盒还没进场。',
+    publicRef: ref(a), snapshots: [], deliveredSnapshots: 0, ownBusinessTool: false });
+  await new PublicCustomerService(actor, a.conversationId).context(b.siteId, { versionId: b.versionId }, randomUUID());
+  await seedPriorAnswer(a.conversationId, { question: '这边的给水管定位了吗？', text: '当前工地的给水管已定位。',
+    publicRef: ref(b), snapshots: [], deliveredSnapshots: 0, ownBusinessTool: false });
+  const { lease } = await pendingFresh(a.conversationId, '那现在还有什么需要核对？');
+  const prompts: string[] = [];
+  await processAgentAnswer(lease, { model: async messages => {
+    prompts.push(JSON.stringify(messages));
+    return { text: JSON.stringify({ kind: 'general', text: '公开记录显示给水管已定位，可以再核对点位。' }), toolCalls: [],
+      usage: { inputTokens: 20, outputTokens: 10 }, finishReason: 'stop', providerRequestId: null };
+  } });
+  const run = await service.run(lease.runId);
+  assert.equal(run.status, 'succeeded', JSON.stringify(run));
+  assert.ok(prompts.length);
+  assert.doesNotMatch(prompts.join('\n'), /旧蓝色底盒|legacy-a/);
+  assert.match(prompts.join('\n'), /给水管已定位/);
+  const answer = (await service.messages(a.conversationId)).items.find(message => message.id === run.outputMessageId)!;
+  assert.deepEqual(answer.publicReferences?.map(item => item.versionId), [b.versionId]);
+});
+
+test('a large public-site thread keeps the latest question and whole eligible evidence under the model input limit', async () => {
+  const site = await publishedSite(prefix + '-long-history');
+  for (let index = 1; index <= 4; index++) {
+    await seedPriorAnswer(site.conversationId, { question: `此前第${index}条：` + '核对线管和底盒。'.repeat(450),
+      text: `第${index}次公开回答保留施工条件。`, publicRef: { siteId: site.siteId, versionId: site.versionId, contentHash: site.contentHash },
+      snapshots: [], deliveredSnapshots: 0, ownBusinessTool: false });
+  }
+  const { lease } = await pendingFresh(site.conversationId, '现在底盒还没固定吗？');
+  try {
+    const assembled = await nativeConversation(lease, [], xiaokNativeExecutorProtocol);
+    assert.ok(Buffer.byteLength(JSON.stringify(assembled.messages)) <= 16000);
+    assert.equal(assembled.messages.at(-1)?.content, '现在底盒还没固定吗？');
+    assert.ok(assembled.messages.some(message => /第4次公开回答/.test(message.content)));
+    assert.deepEqual(assembled.publicRefs.map(ref => ref.versionId), [site.versionId]);
+    assert.ok((await service.messages(site.conversationId)).items.some(item => JSON.stringify(item.content).includes('此前第1条')));
+  } finally { await service.run(lease.runId, 'cancel', randomUUID()); }
 });

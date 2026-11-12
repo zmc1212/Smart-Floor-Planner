@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { withTenantTransaction } from '@/db/transaction';
+import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { one, type Row } from '@/db/repositories/assistant-repository';
 import { fail } from '../contracts';
 import { runContext, type Lease } from '../infrastructure/job-queue';
@@ -7,6 +7,7 @@ import { synthesisContextAvailable } from './synthesis-sources';
 import type { SynthesisContext } from './synthesis';
 import { recommendDesigners, type DesignerSnapshot } from '@/lib/portfolio/designer-recommendation';
 import { publicCandidates } from '@/lib/construction/public-read';
+import { publicContextStatus, type PublicContextRef } from '@/lib/construction/public-projections';
 import { readMemory } from './memory';
 import { recommendationRegion } from '../location/region';
 import type { RagChatMessage } from '../fastgpt/native-rag';
@@ -135,30 +136,45 @@ export function dialogueDesignerRecommendation(rt: RecommendToolRuntime) {
  * message; a located result owns step 2010 (core/discovery.ts depends on the
  * kind), `need_region` asks honestly and writes nothing. */
 export function dialoguePublicSitesRecommendation(rt: RecommendToolRuntime) {
-  let memo: Promise<ToolReceipt> | undefined = rt.recovered?.publicSites
-    ? Promise.resolve(rt.recovered.publicSites) : undefined;
   // Restore the delivery state before any call: a recovered empty receipt is
   // authoritative even when the resumed graph goes straight to the final answer.
   let outcome: PublicSitesOutcome | undefined = publicSitesOutcomeOf(rt.recovered?.publicSites);
-  const call = (): Promise<ToolReceipt> => memo ??= (async () => {
+  const persisted = (tx: PostgresTransaction) => one(tx, sql`select source_refs,private_checkpoint,input_summary from app.assistant_run_steps
+    where enterprise_id=${rt.lease.enterpriseId} and run_id=${rt.lease.runId} and step_seq=2010
+      and kind='agent_public_sites' and status='succeeded'`);
+  const checkedReceipt = async (tx: PostgresTransaction, step: Row) => {
+    const saved = (step.input_summary as Row | null)?.receipt as ToolReceipt | undefined;
+    const checkpoint = step.private_checkpoint as Row | null;
+    const refs = step.source_refs as PublicContextRef[];
+    if (!publicSitesOutcomeOf(saved) || !checkpoint?.region || !Array.isArray(refs) || refs.length !== checkpoint.count
+      || (saved?.status === 'ready') !== (refs.length > 0)) fail('context_changed');
+    for (const ref of refs) {
+      if (!ref?.siteId || !ref.versionId) fail('context_changed');
+      const status = await publicContextStatus(tx, rt.lease.enterpriseId, ref);
+      if (!status.available) {
+        if (status.reason === 'source_unreadable') fail('public_source_unreadable', 503);
+        fail('context_changed');
+      }
+    }
+    return saved!;
+  };
+  const revalidate = async (tx: PostgresTransaction) => {
+    if (!outcome) return;
+    const step = await persisted(tx);
+    if (!step) fail('context_changed');
+    await checkedReceipt(tx, step);
+  };
+  const call = async (): Promise<ToolReceipt> => {
     await rt.authorize();
     const receipt = await withTenantTransaction(rt.lease.enterpriseId, async tx => {
       const current = await runContext(tx, rt.lease);
       if (!await synthesisContextAvailable(tx, rt.lease.actor, current.conversation, rt.context)) fail('context_changed');
-      const cached = await one(tx, sql`select private_checkpoint,input_summary from app.assistant_run_steps
-        where enterprise_id=${rt.lease.enterpriseId} and run_id=${rt.lease.runId} and step_seq=2010
-          and kind='agent_public_sites' and status='succeeded'`);
-      if (cached) {
-        // The checkpoint stores {region,count} only; without the persisted
-        // receipt the exact delivery text is not rebuildable, so refuse.
-        const checkpoint = cached.private_checkpoint as Row | null;
-        const saved = (cached.input_summary as Row).receipt as ToolReceipt | undefined;
-        if (!saved || !checkpoint?.region) fail('provider_outcome_unknown');
-        return saved;
-      }
+      const cached = await persisted(tx);
+      if (cached) return checkedReceipt(tx, cached);
       const memory = readMemory(current.conversation.entry_snapshot);
       const housing = memory.facts.filter(f => f.field === 'housing' && f.status === 'current').map(f => f.value).join(' ');
-      const region = recommendationRegion(current.conversation.entry_snapshot, housing, rt.messages.at(-1)?.content || '');
+      const question = (rt.messages.at(-1)?.content || '').replace(/[？?]/g, '');
+      const region = recommendationRegion(current.conversation.entry_snapshot, housing, question);
       if (!region) return publicSitesNeedRegionReceipt();
       const items = (await publicCandidates(tx, rt.lease.enterpriseId, region.cityCode, region.district)).slice(0, 3);
       const receipt = nearbyPublicSitesReceipt(region, items);
@@ -171,6 +187,6 @@ export function dialoguePublicSitesRecommendation(rt: RecommendToolRuntime) {
     });
     outcome = publicSitesOutcomeOf(receipt);
     return receipt;
-  })();
-  return { call, outcome: () => outcome };
+  };
+  return { call, revalidate, outcome: () => outcome };
 }

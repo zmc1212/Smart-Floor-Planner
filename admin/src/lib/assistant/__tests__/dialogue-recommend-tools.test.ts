@@ -63,9 +63,7 @@ const runtime = (recovered: RecommendToolRuntime['recovered']): RecommendToolRun
   lease: { enterpriseId: '1454', jobId: '1', runId: '5', token: 't',
     actor: { enterpriseId: '1454', principal: { kind: 'user' as const, userId: '7' }, contextVersion: 1, capabilities: [] } },
   protocol: 'test',
-  // A recovered receipt must be served from the persistence snapshot: reaching
-  // authorization or a fresh candidate query is the defect under test.
-  authorize: async () => { throw new Error('a recovered receipt must not re-authorize or re-query'); },
+  authorize: async () => { throw new Error('current authorization denied'); },
   context: { version: 1, knowledge: [], snapshots: [], sources: [] },
   messages: [],
   recovered,
@@ -78,13 +76,12 @@ test('a recovered empty public-site receipt restores delivery without a new quer
   const sites = dialoguePublicSitesRecommendation(runtime({ publicSites: emptySites }));
   assert.deepEqual(sites.outcome(), { status: 'empty', text: emptySites.text },
     'The delivery outcome exists before any tool call');
-  const first = await sites.call();
-  assert.deepEqual(first, emptySites, 'The cached receipt is re-served verbatim');
-  assert.deepEqual(await sites.call(), first, 'A later cache hit returns the same receipt');
   const composed = publicSitesDelivery({ text: '还需要知道您所在的城市或区县。', modelIncluded: true }, sites.outcome());
   assert.equal(composed.text, emptySites.text,
     'A saved located empty result must not become a request for the customer city');
   assert.equal(composed.modelIncluded, false);
+  await assert.rejects(sites.call(), /current authorization denied/);
+  await assert.rejects(sites.call(), /current authorization denied/);
 });
 
 test('a recovered designer receipt is re-served without a new query', async () => {

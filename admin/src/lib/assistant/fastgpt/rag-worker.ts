@@ -20,6 +20,10 @@ export async function processNativeRagAnswer(lease: Lease) {
   try {
     const bound = fastGPTRagConfiguration(lease.enterpriseId);
     if (!bound) fail('context_changed');
+    // Earlier queued dataset runs may predate the admission guard. Their
+    // workflow cannot bind a selected site to its model response.
+    const { conversation } = await withTenantTransaction(lease.enterpriseId, tx => runContext(tx, lease));
+    if ((conversation.entry_snapshot as Row).activePublicSite) fail('context_changed');
     if (bound.configuration.mode === 'unified') return await processUnifiedAnswer(lease, bound);
     const authorize = () => withTenantTransaction(lease.enterpriseId, async tx => {
       const state = await runContext(tx, lease), policy = state.run.policy_snapshot as Row;

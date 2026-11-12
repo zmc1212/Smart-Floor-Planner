@@ -22,6 +22,7 @@ import { fastGPTPreviewProtocol } from '../knowledge/fastgpt-retrieval';
 import { processNativeRagAnswer } from '../fastgpt/rag-worker';
 import { processAgentV2Answer } from '../fastgpt/agent-v2/worker';
 import { fastGPTAgentV2Protocol } from '../fastgpt/agent-v2/config';
+import { publicHistoryScope } from '../agent/history';
 
 type Dependencies={retriever?:KnowledgeRetriever;model?:TextModelGateway};
 export async function processAnswer(lease:Lease,deps:Dependencies={}) {
@@ -52,11 +53,14 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
         enterpriseId:lease.enterpriseId,runId:lease.runId,search:native})}:{}); return;
     }
     if(context.run.trigger_kind!=='user_message')fail('assistant_capability_forbidden',403);
+    if ((context.conversation.entry_snapshot as Row).activePublicSite) fail('assistant_model_configuration_invalid', 503);
+    const historyScope = publicHistoryScope(context.conversation, false);
     const messages=await withTenantTransaction(lease.enterpriseId,async tx=>{
       await runContext(tx,lease);
       return rows(tx,sql`select m.* from app.assistant_messages m join app.assistant_messages trigger on trigger.enterprise_id=m.enterprise_id
         and trigger.conversation_id=m.conversation_id where m.enterprise_id=${lease.enterpriseId} and trigger.id=${String(context.run.trigger_message_id)}
-        and m.conversation_id=${String(context.run.conversation_id)} and m.seq<=trigger.seq and m.author_kind in ('user','admin') order by m.seq desc limit 3`);
+        and m.conversation_id=${String(context.run.conversation_id)} and m.seq<=trigger.seq and m.author_kind in ('user','admin')
+        and (m.id=trigger.id or ${historyScope}) order by m.seq desc limit 3`);
     });
     if(!messages.length || String(messages[0].id)!==String(context.run.trigger_message_id))fail('context_changed');
     const read=(m:Row)=>safeText(m.content as Parameters<typeof safeText>[0]);
@@ -65,8 +69,8 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
     if (/回顾|总结.*(?:需求|想法)|(?:需求|想法).*总结|整理一下|记了哪些想法|记住了什么/.test(query)) {
       const turns = await withTenantTransaction(lease.enterpriseId, async tx => {
         await runContext(tx, lease);
-        return rows(tx, sql`select id,content from app.assistant_messages where enterprise_id=${lease.enterpriseId}
-          and conversation_id=${String(context.run.conversation_id)} and author_kind='user' order by seq desc limit 200`);
+        return rows(tx, sql`select m.id,m.content from app.assistant_messages m where m.enterprise_id=${lease.enterpriseId}
+          and m.conversation_id=${String(context.run.conversation_id)} and m.author_kind='user' and ${historyScope} order by m.seq desc limit 200`);
       });
       const fields = chatFirstProgress(defaultGuidance, turns.reverse().map(m => ({ id: String(m.id), text: read(m) }))).fields;
       const labels = { housing: '房屋', household: '居住', style: '风格', budget: '预算', timeline: '时间', room: '房间想法' };
@@ -83,8 +87,9 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
         await runContext(tx, lease);
         const settings = await one(tx, sql`select guidance_config from app.assistant_enterprise_settings where enterprise_id=${lease.enterpriseId}`);
         if (!configuredGuidance(settings?.guidance_config).enabled) return null;
-        return rows(tx, sql`select id,content from app.assistant_messages where enterprise_id=${lease.enterpriseId}
-          and conversation_id=${String(context.run.conversation_id)} and author_kind='user' and seq<=${String(messages[0].seq)} order by seq limit 201`);
+        return rows(tx, sql`select m.id,m.content from app.assistant_messages m where m.enterprise_id=${lease.enterpriseId}
+          and m.conversation_id=${String(context.run.conversation_id)} and m.author_kind='user' and m.seq<=${String(messages[0].seq)}
+          and (m.id=${String(messages[0].id)} or ${historyScope}) order by m.seq limit 201`);
       });
       if (inputs && inputs.length <= 200) {
         const turns = inputs.map(m => ({ id: String(m.id), text: read(m) }));

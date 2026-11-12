@@ -26,18 +26,22 @@ async function introSourceRef(tx: PostgresTransaction, eid: string, cid: string,
     ? { siteId: payload.siteId, versionId: payload.versionId } : null;
   return { intro: true, ref };
 }
+type PublicDependency = PublicContextRef & { contentHash?: string; recommendation?: true };
+
 export async function publicMessageRefs(tx: PostgresTransaction, eid: string, cid: string, mid: string) {
   const steps = await rows(tx, sql`select s.kind,s.source_refs,s.private_checkpoint from app.assistant_run_steps s
     join app.assistant_messages m on m.enterprise_id=s.enterprise_id and m.run_id=s.run_id
     where m.enterprise_id=${eid} and m.conversation_id=${cid} and m.id=${mid} and s.status='succeeded'
-      and (s.kind='agent_public_context' or (s.step_seq=1006 and s.kind='agent_synthesis_context'))
+      and (s.kind='agent_public_context' or (s.step_seq=1006 and s.kind='agent_synthesis_context')
+        or (s.step_seq=2010 and s.kind='agent_public_sites'))
     order by s.step_seq desc`);
-  const refs = new Map<string, PublicContextRef & { contentHash?: string }>();
+  const refs = new Map<string, PublicDependency>();
   for (const step of steps) {
     // 1003 stores the dependency array; the legacy 1006 source_refs column is a
     // whole synthesis context object and must never be iterated as refs.
-    if (Array.isArray(step.source_refs)) for (const ref of step.source_refs as (PublicContextRef & { contentHash?: string })[]) {
-      if (ref?.siteId && ref.versionId) refs.set(ref.siteId + ':' + ref.versionId, ref);
+    if (Array.isArray(step.source_refs)) for (const ref of step.source_refs as PublicDependency[]) {
+      if (ref?.siteId && ref.versionId) refs.set(ref.siteId + ':' + ref.versionId,
+        step.kind === 'agent_public_sites' ? { ...ref, recommendation: true } : ref);
     }
     const legacy = (step.private_checkpoint as Row | null)?.publicSite as
       (PublicContextRef & { contentHash?: string }) | undefined;
@@ -92,7 +96,7 @@ export async function publicMessageProjection(tx: PostgresTransaction, actor: Ac
       if (!status.material) return { available: false as const, reason: status.reason };
       if (ref.contentHash && String(status.material.version.content_hash) !== ref.contentHash)
         return { available: false as const, reason: 'source_changed' as PublicMaterialFailure };
-      references.push(await publicMaterialDto(tx, status.material.site, status.material.version));
+      if (!ref.recommendation) references.push(await publicMaterialDto(tx, status.material.site, status.material.version));
     }
     return { available: true as const, publicReferences: references };
   }

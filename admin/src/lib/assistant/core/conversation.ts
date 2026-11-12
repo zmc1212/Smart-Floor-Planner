@@ -167,7 +167,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   if (report && !agent) fail('assistant_capability_forbidden', 403);
   const entry = c.entry_snapshot as Row;
   const rag = agent && purpose === 'reply' && trigger.kind === 'user_message' && c.purpose === 'customer_consultation'
-    && actor.principal.kind === 'user' && entry.requirementReviewMode !== true ? fastGPTRagConfiguration(actor.enterpriseId) : undefined;
+    && actor.principal.kind === 'user' && entry.requirementReviewMode !== true && !entry.activePublicSite ? fastGPTRagConfiguration(actor.enterpriseId) : undefined;
   const openingSceneKey = purpose === 'public.site.intro' ? sceneForOpeningPurpose(purpose) : undefined;
   const openingReady = !!openingSceneKey && !!openingScene(actor.enterpriseId, openingSceneKey);
   // A registered opening scene belongs to its own FastGPT app; without a
