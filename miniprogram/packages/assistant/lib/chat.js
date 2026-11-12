@@ -1,4 +1,9 @@
-const { AssistantClient, entryInput, errorCopy, uncertain, messagesForView } = require('./client');
+const { AssistantClient, entryInput, errorCopy, uncertain, messagesForView: projectMessages } = require('./client');
+const { markdownForBlock } = require('./message-markdown');
+
+function messagesForView(items) {
+  return projectMessages(items, markdownForBlock);
+}
 const ACTIVE = ['queued', 'running'];
 const WELCOME = '你好，我是小K。\n先聊聊你的装修想法吧。';
 function historyForView(items) {

@@ -1,6 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { AssistantClient, entryInput, messagesForView } = require('../packages/assistant/lib/client');
+const { markdownForBlock } = require('../packages/assistant/lib/message-markdown');
 const { ChatController } = require('../packages/assistant/lib/chat');
 const { canAccessRoute } = require('../utils/identity-navigation');
 
@@ -659,6 +660,61 @@ test('message projection orders bigint sequences exactly and treats unknown bloc
   assert.deepEqual(messages[1].blocks, [{ key: 0, text: '<button>plain text</button>' }]);
 });
 
+test('AI Markdown produces headings, inline styles, lists, quotes, code and tables on history reentry', async () => {
+  const f = fixture();
+  const text = [
+    '# 水电进度', '### 书房', '', '**线管**已经铺好，*底盒待固定*。', '下一步核对 `SW-01`。', '',
+    '3. 核对点位', '4. 确认高度', '   - 书桌侧', '   - 门边', '', '> 按现场记录核实。', '',
+    '```text', 'SW-01', '  左侧底盒', '```', '', '| 项目 | 状态 |', '| --- | --- |', '| 线管 | **完成** |',
+  ].join('\n');
+  f.db.items = [message('21', '1', text, { authorKind: 'assistant' })];
+  await f.controller.show({ conversationId: '11' });
+  const [block] = f.controller.state.messages[0].blocks;
+  const names = nodes => nodes.flatMap(node => node.name ? [node.name, ...names(node.children)] : []);
+  assert.deepEqual(block.nodes.map(node => node.name), ['h1', 'h3', 'p', 'ol', 'blockquote', 'pre', 'div']);
+  assert.deepEqual(names(block.nodes[2].children), ['strong', 'em', 'br', 'code']);
+  assert.equal(block.nodes[3].attrs.start, 3);
+  assert.deepEqual(names(block.nodes[3].children), ['li', 'li', 'ul', 'li', 'li']);
+  assert.equal(block.nodes[5].children[0].children[0].text, 'SW-01\n  左侧底盒');
+  assert.deepEqual(names(block.nodes[6].children), ['table', 'thead', 'tr', 'th', 'th', 'tbody', 'tr', 'td', 'td', 'strong']);
+  const reopened = new ChatController({ client: f.client, identity: () => 'customer-A', emit() {}, schedule: () => 0 });
+  await reopened.show({ conversationId: '11' });
+  assert.deepEqual(reopened.state.messages[0].blocks, [block]);
+  reopened.dispose();
+  f.controller.dispose();
+});
+
+test('Markdown only formats authorized AI text and leaves source and notice blocks in order', () => {
+  const content = { blocks: [
+    { type: 'text', text: '**正文** [来源名称](https://example.test/source) ![照片说明](https://example.test/image.png)' },
+    { type: 'citation', citationId: '31', fallbackText: '来源' },
+    { type: 'notice', fallbackText: '**服务提示**' },
+    { type: 'text', text: '### 末段' },
+  ] };
+  const item = { id: '22', seq: '2', authorKind: 'assistant', available: true, content,
+    citations: [{ id: '31', available: true, title: '施工参考' }],
+    publicReferences: [{ id: '7', versionId: '19' }] };
+  const [reply, user, revoked] = messagesForView([
+    item,
+    { ...item, id: '23', seq: '3', authorKind: 'user' },
+    { ...item, id: '24', seq: '4', available: false },
+  ], markdownForBlock);
+  assert.deepEqual(reply.blocks.map(block => block.nodes?.[0]?.name || block.text), ['p', '**服务提示**', 'h3']);
+  assert.deepEqual(reply.citations, item.citations);
+  assert.deepEqual(reply.publicReferences, item.publicReferences);
+  const nodes = JSON.stringify(reply.blocks[0].nodes);
+  assert.match(nodes, /来源名称.*照片说明/);
+  assert.doesNotMatch(nodes, /https:|"(href|src)"|"name":"(a|img)"/);
+  assert.ok(user.blocks.every(block => !block.nodes));
+  assert.deepEqual(revoked.blocks, [{ key: 0, text: '**服务提示**' }]);
+  assert.deepEqual(revoked.publicReferences, []);
+  const inert = markdownForBlock({ text: '**保留文字** <button>仅文字</button> &lt;script&gt;' });
+  assert.doesNotMatch(JSON.stringify(inert), /"name":"(button|script)"/);
+  assert.match(JSON.stringify(inert), /仅文字/);
+  assert.equal(markdownForBlock({ text: '普通回答' }), null);
+  assert.equal(markdownForBlock({ text: '**长回答**\n'.repeat(600) }), null);
+});
+
 test('new conversation remains new on foreground even when route originally targeted history', async () => {
   const f = fixture(); await f.controller.show({ conversationId: '11' });
   f.controller.newConversation(); f.controller.hide(); await f.controller.show();
@@ -866,12 +922,15 @@ test('background network failure retains usable chat but foreground permission d
 test('warm foreground reprojects withdrawn content and identity changes never reuse entry or drafts', async () => {
   const f = fixture();
   f.db.conversation.lastSeq = '1';
-  f.db.items = [{ id: '21', seq: '1', available: true, publicSourceBound: true, content: { blocks: [{ type: 'text', text: '旧资料' }] } }];
+  f.db.items = [{ ...message('21', '1', '**旧资料**', { authorKind: 'assistant' }), publicSourceBound: true }];
   await f.controller.show({ conversationId: '11' });
+  assert.equal(f.controller.state.messages[0].blocks[0].nodes[0].children[0].name, 'strong');
   f.controller.input('私人草稿');
   f.db.items[0] = { ...f.db.items[0], available: false, content: { blocks: [{ type: 'notice', fallbackText: '资料已不可用' }] } };
   f.controller.hide(); await f.controller.show();
   assert.equal(f.controller.state.messages[0].blocks[0].text, '资料已不可用');
+  assert.equal(f.controller.state.messages[0].blocks[0].nodes, undefined);
+  assert.doesNotMatch(JSON.stringify(f.controller.state.messages), /旧资料/);
   assert.equal(messageReads(f).length, 2, 'the unchanged sequence still required a source recheck');
   assert.equal(f.controller.state.draft, '私人草稿');
   f.identity('customer-B');

@@ -104,6 +104,35 @@ button:active { opacity: .72; }
 .chat-page .construction-contact[disabled] { background: var(--action-disabled-bg, #a9d9b8); }
 .message-photo { display: block; width: 420rpx; max-width: 100%; border-radius: 18rpx; }
 .message-block + .message-block { margin-top: 12rpx; }
+.message-markdown {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  .md-p, .md-h1, .md-h2, .md-h3, .md-h4, .md-h5, .md-h6,
+  .md-ol, .md-ul, .md-blockquote, .md-pre, .md-table-scroll, .md-hr { margin: 0 0 .55em; }
+  .md-p:last-child, .md-h1:last-child, .md-h2:last-child, .md-h3:last-child,
+  .md-h4:last-child, .md-h5:last-child, .md-h6:last-child, .md-ol:last-child,
+  .md-ul:last-child, .md-blockquote:last-child, .md-pre:last-child,
+  .md-table-scroll:last-child, .md-hr:last-child { margin-bottom: 0; }
+  .md-h1, .md-h2, .md-h3, .md-h4, .md-h5, .md-h6 { font-weight: 700; line-height: 1.35; }
+  .md-h1 { font-size: 1.18em; }
+  .md-h2 { font-size: 1.1em; }
+  .md-h3, .md-h4, .md-h5, .md-h6 { font-size: 1em; }
+  .md-ol, .md-ul { padding-left: 1.4em; }
+  .md-li + .md-li { margin-top: .2em; }
+  .md-li > .md-ol, .md-li > .md-ul { margin-top: .2em; }
+  .md-blockquote { padding-left: .65em; border-left: 3px solid #a6b39b; color: #53645c; }
+  .md-code, .md-pre { font-family: monospace; background: #eeeee4; border-radius: 4px; }
+  .md-code { padding: 0 .2em; white-space: pre-wrap; }
+  .md-pre { padding: .55em .65em; white-space: pre-wrap; }
+  .md-pre .md-code { padding: 0; }
+  .md-hr { height: 0; border: 0; border-top: 1px solid #bac4af; }
+  .md-table-scroll { max-width: 100%; overflow-x: auto; }
+  .md-table { min-width: 100%; border-collapse: collapse; font-size: .92em; }
+  .md-th, .md-td { min-width: 4.5em; padding: .32em .5em; border: 1px solid #d6dccd; vertical-align: top; text-align: left; }
+  .md-th { background: #edf0e5; font-weight: 700; }
+}
 .user-message { justify-content: flex-end; padding-left: 64rpx; }
 .user-message .message-main { max-width: 100%; }
 .user-message .bubble { color: #fff; background: #00b979; }

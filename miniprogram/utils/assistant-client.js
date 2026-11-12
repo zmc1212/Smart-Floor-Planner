@@ -274,7 +274,7 @@ function constructionClosureForView(item) {
     ? { title, excerpt, planNumber, recordVersion } : null;
 }
 
-function messagesForView(items) {
+function messagesForView(items, formatAssistantText) {
   const latestPlan = new Map();
   for (const m of items || []) if (m.planDecision && m.available !== false) {
     const previous = latestPlan.get(m.planDecision.id), seq = String(m.seq || '0'), before = String(previous?.seq || '0');
@@ -307,13 +307,14 @@ function messagesForView(items) {
     suggestDesigner: item.authorKind === 'assistant' && (item.content?.blocks || []).some(b => b.text === '这部分需要设计师结合本次情况继续沟通。你愿意的话，可以请设计师接着聊。'),
     // A known citation already has a tappable source chip below the bubble.
     // Keep fallback text for unmatched/future blocks instead of hiding content.
-    blocks: (item.content && item.content.blocks || []).filter(block =>
-      block.type !== 'citation' || !(item.citations || []).some(citation => String(citation.id) === String(block.citationId))
-    ).map((block, index) => ({
-      key: index,
-      // Never interpret model HTML, URLs or action instructions.
-      text: block.type === 'text' ? String(block.text || '') : String(block.fallbackText || '这段内容暂时无法展示。'),
-    })),
+    blocks: (item.content?.blocks || []).filter(block =>
+      (item.available !== false || block.type === 'notice')
+      && (block.type !== 'citation' || !(item.citations || []).some(citation => String(citation.id) === String(block.citationId)))
+    ).map((block, index) => {
+      const text = block.type === 'text' ? String(block.text || '') : String(block.fallbackText || '这段内容暂时无法展示。');
+      const nodes = item.authorKind === 'assistant' && block.type === 'text' ? formatAssistantText?.(block) : null;
+      return nodes ? { key: index, text, nodes } : { key: index, text };
+    }),
     citations: (item.citations || []).map(citation => ({
       id: citation.id, available: citation.available,
       title: citation.available ? citation.title : '资料已不可用',
