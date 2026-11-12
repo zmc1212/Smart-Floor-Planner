@@ -21,6 +21,22 @@
 
 沿用 LangGraph 对会话历史和跨线程记忆的区分。写入依赖当前应用授权、PostgreSQL Outbox 和业务回执，工具调用及回传沿百炼 Responses 协议。[LangGraph 记忆](https://docs.langchain.com/oss/javascript/langgraph/add-memory) · [LangGraph 持久化](https://docs.langchain.com/oss/javascript/langgraph/persistence) · [百炼 Responses 协议](https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-responses)
 
+## R6 原生施工复核与托管知识
+
+**Limited。** 基线 `41b0639517f79f7135ea78801c3cfcc6159e44b5`。原 C01 咨询读取私有记忆、当前项目和 R4 知识工具。查无授权来源时，终稿 schema 仅接受无引用的通用建议或缺项说明。引用打开时复验原文、当前版本和项目权限。PPT 第18页提供项目团队安排防水和后续检查的依据，具体准备清单和管根做法仍由项目团队核对。
+
+- 原 Outbox Worker 从施工事件解析房间与事项范围。获权复核委托锁定原事项，暂停及重进保留绑定。同房间、同事项只有一份匹配的已对客发布记录时，可提示有候选原图待关联。人员沿现有方案和落实复核服务关联精确版本与原件。有权团队结果实际写回原 C01 后才完成委托，原件依回传和发布权限开放。工程质量由有权人员复核。
+- 原来源工具重读相关私有记忆，仅用委托的房间与事项检索有效工艺。Outbox 回执保存工具结果、来源、知识 epoch、项目上下文哈希和可用的请求 ID。`GET /api/miniprogram/assistant/conversations/:id/long-term` 可返回 `standardCheck`，记录 `sources_found`、`no_match`、`unavailable`、`disabled` 或 `outdated`；引用实时失效。标准查询回执记录资料情况，人工复核结论仍由施工服务记录。
+- Stable 沿批准的 C01 消息、结果及媒体组件。验收使用有标记的合成企业、隔离 PostgreSQL 与应用角色。八类施工事件和四端权限沿现有业务服务和数据表。
+
+在 `admin` 运行 `node --env-file=.env.local --import tsx scripts/xiaok-r6-acceptance.ts --label=<label>`，将 `XIAOK_R6_DATABASE_URL` 指向已迁移的空隔离库。默认使用托管接口与对话模型替身。`--live-model` 使用真实百炼 Responses 及本地 pgvector/Embedding。`--hosted` 使用已配置的专用工作空间和真实托管接口；与 `--live-model` 同用可验证真实托管加 Responses。原始证据保存在 `admin/tmp/r6/` 与 `tmp/r6/`。[百炼 RAG 鉴权](https://help.aliyun.com/zh/model-studio/rag-api-authentication) · [LangGraph ToolNode](https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph.prebuilt.ToolNode.html)
+
+分层验收：
+
+- 隔离业务通过10组，托管检索与模型输出使用替身。PostgreSQL、Worker 投递、施工权限、业主明确共享、现场原件及人员复核回执均走真实服务。已核验0123的两个触发器与三张强制 RLS 表。Stable 2.02.2608080 在逻辑390×844通过运行时、原咨询正式结果和鉴权原图、真实输入查看委托、持久重进四项。截图332×718，路由及 HTTP 回执见 `admin/tmp/r6/native-03/verification.json`。保留前两次原生驱动失败及清理记录。
+- 北京空间及专用凭据缺失，配置预检返回 `bailian_knowledge_not_configured`，真实托管请求0。`live-01` 保留一份实际带引用答复和一份终稿 HTTP 400；打开 Stable 导致私有项目显示名变更，该批有源码绑定漂移。去掉空枚举后，`live-02` 真实 Responses 三次成功、两次超时；实际工具结果已回传模型。两组首问均为 indeterminate，R6 实模终稿、记忆召回及创建委托未通过本轮验收。原始尝试与已知用量分别保留。
+- 后台定向单元153/153、小程序107/107、R4 托管协议替身回归12/12、R5 数据库回归10/10。改动文件 lint 通过；全仓保留基线 `fastgpt-rag.test.ts:22` 的1个错误和56个警告。TypeScript 与基线同为290项。Webpack 编译通过，完整构建停于既有 `scripts/fastgpt/setup-unified.mts:113` 类型错误。
+
 <!-- site-capture-current -->
 ## 现场上报与送达合同
 

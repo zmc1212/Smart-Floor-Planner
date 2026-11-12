@@ -34,9 +34,10 @@ export function sourceQuestionFinalTool(tool: ModelTool, coverage: SourceQuestio
 export function questionSynthesisFinalTool(base: ModelTool, coverage: SourceQuestionCoverage, citationIds: string[], kind: string, description: string): ModelTool {
   const segment = structuredClone((base.parameters.properties as Record<string, Record<string, unknown>>).segments);
   const properties = (segment.items as Record<string, unknown>).properties as Record<string, Record<string, unknown>>;
-  const citation = ((properties.citations.items as Record<string, unknown>).properties as Record<string, unknown>);
-  citation.citationId = { type: 'string', enum: citationIds };
-  if (!citationIds.length) {
+  if (citationIds.length) {
+    const citation = (properties.citations.items as Record<string, unknown>).properties as Record<string, unknown>;
+    citation.citationId = { type: 'string', enum: citationIds };
+  } else {
     properties.basis.enum = ['advice', 'uncertainty'];
     properties.citations.maxItems = 0;
   }

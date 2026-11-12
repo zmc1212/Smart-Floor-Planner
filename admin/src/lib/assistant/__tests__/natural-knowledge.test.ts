@@ -60,6 +60,23 @@ test('natural source turns have query-only reads and a flat answer without model
   }
 });
 
+test('a completed RAG read with no sources sends a valid uncited answer schema to Bailian', () => {
+  const noMatch: ModelMessage[] = [...messages.slice(0, -2),
+    { role: 'assistant', content: '', toolCalls: [{ id: 'read', name: 'knowledge_search', arguments: '{"query":"管根防水"}' }] },
+    { role: 'tool', callId: 'read', content: JSON.stringify({ knowledgeStatus: 'ready', evidence: [], synthesisSources: [] }) }];
+  const final = finalToolForMessages(noMatch, question, false, false, false, true, undefined, true);
+  const wire = agentChatBody({ model: 'qwen3.7-flash', messages: noMatch, tools: [final], maxTokens: 2048,
+    requireTool: true, enableThinking: false }, 'https://dashscope.aliyuncs.com/compatible-mode/v1');
+  const schema = (wire.response_format as { json_schema: { schema: unknown } }).json_schema.schema;
+  assert.doesNotMatch(JSON.stringify(schema), /"enum":\[\]/);
+  assert.match(JSON.stringify(schema), /"maxItems":0/);
+  assert.match(JSON.stringify(schema), /"enum":\["advice","uncertainty"\]/);
+  const text = JSON.stringify({ kind: 'knowledge_explanation', segments: [
+    { basis: 'uncertainty', text: '这次没有找到管根做法的企业条款。', citations: [] },
+  ] });
+  assert.equal(parseNaturalKnowledgeAnswer(text, [], { currentQuestion: question }).segments[0].basis, 'uncertainty');
+});
+
 test('review binds the complete correction, rejects an expanded plan, and supports the full message length', () => {
   const draft = prepare('管根先加强，并做好防水附加层。');
   const message = draft.reviewMessages.find(m => m.role === 'user')!;

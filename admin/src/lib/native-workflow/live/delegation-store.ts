@@ -55,8 +55,10 @@ export async function delegationOrigin(tx: PostgresTransaction, d: Delegation, c
 export async function saveDelegation(tx: PostgresTransaction, d: Delegation, next: DelegationOutcome, now: Date,
   options: { activate?: string; reminderStage?: number; dueAt?: Date } = {}) {
   const reminderStage = options.reminderStage ?? d.reminderStage, dueAt = options.dueAt ?? d.dueAt;
+  const issueId = d.scope.issueId ?? (d.scope.kind === 'rectification_review' ? next.evidence?.issueId : null);
   const row = await one(tx, sql`update app.native_workflow_delegations set current_status=${next.status},assigned_to=${next.assignedTo},
     waiting_for=${next.waitingFor},next_action=${next.nextAction},evidence=${next.evidence ? delegationJson(next.evidence) : null}::jsonb,
+    scope=jsonb_set(scope,'{issueId}',coalesce(to_jsonb(${issueId ?? null}::text),'null'::jsonb)),
     activation_event_id=coalesce(${options.activate ?? null}::bigint,activation_event_id),
     reminder_stage=${reminderStage},due_at=${dueAt},next_wake_at=${nextWake({ dueAt, reminderStage }, next.status)},
     completed_at=case when ${next.status}='completed' then coalesce(completed_at,${now}::timestamptz) else null end,
@@ -112,7 +114,8 @@ export class DelegationService {
     const operationKey = fingerprint({ projectId, kind: scope.kind, roomId: scope.roomId, subject: subject.normalize('NFKC').toLowerCase() });
     await this.tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'native-delegation:' + enterpriseId + ':' + ownerId + ':' + operationKey},0))`);
     const existing = await one(this.tx, sql`select * from app.native_workflow_delegations
-      where enterprise_id=${enterpriseId} and owner_id=${ownerId} and project_id=${projectId} and scope=${delegationJson(scope)}::jsonb
+      where enterprise_id=${enterpriseId} and owner_id=${ownerId} and project_id=${projectId}
+        and (scope - 'issueId')=(${delegationJson(scope)}::jsonb - 'issueId')
         and (origin_message_id=${messageId} or current_status not in ('cancelled','completed'))
       order by created_at desc limit 1 for share`);
     if (existing) {

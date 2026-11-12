@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
-import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
+import { AssistantRepository, assistantWritesEnabled, one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { AssistantError, fail, fingerprint, id, requireCapability, type ActorContext, type EmbeddingGateway, type Evidence } from '../contracts';
 import type { KnowledgeContext, ProfessionalKnowledge, ReportWorkmanshipStage } from '../contracts/professional';
 import { assertEmbeddingProfile, embeddingGateway } from '../infrastructure/embedding-gateway';
@@ -35,18 +35,29 @@ export type RetrievalDiagnostic = {
   candidates:Array<{ref:Evidence['ref'];hash:string;title:string;documentId:string;contentHash:string;similarity:number|null;semanticRank:number|null;lexicalRank:number|null;fusionRank:number;
     disposition:'selected'|'below_similarity'|'ranked_out';selectionRank:number|null;applicability:ReturnType<typeof applicability>|null;contextIncluded?:boolean;contextChars?:number}>;
 };
-/** A server-owned scheduled run can supply its original lease/source guard and
- * an explicit report selection. It cannot change candidate/source predicates. */
-export type KnowledgeRetrievalScope = { authorize(tx: PostgresTransaction): Promise<import('@/db/repositories/assistant-repository').Row>; reportStage?: ReportWorkmanshipStage };
-export async function authorizeKnowledgeRead(tx: PostgresTransaction, actor: ActorContext, conversationId: string, epoch: number, scope?: KnowledgeRetrievalScope) {
+/** Trusted background callers supply their durable source guard. The same
+ * candidate and source predicates apply to their scoped reads. */
+export type KnowledgeRetrievalScope = {
+  authorize(tx: PostgresTransaction): Promise<Row>;
+} & ({ kind?: 'followup'; reportStage?: ReportWorkmanshipStage } | { kind: 'owner_delegation'; reportStage?: never });
+export async function authorizeKnowledgeRead(tx: PostgresTransaction, actor: ActorContext, conversationId: string, epoch: number,
+  scope?: KnowledgeRetrievalScope, readLock: 'update' | 'share' = 'update') {
   requireCapability(actor,actor.principal.kind==='user'?'assistant.chat.self'
     :actor.capabilities.includes('assistant.project.shared')?'assistant.project.shared':actor.capabilities.includes('assistant.followup.self')?'assistant.followup.self':'assistant.preview.self');
   if (!Number.isSafeInteger(epoch) || epoch < 0) fail('invalid_message',422);
-  const repo=new AssistantRepository(tx,actor), settings=await repo.settings(true), current=await repo.conversation(id(conversationId));
+  const repo = new AssistantRepository(tx, actor);
+  const delegated = scope?.kind === 'owner_delegation';
+  if (delegated ? actor.principal.kind !== 'user' || readLock !== 'share'
+    : scope && !actor.capabilities.includes('assistant.followup.delivery')) fail('assistant_capability_forbidden', 403);
+  const settings = delegated ? await one(tx, sql`select * from app.assistant_enterprise_settings
+    where enterprise_id=${actor.enterpriseId} for share`) : await repo.settings(readLock === 'update', readLock);
+  if (!assistantWritesEnabled(settings)) fail('assistant_disabled', 403);
+  const current = delegated ? await scope.authorize(tx) : await repo.conversation(id(conversationId), readLock);
   if (current.purpose !== 'knowledge_preview' && !enterpriseKnowledgeEnabled(settings!.agent_config)) fail('enterprise_knowledge_disabled', 403);
   if (Number(settings!.knowledge_epoch)!==epoch) fail('context_changed');
-  if (scope && !actor.capabilities.includes('assistant.followup.delivery')) fail('assistant_capability_forbidden', 403);
-  const conversation = scope ? await scope.authorize(tx) : current;
+  const conversation = scope && !delegated ? await scope.authorize(tx) : current;
+  if (delegated && (conversation.purpose !== 'customer_consultation' || conversation.status !== 'open' || conversation.mode !== 'ai'))
+    fail('context_changed');
   if (String(conversation.id) !== conversationId || (!scope && (conversation.status!=='open' || conversation.mode!=='ai'))) fail('context_changed');
   await validatePreviewSnapshot(tx,actor,conversation);
   const stageContext = scope?.reportStage ? await reportStageKnowledgeContext(tx,actor,conversation,scope.reportStage) : undefined;
@@ -119,7 +130,8 @@ export function verifiedManagedHits(slices: ManagedSlice[], workspaceId: string,
 
 /** Both the existing consumers and R4 tools use this candidate and source path. */
 export async function retrieveKnowledge(conversationId: string, actor: ActorContext, query: string, epoch: number,
-  gateway?: EmbeddingGateway, scope?: KnowledgeRetrievalScope, selection: ContextSelectionPolicy = 'document_coverage', options?: KnowledgeSearchOptions) {
+  gateway?: EmbeddingGateway, scope?: KnowledgeRetrievalScope, selection: ContextSelectionPolicy = 'document_coverage',
+  options?: KnowledgeSearchOptions, transaction?: PostgresTransaction) {
   const started = Date.now(), mode = options?.mode ?? 'hybrid', limit = options?.topK ?? retrievalConfiguration.limit;
   const hosted = knowledgeProviderMode() === 'bailian';
   // The managed hybrid score is provider-specific, rather than cosine.
@@ -136,8 +148,14 @@ export async function retrieveKnowledge(conversationId: string, actor: ActorCont
     ${options?.scope ? sql`and d.scope=${options.scope}` : sql``}`;
   const managedJoins = sql`join app.assistant_managed_knowledge_imports mi on mi.enterprise_id=v.enterprise_id and mi.version_id=v.id
     and mi.edit_version=v.edit_version and mi.content_hash=v.content_hash and mi.ready and mi.revoked_at is null`;
-  const admission = await withTenantTransaction(actor.enterpriseId, async tx => {
-    const { settings, conversation, context } = await authorizeKnowledgeRead(tx, actor, conversationId, epoch, scope);
+  // An event consumer already holding the origin conversation must reuse its
+  // transaction. A second connection would wait on the consumer's own lock.
+  const withinTenant = <T>(read: (tx: PostgresTransaction) => Promise<T>) =>
+    transaction ? read(transaction) : withTenantTransaction(actor.enterpriseId, read);
+  const authorize = (tx: PostgresTransaction) =>
+    authorizeKnowledgeRead(tx, actor, conversationId, epoch, scope, transaction ? 'share' : 'update');
+  const admission = await withinTenant(async tx => {
+    const { settings, conversation, context } = await authorize(tx);
     if (hosted) {
       if (mode === 'vector') fail('knowledge_search_mode_unavailable', 422);
       const library = await managedLibrary(tx, actor.enterpriseId);
@@ -194,9 +212,9 @@ export async function retrieveKnowledge(conversationId: string, actor: ActorCont
     from unnest(c.terms) t where t in (select jsonb_array_elements_text(${JSON.stringify(terms)}::jsonb)))` : sql`0`;
   const distance = external || managedHybrid ? sql`1-(hit->>'similarity')::float8`
     : result ? sql`c.embedding <=> ${JSON.stringify(result.vectors[0])}::vector` : sql`null::float8`;
-  return withTenantTransaction(actor.enterpriseId,async tx=>{
+  return withinTenant(async tx=>{
     options?.signal?.throwIfAborted();
-    const {settings,conversation,context} = await authorizeKnowledgeRead(tx, actor, conversationId, epoch, scope);
+    const {settings,conversation,context} = await authorize(tx);
     if (admission.projectId !== context.projectId) fail('context_changed');
     if (hosted) {
       const current = await managedLibrary(tx, actor.enterpriseId);

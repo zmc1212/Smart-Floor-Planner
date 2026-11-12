@@ -4,6 +4,7 @@ import { withTenantTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { currentDelegationViews, delegationModelView, delegationNoticeAvailable } from '@/lib/native-workflow/live/delegation-chat';
 import { delegationNotice } from '@/lib/native-workflow/live/delegation-state';
+import { currentDelegationStandards } from '@/lib/native-workflow/live/delegation-knowledge';
 import { DelegationService } from '@/lib/native-workflow/live/delegation-store';
 import { fail, id, requireCapability, type ActorContext } from '../contracts';
 import { idempotent } from '../core/conversation';
@@ -26,8 +27,13 @@ export async function longTermHttp(actor: ActorContext, conversationId: string, 
       if ([...params.keys()].some(key => key !== 'q') || (params.get('q') ?? '').length > 500) fail('invalid_message', 422);
       const service = new MemoryService(tx, scope);
       const memories = await service.retrieve(params.get('q') || '记忆历史', 20);
-      const tasks = await new DelegationService(tx, scope).list();
-      const delegations = delegationModelView(await currentDelegationViews(tx, tasks));
+      const tasks = await currentDelegationViews(tx, await new DelegationService(tx, scope).list());
+      const delegations = [];
+      for (const task of tasks) {
+        const [view] = delegationModelView([task]);
+        const standardCheck = await currentDelegationStandards(tx, actor, c, task);
+        delegations.push(standardCheck ? { ...view, standardCheck } : view);
+      }
       const notices = await rows(tx, sql`select m.id::text,m.created_at as persisted_at,d.updated_at as read_at
         from app.assistant_messages m join app.domain_event_outbox e on e.enterprise_id=m.enterprise_id and e.id=m.source_event_id
         left join app.domain_event_deliveries d on d.enterprise_id=e.enterprise_id and d.event_id=e.id and d.consumer_key=${reader}

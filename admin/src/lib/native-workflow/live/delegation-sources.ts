@@ -12,6 +12,7 @@ import { sharedMaterials } from '@/lib/construction/site-materials';
 import { readSiteIssueBase } from '@/lib/construction/site-issues';
 import { readSiteResolution } from '@/lib/construction/site-resolution';
 import { validResult } from '@/lib/construction/site-results';
+import { checkDelegationStandards } from './delegation-knowledge';
 import { delegationExternalResult, delegationOwnerInput, outcome, type Delegation, type DelegationEvidence } from './delegation-state';
 import { delegationActor, delegationOrigin, type DelegationEvent } from './delegation-store';
 
@@ -32,13 +33,13 @@ async function authorizedIssue(tx: PostgresTransaction, d: Delegation) {
   const grant = material.sources.find(source => source.kind === 'need' && source.customerId === d.ownerId
     && source.conversationId === d.conversationId);
   if (!grant) return null;
+  const boundIssue = scope.issueId || d.evidence?.issueId;
   const found = await rows(tx, sql`select id::text from app.domain_event_outbox
     where enterprise_id=${eid} and type='construction.site.issue.opened.v1' and payload->>'projectId'=${pid}
-    and payload->>'roomId'=${scope.roomId} order by id desc limit 30`);
+    and payload->>'roomId'=${scope.roomId}
+    ${boundIssue ? sql`and id=${boundIssue}` : sql``} order by app.domain_event_outbox.id desc limit 30`);
   const matches = [];
-  const boundIssue = scope.issueId || d.evidence?.issueId;
   for (const candidate of found) {
-    if (boundIssue && candidate.id !== boundIssue) continue;
     const issue = await readSiteIssueBase(tx, eid, pid, String(candidate.id));
     if (issue?.sourceAvailable && issue.status !== 'cancelled' && issue.materialVersion === material.version
       && (boundIssue || issue.text.includes(scope.subject))) matches.push(issue);
@@ -79,7 +80,7 @@ async function designReview(tx: PostgresTransaction, d: Delegation, related: Mem
     : '等项目负责人安排有权核对的设计师', 'designer', null, staff.length === 1 ? String(staff[0].admin_id) : null);
 }
 
-async function latestRecord(tx: PostgresTransaction, d: Delegation, issueId?: string) {
+async function latestRecord(tx: PostgresTransaction, d: Delegation, issueId?: string, requireUnique = false) {
   const { scope, enterpriseId: eid, projectId: pid } = d;
   if (!scope.roomId) return null;
   const subject = scope.subject.toLowerCase();
@@ -93,7 +94,8 @@ async function latestRecord(tx: PostgresTransaction, d: Delegation, issueId?: st
     ${issueId ? sql`and exists(select 1 from app.assistant_messages m where m.enterprise_id=r.enterprise_id and m.id=r.source_message_id
       and m.conversation_id=r.conversation_id and m.author_kind='admin' and m.admin_id=r.author_id
       and m.content::text ~ ${'事项[[:space:]]*' + issueId + '([^0-9]|$)'})` : sql``}
-    order by r.published_at desc,r.id desc limit 1`);
+    order by r.published_at desc,r.id desc limit ${requireUnique ? 2 : 1}`);
+  if (requireUnique && results.length !== 1) return null;
   const selected = results[0];
   if (!selected) return null;
   const r = await publishedSiteRecord(tx, eid, d.ownerId, String(selected.id), Number(selected.published_version), true);
@@ -122,15 +124,26 @@ async function rectification(tx: PostgresTransaction, d: Delegation) {
   const issue = allowed.issue;
   if (!issue) return outcome('waiting_for_worker', '等项目团队明确关联原事项和整改材料', 'worker');
   const resolution = await readSiteResolution(tx, d.enterpriseId, d.projectId, issue.issueId, issue);
-  if (allowed.returned && resolution?.available && ['resolved','closed'].includes(resolution.state)
+  if (allowed.returned?.message_id && resolution?.available && ['resolved','closed'].includes(resolution.state)
     && (allowed.returned.payload as Row).lifecycleId === resolution.id) {
     return outcome('completed', '有权人员已复核并授权回传原事项结论', null,
-      { type: 'review', id: resolution.id, version: String(resolution.revision), issueId: issue.issueId });
+      { type: 'review', id: resolution.id, version: String(resolution.revision), issueId: issue.issueId,
+        messageId: String(allowed.returned.message_id) });
+  }
+  if (resolution?.available && resolution.evidence) {
+    return outcome('waiting_for_authorization', '已关联发布的整改照片，等待有权人员复核或回传', 'reviewer',
+      { type: 'rectification', id: resolution.evidence.recordId, version: String(resolution.evidence.recordVersion), issueId: issue.issueId });
   }
   const record = await latestRecord(tx, d, issue.issueId);
   if (record?.photo) return outcome('waiting_for_authorization', '已关联发布的整改照片，等待有权人员复核', 'reviewer',
     { type: 'rectification', id: record.id, version: record.version, issueId: issue.issueId });
-  return outcome('waiting_for_worker', '等项目团队发布与原事项明确关联的整改照片', 'worker');
+  const candidate = await latestRecord(tx, d, undefined, true);
+  if (candidate?.completed && candidate.photo) {
+    return outcome('waiting_for_authorization', '已有该房间对应施工的发布照片，等待有权人员关联事项并复核', 'reviewer',
+      { type: 'rectification', id: candidate.id, version: candidate.version, issueId: issue.issueId, state: 'awaiting_link' });
+  }
+  return outcome('waiting_for_worker', '等项目团队发布与原事项明确关联的整改照片', 'worker',
+    { type: 'issue', id: issue.issueId, version: String(issue.revision), issueId: issue.issueId });
 }
 
 async function ownerFollowup(tx: PostgresTransaction, d: Delegation, event: DelegationEvent) {
@@ -164,7 +177,8 @@ async function externalReview(tx: PostgresTransaction, d: Delegation, event: Del
     : outcome('waiting_for_external', '等原咨询取得与事项相关的公开来源', 'external');
 }
 
-export async function observeDelegation(tx: PostgresTransaction, d: Delegation, conversation: Row, event: DelegationEvent) {
+export async function observeDelegation(tx: PostgresTransaction, d: Delegation, conversation: Row, event: DelegationEvent,
+  checkStandards = false) {
   const actor = delegationActor(d);
   const definition = new ToolRegistry().register({
     name: 'observe_delegation_sources', description: '读取委托对应的当前获权原始记录', risk: 'read', requiresProject: true,
@@ -180,7 +194,9 @@ export async function observeDelegation(tx: PostgresTransaction, d: Delegation, 
         : d.scope.kind === 'rectification_review' ? await rectification(tx, d)
         : d.scope.kind === 'external_review' ? await externalReview(tx, d, event) : await ownerFollowup(tx, d, event);
       signal.throwIfAborted();
-      return { next, memoryRefs: relatedMemory.map(({ key, revision }) => ({ key, revision })) };
+      const standardCheck = checkStandards && d.scope.kind === 'rectification_review'
+        ? await checkDelegationStandards(tx, d, conversation, signal) : undefined;
+      return { next, standardCheck, memoryRefs: relatedMemory.map(({ key, revision }) => ({ key, revision })) };
     },
   });
   return new ToolExecutor(definition, { defaultTimeoutMs: 15_000 }).execute({

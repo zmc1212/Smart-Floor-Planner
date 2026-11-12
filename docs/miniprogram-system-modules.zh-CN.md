@@ -680,7 +680,7 @@ P2S 第一批 C01/C02/S01/U01 的聊天与接待主链路 **Implemented**，自�
 
 1B知识后端 **Implemented**，第一期整体仍为 **Limited**：`/api/assistant/knowledge/documents`及`[id]`提供列表/创建/详情/元数据更新，`[id]/versions`复制草稿，`[id]/versions/[versionId]`编辑，`index`/`publish`执行索引/发布，`[id]/retire`撤回，`/api/assistant/knowledge/jobs/[jobId]`查询任务。写请求要求Idempotency-Key和对应expectedVersion/expectedEditVersion。仅本企业有效enterprise_admin且数据库menu_permissions显式含assistant-knowledge可访问；平台无例外，权限在索引执行前后复查。本批不新增菜单或默认授权。0060新增5张知识表（文档/版本/片段/profile/调用审计），强制RLS及复合FK；知识任务带租约/hash/edit_version保护，发布撤回提升epoch并写outbox；reset/purge已纳入。
 
-**R5 业主咨询与项目协作（Limited）。** 业主在 `packages/assistant/chat/chat` 自然表达偏好或交代持续跟进。团队所需资料沿原咨询的共享确认流程。原输入框支持查看、暂停、继续和取消，站内进展写回原咨询，可退出重进。获权设计师和项目管理人员在 `packages/construction/chat/chat` 看到对应共享范围内的待核对提醒。两个页面沿用现有文字消息与反馈组件。[R5 服务合同及局限](./xiaok-assistant-phase-2.zh-CN.md#r5-长期记忆与持续委托)
+**R5–R6 业主咨询与项目协作（Limited）。** 业主在 `packages/assistant/chat/chat` 记录偏好、交代待复核的跟进并在原输入框查看、暂停、继续或取消。团队资料沿原咨询明确共享。工人在 `packages/construction/chat/chat` 上报原件，获权设计师与项目负责人沿现有流程关联证据并提交结果。原 C01 用原回执和媒体组件显示可重进的结果及获准原图，工艺引用沿原来源纸页。[R6 验收与局限](./xiaok-assistant-phase-2.zh-CN.md#r6-原生施工复核与托管知识)
 
 百炼 Responses 分支的 R4 将企业及项目知识检索接入现有小 K 会话。业主可查有权项目的当前对客版本，设计师、施工人员和老板在共享项目会话按实时成员及角色权限检索。重开引用复验权限、发布状态、有效期和原文。既有引用响应包含企业、文档、版本、章节、经核验的页码和逐字摘录；联网资料保留公开来源身份及链接，规范冲突和企业依据缺失明确说明。共享项目会话支持对照企业资料、当前获权进度和已发布记录。托管服务验收仍为 **Limited**，待真实工作空间联调。[R4 集成契约](./bailian-responses-adapter.md#12-r4-企业知识库)
 

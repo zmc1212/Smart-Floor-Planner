@@ -427,3 +427,9 @@ node --env-file=.env.local --import tsx scripts/xiaok-r4-bailian-embedding.ts
 | AI 与 Assistant 单元 | 1139/1140，既有书桌收纳意图用例失败 |
 | 类型与构建 | tsc 与基线均有 290 项诊断，差集为零。Webpack 生产编译通过，整包在既有 `scripts/fastgpt/setup-unified.mts:113` 类型错误处停止 |
 | 真实托管 RAG | 北京业务空间及托管 API Key 缺失，上传、索引、Retrieve 和多轮模型联调待完成 |
+
+## 13. R6 工艺检索与原生复核
+
+同一 C01 沿 R2 工具返回获权原文，引用绑定当前文档版本。无授权召回时，结构化终稿 schema 允许空引用数组并限制为建议或缺项说明，避免空 `enum` 触发百炼 Chat Completions 的 HTTP 400。Responses 工具轮和结构化终稿沿原通道。持续委托的工艺核对与人工结果分别保存在原事件回执和施工复核服务。
+
+R6 配置预检仍缺北京工作空间与专用 API Key，未提交真实托管请求。R6 隔离库及 Stable 证据、真实 Responses 与本地检索的结果见[原生复核合同](xiaok-assistant-phase-2.zh-CN.md#r6-原生施工复核与托管知识)。[百炼 Responses 协议](https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-responses) · [百炼 Retrieve](https://help.aliyun.com/zh/model-studio/rag/channels)

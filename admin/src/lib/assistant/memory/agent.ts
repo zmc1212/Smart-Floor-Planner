@@ -28,7 +28,7 @@ const memoryTool: ModelTool = {
 };
 const delegationTool: ModelTool = {
   name: delegationToolName,
-  description: '用户明确交代持续跟进、等人回复或未来提醒时，登记一项持续委托。多房间或不同目标分开登记。room 选用户原话中本项目的具体房间名，subject 用原话中最短可区分的事项名称，例如“插座”或“底盒”；quote 摘当前交代的原话。登记只启动获权事件跟进，不直接共享、发送外部消息、确认图纸、修改施工约定或结束任务。',
+  description: '登记用户明确交代的持续跟进。room_progress 只追踪团队发布的进度（做到哪一步）；要求核实某项施工处理完成后再通知，使用 rectification_review，须有有权人员复核及回传。多房间或不同目标分开登记。room 取用户原话中的项目房间名，subject 取原话中的具体事项，quote 摘当前交代的原话。登记只启动获权事件跟进，不直接共享资料或作出施工承诺。',
   parameters: { type: 'object', additionalProperties: false, required: ['kind','subject','quote'],
     properties: { kind: { type: 'string', enum: [...delegationKinds] }, room: text(80), subject: text(80), quote: text(800),
       dueAt: { ...text(40), description: '仅用户原话出现完整的带时区 ISO 日期时间时传入；否则省略。' } } },

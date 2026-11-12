@@ -15,7 +15,7 @@ export type DelegationStatus = 'pending' | 'running' | 'waiting_for_user' | 'wai
 export type DelegationControl = 'status' | 'pause' | 'resume' | 'cancel';
 export type DelegationScope = { kind: DelegationKind; roomId: string | null; roomName: string; subject: string; issueId: string | null };
 export type DelegationEvidence = {
-  type: 'record' | 'designer_reply' | 'rectification' | 'review' | 'owner_reply' | 'external_result';
+  type: 'record' | 'designer_reply' | 'issue' | 'rectification' | 'review' | 'owner_reply' | 'external_result';
   id: string;
   version: string;
   messageId?: string;
@@ -55,7 +55,7 @@ export type Delegation = DelegationOutcome & {
 export const completionCriteria: Record<DelegationKind, string> = {
   design_review: '有权设计师回复，且项目负责人将该回复回传原咨询',
   room_progress: '对应房间的工作由团队核对并对业主发布，记录明确该项已完成',
-  rectification_review: '对应事项的现场落实证据由有权人员复核，并回传结论',
+  rectification_review: '对应事项的现场落实证据由有权人员复核，并回传原咨询',
   owner_followup: '收到原咨询中业主对本事项的补充，等待核对后继续处理',
   external_review: '原咨询有新获取并保存的公开来源可供核对',
 };

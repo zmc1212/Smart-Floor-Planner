@@ -3,11 +3,12 @@ import { sql } from 'drizzle-orm';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fingerprint } from '@/lib/assistant/contracts';
+import { syncSiteResults } from '@/lib/construction/site-results';
 import { delegationReceipt, delegationSummary } from './delegation-chat';
 import { delegationEnterprises } from './delegation-config';
 import { delegationConsumer, delegationExternalResult, delegationOwnerInput, delegationRefresh, delegationTimeout,
   isSuspended, isWaiting, outcome, type Delegation, type DelegationOutcome } from './delegation-state';
-import { appendDelegationEvent, delegationFromRow, delegationOrigin, linkDelegationEvent, saveDelegation, type DelegationEvent } from './delegation-store';
+import { appendDelegationEvent, delegationActor, delegationFromRow, delegationOrigin, linkDelegationEvent, saveDelegation, type DelegationEvent } from './delegation-store';
 import { observeDelegation } from './delegation-sources';
 import { queueDelegationStaffNotice } from './delegation-staff';
 
@@ -33,7 +34,8 @@ function relevant(d: Delegation, event: DelegationEvent) {
   const roomId = event.payload.roomId;
   if (roomId && d.scope.roomId && roomId !== d.scope.roomId) return false;
   const issueId = event.payload.issueId;
-  if (issueId && d.evidence?.issueId && issueId !== d.evidence.issueId) return false;
+  const boundIssue = d.scope.issueId ?? d.evidence?.issueId;
+  if (issueId && boundIssue && issueId !== boundIssue) return false;
   return ['room_progress','design_review','rectification_review'].includes(d.scope.kind);
 }
 
@@ -49,8 +51,11 @@ async function candidates(tx: PostgresTransaction, eid: string, event: Delegatio
 
 async function applyEvent(tx: PostgresTransaction, eid: string, event: DelegationEvent, now: Date, observe: typeof observeDelegation) {
   let applied = 0;
-  for (const candidate of await candidates(tx, eid, event)) {
-    // Follow the conversation -> delegation lock order used by chat control.
+  const tasks = await candidates(tx, eid, event);
+  if (!tasks.length) return applied;
+  // Match the chat path's settings -> conversation -> delegation lock order.
+  await one(tx, sql`select enterprise_id from app.assistant_enterprise_settings where enterprise_id=${eid} for share`);
+  for (const candidate of tasks) {
     const conversation = await one(tx, sql`select * from app.assistant_conversations
       where enterprise_id=${eid} and id=${String(candidate.conversation_id)} for update`);
     const row = await one(tx, sql`select * from app.native_workflow_delegations
@@ -87,11 +92,15 @@ async function applyEvent(tx: PostgresTransaction, eid: string, event: Delegatio
       applied++;
       continue;
     }
-    const result = await observe(tx, d, origin, event);
+    if (event.type === 'construction.site.issue.result.v1' && event.payload.conversationId === d.conversationId
+      && event.payload.customerId === d.ownerId) {
+      await syncSiteResults(tx, delegationActor(d), origin, event.id);
+    }
+    const result = await observe(tx, d, origin, event, true);
     if (!result.ok) throw new Error(result.record.error?.code ?? 'delegation_tool_failed');
-    const envelope = JSON.parse(result.content) as { result?: { next: DelegationOutcome; memoryRefs: unknown[] } };
+    const envelope = JSON.parse(result.content) as { result?: { next: DelegationOutcome; memoryRefs: unknown[]; standardCheck?: unknown } };
     if (!envelope.result) throw new Error('delegation_tool_result_unavailable');
-    const { next, memoryRefs } = envelope.result;
+    const { next, memoryRefs, standardCheck } = envelope.result;
     const before = { status: d.status, assignedTo: d.assignedTo, waitingFor: d.waitingFor, nextAction: d.nextAction, evidence: d.evidence };
     const changed = fingerprint(before) !== fingerprint(next);
     const saved = changed ? await saveDelegation(tx, d, next, now) : d;
@@ -99,7 +108,7 @@ async function applyEvent(tx: PostgresTransaction, eid: string, event: Delegatio
     const staffNotice = await queueDelegationStaffNotice(tx, saved);
     await linkDelegationEvent(tx, d, saved, event.id, changed ? 'applied' : 'unchanged', {
       tool: result.record.tool, status: result.status, operationKey: result.record.operationKey, resultHash: result.record.resultHash,
-      evidence: next.evidence, memoryRefs, notice, staffNotice,
+      evidence: next.evidence, memoryRefs, standardCheck, notice, staffNotice,
     });
     if (changed) applied++;
   }
@@ -138,18 +147,24 @@ async function processOne(eid: string, now: Date, observe: typeof observeDelegat
     await tx.execute(sql`set local statement_timeout='8s'`);
     if (enqueue) await enqueueDue(tx, eid, now);
     const delivery = await one(tx, sql`select d.id::text as delivery_id,d.attempts,e.id::text,e.type,e.aggregate_id,e.aggregate_version,
-        e.payload,coalesce(e.payload->>'projectId',parent.payload->>'projectId',r.project_id::text) as project_id
+        e.payload,coalesce(e.payload->>'projectId',parent.payload->>'projectId',r.project_id::text) as project_id,
+        coalesce(nullif(e.payload->>'roomId',''),parent.payload->>'roomId',issue.payload->>'roomId',r.room_id::text) as room_id
       from app.domain_event_deliveries d join app.domain_event_outbox e on e.enterprise_id=d.enterprise_id and e.id=d.event_id
       left join app.domain_event_outbox parent on parent.enterprise_id=e.enterprise_id and parent.id::text=e.aggregate_id
         and e.type in ('construction.material.revoked.v1','construction.plan.status.v1')
         and parent.type in ('construction.material.shared.v1','construction.plan.published.v1')
-      left join app.construction_site_records r on r.enterprise_id=e.enterprise_id and r.run_id::text=e.aggregate_id
-        and e.type='assistant.run.terminal.v1'
+      left join app.domain_event_outbox issue on issue.enterprise_id=e.enterprise_id and issue.id::text=e.payload->>'issueId'
+        and issue.type='construction.site.issue.opened.v1' and issue.payload->>'projectId'=e.payload->>'projectId'
+      left join app.construction_site_records r on r.enterprise_id=e.enterprise_id
+        and ((e.type='assistant.run.terminal.v1' and r.run_id::text=e.aggregate_id)
+          or (e.aggregate_type='construction_site_record' and r.id::text=e.aggregate_id))
       where d.enterprise_id=${eid} and d.consumer_key=${delegationConsumer} and d.status in ('pending','retry_wait') and d.available_at<=${now}
       order by d.event_id limit 1 for update of d skip locked`);
     if (!delivery) return { status: 'idle', applied: 0 };
     const event: DelegationEvent = { id: String(delivery.id), type: String(delivery.type), aggregateId: String(delivery.aggregate_id),
-      aggregateVersion: Number(delivery.aggregate_version), projectId: String(delivery.project_id), payload: delivery.payload as Row };
+      aggregateVersion: Number(delivery.aggregate_version), projectId: String(delivery.project_id),
+      payload: { ...delivery.payload as Row, ...(delivery.room_id ? { roomId: String(delivery.room_id) } : {}) } };
+    if (event.type === 'construction.site.issue.opened.v1') event.payload.issueId = event.id;
     const id = String(delivery.delivery_id), attempts = Number(delivery.attempts) + 1;
     await tx.execute(sql`savepoint native_delegation_apply`);
     let status = 'delivered', applied = 0, availableAt = now, lastError: string | null = null;
