@@ -886,6 +886,61 @@ test('a closed issue stays closed in the ledger and is not reminded again', asyn
   assert.equal(harness.reminders.length, 0);
 });
 
+test('implemented work is routed to management confirmation, not the executor', async () => {
+  const harness = await makeHarness();
+  harness.issues = [{
+    issueId: '9003',
+    sourceRecordId: '5003',
+    status: 'implemented',
+    ownerId: WORKER,
+    ownerName: 'Worker',
+    lastResult: '已实施，待管理确认',
+    updatedAt: '2026-11-08T01:00:00.000Z',
+  }];
+  await runScheduledPeriodReportDispatch(options(), harness.deps);
+  assert.deepEqual(harness.reminders, [{ issueId: '9003', targetKind: 'boss', adminId: BOSS }]);
+});
+
+test('an assigned issue goes to its current owner, and the same issue cannot be reminded twice in one period', async () => {
+  const harness = await makeHarness();
+  harness.issues = [{
+    issueId: '9004',
+    sourceRecordId: '5004',
+    status: 'awaiting_owner',
+    ownerId: WORKER,
+    ownerName: 'Worker',
+    lastResult: '等待现场补充',
+    updatedAt: '2026-11-08T01:00:00.000Z',
+  }];
+  await runScheduledPeriodReportDispatch(options(), harness.deps);
+  await runScheduledPeriodReportDispatch(options(), harness.deps);
+  assert.deepEqual(harness.reminders, [{ issueId: '9004', targetKind: 'worker', adminId: WORKER }]);
+});
+
+test('a revoked recipient is recorded as skipped without a message and no successful reminder', async () => {
+  const harness = await makeHarness();
+  harness.issues = [{
+    issueId: '9005',
+    sourceRecordId: '5005',
+    status: 'awaiting_owner',
+    ownerId: WORKER,
+    ownerName: 'Worker',
+    lastResult: '等待现场补充',
+    updatedAt: '2026-11-08T01:00:00.000Z',
+  }];
+  const environment = harness.deps.environment;
+  (harness.deps as { environment: PeriodReportScheduleEnvironment }).environment = {
+    ...environment,
+    sendReminder: async () => ({ sent: false, reason: 'recipient_unavailable', messageId: null }),
+  };
+  await runScheduledPeriodReportDispatch(options(), harness.deps);
+  const entry = await entryOf(harness, PROJECT_A);
+  const reminder = entry.reminders.find((item) => item.issueId === '9005');
+  assert.equal(reminder?.status, 'skipped');
+  assert.equal(reminder?.reason, 'recipient_unavailable');
+  assert.equal(reminder?.messageId, null);
+});
+
 test('limits one round to the configured project count and continues next tick', async () => {
   const harness = await makeHarness({
     plans: [plan(PROJECT_A), plan(PROJECT_B), plan('1454000006')],

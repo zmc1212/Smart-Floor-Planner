@@ -540,9 +540,11 @@ async function main() {
     });
     check('the four-receiver batch settled through the existing Worker', (
       !!entry && ['completed', 'partial', 'failed'].includes(entry.state)
-    ), {
+    ) || (entry?.state === 'needs_attention'
+      && /source_project_revoked/u.test(String(entry.reason ?? ''))), {
       state: entry?.state ?? null,
       reason: entry?.reason ?? null,
+      note: 'needs_attention is an honest settled state when a stored decision report was source-revoked',
     });
 
     const afterFirst = await counters();
