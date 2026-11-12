@@ -166,6 +166,22 @@ test('function_call items become runtime tool calls with stable call ids', () =>
   assert.throws(() => parseBailianResponses({ ...payload, output: [] }, { requestId: null, nativeTools: [] }), /Invalid/);
 });
 
+test('multiple function_call items keep their call ids, names and argument order', () => {
+  const payload = { ...completedPayload, output: [
+    { id: 'fc_1', type: 'function_call', call_id: 'call_a', name: 'lookup', arguments: '{"q":"a"}' },
+    { id: 'fc_2', type: 'function_call', call_id: 'call_b', name: 'lookup', arguments: '{"q":"b"}' },
+  ] };
+  const output = parseBailianResponses(payload, { requestId: null, nativeTools: [] });
+  assert.deepEqual(output.toolCalls, [
+    { id: 'call_a', name: 'lookup', arguments: '{"q":"a"}' },
+    { id: 'call_b', name: 'lookup', arguments: '{"q":"b"}' },
+  ]);
+  assert.equal(output.finishReason, 'tool_calls');
+  // A repeated call id is a malformed protocol frame, not a second call.
+  assert.throws(() => parseBailianResponses({ ...payload, output: [payload.output[0],
+    { ...payload.output[1], call_id: 'call_a' }] }, { requestId: null, nativeTools: [] }), /Invalid/);
+});
+
 test('incomplete responses report the length finish reason instead of a silent stop', () => {
   const output = parseBailianResponses({ ...completedPayload, status: 'incomplete' }, { requestId: null, nativeTools: [] });
   assert.equal(output.finishReason, 'length');
