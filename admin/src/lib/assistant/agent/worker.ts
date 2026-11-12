@@ -1915,7 +1915,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               if (!cached) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint)
                 values(${lease.enterpriseId},${lease.runId},${sequence},'agent_tool','query_followups',1,'succeeded',${JSON.stringify(snapshot)}::jsonb)`);
               issueSources.set(fingerprint(snapshot.query), { query: snapshot.query, customerId: snapshot.customerId, version: snapshot.version });
-              for (const item of snapshot.data) if (['team_result','formal_plan'].includes(item.kind || '') && item.status !== 'invalidated' && item.sourceMessageId)
+              for (const item of snapshot.data) if (['team_result','formal_plan','design_review'].includes(item.kind || '') && item.status !== 'invalidated' && item.sourceMessageId)
                 constructionSources.add(item.sourceMessageId);
               return { content: JSON.stringify({ resultKey, ...snapshot, synthesisSources: businessSynthesisSources(resultKey, snapshot), instructions: '普通状态查询用kind=business；结合知识解释时用kind=synthesis引用本轮synthesisSources。已补充、已核对、已回复分别展示，不能据此宣称已解决/批准/通知。' }) };
             });

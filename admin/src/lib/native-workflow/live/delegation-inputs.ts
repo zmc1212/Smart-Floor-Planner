@@ -7,6 +7,8 @@ import { availableNeedMemory } from '@/lib/assistant/agent/memory-sources';
 import { sharedMaterials } from '@/lib/construction/site-materials';
 import { siteAccessRevoked } from '@/lib/construction/site-access';
 import { resolveSiteQuery } from '@/lib/construction/site-queries';
+import { latestScheduleEvent } from '@/lib/construction/site-schedule';
+import { collaborationEnabled } from '@/lib/construction/collaboration-scope';
 import { delegationNotice, delegationRefresh, delegationRequirement, delegationTimeout, type Delegation, type DelegationEvidence, type DelegationTask } from './delegation-state';
 import { appendDelegationEvent, delegationFromRow, delegationOrigin, delegationsEnabled, type DelegationEvent } from './delegation-store';
 
@@ -94,6 +96,7 @@ export async function delegationInput(tx: PostgresTransaction, eid: string, even
     roomIds: [String(p.roomId)], issueId: String(p.issueId) };
   if (issueTypes.has(event.type)) return { kind: 'issue', projectId: String(p.projectId),
     roomIds: p.roomId ? [String(p.roomId)] : [], issueId: event.type === 'construction.site.issue.opened.v1' ? event.id : event.aggregateId };
+  if (event.type === 'construction.schedule.published.v1') return { kind: 'project', projectId: String(p.projectId) };
   if (event.type === 'construction.schedule.changed.v1') {
     const roomIds = p.operation === 'UPDATE' && (!p.previousRoomId || !p.currentRoomId) ? undefined
       : [...new Set([p.currentRoomId, p.previousRoomId].filter(Boolean).map(String))];
@@ -133,7 +136,9 @@ export async function electricalInputs(tx: PostgresTransaction, d: Delegation, t
 export async function delegationScheduleVersion(tx: PostgresTransaction, d: Delegation, roomId: string, stage: unknown) {
   const schedule = await rows(tx, sql`select id::text,room_id::text,title,status,starts_at::text,ends_at::text,note,version from app.construction_plans
     where enterprise_id=${d.enterpriseId} and project_id=${d.projectId} and (room_id is null or room_id=${roomId}) order by id`);
-  return fingerprint({ stage, schedule });
+  const current = collaborationEnabled(d.enterpriseId) ? await latestScheduleEvent(tx, d.enterpriseId, d.projectId) : null;
+  const nodes = current ? ((current.payload as Row).nodes as Row[]).filter(node => !node.roomId || node.roomId === roomId) : [];
+  return fingerprint({ stage, schedule, ...(nodes.length ? { nodes } : {}) });
 }
 
 export async function activeProjectStaff(tx: PostgresTransaction, eid: string, projectId: string, adminId: string) {

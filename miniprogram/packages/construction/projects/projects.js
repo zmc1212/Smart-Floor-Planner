@@ -47,17 +47,17 @@ Page({
   onUnload() { this.onHide(); },
   current(g) { const c = identity(); return this._visible && this._token === c.token && this._identityKey === c.key && canAccessRoute(route, c.bootstrap) && (g == null || g === this._generation); },
   async onPullDownRefresh() { try { await this.load(); } finally { wx.stopPullDownRefresh(); } },
-  async load() {
+  async load(quiet = false) {
     if (!this.current()) return;
     const g = this._generation = (this._generation || 0) + 1, pid = this.data.projectId;
-    this.setData({ loading: true, error: '' });
+    if (quiet !== true) this.setData({ loading: true, error: '' });
     try {
       const response = await api.request('/miniprogram/construction/projects' + (pid ? '/' + pid : ''), 'GET');
       if (!this.current(g)) return;
       const data = response.data;
       if (pid) { this.setData({ detail: decorateDetail(data) }); void this.loadPreview(g); }
       else { const items = data.items.map(p => decorateProject(p, data.stages || [])); this.clearPreview();
-        this.setData({ items, owner: data.owner, detail: null, activeCount: items.filter(p => p.status === 'active').length,
+        this.setData({ items, owner: data.owner, detail: null, managementBrief: data.collaboration && (data.owner || items.some(p => p.my_role === 'manager')), activeCount: items.filter(p => p.status === 'active').length,
           filteredItems: items.filter(p => this.data.statusFilter !== 'active' || p.status === 'active'),
           canBrief: data.owner || data.items.some(p => p.status !== 'archived') }); }
     } catch (error) { if (this.current(g)) { this.clearPreview(); this.setData({ error: errorText(error), detail: null, items: [], filteredItems: [] }); } }
@@ -96,7 +96,10 @@ Page({
       }
       this.releasePreviewPhotos(); this._previewPaths = paths;
       this.setData({ preview, previewPhotos, previewLoading: false });
-      this._previewTimer = setTimeout(() => this.loadPreview(g), 15000); this._previewTimer?.unref?.();
+      this._previewTimer = setTimeout(() => {
+        if (valid() && this.data.detail?.progress && !this.data.pending && !this.data.busy) void this.load(true);
+        else if (valid()) void this.loadPreview(g);
+      }, 15000); this._previewTimer?.unref?.();
     } catch (error) {
       paths.forEach(unlinkPreview);
       if (!valid()) return;
@@ -123,9 +126,20 @@ Page({
     else wx.switchTab({ url: '/pages/mine/mine' });
   },
   openMine() { wx.switchTab({ url: '/pages/mine/mine' }); },
-  openBrief() { if (this.current() && this.data.canBrief && !this.data.pending) wx.navigateTo({ url: '/packages/assistant/chat/chat?followup=1' }); },
+  openBrief() { if (this.current() && this.data.canBrief && !this.data.pending) wx.navigateTo({ url: this.data.managementBrief ? '/packages/construction/brief/brief' : '/packages/assistant/chat/chat?followup=1' }); },
   openChat() { const project = this.data.detail?.project;
     if (this.current() && project && project.status !== 'archived' && !this.data.busy && !this.data.pending) wx.navigateTo({ url: '/packages/construction/chat/chat?projectId=' + encodeURIComponent(project.id) }); },
+  openIssue(e) {
+    const id = String(e.currentTarget.dataset.id || ''), project = this.data.detail?.project;
+    if (!this.current() || !/^[1-9]\d*$/.test(id) || !project || project.status === 'archived' || this.data.busy || this.data.pending) return;
+    wx.navigateTo({ url: '/packages/construction/chat/chat?projectId=' + encodeURIComponent(project.id) + '&issueId=' + id + '&mode=review' });
+  },
+  openPlan(e) {
+    const detail = this.data.detail, planId = String(e.currentTarget.dataset.id || '');
+    const roomId = detail?.approvedPlans?.find(plan => plan.id === planId)?.roomId;
+    if (!this.current() || !/^[1-9]\d*$/.test(String(roomId)) || detail.project.status === 'archived' || this.data.busy || this.data.pending) return;
+    wx.navigateTo({ url: '/packages/construction/chat/chat?projectId=' + encodeURIComponent(detail.project.id) + '&mode=plan&roomId=' + roomId });
+  },
   openCamera() { if (this.current() && this.data.detail && !this.data.busy && !this.data.pending && this.data.detail.project.status === 'active') wx.navigateTo({ url: '/packages/construction/camera/camera?projectId=' + encodeURIComponent(this.data.detail.project.id) }); },
   openIdentities() { wx.navigateTo({ url: '/packages/business/identity-switch/identity-switch' }); },
   showSheet(values) { clearTimeout(this._sheetTimer); const epoch = this._sheetEpoch = (this._sheetEpoch || 0) + 1; this.setData({ ...values, sheetOpen: false }); this._sheetTimer = setTimeout(() => { if (this._visible && epoch === this._sheetEpoch) this.setData({ sheetOpen: true }); }, 20); this._sheetTimer?.unref?.(); },

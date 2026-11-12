@@ -25,6 +25,8 @@ Page({
       captureAudio: result => this.capture.addFile(result.tempFilePath, 'voice', result.duration || 0) });
     this.projectId = /^[1-9]\d*$/.test(String(options.projectId)) ? String(options.projectId) : '';
     this._briefIssueId = /^[1-9]\d*$/.test(String(options.issueId)) ? String(options.issueId) : '';
+    this._briefMode = options.mode === 'review' ? 'review' : options.mode === 'plan' ? 'plan' : '';
+    this._briefRoomId = /^[1-9]\d*$/.test(String(options.roomId)) ? String(options.roomId) : '';
     this.client = new SiteClient({ identity, emit: patch => {
       if (!this._visible) return;
       if (patch.fatal && this.speechController) this.speechController.hide();
@@ -38,6 +40,7 @@ Page({
         this.setData({ scrollTarget: retake ? 'source-' + retake.message.id : queued ? 'capture-' + queued.key : patch.items.length ? 'source-' + patch.items[patch.items.length - 1].message.id : '' });
       }
     } });
+    this.client.issueId = this._briefIssueId;
     this.capture = new SiteCapture({ site: this.client, emit: patch => {
       if (!this._visible) return;
       this.setData(patch);
@@ -59,8 +62,15 @@ Page({
     await this.client.show(this.projectId);
     if (this._visible && !this.data.fatal) { this.capture.show(); wx.onNetworkStatusChange?.(this._networkChange); void this.capture.flush(); }
     if (this._visible && !this.data.fatal) await this.speechController.show('/miniprogram/construction/projects/' + this.projectId + '/chat/speech');
-    if (this._briefIssueId && !this.client.state.pending && this.client.state.write) {
-      this._conversationInput = true; this.setData({ textMode: true }); this.client.input('事项' + this._briefIssueId + '现在在等谁？为什么？'); this._briefIssueId = '';
+    const planRoom = this._briefMode === 'plan' && this.client.state.rooms?.find(room => room.id === this._briefRoomId);
+    if (this._briefIssueId && !this.client.state.collaboration && !this.client.state.pending && this.client.state.write) {
+      this._conversationInput = true; this.setData({ textMode: true });
+      this.client.input(this._briefMode === 'review' ? '查看事项' + this._briefIssueId + '的需求、图纸和现场记录' : '事项' + this._briefIssueId + '现在在等谁？为什么？');
+      this._briefIssueId = '';
+    } else if (planRoom && !this.client.state.pending && this.client.state.write && !this.client.state.draft) {
+      this._conversationInput = true; this.setData({ textMode: true });
+      this.client.input('查看' + planRoom.name + '的图纸、需求和方案');
+      this._briefRoomId = '';
     }
     this.poll();
   },
@@ -95,7 +105,10 @@ Page({
     if (!this.data.resubmit && !this.data.draft && !this.data.attachments.length && !this._conversationInput) return this.capture.submit();
     this.client.speechInput = this.speechController?.binding(); const result = await this.client.send(); if (!this.data.pending) this._conversationInput = false; return result; },
   retryCapture() { return this.capture.flush(); },
-  typeReport() { if (this.data.write && !this.data.fatal) this.setData({ textMode: true, inputFocus: true }); },
+  typeReport() { if (this.data.write && !this.data.fatal) { this._conversationInput = false; this.setData({ textMode: true, inputFocus: true }); } },
+  /** Coordination text (item reply, question, handover) uses the shared chat
+   * command path; the onsite "打字" entry keeps its capture/report semantics. */
+  typeChat() { if (this.data.write && !this.data.fatal && !this.data.pending) { this._conversationInput = true; this.setData({ textMode: true, inputFocus: true }); } },
   removeCapture(e) { return this.capture.removeFile(String(e.currentTarget.dataset.id)); },
   previewCapture(e) { const path = e.currentTarget.dataset.path; if (path && this._visible) wx.previewImage({ urls: [path] }); },
   playCapture(e) { const path = e.currentTarget.dataset.path || this.data.captureVoice?.path; if (path && this._visible) this.speechController.playLocal(path); },
@@ -115,12 +128,12 @@ Page({
   reconcile() { return this.client.reconcile(); },
   keyboard(e) { this.setData({ keyboardHeight: Math.max(0, e.detail.height || 0) }); },
   photo() {
-    if (this.data.busy || this.data.pending || this.data.captureSaving || !this.data.write || (this.data.resubmit ? this.data.attachments.length : this.data.capturePhotos.length) >= 4) return;
+    if (this.data.busy || this.data.pending || this.data.captureSaving || !this.data.write || (this._conversationInput || this.data.resubmit ? this.data.attachments.length : this.data.capturePhotos.length) >= 4) return;
     const epoch = this.client.epoch;
     wx.chooseMedia({ count: 1, mediaType: ['image'], sourceType: ['camera', 'album'], sizeType: ['compressed'],
       success: async r => { const f = r.tempFiles && r.tempFiles[0]; if (!this.client.current(epoch)) return;
         if (!f || f.size > 4 * 1024 * 1024) { this.setData({ error: '请选择4MB以内的JPEG或PNG图片。' }); return; }
-        if (this.data.resubmit || this.data.attachments.length) await this.client.addPhoto(f.tempFilePath);
+        if (this._conversationInput || this.data.resubmit || this.data.attachments.length) await this.client.addPhoto(f.tempFilePath);
         else await this.capture.addFile(f.tempFilePath, 'photo'); },
       fail: e => { if (this.client.current(epoch) && !String(e.errMsg).includes('cancel')) this.setData({ error: '无法选择照片，请检查相机或相册权限后重试。' }); } });
   },

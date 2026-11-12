@@ -2,16 +2,78 @@ import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, fingerprint, id, safeText, type ActorContext } from '@/lib/assistant/contracts';
-import { sharedMaterials } from './site-materials';
+import { text } from './contracts';
+import { sharedMaterial, sharedMaterials } from './site-materials';
 import { readSiteResolution } from './site-resolution';
+import { collaborationEnabled, collaborationMember } from './collaboration-scope';
 
-export type SiteIssueCommand = { action: 'open' | 'claim' | 'transfer' | 'reply' | 'cancel' | 'resume' | 'refresh' | 'check' | 'return'; target: string; value: string };
+export type SiteIssueCommand = { action: 'open' | 'claim' | 'transfer' | 'reply' | 'cancel' | 'resume' | 'refresh' | 'check' | 'return' | 'confirm' | 'rectify' | 'dismiss'; target: string; value: string };
 type Issue = { issueId: string; revision: number; projectId: string; recordId: string; recordVersion: number;
   sourceHash: string; sourceMessageId: string; roomId: string | null; roomName: string; openedBy: string;
-  ownerId: string | null; state: 'awaiting_owner' | 'awaiting_review' | 'cancelled'; progressMessageId: string | null; action: string;
+  ownerId: string | null; state: 'awaiting_owner' | 'awaiting_review' | 'rectifying' | 'cancelled' | 'dismissed'; progressMessageId: string | null; action: string;
   materialVersion?: string; drawingGrantId?: string | null;
-  requestMessageId?: string; requestHash?: string; requestText?: string };
-export type IssueView = Issue & { status: string; ownerName: string; sourceAvailable: boolean; text: string };
+  requestMessageId?: string; requestHash?: string; requestText?: string;
+  confirmed?: boolean; confirmedAt?: string; confirmedBy?: string; confirmationReason?: string; rectifyingAt?: string; dismissedAt?: string; dismissReason?: string;
+  /** A record item follows onsite work; a need item follows a customer's explicitly shared requirement. */
+  sourceKind?: 'record' | 'need'; needGrantId?: string; customerId?: string; conversationId?: string };
+export type IssueClassification = 'awaiting_verification' | 'awaiting_rectification' | 'rectifying' | 'awaiting_review'
+  | 'resolved' | 'closed' | 'dismissed' | 'cancelled' | 'invalidated';
+export const issueClassificationLabels: Record<IssueClassification, string> = {
+  awaiting_verification: '待核实', awaiting_rectification: '待整改', rectifying: '整改中', awaiting_review: '已整改待复核',
+  resolved: '已修正待关闭', closed: '已修正', dismissed: '已排除或误报', cancelled: '已取消', invalidated: '待重新核对',
+};
+export type IssueView = Issue & { status: string; ownerName: string; sourceAvailable: boolean; text: string;
+  classification: IssueClassification; classificationLabel: string; confirmed: boolean; designRelated: boolean;
+  lifecycleId?: string; lifecycleRevision?: number; evidenceId?: string; executionRecordId?: string; executionRecordVersion?: number; planId?: string };
+export function classifyIssue(status: string, issue: Pick<Issue, 'state' | 'confirmed'>): IssueClassification {
+  if (status === 'cancelled') return 'cancelled';
+  if (status === 'invalidated') return 'invalidated';
+  if (status === 'dismissed' || issue.state === 'dismissed') return 'dismissed';
+  if (status === 'closed') return 'closed';
+  if (status === 'resolved') return 'resolved';
+  if (status === 'implemented') return 'awaiting_review';
+  if (status === 'rectifying' || issue.state === 'rectifying') return 'rectifying';
+  return issue.confirmed ? 'awaiting_rectification' : 'awaiting_verification';
+}
+export function siteIssueSummary(issue: IssueView) {
+  const { issueId, revision, roomId, roomName, status, classification, classificationLabel, confirmed, ownerId, ownerName,
+    sourceAvailable, designRelated, lifecycleId, lifecycleRevision, evidenceId, executionRecordId, executionRecordVersion, planId } = issue;
+  return { issueId, revision, roomId, roomName, status, classification, classificationLabel, confirmed, ownerId, ownerName,
+    sourceAvailable, designRelated, lifecycleId, lifecycleRevision, evidenceId, executionRecordId, executionRecordVersion, planId,
+    sourceKind: issue.sourceKind || 'record', recordId: issue.recordId || null, recordVersion: issue.recordVersion || null };
+}
+
+/** Counts and lists come from the same set of current issue revisions. */
+export function groupProjectIssues(issues: IssueView[], viewerId?: string) {
+  const empty = { awaitingVerification: [] as Row[], awaitingRectification: [] as Row[], rectifying: [] as Row[],
+    awaitingReview: [] as Row[], fixed: [] as Row[], excluded: [] as Row[], cancelled: [] as Row[], designReviews: [] as Row[] };
+  const counts: Record<IssueClassification, number> = { awaiting_verification: 0, awaiting_rectification: 0, rectifying: 0,
+    awaiting_review: 0, resolved: 0, closed: 0, dismissed: 0, cancelled: 0, invalidated: 0 };
+  const quality = { open: 0, fixed: 0, excluded: 0 };
+  for (const issue of issues) {
+    const item = { ...siteIssueSummary(issue), mine: !!viewerId && issue.ownerId === viewerId };
+    const fixed = issue.classification === 'resolved' || issue.classification === 'closed';
+    if (issue.sourceKind === 'need' || !issue.confirmed && (issue.designRelated || fixed)) {
+      empty.designReviews.push(item);
+      continue;
+    }
+    counts[issue.classification]++;
+    if (issue.classification === 'dismissed') quality.excluded++;
+    else if (issue.confirmed && issue.sourceAvailable && !['cancelled', 'invalidated'].includes(issue.classification)) {
+      if (fixed) quality.fixed++;
+      else quality.open++;
+    }
+    if (issue.classification === 'cancelled') empty.cancelled.push(item);
+    else if (issue.classification === 'dismissed') empty.excluded.push(item);
+    else if (issue.classification === 'resolved' || issue.classification === 'closed') empty.fixed.push(item);
+    else if (issue.classification === 'awaiting_rectification') empty.awaitingRectification.push(item);
+    else if (issue.classification === 'rectifying') empty.rectifying.push(item);
+    else if (issue.classification === 'awaiting_review') empty.awaitingReview.push(item);
+    else empty.awaitingVerification.push(item);
+  }
+  const openCount = empty.awaitingVerification.length + empty.awaitingRectification.length + empty.rectifying.length + empty.awaitingReview.length;
+  return { ...empty, counts, quality, openCount };
+}
 export type SiteVersions = { records: Record<string, number>; issues: Record<string, number>; materials?: Record<string, string>; plans?: Record<string, number>; resolutions?: Record<string, number> };
 
 export function parseSiteVersions(value: unknown): SiteVersions {
@@ -57,6 +119,12 @@ export function siteIssueCommand(raw: string): SiteIssueCommand | null {
   if (m) return { action: 'transfer', target: id(m[1]), value: m[2].replace(/[。！!]$/, '') };
   m = new RegExp('^' + prefix + '核对事项\\s*([1-9]\\d{0,18})图纸\\s*([1-9]\\d{0,18})[。！!\\s]*$').exec(raw);
   if (m) return { action: 'check', target: id(m[1]), value: id(m[2]) };
+  m = new RegExp('^' + prefix + '确认事项\\s*[#＃]?([1-9]\\d{0,18})[：:]\\s*([\\s\\S]{1,500})$').exec(raw);
+  if (m) return { action: 'confirm', target: id(m[1]), value: text(m[2], 500) };
+  m = new RegExp('^' + prefix + '开始整改事项\\s*[#＃]?([1-9]\\d{0,18})(?:[：:]\\s*([\\s\\S]{1,1200}))?[。！!\\s]*$').exec(raw);
+  if (m) return { action: 'rectify', target: id(m[1]), value: (m[2] || '').trim() };
+  m = new RegExp('^' + prefix + '(?:排除|标记误报)事项\\s*[#＃]?([1-9]\\d{0,18})[：:]\\s*([\\s\\S]{1,500})$').exec(raw);
+  if (m) return { action: 'dismiss', target: id(m[1]), value: text(m[2], 500) };
   m = new RegExp('^' + prefix + '(回复|取消|恢复|重新核对|回传)事项\\s*[#＃]?([1-9]\\d{0,18})[：:]\\s*(.{1,2000})$', 's').exec(raw);
   if (m && m[3].trim()) return { action: m[1] === '回复' ? 'reply' : m[1] === '取消' ? 'cancel' : m[1] === '恢复' ? 'resume' : m[1] === '回传' ? 'return' : 'refresh', target: id(m[2]), value: m[3].trim() };
   return null;
@@ -113,55 +181,79 @@ export async function siteTransferAssignee(tx: PostgresTransaction, eid: string,
 /** Source/assignment revision stays independent of formal execution/closure revisions. */
 export async function readSiteIssueBase(tx: PostgresTransaction, eid: string, pid: string, issueId: string, asOf?: Date): Promise<IssueView | null> {
   const issue = await issueData(tx, eid, pid, issueId, asOf); if (!issue) return null;
-  const source = await currentRecord(tx, eid, pid, issue.recordId);
+  // A need item binds the customer's explicitly shared requirement instead of an
+  // onsite record. Both source kinds keep their own hash, room and material version.
+  const isNeed = issue.sourceKind === 'need';
+  const need = isNeed && issue.needGrantId ? await sharedMaterial(tx, eid, pid, issue.needGrantId) : null;
+  const source = isNeed ? null : await currentRecord(tx, eid, pid, issue.recordId);
   const materials = issue.roomId ? await sharedMaterials(tx, eid, pid, issue.roomId) : null;
-  const request = issue.requestMessageId ? await one(tx, sql`select m.content from app.assistant_messages m join app.construction_chats c
+  const request = !isNeed && issue.requestMessageId ? await one(tx, sql`select m.content from app.assistant_messages m join app.construction_chats c
     on c.enterprise_id=m.enterprise_id and c.conversation_id=m.conversation_id where m.enterprise_id=${eid} and c.project_id=${pid}
       and m.id=${issue.requestMessageId} and m.author_kind='admin' and m.admin_id=${issue.openedBy} for share of m`) : null;
   // Legacy items have no request binding. New items retain the explicit action
   // separately from the onsite report; changed originals cannot revive it.
-  const requestAvailable = !issue.requestMessageId || !!request && fingerprint(request.content) === issue.requestHash;
-  const valid = requestAvailable && source && Number(source.row.version) === issue.recordVersion && source.hash === issue.sourceHash
+  const requestAvailable = isNeed
+    ? !!need && need.projectId === pid && need.roomId === issue.roomId && need.roomName === issue.roomName
+      && need.customerId === issue.customerId && need.conversationId === issue.conversationId && need.sourceHash === issue.sourceHash
+    : !issue.requestMessageId || !!request && fingerprint(request.content) === issue.requestHash;
+  const valid = requestAvailable && (isNeed ? true : !!source && Number(source!.row.version) === issue.recordVersion && source!.hash === issue.sourceHash)
     && (!issue.materialVersion || materials?.version === issue.materialVersion);
-  const owner = issue.ownerId ? await effectiveOwner(tx, eid, pid, issue.ownerId) : null;
+  const owner = issue.ownerId && (!isNeed || await collaborationMember(tx, eid, pid, issue.ownerId) === 'designer')
+    ? await effectiveOwner(tx, eid, pid, issue.ownerId) : null;
   // Historical selection does not restore a removed assignee or turn that
   // removal into a newly recorded historical "unassigned" state.
   if (asOf && issue.ownerId && !owner) return null;
   const ownerName = owner ? String(owner.display_name || owner.username) : '';
-  const status = issue.state === 'cancelled' ? 'cancelled' : !valid ? 'invalidated' : !owner ? 'awaiting_owner' : issue.state;
-  let text = `事项${issueId} · 修订${issue.revision} · 原记录${issue.recordId}：`;
+  const status = issue.state === 'cancelled' ? 'cancelled' : issue.state === 'dismissed' ? 'dismissed'
+    : !valid ? 'invalidated' : !owner ? 'awaiting_owner' : issue.state;
+  let text = `事项${issueId} · 修订${issue.revision} · ${issue.sourceKind === 'need' ? '需求资料' + issue.needGrantId : '原记录' + issue.recordId}：`;
   if (status === 'cancelled') text += '已取消跟进；原记录与其他关注保持各自状态。';
+  else if (status === 'dismissed') text += `${issue.roomName}，已排除为误报或非施工质量问题，不计入施工质量；内部排除原因不向业主公开。原记录仍可追溯。`;
   else if (status === 'invalidated') text += '原材料或房间已变化，等待有权人员重新核对，旧处理结果不再沿用。';
   else {
     text += `${issue.roomName}，${ownerName ? '当前负责人：' + ownerName : '尚未分配有效负责人'}。`;
-    if (source) text += '\n原现场记录：' + safeText(source.row.content as Parameters<typeof safeText>[0]);
-    if (issue.requestText) text += '\n跟进请求原话：' + issue.requestText;
+    if (need) text += '\n业主明确共享的需求原话：' + need.text;
+    else if (source) text += '\n原现场记录：' + safeText(source.row.content as Parameters<typeof safeText>[0]);
+    if (!need && issue.requestText) text += '\n跟进请求原话：' + issue.requestText;
     if (issue.drawingGrantId) text += `\n图纸资料${issue.drawingGrantId}已核对关联，仍需结合现场尺寸核对点位；这不是方案批准。`;
     if (issue.progressMessageId) {
       const reply = await one(tx, sql`select m.content from app.assistant_messages m join app.construction_chats c on c.enterprise_id=m.enterprise_id and c.conversation_id=m.conversation_id
         where m.enterprise_id=${eid} and c.project_id=${pid} and m.id=${issue.progressMessageId} and m.author_kind='admin'`);
       if (reply) text += '\n最近处理原话：' + safeText(reply.content as Parameters<typeof safeText>[0]);
     }
-    text += status === 'awaiting_review' ? '\n已有处理回复，仍待团队核对；回复不等于已解决或正式批准。' : '\n等待负责人处理；没有已确认期限，不推断逾期。';
+    if (isNeed) text += status === 'awaiting_review' ? '\n设计意见已提交，等待团队和业主确认当前版本。' : '\n等待设计师核对需求和图纸。';
+    else if (!issue.confirmed && collaborationEnabled(eid)) text += '\n待核实。资料缺失和记录更正沿原记录处理。';
+    else if (status === 'rectifying') text += '\n已确认需要整改，负责人正在处理；施工回传不等于复核通过。';
+    else if (status === 'awaiting_review') text += '\n已有处理回复，仍待团队核对；回复不等于已解决或正式批准。';
+    else text += issue.confirmed ? '\n已确认需要整改，等待负责人处理。' : '\n等待负责人处理；没有已确认期限，不推断逾期。';
     if (issue.action === 'return') text += '\n本次明确回复已授权回传原咨询；真人接待期间等待恢复小K后投递，投递前仍会重核来源和权限。';
   }
   if (issue.action === 'resume') text += '\n已沿原事项恢复，按当前资料重新处理；旧回复、图纸核对及正式决定不自动恢复。';
+  const classification = classifyIssue(status, issue);
   return { ...issue, ...(issue.requestMessageId && !requestAvailable ? { requestText: '' } : {}),
-    ownerId: owner ? issue.ownerId : null, ownerName, status, sourceAvailable: !!valid, text };
+    ownerId: owner ? issue.ownerId : null, ownerName, status, sourceAvailable: !!valid, text,
+    classification, classificationLabel: issueClassificationLabels[classification], confirmed: issue.confirmed === true,
+    designRelated: issue.sourceKind === 'need' || !!issue.drawingGrantId };
 }
 
 export async function readSiteIssue(tx: PostgresTransaction, eid: string, pid: string, issueId: string, asOf?: Date): Promise<IssueView | null> {
   const issue = await readSiteIssueBase(tx, eid, pid, issueId, asOf); if (!issue) return null;
   const resolution = await readSiteResolution(tx, eid, pid, issueId, issue, asOf);
   if (!resolution) return issue;
-  return { ...issue, status: resolution.available ? resolution.state === 'reopened' ? issue.status : resolution.state
-    : resolution.issueRevision === issue.revision ? 'invalidated' : issue.status,
+  if (resolution.issueRevision !== issue.revision) return issue;
+  const status = !resolution.available ? 'invalidated' : resolution.state === 'reopened'
+    ? issue.confirmed ? 'awaiting_owner' : issue.status : resolution.state;
+  const classification = classifyIssue(status, resolution.state === 'reopened' ? { ...issue, state: 'awaiting_owner' } : issue);
+  return { ...issue, status, classification, classificationLabel: issueClassificationLabels[classification],
+    lifecycleId: resolution.id, lifecycleRevision: resolution.revision,
+    ...(resolution.available && resolution.evidence ? { evidenceId: resolution.evidenceId, executionRecordId: resolution.evidence.recordId,
+      executionRecordVersion: resolution.evidence.recordVersion, planId: resolution.planId } : {}),
     text: issue.text.replace(/\n已有处理回复，仍待团队核对；回复不等于已解决或正式批准。/, '') + '\n' + resolution.text };
 }
 
-export async function projectSiteIssues(tx: PostgresTransaction, eid: string, pid: string) {
+export async function projectSiteIssues(tx: PostgresTransaction, eid: string, pid: string, limit: number | null = 50) {
   const events = await rows(tx, sql`select id from app.domain_event_outbox where enterprise_id=${eid} and type='construction.site.issue.opened.v1'
-    and payload->>'projectId'=${pid} order by id desc limit 50`);
+    and payload->>'projectId'=${pid} order by id desc ${limit === null ? sql`` : sql`limit ${limit}`}`);
   const result: IssueView[] = [];
   for (const event of events) { const issue = await readSiteIssue(tx, eid, pid, String(event.id)); if (issue) result.push(issue); }
   return result;
@@ -177,6 +269,9 @@ export async function handleSiteIssue(tx: PostgresTransaction, actor: ActorConte
 export async function executeSiteIssue(tx: PostgresTransaction, actor: ActorContext, pid: string, sourceMessageId: string, cmd: SiteIssueCommand, versions: SiteVersions, manage: boolean) {
   if (actor.principal.kind !== 'admin') fail('construction_forbidden', 403);
   const eid = actor.enterpriseId, aid = actor.principal.adminId;
+  const collaboration = collaborationEnabled(eid);
+  if (!collaboration && ['confirm', 'rectify', 'dismiss'].includes(cmd.action)) fail('construction_not_found', 404);
+  if (collaboration && cmd.action !== 'open') await readSiteIssueBase(tx, eid, pid, cmd.target);
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`site-material:${eid}:${pid}`},0))`);
   let issue: Issue;
   if (cmd.action === 'open') {
@@ -186,7 +281,8 @@ export async function executeSiteIssue(tx: PostgresTransaction, actor: ActorCont
     const source = await currentRecord(tx, eid, pid, cmd.target); if (!source) fail('context_changed');
     if (versions.records[cmd.target] !== Number(source.row.version)) fail('version_conflict');
     const data = source.row.data as Row;
-    if (!String(data.pending || '').trim() && !String(data.coordination || '').trim()) fail('site_review_required', 422);
+    if (!String(data.pending || '').trim() && !String(data.coordination || '').trim()
+      && !(collaboration && cmd.value && source.media.length)) fail('site_review_required', 422);
     const request = await one(tx, sql`select m.content from app.assistant_messages m join app.construction_chats c
       on c.enterprise_id=m.enterprise_id and c.conversation_id=m.conversation_id where m.enterprise_id=${eid} and c.project_id=${pid}
         and m.id=${sourceMessageId} and m.author_kind='admin' and m.admin_id=${aid} for share of m`);
@@ -202,39 +298,80 @@ export async function executeSiteIssue(tx: PostgresTransaction, actor: ActorCont
   const previous = await issueData(tx, eid, pid, cmd.target); if (!previous) fail('construction_not_found', 404);
   if (versions.issues[cmd.target] !== previous.revision) fail('version_conflict');
   const view = (await readSiteIssue(tx, eid, pid, cmd.target))!;
-  if (previous.state === 'cancelled' && !['resume','return'].includes(cmd.action)
-    || cmd.action === 'resume' && previous.state !== 'cancelled'
-    || view.status === 'invalidated' && !['cancel','refresh'].includes(cmd.action)) fail('context_changed');
   if (['implemented','resolved','closed'].includes(view.status)) fail('site_reopen_required', 422);
+  if (previous.state === 'cancelled' && !['resume','return'].includes(cmd.action)) fail('context_changed');
+  if (previous.state === 'dismissed' && cmd.action !== 'resume') fail('context_changed');
+  if (cmd.action === 'resume' && !['cancelled','dismissed'].includes(previous.state)) fail('context_changed');
+  if (view.status === 'invalidated' && !['cancel','refresh'].includes(cmd.action)) fail('context_changed');
   issue = { ...previous, revision: previous.revision + 1, action: cmd.action };
-  const canHandle = manage || view.ownerId === aid;
+  const role = collaboration ? await collaborationMember(tx, eid, pid, aid) : null;
+  const manager = collaboration ? role === 'manager' : manage;
+  const design = previous.sourceKind === 'need';
+  const assignedDesigner = view.ownerId === aid && role === 'designer';
+  const canHandle = (collaboration ? manager : manage) || view.ownerId === aid;
+  if (collaboration && (!role || previous.confirmed && role === 'designer')) fail('construction_forbidden', 403);
+  if (design && (['reply', 'check'].includes(cmd.action) ? !assignedDesigner
+    : ['claim', 'refresh'].includes(cmd.action) ? role !== 'designer' && !manager : !manager)) fail('construction_forbidden', 403);
   const materials = previous.roomId ? await sharedMaterials(tx, eid, pid, previous.roomId) : null;
   if (['reply','refresh','check','return'].includes(cmd.action) && materials && (materials.sources.length || previous.materialVersion)
     && versions.materials?.[previous.roomId!] !== materials.version) fail('version_conflict');
-  if (cmd.action === 'claim') {
+  if (cmd.action === 'confirm') {
+    if (!manager) fail('construction_forbidden', 403);
+    if (design || !['awaiting_owner','awaiting_review'].includes(view.status) || !view.sourceAvailable) fail('site_review_required', 422);
+    const source = await currentRecord(tx, eid, pid, issue.recordId);
+    if (source?.row.status !== 'published' || !source.media.length) fail('site_review_required', 422);
+    if (versions.records[issue.recordId] !== issue.recordVersion) fail('version_conflict');
+    if (issue.confirmed) return view;
+    issue.confirmed = true; issue.confirmedAt = new Date().toISOString(); issue.confirmedBy = aid;
+    issue.confirmationReason = text(cmd.value, 500); issue.state = 'awaiting_owner';
+  } else if (cmd.action === 'rectify') {
+    if (!canHandle) fail('construction_forbidden', 403);
+    // Rectification starts only under an effective responsible person; an
+    // unassigned item must be claimed or transferred first.
+    if (!issue.confirmed || view.status !== 'awaiting_owner' || !view.ownerId) fail('site_review_required', 422);
+    issue.state = 'rectifying'; issue.rectifyingAt = new Date().toISOString();
+  } else if (cmd.action === 'dismiss') {
+    if (!manager) fail('construction_forbidden', 403);
+    if (!cmd.value.trim()) fail('invalid_construction', 422);
+    issue.state = 'dismissed'; issue.dismissedAt = new Date().toISOString(); issue.dismissReason = cmd.value;
+    issue.progressMessageId = null; issue.drawingGrantId = null; issue.materialVersion = materials?.version;
+    delete issue.rectifyingAt;
+  } else if (cmd.action === 'claim') {
     if (view.ownerId === aid) return view;
-    if (view.ownerId && view.ownerId !== aid && !manage) fail('construction_forbidden', 403);
+    if (design && role !== 'designer' || view.ownerId && view.ownerId !== aid && !manager) fail('construction_forbidden', 403);
     if (!await effectiveOwner(tx, eid, pid, aid)) fail('construction_forbidden', 403);
     issue.ownerId = aid; issue.state = 'awaiting_owner';
   } else if (cmd.action === 'resume') {
-    if (!manage && previous.openedBy !== aid) fail('construction_forbidden', 403);
-    const source = await currentRecord(tx, eid, pid, previous.recordId); if (!source) fail('context_changed');
-    const roomId = String(source.row.room_id), currentMaterials = await sharedMaterials(tx, eid, pid, roomId);
-    if (versions.records[previous.recordId] !== Number(source.row.version) || versions.materials?.[roomId] !== currentMaterials.version) fail('version_conflict');
+    if (!manager && previous.openedBy !== aid) fail('construction_forbidden', 403);
+    const isNeed = previous.sourceKind === 'need';
+    const need = isNeed ? await sharedMaterial(tx, eid, pid, previous.needGrantId || '') : null;
+    const source = isNeed ? null : await currentRecord(tx, eid, pid, previous.recordId);
+    if (isNeed ? !need : !source) fail('context_changed');
+    const roomId = String(need ? need.roomId : source!.row.room_id), currentMaterials = await sharedMaterials(tx, eid, pid, roomId);
+    if ((need ? versions.materials?.[roomId] : versions.records[previous.recordId]) !== (need ? currentMaterials.version : Number(source!.row.version))
+      || versions.materials?.[roomId] !== currentMaterials.version) fail('version_conflict');
     // Recovery is a new revision of the same item. Never revive an old reply,
     // drawing check, customer decision or a removed assignee's authority.
-    Object.assign(issue, { recordVersion: Number(source.row.version), sourceHash: source.hash, roomId, roomName: String(source.row.room_name_snapshot),
-      sourceMessageId: String(source.row.source_message_id), ownerId: view.ownerId, state: 'awaiting_owner', progressMessageId: null,
-      materialVersion: currentMaterials.version, drawingGrantId: null });
+    Object.assign(issue, need
+      ? { recordId: '', recordVersion: 0, sourceHash: need.sourceHash, roomId, roomName: need.roomName,
+        sourceMessageId: need.consentMessageId || need.sourceMessageId, ownerId: view.ownerId, state: 'awaiting_owner', progressMessageId: null,
+        materialVersion: currentMaterials.version, drawingGrantId: null, requestMessageId: need.sourceMessageId, requestHash: need.sourceHash, requestText: need.text }
+      : { recordVersion: Number(source!.row.version), sourceHash: source!.hash, roomId, roomName: String(source!.row.room_name_snapshot),
+        sourceMessageId: String(source!.row.source_message_id), ownerId: view.ownerId, state: 'awaiting_owner', progressMessageId: null,
+        materialVersion: currentMaterials.version, drawingGrantId: null });
+    // Reopening an excluded item returns it to verification; a former dismissal
+    // or confirmation is history, not a current quality conclusion.
+    issue.confirmed = false; issue.confirmedAt = undefined; issue.confirmedBy = undefined; issue.confirmationReason = undefined;
+    issue.rectifyingAt = undefined; issue.dismissedAt = undefined; issue.dismissReason = undefined;
   } else if (cmd.action === 'cancel') {
-    if (!manage && previous.openedBy !== aid) fail('construction_forbidden', 403);
+    if (!manager && previous.openedBy !== aid) fail('construction_forbidden', 403);
     issue.state = 'cancelled'; issue.progressMessageId = null; issue.drawingGrantId = null;
     issue.materialVersion = materials?.version;
   } else if (cmd.action === 'return') {
     // Management explicitly discloses a bounded state/excerpt to the original
     // consultation. Private replies and later state changes are never copied.
-    if (!manage) fail('construction_forbidden', 403);
-    const need = materials?.sources.find(s => s.kind === 'need');
+    if (!manager) fail('construction_forbidden', 403);
+    const need = materials?.sources.find(s => s.kind === 'need' && (!design || s.id === previous.needGrantId));
     if (!need || !view.sourceAvailable || !['awaiting_owner','awaiting_review','cancelled'].includes(view.status)) fail('site_review_required', 422);
     const returnState = view.status as Issue['state'];
     if (returnState === 'awaiting_review' && (!previous.progressMessageId
@@ -256,22 +393,35 @@ export async function executeSiteIssue(tx: PostgresTransaction, actor: ActorCont
     if (!canHandle) fail('construction_forbidden', 403);
     if (cmd.action === 'transfer') {
       const assignee = await siteTransferAssignee(tx, eid, pid, cmd.value);
+      if (design && await collaborationMember(tx, eid, pid, assignee.id) !== 'designer') fail('construction_staff_unavailable', 422);
       if (view.ownerId === assignee.id) return view;
       issue.ownerId = assignee.id; issue.state = 'awaiting_owner';
     } else if (cmd.action === 'refresh') {
-      const source = await currentRecord(tx, eid, pid, previous.recordId); if (!source) fail('context_changed');
-      if (versions.records[previous.recordId] !== Number(source.row.version)) fail('version_conflict');
-      Object.assign(issue, { recordVersion: Number(source.row.version), sourceHash: source.hash, roomId: String(source.row.room_id), roomName: String(source.row.room_name_snapshot),
-        sourceMessageId: String(source.row.source_message_id), ownerId: view.ownerId, state: 'awaiting_owner', progressMessageId: null });
-      issue.materialVersion = materials?.version; issue.drawingGrantId = null;
+      const isNeed = previous.sourceKind === 'need';
+      const need = isNeed ? await sharedMaterial(tx, eid, pid, previous.needGrantId || '') : null;
+      const source = isNeed ? null : await currentRecord(tx, eid, pid, previous.recordId);
+      if (isNeed ? !need : !source) fail('context_changed');
+      if (!isNeed && versions.records[previous.recordId] !== Number(source!.row.version)) fail('version_conflict');
+      Object.assign(issue, need
+        ? { recordId: '', recordVersion: 0, sourceHash: need.sourceHash, roomId: need.roomId, roomName: need.roomName,
+          sourceMessageId: need.consentMessageId || need.sourceMessageId, ownerId: view.ownerId, state: 'awaiting_owner', progressMessageId: null,
+          requestMessageId: need.sourceMessageId, requestHash: need.sourceHash, requestText: need.text }
+        : { recordVersion: Number(source!.row.version), sourceHash: source!.hash, roomId: String(source!.row.room_id), roomName: String(source!.row.room_name_snapshot),
+          sourceMessageId: String(source!.row.source_message_id), ownerId: view.ownerId, state: 'awaiting_owner', progressMessageId: null });
+      issue.materialVersion = (await sharedMaterials(tx, eid, pid, issue.roomId!)).version; issue.drawingGrantId = null;
+      if (collaboration) {
+        issue.confirmed = false; issue.confirmedAt = undefined; issue.confirmedBy = undefined;
+        issue.confirmationReason = undefined; issue.rectifyingAt = undefined;
+      }
     } else if (cmd.action === 'check') {
       const source = materials?.sources.find(s => s.id === cmd.value && s.kind === 'drawing');
       const reviewer = await one(tx, sql`select role from app.admin_users where enterprise_id=${eid} and id=${aid} and status='active' for share`);
-      if (!manage && reviewer?.role !== 'designer') fail('construction_forbidden', 403);
+      if (collaboration ? !assignedDesigner : !manage && reviewer?.role !== 'designer') fail('construction_forbidden', 403);
       if (!source) fail('context_changed');
       issue.drawingGrantId = source.id; issue.materialVersion = materials!.version;
     } else {
-      issue.state = 'awaiting_review'; issue.progressMessageId = sourceMessageId;
+      if (!issue.confirmed) issue.state = 'awaiting_review';
+      issue.progressMessageId = sourceMessageId;
       issue.materialVersion = materials?.version;
     }
   }

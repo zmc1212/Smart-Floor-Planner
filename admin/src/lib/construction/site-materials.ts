@@ -4,6 +4,8 @@ import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, fingerprint, safeText, type ActorContext, type MessageContent } from '@/lib/assistant/contracts';
 import { appendMessage } from '@/lib/assistant/core/conversation';
 import { restrictedMaterialAudience } from './material-sharing-contract';
+import { collaborationEnabled, isConsultationOwner } from './collaboration-scope';
+import { openNeedReviewFromGrant } from './site-need-reviews';
 
 export type SharedMaterial = { id: string; projectId: string; roomId: string; roomName: string; kind: 'need' | 'drawing';
   conversationId: string; customerId: string; sourceMessageId: string; sourceHash: string; text: string;
@@ -15,6 +17,7 @@ const revokeType = 'construction.material.revoked.v1';
 export async function revokeMaterial(tx: PostgresTransaction, actor: ActorContext, c: Row, message: Row, grantId: string) {
   if (actor.principal.kind !== 'user') fail('assistant_capability_forbidden', 403);
   const eid = actor.enterpriseId, uid = actor.principal.userId, cid = String(c.id);
+  if (collaborationEnabled(eid) && !await isConsultationOwner(tx, actor, cid)) fail('construction_forbidden', 403);
   const grant = await one(tx, sql`select payload from app.domain_event_outbox where enterprise_id=${eid} and id=${grantId}
     and type=${grantType} and payload->>'customerId'=${uid} and payload->>'conversationId'=${cid}`);
   if (!grant) fail('assistant_resource_not_found', 404);
@@ -37,6 +40,7 @@ export async function grantMaterial(tx: PostgresTransaction, actor: ActorContext
   if (actor.principal.kind !== 'user') fail('assistant_capability_forbidden', 403);
   const eid = actor.enterpriseId, uid = actor.principal.userId, cid = String(c.id), pid = String(room.project_id);
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`site-material:${eid}:${pid}`},0))`);
+  if (collaborationEnabled(eid) && !await isConsultationOwner(tx, actor, cid)) fail('construction_forbidden', 403);
   const media = mediaId ? await one(tx, sql`select id,source_hash from app.assistant_media where enterprise_id=${eid}
     and conversation_id=${cid} and customer_user_id=${uid} and id=${mediaId} and deleted_at is null and source_ref is null for share`) : null;
   if (mediaId && !media) fail('assistant_resource_not_found', 404);
@@ -51,7 +55,8 @@ export async function grantMaterial(tx: PostgresTransaction, actor: ActorContext
   const feedback = `已将「${room.project_name} · ${room.room_name}」本次${kind === 'need' ? '需求节选' : '点位图原件及说明'}共享给当前项目成员，资料${event.id}。本次内容替换该房间同类共享资料；其他私聊没有共享。${kind === 'drawing' ? '图纸仍待有权人员核对关联，不代表批准。' : ''}处理回复可由有权管理者明确回传本咨询。需要停止共享可说“撤回共享资料${event.id}”。`;
   await appendMessage(tx, actor, cid, { author: 'system', eventId: String(event.id), purpose: 'construction.material',
     content: { version: 1, blocks: [{ type: 'text', text: feedback }] } });
-  return { id: String(event.id), text: feedback };
+  const issueId = collaborationEnabled(eid) && kind === 'need' ? await openNeedReviewFromGrant(tx, actor, c, pid, String(event.id)) : null;
+  return { id: String(event.id), text: feedback, ...(issueId ? { issueId } : {}) };
 }
 
 export function materialCommand(raw: string) {

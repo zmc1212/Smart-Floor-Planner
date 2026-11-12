@@ -9,6 +9,9 @@ import { constructionFollowUpScope, constructionNoticeAvailable } from './custom
 import { customerSiteResults } from './site-results';
 import { customerPlans } from './site-plans';
 import { currentHandoffOwner } from '@/lib/assistant/handoff/owner';
+import { customerNeedReviews } from './site-need-reviews';
+import { collaborationEnabled } from './collaboration-scope';
+import type { IssueClassification } from './site-issues';
 import { notesPreserveProgress } from './stage-events';
 
 export const needIssueTool: ModelTool = {
@@ -16,9 +19,10 @@ export const needIssueTool: ModelTool = {
   parameters: { type: 'object', properties: {}, additionalProperties: false },
 };
 export type IssueState = { issueId: string; revision: number; projectId: string; room: string; field: string;
-  status: 'awaiting_customer' | 'awaiting_owner' | 'awaiting_review' | 'cancelled' | 'invalidated' | 'approved' | 'declined' | 'changes_requested' | 'deferred' | 'resolved' | 'closed'; waitingFor: 'customer' | 'designer' | 'unassigned' | 'team' | 'none';
+  status: 'awaiting_customer' | 'awaiting_owner' | 'awaiting_review' | 'cancelled' | 'invalidated' | 'approved' | 'declined' | 'changes_requested' | 'deferred' | 'resolved' | 'closed' | 'implemented' | 'reopened' | 'rectifying' | 'dismissed'; waitingFor: 'customer' | 'designer' | 'unassigned' | 'team' | 'none';
   ownerName: string; sourceMessageId: string | null; sourceFactId: string | null; lastProgress: string; question: string; value: string;
-  kind?: 'team_result' | 'formal_plan'; sourceVersion?: string };
+  kind?: 'team_result' | 'formal_plan' | 'design_review'; sourceVersion?: string;
+  classification?: IssueClassification; lifecycleId?: string; lifecycleRevision?: number; sync?: { eventId: string; status: string } | null };
 export type NeedIssueSnapshot = { query: { domain: 'followups'; conversationId: string }; customerId: string; leadIds: string[];
   version: string; displayText: string; data: IssueState[]; queriedAt: string };
 export type NeedIssueDependency = Pick<NeedIssueSnapshot, 'query' | 'customerId' | 'version'>;
@@ -184,7 +188,18 @@ export async function queryNeedIssues(tx: PostgresTransaction, actor: ActorConte
       + (state.lastProgress === 'designer_review' ? '已有内部核对记录。' : state.lastProgress === 'designer_reply' ? '设计师已在原对话回复。' : '')
       + '仍待核对，不代表正式方案已批准或现场问题已解决。' : `${state.room || '全屋'}补问：“${state.question}”。等待你方便时补充，可以继续聊其他问题。`);
   }
-  for (const result of await customerSiteResults(tx, eid, uid, cid)) {
+  const returned = await customerSiteResults(tx, eid, uid, cid);
+  const reviews = collaborationEnabled(eid) ? await customerNeedReviews(tx, eid, uid, cid) : [];
+  for (const review of reviews) {
+    const current = returned.find(result => result.issueId === review.issueId && result.status !== 'invalidated'
+      && (!result.lifecycleId || result.lifecycleId === review.lifecycleId));
+    const value = [review.text, current?.text].filter(Boolean).join('\n');
+    data.push({ ...review, field: 'design_review', status: review.status as IssueState['status'],
+      kind: 'design_review', sourceMessageId: current?.messageId || review.sourceMessageId, sourceFactId: null,
+      lastProgress: review.status, question: '', value, sourceVersion: fingerprint({ ...review, current: current?.sourceVersion }) });
+    lines.push(value);
+  }
+  for (const result of returned.filter(result => !reviews.some(review => review.issueId === result.issueId))) {
     data.push({ issueId: result.issueId, revision: result.revision, projectId: result.projectId, room: result.room, field: 'site_result',
       status: result.status, waitingFor: result.waitingFor, ownerName: result.ownerName, sourceMessageId: result.messageId, sourceFactId: null,
       lastProgress: ['closed','resolved','awaiting_owner','cancelled'].includes(result.status) ? result.status : 'team_result', question: '', value: result.text, kind: 'team_result', sourceVersion: result.sourceVersion });

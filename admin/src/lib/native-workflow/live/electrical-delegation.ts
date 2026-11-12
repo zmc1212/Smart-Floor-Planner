@@ -5,12 +5,22 @@ import { fingerprint } from '@/lib/assistant/contracts';
 import { readSiteIssueBase, type IssueView } from '@/lib/construction/site-issues';
 import { readPlan } from '@/lib/construction/site-plans';
 import { readSiteResolution } from '@/lib/construction/site-resolution';
+import { collaborationEnabled } from '@/lib/construction/collaboration-scope';
 import { delegationOwnerReceipt } from './delegation-chat';
 import { activeProjectStaff, electricalEvidence, electricalInputs, soleProjectStaff, type DelegationInput } from './delegation-inputs';
 import { delegationNotice, setDelegationWait, type Delegation, type DelegationAction, type DelegationTask, type DelegationWait } from './delegation-state';
 import { appendDelegationEvent, type DelegationEvent } from './delegation-store';
 
-async function findIssue(tx: PostgresTransaction, d: Delegation, task: DelegationTask) {
+async function findIssue(tx: PostgresTransaction, d: Delegation, task: DelegationTask, needGrantId?: string) {
+  if (needGrantId && collaborationEnabled(d.enterpriseId)) {
+    const opened = await one(tx, sql`select id::text from app.domain_event_outbox where enterprise_id=${d.enterpriseId}
+      and type='construction.site.issue.opened.v1' and payload->>'sourceKind'='need' and payload->>'projectId'=${d.projectId}
+      and payload->>'roomId'=${task.roomId} and payload->>'customerId'=${d.requesterId} order by id desc limit 1`);
+    if (opened) {
+      const issue = await readSiteIssueBase(tx, d.enterpriseId, d.projectId, String(opened.id));
+      if (issue?.needGrantId === needGrantId) return issue;
+    }
+  }
   if (task.issueId) return readSiteIssueBase(tx, d.enterpriseId, d.projectId, task.issueId);
   const candidates = await rows(tx, sql`select id::text,payload from app.domain_event_outbox
     where enterprise_id=${d.enterpriseId} and type='construction.site.issue.opened.v1'
@@ -128,7 +138,7 @@ async function requestStaffReview(tx: PostgresTransaction, d: Delegation, next: 
 async function followOutlets(tx: PostgresTransaction, d: Delegation, previous: DelegationTask, input: DelegationInput,
   event: DelegationEvent, origin: Row, now: Date) {
   const { basis, need, drawing, facts } = await electricalInputs(tx, d, previous, origin, event);
-  const issue = await findIssue(tx, d, previous);
+  const issue = await findIssue(tx, d, previous, need?.id);
   const plan = await currentPlan(tx, d, issue);
   const opinionEventId = await findOpinion(tx, d, issue, basis.drawingGrantId);
   // A requirement correction is private until explicitly shared. A prior
@@ -154,7 +164,9 @@ async function followOutlets(tx: PostgresTransaction, d: Delegation, previous: D
   } else if (plan?.status === 'approved' && issue) {
     const result = await verifiedResult(tx, d, issue);
     const samePlan = previous.plan?.id === plan.id;
-    const evidence = await observedEvidence(tx, d, samePlan ? task : { ...task, evidence: undefined }, input, event, plan.id);
+    const proof = result.resolution?.available ? result.resolution.evidence : undefined;
+    const evidence = collaborationEnabled(d.enterpriseId) ? proof && await electricalEvidence(tx, d, task, proof.recordId, event, task.kind) || undefined
+      : await observedEvidence(tx, d, samePlan ? task : { ...task, evidence: undefined }, input, event, plan.id);
     task = { ...task, evidence, issueStatus: result.resolution?.available ? result.resolution.state : task.issueStatus, resultEventId: result.resultEventId };
     next = result.resultEventId ? 'done' : evidence?.photoIds.length || result.resolution?.available && result.resolution.state === 'implemented' ? 'review_work' : 'perform_work';
     if (next === 'review_work') target = { for: 'manager', personId: await soleProjectStaff(tx, d, 'manager'), requested: ['复核现场记录、照片和本次方案'] };

@@ -1,5 +1,11 @@
 # Mini Program: Current Module Inventory
 
+<!-- cross-role-business-current -->
+**B5.9 project collaboration (Limited).** The original C01 consultation shows explicitly published site records, version-specific plan decisions and authorized review receipts. The project detail and brief routes (`packages/construction/projects/projects`, `packages/construction/brief/brief`) show the server's dated plan and issue counts. Designers open the issue's current sources and professional status. Workers open the current approved drawing and submit through the existing site conversation (`packages/construction/chat/chat`). The plan colors are green for early, yellow for on schedule, red for late, and gray for unverified or unscheduled. An issue opens its existing reply and original-photo components, with current identifiers and review state. The workbench reads again on reentry and during its existing detail refresh.
+
+The screens reuse the approved cloud-site project/brief and V3 capture routes, C01 plan/record cards and the retained progress/issue variants. The family's `family_view` progress and its revocable grant are available through the customer API. The current Mini Program surfaces project and consent actions in the original owner and staff routes. Stable at 390×844 verified the boss brief/detail, designer issue, worker current requirement, and owner consultation reentry against the same persisted project. [Stable evidence](../admin/tmp/b59-native-03/verification.json) and [service and permission contract](./admin-system-modules.md#admin-system-current-module-inventory).
+<!-- /cross-role-business-current -->
+
 <!-- native-delegation-current -->
 **Electrical follow-up (Limited).** In the approved C01 consultation composer (`packages/assistant/chat/chat`), the authorized homeowner can send “请持续跟进主卧的水电进展和书房的插座点位。” with the project's registered room names. “查看水电跟进”, “暂停水电跟进”, “继续水电跟进” and “取消水电跟进” act on that consultation's follow-up. Adding “等我回复超时就在小K里提醒我” authorizes one in-app reminder per owner wait after 48 hours. The original chat reopens with saved feedback, questions and the authorized team result.
 

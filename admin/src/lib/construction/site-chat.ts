@@ -7,10 +7,13 @@ import { normalizeImage } from '@/lib/assistant/media/service';
 import { constructionAccess } from './service';
 import { object, text, version, type ConstructionActor } from './contracts';
 import { siteDraft } from './site-contract';
-import { appendSiteResponse, querySiteIssues, querySiteMaterials, resolveSiteIssueQuery, resolveSiteQuery, sharedMediaUsed, siteMessageIntent, siteResponse } from './site-queries';
-import { handleSiteIssue, parseSiteVersions, projectSiteIssues, siteIssueCommand } from './site-issues';
+import { appendSiteResponse, querySiteIssues, querySiteMaterials, querySiteSchedule, resolveSiteIssueQuery, resolveSiteQuery, sharedMediaUsed, siteMessageIntent, siteResponse } from './site-queries';
+import { handleSiteIssue, parseSiteVersions, projectSiteIssues, readSiteIssue, siteIssueCommand, siteIssueSummary, currentRecord } from './site-issues';
 import { sharedMaterialMedia, sharedMaterials } from './site-materials';
-import { handlePlan, planCommand, projectPlans } from './site-plans';
+import { handlePlan, planCommand, projectPlans, readPlan } from './site-plans';
+import { collaborationEnabled } from './collaboration-scope';
+import { confirmScheduleCompletion, projectSchedule } from './site-schedule';
+import { issueDelivery } from './site-results';
 import { handleSiteResolution, projectResolutionVersions, resolutionCommand, validateResolutionReceipt } from './site-resolution';
 import { confirmSiteAction, invalidateSiteAction, requestSiteAction, siteActionWaiting } from './site-actions';
 import { siteActionAcknowledgement, siteActionConfirmation, siteActionInterpretationRequested } from './site-action-contract';
@@ -36,18 +39,19 @@ export async function recordVersion(tx: PostgresTransaction, eid: string, record
       recordId: record.id, originalRecordId: record.original_record_id || record.id, resubmissionOfId: record.resubmission_of_id,
       reviewRequirements: record.review_requirements, returnedBy: record.returned_by, returnedAt: record.returned_at }))}::jsonb)`);
 }
+type SitePermission = { manage: boolean; write: boolean; recordWrite: boolean; collaboration: boolean; executionOnly: boolean };
 export class SiteChatService {
   readonly actor: ActorContext;
   constructor(readonly staff: ConstructionActor, private transaction?: PostgresTransaction) { this.actor = siteActor(staff); }
   authorize(projectId: string, write = false) { return this.scope(projectId, write, async () => undefined); }
   /** Worker commits reuse the same transaction and live project/role policy as HTTP writes. */
-  withWriteScope<T>(projectId: string, fn: (tx: PostgresTransaction, c: Row, p: Row, permission: { manage: boolean; write: boolean }) => Promise<T>) {
+  withWriteScope<T>(projectId: string, fn: (tx: PostgresTransaction, c: Row, p: Row, permission: SitePermission) => Promise<T>) {
     return this.scope(projectId, true, fn);
   }
-  withReadScope<T>(projectId: string, fn: (tx: PostgresTransaction, c: Row, p: Row, permission: { manage: boolean; write: boolean }) => Promise<T>) {
+  withReadScope<T>(projectId: string, fn: (tx: PostgresTransaction, c: Row, p: Row, permission: SitePermission) => Promise<T>) {
     return this.scope(projectId, false, fn);
   }
-  private scope<T>(projectId: string, write: boolean, fn: (tx: PostgresTransaction, c: Row, p: Row, permission: { manage: boolean; write: boolean }) => Promise<T>) {
+  private scope<T>(projectId: string, write: boolean, fn: (tx: PostgresTransaction, c: Row, p: Row, permission: SitePermission) => Promise<T>) {
     id(projectId);
     const execute = async (tx: PostgresTransaction) => {
       const a = this.staff, eid = a.enterpriseId;
@@ -71,19 +75,26 @@ export class SiteChatService {
       const p = (await one(tx, sql`select p.*,l.customer_user_id,l.archived_at from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
         where p.enterprise_id=${eid} and p.id=${projectId} for share of p,l`))!;
       const member = await one(tx, sql`select role from app.construction_members where enterprise_id=${eid} and project_id=${projectId} and admin_id=${a.adminId} and active for share`);
-      const permission = { manage: owner || member?.role === 'manager', write: (owner || (!!member && member.role !== 'observer')) && p.status === 'active' && assistantWritesEnabled(settings) };
+      const collaboration = collaborationEnabled(eid);
+      const permission = { manage: (!collaboration && owner) || member?.role === 'manager', collaboration,
+        executionOnly: collaboration && (member?.role === 'worker' || member?.role === 'observer'),
+        recordWrite: !collaboration || ['worker', 'manager'].includes(String(member?.role)),
+        write: ((!collaboration && owner) || (!!member && member.role !== 'observer')) && p.status === 'active' && assistantWritesEnabled(settings) };
       if (write && (!permission.write || p.status !== 'active')) fail('construction_forbidden', 403);
       return fn(tx, c, p, permission);
     };
     return this.transaction ? execute(this.transaction) : withTenantTransaction(this.staff.enterpriseId, execute);
   }
-  read(projectId: string, beforeSeq = '9223372036854775807', limit = 30) {
+  read(projectId: string, beforeSeq = '9223372036854775807', limit = 30, issueId?: string) {
     id(beforeSeq);
+    if (issueId) id(issueId);
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) fail('invalid_construction', 422);
     return this.scope(projectId, false, async (tx, c, p, permission) => {
       const eid = this.staff.enterpriseId;
       const issues = await projectSiteIssues(tx, eid, projectId);
-      const plans = await projectPlans(tx, eid, projectId);
+      const focus = issueId && permission.collaboration ? issues.find(issue => issue.issueId === issueId) || await readSiteIssue(tx, eid, projectId, issueId) : null;
+      if (focus && !issues.some(issue => issue.issueId === focus.issueId)) issues.push(focus);
+      const plans = await projectPlans(tx, eid, projectId, permission.executionOnly);
       const delegationNotices = await syncDelegationStaffNotices(tx, this.actor, c, projectId);
       const pageMessages = await rows(tx, sql`select m.id,m.seq,m.client_message_id,m.author_kind,m.admin_id,m.content,m.created_at,a.display_name
         from app.assistant_messages m left join app.admin_users a on a.id=m.admin_id
@@ -114,23 +125,38 @@ export class SiteChatService {
           where r.enterprise_id=${eid} and r.project_id=${projectId} and r.source_message_id=${String(message.id)}`);
         if (!record) {
           const response = await siteKnowledgeResponse(tx,this.actor,c,String(message.id))
-            || await siteResponse(tx, eid, projectId, String(c.id), String(message.id), issues);
-          if (response) items.push({ message, response, record: null });
+            || await siteResponse(tx, eid, projectId, String(c.id), String(message.id), issues,
+              { executionOnly: permission.executionOnly, allowActionDraft: !permission.collaboration || String(message.admin_id) === this.staff.adminId });
+          if (response) items.push({ message: permission.executionOnly && 'formalPlan' in response && response.formalPlan
+            ? { ...message, content: { version: 1, blocks: [] } } : message, response, record: null });
           continue;
         }
         const media = await rows(tx, sql`select a.id,a.width,a.height,a.byte_size from app.construction_site_attachments x join app.construction_site_media a
           on a.enterprise_id=x.enterprise_id and a.project_id=x.project_id and a.id=x.media_id
           where x.enterprise_id=${eid} and x.project_id=${projectId} and x.record_id=${String(record.id)} and a.deleted_at is null order by x.position`);
-        const canAct = permission.write && (permission.manage || String(record.author_id) === this.staff.adminId);
+        const canAct = permission.write && permission.recordWrite && (permission.manage || String(record.author_id) === this.staff.adminId);
         const canEdit = canAct && record.status !== 'changes_requested';
         const captured = await capturedRecord(tx, eid, projectId, String(record.id));
         const speech = await one(tx, sql`select id::text,duration_ms,transcript from app.assistant_speech_assets
           where enterprise_id=${eid} and conversation_id=${String(c.id)} and message_id=${String(message.id)} and deleted_at is null`);
         items.push({ message, issue: issues.find(i => i.recordId === String(record.id)) || null,
-          record: { ...record, captured, speech, canEdit, canPublish: canEdit && ((!captured && !record.resubmission_of_id) || permission.manage),
+          record: { ...record, captured, speech, canEdit, canPublish: canEdit && (permission.manage || (!permission.collaboration && !captured && !record.resubmission_of_id)),
+            ...(permission.collaboration ? { sync: record.status !== 'organizing' ? 'succeeded'
+              : ['failed', 'cancelled'].includes(String(record.run_status)) ? 'failed' : record.run_status ? 'processing' : 'pending' } : {}),
             canRequestChanges: permission.write && permission.manage && ['draft','published'].includes(String(record.status)),
             canResubmit: permission.write && String(record.author_id) === this.staff.adminId && record.status === 'changes_requested' && !record.resubmitted_record_id,
             resubmittedRecordId: record.resubmitted_record_id || null, canPublishCustomer: permission.manage, media } });
+      }
+      if (focus && beforeSeq === '9223372036854775807') {
+        const assets = new Map<string, Row>();
+        if (focus.sourceAvailable) for (const recordId of [focus.recordId, focus.executionRecordId]) if (recordId) {
+          const source = await currentRecord(tx, eid, projectId, recordId);
+          for (const photo of source?.media || []) assets.set(String(photo.id), { id: String(photo.id) });
+        }
+        const reply = permission.executionOnly && focus.sourceKind === 'need'
+          ? `${focus.roomName}事项${focus.issueId} · ${focus.classificationLabel}。` : focus.text;
+        items.push({ message: { id: `issue-${focus.issueId}`, author_kind: 'system', content: { version: 1, blocks: [] } }, record: null,
+          response: { text: reply, media: [...assets.values()] } });
       }
       const settings = await one(tx, sql`select stages from app.construction_stage_settings where enterprise_id=${eid}`);
       const stage = ((settings?.stages || []) as Row[]).find(s => s.key === p.current_stage_key);
@@ -140,14 +166,17 @@ export class SiteChatService {
       const records = Object.fromEntries(items.filter(i => i.record).map(i => [String(i.record!.id), Number(i.record!.version)]));
       // A durable issue may outlive the latest message page. Supply its current
       // source revision so explicit recovery does not depend on an old UI cache.
-      if (issues.length) for (const record of await rows(tx, sql`select r.id,r.version from app.construction_site_records r
+      const issueRecordIds = [...new Set(issues.flatMap(issue => [issue.recordId, issue.executionRecordId]).filter((rid): rid is string => !!rid))];
+      if (issueRecordIds.length) for (const record of await rows(tx, sql`select r.id,r.version from app.construction_site_records r
         where r.enterprise_id=${eid} and r.project_id=${projectId} and r.id in
-          (select value::bigint from jsonb_array_elements_text(${JSON.stringify(issues.map(i => i.recordId))}::jsonb)) order by r.id for share`)) {
+          (select value::bigint from jsonb_array_elements_text(${JSON.stringify(issueRecordIds)}::jsonb)) order by r.id for share`)) {
         records[String(record.id)] = Number(record.version);
       }
       return siteDto({ conversationId: c.id, project: { id: p.id, name: p.name, status: p.status, customerAccess: p.customer_access, stageName: stage?.name || '', stageKey: p.current_stage_key },
         quickWorks: siteQuickWorks.filter(w => w.stage === (p.current_stage_key === 'masonry_carpentry' ? 'masonry_carpentry' : 'utilities')),
         ...permission, rooms, plans,
+        ...(permission.collaboration ? { progress: await projectSchedule(tx, eid, p),
+          issues: await Promise.all(issues.map(async issue => ({ ...siteIssueSummary(issue), sync: await issueDelivery(tx, eid, issue) }))) } : {}),
         items, versions: { records,
           issues: Object.fromEntries(issues.map(i => [i.issueId, i.revision])), materials,
           plans: Object.fromEntries(plans.map(p => [p.id, p.revision])), resolutions: await projectResolutionVersions(tx, eid, projectId) },
@@ -186,7 +215,10 @@ export class SiteChatService {
       const intent = siteIssueCommand(raw) || planCommand(raw) || resolutionCommand(raw) ? 'request' : siteMessageIntent(raw, mediaIds.length);
       // Explicit shortcuts and audio are reports. Typed questions/actions keep their existing routing.
       if (capture && (capture.kind === 'quick' || body.recording !== undefined || intent === 'report'
-        || intent === 'clarify' && !siteActionAcknowledgement(raw))) return saveSiteCapture(tx, this.actor, c, projectId, body, requestKey);
+        || intent === 'clarify' && !siteActionAcknowledgement(raw))) {
+        if (!permission.recordWrite) fail('construction_forbidden', 403);
+        return saveSiteCapture(tx, this.actor, c, projectId, body, requestKey);
+      }
       const knowledgeQuestion=siteKnowledgeQuestion(raw,intent,mediaIds.length);
       const message = await appendMessage(tx, this.actor, String(c.id), { author: 'admin', clientMessageId: requestKey, purpose: knowledgeQuestion?'site.question':'site.source',
         content: { version: 1, blocks: raw ? [{ type: 'text', text: raw }] : [{ type: 'notice', code: 'site_photos', fallbackText: `现场照片 · ${mediaIds.length}张` }] } });
@@ -223,14 +255,19 @@ export class SiteChatService {
         const resolution = intent === 'request' ? await handleSiteResolution(tx, this.actor, projectId, String(message.id), raw, versions, permission.manage) : null;
         const issueQuery = intent === 'query' && /事项|这件事|在等谁|谁.*(?:处理|回复)|有没有下文/.test(raw);
         const issueQueryScope = issueQuery ? await resolveSiteIssueQuery(tx, eid, projectId, raw) : null;
-        const issueText = issueQueryScope ? await querySiteIssues(tx, eid, projectId, issueQueryScope, await projectSiteIssues(tx, eid, projectId)) : '';
+        const issueText = issueQueryScope ? await querySiteIssues(tx, eid, projectId, issueQueryScope,
+          await projectSiteIssues(tx, eid, projectId), permission.executionOnly) : '';
         const snapshot = intent === 'query' && (!issueQuery || /图纸|需求|资料|原话|照片|记录/.test(raw))
-          ? await querySiteMaterials(tx, eid, projectId, issueQueryScope || await resolveSiteQuery(tx, eid, projectId, raw)) : null;
-        const queryText = [...new Set([issueText, snapshot?.text].filter(Boolean))].join('\n\n');
+          ? await querySiteMaterials(tx, eid, projectId, issueQueryScope || await resolveSiteQuery(tx, eid, projectId, raw), permission.executionOnly) : null;
+        const scheduleQuery = permission.collaboration && intent === 'query' && /进度|计划|落后|延期/.test(raw)
+          ? await resolveSiteQuery(tx, eid, projectId, raw) : null;
+        const scheduleText = scheduleQuery ? await querySiteSchedule(tx, eid, projectId, scheduleQuery) : '';
+        const queryText = [...new Set([issueText, snapshot?.text, scheduleText].filter(Boolean))].join('\n\n');
         await appendSiteResponse(tx, this.actor, String(c.id), projectId, String(message.id), mediaIds, intent,
           plan?.text || resolution?.text || issue?.text || queryText || (intent === 'request' ? '请先查对应现场记录，再说“跟进记录编号”。已有事项可以说“接手事项编号”“转交事项编号给姓名”或“回复事项编号：处理结果”；取消或恢复请说明原因。有权管理人员可明确回传本次状态，回复不等于已解决。' : '原话已保留在本项目。需要查资料时请说明房间；现场进展可直接发文字或照片。'),
           plan ? { planId: plan.id } : resolution ? { issueId: resolution.issueId, revision: resolution.revision, lifecycleId: resolution.lifecycleId } : issue ? { issueId: issue.issueId, revision: issue.revision } : {
             ...(issueQueryScope ? { issueQuery: true, issueQueryId: issueQueryScope.issueId, issueQueryScope } : {}),
+            ...(scheduleQuery ? { scheduleQuery } : {}),
             ...(snapshot ? { query: snapshot.query, version: snapshot.version, queriedAt: snapshot.queriedAt,
             sources: snapshot.sources.map(source => ({ ref: source.ref, hash: source.hash, sourceMessageId: source.sourceMessageId,
               roomId: source.roomId, mediaIds: source.mediaIds, audience: source.audience, basis: source.basis })) } : {}) });
@@ -238,6 +275,7 @@ export class SiteChatService {
           ...(plan ? { planId: plan.id } : {}), ...(issue ? { issueId: issue.issueId, revision: issue.revision } : {}),
           ...(resolution ? { issueId: resolution.issueId, lifecycleId: resolution.lifecycleId, lifecycleRevision: resolution.lifecycleRevision, evidenceId: resolution.evidenceId } : {}) };
       }
+      if (!permission.recordWrite) fail('construction_forbidden', 403);
       const result = await newRun(tx, this.actor, c, (await one(tx, sql`select * from app.assistant_enterprise_settings where enterprise_id=${eid}`))!, String(message.id), undefined,
         { kind: 'user_message', messageId: String(message.id) }, 'site.record');
       const r = (await one(tx, sql`insert into app.construction_site_records(enterprise_id,project_id,conversation_id,source_message_id,author_id,run_id)
@@ -267,10 +305,26 @@ export class SiteChatService {
   }
   media(projectId: string, mediaId: string) {
     id(mediaId);
-    return this.scope(projectId, false, async tx => {
+    return this.scope(projectId, false, async (tx, _c, _p, permission) => {
+      const eid = this.staff.enterpriseId;
+      if (permission.collaboration) {
+        const versions = await rows(tx, sql`select id::text from app.domain_event_outbox where enterprise_id=${eid}
+          and type='construction.plan.published.v1' and payload->>'projectId'=${projectId} and payload->>'mediaId'=${mediaId}`);
+        if (versions.length) {
+          for (const version of versions) {
+            const plan = await readPlan(tx, eid, String(version.id));
+            if (plan && (!permission.executionOnly || plan.status === 'approved')) {
+              const original = await one(tx, sql`select data,mime_type from app.construction_site_media where enterprise_id=${eid}
+                and project_id=${projectId} and id=${mediaId} and source_hash=${plan.mediaHash} and deleted_at is null`);
+              if (original) return { data: original.data as Buffer, mime: String(original.mime_type) };
+            }
+          }
+          fail('construction_media_unavailable', 404);
+        }
+      }
       const m = await one(tx, sql`select data,mime_type from app.construction_site_media m where enterprise_id=${this.staff.enterpriseId} and project_id=${projectId} and id=${mediaId} and deleted_at is null
         and (uploader_id=${this.staff.adminId} or exists(select 1 from app.construction_site_attachments a where a.enterprise_id=m.enterprise_id and a.project_id=m.project_id and a.media_id=m.id)
-          or ${sharedMediaUsed(this.staff.enterpriseId, projectId, mediaId)})`);
+          or ${sharedMediaUsed(eid, projectId, mediaId, permission.collaboration)})`);
       if (!m) fail('construction_media_unavailable', 404);
       return { data: m.data as Buffer, mime: String(m.mime_type) };
     });
@@ -289,12 +343,14 @@ export class SiteChatService {
   }
   mutate(projectId: string, recordId: string, action: string, body: Row, requestKey: string) {
     id(recordId); key(requestKey);
-    const allowed: Record<string, string[]> = { edit: ['expectedVersion', 'data'], publish: ['expectedVersion', 'audience'], withdraw: ['expectedVersion', 'reason'], retry: ['expectedVersion'],
+    const allowed: Record<string, string[]> = { edit: ['expectedVersion', 'data'], publish: ['expectedVersion', 'audience', 'scheduleCompletion'], withdraw: ['expectedVersion', 'reason'], retry: ['expectedVersion'],
       request_changes: ['expectedVersion', 'requirements'], resubmit: ['expectedVersion', 'text', 'mediaIds'] };
     if (!allowed[action]) fail('construction_not_found', 404);
     object(body, allowed[action]); version(body.expectedVersion);
     return this.scope(projectId, true, (tx, c, p, permission) => idempotent(tx, this.actor, `site:${projectId}:${recordId}:${action}`, requestKey, body, async () => {
       const eid = this.staff.enterpriseId;
+      if (!permission.recordWrite) fail('construction_forbidden', 403);
+      let scheduleCompletion;
       const r = await one(tx, sql`select * from app.construction_site_records where enterprise_id=${eid} and project_id=${projectId} and id=${recordId} for update`);
       if (!r || (!permission.manage && String(r.author_id) !== this.staff.adminId)) fail('construction_forbidden', 403);
       if (Number(r.version) !== body.expectedVersion) fail('version_conflict');
@@ -359,7 +415,11 @@ export class SiteChatService {
         // A correction immediately revokes the previous publication; it requires a new explicit review.
         await tx.execute(sql`update app.construction_site_records set data=${JSON.stringify(data)}::jsonb,room_id=${data.roomId},room_name_snapshot=${String(room?.name || '')},status='draft',audience='internal',published_version=null,published_customer_id=null,approved_by=null,published_at=null,withdrawal_reason='' where enterprise_id=${eid} and id=${recordId}`);
       } else if (action === 'publish') {
-        if (!permission.manage && await capturedRecord(tx, eid, projectId, recordId)) fail('construction_forbidden', 403);
+        if (!permission.manage && (permission.collaboration || await capturedRecord(tx, eid, projectId, recordId))) fail('construction_forbidden', 403);
+        if (body.scheduleCompletion !== undefined) {
+          if (!permission.collaboration || !permission.manage) fail('construction_forbidden', 403);
+          scheduleCompletion = await confirmScheduleCompletion(tx, eid, p, r, body.scheduleCompletion);
+        }
         if (r.resubmission_of_id && !permission.manage) fail('construction_forbidden', 403);
         if (r.status !== 'draft' || !r.source_message_id || !['internal', 'customer'].includes(String(body.audience))) fail('context_changed');
         if (body.audience === 'customer' && (!permission.manage || !p.customer_access || !p.customer_user_id || p.archived_at)) fail('construction_forbidden', 403);
@@ -378,7 +438,7 @@ export class SiteChatService {
       await recordVersion(tx, eid, updated, this.staff.adminId, action);
       await tx.execute(sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
         values(${eid},${'construction.record.' + action + '.v1'},'construction_site_record',${recordId},${Number(updated.version)},
-        ${JSON.stringify(this.actor.principal)}::jsonb,${requestKey},${JSON.stringify({ projectId, recordId, version: updated.version })}::jsonb)`);
+        ${JSON.stringify(this.actor.principal)}::jsonb,${requestKey},${JSON.stringify({ projectId, recordId, version: updated.version, ...(scheduleCompletion ? { scheduleCompletion } : {}) })}::jsonb)`);
       return { id: recordId, version: Number(updated.version), status: updated.status, audience: updated.audience };
     }));
   }

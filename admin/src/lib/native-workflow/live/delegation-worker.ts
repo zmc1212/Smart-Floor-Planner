@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fingerprint } from '@/lib/assistant/contracts';
+import { collaborationEnabled } from '@/lib/construction/collaboration-scope';
 import { delegationOwnerReceipt } from './delegation-chat';
 import { affectsDelegationTask, delegationInput } from './delegation-inputs';
 import { applyElectricalDelegationTask } from './electrical-delegation';
@@ -55,8 +56,11 @@ async function elapsedWait(tx: PostgresTransaction, d: Delegation, task: Delegat
 async function applyEvent(tx: PostgresTransaction, eid: string, event: DelegationEvent, now: Date) {
   const input = await delegationInput(tx, eid, event);
   if (!input) return 0;
+  const reopen = collaborationEnabled(eid) && event.type === 'construction.site.issue.lifecycle.v1' && event.payload.state === 'reopened' && input.issueId;
+  const scope = sql`(state not in ('completed','failed','cancelled','expired') ${reopen ? sql`or (state='completed'
+    and tasks @> ${JSON.stringify([{ issueId: reopen }])}::jsonb)` : sql``})`;
   const candidates = await rows(tx, sql`select id::text,conversation_id::text,tasks from app.native_workflow_delegations
-    where enterprise_id=${eid} and state not in ('completed','failed','cancelled','expired')
+    where enterprise_id=${eid} and ${scope}
     ${input.projectId ? sql`and project_id=${input.projectId}` : sql`and conversation_id=${input.conversationId!}`}
     ${input.delegationId ? sql`and id=${input.delegationId}` : sql``} order by conversation_id,id`);
   let applied = 0;
@@ -68,7 +72,7 @@ async function applyEvent(tx: PostgresTransaction, eid: string, event: Delegatio
     await one(tx, sql`select id from app.assistant_conversations where enterprise_id=${eid}
       and id=${String(candidate.conversation_id)} for update`);
     const row = await one(tx, sql`select * from app.native_workflow_delegations where enterprise_id=${eid} and id=${String(candidate.id)}
-      and state not in ('completed','failed','cancelled','expired') for update`);
+      and ${scope} for update`);
     if (!row || await one(tx, sql`select event_id from app.native_workflow_delegation_events where enterprise_id=${eid}
       and delegation_id=${String(candidate.id)} and event_id=${event.id}`)) continue;
     const d = delegationFromRow(row);

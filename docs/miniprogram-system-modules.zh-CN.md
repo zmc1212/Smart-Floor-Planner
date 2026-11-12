@@ -1,5 +1,11 @@
 # 小程序当前功能清单
 
+<!-- cross-role-business-current -->
+**B5.9 四端项目协同（Limited）。** 业主从原 C01 咨询读取对客发布的现场记录、精确方案决定和获准的复核回执。工地详情与项目简报（`packages/construction/projects/projects`、`packages/construction/brief/brief`）读取服务端计划及事项计数。设计师打开事项核对当前材料及专业处理状态，施工人员查看当前获批要求，并从原工地交流（`packages/construction/chat/chat`）回传。计划绿、黄、红、灰依次对应提前、正常、落后、待核实或未排期。事项使用原回复卡和原件入口，显示同一事项 ID 与当前复核状态。重进及原详情定时刷新均重新读取服务端。
+
+页面复用获批云工地详情、简报、V3 现场上报和 C01 方案及原件卡，沿已留存的计划和整改样式。家庭代看 `family_view` 与撤权由业主 API 提供，当前小程序沿原业主和员工入口办理项目及确认动作。Stable 390×844 使用同一持久项目验证老板简报与详情、设计师事项、施工端有效要求和业主原咨询重进。[Stable 验收](../admin/tmp/b59-native-03/verification.json)及[服务端与权限合同](./admin-system-modules.zh-CN.md)。
+<!-- /cross-role-business-current -->
+
 <!-- native-delegation-current -->
 **水电持续跟进（Limited）。** 有权业主在批准的 C01 原咨询输入框（`packages/assistant/chat/chat`）发送“请持续跟进主卧的水电进展和书房的插座点位。”，可替换为项目中登记的部位名。“查看水电跟进”“暂停水电跟进”“继续水电跟进”“取消水电跟进”作用于该咨询中的委托。加上“等我回复超时就在小K里提醒我”可授权每次等待业主回复满 48 小时后站内提醒一次。重进原咨询会读到已保存的回执、补问和获准的项目团队结论。
 

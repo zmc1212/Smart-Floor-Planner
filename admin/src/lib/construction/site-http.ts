@@ -16,9 +16,10 @@ export async function siteChatHttp(request: Request, actor: ConstructionActor, p
   id(projectId);
   const service = new SiteChatService(actor), params = new URL(request.url).searchParams;
   if (path[0] === 'speech') return speechHttp(request, siteActor(actor), { kind: 'site', id: projectId }, path.slice(1));
-  if ([...params.keys()].some(k => !(!path.length && request.method === 'GET' && ['beforeSeq', 'limit'].includes(k)))) fail('invalid_construction', 422);
+  if ([...params.keys()].some(k => !(!path.length && request.method === 'GET' && ['beforeSeq', 'limit', 'issueId'].includes(k)))) fail('invalid_construction', 422);
   const json = (data: unknown) => NextResponse.json({ success: true, data }, { headers: { 'Cache-Control': 'no-store' } });
-  if (!path.length && request.method === 'GET') return json(await service.read(projectId, params.has('beforeSeq') ? id(params.get('beforeSeq')) : undefined, params.has('limit') ? Number(params.get('limit')) : 30));
+  if (!path.length && request.method === 'GET') return json(await service.read(projectId, params.has('beforeSeq') ? id(params.get('beforeSeq')) : undefined, params.has('limit') ? Number(params.get('limit')) : 30,
+    params.has('issueId') ? id(params.get('issueId')) : undefined));
   if (path[0] === 'operations' && path.length === 2 && request.method === 'GET') return json(await service.operation(projectId, path[1]));
   if (path[0] === 'citations' && path.length === 2 && request.method === 'GET') return json(await service.citation(projectId, path[1]));
   if (path[0] === 'media' && path.length === 2 && request.method === 'GET') {

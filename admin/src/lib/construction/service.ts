@@ -9,6 +9,11 @@ import { assignmentInput, defaultConstructionStages, stageKey, stageReminder, st
 import { currentStage } from './stages-store';
 import { recordStageReminder, syncConstructionReminders } from './reminders';
 import { constructionBrief } from './brief';
+import { collaborationEnabled } from './collaboration-scope';
+import { groupProjectIssues, projectSiteIssues, siteIssueSummary } from './site-issues';
+import { projectPlans } from './site-plans';
+import { issueDelivery } from './site-results';
+import { publishSchedule, readSchedule } from './site-schedule';
 
 export async function constructionAccess(tx: PostgresTransaction, actor: ConstructionActor) {
   id(actor.enterpriseId); id(actor.adminId);
@@ -25,6 +30,7 @@ const fields: Record<string, string[]> = {
   member: ['projectId', 'expectedVersion', 'adminId', 'role', 'active', 'workLabel'], room: ['projectId', 'expectedVersion', 'roomId', 'name'],
   contact: ['projectId', 'expectedVersion', 'stageKey', 'staffIds', 'primaryStaffId'],
   progress: ['projectId', 'expectedVersion', 'stageKey', 'note', 'sendReminder'],
+  schedule: ['projectId'], saveSchedule: ['projectId', 'expectedVersion', 'title', 'note', 'nodes'],
 };
 const actorContext = (a: ConstructionActor): ActorContext => ({ enterpriseId: a.enterpriseId, principal: { kind: 'admin', adminId: a.adminId }, contextVersion: 1, capabilities: [] });
 const dto = (value: unknown): unknown => typeof value === 'bigint' ? String(value) : value instanceof Date ? value.toISOString()
@@ -52,7 +58,9 @@ export class ConstructionService {
     object(input, fields[action]);
     return withTenantTransaction(this.actor.enterpriseId, async tx => {
       const a = this.actor, eid = a.enterpriseId, owner = await constructionAccess(tx, a);
-      const read = ['list', 'brief', 'options', 'lead', 'detail', 'stages'].includes(action);
+      const collaboration = collaborationEnabled(eid);
+      if (!collaboration && ['schedule', 'saveSchedule'].includes(action)) fail('construction_not_found', 404);
+      const read = ['list', 'brief', 'options', 'lead', 'detail', 'stages', 'schedule'].includes(action);
       if (!read) { key(requestKey); await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`construction:${eid}:${a.adminId}:${requestKey}`},0))`); }
       await tx.execute(sql`insert into app.construction_stage_settings(enterprise_id,stages) values(${eid},${JSON.stringify(defaultConstructionStages)}::jsonb) on conflict do nothing`);
       const settings = (await one(tx, sql`select * from app.construction_stage_settings where enterprise_id=${eid} ${action === 'saveStages' ? sql`for update` : sql`for share`}`))!;
@@ -81,14 +89,14 @@ export class ConstructionService {
         leads: owner ? await rows(tx, sql`select id,name,community_name from app.leads where enterprise_id=${eid} and customer_user_id is not null and archived_at is null and status<>'closed' order by id desc limit 200`) : [],
       }) as Row;
       if (action === 'brief') {
-        const projects = await rows(tx, sql`select p.id,p.name,p.current_stage_key,p.progress_note from app.construction_projects p
+        const projects = await rows(tx, sql`select p.id,p.name,p.current_stage_key,p.progress_note,p.progress_revision from app.construction_projects p
           join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
           where p.enterprise_id=${eid} and p.status<>'archived' and l.archived_at is null
           and (${owner} or exists(select 1 from app.construction_members m where m.enterprise_id=p.enterprise_id and m.project_id=p.id
             and m.admin_id=${a.adminId} and m.active and m.role='manager')) order by p.id desc limit 21 for share of p,l`);
         return dto(await constructionBrief(tx, eid, projects, stages)) as Row;
       }
-      if (action === 'list') return dto({ owner, stages, items: await rows(tx, sql`select p.id,${owner ? sql`p.lead_id` : sql`null`} as lead_id,p.name,p.status,p.customer_access,p.version,p.current_stage_key,p.progress_note,p.updated_at,
+      if (action === 'list') return dto({ owner, stages, ...(collaboration ? { collaboration } : {}), items: await rows(tx, sql`select p.id,${owner ? sql`p.lead_id` : sql`null`} as lead_id,p.name,p.status,p.customer_access,p.version,p.current_stage_key,p.progress_note,p.updated_at,
         (select m.role from app.construction_members m where m.enterprise_id=p.enterprise_id and m.project_id=p.id and m.admin_id=${a.adminId} and m.active) as my_role,
         (select m.work_label from app.construction_members m where m.enterprise_id=p.enterprise_id and m.project_id=p.id and m.admin_id=${a.adminId} and m.active) as my_work_label,
         coalesce((select jsonb_agg(s.stage_key order by s.stage_key) from app.construction_stage_assignments s where s.enterprise_id=p.enterprise_id and s.project_id=p.id and s.admin_id=${a.adminId}),'[]'::jsonb) as my_stages
@@ -119,14 +127,29 @@ export class ConstructionService {
         where c.enterprise_id=${eid} and p.id=${pid} and c.purpose='customer_consultation' and c.status='open' and c.mode='ai'
         and (coalesce(c.entry_snapshot->>'kind','')<>'lead' or c.entry_snapshot->>'id'=l.id::text)
         order by c.id desc limit 1 for update of c`);
-      const p = await one(tx, sql`select * from app.construction_projects where enterprise_id=${eid} and id=${pid} for update`);
+      const p = await one(tx, sql`select * from app.construction_projects where enterprise_id=${eid} and id=${pid} for ${read ? sql`share` : sql`update`}`);
       if (!p) fail('construction_not_found', 404);
       if (!owner) {
         member = await one(tx, sql`select role from app.construction_members where enterprise_id=${eid} and project_id=${pid} and admin_id=${a.adminId} and active for share`);
         if (!member) fail('construction_not_found', 404);
       }
       const manage = canManageConstructionProject(owner, typeof member?.role === 'string' ? member.role : null);
-      if (action === 'detail') return dto({ project: { id: p.id, name: p.name, lead_id: owner ? p.lead_id : undefined, status: p.status,
+      if (collaboration && (read || action === 'saveSchedule') && !await one(tx, sql`select id from app.leads where enterprise_id=${eid} and id=${String(p.lead_id)} and archived_at is null for share`)) fail('construction_not_found', 404);
+      if (action === 'schedule') return dto(await readSchedule(tx, eid, p, stages)) as Row;
+      if (action === 'saveSchedule') return idempotent(tx, actorContext(a), 'construction:schedule:' + pid, requestKey!, input,
+        () => publishSchedule(tx, actorContext(a), p, stages, input));
+      let business: Row = {};
+      if (action === 'detail' && collaboration) {
+        const plans = await projectPlans(tx, eid, pid, member?.role === 'worker');
+        const effective = new Set(plans.filter(plan => plan.status === 'approved' && 'issueId' in plan).map(plan => 'issueId' in plan && plan.issueId));
+        const issues = (await projectSiteIssues(tx, eid, pid, null)).filter(issue => manage
+          || member?.role === 'designer' && (issue.designRelated || issue.ownerId === a.adminId)
+          || member?.role === 'worker' && (issue.sourceKind !== 'need' || effective.has(issue.issueId)));
+        business = { issues: await Promise.all(issues.slice(0, 50).map(async issue => ({ ...siteIssueSummary(issue), sync: await issueDelivery(tx, eid, issue) }))),
+          issueGroups: groupProjectIssues(issues, a.adminId),
+          plans, progress: await readSchedule(tx, eid, p, stages) };
+      }
+      if (action === 'detail') return dto({ ...business, project: { id: p.id, name: p.name, lead_id: owner ? p.lead_id : undefined, status: p.status,
         customer_access: p.customer_access, version: p.version, current_stage_key: p.current_stage_key, progress_note: p.progress_note }, manage, owner, stages, settingsVersion: settings.version,
         myRole: member?.role || (owner ? 'owner' : null),
         assignments: await rows(tx, sql`select s.stage_key,s.admin_id,s.is_primary,a.display_name,a.status as staff_status from app.construction_stage_assignments s join app.construction_members m on m.enterprise_id=s.enterprise_id and m.project_id=s.project_id and m.admin_id=s.admin_id and m.active join app.admin_users a on a.enterprise_id=s.enterprise_id and a.id=s.admin_id where s.enterprise_id=${eid} and s.project_id=${pid} order by s.stage_key,s.admin_id`),
@@ -186,6 +209,7 @@ export class ConstructionService {
           await tx.execute(sql`update app.construction_projects set current_stage_key=${key},progress_note=${note},progress_revision=progress_revision+${changed || remind || note !== p.progress_note ? 1 : 0} where enterprise_id=${eid} and id=${pid}`);
         }
         const updated = (await one(tx, sql`update app.construction_projects set version=version+1,updated_at=now() where enterprise_id=${eid} and id=${pid} returning *`))!;
+        if (action === 'progress' && collaboration) auditInput = { ...auditInput, progressRevision: Number(updated.progress_revision) };
         await audit(tx, a, pid, action, auditInput);
         if (delegationsEnabled(eid) && (stageChanged || ['update','member','room'].includes(action))) {
           await tx.execute(sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)

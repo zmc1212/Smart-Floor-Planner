@@ -21,6 +21,10 @@ async function handle(request: NextRequest, context: Context) {
       if (p[0] === 'projects' && p[2] === 'service-orders') return await serviceOrderHttp(request,
         { enterpriseId: actor.enterpriseId!, adminId: actor.userId }, p[1], p.slice(3));
       let action = '', ids: Record<string, string> = {};
+      if (p[0] === 'projects' && p.length === 3 && p[2] === 'schedule') {
+        action = read ? 'schedule' : request.method === 'POST' ? 'saveSchedule' : '';
+        ids = { projectId: p[1] };
+      }
       if (p.length === 1 && p[0] === 'options' && read) action = 'options';
       if (p.length === 2 && p[0] === 'leads' && read) { action = 'lead'; ids = { leadId: p[1] }; }
       if (p.length === 1 && p[0] === 'stages') action = read ? 'stages' : request.method === 'PATCH' ? 'saveStages' : '';

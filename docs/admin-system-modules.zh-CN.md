@@ -1,5 +1,13 @@
 # 后台系统当前功能清单
 
+<!-- cross-role-business-current -->
+**B5.9 四端项目协同（Limited）。** 员工工地详情和简报读取同一事项流和计划投影。后台和小程序在原 API 前缀下通过 `GET/POST /construction/projects/:id/schedule` 读取或发布带日期的计划，已指派的项目经理携带 `expectedVersion` 发布。原现场记录发布接口可带 `scheduleCompletion: { nodeKey, expectedVersion }`，明确核实某房间节点完成。实际施工节点、计划颜色和施工问题状态分别引用各自的证据，保留事件及记录版本。
+
+业主授权后，同一事项关联原需求及原咨询。指派设计师提交意见并发布精确图纸版本，原业主预览并决定该版。施工端接收当前已获批要求，回传绑定版本的现场记录。指派项目经理复核回传的证据。老板按组织授权范围读取同源事项清单和计数。小程序 `GET /api/miniprogram/construction/projects/:id/progress` 与 `POST .../family-viewers/:userId` 提供业主进度和可撤销的家庭代看授权。代看权限为 `family_view`，共享需求和正式决定继续检查原咨询业主身份。
+
+开发启用项为 `NATIVE_WORKFLOW_COLLABORATION_ENTERPRISE_IDS`。沿原 PostgreSQL outbox、投递与记录版本保存来源、意见、图纸和复核回执。B5.8 Worker 沿同一事件推进委托和重新打开的事项。[版本、权限、状态及验收合同](../admin/src/lib/native-workflow/README.md#b59-cross-role-project-collaboration)。
+<!-- /cross-role-business-current -->
+
 <!-- native-delegation-current -->
 **B5.8 持续委托与事件联动（Limited）。** 获准企业沿原小K咨询消息 API 发起限定范围的水电跟进，原工地交流 API 在项目协作回复中显示待核对事项。已认证助手 Worker 通过 PostgreSQL 既有 outbox 和投递表消费事件。迁移 `0121_native_workflow_delegations` 新增委托和事件到任务的回执，两表强制 RLS。委托绑定业主、项目、原咨询及发起消息，分别保存现场进展和插座工作、版本依据、等待和完成条件。
 

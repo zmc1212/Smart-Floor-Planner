@@ -1,5 +1,13 @@
 # Admin System: Current Module Inventory
 
+<!-- cross-role-business-current -->
+**B5.9 cross-role project collaboration (Limited).** Staff project detail and brief read the same site issue stream and schedule projection. Admin and Mini Program staff `GET/POST /construction/projects/:id/schedule` under their existing API prefixes read or publish the dated schedule. An assigned project manager publishes against `expectedVersion`; the existing record-publish route accepts `scheduleCompletion: { nodeKey, expectedVersion }` for explicit room-node completion. Project stage, schedule color and quality classification have independent evidence. Schedule and issue projections retain the source event and record revisions.
+
+The owner's consent binds one design matter to the shared need and its original consultation. The assigned designer submits the opinion and publishes an exact drawing revision. The original owner previews and decides that revision. Workers receive the current approved requirements and submit version-bound records. Assigned project managers verify the submitted evidence. Company oversight uses the same issue groups and counts in its authorized projects. Customer Mini Program `GET /api/miniprogram/construction/projects/:id/progress` and `POST .../family-viewers/:userId` serve owner progress and revocable family progress access. A family grant carries the `family_view` read scope. Exact consultation ownership continues to govern material sharing and formal decisions.
+
+Development activation uses `NATIVE_WORKFLOW_COLLABORATION_ENTERPRISE_IDS`. PostgreSQL retains source, opinion, drawing, result and receipt history in the existing outbox, deliveries and record versions. The B5.8 worker reuses those events for delegated work and reopening. [Version, permission, state and verification contract](../admin/src/lib/native-workflow/README.md#b59-cross-role-project-collaboration).
+<!-- /cross-role-business-current -->
+
 <!-- native-delegation-current -->
 **B5.8 persistent delegation and event handling (Limited).** The enabled enterprise's existing consultation message API accepts a scoped electrical follow-up. The project collaboration API serves the pending review through its existing reply view. The authenticated assistant Worker tick consumes the existing PostgreSQL outbox and delivery rows. Migration `0121_native_workflow_delegations` adds the delegation and event-to-task receipts under forced RLS. A delegation binds one owner, project, original consultation and message to separate progress and outlet work with source versions, waits and completion criteria.
 

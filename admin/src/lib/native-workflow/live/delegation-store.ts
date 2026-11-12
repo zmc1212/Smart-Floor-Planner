@@ -67,7 +67,7 @@ export async function delegationOrigin(tx: PostgresTransaction, d: Delegation, l
 export async function saveDelegation(tx: PostgresTransaction, d: Delegation, tasks: readonly DelegationTask[],
   state: DelegationState, eventId: string, now: Date, nextAction: string | null, activate = false) {
   await tx.execute(sql`update app.native_workflow_delegations set tasks=${JSON.stringify(tasks)}::jsonb,state=${state},
-    latest_event_id=${eventId},activation_event_id=case when ${activate} then ${eventId}::bigint else activation_event_id end,
+    latest_event_id=greatest(latest_event_id,${eventId}::bigint),activation_event_id=case when ${activate} then ${eventId}::bigint else activation_event_id end,
     next_action=${nextAction},next_wake_at=${nextDelegationWake(state, tasks, d.expiresAt)},
     paused_at=case when ${state}='paused' then ${now}::timestamptz else null end,
     cancelled_at=case when ${state}='cancelled' then ${now}::timestamptz else cancelled_at end,updated_at=${now}

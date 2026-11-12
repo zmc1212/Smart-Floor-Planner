@@ -14,6 +14,8 @@
         <text class="helper">依据已上传记录 · {{asOf}}</text>
         <view wx:for="{{items}}" wx:key="projectId" wx:for-item="project" class="brief-project" data-project="{{project.projectId}}" data-issue="{{project.focusIssueId}}" bindtap="openProject" aria-role="button" aria-label="{{project.name + '，查看原记录和事项'}}">
           <view class="project-heading"><text class="project-name">{{project.name}}</text><text class="stage-tag">{{project.stageName}}</text><view class="chevron forward"></view></view>
+          <view wx:if="{{project.progress.available}}" class="brief-progress"><text class="tone-label tone-{{project.progress.overall.color}}">{{project.progress.overall.label}}</text><text class="helper">计划V{{project.progress.version}} · 提前 {{project.progress.counts.green}} / 正常 {{project.progress.counts.yellow}} / 落后 {{project.progress.counts.red}} / 待核实 {{project.progress.counts.gray}}</text></view>
+          <text wx:elif="{{project.progress}}" class="helper">未排期</text>
           <text wx:if="{{project.progressNote}}" class="helper">{{project.progressNote}}</text>
           <text class="brief-summary">{{project.summary}}</text>
           <text wx:if="{{project.latestRecord}}" class="helper">{{project.latestRecord.authorName}} · 记录{{project.latestRecord.id}}</text>

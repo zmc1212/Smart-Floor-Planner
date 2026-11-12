@@ -60,7 +60,7 @@ export async function electricalDelegationSummary(tx: PostgresTransaction, d: De
     if (task.kind === 'progress') text = await electricalProgressText(tx, d, task);
     else if (task.next === 'done') {
       const resolution = task.issueId && await readSiteResolution(tx, d.enterpriseId, d.projectId, task.issueId);
-      const result = resolution && resolution.available && await one(tx, sql`select m.id from app.domain_event_outbox e
+      const result = resolution && resolution.available && ['resolved','closed'].includes(resolution.state) && await one(tx, sql`select m.id from app.domain_event_outbox e
         left join app.assistant_messages m on m.enterprise_id=e.enterprise_id and m.source_event_id=e.id and m.purpose='construction.result'
           and m.conversation_id=${d.conversationId}
         where e.enterprise_id=${d.enterpriseId} and e.aggregate_id=${task.issueId!} and e.type='construction.site.issue.result.v1'

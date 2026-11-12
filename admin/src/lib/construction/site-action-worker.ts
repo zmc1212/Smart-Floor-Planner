@@ -71,6 +71,7 @@ export async function processSiteAction(lease: Lease, model?: Model) {
       const service = new SiteChatService({ enterpriseId: lease.enterpriseId, adminId: lease.actor.principal.adminId,
         miniProgramUserId: lease.actor.entry?.miniProgramUserId as string | undefined, miniProgramContextVersion: lease.actor.entry?.miniProgramContextVersion as number | undefined }, tx);
       await service.withWriteScope(initial.projectId, async (tx, c, _p, permission) => {
+        if (selection.action === 'report' && !permission.recordWrite) fail('construction_forbidden', 403);
         const text = await proposeSiteAction(tx, lease.actor, c, initial.projectId, lease.runId, selection, permission.manage);
         await tx.execute(sql`update app.assistant_messages set content=${JSON.stringify({ version: 1, blocks: [{ type: 'text', text }] })}::jsonb
           where enterprise_id=${lease.enterpriseId} and conversation_id=${String(run.conversation_id)} and id=${messageId}`);

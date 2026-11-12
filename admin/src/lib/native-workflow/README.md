@@ -2221,6 +2221,31 @@ Stable 2.02.2608080 with library 3.17.2 at 390×844 exercised the original C01 c
 
 The offline workflow and construction suites passed 567 checks with four skips. The focused Mini Program tests passed 88 checks. The full Mini Program run passed 2222 of 2225, with three survey baseline and mirror-audit failures. Scoped ESLint passed. Full ESLint still reports the existing `fastgpt-rag.test.ts:22` error. The production webpack bundle compiled and the build stopped on the baseline `scripts/fastgpt/setup-unified.mts:113` type error. Comparing the same TypeScript scope against `191e47f7` produced 289 diagnostics on both revisions, with zero new diagnostics.
 
+## B5.9 cross-role project collaboration
+
+Enable the slice in development with `NATIVE_WORKFLOW_COLLABORATION_ENTERPRISE_IDS`. The base scope is one enterprise and its project, rooms and stage assignments. Current views are derived from the same durable facts:
+
+| Fact | Authority and revision |
+| --- | --- |
+| Actual construction | Project progress revision, stage audit, and exact construction record version with its original message, photo and speech references |
+| Dated plan | Latest `construction.schedule.published.v1` project version and stable room/stage node keys. An assigned manager can bind a reviewed room record to one node when publishing it |
+| Need and professional opinion | Current explicit material grant and its original consultation, stable design matter ID, issue revision, drawing grant and designer reply hash |
+| Effective construction requirement | Current plan publication and its own decision revision, scoped to the original homeowner. A new opinion, replacement, withdrawal, or source revocation invalidates the affected older requirement |
+| Issue, execution and review | The same site issue ID, source revision and append-only lifecycle revisions, with the exact submitted record and plan when required |
+| Delegation and notification | The existing delegation task keys and outbox deliveries. The exact result event, recipient, message and sync receipt remain traceable |
+
+The approved C01, project detail, brief and V3 conversation entries use those projections on refresh and reentry. Staff project detail and brief share their issue groups. The quality confirmation requires a current reviewed record, an original photo and a manager's explicit reason. Ordinary reports and missing materials stay in their original record flow. Rectification submission takes the item to review. A separate assigned manager confirms the submitted evidence. The fixed list contains confirmed, current results. Exclusions and design work have their own visible entries. Reopening keeps the issue ID, records a new lifecycle revision, and requires fresh execution evidence for a new review. Engineering acceptance remains governed by its existing project process.
+
+An actual completion anchor is room- and stage-specific. For plan timing, compare its saved date with the effective plan's Shanghai business dates. Green is early, yellow is on schedule, red is late and gray is unverified or unscheduled. Staff can trace the plan and its source record or stage audit. The owner view includes references to records published to that household. Family grants are explicitly revocable, scoped to a single project and limited to progress. Plan decisions, grants and chat access each check their own live authorization. Organization management visibility does not grant a project designer or reviewer assignment.
+
+Relevant writes are version-checked inside the existing PostgreSQL transaction and idempotency boundary. Plan and review events retain immutable history. The Worker consumes its original delivery table, uses the latest committed facts and maintains a monotonic event watermark. A completed delegation with the exact issue can resume on a formal reopen within its authorization period. Delivery states are pending, processing, failed and succeeded. Readback revalidates source availability and audiences before using any result.
+
+The schema remains at migration `0121_native_workflow_delegations`. This slice adds event payloads and read paths to the existing outbox, record-version and delivery contracts. Legacy records are retained and unbound records can evidence progress without claiming node completion. Deployment rollback uses the enterprise allowlist and app revision; existing business events and originals are retained. No data backfill is required.
+
+For isolation and replay, set `B59_LIVE_DEVELOPMENT=1` and point the development `DATABASE_URL` to loopback `55433/xiaok_b59_test` using the restricted `sfp_app` role. Run `node --import tsx --test src/lib/native-workflow/__tests__/cross-role.live.test.ts` from `admin`. The suite uses signed Mini API handlers, PostgreSQL writes, stored PNG and PCM originals, and a fresh Worker process. Speech recognition and model responses use deterministic test adapters. Device capture, live speech recognition, real WeChat authorization, and production remain unverified.
+
+The [isolated run](../../../tmp/b59-live08.log) passed 7/7, with no source drift in its [binding](../../../tmp/b59-live08.log.binding.json). Project `6` binds original consultation `11`, master bedroom record `23`, issue `379`, effective study plan `394` (V2), and the exact review result `387`. The suite checks simultaneous writes, stale and repeated delivery, the restart, reopening, tenant and family boundaries, and matching quality counts. The [Stable run](../../../tmp/b59-native-03/verification.json) passed 6/6 at a logical 390×844 on the same project. Its native entries verified the boss brief/detail and designer issue, a persisted worker query for V2, and a persisted homeowner status query followed by reentry into C01. The earlier [native attempt](../../../tmp/b59-native-02/verification.json) retains the failed room-link case. The final route resolves the room by the effective plan's server ID and retains an existing draft.
+
 ## Reproduce
 
 From `admin/` (no database, no Worker, no model):
