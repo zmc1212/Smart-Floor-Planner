@@ -10,7 +10,7 @@ import { siteDraft } from './site-contract';
 import { appendSiteResponse, querySiteIssues, querySiteMaterials, resolveSiteIssueQuery, resolveSiteQuery, sharedMediaUsed, siteMessageIntent, siteResponse } from './site-queries';
 import { handleSiteIssue, parseSiteVersions, projectSiteIssues, siteIssueCommand } from './site-issues';
 import { sharedMaterialMedia, sharedMaterials } from './site-materials';
-import { handlePlan, planCommand, projectPlans } from './site-plans';
+import { handlePlan, planCommand, projectPlans, readPlan } from './site-plans';
 import { handleSiteResolution, projectResolutionVersions, resolutionCommand, validateResolutionReceipt } from './site-resolution';
 import { confirmSiteAction, invalidateSiteAction, requestSiteAction, siteActionWaiting } from './site-actions';
 import { siteActionAcknowledgement, siteActionConfirmation, siteActionInterpretationRequested } from './site-action-contract';
@@ -133,9 +133,10 @@ export class SiteChatService {
       const records = Object.fromEntries(items.filter(i => i.record).map(i => [String(i.record!.id), Number(i.record!.version)]));
       // A durable issue may outlive the latest message page. Supply its current
       // source revision so explicit recovery does not depend on an old UI cache.
-      if (issues.length) for (const record of await rows(tx, sql`select r.id,r.version from app.construction_site_records r
+      const issueRecordIds = [...new Set(issues.map(i => i.recordId).filter(recordId => /^[1-9]\d*$/.test(recordId)))];
+      if (issueRecordIds.length) for (const record of await rows(tx, sql`select r.id,r.version from app.construction_site_records r
         where r.enterprise_id=${eid} and r.project_id=${projectId} and r.id in
-          (select value::bigint from jsonb_array_elements_text(${JSON.stringify(issues.map(i => i.recordId))}::jsonb)) order by r.id for share`)) {
+          (select value::bigint from jsonb_array_elements_text(${JSON.stringify(issueRecordIds)}::jsonb)) order by r.id for share`)) {
         records[String(record.id)] = Number(record.version);
       }
       return siteDto({ conversationId: c.id, project: { id: p.id, name: p.name, status: p.status, customerAccess: p.customer_access, stageName: stage?.name || '', stageKey: p.current_stage_key },
@@ -261,11 +262,21 @@ export class SiteChatService {
   media(projectId: string, mediaId: string) {
     id(mediaId);
     return this.scope(projectId, false, async tx => {
-      const m = await one(tx, sql`select data,mime_type from app.construction_site_media m where enterprise_id=${this.staff.enterpriseId} and project_id=${projectId} and id=${mediaId} and deleted_at is null
+      const eid = this.staff.enterpriseId;
+      const m = await one(tx, sql`select data,mime_type,source_hash from app.construction_site_media m where enterprise_id=${eid} and project_id=${projectId} and id=${mediaId} and deleted_at is null
         and (uploader_id=${this.staff.adminId} or exists(select 1 from app.construction_site_attachments a where a.enterprise_id=m.enterprise_id and a.project_id=m.project_id and a.media_id=m.id)
-          or ${sharedMediaUsed(this.staff.enterpriseId, projectId, mediaId)})`);
-      if (!m) fail('construction_media_unavailable', 404);
-      return { data: m.data as Buffer, mime: String(m.mime_type) };
+          or ${sharedMediaUsed(eid, projectId, mediaId)})`);
+      if (m) return { data: m.data as Buffer, mime: String(m.mime_type) };
+      // A current formal plan's original is readable by every authorized project
+      // member; a withdrawn or superseded version is not.
+      const source = await one(tx, sql`select source_hash from app.construction_site_media where enterprise_id=${eid} and project_id=${projectId} and id=${mediaId} and deleted_at is null`);
+      const candidates = source ? await rows(tx, sql`select id from app.domain_event_outbox where enterprise_id=${eid}
+        and type='construction.plan.published.v1' and payload->>'projectId'=${projectId} and payload->>'mediaId'=${mediaId}
+        and payload->>'mediaHash'=${String(source.source_hash)} order by id desc limit 3`) : [];
+      for (const candidate of candidates) if (await readPlan(tx, eid, String(candidate.id)))
+        return { data: (await one(tx, sql`select data from app.construction_site_media where enterprise_id=${eid} and project_id=${projectId} and id=${mediaId} and deleted_at is null`))!.data as Buffer,
+          mime: String((await one(tx, sql`select mime_type from app.construction_site_media where enterprise_id=${eid} and project_id=${projectId} and id=${mediaId} and deleted_at is null`))!.mime_type) };
+      fail('construction_media_unavailable', 404);
     });
   }
   removeMedia(projectId: string, mediaId: string, requestKey: string) {

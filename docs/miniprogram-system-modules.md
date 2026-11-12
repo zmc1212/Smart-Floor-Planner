@@ -16,6 +16,10 @@ Development ASR is now configured persistently for the normal3006 service; the e
 <!-- /site-speech-development -->
 <!-- /site-capture-current -->
 
+<!-- xiaok-design-review-inbox -->
+**Owner need → design-review item and four-role reads: implemented locally (Implemented, real-service limited).** After the owner explicitly confirms sharing a room need, the server creates or refreshes exactly one design-review item per project+room in the same transaction; repeated or updated shares never create a second matter. It auto-assigns only when the project has exactly one active designer and otherwise stays unassigned. The item retains the need-grant id, the customer's original words, source conversation, material version and assignee, and reuses the existing issue/plan/decision/implementation events. The project detail adds “pending items” and “effective construction requirements” cards: designers, workers and managers read item status, room, assignee and the owner-approved current plan under project membership; tapping opens the same project chat scoped by item or room, including original need, drawing, onsite records and plan. Old versions never carry forward automatically. The composer keeps the original “type” entry for onsite reports and adds a “chat” entry for item replies, questions and handovers, so a design opinion is not stored as a pending onsite record. The owner can ask the existing XiaoK follow-up for the item status and assignee without internal replies, photos or unreturned results; human reception suppresses this projection. A formal plan original is readable only by project members while its version is current. The isolated-DB journey covers share → single-designer assignment → repeat-share refresh → drawing check → plan publication → owner preview/approval → worker record → implementation → resolve → return to the original consultation in `construction-need-reviews.test.ts`. Plan red/yellow/green and rectification lists are not added in this round.
+<!-- /xiaok-design-review-inbox -->
+
 <!-- cloud-site-notebook-ui -->
 ## Cloud-site notebook UI
 

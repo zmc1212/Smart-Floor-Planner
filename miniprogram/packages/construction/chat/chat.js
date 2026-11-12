@@ -25,6 +25,8 @@ Page({
       captureAudio: result => this.capture.addFile(result.tempFilePath, 'voice', result.duration || 0) });
     this.projectId = /^[1-9]\d*$/.test(String(options.projectId)) ? String(options.projectId) : '';
     this._briefIssueId = /^[1-9]\d*$/.test(String(options.issueId)) ? String(options.issueId) : '';
+    this._briefMode = options.mode === 'review' ? 'review' : options.mode === 'plan' ? 'plan' : '';
+    this._briefRoom = typeof options.room === 'string' ? options.room.slice(0, 50) : '';
     this.client = new SiteClient({ identity, emit: patch => {
       if (!this._visible) return;
       if (patch.fatal && this.speechController) this.speechController.hide();
@@ -60,7 +62,13 @@ Page({
     if (this._visible && !this.data.fatal) { this.capture.show(); wx.onNetworkStatusChange?.(this._networkChange); void this.capture.flush(); }
     if (this._visible && !this.data.fatal) await this.speechController.show('/miniprogram/construction/projects/' + this.projectId + '/chat/speech');
     if (this._briefIssueId && !this.client.state.pending && this.client.state.write) {
-      this._conversationInput = true; this.setData({ textMode: true }); this.client.input('事项' + this._briefIssueId + '现在在等谁？为什么？'); this._briefIssueId = '';
+      this._conversationInput = true; this.setData({ textMode: true });
+      this.client.input(this._briefMode === 'review' ? '查看事项' + this._briefIssueId + '的需求、图纸和现场记录' : '事项' + this._briefIssueId + '现在在等谁？为什么？');
+      this._briefIssueId = '';
+    } else if (this._briefMode === 'plan' && this._briefRoom && !this.client.state.pending && this.client.state.write) {
+      this._conversationInput = true; this.setData({ textMode: true });
+      this.client.input('查看' + this._briefRoom + '的图纸、需求和方案');
+      this._briefRoom = '';
     }
     this.poll();
   },
@@ -96,6 +104,9 @@ Page({
     this.client.speechInput = this.speechController?.binding(); const result = await this.client.send(); if (!this.data.pending) this._conversationInput = false; return result; },
   retryCapture() { return this.capture.flush(); },
   typeReport() { if (this.data.write && !this.data.fatal) this.setData({ textMode: true, inputFocus: true }); },
+  /** Coordination text (item reply, question, handover) uses the shared chat
+   * command path; the onsite "打字" entry keeps its capture/report semantics. */
+  typeChat() { if (this.data.write && !this.data.fatal) { this._conversationInput = true; this.setData({ textMode: true, inputFocus: true }); } },
   removeCapture(e) { return this.capture.removeFile(String(e.currentTarget.dataset.id)); },
   previewCapture(e) { const path = e.currentTarget.dataset.path; if (path && this._visible) wx.previewImage({ urls: [path] }); },
   playCapture(e) { const path = e.currentTarget.dataset.path || this.data.captureVoice?.path; if (path && this._visible) this.speechController.playLocal(path); },

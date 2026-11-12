@@ -7,6 +7,7 @@ import { fail, fingerprint, safeText, type ActorContext, type MessageContent } f
 import { materialShareInputSchema as schema, materialShareReplyIntent, materialShareAcknowledgement, materialShareCurrentCancellation } from './material-sharing-contract';
 export { materialSharingRequested, materialShareReplyIntent } from './material-sharing-contract';
 import { grantMaterial, revokeMaterial, sharedMaterial } from './site-materials';
+import { openNeedReviewFromGrant } from './site-need-reviews';
 
 const proposalType = 'construction.material.proposed.v1';
 type Proposal = z.infer<typeof schema> & { id: string; projectId: string; roomId: string; sourceHash: string;
@@ -135,6 +136,7 @@ export async function applyMaterialShareReply(tx: PostgresTransaction, actor: Ac
   if (p.mediaId && !await one(tx, sql`select id from app.assistant_media where enterprise_id=${eid} and conversation_id=${cid}
     and id=${p.mediaId} and source_hash=${p.mediaHash} and deleted_at is null and source_ref is null for share`)) fail('context_changed');
   const grant = await grantMaterial(tx, actor, c, source, room as Parameters<typeof grantMaterial>[4], p.kind, p.excerpt, p.mediaId, message);
+  if (p.kind === 'need') await openNeedReviewFromGrant(tx, actor, c, grant.id);
   await tx.execute(sql`update app.assistant_conversations set entry_snapshot=jsonb_set(entry_snapshot,'{materialShareProposal}',
     ${JSON.stringify({ ...marker, status: 'applied', grantId: grant.id })}::jsonb) where enterprise_id=${eid} and id=${cid}`);
   return true;

@@ -130,7 +130,7 @@ export async function preparePlanPublication(tx: PostgresTransaction, actor: Act
   // matching customer consent/decision order and avoiding a cross-chat cycle.
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`site-material:${eid}:${pid}`},0))`);
   if (!issue || issue.status !== 'awaiting_review' || !issue.roomId || !issue.ownerId) fail('site_review_required', 422);
-  if (versions.issues[cmd.issueId] !== issue.revision || versions.records[issue.recordId] !== issue.recordVersion) fail('version_conflict');
+  if (versions.issues[cmd.issueId] !== issue.revision || (issue.recordId && versions.records[issue.recordId] !== issue.recordVersion)) fail('version_conflict');
   const author = await one(tx, sql`select role from app.admin_users where enterprise_id=${eid} and id=${aid} and status='active'`);
   if (!manage && (issue.ownerId !== aid || author?.role !== 'designer')) fail('construction_forbidden', 403);
   const materials = await sharedMaterials(tx, eid, pid, issue.roomId), need = materials.sources.find(s => s.kind === 'need');

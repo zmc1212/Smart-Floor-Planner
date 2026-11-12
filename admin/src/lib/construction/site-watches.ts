@@ -5,6 +5,7 @@ import { appendMessage } from '@/lib/assistant/core/conversation';
 import { safeText, type ActorContext, type MessageContent } from '@/lib/assistant/contracts';
 import { applyMaterialCommand, materialCommand } from './site-materials';
 import { applyMaterialShareReply, hasMaterialShareReply } from './material-sharing';
+import { openNeedReviewFromGrant } from './site-need-reviews';
 import { siteWatchIntent, siteWatchReply, unscopedSiteWatchCancel } from './site-watch-contract';
 
 export { siteWatchIntent } from './site-watch-contract';
@@ -76,7 +77,12 @@ export async function applySiteWatch(tx: PostgresTransaction, actor: ActorContex
 export const siteWatchInterceptor = {
   matches(content: MessageContent, c: Row) { return !!materialCommand(safeText(content).trim()) || hasMaterialShareReply(safeText(content), c) || !!siteWatchIntent(safeText(content)) || !!(c.entry_snapshot as Row)?.siteWatchQuestion; },
   async apply(tx: PostgresTransaction, actor: ActorContext, c: Row, message: Row) {
-    return await applyMaterialCommand(tx, actor, c, message) || await applyMaterialShareReply(tx, actor, c, message) || await applySiteWatch(tx, actor, c, message);
+    const material = await applyMaterialCommand(tx, actor, c, message);
+    if (material) {
+      if ('grantId' in material && material.kind === 'need') await openNeedReviewFromGrant(tx, actor, c, material.grantId);
+      return true;
+    }
+    return await applyMaterialShareReply(tx, actor, c, message) || await applySiteWatch(tx, actor, c, message);
   },
 };
 export async function siteWatchProjection(tx: PostgresTransaction, eid: string, cid: string, mid: string) {

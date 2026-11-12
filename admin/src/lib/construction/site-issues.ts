@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, fingerprint, id, safeText, type ActorContext } from '@/lib/assistant/contracts';
-import { sharedMaterials } from './site-materials';
+import { sharedMaterial, sharedMaterials } from './site-materials';
 import { readSiteResolution } from './site-resolution';
 
 export type SiteIssueCommand = { action: 'open' | 'claim' | 'transfer' | 'reply' | 'cancel' | 'resume' | 'refresh' | 'check' | 'return'; target: string; value: string };
@@ -10,7 +10,9 @@ type Issue = { issueId: string; revision: number; projectId: string; recordId: s
   sourceHash: string; sourceMessageId: string; roomId: string | null; roomName: string; openedBy: string;
   ownerId: string | null; state: 'awaiting_owner' | 'awaiting_review' | 'cancelled'; progressMessageId: string | null; action: string;
   materialVersion?: string; drawingGrantId?: string | null;
-  requestMessageId?: string; requestHash?: string; requestText?: string };
+  requestMessageId?: string; requestHash?: string; requestText?: string;
+  /** A record item follows onsite work; a need item follows a customer's explicitly shared requirement. */
+  sourceKind?: 'record' | 'need'; needGrantId?: string; customerId?: string; conversationId?: string };
 export type IssueView = Issue & { status: string; ownerName: string; sourceAvailable: boolean; text: string };
 export type SiteVersions = { records: Record<string, number>; issues: Record<string, number>; materials?: Record<string, string>; plans?: Record<string, number>; resolutions?: Record<string, number> };
 
@@ -113,15 +115,22 @@ export async function siteTransferAssignee(tx: PostgresTransaction, eid: string,
 /** Source/assignment revision stays independent of formal execution/closure revisions. */
 export async function readSiteIssueBase(tx: PostgresTransaction, eid: string, pid: string, issueId: string, asOf?: Date): Promise<IssueView | null> {
   const issue = await issueData(tx, eid, pid, issueId, asOf); if (!issue) return null;
-  const source = await currentRecord(tx, eid, pid, issue.recordId);
+  // A need item binds the customer's explicitly shared requirement instead of an
+  // onsite record. Both source kinds keep their own hash, room and material version.
+  const isNeed = issue.sourceKind === 'need';
+  const need = isNeed && issue.needGrantId ? await sharedMaterial(tx, eid, pid, issue.needGrantId) : null;
+  const source = isNeed ? null : await currentRecord(tx, eid, pid, issue.recordId);
   const materials = issue.roomId ? await sharedMaterials(tx, eid, pid, issue.roomId) : null;
-  const request = issue.requestMessageId ? await one(tx, sql`select m.content from app.assistant_messages m join app.construction_chats c
+  const request = !isNeed && issue.requestMessageId ? await one(tx, sql`select m.content from app.assistant_messages m join app.construction_chats c
     on c.enterprise_id=m.enterprise_id and c.conversation_id=m.conversation_id where m.enterprise_id=${eid} and c.project_id=${pid}
       and m.id=${issue.requestMessageId} and m.author_kind='admin' and m.admin_id=${issue.openedBy} for share of m`) : null;
   // Legacy items have no request binding. New items retain the explicit action
   // separately from the onsite report; changed originals cannot revive it.
-  const requestAvailable = !issue.requestMessageId || !!request && fingerprint(request.content) === issue.requestHash;
-  const valid = requestAvailable && source && Number(source.row.version) === issue.recordVersion && source.hash === issue.sourceHash
+  const requestAvailable = isNeed
+    ? !!need && need.projectId === pid && need.roomId === issue.roomId && need.roomName === issue.roomName
+      && need.customerId === issue.customerId && need.conversationId === issue.conversationId && need.sourceHash === issue.sourceHash
+    : !issue.requestMessageId || !!request && fingerprint(request.content) === issue.requestHash;
+  const valid = requestAvailable && (isNeed ? true : !!source && Number(source!.row.version) === issue.recordVersion && source!.hash === issue.sourceHash)
     && (!issue.materialVersion || materials?.version === issue.materialVersion);
   const owner = issue.ownerId ? await effectiveOwner(tx, eid, pid, issue.ownerId) : null;
   // Historical selection does not restore a removed assignee or turn that
@@ -129,13 +138,14 @@ export async function readSiteIssueBase(tx: PostgresTransaction, eid: string, pi
   if (asOf && issue.ownerId && !owner) return null;
   const ownerName = owner ? String(owner.display_name || owner.username) : '';
   const status = issue.state === 'cancelled' ? 'cancelled' : !valid ? 'invalidated' : !owner ? 'awaiting_owner' : issue.state;
-  let text = `事项${issueId} · 修订${issue.revision} · 原记录${issue.recordId}：`;
+  let text = `事项${issueId} · 修订${issue.revision} · ${issue.sourceKind === 'need' ? '需求资料' + issue.needGrantId : '原记录' + issue.recordId}：`;
   if (status === 'cancelled') text += '已取消跟进；原记录与其他关注保持各自状态。';
   else if (status === 'invalidated') text += '原材料或房间已变化，等待有权人员重新核对，旧处理结果不再沿用。';
   else {
     text += `${issue.roomName}，${ownerName ? '当前负责人：' + ownerName : '尚未分配有效负责人'}。`;
-    if (source) text += '\n原现场记录：' + safeText(source.row.content as Parameters<typeof safeText>[0]);
-    if (issue.requestText) text += '\n跟进请求原话：' + issue.requestText;
+    if (need) text += '\n业主明确共享的需求原话：' + need.text;
+    else if (source) text += '\n原现场记录：' + safeText(source.row.content as Parameters<typeof safeText>[0]);
+    if (!need && issue.requestText) text += '\n跟进请求原话：' + issue.requestText;
     if (issue.drawingGrantId) text += `\n图纸资料${issue.drawingGrantId}已核对关联，仍需结合现场尺寸核对点位；这不是方案批准。`;
     if (issue.progressMessageId) {
       const reply = await one(tx, sql`select m.content from app.assistant_messages m join app.construction_chats c on c.enterprise_id=m.enterprise_id and c.conversation_id=m.conversation_id
@@ -218,14 +228,22 @@ export async function executeSiteIssue(tx: PostgresTransaction, actor: ActorCont
     issue.ownerId = aid; issue.state = 'awaiting_owner';
   } else if (cmd.action === 'resume') {
     if (!manage && previous.openedBy !== aid) fail('construction_forbidden', 403);
-    const source = await currentRecord(tx, eid, pid, previous.recordId); if (!source) fail('context_changed');
-    const roomId = String(source.row.room_id), currentMaterials = await sharedMaterials(tx, eid, pid, roomId);
-    if (versions.records[previous.recordId] !== Number(source.row.version) || versions.materials?.[roomId] !== currentMaterials.version) fail('version_conflict');
+    const isNeed = previous.sourceKind === 'need';
+    const need = isNeed ? await sharedMaterial(tx, eid, pid, previous.needGrantId || '') : null;
+    const source = isNeed ? null : await currentRecord(tx, eid, pid, previous.recordId);
+    if (isNeed ? !need : !source) fail('context_changed');
+    const roomId = String(need ? need.roomId : source!.row.room_id), currentMaterials = await sharedMaterials(tx, eid, pid, roomId);
+    if ((need ? versions.materials?.[roomId] : versions.records[previous.recordId]) !== (need ? currentMaterials.version : Number(source!.row.version))
+      || versions.materials?.[roomId] !== currentMaterials.version) fail('version_conflict');
     // Recovery is a new revision of the same item. Never revive an old reply,
     // drawing check, customer decision or a removed assignee's authority.
-    Object.assign(issue, { recordVersion: Number(source.row.version), sourceHash: source.hash, roomId, roomName: String(source.row.room_name_snapshot),
-      sourceMessageId: String(source.row.source_message_id), ownerId: view.ownerId, state: 'awaiting_owner', progressMessageId: null,
-      materialVersion: currentMaterials.version, drawingGrantId: null });
+    Object.assign(issue, need
+      ? { recordId: '', recordVersion: 0, sourceHash: need.sourceHash, roomId, roomName: need.roomName,
+        sourceMessageId: need.consentMessageId || need.sourceMessageId, ownerId: view.ownerId, state: 'awaiting_owner', progressMessageId: null,
+        materialVersion: currentMaterials.version, drawingGrantId: null, requestMessageId: need.sourceMessageId, requestHash: need.sourceHash, requestText: need.text }
+      : { recordVersion: Number(source!.row.version), sourceHash: source!.hash, roomId, roomName: String(source!.row.room_name_snapshot),
+        sourceMessageId: String(source!.row.source_message_id), ownerId: view.ownerId, state: 'awaiting_owner', progressMessageId: null,
+        materialVersion: currentMaterials.version, drawingGrantId: null });
   } else if (cmd.action === 'cancel') {
     if (!manage && previous.openedBy !== aid) fail('construction_forbidden', 403);
     issue.state = 'cancelled'; issue.progressMessageId = null; issue.drawingGrantId = null;
@@ -259,10 +277,17 @@ export async function executeSiteIssue(tx: PostgresTransaction, actor: ActorCont
       if (view.ownerId === assignee.id) return view;
       issue.ownerId = assignee.id; issue.state = 'awaiting_owner';
     } else if (cmd.action === 'refresh') {
-      const source = await currentRecord(tx, eid, pid, previous.recordId); if (!source) fail('context_changed');
-      if (versions.records[previous.recordId] !== Number(source.row.version)) fail('version_conflict');
-      Object.assign(issue, { recordVersion: Number(source.row.version), sourceHash: source.hash, roomId: String(source.row.room_id), roomName: String(source.row.room_name_snapshot),
-        sourceMessageId: String(source.row.source_message_id), ownerId: view.ownerId, state: 'awaiting_owner', progressMessageId: null });
+      const isNeed = previous.sourceKind === 'need';
+      const need = isNeed ? await sharedMaterial(tx, eid, pid, previous.needGrantId || '') : null;
+      const source = isNeed ? null : await currentRecord(tx, eid, pid, previous.recordId);
+      if (isNeed ? !need : !source) fail('context_changed');
+      if (!isNeed && versions.records[previous.recordId] !== Number(source!.row.version)) fail('version_conflict');
+      Object.assign(issue, need
+        ? { recordId: '', recordVersion: 0, sourceHash: need.sourceHash, roomId: need.roomId, roomName: need.roomName,
+          sourceMessageId: need.consentMessageId || need.sourceMessageId, ownerId: view.ownerId, state: 'awaiting_owner', progressMessageId: null,
+          requestMessageId: need.sourceMessageId, requestHash: need.sourceHash, requestText: need.text }
+        : { recordVersion: Number(source!.row.version), sourceHash: source!.hash, roomId: String(source!.row.room_id), roomName: String(source!.row.room_name_snapshot),
+          sourceMessageId: String(source!.row.source_message_id), ownerId: view.ownerId, state: 'awaiting_owner', progressMessageId: null });
       issue.materialVersion = materials?.version; issue.drawingGrantId = null;
     } else if (cmd.action === 'check') {
       const source = materials?.sources.find(s => s.id === cmd.value && s.kind === 'drawing');

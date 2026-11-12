@@ -8,6 +8,8 @@ import { assignmentInput, defaultConstructionStages, stageKey, stageReminder, st
 import { currentStage } from './stages-store';
 import { recordStageReminder, syncConstructionReminders } from './reminders';
 import { constructionBrief } from './brief';
+import { projectSiteIssues } from './site-issues';
+import { projectPlans } from './site-plans';
 
 export async function constructionAccess(tx: PostgresTransaction, actor: ConstructionActor) {
   id(actor.enterpriseId); id(actor.adminId);
@@ -128,6 +130,12 @@ export class ConstructionService {
       if (action === 'detail') return dto({ project: { id: p.id, name: p.name, lead_id: owner ? p.lead_id : undefined, status: p.status,
         customer_access: p.customer_access, version: p.version, current_stage_key: p.current_stage_key, progress_note: p.progress_note }, manage, owner, stages, settingsVersion: settings.version,
         myRole: member?.role || (owner ? 'owner' : null),
+        issues: (await projectSiteIssues(tx, eid, pid)).slice(0, 20).map(issue => ({ issueId: issue.issueId, revision: issue.revision,
+          roomId: issue.roomId, roomName: issue.roomName, status: issue.status, ownerId: issue.ownerId, ownerName: issue.ownerName,
+          sourceKind: issue.sourceKind || 'record', sourceAvailable: issue.sourceAvailable, text: issue.text })),
+        plans: (await projectPlans(tx, eid, pid)).slice(0, 20).map(plan => ({ id: plan.id, available: plan.available, status: plan.status,
+          ...('issueId' in plan ? { issueId: plan.issueId, roomName: plan.roomName, number: plan.number, title: plan.title,
+            difference: plan.difference, costDeltaCents: plan.costDeltaCents, scheduleDeltaDays: plan.scheduleDeltaDays } : {}) })),
         assignments: await rows(tx, sql`select s.stage_key,s.admin_id,s.is_primary,a.display_name,a.status as staff_status from app.construction_stage_assignments s join app.construction_members m on m.enterprise_id=s.enterprise_id and m.project_id=s.project_id and m.admin_id=s.admin_id and m.active join app.admin_users a on a.enterprise_id=s.enterprise_id and a.id=s.admin_id where s.enterprise_id=${eid} and s.project_id=${pid} order by s.stage_key,s.admin_id`),
         members: await rows(tx, sql`select m.admin_id,m.role,m.active,m.work_label,a.display_name,a.role as staff_role,a.status as staff_status,a.construction_trades from app.construction_members m join app.admin_users a on a.enterprise_id=m.enterprise_id and a.id=m.admin_id where m.enterprise_id=${eid} and m.project_id=${pid} order by m.admin_id`),
         staff: manage ? await rows(tx, sql`select id,display_name,role,construction_trades from app.admin_users where enterprise_id=${eid} and status='active' order by id limit 300`) : [],

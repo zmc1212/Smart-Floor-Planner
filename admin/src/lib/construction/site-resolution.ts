@@ -103,7 +103,7 @@ export async function prepareSiteResolution(tx: PostgresTransaction, actor: Acto
   const issue = await readSiteIssueBase(tx, eid, pid, cmd.issueId);
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`site-material:${eid}:${pid}`},0))`);
   if (!issue || issue.status !== 'awaiting_review' || !issue.ownerId || !issue.roomId) fail('site_review_required', 422);
-  if (versions.issues[issue.issueId] !== issue.revision || versions.records[issue.recordId] !== issue.recordVersion
+  if (versions.issues[issue.issueId] !== issue.revision || (issue.recordId && versions.records[issue.recordId] !== issue.recordVersion)
     || versions.materials?.[issue.roomId] !== issue.materialVersion) fail('version_conflict');
   const previous = await latest(tx, eid, issue.issueId), current = await readSiteResolution(tx, eid, pid, issue.issueId, issue);
   const revision = Number(previous?.aggregate_version || 0);

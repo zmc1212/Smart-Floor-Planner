@@ -126,6 +126,16 @@ Page({
   openBrief() { if (this.current() && this.data.canBrief && !this.data.pending) wx.navigateTo({ url: '/packages/assistant/chat/chat?followup=1' }); },
   openChat() { const project = this.data.detail?.project;
     if (this.current() && project && project.status !== 'archived' && !this.data.busy && !this.data.pending) wx.navigateTo({ url: '/packages/construction/chat/chat?projectId=' + encodeURIComponent(project.id) }); },
+  openIssue(e) {
+    const id = String(e.currentTarget.dataset.id || ''), project = this.data.detail?.project;
+    if (!/^[1-9]\d*$/.test(id) || !project || project.status === 'archived' || this.data.busy || this.data.pending) return;
+    wx.navigateTo({ url: '/packages/construction/chat/chat?projectId=' + encodeURIComponent(project.id) + '&issueId=' + id + '&mode=review' });
+  },
+  openPlan(e) {
+    const room = String(e.currentTarget.dataset.room || '').slice(0, 50), project = this.data.detail?.project;
+    if (!room || !project || project.status === 'archived' || this.data.busy || this.data.pending) return;
+    wx.navigateTo({ url: '/packages/construction/chat/chat?projectId=' + encodeURIComponent(project.id) + '&mode=plan&room=' + encodeURIComponent(room) });
+  },
   openCamera() { if (this.current() && this.data.detail && !this.data.busy && !this.data.pending && this.data.detail.project.status === 'active') wx.navigateTo({ url: '/packages/construction/camera/camera?projectId=' + encodeURIComponent(this.data.detail.project.id) }); },
   openIdentities() { wx.navigateTo({ url: '/packages/business/identity-switch/identity-switch' }); },
   showSheet(values) { clearTimeout(this._sheetTimer); const epoch = this._sheetEpoch = (this._sheetEpoch || 0) + 1; this.setData({ ...values, sheetOpen: false }); this._sheetTimer = setTimeout(() => { if (this._visible && epoch === this._sheetEpoch) this.setData({ sheetOpen: true }); }, 20); this._sheetTimer?.unref?.(); },

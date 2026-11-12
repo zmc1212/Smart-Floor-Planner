@@ -72,7 +72,7 @@ export async function applyMaterialCommand(tx: PostgresTransaction, actor: Actor
   const eid = actor.enterpriseId, uid = actor.principal.userId, cid = String(c.id);
   if (cmd.action === 'revoke') {
     await revokeMaterial(tx, actor, c, message, cmd.id);
-    return true;
+    return { revoked: true as const };
   } else {
     const scope = await rows(tx, sql`select p.id::text as project_id,r.id::text as room_id,r.name as room_name,p.name as project_name
       from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
@@ -97,8 +97,8 @@ export async function applyMaterialCommand(tx: PostgresTransaction, actor: Actor
       mediaId = previous ? String(previous.id) : null;
       if (!mediaId) fail('construction_material_image_required', 422);
     }
-    await grantMaterial(tx, actor, c, message, room as Parameters<typeof grantMaterial>[4], cmd.kind, cmd.text, mediaId);
-    return true;
+    const grant = await grantMaterial(tx, actor, c, message, room as Parameters<typeof grantMaterial>[4], cmd.kind, cmd.text, mediaId);
+    return { grantId: grant.id, kind: cmd.kind };
   }
 }
 

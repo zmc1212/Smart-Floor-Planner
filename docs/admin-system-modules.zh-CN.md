@@ -12,6 +12,10 @@
 <!-- /site-speech-development -->
 <!-- /site-capture-current -->
 
+<!-- xiaok-need-review -->
+**业主共享需求→设计核对事项（服务端）：Implemented（隔离库真实旅程）。** `site-need-reviews.ts`在客户明确共享需求的同一事务建立或刷新每个“项目+房间”唯一事项；仅有唯一有效设计师时自动指派，重复/更新共享只增加同一事项修订，不重复建单。事项事件新增`sourceKind:'need'|'record'`、需求资料号、客户和来源会话；原事项读取、方案发布、业主决定、落实/解决/关闭、结果回传、报表和撤权沿用既有事件与权限。`ConstructionService.detail`读取最多20条事项与方案供工地详情使用；当前有效方案的原创原件对所有项目成员开放，撤回/被替代版本不开放。客户`query_followups`新增本人设计核对进度（负责人/状态，不含内部回复、照片或未回传结果；真人接待期间不投影）。固定回归`construction-need-reviews.test.ts`通过，覆盖需求共享→唯一设计师指派→重复共享刷新→图纸核对→方案发布→业主预览/同意→师傅现场记录→落实→解决→原咨询回传。未新增计划红黄绿、整改清单或自动进度推断。
+<!-- /xiaok-need-review -->
+
 <!-- cloud-site-notebook-ui -->
 **小程序内嵌云工地播放器界面已实现（Implemented）。** `/construction-camera` 沿原 camera WebView 进入。手动选择鉴权片段后可播放，画面正向推进后才显示播放中。Stable 核对了鉴权页和拒绝页，本地 H5 核对了 16:9、抓拍历史及错误恢复。[批准设计](../design-references/cloud-site-redesign-20261107/README.md) · [Stable](../tmp/cloud-site-redesign-20261107/native.json) · [原 503 记录](../tmp/cloud-site-redesign-20261107/h5-verification.json)
 

@@ -353,17 +353,21 @@ function businessSourceList(resultKey: string, snapshot: BusinessSnapshot): Synt
     if (!issues.length) return [aggregate];
     const statuses: Record<IssueState['status'], string> = { awaiting_customer: '等待客户补充', awaiting_owner: '等待负责人处理', awaiting_review: '仍待核对',
       cancelled: '取消跟进', invalidated: '原来源不可用，须按当前资料核对', approved: '该版客户同意', declined: '该版客户未同意',
-      changes_requested: '该版客户要求修改', deferred: '该版客户暂后决定', resolved: '团队正式解决记录', closed: '团队正式关闭记录' };
+      changes_requested: '该版客户要求修改', deferred: '该版客户暂后决定', implemented: '团队已提交处理，待复核',
+      resolved: '团队正式解决记录', closed: '团队正式关闭记录' };
     const waiting: Record<IssueState['waitingFor'], string> = { customer: '客户', designer: '有权接续的设计师', unassigned: '尚未分配有权负责人', team: '项目团队', none: '当前没有待执行安排' };
     return issues.map(({ question, value, ...followup }) => {
       const fields: Record<string, string> = { use: '用途补充', devices: '设备补充', desk: '书桌需求补充', daylight: '采光补充' };
-      const subject = followup.kind === 'formal_plan' ? '正式方案决定' : followup.kind === 'team_result' ? '现场问题跟进' : fields[followup.field] || '需求补充';
+      const subject = followup.kind === 'formal_plan' ? '正式方案决定' : followup.kind === 'team_result' ? '现场问题跟进'
+        : followup.kind === 'need_review' ? '设计核对进度' : fields[followup.field] || '需求补充';
       const text = `${followup.room || '本咨询'} · ${subject}。\n当前状态：${statuses[followup.status]}。等待对象：${waiting[followup.waitingFor]}。`
         + (followup.ownerName ? `当前接续人：${followup.ownerName}。` : '')
-        + (followup.status === 'invalidated' ? '\n旧内容不再作为当前处理依据。' : followup.kind ? '\n本咨询获权回传：' + value
+        + (followup.status === 'invalidated' ? '\n旧内容不再作为当前处理依据。' : followup.kind === 'need_review' ? '\n当前进度：' + value
+          : followup.kind ? '\n本咨询获权回传：' + value
           : value ? '\n客户当前补充：' + value : '\n此前可跳过的补问：' + question)
         + '\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。';
-      const title = followup.kind === 'formal_plan' ? '原事项精确方案及决定' : '原咨询事项当前接续状态';
+      const title = followup.kind === 'formal_plan' ? '原事项精确方案及决定'
+        : followup.kind === 'need_review' ? '原咨询设计核对进度' : '原咨询事项当前接续状态';
       return { sourceId: `B${resultKey}:followup:${followup.kind || 'need'}:${followup.issueId}`, kind: 'project' as const,
         title, summaryTitle: title, text, resultKey, followup, citationQuotes: synthesisQuoteHints(text) };
     });
