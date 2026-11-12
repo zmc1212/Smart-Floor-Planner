@@ -3,7 +3,8 @@ import { withTenantTransaction, type PostgresTransaction } from '@/db/transactio
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fingerprint } from '@/lib/assistant/contracts';
 import { collaborationEnabled } from '@/lib/construction/collaboration-scope';
-import { delegationOwnerReceipt } from './delegation-chat';
+import { sendDelegationOwnerReminder } from './delegation-chat';
+import { durableDelegationToolEnabled, stageDelegationReminder } from './delegation-reminder-tool';
 import { affectsDelegationTask, delegationInput } from './delegation-inputs';
 import { applyElectricalDelegationTask } from './electrical-delegation';
 import { delegationConsumer, delegationTimeout, deriveDelegationState, type Delegation, type DelegationTask } from './delegation-state';
@@ -41,19 +42,18 @@ async function enqueueDue(tx: PostgresTransaction, eid: string, now: Date) {
   }
 }
 
-async function elapsedWait(tx: PostgresTransaction, d: Delegation, task: DelegationTask, event: DelegationEvent, origin: Row, now: Date) {
+async function elapsedWait(tx: PostgresTransaction, d: Delegation, task: DelegationTask, event: DelegationEvent, origin: Row, now: Date, durableTool: boolean) {
   const wait = task.wait;
   if (task.key !== event.payload.taskKey || !wait || wait.key !== event.payload.waitKey || wait.timedOutAt
     || Date.parse(wait.deadlineAt) > now.getTime()) return task;
   if (d.authorization.remindOwner && wait.for === 'owner' && wait.personId === d.requesterId && origin.mode === 'ai') {
-    await delegationOwnerReceipt(tx, d, `${d.id}:${task.key}:reminder:${wait.key}`,
-      `提醒一下，${task.roomName}插座的跟进还在等你：${wait.requested.join('，')}。方便时在这次咨询补充即可。`,
-      task.next === 'ask_owner' ? { waitKey: wait.key } : undefined);
+    if (durableTool) await stageDelegationReminder(tx, d, task, wait, event.id, now);
+    else await sendDelegationOwnerReminder(tx, d, task, wait);
   }
   return { ...task, wait: { ...wait, timedOutAt: now.toISOString() } };
 }
 
-async function applyEvent(tx: PostgresTransaction, eid: string, event: DelegationEvent, now: Date) {
+async function applyEvent(tx: PostgresTransaction, eid: string, event: DelegationEvent, now: Date, durableTool: boolean) {
   const input = await delegationInput(tx, eid, event);
   if (!input) return 0;
   const reopen = collaborationEnabled(eid) && event.type === 'construction.site.issue.lifecycle.v1' && event.payload.state === 'reopened' && input.issueId;
@@ -101,7 +101,7 @@ async function applyEvent(tx: PostgresTransaction, eid: string, event: Delegatio
     const tasks: DelegationTask[] = [];
     const changes = [];
     for (const task of d.tasks) {
-      const next = !selected(task) ? task : input.kind === 'timeout' ? await elapsedWait(tx, d, task, event, origin, now)
+      const next = !selected(task) ? task : input.kind === 'timeout' ? await elapsedWait(tx, d, task, event, origin, now, durableTool)
         : await applyElectricalDelegationTask(tx, d, task, input, event, origin, now);
       tasks.push(next);
       if (fingerprint(task) !== fingerprint(next)) changes.push({ key: task.key, roomId: task.roomId, before: task, after: next });
@@ -125,7 +125,7 @@ function databaseErrorCode(error: unknown): string {
     ? details.code : details.cause ? databaseErrorCode(details.cause) : 'delegation_event_failed';
 }
 
-async function processOne(eid: string, now: Date, enqueue: boolean) {
+async function processOne(eid: string, now: Date, enqueue: boolean, durableTool: boolean) {
   return withTenantTransaction(eid, async tx => {
     const lock = await one(tx, sql`select pg_try_advisory_xact_lock(hashtextextended(${'native.delegation:' + eid},0)) as owned`);
     if (lock?.owned !== true) return { status: 'busy' as const, applied: 0 };
@@ -148,7 +148,7 @@ async function processOne(eid: string, now: Date, enqueue: boolean) {
     await tx.execute(sql`savepoint native_delegation_delivery`);
     try {
       await tx.execute(sql`set local lock_timeout='1500ms'`);
-      const applied = await applyEvent(tx, eid, event, now);
+      const applied = await applyEvent(tx, eid, event, now, durableTool);
       await tx.execute(sql`update app.domain_event_deliveries set status='delivered',attempts=${attempt},last_error=null,updated_at=${now}
         where enterprise_id=${eid} and id=${id}`);
       await tx.execute(sql`release savepoint native_delegation_delivery`);
@@ -172,7 +172,7 @@ export async function runNativeDelegationTick(env: NodeJS.ProcessEnv = process.e
     const counters = { delivered: 0, applied: 0, retried: 0, dead: 0 };
     try {
       for (let index = 0; index < batchSize; index++) {
-        const result = await processOne(enterpriseId, now, index === 0);
+        const result = await processOne(enterpriseId, now, index === 0, durableDelegationToolEnabled(env));
         if (result.status === 'idle' || result.status === 'busy') break;
         if (result.status === 'delivered') {
           counters.delivered++;

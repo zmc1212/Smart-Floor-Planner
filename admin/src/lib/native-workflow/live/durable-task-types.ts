@@ -79,6 +79,7 @@ export interface DurableTaskDelegation {
   readonly messageId: string | null;
   /** The assistant run or live workflow run that owns this task. */
   readonly runId: string | null;
+  readonly delegationId?: string;
 }
 
 export type DurableTaskStepStatus = 'pending' | 'succeeded' | 'failed' | 'skipped';
@@ -170,6 +171,7 @@ export interface DurableTaskLastError {
 }
 
 export interface DurableTaskRecord {
+  readonly storeRevision?: number;
   readonly taskVersion: typeof DURABLE_TASK_VERSION;
   readonly taskId: string;
   readonly enterpriseId: string;
@@ -197,7 +199,7 @@ export interface DurableTaskRecord {
   readonly nextAttemptAt: string | null;
   readonly cancelRequestedAt: string | null;
   readonly cancelReason: string | null;
-  /** Derived from the authoritative lease file on every read. */
+  /** Derived from the authoritative store lease on every read. */
   readonly lease: DurableTaskLease | null;
 }
 
@@ -206,6 +208,9 @@ export interface DurableTaskListQuery {
   readonly statuses?: readonly DurableTaskStatus[];
   readonly kind?: string;
   readonly manualOnly?: boolean;
+  /** Worker-side filters for registered tools and reclaimable work. */
+  readonly tool?: string;
+  readonly readyAt?: Date;
   readonly limit?: number;
 }
 

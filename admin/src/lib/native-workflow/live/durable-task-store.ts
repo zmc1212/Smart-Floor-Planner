@@ -18,6 +18,7 @@ import { constants } from 'node:fs';
 import { copyFile, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { WorkflowOperationError } from '../errors';
+import type { RuntimeExecutionFence } from './types';
 import {
   DURABLE_TASK_VERSION,
   isTerminalDurableTaskStatus,
@@ -58,12 +59,19 @@ export interface DurableTaskReleaseInput {
   readonly force?: boolean;
 }
 
+export interface DurableTaskStoreUpdateOptions {
+  readonly allowTerminalTransition?: boolean;
+  readonly fence?: RuntimeExecutionFence;
+  readonly clearLease?: 'owned' | 'expired' | 'force';
+}
+
 export interface DurableTaskStore {
+  readonly atomicLeaseUpdates?: boolean;
   create(record: DurableTaskRecord): Promise<DurableTaskCreateResult>;
   /** `allowTerminalTransition` is reserved for an explicit operator resolution. */
   update(
     record: DurableTaskRecord,
-    options?: { readonly allowTerminalTransition?: boolean },
+    options?: DurableTaskStoreUpdateOptions,
   ): Promise<DurableTaskRecord>;
   get(enterpriseId: string, taskId: string): Promise<DurableTaskRecord | null>;
   list(query: DurableTaskListQuery): Promise<DurableTaskRecord[]>;
@@ -86,7 +94,7 @@ function withLock<T>(key: string, task: () => Promise<T>): Promise<T> {
   return run;
 }
 
-function assertEnterpriseId(value: string): void {
+export function assertEnterpriseId(value: string): void {
   if (!ENTERPRISE_PATTERN.test(value)) {
     throw new WorkflowOperationError(
       'durable_task_tenant_invalid',
@@ -96,7 +104,7 @@ function assertEnterpriseId(value: string): void {
   }
 }
 
-function assertTaskId(value: string): void {
+export function assertTaskId(value: string): void {
   if (!ID_PATTERN.test(value)) {
     throw new WorkflowOperationError(
       'durable_task_id_invalid',
@@ -253,7 +261,7 @@ function leaseActive(lease: DurableTaskLease | null, now: Date): boolean {
   return Boolean(lease && Date.parse(lease.expiresAt) > now.getTime());
 }
 
-function assertSameCreateScope(existing: DurableTaskRecord, candidate: DurableTaskRecord): void {
+export function assertSameCreateScope(existing: DurableTaskRecord, candidate: DurableTaskRecord): void {
   const mismatches: string[] = [];
   if (existing.taskId !== candidate.taskId) mismatches.push('taskId');
   if (existing.enterpriseId !== candidate.enterpriseId) mismatches.push('enterpriseId');
@@ -263,7 +271,7 @@ function assertSameCreateScope(existing: DurableTaskRecord, candidate: DurableTa
   if (mismatches.length) conflict(candidate.taskId, mismatches);
 }
 
-function assertSameIdentity(existing: DurableTaskRecord, candidate: DurableTaskRecord): void {
+export function assertSameIdentity(existing: DurableTaskRecord, candidate: DurableTaskRecord): void {
   const mismatches: string[] = [];
   if (existing.taskId !== candidate.taskId) mismatches.push('taskId');
   if (existing.enterpriseId !== candidate.enterpriseId) mismatches.push('enterpriseId');
@@ -286,7 +294,7 @@ function conflict(taskId: string, mismatches: readonly string[]): never {
   );
 }
 
-function leaseLost(taskId: string): WorkflowOperationError {
+export function leaseLost(taskId: string): WorkflowOperationError {
   return new WorkflowOperationError(
     'durable_task_lease_lost',
     409,

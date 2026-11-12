@@ -36,7 +36,7 @@ import {
   type DurableTaskStep,
   type DurableTaskTimeouts,
 } from './durable-task-types';
-import type { DurableTaskStore } from './durable-task-store';
+import type { DurableTaskStore, DurableTaskStoreUpdateOptions } from './durable-task-store';
 
 export const DEFAULT_DURABLE_TASK_TIMEOUTS: DurableTaskTimeouts = {
   taskTimeoutMs: 30 * 60_000,
@@ -87,6 +87,7 @@ export interface ClaimDurableTaskInput {
   readonly leaseTtlMs?: number;
   /** Restrict the claim to one task; omitted means the tenant's due queue. */
   readonly taskId?: string;
+  readonly expectedRevision?: number;
 }
 
 export type DurableTaskHeartbeatResult =
@@ -195,8 +196,8 @@ export interface DurableTaskRuntime {
   fail(input: FailDurableTaskInput): Promise<DurableTaskRecord>;
   wait(input: WaitDurableTaskInput): Promise<DurableTaskRecord>;
   cancel(input: CancelDurableTaskInput): Promise<DurableTaskRecord>;
-  appendData(input: { readonly enterpriseId: string; readonly taskId: string; readonly data: DurableTaskData }): Promise<DurableTaskRecord>;
-  recover(enterpriseId: string): Promise<DurableTaskRecoverySummary>;
+  appendData(input: { readonly enterpriseId: string; readonly taskId: string; readonly data: DurableTaskData; readonly expectedRevision?: number }): Promise<DurableTaskRecord>;
+  recover(enterpriseId: string, query?: Omit<DurableTaskListQuery, 'enterpriseId'>): Promise<DurableTaskRecoverySummary>;
   recoverAll(enterpriseIds: readonly string[]): Promise<DurableTaskRecoverySummary[]>;
   resolveManual(input: ResolveManualDurableTaskInput): Promise<DurableTaskRecord>;
   planCompensation(input: PlanDurableTaskCompensationInput): Promise<DurableTaskRecord>;
@@ -381,13 +382,17 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
     });
   }
 
-  async function forceRelease(enterpriseId: string, taskId: string): Promise<void> {
-    await store.releaseLease({ enterpriseId, taskId, token: '', force: true });
+  async function releaseBeforeUpdate(enterpriseId: string, taskId: string): Promise<void> {
+    if (!store.atomicLeaseUpdates) {
+      await store.releaseLease({ enterpriseId, taskId, token: '', force: true });
+    }
   }
 
-  async function expireRecord(record: DurableTaskRecord, now: Date, code: string): Promise<DurableTaskRecord> {
+  async function expireRecord(
+    record: DurableTaskRecord, now: Date, code: string, fence?: DurableTaskLeaseRef,
+  ): Promise<DurableTaskRecord> {
     const attempt = lastAttempt(record);
-    await forceRelease(record.enterpriseId, record.taskId);
+    await releaseBeforeUpdate(record.enterpriseId, record.taskId);
     return store.update({
       ...record,
       status: 'expired',
@@ -402,8 +407,9 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
         errorCode: code,
       }),
       lastError: { class: 'permanent', code, message: `task ${code}` },
+      manual: record.kind === 'tool.call' ? record.manual ?? manualEntry('task_timeout', code, now) : record.manual,
       lease: null,
-    });
+    }, { fence, clearLease: fence ? 'owned' : 'expired' });
   }
 
   async function retryOrFail(
@@ -412,6 +418,7 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
     errorClass: DurableTaskErrorClass,
     code: string,
     message: string,
+    ownership: DurableTaskStoreUpdateOptions,
   ): Promise<DurableTaskRecord> {
     if (errorClass === 'permanent' || errorClass === 'business_rejection') {
       return store.update({
@@ -425,7 +432,7 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
           : record.manual,
         lastError: { class: errorClass, code, message },
         lease: null,
-      });
+      }, ownership);
     }
     if (record.attempts.length >= record.retry.maxAttempts) {
       return store.update({
@@ -437,7 +444,7 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
         manual: record.manual ?? manualEntry('retry_exhausted', code, now),
         lastError: { class: errorClass, code, message },
         lease: null,
-      });
+      }, ownership);
     }
     const tenantTasks = await store.list({ enterpriseId: record.enterpriseId, limit: 500 });
     if (stormBlocked(record, now, tenantTasks)) {
@@ -450,7 +457,7 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
         manual: record.manual ?? manualEntry('retry_storm', code, now),
         lastError: { class: errorClass, code: 'retry_storm', message: 'retry storm guard stopped this task' },
         lease: null,
-      });
+      }, ownership);
     }
     const delay = backoffMs(record.retry, record.attempts.length);
     return store.update({
@@ -461,7 +468,7 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
       nextAttemptAt: new Date(now.getTime() + delay).toISOString(),
       lastError: { class: errorClass, code, message },
       lease: null,
-    });
+    }, ownership);
   }
 
   function claimable(record: DurableTaskRecord, now: Date): boolean {
@@ -478,6 +485,7 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
     owner: string,
     leaseTtlMs: number,
     now: Date,
+    expectedRevision?: number,
   ): Promise<DurableTaskClaim | null> {
     const token = newId();
     const acquired = await store.acquireLease({
@@ -491,7 +499,8 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
     if (!acquired.acquired || !acquired.lease) return null;
     try {
       const latest = await store.get(enterpriseId, record.taskId);
-      if (!latest || !claimable(latest, now) || isTerminalDurableTaskStatus(latest.status)) {
+      if (!latest || !claimable(latest, now) || isTerminalDurableTaskStatus(latest.status)
+        || (expectedRevision !== undefined && latest.storeRevision !== expectedRevision)) {
         await store.releaseLease({ enterpriseId, taskId: record.taskId, token });
         return null;
       }
@@ -513,7 +522,7 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
         updatedAt: now.toISOString(),
         finishedAt: null,
         lease: null,
-      });
+      }, { fence: { owner, token } });
       return { record: updated, lease: acquired.lease };
     } catch (error) {
       await store.releaseLease({ enterpriseId, taskId: record.taskId, token }).catch(() => undefined);
@@ -525,7 +534,9 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
     record: DurableTaskRecord,
     now: Date,
     code: string,
+    fence?: DurableTaskLeaseRef,
   ): Promise<DurableTaskRecord> {
+    const ownership = { fence, clearLease: fence ? 'owned' : 'expired' } as const;
     const attempt = lastAttempt(record);
     const timedOut = replaceAttempt(record.attempts, {
       outcome: 'timed_out',
@@ -535,22 +546,22 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
       errorCode: code,
     });
     if (Date.parse(record.deadlineAt) <= now.getTime()) {
-      return expireRecord({ ...record, attempts: timedOut }, now, 'task_timeout');
+      return expireRecord({ ...record, attempts: timedOut }, now, 'task_timeout', fence);
     }
-    if (record.recoveryMode === 'reconcile' && code === 'lease_expired') {
+    if (record.recoveryMode === 'reconcile' && (code === 'lease_expired' || record.kind === 'tool.call')) {
       return store.update({
         ...record,
         attempts: timedOut,
         status: 'waiting',
         updatedAt: now.toISOString(),
-        nextAttemptAt: null,
+        nextAttemptAt: record.kind === 'tool.call' ? now.toISOString() : null,
         lastError: {
           class: 'transient',
           code: 'recovery_required',
           message: 'the worker died; the external outcome must be reconciled before retry',
         },
         lease: null,
-      });
+      }, ownership);
     }
     return retryOrFail(
       { ...record, attempts: timedOut },
@@ -558,6 +569,7 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
       'transient',
       code,
       'the attempt did not finish inside its budget',
+      ownership,
     );
   }
 
@@ -633,9 +645,10 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
     async claim(input) {
       const now = clock();
       const leaseTtlMs = positiveInteger(input.leaseTtlMs ?? 120_000, 'leaseTtlMs');
-      const records = await store.list({ enterpriseId: input.enterpriseId, limit: 500 });
+      const specific = input.taskId ? await store.get(input.enterpriseId, input.taskId) : null;
+      const records = input.taskId ? (specific ? [specific] : [])
+        : await store.list({ enterpriseId: input.enterpriseId, limit: 500 });
       const due = records
-        .filter((record) => !input.taskId || record.taskId === input.taskId)
         .filter((record) => !isTerminalDurableTaskStatus(record.status) && claimable(record, now))
         .sort((left, right) =>
           (left.nextAttemptAt ?? left.createdAt).localeCompare(right.nextAttemptAt ?? right.createdAt)
@@ -646,7 +659,7 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
           await expireRecord(record, now, 'task_timeout');
           continue;
         }
-        const claimed = await claimRecord(input.enterpriseId, record, input.owner, leaseTtlMs, now)
+        const claimed = await claimRecord(input.enterpriseId, record, input.owner, leaseTtlMs, now, input.expectedRevision)
           .catch((error: unknown) => {
             // A task cancelled or completed between the scan and the claim is
             // simply no longer a candidate; corruption still surfaces.
@@ -676,7 +689,9 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
         now,
       });
       if (!acquired.acquired || !acquired.lease) return null;
-      return { record: await requireRecord(input.enterpriseId, input.taskId), lease: acquired.lease };
+      const latest = await requireRecord(input.enterpriseId, input.taskId);
+      if (latest.lease?.token !== acquired.lease.token) return null;
+      return { record: latest, lease: acquired.lease };
     },
 
     async release(input) {
@@ -711,13 +726,13 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
         return { ok: false, reason: 'not_running', record };
       }
       if (Date.parse(record.deadlineAt) <= now.getTime()) {
-        const expired = await expireRecord(record, now, 'task_timeout');
+        const expired = await expireRecord(record, now, 'task_timeout', input);
         return { ok: false, reason: 'task_timeout', record: expired };
       }
       const attempt = lastAttempt(record);
       if (!attempt || attempt.outcome !== 'running'
         || now.getTime() - Date.parse(attempt.startedAt) >= record.timeouts.attemptTimeoutMs) {
-        const timedOut = await handleAttemptTimeout(record, now, 'attempt_timeout');
+        const timedOut = await handleAttemptTimeout(record, now, 'attempt_timeout', input);
         await releaseLeaseRef(input).catch(() => undefined);
         return { ok: false, reason: 'attempt_timeout', record: timedOut };
       }
@@ -741,7 +756,7 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
         data: mergeData(record.data, input.data),
         updatedAt: now.toISOString(),
         lease: null,
-      });
+      }, { fence: input });
     },
 
     async complete(input) {
@@ -763,7 +778,7 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
         );
       }
       if (Date.parse(record.deadlineAt) <= now.getTime()) {
-        const expired = await expireRecord(record, now, 'task_timeout');
+        const expired = await expireRecord(record, now, 'task_timeout', input);
         await releaseLeaseRef(input).catch(() => undefined);
         return expired;
       }
@@ -798,8 +813,8 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
         nextAttemptAt: null,
         lastError: null,
         lease: null,
-      });
-      await releaseLeaseRef(input);
+      }, { fence: input, clearLease: 'owned' });
+      if (!store.atomicLeaseUpdates) await releaseLeaseRef(input);
       return updated;
     },
 
@@ -848,8 +863,9 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
         input.errorClass,
         input.code,
         input.message,
+        { fence: input, clearLease: 'owned' },
       );
-      await releaseLeaseRef(input);
+      if (!store.atomicLeaseUpdates) await releaseLeaseRef(input);
       return failed;
     },
 
@@ -888,8 +904,8 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
           message: input.reason,
         },
         lease: null,
-      });
-      await releaseLeaseRef(input);
+      }, { fence: input, clearLease: 'owned' });
+      if (!store.atomicLeaseUpdates) await releaseLeaseRef(input);
       return updated;
     },
 
@@ -897,7 +913,7 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
       const now = clock();
       const record = await requireRecord(input.enterpriseId, input.taskId);
       if (isTerminalDurableTaskStatus(record.status)) return record;
-      await forceRelease(input.enterpriseId, input.taskId);
+      await releaseBeforeUpdate(input.enterpriseId, input.taskId);
       const attempt = lastAttempt(record);
       const attempts = attempt && attempt.outcome === 'running'
         ? replaceAttempt(record.attempts, {
@@ -917,11 +933,14 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
         cancelRequestedAt: now.toISOString(),
         cancelReason: input.reason,
         lease: null,
-      });
+      }, { clearLease: 'force' });
     },
 
     async appendData(input) {
       const record = await requireRecord(input.enterpriseId, input.taskId);
+      if (input.expectedRevision !== undefined && record.storeRevision !== input.expectedRevision) {
+        throw new WorkflowOperationError('durable_task_conflict', 409, 'task changed before appending an observation');
+      }
       return store.update({
         ...record,
         data: mergeData(record.data, input.data),
@@ -930,9 +949,9 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
       });
     },
 
-    async recover(enterpriseId) {
+    async recover(enterpriseId, query = {}) {
       const now = clock();
-      const records = await store.list({ enterpriseId, limit: 500 });
+      const records = await store.list({ limit: 500, ...query, enterpriseId });
       const summary = {
         enterpriseId,
         scanned: records.length,
@@ -949,7 +968,7 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
         try {
           if (isTerminalDurableTaskStatus(record.status)) {
             if (record.lease || await store.readLease(enterpriseId, record.taskId)) {
-              await forceRelease(enterpriseId, record.taskId);
+              await store.releaseLease({ enterpriseId, taskId: record.taskId, token: '', force: true });
             }
             summary.skipped += 1;
             continue;
@@ -965,7 +984,7 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
               summary.skipped += 1;
               continue;
             }
-            await forceRelease(enterpriseId, record.taskId);
+            await releaseBeforeUpdate(enterpriseId, record.taskId);
             const recovered = await handleAttemptTimeout(record, now, 'lease_expired');
             summary.reclaimed += 1;
             if (recovered.status === 'retrying') summary.retried += 1;
@@ -975,7 +994,7 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
             continue;
           }
           if (
-            (record.status === 'pending' || record.status === 'retrying' || record.status === 'waiting')
+            (record.status === 'pending' || record.status === 'retrying' || (record.status === 'waiting' && record.kind !== 'tool.call'))
             && record.nextAttemptAt !== null
             && Date.parse(record.nextAttemptAt) <= now.getTime()
           ) {
@@ -1046,7 +1065,7 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
         }
         return store.update({
           ...record,
-          status: 'queued',
+          status: record.kind === 'tool.call' && (record.data.dispatch || record.data.receipt) ? 'waiting' : 'queued',
           manual,
           updatedAt: now.toISOString(),
           finishedAt: null,
@@ -1058,7 +1077,7 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
         }, { allowTerminalTransition: true });
       }
       if (input.resolution === 'cancel') {
-        await forceRelease(input.enterpriseId, input.taskId);
+        await releaseBeforeUpdate(input.enterpriseId, input.taskId);
         return store.update({
           ...record,
           status: 'cancelled',
@@ -1069,7 +1088,7 @@ export function createDurableTaskRuntime(options: DurableTaskRuntimeOptions): Du
           cancelRequestedAt: now.toISOString(),
           cancelReason: input.reason ?? 'manual cancellation',
           lease: null,
-        }, { allowTerminalTransition: true });
+        }, { allowTerminalTransition: true, clearLease: 'force' });
       }
       return store.update({
         ...record,

@@ -7,6 +7,7 @@ import { createFileDurableTaskStore } from '../live/durable-task-store';
 import { createDurableTaskRuntime, type DurableTaskRuntime } from '../live/durable-task-runtime';
 import {
   createDurableToolExecutor,
+  DurableToolNotSentError,
   type DurableToolCallback,
   type DurableToolDispatchInput,
   type DurableToolPort,
@@ -70,7 +71,7 @@ interface FakePortCalls {
 }
 
 interface FakePortOptions {
-  readonly dispatch?: (input: DurableToolDispatchInput) => Promise<{ readonly externalId: string }>;
+  readonly dispatch?: DurableToolPort['dispatch'];
   readonly probe?: (input: DurableToolProbeInput) => Promise<DurableToolProbeResult>;
   readonly saveResult?: (input: DurableToolSaveInput) => Promise<{ readonly savedId: string }>;
   readonly writeback?: (input: DurableToolWritebackInput) => Promise<void>;
@@ -402,6 +403,37 @@ test('a repeated submission with the same idempotency key never dispatches twice
     const source = await env.runtime.get(ENTERPRISE_A, first.taskId);
     assert.equal(source?.data.payload ? (source.data.payload as Record<string, unknown>).text : null, 'stage done');
     assert.equal(source?.delegation.messageId, 'msg-1');
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test('a proven pre-send failure clears its marker and the next attempt saves a synchronous receipt', async () => {
+  const env = await toolEnv();
+  try {
+    let now = Date.parse(CHECKED_AT);
+    const runtime = createDurableTaskRuntime({ store: env.store, now: () => new Date(now), random: () => 0.5 });
+    let attempts = 0;
+    const { port, calls } = fakePort({
+      async dispatch() {
+        attempts++;
+        if (attempts === 1) throw new DurableToolNotSentError('transport_not_open', 'the connection was never opened');
+        return { externalId: 'ext-sync', receipt: { status: 'succeeded', result: { messageId: '501' } } };
+      },
+    });
+    const executor = createDurableToolExecutor({ runtime, port });
+    const first = await executor.submit(toolRequest());
+    assert.equal(first.state, 'queued');
+    assert.equal(first.record.data.dispatch, null);
+    now += 11;
+    const result = await executor.submit(toolRequest());
+    assert.equal(result.state, 'succeeded');
+    assert.deepEqual(result.result, { messageId: '501' });
+    assert.notEqual(calls.dispatch[0].dispatchId, calls.dispatch[1].dispatchId);
+    assert.equal(calls.save.length, 1);
+    assert.equal(calls.writeback.length, 1);
+    assert.equal((await executor.submit(toolRequest())).state, 'succeeded');
+    assert.equal(calls.dispatch.length, 2);
   } finally {
     await env.cleanup();
   }

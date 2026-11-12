@@ -17,7 +17,9 @@
 <!-- /native-delegation-current -->
 
 <!-- native-deployment-current -->
-**Native Workflow B5.10 部署与恢复（Limited）。** 对停用阶段报告的计划，Native 名单在调度暂停及关闭时仍保留周报归属。日报沿原调度。PostgreSQL 在同一租户事务中推进周槽并写入周期领取回执。新进程可凭该回执恢复缺失的当期调度运行。Admin 调度、批次和控制仍为文件存储。本轮在 B5.9 隔离库以独立进程验证了助手任务租约和持续委托事务。生产多 Admin 仍需共享运行状态的持久化和并发栅栏。[部署审查、配置和证据](./native-workflow-b510-deployment-review.zh-CN.md)。
+**Native Workflow B5.11 运行与投递（Limited）。** 助手 Worker、`GET/POST /api/native-workflow/schedule` 和 `GET /api/native-workflow/runs/:runId/period-report-status` 可通过 `NATIVE_WORKFLOW_RUNTIME_STORE=postgres` 共享 PostgreSQL 检查点。迁移 `0122` 为 Workflow Run、Schedule Run、Period Report Batch、Schedule Control 和 Schedule Ledger 建立强制 RLS 的租户表。检查点版本处理并发写入。数据库时间和租约 token 保护调度、批次及其报告事务。周槽归属、报告任务和投递继续使用现有设置、outbox 和 `assistant_jobs`。
+
+启用 `NATIVE_WORKFLOW_TASK_STORE=postgres` 与 `NATIVE_WORKFLOW_DURABLE_TOOL_ENABLED=1` 后，迁移 `0123` 支持原水电持续委托的业主超时提醒。认证 Worker 复核项目、业主、同意及当前等待项，在原咨询投递站内提醒。outbox 结果用于回调去重和原委托回写。平台管理员从 `GET /api/native-workflow/tasks/manual` 查看所选企业的脱敏人工队列。定义与已发布版本沿用文件 Workflow Store。隔离迁移工具保留原运行和任务历史。既有企业清空和彻底删除事务按所选企业清理运行状态。生产部署待验证。[配置、迁移与回滚](../admin/src/lib/native-workflow/README.md#b511-postgresql-runtime-stores-and-durable-tool)。
 <!-- /native-deployment-current -->
 
 <!-- site-capture-current -->

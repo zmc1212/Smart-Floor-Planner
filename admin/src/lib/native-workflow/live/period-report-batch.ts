@@ -19,6 +19,8 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { withTenantTransaction } from '@/db/transaction';
+import type { RuntimeWriteGuard } from './types';
 import type { ConstructionActor } from '@/lib/construction/contracts';
 import { isPlainObject } from '../guards';
 import { WorkflowOperationError } from '../errors';
@@ -136,6 +138,7 @@ export interface PeriodReportBatchEntry {
 }
 
 export interface PeriodReportBatchManifest {
+  readonly storeRevision?: number;
   readonly manifestVersion: 1;
   readonly requestId: string;
   readonly enterpriseId: string;
@@ -173,7 +176,8 @@ export interface PeriodReportBatchInput {
   readonly event: TriggerEvent;
   readonly receivers: readonly PeriodReportBatchReceiver[];
   readonly loadPublished: () => Promise<PublishedWorkflowVersion>;
-  readonly portsFor: (receiver: LivePeriodReceiver) => LiveOperationPorts;
+  readonly portsFor: (receiver: LivePeriodReceiver, guard?: RuntimeWriteGuard) => LiveOperationPorts;
+  readonly writeGuard?: RuntimeWriteGuard;
   readonly runStore: LiveRunStore;
   readonly batchStore: PeriodReportBatchStore;
 }
@@ -868,9 +872,9 @@ export async function runPeriodReportBatch(
   // Only one host process may recover or dispatch this request. A stale lease
   // from a crashed process is taken over after its TTL; until then a concurrent
   // caller returns the manifest as stored and starts nothing.
-  const leaseOwner = `${process.pid}:${randomUUID()}`;
+  const fence = { owner: `${process.pid}:${randomUUID()}`, token: randomUUID() };
   const leased = await input.batchStore.acquire(input.requestId, {
-    owner: leaseOwner,
+    ...fence,
     now,
     ttlMs: BATCH_LEASE_TTL_MS,
   });
@@ -879,9 +883,22 @@ export async function runPeriodReportBatch(
   }
 
   try {
+    const current = await input.batchStore.get(input.requestId);
+    if (!current) fail('period_report_batch_not_found', 404, 'batch disappeared after lease acquisition');
+    const batchStore: PeriodReportBatchStore = {
+      ...input.batchStore,
+      update: (candidate) => input.batchStore.update(candidate, fence, input.writeGuard),
+    };
+    const assertLease = input.batchStore.assertLease;
+    const writeGuard: RuntimeWriteGuard | undefined = assertLease || input.writeGuard
+      ? async (tx) => {
+        await input.writeGuard?.(tx);
+        await assertLease?.(tx, input.requestId, fence);
+      }
+      : undefined;
     const advanced = await advanceBatch({
-      manifest,
-      input,
+      manifest: current,
+      input: { ...input, batchStore, writeGuard },
       receivers,
       published,
       now,
@@ -892,7 +909,7 @@ export async function runPeriodReportBatch(
       observe,
       { enterpriseId: input.enterpriseId, adminId: input.actor.adminId },
       now,
-      input.batchStore,
+      batchStore,
     );
     return {
       manifest: observed,
@@ -903,7 +920,7 @@ export async function runPeriodReportBatch(
   } finally {
     // The TTL is the fallback if this release cannot run; hiding a release
     // error must not turn an already committed recovery into a failed request.
-    await input.batchStore.release(input.requestId, leaseOwner).catch(() => undefined);
+    await input.batchStore.release(input.requestId, fence.owner, fence.token).catch(() => undefined);
   }
 }
 
@@ -982,6 +999,9 @@ async function advanceBatch(input: AdvanceBatchInput): Promise<{
       continue;
     }
 
+    if (input.input.writeGuard) {
+      await withTenantTransaction(input.input.enterpriseId, input.input.writeGuard);
+    }
     const receiver = liveReceiver(input.receivers[index]);
     let next: PeriodReportBatchEntry;
     dispatched = true;
@@ -993,8 +1013,9 @@ async function advanceBatch(input: AdvanceBatchInput): Promise<{
         actor: input.input.actor,
         event: input.input.event,
         receiver,
-        ports: input.input.portsFor(receiver),
+        ports: input.input.portsFor(receiver, input.input.writeGuard),
         store: input.input.runStore,
+        writeGuard: input.input.writeGuard,
         runId: entry.runId,
       });
       const classification = classifyRunRecord(result.record);

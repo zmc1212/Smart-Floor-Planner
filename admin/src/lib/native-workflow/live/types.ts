@@ -1,3 +1,4 @@
+import type { PostgresTransaction } from '@/db/transaction';
 import type { WorkflowIssue } from '../errors';
 import type {
   PendingOperation,
@@ -69,6 +70,8 @@ export interface LiveOperationRecord {
 
 /** Queryable, B-owned execution record. Business truth stays in the outbox. */
 export interface LiveRunRecord {
+  /** Optimistic revision issued by the PostgreSQL store. */
+  readonly storeRevision?: number;
   readonly binding: LiveRunBinding;
   readonly enterpriseId: string;
   readonly projectId: string;
@@ -85,11 +88,18 @@ export interface LiveRunCreateResult {
   readonly record: LiveRunRecord;
 }
 
+export type RuntimeWriteGuard = (tx: PostgresTransaction) => Promise<void>;
+
+export interface RuntimeExecutionFence {
+  readonly owner: string;
+  readonly token: string;
+}
+
 export interface LiveRunStore {
   /** Exclusive first write. An existing runId returns the original record. */
-  create(record: LiveRunRecord): Promise<LiveRunCreateResult>;
+  create(record: LiveRunRecord, writeGuard?: RuntimeWriteGuard): Promise<LiveRunCreateResult>;
   /** Checkpoint update; must reject a different event/project/revision. */
-  update(record: LiveRunRecord): Promise<LiveRunRecord>;
+  update(record: LiveRunRecord, writeGuard?: RuntimeWriteGuard): Promise<LiveRunRecord>;
   get(runId: string): Promise<LiveRunRecord | null>;
   list(limit?: number): Promise<LiveRunRecord[]>;
 }

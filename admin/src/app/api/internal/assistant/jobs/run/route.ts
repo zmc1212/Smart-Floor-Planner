@@ -50,9 +50,18 @@ export async function POST(request: Request) {
         nativeWorkflowDelegations = { enabled: true, error: 'native_workflow_delegations_unavailable' };
       }
     }
+    let nativeWorkflowTools: unknown = null;
+    if (nativeWorkflowEnabled(process.env.NATIVE_WORKFLOW_DURABLE_TOOL_ENABLED)) {
+      try {
+        const { runNativeDurableToolTick } = await import('@/lib/native-workflow/live/durable-tool-worker');
+        nativeWorkflowTools = await runNativeDurableToolTick();
+      } catch {
+        nativeWorkflowTools = { enabled: true, error: 'native_workflow_tools_unavailable' };
+      }
+    }
     const inAppDeliveries = await deliverSiteNotifications() + await deliverPublicConsents() + await deliverConstructionReports();
     const portfolioCopyClaimed = data.claimed ? false : await processPortfolioCopy();
-    return NextResponse.json({ success: true, data: { ...data, claimed: data.claimed || portfolioCopyClaimed || inAppDeliveries > 0, portfolioCopyClaimed, inAppDeliveries, knowledgeBatchChecks, constructionReportChecks, nativeWorkflowSchedule, nativeWorkflowDelegations }, requestId });
+    return NextResponse.json({ success: true, data: { ...data, claimed: data.claimed || portfolioCopyClaimed || inAppDeliveries > 0, portfolioCopyClaimed, inAppDeliveries, knowledgeBatchChecks, constructionReportChecks, nativeWorkflowSchedule, nativeWorkflowDelegations, nativeWorkflowTools }, requestId });
   } catch {
     return NextResponse.json({ success: false, code: 'assistant_unavailable', requestId }, { status: 503 });
   }

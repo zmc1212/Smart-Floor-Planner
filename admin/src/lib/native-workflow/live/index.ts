@@ -236,3 +236,11 @@ export {
   durableTaskTracePayload,
   type DurableTaskTracePayload,
 } from './durable-task-observability';
+
+export { createNativeRuntimeStores } from './runtime-stores';
+export {
+  createPostgresPeriodReportBatchStore,
+  createPostgresPeriodReportScheduleStore,
+  createPostgresWorkflowRunStore,
+} from './runtime-postgres-stores';
+export { createPostgresDurableTaskStore } from './durable-task-postgres-store';

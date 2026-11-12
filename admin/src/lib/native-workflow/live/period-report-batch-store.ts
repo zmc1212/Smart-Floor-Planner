@@ -22,6 +22,8 @@ import { copyFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promis
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { WorkflowOperationError } from '../errors';
+import type { PostgresTransaction } from '@/db/transaction';
+import type { RuntimeExecutionFence, RuntimeWriteGuard } from './types';
 import type {
   PeriodReportBatchManifest,
   PeriodReportBatchReceiverIdentity,
@@ -34,6 +36,7 @@ const locks = new Map<string, Promise<unknown>>();
 export interface PeriodReportBatchLeaseOptions {
   /** Unique owner of this dispatch attempt (process + call). */
   readonly owner: string;
+  readonly token?: string;
   readonly now: () => Date;
   readonly ttlMs: number;
 }
@@ -44,7 +47,7 @@ export interface PeriodReportBatchStore {
     manifest: PeriodReportBatchManifest,
   ): Promise<{ created: boolean; manifest: PeriodReportBatchManifest }>;
   /** Update observation/entry state; the immutable identity may not change. */
-  update(manifest: PeriodReportBatchManifest): Promise<PeriodReportBatchManifest>;
+  update(manifest: PeriodReportBatchManifest, fence?: RuntimeExecutionFence, writeGuard?: RuntimeWriteGuard): Promise<PeriodReportBatchManifest>;
   get(requestId: string): Promise<PeriodReportBatchManifest | null>;
   /**
    * Take the one execution lease for this request. False means another
@@ -52,7 +55,8 @@ export interface PeriodReportBatchStore {
    */
   acquire(requestId: string, options: PeriodReportBatchLeaseOptions): Promise<boolean>;
   /** Release only a lease still owned by this call; a stale takeover is kept. */
-  release(requestId: string, owner: string): Promise<void>;
+  release(requestId: string, owner: string, token?: string): Promise<void>;
+  assertLease?(tx: PostgresTransaction, requestId: string, fence: RuntimeExecutionFence): Promise<void>;
 }
 
 /** The B-owned batch manifest root. Server reads and the CLI share it. */
@@ -219,7 +223,7 @@ function nodeVersionsKey(versions: Readonly<Record<string, string>>): string {
     .join('\u0000');
 }
 
-function assertSameManifestIdentity(
+export function assertSameManifestIdentity(
   existing: PeriodReportBatchManifest,
   candidate: PeriodReportBatchManifest,
 ): void {

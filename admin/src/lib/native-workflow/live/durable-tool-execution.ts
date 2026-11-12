@@ -17,6 +17,7 @@
  * - every lookup is tenant-scoped, and a foreign-tenant task behaves as missing.
  */
 
+import { isDeepStrictEqual } from 'node:util';
 import { WorkflowOperationError } from '../errors';
 import type {
   DurableTaskData,
@@ -54,6 +55,7 @@ export interface DurableToolRequest {
 }
 
 export interface DurableToolDispatchInput {
+  readonly lease: DurableTaskLeaseRef;
   readonly enterpriseId: string;
   readonly projectId: string | null;
   readonly taskId: string;
@@ -81,6 +83,7 @@ export interface DurableToolProbeResult {
 }
 
 export interface DurableToolSaveInput {
+  readonly lease: DurableTaskLeaseRef;
   readonly enterpriseId: string;
   readonly projectId: string | null;
   readonly taskId: string;
@@ -90,6 +93,7 @@ export interface DurableToolSaveInput {
 }
 
 export interface DurableToolWritebackInput {
+  readonly lease: DurableTaskLeaseRef;
   readonly enterpriseId: string;
   readonly projectId: string | null;
   readonly taskId: string;
@@ -99,7 +103,10 @@ export interface DurableToolWritebackInput {
 }
 
 export interface DurableToolPort {
-  dispatch(input: DurableToolDispatchInput): Promise<{ readonly externalId: string }>;
+  dispatch(input: DurableToolDispatchInput): Promise<{
+    readonly externalId: string;
+    readonly receipt?: Omit<DurableToolProbeResult, 'status'> & { readonly status: 'succeeded' | 'failed' };
+  }>;
   probe(input: DurableToolProbeInput): Promise<DurableToolProbeResult>;
   /** Must be idempotent by `receiptId`: a save retry can repeat after a crash. */
   saveResult(input: DurableToolSaveInput): Promise<{ readonly savedId: string }>;
@@ -216,12 +223,14 @@ export interface DurableToolExecutorOptions {
   readonly runtime: DurableTaskRuntime;
   readonly port: DurableToolPort;
   readonly maxProbes?: number;
+  readonly callbackWaitMs?: number;
   readonly now?: () => Date;
   readonly newId?: () => string;
 }
 
 export interface DurableToolExecutor {
   submit(request: DurableToolRequest): Promise<DurableToolSubmission>;
+  dispatchPrepared(enterpriseId: string, taskId: string, workerId: string): Promise<DurableToolSubmission | null>;
   handleCallback(callback: DurableToolCallback): Promise<DurableToolCallbackResult>;
   reconcile(enterpriseId: string, taskId: string): Promise<DurableTaskRecord | null>;
   resume(enterpriseId: string, taskId: string): Promise<DurableTaskRecord | null>;
@@ -387,6 +396,33 @@ function codeOf(error: unknown): string {
   return 'external_call_failed';
 }
 
+/** Stage the authorized request without executing any tool. */
+export async function persistDurableToolRequest(runtime: DurableTaskRuntime, request: DurableToolRequest) {
+  const { record } = await runtime.create({
+    enterpriseId: request.enterpriseId,
+    projectId: request.projectId ?? null,
+    kind: 'tool.call',
+    businessKey: `${request.tool}:${request.idempotencyKey}`,
+    delegation: request.delegation,
+    recoveryMode: 'reconcile',
+    timeouts: request.timeouts,
+    retry: request.retry,
+    data: toData({
+      tool: request.tool, authorization: { ...request.authorization }, effect: request.effect, payload: request.payload,
+      dispatch: null, receipt: null, callbacks: [], saved: null, writebackAt: null, pendingPhase: null, probes: 0,
+    }),
+  });
+  const saved = stateOf(record);
+  if (saved.tool !== request.tool || saved.effect !== request.effect
+    || saved.authorization.allowed !== request.authorization.allowed
+    || saved.authorization.actorId !== request.authorization.actorId
+    || saved.authorization.scope !== request.authorization.scope
+    || !isDeepStrictEqual(saved.payload, request.payload) || !isDeepStrictEqual(record.delegation, request.delegation)) {
+    throw new WorkflowOperationError('durable_tool_identity_conflict', 409, 'tool key is bound to a different request');
+  }
+  return record;
+}
+
 export function createDurableToolExecutor(options: DurableToolExecutorOptions): DurableToolExecutor {
   const runtime = options.runtime;
   const port = options.port;
@@ -422,6 +458,7 @@ export function createDurableToolExecutor(options: DurableToolExecutorOptions): 
       try {
         const saved = await withTimeout(
           port.saveResult({
+            lease,
             enterpriseId: current.enterpriseId,
             projectId: current.projectId,
             taskId: current.taskId,
@@ -450,6 +487,7 @@ export function createDurableToolExecutor(options: DurableToolExecutorOptions): 
     try {
       await withTimeout(
         port.writeback({
+          lease,
           enterpriseId: current.enterpriseId,
           projectId: current.projectId,
           taskId: current.taskId,
@@ -505,7 +543,10 @@ export function createDurableToolExecutor(options: DurableToolExecutorOptions): 
     const current = claimed.record;
     const lease = claimed.lease;
     const currentState = stateOf(current);
-    if (currentState.receipt || !currentState.dispatch) return current;
+    if (currentState.receipt || !currentState.dispatch) {
+      await runtime.release(lease);
+      return current;
+    }
     let probe: DurableToolProbeResult;
     try {
       probe = await withTimeout(
@@ -523,28 +564,20 @@ export function createDurableToolExecutor(options: DurableToolExecutorOptions): 
       probe = { status: 'unknown', errorCode: codeOf(error) };
     }
     const probes = currentState.probes + 1;
-    if (probe.status === 'succeeded') {
+    if (probe.status !== 'unknown') {
       const receipt: ToolReceiptState = {
         callbackId: `probe-${probes}`,
         receiptId: `probe-${currentState.dispatch.dispatchId}`,
-        status: 'succeeded',
-        result: probe.result ?? {},
-        errorCode: null,
+        status: probe.status,
+        result: probe.result ?? null,
+        errorCode: probe.errorCode ?? null,
         receivedAt: nowIso(),
       };
-      const next: ToolState = { ...currentState, receipt, probes, pendingPhase: 'save_result' };
+      const next: ToolState = {
+        ...currentState, receipt, probes, pendingPhase: probe.status === 'succeeded' ? 'save_result' : null,
+      };
       const updated = await runtime.checkpoint({ ...lease, data: toData(next) });
-      return applyReceipt(updated, lease, next);
-    }
-    if (probe.status === 'failed') {
-      const next: ToolState = { ...currentState, probes, pendingPhase: null };
-      return runtime.fail({
-        ...lease,
-        errorClass: 'permanent',
-        code: probe.errorCode ?? 'external_execution_failed',
-        message: 'the external system reported a definitive failure',
-        data: toData(next),
-      });
+      return settleReceipt(updated, lease, next);
     }
     if (probes >= maxProbes) {
       const next: ToolState = { ...currentState, probes, pendingPhase: null };
@@ -565,171 +598,148 @@ export function createDurableToolExecutor(options: DurableToolExecutorOptions): 
     });
   }
 
+  async function settleReceipt(record: DurableTaskRecord, lease: DurableTaskLeaseRef, state: ToolState) {
+    if (state.receipt?.status === 'failed') {
+      return runtime.fail({
+        ...lease,
+        errorClass: 'permanent',
+        code: state.receipt.errorCode ?? 'external_execution_failed',
+        message: 'the external system reported a definitive failure',
+        data: toData(state),
+      });
+    }
+    return applyReceipt(record, lease, state);
+  }
+
   const executor: DurableToolExecutor = {
     async submit(request) {
-      const created = await runtime.create({
-        enterpriseId: request.enterpriseId,
-        projectId: request.projectId ?? null,
-        kind: 'tool.call',
-        businessKey: `${request.tool}:${request.idempotencyKey}`,
-        delegation: request.delegation,
-        recoveryMode: 'reconcile',
-        timeouts: request.timeouts,
-        retry: request.retry,
-        data: toData({
-          tool: request.tool,
-          authorization: { ...request.authorization },
-          effect: request.effect,
-          payload: request.payload,
-          dispatch: null,
-          receipt: null,
-          callbacks: [],
-          saved: null,
-          writebackAt: null,
-          pendingPhase: null,
-          probes: 0,
-        }),
-      });
-      let record = created.record;
-      const state = stateOf(record);
+      const record = await persistDurableToolRequest(runtime, request);
+      const result = await executor.dispatchPrepared(record.enterpriseId, record.taskId, request.workerId);
+      if (!result) throw new WorkflowOperationError('durable_task_not_found', 404, 'prepared tool task disappeared');
+      return result;
+    },
 
-      if (!created.created) {
-        if (record.status === 'succeeded') {
-          return { taskId: record.taskId, state: 'succeeded', record, result: state.receipt?.result ?? null };
-        }
-        if (isTerminalDurableTaskStatus(record.status)) {
-          return {
-            taskId: record.taskId,
-            state: record.status as 'failed' | 'cancelled' | 'expired',
-            record,
-            result: state.receipt?.result ?? null,
-          };
-        }
-        if (record.status === 'running' || record.status === 'waiting') {
-          const state = record.status === 'waiting' && record.lastError?.code === 'external_outcome_unknown'
-            ? 'unknown' : 'in_flight';
-          return { taskId: record.taskId, state, record, result: null };
-        }
+    async dispatchPrepared(enterpriseId, taskId, workerId) {
+      let record = await runtime.get(enterpriseId, taskId);
+      if (!record) return null;
+      let state = stateOf(record);
+      const submission = (status: DurableToolSubmissionState, result: DurableTaskData | null = null): DurableToolSubmission =>
+        ({ taskId, state: status, record: record!, result });
+      if (record.status === 'succeeded') return submission('succeeded', state.receipt?.result ?? null);
+      if (isTerminalDurableTaskStatus(record.status)) {
+        const unknown = record.lastError?.code === 'external_outcome_unconfirmed'
+          || (record.status === 'expired' && state.dispatch && !state.receipt);
+        return submission(unknown ? 'unknown' : record.status as 'failed' | 'cancelled' | 'expired', state.receipt?.result ?? null);
       }
-
+      if (record.status === 'running' || state.dispatch || state.receipt) {
+        const unknown = ['external_outcome_unknown', 'recovery_required'].includes(record.lastError?.code ?? '');
+        return submission(unknown ? 'unknown' : 'in_flight');
+      }
       if (record.status === 'pending') {
-        record = await runtime.enqueue({ enterpriseId: record.enterpriseId, taskId: record.taskId });
-      }
-
-      if (!state.authorization.allowed) {
-        const claimed = await runtime.claim({
-          enterpriseId: record.enterpriseId,
-          taskId: record.taskId,
-          owner: request.workerId,
-          leaseTtlMs: record.timeouts.attemptTimeoutMs,
-        });
-        if (claimed) {
-          record = await runtime.fail({
-            enterpriseId: record.enterpriseId,
-            taskId: record.taskId,
-            owner: request.workerId,
-            token: claimed.lease.token,
-            errorClass: 'business_rejection',
-            code: 'tool_unauthorized',
-            message: state.authorization.reason ?? 'the caller is not authorized for this tool',
-          });
+        try {
+          record = await runtime.enqueue({ enterpriseId, taskId });
+        } catch (error) {
+          if (!(error instanceof WorkflowOperationError) || error.code !== 'durable_task_conflict') throw error;
+          return submission('in_flight');
         }
-        return { taskId: record.taskId, state: 'rejected', record, result: null };
-      }
-
-      // A recorded dispatch without a receipt is an uncertain external effect:
-      // never dispatch again, reconcile instead.
-      if (state.dispatch) {
-        if (state.receipt) {
-          return { taskId: record.taskId, state: 'in_flight', record, result: null };
-        }
-        return { taskId: record.taskId, state: 'unknown', record, result: null };
       }
 
       const claimed = await runtime.claim({
-        enterpriseId: record.enterpriseId,
-        taskId: record.taskId,
-        owner: request.workerId,
+        enterpriseId,
+        taskId,
+        owner: workerId,
         leaseTtlMs: record.timeouts.attemptTimeoutMs,
+        expectedRevision: record.storeRevision,
       });
-      if (!claimed) {
-        return { taskId: record.taskId, state: 'in_flight', record, result: null };
-      }
+      if (!claimed) return submission('in_flight');
       record = claimed.record;
-      const lease = leaseOf(record, request.workerId, claimed.lease.token);
+      const lease = leaseOf(record, workerId, claimed.lease.token);
+      state = stateOf(record);
+      if (state.dispatch || state.receipt) {
+        record = await runtime.wait({
+          ...lease, reason: 'dispatch already recorded', code: 'recovery_required', wakeAt: nowIso(),
+        });
+        return submission('unknown');
+      }
+      if (!state.authorization.allowed || record.attempts.length > record.retry.maxAttempts) {
+        const denied = !state.authorization.allowed;
+        record = await runtime.fail({
+          ...lease,
+          errorClass: denied ? 'business_rejection' : 'permanent',
+          code: denied ? 'tool_unauthorized' : 'tool_dispatch_retry_exhausted',
+          message: denied ? state.authorization.reason ?? 'the caller is not authorized for this tool'
+            : 'the safe dispatch retry budget was exhausted',
+        });
+        return submission(denied ? 'rejected' : 'failed');
+      }
 
       const dispatchId = newId();
       const dispatchedAt = nowIso();
       const marked: ToolState = {
-        ...stateOf(record),
-        dispatch: { dispatchId, externalId: null, dispatchedAt },
-        pendingPhase: null,
+        ...state, dispatch: { dispatchId, externalId: null, dispatchedAt }, pendingPhase: null,
       };
       record = await runtime.checkpoint({
-        ...lease,
-        data: toData(marked),
-        steps: [step('dispatch', 'pending', dispatchedAt, null)],
+        ...lease, data: toData(marked), steps: [step('dispatch', 'pending', dispatchedAt, null)],
       });
 
+      let accepted: Awaited<ReturnType<DurableToolPort['dispatch']>>;
       try {
-        const accepted = await withTimeout(
+        accepted = await withTimeout(
           port.dispatch({
-            enterpriseId: record.enterpriseId,
-            projectId: record.projectId,
-            taskId: record.taskId,
-            dispatchId,
-            tool: request.tool,
-            idempotencyKey: request.idempotencyKey,
-            payload: request.payload,
+            lease, enterpriseId, taskId, projectId: record.projectId, dispatchId,
+            tool: state.tool, idempotencyKey: record.businessKey.slice(state.tool.length + 1), payload: state.payload,
           }),
           record.timeouts.externalCallTimeoutMs,
           'dispatch',
         );
-        const dispatched: ToolState = {
-          ...marked,
-          dispatch: { dispatchId, externalId: accepted.externalId, dispatchedAt },
-        };
-        record = await runtime.checkpoint({
-          ...lease,
-          data: toData(dispatched),
-          steps: [step('dispatch', 'succeeded', dispatchedAt, nowIso())],
-        });
-        record = await runtime.wait({
-          ...lease,
-          reason: 'waiting for the external callback',
-          code: 'awaiting_callback',
-          wakeAt: null,
-          data: toData(dispatched),
-        });
-        return { taskId: record.taskId, state: 'dispatched', record, result: null };
       } catch (error) {
         if (error instanceof DurableToolNotSentError) {
           record = await runtime.fail({
-            ...lease,
-            errorClass: 'transient',
-            code: error.code,
-            message: error.message,
+            ...lease, errorClass: 'transient', code: error.code, message: error.message,
+            data: toData({ ...marked, dispatch: null }),
             steps: [step('dispatch', 'failed', dispatchedAt, nowIso(), error.code)],
           });
-          return {
-            taskId: record.taskId,
-            state: record.status === 'retrying' ? 'queued' : 'failed',
-            record,
-            result: null,
-          };
+          return submission(record.status === 'retrying' ? 'queued' : 'failed');
         }
-        // Timeout or ambiguous error: the external side may have accepted it.
-        const unknownState: ToolState = { ...marked, pendingPhase: null };
         record = await runtime.wait({
           ...lease,
           reason: 'the external call did not return a usable acceptance',
           code: 'external_outcome_unknown',
           wakeAt: nowIso(),
-          data: toData(unknownState),
+          data: toData(marked),
           steps: [step('dispatch', 'failed', dispatchedAt, nowIso(), codeOf(error))],
         });
-        return { taskId: record.taskId, state: 'unknown', record, result: null };
+        return submission('unknown');
       }
+
+      const receipt: ToolReceiptState | null = accepted.receipt ? {
+        callbackId: `sync-${dispatchId}`,
+        receiptId: `sync-${dispatchId}`,
+        status: accepted.receipt.status,
+        result: accepted.receipt.result ?? null,
+        errorCode: accepted.receipt.errorCode ?? null,
+        receivedAt: nowIso(),
+      } : null;
+      const dispatched: ToolState = {
+        ...marked,
+        dispatch: { dispatchId, externalId: accepted.externalId, dispatchedAt },
+        receipt,
+        pendingPhase: receipt?.status === 'succeeded' ? 'save_result' : null,
+      };
+      record = await runtime.checkpoint({
+        ...lease, data: toData(dispatched), steps: [step('dispatch', 'succeeded', dispatchedAt, nowIso())],
+      });
+      if (receipt) {
+        record = await settleReceipt(record, lease, dispatched);
+        return submission(record.status === 'succeeded' ? 'succeeded' : record.status === 'failed' ? 'failed' : 'in_flight',
+          record.status === 'succeeded' ? receipt.result : null);
+      }
+      record = await runtime.wait({
+        ...lease, reason: 'waiting for the external callback', code: 'awaiting_callback',
+        wakeAt: options.callbackWaitMs === undefined ? null : new Date(clock().getTime() + options.callbackWaitMs).toISOString(),
+        data: toData(dispatched),
+      });
+      return submission('dispatched');
     },
 
     async handleCallback(callback) {
@@ -737,38 +747,30 @@ export function createDurableToolExecutor(options: DurableToolExecutorOptions): 
       if (!record) return { applied: false, reason: 'not_found', record: null };
       const state = stateOf(record);
       const receivedAt = nowIso();
-      if (state.callbacks.some((item) => item.callbackId === callback.callbackId)) {
-        return { applied: false, reason: 'duplicate', record };
-      }
-      const observation: ToolCallbackObservation = {
-        callbackId: callback.callbackId,
-        receivedAt,
-        applied: false,
-        reason: null,
+      const isDuplicate = (current: ToolState) => current.receipt?.callbackId === callback.callbackId
+        || current.callbacks.some((item) => item.callbackId === callback.callbackId);
+      const duplicateReason = (current: ToolState): DurableToolCallbackReason => {
+        const receipt = current.receipt;
+        return receipt?.callbackId === callback.callbackId && (receipt.status !== callback.status
+          || !isDeepStrictEqual(receipt.result, callback.result ?? null) || receipt.errorCode !== (callback.errorCode ?? null))
+          ? 'unmatched' : 'duplicate';
       };
-      if (isTerminalDurableTaskStatus(record.status)) {
-        const updated = await runtime.appendData({
-          enterpriseId: record.enterpriseId,
-          taskId: record.taskId,
-          data: { callbacks: [...state.callbacks, { ...observation, reason: 'terminal' }].map(callbackData) },
-        });
-        return { applied: false, reason: 'terminal', record: updated };
-      }
-      if (!state.dispatch || state.dispatch.dispatchId !== callback.dispatchId) {
-        const updated = await runtime.appendData({
-          enterpriseId: record.enterpriseId,
-          taskId: record.taskId,
-          data: { callbacks: [...state.callbacks, { ...observation, reason: 'unmatched' }].map(callbackData) },
-        });
-        return { applied: false, reason: 'unmatched', record: updated };
-      }
-      if (state.receipt) {
-        const updated = await runtime.appendData({
-          enterpriseId: record.enterpriseId,
-          taskId: record.taskId,
-          data: { callbacks: [...state.callbacks, { ...observation, reason: 'already_settled' }].map(callbackData) },
-        });
-        return { applied: false, reason: 'already_settled', record: updated };
+      if (isDuplicate(state)) return { applied: false, reason: duplicateReason(state), record };
+
+      const observation: ToolCallbackObservation = { callbackId: callback.callbackId, receivedAt, applied: false, reason: null };
+      const ignored: DurableToolCallbackReason | null = isTerminalDurableTaskStatus(record.status) ? 'terminal'
+        : state.dispatch?.dispatchId !== callback.dispatchId ? 'unmatched' : state.receipt ? 'already_settled' : null;
+      if (ignored) {
+        try {
+          const updated = await runtime.appendData({
+            enterpriseId: record.enterpriseId, taskId: record.taskId, expectedRevision: record.storeRevision,
+            data: { callbacks: [...state.callbacks, { ...observation, reason: ignored }].slice(-MAX_CALLBACK_HISTORY).map(callbackData) },
+          });
+          return { applied: false, reason: ignored, record: updated };
+        } catch (error) {
+          if (!(error instanceof WorkflowOperationError) || error.code !== 'durable_task_conflict') throw error;
+          return { applied: false, reason: 'busy', record: await runtime.get(callback.enterpriseId, callback.taskId) };
+        }
       }
 
       const owner = `tool-callback-${callback.callbackId}`;
@@ -784,9 +786,13 @@ export function createDurableToolExecutor(options: DurableToolExecutorOptions): 
       // Re-validate after taking ownership: a concurrent callback may have
       // settled the task between the first read and the lease acquisition.
       const latestState = stateOf(acquired.record);
-      if (latestState.callbacks.some((item) => item.callbackId === callback.callbackId)) {
+      if (isDuplicate(latestState)) {
         await runtime.release(leaseOf(acquired.record, owner, token));
-        return { applied: false, reason: 'duplicate', record: acquired.record };
+        return { applied: false, reason: duplicateReason(latestState), record: acquired.record };
+      }
+      if (latestState.dispatch?.dispatchId !== callback.dispatchId) {
+        await runtime.release(leaseOf(acquired.record, owner, token));
+        return { applied: false, reason: 'unmatched', record: acquired.record };
       }
       if (latestState.receipt || isTerminalDurableTaskStatus(acquired.record.status)) {
         await runtime.release(leaseOf(acquired.record, owner, token));
@@ -804,26 +810,17 @@ export function createDurableToolExecutor(options: DurableToolExecutorOptions): 
       const next: ToolState = {
         ...latestState,
         receipt,
-        callbacks: [...latestState.callbacks, { ...observation, applied: true }],
+        callbacks: [...latestState.callbacks, { ...observation, applied: true }].slice(-MAX_CALLBACK_HISTORY),
         pendingPhase: callback.status === 'succeeded' ? 'save_result' : null,
       };
       try {
         // The receipt is durable before any save can fail.
-        let current = await runtime.checkpoint({ ...lease, data: toData(next) });
-        if (callback.status === 'failed') {
-          current = await runtime.fail({
-            ...lease,
-            errorClass: 'permanent',
-            code: callback.errorCode ?? 'external_execution_failed',
-            message: 'the external system reported a definitive failure',
-            data: toData(next),
-          });
-          return { applied: true, reason: null, record: current };
-        }
-        current = await applyReceipt(current, lease, next);
-        return { applied: true, reason: null, record: current };
+        const current = await runtime.checkpoint({ ...lease, data: toData(next) });
+        const settled = await settleReceipt(current, lease, next);
+        return { applied: true, reason: null, record: settled };
       } catch (error) {
-        if (error instanceof WorkflowOperationError && error.code === 'durable_task_lease_lost') {
+        if (error instanceof WorkflowOperationError
+          && ['durable_task_lease_lost', 'durable_task_conflict'].includes(error.code)) {
           return { applied: false, reason: 'busy', record: await runtime.get(callback.enterpriseId, callback.taskId) };
         }
         throw error;
@@ -834,7 +831,7 @@ export function createDurableToolExecutor(options: DurableToolExecutorOptions): 
       const record = await runtime.get(enterpriseId, taskId);
       if (!record || isTerminalDurableTaskStatus(record.status)) return record;
       const state = stateOf(record);
-      if (state.receipt && state.pendingPhase) {
+      if (state.receipt) {
         return executor.resume(enterpriseId, taskId);
       }
       if (!state.dispatch) return record;
@@ -846,10 +843,15 @@ export function createDurableToolExecutor(options: DurableToolExecutorOptions): 
       if (!record || isTerminalDurableTaskStatus(record.status)) return record;
       const state = stateOf(record);
       if (!state.receipt) return record;
-      if (!state.pendingPhase) return record;
+      if (!state.pendingPhase && state.receipt.status !== 'failed') return record;
       const claimed = await claimForRecovery(record, `tool-resume-${record.taskId}`, record.timeouts.attemptTimeoutMs);
       if (!claimed) return record;
-      return applyReceipt(claimed.record, claimed.lease, stateOf(claimed.record));
+      const latest = stateOf(claimed.record);
+      if (!latest.receipt || (!latest.pendingPhase && latest.receipt.status !== 'failed')) {
+        await runtime.release(claimed.lease);
+        return claimed.record;
+      }
+      return settleReceipt(claimed.record, claimed.lease, latest);
     },
   };
   return executor;

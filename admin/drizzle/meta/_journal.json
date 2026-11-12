@@ -848,6 +848,20 @@
       "when": 1795075200000,
       "tag": "0121_native_workflow_delegations",
       "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1795161600000,
+      "tag": "0122_native_workflow_runtime",
+      "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1795248000000,
+      "tag": "0123_native_workflow_durable_tasks",
+      "breakpoints": true
     }
   ]
 }

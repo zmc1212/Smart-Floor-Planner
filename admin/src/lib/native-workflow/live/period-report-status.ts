@@ -24,8 +24,7 @@ import {
 import { WorkflowOperationError } from '../errors';
 import { isPlainObject } from '../guards';
 import { readProjectAccess } from './project-access';
-import { resolveNativeWorkflowRunDir } from './run-dir';
-import { createFileWorkflowRunStore } from './run-store';
+import { createNativeRuntimeStores } from './runtime-stores';
 import type { LiveRunRecord, LiveRunStatus } from './types';
 
 export const PERIOD_REPORT_STATUS_CONTRACT = 'period-report-run-status-v1';
@@ -1158,7 +1157,7 @@ export async function readPeriodReportRunStatus(
 ): Promise<PeriodReportRunObservation> {
   const now = options.now ?? (() => new Date());
   const runStore = options.runStore
-    ?? createFileWorkflowRunStore({ rootDir: resolveNativeWorkflowRunDir() });
+    ?? createNativeRuntimeStores(options.viewer.enterpriseId).runStore;
   const record = await runStore.get(options.runId);
   if (!record) {
     throw new WorkflowOperationError('run_not_found', 404, `run ${options.runId} was not found`);

@@ -2320,6 +2320,140 @@ npx tsx scripts/native-workflow-stage-reminder-user-loop.ts --development
 
 Fixtures are synthetic and contain no real customer data.
 
+## B5.11 PostgreSQL runtime stores and durable tool
+
+B5.11 starts from the B5.10 deployment commit `5fa8721f`. Its previous
+[B5.10 technical review](../../../../docs/native-workflow-b510-deployment-review.zh-CN.md)
+records the file-store failures and baseline build diagnostics.
+
+| Store | PostgreSQL relation | Ownership and persisted state |
+| --- | --- | --- |
+| Workflow Store | File adapter | Draft revision, immutable published revision and digest, B3 simulation. Keep the published definition available at the same revision on each Admin. |
+| Workflow Run | `native_workflow_runs` | Tenant and run ID, pinned project/definition/event, trace and operation receipts. A checkpoint revision detects stale Admin writes. |
+| Schedule Run | `native_workflow_schedule_runs` | Unique tenant/week, committed weekly claim reference, dispatch and observation checkpoints. |
+| Period Report Batch | `native_workflow_report_batches` | Tenant/request ID, fixed receiver and reserved sub-run identities, observed receipts. |
+| Schedule Control | `native_workflow_schedule_controls` | Tenant pause and cancelled periods. A short transaction lock orders control and guarded report writes. |
+| Schedule Ledger | `native_workflow_schedule_ledgers` | Tenant/project issue references and observed versions. |
+| Durable Task | `native_workflow_durable_tasks` | Tenant/kind/business key, task revision, dispatch marker, callback receipt, safe-phase checkpoints and manual queue. |
+
+Migration `0122_native_workflow_runtime` introduces the five runtime tables.
+Migration `0123_native_workflow_durable_tasks` is independent of the schedule
+checkpoint transaction and adds the durable task table and an existing-outbox
+delivery index. Both use the tenant transaction helper and force RLS for
+`sfp_app`. Relational keys, versions, due dates and lease columns govern
+database operations. JSONB preserves the typed checkpoint payload and its
+historical business references. Business records and report bodies remain in
+their existing services and tables. Explicit enterprise reset and purge use
+their existing transaction to count and clear the selected tenant’s runtime
+rows. Migration archives remain on disk. The scheduled report adapter continues to
+use the B5.10 weekly slot/outbox transaction and existing `assistant_jobs`.
+Database-clock expiry and owner/token predicates gate progress writes and
+short transactions that create report bindings, enqueue reports or send reminders.
+Files and process clocks are unnecessary for PostgreSQL lease ownership.
+
+### Server entry points
+
+- Set `NATIVE_WORKFLOW_RUNTIME_STORE=postgres` on each Admin to select PostgreSQL
+  for the schedule API, period-report status and weekly Worker. The default
+  adapter is `file`. The existing allowlist and schedule enablement still apply.
+  All processes in one deployment need the same adapter and published definition
+  source. The developer B4/B5 fixture CLIs retain their file-backed workflow.
+- Set `NATIVE_WORKFLOW_TASK_STORE=postgres` and `NATIVE_WORKFLOW_DURABLE_TOOL_ENABLED=1`
+  with the existing `NATIVE_WORKFLOW_DELEGATION_ENABLED` and
+  `NATIVE_WORKFLOW_DELEGATION_ENTERPRISE_IDS` to enable the registered owner reminder.
+  Only the original opt-in, 48-hour owner wait qualifies. The delegation Worker
+  stages the task in the same transaction as its timeout and applies the same
+  idempotency key as the original notice. The authenticated assistant jobs route
+  advances this task in its normal tick.
+- The executor commits the dispatch marker before calling the in-app delivery
+  service. The service locks and rechecks the current consultation, delegation,
+  wait, project, consent and task lease. The original message and outbox
+  result commit together. A matching persisted message can be adopted
+  synchronously. The outbox delivers asynchronous results by task and dispatch
+  ID. The executor persists the receipt, verifies the message, and links the
+  result to the original delegation before reporting completion. A lost response
+  is reconciled using that outbox. Definite pre-send failures and result
+  save/writeback can retry. Ambiguous dispatches retain their marker and can
+  reach the existing manual queue without reissuing the effect.
+- Platform admins use `GET /api/native-workflow/tasks/manual` with the existing
+  selected enterprise. It returns task/delegation IDs, state, error code and
+  queue time. Generic tool and legacy `live.operation` records can be migrated
+  as history. The production worker registers only the existing owner reminder.
+  The original file-task recovery switch applies to the file adapter.
+
+### Isolated snapshot migration
+
+Run from `admin`. Use separate snapshots for `--scope runtime` and
+`--scope tasks`. Directory options are `--run-dir`, `--schedule-dir`,
+`--batch-dir` and `--task-dir`. Omitted options use the existing directory
+resolvers. Store the snapshot and cutover receipt outside the source folders.
+The snapshot includes original file bytes and per-file and manifest SHA-256
+values. Treat it as private runtime data.
+
+```powershell
+node --import tsx scripts/native-workflow-runtime-migrate.ts dry-run --scope runtime --enterprise-id 1454
+node --import tsx scripts/native-workflow-runtime-migrate.ts export --scope runtime --enterprise-id 1454 --snapshot tmp/runtime-1454.json
+node --import tsx scripts/native-workflow-runtime-migrate.ts validate --scope runtime --enterprise-id 1454 --snapshot tmp/runtime-1454.json
+node --import tsx scripts/native-workflow-runtime-migrate.ts import --scope runtime --enterprise-id 1454 --snapshot tmp/runtime-1454.json --writers-stopped
+node --import tsx scripts/native-workflow-runtime-migrate.ts verify --scope runtime --enterprise-id 1454 --snapshot tmp/runtime-1454.json
+node --import tsx scripts/native-workflow-runtime-migrate.ts cutover --scope runtime --enterprise-id 1454 --snapshot tmp/runtime-1454.json --receipt tmp/runtime-1454-cutover.json --writers-stopped
+node --import tsx scripts/native-workflow-runtime-migrate.ts rollback --scope runtime --enterprise-id 1454 --snapshot tmp/runtime-1454.json --receipt tmp/runtime-1454-cutover.json --writers-stopped
+```
+
+Database commands require `B511_RUNTIME_MIGRATION_DATABASE_URL` pointing to the
+local `xiaok_b511_test` database as the restricted `sfp_app` role. They verify the
+actual database, role and tenant. Stop file and database writers before import,
+cutover and rollback. Import and destination comparison commit together.
+The tool validates the source bindings, steps and known batch receipts,
+rechecks the stopped file snapshot and copies no live lease. It creates no
+business job or dispatch. Repeated import accepts identical rows. An unknown
+dispatch retains its original state and marker.
+
+Cutover emits a receipt and the adapter value to use after restart. Apply the
+environment change through deployment tooling after verifying the selected
+scope for each tenant. Runtime and task cutovers are independent. Rollback compares the file snapshot, destination revisions and
+authoritative report or delegation writes against the cutover receipt. A drift
+requires reconciliation before returning to files. Keep the source and the
+database for recovery. This tool's database operations are limited to the
+isolated development rehearsal.
+
+### Verification boundaries
+
+The [PostgreSQL suite](__tests__/runtime-postgres.live.test.ts) uses a fresh
+migrated loopback `xiaok_b511_test` and `B511_PG_TEST=1`. It invokes independent
+Admin/Worker processes and the signed Mini Program and assistant job handlers.
+The checked scope includes tenant isolation, optimistic writes, lease expiry,
+late writes, callback deduplication, four-receiver weekly enqueue, process
+restart, database transport failure and both migration scopes. Tests age
+labelled owner-wait and report fixtures. Actual business model generation,
+external providers, physical devices and production containers require
+separate verification.
+
+The isolated PostgreSQL suite passed seven scenarios, including one weekly
+claim per tenant, four queued report jobs with persistent receiver receipts,
+and one original-consultation reminder after duplicate callback delivery.
+The first concurrency run hit the unique tenant/week index during a duplicate
+create. The corrected insert resolves conflicts across both unique keys, and
+the original concurrent test passed against a fresh database. The file and
+construction offline suites passed 571 tests. Delegation and cross-role live
+regressions passed nine each. The extended isolated Construction runner
+matched B5.10 with 69 passed, two existing follow-up failures and three
+configured-model skips.
+
+Scoped ESLint passes. The same TypeScript scope reports 289 baseline and
+289 current diagnostics. Full ESLint retains the existing FastGPT
+`no-explicit-any` error. The production webpack bundle compiled and the
+complete build still stops at the existing `TS2339` in
+`scripts/fastgpt/setup-unified.mts:113`. The initial build ran out of heap
+with a temporary baseline checkout in the TypeScript search path. The
+checkout was moved outside that path for the completed verification. The
+Stable DevTools project list had no window for this worktree, so this round's
+re-entry evidence comes from signed Mini Program handlers. Reports in the
+new scheduler test are verified through real enqueue and readback.
+
+Local evidence is under `admin/tmp/b511-*`. The deployment report's earlier
+validation and approved interface remain the historical reference.
+
 ## Sources
 
 - FastGPT reference baseline: `v4.17.4`,
@@ -2331,3 +2465,7 @@ Fixtures are synthetic and contain no real customer data.
 - Existing project foundations reused in later phases: `AgentRuntimePorts`,
   `runRenovationAgent`, `executePostgresText`, Lease/run context. They are not a
   generic workflow API and are not imported here.
+
+- PostgreSQL 17 describes the row locks used for lease checks and the
+  conditional write receipts. [Explicit locking](https://www.postgresql.org/docs/17/explicit-locking.html)
+  · [INSERT and RETURNING](https://www.postgresql.org/docs/17/sql-insert.html).

@@ -204,6 +204,7 @@ export interface ScheduledWeeklyClaimRecord {
 }
 
 export interface PeriodReportScheduleRun {
+  readonly storeRevision?: number;
   readonly runVersion: typeof SCHEDULE_RUN_VERSION;
   readonly runId: string;
   readonly enterpriseId: string;
@@ -232,6 +233,7 @@ export interface PeriodReportScheduleRun {
 }
 
 export interface PeriodReportScheduleControl {
+  readonly storeRevision?: number;
   readonly enterpriseId: string;
   readonly paused: boolean;
   /**
@@ -245,6 +247,7 @@ export interface PeriodReportScheduleControl {
 }
 
 export interface PeriodReportScheduleLedger {
+  readonly storeRevision?: number;
   readonly ledgerVersion: typeof SCHEDULE_LEDGER_VERSION;
   readonly enterpriseId: string;
   readonly projectId: string;

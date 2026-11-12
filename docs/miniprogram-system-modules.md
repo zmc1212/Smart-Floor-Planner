@@ -12,6 +12,8 @@ Persisted design and quality reviews retain project-role authorization if collab
 **Electrical follow-up (Limited).** In the approved C01 consultation composer (`packages/assistant/chat/chat`), the authorized homeowner can send “请持续跟进主卧的水电进展和书房的插座点位。” with the project's registered room names. “查看水电跟进”, “暂停水电跟进”, “继续水电跟进” and “取消水电跟进” act on that consultation's follow-up. Adding “等我回复超时就在小K里提醒我” authorizes one in-app reminder per owner wait after 48 hours. The original chat reopens with saved feedback, questions and the authorized team result.
 
 Workers retain the approved V3 capture, voice, photo and review entry (`packages/construction/chat/chat`). Project members see the current design/field review request in the existing project reply card. The owner's answer stays private until the existing material-sharing action grants team access. Formal decisions still use the existing version-specific approval and manager review. The standard response bubbles, controls, source previews and permission feedback render these states. The first reply in an empty consultation reloads the authoritative message window at sequence zero. Stable 390×844 verified native sends, persisted re-entry and the result in the origin consultation. [Server contract and verification](./admin-system-modules.md#admin-system-current-module-inventory).
+
+With B5.11 enabled for the enterprise, an authorized owner timeout reminder is delivered by the durable assistant Worker. It remains a single persisted reply in the original consultation. The Worker rechecks the owner, active wait and project before sending.
 <!-- /native-delegation-current -->
 
 <!-- site-capture-current -->

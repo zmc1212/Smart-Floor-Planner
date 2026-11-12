@@ -74,7 +74,7 @@ export async function saveDelegation(tx: PostgresTransaction, d: Delegation, tas
     where enterprise_id=${d.enterpriseId} and id=${d.id}`);
 }
 
-export async function linkDelegationEvent(tx: PostgresTransaction, d: Delegation, eventId: string,
+export async function linkDelegationEvent(tx: PostgresTransaction, d: Pick<Delegation, 'enterpriseId' | 'id'>, eventId: string,
   outcome: 'applied' | 'unchanged' | 'paused' | 'unavailable' | 'control', changes: unknown) {
   await tx.execute(sql`insert into app.native_workflow_delegation_events(enterprise_id,delegation_id,event_id,outcome,task_changes)
     values(${d.enterpriseId},${d.id},${eventId},${outcome},${JSON.stringify(changes)}::jsonb) on conflict do nothing`);

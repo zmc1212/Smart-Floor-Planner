@@ -12,19 +12,10 @@ import {
   readWeeklyScheduleSettings,
   type WeeklyScheduleSettingsSnapshot,
 } from '@/lib/native-workflow/live/period-report-schedule-ports';
-import {
-  createFilePeriodReportScheduleStore,
-  resolveNativeWorkflowScheduleDir,
-} from '@/lib/native-workflow/live/period-report-schedule-store';
+import { createNativeRuntimeStores } from '@/lib/native-workflow/live/runtime-stores';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-function store() {
-  return createFilePeriodReportScheduleStore({
-    rootDir: resolveNativeWorkflowScheduleDir(),
-  });
-}
 
 async function tenantContext(request: Request) {
   const denied = await requirePlatformAdmin(request);
@@ -62,7 +53,7 @@ export async function GET(request: Request) {
   try {
     const result = await readScheduledPeriodReportDispatch({
       enterpriseId: context.enterpriseId!,
-      store: store(),
+      store: createNativeRuntimeStores(context.enterpriseId!).store,
       ...(url.searchParams.get('runId')
         ? { runId: url.searchParams.get('runId')! }
         : {}),
@@ -133,7 +124,7 @@ export async function POST(request: Request) {
           : resolveEndedShanghaiWeek(new Date()).periodStart,
         updatedBy: context.userId,
         reason,
-        store: store(),
+        store: createNativeRuntimeStores(context.enterpriseId!).store,
       });
       return NextResponse.json({ success: true, data: result });
     } catch (error) {
@@ -146,7 +137,7 @@ export async function POST(request: Request) {
       paused: action === 'pause',
       updatedBy: context.userId,
       reason,
-      store: store(),
+      store: createNativeRuntimeStores(context.enterpriseId!).store,
     });
     return NextResponse.json({ success: true, data: control });
   } catch (error) {

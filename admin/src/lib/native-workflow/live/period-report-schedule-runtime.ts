@@ -24,13 +24,10 @@ import { createFileWorkflowStore, resolveNativeWorkflowStoreDir } from '../store
 import type { PublishedWorkflowVersion } from '../store/types';
 import { createDurableTaskRuntime } from './durable-task-runtime';
 import { createFileDurableTaskStore, resolveNativeWorkflowTaskDir } from './durable-task-store';
-import { createFilePeriodReportBatchStore, resolveNativeWorkflowBatchDir } from './period-report-batch-store';
 import { createDatabasePeriodReportScheduleEnvironment } from './period-report-schedule-ports';
-import { createFilePeriodReportScheduleStore, resolveNativeWorkflowScheduleDir } from './period-report-schedule-store';
 import { scheduleTickLogPayload } from './period-report-schedule-observability';
 import { runScheduledPeriodReportDispatch } from './period-report-schedule';
-import { createFileWorkflowRunStore } from './run-store';
-import { resolveNativeWorkflowRunDir } from './run-dir';
+import { createNativeRuntimeStores, nativeStoreBackend } from './runtime-stores';
 import { nativeWorkflowEnabled, nativeWorkflowEnterpriseIds } from './tenant-allowlist';
 
 const DEFAULT_DEFINITION_ID = 'period-report-weekly';
@@ -116,22 +113,25 @@ export async function runNativeWorkflowScheduleTick(
   // Recovery is independent of automatic scheduling: an environment may keep
   // NATIVE_WORKFLOW_SCHEDULE_ENABLED=0 while still recovering its own durable
   // tasks for the explicit allowlist.
-  if (nativeWorkflowEnabled(env.NATIVE_WORKFLOW_TASK_RECOVERY_ENABLED) && enterpriseIds.length) {
+  if (nativeWorkflowEnabled(env.NATIVE_WORKFLOW_TASK_RECOVERY_ENABLED) && enterpriseIds.length
+    && nativeStoreBackend(env.NATIVE_WORKFLOW_TASK_STORE) === 'file') {
     await recoverDurableTasks(enterpriseIds).catch(() => undefined);
   }
   if (!nativeWorkflowEnabled(env.NATIVE_WORKFLOW_SCHEDULE_ENABLED)) return { enabled: false, reason: 'disabled' };
   if (!enterpriseIds.length) return { enabled: false, reason: 'no_enterprise_scope' };
 
-  const runStore = createFileWorkflowRunStore({ rootDir: resolveNativeWorkflowRunDir() });
-  const batchStore = createFilePeriodReportBatchStore({ rootDir: resolveNativeWorkflowBatchDir() });
-  const scheduleStore = createFilePeriodReportScheduleStore({
-    rootDir: resolveNativeWorkflowScheduleDir(),
-  });
-  const environment = createDatabasePeriodReportScheduleEnvironment({
-    loadPublished: (input) => loadNativeWorkflowPublished(env, input),
-    runStore,
-    now: () => new Date(),
-  });
+  const postgresControl = nativeStoreBackend(env.NATIVE_WORKFLOW_RUNTIME_STORE) === 'postgres';
+  const forEnterprise = (enterpriseId: string) => {
+    const stores = createNativeRuntimeStores(enterpriseId, env);
+    return {
+      ...stores,
+      environment: createDatabasePeriodReportScheduleEnvironment({
+        loadPublished: (input) => loadNativeWorkflowPublished(env, input),
+        runStore: stores.runStore,
+        postgresControl,
+      }),
+    };
+  };
   const summary = await runScheduledPeriodReportDispatch({
     enterpriseIds,
     mode: 'tick',
@@ -142,10 +142,8 @@ export async function runNativeWorkflowScheduleTick(
     maxRunDurationMs: positiveInteger(env.NATIVE_WORKFLOW_SCHEDULE_MAX_RUN_MS) ?? 90_000,
     issuedBy: 'assistant-worker',
   }, {
-    store: scheduleStore,
-    batchStore,
-    runStore,
-    environment,
+    ...forEnterprise(enterpriseIds[0]),
+    forEnterprise,
   });
   // One redacted structured line per tick: tenant/schedule/job ids, instants,
   // worker, state and error codes only. Project names, issue text and model

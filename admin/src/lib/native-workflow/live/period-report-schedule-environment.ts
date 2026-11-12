@@ -21,6 +21,7 @@ import type {
   LiveOperationPorts,
   LivePeriodReceiver,
   LiveRunRecord,
+  RuntimeWriteGuard,
 } from './types';
 
 export interface ScheduleIssueSnapshot {
@@ -34,6 +35,7 @@ export interface ScheduleIssueSnapshot {
 }
 
 export interface ScheduleReminderInput {
+  readonly writeGuard?: RuntimeWriteGuard;
   readonly enterpriseId: string;
   readonly projectId: string;
   readonly projectName: string;
@@ -103,6 +105,7 @@ export interface PeriodReportScheduleEnvironment {
     readonly period: FixedPeriod;
   }): Promise<ScheduleWeeklyClaim>;
   ensureCustomerBinding(input: {
+    readonly writeGuard?: RuntimeWriteGuard;
     readonly enterpriseId: string;
     readonly projectId: string;
     readonly customerUserId: string;
@@ -118,6 +121,7 @@ export interface PeriodReportScheduleEnvironment {
    * original run record instead of executing a second time.
    */
   recoverReceiver(input: {
+    readonly writeGuard?: RuntimeWriteGuard;
     readonly enterpriseId: string;
     readonly projectId: string;
     readonly actor: ConstructionActor;
@@ -132,6 +136,7 @@ export interface PeriodReportScheduleEnvironment {
   portsFor(
     receiver: LivePeriodReceiver,
     context: {
+      readonly writeGuard?: RuntimeWriteGuard;
       readonly enterpriseId: string;
       readonly projectId: string;
       readonly actor: ConstructionActor;

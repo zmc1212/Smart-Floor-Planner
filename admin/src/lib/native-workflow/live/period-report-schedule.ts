@@ -62,7 +62,7 @@ import {
 } from './period-report-schedule-observability';
 import type { PeriodReportScheduleStore } from './period-report-schedule-store';
 import type { PeriodReportRunObservation } from './period-report-status';
-import type { LiveRunRecord, LiveRunStore } from './types';
+import type { LiveRunRecord, LiveRunStore, RuntimeWriteGuard } from './types';
 import { MAX_NATIVE_WORKFLOW_SCHEDULE_ENTERPRISES } from './tenant-allowlist';
 
 const DAY_MS = 86_400_000;
@@ -131,6 +131,8 @@ export interface ScheduledPeriodReportDispatchOptions {
 }
 
 export interface ScheduledPeriodReportDispatchDependencies {
+  /** Creates a tenant-bound adapter set for the existing multi-enterprise tick. */
+  readonly forEnterprise?: (enterpriseId: string) => ScheduledPeriodReportDispatchDependencies;
   readonly store: PeriodReportScheduleStore;
   readonly batchStore: PeriodReportBatchStore;
   readonly runStore: LiveRunStore;
@@ -192,6 +194,7 @@ export interface ScheduledPeriodReportDispatchReadResult {
 }
 
 interface DispatchContext extends ScheduledPeriodReportDispatchDependencies {
+  readonly writeGuard?: RuntimeWriteGuard;
   readonly now: Date;
   readonly maxProjectsPerRound: number;
   readonly observeIntervalMs: number;
@@ -986,6 +989,7 @@ async function sendReminders(
     const at = context.environment.now().toISOString();
     try {
       const result = await context.environment.sendReminder({
+        writeGuard: context.writeGuard,
         enterpriseId: run.enterpriseId,
         projectId: plan.projectId,
         projectName: plan.projectName,
@@ -1162,7 +1166,9 @@ async function buildBatchInput(
       { kind: 'boss', adminId: plan.bossAdminId },
     ],
     loadPublished: async () => published,
-    portsFor: (receiver) => context.environment.portsFor(receiver, {
+    writeGuard: context.writeGuard,
+    portsFor: (receiver, writeGuard) => context.environment.portsFor(receiver, {
+      writeGuard,
       enterpriseId: run.enterpriseId,
       projectId: plan.projectId,
       actor,
@@ -1212,6 +1218,7 @@ async function dispatchProject(
   // current lead/customer binding before any recovery so a changed or revoked
   // customer is refused instead of silently replaced.
   const customer = await context.environment.ensureCustomerBinding({
+    writeGuard: context.writeGuard,
     enterpriseId: run.enterpriseId,
     projectId: effectivePlan.projectId,
     customerUserId: effectivePlan.customerUserId,
@@ -1412,6 +1419,7 @@ async function recoverInvalidReport(
   const recoveryRunId = `${entry.requestId}-${candidate.kind}-recovery`;
   try {
     const result = await context.environment.recoverReceiver({
+      writeGuard: context.writeGuard,
       enterpriseId: run.enterpriseId,
       projectId: entry.plan.projectId,
       actor: { enterpriseId: run.enterpriseId, adminId: entry.plan.executorAdminId },
@@ -1513,6 +1521,7 @@ async function observeProject(
     // A never-started customer sub-run must not be dispatched to a changed or
     // revoked customer after the manifest froze the original receiver set.
     const customer = await context.environment.ensureCustomerBinding({
+      writeGuard: context.writeGuard,
       enterpriseId: run.enterpriseId,
       projectId: plan.projectId,
       customerUserId: plan.customerUserId!,
@@ -1998,9 +2007,9 @@ async function continueRun(
   }
   const scoped = assertRunTenant(run, enterpriseId);
   if (!scoped) return { run: null, busy: false, work, gate, error: null };
-  const owner = `${process.pid}:${randomUUID()}`;
+  const fence = { owner: `${process.pid}:${randomUUID()}`, token: randomUUID() };
   const acquired = await context.store.acquire(run.runId, {
-    owner,
+    ...fence,
     now: () => context.environment.now(),
     ttlMs: context.leaseTtlMs,
   });
@@ -2020,7 +2029,17 @@ async function continueRun(
     if (!current || !runHasWork(current, context.environment.now().getTime())) {
       return { run: current, busy: false, work, gate, error: current?.lastError ?? null };
     }
-    const advanced = await advanceRun({ ...current, workerId: owner }, context, work);
+    const assertLease = context.store.assertLease;
+    const leasedContext: DispatchContext = {
+      ...context,
+      store: {
+        ...context.store,
+        update: (candidate) => context.store.update(candidate, fence),
+        saveLedger: (ledger) => context.store.saveLedger(ledger, { runId: run.runId, fence }),
+      },
+      writeGuard: assertLease ? (tx) => assertLease(tx, run.runId, fence) : undefined,
+    };
+    const advanced = await advanceRun({ ...current, workerId: fence.owner }, leasedContext, work);
     return {
       run: advanced,
       busy: false,
@@ -2029,7 +2048,7 @@ async function continueRun(
       error: advanced.lastError ?? null,
     };
   } finally {
-    await context.store.release(run.runId, owner).catch(() => undefined);
+    await context.store.release(run.runId, fence.owner, fence.token).catch(() => undefined);
   }
 }
 
@@ -2266,10 +2285,11 @@ export async function runScheduledPeriodReportDispatch(
     // other allow-listed tenants in the same tick. The failed tenant is reported
     // with its own code and keeps any run file it had already written.
     try {
-      const control = await dependencies.store.control(enterpriseId);
-      const result = await runEnterprise(enterpriseId, period, context, ownership);
+      const scoped = { ...context, ...dependencies.forEnterprise?.(enterpriseId) };
+      const control = await scoped.store.control(enterpriseId);
+      const result = await runEnterprise(enterpriseId, period, scoped, ownership);
       const prior = mode === 'tick' && !control.paused
-        ? await continuePriorRuns(enterpriseId, period, context)
+        ? await continuePriorRuns(enterpriseId, period, scoped)
         : { work: { dispatched: [], observed: [] }, runs: [] };
       const run = result.run;
       if (run) {
@@ -2310,7 +2330,7 @@ export async function runScheduledPeriodReportDispatch(
         skipReasons: [code],
         error: {
           code,
-          message: (error instanceof Error ? error.message : code).slice(0, 300),
+          message: error instanceof WorkflowOperationError || error instanceof AssistantError ? error.message.slice(0, 300) : code,
         },
       });
     }

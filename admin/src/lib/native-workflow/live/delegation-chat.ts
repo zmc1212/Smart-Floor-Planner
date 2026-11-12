@@ -9,7 +9,7 @@ import { sharedMaterials } from '@/lib/construction/site-materials';
 import { readPlan } from '@/lib/construction/site-plans';
 import { delegationScheduleVersion } from './delegation-inputs';
 import { delegationActionText, delegationIsTerminal, delegationLifetimeMs, delegationNotice, delegationRefresh,
-  type Delegation, type DelegationState, type DelegationTask } from './delegation-state';
+  type Delegation, type DelegationState, type DelegationTask, type DelegationWait } from './delegation-state';
 import { appendDelegationEvent, delegationFromRow, delegationOrigin, delegationOwner, delegationsEnabled, linkDelegationEvent, saveDelegation } from './delegation-store';
 
 export const delegationOwnerPurpose = 'construction.delegation';
@@ -36,6 +36,16 @@ export async function delegationOwnerReceipt(tx: PostgresTransaction, d: Delegat
   if (!eventId) return null;
   return appendMessage(tx, delegationOwner(d), d.conversationId, { author: 'system', eventId, purpose: delegationOwnerPurpose,
     replyToMessageId: d.originMessageId, content: { version: 1, blocks: [{ type: 'text', text }] } });
+}
+
+export function delegationReminderKey(d: Delegation, task: DelegationTask, wait: DelegationWait) {
+  return `${d.id}:${task.key}:reminder:${wait.key}`;
+}
+
+export function sendDelegationOwnerReminder(tx: PostgresTransaction, d: Delegation, task: DelegationTask, wait: DelegationWait) {
+  return delegationOwnerReceipt(tx, d, delegationReminderKey(d, task, wait),
+    `提醒一下，${task.roomName}插座的跟进还在等你：${wait.requested.join('，')}。方便时在这次咨询补充即可。`,
+    task.next === 'ask_owner' ? { waitKey: wait.key } : undefined);
 }
 
 async function electricalProgressText(tx: PostgresTransaction, d: Delegation, task: DelegationTask) {
