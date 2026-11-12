@@ -1,0 +1,89 @@
+{
+  "qwen3.7-flash": {
+    "documented": {
+      "responses": "documented",
+      "functionCalling": "documented",
+      "webSearch": "documented",
+      "webExtractor": "documented",
+      "codeInterpreter": "documented",
+      "streaming": "documented",
+      "usageReporting": "documented",
+      "thinkingRequiredForCodeInterpreter": false,
+      "documentedAt": "2026-11-12"
+    },
+    "liveVerified": {
+      "web_search": "live_verified",
+      "responses": "live_verified",
+      "usageReporting": "live_verified",
+      "web_extractor": "live_verified",
+      "code_interpreter": "live_verified",
+      "functionCalling": "live_verified",
+      "streaming": "live_verified"
+    }
+  },
+  "deepseek-v4.1-flash-1017": {
+    "documented": {
+      "responses": "documented",
+      "functionCalling": "documented",
+      "webSearch": "documented",
+      "webExtractor": "documented",
+      "codeInterpreter": "documented",
+      "streaming": "documented",
+      "usageReporting": "documented",
+      "thinkingRequiredForCodeInterpreter": false,
+      "documentedAt": "2026-11-12"
+    },
+    "liveVerified": {
+      "responses": "live_verified",
+      "usageReporting": "live_verified"
+    }
+  },
+  "qwen3.8-flash": {
+    "documented": {
+      "responses": "documented",
+      "functionCalling": "documented",
+      "webSearch": "documented",
+      "webExtractor": "documented",
+      "codeInterpreter": "documented",
+      "streaming": "documented",
+      "usageReporting": "documented",
+      "thinkingRequiredForCodeInterpreter": true,
+      "documentedAt": "2026-11-12"
+    },
+    "liveVerified": {
+      "responses": "live_verified",
+      "usageReporting": "live_verified"
+    }
+  },
+  "qwen3.8-max": {
+    "documented": {
+      "responses": "documented",
+      "functionCalling": "documented",
+      "webSearch": "documented",
+      "webExtractor": "documented",
+      "codeInterpreter": "documented",
+      "streaming": "documented",
+      "usageReporting": "documented",
+      "thinkingRequiredForCodeInterpreter": true,
+      "documentedAt": "2026-11-12"
+    },
+    "liveVerified": {}
+  },
+  "deepseek-v4.1-flash": {
+    "documented": {
+      "responses": "documented",
+      "functionCalling": "documented",
+      "webSearch": "unknown",
+      "webExtractor": "unknown",
+      "codeInterpreter": "unknown",
+      "streaming": "documented",
+      "usageReporting": "documented",
+      "thinkingRequiredForCodeInterpreter": false,
+      "documentedAt": "2026-11-12"
+    },
+    "liveVerified": {
+      "responses": "live_verified",
+      "usageReporting": "live_verified"
+    }
+  }
+}

@@ -1,5 +1,42 @@
 # 小K第二期：需求整理与人工交接
 
+<!-- xiaok-r3-web-contract -->
+**R3 网页来源（Limited）。** 合资格的原生会话由现有 LangGraph Worker 经 R2 工具注册表派发。独立搜索服务提供公开候选，受保护的读页服务将原文交给现有 Evidence 和引用链。百炼 Responses 承载检索工具调用与回传，终稿轮使用既有结构化通道。[协议、配置与验证](bailian-responses-adapter.md#11-r3-应用联网搜索)。
+<!-- /xiaok-r3-web-contract -->
+
+## R5 长期记忆与持续委托
+
+**状态 Limited。** 原 LangGraph Agent 由 `MemoryService` 装载有界的相关记忆，沿 R2 工具注册、执行和 run 审计。沟通偏好与私人备注保存本人原话、哈希、作用域、修订和当前/候选/冲突状态。房间需求沿 `record_need` 写入，项目房间、阶段、正式户型标识及已授权的方案决定从原业务服务读取。私人记忆不进入项目共享上下文和公开联网工具。更正核对当前版本或沿原需求流程执行。作废和删除退出召回，删除会清除记忆值，原对话按既有保留政策管理。
+
+`DelegationService` 保存项目、业主、原咨询及原话、目标、房间和事项、完成条件、状态、负责人、等待对象、下一步、期限、授权、证据和版本。每次读取或处理复验本人项目、成员权限、来源版本和共享授权。业主沿原小程序输入框查看、暂停、继续或取消，目标不唯一时先澄清。团队只能读取业主已明确授权的资料范围。
+
+- 现场上报及版本变更、需求、共享/方案、事项回复/整改/复核、已保存的联网原文和到期沿现有 Outbox 入队。Worker 复验获权原件并经 R2 读取和审计，事务提交处理回执、状态和原咨询消息。事件及任务/事件唯一键、租户级事务锁、到期重试和五次失败死信支持重放和重启。人工继续入队新一轮核对。
+- 房间进度依据对应房间及工种当前对客发布的记录和照片。设计师答复须由当前获权角色提交并由负责人回传原咨询。带原事项关联的已发布整改照片进入待复核。正式方案变更、同意和问题解决仍由原业务服务处理。
+- 首次到期写站内提醒，仍逾期且有当前项目授权时向负责人站内升级。排队、消息已持久化、明确已读及业务确认分别留痕。团队仍可在 AI 不可用时用原业务入口人工处理。
+- 应用迁移 `0123` 后使用 `NATIVE_WORKFLOW_DELEGATION_ENABLED=1` 和明确的 `NATIVE_WORKFLOW_DELEGATION_ENTERPRISE_IDS` 白名单。业主端 `GET|POST|PATCH /api/miniprogram/assistant/conversations/:id/long-term` 分别读取、从本人原话人工写入、确认站内已读。写入校验版本和幂等键。沿用原页面布局和站内投递。
+
+真实 PostgreSQL 与替身模型通过10组业务及生命周期检查。R1–R4 定向136项、托管 RAG 替身12项通过。Stable 在390×844的原 C01 完成查看、暂停与持久重进。百炼 `qwen3.7-flash` 固定两组通过，Responses 保存工具与结构化召回为 run96–99。真实托管知识库仍缺工作空间及专用凭据，应用联网服务本轮不可用。实际语音、真机与生产未验。
+
+验收采用环回隔离库 `xiaok_r5_acceptance` 和明确标记的合成微云1454。将 `XIAOK_R5_DATABASE_URL` 指向隔离应用角色，在 `admin` 执行 `node --env-file=.env.local --import tsx scripts/xiaok-r5-acceptance.ts --label=<label>`。真实模型固定对话加 `--live`，原始失败与供应商尝试分别保存在 `admin/tmp/r5/`。
+
+沿用 LangGraph 对会话历史和跨线程记忆的区分。写入依赖当前应用授权、PostgreSQL Outbox 和业务回执，工具调用及回传沿百炼 Responses 协议。[LangGraph 记忆](https://docs.langchain.com/oss/javascript/langgraph/add-memory) · [LangGraph 持久化](https://docs.langchain.com/oss/javascript/langgraph/persistence) · [百炼 Responses 协议](https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-responses)
+
+## R6 原生施工复核与托管知识
+
+**Limited。** 基线 `41b0639517f79f7135ea78801c3cfcc6159e44b5`。原 C01 咨询读取私有记忆、当前项目和 R4 知识工具。查无授权来源时，终稿 schema 仅接受无引用的通用建议或缺项说明。引用打开时复验原文、当前版本和项目权限。PPT 第18页提供项目团队安排防水和后续检查的依据，具体准备清单和管根做法仍由项目团队核对。
+
+- 原 Outbox Worker 从施工事件解析房间与事项范围。获权复核委托锁定原事项，暂停及重进保留绑定。同房间、同事项只有一份匹配的已对客发布记录时，可提示有候选原图待关联。人员沿现有方案和落实复核服务关联精确版本与原件。有权团队结果实际写回原 C01 后才完成委托，原件依回传和发布权限开放。工程质量由有权人员复核。
+- 原来源工具重读相关私有记忆，仅用委托的房间与事项检索有效工艺。Outbox 回执保存工具结果、来源、知识 epoch、项目上下文哈希和可用的请求 ID。`GET /api/miniprogram/assistant/conversations/:id/long-term` 可返回 `standardCheck`，记录 `sources_found`、`no_match`、`unavailable`、`disabled` 或 `outdated`；引用实时失效。标准查询回执记录资料情况，人工复核结论仍由施工服务记录。
+- Stable 沿批准的 C01 消息、结果及媒体组件。验收使用有标记的合成企业、隔离 PostgreSQL 与应用角色。八类施工事件和四端权限沿现有业务服务和数据表。
+
+在 `admin` 运行 `node --env-file=.env.local --import tsx scripts/xiaok-r6-acceptance.ts --label=<label>`，将 `XIAOK_R6_DATABASE_URL` 指向已迁移的空隔离库。默认使用托管接口与对话模型替身。`--live-model` 使用真实百炼 Responses 及本地 pgvector/Embedding。`--hosted` 使用已配置的专用工作空间和真实托管接口；与 `--live-model` 同用可验证真实托管加 Responses。原始证据保存在 `admin/tmp/r6/` 与 `tmp/r6/`。[百炼 RAG 鉴权](https://help.aliyun.com/zh/model-studio/rag-api-authentication) · [LangGraph ToolNode](https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph.prebuilt.ToolNode.html)
+
+分层验收：
+
+- 隔离业务通过10组，托管检索与模型输出使用替身。PostgreSQL、Worker 投递、施工权限、业主明确共享、现场原件及人员复核回执均走真实服务。已核验0123的两个触发器与三张强制 RLS 表。Stable 2.02.2608080 在逻辑390×844通过运行时、原咨询正式结果和鉴权原图、真实输入查看委托、持久重进四项。截图332×718，路由及 HTTP 回执见 `admin/tmp/r6/native-03/verification.json`。保留前两次原生驱动失败及清理记录。
+- 北京空间及专用凭据缺失，配置预检返回 `bailian_knowledge_not_configured`，真实托管请求0。`live-01` 保留一份实际带引用答复和一份终稿 HTTP 400；打开 Stable 导致私有项目显示名变更，该批有源码绑定漂移。去掉空枚举后，`live-02` 真实 Responses 三次成功、两次超时；实际工具结果已回传模型。两组首问均为 indeterminate，R6 实模终稿、记忆召回及创建委托未通过本轮验收。原始尝试与已知用量分别保留。
+- 后台定向单元153/153、小程序107/107、R4 托管协议替身回归12/12、R5 数据库回归10/10。改动文件 lint 通过；全仓保留基线 `fastgpt-rag.test.ts:22` 的1个错误和56个警告。TypeScript 与基线同为290项。Webpack 编译通过，完整构建停于既有 `scripts/fastgpt/setup-unified.mts:113` 类型错误。
+
 <!-- site-capture-current -->
 ## 现场上报与送达合同
 

@@ -23,6 +23,7 @@ import { completeReportComposition, failRun, heartbeat, runContext, type Lease }
 import { followupAvailable, followupProjects, type FollowupAudience, type ReportFacts, type ReportProject } from './report-scope';
 import { reportContextProtocol, resolveReportReference, type ReportReference } from './report-reference';
 import { parseReportBody, projectReportBodyFinal, reportCompositionProtocol, reportFinalTool, reportFlatFinalTool, reportMessages, type ComposedProject, type ReportCompositionScope } from './report-composition';
+import { assertReportBodyCitations, attachReportFactCitations } from './report-citations';
 import { assertReportGuidanceReview, prepareReportGuidanceReview, reportGuidanceFactText, reportGuidanceItems, reportGuidanceProject } from './report-guidance-review';
 import { projectReportGuidanceOnly, reportGuidanceChoices, reportGuidanceFinalTool, reportGuidanceStandardSources } from './report-guidance-final';
 import { isReminderWorkmanship, reminderWorkmanshipStage, reportWorkmanshipMatches, reportWorkmanshipName, reportWorkmanshipProtocol, reportWorkmanshipQuery, reportWorkmanshipStages, serverReminderWorkmanshipProtocol } from './report-workmanship';
@@ -350,6 +351,13 @@ export async function processReportComposition(lease: Lease, dependencies: {
       body.guidanceReviewed = guidanceSection === 'pending' ? 'pending' : true;
     }
     if (initial.selectGuidance) body.guidanceReviewed = 'pending';
+    // The knowledge-off path never asks the model for citations. Attach the
+    // exact spans of the saved originals to the server-written sections, then
+    // reject any citation that does not resolve to the current facts.
+    const citationProjects = projects.map(project => ({ projectId: project.projectId, selection: project.selection,
+      context: project.context, facts: (project.context.snapshots[0].data as ReportProject[])[0] }));
+    attachReportFactCitations(body, citationProjects);
+    assertReportBodyCitations(body, citationProjects, initial.scope.audience);
     await completeReportComposition(lease, async tx => {
       await reportGuard(tx, lease); await authorizeSources(tx);
       await tx.execute(sql`update app.construction_report_versions set body=${JSON.stringify(body)}::jsonb,knowledge_status='ready',body_generated_at=now(),body_error_code=null

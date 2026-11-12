@@ -15,7 +15,7 @@ export type CustomerMaterialReview = { id: string; version: string; messageId: s
   issueId: string; issueRevision: number; needGrantId: string; drawingGrantId: string; materialVersion: string; text: string };
 
 /** The recipient is the original opt-in consultation, never the latest or another customer thread. */
-async function validResult(tx: PostgresTransaction, eid: string, cid: string, event: Row) {
+export async function validResult(tx: PostgresTransaction, eid: string, cid: string, event: Row) {
   const p = event.payload as Row;
   if (p.conversationId !== cid) return false;
   const need = await sharedMaterial(tx, eid, String(p.projectId), String(p.needGrantId));
@@ -139,13 +139,14 @@ export async function customerSiteResults(tx: PostgresTransaction, eid: string, 
   return projected;
 }
 
-export async function syncSiteResults(tx: PostgresTransaction, actor: ActorContext, c: Row) {
+export async function syncSiteResults(tx: PostgresTransaction, actor: ActorContext, c: Row, eventId?: string) {
   if (actor.principal.kind !== 'user' || c.status !== 'open' || c.mode !== 'ai' || c.purpose !== 'customer_consultation') return 0;
   const eid = actor.enterpriseId, cid = String(c.id), uid = actor.principal.userId;
   if (!await one(tx, sql`select ent.id from app.enterprises ent join app.assistant_enterprise_settings s on s.enterprise_id=ent.id
     where ent.id=${eid} and ent.status='active' and s.enabled for share of ent,s`)) return 0;
   const events = await rows(tx, sql`select e.* from app.domain_event_outbox e where e.enterprise_id=${eid} and e.type=${resultType}
     and e.payload->>'conversationId'=${cid} and e.payload->>'customerId'=${uid}
+    ${eventId ? sql`and e.id=${eventId}` : sql``}
     and not exists(select 1 from app.domain_event_deliveries d where d.enterprise_id=e.enterprise_id and d.event_id=e.id and d.consumer_key=${'construction:result:' + cid})
     order by e.id limit 20`);
   let delivered = 0;

@@ -42,8 +42,8 @@ export async function knowledgeContext(tx: PostgresTransaction, actor: ActorCont
     const settings=await readStageSettings(tx,actor.enterpriseId),stage=currentStage(project,settings.stages);
     return {leadId:String(project.lead_id),projectId:String(project.id),revision:Number(project.progress_revision),...(stage?{stage:stage.key}:{})};
   }
-  if (actor.principal.kind!=='user' || entry.kind!=='lead') return {};
-  const leadId=String(entry.id), projects=(await customerProjects(tx,actor.enterpriseId,actor.principal.userId,leadId)).filter(p=>p.status==='active');
+  if (actor.principal.kind!=='user' || entry?.kind!=='lead') return {};
+  const leadId=String(entry.id), projects=(await customerProjects(tx,actor.enterpriseId,actor.principal.userId,leadId,true)).filter(p=>p.status==='active');
   if (projects.length!==1) return {leadId};
   const p=projects[0],settings=await readStageSettings(tx,actor.enterpriseId),stage=currentStage(p,settings.stages);
   return {leadId,projectId:String(p.id),revision:Number(p.progress_revision),...(stage?{stage:stage.key}:{})};

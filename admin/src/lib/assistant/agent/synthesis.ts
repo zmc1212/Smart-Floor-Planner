@@ -1,13 +1,14 @@
 import { AssistantError, fail, fingerprint } from '../contracts';
 import { parseAgentReply } from './context';
-import type { Evidence } from '../contracts';
+import type { Evidence, KnowledgeProvenance } from '../contracts';
+import { webAnswerBoundaryIssues } from '../web-search/trust';
 import type { BusinessSnapshot } from './business-tools';
 import type { ModelMessage } from '../contracts/model';
 import type { MaterialSource, MaterialSnapshot } from './materials';
 import type { IssueState, NeedIssueSnapshot } from '@/lib/construction/need-issues';
 import { reviewSynthesisResponse, synthesisComparisonRepairData, synthesisStatusCitationCandidates, unavailableOccupancyRooms, occupancyDiscussionRequested, occupancyReentryRequested, type SynthesisReviewContext } from './synthesis-review';
 import type { HistorySnapshot, HistoryRef } from './history';
-import { modelCitationCatalog, sourceCitationCatalog, resolveCatalogCitation, engineeringClaimText, selectedCatalogCitationIds } from './citation-catalog';
+import { modelCitationCatalog, resolveCatalogCitation, engineeringClaimText, selectedCatalogCitationIds } from './citation-catalog';
 import { withSynthesisRepairProtocol, synthesisRepairBase, finalAnswerRepairBase, isCatalogSynthesisDraft } from './synthesis-repair';
 import { formalBusinessResultKeys } from './formal-business-repair';
 import { originalAnswerOnly, independentAdviceRequested } from './read-tool-input';
@@ -19,7 +20,7 @@ import { scopedReportSynthesisSources, type ReportSourceScope } from './report-s
 import { reportCoordinationText } from './report-question-plan';
 import type { SourceQuestionCoverage } from './source-question-coverage';
 
-export type SynthesisSource = { sourceId: string; kind: 'knowledge' | 'project' | 'history' | 'web'; title: string; text: string; fullTextCitable?:true; evidence?: Evidence; web?: import('../contracts/web-source').WebSourceLocator; resultKey?: string; citationQuotes?: string[]; summaryTitle?:string|null; material?: MaterialSource; history?: HistoryRef & { seq: string };
+export type SynthesisSource = { sourceId: string; kind: 'knowledge' | 'project' | 'history' | 'web'; title: string; text: string; fullTextCitable?:true; evidence?: Evidence; knowledge?: KnowledgeProvenance; web?: import('../contracts/web-source').WebSourceLocator; resultKey?: string; citationQuotes?: string[]; summaryTitle?:string|null; material?: MaterialSource; history?: HistoryRef & { seq: string };
   followup?: Omit<IssueState, 'question' | 'value'>; reportScope?: ReportSourceScope };
 export type SynthesisSegment = { basis: 'evidence' | 'advice' | 'uncertainty'; text: string; citations: Array<{ sourceId: string; quote: string }> };
 export type SynthesisAnswer = { kind: 'synthesis'; segments: SynthesisSegment[] };
@@ -35,15 +36,23 @@ export const synthesisContextProjectionVersion = 'current-turn-sources-v9';
 export const synthesisRepairTask = '当前任务是修复上一份被拒绝的首稿。逐段落实已有诊断，必要时修改正文或引用；未改字段保留。已有引用不重复add，仅返回final_response要求的synthesis_repair编辑结构。';
 export const finalAnswerRepairTask = '当前任务是修复上一份被拒绝的最终回复。按可信校验诊断改写有误表述，不能重复被拒绝的推断；只提交final_response所要求的最终回答结构，不调用查询或保存工具，不新增事实、原因、金额、日期或来源。保留仍有依据的内容；不能确认的部分按本次可用性表达。';
 
-export function unresolvedSynthesisConflict(sources: SynthesisSource[]) {
-  if (sources.some(s => s.kind === 'knowledge' && /适用范围未核实|规则存在冲突|规则出现冲突/.test(s.text))) return true;
-  const claims=new Map<string,Set<string>>();
-  for (const s of sources) {
-    const p=s.evidence?.professional;
-    if (!p?.entry.claim || p.applicability.status==='not_applicable') continue;
-    const claim=p.entry.claim, values=claims.get(claim.key)||new Set<string>();values.add(claim.value);claims.set(claim.key,values);
+function conflictingKnowledgeClaims(sources: SynthesisSource[]) {
+  const claims = new Map<string, Map<string, Set<string>>>();
+  for (const source of sources) {
+    const professional = source.evidence?.professional, claim = professional?.entry.claim;
+    if (!claim || professional.applicability.status === 'not_applicable') continue;
+    const values = claims.get(claim.key) ?? new Map<string, Set<string>>();
+    const ids = values.get(claim.value) ?? new Set<string>();
+    ids.add(source.sourceId);
+    values.set(claim.value, ids);
+    claims.set(claim.key, values);
   }
-  return [...claims.values()].some(values=>values.size>1);
+  return [...claims.values()].filter(values => values.size > 1);
+}
+
+export function unresolvedSynthesisConflict(sources: SynthesisSource[]) {
+  return sources.some(s => s.kind === 'knowledge' && /适用范围未核实|规则存在冲突|规则出现冲突/.test(s.text))
+    || conflictingKnowledgeClaims(sources).length > 0;
 }
 
 /** Keep standard tool pairs and the actual current original after tool data.
@@ -299,7 +308,8 @@ export function synthesisQuoteHints(text:string):string[] {
   return (text.length<=400?[text]:text.split('\n')).filter(s=>s.trim().length>=4&&s.length<=400).slice(0,8);
 }
 export function knowledgeSynthesisSources(evidence: Evidence[], titles: Record<string, string> = {}): SynthesisSource[] {
-  return evidence.map(e => citableSource({ sourceId: 'K' + e.ref.id, kind: 'knowledge', title: titles[e.ref.id] || e.file?.name || '企业知识', text: e.text, evidence: e, citationQuotes:synthesisQuoteHints(e.text) }));
+  return evidence.map(e => citableSource({ sourceId: 'K' + e.ref.id, kind: 'knowledge', title: titles[e.ref.id] || e.knowledge?.title || e.file?.name || '企业知识', text: e.text, evidence: e,
+    ...(e.knowledge ? { knowledge: e.knowledge } : {}), citationQuotes:synthesisQuoteHints(e.text) }));
 }
 function citableSource(source:SynthesisSource):SynthesisSource {
   return source.kind!=='history'&&source.text.trim().length>=4&&source.text.length<=400?{...source,fullTextCitable:true}:source;
@@ -357,6 +367,14 @@ function businessSourceList(resultKey: string, snapshot: BusinessSnapshot): Synt
       return { sourceId: `B${resultKey}:followup:${followup.kind || 'need'}:${followup.issueId}`, kind: 'project' as const,
         title, summaryTitle: title, text, resultKey, followup, citationQuotes: synthesisQuoteHints(text) };
     });
+  }
+  if ('sharedSite' in snapshot) {
+    const title = '本项目实际施工进展';
+    return [{ ...aggregate, title, summaryTitle: title }, ...snapshot.data.flatMap(project => project.records.map(material => ({
+      sourceId: `B${resultKey}:site_record:${material.ref.id}`, kind: 'project' as const,
+      title: '已发布现场记录' + (material.roomName ? '（' + material.roomName + '）' : ''),
+      text: material.text, resultKey, material, citationQuotes: synthesisQuoteHints(material.text),
+    })))];
   }
   if (snapshot.query.domain === 'construction') {
     const projects = snapshot.data as Array<{ stageKey?: string | null; records?: unknown[] }>;
@@ -772,6 +790,10 @@ function checkedSynthesis(raw: string, sources: SynthesisSource[], context: Synt
         && source.evidence.file.parser.endsWith(':time-v1')
         && /(?:^|[^\d:])(?:[01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d)?(?![\d:])/.test(citation.quote)) citedClock = true;
     }
+    if (context.enterpriseKnowledgeAuthority && webAnswerBoundaryIssues(s.text, 1).some(issue => issue.startsWith('claimed_enterprise_'))
+      && !s.citations.some(citation => sources.some(source => source.sourceId === citation.sourceId && source.kind === 'knowledge'
+        && source.knowledge?.published && source.knowledge.sourceType !== 'reference_case'
+        && source.evidence?.professional?.applicability.status !== 'not_applicable'))) fail('ungrounded_response_scope', 502);
     // Source assertions retain exact numerical grounding. In explicitly bound
     // model-knowledge chat, uncited advice has the same scope as a general
     // reply. Formal commitments and project/source-role checks still run.
@@ -796,6 +818,11 @@ function checkedSynthesis(raw: string, sources: SynthesisSource[], context: Synt
   }
   if (unresolvedSynthesisConflict(sources)) {
     if (value.segments[0].basis !== 'uncertainty') fail('unresolved_evidence_conflict', 502);
+    if (context.enterpriseKnowledgeAuthority) {
+      const selected = new Set(value.segments.flatMap(segment => segment.citations.map(citation => citation.sourceId)));
+      if (conflictingKnowledgeClaims(sources).some(group => [...group.values()].some(ids => ![...ids].some(id => selected.has(id)))))
+        fail('unresolved_evidence_conflict', 502);
+    }
     for (const s of value.segments) if (s.basis === 'evidence' && /主流做法|(?:企业资料|企业规则|企业口径).{0,8}(?:倾向|优先)|按现有企业资料[，,]?倾向/.test(s.text)) fail('unresolved_evidence_conflict', 502);
   }
   if (value.segments.reduce((n, s) => n + s.text.length, 0) > 4000) fail('invalid_model_answer', 502);

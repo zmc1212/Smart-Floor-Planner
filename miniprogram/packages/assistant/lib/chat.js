@@ -73,7 +73,7 @@ class ChatController {
     this.schedule = schedule; this.unschedule = unschedule;
     this.referenceImage = referenceImage;
     this.resumeConversationId = String(resumeConversationId || ''); this.onResumeInvalid = onResumeInvalid;
-    this.state = initial(); this.epoch = 0; this.visible = false; this.ready = false;
+    this.state = initial(); this.epoch = 0; this.visible = false; this.hidden = false; this.ready = false;
     this.latestSeq = ''; this.seqConversationId = ''; this.rawMessages = null; this.lastFullSyncAt = 0; this.seqSupported = false;
   }
 
@@ -81,7 +81,7 @@ class ChatController {
 
   set(patch) { Object.assign(this.state, patch); this.emit(patch); }
   valid(epoch) { return this.epoch === epoch && this.session === this.identity(); }
-  hide() { this.visible = false; this.showTicket = (this.showTicket || 0) + 1; this.unschedule(this.timer); }
+  hide() { this.visible = false; this.hidden = true; this.showTicket = (this.showTicket || 0) + 1; this.unschedule(this.timer); }
   dispose() { this.hide(); this.epoch += 1; }
   clear() {
     this.operationalDraft = null;
@@ -97,7 +97,9 @@ class ChatController {
     if (this.flight) await this.flight;
     if (ticket !== this.showTicket) return;
     const identity = this.identity();
+    const hidden = !!this.hidden;
     if (this.session && this.session !== identity) this.clear();
+    this.hidden = false;
     this.session = identity;
     this.visible = true;
     this.options = options || this.options || {};
@@ -110,7 +112,12 @@ class ChatController {
     // A visible chat stays usable while only its current server projection is
     // synced. An empty welcome screen needs no request until its entry expires.
     if (this.ready && !this.state.fatal && !this.state.error && !target && this.entry && Date.now() < this.entryExpiry) return;
-    return this.refresh({ forceEntry: !this.ready || this.state.fatal, background: this.ready && !this.state.fatal });
+    // Only a page hide followed by show with a conversation on screen is a real
+    // resume. Revoked access reprojects messages without advancing `lastSeq`,
+    // so the resumed view must re-read the full window instead of trusting the
+    // 60s idle sync. Repeated show calls while already visible stay incremental.
+    const resume = hidden && this.ready && !this.state.fatal && !!target;
+    return this.refresh({ forceEntry: !this.ready || this.state.fatal, background: this.ready && !this.state.fatal, resume });
   }
 
   async ensureEntry(force = false) {
@@ -166,9 +173,12 @@ class ChatController {
     }
   }
 
-  refresh({ forceEntry = true, background } = {}) {
+  refresh({ forceEntry = true, background, resume = false } = {}) {
     if (!this.visible || this.state.busy) return Promise.resolve();
-    if (this.refreshFlight && this.valid(this.refreshEpoch)) return this.refreshFlight;
+    // A real resume supersedes any in-flight idle refresh: returning that
+    // flight could keep a delta/no-op read and miss the server's current
+    // projection. The new epoch invalidates the older snapshot.
+    if (!resume && this.refreshFlight && this.valid(this.refreshEpoch)) return this.refreshFlight;
     const epoch = ++this.epoch;
     this.refreshEpoch = epoch;
     this.unschedule(this.timer);
@@ -179,21 +189,21 @@ class ChatController {
       ? this.ready || !!this.state.conversation || this.state.messages.length > 0
       : background;
     this.set({ loading: !silent, error: '', fatal: false, contactLoading: false });
-    const flight = this.refreshState(epoch, forceEntry, !!background).finally(() => {
+    const flight = this.refreshState(epoch, forceEntry, !!background, resume).finally(() => {
       if (this.refreshFlight === flight) this.refreshFlight = null;
     });
     this.refreshFlight = flight;
     return flight;
   }
 
-  async refreshState(epoch, forceEntry, background) {
+  async refreshState(epoch, forceEntry, background, resume = false) {
     try {
       const entry = await this.ensureEntry(forceEntry);
       if (!this.valid(epoch) || !entry) return;
       // History is read by loadHistory when its sheet is opened, independently
       // of the conversation's critical path and availability.
       const target = this.conversationId || (!this.startedNew && (this.options.conversationId || this.entry.resumeConversationId));
-      if (target) await this.snapshot(target, epoch, background);
+      if (target) await this.snapshot(target, epoch, background, resume);
       if (!this.valid(epoch)) return;
       this.ready = true;
       this.setIf(epoch, { loading: false, error: this.state.pendingSend
@@ -228,12 +238,14 @@ class ChatController {
     }, delay);
   }
 
-  async snapshot(id, epoch, background = false) {
+  async snapshot(id, epoch, background = false, resume = false) {
     const ticket = this.snapshotTicket = (this.snapshotTicket || 0) + 1;
     // A conversation this view has never synced has no cursor to seek from, so
     // its full window is known upfront and still loads alongside the metadata.
-    // A server that did not report `lastSeq` cannot answer a delta either.
-    const full = this.seqConversationId === id && this.latestSeq && this.seqSupported
+    // A server that did not report `lastSeq` cannot answer a delta either. A
+    // real resume always reprojects the window: access can be revoked without
+    // any new sequence.
+    const full = !resume && this.seqConversationId === id && this.latestSeq && this.seqSupported
       ? null
       : this.client.read(`/conversations/${id}/messages`, { limit: WINDOW });
     // A stale or backgrounded snapshot can discard this read before awaiting it.
@@ -243,7 +255,7 @@ class ChatController {
     if (background && (!this.visible || this.state.busy || this.state.pendingSend || this.state.pendingAction)) {
       this.scheduleConversation(id, epoch); return;
     }
-    const window = await this.readWindow(id, conversation, full);
+    const window = await this.readWindow(id, conversation, full, resume);
     if (!this.valid(epoch) || ticket !== this.snapshotTicket) return;
     if (background && (!this.visible || this.state.busy || this.state.pendingSend || this.state.pendingAction)) {
       this.scheduleConversation(id, epoch); return;
@@ -254,7 +266,7 @@ class ChatController {
     if (pendingMessage) this.set({ pendingSend: true, pendingText: pendingMessage.body.content.blocks[0].text, draft: pendingMessage.body.content.blocks[0].text });
     if (pendingHandoff) this.set({ pendingAction: 'handoff:' + pendingHandoff.body.action });
     this.set({ conversation, readOnly: conversation.status !== 'open' || !['ai', 'human', 'handoff_requested'].includes(conversation.mode) });
-    if (window) this.applyWindow(window);
+    if (window) this.commitWindow(window);
     this.set({ welcomeText: conversation.guidanceOpening || WELCOME, guidanceEnabled: !!conversation.guidanceEnabled, guidance: conversation.guidance || null,
       ...(!sameQuestion ? { selectedOptions: [], selectedOptionMap: {} } : {}) });
     this.applyRun(conversation.mode === 'ai' ? conversation.latestRun : null);
@@ -265,28 +277,41 @@ class ChatController {
 
   // Reads the authoritative conversation metadata, then only the messages that
   // this view does not already render. Returns null when the rendered window is
-  // still current, so an idle poll never rewrites the message list.
-  async readWindow(id, conversation, full) {
+  // still current, so an idle poll never rewrites the message list. Otherwise it
+  // returns `{ view, cache }` without touching any internal state: a read can
+  // finish after a newer snapshot (or after the conversation lost access), and
+  // its projection must never become the baseline a later delta merges into.
+  // `commitWindow` performs that write only while the request is still current.
+  async readWindow(id, conversation, full, resume = false) {
     const latest = conversation.lastSeq === undefined || conversation.lastSeq === null ? '' : String(conversation.lastSeq);
-    this.seqSupported = latest !== '';
+    const seqSupported = latest !== '';
     const synced = this.seqConversationId === id ? this.latestSeq : '';
     // Withdrawn sources and media never advance a sequence, so the window is
     // reprojected in full at a bounded interval even while nothing is appended.
     const stale = Date.now() - this.lastFullSyncAt >= FULL_SYNC_MS;
-    if (latest && synced && latest === synced && !stale) return null;
-    if (!stale && latest && synced && withinBacklog(synced, latest, MAX_BACKLOG)) {
-      const delta = await this.readDelta(id, synced);
-      if (delta) return delta;
+    // A resume is an explicit re-read: skip the cursor shortcut and the delta
+    // path entirely so the server's current projection replaces the rendered
+    // one even when `lastSeq` and the full-sync clock say it is still current.
+    if (!resume) {
+      if (latest && synced && latest === synced && !stale) return null;
+      if (!stale && latest && synced && withinBacklog(synced, latest, MAX_BACKLOG)) {
+        const delta = await this.readDelta(id, synced);
+        if (delta) return delta;
+      }
     }
     const data = await (full || this.client.read(`/conversations/${id}/messages`, { limit: WINDOW }));
     const items = data.items || [];
-    this.rawMessages = items; this.seqConversationId = id; this.lastFullSyncAt = Date.now();
-    this.latestSeq = data.latestSeq !== undefined
+    const latestSeq = data.latestSeq !== undefined
       ? String(data.latestSeq)
       : items.reduce((newest, item) => seqOrder(item.seq, newest) > 0 ? String(item.seq) : newest, latest);
-    return { messages: messagesForView(items), messageCursor: data.nextCursor };
+    return {
+      view: { messages: messagesForView(items), messageCursor: data.nextCursor },
+      cache: { rawMessages: items, seqConversationId: id, lastFullSyncAt: Date.now(), latestSeq, seqSupported },
+    };
   }
 
+  // Every page of a burst is read before anything is returned, so a discarded
+  // delta leaves no partially merged cursor behind.
   async readDelta(id, cursor) {
     let after = cursor, incoming = [], latestSeq = cursor, drained = false;
     for (let page = 0; page < DELTA_PAGES; page += 1) {
@@ -303,14 +328,21 @@ class ChatController {
       if (data.latestSeq !== undefined && seqOrder(data.latestSeq, latestSeq) > 0) latestSeq = String(data.latestSeq);
       if (!data.hasMore) { drained = true; break; }
     }
-    // Filtered sequences can advance last_seq without a visible message; keep
-    // the cursor and skip the redraw until something is rendered.
-    this.seqConversationId = id;
-    this.latestSeq = drained && seqOrder(latestSeq, after) > 0 ? latestSeq : after;
+    // Filtered sequences can advance last_seq without a visible message; the
+    // window read below then advances the cursor without a redraw.
     if (!incoming.length) return null;
     const raw = mergeMessages(this.rawMessages || [], incoming);
-    this.rawMessages = raw;
-    return { messages: this.windowView(raw), messageCursor: this.state.messageCursor, appended: incoming.length };
+    return {
+      view: { messages: this.windowView(raw), messageCursor: this.state.messageCursor, appended: incoming.length },
+      cache: { rawMessages: raw, seqConversationId: id, latestSeq: drained && seqOrder(latestSeq, after) > 0 ? latestSeq : after },
+    };
+  }
+
+  // The single write point for a read result. Callers must have re-checked the
+  // epoch, conversation and snapshot ticket first.
+  commitWindow(window) {
+    Object.assign(this, window.cache);
+    if (window.view) this.applyWindow(window.view);
   }
 
   // A delta that only grew the tail keeps the rendered prefix untouched and

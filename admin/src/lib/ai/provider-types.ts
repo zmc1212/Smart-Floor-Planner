@@ -121,6 +121,9 @@ export type ProviderHttpDiagnostic = {
   requestId: string | null;
   responseBytes: number;
   responseHash: string;
+  /** Parsed `Retry-After` delay for throttling/overload responses, in ms.
+   * Absent when the provider sent no usable header. */
+  retryAfterMs?: number | null;
 };
 
 /** Invalid successful HTTP responses retain shape and billing clues, never

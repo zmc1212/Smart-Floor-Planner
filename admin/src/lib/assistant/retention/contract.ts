@@ -57,6 +57,8 @@ export const PRESERVED_RETENTION_DATA = [
   'assistant_knowledge_versions',
   'assistant_knowledge_chunks',
   'assistant_knowledge_attempts',
+  'assistant_managed_knowledge_libraries',
+  'assistant_managed_knowledge_imports',
 ] as const;
 
 export function retentionCutoff(now: Date, retentionDays: number): Date {

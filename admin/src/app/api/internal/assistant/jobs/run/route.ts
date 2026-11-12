@@ -5,6 +5,7 @@ import { processAssistantJob } from '@/lib/assistant/infrastructure/job-queue';
 import { processAssistantRun } from '@/lib/assistant/application/worker';
 import { deliverSiteNotifications } from '@/lib/construction/site-publications';
 import { deliverPublicConsents } from '@/lib/construction/public-projections';
+import { runDelegationTick } from '@/lib/native-workflow/live/delegation-worker';
 import { workerRuntimeSnapshot } from '@/lib/assistant/operations';
 import { advanceKnowledgeBatches } from '@/lib/assistant/knowledge/batch-worker';
 import { processPortfolioCopy } from '@/lib/portfolio/copy-service';
@@ -23,11 +24,30 @@ export async function POST(request: Request) {
     if ((await request.text()).trim() && (request.headers.get('content-length') !== '0')) {
       return NextResponse.json({ success: false, code: 'invalid_message', requestId }, { status: 422 });
     }
+    // The B5.9 weekly scheduler runs inside this existing Worker tick. It is
+    // loaded only when the enterprise allowlist is explicitly enabled; a
+    // failure is isolated and never blocks the existing assistant/report jobs.
+    let nativeWorkflowSchedule: unknown = null;
+    const scheduleFlag = process.env.NATIVE_WORKFLOW_SCHEDULE_ENABLED?.trim().toLowerCase();
+    if (scheduleFlag === '1' || scheduleFlag === 'true') {
+      try {
+        const { runNativeWorkflowScheduleTick } = await import(
+          '@/lib/native-workflow/live/period-report-schedule-runtime'
+        );
+        nativeWorkflowSchedule = await runNativeWorkflowScheduleTick();
+      } catch (error) {
+        nativeWorkflowSchedule = {
+          enabled: true,
+          error: error instanceof Error ? error.message.slice(0, 200) : 'native_workflow_schedule_unavailable',
+        };
+      }
+    }
     const knowledgeBatchChecks=await advanceKnowledgeBatches();
     const constructionReportChecks = await advanceConstructionReports();
     const data = await processAssistantJob(processAssistantRun), inAppDeliveries = await deliverSiteNotifications() + await deliverPublicConsents() + await deliverConstructionReports();
+    const delegation = await runDelegationTick();
     const portfolioCopyClaimed = data.claimed ? false : await processPortfolioCopy();
-    return NextResponse.json({ success: true, data: { ...data, claimed: data.claimed || portfolioCopyClaimed || inAppDeliveries > 0, portfolioCopyClaimed, inAppDeliveries, knowledgeBatchChecks, constructionReportChecks }, requestId });
+    return NextResponse.json({ success: true, data: { ...data, claimed: data.claimed || portfolioCopyClaimed || inAppDeliveries > 0, portfolioCopyClaimed, inAppDeliveries, delegation, knowledgeBatchChecks, constructionReportChecks, nativeWorkflowSchedule }, requestId });
   } catch {
     return NextResponse.json({ success: false, code: 'assistant_unavailable', requestId }, { status: 503 });
   }

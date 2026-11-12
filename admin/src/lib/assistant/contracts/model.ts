@@ -21,17 +21,28 @@ export type ModelTurnInput = {
   /** Server-bound report final allocation; never a provider wire argument. */
   reportFinalOutputTokens?: typeof reportFinalOutputTokenLimit;
   cacheControl?: 'implicit' | 'ephemeral_system';
+  /** Server-owned application tools already cover web retrieval for this turn. */
+  applicationWebSearch?: true;
   /** Server-bound opt-in only; never emitted as a provider/model argument. */
   profile?: 'bailian-deepseek-flash-consultation-v1' | 'bailian-qwen37-flash-long-v1'; deadlineAt?: number;
 };
 export type ModelTurnOutput = {
   text: string; toolCalls: ModelToolCall[]; finishReason: string | null; providerRequestId: string | null;
+  /** Provider-side native tool evidence (Bailian Responses API only). Absent on
+   * the Chat Completions wire so existing runs and checkpoints are unchanged. */
+  nativeTools?: import('./native-tools').NativeToolEvidence;
   /** Server-created wire compatibility evidence, retained only in private run
    * checkpoints. Never copied to safe provider metadata or customer messages. */
   wireNormalization?: { protocol: 'qwen37-final-trailing-brace-v1'; rawArguments: string; normalizedHash: string };
   usage: { inputTokens: number; outputTokens: number; cachedInputTokens?: number; cacheWriteInputTokens?: number } | null;
   observation?: { latencyMs: number; cache: ReturnType<typeof import('@/lib/ai/providers/model-observation').cacheObservation>;
     prefix: ReturnType<typeof import('@/lib/ai/providers/model-observation').modelPrefixObservation>;
+    /** Wire protocol actually used; Chat Completions is the pre-existing default. */
+    protocol?: 'chat-completions' | 'responses';
+    /** Metadata-only request evidence for the Responses wire. */
+    request?: Record<string, unknown>;
+    /** Provider-side retries performed after an explicit pre-execution rejection. */
+    retries?: number;
     format?: { mode:string;jsonValid:boolean;schemaValid:boolean|null;schemaValidation?:'application' } };
   /** Application bridge metadata; never parsed from provider-controlled fields. */
   toolProtocolFeedback?: { code: 'mixed_final_response'; text: string };

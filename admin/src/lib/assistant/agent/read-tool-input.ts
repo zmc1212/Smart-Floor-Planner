@@ -8,6 +8,7 @@ import { originalMessageId } from './context-budget';
 import { explicitNeedWriteStatement } from './memory';
 import { webSearchTool, parseWebQuery } from './web';
 import { readWebTool, parsePublicRead } from './public-research';
+import { isKnowledgeTool } from '../knowledge/rag-tools';
 
 export const sourceReadProtocol = 'original-source-read-v1';
 export const sourceAnswerProtocol = 'question-source-scope-v2';
@@ -73,10 +74,10 @@ export function knowledgeReadPending(question: string, messages: ModelMessage[],
     let requestIndex = index - 1;
     while (requestIndex > start && messages[requestIndex].role === 'tool') requestIndex--;
     const request = messages[requestIndex];
-    if (request?.role !== 'assistant' || !request.toolCalls?.some(call => call.id === message.callId && call.name === 'search_knowledge')) return false;
+    if (request?.role !== 'assistant' || !request.toolCalls?.some(call => call.id === message.callId && (call.name === 'search_knowledge' || isKnowledgeTool(call.name)))) return false;
     try {
       const packet = JSON.parse(message.content);
-      return ['ready', 'not_ready'].includes(packet?.knowledgeStatus) && Array.isArray(packet.evidence) && Array.isArray(packet.synthesisSources);
+      return ['ready', 'not_ready', 'empty', 'unavailable'].includes(packet?.knowledgeStatus) && Array.isArray(packet.evidence) && Array.isArray(packet.synthesisSources);
     } catch { return false; }
   });
 }

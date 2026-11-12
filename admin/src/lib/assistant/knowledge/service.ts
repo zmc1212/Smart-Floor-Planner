@@ -4,7 +4,7 @@ import { withTenantTransaction, type PostgresTransaction } from '@/db/transactio
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { idempotent } from '../core/conversation';
 import { fail, fingerprint, id, type ActorContext } from '../contracts';
-import { EMBEDDING_PROFILE } from '../infrastructure/embedding-gateway';
+import { configuredEmbeddingProfile } from '../infrastructure/embedding-gateway';
 import { authorizeKnowledgeManager } from './manager';
 import { prepareReferenceCase, referenceContent } from './reference-case';
 import { createContentEntry, contentChannel } from './content-entry';
@@ -13,6 +13,9 @@ import { fileContent, uploadedFile } from './source-file';
 import { storeOriginal, queueFileParse, reviewFile } from './file-service';
 import type { SourceFile } from '../contracts/source-file';
 import { parseMineruPage, type MineruPage } from './mineru';
+import { assertKnowledgeText } from './provenance';
+import { knowledgeProviderMode } from './bailian-provider';
+import { managedProfile, revokeManagedImports, sourceIndexReady } from './managed-store';
 
 export type KnowledgeActor = { enterpriseId: string; adminId: string };
 export function text(value: unknown, max: number, allowEmpty = false): string {
@@ -28,12 +31,14 @@ export function content(source: string, input: Row) {
     const file = input.source_file as SourceFile | null;
     if (!file?.parsed || !file.review || input.professional != null) fail('knowledge_file_review_required');
     const c = fileContent(file);
+    assertKnowledgeText(c.rendered);
     return { ...c, faq: [], reference: null, professional: null };
   }
   const body = text(input.body ?? '', 16000, true);
   if (source === 'reference_case') {
     if (Array.isArray(input.faq) && input.faq.length) fail('invalid_reference_case', 422);
     const c = referenceContent(body, input.referenceCase ?? input.reference_case);
+    assertKnowledgeText(c.rendered);
     return { body, faq: [], rendered: c.rendered, hash: c.hash, reference: c.reference, professional: null };
   }
   if (input.referenceCase != null || input.reference_case != null) fail('invalid_reference_case', 422);
@@ -48,6 +53,7 @@ export function content(source: string, input: Row) {
   const original = source === 'faq' ? items.map(f => `问：${f.question}\n答：${f.answer}`).join('\n\n') : body;
   const rendered = professional ? professionalText(professional)+'\n\n'+original : original;
   if (rendered.length > 16000 || Buffer.byteLength(rendered) > 48000) fail('invalid_message', 422);
+  assertKnowledgeText(rendered);
   return { body, faq: items, rendered, hash: fingerprint({ source, body, faq: items, ...(professional ? {professional} : {}) }), reference: null, professional };
 }
 function validity(input: Row) {
@@ -69,15 +75,22 @@ export async function knowledgeManager(tx: PostgresTransaction, actor: Knowledge
   return settings;
 }
 export async function activeProfile(tx: PostgresTransaction, enterpriseId: string, settings: Row, initialize = false) {
-  if (!settings.active_index_profile_id && initialize) {
+  if (knowledgeProviderMode() === 'bailian') return managedProfile(tx, enterpriseId, settings, initialize);
+  const configured = configuredEmbeddingProfile();
+  if (initialize && !await one(tx, sql`select 1 from pg_attribute a join pg_type t on t.oid=a.atttypid
+    where a.attrelid='app.assistant_knowledge_chunks'::regclass and a.attname='embedding' and t.typname='vector'`))
+    fail('local_vector_unavailable', 503);
+  const existing = settings.active_index_profile_id ? await one(tx, sql`select configuration from app.assistant_knowledge_index_profiles
+    where enterprise_id=${enterpriseId} and id=${String(settings.active_index_profile_id)}`) : undefined;
+  if ((!settings.active_index_profile_id || (existing && (existing.configuration as Row)?.provider==='bailian')) && initialize) {
     const profile = (await one(tx, sql`insert into app.assistant_knowledge_index_profiles(enterprise_id,profile_key,configuration)
-      values(${enterpriseId},${EMBEDDING_PROFILE.id},${JSON.stringify(EMBEDDING_PROFILE)}::jsonb)
+      values(${enterpriseId},${configured.id},${JSON.stringify(configured)}::jsonb)
       on conflict(enterprise_id,profile_key) do update set profile_key=excluded.profile_key returning *`))!;
     await tx.execute(sql`update app.assistant_enterprise_settings set active_index_profile_id=${String(profile.id)} where enterprise_id=${enterpriseId}`);
     settings.active_index_profile_id = profile.id;
   }
   const profile = await one(tx, sql`select * from app.assistant_knowledge_index_profiles where enterprise_id=${enterpriseId} and id=${settings.active_index_profile_id ?? null} and status='active'`);
-  if (!profile || fingerprint(profile.configuration) !== fingerprint(EMBEDDING_PROFILE)) fail('retrieval_unavailable', 503);
+  if (!profile || profile.profile_key !== configured.id || fingerprint(profile.configuration) !== fingerprint(configured)) fail('retrieval_unavailable', 503);
   return profile;
 }
 export async function knowledgeEvent(tx: PostgresTransaction, actor: KnowledgeActor, documentId: string, type: string, documentVersion: number) {
@@ -101,22 +114,41 @@ export class KnowledgeService {
           const limit = input.limit === undefined ? 20 : expected(input.limit);
           if (limit > 100) fail('invalid_message',422);
           return { items: await rows(tx, sql`select * from app.assistant_knowledge_documents where enterprise_id=${a.enterpriseId}
-            ${input.beforeId ? sql`and id<${id(input.beforeId)}` : sql``} order by id desc limit ${limit}`) };
+            ${input.beforeId ? sql`and id<${id(input.beforeId)}` : sql``}
+            ${input.projectId !== undefined ? sql`and project_id=${id(input.projectId)}` : sql``}
+            ${input.category !== undefined ? sql`and category=${text(input.category,100,true)}` : sql``} order by id desc limit ${limit}`) };
         }
         if (action === 'job') {
           const job = await one(tx, sql`select id,knowledge_version_id,index_profile_id,status,attempts,last_error,created_at,updated_at from app.assistant_jobs
             where enterprise_id=${a.enterpriseId} and id=${id(input.jobId)} and kind in ('knowledge_index','knowledge_parse')`);
           if (!job) fail('assistant_resource_not_found',404);
-          return job;
+          const managed = await one(tx,sql`select i.ready,i.revoked_at,i.removed_at,i.cleanup_error,i.cleanup_request_id,i.indexed_request_id,
+            i.file_id is not null as uploaded,i.index_document_id is not null as indexed
+            from app.assistant_managed_knowledge_imports i where i.enterprise_id=${a.enterpriseId} and i.job_id=${String(job.id)}`);
+          const attempts = managed ? await rows(tx,sql`select operation,status,error_code,provider_request_id from app.assistant_knowledge_attempts
+            where enterprise_id=${a.enterpriseId} and job_id=${String(job.id)} order by id`) : [];
+          return { ...job, ...(managed ? { managed, attempts } : {}) };
+        }
+        async function createDocument(source: string, audience: string) {
+          const title = text(input.title, 200), category = text(input.category ?? '', 100, true);
+          assertKnowledgeText(title, category);
+          const projectId = input.projectId == null ? null : id(input.projectId);
+          if (projectId && !await one(tx, sql`select id from app.construction_projects where enterprise_id=${a.enterpriseId}
+            and id=${projectId} and status='active' for share`)) fail('assistant_resource_not_found', 404);
+          return (await one(tx, sql`insert into app.assistant_knowledge_documents
+            (enterprise_id,title,category,source_type,audience,scope,project_id,created_by,updated_by)
+            values(${a.enterpriseId},${title},${category},${source},${audience},${projectId ? 'project' : 'enterprise'},
+              ${projectId},${a.adminId},${a.adminId}) returning *`))!;
         }
         if (action === 'createFile') {
           const audience = input.audience ?? 'staff_internal';
           if (!['customer_public','staff_internal'].includes(String(audience))) fail('invalid_message',422);
-          const d = (await one(tx,sql`insert into app.assistant_knowledge_documents(enterprise_id,title,category,source_type,audience,created_by,updated_by)
-            values(${a.enterpriseId},${text(input.title,200)},${text(input.category ?? '',100,true)},'file',${String(audience)},${a.adminId},${a.adminId}) returning *`))!;
+          const dates = validity(input), d = await createDocument('file', String(audience));
           const file = await storeOriginal(tx,a,String(d.id),input), c = fileContent(file);
-          const v = (await one(tx,sql`insert into app.assistant_knowledge_versions(enterprise_id,document_id,version_number,source_asset_id,source_file,content_hash,created_by)
-            values(${a.enterpriseId},${String(d.id)},1,${file.assetId},${JSON.stringify(file)}::jsonb,${c.hash},${a.adminId}) returning *`))!;
+          const v = (await one(tx,sql`insert into app.assistant_knowledge_versions
+            (enterprise_id,document_id,version_number,source_asset_id,source_file,content_hash,effective_from,effective_to,created_by)
+            values(${a.enterpriseId},${String(d.id)},1,${file.assetId},${JSON.stringify(file)}::jsonb,${c.hash},
+              coalesce(${dates.from}::timestamptz,now()),${dates.to}::timestamptz,${a.adminId}) returning *`))!;
           return {document:d,draft:v,...await queueFileParse(tx,a,v)};
         }
         if (action === 'create') {
@@ -124,8 +156,7 @@ export class KnowledgeService {
           if (!['faq','manual_text','reference_case'].includes(String(source)) || !['customer_public','staff_internal'].includes(String(input.audience))) fail('invalid_message',422);
           if (source==='reference_case' && input.professional != null) fail('invalid_professional_knowledge',422);
           const c = content(String(source),{...input,professional:professionalKnowledge(input.professional,{adminId:a.adminId,reviewedAt:new Date().toISOString()})}), dates = validity(input);
-          const d = (await one(tx, sql`insert into app.assistant_knowledge_documents(enterprise_id,title,category,source_type,audience,created_by,updated_by)
-            values(${a.enterpriseId},${text(input.title,200)},${text(input.category ?? '',100,true)},${String(source)},${String(input.audience)},${a.adminId},${a.adminId}) returning *`))!;
+          const d = await createDocument(String(source), String(input.audience));
           const v = (await one(tx, sql`insert into app.assistant_knowledge_versions(enterprise_id,document_id,version_number,body,faq,reference_case,professional,content_hash,effective_from,effective_to,created_by)
             values(${a.enterpriseId},${String(d.id)},1,${c.body},${JSON.stringify(c.faq)}::jsonb,${c.reference ? JSON.stringify(c.reference) : null}::jsonb,${c.professional ? JSON.stringify(c.professional) : null}::jsonb,${c.hash},coalesce(${dates.from}::timestamptz,now()),${dates.to}::timestamptz,${a.adminId}) returning *`))!;
           return { document: d, draft: v };
@@ -138,7 +169,7 @@ export class KnowledgeService {
             where j.enterprise_id=v.enterprise_id and j.knowledge_version_id=v.id and j.kind='knowledge_parse' order by j.id desc limit 1) as parse_job
           from app.assistant_knowledge_versions v where v.enterprise_id=${a.enterpriseId} and v.document_id=${did} order by v.version_number desc`) };
         if (action === 'share') {
-          if (expected(input.expectedVersion)!==Number(d.version) || d.status!=='active' || d.audience!=='customer_public' || d.source_type!=='reference_case') fail('reference_unavailable');
+          if (expected(input.expectedVersion)!==Number(d.version) || d.status!=='active' || d.audience!=='customer_public' || d.source_type!=='reference_case' || d.scope!=='enterprise') fail('reference_unavailable');
           const version=await one(tx,sql`select * from app.assistant_knowledge_versions where enterprise_id=${a.enterpriseId} and id=${String(d.published_version_id)}
             and published_at is not null and index_status='ready' and indexed_hash=content_hash and effective_from<=now() and (effective_to is null or effective_to>now())`);
           if (!version) fail('reference_unavailable');
@@ -150,7 +181,9 @@ export class KnowledgeService {
         if (action === 'metadata') {
           const audience = input.audience ?? d.audience;
           if (!['customer_public','staff_internal'].includes(String(audience))) fail('invalid_message',422);
-          const result = (await one(tx, sql`update app.assistant_knowledge_documents set title=${text(input.title ?? d.title,200)},category=${text(input.category ?? d.category,100,true)},
+          const title = text(input.title ?? d.title,200), category = text(input.category ?? d.category,100,true);
+          assertKnowledgeText(title, category);
+          const result = (await one(tx, sql`update app.assistant_knowledge_documents set title=${title},category=${category},
             audience=${String(audience)},updated_by=${a.adminId},version=version+1,updated_at=now() where enterprise_id=${a.enterpriseId} and id=${did} returning *`))!;
           await knowledgeEvent(tx,a,did,'assistant.knowledge.visibility.v1',Number(result.version)); return result;
         }
@@ -159,6 +192,7 @@ export class KnowledgeService {
             where enterprise_id=${a.enterpriseId} and id=${did} returning *`))!;
           await tx.execute(sql`update app.assistant_jobs set status='cancelled',lease_token=null,lease_expires_at=null,last_error='context_changed',updated_at=now()
             where enterprise_id=${a.enterpriseId} and knowledge_version_id in (select id from app.assistant_knowledge_versions where enterprise_id=${a.enterpriseId} and document_id=${did}) and status in ('queued','running')`);
+          await revokeManagedImports(tx,a.enterpriseId,did);
           await knowledgeEvent(tx,a,did,'assistant.knowledge.retired.v1',Number(result.version));return result;
         }
         const v = await one(tx, sql`select * from app.assistant_knowledge_versions where enterprise_id=${a.enterpriseId} and document_id=${did} and id=${id(action==='newVersion'?input.fromVersionId:input.versionId)} for update`);
@@ -230,8 +264,8 @@ export class KnowledgeService {
             index_status='pending',indexed_hash=null,chunk_count=0,effective_from=${dates.from}::timestamptz,effective_to=${dates.to}::timestamptz,updated_at=now()
             where enterprise_id=${a.enterpriseId} and id=${String(v.id)} returning *`))!;
         }
-        const profile = await activeProfile(tx,a.enterpriseId,settings,true);
         if (action === 'index') {
+          const profile = await activeProfile(tx,a.enterpriseId,settings,true);
           if (v.published_at || d.status==='retired') fail('version_conflict');
           content(String(d.source_type),v);
           const dedupe = `knowledge:${v.id}:${v.edit_version}:${v.content_hash}:${profile.id}`;
@@ -246,18 +280,25 @@ export class KnowledgeService {
           return {jobId:String(job.id),status:job.status};
         }
         if (action === 'publish') {
+          if (d.status === 'retired') fail('version_conflict');
+          if (d.scope === 'project' && !await one(tx, sql`select id from app.construction_projects
+            where enterprise_id=${a.enterpriseId} and id=${d.project_id ?? null} and status='active' for share`))
+            fail('assistant_resource_not_found',404);
           // A future replacement must not hide the still-effective published version.
-          const ready = await one(tx,sql`select id from app.assistant_knowledge_versions where enterprise_id=${a.enterpriseId} and id=${String(v.id)}
-            and index_status='ready' and indexed_hash=content_hash and index_profile_id=${String(profile.id)} and chunk_count>0
-            ${d.published_version_id?sql`and effective_from<=now()`:sql``}
-            and (effective_to is null or effective_to>now())`);
+          const ready = await one(tx,sql`select v.id from app.assistant_knowledge_versions v
+            join app.assistant_enterprise_settings s on s.enterprise_id=v.enterprise_id
+            where v.enterprise_id=${a.enterpriseId} and v.id=${String(v.id)}
+            and v.index_status='ready' and v.indexed_hash=v.content_hash and ${sourceIndexReady} and v.chunk_count>0
+            ${d.published_version_id?sql`and v.effective_from<=now()`:sql``}
+            and (v.effective_to is null or v.effective_to>now())`);
           if (!ready || content(String(d.source_type),v).hash!==v.content_hash) fail('knowledge_not_ready');
           const count = (await one(tx,sql`select count(*) n from app.assistant_knowledge_chunks where enterprise_id=${a.enterpriseId} and document_version_id=${String(v.id)}
-            and index_profile_id=${String(profile.id)} and content_hash=${String(v.content_hash)}`))!;
+            and index_profile_id=${String(v.index_profile_id)} and content_hash=${String(v.content_hash)}`))!;
           if (Number(count.n)!==Number(v.chunk_count)) fail('knowledge_not_ready');
           if (!v.published_at) await tx.execute(sql`update app.assistant_knowledge_versions set published_at=now(),published_by=${a.adminId} where enterprise_id=${a.enterpriseId} and id=${String(v.id)}`);
           const result = (await one(tx,sql`update app.assistant_knowledge_documents set published_version_id=${String(v.id)},status='active',version=version+1,updated_at=now(),updated_by=${a.adminId}
             where enterprise_id=${a.enterpriseId} and id=${did} returning *`))!;
+          await revokeManagedImports(tx,a.enterpriseId,did,String(v.id));
           await knowledgeEvent(tx,a,did,'assistant.knowledge.published.v1',Number(result.version));return result;
         }
         return fail('assistant_resource_not_found',404);

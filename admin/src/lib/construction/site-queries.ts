@@ -7,6 +7,7 @@ import { readSiteIssue, type IssueView } from './site-issues';
 import { sharedMaterials } from './site-materials';
 import { projectPlans, readPlan, planText } from './site-plans';
 import { readSiteActionResponse } from './site-actions';
+import { siteRecordText, type SiteDraft } from './site-contract';
 
 /** Conservative, bounded routing before any record/job is created. Ambiguity has no business side effect. */
 export function siteMessageIntent(raw: string, photoCount: number): 'report' | 'query' | 'request' | 'clarify' {
@@ -58,7 +59,7 @@ export async function querySiteIssues(tx: PostgresTransaction, eid: string, pid:
 }
 
 /** Caller must already hold SiteChatService's tenant, live-project and actor authorization. Never searches customer consultations. */
-export async function querySiteMaterials(tx: PostgresTransaction, eid: string, pid: string, query: SiteQuery): Promise<SiteMaterialSnapshot> {
+export async function querySiteMaterials(tx: PostgresTransaction, eid: string, pid: string, query: SiteQuery, publishedRecordsOnly = false): Promise<SiteMaterialSnapshot> {
   const sources: Row[] = [], lines: string[] = [];
   const room = query.roomId ? await one(tx, sql`select id,name from app.construction_rooms where enterprise_id=${eid} and project_id=${pid} and id=${query.roomId} for share`) : null;
   const validRoom = !query.roomId || room?.name === query.roomName;
@@ -68,19 +69,25 @@ export async function querySiteMaterials(tx: PostgresTransaction, eid: string, p
     const records = await rows(tx, sql`select r.id,r.version,r.status,r.data,r.room_id,r.room_name_snapshot,r.source_message_id,m.content
       from app.construction_site_records r join app.assistant_messages m on m.enterprise_id=r.enterprise_id and m.id=r.source_message_id and m.conversation_id=r.conversation_id
       where r.enterprise_id=${eid} and r.project_id=${pid} and r.status in ('draft','published')
+        ${publishedRecordsOnly ? sql`and r.status='published'` : sql``}
         ${query.roomId ? sql`and r.room_id=${query.roomId} and r.room_name_snapshot=${query.roomName}` : sql``}
       order by r.id desc limit 10 for share of r,m`);
     for (const r of records) {
       const media = await rows(tx, sql`select m.id,m.source_hash from app.construction_site_attachments a join app.construction_site_media m
         on m.enterprise_id=a.enterprise_id and m.project_id=a.project_id and m.id=a.media_id
         where a.enterprise_id=${eid} and a.project_id=${pid} and a.record_id=${String(r.id)} and m.deleted_at is null order by a.position`);
-      const original = safeText(r.content as Parameters<typeof safeText>[0]);
+      const record = r.data as SiteDraft;
+      const original = publishedRecordsOnly ? siteRecordText(record, String(r.room_name_snapshot || ''))
+        : safeText(r.content as Parameters<typeof safeText>[0]);
       sources.push({ ref: { type: 'site_record', id: String(r.id), version: Number(r.version) }, sourceMessageId: String(r.source_message_id),
         roomId: r.room_id ? String(r.room_id) : null, roomName: String(r.room_name_snapshot), mediaIds: media.map(m => String(m.id)),
-        hash: fingerprint({ content: r.content, data: r.data, status: r.status, media }), audience: 'project_members', basis: 'explicit_project_record', text: original });
+        hash: fingerprint({ content: r.content, data: r.data, status: r.status, media }), audience: 'project_members', basis: 'explicit_project_record', text: original,
+        ...(publishedRecordsOnly ? { siteCompleted: record.completed } : {}) });
       lines.push(`记录${r.id} · 版本${r.version} · ${r.room_name_snapshot || '部位待核对'}${r.status === 'draft' ? '（待核对草稿）' : '（已核对发布）'}：${original.slice(0,1200)}${media.length ? '\n原现场照片：' + media.length + '张，可在本条原记录查看。' : ''}`);
     }
     if (!sources.length) lines.push('本项目该范围内还没有可关联的有效现场记录。');
+    if (publishedRecordsOnly) return { query, projectId: pid, version: fingerprint({ query, validRoom, sources }),
+      sources, queriedAt: new Date().toISOString(), text: lines.join('\n') };
     const rooms = query.roomId ? [{ id: query.roomId }] : await rows(tx, sql`select id from app.construction_rooms where enterprise_id=${eid} and project_id=${pid} order by id`);
     const shared = [];
     for (const room of rooms) shared.push(...(await sharedMaterials(tx, eid, pid, String(room.id))).sources);

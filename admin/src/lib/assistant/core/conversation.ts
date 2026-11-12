@@ -1,6 +1,9 @@
 import { sql } from 'drizzle-orm';
 import { minimalDialogueProtocol } from '../agent/minimal-dialogue';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
+import { delegationsEnabled } from '@/lib/native-workflow/live/delegation-config';
+import { recordDelegationExternalResult } from '@/lib/native-workflow/live/delegation-external';
+import { applyDelegationCommand, delegationCommand, recordDelegationOwnerInput } from '@/lib/native-workflow/live/delegation-chat';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, fingerprint, key, principalKey, requireCapability, safeText, userContent, type ActorContext, type MessageContent, type RunTrigger } from '../contracts';
 import { bindSpeechToMessage } from '../speech/link';
@@ -27,6 +30,7 @@ import { stageHandoffProposal } from '../handoff/proposal';
 import { currentHandoffOwner } from '../handoff/owner';
 import { agentConfig, type AgentConfig } from '../agent/config';
 import { knowledgePolicy, enterpriseKnowledgeEnabled } from '../knowledge-policy';
+import { knowledgeToolProtocol } from '../knowledge/rag-tools';
 import { homeSourceBudgetProtocol } from '../agent/home-source-budget';
 import { homeSourceViewProtocol } from '../agent/home-source-view';
 import { ownerArchiveReadProtocol, ownerQuestionScopeProtocol } from '../agent/owner-question-scope';
@@ -118,6 +122,7 @@ export async function terminalEvent(tx: PostgresTransaction, enterpriseId: strin
     on conflict(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version) do update set aggregate_id=excluded.aggregate_id returning id`);
   await tx.execute(sql`insert into app.domain_event_deliveries(enterprise_id,event_id,consumer_key)
     values(${enterpriseId},${String(event!.id)},'assistant.run.metrics.v1') on conflict do nothing`);
+  if (status === 'succeeded') await recordDelegationExternalResult(tx, enterpriseId, runId);
 }
 /** A visitor's own question replaces a site opening that has not started yet. The
  * opening is a convenience for someone browsing in silence, never a blocker, and
@@ -221,6 +226,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
         reportReadCompletion: reportReadCompletionProtocol, reportHistoryScope: reportHistoryScopeProtocol, reportCoordination: reportCoordinationProtocol } : {}),
       ...(agent && (enterpriseKnowledgeEnabled(settings.agent_config) || c.purpose === 'knowledge_preview') && !agent.structuredFinal && ['reply','site.question'].includes(purpose)
         ? { sourceAnswerMode: agent.knowledgeExplanation || sourceExcerptProtocol,
+          ...(agent.tools && !agentRuntime && !nativeRag && !agent.consultation ? { knowledgeTools: knowledgeToolProtocol } : {}),
           ...(agent.knowledgeExplanation === naturalKnowledgeProtocol ? { knowledgeQuantityScope: knowledgeQuantityScopeProtocol,
           ...(agent.knowledgeAnswerValidation === sourceBoundaryValidationProtocol && (staffPreview || ['customer_consultation','project_collaboration'].includes(String(c.purpose)))
               ? { knowledgeAnswerValidation: sourceBoundaryValidationProtocol } : {}),
@@ -235,6 +241,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
           drawingChecklistRead: drawingChecklistReadProtocol, homeSourceView: homeSourceViewProtocol,
           ownerQuestionScope: ownerQuestionScopeProtocol, ownerArchiveRead: ownerArchiveReadProtocol,
           ...(agent.providerKey === 'dashscope' && agent.model === 'qwen3.8-flash' ? { ownerCitationCarrier: ownerCitationCarrierProtocol } : {}) } : {}),
+      ...(agent && purpose === 'reply' && c.purpose === 'customer_consultation' && delegationsEnabled(actor.enterpriseId) ? { longTermMemory: true } : {}),
       ...(reviewRuntime ? { reviewRuntime } : {}) })}::jsonb,${Number(c.context_revision)},${Number(settings.knowledge_epoch)}) returning *`))!;
   const runId = String(r.id);
   await tx.execute(sql`insert into app.assistant_jobs(enterprise_id,kind,run_id,dedupe_key) values(${actor.enterpriseId},'chat_turn',${runId},${'run:' + runId})`);
@@ -450,6 +457,12 @@ export class ConversationService {
           await bindSpeechToMessage(repo.tx, this.actor, conversationId, String(message.id), safeText(safe), speech);
           return message;
         };
+        if (this.actor.principal.kind === 'user' && c.purpose === 'customer_consultation'
+          && delegationsEnabled(this.actor.enterpriseId) && delegationCommand(safeText(safe))) {
+          const message = await append();
+          await applyDelegationCommand(repo.tx, this.actor, c, message);
+          return { conversationId, messageId: String(message.id), runId: null, status: 'succeeded', nextPollMs: null };
+        }
         let intercepted: Row | undefined;
         if (interceptor?.matches(safe, c)) {
           intercepted = await append();
@@ -485,6 +498,7 @@ export class ConversationService {
           return { conversationId, messageId: String(old.id), runId: r ? String(r.id) : null, status: r ? 'queued' : 'succeeded', nextPollMs: r ? 1500 : null };
         }
         const message = intercepted || await append();
+        await recordDelegationOwnerInput(repo.tx, this.actor, c, message);
         await saveAutomaticRequirements(repo, conversationId);
         if (this.actor.principal.kind === 'user' && requestsDesigner(safe.blocks.filter(b => b.type === 'text').map(b => b.text).join('\n'))) {
           if((c.entry_snapshot as Row)?.requirementReviewMode===true && (c.entry_snapshot as Row)?.requirementWorkflow==='langgraph') {

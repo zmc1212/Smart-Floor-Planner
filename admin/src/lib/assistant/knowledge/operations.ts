@@ -10,6 +10,8 @@ import { projectMessage, resolveEvidence, validatePreviewSnapshot } from './sour
 import type { RetrievalDiagnostic } from './retrieval';
 import { checkKnowledgeEvaluation, type ExpectedSource, type KnowledgeExpectation } from './evaluation-check';
 import { KnowledgeBatches } from './batches';
+import { sourceIndexReady, managedLibrary } from './managed-store';
+import { knowledgeProviderMode } from './bailian-provider';
 
 const json=(value:unknown)=>JSON.stringify(value);
 type EvaluationSnapshot={question:string;title:string;expectation:KnowledgeExpectation;required:ExpectedSource[]};
@@ -48,9 +50,9 @@ export class KnowledgeOperations {
     for(const documentId of [...e.requiredDocumentIds,...e.forbiddenDocumentIds]) {
       const d=await one(tx,sql`select d.id,d.audience,d.status,v.id version_id,v.content_hash,
         (v.effective_from<=now() and (v.effective_to is null or v.effective_to>now()) and v.index_status='ready'
-         and v.indexed_hash=v.content_hash and v.index_profile_id=s.active_index_profile_id) ready
+         and v.indexed_hash=v.content_hash and ${sourceIndexReady}) ready
         from app.assistant_knowledge_documents d left join app.assistant_knowledge_versions v on v.enterprise_id=d.enterprise_id and v.id=d.published_version_id
-        join app.assistant_enterprise_settings s on s.enterprise_id=d.enterprise_id where d.enterprise_id=${this.manager.enterpriseId} and d.id=${documentId}`);
+        join app.assistant_enterprise_settings s on s.enterprise_id=d.enterprise_id where d.enterprise_id=${this.manager.enterpriseId} and d.id=${documentId} and d.scope='enterprise'`);
       if(!d)fail('assistant_resource_not_found',404);
       if(e.requiredDocumentIds.includes(documentId)) {
         if(d.status!=='active'||d.audience!=='customer_public'||!d.ready)fail('knowledge_not_ready');
@@ -65,10 +67,11 @@ export class KnowledgeOperations {
     // Epoch is the broad fence. Exact required-version/hash checks also reject corrupt or mismatched pointers.
     for(const source of (e.snapshot as {required:ExpectedSource[]}).required) {
       const v=await one(tx,sql`select v.id from app.assistant_knowledge_documents d join app.assistant_knowledge_versions v
-        on v.enterprise_id=d.enterprise_id and v.id=d.published_version_id where d.enterprise_id=${this.manager.enterpriseId}
+        on v.enterprise_id=d.enterprise_id and v.id=d.published_version_id join app.assistant_enterprise_settings s on s.enterprise_id=d.enterprise_id
+        where d.enterprise_id=${this.manager.enterpriseId} and d.scope='enterprise'
         and d.id=${source.documentId} and d.status='active' and d.audience='customer_public' and v.id=${source.versionId}
         and v.content_hash=${source.hash} and v.indexed_hash=v.content_hash and v.index_status='ready'
-        and v.index_profile_id=${settings.active_index_profile_id} and v.effective_from<=now() and (v.effective_to is null or v.effective_to>now())`);
+        and ${sourceIndexReady} and v.effective_from<=now() and (v.effective_to is null or v.effective_to>now())`);
       if(!v)return false;
     }
     return true;
@@ -194,17 +197,18 @@ export class KnowledgeOperations {
     const eid=this.manager.enterpriseId;
     const sources=await rows(tx,sql`select d.id::text,d.title,d.audience,d.status,d.published_version_id::text from app.assistant_knowledge_documents d where d.enterprise_id=${eid} order by d.id desc limit 200`);
     const indexes=await one(tx,sql`select count(*)::int documents,count(*) filter(where d.status='active' and v.id is not null and v.effective_from<=now() and (v.effective_to is null or v.effective_to>now())
-      and v.index_status='ready' and v.indexed_hash=v.content_hash and v.index_profile_id=s.active_index_profile_id)::int effective_ready,
-      count(*) filter(where d.source_type='file')::int files,count(*) filter(where v.id is not null and (v.index_status<>'ready' or v.indexed_hash is distinct from v.content_hash or v.index_profile_id is distinct from s.active_index_profile_id))::int index_mismatch
+      and v.index_status='ready' and v.indexed_hash=v.content_hash and ${sourceIndexReady})::int effective_ready,
+      count(*) filter(where d.source_type='file')::int files,count(*) filter(where v.id is not null and (v.index_status<>'ready' or v.indexed_hash is distinct from v.content_hash or not (${sourceIndexReady})))::int index_mismatch
       from app.assistant_knowledge_documents d left join app.assistant_knowledge_versions v on v.enterprise_id=d.enterprise_id and v.id=d.published_version_id
       join app.assistant_enterprise_settings s on s.enterprise_id=d.enterprise_id where d.enterprise_id=${eid}`);
     const jobs=await rows(tx,sql`select kind,status,count(*)::int count,min(created_at) oldest_at,count(*) filter(where lease_expires_at<now() and status='running')::int expired_leases
       from app.assistant_jobs where enterprise_id=${eid} and kind in ('knowledge_index','knowledge_parse') group by kind,status order by kind,status`);
     const attempts=await rows(tx,sql`select operation,status,count(*)::int calls,sum(input_tokens)::text known_input_tokens,count(*) filter(where input_tokens is null)::int unknown_input_calls
       from app.assistant_knowledge_attempts where enterprise_id=${eid} and started_at>=now()-interval '30 days' group by operation,status order by operation,status`);
-    const profile=await one(tx,sql`select id::text,profile_key,status,configuration->>'dimensions' dimensions,configuration->>'revision' model_revision
-      from app.assistant_knowledge_index_profiles where enterprise_id=${eid} and id=${s.active_index_profile_id??null}`);
-    return {sources,indexes,jobs,attempts,profile:profile??null,knowledgeEpoch:s.knowledge_epoch,costMicros:null,windowDays:30,parser:{supported:['docx','text_pdf','xlsx'],xlsxNumberDisplay:'decimal-v1',ocr:false,complexPdfTables:false},
+    const library = knowledgeProviderMode() === 'bailian' ? await managedLibrary(tx, eid) : null;
+    const profile=await one(tx,sql`select id::text,profile_key,status,configuration->>'dimensions' dimensions,coalesce(configuration->>'model',configuration->>'revision') model_revision
+      from app.assistant_knowledge_index_profiles where enterprise_id=${eid} and id=${library?.index_profile_id ?? s.active_index_profile_id ?? null}`);
+    return {sources,indexes,jobs,attempts,profile:profile??null,knowledgeEpoch:s.knowledge_epoch,costMicros:null,windowDays:30,parser:{supported:['docx','text_pdf','xlsx','txt','md'],xlsxNumberDisplay:'decimal-v1',ocr:false,complexPdfTables:false},
       limits:{cases:100,evaluations:2000,sourcesShown:200},note:'健康计数不是外部服务实时探测；索引调用单列，未知用量与费用不记零。'};
   });}
 }

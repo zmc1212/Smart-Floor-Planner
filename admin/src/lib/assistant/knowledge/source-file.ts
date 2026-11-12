@@ -4,16 +4,27 @@ import path from 'node:path';
 import { fail, fingerprint } from '../contracts';
 import type { SourceFile, ParsedFile, FileBlock, FileLocator } from '../contracts/source-file';
 import type { Chunk } from './chunk-gateway';
+import { assertKnowledgeText } from './provenance';
 
 export const FILE_LIMIT = 4 * 1024 * 1024;
 export function uploadedFile(input: Record<string, unknown>) {
   const { fileName, fileBase64, authorization } = input;
-  if (typeof fileName !== 'string' || !/^[^/\\\x00-\x1f]{1,180}\.(docx|pdf|xlsx)$/i.test(fileName)
+  if (typeof fileName !== 'string' || !/^[^/\\\x00-\x1f]{1,180}\.(docx|pdf|xlsx|txt|md|markdown)$/i.test(fileName)
     || typeof authorization !== 'string' || !authorization.trim() || authorization.includes('\0') || authorization.length > 500
     || typeof fileBase64 !== 'string' || fileBase64.length > Math.ceil(FILE_LIMIT / 3) * 4
     || fileBase64.length % 4 !== 0 || /[^A-Za-z0-9+/=]/.test(fileBase64)) fail('knowledge_file_invalid', 422);
-  const data = Buffer.from(fileBase64, 'base64'), format = fileName.toLowerCase().split('.').at(-1) as SourceFile['format'];
-  if (data.toString('base64')!==fileBase64 || data.length < 5 || data.length > FILE_LIMIT || (format === 'pdf' ? data.subarray(0, 5).toString() !== '%PDF-' : data.readUInt32LE(0) !== 0x04034b50)) fail('knowledge_file_invalid', 422);
+  const data = Buffer.from(fileBase64, 'base64'), extension = fileName.toLowerCase().split('.').at(-1);
+  const format = (extension === 'markdown' ? 'md' : extension) as SourceFile['format'];
+  if (data.toString('base64') !== fileBase64 || !data.length || data.length > FILE_LIMIT) fail('knowledge_file_invalid', 422);
+  if (format === 'pdf' && data.subarray(0, 5).toString() !== '%PDF-') fail('knowledge_file_invalid', 422);
+  if (['docx', 'xlsx'].includes(format) && (data.length < 4 || data.readUInt32LE(0) !== 0x04034b50)) fail('knowledge_file_invalid', 422);
+  if (format === 'txt' || format === 'md') {
+    let decoded: string;
+    try { decoded = new TextDecoder('utf-8', { fatal: true }).decode(data); }
+    catch { return fail('knowledge_file_invalid', 422); }
+    if (!decoded.trim() || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/u.test(decoded)) fail('knowledge_file_invalid', 422);
+  }
+  assertKnowledgeText(fileName);
   return { data, format, name: fileName, authorization: authorization.trim(), hash: createHash('sha256').update(new Uint8Array(data)).digest('hex') };
 }
 export function fileQuoteSpans(text:string,quote:string,start:number) {
@@ -26,7 +37,8 @@ export function fileLabel(b: FileBlock): string {
   const location = b.extraction?.review
     ? `原PDF第${b.extraction.pdfPage}页 · 书页${b.extraction.review.bookPage}`
     : b.page ? `PDF第${b.page}页` : b.section.join(' / ');
-  return [location, b.table ? `表${b.table}·第${b.row}行` : b.paragraph ? `段落${b.paragraph}` : '', b.cells ? `列${b.cells.map(c => c.span > 1 ? `${c.column}–${c.column + c.span - 1}` : c.column).join('、')}` : ''].filter(Boolean).join(' · ');
+  const lines = b.line ? b.endLine && b.endLine !== b.line ? `第${b.line}–${b.endLine}行` : `第${b.line}行` : '';
+  return [location, lines, b.image ? `图 ${b.image.id}` : '', b.table ? `表${b.table}·第${b.row}行` : b.paragraph ? `段落${b.paragraph}` : '', b.cells ? `列${b.cells.map(c => c.span > 1 ? `${c.column}–${c.column + c.span - 1}` : c.column).join('、')}` : ''].filter(Boolean).join(' · ');
 }
 export function filePassages(file: SourceFile) {
   if (!file.parsed) return [];
@@ -40,10 +52,30 @@ export function fileContent(file: SourceFile) {
   if (body.length > 16000 || Buffer.byteLength(body) > 48000) fail('knowledge_file_text_limit', 422);
   return { body, hash: fingerprint({ source: 'file', file }), rendered: body };
 }
-export async function fileChunks(file: SourceFile, chunk: (s: string) => Promise<Chunk[]>) {
+export function reviewedFilePassages(file: SourceFile) {
   if (!file.parsed || !file.review) fail('knowledge_file_review_required');
+  const parser = file.parsed.parser;
   const passages = filePassages(file);
   if (!passages.length || passages.length > 128) fail('knowledge_file_block_limit', 422);
+  let offset = 0;
+  return passages.map(({ block, text }) => {
+    const start = offset, end = start + Array.from(text).length;
+    offset = end + 2;
+    const locator: FileLocator = {
+      assetId: file.assetId, sourceHash: file.hash, name: file.name, format: file.format, parser,
+      blockId: block.id, kind: block.kind, section: block.section, ...(block.page ? { page: block.page } : {}),
+      ...(block.paragraph ? { paragraph: block.paragraph } : {}), ...(block.table ? { table: block.table } : {}),
+      ...(block.row ? { row: block.row, columns: block.cells?.map(c => c.column) } : {}),
+      ...(block.sheet ? { sheet: block.sheet, range: block.range } : {}), label: fileLabel(block),
+      ...(block.line ? { line: block.line, endLine: block.endLine } : {}),
+      ...(block.image ? { image: block.image } : {}),
+      ...(block.extraction ? { extraction: block.extraction } : {}),
+    };
+    return { start, end, text, original: block.text, file: locator };
+  });
+}
+export async function fileChunks(file: SourceFile, chunk: (s: string) => Promise<Chunk[]>) {
+  const passages = reviewedFilePassages(file);
   // Each callback keeps its existing authorization/dispatch audit. Bound the
   // latency of independent original-passage checks without changing chunks,
   // ordinals, deadlines or source locators. Drain in-flight calls on failure.
@@ -60,23 +92,7 @@ export async function fileChunks(file: SourceFile, chunk: (s: string) => Promise
     }
   }));
   if (failed) throw failure;
-  let offset = 0;
-  const result: Array<Chunk & { file: FileLocator }> = [];
-  for (const [index, { block, text }] of passages.entries()) {
-    const piece = validated[index];
-    // First batch keeps each original passage and its conditions together.
-    result.push({ ...piece, start: offset, end: offset + piece.end, file: {
-      assetId: file.assetId, sourceHash: file.hash, name: file.name, format: file.format, parser: file.parsed.parser,
-      blockId: block.id, kind: block.kind, section: block.section, ...(block.page ? { page: block.page } : {}),
-      ...(block.paragraph ? { paragraph: block.paragraph } : {}), ...(block.table ? { table: block.table } : {}),
-      ...(block.row ? { row: block.row, columns: block.cells?.map(c => c.column) } : {}),
-      ...(block.sheet ? { sheet: block.sheet, range: block.range } : {}), label: fileLabel(block),
-      ...(block.extraction ? { extraction: block.extraction } : {}),
-    } });
-    offset += Array.from(text).length + 2;
-  }
-  if (!result.length || result.length > 128) fail('knowledge_file_block_limit', 422);
-  return result;
+  return passages.map(({start,end,text,file}, index) => ({start,end,text,file,tokens:validated[index].tokens}));
 }
 /** No credentials in the child environment, no client-supplied paths/URLs, bounded stdin/stdout/heap/time. */
 export async function parseSourceFile(bytes: Buffer, format: string): Promise<ParsedFile> {

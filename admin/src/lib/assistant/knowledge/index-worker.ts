@@ -3,12 +3,15 @@ import { sql } from 'drizzle-orm';
 import { withPlatformTransaction, withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { AssistantError, fail, fingerprint, type EmbeddingGateway } from '../contracts';
-import { embeddingGateway, EMBEDDING_PROFILE } from '../infrastructure/embedding-gateway';
+import { assertEmbeddingProfile, embeddingGateway, configuredEmbeddingProfile } from '../infrastructure/embedding-gateway';
 import { activeProfile, content, knowledgeManager, type KnowledgeActor } from './service';
 import { chunkDocument, type Chunk } from './chunk-gateway';
 import { chineseTerms } from './chinese-lexical';
 import { fileChunks, fileContent, parseSourceFile } from './source-file';
 import type { SourceFile, FileLocator } from '../contracts/source-file';
+import { BailianKnowledgeError } from './bailian-provider';
+import type { ManagedKnowledgeProvider, ManagedReceipt } from './managed-provider';
+import { runManagedIndex } from './managed-index';
 
 export type KnowledgeLease = { actor: KnowledgeActor; jobId: string; token: string };
 async function target(tx: PostgresTransaction, lease: KnowledgeLease) {
@@ -17,13 +20,15 @@ async function target(tx: PostgresTransaction, lease: KnowledgeLease) {
     and kind in ('knowledge_index','knowledge_parse') and status='running' and lease_token=${lease.token} and lease_expires_at>now() for update`);
   if (!job) fail('context_changed');
   const profile = job.kind==='knowledge_index' ? await activeProfile(tx,lease.actor.enterpriseId,settings) : null;
-  const v = await one(tx,sql`select v.*,d.source_type from app.assistant_knowledge_versions v join app.assistant_knowledge_documents d
+  const v = await one(tx,sql`select v.*,d.source_type,d.scope,d.project_id from app.assistant_knowledge_versions v join app.assistant_knowledge_documents d
     on d.enterprise_id=v.enterprise_id and d.id=v.document_id where v.enterprise_id=${lease.actor.enterpriseId} and v.id=${String(job.knowledge_version_id)}
     and d.status<>'retired' and v.published_at is null for update of v,d`);
   if (!v || v.content_hash!==job.content_hash || Number(v.edit_version)!==Number(job.knowledge_edit_version)) fail('context_changed');
   if (profile && (v.index_status!=='indexing' || String(profile.id)!==String(job.index_profile_id) || String(v.index_profile_id)!==String(profile.id))) fail('context_changed');
+  if (v.scope==='project' && !await one(tx,sql`select id from app.construction_projects
+    where enterprise_id=${lease.actor.enterpriseId} and id=${v.project_id ?? null} and status='active' for share`)) fail('context_changed');
   if (job.kind==='knowledge_parse' && (v.source_type!=='file' || !v.source_file || (v.source_file as SourceFile).parsed)) fail('context_changed');
-  return {job,v};
+  return {job,v,profile};
 }
 async function stop(tx: PostgresTransaction, job: Row, status: string, code: string) {
   await tx.execute(sql`update app.assistant_jobs set status=${status},last_error=${code},lease_token=null,lease_expires_at=null,updated_at=now(),version=version+1
@@ -42,7 +47,14 @@ export async function claimKnowledgeJob(): Promise<KnowledgeLease|null> {
       const job = await one(tx,sql`select * from app.assistant_jobs where enterprise_id=${String(c.enterprise_id)} and id=${String(c.id)} and kind in ('knowledge_index','knowledge_parse')
         and ((status='queued' and available_at<=now()) or (status='running' and lease_expires_at<=now())) for update skip locked`);
       if (!job) return null;
-      if (job.provider_started_at) { await stop(tx,job,'indeterminate','provider_outcome_unknown'); return null; }
+      if (job.provider_started_at) {
+        const recoverable = await one(tx,sql`select j.id from app.assistant_jobs j
+          join app.assistant_knowledge_index_profiles p on p.enterprise_id=j.enterprise_id and p.id=j.index_profile_id
+          where j.enterprise_id=${String(c.enterprise_id)} and j.id=${String(job.id)} and p.configuration->>'provider'='bailian'
+          and not exists(select 1 from app.assistant_knowledge_attempts a where a.enterprise_id=j.enterprise_id
+            and a.job_id=j.id and a.status in ('started','unknown'))`);
+        if (!recoverable) { await stop(tx,job,'indeterminate','provider_outcome_unknown'); return null; }
+      }
       if (Number(job.attempts)>=3) { await stop(tx,job,'failed','retry_exhausted'); return null; }
       if (job.kind==='knowledge_parse') await tx.execute(sql`update app.assistant_knowledge_attempts set status='failed',error_code='local_parser_interrupted',completed_at=now()
         where enterprise_id=${String(c.enterprise_id)} and job_id=${String(job.id)} and status='started'`);
@@ -56,26 +68,60 @@ export async function claimKnowledgeJob(): Promise<KnowledgeLease|null> {
   }
   return null;
 }
-type Dependencies = { chunk: (text: string)=>Promise<Chunk[]>; embedding: EmbeddingGateway; parse?:typeof parseSourceFile };
+type Dependencies = { chunk?: (text: string)=>Promise<Chunk[]>; embedding?: EmbeddingGateway; parse?:typeof parseSourceFile; managed?:ManagedKnowledgeProvider };
 /** Persist each dispatch before I/O. A crashed/ambiguous attempt is never automatically replayed. */
 export async function runKnowledgeJob(lease: KnowledgeLease, deps?: Dependencies) {
   const eid=lease.actor.enterpriseId;
   let localParse=false;
   async function call<T>(operation: string, ordinal: number, fn: ()=>Promise<T>, tokens: (result:T)=>number|null): Promise<T> {
     const attempt = await withTenantTransaction(eid,async tx=>{
-      await target(tx,lease);
+      const { profile } = await target(tx,lease);
+      if (!profile) fail('context_changed');
+      const configured = configuredEmbeddingProfile();
       await tx.execute(sql`update app.assistant_jobs set provider_started_at=coalesce(provider_started_at,now()),lease_expires_at=now()+interval '150 seconds',heartbeat_at=now() where enterprise_id=${eid} and id=${lease.jobId}`);
       return (await one(tx,sql`insert into app.assistant_knowledge_attempts(enterprise_id,job_id,lease_token,operation,batch_ordinal,profile_key,model_revision,status)
-        values(${eid},${lease.jobId},${lease.token},${operation},${ordinal},${EMBEDDING_PROFILE.id},${EMBEDDING_PROFILE.revision},'started') returning id`))!;
+        values(${eid},${lease.jobId},${lease.token},${operation},${ordinal},${String(profile.profile_key)},${configured.revision},'started') returning id`))!;
     });
     const result = await fn();
     await withTenantTransaction(eid,tx=>tx.execute(sql`update app.assistant_knowledge_attempts set status='succeeded',input_tokens=${tokens(result)},completed_at=now()
       where enterprise_id=${eid} and id=${String(attempt.id)} and status='started'`));
     return result;
   }
+  async function mutate<T>(operation: 'managed_upload' | 'managed_create' | 'managed_import', execute: () => Promise<ManagedReceipt<T>>,
+    persist: (tx: PostgresTransaction, value: T) => Promise<void>) {
+    const attempt = await withTenantTransaction(eid,async tx=>{
+      const {profile} = await target(tx,lease);
+      if ((profile?.configuration as Row)?.provider !== 'bailian') fail('context_changed');
+      await tx.execute(sql`update app.assistant_jobs set provider_started_at=coalesce(provider_started_at,now()),
+        lease_expires_at=now()+interval '150 seconds',heartbeat_at=now() where enterprise_id=${eid} and id=${lease.jobId}`);
+      return (await one(tx,sql`insert into app.assistant_knowledge_attempts
+        (enterprise_id,job_id,lease_token,operation,batch_ordinal,profile_key,model_revision,status)
+        values(${eid},${lease.jobId},${lease.token},${operation},0,${String(profile!.profile_key)},
+          ${String((profile!.configuration as Row).model)},'started') returning id`))!;
+    });
+    let receipt: ManagedReceipt<T>;
+    try { receipt=await execute(); }
+    catch (error) {
+      if (error instanceof BailianKnowledgeError) await withTenantTransaction(eid,async tx=>{
+        await tx.execute(sql`update app.assistant_knowledge_attempts set status=${error.outcomeKnown?'failed':'unknown'},
+          error_code=${error.providerCode},provider_request_id=${error.requestId},completed_at=now()
+          where enterprise_id=${eid} and id=${String(attempt.id)} and status='started'`);
+        if (error.outcomeKnown && operation==='managed_create') await tx.execute(sql`update app.assistant_managed_knowledge_libraries
+          set provision_job_id=null where enterprise_id=${eid} and index_id is null and provision_job_id=${lease.jobId}`);
+      });
+      throw error;
+    }
+    // Persist a known remote ID even if the draft was revoked during the request.
+    await withTenantTransaction(eid,async tx=>{
+      await persist(tx,receipt.value);
+      await tx.execute(sql`update app.assistant_knowledge_attempts set status='succeeded',provider_request_id=${receipt.requestId},
+        completed_at=now() where enterprise_id=${eid} and id=${String(attempt.id)}`);
+    });
+    return receipt.value;
+  }
   try {
     const started=Date.now();
-    const {v,job} = await withTenantTransaction(eid,tx=>target(tx,lease));
+    const {v,job,profile} = await withTenantTransaction(eid,tx=>target(tx,lease));
     if (job.kind==='knowledge_parse') {
       localParse=true;
       const file=v.source_file as SourceFile;
@@ -100,7 +146,12 @@ export async function runKnowledgeJob(lease: KnowledgeLease, deps?: Dependencies
     }
     const c=content(String(v.source_type),v);
     if (c.hash!==v.content_hash) fail('context_changed');
+    if ((profile?.configuration as Row)?.provider === 'bailian') {
+      await runManagedIndex(lease,tx=>target(tx,lease),mutate,c.rendered,deps?.managed);
+      return;
+    }
     const gateway=deps?.embedding ?? embeddingGateway();
+    assertEmbeddingProfile(gateway);
     let batch=0;
     const chunks:Array<Chunk & {file?:FileLocator}>=v.source_type==='file'
       ? await fileChunks(v.source_file as SourceFile,s=>{if(Date.now()-started>80000)fail('index_deadline_exceeded',503);return call('chunk',batch++,()=>(deps?.chunk ?? chunkDocument)(s),()=>null);})
@@ -134,7 +185,8 @@ export async function runKnowledgeJob(lease: KnowledgeLease, deps?: Dependencies
           where enterprise_id=${eid} and job_id=${lease.jobId} and lease_token=${lease.token} and status='started'`);
         return;
       }
-      const pending=await one(tx,sql`select id from app.assistant_knowledge_attempts where enterprise_id=${eid} and job_id=${lease.jobId} and status='started' limit 1`);
+      const pending=await one(tx,sql`select id from app.assistant_knowledge_attempts where enterprise_id=${eid}
+        and job_id=${lease.jobId} and status in ('started','unknown') limit 1`);
       const local=job.kind==='knowledge_parse';
       await stop(tx,job,!local&&pending?'indeterminate':'failed',!local&&pending?'provider_outcome_unknown':e instanceof AssistantError?e.code:local&&e instanceof Error&&/^knowledge_file_/.test(e.message)?e.message:'index_failed');
     });

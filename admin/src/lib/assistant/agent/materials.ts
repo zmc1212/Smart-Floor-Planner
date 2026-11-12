@@ -24,7 +24,7 @@ export type MaterialQuery = { leadId: string; room: string };
 export type MaterialSource = {
   ref: { type: 'customer_need' | 'shared_need' | 'shared_drawing' | 'team_review' | 'formal_plan' | 'formal_floorplan' | 'site_record'; id: string; version: string };
   hash: string; leadId: string; projectId: string | null; roomId: string | null; roomName: string;
-  sourceMessageId: string | null; mediaIds: string[]; audience: 'customer_self';
+  sourceMessageId: string | null; mediaIds: string[]; audience: 'customer_self' | 'project_members';
   basis: 'owned_conversation' | 'customer_shared_grant' | 'returned_drawing_review' | 'delivered_formal_plan' | 'primary_plan' | 'published_project_record'; status: 'current'; text: string;
   floorplan?: { protocol: typeof formalFloorplanContextProtocol; name: string };
   siteCompleted?: string;

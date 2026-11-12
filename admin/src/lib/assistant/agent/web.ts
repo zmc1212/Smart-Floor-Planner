@@ -60,10 +60,12 @@ export function publicWebAddress(address: string): boolean {
 export function publicWebUrl(value: string): URL {
   let url: URL;
   try { url = new URL(value); } catch { return fail('unsafe_web_url', 422); }
-  const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  if (url.href.length > 2048) fail('unsafe_web_url', 422);
+  const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase().replace(/\.$/, '');
   if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.port
     || !host.includes('.') || /(?:^|\.)(?:localhost|local|internal|test|invalid)$/.test(host)
     || isIP(host) && !publicWebAddress(host)) fail('unsafe_web_url', 422);
+  if (!isIP(host)) url.hostname = host;
   url.hash = ''; return url;
 }
 
@@ -78,7 +80,7 @@ export function publicDnsAnswers(input: unknown, host: string): Array<{ address:
   return addresses;
 }
 
-export async function resolvePublicWebHost(host: string, deadline: number): Promise<Array<{ address: string; family: number }>> {
+export async function resolvePublicWebHost(host: string, deadline: number, signal?: AbortSignal): Promise<Array<{ address: string; family: number }>> {
   if (isIP(host)) return [{ address: host, family: isIP(host) }];
   const mode = process.env.ASSISTANT_WEB_DNS || 'system';
   if (mode === 'system') return lookup(host, { all: true });
@@ -86,7 +88,7 @@ export async function resolvePublicWebHost(host: string, deadline: number): Prom
   const url = new URL('https://223.5.5.5/resolve');
   url.searchParams.set('name', host); url.searchParams.set('type', 'A');
   const data = await new Promise<unknown>((resolve, reject) => {
-    const request = httpsRequest(url, { headers: { Accept: 'application/dns-json', 'Accept-Encoding': 'identity' } }, response => {
+    const request = httpsRequest(url, { signal, headers: { Accept: 'application/dns-json', 'Accept-Encoding': 'identity' } }, response => {
       const chunks: Buffer[] = []; let size = 0;
       response.on('data', (chunk: Buffer) => { size += chunk.length; if (size > 32_000) request.destroy(new AssistantError('invalid_web_dns_response', 503)); else chunks.push(chunk); });
       response.once('error', reject);
@@ -102,19 +104,30 @@ export async function resolvePublicWebHost(host: string, deadline: number): Prom
 }
 
 /** No browser, scripts, cookies, proxy credentials or automatic redirects. */
-export async function readPublicPage(value: string, remainingRedirects = 3, deadline = Date.now() + 12000): Promise<{ url: string; body: string; type: string }> {
+export async function readPublicPage(
+  value: string, remainingRedirects = 3, deadline = Date.now() + 12000, signal?: AbortSignal,
+): Promise<{ url: string; body: string; type: string }> {
   const url = publicWebUrl(value), host = url.hostname.replace(/^\[|\]$/g, '');
+  signal?.throwIfAborted();
   if (deadline <= Date.now()) fail('web_timeout', 503);
   let dnsTimer: ReturnType<typeof setTimeout> | undefined;
-  const addresses = await Promise.race([resolvePublicWebHost(host, deadline), new Promise<never>((_resolve, reject) => {
+  let cancelLookup: (() => void) | undefined;
+  const addresses = await Promise.race([resolvePublicWebHost(host, deadline, signal), new Promise<never>((_resolve, reject) => {
+    cancelLookup = () => reject(signal?.reason);
+    signal?.addEventListener('abort', cancelLookup, { once: true });
     dnsTimer = setTimeout(() => reject(new AssistantError('web_timeout', 503)), deadline - Date.now());
-  })]).finally(() => clearTimeout(dnsTimer));
+  })]).finally(() => {
+    clearTimeout(dnsTimer);
+    if (cancelLookup) signal?.removeEventListener('abort', cancelLookup);
+  });
+  signal?.throwIfAborted();
   if (!addresses.length || addresses.some(a => !publicWebAddress(a.address))) fail('unsafe_web_url', 422);
   const pinned = addresses.find(a => a.family === 4) || addresses[0];
   const result = await new Promise<{ bytes: Buffer; status: number; location?: string; type: string }>((resolve, reject) => {
     const request = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, {
       method: 'GET', headers: { Accept: 'text/html,text/plain;q=0.9', 'Accept-Encoding': 'identity', 'User-Agent': 'SmartFloorPlanner-Research/1.0' },
-      family: pinned.family,
+      // A shared socket or proxy can bypass the lookup chosen for this hop.
+      agent: false, signal, family: pinned.family,
       lookup: (_hostname, _options, callback) => callback(null, pinned.address, pinned.family),
     }, response => {
       const chunks: Buffer[] = []; let size = 0;
@@ -130,7 +143,9 @@ export async function readPublicPage(value: string, remainingRedirects = 3, dead
   });
   if ([301, 302, 303, 307, 308].includes(result.status)) {
     if (!result.location || remainingRedirects < 1) fail('web_redirect_limit', 502);
-    return readPublicPage(new URL(result.location, url).href, remainingRedirects - 1, deadline);
+    let redirect: URL;
+    try { redirect = new URL(result.location, url); } catch { return fail('unsafe_web_url', 422); }
+    return readPublicPage(redirect.href, remainingRedirects - 1, deadline, signal);
   }
   if (result.status !== 200) fail('web_http_' + result.status, 503);
   if (!/^(?:text\/html|text\/plain|application\/xhtml\+xml)(?:;|$)/i.test(result.type)) fail('unsupported_web_content', 422);
@@ -151,12 +166,23 @@ export function decodePublicPage(bytes: Uint8Array, type: string): string {
 }
 
 /** Retain complete parsed article text; never make snippets into cited facts. */
-export function extractWebPage(input: { url: string; body: string; type: string }, retrievedAt = new Date().toISOString()): WebPage {
+export function extractWebPage(
+  input: { url: string; body: string; type: string },
+  retrievedAt = new Date().toISOString(),
+  options: { removeAds?: boolean } = {},
+): WebPage {
   let title = new URL(input.url).hostname, text = input.body;
   if (/html/i.test(input.type)) {
     const { document } = parseHTML(input.body);
     title = document.title?.trim() || title;
     for (const element of document.querySelectorAll('script,style,noscript,iframe,nav,header,footer,form,svg,canvas,template')) element.remove();
+    // R3 article extraction opts in to removing obvious ad/sidebar/share
+    // blocks. Default behavior and existing evidence hashes stay unchanged.
+    if (options.removeAds) {
+      for (const element of document.querySelectorAll('aside,[hidden],[aria-hidden="true"],[role="complementary"],[class*="advert"],[id*="advert"],'
+        + '[class*=" ad-"],[class^="ad-"],[id^="ad-"],[class*="banner"],[class*="promo"],[class*="sidebar"],'
+        + '[class*="related"],[class*="share"],[class*="comment"]')) element.remove();
+    }
     const main = document.querySelector('article') || document.querySelector('main') || document.body;
     if (!main) fail('web_text_unavailable', 502);
     text = main.innerText;

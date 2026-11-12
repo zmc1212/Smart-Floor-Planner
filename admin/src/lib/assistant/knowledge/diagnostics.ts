@@ -4,6 +4,7 @@ import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assi
 import { fail, fingerprint, id, requireCapability, type ActorContext } from '../contracts';
 import { knowledgeContext } from './applicability-context';
 import { previewPolicy, resolveEvidence, validatePreviewSnapshot } from './sources';
+import { sourceIndexReady } from './managed-store';
 import type { RetrievalDiagnostic } from './retrieval';
 
 /** Own Admin previews only; every reopened trace is reauthorized and revalidated. */
@@ -40,12 +41,12 @@ export async function readRetrievalDiagnostics(actor:ActorContext,runId:string) 
       count(*) filter(where d.published_version_id is null)::int as unpublished,
       count(*) filter(where ${policy.audience==='all'?sql`false`:sql`d.audience<>${policy.audience}`})::int as audience_filtered,
       count(*) filter(where v.effective_from>now() or v.effective_to<=now())::int as outside_validity,
-      count(*) filter(where v.index_status<>'ready' or v.indexed_hash is distinct from v.content_hash or v.index_profile_id is distinct from s.active_index_profile_id)::int as index_not_ready
+      count(*) filter(where v.index_status<>'ready' or v.indexed_hash is distinct from v.content_hash or not (${sourceIndexReady}))::int as index_not_ready
       from app.assistant_knowledge_documents d left join app.assistant_knowledge_versions v on v.enterprise_id=d.enterprise_id and v.id=d.published_version_id
       join app.assistant_enterprise_settings s on s.enterprise_id=d.enterprise_id
-      where d.enterprise_id=${actor.enterpriseId} and d.source_type<>'reference_case'`);
+      where d.enterprise_id=${actor.enterpriseId} and d.scope='enterprise' and d.source_type<>'reference_case'`);
     return {available:true,runId,scope:{audience:policy.audience,draftVersionIds:policy.drafts.map(d=>d.id)},traces,coverage,
       generation:{status:run.status,errorCode:run.error_code,answerKind:run.answer_kind,semanticCorrectness:'not_automatically_judged'},
-      parser:{supported:['manual_text','faq','docx','text_pdf'],ocr:false,complexPdfTables:false},note:'计数可重叠；未召回只指当前授权候选，生成语义需核对回答与来源。'};
+      parser:{supported:['manual_text','faq','docx','text_pdf','txt','md','xlsx'],ocr:false,complexPdfTables:false},note:'计数可重叠；未召回只指当前授权候选，生成语义需核对回答与来源。'};
   });
 }

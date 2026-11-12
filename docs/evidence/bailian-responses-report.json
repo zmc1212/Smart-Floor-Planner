@@ -1,0 +1,752 @@
+{
+  "protocol": "bailian-responses-live-acceptance-v1",
+  "ranAt": "2026-11-12T10:21:43.132Z",
+  "runtime": {
+    "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode",
+    "model": "qwen3.7-flash"
+  },
+  "billing": {
+    "actualCost": "unavailable",
+    "note": "provider does not expose a settled per-request amount on this wire"
+  },
+  "models": [
+    "qwen3.7-flash",
+    "deepseek-v4.1-flash-1017"
+  ],
+  "runs": [
+    {
+      "label": null,
+      "ranAt": "2026-11-12T10:19:43.826Z",
+      "cases": 0
+    },
+    {
+      "label": "models",
+      "ranAt": "2026-11-12T10:19:59.068Z",
+      "cases": 3
+    },
+    {
+      "label": "qwen38max",
+      "ranAt": "2026-11-12T10:20:01.216Z",
+      "cases": 2
+    },
+    {
+      "label": "access",
+      "ranAt": "2026-11-12T10:21:43.132Z",
+      "cases": 1
+    }
+  ],
+  "cases": [
+    {
+      "case": "tool:web_search",
+      "model": "qwen3.7-flash",
+      "wire": "responses",
+      "tools": [
+        "web_search"
+      ],
+      "status": "passed",
+      "requestId": "ad22a2ca-126e-906a-a17d-789fa283bce6",
+      "responseId": "resp_ad22a2ca-126e-906a-a17d-789fa283bce6",
+      "latencyMs": 71854,
+      "usage": {
+        "inputTokens": 12790,
+        "outputTokens": 5768,
+        "cachedInputTokens": 3200,
+        "cacheWriteInputTokens": 0
+      },
+      "toolCounts": {
+        "web_search": 2
+      },
+      "native": {
+        "tools": [
+          "web_search"
+        ],
+        "counts": {
+          "web_search": 2
+        },
+        "provenance": "external_public_web",
+        "rejectedSources": 0,
+        "calls": [
+          {
+            "tool": "web_search",
+            "status": "completed",
+            "queries": [
+              "2026年 瓷砖 国家标准",
+              "GB/T 41021-2026",
+              "陶瓷砖 国家标准 2026"
+            ],
+            "sourceHosts": [
+              "nb.ifeng.com",
+              "kuku.baidu.com",
+              "www.163.com",
+              "std.samr.gov.cn",
+              "www.cnblogs.com",
+              "zhuanlan.zhihu.com",
+              "openstd.samr.gov.cn",
+              "www.ceramicschina.com",
+              "kuku.baidu.com",
+              "finance.sina.com.cn",
+              "www.china-certification.com",
+              "codeofchina.com",
+              "www.gbstandards.org",
+              "openstd.samr.gov.cn",
+              "hnyigesteel.com",
+              "www.fzmq.gov.cn",
+              "chinastandards.org",
+              "www.chinesestandard.us",
+              "www.cigia.org.cn",
+              "www.ceramicschina.com"
+            ]
+          },
+          {
+            "tool": "web_search",
+            "status": "completed",
+            "queries": [
+              "2026年最新发布的瓷砖国家标准",
+              "\"GB/T 45817-2025\" 来源",
+              "GB/T 3810 2026 瓷砖"
+            ],
+            "sourceHosts": [
+              "std.samr.gov.cn",
+              "nb.ifeng.com",
+              "www.cnblogs.com",
+              "std.samr.gov.cn",
+              "www.cerambath.com",
+              "kuku.baidu.com",
+              "www.163.com",
+              "www.cmpe360.com",
+              "finance.sina.com.cn",
+              "openstd.samr.gov.cn",
+              "openstd.samr.gov.cn",
+              "www.sohu.com",
+              "zhuanlan.zhihu.com",
+              "jiaju.sina.com.cn",
+              "baike.baidu.com",
+              "www.ceramicschina.com",
+              "m.rccaijing.com",
+              "zrzy.hebei.gov.cn",
+              "www.jiajubiaozhun.com",
+              "openstd.samr.gov.cn"
+            ]
+          }
+        ]
+      },
+      "finishReason": "stop",
+      "textHash": "f1727b835c659658ba59964ec41c1a749127cf84c9dfad22f70f61aa7912c644",
+      "textExcerpt": "根据搜索结果，2026年瓷砖行业重点实施的**最新国家标准**是 **GB/T 45817-2025**。\n\n虽然标准编号中的年份是 **2025**，但该标准于 **2025年12月1日** 正式实施，因此在 **2026年** 期间，它是全行业执行的核心“新国标”（常被称为“5A新国标”）。这是中国陶瓷砖行业历史上首次引入量化质量分级体系（3A、4A、5A），取代了传统的“优等品、一级品”模糊概念。\n\n### 国家标准详情\n*   **标准编号**：**GB/T 45817-2025**\n*   **标准名称**：《消费品质量分级 陶瓷砖》\n*   **发布日期**：2025年5月30日\n*   **实施日期**：2025年12月1日\n*   **归口单位**：全国建筑卫生陶瓷标准化技术委员会（TC249）\n*   **主管部门**：中国建筑材料联合会\n\n### 核心内容\n该标准将吸水",
+      "actualCost": "unavailable",
+      "costNote": "provider settled amount is not exposed on the Responses wire",
+      "rawFile": "tmp\\bailian-responses\\raw\\attempt2_tool_web_search.json"
+    },
+    {
+      "case": "integration:execute_agent_chat",
+      "model": "qwen3.7-flash",
+      "wire": "responses",
+      "tools": [
+        "web_search"
+      ],
+      "status": "passed",
+      "requestId": "870a86a0-42ed-935e-a514-4f7c0bdee524",
+      "responseId": "resp_870a86a0-42ed-935e-a514-4f7c0bdee524",
+      "latencyMs": 47107,
+      "usage": {
+        "inputTokens": 4031,
+        "outputTokens": 3694,
+        "cachedInputTokens": 0,
+        "cacheWriteInputTokens": 0
+      },
+      "toolCounts": {
+        "web_search": 1
+      },
+      "native": {
+        "tools": [
+          "web_search"
+        ],
+        "counts": {
+          "web_search": 1
+        },
+        "provenance": "external_public_web",
+        "rejectedSources": 0,
+        "calls": [
+          {
+            "tool": "web_search",
+            "status": "completed",
+            "queries": [
+              "家装行业最新新闻标题",
+              "装修行业 2026 新闻"
+            ],
+            "sourceHosts": [
+              "www.news.cn",
+              "www.furnituretoday.cn",
+              "m.ageclub.net",
+              "cn.chinadaily.com.cn",
+              "www.furnituretoday.cn",
+              "www.sudokusquares.com",
+              "www.fortunebusinessinsights.com",
+              "www.researchnester.com",
+              "www.news.cn",
+              "hainan.ifeng.com",
+              "www.sohu.com",
+              "www.furnituretoday.cn",
+              "www.youtube.com",
+              "homejournal.com",
+              "forest.toppan.com",
+              "www.interior-design.app",
+              "finance.sina.com.cn"
+            ]
+          }
+        ]
+      },
+      "finishReason": "stop",
+      "textHash": "cb1d5198f76d5741fb0a3d6f9e9dbdd750c2c076a6fd33931212380897365856",
+      "textExcerpt": "基于当前时间（2026年11月12日），为您检索到的一条最新的家装行业公开新闻标题及相关信息：\n\n**新闻标题：**\n# **2026最新装修趋势出炉，美的设计家中央空调以产品力回应**\n\n**发布时间：** 2026年10月27日\n**发布来源：** 新浪财经\n\n**新闻简述：**\n近期，**美的设计家（Midea Design Home）**联合30家一线室内设计机构发布了《好房子，从好空气开始！2026装修趋势白皮书》。该报告基于3000份消费者调研及120个真实住宅案例，旨在通过提升产品力来回应市场对“好空气”和舒适居住环境的需求。\n\n此外，**2026年中国家装市场**正经历从“增量扩张”向“存量深耕”的深刻转型。据行业报告显示，2026年全国家装市场规模预计达2.68-3.15万亿元，其中**存量房装修（旧房改造/翻新）占比首次突破60%**，成为市场主要驱动力。\n\n另一条相关",
+      "actualCost": "unavailable",
+      "costNote": "provider settled amount is not exposed on the Responses wire",
+      "rawFile": "tmp\\bailian-responses\\raw\\attempt2_integration_execute_agent_chat.json"
+    },
+    {
+      "case": "basic:qwen3.7-flash",
+      "model": "qwen3.7-flash",
+      "wire": "responses",
+      "tools": [],
+      "status": "passed",
+      "requestId": "b46e01d4-8b79-9a10-ba93-89c57fe9df2c",
+      "responseId": null,
+      "latencyMs": 7883,
+      "usage": {
+        "inputTokens": 66,
+        "outputTokens": 616,
+        "cachedInputTokens": 0,
+        "cacheWriteInputTokens": 0
+      },
+      "toolCounts": {},
+      "native": null,
+      "finishReason": "stop",
+      "textHash": "2ad45b24af5b77de797f5652078f0e6a38972cc373ea71eac0a68b7dd0df5803",
+      "textExcerpt": "水电验收能在隐蔽工程被封槽前确认管线施工合格，从源头杜绝日后漏水漏电隐患，避免高昂的返工成本。",
+      "actualCost": "unavailable",
+      "costNote": "provider settled amount is not exposed on the Responses wire",
+      "rawFile": "tmp\\bailian-responses\\raw\\basic_qwen3.7-flash.json"
+    },
+    {
+      "case": "basic:deepseek-v4.1-flash-1017",
+      "model": "deepseek-v4.1-flash-1017",
+      "wire": "responses",
+      "tools": [],
+      "status": "passed",
+      "requestId": "649af88c-fcb6-918d-8007-a8eef3260eff",
+      "responseId": null,
+      "latencyMs": 1976,
+      "usage": {
+        "inputTokens": 75,
+        "outputTokens": 143,
+        "cachedInputTokens": 0,
+        "cacheWriteInputTokens": 0
+      },
+      "toolCounts": {},
+      "native": null,
+      "finishReason": "stop",
+      "textHash": "8d5ef6a32aef8fdd3fc6186997db1fd59068ec9d2cbcddad96063ec1e11ed061",
+      "textExcerpt": "因为水电属于封槽贴砖后就看不见、想改就得砸墙的隐蔽工程，只有在覆盖前验收，才能把漏水漏电和返工的高额代价挡在门外。",
+      "actualCost": "unavailable",
+      "costNote": "provider settled amount is not exposed on the Responses wire",
+      "rawFile": "tmp\\bailian-responses\\raw\\basic_deepseek-v4.1-flash-1017.json"
+    },
+    {
+      "case": "tool:web_extractor",
+      "model": "qwen3.7-flash",
+      "wire": "responses",
+      "tools": [
+        "web_search",
+        "web_extractor"
+      ],
+      "status": "passed",
+      "requestId": "4d8a5426-e0a5-916e-b3e3-1da10a85427c",
+      "responseId": "resp_4d8a5426-e0a5-916e-b3e3-1da10a85427c",
+      "latencyMs": 56787,
+      "usage": {
+        "inputTokens": 13641,
+        "outputTokens": 3046,
+        "cachedInputTokens": 4480,
+        "cacheWriteInputTokens": 0
+      },
+      "toolCounts": {
+        "web_extractor": 2,
+        "web_search": 1
+      },
+      "native": {
+        "tools": [
+          "web_search",
+          "web_extractor"
+        ],
+        "counts": {
+          "web_extractor": 2,
+          "web_search": 1
+        },
+        "provenance": "mixed",
+        "rejectedSources": 0,
+        "calls": [
+          {
+            "tool": "web_search",
+            "status": "completed",
+            "queries": [
+              "阿里云百炼 代码解释器 官方文档",
+              "Alibaba Cloud Bailian Code Interpreter documentation capabilities"
+            ],
+            "sourceHosts": [
+              "help.aliyun.com",
+              "help.aliyun.com",
+              "www.aliyun.com",
+              "help.aliyun.com",
+              "www.alibabacloud.com",
+              "bailian.console.aliyun.com",
+              "help.aliyun.com",
+              "www.aliyun.com",
+              "www.aliyun.com",
+              "www.alibabacloud.com",
+              "help.aliyun.com",
+              "www.alibabacloud.com",
+              "www.alibabacloud.com",
+              "www.aliyun.com",
+              "www.alibabacloud.com",
+              "baike.baidu.com",
+              "www.linkedin.com",
+              "www.alibabacloud.com",
+              "help.aliyun.com"
+            ]
+          },
+          {
+            "tool": "web_extractor",
+            "status": "completed",
+            "documents": [
+              {
+                "host": "help.aliyun.com",
+                "chars": 1864,
+                "hash": "4835f8f0bf8a9500fc6b2e50c3e89834e6e8837457aff82ea44777299c275f94",
+                "injectionSignals": []
+              },
+              {
+                "host": "help.aliyun.com",
+                "chars": 2668,
+                "hash": "dc156051b3b59d47b6f809a382203d7b7e4b8c96325c3bf4db276e35f35be1d0",
+                "injectionSignals": []
+              }
+            ]
+          },
+          {
+            "tool": "web_extractor",
+            "status": "completed",
+            "documents": [
+              {
+                "host": "help.aliyun.com",
+                "chars": 1399,
+                "hash": "3fd5aa943d9185b755b495d21fb0a37e4be150b218a1b4b27370d8bdb331ac58",
+                "injectionSignals": []
+              }
+            ]
+          }
+        ]
+      },
+      "finishReason": "stop",
+      "textHash": "ac6c14b7457f2029a487c0facbbbafe7a7c69c4d9fea19f4ecb9eb67c212efa6",
+      "textExcerpt": "根据阿里云百炼（Model Studio）官方文档，**代码解释器（Code Interpreter）** 是一个预置插件（或模型内置功能），旨在弥补大语言模型在精确计算和代码执行方面的短板。\n\n它能让模型在安全的沙箱环境中**编写并运行 Python 代码**，从而通过“执行代码-获取结果”的方式解决复杂问题。\n\n以下是代码解释器的核心功能概括：\n\n### 1. 解决精确数学与逻辑计算\n大模型原生容易产生计算错误（幻觉）。代码解释器可以通过编写 Python 脚本进行精确计算，例如：\n*   **高精度运算**：处理大数乘方、复杂数学公式。\n*   **逻辑验证**：通过代码验证逻辑推导的正确性。\n\n### 2. 数据分析与可视化\n它可以利用 Python 数据分析库（如 `matplotlib`, `pandas` 等）对数据进行分析和处理：\n*   **数据图表绘制**：自动生成折线",
+      "actualCost": "unavailable",
+      "costNote": "provider settled amount is not exposed on the Responses wire",
+      "rawFile": "tmp\\bailian-responses\\raw\\tool_web_extractor.json"
+    },
+    {
+      "case": "tool:code_interpreter",
+      "model": "qwen3.7-flash",
+      "wire": "responses",
+      "tools": [
+        "code_interpreter"
+      ],
+      "status": "passed",
+      "requestId": "5e3618e9-e131-95bf-9fa4-6ef532996b1a",
+      "responseId": "resp_5e3618e9-e131-95bf-9fa4-6ef532996b1a",
+      "latencyMs": 13022,
+      "usage": {
+        "inputTokens": 791,
+        "outputTokens": 152,
+        "cachedInputTokens": 0,
+        "cacheWriteInputTokens": 0
+      },
+      "toolCounts": {
+        "code_interpreter": 1
+      },
+      "native": {
+        "tools": [
+          "code_interpreter"
+        ],
+        "counts": {
+          "code_interpreter": 1
+        },
+        "provenance": "provider_sandbox",
+        "rejectedSources": 0,
+        "calls": [
+          {
+            "tool": "code_interpreter",
+            "status": "completed",
+            "code": "print(12 ** 3)",
+            "logs": "1728",
+            "outputKinds": [
+              "logs"
+            ]
+          }
+        ]
+      },
+      "finishReason": "stop",
+      "textHash": "a0bd94956b9f42cde97b95b10ad65bbaf2a8d87142caf819e4c099ed75126d72",
+      "textExcerpt": "1728",
+      "actualCost": "unavailable",
+      "costNote": "provider settled amount is not exposed on the Responses wire",
+      "rawFile": "tmp\\bailian-responses\\raw\\tool_code_interpreter.json"
+    },
+    {
+      "case": "tool:multi_tool",
+      "model": "qwen3.7-flash",
+      "wire": "responses",
+      "tools": [
+        "web_search",
+        "web_extractor",
+        "code_interpreter"
+      ],
+      "status": "passed",
+      "requestId": "69f58f23-0f63-99cf-b9a5-730431f88ede",
+      "responseId": "resp_69f58f23-0f63-99cf-b9a5-730431f88ede",
+      "latencyMs": 36221,
+      "usage": {
+        "inputTokens": 6556,
+        "outputTokens": 1736,
+        "cachedInputTokens": 2560,
+        "cacheWriteInputTokens": 0
+      },
+      "toolCounts": {
+        "code_interpreter": 1,
+        "web_search": 1
+      },
+      "native": {
+        "tools": [
+          "web_search",
+          "web_extractor",
+          "code_interpreter"
+        ],
+        "counts": {
+          "code_interpreter": 1,
+          "web_search": 1
+        },
+        "provenance": "mixed",
+        "rejectedSources": 0,
+        "calls": [
+          {
+            "tool": "web_search",
+            "status": "completed",
+            "queries": [
+              "装修面积计算 公开说明",
+              "装修工程量计算规则 公开文档"
+            ],
+            "sourceHosts": [
+              "zhuanlan.zhihu.com",
+              "baike.baidu.com",
+              "m.fang.com",
+              "www.sohu.com",
+              "js.shaanxi.gov.cn",
+              "news.gldjc.com",
+              "slgcfy.ylvtc.cn",
+              "www.to8to.com",
+              "zjw.beijing.gov.cn",
+              "21003437.s21i.faiusr.com",
+              "zjw.sh.gov.cn",
+              "zjt.hunan.gov.cn",
+              "patents.google.com",
+              "www.dishang.com",
+              "www.waizi.org.cn",
+              "zhuanlan.zhihu.com"
+            ]
+          },
+          {
+            "tool": "code_interpreter",
+            "status": "completed",
+            "code": "12.5 * 8.4",
+            "logs": "105.0",
+            "outputKinds": [
+              "logs"
+            ]
+          }
+        ]
+      },
+      "finishReason": "stop",
+      "textHash": "4f67cd91aa8aad234d449e5334e7580377e1327ca89feaab5c4d25ef1640c84e",
+      "textExcerpt": "根据公开的国家标准和行业规范，装修面积的计算通常涉及以下两个层面，您可以参考：\n\n### 一、 装修面积计算的公开说明\n\n1. **官方规范（针对工程类/公共装修）**\n   依据中华人民共和国国家标准**《房屋建筑与装饰工程工程量计算规范》（GB 50854-2013）**，不同项目的计算公式如下：\n   *   **楼地面工程**：按设计图示尺寸以面积计算。扣除凸出地面构筑物、设备基础、室内铁道、地沟等所占面积，不扣除间壁墙、柱、垛、附墙烟囱及 0.3平方米以内的孔洞所占面积。\n   *   **墙柱面工程**：按设计图示尺寸以“面积”计算（墙长 $\\times$ 墙高）。扣除门窗洞口和空圈所占面积，不扣除踢脚线、挂镜线及 0.3平方米以内的孔洞面积。\n   *   **天棚工程**：按设计图示尺寸以水平投影面积计算。扣除间壁墙、垛、柱、附墙烟囱、检查口和管道所占面积，带梁天棚的梁两侧",
+      "actualCost": "unavailable",
+      "costNote": "provider settled amount is not exposed on the Responses wire",
+      "rawFile": "tmp\\bailian-responses\\raw\\tool_multi_tool.json"
+    },
+    {
+      "case": "tool:function_call",
+      "model": "qwen3.7-flash",
+      "wire": "responses",
+      "tools": [],
+      "status": "passed",
+      "requestId": "08912ef4-4ba3-97cf-8dfc-ba20e306e8b1",
+      "responseId": null,
+      "latencyMs": 2141,
+      "usage": {
+        "inputTokens": 336,
+        "outputTokens": 135,
+        "cachedInputTokens": 0,
+        "cacheWriteInputTokens": 0
+      },
+      "toolCounts": {},
+      "native": null,
+      "finishReason": "tool_calls",
+      "textHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "textExcerpt": "",
+      "actualCost": "unavailable",
+      "costNote": "provider settled amount is not exposed on the Responses wire",
+      "rawFile": "tmp\\bailian-responses\\raw\\tool_function_call.json"
+    },
+    {
+      "case": "tool:function_result",
+      "model": "qwen3.7-flash",
+      "wire": "responses",
+      "tools": [],
+      "status": "passed",
+      "requestId": "a74f02bb-ca93-987f-8483-416f7ce85181",
+      "responseId": null,
+      "latencyMs": 3083,
+      "usage": {
+        "inputTokens": 394,
+        "outputTokens": 261,
+        "cachedInputTokens": 0,
+        "cacheWriteInputTokens": 0
+      },
+      "toolCounts": {},
+      "native": null,
+      "finishReason": "stop",
+      "textHash": "06818f16a71dbecbd1df260f69821aed70de1a70c15bbc26b9ba0a2752603378",
+      "textExcerpt": "3 加 4 的结果是 7。",
+      "actualCost": "unavailable",
+      "costNote": "provider settled amount is not exposed on the Responses wire",
+      "rawFile": "tmp\\bailian-responses\\raw\\tool_function_result.json"
+    },
+    {
+      "case": "stream:completed",
+      "model": "qwen3.7-flash",
+      "wire": "responses",
+      "tools": [],
+      "status": "passed",
+      "requestId": "ecb7995b-8ddd-92e5-87f4-40bf2db31f0a",
+      "responseId": null,
+      "latencyMs": 6528,
+      "usage": {
+        "inputTokens": 53,
+        "outputTokens": 550,
+        "cachedInputTokens": 0,
+        "cacheWriteInputTokens": 0
+      },
+      "toolCounts": {},
+      "native": null,
+      "finishReason": "stop",
+      "textHash": "17fb0ef543e57a953a0d6761918660a7c281583e445512bbcc99e20f1a1cf78a",
+      "textExcerpt": "装修预算的作用是提前规划资金分配、严格控制成本支出，确保装修工程在财务可承受范围内顺利完成。",
+      "actualCost": "unavailable",
+      "costNote": "provider settled amount is not exposed on the Responses wire",
+      "rawFile": "tmp\\bailian-responses\\raw\\stream_completed.json"
+    },
+    {
+      "case": "stream:interrupted",
+      "model": "qwen3.7-flash",
+      "wire": "responses",
+      "tools": [],
+      "status": "passed",
+      "requestId": null,
+      "responseId": null,
+      "latencyMs": 438,
+      "usage": null,
+      "toolCounts": {},
+      "native": null,
+      "finishReason": null,
+      "textHash": null,
+      "textExcerpt": null,
+      "actualCost": "unavailable",
+      "costNote": "provider settled amount is not exposed on the Responses wire",
+      "note": "aborted after the first event; http=200"
+    },
+    {
+      "case": "timeout:unknown",
+      "model": "qwen3.7-flash",
+      "wire": "responses",
+      "tools": [],
+      "status": "passed",
+      "requestId": null,
+      "responseId": null,
+      "latencyMs": 2,
+      "usage": null,
+      "toolCounts": {},
+      "native": null,
+      "finishReason": null,
+      "textHash": null,
+      "textExcerpt": null,
+      "actualCost": "unavailable",
+      "costNote": "provider settled amount is not exposed on the Responses wire",
+      "errorCode": "PROVIDER_TIMEOUT",
+      "errorMessage": "Bailian Responses request timed out",
+      "note": "single dispatch, unknown acceptance, no retry"
+    },
+    {
+      "case": "regression:chat_completions:qwen3.7-flash",
+      "model": "qwen3.7-flash",
+      "wire": "chat-completions",
+      "tools": [],
+      "status": "passed",
+      "requestId": "bd301e2e-a2ea-9130-a205-dd1cc0bc77c9",
+      "responseId": null,
+      "latencyMs": 1081,
+      "usage": {
+        "inputTokens": 21,
+        "outputTokens": 28,
+        "cachedInputTokens": 0
+      },
+      "toolCounts": {},
+      "native": null,
+      "finishReason": "stop",
+      "textHash": "bb3841f8e95ea725a1a1bce6eb3b0bc0379179f1bcbf5e1ee3f7864c91cafe10",
+      "textExcerpt": "装修前做预算是为了明确资金上限，防止超支并合理分配资源，从而确保在可控的成本内实现预期的居住效果。",
+      "actualCost": "unavailable",
+      "costNote": "provider settled amount is not exposed on the Responses wire",
+      "rawFile": "tmp\\bailian-responses\\raw\\regression_chat_completions_qwen3.7-flash.json"
+    },
+    {
+      "case": "basic:qwen3.8-flash",
+      "model": "qwen3.8-flash",
+      "wire": "responses",
+      "tools": [],
+      "status": "passed",
+      "requestId": "fcfdb849-be0b-951c-a245-aea9f421144c",
+      "responseId": null,
+      "latencyMs": 3510,
+      "usage": {
+        "inputTokens": 104,
+        "outputTokens": 109,
+        "cachedInputTokens": 0,
+        "cacheWriteInputTokens": 0
+      },
+      "toolCounts": {},
+      "native": null,
+      "finishReason": "stop",
+      "textHash": "19086fbfb1d9a20fa10ff21b3eed3e2b0913dcc0187fa4182d50afea3dd16066",
+      "textExcerpt": "做水电验收是因为水电属于隐蔽工程，提前排查管线走向、回路负载、接头密封与施工质量隐患，能避免日后漏水、断电、跳闸甚至墙体地面返工，降低居住风险和后续维修成本。",
+      "actualCost": "unavailable",
+      "costNote": "provider settled amount is not exposed on the Responses wire",
+      "rawFile": "tmp\\bailian-responses\\raw\\models_basic_qwen3.8-flash.json"
+    },
+    {
+      "case": "basic:qwen3.8-max",
+      "model": "qwen3.8-max",
+      "wire": "responses",
+      "tools": [],
+      "status": "failed",
+      "requestId": null,
+      "responseId": null,
+      "latencyMs": 196,
+      "usage": null,
+      "toolCounts": {},
+      "native": null,
+      "finishReason": null,
+      "textHash": null,
+      "textExcerpt": null,
+      "actualCost": "unavailable",
+      "costNote": "provider settled amount is not exposed on the Responses wire",
+      "errorCode": "HTTP_403",
+      "errorMessage": "Bailian Responses request failed (403): upstream=unspecified; reason=unspecified; parameter=unspecified"
+    },
+    {
+      "case": "basic:deepseek-v4.1-flash",
+      "model": "deepseek-v4.1-flash",
+      "wire": "responses",
+      "tools": [],
+      "status": "passed",
+      "requestId": "bdac2e3b-ecfc-9ec5-a817-8c8df714476f",
+      "responseId": null,
+      "latencyMs": 1714,
+      "usage": {
+        "inputTokens": 75,
+        "outputTokens": 108,
+        "cachedInputTokens": 0,
+        "cacheWriteInputTokens": 0
+      },
+      "toolCounts": {},
+      "native": null,
+      "finishReason": "stop",
+      "textHash": "c21cf7d37c9fb262b2b0e495f65d212a93b324b63e86b349278b228ea666da66",
+      "textExcerpt": "装修前做水电验收是为了在封槽前确认管线走向、材料规格、打压和绝缘等均合格，及时排除隐患，避免后期返工和安全事故。",
+      "actualCost": "unavailable",
+      "costNote": "provider settled amount is not exposed on the Responses wire",
+      "rawFile": "tmp\\bailian-responses\\raw\\models_basic_deepseek-v4.1-flash.json"
+    },
+    {
+      "case": "tool:web_search",
+      "model": "qwen3.8-max",
+      "wire": "responses",
+      "tools": [
+        "web_search"
+      ],
+      "status": "failed",
+      "requestId": null,
+      "responseId": null,
+      "latencyMs": 254,
+      "usage": null,
+      "toolCounts": {},
+      "native": null,
+      "finishReason": null,
+      "textHash": null,
+      "textExcerpt": null,
+      "actualCost": "unavailable",
+      "costNote": "provider settled amount is not exposed on the Responses wire",
+      "errorCode": "HTTP_403",
+      "errorMessage": "Bailian Responses request failed (403): upstream=unspecified; reason=unspecified; parameter=unspecified"
+    },
+    {
+      "case": "tool:code_interpreter",
+      "model": "qwen3.8-max",
+      "wire": "responses",
+      "tools": [
+        "code_interpreter"
+      ],
+      "status": "failed",
+      "requestId": null,
+      "responseId": null,
+      "latencyMs": 189,
+      "usage": null,
+      "toolCounts": {},
+      "native": null,
+      "finishReason": null,
+      "textHash": null,
+      "textExcerpt": null,
+      "actualCost": "unavailable",
+      "costNote": "provider settled amount is not exposed on the Responses wire",
+      "errorCode": "HTTP_403",
+      "errorMessage": "Bailian Responses request failed (403): upstream=unspecified; reason=unspecified; parameter=unspecified"
+    },
+    {
+      "case": "access:chat_completions:qwen3.8-max",
+      "model": "qwen3.8-max",
+      "wire": "chat-completions",
+      "tools": [],
+      "status": "failed",
+      "requestId": null,
+      "responseId": null,
+      "latencyMs": 224,
+      "usage": null,
+      "toolCounts": {},
+      "native": null,
+      "finishReason": null,
+      "textHash": null,
+      "textExcerpt": null,
+      "actualCost": "unavailable",
+      "costNote": "provider settled amount is not exposed on the Responses wire",
+      "errorCode": "HTTP_403",
+      "errorMessage": "Assistant model request failed (403): upstream=AllocationQuota.FreeTierOnly; reason=unspecified; parameter=unspecified"
+    }
+  ]
+}

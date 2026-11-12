@@ -1,5 +1,11 @@
 # 小程序当前功能清单
 
+**小K统一集成（Limited）。** 现有 C01 聊天和跟进入口由服务端网关供给。来源片与私人委托回执通过原获权会话接口读取。四端旅程、持久化及原生验收见[集成审查](xiaok-integration-audit.md)。
+
+<!-- xiaok-r3-web-tools -->
+**小K R3 公开资料（Limited）。** 合资格的开发会话沿用 C01 聊天及已授权的项目或跟进会话服务。Worker 可按需搜索并读取公开原文，将原始网址和检索时间随引用保存。原引用卡片通过 `GET /api/miniprogram/assistant/citations/:id` 打开。真实验收覆盖隔离会话服务，原生设备和各角色入口待验。[R3 验证](bailian-responses-adapter.md#11-r3-应用联网搜索)。
+<!-- /xiaok-r3-web-tools -->
+
 <!-- site-capture-current -->
 **现场上报/回执：本地已实现（Implemented）。** 批准的[V3随手报与常用工作](../design-references/cloud-site-redesign-20261107/README.md#05-通用现场上报与回执已批准实施)对应`packages/construction/chat/chat`：54px拍照/说一句双按钮，打字/常用工作次入口，原图/原音预览及工作/部位/进展一次提交。点选保留部分完成/说不准，不切阶段、不调用模型；新上报由管理人员核对发布，原补拍/更正/版本保留。
 
@@ -675,6 +681,10 @@ P2S 第一批 C01/C02/S01/U01 的聊天与接待主链路 **Implemented**，自�
 小K当前状态：`Limited`。详见[六期规划](./xiaok-assistant-roadmap.zh-CN.md)与[第一期实施契约](./xiaok-assistant-phase-1.zh-CN.md)的1A交付记录。已新增客户入口上下文、会话创建/列表/详情/归档、消息发送/历史、run查询/取消/重试（`/api/miniprogram/assistant/*`），以及受CRON_SECRET保护的内部Worker（`/api/internal/assistant/jobs/run`）。13张新表通过0058/0059迁移、强制RLS及复合外键实现租户隔离；只允许有效微信customer身份访问本人参与的会话，无手机号可用，staff/referrer/Admin/平台身份均无默认读取权。服务码只解析和审计，不新增留资/归属/分佣。消息/run/job/幂等/额度预留同事务，支持租约恢复、未知结果保留和取消后拒绝晚到提交；企业reset/purge已纳入新增数据。
 
 1B知识后端 **Implemented**，第一期整体仍为 **Limited**：`/api/assistant/knowledge/documents`及`[id]`提供列表/创建/详情/元数据更新，`[id]/versions`复制草稿，`[id]/versions/[versionId]`编辑，`index`/`publish`执行索引/发布，`[id]/retire`撤回，`/api/assistant/knowledge/jobs/[jobId]`查询任务。写请求要求Idempotency-Key和对应expectedVersion/expectedEditVersion。仅本企业有效enterprise_admin且数据库menu_permissions显式含assistant-knowledge可访问；平台无例外，权限在索引执行前后复查。本批不新增菜单或默认授权。0060新增5张知识表（文档/版本/片段/profile/调用审计），强制RLS及复合FK；知识任务带租约/hash/edit_version保护，发布撤回提升epoch并写outbox；reset/purge已纳入。
+
+**R5–R6 业主咨询与项目协作（Limited）。** 业主在 `packages/assistant/chat/chat` 记录偏好、交代待复核的跟进并在原输入框查看、暂停、继续或取消。团队资料沿原咨询明确共享。工人在 `packages/construction/chat/chat` 上报原件，获权设计师与项目负责人沿现有流程关联证据并提交结果。原 C01 用原回执和媒体组件显示可重进的结果及获准原图，工艺引用沿原来源纸页。[R6 验收与局限](./xiaok-assistant-phase-2.zh-CN.md#r6-原生施工复核与托管知识)
+
+百炼 Responses 分支的 R4 将企业及项目知识检索接入现有小 K 会话。业主可查有权项目的当前对客版本，设计师、施工人员和老板在共享项目会话按实时成员及角色权限检索。重开引用复验权限、发布状态、有效期和原文。既有引用响应包含企业、文档、版本、章节、经核验的页码和逐字摘录；联网资料保留公开来源身份及链接，规范冲突和企业依据缺失明确说明。共享项目会话支持对照企业资料、当前获权进度和已发布记录。托管服务验收仍为 **Limited**，待真实工作空间联调。[R4 集成契约](./bailian-responses-adapter.md#12-r4-企业知识库)
 
 1B知识回答、结构化引用/失效校验、无依据处理及本人预览后端 **Implemented**。同一ConversationService/JobQueue在授权检索后调用现有文本模型；每段回答必须引用本次证据及逐字摘录，最终提交复查权限、epoch、hash/profile和有效期。无候选/低相关或模型明确无依据时保存固定insufficient_evidence notice；检索故障、非法引用或畸形输出不会冒充有效回答。0061新增强制RLS引用表及消息/run answer_kind；引用与最终消息、终态同事务落库，reset/purge已包含引用。后续读取会隐藏已撤回/受限/过期/draft编辑失效来源及整条依赖回答，仍获授权的旧发布版本标记historical。
 

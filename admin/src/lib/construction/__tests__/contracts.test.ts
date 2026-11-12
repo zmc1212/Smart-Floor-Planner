@@ -3,7 +3,16 @@ import { test } from 'node:test';
 import { agentToolsForMessage } from '@/lib/assistant/agent/worker';
 import { contactInput, defaultConstructionStages, stagesInput } from '../stages';
 import { followUpKnown } from '../follow-ups';
+import { canManageConstructionProject } from '../contracts';
 
+test('only the enterprise owner or an active project manager can manage a construction project', () => {
+  assert.equal(canManageConstructionProject(true, null), true);
+  assert.equal(canManageConstructionProject(true, 'worker'), true);
+  assert.equal(canManageConstructionProject(false, 'manager'), true);
+  for (const role of ['worker', 'observer', 'designer', 'owner', '', null, undefined]) {
+    assert.equal(canManageConstructionProject(false, role), false, String(role));
+  }
+});
 test('visit messages can query the real stage but cannot register, reschedule or cancel a construction booking', () => {
   for (const message of ['周六想去看看', '我想去工地看看', '取消到场安排', '联系管家', '现在到哪个施工节点了']) {
     const tools = agentToolsForMessage(message, true);

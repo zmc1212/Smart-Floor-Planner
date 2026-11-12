@@ -841,6 +841,27 @@
       "when": 1794988800000,
       "tag": "0120_construction_camera_sd_identity_version",
       "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1795075200000,
+      "tag": "0121_assistant_rag_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1795161600000,
+      "tag": "0122_assistant_managed_knowledge",
+      "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1795248000000,
+      "tag": "0123_assistant_long_term_delegation",
+      "breakpoints": true
     }
   ]
 }
