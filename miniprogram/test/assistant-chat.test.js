@@ -670,13 +670,15 @@ test('AI Markdown produces headings, inline styles, lists, quotes, code and tabl
   f.db.items = [message('21', '1', text, { authorKind: 'assistant' })];
   await f.controller.show({ conversationId: '11' });
   const [block] = f.controller.state.messages[0].blocks;
+  const nodes = block.markdown.flatMap(part => part.nodes);
   const names = nodes => nodes.flatMap(node => node.name ? [node.name, ...names(node.children)] : []);
-  assert.deepEqual(block.nodes.map(node => node.name), ['h1', 'h3', 'p', 'ol', 'blockquote', 'pre', 'div']);
-  assert.deepEqual(names(block.nodes[2].children), ['strong', 'em', 'br', 'code']);
-  assert.equal(block.nodes[3].attrs.start, 3);
-  assert.deepEqual(names(block.nodes[3].children), ['li', 'li', 'ul', 'li', 'li']);
-  assert.equal(block.nodes[5].children[0].children[0].text, 'SW-01\n  左侧底盒');
-  assert.deepEqual(names(block.nodes[6].children), ['table', 'thead', 'tr', 'th', 'th', 'tbody', 'tr', 'td', 'td', 'strong']);
+  assert.deepEqual(block.markdown.map(part => part.kind), ['text', 'code', 'table']);
+  assert.deepEqual(nodes.map(node => node.name), ['h1', 'h3', 'p', 'ol', 'blockquote', 'pre', 'div']);
+  assert.deepEqual(names(nodes[2].children), ['strong', 'em', 'br', 'code']);
+  assert.equal(nodes[3].attrs.start, 3);
+  assert.deepEqual(names(nodes[3].children), ['li', 'li', 'ul', 'li', 'li']);
+  assert.equal(nodes[5].children[0].children[0].text, 'SW-01\n  左侧底盒');
+  assert.deepEqual(names(nodes[6].children), ['table', 'thead', 'tr', 'th', 'th', 'tbody', 'tr', 'td', 'td', 'strong']);
   const reopened = new ChatController({ client: f.client, identity: () => 'customer-A', emit() {}, schedule: () => 0 });
   await reopened.show({ conversationId: '11' });
   assert.deepEqual(reopened.state.messages[0].blocks, [block]);
@@ -699,15 +701,18 @@ test('Markdown only formats authorized AI text and leaves source and notice bloc
     { ...item, id: '23', seq: '3', authorKind: 'user' },
     { ...item, id: '24', seq: '4', available: false },
   ], markdownForBlock);
-  assert.deepEqual(reply.blocks.map(block => block.nodes?.[0]?.name || block.text), ['p', '**服务提示**', 'h3']);
+  assert.deepEqual(reply.blocks.map(block => block.markdown?.[0]?.nodes[0]?.name || block.text), ['p', '**服务提示**', 'h3']);
   assert.deepEqual(reply.citations, item.citations);
   assert.deepEqual(reply.publicReferences, item.publicReferences);
-  const nodes = JSON.stringify(reply.blocks[0].nodes);
+  const nodes = JSON.stringify(reply.blocks[0].markdown);
   assert.match(nodes, /来源名称.*照片说明/);
   assert.doesNotMatch(nodes, /https:|"(href|src)"|"name":"(a|img)"/);
-  assert.ok(user.blocks.every(block => !block.nodes));
+  assert.ok(user.blocks.every(block => !block.markdown));
   assert.deepEqual(revoked.blocks, [{ key: 0, text: '**服务提示**' }]);
   assert.deepEqual(revoked.publicReferences, []);
+  assert.deepEqual(revoked.citations, []);
+  assert.equal(revoked.content, undefined);
+  assert.doesNotMatch(JSON.stringify(revoked), /外部|照片说明|正文/);
   const inert = markdownForBlock({ text: '**保留文字** <button>仅文字</button> &lt;script&gt;' });
   assert.doesNotMatch(JSON.stringify(inert), /"name":"(button|script)"/);
   assert.match(JSON.stringify(inert), /仅文字/);
@@ -924,13 +929,14 @@ test('warm foreground reprojects withdrawn content and identity changes never re
   f.db.conversation.lastSeq = '1';
   f.db.items = [{ ...message('21', '1', '**旧资料**', { authorKind: 'assistant' }), publicSourceBound: true }];
   await f.controller.show({ conversationId: '11' });
-  assert.equal(f.controller.state.messages[0].blocks[0].nodes[0].children[0].name, 'strong');
+  assert.equal(f.controller.state.messages[0].blocks[0].markdown[0].nodes[0].children[0].name, 'strong');
   f.controller.input('私人草稿');
   f.db.items[0] = { ...f.db.items[0], available: false, content: { blocks: [{ type: 'notice', fallbackText: '资料已不可用' }] } };
   f.controller.hide(); await f.controller.show();
   assert.equal(f.controller.state.messages[0].blocks[0].text, '资料已不可用');
-  assert.equal(f.controller.state.messages[0].blocks[0].nodes, undefined);
+  assert.equal(f.controller.state.messages[0].blocks[0].markdown, undefined);
   assert.doesNotMatch(JSON.stringify(f.controller.state.messages), /旧资料/);
+  assert.doesNotMatch(JSON.stringify(f.controller.rawMessages), /旧资料/);
   assert.equal(messageReads(f).length, 2, 'the unchanged sequence still required a source recheck');
   assert.equal(f.controller.state.draft, '私人草稿');
   f.identity('customer-B');
@@ -938,6 +944,82 @@ test('warm foreground reprojects withdrawn content and identity changes never re
   assert.equal(f.controller.state.messages.length, 0);
   assert.equal(f.controller.state.draft, '');
   assert.equal(f.calls.filter(call => call.url === '/entry-context').length, 2);
+});
+
+test('full history refresh retains paged replies and reuses unchanged Markdown on foreground', async () => {
+  const f = fixture();
+  const earlier = message('21', '1', '**早期回复**', { authorKind: 'assistant' });
+  f.db.items = [message('22', '2', '**近期回复**', { authorKind: 'assistant' })];
+  f.db.messageCursor = '2';
+  f.db.conversation.lastSeq = '2';
+  f.intercept(call => call.body.beforeSeq === '2'
+    ? { success: true, data: { items: [structuredClone(earlier)], nextCursor: null } } : undefined);
+  await f.controller.show({ conversationId: '11' });
+  await f.controller.olderMessages();
+  const [older, recent] = f.controller.state.messages.map(item => item.blocks[0].markdown);
+  assert.ok(older && recent);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    f.controller.lastFullSyncAt = 0;
+    f.controller.hide();
+    await f.controller.show();
+    assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21', '22']);
+    assert.strictEqual(f.controller.state.messages[0].blocks[0].markdown, older);
+    assert.strictEqual(f.controller.state.messages[1].blocks[0].markdown, recent);
+    assert.equal(f.controller.state.messageCursor, null);
+  }
+  assert.equal(messageReads(f).filter(call => call.body.beforeSeq === '2').length, 4);
+  f.controller.dispose();
+});
+
+test('a refresh preserves the confirmed end of earlier history at a full page boundary', async () => {
+  const f = fixture();
+  f.db.items = [message('22', '2', '近期回复')];
+  f.db.messageCursor = '2';
+  f.db.conversation.lastSeq = '2';
+  f.intercept(call => {
+    if (call.body.beforeSeq === '2') return { success: true, data: { items: [message('21', '1', '最早的回复')], nextCursor: '1' } };
+    if (call.body.beforeSeq === '1') return { success: true, data: { items: [], nextCursor: null } };
+  });
+  await f.controller.show({ conversationId: '11' });
+  await f.controller.olderMessages();
+  assert.equal(f.controller.state.messageCursor, '1');
+  await f.controller.olderMessages();
+  assert.equal(f.controller.state.messageCursor, null);
+  f.controller.lastFullSyncAt = 0;
+  await f.controller.refresh();
+  assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21', '22']);
+  assert.equal(f.controller.state.messageCursor, null);
+  assert.equal(messageReads(f).filter(call => call.body.beforeSeq === '1').length, 2);
+  f.controller.dispose();
+});
+
+test('a full refresh includes an earlier page loaded while revalidation is in flight', async () => {
+  const f = fixture();
+  f.db.items = [message('23', '3', '近期回复')];
+  f.db.messageCursor = '3';
+  f.db.conversation.lastSeq = '3';
+  const requested = deferred(), olderResponse = deferred();
+  let refreshing = false;
+  const previousPage = { success: true, data: { items: [message('22', '2', '上一页回复')], nextCursor: '2' } };
+  f.intercept(async call => {
+    if (call.body.beforeSeq === '3') {
+      if (refreshing) { requested.resolve(); return olderResponse.promise; }
+      return previousPage;
+    }
+    if (call.body.beforeSeq === '2') return { success: true, data: { items: [message('21', '1', '更早的回复')], nextCursor: null } };
+  });
+  await f.controller.show({ conversationId: '11' });
+  await f.controller.olderMessages();
+  f.controller.lastFullSyncAt = 0;
+  refreshing = true;
+  const refresh = f.controller.refresh({ forceEntry: false, background: true });
+  await requested.promise;
+  await f.controller.olderMessages();
+  olderResponse.resolve(previousPage);
+  await refresh;
+  assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21', '22', '23']);
+  assert.equal(f.controller.state.messageCursor, null);
+  f.controller.dispose();
 });
 
 test('public history is removed from the cached view on network failure and restored only by a live read', async () => {

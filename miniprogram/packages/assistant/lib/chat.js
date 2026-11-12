@@ -310,18 +310,31 @@ class ChatController {
     const data = await (full || this.client.read(`/conversations/${id}/messages`, { limit: WINDOW }));
     if (!current()) return null;
     let items = data.items || [], cursor = data.nextCursor;
-    // Reproject the older pages already opened in a public conversation too.
-    // An unchanged tail does not prove a public source in an older page is live.
-    const floor = publicWindow && this.seqConversationId === id ? this.olderFloor : '';
-    while (floor && cursor && seqOrder(cursor, floor) > 0) {
+    // Keep pages the customer has loaded and revalidate their source access
+    // alongside the tail. A source can expire without a sequence change.
+    const sameConversation = this.seqConversationId === id;
+    let floor = sameConversation ? this.olderFloor : '';
+    while (floor && cursor && (seqOrder(cursor, floor) > 0 || cursor === floor && this.state.messageCursor === null)) {
       const older = await this.client.read(`/conversations/${id}/messages`, { limit: WINDOW, beforeSeq: cursor });
       if (!current()) return null;
+      // The customer can load another page while this read is in flight.
+      floor = this.olderFloor;
       items = items.concat(older.items || []);
       if (older.nextCursor && seqOrder(older.nextCursor, cursor) >= 0) break;
       cursor = older.nextCursor;
     }
-    const unchanged = this.lastFullSyncAt > 0 && this.seqConversationId === id && this.state.messageCursor === cursor
-      && JSON.stringify(this.rawMessages) === JSON.stringify(items);
+    const previous = sameConversation ? this.rawMessages || [] : [];
+    const byId = new Map(previous.map(item => [String(item.id), item]));
+    let unchanged = this.lastFullSyncAt > 0 && sameConversation && this.state.messageCursor === cursor && previous.length === items.length;
+    items = items.map(item => {
+      const cached = byId.get(String(item.id));
+      // Preserve the identity of authorized, unchanged blocks across fresh
+      // HTTP responses. Changed or withdrawn content leaves the WeakMap keys
+      // behind with the old window.
+      if (cached && JSON.stringify(cached) === JSON.stringify(item)) return cached;
+      unchanged = false;
+      return item;
+    });
     this.rawMessages = items; this.seqConversationId = id; this.lastFullSyncAt = Date.now();
     this.olderFloor = floor;
     this.latestSeq = data.latestSeq !== undefined
@@ -354,7 +367,7 @@ class ChatController {
     if (!incoming.length) return null;
     const raw = mergeMessages(this.rawMessages || [], incoming);
     this.rawMessages = raw;
-    return { messages: this.windowView(raw), messageCursor: this.state.messageCursor, appended: incoming.length };
+    return { messages: messagesForView(raw), messageCursor: this.state.messageCursor, appended: incoming.length };
   }
 
   // A delta that only grew the tail keeps the rendered prefix untouched and
@@ -370,18 +383,6 @@ class ChatController {
       ...(revokedCitation ? { citation: null, citationLoading: false } : {}) };
     Object.assign(this.state, patch);
     this.emit(pureAppend ? { ...patch, messagesAppendFrom: from } : patch);
-  }
-
-  // Rebuild the rendered list from the merged window while keeping earlier
-  // pages the customer already pulled above it.
-  windowView(raw) {
-    const view = messagesForView(raw);
-    const cutoff = raw.length ? String(raw[0].seq || '0') : '';
-    if (!cutoff) return view;
-    const rendered = new Set(raw.map(item => String(item.id)));
-    return this.state.messages
-      .filter(item => !rendered.has(String(item.id)) && seqOrder(item.seq, cutoff) < 0)
-      .concat(view);
   }
 
   applyRun(run) {
@@ -585,9 +586,13 @@ class ChatController {
     try {
       const result = await this.client.read(`/conversations/${this.conversationId}/messages`, { limit: 30, beforeSeq: this.state.messageCursor });
       if (!this.valid(epoch)) return;
-      const ids = new Set(this.state.messages.map(item => item.id));
-      const older = messagesForView(result.items.filter(item => !ids.has(item.id)));
-      if (older.length) this.olderFloor = older[0].seq;
+      const ids = new Set(this.state.messages.map(item => String(item.id)));
+      const items = result.items.filter(item => !ids.has(String(item.id)));
+      const older = messagesForView(items);
+      if (older.length) {
+        this.olderFloor = older[0].seq;
+        this.rawMessages = mergeMessages(this.rawMessages, items);
+      }
       this.set({ messages: older.concat(this.state.messages), messageCursor: result.nextCursor });
       if (!this.state.generating && older.some(hasPublicSource)) this.scheduleConversation(this.conversationId, epoch);
     } catch (error) { this.fail(error, epoch); }

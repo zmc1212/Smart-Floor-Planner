@@ -1,6 +1,7 @@
 const MarkdownIt = require('../vendor/markdown-it.umd.min');
 
-const parser = new MarkdownIt({ html: false, linkify: false, maxNesting: 20 });
+const maxNesting = 20;
+const parser = new MarkdownIt({ html: false, linkify: false, maxNesting });
 const containerTags = new Set([
   'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'strong', 'em', 's',
   'blockquote', 'ol', 'ul', 'li', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
@@ -20,7 +21,9 @@ function textNode(text) {
 function appendTokens(tokens, root, budget) {
   const stack = [root];
   for (const token of tokens) {
-    if (--budget.remaining < 0) return false;
+    // markdown-it can stop reading input at its nesting limit. Use the original
+    // text when the token stream may represent only part of the answer.
+    if (--budget.remaining < 0 || token.level >= maxNesting - 1) return false;
     const children = stack[stack.length - 1];
     if (token.nesting) {
       // Links keep their inline label. Neither their destination nor any
@@ -69,6 +72,20 @@ function appendTokens(tokens, root, budget) {
   return true;
 }
 
+function sectionsForView(nodes) {
+  const sections = [];
+  for (const node of nodes) {
+    const kind = node.name === 'pre' ? 'code' : node.attrs?.class === 'md-table-scroll' ? 'table' : 'text';
+    const previous = sections[sections.length - 1];
+    if (kind === 'text' && previous?.kind === kind) {
+      previous.nodes.push(node);
+    } else {
+      sections.push({ key: sections.length, kind, nodes: [node] });
+    }
+  }
+  return sections;
+}
+
 function render(text) {
   if (typeof text !== 'string' || !text.trim() || text.length > maxAnswerChars) return null;
   const tokens = parser.parse(text, {});
@@ -76,23 +93,23 @@ function render(text) {
   if (tokens.length === 3 && tokens[0].type === 'paragraph_open'
     && inline?.length === 1 && inline[0].type === 'text' && inline[0].content === text) return null;
   const nodes = [];
-  return appendTokens(tokens, nodes, { remaining: maxTokens }) && nodes.length ? nodes : null;
+  return appendTokens(tokens, nodes, { remaining: maxTokens }) && nodes.length ? sectionsForView(nodes) : null;
 }
 
 function markdownForBlock(block) {
   const text = block.text;
   const cached = renderedBlocks.get(block);
-  if (cached && cached.text === text) return cached.nodes;
-  let nodes = null;
+  if (cached && cached.text === text) return cached.sections;
+  let sections = null;
   try {
-    nodes = render(text);
+    sections = render(text);
   } catch {
     // Preserve readable plain text if parsing fails.
   }
   // The message window owns these blocks. A replaced or discarded window
   // does not leave an independent cache of previously visible content.
-  renderedBlocks.set(block, { text, nodes });
-  return nodes;
+  renderedBlocks.set(block, { text, sections });
+  return sections;
 }
 
 module.exports = { markdownForBlock };
