@@ -53,6 +53,15 @@ test('project shortcuts use authorized rows and preserve inactive, pending and s
   p.setData({pending:null});p.onHide();p.openSiteChat(event('1'));assert.equal(f.messages.length,count);
 });
 
+test('the current construction requirement opens the room by its server ID', async () => {
+  const f = fixture(), page = f.page(); await page.onShow();
+  page.setData({ detail: { project: { id: '9', status: 'active' }, approvedPlans: [{ id: '27', roomId: '5', roomName: '书房' }] } });
+  page.openPlan({ currentTarget: { dataset: { id: '26' } } });
+  assert.deepEqual(f.messages, []);
+  page.openPlan({ currentTarget: { dataset: { id: '27' } } });
+  assert.deepEqual(f.messages, ['/packages/construction/chat/chat?projectId=9&mode=plan&roomId=5']);
+});
+
 test('overview never restores a late private record after hide and clears the whole preview on revoked read', async () => {
   const f=fixture(),p=f.page();await p.onShow();p.setData({projectId:'9',detail:{project:{id:'9'}}});
   let finish;f.intercept(()=>new Promise(resolve=>{finish=resolve;}));const reading=p.loadPreview(p._generation);p.onHide();

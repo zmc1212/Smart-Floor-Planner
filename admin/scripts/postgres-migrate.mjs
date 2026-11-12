@@ -18,16 +18,17 @@ if (!migrationUrl) {
   );
 }
 
-const pool = new pg.Pool({
+const client = new pg.Client({
   application_name: 'smart-floor-planner-migrator',
   connectionString: migrationUrl,
   connectionTimeoutMillis: 5_000,
-  max: 1,
   statement_timeout: 120_000,
 });
 
 try {
-  const database = drizzle(pool);
+  await client.connect();
+  await client.query("select pg_advisory_lock(hashtext('smart-floor-planner:drizzle:migrate'))");
+  const database = drizzle(client);
   await migrate(database, {
     migrationsFolder: path.resolve(process.cwd(), 'drizzle'),
     migrationsSchema: 'app',
@@ -39,5 +40,5 @@ try {
     })
   );
 } finally {
-  await pool.end();
+  await client.end();
 }

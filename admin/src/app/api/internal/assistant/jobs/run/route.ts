@@ -5,11 +5,11 @@ import { processAssistantJob } from '@/lib/assistant/infrastructure/job-queue';
 import { processAssistantRun } from '@/lib/assistant/application/worker';
 import { deliverSiteNotifications } from '@/lib/construction/site-publications';
 import { deliverPublicConsents } from '@/lib/construction/public-projections';
-import { runDelegationTick } from '@/lib/native-workflow/live/delegation-worker';
 import { workerRuntimeSnapshot } from '@/lib/assistant/operations';
 import { advanceKnowledgeBatches } from '@/lib/assistant/knowledge/batch-worker';
 import { processPortfolioCopy } from '@/lib/portfolio/copy-service';
 import { advanceConstructionReports, deliverConstructionReports } from '@/lib/construction/report-worker';
+import { nativeWorkflowEnabled } from '@/lib/native-workflow/live/tenant-allowlist';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 180;
 export async function GET(request: Request) {
@@ -28,26 +28,40 @@ export async function POST(request: Request) {
     // loaded only when the enterprise allowlist is explicitly enabled; a
     // failure is isolated and never blocks the existing assistant/report jobs.
     let nativeWorkflowSchedule: unknown = null;
-    const scheduleFlag = process.env.NATIVE_WORKFLOW_SCHEDULE_ENABLED?.trim().toLowerCase();
-    if (scheduleFlag === '1' || scheduleFlag === 'true') {
+    if (nativeWorkflowEnabled(process.env.NATIVE_WORKFLOW_SCHEDULE_ENABLED) || nativeWorkflowEnabled(process.env.NATIVE_WORKFLOW_TASK_RECOVERY_ENABLED)) {
       try {
         const { runNativeWorkflowScheduleTick } = await import(
           '@/lib/native-workflow/live/period-report-schedule-runtime'
         );
         nativeWorkflowSchedule = await runNativeWorkflowScheduleTick();
-      } catch (error) {
-        nativeWorkflowSchedule = {
-          enabled: true,
-          error: error instanceof Error ? error.message.slice(0, 200) : 'native_workflow_schedule_unavailable',
-        };
+      } catch {
+        nativeWorkflowSchedule = { enabled: true, error: 'native_workflow_schedule_unavailable' };
       }
     }
     const knowledgeBatchChecks=await advanceKnowledgeBatches();
     const constructionReportChecks = await advanceConstructionReports();
-    const data = await processAssistantJob(processAssistantRun), inAppDeliveries = await deliverSiteNotifications() + await deliverPublicConsents() + await deliverConstructionReports();
-    const delegation = await runDelegationTick();
+    const data = await processAssistantJob(processAssistantRun);
+    let nativeWorkflowDelegations: unknown = null;
+    if (nativeWorkflowEnabled(process.env.NATIVE_WORKFLOW_DELEGATION_ENABLED)) {
+      try {
+        const { runNativeDelegationTick } = await import('@/lib/native-workflow/live/delegation-worker');
+        nativeWorkflowDelegations = await runNativeDelegationTick();
+      } catch {
+        nativeWorkflowDelegations = { enabled: true, error: 'native_workflow_delegations_unavailable' };
+      }
+    }
+    let nativeWorkflowTools: unknown = null;
+    if (nativeWorkflowEnabled(process.env.NATIVE_WORKFLOW_DURABLE_TOOL_ENABLED)) {
+      try {
+        const { runNativeDurableToolTick } = await import('@/lib/native-workflow/live/durable-tool-worker');
+        nativeWorkflowTools = await runNativeDurableToolTick();
+      } catch {
+        nativeWorkflowTools = { enabled: true, error: 'native_workflow_tools_unavailable' };
+      }
+    }
+    const inAppDeliveries = await deliverSiteNotifications() + await deliverPublicConsents() + await deliverConstructionReports();
     const portfolioCopyClaimed = data.claimed ? false : await processPortfolioCopy();
-    return NextResponse.json({ success: true, data: { ...data, claimed: data.claimed || portfolioCopyClaimed || inAppDeliveries > 0, portfolioCopyClaimed, inAppDeliveries, delegation, knowledgeBatchChecks, constructionReportChecks, nativeWorkflowSchedule }, requestId });
+    return NextResponse.json({ success: true, data: { ...data, claimed: data.claimed || portfolioCopyClaimed || inAppDeliveries > 0, portfolioCopyClaimed, inAppDeliveries, knowledgeBatchChecks, constructionReportChecks, nativeWorkflowSchedule, nativeWorkflowDelegations, nativeWorkflowTools }, requestId });
   } catch {
     return NextResponse.json({ success: false, code: 'assistant_unavailable', requestId }, { status: 503 });
   }

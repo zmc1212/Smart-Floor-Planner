@@ -30,7 +30,7 @@ export async function sharedSiteProgress(tx: PostgresTransaction, actor: ActorCo
     where enterprise_id=${actor.enterpriseId} and id=${projectId} for share`);
   if (project?.status !== 'active') fail('context_changed');
   const stageName = (await readStageSettings(tx, actor.enterpriseId)).stages.find(item => item.key === stage)?.name;
-  const published = await querySiteMaterials(tx, actor.enterpriseId, projectId, room, true);
+  const published = await querySiteMaterials(tx, actor.enterpriseId, projectId, room, { publishedRecordsOnly: true });
   const records = published.sources.filter(source => knowledgeTextAllowed(source.text, source.roomName)).map((source): MaterialSource => {
     const ref = source.ref as { id: string; version: number };
     return { ref: { type: 'site_record', id: ref.id, version: String(ref.version) }, hash: String(source.hash),

@@ -148,6 +148,12 @@ export interface ScheduledProjectEntry {
   readonly issues: readonly ScheduledIssueItem[];
   readonly carryOverIssueIds: readonly string[];
   readonly reminders: readonly ScheduledReminderRecord[];
+  /**
+   * How many times a batch was actually requested for this project/period.
+   * Optional so a run file written before this field still loads; readers use
+   * `dispatchAttempts ?? 0`.
+   */
+  readonly dispatchAttempts?: number;
   readonly dispatchedAt: string | null;
   readonly observedAt: string | null;
   readonly nextObservationAt: string | null;
@@ -175,7 +181,11 @@ export type ScheduledRunStatus =
   | 'completed'
   | 'partial'
   | 'failed'
-  | 'paused';
+  | 'paused'
+  /** The tenant cancelled this period; no further dispatch or observation. */
+  | 'cancelled'
+  /** The recovery/read window closed with work still unfinished. */
+  | 'expired';
 
 /**
  * Proof that this enterprise/period was claimed before the first report.
@@ -189,9 +199,12 @@ export interface ScheduledWeeklyClaimRecord {
   readonly claimedAt: string;
   readonly previousNextWeeklyAt: string | null;
   readonly nextWeeklyAt: string | null;
+  /** Planned execution instant of this period; optional for older runs. */
+  readonly dueAt?: string | null;
 }
 
 export interface PeriodReportScheduleRun {
+  readonly storeRevision?: number;
   readonly runVersion: typeof SCHEDULE_RUN_VERSION;
   readonly runId: string;
   readonly enterpriseId: string;
@@ -211,19 +224,30 @@ export interface PeriodReportScheduleRun {
   readonly startedAt: string;
   readonly updatedAt: string;
   readonly finishedAt: string | null;
+  /** Lease owner of the last scheduler tick that advanced this run. */
+  readonly workerId?: string | null;
+  readonly cancelledAt?: string | null;
+  readonly cancelReason?: string | null;
   readonly lastError: { readonly code: string; readonly message: string } | null;
   readonly audit: readonly ScheduledAuditEntry[];
 }
 
 export interface PeriodReportScheduleControl {
+  readonly storeRevision?: number;
   readonly enterpriseId: string;
   readonly paused: boolean;
+  /**
+   * Explicitly cancelled periods (Shanghai Monday `YYYY-MM-DD`). Cancellation
+   * is terminal for that period only and never leaks to another tenant/week.
+   */
+  readonly cancelledPeriods: readonly string[];
   readonly updatedAt: string;
   readonly updatedBy: string | null;
   readonly reason: string | null;
 }
 
 export interface PeriodReportScheduleLedger {
+  readonly storeRevision?: number;
   readonly ledgerVersion: typeof SCHEDULE_LEDGER_VERSION;
   readonly enterpriseId: string;
   readonly projectId: string;

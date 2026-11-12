@@ -28,6 +28,7 @@ import {
   LiveOperationUnknownError,
   type LiveOperationPorts,
   type LivePeriodReceiver,
+  type RuntimeWriteGuard,
 } from './types';
 
 /**
@@ -46,6 +47,7 @@ import {
  * task.
  */
 export interface PeriodReportPortOptions {
+  readonly writeGuard?: RuntimeWriteGuard;
   readonly actor: ConstructionActor;
   /** Host-selected receiver; absent keeps the legacy project customer. */
   readonly receiver?: LivePeriodReceiver;
@@ -1338,7 +1340,13 @@ function composePeriodReport(
 }
 
 export function createPeriodReportPorts(options: PeriodReportPortOptions): LiveOperationPorts {
-  const store = options.store ?? createPeriodReportStore({}, {
+  const writeGuard = options.writeGuard;
+  const store = options.store ?? createPeriodReportStore({
+    transaction: writeGuard ? (enterpriseId, operation) => withTenantTransaction(enterpriseId, async (tx) => {
+      await writeGuard(tx);
+      return operation(tx);
+    }) : undefined,
+  }, {
     projectScope: options.projectScope,
     legacy: options.legacy,
   });

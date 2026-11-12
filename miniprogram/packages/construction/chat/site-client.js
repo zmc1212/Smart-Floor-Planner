@@ -67,12 +67,13 @@ class SiteClient {
   constructor({ emit, identity, storage = { get: k => wx.getStorageSync(k), set: (k, v) => wx.setStorageSync(k, v), remove: k => wx.removeStorageSync(k) },
     request = api.request, uploadFile = upload, download = api.downloadFile }) {
     Object.assign(this, { emit, identity, storage, request, uploadFile, download }); this.epoch = 0; this.paths = new Set();
+    this.issueId = '';
     this.state = { loading: true, busy: false, error: '', fatal: false, items: [], mediaPaths: {}, draft: '', attachments: [], pending: null, pendingRetakeCount: 0, pendingRetakeTarget: '' };
   }
   set(p) { if (p.fatal) Object.assign(p, { write: false, citation: null, citationLoading: false, citationError: '' }); if (p.fatal === false) p.fatalStatus = 0; Object.assign(this.state, p); this.emit(p); }
   current(epoch) { const s = this.identity(); return this.visible && s.token === this.session.token && s.key === this.session.key && epoch === this.epoch; }
   clean() { this.sourceVersions = null; for (const path of this.paths) { try { wx.getFileSystemManager().unlink({ filePath: path, fail() {} }); } catch { /* Page teardown. */ } } this.paths.clear(); }
-  hide() { this.visible = false; ++this.epoch; this.clean(); this.set({ items: [], mediaPaths: {}, project: null, rooms: [], sheet: '', citation: null, citationLoading: false, citationError: '', versions: [], edit: {}, conflict: null, write: false, draft: '', attachments: [], resubmit: null, pendingRetakeCount: 0, pendingRetakeTarget: '' }); }
+  hide() { this.visible = false; ++this.epoch; this.clean(); this.set({ items: [], mediaPaths: {}, project: null, rooms: [], sheet: '', citation: null, citationLoading: false, citationError: '', versions: [], edit: {}, conflict: null, write: false, collaboration: false, draft: '', attachments: [], resubmit: null, pendingRetakeCount: 0, pendingRetakeTarget: '' }); }
   async show(projectId) {
     this.clean(); this.session = this.identity(); this.projectId = projectId; this.visible = true; const epoch = ++this.epoch;
     this.base = '/miniprogram/construction/projects/' + projectId + '/chat';
@@ -97,7 +98,7 @@ class SiteClient {
     if (!this.current(epoch) || (older && !this.state.nextCursor)) return;
     const readSeq = this.readSeq = (this.readSeq || 0) + 1, valid = () => this.current(epoch) && readSeq === this.readSeq;
     try {
-      const r = await this.request(this.base + (older ? '?beforeSeq=' + this.state.nextCursor + '&limit=30' : '?limit=' + Math.min(100, Math.max(30, this.state.items.length))), 'GET', {}, { suppressUnauthorized: true });
+      const r = await this.request(this.base + (older ? '?beforeSeq=' + this.state.nextCursor + '&limit=30' : '?limit=' + Math.min(100, Math.max(30, this.state.items.length))) + (this.issueId ? '&issueId=' + this.issueId : ''), 'GET', {}, { suppressUnauthorized: true });
       if (!valid()) return;
       const { versions, ...data } = r.data, fresh = data.items.map(decorate);
       // Previously loaded history is refreshed as well: edits/revocations cannot remain as stale cards.
@@ -151,7 +152,10 @@ class SiteClient {
         const known = e.statusCode >= 400 && e.statusCode < 500;
         if (known) { this.storage.remove(this.storageKey); this.set({ pending: null }); }
         this.set({ error: known ? errorText(e) : '提交结果待核对。请核对同一次操作，内容已保留。' });
-        if ([401, 403, 404].includes(e.statusCode)) { this.clean(); this.storage.remove(this.draftKey); this.set({ fatal: true, fatalStatus: e.statusCode, items: [], mediaPaths: {}, project: null, rooms: [], draft: '', attachments: [], sheet: '', resubmit: null, versions: [], pendingRetakeCount: 0, pendingRetakeTarget: '' }); }
+        if (this.state.collaboration && [403, 404].includes(e.statusCode)) {
+          await this.load(false, epoch);
+          if (this.current(epoch) && !this.state.fatal) this.set({ error: errorText(e) });
+        } else if ([401, 403, 404].includes(e.statusCode)) { this.clean(); this.storage.remove(this.draftKey); this.set({ fatal: true, fatalStatus: e.statusCode, items: [], mediaPaths: {}, project: null, rooms: [], draft: '', attachments: [], sheet: '', resubmit: null, versions: [], pendingRetakeCount: 0, pendingRetakeTarget: '' }); }
         if (e.error === 'version_conflict' || e.code === 'version_conflict') {
           await this.load(false, epoch);
           if (this.current(epoch)) { const id = op.path.split('/')[2], latest = this.state.items.find(i => i.record.id === id)?.record;
@@ -164,7 +168,7 @@ class SiteClient {
     if (!this.current(epoch)) return;
     if (op.kind === 'resubmit' && (!result || result.resubmissionOfId !== op.path.split('/')[2] || !/^[1-9]\d*$/.test(String(result.recordId))
       || !/^[1-9]\d*$/.test(String(result.runId)) || !/^[1-9]\d*$/.test(String(result.originalRecordId)))) throw { code: 'invalid_operation_receipt' };
-    const formal = op.kind === 'send' && /^(落实|解决|关闭|重新处理)事项\s*([1-9]\d*)(?=方案|\s*\n结论[：:]|[：:])/.exec(op.body.text);
+    const formal = op.kind === 'send' && /^(落实|整改回传|解决|关闭|重新处理)事项\s*([1-9]\d*)(?=方案|记录|\s*\n结论[：:]|[：:])/.exec(op.body.text);
     if (formal && (!result || result.issueId !== formal[2] || !/^[1-9]\d*$/.test(String(result.lifecycleId))
       || !/^[1-9]\d*$/.test(String(result.messageId)) || !/^[1-9]\d*$/.test(String(result.conversationId))
       || !Number.isSafeInteger(result.lifecycleRevision) || result.lifecycleRevision !== Number(op.body.versions?.resolutions?.[formal[2]] || 0) + 1

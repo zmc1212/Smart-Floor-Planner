@@ -1,10 +1,26 @@
 # Mini Program: Current Module Inventory
 
-**XiaoK integration (Limited).** Existing C01 chat and follow-up routes use the server gateway. Source chips and private delegation receipts resolve through the existing authorized conversation endpoints. See the [integration audit](xiaok-integration-audit.md) for role journeys, persistence and native acceptance.
+**XiaoK integration (Limited).** Existing C01 chat and follow-up routes use the server gateway. Source chips and private delegation receipts resolve through the existing authorized conversation endpoints. Room tasks and construction review share the durable consumer. Weekly dispatch reuses the four-role report and reentry services. See the [integration audit](xiaok-integration-audit.md) for role journeys and native acceptance.
 
 <!-- xiaok-r3-web-tools -->
 **XiaoK R3 public sources (Limited).** Eligible development turns enter through the existing C01 chat and authorized project or follow-up conversation services. The worker can search and read public originals on demand. It stores the original URL and retrieval time, and the existing citation chip resolves them through `GET /api/miniprogram/assistant/citations/:id`. Live validation covers the isolated conversation service. Native-device and role-entry acceptance remain pending. [R3 verification](bailian-responses-adapter.md#11-r3-应用联网搜索).
 <!-- /xiaok-r3-web-tools -->
+
+<!-- cross-role-business-current -->
+**B5.9 project collaboration (Limited).** The original C01 consultation shows explicitly published site records, version-specific plan decisions and authorized review receipts. The project detail and brief routes (`packages/construction/projects/projects`, `packages/construction/brief/brief`) show the server's dated plan and issue counts. Designers open the issue's current sources and professional status. Workers open the current approved drawing and submit through the existing site conversation (`packages/construction/chat/chat`). The plan colors are green for early, yellow for on schedule, red for late, and gray for unverified or unscheduled. An issue opens its existing reply and original-photo components, with current identifiers and review state. The workbench reads again on reentry and during its existing detail refresh.
+
+The screens reuse the approved cloud-site project/brief and V3 capture routes, C01 plan/record cards and the retained progress/issue variants. The family's `family_view` progress and its revocable grant are available through the customer API. The current Mini Program surfaces project and consent actions in the original owner and staff routes. Stable at 390×844 verified the boss brief/detail, designer issue, worker current requirement, and owner consultation reentry against the same persisted project. [Stable evidence](../admin/tmp/b59-native-03/verification.json) and [service and permission contract](./admin-system-modules.md#admin-system-current-module-inventory).
+
+Persisted design and quality reviews retain project-role authorization if collaboration is disabled. The B5.10 signed route and PostgreSQL checks covered grant revocation, retired versions, project membership, media upload rejection and idempotent rectification resubmission. [B5.10 evidence](./native-workflow-b510-deployment-review.zh-CN.md).
+<!-- /cross-role-business-current -->
+
+<!-- native-delegation-current -->
+**Electrical follow-up (Limited).** In the approved C01 consultation composer (`packages/assistant/chat/chat`), the authorized homeowner can send “请持续跟进主卧的水电进展和书房的插座点位。” with the project's registered room names. “查看水电跟进”, “暂停水电跟进”, “继续水电跟进” and “取消水电跟进” act on that consultation's follow-up. Adding “等我回复超时就在小K里提醒我” authorizes one in-app reminder per owner wait after 48 hours. The original chat reopens with saved feedback, questions and the authorized team result.
+
+Workers retain the approved V3 capture, voice, photo and review entry (`packages/construction/chat/chat`). Project members see the current design/field review request in the existing project reply card. The owner's answer stays private until the existing material-sharing action grants team access. Formal decisions still use the existing version-specific approval and manager review. The standard response bubbles, controls, source previews and permission feedback render these states. The first reply in an empty consultation reloads the authoritative message window at sequence zero. Stable 390×844 verified native sends, persisted re-entry and the result in the origin consultation. [Server contract and verification](./admin-system-modules.md#admin-system-current-module-inventory).
+
+With B5.11 enabled for the enterprise, an authorized owner timeout reminder is delivered by the durable assistant Worker. It remains a single persisted reply in the original consultation. The Worker rechecks the owner, active wait and project before sending.
+<!-- /native-delegation-current -->
 
 <!-- site-capture-current -->
 **Site capture/receipts Implemented locally.** Approved [V3 capture and quick work](../design-references/cloud-site-redesign-20261107/README.md#05-通用现场上报与回执已批准实施) maps to `packages/construction/chat/chat`: two 54 px camera/voice actions, secondary typing/quick work, original photo/voice preview and one-submit explicit work/room/progress. Quick choices preserve partial/unknown states without changing project stage or calling a model. Captured originals require manager review before publication; original reshoot/edit/history remain.

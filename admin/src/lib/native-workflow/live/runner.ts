@@ -21,6 +21,7 @@ import {
   type LiveRunRecord,
   type LiveRunStatus,
   type LiveRunStore,
+  type RuntimeWriteGuard,
 } from './types';
 
 export interface LiveRunInput {
@@ -31,6 +32,7 @@ export interface LiveRunInput {
   readonly businessEvent: LiveBusinessEvent;
   readonly ports: LiveOperationPorts;
   readonly store: LiveRunStore;
+  readonly writeGuard?: RuntimeWriteGuard;
   readonly runId: string;
   readonly now?: () => string;
 }
@@ -96,14 +98,22 @@ export async function runPublishedLive(input: LiveRunInput): Promise<LiveRunReco
   // The first write is exclusive: a replay of the same runId must observe the
   // original record instead of starting a second execution.
   const initial: LiveRunRecord = { ...snapshot(now()), status: 'running' };
-  const created = await input.store.create(initial);
+  const created = await input.store.create(initial, input.writeGuard);
   if (!created.created) {
     assertSameLiveRunIdentity(created.record, initial);
     return created.record;
   }
   const createdAt = created.record.createdAt;
 
-  const persist = async (): Promise<LiveRunRecord> => input.store.update(snapshot(createdAt));
+  let storeRevision = created.record.storeRevision;
+  const persist = async (): Promise<LiveRunRecord> => {
+    const record = await input.store.update({
+      ...snapshot(createdAt),
+      ...(storeRevision === undefined ? {} : { storeRevision }),
+    }, input.writeGuard);
+    storeRevision = record.storeRevision;
+    return record;
+  };
 
   try {
     const started: WorkflowEvent = { type: 'start', at: now(), event };
@@ -208,6 +218,10 @@ export async function runPublishedLive(input: LiveRunInput): Promise<LiveRunReco
     }
     return await persist();
   } catch (error) {
+    // A concurrent update owns the new checkpoint. Never replace it with an
+    // "unknown" status derived from the losing snapshot.
+    if (error instanceof WorkflowOperationError
+      && ['runtime_store_conflict', 'runtime_store_lease_lost', 'period_report_schedule_not_active'].includes(error.code)) throw error;
     // The run already exists. A crash here can only be recorded conservatively;
     // nothing is re-executed and no port is called again.
     unknown = true;

@@ -47,6 +47,7 @@ export interface PrepareStaffPeriodReportResult {
 
 /** Offline seams; production always uses the real authorization/binding code. */
 export interface StaffReceiverDependencies {
+  readonly writeGuard?: import('./types').RuntimeWriteGuard;
   /** Test seam for the trusted clock; defaults to `new Date()` per prepare. */
   readonly now?: () => Date;
   readonly transaction?: <T>(
@@ -98,6 +99,7 @@ export async function prepareStaffPeriodReport(
   const expectedRole = ADMIN_ROLE[receiverKind];
 
   const staff = await transaction(enterpriseId, async (tx) => {
+    await dependencies.writeGuard?.(tx);
     // The executor's management access is re-checked first; this locks the
     // project row before any staff query or binding write.
     await authorizeWrite(tx, actor, projectId, 'update');

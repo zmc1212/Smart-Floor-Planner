@@ -3,7 +3,7 @@
  * Three independent file records live under one schedule root:
  *   runs/<runId>.json                  one enterprise + one finished week
  *   runs/<runId>.lease.json            cross-process dispatch lease
- *   control/<enterpriseId>.json        pause/resume, owned by the tenant admin
+ *   control/<enterpriseId>.json        pause/resume and cancelled periods
  *   ledger/<enterpriseId>/<projectId>.json  existing issue references only
  *
  * Persistence follows the B run/batch store convention: a unique same-directory
@@ -21,6 +21,8 @@ import { copyFile, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { WorkflowOperationError } from '../errors';
+import type { PostgresTransaction } from '@/db/transaction';
+import type { RuntimeExecutionFence } from './types';
 import {
   SCHEDULE_LEDGER_VERSION,
   SCHEDULE_RUN_VERSION,
@@ -31,11 +33,15 @@ import {
 
 const ID_PATTERN = /^[1-9]\d{0,18}$/;
 const RUN_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/;
+const PERIOD_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const STORE_VERSION = 1;
+/** Cancellation is terminal per period; a bounded history is enough. */
+export const MAX_CANCELLED_PERIODS = 8;
 const locks = new Map<string, Promise<unknown>>();
 
 export interface PeriodReportScheduleLeaseOptions {
   readonly owner: string;
+  readonly token?: string;
   readonly now: () => Date;
   readonly ttlMs: number;
 }
@@ -50,11 +56,12 @@ export interface PeriodReportScheduleStore {
     created: boolean;
     run: PeriodReportScheduleRun;
   }>;
-  update(run: PeriodReportScheduleRun): Promise<PeriodReportScheduleRun>;
+  update(run: PeriodReportScheduleRun, fence?: RuntimeExecutionFence): Promise<PeriodReportScheduleRun>;
   get(runId: string): Promise<PeriodReportScheduleRun | null>;
   list(options?: PeriodReportScheduleListOptions): Promise<PeriodReportScheduleRun[]>;
   acquire(runId: string, options: PeriodReportScheduleLeaseOptions): Promise<boolean>;
-  release(runId: string, owner: string): Promise<void>;
+  release(runId: string, owner: string, token?: string): Promise<void>;
+  assertLease?(tx: PostgresTransaction, runId: string, fence: RuntimeExecutionFence): Promise<void>;
   control(enterpriseId: string): Promise<PeriodReportScheduleControl>;
   setControl(
     enterpriseId: string,
@@ -63,10 +70,25 @@ export interface PeriodReportScheduleStore {
       readonly updatedBy: string | null;
       readonly reason: string | null;
       readonly now: () => Date;
+      /** Omitted keeps the stored cancellation history unchanged. */
+      readonly cancelledPeriods?: readonly string[];
+    },
+  ): Promise<PeriodReportScheduleControl>;
+  cancelPeriod(
+    enterpriseId: string,
+    periodStart: string,
+    input: {
+      readonly cancelled: boolean;
+      readonly updatedBy: string | null;
+      readonly reason: string | null;
+      readonly now: () => Date;
     },
   ): Promise<PeriodReportScheduleControl>;
   ledger(enterpriseId: string, projectId: string): Promise<PeriodReportScheduleLedger>;
-  saveLedger(ledger: PeriodReportScheduleLedger): Promise<PeriodReportScheduleLedger>;
+  saveLedger(ledger: PeriodReportScheduleLedger, execution?: {
+    readonly runId: string;
+    readonly fence: RuntimeExecutionFence;
+  }): Promise<PeriodReportScheduleLedger>;
 }
 
 /** The B-owned schedule root. Server reads, the CLI and the Worker share it. */
@@ -92,7 +114,7 @@ function assertId(value: string, label: string): void {
   }
 }
 
-function assertRunId(runId: string): void {
+export function assertRunId(runId: string): void {
   if (!RUN_ID_PATTERN.test(runId)) {
     throw new WorkflowOperationError(
       'period_report_schedule_run_invalid',
@@ -191,7 +213,7 @@ async function writeAtomic(file: string, value: unknown): Promise<void> {
   }
 }
 
-function assertRunShape(run: PeriodReportScheduleRun): void {
+export function assertRunShape(run: PeriodReportScheduleRun): void {
   if (
     !run
     || run.runVersion !== SCHEDULE_RUN_VERSION
@@ -213,7 +235,7 @@ function assertRunShape(run: PeriodReportScheduleRun): void {
   }
 }
 
-function assertSameRunScope(
+export function assertSameRunScope(
   existing: PeriodReportScheduleRun,
   candidate: PeriodReportScheduleRun,
 ): void {
@@ -233,7 +255,7 @@ function assertSameRunScope(
   }
 }
 
-function assertSameRunIdentity(
+export function assertSameRunIdentity(
   existing: PeriodReportScheduleRun,
   candidate: PeriodReportScheduleRun,
 ): void {
@@ -298,14 +320,36 @@ async function readLease(file: string): Promise<StoredLease | null> {
   }
 }
 
-function controlOf(enterpriseId: string, value: PeriodReportScheduleControl | null): PeriodReportScheduleControl {
-  return value ?? {
-    enterpriseId,
-    paused: false,
-    updatedAt: new Date(0).toISOString(),
-    updatedBy: null,
-    reason: null,
-  };
+export function normalizeCancelledPeriods(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(
+    value.filter((item): item is string =>
+      typeof item === 'string' && PERIOD_PATTERN.test(item)),
+  )].slice(-MAX_CANCELLED_PERIODS);
+}
+
+export function assertPeriodStart(value: string): void {
+  if (!PERIOD_PATTERN.test(value)) {
+    throw new WorkflowOperationError(
+      'period_report_schedule_period_invalid',
+      422,
+      `period start ${JSON.stringify(value)} is not a YYYY-MM-DD date`,
+    );
+  }
+}
+
+export function controlOf(enterpriseId: string, value: PeriodReportScheduleControl | null): PeriodReportScheduleControl {
+  if (!value) {
+    return {
+      enterpriseId,
+      paused: false,
+      cancelledPeriods: [],
+      updatedAt: new Date(0).toISOString(),
+      updatedBy: null,
+      reason: null,
+    };
+  }
+  return { ...value, cancelledPeriods: normalizeCancelledPeriods(value.cancelledPeriods) };
 }
 
 export function createFilePeriodReportScheduleStore(options: {
@@ -443,9 +487,42 @@ export function createFilePeriodReportScheduleStore(options: {
       assertId(enterpriseId, 'enterprise id');
       const file = controlPath(rootDir, enterpriseId);
       return withLock(file, async () => {
+        // A pause/resume request never clears the tenant's cancelled periods:
+        // the caller must pass `cancelledPeriods` explicitly to change them.
+        const stored = controlOf(
+          enterpriseId,
+          await readJson<PeriodReportScheduleControl>(file),
+        );
         const next: PeriodReportScheduleControl = {
           enterpriseId,
           paused: input.paused,
+          cancelledPeriods: input.cancelledPeriods === undefined
+            ? stored.cancelledPeriods
+            : normalizeCancelledPeriods(input.cancelledPeriods),
+          updatedAt: input.now().toISOString(),
+          updatedBy: input.updatedBy,
+          reason: input.reason,
+        };
+        await writeAtomic(file, next);
+        return next;
+      });
+    },
+
+    async cancelPeriod(enterpriseId, periodStart, input) {
+      assertId(enterpriseId, 'enterprise id');
+      assertPeriodStart(periodStart);
+      const file = controlPath(rootDir, enterpriseId);
+      return withLock(file, async () => {
+        const stored = controlOf(
+          enterpriseId,
+          await readJson<PeriodReportScheduleControl>(file),
+        );
+        const periods = new Set(stored.cancelledPeriods);
+        if (input.cancelled) periods.add(periodStart);
+        else periods.delete(periodStart);
+        const next: PeriodReportScheduleControl = {
+          ...stored,
+          cancelledPeriods: [...periods].sort().slice(-MAX_CANCELLED_PERIODS),
           updatedAt: input.now().toISOString(),
           updatedBy: input.updatedBy,
           reason: input.reason,
@@ -550,9 +627,29 @@ export function createMemoryPeriodReportScheduleStore(): PeriodReportScheduleSto
       return controlOf(enterpriseId, controls.get(enterpriseId) ?? null);
     },
     async setControl(enterpriseId, input) {
+      const stored = controlOf(enterpriseId, controls.get(enterpriseId) ?? null);
       const next: PeriodReportScheduleControl = {
         enterpriseId,
         paused: input.paused,
+        cancelledPeriods: input.cancelledPeriods === undefined
+          ? stored.cancelledPeriods
+          : normalizeCancelledPeriods(input.cancelledPeriods),
+        updatedAt: input.now().toISOString(),
+        updatedBy: input.updatedBy,
+        reason: input.reason,
+      };
+      controls.set(enterpriseId, next);
+      return next;
+    },
+    async cancelPeriod(enterpriseId, periodStart, input) {
+      assertPeriodStart(periodStart);
+      const stored = controlOf(enterpriseId, controls.get(enterpriseId) ?? null);
+      const periods = new Set(stored.cancelledPeriods);
+      if (input.cancelled) periods.add(periodStart);
+      else periods.delete(periodStart);
+      const next: PeriodReportScheduleControl = {
+        ...stored,
+        cancelledPeriods: [...periods].sort().slice(-MAX_CANCELLED_PERIODS),
         updatedAt: input.now().toISOString(),
         updatedBy: input.updatedBy,
         reason: input.reason,

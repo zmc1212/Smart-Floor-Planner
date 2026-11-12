@@ -103,7 +103,7 @@ async function configure() {
       (select count(*)::int from app.enterprises) as enterprises,
       (select count(*)::int from app.assistant_jobs where status in ('queued','running')) as open_jobs`);
     assert.deepEqual(identity, { name: target.pathname.slice(1), role: 'sfp_app', bypass: false, enterprises: 0, open_jobs: 0 });
-    const migration = createHash('sha256').update(readFileSync('drizzle/0123_assistant_long_term_delegation.sql')).digest('hex');
+    const migration = createHash('sha256').update(readFileSync('drizzle/0126_native_workflow_delegation_integration.sql')).digest('hex');
     // The application role cannot read the migration ledger on all installations.
     assert.equal((await one(tx, sql`select count(*)::int as count from pg_trigger where tgname in
       ('native_delegation_event_delivery','native_delegation_project_change') and tgenabled='O'`))?.count, 2);

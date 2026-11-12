@@ -6,11 +6,26 @@ import { currentStage, readStageSettings, stageContact } from './stages-store';
 import { publishedSiteRecord, siteRecordProjection } from './site-publications';
 import { siteRecordText, type SiteDraft } from './site-contract';
 import { currentStageEvent } from './stage-events';
+import { collaborationEnabled } from './collaboration-scope';
+import { projectSiteIssues } from './site-issues';
+import { issueDelivery } from './site-results';
+import { readSchedule } from './site-schedule';
 
 export async function customerProjects(tx: PostgresTransaction, eid: string, uid: string, leadId = '', lock = false) {
   return rows(tx, sql`select p.* from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
     where p.enterprise_id=${eid} and p.customer_access and l.customer_user_id=${uid} and l.archived_at is null
     ${leadId ? sql`and l.id=${id(leadId)}` : sql``} order by p.id limit 30 ${lock ? sql`for share of p,l` : sql``}`);
+}
+/** Owner projection for quality matters whose original record was published to this household. */
+export async function ownerProjectIssueStatus(tx: PostgresTransaction, eid: string, uid: string, projectId: string) {
+  const result = [];
+  for (const issue of await projectSiteIssues(tx, eid, projectId, null)) {
+    if (!issue.recordId || !await publishedSiteRecord(tx, eid, uid, issue.recordId, issue.recordVersion)) continue;
+    result.push({ issueId: issue.issueId, revision: issue.revision, lifecycleId: issue.lifecycleId, lifecycleRevision: issue.lifecycleRevision,
+      roomId: issue.roomId, roomName: issue.roomName, classification: issue.classification, classificationLabel: issue.classificationLabel,
+      recordId: issue.recordId, recordVersion: issue.recordVersion, sync: await issueDelivery(tx, eid, issue) });
+  }
+  return result;
 }
 export async function constructionRead(tx: PostgresTransaction, eid: string, uid: string, leadId: string) {
   const projects = await customerProjects(tx, eid, uid, leadId), settings = await readStageSettings(tx, eid), data: Row[] = [], lines: string[] = [];
@@ -29,7 +44,16 @@ export async function constructionRead(tx: PostgresTransaction, eid: string, uid
         lines.push(`团队已核对发布的现场记录（${String(p.name)}；不代表正式验收/费用或工期批准）：\n${siteRecordText(r.data as SiteDraft, String(r.room_name_snapshot))}`);
       }
     }
-    data[data.length - 1].records = published;
+    const project = data[data.length - 1];
+    project.records = published;
+    if (collaborationEnabled(eid) && p.status === 'active') {
+      const schedule = await readSchedule(tx, eid, p, settings.stages, { customerId: uid });
+      const issues = await ownerProjectIssueStatus(tx, eid, uid, String(p.id));
+      project.schedule = schedule;
+      project.issues = issues;
+      if (schedule.available) lines.push(schedule.text);
+      for (const issue of issues) lines.push(`${issue.roomName}事项${issue.issueId} · ${issue.classificationLabel}。`);
+    }
     lines.push(`「${String(p.name)}」：${p.status === 'active' ? '进行中' : p.status === 'paused' ? '已暂停' : '已归档'}。`);
     if (!stage) { lines.push('团队尚未标记实际施工节点，暂时无法确定当前阶段的施工联系人。'); continue; }
     lines.push(`团队标记的当前节点：${stage.name}。${String(p.progress_note || '')}`);
@@ -62,8 +86,12 @@ export async function constructionFollowUpScope(tx: PostgresTransaction, eid: st
 export async function constructionNoticeAvailable(tx: PostgresTransaction, eid: string, cid: string, mid: string, lock = false, requireNotice = false) {
   const notice = await one(tx, sql`select e.id,e.aggregate_id,e.aggregate_version,e.payload,m.purpose from app.assistant_messages m
     join app.domain_event_outbox e on e.enterprise_id=m.enterprise_id and e.id=m.source_event_id
-    where m.enterprise_id=${eid} and m.conversation_id=${cid} and m.id=${mid} and m.purpose in ('construction.update','construction.stage','construction.followup','construction.record','construction.result','construction.plan')`);
+    where m.enterprise_id=${eid} and m.conversation_id=${cid} and m.id=${mid} and m.purpose in ('construction.update','construction.stage','construction.followup','construction.record','construction.result','construction.plan','construction.delegation')`);
   if (!notice) return !requireNotice;
+  if (notice.purpose === 'construction.delegation') {
+    const { delegationOwnerNoticeAvailable } = await import('@/lib/native-workflow/live/delegation-chat');
+    return delegationOwnerNoticeAvailable(tx, eid, cid, mid);
+  }
   if (notice.purpose === 'construction.plan') {
     const { planMessageProjection } = await import('./site-plans');
     return (await planMessageProjection(tx, eid, cid, mid))?.available === true;

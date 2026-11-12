@@ -7,6 +7,7 @@ import { object, text } from './contracts';
 import { readSiteIssueBase, type SiteVersions } from './site-issues';
 import { sharedMaterial, sharedMaterials } from './site-materials';
 import { siteAccessRevoked } from './site-access';
+import { collaborationEnabled, collaborationMember, isConsultationOwner } from './collaboration-scope';
 
 const publishedType = 'construction.plan.published.v1', statusType = 'construction.plan.status.v1';
 export type PlanData = {
@@ -14,6 +15,7 @@ export type PlanData = {
   conversationId: string; customerId: string; needGrantId: string; materialVersion: string;
   publisherId: string; mediaId: string; mediaHash: string; sourceMessageId: string;
   number: number; previousVersionId: string | null; title: string; difference: string; costDeltaCents: number; scheduleDeltaDays: number;
+  drawingGrantId?: string | null; opinionMessageId?: string; opinionHash?: string;
 };
 export type PlanView = PlanData & { id: string; revision: number; status: string; previewed: boolean; reason: string; hash: string };
 export type PlanCommand = { action: 'publish'; issueId: string; title: string; difference: string; costDeltaCents: number; scheduleDeltaDays: number }
@@ -46,7 +48,7 @@ async function planEvent(tx: PostgresTransaction, eid: string, versionId: string
   return one(tx, sql`select * from app.domain_event_outbox where enterprise_id=${eid} and id=${versionId} and type=${publishedType}
     ${asOf ? sql`and created_at<${asOf}` : sql``}`);
 }
-async function latestPlan(tx: PostgresTransaction, eid: string, issueId: string, asOf?: Date) {
+export async function latestPlan(tx: PostgresTransaction, eid: string, issueId: string, asOf?: Date) {
   return one(tx, sql`select * from app.domain_event_outbox where enterprise_id=${eid} and type=${publishedType}
     and aggregate_type='construction_site_issue' and aggregate_id=${issueId}
     ${asOf ? sql`and created_at<${asOf}` : sql``} order by aggregate_version desc limit 1`);
@@ -59,6 +61,7 @@ async function state(tx: PostgresTransaction, eid: string, versionId: string, as
     previewed: (e?.payload as Row)?.previewed === true, reason: String((e?.payload as Row)?.reason || '') };
 }
 async function publisherAvailable(tx: PostgresTransaction, eid: string, p: PlanData) {
+  if (p.opinionMessageId) return await collaborationMember(tx, eid, p.projectId, p.publisherId) === 'designer';
   const access = await one(tx, sql`select app.construction_actor_access(${p.publisherId}::bigint,${eid}::bigint) as role,
     exists(select 1 from app.construction_members m join app.admin_users a on a.id=m.admin_id and a.enterprise_id=m.enterprise_id
       where m.enterprise_id=${eid} and m.project_id=${p.projectId} and m.admin_id=${p.publisherId} and m.active
@@ -72,7 +75,12 @@ export async function readPlan(tx: PostgresTransaction, eid: string, versionId: 
   if (String(last?.id) !== versionId || s.status === 'withdrawn') return null;
   const issue = await readSiteIssueBase(tx, eid, p.projectId, p.issueId, asOf);
   if (!issue || ['invalidated','cancelled','awaiting_owner'].includes(issue.status) || issue.revision !== p.issueRevision || !issue.ownerId) return null;
-  if (await siteAccessRevoked(tx, eid, p.projectId, [p.publisherId, issue.ownerId], event.created_at as Date, { reviewers: [p.publisherId] })) return null;
+  if (p.opinionMessageId) {
+    if (issue.ownerId !== p.publisherId || issue.progressMessageId !== p.opinionMessageId || (issue.drawingGrantId || null) !== p.drawingGrantId) return null;
+    const opinion = await designOpinion(tx, eid, p.projectId, p.publisherId, p.opinionMessageId);
+    if (!opinion || fingerprint(opinion.content) !== p.opinionHash) return null;
+  }
+  if (await siteAccessRevoked(tx, eid, p.projectId, [p.publisherId, issue.ownerId], event.created_at as Date, { reviewers: [p.publisherId], ...(p.opinionMessageId ? { designers: [p.publisherId] } : {}) })) return null;
   const grant = await sharedMaterial(tx, eid, p.projectId, p.needGrantId);
   if (!grant || grant.conversationId !== p.conversationId || grant.customerId !== p.customerId || grant.roomId !== p.roomId) return null;
   const materials = await sharedMaterials(tx, eid, p.projectId, p.roomId);
@@ -83,12 +91,22 @@ export async function readPlan(tx: PostgresTransaction, eid: string, versionId: 
   return { ...p, id: versionId, revision: s.revision, status: s.status, previewed: s.previewed, reason: s.reason,
     hash: fingerprint({ versionId, ...p, revision: s.revision, status: s.status, reason: s.reason }) };
 }
-export async function projectPlans(tx: PostgresTransaction, eid: string, pid: string) {
+export function effectivePlanText(p: Pick<PlanView, 'id' | 'number' | 'roomName' | 'title' | 'difference'>) {
+  return `有效施工要求 · 方案${p.id} · V${p.number} · ${p.roomName}\n${p.title}\n${p.difference}`;
+}
+export async function projectPlans(tx: PostgresTransaction, eid: string, pid: string, effectiveOnly = false) {
   const events = await rows(tx, sql`select distinct on (aggregate_id) id,payload from app.domain_event_outbox
     where enterprise_id=${eid} and type=${publishedType} and payload->>'projectId'=${pid} order by aggregate_id,aggregate_version desc limit 50`);
   const result = [];
   for (const e of events) {
-    const p = await readPlan(tx, eid, String(e.id)), s = await state(tx, eid, String(e.id));
+    const p = await readPlan(tx, eid, String(e.id));
+    if (effectiveOnly) {
+      if (p?.status === 'approved') result.push({ id: p.id, issueId: p.issueId, roomId: p.roomId, roomName: p.roomName,
+        title: p.title, difference: p.difference, number: p.number, revision: p.revision, sourceMessageId: p.sourceMessageId,
+        status: p.status, hash: p.hash, mediaId: p.mediaId, text: effectivePlanText(p), available: true });
+      continue;
+    }
+    const s = await state(tx, eid, String(e.id));
     result.push(p ? { ...customerPlanDto(p), roomId: p.roomId, sourceMessageId: p.sourceMessageId, available: true, text: planText(p) } : { id: String(e.id), revision: s.revision, available: false, status: 'invalidated', text: `方案${e.id}已撤回或依据已变化，旧版不能继续使用。` });
   }
   return result;
@@ -106,6 +124,11 @@ export async function executePlanCommand(tx: PostgresTransaction, actor: ActorCo
     if (!p || p.projectId !== pid || !manage && p.publisherId !== aid) fail('construction_forbidden', 403);
     await one(tx, sql`select id from app.assistant_conversations where enterprise_id=${eid} and id=${p.conversationId} for share`);
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`site-material:${eid}:${pid}`},0))`);
+    if (collaborationEnabled(eid) || p.opinionMessageId) {
+      const role = await collaborationMember(tx, eid, pid, aid);
+      if (role !== 'manager' && (role !== 'designer' || p.publisherId !== aid)) fail('construction_forbidden', 403);
+      if (!await readPlan(tx, eid, cmd.versionId)) fail('context_changed');
+    }
     const s = await state(tx, eid, cmd.versionId);
     if (versions.plans?.[cmd.versionId] !== s.revision) fail('version_conflict');
     await writeState(tx, actor, cmd.versionId, s.revision + 1, { status: 'withdrawn', previewed: false, reason: cmd.reason, action: 'withdraw' }, messageId);
@@ -117,6 +140,11 @@ export async function executePlanCommand(tx: PostgresTransaction, actor: ActorCo
   const view = await readPlan(tx, eid, String(event.id)); if (!view) fail('context_changed');
   return { id: String(event.id), text: planText(view) + '\n已发往原授权咨询；接待期间延后，未经客户明确决定不视为同意。' };
 }
+async function designOpinion(tx: PostgresTransaction, eid: string, pid: string, aid: string, messageId: string) {
+  return one(tx, sql`select m.content from app.assistant_messages m join app.construction_chats c
+    on c.enterprise_id=m.enterprise_id and c.conversation_id=m.conversation_id where m.enterprise_id=${eid}
+    and c.project_id=${pid} and m.id=${messageId} and m.author_kind='admin' and m.admin_id=${aid} for share of m`);
+}
 /** Read and lock the exact same publication prerequisites for preview and write. */
 export async function preparePlanPublication(tx: PostgresTransaction, actor: ActorContext, pid: string, messageId: string,
   cmd: Extract<PlanCommand, { action: 'publish' }>, mediaIds: string[], versions: SiteVersions, manage: boolean): Promise<PlanData> {
@@ -125,15 +153,22 @@ export async function preparePlanPublication(tx: PostgresTransaction, actor: Act
   id(cmd.issueId); text(cmd.title, 80); text(cmd.difference, 1200);
   if (!Number.isSafeInteger(cmd.costDeltaCents) || Math.abs(cmd.costDeltaCents) > 100000000
     || !Number.isSafeInteger(cmd.scheduleDeltaDays) || Math.abs(cmd.scheduleDeltaDays) > 365) fail('invalid_plan', 422);
-  const issue = await readSiteIssueBase(tx, eid, pid, cmd.issueId);
+  await readSiteIssueBase(tx, eid, pid, cmd.issueId);
   // Source conversations are locked by readSiteIssue before the material lock,
   // matching customer consent/decision order and avoiding a cross-chat cycle.
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`site-material:${eid}:${pid}`},0))`);
+  const issue = await readSiteIssueBase(tx, eid, pid, cmd.issueId);
   if (!issue || issue.status !== 'awaiting_review' || !issue.roomId || !issue.ownerId) fail('site_review_required', 422);
-  if (versions.issues[cmd.issueId] !== issue.revision || versions.records[issue.recordId] !== issue.recordVersion) fail('version_conflict');
+  if (versions.issues[cmd.issueId] !== issue.revision || (issue.recordId && versions.records[issue.recordId] !== issue.recordVersion)) fail('version_conflict');
   const author = await one(tx, sql`select role from app.admin_users where enterprise_id=${eid} and id=${aid} and status='active'`);
-  if (!manage && (issue.ownerId !== aid || author?.role !== 'designer')) fail('construction_forbidden', 403);
-  const materials = await sharedMaterials(tx, eid, pid, issue.roomId), need = materials.sources.find(s => s.kind === 'need');
+  // A saved design review keeps its approval policy through an allowlist rollback.
+  const collaboration = collaborationEnabled(eid) || issue.sourceKind === 'need';
+  if (collaboration ? issue.ownerId !== aid || await collaborationMember(tx, eid, pid, aid) !== 'designer'
+    : !manage && (issue.ownerId !== aid || author?.role !== 'designer')) fail('construction_forbidden', 403);
+  const opinion = collaboration && issue.progressMessageId ? await designOpinion(tx, eid, pid, aid, issue.progressMessageId) : null;
+  if (collaboration && !opinion) fail('site_review_required', 422);
+  const materials = await sharedMaterials(tx, eid, pid, issue.roomId);
+  const need = materials.sources.find(s => s.kind === 'need' && (!issue.needGrantId || issue.needGrantId === s.id));
   if (!need || issue.materialVersion !== materials.version || versions.materials?.[issue.roomId] !== materials.version) fail('context_changed');
   if (materials.sources.some(s => s.kind === 'drawing') && !issue.drawingGrantId) fail('site_review_required', 422);
   if (mediaIds.length !== 1) fail('plan_original_required', 422);
@@ -146,7 +181,8 @@ export async function preparePlanPublication(tx: PostgresTransaction, actor: Act
     conversationId: need.conversationId, customerId: need.customerId, needGrantId: need.id, materialVersion: materials.version,
     publisherId: aid, mediaId: String(media.id), mediaHash: String(media.source_hash), sourceMessageId: messageId,
     number: Number(previous?.aggregate_version || 0) + 1, previousVersionId: previous ? String(previous.id) : null,
-    title: cmd.title, difference: cmd.difference, costDeltaCents: cmd.costDeltaCents, scheduleDeltaDays: cmd.scheduleDeltaDays };
+    title: cmd.title, difference: cmd.difference, costDeltaCents: cmd.costDeltaCents, scheduleDeltaDays: cmd.scheduleDeltaDays,
+    ...(opinion ? { drawingGrantId: issue.drawingGrantId || null, opinionMessageId: issue.progressMessageId!, opinionHash: fingerprint(opinion.content) } : {}) };
   if (!await publisherAvailable(tx, eid, p)) fail('construction_forbidden', 403);
   return p;
 }
@@ -186,8 +222,12 @@ export class PlanCustomerService {
     id(versionId);
     return withTenantTransaction(this.actor.enterpriseId, async tx => {
       const repo = new AssistantRepository(tx, this.actor); await repo.settings(write); const c = await repo.conversation(this.cid);
+      const collaboration = collaborationEnabled(this.actor.enterpriseId);
+      if (write && collaboration && !await isConsultationOwner(tx, this.actor, this.cid)) fail('construction_forbidden', 403);
       const e = await planEvent(tx, this.actor.enterpriseId, versionId); if (!e) fail('plan_unavailable', 404);
       const data = e.payload as PlanData;
+      if (write && !collaboration && data.opinionMessageId
+        && !await isConsultationOwner(tx, this.actor, this.cid)) fail('construction_forbidden', 403);
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`site-material:${this.actor.enterpriseId}:${data.projectId}`},0))`);
       const p = await readPlan(tx, this.actor.enterpriseId, versionId);
       if (!p || p.conversationId !== this.cid || this.actor.principal.kind !== 'user' || p.customerId !== this.actor.principal.userId) fail('plan_unavailable', 404);

@@ -1,10 +1,26 @@
 # 小程序当前功能清单
 
-**小K统一集成（Limited）。** 现有 C01 聊天和跟进入口由服务端网关供给。来源片与私人委托回执通过原获权会话接口读取。四端旅程、持久化及原生验收见[集成审查](xiaok-integration-audit.md)。
+**小K统一集成（Limited）。** 现有 C01 聊天和跟进入口由服务端网关供给。来源片与私人委托回执通过原获权会话接口读取。房间任务与施工复核共用持久消费者，周槽复用四端报告与重进服务。四端旅程及原生验收见[集成审查](xiaok-integration-audit.md)。
 
 <!-- xiaok-r3-web-tools -->
 **小K R3 公开资料（Limited）。** 合资格的开发会话沿用 C01 聊天及已授权的项目或跟进会话服务。Worker 可按需搜索并读取公开原文，将原始网址和检索时间随引用保存。原引用卡片通过 `GET /api/miniprogram/assistant/citations/:id` 打开。真实验收覆盖隔离会话服务，原生设备和各角色入口待验。[R3 验证](bailian-responses-adapter.md#11-r3-应用联网搜索)。
 <!-- /xiaok-r3-web-tools -->
+
+<!-- cross-role-business-current -->
+**B5.9 四端项目协同（Limited）。** 业主从原 C01 咨询读取对客发布的现场记录、精确方案决定和获准的复核回执。工地详情与项目简报（`packages/construction/projects/projects`、`packages/construction/brief/brief`）读取服务端计划及事项计数。设计师打开事项核对当前材料及专业处理状态，施工人员查看当前获批要求，并从原工地交流（`packages/construction/chat/chat`）回传。计划绿、黄、红、灰依次对应提前、正常、落后、待核实或未排期。事项使用原回复卡和原件入口，显示同一事项 ID 与当前复核状态。重进及原详情定时刷新均重新读取服务端。
+
+页面复用获批云工地详情、简报、V3 现场上报和 C01 方案及原件卡，沿已留存的计划和整改样式。家庭代看 `family_view` 与撤权由业主 API 提供，当前小程序沿原业主和员工入口办理项目及确认动作。Stable 390×844 使用同一持久项目验证老板简报与详情、设计师事项、施工端有效要求和业主原咨询重进。[Stable 验收](../admin/tmp/b59-native-03/verification.json)及[服务端与权限合同](./admin-system-modules.zh-CN.md)。
+
+关闭协同后，已保存的设计和质量事项继续核对项目角色。B5.10 的签名路由及实库检查覆盖撤权、失效版本、项目成员、无效照片上传、退回重提和整改回传去重。[B5.10 验收](./native-workflow-b510-deployment-review.zh-CN.md)。
+<!-- /cross-role-business-current -->
+
+<!-- native-delegation-current -->
+**水电持续跟进（Limited）。** 有权业主在批准的 C01 原咨询输入框（`packages/assistant/chat/chat`）发送“请持续跟进主卧的水电进展和书房的插座点位。”，可替换为项目中登记的部位名。“查看水电跟进”“暂停水电跟进”“继续水电跟进”“取消水电跟进”作用于该咨询中的委托。加上“等我回复超时就在小K里提醒我”可授权每次等待业主回复满 48 小时后站内提醒一次。重进原咨询会读到已保存的回执、补问和获准的项目团队结论。
+
+施工人员沿用批准的 V3 工地交流（`packages/construction/chat/chat`）照片、语音、原件和核对入口。项目成员在原协作回复卡里查看当前待设计或现场复核请求。业主回复先留在本咨询，经过既有共享授权后团队才能查看内容。正式决定仍沿精确版本的确认和经理复核。状态使用原回复气泡、控件、原件预览及权限反馈。空会话收到首条回执时沿原接口全量读取首屏。Stable 390×844 已验证原生发送、持久化重进和原咨询结果。[服务端合同及验收](./admin-system-modules.zh-CN.md)。
+
+企业启用 B5.11 后，已授权的业主超时提醒由持久化助手 Worker 投递，重进原咨询仍读到同一条已保存的回复。派发前会复核业主、当前等待项及项目权限。
+<!-- /native-delegation-current -->
 
 <!-- site-capture-current -->
 **现场上报/回执：本地已实现（Implemented）。** 批准的[V3随手报与常用工作](../design-references/cloud-site-redesign-20261107/README.md#05-通用现场上报与回执已批准实施)对应`packages/construction/chat/chat`：54px拍照/说一句双按钮，打字/常用工作次入口，原图/原音预览及工作/部位/进展一次提交。点选保留部分完成/说不准，不切阶段、不调用模型；新上报由管理人员核对发布，原补拍/更正/版本保留。

@@ -7,6 +7,9 @@ import { applyMaterialCommand, materialCommand } from './site-materials';
 import { applyMaterialShareReply, hasMaterialShareReply } from './material-sharing';
 import { siteWatchIntent, siteWatchReply, unscopedSiteWatchCancel } from './site-watch-contract';
 
+import { applyDelegationCommand, delegationCommand } from '@/lib/native-workflow/live/delegation-chat';
+import { delegationsEnabled } from '@/lib/native-workflow/live/delegation-store';
+
 export { siteWatchIntent } from './site-watch-contract';
 async function receipt(tx: PostgresTransaction, actor: ActorContext, cid: string, sourceId: string, text: string, watchId?: string) {
   const event = (await one(tx, sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
@@ -74,9 +77,14 @@ export async function applySiteWatch(tx: PostgresTransaction, actor: ActorContex
   return true;
 }
 export const siteWatchInterceptor = {
-  matches(content: MessageContent, c: Row) { return !!materialCommand(safeText(content).trim()) || hasMaterialShareReply(safeText(content), c) || !!siteWatchIntent(safeText(content)) || !!(c.entry_snapshot as Row)?.siteWatchQuestion; },
+  matches(content: MessageContent, c: Row) {
+    const text = safeText(content).trim();
+    return c.purpose === 'customer_consultation' && delegationsEnabled(String(c.enterprise_id)) && !!delegationCommand(text)
+      || !!materialCommand(text) || hasMaterialShareReply(text, c) || !!siteWatchIntent(text) || !!(c.entry_snapshot as Row)?.siteWatchQuestion;
+  },
   async apply(tx: PostgresTransaction, actor: ActorContext, c: Row, message: Row) {
-    return await applyMaterialCommand(tx, actor, c, message) || await applyMaterialShareReply(tx, actor, c, message) || await applySiteWatch(tx, actor, c, message);
+    return await applyDelegationCommand(tx, actor, c, message) || await applyMaterialCommand(tx, actor, c, message)
+      || await applyMaterialShareReply(tx, actor, c, message) || await applySiteWatch(tx, actor, c, message);
   },
 };
 export async function siteWatchProjection(tx: PostgresTransaction, eid: string, cid: string, mid: string) {

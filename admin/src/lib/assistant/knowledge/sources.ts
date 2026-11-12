@@ -4,6 +4,7 @@ import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, fingerprint, id, type ActorContext, type Evidence } from '../contracts';
 import { knowledgeContext, reportStageKnowledgeContext } from './applicability-context';
 import { agentMessageAvailable } from '../agent/media-context';
+import { delegationNoticeAvailable } from '@/lib/native-workflow/live/delegation-chat';
 import { constructionMessageActions } from '@/lib/construction/customer';
 import { siteRecordProjection, siteBusinessRecords } from '@/lib/construction/site-publications';
 import { siteWatchProjection } from '@/lib/construction/site-watches';
@@ -120,7 +121,7 @@ export async function webCitationProjection(tx: PostgresTransaction, actor: Acto
 }
 export async function projectMessage(tx:PostgresTransaction,actor:ActorContext,c:Row,message:Row) {
   const delegationAvailable = message.purpose !== 'construction.delegation'
-    || await (await import('@/lib/native-workflow/live/delegation-chat')).delegationNoticeAvailable(tx, actor, c, String(message.id));
+    || await delegationNoticeAvailable(tx, actor, c, String(message.id));
   // Revoking an original also hides pre-revocation AI prose after it. This
   // conservative fence covers unstructured replies without inventing citations;
   // future turns can answer again from the remaining live sources.

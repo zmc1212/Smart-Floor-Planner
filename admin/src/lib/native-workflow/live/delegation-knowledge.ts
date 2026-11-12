@@ -7,8 +7,9 @@ import { knowledgeContext } from '@/lib/assistant/knowledge/applicability-contex
 import { BailianKnowledgeError, bailianKnowledgeConfig, knowledgeProviderMode } from '@/lib/assistant/knowledge/bailian-provider';
 import { retrieveKnowledge } from '@/lib/assistant/knowledge/retrieval';
 import { resolveEvidence } from '@/lib/assistant/knowledge/sources';
-import { isSuspended, type Delegation } from './delegation-state';
-import { delegationActor, delegationOrigin } from './delegation-store';
+import { isSuspended, type ReviewDelegation } from './delegation-state';
+import { delegationActor, reviewDelegationOrigin } from './delegation-review-store';
+
 
 type SourceRef = Pick<Evidence, 'ref' | 'hash'>;
 type StandardCheck = {
@@ -27,7 +28,7 @@ async function settings(tx: PostgresTransaction, enterpriseId: string) {
 
 /** A source lookup records documentation only. The construction review owns
  * the decision about the work, and no private memory is sent to retrieval. */
-export async function checkDelegationStandards(tx: PostgresTransaction, d: Delegation, conversation: Row, signal: AbortSignal): Promise<StandardCheck> {
+export async function checkDelegationStandards(tx: PostgresTransaction, d: ReviewDelegation, conversation: Row, signal: AbortSignal): Promise<StandardCheck> {
   const config = await settings(tx, d.enterpriseId);
   const epoch = Number(config?.knowledge_epoch);
   if (!enterpriseKnowledgeEnabled(config?.agent_config)) return { status: 'disabled', epoch };
@@ -37,7 +38,7 @@ export async function checkDelegationStandards(tx: PostgresTransaction, d: Deleg
     const query = [d.scope.roomName, d.scope.subject].join(' ');
     const result = await retrieveKnowledge(d.conversationId, actor, query, epoch, undefined, {
       kind: 'owner_delegation',
-      authorize: async tx => await delegationOrigin(tx, d, conversation) ?? fail('delegation_origin_unavailable', 409),
+      authorize: async tx => await reviewDelegationOrigin(tx, d, conversation) ?? fail('delegation_origin_unavailable', 409),
     }, 'ranked',
       { mode: 'hybrid', topK: 3, signal }, tx);
     const sources = result.evidence.filter(source => source.professional?.applicability.status !== 'not_applicable')
@@ -51,7 +52,7 @@ export async function checkDelegationStandards(tx: PostgresTransaction, d: Deleg
   }
 }
 
-export async function currentDelegationStandards(tx: PostgresTransaction, actor: ActorContext, conversation: Row, d: Delegation) {
+export async function currentDelegationStandards(tx: PostgresTransaction, actor: ActorContext, conversation: Row, d: ReviewDelegation) {
   if (d.scope.kind !== 'rectification_review' || isSuspended(d.status)) return null;
   const row = await one(tx, sql`select receipt->'standardCheck' as standard_check,processed_at
     from app.native_workflow_delegation_events where enterprise_id=${d.enterpriseId} and delegation_id=${d.id}

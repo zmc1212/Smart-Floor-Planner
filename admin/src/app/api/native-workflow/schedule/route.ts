@@ -1,23 +1,21 @@
 import { NextResponse } from 'next/server';
 import { getTenantContext } from '@/lib/auth';
+import { WorkflowOperationError } from '@/lib/native-workflow/errors';
 import { requirePlatformAdmin, workflowApiError } from '@/lib/native-workflow/server';
 import {
+  cancelScheduledPeriodReport,
   readScheduledPeriodReportDispatch,
+  resolveEndedShanghaiWeek,
   setScheduledPeriodReportPaused,
 } from '@/lib/native-workflow/live/period-report-schedule';
 import {
-  createFilePeriodReportScheduleStore,
-  resolveNativeWorkflowScheduleDir,
-} from '@/lib/native-workflow/live/period-report-schedule-store';
+  readWeeklyScheduleSettings,
+  type WeeklyScheduleSettingsSnapshot,
+} from '@/lib/native-workflow/live/period-report-schedule-ports';
+import { createNativeRuntimeStores } from '@/lib/native-workflow/live/runtime-stores';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-function store() {
-  return createFilePeriodReportScheduleStore({
-    rootDir: resolveNativeWorkflowScheduleDir(),
-  });
-}
 
 async function tenantContext(request: Request) {
   const denied = await requirePlatformAdmin(request);
@@ -55,7 +53,7 @@ export async function GET(request: Request) {
   try {
     const result = await readScheduledPeriodReportDispatch({
       enterpriseId: context.enterpriseId!,
-      store: store(),
+      store: createNativeRuntimeStores(context.enterpriseId!).store,
       ...(url.searchParams.get('runId')
         ? { runId: url.searchParams.get('runId')! }
         : {}),
@@ -63,7 +61,18 @@ export async function GET(request: Request) {
         ? { periodStart: url.searchParams.get('periodStart')! }
         : {}),
     });
-    return NextResponse.json({ success: true, data: result });
+    // The stored weekly slot is read without a lock or claim, so the operations
+    // view can show the next execution time even before this cycle dispatches.
+    let settings: WeeklyScheduleSettingsSnapshot | null = null;
+    let settingsError: string | null = null;
+    try {
+      settings = await readWeeklyScheduleSettings({ enterpriseId: context.enterpriseId! });
+    } catch (error) {
+      settingsError = error instanceof WorkflowOperationError
+        ? error.code
+        : 'weekly_settings_unavailable';
+    }
+    return NextResponse.json({ success: true, data: { ...result, settings, settingsError } });
   } catch (error) {
     return workflowApiError(error);
   }
@@ -87,7 +96,7 @@ export async function POST(request: Request) {
     !body
     || typeof body !== 'object'
     || Array.isArray(body)
-    || !['pause', 'resume'].includes(String((body as Record<string, unknown>).action))
+    || !['pause', 'resume', 'cancel'].includes(String((body as Record<string, unknown>).action))
   ) {
     return NextResponse.json(
       { success: false, error: 'invalid_schedule_control' },
@@ -96,13 +105,39 @@ export async function POST(request: Request) {
   }
   const input = body as Record<string, unknown>;
   const reason = typeof input.reason === 'string' ? input.reason.slice(0, 300) : null;
+  const action = String(input.action);
+  if (action === 'cancel') {
+    const requested = input.periodStart;
+    if (requested !== undefined && (
+      typeof requested !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(requested)
+    )) {
+      return NextResponse.json(
+        { success: false, error: 'invalid_schedule_period' },
+        { status: 422 },
+      );
+    }
+    try {
+      const result = await cancelScheduledPeriodReport({
+        enterpriseId: context.enterpriseId!,
+        periodStart: typeof requested === 'string'
+          ? requested
+          : resolveEndedShanghaiWeek(new Date()).periodStart,
+        updatedBy: context.userId,
+        reason,
+        store: createNativeRuntimeStores(context.enterpriseId!).store,
+      });
+      return NextResponse.json({ success: true, data: result });
+    } catch (error) {
+      return workflowApiError(error);
+    }
+  }
   try {
     const control = await setScheduledPeriodReportPaused({
       enterpriseId: context.enterpriseId!,
-      paused: input.action === 'pause',
+      paused: action === 'pause',
       updatedBy: context.userId,
       reason,
-      store: store(),
+      store: createNativeRuntimeStores(context.enterpriseId!).store,
     });
     return NextResponse.json({ success: true, data: control });
   } catch (error) {

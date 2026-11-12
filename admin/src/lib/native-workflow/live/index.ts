@@ -64,17 +64,26 @@ export {
   type DatabaseScheduleEnvironmentOptions,
 } from './period-report-schedule-ports';
 export {
+  cancelScheduledPeriodReport,
   readScheduledPeriodReportDispatch,
   resolveEndedShanghaiWeek,
   resolveScheduledPeriod,
   runScheduledPeriodReportDispatch,
   setScheduledPeriodReportPaused,
+  type CancelScheduledPeriodResult,
   type ScheduledEnterpriseSummary,
   type ScheduledPeriodReportDispatchDependencies,
   type ScheduledPeriodReportDispatchOptions,
   type ScheduledPeriodReportDispatchReadResult,
   type ScheduledPeriodReportDispatchSummary,
 } from './period-report-schedule';
+export {
+  buildScheduledJobTraces,
+  buildScheduledRunTrace,
+  scheduleTickLogPayload,
+  type ScheduledJobTrace,
+  type ScheduledRunTrace,
+} from './period-report-schedule-observability';
 export {
   createFilePeriodReportScheduleStore,
   createMemoryPeriodReportScheduleStore,
@@ -125,6 +134,7 @@ export {
 } from './period-report-batch-preflight';
 export {
   LiveOperationFailure,
+  LiveOperationTransientError,
   LiveOperationUnknownError,
   type LiveBusinessEvent,
   type LiveOperationOutcome,
@@ -137,3 +147,100 @@ export {
   type LiveRunStatus,
   type LiveRunStore,
 } from './types';
+export {
+  DURABLE_TASK_VERSION,
+  TERMINAL_DURABLE_TASK_STATUSES,
+  isTerminalDurableTaskStatus,
+  type DurableTaskAttempt,
+  type DurableTaskAttemptOutcome,
+  type DurableTaskClaim,
+  type DurableTaskCompensation,
+  type DurableTaskCompensationAuthorization,
+  type DurableTaskCompensationStatus,
+  type DurableTaskData,
+  type DurableTaskDataValue,
+  type DurableTaskDelegation,
+  type DurableTaskErrorClass,
+  type DurableTaskLastError,
+  type DurableTaskLease,
+  type DurableTaskListQuery,
+  type DurableTaskManualQueueEntry,
+  type DurableTaskRecord,
+  type DurableTaskRecoveryMode,
+  type DurableTaskRecoverySummary,
+  type DurableTaskRetryPolicy,
+  type DurableTaskStatus,
+  type DurableTaskStep,
+  type DurableTaskStepStatus,
+  type DurableTaskTimeouts,
+} from './durable-task-types';
+export {
+  DURABLE_TASK_STORE_VERSION,
+  createFileDurableTaskStore,
+  createMemoryDurableTaskStore,
+  resolveNativeWorkflowTaskDir,
+  type DurableTaskCreateResult,
+  type DurableTaskLeaseInput,
+  type DurableTaskLeaseResult,
+  type DurableTaskReleaseInput,
+  type DurableTaskStore,
+} from './durable-task-store';
+export {
+  DEFAULT_DURABLE_TASK_RETRY,
+  DEFAULT_DURABLE_TASK_TIMEOUTS,
+  createDurableTaskRuntime,
+  durableTaskId,
+  type AuthorizeDurableTaskCompensationInput,
+  type CancelDurableTaskInput,
+  type ClaimDurableTaskInput,
+  type CompleteDurableTaskInput,
+  type CreateDurableTaskInput,
+  type DurableTaskCompensationInput,
+  type DurableTaskCompensationResult,
+  type DurableTaskHeartbeatResult,
+  type DurableTaskLeaseRef,
+  type DurableTaskProgressInput,
+  type DurableTaskRuntime,
+  type DurableTaskRuntimeOptions,
+  type ExecuteDurableTaskCompensationsInput,
+  type FailDurableTaskInput,
+  type PlanDurableTaskCompensationInput,
+  type ResolveManualDurableTaskInput,
+  type WaitDurableTaskInput,
+} from './durable-task-runtime';
+export {
+  DurableToolNotSentError,
+  createDurableToolExecutor,
+  type DurableToolAuthorization,
+  type DurableToolCallback,
+  type DurableToolCallbackReason,
+  type DurableToolCallbackResult,
+  type DurableToolDispatchInput,
+  type DurableToolEffect,
+  type DurableToolExecutor,
+  type DurableToolExecutorOptions,
+  type DurableToolPort,
+  type DurableToolProbeInput,
+  type DurableToolProbeResult,
+  type DurableToolRequest,
+  type DurableToolSaveInput,
+  type DurableToolSubmission,
+  type DurableToolSubmissionState,
+  type DurableToolWritebackInput,
+} from './durable-tool-execution';
+export {
+  createDurableLiveOperationPorts,
+  type DurableLiveOperationPortsOptions,
+} from './durable-operation-ports';
+export {
+  durableTaskTracePayload,
+  type DurableTaskTracePayload,
+} from './durable-task-observability';
+
+export { createNativeRuntimeStores } from './runtime-stores';
+export {
+  createPostgresPeriodReportBatchStore,
+  createPostgresPeriodReportScheduleStore,
+  createPostgresWorkflowRunStore,
+} from './runtime-postgres-stores';
+export { createPostgresDurableTaskStore } from './durable-task-postgres-store';

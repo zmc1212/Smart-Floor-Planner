@@ -15,6 +15,17 @@ Owner: B line (`codex/xiaok-native-workflow`). Shared migrations, dependencies,
 menus, the sole XiaoK plan and the bilingual module inventories' integration
 wiring remain owned by the integration lead.
 
+Parallel-branch boundary: the Responses API task
+(`codex/xiaok-bailian-responses-api`) owns the public adapter layer for Bailian
+Responses API, native web search, web extractor and code interpreter. B line
+never adds a Responses provider adapter and never edits that layer. Both lines
+meet only at the existing provider-neutral contract in
+`src/lib/assistant/contracts/model.ts` (`AgentModelGateway`,
+`ModelTurnInput`/`ModelTurnOutput`) and at `src/lib/ai/providers/*`; those files
+and the Chat Completions gateway stay untouched here. Any new model capability
+B line needs must first be proposed as a contract change and accepted by the
+Responses task owner; B5 report and draft turns currently need none.
+
 ## Boundary
 
 - The pure core imports only Node built-ins and local files in this directory.
@@ -1629,13 +1640,61 @@ queue or timer:
     never acquires a lease.
   - `POST /api/native-workflow/schedule` with `{action:'pause'|'resume'}` sets
     the tenant pause flag; the scheduler re-reads it before each project.
+    `{action:'cancel', periodStart?}` cancels one finished week for that tenant
+    only (default: the latest finished Shanghai week); it is terminal for that
+    period and never touches other weeks or tenants.
   - `scripts/native-workflow-period-report-schedule.ts` is the one-shot CLI
-    (`--show-latest`, `--show-run`, `--list`, `--pause`, `--resume`, `--mode`,
-    `--period-start`, `--ensure-published`). It rejects an unended/future week
-    before publishing, resolving the DB target or connecting.
+    (`--show-latest`, `--show-run`, `--list`, `--pause`, `--resume`, `--cancel`,
+    `--mode`, `--period-start`, `--ensure-published`). It rejects an
+    unended/future week before publishing, resolving the DB target or
+    connecting.
 - No database migration is required. The only business settings write is the
   existing `next_weekly_at` claim. The schedule/control/ledger files are B host
   state, not shared tables.
+
+### B5.6 multi-tenant reliability and recovery
+
+B5.6 hardens the same scheduler; it adds no second queue, timer, Worker,
+migration or business table.
+
+- **Tenant isolation.** Every control, cancellation, lease, run file and trace
+  is keyed by the allow-listed enterprise. `pause`/`cancel` for one tenant never
+  changes another tenant's control or run, and one tenant's store, claim,
+  discovery, batch or observation failure is caught per tenant in the tick loop
+  and reported as that tenant's own error. A record loaded by a deterministic
+  run id whose `enterpriseId` does not match the tick is refused with
+  `period_report_schedule_forbidden` and is never advanced or rewritten.
+- **Weekly lifecycle.** `cancelled` and `expired` are explicit terminal run
+  states. Cancellation is checked before the weekly claim and again before each
+  project dispatch, so a cancelled period neither claims `next_weekly_at` nor
+  creates a batch, and an in-flight tick stops the remaining projects. A run
+  with unfinished work whose 7-day recovery/read window has closed is finalized
+  as `expired` instead of staying `dispatching`/`observing` forever; no active
+  state is polled past that window. Cross-week, cross-month and year-boundary
+  weeks stay Monday-to-Monday Shanghai time (UTC+8, no DST), and a new week
+  always gets a new run id and request ids, so the previous week's run file
+  keeps its claim, period, receivers and requests.
+- **Idempotency and concurrency.** The project/period job id is the existing
+  deterministic batch request id; the run id is the deterministic
+  enterprise/period id. The cross-process lease with a TTL admits only one
+  tick per run; a crashed owner's lease is taken over after the TTL and the
+  batch is resumed, not duplicated. `dispatchAttempts` counts real dispatch
+  calls while `recheckCount` counts bounded discovery retries, and a frozen
+  manifest is re-observed instead of re-executed. `failed`/`unknown` projects
+  are never auto-replayed.
+- **Failure recovery.** Recheck errors are classified: transient permission or
+  database conflicts keep the bounded attention retry, while permanent codes
+  (`published_changed`, `construction_not_found`, conflicting/receiver-invalid
+  identities) stop the project on the first failure. Every failure keeps its
+  original receiver/batch/issue evidence and an audit entry; cancellation and
+  expiry also keep the already reported evidence.
+- **Observability.** `live/period-report-schedule-observability.ts` derives one
+  redacted run trace and one job trace per project/period (`tenantId`,
+  `scheduleId`, `jobId`, period, `plannedAt`, `dispatchedAt`, `observedAt`,
+  `workerId`, state, `attempts`, `retryCount`, `failureCode`). The runtime emits
+  one bounded JSON line per tick and the tick summary, the read API/CLI and the
+  run `audit` carry the same identities. Project names, issue text, receiver
+  admin ids and model output are never included.
 
 Offline tests: `period-report-schedule.test.ts` covers Shanghai week
 resolution, unended-period rejection, project selection/skip reasons, missing/
@@ -1649,7 +1708,14 @@ weekly time, an already-consumed slot, a claimed run surviving a moved
 mapping; `period-report-schedule-store.test.ts` covers exclusive
 create/identity, concurrent adoption, immutable claim receipts, control/ledger
 and the lease TTL; `period-report-schedule-ports.test.ts` covers plan scope,
-`weekly_claimed` legacy handling and the weekly claim boundary. The documented
+`weekly_claimed` legacy handling and the weekly claim boundary. B5.6 adds
+multi-tenant concurrent dispatch, one-tenant batch failure isolation, a
+same-window concurrent trigger, crashed-lease takeover after TTL, crash retry
+over a frozen batch, cross-month/year weeks, cancellation, permanent-error
+stop, window expiry, previous-week preservation, a foreign-tenant run refusal,
+and redacted trace fields; `period-report-schedule-store.test.ts` also covers
+per-tenant cancellation across pause/resume and a legacy control file without
+the field. The documented
 offline command remains 404/404 (B5.9.2 fixed a live-only SQL shape bug and
 extended the acceptance driver without adding offline cases).
 
@@ -2022,12 +2088,195 @@ Evidence:
 `admin/tmp/b5-9-5-20261112-1835/{citations.json,citation-view.json}` and
 `admin/tmp/b5-9-2-schedule-runs/b5-9-2-schedule-2026-11-12T0943-26fb1b18/verification.json`.
 
+### B5.9.5 round-2 availability re-check
+
+Re-reading the same B database after the lifecycle adds no new report and no
+model call, but it fixes the worker evidence boundary. Worker binding `2`
+reports `17/r1`, `13/r5` and `8/r1` now all return `source_unavailable` because
+the worker revocation audit `137` is later than their `generatedAt`; restoring
+membership (`138`) does not reopen them, and the contract forbids regenerating
+them for evidence. Report `17` therefore cannot be opened or clicked again
+today, so the real-click proof above is report `13` revision `2`, which was
+readable at click time; report `13` itself is also `source_unavailable` now for
+the same reason. Boss `18/r1`, designer `9/r2` and `14/r1` remain
+`facts_ready`, designer `10/r1` is `source_unavailable`, and the customer
+follow-up list still needs a public-site entry token (`X-Assistant-Entry`,
+covered by B5.9.4). The citation proof re-runs at 43/43 over the same 23
+citations, and report/version/delivery/message/readAt/audit counts and digests
+are unchanged. Evidence:
+`admin/tmp/b5-9-5-round2-20261112-1753/{state-before.json,citations.json,role-availability.json}`.
+
+## B5.10 multi-tenant production-readiness review
+
+This section records the earlier scheduler-only review. See the [current B5.10 deployment review](#b510-deployment-and-multi-instance-reliability) for the separate PostgreSQL and multi-process verification.
+
+This round audits the B5.9 scheduler; it does not enable production. Automatic
+scheduling stays off (`NATIVE_WORKFLOW_SCHEDULE_ENABLED=0`) and the enterprise
+allowlist is unchanged.
+
+Tenant isolation (code review + tests):
+
+- one run id is `schedule-<enterprise>-weekly-<periodStart>`; control is
+  `control/<enterpriseId>.json` and the issue ledger is
+  `ledger/<enterpriseId>/<projectId>.json`, so two tenants never share a run,
+  lease, control file or ledger;
+- every discovery, weekly claim, receiver/binding lookup, status read and issue
+  read runs inside `withTenantTransaction(enterpriseId, ...)` with an explicit
+  `enterprise_id=` predicate; there is no cross-tenant query path;
+- the admin `GET /api/native-workflow/schedule` takes the enterprise from the
+  session/tenant selector, never from the query string, and
+  `readScheduledPeriodReportDispatch()` returns `403
+  period_report_schedule_forbidden` when a supplied `runId` belongs to another
+  enterprise; `POST` pause/resume is tenant-scoped in the same way;
+- `NATIVE_WORKFLOW_SCHEDULE_ENTERPRISE_IDS` is parsed strictly (positive
+  integers only); an empty or entirely invalid allowlist returns
+  `no_enterprise_scope` before any store, database or dispatch work, and the
+  tick is additionally capped at 20 enterprises.
+
+Concurrency and resources:
+
+- the tick processes allow-listed enterprises sequentially inside the existing
+  assistant-worker request; no second Worker, queue or timer exists;
+- each run has an exclusive lease file with a 10-minute default TTL while the
+  whole tick is bounded to 90 seconds (`NATIVE_WORKFLOW_SCHEDULE_MAX_RUN_MS`),
+  and the reused B5.8 batch store keeps its own cross-process lease; a
+  concurrent dispatcher observes the lease and skips instead of duplicating;
+- run updates use same-directory temporary files plus atomic rename, and
+  run/entry/reminder/ledger arrays are bounded (200/50/20/50), so a long-lived
+  period file cannot grow without limit;
+- the scheduler uses the existing PostgreSQL pool (default 10 connections) and
+  holds at most one tenant transaction at a time.
+
+Failure isolation (fixed this round): a thrown store/database/discovery/claim
+error for one enterprise used to abort the whole tick. `runScheduledPeriodReportDispatch()`
+now catches it per enterprise, reports that tenant as `status: failed` with the
+error code and an empty work set, and continues with the next allow-listed
+tenant. Pausing one tenant already short-circuits only that tenant. The existing
+per-project isolation, "unknown never replayed", queued≠delivered and
+delivered≠read contracts are unchanged.
+
+Operations API: `GET /api/native-workflow/schedule` now also returns
+`settings` from the tenant's `construction_report_settings` row
+(`settingsEnabled`, `stageEnabled`, `weeklyDay`, `weeklyTime`, `nextWeeklyAt`,
+`audiences`) through a new read-only `readWeeklyScheduleSettings()` that never
+locks, claims or advances the slot; a read failure is reported as
+`settingsError` without failing the run summary. The same response still
+contains `control`, the run with every project entry/receiver/issue state and
+`counts`, so last execution time (`run.updatedAt`), project/四端 status, failed
+and unknown states are queryable.
+
+Tests: the offline suite passes 416/416, including three new scheduler tests —
+one enterprise failure does not stop the next tenant, a paused tenant does not
+block another tenant, and two allow-listed tenants produce independent runs and
+request ids — plus a new runtime test file proving that a disabled flag or an
+empty/invalid allowlist performs no store or database work.
+
+Cost observation (B isolated database, observed values only):
+
+- one project-period creates four body calls (customer, worker, designer,
+  boss). Observed in the four-receiver batch: 1167/61, 1201/72, 1199/84 and
+  1192/785 input/output tokens; facts runs used no model tokens;
+- contract-mandated revisions of one report cost one body call each: four
+  revisions used 1092 input tokens with 71/60/69/83 output tokens;
+- storage observed for one enterprise/project/period: run file 7.3 KB, control
+  178 B, ledger 186 B; the baseline had 18 reports, 23 versions, 23 deliveries
+  and 48 runs.
+- Prediction (not observed): weekly body calls ≈ 4 × dispatched projects;
+  peak per tick ≈ 4 × `NATIVE_WORKFLOW_SCHEDULE_MAX_PROJECTS` (default 5) per
+  enterprise, serialized across enterprises. No token price or wall-clock
+  duration is inferred from this data.
+
+Bounded B acceptance: the deterministic multi-tenant tests above are the
+acceptance for this round. A second live enterprise was not created because the
+B fixtures only define the marked enterprise `1454`; adding another tenant is a
+fixture-authoring decision, not something this review may do silently. The
+remaining production risks are the shared-filesystem schedule store (single
+host; a multi-host deployment needs a shared volume or a database-backed store)
+and the still-unapproved enterprise allowlist expansion.
+
+## B5.8 persistent delegations and business events
+
+The approved consultation composer starts an electrical follow-up scoped to one active project and two registered rooms. The first task tracks a published progress record. The second tracks socket design, the exact customer-approved plan, recorded field evidence and an authorized manager resolution. A valid published room record can complete the first task while the second still waits. The final result uses the existing `construction.result` delivery to the origin consultation. The project reply card shows the current shared team request.
+
+| Event source | Impact |
+| --- | --- |
+| `construction.record.captured/publish/edit/withdraw/request_changes/resubmit.v1` and `assistant.run.terminal.v1` | Match the actual record, unique room and work kind. Record attachment, version and job references. A captured photo is evidence for review. |
+| `native.delegation.requirement.v1` | React to a committed current need from the same consultation. An immediate reply can use the exact active room question as scope. The original reply stays private until consented sharing. |
+| `construction.material.shared/revoked.v1` | Recheck current room grants for need and drawing and invalidate older dependencies. |
+| `construction.site.issue.opened/progress/lifecycle.v1` | Link the uniquely matching issue and its staff opinion, formal implementation or manager resolution. The existing project role checks govern each step. |
+| `construction.plan.published/status.v1`, `construction.project.changed.v1`, `construction.schedule.changed.v1` | Recheck exact plan approval, stage, access and room/project schedules. Preserve prior bases in event receipts. A changed basis requires recheck through the original authorization flow. |
+| `native.delegation.refresh/timeout.v1` | Reconcile live inputs on start/resume. The same Worker produces deadline and expiry events. |
+
+State transitions follow the saved per-task actions. `active` starts or resumes evaluation, `processing` tracks a scoped organizing job, and `waiting` records the person or role, requested data, start and due time. `blocked` records missing or invalid dependencies, lost access or an organizing failure with its originals. `awaiting_authorization` covers material sharing and formal plan decisions. `paused` fences new work and retains the delegation. Explicit resume rechecks current sources. `completed` requires all task completion conditions, `failed` represents loss of the required room, `cancelled` is the owner's terminal stop, and `expired` follows the 30-day lifetime. Terminal states have no event-driven reactivation. A 48-hour wait records elapsed time and sends at most one in-app reminder when the owner opted in and AI mode remains current.
+
+Migration `0121_native_workflow_delegations` uses forced RLS on both new tables and the existing outbox delivery unique key. The Worker consumes committed deliveries in event ID order per tenant. Each attempt locks the tenant delivery and the affected original conversations, rechecks live source revisions, and commits state, task links and message receipts together. A savepoint rolls back effects on errors. Retry backoff and the fifth-attempt dead receipt persist. Staff notices share a stable project/room/action/basis key, including when multiple delegations observe the same event.
+
+Apply the migration before enabling `NATIVE_WORKFLOW_DELEGATION_ENABLED=1` and the explicit `NATIVE_WORKFLOW_DELEGATION_ENTERPRISE_IDS` on the application Worker. The opt-in defaults off. For operational rollback, set the flag to `0` and keep the additive schema and current source guards so persisted receipts remain scoped. For a full schema rollback, first stop processing and archive the two new tables, redact feature-owned consultation and collaboration receipts before reverting their source guards, then remove the two feature triggers/functions, the delivery index and the two tables via a controlled forward migration or a verified database restore. Retain the existing outbox and formal business data. A snapshot restore must account for later writes.
+
+The isolated PostgreSQL suite uses the `sfp_app` role and requires `B58_LIVE_DEVELOPMENT=1`, `DATABASE_URL` for loopback `55433/xiaok_b58_test`, and `B58_MIGRATION_DATABASE_URL` for that database's fixture role. Run from `admin` with `node --import tsx --test src/lib/native-workflow/__tests__/delegation.live.test.ts`. The optional `B58_CONFIGURED_MODEL=1` runs the two fixed natural replies against the configured model. Engine verification uses saved photos and PCM originals with deterministic extraction/ASR adapters; model continuation is verified separately. This slice uses existing in-app routes and supports one electrical follow-up per active project/consultation. Other delegation types and off-platform reply channels remain outside the implemented scope.
+
+Validation on the B worktree used the real `sfp_app` role in `55433/xiaok_b58_test`. All nine database cases passed. They cover the six-step workflow with a simulated next day, an actual fresh Worker process, database failure/retry, duplicate events and staff requests, project revocation, two tenants, reminder consent and source/schedule invalidation. The full six-step result was saved in consultation 103 as message 407. Evidence is in `admin/tmp/b58-live06.log`. The isolated migration hash was `86aabfda7cd31ce59aea2e68ab8ad93289293bd118b62202826f593e88635450` with forced RLS on both new tables.
+
+The two configured Qwen replies resumed the exact original wait and entered designer review after sharing. The first drafts in runs 17/18 used attempts 1–8 (27,405 input / 645 output tokens) and failed the business expectation. Runs 27/28 after binding the actual question used attempts 9–16 (27,549 input / 569 output tokens) and passed. The FastGPT connection-refused attempts ended before model dispatch. Evidence is retained in `admin/tmp/b58-configured-native.log`, `admin/tmp/b58-configured-diagnostic.log` and `admin/tmp/b58-live05.log`.
+
+Stable 2.02.2608080 with library 3.17.2 at 390×844 exercised the original C01 composer, persisted start, question, pause, resume, cancel and re-entry. The first empty-window receipt exposed the client sending `afterSeq=0`. The client now loads the first window with the established full-history request. The final native read verified formal result message 244 in consultation 72. The screenshot RPC timed out. Evidence is in `admin/tmp/b58-native-journey/{verification,final-result}.json`. Physical microphone capture, live ASR and production use remain unverified.
+
+The offline workflow and construction suites passed 567 checks with four skips. The focused Mini Program tests passed 88 checks. The full Mini Program run passed 2222 of 2225, with three survey baseline and mirror-audit failures. Scoped ESLint passed. Full ESLint still reports the existing `fastgpt-rag.test.ts:22` error. The production webpack bundle compiled and the build stopped on the baseline `scripts/fastgpt/setup-unified.mts:113` type error. Comparing the same TypeScript scope against `191e47f7` produced 289 diagnostics on both revisions, with zero new diagnostics.
+
+## B5.9 cross-role project collaboration
+
+Enable the slice in development with `NATIVE_WORKFLOW_COLLABORATION_ENTERPRISE_IDS`. The base scope is one enterprise and its project, rooms and stage assignments. Current views are derived from the same durable facts:
+
+| Fact | Authority and revision |
+| --- | --- |
+| Actual construction | Project progress revision, stage audit, and exact construction record version with its original message, photo and speech references |
+| Dated plan | Latest `construction.schedule.published.v1` project version and stable room/stage node keys. An assigned manager can bind a reviewed room record to one node when publishing it |
+| Need and professional opinion | Current explicit material grant and its original consultation, stable design matter ID, issue revision, drawing grant and designer reply hash |
+| Effective construction requirement | Current plan publication and its own decision revision, scoped to the original homeowner. A new opinion, replacement, withdrawal, or source revocation invalidates the affected older requirement |
+| Issue, execution and review | The same site issue ID, source revision and append-only lifecycle revisions, with the exact submitted record and plan when required |
+| Delegation and notification | The existing delegation task keys and outbox deliveries. The exact result event, recipient, message and sync receipt remain traceable |
+
+The approved C01, project detail, brief and V3 conversation entries use those projections on refresh and reentry. Staff project detail and brief share their issue groups. The quality confirmation requires a current reviewed record, an original photo and a manager's explicit reason. Ordinary reports and missing materials stay in their original record flow. Rectification submission takes the item to review. A separate assigned manager confirms the submitted evidence. The fixed list contains confirmed, current results. Exclusions and design work have their own visible entries. Reopening keeps the issue ID, records a new lifecycle revision, and requires fresh execution evidence for a new review. Engineering acceptance remains governed by its existing project process.
+
+An actual completion anchor is room- and stage-specific. For plan timing, compare its saved date with the effective plan's Shanghai business dates. Green is early, yellow is on schedule, red is late and gray is unverified or unscheduled. Staff can trace the plan and its source record or stage audit. The owner view includes references to records published to that household. Family grants are explicitly revocable, scoped to a single project and limited to progress. Plan decisions, grants and chat access each check their own live authorization. Organization management visibility does not grant a project designer or reviewer assignment.
+
+Relevant writes are version-checked inside the existing PostgreSQL transaction and idempotency boundary. Plan and review events retain immutable history. The Worker consumes its original delivery table, uses the latest committed facts and maintains a monotonic event watermark. A completed delegation with the exact issue can resume on a formal reopen within its authorization period. Delivery states are pending, processing, failed and succeeded. Readback revalidates source availability and audiences before using any result.
+
+The schema remains at migration `0121_native_workflow_delegations`. This slice adds event payloads and read paths to the existing outbox, record-version and delivery contracts. Legacy records are retained and unbound records can evidence progress without claiming node completion. Deployment rollback uses the enterprise allowlist and app revision; existing business events and originals are retained. No data backfill is required.
+
+For isolation and replay, set `B59_LIVE_DEVELOPMENT=1` and point the development `DATABASE_URL` to loopback `55433/xiaok_b59_test` using the restricted `sfp_app` role. Run `node --import tsx --test src/lib/native-workflow/__tests__/cross-role.live.test.ts` from `admin`. The suite uses signed Mini API handlers, PostgreSQL writes, stored PNG and PCM originals, and a fresh Worker process. Speech recognition and model responses use deterministic test adapters. Device capture, live speech recognition, real WeChat authorization, and production remain unverified.
+
+The [isolated run](../../../tmp/b59-live08.log) passed 7/7, with no source drift in its [binding](../../../tmp/b59-live08.log.binding.json). Project `6` binds original consultation `11`, master bedroom record `23`, issue `379`, effective study plan `394` (V2), and the exact review result `387`. The suite checks simultaneous writes, stale and repeated delivery, the restart, reopening, tenant and family boundaries, and matching quality counts. The [Stable run](../../../tmp/b59-native-03/verification.json) passed 6/6 at a logical 390×844 on the same project. Its native entries verified the boss brief/detail and designer issue, a persisted worker query for V2, and a persisted homeowner status query followed by reentry into C01. The earlier [native attempt](../../../tmp/b59-native-02/verification.json) retains the failed room-link case. The final route resolves the room by the effective plan's server ID and retains an existing draft.
+
+## B5.10 deployment and multi-instance reliability
+
+The PostgreSQL slot advance and tenant/period outbox receipt
+`native.workflow.weekly.claimed.v1` commit together. When the current schedule
+file is missing, the scheduler reuses that receipt and the original weekly
+time. It refreshes the run after acquiring the file lease. For stage-disabled
+report plans, the explicit Native schedule allowlist keeps weekly ownership
+during both pause and scheduler shutdown. Removing a tenant from the list
+hands future due weekly slots back to the legacy report scheduler if its
+report plan remains enabled. Daily scheduling is independent.
+
+Disabling collaboration preserves the live project-role check on existing
+design reviews, opinion-bound plans and confirmed quality reviews. Durable
+Tool retries with an unresolved external acceptance return the persisted
+`unknown` state. Worker schedule errors use a stable code.
+
+Independent processes exercised real PostgreSQL claims, stale-lease denial,
+delegation and exact four-role readback on the existing B5.9 isolated target.
+The file adapters remain suitable for a single Admin writer with persistent
+storage. A shared mount alone cannot fence all concurrent updates. The current
+Compose has no Native Workflow volume. No schema change was required.
+[Architecture, enablement, test commands and evidence](../../../../docs/native-workflow-b510-deployment-review.zh-CN.md).
+
 ## Reproduce
 
 From `admin/` (no database, no Worker, no model):
 
 ```powershell
-npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts src/lib/native-workflow/__tests__/acceptance-store.test.ts src/lib/native-workflow/__tests__/acceptance-conversation.test.ts src/lib/native-workflow/__tests__/acceptance-state.test.ts src/lib/native-workflow/__tests__/acceptance-provider.test.ts src/lib/native-workflow/__tests__/period-report-ports.test.ts src/lib/native-workflow/__tests__/report-model-evidence.test.ts src/lib/native-workflow/__tests__/period-report-status.test.ts src/lib/native-workflow/__tests__/period-report-status-reentry.test.ts src/lib/native-workflow/__tests__/admin-run-status.test.ts src/lib/native-workflow/__tests__/period-report-status-route.test.ts src/lib/native-workflow/__tests__/period-report-status-route-guards.test.ts src/lib/native-workflow/__tests__/period-event-weekly.test.ts src/lib/native-workflow/__tests__/period-cli.test.ts src/lib/native-workflow/__tests__/staff-receiver.test.ts src/lib/native-workflow/__tests__/boss-receiver.test.ts src/lib/native-workflow/__tests__/worker-fixture.test.ts src/lib/native-workflow/__tests__/period-report-entry.test.ts src/lib/native-workflow/__tests__/period-report-batch.test.ts src/lib/native-workflow/__tests__/period-report-schedule.test.ts src/lib/native-workflow/__tests__/period-report-schedule-store.test.ts src/lib/native-workflow/__tests__/period-report-schedule-ports.test.ts
+npx tsx --test src/lib/native-workflow/__tests__/validate.test.ts src/lib/native-workflow/__tests__/advance.test.ts src/lib/native-workflow/__tests__/simulate.test.ts src/lib/native-workflow/__tests__/hardening.test.ts src/lib/native-workflow/__tests__/store.test.ts src/lib/native-workflow/__tests__/service.test.ts src/lib/native-workflow/__tests__/admin-draft-state.test.ts src/lib/native-workflow/__tests__/admin-selection.test.ts src/lib/native-workflow/__tests__/live.test.ts src/lib/native-workflow/__tests__/dev-config.test.ts src/lib/native-workflow/__tests__/fixture-ownership.test.ts src/lib/native-workflow/__tests__/acceptance-store.test.ts src/lib/native-workflow/__tests__/acceptance-conversation.test.ts src/lib/native-workflow/__tests__/acceptance-state.test.ts src/lib/native-workflow/__tests__/acceptance-provider.test.ts src/lib/native-workflow/__tests__/period-report-ports.test.ts src/lib/native-workflow/__tests__/report-model-evidence.test.ts src/lib/native-workflow/__tests__/period-report-status.test.ts src/lib/native-workflow/__tests__/period-report-status-reentry.test.ts src/lib/native-workflow/__tests__/admin-run-status.test.ts src/lib/native-workflow/__tests__/period-report-status-route.test.ts src/lib/native-workflow/__tests__/period-report-status-route-guards.test.ts src/lib/native-workflow/__tests__/period-event-weekly.test.ts src/lib/native-workflow/__tests__/period-cli.test.ts src/lib/native-workflow/__tests__/staff-receiver.test.ts src/lib/native-workflow/__tests__/boss-receiver.test.ts src/lib/native-workflow/__tests__/worker-fixture.test.ts src/lib/native-workflow/__tests__/period-report-entry.test.ts src/lib/native-workflow/__tests__/period-report-batch.test.ts src/lib/native-workflow/__tests__/period-report-schedule.test.ts src/lib/native-workflow/__tests__/period-report-schedule-store.test.ts src/lib/native-workflow/__tests__/period-report-schedule-ports.test.ts src/lib/native-workflow/__tests__/period-report-schedule-runtime.test.ts
 npx tsx --test src/lib/construction/__tests__/report-citations.test.ts src/lib/construction/__tests__/report-composition.test.ts
 npx tsx src/lib/native-workflow/playground/simulate.ts
 ```
@@ -2071,6 +2320,140 @@ npx tsx scripts/native-workflow-stage-reminder-user-loop.ts --development
 
 Fixtures are synthetic and contain no real customer data.
 
+## B5.11 PostgreSQL runtime stores and durable tool
+
+B5.11 starts from the B5.10 deployment commit `5fa8721f`. Its previous
+[B5.10 technical review](../../../../docs/native-workflow-b510-deployment-review.zh-CN.md)
+records the file-store failures and baseline build diagnostics.
+
+| Store | PostgreSQL relation | Ownership and persisted state |
+| --- | --- | --- |
+| Workflow Store | File adapter | Draft revision, immutable published revision and digest, B3 simulation. Keep the published definition available at the same revision on each Admin. |
+| Workflow Run | `native_workflow_runs` | Tenant and run ID, pinned project/definition/event, trace and operation receipts. A checkpoint revision detects stale Admin writes. |
+| Schedule Run | `native_workflow_schedule_runs` | Unique tenant/week, committed weekly claim reference, dispatch and observation checkpoints. |
+| Period Report Batch | `native_workflow_report_batches` | Tenant/request ID, fixed receiver and reserved sub-run identities, observed receipts. |
+| Schedule Control | `native_workflow_schedule_controls` | Tenant pause and cancelled periods. A short transaction lock orders control and guarded report writes. |
+| Schedule Ledger | `native_workflow_schedule_ledgers` | Tenant/project issue references and observed versions. |
+| Durable Task | `native_workflow_durable_tasks` | Tenant/kind/business key, task revision, dispatch marker, callback receipt, safe-phase checkpoints and manual queue. |
+
+Migration `0122_native_workflow_runtime` introduces the five runtime tables.
+Migration `0123_native_workflow_durable_tasks` is independent of the schedule
+checkpoint transaction and adds the durable task table and an existing-outbox
+delivery index. Both use the tenant transaction helper and force RLS for
+`sfp_app`. Relational keys, versions, due dates and lease columns govern
+database operations. JSONB preserves the typed checkpoint payload and its
+historical business references. Business records and report bodies remain in
+their existing services and tables. Explicit enterprise reset and purge use
+their existing transaction to count and clear the selected tenant’s runtime
+rows. Migration archives remain on disk. The scheduled report adapter continues to
+use the B5.10 weekly slot/outbox transaction and existing `assistant_jobs`.
+Database-clock expiry and owner/token predicates gate progress writes and
+short transactions that create report bindings, enqueue reports or send reminders.
+Files and process clocks are unnecessary for PostgreSQL lease ownership.
+
+### Server entry points
+
+- Set `NATIVE_WORKFLOW_RUNTIME_STORE=postgres` on each Admin to select PostgreSQL
+  for the schedule API, period-report status and weekly Worker. The default
+  adapter is `file`. The existing allowlist and schedule enablement still apply.
+  All processes in one deployment need the same adapter and published definition
+  source. The developer B4/B5 fixture CLIs retain their file-backed workflow.
+- Set `NATIVE_WORKFLOW_TASK_STORE=postgres` and `NATIVE_WORKFLOW_DURABLE_TOOL_ENABLED=1`
+  with the existing `NATIVE_WORKFLOW_DELEGATION_ENABLED` and
+  `NATIVE_WORKFLOW_DELEGATION_ENTERPRISE_IDS` to enable the registered owner reminder.
+  Only the original opt-in, 48-hour owner wait qualifies. The delegation Worker
+  stages the task in the same transaction as its timeout and applies the same
+  idempotency key as the original notice. The authenticated assistant jobs route
+  advances this task in its normal tick.
+- The executor commits the dispatch marker before calling the in-app delivery
+  service. The service locks and rechecks the current consultation, delegation,
+  wait, project, consent and task lease. The original message and outbox
+  result commit together. A matching persisted message can be adopted
+  synchronously. The outbox delivers asynchronous results by task and dispatch
+  ID. The executor persists the receipt, verifies the message, and links the
+  result to the original delegation before reporting completion. A lost response
+  is reconciled using that outbox. Definite pre-send failures and result
+  save/writeback can retry. Ambiguous dispatches retain their marker and can
+  reach the existing manual queue without reissuing the effect.
+- Platform admins use `GET /api/native-workflow/tasks/manual` with the existing
+  selected enterprise. It returns task/delegation IDs, state, error code and
+  queue time. Generic tool and legacy `live.operation` records can be migrated
+  as history. The production worker registers only the existing owner reminder.
+  The original file-task recovery switch applies to the file adapter.
+
+### Isolated snapshot migration
+
+Run from `admin`. Use separate snapshots for `--scope runtime` and
+`--scope tasks`. Directory options are `--run-dir`, `--schedule-dir`,
+`--batch-dir` and `--task-dir`. Omitted options use the existing directory
+resolvers. Store the snapshot and cutover receipt outside the source folders.
+The snapshot includes original file bytes and per-file and manifest SHA-256
+values. Treat it as private runtime data.
+
+```powershell
+node --import tsx scripts/native-workflow-runtime-migrate.ts dry-run --scope runtime --enterprise-id 1454
+node --import tsx scripts/native-workflow-runtime-migrate.ts export --scope runtime --enterprise-id 1454 --snapshot tmp/runtime-1454.json
+node --import tsx scripts/native-workflow-runtime-migrate.ts validate --scope runtime --enterprise-id 1454 --snapshot tmp/runtime-1454.json
+node --import tsx scripts/native-workflow-runtime-migrate.ts import --scope runtime --enterprise-id 1454 --snapshot tmp/runtime-1454.json --writers-stopped
+node --import tsx scripts/native-workflow-runtime-migrate.ts verify --scope runtime --enterprise-id 1454 --snapshot tmp/runtime-1454.json
+node --import tsx scripts/native-workflow-runtime-migrate.ts cutover --scope runtime --enterprise-id 1454 --snapshot tmp/runtime-1454.json --receipt tmp/runtime-1454-cutover.json --writers-stopped
+node --import tsx scripts/native-workflow-runtime-migrate.ts rollback --scope runtime --enterprise-id 1454 --snapshot tmp/runtime-1454.json --receipt tmp/runtime-1454-cutover.json --writers-stopped
+```
+
+Database commands require `B511_RUNTIME_MIGRATION_DATABASE_URL` pointing to the
+local `xiaok_b511_test` database as the restricted `sfp_app` role. They verify the
+actual database, role and tenant. Stop file and database writers before import,
+cutover and rollback. Import and destination comparison commit together.
+The tool validates the source bindings, steps and known batch receipts,
+rechecks the stopped file snapshot and copies no live lease. It creates no
+business job or dispatch. Repeated import accepts identical rows. An unknown
+dispatch retains its original state and marker.
+
+Cutover emits a receipt and the adapter value to use after restart. Apply the
+environment change through deployment tooling after verifying the selected
+scope for each tenant. Runtime and task cutovers are independent. Rollback compares the file snapshot, destination revisions and
+authoritative report or delegation writes against the cutover receipt. A drift
+requires reconciliation before returning to files. Keep the source and the
+database for recovery. This tool's database operations are limited to the
+isolated development rehearsal.
+
+### Verification boundaries
+
+The [PostgreSQL suite](__tests__/runtime-postgres.live.test.ts) uses a fresh
+migrated loopback `xiaok_b511_test` and `B511_PG_TEST=1`. It invokes independent
+Admin/Worker processes and the signed Mini Program and assistant job handlers.
+The checked scope includes tenant isolation, optimistic writes, lease expiry,
+late writes, callback deduplication, four-receiver weekly enqueue, process
+restart, database transport failure and both migration scopes. Tests age
+labelled owner-wait and report fixtures. Actual business model generation,
+external providers, physical devices and production containers require
+separate verification.
+
+The isolated PostgreSQL suite passed seven scenarios, including one weekly
+claim per tenant, four queued report jobs with persistent receiver receipts,
+and one original-consultation reminder after duplicate callback delivery.
+The first concurrency run hit the unique tenant/week index during a duplicate
+create. The corrected insert resolves conflicts across both unique keys, and
+the original concurrent test passed against a fresh database. The file and
+construction offline suites passed 571 tests. Delegation and cross-role live
+regressions passed nine each. The extended isolated Construction runner
+matched B5.10 with 69 passed, two existing follow-up failures and three
+configured-model skips.
+
+Scoped ESLint passes. The same TypeScript scope reports 289 baseline and
+289 current diagnostics. Full ESLint retains the existing FastGPT
+`no-explicit-any` error. The production webpack bundle compiled and the
+complete build still stops at the existing `TS2339` in
+`scripts/fastgpt/setup-unified.mts:113`. The initial build ran out of heap
+with a temporary baseline checkout in the TypeScript search path. The
+checkout was moved outside that path for the completed verification. The
+Stable DevTools project list had no window for this worktree, so this round's
+re-entry evidence comes from signed Mini Program handlers. Reports in the
+new scheduler test are verified through real enqueue and readback.
+
+Local evidence is under `admin/tmp/b511-*`. The deployment report's earlier
+validation and approved interface remain the historical reference.
+
 ## Sources
 
 - FastGPT reference baseline: `v4.17.4`,
@@ -2082,3 +2465,7 @@ Fixtures are synthetic and contain no real customer data.
 - Existing project foundations reused in later phases: `AgentRuntimePorts`,
   `runRenovationAgent`, `executePostgresText`, Lease/run context. They are not a
   generic workflow API and are not imported here.
+
+- PostgreSQL 17 describes the row locks used for lease checks and the
+  conditional write receipts. [Explicit locking](https://www.postgresql.org/docs/17/explicit-locking.html)
+  · [INSERT and RETURNING](https://www.postgresql.org/docs/17/sql-insert.html).

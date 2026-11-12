@@ -1,6 +1,8 @@
 import { and, count, eq, notInArray, sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
 import { assistantCounts, deleteAssistantData } from './assistant-cleanup';
+import { nativeWorkflowCleanup } from './native-workflow-cleanup';
+import { lockScheduleControl } from '@/lib/native-workflow/live/runtime-postgres-repository';
 import { portfolioCounts, deletePortfolioData } from './portfolio-cleanup';
 import { constructionCounts, deleteConstructionData } from './construction-cleanup';
 import {
@@ -122,6 +124,7 @@ export class TenantEnterpriseResetRepository {
 
     const counts: EnterpriseResetCount[] = [
       ...await assistantCounts(this.transaction, enterpriseId),
+      ...await nativeWorkflowCleanup(this.transaction, enterpriseId, 'count'),
       ...await portfolioCounts(this.transaction, enterpriseId),
       ...await constructionCounts(this.transaction, enterpriseId),
       { table: 'leads', label: '线索', count: await this.countEq(leads, enterpriseId) },
@@ -275,8 +278,10 @@ export class TenantEnterpriseResetRepository {
       .where(eq(referrerEnterpriseMemberships.enterpriseId, enterpriseId));
 
     const deleted: EnterpriseResetCount[] = [];
+    await lockScheduleControl(this.transaction, enterpriseId.toString(), 'exclusive');
     deleted.push(...await deleteConstructionData(this.transaction, enterpriseId));
     deleted.push(...await deleteAssistantData(this.transaction, enterpriseId));
+    deleted.push(...await nativeWorkflowCleanup(this.transaction, enterpriseId, 'delete'));
     deleted.push(...await deletePortfolioData(this.transaction, enterpriseId));
 
     deleted.push(

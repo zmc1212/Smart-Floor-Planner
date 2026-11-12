@@ -101,6 +101,7 @@ export async function idempotent(tx: PostgresTransaction, actor: ActorContext, o
 }
 export async function appendMessage(tx: PostgresTransaction, actor: ActorContext, conversationId: string, input: {
   author: 'user' | 'admin' | 'assistant' | 'system'; content: MessageContent; clientMessageId?: string; runId?: string; eventId?: string; purpose?: string;
+  replyToMessageId?: string;
 }) {
   if (input.author === 'system' && !input.eventId) fail('invalid_message', 422);
   if (input.author === 'assistant' && !input.runId) fail('invalid_message', 422);
@@ -111,10 +112,10 @@ export async function appendMessage(tx: PostgresTransaction, actor: ActorContext
   const c = await one(tx, sql`update app.assistant_conversations set last_seq=last_seq+1,updated_at=now(),version=version+1
     where enterprise_id=${actor.enterpriseId} and id=${conversationId} and status='open' returning last_seq`);
   if (!c) fail('context_changed');
-  return (await one(tx, sql`insert into app.assistant_messages(enterprise_id,conversation_id,seq,author_kind,user_id,admin_id,content,client_message_id,run_id,source_event_id,purpose)
+  return (await one(tx, sql`insert into app.assistant_messages(enterprise_id,conversation_id,seq,author_kind,user_id,admin_id,content,client_message_id,run_id,source_event_id,purpose,reply_to_message_id)
     values(${actor.enterpriseId},${conversationId},${String(c.last_seq)},${input.author},${input.author === 'user' && actor.principal.kind === 'user' ? actor.principal.userId : null},
     ${input.author==='admin' && actor.principal.kind==='admin'?actor.principal.adminId:null},
-    ${json(input.content)}::jsonb,${input.clientMessageId || null},${input.runId || null},${input.eventId || null},${input.purpose || 'reply'}) returning *`))!;
+    ${json(input.content)}::jsonb,${input.clientMessageId || null},${input.runId || null},${input.eventId || null},${input.purpose || 'reply'},${input.replyToMessageId ?? null}) returning *`))!;
 }
 export async function terminalEvent(tx: PostgresTransaction, enterpriseId: string, runId: string, status: string) {
   const event = await one(tx, sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)

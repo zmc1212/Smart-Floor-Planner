@@ -58,13 +58,16 @@ import type {
   ScheduleWeeklyClaim,
 } from './period-report-schedule-environment';
 import type { ScheduledProjectPlan } from './period-report-schedule-types';
-import type { LivePeriodReceiver, LiveRunStore } from './types';
+import { readPostgresScheduleControl } from './runtime-postgres-stores';
+import type { LivePeriodReceiver, LiveRunStore, RuntimeWriteGuard } from './types';
 
+const weeklyClaimEvent = 'native.workflow.weekly.claimed.v1';
 const AUDIENCES = ['customer', 'worker', 'designer', 'boss'] as const;
 const OPEN_ISSUE_STATES = "('cancelled','resolved','closed')";
 const ID_PATTERN = /^[1-9]\d{0,18}$/;
 
 export interface DatabaseScheduleEnvironmentOptions {
+  readonly postgresControl?: boolean;
   readonly loadPublished: (input?: {
     readonly definitionId: string;
     readonly revision: number;
@@ -543,9 +546,19 @@ async function claimWeeklySchedule(input: {
   readonly enterpriseId: string;
   readonly period: FixedPeriod;
   readonly now: Date;
+  readonly postgresControl?: boolean;
 }): Promise<ScheduleWeeklyClaim> {
   const enterpriseId = assertId(input.enterpriseId, 'enterprise id');
   return withTenantTransaction(enterpriseId, async (tx) => {
+    if (input.postgresControl) {
+      const control = await readPostgresScheduleControl(tx, enterpriseId, 'shared');
+      if (control.paused || control.cancelledPeriods.includes(input.period.periodStart)) {
+        return weeklyClaimResult({
+          claimed: false, due: false, alreadyConsumed: false, dueAt: null, previous: null,
+          nextWeeklyAt: null, reason: control.paused ? 'schedule_paused' : 'period_cancelled',
+        });
+      }
+    }
     const settings = await one(
       tx,
       sql`select * from app.construction_report_settings
@@ -586,6 +599,23 @@ async function claimWeeklySchedule(input: {
         nextWeeklyAt: stored,
         reason: 'legacy_stage_enabled',
       });
+    }
+    const saved = await one(tx, sql`select payload from app.domain_event_outbox
+      where enterprise_id=${enterpriseId} and type=${weeklyClaimEvent}
+        and aggregate_type='construction_report_settings' and aggregate_id=${input.period.periodStart}
+        and aggregate_version=1`);
+    if (saved) {
+      const payload = saved.payload as Row;
+      const claimedAt = endOfDay(payload.claimedAt), dueAt = endOfDay(payload.dueAt);
+      const previous = endOfDay(payload.previousNextWeeklyAt), nextWeeklyAt = endOfDay(payload.nextWeeklyAt);
+      return {
+        claimed: false, due: true, alreadyConsumed: true, dueAt,
+        previousNextWeeklyAt: previous, nextWeeklyAt,
+        reason: claimedAt && dueAt && previous && nextWeeklyAt ? null : 'weekly_claim_receipt_invalid',
+        ...(claimedAt && dueAt && previous && nextWeeklyAt ? { receipt: {
+          periodStart: input.period.periodStart, claimedAt, dueAt, previousNextWeeklyAt: previous, nextWeeklyAt,
+        } } : {}),
+      };
     }
     // Use the same default as the legacy scheduler only for a missing day;
     // a corrupt time blocks instead of being silently normalized.
@@ -690,7 +720,20 @@ async function claimWeeklySchedule(input: {
         reason: null,
       });
     }
-    return weeklyClaimResult({
+    const receipt = {
+      periodStart: input.period.periodStart,
+      claimedAt: input.now.toISOString(),
+      dueAt: dueAt.toISOString(),
+      previousNextWeeklyAt: previous.toISOString(),
+      nextWeeklyAt: next.toISOString(),
+    };
+    // The slot and its ownership commit together. A new process can restore a
+    // missing host run without advancing the weekly clock or claiming a legacy slot.
+    await tx.execute(sql`insert into app.domain_event_outbox
+      (enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
+      values(${enterpriseId},${weeklyClaimEvent},'construction_report_settings',${input.period.periodStart},1,
+        '{"kind":"system"}',${input.period.periodStart},${JSON.stringify(receipt)}::jsonb)`);
+    return { ...weeklyClaimResult({
       claimed: true,
       due: true,
       alreadyConsumed: false,
@@ -698,11 +741,56 @@ async function claimWeeklySchedule(input: {
       previous,
       nextWeeklyAt: next,
       reason: null,
-    });
+    }), receipt };
+  });
+}
+
+export interface WeeklyScheduleSettingsSnapshot {
+  readonly settingsEnabled: boolean;
+  readonly stageEnabled: boolean | null;
+  readonly weeklyDay: number | null;
+  readonly weeklyTime: string | null;
+  readonly nextWeeklyAt: string | null;
+  readonly audiences: readonly string[];
+}
+
+/**
+ * Read-only operations view of the tenant's stored weekly schedule.
+ *
+ * It never locks, claims, advances `next_weekly_at` or dispatches. The admin API
+ * uses it to show the current slot and next execution time for the tenant in
+ * scope; a missing settings row returns null instead of inventing defaults.
+ */
+export async function readWeeklyScheduleSettings(input: {
+  readonly enterpriseId: string;
+}): Promise<WeeklyScheduleSettingsSnapshot | null> {
+  const enterpriseId = assertId(input.enterpriseId, 'enterprise id');
+  return withTenantTransaction(enterpriseId, async (tx) => {
+    const settings = await one(
+      tx,
+      sql`select enabled,stage_enabled,weekly_day,weekly_time,next_weekly_at,audiences
+        from app.construction_report_settings where enterprise_id=${enterpriseId}`,
+    );
+    if (!settings) return null;
+    return {
+      settingsEnabled: settings.enabled === true,
+      stageEnabled: settings.stage_enabled === null || settings.stage_enabled === undefined
+        ? null
+        : settings.stage_enabled === true,
+      weeklyDay: settings.weekly_day === null || settings.weekly_day === undefined
+        ? null
+        : Number(settings.weekly_day),
+      weeklyTime: settings.weekly_time === null || settings.weekly_time === undefined
+        ? null
+        : String(settings.weekly_time),
+      nextWeeklyAt: endOfDay(settings.next_weekly_at),
+      audiences: configuredAudiences(settings.audiences) ?? [],
+    };
   });
 }
 
 async function ensureCustomerBinding(input: {
+  readonly writeGuard?: RuntimeWriteGuard;
   readonly enterpriseId: string;
   readonly projectId: string;
   readonly customerUserId: string;
@@ -711,6 +799,7 @@ async function ensureCustomerBinding(input: {
   const projectId = assertId(input.projectId, 'project id');
   const customerUserId = assertId(input.customerUserId, 'customer user id');
   return withTenantTransaction(enterpriseId, async (tx) => {
+    await input.writeGuard?.(tx);
     const project = await one(
       tx,
       sql`select p.*,l.customer_user_id,l.archived_at
@@ -833,6 +922,7 @@ async function sendReminder(input: ScheduleReminderInput): Promise<ScheduleRemin
   const projectId = assertId(input.projectId, 'project id');
   const adminId = assertId(input.adminId, 'admin id');
   return withTenantTransaction(enterpriseId, async (tx) => {
+    await input.writeGuard?.(tx);
     // Match the construction service lock order: project first, then the
     // receiver account/member/binding and finally the destination conversation.
     const project = await one(
@@ -1047,7 +1137,7 @@ export function createDatabasePeriodReportScheduleEnvironment(
     now,
     loadPublished: options.loadPublished,
     discover: (input) => discoverProjects(input),
-    claimWeeklySchedule: (input) => claimWeeklySchedule({ ...input, now: now() }),
+    claimWeeklySchedule: (input) => claimWeeklySchedule({ ...input, now: now(), postgresControl: options.postgresControl }),
     ensureCustomerBinding,
     runBatch: (input) => runPeriodReportBatch(input, {
       preflight,
@@ -1069,17 +1159,20 @@ export function createDatabasePeriodReportScheduleEnvironment(
         ports: createPeriodReportPorts({
           actor: input.actor,
           receiver: input.receiver,
+          writeGuard: input.writeGuard,
           projectScope: 'plan',
           legacy: 'weekly_claimed',
           now,
         }),
         store: options.runStore,
+        writeGuard: input.writeGuard,
         runId: input.runId,
       }, { now });
     },
     portsFor: (receiver: LivePeriodReceiver, context) => createPeriodReportPorts({
       actor: context.actor,
       receiver,
+      writeGuard: context.writeGuard,
       projectScope: 'plan',
       legacy: 'weekly_claimed',
       now,

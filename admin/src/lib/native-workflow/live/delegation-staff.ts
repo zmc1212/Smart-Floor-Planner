@@ -6,13 +6,14 @@ import { appendMessage } from '@/lib/assistant/core/conversation';
 import type { ActorContext, MessageContent } from '@/lib/assistant/contracts';
 import { sharedMaterial, sharedMaterials } from '@/lib/construction/site-materials';
 import { delegationsEnabled } from './delegation-config';
-import { isSuspended, type Delegation } from './delegation-state';
-import { appendDelegationEvent, delegationFromRow, delegationOrigin } from './delegation-store';
+import { isSuspended, type ReviewDelegation } from './delegation-state';
+import { reviewDelegationFromRow, reviewDelegationOrigin } from './delegation-review-store';
+import { appendDelegationEvent } from './delegation-store';
 
 const staffNotice = 'native.delegation.staff_notice.v1';
 export const staffDelegationPurpose = 'construction.delegation.staff';
 
-export async function queueDelegationStaffNotice(tx: PostgresTransaction, d: Delegation, escalate = false) {
+export async function queueDelegationStaffNotice(tx: PostgresTransaction, d: ReviewDelegation, escalate = false) {
   if (!d.scope.roomId || (!escalate && d.status !== 'waiting_for_designer') || isSuspended(d.status)) return null;
   const materials = await sharedMaterials(tx, d.enterpriseId, d.projectId, d.scope.roomId);
   const grant = materials.sources.find(item => item.kind === 'need' && item.customerId === d.ownerId && item.conversationId === d.conversationId);
@@ -30,11 +31,11 @@ async function staffProjection(tx: PostgresTransaction, actor: ActorContext, pro
     where enterprise_id=${actor.enterpriseId} and project_id=${projectId} and admin_id=${actor.principal.adminId}
     and active and role='designer' for share`)) return null;
   const row = await one(tx, sql`select * from app.native_workflow_delegations
-    where enterprise_id=${actor.enterpriseId} and project_id=${projectId} and id::text=${String(p.delegationId)}`);
+    where enterprise_id=${actor.enterpriseId} and project_id=${projectId} and scope is not null and id::text=${String(p.delegationId)}`);
   if (!row) return null;
-  const d = delegationFromRow(row);
+  const d = reviewDelegationFromRow(row);
   if (isSuspended(d.status) || d.status === 'completed' || !escalate && d.status !== 'waiting_for_designer'
-    || !await delegationOrigin(tx, d)) return null;
+    || !await reviewDelegationOrigin(tx, d)) return null;
   const grant = await sharedMaterial(tx, actor.enterpriseId, projectId, String(p.grantId));
   if (!grant || grant.kind !== 'need' || grant.customerId !== d.ownerId || grant.conversationId !== d.conversationId
     || grant.roomId !== d.scope.roomId) return null;

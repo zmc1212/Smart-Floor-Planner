@@ -12,6 +12,7 @@
  *   npx tsx scripts/native-workflow-period-report-schedule.ts --enterprise-id 1454 --show-latest
  *   npx tsx scripts/native-workflow-period-report-schedule.ts --enterprise-id 1454 --pause --reason "manual hold"
  *   npx tsx scripts/native-workflow-period-report-schedule.ts --enterprise-id 1454 --resume
+ *   npx tsx scripts/native-workflow-period-report-schedule.ts --enterprise-id 1454 --cancel --period-start 2026-11-02
  */
 import { loadEnvConfig } from '@next/env';
 import { sql } from 'drizzle-orm';
@@ -26,6 +27,7 @@ import {
   createDatabasePeriodReportScheduleEnvironment,
 } from '@/lib/native-workflow/live/period-report-schedule-ports';
 import {
+  cancelScheduledPeriodReport,
   readScheduledPeriodReportDispatch,
   resolveScheduledPeriod,
   runScheduledPeriodReportDispatch,
@@ -107,6 +109,7 @@ const showLatest = process.argv.includes('--show-latest');
 const listRuns = process.argv.includes('--list');
 const pause = process.argv.includes('--pause');
 const resume = process.argv.includes('--resume');
+const cancel = process.argv.includes('--cancel');
 const reason = option('--reason') ?? null;
 
 const definitionStore = createFileWorkflowStore({ rootDir: resolveNativeWorkflowStoreDir() });
@@ -183,7 +186,20 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (pause || resume) {
+  if (pause || resume || cancel) {
+    if (cancel) {
+      const cancelledPeriod = periodStart
+        ?? resolveScheduledPeriod(new Date()).periodStart;
+      const result = await cancelScheduledPeriodReport({
+        enterpriseId,
+        periodStart: cancelledPeriod,
+        updatedBy: 'cli',
+        reason,
+        store: scheduleStore,
+      });
+      console.log(JSON.stringify({ success: true, periodStart: cancelledPeriod, ...result }, null, 2));
+      return;
+    }
     const control = await setScheduledPeriodReportPaused({
       enterpriseId,
       paused: pause && !resume,

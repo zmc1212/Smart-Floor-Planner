@@ -13,20 +13,21 @@ import { readSiteIssueBase } from '@/lib/construction/site-issues';
 import { readSiteResolution } from '@/lib/construction/site-resolution';
 import { validResult } from '@/lib/construction/site-results';
 import { checkDelegationStandards } from './delegation-knowledge';
-import { delegationExternalResult, delegationOwnerInput, outcome, type Delegation, type DelegationEvidence } from './delegation-state';
-import { delegationActor, delegationOrigin, type DelegationEvent } from './delegation-store';
+import { delegationExternalResult, delegationOwnerInput, outcome, type ReviewDelegation, type ReviewDelegationEvidence } from './delegation-state';
+import { delegationActor, reviewDelegationOrigin, type ReviewDelegationEvent } from './delegation-review-store';
+
 
 const ownerResultType = 'construction.site.issue.result.v1';
 const numericId = (value: unknown): value is string => typeof value === 'string' && /^[1-9]\d{0,17}$/.test(value);
 
-async function designers(tx: PostgresTransaction, d: Delegation) {
+async function designers(tx: PostgresTransaction, d: ReviewDelegation) {
   return rows(tx, sql`select m.admin_id::text from app.construction_members m join app.admin_users a on a.id=m.admin_id
     and a.enterprise_id=m.enterprise_id and a.status='active'
     where m.enterprise_id=${d.enterpriseId} and m.project_id=${d.projectId} and m.active and m.role='designer'
     and app.construction_actor_access(m.admin_id,m.enterprise_id)='member' order by m.admin_id limit 2 for share of m,a`);
 }
 
-async function authorizedIssue(tx: PostgresTransaction, d: Delegation) {
+async function authorizedIssue(tx: PostgresTransaction, d: ReviewDelegation) {
   const { enterpriseId: eid, projectId: pid, scope } = d;
   if (!scope.roomId) return null;
   const material = await sharedMaterials(tx, eid, pid, scope.roomId);
@@ -55,7 +56,7 @@ async function authorizedIssue(tx: PostgresTransaction, d: Delegation) {
   return { grant, issue, returned: returned && await validResult(tx, eid, d.conversationId, returned) ? returned : null };
 }
 
-async function designReview(tx: PostgresTransaction, d: Delegation, related: MemoryEntry[]) {
+async function designReview(tx: PostgresTransaction, d: ReviewDelegation, related: MemoryEntry[]) {
   const allowed = await authorizedIssue(tx, d);
   if (!allowed) return outcome('waiting_for_authorization', '等你在原咨询确认共享本事项需要的资料', 'owner');
   const changedNeed = related.some(item => item.room === d.scope.roomName && ['need/desk','need/devices','need/use'].includes(item.topic)
@@ -80,7 +81,7 @@ async function designReview(tx: PostgresTransaction, d: Delegation, related: Mem
     : '等项目负责人安排有权核对的设计师', 'designer', null, staff.length === 1 ? String(staff[0].admin_id) : null);
 }
 
-async function latestRecord(tx: PostgresTransaction, d: Delegation, issueId?: string, requireUnique = false) {
+async function latestRecord(tx: PostgresTransaction, d: ReviewDelegation, issueId?: string, requireUnique = false) {
   const { scope, enterpriseId: eid, projectId: pid } = d;
   if (!scope.roomId) return null;
   const subject = scope.subject.toLowerCase();
@@ -108,17 +109,17 @@ async function latestRecord(tx: PostgresTransaction, d: Delegation, issueId?: st
     completed: completed.includes(subject) && !pending.includes(subject) && !/部分|未完|待核|未确认|说不准/u.test(completed) };
 }
 
-async function roomProgress(tx: PostgresTransaction, d: Delegation) {
+async function roomProgress(tx: PostgresTransaction, d: ReviewDelegation) {
   const record = await latestRecord(tx, d);
   if (!record) return outcome('waiting_for_worker', '等项目团队发布该房间对应的工作进展', 'worker');
-  const evidence: DelegationEvidence = { type: 'record', id: record.id, version: record.version,
+  const evidence: ReviewDelegationEvidence = { type: 'record', id: record.id, version: record.version,
     state: record.completed && record.photo ? 'reported_done' : 'pending' };
   return record.completed && record.photo
     ? outcome('completed', '团队已发布本项完成记录及现场照片，工程验收仍沿原流程', null, evidence)
     : outcome('waiting_for_worker', '该房间已有发布记录，本项仍等补充完成进展和照片', 'worker', evidence);
 }
 
-async function rectification(tx: PostgresTransaction, d: Delegation) {
+async function rectification(tx: PostgresTransaction, d: ReviewDelegation) {
   const allowed = await authorizedIssue(tx, d);
   if (!allowed) return outcome('waiting_for_authorization', '等该事项的获权资料或回传依据', 'owner');
   const issue = allowed.issue;
@@ -146,7 +147,7 @@ async function rectification(tx: PostgresTransaction, d: Delegation) {
     { type: 'issue', id: issue.issueId, version: String(issue.revision), issueId: issue.issueId });
 }
 
-async function ownerFollowup(tx: PostgresTransaction, d: Delegation, event: DelegationEvent) {
+async function ownerFollowup(tx: PostgresTransaction, d: ReviewDelegation, event: ReviewDelegationEvent) {
   const messageId = event.payload.messageId;
   if (event.type === delegationOwnerInput && numericId(messageId) && event.payload.conversationId === d.conversationId
     && messageId !== d.originMessageId) {
@@ -161,7 +162,7 @@ async function ownerFollowup(tx: PostgresTransaction, d: Delegation, event: Dele
     : outcome('waiting_for_user', '等你在原咨询补充本事项的资料', 'owner');
 }
 
-async function externalReview(tx: PostgresTransaction, d: Delegation, event: DelegationEvent) {
+async function externalReview(tx: PostgresTransaction, d: ReviewDelegation, event: ReviewDelegationEvent) {
   const runId = event.payload.runId;
   if (event.type === delegationExternalResult && numericId(runId) && event.payload.conversationId === d.conversationId) {
     const result = await one(tx, sql`select r.id::text,m.content from app.assistant_runs r join app.assistant_messages m
@@ -177,13 +178,13 @@ async function externalReview(tx: PostgresTransaction, d: Delegation, event: Del
     : outcome('waiting_for_external', '等原咨询取得与事项相关的公开来源', 'external');
 }
 
-export async function observeDelegation(tx: PostgresTransaction, d: Delegation, conversation: Row, event: DelegationEvent,
+export async function observeDelegation(tx: PostgresTransaction, d: ReviewDelegation, conversation: Row, event: ReviewDelegationEvent,
   checkStandards = false) {
   const actor = delegationActor(d);
   const definition = new ToolRegistry().register({
     name: 'observe_delegation_sources', description: '读取委托对应的当前获权原始记录', risk: 'read', requiresProject: true,
     parameters: { type: 'object', additionalProperties: false, required: ['eventId'], properties: { eventId: { type: 'string' } } },
-    authorize: async () => await delegationOrigin(tx, d, conversation) ? { allowed: true } : { allowed: false, reason: 'delegation_origin_unavailable' },
+    authorize: async () => await reviewDelegationOrigin(tx, d, conversation) ? { allowed: true } : { allowed: false, reason: 'delegation_origin_unavailable' },
     execute: async ({ signal }) => {
       const scope = await privateMemoryScope(tx, actor, conversation);
       if (!scope) throw new Error('delegation_origin_unavailable');

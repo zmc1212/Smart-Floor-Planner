@@ -5,7 +5,8 @@ import { fingerprint, id, safeText, type ActorContext } from '@/lib/assistant/co
 import { appendMessage } from '@/lib/assistant/core/conversation';
 import { readSiteIssue, type IssueView } from './site-issues';
 import { sharedMaterials } from './site-materials';
-import { projectPlans, readPlan, planText } from './site-plans';
+import { effectivePlanText, projectPlans, readPlan, planText } from './site-plans';
+import { projectSchedule } from './site-schedule';
 import { readSiteActionResponse } from './site-actions';
 import { siteRecordText, type SiteDraft } from './site-contract';
 
@@ -48,18 +49,20 @@ export async function resolveSiteIssueQuery(tx: PostgresTransaction, eid: string
   return { roomId: issue.roomId, roomName: issue.roomName, resolution: 'resolved', issueId };
 }
 
-export async function querySiteIssues(tx: PostgresTransaction, eid: string, pid: string, query: SiteIssueQuery, issues: IssueView[]) {
+export async function querySiteIssues(tx: PostgresTransaction, eid: string, pid: string, query: SiteIssueQuery, issues: IssueView[], executionOnly = false) {
   const room = query.roomId ? await one(tx, sql`select name from app.construction_rooms where enterprise_id=${eid} and project_id=${pid} and id=${query.roomId} for share`) : null;
   if (query.resolution !== 'resolved' || query.roomId && room?.name !== query.roomName) return scopeClarification;
   // Explicit IDs remain readable after leaving the latest fifty-item overview.
   const exact = query.issueId ? await readSiteIssue(tx, eid, pid, query.issueId) : null;
   return (query.issueId ? exact ? [exact] : [] : issues)
     .filter(issue => !query.roomId || issue.roomId === query.roomId && issue.roomName === query.roomName)
-    .map(issue => issue.text).join('\n\n') || '本项目当前没有对应的持续事项。';
+    .map(issue => executionOnly && issue.sourceKind === 'need'
+      ? `事项${issue.issueId} · ${issue.roomName} · ${issue.classificationLabel}。施工以当前有效要求为准。` : issue.text).join('\n\n') || '本项目当前没有对应的持续事项。';
 }
 
 /** Caller must already hold SiteChatService's tenant, live-project and actor authorization. Never searches customer consultations. */
-export async function querySiteMaterials(tx: PostgresTransaction, eid: string, pid: string, query: SiteQuery, publishedRecordsOnly = false): Promise<SiteMaterialSnapshot> {
+export async function querySiteMaterials(tx: PostgresTransaction, eid: string, pid: string, query: SiteQuery,
+  { executionOnly = false, publishedRecordsOnly = false } = {}): Promise<SiteMaterialSnapshot> {
   const sources: Row[] = [], lines: string[] = [];
   const room = query.roomId ? await one(tx, sql`select id,name from app.construction_rooms where enterprise_id=${eid} and project_id=${pid} and id=${query.roomId} for share`) : null;
   const validRoom = !query.roomId || room?.name === query.roomName;
@@ -97,7 +100,7 @@ export async function querySiteMaterials(tx: PostgresTransaction, eid: string, p
         audience: 'project_members', basis: 'customer_explicit_excerpt', text: s.text });
       lines.push(`共享资料${s.id} · ${s.roomName} · ${s.kind === 'need' ? '客户明确共享的需求节选' : '客户提供点位图原件（须核对关联）'} · 来源版本${s.sourceHash.slice(0,12)}：${s.text}`);
     }
-    const plans = (await projectPlans(tx, eid, pid)).filter(p => p.available && (!query.roomId || 'roomId' in p && p.roomId === query.roomId));
+    const plans = (await projectPlans(tx, eid, pid, executionOnly)).filter(p => p.available && (!query.roomId || 'roomId' in p && p.roomId === query.roomId));
     for (const p of plans) if ('hash' in p && 'mediaId' in p) {
       sources.push({ ref: { type: 'formal_plan', id: p.id, version: p.revision }, hash: p.hash,
         sourceMessageId: p.sourceMessageId, roomId: p.roomId, mediaIds: [p.mediaId], audience: 'project_members', basis: 'explicit_enterprise_publication', text: p.text });
@@ -107,10 +110,20 @@ export async function querySiteMaterials(tx: PostgresTransaction, eid: string, p
     if (missing.length) lines.push('缺项：' + missing.join('、') + '。');
     if (shared.some(s => s.kind === 'drawing')) lines.push('图纸仅为客户明确提供的原件，尚须有权人员对本事项核对关联及现场尺寸；不自动认定为有效施工方案。');
     lines.push('项目成员身份不开放业主私人咨询；只使用明确共享的节选/原件。正式户型不能代替点位图。');
-    lines.push(plans.length ? '正式方案的差异、费用/工期变化及客户决定以各精确版本显示为准；资料关联本身不改变决定，也不代表现场已落实或验收。'
+    lines.push(plans.length ? executionOnly ? '按当前已确认版本施工。' : '正式方案的差异、费用/工期变化及客户决定以各精确版本显示为准；资料关联本身不改变决定，也不代表现场已落实或验收。'
       : '以上按项目及房间标识关联原材料，不代表方案、费用、工期或验收批准。');
   }
   return { query, projectId: pid, version: fingerprint({ query, validRoom, sources }), sources, queriedAt: new Date().toISOString(), text: lines.join('\n') };
+}
+
+export async function querySiteSchedule(tx: PostgresTransaction, eid: string, pid: string, scope: SiteQuery) {
+  const project = await one(tx, sql`select * from app.construction_projects where enterprise_id=${eid} and id=${pid}`);
+  if (!project || scope.resolution !== 'resolved') return scopeClarification;
+  const schedule = await projectSchedule(tx, eid, project);
+  if (!scope.roomId) return schedule.text;
+  const nodes = schedule.nodes.filter(node => node.roomId === scope.roomId && node.roomName === scope.roomName);
+  return nodes.length ? [`施工计划V${schedule.version} · ${scope.roomName}`,
+    ...nodes.map(node => `${node.stageName} · ${node.label}。${node.reason}`)].join('\n') : `${scope.roomName} · 未排期`;
 }
 
 export async function appendSiteResponse(tx: PostgresTransaction, actor: ActorContext, cid: string, pid: string, sourceId: string,
@@ -123,44 +136,53 @@ export async function appendSiteResponse(tx: PostgresTransaction, actor: ActorCo
 }
 
 /** Revalidate derived output on every reentry; immutable source messages remain separate. */
-export async function siteResponse(tx: PostgresTransaction, eid: string, pid: string, cid: string, sourceId: string, issues: IssueView[] = []) {
+export async function siteResponse(tx: PostgresTransaction, eid: string, pid: string, cid: string, sourceId: string, issues: IssueView[] = [],
+  { executionOnly = false, allowActionDraft = true } = {}) {
   const response = await one(tx, sql`select m.content,e.payload from app.domain_event_outbox e join app.assistant_messages m
     on m.enterprise_id=e.enterprise_id and m.source_event_id=e.id and m.conversation_id=${cid} and m.purpose='site.response'
     where e.enterprise_id=${eid} and e.type='construction.chat.response.v1' and e.aggregate_id=${sourceId} and e.payload->>'projectId'=${pid}`);
   if (!response) return null;
   const payload = response.payload as Row;
+  if (payload.actionRunId && !allowActionDraft) return null;
   let text = payload.actionRunId ? await readSiteActionResponse(tx, eid, pid, cid, payload) : safeText(response.content as Parameters<typeof safeText>[0]);
-  const snapshot = payload.query ? await querySiteMaterials(tx, eid, pid, payload.query as SiteQuery) : null;
+  const snapshot = payload.query ? await querySiteMaterials(tx, eid, pid, payload.query as SiteQuery, { executionOnly }) : null;
   if (snapshot && snapshot.version !== payload.version)
     text = '关联资料已变化，原查询结果不再沿用。请重新查询当前资料。';
   const issue = payload.issueId ? issues.find(i => i.issueId === payload.issueId) : null;
-  if (payload.issueId) text = issue?.text || '原事项已不可用，请重新核对。';
-  if (payload.planId) {
-    const plan = await readPlan(tx, eid, String(payload.planId));
-    text = plan ? planText(plan) : '此方案已撤回、替换或依据已变化，旧版不能继续使用。';
-  }
+  if (payload.issueId) text = issue ? executionOnly && issue.sourceKind === 'need'
+    ? `事项${issue.issueId} · ${issue.roomName} · ${issue.classificationLabel}。` : issue.text : '原事项已不可用，请重新核对。';
+  const plan = payload.planId ? await readPlan(tx, eid, String(payload.planId)) : null;
+  if (payload.planId) text = executionOnly ? plan?.status === 'approved' ? effectivePlanText(plan) : '请查看当前有效施工要求。'
+    : plan ? planText(plan) : '此方案已撤回、替换或依据已变化，旧版不能继续使用。';
   if (payload.issueQuery) {
     // Legacy replies retain their original question as the scope authority.
     const original = !payload.issueQueryScope ? await one(tx, sql`select content from app.assistant_messages
       where enterprise_id=${eid} and conversation_id=${cid} and id=${sourceId} and author_kind='admin'`) : null;
     const query = payload.issueQueryScope as SiteIssueQuery || await resolveSiteIssueQuery(tx, eid, pid, original ? safeText(original.content as Parameters<typeof safeText>[0]) : '');
-    const issueText = await querySiteIssues(tx, eid, pid, query, issues);
+    const issueText = await querySiteIssues(tx, eid, pid, query, issues, executionOnly);
     const materialText = snapshot ? snapshot.version === payload.version ? snapshot.text : '关联资料已变化，原查询结果不再沿用。请重新查询当前资料。' : '';
     text = [...new Set([issueText, materialText].filter(Boolean))].join('\n\n');
   }
-  const media = (payload.mediaIds as string[] || []).length ? await rows(tx, sql`select id,width,height,byte_size from app.construction_site_media where enterprise_id=${eid} and project_id=${pid}
-    and id=any(ARRAY(SELECT jsonb_array_elements_text(${JSON.stringify(payload.mediaIds)}::jsonb))::bigint[]) and deleted_at is null order by id`) : [];
+  if (payload.scheduleQuery) {
+    const schedule = await querySiteSchedule(tx, eid, pid, payload.scheduleQuery as SiteQuery);
+    const query = payload.issueQuery ? text : snapshot && (snapshot.version === payload.version ? snapshot.text : '关联资料已变化，请重新查询。');
+    text = [query, schedule].filter(Boolean).join('\n\n');
+  }
+  const mediaIds = payload.planId ? plan && (!executionOnly || plan.status === 'approved') ? [plan.mediaId] : [] : payload.mediaIds as string[] || [];
+  const media = mediaIds.length ? await rows(tx, sql`select id,width,height,byte_size from app.construction_site_media where enterprise_id=${eid} and project_id=${pid}
+    and id=any(ARRAY(SELECT jsonb_array_elements_text(${JSON.stringify(mediaIds)}::jsonb))::bigint[]) and deleted_at is null order by id`) : [];
   if (snapshot && snapshot.version === payload.version) for (const source of snapshot.sources.filter(s => (s.ref as Row).type === 'shared_drawing')) {
     for (const mid of source.mediaIds as string[]) media.push({ id: `shared-${(source.ref as Row).id}-${mid}` });
   }
   if (snapshot && snapshot.version === payload.version) for (const source of snapshot.sources.filter(s => (s.ref as Row).type === 'formal_plan')) {
     for (const mid of source.mediaIds as string[]) media.push({ id: mid });
   }
-  return { text, intent: payload.intent, media, issue };
+  return { text, intent: payload.intent, media, issue: executionOnly ? null : issue, ...(payload.planId ? { formalPlan: true } : {}) };
 }
 
-export function sharedMediaUsed(eid: string, pid: string, mediaId: string) {
+export function sharedMediaUsed(eid: string, pid: string, mediaId: string, sharedOnly = false) {
   return sql`exists(select 1 from app.domain_event_outbox e join app.assistant_messages sm on sm.enterprise_id=e.enterprise_id
     and sm.id::text=e.payload->>'sourceMessageId' and sm.conversation_id::text=e.payload->>'conversationId'
-    where e.enterprise_id=${eid} and e.type='construction.chat.response.v1' and e.payload->>'projectId'=${pid} and e.payload->'mediaIds' ? ${mediaId})`;
+    where e.enterprise_id=${eid} and e.type='construction.chat.response.v1' and e.payload->>'projectId'=${pid} and e.payload->'mediaIds' ? ${mediaId}
+    ${sharedOnly ? sql`and not (e.payload ? 'actionRunId')` : sql``})`;
 }

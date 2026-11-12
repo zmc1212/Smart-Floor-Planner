@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
-import { withPlatformTransaction, withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
+import { MAX_NATIVE_WORKFLOW_SCHEDULE_ENTERPRISES, nativeWorkflowEnterpriseIds } from '@/lib/native-workflow/live/tenant-allowlist';
+import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { AssistantError, fail } from '@/lib/assistant/contracts';
 import { appendMessage } from '@/lib/assistant/core/conversation';
@@ -14,11 +15,16 @@ import { currentReportStageEvent } from './stage-events';
 /** One latest due daily and weekly period per tick, not an unbounded outage replay.
  * Time changes affect future ticks; each queued run retains its original scope. */
 export async function advanceConstructionReports(now = new Date(), onlyEnterprise?: string) {
+  // An explicit native assignment reserves the weekly slot even while the
+  // native scheduler is stopped. Daily and stage processing remain independent.
+  const nativeWeekly = new Set(nativeWorkflowEnterpriseIds(process.env.NATIVE_WORKFLOW_SCHEDULE_ENTERPRISE_IDS)
+    .slice(0, MAX_NATIVE_WORKFLOW_SCHEDULE_ENTERPRISES));
   const candidates = await withPlatformTransaction(tx => rows(tx, sql`select s.enterprise_id from app.construction_report_settings s
     join app.enterprises e on e.id=s.enterprise_id and e.status='active'
     join app.assistant_enterprise_settings a on a.enterprise_id=s.enterprise_id and a.enabled
     where s.enabled ${onlyEnterprise ? sql`and s.enterprise_id=${onlyEnterprise}` : sql``}
-    and (s.next_daily_at<=${now} or s.next_weekly_at<=${now} or exists(select 1 from app.domain_event_outbox ev
+    and (s.next_daily_at<=${now} or (s.next_weekly_at<=${now} and
+      (s.stage_enabled or not (${JSON.stringify([...nativeWeekly])}::jsonb ? s.enterprise_id::text))) or exists(select 1 from app.domain_event_outbox ev
       where ev.enterprise_id=s.enterprise_id and ev.type='construction.stage.updated.v1' and ev.id>s.stage_cursor and ev.created_at<=${now})
       or exists(select 1 ${dailySupplementCandidates(sql`s.enterprise_id`, now)}))
     order by s.enterprise_id limit 20`));
@@ -34,6 +40,7 @@ export async function advanceConstructionReports(now = new Date(), onlyEnterpris
         const bindings = await discoverFollowups(tx, eid, settings);
         let n = 0;
         for (const kind of ['daily','weekly'] as const) {
+          if (kind === 'weekly' && settings.stage_enabled === false && nativeWeekly.has(eid)) continue;
           const due = settings[kind === 'daily' ? 'next_daily_at' : 'next_weekly_at'];
           if (new Date(String(due)) > now) continue;
           const time = String(settings[kind === 'daily' ? 'daily_time' : 'weekly_time']);

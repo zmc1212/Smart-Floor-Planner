@@ -16,11 +16,12 @@ import type {
   PeriodReportBatchResult,
 } from './period-report-batch';
 import type { PeriodReportRunObservation } from './period-report-status';
-import type { ScheduledProjectPlan } from './period-report-schedule-types';
+import type { ScheduledProjectPlan, ScheduledWeeklyClaimRecord } from './period-report-schedule-types';
 import type {
   LiveOperationPorts,
   LivePeriodReceiver,
   LiveRunRecord,
+  RuntimeWriteGuard,
 } from './types';
 
 export interface ScheduleIssueSnapshot {
@@ -34,6 +35,7 @@ export interface ScheduleIssueSnapshot {
 }
 
 export interface ScheduleReminderInput {
+  readonly writeGuard?: RuntimeWriteGuard;
   readonly enterpriseId: string;
   readonly projectId: string;
   readonly projectName: string;
@@ -61,9 +63,11 @@ export interface ScheduleDiscoveryResult {
 export interface ScheduleWeeklyClaim {
   /** True only when this call atomically advanced `next_weekly_at`. */
   readonly claimed: boolean;
+  /** The committed native owner, also returned after process or filesystem failure. */
+  readonly receipt?: ScheduledWeeklyClaimRecord;
   /** The enterprise's configured execution time for this period has arrived. */
   readonly due: boolean;
-  /** Due, but the stored weekly slot was already consumed (legacy or B). */
+  /** Due, with no new advance in this call. Only a native receipt permits recovery. */
   readonly alreadyConsumed: boolean;
   /** First `weekly_day`/`weekly_time` instant at or after the period end. */
   readonly dueAt: string | null;
@@ -101,6 +105,7 @@ export interface PeriodReportScheduleEnvironment {
     readonly period: FixedPeriod;
   }): Promise<ScheduleWeeklyClaim>;
   ensureCustomerBinding(input: {
+    readonly writeGuard?: RuntimeWriteGuard;
     readonly enterpriseId: string;
     readonly projectId: string;
     readonly customerUserId: string;
@@ -116,6 +121,7 @@ export interface PeriodReportScheduleEnvironment {
    * original run record instead of executing a second time.
    */
   recoverReceiver(input: {
+    readonly writeGuard?: RuntimeWriteGuard;
     readonly enterpriseId: string;
     readonly projectId: string;
     readonly actor: ConstructionActor;
@@ -130,6 +136,7 @@ export interface PeriodReportScheduleEnvironment {
   portsFor(
     receiver: LivePeriodReceiver,
     context: {
+      readonly writeGuard?: RuntimeWriteGuard;
       readonly enterpriseId: string;
       readonly projectId: string;
       readonly actor: ConstructionActor;

@@ -4,8 +4,10 @@ import { WorkflowOperationError } from '../errors';
 import { createMemoryPeriodReportBatchStore } from '../live/period-report-batch-store';
 import type { PeriodReportEntryInput } from '../live/period-report-entry';
 import {
+  cancelScheduledPeriodReport,
   readScheduledPeriodReportDispatch,
   resolveEndedShanghaiWeek,
+  resolveScheduledPeriod,
   runScheduledPeriodReportDispatch,
   setScheduledPeriodReportPaused,
   type ScheduledPeriodReportDispatchDependencies,
@@ -16,9 +18,11 @@ import type {
 } from '../live/period-report-schedule-environment';
 import { weeklyExecutionAt } from '../live/period-report-schedule-calendar';
 import { createMemoryPeriodReportScheduleStore } from '../live/period-report-schedule-store';
-import type {
-  ScheduledIssueItem,
-  ScheduledProjectPlan,
+import {
+  SCHEDULE_RUN_VERSION,
+  emptyCounts,
+  type ScheduledIssueItem,
+  type ScheduledProjectPlan,
 } from '../live/period-report-schedule-types';
 import type {
   PeriodOverallState,
@@ -83,6 +87,13 @@ interface Harness {
   claimResult: ScheduleWeeklyClaim;
   failAfterBatchOnce: boolean;
   customerAvailable: boolean;
+  /** Injected failure for a project-scoped discovery (recheck) call. */
+  discoverError: Error | null;
+  discoverCalls: number;
+  /** One tenant whose batch always fails, to prove cross-tenant isolation. */
+  failingEnterprise: string | null;
+  /** Lets concurrent ticks overlap inside the batch call. */
+  batchDelayMs: number;
   setClock(date: Date): void;
   setBehavior(projectId: string, behavior: Behavior): void;
   setReceiverBehavior(kind: string, behavior: Behavior): void;
@@ -154,7 +165,7 @@ function saveOperation(input: PeriodReportEntryInput, at: string): LiveOperation
   return {
     nodeId: 'save',
     capabilityRef: 'save.period_report',
-    effect: 'write',
+    effect: 'save',
     nodeVersion: '1',
     idempotencyKey: `save-${input.runId}`,
     startedAt: at,
@@ -437,6 +448,10 @@ async function makeHarness(options?: {
     claimResult: claimedWeekly(),
     failAfterBatchOnce: false,
     customerAvailable: true,
+    discoverError: null,
+    discoverCalls: 0,
+    failingEnterprise: null,
+    batchDelayMs: 0,
     setClock(date) {
       harness.clock = new Date(date);
     },
@@ -502,12 +517,16 @@ async function makeHarness(options?: {
       assert.equal(input.revision, published.revision);
       return published;
     },
-    discover: async () => ({
-      enterpriseName: 'Test enterprise',
-      skipReasons: [],
-      projects: harness.plans,
-      excludedProjects: 0,
-    }),
+    discover: async (input) => {
+      harness.discoverCalls += 1;
+      if (harness.discoverError && input.projectId) throw harness.discoverError;
+      return {
+        enterpriseName: 'Test enterprise',
+        skipReasons: [],
+        projects: harness.plans,
+        excludedProjects: 0,
+      };
+    },
     claimWeeklySchedule: async (input) => {
       harness.claimRequests.push({
         enterpriseId: input.enterpriseId,
@@ -531,6 +550,16 @@ async function makeHarness(options?: {
         },
     runBatch: async (input) => {
       batchRequests.push(input.requestId);
+      if (harness.batchDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, harness.batchDelayMs));
+      }
+      if (harness.failingEnterprise === input.enterpriseId) {
+        throw new WorkflowOperationError(
+          'tenant_batch_unavailable',
+          503,
+          'simulated tenant batch failure',
+        );
+      }
       const result = await runPeriodReportBatch(input, {
         now: () => new Date(harness.clock),
         preflight: async () => ({
@@ -686,6 +715,67 @@ test('dispatches one project with four independent receivers and a deterministic
   assert.equal(summary.enterprises[0]!.gate?.claimed, true);
 });
 
+test('one enterprise failure never stops the next allow-listed enterprise', async () => {
+  const harness = await makeHarness();
+  const failing = '999';
+  const store = {
+    ...harness.store,
+    control: async (enterpriseId: string) => {
+      if (enterpriseId === failing) {
+        throw new WorkflowOperationError(
+          'period_report_schedule_store_error',
+          500,
+          'simulated tenant store failure',
+        );
+      }
+      return harness.store.control(enterpriseId);
+    },
+  };
+  const summary = await runScheduledPeriodReportDispatch(
+    options({ enterpriseIds: [failing, ENTERPRISE_ID] }),
+    { ...harness.deps, store },
+  );
+  assert.equal(summary.enabled, true);
+  assert.equal(summary.enterprises.length, 2);
+  const failed = summary.enterprises[0]!;
+  assert.equal(failed.enterpriseId, failing);
+  assert.equal(failed.status, 'failed');
+  assert.equal(failed.error?.code, 'period_report_schedule_store_error');
+  assert.deepEqual(failed.dispatchedProjects, []);
+  assert.deepEqual(failed.recoveredRuns, []);
+  const healthy = summary.enterprises[1]!;
+  assert.equal(healthy.enterpriseId, ENTERPRISE_ID);
+  assert.equal(healthy.error, null);
+  assert.equal(healthy.counts.completed, 1);
+  assert.deepEqual(harness.batchRequests, [
+    `schedule-${ENTERPRISE_ID}-${PROJECT_A}-weekly-2026-11-02`,
+  ]);
+});
+
+test('two allow-listed enterprises get independent runs, requests and summaries', async () => {
+  const harness = await makeHarness();
+  const second = '1455';
+  const summary = await runScheduledPeriodReportDispatch(
+    options({ enterpriseIds: [ENTERPRISE_ID, second] }),
+    harness.deps,
+  );
+  assert.equal(summary.enterprises.length, 2);
+  assert.deepEqual(harness.batchRequests.slice().sort(), [
+    `schedule-${ENTERPRISE_ID}-${PROJECT_A}-weekly-2026-11-02`,
+    `schedule-${second}-${PROJECT_A}-weekly-2026-11-02`,
+  ].sort());
+  const firstRun = await harness.store.get(`schedule-${ENTERPRISE_ID}-weekly-2026-11-02`);
+  const secondRun = await harness.store.get(`schedule-${second}-weekly-2026-11-02`);
+  assert.ok(firstRun);
+  assert.ok(secondRun);
+  assert.notEqual(firstRun!.runId, secondRun!.runId);
+  assert.deepEqual(summary.enterprises.map((entry) => entry.enterpriseId), [ENTERPRISE_ID, second]);
+  for (const entry of summary.enterprises) {
+    assert.equal(entry.counts.completed, 1);
+    assert.equal(entry.error, null);
+  }
+});
+
 test('a repeated tick does not create a second batch or model-visible work', async () => {
   const harness = await makeHarness();
   await runScheduledPeriodReportDispatch(options(), harness.deps);
@@ -793,6 +883,33 @@ test('a concurrent dispatcher sees the run lease and does not duplicate work', a
   const summary = await runScheduledPeriodReportDispatch(options(), harness.deps);
   assert.equal(summary.enterprises[0]!.busy, true);
   assert.equal(harness.batchRequests.length, 0);
+});
+
+test('a paused enterprise never blocks another enterprise in the same tick', async () => {
+  const harness = await makeHarness();
+  const pausedId = '998';
+  await setScheduledPeriodReportPaused({
+    enterpriseId: pausedId,
+    paused: true,
+    updatedBy: 'ops',
+    reason: 'review',
+    store: harness.store,
+  });
+  const summary = await runScheduledPeriodReportDispatch(
+    options({ enterpriseIds: [pausedId, ENTERPRISE_ID] }),
+    harness.deps,
+  );
+  const paused = summary.enterprises[0]!;
+  assert.equal(paused.enterpriseId, pausedId);
+  assert.equal(paused.paused, true);
+  assert.equal(paused.status, 'missing');
+  assert.deepEqual(paused.dispatchedProjects, []);
+  const healthy = summary.enterprises[1]!;
+  assert.equal(healthy.enterpriseId, ENTERPRISE_ID);
+  assert.equal(healthy.counts.completed, 1);
+  assert.deepEqual(harness.batchRequests, [
+    `schedule-${ENTERPRISE_ID}-${PROJECT_A}-weekly-2026-11-02`,
+  ]);
 });
 
 test('pause stops dispatch and resume continues it', async () => {
@@ -1305,4 +1422,401 @@ test('a frozen batch keeps its original receivers when identities change', async
   assert.equal(entry.state, 'completed');
   assert.equal(harness.runReceiverCalls.length, 4);
   assert.equal(harness.batchRequests.length, 2);
+});
+
+// ---------------------------------------------------------------------------
+// B5.6 multi-tenant weekly scheduler reliability and recovery
+// ---------------------------------------------------------------------------
+
+const WEEK_START = '2026-11-02';
+
+function weeklyRunId(enterpriseId: string, periodStart = WEEK_START): string {
+  return `schedule-${enterpriseId}-weekly-${periodStart}`;
+}
+
+test('weeks crossing a month and a year boundary stay Monday-to-Monday', () => {
+  const month = resolveEndedShanghaiWeek(new Date('2026-12-07T01:00:00.000Z'));
+  assert.deepEqual(
+    { periodStart: month.periodStart, periodEnd: month.periodEnd },
+    { periodStart: '2026-11-30', periodEnd: '2026-12-07' },
+  );
+  assert.equal(month.startAt, '2026-11-29T16:00:00.000Z');
+  assert.equal(month.endAt, '2026-12-06T16:00:00.000Z');
+
+  const year = resolveScheduledPeriod(new Date('2027-01-04T01:00:00.000Z'));
+  assert.deepEqual(
+    { periodStart: year.periodStart, periodEnd: year.periodEnd },
+    { periodStart: '2026-12-28', periodEnd: '2027-01-04' },
+  );
+  assert.equal(year.endAt, '2027-01-03T16:00:00.000Z');
+
+  // Monday 00:00 Shanghai is exactly the right-open end of the prior week.
+  const boundary = resolveEndedShanghaiWeek(new Date('2027-01-03T16:00:00.000Z'));
+  assert.equal(boundary.periodEnd, '2027-01-04');
+  assert.equal(boundary.periodStart, '2026-12-28');
+});
+
+test('two tenants run their own weekly schedule concurrently without sharing state', async () => {
+  const harness = await makeHarness();
+  harness.batchDelayMs = 5;
+  const second = '1455';
+  const [first, other] = await Promise.all([
+    runScheduledPeriodReportDispatch(options(), harness.deps),
+    runScheduledPeriodReportDispatch(options({ enterpriseIds: [second] }), harness.deps),
+  ]);
+
+  const firstRun = await runOf(harness);
+  const secondRun = await harness.store.get(weeklyRunId(second));
+  assert.ok(firstRun);
+  assert.ok(secondRun);
+  assert.equal(firstRun!.enterpriseId, ENTERPRISE_ID);
+  assert.equal(secondRun!.enterpriseId, second);
+  assert.notEqual(firstRun!.runId, secondRun!.runId);
+  // No project entry or trace ever crosses the tenant boundary.
+  assert.deepEqual(Object.keys(firstRun!.projects), [PROJECT_A]);
+  assert.deepEqual(Object.keys(secondRun!.projects), [PROJECT_A]);
+  assert.deepEqual([...new Set(first.traces.map((trace) => trace.tenantId))], [ENTERPRISE_ID]);
+  assert.deepEqual([...new Set(other.traces.map((trace) => trace.tenantId))], [second]);
+  assert.deepEqual(harness.batchRequests.sort(), [
+    `schedule-${ENTERPRISE_ID}-${PROJECT_A}-weekly-${WEEK_START}`,
+    `schedule-${second}-${PROJECT_A}-weekly-${WEEK_START}`,
+  ].sort());
+  assert.equal(first.enterprises[0]!.counts.completed, 1);
+  assert.equal(other.enterprises[0]!.counts.completed, 1);
+});
+
+test('one tenant batch failure never affects another tenant in the same tick', async () => {
+  const harness = await makeHarness();
+  const failing = '1455';
+  harness.failingEnterprise = failing;
+  const summary = await runScheduledPeriodReportDispatch(
+    options({ enterpriseIds: [failing, ENTERPRISE_ID] }),
+    harness.deps,
+  );
+
+  const failed = summary.enterprises[0]!;
+  const healthy = summary.enterprises[1]!;
+  assert.equal(failed.enterpriseId, failing);
+  assert.equal(failed.status, 'failed');
+  assert.equal(healthy.enterpriseId, ENTERPRISE_ID);
+  assert.equal(healthy.status, 'observing');
+  assert.equal(healthy.counts.completed, 1);
+  assert.equal(healthy.error, null);
+
+  const failedRun = await harness.store.get(weeklyRunId(failing));
+  assert.ok(failedRun);
+  assert.equal(failedRun!.status, 'failed');
+  assert.equal(failedRun!.projects[PROJECT_A]!.state, 'failed');
+  assert.equal(failedRun!.projects[PROJECT_A]!.errorCode, 'tenant_batch_unavailable');
+  const healthyRun = await runOf(harness);
+  assert.equal(healthyRun!.status, 'observing');
+  assert.equal(healthyRun!.projects[PROJECT_A]!.state, 'completed');
+});
+
+test('the same weekly window triggered concurrently dispatches each job once', async () => {
+  const harness = await makeHarness();
+  harness.batchDelayMs = 10;
+  const results = await Promise.all([
+    runScheduledPeriodReportDispatch(options(), harness.deps),
+    runScheduledPeriodReportDispatch(options(), harness.deps),
+  ]);
+  assert.deepEqual(harness.batchRequests, [
+    `schedule-${ENTERPRISE_ID}-${PROJECT_A}-weekly-${WEEK_START}`,
+  ]);
+  const run = await runOf(harness);
+  assert.equal(run!.weeklyClaim?.periodStart, WEEK_START);
+  assert.equal(run!.projects[PROJECT_A]!.state, 'completed');
+  assert.equal(run!.projects[PROJECT_A]!.dispatchAttempts, 1);
+  // At most one tick does the work; the other observes the held lease.
+  assert.equal(results.some((result) => result.enterprises[0]!.busy), true);
+});
+
+test('a crashed worker lease is taken over after its TTL and the job runs once', async () => {
+  const harness = await makeHarness();
+  const runId = weeklyRunId(ENTERPRISE_ID);
+  const t0 = new Date(NOW);
+  assert.equal(
+    await harness.store.acquire(runId, { owner: 'dead-worker', now: () => t0, ttlMs: 60_000 }),
+    true,
+  );
+
+  const blocked = await runScheduledPeriodReportDispatch(options(), harness.deps);
+  assert.equal(blocked.enterprises[0]!.busy, true);
+  assert.equal(harness.batchRequests.length, 0);
+
+  harness.setClock(new Date(NOW.getTime() + 61_000));
+  const recovered = await runScheduledPeriodReportDispatch(options(), harness.deps);
+  assert.equal(recovered.enterprises[0]!.busy, false);
+  assert.equal(harness.batchRequests.length, 1);
+
+  await runScheduledPeriodReportDispatch(options(), harness.deps);
+  assert.equal(harness.batchRequests.length, 1);
+  const run = await runOf(harness);
+  assert.equal(run!.workerId?.startsWith(`${process.pid}:`), true);
+  assert.equal(run!.projects[PROJECT_A]!.state, 'completed');
+});
+
+test('a retry after a host crash reuses the frozen batch instead of repeating work', async () => {
+  const harness = await makeHarness();
+  harness.failAfterBatchOnce = true;
+  await runScheduledPeriodReportDispatch(options(), harness.deps);
+  const receiverCalls = harness.runReceiverCalls.length;
+  assert.equal(receiverCalls, 4);
+  assert.equal(harness.batchRequests.length, 1);
+  let entry = await entryOf(harness, PROJECT_A);
+  assert.equal(entry.errorCode, 'construction_forbidden');
+
+  harness.setClock(new Date(NOW.getTime() + 20 * 60_000));
+  await runScheduledPeriodReportDispatch(options(), harness.deps);
+  entry = await entryOf(harness, PROJECT_A);
+  assert.equal(harness.batchRequests.length, 2);
+  // The manifest was frozen by the first attempt; the retry must not re-run
+  // receivers or produce a second report.
+  assert.equal(harness.runReceiverCalls.length, receiverCalls);
+  assert.equal(entry.state, 'completed');
+  // The retry observed the already frozen batch; no second dispatch happened.
+  assert.equal(entry.dispatchAttempts, 1);
+});
+
+test('a cancelled period dispatches and observes nothing afterwards', async () => {
+  const harness = await makeHarness({ plans: [plan(PROJECT_A), plan(PROJECT_B)] });
+  await runScheduledPeriodReportDispatch(
+    options({ maxProjectsPerRound: 1 }),
+    harness.deps,
+  );
+  assert.equal(harness.batchRequests.length, 1);
+
+  const cancelled = await cancelScheduledPeriodReport({
+    enterpriseId: ENTERPRISE_ID,
+    periodStart: WEEK_START,
+    updatedBy: 'tester',
+    reason: 'tenant cancelled this week',
+    store: harness.store,
+    now: () => harness.clock,
+  });
+  assert.deepEqual(cancelled.control.cancelledPeriods, [WEEK_START]);
+  assert.equal(cancelled.run?.status, 'cancelled');
+  assert.equal(cancelled.run?.cancelReason, 'tenant cancelled this week');
+  assert.ok(cancelled.run?.cancelledAt);
+
+  harness.setClock(new Date(NOW.getTime() + 20 * 60_000));
+  const summary = await runScheduledPeriodReportDispatch(
+    options({ maxProjectsPerRound: 1 }),
+    harness.deps,
+  );
+  assert.equal(harness.batchRequests.length, 1);
+  assert.equal(summary.enterprises[0]!.status, 'cancelled');
+  const run = await runOf(harness);
+  assert.equal(run!.status, 'cancelled');
+  // The undelivered second project has no entry yet, so cancellation left it
+  // exactly where it was: never dispatched.
+  assert.deepEqual(Object.keys(run!.projects), [PROJECT_A]);
+  assert.deepEqual((await harness.store.control(ENTERPRISE_ID)).cancelledPeriods, [WEEK_START]);
+});
+
+test('a permanent recheck failure stops retrying instead of looping', async () => {
+  const harness = await makeHarness({
+    plans: [plan(PROJECT_A, { workerAdminId: null, skipReasons: ['worker_missing'] })],
+  });
+  await runScheduledPeriodReportDispatch(
+    options({ recheckIntervalMs: 60_000 }),
+    harness.deps,
+  );
+  let entry = await entryOf(harness, PROJECT_A);
+  assert.equal(entry.state, 'needs_attention');
+  assert.equal(harness.batchRequests.length, 0);
+
+  harness.discoverError = new WorkflowOperationError(
+    'construction_not_found',
+    404,
+    'the project was removed',
+  );
+  harness.setClock(new Date(NOW.getTime() + 2 * 60_000));
+  await runScheduledPeriodReportDispatch(
+    options({ recheckIntervalMs: 60_000 }),
+    harness.deps,
+  );
+  entry = await entryOf(harness, PROJECT_A);
+  assert.equal(entry.state, 'failed');
+  assert.equal(entry.errorCode, 'construction_not_found');
+  assert.equal(entry.nextObservationAt, null);
+
+  const calls = harness.discoverCalls;
+  harness.setClock(new Date(NOW.getTime() + 6 * 3_600_000));
+  await runScheduledPeriodReportDispatch(options(), harness.deps);
+  assert.equal(harness.discoverCalls, calls);
+  assert.equal(harness.batchRequests.length, 0);
+});
+
+test('an unfinished run expires when the bounded recovery window closes', async () => {
+  const harness = await makeHarness({ behavior: 'pending' });
+  await runScheduledPeriodReportDispatch(options(), harness.deps);
+  let run = await runOf(harness);
+  assert.equal(run!.status, 'observing');
+  assert.equal(run!.projects[PROJECT_A]!.state, 'waiting_delivery');
+
+  harness.setClock(new Date('2026-11-16T00:00:01.000Z'));
+  await runScheduledPeriodReportDispatch(options(), harness.deps);
+  run = await runOf(harness);
+  assert.equal(run!.status, 'expired');
+  assert.equal(run!.finishedAt !== null, true);
+  assert.equal(run!.projects[PROJECT_A]!.nextObservationAt, null);
+
+  const receiverCalls = harness.runReceiverCalls.length;
+  await runScheduledPeriodReportDispatch(options(), harness.deps);
+  assert.equal(harness.runReceiverCalls.length, receiverCalls);
+  run = await runOf(harness);
+  assert.equal(run!.status, 'expired');
+});
+
+test('a new week never overwrites the previous week run or its requests', async () => {
+  const harness = await makeHarness();
+  await runScheduledPeriodReportDispatch(options(), harness.deps);
+  const first = await runOf(harness);
+  assert.ok(first);
+
+  harness.setClock(new Date('2026-11-16T02:00:00.000Z'));
+  await runScheduledPeriodReportDispatch(options(), harness.deps);
+
+  const previous = await runOf(harness, WEEK_START);
+  assert.equal(previous!.runId, first!.runId);
+  assert.equal(previous!.period.periodStart, WEEK_START);
+  assert.equal(previous!.period.endAt, first!.period.endAt);
+  assert.equal(previous!.startedAt, first!.startedAt);
+  assert.equal(previous!.weeklyClaim?.claimedAt, first!.weeklyClaim?.claimedAt);
+  assert.equal(
+    previous!.projects[PROJECT_A]!.requestId,
+    `schedule-${ENTERPRISE_ID}-${PROJECT_A}-weekly-${WEEK_START}`,
+  );
+
+  const next = await runOf(harness, '2026-11-09');
+  assert.ok(next);
+  assert.notEqual(next!.runId, previous!.runId);
+  assert.equal(
+    next!.projects[PROJECT_A]!.requestId,
+    `schedule-${ENTERPRISE_ID}-${PROJECT_A}-weekly-2026-11-09`,
+  );
+});
+
+test('a run file carrying another tenant is refused and never advanced', async () => {
+  const harness = await makeHarness();
+  const foreign = '9999';
+  const tampered = {
+    runVersion: SCHEDULE_RUN_VERSION,
+    runId: weeklyRunId(ENTERPRISE_ID),
+    enterpriseId: foreign,
+    period: {
+      kind: 'weekly' as const,
+      periodStart: WEEK_START,
+      periodEnd: '2026-11-09',
+      startAt: '2026-11-01T16:00:00.000Z',
+      endAt: '2026-11-08T16:00:00.000Z',
+    },
+    weeklyClaim: {
+      periodStart: WEEK_START,
+      claimedAt: '2026-11-09T00:00:00.000Z',
+      previousNextWeeklyAt: null,
+      nextWeeklyAt: '2026-11-16T00:00:00.000Z',
+    },
+    published: null,
+    status: 'discovered' as const,
+    queue: [],
+    projects: {},
+    counts: emptyCounts(),
+    startedAt: '2026-11-12T02:00:00.000Z',
+    updatedAt: '2026-11-12T02:00:00.000Z',
+    finishedAt: null,
+    lastError: null,
+    audit: [],
+  };
+  await harness.store.create(tampered);
+
+  const second = '1455';
+  const summary = await runScheduledPeriodReportDispatch(
+    options({ enterpriseIds: [ENTERPRISE_ID, second] }),
+    harness.deps,
+  );
+  assert.equal(summary.enterprises[0]!.status, 'failed');
+  assert.equal(summary.enterprises[0]!.error?.code, 'period_report_schedule_forbidden');
+  assert.equal(summary.enterprises[1]!.counts.completed, 1);
+  assert.deepEqual(harness.batchRequests, [
+    `schedule-${second}-${PROJECT_A}-weekly-${WEEK_START}`,
+  ]);
+  const untouched = await harness.store.get(weeklyRunId(ENTERPRISE_ID));
+  assert.equal(untouched!.enterpriseId, foreign);
+  assert.equal(untouched!.status, 'discovered');
+  assert.deepEqual(untouched!.projects, {});
+  assert.equal(untouched!.updatedAt, tampered.updatedAt);
+});
+
+test('scheduler traces expose the required fields and redact tenant content', async () => {
+  const harness = await makeHarness();
+  harness.issues = [{
+    issueId: '9010',
+    sourceRecordId: '5010',
+    status: 'awaiting_owner',
+    ownerId: WORKER,
+    ownerName: 'Worker Name',
+    lastResult: '敏感业务正文：业主家墙面渗水',
+    updatedAt: '2026-11-08T01:00:00.000Z',
+  }];
+  const summary = await runScheduledPeriodReportDispatch(options(), harness.deps);
+
+  assert.equal(summary.traces.length, 1);
+  assert.equal(summary.runs.length, 1);
+  const job = summary.traces[0]!;
+  assert.equal(job.tenantId, ENTERPRISE_ID);
+  assert.equal(job.scheduleId, weeklyRunId(ENTERPRISE_ID));
+  assert.equal(job.jobId, `schedule-${ENTERPRISE_ID}-${PROJECT_A}-weekly-${WEEK_START}`);
+  assert.equal(job.projectId, PROJECT_A);
+  assert.equal(job.periodStart, WEEK_START);
+  assert.equal(job.periodEnd, '2026-11-09');
+  assert.equal(job.plannedAt, '2026-11-09T00:00:00.000Z');
+  assert.ok(job.dispatchedAt);
+  assert.ok(job.observedAt);
+  assert.equal(job.workerId?.startsWith(`${process.pid}:`), true);
+  assert.equal(job.state, 'completed');
+  assert.equal(job.attempts, 1);
+  assert.equal(job.retryCount, 0);
+  assert.equal(job.failureCode, null);
+
+  const runTrace = summary.runs[0]!;
+  assert.equal(runTrace.tenantId, ENTERPRISE_ID);
+  assert.equal(runTrace.scheduleId, weeklyRunId(ENTERPRISE_ID));
+  // Delivered but unread reports stay in the bounded read-observation window.
+  assert.equal(runTrace.status, 'observing');
+  assert.equal(runTrace.claimedAt, NOW.toISOString());
+  assert.equal(runTrace.nextWeeklyAt, '2026-11-16T00:00:00.000Z');
+  assert.equal(runTrace.workerId, job.workerId);
+  assert.equal(runTrace.counts.completed, 1);
+
+  const serialized = JSON.stringify(summary);
+  assert.equal(serialized.includes(`project-${PROJECT_A}`), false);
+  assert.equal(serialized.includes('敏感业务正文'), false);
+  assert.equal(serialized.includes(WORKER), false);
+});
+
+test('the read-only schedule query returns the same redacted traces without dispatching', async () => {
+  const harness = await makeHarness();
+  await runScheduledPeriodReportDispatch(options(), harness.deps);
+  const before = harness.batchRequests.length;
+  const read = await readScheduledPeriodReportDispatch({
+    enterpriseId: ENTERPRISE_ID,
+    store: harness.store,
+    periodStart: WEEK_START,
+  });
+  assert.equal(harness.batchRequests.length, before);
+  assert.equal(read.runTrace?.status, 'observing');
+  assert.equal(read.traces.length, 1);
+  assert.equal(read.traces[0]!.jobId, `schedule-${ENTERPRISE_ID}-${PROJECT_A}-weekly-${WEEK_START}`);
+
+  await assert.rejects(
+    () => readScheduledPeriodReportDispatch({
+      enterpriseId: '1455',
+      store: harness.store,
+      runId: weeklyRunId(ENTERPRISE_ID),
+    }),
+    (error: unknown) => error instanceof WorkflowOperationError
+      && error.code === 'period_report_schedule_forbidden',
+  );
 });

@@ -294,7 +294,7 @@ class ChatController {
     // one even when `lastSeq` and the full-sync clock say it is still current.
     if (!resume) {
       if (latest && synced && latest === synced && !stale) return null;
-      if (!stale && latest && synced && withinBacklog(synced, latest, MAX_BACKLOG)) {
+      if (!stale && latest && synced && synced !== '0' && withinBacklog(synced, latest, MAX_BACKLOG)) {
         const delta = await this.readDelta(id, synced);
         if (delta) return delta;
       }

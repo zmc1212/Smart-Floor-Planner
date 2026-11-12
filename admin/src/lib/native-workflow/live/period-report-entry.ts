@@ -26,6 +26,7 @@ import type {
   LivePeriodReceiver,
   LiveRunRecord,
   LiveRunStore,
+  RuntimeWriteGuard,
 } from './types';
 import {
   prepareBossPeriodReport,
@@ -49,6 +50,7 @@ export interface PeriodReportEntryInput {
   readonly receiver: LivePeriodReceiver;
   readonly ports: LiveOperationPorts;
   readonly store: LiveRunStore;
+  readonly writeGuard?: RuntimeWriteGuard;
   readonly runId: string;
 }
 
@@ -136,7 +138,7 @@ export async function runPeriodReportEntry(
       receiverKind: kind,
       adminId: input.receiver.adminId,
       event: input.event,
-    }, dependencies.staff);
+    }, { ...dependencies.staff, writeGuard: input.writeGuard });
     period = prepared.period;
     staff = prepared.staff;
   } else if (input.receiver.kind === 'boss') {
@@ -155,7 +157,7 @@ export async function runPeriodReportEntry(
       projectId: input.projectId,
       adminId: input.receiver.adminId,
       event: input.event,
-    }, dependencies.boss);
+    }, { ...dependencies.boss, writeGuard: input.writeGuard });
     period = prepared.period;
     boss = prepared.boss;
   }
@@ -169,6 +171,7 @@ export async function runPeriodReportEntry(
     businessEvent,
     ports: input.ports,
     store: input.store,
+    writeGuard: input.writeGuard,
     runId: input.runId,
   });
 

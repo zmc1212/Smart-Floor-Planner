@@ -61,6 +61,7 @@ export interface PrepareBossPeriodReportResult {
 
 /** Offline seams; production always uses the real authorization/binding code. */
 export interface BossReceiverDependencies {
+  readonly writeGuard?: import('./types').RuntimeWriteGuard;
   /** Test seam for the trusted clock; defaults to `new Date()` per prepare. */
   readonly now?: () => Date;
   readonly transaction?: <T>(
@@ -93,6 +94,7 @@ export async function prepareBossPeriodReport(
   const { enterpriseId, actor, projectId, adminId } = options;
 
   const boss = await transaction(enterpriseId, async (tx) => {
+    await dependencies.writeGuard?.(tx);
     // The executor's management access is checked first; this locks the project
     // row before any receiver query or binding write.
     await authorizeWrite(tx, actor, projectId, 'update');

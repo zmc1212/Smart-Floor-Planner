@@ -845,22 +845,22 @@
     {
       "idx": 120,
       "version": "7",
-      "when": 1795075200000,
-      "tag": "0121_assistant_rag_scope",
+      "when": 1795334400000,
+      "tag": "0124_assistant_knowledge_integration",
       "breakpoints": true
     },
     {
       "idx": 121,
       "version": "7",
-      "when": 1795161600000,
-      "tag": "0122_assistant_managed_knowledge",
+      "when": 1795420800000,
+      "tag": "0125_native_workflow_runtime_integration",
       "breakpoints": true
     },
     {
       "idx": 122,
       "version": "7",
-      "when": 1795248000000,
-      "tag": "0123_assistant_long_term_delegation",
+      "when": 1795507200000,
+      "tag": "0126_native_workflow_delegation_integration",
       "breakpoints": true
     }
   ]

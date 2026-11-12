@@ -28,7 +28,7 @@ export function reportSiteAnswerable(project: ReportProject | undefined) {
 }
 
 export function reportSnapshotSiteAnswerable(snapshot: BusinessSnapshot | null | undefined) {
-  if (!snapshot?.reportReference) return false;
+  if (!snapshot || !('reportReference' in snapshot) || !snapshot.reportReference) return false;
   const projects = snapshot.data as ReportProject[] | undefined;
   return !!Array.isArray(projects) && projects.length === 1 && reportSiteAnswerable(projects[0]);
 }

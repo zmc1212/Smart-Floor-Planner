@@ -4,7 +4,7 @@ import { one } from '@/db/repositories/assistant-repository';
 
 /** A new membership grant never resurrects formal facts revoked by removal or loss of their required role. */
 export async function siteAccessRevoked(tx: PostgresTransaction, eid: string, pid: string, actorIds: string[], since: Date | string | { afterAuditId: string },
-  required: { reviewers?: string[]; managers?: string[] } = {}) {
+  required: { reviewers?: string[]; managers?: string[]; designers?: string[] } = {}) {
   if (!actorIds.length) return false;
   // Raw PostgreSQL timestamps can be strings, including microseconds. Keep
   // their precision instead of treating every non-Date as an audit receipt.
@@ -22,5 +22,7 @@ export async function siteAccessRevoked(tx: PostgresTransaction, eid: string, pi
       or (snapshot->>'adminId'=any(ARRAY(select jsonb_array_elements_text(${JSON.stringify(required.reviewers || [])}::jsonb)))
         and snapshot->>'previousRole' in ('manager','designer') and snapshot->>'role' not in ('manager','designer'))
       or (snapshot->>'adminId'=any(ARRAY(select jsonb_array_elements_text(${JSON.stringify(required.managers || [])}::jsonb)))
-        and snapshot->>'previousRole'='manager' and snapshot->>'role'<>'manager')) limit 1`);
+        and snapshot->>'previousRole'='manager' and snapshot->>'role'<>'manager')
+      ${required.designers?.length ? sql`or (snapshot->>'adminId'=any(ARRAY(select jsonb_array_elements_text(${JSON.stringify(required.designers)}::jsonb)))
+        and snapshot->>'previousRole'='designer' and snapshot->>'role'<>'designer')` : sql``}) limit 1`);
 }

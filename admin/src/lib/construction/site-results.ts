@@ -3,14 +3,27 @@ import { withPlatformTransaction, withTenantTransaction, type PostgresTransactio
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { appendMessage } from '@/lib/assistant/core/conversation';
 import type { ActorContext } from '@/lib/assistant/contracts';
-import { currentRecord, readSiteIssue } from './site-issues';
+import { currentRecord, readSiteIssue, type IssueView } from './site-issues';
 import { sharedMaterial, sharedMaterials } from './site-materials';
 import { readSiteResolution } from './site-resolution';
 import { fingerprint } from '@/lib/assistant/contracts';
 import { siteAccessRevoked } from './site-access';
+import { collaborationMember } from './collaboration-scope';
 
 const resultType = 'construction.site.issue.result.v1';
-type ReturnedState = 'closed' | 'resolved' | 'awaiting_review' | 'awaiting_owner' | 'cancelled' | 'invalidated';
+export async function issueDelivery(tx: PostgresTransaction, eid: string, issue: Pick<IssueView, 'issueId' | 'projectId' | 'lifecycleId'>) {
+  if (!issue.lifecycleId) return null;
+  const row = await one(tx, sql`select e.id::text,d.status from app.domain_event_outbox e left join app.domain_event_deliveries d
+    on d.enterprise_id=e.enterprise_id and d.event_id=e.id and d.consumer_key='construction:result:' || (e.payload->>'conversationId')
+    where e.enterprise_id=${eid} and e.type=${resultType} and e.aggregate_type='construction_site_resolution'
+    and e.aggregate_id=${issue.issueId} and e.payload->>'projectId'=${issue.projectId} and e.payload->>'lifecycleId'=${issue.lifecycleId}`);
+  if (!row) return null;
+  const status = row.status === 'delivered' ? 'succeeded' : row.status === 'processing' ? 'processing'
+    : ['dead', 'retry_wait'].includes(String(row.status)) ? 'failed' : 'pending';
+  const label = { succeeded: '已同步', processing: '同步中', failed: '同步失败', pending: '待同步' }[status];
+  return { eventId: String(row.id), status, label };
+}
+type ReturnedState = 'closed' | 'resolved' | 'implemented' | 'reopened' | 'awaiting_review' | 'awaiting_owner' | 'cancelled' | 'invalidated';
 export type CustomerMaterialReview = { id: string; version: string; messageId: string; projectId: string; roomId: string; roomName: string;
   issueId: string; issueRevision: number; needGrantId: string; drawingGrantId: string; materialVersion: string; text: string };
 
@@ -22,8 +35,8 @@ export async function validResult(tx: PostgresTransaction, eid: string, cid: str
   if (!need || need.conversationId !== cid || need.customerId !== p.customerId) return false;
   const issue = await readSiteIssue(tx, eid, String(p.projectId), String(p.issueId));
   if (!issue || !issue.sourceAvailable) return false;
+  const resolution = p.lifecycleId ? await readSiteResolution(tx, eid, String(p.projectId), String(p.issueId)) : null;
   if (p.lifecycleId) {
-    const resolution = await readSiteResolution(tx, eid, String(p.projectId), String(p.issueId));
     if (!resolution?.available || resolution.id !== p.lifecycleId || resolution.revision !== p.revision || resolution.state !== p.state
       || resolution.planId !== p.planId || resolution.evidenceId !== p.evidenceId || issue.revision !== p.issueRevision) return false;
   } else if (issue.status !== (p.state || 'awaiting_review') || issue.revision !== p.revision
@@ -32,6 +45,10 @@ export async function validResult(tx: PostgresTransaction, eid: string, cid: str
   if (materials.version !== p.materialVersion || issue.materialVersion !== p.materialVersion) return false;
   const publisher = (event.actor_ref as Row)?.adminId;
   if (typeof publisher !== 'string') return false;
+  if (resolution?.projectReview) {
+    const role = await collaborationMember(tx, eid, String(p.projectId), publisher);
+    return resolution.actorId === publisher && (role === 'manager' || p.state === 'implemented' && role === 'worker');
+  }
   const permission = await one(tx, sql`select app.construction_actor_access(${publisher}::bigint,${eid}::bigint) as role,
     exists(select 1 from app.construction_members where enterprise_id=${eid} and project_id=${String(p.projectId)}
       and admin_id=${publisher} and active and role='manager') as manager`);
@@ -50,6 +67,7 @@ async function resultText(tx: PostgresTransaction, eid: string, p: Row) {
     return `${status}。\n${p.text}\n${waiting}\n这是本次团队回传状态，不代表方案、费用、工期、现场落实或验收批准；没有已确认期限，不推断逾期。`;
   }
   const resolution = (await readSiteResolution(tx, eid, String(p.projectId), String(p.issueId)))!;
+  if (p.state === 'reopened' || p.state === 'implemented') return `方案V${p.planNumber} · ${p.text}`;
   const proof = resolution.evidence!;
   return `方案V${p.planNumber} · ${p.state === 'closed' ? '已正式关闭' : '已正式解决，尚未关闭'}。\n${p.text}`
     + `\n依据：本次获同意方案、现场记录${proof.recordId} · 版本${proof.recordVersion}，${proof.media.length}张落实原件。`
@@ -83,7 +101,7 @@ export async function returnedEvidenceRecord(tx: PostgresTransaction, eid: strin
 export async function siteResultAvailable(tx: PostgresTransaction, eid: string, cid: string, mid: string) {
   const event = await one(tx, sql`select e.* from app.assistant_messages m join app.domain_event_outbox e on e.enterprise_id=m.enterprise_id and e.id=m.source_event_id
     where m.enterprise_id=${eid} and m.conversation_id=${cid} and m.id=${mid} and m.purpose='construction.result' and e.type=${resultType}`);
-  return !event || await validResult(tx, eid, cid, event);
+  return !!event && await validResult(tx, eid, cid, event);
 }
 
 async function latestCustomerResults(tx: PostgresTransaction, eid: string, uid: string, cid: string) {
@@ -122,7 +140,7 @@ export async function customerSiteResults(tx: PostgresTransaction, eid: string, 
   for (const e of events) {
     const p = e.payload as Row, available = await validResult(tx, eid, cid, e);
     const status: ReturnedState = available ? (p.state || 'awaiting_review') as ReturnedState : 'invalidated';
-    const waitingFor = !available ? 'unassigned' as const : status === 'closed' || status === 'cancelled' ? 'none' as const
+    const waitingFor = !available ? 'unassigned' as const : status === 'closed' || status === 'cancelled' || status === 'resolved' ? 'none' as const
       : p.waitingFor === 'unassigned' ? 'unassigned' as const : 'team' as const;
     // Preserve prior ordinary/formal snapshot hashes across this code upgrade.
     // Only the new ordinary state returns add assignee/waiting dependencies.
@@ -133,7 +151,8 @@ export async function customerSiteResults(tx: PostgresTransaction, eid: string, 
       room: available ? String(p.roomName) : '', status,
       ownerName: available && !p.lifecycleId ? String(p.ownerName || '') : '',
       waitingFor,
-      messageId: String(e.result_message_id), text: available ? await resultText(tx, eid, p) : '',
+      messageId: String(e.result_message_id), eventId: String(e.id), lifecycleId: p.lifecycleId as string | undefined,
+      issueRevision: p.issueRevision as number | undefined, text: available ? await resultText(tx, eid, p) : '',
       sourceVersion });
   }
   return projected;
