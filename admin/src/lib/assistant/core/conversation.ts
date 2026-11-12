@@ -106,8 +106,16 @@ export async function appendMessage(tx: PostgresTransaction, actor: ActorContext
     const existing = await one(tx, sql`select * from app.assistant_messages where enterprise_id=${actor.enterpriseId} and conversation_id=${conversationId} and source_event_id=${input.eventId!} and purpose=${input.purpose || 'reply'}`);
     if (existing) return existing;
   }
-  const c = await one(tx, sql`update app.assistant_conversations set last_seq=last_seq+1,updated_at=now(),version=version+1
-    where enterprise_id=${actor.enterpriseId} and id=${conversationId} and status='open' returning last_seq`);
+  // The counter must never fall behind a persisted message. A historic
+  // diagnostic insert (run3669's trigger message 14905, seq 49) left
+  // conversation 1522 at last_seq 48, so the next send collided on
+  // (enterprise_id, conversation_id, seq) and surfaced as a follow-up 503.
+  // Derive the next value from both the counter and the actual maximum inside
+  // the same row-locking update; concurrent appends still serialize here.
+  const c = await one(tx, sql`update app.assistant_conversations c
+    set last_seq=greatest(c.last_seq,coalesce((select max(m.seq) from app.assistant_messages m
+      where m.enterprise_id=c.enterprise_id and m.conversation_id=c.id),0))+1,updated_at=now(),version=version+1
+    where c.enterprise_id=${actor.enterpriseId} and c.id=${conversationId} and c.status='open' returning last_seq`);
   if (!c) fail('context_changed');
   return (await one(tx, sql`insert into app.assistant_messages(enterprise_id,conversation_id,seq,author_kind,user_id,admin_id,content,client_message_id,run_id,source_event_id,purpose)
     values(${actor.enterpriseId},${conversationId},${String(c.last_seq)},${input.author},${input.author === 'user' && actor.principal.kind === 'user' ? actor.principal.userId : null},

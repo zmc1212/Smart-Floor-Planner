@@ -291,6 +291,15 @@ export function explicitPublicSiteReference(text: string) {
   return /(公开工地|围观的工地|这个工地)/u.test(text);
 }
 
+/** The first dispatch must actually read before it answers: this is the
+ * native equivalent of the V2 app's required-tool retrieval. The rule is the
+ * same whether or not a public site is in context: a mixed question about
+ * enterprise standards must still reach `search_enterprise` instead of letting
+ * the model answer from general prose. */
+export function nativeFirstTurnRequiresTool(turn: number, modelTools: ModelTool[]) {
+  return turn === 0 && modelTools.length > 0;
+}
+
 /** Public-site context for one ordinary reply turn. When the previous answer
  * carried the customer's own business material, an ambiguous follow-up keeps
  * that thread and the public snapshot stays out unless explicitly requested. */
@@ -964,7 +973,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
         // native equivalent of the V2 app's required-tool retrieval, and the
         // established legacy-agent requireTool contract.
         agent: { config, input: { messages: modelMessages, tools: modelTools, maxTokens: agentModelLimits.maxOutputTokens,
-          requireTool: turn === 0 && modelTools.length > 0 && (!publicSite.active || !includePublicSite) } },
+          requireTool: nativeFirstTurnRequiresTool(turn, modelTools) } },
         metadata: { promptVersion, runtime: xiaokNativeExecutorProtocol, turn, purpose: 'answer', probeVersion: config.probeVersion },
         beforeProviderCall,
       });

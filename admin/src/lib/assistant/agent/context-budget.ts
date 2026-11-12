@@ -22,6 +22,9 @@ export const imageContextBudgetPolicy = {
 
 export type RequestBudgetOptions = { profile?: ModelTurnInput['profile']; purpose?: 'answer' | 'vision' | 'summary' | 'grounding';
   reportFinalOutputTokens?: typeof reportFinalOutputTokenLimit;
+  /** Report finals keep only the current question and its tool result; older
+   * completed interactions are context, not evidence for this frozen report. */
+  recentTurns?: number;
   /** Only new server-owned runs with the matching quota reservation can bind this. */
   imageContextBudget?: typeof imageContextBudgetPolicy.version };
 export function agentRequestBudget(options: RequestBudgetOptions = {}) {
@@ -84,7 +87,8 @@ export function fitAgentContext(messages: ModelMessage[], tools: ModelTool[], op
   const omittedMessageIds: string[] = [];
   if (before.estimatedTokens > limits.summaryTrigger || before.textBytes > agentModelLimits.maxTextBytes) {
     const starts = messages.flatMap((message, i) => originalMessageId(message) ? [i] : []);
-    const removable = starts.slice(0, -contextBudgetPolicy.recentTurns);
+    const recentTurns = options.recentTurns ?? contextBudgetPolicy.recentTurns;
+    const removable = starts.slice(0, -recentTurns);
     const removed = new Set<number>();
     for (const start of removable) {
       const end = starts[starts.indexOf(start) + 1];

@@ -33,28 +33,51 @@ export function reportCoverageGapFailure(raw: string, coverage: SourceQuestionCo
 /** A report with no published record must say so inside every question that
  * quotes its originals: otherwise the customer reads an isolated stage marker or
  * pending item as if it were a current site result. Questions that only give
- * advice carry no report citation and are exempt. */
+ * advice carry no report citation and are exempt.
+ *
+ * The same report can appear twice in the synthesis context: the persisted
+ * tool receipt (`B{run}:…`) and the current projection (`Breport:{run}:…`).
+ * They carry different citation ids for the same report facts, so the guard
+ * checks the cited source's report identity and kind, never one hard-coded
+ * sourceId. Citing report 536's stage sources still requires report 536's
+ * metadata source; a citation from another report never satisfies it. */
+const reportIdentity = (scope: NonNullable<SynthesisSource['reportScope']>) =>
+  scope.reportId + ':' + scope.revision + ':' + scope.factsHash;
+
 export function reportAbsenceScopeFailure(raw: string, sources: SynthesisSource[], coverage: SourceQuestionCoverage) {
   if (sources.some(source => source.reportScope?.kind === 'record')) return null;
-  const metadata = sources.find(source => source.reportScope?.kind === 'metadata');
-  if (!metadata) return null;
+  const metadata = sources.filter(source => source.reportScope?.kind === 'metadata');
+  if (!metadata.length) return null;
   let answers: Record<string, unknown>;
   try { answers = (JSON.parse(raw) as { answers?: Record<string, unknown> }).answers || {}; } catch { return null; }
   const missing: string[] = [];
+  let suggested = metadata[0];
   for (const [index] of coverage.questions.entries()) {
     const key = 'Q' + (index + 1);
     const segments = Array.isArray(answers[key]) ? answers[key] as Array<{ citations?: unknown }> : [];
-    const ids: string[] = [];
+    const resolved: SynthesisSource[] = [];
     for (const segment of segments) for (const citation of (Array.isArray(segment?.citations) ? segment.citations : []) as Array<Record<string, unknown>>) {
-      try { const resolved = resolveCatalogCitation(citation, sources); if (resolved) ids.push(resolved.sourceId); }
-      catch { /* The citation guard owns invalid identifiers. */ }
+      try {
+        const found = resolveCatalogCitation(citation, sources);
+        const source = found && sources.find(candidate => candidate.sourceId === found.sourceId);
+        if (source) resolved.push(source);
+      } catch { /* The citation guard owns invalid identifiers. */ }
     }
-    if (ids.length && !ids.includes(metadata.sourceId)) missing.push(key);
+    const reportSources = resolved.filter(source => source.reportScope);
+    if (!reportSources.length) continue;
+    const evidence = reportSources.filter(source => source.reportScope!.kind !== 'metadata');
+    const citedMetadata = reportSources.filter(source => source.reportScope!.kind === 'metadata');
+    const identities = [...new Set(evidence.map(source => reportIdentity(source.reportScope!)))];
+    const grounded = evidence.length
+      ? identities.every(identity => citedMetadata.some(source => reportIdentity(source.reportScope!) === identity))
+      : citedMetadata.length > 0;
+    if (!grounded) { missing.push(key); continue; }
+    suggested = metadata.find(source => identities.includes(reportIdentity(source.reportScope!))) || citedMetadata[0] || suggested;
   }
   if (!missing.length) return null;
   return { code: 'incomplete_model_answer', feedback: JSON.stringify({ status: 'report_absence_unstated',
     protocol: reportAnswerGroundingProtocol, questions: missing,
-    source: { title: metadata.title, citationIds: modelCitationCatalog(metadata).slice(0, 3).map(choice => choice.citationId) },
+    source: { title: suggested.title, citationIds: modelCitationCatalog(suggested).slice(0, 3).map(choice => choice.citationId) },
     instruction: '这是同轮唯一一次最终修复：上述问项引用了报告原文，却没有同时引用 source.citationIds 里的原报告周期与事实截止来源。本期报告没有已发布现场记录，必须在同一问项中用evidence引用该来源，直接写明“本期报告没有记录最近完成的施工内容”，再说明阶段标记与待核对项；不能把阶段标记或待核对项单独当成现场结果。其余问项保持原样，仍提交kind=report_answer及answers。' }) };
 }
 
@@ -66,8 +89,16 @@ export function reportAbsenceScopeFailure(raw: string, sources: SynthesisSource[
 export function reportAbsentQuestionCompleteness(sources: SynthesisSource[], coverage: SourceQuestionCoverage,
   answers: Record<string, unknown>) {
   if (sources.some(source => source.reportScope?.kind === 'record')) return {};
-  const pending = sources.filter(source => source.reportScope?.kind === 'published_pending').map(source => source.sourceId);
-  const stages = sources.filter(source => source.reportScope?.kind === 'stage').map(source => source.sourceId);
+  // The same report may appear as the persisted receipt and the current
+  // projection. Require one cited source per report item identity, not every
+  // duplicate copy, or a correctly grounded answer could never look complete.
+  const pending = new Map<string, string[]>();
+  for (const source of sources.filter(source => source.reportScope?.kind === 'published_pending')) {
+    const scope = source.reportScope!;
+    const key = reportIdentity(scope) + ':' + (scope.itemId ?? source.sourceId);
+    pending.set(key, [...(pending.get(key) || []), source.sourceId]);
+  }
+  const stages = new Set(sources.filter(source => source.reportScope?.kind === 'stage').map(source => source.sourceId));
   const keys = coverage.questions.map((_, index) => 'Q' + (index + 1));
   const cited = new Map<string, Set<string>>();
   for (const key of keys) {
@@ -83,8 +114,8 @@ export function reportAbsentQuestionCompleteness(sources: SynthesisSource[], cov
   for (const key of keys) {
     const ids = cited.get(key) || new Set<string>();
     const period = [...ids].some(id => sources.find(source => source.sourceId === id)?.reportScope?.kind === 'metadata');
-    const stage = !stages.length || stages.some(id => ids.has(id));
-    const covered = ids.size > 1 && period && stage && pending.every(id => ids.has(id));
+    const stage = !stages.size || [...stages].some(id => ids.has(id));
+    const covered = ids.size > 1 && period && stage && [...pending.values()].every(group => group.some(id => ids.has(id)));
     if (covered) complete[key] = true;
   }
   return complete;

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { composeNativeDelivery, explicitPublicSiteReference, nativeCitationFeedback, nativeExecutorPrompt, nativeReplySiteText, recoveredDialogueToolState,
   nativePublicSiteSelection, nativePublicSiteWithdrawnText, resumeUsedPublicSite, samePublicRef, nativeReadContract,
-  nativeRunReadContract, restoreRunReadContract, runReadContractRecord,
+  nativeRunReadContract, restoreRunReadContract, runReadContractRecord, nativeFirstTurnRequiresTool,
   stripUnboundCitationPlaceholders, synthesisHistoryFields, xiaokNativeExecutorProtocol } from '../agent/native-executor';
 import { nativeAgentRuntimeBinding } from '../fastgpt/agent-v2/config';
 import { nativeHistoryCheckpoint, nativePublicSiteHistoryAllowed, priorAnswerBusinessObject } from '../fastgpt/rag-session';
@@ -58,6 +58,18 @@ test('the executor prompt keeps knowledge discipline without the knowledge switc
   assert.doesNotMatch(off, /search_enterprise检索获权资料/);
   assert.match(off, /不声称检索过企业资料/);
   assert.match(nativeExecutorPrompt(false), /query_business/);
+});
+
+test('the first dispatch requires a read even when a public site is in context', () => {
+  // A mixed enterprise-standard question in a public-site conversation must
+  // still reach search_enterprise; the public snapshot never disables the
+  // first-read contract (runs3742/3743 answered without any retrieval step).
+  assert.equal(nativeFirstTurnRequiresTool(0, [
+    { name: 'search_enterprise', description: '', parameters: {} },
+    { name: 'query_business', description: '', parameters: {} },
+  ]), true);
+  assert.equal(nativeFirstTurnRequiresTool(0, []), false);
+  assert.equal(nativeFirstTurnRequiresTool(1, [{ name: 'search_enterprise', description: '', parameters: {} }]), false);
 });
 
 test('the runtime read registry covers the V2 tool names for unavailable-read recovery', () => {

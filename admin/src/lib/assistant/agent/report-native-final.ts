@@ -117,6 +117,16 @@ export function boundReportFinalSchema(value: unknown, native: boolean, carrier:
   return reportStructuralFinalSchema;
 }
 
+/** A bounded repair edits the answer that was just rejected; it is not a fresh
+ * 4096-token final generation. Keeping the final share on the repair dispatch
+ * pushed a real report follow-up (run3669) over the 16000 input budget after an
+ * otherwise recoverable citation-scope miss, so the run failed with
+ * agent_input_limit before the existing one-shot repair could run. */
+export function reportFinalDispatchAllocation(reportFinalOutputTokens: typeof reportFinalOutputTokenLimit | undefined, purpose: string,
+  hasTools: boolean, repair: boolean): { reportFinalOutputTokens: typeof reportFinalOutputTokenLimit } | Record<string, never> {
+  return reportFinalOutputTokens && purpose === 'answer' && !hasTools && !repair ? { reportFinalOutputTokens } : {};
+}
+
 /** Auxiliary work consumes the same four-call reservation. The last primary
  * turn is native final-only; one slot remains for the original final repair. */
 export function reportNativeRuntimeBudget(input: { summaries: number; perceptions: number; resume?: AgentCheckpoint }) {

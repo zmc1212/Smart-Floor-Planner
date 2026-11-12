@@ -98,7 +98,13 @@ export class FastGPTKnowledgeWorkflow {
       // a started call keeps its unknown/conservative outcome and is never
       // re-sent through the configured provider.
       ticket.closed=true;
-      const started=!!ticket.pending||!!ticket.result;
+      // A TCP connection refusal proves the optional platform never received
+      // this dispatch, so no callback can have started the model port. Treat it
+      // as not dispatched even if a stale ticket field exists; otherwise a
+      // stopped 18300 service surfaces as a failed answer instead of the
+      // documented configured-provider fallback.
+      const refused=(error as {cause?:{code?:string}}|null)?.cause?.code==='ECONNREFUSED';
+      const started=!refused&&(!!ticket.pending||!!ticket.result);
       if (!started && error && typeof error === 'object')
         Object.defineProperty(error, notDispatched, { value: true });
       this.config.record({runId:input.runId,turn:input.turn,chatId,platformOutcome:'unavailable',

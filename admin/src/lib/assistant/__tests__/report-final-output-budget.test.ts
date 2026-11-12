@@ -3,8 +3,8 @@ import { test } from 'node:test';
 import { reportFinalOutputTokenLimit, type ModelMessage, type ModelTurnInput } from '../contracts/model';
 import { boundReportBodyFactCoverage, boundReportBodyFinal, boundReportBodyWire, boundReportFinalOutput, boundReportGuidanceInput, boundReportGuidanceReview, reportBodyFinalAdmission, reportBodyFinalPolicy,
   reportBodyCitationListProtocol, reportBodyFinalProtocol, reportBodyFlatSegmentsProtocol, reportBodyProjectSlotsProtocol,
-  reportBodyQuotedSegmentsProtocol, reportFinalFunctionCarrier, reportGuidanceInputProtocol, reportGuidanceOriginalProtocol, reportGuidanceReviewProtocol, reportGuidanceSelectionProtocol, reportGuidanceTaskProtocol, reportNativeRuntimeBudget, reportPendingGuidanceProtocol, scheduledReportFactCoverageProtocol } from '../agent/report-native-final';
-import { agentRequestBudget, fitAgentContext, imageContextBudgetPolicy } from '../agent/context-budget';
+  reportBodyQuotedSegmentsProtocol, reportFinalDispatchAllocation, reportFinalFunctionCarrier, reportGuidanceInputProtocol, reportGuidanceOriginalProtocol, reportGuidanceReviewProtocol, reportGuidanceSelectionProtocol, reportGuidanceTaskProtocol, reportNativeRuntimeBudget, reportPendingGuidanceProtocol, scheduledReportFactCoverageProtocol } from '../agent/report-native-final';
+import { agentRequestBudget, estimateAgentRequest, fitAgentContext, imageContextBudgetPolicy } from '../agent/context-budget';
 import type { AgentConfig } from '../agent/config';
 import { reportFinalTool } from '@/lib/construction/report-composition';
 import { compileModelRequest } from '../agent/model-request';
@@ -99,6 +99,25 @@ test('new scheduled report bodies allocate4096 on the same schema while historic
   assert.equal(terminal.max_tokens, body.max_tokens);
   const estimate = fitAgentContext(input.messages, [tool], { purpose: 'answer', reportFinalOutputTokens: tokens }).diagnostic.after.estimatedTokens;
   assert.ok(estimate <= 16000 && 4 * estimate <= 72000);
+});
+
+test('a bounded report repair drops the final share so the real run3669 envelope fits', () => {
+  assert.deepEqual(reportFinalDispatchAllocation(4096, 'answer', false, false), { reportFinalOutputTokens: 4096 });
+  assert.deepEqual(reportFinalDispatchAllocation(4096, 'answer', false, true), {});
+  assert.deepEqual(reportFinalDispatchAllocation(4096, 'answer', true, false), {});
+  assert.deepEqual(reportFinalDispatchAllocation(undefined, 'answer', false, false), {});
+  // Run3669: the first final fit near the 16000 limit; the one-shot repair
+  // (assistant draft + feedback) then exceeded it because the repair dispatch
+  // kept the 4096 final share. The repair allocation uses 2048.
+  const base: ModelMessage[] = [{ role: 'system', content: [{ type: 'text', text: 'x'.repeat(28000) }] }];
+  const repair: ModelMessage[] = [...base, { role: 'assistant', content: 'a'.repeat(2000) },
+    { role: 'system', content: [{ type: 'text', text: 'b'.repeat(1200) }] }];
+  const baseFinal = estimateAgentRequest(base, [tool], { purpose: 'answer', reportFinalOutputTokens: 4096 }).estimatedTokens;
+  const repairFinal = estimateAgentRequest(repair, [tool], { purpose: 'answer', reportFinalOutputTokens: 4096 }).estimatedTokens;
+  const repairBudget = estimateAgentRequest(repair, [tool], { purpose: 'answer' }).estimatedTokens;
+  assert.ok(baseFinal <= 16000, 'the first final still fits');
+  assert.ok(repairFinal > 16000, 'keeping the final share on the repair reproduces agent_input_limit');
+  assert.ok(repairBudget <= 16000, 'the bounded repair now fits the same budget');
 });
 
 test('actual compiler reserves the extra output inside the original estimate and preserves image bytes, schema and question', () => {

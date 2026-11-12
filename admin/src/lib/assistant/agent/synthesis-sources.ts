@@ -94,7 +94,18 @@ export async function currentSynthesisContext(tx: PostgresTransaction, actor: Ac
   // The same original can be consulted by both the optional digest and recall.
   // Collapse only identical complete source packets; differing hashes, versions,
   // audiences or metadata stay distinct and cannot gain an unambiguous ID.
-  context.sources = [...new Map(context.sources.map(source => [fingerprint(source),source])).values()];
+  // A report is bound twice (step 740's report context and step 1200's
+  // query_followups receipt). Keep one packet per report item identity, last
+  // step wins, so the model sees one metadata/stage/pending copy and can cite
+  // them within the four-citation segment cap (run3992 cited six duplicate ids).
+  const collapsed = new Map<string, (typeof context.sources)[number]>();
+  for (const source of context.sources) {
+    const scope = source.reportScope;
+    collapsed.set(scope
+      ? 'report:' + scope.reportId + ':' + scope.revision + ':' + scope.factsHash + ':' + scope.kind + ':' + (scope.itemId ?? '')
+      : 'source:' + fingerprint(source), source);
+  }
+  context.sources = [...collapsed.values()];
   return context;
 }
 
