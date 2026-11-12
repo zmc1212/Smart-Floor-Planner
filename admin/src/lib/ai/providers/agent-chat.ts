@@ -7,6 +7,8 @@ import { consultationFinalSchema } from './consultation-final-schema';
 import { createHash } from 'node:crypto';
 import { assertToolPairs, toolSchemaIssue } from '@/lib/assistant/agent/tool-protocol';
 import { bailianBinding, bailianExplicitCacheCapable, bailianFinalFormat } from './bailian-capabilities';
+import { bailianResponsesApplies, bailianResponsesEnabled, requestedNativeTools } from './bailian-responses-capabilities';
+import { executeBailianResponses } from './bailian-responses-client';
 import { cacheObservation, modelPrefixObservation } from './model-observation';
 
 const invalid = () => { throw new AiProviderError('Invalid Agent model response', 'INVALID_PROVIDER_RESPONSE', 'unknown', 502); };
@@ -197,8 +199,23 @@ export function completeJsonBeforeExtraBrace(raw: string): string | null {
   return null;
 }
 
+/** Opt-in wiring decision for the assistant provider layer. Default off keeps
+ * the existing Chat Completions behaviour for both business branches. */
+export function responsesWireSelected(
+  runtime: { baseUrl: string; adapterType: string },
+  input: ModelTurnInput,
+  env: NodeJS.ProcessEnv = process.env,
+) {
+  return bailianResponsesApplies(input) && bailianResponsesEnabled(runtime, input.model, env);
+}
+
 /** No transport retries or provider fallback: an unknown accepted request may already be billable. */
 export async function executeAgentChat(runtime: AiProviderRuntimeConfig, input: ModelTurnInput): Promise<ModelTurnOutput> {
+  if (responsesWireSelected(runtime, input)) {
+    return executeBailianResponses(runtime, input, {
+      nativeTools: requestedNativeTools(), stream: process.env.ASSISTANT_RESPONSES_STREAM === '1',
+    });
+  }
   const body = agentChatBody(input, runtime.baseUrl);
   const started = Date.now();
   const response = await providerFetch(providerUrl(runtime.baseUrl, '/v1/chat/completions'), {

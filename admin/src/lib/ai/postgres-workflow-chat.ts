@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { executeAgentChat, agentChatBody, agentChatRequestDiagnostic } from './providers/agent-chat';
+import { executeAgentChat, agentChatBody, agentChatRequestDiagnostic, responsesWireSelected } from './providers/agent-chat';
 import { bailianBinding, bailianExplicitCacheCapable, bailianThinkingCapable } from './providers/bailian-capabilities';
 import { isQiniuConatusModel } from './providers/qiniu';
 import { consultationProfile } from '@/lib/assistant/contracts/consultation';
@@ -153,10 +153,17 @@ export async function executePostgresText(input: {
     const cacheControl = input.owner.kind === 'assistant_run' && input.agent
       ? input.agent.input.cacheControl ?? explicitCacheControl(runtime, remoteModel, enableThinking, input.agent.input, !!consultation)
       : undefined;
-    const agentBody = input.agent ? agentChatBody({ ...input.agent.input, model: remoteModel, enableThinking, cacheControl }, runtime.baseUrl) : null;
+    // The Responses wire carries its own metadata-only request diagnostic in
+    // observation; a Chat Completions body is never built or recorded for it.
+    const responsesWire = input.agent
+      ? responsesWireSelected(runtime, { ...input.agent.input, model: remoteModel, enableThinking })
+      : false;
+    const agentBody = input.agent && !responsesWire
+      ? agentChatBody({ ...input.agent.input, model: remoteModel, enableThinking, cacheControl }, runtime.baseUrl) : null;
     const attemptMetadata = input.owner.kind === 'assistant_run' ? { ...input.metadata,
       assistantText: { enableThinking: enableThinking ?? null, maxTokens: input.maxTokens, cacheControl: cacheControl ?? null },
       ...(agentBody ? { assistantRequest: agentChatRequestDiagnostic(agentBody) } : {}),
+      ...(responsesWire ? { assistantWire: 'responses' as const } : {}),
     } : input.metadata;
     const startedAt = Date.now();
     const attempt = await withTenantTransaction(input.enterpriseId, (transaction) =>
@@ -205,6 +212,9 @@ export async function executePostgresText(input: {
           ...(agentOutput ? { metadata: { ...attemptMetadata, assistantResponse: {
             usage: agentOutput.usage, providerRequestId: agentOutput.providerRequestId,
             finishReason: agentOutput.finishReason, observation: agentOutput.observation ?? null,
+            // Native tool evidence is provider-side only; business tools keep
+            // their own dispatcher records.
+            ...(agentOutput.nativeTools ? { nativeTools: agentOutput.nativeTools } : {}),
           } } } : {}),
         })
       );
