@@ -5,7 +5,7 @@
 
 业主授权后，同一事项关联原需求及原咨询。指派设计师提交意见并发布精确图纸版本，原业主预览并决定该版。施工端接收当前已获批要求，回传绑定版本的现场记录。指派项目经理复核回传的证据。老板按组织授权范围读取同源事项清单和计数。小程序 `GET /api/miniprogram/construction/projects/:id/progress` 与 `POST .../family-viewers/:userId` 提供业主进度和可撤销的家庭代看授权。代看权限为 `family_view`，共享需求和正式决定继续检查原咨询业主身份。
 
-开发启用项为 `NATIVE_WORKFLOW_COLLABORATION_ENTERPRISE_IDS`。沿原 PostgreSQL outbox、投递与记录版本保存来源、意见、图纸和复核回执。B5.8 Worker 沿同一事件推进委托和重新打开的事项。[版本、权限、状态及验收合同](../admin/src/lib/native-workflow/README.md#b59-cross-role-project-collaboration)。
+开发启用项为 `NATIVE_WORKFLOW_COLLABORATION_ENTERPRISE_IDS`。沿原 PostgreSQL outbox、投递与记录版本保存来源、意见、图纸和复核回执。B5.8 Worker 沿同一事件推进委托和重新打开的事项。关闭协同后，已保存的设计事项、绑定专业意见的方案和已确认整改继续核对项目分工。[版本、权限、状态及验收合同](../admin/src/lib/native-workflow/README.md#b59-cross-role-project-collaboration)。
 <!-- /cross-role-business-current -->
 
 <!-- native-delegation-current -->
@@ -15,6 +15,10 @@
 
 迁移后可用 `NATIVE_WORKFLOW_DELEGATION_ENABLED=1` 及 `NATIVE_WORKFLOW_DELEGATION_ENTERPRISE_IDS` 为隔离企业启用。当前覆盖两个已登记部位的基础水电跟进、原站内受众，以及每次已授权的业主等待最多一次提醒。[事件、状态规则、验收与回滚](../admin/src/lib/native-workflow/README.md#b58-persistent-delegations-and-business-events)。
 <!-- /native-delegation-current -->
+
+<!-- native-deployment-current -->
+**Native Workflow B5.10 部署与恢复（Limited）。** 对停用阶段报告的计划，Native 名单在调度暂停及关闭时仍保留周报归属。日报沿原调度。PostgreSQL 在同一租户事务中推进周槽并写入周期领取回执。新进程可凭该回执恢复缺失的当期调度运行。Admin 调度、批次和控制仍为文件存储。本轮在 B5.9 隔离库以独立进程验证了助手任务租约和持续委托事务。生产多 Admin 仍需共享运行状态的持久化和并发栅栏。[部署审查、配置和证据](./native-workflow-b510-deployment-review.zh-CN.md)。
+<!-- /native-deployment-current -->
 
 <!-- site-capture-current -->
 **现场上报/回执：本地已实现（Implemented）。** 批准的[V3随手报与常用工作](../design-references/cloud-site-redesign-20261107/README.md#05-通用现场上报与回执已批准实施)对应`packages/construction/chat/chat`：54px拍照/说一句双按钮，打字/常用工作次入口，原图/原音预览及工作/部位/进展一次提交。点选保留部分完成/说不准，不切阶段、不调用模型；新上报由管理人员核对发布，原补拍/更正/版本保留。

@@ -5,7 +5,7 @@
 
 The owner's consent binds one design matter to the shared need and its original consultation. The assigned designer submits the opinion and publishes an exact drawing revision. The original owner previews and decides that revision. Workers receive the current approved requirements and submit version-bound records. Assigned project managers verify the submitted evidence. Company oversight uses the same issue groups and counts in its authorized projects. Customer Mini Program `GET /api/miniprogram/construction/projects/:id/progress` and `POST .../family-viewers/:userId` serve owner progress and revocable family progress access. A family grant carries the `family_view` read scope. Exact consultation ownership continues to govern material sharing and formal decisions.
 
-Development activation uses `NATIVE_WORKFLOW_COLLABORATION_ENTERPRISE_IDS`. PostgreSQL retains source, opinion, drawing, result and receipt history in the existing outbox, deliveries and record versions. The B5.8 worker reuses those events for delegated work and reopening. [Version, permission, state and verification contract](../admin/src/lib/native-workflow/README.md#b59-cross-role-project-collaboration).
+Development activation uses `NATIVE_WORKFLOW_COLLABORATION_ENTERPRISE_IDS`. PostgreSQL retains source, opinion, drawing, result and receipt history in the existing outbox, deliveries and record versions. The B5.8 worker reuses those events for delegated work and reopening. Saved design reviews, opinion-bound plans and confirmed quality reviews retain their project-role checks after collaboration is disabled. [Version, permission, state and verification contract](../admin/src/lib/native-workflow/README.md#b59-cross-role-project-collaboration).
 <!-- /cross-role-business-current -->
 
 <!-- native-delegation-current -->
@@ -15,6 +15,10 @@ Capture/publication and record job results, private requirements, consented mate
 
 Opt in with `NATIVE_WORKFLOW_DELEGATION_ENABLED=1` and `NATIVE_WORKFLOW_DELEGATION_ENTERPRISE_IDS` after migration. The first business workflow covers two named electrical work areas, existing in-app audiences and a single reminder per authorized owner wait. [Events, state rules, verification and rollback](../admin/src/lib/native-workflow/README.md#b58-persistent-delegations-and-business-events).
 <!-- /native-delegation-current -->
+
+<!-- native-deployment-current -->
+**Native Workflow B5.10 deployment and recovery (Limited).** For stage-disabled report plans, the explicit Native schedule allowlist reserves weekly ownership during pause and shutdown. Daily reports retain their existing scheduler. PostgreSQL commits each Native weekly slot advance and its tenant/period outbox receipt together. A subsequent process can recover a missing current schedule run using the committed receipt. Admin scheduling continues to use file-backed run, batch and control state. The existing assistant job leases and delegation transactions were verified with independent processes in B5.9's isolated database. Multi-Admin production deployment requires a durable, fenced store for shared runtime state. [Deployment review, configuration and evidence](./native-workflow-b510-deployment-review.zh-CN.md).
+<!-- /native-deployment-current -->
 
 <!-- site-capture-current -->
 **Site capture/receipts Implemented locally.** Approved [V3 capture and quick work](../design-references/cloud-site-redesign-20261107/README.md#05-通用现场上报与回执已批准实施) maps to `packages/construction/chat/chat`: two 54 px camera/voice actions, secondary typing/quick work, original photo/voice preview and one-submit explicit work/room/progress. Quick choices preserve partial/unknown states without changing project stage or calling a model. Captured originals require manager review before publication; original reshoot/edit/history remain.

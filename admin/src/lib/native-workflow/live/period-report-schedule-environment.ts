@@ -16,7 +16,7 @@ import type {
   PeriodReportBatchResult,
 } from './period-report-batch';
 import type { PeriodReportRunObservation } from './period-report-status';
-import type { ScheduledProjectPlan } from './period-report-schedule-types';
+import type { ScheduledProjectPlan, ScheduledWeeklyClaimRecord } from './period-report-schedule-types';
 import type {
   LiveOperationPorts,
   LivePeriodReceiver,
@@ -61,9 +61,11 @@ export interface ScheduleDiscoveryResult {
 export interface ScheduleWeeklyClaim {
   /** True only when this call atomically advanced `next_weekly_at`. */
   readonly claimed: boolean;
+  /** The committed native owner, also returned after process or filesystem failure. */
+  readonly receipt?: ScheduledWeeklyClaimRecord;
   /** The enterprise's configured execution time for this period has arrived. */
   readonly due: boolean;
-  /** Due, but the stored weekly slot was already consumed (legacy or B). */
+  /** Due, with no new advance in this call. Only a native receipt permits recovery. */
   readonly alreadyConsumed: boolean;
   /** First `weekly_day`/`weekly_time` instant at or after the period end. */
   readonly dueAt: string | null;

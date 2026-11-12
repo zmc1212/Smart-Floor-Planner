@@ -4,6 +4,8 @@
 **B5.9 四端项目协同（Limited）。** 业主从原 C01 咨询读取对客发布的现场记录、精确方案决定和获准的复核回执。工地详情与项目简报（`packages/construction/projects/projects`、`packages/construction/brief/brief`）读取服务端计划及事项计数。设计师打开事项核对当前材料及专业处理状态，施工人员查看当前获批要求，并从原工地交流（`packages/construction/chat/chat`）回传。计划绿、黄、红、灰依次对应提前、正常、落后、待核实或未排期。事项使用原回复卡和原件入口，显示同一事项 ID 与当前复核状态。重进及原详情定时刷新均重新读取服务端。
 
 页面复用获批云工地详情、简报、V3 现场上报和 C01 方案及原件卡，沿已留存的计划和整改样式。家庭代看 `family_view` 与撤权由业主 API 提供，当前小程序沿原业主和员工入口办理项目及确认动作。Stable 390×844 使用同一持久项目验证老板简报与详情、设计师事项、施工端有效要求和业主原咨询重进。[Stable 验收](../admin/tmp/b59-native-03/verification.json)及[服务端与权限合同](./admin-system-modules.zh-CN.md)。
+
+关闭协同后，已保存的设计和质量事项继续核对项目角色。B5.10 的签名路由及实库检查覆盖撤权、失效版本、项目成员、无效照片上传、退回重提和整改回传去重。[B5.10 验收](./native-workflow-b510-deployment-review.zh-CN.md)。
 <!-- /cross-role-business-current -->
 
 <!-- native-delegation-current -->

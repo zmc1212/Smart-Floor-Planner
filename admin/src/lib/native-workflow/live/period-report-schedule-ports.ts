@@ -60,6 +60,7 @@ import type {
 import type { ScheduledProjectPlan } from './period-report-schedule-types';
 import type { LivePeriodReceiver, LiveRunStore } from './types';
 
+const weeklyClaimEvent = 'native.workflow.weekly.claimed.v1';
 const AUDIENCES = ['customer', 'worker', 'designer', 'boss'] as const;
 const OPEN_ISSUE_STATES = "('cancelled','resolved','closed')";
 const ID_PATTERN = /^[1-9]\d{0,18}$/;
@@ -587,6 +588,23 @@ async function claimWeeklySchedule(input: {
         reason: 'legacy_stage_enabled',
       });
     }
+    const saved = await one(tx, sql`select payload from app.domain_event_outbox
+      where enterprise_id=${enterpriseId} and type=${weeklyClaimEvent}
+        and aggregate_type='construction_report_settings' and aggregate_id=${input.period.periodStart}
+        and aggregate_version=1`);
+    if (saved) {
+      const payload = saved.payload as Row;
+      const claimedAt = endOfDay(payload.claimedAt), dueAt = endOfDay(payload.dueAt);
+      const previous = endOfDay(payload.previousNextWeeklyAt), nextWeeklyAt = endOfDay(payload.nextWeeklyAt);
+      return {
+        claimed: false, due: true, alreadyConsumed: true, dueAt,
+        previousNextWeeklyAt: previous, nextWeeklyAt,
+        reason: claimedAt && dueAt && previous && nextWeeklyAt ? null : 'weekly_claim_receipt_invalid',
+        ...(claimedAt && dueAt && previous && nextWeeklyAt ? { receipt: {
+          periodStart: input.period.periodStart, claimedAt, dueAt, previousNextWeeklyAt: previous, nextWeeklyAt,
+        } } : {}),
+      };
+    }
     // Use the same default as the legacy scheduler only for a missing day;
     // a corrupt time blocks instead of being silently normalized.
     const config = parseWeeklyExecutionConfig(
@@ -690,7 +708,20 @@ async function claimWeeklySchedule(input: {
         reason: null,
       });
     }
-    return weeklyClaimResult({
+    const receipt = {
+      periodStart: input.period.periodStart,
+      claimedAt: input.now.toISOString(),
+      dueAt: dueAt.toISOString(),
+      previousNextWeeklyAt: previous.toISOString(),
+      nextWeeklyAt: next.toISOString(),
+    };
+    // The slot and its ownership commit together. A new process can restore a
+    // missing host run without advancing the weekly clock or claiming a legacy slot.
+    await tx.execute(sql`insert into app.domain_event_outbox
+      (enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
+      values(${enterpriseId},${weeklyClaimEvent},'construction_report_settings',${input.period.periodStart},1,
+        '{"kind":"system"}',${input.period.periodStart},${JSON.stringify(receipt)}::jsonb)`);
+    return { ...weeklyClaimResult({
       claimed: true,
       due: true,
       alreadyConsumed: false,
@@ -698,7 +729,7 @@ async function claimWeeklySchedule(input: {
       previous,
       nextWeeklyAt: next,
       reason: null,
-    });
+    }), receipt };
   });
 }
 

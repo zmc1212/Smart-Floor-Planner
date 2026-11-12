@@ -63,6 +63,7 @@ import {
 import type { PeriodReportScheduleStore } from './period-report-schedule-store';
 import type { PeriodReportRunObservation } from './period-report-status';
 import type { LiveRunRecord, LiveRunStore } from './types';
+import { MAX_NATIVE_WORKFLOW_SCHEDULE_ENTERPRISES } from './tenant-allowlist';
 
 const DAY_MS = 86_400_000;
 const SHANGHAI_OFFSET_MS = 8 * 3_600_000;
@@ -1790,6 +1791,7 @@ async function advanceRun(
   if (periodIsCancelled(initialControl, run.period.periodStart)) {
     return cancelRun(run, context, initialControl.reason);
   }
+  if (initialControl.paused) return run;
   const due = run.queue
     .map((plan) => run.projects[plan.projectId])
     .filter((entry): entry is ScheduledProjectEntry =>
@@ -1802,6 +1804,9 @@ async function advanceRun(
       run = withAudit(run, auditEntry(context.environment.now().toISOString(), 'deferred_due_to_time_budget'));
       break;
     }
+    const control = await context.store.control(run.enterpriseId);
+    if (periodIsCancelled(control, run.period.periodStart)) return cancelRun(run, context, control.reason);
+    if (control.paused) return run;
     run = await observeProject(run, entry.plan.projectId, context, work);
   }
 
@@ -2011,7 +2016,11 @@ async function continueRun(
   try {
     // The lease owner is the worker identity recorded on the run and in the
     // redacted traces. A crash leaves it behind; the next owner replaces it.
-    const advanced = await advanceRun({ ...scoped, workerId: owner }, context, work);
+    const current = assertRunTenant(await context.store.get(scoped.runId), enterpriseId);
+    if (!current || !runHasWork(current, context.environment.now().getTime())) {
+      return { run: current, busy: false, work, gate, error: current?.lastError ?? null };
+    }
+    const advanced = await advanceRun({ ...current, workerId: owner }, context, work);
     return {
       run: advanced,
       busy: false,
@@ -2110,7 +2119,7 @@ async function runEnterprise(
       }
       return { run, busy: false, work, gate, error: { code: claim.reason, message: claim.reason } };
     }
-    if (!claim.claimed) {
+    if (!claim.claimed && !claim.receipt) {
       // Either the configured weekday/time has not arrived for this week, or
       // the due slot was already consumed. Only existing read-only observation
       // is allowed; no run is created for a first report.
@@ -2127,7 +2136,7 @@ async function runEnterprise(
       }
       return { run, busy: false, work, gate, error: null };
     }
-    const record = claimRecordOf(period, claim, at);
+    const record = claim.receipt ?? claimRecordOf(period, claim, at);
     if (!run) {
       run = await createRun(enterpriseId, period, context, { claim: record, replay: false });
     } else {
@@ -2202,7 +2211,7 @@ export async function runScheduledPeriodReportDispatch(
   dependencies: ScheduledPeriodReportDispatchDependencies,
 ): Promise<ScheduledPeriodReportDispatchSummary> {
   const startedAt = dependencies.environment.now().toISOString();
-  const enterpriseIds = uniqueIds(options.enterpriseIds).slice(0, 20);
+  const enterpriseIds = uniqueIds(options.enterpriseIds).slice(0, MAX_NATIVE_WORKFLOW_SCHEDULE_ENTERPRISES);
   if (!enterpriseIds.length) {
     return {
       enabled: false,
@@ -2259,7 +2268,7 @@ export async function runScheduledPeriodReportDispatch(
     try {
       const control = await dependencies.store.control(enterpriseId);
       const result = await runEnterprise(enterpriseId, period, context, ownership);
-      const prior = mode === 'tick'
+      const prior = mode === 'tick' && !control.paused
         ? await continuePriorRuns(enterpriseId, period, context)
         : { work: { dispatched: [], observed: [] }, runs: [] };
       const run = result.run;

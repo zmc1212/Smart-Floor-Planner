@@ -34,11 +34,8 @@ export async function POST(request: Request) {
           '@/lib/native-workflow/live/period-report-schedule-runtime'
         );
         nativeWorkflowSchedule = await runNativeWorkflowScheduleTick();
-      } catch (error) {
-        nativeWorkflowSchedule = {
-          enabled: true,
-          error: error instanceof Error ? error.message.slice(0, 200) : 'native_workflow_schedule_unavailable',
-        };
+      } catch {
+        nativeWorkflowSchedule = { enabled: true, error: 'native_workflow_schedule_unavailable' };
       }
     }
     const knowledgeBatchChecks=await advanceKnowledgeBatches();

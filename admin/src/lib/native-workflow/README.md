@@ -2108,6 +2108,8 @@ are unchanged. Evidence:
 
 ## B5.10 multi-tenant production-readiness review
 
+This section records the earlier scheduler-only review. See the [current B5.10 deployment review](#b510-deployment-and-multi-instance-reliability) for the separate PostgreSQL and multi-process verification.
+
 This round audits the B5.9 scheduler; it does not enable production. Automatic
 scheduling stays off (`NATIVE_WORKFLOW_SCHEDULE_ENABLED=0`) and the enterprise
 allowlist is unchanged.
@@ -2245,6 +2247,29 @@ The schema remains at migration `0121_native_workflow_delegations`. This slice a
 For isolation and replay, set `B59_LIVE_DEVELOPMENT=1` and point the development `DATABASE_URL` to loopback `55433/xiaok_b59_test` using the restricted `sfp_app` role. Run `node --import tsx --test src/lib/native-workflow/__tests__/cross-role.live.test.ts` from `admin`. The suite uses signed Mini API handlers, PostgreSQL writes, stored PNG and PCM originals, and a fresh Worker process. Speech recognition and model responses use deterministic test adapters. Device capture, live speech recognition, real WeChat authorization, and production remain unverified.
 
 The [isolated run](../../../tmp/b59-live08.log) passed 7/7, with no source drift in its [binding](../../../tmp/b59-live08.log.binding.json). Project `6` binds original consultation `11`, master bedroom record `23`, issue `379`, effective study plan `394` (V2), and the exact review result `387`. The suite checks simultaneous writes, stale and repeated delivery, the restart, reopening, tenant and family boundaries, and matching quality counts. The [Stable run](../../../tmp/b59-native-03/verification.json) passed 6/6 at a logical 390×844 on the same project. Its native entries verified the boss brief/detail and designer issue, a persisted worker query for V2, and a persisted homeowner status query followed by reentry into C01. The earlier [native attempt](../../../tmp/b59-native-02/verification.json) retains the failed room-link case. The final route resolves the room by the effective plan's server ID and retains an existing draft.
+
+## B5.10 deployment and multi-instance reliability
+
+The PostgreSQL slot advance and tenant/period outbox receipt
+`native.workflow.weekly.claimed.v1` commit together. When the current schedule
+file is missing, the scheduler reuses that receipt and the original weekly
+time. It refreshes the run after acquiring the file lease. For stage-disabled
+report plans, the explicit Native schedule allowlist keeps weekly ownership
+during both pause and scheduler shutdown. Removing a tenant from the list
+hands future due weekly slots back to the legacy report scheduler if its
+report plan remains enabled. Daily scheduling is independent.
+
+Disabling collaboration preserves the live project-role check on existing
+design reviews, opinion-bound plans and confirmed quality reviews. Durable
+Tool retries with an unresolved external acceptance return the persisted
+`unknown` state. Worker schedule errors use a stable code.
+
+Independent processes exercised real PostgreSQL claims, stale-lease denial,
+delegation and exact four-role readback on the existing B5.9 isolated target.
+The file adapters remain suitable for a single Admin writer with persistent
+storage. A shared mount alone cannot fence all concurrent updates. The current
+Compose has no Native Workflow volume. No schema change was required.
+[Architecture, enablement, test commands and evidence](../../../../docs/native-workflow-b510-deployment-review.zh-CN.md).
 
 ## Reproduce
 

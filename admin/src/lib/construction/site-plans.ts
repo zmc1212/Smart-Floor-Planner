@@ -124,7 +124,7 @@ export async function executePlanCommand(tx: PostgresTransaction, actor: ActorCo
     if (!p || p.projectId !== pid || !manage && p.publisherId !== aid) fail('construction_forbidden', 403);
     await one(tx, sql`select id from app.assistant_conversations where enterprise_id=${eid} and id=${p.conversationId} for share`);
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`site-material:${eid}:${pid}`},0))`);
-    if (collaborationEnabled(eid)) {
+    if (collaborationEnabled(eid) || p.opinionMessageId) {
       const role = await collaborationMember(tx, eid, pid, aid);
       if (role !== 'manager' && (role !== 'designer' || p.publisherId !== aid)) fail('construction_forbidden', 403);
       if (!await readPlan(tx, eid, cmd.versionId)) fail('context_changed');
@@ -161,7 +161,8 @@ export async function preparePlanPublication(tx: PostgresTransaction, actor: Act
   if (!issue || issue.status !== 'awaiting_review' || !issue.roomId || !issue.ownerId) fail('site_review_required', 422);
   if (versions.issues[cmd.issueId] !== issue.revision || (issue.recordId && versions.records[issue.recordId] !== issue.recordVersion)) fail('version_conflict');
   const author = await one(tx, sql`select role from app.admin_users where enterprise_id=${eid} and id=${aid} and status='active'`);
-  const collaboration = collaborationEnabled(eid);
+  // A saved design review keeps its approval policy through an allowlist rollback.
+  const collaboration = collaborationEnabled(eid) || issue.sourceKind === 'need';
   if (collaboration ? issue.ownerId !== aid || await collaborationMember(tx, eid, pid, aid) !== 'designer'
     : !manage && (issue.ownerId !== aid || author?.role !== 'designer')) fail('construction_forbidden', 403);
   const opinion = collaboration && issue.progressMessageId ? await designOpinion(tx, eid, pid, aid, issue.progressMessageId) : null;
@@ -221,9 +222,12 @@ export class PlanCustomerService {
     id(versionId);
     return withTenantTransaction(this.actor.enterpriseId, async tx => {
       const repo = new AssistantRepository(tx, this.actor); await repo.settings(write); const c = await repo.conversation(this.cid);
-      if (write && collaborationEnabled(this.actor.enterpriseId) && !await isConsultationOwner(tx, this.actor, this.cid)) fail('construction_forbidden', 403);
+      const collaboration = collaborationEnabled(this.actor.enterpriseId);
+      if (write && collaboration && !await isConsultationOwner(tx, this.actor, this.cid)) fail('construction_forbidden', 403);
       const e = await planEvent(tx, this.actor.enterpriseId, versionId); if (!e) fail('plan_unavailable', 404);
       const data = e.payload as PlanData;
+      if (write && !collaboration && data.opinionMessageId
+        && !await isConsultationOwner(tx, this.actor, this.cid)) fail('construction_forbidden', 403);
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`site-material:${this.actor.enterpriseId}:${data.projectId}`},0))`);
       const p = await readPlan(tx, this.actor.enterpriseId, versionId);
       if (!p || p.conversationId !== this.cid || this.actor.principal.kind !== 'user' || p.customerId !== this.actor.principal.userId) fail('plan_unavailable', 404);

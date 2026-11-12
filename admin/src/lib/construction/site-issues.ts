@@ -304,12 +304,13 @@ export async function executeSiteIssue(tx: PostgresTransaction, actor: ActorCont
   if (cmd.action === 'resume' && !['cancelled','dismissed'].includes(previous.state)) fail('context_changed');
   if (view.status === 'invalidated' && !['cancel','refresh'].includes(cmd.action)) fail('context_changed');
   issue = { ...previous, revision: previous.revision + 1, action: cmd.action };
-  const role = collaboration ? await collaborationMember(tx, eid, pid, aid) : null;
-  const manager = collaboration ? role === 'manager' : manage;
   const design = previous.sourceKind === 'need';
+  const projectReview = collaboration || design || previous.confirmed === true;
+  const role = projectReview ? await collaborationMember(tx, eid, pid, aid) : null;
+  const manager = projectReview ? role === 'manager' : manage;
   const assignedDesigner = view.ownerId === aid && role === 'designer';
-  const canHandle = (collaboration ? manager : manage) || view.ownerId === aid;
-  if (collaboration && (!role || previous.confirmed && role === 'designer')) fail('construction_forbidden', 403);
+  const canHandle = manager || view.ownerId === aid;
+  if (projectReview && (!role || previous.confirmed && role === 'designer')) fail('construction_forbidden', 403);
   if (design && (['reply', 'check'].includes(cmd.action) ? !assignedDesigner
     : ['claim', 'refresh'].includes(cmd.action) ? role !== 'designer' && !manager : !manager)) fail('construction_forbidden', 403);
   const materials = previous.roomId ? await sharedMaterials(tx, eid, pid, previous.roomId) : null;
@@ -409,14 +410,14 @@ export async function executeSiteIssue(tx: PostgresTransaction, actor: ActorCont
         : { recordVersion: Number(source!.row.version), sourceHash: source!.hash, roomId: String(source!.row.room_id), roomName: String(source!.row.room_name_snapshot),
           sourceMessageId: String(source!.row.source_message_id), ownerId: view.ownerId, state: 'awaiting_owner', progressMessageId: null });
       issue.materialVersion = (await sharedMaterials(tx, eid, pid, issue.roomId!)).version; issue.drawingGrantId = null;
-      if (collaboration) {
+      if (projectReview) {
         issue.confirmed = false; issue.confirmedAt = undefined; issue.confirmedBy = undefined;
         issue.confirmationReason = undefined; issue.rectifyingAt = undefined;
       }
     } else if (cmd.action === 'check') {
       const source = materials?.sources.find(s => s.id === cmd.value && s.kind === 'drawing');
       const reviewer = await one(tx, sql`select role from app.admin_users where enterprise_id=${eid} and id=${aid} and status='active' for share`);
-      if (collaboration ? !assignedDesigner : !manage && reviewer?.role !== 'designer') fail('construction_forbidden', 403);
+      if (projectReview ? !assignedDesigner : !manage && reviewer?.role !== 'designer') fail('construction_forbidden', 403);
       if (!source) fail('context_changed');
       issue.drawingGrantId = source.id; issue.materialVersion = materials!.version;
     } else {

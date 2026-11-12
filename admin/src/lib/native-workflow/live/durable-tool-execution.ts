@@ -606,7 +606,9 @@ export function createDurableToolExecutor(options: DurableToolExecutorOptions): 
           };
         }
         if (record.status === 'running' || record.status === 'waiting') {
-          return { taskId: record.taskId, state: 'in_flight', record, result: null };
+          const state = record.status === 'waiting' && record.lastError?.code === 'external_outcome_unknown'
+            ? 'unknown' : 'in_flight';
+          return { taskId: record.taskId, state, record, result: null };
         }
       }
 

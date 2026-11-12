@@ -1,3 +1,5 @@
+export const MAX_NATIVE_WORKFLOW_SCHEDULE_ENTERPRISES = 20;
+
 export function nativeWorkflowEnabled(value: string | undefined) {
   const flag = value?.trim().toLowerCase();
   return flag === '1' || flag === 'true';
