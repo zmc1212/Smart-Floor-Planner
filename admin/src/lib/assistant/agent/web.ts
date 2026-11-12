@@ -151,12 +151,23 @@ export function decodePublicPage(bytes: Uint8Array, type: string): string {
 }
 
 /** Retain complete parsed article text; never make snippets into cited facts. */
-export function extractWebPage(input: { url: string; body: string; type: string }, retrievedAt = new Date().toISOString()): WebPage {
+export function extractWebPage(
+  input: { url: string; body: string; type: string },
+  retrievedAt = new Date().toISOString(),
+  options: { removeAds?: boolean } = {},
+): WebPage {
   let title = new URL(input.url).hostname, text = input.body;
   if (/html/i.test(input.type)) {
     const { document } = parseHTML(input.body);
     title = document.title?.trim() || title;
     for (const element of document.querySelectorAll('script,style,noscript,iframe,nav,header,footer,form,svg,canvas,template')) element.remove();
+    // R3 article extraction opts in to removing obvious ad/sidebar/share
+    // blocks. Default behavior and existing evidence hashes stay unchanged.
+    if (options.removeAds) {
+      for (const element of document.querySelectorAll('aside,[role="complementary"],[class*="advert"],[id*="advert"],'
+        + '[class*=" ad-"],[class^="ad-"],[id^="ad-"],[class*="banner"],[class*="promo"],[class*="sidebar"],'
+        + '[class*="related"],[class*="share"],[class*="comment"]')) element.remove();
+    }
     const main = document.querySelector('article') || document.querySelector('main') || document.body;
     if (!main) fail('web_text_unavailable', 502);
     text = main.innerText;
