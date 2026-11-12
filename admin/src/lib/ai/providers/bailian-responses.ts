@@ -7,6 +7,7 @@ import {
 import type { NativeToolName } from '@/lib/assistant/contracts/native-tools';
 import { assertToolPairs } from '@/lib/assistant/agent/tool-protocol';
 import { bailianSchema } from './bailian-capabilities';
+import { bailianResponsesSettings } from './bailian-responses-capabilities';
 
 export const bailianResponsesProtocol = 'bailian-responses-wire-v1';
 
@@ -257,9 +258,36 @@ export function bailianResponsesResponseDiagnostic(payload: Record<string, unkno
   };
 }
 
-/** Minimal terminal state machine for the documented SSE events. The final
- * `response.completed` payload is authoritative; item events are a fallback. */
-export async function readBailianResponsesStream(response: Response): Promise<Record<string, unknown>> {
+export type BailianResponsesStreamOptions = {
+  /** Incremental text, emitted exactly once per documented delta frame. The
+   * terminal response payload stays the authoritative text source. */
+  onTextDelta?: (delta: string) => void;
+  /** Provider-side tool item completed. Only its identity is exposed here. */
+  onToolItem?: (item: { itemType: string; itemId: string | null }) => void;
+};
+
+export type BailianResponsesStreamResult = {
+  payload: Record<string, unknown>;
+  /** Text reconstructed from delta frames only; never includes terminal echo. */
+  streamedText: string;
+  deltaCount: number;
+  terminal: 'completed' | 'incomplete' | 'items';
+};
+
+const streamInterrupted = (error: unknown): AiProviderError => error instanceof AiProviderError ? error
+  : new AiProviderError(
+    `Responses stream was interrupted before a terminal event (${error instanceof Error ? error.name : 'stream_error'})`,
+    'PROVIDER_STREAM_INTERRUPTED', 'unknown', 504);
+
+/** Consumes the documented SSE events. Text is delivered from
+ * `response.output_text.delta` only: `response.output_text.done` repeats the
+ * complete text and is never re-emitted, so a consumer that also renders the
+ * final payload cannot duplicate output. A stream that ends without a terminal
+ * event, or that is aborted mid-flight, is never reported as success. */
+export async function consumeBailianResponsesStream(
+  response: Response,
+  options: BailianResponsesStreamOptions = {},
+): Promise<BailianResponsesStreamResult> {
   const contentType = response.headers.get('content-type') || '';
   if (!/^text\/event-stream(?:;|$)/i.test(contentType)) throw new AiProviderError(
     'Responses stream was not served as text/event-stream', 'INVALID_PROVIDER_RESPONSE', 'unknown', 502);
@@ -267,41 +295,73 @@ export async function readBailianResponsesStream(response: Response): Promise<Re
 
   const items = new Map<string, Record<string, unknown>>();
   const order: string[] = [];
+  const textByItem = new Map<string, string>();
+  const textOrder: string[] = [];
+  const seenFrames = new Map<number, string>();
   let final: Record<string, unknown> | null = null;
-  let terminal = false, failure: string | null = null, bytes = 0;
+  let terminal: 'completed' | 'incomplete' | null = null;
+  let failure: string | null = null;
+  let bytes = 0;
+  let deltaCount = 0;
 
   const parse = getLines(getMessages(message => {
     if (!message.data || message.data === '[DONE]') return;
     let value: Record<string, unknown>;
     try { value = JSON.parse(message.data) as Record<string, unknown>; } catch { throw invalid('Responses stream frame was not JSON'); }
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw invalid('Responses stream frame was not an object');
+    // A replayed frame (same sequence number and identical payload) is dropped
+    // once. Different payloads sharing a number are kept rather than lost.
+    const sequence = Number.isSafeInteger(value.sequence_number) ? Number(value.sequence_number) : null;
+    if (sequence !== null) {
+      const fingerprint = `${String(value.type ?? '')}:${message.data}`;
+      if (seenFrames.get(sequence) === fingerprint) return;
+      seenFrames.set(sequence, fingerprint);
+    }
     const type = String(value.type ?? '');
     if (type === 'error' || type === 'response.failed') {
-      terminal = true;
+      terminal = null;
       failure = type;
       return;
     }
+    if (terminal) return;
     if (type === 'response.output_item.done') {
       const item = value.item && typeof value.item === 'object' ? value.item as Record<string, unknown> : null;
       if (item) {
         const id = String(item.id ?? `item_${order.length}`);
         if (!items.has(id)) order.push(id);
         items.set(id, item);
+        const itemType = String(item.type ?? '');
+        if (nativeToolTypes.has(itemType) || itemType === 'function_call') {
+          options.onToolItem?.({ itemType, itemId: typeof item.id === 'string' ? item.id : null });
+        }
       }
       return;
     }
-    if (type === 'response.completed' || type === 'response.incomplete') {
-      terminal = true;
-      const payload = value.response && typeof value.response === 'object' ? value.response as Record<string, unknown> : null;
-      if (payload) final = { ...payload, status: payload.status ?? (type === 'response.incomplete' ? 'incomplete' : 'completed') };
+    if (type === 'response.output_text.delta') {
+      const delta = typeof value.delta === 'string' ? value.delta : '';
+      if (!delta) return;
+      const key = String(value.item_id ?? value.output_index ?? 'default');
+      if (!textByItem.has(key)) textOrder.push(key);
+      textByItem.set(key, (textByItem.get(key) ?? '') + delta);
+      deltaCount++;
+      options.onTextDelta?.(delta);
       return;
+    }
+    // `response.output_text.done` carries the whole text again; it is
+    // deliberately not emitted so the terminal payload remains the only
+    // non-progressive source.
+    if (type === 'response.completed' || type === 'response.incomplete') {
+      terminal = type === 'response.incomplete' ? 'incomplete' : 'completed';
+      const payload = value.response && typeof value.response === 'object' ? value.response as Record<string, unknown> : null;
+      if (payload) final = { ...payload, status: payload.status ?? (terminal === 'incomplete' ? 'incomplete' : 'completed') };
     }
   }));
 
   const reader = response.body.getReader();
   try {
     for (;;) {
-      const part = await reader.read();
+      let part: ReadableStreamReadResult<Uint8Array>;
+      try { part = await reader.read(); } catch (error) { throw streamInterrupted(error); }
       if (part.done) { parse(new Uint8Array(), true); break; }
       bytes += part.value.byteLength;
       if (bytes > 4_000_000) throw new AiProviderError('Responses stream exceeded the byte limit', 'INVALID_PROVIDER_RESPONSE', 'unknown', 502);
@@ -311,19 +371,40 @@ export async function readBailianResponsesStream(response: Response): Promise<Re
 
   if (failure) throw new AiProviderError('Responses stream reported an error event', 'PROVIDER_RESPONSE_FAILED', 'unknown', 502);
   if (!terminal) throw new AiProviderError('Responses stream ended without a terminal event', 'PROVIDER_STREAM_INCOMPLETE', 'unknown', 504);
+
+  const streamedText = textOrder.map(key => textByItem.get(key) ?? '').join('\n');
+  const fallbackOutput = () => {
+    const output = order.map(id => items.get(id)).filter((item): item is Record<string, unknown> => !!item);
+    // Only when the provider sent no item events at all do the deltas become
+    // the fallback message. Item events always win so text is never doubled.
+    if (!output.length && streamedText) {
+      output.push({ id: `msg_stream_${deltaCount}`, type: 'message', role: 'assistant', status: 'completed',
+        content: [{ type: 'output_text', text: streamedText }] });
+    }
+    return output;
+  };
   if (final) {
     const payload = final as Record<string, unknown>;
-    if (!Array.isArray(payload.output) && order.length) {
-      payload.output = order.map(id => items.get(id));
+    if (!Array.isArray(payload.output)) {
+      const output = fallbackOutput();
+      if (output.length) payload.output = output;
     }
-    return payload;
+    return { payload, streamedText, deltaCount, terminal };
   }
   const requestId = response.headers.get('x-request-id');
-  return { object: 'response', status: 'completed', id: requestId, output: order.map(id => items.get(id)) };
+  return { payload: { object: 'response', status: terminal, id: requestId, output: fallbackOutput() },
+    streamedText, deltaCount, terminal: 'items' };
+}
+
+export async function readBailianResponsesStream(
+  response: Response,
+  options: BailianResponsesStreamOptions = {},
+): Promise<Record<string, unknown>> {
+  return (await consumeBailianResponsesStream(response, options)).payload;
 }
 
 export function bailianResponsesStreamingEnabled(env: Record<string, string | undefined> = process.env) {
-  return env.ASSISTANT_RESPONSES_STREAM === '1';
+  return bailianResponsesSettings(env).streaming;
 }
 
 /** Local helper for tests and diagnostics: the sandbox log payload only. */

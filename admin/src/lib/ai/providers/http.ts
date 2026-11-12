@@ -1,6 +1,6 @@
 import { AiProviderError } from '@/lib/ai/provider-types';
 import { isZhipuOfficialBaseUrl } from './zhipu';
-import { providerHttpDiagnostic } from './http-diagnostics';
+import { providerHttpDiagnostic, parseRetryAfterMs } from './http-diagnostics';
 
 export function providerUrl(baseUrl: string, path: string) {
   const root = baseUrl.replace(/\/$/, '');
@@ -22,6 +22,10 @@ export async function providerFetch(
       const body = await response.text();
       const message = body.slice(0, 2000);
       const diagnostic = providerHttpDiagnostic(response, body);
+      // Keep the documented diagnostic shape unchanged unless the provider
+      // actually sent a usable delay.
+      const retryAfterMs = parseRetryAfterMs(response.headers.get('retry-after'));
+      if (retryAfterMs !== null) diagnostic.retryAfterMs = retryAfterMs;
       const disposition = (
         response.status >= 400 && response.status < 500 && response.status !== 408
       ) || response.status === 503

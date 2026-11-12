@@ -39,6 +39,8 @@ export type ModelTurnOutput = {
     protocol?: 'chat-completions' | 'responses';
     /** Metadata-only request evidence for the Responses wire. */
     request?: Record<string, unknown>;
+    /** Provider-side retries performed after an explicit pre-execution rejection. */
+    retries?: number;
     format?: { mode:string;jsonValid:boolean;schemaValid:boolean|null;schemaValidation?:'application' } };
   /** Application bridge metadata; never parsed from provider-controlled fields. */
   toolProtocolFeedback?: { code: 'mixed_final_response'; text: string };

@@ -155,17 +155,33 @@ export function bailianResponsesEnabled(
   model: string,
   env: Record<string, string | undefined> = process.env,
 ) {
-  if (env.ASSISTANT_RESPONSES_API !== '1') return false;
+  if (!bailianResponsesSettings(env).responsesApi) return false;
   if (runtime.adapterType !== 'openai_compatible') return false;
   const binding = bailianResponsesBinding(runtime.baseUrl, model);
   return !!binding && bailianResponsesModelProfile(binding.model).responses !== 'unsupported';
 }
 
-export function requestedNativeTools(env: Record<string, string | undefined> = process.env): NativeToolName[] {
+/** Single source of truth for the deployment switches. Secrets are never read
+ * here: the API key stays in the existing encrypted provider configuration. */
+export function bailianResponsesSettings(env: Record<string, string | undefined> = process.env) {
+  return {
+    responsesApi: env.ASSISTANT_RESPONSES_API === '1',
+    streaming: env.ASSISTANT_RESPONSES_STREAM === '1',
+    nativeTools: parseRequestedNativeTools(env),
+  };
+}
+
+const nativeToolAllowlist: readonly NativeToolName[] = ['web_search', 'web_extractor', 'code_interpreter'];
+
+function parseRequestedNativeTools(env: Record<string, string | undefined>): NativeToolName[] {
   const raw = env.ASSISTANT_NATIVE_TOOLS?.trim();
   if (!raw) return [];
-  const allowed: NativeToolName[] = ['web_search', 'web_extractor', 'code_interpreter'];
-  return [...new Set(raw.split(',').map(item => item.trim()).filter((item): item is NativeToolName => allowed.includes(item as NativeToolName)))];
+  return [...new Set(raw.split(',').map(item => item.trim())
+    .filter((item): item is NativeToolName => nativeToolAllowlist.includes(item as NativeToolName)))];
+}
+
+export function requestedNativeTools(env: Record<string, string | undefined> = process.env): NativeToolName[] {
+  return parseRequestedNativeTools(env);
 }
 
 /** Report-final, forced-final, JSON-only and consultation turns are Chat

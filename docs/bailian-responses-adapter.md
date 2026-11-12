@@ -51,10 +51,11 @@
 |---|---|
 | `admin/src/lib/assistant/contracts/native-tools.ts` | 原生工具证据版本化契约；公开 URL 校验（拒绝私网/环回）；提示注入标记；证据长度上限 |
 | `admin/src/lib/ai/providers/bailian-responses-capabilities.ts` | 逐模型能力矩阵（Responses / Function Calling / 三种工具 / 流式 / 用量分开记录）；官方地址绑定；工具启用计划；部署开关 |
-| `admin/src/lib/ai/providers/bailian-responses.ts` | 请求组装（Responses 项语义）、严格响应解析、SSE 终态机、用量/工具计数解析、请求与响应诊断 |
+| `admin/src/lib/ai/providers/bailian-responses.ts` | 请求组装（Responses 项语义）、严格响应解析、SSE 增量消费/去重/中断终态机、用量/工具计数解析、请求与响应诊断 |
+| `admin/src/lib/ai/providers/bailian-responses-retry.ts` | 错误分类与重试策略：只重放显式 429/503 预执行拒绝，遵循 `Retry-After` |
 | `admin/src/lib/ai/providers/bailian-responses-evidence.ts` | 从响应项收集 web_search 来源、网页抓取文档、代码执行记录；注入信号；来源拒绝清单 |
-| `admin/src/lib/ai/providers/bailian-responses-client.ts` | 单次真实请求执行：绑定校验 → 工具计划 → 组包 → 传输 → 解析 → 证据与观察值 |
-| `admin/src/lib/ai/__tests__/bailian-responses.test.ts` | 16 项离线单元测试 |
+| `admin/src/lib/ai/providers/bailian-responses-client.ts` | 单次真实请求执行：绑定校验 → 工具计划 → 组包 → 传输（含窄重试）→ 解析 → 证据与观察值 |
+| `admin/src/lib/ai/__tests__/bailian-responses.test.ts` | 26 项离线单元测试 |
 | `admin/scripts/bailian-responses-acceptance.ts` | 真实模型验收脚本（写出 `tmp/bailian-responses/`） |
 
 修改（均为增量、默认行为不变）：
@@ -76,6 +77,7 @@ bailianResponsesModelProfile(model): BailianResponsesModelProfile
 withLiveVerified(profile, verified): BailianResponsesModelProfile
 planBailianResponsesTools(binding, requested, { thinking }): { enabled, rejected, thinkingRequired }
 bailianResponsesEnabled(runtime, model, env?): boolean
+bailianResponsesSettings(env?): { responsesApi, streaming, nativeTools }   // 唯一环境开关读取点
 requestedNativeTools(env?): NativeToolName[]
 bailianResponsesApplies(input): boolean
 
@@ -86,11 +88,14 @@ parseBailianResponses(payload, { requestId, nativeTools }): ModelTurnOutput
 parseBailianResponsesUsage(payload): ModelTurnOutput['usage'] | null
 parseBailianToolCounts(payload): Partial<Record<string, number>>
 bailianResponsesResponseDiagnostic(payload, requestId)
-readBailianResponsesStream(response): Promise<Record<string, unknown>>
+consumeBailianResponsesStream(response, { onTextDelta?, onToolItem? }): Promise<{ payload, streamedText, deltaCount, terminal }>
+readBailianResponsesStream(response, options?): Promise<Record<string, unknown>>   // 仅返回终态 payload
 
-// 执行
-executeBailianResponses(runtime, input, { nativeTools?, stream?, now? }): Promise<ModelTurnOutput>
+// 执行与重试
+executeBailianResponses(runtime, input, { nativeTools?, stream?, onTextDelta?, onToolItem?, retryPolicy?, sleep?, now? }): Promise<ModelTurnOutput>
 responsesWireSelected(runtime, input, env?): boolean   // agent-chat
+bailianResponsesRetryPolicy(env?): { maxRetries, baseDelayMs, maxDelayMs }
+bailianResponsesRetryDelay(error, retriesDone, policy): number | null
 
 // 证据
 collectNativeToolEvidence(payload, { requestId, tools, capturedAt }): NativeToolEvidence | null
@@ -109,6 +114,9 @@ collectNativeToolEvidence(payload, { requestId, tools, capturedAt }): NativeTool
 | `ASSISTANT_RESPONSES_API` | `1` / 未设置 | Responses 走线总开关，默认关闭 |
 | `ASSISTANT_NATIVE_TOOLS` | `web_search,web_extractor,code_interpreter` | 允许模型自主调用的原生工具集合，默认空 |
 | `ASSISTANT_RESPONSES_STREAM` | `1` / 未设置 | 流式走线开关，默认非流式 |
+| `ASSISTANT_RESPONSES_MAX_RETRIES` | `0` / `1`（默认）/ `2` | 显式 429/503 预执行拒绝后的额外尝试次数；越界值回落默认 |
+
+`.env.example` 已包含上述四项（默认关闭）。API Key 不写入任何 env 文件：仍由既有 `ai_provider_configs` 加密记录提供，诊断与日志中不记录 Key、Authorization 或上游回显文本。
 
 Provider 仍使用既有记录（`ai_provider_configs` / 平台 LLM 配置）：`adapter_type = openai_compatible`，`base_url` 必须命中官方 Responses 地址（`dashscope.aliyuncs.com`、`dashscope-intl.aliyuncs.com` 或 `*.{region}.maas.aliyuncs.com` 的 `/compatible-mode` 路径），API Key 使用既有加密存储。
 
@@ -125,6 +133,14 @@ Provider 仍使用既有记录（`ai_provider_configs` / 平台 LLM 配置）：
 - `web_extractor` 无 `web_search` 时直接拒绝（`requires_web_search`）。
 - `code_interpreter` 在文档要求思考模式的模型（`qwen3.8-max`、`qwen3.8-flash` 等）上未开启思考时拒绝（`requires_thinking`）。
 - 能力 `unknown/unsupported` 时在请求前拒绝（`capability_unknown` / `capability_unsupported`），不产生计费请求。
+
+### 4.4 流式语义（R1-03）
+
+- 文本增量只来自 `response.output_text.delta`，按到达顺序回调一次。
+- `response.output_text.done` 重复整段文本，**不再回调**；终态 `response.completed/incomplete` 的 `response.output` 是唯一权威正文，避免"增量 + 终态"重复输出。
+- 相同 `sequence_number` 且内容完全一致的重复帧只消费一次；编号相同但内容不同的帧不会被丢弃。
+- 终态 payload 缺失 `output` 时，才用 `output_item.done` 项回填；连项事件都没有时，才用增量文本合成一条消息（只合成一次）。
+- 流内 `error` / `response.failed` → `PROVIDER_RESPONSE_FAILED`；连接中断或 Abort → `PROVIDER_STREAM_INTERRUPTED`（unknown）；无终态事件 → `PROVIDER_STREAM_INCOMPLETE`。三者都不会标记为成功，也不会被重试。
 
 ---
 
@@ -161,6 +177,19 @@ const output = await executeBailianResponses(runtime, input, {
 
 同一请求内可同时携带 `tools:[{type:'function',...}]` 与原生工具。模型返回 `function_call` 时仍由现有 Runtime 校验参数、权限、幂等并执行，再用 `function_call_output` 回传；百炼服务端工具不会获得家客来业务权限。
 
+### 5.4 流式增量消费
+
+```ts
+const output = await executeBailianResponses(runtime, input, {
+  stream: true,
+  onTextDelta: delta => process.stdout.write(delta),   // 每个增量只回调一次
+  onToolItem: item => console.log(item.itemType),      // 仅工具项身份，不含内容
+});
+output.text; // 终态权威正文；不要与已输出的增量再次拼接
+```
+
+需要自建 SSE 入口时可单独使用 `consumeBailianResponsesStream(response, callbacks)`，它返回 `{ payload, streamedText, deltaCount, terminal }`；`readBailianResponsesStream` 保持只返回 payload 的兼容形态。
+
 ---
 
 ## 6. 异常与恢复规范
@@ -170,13 +199,23 @@ const output = await executeBailianResponses(runtime, input, {
 | `responses_binding_mismatch` | definitive_failure | 非官方 Responses 地址；不发送请求 |
 | `native_tool_capability_unavailable` | definitive_failure | 模型/工具组合未登记或未验证；不发送请求 |
 | `responses_input_invalid` | definitive_failure | 超出本地输入上限或工具配对非法；不发送请求 |
+| `HTTP_429` / `HTTP_503` | safe_fallback | 限流/平台容量拒绝，未进入模型执行；按策略重试 |
 | `PROVIDER_RESPONSE_FAILED` | unknown | HTTP 200 但 `status:"failed"` 或流内 `error` 事件；可能已计费，不重试 |
 | `PROVIDER_TIMEOUT` | unknown | 传输超时；可能已受理，不重放 |
 | `PROVIDER_STREAM_INCOMPLETE` | unknown | 流无终态事件；保留 unknown |
+| `PROVIDER_STREAM_INTERRUPTED` | unknown | 流读取被中断/连接断开；保留 unknown |
 | `INVALID_PROVIDER_RESPONSE` | unknown | 帧不合法；附带 `responses-response-diagnostic-v1` 与受控原始帧 |
-| `HTTP_4xx`（408 除外） | safe_fallback | 明确拒绝，可按既有策略处理 |
+| `HTTP_4xx`（429/408 除外） | safe_fallback | 明确拒绝，可按既有策略处理 |
 
-统一原则：一次调用只发一次请求，不自动重试、不切换模型；result 未知时保留尝试记录并停止，等待人工或既有恢复流程。每次成功/失败都会把 `observation.request`（哈希与形状）写入既有 `ai_provider_attempts`。
+重试策略（`bailian-responses-retry.ts`）：
+
+- 仅重放 **HTTP 429（Throttling.*）与 HTTP 503（ServiceUnavailable）** —— 官方把它们定义为限流/平台容量拒绝，请求未进入模型执行。
+- 优先使用响应头 `Retry-After`（秒或 HTTP 日期），否则 1s/2s/4s 指数退避；单次等待上限 4s。
+- 默认只额外尝试 1 次，`ASSISTANT_RESPONSES_MAX_RETRIES` 允许 0..2。
+- 超时、连接失败、500/502/504、流中断、流无终态、非法帧、`status:"failed"` 一律 **不重试**：执行状态未知，自动重放可能重复执行服务端原生工具并重复计费。
+- 业务工具只在 Runtime 拿到完整响应后才执行，重试发生在响应之前，不会重复执行有副作用的业务操作。
+
+每次尝试都会把 `observation.request`（哈希与形状）写入既有 `ai_provider_attempts`；发生重试时额外记录 `observation.retries`。
 
 ---
 
@@ -261,6 +300,16 @@ const output = await executeBailianResponses(runtime, input, {
 - 首轮与第二轮真实运行中，`web_search` 与运行时集成用例曾各出现一次 90s 传输超时；按规范保留为 `unknown`，未自动重放。随后以独立验收运行重新取证（`report-attempt2.json`），两次尝试均记录在案。
 - 实际费用：账单结算金额在响应中不可得，统一记为 `unavailable`；token 用量与工具调用次数完整记录，不填零。
 - 文件输入（`input_file`）按文档仅对 `qwen3.8-flash`/`qwen3.8-max` 可用，本层未启用，标记待验证；代码解释器文件型输出同样待验证（本次仅验证 `logs` 输出）。
+
+### 9.1 流式增量复验（2026-11-12，本轮）
+
+| 用例 | 模型 | 结果 | 真实请求 ID | 说明 |
+|---|---|---|---|---|
+| 流式增量 + 终态一致 | qwen3.7-flash | 通过 | `b5bcaf3f-f8a7-91a3-9003-db35f28cb97d` | 收到 48 个增量字符，去重后与终态 `output` 文本一致 |
+| 流式中途中断 | qwen3.7-flash | 通过（AbortError） | - | 首个事件后主动中断，未标记成功 |
+
+复验命令：`npx tsx scripts/bailian-responses-acceptance.ts --only=streaming --tool-model=qwen3.7-flash --label=<label>`。
+本轮新增的重试分类、429/503 重放、`Retry-After`、超时/401/流中断不重放等均以离线单元测试覆盖；未对真实限流做人为触发，避免影响账号配额。
 
 证据与台账：
 

@@ -18,6 +18,16 @@ const fields = new Set(['model', 'messages', 'role', 'content', 'tool_calls', 't
 const object = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 
+/** `Retry-After` is either delta-seconds or an HTTP date. Values are structural,
+ * never provider prose, and are capped by the retry policy that consumes them. */
+export function parseRetryAfterMs(value: string | null): number | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (/^\d{1,6}$/.test(trimmed)) return Number(trimmed) * 1000;
+  const at = Date.parse(trimmed);
+  return Number.isNaN(at) ? null : Math.max(0, at - Date.now());
+}
+
 /** An error may echo credentials, private URLs or whole prompts. Retain only
  * fixed categories, structural paths and hashes. Unknown prose is not saved. */
 export function providerHttpDiagnostic(response: Response, body: string): ProviderHttpDiagnostic {

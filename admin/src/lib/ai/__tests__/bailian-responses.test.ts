@@ -3,13 +3,17 @@ import { test } from 'node:test';
 import type { AiProviderRuntimeConfig } from '@/lib/ai/provider-types';
 import { AiProviderError } from '@/lib/ai/provider-types';
 import {
-  bailianResponsesBinding, bailianResponsesEnabled, bailianResponsesModelProfile, planBailianResponsesTools,
-  requestedNativeTools,
+  bailianResponsesBinding, bailianResponsesEnabled, bailianResponsesModelProfile, bailianResponsesSettings,
+  planBailianResponsesTools, requestedNativeTools,
 } from '@/lib/ai/providers/bailian-responses-capabilities';
 import {
-  bailianResponsesBody, bailianResponsesRequestDiagnostic, parseBailianResponses, parseBailianResponsesUsage,
-  parseBailianToolCounts, readBailianResponsesStream,
+  bailianResponsesBody, bailianResponsesRequestDiagnostic, consumeBailianResponsesStream, parseBailianResponses,
+  parseBailianResponsesUsage, parseBailianToolCounts, readBailianResponsesStream,
 } from '@/lib/ai/providers/bailian-responses';
+import {
+  bailianResponsesRetryDefaults, bailianResponsesRetryDelay, bailianResponsesRetryPolicy,
+} from '@/lib/ai/providers/bailian-responses-retry';
+import { parseRetryAfterMs } from '@/lib/ai/providers/http-diagnostics';
 import { collectNativeToolEvidence } from '@/lib/ai/providers/bailian-responses-evidence';
 import { executeBailianResponses } from '@/lib/ai/providers/bailian-responses-client';
 import { responsesWireSelected } from '@/lib/ai/providers/agent-chat';
@@ -291,4 +295,187 @@ test('provider failure frames are surfaced as unknown without a retry', async ()
       (error: unknown) => error instanceof AiProviderError && error.code === 'PROVIDER_RESPONSE_FAILED');
     assert.equal(calls, 1);
   } finally { globalThis.fetch = original; }
+});
+
+const sseBody = (frames: unknown[]) =>
+  frames.map(frame => `data: ${JSON.stringify(frame)}\n\n`).join('') + 'data: [DONE]\n\n';
+
+test('stream deltas are delivered once each and the completed text is never repeated', async () => {
+  const encoder = new TextEncoder();
+  const delta = { type: 'response.output_text.delta', item_id: 'msg_1', output_index: 0 };
+  const frames = [
+    { ...delta, sequence_number: 1, delta: '17' },
+    { ...delta, sequence_number: 2, delta: '28' },
+    // A replayed frame with the same sequence number must not be emitted twice.
+    { ...delta, sequence_number: 2, delta: '28' },
+    // `output_text.done` repeats the whole text and must stay silent.
+    { type: 'response.output_text.done', item_id: 'msg_1', output_index: 0, sequence_number: 3, text: '1728' },
+    { type: 'response.completed', sequence_number: 4, response: completedPayload },
+  ];
+  const stream = new ReadableStream<Uint8Array>({ start(controller) {
+    controller.enqueue(encoder.encode(sseBody(frames))); controller.close();
+  } });
+  const seen: string[] = [];
+  const result = await consumeBailianResponsesStream(new Response(stream, {
+    status: 200, headers: { 'content-type': 'text/event-stream', 'x-request-id': 'req_stream' } }),
+    { onTextDelta: value => seen.push(value) });
+  assert.deepEqual(seen, ['17', '28']);
+  assert.equal(result.streamedText, '1728');
+  assert.equal(result.deltaCount, 2);
+  assert.equal(result.terminal, 'completed');
+  assert.equal(parseBailianResponses(result.payload, { requestId: 'req_stream', nativeTools: [] }).text, '1728');
+});
+
+test('a stream without a terminal payload falls back to delta text exactly once', async () => {
+  const encoder = new TextEncoder();
+  const frames = [
+    { type: 'response.output_text.delta', item_id: 'msg_9', sequence_number: 1, delta: 'he' },
+    { type: 'response.output_text.delta', item_id: 'msg_9', sequence_number: 2, delta: 'llo' },
+    { type: 'response.output_text.done', item_id: 'msg_9', sequence_number: 3, text: 'hello' },
+    { type: 'response.completed', sequence_number: 4, response: { id: 'resp_partial', status: 'completed' } },
+  ];
+  const stream = new ReadableStream<Uint8Array>({ start(controller) {
+    controller.enqueue(encoder.encode(sseBody(frames))); controller.close();
+  } });
+  const result = await consumeBailianResponsesStream(new Response(stream, {
+    status: 200, headers: { 'content-type': 'text/event-stream' } }));
+  assert.equal(result.streamedText, 'hello');
+  const output = parseBailianResponses(result.payload, { requestId: null, nativeTools: [] });
+  // Delta text and `output_text.done` text are never concatenated twice.
+  assert.equal(output.text, 'hello');
+});
+
+test('an interrupted stream stays unknown and is never reported as success', async () => {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({ start(controller) {
+    controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'response.output_text.delta', delta: 'x' })}\n\n`));
+    controller.error(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+  } });
+  await assert.rejects(consumeBailianResponsesStream(new Response(stream, {
+    status: 200, headers: { 'content-type': 'text/event-stream' } })),
+    (error: unknown) => error instanceof AiProviderError && error.code === 'PROVIDER_STREAM_INTERRUPTED'
+      && error.disposition === 'unknown');
+});
+
+test('a stream error frame is a provider failure, not a partial success', async () => {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({ start(controller) {
+    controller.enqueue(encoder.encode(sseBody([{ type: 'error', code: 'InternalError', message: 'upstream' }])));
+    controller.close();
+  } });
+  await assert.rejects(consumeBailianResponsesStream(new Response(stream, {
+    status: 200, headers: { 'content-type': 'text/event-stream' } })),
+    (error: unknown) => error instanceof AiProviderError && error.code === 'PROVIDER_RESPONSE_FAILED');
+});
+
+const httpError = (status: number, retryAfterMs?: number) => new AiProviderError(`HTTP ${status}`, `HTTP_${status}`,
+  'safe_fallback', status, { protocol: 'provider-http-diagnostic-v1', httpStatus: status, providerCode: null,
+    errorType: null, parameter: null, reason: 'unspecified', requestId: null, responseBytes: 0,
+    responseHash: 'synthetic', retryAfterMs: retryAfterMs ?? null });
+
+test('retry policy replays only explicit throttling/overload rejections', () => {
+  const policy = { maxRetries: 2, baseDelayMs: 1000, maxDelayMs: 4000 };
+  assert.equal(bailianResponsesRetryDelay(httpError(429), 0, policy), 1000);
+  assert.equal(bailianResponsesRetryDelay(httpError(429, 2500), 0, policy), 2500);
+  assert.equal(bailianResponsesRetryDelay(httpError(429, 60_000), 0, policy), 4000);
+  assert.equal(bailianResponsesRetryDelay(httpError(503), 1, policy), 2000);
+  // Exhausted budget, non-retryable statuses and unknown acceptance stay put.
+  assert.equal(bailianResponsesRetryDelay(httpError(429), 2, policy), null);
+  assert.equal(bailianResponsesRetryDelay(httpError(500), 0, policy), null);
+  assert.equal(bailianResponsesRetryDelay(httpError(504), 0, policy), null);
+  assert.equal(bailianResponsesRetryDelay(new AiProviderError('timeout', 'PROVIDER_TIMEOUT', 'unknown', 504), 0, policy), null);
+  assert.equal(bailianResponsesRetryDelay(new Error('network'), 0, policy), null);
+  assert.equal(parseRetryAfterMs('2'), 2000);
+  assert.equal(parseRetryAfterMs('not-a-date'), null);
+  assert.equal(bailianResponsesRetryDefaults.maxRetries, 1);
+});
+
+test('the client retries a 429 once, honours Retry-After and records the attempt', async () => {
+  const original = globalThis.fetch; let calls = 0; const sleeps: number[] = [];
+  try {
+    globalThis.fetch = async () => {
+      calls++;
+      if (calls === 1) return new Response(JSON.stringify({ error: { code: 'Throttling.RateQuota', message: 'Too many requests.' } }),
+        { status: 429, headers: { 'content-type': 'application/json', 'retry-after': '2' } });
+      return new Response(JSON.stringify(completedPayload), { status: 200, headers: { 'content-type': 'application/json' } });
+    };
+    const output = await executeBailianResponses(runtime, userTurn(), { sleep: async ms => { sleeps.push(ms); } });
+    assert.equal(calls, 2);
+    assert.deepEqual(sleeps, [2000]);
+    assert.equal(output.text, '1728');
+    assert.equal(output.observation?.retries, 1);
+  } finally { globalThis.fetch = original; }
+});
+
+test('authentication, timeout and exhausted retries are never replayed', async () => {
+  const original = globalThis.fetch;
+  try {
+    let authCalls = 0;
+    globalThis.fetch = async () => { authCalls++; return new Response(JSON.stringify({ error: { code: 'InvalidApiKey' } }),
+      { status: 401, headers: { 'content-type': 'application/json' } }); };
+    await assert.rejects(executeBailianResponses(runtime, userTurn()), (error: unknown) =>
+      error instanceof AiProviderError && error.code === 'HTTP_401');
+    assert.equal(authCalls, 1);
+
+    let timeoutCalls = 0;
+    globalThis.fetch = async () => { timeoutCalls++; throw Object.assign(new Error('timed out'), { name: 'TimeoutError' }); };
+    await assert.rejects(executeBailianResponses(runtime, userTurn()), (error: unknown) =>
+      error instanceof AiProviderError && error.code === 'PROVIDER_TIMEOUT' && error.disposition === 'unknown');
+    assert.equal(timeoutCalls, 1);
+
+    let overloadCalls = 0; const sleeps: number[] = [];
+    globalThis.fetch = async () => { overloadCalls++; return new Response(JSON.stringify({ error: { code: 'ServiceUnavailable' } }),
+      { status: 503, headers: { 'content-type': 'application/json' } }); };
+    await assert.rejects(executeBailianResponses(runtime, userTurn(), { sleep: async ms => { sleeps.push(ms); } }),
+      (error: unknown) => error instanceof AiProviderError && error.code === 'HTTP_503');
+    assert.equal(overloadCalls, 2);
+    assert.deepEqual(sleeps, [1000]);
+  } finally { globalThis.fetch = original; }
+});
+
+test('provider credentials never reach error messages or diagnostics', async () => {
+  const original = globalThis.fetch; const secret = 'sk-synthetic-credential-value';
+  try {
+    globalThis.fetch = async () => new Response(JSON.stringify({ error: { code: 'InvalidApiKey',
+      message: `Incorrect API key provided: ${secret}` } }), { status: 401, headers: { 'content-type': 'application/json' } });
+    await assert.rejects(executeBailianResponses({ ...runtime, apiKey: secret }, userTurn()), (error: unknown) => {
+      if (!(error instanceof AiProviderError)) return false;
+      assert.doesNotMatch(error.message, /sk-synthetic/);
+      assert.doesNotMatch(JSON.stringify(error.diagnostic), /sk-synthetic/);
+      return error.code === 'HTTP_401';
+    });
+  } finally { globalThis.fetch = original; }
+});
+
+test('deployment settings are read from one place with safe defaults', () => {
+  assert.deepEqual(bailianResponsesSettings({ ASSISTANT_RESPONSES_API: '1', ASSISTANT_RESPONSES_STREAM: '1',
+    ASSISTANT_NATIVE_TOOLS: 'web_search, code_interpreter, drop_table' }),
+    { responsesApi: true, streaming: true, nativeTools: ['web_search', 'code_interpreter'] });
+  assert.deepEqual(bailianResponsesSettings({}),
+    { responsesApi: false, streaming: false, nativeTools: [] });
+  assert.equal(bailianResponsesRetryPolicy({}).maxRetries, 1);
+  assert.equal(bailianResponsesRetryPolicy({ ASSISTANT_RESPONSES_MAX_RETRIES: '0' }).maxRetries, 0);
+  assert.equal(bailianResponsesRetryPolicy({ ASSISTANT_RESPONSES_MAX_RETRIES: '2' }).maxRetries, 2);
+  assert.equal(bailianResponsesRetryPolicy({ ASSISTANT_RESPONSES_MAX_RETRIES: '3' }).maxRetries, 1);
+  assert.equal(bailianResponsesRetryPolicy({ ASSISTANT_RESPONSES_MAX_RETRIES: 'unbounded' }).maxRetries, 1);
+});
+
+test('the Chat Completions wire is untouched while the Responses switch is off', async () => {
+  const original = globalThis.fetch; const previous = process.env.ASSISTANT_RESPONSES_API; let seenUrl = '';
+  try {
+    delete process.env.ASSISTANT_RESPONSES_API;
+    globalThis.fetch = async url => {
+      seenUrl = String(url);
+      return new Response(JSON.stringify({ choices: [{ message: { content: '好的' }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 3, completion_tokens: 2 } }), { status: 200, headers: { 'content-type': 'application/json' } });
+    };
+    const { executeAgentChat } = await import('@/lib/ai/providers/agent-chat');
+    const output = await executeAgentChat(runtime, userTurn({ model: 'qwen3.7-flash', maxTokens: 64 }));
+    assert.match(seenUrl, /\/compatible-mode\/v1\/chat\/completions$/);
+    assert.equal(output.text, '好的');
+    assert.equal(output.observation?.protocol, undefined);
+  } finally {
+    globalThis.fetch = original;
+    if (previous !== undefined) process.env.ASSISTANT_RESPONSES_API = previous;
+  }
 });

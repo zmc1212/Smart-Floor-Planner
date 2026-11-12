@@ -238,11 +238,19 @@ async function main() {
   // 10. Streaming wire and a deliberate interruption.
   if (wants('streaming')) {
     const model = toolModel;
+    let deltas = '';
     const { result } = await record('stream:completed', model, 'responses', [],
       () => executeBailianResponses(forModel(model), { model,
         messages: [{ role: 'user', content: [{ type: 'text', text: '用一句话说明装修预算的作用。' }] }],
-        tools: [], maxTokens: 256, enableThinking: false }, { stream: true }),
-      output => output.text.trim() ? null : 'empty streamed text');
+        tools: [], maxTokens: 256, enableThinking: false }, { stream: true, onTextDelta: delta => { deltas += delta; } }),
+      output => {
+        const normalize = (value: string) => value.replace(/\s+/g, ' ').trim();
+        if (!output.text.trim()) return 'empty streamed text';
+        if (!deltas) return 'no text delta events received';
+        return normalize(deltas) === normalize(output.text) ? null
+          : `delta text does not assemble into the terminal text (${deltas.length} vs ${output.text.length})`;
+      });
+    result.note = `delta chars=${deltas.length}`;
     results.push(result);
 
     const binding = bailianResponsesBinding(runtime.baseUrl, model)!;

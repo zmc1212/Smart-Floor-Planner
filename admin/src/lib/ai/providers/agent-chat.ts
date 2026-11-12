@@ -7,7 +7,7 @@ import { consultationFinalSchema } from './consultation-final-schema';
 import { createHash } from 'node:crypto';
 import { assertToolPairs, toolSchemaIssue } from '@/lib/assistant/agent/tool-protocol';
 import { bailianBinding, bailianExplicitCacheCapable, bailianFinalFormat } from './bailian-capabilities';
-import { bailianResponsesApplies, bailianResponsesEnabled, requestedNativeTools } from './bailian-responses-capabilities';
+import { bailianResponsesApplies, bailianResponsesEnabled, bailianResponsesSettings } from './bailian-responses-capabilities';
 import { executeBailianResponses } from './bailian-responses-client';
 import { cacheObservation, modelPrefixObservation } from './model-observation';
 
@@ -212,8 +212,9 @@ export function responsesWireSelected(
 /** No transport retries or provider fallback: an unknown accepted request may already be billable. */
 export async function executeAgentChat(runtime: AiProviderRuntimeConfig, input: ModelTurnInput): Promise<ModelTurnOutput> {
   if (responsesWireSelected(runtime, input)) {
+    const settings = bailianResponsesSettings();
     return executeBailianResponses(runtime, input, {
-      nativeTools: requestedNativeTools(), stream: process.env.ASSISTANT_RESPONSES_STREAM === '1',
+      nativeTools: settings.nativeTools, stream: settings.streaming,
     });
   }
   const body = agentChatBody(input, runtime.baseUrl);
