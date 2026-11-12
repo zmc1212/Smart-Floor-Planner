@@ -286,8 +286,29 @@ npx tsx scripts/bailian-responses-acceptance.ts --only=access --tool-model=qwen3
 
 ## 10. 给两个业务分支的集成指引
 
-1. 单独 cherry-pick 本分支的适配层提交，不要整分支合并。
-2. 冲突面仅三处：`contracts/model.ts`（增量字段）、`providers/agent-chat.ts`（入口分支）、`postgres-workflow-chat.ts`（诊断与回执）。三处均为可选增量，冲突时保留目标分支原有逻辑，仅追加新分支判断。
-3. 集成后在目标分支自行运行：`npx tsx --test src/lib/ai/__tests__/bailian-responses.test.ts` 与既有回归测试。
-4. 上线顺序：先部署适配层（开关关闭，行为不变）→ 验证 Chat Completions 回归 → 再按模型逐个打开 `ASSISTANT_RESPONSES_API` 与 `ASSISTANT_NATIVE_TOOLS`。
+### 10.1 交付提交
+
+| 提交 | 内容 |
+|---|---|
+| `5b052a60` | 适配层、能力矩阵、原生工具证据、运行时接入、16 项单元测试 |
+| `e0e14bda` | 真实验收脚本、交付文档、验收报告与能力台账 |
+
+分支：`codex/xiaok-bailian-responses-api`，交付时 HEAD `e0e14bda`；创建基线 `11ac22dd`（当时 `origin/codex/xiaok-native-workflow` 最新）。
+
+集成时的目标分支 HEAD（本次核对）：`codex/xiaok-native-workflow` = `340d57ee`，`codex/xiaok-public-site-lifecycle` = `569f8cde`。
+
+已在两个目标 HEAD 上分别用 `git cherry-pick -n 5b052a60 e0e14bda` 预演，三个集成文件（`contracts/model.ts`、`providers/agent-chat.ts`、`postgres-workflow-chat.ts`）在这段时间内无变更，两处预演均零冲突。
+
+### 10.2 集成步骤
+
+1. 取目标分支最新 HEAD，单独 cherry-pick 上述两个提交，不要整分支合并。
+2. 手工检查三处增量：
+   - `contracts/model.ts`：`nativeTools`、`observation.protocol`、`observation.request` 为可选字段；
+   - `providers/agent-chat.ts`：`responsesWireSelected` 与 `executeAgentChat` 入口分支；
+   - `postgres-workflow-chat.ts`：Responses 走线时跳过 Chat 诊断体，成功回执写入 `nativeTools`。
+3. 在目标分支运行：
+   - `npx tsx --test src/lib/ai/__tests__/bailian-responses.test.ts`
+   - 既有 ai / assistant 回归测试（本次 225 项全通过）
+   - `npx tsx scripts/bailian-responses-acceptance.ts --only=basic`
+4. 上线顺序：先部署适配层（两个环境变量保持关闭，行为与现状一致）→ 验证 Chat Completions 回归 → 按模型逐个开启 `ASSISTANT_RESPONSES_API` 与 `ASSISTANT_NATIVE_TOOLS`。
 5. 回滚：关闭两个环境变量即可回到原 Chat Completions 走线，无需回滚代码。
