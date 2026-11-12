@@ -214,7 +214,7 @@ export async function executeAgentChat(runtime: AiProviderRuntimeConfig, input: 
   if (responsesWireSelected(runtime, input)) {
     const settings = bailianResponsesSettings();
     return executeBailianResponses(runtime, input, {
-      nativeTools: settings.nativeTools, stream: settings.streaming,
+      nativeTools: input.applicationWebSearch ? [] : settings.nativeTools, stream: settings.streaming,
     });
   }
   const body = agentChatBody(input, runtime.baseUrl);

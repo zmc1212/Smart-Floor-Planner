@@ -175,7 +175,7 @@ const output = await executeBailianResponses(runtime, input, {
 
 ### 5.3 业务工具与原生工具协同
 
-同一请求内可同时携带 `tools:[{type:'function',...}]` 与原生工具。模型返回 `function_call` 时仍由现有 Runtime 校验参数、权限、幂等并执行，再用 `function_call_output` 回传；百炼服务端工具不会获得家客来业务权限。
+同一请求可携带不同名称的自定义函数与原生工具。模型返回 `function_call` 时由现有 Runtime 校验参数、权限和幂等，再以 `function_call_output` 回传。相同工具名在派发前拒绝。R3 应用联网轮由 R2 注册、执行和审计，百炼只运行模型。
 
 ### 5.4 流式增量消费
 
@@ -265,7 +265,7 @@ output.text; // 终态权威正文；不要与已输出的增量再次拼接
 - 来源 URL 只接受公开 http(s)，私网、环回、带凭据或带端口的地址进入 `rejectedSources`。
 - 代码解释器在百炼沙箱执行，家客来不在业务服务器 `eval` 任何模型代码；沙箱不接触家客来数据库、环境变量或文件。
 - 报告终稿、验收放行、费用与工期承诺仍由原有责任人和审批边界决定。
-- 现有自建 Web Search / `read_web` 未被删除或替换；两者互不影响。
+- R3 应用联网开关及权限边界见第 11 节。R1 原生来源回执仍适用于独立验证与已配置的原生工具调用。
 
 ---
 
@@ -361,3 +361,38 @@ npx tsx scripts/bailian-responses-acceptance.ts --only=access --tool-model=qwen3
    - `npx tsx scripts/bailian-responses-acceptance.ts --only=basic`
 4. 上线顺序：先部署适配层（两个环境变量保持关闭，行为与现状一致）→ 验证 Chat Completions 回归 → 按模型逐个开启 `ASSISTANT_RESPONSES_API` 与 `ASSISTANT_NATIVE_TOOLS`。
 5. 回滚：关闭两个环境变量即可回到原 Chat Completions 走线，无需回滚代码。
+
+## 11. R3 应用联网搜索
+
+百炼在所支持的模型及地域通过 `tools: [{ "type": "web_search" }]` 提供原生搜索。完成的 `web_search_call` 输出项中，`action.query` 为查询，`action.sources[]` 为带 `type: "url"` 与 `url` 的来源列表。流式状态为 `response.web_search_call.in_progress`、`searching`、`completed`，完整项由 `response.output_item.done` 返回；次数可见 `usage.x_tools.web_search.count`。网页抽取通过同请求中的 `web_extractor` 与 `web_extractor_call` 项。原生 Responses 无 `enable_source`、`enable_citation` 或 `citation_format` 控件。[创建响应](https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-responses) · [百炼联网搜索](https://help.aliyun.com/zh/model-studio/web-search)
+
+应用端需要逐次权限校验、候选筛选、可重开的原文和引用，因此 R3 复用既有 LangGraph Worker 的工具节点和持久化接口，将四个工具接到 R2 `ToolRegistry` / `ToolExecutor`。模型规划查询；搜索回执到达后，首次读页保留独立工具轮。后续可补查，收尾只保留可核实正文和有界状态，引用 ID 由已有 `Evidence` 管线装配。普通问题可直接走现有终稿。百炼支持的 R3 工具轮使用 `function_call` 和 `function_call_output`。单工具读页使用 `tool_choice: "required"`，多工具轮使用 `auto`。真实联调中 Responses 单独终稿把 `segments` 序列化为字符串，终稿轮沿已验证的 Chat Completions 结构化通道。[LangGraph 工具节点](https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph.prebuilt.ToolNode.html)
+
+### 配置与边界
+
+- `ASSISTANT_WEB_SEARCH_TOOLS=1` 对已有网页读取权限的原生 Agent 会话启用。选定 FastGPT 编排、专用咨询配置及专用终稿流程沿各自部署配置。应用联网与 `ASSISTANT_RESPONSES_API` 独立配置。
+- `ASSISTANT_WEB_SEARCH_PROVIDER` 可选 `searxng`、`ddgs`、`openserp`。由部署方设置 `ASSISTANT_WEB_SEARCH_URL`，密钥留在部署管理范围。SearXNG 验证使用自托管实例和搜狗、360；配置了新闻引擎的实例可设 `ASSISTANT_SEARXNG_NEWS=1` 提供 `web_search_news`。批量最多三个不同查询。[SearXNG Search API](https://docs.searxng.org/dev/search_api.html) · [DDGS API 源码](https://github.com/deedy5/ddgs/blob/main/ddgs/api_server/api.py)
+- `web_fetch` 可读当轮公开候选或用户给出的公开网址。连接前验证协议、地址和 DNS，逐跳固定公网地址，重定向重新验证。搜索和读页各限 12 秒、响应 512,000 字节；正文限 12,000 字节；同进程同时执行最多八个请求。静态 HTML、XHTML 和纯文本读取支持编码识别与导航广告过滤。依赖脚本渲染、付费登录、PDF 或超限原文会返回不可用。
+- 来源保留原始请求网址、最终网址、域名、发布与检索时间。域名只给出来源分类；重复正文和同题不同正文、日期的候选有标记。疑似注入内容隔离，合法外部内容仍按不可信数据处理。搜索摘要只用于导航，引用依赖可读、已保存的原文与当前会话权限。企业规范依赖已有企业知识权限及有效来源。
+
+### 验证
+
+在已应用迁移的隔离环回数据库 `xiaok_r3_acceptance` 中使用合成微云 1454。以下命令在 `admin` 运行，`XIAOK_R3_DATABASE_URL` 设为该数据库的应用账号连接串；真实模式沿用已有百炼凭据和部署搜索服务。
+
+```powershell
+node --env-file=.env.local --import tsx scripts/xiaok-r3-web-acceptance.ts --label=mock-review
+node --env-file=.env.local --import tsx scripts/xiaok-r3-web-acceptance.ts --live --label=live-review
+```
+
+原始运行、工具回执、来源及请求 ID 记录在 `tmp/assistant-web-r3/`。模拟与真实运行各用全新的隔离数据库。真实用量取供应商回执，结算金额保持 `unavailable`。
+
+| 验证 | 结果 |
+|---|---|
+| R1、R2、R3 定向 | 67/67，含权限拒绝、注入隔离、超时、重复、空结果和引用审计 |
+| 模拟供应商与真实隔离数据库 | `mock-04` 4/4，含搜索/读页结果接续、引用保存、重进、跨租户拒绝及伪造链接拒绝 |
+| AI 与 Assistant 单元套件 | 1131/1132，书桌需求意图用例在起始提交 `bc8daf73` 同样失败 |
+| 全量类型检查 | 起始提交与交付版均有同样的 290 条诊断，差集为零 |
+| 构建 | Turbopack 在 Windows 创建 junction 时返回 OS error 87。Webpack 完成生产编译，完整构建停在既有 `scripts/fastgpt/setup-unified.mts:113` 类型错误 |
+| 真实联调 `live-03` | 普通问答 2/2，搜索 0 次。四类专业问题各跑两次，8/8 取得实际搜索结果并回传模型，6/8 读取并保存公开原文，8 份终稿均因 `unsupported_model_commitment` 被拦截，专业回答验收未通过 |
+
+`live-01` 的设计师与市场题各保存一份带第三方网页链接的答复。设计师答复缺厂家原文并含未证量数；市场题证明第三方网页原文与引用可落库。`live-02` 保留 Responses 单独终稿的实际数组类型错误。三个批次的源码绑定前后一致，证据分别保留。`live-03` 记录 36 次模型调用，观测 116384 输入和 23397 输出 tokens。原生设备、四角色入口及真实新闻源未验。

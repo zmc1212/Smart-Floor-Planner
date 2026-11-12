@@ -25,7 +25,7 @@ export const webSearchLimits = {
   searchTimeoutMs: 12000,
   pageTimeoutMs: 12000,
   maxResponseBytes: 512_000,
-  maxBatchConcurrency: 3,
+  maxConcurrentRequests: 8,
 } as const;
 
 export type WebSearchKind = 'web' | 'news';
@@ -47,6 +47,7 @@ export type WebSearchProviderResult = {
   kind: WebSearchKind;
   retrievedAt: string;
   results: WebSearchHit[];
+  quarantined?: number;
 };
 
 export type WebSearchRequest = {
@@ -63,7 +64,12 @@ export interface WebSearchProvider {
   search(request: WebSearchRequest): Promise<WebSearchProviderResult>;
 }
 
-export type WebReadPage = (url: string) => Promise<{ url: string; body: string; type: string }>;
+export type WebReadPage = (url: string, signal?: AbortSignal) => Promise<{ url: string; body: string; type: string }>;
+
+export const webToolNames = ['web_search', 'web_search_news', 'web_fetch', 'web_search_batch'] as const;
+export function isWebTool(name: string) {
+  return webToolNames.some(tool => tool === name);
+}
 
 export type WebSourceKind = 'official_document' | 'institution' | 'enterprise' | 'general_web';
 
@@ -94,7 +100,7 @@ export type WebEvidenceSource = {
 };
 
 export type WebSourceConflict = {
-  code: 'duplicate_content' | 'publication_date_conflict' | 'source_type_conflict' | 'syndicated_title';
+  code: 'duplicate_content' | 'publication_date_conflict' | 'source_type_conflict' | 'syndicated_title' | 'source_text_differs';
   urls: string[];
 };
 

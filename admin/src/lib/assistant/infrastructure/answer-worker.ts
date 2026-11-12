@@ -15,6 +15,8 @@ import { needsDesignerSuggestion, designerSuggestion } from '../handoff/intent';
 import { agentConfig } from '../agent/config';
 import { processAgentAnswer } from '../agent/worker';
 import { nativeSearchDependency, selectedNativeSearch } from '../agent/native-search';
+import { configuredApplicationWebSearch } from '../agent/web-tool-runtime';
+import { configuredWebSearchProvider } from '../web-search/provider';
 import { reportCoordinationProtocol } from '../agent/report-question-plan';
 import { runKnowledgeEnabled } from '../knowledge-policy';
 import { fastGPTPreviewProtocol } from '../knowledge/fastgpt-retrieval';
@@ -38,6 +40,10 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
       && context.conversation.purpose === 'knowledge_preview' && lease.actor.capabilities.includes('assistant.preview.self');
     if (agent && (lease.actor.principal.kind === 'user' || privateStaffReport || staffPreview
       || context.conversation.purpose === 'project_collaboration' && context.run.purpose === 'site.question' && lease.actor.capabilities.includes('assistant.project.shared'))) {
+      if (agent.tools && !agent.consultation && configuredApplicationWebSearch()) {
+        await processAgentAnswer(lease, { applicationWeb: { provider: configuredWebSearchProvider() } });
+        return;
+      }
       const native=lease.actor.principal.kind==='user' && agent.tools?await selectedNativeSearch(agent):null;
       await processAgentAnswer(lease,native?{webSearch:nativeSearchDependency({
         enterpriseId:lease.enterpriseId,runId:lease.runId,search:native})}:{}); return;

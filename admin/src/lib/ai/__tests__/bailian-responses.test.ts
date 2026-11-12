@@ -104,6 +104,19 @@ test('deployment opt-in is explicit and default off', () => {
   assert.equal(responsesWireSelected(runtime, userTurn({ jsonOutput: true }), { ASSISTANT_RESPONSES_API: '1' }), false);
 });
 
+test('application search selects a single required Responses function without changing R1 defaults', () => {
+  const final = { name: 'final_response', description: 'structured final', parameters: { type: 'object' } };
+  const fetchTool = { ...final, name: 'web_fetch' };
+  const input = userTurn({ tools: [fetchTool], requireTool: true, applicationWebSearch: true, enableThinking: false });
+  const env = { ASSISTANT_RESPONSES_API: '1' };
+  assert.equal(responsesWireSelected(runtime, input, env), true);
+  assert.equal(bailianResponsesBody(input).tool_choice, 'required');
+  assert.equal(bailianResponsesBody(input).enable_thinking, false);
+  assert.equal(bailianResponsesBody({ ...input, tools: [fetchTool, final] }).tool_choice, 'auto');
+  assert.equal(responsesWireSelected(runtime, { ...input, tools: [final] }, env), false);
+  assert.equal(bailianResponsesBody(userTurn({ tools: [final] })).tool_choice, 'auto');
+});
+
 test('request body uses Responses items, not Chat Completions messages', () => {
   const body = bailianResponsesBody(userTurn({
     tools: [{ name: 'record_note', description: '业务工具', parameters: { type: 'object', properties: { note: { type: 'string' } } } }],

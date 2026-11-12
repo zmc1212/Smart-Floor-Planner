@@ -1,5 +1,9 @@
 # 后台系统当前功能清单
 
+<!-- xiaok-r3-web-tools -->
+**小K R3 公开联网工具（Limited）。** 合资格的原生 Agent 会话可用 `ASSISTANT_WEB_SEARCH_TOOLS=1` 通过现有聊天 Worker 启用 R2 搜索和读页工具。每次调用沿用当前租户、参与人、会话及工具能力校验。搜索候选用于找原文，只有成功提取的公开原文可生成网页 Evidence，随运行落库并通过现有引用接口重进。搜索服务独立于模型供应商。[协议、配置与验证](bailian-responses-adapter.md#11-r3-应用联网搜索)。
+<!-- /xiaok-r3-web-tools -->
+
 <!-- site-capture-current -->
 **现场上报/回执：本地已实现（Implemented）。** 批准的[V3随手报与常用工作](../design-references/cloud-site-redesign-20261107/README.md#05-通用现场上报与回执已批准实施)对应`packages/construction/chat/chat`：54px拍照/说一句双按钮，打字/常用工作次入口，原图/原音预览及工作/部位/进展一次提交。点选保留部分完成/说不准，不切阶段、不调用模型；新上报由管理人员核对发布，原补拍/更正/版本保留。
 

@@ -1,5 +1,9 @@
 # 小程序当前功能清单
 
+<!-- xiaok-r3-web-tools -->
+**小K R3 公开资料（Limited）。** 合资格的开发会话沿用 C01 聊天及已授权的项目或跟进会话服务。Worker 可按需搜索并读取公开原文，将原始网址和检索时间随引用保存。原引用卡片通过 `GET /api/miniprogram/assistant/citations/:id` 打开。真实验收覆盖隔离会话服务，原生设备和各角色入口待验。[R3 验证](bailian-responses-adapter.md#11-r3-应用联网搜索)。
+<!-- /xiaok-r3-web-tools -->
+
 <!-- site-capture-current -->
 **现场上报/回执：本地已实现（Implemented）。** 批准的[V3随手报与常用工作](../design-references/cloud-site-redesign-20261107/README.md#05-通用现场上报与回执已批准实施)对应`packages/construction/chat/chat`：54px拍照/说一句双按钮，打字/常用工作次入口，原图/原音预览及工作/部位/进展一次提交。点选保留部分完成/说不准，不切阶段、不调用模型；新上报由管理人员核对发布，原补拍/更正/版本保留。
 

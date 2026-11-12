@@ -1,5 +1,9 @@
 # 小K第二期：需求整理与人工交接
 
+<!-- xiaok-r3-web-contract -->
+**R3 网页来源（Limited）。** 合资格的原生会话由现有 LangGraph Worker 经 R2 工具注册表派发。独立搜索服务提供公开候选，受保护的读页服务将原文交给现有 Evidence 和引用链。百炼 Responses 承载检索工具调用与回传，终稿轮使用既有结构化通道。[协议、配置与验证](bailian-responses-adapter.md#11-r3-应用联网搜索)。
+<!-- /xiaok-r3-web-contract -->
+
 <!-- site-capture-current -->
 ## 现场上报与送达合同
 

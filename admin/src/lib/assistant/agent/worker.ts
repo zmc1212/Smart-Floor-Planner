@@ -92,6 +92,10 @@ import { consultationAcceptanceProfile } from '../contracts/consultation';
 import { consultationRequestReservation, reserveConsultationDispatch, settleConsultationDispatch } from './consultation-usage';
 import { configuredWebProvider, parseWebQuery, searchWeb, webSearchTool, type WebSearchSnapshot } from './web';
 import { webEvidence, webSynthesisSources, webAnswerQuoteSpans } from './web-evidence';
+import { createAgentWebTools, omitSearchSnippets, webOriginalPending, type AgentWebSearchOptions } from './web-tool-runtime';
+import { isWebTool, webToolNames } from '../web-search/contract';
+import { canUseWebTools } from '../web-search/tools';
+import { webAnswerBoundaryIssues } from '../web-search/trust';
 import { proseNumberProtocol } from './prose-number-view';
 import { consultationRuntimeBudget } from './consultation-profile';
 import { citationSelectionProtocol } from './citation-coverage';
@@ -265,8 +269,8 @@ export function projectNeedBatchOutput(output: ModelTurnOutput, recordOnly: bool
 /** final_response is the application's structured-output envelope, not a
  * business action. Do not accept it before same-round tools have returned.
  * Preserve the provider output separately; all actual tool calls stay paired. */
-const sourceQueryTools = new Set(['restore_sources', 'query_business', 'query_materials', 'query_followups', 'search_knowledge', 'search_web', 'read_web', 'recommend_references', 'recommend_designers']);
-const ownerKnowledgeTools = new Set(['search_knowledge', 'search_web', 'read_web']);
+const sourceQueryTools = new Set(['restore_sources', 'query_business', 'query_materials', 'query_followups', 'search_knowledge', 'search_web', 'read_web', ...webToolNames, 'recommend_references', 'recommend_designers']);
+const ownerKnowledgeTools = new Set(['search_knowledge', 'search_web', 'read_web', ...webToolNames]);
 function hasReportRead(messages: ModelMessage[]) {
   return messages.some((message, index) => {
     if (message.role !== 'tool') return false;
@@ -317,7 +321,7 @@ export function finalToolForMessages(messages:ModelMessage[], question = '', sou
         reportAnswer = true;
         reportPacketCoverage = 'questionCoverage' in packet ? packet.questionCoverage : undefined;
       }
-      const sourceRead = call.name === 'restore_sources' || call.name === 'search_knowledge' || call.name === 'search_web' || call.name === 'read_web'
+      const sourceRead = call.name === 'restore_sources' || ownerKnowledgeTools.has(call.name)
         || reportRead
         || call.name === 'query_business' && packet.query?.domain === 'floorplans'
         || call.name === 'query_materials' && packet.query?.domain === 'materials' && packet.data?.resolution === 'resolved';
@@ -326,7 +330,7 @@ export function finalToolForMessages(messages:ModelMessage[], question = '', sou
         otherDisplayResult = true;
         if (call.name === 'recommend_designers') designerResult = true;
       }
-      if (['search_knowledge', 'search_web', 'read_web'].includes(call.name) && Array.isArray(packet.synthesisSources)) naturalSourceRead = true;
+      if (ownerKnowledgeTools.has(call.name) && Array.isArray(packet.synthesisSources)) naturalSourceRead = true;
     } catch { /* Unknown result shapes retain the existing source-kind boundary. */ }
   }
   if (naturalKnowledge && naturalSourceRead) questionCoverage = currentKnowledgeQuestion(question);
@@ -452,7 +456,7 @@ export function agentToolsForTurn(question: string, messages: ModelMessage[], to
   if (requiredKnowledge && knowledgeReadPending(question,messages,triggerId,true) && tools.some(tool=>tool.name==='search_knowledge'))
     return tools.filter(tool=>tool.name==='search_knowledge');
   if (!requiredKnowledge && currentMessageOnlyRequested(question)) return [currentMessageFinalTool];
-  if (!requiredKnowledge && independentAdviceRequested(question)) return [...needToolsForRetry(messages, tools).filter(tool => ['search_knowledge', 'search_web', 'read_web'].includes(tool.name)),
+  if (!requiredKnowledge && independentAdviceRequested(question)) return [...needToolsForRetry(messages, tools).filter(tool => ownerKnowledgeTools.has(tool.name)),
     naturalKnowledge ? finalToolForMessages(messages, question,sourceExcerpts,false,sourceQuestionCoverage,knowledgeExplanation,undefined,true)
       : finalToolForMessages(messages, question,sourceExcerpts)];
   if (!knowledgeReadPending(question, messages, triggerId, requiredKnowledge)) return [...needToolsForRetry(messages, tools), finalToolForMessages(messages, question,sourceExcerpts,requiredKnowledge,sourceQuestionCoverage,knowledgeExplanation,undefined,naturalKnowledge)];
@@ -465,6 +469,7 @@ export function agentToolsForTurn(question: string, messages: ModelMessage[], to
   return [{ ...finalTool, parameters, description: '本轮指定的原文尚未读取且当前无可用读取工具。只说明本次无法依据原文回答，不解释或猜测文件内容，不据此断言文件不存在或现实没有发生。' }];
 }
 export async function processAgentAnswer(lease: Lease, dependencies: {
+  applicationWeb?: AgentWebSearchOptions;
   webSearch?: (query: import('./web').WebQuery) => Promise<WebSearchSnapshot>;
   webRead?: (query: import('./web').WebQuery, selected: PublicCandidate, previous: PublicResearchState | undefined, sequence: number, alternatives?: PublicCandidate[]) => Promise<WebSearchSnapshot>;
   model?: (messages: ModelMessage[], tools: ModelTool[], turn: number, requestTools?: ModelTool[]) => Promise<ModelTurnOutput>;
@@ -934,14 +939,24 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       initial.messages[0].content.push({ type: 'text', text: composableReviewContext });
     if (review && reviewMode !== 'propose' && initial.messages[0]?.role === 'system' && !initial.resume)
       initial.messages[0].content.push({ type: 'text', text: reviewReplyOnlyContext(reviewMode) });
-    const publicKnowledge = (!initial.knowledgeEnabled || sourceMode.naturalKnowledge) && (!!dependencies.webSearch || configuredWebProvider() !== null);
     const publicResearch = !!initial.config.consultation || initial.minimalDialogue;
+    const nativeWorkflow = initial.minimalDialogue && initial.config.tools && !initial.mediaRefs.length
+      && publicResearch ? fastGPTWorkflows()?.nativeKnowledge : undefined;
+    const useApplicationWeb = !!dependencies.applicationWeb && !nativeWorkflow && !initial.config.consultation && !nativeFinalization;
+    const applicationWeb = useApplicationWeb && canUseWebTools(lease.actor) ? createAgentWebTools({
+      ...dependencies.applicationWeb!, lease, scoped, question: reviewContext.currentQuestion,
+      conversationId: String(initial.conversation.id),
+      deadlineAt: new Date(String(initial.run.created_at)).getTime() + 300_000,
+    }) : null;
+    const webAvailable = useApplicationWeb ? !!applicationWeb : !!dependencies.webSearch || configuredWebProvider() !== null;
+    const publicKnowledge = (!initial.knowledgeEnabled || sourceMode.naturalKnowledge) && webAvailable;
+    const replaceWeb = (tools: ModelTool[]) => applicationWeb?.replace(tools) ?? tools;
     const toolsForMessage = (businessFollowup: boolean) => {
       const readOnly = constructionReadOnlyTools(String(initial.conversation.purpose), initial.config.tools, reportQuestionPlanning, coordinationReferral, publicKnowledge);
-      if (readOnly) return knowledgeTools(readOnly, initial.knowledgeEnabled);
-      const base = knowledgeTools(publicResearchTools(readToolsForContext(agentToolsForMessage(reviewContext.currentQuestion,
-        initial.config.tools, businessFollowup, !!dependencies.webSearch || configuredWebProvider() !== null,
-        initial.designerFollowup, ((initial.conversation.entry_snapshot as Row).materialShareProposal as Row | undefined)?.status === 'pending'), readContext), publicResearch, initial.minimalDialogue), initial.knowledgeEnabled);
+      if (readOnly) return replaceWeb(knowledgeTools(readOnly, initial.knowledgeEnabled));
+      const base = replaceWeb(knowledgeTools(publicResearchTools(readToolsForContext(agentToolsForMessage(reviewContext.currentQuestion,
+        initial.config.tools, businessFollowup, webAvailable,
+        initial.designerFollowup, ((initial.conversation.entry_snapshot as Row).materialShareProposal as Row | undefined)?.status === 'pending'), readContext), publicResearch, initial.minimalDialogue), initial.knowledgeEnabled));
       // fitAgentContext appends the final tool. An empty candidate list gives the
       // provider exactly one final_response and a named tool_choice.
       return review ? reviewMode !== 'propose' ? []
@@ -967,8 +982,6 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       return { status: marker.effect === 'proposal' ? 'pending' as const : 'unchanged' as const, text: reviewProposalReply(marker.name, marker.effect) };
     };
     let turnAllocation: ReturnType<typeof consultationRuntimeBudget> | ReturnType<typeof homeSourceRuntimeBudget> | ReturnType<typeof reportNativeRuntimeBudget> | ReturnType<typeof naturalKnowledgeRuntimeBudget>;
-    const nativeWorkflow = initial.minimalDialogue && initial.config.tools && !initial.mediaRefs.length
-      && publicResearch ? fastGPTWorkflows()?.nativeKnowledge : undefined;
     const callModel = async (turn: number, messages: ModelMessage[], tools: ModelTool[], purpose: ModelRequestPurpose = 'answer'): Promise<ModelTurnOutput> => {
           if (nativeWorkflow && purpose === 'answer') {
             // FastGPT supplied this complete native turn. No second planning,
@@ -1050,6 +1063,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                 }
               }
               const definitions=agentToolsForTurn(question,current,available,triggerId,{ ...sourceMode, reportPlan });
+              const webFetch = definitions.find(tool => tool.name === 'web_fetch');
+              if (webFetch && webOriginalPending(current)) return [webFetch];
               return !nativeFinalization||purpose!=='answer'?definitions:available.length
                 ? [...definitions.filter(tool=>tool.name!==finishContextTool.name&&tool.name!=='final_response'),finish]
                 :definitions.map(definition => {
@@ -1058,9 +1073,12 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                   return imageSchema || reportNativeFinal ? explicitNativeObjectRoot(final) : final;
                 });
             }, profile, ...finalAllocation, ...(purpose === 'answer' ? { imageContextBudget } : {}),
-            ...(nativeFinalization&&purpose==='answer'&&!tools.length?{wireProjection:imageFinalization ? nativeImageFinalMessages : nativeFinalMessages}:{}),
+            ...(nativeFinalization && purpose === 'answer' && !tools.length
+              ? { wireProjection: imageFinalization ? nativeImageFinalMessages : nativeFinalMessages }
+              : r3Active && purpose === 'answer' && !tools.length ? { wireProjection: omitSearchSnippets } : {}),
           });
           const dialogueFinalCarrier = minimalFinalCarrier(initial.minimalDialogue && purpose === 'answer', initial.config, dispatchTools);
+          const applicationWebProvider = purpose === 'answer' && r3Active ? applicationWeb!.provider : null;
           const summaryRequestHash = purpose === 'summary' || purpose === 'grounding' ? fingerprint({ messages: modelMessages, tools: dispatchTools }) : null;
           const ownerScopeRequest = ownerReads ? fingerprint({ scope: ownerReads.ownerScope, tools: dispatchTools,
             ...(ownerArchiveBound ? { archiveAllowed, modelMessages } : {}),
@@ -1086,6 +1104,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`));
           if (cached) {
             if (((cached.input_summary as Row)?.dialogueFinalCarrier ?? undefined) !== dialogueFinalCarrier) fail('context_changed');
+            if (((cached.input_summary as Row)?.applicationWebProvider ?? null) !== applicationWebProvider) fail('context_changed');
             if (((cached.input_summary as Row)?.reportFinalOutputTokens ?? undefined) !== finalAllocation.reportFinalOutputTokens) fail('context_changed');
             if (((cached.input_summary as Row)?.reportFinalCarrier ?? undefined) !== reportFinalCarrier) fail('context_changed');
             if (((cached.input_summary as Row)?.reportFinalSchema ?? undefined) !== reportFinalSchema) fail('context_changed');
@@ -1121,6 +1140,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               estimatedRequestTokens: requestedTokens! }) : null;
             await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
                 values(${lease.enterpriseId},${lease.runId},${sequence},'agent_model','running',${JSON.stringify({ turn, purpose, summaryRequestHash, consultation: consultation ? { profile, stage: consultation.stage, budgetGroup: consultation.budgetGroup, reservation } : null, promptVersion: agentPromptVersion, contextPolicy: messageScoped ? currentMessageScopeProtocol : adviceScoped ? independentAdviceContextProtocol : initial.minimalDialogue ? initial.dialogueProtocol : focused === messages ? 'conversation' : synthesisContextProjectionVersion, budget: bounded.diagnostic,
+                  ...(applicationWebProvider ? { applicationWebProvider } : {}),
                   currentMessageScope: messageScoped ? currentMessageScopeProtocol : null,
                   independentAdviceContext: adviceScoped ? independentAdviceContextProtocol : null,
                   policyProjection:policyView===focused?null:modelPolicyProjectionVersion,
@@ -1163,6 +1183,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           const executeProvider = () => executePostgresText({ enterpriseId: BigInt(lease.enterpriseId), owner: { kind: 'assistant_run', runId: BigInt(lease.runId) },
             logicalModelKey: 'chat.general', messages: [], maxTokens: limits.maxOutputTokens,
             agent: { config: initial.config, input: { messages: modelMessages, tools: dispatchTools, maxTokens: limits.maxOutputTokens, requireTool: purpose !== 'vision',
+              ...(applicationWebProvider ? { applicationWebSearch: true } : {}),
               ...finalAllocation,
               ...(nativeFinalization&&purpose==='answer'&&!tools.length?{outputMode:finalOutputMode}:{}),
               ...(dialogueFinalCarrier ? { outputMode: dialogueFinalCarrier } : {}),
@@ -1255,6 +1276,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     // inherit a prior memory revision or reinterpret history as authorization.
     const summaryWrites = ['record_need','request_designer','record_reference_preference','prepare_material_share','revoke_material_share', ...reviewDefinitions.map(tool => tool.name)];
     const initialTools = toolsForMessage(false);
+    const r3Active = initialTools.some(tool => isWebTool(tool.name));
+    const sourceReviewContext = r3Active ? { ...reviewContext, generalKnowledge: false } : reviewContext;
     const naturalReadBudget = (tools: ModelTool[]) => naturalKnowledgeRuntimeBudget({
       policy: (initial.run.policy_snapshot as Row).naturalKnowledgeSchedule, natural: sourceMode.naturalKnowledge,
       images: initial.mediaRefs.length, tools,
@@ -1264,7 +1287,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     // before the existing discovery/read/final sequence within four calls.
     if (!initial.resume && initial.savedSummary?.status === 'succeeded') {
       initial.messages = withHistorySummary(initial.messages, initial.savedSummary.private_checkpoint as HistorySnapshot);
-    } else if (!initial.minimalDialogue && !naturalReadBudget(initialTools) && !initial.resume && !initial.savedSummary && initial.config.tools && !currentMessageOnlyRequested(reviewContext.currentQuestion) && !independentAdviceRequested(reviewContext.currentQuestion) && (!dependencies.model || dependencies.summary)
+    } else if (!r3Active && !initial.minimalDialogue && !naturalReadBudget(initialTools) && !initial.resume && !initial.savedSummary && initial.config.tools && !currentMessageOnlyRequested(reviewContext.currentQuestion) && !independentAdviceRequested(reviewContext.currentQuestion) && (!dependencies.model || dependencies.summary)
       && !initialTools.some(t => summaryWrites.includes(t.name))) {
       const bounded = fitAgentContext(projectSynthesisPolicy(synthesisModelMessages(initial.messages)), [...initialTools, finalTool], { profile: initial.config.consultation?.profile, imageContextBudget });
       const first = bounded.messages.map(originalMessageId).find(Boolean);
@@ -1600,7 +1623,23 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                 ${JSON.stringify({ code: messageIssue.code, scope: currentMessageScopeProtocol, noBusinessTools: true })}::jsonb) on conflict do nothing`));
             return messageIssue;
           }
-          let candidate:{kind?:string;text?:unknown;segments?:Array<{text?:unknown}>};try{candidate=JSON.parse(raw);}catch{return null;}
+          let candidate: { kind?: string; text?: unknown; segments?: Array<{ text?: unknown }> } | null = null;
+          try { candidate = JSON.parse(raw); } catch { /* The existing decoder owns malformed output. */ }
+          if (r3Active && typeof candidate?.kind !== 'string') return {
+            code: 'invalid_model_answer',
+            feedback: '请单独提交 final_response。使用现有 JSON Schema 的 kind 字段，依据本轮取得的原文选择引用。',
+          };
+          if (!candidate) return null;
+          if (r3Active) {
+            const text = [candidate?.text, ...(Array.isArray(candidate?.segments) ? candidate.segments.map(segment => segment?.text) : [])]
+              .filter(part => typeof part === 'string').join('\n');
+            if (/https?:\/\//i.test(text)) return {
+              code: 'invalid_model_citation', feedback: '网页链接由服务端按本轮已读原文的 citationId 装配。删除正文手写网址，仅保留实际支持论点的来源选择。',
+            };
+            if (!initial.knowledgeEnabled && webAnswerBoundaryIssues(text, 1).some(issue => issue.startsWith('claimed_enterprise_'))) return {
+              code: 'ungrounded_response_scope', feedback: '当前企业知识未启用。依据已读公开原文或一般知识说明，不声称查过企业施工标准。',
+            };
+          }
           const question = safeText(initial.trigger.content as Parameters<typeof safeText>[0]);
           if (sourceMode.sourceQuestionCoverage && (initial.shared || originalAnswerOnly(question)) && candidate?.kind === 'knowledge') {
             const source = await scoped(tx => one(tx, sql`select private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
@@ -1682,7 +1721,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               const source=originals.find(ref=>ref.messageId===fact.sourceMessageId);
               return source?[{sourceMessageId:source.messageId,sourceHash:source.hash,quote:fact.quote,value:fact.value}]:[];
             })};
-            const review = { ...reviewContext, currentNeeds };
+            const review = { ...sourceReviewContext, currentNeeds };
             const projected = siteObservationReferral && !claimFinalization
               ? referUnsupportedSiteObservation(raw, evidence.sources, reviewContext) : raw;
             const issue=reportScoped ? synthesisRepairIssue(projected,evidence.sources,review)
@@ -1695,16 +1734,21 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         },
         model: callModel,
         validateTool: (name, args) => readToolInputIssue(name, args, readContext, !!ownerScopeIdentity, archiveAllowed),
-        tool: async (turn, index, name, args) => {
+        tool: async (turn, index, name, args, callId) => {
+          const webTool = isWebTool(name);
           if (!initial.knowledgeEnabled && ['search_knowledge','recommend_references','record_reference_preference'].includes(name)) fail('enterprise_knowledge_disabled', 403);
-          if (constructionReadOnlyTools(String(initial.conversation.purpose), true, reportQuestionPlanning, coordinationReferral, publicKnowledge)?.every(tool => tool.name !== name)) fail('assistant_capability_forbidden',403);
+          if (constructionReadOnlyTools(String(initial.conversation.purpose), true, reportQuestionPlanning, coordinationReferral, publicKnowledge)?.every(tool => tool.name !== (webTool ? 'search_web' : name))) fail('assistant_capability_forbidden',403);
           if (!ownerReadToolAllowed(name, archiveAllowed)) fail('assistant_capability_forbidden', 403);
           if (ownerScopeIdentity && name !== 'query_materials') {
             const scope = await scoped(tx => ownerScopeForRun(tx));
             if (scope === 'site' || scope === 'knowledge_and_site' && !ownerKnowledgeTools.has(name)) fail('assistant_capability_forbidden', 403);
           }
-          const input = bindReadToolInput(name, JSON.parse(args), readContext) as Row;
           const sequence = 1200 + turn * 10 + index, resultKey = `${lease.runId}:${turn}:${index}`;
+          if (webTool) {
+            if (!applicationWeb || !r3Active || !callId) fail('assistant_capability_forbidden', 403);
+            return applicationWeb.execute({ id: callId, name, arguments: args }, turn, sequence);
+          }
+          const input = bindReadToolInput(name, JSON.parse(args), readContext) as Row;
           if (review && reviewDefinitions.some(tool => tool.name === name)) {
             const typed = name === 'propose_requirement_changes' ? review.proposeRequirements
               : name === 'propose_designer_reception' ? review.requestDesigner : review.cancelDesigner;
@@ -2128,7 +2172,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         } else {
           const projected = siteObservationReferral && !claimFinalization
             ? referUnsupportedSiteObservation(answerRaw, evidence.sources, reviewContext) : answerRaw;
-          answer = parseSynthesis(projected, evidence.sources, reviewContext);
+          answer = parseSynthesis(projected, evidence.sources, sourceReviewContext);
         }
         const preferences = ((context.conversation.entry_snapshot as Row)?.referencePreferences || []) as ReferencePreference[];
         const memory = await availableNeedMemory(tx, lease.enterpriseId, String(context.conversation.id), context.conversation.entry_snapshot);

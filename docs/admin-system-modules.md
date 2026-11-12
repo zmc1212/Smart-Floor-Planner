@@ -1,5 +1,9 @@
 # Admin System: Current Module Inventory
 
+<!-- xiaok-r3-web-tools -->
+**XiaoK R3 public web tools (Limited).** `ASSISTANT_WEB_SEARCH_TOOLS=1` enables the R2 search and fetch tools on eligible native Agent turns through the existing chat worker. The actor must pass the current tenant, participant, conversation and tool-capability checks. Search candidates are discovery data. Only a successfully parsed public original can create a web Evidence reference, stored with the run and reopened through the existing citation endpoint. The configured search service is independent of the model. [Wire contract, configuration and verification](bailian-responses-adapter.md#11-r3-应用联网搜索).
+<!-- /xiaok-r3-web-tools -->
+
 <!-- site-capture-current -->
 **Site capture/receipts Implemented locally.** Approved [V3 capture and quick work](../design-references/cloud-site-redesign-20261107/README.md#05-通用现场上报与回执已批准实施) maps to `packages/construction/chat/chat`: two 54 px camera/voice actions, secondary typing/quick work, original photo/voice preview and one-submit explicit work/room/progress. Quick choices preserve partial/unknown states without changing project stage or calling a model. Captured originals require manager review before publication; original reshoot/edit/history remain.
 

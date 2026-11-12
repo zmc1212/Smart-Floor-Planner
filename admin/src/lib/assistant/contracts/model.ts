@@ -21,6 +21,8 @@ export type ModelTurnInput = {
   /** Server-bound report final allocation; never a provider wire argument. */
   reportFinalOutputTokens?: typeof reportFinalOutputTokenLimit;
   cacheControl?: 'implicit' | 'ephemeral_system';
+  /** Server-owned application tools already cover web retrieval for this turn. */
+  applicationWebSearch?: true;
   /** Server-bound opt-in only; never emitted as a provider/model argument. */
   profile?: 'bailian-deepseek-flash-consultation-v1' | 'bailian-qwen37-flash-long-v1'; deadlineAt?: number;
 };

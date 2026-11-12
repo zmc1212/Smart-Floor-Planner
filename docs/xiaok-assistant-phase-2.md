@@ -1,5 +1,9 @@
 # XiaoK Phase Two: Requirements and Human Handoff
 
+<!-- xiaok-r3-web-contract -->
+**R3 web sources (Limited).** The existing LangGraph worker dispatches the R2 tool registry for eligible native conversations. The independent search service supplies public candidates, and the guarded reader supplies originals to the existing Evidence and citation pipeline. Bailian Responses carries search tool calls and results. Final-only turns use the established structured carrier. [Protocol, configuration and verification](bailian-responses-adapter.md#11-r3-应用联网搜索).
+<!-- /xiaok-r3-web-contract -->
+
 <!-- site-capture-current -->
 ## Site capture and delivery contract
 

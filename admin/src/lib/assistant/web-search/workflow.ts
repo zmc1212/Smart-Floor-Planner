@@ -139,9 +139,12 @@ export async function runWebResearch(options: {
   // A forged or non-evidence URL makes the answer undeliverable; the raw text
   // remains available for audit instead of being silently rewritten.
   if (!citationAudit.ok) boundaryIssues.push('invalid_citation');
+  const fetched = sources.some(source => source.evidence === 'full_page');
+  if (fetched && !citationAudit.citedUrls.length) boundaryIssues.push('missing_citation');
+  if (!fetched) boundaryIssues.push('web_original_unavailable');
   return {
     protocol: webResearchProtocol, plan,
-    status: outcome.status === 'completed' && citationAudit.ok ? 'completed' : 'failed',
+    status: outcome.status === 'completed' && boundaryIssues.length === 0 ? 'completed' : 'failed',
     text: outcome.text, sources, assessment: assessWebSources(sources), citationAudit,
     boundaryIssues, searchPerformed, enterpriseKnowledgeAvailable: false, outcome,
   };

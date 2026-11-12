@@ -4,17 +4,18 @@ import { agentModelLimits, type ModelMessage, type ModelTool, type ModelTurnOutp
 import { finalAnswerRepairControl, finalAnswerRepairBase, type FinalAnswerRepairScope } from './synthesis-repair';
 import { assertToolPairs, toolSchemaIssue } from './tool-protocol';
 import {finishContextTool,contextReady,nativeFinalProtocol} from './native-final';
+import { webToolNames } from '../web-search/contract';
 
 type ReadReceipt = { name: string; argumentsHash: string; messageIndex: number };
 export type AgentCheckpoint = { version: 1; turn: number; messages: ModelMessage[]; output: ModelTurnOutput | null; validationRepairs?:number; argumentFailures?: number; exhaustedTools?: string[]; readReceipts?: ReadReceipt[]; finalFromTools?: boolean; turnSchedule?: typeof agentTurnScheduleProtocol; primaryModelTurns?: number; nativeFinalization?:typeof nativeFinalProtocol; finalizing?:boolean; nativeWorkflow?: 'fastgpt-native-knowledge-v1' };
-export type AgentToolResult = { content: string; stop?: boolean; exhausted?: boolean };
+export type AgentToolResult = { content: string; stop?: boolean; exhausted?: boolean; cacheable?: boolean };
 export type AgentRuntimePorts = {
   /** Must check lease, actor, mode, revision and source availability on every call. */
   authorize(): Promise<void>;
   /** Persists dispatch and response separately; unknown dispatch must never be retried here. */
   model(turn: number, messages: ModelMessage[], tools: ModelTool[]): Promise<ModelTurnOutput>;
   /** Owns schema validation, version checks and durable operation-key idempotency. */
-  tool(turn: number, index: number, name: string, args: string): Promise<AgentToolResult>;
+  tool(turn: number, index: number, name: string, args: string, callId?: string): Promise<AgentToolResult>;
   /** Pure read-input validation before dispatch; never catches an executed tool's errors. */
   validateTool?(name: string, args: string): { code: string; feedback: string } | null;
   /** Save only authorized application checkpoints, never framework/global conversation state. */
@@ -45,7 +46,7 @@ export const agentToolReplyProtocol = 'durable-tool-reply-v1';
 export const agentTurnScheduleProtocol = 'shared-auxiliary-final-repair-v2';
 // Only these application-owned reads may reuse a completed result. Writes and
 // newly introduced tools always execute through their existing durable ports.
-const readTools = new Set(['search_knowledge', 'search_web', 'read_web', 'recall_history', 'query_materials', 'query_business', 'query_followups', 'recommend_references', 'recommend_designers']);
+const readTools = new Set(['search_knowledge', 'search_web', 'read_web', ...webToolNames, 'recall_history', 'query_materials', 'query_business', 'query_followups', 'recommend_references', 'recommend_designers']);
 /** Only a pure read batch may receive one unavailable-tool diagnostic. It
  * grants no capability and never reaches an application tool dispatcher. */
 export function recoverableUnavailableRead(output: Pick<ModelTurnOutput, 'toolCalls'>, available: ModelTool[]) {
@@ -180,13 +181,13 @@ export async function runRenovationAgent(input: {
         const result: AgentToolResult = exhaustedTools.has(call.name) ? { content: exhaustedToolContent }
           : original?.role === 'tool' ? { content: JSON.stringify({ status: 'already_queried', tool: call.name, previousCallId: original.callId,
             instructions: '相同参数的查询已成功返回，完整结果仍在上方对应工具消息中，不再执行或复制。直接使用仍有效的原来源回答；确有不同范围才改参数补查，不把未命中当现实不存在，不新增事实或操作。' }) }
-          : await ports.tool(state.turn, index, call.name, call.arguments);
+          : await ports.tool(state.turn, index, call.name, call.arguments, call.id);
         // Handoff intentionally invalidates the AI lease. Do not ask a model to speak after it.
         if (result.stop) { stop = true; break; }
         await ports.authorize();
         // A write may change the meaning of an earlier read even in this run.
         if (!readTools.has(call.name)) readReceipts = [];
-        else if (argumentsHash && !previous && !exhaustedTools.has(call.name)) readReceipts.push({ name: call.name, argumentsHash, messageIndex: messages.length });
+        else if (result.cacheable !== false && argumentsHash && !previous && !exhaustedTools.has(call.name)) readReceipts.push({ name: call.name, argumentsHash, messageIndex: messages.length });
         if (result.exhausted) exhaustedTools.add(call.name);
         messages.push({ role: 'tool', callId: call.id, content: result.content });
       }

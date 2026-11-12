@@ -2,7 +2,7 @@ import { publicWebUrl } from '../agent/web';
 import {
   webCitationAuditProtocol, webSourceAssessmentProtocol,
   type WebCitationAudit, type WebEvidenceSource, type WebSearchProviderResult,
-  type WebSourceAssessment, type WebSourceConflict, type WebSourceKind, type WebSourceTrust,
+  type WebSourceAssessment, type WebSourceConflict, type WebSourceTrust,
 } from './contract';
 
 const officialSuffixes = ['.gov.cn', '.gov'];
@@ -124,6 +124,10 @@ export function assessWebSources(sources: WebEvidenceSource[]): WebSourceAssessm
     const dates = new Set(group.map(source => source.publishedAt).filter((value): value is string => !!value));
     if (kinds.size > 1) conflicts.push({ code: 'source_type_conflict', urls });
     if (dates.size > 1) conflicts.push({ code: 'publication_date_conflict', urls });
+    const originals = group.filter(source => source.contentHash);
+    if (new Set(originals.map(source => source.contentHash)).size > 1) {
+      conflicts.push({ code: 'source_text_differs', urls: originals.map(source => source.url) });
+    }
     const domains = new Set(group.map(source => source.domain));
     if (domains.size > 1 && !conflicts.some(conflict => conflict.code === 'publication_date_conflict'
       && conflict.urls.join() === urls.join())) {
@@ -148,6 +152,7 @@ function answerUrls(answer: string): string[] {
 export function auditAnswerCitations(answer: string, sources: WebEvidenceSource[]): WebCitationAudit {
   const allowed = new Set<string>();
   for (const source of sources) {
+    if (source.evidence !== 'full_page' || source.injectionSignals.length) continue;
     try { allowed.add(publicWebUrl(source.url).href); } catch { /* Invalid evidence is never allowed. */ }
   }
   const cited: string[] = [], invalid: string[] = [];

@@ -187,6 +187,11 @@ export function requestedNativeTools(env: Record<string, string | undefined> = p
 /** Report-final, forced-final, JSON-only and consultation turns are Chat
  * Completions contracts. They are never reinterpreted on the Responses wire. */
 export function bailianResponsesApplies(input: ModelTurnInput) {
+  // Preserve the verified final-only carrier. Live Responses retrieval returned
+  // valid calls, but its final-only path serialized nested segments as a string.
+  const applicationToolTurn = input.applicationWebSearch === true
+    && input.tools.some(tool => tool.name !== 'final_response');
   return input.profile === undefined && input.reportFinalOutputTokens === undefined
-    && input.outputMode === undefined && input.requireTool !== true && input.jsonOutput !== true;
+    && input.outputMode === undefined && (input.requireTool !== true || applicationToolTurn)
+    && input.jsonOutput !== true;
 }

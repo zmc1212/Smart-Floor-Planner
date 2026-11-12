@@ -96,12 +96,16 @@ export function bailianResponsesBody(input: ModelTurnInput, options: BailianResp
     top_p: 1,
   };
   if (instructions.length) body.instructions = instructions.join('\n\n');
+  // Bailian documents required only when the request offers a single tool.
+  const requiredApplicationTool = input.applicationWebSearch && input.requireTool && tools.length === 1;
   if (typeof input.temperature === 'number') body.temperature = input.temperature;
-  if (input.enableThinking === true) body.enable_thinking = true;
+  if (input.enableThinking === true || requiredApplicationTool && input.enableThinking === false) {
+    body.enable_thinking = input.enableThinking;
+  }
   if (tools.length) {
     body.tools = tools;
     body.parallel_tool_calls = false;
-    body.tool_choice = 'auto';
+    body.tool_choice = requiredApplicationTool ? 'required' : 'auto';
   }
   if (options.stream) body.stream = true;
   return body;

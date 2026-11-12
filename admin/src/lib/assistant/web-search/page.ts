@@ -3,7 +3,7 @@ import { parseHTML } from 'linkedom';
 import { fail } from '../contracts';
 import { injectionSignals } from '../contracts/native-tools';
 import { extractWebPage, publicWebUrl, readPublicPage } from '../agent/web';
-import { webDocumentProtocol, type WebReadPage, type WebSourceTrust } from './contract';
+import { webDocumentProtocol, webSearchLimits, type WebReadPage, type WebSourceTrust } from './contract';
 import { classifyWebSource } from './trust';
 
 export type FetchedWebDocument = {
@@ -39,9 +39,10 @@ export function pageMetadata(html: string): { siteName: string | null; published
   const { document } = parseHTML(html);
   const meta = (selector: string) => document.querySelector(selector)?.getAttribute('content')?.trim() || null;
   const first = (...selectors: string[]) => selectors.map(meta).find(Boolean) || null;
-  const time = document.querySelector('time[datetime]')?.getAttribute('datetime')?.trim() || null;
+  const time = document.querySelector('article time[pubdate][datetime],main time[pubdate][datetime]')
+    ?.getAttribute('datetime')?.trim() || null;
   return {
-    siteName: first('meta[property="og:site_name"]', 'meta[name="application-name"]'),
+    siteName: first('meta[property="og:site_name"]', 'meta[name="application-name"]')?.slice(0, 200) ?? null,
     publishedAt: cleanPublishedAt(first(
       'meta[property="article:published_time"]',
       'meta[property="og:article:published_time"]',
@@ -58,12 +59,16 @@ export function pageMetadata(html: string): { siteName: string | null; published
  */
 export async function fetchPublicDocument(
   value: string,
-  options: { readPage?: WebReadPage; now?: () => Date } = {},
+  options: { readPage?: WebReadPage; now?: () => Date; signal?: AbortSignal } = {},
 ): Promise<FetchedWebDocument> {
   const requested = publicWebUrl(value);
-  const read = options.readPage ?? readPublicPage;
-  const page = await read(requested.href);
+  options.signal?.throwIfAborted();
+  const page = await (options.readPage
+    ? options.readPage(requested.href, options.signal)
+    : readPublicPage(requested.href, undefined, undefined, options.signal));
+  options.signal?.throwIfAborted();
   const finalUrl = publicWebUrl(page.url);
+  if (Buffer.byteLength(page.body) > webSearchLimits.maxResponseBytes) fail('web_page_too_large', 502);
   if (!/^(?:text\/html|text\/plain|application\/xhtml\+xml)(?:;|$)/i.test(page.type)) {
     fail('unsupported_web_content', 422);
   }
@@ -87,7 +92,7 @@ export async function fetchPublicDocument(
     retrievedAt,
     contentType: page.type,
     parser: extracted.parser,
-    injectionSignals: injectionSignals(extracted.text),
+    injectionSignals: injectionSignals(`${extracted.title}\n${extracted.text}`),
     trust: classifyWebSource(extracted.url, extracted.title),
   };
 }

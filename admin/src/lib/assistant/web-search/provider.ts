@@ -108,6 +108,10 @@ async function readSearchJson(url: URL, external?: AbortSignal): Promise<JsonPac
       if (size > webSearchLimits.maxResponseBytes) fail('web_search_response_too_large', 502);
       chunks.push(Buffer.from(part.value));
     }
+  } catch (error) {
+    if (timeout.aborted) fail('web_search_timeout', 503);
+    if (external?.aborted) fail('web_search_aborted', 503);
+    throw error;
   } finally { await reader.cancel().catch(() => {}); }
   let payload: unknown;
   try { payload = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
@@ -174,6 +178,7 @@ export type WebSearchProviderConfig = {
   baseUrl: string;
   ddgsBackend?: string;
   openserpEngines?: string;
+  searxngNews?: boolean;
 };
 
 /** Deployment configuration only. No API key is read or logged here; a future
@@ -191,6 +196,7 @@ export function webSearchProviderConfig(env: Record<string, string | undefined> 
     provider: provider as WebSearchProviderConfig['provider'], baseUrl: base.href,
     ...(provider === 'ddgs' ? { ddgsBackend: env.ASSISTANT_DDGS_BACKEND || 'yahoo' } : {}),
     ...(provider === 'openserp' ? { openserpEngines: engines } : {}),
+    ...(provider === 'searxng' ? { searxngNews: env.ASSISTANT_SEARXNG_NEWS === '1' } : {}),
   };
 }
 
@@ -201,12 +207,13 @@ export function createWebSearchProvider(config: WebSearchProviderConfig): WebSea
     fail('invalid_web_search_configuration', 503);
   }
   const endpoint = (path: string) => new URL(path, base.href.endsWith('/') ? base.href : base.href + '/');
+  const supportsNews = config.provider === 'searxng' && config.searxngNews !== false;
   return {
     name: config.provider,
-    supportsNews: config.provider === 'searxng',
+    supportsNews,
     async search(request: WebSearchRequest): Promise<WebSearchProviderResult> {
       const input = validateRequest(request);
-      if (input.kind === 'news' && config.provider !== 'searxng') return unsupportedNews(config.provider);
+      if (input.kind === 'news' && !supportsNews) return unsupportedNews(config.provider);
       let url: URL;
       if (config.provider === 'ddgs') {
         url = endpoint('search/text');
@@ -238,9 +245,12 @@ export function createWebSearchProvider(config: WebSearchProviderConfig): WebSea
         }
         fail('web_search_http_' + packet.status, 503);
       }
-      const results = config.provider === 'openserp' ? openserpSearchHits(packet.payload, input.limit)
-        : config.provider === 'ddgs' ? ddgsSearchHits(packet.payload, input.limit)
-          : searxngSearchHits(packet.payload, input.limit);
+      const matches = config.provider === 'openserp' ? openserpSearchHits(packet.payload, webSearchLimits.maxResults)
+        : config.provider === 'ddgs' ? ddgsSearchHits(packet.payload, webSearchLimits.maxResults)
+          : searxngSearchHits(packet.payload, webSearchLimits.maxResults);
+      const results = (input.domains.length ? matches.filter(hit => input.domains.some(
+        domain => hit.domain === domain || hit.domain.endsWith('.' + domain),
+      )) : matches).slice(0, input.limit);
       return {
         provider: config.provider, query: input.query, kind: input.kind,
         retrievedAt: new Date().toISOString(), results,
