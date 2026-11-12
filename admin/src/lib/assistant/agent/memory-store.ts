@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
 import { AssistantRepository, one, type Row } from '@/db/repositories/assistant-repository';
 import { recordNeedIssueSupplement } from '@/lib/construction/need-issues';
+import { boundDelegationReply, outletFields, recordDelegationRequirements } from '@/lib/native-workflow/live/delegation-inputs';
 import { fail, fingerprint, safeText, type ActorContext } from '../contracts';
 import { saveAutomaticRequirements } from '../requirements/automatic';
 import { applyNeedDelta, compactNeedMemory, needMemoryPolicy, parseNeedDelta, parseNeedWrites, readMemory, uncoveredNeedStatements, NeedWriteIncompleteError, type NeedFact } from './memory';
@@ -38,11 +39,14 @@ export async function persistNeedWrites(tx: PostgresTransaction, actor: ActorCon
     return { content: JSON.stringify(checkpoint.receipt) };
   }
   const memory = readMemory(conversation.entry_snapshot), changedFacts: NeedFact[] = [];
+  const reply = writes.some(write => outletFields.includes(write.field))
+    ? await boundDelegationReply(tx, actor, String(conversation.id), operation.sourceMessageId, sourceText) : null;
   let next = memory;
   for (const [position, write] of writes.entries()) {
     const operationId = `${operation.runId}:${operation.turn}:${operation.index}` + (position ? `:need:${position}` : '');
     const delta = parseNeedDelta({ ...write, sourceMessageId: operation.sourceMessageId, expectedVersion: next.version });
-    const updated = applyNeedDelta(next, delta, { id: operation.sourceMessageId, text: sourceText }, operationId, new Date().toISOString());
+    const replyRoom = outletFields.includes(write.field) ? reply?.roomName : undefined;
+    const updated = applyNeedDelta(next, delta, { id: operation.sourceMessageId, text: sourceText, replyRoom }, operationId, new Date().toISOString());
     // Validate every attempt first, then reuse a current receipt for the same
     // run/source/key/value/quote. A later model turn is not a new customer edit.
     if (next.facts.some(f => f.status === 'current' && f.id.startsWith(operation.runId + ':')
@@ -64,6 +68,7 @@ export async function persistNeedWrites(tx: PostgresTransaction, actor: ActorCon
     await tx.execute(sql`update app.assistant_conversations set entry_snapshot=jsonb_set(entry_snapshot,'{agentMemory}',${JSON.stringify(compacted.memory)}::jsonb),version=version+1,updated_at=now()
       where enterprise_id=${actor.enterpriseId} and id=${String(conversation.id)}`);
     for (const fact of changedFacts) await recordNeedIssueSupplement(tx, actor, conversation, fact);
+    await recordDelegationRequirements(tx, actor, String(conversation.id), operation.sourceMessageId, `${operation.runId}:${sequence}`, changedFacts, reply);
     await saveAutomaticRequirements(repository, String(conversation.id));
   }
   const checkpoint: NeedCheckpoint = { policy: needMemoryPolicy.version, receipt, archivedFacts: compacted.archivedFacts };

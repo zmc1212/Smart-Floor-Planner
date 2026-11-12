@@ -4,6 +4,7 @@ import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, fingerprint, id, type ActorContext, type Evidence } from '../contracts';
 import { knowledgeContext, reportStageKnowledgeContext } from './applicability-context';
 import { agentMessageAvailable } from '../agent/media-context';
+import { delegationOwnerNoticeAvailable, delegationOwnerPurpose } from '@/lib/native-workflow/live/delegation-chat';
 import { constructionMessageActions } from '@/lib/construction/customer';
 import { siteRecordProjection, siteBusinessRecords } from '@/lib/construction/site-publications';
 import { siteWatchProjection } from '@/lib/construction/site-watches';
@@ -131,7 +132,9 @@ export async function projectMessage(tx:PostgresTransaction,actor:ActorContext,c
   for (const citationId of webIds) projected.push(await webCitationProjection(tx, actor, c, citationId));
   const publicProjection = await publicMessageProjection(tx, actor, c, String(message.id));
   const planProjection = await planMessageProjection(tx, actor.enterpriseId, String(c.id), String(message.id));
-  const available=speech?.revoked !== true && planProjection?.available !== false && publicProjection?.available !== false && !(message.answer_kind==='grounded' && !projected.length) && projected.every(x=>x.available)
+  const available=(message.purpose !== delegationOwnerPurpose || actor.principal.kind === 'user'
+    && await delegationOwnerNoticeAvailable(tx, actor.enterpriseId, String(c.id), String(message.id), actor.principal.userId))
+    && speech?.revoked !== true && planProjection?.available !== false && publicProjection?.available !== false && !(message.answer_kind==='grounded' && !projected.length) && projected.every(x=>x.available)
     && await agentMessageAvailable(tx, actor.enterpriseId, String(c.id), String(message.id),actor);
   const designerRecommendation = available && actor.principal.kind === 'user'
     ? await designerMessageProjection(tx, actor, String(c.id), String(message.id)) : null;

@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { delegationsEnabled } from '@/lib/native-workflow/live/delegation-store';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, id, key, type ActorContext } from '@/lib/assistant/contracts';
@@ -186,6 +187,12 @@ export class ConstructionService {
         }
         const updated = (await one(tx, sql`update app.construction_projects set version=version+1,updated_at=now() where enterprise_id=${eid} and id=${pid} returning *`))!;
         await audit(tx, a, pid, action, auditInput);
+        if (delegationsEnabled(eid) && (stageChanged || ['update','member','room'].includes(action))) {
+          await tx.execute(sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
+            values(${eid},'construction.project.changed.v1','construction_project',${pid},${Number(updated.version)},
+            ${JSON.stringify(actorContext(a).principal)}::jsonb,${requestKey!},
+            ${JSON.stringify({ projectId: pid, change: action, roomId: action === 'room' ? input.roomId || null : null })}::jsonb)`);
+        }
         // The actual stage event also belongs to internal staff follow-up; it
         // must not depend on homeowner publication or a foreground chat.
         if (stageChanged || ((remind || followUp) && updated.customer_access)) {

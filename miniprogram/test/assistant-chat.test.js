@@ -412,6 +412,21 @@ test('an idle re-sync reads only conversation metadata once its sequence is curr
   f.controller.dispose();
 });
 
+test('the first persisted replies replace an empty window with a full read', async () => {
+  const f = fixture();
+  f.db.items = [];
+  f.db.conversation.lastSeq = '0';
+  await f.controller.show({ conversationId: '11' });
+  assert.equal(f.controller.latestSeq, '0');
+  f.db.items = [message('21', '1', '请持续跟进水电进展'), message('22', '2', '已开始持续跟进')];
+  f.db.conversation.lastSeq = '2';
+  await f.controller.refresh();
+  assert.equal(messageReads(f).length, 2);
+  assert.ok(messageReads(f).every(call => call.body.afterSeq === undefined));
+  assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21', '22']);
+  f.controller.dispose();
+});
+
 test('only newer messages are fetched, paged through a burst and merged in order', async () => {
   const f = fixture();
   f.db.items = [message('21', '1', '旧问题'), message('22', '2', '旧回答')];

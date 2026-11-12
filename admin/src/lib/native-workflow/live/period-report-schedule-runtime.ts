@@ -31,22 +31,9 @@ import { scheduleTickLogPayload } from './period-report-schedule-observability';
 import { runScheduledPeriodReportDispatch } from './period-report-schedule';
 import { createFileWorkflowRunStore } from './run-store';
 import { resolveNativeWorkflowRunDir } from './run-dir';
+import { nativeWorkflowEnabled, nativeWorkflowEnterpriseIds } from './tenant-allowlist';
 
 const DEFAULT_DEFINITION_ID = 'period-report-weekly';
-
-function enabled(env: NodeJS.ProcessEnv): boolean {
-  const value = env.NATIVE_WORKFLOW_SCHEDULE_ENABLED?.trim().toLowerCase();
-  return value === '1' || value === 'true';
-}
-
-function configuredEnterpriseIds(env: NodeJS.ProcessEnv): string[] {
-  return [...new Set(
-    (env.NATIVE_WORKFLOW_SCHEDULE_ENTERPRISE_IDS ?? '')
-      .split(/[\s,]+/)
-      .map((value) => value.trim())
-      .filter((value) => /^[1-9]\d{0,18}$/.test(value)),
-  )];
-}
 
 function positiveInteger(value: string | undefined): number | undefined {
   if (!value || !/^[1-9]\d{0,8}$/.test(value.trim())) return undefined;
@@ -56,11 +43,6 @@ function positiveInteger(value: string | undefined): number | undefined {
 function minutes(value: string | undefined, fallback: number): number {
   const parsed = positiveInteger(value);
   return parsed === undefined ? fallback : parsed * 60_000;
-}
-
-function durableTaskRecoveryEnabled(env: NodeJS.ProcessEnv): boolean {
-  const value = env.NATIVE_WORKFLOW_TASK_RECOVERY_ENABLED?.trim().toLowerCase();
-  return value === '1' || value === 'true';
 }
 
 /** Reuses the existing worker tick; it starts no timer and no second Worker.
@@ -130,14 +112,14 @@ export async function runNativeWorkflowScheduleTick(
   readonly enabled: false;
   readonly reason: string;
 }> {
-  const enterpriseIds = configuredEnterpriseIds(env);
+  const enterpriseIds = nativeWorkflowEnterpriseIds(env.NATIVE_WORKFLOW_SCHEDULE_ENTERPRISE_IDS);
   // Recovery is independent of automatic scheduling: an environment may keep
   // NATIVE_WORKFLOW_SCHEDULE_ENABLED=0 while still recovering its own durable
   // tasks for the explicit allowlist.
-  if (durableTaskRecoveryEnabled(env) && enterpriseIds.length) {
+  if (nativeWorkflowEnabled(env.NATIVE_WORKFLOW_TASK_RECOVERY_ENABLED) && enterpriseIds.length) {
     await recoverDurableTasks(enterpriseIds).catch(() => undefined);
   }
-  if (!enabled(env)) return { enabled: false, reason: 'disabled' };
+  if (!nativeWorkflowEnabled(env.NATIVE_WORKFLOW_SCHEDULE_ENABLED)) return { enabled: false, reason: 'disabled' };
   if (!enterpriseIds.length) return { enabled: false, reason: 'no_enterprise_scope' };
 
   const runStore = createFileWorkflowRunStore({ rootDir: resolveNativeWorkflowRunDir() });

@@ -1,5 +1,13 @@
 # 后台系统当前功能清单
 
+<!-- native-delegation-current -->
+**B5.8 持续委托与事件联动（Limited）。** 获准企业沿原小K咨询消息 API 发起限定范围的水电跟进，原工地交流 API 在项目协作回复中显示待核对事项。已认证助手 Worker 通过 PostgreSQL 既有 outbox 和投递表消费事件。迁移 `0121_native_workflow_delegations` 新增委托和事件到任务的回执，两表强制 RLS。委托绑定业主、项目、原咨询及发起消息，分别保存现场进展和插座工作、版本依据、等待和完成条件。
+
+上报、发布、整理任务结果、私聊需求、获准共享的资料/图纸变更、项目/计划变化、指定事项的人员回复及正式方案/事项决定只推进匹配的工作。待处理和重试事件可跨 Worker 重启恢复。状态、站内回执和消费结果在同一事务提交，依靠唯一业务键与企业级事务锁处理重复及并发。暂停和终态限制后续执行。正式方案、授权、落实和经理复核沿原服务，获准结论由原投递链回到原咨询。
+
+迁移后可用 `NATIVE_WORKFLOW_DELEGATION_ENABLED=1` 及 `NATIVE_WORKFLOW_DELEGATION_ENTERPRISE_IDS` 为隔离企业启用。当前覆盖两个已登记部位的基础水电跟进、原站内受众，以及每次已授权的业主等待最多一次提醒。[事件、状态规则、验收与回滚](../admin/src/lib/native-workflow/README.md#b58-persistent-delegations-and-business-events)。
+<!-- /native-delegation-current -->
+
 <!-- site-capture-current -->
 **现场上报/回执：本地已实现（Implemented）。** 批准的[V3随手报与常用工作](../design-references/cloud-site-redesign-20261107/README.md#05-通用现场上报与回执已批准实施)对应`packages/construction/chat/chat`：54px拍照/说一句双按钮，打字/常用工作次入口，原图/原音预览及工作/部位/进展一次提交。点选保留部分完成/说不准，不切阶段、不调用模型；新上报由管理人员核对发布，原补拍/更正/版本保留。
 

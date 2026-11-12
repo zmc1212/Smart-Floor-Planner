@@ -62,8 +62,12 @@ export async function constructionFollowUpScope(tx: PostgresTransaction, eid: st
 export async function constructionNoticeAvailable(tx: PostgresTransaction, eid: string, cid: string, mid: string, lock = false, requireNotice = false) {
   const notice = await one(tx, sql`select e.id,e.aggregate_id,e.aggregate_version,e.payload,m.purpose from app.assistant_messages m
     join app.domain_event_outbox e on e.enterprise_id=m.enterprise_id and e.id=m.source_event_id
-    where m.enterprise_id=${eid} and m.conversation_id=${cid} and m.id=${mid} and m.purpose in ('construction.update','construction.stage','construction.followup','construction.record','construction.result','construction.plan')`);
+    where m.enterprise_id=${eid} and m.conversation_id=${cid} and m.id=${mid} and m.purpose in ('construction.update','construction.stage','construction.followup','construction.record','construction.result','construction.plan','construction.delegation')`);
   if (!notice) return !requireNotice;
+  if (notice.purpose === 'construction.delegation') {
+    const { delegationOwnerNoticeAvailable } = await import('@/lib/native-workflow/live/delegation-chat');
+    return delegationOwnerNoticeAvailable(tx, eid, cid, mid);
+  }
   if (notice.purpose === 'construction.plan') {
     const { planMessageProjection } = await import('./site-plans');
     return (await planMessageProjection(tx, eid, cid, mid))?.available === true;

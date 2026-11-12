@@ -1,5 +1,13 @@
 # Admin System: Current Module Inventory
 
+<!-- native-delegation-current -->
+**B5.8 persistent delegation and event handling (Limited).** The enabled enterprise's existing consultation message API accepts a scoped electrical follow-up. The project collaboration API serves the pending review through its existing reply view. The authenticated assistant Worker tick consumes the existing PostgreSQL outbox and delivery rows. Migration `0121_native_workflow_delegations` adds the delegation and event-to-task receipts under forced RLS. A delegation binds one owner, project, original consultation and message to separate progress and outlet work with source versions, waits and completion criteria.
+
+Capture/publication and record job results, private requirements, consented material/drawing changes, project/schedule changes, scoped staff replies and formal issue/plan decisions advance only matched work. Pending and retrying events survive a Worker restart. A delivery applies its database effects and receipts together; duplicate event/notice keys and a per-tenant transaction lock protect concurrent execution. Paused or terminal work is fenced. The original plan, approval, implementation and manager resolution writers retain authority. The exact authorized result reaches the original consultation through the existing result delivery.
+
+Opt in with `NATIVE_WORKFLOW_DELEGATION_ENABLED=1` and `NATIVE_WORKFLOW_DELEGATION_ENTERPRISE_IDS` after migration. The first business workflow covers two named electrical work areas, existing in-app audiences and a single reminder per authorized owner wait. [Events, state rules, verification and rollback](../admin/src/lib/native-workflow/README.md#b58-persistent-delegations-and-business-events).
+<!-- /native-delegation-current -->
+
 <!-- site-capture-current -->
 **Site capture/receipts Implemented locally.** Approved [V3 capture and quick work](../design-references/cloud-site-redesign-20261107/README.md#05-通用现场上报与回执已批准实施) maps to `packages/construction/chat/chat`: two 54 px camera/voice actions, secondary typing/quick work, original photo/voice preview and one-submit explicit work/room/progress. Quick choices preserve partial/unknown states without changing project stage or calling a model. Captured originals require manager review before publication; original reshoot/edit/history remain.
 

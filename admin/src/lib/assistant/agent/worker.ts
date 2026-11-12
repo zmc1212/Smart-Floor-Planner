@@ -14,6 +14,7 @@ import { AssistantError, fail, fingerprint, safeText, type Evidence } from '../c
 import { type ModelTool, type ModelTurnOutput, type ModelMessage } from '../contracts/model';
 import { appendMessage, terminalEvent } from '../core/conversation';
 import { projectMessage, resolveEvidence } from '../knowledge/sources';
+import { delegationOwnerPurpose } from '@/lib/native-workflow/live/delegation-chat';
 import { runContext, failRun, heartbeat, completeAnswer, type Lease } from '../infrastructure/job-queue';
 import { runRenovationAgent, recoverableUnavailableRead, agentReadProtocol, agentToolReplyProtocol, agentTurnScheduleProtocol, type AgentCheckpoint } from './runtime';
 import { agentConfig, agentCapabilityFingerprint } from './config';
@@ -543,7 +544,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         and ${shared ? sql`((author_kind='admin' and purpose='site.question') or (author_kind='assistant' and run_id in
           (select id from app.assistant_runs where enterprise_id=${lease.enterpriseId} and conversation_id=${String(context.conversation.id)} and purpose='site.question')))`
           : staffFollowup || staffPreview ? sql`(author_kind='assistant' or (author_kind='admin' and admin_id=${lease.actor.principal.kind === 'admin' ? lease.actor.principal.adminId : null} and purpose='reply'))`
-          : sql`(author_kind in ('user','assistant') or (author_kind='system' and purpose in ('construction.followup','construction.record','construction.result')))`} order by seq desc limit 30`);
+          : sql`(author_kind in ('user','assistant') or (author_kind='system' and purpose in ('construction.followup','construction.record','construction.result',${delegationOwnerPurpose})))`} order by seq desc limit 30`);
       const turns = [];
       const memory = await availableNeedMemory(tx, lease.enterpriseId, String(context.conversation.id), context.conversation.entry_snapshot);
       for (const mid of await needMemoryNoticeRefs(tx, lease.enterpriseId, String(context.conversation.id), memory)) constructionSources.add(mid);
@@ -574,6 +575,11 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         if (row.author_kind === 'user' && unavailableNeedMessages.has(String(row.id))) continue;
         const projected = await projectMessage(tx, lease.actor, context.conversation, row);
         if (projected.available) {
+          if (row.purpose === delegationOwnerPurpose) {
+            constructionSources.add(String(row.id));
+            turns.push({ id: String(row.id), role: 'assistant' as const, text: safeText(projected.content as Parameters<typeof safeText>[0]) });
+            continue;
+          }
           if (row.purpose === 'construction.followup' || row.purpose === 'construction.record' || row.purpose === 'construction.result') {
             constructionSources.add(String(row.id));
             turns.push({ id: String(row.id), role: 'assistant' as const, text: (row.purpose === 'construction.result'

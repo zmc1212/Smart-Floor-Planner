@@ -525,7 +525,7 @@ function statementContexts(text: string, value: string) {
   return contexts;
 }
 /** No implicit conflict resolution or room migration. Keep each independent room/field and immutable prior assertions. */
-export function applyNeedDelta(memory: NeedMemory, delta: NeedDelta, source: { id: string; text: string }, operationId: string, now: string): NeedMemory {
+export function applyNeedDelta(memory: NeedMemory, delta: NeedDelta, source: { id: string; text: string; replyRoom?: string }, operationId: string, now: string): NeedMemory {
   const existing = memory.facts.find(f => f.id === operationId);
   if (existing) return memory;
   if (memory.version !== delta.expectedVersion) fail('version_conflict');
@@ -533,7 +533,7 @@ export function applyNeedDelta(memory: NeedMemory, delta: NeedDelta, source: { i
     || (!delta.room && roomReference.test(source.text) && !['budget','timeline','household','housing'].includes(delta.field))
     || /先确认(?:一下)?(?:具体)?房间再记录/.test(source.text)) fail('need_room_ambiguous', 422);
   if (source.id !== delta.sourceMessageId || !source.text.includes(delta.quote) || !delta.quote.includes(delta.value)
-    || (delta.room && !source.text.includes(delta.room))) fail('need_source_mismatch', 422);
+    || (delta.room && !source.text.includes(delta.room) && delta.room !== source.replyRoom)) fail('need_source_mismatch', 422);
   const correction = needCorrectionContext(source.text);
   const useCorrection = correction?.separatedQuestion && correction.statement.includes(delta.quote);
   if (useCorrection && delta.room && !correction.statement.includes(delta.room)) fail('need_source_mismatch', 422);

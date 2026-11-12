@@ -18,6 +18,7 @@ import { bindSpeechToMessage } from '@/lib/assistant/speech/link';
 import { siteKnowledgeQuestion, siteKnowledgeResponse } from './site-knowledge';
 import { citationProjection } from '@/lib/assistant/knowledge/sources';
 import { captureInput, capturedRecord, saveSiteCapture, scheduleCapturedRecord, siteQuickWorks } from './site-capture';
+import { syncDelegationStaffNotices } from '@/lib/native-workflow/live/delegation-chat';
 
 export function siteActor(a: ConstructionActor): ActorContext {
   return { enterpriseId: a.enterpriseId, principal: { kind: 'admin', adminId: a.adminId }, contextVersion: 1,
@@ -83,6 +84,7 @@ export class SiteChatService {
       const eid = this.staff.enterpriseId;
       const issues = await projectSiteIssues(tx, eid, projectId);
       const plans = await projectPlans(tx, eid, projectId);
+      const delegationNotices = await syncDelegationStaffNotices(tx, this.actor, c, projectId);
       const pageMessages = await rows(tx, sql`select m.id,m.seq,m.client_message_id,m.author_kind,m.admin_id,m.content,m.created_at,a.display_name
         from app.assistant_messages m left join app.admin_users a on a.id=m.admin_id
         where m.enterprise_id=${eid} and m.conversation_id=${String(c.id)} and m.seq<${beforeSeq} and m.author_kind='admin' order by m.seq desc limit ${limit}`);
@@ -94,10 +96,15 @@ export class SiteChatService {
           where child.enterprise_id=r.enterprise_id and child.project_id=r.project_id and child.resubmission_of_id=r.id))
           or (r.resubmission_of_id is not null and r.status in ('organizing','draft')))
         and (${permission.manage} or r.author_id=${this.staff.adminId}) order by r.updated_at desc limit 100`);
-      const messages = [...new Map([...pageMessages, ...pendingMessages].map(m => [String(m.id), m])).values()]
+      const messages = [...new Map([...pageMessages, ...pendingMessages, ...delegationNotices].map(m => [String(m.id), m])).values()]
         .sort((a, b) => BigInt(String(a.seq)) < BigInt(String(b.seq)) ? -1 : 1);
       const items: { message: Row; record: Row | null; response?: Row; issue?: unknown }[] = [];
       for (const message of messages) {
+        if (message.source_event_id) {
+          items.push({ message: { id: message.id, seq: message.seq, author_kind: 'system', created_at: message.created_at,
+            content: { version: 1, blocks: [] } }, response: { text: (message.content as { blocks: { text: string }[] }).blocks[0].text }, record: null });
+          continue;
+        }
         const record = await one(tx, sql`select r.*,coalesce(a.display_name,'项目管理人员') as approved_name,q.status as run_status,q.error_code,
           (select child.id from app.construction_site_records child where child.enterprise_id=r.enterprise_id and child.project_id=r.project_id and child.resubmission_of_id=r.id) as resubmitted_record_id,
           coalesce(q.policy_snapshot->'agent'->>'imageInput','false')='true' as image_input,
