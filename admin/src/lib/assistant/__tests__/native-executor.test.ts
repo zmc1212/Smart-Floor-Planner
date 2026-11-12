@@ -5,7 +5,7 @@ import { composeNativeDelivery, explicitPublicSiteReference, nativeCitationFeedb
   nativeRunReadContract, restoreRunReadContract, runReadContractRecord, nativeFirstTurnRequiresTool,
   stripUnboundCitationPlaceholders, synthesisHistoryFields, xiaokNativeExecutorProtocol } from '../agent/native-executor';
 import { nativeAgentRuntimeBinding } from '../fastgpt/agent-v2/config';
-import { nativeHistoryCheckpoint, nativePublicSiteHistoryAllowed, priorAnswerBusinessObject } from '../fastgpt/rag-session';
+import { nativeHistoryCheckpoint, priorAnswerBusinessObject } from '../fastgpt/rag-session';
 import { recoverableUnavailableRead, runRenovationAgent, type AgentRuntimePorts } from '../agent/runtime';
 import { modelBusinessReceipt } from '../agent/dialogue-tools';
 import { parseBusinessQuery } from '../agent/business-tools';
@@ -417,7 +417,7 @@ test('an active public site reaches ordinary replies while withdrawn material is
   // No selection keeps the own-project path exactly as before.
   assert.equal(nativePublicSiteSelection(null, { ...ref, contentHash: 'hash-38', content }), null);
   // A withdrawn version must not replay the old public material.
-  const withdrawn = nativePublicSiteSelection(ref, null);
+  const withdrawn = nativePublicSiteSelection(ref, null, 'source_withdrawn');
   assert.ok(withdrawn);
   assert.equal(withdrawn!.ref, null);
   assert.equal(withdrawn!.text, nativePublicSiteWithdrawnText);
@@ -454,13 +454,8 @@ test('an active public site reaches ordinary replies while withdrawn material is
   const explicit = nativeReplySiteText({ publicSiteText: '公开工地快照', businessContextActive: true, includePublicSite: true });
   assert.equal(explicit.length, 2);
   assert.equal(explicit[0].text, '公开工地快照');
-  // Public-site history is only reusable for the same still-published version.
-  const active = { siteId: '11', versionId: '38' };
-  assert.equal(nativePublicSiteHistoryAllowed(undefined, undefined, false), true);
-  assert.equal(nativePublicSiteHistoryAllowed(active, { siteId: '11', versionId: '38', contentHash: 'h' }, true), true);
-  assert.equal(nativePublicSiteHistoryAllowed(active, undefined, false), false);
-  assert.equal(nativePublicSiteHistoryAllowed(active, { siteId: '11', versionId: '39', contentHash: 'h' }, true), false);
-  assert.equal(nativePublicSiteHistoryAllowed(active, { siteId: '11', versionId: '38', contentHash: 'h' }, false), false);
+  assert.match(nativePublicSiteSelection(ref, null, 'source_unreadable')!.text, /暂时无法读取/);
+  assert.doesNotMatch(nativePublicSiteSelection(ref, null, 'source_changed')!.text, /撤回/);
 });
 
 test('the preceding answer names the current object, never its inherited audit snapshots', () => {

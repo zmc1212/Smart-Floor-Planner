@@ -11,18 +11,20 @@ import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { deleteAssistantData } from '@/db/repositories/assistant-cleanup';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 import { ConversationService, appendMessage, newRun } from '@/lib/assistant/core/conversation';
-import { claimJob, completeRun, markProviderStarted, type Lease } from '@/lib/assistant/infrastructure/job-queue';
+import { claimJob, failRun, markProviderStarted, type Lease } from '@/lib/assistant/infrastructure/job-queue';
 import { processNativeAgentAnswer, nativeReadContract, nativeRunReadContract, xiaokNativeExecutorProtocol,
   nativeExecutorPromptVersion } from '@/lib/assistant/agent/native-executor';
 import { nativeConversation } from '@/lib/assistant/fastgpt/rag-session';
 import { queryBusiness } from '@/lib/assistant/agent/business-tools';
+import { recallHistory } from '@/lib/assistant/agent/history';
+import { PublicCustomerService } from '@/lib/construction/public-customer';
 import { publicMessageAvailable, publicMessageProjection } from '@/lib/construction/public-projections';
 import { publishedPublicMaterial } from '@/lib/construction/public-read';
 import { fingerprint, safeText, type ActorContext, type MessageContent } from '@/lib/assistant/contracts';
 import { getPlatformLlmRuntimeConfig } from '@/lib/platform-llm-config';
 
 const prefix = 'public-lifecycle-' + process.pid + '-' + Date.now();
-let enterpriseId = '', adminId = '', userId = '', providerConfigId = '', workflowDir = '';
+let enterpriseId = '', adminId = '', userId = '', secondUserId = '', providerConfigId = '', workflowDir = '';
 let actor: ActorContext, service: ConversationService;
 
 before(async () => {
@@ -48,6 +50,8 @@ before(async () => {
     adminId = String(admin.id);
     const user = (await one(tx, sql`insert into app.users(nickname,context_version) values(${prefix},1) returning id`))!;
     userId = String(user.id);
+    secondUserId = String((await one(tx, sql`insert into app.users(nickname,context_version)
+      values(${prefix + '-visitor'},1) returning id`))!.id);
     const provider = (await one(tx, sql`insert into app.ai_provider_configs(key,name,adapter_type,base_url,api_key_encrypted,api_key_masked,
       enabled,capabilities,model_mappings,adapter_config,priority)
       values(${prefix},${prefix},'openai_compatible','http://127.0.0.1:1','test-only','test-only',
@@ -74,7 +78,7 @@ after(async () => {
     await deleteAssistantData(tx, BigInt(enterpriseId));
     await tx.execute(sql`delete from app.ai_provider_configs where id=${providerConfigId}`);
     await tx.execute(sql`delete from app.admin_users where enterprise_id=${enterpriseId}`);
-    await tx.execute(sql`delete from app.users where id=${userId}`);
+    await tx.execute(sql`delete from app.users where id in (${userId},${secondUserId})`);
     await tx.execute(sql`delete from app.enterprises where id=${enterpriseId}`);
   });
   delete process.env.XIAOK_FASTGPT_WORKFLOWS_FILE;
@@ -85,14 +89,13 @@ after(async () => {
 /** One published site whose only public source is an owner message in a real
  * consultation conversation. This exercises the same material predicate the
  * customer read surface and the executor use. */
-async function publishedSite(label: string) {
+async function publishedSite(label: string, sourceText = '水电线管已经铺好，底盒还没固定。') {
   const lead = (await withTenantTransaction(enterpriseId, tx => one(tx, sql`insert into app.leads(enterprise_id,name,phone,source,status,customer_user_id)
     values(${enterpriseId},${label},'13800000000','test','new',${userId}) returning id`)))!;
   const project = (await withTenantTransaction(enterpriseId, tx => one(tx, sql`insert into app.construction_projects(enterprise_id,lead_id,name)
     values(${enterpriseId},${String(lead.id)},${label}) returning id`)))!;
   const conversation = await service.create(randomUUID());
   const conversationId = String(conversation.id);
-  const sourceText = '水电线管已经铺好，底盒还没固定。';
   const source = await withTenantTransaction(enterpriseId, tx => appendMessage(tx, actor, conversationId, {
     author: 'user', clientMessageId: randomUUID(), content: { version: 1, blocks: [{ type: 'text', text: sourceText }] } }));
   const content = { name: label, cityCode: '420502', cityName: '宜昌市', district: '西陵区', stageName: '水电',
@@ -122,7 +125,7 @@ async function publishedSite(label: string) {
   });
   assert.ok(await withTenantTransaction(enterpriseId, tx => publishedPublicMaterial(tx, enterpriseId,
     String(site.id), String(version.id))), 'public fixture must satisfy the published source predicate');
-  return { conversationId, siteId: String(site.id), versionId: String(version.id), contentHash,
+  return { conversationId, siteId: String(site.id), versionId: String(version.id), contentHash, projectId: String(project.id),
     leadId: String(lead.id) };
 }
 
@@ -171,15 +174,19 @@ async function pendingFresh(conversationId: string, text: string) {
     where enterprise_id=${enterpriseId} and status='running' and lease_expires_at>now()`));
   const run = await service.send(conversationId, randomUUID(), { version: 1, blocks: [{ type: 'text', text }] });
   assert.ok(run.runId);
-  let lease = await claimJob({ enterpriseId, runId: String(run.runId) });
-  // A slot released by the previous case may become visible a moment later;
-  // wait for this exact run instead of claiming an unrelated queued job.
-  for (let attempt = 0; !lease && attempt < 40; attempt++) {
+  return { runId: String(run.runId), lease: await claimFixture(String(run.runId)) };
+}
+
+async function claimFixture(runId: string) {
+  // A lock released by another transaction may become visible a moment later.
+  // Wait for this exact run instead of claiming an unrelated queued job.
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const lease = await claimJob({ enterpriseId, runId });
+    if (lease) return lease;
+    if ((await service.run(runId)).status !== 'queued') break;
     await new Promise(resolve => setTimeout(resolve, 250));
-    lease = await claimJob({ enterpriseId, runId: String(run.runId) });
   }
-  assert.ok(lease);
-  return { runId: String(run.runId), lease: lease as Lease };
+  assert.fail(`Fixture run ${runId} could not be claimed: ${JSON.stringify(await service.run(runId))}`);
 }
 
 async function seedResume(lease: Lease, site: { siteId: string; versionId: string; contentHash: string }, question: string) {
@@ -438,7 +445,8 @@ async function seedModelWithoutCheckpoint(lease: Lease) {
  * public-site answers — the 1003 dependency record. */
 async function seedPriorAnswer(conversationId: string, spec: {
   question: string; text: string; publicRef: { siteId: string; versionId: string; contentHash: string } | null;
-  snapshots: Row[]; deliveredSnapshots: number; ownBusinessTool: boolean; emptyPublicDependency?: boolean;
+  snapshots: Row[]; deliveredSnapshots: number; ownBusinessTool: boolean;
+  emptyPublicDependency?: { siteId: string; versionId: string };
 }) {
   return withTenantTransaction(enterpriseId, async tx => {
     const question = await appendMessage(tx, actor, conversationId, { author: 'user', clientMessageId: randomUUID(),
@@ -464,7 +472,9 @@ async function seedPriorAnswer(conversationId: string, spec: {
       // proves this answer used no public source at all.
       await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs,input_summary)
         values(${enterpriseId},${String(run.id)},1003,'agent_public_context','succeeded',
-        '[]'::jsonb,${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, current: null })}::jsonb)`);
+        '[]'::jsonb,${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, current: {
+          siteId: spec.emptyPublicDependency.siteId, versionId: spec.emptyPublicDependency.versionId,
+        } })}::jsonb)`);
     if (spec.ownBusinessTool)
       await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,status,input_summary)
         values(${enterpriseId},${String(run.id)},1400,'agent_tool','query_business','succeeded',
@@ -1112,7 +1122,7 @@ test('an own-business answer stays valid history while a public site is merely s
   // this answer consumed no public source, so it is about the customer's own
   // material and must remain usable while the site stays selected.
   await seedPriorAnswer(site.conversationId, { question: '我的量房预约是什么时候？', text: '您的量房预约在明天上午。',
-    publicRef: null, emptyPublicDependency: true, snapshots: [], deliveredSnapshots: 0, ownBusinessTool: true });
+    publicRef: null, emptyPublicDependency: site, snapshots: [], deliveredSnapshots: 0, ownBusinessTool: true });
   const { lease } = await pendingFresh(site.conversationId, '那我要准备什么？');
   try {
     const assembled = await nativeConversation(lease, []);
@@ -1136,6 +1146,130 @@ test('a selected site never reuses an answer produced for another site', async (
   try {
     const assembled = await nativeConversation(lease, []);
     assert.equal(assembled.messages.some(message => message.role === 'assistant' && /A 工地/.test(message.content)), false);
+    assert.equal(assembled.messages.some(message => message.role === 'user' && /这个工地现在做到哪一步/.test(message.content)), false);
     assert.deepEqual(assembled.publicRefs, []);
   } finally { await service.run(lease.runId, 'cancel', randomUUID()).catch(() => undefined); }
+});
+
+test('public entry deduplicates the opening and isolates both visitors and model history when switching objects', async () => {
+  const a = await publishedSite(prefix + '-visitor-a');
+  const b = await publishedSite(prefix + '-visitor-b', '底盒已经固定，接下来要核对给水管。');
+  const cid = String((await service.create(randomUUID())).id);
+  const second = { ...actor, principal: { kind: 'user', userId: secondUserId } } as ActorContext;
+  const secondChat = new ConversationService(second);
+  const secondCid = String((await secondChat.create(randomUUID())).id);
+  const visitor = new PublicCustomerService(actor, cid);
+  const requestKey = randomUUID();
+  const attach = (target: typeof a, key = randomUUID()) => visitor.context(target.siteId, { versionId: target.versionId }, key);
+  const first = await attach(a, requestKey);
+  assert.equal(first.intro, 'queued');
+  const initial = await service.detail(cid);
+  assert.deepEqual(await attach(a, requestKey), first);
+  assert.equal((await attach(a)).intro, 'existing');
+  assert.equal((await service.detail(cid)).contextRevision, initial.contextRevision);
+  const opening = await claimFixture(initial.latestRun!.id);
+  await failRun(opening, 'model_unavailable', true);
+  const retryKey = randomUUID();
+  const retried = await service.run(opening.runId, 'retry', retryKey);
+  assert.ok('runId' in retried && typeof retried.runId === 'string');
+  assert.deepEqual(await service.run(opening.runId, 'retry', retryKey), retried);
+  const marker = await withTenantTransaction(enterpriseId, tx => one(tx, sql`select entry_snapshot->'publicIntros'->0 as opening
+    from app.assistant_conversations where enterprise_id=${enterpriseId} and id=${cid}`));
+  assert.deepEqual(marker?.opening, { siteId: a.siteId, versionId: a.versionId, runId: retried.runId, attempts: 2 });
+  const retryLease = await claimFixture(retried.runId);
+  await failRun(retryLease, 'model_unavailable', true);
+  await assert.rejects(service.run(retryLease.runId, 'retry', randomUUID()), /context_changed/);
+
+  await seedPriorAnswer(cid, { question: '西陵这处工地的底盒为什么还没固定？', text: '公开记录里的底盒仍待固定。',
+    publicRef: { siteId: a.siteId, versionId: a.versionId, contentHash: a.contentHash },
+    snapshots: [], deliveredSnapshots: 0, ownBusinessTool: false });
+  await withTenantTransaction(enterpriseId, tx => tx.execute(sql`update app.assistant_messages set created_at=now()-interval '1 day'
+    where enterprise_id=${enterpriseId} and conversation_id=${cid} and author_kind in ('user','assistant')`));
+  await new PublicCustomerService(second, secondCid).context(a.siteId, { versionId: a.versionId }, randomUUID());
+  await assert.rejects(secondChat.messages(cid), /assistant_resource_not_found/);
+  const otherMessages = (await secondChat.messages(secondCid)).items;
+  assert.ok(otherMessages.some(m => m.publicContext?.id === a.siteId));
+  assert.ok(otherMessages.every(m => m.authorKind !== 'user'));
+  await secondChat.run((await secondChat.detail(secondCid)).latestRun!.id, 'cancel', randomUUID());
+
+  await attach(b);
+  await assert.rejects(attach(a, requestKey), /context_changed/);
+  const followUp = await pendingFresh(cid, '那底盒现在已经固定了吗？');
+  const scope = await nativeConversation(followUp.lease, []);
+  assert.equal(scope.publicSite.source?.siteId, b.siteId);
+  assert.deepEqual(scope.messages.map(m => m.content), ['那底盒现在已经固定了吗？']);
+  const recall = (query: string) => withTenantTransaction(enterpriseId, async tx => {
+    const c = (await one(tx, sql`select * from app.assistant_conversations where enterprise_id=${enterpriseId} and id=${cid}`))!;
+    return recallHistory(tx, actor, c, String(BigInt(String(c.last_seq)) + BigInt(1)), query);
+  });
+  assert.deepEqual((await recall('西陵')).sources, []);
+  await service.run(followUp.runId, 'cancel', randomUUID());
+  await visitor.detach(randomUUID());
+  const own = await pendingFresh(cid, '我家底盒的进度怎样？');
+  const ownScope = await nativeConversation(own.lease, []);
+  assert.equal(ownScope.publicSite.active, null);
+  assert.deepEqual(ownScope.messages.map(m => m.content), ['我家底盒的进度怎样？']);
+  assert.deepEqual((await recall('西陵')).sources, []);
+  await service.run(own.runId, 'cancel', randomUUID());
+
+  await attach(a);
+  const returned = await pendingFresh(cid, '所以还需要固定底盒吗？');
+  const restored = await nativeConversation(returned.lease, []);
+  assert.equal(restored.publicSite.source?.siteId, a.siteId);
+  assert.ok(restored.messages.some(m => m.role === 'user' && m.content.includes('西陵')));
+  assert.ok(restored.messages.some(m => m.role === 'assistant' && m.content.includes('仍待固定')));
+  assert.equal((await recall('西陵')).sources.length, 1);
+  await service.run(returned.runId, 'cancel', randomUUID());
+});
+
+test('failed public replies retry only against their original live scope and reuse the request receipt', async () => {
+  const a = await publishedSite(prefix + '-retry-a');
+  const b = await publishedSite(prefix + '-retry-b');
+  const visitor = new PublicCustomerService(actor, a.conversationId);
+  const failed = await pendingFresh(a.conversationId, '这边的水电还有哪些工作？');
+  await failRun(failed.lease, 'retrieval_unavailable', true);
+  assert.equal((await service.run(failed.runId)).errorCode, 'retrieval_unavailable');
+  const retryKey = randomUUID();
+  const retry = await service.run(failed.runId, 'retry', retryKey);
+  assert.ok('runId' in retry && typeof retry.runId === 'string');
+  assert.deepEqual(await service.run(failed.runId, 'retry', retryKey), retry);
+  assert.notEqual(retry.runId, failed.runId);
+  const retryLease = await claimFixture(retry.runId);
+  await withSyntheticTurns([() => { throw new DOMException('synthetic provider timeout', 'TimeoutError'); }], async count => {
+    await processNativeAgentAnswer(retryLease);
+    assert.equal(count(), 1);
+  });
+  assert.equal((await service.run(retryLease.runId)).status, 'indeterminate');
+  assert.equal(await providerAttempts(retryLease.runId), 1);
+  await assert.rejects(service.run(retryLease.runId, 'retry', randomUUID()), /context_changed/);
+
+  await visitor.context(b.siteId, { versionId: b.versionId }, randomUUID());
+  await assert.rejects(service.run(failed.runId, 'retry', randomUUID()), /context_changed/);
+  const retries = await withTenantTransaction(enterpriseId, tx => rows(tx, sql`select id from app.assistant_runs
+    where enterprise_id=${enterpriseId} and retry_of_run_id=${failed.runId}`));
+  assert.equal(retries.length, 1);
+  assert.equal(await providerAttempts(failed.runId), 0);
+});
+
+test('temporary project access denial hides historical prose and restores the same version when access returns', async () => {
+  const site = await publishedSite(prefix + '-restore');
+  const { lease } = await pendingFresh(site.conversationId, '线管的情况怎样？');
+  await markProviderStarted(lease);
+  await seedResume(lease, site, '线管的情况怎样？');
+  await processNativeAgentAnswer(lease);
+  const id = (await service.run(lease.runId)).outputMessageId;
+  const read = async () => (await service.messages(site.conversationId)).items.find(m => m.id === id)!;
+  assert.equal((await read()).available, true);
+  await accessRevoked(site);
+  const blocked = await read();
+  assert.equal(blocked.available, false);
+  assert.match(JSON.stringify(blocked.content), /source_forbidden/);
+  assert.equal(blocked.publicReferences, undefined);
+  assert.equal((await service.suggestions(site.conversationId)).messageId, null);
+  await withTenantTransaction(enterpriseId, tx => tx.execute(sql`update app.construction_projects set customer_access=true
+    where enterprise_id=${enterpriseId} and id=${site.projectId}`));
+  const reopened = await read();
+  assert.equal(reopened.available, true);
+  assert.equal(reopened.publicReferences?.[0].versionId, site.versionId);
+  assert.deepEqual(reopened.content, (await assistantMessages(site.conversationId))[0].content);
 });

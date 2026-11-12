@@ -7,6 +7,7 @@ import type { ModelMessage } from '../contracts/model';
 import type { SynthesisContext } from './synthesis';
 import { synthesisContextAvailable } from './synthesis-sources';
 import { enterpriseKnowledgeEnabled } from '../knowledge-policy';
+import { publicMessageAvailable } from '@/lib/construction/public-projections';
 
 export type AncestorSourceRef = { runId: string; messageId: string; contentHash: string; contextHash: string };
 export const ancestorSourcesProtocol = 'authorized-ancestor-sources-v1';
@@ -94,13 +95,18 @@ export async function ancestorSourcesAvailable(tx: PostgresTransaction, actor: A
   if (!Array.isArray(refs) || refs.length > 32) return false;
   for (const ref of refs) {
     if (!ref || !/^[1-9]\d{0,18}$/.test(ref.runId) || !/^[1-9]\d{0,18}$/.test(ref.messageId)) return false;
-    const saved = await one(tx, sql`select m.content,s.source_refs from app.assistant_runs r
+    const saved = await one(tx, sql`select m.content,s.source_refs,
+      (s.private_checkpoint->'publicSite' is not null or exists(select 1 from app.assistant_run_steps p
+        where p.enterprise_id=r.enterprise_id and p.run_id=r.id and p.kind='agent_public_context'
+          and p.status='succeeded' and jsonb_typeof(p.source_refs)='array' and p.source_refs<>'[]'::jsonb)) as public_bound
+      from app.assistant_runs r
       join app.assistant_messages m on m.enterprise_id=r.enterprise_id and m.id=r.output_message_id
       join app.assistant_run_steps s on s.enterprise_id=r.enterprise_id and s.run_id=r.id
       where r.enterprise_id=${actor.enterpriseId} and r.conversation_id=${String(conversation.id)} and r.id=${ref.runId}
         and r.status='succeeded' and m.id=${ref.messageId} and m.author_kind='assistant'
         and s.kind='agent_synthesis_context' and s.status='succeeded'`);
-    if (!saved || fingerprint(saved.content) !== ref.contentHash || fingerprint(saved.source_refs) !== ref.contextHash) return false;
+    if (!saved || fingerprint(saved.content) !== ref.contentHash || fingerprint(saved.source_refs) !== ref.contextHash
+      || saved.public_bound && !await publicMessageAvailable(tx, actor.enterpriseId, String(conversation.id), ref.messageId)) return false;
   }
   return true;
 }

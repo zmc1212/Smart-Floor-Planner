@@ -849,17 +849,37 @@ test('background network failure retains usable chat but foreground permission d
 
 test('warm foreground reprojects withdrawn content and identity changes never reuse entry or drafts', async () => {
   const f = fixture();
-  f.db.items = [{ id: '21', seq: '1', available: true, content: { blocks: [{ type: 'text', text: '旧资料' }] } }];
+  f.db.conversation.lastSeq = '1';
+  f.db.items = [{ id: '21', seq: '1', available: true, publicSourceBound: true, content: { blocks: [{ type: 'text', text: '旧资料' }] } }];
   await f.controller.show({ conversationId: '11' });
   f.controller.input('私人草稿');
   f.db.items[0] = { ...f.db.items[0], available: false, content: { blocks: [{ type: 'notice', fallbackText: '资料已不可用' }] } };
   f.controller.hide(); await f.controller.show();
   assert.equal(f.controller.state.messages[0].blocks[0].text, '资料已不可用');
+  assert.equal(messageReads(f).length, 2, 'the unchanged sequence still required a source recheck');
+  assert.equal(f.controller.state.draft, '私人草稿');
   f.identity('customer-B');
   f.controller.hide(); await f.controller.show({});
   assert.equal(f.controller.state.messages.length, 0);
   assert.equal(f.controller.state.draft, '');
   assert.equal(f.calls.filter(call => call.url === '/entry-context').length, 2);
+});
+
+test('public history is removed from the cached view on network failure and restored only by a live read', async () => {
+  const f = fixture();
+  f.db.conversation.lastSeq = '2';
+  f.db.items = [message('21', '1', '客户原话'), { ...message('22', '2', '旧公开节选'), publicSourceBound: true }];
+  await f.controller.show({ conversationId: '11' });
+  f.controller.input('原草稿');
+  f.intercept(call => { if (call.url.endsWith('/messages')) throw { statusCode: 503 }; });
+  f.controller.hide(); await f.controller.show();
+  assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21']);
+  assert.equal(f.controller.state.draft, '原草稿');
+  assert.doesNotMatch(f.controller.state.error, /撤回/);
+  f.intercept(() => undefined);
+  await f.controller.refresh();
+  assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21', '22']);
+  assert.equal(f.controller.state.error, '');
 });
 
 test('stop and archive use explicit writes, keep messages and block further sends in the archived chat', async () => {

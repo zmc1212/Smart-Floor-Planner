@@ -67,7 +67,7 @@ async function snapshot(cid: string) {
   return row!.entry_snapshot as Row;
 }
 
-test('a successful intro retry moves the site marker to the retry run', async () => {
+test('an opening cannot retry when its selected publication is unavailable', async () => {
   const cid = await conversation();
   const siteId = '9001', versionId = '9101';
   const original = await withTenantTransaction(actor.enterpriseId, async tx => {
@@ -78,33 +78,10 @@ test('a successful intro retry moves the site marker to the retry run', async ()
     return runId;
   });
 
-  // The retry runs inside the caller's transaction so its job can be cancelled
-  // before commit; the resident worker never sees a claimable retry job.
-  const retried = await withTenantTransaction(actor.enterpriseId, async tx => {
-    const svc = new ConversationService(actor, tx);
-    const run = await svc.run(original, 'retry', 'retry-' + crypto.randomUUID()) as Row;
-    await tx.execute(sql`update app.assistant_jobs set status='cancelled',lease_token=null,updated_at=now()
-      where enterprise_id=${actor.enterpriseId} and run_id=${String(run.runId)}`);
-    return run;
-  });
-  const retriedRunId = String(retried.runId);
-  const run = await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`select * from app.assistant_runs
-    where enterprise_id=${actor.enterpriseId} and id=${retriedRunId}`));
-  assert.equal(run!.purpose, 'public.site.intro');
-  assert.equal(String(run!.retry_of_run_id), original);
-
-  const entry = await snapshot(cid);
-  const intros = entry.publicIntros as Row[];
-  const marker = intros[0];
-  assert.equal(String(marker.runId), retriedRunId);
-  assert.equal(Number(marker.attempts), 2);
-  assert.equal(marker.siteId, siteId);
-  assert.equal(marker.versionId, versionId);
-  assert.equal(intros.length, 1);
-
-  await withTenantTransaction(actor.enterpriseId, tx => tx.execute(sql`update app.assistant_runs set status='succeeded',completed_at=now()
-    where enterprise_id=${actor.enterpriseId} and id=${retriedRunId}`));
-  assert.equal(publicIntroEntryDecision(marker as { attempts?: number }, 'succeeded'), 'existing');
+  await assert.rejects(service.run(original, 'retry', 'retry-' + crypto.randomUUID()), /public_site_unavailable/);
+  const intros = (await snapshot(cid)).publicIntros as Row[];
+  assert.deepEqual(intros, [{ siteId, versionId, attempts: 1, runId: original }]);
+  assert.equal(publicIntroEntryDecision(intros[0] as { attempts?: number }, 'succeeded'), 'existing');
 });
 
 test('retrying an opening after the visitor switched sites is rejected without side effects', async () => {

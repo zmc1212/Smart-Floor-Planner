@@ -5,25 +5,14 @@ import { fail, fingerprint, safeText, type MessageContent } from '../contracts';
 import type { SynthesisContext } from '../agent/synthesis';
 import { synthesisContextAvailable } from '../agent/synthesis-sources';
 import { readMemory } from '../agent/memory';
-import type { HistorySnapshot } from '../agent/history';
+import { publicHistoryScope, type HistorySnapshot } from '../agent/history';
 import { projectMessage } from '../knowledge/sources';
 import { runKnowledgeEnabled } from '../knowledge-policy';
 import { runContext, type Lease } from '../infrastructure/job-queue';
-import { publicContextAvailable, type PublicContextRef } from '@/lib/construction/public-projections';
+import { publicContextSelection, publicMessageRefs, type PublicContextRef } from '@/lib/construction/public-projections';
+import { samePublicRef } from '@/lib/construction/public-contract';
 import { fastGPTRagProtocol, type RagSource } from './rag-config';
 import { ragAnswerParts, ragHistoryText, type RagChatMessage, type RagCitationSource } from './native-rag';
-
-/** A public-site conversation may only reuse assistant answers that were
- * produced for the same selected site/version and whose published material is
- * still available. Answers from before the public context was wired (or from
- * a replaced/withdrawn version) are not history for this site. */
-export function nativePublicSiteHistoryAllowed(
-  active: { siteId: string; versionId: string } | undefined,
-  saved: { siteId?: string; versionId?: string; contentHash?: string } | undefined,
-  available: boolean) {
-  if (!active) return true;
-  return !!saved && saved.siteId === active.siteId && saved.versionId === active.versionId && available;
-}
 
 /** Read one persisted synthesis step for the next turn's history. A
  * snapshot-only delivery (`composition.modelIncluded === false`) never
@@ -64,15 +53,19 @@ export async function nativeConversation(lease: Lease, configured: RagSource[], 
     const citations: RagCitationSource[] = [];
     const inheritedPublicRefs = new Map<string, PublicContextRef & { contentHash?: string }>();
     let businessContextActive = false;
-    const messages = await withTenantTransaction(lease.enterpriseId, async tx => {
+    const { messages, publicSite } = await withTenantTransaction(lease.enterpriseId, async tx => {
       const { conversation, run } = await runContext(tx, lease);
+      const entry = conversation.entry_snapshot as Row;
+      const active = (entry.activePublicSite ?? null) as PublicContextRef | null;
+      const hasPublicHistory = !!active || (Array.isArray(entry.publicSiteContexts) && entry.publicSiteContexts.length > 0);
+      const selected = active ? await publicContextSelection(tx, lease.enterpriseId, active) : null;
+      const historyScope = publicHistoryScope(conversation, !!selected?.source);
       const originals = await rows(tx, sql`select m.* from app.assistant_messages m join app.assistant_messages trigger
         on trigger.enterprise_id=m.enterprise_id and trigger.conversation_id=m.conversation_id
         where m.enterprise_id=${lease.enterpriseId} and m.conversation_id=${String(conversation.id)} and trigger.id=${String(run.trigger_message_id)}
-          and m.seq<=trigger.seq and m.author_kind in ('user','assistant') order by m.seq desc limit 7`);
+          and m.seq<=trigger.seq and (m.author_kind='assistant' or m.author_kind='user' and (m.id=trigger.id or ${historyScope}))
+        order by m.seq desc limit 7`);
       if (!originals.length || String(originals[0].id) !== String(run.trigger_message_id)) fail('context_changed');
-      const activePublicSite = (conversation.entry_snapshot as Row).activePublicSite as
-        { siteId: string; versionId: string } | undefined;
       const result: RagChatMessage[] = [], history: HistorySnapshot['sources'] = [];
       for (const m of originals.reverse()) {
         if (m.author_kind === 'assistant') businessContextActive = false;
@@ -82,40 +75,23 @@ export async function nativeConversation(lease: Lease, configured: RagSource[], 
         if (m.author_kind === 'assistant') {
           // The immediately preceding assistant turn defines the active
           // topic. A skipped/unavailable answer is not a topic.
-          const prior = await one(tx, sql`select source_refs,private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
-            and run_id=${String(m.run_id)} and kind='agent_synthesis_context' and status='succeeded'`);
+          const prior = await one(tx, sql`select s.source_refs,s.private_checkpoint,s.input_summary,
+              coalesce(r.policy_snapshot->'publicSiteSelection',p.input_summary->'current') as public_selection,
+              (r.policy_snapshot ? 'publicSiteSelection' or coalesce(p.input_summary ? 'current',false)) as selection_recorded
+            from app.assistant_run_steps s join app.assistant_runs r on r.enterprise_id=s.enterprise_id and r.id=s.run_id
+            left join app.assistant_run_steps p on p.enterprise_id=s.enterprise_id and p.run_id=s.run_id
+              and p.step_seq=1003 and p.kind='agent_public_context' and p.status='succeeded'
+            where s.enterprise_id=${lease.enterpriseId} and s.run_id=${String(m.run_id)}
+              and s.kind='agent_synthesis_context' and s.status='succeeded'`);
           // Do not import unbound historical generated prose into a new answer.
           if (!prior) continue;
           // Every public source the prior answer consumed (persisted 1003, plus
           // the earlier 1006.publicSite form) becomes a dependency of this turn
           // too. Its material must still be the same published version.
-          const publicSteps = await rows(tx, sql`select kind,step_seq,source_refs,private_checkpoint from app.assistant_run_steps
-            where enterprise_id=${lease.enterpriseId} and run_id=${String(m.run_id)} and status='succeeded'
-              and (kind='agent_public_context' or (step_seq=1006 and kind='agent_synthesis_context'))`);
-          const savedRefs = new Map<string, PublicContextRef & { contentHash?: string }>();
-          for (const step of publicSteps) {
-            if (Array.isArray(step.source_refs))
-              for (const ref of step.source_refs as (PublicContextRef & { contentHash?: string })[])
-                if (ref?.siteId && ref.versionId) savedRefs.set(ref.siteId + ':' + ref.versionId, ref);
-            const legacy = (step.private_checkpoint as Row | null)?.publicSite as
-              (PublicContextRef & { contentHash?: string }) | undefined;
-            if (legacy?.siteId && legacy.versionId) savedRefs.set(legacy.siteId + ':' + legacy.versionId, legacy);
-          }
-          // An answer that consumed no public source (its own 1003 record is
-          // empty) is provably about the customer's own material and stays
-          // valid history while a site is merely selected. Only answers tied to
-          // another site/version are excluded from this object's thread.
-          if (activePublicSite && savedRefs.size) {
-            const same = [...savedRefs.values()].find(ref => String(ref.siteId) === String(activePublicSite.siteId)
-              && String(ref.versionId) === String(activePublicSite.versionId));
-            if (!same) continue;
-          }
-          let refsAvailable = true;
-          for (const ref of savedRefs.values()) if (!await publicContextAvailable(tx, lease.enterpriseId, ref)) {
-            refsAvailable = false;
-            break;
-          }
-          if (!refsAvailable) continue;
+          const savedRefs = await publicMessageRefs(tx, lease.enterpriseId, String(conversation.id), String(m.id));
+          if (savedRefs.some(ref => !samePublicRef(ref, active))) continue;
+          if (prior.selection_recorded && !samePublicRef(prior.public_selection as PublicContextRef | null, active)) continue;
+          if (hasPublicHistory && !prior.selection_recorded && !savedRefs.length) continue;
           const original = prior.source_refs as SynthesisContext;
           if (!runKnowledgeEnabled(run.policy_snapshot as Row) && original.knowledge.length) continue;
           if (!await synthesisContextAvailable(tx, lease.actor, conversation, original)) continue;
@@ -124,7 +100,7 @@ export async function nativeConversation(lease: Lease, configured: RagSource[], 
             ownBusinessTool: !!await one(tx, sql`select id from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
               and run_id=${String(m.run_id)} and kind='agent_tool' and capability_name='query_business' and status='succeeded' limit 1`),
           });
-          for (const ref of savedRefs.values()) inheritedPublicRefs.set(ref.siteId + ':' + ref.versionId, ref);
+          for (const ref of savedRefs) inheritedPublicRefs.set(ref.siteId + ':' + ref.versionId, ref);
           if ((prior.input_summary as Row)?.protocol === protocol) {
             const historyCheckpoint = nativeHistoryCheckpoint(prior.private_checkpoint as Row, configured);
             nativeOriginal = historyCheckpoint.original;
@@ -146,7 +122,7 @@ export async function nativeConversation(lease: Lease, configured: RagSource[], 
       for (const key of ['knowledge','snapshots','sources','web','history','ancestors'] as const)
         (context[key] as unknown[]) = [...new Map((context[key] as unknown[]).map(value => [fingerprint(value), value])).values()];
       if (context.ancestors!.length > 32 || !await synthesisContextAvailable(tx, lease.actor, conversation, context)) fail('context_changed');
-      return result;
+      return { messages: result, publicSite: { active, source: selected?.source ?? null, reason: selected?.reason } };
     });
-  return { context, messages, citations, publicRefs: [...inheritedPublicRefs.values()], businessContextActive };
+  return { context, messages, citations, publicRefs: [...inheritedPublicRefs.values()], businessContextActive, publicSite };
 }

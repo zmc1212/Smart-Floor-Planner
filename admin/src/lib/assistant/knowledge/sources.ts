@@ -150,16 +150,17 @@ export async function projectMessage(tx:PostgresTransaction,actor:ActorContext,c
   const designerRecommendation = available && actor.principal.kind === 'user'
     ? await designerMessageProjection(tx, actor, String(c.id), String(message.id)) : null;
   return {id:String(message.id),seq:String(message.seq),authorKind:message.author_kind,answerKind:message.answer_kind ?? null,available,
+    ...(publicProjection ? { publicSourceBound: true } : {}),
     content:available?message.content:{version:1,blocks:[{type:'notice',code:'source_unavailable',
       ...(publicReason?{reason:publicReason}:{}),fallbackText:unavailableNoticeText(publicReason)}]},
-    citations:projected,createdAt:message.created_at,constructionReminder: available && message.purpose === 'construction.stage',
+    citations:publicReason ? [] : projected,createdAt:message.created_at,constructionReminder: available && message.purpose === 'construction.stage',
     constructionFollowUp: available && message.purpose === 'construction.followup',
     planDecision: available && planProjection?.available ? planProjection.planDecision : null,
     siteRecord: available && message.purpose === 'construction.record' ? await siteRecordProjection(tx, actor.enterpriseId, String(c.id), String(message.id)) : null,
     siteRecords: available && message.purpose === 'construction.result' ? await siteResultRecords(tx, actor.enterpriseId, String(c.id), String(message.id))
       : available && message.author_kind === 'assistant' ? await siteBusinessRecords(tx, actor.enterpriseId, String(c.id), String(message.id)) : [],
     siteWatch: available && message.purpose === 'construction.watch' ? await siteWatchProjection(tx, actor.enterpriseId, String(c.id), String(message.id)) : null,
-    ...(available && publicProjection?.available ? { publicConsent: publicProjection.publicConsent || null, publicContext: publicProjection.publicContext || null, publicReferences: publicProjection.publicReferences || [] } : {}),
+    ...(available && publicProjection?.available && !publicProjection.opening ? { publicConsent: publicProjection.publicConsent || null, publicContext: publicProjection.publicContext || null, publicReferences: publicProjection.publicReferences || [] } : {}),
     ...(available && actor.principal.kind === 'user' ? { constructionContacts: await constructionMessageActions(tx, actor, String(c.id), String(message.id)) } : {}),
     ...(available ? { designerRecommendation } : {}),
     ...(media ? { mediaId: String(media.id), mediaAvailable: !!media.available } : {}) };

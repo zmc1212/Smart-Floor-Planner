@@ -8,7 +8,10 @@ import type { Row } from '@/db/repositories/assistant-repository';
 
 const headers = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
 export const publicJson = (data: unknown) => NextResponse.json({ success: true, data }, { headers });
-export function publicFailure(error: unknown) { return NextResponse.json({ success: false, code: error instanceof AssistantError ? error.code : 'public_site_unavailable', error: error instanceof AssistantError ? error.code : 'public_site_unavailable' }, { status: error instanceof AssistantError ? error.status : 503, headers }); }
+export function publicFailure(error: unknown) {
+  const code = error instanceof AssistantError ? error.code : 'public_source_unreadable';
+  return NextResponse.json({ success: false, code, error: code }, { status: error instanceof AssistantError ? error.status : 503, headers });
+}
 async function body(request: Request): Promise<Row> {
   let size = 0; const chunks: Uint8Array[] = [];
   if (request.body) for await (const chunk of request.body as unknown as AsyncIterable<Uint8Array>) { size += chunk.length; if (size > 64000) fail('invalid_public_material', 413); chunks.push(chunk); }

@@ -22,6 +22,7 @@ function viewMaterial(item) {
 function publicError(error) {
   const code = error && (error.code || error.error);
   if (error?.statusCode === 401) return '登录已失效，请重新登录后继续。';
+  if (error?.statusCode >= 500) return '暂时无法连接，请重新读取；已输入的内容会保留。';
   return ({ public_site_unavailable: '这份公开内容已撤回或更新，可以返回看看其他工地。', public_consent_unavailable: '这份公开预览已更新或失效，请重新读取。',
     public_source_unavailable: '原始材料已有变化，请重新核对最新内容。', public_consent_required: '需业主明确同意这一版，再由企业审核公开。',
     public_preview_required: '请先查看这一版的全部公开内容。', public_state_conflict: '材料状态已变化，请重新读取。',
@@ -60,7 +61,12 @@ class PublicMedia {
     const epoch = this.epoch, session = this.identity();
     try { const result = await this.download(item.path, { suppressUnauthorized: true }); if (epoch !== this.epoch || session !== this.identity()) { this.unlink(result.tempFilePath); return; }
       this.unlink(this.paths[key]); this.paths[key] = result.tempFilePath; this.emit({ publicPaths: { ...this.paths } }); wx.previewImage({ urls: [result.tempFilePath], current: result.tempFilePath });
-    } catch (error) { if (epoch === this.epoch && session === this.identity()) { this.clear(); this.emit({ publicError: publicError(error), publicMediaRevoked: true }); } }
+    } catch (error) {
+      if (epoch !== this.epoch || session !== this.identity()) return;
+      const revoked = [401, 403, 404].includes(error.statusCode);
+      this.clear();
+      this.emit({ publicError: publicError(error), ...(revoked ? { publicMediaRevoked: true } : {}) });
+    }
   }
 }
 module.exports = { PublicSiteClient, PublicMedia, publicPath, imagePath, imageKey, materialKey, viewMaterial, validId, publicError };

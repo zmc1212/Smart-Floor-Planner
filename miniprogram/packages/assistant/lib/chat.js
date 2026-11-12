@@ -13,6 +13,9 @@ const WINDOW = 30;
 const MAX_BACKLOG = 200;
 const FULL_SYNC_MS = 60000;
 const DELTA_PAGES = 3;
+function hasPublicSource(message) {
+  return message.publicSourceBound || message.publicContext || message.publicConsent || message.publicReferences?.length;
+}
 // `seq` is a bigint rendered as a decimal string; Number arithmetic would lose
 // precision above Number.MAX_SAFE_INTEGER.
 function seqOrder(left, right) {
@@ -110,6 +113,11 @@ class ChatController {
     // A visible chat stays usable while only its current server projection is
     // synced. An empty welcome screen needs no request until its entry expires.
     if (this.ready && !this.state.fatal && !this.state.error && !target && this.entry && Date.now() < this.entryExpiry) return;
+    // A source may be revoked while hidden, without appending a message.
+    if (this.state.messages.some(hasPublicSource)) {
+      this.lastFullSyncAt = 0;
+      this.set({ messages: this.state.messages.filter(message => !hasPublicSource(message) || message.available === false) });
+    }
     return this.refresh({ forceEntry: !this.ready || this.state.fatal, background: this.ready && !this.state.fatal });
   }
 
@@ -213,6 +221,11 @@ class ChatController {
       this.entry = null; this.entryExpiry = 0; this.conversationId = '';
       this.ready = false; this.resetWindow();
       this.set({ ...initial(), loading: false });
+    } else if (uncertain(error) && this.state.messages.some(hasPublicSource)) {
+      this.lastFullSyncAt = 0;
+      this.citationRequest = (this.citationRequest || 0) + 1;
+      this.set({ messages: this.state.messages.filter(message => !hasPublicSource(message) || message.available === false),
+        citation: null, citationLoading: false });
     }
     this.set({ loading: false, error: errorCopy(error), fatal: fatal || denied, needsLogin: error.statusCode === 401,
       ...(code === 'assistant_disabled' ? { canSend: false } : {}) });
@@ -230,6 +243,7 @@ class ChatController {
 
   async snapshot(id, epoch, background = false) {
     const ticket = this.snapshotTicket = (this.snapshotTicket || 0) + 1;
+    const current = () => this.valid(epoch) && ticket === this.snapshotTicket;
     // A conversation this view has never synced has no cursor to seek from, so
     // its full window is known upfront and still loads alongside the metadata.
     // A server that did not report `lastSeq` cannot answer a delta either.
@@ -239,12 +253,12 @@ class ChatController {
     // A stale or backgrounded snapshot can discard this read before awaiting it.
     if (full) full.catch(() => {});
     const conversation = await this.client.read(`/conversations/${id}`);
-    if (!this.valid(epoch) || ticket !== this.snapshotTicket) return;
+    if (!current()) return;
     if (background && (!this.visible || this.state.busy || this.state.pendingSend || this.state.pendingAction)) {
       this.scheduleConversation(id, epoch); return;
     }
-    const window = await this.readWindow(id, conversation, full);
-    if (!this.valid(epoch) || ticket !== this.snapshotTicket) return;
+    const window = await this.readWindow(id, conversation, full, current);
+    if (!current()) return;
     if (background && (!this.visible || this.state.busy || this.state.pendingSend || this.state.pendingAction)) {
       this.scheduleConversation(id, epoch); return;
     }
@@ -266,7 +280,7 @@ class ChatController {
   // Reads the authoritative conversation metadata, then only the messages that
   // this view does not already render. Returns null when the rendered window is
   // still current, so an idle poll never rewrites the message list.
-  async readWindow(id, conversation, full) {
+  async readWindow(id, conversation, full, current) {
     const latest = conversation.lastSeq === undefined || conversation.lastSeq === null ? '' : String(conversation.lastSeq);
     this.seqSupported = latest !== '';
     const synced = this.seqConversationId === id ? this.latestSeq : '';
@@ -275,10 +289,12 @@ class ChatController {
     const stale = Date.now() - this.lastFullSyncAt >= FULL_SYNC_MS;
     if (latest && synced && latest === synced && !stale) return null;
     if (!stale && latest && synced && withinBacklog(synced, latest, MAX_BACKLOG)) {
-      const delta = await this.readDelta(id, synced);
+      const delta = await this.readDelta(id, synced, current);
+      if (!current()) return null;
       if (delta) return delta;
     }
     const data = await (full || this.client.read(`/conversations/${id}/messages`, { limit: WINDOW }));
+    if (!current()) return null;
     const items = data.items || [];
     this.rawMessages = items; this.seqConversationId = id; this.lastFullSyncAt = Date.now();
     this.latestSeq = data.latestSeq !== undefined
@@ -287,17 +303,18 @@ class ChatController {
     return { messages: messagesForView(items), messageCursor: data.nextCursor };
   }
 
-  async readDelta(id, cursor) {
+  async readDelta(id, cursor, current) {
     let after = cursor, incoming = [], latestSeq = cursor, drained = false;
     for (let page = 0; page < DELTA_PAGES; page += 1) {
       const data = await this.client.read(`/conversations/${id}/messages`, { limit: WINDOW, afterSeq: after });
+      if (!current()) return null;
       // Only the delta contract echoes a usable cursor. A reset or an older
       // server response falls back to the authoritative full window.
       if (data.reset === true || data.afterCursor === undefined || data.afterCursor === null) return null;
       const items = data.items || [];
       // These fields decide which earlier bubble owns the latest decision card;
       // reprojecting the whole window is the only stable answer.
-      if (items.some(item => item.planDecision || item.publicConsent)) return null;
+      if (items.some(item => item.planDecision || item.publicConsent || item.publicContext)) return null;
       incoming = incoming.concat(items);
       after = String(data.afterCursor);
       if (data.latestSeq !== undefined && seqOrder(data.latestSeq, latestSeq) > 0) latestSeq = String(data.latestSeq);

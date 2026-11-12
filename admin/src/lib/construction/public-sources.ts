@@ -80,13 +80,15 @@ async function missingSourceReason(tx: PostgresTransaction, site: Row, kind: str
     return record.published_customer_id && String(record.published_customer_id) !== uid ? 'source_forbidden' : 'source_changed';
   }
   if (kind !== 'consultation_message') return 'source_missing';
-  const message = await one(tx, sql`select m.id,c.status,c.purpose,c.entry_snapshot from app.assistant_messages m
+  const message = await one(tx, sql`select m.id,c.status,c.purpose,c.entry_snapshot,exists(select 1 from app.assistant_participants ap
+      where ap.enterprise_id=c.enterprise_id and ap.conversation_id=c.id and ap.user_id=${uid} and ap.status='active') as participant
+    from app.assistant_messages m
     left join app.assistant_conversations c on c.enterprise_id=m.enterprise_id and c.id=m.conversation_id
     where m.enterprise_id=${eid} and m.id=${sourceId}`);
   if (!message) return 'source_missing';
   // The original message still exists, but the consultation that authorised the
   // private excerpt is closed, repurposed or redacted: the viewer lost access.
-  if (!message.status || String(message.status) !== 'open' || String(message.purpose) !== 'customer_consultation'
+  if (!message.participant || String(message.status) !== 'open' || String(message.purpose) !== 'customer_consultation'
     || String((message.entry_snapshot as Row | null)?.retentionRedacted || 'false') === 'true') return 'source_forbidden';
   return 'source_changed';
 }
@@ -101,9 +103,7 @@ export async function publicSourceStatus(tx: PostgresTransaction, site: Row, ver
     for (const ref of refs) {
       const sourceId = ref.kind === 'site_record' ? ref.record_id : ref.message_id;
       if (!sourceId) return sourceFailure('source_changed');
-      let current: PublicSource | null;
-      try { current = await materialSource(tx, site, String(ref.kind), String(sourceId)); }
-      catch { return sourceFailure('source_unreadable'); }
+      const current = await materialSource(tx, site, String(ref.kind), String(sourceId));
       if (!current) return sourceFailure(await missingSourceReason(tx, site, String(ref.kind), String(sourceId)));
       if (current.sourceHash !== ref.source_hash || (ref.kind === 'site_record' && current.version !== ref.record_version)
         || (ref.kind === 'consultation_message' && current.conversationId !== String(ref.conversation_id))) return sourceFailure('source_changed');
@@ -122,7 +122,4 @@ export async function publicSourceStatus(tx: PostgresTransaction, site: Row, ver
     }
     return { ok: true };
   } catch { return sourceFailure('source_unreadable'); }
-}
-export async function publicSourcesAvailable(tx: PostgresTransaction, site: Row, version: Row) {
-  return (await publicSourceStatus(tx, site, version)).ok;
 }

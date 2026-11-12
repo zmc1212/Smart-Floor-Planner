@@ -49,6 +49,9 @@ import { discoveryReplies } from './discovery';
 import { assistantDailyLimitsEnabled } from './daily-limits';
 import { reportContext, reportContextView, selectedReport } from '@/lib/construction/report-reference';
 import type { ReportCompositionScope } from '@/lib/construction/report-composition';
+import { samePublicRef, type PublicContextRef } from '@/lib/construction/public-contract';
+import { publishedPublicMaterial } from '@/lib/construction/public-read';
+import { publicMessageAvailable } from '@/lib/construction/public-projections';
 
 export const reserveTokens = 12000;
 export const reserveCostMicros = 1000000;
@@ -228,6 +231,8 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
     ${trigger.kind === 'domain_event' ? trigger.eventId : null},${trigger.kind === 'scheduled_task' ? trigger.occurrenceKey : null},${purpose},
     ${retryOf || null},${json({ schemaVersion: 1, actor, maxTokens: agent?.consultation ? 8192 : 2048, policyVersion: settings.policy_version, agent,
       knowledgePolicy: c.purpose === 'knowledge_preview' ? { ...knowledgePolicy(settings.agent_config), enabled: true } : knowledgePolicy(settings.agent_config),
+      ...(purpose === 'reply' && c.purpose === 'customer_consultation' && trigger.kind === 'user_message'
+        ? { publicSiteSelection: entry.activePublicSite ?? null } : {}),
       ...(nativeRag ? { nativeRag } : {}),
       ...(agentRuntime ? { agentRuntime } : {}),
       ...(staffPreview && agent ? { staffKnowledgePreview: fastGPTPreviewProtocol } : {}),
@@ -425,7 +430,8 @@ export class ConversationService {
         order by m.seq desc limit 1`);
       const checkpoint = latest?.private_checkpoint as Row | undefined;
       const questions = storedSuggestionQuestions(checkpoint?.questions);
-      if (!latest || !questions.length) return { conversationId, messageId: null, source: 'presets', questions: presets };
+      if (!latest || !questions.length || !await publicMessageAvailable(repo.tx, this.actor.enterpriseId, conversationId, String(latest.message_id)))
+        return { conversationId, messageId: null, source: 'presets', questions: presets };
       return { conversationId, messageId: String(latest.message_id), source: checkpoint?.source === 'model' ? 'model' : 'presets', questions };
     });
   }
@@ -452,6 +458,8 @@ export class ConversationService {
       const citation=await one(repo.tx,sql`select * from app.assistant_message_citations where enterprise_id=${this.actor.enterpriseId} and id=${citationId}`);
       if(!citation || expectedConversationId && String(citation.conversation_id) !== expectedConversationId) fail('assistant_resource_not_found',404);
       const c=await repo.conversation(String(citation.conversation_id));
+      if (!await publicMessageAvailable(repo.tx, this.actor.enterpriseId, String(c.id), String(citation.message_id)))
+        return { id: citationId, available: false, reason: 'source_unavailable' };
       const projected = await citationProjection(repo.tx,this.actor,c,citation);
       if (!includeReference || !projected.available || !('referenceCase' in projected) || !projected.referenceCase) return projected;
       const version = await one(repo.tx,sql`select reference_case from app.assistant_knowledge_versions where enterprise_id=${this.actor.enterpriseId} and id=${String(citation.document_version_id)}`);
@@ -573,18 +581,27 @@ export class ConversationService {
         // A successful retry is the opening for the same visited site version, so
         // its marker must follow the new run. The marker stays bound to the site
         // it was created for: a visitor who moved on is not retrying this opening.
-        const snapshot = publicIntro ? await one(repo.tx, sql`select entry_snapshot from app.assistant_conversations
-          where enterprise_id=${this.actor.enterpriseId} and id=${String(c.id)} for update`) : undefined;
-        const entry = (snapshot?.entry_snapshot || {}) as Row;
+        const entry = c.entry_snapshot as Row;
         const markers = (entry.publicIntros || []) as Array<Row & { siteId?: string; versionId?: string; attempts?: number; runId?: string }>;
         const marker = publicIntro ? markers.find(m => String(m.runId) === String(r.id)) : undefined;
-        const active = entry.activePublicSite as Row | undefined;
+        const active = (entry.activePublicSite ?? null) as PublicContextRef | null;
         // Without the original marker the retry cannot prove which site version
         // it belongs to, so it must not generate an opening for the currently
         // selected site instead.
-        if (publicIntro && !marker) fail('context_changed');
-        if (marker && (!active || String(active.siteId) !== String(marker.siteId) || String(active.versionId) !== String(marker.versionId)))
-          fail('context_changed');
+        if (publicIntro) {
+          if (!marker || Number(marker.attempts) >= 2 || !active || !samePublicRef(active, marker as PublicContextRef)) fail('context_changed');
+        } else if (r.purpose === 'reply' && c.purpose === 'customer_consultation') {
+          const policy = r.policy_snapshot as Row;
+          const old = 'publicSiteSelection' in policy ? undefined : await one(repo.tx, sql`select input_summary->'current' as selection
+            from app.assistant_run_steps where enterprise_id=${this.actor.enterpriseId} and run_id=${runId} and step_seq=1003
+              and kind='agent_public_context' and status='succeeded' and input_summary ? 'current'`);
+          const original = ('publicSiteSelection' in policy ? policy.publicSiteSelection : old?.selection) as PublicContextRef | null | undefined;
+          if (original !== undefined ? !samePublicRef(original, active)
+            : (active || Array.isArray(entry.publicSiteContexts) && entry.publicSiteContexts.length) && r.context_revision !== c.context_revision)
+            fail('context_changed');
+        }
+        if (active && (publicIntro || r.purpose === 'reply')
+          && !await publishedPublicMaterial(repo.tx, this.actor.enterpriseId, active.siteId, active.versionId)) fail('public_site_unavailable', 404);
         // A retry keeps the public-site opening purpose. Reusing the default
         // 'reply' would turn a failed opening into a normal answer run whose
         // system trigger has no conversational counterpart; other purposes

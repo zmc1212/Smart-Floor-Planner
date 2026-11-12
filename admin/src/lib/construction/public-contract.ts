@@ -2,6 +2,12 @@ import { fail, id } from '@/lib/assistant/contracts';
 import { object, text } from './contracts';
 import { cityNameFor, districtOptions } from '@/lib/portfolio/regions';
 
+export type PublicContextRef = { siteId: string; versionId: string };
+export function samePublicRef(a: PublicContextRef | null | undefined, b: PublicContextRef | null | undefined) {
+  if (!a || !b) return !a && !b;
+  return String(a.siteId) === String(b.siteId) && String(a.versionId) === String(b.versionId);
+}
+
 export type PublicMask = { x: number; y: number; width: number; height: number };
 export type PublicSourceInput = { kind: 'site_record' | 'consultation_message'; id: string; sourceHash: string; text: string };
 export type PublicPhotoInput = { recordId: string; mediaId: string; masks: PublicMask[] };

@@ -34,15 +34,16 @@ import { parsePublicRead, publicResearchTools } from './public-research';
 import { historyRefsAvailable, historySynthesisSources, historyTool, parseHistoryQuery,
   type HistoryRef, type HistorySnapshot } from './history';
 import { webAnswerQuoteSpans, webEvidence, webSynthesisSources } from './web-evidence';
-import { publishedPublicMaterial } from '@/lib/construction/public-read';
-import { publicContextAvailable, publicContextSnapshot, type PublicContextRef } from '@/lib/construction/public-projections';
-import type { PublicContent } from '@/lib/construction/public-contract';
+import { publishedPublicMaterial, type PublicMaterialFailure } from '@/lib/construction/public-read';
+import { publicContextAvailable, type PublicContextRef } from '@/lib/construction/public-projections';
+import { samePublicRef, type PublicContent } from '@/lib/construction/public-contract';
 import { defaultPublicIntroConstraints, defaultPublicIntroInput, publicIntroFacts, publicIntroPrompt,
   validatePublicIntro } from '@/lib/construction/public-intro';
 import { openingScene, sceneForOpeningPurpose } from '../fastgpt/agent-v2/openings';
 
 // Existing imports of the moved helpers keep resolving through the executor.
 export { nativeCitationFeedback, scanNativeCitationMarkers } from './native-citation-gate';
+export { samePublicRef } from '@/lib/construction/public-contract';
 
 /** The XiaoK-owned executor for V2-surface customer consultations. It reuses
  * the existing LangGraph runtime, model gateway and authorized tools; no
@@ -114,7 +115,7 @@ export function synthesisHistoryFields(modelIncluded: boolean, modelText: string
 }
 
 export const nativePublicSiteWithdrawnText =
-  '此前围观的公开内容已撤回或更新，不再使用旧内容；可以继续聊客户自己的装修问题。';
+  '服务端已确认，此前围观的公开内容已撤回。';
 
 /** The ordinary reply turn must see the same published site the customer
  * explicitly selected. This is published data, not the customer's own project:
@@ -141,14 +142,18 @@ export function nativePublicSiteContext(source: {
  * current object; query_business stays available and the model decides from
  * the whole conversation whether the customer asked about their own home. */
 export function nativePublicSiteSelection(active: PublicContextRef | null | undefined,
-  source: { siteId: string; versionId: string; contentHash: string; content: PublicContent } | null) {
+  source: { siteId: string; versionId: string; contentHash: string; content: PublicContent } | null,
+  reason?: PublicMaterialFailure) {
   if (!active) return null;
-  return source ? nativePublicSiteContext(source) : { ref: null, text: nativePublicSiteWithdrawnText };
-}
-
-export function samePublicRef(a: PublicContextRef | null | undefined, b: PublicContextRef | null | undefined) {
-  if (!a || !b) return !a && !b;
-  return String(a.siteId) === String(b.siteId) && String(a.versionId) === String(b.versionId);
+  if (source) return nativePublicSiteContext(source);
+  const text = {
+    source_changed: '服务端已确认，当前选择的公开资料版本已失效，请重新查看最新公开版本。',
+    source_forbidden: '服务端已确认，当前公开资料的访问授权已失效。',
+    source_missing: '服务端已确认，当前选择所需的原始资料已不存在。',
+    source_withdrawn: nativePublicSiteWithdrawnText,
+    source_unreadable: '公开资料暂时无法读取，请稍后重试。',
+  };
+  return { ref: null, text: reason ? text[reason] : '当前选择的公开资料不可用。' };
 }
 
 /** Decide the read-identity contract from durable records. A new run binds the
@@ -425,10 +430,6 @@ export async function assertPublicIntroCommit(tx: PostgresTransaction, lease: Le
   ref: { siteId: string; versionId: string; contentHash?: string }) {
   const state = await runContext(tx, lease);
   await authorizePublicIntroDispatch(tx, lease.enterpriseId, state.conversation, ref);
-  if (ref.contentHash) {
-    const material = await publishedPublicMaterial(tx, lease.enterpriseId, String(ref.siteId), String(ref.versionId));
-    if (!material || String(material.version.content_hash) !== ref.contentHash) fail('public_site_unavailable', 404);
-  }
 }
 
 /** Persist the suggestion dispatch's measured usage without any lease,
@@ -592,26 +593,15 @@ export async function processNativeAgentAnswer(lease: Lease) {
     const config = agentConfig((initial.run.policy_snapshot as Row).agent);
     if (!config) fail('context_changed');
     const knowledgeEnabled = runKnowledgeEnabled(initial.run.policy_snapshot as Row);
-    const { context, messages, citations, publicRefs: inheritedPublicRefs, businessContextActive } =
+    const { context, messages, citations, publicRefs: inheritedPublicRefs, businessContextActive, publicSite } =
       await nativeConversation(lease, [], xiaokNativeExecutorProtocol);
-    // The site the customer explicitly selected must reach ordinary reply
-    // turns, not only the one-shot opening. Re-read the current selection and
-    // its published material here; a withdrawn version removes the old data
-    // instead of replaying it.
-    const publicSite = await withTenantTransaction(lease.enterpriseId, async tx => {
-      const state = await runContext(tx, lease);
-      const active = (state.conversation.entry_snapshot as Row).activePublicSite as PublicContextRef | undefined;
-      if (!active) return { active: null, selection: null };
-      const source = await publicContextSnapshot(tx, lease.enterpriseId, active);
-      return { active, selection: nativePublicSiteSelection(active, source) };
-    });
     // If the preceding answer carried the customer's own business material, an
     // ambiguous follow-up belongs to that thread. The public snapshot stays out
     // of this turn's answer context unless the customer names the public site
     // again; the site remains selected and query_business remains available.
     const includePublicSite = !businessContextActive
       || explicitPublicSiteReference(messages.at(-1)?.content || '');
-    const answerPublicSite = includePublicSite ? publicSite.selection : null;
+    const answerPublicSite = includePublicSite ? nativePublicSiteSelection(publicSite.active, publicSite.source, publicSite.reason) : null;
     const answerPublicRef = answerPublicSite?.ref ?? null;
     // Every public source this answer depends on — the selected site when its
     // material was actually supplied, plus every source inherited from an
@@ -724,6 +714,10 @@ export async function processNativeAgentAnswer(lease: Lease) {
         triggerSeq: trigger?.seq ? String(trigger.seq) : null, lastModel, modelSteps, reusedModel };
     });
     if (saved.openOperations.length) { outcomeUnknown = true; fail('provider_outcome_unknown', 503); }
+    if (publicSite.reason === 'source_unreadable') {
+      outcomeUnknown = saved.modelSteps.some(step => step.status !== 'succeeded' || !step.provider_attempt_id);
+      fail(outcomeUnknown ? 'provider_outcome_unknown' : 'public_source_unreadable', 503);
+    }
     if (saved.checkpoint && (saved.checkpoint.input_summary as Row)?.promptVersion !== promptVersion) fail('context_changed');
     if (saved.lastModel && !saved.lastModel.provider_attempt_id) fail('invalid_agent_checkpoint', 409);
     // A missing checkpoint is not the only interrupted state: a process may
@@ -749,6 +743,10 @@ export async function processNativeAgentAnswer(lease: Lease) {
     const savedCurrent = ((saved.publicContext?.input_summary as Row | null)?.current ?? null) as PublicContextRef | null;
     expectedActive = saved.publicContext ? savedCurrent : publicSite.active ?? null;
     if (saved.publicContext) {
+      if (savedPublicRefs.some(ref => !samePublicRef(ref, savedCurrent))) {
+        outcomeUnknown = saved.modelSteps.some(step => step.status !== 'succeeded' || !step.provider_attempt_id);
+        fail(outcomeUnknown ? 'provider_outcome_unknown' : 'context_changed', outcomeUnknown ? 503 : 409);
+      }
       for (const ref of savedPublicRefs) runPublicRefs.set(ref.siteId + ':' + ref.versionId, ref);
       await withTenantTransaction(lease.enterpriseId, async tx => {
         const state = await runContext(tx, lease);

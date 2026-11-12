@@ -6,6 +6,7 @@ import { AssistantError, fail, fingerprint, type Evidence, type MessageContent }
 import { synthesisContextAvailable } from '../../agent/synthesis-sources';
 import type { BusinessSnapshot } from '../../agent/business-tools';
 import { guardAnswerCommitments } from '../../agent/context';
+import { assertPublicIntroCommit, authorizePublicIntroDispatch } from '../../agent/native-executor';
 import { dialogueBusinessQuery, dialogueEnterpriseSearch, quoteOf, snapshotHeading, type DialogueToolRuntime } from '../../agent/dialogue-tools';
 import { dialogueWebResearch, type WebToolRuntime } from '../../agent/dialogue-web-tools';
 import { dialogueDesignerRecommendation, dialoguePublicSitesRecommendation, publicSitesDelivery,
@@ -76,13 +77,13 @@ export async function processAgentV2Answer(lease: Lease) {
       if (!scene) fail('context_changed');
       const ref = (initial.conversation.entry_snapshot as Row).activePublicSite as { siteId: string; versionId: string } | undefined;
       if (!ref) fail('context_changed');
-      const content = await withTenantTransaction(lease.enterpriseId, async tx => {
+      const source = await withTenantTransaction(lease.enterpriseId, async tx => {
         const material = await publishedPublicMaterial(tx, lease.enterpriseId, ref.siteId, String(ref.versionId));
         if (!material) fail('public_site_unavailable', 404);
-        return material.version.content as PublicContent;
+        return { content: material.version.content as PublicContent, ref: { ...ref, contentHash: String(material.version.content_hash) } };
       });
-      await markProviderStarted(lease);
-      const result = await workflows.agentV2.intro(lease.enterpriseId, scene.appId, publicIntroFacts(content, scene.input),
+      await markProviderStarted(lease, [], (tx, conversation) => authorizePublicIntroDispatch(tx, lease.enterpriseId, conversation, source.ref));
+      const result = await workflows.agentV2.intro(lease.enterpriseId, scene.appId, publicIntroFacts(source.content, scene.input),
         publicIntroPrompt(scene.constraints.maxChars));
       if (scene.constraints.noCommitments) guardAnswerCommitments(result.text);
       const text = validatePublicIntro(result.text, scene.constraints);
@@ -92,6 +93,9 @@ export async function processAgentV2Answer(lease: Lease) {
         ${result.usage ? result.usage.inputTokens + result.usage.outputTokens : null},${result.usage ? 'observed' : 'unavailable'},
         ${result.usage?.inputTokens ?? null},${result.usage?.outputTokens ?? null}) on conflict do nothing`));
       await completeRun(lease, { content: { version: 1, blocks: [{ type: 'text', text }] }, usage: result.usage }, async tx => {
+        await assertPublicIntroCommit(tx, lease, source.ref);
+        await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs)
+          values(${lease.enterpriseId},${lease.runId},1003,'agent_public_context','succeeded',${JSON.stringify([source.ref])}::jsonb)`);
         await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
           values(${lease.enterpriseId},${lease.runId},1006,'agent_intro','succeeded',
             ${JSON.stringify({ protocol: fastGPTAgentV2Protocol, scene: scene.key, chars: Array.from(text).length })}::jsonb)`);

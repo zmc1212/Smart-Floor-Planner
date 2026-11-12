@@ -185,7 +185,11 @@ class AssistantClient {
         && !validPortfolioContactReceipt(slot, pending, data)) throw { code: 'invalid_response' };
       else if (slot.startsWith('public-owner:') && !validOwnerReceipt(slot, pending, data)) throw { code: 'invalid_response' };
       else if (slot.startsWith('plan-decision:') && !validPlanReceipt(slot, pending, data)) throw { code: 'invalid_response' };
-      else if (slot.startsWith('public-context:') && !data.conversationId) throw { code: 'invalid_response' };
+      else if (slot.startsWith('public-context:')) {
+        const match = /^\/conversations\/([1-9]\d*)\/public-sites\/([1-9]\d*)\/context$/.exec(pending.path);
+        if (!match || slot !== `public-context:${match[1]}` || data.conversationId !== match[1]
+          || data.id !== match[2] || data.versionId !== pending.body.versionId) throw { code: 'invalid_response' };
+      }
       if (slot.startsWith('speech-upload:') || slot.startsWith('speech-retry:')) {
         const conversation = /^\/miniprogram\/assistant\/conversations\/([1-9]\d*)\/speech$/.exec(this.prefix);
         const project = /^\/miniprogram\/construction\/projects\/([1-9]\d*)\/chat\/speech$/.exec(this.prefix);

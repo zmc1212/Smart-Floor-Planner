@@ -69,6 +69,42 @@ test('public detail is read in the chat sheet and stale versions or closed sheet
   assert.deepEqual(c.state.publicItems,[]);assert.match(c.state.publicDetailError,/撤回或更新/);
 });
 
+test('an uncertain site selection keeps its exact version and cannot acknowledge another site', async () => {
+  const writes = [];
+  const client = new AssistantClient(async (path, _method, body, options) => {
+    writes.push({ path, body, key: options.headers['Idempotency-Key'] });
+    if (writes.length === 1) throw { statusCode: 503 };
+    return { success: true, data: { id: writes.length === 2 ? '22' : '21', versionId: '31', conversationId: '11' } };
+  });
+  const c = new PublicChatController({ emit() {}, identity: () => 'a', client, media: noMedia(), detailMedia: noMedia() });
+  assert.equal(await c.attach('11', '1', '21', '31'), false);
+  assert.equal(await c.attach('11', '1', '22', '32'), false);
+  assert.equal(writes.length, 1);
+  assert.equal(await c.retry(), false, 'an acknowledgement for another site is still uncertain');
+  assert.ok(c.state.publicPending);
+  assert.equal(await c.retry(), true);
+  assert.deepEqual(writes, Array(3).fill(writes[0]));
+  assert.equal(c.state.publicPending, null);
+});
+
+test('a transient public photo read preserves the retry state without claiming withdrawal', async () => {
+  const patches = [];
+  let offline = false;
+  const media = new PublicMedia({ identity: () => 'a', emit: patch => patches.push(patch),
+    download: async () => { if (offline) throw { statusCode: 503, code: 'public_site_unavailable' }; return { tempFilePath: 'photo' }; } });
+  const wanted = [{ key: '21_31_41', path: '/photo' }];
+  await media.load(wanted);
+  offline = true;
+  await media.preview(wanted[0].key);
+  assert.deepEqual(media.paths, {});
+  assert.match(patches.at(-1).publicError, /重新读取/);
+  assert.doesNotMatch(patches.at(-1).publicError, /撤回/);
+  assert.equal(patches.at(-1).publicMediaRevoked, undefined);
+  offline = false;
+  await media.load(wanted);
+  assert.deepEqual(media.paths, { '21_31_41': 'photo' });
+});
+
 test('nearby entry and detail stay in the current chat and preserve an unfinished draft', async () => {
   const oldApp=global.getApp,oldWx=global.wx;global.getApp=()=>({globalData:{token:'a'}});
   global.wx={navigateTo(){throw Error('Public browsing must stay in the chat');}};
