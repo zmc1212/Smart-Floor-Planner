@@ -60,7 +60,7 @@ export async function agentMessageAvailable(tx: PostgresTransaction, enterpriseI
     }
   }
   if (!await publicMessageAvailable(tx, enterpriseId, conversationId, messageId)) return false;
-  if (!await constructionNoticeAvailable(tx, enterpriseId, conversationId, messageId)) return false;
+  if (!await constructionNoticeAvailable(tx, enterpriseId, conversationId, messageId, false, false, reader)) return false;
   const construction = await one(tx, sql`select s.source_refs from app.assistant_run_steps s join app.assistant_messages m on m.enterprise_id=s.enterprise_id and m.run_id=s.run_id
     where m.enterprise_id=${enterpriseId} and m.conversation_id=${conversationId} and m.id=${messageId} and s.kind='agent_construction_context'`);
   for (const mid of (construction?.source_refs || []) as string[]) if (!await constructionNoticeAvailable(tx, enterpriseId, conversationId, mid, false, true)) return false;

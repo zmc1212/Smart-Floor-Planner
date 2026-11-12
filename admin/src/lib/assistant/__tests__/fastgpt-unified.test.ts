@@ -25,6 +25,12 @@ test('native citation presentation uses the existing exact web catalog; no-sourc
   const source = { sourceId: 'W999:1210:0', kind: 'web' as const, title: '原厂页面', text, evidence };
   const catalog = sourceCitationCatalog(source), packet = nativeCites(catalog.map(c => ({ id: c.citationId, sourceName: source.title, content: c.quote })));
   assert.equal(packet.cites![0].content, text);
+  // The stock prompt's literal example ids are not in cites; a model that
+  // copies one fails the final citation check. A bare placeholder is copied
+  // literally too, so the examples must carry this receipt's own first id.
+  assert.ok(packet.prompt && !/\[[0-9a-f]{24}\]\(CITE\)/.test(packet.prompt), 'Example ids must not be copyable foreign tokens');
+  assert.match(packet.prompt, new RegExp('\\[' + packet.cites![0].id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\]\\(CITE\\)'));
+  assert.match(packet.prompt, /不要把示例作为知识点/);
   const parts = ragAnswerParts('先处理粉化层。[' + packet.cites![0].id + '](CITE)', catalog.map(c => ({ nativeId: c.citationId, evidence, quote: c.quote })));
   assert.deepEqual(parts, [{ text: '先处理粉化层。' }, { source: { nativeId: catalog[0].citationId, evidence, quote: text } }]);
   assert.throws(() => ragAnswerParts('原回答。[citationId:' + catalog[0].citationId + '](CITE)', [{ nativeId: catalog[0].citationId, evidence }]));

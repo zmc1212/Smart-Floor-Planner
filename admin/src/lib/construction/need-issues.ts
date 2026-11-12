@@ -7,21 +7,21 @@ import { readMemory, type NeedFact } from '@/lib/assistant/agent/memory';
 import { availableNeedMemory } from '@/lib/assistant/agent/memory-sources';
 import { constructionFollowUpScope, constructionNoticeAvailable } from './customer';
 import { customerSiteResults } from './site-results';
+import { customerNeedReviews } from './site-need-reviews';
 import { customerPlans } from './site-plans';
 import { currentHandoffOwner } from '@/lib/assistant/handoff/owner';
-import { customerNeedReviews } from './site-need-reviews';
 import { collaborationEnabled } from './collaboration-scope';
 import type { IssueClassification } from './site-issues';
 import { notesPreserveProgress } from './stage-events';
 
 export const needIssueTool: ModelTool = {
-  name: 'query_followups', description: '查询当前本人咨询中节点补充事项、团队明确回传的事项取消/恢复后的等待状态与负责人、现场落实证据及正式解决/关闭结果，以及发给本咨询的具体方案版本、差异、费用/工期变化和客户真实决定。只读；不取消/恢复或批准方案、不解决或关闭事项，不开放内部会话或未回传内容。恢复不复活旧回复或批准；普通回复或客户同意不等于现场落实、解决或关闭；关闭不等于验收付款。',
+  name: 'query_followups', description: '查询当前本人咨询中节点补充事项、本人明确共享给项目团队的插座/点位需求当前由哪位设计师核对及处理到哪一步（不含内部回复）、团队明确回传的事项取消/恢复后的等待状态与负责人、现场落实证据及正式解决/关闭结果，以及发给本咨询的具体方案版本、差异、费用/工期变化和客户真实决定。只读；不取消/恢复或批准方案、不解决或关闭事项，不开放内部会话或未回传内容。恢复不复活旧回复或批准；普通回复或客户同意不等于现场落实、解决或关闭；关闭不等于验收付款。',
   parameters: { type: 'object', properties: {}, additionalProperties: false },
 };
 export type IssueState = { issueId: string; revision: number; projectId: string; room: string; field: string;
   status: 'awaiting_customer' | 'awaiting_owner' | 'awaiting_review' | 'cancelled' | 'invalidated' | 'approved' | 'declined' | 'changes_requested' | 'deferred' | 'resolved' | 'closed' | 'implemented' | 'reopened' | 'rectifying' | 'dismissed'; waitingFor: 'customer' | 'designer' | 'unassigned' | 'team' | 'none';
   ownerName: string; sourceMessageId: string | null; sourceFactId: string | null; lastProgress: string; question: string; value: string;
-  kind?: 'team_result' | 'formal_plan' | 'design_review'; sourceVersion?: string;
+  kind?: 'team_result' | 'formal_plan' | 'design_review' | 'need_review'; sourceVersion?: string;
   classification?: IssueClassification; lifecycleId?: string; lifecycleRevision?: number; sync?: { eventId: string; status: string } | null };
 export type NeedIssueSnapshot = { query: { domain: 'followups'; conversationId: string }; customerId: string; leadIds: string[];
   version: string; displayText: string; data: IssueState[]; queriedAt: string };
@@ -188,18 +188,27 @@ export async function queryNeedIssues(tx: PostgresTransaction, actor: ActorConte
       + (state.lastProgress === 'designer_review' ? '已有内部核对记录。' : state.lastProgress === 'designer_reply' ? '设计师已在原对话回复。' : '')
       + '仍待核对，不代表正式方案已批准或现场问题已解决。' : `${state.room || '全屋'}补问：“${state.question}”。等待你方便时补充，可以继续聊其他问题。`);
   }
-  const returned = await customerSiteResults(tx, eid, uid, cid);
-  const reviews = collaborationEnabled(eid) ? await customerNeedReviews(tx, eid, uid, cid) : [];
+  const siteResults = await customerSiteResults(tx, eid, uid, cid);
+  const reviews = conversation.mode === 'ai' ? await customerNeedReviews(tx, eid, uid, cid) : [];
+  const collaboration = collaborationEnabled(eid);
+  const returned = new Set(siteResults.map(result => result.issueId));
+  const projectedReviews = new Set<string>();
   for (const review of reviews) {
-    const current = returned.find(result => result.issueId === review.issueId && result.status !== 'invalidated'
-      && (!result.lifecycleId || result.lifecycleId === review.lifecycleId));
+    if (!collaboration && returned.has(review.issueId)) continue;
+    const current = collaboration ? siteResults.find(result => result.issueId === review.issueId && result.status !== 'invalidated'
+      && (!result.lifecycleId || result.lifecycleId === review.lifecycleId)) : undefined;
     const value = [review.text, current?.text].filter(Boolean).join('\n');
-    data.push({ ...review, field: 'design_review', status: review.status as IssueState['status'],
-      kind: 'design_review', sourceMessageId: current?.messageId || review.sourceMessageId, sourceFactId: null,
-      lastProgress: review.status, question: '', value, sourceVersion: fingerprint({ ...review, current: current?.sourceVersion }) });
+    const kind = collaboration ? 'design_review' : 'need_review';
+    const entry: IssueState = { issueId: review.issueId, revision: review.revision, projectId: review.projectId, room: review.room,
+      waitingFor: review.waitingFor, ownerName: review.ownerName, field: kind, kind, status: review.status as IssueState['status'],
+      sourceMessageId: current?.messageId || (collaboration ? review.sourceMessageId : null), sourceFactId: null,
+      lastProgress: collaboration ? review.status : kind, question: '', value };
+    data.push(collaboration ? { ...review, ...entry, sourceVersion: fingerprint({ ...review, current: current?.sourceVersion }) } : entry);
     lines.push(value);
+    projectedReviews.add(review.issueId);
   }
-  for (const result of returned.filter(result => !reviews.some(review => review.issueId === result.issueId))) {
+  for (const result of siteResults) {
+    if (projectedReviews.has(result.issueId)) continue;
     data.push({ issueId: result.issueId, revision: result.revision, projectId: result.projectId, room: result.room, field: 'site_result',
       status: result.status, waitingFor: result.waitingFor, ownerName: result.ownerName, sourceMessageId: result.messageId, sourceFactId: null,
       lastProgress: ['closed','resolved','awaiting_owner','cancelled'].includes(result.status) ? result.status : 'team_result', question: '', value: result.text, kind: 'team_result', sourceVersion: result.sourceVersion });

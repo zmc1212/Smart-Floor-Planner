@@ -2,10 +2,14 @@ import { sql } from 'drizzle-orm';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, id } from '@/lib/assistant/contracts';
-import { publicSourcesAvailable } from './public-sources';
+import { publicSourceStatus, type PublicSourceFailure } from './public-sources';
 import { publicStatusLabels, type PublicContent } from './public-contract';
 
-export async function publicMaterial(tx: PostgresTransaction, eid: string, siteId: string, versionId?: string) {
+export type PublicMaterialFailure = PublicSourceFailure | 'source_withdrawn';
+type PublicMaterialStatus = { material: { site: Row; version: Row } } | { material: null; reason: PublicMaterialFailure };
+
+async function readMaterial(tx: PostgresTransaction, eid: string, siteId: string, versionId: string | undefined,
+  published: boolean): Promise<PublicMaterialStatus> {
   const site = await one(tx, sql`select s.*,p.lead_id,l.customer_user_id,p.status as project_status,p.customer_access
     from app.construction_public_sites s join app.construction_projects p on p.enterprise_id=s.enterprise_id and p.id=s.project_id
     join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
@@ -13,17 +17,39 @@ export async function publicMaterial(tx: PostgresTransaction, eid: string, siteI
     join app.assistant_enterprise_settings settings on settings.enterprise_id=s.enterprise_id and settings.enabled
     where s.enterprise_id=${eid} and s.id=${siteId} and p.status='active' and p.customer_access and l.archived_at is null and l.status<>'closed'
       and s.customer_id=l.customer_user_id for share of s,p,l,e,settings`);
-  if (!site || !site.current_version_id || (versionId && String(site.current_version_id) !== versionId)) return null;
+  if (!site) {
+    const exists = await one(tx, sql`select id from app.construction_public_sites where enterprise_id=${eid} and id=${siteId}`);
+    return { material: null, reason: exists ? 'source_forbidden' : 'source_missing' };
+  }
+  if (!site.current_version_id || (versionId && String(site.current_version_id) !== versionId))
+    return { material: null, reason: 'source_changed' };
+  if (published) {
+    if (site.status === 'withdrawn') return { material: null, reason: 'source_withdrawn' };
+    if (site.status !== 'published' || !site.reviewed_by
+      || String(site.consented_version_id) !== String(site.current_version_id)
+      || String(site.consented_by) !== String(site.customer_id)) return { material: null, reason: 'source_changed' };
+  }
   const version = await one(tx, sql`select * from app.construction_public_versions where enterprise_id=${eid} and site_id=${siteId} and id=${String(site.current_version_id)} for share`);
-  if (!version || !await publicSourcesAvailable(tx, site, version)) return null;
-  return { site, version };
+  if (!version) return { material: null, reason: 'source_changed' };
+  const status = await publicSourceStatus(tx, site, version);
+  return status.ok ? { material: { site, version } } : { material: null, reason: status.reason };
+}
+
+function materialOrUnavailable(status: PublicMaterialStatus) {
+  if (!status.material && status.reason === 'source_unreadable') fail('public_source_unreadable', 503);
+  return status.material;
+}
+export function publicMaterialStatus(tx: PostgresTransaction, eid: string, siteId: string, versionId?: string) {
+  return readMaterial(tx, eid, siteId, versionId, false);
+}
+export async function publicMaterial(tx: PostgresTransaction, eid: string, siteId: string, versionId?: string) {
+  return materialOrUnavailable(await publicMaterialStatus(tx, eid, siteId, versionId));
 }
 export async function publishedPublicMaterial(tx: PostgresTransaction, eid: string, siteId: string, versionId?: string) {
-  const material = await publicMaterial(tx, eid, siteId, versionId);
-  if (!material || material.site.status !== 'published' || !material.site.reviewed_by
-    || String(material.site.consented_version_id) !== String(material.version.id)
-    || String(material.site.consented_by) !== String(material.site.customer_id)) return null;
-  return material;
+  return materialOrUnavailable(await publishedPublicMaterialStatus(tx, eid, siteId, versionId));
+}
+export function publishedPublicMaterialStatus(tx: PostgresTransaction, eid: string, siteId: string, versionId?: string) {
+  return readMaterial(tx, eid, siteId, versionId, true);
 }
 export async function publicMaterialDto(tx: PostgresTransaction, site: Row, version: Row) {
   const content = version.content as PublicContent;

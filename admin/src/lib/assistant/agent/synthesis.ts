@@ -199,6 +199,16 @@ function synthesisModelProjection(message: ModelMessage, originals: Map<string, 
       delete material.hash;
       delete material.siteCompleted;
     }
+    // The durable source and the semantic-review input keep the report item
+    // identity. The model view keeps the same original text and citation
+    // options without an internal record number it could quote as customer
+    // prose; authorization and completeness checks still use the durable scope.
+    if (source.reportScope) {
+      const scope = { ...source.reportScope } as Record<string, unknown>;
+      delete scope.itemId;
+      delete scope.sourceHash;
+      copy.reportScope = scope;
+    }
     // The durable source and deduplication identity above retain every Evidence
     // field. Send its full original text once, rather than copying the same
     // web/knowledge body into evidence.text a second time in the model view.
@@ -359,13 +369,15 @@ function businessSourceList(resultKey: string, snapshot: BusinessSnapshot): Synt
     return issues.map(({ question, value, ...followup }) => {
       const fields: Record<string, string> = { use: '用途补充', devices: '设备补充', desk: '书桌需求补充', daylight: '采光补充' };
       const subject = followup.kind === 'formal_plan' ? '正式方案决定' : followup.kind === 'team_result' ? '现场问题跟进'
-        : followup.kind === 'design_review' ? '业主授权需求的项目事项' : fields[followup.field] || '需求补充';
+        : (followup.kind === 'design_review' || followup.kind === 'need_review') ? '业主授权需求的项目事项' : fields[followup.field] || '需求补充';
       const text = `${followup.room || '本咨询'} · ${subject}。\n当前状态：${statuses[followup.status]}。等待对象：${waiting[followup.waitingFor]}。`
         + (followup.ownerName ? `当前接续人：${followup.ownerName}。` : '')
-        + (followup.status === 'invalidated' ? '\n旧内容不再作为当前处理依据。' : followup.kind ? '\n本咨询获权回传：' + value
+        + (followup.status === 'invalidated' ? '\n旧内容不再作为当前处理依据。' : followup.kind === 'need_review' ? '\n当前进度：' + value
+          : followup.kind ? '\n本咨询获权回传：' + value
           : value ? '\n客户当前补充：' + value : '\n此前可跳过的补问：' + question)
         + '\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。';
-      const title = followup.kind === 'formal_plan' ? '原事项精确方案及决定' : '原咨询事项当前接续状态';
+      const title = followup.kind === 'formal_plan' ? '原事项精确方案及决定'
+        : followup.kind === 'need_review' ? '原咨询设计核对进度' : '原咨询事项当前接续状态';
       return { sourceId: `B${resultKey}:followup:${followup.kind || 'need'}:${followup.issueId}`, kind: 'project' as const,
         title, summaryTitle: title, text, resultKey, followup, citationQuotes: synthesisQuoteHints(text) };
     });

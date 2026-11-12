@@ -29,6 +29,8 @@ import { requestsDesigner } from '../handoff/intent';
 import { stageHandoffProposal } from '../handoff/proposal';
 import { currentHandoffOwner } from '../handoff/owner';
 import { agentConfig, type AgentConfig } from '../agent/config';
+import { xiaokNativeExecutorProtocol } from '../agent/native-executor';
+import { nativeAgentRuntimeBinding } from '../fastgpt/agent-v2/config';
 import { knowledgePolicy, enterpriseKnowledgeEnabled } from '../knowledge-policy';
 import { knowledgeToolProtocol } from '../knowledge/rag-tools';
 import { homeSourceBudgetProtocol } from '../agent/home-source-budget';
@@ -51,6 +53,9 @@ import { discoveryReplies } from './discovery';
 import { assistantDailyLimitsEnabled } from './daily-limits';
 import { reportContext, reportContextView, selectedReport } from '@/lib/construction/report-reference';
 import type { ReportCompositionScope } from '@/lib/construction/report-composition';
+import { samePublicRef, type PublicContextRef } from '@/lib/construction/public-contract';
+import { publishedPublicMaterial } from '@/lib/construction/public-read';
+import { publicMessageAvailable } from '@/lib/construction/public-projections';
 
 export const reserveTokens = 12000;
 export const reserveCostMicros = 1000000;
@@ -109,8 +114,16 @@ export async function appendMessage(tx: PostgresTransaction, actor: ActorContext
     const existing = await one(tx, sql`select * from app.assistant_messages where enterprise_id=${actor.enterpriseId} and conversation_id=${conversationId} and source_event_id=${input.eventId!} and purpose=${input.purpose || 'reply'}`);
     if (existing) return existing;
   }
-  const c = await one(tx, sql`update app.assistant_conversations set last_seq=last_seq+1,updated_at=now(),version=version+1
-    where enterprise_id=${actor.enterpriseId} and id=${conversationId} and status='open' returning last_seq`);
+  // The counter must never fall behind a persisted message. A historic
+  // diagnostic insert (run3669's trigger message 14905, seq 49) left
+  // conversation 1522 at last_seq 48, so the next send collided on
+  // (enterprise_id, conversation_id, seq) and surfaced as a follow-up 503.
+  // Derive the next value from both the counter and the actual maximum inside
+  // the same row-locking update; concurrent appends still serialize here.
+  const c = await one(tx, sql`update app.assistant_conversations c
+    set last_seq=greatest(c.last_seq,coalesce((select max(m.seq) from app.assistant_messages m
+      where m.enterprise_id=c.enterprise_id and m.conversation_id=c.id),0))+1,updated_at=now(),version=version+1
+    where c.enterprise_id=${actor.enterpriseId} and c.id=${conversationId} and c.status='open' returning last_seq`);
   if (!c) fail('context_changed');
   return (await one(tx, sql`insert into app.assistant_messages(enterprise_id,conversation_id,seq,author_kind,user_id,admin_id,content,client_message_id,run_id,source_event_id,purpose,reply_to_message_id)
     values(${actor.enterpriseId},${conversationId},${String(c.last_seq)},${input.author},${input.author === 'user' && actor.principal.kind === 'user' ? actor.principal.userId : null},
@@ -160,7 +173,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   if (report && !agent) fail('assistant_capability_forbidden', 403);
   const entry = c.entry_snapshot as Row;
   const rag = agent && purpose === 'reply' && trigger.kind === 'user_message' && c.purpose === 'customer_consultation'
-    && actor.principal.kind === 'user' && entry.requirementReviewMode !== true ? fastGPTRagConfiguration(actor.enterpriseId) : undefined;
+    && actor.principal.kind === 'user' && entry.requirementReviewMode !== true && !entry.activePublicSite ? fastGPTRagConfiguration(actor.enterpriseId) : undefined;
   const openingSceneKey = purpose === 'public.site.intro' ? sceneForOpeningPurpose(purpose) : undefined;
   const openingReady = !!openingSceneKey && !!openingScene(actor.enterpriseId, openingSceneKey);
   // A registered opening scene belongs to its own FastGPT app; without a
@@ -168,11 +181,24 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   const agentV2 = agent && (purpose === 'reply' && trigger.kind === 'user_message' || openingReady)
     && c.purpose === 'customer_consultation' && actor.principal.kind === 'user' && entry.requirementReviewMode !== true
     ? fastGPTAgentV2Configuration(actor.enterpriseId) : undefined;
-  const triggerContent = rag || agentV2 ? await one(tx, sql`select content from app.assistant_messages where enterprise_id=${actor.enterpriseId}
+  // The explicit per-enterprise executor switch (`runtime: 'langgraph-v1'`).
+  // Unlike the bridge selection it is decoupled from the knowledge switch:
+  // knowledge-off replies keep the same code executor, minus enterprise
+  // material, instead of falling back to another framework. The public-site
+  // opening is a one-shot system event on the same customer consultation, so
+  // it follows the same native switch; a V2 opening scene still wins while the
+  // V2 bridge is the bound runtime.
+  const nativeExecutor = !agentV2 && agent && (purpose === 'reply' || purpose === 'public.site.intro')
+    && trigger.kind === 'user_message'
+    && c.purpose === 'customer_consultation' && actor.principal.kind === 'user' && entry.requirementReviewMode !== true
+    ? nativeAgentRuntimeBinding(actor.enterpriseId) : undefined;
+  const triggerContent = rag || agentV2 || nativeExecutor ? await one(tx, sql`select content from app.assistant_messages where enterprise_id=${actor.enterpriseId}
     and conversation_id=${String(c.id)} and id=${messageId}`) : undefined;
-  const agentRuntime = agentV2 && (openingReady || enterpriseKnowledgeEnabled(settings.agent_config))
-    && (triggerContent?.content as MessageContent)?.blocks.every(b => b.type === 'text')
-    ? { protocol: fastGPTAgentV2Protocol, binding: agentV2.binding } : undefined;
+  const textOnlyTrigger = (triggerContent?.content as MessageContent)?.blocks.every(b => b.type === 'text');
+  const agentRuntime = agentV2 && (openingReady || enterpriseKnowledgeEnabled(settings.agent_config)) && textOnlyTrigger
+    ? { protocol: fastGPTAgentV2Protocol, binding: agentV2.binding }
+    : nativeExecutor && textOnlyTrigger
+      ? { protocol: xiaokNativeExecutorProtocol, binding: nativeExecutor.binding } : undefined;
   const nativeRag = !agentRuntime && rag && (rag.configuration.mode === 'unified' || enterpriseKnowledgeEnabled(settings.agent_config))
     && (triggerContent?.content as MessageContent)?.blocks.every(b => b.type === 'text')
     ? { protocol: fastGPTRagProtocol, binding: rag.binding } : undefined;
@@ -211,11 +237,13 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
     ${trigger.kind === 'domain_event' ? trigger.eventId : null},${trigger.kind === 'scheduled_task' ? trigger.occurrenceKey : null},${purpose},
     ${retryOf || null},${json({ schemaVersion: 1, actor, maxTokens: agent?.consultation ? 8192 : 2048, policyVersion: settings.policy_version, agent,
       knowledgePolicy: c.purpose === 'knowledge_preview' ? { ...knowledgePolicy(settings.agent_config), enabled: true } : knowledgePolicy(settings.agent_config),
+      ...(purpose === 'reply' && c.purpose === 'customer_consultation' && trigger.kind === 'user_message'
+        ? { publicSiteSelection: entry.activePublicSite ?? null } : {}),
       ...(nativeRag ? { nativeRag } : {}),
       ...(agentRuntime ? { agentRuntime } : {}),
       ...(staffPreview && agent ? { staffKnowledgePreview: fastGPTPreviewProtocol } : {}),
       ...(agent && actor.principal.kind === 'user' && c.purpose === 'customer_consultation' && purpose === 'reply'
-        && !enterpriseKnowledgeEnabled(settings.agent_config) && !reviewRuntime && !agent.consultation && !agent.structuredFinal
+        && !agentRuntime && !enterpriseKnowledgeEnabled(settings.agent_config) && !reviewRuntime && !agent.consultation && !agent.structuredFinal
         && !agent.imageContext && !agent.knowledgeExplanation && !reportContext(c.entry_snapshot).selection
         ? { dialogueContext: minimalDialogueProtocol } : {}),
       ...(!report && reportContext(c.entry_snapshot).selection ? { reportContextVersion: reportContext(c.entry_snapshot).revision } : {}),
@@ -410,7 +438,8 @@ export class ConversationService {
         order by m.seq desc limit 1`);
       const checkpoint = latest?.private_checkpoint as Row | undefined;
       const questions = storedSuggestionQuestions(checkpoint?.questions);
-      if (!latest || !questions.length) return { conversationId, messageId: null, source: 'presets', questions: presets };
+      if (!latest || !questions.length || !await publicMessageAvailable(repo.tx, this.actor.enterpriseId, conversationId, String(latest.message_id)))
+        return { conversationId, messageId: null, source: 'presets', questions: presets };
       return { conversationId, messageId: String(latest.message_id), source: checkpoint?.source === 'model' ? 'model' : 'presets', questions };
     });
   }
@@ -437,6 +466,8 @@ export class ConversationService {
       const citation=await one(repo.tx,sql`select * from app.assistant_message_citations where enterprise_id=${this.actor.enterpriseId} and id=${citationId}`);
       if(!citation || expectedConversationId && String(citation.conversation_id) !== expectedConversationId) fail('assistant_resource_not_found',404);
       const c=await repo.conversation(String(citation.conversation_id));
+      if (!await publicMessageAvailable(repo.tx, this.actor.enterpriseId, String(c.id), String(citation.message_id)))
+        return { id: citationId, available: false, reason: 'source_unavailable' };
       const projected = await citationProjection(repo.tx,this.actor,c,citation);
       if (!includeReference || !projected.available || !('referenceCase' in projected) || !projected.referenceCase) return projected;
       const version = await one(repo.tx,sql`select reference_case from app.assistant_knowledge_versions where enterprise_id=${this.actor.enterpriseId} and id=${String(citation.document_version_id)}`);
@@ -561,7 +592,45 @@ export class ConversationService {
         // model response followed by retrieval failure keeps its original cost
         // hold while the explicit retry receives a separate budget reservation.
         if (r.awaiting_reconciliation) fail('context_changed');
-        return newRun(repo.tx, this.actor, c, settings!, String(r.trigger_message_id), runId);
+        const publicIntro = String(r.purpose) === 'public.site.intro';
+        // A successful retry is the opening for the same visited site version, so
+        // its marker must follow the new run. The marker stays bound to the site
+        // it was created for: a visitor who moved on is not retrying this opening.
+        const entry = c.entry_snapshot as Row;
+        const markers = (entry.publicIntros || []) as Array<Row & { siteId?: string; versionId?: string; attempts?: number; runId?: string }>;
+        const marker = publicIntro ? markers.find(m => String(m.runId) === String(r.id)) : undefined;
+        const active = (entry.activePublicSite ?? null) as PublicContextRef | null;
+        // Without the original marker the retry cannot prove which site version
+        // it belongs to, so it must not generate an opening for the currently
+        // selected site instead.
+        if (publicIntro) {
+          if (!marker || Number(marker.attempts) >= 2 || !active || !samePublicRef(active, marker as PublicContextRef)) fail('context_changed');
+        } else if (r.purpose === 'reply' && c.purpose === 'customer_consultation') {
+          const policy = r.policy_snapshot as Row;
+          const old = 'publicSiteSelection' in policy ? undefined : await one(repo.tx, sql`select input_summary->'current' as selection
+            from app.assistant_run_steps where enterprise_id=${this.actor.enterpriseId} and run_id=${runId} and step_seq=1003
+              and kind='agent_public_context' and status='succeeded' and input_summary ? 'current'`);
+          const original = ('publicSiteSelection' in policy ? policy.publicSiteSelection : old?.selection) as PublicContextRef | null | undefined;
+          if (original !== undefined ? !samePublicRef(original, active)
+            : (active || Array.isArray(entry.publicSiteContexts) && entry.publicSiteContexts.length) && r.context_revision !== c.context_revision)
+            fail('context_changed');
+        }
+        if (active && (publicIntro || r.purpose === 'reply')
+          && !await publishedPublicMaterial(repo.tx, this.actor.enterpriseId, active.siteId, active.versionId)) fail('public_site_unavailable', 404);
+        // A retry keeps the public-site opening purpose. Reusing the default
+        // 'reply' would turn a failed opening into a normal answer run whose
+        // system trigger has no conversational counterpart; other purposes
+        // keep their historical reply retry path.
+        const retried = await newRun(repo.tx, this.actor, c, settings!, String(r.trigger_message_id), runId,
+          { kind: 'user_message', messageId: String(r.trigger_message_id) },
+          publicIntro ? 'public.site.intro' : 'reply');
+        if (marker) {
+          const next = markers.map(m => String(m.runId) === String(r.id)
+            ? { ...m, runId: retried.runId, attempts: Number(m.attempts || 0) + 1 } : m);
+          await repo.tx.execute(sql`update app.assistant_conversations set entry_snapshot=jsonb_set(entry_snapshot,'{publicIntros}',${json(next)}::jsonb)
+            where enterprise_id=${this.actor.enterpriseId} and id=${String(c.id)}`);
+        }
+        return retried;
       });
     }, action === 'retry');
   }

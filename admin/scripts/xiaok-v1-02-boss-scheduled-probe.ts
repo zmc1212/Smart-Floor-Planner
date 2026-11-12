@@ -102,7 +102,7 @@ async function main() {
     const policy = run.policy_snapshot as Row;
     assert.equal(String(policy.reportId), reportId);
     assert.equal(Number(policy.revision), 1);
-    assert.ok((policy.scope as Row).audiences.includes('boss'), 'the run freezes the boss audience in scope');
+    assert.ok(((policy.scope as Row).audiences as string[]).includes('boss'), 'the run freezes the boss audience in scope');
     const job = (await one(tx, sql`select * from app.assistant_jobs where enterprise_id=${eid} and run_id=${String(queued!.runId)}`))!;
     assert.equal(job.kind, 'chat_turn');
     assert.equal(job.dedupe_key, 'construction-report:' + reportId + ':1');

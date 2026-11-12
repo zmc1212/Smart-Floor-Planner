@@ -1,0 +1,1085 @@
+/** Targeted native-executor recovery checks under enterprise 1454 (synthetic,
+ * labelled rows only): interrupted runs resume through the real Worker claim
+ * path with no repeated provider dispatch, no duplicated messages and a
+ * consistent per-turn usage ledger; one enterprise's busy chat slot never
+ * blocks another enterprise's knowledge task. Never retries a dispatched
+ * provider call and never injects answers into a live journey. */
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { createHash, randomUUID } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { loadEnvConfig } from '@next/env';
+import { sql } from 'drizzle-orm';
+import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
+import { one, rows, type Row } from '@/db/repositories/assistant-repository';
+import { closePostgresPool } from '@/lib/postgresql';
+import { claimJob, enterpriseConcurrency, processAssistantJob, runContext, type Lease } from '@/lib/assistant/infrastructure/job-queue';
+import { nativeExecutorPromptVersion, recoveredDialogueToolState,
+  xiaokNativeExecutorProtocol } from '@/lib/assistant/agent/native-executor';
+import { dialogueWebResearch, type WebToolRuntime } from '@/lib/assistant/agent/dialogue-web-tools';
+import { nearbyPublicSitesReceipt } from '@/lib/assistant/agent/dialogue-recommend-tools';
+import { dialogueHistoryRecall, type HistoryToolRuntime } from '@/lib/assistant/agent/dialogue-history-tools';
+import { historyRefsAvailable, type HistoryRef } from '@/lib/assistant/agent/history';
+import { synthesisContextAvailable } from '@/lib/assistant/agent/synthesis-sources';
+import type { SynthesisContext } from '@/lib/assistant/agent/synthesis';
+import { nativeAgentRuntimeBinding } from '@/lib/assistant/fastgpt/agent-v2/config';
+import { suggestionGenerationStep } from '@/lib/assistant/fastgpt/agent-v2/suggestions';
+import { knowledgePolicy } from '@/lib/assistant/knowledge-policy';
+import { appendMessage } from '@/lib/assistant/core/conversation';
+import { KnowledgeService } from '@/lib/assistant/knowledge/service';
+import { claimKnowledgeJob } from '@/lib/assistant/knowledge/index-worker';
+import type { ModelTurnOutput } from '@/lib/assistant/contracts/model';
+
+loadEnvConfig(process.cwd(), true);
+// dev.mjs injects the same default for Next and the resident Worker; this
+// standalone harness mirrors it so the shared web dispatch is testable.
+// Explicit configuration always wins.
+process.env.ASSISTANT_PUBLIC_READER_URL ||= 'http://127.0.0.1:18095';
+assert.ok(process.argv.includes('--development'));
+const root = path.resolve('..'), eid = '1454';
+const output = path.resolve(process.argv.find(a => a.startsWith('--output='))?.slice(9) || '../tmp/xiaok-native-executor-20261111-recovery');
+assert.ok(!fs.existsSync(path.join(output, 'report.json')), 'Retain the original round');
+const target = new URL(process.env.DATABASE_URL!);
+assert.ok(['127.0.0.1', 'localhost'].includes(target.hostname) && target.port === '5432' && target.pathname === '/smart_floor_planner');
+fs.mkdirSync(output, { recursive: true });
+const report: Row & { accounting: Row; scenarios: Row } = { startedAt: new Date().toISOString(), enterpriseId: eid,
+  scope: 'native executor interrupted-run recovery plus cross-enterprise slot', checks: [], failures: [], accounting: {}, scenarios: {} };
+const save = () => fs.writeFileSync(path.join(output, 'report.json'), JSON.stringify(report, null, 2));
+const read = <T>(fn: Parameters<typeof withTenantTransaction<T>>[1]) => withTenantTransaction(eid, fn);
+const tenantOne = (q: ReturnType<typeof sql>) => read(tx => one(tx, q));
+const tenantRows = (q: ReturnType<typeof sql>) => read(tx => rows(tx, q));
+const platformOne = (q: ReturnType<typeof sql>) => withPlatformTransaction(tx => one(tx, q));
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+/** True once the resident Worker has completed another poll after this call.
+ * Used to place short fixture windows inside its ~2s idle gap. */
+async function waitForWorkerTick(timeoutMs = 7000) {
+  const healthFile = process.env.ASSISTANT_WORKER_HEALTH_FILE || path.join(os.tmpdir(), 'assistant-worker-health.json');
+  const heartbeat = () => { try { return Number(JSON.parse(fs.readFileSync(healthFile, 'utf8')).lastSuccessAt) || 0; } catch { return 0; } };
+  const initial = heartbeat();
+  if (!initial) return false;
+  for (let index = 0; index < timeoutMs / 100; index++) {
+    await sleep(100);
+    if (heartbeat() > initial) return true;
+  }
+  return false;
+}
+
+function binding() {
+  const files = execFileSync('rg', ['--files', 'admin/src', 'admin/scripts'], { cwd: root, encoding: 'utf8' })
+    .trim().split(/\r?\n/).map(p => p.replaceAll('\\', '/')).filter(f => /assistant|job-queue|postgres-workflow-chat/.test(f));
+  files.push('admin/scripts/xiaok-native-recovery-check.ts', 'admin/.env.local');
+  if (process.env.XIAOK_FASTGPT_WORKFLOWS_FILE?.trim())
+    files.push(path.relative(root, path.resolve(process.env.XIAOK_FASTGPT_WORKFLOWS_FILE)).replaceAll('\\', '/'));
+  return Object.fromEntries([...new Set(files)].sort().map(f => [f, createHash('sha256').update(fs.readFileSync(path.isAbsolute(f) ? f : path.join(root, f))).digest('hex')]));
+}
+const before = binding();
+report.bindingBefore = createHash('sha256').update(JSON.stringify(before)).digest('hex');
+// Targeted retests may select named scenarios, but the queue/decoy guards and
+// every assertion of an executed scenario stay mandatory. A default full run
+// (no --only) still executes the complete matrix, including W1.
+const only = (process.argv.find(a => a.startsWith('--only='))?.slice(7) || '').split(',')
+  .map(value => value.trim()).filter(Boolean);
+if (only.length) report.only = only;
+const alwaysRun = (name: string) => name.startsWith('preflight:') || name.startsWith('decoy probe:');
+
+async function step(name: string, fn: () => Promise<unknown>) {
+  if (only.length && !alwaysRun(name) && !only.some(prefix => name.startsWith(prefix))) {
+    console.log(name + ': SKIP (--only)');
+    return undefined;
+  }
+  try { const data = await fn(); (report.checks as Row[]).push({ name, passed: true, data }); console.log(name + ': PASS'); return data; }
+  catch (e) { const message = (e as Error).message + ((e as Row).cause ? ' | cause: ' + String((e as Row).cause) : '');
+    (report.checks as Row[]).push({ name, passed: false, error: message });
+    (report.failures as Row[]).push({ name, error: (e as Error).stack || message }); throw e; }
+  finally { save(); }
+}
+const attemptsMax = async () => String((await platformOne(sql`select coalesce(max(id),0) id from app.ai_provider_attempts`))!.id);
+
+/** One interrupted native run. The model output, its attempt row and the
+ * per-turn usage ledger are persisted exactly like the real executor writes
+ * them; the job sits re-claimable with a lost lease and a provider marker. */
+async function seedInterruptedRun(label: string, spec: {
+  question: string;
+  turns: Array<{ turn: number; output: ModelTurnOutput; usage?: { inputTokens: number; outputTokens: number } }>;
+  searches?: Array<{ sequence: number; query: string; receipt: Row; evidence: Row[];
+    /** Dispatch marker only: the usage row exists but no receipt step was saved. */
+    dispatchedOnly?: boolean; usageObserved?: boolean }>;
+  /** Web dispatch fixtures written exactly like the shared web factory:
+   * a usage dispatch marker plus (unless dispatchedOnly) a succeeded step. */
+  webs?: Array<{ stepSeq: number; reading?: boolean; dispatchedOnly?: boolean }>;
+  /** Customer originals recorded BEFORE the trigger message so a real
+   * recall_history can read them through the run's real trigger seq. */
+  olderMessages?: string[];
+  checkpoint?: Row;
+  /** Persisted fixed 2010 receipt, exactly like dialoguePublicSitesRecommendation
+   * writes it; recovery must rebuild the delivery outcome from this row. */
+  publicSites?: { receipt: Row; region: Row; count?: number; items?: Row[] };
+  /** How this fixture is claimed. `worker` is the lost-process/queued state the
+   * resident Worker resumes; `recoverable`/`new` seed a state this harness
+   * claims through the real claimJob path for a factory-driven scenario. */
+  claim?: 'worker' | 'recoverable' | 'new';
+  /** A suggestion dispatch whose provider outcome was never persisted: the 1014
+   * step, its usage marker and one unknown attempt are durable truth, so a
+   * resumed run must neither replay the call nor rewrite the marker. */
+  suggestionUnknown?: boolean;
+}) {
+  return read(async tx => {
+    const template = await one(tx, sql`select policy_snapshot from app.assistant_runs where enterprise_id=${eid} and id=2967`);
+    assert.ok(template, 'Native template run 2967 missing');
+    const actor = (template.policy_snapshot as Row).actor as Row;
+    const settings = (await one(tx, sql`select * from app.assistant_enterprise_settings where enterprise_id=${eid}`))!;
+    const bound = nativeAgentRuntimeBinding(eid);
+    assert.ok(bound, 'The langgraph-v1 switch must be active for recovery checks');
+    const conv0 = await one(tx, sql`select c.entry_snapshot from app.assistant_conversations c join app.assistant_runs r
+      on r.enterprise_id=c.enterprise_id and r.conversation_id=c.id where r.enterprise_id=${eid} and r.id=2967`);
+    assert.ok(conv0, 'Template conversation missing');
+    const conversation = (await one(tx, sql`insert into app.assistant_conversations(enterprise_id,purpose,status,mode,title,entry_snapshot,policy_version,context_revision,last_seq)
+      values(${eid},'customer_consultation','open','ai',${'[synthetic-recovery] ' + label + ' ' + new Date().toISOString().slice(0, 10)},
+      ${JSON.stringify(conv0.entry_snapshot)}::jsonb,${Number(settings.policy_version)},1,0) returning id`))!;
+    const conversationId = String(conversation.id);
+    // The template conversation's participant rows make the synthetic
+    // conversation visible to the same customer principal under RLS.
+    await tx.execute(sql`insert into app.assistant_participants(enterprise_id,conversation_id,principal_kind,user_id,admin_id,participant_role,grant_basis,status)
+      select ${eid},${conversationId},principal_kind,user_id,admin_id,participant_role,grant_basis,status from app.assistant_participants
+      where conversation_id=(select conversation_id from app.assistant_runs where enterprise_id=${eid} and id=2967)`);
+    for (const text of spec.olderMessages ?? [])
+      await appendMessage(tx, actor as never, conversationId,
+        { author: 'user', content: { version: 1, blocks: [{ type: 'text', text }] }, clientMessageId: 'recovery-old-' + randomUUID() });
+    const message = await appendMessage(tx, actor as never, conversationId,
+      { author: 'user', content: { version: 1, blocks: [{ type: 'text', text: spec.question }] }, clientMessageId: 'recovery-' + randomUUID() });
+    const policySnapshot = { schemaVersion: 1, actor, maxTokens: 8192, policyVersion: Number(settings.policy_version),
+      agent: settings.agent_config, knowledgePolicy: knowledgePolicy(settings.agent_config),
+      agentRuntime: { protocol: xiaokNativeExecutorProtocol, binding: bound.binding } };
+    const run = (await one(tx, sql`insert into app.assistant_runs(enterprise_id,conversation_id,trigger_kind,trigger_message_id,purpose,status,policy_snapshot,context_revision,knowledge_epoch)
+      values(${eid},${conversationId},'user_message',${String(message.id)},'reply','queued',${JSON.stringify(policySnapshot)}::jsonb,1,${Number(settings.knowledge_epoch)}) returning id`))!;
+    const runId = String(run.id);
+    const provider = (await one(tx, sql`select provider_config_id,provider_key,adapter_type,remote_model from app.ai_provider_attempts
+      where enterprise_id=${eid} order by id desc limit 1`))!;
+    const attemptIds: string[] = [];
+    const bodyUsageKeys: string[] = [];
+    let suggestionAttemptId: string | undefined;
+    for (const item of spec.turns) {
+      const usage = item.output.usage ?? { inputTokens: 11, outputTokens: 7 };
+      bodyUsageKeys.push('agent:' + runId + ':' + item.turn);
+      const attempt = (await one(tx, sql`insert into app.ai_provider_attempts(enterprise_id,assistant_run_id,provider_config_id,provider_key,adapter_type,capability,
+        logical_model_key,remote_model,remote_task_id,status,accepted)
+        values(${eid},${runId},${String(provider.provider_config_id)},${String(provider.provider_key)},${String(provider.adapter_type)},'chat','chat.general',
+        ${String(provider.remote_model)},'xiaok-recovery-synthetic','succeeded',true) returning id`))!;
+      attemptIds.push(String(attempt.id));
+      await tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,provider_attempt_id,operation_key,category,quantity,measurement_kind,input_tokens,output_tokens)
+        values(${eid},${runId},${String(attempt.id)},${'agent:' + runId + ':' + item.turn},'tokens',${usage.inputTokens + usage.outputTokens},'observed',${usage.inputTokens},${usage.outputTokens})`);
+      await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,provider_attempt_id,private_checkpoint,input_summary)
+        values(${eid},${runId},${1100 + item.turn * 10},'agent_model','succeeded',${String(attempt.id)},${JSON.stringify(item.output)}::jsonb,
+        ${JSON.stringify({ turn: item.turn, purpose: 'answer', promptVersion: nativeExecutorPromptVersion, protocol: xiaokNativeExecutorProtocol,
+          tools: ['search_enterprise', 'query_business'], maxOutputTokens: 8192 })}::jsonb)`);
+    }
+    for (const item of spec.searches ?? []) {
+      await tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,operation_key,category,quantity,measurement_kind,input_tokens)
+        values(${eid},${runId},${'agent-v2-query:' + runId + ':' + item.sequence},'query_embedding',
+        ${item.usageObserved === false ? sql`null,'unavailable',null` : sql`12,'observed',12`})`);
+      if (item.dispatchedOnly) continue;
+      await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,source_refs,private_checkpoint,input_summary)
+        values(${eid},${runId},${1300 + item.sequence},'retrieval','knowledge.search.v1',1,'succeeded',
+          ${JSON.stringify(item.evidence.map(e => ({ ref: (e as Row).ref, hash: (e as Row).hash })))}::jsonb,${JSON.stringify(item.evidence)}::jsonb,
+          ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, tool: 'search_enterprise', query: item.query, candidates: 0,
+            selected: item.evidence.length, receipt: item.receipt })}::jsonb)`);
+    }
+    for (const item of spec.webs ?? []) {
+      // Marker only, exactly like a lost process leaves behind: the usage row
+      // exists with measurement_kind='unavailable' and no receipt step.
+      await tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,operation_key,category,quantity,measurement_kind)
+        values(${eid},${runId},${'agent-web:' + runId + ':' + item.stepSeq},${item.reading ? 'web_read' : 'web_search'},null,'unavailable')`);
+    }
+
+    if (spec.checkpoint) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary,private_checkpoint)
+      values(${eid},${runId},1000,'agent_checkpoint','succeeded',${JSON.stringify({ promptVersion: nativeExecutorPromptVersion,
+        protocol: xiaokNativeExecutorProtocol })}::jsonb,${JSON.stringify(spec.checkpoint)}::jsonb)`);
+    if (spec.publicSites) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs,private_checkpoint,input_summary)
+      values(${eid},${runId},2010,'agent_public_sites','succeeded',
+        ${JSON.stringify((spec.publicSites.items ?? []).map(item => ({ siteId: item.id, versionId: item.versionId })))}::jsonb,
+        ${JSON.stringify({ region: spec.publicSites.region, count: spec.publicSites.count ?? 0 })}::jsonb,
+        ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, tool: 'recommend_public_sites',
+          count: spec.publicSites.count ?? 0, receipt: spec.publicSites.receipt })}::jsonb)`);
+    if (spec.suggestionUnknown) {
+      // Lost-process truth for the ancillary call: the provider was dispatched
+      // but its outcome never settled. The usage marker stays unknown, the 1014
+      // step records the unknown code, and recovery must not replay the call.
+      const suggestionAttempt = (await one(tx, sql`insert into app.ai_provider_attempts(enterprise_id,assistant_run_id,provider_config_id,provider_key,adapter_type,capability,
+        logical_model_key,remote_model,remote_task_id,status,accepted,metadata)
+        values(${eid},${runId},${String(provider.provider_config_id)},${String(provider.provider_key)},${String(provider.adapter_type)},'chat','chat.general',
+        ${String(provider.remote_model)},'xiaok-recovery-suggestion-unknown','unknown',true,
+        ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, purpose: 'suggestions' })}::jsonb) returning id`))!;
+      suggestionAttemptId = String(suggestionAttempt.id);
+      await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,provider_attempt_id,private_checkpoint,input_summary)
+        values(${eid},${runId},${suggestionGenerationStep},'agent_suggestion_model','failed',${suggestionAttemptId},null,
+        ${JSON.stringify({ protocol: xiaokNativeExecutorProtocol, purpose: 'suggestions', code: 'provider_outcome_unknown' })}::jsonb)`);
+      await tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,operation_key,category,quantity,measurement_kind)
+        values(${eid},${runId},${'native-suggest:' + runId},'suggestion_tokens',null,'unavailable')`);
+    }
+    if (spec.claim === 'recoverable') {
+      // Lost-process truth: the dead process had already dispatched the model,
+      // so the provider marker is set and a succeeded model step exists. The
+      // lease is kept unexpired until claimSeeded flips it immediately before
+      // the production claim: otherwise the resident Worker (2s poll) would
+      // claim and end the fixture before this harness reaches the factory.
+      await tx.execute(sql`insert into app.assistant_jobs(enterprise_id,kind,run_id,dedupe_key,payload_version,status,attempts,available_at,lease_token,lease_expires_at,heartbeat_at,provider_started_at)
+        values(${eid},'chat_turn',${runId},${'recovery:' + randomUUID()},1,'running',1,now(),${randomUUID()},
+          now() + interval '5 minutes',now(),now())`);
+      await tx.execute(sql`update app.assistant_runs set status='running',started_at=coalesce(started_at,now()),version=version+1
+        where enterprise_id=${eid} and id=${runId}`);
+    } else if (spec.claim === 'new') {
+      // A normal new task, kept out of the global scan until the harness flips
+      // its availability immediately before the scoped production claim.
+      await tx.execute(sql`insert into app.assistant_jobs(enterprise_id,kind,run_id,dedupe_key,payload_version,status,attempts,available_at)
+        values(${eid},'chat_turn',${runId},${'recovery:' + randomUUID()},1,'queued',0,now() + interval '120 seconds')`);
+    } else {
+      // Executor-recovery fixtures are normal queued jobs carrying the
+      // lost-process provider marker; the resident Worker claims and resumes
+      // them through the production path.
+      await tx.execute(sql`insert into app.assistant_jobs(enterprise_id,kind,run_id,dedupe_key,payload_version,status,attempts,available_at,provider_started_at)
+        values(${eid},'chat_turn',${runId},${'recovery:' + randomUUID()},1,'queued',0,now(),now())`);
+    }
+    return { conversationId, runId, attemptIds, bodyUsageKeys, suggestionAttemptId,
+      binding: bound.binding, triggerSeq: String(message.seq) };
+  });
+}
+
+/** Executor-recovery fixtures are processed by the resident Worker itself
+ * (dev.mjs assistant-worker → the internal jobs endpoint → processAssistantJob
+ * → the real claim path). The scenario seeds a claimable job and waits for the
+ * run to reach its terminal state, then asserts outcomes from durable rows —
+ * no script-side claim races the poller and the recovery code under test is
+ * exactly the production claim path. */
+async function waitForRunTerminal(runId: string, label: string) {
+  for (let index = 0; index < 60; index++) {
+    const run = await tenantOne(sql`select id,status,error_code from app.assistant_runs where enterprise_id=${eid} and id=${runId}`);
+    if (run && !['queued', 'running'].includes(String(run.status))) return run!;
+    await sleep(2000);
+  }
+  throw new Error(label + ' run never reached a terminal state: ' + runId);
+}
+
+/** Claim a harness-owned fixture through the real production claim path. The
+ * optional availability flip is the only fixture-side staging: after it, the
+ * scoped claimJob below is exactly the production claim (settings lock,
+ * enterprise slots, recovery guard), and no lease is fabricated. A run that
+ * reaches a terminal state before this harness claims it is reported as
+ * environment contention instead of being retried or forced. */
+async function claimSeeded(runId: string) {
+  // Flip the staged state to claimable and immediately claim it. The fixture is
+  // invisible to the resident Worker before this update, so the production
+  // claim wins rather than racing a poll that started while it was eligible.
+  await read(tx => tx.execute(sql`update app.assistant_jobs set available_at=now(),
+    lease_expires_at=case when status='running' then now() - interval '1 second' else lease_expires_at end,
+    version=version+1 where enterprise_id=${eid} and run_id=${runId} and status in ('queued','running')`));
+  for (let index = 0; index < 60; index++) {
+    const lease = await claimJob({ enterpriseId: eid, runId });
+    if (lease) return lease;
+    const run = await tenantOne(sql`select status,error_code from app.assistant_runs where enterprise_id=${eid} and id=${runId}`);
+    if (run && !['queued', 'running'].includes(String(run.status)))
+      throw new Error('fixture ' + runId + ' was claimed and processed by the resident Worker before this harness: '
+        + String(run.status) + '/' + String(run.error_code || ''));
+    await sleep(100);
+  }
+  throw new Error('claim timeout for fixture ' + runId);
+}
+
+async function runState(runId: string, conversationId: string) {
+  const [run, attempts, usage, steps, messages] = await Promise.all([
+    tenantOne(sql`select id,status,error_code,output_message_id,answer_kind from app.assistant_runs where enterprise_id=${eid} and id=${runId}`),
+    withPlatformTransaction(tx => rows(tx, sql`select id,status,remote_model,remote_task_id,metadata from app.ai_provider_attempts where assistant_run_id=${runId} order by id`)),
+    tenantRows(sql`select operation_key,provider_attempt_id,category,quantity,measurement_kind from app.assistant_usage_records
+      where enterprise_id=${eid} and run_id=${runId} order by operation_key`),
+    tenantRows(sql`select step_seq,kind,capability_name,status,provider_attempt_id,input_summary from app.assistant_run_steps
+      where enterprise_id=${eid} and run_id=${runId} order by step_seq,kind`),
+    tenantRows(sql`select id,seq,author_kind from app.assistant_messages where enterprise_id=${eid} and conversation_id=${conversationId} order by seq`)]);
+  return { run: run!, attempts, usage, steps, messages };
+}
+
+async function assertIndeterminate(label: string, seeded: Awaited<ReturnType<typeof seedInterruptedRun>>, expect: {
+  usageKeys: string[]; retrievalSteps: number }) {
+  const state = await runState(seeded.runId, seeded.conversationId);
+  const run = state.run as Row;
+  assert.equal(String(run.status), 'indeterminate', label + ' must stay indeterminate, saw ' + String(run.status) + '/' + String(run.error_code || ''));
+  assert.equal(String(run.error_code), 'provider_outcome_unknown', label + ' error code');
+  const attempts = state.attempts as Row[];
+  assert.equal(attempts.length, seeded.attemptIds.length, label + ' must not add any provider attempt');
+  assert.deepEqual((state.usage as Row[]).map(u => String(u.operation_key)).sort(), expect.usageKeys, label + ' usage rows unchanged');
+  assert.equal(stepKinds(state, 'retrieval').length, expect.retrievalSteps, label + ' no receipt step may appear');
+  return state;
+}
+
+const stepKinds = (state: ReturnType<typeof runState> extends Promise<infer T> ? T : never, kind: string) =>
+  (state.steps as Row[]).filter(s => String(s.kind) === kind);
+type RunState = ReturnType<typeof runState> extends Promise<infer T> ? T : never;
+const suggestionKey = (runId: string) => 'native-suggest:' + runId;
+const modelTurnOf = (stepSeq: number) => Math.round((Number(stepSeq) - 1100) / 10);
+const isSuggestionAttempt = (attempt: Row) => String(attempt.remote_task_id ?? '') === 'xiaok-recovery-suggestion-unknown'
+  || String((attempt.metadata as Row | undefined)?.purpose ?? '') === 'suggestions';
+
+/** The suggestion call is its own durable lane: one 1014 marker outside the
+ * model-turn band, one usage operation and at most one provider attempt. It is
+ * never counted as a body attempt and never replayed */
+function suggestionView(state: RunState, runId: string) {
+  const marker = (state.steps as Row[]).filter(s => String(s.kind) === 'agent_suggestion_model'
+    && Number(s.step_seq) === suggestionGenerationStep);
+  const usage = (state.usage as Row[]).filter(u => String(u.operation_key) === suggestionKey(runId));
+  const ids = new Set<string>();
+  for (const step of marker) if (step.provider_attempt_id) ids.add(String(step.provider_attempt_id));
+  for (const attempt of state.attempts as Row[]) if (isSuggestionAttempt(attempt)) ids.add(String(attempt.id));
+  return { marker, usage, ids, attempts: (state.attempts as Row[]).filter(a => ids.has(String(a.id))) };
+}
+
+function assertSuggestion(label: string, state: RunState, runId: string, dispatched: boolean) {
+  const view = suggestionView(state, runId);
+  assert.ok(view.marker.length <= 1, label + ' must never dispatch suggestions twice');
+  assert.ok(view.usage.length <= 1, label + ' must never write a second suggestion usage row');
+  if (dispatched) {
+    assert.equal(view.marker.length, 1, label + ' must persist exactly one 1014 suggestion marker');
+    assert.equal(view.usage.length, 1, label + ' must persist exactly one suggestion usage row');
+  } else if (!view.marker.length) {
+    assert.equal(view.usage.length, 0, label + ' has no suggestion usage without a marker');
+    assert.equal(view.attempts.length, 0, label + ' has no suggestion attempt without a marker');
+    return view;
+  }
+  const step = view.marker[0], usage = view.usage[0];
+  assert.equal(String(usage.category), 'suggestion_tokens', label + ' suggestion usage category');
+  if (String(step.status) === 'succeeded') {
+    assert.equal(view.attempts.length, 1, label + ' suggestion success references exactly one provider attempt');
+    assert.ok(step.provider_attempt_id, label + ' suggestion success keeps its provider attempt id');
+    assert.equal(String(usage.measurement_kind), 'observed', label + ' suggestion usage is observed on success');
+    assert.ok(usage.quantity !== null, label + ' suggestion usage quantity is observed on success');
+    assert.equal(String(usage.provider_attempt_id), String(step.provider_attempt_id), label + ' usage and step share the attempt');
+    assert.equal(String(view.attempts[0].id), String(step.provider_attempt_id), label + ' the attempt row is the step attempt');
+  } else {
+    assert.equal(String(step.status), 'failed', label + ' suggestion step status');
+    assert.ok(String((step.input_summary as Row | undefined)?.code ?? ''), label + ' failed suggestion records a code');
+    assert.equal(usage.quantity, null, label + ' failed suggestion usage stays unknown');
+    assert.equal(String(usage.measurement_kind), 'unavailable', label + ' failed suggestion usage stays unavailable');
+    assert.ok(view.attempts.length <= 1, label + ' failed suggestion dispatch stays at most one attempt');
+  }
+  return view;
+}
+
+async function assertCompleted(label: string, seeded: Awaited<ReturnType<typeof seedInterruptedRun>>, expect: {
+  attempts: number; usageKeys: string[]; textMatch: RegExp; modelStepCount: number; checkpoint: boolean }) {
+  const state = await runState(seeded.runId, seeded.conversationId);
+  const run = state.run as Row;
+  assert.equal(String(run.status), 'succeeded', label + ' run must succeed: ' + String(run.error_code || ''));
+  assert.equal((state.messages as Row[]).length, 2, label + ' must persist exactly one trigger and one assistant message');
+  assert.equal(String((state.messages as Row[]).at(-1)!.id), String(run.output_message_id), label + ' output message linkage');
+  const attempts = state.attempts as Row[];
+  const synthetic = attempts.filter(a => String(a.remote_task_id) === 'xiaok-recovery-synthetic');
+  assert.equal(synthetic.length, seeded.attemptIds.length, label + ' synthetic attempt rows preserved');
+  const suggestion = assertSuggestion(label, state, seeded.runId, true);
+  const bodyAttempts = attempts.filter(a => !suggestion.ids.has(String(a.id)));
+  assert.equal(bodyAttempts.length, expect.attempts, label + ' must hold the exact body provider attempt count (no hidden re-dispatch)');
+  assert.ok(bodyAttempts.every(a => String(a.status) === 'succeeded'), label + ' body attempts must all be known-succeeded');
+  assert.equal(attempts.length, bodyAttempts.length + suggestion.attempts.length, label + ' total attempts are body plus suggestions');
+  const bodyUsage = (state.usage as Row[]).filter(u => String(u.operation_key) !== suggestionKey(seeded.runId));
+  assert.deepEqual(bodyUsage.map(u => String(u.operation_key)).sort(), expect.usageKeys, label + ' body per-turn usage keys');
+  const models = stepKinds(state, 'agent_model');
+  assert.equal(models.length, expect.modelStepCount, label + ' agent_model step count (no duplicate dispatch)');
+  assert.equal(new Set(models.map(step => String(step.provider_attempt_id))).size, models.length, label + ' model steps keep unique attempts');
+  for (const [index, attemptId] of seeded.attemptIds.entries())
+    assert.equal(String(models[index].provider_attempt_id), attemptId, label + ' model step ' + index + ' keeps the original attempt');
+  assert.ok(stepKinds(state, 'agent_checkpoint').length === (expect.checkpoint ? 1 : 1), label + ' checkpoint step present');
+  assert.ok(stepKinds(state, 'agent_synthesis_context').length === 1, label + ' synthesis step present');
+  const answer = await tenantOne(sql`select content from app.assistant_messages where enterprise_id=${eid} and id=${String(run.output_message_id)}`);
+  const text = ((answer!.content as Row).blocks as Row[]).map(b => String(b.text || '')).join('');
+  assert.match(text, expect.textMatch, label + ' delivered text');
+  return { state, text, suggestion };
+}
+
+async function main() {
+  const bound = nativeAgentRuntimeBinding(eid);
+  assert.ok(bound, 'The langgraph-v1 executor switch must be active for 1454');
+  report.nativeBinding = bound.binding;
+  report.accounting.providerMaxBefore = await attemptsMax();
+
+  await step('preflight: idle assistant queue and active native binding', async () => {
+    // Stale decoy fixtures from an earlier failed attempt are our own labelled
+    // rows: release them first, then require a genuinely idle queue.
+    await withPlatformTransaction(tx => tx.execute(sql`update app.assistant_jobs j set status='failed',last_error='recovery_check_synthetic_cleanup',version=version+1
+      from app.enterprises e where e.id=j.enterprise_id and e.name like '[synthetic-recovery-decoy]%' and j.status in ('queued','running')`));
+    await withPlatformTransaction(tx => tx.execute(sql`update app.assistant_runs r set status='failed',error_code='recovery_check_synthetic_cleanup',completed_at=now(),version=version+1
+      from app.enterprises e where e.id=r.enterprise_id and e.name like '[synthetic-recovery-decoy]%' and r.status in ('queued','running')`));
+    const queue = await platformOne(sql`select count(*)::int n from app.assistant_jobs where status in ('queued','running')`);
+    assert.equal(queue!.n, 0, 'No recovery check may start on an active queue');
+    return { queue: queue!.n, binding: bound!.binding };
+  });
+
+  await step('decoy probe: an unrelated eligible job stays untouched for the whole run', async () => {
+    // A labelled enterprise without assistant settings can never be claimed by
+    // any Worker (the claim's settings lock returns null), so an eligible decoy
+    // job there is the deterministic witness that this harness never touches
+    // unrelated tasks even when they sit in the same global scan.
+    const decoy = await withPlatformTransaction(async tx => {
+      const existing = await one(tx, sql`select e.id from app.enterprises e where e.name like '[synthetic-recovery-decoy]%' order by id desc limit 1`);
+      const enterpriseId = existing ? String(existing.id)
+        : String((await one(tx, sql`insert into app.enterprises(name,code,status) values('[synthetic-recovery-decoy] ' || ${'recovery-decoy-' + randomUUID().slice(0, 8)},${'recovery-decoy-' + randomUUID().slice(0, 8)},'active') returning id`))!.id);
+      // Every round plants its own fresh decoy job so the untouched assertion
+      // always reads this round's row, never a leftover from a prior attempt.
+      const conversation = (await one(tx, sql`insert into app.assistant_conversations(enterprise_id,purpose,status,mode,title,entry_snapshot,policy_version,context_revision,last_seq)
+        values(${enterpriseId},'customer_consultation','open','ai','[synthetic-recovery-decoy] conversation','{}'::jsonb,1,1,0) returning id`))!;
+      const run = (await one(tx, sql`insert into app.assistant_runs(enterprise_id,conversation_id,trigger_kind,trigger_schedule_key,purpose,status,policy_snapshot,context_revision,knowledge_epoch)
+        values(${enterpriseId},${String(conversation.id)},'scheduled_task','recovery-decoy','reply','queued','{"schemaVersion":1,"actor":{"principal":{"kind":"user"},"capabilities":[]}}'::jsonb,1,1) returning id`))!;
+      const job = (await one(tx, sql`insert into app.assistant_jobs(enterprise_id,kind,run_id,dedupe_key,payload_version,status,attempts,available_at)
+        values(${enterpriseId},'chat_turn',${String(run.id)},${'recovery-decoy:' + randomUUID()},1,'queued',0,now()) returning id`))!;
+      // Precise this-round fixture ids: the finally cleanup and every audit
+      // read key on these exact rows, never on a name-pattern sweep alone.
+      report.decoy = { enterpriseId, conversationId: String(conversation.id), runId: String(run.id), jobId: String(job.id) };
+      return enterpriseId;
+    });
+    report.decoyEnterprise = decoy;
+    return { decoy };
+  });
+
+  await step('A: final-answer checkpoint persisted, interrupted before commit', async () => {
+    const question = '客厅地砖还没铺，铺贴前师傅一般会先做什么？';
+    const output: ModelTurnOutput = { text: '铺贴前一般会先检查基层平整度和空鼓情况，再弹线预排确认排版方向，之后才正式上砖。',
+      toolCalls: [], finishReason: 'stop', providerRequestId: null, usage: { inputTokens: 11, outputTokens: 7 } };
+    const seeded = await seedInterruptedRun('A-final-checkpoint', { question,
+      turns: [{ turn: 0, output }],
+      checkpoint: { version: 1, turn: 0, messages: [], output } });
+    await waitForRunTerminal(seeded.runId, 'recovery');
+    const result = await assertCompleted('A', seeded, { attempts: 1, usageKeys: ['agent:' + seeded.runId + ':0'],
+      textMatch: /弹线预排/, modelStepCount: 1, checkpoint: true });
+    (report.scenarios as Row).A = { runId: seeded.runId, conversationId: seeded.conversationId, attemptIds: seeded.attemptIds,
+      status: String((result.state.run as Row).status), messageCount: (result.state.messages as Row[]).length,
+      usageKeys: (result.state.usage as Row[]).map(u => String(u.operation_key)) };
+    return (report.scenarios as Row).A;
+  });
+
+  await step('B: model step succeeded, graph checkpoint missing, no re-dispatch', async () => {
+    const question = '卫生间防水做完之后还需要做闭水试验吗？';
+    const output: ModelTurnOutput = { text: '防水层完工后通常要做闭水试验，蓄水和观察时长以企业工艺标准与现场通知为准。',
+      toolCalls: [], finishReason: 'stop', providerRequestId: null, usage: { inputTokens: 13, outputTokens: 9 } };
+    const seeded = await seedInterruptedRun('B-model-no-checkpoint', { question, turns: [{ turn: 0, output }] });
+    await waitForRunTerminal(seeded.runId, 'recovery');
+    const result = await assertCompleted('B', seeded, { attempts: 1, usageKeys: ['agent:' + seeded.runId + ':0'],
+      textMatch: /闭水试验/, modelStepCount: 1, checkpoint: true });
+    (report.scenarios as Row).B = { runId: seeded.runId, conversationId: seeded.conversationId, attemptIds: seeded.attemptIds,
+      status: String((result.state.run as Row).status), messageCount: (result.state.messages as Row[]).length,
+      usageKeys: (result.state.usage as Row[]).map(u => String(u.operation_key)) };
+    return (report.scenarios as Row).B;
+  });
+
+  await step('C: tool receipt persisted, resume reuses it and continues with a real turn', async () => {
+    const q1 = '装修时水电改造验收要注意哪些细节';
+    const output: ModelTurnOutput = { text: '', toolCalls: [{ id: 'recovery-tool-1', name: 'search_enterprise', arguments: JSON.stringify({ query: q1 }) }],
+      finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 9, outputTokens: 3 } };
+    const seeded = await seedInterruptedRun('C-tool-then-continue', { question: q1 + '？',
+      turns: [{ turn: 0, output }],
+      searches: [{ sequence: 1, query: q1, receipt: { status: 'empty', kind: 'enterprise' }, evidence: [] }] });
+    await waitForRunTerminal(seeded.runId, 'recovery');
+    const state = await runState(seeded.runId, seeded.conversationId);
+    const run = state.run as Row;
+    assert.equal(String(run.status), 'succeeded', 'C run must succeed: ' + String(run.error_code || ''));
+    const usage = state.usage as Row[];
+    const turn1 = usage.find(u => String(u.operation_key) === 'agent:' + seeded.runId + ':1');
+    assert.ok(turn1 && turn1.provider_attempt_id, 'C turn-1 real usage recorded');
+    const models = stepKinds(state, 'agent_model');
+    assert.equal(models.length, 2, 'C keeps the reused turn-0 step and the real turn-1 step');
+    assert.equal(String(models[0].provider_attempt_id), seeded.attemptIds[0], 'C turn-0 keeps the original attempt');
+    assert.equal(String(models[1].provider_attempt_id), String(turn1.provider_attempt_id), 'C usage links to the turn-1 attempt');
+    const retrievals = stepKinds(state, 'retrieval');
+    const q1Steps = retrievals.filter(s => String((s as Row).step_seq) === '1301');
+    assert.equal(q1Steps.length, 1, 'C never duplicates the persisted search step');
+    const fresh = retrievals.filter(s => Number(s.step_seq) > 1301);
+    assert.ok(fresh.every(s => Number(s.step_seq) >= 1302), 'C fresh queries allocate sequences beyond the persisted maximum');
+    assert.equal((state.messages as Row[]).length, 2, 'C persists exactly one assistant answer');
+    const answer = await tenantOne(sql`select content from app.assistant_messages where enterprise_id=${eid} and id=${String(run.output_message_id)}`);
+    const text = ((answer!.content as Row).blocks as Row[]).map(b => String(b.text || '')).join('');
+    assert.ok(text.trim().length > 20, 'C delivered a real continuation answer');
+    (report.scenarios as Row).C = { runId: seeded.runId, conversationId: seeded.conversationId, attemptIds: seeded.attemptIds,
+      status: String(run.status), modelSteps: models.length, retrievalSteps: retrievals.map(s => Number(s.step_seq)),
+      freshSearches: fresh.length, usageKeys: usage.map(u => String(u.operation_key)) };
+    return (report.scenarios as Row).C;
+  });
+
+  await step('E: dispatch marker without receipt stays indeterminate and is never re-dispatched', async () => {
+    const q1 = '恢复检查E：已派发但回执未保存的检索';
+    const output: ModelTurnOutput = { text: '', toolCalls: [{ id: 'recovery-e-1', name: 'search_enterprise', arguments: JSON.stringify({ query: q1 }) }],
+      finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 9, outputTokens: 3 } };
+    const seeded = await seedInterruptedRun('E-dispatch-no-receipt', { question: q1, turns: [{ turn: 0, output }],
+      searches: [{ sequence: 1, query: q1, receipt: {}, evidence: [], dispatchedOnly: true, usageObserved: false }] });
+    await waitForRunTerminal(seeded.runId, 'recovery');
+    await assertIndeterminate('E', seeded, { usageKeys: ['agent:' + seeded.runId + ':0', 'agent-v2-query:' + seeded.runId + ':1'].sort(), retrievalSteps: 0 });
+    (report.scenarios as Row).E = { runId: seeded.runId, openOperation: 'agent-v2-query:' + seeded.runId + ':1' };
+    return (report.scenarios as Row).E;
+  });
+
+  await step('F: observed usage without receipt stays indeterminate and is never re-dispatched', async () => {
+    const q1 = '恢复检查F：用量已保存但回执未保存的检索';
+    const output: ModelTurnOutput = { text: '', toolCalls: [{ id: 'recovery-f-1', name: 'search_enterprise', arguments: JSON.stringify({ query: q1 }) }],
+      finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 9, outputTokens: 3 } };
+    const seeded = await seedInterruptedRun('F-usage-no-receipt', { question: q1, turns: [{ turn: 0, output }],
+      searches: [{ sequence: 1, query: q1, receipt: {}, evidence: [], dispatchedOnly: true, usageObserved: true }] });
+    await waitForRunTerminal(seeded.runId, 'recovery');
+    await assertIndeterminate('F', seeded, { usageKeys: ['agent:' + seeded.runId + ':0', 'agent-v2-query:' + seeded.runId + ':1'].sort(), retrievalSteps: 0 });
+    (report.scenarios as Row).F = { runId: seeded.runId, openOperation: 'agent-v2-query:' + seeded.runId + ':1' };
+    return (report.scenarios as Row).F;
+  });
+
+  await step('W1: interrupted before any dispatch resumes with exactly one real execution', async () => {
+    // The pre-dispatch tool call is query_business on purpose: its receipt has
+    // no cites array and the snapshot delivery path accepts an uncited model
+    // draft, so the scenario tests recovery itself instead of the model's
+    // citation expression (search dispatch recovery is owned by C/E/F; the two
+    // retained citation-flake failures document the residual model risk).
+    const q1 = '我家现在施工到哪一步？最近做了什么？';
+    const output: ModelTurnOutput = { text: '', toolCalls: [{ id: 'recovery-w1-1', name: 'query_business', arguments: JSON.stringify({ domain: 'construction', leadId: '3132' }) }],
+      finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 9, outputTokens: 3 } };
+    const seeded = await seedInterruptedRun('W1-pre-dispatch', { question: q1, turns: [{ turn: 0, output }] });
+    await waitForRunTerminal(seeded.runId, 'recovery');
+    const state = await runState(seeded.runId, seeded.conversationId);
+    assert.equal(String((state.run as Row).status), 'succeeded', 'W1 must complete: ' + String((state.run as Row).error_code || ''));
+    const attempts = state.attempts as Row[];
+    const seededIds = new Set(seeded.attemptIds.map(String));
+    // Body attempts are the seeded synthetic rows plus the real dispatches that
+    // the agent_model steps reference. The suggestion call is a separate lane
+    // below and must never inflate the body count.
+    const synthetic = attempts.filter(a => String(a.remote_task_id) === 'xiaok-recovery-synthetic');
+    assert.equal(synthetic.length, seeded.attemptIds.length, 'W1 keeps exactly the seeded synthetic attempts');
+    assert.deepEqual(synthetic.map(a => String(a.id)).sort(), [...seededIds].sort(), 'W1 synthetic attempt ids are unchanged');
+    assert.ok(synthetic.every(a => String(a.status) === 'succeeded'), 'W1 synthetic attempts stay known-succeeded');
+    const models = stepKinds(state, 'agent_model');
+    assert.equal(new Set(models.map(step => String(step.provider_attempt_id))).size, models.length,
+      'W1 each model step owns a unique provider attempt');
+    const realModels = models.filter(step => !seededIds.has(String(step.provider_attempt_id)));
+    assert.ok([1, 2].includes(realModels.length),
+      'W1 adds one real body attempt, or the unique validateFinal repair turn as the second');
+    const realIds = new Set(realModels.map(step => String(step.provider_attempt_id)));
+    const suggestion = assertSuggestion('W1', state, seeded.runId, true);
+    const bodyAttempts = attempts.filter(a => !suggestion.ids.has(String(a.id)));
+    assert.equal(bodyAttempts.length, seeded.attemptIds.length + realIds.size,
+      'W1 body attempts are exactly the synthetic seed plus the real model attempts');
+    assert.ok(bodyAttempts.every(a => String(a.status) === 'succeeded'), 'W1 body attempts all known-succeeded');
+    const bodyUsage = (state.usage as Row[]).filter(u => String(u.operation_key) !== suggestionKey(seeded.runId));
+    const realBodyUsageKeys = realModels.map(step => 'agent:' + seeded.runId + ':' + modelTurnOf(Number(step.step_seq)));
+    assert.deepEqual(bodyUsage.map(u => String(u.operation_key)).sort(),
+      [...seeded.bodyUsageKeys, ...realBodyUsageKeys].sort(), 'W1 body usage keys match the seeded and real turns');
+    assert.equal(bodyUsage.length, seeded.bodyUsageKeys.length + realModels.length, 'W1 body usage has one row per body turn');
+    for (const step of realModels) {
+      const key = 'agent:' + seeded.runId + ':' + modelTurnOf(Number(step.step_seq));
+      const row = bodyUsage.find(u => String(u.operation_key) === key);
+      assert.ok(row, 'W1 body usage row exists for ' + key);
+      assert.equal(String(row!.provider_attempt_id), String(step.provider_attempt_id), 'W1 body usage links to its model attempt');
+    }
+    assert.equal(attempts.length, bodyAttempts.length + suggestion.attempts.length,
+      'W1 total attempts are exactly body plus the single suggestion dispatch');
+    assert.equal(stepKinds(state, 'retrieval').length, 0, 'W1 dispatches no enterprise search');
+    assert.equal(stepKinds(state, 'agent_tool').length, 1, 'W1 executes the business snapshot exactly once');
+    (report.scenarios as Row).W1 = { runId: seeded.runId, attempts: attempts.length,
+      bodyAttempts: bodyAttempts.length, bodyRealAttempts: realIds.size, repairTurn: realIds.size === 2,
+      suggestionAttempts: suggestion.attempts.length, suggestionStatus: String(suggestion.marker[0].status),
+      bodyUsageKeys: bodyUsage.map(u => String(u.operation_key)), suggestionUsageKeys: suggestion.usage.map(u => String(u.operation_key)) };
+    return (report.scenarios as Row).W1;
+  });
+
+  // Web dispatch interruption, both recovery layers: the executor's
+  // open-operations guard keeps the whole run indeterminate before any graph
+  // step, and the shared factory refuses any new dispatch (same or fresh
+  // sequence) while an open web marker exists — no re-send under a new number.
+  await step('W2: web dispatch marker without receipt stays indeterminate and is never re-dispatched', async () => {
+    const question = '恢复检查W2：网页检索已派发但回执未保存';
+    const output: ModelTurnOutput = { text: '', toolCalls: [{ id: 'recovery-w2-1', name: 'search_web',
+      arguments: JSON.stringify({ query: '闭水试验 蓄水深度 公开标准', domains: [] }) }],
+      finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 9, outputTokens: 3 } };
+    const seeded = await seedInterruptedRun('W2-web-dispatch-no-receipt', { question, turns: [{ turn: 0, output }],
+      webs: [{ stepSeq: 1200 }] });
+    await waitForRunTerminal(seeded.runId, 'recovery');
+    const state = await assertIndeterminate('W2', seeded, {
+      usageKeys: ['agent:' + seeded.runId + ':0', 'agent-web:' + seeded.runId + ':1200'].sort(), retrievalSteps: 0 });
+    (report.scenarios as Row).W2 = { runId: seeded.runId, openOperation: 'agent-web:' + seeded.runId + ':1200',
+      attempts: (state.attempts as Row[]).length };
+    // The factory-level guard (shared with the FastGPT V2 bridge, which has no
+    // executor-level open-operations pass): the same sequence and a fresh
+    // sequence both refuse while the 1200 marker has no receipt. Nothing new is
+    // written and no provider is called. The fixture is a lost-process state
+    // with a succeeded model step (the model had already chosen search_web);
+    // this harness claims it through the production claimJob — no fabricated
+    // lease and no bypassed recovery guard.
+    const factorySeeded = await seedInterruptedRun('W2-web-factory-guard', { question, turns: [{ turn: 0, output }],
+      webs: [{ stepSeq: 1200 }], claim: 'recoverable' });
+    const factoryLease = await claimSeeded(factorySeeded.runId);
+    const authorize = () => withTenantTransaction(eid, tx => runContext(tx, factoryLease));
+    const rt: WebToolRuntime = { lease: factoryLease, protocol: xiaokNativeExecutorProtocol, authorize,
+      context: { version: 1, knowledge: [], snapshots: [], sources: [] }, catalog: new Map(),
+      messages: [{ role: 'user', content: question }], markWebRetrieved: () => {}, webDeadlineAt: Date.now() + 120000 };
+    const web = dialogueWebResearch(rt);
+    await assert.rejects(() => web({ name: 'search_web', query: '闭水试验 蓄水深度 公开标准' }, 0),
+      (error: { code?: string }) => error.code === 'provider_outcome_unknown', 'Same-sequence dispatch must refuse on the open marker');
+    await assert.rejects(() => web({ name: 'search_web', query: '闭水试验 蓄水深度 公开标准' }, 1),
+      (error: { code?: string }) => error.code === 'provider_outcome_unknown', 'A fresh sequence must never re-send while an open marker exists');
+    const factoryState = await runState(factorySeeded.runId, factorySeeded.conversationId);
+    // The fixture carries the succeeded model step that selected search_web,
+    // so its per-turn usage row is part of the staged truth; the factory
+    // refusals must add no web receipt and no second operation.
+    assert.deepEqual((factoryState.usage as Row[]).map(u => String(u.operation_key)).sort(),
+      ['agent:' + factorySeeded.runId + ':0', 'agent-web:' + factorySeeded.runId + ':1200'].sort(),
+      'Factory refusals leave the ledger untouched');
+    assert.equal((factoryState.steps as Row[]).filter(s => String(s.kind) === 'retrieval').length, 0,
+      'Factory refusals persist no receipt step');
+    assert.equal((factoryState.steps as Row[]).filter(s => String(s.kind) === 'agent_model').length, 1,
+      'The staged model step stays the only model step');
+    (report.scenarios as Row).W2factory = { runId: factorySeeded.runId, refusedSequences: [0, 1],
+      usageKeys: (factoryState.usage as Row[]).map(u => String(u.operation_key)),
+      stagedModelSteps: (factoryState.steps as Row[]).filter(s => String(s.kind) === 'agent_model').length };
+    // Release both labelled fixtures so no queued/running row survives.
+    for (const runId of [seeded.runId, factorySeeded.runId]) {
+      await read(tx => tx.execute(sql`update app.assistant_jobs set status='failed',last_error='recovery_check_synthetic_cleanup',lease_token=null,lease_expires_at=null,version=version+1
+        where enterprise_id=${eid} and run_id=${runId} and status in ('queued','running')`));
+      await read(tx => tx.execute(sql`update app.assistant_runs set status='failed',error_code='recovery_check_synthetic_cleanup',completed_at=now(),version=version+1
+        where enterprise_id=${eid} and id=${runId} and status in ('queued','running')`));
+    }
+    return (report.scenarios as Row).W2;
+  });
+
+  await step('W3: shared web dispatcher search→read→receipt reuse→real recovery projection', async () => {
+    // The factory is driven exactly the way both surfaces call it: the bridge
+    // passes the parsed {name, query|candidateId} object, the native executor
+    // passes the same shape. Real provider search, real reader, real DB steps.
+    // A normal new task is claimed through the production claimJob; the lease
+    // is not fabricated.
+    const question = '帮我联网查一下公开资料里地暖保温板的出厂检验项目';
+    const seeded = await seedInterruptedRun('W3-web-dispatcher', { question, turns: [], claim: 'new' });
+    const lease = await claimSeeded(seeded.runId);
+    const authorize = () => withTenantTransaction(eid, tx => runContext(tx, lease));
+    const rt: WebToolRuntime = { lease, protocol: xiaokNativeExecutorProtocol, authorize,
+      context: { version: 1, knowledge: [], snapshots: [], sources: [] }, catalog: new Map(),
+      messages: [{ role: 'user', content: question }], markWebRetrieved: () => {}, webDeadlineAt: Date.now() + 120000 };
+    const web = dialogueWebResearch(rt);
+    const modelQuery = '地暖 保温板 出厂检验';
+    const search = await web({ name: 'search_web', query: modelQuery }, 0);
+    assert.ok(Array.isArray(search.candidates) && search.candidates.length > 0,
+      'search_web must return real candidates, saw: ' + JSON.stringify(search.failures || []));
+    const candidateId = String(search.candidates![0].id);
+    assert.match(candidateId, new RegExp('^P' + seeded.runId + ':1200:\\d+$'), 'Candidate id must follow the citation contract');
+    const readReceipt = await web({ name: 'read_web', candidateId }, 1);
+    assert.ok(Array.isArray(readReceipt.failures), 'read_web must return an honest receipt');
+    assert.ok(Array.isArray(readReceipt.documents), 'read_web receipt carries the document list');
+    // Identical re-issue at the same sequence reuses the persisted receipt with
+    // no second provider dispatch and no second usage row.
+    const again = await web({ name: 'search_web', query: modelQuery }, 0);
+    assert.deepEqual(again, search, 'Completed operations reuse the original receipt verbatim');
+    const midState = await runState(seeded.runId, seeded.conversationId);
+    assert.deepEqual((midState.usage as Row[]).map(u => String(u.operation_key)).sort(),
+      ['agent-web:' + seeded.runId + ':1200', 'agent-web:' + seeded.runId + ':1201'].sort(), 'Web usage ledger holds exactly the two dispatches');
+    // Recovery uses the real factory-written rows through the executor's own
+    // projection SQL, never hand-built objects.
+    const webRows = await tenantRows(sql`select step_seq,capability_name,private_checkpoint,input_summary from app.assistant_run_steps
+      where enterprise_id=${eid} and run_id=${seeded.runId} and step_seq>=1200 and step_seq<1300 and kind='retrieval'
+      and capability_name in ('web.search.v1','web.read.v1') and status='succeeded' order by step_seq`);
+    assert.equal(webRows.length, 2, 'Both web steps persisted');
+    const toolState = recoveredDialogueToolState([], [], webRows as Row[], [], []);
+    assert.deepEqual(toolState.webs.get('search:' + modelQuery), search, 'Recovered search identity is the model raw query');
+    assert.deepEqual(toolState.webs.get('read:' + candidateId), readReceipt, 'Recovered read identity is the candidate id');
+    assert.equal(toolState.nextSequence, 2, 'Fresh calls continue past both persisted web steps');
+    const persistedSearch = (webRows as Row[]).find(r => Number(r.step_seq) === 1200)!;
+    assert.equal(String((persistedSearch.input_summary as Row).rawQuery), modelQuery,
+      'The step persists the raw model query beside the normalized WebQuery');
+    (report.scenarios as Row).W3 = { runId: seeded.runId, question, modelQuery, candidateId,
+      searchStatus: String(search.status), searchCandidates: (search.candidates as Row[] | undefined)?.length ?? 0,
+      readStatus: String(readReceipt.status), readDocuments: readReceipt.documents.length, readFailures: readReceipt.failures,
+      webSteps: webRows.map(r => Number(r.step_seq)), usageKeys: (midState.usage as Row[]).map(u => String(u.operation_key)) };
+    // Release the labelled fixture: the harness owns this run end to end.
+    await read(tx => tx.execute(sql`update app.assistant_jobs set status='failed',last_error='recovery_check_synthetic_cleanup',lease_token=null,lease_expires_at=null,version=version+1
+      where enterprise_id=${eid} and run_id=${seeded.runId} and status in ('queued','running')`));
+    await read(tx => tx.execute(sql`update app.assistant_runs set status='failed',error_code='recovery_check_synthetic_cleanup',completed_at=now(),version=version+1
+      where enterprise_id=${eid} and id=${seeded.runId}`));
+    return (report.scenarios as Row).W3;
+  });
+
+  // A resumed run that never calls recommend_public_sites again must still
+  // deliver the persisted located empty result. The checkpoint carries a
+  // contradictory model draft (asks for a city); only the receipt restored from
+  // step 2010 may replace it, without re-querying candidates.
+  await step('S: recovered empty public-site receipt keeps the located result', async () => {
+    const question = '附近有什么已授权公开的工地可以看看？';
+    const draft = '我需要先知道您所在的城市或区县，才能为您查找附近的公开工地。';
+    const region = { cityName: '宜昌市', district: '西陵区' };
+    const receipt = nearbyPublicSitesReceipt(region, []);
+    const output: ModelTurnOutput = { text: draft, toolCalls: [], finishReason: 'stop', providerRequestId: null,
+      usage: { inputTokens: 11, outputTokens: 7 } };
+    const seeded = await seedInterruptedRun('S-public-sites-recovery', { question, turns: [{ turn: 0, output }],
+      checkpoint: { version: 1, turn: 1,
+        messages: [{ role: 'user', content: question }, { role: 'assistant', content: draft }],
+        output, validationRepairs: 0, argumentFailures: 0, exhaustedTools: [], readReceipts: [] },
+      publicSites: { receipt, region, count: 0 } });
+    await waitForRunTerminal(seeded.runId, 'recovery');
+    const state = await runState(seeded.runId, seeded.conversationId);
+    assert.equal(String((state.run as Row).status), 'succeeded', 'S must complete: ' + String((state.run as Row).error_code || ''));
+    const message = String((state.run as Row).output_message_id || '');
+    const answer = await tenantOne(sql`select content from app.assistant_messages where enterprise_id=${eid} and id=${message}`);
+    const text = (((answer!.content as Row).blocks as Row[]) || []).map(block => String(block.text || '')).join('');
+    assert.equal(text, receipt.text, 'The persisted empty result replaces the contradictory model draft');
+    assert.doesNotMatch(text, /需要.*城市|城市.*区县/, 'A saved located result must not ask for a city');
+    // The checkpoint restores the body without a second body dispatch; only the
+    // ancillary suggestion call may run once at 1014.
+    const suggestion = assertSuggestion('S', state, seeded.runId, true);
+    const attempts = state.attempts as Row[];
+    const bodyAttempts = attempts.filter(a => !suggestion.ids.has(String(a.id)));
+    assert.equal(bodyAttempts.length, 1, 'S resumes from the checkpoint without a new body provider call');
+    assert.deepEqual(bodyAttempts.map(a => String(a.id)), seeded.attemptIds.map(String),
+      'S keeps the seeded body attempt and adds no body attempt');
+    assert.ok(bodyAttempts.every(a => String(a.status) === 'succeeded'), 'S body attempt stays known-succeeded');
+    const models = stepKinds(state, 'agent_model');
+    assert.equal(models.length, 1, 'S keeps the single seeded agent_model step');
+    assert.equal(String(models[0].provider_attempt_id), seeded.attemptIds[0], 'S body model step keeps its attempt');
+    const bodyUsage = (state.usage as Row[]).filter(u => String(u.operation_key) !== suggestionKey(seeded.runId));
+    assert.deepEqual(bodyUsage.map(u => String(u.operation_key)).sort(), seeded.bodyUsageKeys.sort(),
+      'S body usage keys stay exactly the seeded turn');
+    assert.equal(attempts.length, bodyAttempts.length + suggestion.attempts.length,
+      'S total attempts are the body attempt plus the one suggestion dispatch');
+    const fixed = (state.steps as Row[]).filter(step => Number(step.step_seq) === 2010);
+    assert.equal(fixed.length, 1, 'The fixed 2010 receipt is re-served, never duplicated');
+    assert.equal(String(fixed[0].kind), 'agent_public_sites');
+    (report.scenarios as Row).S = { runId: seeded.runId, conversationId: seeded.conversationId,
+      delivered: text, region, receiptStatus: String(receipt.status), attempts: attempts.length,
+      bodyAttempts: bodyAttempts.length, bodyUsageKeys: bodyUsage.map(u => String(u.operation_key)),
+      suggestionAttempts: suggestion.attempts.length, suggestionStatus: String(suggestion.marker[0].status),
+      suggestionUsageKeys: suggestion.usage.map(u => String(u.operation_key)) };
+    return (report.scenarios as Row).S;
+  });
+
+  // A persisted suggestion dispatch whose provider outcome is unknown is a
+  // terminal audit fact: recovery delivers the already-restored body answer,
+  // leaves the 1014 marker/usage/attempt untouched and never sends the call
+  // again. Presets remain the fallback and do not alter the body text.
+  await step('SU: persisted suggestion unknown is not replayed', async () => {
+    const question = '厨房台面石英石接缝发黑怎么处理？';
+    const answer = '接缝发黑多与胶体老化和油污渗入有关，可先清理并保持干燥，再由师傅评估是否需要重新打胶，具体以现场情况为准。';
+    const output: ModelTurnOutput = { text: answer, toolCalls: [], finishReason: 'stop', providerRequestId: null,
+      usage: { inputTokens: 12, outputTokens: 8 } };
+    const seeded = await seedInterruptedRun('SU-suggestion-unknown', { question, turns: [{ turn: 0, output }],
+      checkpoint: { version: 1, turn: 1,
+        messages: [{ role: 'user', content: question }, { role: 'assistant', content: answer }],
+        output, validationRepairs: 0, argumentFailures: 0, exhaustedTools: [], readReceipts: [] },
+      suggestionUnknown: true });
+    await waitForRunTerminal(seeded.runId, 'recovery');
+    const state = await runState(seeded.runId, seeded.conversationId);
+    const run = state.run as Row;
+    assert.equal(String(run.status), 'succeeded', 'SU delivers the body answer despite the unknown suggestion: ' + String(run.error_code || ''));
+    const models = stepKinds(state, 'agent_model');
+    assert.equal(models.length, 1, 'SU checkpoint resume keeps the single seeded body model step');
+    const attempts = state.attempts as Row[];
+    assert.equal(attempts.length, seeded.attemptIds.length + 1,
+      'SU adds no provider attempt: the seeded suggestion attempt stays the only one');
+    assert.ok(attempts.some(a => String(a.id) === String(seeded.suggestionAttemptId)),
+      'SU keeps the seeded unknown suggestion attempt');
+    const bodyAttempts = attempts.filter(a => String(a.id) !== String(seeded.suggestionAttemptId));
+    assert.equal(bodyAttempts.length, seeded.attemptIds.length, 'SU body attempts are unchanged');
+    assert.ok(bodyAttempts.every(a => String(a.status) === 'succeeded'), 'SU body attempts stay known-succeeded');
+    const marker = (state.steps as Row[]).filter(step => Number(step.step_seq) === suggestionGenerationStep);
+    assert.equal(marker.length, 1, 'SU keeps exactly one 1014 marker');
+    assert.equal(String(marker[0].kind), 'agent_suggestion_model');
+    assert.equal(String(marker[0].status), 'failed', 'SU never rewrites the unknown marker into a success');
+    assert.equal(String((marker[0].input_summary as Row | undefined)?.code), 'provider_outcome_unknown',
+      'SU keeps the unknown code');
+    const suggestionUsage = (state.usage as Row[]).filter(u => String(u.operation_key) === suggestionKey(seeded.runId));
+    assert.equal(suggestionUsage.length, 1, 'SU keeps exactly one suggestion usage row');
+    assert.equal(suggestionUsage[0].quantity, null, 'SU leaves the unknown suggestion usage null');
+    assert.equal(String(suggestionUsage[0].measurement_kind), 'unavailable', 'SU leaves the unknown suggestion usage unavailable');
+    const bodyUsage = (state.usage as Row[]).filter(u => String(u.operation_key) !== suggestionKey(seeded.runId));
+    assert.deepEqual(bodyUsage.map(u => String(u.operation_key)).sort(), seeded.bodyUsageKeys.sort(),
+      'SU body usage keys are unchanged');
+    const message = await tenantOne(sql`select content from app.assistant_messages where enterprise_id=${eid} and id=${String(run.output_message_id)}`);
+    const text = (((message!.content as Row).blocks as Row[]) || []).map(block => String(block.text || '')).join('');
+    assert.equal(text, answer, 'SU delivers the restored body answer, not a suggestion preset');
+    (report.scenarios as Row).SU = { runId: seeded.runId, conversationId: seeded.conversationId,
+      status: String(run.status), bodyModelSteps: models.length, attempts: attempts.length,
+      suggestionStatus: String(marker[0].status), suggestionCode: String((marker[0].input_summary as Row | undefined)?.code),
+      suggestionAttemptId: seeded.suggestionAttemptId,
+      suggestionUsage: { quantity: suggestionUsage[0].quantity, measurementKind: String(suggestionUsage[0].measurement_kind) },
+      bodyUsageKeys: bodyUsage.map(u => String(u.operation_key)) };
+    return (report.scenarios as Row).SU;
+  });
+
+  // Recalled customer originals revalidate through the same mechanisms the
+  // executor guard and the final commit call. H drives the real shared
+  // recall factory, invalidates the source through the real session-version
+  // entry (the exact state change a memory write produces), and requires both
+  // the later factory dispatch and the delivery-side availability check to
+  // refuse. The independent-source entry class (construction-notice
+  // withdrawal blocking a need source) is covered by the requirement-flow
+  // evidence and is not re-exercised here.
+  await step('H: recalled history source invalidation blocks later recall and delivery', async () => {
+    const question = 'H场景：我之前对书桌说过什么要求？';
+    const seeded = await seedInterruptedRun('H-history-invalidation', { question, turns: [],
+      olderMessages: ['书房需要一张靠窗的书桌，抽屉要带锁。'], claim: 'new' });
+    const lease = await claimSeeded(seeded.runId);
+    const authorize = () => withTenantTransaction(eid, tx => runContext(tx, lease));
+    const historyRefs = new Map<string, HistoryRef>();
+    const rt: HistoryToolRuntime = { lease, protocol: xiaokNativeExecutorProtocol, authorize, historyRefs };
+    const recall = dialogueHistoryRecall(rt);
+    const receipt = await recall({ query: '书桌' }, 0, seeded.triggerSeq!);
+    assert.ok(receipt.sources.length > 0, 'The old customer original must be recalled');
+    assert.ok(receipt.sources.some(s => String(s.text).includes('书桌')), 'The recalled source is the customer original');
+    const steps = await tenantRows(sql`select step_seq,capability_name,status from app.assistant_run_steps
+      where enterprise_id=${eid} and run_id=${seeded.runId} and step_seq>=1500 and step_seq<1600 and status='succeeded'`);
+    assert.equal(steps.length, 1, 'recall_history persisted exactly one 1500-band step');
+    // Real invalidation entry (session version change): bump the conversation's
+    // agent memory version the way every real memory write does. The template
+    // carries no agentMemory, so read the current version (readMemory's
+    // fallback is 0) and write the complete object back like the write path.
+    const memoryBefore = Number(((await tenantOne(sql`select entry_snapshot->'agentMemory' mem
+      from app.assistant_conversations where enterprise_id=${eid} and id=${seeded.conversationId}`))!.mem as Row | undefined)?.version ?? 0);
+    await read(tx => tx.execute(sql`update app.assistant_conversations
+      set entry_snapshot=jsonb_set(entry_snapshot,'{agentMemory}',${JSON.stringify({ version: memoryBefore + 1, facts: [] })}::jsonb,true),
+      version=version+1,updated_at=now()
+      where enterprise_id=${eid} and id=${seeded.conversationId}`));
+    assert.equal(await withTenantTransaction(eid, tx =>
+      historyRefsAvailable(tx, eid, seeded.conversationId, [...historyRefs.values()])), false,
+      'historyRefsAvailable must refuse after the memory version bumped');
+    await assert.rejects(() => recall({ query: '书桌' }, 1, seeded.triggerSeq!),
+      (error: { code?: string }) => error.code === 'context_changed',
+      'A later recall dispatch through the shared factory must be blocked');
+    const conversation = await withTenantTransaction(eid, tx => runContext(tx, lease));
+    const context: SynthesisContext = { version: 1, knowledge: [], snapshots: [], sources: [],
+      history: [{ query: receipt.query, beforeSeq: receipt.beforeSeq, sources: receipt.sources,
+        hasMore: receipt.hasMore, oversized: receipt.oversized }] };
+    assert.equal(await withTenantTransaction(eid, tx =>
+      synthesisContextAvailable(tx, lease.actor, conversation.conversation, context)), false,
+      'synthesisContextAvailable must refuse the invalidated history snapshot');
+    (report.scenarios as Row).H = { runId: seeded.runId, conversationId: seeded.conversationId,
+      oldSourceMessageId: String(receipt.sources[0].messageId), recalledSources: receipt.sources.length,
+      entry: 'agentMemory.version bump', blocked: true };
+    await read(tx => tx.execute(sql`update app.assistant_jobs set status='failed',last_error='recovery_check_synthetic_cleanup',lease_token=null,lease_expires_at=null,version=version+1
+      where enterprise_id=${eid} and run_id=${seeded.runId} and status in ('queued','running')`));
+    await read(tx => tx.execute(sql`update app.assistant_runs set status='failed',error_code='recovery_check_synthetic_cleanup',completed_at=now(),version=version+1
+      where enterprise_id=${eid} and id=${seeded.runId}`));
+    return (report.scenarios as Row).H;
+  });
+
+  await step('D: A-enterprise chat slot busy, B-enterprise knowledge task still runs', async () => {
+    const slots = enterpriseConcurrency();
+    const busyRunIds: string[] = []; let queuedRunId = '';
+    await read(async tx => {
+      const settings = (await one(tx, sql`select * from app.assistant_enterprise_settings where enterprise_id=${eid}`))!;
+      const boundNow = nativeAgentRuntimeBinding(eid);
+      assert.ok(boundNow, 'native binding required');
+      const template = await one(tx, sql`select policy_snapshot from app.assistant_runs where enterprise_id=${eid} and id=2967`);
+      const actor = ((template!.policy_snapshot as Row).actor) as Row;
+      for (let index = 0; index < slots; index++) {
+        const conversation = (await one(tx, sql`insert into app.assistant_conversations(enterprise_id,purpose,status,mode,title,entry_snapshot,policy_version,context_revision,last_seq)
+          values(${eid},'customer_consultation','open','ai',${'[synthetic-recovery] D-busy-' + index + ' ' + new Date().toISOString().slice(0, 10)},
+          ${JSON.stringify((await one(tx, sql`select c.entry_snapshot from app.assistant_conversations c join app.assistant_runs r
+            on r.enterprise_id=c.enterprise_id and r.conversation_id=c.id where r.enterprise_id=${eid} and r.id=2967`))!.entry_snapshot)}::jsonb,
+          ${Number(settings.policy_version)},1,0) returning id`))!;
+        const policySnapshot = { schemaVersion: 1, actor, maxTokens: 8192, policyVersion: Number(settings.policy_version),
+          agent: settings.agent_config, knowledgePolicy: knowledgePolicy(settings.agent_config),
+          agentRuntime: { protocol: xiaokNativeExecutorProtocol, binding: boundNow.binding } };
+        const busyMessage = await appendMessage(tx, actor as never, String(conversation.id),
+          { author: 'user', content: { version: 1, blocks: [{ type: 'text', text: '占槽检查' }] }, clientMessageId: 'recovery-busy-' + randomUUID() });
+        const run = (await one(tx, sql`insert into app.assistant_runs(enterprise_id,conversation_id,trigger_kind,trigger_message_id,purpose,status,policy_snapshot,context_revision,knowledge_epoch)
+          values(${eid},${String(conversation.id)},'user_message',${String(busyMessage.id)},'reply','running',${JSON.stringify(policySnapshot)}::jsonb,1,${Number(settings.knowledge_epoch)}) returning id`))!;
+        await tx.execute(sql`insert into app.assistant_jobs(enterprise_id,kind,run_id,dedupe_key,payload_version,status,attempts,available_at,lease_token,lease_expires_at,heartbeat_at,provider_started_at)
+          values(${eid},'chat_turn',${String(run.id)},${'recovery-busy:' + randomUUID()},1,'running',1,now(),${randomUUID()},now() + interval '120 seconds',now(),now())`);
+        busyRunIds.push(String(run.id));
+      }
+      // A's own next chat job must wait for the busy slot.
+      const queued = (await one(tx, sql`insert into app.assistant_conversations(enterprise_id,purpose,status,mode,title,entry_snapshot,policy_version,context_revision,last_seq)
+        values(${eid},'customer_consultation','open','ai',${'[synthetic-recovery] D-queued ' + new Date().toISOString().slice(0, 10)},
+        ${JSON.stringify((await one(tx, sql`select c.entry_snapshot from app.assistant_conversations c join app.assistant_runs r
+          on r.enterprise_id=c.enterprise_id and r.conversation_id=c.id where r.enterprise_id=${eid} and r.id=2967`))!.entry_snapshot)}::jsonb,
+        ${Number(settings.policy_version)},1,0) returning id`))!;
+      const queuedMessage = await appendMessage(tx, actor as never, String(queued.id),
+        { author: 'user', content: { version: 1, blocks: [{ type: 'text', text: '排队检查' }] }, clientMessageId: 'recovery-queued-' + randomUUID() });
+      const queuedRun = (await one(tx, sql`insert into app.assistant_runs(enterprise_id,conversation_id,trigger_kind,trigger_message_id,purpose,status,policy_snapshot,context_revision,knowledge_epoch)
+        values(${eid},${String(queued.id)},'user_message',${String(queuedMessage.id)},'reply','queued',${JSON.stringify({ schemaVersion: 1, actor, maxTokens: 8192,
+          policyVersion: Number(settings.policy_version), agent: settings.agent_config, knowledgePolicy: knowledgePolicy(settings.agent_config),
+          agentRuntime: { protocol: xiaokNativeExecutorProtocol, binding: boundNow.binding } })}::jsonb,1,${Number(settings.knowledge_epoch)}) returning id`))!;
+      await tx.execute(sql`insert into app.assistant_jobs(enterprise_id,kind,run_id,dedupe_key,payload_version,status,attempts,available_at)
+        values(${eid},'chat_turn',${String(queuedRun.id)},${'recovery-queued:' + randomUUID()},1,'queued',0,now())`);
+      queuedRunId = String(queuedRun.id);
+    });
+    // While A occupies every slot, claiming must not return A's queued job.
+    let stolen: Lease | null = null;
+    for (let index = 0; index < 4; index++) { stolen = await claimJob(); if (stolen) break; await sleep(800); }
+    assert.equal(stolen, null, 'A busy enterprise must block its own next chat job');
+    // B: labelled synthetic control enterprise with a real knowledge task.
+    const control = await withPlatformTransaction(async tx => {
+      const existing = await one(tx, sql`select e.id from app.enterprises e where e.name like '[synthetic-recovery-control]%' and e.status='active' order by id desc limit 1`);
+      if (existing) return String(existing.id);
+      const code = 'recovery-b-' + randomUUID().slice(0, 8);
+      const enterprise = (await one(tx, sql`insert into app.enterprises(name,code,status) values('[synthetic-recovery-control] ' || ${code},${code},'active') returning id`))!;
+      await tx.execute(sql`insert into app.admin_users(enterprise_id,username,password_hash,role,status,must_change_password,menu_permissions)
+        values(${String(enterprise.id)},${code},'synthetic-disabled-password','enterprise_admin','active',false,ARRAY['assistant-knowledge'])`);
+      return String(enterprise.id);
+    });
+    const adminId = await withTenantTransaction(control, async tx => String((await one(tx, sql`select id from app.admin_users where enterprise_id=${control}
+      and status='active' and app.assistant_knowledge_admin_is_current(id,${control}::bigint) order by id limit 1`))!.id));
+    const knowledge = new KnowledgeService({ enterpriseId: control, adminId });
+    const created = await knowledge.execute('create', { title: '[synthetic-recovery] 闭水试验蓄水要求', sourceType: 'manual_text',
+      audience: 'customer_public', body: '闭水试验蓄水时间以企业工艺标准为准，蓄水后观察楼下顶板无渗漏为合格前提之一。' }, randomUUID());
+    const fixture = { documentId: String((created.document as Row).id), versionId: String((created.draft as Row).id), expectedVersion: 1, expectedEditVersion: 1 };
+    await withTenantTransaction(control, tx => tx.execute(sql`update app.assistant_enterprise_settings set enabled=true,version=version+1 where enterprise_id=${control}`));
+    const queued = await knowledge.execute('index', fixture, randomUUID());
+    // The knowledge task must advance through the unified scheduler while A's
+    // chat slots are full. processAssistantJob is the real Worker entry; the
+    // resident dev-server Worker ticks the same entry, so loop until B's job is
+    // terminal and record whether this harness's own call did the advancement.
+    // The script contains no direct claimKnowledgeJob/runKnowledgeJob path.
+    let claimedByScript = false, jobStatus = '';
+    for (let index = 0; index < 30; index++) {
+      const scheduled = await processAssistantJob();
+      if (scheduled.claimed) claimedByScript = true;
+      const state = await knowledge.execute('job', { jobId: String(queued.jobId) } as never) as Row;
+      jobStatus = String(state.status);
+      if (!['queued', 'running'].includes(jobStatus)) break;
+      await sleep(1000);
+    }
+    assert.equal(jobStatus, 'succeeded', 'B knowledge indexing must succeed through the unified scheduler while A is busy: ' + jobStatus);
+    const busyStates = await tenantRows(sql`select j.status,j.lease_token is not null leased from app.assistant_jobs j
+      where j.enterprise_id=${eid} and j.run_id in (${sql.join(busyRunIds.map(id => sql`${id}`), sql`, `)}) order by j.id`);
+    assert.ok((busyStates as Row[]).every(j => String(j.status) === 'running' && j.leased), 'A busy chat jobs stay running and untouched');
+    const queuedState = await tenantOne(sql`select status from app.assistant_jobs j where j.enterprise_id=${eid} and j.run_id=${queuedRunId}`);
+    assert.equal(String(queuedState!.status), 'queued', 'A queued chat job keeps waiting for its own enterprise slot');
+    // The unrelated decoy task was eligible in the same global scan the whole
+    // time; the harness neither claims nor fails it. The read keys on this
+    // round's precise decoy job id, never on a name-pattern scan.
+    const decoyState = await withPlatformTransaction(tx => one(tx, sql`select j.status,j.attempts from app.assistant_jobs j
+      where j.id=${String((report.decoy as Row).jobId)}`));
+    assert.equal(String(decoyState!.status), 'queued', 'The unrelated decoy job stays queued');
+    assert.equal(Number(decoyState!.attempts), 0, 'The unrelated decoy job is never claimed by this harness');
+    // Hygiene: release the labelled occupancy fixtures so they never run.
+    await read(tx => tx.execute(sql`update app.assistant_jobs set status='failed',last_error='recovery_check_synthetic_cleanup',lease_token=null,lease_expires_at=null,version=version+1
+      where enterprise_id=${eid} and run_id in (${sql.join([...busyRunIds, queuedRunId].map(id => sql`${id}`), sql`, `)})`));
+    await read(tx => tx.execute(sql`update app.assistant_runs set status='failed',error_code='recovery_check_synthetic_cleanup',completed_at=now(),version=version+1
+      where enterprise_id=${eid} and id in (${sql.join([...busyRunIds, queuedRunId].map(id => sql`${id}`), sql`, `)})`));
+    await withPlatformTransaction(tx => tx.execute(sql`update app.assistant_jobs set status='failed',last_error='recovery_check_synthetic_cleanup',version=version+1
+      where enterprise_id=${String(report.decoyEnterprise)} and id=${String((report.decoy as Row).jobId)} and status='queued'`));
+    await withPlatformTransaction(tx => tx.execute(sql`update app.assistant_runs set status='failed',error_code='recovery_check_synthetic_cleanup',completed_at=now(),version=version+1
+      where enterprise_id=${String(report.decoyEnterprise)} and id=${String((report.decoy as Row).runId)} and status='queued'`));
+    (report.scenarios as Row).D = { slots, controlEnterprise: control, knowledgeJobId: String(queued.jobId),
+      knowledgeJob: jobStatus, claimedByScript, busyRuns: busyRunIds, queuedRunId };
+    return (report.scenarios as Row).D;
+  });
+
+  // Bounded scoped-claim isolation: both jobs are genuinely claimable when the
+  // claim runs. The competitor is ordered first, so an unscoped claim would
+  // take it; the real `claimKnowledgeJob({ enterpriseId, jobId })` must take
+  // only the probe and leave the competitor's status/attempts/lease untouched.
+  // The future available_at only hides the pair from the resident Worker while
+  // they are created; both are flipped into the live window immediately before
+  // the claim, never left outside candidacy.
+  await step('D2: scoped knowledge claim leaves an earlier claimable competitor untouched', async () => {
+    const control = String(((report.scenarios as Row).D as Row).controlEnterprise);
+    const adminId = await withTenantTransaction(control, async tx => String((await one(tx, sql`select id from app.admin_users where enterprise_id=${control}
+      and status='active' and app.assistant_knowledge_admin_is_current(id,${control}::bigint) order by id limit 1`))!.id));
+    const knowledge = new KnowledgeService({ enterpriseId: control, adminId });
+    const createIndexJob = async (title: string, body: string) => {
+      const created = await knowledge.execute('create', { title, sourceType: 'manual_text', audience: 'customer_public', body }, randomUUID());
+      const job = await knowledge.execute('index', { documentId: String((created.document as Row).id),
+        versionId: String((created.draft as Row).id), expectedVersion: 1, expectedEditVersion: 1 }, randomUUID());
+      return String(job.jobId);
+    };
+    // Exact ids as soon as each fixture exists: both the step and the main
+    // finalizer clean only these rows, never a name-pattern sweep.
+    const fixtureIds: string[] = [];
+    report.d2Fixtures = { jobIds: fixtureIds };
+    const stage = (ids: string[]) => withPlatformTransaction(tx => tx.execute(sql`update app.assistant_jobs
+      set available_at=now() + interval '5 minutes',version=version+1
+      where id in (${sql.join(ids.map(id => sql`${id}`), sql`, `)})`));
+    try {
+      // Start inside a fresh Worker gap so both jobs exist and are staged
+      // before the next poll can see them.
+      const fixtureQuietWindow = await waitForWorkerTick();
+      const competitorJobId = await createIndexJob('[synthetic-recovery-competitor] 闭水试验竞争任务',
+        '合成竞争任务条款：本任务只用于验证限定范围认领不领取其他可认领知识任务，不进入任何回答。');
+      fixtureIds.push(competitorJobId);
+      await stage([competitorJobId]);
+      const probeJobId = await createIndexJob('[synthetic-recovery-claim] 限定范围认领探针',
+        '合成探针条款：本任务只用于限定范围认领隔离验证，不进入任何回答。');
+      fixtureIds.push(probeJobId);
+      await stage([probeJobId]);
+      const fields = sql`status,attempts,lease_token,lease_expires_at`;
+      const competitorBefore = await withPlatformTransaction(tx => one(tx, sql`select ${fields}
+        from app.assistant_jobs where id=${competitorJobId}`));
+      // Wait for a fresh Worker tick so the next claim happens inside the ~2s
+      // quiet window instead of racing the resident poll.
+      const workerQuietWindow = await waitForWorkerTick();
+      // Live window: both jobs satisfy the production claim predicate, and the
+      // competitor sorts earlier by available_at.
+      await withPlatformTransaction(tx => tx.execute(sql`update app.assistant_jobs set
+        available_at=case when id=${competitorJobId} then now() - interval '1 second' else now() end,version=version+1
+        where id in (${sql.join(fixtureIds.map(id => sql`${id}`), sql`, `)})`));
+      const candidates = await withPlatformTransaction(tx => rows(tx, sql`select id from app.assistant_jobs
+        where kind in ('knowledge_index','knowledge_parse')
+          and ((status='queued' and available_at<=now()) or (status='running' and lease_expires_at<=now()))
+        order by available_at,id limit 50`));
+      const order = (candidates as Row[]).map(candidate => String(candidate.id));
+      const competitorOrder = order.indexOf(competitorJobId), probeOrder = order.indexOf(probeJobId);
+      assert.ok(competitorOrder >= 0 && probeOrder >= 0, 'Both jobs must be claimable in the live window');
+      assert.ok(competitorOrder < probeOrder, 'The competitor must sort before the probe so an unscoped claim would meet it first');
+      const claimable = await withPlatformTransaction(tx => one(tx, sql`select count(*)::int n from app.assistant_jobs
+        where id in (${sql.join(fixtureIds.map(id => sql`${id}`), sql`, `)}) and status='queued' and available_at<=now()`));
+      assert.equal(Number(claimable!.n), 2, 'Both jobs must satisfy the real claim predicate before the scoped claim');
+      const lease = await claimKnowledgeJob({ enterpriseId: control, jobId: probeJobId });
+      assert.ok(lease && String(lease.jobId) === probeJobId, 'The scoped claim must take the probe job');
+      const competitorAfter = await withPlatformTransaction(tx => one(tx, sql`select ${fields}
+        from app.assistant_jobs where id=${competitorJobId}`));
+      assert.deepEqual({ status: competitorAfter!.status, attempts: competitorAfter!.attempts,
+        lease_token: competitorAfter!.lease_token, lease_expires_at: competitorAfter!.lease_expires_at },
+        { status: competitorBefore!.status, attempts: competitorBefore!.attempts,
+          lease_token: competitorBefore!.lease_token, lease_expires_at: competitorBefore!.lease_expires_at },
+        'The genuinely claimable competitor job row is unchanged by the scoped claim');
+      const probeAfter = await withPlatformTransaction(tx => one(tx, sql`select status,attempts,lease_token
+        from app.assistant_jobs where id=${probeJobId}`));
+      assert.equal(String(probeAfter!.status), 'running', 'The probe job is claimed through the production path');
+      assert.equal(Number(probeAfter!.attempts), 1, 'The probe claim increments exactly one attempt');
+      assert.equal(String(probeAfter!.lease_token), String(lease!.token), 'The probe lease is the production token');
+      (report.scenarios as Row).D2 = { controlEnterprise: control, probeJobId, competitorJobId, fixtureQuietWindow, workerQuietWindow,
+        competitorOrder, probeOrder, claimable: Number(claimable!.n), leasedProbe: String(lease!.jobId),
+        competitorBefore, competitorAfter,
+        probeAfter: { status: String(probeAfter!.status), attempts: Number(probeAfter!.attempts) } };
+      return (report.scenarios as Row).D2;
+    } finally {
+      // Only this round's exact fixture ids are released; the competitor's
+      // unchanged state was asserted before this cleanup ran.
+      if (fixtureIds.length) await withPlatformTransaction(tx => tx.execute(sql`update app.assistant_jobs
+        set status='failed',last_error='recovery_check_synthetic_cleanup',lease_token=null,lease_expires_at=null,version=version+1
+        where id in (${sql.join(fixtureIds.map(id => sql`${id}`), sql`, `)}) and status in ('queued','running')`));
+    }
+  });
+
+  report.accounting.providerMaxAfter = await attemptsMax();
+}
+
+main().catch(error => { report.error = (error as Error).message; })
+  .finally(async () => {
+    try {
+      // Release labelled occupancy fixtures even when a scenario fails, so the
+      // resident Worker never inherits a synthetic job.
+      await withTenantTransaction(eid, async tx => {
+        await tx.execute(sql`update app.assistant_jobs set status='failed',last_error='recovery_check_synthetic_cleanup',lease_token=null,lease_expires_at=null,version=version+1
+          where enterprise_id=${eid} and (dedupe_key like 'recovery:%' or dedupe_key like 'recovery-busy:%' or dedupe_key like 'recovery-queued:%')
+          and status in ('queued','running')`);
+        await tx.execute(sql`update app.assistant_runs set status='failed',error_code='recovery_check_synthetic_cleanup',completed_at=now(),version=version+1
+          where enterprise_id=${eid} and status='running' and id in (select run_id from app.assistant_jobs
+            where enterprise_id=${eid} and last_error='recovery_check_synthetic_cleanup' and run_id is not null)`);
+      });
+      await withPlatformTransaction(tx => tx.execute(sql`update app.assistant_jobs j set status='failed',last_error='recovery_check_synthetic_cleanup',version=version+1
+        from app.enterprises e where e.id=j.enterprise_id and e.name like '[synthetic-recovery-decoy]%' and j.status in ('queued','running')`));
+      await withPlatformTransaction(tx => tx.execute(sql`update app.assistant_runs r set status='failed',error_code='recovery_check_synthetic_cleanup',completed_at=now(),version=version+1
+        from app.enterprises e where e.id=r.enterprise_id and e.name like '[synthetic-recovery-decoy]%' and r.status in ('queued','running')`));
+      const d2JobIds = (((report.d2Fixtures as Row | undefined)?.jobIds as string[] | undefined) || []);
+      if (d2JobIds.length) await withPlatformTransaction(tx => tx.execute(sql`update app.assistant_jobs
+        set status='failed',last_error='recovery_check_synthetic_cleanup',lease_token=null,lease_expires_at=null,version=version+1
+        where id in (${sql.join(d2JobIds.map(id => sql`${id}`), sql`, `)}) and status in ('queued','running')`));
+      const after = binding(), changed = Object.keys({ ...before, ...after }).filter(f => before[f] !== after[f]);
+      report.drift = changed; report.bindingAfter = createHash('sha256').update(JSON.stringify(after)).digest('hex');
+      if (changed.length) (report.failures as Row[]).push({ name: 'source drift', files: changed });
+      report.finishedAt = new Date().toISOString();
+    } catch (error) { report.finalizeError = (error as Error).message; }
+    finally { save(); await closePostgresPool();
+      const checks = (report.checks as Row[]);
+      const passed = checks.length > 0 && checks.every(c => c.passed) && !report.error
+        && !((report.drift as string[] | undefined) || []).length && !report.finalizeError;
+      if (!passed) process.exitCode = 1;
+      console.log(JSON.stringify({ passed, checks: checks.length, error: report.error || null, drift: report.drift || [] })); }
+  });

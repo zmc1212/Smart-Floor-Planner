@@ -9,7 +9,18 @@ export type KnowledgeDispatch = {
 };
 type Guard = {authorize:()=>Promise<unknown>};
 type Ticket = {input:KnowledgeDispatch; guard:Guard; invoke:()=>Promise<KnowledgePacket>;
-  expires:number; pending?:Promise<KnowledgePacket>; result?:KnowledgePacket; receipt?:string; accepted?:boolean; failed?:boolean};
+  expires:number; pending?:Promise<KnowledgePacket>; result?:KnowledgePacket; receipt?:string; accepted?:boolean; failed?:boolean;
+  /** Set when the dispatch that owns this ticket has ended (success or error).
+   * A callback that already holds this object must never start the model. */
+  closed?:boolean};
+const notDispatched = Symbol('fastgpt-knowledge-not-dispatched');
+
+/** True only when the FastGPT platform never reached the model port. A failed
+ * fetch, startup error or pre-model platform rejection is then safe to answer
+ * through the configured provider; an accepted-but-ambiguous model call is not. */
+export function fastGPTKnowledgeNotDispatched(error: unknown) {
+  return !!error && typeof error === 'object' && (error as Record<symbol, unknown>)[notDispatched] === true;
+}
 
 /** FastGPT organizes one knowledge-model turn. The existing Agent owns the
  * messages, tools, memory, source checks and final answer. No alternate tool
@@ -20,12 +31,19 @@ export class FastGPTKnowledgeWorkflow {
     const url=new URL(config.baseUrl);
     if(!['127.0.0.1','localhost'].includes(url.hostname)||url.port!=='18300')throw Error('FastGPT requires the isolated loopback endpoint');
   }
+  /** A callback may keep running after the dispatch that created its ticket has
+   * already failed. Every await boundary re-confirms that this exact ticket is
+   * still the live, open entry before the model is allowed to start. */
+  private live(id:string,ticket:Ticket) {
+    return !ticket.closed&&this.tickets.get(id)===ticket;
+  }
   async handle(request:Request):Promise<Response> {
     const id=request.headers.get('authorization')?.replace(/^Bearer /,'')||'';
     const ticket=this.tickets.get(id);
-    if(!ticket||ticket.expires<Date.now())return Response.json({error:'not_found'},{status:404});
+    if(!ticket||ticket.closed||ticket.expires<Date.now())return Response.json({error:'not_found'},{status:404});
     try {
       await ticket.guard.authorize();
+      if(!this.live(id,ticket))return Response.json({error:'context_unavailable'},{status:409});
       const path=new URL(request.url).pathname;
       if(path==='/knowledge-input'&&request.method==='GET')return Response.json(ticket.input);
       if(request.method!=='POST')return Response.json({error:'not_found'},{status:404});
@@ -34,11 +52,17 @@ export class FastGPTKnowledgeWorkflow {
       if(path==='/knowledge-turn') {
         if(body.requestHash!==ticket.input.requestHash)return Response.json({error:'conflict'},{status:409});
         if(ticket.failed)return Response.json({error:'provider_outcome_unavailable'},{status:409});
+        // The dispatch may have ended while this callback waited for
+        // authorization or read the request. Once it is closed the model port
+        // must stay unused, otherwise the Worker's not-dispatched fallback and
+        // this late invocation would race for the same model step.
+        if(!this.live(id,ticket))return Response.json({error:'context_unavailable'},{status:409});
         // Concurrent/repeated HTTP calls await the same original provider
         // attempt. An error never clears this promise or permits a replay.
         ticket.pending??=ticket.invoke();
         try{ticket.result=await ticket.pending;}catch{ticket.failed=true;return Response.json({error:'provider_outcome_unavailable'},{status:502});}
         await ticket.guard.authorize();
+        if(!this.live(id,ticket))return Response.json({error:'context_unavailable'},{status:409});
         ticket.receipt=createHash('sha256').update(JSON.stringify(ticket.result,(_key,value)=>typeof value==='bigint'?String(value):value)).digest('hex');
         return Response.json({receipt:ticket.receipt,state:'model_returned_not_saved'});
       }
@@ -68,10 +92,26 @@ export class FastGPTKnowledgeWorkflow {
       // copied out of a platform response. Provider observations stay intact.
       return ticket.result as T;
     }catch(error){
+      // Close first: a callback object already handed to the platform must see
+      // this state before it can claim the model port. Only a ticket that never
+      // started the model makes the failure a safe not-dispatched fallback;
+      // a started call keeps its unknown/conservative outcome and is never
+      // re-sent through the configured provider.
+      ticket.closed=true;
+      // A TCP connection refusal proves the optional platform never received
+      // this dispatch, so no callback can have started the model port. Treat it
+      // as not dispatched even if a stale ticket field exists; otherwise a
+      // stopped 18300 service surfaces as a failed answer instead of the
+      // documented configured-provider fallback.
+      const refused=(error as {cause?:{code?:string}}|null)?.cause?.code==='ECONNREFUSED';
+      const started=!refused&&(!!ticket.pending||!!ticket.result);
+      if (!started && error && typeof error === 'object')
+        Object.defineProperty(error, notDispatched, { value: true });
       this.config.record({runId:input.runId,turn:input.turn,chatId,platformOutcome:'unavailable',
-        modelOutcome:ticket.result?'returned':ticket.pending?'unavailable':'not_dispatched',
+        modelOutcome:ticket.result?'returned':ticket.pending?'started_unknown':'closed_before_dispatch',
+        dispatched:started,
         error:String(error).replaceAll(id,'[expired scoped ticket]').replaceAll(this.config.apiKey,'[redacted]')});
       throw error;
-    }finally{this.tickets.delete(id);}
+    }finally{ticket.closed=true;this.tickets.delete(id);}
   }
 }

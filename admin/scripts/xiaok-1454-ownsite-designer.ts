@@ -24,7 +24,19 @@ fs.mkdirSync(output, { recursive: true });
 const project = path.join(root, 'miniprogram');
 const mp = wechatideNativeClient(project, output);
 const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
-const report: Row = { startedAt: new Date().toISOString(), enterpriseId: eid, scope: 'own-site report question + designer profile', checks: [], failures: [] };
+type Report = Row & { checks: Row[]; failures: Row[]; passed?: boolean; error?: string; cleanupError?: string };
+type PageMessage = { id: string; isUser: boolean; text: string; citations: Array<{ title: string; sourceKind: string }>;
+  designer: { items: Array<{ authorId: string; authorName: string; workTitle: string; style: string; specialty: string }> } | null };
+type PageState = { route: string | null; loading: boolean; needsLogin: boolean; error: string; followupActive: boolean;
+  generating?: boolean; busy?: boolean;
+  conversation: { id: string } | null; messages: PageMessage[];
+  followupBindings: Array<{ id: string }>;
+  followupReports: Array<{ reportId: string; revision: number; kind: string; available: boolean; ready: boolean; readAt: unknown; title: string }>;
+  reportQuestion: { selected: boolean; title: string; error: string };
+  followupChat: { messages: PageMessage[]; generating: boolean; busy: boolean } | null };
+type DesignerProfile = { route: string | null; name: string; title: string; city: string; styles: string[];
+  works: Array<{ title: string; style: string }>; totalWorks: number; loading: boolean; error: string };
+const report: Report = { startedAt: new Date().toISOString(), enterpriseId: eid, scope: 'own-site report question + designer profile', checks: [], failures: [] };
 const save = () => fs.writeFileSync(path.join(output, 'report.json'), JSON.stringify(report, null, 2));
 const tenantOne = (q: ReturnType<typeof sql>) => withTenantTransaction(eid, tx => one(tx, q));
 const platformOne = (q: ReturnType<typeof sql>) => withPlatformTransaction(tx => one(tx, q));
@@ -37,7 +49,7 @@ async function waitFor<T>(label: string, fn: () => Promise<T | undefined | false
   while (Date.now() - started < timeoutMs) { const v = await fn(); if (v) return v; await delay(intervalMs); }
   throw new Error(label + ' timed out after ' + Math.round(timeoutMs / 1000) + 's');
 }
-const pageData = () => evaluate<Row>(`() => {
+const pageData = () => evaluate<PageState>(`() => {
   const p = getCurrentPages().at(-1); if (!p) return { route: null };
   const d = p.data; const text = m => String(m.text || ((m.blocks || []).map(b => b.text || '').join('')));
   return { route: p.route, loading: !!d.loading, needsLogin: !!d.needsLogin, error: d.error || '', followupActive: !!d.followupActive,
@@ -56,7 +68,7 @@ async function send(text: string, followup: boolean) {
   const start = await pageData();
   assert.equal(start.route, 'packages/assistant/chat/chat');
   assert.ok(!start.needsLogin, 'Session rejected: ' + start.error);
-  const count = followup ? start.followupChat.messages.length : start.messages.length;
+  const count = followup ? start.followupChat!.messages.length : start.messages.length;
   await mp.call('automation_element_action', { project, selector: 'textarea.composer-input', action: 'input', value: text });
   await delay(400);
   await mp.call('automation_element_action', { project, selector: '.send-button', action: 'tap' });
@@ -67,8 +79,8 @@ async function send(text: string, followup: boolean) {
     if (!state) return undefined;
     return state.messages.length >= count + 2 && !state.generating && !state.busy ? now : undefined;
   }, 420000);
-  const state = followup ? done.followupChat : done;
-  return { user: state.messages.at(-2), reply: state.messages.at(-1), conversationId: followup ? '1522' : done.conversation?.id };
+  const state = (followup ? done.followupChat : done)!;
+  return { user: state.messages.at(-2), reply: state.messages.at(-1)!, conversationId: followup ? '1522' : done.conversation?.id };
 }
 const runFor = (cid: string) => tenantOne(sql`select id,status,error_code,policy_snapshot from app.assistant_runs
   where enterprise_id=${eid} and conversation_id=${Number(cid)} and purpose='reply' order by id desc limit 1`);
@@ -109,7 +121,7 @@ async function main() {
           const now = await pageData(); return now.followupActive && now.followupReports.length ? now : undefined;
         }, 90000);
         if (!thread.reportQuestion.selected) {
-          const daily = thread.followupReports.find((r: Row) => r.kind === 'daily' && r.ready && r.available);
+          const daily = thread.followupReports.find(r => r.kind === 'daily' && r.ready && r.available);
           assert.ok(daily, 'A ready daily report exists');
           await evaluate(`(f) => { const p = getCurrentPages().at(-1); p.askFollowupReport({ currentTarget: { dataset: { report: f.report, revision: f.revision } } }); return true; }`,
             { report: String(daily.reportId), revision: Number(daily.revision) });
@@ -143,7 +155,7 @@ async function main() {
         const card = cards.items[0];
         await mp.call('automation_element_action', { project, selector: '.designer-card-head', action: 'tap' });
         const profile = await waitFor('designer profile', async () => {
-          const r = await evaluate<Row>(`() => { const p = getCurrentPages().at(-1); if (!p || !String(p.route).includes('designer')) return null;
+          const r = await evaluate<DesignerProfile>(`() => { const p = getCurrentPages().at(-1); if (!p || !String(p.route).includes('designer')) return null;
             const d = p.data; return { route: p.route, name: d.designer && d.designer.name || '', title: d.designer && d.designer.professionalTitle || '',
               city: d.designer && d.designer.cityLabel || '', styles: d.designer && d.designer.styles || [],
               works: (d.designer && d.designer.works || []).map(w => ({ title: w.title || '', style: w.primaryStyle || '' })).slice(0, 6),

@@ -68,7 +68,7 @@ async function reportIssue(tx: PostgresTransaction, eid: string, pid: string, is
     and type='construction.site.issue.opened.v1' and payload->>'projectId'=${pid} and created_at<${cutoff}`);
   if (!opened) return null;
   const issue = await readSiteIssue(tx, eid, pid, issueId, cutoff);
-  if (!issue?.sourceAvailable || issue.status === 'invalidated' || !await canRead(issue.recordId)
+  if (!issue?.sourceAvailable || issue.status === 'invalidated' || (issue.recordId && !await canRead(issue.recordId))
     || await siteAccessRevoked(tx, eid, pid, [issue.openedBy, issue.ownerId].filter(Boolean) as string[], opened.created_at as Date)) return null;
   const last = (await one(tx, sql`select id,created_at from app.domain_event_outbox where enterprise_id=${eid} and created_at<${cutoff}
     and (id=${issueId} or (aggregate_type='construction_site_issue' and aggregate_id=${issueId}
@@ -86,7 +86,7 @@ async function reportArrangement(tx: PostgresTransaction, eid: string, pid: stri
   const plan = await readPlan(tx, eid, planId, cutoff);
   if (!plan || plan.projectId !== pid || plan.status !== 'approved') return null;
   const issue = await readSiteIssueBase(tx, eid, pid, plan.issueId, cutoff);
-  if (!issue?.sourceAvailable || !await canRead(issue.recordId)) return null;
+  if (!issue?.sourceAvailable || (issue.recordId && !await canRead(issue.recordId))) return null;
   const decision = await one(tx, sql`select id,created_at from app.domain_event_outbox where enterprise_id=${eid}
     and type='construction.plan.status.v1' and aggregate_type='construction_plan' and aggregate_id=${planId}
     and created_at<${cutoff} and payload->>'status'='approved' order by aggregate_version desc limit 1`);

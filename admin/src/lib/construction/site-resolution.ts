@@ -128,7 +128,7 @@ export async function prepareSiteResolution(tx: PostgresTransaction, actor: Acto
   const previous = await latest(tx, eid, issue.issueId), current = await readSiteResolution(tx, eid, pid, issue.issueId, issue);
   const revision = Number(previous?.aggregate_version || 0);
   if ((versions.resolutions?.[issue.issueId] || 0) !== revision) fail('version_conflict');
-  const projectReview = collaboration || issue.sourceKind === 'need' || issue.confirmed || current?.projectReview === true;
+  const projectReview = collaboration || issue.projectReview === true || current?.projectReview === true;
   const role = projectReview ? await collaborationMember(tx, eid, pid, aid) : null;
   if (projectReview ? cmd.action !== 'implement' && role !== 'manager' || cmd.action === 'implement' && !['manager', 'worker'].includes(role || '')
     : cmd.action !== 'implement' && !manage || cmd.action === 'implement' && !manage && issue.ownerId !== aid) fail('construction_forbidden', 403);

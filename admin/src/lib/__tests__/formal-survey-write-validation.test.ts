@@ -307,8 +307,8 @@ test('P1 formal writes reject opening occupancy, fractional lengths and oversize
 
 test('P1 completed writes reject a disconnected unfinished wall without blocking draft save', () => {
   const layout = singleRoomLayout(), floor = layout.surveyGraph.floors[0];
-  floor.nodes.push({ id: 'x', xMm: 9000, yMm: 0 }, { id: 'y', xMm: 10000, yMm: 0 });
-  floor.walls.push(wall('xy', 'x', 'y', 1000));
+  floor.nodes!.push({ id: 'x', xMm: 9000, yMm: 0 }, { id: 'y', xMm: 10000, yMm: 0 });
+  floor.walls!.push(wall('xy', 'x', 'y', 1000));
   assert.deepEqual(errorCodes(layout, 'draft'), []);
   assert.ok(errorCodes(layout, 'completed').includes('INCOMPLETE_WALL_CHAIN'));
 });

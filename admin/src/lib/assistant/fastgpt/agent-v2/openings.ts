@@ -9,8 +9,8 @@ export type OpeningConstraints = { minChars: number; maxChars: number; noUrl: bo
   noCitationMarkers: boolean; noPhotoClaims: boolean; noCommitments: boolean };
 export type OpeningScene = { key: string; appId: string; audience: 'customer';
   input: readonly string[]; constraints: OpeningConstraints };
-export type Openings = { protocol: typeof openingsProtocol; enterpriseId: string;
-  scenes: Record<string, OpeningScene> };
+export type EnterpriseOpenings = { enterpriseId: string; scenes: Record<string, OpeningScene> };
+export type Openings = { protocol: typeof openingsProtocol; enterprises: EnterpriseOpenings[] };
 
 const inputVocabulary = new Set(['name', 'cityName', 'cityCode', 'district', 'stageName', 'excerpts', 'photoCount', 'designerName']);
 const sceneKeyPattern = /^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*){1,2}$/;
@@ -24,10 +24,27 @@ export const sceneForOpeningPurpose = (purpose: string) => purpose === 'public.s
 export function parseOpenings(value: unknown): Openings {
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail('context_changed');
   const root = value as Record<string, unknown>;
-  if (Object.keys(root).some(key => !['protocol', 'enterpriseId', 'scenes'].includes(key))
-    || root.protocol !== openingsProtocol || typeof root.enterpriseId !== 'string' || !/^[1-9]\d{0,18}$/.test(root.enterpriseId)
-    || !root.scenes || typeof root.scenes !== 'object' || Array.isArray(root.scenes)) fail('context_changed');
-  const entries = Object.entries(root.scenes as Record<string, unknown>);
+  // A single enterprise keeps the historical object shape; a deployment with
+  // several enterprises lists them explicitly.
+  const entries = Array.isArray(root.enterprises) ? root.enterprises
+    : [{ enterpriseId: root.enterpriseId, scenes: root.scenes }];
+  if (Object.keys(root).some(key => !['protocol', 'enterpriseId', 'scenes', 'enterprises'].includes(key))
+    || root.protocol !== openingsProtocol || !entries.length || entries.length > 50) fail('context_changed');
+  const enterprises: EnterpriseOpenings[] = [];
+  for (const entry of entries) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) fail('context_changed');
+    const registry = entry as Record<string, unknown>;
+    if (Object.keys(registry).some(key => !['enterpriseId', 'scenes'].includes(key))
+      || typeof registry.enterpriseId !== 'string' || !/^[1-9]\d{0,18}$/.test(registry.enterpriseId)
+      || !registry.scenes || typeof registry.scenes !== 'object' || Array.isArray(registry.scenes)) fail('context_changed');
+    const scenes = parseScenes(registry.scenes as Record<string, unknown>);
+    if (enterprises.some(existing => existing.enterpriseId === registry.enterpriseId)) fail('context_changed');
+    enterprises.push({ enterpriseId: registry.enterpriseId, scenes });
+  }
+  return { protocol: openingsProtocol, enterprises };
+}
+function parseScenes(rawScenes: Record<string, unknown>) {
+  const entries = Object.entries(rawScenes);
   if (!entries.length || entries.length > 12) fail('context_changed');
   const scenes: Record<string, OpeningScene> = {};
   for (const [key, raw] of entries) {
@@ -54,7 +71,7 @@ export function parseOpenings(value: unknown): Openings {
         noUrl: rawConstraints.noUrl !== false, noCitationMarkers: rawConstraints.noCitationMarkers !== false,
         noPhotoClaims: rawConstraints.noPhotoClaims !== false, noCommitments: rawConstraints.noCommitments !== false } };
   }
-  return { protocol: openingsProtocol, enterpriseId: root.enterpriseId, scenes };
+  return scenes;
 }
 
 /** A missing or malformed registry disables openings instead of blocking the
@@ -64,6 +81,6 @@ export function openingScene(enterpriseId: string, scene: string): OpeningScene 
   if (!file) return;
   try {
     const parsed = parseOpenings(JSON.parse(fs.readFileSync(file, 'utf8')));
-    return parsed.enterpriseId === enterpriseId ? parsed.scenes[scene] : undefined;
+    return parsed.enterprises.find(enterprise => enterprise.enterpriseId === enterpriseId)?.scenes[scene];
   } catch { return; }
 }

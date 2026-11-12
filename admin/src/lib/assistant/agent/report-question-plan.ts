@@ -58,33 +58,46 @@ function assertScope(scope: ReportQuestionPlanScope) {
   if (!Number.isSafeInteger(scope.selection.revision) || scope.selection.revision < 1 || !scope.selection.factsHash) fail('context_changed');
 }
 
-/** Called inside the authenticated read's existing transaction. The service
- * supplies every identity/hash; the model supplies questions only. This helper
- * neither resolves permission nor turns planned text into project evidence. */
-/** A plan may split one sentence further, but never merge separate sentences
- * into one question. A merged question asks the reviewer for one completeness
- * verdict over clauses the report can answer differently (a stage marker that
- * exists and an action record that does not), so it cannot pass structurally. */
+/** A response directive such as "请只按这份报告回答" constrains the answer; it
+ * is not an independent question. Keep it in currentQuestion, never as a Q key. */
+const pureResponseDirective = /^(?:请|请你|麻烦|劳烦)?\s*(?:只|仅|务必|一定)?\s*(?:按|根据|依据|按照|基于)?\s*(?:这份|该份|本份|上述|上面|该|本)?\s*(?:日报|周报|报告|原文|内容)?\s*(?:回答|作答|回复|说明|解释|复述|列出|告诉)(?:即可|就好|就行|一下)?(?:[，,。！!；;].*)?$/;
+
 /** A planned question may stay inside one sentence or be narrowed further, but
  * it never merges separate sentences: one merged question would force a single
  * completeness verdict over clauses the report can answer differently. The
- * split stays lossless (every original sentence keeps its own question), so the
- * final schema requires each sentence to be answered on its own. */
+ * split stays lossless for real questions, corrections and conditions; a pure
+ * response directive is a constraint on those questions, not a question key. */
 function alignQuestions(questions: string[], question: string): string[] {
   const groups = [...new Intl.Segmenter('zh-CN', { granularity: 'sentence' }).segment(question)].map(part => part.segment).filter(part => part.trim());
   let cursor = 0;
   const bounds = groups.map(group => { const start = question.indexOf(group, cursor); cursor = start + group.length; return [start, start + group.length] as const; });
+  const hasInterrogative = groups.some(group => /[？?]/.test(group));
+  const keep = (sentence: string) => !hasInterrogative || /[？?]/.test(sentence) || !pureResponseDirective.test(sentence.trim());
   const aligned = new Set<string>();
   for (const planned of questions) {
     const at = question.indexOf(planned);
-    const overlapping = at < 0 ? [] : groups.filter((_, index) => at < bounds[index][1] && at + planned.length > bounds[index][0]);
-    if (overlapping.length <= 1) { aligned.add(planned); continue; }
-    for (const sentence of overlapping) aligned.add(sentence);
+    if (at < 0) continue;
+    const overlapping = groups.flatMap((group, index) => at < bounds[index][1] && at + planned.length > bounds[index][0] ? [index] : []);
+    if (overlapping.length <= 1) {
+      if (overlapping.length === 1 && !keep(groups[overlapping[0]])) continue;
+      aligned.add(planned);
+      continue;
+    }
+    for (const index of overlapping) if (keep(groups[index])) aligned.add(groups[index]);
   }
   const kept = [...aligned];
+  for (const [index, sentence] of groups.entries()) {
+    if (!/[？?]/.test(sentence)) continue;
+    if (kept.some(planned => planned.includes(sentence) || sentence.includes(planned))) continue;
+    kept.splice(Math.min(index, kept.length), 0, sentence);
+  }
+  if (!kept.length) return questions.filter(planned => question.includes(planned)).slice(0, 6);
   return kept.length > 6 ? [...kept.slice(0, 5), kept.slice(5).join('')] : kept;
 }
 
+/** Called inside the authenticated read's existing transaction. The service
+ * supplies every identity/hash; the model supplies questions only. This helper
+ * neither resolves permission nor turns planned text into project evidence. */
 export function createReportQuestionPlan(input: Record<string, unknown>, scope: ReportQuestionPlanScope): ReportQuestionPlan {
   assertScope(scope);
   if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length !== 1 || !Object.hasOwn(input, 'questions')) fail('invalid_message', 422);

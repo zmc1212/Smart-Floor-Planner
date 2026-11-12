@@ -161,8 +161,8 @@ export async function preparePlanPublication(tx: PostgresTransaction, actor: Act
   if (!issue || issue.status !== 'awaiting_review' || !issue.roomId || !issue.ownerId) fail('site_review_required', 422);
   if (versions.issues[cmd.issueId] !== issue.revision || (issue.recordId && versions.records[issue.recordId] !== issue.recordVersion)) fail('version_conflict');
   const author = await one(tx, sql`select role from app.admin_users where enterprise_id=${eid} and id=${aid} and status='active'`);
-  // A saved design review keeps its approval policy through an allowlist rollback.
-  const collaboration = collaborationEnabled(eid) || issue.sourceKind === 'need';
+  // A design review keeps the assigned designer until it enters rectification.
+  const collaboration = collaborationEnabled(eid) || issue.projectReview === true || issue.sourceKind === 'need' && !issue.confirmed;
   if (collaboration ? issue.ownerId !== aid || await collaborationMember(tx, eid, pid, aid) !== 'designer'
     : !manage && (issue.ownerId !== aid || author?.role !== 'designer')) fail('construction_forbidden', 403);
   const opinion = collaboration && issue.progressMessageId ? await designOpinion(tx, eid, pid, aid, issue.progressMessageId) : null;

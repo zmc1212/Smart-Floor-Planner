@@ -38,9 +38,16 @@ async function stop(tx: PostgresTransaction, job: Row, status: string, code: str
   await tx.execute(sql`update app.assistant_knowledge_attempts set status=${job.kind==='knowledge_parse'?'failed':'unknown'},error_code=${job.kind==='knowledge_parse'?code:'provider_outcome_unknown'},completed_at=now()
     where enterprise_id=${String(job.enterprise_id)} and job_id=${String(job.id)} and status='started'`);
 }
-export async function claimKnowledgeJob(): Promise<KnowledgeLease|null> {
+/** Claim one knowledge job. The optional scope narrows candidacy to the exact
+ * acceptance fixture; production callers omit it and keep the global oldest-
+ * eligible scan. A scoped claim can never steal another enterprise's or
+ * another round's job. */
+export async function claimKnowledgeJob(scope?: { enterpriseId?: string; jobId?: string }): Promise<KnowledgeLease|null> {
   const candidates = await withPlatformTransaction(tx=>rows(tx,sql`select enterprise_id,id from app.assistant_jobs where kind in ('knowledge_index','knowledge_parse')
-    and ((status='queued' and available_at<=now()) or (status='running' and lease_expires_at<=now())) order by available_at,id limit 50`));
+    and ((status='queued' and available_at<=now()) or (status='running' and lease_expires_at<=now()))
+    ${scope?.enterpriseId ? sql`and enterprise_id=${scope.enterpriseId}` : sql``}
+    ${scope?.jobId ? sql`and id=${scope.jobId}` : sql``}
+    order by available_at,id limit 50`));
   for (const c of candidates) {
     const lease = await withTenantTransaction(String(c.enterprise_id),async tx=>{
       if (!await one(tx,sql`select id from app.assistant_enterprise_settings where enterprise_id=${String(c.enterprise_id)} for update skip locked`)) return null;

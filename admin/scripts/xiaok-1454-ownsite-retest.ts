@@ -23,7 +23,7 @@ fs.mkdirSync(output, { recursive: true });
 const project = path.join(root, 'miniprogram');
 const mp = wechatideNativeClient(project, output);
 const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
-const report: Row = { startedAt: new Date().toISOString(), enterpriseId: eid, scope: 'own-site report question retest', checks: [], failures: [] };
+const report: Report = { startedAt: new Date().toISOString(), enterpriseId: eid, scope: 'own-site report question retest', checks: [], failures: [] };
 const save = () => fs.writeFileSync(path.join(output, 'report.json'), JSON.stringify(report, null, 2));
 const tenantOne = (q: ReturnType<typeof sql>) => withTenantTransaction(eid, tx => one(tx, q));
 const platformOne = (q: ReturnType<typeof sql>) => withPlatformTransaction(tx => one(tx, q));
@@ -37,7 +37,16 @@ async function waitFor<T>(label: string, fn: () => Promise<T | undefined | false
   throw new Error(label + ' timed out after ' + Math.round(timeoutMs / 1000) + 's');
 }
 const fixedReferral = '这件事需要现场确认，请和现场团队核实。';
-const pageData = () => evaluate<Row>(`() => {
+type Report = Row & { checks: Row[]; failures: Row[]; passed?: boolean; error?: string; cleanupError?: string };
+type PageState = { route: string | null; loading: boolean; needsLogin: boolean; error: string; followupActive: boolean;
+  conversation: { id: string } | null;
+  followupBindings: Array<{ id: string }>;
+  followupReports: Array<{ reportId: string; revision: number; kind: string; available: boolean; ready: boolean; readAt: unknown; title: string }>;
+  reportQuestion: { selected: boolean; title: string; error: string };
+  followupChat: { messages: Array<{ id: string; isUser: boolean; text: string; citations: Array<{ title: string; sourceKind: string }> }>;
+    generating: boolean; busy: boolean } | null };
+type PageMessage = { id: string; isUser: boolean; text: string; citations: Array<{ title: string; sourceKind: string }> };
+const pageData = () => evaluate<PageState>(`() => {
   const p = getCurrentPages().at(-1); if (!p) return { route: null };
   const d = p.data; const text = m => String(m.text || ((m.blocks || []).map(b => b.text || '').join('')));
   return { route: p.route, loading: !!d.loading, needsLogin: !!d.needsLogin, error: d.error || '', followupActive: !!d.followupActive,
@@ -79,13 +88,13 @@ async function main() {
     }, 120000);
 
     await evaluate(`() => { const p = getCurrentPages().at(-1); p.openHistory(); return true; }`);
-    await waitFor('follow-up list', async () => (await pageData()).followupBindings?.some((b: Row) => b.id === bindingId) || undefined, 60000);
+    await waitFor('follow-up list', async () => (await pageData()).followupBindings?.some(b => b.id === bindingId) || undefined, 60000);
     await evaluate(`(id) => { const p = getCurrentPages().at(-1); p.selectFollowup({ currentTarget: { dataset: { id } } }); return true; }`, bindingId);
     const thread = await waitFor('follow-up thread', async () => {
       const now = await pageData(); return now.followupActive && now.followupReports.length ? now : undefined;
     }, 90000);
-    const daily = thread.followupReports.find((r: Row) => String(r.reportId) === '474' && r.ready && r.available)
-      || thread.followupReports.find((r: Row) => r.kind === 'daily' && r.ready && r.available);
+    const daily = thread.followupReports.find(r => String(r.reportId) === '474' && r.ready && r.available)
+      || thread.followupReports.find(r => r.kind === 'daily' && r.ready && r.available);
     assert.ok(daily, 'A ready daily report exists');
     if (!thread.reportQuestion.selected || !/11月9日/.test(thread.reportQuestion.title)) {
       await evaluate(`(f) => { const p = getCurrentPages().at(-1); p.askFollowupReport({ currentTarget: { dataset: { report: f.report, revision: f.revision } } }); return true; }`,
@@ -94,7 +103,7 @@ async function main() {
     }
     const selected = (await pageData()).reportQuestion;
     const start = await pageData();
-    const count = start.followupChat.messages.length;
+    const count = start.followupChat!.messages.length;
     const baseline = String((await tenantOne(sql`select max(id)::text id from app.assistant_runs
       where enterprise_id=${eid} and conversation_id='1522'`))?.id || '0');
     await mp.call('automation_element_action', { project, selector: 'textarea.composer-input', action: 'input', value: '我家现在施工到哪一步了？最近工地上都做了些什么？' });
@@ -111,7 +120,7 @@ async function main() {
       if (run && String(run.status) === 'failed') throw new Error(`run ${run.id} failed: ${run.error_code}`);
       return undefined;
     }, 300000);
-    const turn = done.followupChat;
+    const turn = done.followupChat!;
     const answer = String(turn.messages.at(-1)?.text || '');
     const citations = turn.messages.at(-1)?.citations || [];
     const deflection = answer.includes(fixedReferral);
@@ -126,8 +135,9 @@ async function main() {
       and run_id=${String(run!.id)} and kind in ('agent_model','agent_tool')`);
     const persisted = await tenantOne(sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${eid}
       and run_id=${String(run!.id)} and step_seq=1006`);
-    const answerCitations = [...new Set(((persisted?.private_checkpoint as Row)?.segments || [])
-      .flatMap(s => ((s as Row).citations || []).map(c => String((c as Row).sourceId))))];
+    const checkpoint = persisted?.private_checkpoint as { segments?: Array<{ citations?: Array<{ sourceId: string }> }> } | undefined;
+    const answerCitations = [...new Set((checkpoint?.segments || [])
+      .flatMap(s => (s.citations || []).map(c => String(c.sourceId))))];
     await evaluate(`() => { const p = getCurrentPages().at(-1); p.viewReportQuestion(); return true; }`);
     const opened = await waitFor('report detail', async () => {
       const d = await evaluate<Row>(`() => { const p = getCurrentPages().at(-1); const v = (p.data || {}).followupDetail;

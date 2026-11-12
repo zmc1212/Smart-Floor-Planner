@@ -62,7 +62,7 @@ test('image-model price saves drop leftover non-catalog model keys instead of re
 });
 
 test('credit-price list DTO JSON-serializes postgres bigint updatedBy after a save', () => {
-  const dto = serializeAiCreditPrice({
+  const record = {
     id: BigInt(42),
     actionKey: 'image.free_create',
     mode: null,
@@ -72,7 +72,8 @@ test('credit-price list DTO JSON-serializes postgres bigint updatedBy after a sa
     updatedBy: BigInt(7),
     createdAt: new Date('2026-08-23T00:00:00.000Z'),
     updatedAt: new Date('2026-08-23T00:00:00.000Z'),
-  });
+  };
+  const dto = serializeAiCreditPrice(record);
   assert.equal(dto._id, '42');
   assert.equal(dto.credits, 10);
   assert.equal(dto.enabled, true);

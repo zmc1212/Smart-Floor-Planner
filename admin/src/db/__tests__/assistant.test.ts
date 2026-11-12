@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { before, after, test } from 'node:test';
 import { loadEnvConfig } from '@next/env';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:http';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -20,6 +20,7 @@ import { claimJob, completeRun, failRun, heartbeat, markProviderStarted, type Le
 import { ContextRegistry } from '@/lib/assistant/capabilities/registry';
 import { entryContext, fromEntry, locate } from '@/lib/assistant/application/auth';
 import type { ActorContext } from '@/lib/assistant/contracts';
+import { fail } from '@/lib/assistant/contracts';
 
 const prefix = 'assistant-test-' + process.pid + '-' + Date.now();
 let a: ActorContext; let b: ActorContext; let stranger: ActorContext; let service: ConversationService;
@@ -143,6 +144,18 @@ test('A06 cancellation blocks late response and unsafe retry after provider subm
   await assert.rejects(completeRun(lease, { content: content('late'), usage: null }), /context_changed/);
   await assert.rejects(service.run(String(r.runId), 'retry', 'unsafe-retry'), /context_changed/);
   assert.equal((await service.run(String(r.runId))).status, 'cancelled');
+});
+test('A06 a rejected pre-dispatch guard never marks provider start or leaves an unknown charge', async () => {
+  const { r, lease } = await pending();
+  await assert.rejects(markProviderStarted(lease, [], async () => fail('context_changed')), /context_changed/);
+  const job = await withTenantTransaction(a.enterpriseId, tx => one(tx, sql`select provider_started_at from app.assistant_jobs where id=${lease.jobId}`));
+  assert.equal(job!.provider_started_at, null);
+  await failRun(lease, 'guard_rejected');
+  const state = await service.run(String(r.runId));
+  assert.equal(state.status, 'failed');
+  const steps = await withTenantTransaction(a.enterpriseId, tx => one(tx, sql`select count(*)::int n from app.assistant_run_steps
+    where enterprise_id=${a.enterpriseId} and run_id=${lease.runId} and kind='agent_model'`));
+  assert.equal(Number(steps!.n), 0);
 });
 test('A02 revoked membership invalidates reads, idempotent replay and in-flight commit', async () => {
   const { c, lease } = await pending();
@@ -362,7 +375,7 @@ test('independent worker script calls authenticated handler, persists health and
   try {
     for (let restart = 0; restart < 2; restart++) {
       const started = Date.now();
-      const worker = spawn(process.execPath, ['scripts/assistant-worker.mjs'], { cwd: process.cwd(), stdio: 'ignore',
+      const worker: ChildProcess = spawn(process.execPath, ['scripts/assistant-worker.mjs'], { cwd: process.cwd(), stdio: 'ignore',
         env: { ...process.env, ASSISTANT_WORKER_ENDPOINT: 'http://127.0.0.1:' + address.port + '/api/internal/assistant/jobs/run', ASSISTANT_WORKER_HEALTH_FILE: health } });
       try {
         let healthy = false;

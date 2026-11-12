@@ -105,7 +105,8 @@ async function main() {
     const url = new URL(process.env.DATABASE_URL ?? '');
     const outageTransport = process.argv[2] === 'worker' && process.env.B510_DB_OUTAGE === '1';
     if (url.protocol !== 'postgresql:' || url.hostname !== '127.0.0.1' || url.pathname !== '/xiaok_b59_test'
-      || url.username !== 'sfp_app' || url.search || url.hash || (!outageTransport && url.port !== '55433'))
+      || url.username !== 'sfp_app' || url.search || url.hash
+      || (!outageTransport && url.port !== (process.env.XIAOK_ISOLATED_POSTGRES_PORT || '55433')))
       throw Error('Unexpected B5.10 database target');
     const result = await execute();
     process.send({ result });

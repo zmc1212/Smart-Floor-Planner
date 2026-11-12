@@ -1,6 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { AssistantClient, entryInput, messagesForView } = require('../packages/assistant/lib/client');
+const { markdownForBlock } = require('../packages/assistant/lib/message-markdown');
 const { ChatController } = require('../packages/assistant/lib/chat');
 const { canAccessRoute } = require('../utils/identity-navigation');
 
@@ -424,6 +425,21 @@ test('the first persisted replies replace an empty window with a full read', asy
   assert.equal(messageReads(f).length, 2);
   assert.ok(messageReads(f).every(call => call.body.afterSeq === undefined));
   assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21', '22']);
+});
+
+test('a public site attached to an empty conversation loads its first message without a zero cursor', async () => {
+  const f = fixture();
+  f.db.conversation.lastSeq = '0';
+  await f.controller.show({ conversationId: '11' });
+  assert.equal(f.controller.latestSeq, '0');
+  const context = { id: '61', versionId: '62', name: '公开工地' };
+  f.db.conversation.lastSeq = '1';
+  f.db.items = [message('21', '1', '正在围观', { publicContext: context })];
+  f.intercept(call => call.body.afterSeq === '0' ? { success: false, error: 'invalid_message' } : undefined);
+  await f.controller.refresh();
+  assert.deepEqual(messageReads(f).map(call => call.body), [{ limit: 30 }, { limit: 30 }]);
+  assert.equal(f.controller.state.messages[0].publicContext.versionId, context.versionId);
+  assert.equal(f.controller.state.error, '');
   f.controller.dispose();
 });
 
@@ -658,6 +674,66 @@ test('message projection orders bigint sequences exactly and treats unknown bloc
   assert.deepEqual(messages[1].blocks, [{ key: 0, text: '<button>plain text</button>' }]);
 });
 
+test('AI Markdown produces headings, inline styles, lists, quotes, code and tables on history reentry', async () => {
+  const f = fixture();
+  const text = [
+    '# 水电进度', '### 书房', '', '**线管**已经铺好，*底盒待固定*。', '下一步核对 `SW-01`。', '',
+    '3. 核对点位', '4. 确认高度', '   - 书桌侧', '   - 门边', '', '> 按现场记录核实。', '',
+    '```text', 'SW-01', '  左侧底盒', '```', '', '| 项目 | 状态 |', '| --- | --- |', '| 线管 | **完成** |',
+  ].join('\n');
+  f.db.items = [message('21', '1', text, { authorKind: 'assistant' })];
+  await f.controller.show({ conversationId: '11' });
+  const [block] = f.controller.state.messages[0].blocks;
+  const nodes = block.markdown.flatMap(part => part.nodes);
+  const names = nodes => nodes.flatMap(node => node.name ? [node.name, ...names(node.children)] : []);
+  assert.deepEqual(block.markdown.map(part => part.kind), ['text', 'code', 'table']);
+  assert.deepEqual(nodes.map(node => node.name), ['h1', 'h3', 'p', 'ol', 'blockquote', 'pre', 'div']);
+  assert.deepEqual(names(nodes[2].children), ['strong', 'em', 'br', 'code']);
+  assert.equal(nodes[3].attrs.start, 3);
+  assert.deepEqual(names(nodes[3].children), ['li', 'li', 'ul', 'li', 'li']);
+  assert.equal(nodes[5].children[0].children[0].text, 'SW-01\n  左侧底盒');
+  assert.deepEqual(names(nodes[6].children), ['table', 'thead', 'tr', 'th', 'th', 'tbody', 'tr', 'td', 'td', 'strong']);
+  const reopened = new ChatController({ client: f.client, identity: () => 'customer-A', emit() {}, schedule: () => 0 });
+  await reopened.show({ conversationId: '11' });
+  assert.deepEqual(reopened.state.messages[0].blocks, [block]);
+  reopened.dispose();
+  f.controller.dispose();
+});
+
+test('Markdown only formats authorized AI text and leaves source and notice blocks in order', () => {
+  const content = { blocks: [
+    { type: 'text', text: '**正文** [来源名称](https://example.test/source) ![照片说明](https://example.test/image.png)' },
+    { type: 'citation', citationId: '31', fallbackText: '来源' },
+    { type: 'notice', fallbackText: '**服务提示**' },
+    { type: 'text', text: '### 末段' },
+  ] };
+  const item = { id: '22', seq: '2', authorKind: 'assistant', available: true, content,
+    citations: [{ id: '31', available: true, title: '施工参考' }],
+    publicReferences: [{ id: '7', versionId: '19' }] };
+  const [reply, user, revoked] = messagesForView([
+    item,
+    { ...item, id: '23', seq: '3', authorKind: 'user' },
+    { ...item, id: '24', seq: '4', available: false },
+  ], markdownForBlock);
+  assert.deepEqual(reply.blocks.map(block => block.markdown?.[0]?.nodes[0]?.name || block.text), ['p', '**服务提示**', 'h3']);
+  assert.deepEqual(reply.citations, item.citations);
+  assert.deepEqual(reply.publicReferences, item.publicReferences);
+  const nodes = JSON.stringify(reply.blocks[0].markdown);
+  assert.match(nodes, /来源名称.*照片说明/);
+  assert.doesNotMatch(nodes, /https:|"(href|src)"|"name":"(a|img)"/);
+  assert.ok(user.blocks.every(block => !block.markdown));
+  assert.deepEqual(revoked.blocks, [{ key: 0, text: '**服务提示**' }]);
+  assert.deepEqual(revoked.publicReferences, []);
+  assert.deepEqual(revoked.citations, []);
+  assert.equal(revoked.content, undefined);
+  assert.doesNotMatch(JSON.stringify(revoked), /外部|照片说明|正文/);
+  const inert = markdownForBlock({ text: '**保留文字** <button>仅文字</button> &lt;script&gt;' });
+  assert.doesNotMatch(JSON.stringify(inert), /"name":"(button|script)"/);
+  assert.match(JSON.stringify(inert), /仅文字/);
+  assert.equal(markdownForBlock({ text: '普通回答' }), null);
+  assert.equal(markdownForBlock({ text: '**长回答**\n'.repeat(600) }), null);
+});
+
 test('new conversation remains new on foreground even when route originally targeted history', async () => {
   const f = fixture(); await f.controller.show({ conversationId: '11' });
   f.controller.newConversation(); f.controller.hide(); await f.controller.show();
@@ -864,12 +940,19 @@ test('background network failure retains usable chat but foreground permission d
 
 test('warm foreground reprojects withdrawn content and identity changes never reuse entry or drafts', async () => {
   const f = fixture();
-  f.db.items = [{ id: '21', seq: '1', available: true, content: { blocks: [{ type: 'text', text: '旧资料' }] } }];
+  f.db.conversation.lastSeq = '1';
+  f.db.items = [{ ...message('21', '1', '**旧资料**', { authorKind: 'assistant' }), publicSourceBound: true }];
   await f.controller.show({ conversationId: '11' });
+  assert.equal(f.controller.state.messages[0].blocks[0].markdown[0].nodes[0].children[0].name, 'strong');
   f.controller.input('私人草稿');
   f.db.items[0] = { ...f.db.items[0], available: false, content: { blocks: [{ type: 'notice', fallbackText: '资料已不可用' }] } };
   f.controller.hide(); await f.controller.show();
   assert.equal(f.controller.state.messages[0].blocks[0].text, '资料已不可用');
+  assert.equal(f.controller.state.messages[0].blocks[0].markdown, undefined);
+  assert.doesNotMatch(JSON.stringify(f.controller.state.messages), /旧资料/);
+  assert.doesNotMatch(JSON.stringify(f.controller.rawMessages), /旧资料/);
+  assert.equal(messageReads(f).length, 2, 'the unchanged sequence still required a source recheck');
+  assert.equal(f.controller.state.draft, '私人草稿');
   f.identity('customer-B');
   f.controller.hide(); await f.controller.show({});
   assert.equal(f.controller.state.messages.length, 0);
@@ -973,6 +1056,152 @@ test('a resume supersedes an in-flight idle refresh with a full reprojection', a
   assert.deepEqual(cursors, ['1']);
   assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21', '22']);
   assert.deepEqual(f.controller.rawMessages.map(item => item.id), ['21', '22']);
+});
+
+test('full history refresh retains paged replies and reuses unchanged Markdown on foreground', async () => {
+  const f = fixture();
+  const earlier = message('21', '1', '**早期回复**', { authorKind: 'assistant' });
+  f.db.items = [message('22', '2', '**近期回复**', { authorKind: 'assistant' })];
+  f.db.messageCursor = '2';
+  f.db.conversation.lastSeq = '2';
+  f.intercept(call => call.body.beforeSeq === '2'
+    ? { success: true, data: { items: [structuredClone(earlier)], nextCursor: null } } : undefined);
+  await f.controller.show({ conversationId: '11' });
+  await f.controller.olderMessages();
+  const [older, recent] = f.controller.state.messages.map(item => item.blocks[0].markdown);
+  assert.ok(older && recent);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    f.controller.lastFullSyncAt = 0;
+    f.controller.hide();
+    await f.controller.show();
+    assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21', '22']);
+    assert.strictEqual(f.controller.state.messages[0].blocks[0].markdown, older);
+    assert.strictEqual(f.controller.state.messages[1].blocks[0].markdown, recent);
+    assert.equal(f.controller.state.messageCursor, null);
+  }
+  assert.equal(messageReads(f).filter(call => call.body.beforeSeq === '2').length, 4);
+  f.controller.dispose();
+});
+
+test('a refresh preserves the confirmed end of earlier history at a full page boundary', async () => {
+  const f = fixture();
+  f.db.items = [message('22', '2', '近期回复')];
+  f.db.messageCursor = '2';
+  f.db.conversation.lastSeq = '2';
+  f.intercept(call => {
+    if (call.body.beforeSeq === '2') return { success: true, data: { items: [message('21', '1', '最早的回复')], nextCursor: '1' } };
+    if (call.body.beforeSeq === '1') return { success: true, data: { items: [], nextCursor: null } };
+  });
+  await f.controller.show({ conversationId: '11' });
+  await f.controller.olderMessages();
+  assert.equal(f.controller.state.messageCursor, '1');
+  await f.controller.olderMessages();
+  assert.equal(f.controller.state.messageCursor, null);
+  f.controller.lastFullSyncAt = 0;
+  await f.controller.refresh();
+  assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21', '22']);
+  assert.equal(f.controller.state.messageCursor, null);
+  assert.equal(messageReads(f).filter(call => call.body.beforeSeq === '1').length, 2);
+  f.controller.dispose();
+});
+
+test('a full refresh includes an earlier page loaded while revalidation is in flight', async () => {
+  const f = fixture();
+  f.db.items = [message('23', '3', '近期回复')];
+  f.db.messageCursor = '3';
+  f.db.conversation.lastSeq = '3';
+  const requested = deferred(), olderResponse = deferred();
+  let refreshing = false;
+  const previousPage = { success: true, data: { items: [message('22', '2', '上一页回复')], nextCursor: '2' } };
+  f.intercept(async call => {
+    if (call.body.beforeSeq === '3') {
+      if (refreshing) { requested.resolve(); return olderResponse.promise; }
+      return previousPage;
+    }
+    if (call.body.beforeSeq === '2') return { success: true, data: { items: [message('21', '1', '更早的回复')], nextCursor: null } };
+  });
+  await f.controller.show({ conversationId: '11' });
+  await f.controller.olderMessages();
+  f.controller.lastFullSyncAt = 0;
+  refreshing = true;
+  const refresh = f.controller.refresh({ forceEntry: false, background: true });
+  await requested.promise;
+  await f.controller.olderMessages();
+  olderResponse.resolve(previousPage);
+  await refresh;
+  assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21', '22', '23']);
+  assert.equal(f.controller.state.messageCursor, null);
+  f.controller.dispose();
+});
+
+test('public history is removed from the cached view on network failure and restored only by a live read', async () => {
+  const f = fixture();
+  f.db.conversation.lastSeq = '2';
+  f.db.items = [message('21', '1', '客户原话'), { ...message('22', '2', '旧公开节选'), publicSourceBound: true }];
+  await f.controller.show({ conversationId: '11' });
+  f.controller.input('原草稿');
+  f.intercept(call => { if (call.url.endsWith('/messages')) throw { statusCode: 503 }; });
+  f.controller.hide(); await f.controller.show();
+  assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21']);
+  assert.equal(f.controller.state.draft, '原草稿');
+  assert.doesNotMatch(f.controller.state.error, /撤回/);
+  f.intercept(() => undefined);
+  await f.controller.refresh();
+  assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21', '22']);
+  assert.equal(f.controller.state.error, '');
+});
+
+test('visible public history rechecks older pages after a failed turn without losing the loaded history', async () => {
+  const f = fixture();
+  const original = { ...message('21', '1', '此前的公开节选'), publicSourceBound: true };
+  f.db.items = [message('22', '2', '较新的原话')];
+  f.db.messageCursor = '2';
+  f.db.conversation.lastSeq = '2';
+  f.db.conversation.latestRun = { id: '41', status: 'failed', retryable: true };
+  let older = original;
+  f.intercept(call => call.body.beforeSeq === '2' ? { success: true, data: { items: [older], nextCursor: null } } : undefined);
+  await f.controller.show({ conversationId: '11' });
+  await f.controller.olderMessages();
+  assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21', '22']);
+  older = { ...original, available: false, content: { blocks: [{ type: 'notice', fallbackText: '公开内容已撤回' }] } };
+  f.controller.lastFullSyncAt = Date.now() - 7100;
+  const timer = [...f.timers.values()].at(-1);
+  assert.ok(timer, 'loading a public history page keeps its sources under revalidation');
+  await timer();
+  assert.deepEqual(f.controller.state.messages.map(item => item.id), ['21', '22']);
+  assert.equal(f.controller.state.messages[0].available, false);
+  assert.match(f.controller.state.messages[0].blocks[0].text, /已撤回/);
+  assert.equal(f.controller.state.retryable, true);
+  f.controller.dispose();
+});
+
+test('a source rejection refreshes public answer text even if the server sequence is unchanged', async () => {
+  const f = fixture();
+  f.db.conversation.lastSeq = '1';
+  f.db.items = [{ ...message('21', '1', '旧公开答复'), publicSourceBound: true, citations: [f.db.citation] }];
+  await f.controller.show({ conversationId: '11' });
+  f.db.items[0] = { ...f.db.items[0], available: false, citations: [], content: { blocks: [{ type: 'notice', fallbackText: '已撤回' }] } };
+  f.db.citation = { id: '31', available: false };
+  await f.controller.openCitation('31');
+  assert.equal(f.controller.state.messages[0].available, false);
+  assert.equal(f.controller.state.citation, null);
+  assert.equal(messageReads(f).length, 2);
+  f.controller.dispose();
+});
+
+test('polling an active public reply refreshes an unchanged window when permission is revoked', async () => {
+  const f = fixture();
+  f.db.conversation.lastSeq = '1';
+  f.db.conversation.latestRun = { id: '41', status: 'running', nextPollMs: 1500, retryable: false };
+  f.db.items = [{ ...message('21', '1', '获权节选'), publicSourceBound: true }];
+  await f.controller.show({ conversationId: '11' });
+  f.db.items[0] = { ...f.db.items[0], available: false, content: { blocks: [{ type: 'notice', fallbackText: '你已无权查看' }] } };
+  f.controller.lastFullSyncAt = Date.now() - 7100;
+  await f.controller.poll();
+  assert.equal(f.controller.state.generating, true);
+  assert.equal(f.controller.state.messages[0].available, false);
+  assert.match(f.controller.state.messages[0].blocks[0].text, /已无权/);
+  assert.equal(messageReads(f).length, 2);
   f.controller.dispose();
 });
 

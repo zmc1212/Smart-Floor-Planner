@@ -390,14 +390,13 @@ test('service-code reads rotate active rows whose hash no longer matches the cur
     });
 
     const firstActivity = await repository.getStaffActivityCode(staffUser.id, staff.id);
-    assert.ok(firstActivity);
-    if (!firstActivity) return;
+    if (!firstActivity.ok) throw new Error('staff activity code unavailable: ' + firstActivity.code);
     await transaction
       .update(staffActivityCodes)
       .set({ tokenHash: `${runKey}-stale-activity` })
       .where(eq(staffActivityCodes.id, firstActivity.code.id));
     const repairedActivity = await repository.getStaffActivityCode(staffUser.id, staff.id);
-    assert.ok(repairedActivity);
+    if (!repairedActivity.ok) throw new Error('staff activity code unavailable: ' + repairedActivity.code);
     assert.equal(repairedActivity?.code.version, firstActivity.code.version + 1);
     assert.equal(
       repairedActivity?.token,

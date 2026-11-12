@@ -6,6 +6,17 @@ admin/*.ps1 text eol=crlf
 admin/drizzle/0085_assistant_professional_knowledge.sql text eol=lf
 admin/drizzle/0086_assistant_source_files.sql text eol=lf
 
+# The Admin-only build verifies the survey mirror against a byte-level manifest.
+admin/src/lib/survey-runtime/**/*.js text eol=lf
+admin/src/lib/survey-runtime/source-manifest.json text eol=lf
+admin/src/lib/surveyDimensionPlan.js text eol=lf
+admin/src/lib/surveyWallSolidPlan.js text eol=lf
+miniprogram/packages/surveying/utils/survey/**/*.js text eol=lf
+miniprogram/packages/surveying/utils/surveyCanvasRenderer.js text eol=lf
+miniprogram/packages/surveying/utils/surveyDimensionPlan.js text eol=lf
+miniprogram/packages/surveying/utils/surveyWallGraph.js text eol=lf
+miniprogram/packages/surveying/utils/surveyWallSolidPlan.js text eol=lf
+
 # Keep the edited report/source entries at their verified packaged byte sizes.
 miniprogram/packages/assistant/chat/chat-definition.js text eol=lf
 miniprogram/packages/assistant/chat/chat.wxml text eol=lf

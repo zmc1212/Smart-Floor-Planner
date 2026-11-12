@@ -32,6 +32,7 @@ export async function followupHttp(request: Request, path: string[]) {
     if (data instanceof Response) return data;
     return NextResponse.json({ success: true, data }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
+    if (!(error instanceof AssistantError)) console.error('[followup] unexpected dispatch failure', error);
     const e = error instanceof AssistantError ? error : new AssistantError('construction_report_unavailable', 503);
     return NextResponse.json({ success: false, error: e.code, code: e.code }, { status: e.status, headers: { 'Cache-Control': 'no-store' } });
   }

@@ -26,7 +26,10 @@ const base = 'http://127.0.0.1:3006/api/miniprogram/assistant';
 const project = path.join(root, 'miniprogram');
 const mp = wechatideNativeClient(project, output);
 const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
-const report: Row = { startedAt: new Date().toISOString(), checks: [], failures: [] };
+type Report = Row & { checks: Row[]; failures: Row[]; passed?: boolean; error?: string };
+type PageState = { route: string | null; loading: boolean; followupActive: boolean; followupBindings: string[];
+  followupReports: Array<{ reportId: string; kind: string; ready: boolean; readAt: unknown; title: string }> };
+const report: Report = { startedAt: new Date().toISOString(), checks: [], failures: [] };
 const save = () => fs.writeFileSync(path.join(output, 'report.json'), JSON.stringify(report, null, 2));
 const tenantOne = (q: ReturnType<typeof sql>) => withTenantTransaction(eid, tx => one(tx, q));
 const tenantRows = (q: ReturnType<typeof sql>) => withTenantTransaction(eid, tx => rows(tx, q));
@@ -49,7 +52,7 @@ async function api(token: string, route: string, init: { method?: string; body?:
   return data.data as Row;
 }
 const evaluate = async <T>(source: string, ...args: unknown[]): Promise<T> => (await mp.call('automation_evaluate', { project, fnSource: source, args })).result.result as T;
-const page = () => evaluate<Row>(`() => { const p = getCurrentPages().at(-1); if (!p) return { route: null }; const d = p.data;
+const page = () => evaluate<PageState>(`() => { const p = getCurrentPages().at(-1); if (!p) return { route: null }; const d = p.data;
   return { route: p.route, loading: !!d.loading, followupActive: !!d.followupActive,
     followupBindings: (d.followupBindings || []).map(b => String(b.bindingId)),
     followupReports: (d.followupReports || []).map(r => ({ reportId: String(r.reportId), kind: r.kind, ready: !!r.ready, readAt: r.readAt || null, title: r.cardTitle || r.title || '' })) }; }`);
@@ -100,7 +103,8 @@ async function main() {
     assert.equal(detail.available, true, 'Daily detail available');
     assert.ok(Array.isArray(detail.body) && detail.body.length > 0, 'Daily body composed');
     assert.ok(detail.readToken, 'Read token issued');
-    const progress = (detail.facts?.projects || []).flatMap((p: Row) => (p.publishedRecordItems || p.records || []).map((r: Row) => r.id));
+    const facts = detail.facts as { projects?: Array<{ records?: Array<{ id: string }>; publishedRecordItems?: Array<{ id: string }> }> } | undefined;
+    const progress = (facts?.projects || []).flatMap(p => (p.publishedRecordItems || p.records || []).map(r => r.id));
     await api(token, `/followups/${bindingId}/reports/${String(found!.report_id)}/acknowledge`, { entry, key: randomUUID(),
       body: { revision: Number(found!.latest_revision), readToken: String(detail.readToken) } });
     const reread = await api(token, `/followups/${bindingId}/reports/${String(found!.report_id)}?revision=${String(found!.latest_revision)}`, { entry });

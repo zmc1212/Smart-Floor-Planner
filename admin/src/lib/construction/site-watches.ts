@@ -83,7 +83,7 @@ export const siteWatchInterceptor = {
       || !!materialCommand(text) || hasMaterialShareReply(text, c) || !!siteWatchIntent(text) || !!(c.entry_snapshot as Row)?.siteWatchQuestion;
   },
   async apply(tx: PostgresTransaction, actor: ActorContext, c: Row, message: Row) {
-    return await applyDelegationCommand(tx, actor, c, message) || await applyMaterialCommand(tx, actor, c, message)
+    return await applyDelegationCommand(tx, actor, c, message) || !!await applyMaterialCommand(tx, actor, c, message)
       || await applyMaterialShareReply(tx, actor, c, message) || await applySiteWatch(tx, actor, c, message);
   },
 };

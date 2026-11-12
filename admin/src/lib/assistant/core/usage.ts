@@ -3,7 +3,7 @@ import { withTenantTransaction, type PostgresTransaction } from '@/db/transactio
 import { one, rows } from '@/db/repositories/assistant-repository';
 import { fail, id, type ActorContext } from '../contracts';
 import { idempotent } from './conversation';
-import { unresolvedProviderOutcome } from './usage-review';
+import { unresolvedProviderOutcome, observedTokenTotal } from './usage-review';
 import { assistantDailyLimitsEnabled } from './daily-limits';
 
 export function usageWindow(from?:string|null,to?:string|null) {
@@ -114,7 +114,7 @@ export class UsageService {
         if(['queued','running'].includes(String(q.run_status)) || await one(tx,sql`select id from app.assistant_jobs where enterprise_id=${eid} and run_id=${String(q.run_id)}
           and (lease_expires_at>now() or provider_started_at>now()-interval '180 seconds')`))fail('usage_call_in_flight');
         // Legacy adapters cannot report usage. A review requires external evidence for BOTH tokens and money.
-        const observed=await one(tx,sql`select sum(quantity)::text tokens from app.assistant_usage_records where enterprise_id=${eid} and run_id=${String(q.run_id)} and category='tokens' and measurement_kind='observed'`);
+        const observed=await one(tx,sql`select ${observedTokenTotal(sql`${eid}`,sql`${String(q.run_id)}`)}::text tokens`);
         // A mixed run's observed subtotal is a floor, not its total. External
         // evidence may confirm additional unknown usage, never subtract known
         // consumption. Fully observed runs still require an exact match.

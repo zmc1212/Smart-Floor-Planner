@@ -29,7 +29,7 @@ async function main() {
   const packet = [...messages].reverse().find(message => message.role === 'tool' && String(message.content).includes('"reportReference"'));
   const fromPacket = packet ? JSON.parse(String(packet.content)) as Row : null;
   const snapshot = (fromPacket?.reportReference ? fromPacket : tool?.reportReference ? tool : report?.snapshot) as unknown as BusinessSnapshot;
-  if (!snapshot?.reportReference) throw new Error('no report snapshot on this run');
+  if (!snapshot || !('reportReference' in snapshot) || !snapshot.reportReference) throw new Error('no report snapshot on this run');
   const resultKey = String((fromPacket?.resultKey ?? tool?.resultKey ?? report?.resultKey) || 'report:' + runId);
   console.log('RESULTKEY', resultKey);
   const sources = businessSynthesisSources(resultKey, snapshot);
@@ -51,7 +51,7 @@ async function main() {
     try { console.log('REPAIR estimate', JSON.stringify(estimateAgentRequest(projected, [tool], budget))); }
     catch (e) { console.log('REPAIR estimate FAIL', (e as Error).message); }
     try { const fitted = fitAgentContext(projected, [tool], budget);
-      console.log('REPAIR fit ok kept', fitted.length, 'of', projected.length); }
+      console.log('REPAIR fit ok kept', fitted.messages.length, 'of', projected.length); }
     catch (e) { console.log('REPAIR fit FAIL', (e as Error).message); }
   }
   const parsed = { answers: {} } as Row;

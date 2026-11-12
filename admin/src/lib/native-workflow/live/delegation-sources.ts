@@ -45,8 +45,13 @@ async function authorizedIssue(tx: PostgresTransaction, d: ReviewDelegation) {
     if (issue?.sourceAvailable && issue.status !== 'cancelled' && issue.materialVersion === material.version
       && (boundIssue || issue.text.includes(scope.subject))) matches.push(issue);
   }
-  if (matches.length !== 1) return { grant, issue: null, returned: null };
-  const issue = matches[0];
+  // An explicitly linked matter keeps its identity. For a new rectification
+  // follow-up, a matching onsite matter is the relevant source when the same
+  // owner has also opened a design-only review of the shared need.
+  const onsite = !boundIssue && scope.kind === 'rectification_review' ? matches.filter(issue => issue.sourceKind !== 'need') : [];
+  const eligible = onsite.length ? onsite : matches;
+  if (eligible.length !== 1) return { grant, issue: null, returned: null };
+  const issue = eligible[0];
   const returned = await one(tx, sql`select e.*,m.id::text as message_id from app.domain_event_outbox e
     left join app.assistant_messages m on m.enterprise_id=e.enterprise_id and m.conversation_id=${d.conversationId}
       and m.source_event_id=e.id and m.purpose='construction.result'

@@ -34,7 +34,7 @@ const layout = {
         { id: 'w6', startNodeId: 'n5', endNodeId: 'n6' },
         { id: 'w7', startNodeId: 'n6', endNodeId: 'n3' },
       ],
-      openings: [],
+      openings: [] as Array<{ id: string; wallId: string; type: string; modelCategory?: string; centerOffsetMm: number; widthMm: number }>,
       spaces: [
         { id: 'living', name: '客厅', wallIds: ['w1', 'w2', 'w3', 'w4'], closed: true },
         { id: 'bedroom', name: '卧室', wallIds: ['w5', 'w6', 'w7', 'w2'], closed: true },

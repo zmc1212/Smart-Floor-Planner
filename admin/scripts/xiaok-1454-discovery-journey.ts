@@ -23,7 +23,8 @@ assert.ok(['127.0.0.1', 'localhost'].includes(target.hostname) && target.port ==
 fs.mkdirSync(output, { recursive: true });
 const base = 'http://127.0.0.1:3006/api/miniprogram/assistant';
 const catalogBase = 'http://127.0.0.1:3006/api/public/construction/' + eid;
-const report: Row = { startedAt: new Date().toISOString(), enterpriseId: eid, scope: 'one customer journey: nearby public sites and style recommendations', checks: [], failures: [], accounting: {} };
+type Report = Row & { checks: Row[]; failures: Row[]; accounting: Row; drift?: string[]; error?: string; passed?: boolean };
+const report: Report = { startedAt: new Date().toISOString(), enterpriseId: eid, scope: 'one customer journey: nearby public sites and style recommendations', checks: [], failures: [], accounting: {} };
 const save = () => fs.writeFileSync(path.join(output, 'report.json'), JSON.stringify(report, null, 2));
 const read = <T>(fn: Parameters<typeof withTenantTransaction<T>>[1]) => withTenantTransaction(eid, fn);
 const tenantOne = (q: ReturnType<typeof sql>) => read(tx => one(tx, q));
@@ -42,10 +43,10 @@ function binding() {
 const before = binding();
 report.bindingBefore = createHash('sha256').update(JSON.stringify(before)).digest('hex');
 
-async function step(name: string, fn: () => Promise<unknown>) {
-  try { const data = await fn(); (report.checks as Row[]).push({ name, passed: true, data }); console.log(name + ': PASS'); return data; }
-  catch (e) { (report.checks as Row[]).push({ name, passed: false, error: (e as Error).message });
-    (report.failures as Row[]).push({ name, error: (e as Error).stack || (e as Error).message }); throw e; }
+async function step<T>(name: string, fn: () => Promise<T>): Promise<T> {
+  try { const data = await fn(); report.checks.push({ name, passed: true, data }); console.log(name + ': PASS'); return data; }
+  catch (e) { report.checks.push({ name, passed: false, error: (e as Error).message });
+    report.failures.push({ name, error: (e as Error).stack || (e as Error).message }); throw e; }
   finally { save(); }
 }
 async function waitFor<T>(label: string, fn: () => Promise<T | undefined | false>, timeoutMs: number, intervalMs = 2500) {

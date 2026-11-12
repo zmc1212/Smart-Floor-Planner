@@ -25,7 +25,12 @@ export function ragSources(quotes: unknown, configured: RagSource[]): RagSource[
     seen.add(source.nativeId); return source;
   });
 }
-export type RagCitationSource = Pick<RagSource, 'nativeId' | 'evidence'> & { sourceId?: string; quote?: string };
+/** Where a catalog entry came from. Only `current`/`recovered` sources were
+ * returned inside this run; `history` sources are conversation history that
+ * stays citable, but cannot satisfy this run's retrieval-citation rules. */
+export type RagCitationOrigin = 'history' | 'current' | 'recovered';
+export type RagCitationSource = Pick<RagSource, 'nativeId' | 'evidence'>
+  & { sourceId?: string; quote?: string; origin?: RagCitationOrigin };
 export type RagPart = { text: string } | { source: RagCitationSource };
 /** Citation chips/notices are UI projections, never assistant history. Native
  * originals retain their own CITE protocol so the model sees the actual reply. */
@@ -40,7 +45,12 @@ export function ragAnswerParts(text: string, sources: RagCitationSource[]): RagP
   for (const paragraph of text.match(/[^]+?(?:\n\n|$)/g) || []) {
     const selected: RagCitationSource[] = [];
     const prose = paragraph.replace(/\[([^\]]+)\]\(CITE\)/g, (_match, id: string) => {
-      const source = sources.find(s => s.nativeId === id);
+      // Whitespace inside the brackets is tokenizer noise, not a different
+      // reference: the retained repaired drafts emit `[ K2841](CITE)` for the
+      // issued K2841. The resolved id must still match an issued source
+      // character-for-character after trimming; anything else stays
+      // invalid_model_citation.
+      const source = sources.find(s => s.nativeId === id.trim());
       if (!source) fail('invalid_model_citation', 502);
       if (!selected.includes(source)) selected.push(source);
       return '';

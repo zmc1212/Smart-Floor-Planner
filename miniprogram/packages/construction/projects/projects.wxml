@@ -18,14 +18,16 @@
           <text class="helper">{{item.reason}}</text>
         </view>
         <text wx:if="{{!detail.progress.nodes.length}}" class="helper">{{detail.progress.text}}</text>
+        <view wx:if="{{detail.progress.gapTexts.length}}" class="gap-note"><text class="helper">资料缺口 · 不计为施工质量问题</text><text wx:for="{{detail.progress.gapTexts}}" wx:key="*this" class="helper">· {{item}}</text></view>
+        <text class="helper">颜色只来自有效计划版本与现场证据；无新记录不会自动判定为正常，单个房间完成也不代表整屋完成。</text>
       </view>
       <view wx:if="{{detail.issueSections.length}}" class="paper issue-paper">
-        <view class="section-heading"><text class="fabric">事项与整改</text><text class="helper">已确认待处理 {{detail.issueGroups.quality.open}} · 已修正 {{detail.issueGroups.quality.fixed}}</text></view>
+        <view class="section-heading"><text class="fabric">事项与整改 · {{detail.issueCount}}</text><text class="helper">已确认待处理 {{detail.issueGroups.quality.open}} · 已修正 {{detail.issueGroups.quality.fixed}}</text></view>
         <block wx:for="{{detail.issueSections}}" wx:key="key" wx:for-item="section">
           <text class="group-label">{{section.label}} · {{section.count}}</text>
           <view wx:for="{{section.items}}" wx:key="issueId" class="issue-row" data-id="{{item.issueId}}" bindtap="openIssue" aria-role="button" aria-label="{{item.roomName + '，' + item.classificationLabel}}">
             <view class="issue-head"><text class="label">{{item.roomName || '全屋'}} · {{item.classificationLabel}}</text><text class="helper">{{item.ownerText}}</text></view>
-            <text class="helper">事项{{item.issueId}}{{item.syncLabel ? ' · ' + item.syncLabel : ''}}</text>
+            <text class="helper">{{item.text || ('事项' + item.issueId)}}{{item.syncLabel ? ' · ' + item.syncLabel : ''}}</text>
             <view class="issue-tags"><text wx:if="{{item.designText}}" class="tag">{{item.designText}}</text><text wx:if="{{item.mineText}}" class="tag">{{item.mineText}}</text><text wx:if="{{!item.sourceAvailable}}" class="tag">原材料已变化</text></view>
           </view>
         </block>
@@ -43,7 +45,7 @@
         <view class="section-heading"><text class="fabric">有效施工要求</text><text class="helper">业主已确认的当前版本</text></view>
         <view wx:for="{{detail.approvedPlans}}" wx:key="id" class="issue-row" data-id="{{item.id}}" bindtap="openPlan" aria-role="button" aria-label="{{item.roomName + '，方案' + item.number}}">
           <view class="issue-head"><text class="label">{{item.roomName}} · 方案V{{item.number}}</text><text class="issue-status">{{item.statusLabel}}</text></view>
-          <text class="helper">{{item.title}}</text>
+          <text class="helper">{{item.title}}<text wx:if="{{item.costText && item.scheduleText}}"> · 费用{{item.costText}} / 工期{{item.scheduleText}}</text></text>
         </view>
         <text class="helper">旧版本不自动沿用；现场无法实施时先反馈设计师，不直接覆盖方案。</text>
       </view>

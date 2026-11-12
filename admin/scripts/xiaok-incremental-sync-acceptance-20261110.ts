@@ -77,17 +77,22 @@ const evaluate = async <T>(source: string, ...args: unknown[]): Promise<T> => {
   return r.result.result as T;
 };
 
-async function waitState(label: string, predicate: (state: Row) => boolean, timeoutMs: number, intervalMs = 500) {
+async function waitState(label: string, predicate: (state: Row) => boolean, timeoutMs: number, intervalMs = 500,
+  onSample?: (state: Row) => Promise<void>) {
   const started = Date.now();
   let last: Row | undefined;
   while (Date.now() - started < timeoutMs) {
     last = await evaluate<Row>(PAGE);
     if (predicate(last)) return last;
+    if (onSample) await onSample(last);
     await delay(intervalMs);
   }
   throw new Error(label + ' timed out: ' + JSON.stringify({ count: last && last.count, cursor: last && last.cursor,
     lastSeq: last && last.lastSeq, busy: last && last.busy, loading: last && last.loading, error: last && last.error,
-    controller: last && last.controller, life: last && (last.life as Row[]).slice(-10),
+    route: last && last.route, stack: last && last.stack, origin: last && last.origin, pageProbe: last && last.pageProbe,
+    controller: last && last.controller, followup: last && last.followup,
+    life: last && (last.life as Row[]).slice(-10),
+    navigation: last && (last.navigation as Row[]).slice(-10),
     requests: last && (last.requests as Row[]).slice(-8) }));
 }
 
@@ -106,6 +111,11 @@ const PAGE = `() => {
     mark: app.__syncProbe && app.__syncProbe.mark ? Number(app.__syncProbe.mark) : 0,
     stack: getCurrentPages().map(page => page.route), stackLength: getCurrentPages().length,
     pageProbe: !!(p && p.__syncSetter), origin: !!(p && p.__syncOrigin),
+    navigation: app.__syncNav ? app.__syncNav.calls : [],
+    followup: p && p.followupChatController && p.followupChatController.chat ? {
+      visible: !!p.followupChatController.visible, cid: p.followupChatController.cid || '', bid: p.followupChatController.bid || '',
+      epoch: p.followupChatController.chat.epoch, latestSeq: p.followupChatController.chat.latestSeq,
+      conversationId: p.followupChatController.chat.conversationId } : null,
     life: p && p.__lifeLog ? p.__lifeLog : [],
     controller: p && p.controller ? { visible: p.controller.visible, ready: p.controller.ready, busy: !!p.controller.state.busy,
       conversationId: p.controller.conversationId, epoch: p.controller.epoch, timer: !!p.controller.timer,
@@ -139,6 +149,21 @@ const RESET = `() => {
   if (p && p.__lifeLog) p.__lifeLog.length = 0;
   return true;
 }`;
+
+const RECONNECT = `() => { const p = getCurrentPages().at(-1); if (p && p.refresh) p.refresh(); return true; }`;
+
+/** The chat surfaces a failed background poll with its designed "重新连接"
+ * action and stops the timer. A long acceptance wait acts like the customer:
+ * press that action (twice at most) and keep observing the same contract. */
+function pollRescue() {
+  let attempts = 0;
+  return async (state: Row) => {
+    if (attempts >= 2 || !state.error || state.needsLogin || state.fatal) return;
+    attempts += 1;
+    report.reconnects = (Number(report.reconnects) || 0) + 1;
+    await evaluate(RECONNECT);
+  };
+}
 
 const INSTALL_PAGE = `() => {
   const p = getCurrentPages().at(-1);
@@ -174,13 +199,27 @@ const INSTALL_PAGE = `() => {
 
 
 const ASSISTANT = '/api/miniprogram/assistant';
-const isConversation = (r: Row, cid: string) => r.method === 'GET' && r.url.endsWith(ASSISTANT + '/conversations/' + cid);
-const isMessages = (r: Row, cid: string) => r.method === 'GET' && r.url.includes(ASSISTANT + '/conversations/' + cid + '/messages');
+type RequestLog = { method?: unknown; url?: unknown; afterSeq?: unknown; at?: unknown };
+const isConversation = (r: RequestLog, cid: string) => r.method === 'GET' && String(r.url).endsWith(ASSISTANT + '/conversations/' + cid);
+const isMessages = (r: RequestLog, cid: string) => r.method === 'GET' && String(r.url).includes(ASSISTANT + '/conversations/' + cid + '/messages');
 const measure = async () => {
   await evaluate(MEASURE);
   await delay(500);
   return (await evaluate<Row>(READ_MEASURE)) || { scrollTop: null, endTop: null };
 };
+
+/** The client reprojects the whole window every 60 s. When a step needs to
+ * observe the first delta attempt, let that periodic re-projection happen
+ * first so it cannot race the assertion. */
+async function ensureFreshFullWindow(label: string) {
+  const state = await evaluate<Row>(PAGE);
+  const last = Number((state.controller as Row | null)?.lastFullSyncAt || 0);
+  const age = Number(state.now) - last;
+  if (last && age <= 45000) return { age, waited: false };
+  await evaluate(RESET);
+  await waitState(label, s => ((s.requests as RequestLog[]) || []).some(r => isMessages(r, fixtureId) && r.afterSeq === null), 90000, 700, pollRescue());
+  return { age, waited: true };
+}
 
 let fixtureId = '';
 let sessionToken = '';
@@ -211,7 +250,7 @@ const conversationRow = async () => (await tenantOne(sql`select id,last_seq,(sel
   from app.assistant_conversations c where c.enterprise_id=${eid} and c.id=${Number(fixtureId)}`))!;
 
 async function cleanup() {
-  const result: Row = { steps: [] };
+  const result: Row & { steps: Row[] } = { steps: [] };
   const attempt = async (name: string, fn: () => Promise<unknown>) => {
     try { result.steps.push({ name, ok: true, data: await fn() }); }
     catch (e) { result.steps.push({ name, ok: false, error: (e as Error).message }); }
@@ -223,11 +262,12 @@ async function cleanup() {
       app.globalData.token = saved.token; app.globalData.bootstrap = saved.bootstrap; app.globalData.userInfo = saved.userInfo;
       app.hydrateStoredSession = saved.hydrate;
       if (saved.request) wx.request = saved.request;
+      if (saved.navigation) Object.keys(saved.navigation).forEach(name => { wx[name] = saved.navigation[name]; });
       if (saved.resume) wx.setStorageSync('assistant-active-conversation-v1', saved.resume);
       else wx.removeStorageSync('assistant-active-conversation-v1');
       if (saved.token) wx.setStorageSync('token', saved.token); else wx.removeStorageSync('token');
     } else wx.removeStorageSync('assistant-active-conversation-v1');
-    delete app.__syncProbe; delete app.__qaSyncSaved;
+    delete app.__syncProbe; delete app.__qaSyncSaved; delete app.__syncNav;
     return true;
   }`));
   await attempt('delete synthetic conversation', async () => {
@@ -298,11 +338,21 @@ async function main() {
 
     await step('customer session and request/setData probes installed', async () => {
       const version = Number((await platformOne(sql`select context_version from app.users where id=${customerId}`))!.context_version);
+      // Start from a clean stack so a previous round cannot leave a stale chat
+      // page (or a pending hydration) in front of this one.
+      await mp.reLaunch('/pages/index/index');
+      await delay(800);
       const probe = await evaluate<Row>(`(f) => {
         const app = getApp();
         app.__qaSyncSaved = { token: app.globalData.token, bootstrap: app.globalData.bootstrap, userInfo: app.globalData.userInfo,
-          hydrate: app.hydrateStoredSession, request: wx.request, resume: wx.getStorageSync('assistant-active-conversation-v1') };
+          hydrate: app.hydrateStoredSession, request: wx.request, resume: wx.getStorageSync('assistant-active-conversation-v1'),
+          navigation: {} };
         app.hydrateStoredSession = async () => {};
+        // A hydration promise left over from an earlier acceptance round can
+        // keep the chat page's onShow awaiting forever; the synthetic session
+        // below is authoritative for this run.
+        app.globalData.sessionHydrating = false;
+        app.globalData.sessionHydrationPromise = null;
         app.globalData.token = f.token; app.globalData.userInfo = { _id: f.customerId, role: 'user' };
         app.globalData.bootstrap = { current: { mode: 'customer', role: 'user', capabilities: ['customer.projects','customer.service','account'],
           context: { enterpriseId: f.enterpriseId } } };
@@ -321,14 +371,25 @@ async function main() {
         };
         wx.request = wrapped;
         log.installed = wx.request === wrapped;
-        return { installed: log.installed, token: !!app.globalData.token };
+        // Record every page-stack change so an unexpected navigation can be
+        // attributed to the API that performed it.
+        const nav = app.__syncNav = { calls: [] };
+        ['navigateTo', 'navigateBack', 'redirectTo', 'reLaunch', 'switchTab'].forEach(name => {
+          const fn = wx[name];
+          app.__qaSyncSaved.navigation[name] = fn;
+          wx[name] = function (options) {
+            nav.calls.push({ at: Date.now(), fn: name, url: String((options && options.url) || ''),
+              delta: options && options.delta, stack: getCurrentPages().map(page => page.route) });
+            return fn.apply(wx, arguments);
+          };
+        });
+        return { installed: log.installed, token: !!app.globalData.token, navigation: Object.keys(app.__qaSyncSaved.navigation).length };
       }`, { token: sessionToken, customerId, enterpriseId: eid });
       assert.equal(probe.installed, true, 'wx.request probe must wrap the runtime request');
       await mp.redirectTo('/packages/assistant/chat/chat?conversationId=' + fixtureId);
-      const ready = await waitFor<Row>('chat entry', async () => {
-        const now = await evaluate<Row>(PAGE);
+      const ready = await waitState('chat entry', (now: Row) => {
         if (now.needsLogin) throw new Error('Customer session rejected: ' + now.error);
-        return now.route === 'packages/assistant/chat/chat' && !now.loading && now.conversationId === fixtureId ? now : undefined;
+        return now.route === 'packages/assistant/chat/chat' && !now.loading && now.conversationId === fixtureId;
       }, 120000, 800);
       const pageProbe = await evaluate<Row>(INSTALL_PAGE);
       assert.equal(pageProbe.ok, true, 'Page setData probe must install on the chat page');
@@ -383,12 +444,16 @@ async function main() {
       const requests = (after.requests as Row[]).filter(r => Number(r.at) >= Number(after.mark));
       const conversationReads = requests.filter(r => isConversation(r, fixtureId));
       const messageReads = requests.filter(r => isMessages(r, fixtureId));
-      // The immediate silent re-sync lands within the first seconds; a later 7 s
-      // tick may also fall inside this observation window.
-      const early = conversationReads.filter(r => Number(r.at) - Number(after.mark) < 6000);
+      // The immediate silent re-sync lands within the first seconds of the
+      // returned page's onShow; a later 7 s tick may also fall inside a wider
+      // window. Anchor the window on onShow: the CLI's navigateBack latency
+      // must not be mistaken for a slow client.
+      const shownAt = Number(((after.life as Row[]).filter(entry => entry.fn === 'show'
+        && Number(entry.at) >= Number(after.mark)).at(-1) || {}).at || after.mark);
+      const early = conversationReads.filter(r => Number(r.at) >= shownAt && Number(r.at) - shownAt < 6000);
       const diagnostics = { stack: after.stack, pageProbe: after.pageProbe, loading: after.loading, fatal: after.fatal,
         error: after.error, count: after.count, scrollTarget: after.scrollTarget, patches: patches.length,
-        conversationReads: conversationReads.length, early: early.length, messageReads: messageReads.length, mark: after.mark,
+        conversationReads: conversationReads.length, early: early.length, messageReads: messageReads.length, mark: after.mark, shownAt,
         life: (after.life as Row[]).filter(entry => Number(entry.at) >= Number(after.mark)).slice(-24), controller: after.controller };
       assert.equal(patches.some(p => p.loadingTrue), false, 'Silent re-entry must never flash the full-screen loader ' + JSON.stringify(diagnostics));
       assert.equal(patches.some(p => p.wholeList || p.paths), false, 'Silent re-entry must not rewrite the message list ' + JSON.stringify(diagnostics));
@@ -413,22 +478,25 @@ async function main() {
       const atStart = await evaluate<Row>(PAGE);
       await delay(15500);
       const now = await evaluate<Row>(PAGE);
-      const requests = now.requests as Row[];
+      const requests = now.requests as RequestLog[];
       const conversationReads = requests.filter(r => isConversation(r, fixtureId));
       const messageReads = requests.filter(r => isMessages(r, fixtureId));
       const times = conversationReads.map(r => Number(r.at));
       const gaps = times.slice(1).map((at, index) => at - times[index]);
-      assert.equal(atStart.controller && atStart.controller.timer, true,
+      assert.equal(atStart.controller && (atStart.controller as Row).timer, true,
         'The poll timer must be armed while the chat is visible: ' + JSON.stringify(atStart.controller));
       assert.ok(conversationReads.length >= 2 && conversationReads.length <= 3,
         'A 15.5 s idle window holds two or three 7 s ticks, got ' + conversationReads.length + ' controller=' + JSON.stringify(now.controller));
       assert.equal(messageReads.length, 0, 'Idle polling must not read messages');
-      for (const gap of gaps) assert.ok(gap >= 6500 && gap <= 8500, 'Tick gap must be about 7 s, got ' + gap);
+      // A tick reschedules itself after the metadata read completes, so the
+      // observed gap is 7 s plus that request's latency, never a second request.
+      for (const gap of gaps) assert.ok(gap >= 6500 && gap <= 10500, 'Tick gap must be about 7 s, got ' + gap);
       save();
       return { windowMs: Date.now() - start, conversationReads: conversationReads.length, messageReads: messageReads.length, gaps };
     });
 
     await step('delta: two appended messages arrive as a path-level append', async () => {
+      await ensureFreshFullWindow('fresh window before delta');
       await evaluate(RESET);
       const first = await appendMessage({ seq: 36, author: 'user', text: '增量验收：客户新消息' });
       const second = await appendMessage({ seq: 37, author: 'assistant', text: '增量验收：小K新回复' });
@@ -503,11 +571,12 @@ async function main() {
     });
 
     await step('special message type: public consent falls back to a full read', async () => {
+      await ensureFreshFullWindow('fresh window before consent');
       await evaluate(RESET);
       const consent = await appendMessage({ seq: 839, author: 'system', purpose: 'construction.public.consent', event: 3998,
         text: '团队整理了一份公开预览，想请你核对。是否公开，由你决定。' });
       const now = await waitState('consent fallback', state => String(state.lastSeq) === '839'
-        && (state.ids as string[]).includes(String(consent.id)), 25000);
+        && (state.ids as string[]).includes(String(consent.id)), 25000, 500, pollRescue());
       const requests = (now.requests as Row[]).filter(r => isMessages(r, fixtureId));
       const deltas = requests.filter(r => r.afterSeq !== null);
       const full = requests.filter(r => r.afterSeq === null && r.limit === 30);
@@ -525,17 +594,19 @@ async function main() {
       await evaluate(RESET);
       const started = await evaluate<Row>(PAGE);
       const fullSyncAt = Number(started.now);
+      const baselineAt = Number((started.controller as Row | null)?.lastFullSyncAt || 0);
       const stale = await waitState('stale full sync', state => (state.requests as Row[])
-        .some(r => isMessages(r, fixtureId) && r.afterSeq === null), 80000, 1000);
+        .some(r => isMessages(r, fixtureId) && r.afterSeq === null), 80000, 1000, pollRescue());
       const full = (stale.requests as Row[]).filter(r => isMessages(r, fixtureId) && r.afterSeq === null);
-      const elapsed = Number(full[0].at) - fullSyncAt;
-      assert.ok(elapsed >= 59000, 'Stale fallback must wait for the 60 s window, got ' + elapsed + 'ms');
+      const elapsed = Number(full[0].at) - (baselineAt || fullSyncAt);
+      assert.ok(elapsed >= 59000, 'Stale fallback must wait for the 60 s window, got ' + elapsed + 'ms'
+        + ' baseline=' + baselineAt + ' stepStart=' + fullSyncAt + ' fullAt=' + full[0].at);
       const reads = (stale.requests as Row[]).filter(r => isMessages(r, fixtureId));
       assert.equal(reads.some(r => r.afterSeq !== null), false);
       const refreshed = stale as Row;
       assert.equal(refreshed.count, 30);
       assert.equal(String((refreshed.seqs as string[]).at(-1)), '839');
-      return { elapsedMs: elapsed, fullReads: full.length, count: refreshed.count };
+      return { elapsedMs: elapsed, baselineAt, stepStart: fullSyncAt, fullAt: full[0].at, fullReads: full.length, count: refreshed.count };
     });
 
     await step('delta resumes after a full sync', async () => {
@@ -554,15 +625,24 @@ async function main() {
       await evaluate(RESET);
       const created: Row[] = [];
       for (let seq = 841; seq <= 875; seq += 1) created.push(await appendMessage({ seq, author: seq % 2 ? 'user' : 'assistant', text: '突发验收消息 ' + seq }));
-      const now = await waitState('burst delta', state => (state.ids as string[]).includes(String(created.at(-1)!.id)), 30000);
+      const now = await waitState('burst delta', state => (state.ids as string[]).includes(String(created.at(-1)!.id)), 30000, 500, pollRescue());
       const requests = (now.requests as Row[]).filter(r => isMessages(r, fixtureId));
       const deltas = requests.filter(r => r.afterSeq !== null);
       assert.equal(requests.filter(r => r.afterSeq === null).length, 0, 'A drained delta must not need a full read');
-      assert.equal(deltas.length, 2, 'Thirty-five messages span two delta pages, got ' + deltas.length);
-      assert.deepEqual(deltas.map(r => String(r.afterSeq)), ['840', '870']);
+      // The 7 s poll can overlap the fixture insertion, so the server decides
+      // the page boundaries; each following page must continue from the last
+      // echoed cursor and keep moving forward.
+      assert.ok(deltas.length >= 2 && deltas.length <= 3, 'Thirty-five messages span two or three delta pages, got ' + deltas.length);
+      assert.equal(String(deltas[0].afterSeq), '840');
+      for (let index = 1; index < deltas.length; index += 1) {
+        assert.ok(Number(deltas[index].afterSeq) > Number(deltas[index - 1].afterSeq),
+          'Delta pages must advance: ' + JSON.stringify(deltas.map(r => String(r.afterSeq))));
+      }
       const ids = now.ids as string[];
-      assert.equal(ids.length, 65, 'Thirty rendered plus thirty-five appended');
-      assert.equal(new Set(ids).size, 65);
+      // The 60 s full window left 30 rendered (810..839) and the resumed delta
+      // added 840, so thirty-five more messages end at sixty-six.
+      assert.equal(ids.length, 66, 'Thirty-one rendered plus thirty-five appended');
+      assert.equal(new Set(ids).size, 66);
       for (const item of created) assert.ok(ids.includes(String(item.id)), 'Burst message missing: ' + item.seq);
       const seqs = (now.seqs as string[]).map(Number);
       for (let index = 1; index < seqs.length; index += 1) assert.ok(seqs[index] > seqs[index - 1], 'Ascending order broken at ' + index);
@@ -577,11 +657,13 @@ async function main() {
       const envelope = await response.json() as Row;
       const body = (envelope.data || {}) as Row;
       assert.equal(body.reset, true, 'A cursor beyond last_seq must return reset');
-      assert.equal((body.items || []).length, 0);
+      const items = body.items;
+      assert.ok(Array.isArray(items), 'items 必须是数组');
+      assert.equal(items.length, 0);
       assert.equal(String(body.latestSeq), '875');
       assert.equal(String(body.afterCursor), '900', 'Reset echoes the requested cursor');
       save();
-      return { status: response.status, reset: body.reset, items: (body.items || []).length, latestSeq: String(body.latestSeq), afterCursor: String(body.afterCursor) };
+      return { status: response.status, reset: body.reset, items: items.length, latestSeq: String(body.latestSeq), afterCursor: String(body.afterCursor) };
     });
 
     await step('retention shrink keeps the client on a full window', async () => {
@@ -589,7 +671,7 @@ async function main() {
       await tenantOne(sql`delete from app.assistant_messages where enterprise_id=${eid} and conversation_id=${Number(fixtureId)} and seq>845`);
       await tenantOne(sql`update app.assistant_conversations set last_seq=845 where enterprise_id=${eid} and id=${Number(fixtureId)}`);
       const now = await waitState('shrink fallback', state => state.count === 30
-        && String((state.seqs as string[]).at(-1)) === '845', 25000);
+        && String((state.seqs as string[]).at(-1)) === '845', 25000, 500, pollRescue());
       const requests = (now.requests as Row[]).filter(r => isMessages(r, fixtureId));
       assert.equal(requests.filter(r => r.afterSeq !== null).length, 0, 'A cursor ahead of last_seq must not be sent as a delta');
       assert.equal(requests.filter(r => r.afterSeq === null).length, 1);

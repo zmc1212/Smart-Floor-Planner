@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FastGPTNativeRag, ragAnswerParts, ragHistoryText, ragSources } from '../fastgpt/native-rag';
+import { FastGPTNativeRag, ragAnswerParts, ragHistoryText, ragSources, type RagCitationSource } from '../fastgpt/native-rag';
 import { fastGPTRagProtocol, type RagConfiguration, type RagSource } from '../fastgpt/rag-config';
 import { AssistantError } from '../contracts';
 import { AiProviderError } from '@/lib/ai/provider-types';
@@ -19,7 +19,9 @@ const request = (path: string, key: string, body: unknown) => new Request('http:
 
 test('stray malformed CITE tokens are removed instead of leaking into prose', () => {
   const answer = '限值相当于E0级[A](CITE)(B)(CITE)。';
-  const parts = ragAnswerParts(answer, [{ nativeId: 'A' }, { nativeId: 'B' }] as any);
+  const citation = (id: string): RagCitationSource => ({ nativeId: id,
+    evidence: { ref: { type: 'knowledge_chunk', id, version: '1' }, text: 'fixture', hash: 'fixture-' + id } });
+  const parts = ragAnswerParts(answer, [citation('A'), citation('B')]);
   assert.equal(parts.filter(p => 'text' in p).map(p => 'text' in p && p.text).join(''), '限值相当于E0级。');
   assert.deepEqual(parts.filter(p => 'source' in p).map(p => 'source' in p && p.source.nativeId), ['A']);
   assert.equal(parts.filter(p => 'text' in p).some(p => 'text' in p && p.text.includes('(CITE)')), false);

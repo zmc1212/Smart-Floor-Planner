@@ -21,7 +21,11 @@ const text = (c: unknown) => {
 };
 
 async function main() {
-  const data: Row[] = [];
+  type RunSummary = { runId: string; status: unknown; conversation: unknown; question: string; protocol: unknown; identity: unknown;
+    policyKeys: string[]; reportCoordination: unknown;
+    steps: Array<{ seq: unknown; kind: unknown; name: unknown; status: unknown; input: unknown }>;
+    answers: Array<{ id: unknown; at: unknown; text: string }> };
+  const data: RunSummary[] = [];
   for (const runId of ['2604', '2606', '2609']) {
     const run = await withTenantTransaction(eid, tx => one(tx, sql`select r.id,r.status,r.conversation_id,r.trigger_message_id,
       r.policy_snapshot,m.content trigger_content from app.assistant_runs r left join app.assistant_messages m
@@ -47,7 +51,7 @@ async function main() {
     console.log('== run ' + d.runId + ' ==');
     console.log(JSON.stringify({ status: d.status, conversation: d.conversation, protocol: d.protocol,
       reportCoordination: d.reportCoordination, question: d.question,
-      steps: d.steps.map((s: Row) => s.seq + ':' + s.kind + ':' + s.name), answer: d.answers[0]?.text?.slice(0, 220) }, null, 1));
+      steps: d.steps.map(s => s.seq + ':' + s.kind + ':' + s.name), answer: d.answers[0]?.text?.slice(0, 220) }, null, 1));
   }
 }
 main().finally(() => closePostgresPool());

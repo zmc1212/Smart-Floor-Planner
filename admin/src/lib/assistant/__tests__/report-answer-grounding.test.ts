@@ -7,7 +7,7 @@ import { businessSynthesisSources, focusedSynthesisMessages, parseSynthesis } fr
 import { reportFactText } from '../agent/report-context';
 import { sourceCitationCatalog, modelCitationCatalog } from '../agent/citation-catalog';
 import { boundReportAnswerGrounding, reportAnswerGroundingProtocol } from '../agent/report-source-scope';
-import { prepareReportAnswerReview, assertReportAnswerReview, reportAnswerValidationFailure, reportCitationFailure, reportCitationIds, reportCitationOnlySchemaFailure, reportNumericFailure, reportAbsentQuestionCompleteness } from '../agent/report-answer-review';
+import { prepareReportAnswerReview, assertReportAnswerReview, reportAnswerValidationFailure, reportCitationFailure, reportCitationIds, reportCitationOnlySchemaFailure, reportNumericFailure, reportAbsentQuestionCompleteness, reportAbsenceScopeFailure } from '../agent/report-answer-review';
 import { runRenovationAgent } from '../agent/runtime';
 import { reportAnswerFinalTool, reportQuestionCoverage } from '../agent/report-final';
 import { finalTool } from '../agent/worker';
@@ -104,12 +104,19 @@ test('per-original report scope survives model projection, aliases and the exist
   const before = JSON.stringify(messages), view = focusedSynthesisMessages(messages, 'current');
   const tool = view.find(m => m.role === 'tool')!;
   const projected = JSON.parse(tool.role === 'tool' ? tool.content : '{}');
-  assert.deepEqual(projected.synthesisSources.find((s: typeof record) => s.sourceId === record.sourceId).reportScope, record.reportScope);
+  const modelScope = projected.synthesisSources.find((s: typeof record) => s.sourceId === record.sourceId).reportScope;
+  assert.equal(modelScope.kind, 'record');
+  assert.deepEqual(modelScope.room, { status: 'unspecified' });
+  assert.equal(modelScope.itemId, undefined, 'internal record identity is not customer prose');
+  assert.equal(modelScope.sourceHash, undefined);
   const draft = prepareReportAnswerReview(raw, sources, { currentQuestion: question }, [current]);
   const data = draft.reviewMessages[1];
   const review = JSON.parse(data.role === 'user' && data.content[0].type === 'text' ? data.content[0].text : '{}');
   assert.equal(review.currentQuestion, question); assert.equal(review.protocol, reportAnswerGroundingProtocol);
-  assert.deepEqual(review.sources.find((s: typeof record) => s.sourceId === record.sourceId).reportScope.room, { status: 'unspecified' });
+  const reviewScope = review.sources.find((s: typeof record) => s.sourceId === record.sourceId).reportScope;
+  assert.deepEqual(reviewScope.room, { status: 'unspecified' });
+  assert.equal(reviewScope.itemId, record.reportScope?.itemId);
+  assert.equal(reviewScope.sourceHash, record.reportScope?.sourceHash);
   assert.equal(review.answers.Q1[0].citations[0].quote, sourceCitationCatalog(record)[0].quote);
   assert.equal(JSON.stringify(messages), before);
 });
@@ -163,6 +170,19 @@ test('a report with no published record is complete once the answer cites its pe
     { basis: 'evidence', text: '阶段标记为软装，书房窗边书桌插座位置待核对。', citations: [citation(stage), citation(pending)] }] };
   assert.deepEqual(reportAbsentQuestionCompleteness(scoped, coverage, covered), { Q1: true });
   assert.deepEqual(reportAbsentQuestionCompleteness(scoped, coverage, { Q1: [covered.Q1[0]] }), {});
+  // The same report can appear as the persisted receipt and the current
+  // projection with different sourceIds/citationIds (run3988). Citing the
+  // projected copy must satisfy the absence guard and the completeness check.
+  const projected = scoped.map(source => ({ ...source, sourceId: source.sourceId.replace('saved:1:0', 'report:1'),
+    text: source.text + '\n当前投影副本。' }));
+  const projectedPeriod = projected.find(source => source.reportScope?.kind === 'metadata')!;
+  const projectedStage = projected.find(source => source.reportScope?.kind === 'stage')!;
+  const projectedPending = projected.find(source => source.reportScope?.kind === 'published_pending')!;
+  const both = [...scoped, ...projected];
+  const projectedAnswer = { Q1: [{ basis: 'evidence', text: '本期报告没有记录最近完成的施工内容。', citations: [citation(projectedPeriod)] },
+    { basis: 'evidence', text: '阶段标记为软装，书房窗边书桌插座位置待核对。', citations: [citation(projectedStage), citation(projectedPending)] }] };
+  assert.deepEqual(reportAbsentQuestionCompleteness(both, coverage, projectedAnswer), { Q1: true });
+  assert.equal(reportAbsenceScopeFailure(JSON.stringify({ kind: 'report_answer', answers: projectedAnswer }), both, coverage), null);
 });
 
 test('the report reviewer rejects a demand for facts the report never had, and keeps its verdict bounded', () => {

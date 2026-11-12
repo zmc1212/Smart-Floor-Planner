@@ -55,7 +55,7 @@ export async function grantMaterial(tx: PostgresTransaction, actor: ActorContext
   const feedback = `已将「${room.project_name} · ${room.room_name}」本次${kind === 'need' ? '需求节选' : '点位图原件及说明'}共享给当前项目成员，资料${event.id}。本次内容替换该房间同类共享资料；其他私聊没有共享。${kind === 'drawing' ? '图纸仍待有权人员核对关联，不代表批准。' : ''}处理回复可由有权管理者明确回传本咨询。需要停止共享可说“撤回共享资料${event.id}”。`;
   await appendMessage(tx, actor, cid, { author: 'system', eventId: String(event.id), purpose: 'construction.material',
     content: { version: 1, blocks: [{ type: 'text', text: feedback }] } });
-  const issueId = collaborationEnabled(eid) && kind === 'need' ? await openNeedReviewFromGrant(tx, actor, c, pid, String(event.id)) : null;
+  const issueId = kind === 'need' ? await openNeedReviewFromGrant(tx, actor, c, pid, String(event.id)) : null;
   return { id: String(event.id), text: feedback, ...(issueId ? { issueId } : {}) };
 }
 
@@ -77,7 +77,7 @@ export async function applyMaterialCommand(tx: PostgresTransaction, actor: Actor
   const eid = actor.enterpriseId, uid = actor.principal.userId, cid = String(c.id);
   if (cmd.action === 'revoke') {
     await revokeMaterial(tx, actor, c, message, cmd.id);
-    return true;
+    return { revoked: true as const };
   } else {
     const scope = await rows(tx, sql`select p.id::text as project_id,r.id::text as room_id,r.name as room_name,p.name as project_name
       from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
@@ -102,8 +102,8 @@ export async function applyMaterialCommand(tx: PostgresTransaction, actor: Actor
       mediaId = previous ? String(previous.id) : null;
       if (!mediaId) fail('construction_material_image_required', 422);
     }
-    await grantMaterial(tx, actor, c, message, room as Parameters<typeof grantMaterial>[4], cmd.kind, cmd.text, mediaId);
-    return true;
+    const grant = await grantMaterial(tx, actor, c, message, room as Parameters<typeof grantMaterial>[4], cmd.kind, cmd.text, mediaId);
+    return { grantId: grant.id, kind: cmd.kind };
   }
 }
 

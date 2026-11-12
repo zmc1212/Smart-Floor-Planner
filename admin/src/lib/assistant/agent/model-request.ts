@@ -102,7 +102,8 @@ export function compileModelRequest(input: {
   if (excerptMode && input.sourceQuestionCoverage) excerptView.push({ role: 'system', content: [{ type: 'text', text: sourceQuestionCoverageInstructions }] });
   const wireView=input.wireProjection?input.wireProjection(excerptView):excerptView;
   const bounded = fitAgentContext(wireView, dispatchTools, { profile: input.profile, purpose, imageContextBudget: input.imageContextBudget,
-    reportFinalOutputTokens: input.reportFinalOutputTokens });
+    reportFinalOutputTokens: input.reportFinalOutputTokens,
+    ...(input.reportFinalOutputTokens ? { recentTurns: 1 } : {}) });
   return { messageScoped, adviceScoped, focused, dispatchTools, policyView, bounded,
     modelMessages: difyDialogue ? difyDialogueMessages(bounded.messages) : bounded.messages,
     homeSourceProjection: homeView === messages ? null : homeSourceViewProtocol,

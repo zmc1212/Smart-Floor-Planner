@@ -1,0 +1,69 @@
+<template name="approved-plan-card">
+  <view class="construction-paper approved-plan-paper">
+    <view class="approved-plan-page">
+      <view class="approved-plan-head">
+        <text class="approved-plan-title" user-select>{{card.title}}</text>
+        <view class="approved-plan-status">
+          <image src="/images/ai-studio-icons-v3/check-white.png" mode="aspectFit" aria-hidden="true"/>
+          <text>已同意</text>
+        </view>
+      </view>
+      <text class="approved-plan-version">V{{card.number}} 方案 · {{card.roomName}}</text>
+      <text class="approved-plan-copy" user-select>{{card.full ? card.difference : card.summary}}</text>
+      <text class="approved-plan-impact">{{card.costDeltaCents === 0 && card.scheduleDeltaDays === 0 ? '费用和工期无变化' : '费用变化 ' + card.costLabel + ' · 工期变化 ' + card.scheduleLabel}}</text>
+      <button wx:if="{{!card.full}}" class="approved-plan-action" data-id="{{card.id}}" data-action="details"
+        bindtap="planDecision" disabled="{{busy || pending || disabled}}">
+        <image class="approved-plan-icon" src="../assets/receipt-plan-map.png" mode="aspectFit" aria-hidden="true"/>
+        <view class="approved-plan-action-copy">
+          <text>{{busy ? '正在读取图纸…' : '查看这一版图纸'}}</text>
+          <image wx:if="{{!busy}}" src="../assets/chat-arrow-up-right.png" mode="aspectFit" aria-hidden="true"/>
+        </view>
+      </button>
+      <view wx:else class="approved-plan-drawing">
+        <image wx:if="{{paths[card.key]}}" src="{{paths[card.key]}}" mode="aspectFit"
+          data-id="{{card.id}}" bindtap="previewPlan" aria-label="预览这一版图纸"/>
+        <text wx:else class="construction-paper-note">正在读取这一版图纸…</text>
+      </view>
+    </view>
+  </view>
+</template>
+
+<template name="construction-closure-card">
+  <view class="construction-paper construction-closure-paper">
+    <text class="fabric-label construction-closure-tag">团队回执</text>
+    <text class="construction-closure-title" user-select>{{receipt.title}}</text>
+    <view class="construction-closure-state">
+      <view class="construction-closure-check">
+        <image src="/images/ai-studio-icons-v3/check-white.png" mode="aspectFit" aria-hidden="true"/>
+      </view>
+      <text>事项已关闭</text>
+    </view>
+    <view class="construction-closure-result">
+      <text class="construction-closure-label">整改结果</text>
+      <text class="construction-closure-excerpt" user-select>{{receipt.excerpt}}</text>
+    </view>
+    <text class="construction-closure-label">依据</text>
+    <view class="construction-closure-evidence">
+      <view wx:if="{{record && record.assets.length}}" class="construction-closure-photos">
+        <view wx:for="{{record.assets}}" wx:for-item="asset" wx:key="*this" class="construction-closure-photo-frame">
+          <button wx:if="{{paths[record.id + '_' + record.version + '_' + asset]}}" class="construction-closure-photo"
+            data-record="{{record.id}}" data-version="{{record.version}}" data-media="{{asset}}"
+            bindtap="previewSiteRecord" aria-label="查看现场照片 {{index + 1}}">
+            <image src="{{paths[record.id + '_' + record.version + '_' + asset]}}" mode="aspectFill"/>
+          </button>
+          <view wx:else class="construction-closure-photo-feedback">
+            <text>{{photoError || '正在读取现场照片…'}}</text>
+          </view>
+          <view wx:if="{{index === 0 && paths[record.id + '_' + record.version + '_' + asset]}}" class="photo-tape" aria-hidden="true"/>
+        </view>
+      </view>
+      <view class="construction-closure-references">
+        <text>V{{receipt.planNumber}} 方案 · 已同意</text>
+        <text>现场记录 · 版本 {{receipt.recordVersion}}</text>
+        <text wx:if="{{record && record.assets.length}}">现场照片 · {{record.assets.length}} 张</text>
+        <text wx:else class="construction-paper-note">本次仅回传结果节选，现场原件未向本咨询开放。</text>
+      </view>
+    </view>
+    <text class="construction-paper-note construction-closure-foot">验收、付款与结算另行确认。</text>
+  </view>
+</template>

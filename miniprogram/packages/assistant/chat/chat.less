@@ -104,12 +104,58 @@ button:active { opacity: .72; }
 .chat-page .construction-contact[disabled] { background: var(--action-disabled-bg, #a9d9b8); }
 .message-photo { display: block; width: 420rpx; max-width: 100%; border-radius: 18rpx; }
 .message-block + .message-block { margin-top: 12rpx; }
+.message-markdown {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  .markdown-part { display: block; max-width: 100%; min-width: 0; }
+  .markdown-part + .markdown-part { margin-top: .55em; }
+  .markdown-scroll { width: 100%; }
+  .markdown-scroll-content { display: inline-block; min-width: 100%; vertical-align: top; }
+  .md-p, .md-h1, .md-h2, .md-h3, .md-h4, .md-h5, .md-h6,
+  .md-ol, .md-ul, .md-blockquote, .md-pre, .md-table-scroll, .md-hr { margin: 0 0 .55em; }
+  .md-p:last-child, .md-h1:last-child, .md-h2:last-child, .md-h3:last-child,
+  .md-h4:last-child, .md-h5:last-child, .md-h6:last-child, .md-ol:last-child,
+  .md-ul:last-child, .md-blockquote:last-child, .md-pre:last-child,
+  .md-table-scroll:last-child, .md-hr:last-child { margin-bottom: 0; }
+  .md-h1, .md-h2, .md-h3, .md-h4, .md-h5, .md-h6 { font-weight: 700; line-height: 1.35; }
+  .md-h1 { font-size: 1.25em; }
+  .md-h2 { font-size: 1.18em; }
+  .md-h3 { font-size: 1.12em; }
+  .md-h4 { font-size: 1.06em; }
+  .md-h5, .md-h6 { font-size: 1em; }
+  .md-h6 { font-weight: 600; color: #53645c; }
+  .md-ol, .md-ul { padding-left: 1.4em; }
+  .md-li + .md-li { margin-top: .2em; }
+  .md-li > .md-ol, .md-li > .md-ul { margin-top: .2em; }
+  .md-blockquote { padding: .4em .65em; border-left: 3px solid #a6b39b; background: #edf0e5; color: #53645c; }
+  .md-code, .md-pre { font-family: monospace; background: #eeeee4; border-radius: 4px; }
+  .md-code { padding: 0 .2em; white-space: pre-wrap; }
+  .md-pre { padding: .55em .65em; white-space: pre-wrap; }
+  .md-pre .md-code { padding: 0; }
+  .markdown-scroll-code { background: #eeeee4; border-radius: 4px; }
+  .markdown-scroll-code .md-pre, .markdown-scroll-code .md-code {
+    background: transparent;
+    white-space: pre;
+    overflow-wrap: normal;
+    word-break: normal;
+  }
+  .md-hr { height: 0; border: 0; border-top: 1px solid #bac4af; }
+  .md-table-scroll { max-width: 100%; overflow-x: auto; }
+  .md-table { min-width: 100%; border-collapse: collapse; font-size: .92em; }
+  .markdown-scroll-table .md-table-scroll { max-width: none; overflow: visible; }
+  .markdown-scroll-table .md-table { width: max-content; }
+  .md-th, .md-td { min-width: 4.5em; max-width: 12em; padding: .32em .5em; border: 1px solid #d6dccd; vertical-align: top; text-align: left; }
+  .md-th { background: #edf0e5; font-weight: 700; }
+}
 .user-message { justify-content: flex-end; padding-left: 64rpx; }
 .user-message .message-main { max-width: 100%; }
 .user-message .bubble { color: #fff; background: #00b979; }
 .unavailable-bubble { color: #758379; background: #edf4ef; }
 .citations { display: flex; flex-wrap: wrap; gap: 10rpx; margin-top: 10rpx; }
 .chat-page .citation-chip { display: flex; align-items: center; gap: 8rpx; padding: 12rpx 16rpx; border-radius: 18rpx; background: #e7f6ec; font-size: 24rpx; max-width: 100%; text-align: left; min-height: 64rpx; box-sizing: border-box; }
+.chat-page .public-reference-chip { margin-top: 10rpx; }
 .citation-chip image { width: 28rpx; height: 28rpx; flex: none; }
 .citation-chip text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .citation-chip.unavailable { color: #7d8981; background: #eff2ef; }
@@ -186,6 +232,7 @@ button:active { opacity: .72; }
 
 /* Refresh calibrated notebook titles, atomic area units and one-line author styles. */
 @import './notebook.less'; /* Includes the shared designer recommendation cards. */
+@import './construction-receipts.less';
 @import './public-live.less';
 @import './followup.less';
 @import './conversation-list.less';

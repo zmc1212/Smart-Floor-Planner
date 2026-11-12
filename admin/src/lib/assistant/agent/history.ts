@@ -8,6 +8,7 @@ import { chineseTerms } from '../knowledge/chinese-lexical';
 import { readMemory } from './memory';
 import { availableNeedMemory, unavailableNeedMessageIds } from './memory-sources';
 import { constructionNoticeAvailable } from '@/lib/construction/customer';
+import { publicContextStatus, type PublicContextRef } from '@/lib/construction/public-projections';
 export { historySynthesisSources } from './history-sources';
 
 export const historyTool: ModelTool = { name: 'recall_history',
@@ -49,6 +50,22 @@ export function parseHistoryQuery(input: unknown): string {
   return query.trim();
 }
 
+/** Predicate for earlier turns (alias m). Admission records the exact
+ * selection; older native runs can prove it with their own dependency step. */
+export function publicHistoryScope(conversation: Row, selectionAvailable: boolean, author: 'user' | 'assistant' = 'user') {
+  const entry = conversation.entry_snapshot as Row;
+  const active = entry.activePublicSite as PublicContextRef | undefined;
+  if (!active && !(Array.isArray(entry.publicSiteContexts) && entry.publicSiteContexts.length)) return sql`true`;
+  if (active && !selectionAvailable) return sql`false`;
+  return sql`(select case when r.policy_snapshot ? 'publicSiteSelection'
+      then r.policy_snapshot->'publicSiteSelection' else s.input_summary->'current' end
+    from app.assistant_runs r left join app.assistant_run_steps s on s.enterprise_id=r.enterprise_id and s.run_id=r.id
+      and s.step_seq=1003 and s.kind='agent_public_context' and s.status='succeeded'
+    where r.enterprise_id=m.enterprise_id and r.conversation_id=m.conversation_id and r.purpose='reply'
+      and ${author === 'user' ? sql`r.trigger_message_id=m.id and r.retry_of_run_id is null` : sql`r.id=m.run_id`}
+    order by r.id limit 1)=${JSON.stringify(active ?? null)}::jsonb`;
+}
+
 /** Small literal candidate set, never a cross-consultation or project search.
  * Only original text by this consultation's customer is eligible. Generated
  * answers, staff messages, images and quoted knowledge never enter this path. */
@@ -61,8 +78,11 @@ export async function recallHistory(tx: PostgresTransaction, actor: ActorContext
   const available = await availableNeedMemory(tx, actor.enterpriseId, String(conversation.id), conversation.entry_snapshot);
   const currentIds = [...new Set(available.facts.map(f => f.sourceMessageId))];
   const recordedIds = [...new Set(readMemory(conversation.entry_snapshot).facts.map(f => f.sourceMessageId))];
+  const active = (conversation.entry_snapshot as Row).activePublicSite as PublicContextRef | undefined;
+  const status = active ? await publicContextStatus(tx, actor.enterpriseId, active) : null;
+  if (status?.available === false && status.reason === 'source_unreadable') fail('public_source_unreadable', 503);
   const scope = sql`m.enterprise_id=${actor.enterpriseId} and m.conversation_id=${String(conversation.id)} and m.user_id=${actor.principal.userId}
-      and m.author_kind='user' and m.seq<${beforeSeq} and (${score})>0
+      and m.author_kind='user' and m.seq<${beforeSeq} and (${score})>0 and ${publicHistoryScope(conversation, status?.available ?? true)}
       and not exists(select 1 from app.assistant_media a where a.enterprise_id=m.enterprise_id and a.conversation_id=m.conversation_id
         and m.client_message_id='media:' || a.request_key)`;
   // Repeated question wording must not crowd out its effective correction's

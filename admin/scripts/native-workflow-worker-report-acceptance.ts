@@ -1142,12 +1142,13 @@ async function customerReportState(session: ApiSession): Promise<CustomerReportS
 }
 
 /** Read-only status observation for the exact worker run. */
-async function readWorkerStatus(runId: string): Promise<Record<string, unknown>> {
+async function readWorkerStatus(runId: string) {
   const { readPeriodReportRunStatus } = await import('@/lib/native-workflow/live/period-report-status');
-  return await readPeriodReportRunStatus({
+  const status = await readPeriodReportRunStatus({
     runId,
     viewer: { enterpriseId: ENTERPRISE_ID, adminId: EXECUTOR_ADMIN_ID },
-  }) as unknown as Record<string, unknown>;
+  });
+  return { ...status };
 }
 
 /**

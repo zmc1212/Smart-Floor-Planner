@@ -59,7 +59,7 @@ test('floor plan DTO keeps a joined creator object with string ids', () => {
     layoutData: {},
     createIdempotencyKey: null,
     source: 'manual',
-    externalSource: null,
+    externalSource: {},
     status: 'completed',
     completedAt: now,
     previewAssetId: null,
@@ -97,7 +97,7 @@ test('AI conversation DTOs serialize PostgreSQL bigint identifiers as strings', 
     lastMessageAt: now,
     createdAt: now,
     updatedAt: now,
-  } as const;
+  };
 
   const summary = aiChatSessionSummaryToDto(record);
   const detail = aiChatSessionToDto(record);

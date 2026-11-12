@@ -325,8 +325,9 @@ async function main(): Promise<void> {
       evidence.cli = output;
       assert.equal(output.success, true, `CLI run did not complete: ${JSON.stringify(output.error)}`);
       assert.equal(output.status, 'completed');
-      assert.equal(output.binding.revision, Number(revision));
-      assert.equal(output.binding.digest, published!.digest);
+      const binding = output.binding as Row;
+      assert.equal(binding.revision, Number(revision));
+      assert.equal(binding.digest, published!.digest);
       const saveReceipt = output.saveReceipt as Row;
       const deliveryReceipt = output.deliveryReceipt as Row;
       assert.equal(saveReceipt.simulated, false);
@@ -445,6 +446,7 @@ async function main(): Promise<void> {
       const current = await session();
       const detail = await api(current.token, ['conversations', realConversationId]);
       assert.equal(detail.status, 200);
+      const conversation = detail.body.data as Row;
       const window = await readMessagesWithQuery(current.token, realConversationId, '?limit=100');
       assert.equal(window.status, 200);
       const items = (window.body.data as Row).items as Row[];
@@ -463,7 +465,7 @@ async function main(): Promise<void> {
       evidence.originalEntry = {
         enterprise: current.entry.enterprise,
         history: historyItems.map((item) => ({ id: item.id, title: item.title, purpose: item.purpose })),
-        conversation: { id: detail.body.data.id, lastSeq: detail.body.data.lastSeq },
+        conversation: { id: conversation.id, lastSeq: conversation.lastSeq },
         message: { id: message.id, seq: message.seq, constructionReminder: message.constructionReminder, text },
         items: items.length,
       };
@@ -511,10 +513,12 @@ async function main(): Promise<void> {
         '--run-id', secondRunId,
       ]);
       assert.equal(repeated.status, 'completed');
-      assert.equal(repeated.saveReceipt.reused, true);
-      assert.equal(String(repeated.saveReceipt.eventId), outboxEventId);
-      assert.equal(repeated.deliveryReceipt.status, 'delivered');
-      assert.equal(String(repeated.deliveryReceipt.messageId), messageId);
+      const saveReceipt = repeated.saveReceipt as Row;
+      const deliveryReceipt = repeated.deliveryReceipt as Row;
+      assert.equal(saveReceipt.reused, true);
+      assert.equal(String(saveReceipt.eventId), outboxEventId);
+      assert.equal(deliveryReceipt.status, 'delivered');
+      assert.equal(String(deliveryReceipt.messageId), messageId);
       const afterCount = await counter(pool, 'app.assistant_messages', `conversation_id=${CONVERSATION_ID} and purpose='construction.stage'`);
       assert.equal(afterCount, beforeCount);
       evidence.duplicate = {
@@ -526,7 +530,7 @@ async function main(): Promise<void> {
       };
       check('replaying the same business event does not add a message', true, {
         stageMessages: afterCount,
-        sameMessageId: String(repeated.deliveryReceipt.messageId) === messageId,
+        sameMessageId: String(deliveryReceipt.messageId) === messageId,
       });
     });
 

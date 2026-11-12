@@ -7,7 +7,7 @@ test('follow-up retrieval preserves customer intent without accepting external a
     { id: '2', text: '量房的时间还是之前说的那样吗？' }];
   assert.match(knowledgeQuery(messages), /量房大概要多久/);
   const context: AnythingLlmContext = { epoch: 2, sourceSeq: '2', version: 2, customerMessages: messages,
-    historyTruncated: false, requirements: { latest: null, confirmed: null }, knowledge: [] };
+    historyTruncated: false, requirements: { latest: null, confirmed: null, sourceSeq: '2', reviewMode: false, proposal: null }, knowledge: [] };
   const prompt = anythingLlmPrompt(context);
   assert.ok(!prompt.includes('90分钟'));
   assert.ok(prompt.includes('地暖先不做'));
@@ -25,7 +25,7 @@ test('follow-up retrieval preserves customer intent without accepting external a
 test('explicit handoff cannot finish as a prose-only success before the real service receipt', () => {
   const text = '我想直接跟设计师聊，帮我联系一下。';
   const context: AnythingLlmContext = {epoch:2,sourceSeq:'3',version:4,customerMessages:[{id:'3',text}],
-    historyTruncated:false,requirements:{latest:null,confirmed:null},knowledge:[]};
+    historyTruncated:false,requirements:{latest:null,confirmed:null,sourceSeq:'3',reviewMode:false,proposal:null},knowledge:[]};
   const policy = anythingLlmToolPolicy(context,false);
   assert.deepEqual(policy.tool_choice,{type:'function',function:{name:'sfp-renovation'}});
   assert.throws(()=>assertAnythingLlmAction(context,false,{}),/required_action_not_executed/);
@@ -37,7 +37,7 @@ test('explicit handoff cannot finish as a prose-only success before the real ser
 });
 
 test('a status question never authorizes a draft and required receipts cannot become prose-only answers', () => {
-  const base: AnythingLlmContext = {epoch:1,sourceSeq:'2',version:1,customerMessages:[],historyTruncated:false,requirements:{latest:null,confirmed:null},knowledge:[]};
+  const base: AnythingLlmContext = {epoch:1,sourceSeq:'2',version:1,customerMessages:[],historyTruncated:false,requirements:{latest:null,confirmed:null,sourceSeq:'2',reviewMode:false,proposal:null},knowledge:[]};
   const save = '帮我把这些记下来吧，我回头再确认。';
   assert.equal(draftQuoteAllowed(save,save),true);
   for (const text of ['你刚才真的保存了吗？','不要帮我保存','如果决定装修再帮我保存','朋友说帮我记下来','帮我保存了吗','之前说过帮我记录，现在不用了']) assert.equal(draftQuoteAllowed(text,text),false,text);

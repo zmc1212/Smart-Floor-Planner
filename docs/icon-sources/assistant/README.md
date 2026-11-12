@@ -51,6 +51,8 @@ Routes: `packages/assistant/chat/chat`, `packages/assistant/requirements/require
 - Existing brand logo stays at `miniprogram/images/home-ip-v1/brand-logo.png`.
 - Source-calibrated element dimensions and manual visual-QA status are in the bilingual phase-one contract and restoration ledgers.
 
+- Notebook approved plan v002 uses the installed Lucide Map outline with a tighter viewBox and the notebook ink color. `receipt-plan-map.svg` renders to `miniprogram/packages/assistant/assets/receipt-plan-map.png` (64×64, 487 bytes, alpha). The check and outgoing arrow reuse packaged icons. The paper, fabric and tape are native styling, and the closure photo comes from the authenticated site record.
+
 ## Lucide1.8.0 license
 
 ISC License

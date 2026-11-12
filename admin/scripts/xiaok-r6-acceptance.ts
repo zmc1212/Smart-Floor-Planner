@@ -511,6 +511,24 @@ async function business(f: Fixture, v1: Draft, originalCitation: string) {
     const repeated = await tick();
     assert.deepEqual([repeated.delivered, repeated.applied], [0, 0]);
   });
+  await check('业主在原咨询查看委托回执，撤销项目权限后隐藏并按当前来源恢复', async () => {
+    const request = await send(f, '查看委托');
+    assert.equal(request.runId, null);
+    const messages = async () => (await f.chat.messages(f.cid, undefined, 100)).items as Row[];
+    const saved = (await messages()).find(item => item.authorKind === 'system' && BigInt(String(item.id)) > BigInt(String(request.messageId)));
+    assert.ok(saved?.available);
+    assert.match(safeText(saved.content as MessageContent), /有权人员已复核并授权回传原事项结论/);
+    const status = async () => (await messages()).find(item => item.id === saved.id);
+    await f.change('update', { name: f.tag, status: 'active', customerAccess: false });
+    try {
+      const revoked = await status();
+      assert.equal(revoked?.available, false);
+      assert.doesNotMatch(JSON.stringify(revoked?.content), /水管根部处理/);
+    } finally {
+      await f.change('update', { name: f.tag, status: 'active', customerAccess: true });
+    }
+    assert.equal((await status())?.available, true);
+  });
   save('native-fixture', { cid: f.cid, ownerId: f.uid, projectId: f.pid, evidenceRecord, mediaId });
 }
 

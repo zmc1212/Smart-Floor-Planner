@@ -2,6 +2,16 @@ import { fail } from '@/lib/assistant/contracts';
 import type { OpeningConstraints } from '@/lib/assistant/fastgpt/agent-v2/openings';
 import type { PublicContent } from './public-contract';
 
+/** The native executor owns public.site.intro even when no FastGPT opening
+ * scene is registered. These defaults mirror the approved local opening copy:
+ * published fields only, <=140 characters, no links/citations/photo claims or
+ * business commitments. A registered scene may narrow the input fields or
+ * constraints, but it is not required to run the native entry. */
+export const defaultPublicIntroInput: readonly string[] = ['name', 'cityName', 'cityCode', 'district', 'stageName',
+  'excerpts', 'photoCount', 'designerName'];
+export const defaultPublicIntroConstraints: OpeningConstraints = { minChars: 8, maxChars: 140,
+  noUrl: true, noCitationMarkers: true, noPhotoClaims: true, noCommitments: true };
+
 /** Only registry-approved fields leave the server. The snapshot is data for a
  * model to describe, never an instruction and never a business authorization. */
 export function publicIntroFacts(content: PublicContent, input: readonly string[]) {

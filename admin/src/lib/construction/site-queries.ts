@@ -22,6 +22,8 @@ export function siteMessageIntent(raw: string, photoCount: number): 'report' | '
 export type SiteQuery = { roomId: string | null; roomName: string; resolution: 'resolved' | 'clarification' };
 export type SiteIssueQuery = SiteQuery & { issueId: string };
 export type SiteMaterialSnapshot = { query: SiteQuery; projectId: string; version: string; queriedAt: string; sources: Row[]; text: string };
+export type SiteScheduleSnapshot = { query: SiteQuery; projectId: string; version: number; color: string;
+  counts: Record<string, number>; text: string };
 const scopeClarification = '请说明本项目要查的具体房间，或说明查询全屋资料；暂不合并归属不明的材料。';
 
 export async function resolveSiteQuery(tx: PostgresTransaction, eid: string, pid: string, raw: string): Promise<SiteQuery> {
@@ -47,6 +49,35 @@ export async function resolveSiteIssueQuery(tx: PostgresTransaction, eid: string
   if (!issue || named.length > 1 || named.length === 1 && (String(named[0].id) !== issue.roomId || named[0].name !== issue.roomName))
     return { roomId: null, roomName: '', resolution: 'clarification', issueId };
   return { roomId: issue.roomId, roomName: issue.roomName, resolution: 'resolved', issueId };
+}
+
+/** A progress question is project-wide unless exactly one room is named. */
+export async function resolveScheduleQuery(tx: PostgresTransaction, eid: string, pid: string, raw: string): Promise<SiteQuery> {
+  const rooms = await rows(tx, sql`select id,name from app.construction_rooms where enterprise_id=${eid} and project_id=${pid} order by id for share`);
+  const found = rooms.filter(r => raw.includes(String(r.name)));
+  if (found.length === 1) return { roomId: String(found[0].id), roomName: String(found[0].name), resolution: 'resolved' };
+  if (found.length > 1) return { roomId: null, roomName: '', resolution: 'clarification' };
+  return { roomId: null, roomName: '', resolution: 'resolved' };
+}
+
+/** Read-only progress projection. The same valid plan version and onsite
+ * evidence drive every role; a question never infers a cause that is not stored. */
+export async function querySiteSchedule(tx: PostgresTransaction, eid: string, pid: string, query: SiteQuery): Promise<SiteScheduleSnapshot> {
+  const project = await one(tx, sql`select * from app.construction_projects where enterprise_id=${eid} and id=${pid} for share`);
+  if (!project) return { query, projectId: pid, version: 0, color: 'gray', counts: { green: 0, yellow: 0, red: 0, gray: 0 }, text: scopeClarification };
+  const schedule = await projectSchedule(tx, eid, project);
+  const nodes = query.roomId ? schedule.nodes.filter(node => node.roomId === query.roomId) : schedule.nodes;
+  const lines: string[] = [];
+  if (!schedule.available) lines.push(schedule.text);
+  else {
+    lines.push(`施工计划V${schedule.version}：${schedule.overall.label}（提前${schedule.counts.green} / 正常${schedule.counts.yellow} / 落后${schedule.counts.red} / 待核实${schedule.counts.gray}）。`);
+    if (query.resolution === 'clarification') lines.push('原话同时提到多个房间，暂不合并：请说明要查的具体房间，或说明查看整个项目。');
+    else if (!nodes.length) lines.push(query.roomId ? '该房间还没有有效的计划节点，不能据此判定正常或落后。' : '本项目还没有有效的计划节点。');
+    for (const node of nodes) lines.push(`${node.roomName ? node.roomName + ' · ' : ''}${node.stageName}：${node.label}。${node.reason}`);
+    if (schedule.gaps.length) lines.push('资料缺口（不计为施工质量问题）：' + schedule.gaps.map(gap => gap.label).join('；'));
+    lines.push('颜色来自最近有效计划版本和实际现场证据；没有新记录不会自动判定正常，单个房间完成不等于整个项目完成。若需说明落后原因，请核对现场记录与负责人处理原话，小K不编造原因。');
+  }
+  return { query, projectId: pid, version: schedule.version, color: schedule.overall.color, counts: schedule.counts, text: lines.join('\n') };
 }
 
 export async function querySiteIssues(tx: PostgresTransaction, eid: string, pid: string, query: SiteIssueQuery, issues: IssueView[], executionOnly = false) {
@@ -116,16 +147,6 @@ export async function querySiteMaterials(tx: PostgresTransaction, eid: string, p
   return { query, projectId: pid, version: fingerprint({ query, validRoom, sources }), sources, queriedAt: new Date().toISOString(), text: lines.join('\n') };
 }
 
-export async function querySiteSchedule(tx: PostgresTransaction, eid: string, pid: string, scope: SiteQuery) {
-  const project = await one(tx, sql`select * from app.construction_projects where enterprise_id=${eid} and id=${pid}`);
-  if (!project || scope.resolution !== 'resolved') return scopeClarification;
-  const schedule = await projectSchedule(tx, eid, project);
-  if (!scope.roomId) return schedule.text;
-  const nodes = schedule.nodes.filter(node => node.roomId === scope.roomId && node.roomName === scope.roomName);
-  return nodes.length ? [`施工计划V${schedule.version} · ${scope.roomName}`,
-    ...nodes.map(node => `${node.stageName} · ${node.label}。${node.reason}`)].join('\n') : `${scope.roomName} · 未排期`;
-}
-
 export async function appendSiteResponse(tx: PostgresTransaction, actor: ActorContext, cid: string, pid: string, sourceId: string,
   mediaIds: string[], intent: string, text: string, dependency: Row = {}) {
   const event = (await one(tx, sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
@@ -148,6 +169,9 @@ export async function siteResponse(tx: PostgresTransaction, eid: string, pid: st
   const snapshot = payload.query ? await querySiteMaterials(tx, eid, pid, payload.query as SiteQuery, { executionOnly }) : null;
   if (snapshot && snapshot.version !== payload.version)
     text = '关联资料已变化，原查询结果不再沿用。请重新查询当前资料。';
+  const schedule = payload.schedule ? await querySiteSchedule(tx, eid, pid, payload.schedule as SiteQuery) : null;
+  if (schedule && schedule.version !== payload.scheduleVersion)
+    text = '施工计划或现场记录已变化，原进度结论不再沿用。请重新查询当前进度。';
   const issue = payload.issueId ? issues.find(i => i.issueId === payload.issueId) : null;
   if (payload.issueId) text = issue ? executionOnly && issue.sourceKind === 'need'
     ? `事项${issue.issueId} · ${issue.roomName} · ${issue.classificationLabel}。` : issue.text : '原事项已不可用，请重新核对。';

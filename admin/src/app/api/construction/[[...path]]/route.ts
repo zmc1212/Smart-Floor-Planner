@@ -31,6 +31,7 @@ async function handle(request: NextRequest, context: Context) {
       if (p[0] === 'projects') {
         if (p.length === 1) action = read ? 'list' : request.method === 'POST' ? 'create' : '';
         if (p.length === 2) { action = read ? 'detail' : request.method === 'PATCH' ? 'update' : ''; ids = { projectId: p[1] }; }
+        if (p.length === 3 && p[2] === 'schedule') { action = read ? 'schedule' : request.method === 'POST' ? 'saveSchedule' : ''; ids = { projectId: p[1] }; }
         if (p.length === 3 && request.method === 'POST' && ['member', 'room', 'progress', 'contact'].includes(p[2])) { action = p[2]; ids = { projectId: p[1] }; }
       }
       if (!action) fail('construction_not_found', 404);

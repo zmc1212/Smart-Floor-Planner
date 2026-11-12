@@ -41,10 +41,34 @@ export function fastGPTAgentV2Presentation(enterpriseId: string): AgentV2Present
     return { welcome: bound.configuration.welcome ?? null, presets: bound.configuration.presets ?? [] };
   } catch { return; }
 }
-export function fastGPTAgentV2Configuration(enterpriseId: string): { configuration: AgentV2Configuration; binding: string } | undefined {
+/** One deployment file may bind several enterprises. The existing single-object
+ * form stays valid, and every enterprise keeps its own runtime switch. */
+export function parseAgentV2Configurations(value: unknown): AgentV2Configuration[] {
+  const list = value === undefined ? [] : Array.isArray(value) ? value : [value];
+  if (list.length > 50) fail('context_changed');
+  const configurations = list.map(parseAgentV2Configuration);
+  if (new Set(configurations.map(configuration => configuration.enterpriseId)).size !== configurations.length) fail('context_changed');
+  return configurations;
+}
+/** Bind only the enterprise's own configuration: disabling another enterprise
+ * in the same file must not invalidate this enterprise's queued runs. */
+const bindingOf = (configuration: AgentV2Configuration) =>
+  createHash('sha256').update(JSON.stringify(configuration)).digest('hex');
+export function fastGPTAgentV2Configurations(): Array<{ configuration: AgentV2Configuration; binding: string }> {
   const file = process.env.XIAOK_FASTGPT_WORKFLOWS_FILE;
-  if (!file) return;
-  const bytes = fs.readFileSync(file), configuration = parseAgentV2Configuration(JSON.parse(bytes.toString('utf8')).agentV2);
-  if (configuration.enterpriseId !== enterpriseId || configuration.runtime === 'langgraph-v1') return;
-  return { configuration, binding: createHash('sha256').update(bytes).digest('hex') };
+  if (!file) return [];
+  return parseAgentV2Configurations(JSON.parse(fs.readFileSync(file).toString('utf8')).agentV2)
+    .map(configuration => ({ configuration, binding: bindingOf(configuration) }));
+}
+export function fastGPTAgentV2Configuration(enterpriseId: string): { configuration: AgentV2Configuration; binding: string } | undefined {
+  const bound = fastGPTAgentV2Configurations().find(item => item.configuration.enterpriseId === enterpriseId);
+  if (!bound || bound.configuration.runtime === 'langgraph-v1') return;
+  return bound;
+}
+/** The per-enterprise executor switch. `runtime: 'langgraph-v1'` keeps the
+ * FastGPT app, tool set and presentation copy intact but routes new reply runs
+ * to the XiaoK native executor; `fastgpt-agent-v2` keeps the bridge selection. */
+export function nativeAgentRuntimeBinding(enterpriseId: string): { configuration: AgentV2Configuration; binding: string } | undefined {
+  const bound = fastGPTAgentV2Configurations().find(item => item.configuration.enterpriseId === enterpriseId);
+  return bound && bound.configuration.runtime === 'langgraph-v1' ? bound : undefined;
 }

@@ -10,7 +10,9 @@ import { appendDelegationEvent } from './delegation-store';
 import { controlOutcome, delegationActor, reviewDelegationFromRow, reviewDelegationOrigin,
   DelegationService, linkReviewDelegationEvent, saveReviewDelegation } from './delegation-review-store';
 
-export function reviewDelegationCommand(text: string): { action: DelegationControl; target: string } | null {
+type ReviewCommand = { action: DelegationControl; target: string };
+
+export function reviewDelegationCommand(text: string): ReviewCommand | null {
   const m = /^(?:请|帮我|麻烦你)?\s*(查看|看看|暂停|先暂停|继续|恢复|取消)(?:一下)?\s*(?:(?:当前|这次|这个|这项|我的)?(?:委托|跟进)(?:[：:]\s*(.{1,90}))?|(.{1,70})的跟进)[。！!\s]*$/u.exec(text.trim());
   if (!m) return null;
   const action = { 查看: 'status', 看看: 'status', 暂停: 'pause', 先暂停: 'pause', 继续: 'resume', 恢复: 'resume', 取消: 'cancel' } as const;
@@ -19,6 +21,17 @@ export function reviewDelegationCommand(text: string): { action: DelegationContr
 
 export function delegationSummary(d: ReviewDelegation) {
   return [d.title, d.nextAction].join('：');
+}
+
+function reviewCommandCandidates(command: ReviewCommand, all: ReviewDelegation[]) {
+  if (command.target) return all.filter(item => (item.title + item.scope.roomName + item.scope.subject).includes(command.target));
+  return command.action === 'status' ? all : all.filter(item => !['cancelled','completed'].includes(item.status));
+}
+
+async function reviewCommandFeedback(tx: PostgresTransaction, command: ReviewCommand, candidates: ReviewDelegation[]) {
+  const summaries = (await currentDelegationViews(tx, candidates)).map(delegationSummary);
+  if (command.action === 'status') return summaries.join('\n') || '这次项目咨询没有可查看的委托。';
+  return summaries.length ? '请说明要操作哪一项委托。\n' + summaries.join('\n') : '当前项目没有匹配的委托。';
 }
 
 export async function delegationReceipt(tx: PostgresTransaction, d: ReviewDelegation, key: string, text: string, conversationId = d.conversationId) {
@@ -47,18 +60,9 @@ export async function applyReviewDelegationCommand(tx: PostgresTransaction, acto
     return true;
   }
   const service = new DelegationService(tx, scope);
-  const all = await service.list();
-  const selected = command.target ? all.filter(item => (item.title + item.scope.roomName + item.scope.subject).includes(command.target))
-    : all.filter(item => !['cancelled','completed'].includes(item.status));
-  if (command.action === 'status') {
-    const matches = command.target ? selected : all;
-    const summaries = (await currentDelegationViews(tx, matches)).map(delegationSummary);
-    await commandReceipt(tx, actor, c, message, summaries.length ? summaries.join('\n') : '这次项目咨询没有可查看的委托。');
-    return true;
-  }
-  if (selected.length !== 1) {
-    await commandReceipt(tx, actor, c, message, selected.length
-      ? '请说明要操作哪一项委托。\n' + selected.map(delegationSummary).join('\n') : '当前项目没有匹配的委托。');
+  const selected = reviewCommandCandidates(command, await service.list());
+  if (command.action === 'status' || selected.length !== 1) {
+    await commandReceipt(tx, actor, c, message, await reviewCommandFeedback(tx, command, selected));
     return true;
   }
   const d = await service.find(selected[0].id, true);
@@ -94,13 +98,26 @@ export async function recordDelegationOwnerInput(tx: PostgresTransaction, actor:
 export async function reviewDelegationNoticeAvailable(tx: PostgresTransaction, actor: ActorContext, c: Row, messageId: string) {
   const scope = await privateMemoryScope(tx, actor, c);
   if (!scope) return false;
-  const row = await one(tx, sql`select e.payload from app.assistant_messages m join app.domain_event_outbox e
+  const row = await one(tx, sql`select e.payload,e.aggregate_id,m.content from app.assistant_messages m join app.domain_event_outbox e
     on e.enterprise_id=m.enterprise_id and e.id=m.source_event_id
     where m.enterprise_id=${scope.enterpriseId} and m.conversation_id=${scope.conversationId} and m.id=${messageId}
       and e.type=${delegationNotice} and e.payload->>'ownerId'=${scope.ownerId}`);
   if (!row) return false;
   const p = row.payload as Row;
-  if (!p.delegationId) return true;
+  if (!p.delegationId) {
+    // Status and disambiguation receipts predate a per-delegation source key.
+    // Recheck the original command and its current authorized answer on read.
+    const originalId = /^command:([1-9]\d*)$/.exec(String(row.aggregate_id))?.[1];
+    if (!originalId || p.conversationId !== scope.conversationId) return false;
+    const original = await one(tx, sql`select content from app.assistant_messages where enterprise_id=${scope.enterpriseId}
+      and conversation_id=${scope.conversationId} and id=${originalId} and author_kind='user' and user_id=${scope.ownerId}`);
+    const command = original && reviewDelegationCommand(safeText(original.content as MessageContent));
+    if (!command) return false;
+    const candidates = reviewCommandCandidates(command, await new DelegationService(tx, scope).list());
+    if (command.action !== 'status' && candidates.length === 1) return false;
+    const feedback = await reviewCommandFeedback(tx, command, candidates);
+    return safeText(row.content as MessageContent) === feedback;
+  }
   if (!scope.projectId || scope.projectId !== p.projectId) return false;
   const found = await one(tx, sql`select * from app.native_workflow_delegations where enterprise_id=${scope.enterpriseId}
     and owner_id=${scope.ownerId} and project_id=${scope.projectId} and id=${String(p.delegationId)}`);

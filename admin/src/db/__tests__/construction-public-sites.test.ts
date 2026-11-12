@@ -25,7 +25,7 @@ import { deleteConstructionData } from '@/db/repositories/construction-cleanup';
 import { deleteAssistantData } from '@/db/repositories/assistant-cleanup';
 import { POST as adminPost, GET as adminGet } from '@/app/api/construction/[[...path]]/route';
 import type { ActorContext } from '@/lib/assistant/contracts';
-import { claimJob, failRun } from '@/lib/assistant/infrastructure/job-queue';
+import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
 import { processAnswer } from '@/lib/assistant/infrastructure/answer-worker';
 import { processAgentAnswer } from '@/lib/assistant/agent/worker';
 import { closeFastGPTWorkflows } from '@/lib/assistant/fastgpt/runtime';
@@ -111,7 +111,7 @@ test('originals stay private; tenant/visitor isolation and independent masked im
   await assert.rejects(withTenantTransaction(eids[0], tx => tx.execute(sql`update app.construction_public_versions set content='{}' where enterprise_id=${eids[0]} and id=${String(state.versionId)}`)));
 });
 test('offline outbox/reentry deduplicate a version-bound owner card and deny approval before full preview', async () => {
-  state = await act('submit'); assert.equal(await deliverPublicConsents(), 1); assert.equal(await deliverPublicConsents(), 0);
+  state = await act('submit'); assert.equal(await deliverPublicConsents(eids[0]), 1); assert.equal(await deliverPublicConsents(eids[0]), 0);
   const cards = (await chat.messages(cid)).items.filter(m => m.publicConsent); assert.equal(cards.length, 1); assert.equal((cards[0].publicConsent as Row).versionId, state.versionId);
   await assert.rejects(new PublicCustomerService(visitor, visitorCid).consent(String(state.id), String(state.versionId)));
   await assert.rejects(new PublicCustomerService(customer, visitorCid).consent(String(state.id), String(state.versionId)));
@@ -152,7 +152,7 @@ test('authorized device region finds real published nearby sites without any spo
 
 test('durable Agent uses only the current public copy, persists source chips and never acquires publication tools',async()=>{
   const service=new PublicCustomerService(visitor,visitorCid);await service.context(String(state.id),{versionId:state.versionId},randomUUID());
-  const sent=await new ConversationService(visitor).send(visitorCid,randomUUID(),{version:1,blocks:[{type:'text',text:'围观这个工地，底盒是已经固定了吗？'}]});const lease=await claimJob();assert.equal(lease?.runId,sent.runId);
+  const sent=await new ConversationService(visitor).send(visitorCid,randomUUID(),{version:1,blocks:[{type:'text',text:'围观这个工地，底盒是已经固定了吗？'}]});const lease=await claimJob({ enterpriseId: eids[0], runId: String(sent.runId) });assert.equal(lease?.runId,sent.runId);
   await processAgentAnswer(lease!,live?{}:{model:async(messages,tools)=>{
     const prompt=JSON.stringify(messages);assert.match(prompt,/底盒未固定/);assert.doesNotMatch(prompt,/13980001234|私有业主姓名|私有业主原项目名/);
     assert.ok(!tools.some(t=>/publish|consent|public_material/.test(t.name)));
@@ -217,7 +217,11 @@ test('revoked public sources cannot be recovered through old preview or approval
   result = await decisions.decide(siteId, 'preview', previewInput, previewKey);
   const approveInput = { versionId, expectedRevision: result.revision }, approveKey = randomUUID();
   result = await decisions.decide(siteId, 'approve', approveInput, approveKey);
+  const publishInput = { versionId, expectedRevision: result.revision }, publishKey = randomUUID();
+  result = await materials.mutate(projectId, 'publish', publishInput, publishKey);
+  assert.deepEqual(await materials.mutate(projectId, 'publish', publishInput, publishKey), result);
   await shared.mutate(projectId, recordId, 'withdraw', { expectedVersion: record.version, reason: '测试来源撤回' }, randomUUID());
+  await assert.rejects(materials.mutate(projectId, 'publish', publishInput, publishKey), /public_source_unavailable/);
   assert.equal((await decisions.consent(siteId, versionId)).available, false);
   const replays = await Promise.allSettled([
     decisions.decide(siteId, 'preview', previewInput, previewKey),
@@ -265,6 +269,7 @@ test('a visited site opens one real intro run and a public credit must be an eli
   assert.equal(runs[0].author_kind, 'system');
   const fabricated = await withTenantTransaction(eids[0], tx => one(tx, sql`select count(*) n from app.assistant_messages where enterprise_id=${eids[0]} and conversation_id=${introCid} and author_kind='user'`));
   assert.equal(Number(fabricated!.n), 0);
+  await new ConversationService(visitor).run(String(runs[0].id), 'cancel', randomUUID());
 });
 test('a registered opening scene routes the intro run through Agent V2 and delivers the opening message', async () => {
   const projectId = String((await owner.execute('create', { leadId: lid, name: '端到端开场 · 泥木', managerId: aids[0], rooms: [] }, randomUUID())).id);
@@ -318,24 +323,66 @@ test('a registered opening scene routes the intro run through Agent V2 and deliv
       return;
     }
 
-    // Older queued intro runs (other conversations) are retired, never mixed
-    // into the opening this test is asserting.
-    let lease = await claimJob();
-    while (lease && lease.runId !== String(run.id)) { await failRun(lease, 'context_changed', true); lease = await claimJob(); }
+    const lease = await claimJob({ enterpriseId: eids[0], runId: String(run.id) });
     assert.equal(lease?.runId, String(run.id));
     const opening = '这是城西一套正在做泥木阶段的公开工地，能看到当前阶段和已公开的服务记录。想了解这个阶段的施工，或想认识设计师，都可以直接问我。';
-    let request: Row | undefined;
-    globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
-      request = JSON.parse(String(init?.body)) as Row;
+    const requests: Row[] = [];
+    globalThis.fetch = (async (url: unknown, init?: RequestInit) => {
+      if (String(url).endsWith('/api/v1/chat/completions')) requests.push(JSON.parse(String(init?.body)) as Row);
       return Response.json({ choices: [{ message: { content: opening } }],
         responseData: [{ moduleType: 'agent', inputTokens: 5, outputTokens: 6 }] });
     }) as typeof fetch;
     await processAnswer(lease!);
     const finished = await new ConversationService(visitor).run(String(run.id));
     assert.equal(finished.status, 'succeeded', JSON.stringify(finished));
-    assert.equal(request?.appId, appId);
+    assert.ok(requests.some(request => request.appId === appId));
     const messages = (await new ConversationService(visitor).messages(introCid)).items as Row[];
     assert.ok(messages.some(m => m.authorKind === 'assistant' && JSON.stringify(m).includes(opening)));
+
+    const chat = new ConversationService(visitor);
+    const agent = await withTenantTransaction(eids[0], async tx => {
+      const settings = (await one(tx, sql`select agent_config from app.assistant_enterprise_settings where enterprise_id=${eids[0]} for update`))!;
+      await tx.execute(sql`update app.assistant_enterprise_settings set agent_config=jsonb_set(agent_config,'{enterpriseKnowledgeEnabled}','true')
+        where enterprise_id=${eids[0]}`);
+      return settings.agent_config;
+    });
+    try {
+      const answer = '公开记录显示柜体已放样，可以接着了解接下来的施工。';
+      let withdrawDuringReply = false;
+      globalThis.fetch = (async (url: unknown, init?: RequestInit) => {
+        assert.match(String(url), /\/api\/v1\/chat\/completions$/);
+        const wire = JSON.parse(String(init?.body)) as Row;
+        const context = (wire.messages as Row[]).find(message => message.role === 'system');
+        assert.match(String(context?.content), /柜体已放样/);
+        assert.doesNotMatch(JSON.stringify(wire.messages), /私有业主姓名|13980001234/);
+        if (withdrawDuringReply) {
+          const publication = await materials.read(projectId);
+          await materials.mutate(projectId, 'withdraw', { versionId, expectedRevision: publication.revision, reason: '隔离验收撤回' }, randomUUID());
+        }
+        return Response.json({ choices: [{ message: { content: answer } }],
+          responseData: [{ moduleType: 'agent', inputTokens: 5, outputTokens: 6 }] });
+      }) as typeof fetch;
+      const send = async (text: string) => {
+        const sent = await chat.send(introCid, randomUUID(), { version: 1, blocks: [{ type: 'text', text }] });
+        const job = await claimJob({ enterpriseId: eids[0], runId: String(sent.runId) });
+        assert.ok(job);
+        await processAnswer(job);
+        return chat.run(String(sent.runId));
+      };
+      const reply = await send('柜体目前进展到哪一步了？');
+      assert.equal(reply.status, 'succeeded', JSON.stringify(reply));
+      const readReply = async () => (await chat.messages(introCid)).items.find(message => message.id === reply.outputMessageId)!;
+      assert.deepEqual((await readReply()).publicReferences?.map(ref => ref.versionId), [versionId]);
+      withdrawDuringReply = true;
+      const denied = await send('那下一步还要做什么？');
+      assert.equal(denied.status, 'failed', JSON.stringify(denied));
+      assert.equal(denied.outputMessageId, null);
+      assert.equal((await readReply()).available, false);
+      assert.match(JSON.stringify((await readReply()).content), /source_withdrawn/);
+    } finally {
+      await withTenantTransaction(eids[0], tx => tx.execute(sql`update app.assistant_enterprise_settings
+        set agent_config=${JSON.stringify(agent)}::jsonb where enterprise_id=${eids[0]}`));
+    }
   } finally {
     globalThis.fetch = originalFetch;
     await closeFastGPTWorkflows();

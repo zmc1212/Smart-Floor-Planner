@@ -4,7 +4,7 @@ import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import type { ActorContext } from '@/lib/assistant/contracts';
 import { sharedMaterial, sharedMaterials } from './site-materials';
 import { readSiteIssue, readSiteIssueBase } from './site-issues';
-import { collaborationMember } from './collaboration-scope';
+import { collaborationEnabled, collaborationMember } from './collaboration-scope';
 import { issueDelivery } from './site-results';
 
 const openedType = 'construction.site.issue.opened.v1';
@@ -21,8 +21,10 @@ export async function openNeedReviewFromGrant(tx: PostgresTransaction, actor: Ac
     and payload->>'sourceKind'='need' and payload->>'projectId'=${projectId} and payload->>'roomId'=${grant.roomId}
     and payload->>'customerId'=${uid} order by id desc limit 1`);
   const issueId = opened ? String(opened.id) : '';
-  const existing = issueId ? await readSiteIssueBase(tx, eid, projectId, issueId) : null;
-  if (existing?.needGrantId === grantId) return issueId;
+  const prior = issueId ? await readSiteIssue(tx, eid, projectId, issueId) : null;
+  const existing = prior && !['cancelled','resolved','closed','dismissed'].includes(prior.status)
+    ? await readSiteIssueBase(tx, eid, projectId, issueId) : null;
+  if (prior?.needGrantId === grantId) return issueId;
   const designers = await rows(tx, sql`select admin_id::text from app.construction_members
     where enterprise_id=${eid} and project_id=${projectId} and role='designer' and active order by admin_id`);
   const eligible = [];
@@ -33,10 +35,12 @@ export async function openNeedReviewFromGrant(tx: PostgresTransaction, actor: Ac
   const ownerId = existing?.ownerId && eligible.includes(existing.ownerId) ? existing.ownerId : eligible.length === 1 ? eligible[0] : null;
   const materials = await sharedMaterials(tx, eid, projectId, grant.roomId);
   const revision = (existing?.revision ?? 0) + 1;
-  const payload = { issueId, revision, projectId, recordId: '', recordVersion: 0, sourceHash: grant.sourceHash,
+  const payload = { issueId: existing ? issueId : '', revision, projectId, recordId: '', recordVersion: 0, sourceHash: grant.sourceHash,
     sourceMessageId: grant.consentMessageId || grant.sourceMessageId, roomId: grant.roomId, roomName: grant.roomName,
     openedBy: '', ownerId, state: 'awaiting_owner', progressMessageId: null, action: existing ? 'refresh' : 'open',
-    sourceKind: 'need', needGrantId: grantId, customerId: uid, conversationId: cid, materialVersion: materials.version };
+    sourceKind: 'need', needGrantId: grantId, customerId: uid, conversationId: cid, materialVersion: materials.version,
+    requestMessageId: grant.sourceMessageId, requestHash: grant.sourceHash, requestText: grant.text,
+    ...(existing?.projectReview || collaborationEnabled(eid) ? { projectReview: true } : {}) };
   const event = await one(tx, sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
     values(${eid},${existing ? progressType : openedType},${existing ? 'construction_site_issue' : 'construction_site_need'},
       ${existing ? issueId : grantId},${revision},${JSON.stringify(actor.principal)}::jsonb,${grantId},${JSON.stringify(payload)}::jsonb)
@@ -48,7 +52,7 @@ export async function openNeedReviewFromGrant(tx: PostgresTransaction, actor: Ac
 export async function customerNeedReviews(tx: PostgresTransaction, eid: string, uid: string, cid: string) {
   const opens = await rows(tx, sql`select id::text,payload->>'projectId' as project_id from app.domain_event_outbox
     where enterprise_id=${eid} and type=${openedType} and payload->>'sourceKind'='need' and payload->>'customerId'=${uid}
-    order by id desc`);
+    order by id desc limit 60`);
   const result = [];
   for (const open of opens) {
     const projectId = String(open.project_id), issueId = String(open.id);
@@ -56,13 +60,18 @@ export async function customerNeedReviews(tx: PostgresTransaction, eid: string, 
     if (!issue || issue.customerId !== uid || issue.conversationId !== cid || !issue.needGrantId) continue;
     const grant = await sharedMaterial(tx, eid, projectId, issue.needGrantId);
     if (!grant) continue;
+    if (issue.status === 'cancelled') continue;
     const waitingFor = ['resolved', 'closed', 'dismissed', 'cancelled'].includes(issue.status) ? 'none' as const
       : !issue.ownerId ? 'unassigned' as const : issue.status === 'awaiting_owner' ? 'designer' as const : 'team' as const;
+    const label = issue.status === 'awaiting_review' ? '已有处理回复，团队核对中'
+      : issue.status === 'implemented' ? '团队已提交处理，等待项目经理复核'
+      : issue.status === 'awaiting_owner' ? issue.ownerName ? `已转给${issue.ownerName}核对，等待处理` : '已记录，等待分配设计师'
+      : issue.classificationLabel;
     result.push({ issueId, revision: issue.revision, projectId, room: issue.roomName, status: issue.status,
       classification: issue.classification, lifecycleRevision: issue.lifecycleRevision, lifecycleId: issue.lifecycleId,
       waitingFor, ownerName: issue.ownerName, sourceMessageId: grant.consentMessageId || grant.sourceMessageId,
       sync: await issueDelivery(tx, eid, issue),
-      text: `${issue.roomName}事项${issueId} · ${issue.classificationLabel}。${issue.ownerName ? '负责人：' + issue.ownerName + '。' : ''}` });
+      text: `${issue.roomName}事项${issueId} · ${label}。` });
   }
   return result;
 }

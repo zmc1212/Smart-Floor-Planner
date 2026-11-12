@@ -41,8 +41,8 @@ before(async () => {
   if (!live) return;
   assert.notEqual(process.env.NODE_ENV, 'production');
   const url = new URL(resolvePostgresRuntimeConfig().connectionString);
-  assert.deepEqual([url.protocol, url.host, url.pathname, url.username, url.search, url.hash],
-    ['postgresql:', '127.0.0.1:55433', '/xiaok_b59_test', 'sfp_app', '', '']);
+  assert.deepEqual([url.protocol, url.hostname, url.port, url.pathname, url.username, url.search, url.hash],
+    ['postgresql:', '127.0.0.1', process.env.XIAOK_ISOLATED_POSTGRES_PORT || '55433', '/xiaok_b59_test', 'sfp_app', '', '']);
   process.env.NATIVE_WORKFLOW_COLLABORATION_ENTERPRISE_IDS = [eid, control].join(',');
   process.env.NATIVE_WORKFLOW_DELEGATION_ENABLED = '1';
   process.env.NATIVE_WORKFLOW_DELEGATION_ENTERPRISE_IDS = eid;

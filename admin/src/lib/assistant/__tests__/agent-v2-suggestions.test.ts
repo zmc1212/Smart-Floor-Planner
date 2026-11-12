@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { fastGPTAgentV2Presentation, parseAgentV2Configuration } from '../fastgpt/agent-v2/config';
-import { parseSuggestionQuestions, resolveSuggestions, storedSuggestionQuestions, suggestionPrompt } from '../fastgpt/agent-v2/suggestions';
+import { fastGPTAgentV2Configuration, fastGPTAgentV2Configurations, fastGPTAgentV2Presentation, parseAgentV2Configuration, parseAgentV2Configurations } from '../fastgpt/agent-v2/config';
+import { parseSuggestionQuestions, resolveSuggestions, resumeSuggestionGeneration, storedSuggestionQuestions, suggestionPrompt } from '../fastgpt/agent-v2/suggestions';
 
 const base = {
   protocol: 'fastgpt-agent-v2-v1' as const, enterpriseId: '1454', appId: '6af16527093915ea6cf38496',
@@ -49,11 +49,50 @@ test('stored questions are revalidated before readback and bounded to four', () 
   assert.deepEqual(storedSuggestionQuestions('not-an-array'), []);
 });
 
+test('a resumed suggestion dispatch reuses its persisted output and never replays unknown calls', () => {
+  assert.deepEqual(resumeSuggestionGeneration(undefined), { action: 'dispatch' });
+  assert.deepEqual(resumeSuggestionGeneration({ status: 'succeeded', private_checkpoint: { text: '水路先做什么？\n防水怎么验收？\n地砖怎么排版？' } }),
+    { action: 'reuse', text: '水路先做什么？\n防水怎么验收？\n地砖怎么排版？' });
+  // Dispatched without a persisted outcome: the presets stand, the provider is
+  // not called a second time and the unknown outcome stays visible.
+  assert.deepEqual(resumeSuggestionGeneration({ status: 'running' }), { action: 'skip', unknown: true });
+  assert.deepEqual(resumeSuggestionGeneration({ status: 'failed', private_checkpoint: null }), { action: 'skip', unknown: false });
+  assert.deepEqual(resumeSuggestionGeneration({ status: 'failed',
+    input_summary: { code: 'provider_outcome_unknown' } }), { action: 'skip', unknown: true });
+  assert.deepEqual(resumeSuggestionGeneration({ status: 'failed', input_summary: { code: 'assistant_disabled' } }),
+    { action: 'skip', unknown: false });
+  assert.deepEqual(resumeSuggestionGeneration({ status: 'succeeded', private_checkpoint: { text: 3 } }), { action: 'skip', unknown: false });
+});
+
 test('the generation prompt carries only the bounded answer and removes citation markers', () => {
   const prompt = suggestionPrompt('水路先做打压试验[K11](CITE)。'.repeat(400));
   assert.match(prompt, /^下面是本轮给客户的回答/);
   assert.equal(prompt.includes('[K11](CITE)'), false);
   assert.equal(Array.from(prompt).length < 4300, true);
+});
+
+test('several enterprises share one file, bind independently and switch independently', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-v2-enterprises-'));
+  const file = path.join(directory, 'runtime.json');
+  const previous = process.env.XIAOK_FASTGPT_WORKFLOWS_FILE;
+  const second = { ...base, enterpriseId: '2884', appId: 'b'.repeat(24), bridgeKey: 'c'.repeat(64) };
+  try {
+    process.env.XIAOK_FASTGPT_WORKFLOWS_FILE = file;
+    fs.writeFileSync(file, JSON.stringify({ agentV2: [{ ...base, welcome: '企业 A' }, second] }));
+    assert.deepEqual(fastGPTAgentV2Configurations().map(item => item.configuration.enterpriseId), ['1454', '2884']);
+    const first = fastGPTAgentV2Configuration('1454'), other = fastGPTAgentV2Configuration('2884');
+    assert.ok(first && other);
+    assert.notEqual(first.binding, other.binding);
+    fs.writeFileSync(file, JSON.stringify({ agentV2: [{ ...base, welcome: '企业 A' }, { ...second, runtime: 'langgraph-v1' }] }));
+    // Disabling one enterprise leaves the other's binding and runtime intact.
+    assert.equal(fastGPTAgentV2Configuration('2884'), undefined);
+    assert.equal(fastGPTAgentV2Configuration('1454')?.binding, first.binding);
+    assert.throws(() => parseAgentV2Configurations([base, { ...second, enterpriseId: '1454' }]), /context_changed/);
+  } finally {
+    if (previous === undefined) delete process.env.XIAOK_FASTGPT_WORKFLOWS_FILE;
+    else process.env.XIAOK_FASTGPT_WORKFLOWS_FILE = previous;
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test('bootstrap presentation comes from the enabled private runtime and stays additive', () => {

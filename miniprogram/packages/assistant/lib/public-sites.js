@@ -20,7 +20,7 @@ class PublicChatController {
   }
   async load(cid, eid, messages) {
     if (!validId(cid) || !validId(eid)) { this.clear(); return; }
-    if (this.cid !== cid || this.session !== this.identity()) this.clear();
+    if (this.cid !== cid || this.eid !== eid || this.session !== this.identity()) this.clear();
     this.cid = cid; this.eid = eid; this.session = this.identity();
     if (this.state.publicBusy) return;
     const epoch = ++this.epoch;
@@ -55,7 +55,7 @@ class PublicChatController {
   browse(cid, eid, messages, notice, replyId) {
     if (![cid,eid,replyId].every(validId) || !messages.some(message => message.id === replyId && message.discovery?.sites)
       || this.state.publicBusy || this.state.publicLoading) return Promise.resolve(false);
-    if (this.cid !== cid || this.session !== this.identity()) this.clear();
+    if (this.cid !== cid || this.eid !== eid || this.session !== this.identity()) this.clear();
     this.cid = cid; this.eid = eid; this.session = this.identity();
     this.browseNotice = notice;
     this.set({ publicBrowsing: true, publicReplyId: replyId,
@@ -72,7 +72,7 @@ class PublicChatController {
   }
   openDetail(cid, eid, sid, versionId) {
     if (![cid,eid,sid,versionId].every(validId)) return Promise.resolve(false);
-    if (this.cid !== cid || this.session !== this.identity()) this.clear();
+    if (this.cid !== cid || this.eid !== eid || this.session !== this.identity()) this.clear();
     this.cid = cid; this.eid = eid; this.session = this.identity();
     this.closeDetail(); this.detailRef = { sid, versionId };
     return this.readDetail();
@@ -102,12 +102,14 @@ class PublicChatController {
   }
   async attach(cid, eid, sid, versionId) {
     if (![cid,eid,sid,versionId].every(validId)) return false;
-    if (this.cid !== cid || this.session !== this.identity()) this.clear();
+    if (this.cid !== cid || this.eid !== eid || this.session !== this.identity()) this.clear();
     this.cid = cid; this.eid = eid; this.session = this.identity();
     if (this.state.publicBusy) return false;
-    const pending = this.pending();
-    if (pending && pending.slot !== 'public-context:'+cid) { this.set({ publicPending: pending }); return false; }
-    return this.write('public-context:'+cid, '/conversations/'+cid+'/public-sites/'+sid+'/context', { versionId });
+    const pending = this.pending(), slot = 'public-context:'+cid, path = '/conversations/'+cid+'/public-sites/'+sid+'/context';
+    if (pending && (pending.slot !== slot || pending.path !== path || pending.body.versionId !== versionId)) {
+      this.set({ publicPending: pending }); return false;
+    }
+    return this.write(slot, path, { versionId });
   }
   async write(slot, path, body) {
     const epoch = this.epoch, session = this.session, cid = this.cid;
@@ -116,7 +118,7 @@ class PublicChatController {
       const data = await this.client.mutate(slot, path, body);
       if (!this.valid(epoch) || session !== this.identity() || cid !== this.cid) return false;
       const key = data.id + '_' + data.versionId, previous = this.state.publicCards[key];
-      if (previous) {
+      if (previous && slot.startsWith('public-owner:')) {
         const card = { ...previous, revision: data.revision, status: data.status,
           statusLabel: ({pending_owner:'待你决定',owner_approved:'已同意这一版，待企业审核',declined:'暂不公开',withdrawn:'已撤回'})[data.status] || previous.statusLabel,
           canDecide: data.status === 'pending_owner', canWithdraw: ['pending_owner','owner_approved','published'].includes(data.status),

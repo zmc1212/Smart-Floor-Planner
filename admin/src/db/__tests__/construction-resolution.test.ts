@@ -49,7 +49,7 @@ const issue = (issueId: string) => withTenantTransaction(eids[0], tx => readSite
 async function record(completed = false, published = false, withImage = completed) {
   if (process.env.RESOLUTION_TRACE) console.log('RECORD',completed,published,withImage);
   const sent = await worker.send(pid, {text: completed ? '书房右侧插座今天已经装好。' : '书房底盒还没固定，等设计师核对。',mediaIds:withImage ? [await upload(worker)] : []}, randomUUID());
-  const lease = await claimJob(); assert.equal(lease?.runId, sent.runId);
+  const lease = await claimJob({ enterpriseId: eids[0], runId: String(sent.runId) }); assert.equal(lease?.runId, sent.runId);
   await processSiteRecord(lease!, async () => ({text:JSON.stringify({title:'合成现场记录',roomId:room,completed:completed?'右侧插座已安装':'',pending:completed?'':'底盒待核对',coordination:'',note:''}),toolCalls:[],finishReason:'stop',providerRequestId:null,usage:{inputTokens:50,outputTokens:40}}));
   const rid = String(sent.recordId);
   let r = (await withTenantTransaction(eids[0],tx=>one(tx,sql`select version from app.construction_site_records where enterprise_id=${eids[0]} and id=${rid}`)))!;
@@ -127,9 +127,17 @@ test('real reviewed original -> implementation -> separately authorized resolve/
   await assert.rejects(command(boss,finish(f.issueId,true)),/site_resolution_state_conflict/);
   await command(boss,finish(f.issueId));assert.equal((await issue(f.issueId))!.status,'resolved');await deliverSiteResults();
   const resolved=await query();assert.match(resolved.displayText,/已正式解决，尚未关闭/);assert.doesNotMatch(resolved.displayText,/内部核对细节/);
+  const resolvedMessage = (await chat.messages(cid, undefined, 100)).items.find(m => m.siteRecords.some(r => r.id === f.proof.id));
+  assert.ok(resolvedMessage);
+  assert.equal(resolvedMessage.constructionClosure, undefined);
   await command(boss,finish(f.issueId,true));await deliverSiteResults();
   assert.equal((await issue(f.issueId))!.status,'closed');const state=await resolution(f.issueId);assert.equal(state!.evidence!.recordId,f.proof.id);
   const rows=(await chat.messages(cid,undefined,100)).items;const returned=rows.find(m=>m.available&&(m.siteRecords||[]).some(r=>r.id===f.proof.id));assert.ok(returned);assert.deepEqual(returned.siteRecords![0].assets,[f.proof.mediaId]);
+  const plan = await customer.read(f.planId);
+  assert.deepEqual(returned.constructionClosure, {
+    title: plan.title, excerpt: '书房右侧插座已按本次方案落实，团队已核对。',
+    planNumber: plan.number, recordVersion: state!.evidence!.recordVersion,
+  });
   const bytes=await media(f);assert.equal(createHash('sha256').update(bytes.data).digest('hex'),createHash('sha256').update((await worker.media(pid,f.proof.mediaId)).data).digest('hex'));
   const other=String((await chat.create(randomUUID())).id);await assert.rejects(media(f,other),/assistant_resource_not_found/);
   await assert.rejects(media(f,cid,{...chat.actor,principal:{kind:'user',userId:users[1]}}),/assistant_resource_not_found/);
@@ -162,8 +170,16 @@ test('human reception and disabled assistant defer durable results; two workers 
 });
 test('text-only disclosure does not grant originals; reopen invalidates old result, media, receipts and source snapshots',async()=>{
   const f=await setup();await complete(f,false);await assert.rejects(media(f),/assistant_resource_not_found/);
+  const returned = (await chat.messages(cid, undefined, 100)).items.find(m => m.available
+    && JSON.stringify(m.content).includes(`事项${f.issueId} · 修订`));
+  assert.ok(returned?.constructionClosure);
+  assert.deepEqual(returned.siteRecords, []);
   const before=await query();assert.ok(before.data.some(r=>r.issueId===f.issueId&&r.status==='closed'));
   await command(boss,'重新处理事项'+f.issueId+'：需要补充现场复核');assert.equal((await issue(f.issueId))!.status,'awaiting_review');
+  const revoked = (await chat.messages(cid, undefined, 100)).items.find(m => m.id === returned.id);
+  assert.equal(revoked?.available, false);
+  assert.equal(revoked.constructionClosure, undefined);
+  assert.deepEqual(revoked.siteRecords, []);
   assert.equal(await withTenantTransaction(eids[0],tx=>needIssueSnapshotAvailable(tx,eids[0],before)),false);
   await assert.rejects(command(boss,finish(f.issueId,true)),/site_resolution_state_conflict/);
   await complete(f);assert.equal((await issue(f.issueId))!.status,'closed');assert.ok((await media(f)).data.length);
@@ -226,7 +242,7 @@ test('changed source can be re-reviewed on the same issue without reviving old c
 test('actual query_followups checkpoints formal closed evidence into the existing revocable Agent source chain',async()=>{
   const f=await setup();await complete(f);
   await withTenantTransaction(eids[0],tx=>tx.execute(sql`update app.assistant_enterprise_settings set agent_config='{"runtime":"langgraph-v1","providerKey":"deepseek","model":"deepseek-flash","tools":true,"imageInput":false,"probeVersion":"p5-resolution-synthetic-v1"}'::jsonb where enterprise_id=${eids[0]}`));
-  const sent=await chat.send(cid,randomUUID(),{version:1,blocks:[{type:'text',text:'书房现场是不是已经落实并关闭了，依据是什么？'}]},siteWatchInterceptor),lease=await claimJob();assert.equal(lease?.runId,sent.runId);
+  const sent=await chat.send(cid,randomUUID(),{version:1,blocks:[{type:'text',text:'书房现场是不是已经落实并关闭了，依据是什么？'}]},siteWatchInterceptor),lease=await claimJob({enterpriseId:eids[0],runId:String(sent.runId)});assert.equal(lease?.runId,sent.runId);
   await processAgentAnswer(lease!,{model:async(messages,_tools,turn)=>{
     if(turn===0)return{text:'',toolCalls:[{id:'check',name:'query_followups',arguments:'{}'}],finishReason:'tool_calls',providerRequestId:null,usage:{inputTokens:60,outputTokens:10}};
     const tool=messages.filter(m=>m.role==='tool').at(-1)!;const result=JSON.parse(String(tool.content));

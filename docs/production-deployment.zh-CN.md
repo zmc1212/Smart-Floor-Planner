@@ -14,6 +14,8 @@
 Nginx只增加测试API/H5/媒体路径；原站有私有备份，nginx -t/平滑重载通过，主进程31981保持。回退只撤测试include并验证/重载、停止本Compose，保留测试数据，不覆盖正式库。已在线导出并校验本实例PGDMP/目录；不等于完整媒体灾备。专用SSH结束时撤销并验证；体验服务无本机/SSH转发依赖。公网1080p直播/SD和Stable真实员工入口/重进已验，真机解码/持续观看未验。[当前资源/备份/回滚实证](../tmp/cloud-camera-production-20261106/assessment.json)。
 
 体验版无参数登录现按 /camera-test-api 配置自动选用已有账号密码态，普通环境仍默认手机号；修正版 20261106-camera-sd-2 已上传，官方trial码直达 packages/business/login/login。首轮手机19:18的403原件保留；客户端24项、Stable390×844无mode参数默认表单/实际员工登录/视频入口/重进4项通过，零漂移并恢复会话。未改登录布局、文案、素材或服务端身份限制；修正版手机重试/解码仍未独立观察。[入口修复](../tmp/cloud-camera-production-20261106/login-entry-fix.json)。
+
+**2026-11-11 网关 r3（20261111-site-1）—— SD 稳定身份已部署，有界 Implemented。** 已部署试验环境的诊断结论：摄像头全程在线（核验窗口 11-06→11-11 每天都在推进），服务器容器从未停机；问题在 r3 之前的旧身份指纹把 GB28181 注册时间戳算进哈希，该摄像头每约 15 分钟重新注册一次，窗口链每天断约 110 次，SD 可回放范围永远只有最近约 15 分钟。用户重新加回专用 SSH 密钥后，按顺序落地：sd-clock 探针升级为稳定身份（identity v2，哈希排除 registerTimeStamp）、试验库 `camera_trial` 先备份（`before-0120.dump`）再应用迁移 `0120_construction_camera_sd_identity_version.sql`、然后部署以 HEAD `c190fd3f` 构建的网关 r3（287 个受管 bundle 输入逐字节验证等于该提交；Dockerfile 与 16 个 H5 公开资源逐字节复用 r2，页面哈希不变）。仅重建网关容器，其余 30 个容器无漂移，自动回滚护栏未触发。全部 484 行窗口一次性重基为 `identity_version=1`、单一稳定指纹；随后窗口链跨过一次重注册周期连续运行 20+ 分钟、60 秒核对持续成功（旧机制下不可能），零新窗口行。按上海日期实测可回放：11-06 18:31 起共六天（11-06 至 11-11，每天 15–17 段设备真实录像）；11-05 及更早设备已无片段（循环覆盖）。未知项：摄像头确切卡容量/码率、以及换用其他设备时单个核对失败周期是否仍可能切分窗口，均未测量。凭证：[部署](../tmp/cloud-site-trial-r3-20261111/deployment.json)、[部署后探测](../tmp/cloud-site-trial-r3-20261111/post-deploy-probe.json)、[构建清单](../tmp/cloud-site-trial-r3-20261111/gateway-candidate.json)。专用 SSH 密钥在验证完成后已再次撤销。
 <!-- /cloud-camera-phone-trial -->
 
 ## 独立 WVP 试部署包

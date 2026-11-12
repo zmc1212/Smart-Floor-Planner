@@ -1,4 +1,9 @@
-const { AssistantClient, entryInput, errorCopy, uncertain, messagesForView } = require('./client');
+const { AssistantClient, entryInput, errorCopy, uncertain, messagesForView: projectMessages } = require('./client');
+const { markdownForBlock } = require('./message-markdown');
+
+function messagesForView(items) {
+  return projectMessages(items, markdownForBlock);
+}
 const ACTIVE = ['queued', 'running'];
 const WELCOME = '你好，我是小K。\n先聊聊你的装修想法吧。';
 function historyForView(items) {
@@ -12,7 +17,11 @@ function historyForView(items) {
 const WINDOW = 30;
 const MAX_BACKLOG = 200;
 const FULL_SYNC_MS = 60000;
+const PUBLIC_SYNC_MS = 7000;
 const DELTA_PAGES = 3;
+function hasPublicSource(message) {
+  return message.publicSourceBound || message.publicContext || message.publicConsent || message.publicReferences?.length;
+}
 // `seq` is a bigint rendered as a decimal string; Number arithmetic would lose
 // precision above Number.MAX_SAFE_INTEGER.
 function seqOrder(left, right) {
@@ -77,7 +86,8 @@ class ChatController {
     this.latestSeq = ''; this.seqConversationId = ''; this.rawMessages = null; this.lastFullSyncAt = 0; this.seqSupported = false;
   }
 
-  resetWindow() { this.latestSeq = ''; this.seqConversationId = ''; this.rawMessages = null; this.lastFullSyncAt = 0; this.seqSupported = false; }
+  resetWindow() { this.latestSeq = ''; this.seqConversationId = ''; this.rawMessages = null; this.lastFullSyncAt = 0; this.seqSupported = false; this.olderFloor = ''; }
+  hasPublicWindow() { return this.rawMessages?.some(hasPublicSource) || this.state.messages.some(hasPublicSource); }
 
   set(patch) { Object.assign(this.state, patch); this.emit(patch); }
   valid(epoch) { return this.epoch === epoch && this.session === this.identity(); }
@@ -117,6 +127,11 @@ class ChatController {
     // so the resumed view must re-read the full window instead of trusting the
     // 60s idle sync. Repeated show calls while already visible stay incremental.
     const resume = hidden && this.ready && !this.state.fatal && !!target;
+    // A source may be revoked while hidden, without appending a message.
+    if (this.hasPublicWindow()) {
+      this.lastFullSyncAt = 0;
+      this.set({ messages: this.state.messages.filter(message => !hasPublicSource(message) || message.available === false) });
+    }
     return this.refresh({ forceEntry: !this.ready || this.state.fatal, background: this.ready && !this.state.fatal, resume });
   }
 
@@ -209,7 +224,10 @@ class ChatController {
       this.setIf(epoch, { loading: false, error: this.state.pendingSend
         ? '发送结果尚未确认，请确认同一条消息的发送结果。'
         : this.state.pendingAction ? '操作结果尚未确认，请核对同一次操作。' : '' });
-    } catch (error) { this.fail(error, epoch, !background); }
+    } catch (error) {
+      if (background && this.conversationId) this.syncFailure(error, this.conversationId, epoch);
+      else this.fail(error, epoch, !background);
+    }
   }
 
   setIf(epoch, patch) { if (this.valid(epoch)) this.set(patch); }
@@ -223,6 +241,11 @@ class ChatController {
       this.entry = null; this.entryExpiry = 0; this.conversationId = '';
       this.ready = false; this.resetWindow();
       this.set({ ...initial(), loading: false });
+    } else if ((uncertain(error) || [403, 404].includes(error.statusCode)) && this.hasPublicWindow()) {
+      this.lastFullSyncAt = 0;
+      this.citationRequest = (this.citationRequest || 0) + 1;
+      this.set({ messages: this.state.messages.filter(message => !hasPublicSource(message) || message.available === false),
+        citation: null, citationLoading: false });
     }
     this.set({ loading: false, error: errorCopy(error), fatal: fatal || denied, needsLogin: error.statusCode === 401,
       ...(code === 'assistant_disabled' ? { canSend: false } : {}) });
@@ -234,12 +257,13 @@ class ChatController {
     this.timer = this.schedule(() => {
       if (!this.visible || !this.valid(epoch) || this.conversationId !== id) return;
       if (this.state.busy || this.state.pendingSend || this.state.pendingAction) return this.scheduleConversation(id, epoch, delay);
-      return this.snapshot(id, epoch, true).catch(error => this.fail(error, epoch));
+      return this.snapshot(id, epoch, true).catch(error => this.syncFailure(error, id, epoch));
     }, delay);
   }
 
   async snapshot(id, epoch, background = false, resume = false) {
     const ticket = this.snapshotTicket = (this.snapshotTicket || 0) + 1;
+    const current = () => this.valid(epoch) && ticket === this.snapshotTicket;
     // A conversation this view has never synced has no cursor to seek from, so
     // its full window is known upfront and still loads alongside the metadata.
     // A server that did not report `lastSeq` cannot answer a delta either. A
@@ -251,12 +275,12 @@ class ChatController {
     // A stale or backgrounded snapshot can discard this read before awaiting it.
     if (full) full.catch(() => {});
     const conversation = await this.client.read(`/conversations/${id}`);
-    if (!this.valid(epoch) || ticket !== this.snapshotTicket) return;
+    if (!current()) return;
     if (background && (!this.visible || this.state.busy || this.state.pendingSend || this.state.pendingAction)) {
       this.scheduleConversation(id, epoch); return;
     }
-    const window = await this.readWindow(id, conversation, full, resume);
-    if (!this.valid(epoch) || ticket !== this.snapshotTicket) return;
+    const window = await this.readWindow(id, conversation, full, current, resume);
+    if (!current()) return;
     if (background && (!this.visible || this.state.busy || this.state.pendingSend || this.state.pendingAction)) {
       this.scheduleConversation(id, epoch); return;
     }
@@ -270,8 +294,10 @@ class ChatController {
     this.set({ welcomeText: conversation.guidanceOpening || WELCOME, guidanceEnabled: !!conversation.guidanceEnabled, guidance: conversation.guidance || null,
       ...(!sameQuestion ? { selectedOptions: [], selectedOptionMap: {} } : {}) });
     this.applyRun(conversation.mode === 'ai' ? conversation.latestRun : null);
-    if (this.visible && conversation.status === 'open' && (['handoff_requested', 'human'].includes(conversation.mode) || !this.state.run || this.state.run.status === 'succeeded')) {
-      this.scheduleConversation(id, epoch, conversation.mode === 'ai' ? 7000 : 3000);
+    const hasPublic = this.hasPublicWindow();
+    if (this.visible && !this.state.generating && (hasPublic || conversation.status === 'open'
+      && (['handoff_requested', 'human'].includes(conversation.mode) || !this.state.run || this.state.run.status === 'succeeded'))) {
+      this.scheduleConversation(id, epoch, conversation.mode === 'ai' ? PUBLIC_SYNC_MS : 3000);
     }
   }
 
@@ -282,47 +308,70 @@ class ChatController {
   // finish after a newer snapshot (or after the conversation lost access), and
   // its projection must never become the baseline a later delta merges into.
   // `commitWindow` performs that write only while the request is still current.
-  async readWindow(id, conversation, full, resume = false) {
+  async readWindow(id, conversation, full, current, resume = false) {
     const latest = conversation.lastSeq === undefined || conversation.lastSeq === null ? '' : String(conversation.lastSeq);
     const seqSupported = latest !== '';
     const synced = this.seqConversationId === id ? this.latestSeq : '';
     // Withdrawn sources and media never advance a sequence, so the window is
     // reprojected in full at a bounded interval even while nothing is appended.
-    const stale = Date.now() - this.lastFullSyncAt >= FULL_SYNC_MS;
-    // A resume is an explicit re-read: skip the cursor shortcut and the delta
-    // path entirely so the server's current projection replaces the rendered
-    // one even when `lastSeq` and the full-sync clock say it is still current.
-    if (!resume) {
-      if (latest && synced && latest === synced && !stale) return null;
-      if (!stale && latest && synced && synced !== '0' && withinBacklog(synced, latest, MAX_BACKLOG)) {
-        const delta = await this.readDelta(id, synced);
-        if (delta) return delta;
-      }
+    const publicWindow = this.hasPublicWindow();
+    const stale = Date.now() - this.lastFullSyncAt >= (publicWindow ? PUBLIC_SYNC_MS : FULL_SYNC_MS);
+    if (!resume && latest && synced && latest === synced && !stale) return null;
+    // The empty window starts at 0. The delta endpoint takes a positive cursor.
+    if (!resume && !stale && latest && seqOrder(synced, '0') > 0 && withinBacklog(synced, latest, MAX_BACKLOG)) {
+      const delta = await this.readDelta(id, synced, current);
+      if (!current()) return null;
+      if (delta) return delta;
     }
     const data = await (full || this.client.read(`/conversations/${id}/messages`, { limit: WINDOW }));
-    const items = data.items || [];
+    if (!current()) return null;
+    let items = data.items || [], cursor = data.nextCursor;
+    // Keep pages the customer has loaded and revalidate their source access
+    // alongside the tail. A source can expire without a sequence change.
+    const sameConversation = this.seqConversationId === id;
+    let floor = sameConversation ? this.olderFloor : '';
+    while (floor && cursor && (seqOrder(cursor, floor) > 0 || cursor === floor && this.state.messageCursor === null)) {
+      const older = await this.client.read(`/conversations/${id}/messages`, { limit: WINDOW, beforeSeq: cursor });
+      if (!current()) return null;
+      // The customer can load another page while this read is in flight.
+      floor = this.olderFloor;
+      items = items.concat(older.items || []);
+      if (older.nextCursor && seqOrder(older.nextCursor, cursor) >= 0) break;
+      cursor = older.nextCursor;
+    }
+    const previous = sameConversation ? this.rawMessages || [] : [];
+    const byId = new Map(previous.map(item => [String(item.id), item]));
+    let unchanged = this.lastFullSyncAt > 0 && sameConversation && this.state.messageCursor === cursor && previous.length === items.length;
+    items = items.map(item => {
+      const cached = byId.get(String(item.id));
+      // Preserve the identity of authorized, unchanged blocks across fresh
+      // HTTP responses. Changed or withdrawn content leaves the WeakMap keys
+      // behind with the old window.
+      if (cached && JSON.stringify(cached) === JSON.stringify(item)) return cached;
+      unchanged = false;
+      return item;
+    });
     const latestSeq = data.latestSeq !== undefined
       ? String(data.latestSeq)
       : items.reduce((newest, item) => seqOrder(item.seq, newest) > 0 ? String(item.seq) : newest, latest);
     return {
-      view: { messages: messagesForView(items), messageCursor: data.nextCursor },
-      cache: { rawMessages: items, seqConversationId: id, lastFullSyncAt: Date.now(), latestSeq, seqSupported },
+      view: unchanged ? null : { messages: messagesForView(items), messageCursor: cursor },
+      cache: { rawMessages: items, seqConversationId: id, lastFullSyncAt: Date.now(), olderFloor: floor, latestSeq, seqSupported },
     };
   }
 
-  // Every page of a burst is read before anything is returned, so a discarded
-  // delta leaves no partially merged cursor behind.
-  async readDelta(id, cursor) {
+  async readDelta(id, cursor, current) {
     let after = cursor, incoming = [], latestSeq = cursor, drained = false;
     for (let page = 0; page < DELTA_PAGES; page += 1) {
       const data = await this.client.read(`/conversations/${id}/messages`, { limit: WINDOW, afterSeq: after });
+      if (!current()) return null;
       // Only the delta contract echoes a usable cursor. A reset or an older
       // server response falls back to the authoritative full window.
       if (data.reset === true || data.afterCursor === undefined || data.afterCursor === null) return null;
       const items = data.items || [];
       // These fields decide which earlier bubble owns the latest decision card;
       // reprojecting the whole window is the only stable answer.
-      if (items.some(item => item.planDecision || item.publicConsent)) return null;
+      if (items.some(item => item.planDecision || item.publicConsent || item.publicContext)) return null;
       incoming = incoming.concat(items);
       after = String(data.afterCursor);
       if (data.latestSeq !== undefined && seqOrder(data.latestSeq, latestSeq) > 0) latestSeq = String(data.latestSeq);
@@ -333,7 +382,7 @@ class ChatController {
     if (!incoming.length) return null;
     const raw = mergeMessages(this.rawMessages || [], incoming);
     return {
-      view: { messages: this.windowView(raw), messageCursor: this.state.messageCursor, appended: incoming.length },
+      view: { messages: messagesForView(raw), messageCursor: this.state.messageCursor, appended: incoming.length },
       cache: { rawMessages: raw, seqConversationId: id, latestSeq: drained && seqOrder(latestSeq, after) > 0 ? latestSeq : after },
     };
   }
@@ -351,20 +400,13 @@ class ChatController {
     const appended = window.appended || 0;
     const from = window.messages.length - appended;
     const pureAppend = appended > 0 && from === this.state.messages.length;
-    Object.assign(this.state, { messages: window.messages, messageCursor: window.messageCursor });
-    this.emit(pureAppend ? { messages: window.messages, messageCursor: window.messageCursor, messagesAppendFrom: from } : { messages: window.messages, messageCursor: window.messageCursor });
-  }
-
-  // Rebuild the rendered list from the merged window while keeping earlier
-  // pages the customer already pulled above it.
-  windowView(raw) {
-    const view = messagesForView(raw);
-    const cutoff = raw.length ? String(raw[0].seq || '0') : '';
-    if (!cutoff) return view;
-    const rendered = new Set(raw.map(item => String(item.id)));
-    return this.state.messages
-      .filter(item => !rendered.has(String(item.id)) && seqOrder(item.seq, cutoff) < 0)
-      .concat(view);
+    const owner = this.citationMessageId && window.messages.find(message => message.id === this.citationMessageId);
+    const revokedCitation = owner && owner.available === false;
+    if (revokedCitation) this.citationRequest = (this.citationRequest || 0) + 1;
+    const patch = { messages: window.messages, messageCursor: window.messageCursor,
+      ...(revokedCitation ? { citation: null, citationLoading: false } : {}) };
+    Object.assign(this.state, patch);
+    this.emit(pureAppend ? { ...patch, messagesAppendFrom: from } : patch);
   }
 
   applyRun(run) {
@@ -386,9 +428,14 @@ class ChatController {
       const run = await this.client.read(`/runs/${id}`);
       if (!this.valid(epoch) || id !== this.state.run.id) return;
       this.set({ error: '' });
-      if (ACTIVE.includes(run.status)) this.applyRun(run);
+      if (ACTIVE.includes(run.status) && (!this.hasPublicWindow() || Date.now() - this.lastFullSyncAt < PUBLIC_SYNC_MS)) this.applyRun(run);
       else await this.snapshot(this.conversationId, epoch);
-    } catch (error) { this.fail(error, epoch); }
+    } catch (error) { this.syncFailure(error, this.conversationId, epoch); }
+  }
+
+  syncFailure(error, id, epoch) {
+    this.fail(error, epoch);
+    if (!this.state.fatal && this.hasPublicWindow()) this.scheduleConversation(id, epoch);
   }
 
   input(value) {
@@ -563,8 +610,15 @@ class ChatController {
     try {
       const result = await this.client.read(`/conversations/${this.conversationId}/messages`, { limit: 30, beforeSeq: this.state.messageCursor });
       if (!this.valid(epoch)) return;
-      const ids = new Set(this.state.messages.map(item => item.id));
-      this.set({ messages: messagesForView(result.items.filter(item => !ids.has(item.id))).concat(this.state.messages), messageCursor: result.nextCursor });
+      const ids = new Set(this.state.messages.map(item => String(item.id)));
+      const items = result.items.filter(item => !ids.has(String(item.id)));
+      const older = messagesForView(items);
+      if (older.length) {
+        this.olderFloor = older[0].seq;
+        this.rawMessages = mergeMessages(this.rawMessages, items);
+      }
+      this.set({ messages: older.concat(this.state.messages), messageCursor: result.nextCursor });
+      if (!this.state.generating && older.some(hasPublicSource)) this.scheduleConversation(this.conversationId, epoch);
     } catch (error) { this.fail(error, epoch); }
     finally { this.setIf(epoch, { busy: false }); }
   }
@@ -602,6 +656,7 @@ class ChatController {
 
   async openCitation(id) {
     const epoch = this.epoch;
+    this.citationMessageId = this.state.messages.find(message => message.citations?.some(citation => citation.id === String(id)))?.id;
     this.citationRequest = (this.citationRequest || 0) + 1;
     const request = this.citationRequest;
     this.set({ citation: null, citationLoading: true, citationError: '' });
@@ -611,7 +666,10 @@ class ChatController {
       const citation = await this.referenceImage(data);
       if (!this.valid(epoch) || request !== this.citationRequest) return;
       this.set({ citation });
-      if (!citation.available) await this.snapshot(this.conversationId, epoch);
+      if (!citation.available) {
+        this.lastFullSyncAt = 0;
+        await this.snapshot(this.conversationId, epoch);
+      }
     } catch (error) {
       if (error.statusCode === 401 || error.statusCode === 403 || error.statusCode === 404) this.fail(error, epoch);
       else if (request === this.citationRequest) this.setIf(epoch, { citationError: errorCopy(error) });

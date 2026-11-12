@@ -11,10 +11,12 @@ import type { ConstructionStage } from './stages';
 
 /** A read model of the existing project facts. No generated advice, private consultation, or new fact store. */
 export function waitingFact(issue: IssueView, plan?: { status: string; id: string }) {
-  if (issue.status === 'dismissed') return { label: issue.classificationLabel, waitingFor: '', reason: '有权人员已排除本事项。' };
   if (['awaiting_rectification', 'rectifying'].includes(issue.classification)) return { label: issue.classificationLabel,
     waitingFor: issue.ownerName || '项目经理', reason: '等待负责人完成整改并提交证据。' };
   if (issue.status === 'cancelled') return { label: '已取消', waitingFor: '', reason: '本事项已明确取消跟进。' };
+  if (issue.status === 'dismissed') return { label: '已排除', waitingFor: '', reason: '已由有权人员排除为误报或非施工质量问题；资料缺口不按施工错误处理。' };
+  if (issue.status === 'rectifying') return { label: '整改中', waitingFor: issue.ownerName || '有效负责人', reason: '已确认为施工问题并进入整改，等待现场处理与回传。' };
+  if (issue.confirmed && issue.status === 'awaiting_owner') return { label: '待整改', waitingFor: issue.ownerName || '有效负责人', reason: '已确认属于施工问题，等待负责人整改；施工回传不等于复核通过。' };
   if (!issue.sourceAvailable || issue.status === 'invalidated') return { label: '待重新核对', waitingFor: '有权核对人员', reason: '原材料或授权已变化，旧处理结果不再沿用。' };
   if (issue.status === 'closed') return { label: '已关闭', waitingFor: '', reason: '管理者已正式关闭本事项；不代表工程验收或付款。' };
   if (issue.status === 'resolved') return { label: '待关闭', waitingFor: '项目管理者', reason: '已正式解决，尚未关闭。' };
@@ -44,13 +46,14 @@ export async function constructionBrief(tx: PostgresTransaction, eid: string, pr
       order by r.updated_at desc,r.id desc limit 1`);
     const recent = candidate ? (await currentRecord(tx, eid, pid, String(candidate.id), true))?.row : null;
     const pending = facts.filter(f => !['cancelled', 'closed', 'dismissed'].includes(f.status));
-    const progress = collaboration ? await readSchedule(tx, eid, p, stages) : null;
-    const issueGroups = collaboration ? groupProjectIssues(issues) : null;
     const title = recent ? String((recent.data as Row)?.title || '') : '';
+    const schedule = await readSchedule(tx, eid, p, stages);
     items.push({ projectId: pid, name: String(p.name), stageName: stages.find(s => s.key === p.current_stage_key)?.name || '节点未设置',
+      progress: { available: schedule.available, version: schedule.version, overall: schedule.overall, counts: schedule.counts,
+        gaps: schedule.gaps.map(g => g.label).slice(0, 5), text: schedule.text },
       progressNote: String(p.progress_note || ''), latestRecord: recent ? { id: String(recent.id), version: Number(recent.version),
         updatedAt: recent.updated_at, authorName: candidate?.display_name || '项目管理人员', title } : null,
-      ...(progress && issueGroups ? { progress, issueGroups } : {}), issues: facts, focusIssueId: (pending[0] || facts[0])?.issueId || '', summary: pending.length ? pending.map(f => `事项${f.issueId} · ${f.label}${f.waitingFor ? ' · ' + f.waitingFor : ''}`).slice(0, 3).join('；')
+      ...(collaboration ? { issueGroups: groupProjectIssues(issues) } : {}), issues: facts, focusIssueId: (pending[0] || facts[0])?.issueId || '', summary: pending.length ? pending.map(f => `事项${f.issueId} · ${f.label}${f.waitingFor ? ' · ' + f.waitingFor : ''}`).slice(0, 3).join('；')
         : facts.length ? '当前事项已处理。' : recent ? '现场记录：' + title : candidate ? '最新发布记录的来源已失效，等待重新核对。' : '暂无可读取的发布记录或持续事项，进展待补充。',
       hasMoreIssues: !collaboration && !!await one(tx, sql`select id from app.domain_event_outbox where enterprise_id=${eid}
         and type='construction.site.issue.opened.v1' and payload->>'projectId'=${pid} order by id desc offset 50 limit 1`) });

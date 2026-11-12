@@ -4,7 +4,7 @@ import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assi
 import { fail, id, key, requireCapability, safeText, AssistantError, type ActorContext } from '@/lib/assistant/contracts';
 import { appendMessage, cancelQueuedRun, cancelRuns, idempotent, newRun } from '@/lib/assistant/core/conversation';
 import { object } from './contracts';
-import { publicRevision, type PublicContent } from './public-contract';
+import { publicRevision, samePublicRef, type PublicContent, type PublicContextRef } from './public-contract';
 import { publicAudit, publicEvent } from './public-service';
 import { publicCandidates, publicMaterial, publicMaterialDto, publishedPublicMaterial } from './public-read';
 import { readMemory } from '@/lib/assistant/agent/memory';
@@ -13,6 +13,14 @@ import { CITY_OPTIONS } from '@/lib/portfolio/regions';
 import { discoveryRequest } from '@/lib/assistant/core/discovery';
 
 type PublicIntroMarker = { siteId: string; versionId: string; attempts: number; runId?: string };
+export type PublicIntroEntryDecision = 'existing' | 'new' | 'unavailable';
+/** A marker and its previous run decide whether an entry reuses the opening,
+ * retries it once, or stops; the caller handles a missing marker or run id. */
+export function publicIntroEntryDecision(marker: { attempts?: number } | undefined, previousStatus: string | undefined): PublicIntroEntryDecision {
+  if (previousStatus === undefined || ['queued', 'running', 'succeeded'].includes(previousStatus)) return 'existing';
+  // One failed generation may be retried on a later entry; never loop on it.
+  return Number(marker?.attempts) >= 2 ? 'unavailable' : 'new';
+}
 /** One model opening per visited site version and consultation. It is an ordinary
  * customer reply run, so existing admission, quota, retry and failure semantics
  * apply unchanged; the client already follows the conversation's latest run. */
@@ -27,9 +35,8 @@ async function schedulePublicIntro(tx: PostgresTransaction, actor: ActorContext,
   const current = markers.find(m => String(m.siteId) === siteId && String(m.versionId) === versionId);
   if (current?.runId) {
     const previous = await one(tx, sql`select status from app.assistant_runs where enterprise_id=${actor.enterpriseId} and id=${String(current.runId)}`);
-    if (!previous || ['queued','running','succeeded'].includes(String(previous.status))) return 'existing' as const;
-    // One failed generation may be retried on a later entry; never loop on it.
-    if (Number(current.attempts) >= 2) return 'unavailable' as const;
+    const decision = publicIntroEntryDecision(current, previous ? String(previous.status) : undefined);
+    if (decision !== 'new') return decision;
   }
   const notice = await one(tx, sql`select id from app.assistant_messages where enterprise_id=${actor.enterpriseId} and conversation_id=${cid}
     and purpose='construction.public.context' order by seq desc limit 1`);
@@ -73,7 +80,7 @@ export class PublicCustomerService {
       join app.construction_projects p on p.enterprise_id=s.enterprise_id and p.id=s.project_id
       join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
       where s.enterprise_id=${this.actor.enterpriseId} and s.id=${siteId} and s.customer_id=${this.actor.principal.kind === 'user' ? this.actor.principal.userId : ''}
-        and l.customer_user_id=s.customer_id for update of s`);
+        and l.customer_user_id=s.customer_id for update of s for share of p,l`);
     const entry = c.entry_snapshot as Row;
     if (!site || String(site.current_version_id) !== versionId || (entry.kind === 'lead' && String(entry.id) !== String(site.lead_id))) fail('public_consent_unavailable', 404);
     return site;
@@ -98,6 +105,7 @@ export class PublicCustomerService {
       const needsMaterial = action === 'preview' || action === 'approve';
       const material = needsMaterial ? await publicMaterial(tx, this.actor.enterpriseId, siteId, String(input.versionId)) : null;
       if (needsMaterial && !material) fail('public_source_unavailable');
+      if (needsMaterial && site.status === 'withdrawn') fail('public_state_conflict');
       return idempotent(tx, this.actor, 'public:owner:' + action + ':' + siteId, requestKey, input, async () => {
         if (Number(site.revision) !== revision) fail('version_conflict');
         if (c.status !== 'open') fail('conversation_read_only');
@@ -160,33 +168,52 @@ export class PublicCustomerService {
   }
   context(siteId: string, input: Row, requestKey: string) {
     id(siteId); id(input.versionId); key(requestKey); object(input, ['versionId']);
-    return this.scope(async (tx, c) => idempotent(tx, this.actor, 'public:context:' + this.conversationId, requestKey, { siteId, ...input }, async () => {
+    return this.scope(async (tx, c) => {
       if (c.status !== 'open') fail('conversation_read_only');
-      const material = await publishedPublicMaterial(tx, this.actor.enterpriseId, siteId, String(input.versionId));
-      if (!material) fail('public_site_unavailable', 404);
-      const refs = ((c.entry_snapshot as Row).publicSiteContexts || []) as Array<{ siteId: string; versionId: string }>;
       const ref = { siteId, versionId: String(input.versionId) };
-      if (refs.length >= 100 && !refs.some(r => r.siteId === siteId && r.versionId === ref.versionId)) fail('need_memory_limit', 422);
-      await cancelRuns(tx, this.actor, this.conversationId, undefined, false, 'public.site.intro');
-      await tx.execute(sql`update app.assistant_conversations set entry_snapshot=jsonb_set(jsonb_set(entry_snapshot,'{activePublicSite}',${JSON.stringify(ref)}::jsonb),
-        '{publicSiteContexts}',${JSON.stringify([...refs.filter(r => r.siteId !== siteId || r.versionId !== ref.versionId), ref])}::jsonb),context_revision=context_revision+1,version=version+1
-        where enterprise_id=${this.actor.enterpriseId} and id=${this.conversationId}`);
-      const event = (await one(tx, sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
-        values(${this.actor.enterpriseId},'construction.public.context.v1','assistant_conversation',${this.conversationId},${Number(c.version)+1},${JSON.stringify(this.actor.principal)}::jsonb,${this.conversationId},${JSON.stringify(ref)}::jsonb) returning id`))!;
-      const content = material.version.content as PublicContent;
-      await appendMessage(tx, this.actor, this.conversationId, { author: 'system', eventId: String(event.id), purpose: 'construction.public.context',
-        content: { version: 1, blocks: [{ type: 'text', text: `正在围观：${content.name}。这是你的咨询，不会加入业主原会话。` }] } });
-      const intro = await schedulePublicIntro(tx, this.actor, this.conversationId, siteId, ref.versionId);
-      return { id: siteId, versionId: ref.versionId, conversationId: this.conversationId, intro };
-    }), true);
+      const material = await publishedPublicMaterial(tx, this.actor.enterpriseId, siteId, ref.versionId);
+      if (!material) fail('public_site_unavailable', 404);
+      const entry = c.entry_snapshot as Row;
+      let selected = samePublicRef(entry.activePublicSite as PublicContextRef | undefined, ref);
+      const result = await idempotent(tx, this.actor, 'public:context:' + this.conversationId, requestKey, { siteId, ...input }, async () => {
+        if (!selected) {
+          const refs = (entry.publicSiteContexts || []) as PublicContextRef[];
+          if (refs.length >= 100 && !refs.some(r => samePublicRef(r, ref))) fail('need_memory_limit', 422);
+          await cancelRuns(tx, this.actor, this.conversationId, undefined, false, 'public.site.intro');
+          await tx.execute(sql`update app.assistant_conversations set entry_snapshot=jsonb_set(jsonb_set(entry_snapshot,'{activePublicSite}',${JSON.stringify(ref)}::jsonb),
+            '{publicSiteContexts}',${JSON.stringify([...refs.filter(r => !samePublicRef(r, ref)), ref])}::jsonb),context_revision=context_revision+1,version=version+1
+            where enterprise_id=${this.actor.enterpriseId} and id=${this.conversationId}`);
+          const event = (await one(tx, sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
+            values(${this.actor.enterpriseId},'construction.public.context.v1','assistant_conversation',${this.conversationId},${Number(c.version)+1},${JSON.stringify(this.actor.principal)}::jsonb,${this.conversationId},${JSON.stringify(ref)}::jsonb) returning id`))!;
+          const content = material.version.content as PublicContent;
+          await appendMessage(tx, this.actor, this.conversationId, { author: 'system', eventId: String(event.id), purpose: 'construction.public.context',
+            content: { version: 1, blocks: [{ type: 'text', text: `正在围观：${content.name}。这是你的咨询，不会加入业主原会话。` }] } });
+          selected = true;
+        }
+        const intro = await schedulePublicIntro(tx, this.actor, this.conversationId, siteId, ref.versionId);
+        return { id: siteId, versionId: ref.versionId, conversationId: this.conversationId, intro };
+      });
+      // An old receipt may acknowledge a write, but cannot select that site
+      // again after the visitor has moved to another context.
+      if (!selected) fail('context_changed');
+      return result;
+    }, true);
   }
   detach(requestKey: string) {
     key(requestKey);
-    return this.scope(async (tx, c) => idempotent(tx, this.actor, 'public:detach:' + this.conversationId, requestKey, {}, async () => {
+    return this.scope(async (tx, c) => {
       if (c.status !== 'open') fail('conversation_read_only');
-      await cancelRuns(tx, this.actor, this.conversationId);
-      await tx.execute(sql`update app.assistant_conversations set entry_snapshot=entry_snapshot-'activePublicSite',context_revision=context_revision+1,version=version+1 where enterprise_id=${this.actor.enterpriseId} and id=${this.conversationId}`);
-      return { conversationId: this.conversationId, detached: true };
-    }), true);
+      let detached = !(c.entry_snapshot as Row).activePublicSite;
+      const result = await idempotent(tx, this.actor, 'public:detach:' + this.conversationId, requestKey, {}, async () => {
+        if (!detached) {
+          await cancelRuns(tx, this.actor, this.conversationId);
+          await tx.execute(sql`update app.assistant_conversations set entry_snapshot=entry_snapshot-'activePublicSite',context_revision=context_revision+1,version=version+1 where enterprise_id=${this.actor.enterpriseId} and id=${this.conversationId}`);
+          detached = true;
+        }
+        return { conversationId: this.conversationId, detached: true };
+      });
+      if (!detached) fail('context_changed');
+      return result;
+    }, true);
   }
 }

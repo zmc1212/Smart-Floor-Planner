@@ -21,7 +21,7 @@ test('lead-bound rough-sketch workflows can omit a source floor plan', () => {
   }), true);
   assert.equal(canCreateLeadBoundRoughSketchWorkflow({
     sourceImage: 'data:image/png;base64,abc',
-    sourceAssetRole: 'space_photo',
+    sourceAssetRole: 'concept_element',
   }), true);
   assert.equal(canCreateLeadBoundRoughSketchWorkflow({
     sourceAssetRole: 'floor_plan',

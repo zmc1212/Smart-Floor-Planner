@@ -27,6 +27,7 @@ Page({
     this._briefIssueId = /^[1-9]\d*$/.test(String(options.issueId)) ? String(options.issueId) : '';
     this._briefMode = options.mode === 'review' ? 'review' : options.mode === 'plan' ? 'plan' : '';
     this._briefRoomId = /^[1-9]\d*$/.test(String(options.roomId)) ? String(options.roomId) : '';
+    this._briefRoom = typeof options.room === 'string' ? options.room.slice(0, 50) : '';
     this.client = new SiteClient({ identity, emit: patch => {
       if (!this._visible) return;
       if (patch.fatal && this.speechController) this.speechController.hide();
@@ -62,7 +63,7 @@ Page({
     await this.client.show(this.projectId);
     if (this._visible && !this.data.fatal) { this.capture.show(); wx.onNetworkStatusChange?.(this._networkChange); void this.capture.flush(); }
     if (this._visible && !this.data.fatal) await this.speechController.show('/miniprogram/construction/projects/' + this.projectId + '/chat/speech');
-    const planRoom = this._briefMode === 'plan' && this.client.state.rooms?.find(room => room.id === this._briefRoomId);
+    const planRoom = this._briefMode === 'plan' && this.client.state.rooms?.find(room => this._briefRoomId ? room.id === this._briefRoomId : room.name === this._briefRoom);
     if (this._briefIssueId && !this.client.state.collaboration && !this.client.state.pending && this.client.state.write) {
       this._conversationInput = true; this.setData({ textMode: true });
       this.client.input(this._briefMode === 'review' ? '查看事项' + this._briefIssueId + '的需求、图纸和现场记录' : '事项' + this._briefIssueId + '现在在等谁？为什么？');
@@ -70,7 +71,7 @@ Page({
     } else if (planRoom && !this.client.state.pending && this.client.state.write && !this.client.state.draft) {
       this._conversationInput = true; this.setData({ textMode: true });
       this.client.input('查看' + planRoom.name + '的图纸、需求和方案');
-      this._briefRoomId = '';
+      this._briefRoomId = ''; this._briefRoom = '';
     }
     this.poll();
   },

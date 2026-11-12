@@ -140,7 +140,7 @@ test('Mini lead create/dedup responses redact conversion details for consumers',
     followUpRecords: [],
     createdAt: now,
     updatedAt: now,
-  } as Parameters<typeof leadDtoForMini>[1];
+  } as unknown as Parameters<typeof leadDtoForMini>[1];
 
   for (const consumerRole of [undefined, 'user']) {
     const consumerDto = leadDtoForMini(

@@ -178,7 +178,7 @@ export function hasCriticalMediaStorageConfigChange(
 }
 
 export function assertMediaStorageConfigCanActivate(
-  config: Pick<MediaStorageConfigRecord, 'status' | 'lastTestOk'>
+  config: Pick<MediaStorageConfigRecord, 'status'> & { lastTestOk?: MediaStorageConfigRecord['lastTestOk'] }
 ) {
   if (config.status !== 'active') throw new Error('已归档配置不能设为默认');
   if (config.lastTestOk !== true) throw new Error('请先通过完整连通测试再设为默认');

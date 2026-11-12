@@ -185,7 +185,11 @@ class AssistantClient {
         && !validPortfolioContactReceipt(slot, pending, data)) throw { code: 'invalid_response' };
       else if (slot.startsWith('public-owner:') && !validOwnerReceipt(slot, pending, data)) throw { code: 'invalid_response' };
       else if (slot.startsWith('plan-decision:') && !validPlanReceipt(slot, pending, data)) throw { code: 'invalid_response' };
-      else if (slot.startsWith('public-context:') && !data.conversationId) throw { code: 'invalid_response' };
+      else if (slot.startsWith('public-context:')) {
+        const match = /^\/conversations\/([1-9]\d*)\/public-sites\/([1-9]\d*)\/context$/.exec(pending.path);
+        if (!match || slot !== `public-context:${match[1]}` || data.conversationId !== match[1]
+          || data.id !== match[2] || data.versionId !== pending.body.versionId) throw { code: 'invalid_response' };
+      }
       if (slot.startsWith('speech-upload:') || slot.startsWith('speech-retry:')) {
         const conversation = /^\/miniprogram\/assistant\/conversations\/([1-9]\d*)\/speech$/.exec(this.prefix);
         const project = /^\/miniprogram\/construction\/projects\/([1-9]\d*)\/chat\/speech$/.exec(this.prefix);
@@ -262,7 +266,15 @@ function latestDesignerCard(items) {
   return latest && latest.designerRecommendation && latest.designerRecommendation.items.length ? latest : null;
 }
 
-function messagesForView(items) {
+function constructionClosureForView(item) {
+  if (item.available === false || item.authorKind !== 'system' || !item.constructionClosure) return null;
+  const { title, excerpt, planNumber, recordVersion } = item.constructionClosure;
+  return typeof title === 'string' && title.trim() && typeof excerpt === 'string' && excerpt.trim()
+    && Number.isSafeInteger(planNumber) && planNumber > 0 && Number.isSafeInteger(recordVersion) && recordVersion > 0
+    ? { title, excerpt, planNumber, recordVersion } : null;
+}
+
+function messagesForView(items, formatAssistantText) {
   const latestPlan = new Map();
   for (const m of items || []) if (m.planDecision && m.available !== false) {
     const previous = latestPlan.get(m.planDecision.id), seq = String(m.seq || '0'), before = String(previous?.seq || '0');
@@ -276,36 +288,46 @@ function messagesForView(items) {
   }
   const record = r => r?.available && /^[1-9]\d*$/.test(String(r.id)) && Number.isSafeInteger(r.version)
     ? { ...r, assets: (r.assets || []).filter(id => /^[1-9]\d*$/.test(String(id))).slice(0, 4).map(String) } : null;
-  return (items || []).map(item => ({
-    ...item,
-    isUser: item.authorKind === 'user',
-    planDecision: item.available !== false && item.planDecision && latestPlan.get(item.planDecision.id) === item ? item.planDecision : null,
-    publicConsent: item.available !== false && item.publicConsent && latestPublic.get(item.publicConsent.id + '_' + item.publicConsent.versionId) === item && /^[1-9]\d*$/.test(String(item.publicConsent.id)) && /^[1-9]\d*$/.test(String(item.publicConsent.versionId)) && Array.isArray(item.publicConsent.photos) && Array.isArray(item.publicConsent.excerpts) ? item.publicConsent : null,
-    publicContext: item.available !== false && item.publicContext && /^[1-9]\d*$/.test(String(item.publicContext.id)) && /^[1-9]\d*$/.test(String(item.publicContext.versionId)) ? item.publicContext : null,
-    publicReferences: item.available !== false ? (item.publicReferences || []).filter(r => /^[1-9]\d*$/.test(String(r.id)) && /^[1-9]\d*$/.test(String(r.versionId))).slice(0, 8) : [],
-    designerRecommendation: item.available !== false ? designerRecommendationForView(item.designerRecommendation) : null,
-    siteRecord: item.available !== false && item.siteRecord?.available && /^[1-9]\d*$/.test(String(item.siteRecord.id)) && Number.isSafeInteger(item.siteRecord.version)
-      ? { ...item.siteRecord, assets: (item.siteRecord.assets || []).filter(id => /^[1-9]\d*$/.test(String(id))).slice(0, 4).map(String) } : null,
-    siteRecordList: item.available !== false ? [item.siteRecord, ...(item.siteRecords || [])].map(record).filter(Boolean).filter((r, index, all) => all.findIndex(a => a.id === r.id && a.version === r.version) === index) : [],
-    siteWatch: item.available !== false && item.siteWatch && /^[1-9]\d*$/.test(String(item.siteWatch.id)) && typeof item.siteWatch.cancelText === 'string' && item.siteWatch.cancelText.length <= 300 ? item.siteWatch : null,
-    constructionContacts: item.available === false ? [] : (Array.isArray(item.constructionContacts) ? item.constructionContacts : []).filter(c =>
-      /^\d+$/.test(String(c.projectId)) && typeof c.stageKey === 'string'
-    ).map(c => ({ projectId: String(c.projectId), stageKey: c.stageKey, projectName: String(c.projectName || '') })),
-    suggestDesigner: item.authorKind === 'assistant' && (item.content?.blocks || []).some(b => b.text === '这部分需要设计师结合本次情况继续沟通。你愿意的话，可以请设计师接着聊。'),
-    // A known citation already has a tappable source chip below the bubble.
-    // Keep fallback text for unmatched/future blocks instead of hiding content.
-    blocks: (item.content && item.content.blocks || []).filter(block =>
-      block.type !== 'citation' || !(item.citations || []).some(citation => String(citation.id) === String(block.citationId))
-    ).map((block, index) => ({
-      key: index,
-      // Never interpret model HTML, URLs or action instructions.
-      text: block.type === 'text' ? String(block.text || '') : String(block.fallbackText || '这段内容暂时无法展示。'),
-    })),
-    citations: (item.citations || []).map(citation => ({
-      id: citation.id, available: citation.available,
-      title: citation.available ? citation.title : '资料已不可用',
-    })),
-  })).sort((a, b) => String(a.seq).length - String(b.seq).length || String(a.seq).localeCompare(String(b.seq)));
+  return (items || []).map(item => {
+    // WXML uses the projected blocks. Keep the raw content in the controller
+    // so it isn't serialized twice or sent to the view after withdrawal.
+    const { content, ...metadata } = item;
+    const available = item.available !== false;
+    const blocks = content?.blocks || [];
+    const citations = available ? item.citations || [] : [];
+    return {
+      ...metadata,
+      isUser: item.authorKind === 'user',
+      constructionClosure: constructionClosureForView(item),
+      planDecision: available && item.planDecision && latestPlan.get(item.planDecision.id) === item ? item.planDecision : null,
+      publicConsent: available && item.publicConsent && latestPublic.get(item.publicConsent.id + '_' + item.publicConsent.versionId) === item && /^[1-9]\d*$/.test(String(item.publicConsent.id)) && /^[1-9]\d*$/.test(String(item.publicConsent.versionId)) && Array.isArray(item.publicConsent.photos) && Array.isArray(item.publicConsent.excerpts) ? item.publicConsent : null,
+      publicContext: available && item.publicContext && /^[1-9]\d*$/.test(String(item.publicContext.id)) && /^[1-9]\d*$/.test(String(item.publicContext.versionId)) ? item.publicContext : null,
+      publicReferences: available ? (item.publicReferences || []).filter(r => /^[1-9]\d*$/.test(String(r.id)) && /^[1-9]\d*$/.test(String(r.versionId))).slice(0, 8) : [],
+      designerRecommendation: available ? designerRecommendationForView(item.designerRecommendation) : null,
+      siteRecord: available && item.siteRecord?.available && /^[1-9]\d*$/.test(String(item.siteRecord.id)) && Number.isSafeInteger(item.siteRecord.version)
+        ? { ...item.siteRecord, assets: (item.siteRecord.assets || []).filter(id => /^[1-9]\d*$/.test(String(id))).slice(0, 4).map(String) } : null,
+      siteRecordList: available ? [item.siteRecord, ...(item.siteRecords || [])].map(record).filter(Boolean).filter((r, index, all) => all.findIndex(a => a.id === r.id && a.version === r.version) === index) : [],
+      siteWatch: available && item.siteWatch && /^[1-9]\d*$/.test(String(item.siteWatch.id)) && typeof item.siteWatch.cancelText === 'string' && item.siteWatch.cancelText.length <= 300 ? item.siteWatch : null,
+      constructionContacts: !available ? [] : (Array.isArray(item.constructionContacts) ? item.constructionContacts : []).filter(c =>
+        /^\d+$/.test(String(c.projectId)) && typeof c.stageKey === 'string'
+      ).map(c => ({ projectId: String(c.projectId), stageKey: c.stageKey, projectName: String(c.projectName || '') })),
+      suggestDesigner: available && item.authorKind === 'assistant' && blocks.some(b => b.text === '这部分需要设计师结合本次情况继续沟通。你愿意的话，可以请设计师接着聊。'),
+      // A known citation already has a tappable source chip below the bubble.
+      // Keep fallback text for unmatched/future blocks instead of hiding content.
+      blocks: blocks.filter(block =>
+        (available || block.type === 'notice')
+        && (block.type !== 'citation' || !citations.some(citation => String(citation.id) === String(block.citationId)))
+      ).map((block, index) => {
+        const text = block.type === 'text' ? String(block.text || '') : String(block.fallbackText || '这段内容暂时无法展示。');
+        const markdown = item.authorKind === 'assistant' && block.type === 'text' ? formatAssistantText?.(block) : null;
+        return markdown ? { key: index, text, markdown } : { key: index, text };
+      }),
+      citations: citations.map(citation => ({
+        id: citation.id, available: citation.available,
+        title: citation.available ? citation.title : '资料已不可用',
+      })),
+    };
+  }).sort((a, b) => String(a.seq).length - String(b.seq).length || String(a.seq).localeCompare(String(b.seq)));
 }
 
 module.exports = { AssistantClient, entryInput, errorCopy, uncertain, messagesForView, latestDesignerCard };

@@ -20,7 +20,7 @@ fs.mkdirSync(output, { recursive: true });
 const project = path.join(root, 'miniprogram');
 const mp = wechatideNativeClient(project, output);
 const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
-const report: Row = { startedAt: new Date().toISOString(), checks: [], failures: [] };
+const report: Report = { startedAt: new Date().toISOString(), checks: [], failures: [] };
 const save = () => fs.writeFileSync(path.join(output, 'report.json'), JSON.stringify(report, null, 2));
 const evaluate = async <T>(source: string, ...args: unknown[]): Promise<T> => (await mp.call('automation_evaluate', { project, fnSource: source, args })).result.result as T;
 async function waitFor<T>(label: string, fn: () => Promise<T | undefined | false>, timeoutMs: number, intervalMs = 2500) {
@@ -28,7 +28,14 @@ async function waitFor<T>(label: string, fn: () => Promise<T | undefined | false
   while (Date.now() - started < timeoutMs) { const v = await fn(); if (v) return v; await delay(intervalMs); }
   throw new Error(label + ' timed out after ' + Math.round(timeoutMs / 1000) + 's');
 }
-const page = () => evaluate<Row>(`() => { const p = getCurrentPages().at(-1); if (!p) return { route: null }; const d = p.data;
+type Report = Row & { checks: Row[]; failures: Row[]; passed?: boolean; error?: string };
+type PageMessage = { id: string; isUser: boolean; text: string; citations: number;
+  designer: { items: Array<{ authorId: string; authorName: string; workTitle: string; style: string; specialty: string }> } | null };
+type PageState = { route: string | null; loading: boolean; needsLogin: boolean; error: string; busy: boolean; generating: boolean;
+  conversation: { id: string } | null; messages: PageMessage[] };
+type DesignerProfile = { route: string | null; name: string; title: string; city: string; styles: string[];
+  works: Array<{ title: string; style: string }>; totalWorks: number; loading: boolean; error: string };
+const page = () => evaluate<PageState>(`() => { const p = getCurrentPages().at(-1); if (!p) return { route: null }; const d = p.data;
   const text = m => String(m.text || ((m.blocks || []).map(b => b.text || '').join('')));
   return { route: p.route, loading: !!d.loading, needsLogin: !!d.needsLogin, error: d.error || '', busy: !!d.busy, generating: !!d.generating,
     conversation: d.conversation ? { id: String(d.conversation.id) } : null,
@@ -74,7 +81,7 @@ async function main() {
     const card = reply.designer.items[0];
     await mp.call('automation_element_action', { project, selector: '.designer-card-head', action: 'tap' });
     const profile = await waitFor('designer profile', async () => {
-      const r = await evaluate<Row>(`() => { const p = getCurrentPages().at(-1); if (!p || !String(p.route).includes('designer')) return null;
+      const r = await evaluate<DesignerProfile>(`() => { const p = getCurrentPages().at(-1); if (!p || !String(p.route).includes('designer')) return null;
         const d = p.data; return { route: p.route, name: d.designer && d.designer.name || '', title: d.designer && d.designer.professionalTitle || '',
           city: d.designer && d.designer.cityLabel || '', styles: d.designer && d.designer.styles || [],
           works: (d.designer && d.designer.works || []).map(w => ({ title: w.title || '', style: w.primaryStyle || '' })).slice(0, 6),

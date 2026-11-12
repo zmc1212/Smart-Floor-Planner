@@ -59,7 +59,6 @@ export class ConstructionService {
     return withTenantTransaction(this.actor.enterpriseId, async tx => {
       const a = this.actor, eid = a.enterpriseId, owner = await constructionAccess(tx, a);
       const collaboration = collaborationEnabled(eid);
-      if (!collaboration && ['schedule', 'saveSchedule'].includes(action)) fail('construction_not_found', 404);
       const read = ['list', 'brief', 'options', 'lead', 'detail', 'stages', 'schedule'].includes(action);
       if (!read) { key(requestKey); await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`construction:${eid}:${a.adminId}:${requestKey}`},0))`); }
       await tx.execute(sql`insert into app.construction_stage_settings(enterprise_id,stages) values(${eid},${JSON.stringify(defaultConstructionStages)}::jsonb) on conflict do nothing`);
@@ -134,30 +133,37 @@ export class ConstructionService {
         if (!member) fail('construction_not_found', 404);
       }
       const manage = canManageConstructionProject(owner, typeof member?.role === 'string' ? member.role : null);
-      if (collaboration && (read || action === 'saveSchedule') && !await one(tx, sql`select id from app.leads where enterprise_id=${eid} and id=${String(p.lead_id)} and archived_at is null for share`)) fail('construction_not_found', 404);
+      if ((read || action === 'saveSchedule') && !await one(tx, sql`select id from app.leads where enterprise_id=${eid} and id=${String(p.lead_id)} and archived_at is null for share`)) fail('construction_not_found', 404);
       if (action === 'schedule') return dto(await readSchedule(tx, eid, p, stages)) as Row;
-      if (action === 'saveSchedule') return idempotent(tx, actorContext(a), 'construction:schedule:' + pid, requestKey!, input,
-        () => publishSchedule(tx, actorContext(a), p, stages, input));
-      let business: Row = {};
-      if (action === 'detail' && collaboration) {
-        const plans = await projectPlans(tx, eid, pid, member?.role === 'worker');
+      if (action === 'saveSchedule') {
+        if (!manage) fail('construction_forbidden', 403);
+        return idempotent(tx, actorContext(a), 'construction:schedule:' + pid, requestKey!, input,
+          () => publishSchedule(tx, actorContext(a), p, stages, input, collaboration));
+      }
+      if (action === 'detail') {
+        const executionOnly = member?.role === 'worker' || member?.role === 'observer';
+        const plans = await projectPlans(tx, eid, pid, executionOnly);
         const effective = new Set(plans.filter(plan => plan.status === 'approved' && 'issueId' in plan).map(plan => 'issueId' in plan && plan.issueId));
-        const issues = (await projectSiteIssues(tx, eid, pid, null)).filter(issue => manage
+        const issues = (await projectSiteIssues(tx, eid, pid, collaboration ? null : 50)).filter(issue => manage
           || member?.role === 'designer' && (issue.designRelated || issue.ownerId === a.adminId)
           || member?.role === 'worker' && (issue.sourceKind !== 'need' || effective.has(issue.issueId)));
-        business = { issues: await Promise.all(issues.slice(0, 50).map(async issue => ({ ...siteIssueSummary(issue), sync: await issueDelivery(tx, eid, issue) }))),
-          issueGroups: groupProjectIssues(issues, a.adminId),
-          plans, progress: await readSchedule(tx, eid, p, stages) };
-      }
-      if (action === 'detail') return dto({ ...business, project: { id: p.id, name: p.name, lead_id: owner ? p.lead_id : undefined, status: p.status,
+        return dto({ project: { id: p.id, name: p.name, lead_id: owner ? p.lead_id : undefined, status: p.status,
         customer_access: p.customer_access, version: p.version, current_stage_key: p.current_stage_key, progress_note: p.progress_note }, manage, owner, stages, settingsVersion: settings.version,
         myRole: member?.role || (owner ? 'owner' : null),
+        issues: await Promise.all(issues.slice(0, 50).map(async issue => ({
+          ...siteIssueSummary(issue), mine: issue.ownerId === a.adminId, ...(manage ? { text: issue.text } : {}),
+          sync: await issueDelivery(tx, eid, issue),
+        }))),
+        issueGroups: groupProjectIssues(issues, a.adminId, manage),
+        progress: await readSchedule(tx, eid, p, stages),
+        plans: plans.slice(0, 20),
         assignments: await rows(tx, sql`select s.stage_key,s.admin_id,s.is_primary,a.display_name,a.status as staff_status from app.construction_stage_assignments s join app.construction_members m on m.enterprise_id=s.enterprise_id and m.project_id=s.project_id and m.admin_id=s.admin_id and m.active join app.admin_users a on a.enterprise_id=s.enterprise_id and a.id=s.admin_id where s.enterprise_id=${eid} and s.project_id=${pid} order by s.stage_key,s.admin_id`),
         members: await rows(tx, sql`select m.admin_id,m.role,m.active,m.work_label,a.display_name,a.role as staff_role,a.status as staff_status,a.construction_trades from app.construction_members m join app.admin_users a on a.enterprise_id=m.enterprise_id and a.id=m.admin_id where m.enterprise_id=${eid} and m.project_id=${pid} order by m.admin_id`),
         staff: manage ? await rows(tx, sql`select id,display_name,role,construction_trades from app.admin_users where enterprise_id=${eid} and status='active' order by id limit 300`) : [],
         rooms: await rows(tx, sql`select id,name from app.construction_rooms where enterprise_id=${eid} and project_id=${pid} order by id`),
         audits: await rows(tx, sql`select action,created_at from app.construction_audits where enterprise_id=${eid} and project_id=${pid} order by id desc limit 30`),
       }) as Row;
+      }
       if (!manage) fail('construction_forbidden', 403);
       return idempotent(tx, actorContext(a), 'construction:' + action + ':' + pid, requestKey!, input, async () => {
         if (version(input.expectedVersion) !== Number(p.version)) fail('version_conflict');
@@ -208,15 +214,16 @@ export class ConstructionService {
           followUp = changed && !!stage.followUps?.length;
           await tx.execute(sql`update app.construction_projects set current_stage_key=${key},progress_note=${note},progress_revision=progress_revision+${changed || remind || note !== p.progress_note ? 1 : 0} where enterprise_id=${eid} and id=${pid}`);
         }
-        const updated = (await one(tx, sql`update app.construction_projects set version=version+1,updated_at=now() where enterprise_id=${eid} and id=${pid} returning *`))!;
-        if (action === 'progress' && collaboration) auditInput = { ...auditInput, progressRevision: Number(updated.progress_revision) };
-        await audit(tx, a, pid, action, auditInput);
+        // Record the actor and room before the version trigger tries the same Outbox key.
         if (delegationsEnabled(eid) && (stageChanged || ['update','member','room'].includes(action))) {
           await tx.execute(sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
-            values(${eid},'construction.project.changed.v1','construction_project',${pid},${Number(updated.version)},
+            values(${eid},'construction.project.changed.v1','construction_project',${pid},${Number(p.version) + 1},
             ${JSON.stringify(actorContext(a).principal)}::jsonb,${requestKey!},
             ${JSON.stringify({ projectId: pid, change: action, roomId: action === 'room' ? input.roomId || null : null })}::jsonb)`);
         }
+        const updated = (await one(tx, sql`update app.construction_projects set version=version+1,updated_at=now() where enterprise_id=${eid} and id=${pid} returning *`))!;
+        if (action === 'progress' && collaboration) auditInput = { ...auditInput, progressRevision: Number(updated.progress_revision) };
+        await audit(tx, a, pid, action, auditInput);
         // The actual stage event also belongs to internal staff follow-up; it
         // must not depend on homeowner publication or a foreground chat.
         if (stageChanged || ((remind || followUp) && updated.customer_access)) {

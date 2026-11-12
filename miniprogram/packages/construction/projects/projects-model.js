@@ -24,7 +24,10 @@ function decorateIssue(issue) {
     sourceLabel: sourceLabels[issue.sourceKind] || '', waitingText: issueWaitingText(issue) };
 }
 function decoratePlan(plan) {
-  return { ...plan, statusLabel: plan.available ? planStatusLabels[plan.status] || plan.status : '已失效' };
+  if (!plan.available) return { ...plan, statusLabel: '已失效', costText: '', scheduleText: '' };
+  return { ...plan, statusLabel: planStatusLabels[plan.status] || plan.status,
+    costText: Number.isFinite(plan.costDeltaCents) ? (plan.costDeltaCents >= 0 ? '+' : '') + (plan.costDeltaCents / 100).toFixed(2) + '元' : '',
+    scheduleText: Number.isFinite(plan.scheduleDeltaDays) ? (plan.scheduleDeltaDays >= 0 ? '+' : '') + plan.scheduleDeltaDays + '天' : '' };
 }
 const errors = {
   construction_forbidden: '当前身份无工地权限，请联系企业负责人。', construction_not_found: '工地不存在或已取消分配，请返回刷新。',
@@ -54,18 +57,21 @@ function decorateProgress(progress) {
   if (!progress) return null;
   return { ...progress,
     nodes: (progress.nodes || []).map(node => ({ ...node, title: [node.roomName, node.stageName].filter(Boolean).join(' · '),
-      dateText: node.plannedStart + ' 至 ' + node.plannedEnd })) };
+      dateText: node.plannedStart + ' 至 ' + node.plannedEnd })),
+    gapTexts: (progress.gaps || []).map(gap => gap.label) };
 }
 function decorateDetail(value) {
   const assignments = value.assignments || [];
   const issues = (value.issues || []).map(decorateIssue);
   const plans = (value.plans || []).map(decoratePlan);
   const issueSections = decorateIssueGroups(value.issueGroups, issues);
+  const openCount = issueSections.filter(s => ['awaitingVerification', 'awaitingRectification', 'rectifying', 'awaitingReview'].includes(s.key))
+    .reduce((sum, section) => sum + section.count, 0);
   return { ...value, project: decorateProject(value.project, value.stages || []),
     roleLabel: roleLabels[value.myRole] || '',
     issueSections,
     progress: decorateProgress(value.progress),
-    issueCount: value.issueGroups ? value.issueGroups.openCount : issues.filter(issue => !['cancelled', 'closed', 'resolved', 'dismissed'].includes(issue.status)).length,
+    issueCount: value.issueGroups ? (value.issueGroups.openCount ?? openCount) : issues.filter(issue => !['cancelled', 'closed', 'resolved', 'dismissed'].includes(issue.status)).length,
     pendingIssues: issues.filter(issue => !['cancelled', 'closed', 'resolved', 'dismissed'].includes(issue.status)).slice(0, 6),
     approvedPlans: plans.filter(plan => plan.available && plan.status === 'approved').slice(0, 6),
     stages: (value.stages || []).map(s => ({ ...s,

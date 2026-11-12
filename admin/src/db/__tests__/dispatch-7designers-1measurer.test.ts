@@ -48,6 +48,7 @@ import {
   EnterpriseRepository,
   ReferralLeadRepository,
   ReferrerNetworkRepository,
+  type ReferralLeadClaimResult,
 } from '@/db/repositories';
 import {
   withPlatformTransaction,
@@ -199,7 +200,7 @@ test('7设计师+1测量员+7线索 — 每条线索派给不同设计师，测�
   });
 
   // ── 4. 顺序创建7条线索（claimEnabled=false → 每条立即触发 autoAssignLead）──
-  const createdLeads = [];
+  const createdLeads: ReferralLeadClaimResult['lead'][] = [];
   for (let i = 0; i < 7; i++) {
     const customer = await createCustomer(`lead-${i + 1}`);
     const result = await withPlatformTransaction((tx) =>

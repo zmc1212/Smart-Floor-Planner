@@ -45,10 +45,26 @@ async function authorized(repo: AssistantRepository, run: Row) {
   if (!localReport) await validatePreviewSnapshot(repo.tx,repo.actor,c);
   return c;
 }
-/** Global scan exposes routing IDs only; every claim and recovery uses the tenant scope. */
-export async function claimJob(): Promise<Lease | null> {
-  const candidates = await withPlatformTransaction(tx => rows(tx, sql`select enterprise_id,id from app.assistant_jobs
-    where kind='chat_turn' and ((status='queued' and available_at<=now()) or (status='running' and lease_expires_at<=now())) order by available_at,id limit 50`));
+/** Global scan exposes routing IDs only; every claim and recovery uses the tenant scope.
+ * Candidates take the oldest eligible job per enterprise so one busy enterprise
+ * cannot starve the others. */
+const boundedConcurrency = (value: string | undefined, max: number) => {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 1 && parsed <= max ? parsed : 1;
+};
+export const workerConcurrency = () => boundedConcurrency(process.env.ASSISTANT_WORKER_CONCURRENCY, 8);
+export const enterpriseConcurrency = () => boundedConcurrency(process.env.ASSISTANT_ENTERPRISE_CONCURRENCY, 4);
+export async function claimJob(scope?: { enterpriseId: string; runId?: string }): Promise<Lease | null> {
+  // The optional scope narrows candidacy to one enterprise/run for drivers that
+  // own exactly that fixture (acceptance harnesses); production callers never
+  // pass it, so the global oldest-eligible scan stays unchanged.
+  const candidates = await withPlatformTransaction(tx => rows(tx, sql`select enterprise_id,id from (
+    select enterprise_id,id,available_at,row_number() over (partition by enterprise_id order by available_at,id) rn
+    from app.assistant_jobs where kind='chat_turn'
+      and ((status='queued' and available_at<=now()) or (status='running' and lease_expires_at<=now()))
+      ${scope?.runId ? sql`and enterprise_id=${scope.enterpriseId} and run_id=${scope.runId}`
+        : scope ? sql`and enterprise_id=${scope.enterpriseId}` : sql``}
+  ) candidate where rn=1 order by available_at,id limit 50`));
   for (const candidate of candidates) {
     const lease = await withTenantTransaction(String(candidate.enterprise_id), async tx => {
       // The settings lock is the common ordering point for API, claim, completion, and cancellation.
@@ -57,6 +73,11 @@ export async function claimJob(): Promise<Lease | null> {
       const job = await one(tx, sql`select * from app.assistant_jobs where enterprise_id=${String(candidate.enterprise_id)} and id=${String(candidate.id)}
         and ((status='queued' and available_at<=now()) or (status='running' and lease_expires_at<=now())) for update skip locked`);
       if (!job) return null;
+      // Same-enterprise conversations wait for the enterprise's slot instead of
+      // failing; another enterprise's live lease never blocks this one.
+      const active = await one(tx, sql`select count(*) as n from app.assistant_jobs where enterprise_id=${String(job.enterprise_id)}
+        and status='running' and lease_expires_at>now() and id<>${String(job.id)}`);
+      if (Number(active!.n) >= enterpriseConcurrency()) return null;
       const run = (await one(tx, sql`select * from app.assistant_runs where enterprise_id=${String(job.enterprise_id)} and id=${String(job.run_id)} for update`))!;
       const actor = (run.policy_snapshot as { actor: ActorContext }).actor;
       const current: Lease = { enterpriseId: String(job.enterprise_id), jobId: String(job.id), runId: String(run.id), token: randomUUID(), actor };
@@ -115,12 +136,16 @@ export async function heartbeat(lease: Lease) {
       where enterprise_id=${lease.enterpriseId} and id=${lease.jobId}`);
   });
 }
-/** Commit this marker BEFORE any provider I/O; recovery must never assume an unrecorded acceptance was free. */
-export async function markProviderStarted(lease: Lease,evidence:Evidence[]=[]) {
+/** Commit this marker BEFORE any provider I/O; recovery must never assume an unrecorded acceptance was free.
+ * The optional guard re-verifies the caller's own pre-dispatch conditions in
+ * the same transaction, so rejecting there also prevents the dispatch. */
+export async function markProviderStarted(lease: Lease,evidence:Evidence[]=[],
+  guard?:(tx:PostgresTransaction,conversation:Row)=>Promise<void>) {
   return withTenantTransaction(lease.enterpriseId, async tx => {
     const { run, job } = await live(tx, lease); const c=await authorized(new AssistantRepository(tx, lease.actor), run);
     for(const e of evidence) if(!await resolveEvidence(tx,lease.actor,c,e))fail('context_changed');
     if (job.provider_started_at) fail('context_changed');
+    await guard?.(tx,c);
     await tx.execute(sql`update app.assistant_jobs set provider_started_at=now(),version=version+1,updated_at=now() where enterprise_id=${lease.enterpriseId} and id=${lease.jobId}`);
   });
 }
@@ -209,16 +234,33 @@ export async function failRun(lease: Lease, code: string, outcomeKnown=false) {
     await finish(tx, lease, status, unknown ? 'provider_outcome_unknown' : code);
   });
 }
-/** At most one expensive job per request; oldest eligible kind prevents chat/index starvation. */
-export async function processAssistantJob(processRun: (lease: Lease) => Promise<void> = processAnswer) {
+/** Oldest eligible kind prevents chat/index starvation. Up to the configured
+ * worker limit is claimed per request: different enterprises run concurrently,
+ * while the claim check keeps each enterprise serial. */
+export async function processAssistantJob(processRun: (lease: Lease) => Promise<void> = processAnswer,
+  limit = workerConcurrency()) {
   const next=await withPlatformTransaction(tx=>one(tx,sql`select kind from app.assistant_jobs where
     (status='queued' and available_at<=now()) or (status='running' and lease_expires_at<=now()) order by available_at,id limit 1`));
-  const lease=next?.kind==='chat_turn'?await claimJob():null;
-  if(lease) await processRun(lease);
-  const knowledgeClaimed=['knowledge_index','knowledge_parse'].includes(String(next?.kind))?await processKnowledgeJob():false;
+  const leases:Lease[]=[];
+  if(next?.kind==='chat_turn') for(let index=0;index<limit;index++){
+    const lease=await claimJob();
+    if(!lease)break;
+    leases.push(lease);
+  }
+  if(leases.length){
+    const results=await Promise.allSettled(leases.map(lease=>processRun(lease)));
+    const rejected=results.find((result):result is PromiseRejectedResult=>result.status==='rejected');
+    if(rejected)throw rejected.reason;
+  }
+  // Head-of-line fallback: when the oldest eligible job is a chat turn but no
+  // chat lease could be claimed (its enterprise slots are full), a runnable
+  // knowledge job of another enterprise must still advance instead of waiting
+  // behind the blocked chat head.
+  const knowledgeClaimed=['knowledge_index','knowledge_parse'].includes(String(next?.kind))||!leases.length
+    ?await processKnowledgeJob():false;
   const cleanupClaimed = !next && await processManagedKnowledgeCleanup();
   await deliverMetrics();
-  return { claimed: Boolean(lease) || knowledgeClaimed || cleanupClaimed };
+  return { claimed: leases.length>0 || knowledgeClaimed || cleanupClaimed };
 }
 /** Trusted configured interview copy is not a knowledge answer or provider invocation. */
 export async function completeGuidance(lease: Lease, text: string) {
