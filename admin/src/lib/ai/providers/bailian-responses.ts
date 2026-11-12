@@ -47,7 +47,10 @@ export function bailianResponsesBody(input: ModelTurnInput, options: BailianResp
     }
     if (message.role === 'assistant') {
       textBytes += Buffer.byteLength(message.content);
-      if (message.content) items.push({ type: 'assistant', content: [{ type: 'output_text', text: message.content }] });
+      // Documented EasyInputMessage item: role-based, `type` is optional and
+      // fixed to `message`; assistant content elements must be `output_text`.
+      // `type: 'assistant'` is not a documented Responses input item type.
+      if (message.content) items.push({ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: message.content }] });
       for (const call of message.toolCalls ?? []) {
         items.push({ type: 'function_call', call_id: call.id, name: call.name, arguments: call.arguments });
       }
