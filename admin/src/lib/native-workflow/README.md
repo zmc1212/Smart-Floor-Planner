@@ -1650,21 +1650,81 @@ mapping; `period-report-schedule-store.test.ts` covers exclusive
 create/identity, concurrent adoption, immutable claim receipts, control/ledger
 and the lease TTL; `period-report-schedule-ports.test.ts` covers plan scope,
 `weekly_claimed` legacy handling and the weekly claim boundary. The documented
-offline command is 404/404 (B5.9.1 adds sixteen cases).
+offline command remains 404/404 (B5.9.2 fixed a live-only SQL shape bug and
+extended the acceptance driver without adding offline cases).
 
-B5.9.1 evidence status: offline regression is 404/404, lint and the changed-file
-type check pass (the repository-wide `tsc` still has older errors in unrelated
-scripts). The real B-isolated acceptance is blocked: Docker Desktop cannot
-start from the current non-elevated session (`Start-Service`
-`com.docker.service` is denied and `docker version` reports “Docker Desktop is
-unable to start”), while the stale `127.0.0.1:55433` forward accepts TCP but the
-database handshake times out. No live scheduler tick, Worker task, model call,
-report, job, attempt, usage, delivery or message was created in this round; no
-`queued` state is reported as delivered or read. The B5.8 four-receiver
-evidence (reports `12`-`15`, facts runs `22`-`25`, body runs `26`-`29`,
-messages `129`-`132`, read receipts `17:54:40`-`17:54:42`) remains the live
-four-end evidence and is not regenerated. A bounded acceptance driver now
-covers the time gate itself:
+B5.9.2 real B-isolated acceptance (2026-11-12): the Docker Desktop GUI service
+still cannot be started from the non-elevated session, but the existing Docker
+engine was reachable through
+`npipe:////./pipe/dockerDesktopLinuxEngine`. The existing
+`sfp-b4-native-postgres` container had exited 255 when the WSL VM restarted;
+it was started unchanged (no container/volume deletion or rebuild) and
+PostgreSQL completed crash recovery. `smart_floor_planner`, roles `sfp_app` /
+`sfp_owner`, enterprise `[B4] 微云原生编排测试` (`1454`) and project
+`[B4] 水路阶段测试项目` (`1454000004`) were verified before any write.
+
+The first live failure was a real adapter bug: `discoverProjectManagers` used
+`select distinct a.id::text ... order by a.id`, which PostgreSQL rejects with
+`42P10` (ORDER BY expression not in the select list). The fix is
+`select distinct on (a.id) ... order by a.id`. This path had only been exercised
+with fakes before; a direct read-only query against the B database reproduced
+the failure and the fixed query returned manager `1454000007`.
+
+Acceptance period `2026-11-02`→`2026-11-09` (latest finished Shanghai week),
+enterprise `1454`, project `1454000004`:
+
+- before the configured time: no schedule run, batch, report, job, delivery or
+  message;
+- paused at the configured time: no claim and no dispatch;
+- due: one atomic claim, one discovered project, one manifest with four
+  receivers, three new reports (`16` customer, `17` worker, `18` boss) and the
+  existing designer report `9` reused. Facts runs `30`-`32`; delivery ids
+  `251`/`253`/`255`; messages `133`/`134`/`135`; designer delivery `224` /
+  message `124`;
+- the first body attempt created runs `33`-`35` and failed before provider
+  dispatch with `model_unavailable` because the B app process was started
+  without the provider encryption/JWT environment. No provider attempt or usage
+  row was created; that failure evidence is preserved. Loading the existing
+  `.env.local` (with the B `DATABASE_URL` override) and re-enqueuing bodies
+  created runs `36`-`38`, attempts `13`-`15` (`llm-settings-override`,
+  `qwen3.7-flash`, `succeeded`/`accepted:true`) and observed usage
+  `1167+61`, `1201+72`, `1199+84` tokens;
+- counters moved from `15/15/15/29/29/12/12` (reports/deliveries/report
+  messages/jobs/runs/attempts/usage) to `18/18/18/35/35/12/12` after facts and
+  the failed pre-dispatch bodies, then to `18/18/18/38/38/15/15` after the
+  successful body retry. The final reuse acceptance ran with
+  `18/18/18/38/38/15/15` before, after the due tick, after the repeated tick
+  and at the end: `reportsAdded=0`, `deliveriesAdded=0`;
+- repeated tick added no report/job/message/delivery/attempt/usage row; pause
+  blocked dispatch and resume kept the claimed run observable; the read-only
+  old-period replay did not claim, did not move `next_weekly_at` and added no
+  report/delivery; the final acceptance passed 33/33 checks;
+- the report plan restored exactly (`enabled=true`, daily `20:00`, weekly
+  `08:00`, `weekly_day=1`, both next stamps `2099-01-01`, `project_ids`
+  `[1454000004]`, empty `stage_keys`, all four audiences, `stage_enabled=false`,
+  `stage_cursor=174`, `dispatch_epoch=1`, `inactive_policy=pause_inactive`);
+  only the version counter advanced. `restore.json` is `restored:true`.
+
+Four-end result: customer/worker/boss reports `16`/`17`/`18` are delivered and
+unread (`readAt=null`); each has a distinct binding, conversation, report,
+delivery and message. The customer facts contain only customer-visible record
+`1`, not internal record `5`. The designer report `9` is delivered and was read
+on 2026-11-11, but its current status is `unavailable` /
+`source_project_revoked`: audit `127` deactivated the designer after report `9`
+was generated and audit `128` restored membership; the existing contract
+invalidates the saved sources and does not resurrect the old report. This is a
+historical B5.6 condition, not a scheduler defect, and it means the four-end
+viewability is not complete this round. The worker's continuous lifecycle and
+the designer's native UI in the revocation window remain Limited.
+
+Evidence:
+`admin/tmp/b5-9-2-schedule-runs/b5-9-2-schedule-2026-11-12T0603-1879c19f/`
+(first generation run, `success:false` on the pre-retry body failure, preserved;
+`retry-verification.json` records the successful retry) and
+`.../b5-9-2-schedule-2026-11-12T0619-e705c20f/verification.json` (final 33/33
+reuse acceptance) plus `restore.json` in each run directory.
+
+The acceptance driver command remains:
 
 ```powershell
 $env:B4_LIVE_APP_DATABASE_URL='postgresql://sfp_app:...@127.0.0.1:55433/smart_floor_planner'
@@ -1675,17 +1735,13 @@ npx tsx scripts/native-workflow-schedule-acceptance.ts --development `
 ```
 
 It temporarily configures `weekly_day`/`weekly_time`/`next_weekly_at` and
-verifies: before the configured time no run/batch/business row; a paused due
-tick claims nothing; the due tick claims once and creates one project batch with
-four receivers; a repeated tick adds no business row; pause/resume; a read-only
-old-period replay never moves the current weekly slot; and the report plan is
-restored and read back in `finally`. It never falls back to the general
-database. Production automatic scheduling remains off:
-`NATIVE_WORKFLOW_SCHEDULE_ENABLED=0` and an explicit
-`NATIVE_WORKFLOW_SCHEDULE_ENTERPRISE_IDS` allowlist are required. Historical
-limitations remain: the worker's full continuous lifecycle and the designer's
-native UI inside the revocation window are still unverified, and older
-failures/unknowns are not overwritten.
+checks before-time, paused, due, repeated-tick, pause/resume, read-only replay,
+per-receiver identity, customer record scope and restore. Existing reports are
+reused; the driver does not force a new report per receiver. Production
+automatic scheduling remains off (`NATIVE_WORKFLOW_SCHEDULE_ENABLED=0` plus an
+explicit `NATIVE_WORKFLOW_SCHEDULE_ENTERPRISE_IDS` allowlist). Because the
+designer end is not currently viewable, this round does not recommend enabling
+production scheduling.
 
 ## Reproduce
 

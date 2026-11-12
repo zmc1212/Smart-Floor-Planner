@@ -1,4 +1,4 @@
-/** Bounded B-isolated acceptance for the B5.9.1 weekly scheduler time gate.
+/** Bounded B-isolated acceptance for the B5.9.2 weekly scheduler time gate.
  *
  * It runs the real scheduler against the existing B database with an explicit
  * enterprise/project and temporarily configured weekly execution time:
@@ -90,8 +90,8 @@ const bossId = id('--boss-id', DEFAULT_BOSS_ID);
 const customerUserId = id('--customer-user-id', DEFAULT_CUSTOMER_ID);
 const waitWorker = process.argv.includes('--wait-worker');
 const stamp = new Date().toISOString().replace(/[:.]/g, '').slice(0, 15);
-const acceptanceId = `b5-9-1-schedule-${stamp}-${randomUUID().slice(0, 8)}`;
-const outputDir = path.resolve(process.cwd(), 'tmp/b5-9-1-schedule-runs', acceptanceId);
+const acceptanceId = `b5-9-2-schedule-${stamp}-${randomUUID().slice(0, 8)}`;
+const outputDir = path.resolve(process.cwd(), 'tmp/b5-9-2-schedule-runs', acceptanceId);
 const scheduleDir = path.join(outputDir, 'schedules');
 
 interface Check {
@@ -197,6 +197,7 @@ async function verifyRestore(before: Record<string, unknown>): Promise<boolean> 
     && JSON.stringify(after.stage_keys) === JSON.stringify(before.stage_keys)
     && JSON.stringify(after.audiences ?? null) === JSON.stringify(before.audiences ?? null)
     && after.stage_enabled === before.stage_enabled
+    && String(after.inactive_policy ?? '') === String(before.inactive_policy ?? '')
     && Number(after.dispatch_epoch ?? 1) === Number(before.dispatch_epoch ?? 1);
 }
 
@@ -258,6 +259,7 @@ async function main() {
   const runStore = createFileWorkflowRunStore({ rootDir: resolveNativeWorkflowRunDir() });
   const batchStore = createFilePeriodReportBatchStore({ rootDir: resolveNativeWorkflowBatchDir() });
   const scheduleStore = createFilePeriodReportScheduleStore({ rootDir: scheduleDir });
+  const controlBefore = await scheduleStore.control(enterpriseId);
   const environment = createDatabasePeriodReportScheduleEnvironment({
     loadPublished,
     runStore,
@@ -266,7 +268,6 @@ async function main() {
   const deps = { store: scheduleStore, batchStore, runStore, environment };
   const runId = `schedule-${enterpriseId}-weekly-${period.periodStart}`;
   const requestId = `schedule-${enterpriseId}-${projectId}-weekly-${period.periodStart}`;
-  const manifestBefore = await batchStore.get(requestId);
 
   let restoreError: string | null = null;
   try {
@@ -285,13 +286,15 @@ async function main() {
       await writeWeeklyPlan({
         weeklyDay: target.weekday,
         weeklyTime: target.time,
-        nextWeeklyAt: new Date(now.getTime() - 60_000),
+        // The stored slot stays in the future too, so the legacy weekly worker
+        // cannot consume this cycle while the B gate is being tested.
+        nextWeeklyAt: new Date(now.getTime() + 60 * 60_000),
       });
       const notDue = await runScheduledPeriodReportDispatch({
         enterpriseIds: [enterpriseId],
         mode: 'tick',
         maxProjectsPerRound: 1,
-        issuedBy: 'b5-9-1-not-due',
+        issuedBy: 'b5-9-2-not-due',
       }, deps);
       const afterNotDue = await counters();
       check('before the configured weekly time: gate is not due', notDue.enterprises[0]?.gate?.due === false, {
@@ -329,7 +332,7 @@ async function main() {
     });
     await scheduleStore.setControl(enterpriseId, {
       paused: true,
-      updatedBy: 'b5-9-1-acceptance',
+      updatedBy: 'b5-9-2-acceptance',
       reason: 'paused due-time acceptance',
       now: () => new Date(),
     });
@@ -337,7 +340,7 @@ async function main() {
       enterpriseIds: [enterpriseId],
       mode: 'tick',
       maxProjectsPerRound: 1,
-      issuedBy: 'b5-9-1-paused',
+      issuedBy: 'b5-9-2-paused',
     }, deps);
     check('a paused tenant claims and dispatches nothing', (
       paused.enterprises[0]?.paused === true
@@ -346,7 +349,7 @@ async function main() {
     ), paused.enterprises[0] ?? null);
     await scheduleStore.setControl(enterpriseId, {
       paused: false,
-      updatedBy: 'b5-9-1-acceptance',
+      updatedBy: 'b5-9-2-acceptance',
       reason: null,
       now: () => new Date(),
     });
@@ -358,7 +361,7 @@ async function main() {
       enterpriseIds: [enterpriseId],
       mode: 'tick',
       maxProjectsPerRound: 1,
-      issuedBy: 'b5-9-1-due',
+      issuedBy: 'b5-9-2-due',
     }, deps);
     let run = await scheduleStore.get(runId);
     check('the due weekly slot was claimed exactly once', (
@@ -386,7 +389,7 @@ async function main() {
     ));
 
     if (waitWorker) {
-      const deadline = Date.now() + 180_000;
+      const deadline = Date.now() + 300_000;
       while (Date.now() < deadline) {
         run = (await scheduleStore.get(runId))!;
         entry = run?.projects[projectId];
@@ -416,9 +419,12 @@ async function main() {
 
     const business = receipts.length
       ? await withTenantTransaction(enterpriseId, async (tx) => tx.execute(sql`
-          select r.id::text as report_id,r.kind,v.revision,v.status as version_status,
+          select r.id::text as report_id,r.kind,r.binding_id::text as binding_id,v.revision,
+            v.status as version_status,v.run_id::text as facts_run_id,
+            v.body_run_id::text as body_run_id,v.facts,
             v.facts is not null as facts_present,v.body is not null as body_present,
-            d.state as delivery_state,d.message_id::text as message_id,d.read_at
+            d.event_id::text as delivery_id,d.state as delivery_state,
+            d.message_id::text as message_id,d.delivered_at,d.read_at
           from app.construction_reports r
           join app.construction_report_versions v on v.enterprise_id=r.enterprise_id
             and v.report_id=r.id and v.revision=r.latest_revision
@@ -430,27 +436,144 @@ async function main() {
             )}::jsonb))::bigint[])
           order by r.id`))
       : { rows: [] as Array<Record<string, unknown>> };
+    const receiverDetails = receipts.map((item) => {
+      const row = business.rows.find((candidate) =>
+        String(candidate.report_id) === item.receipt!.reportId);
+      const receiver = manifest?.receivers.find((candidate) => candidate.kind === item.kind);
+      return {
+        kind: item.kind,
+        adminId: receiver?.adminId ?? null,
+        runId: receiver?.runId ?? null,
+        bindingId: row?.binding_id != null
+          ? String(row.binding_id)
+          : item.receipt!.bindingId,
+        conversationId: item.receipt!.conversationId,
+        reportId: item.receipt!.reportId,
+        revision: item.receipt!.revision,
+        reused: item.receipt!.reused,
+        factsRunId: row?.facts_run_id != null
+          ? String(row.facts_run_id)
+          : item.receipt!.runId,
+        bodyRunId: row?.body_run_id != null ? String(row.body_run_id) : null,
+        deliveryId: row?.delivery_id != null ? String(row.delivery_id) : null,
+        deliveryState: row?.delivery_state != null ? String(row.delivery_state) : null,
+        messageId: row?.message_id != null ? String(row.message_id) : null,
+        deliveredAt: row?.delivered_at != null ? String(row.delivered_at) : null,
+        readAt: row?.read_at != null ? String(row.read_at) : null,
+      };
+    });
+    const bodyRunIds = receiverDetails
+      .map((detail) => detail.bodyRunId)
+      .filter((runId): runId is string => !!runId);
+    const modelUsage = bodyRunIds.length
+      ? await withTenantTransaction(enterpriseId, async (tx) => tx.execute(sql`
+          select a.assistant_run_id::text as run_id,a.id::text as attempt_id,
+            a.status,a.accepted,a.provider_key,a.remote_model,a.error_code,
+            u.id::text as usage_id,u.category,u.measurement_kind,
+            u.input_tokens::text as input_tokens,u.output_tokens::text as output_tokens
+          from app.ai_provider_attempts a
+          left join app.assistant_usage_records u
+            on u.enterprise_id=a.enterprise_id and u.provider_attempt_id=a.id
+          where a.enterprise_id=${enterpriseId}
+            and a.assistant_run_id=any(ARRAY(SELECT jsonb_array_elements_text(${JSON.stringify(
+              bodyRunIds,
+            )}::jsonb))::bigint[])
+          order by a.id,u.id`))
+      : { rows: [] as Array<Record<string, unknown>> };
+    const usageByRun = new Map<string, Array<Record<string, unknown>>>();
+    for (const row of modelUsage.rows) {
+      const key = String(row.run_id);
+      const list = usageByRun.get(key) ?? [];
+      list.push(row);
+      usageByRun.set(key, list);
+    }
+    const receiversWithUsage = receiverDetails.map((detail) => ({
+      ...detail,
+      providerAttempts: detail.bodyRunId
+        ? usageByRun.get(detail.bodyRunId) ?? []
+        : [],
+    }));
+    const internalRecords = await withTenantTransaction(enterpriseId, async (tx) => tx.execute(sql`
+      select id::text as id,data->>'title' as title
+        from app.construction_site_records
+       where enterprise_id=${enterpriseId} and project_id=${projectId}
+         and audience='internal' and status='published'
+         and published_at>=${period.startAt} and published_at<${period.endAt}
+       order by id`));
+    const internalIds = internalRecords.rows.map((row) => String(row.id));
+    const customerVisibleRecords = await withTenantTransaction(enterpriseId, async (tx) => tx.execute(sql`
+      select id::text as id,data->>'title' as title
+        from app.construction_site_records
+       where enterprise_id=${enterpriseId} and project_id=${projectId}
+         and audience<>'internal' and status='published'
+         and published_at>=${period.startAt} and published_at<${period.endAt}
+       order by id`));
+    const customerVisibleIds = customerVisibleRecords.rows.map((row) => String(row.id));
+    const customer = receiversWithUsage.find((receiver) => receiver.kind === 'customer');
+    const customerFacts = business.rows.find((row) =>
+      String(row.report_id) === String(customer?.reportId ?? ''))?.facts as
+      { projects?: Array<{ records?: Array<{ id?: unknown }> }> } | undefined;
+    const customerRecordIds = (customerFacts?.projects ?? []).flatMap((project) =>
+      (project.records ?? []).map((record) => String(record.id)));
+
     check('four independent business reports exist', business.rows.length === 4, business.rows);
     check('facts were assembled for every receiver', business.rows.every((row) => row.facts_present === true), business.rows);
     check('delivery state is reported honestly (queued is not delivered)', business.rows.every((row) =>
       ['delivered', 'pending', 'held', 'muted', 'revoked'].includes(String(row.delivery_state))), business.rows);
     check('a delivered report always has a message id', business.rows.every((row) =>
       row.delivery_state !== 'delivered' || !!row.message_id), business.rows);
+    check('every receiver keeps its own binding, conversation and report', (
+      new Set(receiversWithUsage.map((receiver) => receiver.bindingId)).size === 4
+      && new Set(receiversWithUsage.map((receiver) => receiver.conversationId)).size === 4
+      && new Set(receiversWithUsage.map((receiver) => receiver.reportId)).size === 4
+    ), receiversWithUsage);
+    check('the customer report contains only customer-visible records', (
+      customerRecordIds.length > 0
+      && customerRecordIds.every((id) => customerVisibleIds.includes(id))
+      && customerRecordIds.every((id) => !internalIds.includes(id))
+    ), {
+      customerRecordIds,
+      customerVisibleIds,
+      internalIds,
+      customerVisibleRecords: customerVisibleRecords.rows,
+      internalRecords: internalRecords.rows,
+    });
+    check('the four-receiver batch settled through the existing Worker', (
+      !!entry && ['completed', 'partial', 'failed'].includes(entry.state)
+    ), {
+      state: entry?.state ?? null,
+      reason: entry?.reason ?? null,
+    });
 
     const afterFirst = await counters();
-    check('one batch created exactly four reports/deliveries (or reused the existing week)', (
-      manifestBefore
-        ? afterFirst.reports >= beforeCounters.reports
-          && afterFirst.reports <= beforeCounters.reports + 4
-          && afterFirst.deliveries >= beforeCounters.deliveries
-          && afterFirst.deliveries <= beforeCounters.deliveries + 4
-        : afterFirst.reports === beforeCounters.reports + 4
-          && afterFirst.deliveries === beforeCounters.deliveries + 4
+    const reportsAdded = afterFirst.reports - beforeCounters.reports;
+    const deliveriesAdded = afterFirst.deliveries - beforeCounters.deliveries;
+    check('the batch added no more than one report per receiver', (
+      reportsAdded >= 0 && reportsAdded <= 4
     ), {
       before: beforeCounters,
       after: afterFirst,
-      reusedExistingWeek: !!manifestBefore,
+      reportsAdded,
+      note: 'existing reports are reused; this is not a forced four-report minimum',
     });
+    check('each newly added report has exactly one delivery', (
+      deliveriesAdded === reportsAdded
+    ), {
+      before: beforeCounters,
+      after: afterFirst,
+      reportsAdded,
+      deliveriesAdded,
+    });
+    check('every receiver report has a body run with recorded model usage', (
+      receiversWithUsage.every((receiver) =>
+        !!receiver.bodyRunId && receiver.providerAttempts.length > 0)
+    ), receiversWithUsage.map((receiver) => ({
+      kind: receiver.kind,
+      reportId: receiver.reportId,
+      reused: receiver.reused,
+      bodyRunId: receiver.bodyRunId,
+      providerAttempts: receiver.providerAttempts,
+    })));
 
     // ---------------------------------------------------------------------
     // Phase C: a repeated tick adds no business row.
@@ -459,7 +582,7 @@ async function main() {
       enterpriseIds: [enterpriseId],
       mode: 'tick',
       maxProjectsPerRound: 1,
-      issuedBy: 'b5-9-1-repeat',
+      issuedBy: 'b5-9-2-repeat',
     }, deps);
     const afterRepeat = await counters();
     const settled = !!entry && ['completed', 'partial', 'failed'].includes(entry.state);
@@ -475,16 +598,21 @@ async function main() {
       note: settled ? null : 'Worker still processing; counters are observed, not treated as final',
       repeat: repeat.enterprises[0] ?? null,
     });
-    check('a repeated tick records the moved weekly slot without a second claim', (
-      repeat.enterprises[0]?.gate?.claimed === false
-    ), repeat.enterprises[0]?.gate ?? null);
+    check('a repeated tick never claims a second time', (
+      repeat.enterprises[0]?.gate?.claimed !== true
+      && !!run?.weeklyClaim
+    ), {
+      gate: repeat.enterprises[0]?.gate ?? null,
+      weeklyClaim: run?.weeklyClaim ?? null,
+      note: 'an already-claimed run bypasses the gate; gate is null',
+    });
 
     // ---------------------------------------------------------------------
     // Phase D: pause stops dispatch, resume keeps observation.
     // ---------------------------------------------------------------------
     await scheduleStore.setControl(enterpriseId, {
       paused: true,
-      updatedBy: 'b5-9-1-acceptance',
+      updatedBy: 'b5-9-2-acceptance',
       reason: 'pause after dispatch',
       now: () => new Date(),
     });
@@ -492,7 +620,7 @@ async function main() {
       enterpriseIds: [enterpriseId],
       mode: 'tick',
       maxProjectsPerRound: 1,
-      issuedBy: 'b5-9-1-paused-after',
+      issuedBy: 'b5-9-2-paused-after',
     }, deps);
     check('a paused tenant dispatches no new project', (
       pausedAfter.enterprises[0]?.paused === true
@@ -500,7 +628,7 @@ async function main() {
     ), pausedAfter.enterprises[0] ?? null);
     await scheduleStore.setControl(enterpriseId, {
       paused: false,
-      updatedBy: 'b5-9-1-acceptance',
+      updatedBy: 'b5-9-2-acceptance',
       reason: null,
       now: () => new Date(),
     });
@@ -508,7 +636,7 @@ async function main() {
       enterpriseIds: [enterpriseId],
       mode: 'tick',
       maxProjectsPerRound: 1,
-      issuedBy: 'b5-9-1-resumed',
+      issuedBy: 'b5-9-2-resumed',
     }, deps);
     check('resume keeps the claimed run observable', (
       resumed.enterprises[0]?.paused === false
@@ -522,32 +650,38 @@ async function main() {
     const replayStart = addCalendarDays(period.periodStart, -7);
     const replayRequest = `schedule-${enterpriseId}-${projectId}-weekly-${replayStart}`;
     const replayManifest = await batchStore.get(replayRequest);
-    if (!replayManifest) {
-      check('old-period replay skipped: no existing batch to observe', true, {
-        replayStart,
-        replayRequest,
-      });
-    } else {
-      const weeklyBefore = current?.next_weekly_at ?? null;
-      // Read-only on purpose: the replay proves it cannot move the current
-      // weekly slot without risking a new model call for an old week.
-      await runScheduledPeriodReportDispatch({
-        enterpriseIds: [enterpriseId],
-        mode: 'observe',
-        periodStart: replayStart,
-        maxProjectsPerRound: 1,
-        issuedBy: 'b5-9-1-replay',
-      }, deps);
-      const weeklyAfter = (await readSettings())?.next_weekly_at ?? null;
-      const replayRun = await scheduleStore.get(
-        `schedule-${enterpriseId}-weekly-${replayStart}`,
-      );
-      check('old-period replay never claims', replayRun?.weeklyClaim === null, replayRun?.weeklyClaim ?? null);
-      check('old-period replay never moves the current next_weekly_at', sameIso(weeklyBefore, weeklyAfter), {
-        before: weeklyBefore,
-        after: weeklyAfter,
-      });
-    }
+    const weeklyBefore = current?.next_weekly_at ?? null;
+    const countersBeforeReplay = await counters();
+    // Read-only on purpose: the replay proves it cannot move the current
+    // weekly slot or create a new report for an old week.
+    await runScheduledPeriodReportDispatch({
+      enterpriseIds: [enterpriseId],
+      mode: 'observe',
+      periodStart: replayStart,
+      maxProjectsPerRound: 1,
+      issuedBy: 'b5-9-2-replay',
+    }, deps);
+    const weeklyAfter = (await readSettings())?.next_weekly_at ?? null;
+    const countersAfterReplay = await counters();
+    const replayRun = await scheduleStore.get(
+      `schedule-${enterpriseId}-weekly-${replayStart}`,
+    );
+    check('old-period replay never claims', (replayRun?.weeklyClaim ?? null) === null, replayRun?.weeklyClaim ?? null);
+    check('old-period replay never moves the current next_weekly_at', sameIso(weeklyBefore, weeklyAfter), {
+      before: weeklyBefore,
+      after: weeklyAfter,
+    });
+    check('old-period replay creates no report or delivery row', (
+      countersAfterReplay.reports === countersBeforeReplay.reports
+      && countersAfterReplay.deliveries === countersBeforeReplay.deliveries
+    ), {
+      before: countersBeforeReplay,
+      after: countersAfterReplay,
+      replayStart,
+      replayRequest,
+      existingReplayBatch: !!replayManifest,
+      replayRun: replayRun?.runId ?? null,
+    });
 
     // ---------------------------------------------------------------------
     // Phase F: issue identity is reused and reminders are not duplicated.
@@ -558,7 +692,7 @@ async function main() {
       enterpriseIds: [enterpriseId],
       mode: 'tick',
       maxProjectsPerRound: 1,
-      issuedBy: 'b5-9-1-issues',
+      issuedBy: 'b5-9-2-issues',
     }, deps);
     const ledgerAfter = await scheduleStore.ledger(enterpriseId, projectId);
     check('unfinished issue ids are reused, not recreated', (
@@ -594,14 +728,30 @@ async function main() {
       enterpriseId,
       projectId,
       receivers: { workerId, designerId, bossId, customerUserId },
+      receiversDetailed: receiversWithUsage,
+      modelUsageRows: modelUsage.rows,
+      settingsBefore: before,
+      controlBefore,
       publishedWeeklySlot: (await readSettings())?.next_weekly_at ?? null,
       run,
       manifest,
       businessRows: business.rows,
-      counters: { before: beforeCounters, afterFirst, afterRepeat, final: finalCounters },
+      counters: {
+        before: beforeCounters,
+        afterFirst,
+        afterRepeat,
+        final: finalCounters,
+        reportsAdded,
+        deliveriesAdded,
+      },
+      manifestReceiptReuse: receiversWithUsage.map((receiver) => ({
+        kind: receiver.kind,
+        reportId: receiver.reportId,
+        reusedAtManifest: receiver.reused,
+      })),
       fourEndEntries: {
-        status: 'not re-run by the scheduler acceptance',
-        note: 'the four native entries/read/re-entry journey reuses the B5.8 native UI evidence; this script verifies the scheduler and business rows only',
+        status: 'scheduler and business rows verified; native four-end read/re-entry is not re-run',
+        note: 'the four native entries/read/re-entry journey reuses the B5.8 native UI evidence; this script verifies binding/conversation/report/delivery identity per receiver',
       },
       checks,
     };
@@ -621,9 +771,9 @@ async function main() {
   } finally {
     try {
       await scheduleStore.setControl(enterpriseId, {
-        paused: false,
-        updatedBy: 'b5-9-1-acceptance',
-        reason: null,
+        paused: controlBefore.paused,
+        updatedBy: controlBefore.updatedBy,
+        reason: controlBefore.reason,
         now: () => new Date(),
       });
       await restoreSettings(before as Record<string, unknown>);

@@ -266,7 +266,10 @@ async function discoverProjectManagers(
 ): Promise<string[]> {
   const found = await rows(
     tx,
-    sql`select distinct a.id::text as admin_id
+    // `distinct on` keeps one row per admin while allowing the stable id order;
+    // `select distinct ... order by a.id` is rejected because a.id is not in the
+    // projection (a.id::text is), which only shows up against a real database.
+    sql`select distinct on (a.id) a.id::text as admin_id
       from app.construction_members m
       join app.admin_users a on a.enterprise_id=m.enterprise_id and a.id=m.admin_id
       where m.enterprise_id=${enterpriseId} and m.project_id=${projectId}
