@@ -2033,6 +2033,24 @@ Evidence:
 `admin/tmp/b5-9-5-20261112-1835/{citations.json,citation-view.json}` and
 `admin/tmp/b5-9-2-schedule-runs/b5-9-2-schedule-2026-11-12T0943-26fb1b18/verification.json`.
 
+### B5.9.5 round-2 availability re-check
+
+Re-reading the same B database after the lifecycle adds no new report and no
+model call, but it fixes the worker evidence boundary. Worker binding `2`
+reports `17/r1`, `13/r5` and `8/r1` now all return `source_unavailable` because
+the worker revocation audit `137` is later than their `generatedAt`; restoring
+membership (`138`) does not reopen them, and the contract forbids regenerating
+them for evidence. Report `17` therefore cannot be opened or clicked again
+today, so the real-click proof above is report `13` revision `2`, which was
+readable at click time; report `13` itself is also `source_unavailable` now for
+the same reason. Boss `18/r1`, designer `9/r2` and `14/r1` remain
+`facts_ready`, designer `10/r1` is `source_unavailable`, and the customer
+follow-up list still needs a public-site entry token (`X-Assistant-Entry`,
+covered by B5.9.4). The citation proof re-runs at 43/43 over the same 23
+citations, and report/version/delivery/message/readAt/audit counts and digests
+are unchanged. Evidence:
+`admin/tmp/b5-9-5-round2-20261112-1753/{state-before.json,citations.json,role-availability.json}`.
+
 ## Reproduce
 
 From `admin/` (no database, no Worker, no model):
