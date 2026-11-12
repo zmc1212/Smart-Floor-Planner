@@ -118,12 +118,22 @@ const ask = async (text: string, label: string) => {
     return current && String(current.id) !== String(before?.id) && ['succeeded', 'failed'].includes(String(current.status)) ? current : null;
   }, label + ' run ' + 'terminal', 240);
   if (run.status !== 'succeeded') throw new Error(label + ' run failed: ' + JSON.stringify(run));
-  const messages = await wait(async () => {
+  const visible = (attempts: number, name: string) => wait(async () => {
     const d = await dataOf();
     const list = Array.isArray(d.followupChat?.messages) ? d.followupChat.messages : [];
-    const answer = list.find((m: Record<string, unknown>) => String(m.runId) === String(run.id) && m.authorKind === 'assistant' && m.available);
+    const answer = list.find((m: Record<string, unknown>) => String(m.id) === String(run.output_message_id)
+      && m.authorKind === 'assistant' && m.available);
     return answer && !d.followupChat.generating ? { answer, list } : null;
-  }, label + ' visible saved answer');
+  }, name, attempts);
+  let messages;
+  try { messages = await visible(240, label + ' visible saved answer'); }
+  catch {
+    // The persisted answer can land after the follow-up view's active poll has
+    // stopped (observed on the long re-entry run). Use the page's own refresh
+    // action, then require the same visible saved message; no HTTP substitute.
+    await evaluateRecovered('function(){ return getCurrentPages().at(-1).refreshFollowupChat(); }');
+    messages = await visible(120, label + ' visible saved answer after refresh');
+  }
   (report.runs as Record<string, unknown>[]).push({ label, text, run, answer: messages.answer });
   return { run, answer: messages.answer };
 };

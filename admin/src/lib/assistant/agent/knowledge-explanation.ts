@@ -220,7 +220,8 @@ export function prepareSourceAnswerReview(raw: string, answer: SynthesisAnswer, 
 
 /** A review is accepted only for the exact draft and currently authorized input.
  * Provider-controlled hashes/IDs are never used as authority. */
-export function acceptKnowledgeExplanation(draft: KnowledgeExplanationDraft, output: ModelTurnOutput, binding: string) {
+export function acceptKnowledgeExplanation(draft: KnowledgeExplanationDraft, output: ModelTurnOutput, binding: string,
+  questionSetBound = false) {
   if (binding !== draft.binding) fail('context_changed');
   if (output.toolCalls.length > 1 || output.toolCalls.some(c => c.name !== draft.reviewTool.name)) fail('invalid_model_answer', 502);
   let value: unknown;
@@ -230,7 +231,11 @@ export function acceptKnowledgeExplanation(draft: KnowledgeExplanationDraft, out
     || typeof value.questionsComplete !== 'boolean' || !object(value.checks)) fail('invalid_model_answer', 502);
   const checks = value.checks, keys = keysFor(draft.coverage);
   if (Object.keys(checks).length !== keys.length || keys.some(key => !Object.hasOwn(checks, key))) fail('incomplete_model_answer', 502);
-  const issues: string[] = value.questionsComplete ? [] : ['本轮问项拆分遗漏了当前原话中的独立问题或条件'];
+  // A report plan is derived from every interrogative sentence of the current
+  // original; a remaining plain response directive is a condition, not a
+  // missing question key. The reviewer's global flag must not override that
+  // bound question set, while per-question completeness still applies.
+  const issues: string[] = value.questionsComplete || questionSetBound ? [] : ['本轮问项拆分遗漏了当前原话中的独立问题或条件'];
   let unsupportedQuantity = false;
   if (quantityKeys.length) {
     if (!object(value.quantityChecks) || Object.keys(value.quantityChecks).length !== quantityKeys.length

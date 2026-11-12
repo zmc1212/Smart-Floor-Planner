@@ -6,7 +6,8 @@ import { reportAnswerSynthesis, reportQuestionCoverage } from '../agent/report-f
 import { toolSchemaIssue } from '../agent/tool-protocol';
 import { constructionReadOnlyTools, finalToolForMessages, reportRequiredReadsComplete } from '../agent/worker';
 import { focusedSynthesisMessages, type SynthesisSource } from '../agent/synthesis';
-import { assertReportAnswerReview, prepareReportAnswerReview } from '../agent/report-answer-review';
+import { assertReportAnswerReview, prepareReportAnswerReview, reportCitationCountFailure, reportInlineCitationFailure, reportSemanticRepair } from '../agent/report-answer-review';
+import { acceptKnowledgeExplanation } from '../agent/knowledge-explanation';
 import { reportAnswerGroundingProtocol } from '../agent/report-source-scope';
 import type { ModelMessage, ModelTurnOutput } from '../contracts/model';
 import { runRenovationAgent, type AgentCheckpoint } from '../agent/runtime';
@@ -83,6 +84,18 @@ test('a merged plan question is split at sentence boundaries so each clause keep
   assert.deepEqual(narrowed, [correctedSentences[1]]);
 });
 
+test('a pure response directive is a constraint, never its own question key', () => {
+  const question = '这份日报里写的最近进展是什么？请只按这份报告回答。';
+  const aligned = createReportQuestionPlan({ questions: [question] }, { ...scope, question });
+  assert.deepEqual(aligned.coverage.questions, ['这份日报里写的最近进展是什么？']);
+  const explicitlySplit = createReportQuestionPlan({ questions: ['这份日报里写的最近进展是什么？', '请只按这份报告回答。'] },
+    { ...scope, question });
+  assert.deepEqual(explicitlySplit.coverage.questions, ['这份日报里写的最近进展是什么？']);
+  const noMark = createReportQuestionPlan({ questions: ['这份日报里写的最近进展是什么？', '请只按这份报告回答'] },
+    { ...scope, question: '这份日报里写的最近进展是什么？请只按这份报告回答' });
+  assert.deepEqual(noMark.coverage.questions, ['这份日报里写的最近进展是什么？']);
+});
+
 test('two real questions retain two obligations while a planned correction stays attached to its question', () => {
   const firstCoverage = readReportQuestionPlan(createReportQuestionPlan({ questions: ['我看了这份日报，照明回路现在定下来了吗？', '我接下来该确认什么？'] }, { ...scope, question: first }), { ...scope, question: first }, true)!;
   assert.equal(firstCoverage.questions.length, 2);
@@ -132,6 +145,42 @@ test('the reviewer sees the full original independently of the plan and still re
     checks: { Q1: { complete: false, supported: true, conditionsPreserved: false, reason: '遗漏客厅更正和周五条件。' } } }),
     toolCalls: [], usage: null, finishReason: 'stop', providerRequestId: null }, draft.binding), /ungrounded_response_scope/);
   assert.throws(() => prepareReportAnswerReview(raw, sources, { currentQuestion: corrected }), /incomplete_model_answer/);
+});
+
+test('a semantic review rejection is repaired through the one reserved final repair', () => {
+  const coverage = readReportQuestionPlan(createReportQuestionPlan({ questions: [correctedSentences[1]] }, scope), scope, true)!;
+  const sources: SynthesisSource[] = [{ sourceId: 'report', kind: 'project', title: '报告', text: '房间未记录。',
+    reportScope: { protocol: reportAnswerGroundingProtocol } as SynthesisSource['reportScope'] }];
+  const raw = JSON.stringify({ kind: 'report_answer', answers: { Q1: [{ basis: 'advice', text: '建议联系团队。', citations: [] }] } });
+  const draft = prepareReportAnswerReview(raw, sources, { currentQuestion: corrected }, [], coverage);
+  const issue = acceptKnowledgeExplanation(draft, { text: JSON.stringify({ questionsComplete: false,
+    checks: { Q1: { complete: false, supported: true, conditionsPreserved: true, reason: '遗漏客厅更正和周五条件。' } } }),
+    toolCalls: [], usage: null, finishReason: 'stop', providerRequestId: null }, draft.binding);
+  assert.equal(issue?.code, 'ungrounded_response_scope');
+  const accepted = acceptKnowledgeExplanation(draft, { text: JSON.stringify({ questionsComplete: false,
+    checks: { Q1: { complete: true, supported: true, conditionsPreserved: true, reason: '仅剩回复指令，不是问项。' } } }),
+    toolCalls: [], usage: null, finishReason: 'stop', providerRequestId: null }, draft.binding, true);
+  assert.equal(accepted, null, 'a bound report question set does not resurrect a response directive as a missing question');
+  const repair = reportSemanticRepair(issue!);
+  assert.equal(repair.code, 'ungrounded_response_scope');
+  assert.match(repair.feedback, /kind=report_answer及answers/);
+  assert.match(repair.feedback, /遗漏客厅更正和周五条件/);
+  assert.ok(repair.feedback.length <= 1200);
+});
+
+test('a per-segment citation overflow names the structural repair instead of a generic schema failure', () => {
+  const citations = Array.from({ length: 5 }, (_, index) => ({ citationId: `C${index}` }));
+  const raw = JSON.stringify({ kind: 'report_answer', answers: { Q1: [{ basis: 'evidence', text: '有据段落。', citations }] } });
+  const issue = reportCitationCountFailure(raw);
+  assert.equal(issue?.code, 'invalid_model_answer');
+  assert.match(issue!.feedback, /超过每段四条/);
+  assert.match(issue!.feedback, /kind=report_answer及answers/);
+  assert.equal(reportCitationCountFailure(JSON.stringify({ kind: 'report_answer', answers: { Q1: [{ basis: 'evidence', text: '有据段落。', citations: citations.slice(0, 4) }] } })), null);
+  const inlineRaw = JSON.stringify({ kind: 'report_answer', answers: { Q1: [{ basis: 'evidence', text: '有据段落[Cabcdef12]。', citations: citations.slice(0, 1) }] } });
+  const inline = reportInlineCitationFailure(inlineRaw);
+  assert.equal(inline?.code, 'invalid_model_answer');
+  assert.match(inline!.feedback, /引用只能放在每段的citations数组/);
+  assert.equal(reportInlineCitationFailure(JSON.stringify({ kind: 'report_answer', answers: { Q1: [{ basis: 'evidence', text: '有据段落。', citations: citations.slice(0, 1) }] } })), null);
 });
 
 test('planned reads enter the existing final-only stage, including resume, after required sources are available', async () => {

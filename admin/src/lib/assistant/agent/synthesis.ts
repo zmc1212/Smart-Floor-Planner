@@ -190,6 +190,16 @@ function synthesisModelProjection(message: ModelMessage, originals: Map<string, 
       delete material.hash;
       delete material.siteCompleted;
     }
+    // The durable source and the semantic-review input keep the report item
+    // identity. The model view keeps the same original text and citation
+    // options without an internal record number it could quote as customer
+    // prose; authorization and completeness checks still use the durable scope.
+    if (source.reportScope) {
+      const scope = { ...source.reportScope } as Record<string, unknown>;
+      delete scope.itemId;
+      delete scope.sourceHash;
+      copy.reportScope = scope;
+    }
     // The durable source and deduplication identity above retain every Evidence
     // field. Send its full original text once, rather than copying the same
     // web/knowledge body into evidence.text a second time in the model view.
