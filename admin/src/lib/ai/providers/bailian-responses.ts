@@ -72,6 +72,10 @@ export function bailianResponsesBody(input: ModelTurnInput, options: BailianResp
   const nativeSet = new Set<string>(nativeTools);
   // web_extractor is documented as unusable without web_search in the same call.
   if (nativeSet.has('web_extractor') && !nativeSet.has('web_search')) throw Error('native_tool_pairing_invalid');
+  // A function tool may share a conceptual name with a provider-side tool, but
+  // the wire cannot carry both under the same name. Fail closed; deployment
+  // chooses native search or the application web_search tool for a turn.
+  if (input.tools.some(tool => nativeSet.has(tool.name))) throw Error('native_tool_name_conflict');
 
   const tools: Array<Record<string, unknown>> = [
     ...input.tools.map((tool: ModelTool) => ({

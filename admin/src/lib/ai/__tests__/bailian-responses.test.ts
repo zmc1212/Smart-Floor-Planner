@@ -134,6 +134,12 @@ test('request body uses Responses items, not Chat Completions messages', () => {
   assert.throws(() => bailianResponsesBody(userTurn({ maxTokens: 4096 })), /agent_input_limit/);
 });
 
+test('a function tool can never share a native provider tool name on the same wire', () => {
+  assert.throws(() => bailianResponsesBody(userTurn({
+    tools: [{ name: 'web_search', description: '应用侧搜索', parameters: { type: 'object' } }],
+  }), { nativeTools: ['web_search'] }), /native_tool_name_conflict/);
+});
+
 test('request diagnostic keeps hashes and shapes but never prompt or argument text', () => {
   const body = bailianResponsesBody(userTurn(), { nativeTools: ['web_search'] });
   const diagnostic = bailianResponsesRequestDiagnostic(body);
