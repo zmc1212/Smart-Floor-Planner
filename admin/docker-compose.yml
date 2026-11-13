@@ -78,7 +78,7 @@ services:
       start_period: 30s
 
   postgres:
-    image: postgres:17
+    image: pgvector/pgvector:0.8.2-pg17
     container_name: smart-floor-planner-postgres
     restart: unless-stopped
     ports:

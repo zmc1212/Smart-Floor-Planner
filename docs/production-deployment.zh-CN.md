@@ -87,6 +87,8 @@ WSS328消息/811829字节已验；上轮自有测试结束时媒体/读者0且�
 
 ## 一次性服务器准备
 
+postgres 服务镜像使用 `pgvector/pgvector:0.8.2-pg17`（迁移 0060+ 需要 `vector` 扩展；`deploy.sh` 在迁移前以 owner 角色自动 `CREATE EXTENSION IF NOT EXISTS`，替换原 `postgres:17` 镜像，数据卷主版本不变）。
+
 建议固定目录为 `/datas/smartfloor`：
 
 ```text

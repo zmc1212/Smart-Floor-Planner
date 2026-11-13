@@ -109,6 +109,8 @@ JWK or snapshots; no full disaster recovery or in-place version-upgrade claim.
 
 ## One-time server preparation
 
+The postgres service image is `pgvector/pgvector:0.8.2-pg17` (migrations 0060+ require the `vector` extension; `deploy.sh` runs `CREATE EXTENSION IF NOT EXISTS` as the owner role right before migrating, replacing the previous plain `postgres:17` image; the data volume keeps the same major version).
+
 Use a stable root such as `/datas/smartfloor`:
 
 ```text

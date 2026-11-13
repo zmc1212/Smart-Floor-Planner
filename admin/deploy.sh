@@ -211,6 +211,12 @@ echo "[4/9] Starting and checking PostgreSQL..."
 "${compose[@]}" up -d postgres
 wait_for_postgres || fail "PostgreSQL did not become ready within 60 seconds"
 
+# Knowledge migrations (0060+) require the vector extension. The pgvector
+# image ships the binaries; the owner role installs it once per database so
+# the migrator role (no CREATE on public) can run CREATE EXTENSION IF NOT EXISTS.
+"${compose[@]}" exec -T postgres psql -U sfp_owner -d smart_floor_planner -c 'CREATE EXTENSION IF NOT EXISTS vector' >/dev/null \
+  || fail "Failed to ensure the vector extension; a pgvector-enabled PG17 image is required"
+
 if [[ "$MODE" == "deploy" ]]; then
   echo "[5/9] Creating a verified pre-migration PostgreSQL backup..."
   mkdir -p "$BACKUP_DIR"
