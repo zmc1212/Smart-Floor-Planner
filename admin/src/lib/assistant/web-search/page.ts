@@ -23,6 +23,7 @@ export type FetchedWebDocument = {
   parser: string;
   injectionSignals: string[];
   trust: WebSourceTrust;
+  attachments?: Array<{ url: string; title: string }>;
 };
 
 function cleanPublishedAt(value: unknown): string | null {
@@ -52,6 +53,20 @@ export function pageMetadata(html: string): { siteName: string | null; published
   };
 }
 
+function pageAttachments(html: string, url: string) {
+  const { document } = parseHTML(html);
+  const candidates = new Map<string, { url: string; title: string }>();
+  for (const link of document.querySelectorAll('a[href]')) {
+    try {
+      const href = publicWebUrl(new URL(link.getAttribute('href')!, url).href);
+      if (!/\.pdf$|\/download\/?$/i.test(href.pathname) || candidates.has(href.href)) continue;
+      candidates.set(href.href, { url: href.href, title: link.textContent?.replaceAll('\0', '').trim().slice(0, 200) || href.pathname });
+      if (candidates.size === 10) break;
+    } catch { /* An invalid or non-public href remains outside the read scope. */ }
+  }
+  return [...candidates.values()];
+}
+
 /**
  * Fetch one public page through the existing guarded reader (DNS pinning,
  * redirect revalidation, private-address rejection, size/timeout limits and
@@ -79,6 +94,7 @@ export async function fetchPublicDocument(
     { removeAds: true },
   );
   const metadata = /html/i.test(page.type) ? pageMetadata(page.body) : { siteName: null, publishedAt: null };
+  const attachments = /html/i.test(page.type) ? pageAttachments(page.body, finalUrl.href) : [];
   return {
     protocol: webDocumentProtocol,
     requestedUrl: requested.href,
@@ -94,5 +110,6 @@ export async function fetchPublicDocument(
     parser: extracted.parser,
     injectionSignals: injectionSignals(`${extracted.title}\n${extracted.text}`),
     trust: classifyWebSource(extracted.url, extracted.title),
+    ...(attachments.length ? { attachments } : {}),
   };
 }

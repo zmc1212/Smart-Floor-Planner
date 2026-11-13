@@ -3,7 +3,7 @@
 **小K统一集成（Limited）。** Assistant 网关默认使用 Chat Completions，已确认能力的百炼模型和工具可显式启用 Responses。工具证据和用量沿原轮次合同返回。PostgreSQL runtime 与同一 Outbox 消费者处理房间任务、施工复核及原会话回执。公开工地与本人项目共用会话服务，读取及重试均核查当前来源权限。Construction 持有带日期的计划、核实记录、设计核对、整改和关闭。日周报共用获权记录，同一租户和周期只领取一次周槽，再向四个角色投递。PG17/pgvector 升级使用活动迁移 0124–0127。见[模块合同](xiaok-integration-contract.md)与[集成审查](xiaok-integration-audit.md)。
 
 <!-- xiaok-r3-web-tools -->
-**小K公开联网工具（Limited）。** `ASSISTANT_WEB_SEARCH_TOOLS=1` 在合资格的会话中经现有分派器启用搜索与读页，调用受租户、参与人和工具权限约束。模型收到候选元数据，成功读取的原文随运行保存网址、标题、读取时间和引用定位。完整历史、打开引用及 LangGraph 祖先来源复用通过原 reader 重新核对。I6 已完成真实搜索和官方 HTML 原文回读，现行性和多轮质量仍待验证。[协议、配置与验证](bailian-responses-adapter.md#11-r3-应用联网搜索)。
+**小K公开联网工具（Limited）。** `ASSISTANT_WEB_SEARCH_TOOLS=1` 在合资格的会话中经现有分派器启用搜索与读页，调用受租户、参与人和工具权限约束。实际网页的附件链接进入本轮读取范围。受限回环 reader 在私有检查点保留 PDF 字节、网址、读取时间、哈希和逐页覆盖；可读原页进入 Evidence 并定位原句。仅含扫描图的文件返回 `pdf_ocr_required`。完整历史、打开引用及 LangGraph 祖先来源复用重新核对原件。[合同及验收](xiaok-integration-contract.md)。
 <!-- /xiaok-r3-web-tools -->
 
 **小K业主项目进度。** 现有 Construction 读适配器从业主咨询绑定的唯一在施工项目读取实际节点。指定房间时仅取向该业主发布的对应房间记录。已存答复重进复查来源及版本。图纸、现场决定沿原流程处理。[集成合同](xiaok-integration-contract.md)。

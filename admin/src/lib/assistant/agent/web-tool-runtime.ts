@@ -10,6 +10,7 @@ import { createWebToolRegistry, type WebToolDeps } from '../web-search/tools';
 import type { FetchedWebDocument } from '../web-search/page';
 import { publicWebUrl, type WebPage, type WebSearchSnapshot } from './web';
 import { webEvidence, webSynthesisSources } from './web-evidence';
+import { configuredPublicRead, publicDocumentPages, publicDocumentReadFailures, publicReaderEndpoint, type PublicReadDocument } from './public-research';
 
 export type AgentWebSearchOptions = Pick<WebToolDeps, 'provider' | 'readPage'>;
 const protocol = 'application-web-tools-v1';
@@ -75,8 +76,19 @@ export function createAgentWebTools(options: AgentWebSearchOptions & {
 }) {
   const { lease, scoped } = options;
   const allowedUrls = userUrls(options.question);
+  const originals = new Map<string, PublicReadDocument>();
   const registry = createWebToolRegistry({
     provider: options.provider, readPage: options.readPage, allowFetch: url => allowedUrls.has(url),
+    ...(publicReaderEndpoint() ? {
+      async readAttachment(url, signal) {
+        const remaining = Math.min(27000, options.deadlineAt - Date.now());
+        if (remaining < 1) fail('web_timeout', 503);
+        const attachment = await configuredPublicRead(url, remaining, signal);
+        signal.throwIfAborted();
+        if (attachment.mediaType !== 'application/pdf') fail('unsupported_web_content', 422);
+        originals.set(url, attachment);
+      },
+    } : {}),
   });
   const offered = registry.toModelTools().filter(tool => tool.name !== 'web_search_news' || options.provider?.supportsNews);
   // Original bytes and escaped JSON are bounded separately. The model packet
@@ -126,12 +138,16 @@ export function createAgentWebTools(options: AgentWebSearchOptions & {
       });
       const packet = JSON.parse(result.content) as {
         ok: boolean; truncated?: boolean; error?: { code: string; message: string };
-        result?: { kind: string; query?: string; queries?: string[]; retrievedAt?: string;
+        result?: { kind: string; query?: string; queries?: string[]; retrievedAt?: string; requestedUrl?: string;
           document?: FetchedWebDocument; results?: Array<{ url: string }>; perQuery?: unknown[];
           failures?: Array<{ code: string }> };
       };
       const payload = packet.result;
       const document = payload?.document;
+      const attachment = payload?.requestedUrl ? originals.get(payload.requestedUrl) : undefined;
+      if (payload?.requestedUrl) originals.delete(payload.requestedUrl);
+      const repeatedAttachment = result.status === 'duplicate' && !!payload?.requestedUrl
+        && earlier.prior.some(item => item.pages.some(page => page.requestedUrl === payload.requestedUrl));
       const retrievedAt = document?.retrievedAt ?? payload?.retrievedAt ?? result.record.startedAt;
       const duplicates = document && earlier.prior.find(item => item.r3.contentHash === document.contentHash && item.pages.length);
       const pages: WebPage[] = [];
@@ -140,21 +156,30 @@ export function createAgentWebTools(options: AgentWebSearchOptions & {
         pages.push({ url, requestedUrl, title, text, textBytes, retrievedAt, publishedAt, sourceKind: trust.kind,
           parser: 'public-html-text-v1', hash: fingerprint({ url, title, text, retrievedAt }) });
       }
-      const urls = payload?.results?.map(hit => hit.url) ?? [];
-      const failures = payload?.failures?.map(({ code }) => ({ code })) ?? [];
+      if (attachment) pages.push(...publicDocumentPages(attachment, retrievedAt, options.question));
+      const urls = [...(payload?.results?.map(hit => hit.url) ?? []), ...(document?.attachments?.map(link => link.url) ?? [])];
+      const failures: WebSearchSnapshot['failures'] = payload?.failures?.map(({ code }) => ({ code })) ?? [];
+      if (attachment) failures.push(...publicDocumentReadFailures(attachment, pages));
+      else if (payload?.kind === 'web_attachment' && !repeatedAttachment) {
+        const previous = earlier.prior.find(item => item.r3.packet.result && (item.r3.packet.result as { requestedUrl?: string }).requestedUrl === payload.requestedUrl);
+        failures.push(...(previous?.failures.length ? previous.failures : [{ code: 'web_reader_unavailable' }]));
+      }
       if (!result.ok || packet.truncated || payload?.kind === 'quarantined_page') {
-        failures.push({ code: packet.error?.code ?? (packet.truncated ? 'web_result_limit' : 'web_page_untrusted_instruction') });
+        const error = packet.error;
+        failures.push({ code: error?.code === 'tool_execution_failed' && /^(?:web_|pdf_|invalid_pdf|encrypted_pdf|unsupported_web_|reader_version_)[a-z0-9_]*$/.test(error.message)
+          ? error.message : error?.code ?? (packet.truncated ? 'web_result_limit' : 'web_page_untrusted_instruction') });
       }
       const metadata = document ? {
         ...payload, document: { url: document.url, requestedUrl: document.requestedUrl, title: document.title,
-          publishedAt: document.publishedAt, retrievedAt, trust: document.trust },
+          publishedAt: document.publishedAt, retrievedAt, trust: document.trust,
+          ...(document.attachments ? { attachments: document.attachments } : {}) },
         ...(duplicates ? { duplicate: true, duplicateOf: duplicates.pages[0].url } : {}),
       } : payload;
       const snapshot: Receipt = {
         version: 1, provider: options.provider?.name ?? 'unconfigured',
         query: { query: payload?.query ?? payload?.queries?.[0] ?? '公开网页', domains: [] },
-        status: pages.length || duplicates || urls.length ? 'ready' : failures.length ? 'unavailable' : 'empty',
-        pages, failures, retrievedAt,
+        status: pages.length || duplicates || repeatedAttachment || urls.length ? 'ready' : failures.length ? 'unavailable' : 'empty',
+        pages, failures, retrievedAt, ...(attachment ? { documents: [attachment] } : {}),
         r3: { urls, ...(document ? { contentHash: document.contentHash } : {}),
           packet: { ok: packet.ok && !packet.truncated, tool: call.name, ...(metadata ? { result: metadata } : {}),
             ...(packet.error ? { error: packet.error } : {}) } },

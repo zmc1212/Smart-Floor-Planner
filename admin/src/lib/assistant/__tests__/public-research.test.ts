@@ -111,8 +111,30 @@ test('original discovery prioritizes actual technical-purpose routes over unrela
     return d;
   },undefined,Infinity,{runId:'99',sequence:1210,selected,alternatives:[selected,directory]});
   assert.deepEqual(reads,[selected.url,directory.url,topic,manual]);
-  assert.equal(snapshot.pages.length,3);assert.equal(snapshot.pages[1].text,'条件：含水率仍须核对。');assert.equal(snapshot.pages[2].text,'');
+  assert.equal(snapshot.pages.length,2);assert.equal(snapshot.pages[1].text,'条件：含水率仍须核对。');
+  assert.equal(snapshot.documents!.find(item => item.url === manual)?.pages[2].text, '');
   assert.equal(snapshot.research!.selection!.technicalHint,true);assert.ok(snapshot.pages.every(p=>p.url===manual));
+});
+
+test('scanned pages are retained privately and an OCR-only attachment produces no evidence', async () => {
+  const scanned = { ...document('https://maker.example/scan.pdf', true), parseError: 'pdf_ocr_required',
+    pages: [{ page: 1, text: '', status: 'ocr_required' as const }] };
+  const result = await searchPublicResearch(query, { name: 'synthetic', search: async () => [scanned] }, async () => scanned);
+  assert.equal(result.status, 'unavailable');
+  assert.deepEqual(result.failures, [{ url: scanned.url, code: 'pdf_ocr_required', pages: [1] }]);
+  assert.deepEqual(webEvidence(result, '99', 1200), []);
+  assert.equal(result.documents?.[0].original.sha256, scanned.original.sha256);
+});
+
+test('a long PDF retains complete relevant pages and original locators under the context limit', () => {
+  const original = document('https://maker.example/spec.pdf', true);
+  original.pages = Array.from({ length: 40 }, (_, i) => ({ page: i + 1,
+    text: (i === 35 ? '卫生间管根与基层交接部位。' : '未涉及本查询的合成条文。').repeat(100) }));
+  const pages = publicDocumentPages(original, new Date().toISOString(), '卫生间管根基层交接部位');
+  assert.ok(pages.reduce((total, page) => total + page.textBytes, 0) <= 18000);
+  const clause = pages.find(page => page.document?.page === 36);
+  assert.equal(clause?.text, original.pages[35].text);
+  assert.equal(clause?.document?.hash, original.original.sha256);
 });
 
 test('unsafe anchors, changed domains, corrupt originals and oversized pages never gain Evidence', async () => {

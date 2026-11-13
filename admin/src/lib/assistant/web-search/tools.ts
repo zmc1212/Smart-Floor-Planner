@@ -32,6 +32,8 @@ export async function withPublicRequest<T>(run: () => Promise<T>): Promise<T> {
 export type WebToolDeps = {
   provider: WebSearchProvider | null;
   readPage?: WebReadPage;
+  /** Runtime-only handoff of a guarded attachment; raw bytes stay out of the tool result. */
+  readAttachment?: (url: string, signal: AbortSignal) => Promise<void>;
   allowFetch?: (url: string) => boolean;
   now?: () => Date;
   collector?: WebEvidenceCollector;
@@ -201,7 +203,14 @@ export function createWebToolDefinitions(deps: WebToolDeps): ToolDefinition[] {
       if (typeof value !== 'string') fail('invalid_web_url', 422);
       const target = publicWebUrl(value).href;
       if (deps.allowFetch && !deps.allowFetch(target)) fail('web_url_not_in_research_scope', 403);
-      const document = await withPublicRequest(() => fetchPublicDocument(target, { readPage, now, signal: context.signal }));
+      let document;
+      try {
+        document = await withPublicRequest(() => fetchPublicDocument(target, { readPage, now, signal: context.signal }));
+      } catch (error) {
+        if (!(error instanceof AssistantError) || error.code !== 'unsupported_web_content' || !deps.readAttachment) throw error;
+        await withPublicRequest(() => deps.readAttachment!(target, context.signal));
+        return { kind: 'web_attachment', requestedUrl: target };
+      }
       if (document.injectionSignals.length) {
         return {
           protocol: webDocumentProtocol, kind: 'quarantined_page', fullText: false, contentTrust: 'external_unverified',
@@ -220,7 +229,7 @@ export function createWebToolDefinitions(deps: WebToolDeps): ToolDefinition[] {
         document, conflicts: sourceConflicts(collector),
       };
     },
-    timeoutMs: webSearchLimits.pageTimeoutMs,
+    timeoutMs: deps.readAttachment ? 30000 : webSearchLimits.pageTimeoutMs,
   };
 
   const batchTool: ToolDefinition = {

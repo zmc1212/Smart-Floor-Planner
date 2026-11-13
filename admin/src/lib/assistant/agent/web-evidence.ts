@@ -21,7 +21,14 @@ export async function checkWebSource(web: WebSourceLocator, budgetMs: number): P
       const url = web.requestedUrl ?? web.url;
       if (web.parser === publicReaderParser) {
         const document = await configuredPublicRead(url, budgetMs);
-        return document.url === web.url && document.original.sha256 === web.document?.hash ? null : 'source_changed';
+        if (document.url !== web.url || document.original.sha256 !== web.document?.hash) return 'source_changed';
+        const page = document.pages[web.document.page - 1];
+        if (document.parseError || !page?.text.trim() || (page.status && page.status !== 'text')
+          || injectionSignals(document.title + '\n' + page.text).length) return 'source_unreadable';
+        const { hash, ...locator } = web;
+        // The legacy locator omitted the requested URL and transport. Keep
+        // that snapshot identity while checking the re-extracted page.
+        return fingerprint({ ...locator, text: page.text }) === hash ? null : 'source_changed';
       }
       const deadline = Date.now() + budgetMs;
       const read = (url: string, signal?: AbortSignal) => readPublicPage(url, undefined, deadline, signal);
@@ -75,9 +82,13 @@ function pageValid(page: WebPage, snapshot: WebSearchSnapshot) {
   const { hash, ...original } = page;
   const document = snapshot.documents?.find(item => item.original.sha256 === page.document?.hash);
   return page.parser === publicReaderParser && hash === fingerprint(original) && !!page.document
-    && !!document && validPublicDocument(document) && document.url === page.url && document.title === page.title
+    && !!document && !document.parseError && !!page.text.trim() && validPublicDocument(document)
+    && document.url === page.url && document.title === page.title
+    && (document.requestedUrl || undefined) === page.requestedUrl
+    && (document.transport === 'verified_pdf_ranges' ? document.transport : undefined) === page.document.transport
     && document.mediaType === page.document.mediaType && document.original.bytes === page.document.bytes
-    && document.pages.length === page.document.pages && document.pages[page.document.page - 1]?.text === page.text;
+    && document.pages.length === page.document.pages && document.pages[page.document.page - 1]?.text === page.text
+    && !injectionSignals(page.title + '\n' + page.text).length;
 }
 /** Same Evidence identity, backed only by this authorized run's immutable read. */
 export async function resolveWebEvidence(tx: PostgresTransaction, actor: { enterpriseId: string }, conversation: Row, evidence: Evidence) {
@@ -129,7 +140,8 @@ export async function webCitationForAnswer(tx: PostgresTransaction, actor: { ent
   const span = webAnswerQuoteSpans(answer, source).find(span => span.part === ref.part);
   if (!span) return null;
   const web = source.evidence.web!;
+  const pdf = web.document?.mediaType === 'application/pdf' ? web.document : null;
   return { id: citationId, available: true, title: web.title, quote: span.quote, version: web.hash,
-    versionLabel: '网页读取快照', sourceLocation: web.url + (web.document?.mediaType === 'application/pdf' ? '\nPDF 第' + web.document.page + '页（共' + web.document.pages + '页）' : '') + '\n读取时间：' + web.retrievedAt,
+    versionLabel: '网页读取快照', sourceLocation: web.url + (pdf ? '\nPDF 第' + pdf.page + '页（共' + pdf.pages + '页）' : '') + '\n读取时间：' + web.retrievedAt,
     locator: { web }, historical: true, isDraft: false, referenceCase: false, sourceUrl: web.url, retrievedAt: web.retrievedAt };
 }

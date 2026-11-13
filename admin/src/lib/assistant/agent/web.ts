@@ -14,7 +14,7 @@ export type WebQuery = { query: string; domains: string[] };
 export type WebPage = WebSourceLocator & { text: string };
 export type WebSearchSnapshot = {
   version: 1; provider: string; query: WebQuery; status: 'ready' | 'empty' | 'unavailable';
-  pages: WebPage[]; failures: Array<{ url?: string; code: string }>; retrievedAt: string;
+  pages: WebPage[]; failures: Array<{ url?: string; code: string; pages?: number[] }>; retrievedAt: string;
   research?: import('./public-research').PublicResearchState;
   documents?: import('./public-research').PublicReadDocument[];
   candidates?: import('./public-research').PublicCandidate[];
@@ -130,11 +130,16 @@ export async function readPublicPage(
       agent: false, signal, family: pinned.family,
       lookup: (_hostname, _options, callback) => callback(null, pinned.address, pinned.family),
     }, response => {
+      const type = String(response.headers['content-type'] || '');
+      if (response.statusCode === 200 && !/^(?:text\/html|text\/plain|application\/xhtml\+xml)(?:;|$)/i.test(type)) {
+        request.destroy(new AssistantError('unsupported_web_content', 422));
+        return;
+      }
       const chunks: Buffer[] = []; let size = 0;
       response.on('data', (chunk: Buffer) => { size += chunk.length; if (size > 512_000) request.destroy(new AssistantError('web_page_too_large', 502)); else chunks.push(chunk); });
       response.once('error', reject);
       response.once('end', () => resolve({ bytes: Buffer.concat(chunks), status: response.statusCode || 0,
-        location: response.headers.location, type: String(response.headers['content-type'] || '') }));
+        location: response.headers.location, type }));
     });
     const timer = setTimeout(() => request.destroy(new AssistantError('web_timeout', 503)), Math.max(1, deadline - Date.now()));
     request.once('close', () => clearTimeout(timer));

@@ -2,10 +2,18 @@ import { createHash } from 'node:crypto';
 import { AssistantError, fail, fingerprint } from '../contracts';
 import { configuredWebProvider, publicWebUrl, type WebQuery, type WebPage, type WebSearchProvider, type WebSearchSnapshot } from './web';
 import type { ModelTool } from '../contracts/model';
+import { injectionSignals } from '../contracts/native-tools';
+import { expandChineseQuery, chineseTerms, queryLexicalScore } from '../knowledge/chinese-lexical';
 
 export const publicReaderParser = 'crawl4ai-static-0.9.2+pypdf-6.21.2-v1';
+const ordinaryBytes = 4 * 1024 * 1024;
+const rangedPdfBytes = 2 * ordinaryBytes;
+const sourceTextBytes = 18000;
+const sourceLimit = 32;
 export type PublicReadDocument = { version: 1; url: string; title: string; parser: typeof publicReaderParser;
-  mediaType: string; pages: Array<{ page: number; text: string }>; links: Array<{ url: string; title: string }>;
+  requestedUrl?: string; transport?: 'full' | 'verified_pdf_ranges'; parseError?: string | null;
+  mediaType: string; pages: Array<{ page: number; text: string; status?: 'text' | 'ocr_required' | 'blank' | 'unreadable' }>;
+  links: Array<{ url: string; title: string }>;
   redirects: Array<{ from: string; to: string; status: number }>;
   original: { sha256: string; bytes: number; base64: string }; egress: string; tlsVerification: true };
 export type PublicResearchState = { version: 1; startedAt: string; queries: WebQuery[];
@@ -16,6 +24,15 @@ export type PublicResearchState = { version: 1; startedAt: string; queries: WebQ
   selection?: { protocol: 'document-purpose-frontier-v1'; documentHash: string; complete: boolean; technicalHint: boolean } };
 export type PublicReader = (url: string, remainingMs: number) => Promise<PublicReadDocument>;
 export type PublicCandidate = { id: string; url: string; title: string; parent: string | null; depth: number };
+export function publicDocumentByteLimit(mediaType: string, transport?: 'full' | 'verified_pdf_ranges') {
+  return mediaType === 'application/pdf' && transport === 'verified_pdf_ranges' ? rangedPdfBytes : ordinaryBytes;
+}
+
+export function publicReaderEndpoint(env = process.env) {
+  const value = env.ASSISTANT_PUBLIC_READER_URL;
+  return value && /^http:\/\/127\.0\.0\.1:[1-9]\d{0,4}$/.test(value) && Number(value.split(':').at(-1)) <= 65535
+    ? value + '/read' : null;
+}
 export const publicDiscoveryScopeProtocol = 'public-domain-provenance-v1';
 /** Narrowing a search requires a user-supplied domain or an actual discovered
  * host. Model guesses are recorded but cannot erase the public search space.
@@ -67,37 +84,46 @@ const inDomains = (url: string, domains: string[]) => !domains.length || domains
 /** Verify the private reader packet before it can become an Evidence source.
  * Original bytes remain in the existing private checkpoint, never model input. */
 export function validPublicDocument(value: PublicReadDocument) {
+  const byteLimit = publicDocumentByteLimit(value?.mediaType, value?.transport);
   if (!value || value.version !== 1 || value.parser !== publicReaderParser || value.tlsVerification !== true
     || value.egress !== 'upstream-v0.9.2-resolve-and-pin-proxy' || !value.original
-    || !Number.isSafeInteger(value.original.bytes) || value.original.bytes < 1 || value.original.bytes > 4 * 1024 * 1024
-    || typeof value.original.base64 !== 'string' || value.original.base64.length > 5_592_408
-    || !Array.isArray(value.pages) || !value.pages.length || value.pages.length > 50
+    || !Number.isSafeInteger(value.original.bytes) || value.original.bytes < 1 || value.original.bytes > byteLimit
+    || typeof value.original.base64 !== 'string' || value.original.base64.length > 4 * Math.ceil(byteLimit / 3)
+    || typeof value.title !== 'string' || value.title.includes('\0') || value.title.length > 400
+    || !Array.isArray(value.pages) || value.pages.length > 50
+    || (!value.pages.length && !value.parseError)
+    || (value.parseError && (value.mediaType !== 'application/pdf' || !/^(?:pdf_|invalid_pdf|encrypted_pdf)[a-z_]*$/.test(value.parseError)))
     || !Array.isArray(value.links) || value.links.length > 100 || !Array.isArray(value.redirects) || value.redirects.length > 3) return false;
   try {
     publicWebUrl(value.url);
+    if (value.requestedUrl) publicWebUrl(value.requestedUrl);
     for (const redirect of value.redirects) { publicWebUrl(redirect.from); publicWebUrl(redirect.to); }
     const bytes = Buffer.from(value.original.base64, 'base64');
     if (bytes.length !== value.original.bytes || digest(bytes) !== value.original.sha256) return false;
     if (value.mediaType === 'application/pdf' && bytes.subarray(0,4).toString() !== '%PDF') return false;
-    return value.pages.every((page, index) => page.page === index + 1 && typeof page.text === 'string')
+    return value.pages.every((page, index) => page.page === index + 1 && typeof page.text === 'string'
+      && !page.text.includes('\0') && (page.status === undefined || page.status === 'text' && !!page.text.trim()
+        || ['ocr_required', 'blank', 'unreadable'].includes(page.status) && !page.text))
       && value.pages.reduce((sum, page) => sum + Buffer.byteLength(page.text), 0) <= 2_000_000;
   } catch { return false; }
 }
 
-export async function configuredPublicRead(url: string, remainingMs: number): Promise<PublicReadDocument> {
+export async function configuredPublicRead(url: string, remainingMs: number, signal?: AbortSignal): Promise<PublicReadDocument> {
   publicWebUrl(url);
   // Private purpose-built reader only; never accept a URL supplied by the model
   // as the service endpoint, OS proxy credentials or arbitrary local services.
-  if (process.env.ASSISTANT_PUBLIC_READER_URL !== 'http://127.0.0.1:18095') fail('web_reader_unconfigured', 503);
-  const response = await fetch('http://127.0.0.1:18095/read', { method: 'POST', redirect: 'error',
+  const endpoint = publicReaderEndpoint();
+  if (!endpoint) fail('web_reader_unconfigured', 503);
+  const timeout = AbortSignal.timeout(Math.max(1, Math.min(remainingMs, 28000)));
+  const response = await fetch(endpoint, { method: 'POST', redirect: 'error',
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, remainingMs }),
-    signal: AbortSignal.timeout(Math.max(1, Math.min(remainingMs, 28000))) });
+    signal: signal ? AbortSignal.any([timeout, signal]) : timeout });
   if (!response.body) fail('web_reader_unavailable', 503);
   const stream = response.body.getReader(), chunks: Buffer[] = []; let size = 0;
   try {
     while (true) {
       const chunk = await stream.read(); if (chunk.done) break;
-      size += chunk.value.byteLength; if (size > 8_000_000) fail('web_reader_response_limit', 502);
+      size += chunk.value.byteLength; if (size > 16_000_000) fail('web_reader_response_limit', 502);
       chunks.push(Buffer.from(chunk.value));
     }
   } finally { await stream.cancel().catch(() => {}); }
@@ -105,20 +131,57 @@ export async function configuredPublicRead(url: string, remainingMs: number): Pr
   if (!response.ok) fail(typeof packet.code === 'string' && /^(?:web_|pdf_|unsafe_web_|unsupported_web_|invalid_pdf|encrypted_pdf|reader_version_)[a-z0-9_]*$/.test(packet.code)
     ? packet.code : 'web_reader_unavailable', 503);
   const document = packet as PublicReadDocument;
-  if (!validPublicDocument(document)) fail('invalid_web_reader_response', 502);
+  if (!validPublicDocument(document) || (document.requestedUrl && document.requestedUrl !== publicWebUrl(url).href))
+    fail('invalid_web_reader_response', 502);
   return document;
 }
 
-/** Complete original pages only. Oversized pages stay in the immutable read
- * with an explicit context-limit result; no truncated clause becomes evidence. */
-export function publicDocumentPages(document: PublicReadDocument, retrievedAt: string): WebPage[] {
+/** Select complete pages under the original context budget. Oversized pages
+ * stay in the immutable read. A partial context window never truncates a page. */
+export function publicDocumentPages(document: PublicReadDocument, retrievedAt: string, query?: string): WebPage[] {
   if (!validPublicDocument(document)) fail('invalid_web_reader_response', 502);
-  return document.pages.filter(page => Buffer.byteLength(page.text) <= 18000 && (document.mediaType === 'application/pdf' || page.text.trim().length >= 40)).map(page => {
+  if (document.parseError) return [];
+  const pdf = document.mediaType === 'application/pdf';
+  const candidates = document.pages.filter(page => (!page.status || page.status === 'text')
+    && Buffer.byteLength(page.text) <= sourceTextBytes && page.text.trim().length >= (pdf ? 4 : 40)
+    && !injectionSignals(document.title + '\n' + page.text).length);
+  if (pdf && query && (candidates.length > sourceLimit || candidates.reduce((n, p) => n + Buffer.byteLength(p.text), 0) > sourceTextBytes)) {
+    const terms = expandChineseQuery(query);
+    const score = (text: string) => queryLexicalScore(chineseTerms(text), terms);
+    const ranked = candidates.map(page => ({ page, score: score(page.text) }));
+    candidates.splice(0, candidates.length, ...ranked.sort((a, b) => b.score - a.score || a.page.page - b.page.page).map(item => item.page));
+  }
+  const selected: typeof candidates = [];
+  let used = 0;
+  for (const page of candidates) {
+    const bytes = Buffer.byteLength(page.text);
+    if (used + bytes > sourceTextBytes || selected.length >= sourceLimit) continue;
+    used += bytes;
+    selected.push(page);
+  }
+  return selected.sort((a, b) => a.page - b.page).map(page => {
     const locator: Omit<WebPage, 'hash' | 'text'> = { url: document.url, title: document.title, retrievedAt, parser: publicReaderParser,
+      ...(document.requestedUrl ? { requestedUrl: document.requestedUrl } : {}),
       textBytes: Buffer.byteLength(page.text), document: { hash: document.original.sha256, mediaType: document.mediaType,
-        page: page.page, pages: document.pages.length, bytes: document.original.bytes } };
+        page: page.page, pages: document.pages.length, bytes: document.original.bytes,
+        ...(document.transport === 'verified_pdf_ranges' ? { transport: document.transport } : {}) } };
     return { ...locator, text: page.text, hash: fingerprint({ ...locator, text: page.text }) };
   });
+}
+
+export function publicDocumentReadFailures(document: PublicReadDocument, pages: WebPage[]) {
+  if (document.parseError) return [{ url: document.url, code: document.parseError,
+    ...(document.parseError === 'pdf_ocr_required' ? { pages: document.pages.filter(page => page.status === 'ocr_required').map(page => page.page) } : {}) }];
+  const failures: WebSearchSnapshot['failures'] = [];
+  for (const [status, code] of [['ocr_required', 'pdf_ocr_required'], ['unreadable', 'pdf_page_unreadable']] as const) {
+    const affected = document.pages.filter(page => page.status === status).map(page => page.page);
+    if (affected.length) failures.push({ url: document.url, code, pages: affected });
+  }
+  if (!pages.length) failures.push({ url: document.url,
+    code: document.mediaType === 'application/pdf' && document.pages.every(page => !page.text.trim()) ? 'pdf_no_text' : 'web_context_limit' });
+  else if (pages.length < document.pages.filter(page => page.text.trim()).length)
+    failures.push({ url: document.url, code: 'web_context_limit' });
+  return failures;
 }
 
 /** An actual language-directory anchor can connect a global directory to its
@@ -291,24 +354,24 @@ export async function searchPublicResearch(query: WebQuery, provider: WebSearchP
           result.documents!.push(document);
           // Prefer the actual document to intermediate navigation pages while
           // retaining all reads and failures in the private checkpoint.
-          const pages = publicDocumentPages(document, retrievedAt);
-          const complete = pages.length === document.pages.length && pages.length <= 32 && pages.reduce((n,p)=>n+p.textBytes,0) <= 18000;
+          const pages = publicDocumentPages(document, retrievedAt, query.query);
+          const readFailures = publicDocumentReadFailures(document, pages);
+          result.failures.push(...readFailures);
+          if (!pages.length) nav.outcome = readFailures[0]?.code ?? 'web_text_unavailable';
+          const complete = pages.length > 0 && !readFailures.length;
           const technicalHint = publicNavigationClass(candidate) === 4;
-          if (document.mediaType === 'application/pdf' && complete) {
-            // Admit a complete bounded document, including short/blank PDF
-            // pages. A later technical original may replace a provisional
-            // brochure before Evidence is materialized; every fetched original
-            // stays in documents. This never changes a committed source.
+          if (document.mediaType === 'application/pdf' && pages.length
+            && (!result.pages.some(page => page.document?.hash === state.selection?.documentHash) || technicalHint || !state.selection?.technicalHint)) {
+            // Keep the selected full pages and the untouched private original.
             result.pages = pages;
             state.selection = { protocol: 'document-purpose-frontier-v1', documentHash: document.original.sha256, complete, technicalHint };
             // A complete bounded original is available. Keep every read and
             // candidate in the artifact, without crawling unrelated branches.
-            if (!originalQuery(query.query) || technicalHint) break;
+            if (complete && (!originalQuery(query.query) || technicalHint)) break;
           }
           else if (document.mediaType !== 'application/pdf') {
             for (const page of pages) if (result.pages.reduce((n,p)=>n+p.textBytes,0) + page.textBytes <= 18000 && result.pages.length < 32) result.pages.push(page);
-            if (!pages.length) result.failures.push({ url: document.url, code: 'web_context_limit' });
-          } else result.failures.push({ url: document.url, code: 'web_context_limit' });
+          }
         }
         if (candidate.depth < 3) for (const link of document.links) {
           let url: string;

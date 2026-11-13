@@ -1,5 +1,5 @@
 import type { SynthesisSource } from './synthesis';
-import { publicReaderParser } from './public-research';
+import { publicDocumentByteLimit, publicReaderParser } from './public-research';
 import { publicWebUrl } from './web';
 
 /** Typed metadata from reauthorized server Evidence, never prose/file titles.
@@ -11,7 +11,8 @@ export function publicPdfSource(source: SynthesisSource) {
     || !/^[a-f0-9]{64}$/.test(web.hash) || !/^[a-f0-9]{64}$/.test(document.hash)
     || !Number.isSafeInteger(document.page) || !Number.isSafeInteger(document.pages)
     || document.page < 1 || document.page > document.pages || document.pages > 50
-    || !Number.isSafeInteger(document.bytes) || document.bytes < 1 || document.bytes > 4 * 1024 * 1024) return false;
+    || !Number.isSafeInteger(document.bytes) || document.bytes < 1
+    || document.bytes > publicDocumentByteLimit(document.mediaType, document.transport)) return false;
   try { publicWebUrl(web.url); return true; } catch { return false; }
 }
 
