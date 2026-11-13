@@ -45,7 +45,7 @@ function checkedTarget(value: string, role: string) {
   const url = new URL(value);
   assert.equal(url.protocol, 'postgresql:');
   assert.equal(url.hostname, '127.0.0.1');
-  assert.equal(url.port, '55433');
+  assert.equal(url.port, process.env.XIAOK_ISOLATED_POSTGRES_PORT || '55433');
   assert.equal(url.pathname, '/xiaok_b58_test');
   assert.equal(url.username, role);
   assert.equal(url.search + url.hash, '');

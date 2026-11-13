@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
@@ -13,9 +14,12 @@ import type { ReviewDelegationEvent } from './delegation-review-store';
 import { delegationConsumer, delegationTimeout, deriveDelegationState, type Delegation, type DelegationTask } from './delegation-state';
 import { appendDelegationEvent, delegationEnterprises, delegationFromRow, delegationOrigin, linkDelegationEvent,
   saveDelegation, type DelegationEvent } from './delegation-store';
+import { claimDelegationDelivery, delegationDeliveryAttempts, settleDelegationDelivery } from './delegation-execution';
+import { assertPostgresDurableTaskLease } from './durable-task-postgres-store';
+import type { DurableTaskLeaseRef } from './durable-task-runtime';
 
-const eventAttempts = 5;
 const batchSize = 12;
+type DeliveryResult = { status: 'idle' | 'busy' | 'delivered' | 'retry_wait' | 'dead'; applied: number };
 
 async function enqueueDue(tx: PostgresTransaction, eid: string, now: Date) {
   const due = await rows(tx, sql`select d.* from app.native_workflow_delegations d
@@ -125,79 +129,124 @@ function databaseErrorCode(error: unknown): string {
   if (!error || typeof error !== 'object') return 'delegation_event_failed';
   const details = error as { code?: unknown; cause?: unknown; message?: unknown };
   if (typeof details.message === 'string' && /^(?:tool|delegation)_[a-z_]+$/.test(details.message)) return details.message;
+  if (typeof details.code === 'string' && /^durable_task_[a-z_]+$/.test(details.code)) return details.code;
   return typeof details.code === 'string' && /^[0-9A-Z]{5}$/.test(details.code)
     ? details.code : details.cause ? databaseErrorCode(details.cause) : 'delegation_event_failed';
 }
 
-async function processOne(eid: string, now: Date, enqueue: boolean, durableTool: boolean, observe: typeof observeDelegation) {
-  return withTenantTransaction(eid, async tx => {
-    const lock = await one(tx, sql`select pg_try_advisory_xact_lock(hashtextextended(${'native.delegation:' + eid},0)) as owned`);
-    if (lock?.owned !== true) return { status: 'busy' as const, applied: 0 };
-    await tx.execute(sql`set local statement_timeout='8s'`);
-    if (enqueue) {
-      await enqueueDue(tx, eid, now);
-      await enqueueReviewDue(tx, eid, now);
-    }
-    // One short transaction owns the earliest open delivery. An earlier retry
-    // is held until its due time; a dead receipt releases following events.
-    const delivery = await one(tx, sql`select d.id::text as delivery_id,d.attempts,d.available_at,
-        e.id::text,e.type,e.aggregate_id,e.aggregate_version,e.payload,
-        coalesce(e.payload->>'projectId',parent.payload->>'projectId',r.project_id::text) as project_id,
-        coalesce(nullif(e.payload->>'roomId',''),parent.payload->>'roomId',issue.payload->>'roomId',r.room_id::text) as room_id
-      from app.domain_event_deliveries d join app.domain_event_outbox e on e.enterprise_id=d.enterprise_id and e.id=d.event_id
-      left join app.domain_event_outbox parent on parent.enterprise_id=e.enterprise_id and parent.id::text=e.aggregate_id
-        and e.type in ('construction.material.revoked.v1','construction.plan.status.v1')
-        and parent.type in ('construction.material.shared.v1','construction.plan.published.v1')
-      left join app.domain_event_outbox issue on issue.enterprise_id=e.enterprise_id and issue.id::text=e.payload->>'issueId'
-        and issue.type='construction.site.issue.opened.v1' and issue.payload->>'projectId'=e.payload->>'projectId'
-      left join app.construction_site_records r on r.enterprise_id=e.enterprise_id
-        and ((e.type='assistant.run.terminal.v1' and r.run_id::text=e.aggregate_id)
-          or (e.aggregate_type='construction_site_record' and r.id::text=e.aggregate_id))
-      where d.enterprise_id=${eid} and d.consumer_key=${delegationConsumer} and d.status in ('pending','retry_wait')
-      order by d.event_id limit 1 for update of d`);
-    if (!delivery || (Number(delivery.attempts) > 0 && new Date(delivery.available_at as Date) > now))
-      return { status: 'idle' as const, applied: 0 };
+async function lockDelegationConsumer(tx: PostgresTransaction, eid: string) {
+  const lock = await one(tx, sql`select pg_try_advisory_xact_lock(hashtextextended(${'native.delegation:' + eid},0)) as owned`);
+  return lock?.owned === true;
+}
 
-    const event: DelegationEvent = {
-      id: String(delivery.id), type: String(delivery.type), aggregateId: String(delivery.aggregate_id),
-      payload: delivery.payload as Row,
-    };
-    const review: ReviewDelegationEvent = {
-      ...event, aggregateVersion: Number(delivery.aggregate_version), projectId: String(delivery.project_id),
-      payload: { ...event.payload, ...(delivery.room_id ? { roomId: String(delivery.room_id) } : {}) },
-    };
-    if (event.type === 'construction.site.issue.opened.v1') review.payload.issueId = event.id;
-    const id = String(delivery.delivery_id), attempt = Number(delivery.attempts) + 1;
-    await tx.execute(sql`savepoint native_delegation_delivery`);
-    try {
-      await tx.execute(sql`set local lock_timeout='1500ms'`);
-      const reviewed = await applyReviewEvent(tx, eid, review, now, observe);
-      const applied = reviewed + await applyEvent(tx, eid, event, now, durableTool);
-      await tx.execute(sql`update app.domain_event_deliveries set status='delivered',attempts=${attempt},last_error=null,updated_at=${now},version=version+1
-        where enterprise_id=${eid} and id=${id}`);
-      await tx.execute(sql`release savepoint native_delegation_delivery`);
-      return { status: 'delivered' as const, applied };
-    } catch (error) {
-      await tx.execute(sql`rollback to savepoint native_delegation_delivery`);
-      await tx.execute(sql`release savepoint native_delegation_delivery`);
-      const status = attempt >= eventAttempts ? 'dead' : 'retry_wait';
-      if (status === 'dead') await markReviewTargetFailed(tx, eid, review, now, databaseErrorCode(error));
-      await tx.execute(sql`update app.domain_event_deliveries set status=${status},attempts=${attempt},
-        available_at=${new Date(now.getTime() + 1000 * 2 ** attempt)},last_error=${databaseErrorCode(error)},updated_at=${now},version=version+1
-        where enterprise_id=${eid} and id=${id}`);
-      return { status, applied: 0 };
+async function nextDelivery(tx: PostgresTransaction, eid: string, now: Date, enqueue: boolean) {
+  await tx.execute(sql`set local statement_timeout='8s'`);
+  if (enqueue) {
+    await enqueueDue(tx, eid, now);
+    await enqueueReviewDue(tx, eid, now);
+  }
+  // One short transaction owns the earliest open delivery. An earlier retry
+  // is held until its due time; a dead receipt releases following events.
+  const delivery = await one(tx, sql`select d.id::text as delivery_id,d.attempts,d.available_at,
+      e.id::text,e.type,e.aggregate_id,e.aggregate_version,e.payload,e.actor_ref,
+      coalesce(e.payload->>'projectId',parent.payload->>'projectId',r.project_id::text) as project_id,
+      coalesce(nullif(e.payload->>'roomId',''),parent.payload->>'roomId',issue.payload->>'roomId',r.room_id::text) as room_id
+    from app.domain_event_deliveries d join app.domain_event_outbox e on e.enterprise_id=d.enterprise_id and e.id=d.event_id
+    left join app.domain_event_outbox parent on parent.enterprise_id=e.enterprise_id and parent.id::text=e.aggregate_id
+      and e.type in ('construction.material.revoked.v1','construction.plan.status.v1')
+      and parent.type in ('construction.material.shared.v1','construction.plan.published.v1')
+    left join app.domain_event_outbox issue on issue.enterprise_id=e.enterprise_id and issue.id::text=e.payload->>'issueId'
+      and issue.type='construction.site.issue.opened.v1' and issue.payload->>'projectId'=e.payload->>'projectId'
+    left join app.construction_site_records r on r.enterprise_id=e.enterprise_id
+      and ((e.type='assistant.run.terminal.v1' and r.run_id::text=e.aggregate_id)
+        or (e.aggregate_type='construction_site_record' and r.id::text=e.aggregate_id))
+    where d.enterprise_id=${eid} and d.consumer_key=${delegationConsumer} and d.status in ('pending','retry_wait')
+    order by d.event_id limit 1 for update of d`);
+  if (!delivery || (Number(delivery.attempts) > 0 && new Date(delivery.available_at as Date) > now))
+    return null;
+
+  const event: DelegationEvent = {
+    id: String(delivery.id), type: String(delivery.type), aggregateId: String(delivery.aggregate_id),
+    payload: delivery.payload as Row,
+  };
+  const review: ReviewDelegationEvent = {
+    ...event, aggregateVersion: Number(delivery.aggregate_version), projectId: String(delivery.project_id),
+    payload: { ...event.payload, ...(delivery.room_id ? { roomId: String(delivery.room_id) } : {}) },
+  };
+  if (event.type === 'construction.site.issue.opened.v1') review.payload.issueId = event.id;
+  return {
+    id: String(delivery.delivery_id), attempt: Number(delivery.attempts) + 1,
+    event, review, projectId: delivery.project_id ? String(delivery.project_id) : null,
+    actor: delivery.actor_ref as Row,
+  };
+}
+
+async function applyDelivery(tx: PostgresTransaction, eid: string, now: Date, delivery: NonNullable<Awaited<ReturnType<typeof nextDelivery>>>,
+  durableTool: boolean, observe: typeof observeDelegation, fence: DurableTaskLeaseRef): Promise<DeliveryResult> {
+  const { id, attempt, event, review } = delivery;
+  await assertPostgresDurableTaskLease(tx, eid, fence.taskId, fence);
+  await tx.execute(sql`savepoint native_delegation_delivery`);
+  try {
+    await tx.execute(sql`set local lock_timeout='1500ms'`);
+    const reviewed = await applyReviewEvent(tx, eid, review, now, observe);
+    const applied = reviewed + await applyEvent(tx, eid, event, now, durableTool);
+    await settleDelegationDelivery(tx, fence, applied);
+    await tx.execute(sql`update app.domain_event_deliveries set status='delivered',attempts=${attempt},last_error=null,updated_at=${now},version=version+1
+      where enterprise_id=${eid} and id=${id}`);
+    await tx.execute(sql`release savepoint native_delegation_delivery`);
+    return { status: 'delivered', applied };
+  } catch (error) {
+    await tx.execute(sql`rollback to savepoint native_delegation_delivery`);
+    await tx.execute(sql`release savepoint native_delegation_delivery`);
+    const code = databaseErrorCode(error);
+    const exhausted = attempt >= delegationDeliveryAttempts;
+    const executionStatus = await settleDelegationDelivery(tx, fence, 0, { code, exhausted });
+    const status = exhausted || executionStatus === 'dead' ? 'dead' : 'retry_wait';
+    if (status === 'dead') await markReviewTargetFailed(tx, eid, review, now, code);
+    await tx.execute(sql`update app.domain_event_deliveries set status=${status},attempts=${attempt},
+      available_at=${new Date(now.getTime() + 1000 * 2 ** attempt)},last_error=${code},updated_at=${now},version=version+1
+      where enterprise_id=${eid} and id=${id}`);
+    return { status, applied: 0 };
+  }
+}
+
+async function processOne(eid: string, now: Date, enqueue: boolean, durableTool: boolean, observe: typeof observeDelegation,
+  workerId: string) {
+  const prepared = await withTenantTransaction(eid, async tx => {
+    if (!await lockDelegationConsumer(tx, eid)) return { status: 'busy' as const, applied: 0 };
+    const delivery = await nextDelivery(tx, eid, now, enqueue);
+    if (!delivery) return { status: 'idle' as const, applied: 0 };
+    const claim = await claimDelegationDelivery(tx, eid, delivery.id, delivery.event, delivery.projectId, delivery.actor, workerId);
+    if (claim.status === 'claimed') return { ...claim, delivery };
+    if (claim.status !== 'busy') {
+      if (claim.status === 'dead') await markReviewTargetFailed(tx, eid, delivery.review, now, claim.error);
+      await tx.execute(sql`update app.domain_event_deliveries set status=${claim.status},
+        last_error=${claim.status === 'dead' ? claim.error : null},updated_at=${now},version=version+1
+        where enterprise_id=${eid} and id=${delivery.id}`);
     }
+    return { status: claim.status, applied: 0 };
+  });
+  if (prepared.status !== 'claimed') return prepared;
+  return withTenantTransaction(eid, async tx => {
+    // Another Worker may briefly inspect the committed claim. Wait for that
+    // transaction before locking the delivery, as in the original lock order.
+    await tx.execute(sql`set local statement_timeout='8s'`);
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'native.delegation:' + eid},0))`);
+    const delivery = await nextDelivery(tx, eid, now, false);
+    if (!delivery || delivery.id !== prepared.delivery.id) throw new Error('delegation_delivery_changed');
+    return applyDelivery(tx, eid, now, delivery, durableTool, observe, prepared.fence);
   });
 }
 
 export async function runNativeDelegationTick(env: NodeJS.ProcessEnv = process.env, now = new Date(), observe = observeDelegation) {
   const enterprises = delegationEnterprises(env);
+  const workerId = 'native-delegation:' + randomUUID();
   const results = [];
   for (const enterpriseId of enterprises) {
     const counters = { delivered: 0, applied: 0, retried: 0, dead: 0 };
     try {
       for (let index = 0; index < batchSize; index++) {
-        const result = await processOne(enterpriseId, now, index === 0, durableDelegationToolEnabled(env), observe);
+        const result = await processOne(enterpriseId, now, index === 0, durableDelegationToolEnabled(env), observe, workerId);
         if (result.status === 'idle' || result.status === 'busy') break;
         if (result.status === 'delivered') {
           counters.delivered++;

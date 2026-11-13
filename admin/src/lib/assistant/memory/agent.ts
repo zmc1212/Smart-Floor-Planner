@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
 import { one, type Row } from '@/db/repositories/assistant-repository';
 import { DelegationService } from '@/lib/native-workflow/live/delegation-store';
-import { currentDelegationViews, delegationModelView, delegationReceipt, delegationSummary } from '@/lib/native-workflow/live/delegation-chat';
+import { currentDelegationViews, delegationModelView, delegationNoticeAvailable, delegationReceipt, delegationSummary } from '@/lib/native-workflow/live/delegation-chat';
 import { delegationKinds } from '@/lib/native-workflow/live/delegation-state';
 import { fail, fingerprint, safeText, type ActorContext, type MessageContent } from '../contracts';
 import type { ModelTool, ModelToolCall } from '../contracts/model';
@@ -36,12 +36,12 @@ const delegationTool: ModelTool = {
 
 export const isLongTermTool = (name: string) => name === memoryToolName || name === delegationToolName;
 export const explicitPublicResearch = (question: string) => /联网|网上|公开资料|公开出处|官网|厂家资料|https?:\/\//iu.test(question);
+const delegationRequested = (question: string) => /跟进|盯一下|盯着|盯下|提醒我|核对|核一下|问问|等.*回复|复核/u.test(question);
 
 export function longTermTools(scope: PrivateMemoryScope, question: string) {
   if (explicitPublicResearch(question)) return [];
   const writes = /记住|记录|记下|更正|纠正|删除|删掉|忘掉|忘记|作废|偏好|习惯|一直|以后|长期|我喜欢|我希望|我们决定|我家|不再/u.test(question);
-  const delegating = /跟进|盯一下|盯着|盯下|提醒我|核对|核一下|问问|等.*回复|复核/u.test(question);
-  return [...(writes ? [memoryTool] : []), ...(scope.projectId && delegating ? [delegationTool] : [])];
+  return [...(writes ? [memoryTool] : []), ...(scope.projectId && delegationRequested(question) ? [delegationTool] : [])];
 }
 
 function ref(input: Row) {
@@ -69,8 +69,10 @@ export async function executeLongTermTool(tx: PostgresTransaction, actor: ActorC
         const d = await service.create(messageId, input as Parameters<DelegationService['create']>[1]);
         // Only the owner sees this in-app receipt; the source grant lives in
         // construction material sharing and is never created by this tool.
-        await delegationReceipt(tx, d, 'create:' + d.id, delegationSummary(d));
+        const notice = await delegationReceipt(tx, d, 'create:' + d.id, delegationSummary(d));
+        if (!notice) fail('delegation_receipt_unavailable', 409);
         return { delegation: delegationModelView([d])[0], delivery: 'in_app_receipt', businessConfirmation: false,
+          messageId: notice.messageId,
           instructions: '已登记委托，等服务端按实际事件核对。只能说明已登记和当前等待状态。' };
       }
       const service = new MemoryService(tx, scope);
@@ -125,7 +127,7 @@ export async function agentLongTermContext(tx: PostgresTransaction, actor: Actor
   const tasks = taskQuestion ? (await new DelegationService(tx, scope).list())
     .filter(d => /委托|跟进/u.test(question) || question.includes(d.scope.subject)).slice(0, 6) : [];
   const delegations = delegationModelView(await currentDelegationViews(tx, tasks));
-  const project = await service.projectContext(question);
+  const project = await service.projectContext(question, delegationRequested(question));
   const facts = editing ? memories.map(({ key, revision, category, topic, room, state }) => ({ key, revision, category, topic, room, state })) : memories;
   const privateContext = facts.length + delegations.length > 0 || !!project;
   const ref: Context = { ownerId: scope.ownerId, projectId: scope.projectId, leadId: scope.leadId,
@@ -157,7 +159,9 @@ export async function longTermRunAvailable(tx: PostgresTransaction, actor: Actor
   const original = await one(tx, sql`select m.content from app.assistant_runs r join app.assistant_messages m
     on m.enterprise_id=r.enterprise_id and m.id=r.trigger_message_id and m.conversation_id=r.conversation_id
     where r.enterprise_id=${enterpriseId} and r.id=${runId} and r.conversation_id=${scope.conversationId}`);
-  return !!original && fingerprint(await service.projectContext(safeText(original.content as MessageContent))) === ref.projectHash;
+  if (!original) return false;
+  const question = safeText(original.content as MessageContent);
+  return fingerprint(await service.projectContext(question, delegationRequested(question))) === ref.projectHash;
 }
 
 export async function agentLongTermToolResult(tx: PostgresTransaction, actor: ActorContext, c: Row, source: Row, runId: string,
@@ -208,6 +212,24 @@ export async function longTermPreferenceReceipt(tx: PostgresTransaction, eid: st
   if (memory.state === 'conflict') return '这条偏好和原记录有出入，等你确认后再沿用。';
   if (memory.state === 'candidate') return '我先把这条留作待确认的偏好。';
   return null;
+}
+
+export async function longTermDelegationReceipt(tx: PostgresTransaction, actor: ActorContext, c: Row,
+  runId: string, sequence: number, original: string) {
+  const scope = await privateMemoryScope(tx, actor, c);
+  if (!scope) return null;
+  const step = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${scope.enterpriseId}
+    and run_id=${runId} and step_seq=${sequence} and kind='agent_long_term_write'
+    and capability_name=${delegationToolName} and status='succeeded'`);
+  if (!step) return null;
+  const result = JSON.parse(String((step.private_checkpoint as Row).content)).result as Row | undefined;
+  const taskId = (result?.delegation as Row | undefined)?.id;
+  const noticeId = result?.messageId;
+  if (typeof taskId !== 'string' || typeof noticeId !== 'string') return null;
+  const task = await new DelegationService(tx, scope).find(taskId);
+  if (!task || task.conversationId !== scope.conversationId || task.objective !== original.trim()
+    || !await delegationNoticeAvailable(tx, actor, c, noticeId)) return null;
+  return `已登记跟进：${task.title}。你可以在这次咨询里查看进展。`;
 }
 
 export async function longTermOperationIds(tx: PostgresTransaction, eid: string, runId: string) {

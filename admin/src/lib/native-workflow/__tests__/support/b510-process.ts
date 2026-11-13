@@ -17,6 +17,7 @@ import { createDatabasePeriodReportScheduleEnvironment } from '../../live/period
 import { runScheduledPeriodReportDispatch } from '../../live/period-report-schedule';
 import { scheduleRunId } from '../../live/period-report-schedule-types';
 import { runNativeDelegationTick } from '../../live/delegation-worker';
+import { observeDelegation } from '../../live/delegation-sources';
 import { createFileDurableTaskStore } from '../../live/durable-task-store';
 
 /** Two isolated HTTP hosts exercise the actual signed Admin route handlers. */
@@ -57,7 +58,12 @@ async function execute() {
     const body = await result.json();
     return { status: result.status, code: body.code, claimed: body.data?.claimed };
   }
-  if (action === 'delegation') return runNativeDelegationTick();
+  if (action === 'delegation') return runNativeDelegationTick(process.env, new Date(), fault === 'kill' ? async (...args) => {
+    const result = await observeDelegation(...args);
+    process.send?.({ checkpoint: 'delegation_delivery_claim_committed' });
+    await delay(60_000);
+    return result;
+  } : observeDelegation);
   if (action === 'legacy') return advanceConstructionReports(now(), enterpriseId);
   if (action === 'task-lease') {
     return createFileDurableTaskStore({ rootDir: root }).acquireLease({

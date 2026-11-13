@@ -406,6 +406,7 @@ export function createFileDurableTaskStore(options: { readonly rootDir: string }
         const record = await readRecord(rootDir, query.enterpriseId, taskId);
         if (!record) continue;
         if (query.statuses && !query.statuses.includes(record.status)) continue;
+        if (query.taskId && record.taskId !== query.taskId) continue;
         if (query.kind && record.kind !== query.kind) continue;
         if (query.manualOnly && !record.manual) continue;
         records.push(record);
@@ -534,6 +535,7 @@ export function createMemoryDurableTaskStore(): DurableTaskStore {
       assertEnterpriseId(query.enterpriseId);
       const selected = [...records.values()]
         .filter((record) => record.enterpriseId === query.enterpriseId)
+        .filter((record) => !query.taskId || record.taskId === query.taskId)
         .filter((record) => !query.statuses || query.statuses.includes(record.status))
         .filter((record) => !query.kind || record.kind === query.kind)
         .filter((record) => !query.manualOnly || record.manual)

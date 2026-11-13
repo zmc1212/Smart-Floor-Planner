@@ -25,7 +25,7 @@
 <!-- native-deployment-current -->
 **Native Workflow B5.11 运行与投递（Limited）。** 助手 Worker、`GET/POST /api/native-workflow/schedule` 和 `GET /api/native-workflow/runs/:runId/period-report-status` 可通过 `NATIVE_WORKFLOW_RUNTIME_STORE=postgres` 共享 PostgreSQL 检查点。Integration 迁移 `0125` 为 Workflow Run、Schedule Run、Period Report Batch、Schedule Control 和 Schedule Ledger 建立强制 RLS 的租户表。检查点版本处理并发写入。数据库时间和租约 token 保护调度、批次及其报告事务。周槽归属、报告任务和投递继续使用现有设置、outbox 和 `assistant_jobs`。
 
-启用 `NATIVE_WORKFLOW_TASK_STORE=postgres` 与 `NATIVE_WORKFLOW_DURABLE_TOOL_ENABLED=1` 后，迁移 `0123` 支持原水电持续委托的业主超时提醒。认证 Worker 复核项目、业主、同意及当前等待项，在原咨询投递站内提醒。outbox 结果用于回调去重和原委托回写。平台管理员从 `GET /api/native-workflow/tasks/manual` 查看所选企业的脱敏人工队列。定义与已发布版本沿用文件 Workflow Store。隔离迁移工具保留原运行和任务历史。既有企业清空和彻底删除事务按所选企业清理运行状态。生产部署待验证。[配置、迁移与回滚](../admin/src/lib/native-workflow/README.md#b511-postgresql-runtime-stores-and-durable-tool)。
+已启用企业的委托消费者按 Outbox 事件持久化一条 PostgreSQL Durable Task 租约，并沿同一事件键记录尝试。当前租约约束委托进展和原咨询回执的写入事务。原水电超时提醒回调使用 `NATIVE_WORKFLOW_TASK_STORE=postgres` 与 `NATIVE_WORKFLOW_DURABLE_TOOL_ENABLED=1`。认证 Worker 复核项目、业主、同意及当前等待项，在原咨询投递站内提醒。outbox 结果用于回调去重和原委托回写。平台管理员从 `GET /api/native-workflow/tasks/manual` 查看所选企业的脱敏人工队列。定义与已发布版本沿用文件 Workflow Store。隔离迁移工具保留原运行和任务历史。既有企业清空和彻底删除事务按所选企业清理运行状态。生产部署待验证。[配置、迁移与回滚](../admin/src/lib/native-workflow/README.md#b511-postgresql-runtime-stores-and-durable-tool)。
 <!-- /native-deployment-current -->
 
 <!-- site-capture-current -->
@@ -674,7 +674,7 @@ A10证据完整性校验 **Implemented**：合并工具重算每份来源快照�
 
 1B知识后端 **Implemented**，第一期整体仍为 **Limited**：`/api/assistant/knowledge/documents`及`[id]`提供列表/创建/详情/元数据更新，`[id]/versions`复制草稿，`[id]/versions/[versionId]`编辑，`index`/`publish`执行索引/发布，`[id]/retire`撤回，`/api/assistant/knowledge/jobs/[jobId]`查询任务。写请求要求Idempotency-Key和对应expectedVersion/expectedEditVersion。当前选定企业的平台管理员/超级管理员，或本企业有效且数据库menu_permissions显式含assistant-knowledge的enterprise_admin可访问；平台管理员/超级管理员可在选定企业范围内访问，具体权限与0063约束见上，权限在索引执行前后复查。当前/assistant-knowledge页面见上方入口记录，企业负责人仍须显式授权。0060新增5张知识表（文档/版本/片段/profile/调用审计），强制RLS及复合FK；知识任务带租约/hash/edit_version保护，发布撤回提升epoch并写outbox；reset/purge已纳入。
 
-**R5–R6 长期记忆与持续委托（Limited）。** 迁移 `0123` 保存业主私有记忆修订、委托及 Outbox 回执。业主专用 `/api/miniprogram/assistant/conversations/:id/long-term` 读取当前委托和可选 `standardCheck`，只返回实时获权的来源引用。原 Worker 将复核委托绑定原咨询、项目、房间和唯一匹配的施工事项，沿 KnowledgeRetriever/Evidence 及现有落实、复核和回传服务。获准发布的原件可进入待复核，原咨询收到有权人员的真实结果后才完成委托。沿用企业白名单、重试与死信。托管验收仍需北京空间和专用凭据。[R6 合同与验收](./xiaok-assistant-phase-2.zh-CN.md#r6-原生施工复核与托管知识)
+**R5–R6 长期记忆与持续委托（Limited）。** Integration 的 `0126` 与 `0127` 支持业主私有记忆修订、统一委托表和不可变的 Outbox 回执。现有 Agent 从原咨询读取当前获权项目、阶段和房间，再通过 `start_delegation` 登记持续跟进。整条原话只触发一项登记时，可以采用已保存的登记回执结束本轮。业主专用 `/api/miniprogram/assistant/conversations/:id/long-term` 读取本咨询的委托和可选 `standardCheck`，只返回实时获权的来源引用。原 Worker 将复核委托绑定原咨询、项目、房间和唯一匹配的施工事项，沿 KnowledgeRetriever/Evidence 及现有落实、复核和回传服务。获准发布的原件可进入待复核，原咨询收到有权人员的真实结果后才完成委托。沿用企业白名单、重试与死信。托管验收仍需北京空间和专用凭据。[R6 合同与验收](./xiaok-assistant-phase-2.zh-CN.md#r6-原生施工复核与托管知识)
 
 百炼 Responses 分支的 R4 企业及项目知识库 API 与 Worker 已实现，托管验收仍为 **Limited**，待配置百炼工作空间。现有文档 API 支持项目与分类过滤，`POST /api/assistant/knowledge/documents/import` 支持文件导入。项目归属在创建时同租户核验并锁定，上传、审阅、索引、发布和撤回沿用知识管理权限。百炼为每个企业创建独立托管索引并返回混合检索切片。PostgreSQL 保存原件、业务元数据、权限、版本、供应商映射和回执。Worker 将远端切片绑定到已审阅的原条款和本地定位，任务 API 展示供应商回执。文字 PDF、DOCX、TXT、Markdown、XLSX 经过本地安全校验和审阅。扫描页需导入并审阅 OCR 结果，旧 DOC 需转换。Agent 工具只读，并复验当前范围和版本。旧版失效与撤回在本地事务生效，百炼副本由 Worker 后续清理。见 [R4 集成契约](./bailian-responses-adapter.md#12-r4-企业知识库)。
 

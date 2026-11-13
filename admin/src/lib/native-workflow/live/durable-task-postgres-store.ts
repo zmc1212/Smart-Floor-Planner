@@ -129,6 +129,7 @@ export function createPostgresDurableTaskStore(
       const now = query.readyAt;
       const result = await rows<TaskRow>(tx, sql`select ${selection} from ${relation}
         where enterprise_id=${query.enterpriseId}
+        ${query.taskId === undefined ? sql`` : sql`and id=${query.taskId}`}
         ${query.kind === undefined ? sql`` : sql`and kind=${query.kind}`}
         ${query.statuses === undefined ? sql`` : sql`and status=any(array[${sql.join(query.statuses.map((status) => sql`${status}`), sql`,`)}]::text[])`}
         ${query.manualOnly ? sql`and state->'manual' <> 'null'::jsonb and state#>>'{manual,resolvedAt}' is null` : sql``}

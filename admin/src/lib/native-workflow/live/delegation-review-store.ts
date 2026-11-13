@@ -105,12 +105,12 @@ export class DelegationService {
       dueAt.setTime(date.getTime());
     }
     const operationKey = fingerprint({ projectId, kind: scope.kind, roomId: scope.roomId, subject: subject.normalize('NFKC').toLowerCase() });
-    await this.tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'native-delegation:' + enterpriseId + ':' + ownerId + ':' + operationKey},0))`);
+    await this.tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'native-delegation:' + enterpriseId + ':' + conversationId + ':' + operationKey},0))`);
     const existing = await one(this.tx, sql`select * from app.native_workflow_delegations
-      where enterprise_id=${enterpriseId} and owner_id=${ownerId} and project_id=${projectId}
+      where enterprise_id=${enterpriseId} and owner_id=${ownerId} and project_id=${projectId} and conversation_id=${conversationId}
         and (scope - 'issueId')=(${delegationJson(scope)}::jsonb - 'issueId')
         and (origin_message_id=${messageId} or current_status not in ('cancelled','completed'))
-      order by created_at desc limit 1 for share`);
+      order by (origin_message_id=${messageId}) desc,created_at desc,id limit 1 for share`);
     if (existing) {
       const d = reviewDelegationFromRow(existing);
       if (!await reviewDelegationOrigin(this.tx, d)) fail('delegation_origin_unavailable', 409);
@@ -143,11 +143,13 @@ export class DelegationService {
     return row ? reviewDelegationFromRow(row) : null;
   }
 
-  async list() {
+  async list(originalConversationOnly = false) {
     const { enterpriseId, ownerId, projectId } = this.scope;
     if (!projectId) return [];
     const items = await rows(this.tx, sql`select * from app.native_workflow_delegations where enterprise_id=${enterpriseId}
-      and owner_id=${ownerId} and project_id=${projectId} order by updated_at desc,id limit 24`);
+      and owner_id=${ownerId} and project_id=${projectId}
+      ${originalConversationOnly ? sql`and conversation_id=${this.scope.conversationId}` : sql``}
+      order by updated_at desc,id limit 24`);
     const result: ReviewDelegation[] = [];
     for (const row of items) {
       const d = reviewDelegationFromRow(row);

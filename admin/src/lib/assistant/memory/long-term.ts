@@ -197,9 +197,9 @@ export class MemoryService {
     return true;
   }
 
-  async projectContext(question: string) {
+  async projectContext(question: string, forDelegation = false) {
     const { enterpriseId, ownerId, conversationId, projectId, leadId } = this.scope;
-    if (!projectId || !/工地|项目|现场|房间|房子|阶段|施工|方案|图纸|决定|设计师|工人|需求|插座|点位/u.test(question)) return null;
+    if (!projectId || !forDelegation && !/工地|项目|现场|房间|房子|阶段|施工|方案|图纸|决定|设计师|工人|需求|插座|点位/u.test(question)) return null;
     const project = await one(this.tx, sql`select p.id::text,p.name,p.version,p.current_stage_key,l.community_name,
       f.id::text as floor_plan_id,f.name as floor_plan_name,f.updated_at::text as floor_plan_revision
       from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id

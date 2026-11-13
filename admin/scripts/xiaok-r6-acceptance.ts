@@ -6,6 +6,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import sharp from 'sharp';
 import { sql } from 'drizzle-orm';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
+import { AiProviderError } from '@/lib/ai/provider-types';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { closePostgresPool } from '@/lib/postgresql';
 import { getPlatformLlmRuntimeConfig, savePlatformLlmConfig } from '@/lib/platform-llm-config';
@@ -16,7 +17,7 @@ import type { ModelTurnOutput } from '@/lib/assistant/contracts/model';
 import { ConversationService } from '@/lib/assistant/core/conversation';
 import { assistantHttp } from '@/lib/assistant/application/http';
 import { processAgentAnswer } from '@/lib/assistant/agent/worker';
-import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
+import { claimJob, runContext } from '@/lib/assistant/infrastructure/job-queue';
 import { processAnswer } from '@/lib/assistant/infrastructure/answer-worker';
 import { naturalKnowledgeProtocol, sourceBoundaryValidationProtocol } from '@/lib/assistant/agent/knowledge-explanation';
 import { BailianKnowledgeProvider } from '@/lib/assistant/knowledge/bailian-provider';
@@ -36,6 +37,7 @@ import { mockBailianRag } from './xiaok-r4-bailian-mock';
 const eid = '1454', control = '1455', model = 'qwen3.7-flash';
 const liveModel = process.argv.includes('--live-model');
 const hosted = process.argv.includes('--hosted');
+const durableAcceptance = process.argv.includes('--durable-integration');
 const mock = !liveModel && !hosted ? mockBailianRag() : null;
 const label = process.argv.find(arg => arg.startsWith('--label='))?.slice(8) ?? randomUUID();
 const target = new URL(process.env.XIAOK_R6_DATABASE_URL ?? 'http://missing');
@@ -213,8 +215,7 @@ async function read(f: Fixture, cid = f.cid) {
   assert.equal(response.status, 200, await response.clone().text());
   return (await response.json()).data as { memories: Row[]; delegations: Row[]; notices: Row[] };
 }
-async function send(f: Fixture, text: string, cid = f.cid) {
-  const key = randomUUID();
+async function send(f: Fixture, text: string, cid = f.cid, key = randomUUID()) {
   const response = await assistant(f, ['conversations', cid, 'messages'], { clientMessageId: key, content: block(text) }, key);
   assert.equal(response.status, 202, await response.clone().text());
   return (await response.json()).data as Row;
@@ -224,7 +225,9 @@ const outputOf = (name: string, args: object): ModelTurnOutput => ({
   providerRequestId: null, usage: { inputTokens: 30, outputTokens: 10 },
 });
 async function turn(f: Fixture, text: string, cid = f.cid) {
-  const sent = await send(f, text, cid);
+  const key = randomUUID();
+  const sent = await send(f, text, cid, key);
+  if (durableAcceptance && text === delegation) assert.deepEqual(await send(f, text, cid, key), sent);
   assert.ok(sent.runId, json(sent));
   const lease = await claimJob();
   assert.equal(lease?.runId, sent.runId);
@@ -234,8 +237,15 @@ async function turn(f: Fixture, text: string, cid = f.cid) {
     if (step === 0 && text === question) return outputOf('knowledge_search', { query: '卫生间防水施工和后续检查' });
     if (step === 0 && text === preference) return outputOf('manage_long_term_memory', { action: 'remember', category: 'preference',
       topic: '沟通方式', quote: preference, value: '先告诉我结论，再说细节' });
-    if (step === 0 && text === delegation) return outputOf('start_delegation', { kind: 'rectification_review',
-      room: '卫生间', subject, quote: delegation });
+    if (step === 0 && text === delegation) {
+      if (durableAcceptance) {
+        const context = messages.flatMap(message => message.role === 'system'
+          ? message.content.flatMap(part => part.type === 'text' ? [part.text] : []) : []).join('\n');
+        assert.ok(context.includes(f.tag) && context.includes('卫生间') && context.includes('utilities'),
+          'The delegation turn must see the authorized project, room and construction stage');
+      }
+      return outputOf('start_delegation', { kind: 'rectification_review', room: '卫生间', subject, quote: delegation });
+    }
     const sources = messages.flatMap(message => message.role === 'tool'
       ? (JSON.parse(message.content).synthesisSources ?? []) as { kind: string; text: string; citationOptions?: { citationId: string }[] }[] : []);
     const source = sources.find(item => item.kind === 'knowledge' && item.text.includes('项目团队安排'));
@@ -265,6 +275,35 @@ async function turn(f: Fixture, text: string, cid = f.cid) {
   assert.equal(ledger.run?.status, 'succeeded', json(ledger.run));
   assert.ok(answer?.available, 'Saved answer unavailable');
   return { sent, answer, ledger };
+}
+
+async function interruptedOwnerTurn(f: Fixture) {
+  const text = '卫生间门口的止水处理，麻烦你帮我跟进。';
+  const key = randomUUID(), sent = await send(f, text, f.cid, key);
+  const first = await claimJob({ enterpriseId: f.tenant, runId: String(sent.runId) });
+  assert.ok(first);
+  const expire = (token: string) => withTenantTransaction(f.tenant, tx => tx.execute(sql`update app.assistant_jobs
+    set lease_expires_at=clock_timestamp()-interval '1 second' where enterprise_id=${f.tenant} and id=${first.jobId}
+    and lease_token=${token}`));
+  await expire(first.token);
+  const resumed = await claimJob({ enterpriseId: f.tenant, runId: first.runId });
+  assert.ok(resumed && resumed.token !== first.token);
+  await assert.rejects(withTenantTransaction(f.tenant, tx => runContext(tx, first)), /context_changed/);
+  let calls = 0;
+  await processAgentAnswer(resumed, { model: async () => {
+    calls++;
+    throw new AiProviderError('Synthetic response lost after dispatch', 'PROVIDER_TIMEOUT', 'unknown');
+  } });
+  assert.equal(calls, 1);
+  assert.equal(await claimJob({ enterpriseId: f.tenant, runId: first.runId }), null);
+  assert.deepEqual(await send(f, text, f.cid, key), sent);
+  const state = await withTenantTransaction(f.tenant, tx => one(tx, sql`select r.status,r.error_code,r.output_message_id,q.status as reservation,
+    (select count(*)::int from app.native_workflow_delegations where enterprise_id=r.enterprise_id and origin_message_id=r.trigger_message_id) as delegations
+    from app.assistant_runs r join app.assistant_quota_reservations q on q.enterprise_id=r.enterprise_id and q.run_id=r.id
+    where r.enterprise_id=${f.tenant} and r.id=${first.runId}`));
+  assert.deepEqual(state, { status: 'indeterminate', error_code: 'provider_outcome_unknown',
+    output_message_id: null, reservation: 'reconciling', delegations: 0 });
+  save('interrupted-owner-turn', { runId: first.runId, calls, state });
 }
 
 async function tick() {
@@ -339,6 +378,11 @@ async function conversation(f: Fixture, version: Draft, round: number) {
     assert.equal(row?.project_id, f.pid);
     assert.equal((row?.scope as Row).kind, 'rectification_review');
     assert.equal((row?.scope as Row).roomId, f.room['卫生间']);
+    if (durableAcceptance) {
+      assert.ok(created.ledger.steps.some(step => step.kind === 'agent_long_term_context' && (step.source_refs as Row)?.projectHash));
+      assert.equal(created.ledger.steps.filter(step => step.kind === 'agent_model').length, 1);
+      assert.match(safeText(created.answer.content as MessageContent), /已登记跟进/);
+    }
     assert.doesNotMatch(safeText(created.answer.content as MessageContent), /已验收|已复核|验收合格/u);
   }, keepIndependentLiveChecks);
   return citationId;
@@ -347,7 +391,7 @@ async function conversation(f: Fixture, version: Draft, round: number) {
 async function business(f: Fixture, v1: Draft, originalCitation: string) {
   const alternate = await fixture('同租户另一工地');
   const foreign = await fixture('跨租户工地', control);
-  let issue = '', plan = '', evidenceRecord = '', publishedVersion = 0, mediaId = '';
+  let issue = '', plan = '', evidenceRecord = '', publishedVersion = 0, mediaId = '', grantId = '';
   const command = (site: SiteChatService, text: string, media: string[] = []) => siteSay(f, site, text, media);
   const lookup = async (actor: ActorContext, cid: string) => {
     const epoch = await withTenantTransaction(actor.enterpriseId, async tx =>
@@ -356,6 +400,19 @@ async function business(f: Fixture, v1: Draft, originalCitation: string) {
   };
   const document = await publishStandard(f, 'staff_internal');
   await publishStandard(foreign);
+  if (durableAcceptance) await check('同项目另开咨询保留各自原指令和回执', async () => {
+    const separate = String((await f.chat.create(randomUUID())).id);
+    const created = await turn(f, delegation, separate);
+    const createdTask = await withTenantTransaction(f.tenant, tx => one(tx, sql`select id::text,origin_message_id::text
+      from app.native_workflow_delegations where enterprise_id=${f.tenant} and conversation_id=${separate}`));
+    assert.equal(createdTask?.origin_message_id, created.sent.messageId);
+    assert.notEqual(createdTask?.id, (await task(f)).id);
+    assert.match(safeText(created.answer.content as MessageContent), /已登记跟进/);
+    await send(f, '取消当前委托', separate);
+    const persisted = await withTenantTransaction(f.tenant, tx => one(tx, sql`select current_status
+      from app.native_workflow_delegations where enterprise_id=${f.tenant} and id=${String(createdTask?.id)}`));
+    assert.equal(persisted?.current_status, 'cancelled');
+  });
   await check('业主、设计师、施工人员、老板的项目和知识权限', async () => {
     assert.equal((await assistant(alternate, ['conversations', f.cid, 'long-term'])).status, 404);
     assert.equal((await assistant(foreign, ['citations', originalCitation])).status, 404);
@@ -374,13 +431,40 @@ async function business(f: Fixture, v1: Draft, originalCitation: string) {
     await assert.rejects(f.boss.read(foreign.pid), hiddenProject);
     await assert.rejects(new KnowledgeService(f.worker.staff).execute('retire', v1, randomUUID()), /assistant_capability_forbidden/);
   });
+  if (durableAcceptance) await check('撤权设计师和工人无法读取或写入原工地', async () => {
+    const denied = (error: unknown) => error instanceof AssistantError && [403, 404].includes(error.status);
+    for (const [site, role, text, capture] of [
+      [f.designer, 'designer', '请安排复核卫生间', undefined],
+      [f.worker, 'worker', '卫生间水管根部处理已回传', { kind: 'free' }],
+    ] as const) {
+      const versions = (await site.read(f.pid)).versions;
+      await f.change('member', { adminId: site.staff.adminId, role, active: false });
+      try {
+        await assert.rejects(site.read(f.pid), denied);
+        await assert.rejects(site.send(f.pid, { text, mediaIds: [], versions, ...(capture ? { capture } : {}) }, randomUUID()), denied);
+      } finally {
+        await f.change('member', { adminId: site.staff.adminId, role, active: true });
+      }
+    }
+  }, true);
   await check('原咨询明确共享、现场事项创建、设计师接手和计划发布', async () => {
     const shared = await send(f, '共享卫生间需求：希望项目团队核对水管根部处理，完成后告诉我。');
     assert.equal(shared.runId, null, json(shared));
+    if (durableAcceptance) {
+      const grant = await withTenantTransaction(f.tenant, tx => one(tx, sql`select id::text from app.domain_event_outbox
+        where enterprise_id=${f.tenant} and type='construction.material.shared.v1'
+        and payload->>'conversationId'=${f.cid} and payload->>'projectId'=${f.pid} order by id desc limit 1`));
+      assert.ok(grant?.id);
+      grantId = String(grant.id);
+    }
     const source = await capture(f, '卫生间', false);
     issue = String((await command(f.boss, '跟进记录' + source.id + '：核对卫生间水管根部处理')).issueId);
     assert.match(issue, /^[1-9]\d*$/);
+    const oldVersions = durableAcceptance ? (await f.designer.read(f.pid)).versions : null;
     await command(f.designer, '接手事项' + issue);
+    if (oldVersions) await assert.rejects(() => f.designer.send(f.pid, {
+      text: '回复事项' + issue + '：旧版意见', mediaIds: [], versions: oldVersions,
+    }, randomUUID()), /version_conflict/);
     await command(f.designer, '回复事项' + issue + '：等待现场处理并由团队检查。');
     const image = String((await f.designer.upload(f.pid, randomUUID(), await mediaBytes())).id);
     plan = String((await command(f.designer, '发布方案事项' + issue
@@ -510,6 +594,17 @@ async function business(f: Fixture, v1: Draft, originalCitation: string) {
     assert.ok(receipts.some(row => row.type === 'construction.project.changed.v1' && row.attempts === 2));
     const repeated = await tick();
     assert.deepEqual([repeated.delivered, repeated.applied], [0, 0]);
+    if (durableAcceptance) {
+      const durable = await withTenantTransaction(f.tenant, tx => rows(tx, sql`select t.id,t.status,t.state->'attempts' attempts,
+        e.type,t.business_key,t.state->'data' data from app.native_workflow_durable_tasks t
+        join app.domain_event_outbox e on e.enterprise_id=t.enterprise_id and e.id::text=t.business_key
+        where t.enterprise_id=${f.tenant} and t.kind='delegation.delivery' and e.payload->>'projectId'=${f.pid}
+        order by e.id`));
+      assert.ok(durable.some(item => item.type === 'construction.site.issue.result.v1' && item.status === 'succeeded'));
+      assert.ok(durable.some(item => item.type === 'construction.project.changed.v1' && (item.attempts as Row[]).length === 2));
+      assert.ok(durable.every(item => item.status === 'succeeded' && (item.data as Row).eventId === item.business_key));
+      save('durable-steps', durable);
+    }
   });
   await check('业主在原咨询查看委托回执，撤销项目权限后隐藏并按当前来源恢复', async () => {
     const request = await send(f, '查看委托');
@@ -528,11 +623,25 @@ async function business(f: Fixture, v1: Draft, originalCitation: string) {
       await f.change('update', { name: f.tag, status: 'active', customerAccess: true });
     }
     assert.equal((await status())?.available, true);
+    if (durableAcceptance) {
+      const original = (await task(f)).evidence as Row;
+      save('native-revocation-fixture', { cid: f.cid, grantId, resultId: original.messageId });
+      if (!process.argv.includes('--native-revocation')) {
+        await send(f, '撤回共享资料' + grantId);
+        await tick();
+        assert.equal((await task(f)).status, 'waiting_for_authorization');
+        assert.equal((await messages()).find(item => item.id === original.messageId)?.available, false);
+      }
+    }
   });
   save('native-fixture', { cid: f.cid, ownerId: f.uid, projectId: f.pid, evidenceRecord, mediaId });
 }
 
 async function main() {
+  if (durableAcceptance) {
+    assert.ok(!liveModel && !hosted);
+    assert.equal(process.env.NATIVE_WORKFLOW_TASK_STORE, 'postgres');
+  }
   const before = binding();
   const mode = hosted ? 'bailian-hosted' : liveModel ? 'bailian-responses-with-local-retrieval' : 'postgresql-with-rag-and-model-substitutes';
   const report: Row = { mode, model: liveModel ? model : 'substitute', before, pptSource: ppt.source, checks };
@@ -549,6 +658,8 @@ async function main() {
       try {
         const citation = await conversation(f, version, round);
         if (round === 1 && (!liveModel || hosted)) await business(f, version, citation);
+        if (durableAcceptance) await check('原请求租约接管、未知模型结果及原请求重放',
+          async () => interruptedOwnerTurn(await fixture('中断对照')), true);
       } catch (error) {
         console.error(error);
         errors++;

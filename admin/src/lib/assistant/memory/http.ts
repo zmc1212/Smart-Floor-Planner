@@ -27,7 +27,7 @@ export async function longTermHttp(actor: ActorContext, conversationId: string, 
       if ([...params.keys()].some(key => key !== 'q') || (params.get('q') ?? '').length > 500) fail('invalid_message', 422);
       const service = new MemoryService(tx, scope);
       const memories = await service.retrieve(params.get('q') || '记忆历史', 20);
-      const tasks = await currentDelegationViews(tx, await new DelegationService(tx, scope).list());
+      const tasks = await currentDelegationViews(tx, await new DelegationService(tx, scope).list(true));
       const delegations = [];
       for (const task of tasks) {
         const [view] = delegationModelView([task]);

@@ -27,6 +27,9 @@ import { queryNeedIssues } from '@/lib/construction/need-issues';
 import { constructionRead } from '@/lib/construction/customer';
 import { delegationConsumer } from '../live/delegation-state';
 import { runNativeDelegationTick } from '../live/delegation-worker';
+import { delegationDeliveryKind } from '../live/delegation-execution';
+import { createPostgresDurableTaskStore } from '../live/durable-task-postgres-store';
+import { createDurableTaskRuntime, durableTaskId } from '../live/durable-task-runtime';
 import { b510Process } from './support/b510-controller';
 import type { ActorContext, MessageContent } from '@/lib/assistant/contracts';
 
@@ -257,6 +260,79 @@ test('B5.9/B5.10 real Mini handlers and PostgreSQL share the electrical issue, a
   let masterRecord = '', issueId = '', resultId = '', lifecycleRevision = 0, designPlan = '', qualityId = '';
   let firstPlan: { id: string; photo: string }, currentPlan: { id: string; photo: string };
   let oldOpinionVersions: Row, needGrantId: string;
+
+  await t.test('a real Worker death rolls back the event and a second Worker recovers its durable lease', async () => {
+    // Use a separate consultation/project in the same isolated database so
+    // the following electrical journey has its own events and results.
+    const probe = await fixture();
+    const otherConsultation = 'conversations/' + probe.cid + '/messages';
+    const requestId = randomUUID();
+    const message = '帮我跟进书房插座安装，做好了告诉我。';
+    try {
+      await withTenantTransaction(eid, tx => tx.execute(sql`update app.assistant_enterprise_settings set
+        agent_config='{"runtime":"langgraph-v1","providerKey":"dashscope","model":"qwen3.7-flash","tools":true,"imageInput":false,"probeVersion":"i5-isolated"}'::jsonb
+        where enterprise_id=${eid}`));
+      const sent = await value(await http('assistant', otherConsultation, probe.owner.token,
+        { clientMessageId: requestId, content: content(message) }, requestId), 202);
+      const lease = await claimJob({ enterpriseId: eid, runId: String(sent.runId) });
+      assert.ok(lease);
+      const { processAgentAnswer } = await import('@/lib/assistant/agent/worker');
+      await processAgentAnswer(lease, { model: async (_messages, tools, turn, offered) => {
+        const name = turn === 0 ? 'start_delegation' : 'final_response';
+        assert.ok((offered ?? tools).some(tool => tool.name === name));
+        const args = turn === 0 ? { kind: 'rectification_review', room: '书房', subject: '插座安装', quote: message }
+          : { kind: 'general', text: '已登记书房插座安装跟进，等待项目团队核对。' };
+        return { text: '', toolCalls: [{ id: 'lease-probe-' + turn, name, arguments: JSON.stringify(args) }],
+          finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 30, outputTokens: 10 } };
+      } });
+    } finally {
+      await withTenantTransaction(eid, tx => tx.execute(sql`update app.assistant_enterprise_settings set agent_config=default
+        where enterprise_id=${eid}`));
+    }
+    const source = await withTenantTransaction(eid, tx => one(tx, sql`select id::text,activation_event_id::text,current_status
+      from app.native_workflow_delegations where enterprise_id=${eid} and conversation_id=${probe.cid}`));
+    assert.ok(source?.activation_event_id && source.current_status === 'pending');
+    const taskId = durableTaskId(eid, delegationDeliveryKind, String(source.activation_event_id));
+    const runtime = createDurableTaskRuntime({ store: createPostgresDurableTaskStore() });
+    const work = () => b510Process<{ enterprises: Row[] }>(t, ['delegation']);
+    const doomed = b510Process(t, ['delegation', '', eid, '', 'kill']);
+    assert.deepEqual(await doomed.first, { checkpoint: 'delegation_delivery_claim_committed' });
+    const running = await runtime.get(eid, taskId);
+    assert.equal(running?.status, 'running');
+    assert.ok(running?.lease);
+    assert.equal(running.delegation.delegationId, source.id);
+    assert.equal(running.delegation.conversationId, probe.cid);
+    const crossTenant = await runtime.get(control, taskId);
+    assert.equal(crossTenant, null);
+    await doomed.kill();
+    assert.equal((await work().result()).enterprises[0].applied, 0);
+    await withTenantTransaction(eid, tx => tx.execute(sql`update app.native_workflow_durable_tasks
+      set lease_until=clock_timestamp()-interval '1 second'
+      where enterprise_id=${eid} and id=${taskId} and lease_token=${running.lease!.token}`));
+    const resumed = await Promise.all([work().result(), work().result()]);
+    assert.equal(resumed.reduce((count, item) => count + Number(item.enterprises[0].applied), 0), 1);
+    const completed = await runtime.get(eid, taskId);
+    assert.equal(completed?.status, 'succeeded');
+    assert.deepEqual(completed.attempts.map(attempt => attempt.outcome), ['timed_out', 'succeeded']);
+    assert.equal(completed.lease, null);
+    await assert.rejects(runtime.complete({ enterpriseId: eid, taskId, owner: running.lease.owner, token: running.lease.token }),
+      { code: 'durable_task_lease_lost' });
+    const effects = () => withTenantTransaction(eid, tx => one(tx, sql`select t.current_status,
+      (select count(*)::int from app.native_workflow_delegation_events where enterprise_id=t.enterprise_id
+        and delegation_id=t.id and event_id=t.activation_event_id) as event_count,
+      (select count(*)::int from app.assistant_messages where enterprise_id=t.enterprise_id and conversation_id=t.conversation_id) as messages
+      from app.native_workflow_delegations t where t.enterprise_id=${eid} and t.id=${String(source.id)}`));
+    const settled = await effects();
+    assert.equal(settled?.event_count, 1);
+    assert.equal(settled?.current_status, 'waiting_for_authorization');
+    await withTenantTransaction(eid, tx => tx.execute(sql`update app.domain_event_deliveries set status='pending'
+      where enterprise_id=${eid} and event_id=${String(source.activation_event_id)} and consumer_key=${delegationConsumer}`));
+    assert.equal((await work().result()).enterprises[0].applied, 0);
+    assert.deepEqual(await effects(), settled);
+    assert.deepEqual(await runtime.get(eid, taskId), completed);
+    console.log('I5 recovered delivery', JSON.stringify({ delegationId: source.id, eventId: source.activation_event_id,
+      taskId, attempts: completed.attempts.map(attempt => attempt.outcome), effects: settled }));
+  });
 
   await t.test('capture and publication update authorized roles and preserve independent room progress', async () => {
     const missing = await value(await staff(project + '/schedule', f.boss));

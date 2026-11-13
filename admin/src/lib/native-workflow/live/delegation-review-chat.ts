@@ -38,7 +38,14 @@ export async function delegationReceipt(tx: PostgresTransaction, d: ReviewDelega
   const eventId = await appendDelegationEvent(tx, d.enterpriseId, delegationNotice, key, 1,
     { projectId: d.projectId, delegationId: d.id, conversationId, ownerId: d.ownerId, delivery: 'in_app',
       delegationVersion: d.version, evidence: d.evidence });
-  if (!eventId) return null;
+  if (!eventId) {
+    const saved = await one(tx, sql`select m.id::text from app.domain_event_outbox e
+      join app.assistant_messages m on m.enterprise_id=e.enterprise_id and m.source_event_id=e.id
+      where e.enterprise_id=${d.enterpriseId} and e.type=${delegationNotice} and e.aggregate_type='native_workflow_delegation'
+        and e.aggregate_id=${key} and e.aggregate_version=1 and e.payload->>'delegationId'=${d.id}
+        and e.payload->>'ownerId'=${d.ownerId} and m.conversation_id=${conversationId} and m.purpose=${delegationPurpose}`);
+    return saved ? { messageId: String(saved.id), delivery: 'persisted_in_app' } : null;
+  }
   const message = await appendMessage(tx, delegationActor(d), conversationId, { author: 'system', eventId,
     purpose: delegationPurpose, content: { version: 1, blocks: [{ type: 'text', text }] } });
   return { messageId: String(message.id), delivery: 'persisted_in_app' };
@@ -60,7 +67,7 @@ export async function applyReviewDelegationCommand(tx: PostgresTransaction, acto
     return true;
   }
   const service = new DelegationService(tx, scope);
-  const selected = reviewCommandCandidates(command, await service.list());
+  const selected = reviewCommandCandidates(command, await service.list(true));
   if (command.action === 'status' || selected.length !== 1) {
     await commandReceipt(tx, actor, c, message, await reviewCommandFeedback(tx, command, selected));
     return true;
@@ -113,7 +120,7 @@ export async function reviewDelegationNoticeAvailable(tx: PostgresTransaction, a
       and conversation_id=${scope.conversationId} and id=${originalId} and author_kind='user' and user_id=${scope.ownerId}`);
     const command = original && reviewDelegationCommand(safeText(original.content as MessageContent));
     if (!command) return false;
-    const candidates = reviewCommandCandidates(command, await new DelegationService(tx, scope).list());
+    const candidates = reviewCommandCandidates(command, await new DelegationService(tx, scope).list(true));
     if (command.action !== 'status' && candidates.length === 1) return false;
     const feedback = await reviewCommandFeedback(tx, command, candidates);
     return safeText(row.content as MessageContent) === feedback;

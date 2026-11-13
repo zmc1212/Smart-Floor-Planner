@@ -205,6 +205,7 @@ export interface DurableTaskRecord {
 
 export interface DurableTaskListQuery {
   readonly enterpriseId: string;
+  readonly taskId?: string;
   readonly statuses?: readonly DurableTaskStatus[];
   readonly kind?: string;
   readonly manualOnly?: boolean;

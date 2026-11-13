@@ -2336,10 +2336,9 @@ records the file-store failures and baseline build diagnostics.
 | Schedule Ledger | `native_workflow_schedule_ledgers` | Tenant/project issue references and observed versions. |
 | Durable Task | `native_workflow_durable_tasks` | Tenant/kind/business key, task revision, dispatch marker, callback receipt, safe-phase checkpoints and manual queue. |
 
-Migration `0122_native_workflow_runtime` introduces the five runtime tables.
-Migration `0123_native_workflow_durable_tasks` is independent of the schedule
-checkpoint transaction and adds the durable task table and an existing-outbox
-delivery index. Both use the tenant transaction helper and force RLS for
+Integration migration `0125_native_workflow_runtime_integration` brings in the
+five runtime tables, the durable task table and the existing-outbox delivery
+index from the archived Native migrations. They use the tenant transaction helper and force RLS for
 `sfp_app`. Relational keys, versions, due dates and lease columns govern
 database operations. JSONB preserves the typed checkpoint payload and its
 historical business references. Business records and report bodies remain in
@@ -2350,6 +2349,17 @@ use the B5.10 weekly slot/outbox transaction and existing `assistant_jobs`.
 Database-clock expiry and owner/token predicates gate progress writes and
 short transactions that create report bindings, enqueue reports or send reminders.
 Files and process clocks are unnecessary for PostgreSQL lease ownership.
+
+Integration I5 uses the PostgreSQL Durable Task runtime for every event
+consumed by the enabled `native.delegation.v1` worker. A task of kind
+`delegation.delivery` is unique by tenant and Outbox event ID. Targeted events
+carry the delegation and original message/conversation IDs. The worker commits
+its lease before opening the business transaction. That transaction verifies
+the token and commits current-source rechecks, delegation updates, event links
+and original-conversation receipts together with task completion. A Worker
+that dies leaves a reclaimable lease. A repeated delivery of an already
+completed task reuses the durable receipt. The original delegation row holds
+the business status and the Outbox delivery holds the delivery status.
 
 ### Server entry points
 

@@ -26,7 +26,7 @@ import { conversationImageProtocol, conversationImageInstructions, conversationI
 import { factFields, needWriteFeedback, needOriginalQuotes, hasExplicitNeedCorrection, assertRecordedReply, needReplyFeedback, onlyChatHistoryRequested, currentBudgetRecallRequested, currentBudgetRecallFeedback, needReconfirmationFeedback, needDeskPositionFeedback, currentNeedView, unavailableDeskReply, explicitNeedRecordOnly, explicitNeedWriteStatement, recordedNeedReceipt, parseNeedWrites } from './memory';
 import { availableNeedMemory, needMemoryNoticeRefs, unavailableNeedMessageIds, needContextStep, needSourceRefs, needRunSourcesAvailable } from './memory-sources';
 import { persistNeedWrites } from './memory-store';
-import { agentLongTermContext, agentLongTermToolResult, isLongTermTool, longTermOperationIds, longTermPreferenceReceipt, longTermRunAvailable, longTermTools } from '../memory/agent';
+import { agentLongTermContext, agentLongTermToolResult, isLongTermTool, longTermDelegationReceipt, longTermOperationIds, longTermPreferenceReceipt, longTermRunAvailable, longTermTools } from '../memory/agent';
 import { isNeedInquiry, needWriteProhibition } from './need-write-intent';
 import { buildAgentContext, parseAgentReply, agentPromptVersion, ownerNoArchivePolicy } from './context';
 import { knowledgeTools, runKnowledgeEnabled, generalKnowledgeInstructions } from '../knowledge-policy';
@@ -1531,6 +1531,12 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             const call = request?.role === 'assistant' && request.toolCalls?.length === 1 ? request.toolCalls[0] : null;
             if (initial.r5 && call?.name === 'manage_long_term_memory' && call.id === last.callId) {
               const receipt = await scoped(tx => longTermPreferenceReceipt(tx, lease.enterpriseId, lease.runId, reviewContext.currentQuestion));
+              if (receipt) return JSON.stringify({ kind: 'general', text: receipt });
+            }
+            if (initial.r5 && call?.name === 'start_delegation' && call.id === last.callId
+              && state.messages.filter(message => message.role === 'tool').length === 1) {
+              const receipt = await scoped((tx, context) => longTermDelegationReceipt(tx, lease.actor, context.conversation,
+                lease.runId, 1200 + (state.turn - 1) * 10, reviewContext.currentQuestion));
               if (receipt) return JSON.stringify({ kind: 'general', text: receipt });
             }
             if (call && call.id === last.callId && ['prepare_material_share', 'revoke_material_share'].includes(call.name)) {

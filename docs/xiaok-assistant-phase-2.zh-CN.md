@@ -28,6 +28,7 @@
 - 原 Outbox Worker 从施工事件解析房间与事项范围。获权复核委托锁定原事项，暂停及重进保留绑定。同房间、同事项只有一份匹配的已对客发布记录时，可提示有候选原图待关联。人员沿现有方案和落实复核服务关联精确版本与原件。有权团队结果实际写回原 C01 后才完成委托，原件依回传和发布权限开放。工程质量由有权人员复核。
 - 原来源工具重读相关私有记忆，仅用委托的房间与事项检索有效工艺。Outbox 回执保存工具结果、来源、知识 epoch、项目上下文哈希和可用的请求 ID。`GET /api/miniprogram/assistant/conversations/:id/long-term` 可返回 `standardCheck`，记录 `sources_found`、`no_match`、`unavailable`、`disabled` 或 `outdated`；引用实时失效。标准查询回执记录资料情况，人工复核结论仍由施工服务记录。
 - Stable 沿批准的 C01 消息、结果及媒体组件。验收使用有标记的合成企业、隔离 PostgreSQL 与应用角色。八类施工事件和四端权限沿现有业务服务和数据表。
+- Integration I5 为 `start_delegation` 提供当前获权项目、阶段及房间。整条业主原话只登记一项委托时，可以用已持久化的登记回执结束本轮。跟进和控制归原咨询，另开的咨询各自保留委托和回执。Native 在 PostgreSQL Durable Task 中先领取事件，有效租约保护状态及原咨询回执的写入事务。[集成验收与原始失败](xiaok-integration-audit.md#i5-业主原咨询与持久执行)
 
 在 `admin` 运行 `node --env-file=.env.local --import tsx scripts/xiaok-r6-acceptance.ts --label=<label>`，将 `XIAOK_R6_DATABASE_URL` 指向已迁移的空隔离库。默认使用托管接口与对话模型替身。`--live-model` 使用真实百炼 Responses 及本地 pgvector/Embedding。`--hosted` 使用已配置的专用工作空间和真实托管接口；与 `--live-model` 同用可验证真实托管加 Responses。原始证据保存在 `admin/tmp/r6/` 与 `tmp/r6/`。[百炼 RAG 鉴权](https://help.aliyun.com/zh/model-studio/rag-api-authentication) · [LangGraph ToolNode](https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph.prebuilt.ToolNode.html)
 
