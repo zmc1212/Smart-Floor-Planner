@@ -277,6 +277,7 @@ export async function advanceSpecialistDelegation(tx: PostgresTransaction, d: Re
             sources: consulted.filter(item => !item.web || !webChecks.get(item.web.hash)),
             project: verifiedProject, enterprise: operation.input.enterprise as SpecialistEnterpriseRead,
             publicStandard, knowledgeEpoch: Number(settings?.knowledge_epoch),
+            binding: { agentId: agent.agentId, agentVersion: agent.version, workflowRunId: runId },
           });
           const record = await specialistSiteRecord(tx, d, { requireCurrentStaff: true, managerOnly });
           const analysis = parseSpecialistOutput({

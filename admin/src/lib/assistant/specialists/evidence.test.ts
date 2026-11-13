@@ -54,6 +54,57 @@ test('an enterprise citation must match the active epoch, original version and l
   assert.equal(specialistChecks({ ...candidate, sources: [{ ...sources[0], evidence: otherProject }] }).hasEnterprise, false);
 });
 
+test('every check binds project, room, stage, agent, run, evidence versions and an explicit status', () => {
+  const result = specialistChecks({ ...input,
+    binding: { agentId: 'waterproof-specialist', agentVersion: 3, workflowRunId: 'specialist:42' } });
+  const [publicCheck, adviceCheck] = result.requestedChecks;
+  assert.match(publicCheck.checkId!, /^check_/);
+  assert.equal(publicCheck.projectId, '11');
+  assert.equal(publicCheck.roomId, '15');
+  assert.equal(publicCheck.stage, 'waterproof');
+  assert.equal(publicCheck.agentId, 'waterproof-specialist');
+  assert.equal(publicCheck.agentVersion, 3);
+  assert.equal(publicCheck.workflowRunId, 'specialist:42');
+  assert.deepEqual(publicCheck.evidenceVersions, ['page-hash']);
+  assert.equal(publicCheck.sourceType, 'public_standard');
+  assert.equal(publicCheck.applicability, 'applicable');
+  assert.equal(publicCheck.checkStatus, 'public_explicit');
+  assert.equal(publicCheck.needsHumanReview, false);
+  assert.match(publicCheck.currentProjectState!, /防水|waterproof/);
+  assert.equal(adviceCheck.checkStatus, 'general_advice');
+  assert.equal(adviceCheck.sourceType, 'general_advice');
+  assert.deepEqual(adviceCheck.evidenceVersions, []);
+});
+
+test('missing evidence, not applicable and acceptance text stay reviewable instead of becoming completed checks', () => {
+  const material = { ref: { type: 'site_record', id: '91', version: '2' }, hash: 'site-hash',
+    projectId: '11', roomId: '15' } as NonNullable<SynthesisSource['material']>;
+  const source = { kind: 'project' as const, sourceId: 'P1', title: '现场记录', text: '管根已清理', material };
+  const projectInput = { ...input, answer: { kind: 'synthesis' as const, segments: [
+    { basis: 'evidence' as const, text: '管根已清理', citations: [{ sourceId: 'P1', quote: source.text }] },
+  ] }, sources: [source], project: { ...input.project, records: [{ id: '91', version: 2, hash: 'site-hash' }] } };
+  const moved = specialistChecks({ ...projectInput, project: { ...projectInput.project, roomId: '16' } });
+  assert.equal(moved.requestedChecks[0].checkStatus, 'evidence_missing');
+  assert.equal(moved.requestedChecks[0].applicability, 'unknown');
+  assert.equal(moved.requestedChecks[0].needsHumanReview, true);
+  const acceptance = specialistChecks({ ...input, answer: { kind: 'synthesis',
+    segments: [{ basis: 'advice', text: '你家基层已经验收合格。', citations: [] }] } });
+  assert.equal(acceptance.requestedChecks[0].checkStatus, 'pending_review');
+  assert.equal(acceptance.requestedChecks[0].needsHumanReview, true);
+});
+
+test('the ten waterproof dimensions are classified without inventing a status or reason', () => {
+  const texts = ['开工前核对基层空鼓和含水率', '管根和地漏周边要单独密封', '阴阳角要做圆弧处理', '预埋套管和止水节位置要核对',
+    '按企业工艺做法执行', '防水材料合格证和施工记录要留存', '防水层涂刷要连续', '闭水试验和验收依据要核对',
+    '防水层完成后做保护层', '贴砖前要满足下一道工序条件'];
+  const categories = texts.map(text => specialistChecks({ ...input, answer: { kind: 'synthesis',
+    segments: [{ basis: 'advice', text, citations: [] }] } }).requestedChecks[0].category);
+  assert.deepEqual(categories, ['base_course', 'pipe_root', 'corner', 'embed', 'enterprise_process',
+    'material_record', 'waterproof_layer', 'test_acceptance', 'protection', 'next_process']);
+  assert.equal(specialistChecks({ ...input, answer: { kind: 'synthesis',
+    segments: [{ basis: 'advice', text: '其他现场沟通事项', citations: [] }] } }).requestedChecks[0].category, 'other');
+});
+
 test('a project check needs the selected room, publication revision and original record fingerprint', () => {
   const material = { ref: { type: 'site_record', id: '91', version: '2' }, hash: 'site-hash',
     projectId: '11', roomId: '15' } as NonNullable<SynthesisSource['material']>;

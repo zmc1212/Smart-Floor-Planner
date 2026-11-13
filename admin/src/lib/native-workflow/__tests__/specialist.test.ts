@@ -10,6 +10,7 @@ import { validateDefinition } from '../validate';
 import { specialistFixtures, specialistScenario } from '../fixtures/specialist';
 import { runPublishedLive } from '../live/runner';
 import { LiveOperationWaiting, type LiveRunRecord, type LiveRunStore } from '../live/types';
+import { specialists, waterproofAgentId } from '@/lib/assistant/specialists/registry';
 
 const definitionId = 'waterproof-inspection-v1';
 
@@ -35,6 +36,36 @@ test('waterproof template uses the existing validator, compiler, store and simul
   const invalid = { ...definition, nodes: definition.nodes.map(node => node.type === 'agent'
     ? { ...node, config: { agentId: 'electrical-specialist', agentVersion: 1 } } : node) };
   assert.equal(validateDefinition(invalid).ok, false);
+});
+
+test('the template binds the active agent version, knowledge scope and public coverage with typed ports', () => {
+  const definition = createWaterproofInspectionDefinition();
+  const agent = specialists.active(waterproofAgentId)!;
+  const analysis = definition.nodes.find(node => node.nodeId === 'analysis')!;
+  assert.deepEqual(analysis.config, { agentId: agent.agentId, agentVersion: agent.version });
+  assert.deepEqual(definition.nodes.find(node => node.nodeId === 'knowledge')!.config, { scope: 'authorized', topK: 3 });
+  assert.deepEqual(definition.nodes.find(node => node.nodeId === 'public_standard')!.config, { coverage: 'subject' });
+  assert.equal(validateDefinition(definition).ok, true);
+  assert.equal(compileDefinition(definition).digest, compileDefinition(createWaterproofInspectionDefinition()).digest);
+  assert.equal(new Set(definition.nodes.map(node => node.nodeId)).size, definition.nodes.length);
+  for (const edge of definition.edges) {
+    assert.ok(definition.nodes.some(node => node.nodeId === edge.from), edge.from);
+    assert.ok(definition.nodes.some(node => node.nodeId === edge.to), edge.to);
+  }
+});
+
+test('vNext publication keeps older published definitions and their digests unchanged', async () => {
+  const service = createWorkflowService({ store: createMemoryWorkflowStore() });
+  const draft = await service.createFromTemplate(definitionId);
+  const first = await service.publishDraft({ definitionId, expectedDraftRevision: draft.draft.draftRevision });
+  const edited = await service.saveDraft({ definitionId, expectedDraftRevision: draft.draft.draftRevision,
+    definition: { ...draft.draft.definition, nodes: draft.draft.definition.nodes.map(node => node.nodeId === 'analysis_ready'
+      ? { ...node, config: { evidencePolicy: 'both' } } : node) } });
+  const second = await service.publishDraft({ definitionId, expectedDraftRevision: edited.draft.draftRevision });
+  assert.ok(second.version.revision > first.version.revision);
+  assert.equal(compileDefinition(first.version.definition).digest, first.version.digest);
+  assert.notEqual(second.version.digest, first.version.digest);
+  assert.deepEqual(first.version.definition.edges, createWaterproofInspectionDefinition().edges);
 });
 
 test('a missing issue branch or cross-wired evidence branch cannot publish', () => {

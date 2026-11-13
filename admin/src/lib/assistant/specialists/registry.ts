@@ -34,10 +34,43 @@ const evidenceRefSchema = z.strictObject({
   url: z.string().optional(),
 });
 
+export const specialistCheckStatuses = ['enterprise_explicit', 'public_explicit', 'project_supported',
+  'general_advice', 'evidence_missing', 'not_applicable', 'pending_review', 'reviewed'] as const;
+export type SpecialistCheckStatus = typeof specialistCheckStatuses[number];
+export const specialistCheckCategories = ['base_course', 'pipe_root', 'corner', 'embed', 'enterprise_process',
+  'material_record', 'waterproof_layer', 'test_acceptance', 'protection', 'next_process', 'other'] as const;
+export type SpecialistCheckCategory = typeof specialistCheckCategories[number];
+export const specialistCheckCategoryLabels: Record<SpecialistCheckCategory, string> = {
+  base_course: '基层施工条件', pipe_root: '管根和管线周边', corner: '阴阳角', embed: '预埋部位',
+  enterprise_process: '企业工艺要求', material_record: '防水材料和施工记录', waterproof_layer: '防水层施工',
+  test_acceptance: '试验及验收依据', protection: '后续保护', next_process: '下一道工序条件', other: '其他',
+};
+export const specialistCheckStatusLabels: Record<SpecialistCheckStatus, string> = {
+  enterprise_explicit: '企业标准明确', public_explicit: '公开规范明确', project_supported: '项目记录支持',
+  general_advice: '通用建议', evidence_missing: '资料缺失', not_applicable: '不适用',
+  pending_review: '待人工确认', reviewed: '已正式复核',
+};
+
+// New fields are optional so already-published runs and historical checklists
+// still parse. New checks always populate every binding below.
 const checkSchema = z.strictObject({
   text: z.string(),
   basis: z.array(z.enum(['enterprise_standard', 'public_standard', 'project_fact', 'general_advice', 'unverified', 'not_applicable'])).min(1),
   evidenceRefs: z.array(evidenceRefSchema),
+  checkId: z.string().min(1).optional(),
+  projectId: z.string().nullable().optional(),
+  roomId: z.string().nullable().optional(),
+  stage: z.string().nullable().optional(),
+  agentId: z.string().min(1).optional(),
+  agentVersion: z.number().int().positive().optional(),
+  workflowRunId: z.string().min(1).optional(),
+  evidenceVersions: z.array(z.string().min(1)).optional(),
+  sourceType: z.enum(['enterprise_standard', 'public_standard', 'project_record', 'general_advice', 'mixed', 'unverified']).optional(),
+  applicability: z.enum(['applicable', 'not_applicable', 'unknown']).optional(),
+  currentProjectState: z.string().nullable().optional(),
+  checkStatus: z.enum(specialistCheckStatuses).optional(),
+  needsHumanReview: z.boolean().optional(),
+  category: z.enum(specialistCheckCategories).optional(),
 });
 
 export type SpecialistEvidenceRef = z.infer<typeof evidenceRefSchema>;
