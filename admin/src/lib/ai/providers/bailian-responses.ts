@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { getLines, getMessages } from '@langchain/core/utils/event_source_parse';
 import { AiProviderError } from '../provider-types';
 import {
-  agentModelLimits, type ModelTool, type ModelTurnInput, type ModelTurnOutput,
+  agentModelLimits, reportedProviderModel, type ModelTool, type ModelTurnInput, type ModelTurnOutput,
 } from '@/lib/assistant/contracts/model';
 import type { NativeToolName } from '@/lib/assistant/contracts/native-tools';
 import { assertToolPairs } from '@/lib/assistant/agent/tool-protocol';
@@ -245,7 +245,7 @@ export function parseBailianResponses(payload: Record<string, unknown>, context:
   const finishReason = incomplete ? 'length' : toolCalls.length ? 'tool_calls' : 'stop';
   const responseId = typeof payload.id === 'string' ? payload.id.slice(0, 200) : null;
   return {
-    text, toolCalls, finishReason,
+    text, toolCalls, finishReason, ...reportedProviderModel(payload.model),
     providerRequestId: (context.requestId ?? responseId)?.slice(0, 200) ?? null,
     usage: parseBailianResponsesUsage(payload),
   };
@@ -256,7 +256,7 @@ export function bailianResponsesResponseDiagnostic(payload: Record<string, unkno
   const output = Array.isArray(payload.output) ? payload.output as Array<Record<string, unknown>> : [];
   const usage = payload.usage && typeof payload.usage === 'object' ? payload.usage as Record<string, unknown> : {};
   return {
-    protocol: 'responses-response-diagnostic-v1',
+    protocol: 'responses-response-diagnostic-v1', ...reportedProviderModel(payload.model),
     requestId: requestId?.slice(0, 200) ?? null,
     responseId: typeof payload.id === 'string' ? payload.id.slice(0, 200) : null,
     status: typeof payload.status === 'string' ? payload.status : null,

@@ -56,7 +56,7 @@ export function assistantThinkingOverrideAllowed(runtime: Pick<AiProviderRuntime
   return runtime.adapterType === 'openai_compatible' && (preset === 'siliconflow'
     || preset === 'deepseek' && new URL(runtime.baseUrl).origin === 'https://api.deepseek.com' || consultationRuntime
     || preset === 'qiniu' && isQiniuConatusModel(runtime.baseUrl, model)
-    || preset === 'dashscope' && bailianBinding(runtime.baseUrl, model, false)?.region === 'cn-beijing'
+    || (preset === 'dashscope' || preset === 'bailian') && bailianBinding(runtime.baseUrl, model, false)?.region === 'cn-beijing'
       && bailianThinkingCapable(model));
 }
 
@@ -211,6 +211,7 @@ export async function executePostgresText(input: {
           durationMs: Date.now() - startedAt,
           ...(agentOutput ? { metadata: { ...attemptMetadata, assistantResponse: {
             usage: agentOutput.usage, providerRequestId: agentOutput.providerRequestId,
+            ...(agentOutput.providerModel ? { providerModel: agentOutput.providerModel } : {}),
             finishReason: agentOutput.finishReason, observation: agentOutput.observation ?? null,
             // Native tool evidence is provider-side only; business tools keep
             // their own dispatcher records.

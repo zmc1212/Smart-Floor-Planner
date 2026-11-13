@@ -1,5 +1,5 @@
 import { AiProviderError, type AiProviderRuntimeConfig, type ProviderResponseDiagnostic } from '../provider-types';
-import { agentModelLimits, reportFinalOutputTokenLimit, type ModelMessage, type ModelTurnInput, type ModelTurnOutput } from '@/lib/assistant/contracts/model';
+import { agentModelLimits, reportedProviderModel, reportFinalOutputTokenLimit, type ModelMessage, type ModelTurnInput, type ModelTurnOutput } from '@/lib/assistant/contracts/model';
 import { consultationProfile } from '@/lib/assistant/contracts/consultation';
 import { bearerHeaders, parseJson, providerFetch, providerUrl, asObject } from './http';
 import { temperatureBody, thinkingBody } from './thinking';
@@ -149,7 +149,7 @@ export function parseAgentChat(payload: Record<string, unknown>, requestId: stri
   const text = typeof message.content === 'string' ? message.content : '';
   if ((!text.trim() && !toolCalls.length) || text.length > 16000 || !['stop', 'tool_calls'].includes(String(choice.finish_reason))) return invalid();
   const usage = parseAgentUsage(payload.usage);
-  return { text, toolCalls, finishReason: String(choice.finish_reason), usage,
+  return { text, toolCalls, finishReason: String(choice.finish_reason), usage, ...reportedProviderModel(payload.model),
     providerRequestId: requestId?.slice(0, 200) || (typeof payload.id === 'string' ? payload.id.slice(0, 200) : null) };
 }
 
@@ -158,6 +158,7 @@ export function agentResponseDiagnostic(payload: Record<string, unknown>, reques
   const choice = asObject(choices[0]), message = asObject(choice.message), usage = asObject(payload.usage), details = asObject(usage.prompt_tokens_details);
   const number = (value: unknown) => Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value) : null;
   return { protocol: 'provider-response-diagnostic-v1', requestId: requestId?.slice(0, 200) || null,
+    ...reportedProviderModel(payload.model),
     responseHash: createHash('sha256').update(encoded).digest('hex'), responseBytes: Buffer.byteLength(encoded),
     choices: Array.isArray(payload.choices) ? choices.length : null,
     finishReason: typeof choice.finish_reason === 'string' && /^[\w-]{1,32}$/.test(choice.finish_reason) ? choice.finish_reason : null,
@@ -267,5 +268,5 @@ export async function executeAgentChat(runtime: AiProviderRuntimeConfig, input: 
       schemaValid: !!call && !await toolSchemaIssue(input.tools[0], call.arguments), schemaValidation: 'application' };
   }
   return { ...output, ...(wireNormalization ? { wireNormalization } : {}), observation: { latencyMs: Date.now() - started, cache: cacheObservation(output.usage),
-    prefix: modelPrefixObservation(input.messages, input.tools),...(format?{format}:{}) } };
+    prefix: modelPrefixObservation(input.messages, input.tools), protocol: 'chat-completions', ...(format?{format}:{}) } };
 }

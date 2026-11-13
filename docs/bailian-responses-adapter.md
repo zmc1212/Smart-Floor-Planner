@@ -459,3 +459,20 @@ I6 在原 R6 验收入口使用 `--local-knowledge --durable-integration` 验证
 | Native Workflow | `00281f19-3c85-95b9-a2d6-0d21b698ee08` 6,985/963 tokens，Responses 选择 `start_delegation`，服务端保存主卧插座跟进并给原咨询登记回执。正式核对、授权回传与图片重进另在隔离业务链验证。 |
 
 逐请求协议、配置、首稿、修复和错误随 `turn-*.json`、应用联网原始回执及供应商报告保留。终稿结构化通道由现有网关选择。真实费用在这些回执中不可得。各批统计、失败和未执行项见[集成审查](xiaok-integration-audit.md#i6-真实模型与获权知识验收limited)。
+
+## 15. I6.7 起的实模开发与验收
+
+后续家客来实模开发、测试与验收统一使用现有北京业务空间的阿里云百炼（`bailian`）。逻辑模型名为 `deepseek-flash`。目录查询该别名得到 0 条，查询 `deepseek-v4.1-flash-1017` 得到 1 条；同一北京业务空间实际请求通过。目录回执 ID 分别为 `045aae10-e451-9460-b587-51276fa01b2b` 与 `61c2a685-c3dc-9918-9a8a-56d43ac8c1a9`。该版的上下文和输入上限均为 1,000,000 tokens，输出上限 393,216 tokens，包含推理与最终输出。Agent 保持自身上下文和输出预算。[模型目录](https://help.aliyun.com/zh/model-studio/list-models) · [DeepSeek 接入说明](https://help.aliyun.com/zh/model-studio/deepseek-api)
+
+Endpoint 使用该空间的 `https://dashscope.aliyuncs.com/compatible-mode/v1`，凭据沿现有加密配置。可用请求优先走 Responses。已有的受限结构化请求仍走该空间支持的 Chat Completions。两条协议均从供应商响应 `model` 写入 `assistantResponse.providerModel`，与请求模型、协议、请求 ID 和用量一起保留。缺失响应字段留空。隔离配置用于本轮测试，生产默认沿原配置。
+
+| 能力 | 北京隔离实测与回执 |
+| --- | --- |
+| Responses 基础 | `live_verified`。请求 `8219fb1f-28ef-9d2d-8406-946830e59f49`，75/137 输入/输出 tokens。 |
+| Responses 函数调用、工具结果续轮 | `live_verified`。请求 `c7f8f566-d06c-9e98-bac6-b503d64af715` 350/55；续轮 `cbe9db38-8b65-94ad-8e8d-b17640de7515` 420/23，缓存输入 256。响应均返回 `deepseek-v4.1-flash-1017`。 |
+| 原生 Web Search 和 Web Extractor | `live_verified`。同一请求 `30578092-7460-9b63-bd90-5c68281c1671`，20,272/1,120，缓存输入 11,264，实测搜索 1 次、提取 2 次。 |
+| 原生 Code Interpreter | `live_verified`。请求 `645ff5dd-324b-9074-a3f0-4bac01a46f47`，773/67，执行 1 次，返回 1728。 |
+| Chat Completions | `live_verified`。基础请求 `9bfc1ba1-c600-92c4-a1a7-22183957b547`，13/37。 |
+| 流式、托管 RAG | 本轮未验证流式。托管 RAG 缺专用空间和凭据，保留 `retrieval_unavailable`。本地 Embedding/pgvector、长期记忆、项目和委托能力以各自应用验收为准。 |
+
+六次协议请求合计 21,903/1,439 tokens，缓存输入 11,520，实际费用未提供。目录与原始回执见 `tmp/i6.7/bailian-catalog.json`、`tmp/bailian-responses/report-i67-deepseek-{wire,functions}.json` 及其 raw 文件。固定装修场景、首稿、修复和环境缺项见[集成审查](xiaok-integration-audit.md#i67-专业规范证据链limited)。第 14 节及之前的 Qwen 记录是对应版本的历史结果，I1 超时结果保持 unknown。

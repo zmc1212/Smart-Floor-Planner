@@ -38,7 +38,7 @@ type NativeSummary = {
 };
 
 type CaseResult = {
-  case: string; model: string; wire: 'responses' | 'chat-completions'; tools: NativeToolName[];
+  case: string; model: string; providerModel?: string; wire: 'responses' | 'chat-completions'; tools: NativeToolName[];
   status: 'passed' | 'failed' | 'inconclusive' | 'skipped';
   requestId: string | null; responseId: string | null; latencyMs: number;
   usage: ModelTurnOutput['usage'] | null;
@@ -57,8 +57,10 @@ const argValue = (name: string) => {
   return hit ? hit.slice(prefix.length) : undefined;
 };
 const only = argValue('only')?.split(',').map(item => item.trim()).filter(Boolean);
-const models = (argValue('models') || 'qwen3.7-flash,deepseek-v4.1-flash-1017').split(',').map(item => item.trim()).filter(Boolean);
-const toolModel = argValue('tool-model') || 'qwen3.7-flash';
+const logicalModel = 'deepseek-flash';
+const bailianFlashModel = 'deepseek-v4.1-flash-1017';
+const models = (argValue('models') || bailianFlashModel).split(',').map(item => item.trim()).filter(Boolean);
+const toolModel = argValue('tool-model') || bailianFlashModel;
 const timeoutMs = Number(argValue('timeout-ms') || '0');
 const label = argValue('label');
 const importFile = argValue('import');
@@ -108,6 +110,7 @@ async function record(name: string, model: string, wire: CaseResult['wire'], too
     const output = await run();
     result.latencyMs = Date.now() - started;
     result.requestId = output.providerRequestId;
+    result.providerModel = output.providerModel;
     result.responseId = output.nativeTools?.responseId ?? null;
     result.usage = output.usage;
     result.toolCounts = output.nativeTools?.counts ?? {};
@@ -117,7 +120,8 @@ async function record(name: string, model: string, wire: CaseResult['wire'], too
     const failure = verify(output);
     result.status = failure ? 'failed' : 'passed';
     if (failure) result.note = failure;
-    result.rawFile = await saveRaw(name, { wire, model, tools, observation: output.observation ?? null,
+    result.rawFile = await saveRaw(name, { wire, model, providerModel: output.providerModel ?? null,
+      requestId: output.providerRequestId, usage: output.usage, tools, observation: output.observation ?? null,
       nativeTools: output.nativeTools ?? null, text: output.text, toolCalls: output.toolCalls });
     return { result, output };
   } catch (error) {
@@ -137,6 +141,8 @@ const addNumbers: ModelTool = {
 };
 
 async function main() {
+  if (!models.length || [...models, toolModel].some(model => model !== bailianFlashModel))
+    throw new Error('Live acceptance requires the verified Bailian DeepSeek Flash model: ' + bailianFlashModel);
   loadEnvConfig(process.cwd(), true);
   const configured = await getPlatformLlmOverrideRuntime('chat');
   if (!configured || !configured.apiKey) {
@@ -145,7 +151,8 @@ async function main() {
     return;
   }
   const runtime: AiProviderRuntimeConfig = timeoutMs > 0 ? { ...configured, timeoutMs } : configured;  const origin = bailianResponsesBinding(runtime.baseUrl, models[0]);
-  console.log(JSON.stringify({ runtime: { baseUrl: runtime.baseUrl, keyLen: runtime.apiKey.length }, origin: origin?.responsesUrl ?? null }));
+  console.log(JSON.stringify({ runtime: { baseUrl: runtime.baseUrl, provider: runtime.adapterConfig?.providerPreset },
+    origin: origin?.responsesUrl ?? null }));
 
   fs.mkdirSync(rawDir, { recursive: true });
   const results: CaseResult[] = [];
@@ -316,7 +323,7 @@ async function main() {
 
   // 12. Existing Chat Completions regression (adapter flag off).
   if (wants('chat_regression')) {
-    const model = runtime.modelMappings['chat.general'] || 'qwen3.7-flash';
+    const model = toolModel;
     const previous = process.env.ASSISTANT_RESPONSES_API;
     delete process.env.ASSISTANT_RESPONSES_API;
     try {
@@ -406,6 +413,8 @@ async function main() {
   const report = {
     protocol: 'bailian-responses-live-acceptance-v1',
     ranAt: new Date().toISOString(),
+    provider: 'bailian',
+    logicalModel,
     runtime: { baseUrl: runtime.baseUrl, model: runtime.modelMappings['chat.general'] ?? null },
     billing: { actualCost: 'unavailable', note: 'provider does not expose a settled per-request amount on this wire' },
     models, runs,

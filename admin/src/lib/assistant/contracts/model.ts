@@ -28,6 +28,8 @@ export type ModelTurnInput = {
 };
 export type ModelTurnOutput = {
   text: string; toolCalls: ModelToolCall[]; finishReason: string | null; providerRequestId: string | null;
+  /** Actual wire identity. A configured model name is not a substitute for this field. */
+  providerModel?: string;
   /** Provider-side native tool evidence (Bailian Responses API only). Absent on
    * the Chat Completions wire so existing runs and checkpoints are unchanged. */
   nativeTools?: import('./native-tools').NativeToolEvidence;
@@ -47,6 +49,10 @@ export type ModelTurnOutput = {
   /** Application bridge metadata; never parsed from provider-controlled fields. */
   toolProtocolFeedback?: { code: 'mixed_final_response'; text: string };
 };
+
+export function reportedProviderModel(value: unknown) {
+  return typeof value === 'string' && /^[\w./:-]{1,200}$/.test(value) ? { providerModel: value } : {};
+}
 export interface AgentModelGateway {
   readonly capabilities: ModelCapabilities;
   generate(input: Omit<ModelTurnInput, 'model'>): Promise<ModelTurnOutput & { attemptId: string }>;

@@ -167,6 +167,8 @@ test('documented response frame maps text, usage and reasoning evidence', () => 
   assert.deepEqual(output.toolCalls, []);
   assert.equal(output.finishReason, 'stop');
   assert.equal(output.providerRequestId, 'req_synthetic');
+  assert.equal(parseBailianResponses({ ...completedPayload, model: 'deepseek-v4.1-flash-1017' },
+    { requestId: 'req_synthetic', nativeTools: [] }).providerModel, 'deepseek-v4.1-flash-1017');
   assert.deepEqual(output.usage, { inputTokens: 53, outputTokens: 12, cacheWriteInputTokens: 0, cachedInputTokens: 0 });
 });
 
@@ -528,7 +530,7 @@ test('the Chat Completions wire is untouched while the Responses switch is off',
     const output = await executeAgentChat(runtime, userTurn({ model: 'qwen3.7-flash', maxTokens: 64 }));
     assert.match(seenUrl, /\/compatible-mode\/v1\/chat\/completions$/);
     assert.equal(output.text, '好的');
-    assert.equal(output.observation?.protocol, undefined);
+    assert.equal(output.observation?.protocol, 'chat-completions');
   } finally {
     globalThis.fetch = original;
     if (previous !== undefined) process.env.ASSISTANT_RESPONSES_API = previous;

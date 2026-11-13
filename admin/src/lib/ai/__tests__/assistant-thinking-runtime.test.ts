@@ -28,6 +28,7 @@ test('user-selected Qwen3.8 Flash supports the existing non-thinking override on
 test('Beijing DeepSeek Flash uses a named final tool with thinking disabled', () => {
   const model = 'deepseek-v4.1-flash-1017';
   assert.equal(assistantThinkingOverrideAllowed(official, model, false), true);
+  assert.equal(assistantThinkingOverrideAllowed({ ...official, adapterConfig: { providerPreset: 'bailian' } }, model, false), true);
   assert.equal(assistantThinkingOverrideAllowed(official, 'deepseek-v4.1-flash', false), true);
   assert.equal(assistantThinkingOverrideAllowed({ ...official, baseUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1' }, model, false), false);
   const tool = { name: 'final_response', description: 'answer', parameters: { type: 'object' } };
