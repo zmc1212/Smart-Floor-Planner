@@ -23,6 +23,7 @@ import { consultationAcceptanceProfile } from '@/lib/assistant/contracts/consult
 import { specialistModel } from '@/lib/assistant/specialists/registry';
 import { ensureFollowupBinding } from '@/lib/construction/report-store';
 import { ConstructionService } from '@/lib/construction/service';
+import { constructionNoticeAvailable } from '@/lib/construction/customer';
 import { SiteChatService } from '@/lib/construction/site-chat';
 import { openSpecialistSiteIssue } from '@/lib/construction/specialist-issues';
 import { DelegationService } from '../live/delegation-review-store';
@@ -289,8 +290,26 @@ test('consultation profile keeps the native binding and routes the shared specia
   const status = await miniMessages(f, '查看委托');
   assert.equal((await status.json()).data.runId, null);
   const statusMessages = (await (await miniMessages(f)).json()).data.items as Row[];
-  assert.ok(statusMessages.some(message => message.authorKind === 'system' && message.available === true
-    && JSON.stringify(message.content).includes(runKey)));
+  const statusReceipt = statusMessages.find(message => message.authorKind === 'system' && message.available === true
+    && JSON.stringify(message.content).includes(runKey));
+  assert.ok(statusReceipt);
+  const receiptIds = [String(run.output_message_id), String(statusReceipt.id)];
+  const sourceAvailability = () => withTenantTransaction(specialistTenant, async tx => Promise.all(receiptIds.map(messageId =>
+    constructionNoticeAvailable(tx, specialistTenant, f.conversationId, messageId, true, true))));
+  assert.deepEqual(await sourceAvailability(), [true, true]);
+  const otherOwner = await fixture(specialistTenant);
+  assert.equal(await withTenantTransaction(specialistTenant, tx => constructionNoticeAvailable(tx, specialistTenant,
+    f.conversationId, receiptIds[0], true, true, { enterpriseId: specialistTenant, principal: { kind: 'user', userId: otherOwner.uid },
+      contextVersion: 1, capabilities: ['assistant.chat.self'] })), false);
+  const setCustomerAccess = async (customerAccess: boolean) => {
+    const p = (await construction.execute('detail', { projectId: f.projectId })).project as Row;
+    await construction.execute('update', { projectId: f.projectId, name: p.name, status: 'active',
+      expectedVersion: p.version, customerAccess }, randomUUID());
+  };
+  await setCustomerAccess(false);
+  try { assert.deepEqual(await sourceAvailability(), [false, false]); }
+  finally { await setCustomerAccess(true); }
+  assert.deepEqual(await sourceAvailability(), [true, true]);
   const site = new SiteChatService({ enterpriseId: specialistTenant, adminId: f.worker });
   const manager = new SiteChatService({ enterpriseId: specialistTenant, adminId: f.manager });
   const roomId = formal.binding.businessEvent.specialistOrigin!.roomId;

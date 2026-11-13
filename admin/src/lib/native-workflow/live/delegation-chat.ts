@@ -227,8 +227,21 @@ export async function applyDelegationCommand(tx: PostgresTransaction, actor: Act
   return applyReviewDelegationCommand(tx, actor, c, message);
 }
 
-export async function delegationNoticeAvailable(tx: PostgresTransaction, actor: ActorContext, c: Row, messageId: string) {
-  if (actor.principal.kind !== 'user') return false;
-  return await delegationOwnerNoticeAvailable(tx, actor.enterpriseId, String(c.id), messageId, actor.principal.userId)
-    || await reviewDelegationNoticeAvailable(tx, actor, c, messageId);
+export async function delegationNoticeAvailable(tx: PostgresTransaction, actor: ActorContext | undefined, c: Row, messageId: string) {
+  const enterpriseId = String(c.enterprise_id), conversationId = String(c.id);
+  if (actor && (actor.enterpriseId !== enterpriseId || actor.principal.kind !== 'user')) return false;
+  if (await delegationOwnerNoticeAvailable(tx, enterpriseId, conversationId, messageId,
+    actor?.principal.kind === 'user' ? actor.principal.userId : undefined)) return true;
+  if (actor) return reviewDelegationNoticeAvailable(tx, actor, c, messageId);
+
+  // Stored dependencies are rechecked for the receipt's original owner.
+  // The receipt still needs the active owner role, project and original source.
+  const receipt = await one(tx, sql`select p.user_id::text as owner_id from app.assistant_messages m
+    join app.domain_event_outbox e on e.enterprise_id=m.enterprise_id and e.id=m.source_event_id
+    join app.assistant_participants p on p.enterprise_id=m.enterprise_id and p.conversation_id=m.conversation_id
+      and p.user_id::text=e.payload->>'ownerId' and p.participant_role='owner' and p.status='active'
+    where m.enterprise_id=${enterpriseId} and m.conversation_id=${conversationId} and m.id=${messageId}
+      and m.purpose=${delegationOwnerPurpose} and e.type=${delegationNotice}`);
+  return !!receipt && await reviewDelegationNoticeAvailable(tx, { enterpriseId,
+    principal: { kind: 'user', userId: String(receipt.owner_id) }, contextVersion: 0, capabilities: [] }, c, messageId);
 }

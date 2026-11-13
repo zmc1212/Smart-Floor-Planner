@@ -1,6 +1,6 @@
 # 后台系统当前功能清单
 
-**I6.15 专业跟进（Limited）。** Native Executor 与 LangGraph 共用 `start_delegation` 的输入、授权、幂等和服务。登记事务同时保存原 C01 回执及 PostgreSQL Workflow Run，绑定客户、项目、房间、原消息和发布 revision/digest。`consultation`、`structuredFinal` 的不兼容组合在模型派发前明确路由至 LangGraph 并保存原因。获权员工沿 Construction 读取来源绑定的事项与经理复核；平台 `specialist-status` 仍要求当前企业及项目权限。来源与复核保存为独立事件，读回复核当前授权及版本。[验收与限制](xiaok-integration-audit.md#i615-统一执行器与正式防水委托limited)。
+**I6.15 专业跟进（Limited）。** Native Executor 与 LangGraph 共用 `start_delegation` 的输入、授权、幂等和服务。登记事务同时保存原 C01 回执及 PostgreSQL Workflow Run，绑定客户、项目、房间、原消息和发布 revision/digest。`consultation`、`structuredFinal` 的不兼容组合在模型派发前明确路由至 LangGraph 并保存原因。获权员工沿 Construction 读取来源绑定的事项与经理复核。平台 `specialist-status` 要求当前企业及项目权限。来源与复核保存为独立事件，读回复核当前授权及版本。后台任务按回执原业主和当前项目权限重验已保存的委托回执依赖。[验收与限制](xiaok-integration-audit.md#i615-统一执行器与正式防水委托limited)。
 
 **小K统一集成（Limited）。** Assistant 网关默认使用 Chat Completions，已确认能力的百炼模型和工具可显式启用 Responses。工具证据和用量沿原轮次合同返回。PostgreSQL runtime 与同一 Outbox 消费者处理房间任务、施工复核及原会话回执。公开工地与本人项目共用会话服务，读取及重试均核查当前来源权限。Construction 持有带日期的计划、核实记录、设计核对、整改和关闭。日周报共用获权记录，同一租户和周期只领取一次周槽，再向四个角色投递。PG17/pgvector 升级使用活动迁移 0124–0127。见[模块合同](xiaok-integration-contract.md)与[集成审查](xiaok-integration-audit.md)。
 

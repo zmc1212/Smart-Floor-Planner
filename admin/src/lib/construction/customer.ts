@@ -114,9 +114,8 @@ export async function constructionNoticeAvailable(tx: PostgresTransaction, eid: 
     where m.enterprise_id=${eid} and m.conversation_id=${cid} and m.id=${mid} and m.purpose in ('construction.update','construction.stage','construction.followup','construction.record','construction.result','construction.plan','construction.delegation')`);
   if (!notice) return !requireNotice;
   if (notice.purpose === 'construction.delegation') {
-    const { delegationNoticeAvailable, delegationOwnerNoticeAvailable } = await import('@/lib/native-workflow/live/delegation-chat');
-    if (!reader) return delegationOwnerNoticeAvailable(tx, eid, cid, mid);
-    if (reader.enterpriseId !== eid || reader.principal.kind !== 'user') return false;
+    const { delegationNoticeAvailable } = await import('@/lib/native-workflow/live/delegation-chat');
+    if (reader && (reader.enterpriseId !== eid || reader.principal.kind !== 'user')) return false;
     const conversation = await one(tx, sql`select * from app.assistant_conversations where enterprise_id=${eid} and id=${cid}`);
     return !!conversation && await delegationNoticeAvailable(tx, reader, conversation, mid);
   }

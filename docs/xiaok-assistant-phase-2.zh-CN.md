@@ -1,6 +1,6 @@
 # 小K第二期：需求整理与人工交接
 
-**I6.15 专业委托（Limited）。** Native Executor 与 LangGraph 共用 `start_delegation` 输入及 `DelegationService`。原业主咨询提供获权原话、活动项目和精确房间，登记回执与发布版 Workflow Run 同事务保存。单独授权消息以真实回执结束，混合咨询继续校验模型解释。状态、暂停、恢复、取消沿原 C01 指令并复核当前权限。[工作流与证据](xiaok-waterproof-workflow.md#i615-原咨询运行与事项)。
+**I6.15 专业委托（Limited）。** Native Executor 与 LangGraph 共用 `start_delegation` 输入及 `DelegationService`。原业主咨询提供获权原话、活动项目和精确房间，登记回执与发布版 Workflow Run 同事务保存。单独授权消息以真实回执结束，混合咨询继续校验模型解释。状态、暂停、恢复、取消沿原 C01 指令并复核当前权限。后续 Run 读取旧回执时，沿原 C01 重进的业主、项目和来源校验。[工作流与证据](xiaok-waterproof-workflow.md#i615-原咨询运行与事项)。
 
 <!-- xiaok-r3-web-contract -->
 **R3 网页来源（Limited）。** 合资格的原生会话由现有 LangGraph Worker 经 R2 工具注册表派发。独立搜索服务提供公开候选，受保护的读页服务将原文交给现有 Evidence 和引用链。百炼 Responses 承载检索工具调用与回传，终稿轮使用既有结构化通道。[协议、配置与验证](bailian-responses-adapter.md#11-r3-应用联网搜索)。
