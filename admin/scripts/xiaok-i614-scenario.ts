@@ -69,14 +69,16 @@ async function configure() {
 
 async function fixture() {
   const tag = 'I6.14 隔离防水 ' + label;
+  const roles = [['enterprise_admin', '项目经理'], ['designer', '设计师'], ['construction_staff', '施工人员']] as const;
+  type Staff = { id: string; userId: string; role: typeof roles[number][0]; name: string };
   const staff = await withPlatformTransaction(async tx => {
     const uid = String((await one(tx, sql`insert into app.users(nickname,context_version) values(${tag},1) returning id`))!.id);
     await tx.execute(sql`insert into app.wechat_identities(user_id,openid) values(${uid},${'i614-' + randomUUID()})`);
     const lead = String((await one(tx, sql`insert into app.leads(enterprise_id,customer_user_id,name,phone,source)
       values(${enterpriseId},${uid},${tag},'13800000000','natural') returning id`))!.id);
-    const users: Row[] = [];
+    const users: Staff[] = [];
     let index = 0;
-    for (const [role, name] of [['enterprise_admin', '项目经理'], ['designer', '设计师'], ['construction_staff', '施工人员']] as const) {
+    for (const [role, name] of roles) {
       // Staff mini-program access resolves through admin_users.user_id and a
       // non-empty users.phone, so the synthetic staff get a real users row.
       const userId = String((await one(tx, sql`insert into app.users(nickname,phone,context_version)
@@ -155,7 +157,7 @@ async function main() {
   const chat = new ConversationService(actor);
   const conversationId = String((await chat.create(randomUUID())).id);
   const ownerToken = await signMiniProgramToken({ sub: f.uid, id: f.uid, mode: 'customer', role: 'user', contextVersion: 1, source: 'wechat' });
-  const token = async (admin: Row, role: string) => signMiniProgramToken({ sub: String(admin.userId), id: String(admin.userId), mode: 'staff',
+  const token = async (admin: typeof f.manager, role: typeof f.manager.role) => signMiniProgramToken({ sub: String(admin.userId), id: String(admin.userId), mode: 'staff',
     role, staffRole: role, staffId: String(admin.id), enterpriseId, contextVersion: 1, source: 'phone' });
   const tokens = {
     owner: ownerToken,

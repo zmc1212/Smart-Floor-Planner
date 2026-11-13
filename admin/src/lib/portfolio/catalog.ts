@@ -194,8 +194,8 @@ export class PortfolioCatalog {
     return this.authorizedImage(workId, versionId, assetId, 'hash');
   }
   private authorizedImage(workId: string, versionId: string, assetId: string, representation: 'hash'): Promise<string>;
-  private authorizedImage(workId: string, versionId: string, assetId: string, representation: 'bytes'): Promise<Buffer>;
-  private authorizedImage(workId: string, versionId: string, assetId: string, representation: 'hash' | 'bytes') {
+  private authorizedImage(workId: string, versionId: string, assetId: string, representation: 'bytes'): Promise<Buffer<ArrayBuffer>>;
+  private authorizedImage(workId: string, versionId: string, assetId: string, representation: 'hash' | 'bytes'): Promise<string | Buffer<ArrayBuffer>> {
     id(workId); id(versionId); id(assetId);
     return this.authorized(async tx => {
       const candidate = (await portfolioCandidates(tx, this.actor.enterpriseId, { workId }))[0];
