@@ -1,6 +1,7 @@
 const { AssistantClient, errorCopy, uncertain } = require('./client');
 const { toursForView } = require('./tour');
 const { designerAvatarPath } = require('../../../utils/designer-avatar');
+const { downloadFile } = require('../../../utils/api');
 const ID = /^[1-9]\d{0,18}$/;
 const pathFor = id => `/conversations/${encodeURIComponent(id)}/portfolio`;
 const savedEntryKey = 'assistant-portfolio-reentry-v1';
@@ -28,16 +29,21 @@ function textList(values, max, length) {
 }
 
 class PortfolioImages {
-  constructor(client) { this.client = client; this.epoch = 0; this.paths = []; }
-  clear() {
+  constructor(client, download = downloadFile) { this.client = client; this.download = download; this.epoch = 0; this.paths = []; }
+  clear(retain = []) {
     this.epoch += 1;
-    for (const filePath of this.paths) wx.getFileSystemManager().unlink({ filePath, fail() {} });
-    this.paths = [];
+    this.paths = this.paths.filter(filePath => {
+      if (retain.includes(filePath)) return true;
+      wx.getFileSystemManager().unlink({ filePath, fail() {} });
+      return false;
+    });
   }
   async load(conversationId, work, assetId) {
     if (![conversationId, work.id, work.versionId, assetId].every(v => ID.test(String(v)))) throw { code: 'invalid_response' };
-    return this.loadJpeg(`${pathFor(conversationId)}/works/${work.id}/assets/${assetId}`,
-      { versionId: work.versionId }, `portfolio-${work.id}-${work.versionId}-${assetId}`);
+    const epoch = this.epoch;
+    const { tempFilePath } = await this.download(`/miniprogram/assistant${pathFor(conversationId)}/works/${work.id}/assets/${assetId}?versionId=${work.versionId}`,
+      { suppressUnauthorized: true });
+    return this.keepFile(tempFilePath, epoch);
   }
   async loadPortrait(conversationId, authorId) {
     if (![conversationId, authorId].every(v => ID.test(String(v)))) throw { code: 'invalid_response' };
@@ -57,8 +63,15 @@ class PortfolioImages {
     if (epoch !== this.epoch) throw { code: 'context_changed' };
     const filePath = `${wx.env.USER_DATA_PATH}/assistant-${name}-${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
     await new Promise((resolve, reject) => wx.getFileSystemManager().writeFile({ filePath, data: data.imageBase64, encoding: 'base64', success: resolve, fail: reject }));
+    return this.keepFile(filePath, epoch);
+  }
+  keepFile(filePath, epoch) {
     if (epoch !== this.epoch) { wx.getFileSystemManager().unlink({ filePath, fail() {} }); throw { code: 'context_changed' }; }
     this.paths.push(filePath); return filePath;
+  }
+  remove(filePath) {
+    this.paths = this.paths.filter(path => path !== filePath);
+    wx.getFileSystemManager().unlink({ filePath, fail() {} });
   }
 }
 
@@ -228,7 +241,7 @@ class PortfolioController {
       filter: this.state.spaceFilter, scrollTop: this.scrollTop || 0,
     };
   }
-  hide() { this.rememberStudioView(); this.rememberWorkView(); this.visible = false; this.showTicket = (this.showTicket || 0) + 1; this.epoch += 1; this.images.clear(); this.closeContact(); this.fullWorks = null; this.set({ images: {}, portraitPath: '', sharePath: '', publicContact: null, contactAuthor: null }); }
+  hide(previewPaths) { this.rememberStudioView(); this.rememberWorkView(); this.visible = false; this.showTicket = (this.showTicket || 0) + 1; this.epoch += 1; this.images.clear(previewPaths); this.closeContact(); this.fullWorks = null; this.set({ images: {}, portraitPath: '', sharePath: '', publicContact: null, contactAuthor: null }); }
   async show(options = {}, kind = 'designer') {
     const ticket = this.showTicket = (this.showTicket || 0) + 1;
     if (this.flight) await this.flight;

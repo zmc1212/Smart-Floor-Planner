@@ -28,6 +28,9 @@ function page(kind) {
     },
     async onShow() {
       this._shown = true;
+      if (this._previewPaths) this.controller.images.clear();
+      this._previewPaths = null;
+      this._previewPending = null;
       const hydration = getApp().globalData.sessionHydrationPromise;
       if (hydration) await hydration;
       if (this._fontReady) await this._fontReady;
@@ -38,7 +41,10 @@ function page(kind) {
         }
       }
     },
-    onHide() { this._shown = false; this.dismissStudioFilters(); this.dismissPublicContact(); this.controller.hide(); },
+    onHide() {
+      this._shown = false; this.dismissStudioFilters(); this.dismissPublicContact();
+      this.controller.hide(this.controller.session === identity() ? this._previewPaths || [] : []);
+    },
     onUnload() { this.dismissStudioFilters(); this.dismissPublicContact(); this._alive = false; this.controller.hide(); },
     onResize() { this.measureNavigation(); if (this.data.studioSheetVisible) this.measureStudioSheet(); },
     onPageScroll(event) { this.controller?.recordScroll(event.scrollTop); },
@@ -223,15 +229,34 @@ function page(kind) {
       this.controller.set({ imageError: '图纸暂未加载，点此重试。' });
     },
     async preview(event) {
-      if (this.data.unavailable || !this.data.work) return;
-      // Recheck rights/version immediately before exposing the full-size viewer.
+      const { work, conversationId, images, unavailable } = this.data;
+      if (!this._alive || !this._shown || unavailable || !work || this._previewPending != null) return;
+      const { id, kind } = event.currentTarget.dataset;
+      const current = images['i' + id];
+      const shown = kind === 'plan' ? work.planDrawings : [...work.renders, ...work.photos];
+      if (!current || !shown.some(item => item.assetId === String(id))) return;
+      const epoch = this.controller.epoch;
+      this._previewPending = epoch;
       try {
-        await this.controller.client.read(`/conversations/${this.data.conversationId}/portfolio/works/${this.data.work.id}`, { versionId: this.data.work.versionId });
-        if (!this._alive || !this._shown || this.controller.session !== identity()) return;
-        const current = this.data.images['i' + event.currentTarget.dataset.id];
-        const shown = event.currentTarget.dataset.kind === 'plan' ? this.data.work.planDrawings : [...this.data.work.renders, ...this.data.work.photos];
-        if (current && shown.some(item => item.assetId === String(event.currentTarget.dataset.id))) wx.previewImage({ current, urls: shown.map(i => this.data.images['i' + i.assetId]).filter(Boolean) });
-      } catch (error) { this.controller.fail(error, this.controller.epoch); }
+        await this.controller.client.read(`/conversations/${conversationId}/portfolio/works/${work.id}`, { versionId: work.versionId });
+        if (!this.controller.valid(epoch) || !this._shown || this.data.images['i' + id] !== current) return;
+        const urls = shown.map(item => this.data.images['i' + item.assetId]).filter(Boolean);
+        // The native viewer can hide this page before reading its local files.
+        this._previewPaths = urls;
+        wx.previewImage({ current, urls, fail: () => {
+          if (this._previewPaths !== urls) return;
+          this._previewPaths = null;
+          if (this.controller.valid(epoch)) {
+            this.controller.images.remove(current);
+            const next = { ...this.data.images };
+            delete next['i' + id];
+            this.controller.set({ images: next, imageError: '部分图片暂未加载，点此重试。' });
+          } else if (!this._shown) this.controller.images.clear();
+        } });
+      } catch (error) {
+        if (this.controller.valid(epoch)) this._previewPaths = null;
+        this.controller.fail(error, epoch);
+      } finally { if (this._previewPending === epoch) this._previewPending = null; }
     },
     pickTopic(event) {
       const text = event.currentTarget.dataset.text;

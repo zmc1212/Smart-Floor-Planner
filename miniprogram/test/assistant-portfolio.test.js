@@ -55,17 +55,52 @@ test('unknown mutation outcome retains key and body, reentry recovers the same e
   await c.show(options, 'work'); await c.write('like'); assert.equal(c.state.pendingAction, 'like'); c.hide(); await c.show(options, 'work'); assert.equal(c.state.pendingAction, 'like');
   fail = false; await c.write(c.state.pendingAction); assert.deepEqual(sent[0], sent[1]); assert.equal(c.state.pendingAction, '');
 });
-test('authorized JPEG files bind exact work/version and are deleted when the page hides, even during a late write', async () => {
+test('authorized JPEG downloads bind the exact work and version and discard a late result', async () => {
   const previous = global.wx, removed = []; let finish;
-  global.wx = { env: { USER_DATA_PATH: '/private' }, getFileSystemManager: () => ({ writeFile(args) { finish = args.success; }, unlink: args => removed.push(args.filePath) }) };
+  global.wx = { getFileSystemManager: () => ({ unlink: args => removed.push(args.filePath) }) };
   try {
-    const calls = [], images = new PortfolioImages({ read: async (path, data) => { calls.push({ path, data }); return { mimeType: 'image/jpeg', imageBase64: '/9j/AA==' }; } });
+    const calls = [], images = new PortfolioImages(null, (path, options) => {
+      calls.push({ path, options });
+      return new Promise(resolve => { finish = resolve; });
+    });
     const loading = images.load('11', work(), '15');
-    for (let i = 0; i < 10 && !finish; i++) await new Promise(r => setImmediate(r));
-    assert.ok(finish, 'authorized JPEG should reach file writing'); images.clear(); finish(); await assert.rejects(loading, e => e.code === 'context_changed');
-    assert.equal(removed.length, 1); assert.deepEqual(calls[0].data, { versionId: '13', format: 'base64' });
+    assert.ok(finish, 'authorized JPEG should use the binary download');
+    images.clear(); finish({ tempFilePath: '/private/cover.jpg' });
+    await assert.rejects(loading, e => e.code === 'context_changed');
+    assert.deepEqual(removed, ['/private/cover.jpg']);
+    assert.deepEqual(calls, [{ path: '/miniprogram/assistant/conversations/11/portfolio/works/12/assets/15?versionId=13', options: { suppressUnauthorized: true } }]);
     assert.equal(workForView(work()).metadata, '原木风 · 90㎡ · 两室');
   } finally { global.wx = previous; }
+});
+
+test('native portfolio preview keeps the current gallery files through page hide and clears them on return', async () => {
+  const oldWx = global.wx, oldApp = global.getApp;
+  const removed = [], authorizations = [], viewer = [];
+  global.getApp = () => ({ globalData: { token: 'session-a' } });
+  const fixture = page('work');
+  const data = workForView(work());
+  const files = new PortfolioImages(null, async path => ({ tempFilePath: '/private/' + path.match(/\/assets\/(\d+)/)[1] + '.jpg' }));
+  const shown = { i15: await files.load('11', data, '15'), i16: await files.load('11', data, '16') };
+  const other = await files.load('11', data, '17');
+  const p = { ...fixture, _alive: true, _shown: true, data: { work: data, images: shown, conversationId: '11' },
+    controller: { epoch: 1, session: 'session-a', images: files, valid(epoch) { return epoch === this.epoch; },
+      client: { read: async (route, query) => { authorizations.push({ route, query }); } },
+      hide(paths) { this.epoch++; files.clear(paths); p.data.images = {}; },
+      async show() { files.clear(); },
+    } };
+  global.wx = {
+    getFileSystemManager: () => ({ unlink: ({ filePath }) => removed.push(filePath) }),
+    previewImage(request) { viewer.push(request); p.onHide(); },
+  };
+  try {
+    await p.preview({ currentTarget: { dataset: { id: '16' } } });
+    assert.deepEqual(authorizations, [{ route: '/conversations/11/portfolio/works/12', query: { versionId: '13' } }]);
+    assert.equal(viewer[0].current, shown.i16);
+    assert.deepEqual(viewer[0].urls, [shown.i15, shown.i16]);
+    assert.deepEqual(removed, [other]);
+    await p.onShow();
+    assert.deepEqual(removed, [other, shown.i15, shown.i16]);
+  } finally { global.wx = oldWx; global.getApp = oldApp; }
 });
 test('C01 reads recommendations without preference/contact writes and clears revoked cards', async () => {
   const state = {}, calls = []; let revoked = false;
