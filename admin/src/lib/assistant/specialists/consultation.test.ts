@@ -74,7 +74,21 @@ test('selected originals qualify normative acceptance only, across construction 
     { acceptanceQuotes: quotes.slice(1) }));
   const anotherStage = { acceptanceQuotes: ['吊顶封板前应确认龙骨已验收合格。'] };
   assert.doesNotThrow(() => guardAnswerCommitments('封板之前应确认龙骨已验收合格。', anotherStage));
+  assert.doesNotThrow(() => guardAnswerCommitments('原文：“封板之前应确认龙骨已验收合格。”', anotherStage));
+  assert.doesNotThrow(() => guardAnswerCommitments('封板前的检查清单可归纳为：核对图纸；龙骨已验收合格。', anotherStage));
+  assert.doesNotThrow(() => guardAnswerCommitments('封板的前提是龙骨已验收合格；确切时间待现场确认。', anotherStage));
   assert.throws(() => guardAnswerCommitments('封板之前应确认吊杆已验收合格。', anotherStage), /unsupported_model_commitment/);
+  assert.throws(() => guardAnswerCommitments('复核结果的检查清单如下：龙骨已验收合格。', anotherStage), /unsupported_model_commitment/);
+  assert.throws(() => guardAnswerCommitments('进度状态检查清单如下：龙骨验收合格。', anotherStage), /unsupported_model_commitment/);
+  assert.throws(() => guardAnswerCommitments('验收结果：龙骨验收合格后可以封板。', anotherStage), /unsupported_model_commitment/);
+  assert.throws(() => guardAnswerCommitments('你家已具备的条件是龙骨已验收合格。', anotherStage), /unsupported_model_commitment/);
+  const route = { acceptanceQuotes: ['应急通道验收合格后方可开放。'] };
+  assert.doesNotThrow(() => guardAnswerCommitments('应急通道验收合格后方可开放。', route));
+  assert.throws(() => guardAnswerCommitments('应急通道验收合格。', route), /unsupported_model_commitment/);
+  assert.throws(() => guardAnswerCommitments('检查清单如下：核对图纸。龙骨已验收合格。', anotherStage), /unsupported_model_commitment/);
+  assert.throws(() => guardAnswerCommitments('检查清单如下：龙骨已验收合格且已批准。', anotherStage), /unsupported_model_commitment/);
+  assert.doesNotThrow(() => guardAnswerCommitments('验收合格后再施工。', { acceptanceQuotes: [], acceptanceAdvice: true }));
+  assert.throws(() => guardAnswerCommitments('验收合格后再施工。', { acceptanceQuotes: [] }), /unsupported_model_commitment/);
 });
 
 test('a verified technical prerequisite cannot authorize a completed project status', () => {

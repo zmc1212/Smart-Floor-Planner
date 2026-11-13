@@ -79,12 +79,12 @@ export function buildAgentContext(turns: Array<{ id: string; role: 'user' | 'ass
 /** Reject free-form completion/price claims that no service receipt supports.
  * Shared by the built-in reply parser and the FastGPT Agent V2 free-form path;
  * service-authored business snapshots are delivered separately. */
-type CommitmentScope = { formalStatusEvidence?: boolean; acceptanceQuotes?: readonly string[] };
+type CommitmentScope = { formalStatusEvidence?: boolean; acceptanceQuotes?: readonly string[]; acceptanceAdvice?: boolean };
 
 export function guardAnswerCommitments(text: string, options: CommitmentScope = {}) {
   // Formal commitments always come from a business service, never free-form generation.
   // Project explicit absence/denial/question predicates, retaining other claims.
-  const status = options.acceptanceQuotes ? projectAcceptanceClaims(text, options.acceptanceQuotes) : text;
+  const status = options.acceptanceQuotes ? projectAcceptanceClaims(text, options.acceptanceQuotes, options.acceptanceAdvice) : text;
   const completionClaims = projectDeniedApprovalList(options.formalStatusEvidence ? projectNegativeWorkStatus(status) : status)
     // Deny only the immediately scoped completion predicate. A policy saying
     // "不证明点位已落实" is not a completion receipt; later actions, double

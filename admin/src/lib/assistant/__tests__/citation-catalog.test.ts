@@ -15,6 +15,22 @@ const pdfSource = (): SynthesisSource => {
       name: s.title, format: 'pdf', parser: 'synthetic-pdf', blockId: 'p2', kind: 'paragraph', section: [], page: 2, label: '第2页' } } };
 };
 
+test('a consulted standard edition is a label, separate from the paragraph citation and quantity', () => {
+  const label = 'GB 12345-2024';
+  const s: SynthesisSource = { sourceId: 'W1', kind: 'web', title: '合成规范',
+    text: '适用条件应现场复核。', web: { standard: { id: 'GB12345-2024', name: '合成规范',
+      kind: 'standard_text', level: 'national', status: 'unknown' } } as SynthesisSource['web'] };
+  const noCitation = (text: string) => JSON.stringify({ kind: 'synthesis', segments: [{ basis: 'uncertainty', text, citations: [] }] });
+  const text = label + ' 未说明统一天数。';
+  assert.equal(parseSynthesis(noCitation(text), [s]).segments[0].text, text);
+  for (const claim of [label + '要求至少一天。', label + '要求零点五毫米。', label + '要求至少一百二十毫米。',
+    '具体数值为12345。', '厚度为' + label + 'mm。', 'GB 99999-2024 未说明统一天数。']) {
+    assert.throws(() => parseSynthesis(noCitation(claim), [s]), /unsupported_model_commitment/);
+  }
+  assert.throws(() => parseSynthesis(noCitation(label + ' 已废止。'), [s]), /standard_status_unverified/);
+  assert.throws(() => parseSynthesis(noCitation(text), []), /unsupported_model_commitment/);
+});
+
 test('a cited PDF actual page is locator metadata without rewriting the answer, quote or repair', () => {
   const s = pdfSource(), before = JSON.stringify(s), catalog = sourceCitationCatalog(s);
   assert.doesNotMatch(s.text, /2/);

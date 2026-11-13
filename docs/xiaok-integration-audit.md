@@ -232,6 +232,13 @@ I5 验收以 `b612ea0692acc5fac62ca8487029196bec7809cb` 为基线，测试前后
 
 真实调用仅使用 `bailian`、`deepseek-flash` / `deepseek-v4.1-flash-1017`。请求 ID、协议、实际模型及 token 见 `tmp/i6.10/{bailian-vision-wire,model-receipts-index-final}.json`，实际费用未知。历史未明调用保留原状态。验收后恢复隔离模型覆盖和图片设置，关闭本轮 Stable 窗口、Admin、Reader 与数据库进程，保留隔离数据与回执。[百炼能力与回执](bailian-responses-adapter.md#17-i610-北京百炼图像输入)
 
+### 共用终稿校验收尾
+
+- **保存稿复现。** 在 fetch 后的远端 `682bcbf1e81f` 与本地 `06b890beb3dc` 上核对原快照，固定 14 个历史 Run、28 份首稿和唯一修复。每份输入与已读来源的 hash 一致，零实模回放由 7/28 提升到 21/28。开工及清单恢复本轮资料缺项、带引文前提与清单核对项的作用域，房间更正恢复通用建议及「统一天数」中的非量数用法，国标追问恢复带原文标签的验收前提和已查标准版本编号。六个剩余稿件的验收条件缺引用或引用对象不符，`133` 唯一修复仍被误判为验收结论。最终提交收紧条件引导词、标题作用域和项目主语，防止把「应急通道验收合格」、进度清单或验收结果读成规范条件。该改动晚于实模与 Stable 批次；重放原 28 稿和本批有网页依据的终稿，结果一致。原回执保持原状态。见 `tmp/i6.10/closeout/{replay-before,replay-final-02,final-impact-02}.json`。
+- **固定隔离实模。** 两轮各三段双轮对话，7/12 落盘且签名重进可用，普通咨询均无工作流委托。开工 1/2，清单 2/2（缺资料时为通用清单），房间更正 0/2，国标原文 0/2；企业安排及更正前咨询各 2/2。`174/177` 的公网搜索未配置，官方 Reader 超时，原文读取缺失。`183` 实读第 31 页 §5.6.1，模型仍将发布日期写在只引条文页的段落，首稿另无现行性依据。`179/185` 引对了第 28 页 §5.1.12，附带的验收条件复述仍被拒。只取有效引文段的副本可过，完整原答仍失败，后续从来源和谓词的结构绑定检查，已停止本组实模复采。见 `tmp/i6.10/closeout/{fixed-live,live-discriminator.json}`。
+- **用量。** 北京目录命中 `deepseek-v4.1-flash-1017`（Text/Image）；逻辑名 `deepseek-flash`。同一网关共 27 次真实请求，Responses 13、Chat Completions 14，55,027 输入、11,660 输出、25,344 缓存输入 tokens。27 条均有请求 ID 和观察用量，本批 unknown 为 0，金额未返回。该批配置、测试和源码绑定无漂移。见 `tmp/i6.10/closeout/{bailian-catalog,model-receipts}.json`。[百炼模型说明](https://docs.modelstudio.console.alibabacloud.com/en/model-studio/deepseek-v4-1-flash)
+- **工程与 Stable。** 原定向 61/61，最终受影响的 44/44，TypeScript、改动文件 ESLint 通过；较广回归 1,522 通过、27 跳过、1 项既有书桌收纳意图失败。Stable 390×844 / SDK 3.17.2 实际重进 `181` 的清单、`179` 的更正与失败反馈，并点击 `178` 的 PDF 第 28 页引用，沿原流程查回同一经理结果。无客户端样式或接口变化。恢复隔离配置，关闭本轮 Stable 窗口、Reader 和测试数据库。截图与 HTTP 记录见 `tmp/i6.10/closeout/stable/verification.json`。
+
 ## I6.9 防水专业 Agent 闭环（Limited）
 
 起点为 fetch 后的 `0892909ae1c4`，工作树已有的 X6 改动在开发期间进入远端 `deaf1429`。使用独立 Integration 工作树、微云 1454 的合成隔离库及受限 `sfp_app`。百炼实际目录返回 `deepseek-v4.1-flash-1017`，专业 Agent 逻辑名 `deepseek-flash`，凭据沿原加密配置和用量台账。目录回执 `tmp/i6.9/bailian-catalog.json`。

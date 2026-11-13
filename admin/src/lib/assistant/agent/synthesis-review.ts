@@ -103,9 +103,15 @@ function unsupportedProjectObservation(text: string, citations: Citations, sourc
 
 /** Only the observed construction-record fields, not arbitrary semantic
  * entailment. A needs/drawing gap says nothing about trial or curing records. */
-function unsupportedRecordGap(text: string, citations: Citations, sources: SynthesisSource[]) {
-  return text.split(/[。！？!?；;\n]/u).some(sentence => {
+function unsupportedRecordGap(segment: SynthesisAnswer['segments'][number], citations: Citations, sources: SynthesisSource[]) {
+  const onlyAnswerInputs = segment.basis === 'uncertainty' && !citations.length && !sources.some(source => source.kind === 'project');
+  // With no project source consulted, a statement about what the assistant
+  // has in hand is an input limitation. It is not a finding from a site query.
+  const receivedNothing = /^(?:本轮|本次|这次|此次|我(?:这边|手头)(?:目前|当前)?|我(?:目前|当前))(?:\s*我(?:这边|手头)?)?\s*(?:没有|尚无|未(?:收到|取得|获得|拿到))/u;
+  const claimsRecordContent = /(?:查到|查过|查阅|查遍|查询|显示|记录里|记录中|未记录|未提供|从未|不存在|没有做)/u;
+  return segment.text.split(/[。！？!?；;\n]/u).some(sentence => {
     if (!/本次|本轮|这次|当前|目前|现场|记录/u.test(sentence) || !sentence.split(/[，,]/u).some(clause => {
+      if (onlyAnswerInputs && receivedNothing.test(clause.trim()) && !claimsRecordContent.test(clause)) return false;
       const field = /保养|蓄水|楼下(?:检查|查看)|(?:施工|涂刷|防水)(?:完成)?(?:的)?(?:具体)?(?:时间|时刻)|验收(?:结论|结果)/u.exec(clause);
       if (!field || !/没有|未(?:提供|记录|核实|确认)|缺少|缺失/u.test(clause) || /有没有|(?:是否|能否)(?:有|没有|未|缺)/u.test(clause)) return false;
       // A question-valued field such as “保养是否满足要求” may itself be
@@ -376,7 +382,7 @@ export function reviewSynthesisResponse(answer: SynthesisAnswer, sources: Synthe
     }
     if (unsupportedProjectQuantity(segment.text, citations, sources)) codes.add('misattributed_project_quantity');
     if (unsupportedProjectObservation(segment.text, citations, sources)) codes.add('misattributed_project_observation');
-    if (unsupportedRecordGap(segment.text, citations, sources)) codes.add('misattributed_project_observation');
+    if (unsupportedRecordGap(segment, citations, sources)) codes.add('misattributed_project_observation');
     if (unsupportedProjectStatus(segment.text, citations, sources, context.currentProjectStage)) codes.add('misattributed_project_status');
     if (unsupportedRuleComparison(segment.text, citations, sources)) codes.add('misattributed_rule_comparison');
     // Natural explanations require the existing source-bound semantic proof

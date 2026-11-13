@@ -84,6 +84,17 @@ test('v78 construction-record gaps cannot be attributed to unrelated materials-q
   assert.doesNotThrow(() => parseSynthesis(raw('如果试验记录没有提供，建议先核对。', [], 'advice'), sources));
 });
 
+test('the available input can be incomplete without establishing a project record gap', () => {
+  const text = '本次没有这间房的施工记录或验收结果可供核对，因此无法判断现在能否开工。';
+  assert.doesNotThrow(() => parseSynthesis(raw(text, [], 'uncertainty'), [rule]));
+  assert.throws(() => parseSynthesis(raw(text, [], 'uncertainty'), [rule, site]), /ungrounded_response_scope/);
+  for (const statement of [
+    '本次没有查到验收结果，现场没有做验收。',
+    '这间房没有施工记录和验收结果。',
+    text + '本次查询显示现场没有验收结果。',
+  ]) assert.throws(() => parseSynthesis(raw(statement, [], 'uncertainty'), [rule]), /ungrounded_response_scope/);
+});
+
 test('v78 retaining a nonnumeric record claim still needs its record after adding state citations', () => {
   const observation: SynthesisSource = { ...site, text: site.text + '整改和验收均未完成。' };
   const all = [rule, observation, state];

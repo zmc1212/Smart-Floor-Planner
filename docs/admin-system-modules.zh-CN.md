@@ -10,7 +10,7 @@
 
 **小K业主项目进度。** 现有 Construction 读适配器从业主咨询绑定的唯一在施工项目读取实际节点。指定房间时仅取向该业主发布的对应房间记录。已存答复重进复查来源及版本。图纸、现场决定沿原流程处理。[集成合同](xiaok-integration-contract.md)。
 
-**I6.10 防水专业 Agent 与工作流（Limited）。** 平台管理员在 `/native-workflow` 创建 `waterproof-inspection-v1`，模板使用活动注册、版本和规范 ID。X6 沿类型化端口展示已保存分析回执和服务端「复核引用依据」节点，沿原校验、模拟和发布，旧发布版保留原能力版本。`GET /api/native-workflow/runs/:runId/specialist-status` 按会话所选企业和当前 Construction 项目权限显示绑定版本、节点、来源、实际模型、用量和等待恢复记录。Assistant 准入要求 `ASSISTANT_SPECIALIST_ENTERPRISE_IDS` 与指定百炼模型。服务端依据将清单、补资料和同房间待核对事项分流。事项、经理复核及原咨询回传由 Construction 管理。[架构](xiaok-waterproof-workflow.md) · [验证](xiaok-integration-audit.md#i610-防水专业-agent-可信度与现场资料limited)。
+**I6.10 防水专业 Agent 与工作流（Limited）。** 平台管理员在 `/native-workflow` 创建 `waterproof-inspection-v1`，模板使用活动注册、版本和规范 ID。X6 沿类型化端口展示已保存分析回执和服务端「复核引用依据」节点，沿原校验、模拟和发布，旧发布版保留原能力版本。`GET /api/native-workflow/runs/:runId/specialist-status` 按会话所选企业和当前 Construction 项目权限显示绑定版本、节点、来源、实际模型、用量和等待恢复记录。Assistant 准入要求 `ASSISTANT_SPECIALIST_ENTERPRISE_IDS` 与指定百炼模型。服务端依据将清单、补资料和同房间待核对事项分流。事项、经理复核及原咨询回传由 Construction 管理。终稿校验和同轮唯一修复共用施工前提、工程量数和项目事实的来源边界。[架构](xiaok-waterproof-workflow.md) · [验证](xiaok-integration-audit.md#i610-防水专业-agent-可信度与现场资料limited)。
 
 <!-- cross-role-business-current -->
 **B5.9 四端项目协同（Limited）。** 员工工地详情和简报读取同一事项流和计划投影。后台和小程序在原 API 前缀下通过 `GET/POST /construction/projects/:id/schedule` 读取或发布带日期的计划，已指派的项目经理携带 `expectedVersion` 发布。原现场记录发布接口可带 `scheduleCompletion: { nodeKey, expectedVersion }`，明确核实某房间节点完成。实际施工节点、计划颜色和施工问题状态分别引用各自的证据，保留事件及记录版本。

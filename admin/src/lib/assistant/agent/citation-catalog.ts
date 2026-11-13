@@ -87,11 +87,12 @@ export function sourceReferenceText(text:string,citations:Array<{sourceId:string
  * source's typed trusted metadata is exempt from engineering-number matching.
  * Original prose still reaches commitment/scope guards. A bare number or a
  * quantity (including one glued to a document label) is never exempted. */
-export function engineeringClaimText(text: string, citedSources: SynthesisSource[], citationCount = 0, citations:Array<{sourceId:string;quote:string}>=[]) {
+export function engineeringClaimText(text: string, citedSources: SynthesisSource[], citationCount = 0, citations:Array<{sourceId:string;quote:string}>=[],
+  standardLabels: readonly string[] = []) {
   const aliases = new Map<string, { name: string; version: string }>();
   const filenames = new Set<string>();
   const pdfPages = new Set<number>();
-  const publicStandards = new Set(citedSources.flatMap(source => source.web?.standard ? [source.web.standard.id] : []));
+  const publicStandards = new Set([...standardLabels, ...citedSources.flatMap(source => source.web?.standard ? [source.web.standard.id] : [])]);
   for (const source of citedSources) { const page = citedPdfPage(source); if (page !== null) pdfPages.add(page); }
   for (const source of citedSources.filter(s => s.kind === 'knowledge')) {
     const file = source.evidence?.file;
@@ -114,16 +115,17 @@ export function engineeringClaimText(text: string, citedSources: SynthesisSource
     }
   }
   let result = proseNumberView(sourceReferenceText(text,citations,citedSources), citationCount);
+  const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   for (const id of publicStandards) {
-    const spelling = id.replace(/^(\D+)(\d)/u, '$1[\\p{Zs}\\t]*$2').replace(/-/g, '[-—－]');
-    result = result.replace(new RegExp('(?<![A-Z0-9])' + spelling + '(?![A-Z0-9]|[.,]\\d)', 'giu'), '规范编号');
+    const spelling = escape(id).replace(/^(\D+)(\d)/u, '$1[\\p{Zs}\\t]*$2').replace(/-/g, '[-—－]');
+    result = result.replace(new RegExp('(?<![A-Z0-9])' + spelling + '(?![A-Z0-9]|[.,]\\d)', 'giu'),
+      (match: string, offset: number, full: string) => quantitySuffix.test(full.slice(offset + match.length)) ? match : '规范编号');
   }
   for (const page of pdfPages) {
     // Coordinates describe this segment's cited original, not quantities in
     // its prose. Never trust a display label, another segment or a bare number.
     result = result.replace(new RegExp('第[\\p{Zs}\\t]*' + page + '[\\p{Zs}\\t]*页', 'gu'), '原文页');
   }
-  const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   for (const filename of [...filenames].sort((a, b) => b.length - a.length)) {
     // Exact paired quoting distinguishes a trusted filename (including its
     // numeric prefix/extension) from engineering quantities outside that name.

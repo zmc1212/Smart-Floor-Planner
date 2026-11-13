@@ -450,8 +450,16 @@ function coatingPassQuantities(text: string) {
   return [...text.matchAll(/([零〇一二两三四五六七八九十百千万]+\s*遍)(?=(?:涂层|涂刷|交叉涂刷|刷漆))|(?:涂刷|刷漆)\s*([零〇一二两三四五六七八九十百千万]+\s*遍)/gu)]
     .map(match => (match[1] || match[2]).replace(/[ \t\u3000]/g, ''));
 }
+const quantityWords = new Intl.Segmenter('zh-CN', { granularity: 'word' });
 function wordQuantities(text: string) {
+  const words = quantityWords.segment(text);
   const values = [...text.matchAll(/[零〇一二两三四五六七八九十百千万]+(?:点[零〇一二两三四五六七八九]+)?\s*(?:毫米|厘米|公分|千米|米|小时|分钟|秒|天|万元|元)/gu)]
+    // The last character of a modifier such as “统一” is not a duration.
+    // Keep ordinal and compound numeric words inside the claim check.
+    .filter(match => {
+      const word = words.containing(match.index);
+      return !word || word.index === match.index || /^第?[零〇一二两三四五六七八九十百千万]+$/u.test(word.segment.slice(0, match.index - word.index));
+    })
     .map(match => match[0].replace(/[ \t\u3000]/g, ''));
   // Only observed coating-pass quantities, not conversational repetition such
   // as “再说两遍” or “再核对两遍”. Preserve literal quantities, never convert.
@@ -503,6 +511,29 @@ function formalStatusEvidence(citations: Array<{ sourceId: string }>, sources: S
   return formal.length > 0 && citations.some(c => sources.some(source => source.sourceId === c.sourceId
     && (formal.includes(source) || source.followup?.kind === 'team_result' && issues.has(source.followup.issueId))));
 }
+function synthesisCommitmentOptions(segment: SynthesisSegment, sources: SynthesisSource[], context: SynthesisReviewContext) {
+  const standardQuotes = segment.citations.flatMap(citation => {
+    const source = sources.find(item => item.sourceId === citation.sourceId);
+    const qualified = source?.web?.standard?.kind === 'standard_text'
+      || context.specialistAcceptance && source?.kind === 'knowledge' && source.knowledge?.published
+        && source.knowledge.sourceType !== 'reference_case' && source.evidence?.professional?.applicability.status !== 'not_applicable';
+    return qualified && source?.text.includes(citation.quote) ? [citation.quote] : [];
+  });
+  return {
+    formalStatusEvidence: formalStatusEvidence(segment.citations, sources, context),
+    ...(context.specialistAcceptance || standardQuotes.length
+      ? { acceptanceQuotes: standardQuotes, acceptanceAdvice: segment.basis === 'advice' } : {}),
+  };
+}
+
+function synthesisQuantityText(segment: SynthesisSegment, sources: SynthesisSource[]) {
+  const selected = sources.filter(source => segment.citations.some(citation => citation.sourceId === source.sourceId));
+  // Edition labels describe consulted public documents. This cannot provide
+  // an original, a clause/page locator, status evidence or a number value.
+  const editionLabels = sources.flatMap(source => source.web?.standard ? [source.web.standard.id] : []);
+  return engineeringClaimText(segment.text, selected, segment.citations.length, segment.citations, editionLabels);
+}
+
 export function synthesisRepairIssue(raw:string,sources:SynthesisSource[],context:SynthesisReviewContext = {}) {
   try { parseSynthesis(raw,sources,context); return null; }
   catch(error) {
@@ -566,9 +597,9 @@ export function synthesisRepairIssue(raw:string,sources:SynthesisSource[],contex
     const formalTextRepair = error.code === 'unsupported_model_commitment' && !!context.currentQuestion
       && !originalAnswerOnly(context.currentQuestion) && !independentAdviceRequested(context.currentQuestion)
       && sources.some(source => source.material?.ref.type === 'formal_plan' || source.followup?.kind === 'formal_plan');
-    let rejectedFormalText = false;
+    const statusPaths: string[] = [];
     // Distinguish a missing numerical quote from actual formal-state/price claims.
-    for(const s of value.segments){
+    for(const [index, s] of value.segments.entries()){
       if(s.basis!=='evidence'&&!Object.hasOwn(s,'citations'))s.citations=[];
       if(typeof s.text!=='string'||!Array.isArray(s.citations))throw error;
       s.citations=s.citations.map(c=>{
@@ -582,10 +613,11 @@ export function synthesisRepairIssue(raw:string,sources:SynthesisSource[],contex
           const correction={sourceId:c.sourceId,quote:typeof c.quote==='string'?c.quote:''};invalidSelections.add(correction);return correction;
         }
       });
-      try { parseAgentReply(JSON.stringify({kind:'general',text:canonicalConclusion(s.text)}), { formalStatusEvidence: formalStatusEvidence(s.citations, sources, context) }); }
+      const commitment = synthesisCommitmentOptions(s, sources, context);
+      try { parseAgentReply(JSON.stringify({kind:'general',text:canonicalConclusion(s.text)}), commitment); }
       catch (textError) {
-        if (!formalTextRepair || !(textError instanceof AssistantError) || textError.code !== 'unsupported_model_commitment') throw textError;
-        rejectedFormalText = true;
+        if ((!formalTextRepair && !commitment.acceptanceQuotes) || !(textError instanceof AssistantError) || textError.code !== 'unsupported_model_commitment') throw textError;
+        statusPaths.push(`segments[${index}].text`);
       }
       // Unknown IDs are never searched or repaired into authorized evidence.
       if(s.citations.some(c=>!sources.some(source=>source.sourceId===c?.sourceId)))throw error;
@@ -606,7 +638,7 @@ export function synthesisRepairIssue(raw:string,sources:SynthesisSource[],contex
     if(citationCorrections.length>4)throw error;
     const numericGaps=value.segments.flatMap((s,i)=>{
       const quoted=(s.citations||[]).map(c=>c.quote).join('\n'),numbers=new Set(groundedNumberTokens(quoted));
-      const claimText=engineeringClaimText(s.text,sources.filter(source=>s.citations.some(c=>c.sourceId===source.sourceId)),s.citations.length,s.citations);
+      const claimText = synthesisQuantityText(s, sources);
       const unsupportedNumbers=[...new Set([...(groundedNumberTokens(claimText)).filter(n=>!printedNumberSupported(n,numbers)),
         ...unsupportedWordQuantities(claimText, quoted)])];
       return unsupportedNumbers.length?[{segment:i+1,unsupportedNumbers}]:[];
@@ -614,7 +646,7 @@ export function synthesisRepairIssue(raw:string,sources:SynthesisSource[],contex
     const quotesVerified = !citationCorrections.length && value.segments.every(segment => segment.citations.every(citation =>
       typeof citation.quote === 'string' && sources.some(source => source.sourceId === citation.sourceId && source.text.includes(citation.quote))));
     const scopeIssues = quotesVerified ? reviewSynthesisResponse(value, sources, context) : [];
-    if (rejectedFormalText) {
+    if (statusPaths.length && formalTextRepair) {
       if (!quotesVerified || numericGaps.length) throw error;
       // A rejected textual completion claim in a real formal-version query
       // belongs to the existing final-validation recovery. Diagnostics never
@@ -630,6 +662,12 @@ export function synthesisRepairIssue(raw:string,sources:SynthesisSource[],contex
         + '不要复述被拒的完成状态表述，也不要为了避词反转原意、删去否定或编造成功；若不能确认，只能限定为本次查询的未知。'
         + '引用仅选已有且支持本段的citationId；正式方案和客户同意不授权施工、验收、付款或新业务动作。'
         + repairLayoutInstructions + '修复后仍须通过全部原校验；只返回final_response。' };
+    }
+    if (statusPaths.length && quotesVerified) {
+      return { code: error.code, feedback: '只修复本轮终稿。以下段落的验收、放行或其他完成表述缺少相应支持：'
+        + JSON.stringify({ statusPaths, numericGaps, scopeIssues })
+        + '。引用已有原文明确支持的条件时，写成核对项或有条件的要求，并保留该段对应引用。没有条件依据时只说明本次待核对内容。实际项目的完成、验收、批准或放行须由原业务回执证明。'
+        + '逐段删去无来源的量数和现场断言。沿原答复结构，只返回终稿，不查询或执行任何业务动作。' };
     }
     if (error.code === 'unsupported_model_commitment' && numericGaps.length && scopeIssues.length) {
       // Report both defects in the SAME repair. Removing a number must not
@@ -845,7 +883,7 @@ function checkedSynthesis(raw: string, sources: SynthesisSource[], context: Synt
     // "24小时制" names a display notation, not a 24-hour deadline. Only an
     // exact authorized XLSX clock quote permits that name; all quantities and
     // the original unmodified prose still pass the existing commitment guards.
-    const claimText=engineeringClaimText(s.text,sources.filter(source=>s.citations.some(c=>c.sourceId===source.sourceId)),s.citations.length,s.citations);
+    const claimText = synthesisQuantityText(s, sources);
     const numericText = citedClock ? claimText.replace(/24\s*小时制/g, '') : claimText;
     try {
       const generalAdvice = context.generalKnowledge && s.basis === 'advice' && !s.citations.length;
@@ -853,13 +891,7 @@ function checkedSynthesis(raw: string, sources: SynthesisSource[], context: Synt
       const missing = generalAdvice ? [] : unsupportedWordQuantities(numericText, cited.join('\n'));
       const passes = pending ? new Set(coatingPassQuantities(numericText)) : new Set<string>();
       if (missing.some(quantity => !passes.has(quantity))) fail('unsupported_model_commitment', 502);
-      parseAgentReply(JSON.stringify({ kind: 'general', text: s.text }), {
-        formalStatusEvidence: formalStatusEvidence(s.citations, sources, context),
-        ...(context.specialistAcceptance ? { acceptanceQuotes: s.citations.filter(citation => sources.some(source =>
-          source.sourceId === citation.sourceId && (source.web?.standard?.kind === 'standard_text'
-            || source.kind === 'knowledge' && source.knowledge?.published && source.knowledge.sourceType !== 'reference_case')))
-          .map(citation => citation.quote) } : {}),
-      });
+      parseAgentReply(JSON.stringify({ kind: 'general', text: s.text }), synthesisCommitmentOptions(s, sources, context));
       if (pending && missing.length) pending.push({ segment: value.segments.indexOf(s), quantities: [...new Set(missing)] });
     } catch (error) {
       if (!rejected || !(error instanceof AssistantError) || error.code !== 'unsupported_model_commitment') throw error;
