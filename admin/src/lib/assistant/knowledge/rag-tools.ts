@@ -26,7 +26,7 @@ function params(required: string[], properties: Record<string, unknown>): ToolJs
 }
 export const knowledgeToolDefinitions = [
   { name: 'knowledge_search', parameters: params(['query'], search),
-    description: '检索当前有效的企业工艺、施工标准及适用项目文件，提供原文片段、版本与定位。用于询问本企业做法、施工条件或企业规定。' },
+    description: '检索当前有效的企业工艺、施工标准及适用项目文件，提供原文片段、版本与定位。用于询问本企业做法、施工条件或企业规定。省略 scope 会同时查获权的企业通用和项目文件；只有用户明确限定其中一类时才传 scope。' },
   { name: 'knowledge_get_document', parameters: params(['documentId'], { documentId: identifier }),
     description: '根据已获权的文档ID读取当前有效版本的元数据和开头片段。需要特定段落时对该文档检索。' },
   { name: 'knowledge_get_source', parameters: params(['chunkId', 'versionId'], { chunkId: identifier, versionId: identifier }),

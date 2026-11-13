@@ -6,6 +6,8 @@
 **XiaoK public web tools (Limited).** `ASSISTANT_WEB_SEARCH_TOOLS=1` enables search and fetch through the existing Agent dispatcher, subject to current tenant, participant and capability checks. The model receives discovery metadata. A parsed original is stored with its URL, title, retrieval time and citation locator. Full history reads, citation opens and LangGraph ancestor reuse recheck the original through the guarded reader. I6 exercised live search and official HTML readback. Current-standard applicability and multi-turn answer quality remain limited. [Wire contract, configuration and verification](bailian-responses-adapter.md#11-r3-应用联网搜索).
 <!-- /xiaok-r3-web-tools -->
 
+**XiaoK owner project status.** The existing Construction read adapter supplies the current stage from one active project bound to the owner's consultation. A named room limits the read to that room's records published to the owner. Saved replies recheck the source and its version. Drawings and on-site decisions follow the existing workflows. [Integration contract](xiaok-integration-contract.md).
+
 <!-- cross-role-business-current -->
 **B5.9 cross-role project collaboration (Limited).** Staff project detail and brief read the same site issue stream and schedule projection. Admin and Mini Program staff `GET/POST /construction/projects/:id/schedule` under their existing API prefixes read or publish the dated schedule. An assigned project manager publishes against `expectedVersion`; the existing record-publish route accepts `scheduleCompletion: { nodeKey, expectedVersion }` for explicit room-node completion. Project stage, schedule color and quality classification have independent evidence. Schedule and issue projections retain the source event and record revisions.
 

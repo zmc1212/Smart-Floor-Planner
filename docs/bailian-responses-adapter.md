@@ -435,3 +435,27 @@ node --env-file=.env.local --import tsx scripts/xiaok-r4-bailian-embedding.ts
 R6 配置预检仍缺北京工作空间与专用 API Key，未提交真实托管请求。R6 隔离库及 Stable 证据、真实 Responses 与本地检索的结果见[原生复核合同](xiaok-assistant-phase-2.zh-CN.md#r6-原生施工复核与托管知识)。[百炼 Responses 协议](https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-responses) · [百炼 Retrieve](https://help.aliyun.com/zh/model-studio/rag/channels)
 
 I6 在原 R6 验收入口使用 `--local-knowledge --durable-integration` 验证真实 Embedding/pgvector、项目权限、版本替换、撤回和原咨询回传。该模式的对话模型为替身。托管混合检索在授权后预检配置，缺项记录 `bailian_knowledge_not_configured` 并投影为资料暂不可用。已配置但无获权命中返回空证据。当前托管接入仍为 Limited。[I6 检索和委托证据](xiaok-integration-audit.md#i62-本地企业知识与持续委托)
+
+## 14. I6 模型能力矩阵
+
+北京开发环境当前配置 `qwen3.7-flash`。每一列表示该模型上记录到的能力。Chat、Responses 和 Function Calling 的既有请求见第 9 节，三种原生工具本轮另有请求。其他模型仅列各自已有的百炼证据。供应商声明查[Responses 文档](https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-responses)及[原生搜索文档](https://help.aliyun.com/zh/model-studio/web-search)。
+
+| 模型 | Chat Completions | Responses | Function Calling | Web Search | Web Extractor | Code Interpreter | 企业 RAG | 长期记忆 | Native Workflow |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `qwen3.7-flash` | live_verified | live_verified | live_verified | live_verified | live_verified | live_verified | live_verified（本地）；unknown（托管） | live_verified | live_verified（登记） |
+| `qwen3.8-flash` | unknown | live_verified | documented | documented | documented | documented | unknown | unknown | unknown |
+| `qwen3.8-max` | documented | documented | documented | documented | documented | documented | unknown | unknown | unknown |
+| `deepseek-v4.1-flash-1017` | unknown | live_verified | documented | documented | documented | documented | unknown | unknown | unknown |
+| `deepseek-v4.1-flash` | unknown | live_verified | documented | unknown | unknown | unknown | unknown | unknown | unknown |
+
+第 9 节的 `qwen3.8-max` 账号限制 `HTTP_403` 原样保留，本轮未调用。工具能力的 `live_verified` 对应实际调用及返回，不代表对现行条款、完整回答或项目结果的语义验收。
+
+| 当前模型能力 | 代表性回执、用量与结果 |
+| --- | --- |
+| 基础协议和函数回传 | Chat `bd301e2e-a2ea-9130-a205-dd1cc0bc77c9` 21/28 tokens；Responses 基础 `b46e01d4-8b79-9a10-ba93-89c57fe9df2c`；Responses 应用函数 `08912ef4-4ba3-97cf-8dfc-ba20e306e8b1` 336/135，工具结果续轮 `a74f02bb-ca93-987f-8483-416f7ce85181` 394/261。 |
+| 搜索、提取、解释器 | Responses `5d30658a-debe-9aef-9fb2-a80be46d25b2` 同轮原生搜索与提取各 1 次，7,285/2,264 tokens（缓存 1,920）。提取摘要按段内 URL 绑定。独立解释器请求 `d71cca44-25f2-9291-843a-498d7f117206` 824/166 tokens，执行 1 次，结果 1728。I1 超时仍为 `unknown`。 |
+| 企业 RAG | 修复批 run 3 发出 `knowledge_search` 与 `knowledge_get_document` 后保存 PPT 第 18 页引用。首请求 `6f480b6e-c35f-93df-a4da-dbab05856930` 4,905/312 tokens；终稿 `0a4f513f-cab4-9337-a7ae-3443a93c4bd0` 4,772/264。早期首问的企业通用限定查无，随后无据量数触发 `unsupported_model_commitment`。托管预检因缺配置停止，零托管请求。 |
+| 长期记忆 | 首次写入调用 `35607879-7405-96b3-8606-df4fd4f809b8` 3,076/89 tokens，原会话保存真实本人偏好；新咨询读回 `f812ac4c-ec67-976b-b009-9b9d66bae883` 2,683/34。 |
+| Native Workflow | `00281f19-3c85-95b9-a2d6-0d21b698ee08` 6,985/963 tokens，Responses 选择 `start_delegation`，服务端保存主卧插座跟进并给原咨询登记回执。正式核对、授权回传与图片重进另在隔离业务链验证。 |
+
+逐请求协议、配置、首稿、修复和错误随 `turn-*.json`、应用联网原始回执及供应商报告保留。终稿结构化通道由现有网关选择。真实费用在这些回执中不可得。各批统计、失败和未执行项见[集成审查](xiaok-integration-audit.md#i6-真实模型与获权知识验收limited)。

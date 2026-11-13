@@ -159,17 +159,21 @@ function inputIssues(parameters: ModelTool['parameters'], input: unknown): Input
 }
 
 /** Reuse strict application parsers. No database/provider call or value repair. */
-export function readToolInputIssue(name: string, args: string, context?: ReadToolContext, ownerScope = false, archiveAllowed = true): { code: string; feedback: string } | null {
+export function readToolInputIssue(name: string, args: string, context?: ReadToolContext, ownerScope = false, archiveAllowed = true,
+  projectStatusRead = false): { code: string; feedback: string } | null {
   const validator = validators.get(name);
   if (!validator) return null;
   const scopedMaterials = ownerScope && name === 'query_materials';
-  const tool = readToolsForContext([scopedMaterials ? ownerQuestionMaterialTool(validator.tool, archiveAllowed) : validator.tool], context)[0];
+  const boundTool = readToolsForContext([validator.tool], context)[0];
+  const tool = scopedMaterials || name === 'query_business' && projectStatusRead
+    ? ownerQuestionMaterialTool(boundTool, archiveAllowed, projectStatusRead) : boundTool;
   let input: unknown;
   try {
     try { input = JSON.parse(args); }
     catch (error) { if (!(error instanceof SyntaxError)) throw error; return feedback([{ path: '$', code: 'json', expected: 'object' }]); }
     const bound = bindReadToolInput(name, input, context);
     if (scopedMaterials) readOwnerMaterialInput(bound as Record<string, unknown>, archiveAllowed);
+    else if (name === 'query_business' && projectStatusRead) parseBusinessQuery(bound, true);
     else validator.parse(bound);
     return null;
   } catch (error) {

@@ -27,15 +27,33 @@ export async function ownerProjectIssueStatus(tx: PostgresTransaction, eid: stri
   }
   return result;
 }
-export async function constructionRead(tx: PostgresTransaction, eid: string, uid: string, leadId: string) {
-  const projects = await customerProjects(tx, eid, uid, leadId), settings = await readStageSettings(tx, eid), data: Row[] = [], lines: string[] = [];
+export async function constructionRead(tx: PostgresTransaction, eid: string, uid: string, leadId: string, currentProject?: { room: string }) {
+  const available = await customerProjects(tx, eid, uid, leadId);
+  const projects = currentProject ? available.filter(p => p.status === 'active') : available;
+  const data: Row[] = [], lines: string[] = [];
+  if (currentProject && projects.length !== 1) return { data, lines: [projects.length
+    ? '这个房屋有多个可读的施工项目，请先确认要查哪一个。'
+    : '这个房屋目前没有可查看的在施工项目。'] };
+  const settings = await readStageSettings(tx, eid);
   for (const p of projects) {
-    const stage = currentStage(p, settings.stages), contact = stage && p.status === 'active' ? await stageContact(tx, eid, p, stage.key) : null;
-    data.push({ projectId: String(p.id), leadId: String(p.lead_id), name: p.name, status: p.status, version: Number(p.version),
-      settingsVersion: settings.version, stageKey: stage?.key || null, stageName: stage?.name || null,
+    const projectId = String(p.id);
+    const roomName = currentProject?.room;
+    const room = roomName ? await rows(tx, sql`select id::text from app.construction_rooms
+      where enterprise_id=${eid} and project_id=${projectId} and name=${roomName} limit 2`) : [];
+    if (roomName && room.length !== 1) return { data, lines: [room.length
+      ? `这个项目有多个名为「${roomName}」的房间，请先确认具体房间。`
+      : `这个项目没有找到名为「${roomName}」的房间，请核对房间名称。`] };
+    const stage = currentStage(p, settings.stages);
+    const contact = !currentProject && stage && p.status === 'active' ? await stageContact(tx, eid, p, stage.key) : null;
+    const context = { projectId, leadId: String(p.lead_id), name: p.name, status: p.status, version: Number(p.version),
+      settingsVersion: settings.version, stageKey: stage?.key || null, stageName: stage?.name || null };
+    data.push(currentProject ? { ...context, roomId: room[0]?.id, roomName, progressNote: roomName ? '' : p.progress_note } : {
+      ...context,
       visitReminder: stage?.visitReminder || false, visitReason: stage?.visitReason || '', watchPoints: stage?.watchPoints || '',
       progressNote: p.progress_note, contactAvailable: !!contact, contactName: contact?.name || '' });
-    const records = await rows(tx, sql`select id::text from app.construction_site_records where enterprise_id=${eid} and project_id=${String(p.id)} and status='published' and audience='customer' order by published_at desc,id desc limit 10`);
+    const records = currentProject && !room.length ? [] : await rows(tx, sql`select id::text from app.construction_site_records where enterprise_id=${eid} and project_id=${projectId}
+      and status='published' and audience='customer' ${room.length ? sql`and room_id=${String(room[0].id)}` : sql``}
+      order by published_at desc,id desc limit 10`);
     const published = [];
     for (const candidate of records) {
       const r = await publishedSiteRecord(tx, eid, uid, String(candidate.id));
@@ -46,6 +64,12 @@ export async function constructionRead(tx: PostgresTransaction, eid: string, uid
     }
     const project = data[data.length - 1];
     project.records = published;
+    if (currentProject) {
+      lines.unshift(stage ? `团队标记的当前节点：${stage.name}。${roomName ? '' : String(p.progress_note || '')}`
+        : '团队尚未标记实际施工节点。');
+      if (roomName && !published.length) lines.push(`本次未查到「${roomName}」已向你发布的现场记录。`);
+      continue;
+    }
     if (collaborationEnabled(eid) && p.status === 'active') {
       const schedule = await readSchedule(tx, eid, p, settings.stages, { customerId: uid });
       const issues = await ownerProjectIssueStatus(tx, eid, uid, String(p.id));
@@ -133,8 +157,9 @@ export async function constructionMessageActions(tx: PostgresTransaction, actor:
     where m.enterprise_id=${actor.enterpriseId} and m.conversation_id=${cid} and m.id=${mid} and m.purpose='construction.stage'`);
   const business = notice ? null : await one(tx, sql`select s.private_checkpoint from app.assistant_messages m join app.assistant_run_steps s on s.enterprise_id=m.enterprise_id and s.run_id=m.run_id
     where m.enterprise_id=${actor.enterpriseId} and m.conversation_id=${cid} and m.id=${mid} and s.kind='agent_business_result'`);
-  const snapshot = business?.private_checkpoint as { query?: { domain?: string }; data?: Row[] } | undefined;
-  const sources = notice ? [notice.payload as Row] : snapshot?.query?.domain === 'construction' ? snapshot.data || [] : [];
+  const snapshot = business?.private_checkpoint as { query?: { domain?: string; currentProject?: unknown }; data?: Row[] } | undefined;
+  const sources = notice ? [notice.payload as Row]
+    : snapshot?.query?.domain === 'construction' && !snapshot.query.currentProject ? snapshot.data || [] : [];
   const projects = sources.length ? await customerProjects(tx, actor.enterpriseId, actor.principal.userId) : [];
   const actions = [];
   for (const source of sources) {

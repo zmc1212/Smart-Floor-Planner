@@ -4,6 +4,7 @@ import { parseMaterialQuery } from './materials';
 
 export const ownerQuestionScopeProtocol = 'owner-question-scope-v1';
 export const ownerArchiveReadProtocol = 'owner-archive-read-v1';
+export const ownerProjectStatusReadProtocol = 'owner-project-status-read-v1';
 const choices = ['materials', 'site', 'knowledge_and_site'] as const;
 type Scope = typeof choices[number];
 const projectReadTools = new Set(['query_business', 'query_followups', 'restore_sources']);
@@ -19,8 +20,8 @@ export function ownerArchiveReadRequested(question: string): boolean {
   return /(?:图纸|平面图|点位图|户型图|户型档案|资料|原记录|发布记录|原件|档案|正式方案|正式版本|预约记录|客户需求|需求原话)(?:和(?:客户)?需求)?(?:给我|好吗|可以吗|吗)?$/u.test(target);
 }
 
-export function ownerReadToolAllowed(name: string, archiveAllowed: boolean): boolean {
-  return archiveAllowed || !projectReadTools.has(name);
+export function ownerReadToolAllowed(name: string, archiveAllowed: boolean, projectStatusRead = false): boolean {
+  return archiveAllowed || !projectReadTools.has(name) || projectStatusRead && name === 'query_business';
 }
 export type OwnerQuestionIdentity = {
   enterpriseId: string;
@@ -31,13 +32,19 @@ export type OwnerQuestionIdentity = {
   question: string;
 };
 
-export function ownerQuestionMaterialTool(tool: ModelTool, archiveAllowed = true): ModelTool {
+export function ownerQuestionMaterialTool(tool: ModelTool, archiveAllowed = true, projectStatusRead = false): ModelTool {
+  if (tool.name === 'query_business' && projectStatusRead) return { ...tool,
+    description: '读取本咨询绑定房屋的当前施工节点。问某个房间的实际进度或处理结果时，传明确的房间名，仅查团队已向业主发布的现场记录。询问点位、施工安排或批准时走现场分流。',
+    parameters: { ...tool.parameters, properties: { ...tool.parameters.properties as object,
+      domain: { type: 'string', enum: ['construction'] }, room: { type: 'string', maxLength: 40 } } },
+  };
   if (tool.name === 'search_knowledge' && !archiveAllowed)
     return { ...tool, description: '查询当前独立装修知识问项的获权企业做法、标准和适用条件，返回可追溯原文。现场确认与独立知识混合时，先按现场确认分流，再查知识问项。' };
   if (tool.name !== 'query_materials') return tool;
   return { ...tool,
     description: '本人项目问项先分范围。' + (archiveAllowed ? '索取获权正式档案或原记录用 materials。' : '本轮项目档案读取未开放。')
-      + '进度、排期、实际点位、两张图不一致待现场决定等用 site；如果同时明确追问通用工艺、核对步骤或企业标准，用 knowledge_and_site。承接上一问只补充房间和实际差异时按当前新增问项判断，不把之前已经回答的清单再算作新问题。只有知识的问题用 search_knowledge，不查本人材料。',
+      + (projectStatusRead ? '已发布施工节点和房间进度使用 query_business。' : '进度用 site。')
+      + '排期、实际点位、两张图不一致待现场决定等用 site；如果同时明确追问通用工艺、核对步骤或企业标准，用 knowledge_and_site。承接上一问只补充房间和实际差异时按当前新增问项判断，不把之前已经回答的清单再算作新问题。只有知识的问题用 search_knowledge，不查本人材料。',
     parameters: { ...tool.parameters,
       properties: { ...tool.parameters.properties as object, scope: { type: 'string', enum: choices.filter(scope => archiveAllowed || scope !== 'materials') } },
       required: [...tool.parameters.required as string[], 'scope'] },

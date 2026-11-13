@@ -6,6 +6,8 @@
 **小K公开资料（Limited）。** C01 及获权项目或跟进会话可按需搜索、读取公开原文。完整重进和原引用接口 `GET /api/miniprogram/assistant/citations/:id` 重新核对来源，再返回已存原句、网址及读取时间。原文变化、删除或暂时无法访问时沿既有来源失效反馈。隔离会话已完成真实官方网页回读，现行规范回答和原生来源旅程仍为 Limited。[I6 验证](xiaok-integration-audit.md#i6-真实模型与获权知识验收limited)。
 <!-- /xiaok-r3-web-tools -->
 
+**C01 本人项目进度。** 业主沿原输入框查询咨询绑定的唯一在施工项目的实际节点，也可追问指定房间已向本人发布的记录。历史重进复核访问权及来源版本。现场确认与正式图纸继续沿既有入口。I6 Stable 已打开实模保存的 PPT 引用，实际发送两条进度问题并重进读回。另一原咨询重进读到正式结果、授权原图和委托状态。[集成审查](xiaok-integration-audit.md#i66-业务回传与工程检查)。
+
 <!-- cross-role-business-current -->
 **B5.9 四端项目协同（Limited）。** 业主从原 C01 咨询读取对客发布的现场记录、精确方案决定和获准的复核回执。工地详情与项目简报（`packages/construction/projects/projects`、`packages/construction/brief/brief`）读取服务端计划及事项计数。设计师打开事项核对当前材料及专业处理状态，施工人员查看当前获批要求，并从原工地交流（`packages/construction/chat/chat`）回传。计划绿、黄、红、灰依次对应提前、正常、落后、待核实或未排期。事项使用原回复卡和原件入口，显示同一事项 ID 与当前复核状态。重进及原详情定时刷新均重新读取服务端。
 

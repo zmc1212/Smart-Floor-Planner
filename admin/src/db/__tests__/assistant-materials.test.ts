@@ -32,7 +32,10 @@ const output = (name: string, args: unknown): ModelTurnOutput => ({ text: '', to
   name === 'record_need' ? { ...(args as Record<string, unknown>), additionalNeeds: [] } : args) }],
   usage: { inputTokens: 20, outputTokens: 20 }, finishReason: 'tool_calls', providerRequestId: null });
 before(async () => {
-  const url = new URL(resolvePostgresRuntimeConfig().connectionString); assert.equal(url.port, '55432'); assert.equal(url.pathname, '/xiaok_embedding_eval');
+  const url = new URL(resolvePostgresRuntimeConfig().connectionString);
+  assert.ok(['localhost','127.0.0.1'].includes(url.hostname));
+  assert.equal(url.port, process.env.XIAOK_ISOLATED_POSTGRES_PORT || '55432');
+  assert.equal(url.pathname, '/xiaok_embedding_eval');
   if (live) {
     const primary = new URL(process.env.XIAOK_MATERIALS_PRIMARY_DATABASE_URL || '');
     assert.ok(['localhost', '127.0.0.1'].includes(primary.hostname)); assert.equal(primary.port, '5432'); assert.equal(primary.pathname, '/smart_floor_planner');
@@ -47,7 +50,7 @@ before(async () => {
   await withPlatformTransaction(async tx => { for (let i = 0; i < 2; i++) tenants.push(String((await one(tx, sql`insert into app.enterprises(name,code,status) values(${prefix + i},${prefix + i},'active') returning id`))!.id)); });
   for (const eid of tenants) await withTenantTransaction(eid, tx => tx.execute(sql`insert into app.assistant_enterprise_settings
     (enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days,agent_config)
-    values(${eid},true,1000,12000000,1000000000,30,'{"runtime":"langgraph-v1","providerKey":"deepseek","model":"deepseek-flash","tools":true,"imageInput":false,"probeVersion":"p2m0-synthetic-v1"}'::jsonb)`));
+    values(${eid},true,1000,12000000,1000000000,30,'{"runtime":"langgraph-v1","providerKey":"deepseek","model":"deepseek-flash","tools":true,"imageInput":false,"enterpriseKnowledgeEnabled":true,"probeVersion":"p2m0-synthetic-v1"}'::jsonb)`));
 });
 after(async () => {
   try { await withPlatformTransaction(async tx => {
@@ -141,7 +144,9 @@ test('a site clarification uses the fixed referral without reading materials or 
     const route = tools.find(tool => tool.name === 'query_materials')!;
     assert.deepEqual((route.parameters.properties as Record<string, unknown>).scope,
       { type: 'string', enum: ['site', 'knowledge_and_site'] });
-    assert.equal(tools.some(tool => ['query_business', 'query_followups'].includes(tool.name)), false);
+    const progress = tools.find(tool => tool.name === 'query_business')!;
+    assert.deepEqual((progress.parameters.properties as Record<string, unknown>).domain, { type: 'string', enum: ['construction'] });
+    assert.equal(tools.some(tool => tool.name === 'query_followups'), false);
     assert.doesNotMatch(JSON.stringify(messages), /结合现场资料核对时，优先用query_materials|问本人项目的工地进度、施工节点/);
     if (turn === 0) return output('query_materials', { room: '客餐厅', scope: 'materials' });
     assert.match(JSON.stringify(messages), /invalid_arguments/);
@@ -188,7 +193,7 @@ test('a bound coordination scope rejects an unadvertised project read even in th
     const turns: number[] = [];
     const result = await x.send('书房两个点位对不上，现场能定吗？还有图纸版本一般怎么核对？', async (_messages, _tools, turn) => {
       turns.push(turn);
-      const read = output('query_business', { domain: 'construction' });
+      const read = output('query_followups', {});
       if (turn > 0) return read;
       const scope = output('query_materials', { room: '书房', scope: 'knowledge_and_site' });
       return sameBatch ? { ...scope, toolCalls: [...scope.toolCalls, ...read.toolCalls] } : scope;

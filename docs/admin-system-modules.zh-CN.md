@@ -6,6 +6,8 @@
 **小K公开联网工具（Limited）。** `ASSISTANT_WEB_SEARCH_TOOLS=1` 在合资格的会话中经现有分派器启用搜索与读页，调用受租户、参与人和工具权限约束。模型收到候选元数据，成功读取的原文随运行保存网址、标题、读取时间和引用定位。完整历史、打开引用及 LangGraph 祖先来源复用通过原 reader 重新核对。I6 已完成真实搜索和官方 HTML 原文回读，现行性和多轮质量仍待验证。[协议、配置与验证](bailian-responses-adapter.md#11-r3-应用联网搜索)。
 <!-- /xiaok-r3-web-tools -->
 
+**小K业主项目进度。** 现有 Construction 读适配器从业主咨询绑定的唯一在施工项目读取实际节点。指定房间时仅取向该业主发布的对应房间记录。已存答复重进复查来源及版本。图纸、现场决定沿原流程处理。[集成合同](xiaok-integration-contract.md)。
+
 <!-- cross-role-business-current -->
 **B5.9 四端项目协同（Limited）。** 员工工地详情和简报读取同一事项流和计划投影。后台和小程序在原 API 前缀下通过 `GET/POST /construction/projects/:id/schedule` 读取或发布带日期的计划，已指派的项目经理携带 `expectedVersion` 发布。原现场记录发布接口可带 `scheduleCompletion: { nodeKey, expectedVersion }`，明确核实某房间节点完成。实际施工节点、计划颜色和施工问题状态分别引用各自的证据，保留事件及记录版本。
 

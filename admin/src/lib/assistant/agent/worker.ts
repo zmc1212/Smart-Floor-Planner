@@ -96,7 +96,7 @@ import { currentMessageOnlyRequested, currentMessageFinalTool, currentMessageRep
 import { independentAdviceContextProtocol } from './independent-advice-context';
 import { compileModelRequest, type ModelRequestPurpose } from './model-request';
 import { homeSourceViewProtocol, knowledgeSynthesisReadInstructions } from './home-source-view';
-import { ownerArchiveReadProtocol, ownerArchiveReadRequested, ownerQuestionMaterialTool, ownerQuestionScope, ownerQuestionScopeProtocol,
+import { ownerArchiveReadProtocol, ownerArchiveReadRequested, ownerProjectStatusReadProtocol, ownerQuestionMaterialTool, ownerQuestionScope, ownerQuestionScopeProtocol,
   ownerReadToolAllowed, readOwnerMaterialInput, readOwnerQuestionScope } from './owner-question-scope';
 import { consultationAcceptanceProfile } from '../contracts/consultation';
 import { consultationRequestReservation, reserveConsultationDispatch, settleConsultationDispatch } from './consultation-usage';
@@ -922,6 +922,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         question: reviewContext.currentQuestion } : undefined;
     const ownerArchiveBound = !!ownerScopeIdentity && (initial.run.policy_snapshot as Row).ownerArchiveRead === ownerArchiveReadProtocol;
     const archiveAllowed = !ownerArchiveBound || ownerArchiveReadRequested(reviewContext.currentQuestion);
+    const projectStatusRead = !archiveAllowed && !!readContext?.leadId && !homeEntry.activePublicSite
+      && (initial.run.policy_snapshot as Row).ownerProjectStatusRead === ownerProjectStatusReadProtocol;
     const ownerCitationCarrier = ownerArchiveBound && (initial.run.policy_snapshot as Row).ownerCitationCarrier === ownerCitationCarrierProtocol;
     const ownerScopeForRun = async (tx: Parameters<typeof runContext>[0]) => {
       if (!ownerScopeIdentity) return null;
@@ -1021,8 +1023,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       const offered = registerReads(review ? reviewMode !== 'propose' ? []
         : designerOnly ? reviewDefinitions.filter(tool => tool.name === 'propose_designer_reception')
         : [...base.filter(tool => !['record_need', 'request_designer'].includes(tool.name)), ...reviewDefinitions]
-        : ownerScopeIdentity ? base.filter(tool => ownerReadToolAllowed(tool.name, archiveAllowed))
-          .map(tool => ownerQuestionMaterialTool(tool, archiveAllowed)) : base);
+        : ownerScopeIdentity ? base.filter(tool => ownerReadToolAllowed(tool.name, archiveAllowed, projectStatusRead))
+          .map(tool => ownerQuestionMaterialTool(tool, archiveAllowed, projectStatusRead)) : base);
       if (!initial.r5 || review || nativeWorkflow || !initial.config.tools) return offered;
       // The bounded memory snapshot already supplies this answer. Keep the
       // verified final-only carrier for the structured reply.
@@ -1125,7 +1127,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             difyDialogue: initial.difyDialogue,
             question: reviewContext.currentQuestion, triggerId: String(initial.trigger.id), turn, purpose,sourceExcerpts:sourceMode.sourceExcerpts,requiredKnowledge:sourceMode.requiredKnowledge,sourceQuestionCoverage:sourceMode.sourceQuestionCoverage,knowledgeExplanation:sourceMode.knowledgeExplanation,naturalKnowledge:sourceMode.naturalKnowledge,
             messages:nativeFinalization&&purpose==='answer'&&tools.length?nativePlanningMessages(messages, completion ? reviewCompletionInstructions : undefined)
-              : purpose === 'answer' && !archiveAllowed ? ownerNoArchivePolicy(claimMessages) : claimMessages,
+              : purpose === 'answer' && !archiveAllowed ? ownerNoArchivePolicy(claimMessages, projectStatusRead) : claimMessages,
             tools, reportPlan, homeSourceView,
             toolsForTurn:(question,current,available,triggerId)=>{
               if (ownerReads?.ownerScope === 'knowledge_and_site') {
@@ -1880,12 +1882,12 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           });
         },
         model: callModel,
-        validateTool: (name, args) => readToolInputIssue(name, args, readContext, !!ownerScopeIdentity, archiveAllowed),
+        validateTool: (name, args) => readToolInputIssue(name, args, readContext, !!ownerScopeIdentity, archiveAllowed, projectStatusRead),
         tool: async (turn, index, name, args, callId) => {
           const webTool = isWebTool(name), ragTool = isKnowledgeTool(name);
           if (!initial.knowledgeEnabled && (ragTool || ['search_knowledge','recommend_references','record_reference_preference'].includes(name))) fail('enterprise_knowledge_disabled', 403);
           if (constructionReadOnlyTools(String(initial.conversation.purpose), true, reportQuestionPlanning, coordinationReferral, publicKnowledge)?.every(tool => tool.name !== (webTool ? 'search_web' : ragTool ? 'search_knowledge' : name))) fail('assistant_capability_forbidden',403);
-          if (!ownerReadToolAllowed(name, archiveAllowed)) fail('assistant_capability_forbidden', 403);
+          if (!ownerReadToolAllowed(name, archiveAllowed, projectStatusRead)) fail('assistant_capability_forbidden', 403);
           if (ownerScopeIdentity && name !== 'query_materials') {
             const scope = await scoped(tx => ownerScopeForRun(tx));
             if (scope === 'site' || scope === 'knowledge_and_site' && !ownerKnowledgeTools.has(name)) fail('assistant_capability_forbidden', 403);
@@ -2139,7 +2141,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             });
           }
           if (name === 'query_business') {
-            const requested = parseBusinessQuery(input);
+            const requested = parseBusinessQuery(input, projectStatusRead);
             return scoped(async (tx, context) => {
               const entry = context.conversation.entry_snapshot as Row;
               const boundLead = entry.kind === 'lead' ? String(entry.id) : '';
@@ -2152,7 +2154,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                 return { content: JSON.stringify({ resultKey, ...snapshot, synthesisSources: businessSynthesisSources(resultKey, snapshot) }) };
               }
               const snapshot = await queryBusiness(tx, lease.actor, query, String(context.conversation.id));
-              if (query.domain === 'construction') {
+              if (query.domain === 'construction' && !query.currentProject) {
                 for (const project of snapshot.data as Row[]) await tx.execute(sql`insert into app.construction_links(enterprise_id,project_id,conversation_id)
                   values(${lease.enterpriseId},${String(project.projectId)},${String(initial.conversation.id)}) on conflict do nothing`);
               }

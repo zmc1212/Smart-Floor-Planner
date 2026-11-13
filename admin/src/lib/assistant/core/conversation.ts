@@ -35,7 +35,7 @@ import { knowledgePolicy, enterpriseKnowledgeEnabled } from '../knowledge-policy
 import { knowledgeToolProtocol } from '../knowledge/rag-tools';
 import { homeSourceBudgetProtocol } from '../agent/home-source-budget';
 import { homeSourceViewProtocol } from '../agent/home-source-view';
-import { ownerArchiveReadProtocol, ownerQuestionScopeProtocol } from '../agent/owner-question-scope';
+import { ownerArchiveReadProtocol, ownerProjectStatusReadProtocol, ownerQuestionScopeProtocol } from '../agent/owner-question-scope';
 import { ownerCitationCarrierProtocol } from '../agent/final-output';
 import { reportBodyFinalPolicy, reportNativeAdmission, reportNativeFinalProtocol, reportFinalFunctionCarrier, reportStructuralFinalSchema } from '../agent/report-native-final';
 import { reportFinalOutputTokenLimit } from '../contracts/model';
@@ -269,6 +269,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
         ? { homeSourceBudget: homeSourceBudgetProtocol, siteObservationReferral: siteObservationReferralProtocol,
           drawingChecklistRead: drawingChecklistReadProtocol, homeSourceView: homeSourceViewProtocol,
           ownerQuestionScope: ownerQuestionScopeProtocol, ownerArchiveRead: ownerArchiveReadProtocol,
+          ownerProjectStatusRead: ownerProjectStatusReadProtocol,
           ...(agent.providerKey === 'dashscope' && agent.model === 'qwen3.8-flash' ? { ownerCitationCarrier: ownerCitationCarrierProtocol } : {}) } : {}),
       ...(agent && purpose === 'reply' && c.purpose === 'customer_consultation' && delegationsEnabled(actor.enterpriseId) ? { longTermMemory: true } : {}),
       ...(reviewRuntime ? { reviewRuntime } : {}) })}::jsonb,${Number(c.context_revision)},${Number(settings.knowledge_epoch)}) returning *`))!;

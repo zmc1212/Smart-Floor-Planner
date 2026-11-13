@@ -39,6 +39,9 @@ const liveModel = process.argv.includes('--live-model');
 const hosted = process.argv.includes('--hosted');
 const localKnowledge = process.argv.includes('--local-knowledge') || liveModel && !hosted;
 const durableAcceptance = process.argv.includes('--durable-integration');
+const i6Dialogue = process.argv.includes('--i6-dialogue');
+const i6ProjectStatus = process.argv.includes('--i6-project-status');
+const i6Search = i6Dialogue && process.env.ASSISTANT_WEB_SEARCH_TOOLS === '1';
 const mock = !localKnowledge && !hosted ? mockBailianRag() : null;
 const label = process.argv.find(arg => arg.startsWith('--label='))?.slice(8) ?? randomUUID();
 const target = new URL(process.env.XIAOK_R6_DATABASE_URL ?? 'http://missing');
@@ -100,6 +103,7 @@ async function configure() {
   process.env.AI_ASSET_STORAGE_DIR = output + '/media';
   for (const key of ['ASSISTANT_TEXT_MODEL','ASSISTANT_NATIVE_TOOLS','ASSISTANT_WEB_SEARCH_TOOLS','XIAOK_FASTGPT_WORKFLOWS_FILE',
     'XIAOK_FASTGPT_RAG_FILE','XIAOK_FASTGPT_RETRIEVAL_FILE','ASSISTANT_REVIEW_DEVELOPMENT_ENTERPRISE_IDS']) delete process.env[key];
+  if (i6Search) process.env.ASSISTANT_WEB_SEARCH_TOOLS = '1';
   const db = await withPlatformTransaction(async tx => {
     const identity = await one(tx, sql`select current_database() as name,current_user as role,
       (select rolsuper or rolbypassrls from pg_roles where rolname=current_user) as bypass,
@@ -146,7 +150,7 @@ async function fixture(name: string, tenant = eid) {
   const [bossActor, designerActor, workerActor] = staff;
   const construction = new ConstructionService(bossActor);
   const pid = String((await construction.execute('create', { leadId: lead, name: tag, managerId: bossActor.adminId,
-    rooms: ['卫生间','厨房'] }, randomUUID())).id);
+    rooms: i6Dialogue || i6ProjectStatus ? ['卫生间', '厨房', '主卧'] : ['卫生间', '厨房'] }, randomUUID())).id);
   const change = async (action: string, values: Row) => {
     const p = (await construction.execute('detail', { projectId: pid })).project as Row;
     return construction.execute(action, { projectId: pid, expectedVersion: Number(p.version), ...values }, randomUUID());
@@ -184,9 +188,9 @@ async function finishKnowledge(kb: KnowledgeService, jobId: string) {
   assert.fail('knowledge indexing did not finish');
 }
 
-async function publishStandard(f: Fixture, audience = 'customer_public') {
+async function publishStandard(f: Fixture, audience = 'customer_public', projectId: string | null = f.pid) {
   const created = await f.kb.execute('createFile', { title: standard.title + ' · R6 合成',
-    audience, projectId: f.pid, category: '施工标准', fileName: 'r6-ppt-craft-18.md',
+    audience, ...(projectId ? { projectId } : {}), category: '施工标准', fileName: 'r6-ppt-craft-18.md',
     fileBase64: Buffer.from('# PPT 第18页\n\n' + standard.body).toString('base64'), authorization: 'R6 隔离验收 PPT 已核摘录' }, randomUUID());
   const doc = created.document as Row, draft = created.draft as Row;
   const version = { documentId: String(doc.id), versionId: String(draft.id), expectedVersion: Number(doc.version),
@@ -235,6 +239,16 @@ async function turn(f: Fixture, text: string, cid = f.cid) {
   if (liveModel) await processAnswer(lease!);
   else await processAgentAnswer(lease!, { model: async (messages, tools, step, actual) => {
     const offered = actual ?? tools;
+    if (text === i6Journeys.C[0] || text === i6Journeys.C[1]) {
+      if (step === 0) {
+        const read = offered.find(tool => tool.name === 'query_business');
+        assert.deepEqual((read?.parameters.properties as Row)?.domain, { type: 'string', enum: ['construction'] });
+        return outputOf('query_business', { domain: 'construction', ...(text === i6Journeys.C[1] ? { room: '主卧' } : {}) });
+      }
+      const packet = messages.findLast(message => message.role === 'tool');
+      assert.ok(packet?.role === 'tool');
+      return outputOf('final_response', { kind: 'business', resultKey: JSON.parse(packet.content).resultKey });
+    }
     if (step === 0 && text === question) return outputOf('knowledge_search', { query: '卫生间防水施工和后续检查' });
     if (step === 0 && text === preference) return outputOf('manage_long_term_memory', { action: 'remember', category: 'preference',
       topic: '沟通方式', quote: preference, value: '先告诉我结论，再说细节' });
@@ -265,9 +279,9 @@ async function turn(f: Fixture, text: string, cid = f.cid) {
     run: await one(tx, sql`select status,output_message_id::text,error_code from app.assistant_runs where enterprise_id=${f.tenant} and id=${String(sent.runId)}`),
     steps: await rows(tx, sql`select kind,capability_name,status,input_summary,private_checkpoint,source_refs from app.assistant_run_steps
       where enterprise_id=${f.tenant} and run_id=${String(sent.runId)} order by step_seq`),
-    attempts: await rows(tx, sql`select status,error_code,remote_model,metadata from app.ai_provider_attempts
+    attempts: await rows(tx, sql`select id::text,status,accepted,error_code,remote_model,metadata from app.ai_provider_attempts
       where enterprise_id=${f.tenant} and assistant_run_id=${String(sent.runId)} order by id`),
-    usage: await rows(tx, sql`select category,quantity,measurement_kind from app.assistant_usage_records
+    usage: await rows(tx, sql`select category,quantity,measurement_kind,input_tokens,output_tokens,cost_micros from app.assistant_usage_records
       where enterprise_id=${f.tenant} and run_id=${String(sent.runId)} order by id`),
   }));
   const messages = (await f.chat.messages(cid, undefined, 100)).items as Row[];
@@ -276,6 +290,90 @@ async function turn(f: Fixture, text: string, cid = f.cid) {
   assert.equal(ledger.run?.status, 'succeeded', json(ledger.run));
   assert.ok(answer?.available, 'Saved answer unavailable');
   return { sent, answer, ledger };
+}
+
+const i6Journeys = {
+  A: ['卫生间水管根部为什么需要单独处理？', '处理完以后，什么情况下才可以做防水？', '防水做完以后，满足什么条件才能继续铺砖？'],
+  B: ['我们公司卫生间防水标准是什么？', '这个和国家通用要求有什么区别？'],
+  C: ['我家现在水电做到哪一步了？', '主卧的水管问题解决了吗？'],
+  D: ['这个插座位置是不是需要设计师确认？', '麻烦帮我跟进主卧床头插座位置，让设计师核对一下。'],
+  E: ['厨房的水管根部处理完以后，什么时候可以做防水？', '刚才说的是卫生间，不是厨房。'],
+  memory: [preference, recall],
+} as const;
+
+async function i6Conversations(f: Fixture, version: Draft) {
+  const master = await capture(f, '主卧', false);
+  await publishRecord(f, master.id);
+  const otherRoom = await capture(f, '厨房', true);
+  await publishRecord(f, otherRoom.id);
+  const selected = process.argv.find(arg => arg.startsWith('--scenes='))?.slice(9).split(',') ?? Object.keys(i6Journeys);
+  assert.ok(selected.length && selected.every(scene => Object.hasOwn(i6Journeys, scene)));
+  const results: Row[] = [];
+  for (const [scene, inputs] of Object.entries(i6Journeys)) {
+    if (!selected.includes(scene)) continue;
+    const cid = String((await f.chat.create(randomUUID())).id);
+    const sceneResults = inputs.map(input => ({ input, result: 'not_run', cid, runId: null as string | null }));
+    if (scene === 'D') {
+      const pending = await send(f, '共享主卧需求：我想调整主卧床头插座位置，请项目团队看看。', cid);
+      assert.equal(pending.runId, null);
+      save('scene-d-fixture', { cid, sourceMessageId: pending.messageId });
+    }
+    for (const [index, input] of inputs.entries()) {
+      const conversationId = scene === 'memory' && index === 1 ? String((await f.chat.create(randomUUID())).id) : cid;
+      const row = sceneResults[index];
+      row.cid = conversationId;
+      try {
+        const result = await turn(f, input, conversationId);
+        row.runId = String(result.sent.runId);
+        row.result = 'saved_for_semantic_review';
+        if (scene === 'E') assert.equal((await read(f, conversationId)).memories.length, 0);
+        if (scene === 'D' && index === 1) {
+          await tick();
+          const task = (await read(f, conversationId)).delegations.find(item => String(item.title).includes('主卧'));
+          assert.ok(task && ['waiting_for_designer', 'waiting_for_authorization'].includes(String(task.status)), json(task));
+        }
+        if (scene === 'memory' && index === 1) {
+          assert.ok((await read(f, conversationId)).memories.some(item => item.category === 'preference'
+            && item.sourceConversationId === cid));
+        }
+      } catch (error) {
+        const last = await f.chat.detail(conversationId);
+        row.runId = last.latestRun?.id == null ? null : String(last.latestRun.id);
+        row.result = last.latestRun?.status === 'indeterminate' ? 'unknown' : 'failed';
+        console.error('I6', scene, index + 1, row.result, String(error));
+        if (scene !== 'E' || row.result === 'unknown') break;
+      }
+    }
+    results.push({ scene, turns: sceneResults });
+    console.log('I6', scene, sceneResults.map(row => row.result).join(','));
+  }
+  save('fixed-conversations', { results, knownProject: { id: f.pid, masterRecordId: master.id, otherRoomRecordId: otherRoom.id, rooms: f.room },
+    ownerId: f.uid, knowledge: version, actualCost: 'unavailable' });
+  if (results.some(result => (result.turns as { result: string }[]).some(row => row.result !== 'saved_for_semantic_review')))
+    process.exitCode = 1;
+}
+
+async function projectStatusFixture(f: Fixture) {
+  const master = await capture(f, '主卧', false);
+  await publishRecord(f, master.id);
+  const kitchen = await capture(f, '厨房', true);
+  await publishRecord(f, kitchen.id);
+  const first = await turn(f, i6Journeys.C[0]);
+  assert.match(safeText(first.answer.content as MessageContent), /团队正在做用水管路/);
+  const second = await turn(f, i6Journeys.C[1]);
+  const answer = safeText(second.answer.content as MessageContent);
+  assert.match(answer, /主卧.*水管根部|水管根部.*待核对/u);
+  assert.doesNotMatch(answer, /厨房|水管根部已完成/u);
+  assert.ok((await f.chat.messages(f.cid)).items.some(item => item.id === second.answer.id && item.available));
+  const page = await f.boss.read(f.pid);
+  await f.boss.mutate(f.pid, master.id, 'withdraw', {
+    expectedVersion: ((page.versions as Row).records as Row)[master.id], reason: 'I6 隔离验收撤回主卧记录',
+  }, randomUUID());
+  const history = await f.chat.messages(f.cid);
+  assert.ok(history.items.some(item => item.id === first.answer.id && item.available));
+  assert.ok(history.items.some(item => item.id === second.answer.id && !item.available));
+  const missing = await turn(f, i6Journeys.C[1]);
+  assert.match(safeText(missing.answer.content as MessageContent), /未查到「主卧」已向你发布的现场记录/);
 }
 
 async function interruptedOwnerTurn(f: Fixture) {
@@ -421,11 +519,16 @@ async function business(f: Fixture, v1: Draft, originalCitation: string) {
         && error.code === 'retrieval_unavailable' && error.providerCode === 'bailian_knowledge_not_configured'
         && error.outcomeKnown && error.requestId === null);
     } finally {
-      for (const [key, value] of [
-        ['ASSISTANT_KNOWLEDGE_PROVIDER', saved.mode], ['ASSISTANT_BAILIAN_RAG_WORKSPACE_ID', saved.workspace],
-        ['ASSISTANT_BAILIAN_RAG_API_KEY', saved.key],
-      ]) if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      const original = { ASSISTANT_KNOWLEDGE_PROVIDER: saved.mode, ASSISTANT_BAILIAN_RAG_WORKSPACE_ID: saved.workspace,
+        ASSISTANT_BAILIAN_RAG_API_KEY: saved.key };
+      for (const [key, value] of Object.entries(original)) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
     }
+  });
+  if (i6ProjectStatus) await check('业主进度、房间记录隔离及撤回重进', async () => {
+    assert.ok(!liveModel && localKnowledge);
+    await projectStatusFixture(await fixture('I6 获权项目进度'));
   });
   const document = await publishStandard(f, 'staff_internal');
   await publishStandard(foreign);
@@ -690,6 +793,12 @@ async function main() {
       requestId: result.requestId, libraryCount: result.value.length,
     }));
     report.database = await configure();
+    if (i6Dialogue) {
+      assert.ok(liveModel && localKnowledge);
+      const f = await fixture('I6 固定自然对话');
+      await i6Conversations(f, await publishStandard(f, 'customer_public', null));
+      return;
+    }
     let errors = 0;
     for (const round of liveModel ? [1, 2] : [1]) {
       const f = await fixture('防水业务旅程 ' + round);

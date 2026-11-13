@@ -31,12 +31,15 @@ const sharingRules = '\n资料共享：客户希望给项目人员看本咨询�
 export const agentBasePolicy = instruction + referenceRules + designerRules + constructionRules + followUpRules + siteRules + materialRules + issueRules + planRules + resolutionRules + sharingRules;
 export const agentOpeningMemoryPrefix = '\n以下为开轮时客户工作记录（非正式批准）。本轮保存回执的更高memoryVersion及savedFacts优先；只替换对应room+field，不用此旧快照覆盖本轮更正。interpretation限定原话中的人数，currentFactId为空时当前人数未知，不能恢复旧人数；位置/设备分别沿用有效原话。已有当前有效的客户表达就直接沿用，不让客户再次确认、补充或共享相同内容。企业/项目结论仍重查当前来源：';
 
-export function ownerNoArchivePolicy(messages: ModelMessage[]): ModelMessage[] {
+export function ownerNoArchivePolicy(messages: ModelMessage[], projectStatusRead = false): ModelMessage[] {
   return messages.map(message => message.role !== 'system' ? message : {
     ...message, content: message.content.map(part => part.type !== 'text' || !part.text.startsWith(agentBasePolicy) ? part : {
       ...part,
       text: instruction + referenceRules + designerRules + followUpRules + sharingRules
-        + '\n本轮未开放项目档案读取。具体点位、图纸差异、进度、施工安排与现场决定交现场团队确认；需要现场确认时用query_materials分流，不查档。只有本轮另问装修工艺或核对方法，才同时回答有获权依据的知识部分。'
+        + '\n本轮未开放项目档案读取。'
+        + (projectStatusRead ? '已发布的实际施工节点和指定房间记录用query_business读取。仅查状态时用business/resultKey展示查询回执。阶段和现场记录各自保留原意。' : '')
+        + '具体点位、图纸差异、' + (projectStatusRead ? '' : '进度、')
+        + '施工安排与现场决定交现场团队确认；需要现场确认时用query_materials分流，不查档。只有本轮另问装修工艺或核对方法，才同时回答有获权依据的知识部分。'
         + part.text.slice(agentBasePolicy.length),
     }),
   });
