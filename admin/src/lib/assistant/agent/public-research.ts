@@ -16,7 +16,7 @@ export type PublicReadDocument = { version: 1; url: string; title: string; parse
   mediaType: string; pages: Array<{ page: number; text: string; status?: 'text' | 'ocr_required' | 'blank' | 'unreadable' }>;
   links: Array<{ url: string; title: string }>;
   redirects: Array<{ from: string; to: string; status: number }>;
-  original: { sha256: string; bytes: number; base64: string }; egress: string; tlsVerification: true };
+  original: { sha256: string; bytes: number; base64: string; etag?: string }; egress: string; tlsVerification: true };
 export type PublicResearchState = { version: 1; startedAt: string; queries: WebQuery[];
   visited: string[]; reads: number; navigation: Array<{ url: string; parent: string | null; depth: number; outcome: string }>;
   refinements?: Array<{ query: WebQuery; from: { url: string; title: string; alias: string } }>;
@@ -78,6 +78,7 @@ export function publicResearchTools(tools: ModelTool[], enabled: boolean, explic
       : '发现公开互联网候选，query只传公共术语/厂家/产品，不传客户姓名、电话、地址、项目编号或私聊原话。domains只能用客户明确提供或本run实际发现的域名，未知填[]，不根据品牌猜官网。返回实际候选id、标题和网址，尚未读取原文，搜索摘要不得当证据；要核实请用read_web选择实际候选。最多三个查询，与读取共用本run有界研究时限。'}),readWebTool];
 }
 const digest = (value: Buffer) => createHash('sha256').update(value).digest('hex');
+const strongEtag = /^"[^"\s]{1,200}"$/u;
 const inDomains = (url: string, domains: string[]) => !domains.length || domains.some(domain => {
   const host = new URL(url).hostname; return host === domain || host.endsWith('.' + domain);
 });
@@ -90,6 +91,7 @@ export function validPublicDocument(value: PublicReadDocument) {
     || value.egress !== 'upstream-v0.9.2-resolve-and-pin-proxy' || !value.original
     || !Number.isSafeInteger(value.original.bytes) || value.original.bytes < 1 || value.original.bytes > byteLimit
     || typeof value.original.base64 !== 'string' || value.original.base64.length > 4 * Math.ceil(byteLimit / 3)
+    || value.original.etag !== undefined && (value.mediaType !== 'application/pdf' || !strongEtag.test(value.original.etag))
     || typeof value.title !== 'string' || value.title.includes('\0') || value.title.length > 400
     || !Array.isArray(value.pages) || value.pages.length > 50
     || (!value.pages.length && !value.parseError)
@@ -109,32 +111,68 @@ export function validPublicDocument(value: PublicReadDocument) {
   } catch { return false; }
 }
 
-export async function configuredPublicRead(url: string, remainingMs: number, signal?: AbortSignal): Promise<PublicReadDocument> {
+async function readerRequest(url: string, remainingMs: number, signal?: AbortSignal, verify?: { etag?: string }) {
   publicWebUrl(url);
   // Private purpose-built reader only; never accept a URL supplied by the model
   // as the service endpoint, OS proxy credentials or arbitrary local services.
   const endpoint = publicReaderEndpoint();
   if (!endpoint) fail('web_reader_unconfigured', 503);
   const timeout = AbortSignal.timeout(Math.max(1, Math.min(remainingMs, 28000)));
-  const response = await fetch(endpoint, { method: 'POST', redirect: 'error',
-    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, remainingMs }),
-    signal: signal ? AbortSignal.any([timeout, signal]) : timeout });
-  if (!response.body) fail('web_reader_unavailable', 503);
-  const stream = response.body.getReader(), chunks: Buffer[] = []; let size = 0;
   try {
-    while (true) {
-      const chunk = await stream.read(); if (chunk.done) break;
-      size += chunk.value.byteLength; if (size > 16_000_000) fail('web_reader_response_limit', 502);
-      chunks.push(Buffer.from(chunk.value));
-    }
-  } finally { await stream.cancel().catch(() => {}); }
-  const packet = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-  if (!response.ok) fail(typeof packet.code === 'string' && /^(?:web_|pdf_|unsafe_web_|unsupported_web_|invalid_pdf|encrypted_pdf|reader_version_)[a-z0-9_]*$/.test(packet.code)
-    ? packet.code : 'web_reader_unavailable', 503);
-  const document = packet as PublicReadDocument;
+    const response = await fetch(verify ? new URL('/verify-pdf', endpoint) : endpoint, { method: 'POST', redirect: 'error',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, remainingMs, ...verify }),
+      signal: signal ? AbortSignal.any([timeout, signal]) : timeout });
+    if (!response.body) fail('web_reader_unavailable', 503);
+    const stream = response.body.getReader(), chunks: Buffer[] = [];
+    let size = 0;
+    try {
+      while (true) {
+        const chunk = await stream.read(); if (chunk.done) break;
+        size += chunk.value.byteLength;
+        if (size > (verify ? 10_000 : 16_000_000)) fail('web_reader_response_limit', 502);
+        chunks.push(Buffer.from(chunk.value));
+      }
+    } finally { await stream.cancel().catch(() => {}); }
+    const packet = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    if (!response.ok) fail(typeof packet?.code === 'string' && /^(?:web_|pdf_|unsafe_web_|unsupported_web_|invalid_pdf|encrypted_pdf|reader_version_)[a-z0-9_]*$/.test(packet.code)
+      ? packet.code : verify && response.status === 404 ? 'web_reader_verify_unsupported' : 'web_reader_unavailable', 503);
+    return packet as unknown;
+  } catch (error) {
+    if (error instanceof AssistantError) throw error;
+    if (timeout.aborted || signal?.aborted) fail('web_timeout', 503);
+    fail(error instanceof SyntaxError ? 'invalid_web_reader_response' : 'web_reader_unavailable', 503);
+  }
+}
+
+export async function configuredPublicRead(url: string, remainingMs: number, signal?: AbortSignal): Promise<PublicReadDocument> {
+  const document = await readerRequest(url, remainingMs, signal) as PublicReadDocument;
   if (!validPublicDocument(document) || (document.requestedUrl && document.requestedUrl !== publicWebUrl(url).href))
     fail('invalid_web_reader_response', 502);
   return document;
+}
+
+/** Recheck current origin access and identity without sending the saved PDF
+ * through the parser. An older saved original may lack a strong validator. */
+export async function verifyPublicPdf(url: string, budgetMs: number, etag?: string, signal?: AbortSignal) {
+  const started = Date.now();
+  type Verification = { requestedUrl: string; url: string; bytes: number; etag: string | null; sha256: string | null };
+  let packet: Verification;
+  try {
+    packet = await readerRequest(url, budgetMs, signal, { etag }) as Verification;
+  } catch (error) {
+    if (!(error instanceof AssistantError) || !['web_reader_verify_unsupported', 'pdf_validator_unavailable'].includes(error.code)) throw error;
+    const remaining = budgetMs - (Date.now() - started);
+    if (remaining < 1) fail('web_timeout', 503);
+    if (error.code === 'pdf_validator_unavailable') return verifyPublicPdf(url, remaining, undefined, signal);
+    const document = await configuredPublicRead(url, remaining, signal);
+    if (document.mediaType !== 'application/pdf') fail('unsupported_web_content', 422);
+    return { url: document.url, bytes: document.original.bytes, sha256: document.original.sha256, etag: document.original.etag };
+  }
+  if (!packet || packet.requestedUrl !== publicWebUrl(url).href || publicWebUrl(packet.url).href !== packet.url
+    || !Number.isSafeInteger(packet.bytes) || packet.bytes < 1 || packet.bytes > rangedPdfBytes
+    || !(packet.sha256 === null && etag && packet.etag === etag || typeof packet.sha256 === 'string' && /^[a-f0-9]{64}$/u.test(packet.sha256)))
+    fail('invalid_web_reader_response', 502);
+  return packet;
 }
 
 /** Select complete pages under the original context budget. Oversized pages
@@ -173,6 +211,7 @@ export function publicDocumentPages(document: PublicReadDocument, retrievedAt: s
       ...(standard?.issuedAt ? { publishedAt: standard.issuedAt } : {}),
       textBytes: Buffer.byteLength(page.text), document: { hash: document.original.sha256, mediaType: document.mediaType,
         page: page.page, pages: document.pages.length, bytes: document.original.bytes,
+        ...(document.original.etag ? { etag: document.original.etag } : {}),
         ...(document.transport === 'verified_pdf_ranges' ? { transport: document.transport } : {}),
         ...(transcript ? { reviewedTextHash: transcript.reviewedTextHash, section: transcript.section } : {}) } };
     return { ...locator, text: page.text, hash: fingerprint({ ...locator, text: page.text }) };

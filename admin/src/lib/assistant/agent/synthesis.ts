@@ -14,7 +14,6 @@ import { withSynthesisRepairProtocol, synthesisRepairBase, finalAnswerRepairBase
 import { formalBusinessResultKeys } from './formal-business-repair';
 import { originalAnswerOnly, independentAdviceRequested } from './read-tool-input';
 import { numericCitationCandidates } from './citation-coverage';
-import { projectCitedAcceptanceCondition, projectUnconfirmedWaterproofAcceptance } from './formal-claim-scope';
 import { groundedNumberTokens, printedNumberSupported } from './prose-number-view';
 import { publicPdfSource } from './source-document';
 import { isReportAnswerSnapshot, reportQuestionCoverage } from './report-final';
@@ -463,6 +462,10 @@ function unsupportedWordQuantities(text: string, quoted: string) {
   const original = quoted.replace(/[ \t\u3000]/g, '');
   return wordQuantities(text).filter(quantity => !original.includes(quantity));
 }
+export function assertUncitedEngineeringQuantities(text: string) {
+  const claim = engineeringClaimText(text, []);
+  if (groundedNumberTokens(claim).length || unsupportedWordQuantities(claim, '').length) fail('unsupported_model_commitment', 502);
+}
 function numericSourceCandidates(numbers: string[], sources: SynthesisSource[]) {
   return numericCitationCandidates(numbers, sources, quote => [...(groundedNumberTokens(quote)), ...wordQuantities(quote)]);
 }
@@ -850,10 +853,13 @@ function checkedSynthesis(raw: string, sources: SynthesisSource[], context: Synt
       const missing = generalAdvice ? [] : unsupportedWordQuantities(numericText, cited.join('\n'));
       const passes = pending ? new Set(coatingPassQuantities(numericText)) : new Set<string>();
       if (missing.some(quantity => !passes.has(quantity))) fail('unsupported_model_commitment', 502);
-      const statusText = !context.specialistWaterproof ? s.text : s.basis === 'uncertainty'
-        ? projectUnconfirmedWaterproofAcceptance(s.text)
-        : projectCitedAcceptanceCondition(s.text, standardCitations.filter(c => c.standard.kind === 'standard_text').map(c => c.quote));
-      parseAgentReply(JSON.stringify({ kind: 'general', text: statusText }), { formalStatusEvidence: formalStatusEvidence(s.citations, sources, context) });
+      parseAgentReply(JSON.stringify({ kind: 'general', text: s.text }), {
+        formalStatusEvidence: formalStatusEvidence(s.citations, sources, context),
+        ...(context.specialistAcceptance ? { acceptanceQuotes: s.citations.filter(citation => sources.some(source =>
+          source.sourceId === citation.sourceId && (source.web?.standard?.kind === 'standard_text'
+            || source.kind === 'knowledge' && source.knowledge?.published && source.knowledge.sourceType !== 'reference_case')))
+          .map(citation => citation.quote) } : {}),
+      });
       if (pending && missing.length) pending.push({ segment: value.segments.indexOf(s), quantities: [...new Set(missing)] });
     } catch (error) {
       if (!rejected || !(error instanceof AssistantError) || error.code !== 'unsupported_model_commitment') throw error;

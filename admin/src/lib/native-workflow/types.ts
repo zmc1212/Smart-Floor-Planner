@@ -38,6 +38,7 @@ export type NodeType =
   | 'knowledge_retrieval'
   | 'public_search'
   | 'agent'
+  | 'evidence_assessment'
   | 'checklist'
   | 'request_material'
   | 'wait_event'

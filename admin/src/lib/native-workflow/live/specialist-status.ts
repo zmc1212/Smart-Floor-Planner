@@ -36,6 +36,7 @@ export async function specialistStatus(tx: PostgresTransaction, enterpriseId: st
     where r.enterprise_id=${enterpriseId} and d.id=${delegation.id} and r.purpose='specialist.workflow'
       and r.policy_snapshot#>>'{specialistRun,workflowRunId}'=${runId} order by r.id desc limit 1`);
   const attempts = job ? await rows(tx, sql`select provider_key as adapter,remote_model as model,
+    metadata#>>'{assistantResponse,providerModel}' as reported_model,
     metadata#>>'{assistantResponse,providerRequestId}' as request_id,metadata#>'{assistantResponse,usage}' as usage,
     coalesce(metadata->>'assistantWire',metadata#>>'{assistantResponse,observation,protocol}',metadata#>>'{assistantRequest,protocol}') as protocol,
     status,error_code,duration_ms from app.ai_provider_attempts where enterprise_id=${enterpriseId} and assistant_run_id=${String(job.id)}
@@ -48,7 +49,8 @@ export async function specialistStatus(tx: PostgresTransaction, enterpriseId: st
   const waitingNodeId = status === 'waiting' ? record?.state.pendingNodeId ?? null : null;
   const records = record?.operations ?? [];
   const publishedNodes = new Map(definition.nodes.map(node => [node.nodeId, node]));
-  const analysis = records.findLast(operation => operation.nodeVersion.startsWith('agent@'))?.outputs?.analysis as Row | undefined;
+  const analysis = records.findLast(operation => operation.capabilityRef === 'read.specialist_evidence'
+    || operation.nodeVersion.startsWith('agent@'))?.outputs?.analysis as Row | undefined;
   const review = records.findLast(operation => operation.capabilityRef === 'wait.specialist_review')?.outputs?.review as Row | undefined;
   const issue = records.findLast(operation => operation.nodeVersion.startsWith('create_issue@'))?.outputs?.saveReceipt as Row | undefined;
   const sources = (analysis?.evidenceRefs ?? analysis?.evidence ?? []) as Array<Row>;
@@ -90,7 +92,7 @@ export async function specialistStatus(tx: PostgresTransaction, enterpriseId: st
       config: publishedNodes.get(operation.nodeId)?.config ?? {},
       outputPorts: Object.keys(operation.outputs ?? {}),
       ...(operation.error ? { error: operation.error.code } : {}),
-      ...(operation.nodeVersion.startsWith('agent@') ? { summary: { messageId: analysis?.messageId ?? null,
+      ...(operation.nodeVersion.startsWith('agent@') || operation.capabilityRef === 'read.specialist_evidence' ? { summary: { messageId: analysis?.messageId ?? null,
         checks: Array.isArray(analysis?.requestedChecks) ? analysis.requestedChecks.length : null } } : {}),
       ...(operation.capabilityRef === 'read.specialist_project'
         ? { summary: { revision: (operation.outputs?.project as Row | undefined)?.revision,

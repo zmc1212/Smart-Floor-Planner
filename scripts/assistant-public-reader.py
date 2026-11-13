@@ -95,6 +95,9 @@ def identity_encoding(response):
     if response.headers.get('content-encoding', 'identity').lower() != 'identity':
         raise ValueError('unsupported_web_encoding')
 
+def strong_etag(value):
+    return re.fullmatch(r'"[^"\s]{1,200}"', value) is not None
+
 
 async def bounded_body(response, limit):
     identity_encoding(response)
@@ -111,10 +114,9 @@ async def read_pdf_ranges(client, url, length, etag):
     # Keep the full-response limit. Only a known-size HTTPS PDF with a strong
     # validator may be retrieved in fixed ranges under the same deadline.
     if (urlsplit(url).scheme != 'https' or not MAX_BYTES < length <= PDF_MAX_BYTES
-            or not re.fullmatch(r'"[^"\s]{1,200}"', etag)):
+            or not strong_etag(etag)):
         raise ValueError('web_download_limit')
-    blocks = []
-    for start in range(0, length, PDF_RANGE_BYTES):
+    async def read_range(start):
         end = min(start + PDF_RANGE_BYTES, length) - 1
         headers = {**READ_HEADERS, 'Range': f'bytes={start}-{end}', 'If-Match': etag}
         async with client.stream('GET', url, headers=headers) as response:
@@ -125,8 +127,15 @@ async def read_pdf_ranges(client, url, length, etag):
             part = await bounded_body(response, end - start + 1)
             if len(part) != end - start + 1:
                 raise ValueError('pdf_range_unavailable')
-            blocks.append(part)
-    return b''.join(blocks)
+            return part
+    tasks = [asyncio.create_task(read_range(start)) for start in range(0, length, PDF_RANGE_BYTES)]
+    try:
+        return b''.join(await asyncio.gather(*tasks))
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 def attachment_title(disposition, url):
@@ -136,24 +145,20 @@ def attachment_title(disposition, url):
     return re.sub(r'[\x00-\x1f\x7f]', '', unquote(name)).strip() or urlsplit(url).hostname
 
 
-async def read_public(value, remaining_ms):
+async def download(value, deadline, pdf_only=False, validator=None):
     import httpx
-    from crawl4ai.content_scraping_strategy import WebScrapingStrategy
-    from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
-    import importlib.metadata
-    if importlib.metadata.version('crawl4ai') != '0.9.2' or importlib.metadata.version('pypdf') != '6.21.2':
-        raise ValueError('reader_version_changed')
-    if not 1 <= remaining_ms <= 60_000:
-        raise ValueError('web_deadline_exceeded')
-    deadline = time.monotonic() + remaining_ms / 1000
     requested_url = url = public_url(value)
     redirects, transport = [], 'full'
+    budget = min(12, deadline - time.monotonic())
+    if budget <= 0:
+        raise ValueError('web_deadline_exceeded')
     # The reviewed upstream broker rejects fake/private DNS and pins the peer;
     # the client retains certificate/hostname verification and never uses OS proxy credentials.
-    async with asyncio.timeout(min(12, remaining_ms / 1000)), httpx.AsyncClient(proxy='http://127.0.0.1:18097', verify=True, trust_env=False,
-                                 follow_redirects=False, timeout=min(12, remaining_ms / 1000)) as client:
+    async with asyncio.timeout(budget), httpx.AsyncClient(proxy='http://127.0.0.1:18097', verify=True, trust_env=False,
+                                 follow_redirects=False, timeout=budget) as client:
         for hop in range(4):
-            async with client.stream('GET', url, headers=READ_HEADERS) as response:
+            headers = {**READ_HEADERS, 'Range': 'bytes=0-0', 'If-Match': validator} if validator else READ_HEADERS
+            async with client.stream('GET', url, headers=headers) as response:
                 if response.status_code in (301, 302, 303, 307, 308):
                     if hop == 3 or not response.headers.get('location'):
                         raise ValueError('web_redirect_limit')
@@ -162,23 +167,60 @@ async def read_public(value, remaining_ms):
                     url = target
                     continue
                 response.raise_for_status()
-                if response.status_code != 200:
+                if response.status_code not in ((200, 206) if validator else (200,)):
                     raise ValueError('unsupported_web_response')
                 identity_encoding(response)
                 mime = response.headers.get('content-type', '').split(';')[0].lower()
+                etag = response.headers.get('etag', '')
+                etag = etag if strong_etag(etag) else None
+                if pdf_only and mime not in (PDF_MIME, 'application/octet-stream'):
+                    raise ValueError('unsupported_web_content')
                 if mime not in (PDF_MIME, 'application/octet-stream', 'text/html', 'application/xhtml+xml', 'text/plain'):
                     raise ValueError('unsupported_web_content')
                 disposition = response.headers.get('content-disposition', '')
                 length = int(response.headers.get('content-length', '0'))
+                if validator:
+                    if etag != validator:
+                        raise ValueError('pdf_validator_changed' if etag else 'pdf_validator_unavailable')
+                    if response.status_code == 206:
+                        match = re.fullmatch(r'bytes 0-0/([1-9]\d{0,7})', response.headers.get('content-range', ''))
+                        if not match or length != 1:
+                            raise ValueError('pdf_range_unavailable')
+                        length = int(match[1])
+                    if not 0 < length <= PDF_MAX_BYTES or length > MAX_BYTES and mime != PDF_MIME:
+                        raise ValueError('web_download_limit')
+                    return url, length, etag, None, mime, disposition, redirects, transport
                 if length <= MAX_BYTES:
                     raw = await bounded_body(response, MAX_BYTES)
+                    if length and len(raw) != length:
+                        raise ValueError('web_download_incomplete')
                     break
                 if mime != PDF_MIME or response.headers.get('accept-ranges', '').lower() != 'bytes':
                     raise ValueError('web_download_limit')
-                etag = response.headers.get('etag', '')
-            raw = await read_pdf_ranges(client, url, length, etag)
+            raw = await read_pdf_ranges(client, url, length, etag or '')
             transport = 'verified_pdf_ranges'
             break
+    return url, len(raw), etag, raw, mime, disposition, redirects, transport
+
+
+async def verify_pdf(value, remaining_ms, validator):
+    deadline = time.monotonic() + remaining_ms / 1000
+    url, length, etag, raw, _, _, _, _ = await download(value, deadline, pdf_only=True, validator=validator)
+    if raw is not None and not raw.startswith(b'%PDF-'):
+        raise ValueError('invalid_pdf')
+    return {'requestedUrl': public_url(value), 'url': url, 'bytes': length, 'etag': etag,
+            'sha256': hashlib.sha256(raw).hexdigest() if raw is not None else None}
+
+
+async def read_public(value, remaining_ms):
+    from crawl4ai.content_scraping_strategy import WebScrapingStrategy
+    from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
+    import importlib.metadata
+    if importlib.metadata.version('crawl4ai') != '0.9.2' or importlib.metadata.version('pypdf') != '6.21.2':
+        raise ValueError('reader_version_changed')
+    deadline = time.monotonic() + remaining_ms / 1000
+    requested_url = public_url(value)
+    url, _, etag, raw, mime, disposition, redirects, transport = await download(requested_url, deadline)
     if time.monotonic() >= deadline:
         raise ValueError('web_deadline_exceeded')
     parse_error = None
@@ -216,7 +258,8 @@ async def read_public(value, remaining_ms):
     return {'version': 1, 'requestedUrl': requested_url, 'url': url, 'title': title[:200], 'parser': PARSER, 'mediaType': mime,
         'pages': pages, 'links': links, 'redirects': redirects,
         'transport': transport, 'parseError': parse_error,
-        'original': {'sha256': hashlib.sha256(raw).hexdigest(), 'bytes': len(raw), 'base64': base64.b64encode(raw).decode()},
+            'original': {'sha256': hashlib.sha256(raw).hexdigest(), 'bytes': len(raw), 'base64': base64.b64encode(raw).decode(),
+                         **({'etag': etag} if mime == PDF_MIME and etag else {})},
         'egress': 'upstream-v0.9.2-resolve-and-pin-proxy', 'tlsVerification': True}
 
 
@@ -230,7 +273,10 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Type', 'application/json; charset=utf-8')
         self.send_header('Content-Length', str(len(raw)))
         self.end_headers()
-        self.wfile.write(raw)
+        try:
+            self.wfile.write(raw)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            pass
 
     def do_GET(self):
         if self.path != '/health':
@@ -238,7 +284,7 @@ class Handler(BaseHTTPRequestHandler):
         self.reply(200, {'parser': PARSER, 'pid': os.getpid(), 'sourceHash': hashlib.sha256(Path(__file__).read_bytes()).hexdigest()})
 
     def do_POST(self):
-        if (self.path != '/read' or self.headers.get('Host') not in
+        if (self.path not in ('/read', '/verify-pdf') or self.headers.get('Host') not in
                 (f'127.0.0.1:{self.server.server_port}', f'localhost:{self.server.server_port}')
                 or self.headers.get('Origin') or self.headers.get('Content-Type', '').split(';')[0] != 'application/json'):
             return self.reply(404, {'error': 'not_found'})
@@ -247,14 +293,21 @@ class Handler(BaseHTTPRequestHandler):
             if not 0 < size <= 6000:
                 raise ValueError('invalid_reader_input')
             body = json.loads(self.rfile.read(size))
-            if set(body) != {'url', 'remainingMs'} or not isinstance(body['url'], str) or len(body['url']) > 4000:
+            required = {'url', 'remainingMs'}
+            if (not isinstance(body, dict) or not required <= set(body)
+                    or set(body) - required - ({'etag'} if self.path == '/verify-pdf' else set())
+                    or not isinstance(body['url'], str) or len(body['url']) > 4000
+                    or type(body['remainingMs']) is not int or not 1 <= body['remainingMs'] <= 60_000
+                    or 'etag' in body and (not isinstance(body['etag'], str) or not strong_etag(body['etag']))):
                 raise ValueError('invalid_reader_input')
-            result = asyncio.run(asyncio.wait_for(read_public(body['url'], body['remainingMs']), body['remainingMs'] / 1000))
+            action = read_public(body['url'], body['remainingMs']) if self.path == '/read' else verify_pdf(
+                body['url'], body['remainingMs'], body.get('etag'))
+            result = asyncio.run(asyncio.wait_for(action, body['remainingMs'] / 1000))
             self.reply(200, result)
         except Exception as error:
             detail = str(error)
             code = detail if re.fullmatch(r'[a-z_]{3,80}', detail) else 'web_read_unavailable'
-            if isinstance(error, (TimeoutError, asyncio.TimeoutError)):
+            if isinstance(error, TimeoutError) or type(error).__name__ in ('ReadTimeout', 'ConnectTimeout', 'PoolTimeout', 'WriteTimeout'):
                 code = 'web_timeout'
             if hasattr(error, 'response'):
                 code = 'web_http_' + str(error.response.status_code)

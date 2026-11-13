@@ -210,6 +210,28 @@ I5 验收以 `b612ea0692acc5fac62ca8487029196bec7809cb` 为基线，测试前后
 - 最终定向 Assistant 与协议 89/89、公开读取 32/32，二者有交集；Python reader 3/3。覆盖 PDF/DOCX、发现与网页读取、原文、引用、冲突与无据量数。计划检查、TypeScript、定向 ESLint 与生产 Webpack 构建通过，静态生成 115 页。源码绑定 `tmp/i6.7/release-source.json`，日志 `{focused-final,public-final,python-reader-direct,eslint-branch,webpack-final}.log`。实库、实模和模拟器结果以各自源码绑定为准。
 - 隔离测试结束后清理临时百炼加密覆盖、停止测试数据库与新增读页/搜索进程。关闭本轮打开的次屏项目，原窗口和原小程序私有配置保留。测试卷与原始回执保留。
 
+## I6.10 防水专业 Agent 可信度与现场资料（Limited）
+
+从 `origin/codex/xiaok-integration` 的 `682bcbf1e81fb554cf008c542478029978fe7f31` 开始。主工作区其他分支和未提交的测绘文件保持原样。隔离环境为微云 1454、PG17/pgvector、受限应用角色及指定 Stable 项目。源码、配置、执行器、原始首稿、唯一修复及请求逐条保存在对应批次，回执按各自绑定使用。
+
+- **专业对话。** `dialogue-01` 两轮 16 问保存 5 个答复，7 个承诺校验和 4 个企业检索错误。调整后 `dialogue-02` 两轮 18 问保存 10 个，4 个承诺、2 个作用域及 2 个 `source_read_required`。两轮同版现行性及翻修条文均保存。保存稿回放 120、128、132 的原公开规范段落通过，共 28 段，独立项目验收与无据量数测试仍拒绝。后续限定 `dialogue-read-01` 两轮 8 问保存 5 个，企业原文与主卧实际读取分别 2/2，国标原文 1/2，两个更正终稿仍被拒绝。国标原文已由公网分派，后一轮失败发生于终稿承诺校验。停止相同开工和更正场景的措辞补丁循环。工程状态可从原回执读取，部分清单分析正文仍误述未登记或无法跟进。
+- **规范原件。** I6.9 Reader 日志在防水原件分段下载超时。I6.10 保存同一原件 SHA-256，首次获取在同一时限内验证各段 ETag、Range、长度和顺序。C01 已存原件先核验私有检查点，再对源站与原公告链接重新核验。真实打开 `w:124:1`，PDF 第 27 页和原引文一致。隔离错误注入验证超时、撤回、替换及拒绝的具体码，恢复真实 Reader 后同引用可重开。GB 55030-2022 沿用第 5、27、28、31、36、37 页。GB 55020-2021 的原件和同版目录实读通过，28 页完成 OCR，逐图核对第 12、24、25 页的有限摘录进入 Evidence，其余 25 页保留待核。证据 `tmp/i6.10/pdf-read-01.json`、`reader-baseline.json`、`plumbing-ocr-unreviewed.json` 与对应原图。[防水公告](https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2022/art_17339_768499.html) · [给排水公告](https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2021/art_17339_762458.html)
+- **隔离实库分支。** `workflow-checklist-02` 的 C01 `56` 从公开依据保存清单、等待并释放租约，事项 `301` 经项目经理授权回传消息 `225`。初次 `workflow-checklist-01` 的依据结构失败保留。 `workflow-material-01` 的 C01 `67` 在托管检索未配置时记录不可用，仍保存公开依据回答，经补资料进入事项 `374` 并回传消息 `273`。两条均验证普通记录、错房间、重复事件、非经理及同业主其他咨询的边界，发布新版本后保持旧绑定。 `workflow-direct-01` 的分析 `139` 保留承诺失败，`workflow-direct-02` 的 C01 `77` 以同房间获权待核对记录直接创建唯一事项 `448`，随后原咨询取消并终止等待任务。正式经理回传由另外两条完成分支验证。历史 v1/v5/v6/v8/v9 保留原证据。
+- **图像与 Stable。** 北京目录精确命中实际 ID，Responses 与 Chat Completions 都读出合成探针。产品 `vision-01` 首稿错误混用字段，已留存。 `vision-02` runs `141–143` 依次读同房间获权施工图、用户上传图和后续追问。真实保存圆形/弧线观察，排除错房间与内部照片，撤回施工图后旧答复不可用且媒体返回 404。Stable 390×844 / SDK 3.17.2 实际发送状态查询、重进原 C01、读同一经理结果和原件、点击公开引用、查看照片观察与撤回。合成图像适用于验证可见特征及权限。实体工地材质和物理验收、真机、BLE、真实微信授权及生产仍未验。证据 `tmp/i6.10/stable-02/verification.json` 及截图。
+- **工程检查。** 带登录态 Chromium 画布 13 节点、32 条线，依据节点类型化端口和草稿校验通过。真实运行查询 200，未登录 401。Native Workflow PostgreSQL 独立空库迁移后 7/7，Python Reader 4/4，定向 Agent、Specialist 与 Native Workflow 共 1,548 项，1,520 通过、27 项环境跳过，保留 1 项书桌收纳意图基线。Mini 2,243/2,244，保留测绘 Phase 0 基线。TypeScript、定向 ESLint、Webpack 115 页与计划自测通过。证据 `tmp/i6.10/{admin-canvas-01.json,postgres-01.log,reader-unit-02.log,admin-regression-02.log,miniprogram-01.log,lint-final.log,webpack-02.log}`。
+
+| 有实际用量的批次 | Responses / Chat Completions | 输入 / 输出 / 缓存输入 tokens |
+| --- | --- | --- |
+| 双协议图像探针 | 1 / 1 | 476 / 237 / 0 |
+| 清单初次及完成 | 2 / 1 | 5,181 / 1,088 / 768 |
+| 补资料 | 1 / 1 | 4,179 / 1,182 / 768 |
+| 直达事项初次及取消 | 2 / 4 | 12,649 / 1,863 / 6,656 |
+| 图像首稿及产品复验 | 1 / 3 | 5,984 / 1,501 / 512 |
+| 两个对话全批 | 7 / 52 | 155,961 / 22,946 / 80,384 |
+| 两条读取限定复验 | 2 / 13 | 28,567 / 3,923 / 12,800 |
+
+真实调用仅使用 `bailian`、`deepseek-flash` / `deepseek-v4.1-flash-1017`。请求 ID、协议、实际模型及 token 见 `tmp/i6.10/{bailian-vision-wire,model-receipts-index}.json`，实际费用未知。历史未明调用保留原状态。验收后恢复隔离模型覆盖和图片设置，关闭本轮 Stable 窗口、Admin、Reader 与数据库进程，保留隔离数据与回执。[百炼能力与回执](bailian-responses-adapter.md#17-i610-北京百炼图像输入)
+
 ## I6.9 防水专业 Agent 闭环（Limited）
 
 起点为 fetch 后的 `0892909ae1c4`，工作树已有的 X6 改动在开发期间进入远端 `deaf1429`。使用独立 Integration 工作树、微云 1454 的合成隔离库及受限 `sfp_app`。百炼实际目录返回 `deepseek-v4.1-flash-1017`，专业 Agent 逻辑名 `deepseek-flash`，凭据沿原加密配置和用量台账。目录回执 `tmp/i6.9/bailian-catalog.json`。

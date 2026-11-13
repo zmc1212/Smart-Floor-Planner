@@ -14,7 +14,7 @@ import type { FileLocator } from '../contracts/source-file';
 import { fileQuoteSpans } from './source-file';
 import { knowledgeProvenance, knowledgeRowAllowed } from './provenance';
 import { sourceIndexReady } from './managed-store';
-import { citationWebSource, parseWebCitationId, webCitationForAnswer, type WebSourceChecks } from '../agent/web-evidence';
+import { citationWebSource, parseWebCitationId, webCitationForAnswer, webSourceErrorCode, type WebSourceChecks } from '../agent/web-evidence';
 import { designerMessageProjection } from '@/lib/portfolio/designer-recommendation';
 export type PreviewPolicy={audience:'customer_public'|'staff_internal'|'all';drafts:Array<{id:string;documentId:string;hash:string;editVersion:number}>};
 export function previewPolicy(c:Row):PreviewPolicy {
@@ -120,7 +120,9 @@ export async function webCitationProjection(tx: PostgresTransaction, actor: Acto
   if (!citation) return { id: citationId, available: false, reason: 'source_unavailable' };
   const source = citationWebSource(citation);
   const reason = checked && source ? checked.has(source.hash) ? checked.get(source.hash) : 'source_unreadable' : null;
-  return reason ? { id: citationId, available: false, reason } : citation;
+  if (!reason) return citation;
+  const errorCode = checked && source && webSourceErrorCode(checked, source.hash);
+  return { id: citationId, available: false, reason, ...(errorCode ? { errorCode } : {}) };
 }
 /** Explain why a saved answer can no longer be replayed. A retryable store
  * failure is not described as deleted content, and a lost grant is not

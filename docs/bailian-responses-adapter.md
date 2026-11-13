@@ -480,3 +480,14 @@ Endpoint 使用该空间的 `https://dashscope.aliyuncs.com/compatible-mode/v1`�
 ## 16. I6.8 专业 Agent 模型绑定
 
 北京百炼配置键为 `bailian`，应用逻辑名为 `deepseek-flash`，供应商目录及真实回执使用 `deepseek-v4.1-flash-1017`。开轮目录查询对实际 ID 精确命中一项，逻辑名在百炼目录中没有同名模型。防水问答与 Native Agent 作业共用原加密配置、AgentModelGateway、用量和未知结果台账。Responses 通过既有配置启用。该固定模型的当前应用配置为文本输入，现场照片仍由 Construction 保存及授权回传。模型默认值沿现有生产配置。[模型目录](https://help.aliyun.com/zh/model-studio/list-models) · [DeepSeek 调用说明](https://help.aliyun.com/zh/model-studio/deepseek-api) · [集成验收](xiaok-integration-audit.md#i68-防水专业-agent-与工作流limited)
+
+## 17. I6.10 北京百炼图像输入
+
+开轮查询北京目录，逻辑名 `deepseek-flash` 返回 0 条，精确 ID `deepseek-v4.1-flash-1017` 返回 1 条，标注 Text/Image。目录请求 ID 为 `538bdc8b-1e4e-913a-976a-0b009637a369` 和 `e0ffd68f-d3da-9fa2-afd9-00498a03f671`。北京 `https://dashscope.aliyuncs.com/compatible-mode/v1` 使用现有加密配置、AgentModelGateway 和用量台账。图片能力在隔离企业显式开启，生产模型配置保持当前值。[百炼模型规格](https://docs.modelstudio.console.alibabacloud.com/en/model-studio/deepseek-v4-1-flash) · [DeepSeek API](https://www.alibabacloud.com/help/en/model-studio/deepseek-api)
+
+| 协议 | 实际请求 ID | 输入 / 输出 tokens | 隔离实测 |
+| --- | --- | --- | --- |
+| Responses | `4873b270-c351-90c6-9cf6-d4f04011cef2` | 264 / 218 | 识别合成图文字 F7M2 和左侧黄色圆形 |
+| Chat Completions | `964a86a3-c31b-9049-9a2b-517696697567` | 212 / 19 | 识别同一合成图文字和形状 |
+
+防水现场图、客户上传与追问走原 `conversation-images-v1`，使用现有 `final_response` 的图像答复字段。仅图像观察由同一回复结构保存正文，混合来源问题继续使用原引用协议。原件在派发、恢复和读回时按现有权限复核，照片只能说明可见现象。目录、探针、原始失败、产品运行与真实用量见 `tmp/i6.10/bailian-catalog.json`、`bailian-vision-wire.json`、`vision-01/` 和 `vision-02/`。

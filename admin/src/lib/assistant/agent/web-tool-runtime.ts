@@ -7,7 +7,7 @@ import { isWebTool } from '../web-search/contract';
 import type { Lease } from '../infrastructure/job-queue';
 import { ToolExecutor } from '../tools/executor';
 import { createWebToolRegistry, type WebToolDeps } from '../web-search/tools';
-import type { FetchedWebDocument } from '../web-search/page';
+import { standardAttachment, type FetchedWebDocument } from '../web-search/page';
 import { publicWebUrl, type WebPage, type WebSearchSnapshot } from './web';
 import { webEvidence, webSynthesisSources } from './web-evidence';
 import { configuredPublicRead, publicDocumentPages, publicDocumentReadFailures, publicReaderEndpoint, type PublicReadDocument } from './public-research';
@@ -141,8 +141,8 @@ export function createAgentWebTools(options: AgentWebSearchOptions & {
         return { id, args, content: result.content };
       };
       const notice = await fetch(standard.noticeUrl, reviewedStandardStep.notice);
-      const packet = JSON.parse(notice.content) as { result?: { document?: FetchedWebDocument } };
-      const attachment = packet.result?.document?.attachments?.find(link => link.title.replace(/\.pdf$/i, '') === standard.standard.name);
+      const packet = JSON.parse(notice.content) as { result?: { document?: Pick<FetchedWebDocument, 'standard' | 'attachments'> } };
+      const attachment = standardAttachment(packet.result?.document, standard.standard);
       const reads = [notice];
       if (attachment) {
         allowedUrls.add(attachment.url);

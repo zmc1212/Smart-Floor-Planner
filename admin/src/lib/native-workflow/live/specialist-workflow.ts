@@ -12,8 +12,8 @@ import { parseSpecialistOutput, specialists, type SpecialistRunBinding } from '@
 import { specialistChecks, specialistPublicSections, type SpecialistEnterpriseRead, type SpecialistProjectEvidence, type SpecialistPublicRead } from '@/lib/assistant/specialists/evidence';
 import type { SynthesisAnswer, SynthesisContext } from '@/lib/assistant/agent/synthesis';
 import { configuredPublicRead, publicDocumentPages, publicDocumentReadFailures } from '@/lib/assistant/agent/public-research';
-import { fetchPublicDocument } from '@/lib/assistant/web-search/page';
-import { reviewedStandardTopic } from '@/lib/assistant/web-search/standards';
+import { fetchPublicDocument, standardAttachment } from '@/lib/assistant/web-search/page';
+import { namedReviewedStandard } from '@/lib/assistant/web-search/standards';
 import { readSiteIssueBase } from '@/lib/construction/site-issues';
 import { constructionRead } from '@/lib/construction/customer';
 import { openSpecialistSiteIssue, specialistSiteRecord } from '@/lib/construction/specialist-issues';
@@ -44,13 +44,14 @@ export async function cancelSpecialistWaits(tx: PostgresTransaction, d: ReviewDe
   }
 }
 
-async function readWaterproofPublicStandard(query: string, verifyEdition: boolean, coverage?: string) {
-  const standard = reviewedStandardTopic('防水')!;
+async function readSpecialistPublicStandard(standardId: string | undefined, query: string, verifyEdition: boolean, coverage?: string) {
+  const standard = standardId && namedReviewedStandard(standardId);
+  if (!standard) return { status: 'unavailable', error: 'specialist_public_standard_unconfigured' };
   const signal = AbortSignal.timeout(23_000);
   try {
     const notice = await fetchPublicDocument(standard.noticeUrl, { signal });
-    const attachment = notice.attachments?.find(link => link.title.replace(/\.pdf$/i, '') === standard.standard.name);
-    if (!attachment || notice.injectionSignals.length || notice.standard?.id !== standard.standard.id)
+    const attachment = standardAttachment(notice, standard.standard);
+    if (!attachment)
       return { status: 'unavailable', error: 'web_attachment_not_found' };
     const original = await configuredPublicRead(attachment.url, 20_000, signal);
     const sections = specialistPublicSections(coverage);
@@ -74,12 +75,16 @@ async function readWaterproofPublicStandard(query: string, verifyEdition: boolea
   }
 }
 
-export async function startSpecialistAnalysis(tx: PostgresTransaction, d: ReviewDelegation, conversation: Row,
-  workflowRunId: string, definition: WorkflowDefinition, branched: boolean) {
-  const prior = await one(tx, sql`select id::text,status,output_message_id::text,error_code from app.assistant_runs
+function specialistAnalysis(tx: PostgresTransaction, d: ReviewDelegation, workflowRunId: string) {
+  return one(tx, sql`select id::text,status,output_message_id::text,error_code from app.assistant_runs
     where enterprise_id=${d.enterpriseId} and conversation_id=${d.conversationId} and trigger_message_id=${d.originMessageId}
     and purpose='specialist.workflow' and policy_snapshot#>>'{specialistRun,workflowRunId}'=${workflowRunId}
     order by id desc limit 1`);
+}
+
+export async function startSpecialistAnalysis(tx: PostgresTransaction, d: ReviewDelegation, conversation: Row,
+  workflowRunId: string, definition: WorkflowDefinition, branched: boolean) {
+  const prior = await specialistAnalysis(tx, d, workflowRunId);
   if (prior) return prior;
   // Reuse the original signed owner context. Do not mint a fresh login context
   // for a delegation after its author's session has been revoked.
@@ -184,7 +189,7 @@ export async function advanceSpecialistDelegation(tx: PostgresTransaction, d: Re
   const result = await runPublishedLive({
     published, runId, enterpriseId: d.enterpriseId, projectId: d.projectId,
     event: { eventType: 'specialist_followup', eventId: 'request:' + d.id, occurredAt: d.createdAt.toISOString() },
-    businessEvent: { source: 'outbox', outboxEventId: null, progressRevision: 0, stageKey: 'waterproof', settingsVersion: 1 },
+    businessEvent: { source: 'outbox', outboxEventId: null, progressRevision: 0, stageKey: agent.supportedStages[0], settingsVersion: 1 },
     store, resume: true, wakeEventId: event.id,
     ports: { async execute(operation): Promise<Readonly<Record<string, WorkflowValue>>> {
       switch (operation.capabilityRef) {
@@ -207,22 +212,34 @@ export async function advanceSpecialistDelegation(tx: PostgresTransaction, d: Re
           return { enterprise };
         }
         case 'read.specialist_public_standard':
-          return { publicStandard: await readWaterproofPublicStandard(branched ? d.scope.subject : '室内防水 管根 验收',
+          return { publicStandard: await readSpecialistPublicStandard(agent.publicStandardId, branched ? d.scope.subject : '室内防水 管根 验收',
             branched, String(operation.config?.coverage ?? 'subject')) };
         case 'compose.stage_specialist':
+        case 'compose.stage_specialist.v3':
+        case 'read.specialist_evidence':
         case 'compose.stage_specialist.v2': {
-          if (operation.config?.agentId !== binding.agentId || operation.config.agentVersion !== binding.agentVersion)
+          const assessment = operation.capabilityRef === 'read.specialist_evidence';
+          if (!assessment && (operation.config?.agentId !== binding.agentId || operation.config.agentVersion !== binding.agentVersion))
             throw new LiveOperationFailure(workflowIssue('specialist_version_mismatch', operation.nodeId, '专业 Agent 版本不匹配'));
           const origin = await one(tx, sql`select status from app.assistant_runs where enterprise_id=${d.enterpriseId}
             and conversation_id=${d.conversationId} and id=${binding.originRunId}`);
           if (['queued', 'running'].includes(String(origin?.status))) throw new LiveOperationWaiting('specialist_request_pending');
-          const analysisRun = await startSpecialistAnalysis(tx, d, conversation, runId, published.definition, branched);
+          const analysisRun = assessment ? await specialistAnalysis(tx, d, runId)
+            : await startSpecialistAnalysis(tx, d, conversation, runId, published.definition, branched);
+          if (!analysisRun) throw new LiveOperationFailure(workflowIssue('specialist_analysis_missing', operation.nodeId, '缺少已绑定的专业答复回执'));
           if (['queued', 'running'].includes(String(analysisRun.status))) throw new LiveOperationWaiting('specialist_analysis_pending');
           if (analysisRun.status === 'indeterminate') {
             throw new LiveOperationUnknownError(workflowIssue('provider_outcome_unknown', operation.nodeId, '专业分析请求结果待对账'));
           }
           if (analysisRun.status !== 'succeeded' || !analysisRun.output_message_id) {
             throw new LiveOperationFailure(workflowIssue('specialist_analysis_failed', operation.nodeId, String(analysisRun.error_code ?? analysisRun.status)));
+          }
+          if (operation.capabilityRef === 'compose.stage_specialist.v3')
+            return { analysisRun: { runId: String(analysisRun.id), messageId: String(analysisRun.output_message_id) } };
+          if (assessment) {
+            const receipt = operation.input.analysisRun as { runId: string; messageId: string };
+            if (receipt.runId !== String(analysisRun.id) || receipt.messageId !== String(analysisRun.output_message_id))
+              throw new LiveOperationFailure(workflowIssue('specialist_analysis_changed', operation.nodeId, '专业答复回执已变化'));
           }
           const actor = { ...delegationActor(d), capabilities: ['assistant.chat.self'] };
           const source = await currentSynthesisContext(tx, actor, conversation, String(analysisRun.id));
@@ -253,12 +270,13 @@ export async function advanceSpecialistDelegation(tx: PostgresTransaction, d: Re
           const consulted = (step?.source_refs as SynthesisContext | undefined)?.sources ?? [];
           const citedWeb = new Set(synthesis?.segments.flatMap(segment => segment.citations.map(item => item.sourceId)) ?? []);
           const web = consulted.flatMap(item => citedWeb.has(item.sourceId) && item.web?.document?.reviewedTextHash ? [item.web] : []);
-          const webChecks = await checkWebSources(web);
+          const webChecks = await checkWebSources(web, undefined, { savedPdfPages: new Set(web.map(page => page.hash)) });
+          const publicStandard = operation.input.publicStandard as SpecialistPublicRead;
           const { requestedChecks, unresolvedItems, evidenceRefs, hasEnterprise, hasPublic } = specialistChecks({
             answer: synthesis?.kind === 'synthesis' ? synthesis : null,
             sources: consulted.filter(item => !item.web || !webChecks.get(item.web.hash)),
             project: verifiedProject, enterprise: operation.input.enterprise as SpecialistEnterpriseRead,
-            publicStandard: operation.input.publicStandard as SpecialistPublicRead, knowledgeEpoch: Number(settings?.knowledge_epoch),
+            publicStandard, knowledgeEpoch: Number(settings?.knowledge_epoch),
           });
           const record = await specialistSiteRecord(tx, d, { requireCurrentStaff: true, managerOnly });
           const analysis = parseSpecialistOutput({

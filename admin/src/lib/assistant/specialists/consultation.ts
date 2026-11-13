@@ -5,6 +5,7 @@ import { explicitStandardReference, matchingReviewedStandard, namedReviewedStand
 import { isKnowledgeTool } from '../knowledge/rag-tools';
 import { isWebTool } from '../web-search/contract';
 import { specialistModel, specialistProtocol, specialists, waterproofAgentId, type SpecialistInput } from './registry';
+import { conversationImageInstructions, conversationImageProtocol } from '../agent/image-context';
 
 import { nativeWorkflowEnterpriseIds } from '@/lib/native-workflow/live/tenant-allowlist';
 
@@ -13,9 +14,15 @@ export function specialistPolicy(enterpriseId: string, config: { providerKey: st
     && nativeWorkflowEnterpriseIds(process.env.ASSISTANT_SPECIALIST_ENTERPRISE_IDS).includes(enterpriseId) ? specialistProtocol : undefined;
 }
 
+export function specialistPhotoModel(config: { providerKey: string; model: string; imageContext?: string }) {
+  return config.providerKey === specialistModel.providerKey && config.model === specialistModel.model
+    && config.imageContext === conversationImageProtocol;
+}
+
 const waterproofSpaces = ['卫生间', '洗手间', '厨房', '阳台'];
 const spaces = [...waterproofSpaces, '主卧', '次卧', '客厅', '书房'];
-const progress = /进度|进展|做到哪|到了哪|做完了吗|现在.{0,10}完成了/u;
+const progress = /进度|进展|做到哪|到了哪|施工到哪|做完了吗|现在.{0,10}完成了/u;
+export const specialistPhotoRequested = (question: string) => /照片|图片|现场图|这张图|图中|图里|看图/u.test(question);
 // Persistent follow-up requires a continuing action in the current original.
 export function specialistFollowupRequested(question: string) {
   return !/假设|举例|不用跟进|不要跟进|别跟进|取消|暂停|怎么委托|怎么跟进/u.test(question)
@@ -32,7 +39,8 @@ export function consultationSpecialist(question: string, previousQuestions: stri
   const progressRequested = progress.test(question);
   const currentTopic = namedReviewedStandard(question) ?? reviewedStandardTopic(question);
   const mentionedSpace = waterproofSpaces.some(room => question.includes(room));
-  const inheritsTopic = (continuation.test(question) || /^(?:这个|它|那条|该条)/u.test(question)) && !!reviewedStandardTopic(prior);
+  const inheritsTopic = (continuation.test(question) || /^(?:这个|它|那条|该条)/u.test(question)
+    || /(?:这间|那间|该房间).{0,15}(?:清单|检查|验收|开工)/u.test(question)) && !!reviewedStandardTopic(prior);
   if (!agent || !currentTopic && !inheritsTopic && !(progressRequested && (mentionedSpace || !!reviewedStandardTopic(prior) || question.includes('主卧')))) return null;
   const currentClauses = question.split(/[，,。；;]/u).map(clause => clause.trim())
     .flatMap(clause => clause.startsWith('不是') ? clause.split(/而是|(?<=房|间|台)是/u).slice(1) : [clause]);
@@ -48,12 +56,14 @@ export function consultationSpecialist(question: string, previousQuestions: stri
     ?? (inheritsTopic && /国家|国标|通用要求|公开规范/u.test(question) ? reviewedStandardTopic(prior)
       : inheritsTopic ? matchingReviewedStandard(prior, []) : undefined);
   const evidenceQuestion = inheritsTopic && !currentTopic ? question + '\n' + prior : question;
-  const companyPractice = companyPracticeRequested(question) || inheritsTopic && companyPracticeRequested(prior);
-  const companyOnly = companyPractice && !standard && !explicitStandardReference(question)
+  const publicOnly = /国家|国标|公开规范/u.test(question) && !/对比|区别|比较|差异/u.test(question);
+  const companyPractice = companyPracticeRequested(question) || inheritsTopic && !publicOnly && companyPracticeRequested(prior);
+  const companyOnly = companyPractice && !explicitStandardReference(question)
     && !/公开|国家|国标|通用|对比|区别/u.test(question);
-  const reviewedSections = editionQuestion ? ['1 总则', '5.6 建筑室内工程']
+  const reviewedSections = (standard ?? currentTopic)?.standard.id !== agent.publicStandardId ? undefined
+    : editionQuestion ? ['1 总则', '5.6 建筑室内工程']
     : /蓄水|闭水|淋水|试验/u.test(question) ? undefined : ['5.1 一般规定', '5.6 建筑室内工程'];
-  return { agent, room, progressRequested, standard, editionQuestion, evidenceQuestion, reviewedSections, companyPractice, companyOnly };
+  return { agent, room, progressRequested, standard: companyOnly ? undefined : standard, editionQuestion, evidenceQuestion, reviewedSections, companyPractice, companyOnly };
 }
 
 export function specialistConsultationTools(tools: ModelTool[], input: SpecialistInput, progressRequested: boolean) {
@@ -105,6 +115,20 @@ const policy = '你是小K的防水阶段专业顾问。用简体中文直接解
 export function specialistModelContext(messages: ModelMessage[], checklist: boolean): ModelMessage[] {
   const first = messages.findIndex(message => message.role === 'system');
   if (first < 0) return messages;
-  const instruction: ModelMessage = { role: 'system', content: [{ type: 'text', text: checklist ? policy + ' 本轮为已经登记的防水委托整理现场核对清单。按原问题和已有依据列相关核对项和缺项。跟进状态由原会话的业务回执展示。' : policy }] };
-  return messages.map((message, index) => index === first ? instruction : message);
+  const images = messages.some(message => message.role === 'user' && message.content.some(part => part.type === 'image'));
+  const projected = checklist ? messages.map(message => {
+    if (message.role !== 'user') return message;
+    return { ...message, content: message.content.map(part => {
+      if (part.type !== 'text') return part;
+      try {
+        const original = JSON.parse(part.text);
+        return original.sourceRole === 'current_request'
+          ? { ...part, text: JSON.stringify({ ...original, sourceRole: 'registered_followup_request' }) } : part;
+      } catch { return part; }
+    }) };
+  }) : messages;
+  const instruction: ModelMessage = { role: 'system', content: [{ type: 'text', text: policy
+    + (images ? '\n' + conversationImageInstructions : '')
+    + (checklist ? ' 本轮为已经登记的防水委托整理现场核对清单。按原问题和已有依据列相关核对项和缺项。跟进状态由原会话的业务回执展示。' : '') }] };
+  return projected.map((message, index) => index === first ? instruction : message);
 }

@@ -69,7 +69,7 @@
 | `/floorplans/kujiale` — 酷家乐开放户型搜索 | 保留既有搜索页构图（返回链接、城市/小区筛选、结果卡片）。将 shadcn `Cascader` / `Input` / `Select` / `Button` / `Badge` / `Pagination` 换成 Ant Design `Cascader` / `Input` / `Select` / `Button` / `Tag` / `Pagination`。搜索反馈仍用共享 `notify` | 路由、酷家乐城市/搜索 API、sandbox-openapi 边界和只读（不导入本地库）行为不变；仍从 `/floorplans` 入口进入 | 页面聚焦 ESLint 通过。`http://localhost:3006/floorplans/kujiale` 认证 Chrome 核验待补 | 仅在酷家乐 API/搜索合同变化，或出现可复现筛选/结果布局缺陷时重开 |
 | `/workflow-logs` — 通知送达台账 | 沿用 Ant Design/Admin Pro ProTable：状态附带通道（站内 / 微信订阅）、类型、接收人姓名+用户名+电话+角色、中文发送原因、结果说明、企业/报备上下文与发送时间。手工扫描仅跑预约过期；旧报备催办类型标为已停发历史行。平台模板卡顶部增加「启用微信订阅消息下发」开关（`subscriptionMessagesEnabled`，缺省关闭），其下仍维护八个模板 ID | 路由与 `GET /api/workflow-notification-logs` 仍限 `super_admin`/`admin`/`enterprise_admin`；列表 DTO 含用户名/电话；模板配置卡与下发开关仍仅平台，经 `GET/PATCH /api/platform/notification-config`；开关关闭时 `sendSubscriptionMessage` 跳过微信，站内通知照常；报备创建/更新与提醒 cron 不再派发旧工作流通知 | 接线测试断言旧报备停发、cron 仅预约过期，以及订阅下发门控；认证 Chrome 核验待补 | 仅在通知合同变化或出现可复现台账布局缺陷时重开 |
 
-| `/native-workflow/waterproof-inspection-v1` — 防水专业蓝图 | 沿既有 Ant Design 和 X6 工作台，支持面板拖入、节点配置、数据与控制端口、草稿校验、模拟、发布及 Run 查阅 | 运行概要要求平台管理员选择企业并有当前 Construction 项目权限。已发布版本不可变，运行响应不含模型提示词、消息正文或私有摘录 | 登录态 Chrome 验证 12 节点、27 连线、拖入 Agent、错误定位、重接端口、保存发布 v5、三路模拟以及 v1/v5/v6/v8 真实回执。见 `tmp/i6.9/browser-edit.log`、`browser-retest-03.log`、`browser-debug-09.log` 和 `x6-debug-final.png` | 出现可复现编辑器/运行轨迹缺陷，或节点与来源合同获批变化时重开 |
+| `/native-workflow/waterproof-inspection-v1` — 防水专业蓝图 | 沿既有 Ant Design 和 X6 工作台，使用同一类型化端口呈现 Agent 分析回执及服务端「复核引用依据」节点，沿原草稿校验、模拟及发布 | 运行概要要求平台管理员选择企业并有当前 Construction 项目权限。已发布版本不可变，Run 只投影允许的元数据 | 1440×950 登录态 Chromium 实测 13 个节点、32 条线、依据端口、草稿校验和真实运行元数据，未登录读 Run 返回 401。见 `tmp/i6.10/admin-canvas-01.json` 与 `admin-evidence-canvas.png` | 出现可复现编辑器/运行轨迹缺陷，或节点与来源合同获批变化时重开 |
 
 ## 交接
 

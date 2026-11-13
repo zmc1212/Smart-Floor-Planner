@@ -10,6 +10,7 @@ import { WORKFLOW_BOUNDS, type JsonValue, type NodeType, type WorkflowDefinition
 const labels: Partial<Record<NodeType, string>> = {
   trigger: '业主发起跟进', project_data: '项目及房间', knowledge_retrieval: '企业工艺', public_search: '公开规范',
   agent: '专业 Agent', condition: '条件判断', wait_event: '等待现场资料', create_issue: '登记施工事项',
+  evidence_assessment: '复核引用依据',
   human_review: '项目经理复核', output: '回传原咨询', checklist: '生成检查清单', request_material: '请求补充资料',
 };
 const capabilities = Object.entries(capabilityCatalog).filter(([key, spec]) =>
@@ -65,6 +66,8 @@ interface CanvasProps {
 
 const hasEvidenceBranches = (definition: WorkflowDefinition) =>
   definition.nodes.some(node => node.capabilityRef === 'condition.specialist_evidence');
+const hasEvidenceAssessment = (definition: WorkflowDefinition) =>
+  definition.nodes.some(node => node.capabilityRef === 'read.specialist_evidence' || node.capabilityRef === 'compose.stage_specialist.v3');
 
 function insertConnection(definition: WorkflowDefinition, from: string, sourcePort: string, to: string, targetPort: string) {
   const source = definition.nodes.find(node => node.nodeId === from);
@@ -74,7 +77,7 @@ function insertConnection(definition: WorkflowDefinition, from: string, sourcePo
     const outputPath = sourcePort.slice(4), inputPath = targetPort.slice(3);
     const valueType = capabilityCatalog[source.capabilityRef]?.outputs[outputPath];
     if (!valueType || valueType !== capabilityCatalog[target.capabilityRef]?.inputs[inputPath]
-      || !specialistInputMatches(hasEvidenceBranches(definition), target, inputPath, source, outputPath)) return null;
+      || !specialistInputMatches(hasEvidenceBranches(definition), target, inputPath, source, outputPath, hasEvidenceAssessment(definition))) return null;
     return { ...definition, nodes: definition.nodes.map(node => node.nodeId === to
       ? { ...node, inputs: { ...node.inputs, [inputPath]: { nodeId: from, outputPath } } } : node) };
   }
@@ -231,8 +234,11 @@ export function NativeWorkflowCanvas({ definition, onChange, pendingNodeId, focu
   };
 
   const branched = definition.nodes.some(item => item.typeVersion === 2 || item.capabilityRef === 'condition.specialist_evidence');
+  const explicitAssessment = hasEvidenceAssessment(definition);
   const palette = capabilities.filter(([key, capability]) => capability.type !== 'trigger'
+    && (!['read.specialist_evidence', 'compose.stage_specialist.v3'].includes(key) || explicitAssessment)
     && (branched ? !['compose.stage_specialist', 'wait.specialist_site_record', 'save.specialist_issue', 'condition.compare_boolean'].includes(key)
+      && (!explicitAssessment || key !== 'compose.stage_specialist.v2')
       : !['compose.specialist_checklist', 'compose.specialist_material_request', 'condition.specialist_evidence'].includes(key) && capability.typeVersion === 1));
   const selectNode = (id: string) => {
     setSelected(id);
@@ -312,7 +318,7 @@ export function NativeWorkflowCanvas({ definition, onChange, pendingNodeId, focu
               const ref = node.inputs?.[name];
               const options = definition.nodes.filter(item => item.nodeId !== node.nodeId)
                 .flatMap(item => Object.entries(capabilityCatalog[item.capabilityRef]?.outputs ?? {})
-                  .filter(([key, type]) => type === kind && specialistInputMatches(hasEvidenceBranches(definition), node, name, item, key))
+                  .filter(([key, type]) => type === kind && specialistInputMatches(hasEvidenceBranches(definition), node, name, item, key, explicitAssessment))
                   .map(([key]) => ({ label: item.nodeId + ' · ' + key, value: item.nodeId + ':' + key })));
               return <Space wrap key={'input:' + name}><Typography.Text>INPUT {name} · {kind}</Typography.Text>
                 <Select allowClear disabled={!editable} aria-label={'输入 ' + name} style={{ minWidth: 225 }} placeholder="连接输出端口"

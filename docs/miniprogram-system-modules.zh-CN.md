@@ -18,7 +18,7 @@
 关闭协同后，已保存的设计和质量事项继续核对项目角色。B5.10 的签名路由及实库检查覆盖撤权、失效版本、项目成员、无效照片上传、退回重提和整改回传去重。[B5.10 验收](./native-workflow-b510-deployment-review.zh-CN.md)。
 <!-- /cross-role-business-current -->
 
-**I6.9 防水咨询与跟进（Limited）。** 原 `packages/assistant/chat/chat` 接收工艺咨询、企业标准、本人房间进度与明确跟进请求。消息和 `GET /api/miniprogram/assistant/conversations/:id/long-term` 按当前权限重投影原委托、绑定版本、Run 和经理回执。长期状态返回原消息、发布摘要、Agent 版本、房间及当前事项，沿原会话展示清单或补资料反馈。施工人员沿 `packages/construction/chat/chat` 的上报、发布及事项动作处理，原照片和技术引用沿既有授权。当前文本模型未读取照片像素。[工作流与验收](xiaok-waterproof-workflow.md)。
+**I6.10 防水咨询与跟进（Limited）。** 原 `packages/assistant/chat/chat` 接收工艺、规范、房间进度和明确跟进请求。消息和 `GET /api/miniprogram/assistant/conversations/:id/long-term` 按当前权限重投影绑定 Run、版本、房间、事项和经理回执。清单和补资料沿原会话反馈，施工人员沿 `packages/construction/chat/chat` 上报、发布及处理事项。显式启用图片能力的 C01 可描述本咨询获权上传图和已对该业主发布的同项目同房间照片，重进复核原图与发布权限。PDF 引用沿原引用面板复核已存页和当前源站版本。正式验收和工序放行继续沿 Construction 回执。[工作流与验收](xiaok-waterproof-workflow.md)。
 
 <!-- native-delegation-current -->
 **水电持续跟进（Limited）。** 有权业主在批准的 C01 原咨询输入框（`packages/assistant/chat/chat`）发送“请持续跟进主卧的水电进展和书房的插座点位。”，可替换为项目中登记的部位名。“查看水电跟进”“暂停水电跟进”“继续水电跟进”“取消水电跟进”作用于该咨询中的委托。加上“等我回复超时就在小K里提醒我”可授权每次等待业主回复满 48 小时后站内提醒一次。重进原咨询会读到已保存的回执、补问和获准的项目团队结论。

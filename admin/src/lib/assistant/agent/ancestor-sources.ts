@@ -9,7 +9,7 @@ import { synthesisContextAvailable } from './synthesis-sources';
 import { enterpriseKnowledgeEnabled } from '../knowledge-policy';
 import { publicContextStatus, publicMessageAvailable, type PublicContextRef } from '@/lib/construction/public-projections';
 import { publicHistoryScope } from './history';
-import { checkWebSources, type WebSourceChecks } from './web-evidence';
+import { checkWebSources, resolveWebEvidence, type WebSourceChecks } from './web-evidence';
 
 export type AncestorSourceRef = { runId: string; messageId: string; contentHash: string; contextHash: string };
 export const ancestorSourcesProtocol = 'authorized-ancestor-sources-v1';
@@ -40,7 +40,7 @@ export function selectedAncestorSources(context: SynthesisContext, answer: unkno
 export async function checkAncestorWebSources(
   authorize: <T>(work: (tx: PostgresTransaction, conversation: Row, run: Row) => Promise<T>) => Promise<T>,
 ) {
-  const sources = await authorize(async (tx, conversation, run) => {
+  const { sources, savedPdfPages } = await authorize(async (tx, conversation, run) => {
     const candidates = await rows(tx, sql`select s.source_refs from app.assistant_run_steps s
       join app.assistant_runs r on r.enterprise_id=s.enterprise_id and r.id=s.run_id
       join app.assistant_messages m on m.enterprise_id=r.enterprise_id and m.id=r.output_message_id
@@ -48,9 +48,15 @@ export async function checkAncestorWebSources(
       where r.enterprise_id=${String(run.enterprise_id)} and r.conversation_id=${String(conversation.id)}
         and r.status='succeeded' and m.seq<trigger.seq and s.kind='agent_synthesis_context'
         and s.status='succeeded' order by m.seq desc limit 2`);
-    return candidates.flatMap(candidate => ((candidate.source_refs as SynthesisContext | null)?.web ?? []).flatMap(source => source.web ?? []));
+    const evidence = candidates.flatMap(candidate => (candidate.source_refs as SynthesisContext | null)?.web ?? []);
+    const savedPdfPages = new Set<string>();
+    for (const source of evidence) {
+      if (source.web?.document?.mediaType === 'application/pdf' && !savedPdfPages.has(source.hash)
+        && await resolveWebEvidence(tx, { enterpriseId: String(run.enterprise_id) }, conversation, source)) savedPdfPages.add(source.hash);
+    }
+    return { sources: evidence.flatMap(source => source.web ?? []), savedPdfPages };
   });
-  return checkWebSources(sources);
+  return checkWebSources(sources, undefined, { savedPdfPages });
 }
 
 function ancestorWebAvailable(context: SynthesisContext, checks?: WebSourceChecks) {

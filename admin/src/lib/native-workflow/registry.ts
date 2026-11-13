@@ -24,6 +24,17 @@ const specialistInputs: Readonly<Record<string, Readonly<Record<string, readonly
     enterprise: ['read.specialist_knowledge', 'enterprise'],
     publicStandard: ['read.specialist_public_standard', 'publicStandard'],
   },
+  'compose.stage_specialist.v3': {
+    project: ['read.specialist_project', 'project'],
+    enterprise: ['read.specialist_knowledge', 'enterprise'],
+    publicStandard: ['read.specialist_public_standard', 'publicStandard'],
+  },
+  'read.specialist_evidence': {
+    analysisRun: ['compose.stage_specialist.v3', 'analysisRun'],
+    project: ['read.specialist_project', 'project'],
+    enterprise: ['read.specialist_knowledge', 'enterprise'],
+    publicStandard: ['read.specialist_public_standard', 'publicStandard'],
+  },
   'condition.specialist_evidence': {
     enterprise: ['compose.stage_specialist.v2', 'hasEnterprise'],
     publicStandard: ['compose.stage_specialist.v2', 'hasPublic'],
@@ -40,9 +51,11 @@ const specialistInputs: Readonly<Record<string, Readonly<Record<string, readonly
   },
 };
 
-export function specialistInputMatches(branched: boolean, target: WorkflowNode, input: string, source: WorkflowNode, output: string) {
+export function specialistInputMatches(branched: boolean, target: WorkflowNode, input: string, source: WorkflowNode, output: string,
+  explicitAssessment = source.capabilityRef === 'read.specialist_evidence') {
   const binding = branched ? specialistInputs[target.capabilityRef]?.[input] : undefined;
-  return !binding || source.capabilityRef === binding[0] && output === binding[1];
+  const expected = explicitAssessment && binding?.[0] === 'compose.stage_specialist.v2' ? 'read.specialist_evidence' : binding?.[0];
+  return !binding || source.capabilityRef === expected && output === binding[1];
 }
 
 export interface CapabilitySpec {
@@ -83,6 +96,16 @@ export const capabilityCatalog: Readonly<Record<string, CapabilitySpec>> = {
   'compose.stage_specialist.v2': {
     type: 'agent', typeVersion: 2, effect: 'compose', configKeys: ['agentId', 'agentVersion'],
     permission: 'followup', inputs: { project: 'object', enterprise: 'object', publicStandard: 'object' },
+    outputs: { analysis: 'object', hasEnterprise: 'boolean', hasPublic: 'boolean', hasIssue: 'boolean' },
+  },
+  'compose.stage_specialist.v3': {
+    type: 'agent', typeVersion: 3, effect: 'compose', configKeys: ['agentId', 'agentVersion'],
+    permission: 'followup', inputs: { project: 'object', enterprise: 'object', publicStandard: 'object' },
+    outputs: { analysisRun: 'object' },
+  },
+  'read.specialist_evidence': {
+    type: 'evidence_assessment', typeVersion: 1, effect: 'read', configKeys: [], permission: 'followup',
+    inputs: { analysisRun: 'object', project: 'object', enterprise: 'object', publicStandard: 'object' },
     outputs: { analysis: 'object', hasEnterprise: 'boolean', hasPublic: 'boolean', hasIssue: 'boolean' },
   },
   'condition.specialist_evidence': {
@@ -333,6 +356,7 @@ export function validateCapabilityConfig(
       return;
     }
     case 'compose.stage_specialist':
+    case 'compose.stage_specialist.v3':
     case 'compose.stage_specialist.v2': {
       const selected = typeof config.agentId === 'string' && typeof config.agentVersion === 'number'
         ? specialists.version(config.agentId, config.agentVersion) : undefined;

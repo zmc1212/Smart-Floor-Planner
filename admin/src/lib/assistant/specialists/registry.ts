@@ -76,6 +76,7 @@ const registration = z.strictObject({
   supportedIntents: z.array(z.enum(intents)).min(1),
   knowledgeScopes: z.array(z.enum(scopes)),
   workflowTemplateId: z.string().min(1).nullable(),
+  publicStandardId: z.string().min(1).optional(),
   toolPermissions: z.array(z.enum(permissions)),
   inputSchema: z.literal('stage-specialist-input-v1'),
   outputSchema: z.literal('stage-specialist-output-v1'),
@@ -130,7 +131,7 @@ export const specialists = specialistRegistry([
     ...schemaVersions, agentId: waterproofAgentId, version: 1, status: 'active',
     name: '防水阶段专业 Agent', description: '解释施工准备、节点密封、验收与后续工序，并协助跟进待复核事项。',
     supportedStages: ['waterproof'], supportedIntents: [...intents], knowledgeScopes: [...scopes],
-    workflowTemplateId: waterproofWorkflowTemplateId, toolPermissions: [...permissions],
+    workflowTemplateId: waterproofWorkflowTemplateId, publicStandardId: 'GB55030-2022', toolPermissions: [...permissions],
   },
   ...([
     ['electrical', '水电'], ['masonry', '泥木'], ['painting', '油漆'],

@@ -27,6 +27,8 @@ function fixtures(branch: 'issue' | 'true' | 'false'): SimulationFixtures {
     'read.specialist_public_standard': standard,
     'compose.stage_specialist': legacy,
     'compose.stage_specialist.v2': specialist,
+    'compose.stage_specialist.v3': { status: 'ok', outputs: { analysisRun: { runId: 'sim-run-1' } } },
+    'read.specialist_evidence': specialist,
     'wait.specialist_site_record': record,
     'wait.specialist_site_record.v2': record,
     'save.specialist_issue': issue,

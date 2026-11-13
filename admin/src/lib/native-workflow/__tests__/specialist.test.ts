@@ -93,7 +93,7 @@ test('the live runner restores a pending event, absorbs a replay, and preserves 
       if (fixture.status !== 'ok') throw Error('fixture cannot produce output');
       return {
         ...fixture.outputs,
-        ...(operation.nodeId === 'analysis' ? { hasIssue: false } : {}),
+        ...(operation.nodeId === 'assessment' ? { hasIssue: false } : {}),
         ...(operation.nodeId === 'issue' ? { saveReceipt: { receiptId: 'site-issue-1', simulated: false } } : {}),
         ...(operation.nodeId === 'result' ? { deliveryReceipt: { receiptId: 'message-1', simulated: false } } : {}),
       };

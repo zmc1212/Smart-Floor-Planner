@@ -1,11 +1,12 @@
 import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
-import { AssistantRepository, one, rows } from '@/db/repositories/assistant-repository';
-import { fail, type ActorContext, type Evidence } from '../contracts';
+import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
+import { AssistantError, fail, type ActorContext, type Evidence } from '../contracts';
 import { resolveEvidence } from '../knowledge/sources';
 import type { ModelMessage, ModelPart } from '../contracts/model';
 import { businessSnapshotAvailable, type BusinessSnapshot } from './business-tools';
-import { constructionNoticeAvailable } from '@/lib/construction/customer';
+import { constructionNoticeAvailable, constructionRead } from '@/lib/construction/customer';
+import { customerSiteMedia, publishedSitePhotoIds } from '@/lib/construction/site-publications';
 import { publicMessageAvailable } from '@/lib/construction/public-projections';
 import { materialSnapshotAvailable, type MaterialDependency } from './materials';
 import { needIssueSnapshotAvailable, type NeedIssueDependency } from '@/lib/construction/need-issues';
@@ -15,11 +16,51 @@ import { historyRefsAvailable, type HistoryRef } from './history';
 import { needSourcesAvailable, type NeedSourceRef } from './memory-sources';
 import { formalMediaSourceAvailable } from '../media/formal-source';
 export type MediaDependency = { type: 'assistant_media'; id: string; hash: string };
+export type SitePhotoDependency = { type: 'construction_site_photo'; id: string; hash: string;
+  recordId: string; recordVersion: number; projectId: string; roomId: string; roomName: string; ownerId: string };
+export type AgentMediaDependency = MediaDependency | SitePhotoDependency;
 /** Call only after conversation authorization; this does not grant conversation access. */
 export async function resolveAgentMedia(tx: PostgresTransaction, enterpriseId: string, conversationId: string, ref: MediaDependency) {
   const media = await one(tx, sql`select a.* from app.assistant_media a where a.enterprise_id=${enterpriseId}
     and a.conversation_id=${conversationId} and a.id=${ref.id} and a.source_hash=${ref.hash} and a.deleted_at is null`);
   return media && await formalMediaSourceAvailable(tx, enterpriseId, media) ? media : undefined;
+}
+
+export async function resolveAgentImage(tx: PostgresTransaction, eid: string, conversation: Row, ref: AgentMediaDependency) {
+  if (ref.type === 'assistant_media') return resolveAgentMedia(tx, eid, String(conversation.id), ref);
+  const entry = conversation.entry_snapshot as Row;
+  if (entry?.kind !== 'lead' || entry.activePublicSite || !await one(tx, sql`select id from app.assistant_participants
+    where enterprise_id=${eid} and conversation_id=${String(conversation.id)} and user_id=${ref.ownerId} and status='active'`)) return;
+  try {
+    const media = await customerSiteMedia(tx, { enterpriseId: eid, principal: { kind: 'user', userId: ref.ownerId },
+      contextVersion: 0, capabilities: [] }, conversation, ref.recordId, ref.id, ref.recordVersion,
+      { projectId: ref.projectId, roomId: ref.roomId, roomName: ref.roomName });
+    if (media.hash === ref.hash && media.mime === 'image/jpeg' && Buffer.isBuffer(media.data))
+      return { data: media.data, mime_type: media.mime };
+  } catch (error) {
+    if (!(error instanceof AssistantError) || error.status !== 404) throw error;
+  }
+}
+
+export async function specialistSitePhotos(tx: PostgresTransaction, actor: ActorContext, conversation: Row, roomName: string) {
+  const entry = conversation.entry_snapshot as Row;
+  if (actor.principal.kind !== 'user' || entry.kind !== 'lead' || entry.activePublicSite) return [];
+  const eid = actor.enterpriseId, ownerId = actor.principal.userId;
+  const { data } = await constructionRead(tx, eid, ownerId, String(entry.id), { room: roomName });
+  const project = data[0];
+  if (!project?.roomId) return [];
+  const projectId = String(project.projectId), roomId = String(project.roomId);
+  const photos: Array<{ ref: SitePhotoDependency; data: Buffer }> = [];
+  for (const record of project.records as Array<{ id: string; version: number }>) {
+    for (const asset of await publishedSitePhotoIds(tx, eid, projectId, record.id, 2 - photos.length)) {
+      const ref: SitePhotoDependency = { type: 'construction_site_photo', id: String(asset.id), hash: String(asset.source_hash),
+        recordId: record.id, recordVersion: record.version, projectId, roomId, roomName, ownerId };
+      const media = await resolveAgentImage(tx, eid, conversation, ref);
+      if (media) photos.push({ ref, data: media.data as Buffer });
+    }
+    if (photos.length >= 2) break;
+  }
+  return photos;
 }
 export async function agentMessageAvailable(tx: PostgresTransaction, enterpriseId: string, conversationId: string, messageId: string, reader?:ActorContext) {
   const needs = await rows(tx, sql`select s.source_refs from app.assistant_run_steps s join app.assistant_messages m on m.enterprise_id=s.enterprise_id and m.run_id=s.run_id
@@ -72,8 +113,14 @@ export async function agentMessageAvailable(tx: PostgresTransaction, enterpriseI
   for (const ref of (issues?.source_refs || []) as NeedIssueDependency[]) if (!await needIssueSnapshotAvailable(tx, enterpriseId, ref)) return false;
   const step = await one(tx, sql`select s.source_refs from app.assistant_run_steps s join app.assistant_messages m on m.enterprise_id=s.enterprise_id and m.run_id=s.run_id
     where m.enterprise_id=${enterpriseId} and m.conversation_id=${conversationId} and m.id=${messageId} and s.kind='agent_checkpoint'`);
-  const refs = (step?.source_refs || []) as MediaDependency[];
-  for (const ref of refs) if (ref.type === 'assistant_media' && !await resolveAgentMedia(tx, enterpriseId, conversationId, ref)) return false;
+  const refs = (step?.source_refs || []) as AgentMediaDependency[];
+  for (const ref of refs) {
+    if (ref.type === 'assistant_media' && !await resolveAgentMedia(tx, enterpriseId, conversationId, ref)) return false;
+    if (ref.type === 'construction_site_photo') {
+      const conversation = await one(tx, sql`select * from app.assistant_conversations where enterprise_id=${enterpriseId} and id=${conversationId}`);
+      if (!conversation || !await resolveAgentImage(tx, enterpriseId, conversation, ref)) return false;
+    }
+  }
   // Staff packets and same-thread replies use this guard too. Source withdrawal
   // must invalidate derived text there, not only the customer's citation sheet.
   const referenceStep = await one(tx, sql`select s.source_refs from app.assistant_run_steps s join app.assistant_messages m on m.enterprise_id=s.enterprise_id and m.run_id=s.run_id
@@ -102,14 +149,17 @@ export async function agentMessageAvailable(tx: PostgresTransaction, enterpriseI
 export function withoutImageBytes(messages: ModelMessage[]): ModelMessage[] {
   return messages.map(m => m.role === 'user' || m.role === 'system' ? { ...m, content: m.content.map(p => p.type === 'image' ? { ...p, data: '' } : p) } : m);
 }
-export async function hydrateImages(tx: PostgresTransaction, enterpriseId: string, conversationId: string, messages: ModelMessage[]) {
+export async function hydrateImages(tx: PostgresTransaction, enterpriseId: string, conversationId: string, messages: ModelMessage[],
+  site?: { conversation: Row; refs: SitePhotoDependency[] }) {
   const result: ModelMessage[] = [];
   for (const message of messages) {
     if (message.role !== 'user' && message.role !== 'system') { result.push(message); continue; }
     const content: ModelPart[] = [];
     for (const part of message.content) {
       if (part.type !== 'image') { content.push(part); continue; }
-      const media = await resolveAgentMedia(tx, enterpriseId, conversationId, { type: 'assistant_media', id: part.mediaId, hash: part.hash });
+      const siteRef = site?.refs.find(ref => 'site:' + ref.id === part.mediaId && ref.hash === part.hash);
+      const media = siteRef && site ? await resolveAgentImage(tx, enterpriseId, site.conversation, siteRef)
+        : await resolveAgentMedia(tx, enterpriseId, conversationId, { type: 'assistant_media', id: part.mediaId, hash: part.hash });
       if (!media) fail('context_changed');
       content.push({ ...part, data: (media.data as Buffer).toString('base64') });
     }

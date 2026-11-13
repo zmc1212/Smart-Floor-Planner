@@ -6,12 +6,14 @@ import { isQiniuConatusModel } from './providers/qiniu';
 import { consultationProfile } from '@/lib/assistant/contracts/consultation';
 import type { ModelTurnInput } from '@/lib/assistant/contracts/model';
 import type { AgentConfig } from '@/lib/assistant/agent/config';
+import { conversationImageProtocol, nativeImageFinalProjection } from '@/lib/assistant/agent/image-context';
+import { specialistModel } from '@/lib/assistant/specialists/registry';
+import { bailianResponsesBinding } from './providers/bailian-responses-capabilities';
 import type { InvocationOwner } from '@/lib/assistant/contracts';
 import { AssistantError } from '@/lib/assistant/contracts';
 import { reportBodyFinalProtocol, reportNativeFinalProtocol } from '@/lib/assistant/agent/report-native-final';
 import { reportFinalOutputTokenLimit } from '@/lib/assistant/contracts/model';
 import { nativeFinalProjection } from '@/lib/assistant/agent/native-final';
-import { nativeImageFinalProjection } from '@/lib/assistant/agent/image-context';
 import { AiCreationRepository } from '@/db/repositories/ai-creation-repository';
 import { withTenantTransaction } from '@/db/transaction';
 import { resolveProviderCostEstimate } from '@/lib/ai/provider-cost';
@@ -143,6 +145,12 @@ export async function executePostgresText(input: {
     if (input.agent && (input.owner.kind !== 'assistant_run' || runtime.adapterType !== 'openai_compatible'
       || input.agent.config.model !== remoteModel || input.agent.config.providerKey !== (runtime.adapterConfig?.providerPreset || runtime.key))) {
       configurationFailure('assistant_model_configuration_invalid', 'Agent provider capability probe no longer matches current configuration');
+    }
+    if (input.agent?.config.providerKey === specialistModel.providerKey && remoteModel === specialistModel.model
+      && input.agent.config.imageContext === conversationImageProtocol
+      && input.agent.input.messages.some(message => message.role === 'user' && message.content.some(part => part.type === 'image'))
+      && bailianResponsesBinding(runtime.baseUrl, remoteModel)?.region !== 'cn-beijing') {
+      configurationFailure('assistant_model_configuration_invalid', 'Specialist image input requires the verified Beijing endpoint');
     }
     const consultation = input.agent?.config.consultation;
     const consultationRuntime = consultation && runtime.adapterType === 'openai_compatible'

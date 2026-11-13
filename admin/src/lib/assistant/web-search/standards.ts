@@ -29,6 +29,13 @@ export const explicitStandardReference = (value: string) => !!idFrom(value.norma
 
 export const reviewedStandardTopic = (value: string) => reviewedStandards.find(item => item.topics.some(term => value.includes(term)));
 
+export function reviewedStandardPublication(web: WebSourceLocator) {
+  if (!web.document?.reviewedTextHash || web.standard?.kind !== 'standard_text') return undefined;
+  const { origin, pathname } = publicWebUrl(web.url);
+  return reviewedStandards.find(item => item.standard.id === web.standard?.id && item.sha256 === web.document?.hash
+    && item.origin === origin && item.path === pathname);
+}
+
 export function matchingReviewedStandard(question: string, precedingQuestions: string[]) {
   const named = namedReviewedStandard(question);
   if (named) return named;
@@ -140,7 +147,10 @@ export function unverifiedStandardStatus(text: string, cited: StandardCitation[]
         && item.clauses.some(clause => quote.includes(clause)) && standardIdentity(quote).includes(item.id)))) return false;
     return [...sentence.matchAll(statusClaims)].some(claim => {
       const start = sentence.slice(0, claim.index);
-      if (/是否|能否|无法确认|尚未核实|不能(?:据此)?判断|不能认定|不代表|未(?:查到|见|找到|显示|发现)|待核实/u.test(start.split(/[，,]/u).at(-1) ?? '')
+      const clause = start.split(/[，,]/u).at(-1) ?? '';
+      const remainder = sentence.slice(claim.index + claim[0].length);
+      if (/是否|能否|无法确认|尚未核实|不能(?:据此)?判断|不能认定|不代表|未(?:查到|见|找到|显示|发现)|待核实/u.test(clause)
+        || /^(?:的)?(?:有效性|状态|情况)?(?:我|本次|本轮)?(?:暂|仍)?(?:无法|不能|尚未|未能)(?:确认|核实)(?:$|[，,])/u.test(remainder)
         || claim[0] === '现行' && sentence.slice(claim.index).startsWith('现行工程建设标准中')
         || /^(?:如何|怎么|哪里|能否|是否)/u.test(sentence.trim())) return false;
       const requested = claim[0].includes('废止') ? 'withdrawn' : 'current';

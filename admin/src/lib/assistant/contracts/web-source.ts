@@ -5,5 +5,5 @@ export type WebSourceLocator = {
   standard?: import('../web-search/standards').PublicStandard;
   parser: 'public-html-text-v1' | 'crawl4ai-static-0.9.2+pypdf-6.21.2-v1'; textBytes: number;
   document?: { hash: string; mediaType: string; page: number; pages: number; bytes: number;
-    transport?: 'verified_pdf_ranges'; reviewedTextHash?: string; section?: string };
+    transport?: 'verified_pdf_ranges'; etag?: string; reviewedTextHash?: string; section?: string };
 };

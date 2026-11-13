@@ -28,6 +28,13 @@ export type FetchedWebDocument = {
   standard?: PublicStandard;
 };
 
+export function standardAttachment(notice: (Pick<FetchedWebDocument, 'standard' | 'attachments'>
+  & Partial<Pick<FetchedWebDocument, 'injectionSignals'>>) | undefined, standard: Pick<PublicStandard, 'id' | 'name'>) {
+  return notice?.standard?.kind === 'publication_notice' && notice.standard.id === standard.id
+    && !notice.injectionSignals?.length
+    ? notice.attachments?.find(link => link.title.replace(/\.pdf$/i, '') === standard.name) : undefined;
+}
+
 function cleanPublishedAt(value: unknown): string | null {
   if (typeof value !== 'string' || !value.trim()) return null;
   const time = Date.parse(value);

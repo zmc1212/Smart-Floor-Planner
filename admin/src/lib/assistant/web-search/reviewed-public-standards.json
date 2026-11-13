@@ -49,5 +49,41 @@
         "text": "2 有防水要求的墙面应进行淋水试验，淋水时间不应少于30min；\n3 独立水容器应进行满池蓄水试验，蓄水时间不应少于24h；\n4 室内工程厨浴间楼地面防水层和饰面层完成后，均应进行蓄水试验。"
       }
     ]
+  },
+  {
+    "sha256": "d84b943144c51db7bbc8029493a39fe6a98358e81f19d5480da9f2459cea0112",
+    "origin": "https://www.mohurd.gov.cn",
+    "path": "/cms_files/filemanager/1150240553/attach/202411/1eac436dcffe2c1c2c4138441938c7c1.pdf",
+    "noticeUrl": "https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2021/art_17339_762458.html",
+    "catalogUrl": "https://ebook.chinabuilding.com.cn/zbooklib/book/detail/show?SiteID=1&bookID=149200",
+    "topics": ["建筑给水排水与节水通用规范"],
+    "pages": 28,
+    "standard": {
+      "kind": "standard_text",
+      "id": "GB55020-2021",
+      "name": "建筑给水排水与节水通用规范",
+      "level": "national",
+      "issuer": "住房和城乡建设部",
+      "issuedAt": "2021-09-08",
+      "effectiveAt": "2022-04-01",
+      "status": "unknown"
+    },
+    "transcripts": [
+      {
+        "page": 12,
+        "section": "4.2 卫生器具与水封",
+        "text": "4.2.1 当构造内无存水弯的卫生器具、无水封地漏、设备或排水沟的排水口与生活排水管道连接时，必须在排水口以下设存水弯。\n4.2.2 水封装置的水封深度不得小于50mm，卫生器具排水管段上不得重复设置水封。"
+      },
+      {
+        "page": 24,
+        "section": "8.1 一般规定",
+        "text": "8.1.6 隐蔽工程在隐蔽前应经各方验收合格并形成记录。\n8.1.8 地下室或地下构筑物外墙有管道穿过时，应采取防水措施。对有严格防水要求的建筑物，应采用柔性防水套管。"
+      },
+      {
+        "page": 25,
+        "section": "8.3 调试与验收",
+        "text": "8.3.2 给水管道应经水压试验合格后方可投入运行。水压试验应包括水压强度试验和严密性试验。\n8.3.3 污水管道及湿陷土、膨胀土、流砂地区等的雨水管道，必须经严密性试验合格后方可投入运行。"
+      }
+    ]
   }
 ]

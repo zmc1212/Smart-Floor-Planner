@@ -428,7 +428,7 @@ export class ConversationService {
     const sources = history.items.flatMap(message => message.available
       ? message.citations.flatMap(citation => citationWebSource(citation) ?? []) : []);
     if (!sources.length) return history;
-    const checked = await checkWebSources(sources, this.checkSource);
+    const checked = await checkWebSources(sources, this.checkSource, { savedPdfPages: new Set(sources.map(source => source.hash)) });
     // Recheck access and the saved originals after external I/O. Keep this
     // page's cursor and identities even if newer messages arrived meanwhile.
     return this.scoped(async repo => {
@@ -493,7 +493,7 @@ export class ConversationService {
       const citation = await read();
       const source = citationWebSource(citation);
       if (!source || this.transaction) return citation;
-      return read(await checkWebSources([source], this.checkSource));
+      return read(await checkWebSources([source], this.checkSource, { savedPdfPages: new Set([source.hash]) }));
     }
     return this.scoped(async repo=>{
       const citation=await one(repo.tx,sql`select * from app.assistant_message_citations where enterprise_id=${this.actor.enterpriseId} and id=${citationId}`);

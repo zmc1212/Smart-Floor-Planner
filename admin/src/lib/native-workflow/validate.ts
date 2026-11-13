@@ -25,7 +25,7 @@ const NODE_TYPES: readonly NodeType[] = [
   'compose_content',
   'save_result',
   'deliver_inapp',
-  'project_data', 'knowledge_retrieval', 'public_search', 'agent', 'checklist', 'request_material', 'wait_event', 'human_review', 'create_issue', 'output',
+  'project_data', 'knowledge_retrieval', 'public_search', 'agent', 'evidence_assessment', 'checklist', 'request_material', 'wait_event', 'human_review', 'create_issue', 'output',
 ];
 
 const nodeIdPattern = /^[a-z][a-z0-9_-]{1,63}$/;
@@ -404,7 +404,8 @@ export function validateDefinition(raw: unknown): ValidationResult {
   });
 
   const specialist = inputSchema?.eventType === 'specialist_followup';
-  const branchedSpecialist = specialist && nodes.some(node => node.typeVersion === 2 || node.capabilityRef === 'condition.specialist_evidence');
+  const explicitAssessment = nodes.some(node => node.capabilityRef === 'read.specialist_evidence' || node.capabilityRef === 'compose.stage_specialist.v3');
+  const branchedSpecialist = specialist && (explicitAssessment || nodes.some(node => node.typeVersion === 2 || node.capabilityRef === 'condition.specialist_evidence'));
   if (!specialist && nodes.some(node => node.capabilityRef === 'condition.specialist_evidence')) {
     issues.push(workflowIssue('capability_event_mismatch', '$.nodes', 'specialist evidence conditions require a specialist event'));
   }
@@ -544,7 +545,8 @@ export function validateDefinition(raw: unknown): ValidationResult {
   }
   if (branchedSpecialist) {
     const requiredCapabilities = ['read.specialist_project', 'read.specialist_knowledge', 'read.specialist_public_standard',
-      'compose.stage_specialist.v2', 'condition.specialist_evidence', 'compose.specialist_checklist', 'compose.specialist_material_request',
+      ...(explicitAssessment ? ['compose.stage_specialist.v3', 'read.specialist_evidence'] : ['compose.stage_specialist.v2']),
+      'condition.specialist_evidence', 'compose.specialist_checklist', 'compose.specialist_material_request',
       'wait.specialist_site_record.v2', 'save.specialist_issue.v2', 'wait.specialist_review', 'deliver.specialist_result'];
     for (const capability of requiredCapabilities) {
       if (nodes.filter(node => node.capabilityRef === capability).length !== 1) {
@@ -569,8 +571,10 @@ export function validateDefinition(raw: unknown): ValidationResult {
       'trigger.specialist_followup': 'read.specialist_project',
       'read.specialist_project': 'read.specialist_knowledge',
       'read.specialist_knowledge': 'read.specialist_public_standard',
-      'read.specialist_public_standard': 'compose.stage_specialist.v2',
+      'read.specialist_public_standard': explicitAssessment ? 'compose.stage_specialist.v3' : 'compose.stage_specialist.v2',
       'compose.stage_specialist.v2': 'condition.specialist_evidence',
+      'compose.stage_specialist.v3': 'read.specialist_evidence',
+      'read.specialist_evidence': 'condition.specialist_evidence',
       'compose.specialist_checklist': 'wait.specialist_site_record.v2',
       'compose.specialist_material_request': 'wait.specialist_site_record.v2',
       'wait.specialist_site_record.v2': 'save.specialist_issue.v2',
@@ -657,7 +661,7 @@ export function validateDefinition(raw: unknown): ValidationResult {
         continue;
       }
       if (nodeSpec) {
-        if (!specialistInputMatches(branchedSpecialist, node, inputName, source, ref.outputPath)) {
+        if (!specialistInputMatches(branchedSpecialist, node, inputName, source, ref.outputPath, explicitAssessment)) {
           const code = node.capabilityRef === 'condition.specialist_evidence' ? 'invalid_specialist_branch_input' : 'invalid_specialist_input';
           issues.push(workflowIssue(code, inputPath, `bind the matching verified ${inputName} port`));
         }

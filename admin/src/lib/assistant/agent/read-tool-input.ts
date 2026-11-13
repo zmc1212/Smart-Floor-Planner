@@ -29,7 +29,7 @@ export function drawingChecklistRequested(question: string): boolean {
  * the actual current request is inspected; quoted history/tool data cannot
  * establish an executed read. Authorization remains with the existing port. */
 export function knowledgeOriginalRequested(question: string): boolean {
-  if (namedReviewedStandard(question)) return false;
+  if (namedReviewedStandard(question) || /国标|国家标准|国家规范|公开规范/u.test(question)) return false;
   if (/不(?:用|要|必)?(?:查|检索|读取|查阅)[^。；\n]{0,16}(?:原文|文件|文档|资料)/.test(question)) return false;
   if (/(?:聊天|我(?:的|说|之前|早先)|客户)[^。；\n]{0,20}(?:原文|原话)/.test(question)
     && !/文件|文档|手册|第[一二三四五六七八九十百零〇两\d]{1,8}(?:页|章|节)|\.(?:pdf|docx|xlsx)/i.test(question)) return false;
@@ -69,7 +69,7 @@ export function explicitHumanHandoffRequested(text: string): boolean {
 
 // A public receipt cannot satisfy a request for the enterprise's own practice.
 export const companyPracticeRequested = (question: string) =>
-  /(?:本企业|你们公司|我们公司|公司自己)(?:的|内部)?[^。；\n]{0,18}(?:工艺|标准|规范|防水|施工|资料|规定)/u.test(question);
+  /(?:本企业|(?:你们|我们)(?:这家)?公司|公司自己)(?:的|内部)?[^。；\n]{0,18}(?:工艺|标准|规范|防水|施工|资料|规定)/u.test(question);
 
 export function knowledgeReadPending(question: string, messages: ModelMessage[], triggerId: string, required = false): boolean {
   if (!required && !knowledgeOriginalRequested(question) && !companyPracticeRequested(question)) return false;

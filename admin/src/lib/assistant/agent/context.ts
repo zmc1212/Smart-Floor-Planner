@@ -4,7 +4,7 @@ import { currentBudgetRecallRequested, currentNeedView, type NeedMemory } from '
 import { fail } from '../contracts';
 import { isNeedInquiry, needWriteProhibition } from './need-write-intent';
 import { originalAnswerOnly } from './read-tool-input';
-import { projectDeniedApprovalList } from './formal-claim-scope';
+import { hasAcceptanceClaim, projectAcceptanceClaims, projectDeniedApprovalList } from './formal-claim-scope';
 import { projectNegativeWorkStatus } from './formal-status-polarity';
 import { generalKnowledgeInstructions } from '../knowledge-policy';
 
@@ -79,10 +79,13 @@ export function buildAgentContext(turns: Array<{ id: string; role: 'user' | 'ass
 /** Reject free-form completion/price claims that no service receipt supports.
  * Shared by the built-in reply parser and the FastGPT Agent V2 free-form path;
  * service-authored business snapshots are delivered separately. */
-export function guardAnswerCommitments(text: string, options: { formalStatusEvidence?: boolean } = {}) {
+type CommitmentScope = { formalStatusEvidence?: boolean; acceptanceQuotes?: readonly string[] };
+
+export function guardAnswerCommitments(text: string, options: CommitmentScope = {}) {
   // Formal commitments always come from a business service, never free-form generation.
   // Project explicit absence/denial/question predicates, retaining other claims.
-  const completionClaims = projectDeniedApprovalList(options.formalStatusEvidence ? projectNegativeWorkStatus(text) : text)
+  const status = options.acceptanceQuotes ? projectAcceptanceClaims(text, options.acceptanceQuotes) : text;
+  const completionClaims = projectDeniedApprovalList(options.formalStatusEvidence ? projectNegativeWorkStatus(status) : status)
     // Deny only the immediately scoped completion predicate. A policy saying
     // "不证明点位已落实" is not a completion receipt; later actions, double
     // negation and a rhetorical "吗" remain visible to the original guard.
@@ -93,12 +96,13 @@ export function guardAnswerCommitments(text: string, options: { formalStatusEvid
     .replace(/是否(?:预约|付款|退款|批准|签约|派单|联系|提交|落实|解决|关闭|验收)(?:成功|完成|好了)/g, '是否办妥')
     .replace(/(?:没有|不存在)(?:任何|真实|有效)?已(?:经)?(?:成功)?(?:完成)?(?:正式)?(?:预约|付款|退款|批准|签约|派单|联系|提交|落实|解决|关闭|验收)的(?:记录|结果|凭据)/g, '缺少操作记录')
     .replace(/(^|[，。；！？\n—])\s*(?:所以|因此)?(?:我|我们|小K)?(?:不能|不会|无法|不应|不可以)(?:对外|直接|替您|替你|向您|向你)?(?:说|声称|宣称|承诺|表示|确认)(?:[“「"]?已(?:经)?(?:成功)?(?:完成)?(?:正式)?(?:预约|付款|退款|批准|签约|派单|联系|提交|落实|解决|关闭|验收)[”」"]?)(?:(?:或|或者|和|、)[“「"]?已(?:经)?(?:成功)?(?:完成)?(?:正式)?(?:预约|付款|退款|批准|签约|派单|联系|提交|落实|解决|关闭|验收)[”」"]?)*/g, '$1不能确认操作状态');
-  if (/(?:已(?:经)?(?:成功)?(?:完成)?(?:正式)?(?:预约|付款|退款|批准|签约|派单|联系|提交|落实|解决|关闭|验收)|(?:预约|付款|退款|批准|签约|派单|联系|提交|落实|解决|关闭|验收)(?:成功|完成|好了)|保证.{0,12}(?:完工|承重|安全)|确定.{0,12}(?:承重墙|可拆除))/.test(completionClaims)) fail('unsupported_model_commitment', 502);
+  if (options.acceptanceQuotes && hasAcceptanceClaim(completionClaims)
+    || /(?:已(?:经)?(?:成功)?(?:完成)?(?:正式)?(?:预约|付款|退款|批准|签约|派单|联系|提交|落实|解决|关闭|验收)|(?:预约|付款|退款|批准|签约|派单|联系|提交|落实|解决|关闭|验收)(?:成功|完成|好了)|保证.{0,12}(?:完工|承重|安全)|确定.{0,12}(?:承重墙|可拆除))/.test(completionClaims)) fail('unsupported_model_commitment', 502);
   const priceClaims = text.replace(/(?:不能|无法|不作|不做|不提供|不应|不敢|不)(?:任何|绝对)?(?:保证|承诺|确定)/g, '待核实');
   if (/(?:保证|承诺)[^\n。！？!?；;]{0,20}(?:报价|费用|总价|包干|预算|万元|元以内|元以下)/.test(priceClaims)
     || /确定[^\n。！？!?；;]{0,20}(?:报价|费用|总价|包干|万元|元以内|元以下)/.test(priceClaims)) fail('unsupported_model_commitment', 502);
 }
-export function parseAgentReply(text: string, options: { formalStatusEvidence?: boolean } = {}) {
+export function parseAgentReply(text: string, options: CommitmentScope = {}) {
   let result: { kind?: unknown; text?: unknown };
   try { result = JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch { fail('invalid_model_answer', 502); }
   if (!result || !['general', 'unavailable', 'vision'].includes(String(result.kind)) || typeof result.text !== 'string' || !result.text.trim() || result.text.length > 4000) fail('invalid_model_answer', 502);

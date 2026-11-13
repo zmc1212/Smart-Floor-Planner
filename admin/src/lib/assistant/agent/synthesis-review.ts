@@ -18,7 +18,7 @@ export type SynthesisReviewContext = { currentQuestion?: string; currentOriginal
   /** Server-owned source-answer context, never supplied by a client. Legacy
    * explanation runs additionally require their durable semantic proof;
    * explicitly bound source-boundary runs use the strict original parser. */
-  specialistWaterproof?: boolean;
+  specialistAcceptance?: boolean;
   knowledgeExplanation?: 'reviewed-knowledge-explanation-v1' | 'natural-knowledge-answer-v1';
   currentNeeds?: { version: number; facts: Array<{ sourceMessageId: string; sourceHash: string; quote: string; value: string }> } };
 

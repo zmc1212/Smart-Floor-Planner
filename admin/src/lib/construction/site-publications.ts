@@ -45,16 +45,28 @@ export async function siteBusinessRecords(tx: PostgresTransaction, eid: string, 
   }
   return result;
 }
-export async function customerSiteMedia(tx: PostgresTransaction, actor: ActorContext, conversation: Row, recordId: string, mediaId: string, expectedVersion: number) {
+export async function customerSiteMedia(tx: PostgresTransaction, actor: ActorContext, conversation: Row, recordId: string, mediaId: string,
+  expectedVersion: number, publishedScope?: { projectId: string; roomId: string; roomName: string }) {
   if (actor.principal.kind !== 'user' || conversation.purpose !== 'customer_consultation') fail('assistant_resource_not_found', 404);
   const r = await publishedSiteRecord(tx, actor.enterpriseId, actor.principal.userId, recordId, expectedVersion, true)
-    || await returnedEvidenceRecord(tx, actor.enterpriseId, actor.principal.userId, String(conversation.id), recordId, expectedVersion);
+    || (!publishedScope && await returnedEvidenceRecord(tx, actor.enterpriseId, actor.principal.userId, String(conversation.id), recordId, expectedVersion));
   const entry = conversation.entry_snapshot as Row;
   if (!r || (entry?.kind === 'lead' && !await one(tx, sql`select id from app.construction_projects where enterprise_id=${actor.enterpriseId} and id=${String(r.project_id)} and lead_id=${String(entry.id)}`))) fail('assistant_resource_not_found', 404);
-  const m = await one(tx, sql`select m.data,m.mime_type from app.construction_site_attachments a join app.construction_site_media m on m.enterprise_id=a.enterprise_id and m.project_id=a.project_id and m.id=a.media_id
+  if (publishedScope && (String(r.project_id) !== publishedScope.projectId || String(r.room_id) !== publishedScope.roomId
+    || r.room_name_snapshot !== publishedScope.roomName)) fail('assistant_resource_not_found', 404);
+  const m = await one(tx, sql`select m.data,m.mime_type,m.source_hash from app.construction_site_attachments a join app.construction_site_media m on m.enterprise_id=a.enterprise_id and m.project_id=a.project_id and m.id=a.media_id
     where a.enterprise_id=${actor.enterpriseId} and a.project_id=${String(r.project_id)} and a.record_id=${recordId} and m.id=${mediaId} and m.deleted_at is null`);
   if (!m) fail('assistant_resource_not_found', 404);
-  return { data: m.data as Buffer, mime: String(m.mime_type) };
+  return { data: m.data as Buffer, mime: String(m.mime_type), hash: String(m.source_hash) };
+}
+
+/** Candidate attachments for the exact project/room already resolved by
+ * constructionRead. The caller must authorize each image before loading it. */
+export async function publishedSitePhotoIds(tx: PostgresTransaction, eid: string, pid: string, recordId: string, limit: number) {
+  return rows(tx, sql`select m.id::text,m.source_hash from app.construction_site_attachments a
+    join app.construction_site_media m on m.enterprise_id=a.enterprise_id and m.project_id=a.project_id and m.id=a.media_id
+    where a.enterprise_id=${eid} and a.project_id=${pid} and a.record_id=${recordId} and m.deleted_at is null
+    order by a.position,m.id limit ${limit}`);
 }
 export async function syncSitePublications(tx: PostgresTransaction, actor: ActorContext, conversation: Row) {
   await syncPlans(tx, actor, conversation);
