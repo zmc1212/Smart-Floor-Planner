@@ -15,6 +15,7 @@ import { reportCoverageInstructions } from './report-final';
 import { homeSourceViewProtocol, projectHomeSourceView, type HomeSourceView } from './home-source-view';
 import { nativeFinalDefinition } from './native-final';
 import { difyDialogueMessages, minimalNeedTools, minimalSourceInstructions } from './minimal-dialogue';
+import { hasReviewedStandardRead } from './web-tool-runtime';
 
 export type ModelRequestPurpose = 'answer' | 'vision' | 'summary' | 'grounding';
 
@@ -46,9 +47,11 @@ export function compileModelRequest(input: {
   const adviceScoped = purpose === 'answer' && input.reportPlan === undefined && !messageScoped && independentAdviceRequested(question);
   const homeView = input.homeSourceView && purpose === 'answer' && !messageScoped && !adviceScoped
     ? projectHomeSourceView(messages, triggerId, input.homeSourceView) : messages;
+  const reviewedStandard = purpose === 'answer' && hasReviewedStandardRead(homeView);
   let focused = messageScoped ? currentMessageView(messages, triggerId, question)
     : adviceScoped ? independentAdviceView(messages, triggerId, question)
-    : (turn > 0 || input.profile || difyDialogue) && purpose === 'answer' ? focusedSynthesisMessages(homeView, triggerId, input.reportPlan, minimalDialogue) : homeView;
+    : (turn > 0 || input.profile || difyDialogue || reviewedStandard) && purpose === 'answer'
+      ? focusedSynthesisMessages(homeView, triggerId, input.reportPlan, minimalDialogue) : homeView;
   let dispatchTools = purpose === 'vision' ? [] : purpose === 'summary' || purpose === 'grounding' ? tools
     : input.toolsForTurn(question, focused, tools, triggerId);
   // Keep natural history, but use the existing current-question tail for a
@@ -94,8 +97,8 @@ export function compileModelRequest(input: {
   }
   const policyView = purpose === 'answer' ? projectSynthesisPolicy(policyInput,Boolean(excerptMode),explanationMode
     ? input.naturalKnowledge ? naturalKnowledgeInstructions : knowledgeExplanationInstructions : reportMode?reportCoverageInstructions:undefined) : focused;
-  const contentView = publicSourceProtocol || minimalDialogue ? projectConsultationModelView(policyView, dispatchTools, publicContract,
-    { preservePolicy: true, navigationOnly: !publicSourceProtocol, budget: { profile: input.profile, purpose, imageContextBudget: input.imageContextBudget,
+  const contentView = publicSourceProtocol || minimalDialogue || reviewedStandard ? projectConsultationModelView(policyView, dispatchTools, publicContract,
+    { preservePolicy: true, compactReadPolicy: reviewedStandard, navigationOnly: !publicSourceProtocol, budget: { profile: input.profile, purpose, imageContextBudget: input.imageContextBudget,
       reportFinalOutputTokens: input.reportFinalOutputTokens } }) : purpose === 'answer' && (input.profile || input.naturalKnowledge)
     ? projectConsultationModelView(policyView, dispatchTools, input.naturalKnowledge ? naturalKnowledgeInstructions : undefined) : policyView;
   const excerptView=excerptMode?sourceExcerptModelView(contentView):contentView;

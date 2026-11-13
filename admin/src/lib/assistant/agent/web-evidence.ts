@@ -9,9 +9,18 @@ import { configuredPublicRead, publicReaderParser, validPublicDocument } from '.
 import { fetchPublicDocument } from '../web-search/page';
 import { withPublicRequest } from '../web-search/tools';
 import { injectionSignals } from '../contracts/native-tools';
+import { originalDocumentPage } from '../web-search/standards';
 
 type WebSourceProblem = 'source_changed' | 'source_missing' | 'source_unreadable';
 export type WebSourceChecks = ReadonlyMap<string, WebSourceProblem | null>;
+
+function checkOriginalDocumentPage(web: WebSourceLocator, document: Awaited<ReturnType<typeof configuredPublicRead>>): WebSourceProblem | null {
+  if (!web.document || document.url !== web.url || document.original.sha256 !== web.document.hash) return 'source_changed';
+  const text = originalDocumentPage(document, web.document);
+  if (!text?.trim() || injectionSignals(document.title + '\n' + text).length) return 'source_unreadable';
+  const { hash, ...locator } = web;
+  return fingerprint({ ...locator, text }) === hash ? null : 'source_changed';
+}
 
 /** Compare with the same original-reading path used to create the snapshot.
  * A live HTTP status by itself cannot verify the original text. */
@@ -20,15 +29,7 @@ export async function checkWebSource(web: WebSourceLocator, budgetMs: number): P
     return await withPublicRequest(async () => {
       const url = web.requestedUrl ?? web.url;
       if (web.parser === publicReaderParser) {
-        const document = await configuredPublicRead(url, budgetMs);
-        if (document.url !== web.url || document.original.sha256 !== web.document?.hash) return 'source_changed';
-        const page = document.pages[web.document.page - 1];
-        if (document.parseError || !page?.text.trim() || (page.status && page.status !== 'text')
-          || injectionSignals(document.title + '\n' + page.text).length) return 'source_unreadable';
-        const { hash, ...locator } = web;
-        // The legacy locator omitted the requested URL and transport. Keep
-        // that snapshot identity while checking the re-extracted page.
-        return fingerprint({ ...locator, text: page.text }) === hash ? null : 'source_changed';
+        return checkOriginalDocumentPage(web, await configuredPublicRead(url, budgetMs));
       }
       const deadline = Date.now() + budgetMs;
       const read = (url: string, signal?: AbortSignal) => readPublicPage(url, undefined, deadline, signal);
@@ -36,23 +37,45 @@ export async function checkWebSource(web: WebSourceLocator, budgetMs: number): P
         ? await fetchPublicDocument(url, { readPage: read, now: () => new Date(web.retrievedAt) })
         : extractWebPage(await read(url), web.retrievedAt);
       if (injectionSignals(page.title + '\n' + page.text).length) return 'source_unreadable';
+      if (web.standard && 'standard' in page && fingerprint(web.standard) !== fingerprint(page.standard ?? null)) return 'source_changed';
       return fingerprint({ url: page.url, title: page.title, text: page.text, retrievedAt: page.retrievedAt }) === web.hash
         ? null : 'source_changed';
     });
-  } catch (error) {
-    return error instanceof AssistantError && ['web_http_404', 'web_http_410'].includes(error.code)
-      ? 'source_missing' : 'source_unreadable';
-  }
+  } catch (error) { return originalReadFailure(error); }
+}
+
+function originalReadFailure(error: unknown): WebSourceProblem {
+  return error instanceof AssistantError && ['web_http_404', 'web_http_410'].includes(error.code)
+    ? 'source_missing' : 'source_unreadable';
 }
 
 export async function checkWebSources(sources: WebSourceLocator[], check = checkWebSource): Promise<WebSourceChecks> {
   const unique = [...new Map(sources.map(source => [source.hash, source])).values()];
   const result = new Map<string, WebSourceProblem | null>();
-  const deadline = Date.now() + 6000;
-  for (let start = 0; start < unique.length; start += 4) {
-    await Promise.all(unique.slice(start, start + 4).map(async source => {
-      const remaining = deadline - Date.now();
-      result.set(source.hash, remaining > 0 ? await check(source, remaining) : 'source_unreadable');
+  const groups = new Map<string, WebSourceLocator[]>();
+  for (const source of unique) {
+    const key = check === checkWebSource && source.parser === publicReaderParser ? source.requestedUrl ?? source.url : source.hash;
+    const pages = groups.get(key);
+    if (pages) pages.push(source);
+    else groups.set(key, [source]);
+  }
+  const started = Date.now(), pending = [...groups.values()];
+  for (let start = 0; start < pending.length; start += 4) {
+    await Promise.all(pending.slice(start, start + 4).map(async pages => {
+      const first = pages[0];
+      // A range-read original may need a redirect, a probe and four pinned
+      // transfers. One slot and one bounded download serve all its citations.
+      const budget = pages.some(page => page.document?.transport === 'verified_pdf_ranges') ? 12000 : 6000;
+      const remaining = started + budget - Date.now();
+      if (remaining > 0 && check === checkWebSource && first.parser === publicReaderParser) {
+        try {
+          const document = await withPublicRequest(() => configuredPublicRead(first.requestedUrl ?? first.url, remaining));
+          for (const page of pages) result.set(page.hash, checkOriginalDocumentPage(page, document));
+        } catch (error) { for (const page of pages) result.set(page.hash, originalReadFailure(error)); }
+      } else {
+        result.set(first.hash, remaining > 0 ? await check(first, remaining) : 'source_unreadable');
+        if (remaining <= 0) for (const page of pages.slice(1)) result.set(page.hash, 'source_unreadable');
+      }
     }));
   }
   return result;
@@ -82,12 +105,12 @@ function pageValid(page: WebPage, snapshot: WebSearchSnapshot) {
   const { hash, ...original } = page;
   const document = snapshot.documents?.find(item => item.original.sha256 === page.document?.hash);
   return page.parser === publicReaderParser && hash === fingerprint(original) && !!page.document
-    && !!document && !document.parseError && !!page.text.trim() && validPublicDocument(document)
+    && !!document && !!page.text.trim() && validPublicDocument(document)
     && document.url === page.url && document.title === page.title
     && (document.requestedUrl || undefined) === page.requestedUrl
     && (document.transport === 'verified_pdf_ranges' ? document.transport : undefined) === page.document.transport
     && document.mediaType === page.document.mediaType && document.original.bytes === page.document.bytes
-    && document.pages.length === page.document.pages && document.pages[page.document.page - 1]?.text === page.text
+    && document.pages.length === page.document.pages && originalDocumentPage(document, page.document) === page.text
     && !injectionSignals(page.title + '\n' + page.text).length;
 }
 /** Same Evidence identity, backed only by this authorized run's immutable read. */
@@ -141,7 +164,8 @@ export async function webCitationForAnswer(tx: PostgresTransaction, actor: { ent
   if (!span) return null;
   const web = source.evidence.web!;
   const pdf = web.document?.mediaType === 'application/pdf' ? web.document : null;
+  const section = pdf?.section ? '\n' + pdf.section : '';
   return { id: citationId, available: true, title: web.title, quote: span.quote, version: web.hash,
-    versionLabel: '网页读取快照', sourceLocation: web.url + (pdf ? '\nPDF 第' + pdf.page + '页（共' + pdf.pages + '页）' : '') + '\n读取时间：' + web.retrievedAt,
+    versionLabel: '网页读取快照', sourceLocation: web.url + (pdf ? '\nPDF 第' + pdf.page + '页（共' + pdf.pages + '页）' + section : '') + '\n读取时间：' + web.retrievedAt,
     locator: { web }, historical: true, isDraft: false, referenceCase: false, sourceUrl: web.url, retrievedAt: web.retrievedAt };
 }

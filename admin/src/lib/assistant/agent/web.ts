@@ -188,7 +188,10 @@ export function extractWebPage(
         + '[class*=" ad-"],[class^="ad-"],[id^="ad-"],[class*="banner"],[class*="promo"],[class*="sidebar"],'
         + '[class*="related"],[class*="share"],[class*="comment"]')) element.remove();
     }
-    const main = document.querySelector('article') || document.querySelector('main') || document.body;
+    const publisherRecord = options.removeAds && new URL(input.url).hostname === 'ebook.chinabuilding.com.cn'
+      && new URL(input.url).pathname === '/zbooklib/book/detail/show'
+      ? document.querySelector('#bookDetailTitle')?.closest('h4')?.parentElement : null;
+    const main = publisherRecord || document.querySelector('article') || document.querySelector('main') || document.body;
     if (!main) fail('web_text_unavailable', 502);
     text = main.innerText;
   }

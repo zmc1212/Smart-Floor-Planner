@@ -2,6 +2,7 @@ import { AssistantError, fail, fingerprint } from '../contracts';
 import { parseAgentReply } from './context';
 import type { Evidence, KnowledgeProvenance } from '../contracts';
 import { webAnswerBoundaryIssues } from '../web-search/trust';
+import { unverifiedStandardStatus, type StandardCitation } from '../web-search/standards';
 import type { BusinessSnapshot } from './business-tools';
 import type { ModelMessage } from '../contracts/model';
 import type { MaterialSource, MaterialSnapshot } from './materials';
@@ -19,6 +20,7 @@ import { isReportAnswerSnapshot, reportQuestionCoverage } from './report-final';
 import { scopedReportSynthesisSources, type ReportSourceScope } from './report-source-scope';
 import { reportCoordinationText } from './report-question-plan';
 import type { SourceQuestionCoverage } from './source-question-coverage';
+import { originalMessageId } from './context-budget';
 
 export type SynthesisSource = { sourceId: string; kind: 'knowledge' | 'project' | 'history' | 'web'; title: string; text: string; fullTextCitable?:true; evidence?: Evidence; knowledge?: KnowledgeProvenance; web?: import('../contracts/web-source').WebSourceLocator; resultKey?: string; citationQuotes?: string[]; summaryTitle?:string|null; material?: MaterialSource; history?: HistoryRef & { seq: string };
   followup?: Omit<IssueState, 'question' | 'value'>; reportScope?: ReportSourceScope };
@@ -105,7 +107,12 @@ export function focusedSynthesisMessages(messages: ModelMessage[], triggerId: st
     const text = availabilityScopeHintPrefix + '，不新增事实或权限，不复述本提示标签）：人数来源不可用不是客户人数未定。只说明这次能否确认及仍有效的独立需求，不说人数需要重定、核对后才能定或让客户重新给表述。历史共享原文保留当时身份；若只写尺寸待核对，不能说人数也标待核对。企业依据只解释核对边界，不追加人数选项、布局/预留建议或收尾问题。';
     systems[systems.length - 1] = { ...system, content: [...system.content, { type: 'text', text }] };
   }
-  const images = messages.slice(0, index).filter(m => m.role === 'user' && m.content.some(p => p.type === 'image'));
+  const previous = messages.slice(0, index);
+  const images = previous.filter(m => m.role === 'user' && m.content.some(p => p.type === 'image'));
+  // The customer may refer to the last construction step or correct the room.
+  // Keep their actual questions, without pulling old answers or their evidence.
+  const antecedents = sources.some(source => source.web?.document?.reviewedTextHash)
+    ? previous.filter(m => !images.includes(m) && originalMessageId(m)).slice(-2) : [];
   const originals = new Map<string, string>();
   const historyFields = new Map<string, string>();
   // Only the trusted, hash-bound control authorizes this task projection.
@@ -113,7 +120,7 @@ export function focusedSynthesisMessages(messages: ModelMessage[], triggerId: st
   const tail: ModelMessage = repairTask
     ? { role: 'user', content: [{ type: 'text', text: repairTask }] } : messages[index];
   const scope = reportPlan !== undefined ? 'all' : originalAnswerOnly(question) ? 'original' : independentAdviceRequested(question) ? 'independent_advice' : 'all';
-  return [...systems, ...images, messages[index], ...messages.slice(index + 1).map(message => {
+  return [...systems, ...antecedents, ...images, messages[index], ...messages.slice(index + 1).map(message => {
     const projected = synthesisModelProjection(message, originals, scope, historyFields);
     if (projected.role !== 'tool') return projected;
     let packet: unknown;
@@ -483,6 +490,9 @@ function formalStatusEvidence(citations: Array<{ sourceId: string }>, sources: S
 export function synthesisRepairIssue(raw:string,sources:SynthesisSource[],context:SynthesisReviewContext = {}) {
   try { parseSynthesis(raw,sources,context); return null; }
   catch(error) {
+    if (error instanceof AssistantError && error.code === 'standard_status_unverified') return {
+      code: error.code, feedback: '本段规范状态缺少同编号同版本的状态原文，或存在相反依据。沿已有原文报告发布、实施及明确冲突，说明当前无法确认的部分；若已有对应目录或正式废止原文，选取直接支持状态的引文。只作本轮唯一一次最终修复。',
+    };
     if (error instanceof AssistantError && error.code === 'unsupported_model_commitment' && !context.knowledgeExplanation && originalAnswerOnly(context.currentQuestion || '')) {
       // Diagnostics do not accept/normalize a commitment. Check the complete
       // envelope and authorized citations first; unknown IDs remain closed.
@@ -782,6 +792,7 @@ function checkedSynthesis(raw: string, sources: SynthesisSource[], context: Synt
   try { value = JSON.parse(raw); } catch { return fail('invalid_model_answer', 502); }
   if (!value || value.kind !== 'synthesis' || Object.keys(value).some(k => !['kind', 'segments'].includes(k))
     || !Array.isArray(value.segments) || !value.segments.length || value.segments.length > 6) fail('invalid_model_answer', 502);
+  const standards = sources.flatMap(source => source.web?.standard ? [source.web.standard] : []);
   for (const s of value.segments) {
     if (!s || Object.keys(s).some(k => !['basis', 'text', 'citations'].includes(k)) || !['evidence', 'advice', 'uncertainty'].includes(s.basis)
       || typeof s.text !== 'string' || !s.text.trim() || s.text.length > 1200) fail('invalid_model_answer', 502);
@@ -793,6 +804,7 @@ function checkedSynthesis(raw: string, sources: SynthesisSource[], context: Synt
       || (s.basis === 'evidence' && !s.citations.length)) fail('invalid_model_answer', 502);
     s.citations=s.citations.map(c=>c&&typeof c==='object'?selectedFullQuote(c as unknown as Record<string,unknown>,sources) as {sourceId:string;quote:string}:c);
     const cited: string[] = [];
+    const standardCitations: StandardCitation[] = [];
     let citedClock = false;
     for (const citation of s.citations) {
       if (!citation || Object.keys(citation).some(k => !['sourceId', 'quote'].includes(k)) || typeof citation.sourceId !== 'string'
@@ -800,6 +812,7 @@ function checkedSynthesis(raw: string, sources: SynthesisSource[], context: Synt
       const source = sources.find(e => e.sourceId === citation.sourceId);
       if (!source || !source.text.includes(citation.quote)) fail('invalid_model_citation', 502);
       cited.push(citation.quote);
+      if (source.web?.standard) standardCitations.push({ standard: source.web.standard, quote: citation.quote });
       if (source.kind === 'knowledge' && source.evidence?.file?.format === 'xlsx'
         && source.evidence.file.parser.endsWith(':time-v1')
         && /(?:^|[^\d:])(?:[01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d)?(?![\d:])/.test(citation.quote)) citedClock = true;
@@ -808,6 +821,7 @@ function checkedSynthesis(raw: string, sources: SynthesisSource[], context: Synt
       && !s.citations.some(citation => sources.some(source => source.sourceId === citation.sourceId && source.kind === 'knowledge'
         && source.knowledge?.published && source.knowledge.sourceType !== 'reference_case'
         && source.evidence?.professional?.applicability.status !== 'not_applicable'))) fail('ungrounded_response_scope', 502);
+    if (unverifiedStandardStatus(s.text, standardCitations, standards)) fail('standard_status_unverified', 502);
     // Source assertions retain exact numerical grounding. In explicitly bound
     // model-knowledge chat, uncited advice has the same scope as a general
     // reply. Formal commitments and project/source-role checks still run.

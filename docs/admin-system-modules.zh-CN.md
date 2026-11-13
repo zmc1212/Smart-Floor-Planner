@@ -6,6 +6,8 @@
 **小K公开联网工具（Limited）。** `ASSISTANT_WEB_SEARCH_TOOLS=1` 在合资格的会话中经现有分派器启用搜索与读页，调用受租户、参与人和工具权限约束。实际网页的附件链接进入本轮读取范围。受限回环 reader 在私有检查点保留 PDF 字节、网址、读取时间、哈希和逐页覆盖；可读原页进入 Evidence 并定位原句。仅含扫描图的文件返回 `pdf_ocr_required`。完整历史、打开引用及 LangGraph 祖先来源复用重新核对原件。[合同及验收](xiaok-integration-contract.md)。
 <!-- /xiaok-r3-web-tools -->
 
+**I6.7 公开规范（Limited）。** C01 对已核的防水规范通过既有联网工具读取发布公告、实际附件与同版状态目录，精确摘录保留原件哈希、页码和章节。规范状态断言需同版原文，相反依据须保留待核实。仅问公司做法仍走获权企业检索，PPT 第 18 页只支持安排防水及后续检查。未核的扫描页待 OCR。实模验收使用百炼 `deepseek-v4.1-flash-1017`（逻辑名 `deepseek-flash`），沿隔离配置运行，生产默认沿原配置。[集成合同](xiaok-integration-contract.md)。
+
 **小K业主项目进度。** 现有 Construction 读适配器从业主咨询绑定的唯一在施工项目读取实际节点。指定房间时仅取向该业主发布的对应房间记录。已存答复重进复查来源及版本。图纸、现场决定沿原流程处理。[集成合同](xiaok-integration-contract.md)。
 
 <!-- cross-role-business-current -->

@@ -44,6 +44,13 @@ export function longTermTools(scope: PrivateMemoryScope, question: string) {
   return [...(writes ? [memoryTool] : []), ...(scope.projectId && delegationRequested(question) ? [delegationTool] : [])];
 }
 
+export function standalonePreferenceTool(tool: ModelTool): ModelTool {
+  const properties = tool.parameters.properties as Row;
+  return { ...tool, parameters: { ...tool.parameters, required: ['action', 'category', 'topic', 'quote'],
+    properties: { action: { type: 'string', enum: ['remember'] }, category: { type: 'string', enum: ['preference'] },
+      topic: properties.topic, quote: properties.quote, value: properties.value } } };
+}
+
 function ref(input: Row) {
   if (typeof input.key !== 'string' || !/^[a-f0-9]{64}$/.test(input.key) || !Number.isSafeInteger(input.revision)) fail('memory_version_conflict');
   return { key: input.key, revision: Number(input.revision) };

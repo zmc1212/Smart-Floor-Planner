@@ -11,9 +11,13 @@ import type { FetchedWebDocument } from '../web-search/page';
 import { publicWebUrl, type WebPage, type WebSearchSnapshot } from './web';
 import { webEvidence, webSynthesisSources } from './web-evidence';
 import { configuredPublicRead, publicDocumentPages, publicDocumentReadFailures, publicReaderEndpoint, type PublicReadDocument } from './public-research';
+import { matchingReviewedStandard, type PublicStandard } from '../web-search/standards';
 
 export type AgentWebSearchOptions = Pick<WebToolDeps, 'provider' | 'readPage'>;
 const protocol = 'application-web-tools-v1';
+// The ordinary Agent tool slots occupy 1200–1233. These three reads are
+// server-selected originals and keep the existing web Evidence ID format.
+const reviewedStandardStep = { notice: 1297, attachment: 1298, catalog: 1299 };
 
 type Receipt = WebSearchSnapshot & {
   r3: { packet: Record<string, unknown>; urls: string[]; contentHash?: string };
@@ -31,8 +35,27 @@ function userUrls(question: string) {
 
 type DiscoveryPacket = {
   tool: string; webStatus: string; result?: { results?: Array<Record<string, unknown>>; [key: string]: unknown };
+  synthesisSources?: Array<{ web?: { standard?: PublicStandard; document?: { reviewedTextHash?: string } } }>;
   [key: string]: unknown;
 };
+
+export function hasReviewedStandardRead(messages: ModelMessage[]) {
+  return messages.some(message => {
+    const packet = webPacket(message);
+    return Array.isArray(packet?.synthesisSources) && packet.synthesisSources.some(source =>
+      source?.web?.standard?.kind === 'standard_text' && !!source.web.document?.reviewedTextHash);
+  });
+}
+
+export function hasStandardEditionEvidence(messages: ModelMessage[], edition: string) {
+  const facts = messages.flatMap(message => {
+    const sources = webPacket(message)?.synthesisSources;
+    return Array.isArray(sources) ? sources.flatMap(source => source?.web?.standard ?? []) : [];
+  }).filter(standard => standard.id === edition);
+  return facts.some(standard => standard.kind === 'standard_text')
+    && facts.some(standard => standard.kind === 'publication_notice' && !!standard.effectiveAt)
+    && facts.some(standard => standard.kind === 'status_catalog' && standard.status !== 'unknown');
+}
 
 function webPacket(message: ModelMessage): DiscoveryPacket | null {
   if (message.role !== 'tool') return null;
@@ -103,6 +126,36 @@ export function createAgentWebTools(options: AgentWebSearchOptions & {
 
   return {
     provider: options.provider?.name ?? 'unconfigured',
+    async reviewedStandard(previousQuestions: string[]): Promise<ModelMessage[]> {
+      if (!publicReaderEndpoint()) return [];
+      const standard = matchingReviewedStandard(options.question, previousQuestions);
+      if (!standard) return [];
+      // The registered URLs are from the publisher. The PDF itself is obtained
+      // from the live notice and must still match the reviewed publisher bytes.
+      allowedUrls.add(standard.noticeUrl);
+      allowedUrls.add(standard.catalogUrl);
+      const fetch = async (url: string, sequence: number) => {
+        const id = 'server:reviewed-standard:' + sequence, args = JSON.stringify({ url });
+        const result = await this.execute({ id, name: 'web_fetch', arguments: args }, 0, sequence);
+        return { id, args, content: result.content };
+      };
+      const notice = await fetch(standard.noticeUrl, reviewedStandardStep.notice);
+      const packet = JSON.parse(notice.content) as { result?: { document?: FetchedWebDocument } };
+      const attachment = packet.result?.document?.attachments?.find(link => link.title.replace(/\.pdf$/i, '') === standard.standard.name);
+      const reads = [notice];
+      if (attachment) {
+        allowedUrls.add(attachment.url);
+        reads.push(await fetch(attachment.url, reviewedStandardStep.attachment));
+      }
+      reads.push(await fetch(standard.catalogUrl, reviewedStandardStep.catalog));
+      return reads.flatMap(read => {
+        const { tool, webStatus, failures, synthesisSources } = JSON.parse(read.content);
+        const codes = failures.map(({ code }: { code: string }) => code);
+        if (read === notice && !attachment) codes.push('web_attachment_not_found');
+        return [{ role: 'assistant' as const, content: '', toolCalls: [{ id: read.id, name: 'web_fetch', arguments: read.args }] },
+          { role: 'tool' as const, callId: read.id, content: JSON.stringify({ tool, webStatus, failures: codes, synthesisSources }) }];
+      });
+    },
     replace(tools: ModelTool[]) {
       return tools.flatMap(tool => tool.name === 'search_web' ? offered : tool.name === 'read_web' ? [] : [tool]);
     },
@@ -152,8 +205,8 @@ export function createAgentWebTools(options: AgentWebSearchOptions & {
       const duplicates = document && earlier.prior.find(item => item.r3.contentHash === document.contentHash && item.pages.length);
       const pages: WebPage[] = [];
       if (document && !duplicates && result.status === 'succeeded') {
-        const { url, requestedUrl, title, text, textBytes, publishedAt, trust } = document;
-        pages.push({ url, requestedUrl, title, text, textBytes, retrievedAt, publishedAt, sourceKind: trust.kind,
+        const { url, requestedUrl, title, text, textBytes, publishedAt, trust, standard } = document;
+        pages.push({ url, requestedUrl, title, text, textBytes, retrievedAt, publishedAt, sourceKind: trust.kind, ...(standard ? { standard } : {}),
           parser: 'public-html-text-v1', hash: fingerprint({ url, title, text, retrievedAt }) });
       }
       if (attachment) pages.push(...publicDocumentPages(attachment, retrievedAt, options.question));
@@ -172,7 +225,8 @@ export function createAgentWebTools(options: AgentWebSearchOptions & {
       const metadata = document ? {
         ...payload, document: { url: document.url, requestedUrl: document.requestedUrl, title: document.title,
           publishedAt: document.publishedAt, retrievedAt, trust: document.trust,
-          ...(document.attachments ? { attachments: document.attachments } : {}) },
+          ...(document.attachments ? { attachments: document.attachments } : {}),
+          ...(document.standard ? { standard: document.standard } : {}) },
         ...(duplicates ? { duplicate: true, duplicateOf: duplicates.pages[0].url } : {}),
       } : payload;
       const snapshot: Receipt = {
@@ -196,6 +250,7 @@ export function createAgentWebTools(options: AgentWebSearchOptions & {
           values(${lease.enterpriseId},${lease.runId},${'agent-web:' + lease.runId + ':' + sequence},${reading ? 'web_read' : 'web_search'},${observed},'observed')
           on conflict do nothing`);
       });
+      for (const url of urls) allowedUrls.add(url);
       return reply(snapshot, sequence);
     },
   };

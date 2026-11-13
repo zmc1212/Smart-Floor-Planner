@@ -34,14 +34,16 @@ import { observeDelegation } from '@/lib/native-workflow/live/delegation-sources
 import { runDelegationTick } from '@/lib/native-workflow/live/delegation-worker';
 import { mockBailianRag } from './xiaok-r4-bailian-mock';
 
-const eid = '1454', control = '1455', model = 'qwen3.7-flash';
+const eid = '1454', control = '1455';
+const logicalModel = 'deepseek-flash', model = 'deepseek-v4.1-flash-1017', providerKey = 'bailian';
 const liveModel = process.argv.includes('--live-model');
 const hosted = process.argv.includes('--hosted');
 const localKnowledge = process.argv.includes('--local-knowledge') || liveModel && !hosted;
 const durableAcceptance = process.argv.includes('--durable-integration');
 const i6Dialogue = process.argv.includes('--i6-dialogue');
+const i67Dialogue = process.argv.includes('--i67-dialogue');
 const i6ProjectStatus = process.argv.includes('--i6-project-status');
-const i6Search = i6Dialogue && process.env.ASSISTANT_WEB_SEARCH_TOOLS === '1';
+const i6Search = (i6Dialogue || i67Dialogue) && process.env.ASSISTANT_WEB_SEARCH_TOOLS === '1';
 const mock = !localKnowledge && !hosted ? mockBailianRag() : null;
 const label = process.argv.find(arg => arg.startsWith('--label='))?.slice(8) ?? randomUUID();
 const target = new URL(process.env.XIAOK_R6_DATABASE_URL ?? 'http://missing');
@@ -51,6 +53,15 @@ assert.equal(target.hostname, '127.0.0.1');
 assert.equal(target.username, 'sfp_app');
 assert.ok(Number(target.port) >= 49152 && !target.search && !target.hash);
 assert.match(target.pathname, /^\/xiaok_r6_(?:acceptance|model|hosted)(?:_[a-z0-9]+)?$/);
+const i67Receipt = (scene: string, index: number) => ({
+  A: ['区分一般渗漏原因和 5.6.1 原文', '核实基层验收及穿结构管道埋设前提，保持工期未知', '先防水验收再下一工序，按适用部位引用试验条文，现场放行仍需实际记录'],
+  B: ['PPT 仅支持安排防水和后续检查，公开规范独立引用，不宣称企业采用量数'],
+  C: ['相同版本的独立目录证明状态，公告支持日期，原文支持工程范围，不能替该旧房认定适用'],
+  D: ['厨房作为初始对象', '切到卫生间，保留追问意图，原厨房现场资料不进入新结论'],
+  E: ['主卧真实发布记录待核对，厨房完工不适用，普通询问无委托'],
+  F: ['明确两项企业参数缺失，公开量数不得补成企业规定'],
+  memory: ['本人偏好实际保存', '新咨询只读回沟通偏好'],
+} as Record<string, string[]>)[scene][index];
 const output = 'tmp/r6/' + label;
 mkdirSync(output, { recursive: true });
 const json = (value: unknown) => JSON.stringify(value, (_key, item) => typeof item === 'bigint' ? item.toString() : item, 2);
@@ -90,7 +101,8 @@ async function check(name: string, verify: () => Promise<void>, continueAfterFai
 
 async function configure() {
   const upstream = liveModel ? await getPlatformLlmRuntimeConfig() : undefined;
-  if (upstream) assert.ok(upstream.providerKey === 'dashscope' && upstream.apiKey && bailianResponsesBinding(upstream.baseUrl, model));
+  if (upstream) assert.ok(upstream.providerKey === providerKey && upstream.model === model
+    && upstream.apiKey && bailianResponsesBinding(upstream.baseUrl, model));
   await closePostgresPool();
   process.env.DATABASE_URL = target.href;
   process.env.ASSISTANT_KNOWLEDGE_PROVIDER = localKnowledge ? 'local' : 'bailian';
@@ -114,7 +126,7 @@ async function configure() {
     // The application role cannot read the migration ledger on all installations.
     assert.equal((await one(tx, sql`select count(*)::int as count from pg_trigger where tgname in
       ('native_delegation_event_delivery','native_delegation_project_change') and tgenabled='O'`))?.count, 2);
-    const config = { runtime: 'langgraph-v1', providerKey: 'dashscope', model, tools: true, imageInput: false,
+    const config = { runtime: 'langgraph-v1', providerKey: liveModel ? providerKey : 'dashscope', model: liveModel ? model : 'qwen3.7-flash', tools: true, imageInput: false,
       probeVersion: 'r6-isolated', enterpriseKnowledgeEnabled: true, knowledgeExplanation: naturalKnowledgeProtocol,
       knowledgeAnswerValidation: sourceBoundaryValidationProtocol };
     await tx.execute(sql`insert into app.system_roles(role_key,label,menu_keys) values('designer','R6 合成设计师',array['construction-projects'])
@@ -150,7 +162,7 @@ async function fixture(name: string, tenant = eid) {
   const [bossActor, designerActor, workerActor] = staff;
   const construction = new ConstructionService(bossActor);
   const pid = String((await construction.execute('create', { leadId: lead, name: tag, managerId: bossActor.adminId,
-    rooms: i6Dialogue || i6ProjectStatus ? ['卫生间', '厨房', '主卧'] : ['卫生间', '厨房'] }, randomUUID())).id);
+    rooms: i6Dialogue || i67Dialogue || i6ProjectStatus ? ['卫生间', '厨房', '主卧'] : ['卫生间', '厨房'] }, randomUUID())).id);
   const change = async (action: string, values: Row) => {
     const p = (await construction.execute('detail', { projectId: pid })).project as Row;
     return construction.execute(action, { projectId: pid, expectedVersion: Number(p.version), ...values }, randomUUID());
@@ -287,6 +299,17 @@ async function turn(f: Fixture, text: string, cid = f.cid) {
   const messages = (await f.chat.messages(cid, undefined, 100)).items as Row[];
   const answer = messages.find(message => message.id === ledger.run?.output_message_id);
   save('turn-' + String(sent.runId), { cid, text, sent, answer, ...ledger });
+  if (liveModel) {
+    assert.ok(ledger.attempts.length > 0, 'The expected provider was not reached');
+    for (const attempt of ledger.attempts) {
+      assert.equal(attempt.remote_model, model);
+      if (attempt.status === 'succeeded') {
+        const response = (attempt.metadata as Row)?.assistantResponse as Row | undefined;
+        assert.equal(response?.providerModel, model);
+        assert.ok(response?.providerRequestId && response?.usage);
+      }
+    }
+  }
   assert.equal(ledger.run?.status, 'succeeded', json(ledger.run));
   assert.ok(answer?.available, 'Saved answer unavailable');
   return { sent, answer, ledger };
@@ -300,6 +323,65 @@ const i6Journeys = {
   E: ['厨房的水管根部处理完以后，什么时候可以做防水？', '刚才说的是卫生间，不是厨房。'],
   memory: [preference, recall],
 } as const;
+
+// Assertions live in the acceptance driver. Each input is the customer's
+// actual question and contains no tool instructions or expected facts.
+const i67Journeys = {
+  A: ['卫生间水管根部为什么要单独处理？', '处理后什么时候可以做防水？', '防水完成后什么条件满足才能铺砖？'],
+  B: ['你们公司的卫生间防水一般怎么安排？和国家通用要求有哪些差别？'],
+  C: ['《建筑与市政工程防水通用规范》现在还有效吗？什么时候实施，像我家这种旧房翻修也都适用吗？'],
+  D: ['我想问下厨房管根处理完后，怎么知道可以做防水了？', '刚才说的是卫生间，不是厨房。'],
+  E: ['那我家主卧的水管现在做到哪一步？'],
+  F: ['你们公司自己的资料里，有没有写卫生间闭水要多久、防水要刷多高？'],
+  memory: [preference, recall],
+} as const;
+
+async function i67Conversations(f: Fixture, version: Draft) {
+  const master = await capture(f, '主卧', false);
+  const kitchen = await capture(f, '厨房', true);
+  await publishRecord(f, master.id);
+  await publishRecord(f, kitchen.id);
+  const selected = process.argv.find(arg => arg.startsWith('--scenes='))?.slice(9).split(',') ?? Object.keys(i67Journeys);
+  assert.ok(selected.length && selected.every(scene => Object.hasOwn(i67Journeys, scene)));
+  const results: Row[] = [];
+  let stop = false;
+  for (const [scene, inputs] of Object.entries(i67Journeys)) {
+    if (!selected.includes(scene)) continue;
+    // The project follow-up continues the corrected room conversation.
+    let cid = scene === 'E' ? String(results.find(row => row.scene === 'D')?.cid ?? '') : '';
+    if (!cid) cid = String((await f.chat.create(randomUUID())).id);
+    const turns: Row[] = [];
+    results.push({ scene, cid, turns });
+    for (const [index, question] of inputs.entries()) {
+      const current = scene === 'memory' && index === 1 ? String((await f.chat.create(randomUUID())).id) : cid;
+      if (stop) { turns.push({ question, cid: current, status: 'not_run' }); continue; }
+      try {
+        const result = await turn(f, question, current);
+        const text = safeText(result.answer.content as MessageContent);
+        const checked = await f.chat.messages(current, undefined, 100);
+        assert.ok(checked.items.some(row => row.id === result.answer.id && row.available));
+        if (scene !== 'memory') assert.equal((await read(f, current)).delegations.length, 0);
+        if (scene === 'D' && index === 1) assert.doesNotMatch(text, /请.{0,12}确认.{0,12}房间|是厨房还是卫生间/u);
+        if (scene === 'E') {
+          assert.match(text, /主卧/u);
+          assert.doesNotMatch(text, /厨房|水管根部已完成/u);
+          assert.ok(result.ledger.steps.some(step => JSON.stringify(step.private_checkpoint).includes('待核对')));
+        }
+        if (scene === 'F') assert.match(text, /没有|未(?:写|提|明确|找到)|无法(?:确认|核实)/u);
+        if (scene === 'memory' && index === 1) assert.ok((await read(f, current)).memories.some(item => item.category === 'preference'));
+        turns.push({ question, expected: i67Receipt(scene, index), cid: current, runId: result.sent.runId, status: 'saved_for_semantic_review', text });
+      } catch (error) {
+        const last = await f.chat.detail(current);
+        const status = last.latestRun?.status === 'indeterminate' ? 'unknown' : 'failed';
+        turns.push({ question, expected: i67Receipt(scene, index), cid: current, runId: last.latestRun?.id ?? null, status, error: String(error) });
+        stop = true;
+      }
+    }
+  }
+  save('fixed-conversations', { results, fixture: { ownerId: f.uid, projectId: f.pid, masterRecordId: master.id, kitchenRecordId: kitchen.id },
+    knowledge: version, provider: providerKey, logicalModel, model, actualCost: 'unavailable' });
+  if (stop) process.exitCode = 1;
+}
 
 async function i6Conversations(f: Fixture, version: Draft) {
   const master = await capture(f, '主卧', false);
@@ -786,17 +868,27 @@ async function main() {
   const before = binding();
   const mode = hosted ? 'bailian-hosted' : liveModel ? 'bailian-responses-with-local-retrieval'
     : localKnowledge ? 'postgresql-with-local-retrieval-and-model-substitute' : 'postgresql-with-rag-and-model-substitutes';
-  const report: Row = { mode, model: liveModel ? model : 'substitute', before, pptSource: ppt.source, checks };
+  const report: Row = { mode, model: liveModel ? model : 'substitute', ...(liveModel ? { provider: providerKey, logicalModel } : {}),
+    before, pptSource: ppt.source, checks };
   const restore = mock?.install();
   try {
-    if (hosted) report.hostedPreflight = await new BailianKnowledgeProvider().listIndices().then(result => ({
-      requestId: result.requestId, libraryCount: result.value.length,
-    }));
+    if (hosted) {
+      try {
+        const result = await new BailianKnowledgeProvider().listIndices();
+        report.hostedPreflight = { status: 'configured', requestId: result.requestId, libraryCount: result.value.length };
+      } catch (error) {
+        if (!(error instanceof AssistantError) || error.code !== 'bailian_knowledge_not_configured') throw error;
+        report.hostedPreflight = { status: 'retrieval_unavailable', reason: error.code, requestId: null };
+        process.exitCode = 1;
+        return;
+      }
+    }
     report.database = await configure();
-    if (i6Dialogue) {
+    if (i67Dialogue || i6Dialogue) {
       assert.ok(liveModel && localKnowledge);
       const f = await fixture('I6 固定自然对话');
-      await i6Conversations(f, await publishStandard(f, 'customer_public', null));
+      const version = await publishStandard(f, 'customer_public', null);
+      await (i67Dialogue ? i67Conversations(f, version) : i6Conversations(f, version));
       return;
     }
     let errors = 0;

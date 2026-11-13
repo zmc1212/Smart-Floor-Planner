@@ -2,13 +2,17 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import { publicDocumentPages, publicOriginalRefinement, publicReaderParser, searchPublicResearch, validPublicDocument, type PublicReadDocument, type PublicResearchState } from '../agent/public-research';
-import { webEvidence } from '../agent/web-evidence';
+import { webEvidence, webSynthesisSources } from '../agent/web-evidence';
 import { ancestorSourceMessages } from '../agent/ancestor-sources';
 import { assertToolPairs } from '../agent/context-budget';
-import { finalToolForMessages } from '../agent/worker';
+import { agentToolsForTurn, finalToolForMessages } from '../agent/worker';
 import { focusedSynthesisMessages } from '../agent/synthesis';
 import { compileModelRequest } from '../agent/model-request';
 import { consultationAcceptanceProfile } from '../contracts/consultation';
+import { matchingReviewedStandard, publicStandardMetadata, reviewedPublicStandard, unverifiedStandardStatus } from '../web-search/standards';
+import { knowledgeOriginalRequested } from '../agent/read-tool-input';
+import { naturalKnowledgeInstructions } from '../agent/knowledge-explanation';
+import type { ModelMessage } from '../contracts/model';
 const query = { query: 'synthetic floor installation', domains: [] };
 const document = (url: string, pdf = false): PublicReadDocument => {
   const bytes = Buffer.from(pdf ? '%PDF labelled synthetic fixture' : '<html>labelled synthetic fixture</html>');
@@ -124,6 +128,70 @@ test('scanned pages are retained privately and an OCR-only attachment produces n
   assert.deepEqual(result.failures, [{ url: scanned.url, code: 'pdf_ocr_required', pages: [1] }]);
   assert.deepEqual(webEvidence(result, '99', 1200), []);
   assert.equal(result.documents?.[0].original.sha256, scanned.original.sha256);
+});
+
+test('an approval notice proves its date and limited withdrawals while status needs a current edition record', () => {
+  const url = 'https://www.mohurd.gov.cn/example';
+  const title = '住房和城乡建设部关于发布国家标准《合成防水规范》的公告';
+  const original = '现批准《合成防水规范》为国家标准，编号为GB55000-2022，自2023年4月1日起实施。同时废止下列工程建设标准相关强制性条文：\n《旧防水规范》JGJ298-2013第4.1.2条。';
+  const notice = publicStandardMetadata(url, title, original)!;
+  assert.deepEqual([notice.kind, notice.effectiveAt, notice.status], ['publication_notice', '2023-04-01', 'unknown']);
+  assert.equal(unverifiedStandardStatus('GB 55000-2022 仍有效。', [{ standard: notice, quote: original }], [notice]), true);
+  assert.equal(unverifiedStandardStatus('GB 55000-2022 仍有效。', [], []), true);
+  assert.equal(unverifiedStandardStatus('公告载明，现行工程建设标准中有关规定与本规范不一致的，以本规范的规定为准。', [{ standard: notice, quote: original }], [notice]), false);
+  assert.equal(unverifiedStandardStatus('目前无法确认是否仍有效。', [], [notice]), false);
+  assert.equal(unverifiedStandardStatus('这两处来源都未显示该规范已被废止或替代。', [], [notice]), false);
+  assert.equal(unverifiedStandardStatus('JGJ 298-2013 整部已废止。', [{ standard: notice, quote: original }], [notice]), true);
+  assert.equal(unverifiedStandardStatus('JGJ 298-2013 第4.1.2条已废止。', [{ standard: notice, quote: original }], [notice]), false);
+  const catalog = { ...notice, kind: 'status_catalog' as const, status: 'current' as const };
+  assert.equal(unverifiedStandardStatus('GB55000-2022 目前有效。', [{ standard: catalog, quote: 'GB55000-2022 现行' }], [catalog]), false);
+  assert.equal(unverifiedStandardStatus('GB55000-2022 目前有效。', [{ standard: catalog, quote: 'GB55000-2022 现行' }],
+    [catalog, { ...catalog, status: 'withdrawn' }]), true);
+});
+
+test('the public edition uses the public source path while company-only questions retain enterprise retrieval', () => {
+  const q = '《建筑与市政工程防水通用规范》目前是否有效，什么时候实施？';
+  const selected = matchingReviewedStandard(q, []);
+  assert.equal(selected?.standard.id, 'GB55030-2022');
+  assert.equal(knowledgeOriginalRequested(q), false);
+  assert.equal(matchingReviewedStandard('GB 55030-2021《建筑与市政工程防水通用规范》目前有效吗？', []), undefined);
+  assert.equal(knowledgeOriginalRequested('《本公司施工手册》的原文怎么说？'), true);
+  assert.equal(matchingReviewedStandard('处理后什么时候可以做防水？', ['卫生间管根为什么要单独处理？']), selected);
+  assert.equal(matchingReviewedStandard('公司自己的资料里有没有写闭水试验时长？', []), undefined);
+  assert.equal(reviewedPublicStandard(document(selected!.origin + selected!.path, true)), undefined);
+});
+
+test('a reviewed attachment uses the existing compact model view with original citations and recent customer questions', () => {
+  const time = '2026-11-13T00:00:00.000Z';
+  const doc = document('https://maker.example/scan.pdf?fileName=illustration', true);
+  const standard = { kind: 'standard_text', id: 'GB55000-2022', name: 'Synthetic edition', level: 'national', status: 'unknown' } as const;
+  const pages = Array.from({ length: 6 }, (_, index) => {
+    const page = publicDocumentPages(doc, time)[0];
+    return { ...page, requestedUrl: page.url, standard, document: { ...page.document!, page: index + 1, pages: 40, reviewedTextHash: 'a'.repeat(64) } };
+  });
+  const synthesisSources = webSynthesisSources(webEvidence({ version: 1, provider: 'synthetic', query, status: 'ready', retrievedAt: time,
+    pages, failures: [] }, '99', 1298));
+  const original = (id: string, text: string): ModelMessage => ({ role: 'user', content: [{ type: 'text', text: JSON.stringify({ sourceMessageId: id, text }) }] });
+  const question = '处理后什么时候可以做防水？';
+  const messages: ModelMessage[] = [
+    { role: 'system', content: [{ type: 'text', text: naturalKnowledgeInstructions }] },
+    original('100', '卫生间水管根部为什么要单独处理？'),
+    { role: 'assistant', content: '此前未经核验的具体量数。' },
+    original('101', question),
+    { role: 'assistant', content: '', toolCalls: [{ name: 'web_fetch', id: 'server:reviewed-standard:1298', arguments: '{}' }] },
+    { role: 'tool', callId: 'server:reviewed-standard:1298', content: JSON.stringify({ tool: 'web_fetch', synthesisSources }) },
+  ];
+  const before = JSON.stringify(messages);
+  const request = compileModelRequest({ messages, question, triggerId: '101', turn: 0, purpose: 'answer', naturalKnowledge: true,
+    knowledgeExplanation: true, tools: [], toolsForTurn: agentToolsForTurn });
+  const packet = JSON.parse(request.modelMessages.find(message => message.role === 'tool')!.content);
+  assert.equal(packet.synthesisSources.length, 6);
+  assert.ok(packet.synthesisSources.every((item: typeof synthesisSources[number] & { citationOptions?: unknown[] }) =>
+    item.citationOptions?.length && item.web?.document?.page && !item.evidence?.text && !item.web.document.reviewedTextHash));
+  assert.match(JSON.stringify(request.modelMessages), /卫生间水管根部为什么要单独处理/);
+  assert.doesNotMatch(JSON.stringify(request.modelMessages), /此前未经核验的具体量数/);
+  assertToolPairs(request.modelMessages);
+  assert.equal(JSON.stringify(messages), before);
 });
 
 test('a long PDF retains complete relevant pages and original locators under the context limit', () => {

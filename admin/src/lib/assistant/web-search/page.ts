@@ -5,6 +5,7 @@ import { injectionSignals } from '../contracts/native-tools';
 import { extractWebPage, publicWebUrl, readPublicPage } from '../agent/web';
 import { webDocumentProtocol, webSearchLimits, type WebReadPage, type WebSourceTrust } from './contract';
 import { classifyWebSource } from './trust';
+import { publicStandardMetadata, type PublicStandard } from './standards';
 
 export type FetchedWebDocument = {
   protocol: typeof webDocumentProtocol;
@@ -24,6 +25,7 @@ export type FetchedWebDocument = {
   injectionSignals: string[];
   trust: WebSourceTrust;
   attachments?: Array<{ url: string; title: string }>;
+  standard?: PublicStandard;
 };
 
 function cleanPublishedAt(value: unknown): string | null {
@@ -95,6 +97,7 @@ export async function fetchPublicDocument(
   );
   const metadata = /html/i.test(page.type) ? pageMetadata(page.body) : { siteName: null, publishedAt: null };
   const attachments = /html/i.test(page.type) ? pageAttachments(page.body, finalUrl.href) : [];
+  const standard = publicStandardMetadata(extracted.url, extracted.title, extracted.text, /html/i.test(page.type) ? page.body : undefined);
   return {
     protocol: webDocumentProtocol,
     requestedUrl: requested.href,
@@ -111,5 +114,6 @@ export async function fetchPublicDocument(
     injectionSignals: injectionSignals(`${extracted.title}\n${extracted.text}`),
     trust: classifyWebSource(extracted.url, extracted.title),
     ...(attachments.length ? { attachments } : {}),
+    ...(standard ? { standard } : {}),
   };
 }

@@ -263,7 +263,7 @@ export function acceptKnowledgeExplanation(draft: KnowledgeExplanationDraft, out
 
 export function knowledgeExplanationFailure(error: unknown, natural = false) {
   if (!(error instanceof AssistantError) || !['invalid_model_answer', 'invalid_model_citation', 'incomplete_model_answer',
-    'ungrounded_response_scope', 'unsupported_model_commitment', 'unresolved_evidence_conflict'].includes(error.code)) throw error;
+    'ungrounded_response_scope', 'unsupported_model_commitment', 'unresolved_evidence_conflict', 'standard_status_unverified'].includes(error.code)) throw error;
   return { code: error.code, feedback: '同轮唯一一次最终解释修复；'
     + (natural ? '直接回答完整当前原话，以knowledge_explanation/segments提交basis/text/citations段落，不创建问项或answers。' : '只按既有questionCoverage逐Q提交knowledge_explanation/answers，各项为basis/text/citations段落。')
     + '沿本轮真实citationId保留条件、否定和数值；无依据具体说明缺项，不调用查询或业务工具。校验错误：' + error.code

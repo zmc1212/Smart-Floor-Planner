@@ -6,6 +6,8 @@
 **XiaoK public sources (Limited).** Eligible C01 and authorized project or follow-up turns can search and read public originals. Full history and `GET /api/miniprogram/assistant/citations/:id` recheck the source before returning the saved quote, URL, retrieval time and PDF page when available. A changed, missing or unreadable original uses the existing unavailable-source state. Scan-only attachments require OCR or a verified transcript before citation. [Integration verification](xiaok-integration-audit.md).
 <!-- /xiaok-r3-web-tools -->
 
+**I6.7 public standards (Limited).** The existing C01 source sheet shows the reviewed original quote, PDF page and section, URL and read time. Reopening the consultation and citation rechecks the current public original. If the original becomes unreadable the existing unavailable state applies, and a fresh read can restore access. A public citation cannot prove the company's practice or this project's construction status. [Integration acceptance](xiaok-integration-audit.md#i67-专业规范证据链limited).
+
 **C01 owner project status.** The existing composer can ask about the current stage and the owner's published room records for the one active project bound to the chat. History reentry rechecks access and the source version. Site confirmation and formal drawings use the existing entries. I6 Stable opened the saved PPT citation, sent two status questions through the isolated service and reopened their saved replies. A separate C01 reopened its formal result, authorized original photo and delegation status. [Integration audit](xiaok-integration-audit.md#i66-业务回传与工程检查).
 
 <!-- cross-role-business-current -->

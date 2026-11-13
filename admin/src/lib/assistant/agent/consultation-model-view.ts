@@ -1,17 +1,20 @@
 import { agentModelLimits, type ModelMessage, type ModelTool } from '../contracts/model';
-import { agentBasePolicy, agentOpeningMemoryPrefix } from './context';
+import { agentBasePolicy, agentOpeningMemoryPrefix, ownerNoArchiveBasePolicy } from './context';
 import { synthesisModelInstructions, synthesisQuestionPrefix } from './model-policy';
 import { rankPublicCandidate } from './public-research';
 import { numericCatalogIndex } from './citation-coverage';
 import type { SynthesisSource } from './synthesis';
 import { agentRequestBudget, contextBudgetPolicy, estimateAgentRequest, type RequestBudgetOptions } from './context-budget';
+import { webToolNames } from '../web-search/contract';
+import { knowledgeToolNames } from '../knowledge/rag-tools';
 
 export const consultationModelViewVersion = 'tool-content-artifact-v3';
 type Data = Record<string, unknown>;
 const object = (value: unknown): value is Data => !!value && typeof value === 'object' && !Array.isArray(value);
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-const sourceReads = new Set(['search_knowledge', 'search_web', 'read_web', 'restore_sources', 'query_materials', 'query_business', 'query_followups', 'recall_history']);
-const readOnlyTools = new Set([...sourceReads, 'final_response']);
+const readOnlyTools = new Set(['search_knowledge', 'search_web', 'read_web', 'restore_sources', 'query_materials', 'query_business', 'query_followups', 'recall_history', 'final_response']);
+const sourceReads = new Set([...readOnlyTools, ...webToolNames, ...knowledgeToolNames]);
+sourceReads.delete('final_response');
 
 export function hasSourceRead(messages: ModelMessage[]) {
   const calls = new Map<string, string>();
@@ -48,8 +51,10 @@ export function hasSynthesisContract(messages: ModelMessage[], contract: string)
  * Evidence, source snapshots and links stay in the original durable checkpoint
  * for authorization, original opening, follow-up restoration and commit. */
 export function projectConsultationModelView(messages: ModelMessage[], tools: ModelTool[], contract = synthesisModelInstructions,
-  options: { preservePolicy?: boolean; budget?: RequestBudgetOptions; navigationOnly?: boolean } = {}): ModelMessage[] {
+  options: { preservePolicy?: boolean; budget?: RequestBudgetOptions; navigationOnly?: boolean; compactReadPolicy?: boolean } = {}): ModelMessage[] {
   const finalOnly = tools.length === 1 && tools[0].name === 'final_response';
+  const compactReadPolicy = options.compactReadPolicy && tools.every(tool => readOnlyTools.has(tool.name)
+    || webToolNames.some(name => name === tool.name) || knowledgeToolNames.some(name => name === tool.name));
   if (!tools.length || (tools.some(tool => !readOnlyTools.has(tool.name)) && !options.preservePolicy)
     || !hasSynthesisContract(messages, contract) && !options.navigationOnly) return messages;
   const calls = new Map<string, string>();
@@ -58,12 +63,17 @@ export function projectConsultationModelView(messages: ModelMessage[], tools: Mo
       calls.clear(); for (const call of message.toolCalls || []) calls.set(call.id, call.name);
       return message;
     }
-    if (message.role === 'system' && options.preservePolicy) return message;
+    if (message.role === 'system' && options.preservePolicy && !compactReadPolicy) return message;
     if (message.role === 'system') return { ...message, content: message.content.map(part => {
-      if (part.type !== 'text' || !part.text.startsWith(agentBasePolicy + agentOpeningMemoryPrefix)) return part;
-      const suffix = part.text.slice(agentBasePolicy.length);
+      if (part.type !== 'text') return part;
+      const originalPolicy = part.text.startsWith(agentBasePolicy + agentOpeningMemoryPrefix) ? agentBasePolicy
+        : compactReadPolicy && part.text.startsWith(ownerNoArchiveBasePolicy + '\n本轮未开放项目档案读取。') ? ownerNoArchiveBasePolicy : undefined;
+      if (!originalPolicy) return part;
+      const suffix = part.text.slice(originalPolicy.length);
       try {
-        const memory = JSON.parse(suffix.slice(agentOpeningMemoryPrefix.length));
+        const start = suffix.indexOf(agentOpeningMemoryPrefix);
+        if (start < 0) return part;
+        const memory = JSON.parse(suffix.slice(start + agentOpeningMemoryPrefix.length));
         if (!object(memory) || Object.keys(memory).some(key => !['memoryVersion', 'facts'].includes(key))
           || !Number.isSafeInteger(memory.memoryVersion) || !Array.isArray(memory.facts)) return part;
       } catch { return part; }
@@ -91,6 +101,18 @@ export function projectConsultationModelView(messages: ModelMessage[], tools: Mo
         if (object(web.document)) {
           web.document = { ...web.document };
           delete (web.document as Data).hash; delete (web.document as Data).bytes;
+          if ((web.document as Data).reviewedTextHash) {
+            delete (web.document as Data).reviewedTextHash;
+          }
+        }
+        if (object(web.standard)) {
+          // The affected clauses are present in the unabridged announcement.
+          // Immutable identity and alternate request URLs stay on the server.
+          const status = { ...web.standard };
+          delete status.affected;
+          web.standard = status;
+          delete web.requestedUrl;
+          delete copy.evidence;
         }
         copy.web = web;
       }

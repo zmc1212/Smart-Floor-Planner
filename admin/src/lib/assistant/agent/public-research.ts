@@ -4,6 +4,7 @@ import { configuredWebProvider, publicWebUrl, type WebQuery, type WebPage, type 
 import type { ModelTool } from '../contracts/model';
 import { injectionSignals } from '../contracts/native-tools';
 import { expandChineseQuery, chineseTerms, queryLexicalScore } from '../knowledge/chinese-lexical';
+import { publicStandardMetadata, reviewedPublicStandard } from '../web-search/standards';
 
 export const publicReaderParser = 'crawl4ai-static-0.9.2+pypdf-6.21.2-v1';
 const ordinaryBytes = 4 * 1024 * 1024;
@@ -140,12 +141,15 @@ export async function configuredPublicRead(url: string, remainingMs: number, sig
  * stay in the immutable read. A partial context window never truncates a page. */
 export function publicDocumentPages(document: PublicReadDocument, retrievedAt: string, query?: string): WebPage[] {
   if (!validPublicDocument(document)) fail('invalid_web_reader_response', 502);
-  if (document.parseError) return [];
+  const reviewed = reviewedPublicStandard(document);
+  if (document.parseError && !reviewed) return [];
   const pdf = document.mediaType === 'application/pdf';
-  const candidates = document.pages.filter(page => (!page.status || page.status === 'text')
-    && Buffer.byteLength(page.text) <= sourceTextBytes && page.text.trim().length >= (pdf ? 4 : 40)
+  const originals = [...document.pages.filter(page => !page.status || page.status === 'text'), ...(reviewed?.transcripts ?? [])];
+  const pageLimit = reviewed ? 4 : sourceLimit;
+  const candidates = originals.filter(page =>
+    Buffer.byteLength(page.text) <= sourceTextBytes && page.text.trim().length >= (pdf ? 4 : 40)
     && !injectionSignals(document.title + '\n' + page.text).length);
-  if (pdf && query && (candidates.length > sourceLimit || candidates.reduce((n, p) => n + Buffer.byteLength(p.text), 0) > sourceTextBytes)) {
+  if (pdf && query && (candidates.length > pageLimit || candidates.reduce((n, p) => n + Buffer.byteLength(p.text), 0) > sourceTextBytes)) {
     const terms = expandChineseQuery(query);
     const score = (text: string) => queryLexicalScore(chineseTerms(text), terms);
     const ranked = candidates.map(page => ({ page, score: score(page.text) }));
@@ -155,23 +159,33 @@ export function publicDocumentPages(document: PublicReadDocument, retrievedAt: s
   let used = 0;
   for (const page of candidates) {
     const bytes = Buffer.byteLength(page.text);
-    if (used + bytes > sourceTextBytes || selected.length >= sourceLimit) continue;
+    if (used + bytes > sourceTextBytes || selected.length >= pageLimit) continue;
     used += bytes;
     selected.push(page);
   }
   return selected.sort((a, b) => a.page - b.page).map(page => {
+    const standard = reviewed?.standard ?? (!pdf && page.page === 1 ? publicStandardMetadata(document.url, document.title,
+      page.text, /html/.test(document.mediaType) ? Buffer.from(document.original.base64, 'base64').toString('utf8') : undefined) : undefined);
+    const transcript = reviewed?.transcripts.find(item => item.page === page.page);
     const locator: Omit<WebPage, 'hash' | 'text'> = { url: document.url, title: document.title, retrievedAt, parser: publicReaderParser,
       ...(document.requestedUrl ? { requestedUrl: document.requestedUrl } : {}),
+      ...(standard ? { standard } : {}),
+      ...(standard?.issuedAt ? { publishedAt: standard.issuedAt } : {}),
       textBytes: Buffer.byteLength(page.text), document: { hash: document.original.sha256, mediaType: document.mediaType,
         page: page.page, pages: document.pages.length, bytes: document.original.bytes,
-        ...(document.transport === 'verified_pdf_ranges' ? { transport: document.transport } : {}) } };
+        ...(document.transport === 'verified_pdf_ranges' ? { transport: document.transport } : {}),
+        ...(transcript ? { reviewedTextHash: transcript.reviewedTextHash, section: transcript.section } : {}) } };
     return { ...locator, text: page.text, hash: fingerprint({ ...locator, text: page.text }) };
   });
 }
 
 export function publicDocumentReadFailures(document: PublicReadDocument, pages: WebPage[]) {
-  if (document.parseError) return [{ url: document.url, code: document.parseError,
-    ...(document.parseError === 'pdf_ocr_required' ? { pages: document.pages.filter(page => page.status === 'ocr_required').map(page => page.page) } : {}) }];
+  if (document.parseError) {
+    if (document.parseError !== 'pdf_ocr_required') return [{ url: document.url, code: document.parseError }];
+    const reviewed = new Set(reviewedPublicStandard(document)?.transcripts.map(page => page.page));
+    const missing = document.pages.filter(page => page.status === 'ocr_required' && !reviewed.has(page.page));
+    return missing.length ? [{ url: document.url, code: document.parseError, pages: missing.map(page => page.page) }] : [];
+  }
   const failures: WebSearchSnapshot['failures'] = [];
   for (const [status, code] of [['ocr_required', 'pdf_ocr_required'], ['unreadable', 'pdf_page_unreadable']] as const) {
     const affected = document.pages.filter(page => page.status === status).map(page => page.page);

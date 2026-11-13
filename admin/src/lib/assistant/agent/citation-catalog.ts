@@ -17,7 +17,10 @@ export function sourceCitationCatalog(source: SynthesisSource): CatalogCitation[
     const quote = text.slice(start, end);
     if (quote.trim().length && quote.length <= maxQuoteLength) spans.push([start, end]);
   };
-  if (text.length <= maxQuoteLength) add(0, text.length);
+  const reviewed = !!source.web?.document?.reviewedTextHash;
+  if (reviewed) {
+    for (const line of text.matchAll(/[^\r\n]+(?:\r?\n[1-9] .+)?/gu)) add(line.index!, line.index! + line[0].length);
+  } else if (text.length <= maxQuoteLength) add(0, text.length);
   else {
     const file = source.evidence?.file || (source as SynthesisSource & { file?: { kind?: string } }).file;
     if (file?.kind === 'table_row') return [];
@@ -34,7 +37,7 @@ export function sourceCitationCatalog(source: SynthesisSource): CatalogCitation[
   const packed: Array<[number, number]> = [];
   for (const [start, end] of spans) {
     const previous = packed.at(-1);
-    if (previous && end - previous[0] <= maxQuoteLength && /^\s*$/u.test(text.slice(previous[1], start))) previous[1] = end;
+    if (!reviewed && previous && end - previous[0] <= maxQuoteLength && /^\s*$/u.test(text.slice(previous[1], start))) previous[1] = end;
     else packed.push([start, end]);
   }
   // Preserve the same 80-bit fingerprint in compact URL-safe encoding. These
@@ -88,6 +91,7 @@ export function engineeringClaimText(text: string, citedSources: SynthesisSource
   const aliases = new Map<string, { name: string; version: string }>();
   const filenames = new Set<string>();
   const pdfPages = new Set<number>();
+  const publicStandards = new Set(citedSources.flatMap(source => source.web?.standard ? [source.web.standard.id] : []));
   for (const source of citedSources) { const page = citedPdfPage(source); if (page !== null) pdfPages.add(page); }
   for (const source of citedSources.filter(s => s.kind === 'knowledge')) {
     const file = source.evidence?.file;
@@ -110,6 +114,10 @@ export function engineeringClaimText(text: string, citedSources: SynthesisSource
     }
   }
   let result = proseNumberView(sourceReferenceText(text,citations,citedSources), citationCount);
+  for (const id of publicStandards) {
+    const spelling = id.replace(/^(\D+)(\d)/u, '$1[\\p{Zs}\\t]*$2').replace(/-/g, '[-—－]');
+    result = result.replace(new RegExp('(?<![A-Z0-9])' + spelling + '(?![A-Z0-9]|[.,]\\d)', 'giu'), '规范编号');
+  }
   for (const page of pdfPages) {
     // Coordinates describe this segment's cited original, not quantities in
     // its prose. Never trust a display label, another segment or a bare number.
