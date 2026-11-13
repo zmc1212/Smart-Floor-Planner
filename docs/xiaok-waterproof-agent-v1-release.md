@@ -154,7 +154,7 @@
 
 - 企业 `1454` 的客户咨询默认绑定 `xiaok-native-executor-v1`。该执行器不提供 `start_delegation`，因此业主持续跟进在 native executor 下不可用。
 - 在 `agent_config` 中加入 `consultation` 绑定后，native executor 的首轮模型调用返回 `assistant_model_configuration_invalid`（Run `7`）。移除该绑定后恢复。
-- 本轮业主授权验收在 LangGraph Agent 运行时完成（临时移除本地 `runtime.private.json` 的 `agentV2` 绑定），并保留原文件备份 `admin/tmp/i6.14/runtime.private.backup.json`。该切换是隔离验收配置，不是生产默认值。
+- 本轮业主授权验收在 LangGraph Agent 运行时完成（临时移除本地 `runtime.private.json` 的 `agentV2` 绑定，并移除 `consultation` 配置；原文件备份 `admin/tmp/i6.14/runtime.private.backup.json`）。验收后已恢复 `agentV2` 绑定与 `knowledgeExplanation`，仅保留 `consultation` 移除，因为该绑定与 native executor 不兼容。该切换是隔离验收配置，不是生产默认值。
 - 知识解释配置在真实业主管根问题上两次触发 `unsupported_model_commitment` / `invalid_model_answer`（Run `9`/`10`/`12`/`13`），说明当前终稿守卫对“预计核对时间/届时告知”等措辞仍会拒绝；这是 V1.1 需要收敛的真实能力边界。
 
 ### 13.3 V1.1 候选（不改变 V1）
