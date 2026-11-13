@@ -489,6 +489,7 @@ function selectedCitationContext(answer: SynthesisAnswer, sources: SynthesisSour
 const projectQuantityRepairInstructions = '被标记段落把现场数值或现场与规范的对照交给了不支持该实况的来源。条款出现相同数字不证明现场记录。仅从本轮已有来源中补选实际支持该现场主张的project来源citationId，规范要求仍引用知识条款；已有获权现场原文支持的正确数值应保留。删去数字但保留“现场低于要求”等比较仍然需要现场引用，不能靠删数字绕过。没有对应现场依据就删去该现场断言，说明本次无法确认。不得换单位、推算或改写原文，不拿需求意向或正式方案当作现场实测。';
 const groundingRepairInstructions = {
   misattributed_project_status: '当前节点和阶段电话状态须选本轮实际状态摘录，不能拿同一sourceId下的现场记录合集、缺项或事项摘录替代。仅从已有statusCitationCandidates中核对选择支持本段事实的原文，候选不自动证明；原文不支持则删去该断言，保留本次无法确认。节点不是验收结论，电话未配置只限制电话入口，不阻断原聊天或人工接续。',
+  misattributed_project_room: '本段引用了当前咨询房间以外的现场记录。当前房间只来自服务端绑定；删除其他房间的记录及其观察，改用当前房间的真实记录或说明本次资料缺项。其他房间的记录不能因为项目相同就当作本房间依据。',
   misattributed_project_observation: '现场观察或施工记录缺项即使没有数字也须引用本段对应的实际记录原文；知识条款、节点或需求/图纸缺项不证明施工记录写了什么或没写什么。仅补选本轮已有且支持该观察的现场来源，不能拿历史原话、需求或正式方案替代。待沟通中的标记动作保留待核对状态，只有本次完成字段有依据才说已经标记。没有对应来源则删去观察断言，明确本次无法核实。',
   unsupported_evidence_mechanism: '引文仅规定做法，没有解释正文中的因果或风险机理。保留有据条款及现场观察；把原文未说明的通用机理拆到advice段，不让evidence或引用使其成为企业依据。一般建议仍不得新增现场事实、量数或正式承诺。',
   contradictory_measurement_comparison: '本段对同一量数的达标判断与所引现场数值、条款上下限矛盾。核对同一对象、同一单位和严格或含等号的边界，只作记录值与条款的直接定性对照；不计算差值、不将局部对照升级为工程合格。不能靠删除数值保留错误达标结论。',
@@ -511,18 +512,42 @@ function formalStatusEvidence(citations: Array<{ sourceId: string }>, sources: S
   return formal.length > 0 && citations.some(c => sources.some(source => source.sourceId === c.sourceId
     && (formal.includes(source) || source.followup?.kind === 'team_result' && issues.has(source.followup.issueId))));
 }
-function synthesisCommitmentOptions(segment: SynthesisSegment, sources: SynthesisSource[], context: SynthesisReviewContext) {
+function qualifiedStandardQuote(source: SynthesisSource | undefined, quote: string, context: SynthesisReviewContext) {
+  const qualified = source?.web?.standard?.kind === 'standard_text'
+    || context.specialistAcceptance && source?.kind === 'knowledge' && source.knowledge?.published
+      && source.knowledge.sourceType !== 'reference_case' && source.evidence?.professional?.applicability.status !== 'not_applicable';
+  return !!qualified && !!source && source.text.includes(quote);
+}
+
+/** The same answer may state a cited rule in one segment and explain it in the
+ * next. Pool only the standard originals this answer actually selected; the
+ * subject and completion form still gate each mention. */
+function answerStandardQuotes(segments: Array<{ citations?: unknown }>, sources: SynthesisSource[], context: SynthesisReviewContext) {
+  const quotes = segments.flatMap(segment => {
+    if (!Array.isArray(segment?.citations)) return [];
+    return segment.citations.flatMap(raw => {
+      if (!raw || typeof raw !== 'object') return [];
+      let citation: { sourceId?: unknown; quote?: unknown } = raw as { sourceId?: unknown; quote?: unknown };
+      try { citation = resolveCatalogCitation(raw as Record<string, unknown>, sources) || citation; } catch { return []; }
+      if (typeof citation.sourceId !== 'string' || typeof citation.quote !== 'string') return [];
+      const source = sources.find(item => item.sourceId === citation.sourceId);
+      return qualifiedStandardQuote(source, citation.quote, context) ? [citation.quote] : [];
+    });
+  });
+  return [...new Set(quotes)];
+}
+
+function synthesisCommitmentOptions(segment: SynthesisSegment, sources: SynthesisSource[], context: SynthesisReviewContext,
+  answerQuotes?: string[]) {
   const standardQuotes = segment.citations.flatMap(citation => {
     const source = sources.find(item => item.sourceId === citation.sourceId);
-    const qualified = source?.web?.standard?.kind === 'standard_text'
-      || context.specialistAcceptance && source?.kind === 'knowledge' && source.knowledge?.published
-        && source.knowledge.sourceType !== 'reference_case' && source.evidence?.professional?.applicability.status !== 'not_applicable';
-    return qualified && source?.text.includes(citation.quote) ? [citation.quote] : [];
+    return qualifiedStandardQuote(source, citation.quote, context) ? [citation.quote] : [];
   });
+  const pooled = [...new Set([...(answerQuotes || []), ...standardQuotes])];
   return {
     formalStatusEvidence: formalStatusEvidence(segment.citations, sources, context),
-    ...(context.specialistAcceptance || standardQuotes.length
-      ? { acceptanceQuotes: standardQuotes, acceptanceAdvice: segment.basis === 'advice' } : {}),
+    ...(context.specialistAcceptance || pooled.length
+      ? { acceptanceQuotes: pooled, acceptanceAdvice: segment.basis === 'advice' } : {}),
   };
 }
 
@@ -598,6 +623,7 @@ export function synthesisRepairIssue(raw:string,sources:SynthesisSource[],contex
       && !originalAnswerOnly(context.currentQuestion) && !independentAdviceRequested(context.currentQuestion)
       && sources.some(source => source.material?.ref.type === 'formal_plan' || source.followup?.kind === 'formal_plan');
     const statusPaths: string[] = [];
+    const repairAcceptanceQuotes = answerStandardQuotes(value.segments, sources, context);
     // Distinguish a missing numerical quote from actual formal-state/price claims.
     for(const [index, s] of value.segments.entries()){
       if(s.basis!=='evidence'&&!Object.hasOwn(s,'citations'))s.citations=[];
@@ -613,7 +639,7 @@ export function synthesisRepairIssue(raw:string,sources:SynthesisSource[],contex
           const correction={sourceId:c.sourceId,quote:typeof c.quote==='string'?c.quote:''};invalidSelections.add(correction);return correction;
         }
       });
-      const commitment = synthesisCommitmentOptions(s, sources, context);
+      const commitment = synthesisCommitmentOptions(s, sources, context, repairAcceptanceQuotes);
       try { parseAgentReply(JSON.stringify({kind:'general',text:canonicalConclusion(s.text)}), commitment); }
       catch (textError) {
         if ((!formalTextRepair && !commitment.acceptanceQuotes) || !(textError instanceof AssistantError) || textError.code !== 'unsupported_model_commitment') throw textError;
@@ -847,6 +873,7 @@ function checkedSynthesis(raw: string, sources: SynthesisSource[], context: Synt
   if (!value || value.kind !== 'synthesis' || Object.keys(value).some(k => !['kind', 'segments'].includes(k))
     || !Array.isArray(value.segments) || !value.segments.length || value.segments.length > 6) fail('invalid_model_answer', 502);
   const standards = sources.flatMap(source => source.web?.standard ? [source.web.standard] : []);
+  const answerQuotes = answerStandardQuotes(value.segments, sources, context);
   for (const s of value.segments) {
     if (!s || Object.keys(s).some(k => !['basis', 'text', 'citations'].includes(k)) || !['evidence', 'advice', 'uncertainty'].includes(s.basis)
       || typeof s.text !== 'string' || !s.text.trim() || s.text.length > 1200) fail('invalid_model_answer', 502);
@@ -891,7 +918,7 @@ function checkedSynthesis(raw: string, sources: SynthesisSource[], context: Synt
       const missing = generalAdvice ? [] : unsupportedWordQuantities(numericText, cited.join('\n'));
       const passes = pending ? new Set(coatingPassQuantities(numericText)) : new Set<string>();
       if (missing.some(quantity => !passes.has(quantity))) fail('unsupported_model_commitment', 502);
-      parseAgentReply(JSON.stringify({ kind: 'general', text: s.text }), synthesisCommitmentOptions(s, sources, context));
+      parseAgentReply(JSON.stringify({ kind: 'general', text: s.text }), synthesisCommitmentOptions(s, sources, context, answerQuotes));
       if (pending && missing.length) pending.push({ segment: value.segments.indexOf(s), quantities: [...new Set(missing)] });
     } catch (error) {
       if (!rejected || !(error instanceof AssistantError) || error.code !== 'unsupported_model_commitment') throw error;
