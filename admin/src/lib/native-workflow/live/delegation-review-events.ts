@@ -15,9 +15,13 @@ import { queueDelegationStaffNotice } from './delegation-staff';
 const batchSize = 12;
 
 export async function enqueueReviewDue(tx: PostgresTransaction, eid: string, now: Date) {
-  const due = await rows(tx, sql`select id::text,project_id::text,version,reminder_stage from app.native_workflow_delegations
-    where enterprise_id=${eid} and scope is not null and next_wake_at<=${now}
-    order by next_wake_at,id limit ${batchSize}`);
+  const due = await rows(tx, sql`select id::text,project_id::text,version,reminder_stage from app.native_workflow_delegations d
+    where d.enterprise_id=${eid} and scope is not null and (next_wake_at<=${now}
+      or (scope->'workflow' is not null and current_status in ('running','waiting_for_worker','waiting_for_authorization')
+        and exists(select 1 from app.native_workflow_durable_tasks t where t.enterprise_id=d.enterprise_id
+          and t.kind='workflow.event_wait' and t.status='waiting' and t.deadline_at<=${now}
+          and t.state#>>'{delegation,delegationId}'=d.id::text)))
+    order by next_wake_at nulls last,id limit ${batchSize}`);
   for (const item of due) {
     await appendDelegationEvent(tx, eid, delegationTimeout, String(item.id), Number(item.version),
       { delegationId: String(item.id), projectId: String(item.project_id), reminderStage: Number(item.reminder_stage) });
@@ -75,6 +79,18 @@ export async function applyReviewEvent(tx: PostgresTransaction, eid: string, eve
       continue;
     }
     if (event.type === delegationTimeout) {
+      if (d.scope.workflow && d.status !== 'completed') {
+        const expired = await one(tx, sql`select id from app.native_workflow_durable_tasks where enterprise_id=${d.enterpriseId}
+          and kind='workflow.event_wait' and status='waiting' and state#>>'{delegation,delegationId}'=${d.id} and deadline_at<=${now} limit 1`);
+        if (expired) {
+          const next = await advanceSpecialistDelegation(tx, d, origin, event, now);
+          const saved = await saveReviewDelegation(tx, d, next, now, { reminderStage: 2 });
+          const notice = await delegationReceipt(tx, saved, d.id + ':' + event.id, delegationSummary(saved));
+          await linkReviewDelegationEvent(tx, d, saved, event.id, 'applied', { notice });
+          applied++;
+          continue;
+        }
+      }
       if (!d.nextWakeAt || d.nextWakeAt > now || event.payload.reminderStage !== d.reminderStage
         || (!isWaiting(d.status) && d.status !== 'running')) {
         await linkReviewDelegationEvent(tx, d, d, event.id, 'unchanged');
@@ -90,7 +106,7 @@ export async function applyReviewEvent(tx: PostgresTransaction, eid: string, eve
       applied++;
       continue;
     }
-    if (event.type === 'construction.site.issue.result.v1' && event.payload.conversationId === d.conversationId
+    if (!d.scope.workflow && event.type === 'construction.site.issue.result.v1' && event.payload.conversationId === d.conversationId
       && event.payload.customerId === d.ownerId) {
       await syncSiteResults(tx, delegationActor(d), origin, event.id);
     }

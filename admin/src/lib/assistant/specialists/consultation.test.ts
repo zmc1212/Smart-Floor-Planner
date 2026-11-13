@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { consultationSpecialist, specialistConsultationTools } from './consultation';
+import { consultationSpecialist, specialistConsultationTools, specialistFollowupRequested } from './consultation';
 import { bindSpecialistInput, specialistRegistry, specialists, waterproofAgentId } from './registry';
 import type { ModelTool } from '../contracts/model';
 import { projectCitedAcceptanceCondition, projectUnconfirmedWaterproofAcceptance } from '../agent/formal-claim-scope';
@@ -32,6 +32,10 @@ test('advice, latest room corrections, company standards, other editions and pro
   assert.equal(consultationSpecialist('不是厨房，是卫生间。', prior)?.room, '卫生间');
   assert.equal(consultationSpecialist('我家卫生间现在做到哪一步？', prior)?.progressRequested, true);
   assert.equal(consultationSpecialist('我家书房做到哪一步？', [])?.agent, undefined);
+  assert.equal(consultationSpecialist('我家主卧现在做到哪一步？', [])?.room, '主卧');
+  assert.equal(specialistFollowupRequested('卫生间准备做防水，开工前要核对哪些地方？'), false);
+  assert.equal(specialistFollowupRequested('帮我持续跟进卫生间的管根，师傅核实后在这里告诉我。'), true);
+  assert.equal(specialistFollowupRequested('卫生间的防水不用跟进，我只想先问问。'), false);
   assert.equal(consultationSpecialist('刚才那个 GB 50108-2008 的防水条文呢？', prior)?.standard, undefined);
   assert.equal(consultationSpecialist('我们公司的卫生间防水标准是什么？', [])?.companyOnly, true);
   assert.equal(consultationSpecialist('这个和国家通用要求有什么区别？', ['我们公司的卫生间防水标准是什么？'])?.companyPractice, true);

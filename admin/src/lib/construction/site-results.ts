@@ -38,11 +38,13 @@ async function authorizedResult(tx: PostgresTransaction, eid: string, cid: strin
     const origin = await specialistIssueOrigin(tx, eid, projectId, p.specialistDelegationId);
     if (!origin || origin.conversationId !== cid || origin.ownerId !== p.customerId) return null;
     const issue = await readSiteIssueBase(tx, eid, projectId, issueId);
-    if (!issue?.sourceAvailable || issue.specialistDelegationId !== origin.id || issue.revision !== p.issueRevision) return null;
+    if (!issue?.sourceAvailable || issue.specialistDelegationId !== origin.id || issue.revision !== p.issueRevision
+      || issue.roomId !== origin.scope.roomId) return null;
     const resolution = await readSiteResolution(tx, eid, projectId, issueId, issue);
     if (!resolution?.available || resolution.id !== p.lifecycleId || resolution.revision !== p.revision
       || resolution.state !== p.state || resolution.evidenceId !== p.evidenceId || resolution.actorId !== (event.actor_ref as Row)?.adminId
-      || !['resolved', 'closed'].includes(resolution.state)) return null;
+      || !['resolved', 'closed'].includes(resolution.state)
+      || await collaborationMember(tx, eid, projectId, resolution.actorId) !== 'manager') return null;
     return { resolution };
   }
   const need = await sharedMaterial(tx, eid, projectId, String(p.needGrantId));
@@ -194,7 +196,7 @@ export async function customerSiteResults(tx: PostgresTransaction, eid: string, 
   return projected;
 }
 
-export async function syncSiteResults(tx: PostgresTransaction, actor: ActorContext, c: Row, eventId?: string) {
+export async function syncSiteResults(tx: PostgresTransaction, actor: ActorContext, c: Row, eventId?: string, reconcile = false) {
   if (actor.principal.kind !== 'user' || c.status !== 'open' || c.mode !== 'ai' || c.purpose !== 'customer_consultation') return 0;
   const eid = actor.enterpriseId, cid = String(c.id), uid = actor.principal.userId;
   if (!await one(tx, sql`select ent.id from app.enterprises ent join app.assistant_enterprise_settings s on s.enterprise_id=ent.id
@@ -202,7 +204,10 @@ export async function syncSiteResults(tx: PostgresTransaction, actor: ActorConte
   const events = await rows(tx, sql`select e.* from app.domain_event_outbox e where e.enterprise_id=${eid} and e.type=${resultType}
     and e.payload->>'conversationId'=${cid} and e.payload->>'customerId'=${uid}
     ${eventId ? sql`and e.id=${eventId}` : sql``}
-    and not exists(select 1 from app.domain_event_deliveries d where d.enterprise_id=e.enterprise_id and d.event_id=e.id and d.consumer_key=${'construction:result:' + cid})
+    and (not exists(select 1 from app.domain_event_deliveries d where d.enterprise_id=e.enterprise_id and d.event_id=e.id and d.consumer_key=${'construction:result:' + cid})
+      or (${reconcile && !!eventId} and e.payload ? 'specialistDelegationId'
+        and not exists(select 1 from app.assistant_messages m where m.enterprise_id=e.enterprise_id
+          and m.conversation_id=${cid} and m.source_event_id=e.id and m.purpose='construction.result')))
     order by e.id limit 20`);
   let delivered = 0;
   for (const event of events) {
@@ -213,7 +218,13 @@ export async function syncSiteResults(tx: PostgresTransaction, actor: ActorConte
       continue;
     }
     const d = await one(tx, sql`insert into app.domain_event_deliveries(enterprise_id,event_id,consumer_key,status)
-      values(${eid},${String(event.id)},${'construction:result:' + cid},'processing') on conflict(enterprise_id,event_id,consumer_key) do nothing returning id`);
+      values(${eid},${String(event.id)},${'construction:result:' + cid},'processing')
+      on conflict(enterprise_id,event_id,consumer_key) do update set status='processing',updated_at=now()
+        where ${reconcile && !!eventId && typeof (event.payload as Row).specialistDelegationId === 'string'}
+        and app.domain_event_deliveries.status='delivered'
+        and not exists(select 1 from app.assistant_messages m where m.enterprise_id=${eid}
+          and m.conversation_id=${cid} and m.source_event_id=${String(event.id)} and m.purpose='construction.result')
+      returning id`);
     if (!d) continue;
     const p = event.payload as Row;
     const display = p.lifecycleId || p.state ? await resultText(tx, eid, p) : `${p.text}\n这是处理回复，仍待核对，不代表方案、费用、工期或验收批准。`;

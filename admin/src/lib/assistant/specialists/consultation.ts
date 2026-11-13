@@ -16,18 +16,24 @@ export function specialistPolicy(enterpriseId: string, config: { providerKey: st
 const waterproofSpaces = ['卫生间', '洗手间', '厨房', '阳台'];
 const spaces = [...waterproofSpaces, '主卧', '次卧', '客厅', '书房'];
 const progress = /进度|进展|做到哪|到了哪|做完了吗|现在.{0,10}完成了/u;
+// Persistent follow-up requires a continuing action in the current original.
+export function specialistFollowupRequested(question: string) {
+  return !/假设|举例|不用跟进|不要跟进|别跟进|取消|暂停|怎么委托|怎么跟进/u.test(question)
+    && /跟进|盯一下|盯着|盯下|持续.{0,12}(?:关注|核对|查看)|到时提醒我|等.{0,40}(?:核实|补|回复).{0,18}(?:告诉我|通知我|提醒我|回传)/u.test(question);
+}
+
 const continuation = /^(?:那|所以|刚才|前面|我说|不是|是说|处理完|做完)|以后|之后|后什么时候/u;
 
 /** Select the domain using the same reviewed topic catalog as public reads.
  * Only the latest relevant original can supply a reference or room. */
-export function consultationSpecialist(question: string, previousQuestions: string[]) {
-  const agent = specialists.active(waterproofAgentId);
+export function consultationSpecialist(question: string, previousQuestions: string[],
+  agent = specialists.active(waterproofAgentId)) {
   const prior = previousQuestions.at(-1) ?? '';
   const progressRequested = progress.test(question);
   const currentTopic = namedReviewedStandard(question) ?? reviewedStandardTopic(question);
   const mentionedSpace = waterproofSpaces.some(room => question.includes(room));
   const inheritsTopic = (continuation.test(question) || /^(?:这个|它|那条|该条)/u.test(question)) && !!reviewedStandardTopic(prior);
-  if (!agent || !currentTopic && !inheritsTopic && !(progressRequested && (mentionedSpace || reviewedStandardTopic(prior)))) return null;
+  if (!agent || !currentTopic && !inheritsTopic && !(progressRequested && (mentionedSpace || !!reviewedStandardTopic(prior) || question.includes('主卧')))) return null;
   const currentClauses = question.split(/[，,。；;]/u).map(clause => clause.trim())
     .flatMap(clause => clause.startsWith('不是') ? clause.split(/而是|(?<=房|间|台)是/u).slice(1) : [clause]);
   const mentioned = spaces.filter(room => currentClauses.some(clause => clause.includes(room)));
@@ -99,6 +105,6 @@ const policy = '你是小K的防水阶段专业顾问。用简体中文直接解
 export function specialistModelContext(messages: ModelMessage[], checklist: boolean): ModelMessage[] {
   const first = messages.findIndex(message => message.role === 'system');
   if (first < 0) return messages;
-  const instruction: ModelMessage = { role: 'system', content: [{ type: 'text', text: checklist ? policy + ' 本轮在整理现场防水核对清单。按问题和已有依据列需要现场核对的事项，明确指出缺项。团队确认前只提供核对清单。' : policy }] };
+  const instruction: ModelMessage = { role: 'system', content: [{ type: 'text', text: checklist ? policy + ' 本轮为已经登记的防水委托整理现场核对清单。按原问题和已有依据列相关核对项和缺项。跟进状态由原会话的业务回执展示。' : policy }] };
   return messages.map((message, index) => index === first ? instruction : message);
 }

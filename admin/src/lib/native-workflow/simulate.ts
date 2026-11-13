@@ -24,6 +24,8 @@ export type NodeFixture = NodeFixtureSuccess | NodeFixtureFailure | { readonly s
 
 export interface SimulationFixtures {
   readonly nodes: Readonly<Record<string, NodeFixture>>;
+  /** Optional capability fallback for graphs with user-assigned node IDs. */
+  readonly capabilities?: Readonly<Record<string, NodeFixture>>;
 }
 
 export interface SimulationScenario {
@@ -114,7 +116,7 @@ export function simulate(input: {
           break;
         }
         if (operation.effect === 'compose') modelComposeCount += 1;
-        if (operation.effect === 'wait' && ownValue(fixtures.nodes, operation.nodeId)?.status === 'waiting') {
+        if (operation.effect === 'wait' && operationFixture(operation, fixtures)?.status === 'waiting') {
           fixtureLog.push({ nodeId: operation.nodeId, result: 'waiting' });
           break;
         }
@@ -175,12 +177,16 @@ function validateScenario(scenario: SimulationScenario): void {
   }
 }
 
+function operationFixture(operation: PendingOperation, fixtures: SimulationFixtures) {
+  return ownValue(fixtures.nodes, operation.nodeId) ?? ownValue(fixtures.capabilities ?? {}, operation.capabilityRef);
+}
+
 function observeWithFixture(
   operation: PendingOperation,
   fixtures: SimulationFixtures,
   at: string,
 ): { event: WorkflowEvent; fixture: FixtureLogEntry } {
-  const fixture = ownValue(fixtures.nodes, operation.nodeId);
+  const fixture = operationFixture(operation, fixtures);
   if (!fixture) {
     return {
       event: {

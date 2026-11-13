@@ -44,7 +44,7 @@ export function parseDesignerQuery(raw: unknown): DesignerQuery {
     || typeof value.query !== 'string' || value.query.length > 100 || /[\u0000-\u001f\u007f]/.test(value.query)) fail('invalid_message', 422);
   return { query: value.query.trim() };
 }
-export type BusinessQuery = { domain: 'appointments' | 'schemes' | 'floorplans' | 'construction'; leadId: string; currentProject?: { room: string } };
+export type BusinessQuery = { domain: 'appointments' | 'schemes' | 'floorplans' | 'construction'; leadId: string; currentProject?: { room: string; recordLimit?: number } };
 export type BusinessSnapshot = { query: BusinessQuery; customerId?: string; leadIds: string[]; version: string; displayText: string; data: unknown[]; queriedAt: string; contextConversationId?: string; reportReference?: ReportBusinessReference; reportAnswerGrounding?: 'report-answer-grounding-v1'; reportSourceProjection?: 'report-parent-context-v1' } | MaterialSnapshot | NeedIssueSnapshot | SharedSiteProgressSnapshot;
 export function parseBusinessQuery(raw: unknown, currentProject = false): BusinessQuery {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) fail('invalid_message', 422);

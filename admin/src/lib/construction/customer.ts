@@ -27,7 +27,7 @@ export async function ownerProjectIssueStatus(tx: PostgresTransaction, eid: stri
   }
   return result;
 }
-export async function constructionRead(tx: PostgresTransaction, eid: string, uid: string, leadId: string, currentProject?: { room: string }) {
+export async function constructionRead(tx: PostgresTransaction, eid: string, uid: string, leadId: string, currentProject?: { room: string; recordLimit?: number }) {
   const available = await customerProjects(tx, eid, uid, leadId);
   const projects = currentProject ? available.filter(p => p.status === 'active') : available;
   const data: Row[] = [], lines: string[] = [];
@@ -53,7 +53,7 @@ export async function constructionRead(tx: PostgresTransaction, eid: string, uid
       progressNote: p.progress_note, contactAvailable: !!contact, contactName: contact?.name || '' });
     const records = currentProject && !room.length ? [] : await rows(tx, sql`select id::text from app.construction_site_records where enterprise_id=${eid} and project_id=${projectId}
       and status='published' and audience='customer' ${room.length ? sql`and room_id=${String(room[0].id)}` : sql``}
-      order by published_at desc,id desc limit 10`);
+      order by published_at desc,id desc limit ${currentProject?.recordLimit ?? 10}`);
     const published = [];
     for (const candidate of records) {
       const r = await publishedSiteRecord(tx, eid, uid, String(candidate.id));

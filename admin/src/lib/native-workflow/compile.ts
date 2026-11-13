@@ -6,6 +6,7 @@ import { getCapability, type CapabilityEffect } from './registry';
 import type {
   NodeType,
   ValueType,
+  WorkflowBranch,
   WorkflowDefinition,
   WorkflowInputRef,
   WorkflowInputSchema,
@@ -28,7 +29,7 @@ export interface CompiledNode {
 export interface CompiledEdge {
   readonly from: string;
   readonly to: string;
-  readonly when?: 'true' | 'false';
+  readonly when?: WorkflowBranch;
 }
 
 /**

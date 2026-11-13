@@ -26,7 +26,7 @@ import { conversationImageProtocol, conversationImageInstructions, conversationI
 import { factFields, needWriteFeedback, needOriginalQuotes, hasExplicitNeedCorrection, assertRecordedReply, needReplyFeedback, onlyChatHistoryRequested, currentBudgetRecallRequested, currentBudgetRecallFeedback, needReconfirmationFeedback, needDeskPositionFeedback, currentNeedView, unavailableDeskReply, explicitNeedRecordOnly, explicitNeedWriteStatement, recordedNeedReceipt, parseNeedWrites } from './memory';
 import { availableNeedMemory, needMemoryNoticeRefs, unavailableNeedMessageIds, needContextStep, needSourceRefs, needRunSourcesAvailable } from './memory-sources';
 import { persistNeedWrites } from './memory-store';
-import { agentLongTermContext, agentLongTermToolResult, delegationRequested, isLongTermTool, longTermDelegationReceipt, longTermOperationIds, longTermPreferenceReceipt, longTermRunAvailable, longTermTools, standalonePreferenceTool } from '../memory/agent';
+import { agentLongTermContext, agentLongTermToolResult, isLongTermTool, longTermDelegationReceipt, longTermOperationIds, longTermPreferenceReceipt, longTermRunAvailable, longTermTools, standalonePreferenceTool } from '../memory/agent';
 import { isNeedInquiry, needWriteProhibition } from './need-write-intent';
 import { buildAgentContext, parseAgentReply, agentPromptVersion, ownerNoArchivePolicy } from './context';
 import { knowledgeTools, runKnowledgeEnabled, generalKnowledgeInstructions } from '../knowledge-policy';
@@ -96,8 +96,9 @@ import { currentMessageOnlyRequested, currentMessageFinalTool, currentMessageRep
 import { independentAdviceContextProtocol } from './independent-advice-context';
 import { compileModelRequest, type ModelRequestPurpose } from './model-request';
 import { homeSourceViewProtocol, knowledgeSynthesisReadInstructions } from './home-source-view';
-import { consultationSpecialist, specialistConsultationTools } from '../specialists/consultation';
-import { bindSpecialistInput, specialistModel, specialistProtocol, type SpecialistInput } from '../specialists/registry';
+import { specialistPublicSections } from '../specialists/evidence';
+import { consultationSpecialist, specialistConsultationTools, specialistFollowupRequested } from '../specialists/consultation';
+import { bindSpecialistInput, specialistModel, specialistProtocol, specialists, type SpecialistInput, type SpecialistRunBinding } from '../specialists/registry';
 import { ownerArchiveReadProtocol, ownerArchiveReadRequested, ownerProjectStatusReadProtocol, ownerQuestionMaterialTool, ownerQuestionScope, ownerQuestionScopeProtocol,
   ownerReadToolAllowed, readOwnerMaterialInput, readOwnerQuestionScope } from './owner-question-scope';
 import { consultationAcceptanceProfile } from '../contracts/consultation';
@@ -919,16 +920,22 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       && initial.conversation.purpose === 'customer_consultation' && lease.actor.principal.kind === 'user';
     const homeEntry = initial.conversation.entry_snapshot as Row;
     const specialistChecklist = initial.run.purpose === 'specialist.workflow';
-    const specialist = (initial.run.policy_snapshot as Row).specialist === specialistProtocol
+    const specialistBinding = (initial.run.policy_snapshot as Row).specialistRun as SpecialistRunBinding | undefined;
+    const boundSpecialist = specialistBinding?.agentId && specialistBinding.agentVersion
+      ? specialists.version(specialistBinding.agentId, specialistBinding.agentVersion) : undefined;
+    const routedSpecialist = (initial.run.policy_snapshot as Row).specialist === specialistProtocol
       && initial.config.providerKey === specialistModel.providerKey && initial.config.model === specialistModel.model
       && !review && !reportSource && !homeEntry.activePublicSite && !currentMessageOnlyRequested(reviewContext.currentQuestion)
       && !explicitNeedWriteStatement(reviewContext.currentQuestion) && !explicitHumanHandoffRequested(reviewContext.currentQuestion)
-      ? consultationSpecialist(reviewContext.currentQuestion, initial.precedingQuestions) : null;
+      ? consultationSpecialist(reviewContext.currentQuestion, initial.precedingQuestions, boundSpecialist) : null;
+    const specialist = routedSpecialist && specialistBinding?.roomName
+      ? { ...routedSpecialist, room: specialistBinding.roomName,
+        ...(specialistBinding.publicCoverage ? { reviewedSections: specialistPublicSections(specialistBinding.publicCoverage) } : {}) } : routedSpecialist;
     const homeSourceView = siteObservationReferral && !nativeFinalization && homeEntry.kind === 'lead'
       && (initial.run.policy_snapshot as Row).homeSourceView === homeSourceViewProtocol
       ? { conversationId: String(initial.conversation.id), leadId: String(homeEntry.id) } : undefined;
     if (specialistChecklist) {
-      const binding = (initial.run.policy_snapshot as Row).specialistRun as { delegationId: string; workflowRunId: string } | undefined;
+      const binding = specialistBinding;
       if (!specialist || !binding) fail('assistant_capability_forbidden', 403);
       const { specialistIssueOrigin } = await import('@/lib/construction/specialist-issues');
       validateSpecialist = async tx => {
@@ -937,12 +944,14 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         const delegation = row ? await specialistIssueOrigin(tx, lease.enterpriseId, String(row.project_id), binding.delegationId) : null;
         if (!delegation?.scope.workflow || delegation.originMessageId !== String(initial.trigger.id)
           || delegation.scope.workflow.agentId !== specialist.agent.agentId || delegation.scope.workflow.agentVersion !== specialist.agent.version
-          || binding.workflowRunId !== 'specialist:' + delegation.id) fail('assistant_capability_forbidden', 403);
+          || binding.workflowRunId !== 'specialist:' + delegation.id
+          || binding.projectId && (delegation.projectId !== binding.projectId || delegation.scope.roomId !== binding.roomId
+            || delegation.scope.roomName !== binding.roomName)) fail('assistant_capability_forbidden', 403);
       };
       await scoped(async () => {});
     }
     const specialistFollowup = !!specialist && !specialistChecklist && !!initial.r5?.scope.projectId
-      && !!specialist.room && delegationRequested(reviewContext.currentQuestion);
+      && !!specialist.room && specialistFollowupRequested(reviewContext.currentQuestion);
     const ownerScopeIdentity = !specialist && initial.knowledgeEnabled && homeSourceView && !review && !initial.mediaRefs.length
       && (initial.run.policy_snapshot as Row).ownerQuestionScope === ownerQuestionScopeProtocol
       && !explicitNeedWriteStatement(reviewContext.currentQuestion) && !explicitHumanHandoffRequested(reviewContext.currentQuestion)
@@ -1479,6 +1488,35 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     const initialTools = toolsForMessage(false);
     const r3Active = initialTools.some(tool => isWebTool(tool.name));
     const r4Active = initialTools.some(tool => isKnowledgeTool(tool.name));
+    if (specialistChecklist && specialistBinding?.projectId && specialistBinding.roomId && specialistBinding.roomName) {
+      const binding = specialistBinding;
+      const cid = String(initial.conversation.id), sequence = 1519, resultKey = `${lease.runId}:specialist-project`;
+      const snapshot = await scoped(async (tx, context) => {
+        const cached = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+          and run_id=${lease.runId} and step_seq=${sequence} and capability_name='synthesis.bound_construction.v1'`);
+        if (cached) {
+          const saved = (cached.private_checkpoint as { snapshot: BusinessSnapshot }).snapshot;
+          if (!await businessSnapshotAvailable(tx, lease.enterpriseId, saved, lease.actor)) fail('context_changed');
+          return saved;
+        }
+        const entry = context.conversation.entry_snapshot as Row;
+        const snapshot = await queryBusiness(tx, lease.actor,
+          { domain: 'construction', leadId: entry.kind === 'lead' ? String(entry.id) : '',
+            currentProject: { room: binding.roomName!, recordLimit: binding.projectRecordLimit } }, cid);
+        if (!Array.isArray(snapshot.data) || snapshot.data.length !== 1
+          || !(snapshot.data as Row[]).some(project => project.projectId === binding.projectId && project.roomId === binding.roomId)) fail('context_changed');
+        await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint)
+          values(${lease.enterpriseId},${lease.runId},${sequence},'agent_source','synthesis.bound_construction.v1',1,'succeeded',
+            ${JSON.stringify({ resultKey, snapshot })}::jsonb)`);
+        return snapshot;
+      });
+      if (!initial.resume) {
+        const callId = 'server:specialist-project';
+        initial.messages.push({ role: 'assistant', content: '', toolCalls: [{ id: callId, name: 'query_business',
+          arguments: JSON.stringify({ domain: 'construction', room: binding.roomName }) }] },
+        { role: 'tool', callId, content: JSON.stringify({ synthesisSources: businessSynthesisSources(resultKey, snapshot) }) });
+      }
+    }
     if (r3Active && applicationWeb && !specialistFollowup && !initial.resume && (specialist || !initial.r5?.private) && !initial.mediaRefs.length
       && initial.conversation.purpose === 'customer_consultation') {
       initial.messages.push(...await applicationWeb.reviewedStandard(initial.precedingQuestions));
@@ -1993,8 +2031,12 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               const { record } = await getNativeWorkflowService().getDefinition(templateId);
               const published = record.versions.at(-1);
               if (!published || published.definition.inputSchema.eventType !== 'specialist_followup') fail('specialist_workflow_unavailable', 503);
-              workflow = { templateId, revision: published.revision, digest: published.digest, agentId: specialist.agent.agentId,
-                agentVersion: specialist.agent.version, originRunId: lease.runId };
+              const node = published.definition.nodes.find(item => item.type === 'agent');
+              const agentVersion = Number(node?.config?.agentVersion);
+              const selected = specialists.version(String(node?.config?.agentId), agentVersion);
+              if (!selected || selected.status !== 'active' || selected.workflowTemplateId !== templateId) fail('specialist_workflow_unavailable', 503);
+              workflow = { templateId, revision: published.revision, digest: published.digest, agentId: selected.agentId,
+                agentVersion, originRunId: lease.runId };
             }
             return scoped((tx, context) => agentLongTermToolResult(tx, lease.actor, context.conversation, initial.trigger,
               lease.runId, sequence, { id: callId, name, arguments: args }, workflow));
@@ -2310,8 +2352,12 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                   const options = ragTool ? { mode: input.mode, category: input.category, scope: input.scope, documentId: input.documentId,
                     topK: input.topK, minSimilarity: input.minSimilarity, signal,
                     onEmbeddingDispatch: async () => { await scoped(recordQueryDispatch); } } as KnowledgeSearchOptions : undefined;
+                  const workflowKnowledge = specialistChecklist && specialistBinding?.knowledgeTopK ? {
+                    ...options, scope: specialistBinding.knowledgeScope === 'authorized' ? options?.scope : specialistBinding.knowledgeScope,
+                    topK: specialistBinding.knowledgeTopK,
+                  } : options;
                   const result = await retrieveKnowledge(conversationId,lease.actor,query,epoch,dependencies.knowledgeEmbedding,undefined,
-                    sourceMode.naturalKnowledge?'ranked':'document_coverage',options);
+                    sourceMode.naturalKnowledge?'ranked':'document_coverage',workflowKnowledge);
                   evidence = result.evidence;
                   diagnostic = result.diagnostic;
                 }

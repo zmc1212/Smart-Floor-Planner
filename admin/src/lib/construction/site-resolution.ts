@@ -204,7 +204,9 @@ export async function executeSiteResolution(tx: PostgresTransaction, actor: Acto
         where enterprise_id=${eid} and project_id=${pid} and state='completed'
         and tasks @> ${JSON.stringify([{ issueId: issue.issueId }])}::jsonb) on conflict do nothing`);
   }
-  const specialist = issue.specialistDelegationId && !plan && (cmd.action === 'resolve' || cmd.action === 'close');
+  const specialist = issue.specialistDelegationId && !plan && (cmd.action === 'resolve' || cmd.action === 'close')
+    && await (await import('./specialist-issues')).specialistResultRequired(tx, eid, pid, issue.specialistDelegationId,
+      cmd.action === 'close' ? 'closed' : 'resolved');
   if (specialist || plan && (data.projectReview || cmd.action === 'resolve' || cmd.action === 'close')) {
     const disclosure = cmd.action === 'resolve' || cmd.action === 'close' ? { shareOriginals: cmd.originals, text: cmd.excerpt }
       : { shareOriginals: false, text: cmd.action === 'reopen' ? '事项已重新打开，等待项目团队处理。' : '施工已回传，等待项目经理复核。' };

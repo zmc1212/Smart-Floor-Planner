@@ -22,6 +22,7 @@ import { scopedReportSynthesisSources, type ReportSourceScope } from './report-s
 import { reportCoordinationText } from './report-question-plan';
 import type { SourceQuestionCoverage } from './source-question-coverage';
 import { originalMessageId } from './context-budget';
+import { siteRecordText, type SiteDraft } from '@/lib/construction/site-contract';
 
 export type SynthesisSource = { sourceId: string; kind: 'knowledge' | 'project' | 'history' | 'web'; title: string; text: string; fullTextCitable?:true; evidence?: Evidence; knowledge?: KnowledgeProvenance; web?: import('../contracts/web-source').WebSourceLocator; resultKey?: string; citationQuotes?: string[]; summaryTitle?:string|null; material?: MaterialSource; history?: HistoryRef & { seq: string };
   followup?: Omit<IssueState, 'question' | 'value'>; reportScope?: ReportSourceScope };
@@ -399,10 +400,21 @@ function businessSourceList(resultKey: string, snapshot: BusinessSnapshot): Synt
     })))];
   }
   if (snapshot.query.domain === 'construction') {
-    const projects = snapshot.data as Array<{ stageKey?: string | null; records?: unknown[] }>;
+    const projects = snapshot.data as Array<{ projectId: string; leadId: string; roomId?: string; stageKey?: string | null;
+      records?: Array<{ id: string; version: number; roomName: string; data: SiteDraft }> }>;
     const labels = [projects.some(p => p.stageKey) ? '本人项目实际节点' : '', projects.some(p => p.records?.length) ? '已发布现场记录' : ''].filter(Boolean);
     const title = labels.join('、') || '本人项目节点查询范围与缺项';
-    return [{ ...aggregate, title, summaryTitle: title }];
+    if (!resultKey.endsWith(':specialist-project')) return [{ ...aggregate, title, summaryTitle: title }];
+    return [{ ...aggregate, title, summaryTitle: title }, ...projects.flatMap(project => project.records?.map(record => {
+      const text = siteRecordText(record.data, record.roomName);
+      const title = '已发布现场记录（' + record.roomName + '）';
+      const material: MaterialSource = { ref: { type: 'site_record', id: record.id, version: String(record.version) },
+        hash: fingerprint(record.data), projectId: project.projectId, roomId: project.roomId ?? null, roomName: record.roomName,
+        leadId: project.leadId, sourceMessageId: null, mediaIds: [], audience: 'customer_self',
+        basis: 'published_project_record', status: 'current', text };
+      return { sourceId: `B${resultKey}:site_record:${record.id}`, kind: 'project' as const, title, text, resultKey,
+        material, citationQuotes: synthesisQuoteHints(text) };
+    }) ?? [])];
   }
   if (snapshot.query.domain !== 'materials') return [aggregate];
   const names: Record<MaterialSource['ref']['type'], string> = { customer_need: '本咨询客户原话', shared_need: '客户共享需求原话',

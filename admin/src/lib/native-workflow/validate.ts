@@ -25,7 +25,7 @@ const NODE_TYPES: readonly NodeType[] = [
   'compose_content',
   'save_result',
   'deliver_inapp',
-  'project_data', 'knowledge_retrieval', 'public_search', 'agent', 'wait_event', 'human_review', 'create_issue', 'output',
+  'project_data', 'knowledge_retrieval', 'public_search', 'agent', 'checklist', 'request_material', 'wait_event', 'human_review', 'create_issue', 'output',
 ];
 
 const nodeIdPattern = /^[a-z][a-z0-9_-]{1,63}$/;
@@ -190,15 +190,15 @@ function parseNode(raw: unknown, path: string, issues: WorkflowIssue[]): Workflo
     return null;
   }
   const typeVersion = raw.typeVersion;
-  if (typeVersion !== 1) {
-    issues.push(workflowIssue('unsupported_node_version', `${path}.typeVersion`, 'only typeVersion 1 is supported'));
-  }
   const capabilityRef = raw.capabilityRef;
   if (typeof capabilityRef !== 'string' || capabilityRef === '') {
     issues.push(workflowIssue('invalid_capability_ref', `${path}.capabilityRef`, 'capabilityRef is required'));
     return null;
   }
   const spec = getCapability(capabilityRef);
+  if (typeVersion !== (spec?.typeVersion ?? 1)) {
+    issues.push(workflowIssue('unsupported_node_version', `${path}.typeVersion`, 'version is not supported by this capability'));
+  }
   if (!spec) {
     issues.push(workflowIssue('unknown_capability', `${path}.capabilityRef`, `capability "${capabilityRef}" is not whitelisted`));
   } else {
@@ -291,8 +291,8 @@ function parseEdge(raw: unknown, path: string, issues: WorkflowIssue[]): Workflo
     return null;
   }
   const when = raw.when;
-  if (when !== undefined && when !== 'true' && when !== 'false') {
-    issues.push(workflowIssue('invalid_edge_branch', `${path}.when`, 'edge branch must be true or false'));
+  if (when !== undefined && when !== 'true' && when !== 'false' && when !== 'issue') {
+    issues.push(workflowIssue('invalid_edge_branch', `${path}.when`, 'edge branch must be true, false or issue'));
     return null;
   }
   return when === undefined ? { from, to } : { from, to, when };
@@ -403,6 +403,12 @@ export function validateDefinition(raw: unknown): ValidationResult {
     incoming.get(edge.to)?.push(edge);
   });
 
+  const specialist = inputSchema?.eventType === 'specialist_followup';
+  const branchedSpecialist = specialist && nodes.some(node => node.typeVersion === 2 || node.capabilityRef === 'condition.specialist_evidence');
+  if (!specialist && nodes.some(node => node.capabilityRef === 'condition.specialist_evidence')) {
+    issues.push(workflowIssue('capability_event_mismatch', '$.nodes', 'specialist evidence conditions require a specialist event'));
+  }
+
   // Edge shape rules depend on the source node type.
   for (const node of nodeMap.values()) {
     const path = nodePath.get(node.nodeId) ?? '$.nodes';
@@ -412,15 +418,32 @@ export function validateDefinition(raw: unknown): ValidationResult {
         issues.push(workflowIssue('condition_without_branch', path, 'condition needs at least one branch'));
       }
       const branches = new Set<string>();
+      const evidenceCondition = node.capabilityRef === 'condition.specialist_evidence';
       for (const edge of nodeOut) {
         if (!edge.when) {
-          issues.push(workflowIssue('condition_branch_missing_when', path, 'condition edges must declare when=true/false'));
+          issues.push(workflowIssue('condition_branch_missing_when', path, 'condition edges must declare their branch'));
           continue;
         }
         if (branches.has(edge.when)) {
           issues.push(workflowIssue('duplicate_branch', path, `condition branch ${edge.when} is duplicated`));
         }
+        if (edge.when === 'issue' && !evidenceCondition) {
+          issues.push(workflowIssue('invalid_edge_branch', path, 'only the specialist evidence condition accepts an issue branch'));
+        }
         branches.add(edge.when);
+      }
+      if (branchedSpecialist && (!branches.has('true') || !branches.has('false'))) {
+        issues.push(workflowIssue('condition_branch_required', path, 'specialist conditions require true and false branches'));
+      }
+      if (evidenceCondition) {
+        const targetCapabilities = { true: 'compose.specialist_checklist', false: 'compose.specialist_material_request',
+          issue: 'save.specialist_issue.v2' } as const;
+        for (const branch of ['true', 'false', 'issue'] as const) {
+          const target = nodeMap.get(nodeOut.find(edge => edge.when === branch)?.to ?? '');
+          if (target?.capabilityRef !== targetCapabilities[branch]) {
+            issues.push(workflowIssue('invalid_specialist_branch', path, `${branch} must connect to ${targetCapabilities[branch]}`));
+          }
+        }
       }
     } else {
       for (const edge of nodeOut) {
@@ -484,7 +507,7 @@ export function validateDefinition(raw: unknown): ValidationResult {
     }
   }
   for (const node of nodeMap.values()) {
-    if (node.nodeId !== entryNodeId && (incoming.get(node.nodeId) ?? []).length === 0) {
+    if (!nodeMap.has(entryNodeId) && node.nodeId !== entryNodeId && (incoming.get(node.nodeId) ?? []).length === 0) {
       issues.push(workflowIssue('unreachable_node', nodePath.get(node.nodeId) ?? '$.nodes', `node "${node.nodeId}" has no incoming edge`));
     }
   }
@@ -516,7 +539,19 @@ export function validateDefinition(raw: unknown): ValidationResult {
   if (deliverNodes.length === 0) {
     issues.push(workflowIssue('missing_deliver_node', '$.nodes', 'at least one deliver_inapp node is required'));
   }
-  const specialist = inputSchema?.eventType === 'specialist_followup';
+  if (specialist && nodes.filter(node => node.type === 'agent').length !== 1) {
+    issues.push(workflowIssue('invalid_specialist_agent_count', '$.nodes', 'a specialist workflow requires exactly one agent'));
+  }
+  if (branchedSpecialist) {
+    const requiredCapabilities = ['read.specialist_project', 'read.specialist_knowledge', 'read.specialist_public_standard',
+      'compose.stage_specialist.v2', 'condition.specialist_evidence', 'compose.specialist_checklist', 'compose.specialist_material_request',
+      'wait.specialist_site_record.v2', 'save.specialist_issue.v2', 'wait.specialist_review', 'deliver.specialist_result'];
+    for (const capability of requiredCapabilities) {
+      if (nodes.filter(node => node.capabilityRef === capability).length !== 1) {
+        issues.push(workflowIssue('invalid_specialist_path', '$.nodes', `specialist workflow needs one ${capability} node`));
+      }
+    }
+  }
   for (const node of nodeMap.values()) {
     const specialistNode = !['trigger', 'condition', 'read_materials', 'compose_content', 'save_result', 'deliver_inapp'].includes(node.type);
     if (node.type !== 'trigger' && node.type !== 'condition' && specialistNode !== specialist) {
@@ -529,6 +564,31 @@ export function validateDefinition(raw: unknown): ValidationResult {
     }
   }
   const deliverIds = new Set(deliverNodes.map((node) => node.nodeId));
+  if (branchedSpecialist) {
+    const nextCapability: Readonly<Record<string, string>> = {
+      'trigger.specialist_followup': 'read.specialist_project',
+      'read.specialist_project': 'read.specialist_knowledge',
+      'read.specialist_knowledge': 'read.specialist_public_standard',
+      'read.specialist_public_standard': 'compose.stage_specialist.v2',
+      'compose.stage_specialist.v2': 'condition.specialist_evidence',
+      'compose.specialist_checklist': 'wait.specialist_site_record.v2',
+      'compose.specialist_material_request': 'wait.specialist_site_record.v2',
+      'wait.specialist_site_record.v2': 'save.specialist_issue.v2',
+      'save.specialist_issue.v2': 'wait.specialist_review',
+      'wait.specialist_review': 'deliver.specialist_result',
+    };
+    const reachesOutput = new Set(deliverNodes.flatMap(node => [...reachableFrom(node.nodeId, reverse)]));
+    for (const node of nodes) {
+      if (!reachesOutput.has(node.nodeId)) {
+        issues.push(workflowIssue('specialist_branch_without_output', nodePath.get(node.nodeId) ?? '$.nodes', 'every specialist path needs a terminal output'));
+      }
+      const expected = nextCapability[node.capabilityRef];
+      const actual = nodeMap.get(outgoing.get(node.nodeId)?.[0]?.to ?? '')?.capabilityRef;
+      if (expected && actual !== expected) {
+        issues.push(workflowIssue('invalid_specialist_path', nodePath.get(node.nodeId) ?? '$.nodes', `connect this node to ${expected}`));
+      }
+    }
+  }
   for (const save of saveNodes) {
     const forward = reachableFrom(save.nodeId, adjacency);
     if (![...forward].some((nodeId) => deliverIds.has(nodeId))) {
@@ -597,6 +657,11 @@ export function validateDefinition(raw: unknown): ValidationResult {
         continue;
       }
       if (nodeSpec) {
+        const branchPorts: Readonly<Record<string, string>> = { enterprise: 'hasEnterprise', publicStandard: 'hasPublic', issue: 'hasIssue' };
+        if (node.capabilityRef === 'condition.specialist_evidence'
+          && (source.capabilityRef !== 'compose.stage_specialist.v2' || ref.outputPath !== branchPorts[inputName])) {
+          issues.push(workflowIssue('invalid_specialist_branch_input', inputPath, `bind the matching verified ${inputName} port`));
+        }
         const expected = nodeSpec.inputs[inputName];
         const actual = sourceSpec.outputs[ref.outputPath];
         if (expected && actual && expected !== actual) {

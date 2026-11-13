@@ -28,9 +28,10 @@ async function settings(tx: PostgresTransaction, enterpriseId: string) {
 
 /** A source lookup records documentation only. The construction review owns
  * the decision about the work, and no private memory is sent to retrieval. */
-export async function checkDelegationStandards(tx: PostgresTransaction, d: ReviewDelegation, conversation: Row, signal: AbortSignal): Promise<StandardCheck> {
+export async function checkDelegationStandards(tx: PostgresTransaction, d: ReviewDelegation, conversation: Row, signal: AbortSignal,
+  options?: { scope?: 'enterprise' | 'project'; topK?: number }): Promise<StandardCheck> {
   const config = await settings(tx, d.enterpriseId);
-  const epoch = Number(config?.knowledge_epoch);
+  const epoch = Number(config?.knowledge_epoch ?? 0);
   if (!enterpriseKnowledgeEnabled(config?.agent_config)) return { status: 'disabled', epoch };
   const actor: ActorContext = { ...delegationActor(d), capabilities: ['assistant.chat.self'] };
   try {
@@ -39,7 +40,7 @@ export async function checkDelegationStandards(tx: PostgresTransaction, d: Revie
       kind: 'owner_delegation',
       authorize: async tx => await reviewDelegationOrigin(tx, d, conversation) ?? fail('delegation_origin_unavailable', 409),
     }, 'ranked',
-      { mode: 'hybrid', topK: 3, signal }, tx);
+      { mode: 'hybrid', scope: options?.scope, topK: options?.topK ?? 3, signal }, tx);
     const sources = result.evidence.filter(source => source.professional?.applicability.status !== 'not_applicable')
       .map(({ ref, hash }) => ({ ref, hash }));
     return { status: sources.length ? 'sources_found' : 'no_match', epoch, sources,

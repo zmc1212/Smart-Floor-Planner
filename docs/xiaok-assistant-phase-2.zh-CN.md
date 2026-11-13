@@ -10,7 +10,7 @@
 
 **I6 现行规范与房间更正。** 预期用适用的公开条款做对比，并说明企业摘录的缺项。现行标准首问及复测读到的是历史发布公告。公开对比与房间纠错的终稿仍填入无据量数。纠错的实际检索已换成卫生间，且没有长期记忆写入。公开原文可读性归联网链，回答中的结论、未知项和当前房间归 Agent。下一次判别先核对适用条文可进入 Evidence，并检查模型所选引文，再决定是否重开实调。原首稿、修复和用量保留，停止同据复采。[I6 证据](xiaok-integration-audit.md#i6-真实模型与获权知识验收limited)。
 
-**I6.8 阶段专业 Agent（Limited）。** 现有 LangGraph Worker 按注册表选择 `waterproof-specialist`，在原咨询授权内缩小工具及知识范围。当前房间进度、技术解释和企业原文各走对应读取，保留最新更正与原 Evidence、承诺校验。Native Agent 节点通过 `assistant_jobs` 的独立目的派发，绑定原消息及工作流版本，Worker 复核当前权限并沿原网关及用量台账。开发启用沿百炼 `deepseek-v4.1-flash-1017` 和现有 Responses 适配器。[架构、采用依据及限制](xiaok-waterproof-workflow.md)。
+**I6.9 阶段专业 Agent（Limited）。** 现有 LangGraph Worker 按注册表选择 `waterproof-specialist`，在原咨询授权内缩小工具及知识范围。当前房间进度、技术解释和企业原文各走对应读取，保留最新更正与原 Evidence、承诺校验。Native Agent 节点通过 `assistant_jobs` 的独立目的派发，绑定原消息、项目、精确房间、已发布工作流及 Agent 版本。检查项沿原终稿引用及当前 Construction 记录版本。Worker 复核权限并沿原网关及用量台账。开发启用沿百炼 `deepseek-v4.1-flash-1017` 和现有 Responses 适配器。[架构、采用依据及限制](xiaok-waterproof-workflow.md)。
 
 ## R5 长期记忆与持续委托
 

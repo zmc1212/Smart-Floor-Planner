@@ -189,6 +189,14 @@ function evaluateCondition(node: CompiledNode, left: WorkflowValue): boolean {
   }
 }
 
+function specialistBranch(input: Record<string, WorkflowValue>, policy: unknown) {
+  if (input.issue === true) return 'issue';
+  const enterprise = input.enterprise === true, publicStandard = input.publicStandard === true;
+  const ready = policy === 'both' ? enterprise && publicStandard
+    : policy === 'enterprise' ? enterprise : policy === 'public' ? publicStandard : enterprise || publicStandard;
+  return ready ? 'true' : 'false';
+}
+
 function composeDeterministic(node: CompiledNode, inputs: Record<string, WorkflowValue>): Record<string, WorkflowValue> {
   const template = String(node.config.template ?? '');
   const title = String(node.config.title ?? '');
@@ -394,9 +402,19 @@ function pump(
 
     if (node.type === 'condition') {
       const input = resolveInputs(node, state.outputs);
-      const result = evaluateCondition(node, input.left as WorkflowValue);
-      state.outputs[node.nodeId] = { result };
-      pushTrace(state, trace, at, 'branch_selected', node.nodeId, node.type, { result });
+      const decision: Record<string, WorkflowValue> = node.capabilityRef === 'condition.specialist_evidence'
+        ? { branch: specialistBranch(input, node.config.evidencePolicy) }
+        : { result: evaluateCondition(node, input.left as WorkflowValue) };
+      state.outputs[node.nodeId] = decision;
+      pushTrace(state, trace, at, 'branch_selected', node.nodeId, node.type, decision);
+      pushTrace(state, trace, at, 'node_succeeded', node.nodeId, node.type, { effect: 'none' });
+      completed = node.nodeId;
+      continue;
+    }
+
+    if (node.type === 'checklist' || node.type === 'request_material') {
+      const { analysis } = resolveInputs(node, state.outputs) as { analysis: { requestedChecks: readonly Record<string, unknown>[]; unresolvedItems: readonly string[] } };
+      state.outputs[node.nodeId] = node.type === 'checklist' ? { checklist: analysis.requestedChecks } : { missing: analysis.unresolvedItems };
       pushTrace(state, trace, at, 'node_succeeded', node.nodeId, node.type, { effect: 'none' });
       completed = node.nodeId;
       continue;
@@ -437,7 +455,8 @@ function route(
   if (node.type === 'condition') {
     const ports = ownValue(state.outputs, completedNodeId);
     const result = Boolean(ports ? ownValue(ports, 'result') : undefined);
-    const branch = result ? 'true' : 'false';
+    const branch = node.capabilityRef === 'condition.specialist_evidence' && ports
+      ? ownValue(ports, 'branch') : result ? 'true' : 'false';
     const edge = edges.find((candidate) => candidate.when === branch);
     if (!edge) {
       state.status = 'halted';

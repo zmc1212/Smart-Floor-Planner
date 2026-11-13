@@ -38,6 +38,8 @@ export type NodeType =
   | 'knowledge_retrieval'
   | 'public_search'
   | 'agent'
+  | 'checklist'
+  | 'request_material'
   | 'wait_event'
   | 'human_review'
   | 'create_issue'
@@ -68,10 +70,12 @@ export interface WorkflowNode {
   readonly inputs?: Readonly<Record<string, WorkflowInputRef>>;
 }
 
+export type WorkflowBranch = 'true' | 'false' | 'issue';
+
 export interface WorkflowEdge {
   readonly from: string;
   readonly to: string;
-  readonly when?: 'true' | 'false';
+  readonly when?: WorkflowBranch;
 }
 
 export interface WorkflowInputSchema {

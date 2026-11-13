@@ -24,6 +24,25 @@ const inputSchema = z.strictObject({
   toolPermissions: z.array(z.enum(permissions)),
 });
 
+const evidenceRefSchema = z.strictObject({
+  kind: z.enum(['enterprise_standard', 'public_standard', 'project_fact']),
+  ref: z.strictObject({ type: z.string(), id: z.string(), version: z.string().min(1) }),
+  hash: z.string(),
+  standardId: z.string().optional(),
+  page: z.number().int().positive().optional(),
+  originalHash: z.string().optional(),
+  url: z.string().optional(),
+});
+
+const checkSchema = z.strictObject({
+  text: z.string(),
+  basis: z.array(z.enum(['enterprise_standard', 'public_standard', 'project_fact', 'general_advice', 'unverified', 'not_applicable'])).min(1),
+  evidenceRefs: z.array(evidenceRefSchema),
+});
+
+export type SpecialistEvidenceRef = z.infer<typeof evidenceRefSchema>;
+export type SpecialistCheck = z.infer<typeof checkSchema>;
+
 const outputSchema = z.strictObject({
   analysis: z.string(),
   evidence: z.array(z.custom<Evidence>(item => !!item && typeof item === 'object' && 'ref' in item && 'hash' in item)),
@@ -33,6 +52,20 @@ const outputSchema = z.strictObject({
   needsHumanReview: z.boolean(),
   needsWorkflow: z.boolean(),
   receipt: z.strictObject({ runId: z.string(), issueId: z.string().nullable(), eventId: z.string().nullable() }).nullable(),
+  agentId: z.string(),
+  agentVersion: z.number().int().positive(),
+  projectId: z.string().nullable(),
+  roomId: z.string().nullable(),
+  stage: z.string(),
+  originalMessageId: z.string(),
+  workflowRunId: z.string().nullable(),
+  issueId: z.string().nullable(),
+  evidenceRefs: z.array(evidenceRefSchema),
+  evidenceVersions: z.array(z.string()),
+  requestedChecks: z.array(checkSchema),
+  unresolvedItems: z.array(z.string()),
+  humanReviewRequirement: z.strictObject({ required: z.boolean(), issueId: z.string().nullable(),
+    role: z.literal('manager'), reviewVersion: z.number().int().positive().nullable() }).nullable(),
 });
 
 const registration = z.strictObject({
@@ -73,6 +106,20 @@ export function specialistRegistry(registrations: readonly SpecialistRegistratio
 }
 
 export const waterproofAgentId = 'waterproof-specialist';
+
+export type SpecialistRunBinding = {
+  delegationId: string;
+  workflowRunId: string;
+  agentId?: string;
+  agentVersion?: number;
+  projectId?: string;
+  roomId?: string;
+  roomName?: string;
+  projectRecordLimit?: number;
+  knowledgeScope?: 'authorized' | 'enterprise' | 'project';
+  knowledgeTopK?: number;
+  publicCoverage?: 'subject' | 'technical' | 'test';
+};
 export const waterproofWorkflowTemplateId = 'waterproof-inspection-v1';
 const schemaVersions = {
   inputSchema: 'stage-specialist-input-v1', outputSchema: 'stage-specialist-output-v1',

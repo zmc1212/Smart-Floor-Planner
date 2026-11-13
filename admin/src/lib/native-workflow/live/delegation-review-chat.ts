@@ -35,16 +35,20 @@ async function reviewCommandFeedback(tx: PostgresTransaction, command: ReviewCom
 }
 
 export async function delegationReceipt(tx: PostgresTransaction, d: ReviewDelegation, key: string, text: string, conversationId = d.conversationId) {
-  const eventId = await appendDelegationEvent(tx, d.enterpriseId, delegationNotice, key, 1,
+  let eventId = await appendDelegationEvent(tx, d.enterpriseId, delegationNotice, key, 1,
     { projectId: d.projectId, delegationId: d.id, conversationId, ownerId: d.ownerId, delivery: 'in_app',
       delegationVersion: d.version, evidence: d.evidence });
   if (!eventId) {
-    const saved = await one(tx, sql`select m.id::text from app.domain_event_outbox e
-      join app.assistant_messages m on m.enterprise_id=e.enterprise_id and m.source_event_id=e.id
+    const saved = await one(tx, sql`select e.id::text as event_id,m.id::text from app.domain_event_outbox e
+      left join app.assistant_messages m on m.enterprise_id=e.enterprise_id and m.source_event_id=e.id
+        and m.conversation_id=${conversationId} and m.purpose=${delegationPurpose}
       where e.enterprise_id=${d.enterpriseId} and e.type=${delegationNotice} and e.aggregate_type='native_workflow_delegation'
         and e.aggregate_id=${key} and e.aggregate_version=1 and e.payload->>'delegationId'=${d.id}
-        and e.payload->>'ownerId'=${d.ownerId} and m.conversation_id=${conversationId} and m.purpose=${delegationPurpose}`);
-    return saved ? { messageId: String(saved.id), delivery: 'persisted_in_app' } : null;
+        and e.payload->>'ownerId'=${d.ownerId} and e.payload->>'conversationId'=${conversationId} for update of e`);
+    if (!saved) return null;
+    if (saved.id) return { messageId: String(saved.id), delivery: 'persisted_in_app' };
+    if (!d.scope.workflow || !await reviewDelegationOrigin(tx, d)) return null;
+    eventId = String(saved.event_id);
   }
   const message = await appendMessage(tx, delegationActor(d), conversationId, { author: 'system', eventId,
     purpose: delegationPurpose, content: { version: 1, blocks: [{ type: 'text', text }] } });
@@ -84,6 +88,9 @@ export async function applyReviewDelegationCommand(tx: PostgresTransaction, acto
   const eventId = (await appendDelegationEvent(tx, d.enterpriseId, 'native.delegation.control.v1', d.id, d.version + 1, payload, actor.principal))!;
   const activation = refresh
     ? (await appendDelegationEvent(tx, d.enterpriseId, delegationRefresh, d.id, d.version + 1, payload, actor.principal))! : undefined;
+  if (next.status === 'cancelled' && d.scope.workflow) {
+    await (await import('./specialist-workflow')).cancelSpecialistWaits(tx, d);
+  }
   const updated = await saveReviewDelegation(tx, d, next, now, refresh
     ? { activate: activation, reminderStage: 0, dueAt: d.dueAt > now ? d.dueAt : new Date(now.getTime() + 48 * 3600_000) } : {});
   if (activation) await tx.execute(sql`insert into app.domain_event_deliveries(enterprise_id,event_id,consumer_key)
@@ -160,7 +167,9 @@ export async function currentDelegationViews(tx: PostgresTransaction, delegation
 }
 
 export function delegationModelView(items: ReviewDelegation[]) {
-  return items.map(({ id, title, status, nextAction, dueAt, waitingFor, completionCriteria, version, evidence, scope }) =>
+  return items.map(({ id, title, status, nextAction, dueAt, waitingFor, completionCriteria, version, evidence, scope, originMessageId, projectId }) =>
     ({ id, title, status, nextAction: nextAction || statusText[status], dueAt, waitingFor, completionCriteria, version, evidence, ...(scope.workflow ? { workflowRunId: 'specialist:' + id,
-      workflowVersion: scope.workflow.revision, workflowTemplateId: scope.workflow.templateId } : {}) }));
+      workflowVersion: scope.workflow.revision, workflowTemplateId: scope.workflow.templateId, workflowDigest: scope.workflow.digest,
+      agentId: scope.workflow.agentId, agentVersion: scope.workflow.agentVersion, originalMessageId: originMessageId,
+      projectId, roomId: scope.roomId, issueId: evidence?.issueId ?? null } : {}) }));
 }

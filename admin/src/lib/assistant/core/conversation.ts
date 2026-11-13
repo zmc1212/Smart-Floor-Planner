@@ -36,6 +36,7 @@ import { knowledgeToolProtocol } from '../knowledge/rag-tools';
 import { homeSourceBudgetProtocol } from '../agent/home-source-budget';
 import { homeSourceViewProtocol } from '../agent/home-source-view';
 import { specialistPolicy } from '../specialists/consultation';
+import type { SpecialistRunBinding } from '../specialists/registry';
 import { ownerArchiveReadProtocol, ownerProjectStatusReadProtocol, ownerQuestionScopeProtocol } from '../agent/owner-question-scope';
 import { ownerCitationCarrierProtocol } from '../agent/final-output';
 import { reportBodyFinalPolicy, reportNativeAdmission, reportNativeFinalProtocol, reportFinalFunctionCarrier, reportStructuralFinalSchema } from '../agent/report-native-final';
@@ -160,7 +161,7 @@ async function cancelQueuedPublicIntro(tx: PostgresTransaction, enterpriseId: st
     and purpose='public.site.intro' and status='queued'`);
   for (const run of queued) await cancelQueuedRun(tx, enterpriseId, String(run.id));
 }
-export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Row, settings: Row, messageId: string | null, retryOf?: string, trigger: RunTrigger = { kind: 'user_message', messageId: messageId! }, purpose = 'reply', reportComposition?: ReportCompositionScope, specialistRun?: { delegationId: string; workflowRunId: string }) {
+export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Row, settings: Row, messageId: string | null, retryOf?: string, trigger: RunTrigger = { kind: 'user_message', messageId: messageId! }, purpose = 'reply', reportComposition?: ReportCompositionScope, specialistRun?: SpecialistRunBinding) {
   const speech = purpose === 'speech.transcribe', speechBinding = speech ? speechConfigurationHash() : null;
   const report = purpose === 'construction.report.compose' && trigger.kind === 'scheduled_task' && !!reportComposition
     && c.purpose === 'construction_followup' && actor.capabilities.includes('assistant.followup.delivery');

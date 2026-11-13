@@ -89,8 +89,9 @@ export class DelegationService {
       and conversation_id=${conversationId} and id=${messageId} and author_kind='user' and user_id=${ownerId} for share`);
     const original = source ? safeText(source.content as MessageContent) : '';
     if (!source || !sourceAuthorizes(request, original)) fail('delegation_source_mismatch', 422);
-    const room = request.room ? await one(this.tx, sql`select id::text,name from app.construction_rooms
-      where enterprise_id=${enterpriseId} and project_id=${projectId} and name=${request.room} for share`) : null;
+    const rooms = request.room ? await rows(this.tx, sql`select id::text,name from app.construction_rooms
+      where enterprise_id=${enterpriseId} and project_id=${projectId} and name=${request.room} limit 2 for share`) : [];
+    const room = rooms.length === 1 ? rooms[0] : null;
     if ((!room && ['room_progress','design_review','rectification_review'].includes(request.kind)) || request.room && !room)
       fail('delegation_room_required', 422);
     const subject = request.subject.trim();

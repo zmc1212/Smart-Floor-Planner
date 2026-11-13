@@ -170,7 +170,7 @@ test('service rejects invalid drafts and unknown definitions', async () => {
   const record = await service.getDefinition('period-report-daily');
   assert.equal(record.fixtureSets.filter(fixture => fixture.eventType !== 'specialist_followup').length, 14);
   assert.deepEqual(record.fixtureSets.filter(fixture => fixture.eventType === 'specialist_followup').map(fixture => fixture.id),
-    ['waterproof-reviewed', 'waterproof-waiting']);
+    ['waterproof-reviewed', 'waterproof-waiting', 'waterproof-missing-evidence']);
 });
 
 test('a stale retry cannot overwrite the other editor change', async () => {
