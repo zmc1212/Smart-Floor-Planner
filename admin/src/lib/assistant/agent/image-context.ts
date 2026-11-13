@@ -7,10 +7,22 @@ export const conversationImageInstructions = '本轮图片按来源消息、图�
 
 export const photoObservationTool: ModelTool = {
   name: 'final_response',
-  description: '在 text 直接回答用户，先说图片里实际可辨的现象，再说明无法从图里确定的部分。部位不清或无法辨认就如实说明。用普通部位名称，不输出内部编号。不要从照片给出施工量数、合格结论或操作回执。',
+  description: '在 text 直接回答用户，先说图片里实际可辨的现象，再说明无法从图里确定的部分。部位不清或无法辨认就如实说明。用普通部位名称，不输出内部编号。不要从照片给出施工量数、合格结论或操作回执。能区分时同时提交 observation：可见现象、可能问题及理由、照片无法确认的内容、需要补充的照片或资料、可对应的标准编号、可信程度和是否需要人工复核。',
   parameters: { type: 'object', required: ['kind', 'text'], additionalProperties: false, properties: {
     kind: { type: 'string', enum: ['vision', 'unavailable'] },
     text: { type: 'string', minLength: 1, maxLength: 4000 },
+    observation: { type: 'object', additionalProperties: false,
+      required: ['visibleObservations', 'possibleIssues', 'notObservable', 'requiredEvidence', 'applicableStandards', 'confidence', 'needsHumanReview'],
+      properties: {
+        visibleObservations: { type: 'array', maxItems: 12, items: { type: 'string' } },
+        possibleIssues: { type: 'array', maxItems: 8, items: { type: 'object', additionalProperties: false,
+          required: ['observation', 'reason'], properties: { observation: { type: 'string' }, reason: { type: 'string' } } } },
+        notObservable: { type: 'array', maxItems: 12, items: { type: 'string' } },
+        requiredEvidence: { type: 'array', maxItems: 12, items: { type: 'string' } },
+        applicableStandards: { type: 'array', maxItems: 8, items: { type: 'string' } },
+        confidence: { type: 'string', enum: ['low', 'medium', 'high'] },
+        needsHumanReview: { type: 'boolean' },
+      } },
   } },
 };
 

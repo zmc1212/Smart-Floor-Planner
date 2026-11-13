@@ -132,6 +132,19 @@ test('run1025 actual-state support cannot replace the retained trial/curing-reco
   assert.doesNotThrow(() => parseSynthesis(raw(text, [citation(state, 1), citation(site)], 'uncertainty'), sources));
 });
 
+test('a room-scoped answer cannot borrow another room record that is still authorized', () => {
+  const material = (roomName: string) => ({ ref: { type: 'site_record' as const, id: '1', version: '1' }, hash: 'h', leadId: '1',
+    projectId: '1', roomId: roomName === '厨房' ? '2' : '3', roomName, sourceMessageId: null, mediaIds: [],
+    audience: 'customer_self' as const, basis: 'published_project_record' as const, status: 'current' as const, text: site.text });
+  const kitchen: SynthesisSource = { ...site, sourceId: 'Bkitchen', title: '厨房记录', material: material('厨房') };
+  const bathroom: SynthesisSource = { ...site, sourceId: 'Bbath', title: '卫生间记录', material: material('卫生间') };
+  const all = [...sources, kitchen, bathroom];
+  const text = '现场记录抽测淋浴区高度1500mm。';
+  assert.throws(() => parseSynthesis(raw(text, [citation(kitchen)]), all, { currentRoom: '卫生间' }), /ungrounded_response_scope/);
+  assert.match(synthesisRepairFeedback(raw(text, [citation(kitchen)]), all, { currentRoom: '卫生间' })!.feedback, /misattributed_project_room/);
+  assert.doesNotThrow(() => parseSynthesis(raw(text, [citation(bathroom)]), all, { currentRoom: '卫生间' }));
+});
+
 test('repair retains selections only for affected paragraphs, without repeating unrelated correct selections', () => {
   const extra: SynthesisSource = { sourceId: 'Kextra80', kind: 'knowledge', title: '合成另一条件', text: '其他资料条件仍须核对。' };
   const first = JSON.parse(raw('团队当前节点是防水。', [citation(state)]));

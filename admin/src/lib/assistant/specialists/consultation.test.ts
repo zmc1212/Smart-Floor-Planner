@@ -46,6 +46,27 @@ test('advice, latest room corrections, company standards, other editions and pro
   assert.equal(consultationSpecialist('能按这间卫生间给我列个开工前的检查清单吗？', ['卫生间准备做防水，开工前注意什么？'])?.room, '卫生间');
 });
 
+test('the six-question waterproof sequence keeps the corrected room and never guesses a room', () => {
+  const questions = [
+    '厨房水管现在做到哪一步？',
+    '刚才说错了，是卫生间。',
+    '卫生间水管根部为什么要单独处理？',
+    '处理后什么时候可以做防水？',
+    '那我家主卧现在做到哪一步？',
+    '主卧和卫生间的施工记录有什么区别？',
+  ];
+  const prior: string[] = [];
+  const rooms = questions.map(question => {
+    const result = consultationSpecialist(question, prior);
+    prior.push(question);
+    return result?.room ?? null;
+  });
+  assert.deepEqual(rooms, ['厨房', '卫生间', '卫生间', '卫生间', '主卧', null]);
+  // A two-room comparison is not squeezed into one room-scoped specialist run;
+  // the server-owned construction read remains the source for both rooms.
+  assert.equal(consultationSpecialist(questions[5], prior.slice(0, 5)), null);
+});
+
 test('selected originals qualify normative acceptance only, across construction stages', () => {
   const quotes = [
     '5.1.4 防水施工前应确认基层已验收合格，基层质量应符合防水材料施工要求。',

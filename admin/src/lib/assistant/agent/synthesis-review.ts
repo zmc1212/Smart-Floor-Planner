@@ -6,7 +6,7 @@ export type ResponseReviewIssue = { segment: number; code: 'unscoped_measurement
   | 'reopened_unavailable_need' | 'unsolicited_unknown_plan' | 'unsupported_work_absence' | 'unscoped_work_readiness' | 'misattributed_shared_need'
   | 'misattributed_project_quantity' | 'misattributed_project_observation' | 'unsupported_evidence_mechanism'
   | 'contradictory_measurement_comparison' | 'unmeasured_compliance_claim' | 'misattributed_rule_comparison' | 'misattributed_project_status'
-  | 'source_answer_scope' | 'independent_advice_scope' | 'unsupported_source_condition' };
+  | 'source_answer_scope' | 'independent_advice_scope' | 'unsupported_source_condition' | 'misattributed_project_room' };
 export type SynthesisReviewContext = { currentQuestion?: string; currentOriginal?: { messageId: string; hash: string };
   /** Bound only by the knowledge-off ordinary-dialogue run policy. Uncited
    * advice is model knowledge, not an assertion from an enterprise/site source. */
@@ -19,6 +19,9 @@ export type SynthesisReviewContext = { currentQuestion?: string; currentOriginal
    * explanation runs additionally require their durable semantic proof;
    * explicitly bound source-boundary runs use the strict original parser. */
   specialistAcceptance?: boolean;
+  /** Current room of a room-scoped specialist run. Project originals from any
+   * other room cannot support this answer, even when the source is still valid. */
+  currentRoom?: string;
   knowledgeExplanation?: 'reviewed-knowledge-explanation-v1' | 'natural-knowledge-answer-v1';
   currentNeeds?: { version: number; facts: Array<{ sourceMessageId: string; sourceHash: string; quote: string; value: string }> } };
 
@@ -40,6 +43,15 @@ function actualRecordCitations(citations: Citations, sources: SynthesisSource[])
   return actualProjectCitations(citations, sources).filter(citation => sources.some(source => source.sourceId === citation.sourceId
     && (source.material?.ref.type === 'site_record' || !source.material && !source.followup
       && /现场记录|施工部位[:：]|本次完成[:：]|尚未完成[:：]/u.test(citation.quote))));
+}
+
+/** A room-scoped run cannot borrow another room's record. The room is owned by
+ * the specialist binding, never parsed from the customer's question here. */
+function crossRoomCitations(citations: Citations, sources: SynthesisSource[], currentRoom?: string) {
+  if (!currentRoom) return false;
+  return citations.some(citation => sources.some(source => source.sourceId === citation.sourceId
+    && source.kind === 'project' && typeof source.material?.roomName === 'string'
+    && !!source.material.roomName && source.material.roomName !== currentRoom));
 }
 
 function nonassertive(clause: string) {
@@ -380,6 +392,7 @@ export function reviewSynthesisResponse(answer: SynthesisAnswer, sources: Synthe
         codes.add('source_answer_scope');
       if (unsupportedSourceCondition(segment.text, citations, sources)) codes.add('unsupported_source_condition');
     }
+    if (crossRoomCitations(citations, sources, context.currentRoom)) codes.add('misattributed_project_room');
     if (unsupportedProjectQuantity(segment.text, citations, sources)) codes.add('misattributed_project_quantity');
     if (unsupportedProjectObservation(segment.text, citations, sources)) codes.add('misattributed_project_observation');
     if (unsupportedRecordGap(segment, citations, sources)) codes.add('misattributed_project_observation');
