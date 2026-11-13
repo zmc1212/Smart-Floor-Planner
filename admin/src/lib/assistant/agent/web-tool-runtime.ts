@@ -96,6 +96,7 @@ export function createAgentWebTools(options: AgentWebSearchOptions & {
   question: string;
   conversationId: string;
   deadlineAt: number;
+  specialist?: { standard: ReturnType<typeof matchingReviewedStandard>; editionQuestion: boolean; evidenceQuestion: string; reviewedSections?: string[] };
 }) {
   const { lease, scoped } = options;
   const allowedUrls = userUrls(options.question);
@@ -128,7 +129,7 @@ export function createAgentWebTools(options: AgentWebSearchOptions & {
     provider: options.provider?.name ?? 'unconfigured',
     async reviewedStandard(previousQuestions: string[]): Promise<ModelMessage[]> {
       if (!publicReaderEndpoint()) return [];
-      const standard = matchingReviewedStandard(options.question, previousQuestions);
+      const standard = options.specialist ? options.specialist.standard : matchingReviewedStandard(options.question, previousQuestions);
       if (!standard) return [];
       // The registered URLs are from the publisher. The PDF itself is obtained
       // from the live notice and must still match the reviewed publisher bytes.
@@ -147,8 +148,9 @@ export function createAgentWebTools(options: AgentWebSearchOptions & {
         allowedUrls.add(attachment.url);
         reads.push(await fetch(attachment.url, reviewedStandardStep.attachment));
       }
-      reads.push(await fetch(standard.catalogUrl, reviewedStandardStep.catalog));
-      return reads.flatMap(read => {
+      if (!options.specialist || options.specialist.editionQuestion) reads.push(await fetch(standard.catalogUrl, reviewedStandardStep.catalog));
+      const visibleReads = options.specialist && !options.specialist.editionQuestion && attachment ? reads.slice(1) : reads;
+      return visibleReads.flatMap(read => {
         const { tool, webStatus, failures, synthesisSources } = JSON.parse(read.content);
         const codes = failures.map(({ code }: { code: string }) => code);
         if (read === notice && !attachment) codes.push('web_attachment_not_found');
@@ -209,7 +211,11 @@ export function createAgentWebTools(options: AgentWebSearchOptions & {
         pages.push({ url, requestedUrl, title, text, textBytes, retrievedAt, publishedAt, sourceKind: trust.kind, ...(standard ? { standard } : {}),
           parser: 'public-html-text-v1', hash: fingerprint({ url, title, text, retrievedAt }) });
       }
-      if (attachment) pages.push(...publicDocumentPages(attachment, retrievedAt, options.question));
+      if (attachment) {
+        const specialist = sequence === reviewedStandardStep.attachment ? options.specialist : undefined;
+        pages.push(...publicDocumentPages(attachment, retrievedAt, specialist?.evidenceQuestion ?? options.question,
+          specialist?.reviewedSections));
+      }
       const urls = [...(payload?.results?.map(hit => hit.url) ?? []), ...(document?.attachments?.map(link => link.url) ?? [])];
       const failures: WebSearchSnapshot['failures'] = payload?.failures?.map(({ code }) => ({ code })) ?? [];
       if (attachment) failures.push(...publicDocumentReadFailures(attachment, pages));

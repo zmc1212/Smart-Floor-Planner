@@ -43,11 +43,11 @@ export async function checkDelegationStandards(tx: PostgresTransaction, d: Revie
     const sources = result.evidence.filter(source => source.professional?.applicability.status !== 'not_applicable')
       .map(({ ref, hash }) => ({ ref, hash }));
     return { status: sources.length ? 'sources_found' : 'no_match', epoch, sources,
-      contextHash: fingerprint(result.diagnostic.context), requestId: result.diagnostic.managedIndex?.requestId };
+      contextHash: fingerprint(result.diagnostic.context), requestId: result.diagnostic.managedIndex?.requestId ?? null };
   } catch (error) {
     if (!(error instanceof AssistantError) || error.status !== 503) throw error;
     return { status: 'unavailable', epoch, error: error instanceof BailianKnowledgeError ? error.providerCode : error.code,
-      requestId: error instanceof BailianKnowledgeError ? error.requestId : undefined };
+      requestId: error instanceof BailianKnowledgeError ? error.requestId ?? null : null };
   }
 }
 

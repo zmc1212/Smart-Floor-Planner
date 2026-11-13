@@ -1,9 +1,10 @@
 import type { NodeFixture, SimulationFixtures, SimulationScenario } from '../simulate';
 import type { TriggerEvent, WorkflowValue } from '../types';
 import { dailyReportFixtures, dailyReportScenario, periodReportFixtures, weeklyReportScenario } from './period-report';
+import { specialistFixtures, specialistScenario, specialistWaitFixtures } from './specialist';
 import { stageReminderFixtures, stageReminderScenario } from './stage-reminder';
 
-export type WorkflowFixtureDefinitionKind = 'stage_reminder' | 'period_report';
+export type WorkflowFixtureDefinitionKind = 'stage_reminder' | 'period_report' | 'specialist_followup';
 
 export interface WorkflowFixtureSet {
   readonly id: string;
@@ -178,6 +179,13 @@ const sets: WorkflowFixtureSet[] = [
     }),
   },
 ];
+
+sets.push(
+  { id: 'waterproof-reviewed', label: '防水事项已复核', definitionKind: 'specialist_followup', eventType: 'specialist_followup', periodKind: null,
+    scenario: specialistScenario, fixtures: specialistFixtures },
+  { id: 'waterproof-waiting', label: '等待防水现场资料', definitionKind: 'specialist_followup', eventType: 'specialist_followup', periodKind: null,
+    scenario: specialistScenario, fixtures: specialistWaitFixtures },
+);
 
 export const fixtureSets: readonly WorkflowFixtureSet[] = sets;
 

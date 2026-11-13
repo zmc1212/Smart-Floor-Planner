@@ -35,6 +35,7 @@ import { knowledgePolicy, enterpriseKnowledgeEnabled } from '../knowledge-policy
 import { knowledgeToolProtocol } from '../knowledge/rag-tools';
 import { homeSourceBudgetProtocol } from '../agent/home-source-budget';
 import { homeSourceViewProtocol } from '../agent/home-source-view';
+import { specialistPolicy } from '../specialists/consultation';
 import { ownerArchiveReadProtocol, ownerProjectStatusReadProtocol, ownerQuestionScopeProtocol } from '../agent/owner-question-scope';
 import { ownerCitationCarrierProtocol } from '../agent/final-output';
 import { reportBodyFinalPolicy, reportNativeAdmission, reportNativeFinalProtocol, reportFinalFunctionCarrier, reportStructuralFinalSchema } from '../agent/report-native-final';
@@ -137,6 +138,8 @@ export async function terminalEvent(tx: PostgresTransaction, enterpriseId: strin
   await tx.execute(sql`insert into app.domain_event_deliveries(enterprise_id,event_id,consumer_key)
     values(${enterpriseId},${String(event!.id)},'assistant.run.metrics.v1') on conflict do nothing`);
   if (status === 'succeeded') await recordDelegationExternalResult(tx, enterpriseId, runId);
+  if (delegationsEnabled(enterpriseId)) await (await import('@/lib/native-workflow/live/specialist-workflow'))
+    .queueSpecialistAnalysisCompletion(tx, enterpriseId, runId, status);
 }
 /** A visitor's own question replaces a site opening that has not started yet. The
  * opening is a convenience for someone browsing in silence, never a blocker, and
@@ -157,7 +160,7 @@ async function cancelQueuedPublicIntro(tx: PostgresTransaction, enterpriseId: st
     and purpose='public.site.intro' and status='queued'`);
   for (const run of queued) await cancelQueuedRun(tx, enterpriseId, String(run.id));
 }
-export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Row, settings: Row, messageId: string | null, retryOf?: string, trigger: RunTrigger = { kind: 'user_message', messageId: messageId! }, purpose = 'reply', reportComposition?: ReportCompositionScope) {
+export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Row, settings: Row, messageId: string | null, retryOf?: string, trigger: RunTrigger = { kind: 'user_message', messageId: messageId! }, purpose = 'reply', reportComposition?: ReportCompositionScope, specialistRun?: { delegationId: string; workflowRunId: string }) {
   const speech = purpose === 'speech.transcribe', speechBinding = speech ? speechConfigurationHash() : null;
   const report = purpose === 'construction.report.compose' && trigger.kind === 'scheduled_task' && !!reportComposition
     && c.purpose === 'construction_followup' && actor.capabilities.includes('assistant.followup.delivery');
@@ -253,7 +256,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
         reportFinalCarrier: reportFinalFunctionCarrier, reportFinalSchema: reportStructuralFinalSchema, reportAnswerGrounding: reportAnswerGroundingProtocol,
         reportSourceProjection: reportSourceProjectionProtocol, reportQuestionPlanning: reportQuestionPlanningProtocol,
         reportReadCompletion: reportReadCompletionProtocol, reportHistoryScope: reportHistoryScopeProtocol, reportCoordination: reportCoordinationProtocol } : {}),
-      ...(agent && (enterpriseKnowledgeEnabled(settings.agent_config) || c.purpose === 'knowledge_preview') && !agent.structuredFinal && ['reply','site.question'].includes(purpose)
+      ...(agent && (enterpriseKnowledgeEnabled(settings.agent_config) || c.purpose === 'knowledge_preview') && !agent.structuredFinal && ['reply','site.question','specialist.workflow'].includes(purpose)
         ? { sourceAnswerMode: agent.knowledgeExplanation || sourceExcerptProtocol,
           ...(agent.tools && !agentRuntime && !nativeRag && !agent.consultation ? { knowledgeTools: knowledgeToolProtocol } : {}),
           ...(agent.knowledgeExplanation === naturalKnowledgeProtocol ? { knowledgeQuantityScope: knowledgeQuantityScopeProtocol,
@@ -262,14 +265,17 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
             ...(!agent.consultation ? { naturalKnowledgeSchedule: naturalKnowledgeScheduleProtocol } : {}) }
             : agent.knowledgeQuantityScope ? { knowledgeQuantityScope: agent.knowledgeQuantityScope } : {}),
           sourceQuestionCoverage: sourceQuestionCoverageProtocol } : {}),
+      ...(specialistRun ? { specialistRun } : {}),
       ...(speech ? { localSpeech: { protocol: 'local-speech-v1', configurationHash: speechBinding } } : {}),
       ...(reservation.imageContextBudget ? { imageContextBudget: reservation.imageContextBudget } : {}),
       ...(reservation.imageSchema ? { imageSchema: reservation.imageSchema } : {}),
-      ...(agent && actor.principal.kind === 'user' && c.purpose === 'customer_consultation' && purpose === 'reply'
+      ...(agent && actor.principal.kind === 'user' && c.purpose === 'customer_consultation' && ['reply', 'specialist.workflow'].includes(purpose)
         ? { homeSourceBudget: homeSourceBudgetProtocol, siteObservationReferral: siteObservationReferralProtocol,
           drawingChecklistRead: drawingChecklistReadProtocol, homeSourceView: homeSourceViewProtocol,
           ownerQuestionScope: ownerQuestionScopeProtocol, ownerArchiveRead: ownerArchiveReadProtocol,
           ownerProjectStatusRead: ownerProjectStatusReadProtocol,
+          ...(!reviewRuntime && !agentRuntime && !agent.consultation && !agent.structuredFinal && specialistPolicy(actor.enterpriseId, agent)
+            ? { specialist: specialistPolicy(actor.enterpriseId, agent) } : {}),
           ...(agent.providerKey === 'dashscope' && agent.model === 'qwen3.8-flash' ? { ownerCitationCarrier: ownerCitationCarrierProtocol } : {}) } : {}),
       ...(agent && purpose === 'reply' && c.purpose === 'customer_consultation' && delegationsEnabled(actor.enterpriseId) ? { longTermMemory: true } : {}),
       ...(reviewRuntime ? { reviewRuntime } : {}) })}::jsonb,${Number(c.context_revision)},${Number(settings.knowledge_epoch)}) returning *`))!;

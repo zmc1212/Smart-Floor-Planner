@@ -20,7 +20,7 @@ export interface NodeFixtureFailure {
   readonly error: WorkflowIssue;
 }
 
-export type NodeFixture = NodeFixtureSuccess | NodeFixtureFailure;
+export type NodeFixture = NodeFixtureSuccess | NodeFixtureFailure | { readonly status: 'waiting' };
 
 export interface SimulationFixtures {
   readonly nodes: Readonly<Record<string, NodeFixture>>;
@@ -34,7 +34,7 @@ export interface SimulationScenario {
 
 export interface FixtureLogEntry {
   readonly nodeId: string;
-  readonly result: 'ok' | 'failed' | 'missing';
+  readonly result: 'ok' | 'failed' | 'missing' | 'waiting';
   readonly code?: string;
 }
 
@@ -114,6 +114,10 @@ export function simulate(input: {
           break;
         }
         if (operation.effect === 'compose') modelComposeCount += 1;
+        if (operation.effect === 'wait' && ownValue(fixtures.nodes, operation.nodeId)?.status === 'waiting') {
+          fixtureLog.push({ nodeId: operation.nodeId, result: 'waiting' });
+          break;
+        }
         const observation = observeWithFixture(operation, fixtures, nextAt());
         fixtureLog.push(observation.fixture);
         result = advance(plan, state, observation.event);
@@ -189,6 +193,7 @@ function observeWithFixture(
       fixture: { nodeId: operation.nodeId, result: 'missing', code: 'fixture_missing' },
     };
   }
+  if (fixture.status === 'waiting') throw new WorkflowRuntimeError('invalid_fixture', 'only wait nodes can suspend a simulation');
   if (fixture.status === 'failed') {
     return {
       event: { type: 'observation', at, nodeId: operation.nodeId, status: 'failed', error: fixture.error },

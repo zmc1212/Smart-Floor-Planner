@@ -33,6 +33,18 @@ async function authorizedResult(tx: PostgresTransaction, eid: string, cid: strin
   const p = event.payload as Row;
   if (p.conversationId !== cid) return null;
   const projectId = String(p.projectId), issueId = String(p.issueId);
+  if (typeof p.specialistDelegationId === 'string') {
+    const { specialistIssueOrigin } = await import('./specialist-issues');
+    const origin = await specialistIssueOrigin(tx, eid, projectId, p.specialistDelegationId);
+    if (!origin || origin.conversationId !== cid || origin.ownerId !== p.customerId) return null;
+    const issue = await readSiteIssueBase(tx, eid, projectId, issueId);
+    if (!issue?.sourceAvailable || issue.specialistDelegationId !== origin.id || issue.revision !== p.issueRevision) return null;
+    const resolution = await readSiteResolution(tx, eid, projectId, issueId, issue);
+    if (!resolution?.available || resolution.id !== p.lifecycleId || resolution.revision !== p.revision
+      || resolution.state !== p.state || resolution.evidenceId !== p.evidenceId || resolution.actorId !== (event.actor_ref as Row)?.adminId
+      || !['resolved', 'closed'].includes(resolution.state)) return null;
+    return { resolution };
+  }
   const need = await sharedMaterial(tx, eid, projectId, String(p.needGrantId));
   if (!need || need.conversationId !== cid || need.customerId !== p.customerId) return null;
   const issue = await (p.lifecycleId ? readSiteIssueBase : readSiteIssue)(tx, eid, projectId, issueId);

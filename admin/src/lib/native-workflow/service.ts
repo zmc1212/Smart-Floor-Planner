@@ -2,6 +2,8 @@ import { compileDefinition, definitionDigest } from './compile';
 import { WorkflowDefinitionError, WorkflowOperationError } from './errors';
 import { fixtureMatchesDefinition, fixtureSetSummaries, findFixtureSet, type WorkflowFixtureSetSummary } from './fixtures/catalog';
 import { simulate, type SimulationResult } from './simulate';
+import { createWaterproofInspectionDefinition } from './specialist-template';
+import { waterproofWorkflowTemplateId } from '../assistant/specialists/registry';
 import { createPeriodReportDefinition, createStageReminderDefinition } from './templates';
 import type { WorkflowDefinition } from './types';
 import { validateDefinition } from './validate';
@@ -16,6 +18,7 @@ export const nativeWorkflowTemplateIds = [
   'stage-reminder',
   'period-report-daily',
   'period-report-weekly',
+  waterproofWorkflowTemplateId,
 ] as const;
 
 export type NativeWorkflowTemplateId = (typeof nativeWorkflowTemplateIds)[number];
@@ -24,6 +27,7 @@ const templateBuilders: Record<NativeWorkflowTemplateId, () => WorkflowDefinitio
   'stage-reminder': createStageReminderDefinition,
   'period-report-daily': () => createPeriodReportDefinition('daily'),
   'period-report-weekly': () => createPeriodReportDefinition('weekly'),
+  [waterproofWorkflowTemplateId]: createWaterproofInspectionDefinition,
 };
 
 export function isNativeWorkflowTemplateId(value: unknown): value is NativeWorkflowTemplateId {

@@ -16,6 +16,7 @@ import { homeSourceViewProtocol, projectHomeSourceView, type HomeSourceView } fr
 import { nativeFinalDefinition } from './native-final';
 import { difyDialogueMessages, minimalNeedTools, minimalSourceInstructions } from './minimal-dialogue';
 import { hasReviewedStandardRead } from './web-tool-runtime';
+import { specialistEvidenceView, specialistModelContext } from '../specialists/consultation';
 
 export type ModelRequestPurpose = 'answer' | 'vision' | 'summary' | 'grounding';
 
@@ -36,6 +37,8 @@ export function compileModelRequest(input: {
   requiredKnowledge?:boolean;
   reportPlan?: SourceQuestionCoverage | null;
   homeSourceView?: HomeSourceView;
+  specialist?: boolean;
+  specialistChecklist?: boolean;
   wireProjection?(messages:ModelMessage[]):ModelMessage[];
   toolsForTurn(question: string, messages: ModelMessage[], tools: ModelTool[], triggerId: string): ModelTool[];
 }) {
@@ -47,11 +50,12 @@ export function compileModelRequest(input: {
   const adviceScoped = purpose === 'answer' && input.reportPlan === undefined && !messageScoped && independentAdviceRequested(question);
   const homeView = input.homeSourceView && purpose === 'answer' && !messageScoped && !adviceScoped
     ? projectHomeSourceView(messages, triggerId, input.homeSourceView) : messages;
+  const specialist = purpose === 'answer' && input.specialist && !messageScoped && !adviceScoped;
   const reviewedStandard = purpose === 'answer' && hasReviewedStandardRead(homeView);
   let focused = messageScoped ? currentMessageView(messages, triggerId, question)
     : adviceScoped ? independentAdviceView(messages, triggerId, question)
-    : (turn > 0 || input.profile || difyDialogue || reviewedStandard) && purpose === 'answer'
-      ? focusedSynthesisMessages(homeView, triggerId, input.reportPlan, minimalDialogue) : homeView;
+    : (turn > 0 || input.profile || difyDialogue || reviewedStandard || specialist) && purpose === 'answer'
+      ? focusedSynthesisMessages(homeView, triggerId, input.reportPlan, minimalDialogue, false, specialist) : homeView;
   let dispatchTools = purpose === 'vision' ? [] : purpose === 'summary' || purpose === 'grounding' ? tools
     : input.toolsForTurn(question, focused, tools, triggerId);
   // Keep natural history, but use the existing current-question tail for a
@@ -87,13 +91,13 @@ export function compileModelRequest(input: {
   const publicSourceProtocol = purpose === 'answer' && (publicSources || minimalDialogue && hasSourceRead(focused)) && !input.profile && !input.naturalKnowledge && input.reportPlan === undefined
     && !hasSynthesisContract(focused, synthesisInstructions) && !hasSynthesisContract(focused, synthesisModelInstructions);
   const publicContract = minimalDialogue ? minimalSourceInstructions : publicSourceModelInstructions;
-  let policyInput = focused;
+  let policyInput = specialist ? specialistModelContext(focused, !!input.specialistChecklist) : focused;
   if (publicSourceProtocol && !hasSynthesisContract(focused, publicContract)) {
     const policy: ModelMessage = { role: 'system', content: [{ type: 'text', text: difyDialogue
       ? publicContract : publicContract + synthesisQuestionPrefix + JSON.stringify({ currentQuestion: question }) }] };
     const firstTurn = focused.findIndex(message => message.role !== 'system');
     const position = difyDialogue ? firstTurn < 0 ? focused.length : firstTurn : focused.length;
-    policyInput = [...focused.slice(0, position), policy, ...focused.slice(position)];
+    policyInput = [...policyInput.slice(0, position), policy, ...policyInput.slice(position)];
   }
   const policyView = purpose === 'answer' ? projectSynthesisPolicy(policyInput,Boolean(excerptMode),explanationMode
     ? input.naturalKnowledge ? naturalKnowledgeInstructions : knowledgeExplanationInstructions : reportMode?reportCoverageInstructions:undefined) : focused;
@@ -103,7 +107,8 @@ export function compileModelRequest(input: {
     ? projectConsultationModelView(policyView, dispatchTools, input.naturalKnowledge ? naturalKnowledgeInstructions : undefined) : policyView;
   const excerptView=excerptMode?sourceExcerptModelView(contentView):contentView;
   if (excerptMode && input.sourceQuestionCoverage) excerptView.push({ role: 'system', content: [{ type: 'text', text: sourceQuestionCoverageInstructions }] });
-  const wireView=input.wireProjection?input.wireProjection(excerptView):excerptView;
+  const specializedView = specialist ? specialistEvidenceView(excerptView, question) : excerptView;
+  const wireView=input.wireProjection?input.wireProjection(specializedView):specializedView;
   const bounded = fitAgentContext(wireView, dispatchTools, { profile: input.profile, purpose, imageContextBudget: input.imageContextBudget,
     reportFinalOutputTokens: input.reportFinalOutputTokens,
     ...(input.reportFinalOutputTokens ? { recentTurns: 1 } : {}) });

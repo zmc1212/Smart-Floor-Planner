@@ -1,4 +1,4 @@
-import { advance, createRunState, type WorkflowEvent } from '../advance';
+import { advance, createRunState, pendingOperation, type WorkflowEvent } from '../advance';
 import { WorkflowOperationError, workflowIssue, type WorkflowIssue } from '../errors';
 import { validateEffectReceipt } from '../receipts';
 import type { PublishedWorkflowVersion } from '../store/types';
@@ -13,6 +13,7 @@ import { resolvePublishedTarget } from './published-target';
 import {
   LiveOperationFailure,
   LiveOperationUnknownError,
+  LiveOperationWaiting,
   type LiveBusinessEvent,
   type LiveOperationPorts,
   type LiveOperationRecord,
@@ -35,11 +36,13 @@ export interface LiveRunInput {
   readonly writeGuard?: RuntimeWriteGuard;
   readonly runId: string;
   readonly now?: () => string;
+  readonly resume?: boolean;
+  readonly wakeEventId?: string;
 }
 
 function statusOf(state: WorkflowRunState, unknown: boolean): LiveRunStatus {
   if (unknown) return 'unknown';
-  if (state.status === 'running' || state.status === 'waiting') return 'unknown';
+  if (state.status === 'running') return 'unknown';
   return state.status;
 }
 
@@ -99,9 +102,14 @@ export async function runPublishedLive(input: LiveRunInput): Promise<LiveRunReco
   // original record instead of starting a second execution.
   const initial: LiveRunRecord = { ...snapshot(now()), status: 'running' };
   const created = await input.store.create(initial, input.writeGuard);
+  const canResume = input.resume && event.eventType === 'specialist_followup';
   if (!created.created) {
     assertSameLiveRunIdentity(created.record, initial);
-    return created.record;
+    if (!canResume || !['waiting', 'running'].includes(created.record.status)) return created.record;
+    state = structuredClone(created.record.state);
+    trace.push(...cloneTrace(created.record.trace));
+    operations.push(...cloneOperations(created.record.operations));
+    if (input.wakeEventId && state.processedEventIds.includes(input.wakeEventId)) return created.record;
   }
   const createdAt = created.record.createdAt;
 
@@ -117,13 +125,20 @@ export async function runPublishedLive(input: LiveRunInput): Promise<LiveRunReco
 
   try {
     const started: WorkflowEvent = { type: 'start', at: now(), event };
-    let result = advance(plan, state, started);
-    state = result.state;
-    trace.push(...cloneTrace(result.trace));
-    await persist();
+    if (!state.visitedNodeIds.length) {
+      const result = advance(plan, state, started);
+      state = result.state;
+      trace.push(...cloneTrace(result.trace));
+      await persist();
+    }
+    if (canResume && !created.created && input.wakeEventId) {
+      state.traceSeq++;
+      trace.push({ seq: state.traceSeq, at: now(), kind: 'run_resumed', nodeId: state.pendingNodeId,
+        nodeType: pendingOperation(plan, state)?.nodeType ?? null, mode: 'live', detail: { eventId: input.wakeEventId } });
+    }
 
     while (state.status === 'waiting') {
-      const pending = result.pending[0];
+      const pending = pendingOperation(plan, state);
       if (!pending) {
         unknown = true;
         state.error = workflowIssue('live_runner_stalled', '$', 'run is waiting without a pending operation');
@@ -138,9 +153,21 @@ export async function runPublishedLive(input: LiveRunInput): Promise<LiveRunReco
       } catch (error) {
         if (error instanceof LiveOperationFailure) {
           failure = error.issue;
+        } else if (error instanceof LiveOperationWaiting && canResume) {
+          const last = trace.at(-1);
+          if (last?.kind !== 'node_waiting' || last.nodeId !== pending.nodeId) {
+            state.traceSeq++;
+            trace.push({ seq: state.traceSeq, at: now(), kind: 'node_waiting', nodeId: pending.nodeId,
+              nodeType: pending.nodeType, mode: 'live', detail: { code: error.code } });
+          }
+          if (input.wakeEventId) state.processedEventIds.push(input.wakeEventId);
+          return persist();
         } else if (error instanceof LiveOperationUnknownError) {
           unknownIssue = error.issue;
         } else {
+          // Specialist effects run within the outbox savepoint. On unexpected errors
+          // the whole step rolls back and the existing delivery lease can retry it.
+          if (canResume) throw error;
           unknownIssue = workflowIssue(
             'live_operation_unknown',
             `nodes.${pending.nodeId}`,
@@ -206,7 +233,7 @@ export async function runPublishedLive(input: LiveRunInput): Promise<LiveRunReco
             status: 'succeeded',
             outputs: structuredClone(outputs ?? {}),
           };
-      result = advance(plan, state, observation);
+      const result = advance(plan, state, observation);
       state = result.state;
       trace.push(...cloneTrace(result.trace));
       await persist();
@@ -216,11 +243,12 @@ export async function runPublishedLive(input: LiveRunInput): Promise<LiveRunReco
       unknown = true;
       state.error = state.error ?? workflowIssue('live_runner_stalled', '$', 'run ended without a terminal state');
     }
+    if (input.wakeEventId && !state.processedEventIds.includes(input.wakeEventId)) state.processedEventIds.push(input.wakeEventId);
     return await persist();
   } catch (error) {
     // A concurrent update owns the new checkpoint. Never replace it with an
     // "unknown" status derived from the losing snapshot.
-    if (error instanceof WorkflowOperationError
+    if (canResume || error instanceof WorkflowOperationError
       && ['runtime_store_conflict', 'runtime_store_lease_lost', 'period_report_schedule_not_active'].includes(error.code)) throw error;
     // The run already exists. A crash here can only be recorded conservatively;
     // nothing is re-executed and no port is called again.

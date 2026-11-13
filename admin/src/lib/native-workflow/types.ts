@@ -33,7 +33,15 @@ export type NodeType =
   | 'condition'
   | 'compose_content'
   | 'save_result'
-  | 'deliver_inapp';
+  | 'deliver_inapp'
+  | 'project_data'
+  | 'knowledge_retrieval'
+  | 'public_search'
+  | 'agent'
+  | 'wait_event'
+  | 'human_review'
+  | 'create_issue'
+  | 'output';
 
 export type ValueType =
   | 'string'
@@ -67,7 +75,7 @@ export interface WorkflowEdge {
 }
 
 export interface WorkflowInputSchema {
-  readonly eventType: 'stage_changed' | 'period_report';
+  readonly eventType: 'stage_changed' | 'period_report' | 'specialist_followup';
   readonly periodKind?: 'daily' | 'weekly';
 }
 
@@ -96,7 +104,7 @@ export type WorkflowValue =
  */
 export interface TriggerEvent {
   readonly eventId: string;
-  readonly eventType: 'stage_changed' | 'period_report';
+  readonly eventType: 'stage_changed' | 'period_report' | 'specialist_followup';
   readonly occurredAt: string;
   readonly stageKey?: string;
   readonly stageLabel?: string;
@@ -131,6 +139,8 @@ export type TraceKind =
   | 'event_duplicate_ignored'
   | 'node_started'
   | 'node_pending'
+  | 'node_waiting'
+  | 'run_resumed'
   | 'node_succeeded'
   | 'node_failed'
   | 'branch_selected'
@@ -156,7 +166,8 @@ export interface PendingOperation {
   readonly nodeType: NodeType;
   readonly capabilityRef: string;
   readonly nodeVersion: string;
-  readonly effect: 'read' | 'compose' | 'save' | 'deliver';
+  readonly effect: 'read' | 'compose' | 'save' | 'deliver' | 'wait';
+  readonly config?: Readonly<Record<string, unknown>>;
   readonly input: Readonly<Record<string, WorkflowValue>>;
   readonly mode: RunMode;
   readonly simulation: boolean;

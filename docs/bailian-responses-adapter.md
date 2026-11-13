@@ -476,3 +476,7 @@ Endpoint 使用该空间的 `https://dashscope.aliyuncs.com/compatible-mode/v1`�
 | 流式、托管 RAG | 本轮未验证流式。托管 RAG 缺专用空间和凭据，保留 `retrieval_unavailable`。本地 Embedding/pgvector、长期记忆、项目和委托能力以各自应用验收为准。 |
 
 六次协议请求合计 21,903/1,439 tokens，缓存输入 11,520，实际费用未提供。目录与原始回执见 `tmp/i6.7/bailian-catalog.json`、`tmp/bailian-responses/report-i67-deepseek-{wire,functions}.json` 及其 raw 文件。固定装修场景、首稿、修复和环境缺项见[集成审查](xiaok-integration-audit.md#i67-专业规范证据链limited)。第 14 节及之前的 Qwen 记录是对应版本的历史结果，I1 超时结果保持 unknown。
+
+## 16. I6.8 专业 Agent 模型绑定
+
+北京百炼配置键为 `bailian`，应用逻辑名为 `deepseek-flash`，供应商目录及真实回执使用 `deepseek-v4.1-flash-1017`。开轮目录查询对实际 ID 精确命中一项，逻辑名在百炼目录中没有同名模型。防水问答与 Native Agent 作业共用原加密配置、AgentModelGateway、用量和未知结果台账。Responses 通过既有配置启用。该固定模型的当前应用配置为文本输入，现场照片仍由 Construction 保存及授权回传。模型默认值沿现有生产配置。[模型目录](https://help.aliyun.com/zh/model-studio/list-models) · [DeepSeek 调用说明](https://help.aliyun.com/zh/model-studio/deepseek-api) · [集成验收](xiaok-integration-audit.md#i68-防水专业-agent-与工作流limited)

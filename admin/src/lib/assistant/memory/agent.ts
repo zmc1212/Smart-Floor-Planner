@@ -4,7 +4,7 @@ import type { PostgresTransaction } from '@/db/transaction';
 import { one, type Row } from '@/db/repositories/assistant-repository';
 import { DelegationService } from '@/lib/native-workflow/live/delegation-store';
 import { currentDelegationViews, delegationModelView, delegationNoticeAvailable, delegationReceipt, delegationSummary } from '@/lib/native-workflow/live/delegation-chat';
-import { delegationKinds } from '@/lib/native-workflow/live/delegation-state';
+import { delegationKinds, type SpecialistWorkflowBinding } from '@/lib/native-workflow/live/delegation-state';
 import { fail, fingerprint, safeText, type ActorContext, type MessageContent } from '../contracts';
 import type { ModelTool, ModelToolCall } from '../contracts/model';
 import { ToolExecutor } from '../tools/executor';
@@ -36,7 +36,7 @@ const delegationTool: ModelTool = {
 
 export const isLongTermTool = (name: string) => name === memoryToolName || name === delegationToolName;
 export const explicitPublicResearch = (question: string) => /联网|网上|公开资料|公开出处|官网|厂家资料|https?:\/\//iu.test(question);
-const delegationRequested = (question: string) => /跟进|盯一下|盯着|盯下|提醒我|核对|核一下|问问|等.*回复|复核/u.test(question);
+export const delegationRequested = (question: string) => /跟进|盯一下|盯着|盯下|提醒我|核对|核一下|问问|等.*回复|复核/u.test(question);
 
 export function longTermTools(scope: PrivateMemoryScope, question: string) {
   if (explicitPublicResearch(question)) return [];
@@ -57,7 +57,7 @@ function ref(input: Row) {
 }
 
 export async function executeLongTermTool(tx: PostgresTransaction, actor: ActorContext, c: Row,
-  source: Row, call: ModelToolCall, runId?: string) {
+  source: Row, call: ModelToolCall, runId?: string, workflow?: SpecialistWorkflowBinding) {
   const scope = await privateMemoryScope(tx, actor, c);
   if (!scope || !isLongTermTool(call.name)) fail('assistant_capability_forbidden', 403);
   const sourceText = safeText(source.content as MessageContent);
@@ -73,7 +73,9 @@ export async function executeLongTermTool(tx: PostgresTransaction, actor: ActorC
       if (!sourceText.includes(quote)) fail('memory_source_mismatch', 422);
       if (selected.name === delegationToolName) {
         const service = new DelegationService(tx, scope);
-        const d = await service.create(messageId, input as Parameters<DelegationService['create']>[1]);
+        const request = input as Parameters<DelegationService['create']>[1];
+        if (workflow && request.kind !== 'rectification_review') fail('delegation_source_mismatch', 422);
+        const d = await service.create(messageId, request, new Date(), workflow);
         // Only the owner sees this in-app receipt; the source grant lives in
         // construction material sharing and is never created by this tool.
         const notice = await delegationReceipt(tx, d, 'create:' + d.id, delegationSummary(d));
@@ -172,8 +174,8 @@ export async function longTermRunAvailable(tx: PostgresTransaction, actor: Actor
 }
 
 export async function agentLongTermToolResult(tx: PostgresTransaction, actor: ActorContext, c: Row, source: Row, runId: string,
-  sequence: number, call: ModelToolCall) {
-  const binding = fingerprint({ source: String(source.id), content: source.content, tool: call.name, args: call.arguments });
+  sequence: number, call: ModelToolCall, workflow?: SpecialistWorkflowBinding) {
+  const binding = fingerprint({ source: String(source.id), content: source.content, tool: call.name, args: call.arguments, ...(workflow ? { workflow: { templateId: workflow.templateId, agentId: workflow.agentId } } : {}) });
   const prior = await one(tx, sql`select kind,input_summary,private_checkpoint from app.assistant_run_steps
     where enterprise_id=${actor.enterpriseId} and run_id=${runId} and step_seq=${sequence}`);
   if (prior) {
@@ -183,7 +185,7 @@ export async function agentLongTermToolResult(tx: PostgresTransaction, actor: Ac
   // ToolExecutor returns business failures as receipts. Roll back any partial
   // writes before committing a failure receipt, including PostgreSQL errors.
   await tx.execute(sql`savepoint r5_agent_tool`);
-  const result = await executeLongTermTool(tx, actor, c, source, call, runId);
+  const result = await executeLongTermTool(tx, actor, c, source, call, runId, workflow);
   if (!result.ok) await tx.execute(sql`rollback to savepoint r5_agent_tool`);
   await tx.execute(sql`release savepoint r5_agent_tool`);
   if (result.ok) {

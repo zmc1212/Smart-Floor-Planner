@@ -129,7 +129,7 @@ function databaseErrorCode(error: unknown): string {
   if (!error || typeof error !== 'object') return 'delegation_event_failed';
   const details = error as { code?: unknown; cause?: unknown; message?: unknown };
   if (typeof details.message === 'string' && /^(?:tool|delegation)_[a-z_]+$/.test(details.message)) return details.message;
-  if (typeof details.code === 'string' && /^durable_task_[a-z_]+$/.test(details.code)) return details.code;
+  if (typeof details.code === 'string' && /^(?:durable_task_|specialist_|assistant_|identity_)[a-z_]+$/.test(details.code)) return details.code;
   return typeof details.code === 'string' && /^[0-9A-Z]{5}$/.test(details.code)
     ? details.code : details.cause ? databaseErrorCode(details.cause) : 'delegation_event_failed';
 }

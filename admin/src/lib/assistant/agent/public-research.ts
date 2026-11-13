@@ -139,12 +139,12 @@ export async function configuredPublicRead(url: string, remainingMs: number, sig
 
 /** Select complete pages under the original context budget. Oversized pages
  * stay in the immutable read. A partial context window never truncates a page. */
-export function publicDocumentPages(document: PublicReadDocument, retrievedAt: string, query?: string): WebPage[] {
+export function publicDocumentPages(document: PublicReadDocument, retrievedAt: string, query?: string, reviewedSections?: readonly string[]): WebPage[] {
   if (!validPublicDocument(document)) fail('invalid_web_reader_response', 502);
   const reviewed = reviewedPublicStandard(document);
   if (document.parseError && !reviewed) return [];
   const pdf = document.mediaType === 'application/pdf';
-  const originals = [...document.pages.filter(page => !page.status || page.status === 'text'), ...(reviewed?.transcripts ?? [])];
+  const originals = [...document.pages.filter(page => !page.status || page.status === 'text'), ...(reviewed?.transcripts.filter(page => !reviewedSections || reviewedSections.some(section => page.section.startsWith(section))) ?? [])];
   const pageLimit = reviewed ? 4 : sourceLimit;
   const candidates = originals.filter(page =>
     Buffer.byteLength(page.text) <= sourceTextBytes && page.text.trim().length >= (pdf ? 4 : 40)

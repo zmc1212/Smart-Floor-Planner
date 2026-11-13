@@ -1,8 +1,9 @@
+import { specialists } from '../assistant/specialists/registry';
 import { workflowIssue, type WorkflowIssue } from './errors';
 import { hasOwn, isJsonScalar } from './guards';
 import { WORKFLOW_BOUNDS, type JsonValue, type NodeType, type ValueType } from './types';
 
-export type CapabilityEffect = 'none' | 'read' | 'compose' | 'save' | 'deliver';
+export type CapabilityEffect = 'none' | 'read' | 'compose' | 'save' | 'deliver' | 'wait';
 
 export interface CapabilitySpec {
   readonly type: NodeType;
@@ -11,6 +12,7 @@ export interface CapabilitySpec {
   readonly inputs: Readonly<Record<string, ValueType>>;
   readonly outputs: Readonly<Record<string, ValueType>>;
   readonly configKeys: readonly string[];
+  readonly permission?: string;
 }
 
 /**
@@ -18,6 +20,42 @@ export interface CapabilitySpec {
  * reference these names; there is no HTTP, SQL, script or file capability.
  */
 export const capabilityCatalog: Readonly<Record<string, CapabilitySpec>> = {
+  'trigger.specialist_followup': {
+    type: 'trigger', typeVersion: 1, effect: 'none', configKeys: ['eventType'],
+    inputs: {}, outputs: { eventId: 'string', eventType: 'string', occurredAt: 'string' },
+  },
+  'read.specialist_project': {
+    type: 'project_data', typeVersion: 1, effect: 'read', configKeys: [], permission: 'project_progress',
+    inputs: {}, outputs: { project: 'object' },
+  },
+  'read.specialist_knowledge': {
+    type: 'knowledge_retrieval', typeVersion: 1, effect: 'read', configKeys: [], permission: 'knowledge',
+    inputs: { project: 'object' }, outputs: { enterprise: 'object' },
+  },
+  'read.specialist_public_standard': {
+    type: 'public_search', typeVersion: 1, effect: 'read', configKeys: [], permission: 'public_read',
+    inputs: {}, outputs: { publicStandard: 'object' },
+  },
+  'compose.stage_specialist': {
+    type: 'agent', typeVersion: 1, effect: 'compose', configKeys: ['agentId', 'agentVersion'],
+    inputs: { project: 'object', enterprise: 'object', publicStandard: 'object' }, outputs: { analysis: 'object', ready: 'boolean' },
+  },
+  'save.specialist_issue': {
+    type: 'create_issue', typeVersion: 1, effect: 'save', configKeys: [], permission: 'followup',
+    inputs: { record: 'object' }, outputs: { saved: 'boolean', saveReceipt: 'object' },
+  },
+  'wait.specialist_site_record': {
+    type: 'wait_event', typeVersion: 1, effect: 'wait', configKeys: [], permission: 'followup',
+    inputs: { project: 'object' }, outputs: { record: 'object' },
+  },
+  'wait.specialist_review': {
+    type: 'human_review', typeVersion: 1, effect: 'wait', configKeys: [], permission: 'followup',
+    inputs: { issue: 'object' }, outputs: { review: 'object' },
+  },
+  'deliver.specialist_result': {
+    type: 'output', typeVersion: 1, effect: 'deliver', configKeys: [],
+    inputs: { analysis: 'object', review: 'object' }, outputs: { delivered: 'boolean', deliveryReceipt: 'object' },
+  },
   'trigger.stage_changed': {
     type: 'trigger',
     typeVersion: 1,
@@ -202,6 +240,20 @@ export function validateCapabilityConfig(
   }
 
   switch (capabilityRef) {
+    case 'trigger.specialist_followup': {
+      if (config.eventType !== 'specialist_followup') {
+        issues.push(workflowIssue('invalid_trigger_config', `${path}.eventType`, 'specialist trigger requires eventType=specialist_followup'));
+      }
+      return;
+    }
+    case 'compose.stage_specialist': {
+      const selected = typeof config.agentId === 'string' && typeof config.agentVersion === 'number'
+        ? specialists.version(config.agentId, config.agentVersion) : undefined;
+      if (!selected || selected.status === 'draft') {
+        issues.push(workflowIssue('invalid_specialist', path, 'select a registered specialist version'));
+      }
+      return;
+    }
     case 'trigger.stage_changed': {
       if (config.eventType !== 'stage_changed') {
         issues.push(workflowIssue('invalid_trigger_config', `${path}.eventType`, 'stage trigger requires eventType=stage_changed'));

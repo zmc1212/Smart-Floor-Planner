@@ -14,6 +14,7 @@ import { withSynthesisRepairProtocol, synthesisRepairBase, finalAnswerRepairBase
 import { formalBusinessResultKeys } from './formal-business-repair';
 import { originalAnswerOnly, independentAdviceRequested } from './read-tool-input';
 import { numericCitationCandidates } from './citation-coverage';
+import { projectCitedAcceptanceCondition, projectUnconfirmedWaterproofAcceptance } from './formal-claim-scope';
 import { groundedNumberTokens, printedNumberSupported } from './prose-number-view';
 import { publicPdfSource } from './source-document';
 import { isReportAnswerSnapshot, reportQuestionCoverage } from './report-final';
@@ -61,7 +62,7 @@ export function unresolvedSynthesisConflict(sources: SynthesisSource[]) {
  * A bound repair instead ends with its fixed application task; the original
  * remains before the sources, never rewritten or persisted as a new turn.
  * Model context only: no new user message/run or second agent loop. */
-export function focusedSynthesisMessages(messages: ModelMessage[], triggerId: string, reportPlan?: SourceQuestionCoverage | null, preserveConversation = false, finalOnly = false): ModelMessage[] {
+export function focusedSynthesisMessages(messages: ModelMessage[], triggerId: string, reportPlan?: SourceQuestionCoverage | null, preserveConversation = false, finalOnly = false, preserveRecentQuestions = false): ModelMessage[] {
   const repairBase = synthesisRepairBase(messages);
   const repairTask = repairBase?.businessSourceOnly ? '当前是同轮唯一一次正式状态恢复，仅提交business_repair、绑定原稿的baseHash及已列出的resultKey，由原服务展示权威状态及边界。不写text／edits／append，不生成完成声明，不调用业务工具；实时来源或权限失效仍拒绝。'
     : repairBase?.businessResultKeys?.length ? '当前是同轮唯一一次最终修正。可用synthesis_repair按原稿hash独立编辑；若已读取的权威正式业务快照足以回答当前问题，可用business_repair及baseHash、已有resultKey交给原服务展示，不写text／edits／append或新完成声明。不调用业务工具，全部实时来源与权限仍重验。'
@@ -111,7 +112,7 @@ export function focusedSynthesisMessages(messages: ModelMessage[], triggerId: st
   const images = previous.filter(m => m.role === 'user' && m.content.some(p => p.type === 'image'));
   // The customer may refer to the last construction step or correct the room.
   // Keep their actual questions, without pulling old answers or their evidence.
-  const antecedents = sources.some(source => source.web?.document?.reviewedTextHash)
+  const antecedents = preserveRecentQuestions || sources.some(source => source.web?.document?.reviewedTextHash)
     ? previous.filter(m => !images.includes(m) && originalMessageId(m)).slice(-2) : [];
   const originals = new Map<string, string>();
   const historyFields = new Map<string, string>();
@@ -837,7 +838,10 @@ function checkedSynthesis(raw: string, sources: SynthesisSource[], context: Synt
       const missing = generalAdvice ? [] : unsupportedWordQuantities(numericText, cited.join('\n'));
       const passes = pending ? new Set(coatingPassQuantities(numericText)) : new Set<string>();
       if (missing.some(quantity => !passes.has(quantity))) fail('unsupported_model_commitment', 502);
-      parseAgentReply(JSON.stringify({ kind: 'general', text: s.text }), { formalStatusEvidence: formalStatusEvidence(s.citations, sources, context) });
+      const statusText = !context.specialistWaterproof ? s.text : s.basis === 'uncertainty'
+        ? projectUnconfirmedWaterproofAcceptance(s.text)
+        : projectCitedAcceptanceCondition(s.text, standardCitations.filter(c => c.standard.kind === 'standard_text').map(c => c.quote));
+      parseAgentReply(JSON.stringify({ kind: 'general', text: statusText }), { formalStatusEvidence: formalStatusEvidence(s.citations, sources, context) });
       if (pending && missing.length) pending.push({ segment: value.segments.indexOf(s), quantities: [...new Set(missing)] });
     } catch (error) {
       if (!rejected || !(error instanceof AssistantError) || error.code !== 'unsupported_model_commitment') throw error;

@@ -4,7 +4,7 @@ import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, fingerprint, safeText, type ActorContext, type MessageContent } from '@/lib/assistant/contracts';
 import { privateMemoryScope, type PrivateMemoryScope } from '@/lib/assistant/memory/scope';
 import { completionCriteria, delegationKinds, delegationRefresh, nextWake, outcome, statusText,
-  type ReviewDelegation, type DelegationKind, type DelegationOutcome, type DelegationScope, type DelegationStatus } from './delegation-state';
+  type ReviewDelegation, type DelegationKind, type DelegationOutcome, type DelegationScope, type DelegationStatus, type SpecialistWorkflowBinding } from './delegation-state';
 
 import { appendDelegationEvent } from './delegation-store';
 
@@ -82,7 +82,7 @@ function sourceAuthorizes(request: DelegationRequest, original: string) {
 export class DelegationService {
   constructor(private readonly tx: PostgresTransaction, private readonly scope: PrivateMemoryScope) {}
 
-  async create(messageId: string, request: DelegationRequest, now = new Date()) {
+  async create(messageId: string, request: DelegationRequest, now = new Date(), workflow?: SpecialistWorkflowBinding) {
     const { enterpriseId, ownerId, conversationId, projectId } = this.scope;
     if (!projectId) fail('delegation_project_required', 422);
     const source = await one(this.tx, sql`select content from app.assistant_messages where enterprise_id=${enterpriseId}
@@ -95,7 +95,7 @@ export class DelegationService {
       fail('delegation_room_required', 422);
     const subject = request.subject.trim();
     const scope: DelegationScope = { kind: request.kind, roomId: room ? String(room.id) : null,
-      roomName: room ? String(room.name) : '', subject, issueId: null };
+      roomName: room ? String(room.name) : '', subject, issueId: null, ...(workflow ? { workflow } : {}) };
     const dueAt = new Date(now.getTime() + 48 * 3600_000);
     if (request.dueAt) {
       // A model-supplied date must appear literally in the owner message. The
@@ -104,11 +104,12 @@ export class DelegationService {
       if (!Number.isFinite(date.getTime()) || date <= now || !original.includes(request.dueAt)) fail('delegation_due_date_unconfirmed', 422);
       dueAt.setTime(date.getTime());
     }
-    const operationKey = fingerprint({ projectId, kind: scope.kind, roomId: scope.roomId, subject: subject.normalize('NFKC').toLowerCase() });
+    const operationKey = fingerprint({ projectId, kind: scope.kind, roomId: scope.roomId, subject: subject.normalize('NFKC').toLowerCase(), ...(workflow ? { workflow: workflow.templateId } : {}) });
     await this.tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'native-delegation:' + enterpriseId + ':' + conversationId + ':' + operationKey},0))`);
     const existing = await one(this.tx, sql`select * from app.native_workflow_delegations
       where enterprise_id=${enterpriseId} and owner_id=${ownerId} and project_id=${projectId} and conversation_id=${conversationId}
-        and (scope - 'issueId')=(${delegationJson(scope)}::jsonb - 'issueId')
+        and (scope - 'issueId' - 'workflow')=(${delegationJson(scope)}::jsonb - 'issueId' - 'workflow')
+        and coalesce(scope#>>'{workflow,templateId}','')=${workflow?.templateId ?? ''}
         and (origin_message_id=${messageId} or current_status not in ('cancelled','completed'))
       order by (origin_message_id=${messageId}) desc,created_at desc,id limit 1 for share`);
     if (existing) {

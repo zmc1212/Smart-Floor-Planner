@@ -25,6 +25,7 @@ const NODE_TYPES: readonly NodeType[] = [
   'compose_content',
   'save_result',
   'deliver_inapp',
+  'project_data', 'knowledge_retrieval', 'public_search', 'agent', 'wait_event', 'human_review', 'create_issue', 'output',
 ];
 
 const nodeIdPattern = /^[a-z][a-z0-9_-]{1,63}$/;
@@ -155,8 +156,8 @@ function parseInputSchema(raw: unknown, path: string, issues: WorkflowIssue[]): 
   }
   checkKnownKeys(raw, INPUT_SCHEMA_KEYS, path, issues);
   const eventType = raw.eventType;
-  if (eventType !== 'stage_changed' && eventType !== 'period_report') {
-    issues.push(workflowIssue('invalid_input_schema', `${path}.eventType`, 'eventType must be stage_changed or period_report'));
+  if (eventType !== 'stage_changed' && eventType !== 'period_report' && eventType !== 'specialist_followup') {
+    issues.push(workflowIssue('invalid_input_schema', `${path}.eventType`, 'eventType must be stage_changed, period_report or specialist_followup'));
     return null;
   }
   if (eventType === 'period_report') {
@@ -430,7 +431,7 @@ export function validateDefinition(raw: unknown): ValidationResult {
       if (nodeOut.length > 1) {
         issues.push(workflowIssue('multiple_outgoing_edges', path, 'non-condition nodes have one outgoing edge'));
       }
-      if (nodeOut.length === 0 && node.type !== 'save_result' && node.type !== 'deliver_inapp') {
+      if (nodeOut.length === 0 && node.type !== 'save_result' && node.type !== 'deliver_inapp' && node.type !== 'output') {
         issues.push(workflowIssue('dangling_node', path, 'node output is not connected to a save or delivery node'));
       }
     }
@@ -508,12 +509,19 @@ export function validateDefinition(raw: unknown): ValidationResult {
   }
 
   const saveNodes = [...nodeMap.values()].filter((node) => node.type === 'save_result');
-  const deliverNodes = [...nodeMap.values()].filter((node) => node.type === 'deliver_inapp');
-  if (saveNodes.length === 0) {
+  const deliverNodes = [...nodeMap.values()].filter((node) => node.type === 'deliver_inapp' || node.type === 'output');
+  if (inputSchema?.eventType !== 'specialist_followup' && saveNodes.length === 0) {
     issues.push(workflowIssue('missing_save_node', '$.nodes', 'at least one save_result node is required'));
   }
   if (deliverNodes.length === 0) {
     issues.push(workflowIssue('missing_deliver_node', '$.nodes', 'at least one deliver_inapp node is required'));
+  }
+  const specialist = inputSchema?.eventType === 'specialist_followup';
+  for (const node of nodeMap.values()) {
+    const specialistNode = !['trigger', 'condition', 'read_materials', 'compose_content', 'save_result', 'deliver_inapp'].includes(node.type);
+    if (node.type !== 'trigger' && node.type !== 'condition' && specialistNode !== specialist) {
+      issues.push(workflowIssue('capability_event_mismatch', nodePath.get(node.nodeId) ?? '$.nodes', 'capability does not support this event type'));
+    }
   }
   for (const deliver of deliverNodes) {
     if ((outgoing.get(deliver.nodeId) ?? []).length > 0) {

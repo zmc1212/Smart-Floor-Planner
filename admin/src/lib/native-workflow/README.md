@@ -11,6 +11,14 @@ inside the existing assistant-worker tick. The pure core still does not connect
 a model, database, queue, scheduler, Worker, business write path or message
 channel; only the separate `live/` adapter does, under host identity.
 
+## I6.8 waterproof specialist (Limited)
+
+`waterproof-inspection-v1` accepts an explicit owner follow-up from the original C01 consultation. The existing definition store retains the draft and immutable published revision. The X6 editor at `/native-workflow` uses the existing typed ports, config validation and fixture simulator. `GET /api/native-workflow/runs/:runId/specialist-status` returns a redacted PostgreSQL Run for a platform administrator with current project access in the session tenant.
+
+The existing leased delegation consumer advances the compiled graph. Read nodes check Construction, authorized enterprise knowledge and the reviewed public PDF. The Agent node queues the same Assistant Worker, and `WAIT_EVENT` plus human review use the PostgreSQL Durable Task store. Construction issues and manager review retain their original service and outbox, with an explicit result in the original C01. New publications apply to new runs. See the [design and limits](../../../../docs/xiaok-waterproof-workflow.md).
+
+`waterproof-inspection-v1` 由原 C01 明确请求启动。草稿和不可变发布版本沿原 Store，X6 使用原有输入输出端口、校验、模拟与发布。真实运行调试按会话租户和项目权限查看脱敏概要。现有委托消费者推进 PostgreSQL Run，Agent 节点沿 Assistant 作业，现场资料与人工复核沿 Durable Task 等待。Construction 维护正式事项、复核与原咨询回传。新发布仅用于新运行。[架构与限制](../../../../docs/xiaok-waterproof-workflow.md)。
+
 Owner: B line (`codex/xiaok-native-workflow`). Shared migrations, dependencies,
 menus, the sole XiaoK plan and the bilingual module inventories' integration
 wiring remain owned by the integration lead.

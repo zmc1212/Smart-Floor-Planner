@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
-import { one, rows, type Row } from '@/db/repositories/assistant-repository';
+import { one, rows } from '@/db/repositories/assistant-repository';
 import { fingerprint } from '@/lib/assistant/contracts';
 import { syncSiteResults } from '@/lib/construction/site-results';
 import { delegationReceipt, delegationSummary } from './delegation-review-chat';
@@ -9,6 +9,7 @@ import { delegationExternalResult, delegationOwnerInput, delegationRefresh, dele
 import { appendDelegationEvent } from './delegation-store';
 import { delegationActor, reviewDelegationFromRow, reviewDelegationOrigin, linkReviewDelegationEvent, saveReviewDelegation, type ReviewDelegationEvent } from './delegation-review-store';
 import { observeDelegation } from './delegation-sources';
+import { advanceSpecialistDelegation } from './specialist-workflow';
 import { queueDelegationStaffNotice } from './delegation-staff';
 
 const batchSize = 12;
@@ -92,6 +93,16 @@ export async function applyReviewEvent(tx: PostgresTransaction, eid: string, eve
     if (event.type === 'construction.site.issue.result.v1' && event.payload.conversationId === d.conversationId
       && event.payload.customerId === d.ownerId) {
       await syncSiteResults(tx, delegationActor(d), origin, event.id);
+    }
+    if (d.scope.workflow) {
+      const next = await advanceSpecialistDelegation(tx, d, origin, event, now);
+      const before = { status: d.status, assignedTo: d.assignedTo, waitingFor: d.waitingFor, nextAction: d.nextAction, evidence: d.evidence };
+      const changed = fingerprint(before) !== fingerprint(next);
+      const saved = changed ? await saveReviewDelegation(tx, d, next, now) : d;
+      const notice = changed ? await delegationReceipt(tx, saved, d.id + ':' + event.id, delegationSummary(saved)) : null;
+      await linkReviewDelegationEvent(tx, d, saved, event.id, changed ? 'applied' : 'unchanged', { notice, evidence: next.evidence });
+      if (changed) applied++;
+      continue;
     }
     const result = await observe(tx, d, origin, event, true);
     if (!result.ok) throw new Error(result.record.error?.code ?? 'delegation_tool_failed');

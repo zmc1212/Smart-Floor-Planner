@@ -69,7 +69,7 @@ export function resolvePublishedTarget(
       `published ${definition.definitionId} accepts ${definition.inputSchema.eventType}, not ${event.eventType}`,
     );
   }
-  if (definition.inputSchema.eventType !== 'stage_changed' && definition.inputSchema.eventType !== 'period_report') {
+  if (definition.inputSchema.eventType !== 'stage_changed' && definition.inputSchema.eventType !== 'period_report' && definition.inputSchema.eventType !== 'specialist_followup') {
     throw new WorkflowOperationError(
       'live_event_type_unsupported',
       400,

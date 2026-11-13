@@ -138,6 +138,7 @@ export async function reviewDelegationNoticeAvailable(tx: PostgresTransaction, a
 }
 
 export async function currentDelegationView(tx: PostgresTransaction, d: ReviewDelegation) {
+  if (d.scope.workflow) return { ...d, ...await (await import('./specialist-workflow')).specialistDelegationReadback(tx, d) };
   const evidence = d.evidence;
   if (!evidence || ['owner_reply','external_result'].includes(evidence.type)) return d;
   const { observeDelegation } = await import('./delegation-sources');
@@ -159,6 +160,7 @@ export async function currentDelegationViews(tx: PostgresTransaction, delegation
 }
 
 export function delegationModelView(items: ReviewDelegation[]) {
-  return items.map(({ id, title, status, nextAction, dueAt, waitingFor, completionCriteria, version, evidence }) =>
-    ({ id, title, status, nextAction: nextAction || statusText[status], dueAt, waitingFor, completionCriteria, version, evidence }));
+  return items.map(({ id, title, status, nextAction, dueAt, waitingFor, completionCriteria, version, evidence, scope }) =>
+    ({ id, title, status, nextAction: nextAction || statusText[status], dueAt, waitingFor, completionCriteria, version, evidence, ...(scope.workflow ? { workflowRunId: 'specialist:' + id,
+      workflowVersion: scope.workflow.revision, workflowTemplateId: scope.workflow.templateId } : {}) }));
 }

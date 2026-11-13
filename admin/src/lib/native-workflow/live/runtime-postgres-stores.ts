@@ -19,9 +19,9 @@ import {
 } from './runtime-postgres-repository';
 import type { LiveRunRecord, LiveRunStore } from './types';
 
-export function createPostgresWorkflowRunStore(enterpriseId: string): LiveRunStore {
+export function createPostgresWorkflowRunStore(enterpriseId: string, bound?: PostgresTransaction): LiveRunStore {
   const transaction = <T>(operation: (tx: PostgresTransaction) => Promise<T>) =>
-    withTenantTransaction(enterpriseId, operation);
+    bound ? operation(bound) : withTenantTransaction(enterpriseId, operation);
   return {
     create: (record, writeGuard) => transaction(async (tx) => {
       assertRuntimeTenant(enterpriseId, record.enterpriseId);

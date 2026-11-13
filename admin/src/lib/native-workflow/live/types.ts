@@ -149,3 +149,7 @@ export class LiveOperationUnknownError extends Error {
     this.issue = issue;
   }
 }
+
+export class LiveOperationWaiting extends Error {
+  constructor(readonly code: string) { super(code); }
+}

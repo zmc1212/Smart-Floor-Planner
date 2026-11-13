@@ -14,6 +14,7 @@ type Issue = { issueId: string; revision: number; projectId: string; recordId: s
   materialVersion?: string; drawingGrantId?: string | null;
   requestMessageId?: string; requestHash?: string; requestText?: string;
   projectReview?: boolean;
+  specialistDelegationId?: string;
   confirmed?: boolean; confirmedAt?: string; confirmedBy?: string; confirmationReason?: string; rectifyingAt?: string; dismissedAt?: string; dismissReason?: string;
   /** A record item follows onsite work; a need item follows a customer's explicitly shared requirement. */
   sourceKind?: 'record' | 'need'; needGrantId?: string; customerId?: string; conversationId?: string };
@@ -202,7 +203,9 @@ export async function readSiteIssueBase(tx: PostgresTransaction, eid: string, pi
     ? !!need && need.projectId === pid && need.roomId === issue.roomId && need.roomName === issue.roomName
       && need.customerId === issue.customerId && need.conversationId === issue.conversationId && need.sourceHash === issue.sourceHash
     : !issue.requestMessageId || !!request && fingerprint(request.content) === issue.requestHash;
-  const valid = requestAvailable && (isNeed ? true : !!source && Number(source!.row.version) === issue.recordVersion && source!.hash === issue.sourceHash)
+  const specialistOrigin = issue.specialistDelegationId
+    ? await (await import('./specialist-issues')).specialistIssueOrigin(tx, eid, pid, issue.specialistDelegationId) : undefined;
+  const valid = requestAvailable && (!issue.specialistDelegationId || !!specialistOrigin) && (isNeed ? true : !!source && Number(source!.row.version) === issue.recordVersion && source!.hash === issue.sourceHash)
     && (!issue.materialVersion || materials?.version === issue.materialVersion);
   const owner = issue.ownerId && (!isNeed || issue.confirmed || await collaborationMember(tx, eid, pid, issue.ownerId) === 'designer')
     ? await effectiveOwner(tx, eid, pid, issue.ownerId) : null;
@@ -272,13 +275,24 @@ export async function handleSiteIssue(tx: PostgresTransaction, actor: ActorConte
 
 /** Trusted service input only. Natural actions reach here after the original
  * staff member confirms the exact persisted preview; model output alone cannot. */
+export async function openRecordIssue(tx: PostgresTransaction, eid: string, pid: string, recordId: string,
+  source: NonNullable<Awaited<ReturnType<typeof currentRecord>>>,
+  request: Pick<Issue, 'openedBy' | 'requestMessageId' | 'requestHash' | 'requestText' | 'projectReview' | 'specialistDelegationId' | 'customerId' | 'conversationId'>,
+  principal: ActorContext['principal'], correlationId: string) {
+  const issue: Issue = { issueId: '', revision: 1, projectId: pid, recordId, recordVersion: Number(source.row.version), sourceHash: source.hash,
+    sourceMessageId: String(source.row.source_message_id), roomId: String(source.row.room_id), roomName: String(source.row.room_name_snapshot),
+    ownerId: null, state: 'awaiting_owner', progressMessageId: null, action: 'open', ...request };
+  const event = (await one(tx, sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
+    values(${eid},'construction.site.issue.opened.v1','construction_site_record',${recordId},1,${JSON.stringify(principal)}::jsonb,${correlationId},${JSON.stringify(issue)}::jsonb) returning id`))!;
+  return (await readSiteIssue(tx, eid, pid, String(event.id)))!;
+}
+
 export async function executeSiteIssue(tx: PostgresTransaction, actor: ActorContext, pid: string, sourceMessageId: string, cmd: SiteIssueCommand, versions: SiteVersions, manage: boolean) {
   if (actor.principal.kind !== 'admin') fail('construction_forbidden', 403);
   const eid = actor.enterpriseId, aid = actor.principal.adminId;
   const collaboration = collaborationEnabled(eid);
   if (collaboration && cmd.action !== 'open') await readSiteIssueBase(tx, eid, pid, cmd.target);
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`site-material:${eid}:${pid}`},0))`);
-  let issue: Issue;
   if (cmd.action === 'open') {
     const existing = await one(tx, sql`select id from app.domain_event_outbox where enterprise_id=${eid} and type='construction.site.issue.opened.v1'
       and aggregate_type='construction_site_record' and aggregate_id=${cmd.target} and payload->>'projectId'=${pid}`);
@@ -292,14 +306,10 @@ export async function executeSiteIssue(tx: PostgresTransaction, actor: ActorCont
       on c.enterprise_id=m.enterprise_id and c.conversation_id=m.conversation_id where m.enterprise_id=${eid} and c.project_id=${pid}
         and m.id=${sourceMessageId} and m.author_kind='admin' and m.admin_id=${aid} for share of m`);
     if (!request) fail('context_changed');
-    issue = { issueId: '', revision: 1, projectId: pid, recordId: cmd.target, recordVersion: Number(source.row.version), sourceHash: source.hash,
-      sourceMessageId: String(source.row.source_message_id), roomId: String(source.row.room_id), roomName: String(source.row.room_name_snapshot),
-      openedBy: aid, ownerId: null, state: 'awaiting_owner', progressMessageId: null, action: 'open',
-      requestMessageId: sourceMessageId, requestHash: fingerprint(request.content), requestText: cmd.value.trim(),
-      ...(collaboration ? { projectReview: true } : {}) };
-    const event = (await one(tx, sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
-      values(${eid},'construction.site.issue.opened.v1','construction_site_record',${cmd.target},1,${JSON.stringify(actor.principal)}::jsonb,${sourceMessageId},${JSON.stringify(issue)}::jsonb) returning id`))!;
-    return (await readSiteIssue(tx, eid, pid, String(event.id)))!;
+    return openRecordIssue(tx, eid, pid, cmd.target, source, {
+      openedBy: aid, requestMessageId: sourceMessageId, requestHash: fingerprint(request.content), requestText: cmd.value.trim(),
+      ...(collaboration ? { projectReview: true } : {}),
+    }, actor.principal, sourceMessageId);
   }
   const previous = await issueData(tx, eid, pid, cmd.target); if (!previous) fail('construction_not_found', 404);
   if (versions.issues[cmd.target] !== previous.revision) fail('version_conflict');
@@ -309,7 +319,7 @@ export async function executeSiteIssue(tx: PostgresTransaction, actor: ActorCont
   if (previous.state === 'dismissed' && cmd.action !== 'resume') fail('context_changed');
   if (cmd.action === 'resume' && !['cancelled','dismissed'].includes(previous.state)) fail('context_changed');
   if (view.status === 'invalidated' && !['cancel','refresh'].includes(cmd.action)) fail('context_changed');
-  issue = { ...previous, revision: previous.revision + 1, action: cmd.action };
+  const issue: Issue = { ...previous, revision: previous.revision + 1, action: cmd.action };
   const design = previous.sourceKind === 'need';
   const projectReview = collaboration || design || previous.confirmed === true;
   const role = projectReview ? await collaborationMember(tx, eid, pid, aid) : null;

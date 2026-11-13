@@ -25,17 +25,20 @@ export function namedReviewedStandard(question: string) {
     : normalized.includes(item.standard.id) || question.includes(item.standard.name));
 }
 
+export const explicitStandardReference = (value: string) => !!idFrom(value.normalize('NFKC')) || /《[^》]+》/u.test(value);
+
+export const reviewedStandardTopic = (value: string) => reviewedStandards.find(item => item.topics.some(term => value.includes(term)));
+
 export function matchingReviewedStandard(question: string, precedingQuestions: string[]) {
   const named = namedReviewedStandard(question);
   if (named) return named;
-  if (/\b(?:GB|JGJ|DB\d|CJJ)[\s/T]*\d|《[^》]+》/iu.test(question)) return;
+  if (explicitStandardReference(question)) return;
   if (/(?:企业|公司)(?:的|自己|内部|资料|规定|做法|标准)/u.test(question)
     && !/公开|国家|国标|通用要求|通用规范/u.test(question)) return;
-  const topic = (value: string) => reviewedStandards.find(item => item.topics.some(term => value.includes(term)));
   // Short continuations may refer to the immediately preceding technical
   // subject. An independently named part or topic keeps its own retrieval.
-  return topic(question) ?? (/^(?:处理后|那(?:么)?之后|刚才说的是|之后|那什么时候|那做完后)/u.test(question)
-    ? topic(precedingQuestions.at(-1) ?? '') : undefined);
+  return reviewedStandardTopic(question) ?? (/^(?:处理后|那(?:么)?之后|刚才说的是|之后|那什么时候|那做完后)/u.test(question)
+    ? reviewedStandardTopic(precedingQuestions.at(-1) ?? '') : undefined);
 }
 
 /** A scan may contribute reviewed passages only for the actual publisher

@@ -124,6 +124,9 @@ function triggerPayload(plan: CompiledWorkflowPlan, event: TriggerEvent): Record
       stageLabel: event.stageLabel,
     };
   }
+  if (event.eventType === 'specialist_followup') {
+    return { eventId: event.eventId, eventType: event.eventType, occurredAt: event.occurredAt };
+  }
   if (event.periodKind !== plan.inputSchema.periodKind) {
     throw new WorkflowRuntimeError(
       'event_mismatch',
@@ -338,6 +341,20 @@ export function advance(plan: CompiledWorkflowPlan, state: WorkflowRunState, eve
   return { state: next, pending, trace };
 }
 
+/** Reconstruct the same operation from a persisted checkpoint. */
+export function pendingOperation(plan: CompiledWorkflowPlan, state: WorkflowRunState): PendingOperation | null {
+  if (state.status !== 'waiting' || !state.pendingNodeId) return null;
+  const node = ownValue(plan.nodes, state.pendingNodeId);
+  if (!node || node.effect === 'none') throw new WorkflowRuntimeError('invalid_plan', 'invalid pending node');
+  return {
+    nodeId: node.nodeId, nodeType: node.type, capabilityRef: node.capabilityRef,
+    nodeVersion: node.nodeVersion, effect: node.effect, input: resolveInputs(node, state.outputs),
+    ...(Object.keys(node.config).length ? { config: node.config } : {}),
+    mode: state.mode, simulation: state.mode === 'simulation',
+    idempotencyKey: `${plan.digest}:${state.runId}:${node.nodeId}`,
+  };
+}
+
 function pump(
   plan: CompiledWorkflowPlan,
   state: WorkflowRunState,
@@ -365,20 +382,9 @@ function pump(
     pushTrace(state, trace, at, 'node_started', node.nodeId, node.type, { nodeVersion: node.nodeVersion });
 
     if (node.effect !== 'none') {
-      const input = resolveInputs(node, state.outputs);
       state.status = 'waiting';
       state.pendingNodeId = node.nodeId;
-      pending.push({
-        nodeId: node.nodeId,
-        nodeType: node.type,
-        capabilityRef: node.capabilityRef,
-        nodeVersion: node.nodeVersion,
-        effect: node.effect,
-        input,
-        mode: state.mode,
-        simulation: state.mode === 'simulation',
-        idempotencyKey: `${plan.digest}:${state.runId}:${node.nodeId}`,
-      });
+      pending.push(pendingOperation(plan, state)!);
       pushTrace(state, trace, at, 'node_pending', node.nodeId, node.type, {
         effect: node.effect,
         nodeVersion: node.nodeVersion,
@@ -442,9 +448,9 @@ function route(
     return edge.to;
   }
   if (edges.length === 0) {
-    if (node.type === 'save_result' || node.type === 'deliver_inapp') {
+    if (node.type === 'save_result' || node.type === 'deliver_inapp' || node.type === 'output') {
       state.status = 'completed';
-      state.outcome = node.type === 'deliver_inapp' ? 'delivered' : 'saved';
+      state.outcome = node.type === 'save_result' ? 'saved' : 'delivered';
       pushTrace(state, trace, at, 'run_completed', completedNodeId, node.type, { outcome: state.outcome });
       return null;
     }

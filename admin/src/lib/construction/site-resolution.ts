@@ -204,14 +204,16 @@ export async function executeSiteResolution(tx: PostgresTransaction, actor: Acto
         where enterprise_id=${eid} and project_id=${pid} and state='completed'
         and tasks @> ${JSON.stringify([{ issueId: issue.issueId }])}::jsonb) on conflict do nothing`);
   }
-  if (plan && (data.projectReview || cmd.action === 'resolve' || cmd.action === 'close')) {
+  const specialist = issue.specialistDelegationId && !plan && (cmd.action === 'resolve' || cmd.action === 'close');
+  if (specialist || plan && (data.projectReview || cmd.action === 'resolve' || cmd.action === 'close')) {
     const disclosure = cmd.action === 'resolve' || cmd.action === 'close' ? { shareOriginals: cmd.originals, text: cmd.excerpt }
       : { shareOriginals: false, text: cmd.action === 'reopen' ? '事项已重新打开，等待项目团队处理。' : '施工已回传，等待项目经理复核。' };
     await tx.execute(sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
       values(${eid},'construction.site.issue.result.v1','construction_site_resolution',${issue.issueId},${data.revision},${JSON.stringify(actor.principal)}::jsonb,${messageId},
-        ${JSON.stringify({ projectId: pid, issueId: issue.issueId, revision: data.revision, issueRevision: issue.revision, conversationId: plan.conversationId,
-          customerId: plan.customerId, needGrantId: plan.needGrantId, materialVersion: plan.materialVersion, roomName: issue.roomName,
-          lifecycleId: String(event.id), planId: plan.id, planNumber: plan.number, evidenceId: data.evidenceId, state: data.state,
+        ${JSON.stringify({ projectId: pid, issueId: issue.issueId, revision: data.revision, issueRevision: issue.revision, conversationId: plan?.conversationId ?? issue.conversationId,
+          customerId: plan?.customerId ?? issue.customerId, needGrantId: plan?.needGrantId, materialVersion: plan?.materialVersion, roomName: issue.roomName,
+          lifecycleId: String(event.id), planId: plan?.id, planNumber: plan?.number, evidenceId: data.evidenceId, state: data.state,
+          ...(specialist ? { specialistDelegationId: issue.specialistDelegationId } : {}),
           ...disclosure })}::jsonb)`);
   }
   return { issueId: issue.issueId, revision: issue.revision, lifecycleId: String(event.id), lifecycleRevision: view.revision,

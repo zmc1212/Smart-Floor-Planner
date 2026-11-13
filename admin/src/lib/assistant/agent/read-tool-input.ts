@@ -67,11 +67,12 @@ export function explicitHumanHandoffRequested(text: string): boolean {
   return /找.{0,3}设计师|转人工|让设计师|设计师接着聊/.test(text) && !/不要|不想|不用|别|如果|假如|能否|是不是|“|「|"/.test(text);
 }
 
+// A public receipt cannot satisfy a request for the enterprise's own practice.
+export const companyPracticeRequested = (question: string) =>
+  /(?:本企业|你们公司|我们公司|公司自己)(?:的|内部)?[^。；\n]{0,18}(?:工艺|标准|规范|防水|施工|资料|规定)/u.test(question);
+
 export function knowledgeReadPending(question: string, messages: ModelMessage[], triggerId: string, required = false): boolean {
-  // An explicit company-source question needs a company read even when it
-  // also asks to compare a public original. A public receipt cannot satisfy it.
-  const companyPractice = /(?:本企业|你们公司|我们公司|公司自己)(?:的|内部)?[^。；\n]{0,18}(?:工艺|标准|规范|防水|施工|资料|规定)/u.test(question);
-  if (!required && !knowledgeOriginalRequested(question) && !companyPractice) return false;
+  if (!required && !knowledgeOriginalRequested(question) && !companyPracticeRequested(question)) return false;
   const start = messages.findIndex(message => originalMessageId(message) === triggerId);
   if (start < 0) return true;
   return !messages.some((message, index) => {
