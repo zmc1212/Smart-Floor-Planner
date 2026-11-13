@@ -496,4 +496,6 @@ Endpoint 使用该空间的 `https://dashscope.aliyuncs.com/compatible-mode/v1`�
 
 图像请求仍走原 `conversation-images-v1` 和同一 `AgentModelGateway`，未新增第二套网关、Provider 或生产默认值。`final_response` 的视觉分支新增可选 `observation` 信封（可见现象、可能问题、不可见内容、需补证据、可对应标准、可信程度、人工复核），服务端严格校验；模型可以选择不提交，正文仍按原 `kind`/`text` 合同保存。信封不能声明验收、放行或试验合格，也不能给出精确施工量数。
 
-本轮没有执行真实百炼调用：工作树无 `.env.local`，环境没有 `BAILIAN`/`DASHSCOPE` 变量，也没有运行中的隔离 Admin、Worker 或 Reader。真实工地照片验收为 `not_run`。I6.10 的目录命中、Responses/Chat Completions 图像探针、27 次请求回执与用量保持原状态，不重放、不记为零。[集成审查](xiaok-integration-audit.md#i611-防水专业决策可信度与真实工地验证limited)
+本轮已用本地开发库中加密的百炼配置（掩码 `sk-ws***mDW9`）在本轮新建的隔离库 `xiaok_r6_model_i611*` 上执行真实调用，未修改开发库或生产默认值。基础 Responses 请求 `69818dc5-4ffd-9b5b-b5f7-b8ea651c5a24` 通过，75/213 tokens，实际 `deepseek-v4.1-flash-1017`。固定对话 A–F 共 9 个回答保存，20 次供应商尝试，101,458 输入 / 4,140 输出 / 56,320 缓存输入 tokens，请求 ID 与实际模型齐全，unknown 0，结算金额未返回。场景 C 的公网原文读取未成功，答案保存为不确定；未重放。
+
+高分辨率图像探针和产品照片分析使用隔离库中的合成获权图（480×360 JPEG，3,843 字节），请求 `7e764e92-872f-9c09-a775-14d15de4efe1`，501/155 tokens（缓存 256），实际模型为 `deepseek-v4.1-flash-1017`。给 `final_response` 增加 `observation` 字段时，DeepSeek Flash 的 Responses/Chat 请求返回 `Invalid Responses API frame` 或 HTTP 400；恢复原 `kind`/`text` 工具 schema 后图像调用通过。因此结构化信封只保留服务端校验器与离线测试，不宣称模型已稳定产出该信封。真实工地照片仍为 `not_run`，合成图不作为真实工地通过。[集成审查](xiaok-integration-audit.md#i611-防水专业决策可信度与真实工地验证limited)

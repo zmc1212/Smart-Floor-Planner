@@ -260,6 +260,8 @@ I5 验收以 `b612ea0692acc5fac62ca8487029196bec7809cb` 为基线，测试前后
 - 新增 `specialist-photo-analysis-v1` 信封：`visibleObservations`、`possibleIssues`、`notObservable`、`requiredEvidence`、`applicableStandards`、`confidence`、`needsHumanReview`。照片分析不得声明验收、放行或试验合格，不得给出精确施工量数；存在可能问题时必须人工复核并列出补充证据。解析严格失败关闭。
 - Construction 原件、上传人员、项目/房间、原件 Hash、发布版本和撤权继续沿现有链路；不复制原图到公共知识库，日志不保存图片访问凭证。
 - **真实工地验收 not_run。** 隔离库 `xiaok_r6_model_i69` 与 `xiaok_r6_acceptance_i67` 的项目均明确标记「合成」，现场媒体为 112×80 或 480×360、约 3.7KB 的合成图；没有可合法使用的真实工地照片。I6.10 的合成图能力证据保留，不转为本轮真实工地通过。
+- **真实模型图像测试（合成获权图）passed。** 从隔离库读取卫生间记录原件（480×360 JPEG、3,843 字节、记录版本 3），经原 `conversation-images-v1` 和 Chat Completions 发送，实际模型 `deepseek-v4.1-flash-1017`，请求 `7e764e92-872f-9c09-a775-14d15de4efe1`，501 输入 / 155 输出 / 256 缓存输入 tokens。模型只描述可见的灰蓝色圆形和棕色弧线，未给验收或量数结论。证明的是合成图能力与权限链路，不替代真实工地。
+- **结构化照片信封限制。** 给 `final_response` 增加 `observation` 字段后，DeepSeek Flash 的 Responses/Chat 请求出现 `Invalid Responses API frame` 或 HTTP 400；恢复原 `kind`/`text` 工具 schema 后图像调用恢复。因此本轮保留服务端信封校验器和测试，但不把模型产出的结构化信封计为通过；产品图像路径继续使用 text。首次失败请求 `456e60ca…`、`eec23e91…` 等保留在 `admin/tmp/i6.11/photo-live-0*.log`。
 
 ### I6.11.4 防水检查清单
 
@@ -313,7 +315,23 @@ I5 验收以 `b612ea0692acc5fac62ca8487029196bec7809cb` 为基线，测试前后
 | K 真实施工照片 | 可见现象与不可见项 | 获权照片 | 验收/精确量数 | 需人工 |
 | L 防水检查清单 | 绑定来源与状态 | 本答案引用 | 已正式复核 | 需人工 |
 
-- **not_run。** 当前工作树无 `.env.local`，环境无 `BAILIAN`/`DASHSCOPE`/`DATABASE` 变量，也没有运行中的隔离 Admin、Worker 或 Reader；无法发起百炼 `bailian / deepseek-flash / deepseek-v4.1-flash-1017` 真实调用，也无法执行 Stable 390×844 四端旅程。未使用模拟结果冒充真实模型或业务通过，每个新语义机制的两轮实模上限未消耗。I6.10 的 27 次真实回执、Stable 截图与清单重进证据保持原状态。
+隔离环境为本轮新建的 `xiaok_r6_model_i611`、`i611b`、`i611c`、`i611d`、`i611e`、`i611f`，均位于 `sfp-xiaok-i67-test` 容器，使用本地开发库中已加密的百炼配置（掩码 `sk-ws***mDW9`）和隔离 `JWT_SECRET`；未修改开发库或生产配置。每个场景使用全新空库并执行迁移 `0124–0127`。
+
+| 场景 | 结果 | 真实回执 |
+| --- | --- | --- |
+| A 施工前准备/管根/后续工序 | passed，3/3 保存 | runs 3–5，请求 `32aaa235…`、`8b663028…` 等 |
+| B 企业标准与公开对比 | passed，1/1 保存 | run 3，企业与一般建议分开 |
+| C 标准现行性/旧房适用 | limited，1/1 保存 | 公网原文未读取，模型明确无法确认，未编造 |
+| D 厨房更正卫生间 | passed，2/2 保存 | runs 3–4，更正轮按卫生间记录 |
+| E 主卧实际进度 | passed，1/1 保存 | run 3，读取主卧待核对记录，排除厨房 |
+| F 企业资料缺项 | passed，1/1 保存 | run 3，明确企业未写闭水时长和高度 |
+| K 合成获权照片 | passed（合成图） | `7e764e92…`，只描述可见图形 |
+| L 检查清单 | passed（真实保存稿） | 4 项：3 通用建议 + 1 资料缺失，1 项带来源，1 项需人工 |
+
+- 基础 Responses 调用：`69818dc5-4ffd-9b5b-b5f7-b8ea651c5a24`，75 输入 / 213 输出，实际 `deepseek-v4.1-flash-1017`。
+- 对话与照片合计 20 次供应商尝试、101,458 输入、4,140 输出、56,320 缓存输入 tokens；全部有请求 ID、实际模型和观察用量，unknown 0，结算金额未返回。
+- 失败保留：首次对话未加载 `.env.local` 导致 `DATABASE_URL is required`；照片工具加入结构化字段后出现 `Invalid Responses API frame`/HTTP 400，恢复原 schema 后通过；场景 C 公网读取失败；均未重放或改写成通过。
+- **I6.11.7 Stable still not_run。** 没有运行中的 Stable 控制器、隔离 Admin/Worker 和自动化窗口，未执行 390×844 四端旅程；I6.10 的 Stable 截图、清单重进和经理结果证据保持原状态，不转为本轮通过。
 
 ### 工程质量
 
