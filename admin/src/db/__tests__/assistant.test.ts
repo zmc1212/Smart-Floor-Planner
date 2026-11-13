@@ -57,7 +57,8 @@ after(async () => {
 async function conversation() { return String((await service.create('create-' + crypto.randomUUID())).id); }
 async function pending() {
   const c = await conversation(); const r = await service.send(c, crypto.randomUUID(), content());
-  const lease = await claimJob(); assert.ok(lease); assert.equal(lease.runId, r.runId);
+  const lease = await claimJob({ enterpriseId: a.enterpriseId, runId: String(r.runId) });
+  assert.ok(lease); assert.equal(lease.runId, r.runId);
   return { c, r, lease: lease as Lease };
 }
 test('A01/A02 tenant RLS, same-tenant membership, global customer identity and composite FKs', async () => {
@@ -121,7 +122,8 @@ test('A05 two distinct simultaneous sends commit exactly one message/run', async
 test('A06 lease recovery before provider dispatch fences stale worker and preserves IDs', async () => {
   const { r, lease } = await pending();
   await withTenantTransaction(a.enterpriseId, tx => tx.execute(sql`update app.assistant_jobs set lease_expires_at=now()-interval '1 second' where id=${lease.jobId}`));
-  const next = await claimJob(); assert.ok(next); assert.equal(next.runId, lease.runId); assert.notEqual(next.token, lease.token);
+  const next = await claimJob({ enterpriseId: a.enterpriseId, runId: lease.runId });
+  assert.ok(next); assert.equal(next.runId, lease.runId); assert.notEqual(next.token, lease.token);
   await assert.rejects(completeRun(lease, { content: content('late'), usage: null }), /context_changed/);
   await heartbeat(next);
   const messageId = await completeRun(next, { content: content('test adapter response'), usage: null });
@@ -132,7 +134,7 @@ test('A06 provider dispatch crash becomes indeterminate, never reclaims or autom
   const { r, lease } = await pending(); await markProviderStarted(lease);
   await assert.rejects(markProviderStarted(lease), /context_changed/);
   await withTenantTransaction(a.enterpriseId, tx => tx.execute(sql`update app.assistant_jobs set lease_expires_at=now()-interval '1 second' where id=${lease.jobId}`));
-  assert.equal(await claimJob(), null);
+  assert.equal(await claimJob({ enterpriseId: a.enterpriseId, runId: lease.runId }), null);
   assert.equal((await service.run(String(r.runId))).status, 'indeterminate');
   await assert.rejects(service.run(String(r.runId), 'retry', 'unknown-retry'), /context_changed/);
   const reservation = await withTenantTransaction(a.enterpriseId, tx => one(tx, sql`select status from app.assistant_quota_reservations where run_id=${lease.runId}`));
@@ -341,7 +343,8 @@ test('E06 summary adapter reuses run and final appender without a trigger user m
   const c = await conversation();
   const actor = { ...a, capabilities: [...a.capabilities, 'assistant.run.internal'] };
   const r = await startInternalRun(actor, c, { kind: 'scheduled_task', occurrenceKey: 'test-digest-1' }, 'digest', 'digest-1');
-  const lease = await claimJob(); assert.ok(lease); assert.equal(lease.runId, r.runId);
+  const lease = await claimJob({ enterpriseId: a.enterpriseId, runId: String(r.runId) });
+  assert.ok(lease); assert.equal(lease.runId, r.runId);
   const facts = await new ContextRegistry().register('test-digest', { authorize: async () => true,
     resolve: async (_, ref) => [{ ref, text: '今日量房 2 次', hash: 'facts-v1' }] }).resolve(actor, { type: 'test-digest', id: '1', version: '1' });
   await completeRun(lease, { content: content(facts[0].text), usage: null });
@@ -349,14 +352,28 @@ test('E06 summary adapter reuses run and final appender without a trigger user m
 });
 test('A06 separate worker process exits after durable claim; next process recovers same run', async () => {
   const c = await conversation(); const r = await service.send(c, 'process-crash', content());
+  const scope = { enterpriseId: a.enterpriseId, runId: String(r.runId) };
   const child = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e',
-    "import queue from './src/lib/assistant/infrastructure/job-queue.ts'; const lease=await queue.claimJob(); console.log(JSON.stringify(lease)); process.exit(0);"],
+    "import queue from './src/lib/assistant/infrastructure/job-queue.ts'; const lease=await queue.claimJob(JSON.parse(process.argv[1])); console.log(JSON.stringify(lease)); process.exit(0);",
+    JSON.stringify(scope)],
     { cwd: process.cwd(), env: process.env, encoding: 'utf8', timeout: 15000 });
   assert.equal(child.status, 0, child.stderr);
   const old = JSON.parse(child.stdout.trim()) as Lease; assert.equal(old.runId, r.runId);
   await withTenantTransaction(a.enterpriseId, tx => tx.execute(sql`update app.assistant_jobs set lease_expires_at=now()-interval '1 second' where id=${old.jobId}`));
-  const lease = await claimJob(); assert.ok(lease); assert.equal(lease.runId, old.runId); assert.notEqual(lease.token, old.token);
+  const lease = await claimJob(scope); assert.ok(lease); assert.equal(lease.runId, old.runId); assert.notEqual(lease.token, old.token);
   await failRun(lease, 'retrieval_unavailable');
+});
+test('A06 two workers contend for the same fixture job and only the holder can complete it', async () => {
+  const c = await conversation();
+  const sent = await service.send(c, 'worker-contention', content());
+  const scope = { enterpriseId: a.enterpriseId, runId: String(sent.runId) };
+  const claims = await Promise.all([claimJob(scope), claimJob(scope)]);
+  const leases = claims.filter((claim): claim is Lease => claim !== null);
+  assert.equal(leases.length, 1);
+  assert.equal(leases[0].runId, sent.runId);
+  await assert.rejects(completeRun({ ...leases[0], token: crypto.randomUUID() }, { content: content(), usage: null }), /context_changed/);
+  await completeRun(leases[0], { content: content('服务处理完成。'), usage: null });
+  assert.equal((await service.run(String(sent.runId))).status, 'succeeded');
 });
 test('independent worker script calls authenticated handler, persists health and restarts', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'assistant-worker-test-'));
