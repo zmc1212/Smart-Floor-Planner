@@ -18,6 +18,55 @@ Nginx只增加测试API/H5/媒体路径；原站有私有备份，nginx -t/平�
 **2026-11-11 网关 r3（20261111-site-1）—— SD 稳定身份已部署，有界 Implemented。** 已部署试验环境的诊断结论：摄像头全程在线（核验窗口 11-06→11-11 每天都在推进），服务器容器从未停机；问题在 r3 之前的旧身份指纹把 GB28181 注册时间戳算进哈希，该摄像头每约 15 分钟重新注册一次，窗口链每天断约 110 次，SD 可回放范围永远只有最近约 15 分钟。用户重新加回专用 SSH 密钥后，按顺序落地：sd-clock 探针升级为稳定身份（identity v2，哈希排除 registerTimeStamp）、试验库 `camera_trial` 先备份（`before-0120.dump`）再应用迁移 `0120_construction_camera_sd_identity_version.sql`、然后部署以 HEAD `c190fd3f` 构建的网关 r3（287 个受管 bundle 输入逐字节验证等于该提交；Dockerfile 与 16 个 H5 公开资源逐字节复用 r2，页面哈希不变）。仅重建网关容器，其余 30 个容器无漂移，自动回滚护栏未触发。全部 484 行窗口一次性重基为 `identity_version=1`、单一稳定指纹；随后窗口链跨过一次重注册周期连续运行 20+ 分钟、60 秒核对持续成功（旧机制下不可能），零新窗口行。按上海日期实测可回放：11-06 18:31 起共六天（11-06 至 11-11，每天 15–17 段设备真实录像）；11-05 及更早设备已无片段（循环覆盖）。未知项：摄像头确切卡容量/码率、以及换用其他设备时单个核对失败周期是否仍可能切分窗口，均未测量。凭证：[部署](../tmp/cloud-site-trial-r3-20261111/deployment.json)、[部署后探测](../tmp/cloud-site-trial-r3-20261111/post-deploy-probe.json)、[构建清单](../tmp/cloud-site-trial-r3-20261111/gateway-candidate.json)。专用 SSH 密钥在验证完成后已再次撤销。
 <!-- /cloud-camera-phone-trial -->
 
+## 企业 1 线上演示环境
+
+Admin `20261113-001` 为企业 `1` 提供带演示标记的项目 `1` 和 12 套作品。
+小K已在企业 `1` 启用，使用平台共享文字模型配置（`dashscope`、
+`deepseek-v4.1-flash-1017`）。4 份 PPT 工艺资料通过现有 pgvector 链路和
+`text-embedding-v4` 完成索引，保留为员工草稿。
+
+`sfp-construction-camera-production` 监听 `127.0.0.1:33418`，使用正式库，
+通过 `sfp-wvp-cloud_default` 连接 WVP。运行文件位于
+`/datas/smartfloor/camera-runtime/`。Nginx 摄像头片段与
+`sfp-construction-camera-production-map.conf` 将企业 `1` 的会话路由到此网关。
+换票在正式网关返回 `401` 后交给原试用网关。两个网关各自校验票据和会话。
+项目 `1` 绑定一台摄像头，演示业主具备仅观看权限。业主视频入口、员工会话和
+匿名拒绝均已验证。WVP 报告通道离线，实际点播返回 `502`，画面仍待验证。
+
+发布或回滚重建 `smart-floor-planner-admin` 后，检查其 Docker 网络，必要时重新接入 WVP：
+
+```sh
+docker network connect sfp-wvp-cloud_default smart-floor-planner-admin
+curl -fsS http://127.0.0.1:33418/camera-gateway-health
+```
+
+当前发布包的 Compose 文件未管理这条网络连接。接回后复查授权视频入口。
+写入前的数据库归档与原摄像头配置位于
+`/datas/smartfloor/backups/tenant1-demo-20261113/`。如需回退摄像头路由，
+恢复原 Nginx 片段并移除正式摄像头映射，再执行 `nginx -t && nginx -s reload`，
+然后停止正式摄像头网关。
+
+### 企业 1 体验版作品私有图
+
+华东 `z0` 私有空间 `sfp-zly-portfolio-demo-20261113` 保存已发布演示作品
+`1`–`12` 引用的 144 张 JPEG 副本，逐张与原件核对。对象键绑定不可变的作品、
+资产编号和内容指纹。原图记录和公开媒体存储配置继续服务已有客户端。
+七牛凭据沿用现有加密配置。
+
+`sfp-portfolio-kodo` 通过线上 Admin 镜像和正式库运行，监听 `127.0.0.1:33419`。
+正式 HTTPS 站点的 `sfp-portfolio-kodo.conf` 提供
+`GET /api/miniprogram/assistant/conversations/:id/portfolio/works/:workId/assets/:assetId/kodo?versionId=…`。
+网关先校验当前咨询和准确的发布版本，再用 60 秒七牛 S3 签名读取 JPEG，
+通过已配置的小程序下载域名传输，每次请求均重新鉴权。已验证 144 张授权读回
+与原图相同，匿名、他客、错作品及旧版本拒绝。原二进制和 Base64 接口仍可用。
+本次无需重启 Admin 和摄像头容器。
+
+以 `node admin/deployment/portfolio-kodo/build.mjs <输出目录>` 打包，运行依赖
+`aws4@1.13.2`。服务器运行文件在 `/datas/smartfloor/portfolio-kodo/`，原 Nginx
+配置和验证回执在 root 私有目录 `/datas/smartfloor/backups/tenant1-portfolio-kodo/`。
+回退时移除作品网关的 include 和片段，运行 `nginx -t && nginx -s reload` 后
+停止 `sfp-portfolio-kodo`。体验版会回退原鉴权 JPEG 接口，私有对象留存以便核验和重新接入。
+
 ## 独立 WVP 试部署包
 
 用户已授权在 `124.70.90.30` 独立新装 WVP/ZLM、MySQL、Redis、只读容量探针，

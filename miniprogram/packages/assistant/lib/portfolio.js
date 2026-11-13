@@ -1,7 +1,7 @@
 const { AssistantClient, errorCopy, uncertain } = require('./client');
 const { toursForView } = require('./tour');
 const { designerAvatarPath } = require('../../../utils/designer-avatar');
-const { downloadFile } = require('../../../utils/api');
+const { downloadFile, ACTIVE_API_ENVIRONMENT } = require('../../../utils/api');
 const ID = /^[1-9]\d{0,18}$/;
 const pathFor = id => `/conversations/${encodeURIComponent(id)}/portfolio`;
 const savedEntryKey = 'assistant-portfolio-reentry-v1';
@@ -29,7 +29,9 @@ function textList(values, max, length) {
 }
 
 class PortfolioImages {
-  constructor(client, download = downloadFile) { this.client = client; this.download = download; this.epoch = 0; this.paths = []; }
+  constructor(client, download = downloadFile, environment = ACTIVE_API_ENVIRONMENT) {
+    this.client = client; this.download = download; this.environment = environment; this.epoch = 0; this.paths = [];
+  }
   clear(retain = []) {
     this.epoch += 1;
     this.paths = this.paths.filter(filePath => {
@@ -41,8 +43,17 @@ class PortfolioImages {
   async load(conversationId, work, assetId) {
     if (![conversationId, work.id, work.versionId, assetId].every(v => ID.test(String(v)))) throw { code: 'invalid_response' };
     const epoch = this.epoch;
-    const { tempFilePath } = await this.download(`/miniprogram/assistant${pathFor(conversationId)}/works/${work.id}/assets/${assetId}?versionId=${work.versionId}`,
-      { suppressUnauthorized: true });
+    const path = `/miniprogram/assistant${pathFor(conversationId)}/works/${work.id}/assets/${assetId}`;
+    const query = `?versionId=${work.versionId}`;
+    if (this.environment === 'production' && Number(work.id) <= 12) {
+      try {
+        const { tempFilePath } = await this.download(`${path}/kodo${query}`, { suppressUnauthorized: true, timeout: 9000 });
+        return this.keepFile(tempFilePath, epoch);
+      } catch (error) {
+        if (epoch !== this.epoch || [401, 403, 422].includes(error.statusCode)) throw error;
+      }
+    }
+    const { tempFilePath } = await this.download(path + query, { suppressUnauthorized: true });
     return this.keepFile(tempFilePath, epoch);
   }
   async loadPortrait(conversationId, authorId) {

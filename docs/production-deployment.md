@@ -21,6 +21,66 @@ The trial now selects the existing password state from /camera-test-api without 
 **2026-11-11 gateway r3 (20261111-site-1) — stable SD identity deployed, bounded Implemented.** Diagnosis on the deployed trial: the camera stayed online the whole time (verified windows advanced daily 11-06→11-11) and server containers never stopped; the pre-r3 legacy identity hash included the GB28181 registration timestamp, so the camera's ~15-minute re-registration cycle broke the verified window chain ~110 times/day and replayable SD coverage never exceeded the last ~15 minutes. The user re-added the dedicated SSH key; the deployed trial then received, in order: the stable sd-clock probe (identity v2, registerTimeStamp excluded from the hash), migration `0120_construction_camera_sd_identity_version.sql` on `camera_trial` (fresh `before-0120.dump` first), and gateway r3 built from HEAD `c190fd3f` (287 tracked bundle inputs byte-verified against the commit; r2's Dockerfile and all 16 public H5 assets reused byte-exact, page hash unchanged). Only the gateway container was recreated; the other30 containers show no drift, and the automatic rollback guard did not trigger. All 484 window rows rebased once to `identity_version=1` with a single stable hash; the window chain then ran continuously for 20+ minutes across a re-registration cycle with the 60-second checker succeeding (previously impossible), zero new window rows. Replayed coverage verified per Shanghai day: 11-06 18:31 onward = six days (11-06 through 11-11,15–17 real device clips per day); 11-05 and earlier return no device footage (loop overwrite). Unknowns: the camera's exact card size/bitrate, and whether single failed checker cycles can still split windows under a different device, remain unmeasured. Receipts: [deployment](../tmp/cloud-site-trial-r3-20261111/deployment.json), [post-deploy probe](../tmp/cloud-site-trial-r3-20261111/post-deploy-probe.json), [build manifest](../tmp/cloud-site-trial-r3-20261111/gateway-candidate.json). The dedicated SSH key was revoked again after verification.
 <!-- /cloud-camera-phone-trial -->
 
+## Enterprise 1 production demo
+
+Admin `20261113-001` serves the labelled demo project `1` and the 12 demo
+portfolio works for enterprise `1`. XiaoK is enabled for enterprise `1` and
+uses the shared platform text configuration (`dashscope`,
+`deepseek-v4.1-flash-1017`). Four PPT craftsmanship drafts are indexed through
+the existing pgvector pipeline with `text-embedding-v4` and remain staff drafts.
+
+`sfp-construction-camera-production` listens on `127.0.0.1:33418`, uses the
+production database, and connects to WVP on `sfp-wvp-cloud_default`. Its runtime
+files are in `/datas/smartfloor/camera-runtime/`. The Nginx camera snippet and
+`sfp-construction-camera-production-map.conf` route enterprise `1` sessions to
+this gateway. Ticket exchange uses the existing trial gateway after a production
+`401`. Both gateways verify their own tickets and sessions. Project `1` has one
+camera binding with view-only access for its demo owner. The owner video entry,
+staff session and anonymous rejection were verified. WVP reported the channel
+offline and the live attempt returned `502`. Playback remains unverified.
+
+After a release or rollback recreates `smart-floor-planner-admin`, check its
+Docker networks and reattach it to WVP if needed:
+
+```sh
+docker network connect sfp-wvp-cloud_default smart-floor-planner-admin
+curl -fsS http://127.0.0.1:33418/camera-gateway-health
+```
+
+The current release Compose file does not manage that attachment. Verify the
+authorized video entry after reattaching. The pre-seed database archive and
+prior camera configuration are under
+`/datas/smartfloor/backups/tenant1-demo-20261113/`. To undo the camera routing,
+restore the prior Nginx snippet and remove the production camera map, then run
+`nginx -t && nginx -s reload` before stopping the production camera gateway.
+
+### Private portfolio images for the enterprise 1 trial
+
+The private Kodo bucket `sfp-zly-portfolio-demo-20261113` in `z0` holds 144
+verified copies of the JPEGs referenced by published demo works `1`–`12`.
+The migration uses immutable work/asset identifiers and content fingerprints.
+The original image records and public media storage configuration remain
+available to existing clients. The account credentials stay in the existing
+encrypted Qiniu profile.
+
+`sfp-portfolio-kodo` runs on `127.0.0.1:33419` with the live Admin image and
+production database. The HTTPS site includes `sfp-portfolio-kodo.conf` for
+`GET /api/miniprogram/assistant/conversations/:id/portfolio/works/:workId/assets/:assetId/kodo?versionId=…`.
+The gateway verifies the current consultation and exact publication, then
+downloads the JPEG using a 60-second Kodo S3 signature. Streaming it through
+the approved Mini Program download domain keeps access checks on every request.
+All 144 authenticated reads matched their originals. Anonymous, other-user,
+wrong-work and old-version requests were denied. Existing binary/Base64 reads
+remain available. The existing Admin and camera containers were not restarted.
+
+Build using `node admin/deployment/portfolio-kodo/build.mjs <output>` and install
+`aws4@1.13.2` alongside the bundle. Server runtime files are under
+`/datas/smartfloor/portfolio-kodo/`. The root-only previous Nginx configuration
+and verification receipts are under `/datas/smartfloor/backups/tenant1-portfolio-kodo/`.
+For rollback remove the portfolio include and snippet, run `nginx -t && nginx -s reload`,
+then stop `sfp-portfolio-kodo`. The trial client falls back to the authenticated
+JPEG endpoint. Retain the private objects for verification or an approved reentry.
+
 ## Standalone WVP trial bundle
 
 The user authorized a fresh WVP/ZLM/MySQL/Redis/read-only capacity stack on

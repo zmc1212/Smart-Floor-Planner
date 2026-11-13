@@ -188,14 +188,24 @@ export class PortfolioCatalog {
     });
   }
   image(workId: string, versionId: string, assetId: string) {
+    return this.authorizedImage(workId, versionId, assetId, 'bytes');
+  }
+  imageHash(workId: string, versionId: string, assetId: string) {
+    return this.authorizedImage(workId, versionId, assetId, 'hash');
+  }
+  private authorizedImage(workId: string, versionId: string, assetId: string, representation: 'hash'): Promise<string>;
+  private authorizedImage(workId: string, versionId: string, assetId: string, representation: 'bytes'): Promise<Buffer>;
+  private authorizedImage(workId: string, versionId: string, assetId: string, representation: 'hash' | 'bytes') {
     id(workId); id(versionId); id(assetId);
     return this.authorized(async tx => {
       const candidate = (await portfolioCandidates(tx, this.actor.enterpriseId, { workId }))[0];
       if (!candidate || candidate.work.versionId !== versionId || ![...candidate.work.images.map(image => image.assetId),
         candidate.work.planComparison?.originalAssetId, candidate.work.planComparison?.designAssetId].includes(assetId)) fail('portfolio_not_found', 404);
-      const asset = await one(tx, sql`select image_base64 from app.portfolio_assets where enterprise_id=${this.actor.enterpriseId} and work_id=${workId} and id=${assetId}`);
+      const column = representation === 'hash' ? 'content_hash' : 'image_base64';
+      const asset = await one(tx, sql`select ${sql.identifier(column)} as value from app.portfolio_assets where enterprise_id=${this.actor.enterpriseId} and work_id=${workId} and id=${assetId}`);
       if (!asset) fail('portfolio_not_found', 404);
-      return Buffer.from(String(asset.image_base64), 'base64');
+      const value = String(asset.value);
+      return representation === 'hash' ? value : Buffer.from(value, 'base64');
     });
   }
 }
