@@ -50,6 +50,8 @@ import {
 import type { PeriodReportRunObservation } from '@/lib/native-workflow/live/period-report-status';
 import type { PublishedWorkflowVersion, WorkflowDefinitionRecord } from '@/lib/native-workflow/store/types';
 import type { WorkflowFixtureSetSummary } from '@/lib/native-workflow/fixtures/catalog';
+import { validateDefinition } from '@/lib/native-workflow/validate';
+import { createWaterproofInspectionDefinition } from '@/lib/native-workflow/specialist-template';
 import { NativeWorkflowCanvas } from '@/components/admin/native-workflow-canvas';
 import { NativeWorkflowSpecialistStatus } from '@/components/admin/native-workflow-specialist-status';
 import { notify } from '@/components/admin/operation-feedback';
@@ -164,6 +166,7 @@ function NativeWorkflowDetailPageInner() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [issues, setIssues] = useState<DefinitionIssue[]>([]);
+  const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [simulating, setSimulating] = useState(false);
@@ -478,6 +481,24 @@ function NativeWorkflowDetailPageInner() {
   const schema = record.draft.definition.inputSchema;
   const specialistFlow = schema.eventType === 'specialist_followup';
   const visualDefinition = specialistFlow ? canvasDefinition(editor.text) : null;
+  const issueNodeId = (path: string) => {
+    const index = /^\$\.nodes\[(\d+)\]/u.exec(path)?.[1];
+    return index === undefined ? null : visualDefinition?.nodes[Number(index)]?.nodeId ?? null;
+  };
+  const invalidNodeIds = issues.flatMap(issue => issueNodeId(issue.path) ?? []);
+  const checkDraft = () => {
+    let parsed: unknown;
+    try { parsed = JSON.parse(editor.text); }
+    catch {
+      setIssues([{ path: '$', code: 'invalid_json', message: '定义不是有效 JSON' }]);
+      notify.error('结构校验未通过');
+      return;
+    }
+    const checked = validateDefinition(parsed);
+    setIssues(checked.ok ? [] : [...checked.issues]);
+    if (checked.ok) notify.success('结构校验通过');
+    else notify.error('结构校验未通过');
+  };
   const eventLabel = specialistFlow ? '业主发起防水跟进' :
     schema.eventType === 'stage_changed'
       ? '实际阶段变化'
@@ -506,6 +527,14 @@ function NativeWorkflowDetailPageInner() {
             >
               重置
             </Button>
+            {specialistFlow ? <Button onClick={checkDraft}>结构校验</Button> : null}
+            {visualDefinition && !visualDefinition.nodes.some(node => node.capabilityRef === 'condition.specialist_evidence') ?
+              <Popconfirm title="将现有草稿替换为三分支防水模板" okText="载入" cancelText="取消"
+                onConfirm={() => setEditor(current => current ? updateDraftText(current, formatJson({
+                  ...createWaterproofInspectionDefinition(), revision: visualDefinition.revision,
+                })) : current)}>
+                <Button>载入三分支模板</Button>
+              </Popconfirm> : null}
             <Button type="primary" loading={saving} disabled={hasConflict} onClick={() => void saveDraft()}>
               保存草稿
             </Button>
@@ -552,7 +581,10 @@ function NativeWorkflowDetailPageInner() {
               description={
                 <ul style={{ margin: 0, paddingLeft: 20 }}>
                   {issues.map((issue) => (
-                    <li key={`${issue.path}:${issue.code}`}>
+                    <li key={`${issue.path}:${issue.code}:${issue.message}`}>
+                      {issueNodeId(issue.path) ? <Button size="small" type="link" onClick={() => setFocusNodeId(issueNodeId(issue.path))}>
+                        {issueNodeId(issue.path)}
+                      </Button> : null}
                       <Typography.Text code>{issue.path}</Typography.Text> {issue.message}（{issue.code}）
                     </li>
                   ))}
@@ -560,7 +592,8 @@ function NativeWorkflowDetailPageInner() {
               }
             />
           ) : null}
-          {visualDefinition ? <NativeWorkflowCanvas definition={visualDefinition}
+          {visualDefinition ? <NativeWorkflowCanvas definition={visualDefinition} focusNodeId={focusNodeId}
+            onSelectNode={setFocusNodeId} invalidNodeIds={invalidNodeIds}
             onChange={definition => setEditor(current => current ? updateDraftText(current, formatJson(definition)) : current)} /> : null}
           <Collapse defaultActiveKey={specialistFlow ? [] : ['json']} size="small" items={[{ key: 'json', label: '定义 JSON', children: <Input.TextArea
             value={editor.text}
