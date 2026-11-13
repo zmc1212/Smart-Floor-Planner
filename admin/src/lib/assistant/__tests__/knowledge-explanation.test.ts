@@ -193,3 +193,37 @@ test('status repair names the segment whose validity claim cites only a notice',
     { question: 'Q1', position: 2, claims: ['现行'] }]);
   assert.equal(feedback.statusCitationCandidates[0].citationId, selected(catalog));
 });
+
+test('I6.14 G status, dates, scope and quantities keep separate source roles', () => {
+  const notice = { sourceId: 'Wnotice', kind: 'web' as const, title: '发布公告',
+    text: '现批准《建筑与市政工程防水通用规范》为国家标准，编号为GB55030-2022，自2023年4月1日起实施。',
+    web: { standard: { id: 'GB55030-2022', kind: 'publication_notice', status: 'unknown', effectiveAt: '2023-04-01' } } as never };
+  const catalog = { sourceId: 'Wstatus', kind: 'web' as const, title: '标准目录',
+    text: 'GB55030-2022：建筑与市政工程防水通用规范现行\n实施日期：2023-04-01',
+    web: { standard: { id: 'GB55030-2022', kind: 'status_catalog', status: 'current', effectiveAt: '2023-04-01' } } as never };
+  const text = { sourceId: 'Wtext', kind: 'web' as const, title: '建筑与市政工程防水通用规范.pdf',
+    text: '1.0.2 建筑与市政工程防水必须执行本规范。\n6.0.12 楼、地面最小蓄水高度不应小于20mm，蓄水时间不应少于24h；\n2 有防水要求的墙面应进行淋水试验，淋水时间不应少于30min；',
+    web: { standard: { id: 'GB55030-2022', kind: 'standard_text', status: 'unknown' }, document: { reviewedTextHash: 'p'.repeat(64) } } as never };
+  const pick = (source: typeof notice) => sourceCitationCatalog(source as never)[0].citationId;
+  const pickContaining = (source: typeof notice, value: string) => sourceCitationCatalog(source as never)
+    .find(citation => citation.quote.includes(value))!.citationId;
+  const fixedCoverage = parseKnowledgeExplanationQuery({ questions: ['是否有效', '实施日期', '适用范围', '施工数值'] });
+  const answer = (replace: (answers: Record<string, unknown>) => void = () => {}) => {
+    const answers: Record<string, unknown> = {
+      Q1: [{ basis: 'evidence', text: 'GB 55030-2022 目前现行有效。', citations: [{ citationId: pick(catalog) }] }],
+      Q2: [{ basis: 'evidence', text: '该规范自2023年4月1日起实施。', citations: [{ citationId: pick(notice) }] }],
+      Q3: [{ basis: 'evidence', text: '建筑与市政工程防水必须执行本规范。', citations: [{ citationId: pick(text) }] }],
+      Q4: [{ basis: 'evidence', text: '蓄水高度不应小于20mm，蓄水时间不应少于24h。', citations: [{ citationId: pickContaining(text, '20mm') }] },
+        { basis: 'evidence', text: '有防水要求的墙面淋水时间不应少于30min。', citations: [{ citationId: pickContaining(text, '30min') }] }],
+    };
+    replace(answers);
+    return JSON.stringify({ kind: 'knowledge_explanation', answers });
+  };
+  assert.doesNotThrow(() => prepareKnowledgeExplanation(answer(), [notice, catalog, text] as never, fixedCoverage, { currentQuestion: fixedCoverage.questions.join('；') }));
+  assert.throws(() => prepareKnowledgeExplanation(answer(answers => {
+    answers.Q1 = [{ basis: 'evidence', text: 'GB 55030-2022 目前现行有效。', citations: [{ citationId: pick(notice) }] }];
+  }), [notice, catalog, text] as never, fixedCoverage, { currentQuestion: fixedCoverage.questions.join('；') }), /standard_status_unverified/);
+  assert.throws(() => prepareKnowledgeExplanation(answer(answers => {
+    answers.Q4 = [{ basis: 'advice', text: '闭水试验一般保持24小时。', citations: [] }];
+  }), [notice, catalog, text] as never, fixedCoverage, { currentQuestion: fixedCoverage.questions.join('；') }), /unsupported_model_commitment/);
+});
