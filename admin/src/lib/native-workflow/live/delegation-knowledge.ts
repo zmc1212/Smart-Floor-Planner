@@ -4,7 +4,7 @@ import { one, type Row } from '@/db/repositories/assistant-repository';
 import { AssistantError, fail, fingerprint, type ActorContext, type Evidence } from '@/lib/assistant/contracts';
 import { enterpriseKnowledgeEnabled } from '@/lib/assistant/knowledge-policy';
 import { knowledgeContext } from '@/lib/assistant/knowledge/applicability-context';
-import { BailianKnowledgeError, bailianKnowledgeConfig, knowledgeProviderMode } from '@/lib/assistant/knowledge/bailian-provider';
+import { BailianKnowledgeError } from '@/lib/assistant/knowledge/bailian-provider';
 import { retrieveKnowledge } from '@/lib/assistant/knowledge/retrieval';
 import { resolveEvidence } from '@/lib/assistant/knowledge/sources';
 import { isSuspended, type ReviewDelegation } from './delegation-state';
@@ -34,7 +34,6 @@ export async function checkDelegationStandards(tx: PostgresTransaction, d: Revie
   if (!enterpriseKnowledgeEnabled(config?.agent_config)) return { status: 'disabled', epoch };
   const actor: ActorContext = { ...delegationActor(d), capabilities: ['assistant.chat.self'] };
   try {
-    if (knowledgeProviderMode() === 'bailian') bailianKnowledgeConfig();
     const query = [d.scope.roomName, d.scope.subject].join(' ');
     const result = await retrieveKnowledge(d.conversationId, actor, query, epoch, undefined, {
       kind: 'owner_delegation',
@@ -47,7 +46,7 @@ export async function checkDelegationStandards(tx: PostgresTransaction, d: Revie
       contextHash: fingerprint(result.diagnostic.context), requestId: result.diagnostic.managedIndex?.requestId };
   } catch (error) {
     if (!(error instanceof AssistantError) || error.status !== 503) throw error;
-    return { status: 'unavailable', epoch, error: error.code,
+    return { status: 'unavailable', epoch, error: error instanceof BailianKnowledgeError ? error.providerCode : error.code,
       requestId: error instanceof BailianKnowledgeError ? error.requestId : undefined };
   }
 }

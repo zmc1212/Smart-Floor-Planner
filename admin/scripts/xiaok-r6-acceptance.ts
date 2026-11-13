@@ -20,7 +20,7 @@ import { processAgentAnswer } from '@/lib/assistant/agent/worker';
 import { claimJob, runContext } from '@/lib/assistant/infrastructure/job-queue';
 import { processAnswer } from '@/lib/assistant/infrastructure/answer-worker';
 import { naturalKnowledgeProtocol, sourceBoundaryValidationProtocol } from '@/lib/assistant/agent/knowledge-explanation';
-import { BailianKnowledgeProvider } from '@/lib/assistant/knowledge/bailian-provider';
+import { BailianKnowledgeError, BailianKnowledgeProvider } from '@/lib/assistant/knowledge/bailian-provider';
 import { claimKnowledgeJob, runKnowledgeJob } from '@/lib/assistant/knowledge/index-worker';
 import { processManagedKnowledgeCleanup } from '@/lib/assistant/knowledge/managed-cleanup';
 import { retrieveKnowledge } from '@/lib/assistant/knowledge/retrieval';
@@ -37,8 +37,9 @@ import { mockBailianRag } from './xiaok-r4-bailian-mock';
 const eid = '1454', control = '1455', model = 'qwen3.7-flash';
 const liveModel = process.argv.includes('--live-model');
 const hosted = process.argv.includes('--hosted');
+const localKnowledge = process.argv.includes('--local-knowledge') || liveModel && !hosted;
 const durableAcceptance = process.argv.includes('--durable-integration');
-const mock = !liveModel && !hosted ? mockBailianRag() : null;
+const mock = !localKnowledge && !hosted ? mockBailianRag() : null;
 const label = process.argv.find(arg => arg.startsWith('--label='))?.slice(8) ?? randomUUID();
 const target = new URL(process.env.XIAOK_R6_DATABASE_URL ?? 'http://missing');
 assert.match(label, /^[a-z0-9-]{1,72}$/);
@@ -89,7 +90,7 @@ async function configure() {
   if (upstream) assert.ok(upstream.providerKey === 'dashscope' && upstream.apiKey && bailianResponsesBinding(upstream.baseUrl, model));
   await closePostgresPool();
   process.env.DATABASE_URL = target.href;
-  process.env.ASSISTANT_KNOWLEDGE_PROVIDER = liveModel && !hosted ? 'local' : 'bailian';
+  process.env.ASSISTANT_KNOWLEDGE_PROVIDER = localKnowledge ? 'local' : 'bailian';
   process.env.NATIVE_WORKFLOW_DELEGATION_ENABLED = '1';
   process.env.NATIVE_WORKFLOW_DELEGATION_ENTERPRISE_IDS = eid;
   process.env.ASSISTANT_RESPONSES_API = '1';
@@ -178,7 +179,7 @@ async function finishKnowledge(kb: KnowledgeService, jobId: string) {
     assert.equal(job.status, 'queued', json({ status: job.status, error: job.last_error, attempts: job.attempts }));
     if (mock) await withTenantTransaction(kb.actor.enterpriseId, tx => tx.execute(sql`update app.assistant_jobs set available_at=now()
       where enterprise_id=${kb.actor.enterpriseId} and id=${jobId} and status='queued'`));
-    else await delay(4200);
+    else if (!localKnowledge) await delay(4200);
   }
   assert.fail('knowledge indexing did not finish');
 }
@@ -396,8 +397,36 @@ async function business(f: Fixture, v1: Draft, originalCitation: string) {
   const lookup = async (actor: ActorContext, cid: string) => {
     const epoch = await withTenantTransaction(actor.enterpriseId, async tx =>
       Number((await one(tx, sql`select knowledge_epoch from app.assistant_enterprise_settings where enterprise_id=${actor.enterpriseId}`))!.knowledge_epoch));
-    return (await retrieveKnowledge(cid, actor, '卫生间防水施工和后续检查', epoch, undefined, undefined, 'ranked', { mode: 'hybrid' })).evidence;
+    return retrieveKnowledge(cid, actor, '卫生间防水施工和后续检查', epoch, undefined, undefined, 'ranked', { mode: 'hybrid' });
   };
+  if (localKnowledge) await check('知识关闭与托管未配置是不同状态', async () => {
+    const settings = await withTenantTransaction(eid, tx => one(tx, sql`select agent_config from app.assistant_enterprise_settings where enterprise_id=${eid}`));
+    assert.ok(settings);
+    const setKnowledge = (enabled: boolean) => withTenantTransaction(eid, tx => tx.execute(sql`update app.assistant_enterprise_settings
+      set agent_config=jsonb_set(agent_config,'{enterpriseKnowledgeEnabled}',to_jsonb(${enabled}::boolean)) where enterprise_id=${eid}`));
+    try {
+      await setKnowledge(false);
+      await assert.rejects(lookup(f.actor, f.cid), /enterprise_knowledge_disabled/);
+    } finally { await setKnowledge(true); }
+    const saved = {
+      mode: process.env.ASSISTANT_KNOWLEDGE_PROVIDER,
+      workspace: process.env.ASSISTANT_BAILIAN_RAG_WORKSPACE_ID,
+      key: process.env.ASSISTANT_BAILIAN_RAG_API_KEY,
+    };
+    try {
+      process.env.ASSISTANT_KNOWLEDGE_PROVIDER = 'bailian';
+      delete process.env.ASSISTANT_BAILIAN_RAG_WORKSPACE_ID;
+      delete process.env.ASSISTANT_BAILIAN_RAG_API_KEY;
+      await assert.rejects(lookup(f.actor, f.cid), error => error instanceof BailianKnowledgeError
+        && error.code === 'retrieval_unavailable' && error.providerCode === 'bailian_knowledge_not_configured'
+        && error.outcomeKnown && error.requestId === null);
+    } finally {
+      for (const [key, value] of [
+        ['ASSISTANT_KNOWLEDGE_PROVIDER', saved.mode], ['ASSISTANT_BAILIAN_RAG_WORKSPACE_ID', saved.workspace],
+        ['ASSISTANT_BAILIAN_RAG_API_KEY', saved.key],
+      ]) if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  });
   const document = await publishStandard(f, 'staff_internal');
   await publishStandard(foreign);
   if (durableAcceptance) await check('同项目另开咨询保留各自原指令和回执', async () => {
@@ -416,13 +445,19 @@ async function business(f: Fixture, v1: Draft, originalCitation: string) {
   await check('业主、设计师、施工人员、老板的项目和知识权限', async () => {
     assert.equal((await assistant(alternate, ['conversations', f.cid, 'long-term'])).status, 404);
     assert.equal((await assistant(foreign, ['citations', originalCitation])).status, 404);
-    assert.deepEqual(await lookup(alternate.actor, alternate.cid), []);
-    assert.ok((await lookup(f.actor, f.cid)).every(source => source.ref.version === v1.versionId));
+    const denied = await lookup(alternate.actor, alternate.cid);
+    assert.deepEqual(denied.evidence, []);
+    const owner = await lookup(f.actor, f.cid);
+    assert.ok(owner.evidence.length && owner.evidence.every(source => source.ref.version === v1.versionId
+      && source.knowledge?.projectId === f.pid && !!source.file?.label));
+    if (localKnowledge) assert.ok(owner.diagnostic.embeddingUsage?.inputTokens);
+    const roleSources: Row[] = [];
     for (const site of [f.designer, f.worker, f.boss]) {
       const page = await site.read(f.pid);
       const hits = await lookup(site.actor, String(page.conversationId));
-      assert.ok(hits.some(source => source.ref.version === document.versionId));
-      assert.ok(hits.every(source => source.knowledge?.projectId === f.pid));
+      assert.ok(hits.evidence.some(source => source.ref.version === document.versionId));
+      assert.ok(hits.evidence.every(source => source.knowledge?.projectId === f.pid));
+      roleSources.push({ actor: site.actor.principal, ...hits });
       assert.doesNotMatch(json(page), /先告诉我结论，再说细节/);
     }
     const hiddenProject = (error: unknown) => error instanceof AssistantError && error.status === 404;
@@ -430,6 +465,7 @@ async function business(f: Fixture, v1: Draft, originalCitation: string) {
     await assert.rejects(f.worker.read(alternate.pid), hiddenProject);
     await assert.rejects(f.boss.read(foreign.pid), hiddenProject);
     await assert.rejects(new KnowledgeService(f.worker.staff).execute('retire', v1, randomUUID()), /assistant_capability_forbidden/);
+    save('retrieval-scopes', { owner, denied, roleSources, mode: localKnowledge ? 'local-real' : hosted ? 'hosted-real' : 'hosted-substitute' });
   });
   if (durableAcceptance) await check('撤权设计师和工人无法读取或写入原工地', async () => {
     const denied = (error: unknown) => error instanceof AssistantError && [403, 404].includes(error.status);
@@ -537,7 +573,8 @@ async function business(f: Fixture, v1: Draft, originalCitation: string) {
       expectedVersion: Number(doc.version) });
     assert.equal(((await task(f)).standardCheck as Row).status, 'outdated');
     const current = await lookup(f.actor, f.cid);
-    assert.ok(current.some(source => source.ref.version === v2.versionId) && current.every(source => source.ref.version !== v1.versionId));
+    assert.ok(current.evidence.some(source => source.ref.version === v2.versionId)
+      && current.evidence.every(source => source.ref.version !== v1.versionId));
     const old = await assistant(f, ['citations', originalCitation]);
     assert.equal(old.status, 200);
     assert.equal((await old.json()).data.available, false);
@@ -558,12 +595,12 @@ async function business(f: Fixture, v1: Draft, originalCitation: string) {
     assert.equal((await tick()).applied, 0);
     await f.kb.execute('retire', v2, randomUUID());
     assert.equal(((await task(f)).standardCheck as Row).status, 'outdated');
-    assert.deepEqual(await lookup(f.actor, f.cid), []);
+    assert.deepEqual((await lookup(f.actor, f.cid)).evidence, []);
     await f.change('progress', { stageKey: 'utilities', note: '项目团队再次确认最新施工记录。', sendReminder: false });
     await tick();
     assert.equal(((await task(f)).standardCheck as Row).status, 'no_match');
     for (let i = 0; i < 20 && await processManagedKnowledgeCleanup(); i++) { /* isolated managed documents */ }
-    save('version-recovery', { v1, v2, failure, recovered });
+    save('version-recovery', { v1, v2, current, failure, recovered });
   });
   await check('暂停期间不触发，取消后不能激活旧任务', async () => {
     await turn(alternate, delegation);
@@ -638,12 +675,14 @@ async function business(f: Fixture, v1: Draft, originalCitation: string) {
 }
 
 async function main() {
+  assert.ok(!(hosted && localKnowledge));
   if (durableAcceptance) {
     assert.ok(!liveModel && !hosted);
     assert.equal(process.env.NATIVE_WORKFLOW_TASK_STORE, 'postgres');
   }
   const before = binding();
-  const mode = hosted ? 'bailian-hosted' : liveModel ? 'bailian-responses-with-local-retrieval' : 'postgresql-with-rag-and-model-substitutes';
+  const mode = hosted ? 'bailian-hosted' : liveModel ? 'bailian-responses-with-local-retrieval'
+    : localKnowledge ? 'postgresql-with-local-retrieval-and-model-substitute' : 'postgresql-with-rag-and-model-substitutes';
   const report: Row = { mode, model: liveModel ? model : 'substitute', before, pptSource: ppt.source, checks };
   const restore = mock?.install();
   try {

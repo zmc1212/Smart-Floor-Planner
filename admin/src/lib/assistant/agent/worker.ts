@@ -2198,7 +2198,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                   name === 'knowledge_get_document' ? { documentId: id(input.documentId) } : { versionId: id(input.versionId), chunkId: id(input.chunkId) }));
               } else {
                 const profile = await scoped(tx => one(tx, sql`select active_index_profile_id from app.assistant_enterprise_settings where enterprise_id=${lease.enterpriseId}`));
-                if (!profile?.active_index_profile_id) { evidence = []; knowledgeStatus = 'not_ready'; }
+                if (!profile?.active_index_profile_id && (!ragTool || knowledgeProviderMode() !== 'bailian' || input.mode === 'keyword')) {
+                  evidence = []; knowledgeStatus = 'not_ready';
+                }
                 else {
                   const query = anchorKnowledgeQuery(input.query as string, safeText(initial.trigger.content as Parameters<typeof safeText>[0]));
                   const options = ragTool ? { mode: input.mode, category: input.category, scope: input.scope, documentId: input.documentId,
@@ -2294,7 +2296,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             if (packet.truncated) fail('agent_context_budget_exceeded', 422);
             const audit = { ...outcome.record, content: undefined,
               ...(executionError instanceof BailianKnowledgeError ? { provider: { name: 'bailian',
-                code: executionError.providerCode, requestId: executionError.requestId, status: executionError.httpStatus } } : {}) };
+                code: executionError.providerCode, requestId: executionError.requestId, status: executionError.httpStatus,
+                outcomeKnown: executionError.outcomeKnown } } : {}) };
             await scoped(async tx => {
               if (!outcome.ok) await tx.execute(sql`update app.assistant_run_steps set status='failed',private_checkpoint=null,source_refs='[]'::jsonb
                 where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`);

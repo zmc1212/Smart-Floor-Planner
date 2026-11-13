@@ -17,7 +17,7 @@ import { fuseBranchCandidates, hybridFusionConfiguration } from './hybrid-fusion
 import { requestedKnowledgeTitles } from './query-context';
 import { enterpriseKnowledgeEnabled } from '../knowledge-policy';
 import { fastGPTPreviewConfiguration, fastGPTCandidates, fastGPTPreviewProtocol } from './fastgpt-retrieval';
-import { BailianKnowledgeError, BailianKnowledgeProvider, knowledgeProviderMode } from './bailian-provider';
+import { BailianKnowledgeError, BailianKnowledgeProvider, bailianKnowledgeConfig, knowledgeProviderMode } from './bailian-provider';
 import { managedLibrary } from './managed-store';
 import type { ManagedSlice } from './managed-provider';
 
@@ -158,6 +158,16 @@ export async function retrieveKnowledge(conversationId: string, actor: ActorCont
     const { settings, conversation, context } = await authorize(tx);
     if (hosted) {
       if (mode === 'vector') fail('knowledge_search_mode_unavailable', 422);
+      // An empty authorized corpus and an unconfigured hosted provider have
+      // different meanings to the Agent. Keyword reads stay local.
+      if (mode === 'hybrid') {
+        try { bailianKnowledgeConfig(); }
+        catch (error) {
+          if (error instanceof AssistantError) throw new BailianKnowledgeError('configuration', error.code,
+            null, null, true, 'retrieval_unavailable');
+          throw error;
+        }
+      }
       const library = await managedLibrary(tx, actor.enterpriseId);
       const allowed = mode === 'hybrid' && library?.index_id ? await rows<{ tag: string; document: string }>(tx, sql`
         select distinct mi.version_tag as tag,mi.index_document_id as document ${knowledgeJoins} ${managedJoins}

@@ -433,3 +433,5 @@ node --env-file=.env.local --import tsx scripts/xiaok-r4-bailian-embedding.ts
 同一 C01 沿 R2 工具返回获权原文，引用绑定当前文档版本。无授权召回时，结构化终稿 schema 允许空引用数组并限制为建议或缺项说明，避免空 `enum` 触发百炼 Chat Completions 的 HTTP 400。Responses 工具轮和结构化终稿沿原通道。持续委托的工艺核对与人工结果分别保存在原事件回执和施工复核服务。
 
 R6 配置预检仍缺北京工作空间与专用 API Key，未提交真实托管请求。R6 隔离库及 Stable 证据、真实 Responses 与本地检索的结果见[原生复核合同](xiaok-assistant-phase-2.zh-CN.md#r6-原生施工复核与托管知识)。[百炼 Responses 协议](https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-responses) · [百炼 Retrieve](https://help.aliyun.com/zh/model-studio/rag/channels)
+
+I6 在原 R6 验收入口使用 `--local-knowledge --durable-integration` 验证真实 Embedding/pgvector、项目权限、版本替换、撤回和原咨询回传。该模式的对话模型为替身。托管混合检索在授权后预检配置，缺项记录 `bailian_knowledge_not_configured` 并投影为资料暂不可用。已配置但无获权命中返回空证据。当前托管接入仍为 Limited。[I6 检索和委托证据](xiaok-integration-audit.md#i62-本地企业知识与持续委托)

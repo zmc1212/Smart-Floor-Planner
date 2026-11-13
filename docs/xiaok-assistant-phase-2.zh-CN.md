@@ -32,6 +32,8 @@
 
 在 `admin` 运行 `node --env-file=.env.local --import tsx scripts/xiaok-r6-acceptance.ts --label=<label>`，将 `XIAOK_R6_DATABASE_URL` 指向已迁移的空隔离库。默认使用托管接口与对话模型替身。`--live-model` 使用真实百炼 Responses 及本地 pgvector/Embedding。`--hosted` 使用已配置的专用工作空间和真实托管接口；与 `--live-model` 同用可验证真实托管加 Responses。原始证据保存在 `admin/tmp/r6/` 与 `tmp/r6/`。[百炼 RAG 鉴权](https://help.aliyun.com/zh/model-studio/rag-api-authentication) · [LangGraph ToolNode](https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph.prebuilt.ToolNode.html)
 
+I6 的 `--local-knowledge --durable-integration` 使用真实本地检索及现有 Durable Task，保留模型替身。业主及团队各自按项目和受众取原文。旧版本和撤回资料在重开和委托复核时失效，后续项目事件重新取当前标准。托管缺配置保留预检失败，PPT 未覆盖的管根做法和施工放行条件保持缺项。[I6 实库证据](xiaok-integration-audit.md#i62-本地企业知识与持续委托)
+
 分层验收：
 
 - 隔离业务通过10组，托管检索与模型输出使用替身。PostgreSQL、Worker 投递、施工权限、业主明确共享、现场原件及人员复核回执均走真实服务。已核验0123的两个触发器与三张强制 RLS 表。Stable 2.02.2608080 在逻辑390×844通过运行时、原咨询正式结果和鉴权原图、真实输入查看委托、持久重进四项。截图332×718，路由及 HTTP 回执见 `admin/tmp/r6/native-03/verification.json`。保留前两次原生驱动失败及清理记录。
