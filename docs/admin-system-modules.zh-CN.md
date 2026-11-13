@@ -1,6 +1,6 @@
 # 后台系统当前功能清单
 
-**小K统一集成（Limited）。** Assistant 网关默认使用 Chat Completions，已确认能力的百炼模型和工具可显式启用 Responses。工具证据和用量沿原轮次合同返回。PostgreSQL runtime 与同一 Outbox 消费者处理房间任务、施工复核及原会话回执。公开工地与本人项目共用会话服务，读取及重试均核查当前来源权限。Construction 持有带日期的计划、核实记录、设计核对、整改和关闭。日周报共用获权记录，同一租户和周期只领取一次周槽，再向四个角色投递。PG17/pgvector 升级使用活动迁移 0124–0126。见[模块合同](xiaok-integration-contract.md)与[集成审查](xiaok-integration-audit.md)。
+**小K统一集成（Limited）。** Assistant 网关默认使用 Chat Completions，已确认能力的百炼模型和工具可显式启用 Responses。工具证据和用量沿原轮次合同返回。PostgreSQL runtime 与同一 Outbox 消费者处理房间任务、施工复核及原会话回执。公开工地与本人项目共用会话服务，读取及重试均核查当前来源权限。Construction 持有带日期的计划、核实记录、设计核对、整改和关闭。日周报共用获权记录，同一租户和周期只领取一次周槽，再向四个角色投递。PG17/pgvector 升级使用活动迁移 0124–0127。见[模块合同](xiaok-integration-contract.md)与[集成审查](xiaok-integration-audit.md)。
 
 <!-- xiaok-r3-web-tools -->
 **小K R3 公开联网工具（Limited）。** 合资格的原生 Agent 会话可用 `ASSISTANT_WEB_SEARCH_TOOLS=1` 通过现有聊天 Worker 启用 R2 搜索和读页工具。每次调用沿用当前租户、参与人、会话及工具能力校验。搜索候选用于找原文，只有成功提取的公开原文可生成网页 Evidence，随运行落库并通过现有引用接口重进。搜索服务独立于模型供应商。[协议、配置与验证](bailian-responses-adapter.md#11-r3-应用联网搜索)。
@@ -23,7 +23,7 @@
 <!-- /native-delegation-current -->
 
 <!-- native-deployment-current -->
-**Native Workflow B5.11 运行与投递（Limited）。** 助手 Worker、`GET/POST /api/native-workflow/schedule` 和 `GET /api/native-workflow/runs/:runId/period-report-status` 可通过 `NATIVE_WORKFLOW_RUNTIME_STORE=postgres` 共享 PostgreSQL 检查点。迁移 `0122` 为 Workflow Run、Schedule Run、Period Report Batch、Schedule Control 和 Schedule Ledger 建立强制 RLS 的租户表。检查点版本处理并发写入。数据库时间和租约 token 保护调度、批次及其报告事务。周槽归属、报告任务和投递继续使用现有设置、outbox 和 `assistant_jobs`。
+**Native Workflow B5.11 运行与投递（Limited）。** 助手 Worker、`GET/POST /api/native-workflow/schedule` 和 `GET /api/native-workflow/runs/:runId/period-report-status` 可通过 `NATIVE_WORKFLOW_RUNTIME_STORE=postgres` 共享 PostgreSQL 检查点。Integration 迁移 `0125` 为 Workflow Run、Schedule Run、Period Report Batch、Schedule Control 和 Schedule Ledger 建立强制 RLS 的租户表。检查点版本处理并发写入。数据库时间和租约 token 保护调度、批次及其报告事务。周槽归属、报告任务和投递继续使用现有设置、outbox 和 `assistant_jobs`。
 
 启用 `NATIVE_WORKFLOW_TASK_STORE=postgres` 与 `NATIVE_WORKFLOW_DURABLE_TOOL_ENABLED=1` 后，迁移 `0123` 支持原水电持续委托的业主超时提醒。认证 Worker 复核项目、业主、同意及当前等待项，在原咨询投递站内提醒。outbox 结果用于回调去重和原委托回写。平台管理员从 `GET /api/native-workflow/tasks/manual` 查看所选企业的脱敏人工队列。定义与已发布版本沿用文件 Workflow Store。隔离迁移工具保留原运行和任务历史。既有企业清空和彻底删除事务按所选企业清理运行状态。生产部署待验证。[配置、迁移与回滚](../admin/src/lib/native-workflow/README.md#b511-postgresql-runtime-stores-and-durable-tool)。
 <!-- /native-deployment-current -->

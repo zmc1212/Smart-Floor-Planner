@@ -1,8 +1,7 @@
 import path from 'node:path';
 import nextEnv from '@next/env';
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
+import { migratePostgresIntegration } from './postgres-integration-migrations.mjs';
 
 const { loadEnvConfig } = nextEnv;
 
@@ -27,12 +26,7 @@ const client = new pg.Client({
 
 try {
   await client.connect();
-  await client.query("select pg_advisory_lock(hashtext('smart-floor-planner:drizzle:migrate'))");
-  const database = drizzle(client);
-  await migrate(database, {
-    migrationsFolder: path.resolve(process.cwd(), 'drizzle'),
-    migrationsSchema: 'app',
-  });
+  await migratePostgresIntegration(client, path.resolve(process.cwd(), 'drizzle'));
   console.log(
     JSON.stringify({
       success: true,
