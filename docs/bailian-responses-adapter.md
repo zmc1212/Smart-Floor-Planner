@@ -499,3 +499,9 @@ Endpoint 使用该空间的 `https://dashscope.aliyuncs.com/compatible-mode/v1`�
 本轮已用本地开发库中加密的百炼配置（掩码 `sk-ws***mDW9`）在本轮新建的隔离库 `xiaok_r6_model_i611*` 上执行真实调用，未修改开发库或生产默认值。基础 Responses 请求 `69818dc5-4ffd-9b5b-b5f7-b8ea651c5a24` 通过，75/213 tokens，实际 `deepseek-v4.1-flash-1017`。固定对话 A–F 共 9 个回答保存，20 次供应商尝试，101,458 输入 / 4,140 输出 / 56,320 缓存输入 tokens，请求 ID 与实际模型齐全，unknown 0，结算金额未返回。场景 C 的公网原文读取未成功，答案保存为不确定；未重放。
 
 高分辨率图像探针和产品照片分析使用隔离库中的合成获权图（480×360 JPEG，3,843 字节），请求 `7e764e92-872f-9c09-a775-14d15de4efe1`，501/155 tokens（缓存 256），实际模型为 `deepseek-v4.1-flash-1017`。给 `final_response` 增加 `observation` 字段时，DeepSeek Flash 的 Responses/Chat 请求返回 `Invalid Responses API frame` 或 HTTP 400；恢复原 `kind`/`text` 工具 schema 后图像调用通过。因此结构化信封只保留服务端校验器与离线测试，不宣称模型已稳定产出该信封。真实工地照片仍为 `not_run`，合成图不作为真实工地通过。[集成审查](xiaok-integration-audit.md#i611-防水专业决策可信度与真实工地验证limited)
+
+## 19. I6.12 照片观察的结构化通道
+
+图像轮仍走原 \conversation-images-v1\ 与 \inal_response\ \kind\/\	ext\ 工具合同，不把结构化字段加入工具参数。百炼目录精确 ID \deepseek-v4.1-flash-1017\ 标注 Text/Image 与 structured-outputs；Chat Completions \esponse_format=json_schema\ 实调通过（\chatcmpl-25c67c62-cc9a-9097-b394-1cac476a24e3\，281/139 tokens，图片 194）。产品路径先由服务端解析正文七节固定文本；未解析时执行一次独立文本归一化调用（\jsonOutput\，同一网关、同一模型、不重发图片），结果经服务端 Schema 与语义校验。
+
+真实回执：图片轮 \7137305c-4075-9e54-88ef-5af2c440c974\（2155/786，缓存 1536），归一化轮 \8692e3d3-5965-956f-b5d9-f3177bd25d4f\（682/723）。合成获权图 Run \8\ 解析成功；一次归一化超时为 \unknown\（Run 7），未重放。真实工地照片、真机和 BLE 仍未验。未新增第二套网关，未修改生产模型默认值。

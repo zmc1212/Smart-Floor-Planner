@@ -1080,6 +1080,10 @@ The owner's five manual tall-device captures (`67b515…`, `a57211…`, `74d638�
 
 ## Page inventory
 
+### Waterproof specialist four-role views (I6.12, Implemented / Limited)
+
+C01 `packages/assistant/chat/chat` shows the waterproof answer, evidence-backed checklist, public-standard citations, follow-up state and manager review result; exit and re-entry read the same run, issue and receipt. The construction role reads authorized projects, missing materials, site records and rectification requirements from `packages/construction/projects/projects` and `chat/chat`; the owner role reads the same project facts and review result; the designer role only sees authorized projects and is not forced into the waterproof flow. No client keeps its own formal construction state. Photo observation only shows visible phenomena and pending verification, never acceptance or release. Real site photos, physical devices, BLE and real WeChat login remain `not_run`. See the [waterproof agent v1 release](./xiaok-waterproof-agent-v1-release.md).
+
 ### Navigation measurement view rotation
 
 The absolute azimuth shown on the action (for example `231°`) is a reading and

@@ -1,5 +1,52 @@
 # 小K三线集成审查
 
+## I6.12 真实工地验证、Stable 四端验收与防水 Agent 第一版冻结（Limited）
+
+起点为 fetch 后的 `origin/codex/xiaok-integration@eb0fa3da0eba`，Integration 工作树与该提交一致。原 Public 工作树的 `source-manifest.json` 未提交修改保留原样。本轮代码提交 `b37e24f6`（照片观察服务端结构化）。隔离 PG17 `sfp-xiaok-i67-test` / `xiaok_r6_model_i612`，百炼 `bailian` / `deepseek-flash` / `deepseek-v4.1-flash-1017`，检索使用已批准回环 OpenSERP 0.8.17/Baidu，Reader 使用工作树 `scripts/assistant-public-reader.py`（crawl4ai 0.9.2 + pypdf 6.21.2）。
+
+### I6.12.1 真实工地照片
+
+- **not_run。** 隔离库全部媒体仍为 112×80/320 字节或 480×360/约 3.8 KB 的合成图；开发库 `smart_floor_planner` 的 `construction_site_media` 为 0 条。没有合法可用的真实工地照片，未用合成图冒充真实工地。
+- 照片信封仍要求企业、项目、房间、上传人员、原始记录、原件 Hash、当前授权与发布版本；模型不得推断房间。真实照片验收等待有效授权素材。
+
+### I6.12.2 DeepSeek Flash 图片结构化
+
+- **passed（合成获权图）。** 保持 `final_response` `kind`/`text` 工具合同，不扩大 Schema。正文七节固定文本由 `parsePhotoObservationText` 解析；缺失或语义不符时保留原正文，Run 步骤 `agent_photo_analysis` 记 `failed`。未解析时执行一次独立文本归一化调用（`jsonOutput`，同一网关/模型，不重发图片），结果经 `parseSpecialistPhotoAnalysis` 严格校验。
+- 真实回执：图片轮 `7137305c-4075-9e54-88ef-5af2c440c974`（2155/786，缓存 1536），归一化轮 `8692e3d3-5965-956f-b5d9-f3177bd25d4f`（682/723），均 `deepseek-v4.1-flash-1017`，Run `8`，`source=json_normalizer`。一次归一化超时为 `unknown`（Run 7），未重放。
+- 百炼目录精确 ID 标注 `structured-outputs`/Text/Image；Chat Completions `response_format=json_schema` 实调通过（`chatcmpl-25c67c62-cc9a-9097-b394-1cac476a24e3`，281/139，图片 194）。未改生产默认值与第二套网关。
+
+### I6.12.3 公开规范原件稳定性
+
+- 已保存引用 `w:40:0` 重开、重进与 Hash `c57f9f01…` 稳定；HTML 快照不触发 Reader 重读。Reader 故障 `web_timeout` / `web_http_410` / `web_http_412` / `web_http_403` 均按原码返回，恢复后同一引用可用。
+- 防水 PDF 原件 SHA-256 `aabd71d70809673a4009fcdbcfc0c759f3a22b1c3566f8022dfea9a7a529dc80`，与 I6.10 一致；本轮可核页 `[5,27,28,31]`，`36/37` 未进入本轮已核集合，标 `limited`。页文改写被拒绝为原文证据，重读同 Hash。
+- 本轮未保存 PDF 页引用：标准原文引用终稿被 `unsupported_model_commitment` 拒绝，C01 打开 PDF 页的完整 UI 步骤 `not_run`。GB 55020-2021 仍只用第 12、24、25 页有限摘录。
+
+### I6.12.4 固定专业问答
+
+- 固定 A–L 在 `tmp/i6.12/dialogue-03/`。A、C、D、E、F、I、J、L 保存；B `ungrounded_response_scope`，G/H1/H2 `unsupported_model_commitment`，均保留首稿与唯一修复。K 为合成图 `limited`。
+- 早批 `dialogue-01` 全部 `web_search_unconfigured`，`dialogue-02` 搜索可用后仍有 5 个失败；均保留，不重放 unknown。规范条件、专业解释、项目事实与正式业务结论由同一语义合同区分，未把条件说成已验收。
+
+### I6.12.5 防水工作流三路径
+
+- 路径 A：C01 `24`、Run `specialist:f2c85065-a031-4da4-98cc-8d203a8ddbeb`、revision `1`/digest `a34557…`、事项 `190`、经理复核、C01 结果；重复 tick、错房间、非经理复核均被拒。
+- 路径 B：C01 `27`、revision `3`/digest `44f15a…`、`request_material` 后等待 `site_record`，缺企业条款与同房间记录。
+- 路径 C：C01 `29`、事项 `233`、revision `3`、结果消息 `154`，同业主另一咨询无结果；取消 C01 `33` 后委托 `cancelled`。
+- 旧 Run 绑定启动时 revision/digest，发布新版本不改变原定义；Worker 在等待时释放租约。
+
+### I6.12.6 Stable 四端
+
+- DevTools CLI，逻辑窗口 `390×844`，基础库 `3.5.8`。业主 C01 `24` 读到经理复核结果，退出重进仍见同一结果；施工端项目 `10` 读到管根事项；老板端读到复核；设计师端 `0` 个项目，未被强制参与。截图与 `verification.json` 在 `admin/tmp/i6.12/stable-04/`。
+- 四端读取同一 Construction 事实；未在客户端维护独立正式状态。真机、BLE、真实微信登录 `not_run`。
+
+### I6.12.7 冻结
+
+- [第一版交付冻结](xiaok-waterproof-agent-v1-release.md)记录 Agent `waterproof-specialist@1`、输入输出 Schema、Knowledge Scope、Tool Permissions、`waterproof-inspection-v1` 节点版本、清单/Evidence/事项/复核/回传合同与复制方式。只有真实业务验收通过的能力标 `released`，其余 `limited`/`draft`/`not_run`。
+
+### 模型用量与工程
+
+- 隔离库 143 次供应商尝试，143 次实际 `deepseek-v4.1-flash-1017`；观察 363,328 输入 / 30,347 输出 tokens，1 次 `unknown`，金额未返回。未记录 API Key 或图片访问凭证。
+- Construction 定向 108/108，Specialist 20/20，照片信封 20/20；Native Workflow 1 个既有路由测试失败（`period-report-status-route` 期望 403/`run_scope_unavailable`，实得 404/`run_not_found`）。Assistant `1061/1067`，6 个失败（A09/A11/E03/E06/A06 与既有书桌收纳）；A09/A11/E03/E06/A06 在带真实隔离数据的库上运行，和小程序全量 2,243/2,244 的既有测绘基线一并保留。TypeScript、改动文件 ESLint、生产 Webpack 构建通过。
+
 ## 2026-11-13 只读审查
 
 | 引用 | Fetch 后提交 |

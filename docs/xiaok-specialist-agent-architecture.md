@@ -15,3 +15,5 @@ I6.11 起，验收表述的 A 标准规定、B 专业解释、C 项目事实、D
 LangGraph 的恢复机制以检查点和可幂等的任务为边界。仓库继续用已落地的 PostgreSQL 租约持有跨业务等待，并在同一租户事务提交 Construction 与 Outbox 回执。JS 子图重复执行问题已有上游修复记录。 [LangGraph 检查点及重放](https://github.com/langchain-ai/docs/blob/main/src/oss/langgraph/graph-api.mdx) · [上游持久化测试](https://github.com/langchain-ai/langgraph/blob/main/libs/langgraph/tests/test_subgraph_persistence.py) · [LangGraph.js #2667](https://github.com/langchain-ai/langgraphjs/issues/2667)
 
 节点、操作及验收见[防水工作流](xiaok-waterproof-workflow.md)和[集成审查](xiaok-integration-audit.md)。
+
+I6.12 把照片观察的结构化从模型工具参数移到服务端：图像轮仍只提交 \kind\/\	ext\，正文七节固定文本由服务端解析；解析失败时执行一次独立文本归一化调用，结果再经固定信封 Schema 与语义校验。该调用复用同一 \AgentModelGateway\、加密配置、用量台账和请求回执，不新增网关或生产默认值。真实回执见 \dmin/tmp/i6.12/photo-01/\；真实工地照片、真机与 BLE 仍未验。工作流、四端与冻结标识见[防水工作流](xiaok-waterproof-workflow.md)和[第一版交付](xiaok-waterproof-agent-v1-release.md)。
