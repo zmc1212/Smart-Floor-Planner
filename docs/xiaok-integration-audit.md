@@ -138,6 +138,8 @@ I5 验收以 `b612ea0692acc5fac62ca8487029196bec7809cb` 为基线，测试前后
 
 原始首稿、唯一修复批和实际请求回执保存在集成工作树 `tmp/i6-20261113/web/`、`tmp/bailian-responses/report-i6-native-tools.json` 及对应 `raw/`。旧公告与后续废止公告的差异由人工对照确认，事后对照没有补入原运行 Evidence。停止对首问重复取样。现行性仍需能读到正式状态或更新文件，历史公告的上线日期和当时条文只能支持历史陈述。[GB 55032-2022 公告](https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2024/art_17339_767714.html) · [GB 55038-2025 公告](https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2025/art_66adac27fa2144bb86f98fe4c297efd6.html)
 
+独立诊断复用了本机既有公开原文服务。两份住建部公告可读。防水规范附件超过当前下载上限，给排水规范附件返回 28 页但没有可提取文字。探针使用已运行的开发 reader，其源码 hash 与 Integration 文件不同。诊断原样保存为 `tmp/i6-20261113/public-reader-official-probe.json`，没有输入模型或加入企业库。[防水规范发布公告](https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2022/art_17339_768499.html) · [给排水规范发布公告](https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2021/art_17339_762458.html)
+
 应用批次 15 次已完成供应商调用，共 52,273 输入、3,776 输出 tokens，其中缓存输入 8,832。原生提取请求 `5d30658a-debe-9aef-9fb2-a80be46d25b2` 计 7,285/2,264 tokens，含缓存输入 1,920，报告 1 次搜索和 1 次提取。代码解释器 `d71cca44-25f2-9291-843a-498d7f117206` 计 824/166 tokens，执行 1 次。实际结算金额未返回。
 
 ### I6.2 本地企业知识与持续委托
@@ -164,8 +166,9 @@ I5 验收以 `b612ea0692acc5fac62ca8487029196bec7809cb` 为基线，测试前后
 
 ### I6.6 业务回传与工程检查
 
-- 通过。最终隔离 R6 批 `integration-i6-project-status-final` 16/16，含真实 Embedding、房间记录过滤、撤回后历史隐藏、阶段记录与房间记录独立、四角色及原咨询正式回传。业务链使用替身模型。受影响 Assistant、Responses、RAG 与 Native 快速测试 219/219，小程序最终定向 341/341，Construction 设计核对及施工计划/整改 13/13，网页实库 7/7。TypeScript、受影响 ESLint 与生产 Webpack 构建通过。
-- 失败。较广 Assistant 批 1033/1034，失败的「书桌收纳」测试及其实现与基线相同。原资料兼容批开启其明确需要的知识后为 9 通过、1 失败、1 跳过。混合现场旧测试仍假定只有 `search_knowledge`，当前路由另有 RAG 工具，原失败保留。直接施工正式方案测试固定旧数据库端口，I6 未接入该实例；独立 Construction 与 R6 正式方案版本测试覆盖相关写入。
-- Stable C01。逻辑 390×844，截图 363×785，已通过实际点击打开配置模型保存的 PPT 引用。另在同一获权咨询实际发送两条项目进度追问，并退出后读到同两条答复；此批 Worker 使用替身模型和真实 Construction 读取。原咨询 2 中的真实复核结果 43、授权原图和实际发送的委托状态回执 64 均在重进后可读。原生公网引用和固定 A–E 的实模连续界面未执行。前序夹具、输入和轮询驱动失败原样保留。证据 `tmp/i6-20261113/{stable-citations-final,stable-delegation-final}/verification.json`。
+- 通过。最终隔离 R6 批 `integration-i6-project-status-final` 16/16，含真实 Embedding、房间记录过滤、撤回后历史隐藏、阶段记录与房间记录独立、四角色及原咨询正式回传。业务链使用替身模型。受影响 Assistant、Responses、RAG 与 Native 快速测试 219/219，小程序最终定向 341/341，Construction 设计核对、施工计划/整改及自然语言正式方案合计 21/21，网页实库 7/7。专业 RAG 实库 11/11，包含阶段适用条件、阶段变化、检索中途撤回。项目资料 10 通过、1 跳过。TypeScript、受影响 ESLint 与生产 Webpack 构建通过。
+- 失败。较广 Assistant 批 1033/1034，失败的「书桌收纳」测试及其实现与基线相同。历史资料及专业检索夹具默认关闭知识，首次失败后显式开启测试企业开关并保留原日志。混合现场测试改用现行 RAG 工具，继续断言现场分流后不能再读档。正式方案夹具改用已有隔离端口参数，仍只准环回 `xiaok_embedding_eval`。夹具调整没有改运行时。证据 `tmp/i6-20261113/{materials-final,professional-knowledge-final,isolated-professional-construction}.log`。
+- Stable C01。逻辑 390×844，截图 363×785。通过实际点击打开配置模型保存的 PPT 引用及独立联网批已保存的住建部历史公告引用，显示原句、网址和读取时间。另在同一获权咨询实际发送两条项目进度追问，并退出后读到同两条答复；此批 Worker 使用替身模型和真实 Construction 读取。原咨询 2 中的真实复核结果 43、授权原图和实际发送的委托状态回执 64 均在重进后可读。固定 A–E 的实模连续界面未执行。前序夹具、输入和轮询驱动失败保留。证据 `tmp/i6-20261113/{stable-citations-final,stable-delegation-final,stable-web-citation}/verification.json`。
 - unknown。I1 供应商超时原回执保持待对账。R6 故障注入的未知状态单列，未重放原请求，也未当作真实供应商调用。
-- 环境阻塞。百炼托管库缺专用配置。未执行真机、真实微信登录、BLE 或生产部署。
+- 环境阻塞。百炼托管库缺专用配置。
+- 未执行。真机、真实微信登录、BLE、额外资料试验模型及生产部署。

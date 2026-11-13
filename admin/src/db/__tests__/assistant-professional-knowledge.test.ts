@@ -32,11 +32,16 @@ async function create(professional=professionalEntry({conditions:[{field:'stage'
 }
 async function index(d:Row) {const queued=await op('index',d),lease=await claimKnowledgeJob();assert.ok(lease);assert.equal(lease.jobId,queued.jobId);await runKnowledgeJob(lease);assert.equal((await op('job',{jobId:lease.jobId})).status,'succeeded');}
 before(async()=>{
-  const target=new URL(resolvePostgresRuntimeConfig().connectionString);assert.equal(target.port,'55432');assert.equal(target.pathname,'/xiaok_embedding_eval');
+  const target=new URL(resolvePostgresRuntimeConfig().connectionString);
+  assert.ok(['localhost','127.0.0.1'].includes(target.hostname));
+  assert.equal(target.port,process.env.XIAOK_ISOLATED_POSTGRES_PORT||'55432');
+  assert.equal(target.pathname,'/xiaok_embedding_eval');
   await withPlatformTransaction(async tx=>{
     const role=await one(tx,sql`select rolsuper,rolbypassrls from pg_roles where rolname=current_user`);assert.equal(role?.rolsuper,false);assert.equal(role?.rolbypassrls,false);
     for(let i=0;i<2;i++)tenants.push(String((await one(tx,sql`insert into app.enterprises(name,code,status) values(${prefix+i},${prefix+i},'active') returning id`))!.id));eid=tenants[0];
-    for(const t of tenants)await tx.execute(sql`insert into app.assistant_enterprise_settings(enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days) values(${t},true,1000,12000000,1000000000,30)`);
+    for(const t of tenants)await tx.execute(sql`insert into app.assistant_enterprise_settings
+      (enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days,agent_config)
+      values(${t},true,1000,12000000,1000000000,30,'{"enterpriseKnowledgeEnabled":true}'::jsonb)`);
     aid=String((await one(tx,sql`insert into app.admin_users(enterprise_id,username,password_hash,role,status,menu_permissions,must_change_password) values(${eid},${prefix},'unusable-synthetic','enterprise_admin','active',ARRAY['assistant-knowledge'],false) returning id`))!.id);
     uid=String((await one(tx,sql`insert into app.users(nickname,context_version) values(${prefix},1) returning id`))!.id);users.push(uid);await tx.execute(sql`insert into app.wechat_identities(user_id,openid) values(${uid},${prefix})`);
   });

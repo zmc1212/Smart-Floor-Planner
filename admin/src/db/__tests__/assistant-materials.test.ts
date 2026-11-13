@@ -167,8 +167,9 @@ test('a mixed site question still reads knowledge and saves the reviewed knowled
   const result = await x.send('书房插座在两张图上对不上，现在能定吗？另外，图纸交接通常怎么查两版差异？', async (messages, _tools, turn, requestTools) => {
     if (turn === 0) return output('query_materials', { room: '书房', scope: 'knowledge_and_site' });
     if (turn === 1) {
-      assert.deepEqual(requestTools?.map(tool => tool.name), ['search_knowledge']);
-      return output('search_knowledge', { query: '签字前核对平面图和点位图' });
+      assert.ok(requestTools && requestTools.some(tool => tool.name === 'knowledge_search'));
+      assert.ok(requestTools.every(tool => !['query_materials', 'query_business', 'query_followups'].includes(tool.name)));
+      return output('knowledge_search', { query: '签字前核对平面图和点位图' });
     }
     if (turn === 2) {
       assert.ok(requestTools?.every(tool => tool.name !== 'query_materials'));

@@ -34,7 +34,9 @@ export class D4SharingFixture {
   site(adminId = this.ownerIds[0]) { return new SiteChatService({ enterpriseId: this.eid, adminId }); }
   async create(config: Row = { runtime: 'langgraph-v1', providerKey: 'synthetic-no-dispatch', model: 'synthetic-no-dispatch', tools: true, imageInput: false, probeVersion: 'd4-sharing' }) {
     const target = new URL(resolvePostgresRuntimeConfig().connectionString);
-    assert.equal(target.port, '55432'); assert.equal(target.pathname, '/xiaok_embedding_eval');
+    assert.ok(['localhost', '127.0.0.1'].includes(target.hostname));
+    assert.equal(target.port, process.env.XIAOK_ISOLATED_POSTGRES_PORT || '55432');
+    assert.equal(target.pathname, '/xiaok_embedding_eval');
     await withPlatformTransaction(async tx => {
       for (const role of ['admin', 'super_admin']) this.platformIds.push(String((await one(tx, sql`insert into app.admin_users(username,password_hash,role,status,must_change_password,display_name)
         values(${this.prefix + role},'unusable-synthetic',${role},'active',false,${'测试管理者' + role}) returning id`))!.id));
