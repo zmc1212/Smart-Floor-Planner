@@ -79,7 +79,7 @@ import { sourceExcerptProtocol, sourceExcerptFinalTool, sourceExcerptIds, parseS
 import { sourceQuestionCoverageProtocol, sourceQuestionReadTool, sourceQuestionFinalTool, parseSourceQuestionQuery,
   readSourceQuestionCoverage, parseSourceQuestionAnswer, type SourceQuestionCoverage } from './source-question-coverage';
 import { knowledgeExplanationProtocol, naturalKnowledgeProtocol, naturalKnowledgeInstructions, naturalKnowledgeReadTool, currentKnowledgeQuestion, knowledgeQuantityScopeProtocol, knowledgeExplanationInstructions, exactKnowledgeQuoteRequested, knowledgeExplanationReadTool, knowledgeExplanationFinalTool,
-  prepareKnowledgeExplanation, acceptKnowledgeExplanation, knowledgeExplanationFailure, parseKnowledgeExplanationQuery, assertExplanationDispatchBudget,
+  prepareKnowledgeExplanation, acceptKnowledgeExplanation, knowledgeExplanationFailure, knowledgeNumericFailure, knowledgeStatusFailure, parseKnowledgeExplanationQuery, assertExplanationDispatchBudget,
   naturalKnowledgeRuntimeBudget, naturalKnowledgeReadComplete, naturalKnowledgeScheduleProtocol,
   parseNaturalKnowledgeAnswer, sourceBoundaryValidationProtocol } from './knowledge-explanation';
 import { knowledgeContext, projectKnowledgeContextStep, projectKnowledgeContextAvailable } from '../knowledge/applicability-context';
@@ -1917,7 +1917,23 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                     ${JSON.stringify({ review: reviewed, issue })}::jsonb) on conflict do nothing`);
               });
               return issue;
-            } catch (error) { return knowledgeExplanationFailure(error, sourceMode.naturalKnowledge); }
+            } catch (error) {
+              const numeric = error instanceof AssistantError
+                && ['unsupported_model_commitment', 'standard_status_unverified'].includes(error.code)
+                ? await scoped(async (tx, context) => {
+                    const retrieval = await one(tx, sql`select input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+                      and run_id=${lease.runId} and kind='retrieval' and status='succeeded' order by step_seq desc limit 1`);
+                    if (!retrieval) return null;
+                    const evidence = await currentSynthesisContext(tx, lease.actor, context.conversation, lease.runId);
+                    const coverage = sourceMode.naturalKnowledge
+                      ? currentKnowledgeQuestion(reviewContext.currentQuestion)
+                      : readSourceQuestionCoverage((retrieval.input_summary as Row)?.questionCoverage);
+                    return error.code === 'standard_status_unverified'
+                      ? knowledgeStatusFailure(raw, coverage, evidence.sources, sourceMode.naturalKnowledge)
+                      : knowledgeNumericFailure(raw, coverage, evidence.sources, sourceMode.naturalKnowledge);
+                  }) : null;
+              return numeric ?? knowledgeExplanationFailure(error, sourceMode.naturalKnowledge);
+            }
           }
           const shapeIssue = await finalResponseShapeIssue(raw);
           if (shapeIssue) {

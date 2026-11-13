@@ -470,6 +470,24 @@ function unsupportedWordQuantities(text: string, quoted: string) {
   const original = quoted.replace(/[ \t\u3000]/g, '');
   return wordQuantities(text).filter(quantity => !original.includes(quantity));
 }
+/** Diagnostic view for the single explanation repair. It names the exact
+ * quantities a segment wrote outside its own cited quote; it never edits,
+ * accepts or adds a citation. */
+export function synthesisNumericGaps(segments: SynthesisSegment[], sources: SynthesisSource[]) {
+  return segments.flatMap((segment, index) => {
+    if (!segment || typeof segment.text !== 'string' || !Array.isArray(segment.citations)) return [];
+    const quoted = segment.citations.map(citation => citation.quote).join('\n');
+    const claim = synthesisQuantityText(segment, sources);
+    const supported = new Set(groundedNumberTokens(quoted));
+    const numbers = [...new Set(groundedNumberTokens(claim))].filter(number => !printedNumberSupported(number, supported));
+    const quantities = [...new Set(unsupportedWordQuantities(claim, quoted))];
+    return numbers.length || quantities.length ? [{ segment: index, numbers, quantities }] : [];
+  });
+}
+/** Quantity extraction shared by candidate indexing and the numeric guard. */
+export function groundedQuantityTokens(text: string) {
+  return [...groundedNumberTokens(text), ...wordQuantities(text)];
+}
 export function assertUncitedEngineeringQuantities(text: string) {
   const claim = engineeringClaimText(text, []);
   if (groundedNumberTokens(claim).length || unsupportedWordQuantities(claim, '').length) fail('unsupported_model_commitment', 502);

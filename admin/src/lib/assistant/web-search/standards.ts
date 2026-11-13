@@ -129,6 +129,11 @@ export function publicStandardMetadata(url: string, title: string, original: str
 
 export type StandardCitation = { standard: PublicStandard; quote: string };
 const statusClaims = /(?:仍(?:然)?|目前|现在|还)有效|现行(?:有效|的)?(?:标准|规范|要求)?|已经废止|已(?:被)?废止|全本废止|整部废止|现已生效|仍(?:须|应|必须)执行/gu;
+/** The exact status-bearing forms the guard recognizes, shared with the one
+ * bounded repair so a diagnostic never invents another vocabulary. */
+export function standardStatusClaims(text: string) {
+  return [...text.matchAll(statusClaims)].map(match => match[0]);
+}
 
 /** Check status-bearing claims against exact-edition catalog/withdrawal
  * evidence. Historical references and explicit uncertainty remain usable. */
@@ -152,6 +157,7 @@ export function unverifiedStandardStatus(text: string, cited: StandardCitation[]
       if (/是否|能否|无法确认|尚未核实|不能(?:据此)?判断|不能认定|不代表|未(?:查到|见|找到|显示|发现)|待核实/u.test(clause)
         || /^(?:的)?(?:有效性|状态|情况)?(?:我|本次|本轮)?(?:暂|仍)?(?:无法|不能|尚未|未能)(?:确认|核实)(?:$|[，,])/u.test(remainder)
         || claim[0] === '现行' && sentence.slice(claim.index).startsWith('现行工程建设标准中')
+        || claim[0] === '现行' && /^现行(?:状态|情况|结论|信息|记录)(?![是为属]|有效)/u.test(sentence.slice(claim.index))
         || /^(?:如何|怎么|哪里|能否|是否)/u.test(sentence.trim())) return false;
       const requested = claim[0].includes('废止') ? 'withdrawn' : 'current';
       return ids.length !== 1 || !cited.some(({ standard, quote }) => standard.id === ids[0]

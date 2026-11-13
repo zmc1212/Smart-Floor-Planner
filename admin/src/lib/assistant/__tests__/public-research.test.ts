@@ -147,6 +147,9 @@ test('an approval notice proves its date and limited withdrawals while status ne
   assert.equal(unverifiedStandardStatus('GB55000-2022 目前有效。', [{ standard: catalog, quote: 'GB55000-2022 现行' }], [catalog]), false);
   assert.equal(unverifiedStandardStatus('GB55000-2022 目前有效。', [{ standard: catalog, quote: 'GB55000-2022 现行' }],
     [catalog, { ...catalog, status: 'withdrawn' }]), true);
+  assert.equal(unverifiedStandardStatus('以上只回答标准本身的现行状态；本项目施工是否符合该规范须另判。', [], [catalog]), false);
+  assert.equal(unverifiedStandardStatus('以上分别说明发布实施情况和状态目录的现行记录。', [], [catalog]), false);
+  assert.equal(unverifiedStandardStatus('该标准现行状态为有效。', [], [catalog]), true);
 });
 
 test('the public edition uses the public source path while company-only questions retain enterprise retrieval', () => {

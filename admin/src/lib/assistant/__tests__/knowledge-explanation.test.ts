@@ -12,7 +12,8 @@ import { agentChatBody } from '@/lib/ai/providers/agent-chat';
 import { agentConfig, agentCapabilityFingerprint } from '../agent/config';
 import { parseSourceQuestionQuery } from '../agent/source-question-coverage';
 import { acceptKnowledgeExplanation, exactKnowledgeQuoteRequested, knowledgeExplanationInstructions, knowledgeExplanationProtocol,
-  prepareKnowledgeExplanation, knowledgeExplanationReadTool, parseKnowledgeExplanationQuery, assertExplanationDispatchBudget, knowledgeExplanationFailure } from '../agent/knowledge-explanation';
+  prepareKnowledgeExplanation, knowledgeExplanationReadTool, parseKnowledgeExplanationQuery, assertExplanationDispatchBudget, knowledgeExplanationFailure,
+  knowledgeNumericFailure, knowledgeStatusFailure } from '../agent/knowledge-explanation';
 
 const question = '我在看《精艺》，线管拐弯和穿线顺序该怎么理解？';
 const coverage = parseSourceQuestionQuery({ questions: ['线管拐弯', '穿线顺序'] }, question);
@@ -156,4 +157,39 @@ test('ordinary explanation repair reuses precise numeric diagnostics rather than
     label:'PDF第1页',parser:'xiaok-file-v1:pdf:synthetic',assetId:'1',blockId:'b1',section:[],paragraph:1,sourceHash:'a'.repeat(64)}}}];
   try {prepareKnowledgeExplanation(JSON.stringify(value),fileSources,coverage,context);assert.fail('Missing numeric source must fail');}
   catch(error){const issue=knowledgeExplanationFailure(error);assert.match(issue.feedback,/900/);assert.match(issue.feedback,/questionId/);}
+});
+
+test('numeric repair names the uncited quantity and only same-run candidates', () => {
+  const original = JSON.stringify({ kind: 'knowledge_explanation', answers: { Q1: [{ basis: 'advice', text: '闭水试验一般保持24小时。', citations: [] }] } });
+  const timed = knowledgeSynthesisSources([{ ref: { type: 'knowledge_chunk', id: '24h', version: '1' }, hash: 'synthetic',
+    text: '闭水试验保持24小时，观察无渗漏。' }]);
+  const all = [...sources, ...timed];
+  const issue = knowledgeNumericFailure(original, coverage, all);
+  assert.equal(issue?.code, 'unsupported_model_commitment');
+  const feedback = JSON.parse(issue!.feedback);
+  assert.deepEqual(feedback.gaps, [{ question: 'Q1', position: 1, numbers: ['24'], quantities: [] }]);
+  assert.equal(feedback.citationCandidates[0].citationId, sourceCitationCatalog(timed[0])[0].citationId);
+  const cited = JSON.stringify({ kind: 'knowledge_explanation', answers: { Q1: [{ basis: 'evidence', text: '闭水试验保持24小时。',
+    citations: [{ citationId: sourceCitationCatalog(timed[0])[0].citationId }] }] } });
+  assert.equal(knowledgeNumericFailure(cited, coverage, all), null);
+});
+
+test('status repair names the segment whose validity claim cites only a notice', () => {
+  const notice = { sourceId: 'Wnotice', kind: 'web' as const, title: '发布公告',
+    text: '现批准《建筑与市政工程防水通用规范》为国家标准，编号为GB55030-2022，自2023年4月1日起实施。本规范为强制性工程建设规范。',
+    web: { standard: { id: 'GB55030-2022', kind: 'publication_notice', status: 'unknown' } } as never };
+  const catalog = { sourceId: 'Wstatus', kind: 'web' as const, title: '标准目录',
+    text: 'GB55030-2022：建筑与市政工程防水通用规范现行\n发布日期：2022-09-27\n实施日期：2023-04-01',
+    web: { standard: { id: 'GB55030-2022', kind: 'status_catalog', status: 'current', effectiveAt: '2023-04-01' } } as never };
+  const selected = (source: typeof notice) => sourceCitationCatalog(source as never)[0].citationId;
+  const draft = JSON.stringify({ kind: 'knowledge_explanation', answers: { Q1: [
+    { basis: 'evidence', text: '该规范现行有效。', citations: [{ citationId: selected(notice) }] },
+    { basis: 'evidence', text: '公告说明自2023年4月1日起实施；目前「现行」状态由目录支持。', citations: [{ citationId: selected(notice) }] },
+  ] } });
+  const issue = knowledgeStatusFailure(draft, coverage, [notice, catalog] as never);
+  assert.equal(issue?.code, 'standard_status_unverified');
+  const feedback = JSON.parse(issue!.feedback);
+  assert.deepEqual(feedback.gaps, [{ question: 'Q1', position: 1, claims: ['现行有效'] },
+    { question: 'Q1', position: 2, claims: ['现行'] }]);
+  assert.equal(feedback.statusCitationCandidates[0].citationId, selected(catalog));
 });
