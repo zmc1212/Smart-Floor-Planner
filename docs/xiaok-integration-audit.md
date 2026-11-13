@@ -39,7 +39,7 @@
 ### 模型用量与工程
 
 - 新增 Run `83`–`99` 全部实际 `deepseek-v4.1-flash-1017`；B Run `83` 1 次调用、G Run `84` 2 次、H 会话 `61` 8 次、PDF Run `99` 2 次（含修复），其余为检索/评审调用。未记录 API Key 或图片访问凭证。
-- 定向测试：知识解释/公开研究/综合守卫 65/65；TypeScript、改动文件 ESLint 通过；生产 Webpack/Turbopack 构建通过（仅既有动态文件系统访问警告）。Assistant 全量、小程序全量历史基线未在本切片重跑，保留 I6.12 的 1061/1067 与 2243/2244。
+- 定向测试：知识解释/公开研究/综合守卫 65/65；Specialist 20/20；Construction 108/108；Native Workflow 477/504（27 skipped，0 fail）；Assistant 1063/1069，6 个失败仍为 A09/A11/E03/E06/A06 与既有书桌收纳基线；小程序 2242/2245，3 个失败中 2 个由范围外未提交的小程序 `api.js` 环境值与 portfolio JPEG/Hash 改动引起，1 个为既有测绘 Phase 0 基线。TypeScript、改动文件 ESLint 通过；生产 Turbopack 构建通过（仅既有动态文件系统访问警告）。历史 I6.12 的 Assistant 1061/1067 与小程序 2243/2244 基线保留，不把本轮环境差异计入产品回归。
 
 ## I6.12 真实工地验证、Stable 四端验收与防水 Agent 第一版冻结（Limited）
 

@@ -133,3 +133,4 @@
 - PDF：Run `99` 生成 `w:99:1`，Stable 会话 `70` 点击与退出重进通过；Reader 超时/撤回分类通过。任务书要求的 3.5.8 基础库本轮实际为 DevTools `3.17.2`，未改项目基础库。
 - 施工端 Stable 重新提交：`not_run`（事项 `190` 已 `resolved`，无待补资料事项；项目未发布进度计划，`quickRooms` 为空）。业主 Stable 再切换持续跟进：`not_run`。真实工地照片：`not_run`。四端完整旅程本轮 `limited`，I6.12 同源读取仍为 passed。
 - V1 Agent 标识、版本、工作流、digest、节点版本、Schema、权限与事项/复核/回传合同未修改；旧 Run 继续绑定原 revision/digest。
+- 回归：知识解释/公开研究/综合守卫 65/65、Specialist 20/20、Construction 108/108、Native Workflow 477/504（27 skipped）、Assistant 1063/1069（6 个历史失败）、小程序 2242/2245（2 个范围外未提交改动 + 1 个历史测绘基线）、TypeScript/ESLint/生产构建通过。
