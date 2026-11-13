@@ -17,7 +17,7 @@
 
 ### I6.12.3 公开规范原件稳定性
 
-- 已保存引用 `w:40:0` 重开、重进与 Hash `c57f9f01…` 稳定；HTML 快照不触发 Reader 重读。Reader 故障 `web_timeout` / `web_http_410` / `web_http_412` / `web_http_403` 均按原码返回，恢复后同一引用可用。
+- 已保存引用 `w:40:0` 服务端重开、会话重进后再次打开与 Hash `c57f9f01…` 稳定；HTML 快照不触发 Reader 重读。Reader 故障 `web_timeout` / `web_http_410` / `web_http_412` / `web_http_403` 均按原码返回，恢复后同一引用可用。以上为 HTTP/服务端读回，Stable UI 点击同一引用本轮未重跑，标 `limited`。
 - 防水 PDF 原件 SHA-256 `aabd71d70809673a4009fcdbcfc0c759f3a22b1c3566f8022dfea9a7a529dc80`，与 I6.10 一致；本轮可核页 `[5,27,28,31]`，`36/37` 未进入本轮已核集合，标 `limited`。页文改写被拒绝为原文证据，重读同 Hash。
 - 本轮未保存 PDF 页引用：标准原文引用终稿被 `unsupported_model_commitment` 拒绝，C01 打开 PDF 页的完整 UI 步骤 `not_run`。GB 55020-2021 仍只用第 12、24、25 页有限摘录。
 
@@ -36,7 +36,7 @@
 ### I6.12.6 Stable 四端
 
 - DevTools CLI，逻辑窗口 `390×844`，基础库 `3.5.8`。业主 C01 `24` 读到经理复核结果，退出重进仍见同一结果；施工端项目 `10` 读到管根事项；老板端读到复核；设计师端 `0` 个项目，未被强制参与。截图与 `verification.json` 在 `admin/tmp/i6.12/stable-04/`。
-- 四端读取同一 Construction 事实；未在客户端维护独立正式状态。真机、BLE、真实微信登录 `not_run`。
+- 四端读取同一 Construction 事实；未在客户端维护独立正式状态。施工端在 Stable UI 重新提交照片/现场记录、业主再次切换持续跟进授权本轮未重跑，标 `limited`（提交与授权链路已由工作流 A/B/C 的服务与 HTTP 证据覆盖）。真机、BLE、真实微信登录 `not_run`。
 
 ### I6.12.7 冻结
 
