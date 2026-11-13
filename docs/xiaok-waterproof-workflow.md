@@ -2,6 +2,8 @@
 
 业主在 C01 询问管根、基层、防水层、试验、保护层和验收。普通解释、企业工艺和本人项目进度沿本轮意图读取各自依据。明确提出持续跟进后，原咨询登记委托并绑定已发布的 `waterproof-inspection-v1`，施工团队从原工地入口处理现场材料与事项。
 
+I6.14 结果：G 标准现行性真实模型通过；施工端 Stable 提交照片与施工记录通过；业主 C01 在 LangGraph 运行时完成登记与取消，但终稿被 `invalid_model_answer` 拒绝，保持 `limited`。企业 `1454` 默认的 `xiaok-native-executor-v1` 不提供 `start_delegation`，V1.1 需接入或明确路由；本隔离库没有绑定 specialist 的 `native_workflow_runs`，四端 Workflow Version 证据 `not_run`。详见[第一版交付冻结](xiaok-waterproof-agent-v1-release.md)第 13 节。
+
 ## 角色和版本
 
 | 层 | 职责 |

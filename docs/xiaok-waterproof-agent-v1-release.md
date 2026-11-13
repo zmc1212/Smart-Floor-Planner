@@ -31,9 +31,10 @@
 | 重复事件、错房间、非经理复核、取消跟进 | released | 路径 A 的重复 tick、厨房记录、施工员/非项目人员复核拒绝；路径 C 取消后委托 `cancelled`。 |
 | 业主 C01 退出重进 | released | Stable 390×844，C01 `24` 重进仍见同一复核结果。 |
 | 施工端、老板端同源业务状态 | released | Stable 项目 `10`：施工端读到管根事项，老板端读到复核结果；设计师端 0 个项目，未被强制参与。 |
-| 施工端在 Stable UI 重新提交照片/记录、业主再次切换持续跟进授权 | limited | 服务端与 HTTP 提交/授权链路在 I6.12 通过；I6.13 施工端 Stable 提交因事项 `190` 已 `resolved`、无待补资料事项而 `not_run`，业主 Stable 再切换授权本轮 `not_run`。 |
+| 施工端 Stable UI 重新提交照片/记录 | released | I6.14 隔离项目 `2`、事项 `8`：合成测试图（Hash `c3ce9aa5…`，上传人 `6`，房间 `卫生间`）、施工记录 `2` 提交成功，退出重进仍关联。证据 `admin/tmp/i6.14/scenario-02/worker-ui.json`、`worker-reentry.json` 与截图 `01`–`06`。 |
+| 业主持续跟进授权与取消 | limited | I6.14 Stable 会话 `11`：明确跟进创建 1 个 `rectification_review` 委托（项目 `2`/房间 `3`/subject `防水管根处理`），回执「已登记」与「已取消」可见，取消后 `next_wake_at` 清空、重进一致。缺失：该轮终稿被 `invalid_model_answer` 拒绝，界面显示“这次回答没有完成”；详见第 13 节。 |
 | 照片观察信封（服务端结构化） | limited | 合成获权图 Run `8` 解析成功；真实工地照片 `not_run`。 |
-| 公开规范原件稳定读取 | released | I6.13 生成真实 PDF 页引用 `w:99:1`（Run `99`，PDF 第27页，原件 SHA-256 `aabd71…`），Stable 业主会话 `70` 点击、退出重进再次点击，标题/页码/原文/Hash 一致；Reader 超时分类 `source_unreadable`、410 撤回分类 `source_withdrawn`。证据 `admin/tmp/i6.13/stable-pdf/`、`tmp/i6.13/pdf-reader.json`。 |
+| 公开规范原件稳定读取 | released | I6.13 生成真实 PDF 页引用 `w:99:1`（Run `99`，PDF 第27页，原件 SHA-256 `aabd71…`），Stable 业主会话 `70` 点击、退出重进再次点击，标题/页码/原文/Hash 一致；Reader 超时分类 `source_unreadable`、410 撤回分类 `source_withdrawn`。I6.14 在当前隔离库重新生成 `w:11:4`（PDF 第 31 页），Stable 会话 `9` 点击与重进再次点击一致；I6.13 资产重放 `not_run`（隔离库无会话 `70`/Run `99`）。 |
 
 ## 3. 图片分析合同（I6.12.2）
 
@@ -56,7 +57,7 @@
 | D 完成后下一道工序 | passed | 未给统一天数。 |
 | E 企业防水标准 | passed | 企业 PPT 第 18 页，未编企业量数。 |
 | F 企业标准与公开规范区别 | passed | 两类依据分列。 |
-| G 标准现行性 | limited（I6.13） | 根因依次为数字不在本段引用、状态结论与公告同段、`现行状态/记录` 被误判。已加精确数字/状态修复诊断与守卫豁免；Run `97` 仍失败保留，同一修复稿确定性通过，受两次试验预算未再调模型。 |
+| G 标准现行性 | released（I6.14） | 固定问题“GB 55030-2022 目前是否有效？它什么时候实施？适用于哪些工程？”在隔离库真实模型 Run 通过 8 项来源检查：公告只承担发布/日期、实施日期来自实施公告、现行状态引用标准目录、适用范围引用正文、标准编号来源正确、未把公告首段当作全部条文。实际模型 `deepseek-v4.1-flash-1017`，请求 `d6b67329-2682-977a-aadd-09a72adbec58`，用量 8558/658。证据 `admin/tmp/i6.14/g-standard-01/run.json`、`verification.json`。I6.13 Run `84`/`97` 失败证据保留。 |
 | H1/H2 厨房更正卫生间 | passed（I6.13） | 会话 `61` 五轮：厨房记录、卫生间更正、管根解释、处理条件、主卧记录分别读取；未用厨房 Evidence 支持卫生间。 |
 | I 主卧实际进度 | passed | 读取主卧已发布记录，未把计划当完成。 |
 | J 企业未写闭水时长 | passed | 明确企业缺项与核实路径。 |
@@ -134,3 +135,34 @@
 - 施工端 Stable 重新提交：`not_run`（事项 `190` 已 `resolved`，无待补资料事项；项目未发布进度计划，`quickRooms` 为空）。业主 Stable 再切换持续跟进：`not_run`。真实工地照片：`not_run`。四端完整旅程本轮 `limited`，I6.12 同源读取仍为 passed。
 - V1 Agent 标识、版本、工作流、digest、节点版本、Schema、权限与事项/复核/回传合同未修改；旧 Run 继续绑定原 revision/digest。
 - 回归：知识解释/公开研究/综合守卫 65/65、Specialist 20/20、Construction 108/108、Native Workflow 477/504（27 skipped）、Assistant 1063/1069（6 个历史失败）、小程序 2242/2245（2 个范围外未提交改动 + 1 个历史测绘基线）、TypeScript/ESLint/生产构建通过。
+
+## 13. I6.14 验收增量与 V1.1 升级依据
+
+### 13.1 本轮结果
+
+| 验收项 | 状态 | 说明 |
+| --- | --- | --- |
+| G 标准现行性真实模型 | released | Run 通过 8/8 来源检查，实际模型 `deepseek-v4.1-flash-1017`；请求 `d6b67329-2682-977a-aadd-09a72adbec58`，用量 8558/658。 |
+| 施工端 Stable 照片与施工记录 | released | 隔离项目 `2`、事项 `8`、卫生间 `3`；合成图 Hash `c3ce9aa5…`、上传人 `6`；记录 `2` 与原件重进后仍关联。图片明确标记为合成测试素材，不是真实工地照片；提交成功不代表验收合格。 |
+| 业主 C01 持续跟进授权 | limited | 普通问答未创建委托；明确跟进后创建 1 个 `rectification_review` 委托（`0bd0083c-…`），回执与取消回执可见；`origin_message_id=53` 唯一，取消事件 `59`，`next_wake_at=null`。该轮终稿失败 `invalid_model_answer`，界面显示“这次回答没有完成”，是该能力保持 `limited` 的原因。 |
+| 四端同一事项 | limited | 老板端（admin `4`）、设计师端（admin `5`）、施工端（admin `6`）在 Stable 读取同一项目 `2`、房间 `3`、事项 `8`；项目经理已完成 `resolved`（lifecycle `28`、revision `2`、evidence record `3`）。缺失：该隔离库没有 `native_workflow_runs`，无法给出同一 `workflowRunId`/Workflow Version；事项 `8` 未绑定业主会话，业主端看不到该复核结果。 |
+| PDF 引用重进 | released | 当前引用 `w:11:4` 为 PDF 第 31 页，Stable 会话 `9` 打开、退出重进再次打开，标题/页码/原文一致。I6.13 的 `w:99:1` 资产重放、Reader 超时与撤回模拟本轮 `not_run`。 |
+| Assistant 回归 | limited | `npm run test:assistant` 仍见历史失败 A09/A11/E03/E06/A06 与书桌收纳；并行执行另见 A02/A06 的 `claimJob()` 争用失败（`assert.ok(lease)`），串行复跑未完成，不能据此判定新回归。 |
+| 真实工地照片 | not_run | 无合法授权素材；继续保留合成图、Flash 图片输入、服务端观察与 Hash/撤权链路。 |
+
+### 13.2 运行时发现
+
+- 企业 `1454` 的客户咨询默认绑定 `xiaok-native-executor-v1`。该执行器不提供 `start_delegation`，因此业主持续跟进在 native executor 下不可用。
+- 在 `agent_config` 中加入 `consultation` 绑定后，native executor 的首轮模型调用返回 `assistant_model_configuration_invalid`（Run `7`）。移除该绑定后恢复。
+- 本轮业主授权验收在 LangGraph Agent 运行时完成（临时移除本地 `runtime.private.json` 的 `agentV2` 绑定），并保留原文件备份 `admin/tmp/i6.14/runtime.private.backup.json`。该切换是隔离验收配置，不是生产默认值。
+- 知识解释配置在真实业主管根问题上两次触发 `unsupported_model_commitment` / `invalid_model_answer`（Run `9`/`10`/`12`/`13`），说明当前终稿守卫对“预计核对时间/届时告知”等措辞仍会拒绝；这是 V1.1 需要收敛的真实能力边界。
+
+### 13.3 V1.1 候选（不改变 V1）
+
+保持 `waterproof-specialist@1`、已发布 Workflow revision/digest、节点版本、Schema 与事项/复核/回传合同不变。建议以新 Agent Version 和新 Workflow Revision 实施：
+
+1. 在 native executor 中接入现有 `start_delegation` / 长期记忆能力，或明确 C01 持续跟进只走 LangGraph Agent；不得两套运行时产生不同授权语义。
+2. 事项创建时绑定 `customerId` 与原始 `conversationId`，使正式复核结果能回到同一 C01；不修改历史事项。
+3. 隔离验收夹具通过正式 Native Workflow 服务创建一个绑定 `waterproof-inspector` 的工作流 Run，并在四端证据中固定 `workflowRunId`、revision、digest。
+4. 终稿守卫对“登记回执”中的时间承诺与“届时告知”给出可解释的修复反馈，减少整轮失败。
+5. 补齐 Reader 超时/撤回的 Stable UI 模拟与真实工地照片授权素材后，再将对应项由 `limited`/`not_run` 提升为 `released`。

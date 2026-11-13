@@ -1,5 +1,55 @@
 # 小K三线集成审查
 
+## I6.14 防水 Agent 最终验收闭环（Limited）
+
+分支 `codex/xiaok-integration`，起点 `4dd69461`。隔离 PG17 `sfp-xiaok-i67-test` / `xiaok_r6_model_i614`，模型统一为百炼 `bailian` / `deepseek-flash` / `deepseek-v4.1-flash-1017`。范围外的小程序作品图片/`api.js` 等改动未提交。已发布 `waterproof-specialist@1` 与 Workflow revision/digest 未修改。
+
+### I6.14.1 G 标准现行性（released）
+
+- 固定问题“GB 55030-2022 目前是否有效？它什么时候实施？适用于哪些工程？”在隔离库真实模型 Run 通过 8/8 检查：发布公告只支持发布与日期、实施日期来自实施公告、现行状态引用标准目录、适用范围引用正文、标准编号由正确来源支持、未把公告首段当作全部条文依据、不确定处明确说明。
+- 实际模型 `deepseek-v4.1-flash-1017`，请求 `d6b67329-2682-977a-aadd-09a72adbec58`，用量 8558/658，Run `succeeded`，单次供应商尝试。证据 `admin/tmp/i6.14/g-standard-01/run.json`、`verification.json`。I6.13 Run `84`/`97` 的失败保留；代码/确定性回归提交 `4fa3b4b1`（`xiaok-i614-std-currency.ts`、`xiaok-i614-g-verify.mjs`、`knowledge-explanation.test.ts`，12/12 + 74/74）。
+
+### I6.14.2 施工端 Stable 提交（released）
+
+- 隔离企业 `1454`、项目 `2`、卫生间 `3`、事项 `8`；施工端 `390×844`、基础库 `3.17.2`、获权施工人员 `6`。Stable 依次完成：项目/事项可见 → 补充资料 → 合成测试图（480×360 JPEG，Hash `c3ce9aa5…`，上传人 `6`，房间 `卫生间`）→ 施工记录 `2` → 成功回执 → 退出重进仍见记录与原件。
+- 证据 `admin/tmp/i6.14/scenario-02/worker-ui.json`、`worker-reentry.json`、截图 `01`–`06`。合成图明确标记 `NOT A REAL SITE PHOTO`；提交成功不自动标记验收合格。
+- 未通过正式 Native Workflow 服务创建绑定 `waterproof-specialist` 的工作流 Run：本隔离库 `native_workflow_runs` 为 0，该子项 `not_run`。
+
+### I6.14.3 业主持续跟进授权（limited）
+
+- 普通防水问答在会话 `6` Run `8` 成功回答，未创建委托（会话 `6` 委托数 `0`）。
+- 新隔离会话 `11` 中明确发送“帮我持续跟进卫生间防水管根处理”：创建 1 个 `rectification_review` 委托 `0bd0083c-…`（项目 `2`、房间 `3`、subject `防水管根处理`、requester `3`），回执“已登记，等待核对当前资料”与“等该事项的获权资料或回传依据”可见；退出重进一致。
+- 发送“取消防水管根处理的跟进”后 `state=cancelled`、`next_wake_at=null`、取消事件 `59`（`sourceMessageId=56`），重进仍见“已取消”；`origin_message_id=53` 唯一，无重复任务。证据 `owner-delegation-ui.json`、`owner-delegation-db.json`、截图 `28`–`33`。
+- **limited 原因：** 该轮终稿被 `invalid_model_answer` 拒绝，Stable 显示“这次回答没有完成”；另两次同类问题被 `unsupported_model_commitment` 拒绝（Run `9`/`10`/`12`）。
+- **运行时根因：** 企业 `1454` 的 C01 默认走 `xiaok-native-executor-v1`，该执行器不提供 `start_delegation`；加入 `consultation` 绑定还会触发 `assistant_model_configuration_invalid`（Run `7`）。本轮在 LangGraph Agent 运行时完成授权验收（临时移除本地 `agentV2` 绑定，原文件备份 `admin/tmp/i6.14/runtime.private.backup.json`），未改生产默认值。
+
+### I6.14.4 四端同一事项（limited）
+
+- 同一事实：项目 `2`、房间 `3`（卫生间）、事项 `8`、施工记录 `2`、复核记录 `3`、lifecycle `28` revision `2`（`resolved`）。
+- 施工端：Stable 提交照片与记录；项目经理：Stable 核对发布记录 `2`，正式复核 `resolved`（reviewer `7`，evidence `25`）；老板端（admin `4`）：Stable 读取项目、房间、记录与已解决事项；设计师端（admin `5`）：Stable 读取项目（设计协作），事项非设计相关，未被强制参与。
+- **缺失：** 无 `native_workflow_runs`，无法固定同一 `workflowRunId`/Workflow Version；事项 `8` 未绑定 `customerId`/`conversationId`，业主端看不到该复核结果。四端整体 `limited`。
+- 证据 `boss-views.json`、`designer-views.json`、`manager-review.json`、`manager-resolve.json`、截图 `34`–`36`。
+
+### I6.14.5 PDF 引用（released；历史重放 not_run）
+
+- 会话 `9` 的答案生成真实 PDF 引用 `w:11:4`：`建筑与市政工程防水通用规范.pdf`，PDF 第 31 页（共 40 页），原文为 5.6.1–5.6.3；Stable 点击后显示标题、页码、原文与读取时间，退出重进再次点击一致。证据 `citation-ui.json`、截图 `37`–`39`。
+- I6.13 的会话 `70`/Run `99`/`w:99:1` 资产在本隔离库不存在，精确重放 `not_run`；Reader 超时与 410 撤回的 Stable UI 模拟本轮 `not_run`，服务端分类证据仍引用 I6.13。
+
+### I6.14.6 回归
+
+- `npm run test:assistant` 仍见历史失败 A09/A11/E03/E06/A06 与书桌收纳；并行执行另见 A02/A06 多条 `claimJob()` 返回空（`assert.ok(lease)`），属跨文件队列争用，串行复跑未完成，不能归因为本轮新增回归。
+- 小程序 `2242/2245` 基线未重跑，保留两个范围外 `api.js`/作品图片 Hash 改动与一个测绘 Phase 0 失败，均不纳入本切片。
+- TypeScript/定向 ESLint/生产构建本轮未在中断后完成，文档不宣称通过；V1.1 前需补跑。
+
+### I6.14.7 真实工地照片（not_run）
+
+- 无合法授权真实素材；继续保留合成图、DeepSeek Flash 图片输入、服务端观察解析、Hash 与撤权链路。未用合成图冒充真实工地，未据单张照片判定隐蔽工程合格。
+
+### I6.14.8 V1.1 评估
+
+- V1 Agent/Workflow 冻结不变；V1.1 建议新建 Agent Version 与 Workflow Revision：native executor 接入 `start_delegation`（或明确 C01 只走 LangGraph）、事项绑定业主会话以回传复核结果、隔离夹具创建绑定 specialist 的 Workflow Run、终稿守卫减少登记回执误拒。
+- 交付状态按 [第一版交付冻结](xiaok-waterproof-agent-v1-release.md) 第 13 节如实区分 `released` / `limited` / `not_run`。
+
 ## I6.13 防水 Agent 最终验收与真实业务体验补齐（Limited）
 
 起点为 fetch 后的 `origin/codex/xiaok-integration@4a89463face8`，Integration 工作树与该提交一致。本轮代码提交 `9156e9a0`（解释修复精确定位数字/状态缺口）。隔离 PG17 `sfp-xiaok-i67-test` / `xiaok_r6_model_i612`，百炼 `bailian` / `deepseek-flash` / `deepseek-v4.1-flash-1017`，真实调用记录 Run `83`–`99`，实际模型均为 `deepseek-v4.1-flash-1017`。范围外的小程序与 `portfolio/catalog.ts` 未提交修改保持原样，未纳入本切片。

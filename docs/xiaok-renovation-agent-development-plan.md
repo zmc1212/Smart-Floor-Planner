@@ -2,6 +2,8 @@
 
 > 唯一执行入口；2026-11-05用户批准按本聊天的最小架构方案开发，并明确后续开发不设费用上限。第2节只保留一个当前交付，历史停止批、真实用量及生产边界保留。
 
+I6.14（2026-11-14）：防水 Agent V1 冻结不变。G 标准现行性真实模型通过；施工端 Stable 照片/记录提交通过；业主 C01 授权登记与取消通过但终稿仍失败，标 `limited`；四端缺 Workflow Run 绑定，标 `limited`；真实工地照片 `not_run`。V1.1 候选见[第一版交付冻结](xiaok-waterproof-agent-v1-release.md)第 13 节。
+
 ## 1. 第一版交付什么
 
 **第一版保留以下五项；企业知识默认开关仍关闭，用户已授权在隔离开发中将通用、联网和企业工艺接入同一会话（企业1454开发环境已按第2节显式启用）。日报/周报共用同一流程。**
@@ -29,7 +31,7 @@
 | 下一动作 | 补真实工地照片和 Stable 控制器后执行真实工地与真机；固定 B/G/H 的失败原因已记录，不继续同类措辞循环。 |
 | 必要验收 | 12 场景自然答复、三路径隔离库证据、四端同源状态、原件可重开与撤权；保留首稿、唯一修复、请求 ID 和用量。 |
 | 失败与调用边界 | 隔离库 143 次真实调用、363,328 输入 / 30,347 输出 tokens，1 次 unknown（归一化超时），金额未知；B/G/H 与早批环境失败保留。 |
-| 环境与资源 | Integration 独立工作树，隔离 PG17 `xiaok_r6_model_i612`，百炼 `bailian`/`deepseek-flash`/`deepseek-v4.1-flash-1017`，OpenSERP 0.8.17/Baidu，工作树 Reader。 |
+| 环境与资源 | Codex 使用 `G:/workspace/向总/Smart-Floor-Planner`，Stable DevTools 使用其 `miniprogram/`。历史验收资源为隔离 PG17 `xiaok_r6_model_i612`、百炼 `bailian`/`deepseek-flash`/`deepseek-v4.1-flash-1017`、OpenSERP 0.8.17/Baidu、原工作树 Reader。 |
 | 证据与后继 | [第一版交付](xiaok-waterproof-agent-v1-release.md)与[集成审查](xiaok-integration-audit.md#i612-真实工地验证stable-四端验收与防水-agent-第一版冻结limited)记录冻结、回执与限制；[工作流](xiaok-waterproof-workflow.md)记录合同。 |
 
 ## 3. 复用哪些成果

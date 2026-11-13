@@ -17,7 +17,7 @@ import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
 import { processAnswer } from '@/lib/assistant/infrastructure/answer-worker';
 import { naturalKnowledgeProtocol, sourceBoundaryValidationProtocol } from '@/lib/assistant/agent/knowledge-explanation';
 
-loadEnvConfig(process.cwd());
+loadEnvConfig(process.cwd(), true);
 
 const enterpriseId = '1454';
 const logicalModel = 'deepseek-flash';
