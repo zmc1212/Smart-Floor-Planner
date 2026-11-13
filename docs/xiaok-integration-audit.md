@@ -2,24 +2,29 @@
 
 ## I6.15 统一执行器与正式防水委托（Limited）
 
-分支 `codex/xiaok-integration`，fetch 基线 `72777986d854`。新建隔离 PG17 `xiaok_i615_validation`，企业 `4`、对照企业 `5`、业主 `1`、项目 `1`、卫生间 `1`、原 C01 `1`、取消对照 C01 `2`。保留历史事项 `8`、V1 Agent 与已发布的各版本，采用既有 JSON/事件存储，空库迁移已验证。
+分支 `codex/xiaok-integration`，fetch 基线 `72777986d854`，业务切片 `2a84ef249fb881df84b020fe3775c6d91b48775d`。新建隔离 PG17 `xiaok_i615_validation`，企业 `4`、对照企业 `5`、业主 `1`、项目 `1`、卫生间 `1`、原 C01 `1`、取消对照 C01 `2`。保留历史事项 `8`、V1 Agent 与已发布的各版本，采用既有 JSON/事件存储，空库迁移已验证。
 
 | 项目 | 状态 | 实际结果 |
 | --- | --- | --- |
-| A 普通防水咨询 | failed | Native Run `7` 未创建委托，首稿含无来源的 200 mm / 200–300 mm。将量数检查提前到原单次修复节点后，Stable 的 Run `14` 首稿仍给出无据量数，唯一修复在正文中带入 `<think>` 及原量数，仍被拦截。停止同类复采。 |
-| B/C 明确授权与登记回执 | passed | Native Run `8` 成功；原消息 `10`、站内回执 `11`，正式 Run `specialist:d5f6bf06-21d5-4bb8-93dd-fe50673f8fc3`，首 Outbox `14`，绑定 rev3 `44f15a21…`。 |
-| D 取消 | passed | 独立 Native Run `9` 成功登记；原会话取消将 `specialist:7073bcd3-6867-4f6f-b4b2-1b53e41a5be6` 置为 `cancelled`。 |
+| A 普通防水咨询 | failed | Native Run `7` 未创建委托，首稿含无来源的 200 mm / 200–300 mm。Stable 的 Run `14` 首稿含 250 mm / 30–50 mm，唯一修复在输出文本的 `<think>` 段保留原量数，两稿均被拦截，未创建委托。第二批前后源码摘要不同，保留为失败证据。停止同类复采。 |
+| B/C 明确授权与登记回执 | passed | Native Run `8` 成功；原消息 `10`、站内回执 `11`，正式 Run `specialist:d5f6bf06-21d5-4bb8-93dd-fe50673f8fc3`，首 Outbox `14`，绑定 rev3 `44f15a21…`。Stable 业主输入框补验 Run `15`、`17`，均以真实登记回执 `47`、`51` 结束。 |
+| D 取消 | passed | 独立 Native Run `9` 成功登记，原会话取消将 `specialist:7073bcd3-6867-4f6f-b4b2-1b53e41a5be6` 置为 `cancelled`，Stable 重进仍显示回执 `15`。Stable 输入框另取消地漏收口委托，重进保留回执 `55`。取消后的委托为 `cancelled`，已经失败的专业工作流继续保存 `failed` 及原诊断。 |
 | 正式 Workflow 等待与来源 | passed | 真实子 Agent Run `10` 成功，工作流进入补资料分支并在 `site_record` 等待，持久任务无执行租约。获权同房间记录发布后，由原 Worker 登记事项并进入经理复核等待。 |
-| E/F/G/H 同一 Run 的四端验收 | passed | Stable 3.17.2 / 390×844 副屏实跑。工人提交待核对记录 `1` 及整改记录 `3`，重进读回合成原件。经理确认、转交，核对原件和历史版本并正式复核。事项 `35` 修订 `4`、复核 `55` 修订 `2`、证据事件 `52`、回传 Outbox `56`、原 C01 回执 `38`（回复原消息 `10`）。老板端读取同一已解决事项及当前施工节点；业主重进读到同一 Run、复核与原件。通过范围为同一合成项目的补资料路径。 |
+| E/F/G/H 同一 Run 的四端验收 | passed | Stable 3.17.2 / 390×844 副屏实跑。工人提交待核对记录 `1` 及整改记录 `3`，重进读回合成原件。经理确认、转交，核对原件和历史版本并正式复核。事项 `35` 修订 `4`、复核 `55` 修订 `2`、证据事件 `52`、回传 Outbox `56`、原 C01 回执 `38`（回复原消息 `10`）。老板端读取同一已解决事项，补验以隔离企业的正式阶段配置将该项目登记为“防水”后再次读到同一 Run 和事项。业主重进读到原复核和原件。通过范围为同一合成项目的补资料路径。 |
 | 当前授权与恢复 | passed | 另一业主不能打开原件或委托，对照企业看不到 Run，第二条 C01 无原咨询 Run。撤销项目对客授权后 Stable 原结果遮蔽、原件 404、任务列表为空；恢复后原回执和原件重新可读。 |
 | C01 有据清单的本轮真实渲染 | limited | 专业子作业保存了检查内容，此 Run 按冻结 rev3 进入补资料。企业工艺检索不可用，公网原文未核实。有据清单分支本轮仅复用模拟及历史证据。 |
+| 同一 C01 后续专业清单 | failed | 已登记套管封堵 Run `15` 的子作业 `16` 在模型派发前因旧回执重验误判失败。`f6ac48e2` 修正来源重验，原回执通过离线回放，撤权及另一业主仍被拒绝。新地漏收口 Run `17` 的子作业 `18` 已进入模型，首稿和唯一修复混入委托历史且结构校验未通过，最终 `invalid_model_answer`。登记事实和原失败均保留。 |
 | 真实素材、真机、BLE、真实微信 | not_run | 本轮现场照片使用明确标记的合成图。 |
 
-新增模型统一 `bailian / deepseek-flash / deepseek-v4.1-flash-1017`。普通及授权走 Responses，工作流子 Agent 和现场草稿的固定结构化载体走原 Chat Completions。首稿、工具、回执、provider request ID 和 tokens 见 `admin/tmp/i6.15/{advice,follow,follow2,startup-assistant-10,closed-loop}.json` 及隔离库 Run `14`。成本金额未对账。Stable 证据 `stable-*.json`、`four-role-readback.json`、`closed-loop.json`，保留前后摘要、角色收发记录、原件和截图。空输入、开关及编辑保存的自动化限制通过页面原处理函数操作，记录实际 API 写入。业务写入批若遇源码漂移保留原批，相关复核及重进已在固定快照只读核验；登记首批未采集完整工作树前后摘要。
+新增模型统一 `bailian / deepseek-flash / deepseek-v4.1-flash-1017`。共 21 次已知供应商返回，Responses 10 次，Chat Completions 11 次（固定结构化载体）。供应商回传 35,076 输入 / 6,058 输出 tokens，实际费用金额 `unknown`，未对账。首稿、工具、回执及请求 ID 见 `admin/tmp/i6.15/{advice,advice-repair,follow,follow2,startup-assistant-10,stable-follow-first-provider,stable-follow-provider,stable-specialist-provider,closed-loop}.json`。Stable 证据 `stable-*.json`、`four-role-readback.json`、`closed-loop.json`，保留前后摘要、角色收发记录、原件和截图。空输入、开关及编辑保存的自动化限制通过页面原处理函数操作，记录实际 API 写入。业务写入批若遇源码漂移保留原批，相关复核及重进已在固定快照只读核验；登记首批未采集完整工作树前后摘要。跟进补验首个驱动尝试与现有 Worker 同领任务而未取得租约，保留原日志，后续由现有 Worker 单独处理。
+
+普通咨询零调用复放见 `advice-offline.json`。两个首稿的可见正文均含无据量数。Run `14` 修复将这些量数放进文本的前置 `<think>` 段，剩余正文通过原量数和承诺校验，但仍多答了前面的委托话题。用两种 Responses 帧分别复放，独立 `reasoning` 项会被解析器略过，`output_text` 中的标签按正文处理。第一批模型输入只有本轮用户消息，第二批另有四条会话历史，现有记录不足以确定其因果。离线结果不改变 A 的验收状态。
 
 历史 Run `7` 的 `consultation` 配置在派发前即不匹配，`9`/`10` 为独立普通答复失败，`12` 在真实写入后产生无来源承诺，`13` 在写入后终稿工具格式无效。现有快照保留；新建 Run 的配置诊断和共享工具合同见[架构](xiaok-specialist-agent-architecture.md)。G 标准现行性继续复用 I6.14 已通过的原始证据。
 
-工程定向 Assistant / Native Workflow / Construction 250/250，小程序 123/123；新库 PG17 双 Admin 进程、双 Worker、强制 RLS、失效租约、Outbox、回滚及两运行时共享工具验证 8/8；A02/A06/E06 定向 8/8，提交 `a7af6626`。新 LangGraph 测试使用受控模型帧，实际写入并核对公开路由诊断、Run、原始事项 Evidence 和取消后审计留存。原共享队列测试无范围地领取任务，隔离后使用既有企业/Run 过滤，生产领取规则保持原值；双 Worker 仍争用同一条真实任务。B511 复用已有周槽的失败批与历史书桌收纳分开保留。
+工程定向 Assistant / Native Workflow / Construction 250/250，回执重验补丁影响范围 17/17，小程序 123/123；新库 PG17 双 Admin 进程、双 Worker、强制 RLS、失效租约、Outbox、回滚及两运行时共享工具验证 8/8；A02/A06/E06 定向 8/8，提交 `a7af6626`。新 LangGraph 测试使用受控模型帧，实际写入并核对公开路由诊断、Run、原始事项 Evidence 和取消后审计留存。原共享队列测试无范围地领取任务，隔离后使用既有企业/Run 过滤，生产领取规则保持原值；双 Worker 仍争用同一条真实任务。B511 复用已有周槽的失败批与历史书桌收纳分开保留。回执离线驱动第一次重放以与 Worker 相反的顺序获取设置及参与人锁，PG17 报 `40P01`。按业务路径先锁设置再重放通过，原诊断保留。
+
+修正旧 I6.14 驱动的角色类型及作品图片的 Buffer 类型，模块行为和清单无变化。TypeScript、作品定向 23/23、ESLint（0 错误，旧驱动 3 个未使用变量警告）、锁文件 Next.js 16.4.6 的 `npm run build -- --webpack` 均通过。生产构建在独立源码副本用 `npm ci` 安装，预构建核对测量镜像 83 个文件、生成 115/115 静态页。最终产品源码 `f6ac48e2468feb07d897313127923f0efd89cd62`，回执补丁构建证据 `webpack-lockfile-history.log`，PG17 回归证据 `native-pg-final-history.log`。此前混用 Next CLI 和旧 SWC 的失败保存在 `webpack-pinned.log`。
 
 ## I6.14 防水 Agent 最终验收闭环（Limited）
 
