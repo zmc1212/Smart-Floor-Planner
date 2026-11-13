@@ -22,7 +22,7 @@ import { agentConfig, agentCapabilityFingerprint } from './config';
 import { finalResponseShapeIssue, finalResponseShapeProtocol } from './final-response-shape';
 import { homeSourceRuntimeBudget } from './home-source-budget';
 import {nativeFinalProtocol,nativeFinalProjection,finishContextTool,nativeFinalDefinition,nativePlanningMessages,nativeFinalMessages,nativeImageFinalMessages,assertNativeFinalOutput,nativeImageSchemaProtocol,explicitNativeObjectRoot} from './native-final';
-import { conversationImageProtocol, conversationImageInstructions, conversationImageMessage, nativeImageFinalProjection, photoObservationTool } from './image-context';
+import { conversationImageProtocol, conversationImageInstructions, conversationImageMessage, nativeImageFinalProjection, photoObservationInstruction, photoObservationNormalizer, photoObservationTool } from './image-context';
 import { factFields, needWriteFeedback, needOriginalQuotes, hasExplicitNeedCorrection, assertRecordedReply, needReplyFeedback, onlyChatHistoryRequested, currentBudgetRecallRequested, currentBudgetRecallFeedback, needReconfirmationFeedback, needDeskPositionFeedback, currentNeedView, unavailableDeskReply, explicitNeedRecordOnly, explicitNeedWriteStatement, recordedNeedReceipt, parseNeedWrites } from './memory';
 import { availableNeedMemory, needMemoryNoticeRefs, unavailableNeedMessageIds, needContextStep, needSourceRefs, needRunSourcesAvailable } from './memory-sources';
 import { persistNeedWrites } from './memory-store';
@@ -98,7 +98,7 @@ import { compileModelRequest, type ModelRequestPurpose } from './model-request';
 import { homeSourceViewProtocol, knowledgeSynthesisReadInstructions } from './home-source-view';
 import { specialistPublicSections } from '../specialists/evidence';
 import { consultationSpecialist, specialistConsultationTools, specialistFollowupRequested, specialistPhotoModel, specialistPhotoRequested, specialistPolicy } from '../specialists/consultation';
-import { parseSpecialistPhotoAnalysis } from '../specialists/photo-analysis';
+import { parsePhotoObservationText, parseSpecialistPhotoAnalysis, photoObservationTextProtocol, type SpecialistPhotoAnalysis } from '../specialists/photo-analysis';
 import { bindSpecialistInput, specialistModel, specialistProtocol, specialists, type SpecialistInput, type SpecialistRunBinding } from '../specialists/registry';
 import { ownerArchiveReadProtocol, ownerArchiveReadRequested, ownerProjectStatusReadProtocol, ownerQuestionMaterialTool, ownerQuestionScope, ownerQuestionScopeProtocol,
   ownerReadToolAllowed, readOwnerMaterialInput, readOwnerQuestionScope } from './owner-question-scope';
@@ -820,6 +820,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       const photoRoom = photoSpecialist?.room;
       if (config.imageInput && (!specialistImages || photoQuestion)) {
         if (config.imageContext === conversationImageProtocol && system.role === 'system') system.content.push({ type: 'text', text: conversationImageInstructions });
+        if (photoQuestion && system.role === 'system') system.content.push({ type: 'text', text: photoObservationInstruction });
         const media = await rows(tx, sql`select a.id,a.source_hash,m.id as message_id from app.assistant_media a join app.assistant_messages m
           on m.enterprise_id=a.enterprise_id and m.conversation_id=a.conversation_id and m.client_message_id='media:' || a.request_key
           where a.enterprise_id=${lease.enterpriseId} and a.conversation_id=${String(context.conversation.id)} and a.deleted_at is null
@@ -2771,6 +2772,46 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     const modelText = references ? NO_REFERENCE : business ? business.displayText
       : parseAgentReply(result.output?.text || '', specialist ? { acceptanceQuotes: [] } : undefined);
     if (photoObservation) assertUncitedEngineeringQuantities(modelText);
+    // The image turn keeps the verified kind/text tool contract. A labelled
+    // answer is parsed directly; otherwise one text-only JSON normalization
+    // turn extracts the fixed envelope. The image request and tool schema are
+    // untouched, and unparsed text keeps its original answer while being
+    // recorded as failed instead of a structured success.
+    type PhotoParse = { parsed: boolean; analysis?: SpecialistPhotoAnalysis; reason?: string;
+      source: string; normalizer?: Record<string, unknown> };
+    let photoParse: PhotoParse | null = null;
+    if (photoObservation) {
+      const labelled = parsePhotoObservationText(modelText);
+      photoParse = { ...labelled, source: 'labelled_text' };
+      if (!labelled.parsed) {
+        try {
+          const normalized = await executePostgresText({
+            enterpriseId: BigInt(lease.enterpriseId),
+            owner: { kind: 'assistant_run', runId: BigInt(lease.runId) },
+            logicalModelKey: 'chat.general',
+            messages: [],
+            metadata: { purpose: 'specialist.photo_observation', turn: 1 },
+            beforeProviderCall: async () => { await heartbeat(lease); },
+            agent: { config: initial.config, input: {
+              messages: [
+                { role: 'system', content: [{ type: 'text', text: photoObservationNormalizer }] },
+                { role: 'user', content: [{ type: 'text', text: modelText.slice(0, 6000) }] },
+              ],
+              tools: [], maxTokens: 900, jsonOutput: true,
+            } },
+          });
+          await recordAgentModelUsage(lease.enterpriseId, lease.runId, 1, normalized);
+          photoParse = { parsed: true, analysis: parseSpecialistPhotoAnalysis(JSON.parse(normalized.content)),
+            source: 'json_normalizer', normalizer: { requestId: normalized.agentOutput?.providerRequestId ?? null,
+              model: normalized.agentOutput?.providerModel ?? normalized.model,
+              usage: normalized.agentOutput?.usage ?? null, attemptId: String(normalized.attemptId) } };
+        } catch (error) {
+          photoParse = { parsed: false, source: 'json_normalizer_failed',
+            reason: error instanceof AssistantError ? error.code
+              : error instanceof SyntaxError ? 'invalid_json' : 'photo_normalizer_unavailable' };
+        }
+      }
+    }
     // Reply-only turns have no business effect. Keep the raw first draft in the
     // model step, but show only a service-authored statement of actual state.
     const text = review && reviewMode !== 'propose' ? reviewReplyOnlyReceipt(reviewMode) : modelText;
@@ -2783,6 +2824,12 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           safeText(initial.trigger.content as Parameters<typeof safeText>[0]));
       }
       for (const ref of initial.mediaRefs) if (!await resolveAgentImage(tx, lease.enterpriseId, initial.conversation, ref)) fail('context_changed');
+      if (photoParse) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary,private_checkpoint)
+        values(${lease.enterpriseId},${lease.runId},2500,'agent_photo_analysis',${photoParse.parsed ? 'succeeded' : 'failed'},
+          ${JSON.stringify({ protocol: photoObservationTextProtocol, parsed: photoParse.parsed,
+            reason: photoParse.parsed ? null : photoParse.reason, source: photoParse.source,
+            normalizer: photoParse.normalizer ?? null, toolSchema: 'kind_text' })}::jsonb,
+          ${JSON.stringify(photoParse)}::jsonb) on conflict do nothing`);
       for (const ref of initial.referenceEvidence) if (!await resolveEvidence(tx, lease.actor, context.conversation, ref, true)) fail('context_changed');
       if (business) {
         if (!await businessSnapshotAvailable(tx, lease.enterpriseId, business)) fail('context_changed');
