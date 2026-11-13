@@ -209,3 +209,19 @@ I5 验收以 `b612ea0692acc5fac62ca8487029196bec7809cb` 为基线，测试前后
 - Assistant 较广离线检查 1,038/1,039，唯一失败仍是已记录的「书桌收纳」意图，保留 I6 的 1,033/1,034 历史记录。小程序 Assistant/Construction 341/341。原始日志在 `tmp/i6.7/{assistant-release,miniprogram-tests}.log`。
 - 最终定向 Assistant 与协议 89/89、公开读取 32/32，二者有交集；Python reader 3/3。覆盖 PDF/DOCX、发现与网页读取、原文、引用、冲突与无据量数。计划检查、TypeScript、定向 ESLint 与生产 Webpack 构建通过，静态生成 115 页。源码绑定 `tmp/i6.7/release-source.json`，日志 `{focused-final,public-final,python-reader-direct,eslint-branch,webpack-final}.log`。实库、实模和模拟器结果以各自源码绑定为准。
 - 隔离测试结束后清理临时百炼加密覆盖、停止测试数据库与新增读页/搜索进程。关闭本轮打开的次屏项目，原窗口和原小程序私有配置保留。测试卷与原始回执保留。
+
+## I6.8 防水专业 Agent 与工作流（Limited）
+
+从 `59bf257e` 的 Integration 工作树推进。通过既有 LangGraph、Evidence、Construction、Native Definition Store、PostgreSQL Runtime 与委托 Outbox 实现防水纵向流程。其余五个注册为 `draft`。画布沿原管理端草稿、模拟和发布，新增 X6 端口编辑和获权运行调试。未做生产发布。[节点及权限合同](xiaok-waterproof-workflow.md)。
+
+| 验收 | 本轮结果 |
+| --- | --- |
+| A/B 防水咨询与追问 | 固定两轮中管根、前置基层核对、铺砖前验收均保存。管根引用实际第 31 页，基层与后工序读取第 27/28 页。原 A 在现场引导处提前结束，修复后普通解释不进入该分流。第 70、71、75、76 轮原稿被承诺守卫误拒；用保存稿复现并仅在同段已引规范明确支持时区分技术前提和实际完成。保留仍有条款顺序外推、回答偏长的原文。 |
+| C 企业标准及国标对照 | 两轮均引用获权 PPT 第 18 页及实际 PDF。PPT 只说明团队安排施工与后续检查，无企业量数或放行条件。旧稿将正文元数据日期混入技术解释，现模型技术视图只带实际相关条文。 |
+| I6.7 C 同版状态及翻修适用 | 公告实读证明实施日期，目录实读证明同版状态，PDF 第 5、31 页区分总则与室内装修改造。最后两次有一轮保存、一轮 `standard_status_unverified`，保留原稿及唯一修复。保存稿仍有概括过宽，整项 Limited。 |
+| D 最新房间及项目实况 | 两轮厨房→卫生间更正和进度均保存。Construction 回执为唯一实际项目的「水电」节点，没有该房间已发布记录时明确缺项，不将计划写成完成。 |
+| E/F/G 现场闭环 | 隔离库原咨询 `41`、事项 `200`、结果 `156`。Run `specialist:0bdb4820-5d53-4b31-82f3-9c961f3256e8` 在已发布 v1 等照片，发布 v2 后仍以 v1 推进。错误房间和重复投递不建第二事项，无项目人员与施工员无权确认。施工员另行回传记录 `5`，负责人实际复核并授权回传原件。签名 API 与 Stable C01 退出重进均读到同一 Run、v1、结果及授权原件；同业主另一咨询读不到结果。模型未读取照片像素，E 的可见现象识别未通过；分析消息 138 将清单作业误述为不能继续跟进，实际委托仍按事件运行。 |
+| 管理端可视化 | Edge Playwright 实测 10 个节点和 20 条控制/数据线，拒绝 object 接入 boolean，拖回兼容端口并检查缺失输入校验。保存 r3、发布 v3，两个模拟分别完成和等待，真实运行按 v1 画布展示 Agent、用量、来源与恢复记录。未登录、无企业、员工、他企业分别得到 401/409/403/404，获权平台管理员读到真实运行。 |
+| 工程验证 | 192 项定向 Agent/Native 检查通过，105 项 C01/工地客户端定向通过，PDF reader 3 项通过。完整小程序套件 2243/2244，剩余测绘 Phase 0 调用清单基线，未修改测绘。TypeScript、定向 ESLint 与生产 Webpack 构建通过。 |
+
+对话最后固定批为 `admin/tmp/r6/integration-i68-dialogue-05`。双端源码指纹一致，17/18 轮落盘，25 次百炼响应，Responses 2 次、Chat Completions 23 次，53,545 输入、8,124 输出 tokens。现场闭环 `admin/tmp/r6/integration-i68-workflow-06`，登记和清单作业共 2 次，Responses 与 Chat Completions 各 1 次，3,511 输入、872 输出 tokens。两批实际价格未回传。所有实模实际 ID 均为 `deepseek-v4.1-flash-1017`。终稿保留既有已验证载体，工具轮满足已有 Responses 合同时优先使用。Stable 证据位于 `tmp/i6.8/stable-workflow-04/verification.json`，回到原咨询与下载原件通过，额外的原生状态发送未到达 API，批次保留失败状态。管理端证据位于 `tmp/i6.8` 的 `admin-playwright-ports.log`、`admin-playwright-live-final.log` 及 `admin-api-check.json`。目录响应、原稿、失败、未知和实际用量保留在各批次。真机、BLE、真实微信登录和生产均未验。

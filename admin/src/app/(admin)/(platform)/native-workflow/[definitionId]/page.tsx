@@ -50,7 +50,10 @@ import {
 import type { PeriodReportRunObservation } from '@/lib/native-workflow/live/period-report-status';
 import type { PublishedWorkflowVersion, WorkflowDefinitionRecord } from '@/lib/native-workflow/store/types';
 import type { WorkflowFixtureSetSummary } from '@/lib/native-workflow/fixtures/catalog';
+import { NativeWorkflowCanvas } from '@/components/admin/native-workflow-canvas';
+import { NativeWorkflowSpecialistStatus } from '@/components/admin/native-workflow-specialist-status';
 import { notify } from '@/components/admin/operation-feedback';
+import type { WorkflowDefinition } from '@/lib/native-workflow/types';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 interface DefinitionIssue {
@@ -84,6 +87,15 @@ const codeBlockStyle = {
 
 function formatJson(value: unknown): string {
   return JSON.stringify(value, null, 2);
+}
+
+function canvasDefinition(text: string): WorkflowDefinition | null {
+  try {
+    const value = JSON.parse(text) as WorkflowDefinition;
+    return value?.inputSchema?.eventType === 'specialist_followup' && Array.isArray(value.nodes)
+      && Array.isArray(value.edges) && value.nodes.every(node => node && typeof node.nodeId === 'string')
+      && value.edges.every(edge => edge && typeof edge.from === 'string' && typeof edge.to === 'string') ? value : null;
+  } catch { return null; }
 }
 
 const STATE_LABELS: Readonly<Record<string, string>> = {
@@ -220,7 +232,7 @@ function NativeWorkflowDetailPageInner() {
     // A runId in the URL always owns the input, but it is only read while the
     // live tab is visible.
     if (urlRunId) setRunIdInput(urlRunId);
-    if (activeTab !== 'live') {
+    if (activeTab !== 'live' || !detail || detail.record.draft.definition.inputSchema.eventType === 'specialist_followup') {
       // Leaving the tab stops the timer and invalidates in-flight responses.
       controller.deactivate();
       return;
@@ -232,7 +244,7 @@ function NativeWorkflowDetailPageInner() {
     // Returning only resumes a read that was cut short; a denial or a
     // transient failure stays stopped until the admin asks again.
     controller.activate();
-  }, [activeTab, urlRunId]);
+  }, [activeTab, urlRunId, detail]);
 
   const submitRunId = () => {
     const runId = runIdInput.trim();
@@ -464,7 +476,9 @@ function NativeWorkflowDetailPageInner() {
   const { record } = detail;
   const latest = record.versions[record.versions.length - 1] ?? null;
   const schema = record.draft.definition.inputSchema;
-  const eventLabel =
+  const specialistFlow = schema.eventType === 'specialist_followup';
+  const visualDefinition = specialistFlow ? canvasDefinition(editor.text) : null;
+  const eventLabel = specialistFlow ? '业主发起防水跟进' :
     schema.eventType === 'stage_changed'
       ? '实际阶段变化'
       : schema.periodKind === 'weekly'
@@ -546,7 +560,9 @@ function NativeWorkflowDetailPageInner() {
               }
             />
           ) : null}
-          <Input.TextArea
+          {visualDefinition ? <NativeWorkflowCanvas definition={visualDefinition}
+            onChange={definition => setEditor(current => current ? updateDraftText(current, formatJson(definition)) : current)} /> : null}
+          <Collapse defaultActiveKey={specialistFlow ? [] : ['json']} size="small" items={[{ key: 'json', label: '定义 JSON', children: <Input.TextArea
             value={editor.text}
             onChange={(event) => setEditor((current) => (current ? updateDraftText(current, event.target.value) : current))}
             autoSize={{ minRows: 18, maxRows: 34 }}
@@ -556,7 +572,7 @@ function NativeWorkflowDetailPageInner() {
               fontSize: 12,
               lineHeight: 1.6,
             }}
-          />
+          /> }]} />
           <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
             保存使用 validateDefinition 与独立的 editingBaseRevision 乐观锁；保存成功后服务端返回内容不会覆盖请求期间继续输入的文字。发布会再次校验并 compileDefinition，生成不可变版本。
           </Typography.Paragraph>
@@ -1166,18 +1182,8 @@ function NativeWorkflowDetailPageInner() {
       }}
     >
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-        <Alert
-          type="info"
-          showIcon
-          message="B3 模拟调试入口"
-          description="草稿与发布版本存放在 B 线独立调试存储；本轮不接真实模型、现有 Worker、业务写入或消息投递。"
-        />
-        <Alert
-          type="warning"
-          showIcon
-          message="拖拽画布待已确认设计后接入"
-          description="未找到已确认的拖拽画布设计，本轮提供结构化定义 JSON、版本管理和模拟轨迹；不新增自创画布。"
-        />
+        <Alert type="info" showIcon message="草稿、模拟与发布"
+          description="模拟使用选中的测试数据。发布后可按真实运行 ID 查看已绑定的版本、节点和回执。" />
         <Tabs
           activeKey={activeTab}
           onChange={setActiveTab}
@@ -1185,7 +1191,9 @@ function NativeWorkflowDetailPageInner() {
             { key: 'draft', label: '草稿与发布', children: draftTab },
             { key: 'versions', label: `已发布版本（${record.versions.length}）`, children: versionsTab },
             { key: 'simulation', label: '模拟调试', children: simulationTab },
-            { key: 'live', label: '真实运行', children: liveTab },
+            { key: 'live', label: '真实运行', children: specialistFlow
+              ? activeTab === 'live' ? <NativeWorkflowSpecialistStatus record={record} initialRunId={urlRunId} /> : null
+              : liveTab },
           ]}
         />
       </Space>

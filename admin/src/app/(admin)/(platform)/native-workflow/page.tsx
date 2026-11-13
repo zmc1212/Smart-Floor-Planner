@@ -9,7 +9,7 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 interface DefinitionSummary {
   definitionId: string;
-  eventType: 'stage_changed' | 'period_report';
+  eventType: 'stage_changed' | 'period_report' | 'specialist_followup';
   periodKind: 'daily' | 'weekly' | null;
   latestPublishedRevision: number | null;
   draftRevision: number;
@@ -21,10 +21,12 @@ const TEMPLATE_OPTIONS = [
   { value: 'stage-reminder', label: '阶段提醒（实际阶段变化后）' },
   { value: 'period-report-daily', label: '施工日报（共用 period）' },
   { value: 'period-report-weekly', label: '施工周报（共用 period）' },
+  { value: 'waterproof-inspection-v1', label: '防水现场核对' },
 ];
 
 function eventLabel(record: DefinitionSummary): string {
   if (record.eventType === 'stage_changed') return '实际阶段变化';
+  if (record.eventType === 'specialist_followup') return '业主发起防水跟进';
   return record.periodKind === 'weekly' ? '周报计划' : '日报计划';
 }
 
@@ -153,7 +155,7 @@ export default function NativeWorkflowListPage() {
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <Select value={templateId} onChange={setTemplateId} options={TEMPLATE_OPTIONS} style={{ width: '100%' }} />
           <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            模板包含固定节点、能力白名单与模拟 fixture。创建后只写入 B 线独立调试存储，不连接真实业务。
+            创建模板会保存草稿。可检查节点、端口和模拟轨迹，正式运行使用已发布版本。
           </Typography.Paragraph>
         </Space>
       </Modal>
