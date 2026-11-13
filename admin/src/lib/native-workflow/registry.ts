@@ -1,7 +1,7 @@
 import { specialists } from '../assistant/specialists/registry';
 import { workflowIssue, type WorkflowIssue } from './errors';
 import { hasOwn, isJsonScalar } from './guards';
-import { WORKFLOW_BOUNDS, type JsonValue, type NodeType, type ValueType } from './types';
+import { WORKFLOW_BOUNDS, type JsonValue, type NodeType, type ValueType, type WorkflowNode } from './types';
 
 export type CapabilityEffect = 'none' | 'read' | 'compose' | 'save' | 'deliver' | 'wait';
 
@@ -16,6 +16,34 @@ export const specialistNodeSettings = {
   issuePolicies: ['open_or_reuse', 'manager_only'],
   reviewMilestones: ['resolved', 'closed'],
 } as const;
+
+const specialistInputs: Readonly<Record<string, Readonly<Record<string, readonly [string, string]>>>> = {
+  'read.specialist_knowledge': { project: ['read.specialist_project', 'project'] },
+  'compose.stage_specialist.v2': {
+    project: ['read.specialist_project', 'project'],
+    enterprise: ['read.specialist_knowledge', 'enterprise'],
+    publicStandard: ['read.specialist_public_standard', 'publicStandard'],
+  },
+  'condition.specialist_evidence': {
+    enterprise: ['compose.stage_specialist.v2', 'hasEnterprise'],
+    publicStandard: ['compose.stage_specialist.v2', 'hasPublic'],
+    issue: ['compose.stage_specialist.v2', 'hasIssue'],
+  },
+  'compose.specialist_checklist': { analysis: ['compose.stage_specialist.v2', 'analysis'] },
+  'compose.specialist_material_request': { analysis: ['compose.stage_specialist.v2', 'analysis'] },
+  'wait.specialist_site_record.v2': { project: ['read.specialist_project', 'project'] },
+  'save.specialist_issue.v2': { project: ['read.specialist_project', 'project'] },
+  'wait.specialist_review': { issue: ['save.specialist_issue.v2', 'saveReceipt'] },
+  'deliver.specialist_result': {
+    analysis: ['compose.stage_specialist.v2', 'analysis'],
+    review: ['wait.specialist_review', 'review'],
+  },
+};
+
+export function specialistInputMatches(branched: boolean, target: WorkflowNode, input: string, source: WorkflowNode, output: string) {
+  const binding = branched ? specialistInputs[target.capabilityRef]?.[input] : undefined;
+  return !binding || source.capabilityRef === binding[0] && output === binding[1];
+}
 
 export interface CapabilitySpec {
   readonly type: NodeType;

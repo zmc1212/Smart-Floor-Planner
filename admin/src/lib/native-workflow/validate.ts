@@ -1,7 +1,7 @@
 import { canonicalJson } from './canonical';
 import { workflowIssue, type WorkflowIssue } from './errors';
 import { hasOwn, isJsonScalar, isPlainObject } from './guards';
-import { getCapability, validateCapabilityConfig, type CapabilitySpec } from './registry';
+import { getCapability, specialistInputMatches, validateCapabilityConfig, type CapabilitySpec } from './registry';
 import {
   WORKFLOW_BOUNDS,
   WORKFLOW_SCHEMA_VERSION,
@@ -657,10 +657,9 @@ export function validateDefinition(raw: unknown): ValidationResult {
         continue;
       }
       if (nodeSpec) {
-        const branchPorts: Readonly<Record<string, string>> = { enterprise: 'hasEnterprise', publicStandard: 'hasPublic', issue: 'hasIssue' };
-        if (node.capabilityRef === 'condition.specialist_evidence'
-          && (source.capabilityRef !== 'compose.stage_specialist.v2' || ref.outputPath !== branchPorts[inputName])) {
-          issues.push(workflowIssue('invalid_specialist_branch_input', inputPath, `bind the matching verified ${inputName} port`));
+        if (!specialistInputMatches(branchedSpecialist, node, inputName, source, ref.outputPath)) {
+          const code = node.capabilityRef === 'condition.specialist_evidence' ? 'invalid_specialist_branch_input' : 'invalid_specialist_input';
+          issues.push(workflowIssue(code, inputPath, `bind the matching verified ${inputName} port`));
         }
         const expected = nodeSpec.inputs[inputName];
         const actual = sourceSpec.outputs[ref.outputPath];

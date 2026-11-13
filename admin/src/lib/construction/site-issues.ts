@@ -6,6 +6,7 @@ import { text } from './contracts';
 import { sharedMaterial, sharedMaterials } from './site-materials';
 import { readSiteResolution } from './site-resolution';
 import { collaborationEnabled, collaborationMember } from './collaboration-scope';
+import { publishedSiteRecord } from './site-publications';
 
 export type SiteIssueCommand = { action: 'open' | 'claim' | 'transfer' | 'reply' | 'cancel' | 'resume' | 'refresh' | 'check' | 'return' | 'confirm' | 'rectify' | 'dismiss'; target: string; value: string };
 type Issue = { issueId: string; revision: number; projectId: string; recordId: string; recordVersion: number;
@@ -15,6 +16,7 @@ type Issue = { issueId: string; revision: number; projectId: string; recordId: s
   requestMessageId?: string; requestHash?: string; requestText?: string;
   projectReview?: boolean;
   specialistDelegationId?: string;
+  specialistManagerOnly?: boolean;
   confirmed?: boolean; confirmedAt?: string; confirmedBy?: string; confirmationReason?: string; rectifyingAt?: string; dismissedAt?: string; dismissReason?: string;
   /** A record item follows onsite work; a need item follows a customer's explicitly shared requirement. */
   sourceKind?: 'record' | 'need'; needGrantId?: string; customerId?: string; conversationId?: string };
@@ -203,9 +205,14 @@ export async function readSiteIssueBase(tx: PostgresTransaction, eid: string, pi
     ? !!need && need.projectId === pid && need.roomId === issue.roomId && need.roomName === issue.roomName
       && need.customerId === issue.customerId && need.conversationId === issue.conversationId && need.sourceHash === issue.sourceHash
     : !issue.requestMessageId || !!request && fingerprint(request.content) === issue.requestHash;
-  const specialistOrigin = issue.specialistDelegationId
-    ? await (await import('./specialist-issues')).specialistIssueOrigin(tx, eid, pid, issue.specialistDelegationId) : undefined;
-  const valid = requestAvailable && (!issue.specialistDelegationId || !!specialistOrigin) && (isNeed ? true : !!source && Number(source!.row.version) === issue.recordVersion && source!.hash === issue.sourceHash)
+  let specialistAuthorized = true;
+  if (issue.specialistDelegationId) {
+    const { specialistIssueOrigin, specialistPublicationAuthorized } = await import('./specialist-issues');
+    const origin = await specialistIssueOrigin(tx, eid, pid, issue.specialistDelegationId);
+    const publication = origin && await publishedSiteRecord(tx, eid, origin.ownerId, issue.recordId, issue.recordVersion, true);
+    specialistAuthorized = !!publication && await specialistPublicationAuthorized(tx, origin, publication, issue.specialistManagerOnly);
+  }
+  const valid = requestAvailable && specialistAuthorized && (isNeed ? true : !!source && Number(source!.row.version) === issue.recordVersion && source!.hash === issue.sourceHash)
     && (!issue.materialVersion || materials?.version === issue.materialVersion);
   const owner = issue.ownerId && (!isNeed || issue.confirmed || await collaborationMember(tx, eid, pid, issue.ownerId) === 'designer')
     ? await effectiveOwner(tx, eid, pid, issue.ownerId) : null;
@@ -277,7 +284,7 @@ export async function handleSiteIssue(tx: PostgresTransaction, actor: ActorConte
  * staff member confirms the exact persisted preview; model output alone cannot. */
 export async function openRecordIssue(tx: PostgresTransaction, eid: string, pid: string, recordId: string,
   source: NonNullable<Awaited<ReturnType<typeof currentRecord>>>,
-  request: Pick<Issue, 'openedBy' | 'requestMessageId' | 'requestHash' | 'requestText' | 'projectReview' | 'specialistDelegationId' | 'customerId' | 'conversationId'>,
+  request: Pick<Issue, 'openedBy' | 'requestMessageId' | 'requestHash' | 'requestText' | 'projectReview' | 'specialistDelegationId' | 'specialistManagerOnly' | 'customerId' | 'conversationId'>,
   principal: ActorContext['principal'], correlationId: string) {
   const issue: Issue = { issueId: '', revision: 1, projectId: pid, recordId, recordVersion: Number(source.row.version), sourceHash: source.hash,
     sourceMessageId: String(source.row.source_message_id), roomId: String(source.row.room_id), roomName: String(source.row.room_name_snapshot),

@@ -36,7 +36,7 @@ async function authorizedResult(tx: PostgresTransaction, eid: string, cid: strin
   if (typeof p.specialistDelegationId === 'string') {
     const { specialistIssueOrigin } = await import('./specialist-issues');
     const origin = await specialistIssueOrigin(tx, eid, projectId, p.specialistDelegationId);
-    if (!origin || origin.conversationId !== cid || origin.ownerId !== p.customerId) return null;
+    if (!origin || origin.status === 'cancelled' || origin.conversationId !== cid || origin.ownerId !== p.customerId) return null;
     const issue = await readSiteIssueBase(tx, eid, projectId, issueId);
     if (!issue?.sourceAvailable || issue.specialistDelegationId !== origin.id || issue.revision !== p.issueRevision
       || issue.roomId !== origin.scope.roomId) return null;

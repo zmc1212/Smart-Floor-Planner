@@ -22,7 +22,7 @@ export async function specialistIssueOrigin(tx: PostgresTransaction, eid: string
 export async function specialistResultRequired(tx: PostgresTransaction, eid: string, pid: string, delegationId: string, state: 'resolved' | 'closed') {
   const origin = await specialistIssueOrigin(tx, eid, pid, delegationId);
   const binding = origin?.scope.workflow;
-  if (!binding) return false;
+  if (!binding || origin?.status === 'cancelled') return false;
   try {
     const { record } = await getNativeWorkflowService().getDefinition(binding.templateId);
     const published = record.versions.find(version => version.revision === binding.revision && version.digest === binding.digest);
@@ -32,6 +32,18 @@ export async function specialistResultRequired(tx: PostgresTransaction, eid: str
     if (error instanceof WorkflowOperationError && error.status === 404) return false;
     throw error;
   }
+}
+
+export async function specialistPublicationAuthorized(tx: PostgresTransaction, d: ReviewDelegation,
+  publication: NonNullable<Awaited<ReturnType<typeof publishedSiteRecord>>>, managerOnly = false) {
+  if (String(publication.project_id) !== d.projectId || String(publication.room_id) !== d.scope.roomId) return false;
+  const authorId = String(publication.author_id), reviewerId = String(publication.approved_by);
+  if (!publication.approved_by) return false;
+  const author = await collaborationMember(tx, d.enterpriseId, d.projectId, authorId);
+  return (author === 'manager' || !managerOnly && author === 'worker')
+    && await collaborationMember(tx, d.enterpriseId, d.projectId, reviewerId) === 'manager'
+    && !await siteAccessRevoked(tx, d.enterpriseId, d.projectId, [authorId, reviewerId],
+      publication.published_at as Date, { managers: managerOnly ? [authorId, reviewerId] : [reviewerId] });
 }
 
 type SpecialistSiteRecord = { id: string; version: number } & Record<string, string | number>;
@@ -55,11 +67,7 @@ export async function specialistSiteRecord(tx: PostgresTransaction, d: ReviewDel
     const source = await currentRecord(tx, d.enterpriseId, d.projectId, id);
     const pending = (publication.data as { pending?: string }).pending?.trim();
     if (!source?.media.length || !pending?.includes(d.scope.subject) || !safeText(source.row.content as MessageContent).includes(pending)) return null;
-    const authorId = String(publication.author_id), reviewerId = String(publication.approved_by);
-    const author = await collaborationMember(tx, d.enterpriseId, d.projectId, authorId);
-    const reviewer = publication.approved_by && await collaborationMember(tx, d.enterpriseId, d.projectId, reviewerId);
-    if (author !== 'manager' && (options.managerOnly || author !== 'worker') || reviewer !== 'manager'
-      || await siteAccessRevoked(tx, d.enterpriseId, d.projectId, [authorId, reviewerId], publication.published_at as Date, { managers: [reviewerId] })) return null;
+    if (!await specialistPublicationAuthorized(tx, d, publication, options.managerOnly)) return null;
     return { id, version, hash: source.hash, messageId: String(source.row.source_message_id) };
   }
   return { id, version };
@@ -95,12 +103,12 @@ export async function openSpecialistSiteIssue(tx: PostgresTransaction, d: Review
     return issue;
   }
   const published = await publishedSiteRecord(tx, eid, d.ownerId, input.id, input.version, true);
-  if (policy === 'manager_only' && (!published
-    || await collaborationMember(tx, eid, pid, String(published.author_id)) !== 'manager')) return null;
+  if (!published || !await specialistPublicationAuthorized(tx, d, published, policy === 'manager_only')) return null;
   const source = published && await currentRecord(tx, eid, pid, input.id);
   if (!source?.media.length || String(source.row.room_id) !== d.scope.roomId) fail('site_review_required', 422);
   return openRecordIssue(tx, eid, pid, input.id, source, {
     openedBy: '', projectReview: true, specialistDelegationId: d.id,
+    ...(policy === 'manager_only' ? { specialistManagerOnly: true } : {}),
     customerId: d.ownerId, conversationId: d.conversationId, requestText: d.scope.subject,
   }, { kind: 'user', userId: d.ownerId }, d.originMessageId);
 }

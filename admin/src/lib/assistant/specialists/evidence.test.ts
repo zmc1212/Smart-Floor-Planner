@@ -53,3 +53,17 @@ test('an enterprise citation must match the active epoch, original version and l
   const otherProject = { ...knowledge, knowledge: { ...knowledge.knowledge!, scope: 'project' as const, projectId: '2' } };
   assert.equal(specialistChecks({ ...candidate, sources: [{ ...sources[0], evidence: otherProject }] }).hasEnterprise, false);
 });
+
+test('a project check needs the selected room, publication revision and original record fingerprint', () => {
+  const material = { ref: { type: 'site_record', id: '91', version: '2' }, hash: 'site-hash',
+    projectId: '11', roomId: '15' } as NonNullable<SynthesisSource['material']>;
+  const source = { kind: 'project' as const, sourceId: 'P1', title: '现场记录', text: '管根已清理', material };
+  const current = { ...input, answer: { kind: 'synthesis' as const, segments: [
+    { basis: 'evidence' as const, text: '管根已清理', citations: [{ sourceId: 'P1', quote: source.text }] },
+  ] }, sources: [source], project: { ...input.project, records: [{ id: '91', version: 2, hash: 'site-hash' }] } };
+  assert.deepEqual(specialistChecks(current).requestedChecks[0].basis, ['project_fact']);
+  const moved = { ...current.project, roomId: '16' };
+  assert.deepEqual(specialistChecks({ ...current, project: moved }).requestedChecks[0].basis, ['unverified']);
+  assert.deepEqual(specialistChecks({ ...current, project: { ...current.project,
+    records: [{ ...current.project.records[0], version: 3 }] } }).requestedChecks[0].basis, ['unverified']);
+});

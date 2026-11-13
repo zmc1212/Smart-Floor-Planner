@@ -49,6 +49,15 @@ test('a missing issue branch or cross-wired evidence branch cannot publish', () 
   }
 });
 
+test('a matching JSON type cannot substitute an unrelated output for specialist provenance', () => {
+  const definition = createWaterproofInspectionDefinition();
+  const nodes = definition.nodes.map(node => node.nodeId === 'result'
+    ? { ...node, inputs: { ...node.inputs, review: { nodeId: 'project', outputPath: 'project' } } } : node);
+  const checked = validateDefinition({ ...definition, nodes });
+  assert.equal(checked.ok, false);
+  if (!checked.ok) assert.ok(checked.issues.some(issue => issue.code === 'invalid_specialist_input'));
+});
+
 test('the original published definition still resolves with its original digest', async () => {
   const legacy = JSON.parse((await readFile(new URL('./fixtures/waterproof-v1.json', import.meta.url), 'utf8')).replace(/^\uFEFF/u, '')) as {
     definition: WorkflowDefinition; digest: string;

@@ -15,7 +15,6 @@ import { configuredPublicRead, publicDocumentPages, publicDocumentReadFailures }
 import { fetchPublicDocument } from '@/lib/assistant/web-search/page';
 import { reviewedStandardTopic } from '@/lib/assistant/web-search/standards';
 import { readSiteIssueBase } from '@/lib/construction/site-issues';
-import { siteAccessRevoked } from '@/lib/construction/site-access';
 import { constructionRead } from '@/lib/construction/customer';
 import { openSpecialistSiteIssue, specialistSiteRecord } from '@/lib/construction/specialist-issues';
 import { readSiteResolution } from '@/lib/construction/site-resolution';
@@ -331,10 +330,13 @@ export async function advanceSpecialistDelegation(tx: PostgresTransaction, d: Re
   const receipt = reviewed?.outputs?.review as { id: string; revision: number; eventId: string; issueId: string; state?: string } | undefined;
   const delivery = result.operations.findLast(op => op.capabilityRef === 'deliver.specialist_result' && op.outcome === 'succeeded');
   const messageId = (delivery?.outputs?.deliveryReceipt as { receiptId?: string } | undefined)?.receiptId;
-  if (result.status === 'completed' && receipt && messageId)
-    return outcome('completed', '现场资料经项目负责人复核，结果已回传本次咨询', null,
+  if (result.status === 'completed' && receipt && messageId) {
+    const completed = outcome('completed', '现场资料经项目负责人复核，结果已回传本次咨询', null,
       { type: 'review', id: receipt.id, version: String(receipt.revision), issueId: receipt.issueId, messageId,
         ...(receipt.state ? { state: receipt.state } : {}) });
+    const view = await specialistDelegationReadback(tx, { ...d, ...completed });
+    return outcome(view.status, view.nextAction, view.waitingFor, view.evidence);
+  }
   if (result.status === 'failed' || result.status === 'halted') return outcome('failed', '防水核对暂未完成，请在原咨询查看或联系项目团队');
   if (result.status === 'unknown') return outcome('waiting_for_authorization', '核对结果待确认，请在原咨询查看', 'owner');
   const pending = published.definition.nodes.find(node => node.nodeId === result.state.pendingNodeId);
@@ -361,7 +363,11 @@ export async function specialistDelegationReadback(tx: PostgresTransaction, d: R
     if (event && await validResult(tx, d.enterpriseId, d.conversationId, event)) return d;
     // A deleted projection can be rebuilt from the same verified outbox event.
     const current = await readSiteResolution(tx, d.enterpriseId, d.projectId, d.evidence.issueId);
-    if (current?.available && current.id === d.evidence.id && String(current.revision) === d.evidence.version) {
+    const sameReview = current?.id === d.evidence.id && String(current?.revision) === d.evidence.version;
+    const closedAfterReview = current?.state === 'closed' && d.evidence.state === 'resolved'
+      && (event?.payload as Row | undefined)?.evidenceId === current.evidenceId
+      && (event?.payload as Row | undefined)?.issueRevision === current.issueRevision;
+    if (current?.available && (sameReview || closedAfterReview)) {
       const origin = await one(tx, sql`select * from app.assistant_conversations where enterprise_id=${d.enterpriseId}
         and id=${d.conversationId} for update`);
       const original = await one(tx, sql`select id::text from app.domain_event_outbox where enterprise_id=${d.enterpriseId}
@@ -373,18 +379,13 @@ export async function specialistDelegationReadback(tx: PostgresTransaction, d: R
         await syncSiteResults(tx, delegationActor(d), origin, eventId, true);
         const restored = await one(tx, sql`select id::text from app.assistant_messages where enterprise_id=${d.enterpriseId}
           and conversation_id=${d.conversationId} and source_event_id=${eventId} and purpose='construction.result'`);
-        if (restored) return { ...d, evidence: { ...d.evidence, messageId: String(restored.id) } };
+        if (restored) return { ...d, evidence: { ...d.evidence, id: current.id, version: String(current.revision),
+          state: current.state, messageId: String(restored.id) } };
       }
     }
   } else {
     const issue = await readSiteIssueBase(tx, d.enterpriseId, d.projectId, d.evidence.issueId);
-    if (issue?.sourceAvailable && !['cancelled', 'dismissed'].includes(issue.status)) {
-      const publication = await one(tx, sql`select author_id::text,approved_by::text,published_at from app.construction_site_records
-        where enterprise_id=${d.enterpriseId} and project_id=${d.projectId} and id=${issue.recordId}
-        and status='published' and published_version=${issue.recordVersion} and audience='customer' and published_customer_id=${d.ownerId}`);
-      if (publication && !await siteAccessRevoked(tx, d.enterpriseId, d.projectId,
-        [String(publication.author_id), String(publication.approved_by)], publication.published_at as Date, { managers: [String(publication.approved_by)] })) return d;
-    }
+    if (issue?.sourceAvailable && !['cancelled', 'dismissed'].includes(issue.status)) return d;
   }
   return outcome('waiting_for_authorization', '原现场资料或复核依据已变化，等待重新核对', 'reviewer');
 }
