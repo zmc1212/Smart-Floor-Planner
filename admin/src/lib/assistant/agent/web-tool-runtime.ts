@@ -28,7 +28,12 @@ function userUrls(question: string) {
   }));
 }
 
-function webPacket(message: ModelMessage): { tool: string; webStatus: string; result?: { results?: unknown[] } } | null {
+type DiscoveryPacket = {
+  tool: string; webStatus: string; result?: { results?: Array<Record<string, unknown>>; [key: string]: unknown };
+  [key: string]: unknown;
+};
+
+function webPacket(message: ModelMessage): DiscoveryPacket | null {
   if (message.role !== 'tool') return null;
   try {
     const packet = JSON.parse(message.content);
@@ -36,19 +41,26 @@ function webPacket(message: ModelMessage): { tool: string; webStatus: string; re
   } catch { return null; }
 }
 
-/** A successful discovery with no read yet needs an original before synthesis. */
+/** A fresh discovery needs its own read attempt. An earlier read does not
+ * establish the contents of a later search result. */
 export function webOriginalPending(messages: ModelMessage[]) {
   const packets = messages.map(webPacket).filter(packet => packet !== null);
-  return packets.some(packet => packet.webStatus === 'ready' && packet.result?.results?.length)
-    && !packets.some(packet => packet.tool === 'web_fetch');
+  const discovery = packets.findLastIndex(packet => packet.webStatus === 'ready' && packet.result?.results?.length);
+  return discovery >= 0 && discovery > packets.findLastIndex(packet => packet.tool === 'web_fetch');
 }
 
-export function omitSearchSnippets(messages: ModelMessage[]): ModelMessage[] {
+export function projectWebDiscovery(messages: ModelMessage[], finalOnly: boolean): ModelMessage[] {
   return messages.map(message => {
     const packet = webPacket(message);
-    if (message.role !== 'tool' || !packet?.result?.results) return message;
-    return { ...message, content: JSON.stringify({ tool: packet.tool, webStatus: packet.webStatus,
-      discoveryOnly: true, synthesisSources: [] }) };
+    if (message.role !== 'tool' || !Array.isArray(packet?.result?.results)) return message;
+    const { results, ...metadata } = packet.result;
+    if (finalOnly) return { ...message, content: JSON.stringify({
+      tool: packet.tool, webStatus: packet.webStatus, failures: packet.failures, discoveryOnly: true, synthesisSources: [],
+    }) };
+    const candidates = results.map(({ rank, title, url, domain, sourceKind, verified }) =>
+      ({ rank, title, url, domain, sourceKind, verified }));
+    return { ...message, content: JSON.stringify({ ...packet,
+      result: { ...metadata, contentKind: 'discovery', results: candidates } }) };
   });
 }
 

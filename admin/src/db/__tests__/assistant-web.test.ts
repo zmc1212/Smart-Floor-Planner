@@ -20,8 +20,8 @@ let runId: string, citationId: string, searches = 0;
 const question = '查询厂家公开网页说明并解释地暖选材的适用条件，这轮不保存、不安排施工。';
 const content = { version: 1 as const, blocks: [{ type: 'text' as const, text: question }] }, requestKey = randomUUID();
 const actor = (fixture = fixtures[0]): ActorContext => ({ enterpriseId: fixture.enterpriseId, principal: { kind: 'user', userId: fixture.userId }, contextVersion: 1, capabilities: ['assistant.chat.self'] });
-const chat = (fixture = fixtures[0]) => new ConversationService(actor(fixture));
-const turn = (name: string, input: unknown): ModelTurnOutput => ({ text: '', toolCalls: [{ id: randomUUID(), name, arguments: JSON.stringify(input) }], usage: null, providerRequestId: null, finishReason: 'tool_calls' });
+const chat = (fixture = fixtures[0]) => new ConversationService(actor(fixture), undefined, async () => null);
+const turn = (name: string, input: unknown): ModelTurnOutput => ({ text: '', toolCalls: [{ id: randomUUID(), name, arguments: JSON.stringify(input) }], usage: { inputTokens: 100, outputTokens: 30 }, providerRequestId: null, finishReason: 'tool_calls' });
 const sources = (messages: ModelMessage[]) => messages.flatMap(message => message.role === 'tool' ? JSON.parse(message.content).synthesisSources || [] : []) as Array<{ sourceId: string; kind: string; citationOptions: Array<{ citationId: string }> }>;
 const web = async (query: WebQuery): Promise<WebSearchSnapshot> => {
   searches++;
@@ -30,7 +30,10 @@ const web = async (query: WebQuery): Promise<WebSearchSnapshot> => {
 };
 
 before(async () => {
-  const url = new URL(resolvePostgresRuntimeConfig().connectionString); assert.equal(url.port, '55432'); assert.equal(url.pathname, '/xiaok_embedding_eval');
+  const url = new URL(resolvePostgresRuntimeConfig().connectionString);
+  assert.equal(url.hostname, '127.0.0.1');
+  assert.ok(Number(url.port) >= 49152);
+  assert.equal(url.pathname, '/xiaok_embedding_eval');
   for (let index = 0; index < 3; index++) {
     const fixture = { enterpriseId: '', userId: '', conversationId: '' }; fixtures.push(fixture);
     await withPlatformTransaction(async tx => {
@@ -88,6 +91,23 @@ test('valid same-tenant other customer and cross-tenant identities cannot read t
     await assert.rejects(chat(fixture).citation(citationId), /assistant_resource_not_found/);
     await assert.rejects(chat(fixture).messages(fixtures[0].conversationId), /assistant_resource_not_found/);
   }
+});
+
+test('history and source opening recheck a changed page without exposing the stale quote', async () => {
+  const fixture = fixtures[0];
+  let checks = 0;
+  const customer = new ConversationService(actor(fixture), undefined, async () => {
+    checks++;
+    return 'source_changed';
+  });
+  const history = await customer.messages(fixture.conversationId);
+  const answer = history.items.find(item => item.authorKind === 'assistant')!;
+  assert.equal(answer.available, false);
+  assert.equal(answer.citations.length, 0);
+  assert.match(JSON.stringify(answer.content), /source_changed/);
+  const citation = await customer.citation(citationId);
+  assert.deepEqual(citation, { id: citationId, available: false, reason: 'source_changed' });
+  assert.equal(checks, 2);
 });
 
 test('ordinary model advice needs no retrieval or business action', async () => {

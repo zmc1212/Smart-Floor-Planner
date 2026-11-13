@@ -366,7 +366,7 @@ npx tsx scripts/bailian-responses-acceptance.ts --only=access --tool-model=qwen3
 
 百炼在所支持的模型及地域通过 `tools: [{ "type": "web_search" }]` 提供原生搜索。完成的 `web_search_call` 输出项中，`action.query` 为查询，`action.sources[]` 为带 `type: "url"` 与 `url` 的来源列表。流式状态为 `response.web_search_call.in_progress`、`searching`、`completed`，完整项由 `response.output_item.done` 返回；次数可见 `usage.x_tools.web_search.count`。网页抽取通过同请求中的 `web_extractor` 与 `web_extractor_call` 项。原生 Responses 无 `enable_source`、`enable_citation` 或 `citation_format` 控件。[创建响应](https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-responses) · [百炼联网搜索](https://help.aliyun.com/zh/model-studio/web-search)
 
-应用端需要逐次权限校验、候选筛选、可重开的原文和引用，因此 R3 复用既有 LangGraph Worker 的工具节点和持久化接口，将四个工具接到 R2 `ToolRegistry` / `ToolExecutor`。模型规划查询；搜索回执到达后，首次读页保留独立工具轮。后续可补查，收尾只保留可核实正文和有界状态，引用 ID 由已有 `Evidence` 管线装配。普通问题可直接走现有终稿。百炼支持的 R3 工具轮使用 `function_call` 和 `function_call_output`。单工具读页使用 `tool_choice: "required"`，多工具轮使用 `auto`。真实联调中 Responses 单独终稿把 `segments` 序列化为字符串，终稿轮沿已验证的 Chat Completions 结构化通道。[LangGraph 工具节点](https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph.prebuilt.ToolNode.html)
+应用端需要逐次权限校验、候选筛选、可重开的原文和引用，因此 R3 复用既有 LangGraph Worker 的工具节点和持久化接口，将四个工具接到 R2 `ToolRegistry` / `ToolExecutor`。模型规划查询；有剩余工具轮时，新的候选批在回答前需要一次读页尝试。发给模型的发现结果只含标题、网址、域名及来源分类。收尾使用已读正文与失败状态，引用 ID 由原 `Evidence` 管线装配。普通问题可直接走原终稿。Responses 工具轮使用 `function_call` 和 `function_call_output`，单工具轮用 `tool_choice: "required"`。终稿轮沿 Chat Completions 结构化通道。I6 实调确认百炼原生 `web_extractor` 是按目标生成的摘要，输出顺序可与 `urls[]` 不同。来源标记无法归属时保留未归属计数，C01 的原文取应用读页。[创建响应](https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-responses) · [LangGraph 工具节点](https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph.prebuilt.ToolNode.html)
 
 ### 配置与边界
 

@@ -14,7 +14,7 @@ import type { FileLocator } from '../contracts/source-file';
 import { fileQuoteSpans } from './source-file';
 import { knowledgeProvenance, knowledgeRowAllowed } from './provenance';
 import { sourceIndexReady } from './managed-store';
-import { parseWebCitationId, webCitationForAnswer } from '../agent/web-evidence';
+import { citationWebSource, parseWebCitationId, webCitationForAnswer, type WebSourceChecks } from '../agent/web-evidence';
 import { designerMessageProjection } from '@/lib/portfolio/designer-recommendation';
 export type PreviewPolicy={audience:'customer_public'|'staff_internal'|'all';drafts:Array<{id:string;documentId:string;hash:string;editVersion:number}>};
 export function previewPolicy(c:Row):PreviewPolicy {
@@ -110,13 +110,17 @@ export async function citationProjection(tx:PostgresTransaction,actor:ActorConte
     ...(source.professional ? {professional:{kind:(source.professional as Row).kind,origin:(source.professional as Row).origin,conditions:(source.professional as Row).conditions,prerequisites:(source.professional as Row).prerequisites,exceptions:(source.professional as Row).exceptions}} : {}),
     historical:String(source.published_version_id)!==String(citation.document_version_id)};
 }
-export async function webCitationProjection(tx: PostgresTransaction, actor: ActorContext, c: Row, citationId: string) {
+export async function webCitationProjection(tx: PostgresTransaction, actor: ActorContext, c: Row, citationId: string, checked?: WebSourceChecks) {
   const ref = parseWebCitationId(citationId);
   const run = ref ? await one(tx, sql`select output_message_id from app.assistant_runs where enterprise_id=${actor.enterpriseId}
     and conversation_id=${String(c.id)} and id=${ref.runId}`) : null;
   if (!run?.output_message_id || !await agentMessageAvailable(tx, actor.enterpriseId, String(c.id), String(run.output_message_id),actor))
     return { id: citationId, available: false, reason: 'source_unavailable' };
-  return await webCitationForAnswer(tx, actor, c, citationId) || { id: citationId, available: false, reason: 'source_unavailable' };
+  const citation = await webCitationForAnswer(tx, actor, c, citationId);
+  if (!citation) return { id: citationId, available: false, reason: 'source_unavailable' };
+  const source = citationWebSource(citation);
+  const reason = checked && source ? checked.has(source.hash) ? checked.get(source.hash) : 'source_unreadable' : null;
+  return reason ? { id: citationId, available: false, reason } : citation;
 }
 /** Explain why a saved answer can no longer be replayed. A retryable store
  * failure is not described as deleted content, and a lost grant is not
@@ -129,7 +133,7 @@ export function unavailableNoticeText(reason?: string) {
   if (reason === 'source_unreadable') return '资料暂时无法读取，请稍后重试。';
   return '这条回答所依据的资料已不可用，请重新提问。';
 }
-export async function projectMessage(tx:PostgresTransaction,actor:ActorContext,c:Row,message:Row) {
+export async function projectMessage(tx:PostgresTransaction,actor:ActorContext,c:Row,message:Row,webChecks?:WebSourceChecks) {
   // Revoking an original also hides pre-revocation AI prose after it. This
   // conservative fence covers unstructured replies without inventing citations;
   // future turns can answer again from the remaining live sources.
@@ -150,7 +154,7 @@ export async function projectMessage(tx:PostgresTransaction,actor:ActorContext,c
   for(const citation of citations)projected.push(await citationProjection(tx,actor,c,citation));
   const webIds = [...new Set(((message.content as { blocks?: Array<{ type?: string; citationId?: string }> })?.blocks || [])
     .filter(b => b.type === 'citation' && b.citationId && parseWebCitationId(b.citationId)).map(b => b.citationId!))];
-  for (const citationId of webIds) projected.push(await webCitationProjection(tx, actor, c, citationId));
+  for (const citationId of webIds) projected.push(await webCitationProjection(tx, actor, c, citationId, webChecks));
   const publicProjection = await publicMessageProjection(tx, actor, c, String(message.id));
   const planProjection = await planMessageProjection(tx, actor.enterpriseId, String(c.id), String(message.id));
   const sourceAvailable=speech?.revoked !== true && planProjection?.available !== false && publicProjection?.available !== false && !(message.answer_kind==='grounded' && !projected.length) && projected.every(x=>x.available)
@@ -160,7 +164,9 @@ export async function projectMessage(tx:PostgresTransaction,actor:ActorContext,c
   const available = sourceAvailable && siteResult?.available !== false;
   // Only a public-source denial names its reason; other blocks keep the generic
   // fallback. The client renders fallbackText, so no client change is needed.
-  const publicReason = publicProjection && publicProjection.available === false ? publicProjection.reason : undefined;
+  const webReason = projected.find(x => !x.available && 'reason' in x && webIds.includes(x.id) && x.reason !== 'source_unavailable');
+  const publicReason = publicProjection && publicProjection.available === false ? publicProjection.reason
+    : webReason && 'reason' in webReason ? webReason.reason : undefined;
   const designerRecommendation = available && actor.principal.kind === 'user'
     ? await designerMessageProjection(tx, actor, String(c.id), String(message.id)) : null;
   return {id:String(message.id),seq:String(message.seq),authorKind:message.author_kind,answerKind:message.answer_kind ?? null,available,

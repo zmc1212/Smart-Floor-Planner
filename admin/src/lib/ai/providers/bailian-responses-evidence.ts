@@ -12,7 +12,8 @@ import {
 
 const statuses: ReadonlyArray<NativeToolStatus> = ['completed', 'failed', 'incomplete', 'searching', 'in_progress'];
 const asStatus = (value: unknown): NativeToolStatus =>
-  typeof value === 'string' && (statuses as readonly string[]).includes(value) ? value as NativeToolStatus : 'completed';
+  typeof value === 'string' && (statuses as readonly string[]).includes(value) ? value as NativeToolStatus
+    : value == null ? 'completed' : 'incomplete';
 
 function hashText(text: string) {
   return createHash('sha256').update(text).digest('hex');
@@ -39,22 +40,24 @@ function searchSources(value: unknown, retrievedAt: string) {
   return { accepted, rejected };
 }
 
-/** The provider merges several pages into one `output` string separated by a
- * fixed marker. Each URL keeps its own document; unmatched text stays attached
- * to the first URL instead of being silently attributed to another page. */
-function splitExtracted(output: string, urls: string[], extractedAt: string) {
+/** The provider's output sections can arrive in a different order from urls.
+ * Bind a summary using its own source label. An unlabeled, ambiguous section
+ * cannot provide a URL-bearing receipt. */
+function splitExtracted(output: string, urls: ReadonlySet<string>, extractedAt: string, labelRequired: boolean) {
   const parts = output.split(/\n?={5,}\n?/).map(part => part.trim()).filter(Boolean);
-  const documents: NativeExtractedDocument[] = [];
-  if (!urls.length) {
-    const text = boundText(output, nativeExtractLimits.maxCharsPerDocument);
-    if (text) documents.push(document('', text, extractedAt));
-    return documents;
+  const singleUrl = !labelRequired && urls.size === 1 && parts.length === 1 ? [...urls][0] : null;
+  const documents = new Map<string, NativeExtractedDocument>();
+  let unattributedSections = 0;
+  for (const part of parts.slice(0, nativeExtractLimits.maxDocuments)) {
+    const label = /^The useful information in (\S+) for user goal /.exec(part);
+    const url = label ? nativePublicUrl(label[1])?.href : singleUrl;
+    if (!url || !urls.has(url)) {
+      unattributedSections++;
+      continue;
+    }
+    if (!documents.has(url)) documents.set(url, document(url, boundText(part, nativeExtractLimits.maxCharsPerDocument), extractedAt));
   }
-  urls.slice(0, nativeExtractLimits.maxDocuments).forEach((url, index) => {
-    const text = boundText(parts[index] ?? (index === 0 ? output : ''), nativeExtractLimits.maxCharsPerDocument);
-    if (text) documents.push(document(url, text, extractedAt));
-  });
-  return documents;
+  return { documents: [...documents.values()], ...(unattributedSections ? { unattributedSections } : {}) };
 }
 
 function document(url: string, text: string, extractedAt: string): NativeExtractedDocument {
@@ -89,16 +92,21 @@ export function collectNativeToolEvidence(
       continue;
     }
     if (type === 'web_extractor_call') {
-      const urls = strings(item.urls, nativeExtractLimits.maxDocuments)
-        .flatMap(url => { const parsed = nativePublicUrl(url); return parsed ? [parsed.href] : []; });
-      strings(item.urls, nativeExtractLimits.maxDocuments)
-        .filter(url => !nativePublicUrl(url))
-        .forEach(url => rejectedSources.push({ url: url.slice(0, 400), reason: 'unsafe_or_malformed_url' }));
+      const rawUrls = strings(item.urls, nativeExtractLimits.maxDocuments);
+      const urls = new Set<string>();
+      for (const url of rawUrls) {
+        const parsed = nativePublicUrl(url);
+        if (parsed) urls.add(parsed.href);
+        else rejectedSources.push({ url: url.slice(0, 400), reason: 'unsafe_or_malformed_url' });
+      }
       const text = typeof item.output === 'string' ? item.output : '';
+      // Even the single-source compatibility path requires the provider's
+      // complete URL list to be unambiguous.
+      const labelRequired = !Array.isArray(item.urls) || item.urls.length !== 1 || rawUrls.length !== 1;
       const record: NativeWebExtractorRecord = {
         tool: 'web_extractor', callId, status: asStatus(item.status),
         goal: typeof item.goal === 'string' ? item.goal.slice(0, 400) : null,
-        documents: splitExtracted(text, urls, context.capturedAt),
+        ...splitExtracted(text, urls, context.capturedAt, labelRequired),
       };
       calls.push(record);
       continue;

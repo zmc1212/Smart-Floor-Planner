@@ -84,7 +84,7 @@ import { knowledgeExplanationProtocol, naturalKnowledgeProtocol, naturalKnowledg
   parseNaturalKnowledgeAnswer, sourceBoundaryValidationProtocol } from './knowledge-explanation';
 import { knowledgeContext, projectKnowledgeContextStep, projectKnowledgeContextAvailable } from '../knowledge/applicability-context';
 import { fitAgentContext, originalMessageId, agentRequestBudget, imageContextBudgetPolicy } from './context-budget';
-import { restoreAncestorSources, ancestorSourceMessages, publicOnlySynthesisContext } from './ancestor-sources';
+import { restoreAncestorSources, ancestorSourceMessages, checkAncestorWebSources, publicOnlySynthesisContext } from './ancestor-sources';
 import { searchPublicResearch, parsePublicRead, publicResearchTools, publicDiscoveryQuery, type PublicCandidate, type PublicResearchState } from './public-research';
 import { projectSynthesisPolicy, modelPolicyProjectionVersion, synthesisQuestionPrefix } from './model-policy';
 import { citationProtocolVersion, sourceReferenceText } from './citation-catalog';
@@ -102,7 +102,7 @@ import { consultationAcceptanceProfile } from '../contracts/consultation';
 import { consultationRequestReservation, reserveConsultationDispatch, settleConsultationDispatch } from './consultation-usage';
 import { configuredWebProvider, parseWebQuery, searchWeb, webSearchTool, type WebSearchSnapshot } from './web';
 import { webEvidence, webSynthesisSources, webAnswerQuoteSpans } from './web-evidence';
-import { createAgentWebTools, omitSearchSnippets, webOriginalPending, type AgentWebSearchOptions } from './web-tool-runtime';
+import { createAgentWebTools, projectWebDiscovery, webOriginalPending, type AgentWebSearchOptions } from './web-tool-runtime';
 import { isWebTool, webToolNames } from '../web-search/contract';
 import { canUseWebTools } from '../web-search/tools';
 import { webAnswerBoundaryIssues } from '../web-search/trust';
@@ -521,6 +521,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       return fn(tx, context);
     });
   try {
+    const webChecks = dependencies.model ? undefined : await checkAncestorWebSources(work =>
+      scoped((tx, context) => work(tx, context.conversation, context.run)));
     const initial = await scoped(async (tx, context) => {
       const knowledgeEnabled = runKnowledgeEnabled(context.run.policy_snapshot as Row);
       const shared = context.conversation.purpose === 'project_collaboration';
@@ -574,7 +576,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       const memory = await availableNeedMemory(tx, lease.enterpriseId, String(context.conversation.id), context.conversation.entry_snapshot);
       for (const mid of await needMemoryNoticeRefs(tx, lease.enterpriseId, String(context.conversation.id), memory)) constructionSources.add(mid);
       const unavailableNeedMessages = await unavailableNeedMessageIds(tx, lease.enterpriseId, String(context.conversation.id), context.conversation.entry_snapshot, memory);
-      const publicHistory = difyDialogue ? await restoreAncestorSources(tx, lease.actor, context.conversation, lease.runId, String(trigger.seq), { publicOnly: true }) : null;
+      const publicHistory = difyDialogue ? await restoreAncestorSources(tx, lease.actor, context.conversation, lease.runId, String(trigger.seq), { publicOnly: true, webChecks }) : null;
       const publicHistoryBound = !!publicHistory?.sources.length;
       const publicHistoryIds = new Set(publicHistory?.ancestors?.map(ref => ref.messageId));
       const savedNeeds = await one(tx, sql`select id from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
@@ -601,7 +603,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         }
         if((shared || staffFollowup) && row.author_kind==='assistant' && !await projectKnowledgeContextAvailable(tx,lease.actor,context.conversation,String(row.run_id)))continue;
         if (row.author_kind === 'user' && unavailableNeedMessages.has(String(row.id))) continue;
-        const projected = await projectMessage(tx, lease.actor, context.conversation, row);
+        const projected = await projectMessage(tx, lease.actor, context.conversation, row, webChecks);
         if (projected.available) {
           if (row.purpose === delegationOwnerPurpose) {
             constructionSources.add(String(row.id));
@@ -852,7 +854,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       if (publicHistoryBound) messages.push(...ancestorSourceMessages(publicHistory!));
       if (config.consultation && !resume && !currentMessageOnlyRequested(safeText(trigger.content as Parameters<typeof safeText>[0]))
         && !independentAdviceRequested(safeText(trigger.content as Parameters<typeof safeText>[0]))) {
-        const restored = await restoreAncestorSources(tx, lease.actor, context.conversation, lease.runId, String(trigger.seq));
+        const restored = await restoreAncestorSources(tx, lease.actor, context.conversation, lease.runId, String(trigger.seq), { webChecks });
         messages.push(...ancestorSourceMessages(restored));
       }
       await validateConstructionSources(tx, String(context.conversation.id));
@@ -1152,7 +1154,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             }, profile, ...finalAllocation, ...(purpose === 'answer' ? { imageContextBudget } : {}),
             ...(nativeFinalization && purpose === 'answer' && !tools.length
               ? { wireProjection: imageFinalization ? nativeImageFinalMessages : nativeFinalMessages }
-              : r3Active && purpose === 'answer' && !tools.length ? { wireProjection: omitSearchSnippets } : {}),
+              : r3Active && purpose === 'answer' ? { wireProjection: (messages: ModelMessage[]) => projectWebDiscovery(messages, !tools.length) } : {}),
           });
           const dialogueFinalCarrier = minimalFinalCarrier(initial.minimalDialogue && purpose === 'answer', initial.config, dispatchTools);
           const applicationWebProvider = purpose === 'answer' && r3Active ? applicationWeb!.provider : null;

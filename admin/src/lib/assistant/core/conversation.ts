@@ -20,7 +20,7 @@ import { naturalKnowledgeProtocol, naturalKnowledgeScheduleProtocol, knowledgeQu
 import { reportAnswerGroundingProtocol, reportSourceProjectionProtocol } from '../agent/report-source-scope';
 import { reportCoordinationProtocol, reportHistoryScopeProtocol, reportQuestionPlanningProtocol, reportReadCompletionProtocol, siteObservationReferralProtocol } from '../agent/report-question-plan';
 import { drawingChecklistReadProtocol } from '../agent/read-tool-input';
-import { parseWebCitationId } from '../agent/web-evidence';
+import { checkWebSource, checkWebSources, citationWebSource, parseWebCitationId, type WebSourceChecks } from '../agent/web-evidence';
 import { configuredGuidance, conversationGuidance, guidanceOpening, guidanceView } from '../requirements/guidance';
 import { requirementCheckpoint } from '../requirements/checkpoint';
 import { saveAutomaticRequirements } from '../requirements/automatic';
@@ -304,7 +304,7 @@ export async function cancelRuns(tx: PostgresTransaction, actor: ActorContext, c
   }
 }
 export class ConversationService {
-  constructor(readonly actor: ActorContext, private transaction?: PostgresTransaction) {
+  constructor(readonly actor: ActorContext, private transaction?: PostgresTransaction, private checkSource = checkWebSource) {
     requireCapability(actor, actor.capabilities.includes('assistant.followup.self') ? 'assistant.followup.self'
       : actor.principal.kind === 'user' ? 'assistant.chat.self' : 'assistant.preview.self');
   }
@@ -384,8 +384,8 @@ export class ConversationService {
         ...(preview ? { previewScope: { audience: preview.audience, draftVersionIds: preview.drafts.map(draft => draft.id) } } : {}) };
     });
   }
-  private readMessages(conversationId: string, cursor: { beforeSeq?: string; afterSeq?: string; limit: number }) {
-    return this.scoped(async repo => {
+  private async readMessages(conversationId: string, cursor: { beforeSeq?: string; afterSeq?: string; limit: number }) {
+    const history = await this.scoped(async repo => {
       const c=await repo.conversation(conversationId);
       await syncConstructionReminders(repo.tx, this.actor, c);
       const latest = String((await one(repo.tx, sql`select last_seq from app.assistant_conversations
@@ -415,6 +415,25 @@ export class ConversationService {
       if (after !== undefined) return { items, nextCursor: null, afterCursor: newest, latestSeq, hasMore: result.length === cursor.limit, reset: false };
       return { items, nextCursor: result.length === cursor.limit ? String(result.at(-1)!.seq) : null,
         afterCursor: null, latestSeq, hasMore: false, reset: false };
+    });
+    if (this.transaction || cursor.afterSeq !== undefined) return history;
+    const sources = history.items.flatMap(message => message.available
+      ? message.citations.flatMap(citation => citationWebSource(citation) ?? []) : []);
+    if (!sources.length) return history;
+    const checked = await checkWebSources(sources, this.checkSource);
+    // Recheck access and the saved originals after external I/O. Keep this
+    // page's cursor and identities even if newer messages arrived meanwhile.
+    return this.scoped(async repo => {
+      const c = await repo.conversation(conversationId);
+      const items = [];
+      for (const item of history.items) {
+        const message = await one(repo.tx, sql`select id,seq,author_kind,content,answer_kind,created_at,purpose from app.assistant_messages
+          where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and id=${item.id}`);
+        if (!message) continue;
+        const projected = await projectMessage(repo.tx, this.actor, c, message, checked);
+        items.push(projected.available && 'discovery' in item ? { ...projected, discovery: item.discovery } : projected);
+      }
+      return { ...history, items };
     });
   }
   messages(conversationId: string, beforeSeq = '9223372036854775807', limit = 20) {
@@ -455,14 +474,20 @@ export class ConversationService {
       return contact;
     });
   }
-  citation(citationId:string, includeReference = true, expectedConversationId?: string) {
-    return this.scoped(async repo=>{
-      const web = parseWebCitationId(citationId);
-      if (web) {
+  async citation(citationId:string, includeReference = true, expectedConversationId?: string) {
+    const web = parseWebCitationId(citationId);
+    if (web) {
+      const read = (checked?: WebSourceChecks) => this.scoped(async repo => {
         const run = await one(repo.tx, sql`select conversation_id from app.assistant_runs where enterprise_id=${this.actor.enterpriseId} and id=${web.runId}`);
         if (!run || expectedConversationId && String(run.conversation_id) !== expectedConversationId) fail('assistant_resource_not_found', 404);
-        return webCitationProjection(repo.tx, this.actor, await repo.conversation(String(run.conversation_id)), citationId);
-      }
+        return webCitationProjection(repo.tx, this.actor, await repo.conversation(String(run.conversation_id)), citationId, checked);
+      });
+      const citation = await read();
+      const source = citationWebSource(citation);
+      if (!source || this.transaction) return citation;
+      return read(await checkWebSources([source], this.checkSource));
+    }
+    return this.scoped(async repo=>{
       const citation=await one(repo.tx,sql`select * from app.assistant_message_citations where enterprise_id=${this.actor.enterpriseId} and id=${citationId}`);
       if(!citation || expectedConversationId && String(citation.conversation_id) !== expectedConversationId) fail('assistant_resource_not_found',404);
       const c=await repo.conversation(String(citation.conversation_id));

@@ -9,6 +9,7 @@ import { synthesisContextAvailable } from './synthesis-sources';
 import { enterpriseKnowledgeEnabled } from '../knowledge-policy';
 import { publicContextStatus, publicMessageAvailable, type PublicContextRef } from '@/lib/construction/public-projections';
 import { publicHistoryScope } from './history';
+import { checkWebSources, type WebSourceChecks } from './web-evidence';
 
 export type AncestorSourceRef = { runId: string; messageId: string; contentHash: string; contextHash: string };
 export const ancestorSourcesProtocol = 'authorized-ancestor-sources-v1';
@@ -35,10 +36,31 @@ export function selectedAncestorSources(context: SynthesisContext, answer: unkno
   return context.sources.filter(source => selected.has(source.sourceId));
 }
 
+/** Check originals outside the transaction that prepares the next model turn. */
+export async function checkAncestorWebSources(
+  authorize: <T>(work: (tx: PostgresTransaction, conversation: Row, run: Row) => Promise<T>) => Promise<T>,
+) {
+  const sources = await authorize(async (tx, conversation, run) => {
+    const candidates = await rows(tx, sql`select s.source_refs from app.assistant_run_steps s
+      join app.assistant_runs r on r.enterprise_id=s.enterprise_id and r.id=s.run_id
+      join app.assistant_messages m on m.enterprise_id=r.enterprise_id and m.id=r.output_message_id
+      join app.assistant_messages trigger on trigger.enterprise_id=r.enterprise_id and trigger.id=${String(run.trigger_message_id)}
+      where r.enterprise_id=${String(run.enterprise_id)} and r.conversation_id=${String(conversation.id)}
+        and r.status='succeeded' and m.seq<trigger.seq and s.kind='agent_synthesis_context'
+        and s.status='succeeded' order by m.seq desc limit 2`);
+    return candidates.flatMap(candidate => ((candidate.source_refs as SynthesisContext | null)?.web ?? []).flatMap(source => source.web ?? []));
+  });
+  return checkWebSources(sources);
+}
+
+function ancestorWebAvailable(context: SynthesisContext, checks?: WebSourceChecks) {
+  return !checks || (context.web || []).every(source => checks.get(source.hash) === null);
+}
+
 /** Only committed answers in this same authorized conversation can introduce
  * ancestor Evidence. Display ordinals and generated prose are never parsed. */
 export async function restoreAncestorSources(tx: PostgresTransaction, actor: ActorContext, conversation: Row,
-  runId: string, beforeSeq: string, options: { publicOnly?: boolean } = {}): Promise<SynthesisContext> {
+  runId: string, beforeSeq: string, options: { publicOnly?: boolean; webChecks?: WebSourceChecks } = {}): Promise<SynthesisContext> {
   const saved = await one(tx, sql`select private_checkpoint,input_summary from app.assistant_run_steps
     where enterprise_id=${actor.enterpriseId} and run_id=${runId}
       and kind='agent_source_context' and capability_name='source.restore.v1' and status='succeeded'`);
@@ -51,7 +73,7 @@ export async function restoreAncestorSources(tx: PostgresTransaction, actor: Act
     const context = saved.private_checkpoint as SynthesisContext;
     if (!!(saved.input_summary as Row)?.publicOnly !== !!options.publicOnly
       || options.publicOnly && context.sources.length > 0 && !publicOnlySynthesisContext(context)) fail('context_changed');
-    if (!allowKnowledge && context.knowledge.length) fail('context_changed');
+    if (!allowKnowledge && context.knowledge.length || !ancestorWebAvailable(context, options.webChecks)) fail('context_changed');
     if (context.ancestors?.length && await one(tx, sql`select m.id from app.assistant_messages m
       where m.enterprise_id=${actor.enterpriseId} and m.conversation_id=${String(conversation.id)}
         and m.id=any(${`{${context.ancestors.map(ref => ref.messageId).join(',')}}`}::bigint[]) and (${scope}) is not true limit 1`))
@@ -69,7 +91,7 @@ export async function restoreAncestorSources(tx: PostgresTransaction, actor: Act
     const context = candidate.source_refs as SynthesisContext;
     if (options.publicOnly && !publicOnlySynthesisContext(context)) continue;
     // Source choice controls new model input, not historical human access.
-    if (!allowKnowledge && context.knowledge.length) continue;
+    if (!allowKnowledge && context.knowledge.length || !ancestorWebAvailable(context, options.webChecks)) continue;
     // Removing/replacing the explicit reference is not permission to silently
     // restore a previous report into a new question. Historical answers still
     // use their own live source checks when read.

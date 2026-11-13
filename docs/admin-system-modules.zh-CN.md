@@ -3,7 +3,7 @@
 **小K统一集成（Limited）。** Assistant 网关默认使用 Chat Completions，已确认能力的百炼模型和工具可显式启用 Responses。工具证据和用量沿原轮次合同返回。PostgreSQL runtime 与同一 Outbox 消费者处理房间任务、施工复核及原会话回执。公开工地与本人项目共用会话服务，读取及重试均核查当前来源权限。Construction 持有带日期的计划、核实记录、设计核对、整改和关闭。日周报共用获权记录，同一租户和周期只领取一次周槽，再向四个角色投递。PG17/pgvector 升级使用活动迁移 0124–0127。见[模块合同](xiaok-integration-contract.md)与[集成审查](xiaok-integration-audit.md)。
 
 <!-- xiaok-r3-web-tools -->
-**小K R3 公开联网工具（Limited）。** 合资格的原生 Agent 会话可用 `ASSISTANT_WEB_SEARCH_TOOLS=1` 通过现有聊天 Worker 启用 R2 搜索和读页工具。每次调用沿用当前租户、参与人、会话及工具能力校验。搜索候选用于找原文，只有成功提取的公开原文可生成网页 Evidence，随运行落库并通过现有引用接口重进。搜索服务独立于模型供应商。[协议、配置与验证](bailian-responses-adapter.md#11-r3-应用联网搜索)。
+**小K公开联网工具（Limited）。** `ASSISTANT_WEB_SEARCH_TOOLS=1` 在合资格的会话中经现有分派器启用搜索与读页，调用受租户、参与人和工具权限约束。模型收到候选元数据，成功读取的原文随运行保存网址、标题、读取时间和引用定位。完整历史、打开引用及 LangGraph 祖先来源复用通过原 reader 重新核对。I6 已完成真实搜索和官方 HTML 原文回读，现行性和多轮质量仍待验证。[协议、配置与验证](bailian-responses-adapter.md#11-r3-应用联网搜索)。
 <!-- /xiaok-r3-web-tools -->
 
 <!-- cross-role-business-current -->

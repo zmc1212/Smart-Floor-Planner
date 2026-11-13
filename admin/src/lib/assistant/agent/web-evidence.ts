@@ -1,10 +1,60 @@
 import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
 import { one, type Row } from '@/db/repositories/assistant-repository';
-import { fingerprint, type Evidence } from '../contracts';
-import type { WebSearchSnapshot, WebPage } from './web';
+import { AssistantError, fingerprint, type Evidence } from '../contracts';
+import type { WebSourceLocator } from '../contracts/web-source';
+import { extractWebPage, readPublicPage, type WebSearchSnapshot, type WebPage } from './web';
 import type { SynthesisContext, SynthesisSource, SynthesisAnswer } from './synthesis';
-import { publicReaderParser, validPublicDocument } from './public-research';
+import { configuredPublicRead, publicReaderParser, validPublicDocument } from './public-research';
+import { fetchPublicDocument } from '../web-search/page';
+import { withPublicRequest } from '../web-search/tools';
+import { injectionSignals } from '../contracts/native-tools';
+
+type WebSourceProblem = 'source_changed' | 'source_missing' | 'source_unreadable';
+export type WebSourceChecks = ReadonlyMap<string, WebSourceProblem | null>;
+
+/** Compare with the same original-reading path used to create the snapshot.
+ * A live HTTP status by itself cannot verify the original text. */
+export async function checkWebSource(web: WebSourceLocator, budgetMs: number): Promise<WebSourceProblem | null> {
+  try {
+    return await withPublicRequest(async () => {
+      const url = web.requestedUrl ?? web.url;
+      if (web.parser === publicReaderParser) {
+        const document = await configuredPublicRead(url, budgetMs);
+        return document.url === web.url && document.original.sha256 === web.document?.hash ? null : 'source_changed';
+      }
+      const deadline = Date.now() + budgetMs;
+      const read = (url: string, signal?: AbortSignal) => readPublicPage(url, undefined, deadline, signal);
+      const page = web.requestedUrl
+        ? await fetchPublicDocument(url, { readPage: read, now: () => new Date(web.retrievedAt) })
+        : extractWebPage(await read(url), web.retrievedAt);
+      if (injectionSignals(page.title + '\n' + page.text).length) return 'source_unreadable';
+      return fingerprint({ url: page.url, title: page.title, text: page.text, retrievedAt: page.retrievedAt }) === web.hash
+        ? null : 'source_changed';
+    });
+  } catch (error) {
+    return error instanceof AssistantError && ['web_http_404', 'web_http_410'].includes(error.code)
+      ? 'source_missing' : 'source_unreadable';
+  }
+}
+
+export async function checkWebSources(sources: WebSourceLocator[], check = checkWebSource): Promise<WebSourceChecks> {
+  const unique = [...new Map(sources.map(source => [source.hash, source])).values()];
+  const result = new Map<string, WebSourceProblem | null>();
+  const deadline = Date.now() + 6000;
+  for (let start = 0; start < unique.length; start += 4) {
+    await Promise.all(unique.slice(start, start + 4).map(async source => {
+      const remaining = deadline - Date.now();
+      result.set(source.hash, remaining > 0 ? await check(source, remaining) : 'source_unreadable');
+    }));
+  }
+  return result;
+}
+
+export function citationWebSource(citation: { id: string; available: boolean; locator?: unknown } | undefined) {
+  return citation?.available && parseWebCitationId(citation.id)
+    ? (citation.locator as { web?: WebSourceLocator } | undefined)?.web : undefined;
+}
 
 export function webEvidence(snapshot: WebSearchSnapshot, runId: string, sequence: number): Evidence[] {
   return snapshot.pages.map((page, index) => {

@@ -32,6 +32,7 @@ export type NativeExtractedDocument = {
 export type NativeWebExtractorRecord = {
   tool: 'web_extractor'; callId: string; status: NativeToolStatus; goal: string | null;
   documents: NativeExtractedDocument[];
+  unattributedSections?: number;
 };
 
 export type NativeCodeInterpreterRecord = {
