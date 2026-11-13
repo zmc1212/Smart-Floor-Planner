@@ -269,12 +269,51 @@ I5 验收以 `b612ea0692acc5fac62ca8487029196bec7809cb` 为基线，测试前后
 
 ### I6.11.5 工作流生命周期
 
-- 离线覆盖：创建草稿、Agent 版本、知识范围、公开规范范围、类型化输入输出端口、有据/资料不足/整改三路模拟、vNext 发布、旧发布版与 digest 不变、WAIT_EVENT 重复回调、旧定义按原 digest 解析。测试 `specialist.test.ts` 与 `validate/simulate/store` 套件。
-- 实库项（企业知识版本替换、公开来源撤回、图片撤权、原会话取消、Worker 中断恢复、Outbox 重复投递、退出重进）沿用 I6.9/I6.10 原证据，本轮未重跑，状态 limited。
+| 固定项 | 本轮状态 | 依据 |
+| --- | --- | --- |
+| 1 创建防水草稿 | passed | `createFromTemplate` |
+| 2 配置 Agent Version | passed | 模板装配与版本测试 |
+| 3 配置 Knowledge Scope | passed | `scope=authorized, topK=3` 断言 |
+| 4 配置公开规范范围 | passed | `coverage=subject` 断言 |
+| 5 校验输入输出端口 | passed | `validate.test.ts` 与模板端口断言 |
+| 6 模拟有据路径 | passed | `waterproof-reviewed` |
+| 7 模拟资料不足路径 | passed | `waterproof-missing-evidence` |
+| 8 模拟整改路径 | passed | `issue` 分支与 `proposedOperations` |
+| 9 发布 vNext | passed | 版本 revision/digest 递增 |
+| 10 旧 Run 保持原版本 | passed | runner 绑定原 digest |
+| 11 新 Run 使用新版本 | passed | 新发布版模拟与绑定 |
+| 12 Agent 版本升级不影响运行中任务 | passed（离线） | runner 按启动时绑定恢复 |
+| 13 运行期间企业知识版本替换 | limited | 沿用 I6.9/I6.10 实库证据，本轮未重跑 |
+| 14 公开来源撤回 | limited | 沿用 I6.7/I6.10 证据 |
+| 15 用户撤回图片授权 | limited | 沿用 I6.10 `vision-02` 证据 |
+| 16 原始会话取消 | limited | 沿用 I6.9 v9 证据 |
+| 17 Worker 中断和恢复 | limited | 沿用 I6.9/I6.10 实库证据 |
+| 18 WAIT_EVENT 重复回调 | passed | runner 重放返回同一等待/完成记录 |
+| 19 Outbox 重复投递 | limited | 沿用 I6.9 幂等证据 |
+| 20 原会话退出重进 | limited | 沿用 I6.10 Stable 证据 |
+
+离线项由 `specialist.test.ts`、`validate.test.ts`、`simulate.test.ts`、`store.test.ts` 与 Native Workflow 63/63 覆盖；实库项没有在本轮重新执行，没有被计为通过。
 
 ### I6.11.6–7 实模与 Stable
 
-- **not_run。** 当前工作树无 `.env.local`，环境无 `BAILIAN`/`DASHSCOPE`/`DATABASE` 变量，也没有运行中的隔离 Admin、Worker 或 Reader；无法发起百炼 `bailian / deepseek-flash / deepseek-v4.1-flash-1017` 真实调用，也无法执行 Stable 390×844 四端旅程。未使用模拟结果冒充真实模型或业务通过。I6.10 的 27 次真实回执、Stable 截图与清单重进证据保持原状态。
+固定场景在开跑前登记为 A–L。表内「预期」只约束当前机制，不替代真实回答验收。
+
+| 场景 | 预期事实 | 可用 Evidence | 禁止推断 | 事项 / 人工 |
+| --- | --- | --- | --- | --- |
+| A 防水施工前准备 | 基层、专项方案、埋设完成 | §5.1.1/5.1.4/5.1.11 | 现场已完成 | 清单，不建事项 |
+| B 管根节点 | 管根、地漏与基层交接密封 | §5.6.1 | 具体材料尺寸 | 可建事项 |
+| C 基层验收前提 | 验收合格后才能防水 | §5.1.4 | 已验收 | 需人工 |
+| D 完成后后续工序 | 防水层验收后进入下一道 | §5.1.12 | 统一天数 | 需人工 |
+| E 企业防水标准 | PPT 仅安排施工和后续检查 | 企业知识 | 企业量数 | 不建事项 |
+| F 企业/公开对比 | 两类依据分列 | PPT + PDF | 混为企业条款 | 需人工 |
+| G 标准现行性 | 公告实施日期 + 同版目录 | 公告、目录 | 发布日期替代条文 | 需人工 |
+| H 厨房更正卫生间 | 当前房间为卫生间 | 当前房间记录 | 厨房记录 | 可建事项 |
+| I 主卧实际进度 | 主卧已发布记录 | Construction | 计划当完成 | 可建事项 |
+| J 企业资料缺项 | 明确缺项 | 检索回执 | 编造条款 | 需人工 |
+| K 真实施工照片 | 可见现象与不可见项 | 获权照片 | 验收/精确量数 | 需人工 |
+| L 防水检查清单 | 绑定来源与状态 | 本答案引用 | 已正式复核 | 需人工 |
+
+- **not_run。** 当前工作树无 `.env.local`，环境无 `BAILIAN`/`DASHSCOPE`/`DATABASE` 变量，也没有运行中的隔离 Admin、Worker 或 Reader；无法发起百炼 `bailian / deepseek-flash / deepseek-v4.1-flash-1017` 真实调用，也无法执行 Stable 390×844 四端旅程。未使用模拟结果冒充真实模型或业务通过，每个新语义机制的两轮实模上限未消耗。I6.10 的 27 次真实回执、Stable 截图与清单重进证据保持原状态。
 
 ### 工程质量
 
