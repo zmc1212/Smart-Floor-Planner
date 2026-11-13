@@ -17,3 +17,5 @@ LangGraph 的恢复机制以检查点和可幂等的任务为边界。仓库继�
 节点、操作及验收见[防水工作流](xiaok-waterproof-workflow.md)和[集成审查](xiaok-integration-audit.md)。
 
 I6.12 把照片观察的结构化从模型工具参数移到服务端：图像轮仍只提交 \kind\/\	ext\，正文七节固定文本由服务端解析；解析失败时执行一次独立文本归一化调用，结果再经固定信封 Schema 与语义校验。该调用复用同一 \AgentModelGateway\、加密配置、用量台账和请求回执，不新增网关或生产默认值。真实回执见 \dmin/tmp/i6.12/photo-01/\；真实工地照片、真机与 BLE 仍未验。工作流、四端与冻结标识见[防水工作流](xiaok-waterproof-workflow.md)和[第一版交付](xiaok-waterproof-agent-v1-release.md)。
+
+I6.13 复核：知识解释的单次修复改为精确诊断——按 Q/段号列出未由本段引用支持的数字、量数与同轮 citationId 候选；`standard_status_unverified` 同样返回状态候选，避免删除真实状态结论。语义复核承认服务端对 `advice` 的“一般建议”展示标签。PDF 页引用在 Stable 业主会话完成点击与重进；施工端/业主授权 UI 本轮未重跑，保持 `limited`/`not_run`。证据见[集成审查](xiaok-integration-audit.md)。

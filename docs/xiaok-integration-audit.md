@@ -1,5 +1,46 @@
 # 小K三线集成审查
 
+## I6.13 防水 Agent 最终验收与真实业务体验补齐（Limited）
+
+起点为 fetch 后的 `origin/codex/xiaok-integration@4a89463face8`，Integration 工作树与该提交一致。本轮代码提交 `9156e9a0`（解释修复精确定位数字/状态缺口）。隔离 PG17 `sfp-xiaok-i67-test` / `xiaok_r6_model_i612`，百炼 `bailian` / `deepseek-flash` / `deepseek-v4.1-flash-1017`，真实调用记录 Run `83`–`99`，实际模型均为 `deepseek-v4.1-flash-1017`。范围外的小程序与 `portfolio/catalog.ts` 未提交修改保持原样，未纳入本切片。
+
+### I6.13.1 B/G/H 真实模型失败根因
+
+- **B passed。** Run `83`（会话 `59`）保存 509 字、2 条公开引用。根因不是管根机理本身，而是语义复核看不到服务端对 `advice` 段的“一般建议”展示标识，把无引用的通用机理解释判为无据。复核合同改为：`advice` 已由服务端标注为一般建议，只要不含具体数值、企业规定、现场事实或正式结论，无引用也可以是正确身份。保存稿明确分开规范原文、一般机理与项目缺项。
+- **G limited。** 依次定位三个真实根因：① Run `84` 把 `GB 50345-2012` 写进只引用公告首段的段落，数字不在本段原文内，触发 `unsupported_model_commitment`；② 修复稿把“目前现行”写在仅引用发布公告的段落，触发 `standard_status_unverified`；③ Run `97` 的修复稿在 `uncertainty` 段使用“状态目录的现行记录”这一范围标签，被状态守卫误判为现行断言。已新增数字/状态精确修复诊断（段号、缺口、同轮 citation 候选），并让状态守卫把“现行状态/情况/结论/信息/记录”识别为话题标签而非断言。Run `97` 原失败保留；同一修复稿在 `tmp/i6.13` 的确定性复现中通过解析。受“每个实质修复最多两次真实模型试验”约束，未再消耗第三次调用，故 G 标 `limited`，不标 passed。
+- **H passed。** 会话 `61` 五轮：`H1` 读厨房已发布记录（墙面找平完成、防水待施工），`H2` 更正为卫生间且未使用厨房 Evidence，`H3`/`H4` 以 GB 55030-2022 第 5.6.1、5.1.4、5.1.11 条区分标准条件与一般解释，`H5` 读主卧记录（墙面找平完成、等待下一道工序）。`H2` 的企业知识检索因托管 RAG 未配置返回 `retrieval_unavailable`（历史缺项），但回答未把厨房记录带入卫生间，也未编造进度。
+
+### I6.13.2 公开 PDF 页引用
+
+- **passed（生成 + Stable UI 点击/重进）。** 会话 `70` 的 Run `99` 生成真实 PDF 页引用 `w:99:1`：原件 `建筑与市政工程防水通用规范.pdf`，`sourceLocation` 为“PDF 第27页（共40页）5.1 一般规定”，原文为第 5.1.1、5.1.4 条；文档 SHA-256 `aabd71d70809673a4009fcdbcfc0c759f3a22b1c3566f8022dfea9a7a529dc80`，页文本 Hash `14d854a3…`。
+- Stable DevTools 实际版本 `3.17.2`（非任务书写的 3.5.8，未改项目基础库）。业主 `10` 打开会话 `70`，点击 `.citation-chip` 后引用面板显示 `.pdf` 标题、PDF 第 27 页与原文；退出小程序再进入，再次点击同一引用，标题、页码、原文与 Hash 一致。截图与 `verification.json` 在 `admin/tmp/i6.13/stable-pdf/`。
+- **passed（服务端 Reader 分类）。** `w:99:1` 在模拟 Reader 超时时返回 `available:false / source_unreadable`，不判为撤回；模拟 410 撤回时返回 `source_withdrawn`，后续读取被阻止。证据 `tmp/i6.13/pdf-reader.json`。Stable UI 内的 Reader 超时/撤回重试本轮未重跑，UI 部分标 `limited`。
+
+### I6.13.3 施工端 Stable 重新提交
+
+- **not_run（本轮 Stable 提交）。** 隔离项目 `10` 的卫生间事项 `190` 已是 `resolved`，没有可补资料的待处理事项；项目未发布施工进度计划，施工端页面 `quickRooms` 为空，无法在真实 UI 进入补充资料表单。I6.12 已通过的服务端/HTTP 提交链路保持 `passed`，但本轮未把它等同于 Stable UI 通过。未自动把照片提交标记为验收合格。
+
+### I6.13.4 业主持续跟进授权 UI
+
+- **not_run（本轮 Stable 再切换）。** I6.12 的服务端授权/取消与委托 `cancelled` 证据仍有效；本轮 Stable 会话 `70` 未重跑开启/取消授权的完整 UI 切换。普通问答未自动创建持续任务。
+
+### I6.13.5 真实工地照片
+
+- **not_run。** 仍未取得明确授权的真实卫生间施工照片；隔离库媒体仍为合成图。未用合成图冒充真实工地，也未据单张照片宣布防水合格。
+
+### I6.13.6 四端业务事实
+
+- I6.12 的四端同源读取（项目 `10`、事项 `190`、C01 `24`）证据保持 `passed`；本轮新增业主会话 `70` 的 PDF 引用读取、施工端项目 `10` 的真实页面读取。本轮未重新跑完整四端同一事项旅程，整体标 `limited`。
+
+### I6.13.7 V1 冻结复核
+
+- `waterproof-specialist@1` / `waterproof-inspection-v1` 未修改；[第一版交付冻结](xiaok-waterproof-agent-v1-release.md)按本轮实际结果更新：B/H、PDF 页引用 UI 提升，G 与施工端/业主 UI 保持 `limited` 或 `not_run`，未把 Limited 能力改成 Released。
+
+### 模型用量与工程
+
+- 新增 Run `83`–`99` 全部实际 `deepseek-v4.1-flash-1017`；B Run `83` 1 次调用、G Run `84` 2 次、H 会话 `61` 8 次、PDF Run `99` 2 次（含修复），其余为检索/评审调用。未记录 API Key 或图片访问凭证。
+- 定向测试：知识解释/公开研究/综合守卫 65/65；TypeScript、改动文件 ESLint 通过；生产 Webpack/Turbopack 构建通过（仅既有动态文件系统访问警告）。Assistant 全量、小程序全量历史基线未在本切片重跑，保留 I6.12 的 1061/1067 与 2243/2244。
+
 ## I6.12 真实工地验证、Stable 四端验收与防水 Agent 第一版冻结（Limited）
 
 起点为 fetch 后的 `origin/codex/xiaok-integration@eb0fa3da0eba`，Integration 工作树与该提交一致。原 Public 工作树的 `source-manifest.json` 未提交修改保留原样。本轮代码提交 `b37e24f6`（照片观察服务端结构化）。隔离 PG17 `sfp-xiaok-i67-test` / `xiaok_r6_model_i612`，百炼 `bailian` / `deepseek-flash` / `deepseek-v4.1-flash-1017`，检索使用已批准回环 OpenSERP 0.8.17/Baidu，Reader 使用工作树 `scripts/assistant-public-reader.py`（crawl4ai 0.9.2 + pypdf 6.21.2）。

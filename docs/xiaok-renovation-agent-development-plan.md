@@ -104,3 +104,10 @@
 
 - [收敛前完整冻结原件](archive/xiaok-renovation-agent-development-plan-before-simplification-20261105.md)保留历史决定、失败、费用、旧设计规格与交接记录；只按问题检索，不作开工前必读。
 - 最新实现/证据入口为第2节及二期合同的[中文](xiaok-assistant-phase-2.zh-CN.md)/[英文](xiaok-assistant-phase-2.md)；原`tmp/`证据不删除。旧“下一步”不再调度开发；以五项首版范围和有效授权边界为准。
+
+## I6.13 状态（2026-11-13）
+
+- 已完成：B 场景真实问答通过；H 五轮房间更正通过；PDF 页引用生成与 Stable 点击/重进通过；Reader 超时/撤回分类通过；I6.13.1 修复代码提交 `9156e9a0`。
+- 保持 limited：G 标准现行性（Run `97` 失败保留，修复稿确定性通过，未再消耗模型试验）；四端完整旅程；施工端/业主授权 Stable UI。
+- 保持 not_run：真实工地照片（无合法授权素材）、真机、BLE、真实微信登录；施工端 Stable 照片提交（事项 `190` 已 resolved，无待补资料事项）。
+- 未修改 V1 Agent/工作流冻结标识与生产默认模型；未合并 main、未部署生产。

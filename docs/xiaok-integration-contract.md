@@ -54,3 +54,7 @@
 图像轮保持原 \conversation-images-v1\ 与 \inal_response\ \kind\/\	ext\，不扩大工具 Schema。服务端先解析正文七节固定文本；未解析时执行一次独立文本归一化调用（\jsonOutput\、同一 \AgentModelGateway\、同一 ailian/deepseek-v4.1-flash-1017、不重发图片），结果经 \parseSpecialistPhotoAnalysis\ 严格校验。Run 步骤 \gent_photo_analysis\ 记录解析结果；解析失败保留原正文并记 \ailed\，不伪装为结构化成功。用量、请求 ID、实际模型与失败原因沿原台账保存。
 
 工作流三路径与四端读取同一 Construction 事实；正式事项、经理复核、C01 回传、撤权与重复事件继续沿用原合同。冻结标识、已交付/不支持能力和复制其他专业 Agent 的步骤见[第一版交付](xiaok-waterproof-agent-v1-release.md)。
+
+### I6.13 解释修复与 PDF 页引用
+
+知识解释的 `unsupported_model_commitment` / `standard_status_unverified` 修复反馈现精确到问项、段号、缺失数字/量数与同轮 citationId 候选；状态守卫把“现行状态/情况/结论/信息/记录”识别为话题标签，不当作现行断言。`advice` 段由服务端显示为“一般建议”，语义复核据此承认一般专业解释。PDF 页引用 `w:99:1` 经 Stable 会话 `70` 点击与退出重进验证，原件与页 Hash 保持；Reader 超时与撤回分别返回 `source_unreadable` / `source_withdrawn`。施工端 Stable 提交、业主 Stable 再切换授权本轮 `not_run`，未以服务端通过代替 UI 通过。

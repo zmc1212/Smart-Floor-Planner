@@ -31,9 +31,9 @@
 | 重复事件、错房间、非经理复核、取消跟进 | released | 路径 A 的重复 tick、厨房记录、施工员/非项目人员复核拒绝；路径 C 取消后委托 `cancelled`。 |
 | 业主 C01 退出重进 | released | Stable 390×844，C01 `24` 重进仍见同一复核结果。 |
 | 施工端、老板端同源业务状态 | released | Stable 项目 `10`：施工端读到管根事项，老板端读到复核结果；设计师端 0 个项目，未被强制参与。 |
-| 施工端在 Stable UI 重新提交照片/记录、业主再次切换持续跟进授权 | limited | 提交与授权由工作流 A/B/C 的服务与 HTTP 证据覆盖；本轮 Stable 未重跑这两步。 |
+| 施工端在 Stable UI 重新提交照片/记录、业主再次切换持续跟进授权 | limited | 服务端与 HTTP 提交/授权链路在 I6.12 通过；I6.13 施工端 Stable 提交因事项 `190` 已 `resolved`、无待补资料事项而 `not_run`，业主 Stable 再切换授权本轮 `not_run`。 |
 | 照片观察信封（服务端结构化） | limited | 合成获权图 Run `8` 解析成功；真实工地照片 `not_run`。 |
-| 公开规范原件稳定读取 | limited | 已保存引用服务端重开、Reader 故障分类、PDF 原件 Hash/页文、重读与篡改拒绝；已保存 PDF 页引用与 Stable UI 点击本轮未取得。 |
+| 公开规范原件稳定读取 | released | I6.13 生成真实 PDF 页引用 `w:99:1`（Run `99`，PDF 第27页，原件 SHA-256 `aabd71…`），Stable 业主会话 `70` 点击、退出重进再次点击，标题/页码/原文/Hash 一致；Reader 超时分类 `source_unreadable`、410 撤回分类 `source_withdrawn`。证据 `admin/tmp/i6.13/stable-pdf/`、`tmp/i6.13/pdf-reader.json`。 |
 
 ## 3. 图片分析合同（I6.12.2）
 
@@ -51,13 +51,13 @@
 | 场景 | 结果 | 说明 |
 | --- | --- | --- |
 | A 卫生间施工前注意 | passed | 企业工艺与公开依据分开，保存 1 条公开引用。 |
-| B 管根为什么单独处理 | failed | 终稿 `ungrounded_response_scope`：一般机理解释缺少本轮选中原文支持，唯一修复仍未通过。 |
+| B 管根为什么单独处理 | passed（I6.13） | Run `83`：区分规范原文、一般专业解释与项目缺项，2 条公开引用；复核合同承认服务端“一般建议”标签。 |
 | C 基层进入防水条件 | passed | 引用规范页条件，未称本户已验收。 |
 | D 完成后下一道工序 | passed | 未给统一天数。 |
 | E 企业防水标准 | passed | 企业 PPT 第 18 页，未编企业量数。 |
 | F 企业标准与公开规范区别 | passed | 两类依据分列。 |
-| G 标准现行性 | failed | 已读公告与目录，终稿仍触发 `unsupported_model_commitment`；未编造现行性。 |
-| H1/H2 厨房更正卫生间 | failed | 两轮均被 `unsupported_model_commitment` 拒绝，未保存。 |
+| G 标准现行性 | limited（I6.13） | 根因依次为数字不在本段引用、状态结论与公告同段、`现行状态/记录` 被误判。已加精确数字/状态修复诊断与守卫豁免；Run `97` 仍失败保留，同一修复稿确定性通过，受两次试验预算未再调模型。 |
+| H1/H2 厨房更正卫生间 | passed（I6.13） | 会话 `61` 五轮：厨房记录、卫生间更正、管根解释、处理条件、主卧记录分别读取；未用厨房 Evidence 支持卫生间。 |
 | I 主卧实际进度 | passed | 读取主卧已发布记录，未把计划当完成。 |
 | J 企业未写闭水时长 | passed | 明确企业缺项与核实路径。 |
 | K 照片观察 | limited | 合成获权图保存可见现象；真实工地照片 `not_run`。 |
@@ -80,7 +80,7 @@
 - Reader 故障分类：`web_timeout`、`web_http_410`、`web_http_412`、`web_http_403` 均按原错误码返回；恢复 Reader 后同一引用再次可用。
 - 防水 PDF 原件 SHA-256 `aabd71d70809673a4009fcdbcfc0c759f3a22b1c3566f8022dfea9a7a529dc80`，与 I6.10 一致；本轮可复核页 `[5,27,28,31]`，`36/37` 未出现在本轮已核页集合，标记 `limited`。
 - 页文被改写后 `publicDocumentPages` 拒绝为原文证据；重读同一 URL 得到同一 SHA-256。
-- 本轮未能保存一条 PDF 页引用（标准原文引用终稿被 `unsupported_model_commitment` 拒绝），C01 打开 PDF 页引用的完整 UI 步骤标记 `not_run`；HTML 引用与 Reader/原件层已验证。
+- I6.12 未能保存一条 PDF 页引用（标准原文引用终稿被 `unsupported_model_commitment` 拒绝）。I6.13 已补齐：Run `99` 的 `w:99:1` 为真实 PDF 第 27 页引用，Stable 会话 `70` 点击、退出重进通过；见第 12 节。
 
 ## 7. 模型用量
 
@@ -121,4 +121,15 @@
 | 工作流 A/B/C/取消 | `tmp/i6.12/workflow-a/`、`workflow-b/`、`workflow-c/`、`workflow-cancel/` |
 | PDF 与引用稳定性 | `tmp/i6.12/pdf-read-02.json` |
 | 四端 Stable | `admin/tmp/i6.12/stable-04/verification.json` 及截图 |
+| I6.13 固定问答 | `tmp/i6.13/dialogue/`、`dialogue-02/`、`dialogue-03/` |
+| I6.13 PDF 页引用 | `tmp/i6.13/pdf-cite/result.json`、`tmp/i6.13/pdf-reader.json` |
+| I6.13 Stable PDF 点击/重进 | `admin/tmp/i6.13/stable-pdf/verification.json` 及 `01-chat.png`、`02-citation.png`、`03-reentry.png` |
 | 隔离库 | `sfp-xiaok-i67-test` / `xiaok_r6_model_i612`，PG17 |
+
+## 12. I6.13 复核增量
+
+- 代码提交 `9156e9a0`：知识解释的 `unsupported_model_commitment` / `standard_status_unverified` 修复反馈现在精确到段号、缺失数字/量数与同轮 citationId 候选；状态守卫不再把“现行状态/情况/结论/信息/记录”当作现行断言；语义复核承认服务端 `advice` 的“一般建议”标识。
+- B：Run `83` passed；H：会话 `61` 五轮 passed；G：Run `84`/`91`/`97` 的失败链保留，修复稿确定性通过，因两次真实试验预算标 `limited`。
+- PDF：Run `99` 生成 `w:99:1`，Stable 会话 `70` 点击与退出重进通过；Reader 超时/撤回分类通过。任务书要求的 3.5.8 基础库本轮实际为 DevTools `3.17.2`，未改项目基础库。
+- 施工端 Stable 重新提交：`not_run`（事项 `190` 已 `resolved`，无待补资料事项；项目未发布进度计划，`quickRooms` 为空）。业主 Stable 再切换持续跟进：`not_run`。真实工地照片：`not_run`。四端完整旅程本轮 `limited`，I6.12 同源读取仍为 passed。
+- V1 Agent 标识、版本、工作流、digest、节点版本、Schema、权限与事项/复核/回传合同未修改；旧 Run 继续绑定原 revision/digest。
